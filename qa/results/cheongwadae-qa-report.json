@@ -1,0 +1,105 @@
+{
+  "generatedAt": "2026-04-15T01:08:46.662Z",
+  "overallStatus": "CONDITIONAL_HOLD",
+  "summary": {
+    "passed": 2,
+    "failed": 3,
+    "failedHigh": 3
+  },
+  "references": {
+    "devPlan": "D:\\v-coding\\16-SiteAnalysis\\.climpire-worktrees\\57fd5455\\docs\\dev-supplement-plan.md",
+    "analysisJson": "D:\\v-coding\\16-SiteAnalysis\\.climpire-worktrees\\57fd5455\\output\\cheongwadae-analysis.json",
+    "generatorScript": "D:\\v-coding\\16-SiteAnalysis\\.climpire-worktrees\\57fd5455\\src\\scripts\\test-cheongwadae.mjs",
+    "designSpec": "D:\\v-coding\\16-SiteAnalysis\\.climpire-worktrees\\5ed9a203\\docs\\design-spec.md",
+    "iconDir": "D:\\v-coding\\16-SiteAnalysis\\.climpire-worktrees\\5ed9a203\\public\\assets\\icons",
+    "resultsDir": "D:\\v-coding\\16-SiteAnalysis\\.climpire-worktrees\\70bd67a3\\qa\\results"
+  },
+  "checks": [
+    {
+      "id": "QA-01",
+      "title": "위성지도 타일 렌더링",
+      "severity": "HIGH",
+      "passed": false,
+      "evidence": {
+        "satelliteSource": "pending_selection",
+        "outputFiles": []
+      },
+      "detail": "위성지도 소스가 아직 pending_selection이며, 실제 PPT/PDF/슬라이드 이미지 출력물이 없습니다."
+    },
+    {
+      "id": "QA-02",
+      "title": "5개 POI 레이어 표시",
+      "severity": "HIGH",
+      "passed": true,
+      "evidence": {
+        "missingLayerTypes": [],
+        "missingIcons": []
+      },
+      "detail": "5개 필수 레이어와 대응 아이콘이 모두 존재합니다."
+    },
+    {
+      "id": "QA-03",
+      "title": "오버레이 좌표 정합성",
+      "severity": "HIGH",
+      "passed": false,
+      "evidence": {
+        "center": {
+          "lat": 37.5866,
+          "lng": 126.9748
+        },
+        "coordinateCollections": [
+          {
+            "type": "subways",
+            "itemCount": 0,
+            "hasCoordinates": false
+          },
+          {
+            "type": "mountains",
+            "itemCount": 0,
+            "hasCoordinates": false
+          },
+          {
+            "type": "schools",
+            "itemCount": 0,
+            "hasCoordinates": false
+          },
+          {
+            "type": "parks",
+            "itemCount": 0,
+            "hasCoordinates": false
+          },
+          {
+            "type": "apartments",
+            "itemCount": 0,
+            "hasCoordinates": false
+          }
+        ]
+      },
+      "detail": "중심좌표는 존재하지만 개별 오버레이 좌표 목록이 없어 반경 3km 정합성 검증이 불가능합니다."
+    },
+    {
+      "id": "QA-04",
+      "title": "PPT 출력 완결성",
+      "severity": "HIGH",
+      "passed": false,
+      "evidence": {
+        "slideCount": 4,
+        "expectedSlides": 6,
+        "outputFiles": []
+      },
+      "detail": "디자인 사양은 6장을 요구하지만 현재 JSON은 4장만 정의하고 있으며 실제 PPT/PDF 출력물도 없습니다."
+    },
+    {
+      "id": "QA-05",
+      "title": "데모 시나리오 재현성",
+      "severity": "MEDIUM",
+      "passed": true,
+      "evidence": {
+        "expectedSha256": "a3c028672f0d8d65786427c50722902264e0680a10bb8e862e2c01eb113042ee",
+        "actualSha256": "a3c028672f0d8d65786427c50722902264e0680a10bb8e862e2c01eb113042ee",
+        "generatedJsonPath": "C:\\Users\\impjy\\AppData\\Local\\Temp\\cheongwadae-qa-6EApM4\\output\\cheongwadae-analysis.json"
+      },
+      "detail": "격리 경로 실행 결과가 기존 JSON과 바이트 단위로 일치합니다."
+    }
+  ]
+}
