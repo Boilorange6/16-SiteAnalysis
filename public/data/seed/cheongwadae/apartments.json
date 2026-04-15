@@ -1,0 +1,10 @@
+[
+  { "id": "apt-001", "name": "경희궁자이", "lat": 37.5685, "lng": 126.9670, "category": "apartment", "units": 2190, "price_per_pyeong": 4800, "sale_date": "2024-06", "distance_m": 2100 },
+  { "id": "apt-002", "name": "광화문 풍림스페이스본", "lat": 37.5710, "lng": 126.9720, "category": "apartment", "units": 474, "price_per_pyeong": 4200, "sale_date": "2025-01", "distance_m": 1740 },
+  { "id": "apt-003", "name": "종로 센트레빌", "lat": 37.5700, "lng": 126.9900, "category": "apartment", "units": 356, "price_per_pyeong": 3800, "sale_date": "2024-09", "distance_m": 1920 },
+  { "id": "apt-004", "name": "인왕산 아이파크", "lat": 37.5780, "lng": 126.9550, "category": "apartment", "units": 828, "price_per_pyeong": 3500, "sale_date": "2023-11", "distance_m": 1800 },
+  { "id": "apt-005", "name": "홍파동 e편한세상", "lat": 37.5750, "lng": 126.9560, "category": "apartment", "units": 612, "price_per_pyeong": 3200, "sale_date": "2025-03", "distance_m": 1900 },
+  { "id": "apt-006", "name": "돈의문 센트레빌", "lat": 37.5660, "lng": 126.9640, "category": "apartment", "units": 290, "price_per_pyeong": 3600, "sale_date": "2024-03", "distance_m": 2400 },
+  { "id": "apt-007", "name": "충정로 아크로타워", "lat": 37.5610, "lng": 126.9630, "category": "apartment", "units": 445, "price_per_pyeong": 3400, "sale_date": "2025-08", "distance_m": 2900 },
+  { "id": "apt-008", "name": "성균관대 힐스테이트", "lat": 37.5900, "lng": 126.9970, "category": "apartment", "units": 520, "price_per_pyeong": 3100, "sale_date": "2024-12", "distance_m": 2200 }
+]
