@@ -1,0 +1,7 @@
+[
+  { "id": "mtn-001", "name": "북악산", "lat": 37.5934, "lng": 126.9812, "category": "mountain", "elevation_m": 342 },
+  { "id": "mtn-002", "name": "인왕산", "lat": 37.5835, "lng": 126.9575, "category": "mountain", "elevation_m": 338 },
+  { "id": "mtn-003", "name": "낙산", "lat": 37.5805, "lng": 127.0070, "category": "mountain", "elevation_m": 125 },
+  { "id": "mtn-004", "name": "남산", "lat": 37.5512, "lng": 126.9882, "category": "mountain", "elevation_m": 262 },
+  { "id": "mtn-005", "name": "안산", "lat": 37.5780, "lng": 126.9430, "category": "mountain", "elevation_m": 296 }
+]

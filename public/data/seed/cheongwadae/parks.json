@@ -1,0 +1,15 @@
+[
+  { "id": "park-001", "name": "경복궁", "lat": 37.5796, "lng": 126.9770, "category": "park", "area_sqm": 432000, "type": "사적/궁궐" },
+  { "id": "park-002", "name": "창덕궁", "lat": 37.5794, "lng": 126.9910, "category": "park", "area_sqm": 405000, "type": "사적/궁궐" },
+  { "id": "park-003", "name": "창경궁", "lat": 37.5787, "lng": 126.9948, "category": "park", "area_sqm": 213000, "type": "사적/궁궐" },
+  { "id": "park-004", "name": "덕수궁", "lat": 37.5660, "lng": 126.9750, "category": "park", "area_sqm": 63000, "type": "사적/궁궐" },
+  { "id": "park-005", "name": "삼청공원", "lat": 37.5855, "lng": 126.9820, "category": "park", "area_sqm": 340000, "type": "근린공원" },
+  { "id": "park-006", "name": "사직공원", "lat": 37.5760, "lng": 126.9680, "category": "park", "area_sqm": 68000, "type": "근린공원" },
+  { "id": "park-007", "name": "탑골공원", "lat": 37.5710, "lng": 126.9880, "category": "park", "area_sqm": 19000, "type": "역사공원" },
+  { "id": "park-008", "name": "종묘공원", "lat": 37.5740, "lng": 126.9940, "category": "park", "area_sqm": 197000, "type": "사적" },
+  { "id": "park-009", "name": "와룡공원", "lat": 37.5770, "lng": 127.0030, "category": "park", "area_sqm": 45000, "type": "근린공원" },
+  { "id": "park-010", "name": "낙산공원", "lat": 37.5800, "lng": 127.0070, "category": "park", "area_sqm": 95000, "type": "근린공원" },
+  { "id": "park-011", "name": "독립공원", "lat": 37.5720, "lng": 126.9580, "category": "park", "area_sqm": 38000, "type": "역사공원" },
+  { "id": "park-012", "name": "청와대 개방구역", "lat": 37.5866, "lng": 126.9748, "category": "park", "area_sqm": 250000, "type": "문화공원" },
+  { "id": "park-013", "name": "북악스카이웨이공원", "lat": 37.5940, "lng": 126.9800, "category": "park", "area_sqm": 120000, "type": "근린공원" }
+]
