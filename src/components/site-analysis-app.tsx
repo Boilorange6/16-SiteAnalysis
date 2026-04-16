@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback } from "react";
 import dynamic from "next/dynamic";
-import type { LayerVisibility, Poi } from "@/lib/types";
+import type { AnalysisConfig, LayerVisibility, Poi } from "@/lib/types";
 import type { MapViewHandle } from "./map-view";
 import Sidebar from "./sidebar";
 import {
@@ -26,6 +26,7 @@ const ALL_POIS: readonly Poi[] = [
 
 export default function SiteAnalysisApp() {
   const mapRef = useRef<MapViewHandle>(null);
+  const [config, setConfig] = useState<AnalysisConfig>(DEFAULT_CONFIG);
   const [layers, setLayers] = useState<LayerVisibility>({
     subway: true,
     school: true,
@@ -39,6 +40,10 @@ export default function SiteAnalysisApp() {
     setLayers((prev) => ({ ...prev, [category]: !prev[category] }));
   }, []);
 
+  const handleConfigChange = useCallback((newConfig: AnalysisConfig) => {
+    setConfig(newConfig);
+  }, []);
+
   const handleExport = useCallback(async () => {
     if (!mapRef.current) return;
     setExporting(true);
@@ -46,28 +51,29 @@ export default function SiteAnalysisApp() {
       const mapImage = await mapRef.current.captureImage();
       const { generateSiteAnalysisPpt } = await import("@/lib/ppt-generator");
       const visiblePois = ALL_POIS.filter((p) => layers[p.category]);
-      await generateSiteAnalysisPpt(DEFAULT_CONFIG, visiblePois, mapImage);
+      await generateSiteAnalysisPpt(config, visiblePois, mapImage);
     } catch (err) {
       console.error("PPT generation failed:", err);
     } finally {
       setExporting(false);
     }
-  }, [layers]);
+  }, [layers, config]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#0F0F23]">
       <Sidebar
-        config={DEFAULT_CONFIG}
+        config={config}
         layers={layers}
         pois={ALL_POIS}
         exporting={exporting}
         onToggleLayer={handleToggleLayer}
+        onConfigChange={handleConfigChange}
         onExport={handleExport}
       />
       <main className="flex-1 relative">
         <MapView
           ref={mapRef}
-          config={DEFAULT_CONFIG}
+          config={config}
           pois={ALL_POIS}
           layers={layers}
         />

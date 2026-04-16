@@ -26,36 +26,44 @@ const ICON_SVG: Record<string, string> = {
 function createIcon(category: string, color: string, L: typeof import("leaflet")) {
   const svg = ICON_SVG[category] ?? ICON_SVG.park;
   const html = `<div style="
-    background: ${color};
-    border-radius: 50%;
-    width: 28px;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
-    border: 2px solid rgba(255,255,255,0.8);
-  ">${svg.replace('width="24"', 'width="14"').replace('height="24"', 'height="14"')}</div>`;
+    background:white;
+    border-radius:50%;
+    width:32px;
+    height:32px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    box-shadow:0 3px 8px rgba(0,0,0,0.5),0 1px 3px rgba(0,0,0,0.3);
+  "><div style="
+    background:${color};
+    border-radius:50%;
+    width:24px;
+    height:24px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  ">${svg.replace('width="24"', 'width="13"').replace('height="24"', 'height="13"')}</div></div>`;
 
   return L.divIcon({
     html,
     className: "",
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
   });
 }
 
 function createLabel(name: string, extra: string) {
   return `<div style="
-    background: rgba(26,26,46,0.9);
-    color: #fff;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-family: '맑은 고딕', sans-serif;
-    white-space: nowrap;
-    border: 1px solid rgba(255,255,255,0.2);
-    line-height: 1.3;
+    background:rgba(0,0,0,0.55);
+    backdrop-filter:blur(6px);
+    -webkit-backdrop-filter:blur(6px);
+    color:#fff;
+    padding:4px 8px;
+    border-radius:4px;
+    font-size:11px;
+    font-family:'맑은 고딕',sans-serif;
+    white-space:nowrap;
+    line-height:1.3;
   "><strong>${name}</strong>${extra ? `<br/><span style="color:#ccc;font-size:10px">${extra}</span>` : ""}</div>`;
 }
 
@@ -82,6 +90,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
   const mapRef = useRef<import("leaflet").Map | null>(null);
   const markersRef = useRef<import("leaflet").LayerGroup | null>(null);
   const circleRef = useRef<import("leaflet").Circle | null>(null);
+  const centerMarkerRef = useRef<import("leaflet").Marker | null>(null);
 
   useImperativeHandle(ref, () => ({
     async captureImage(): Promise<string> {
@@ -135,7 +144,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
         dashArray: "8 4",
       }).addTo(map);
 
-      L.marker([config.centerLat, config.centerLng], {
+      const centerMarker = L.marker([config.centerLat, config.centerLng], {
         icon: L.divIcon({
           html: `<div style="
             width: 16px; height: 16px;
@@ -156,11 +165,23 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
           offset: [0, -12],
           className: "center-tooltip",
         });
+
+      centerMarkerRef.current = centerMarker;
     })();
 
     return () => {
       cancelled = true;
     };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Update map center, circle, and center marker when config changes
+  useEffect(() => {
+    if (!mapRef.current || !circleRef.current || !centerMarkerRef.current) return;
+    mapRef.current.setView([config.centerLat, config.centerLng], mapRef.current.getZoom());
+    circleRef.current.setLatLng([config.centerLat, config.centerLng]);
+    circleRef.current.setRadius(config.radiusKm * 1000);
+    centerMarkerRef.current.setLatLng([config.centerLat, config.centerLng]);
+    centerMarkerRef.current.setTooltipContent(config.centerName);
   }, [config.centerLat, config.centerLng, config.centerName, config.radiusKm]);
 
   const updateMarkers = useCallback(async () => {
@@ -180,7 +201,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
 
       marker.bindTooltip(createLabel(poi.name, getPoiExtra(poi)), {
         direction: "top",
-        offset: [0, -16],
+        offset: [0, -18],
         className: "poi-tooltip",
       });
 

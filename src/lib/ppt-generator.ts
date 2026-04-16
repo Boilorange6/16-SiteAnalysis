@@ -7,7 +7,6 @@ import type {
   Apartment,
   Mountain,
   Park,
-  CATEGORY_COLORS as CategoryColorsType,
 } from "./types";
 import { CATEGORY_COLORS, CATEGORY_LABELS } from "./types";
 
@@ -16,6 +15,7 @@ const SLIDE_H = 7.5;
 const MAP_W = 9.333;
 const PANEL_X = 9.333;
 const PANEL_W = 4.0;
+const TOTAL_CONTENT_SLIDES = 6;
 
 const FONT_TITLE = "맑은 고딕";
 const BG_DARK = "1A1A2E";
@@ -24,17 +24,30 @@ const TEXT_WHITE = "FFFFFF";
 const TEXT_LIGHT = "E0E0E0";
 const ACCENT = "0F3460";
 
-function addDarkOverlay(slide: PptxGenJS.Slide) {
+// ── Shared helpers ────────────────────────────────────────────────────────────
+
+function addMapBackground(
+  slide: PptxGenJS.Slide,
+  mapImageBase64: string,
+  transparency = 70
+) {
+  if (!mapImageBase64) return;
+  slide.addImage({ data: mapImageBase64, x: 0, y: 0, w: MAP_W, h: SLIDE_H });
   slide.addShape("rect", {
     x: 0,
     y: 0,
-    w: SLIDE_W,
+    w: MAP_W,
     h: SLIDE_H,
-    fill: { color: "000000", transparency: 40 },
+    fill: { color: "000000", transparency },
   });
 }
 
-function addPanel(slide: PptxGenJS.Slide) {
+function addSlidePanel(
+  slide: PptxGenJS.Slide,
+  title: string,
+  projectName: string,
+  refDate: string
+) {
   slide.addShape("rect", {
     x: PANEL_X,
     y: 0,
@@ -42,12 +55,30 @@ function addPanel(slide: PptxGenJS.Slide) {
     h: SLIDE_H,
     fill: { color: BG_PANEL, transparency: 10 },
   });
-}
-
-function addSlideTitle(slide: PptxGenJS.Slide, title: string) {
+  // Header row: project name (left) + reference date (right)
+  slide.addText(projectName, {
+    x: PANEL_X + 0.3,
+    y: 0.12,
+    w: PANEL_W * 0.6,
+    h: 0.28,
+    fontSize: 8,
+    fontFace: FONT_TITLE,
+    color: "999999",
+  });
+  slide.addText(refDate, {
+    x: PANEL_X + 0.3,
+    y: 0.12,
+    w: PANEL_W - 0.6,
+    h: 0.28,
+    fontSize: 8,
+    fontFace: FONT_TITLE,
+    color: "999999",
+    align: "right",
+  });
+  // Slide title
   slide.addText(title, {
     x: PANEL_X + 0.3,
-    y: 0.3,
+    y: 0.45,
     w: PANEL_W - 0.6,
     h: 0.6,
     fontSize: 20,
@@ -55,12 +86,35 @@ function addSlideTitle(slide: PptxGenJS.Slide, title: string) {
     color: TEXT_WHITE,
     bold: true,
   });
+  // Accent line
   slide.addShape("rect", {
     x: PANEL_X + 0.3,
-    y: 0.9,
+    y: 1.05,
     w: 2.0,
     h: 0.04,
     fill: { color: "E94560" },
+  });
+}
+
+function addSlideFooter(slide: PptxGenJS.Slide, pageNum: number) {
+  slide.addText("출처: 공개 데이터 | Site Analysis Generator", {
+    x: PANEL_X + 0.3,
+    y: 7.1,
+    w: 2.5,
+    h: 0.3,
+    fontSize: 7,
+    fontFace: FONT_TITLE,
+    color: "555577",
+  });
+  slide.addText(`${pageNum} / ${TOTAL_CONTENT_SLIDES}`, {
+    x: PANEL_X + 0.3,
+    y: 7.1,
+    w: PANEL_W - 0.6,
+    h: 0.3,
+    fontSize: 8,
+    fontFace: FONT_TITLE,
+    color: "888888",
+    align: "right",
   });
 }
 
@@ -91,36 +145,27 @@ function addLegend(
   });
 }
 
-export async function generateSiteAnalysisPpt(
+// ── Per-slide functions ───────────────────────────────────────────────────────
+
+function addCoverSlide(
+  pptx: PptxGenJS,
   config: AnalysisConfig,
-  allPois: readonly Poi[],
-  mapImageBase64: string
-): Promise<void> {
-  const pptx = new PptxGenJS();
-  pptx.layout = "LAYOUT_WIDE";
-  pptx.author = "Site Analysis Generator";
-  pptx.title = `${config.centerName} 사이트 분석`;
-
-  const subways = allPois.filter((p): p is SubwayStation => p.category === "subway");
-  const schools = allPois.filter((p): p is School => p.category === "school");
-  const parks = allPois.filter((p): p is Park => p.category === "park");
-  const mountains = allPois.filter((p): p is Mountain => p.category === "mountain");
-  const apartments = allPois.filter((p): p is Apartment => p.category === "apartment");
-
-  // Slide 1: Cover
-  const coverSlide = pptx.addSlide();
-  coverSlide.background = { fill: BG_DARK };
+  mapImageBase64: string,
+  refDate: string
+) {
+  const slide = pptx.addSlide();
+  slide.background = { fill: BG_DARK };
   if (mapImageBase64) {
-    coverSlide.addImage({
-      data: mapImageBase64,
+    slide.addImage({ data: mapImageBase64, x: 0, y: 0, w: SLIDE_W, h: SLIDE_H });
+    slide.addShape("rect", {
       x: 0,
       y: 0,
       w: SLIDE_W,
       h: SLIDE_H,
+      fill: { color: "000000", transparency: 40 },
     });
-    addDarkOverlay(coverSlide);
   }
-  coverSlide.addText(`${config.centerName}\n사이트 분석 보고서`, {
+  slide.addText(`${config.centerName}\n사이트 분석 보고서`, {
     x: 1,
     y: 2.0,
     w: 8,
@@ -131,7 +176,7 @@ export async function generateSiteAnalysisPpt(
     bold: true,
     lineSpacingMultiple: 1.4,
   });
-  coverSlide.addText(
+  slide.addText(
     `분석 범위: 반경 ${config.radiusKm}km | 중심: ${config.centerLat.toFixed(4)}, ${config.centerLng.toFixed(4)}`,
     {
       x: 1,
@@ -143,7 +188,7 @@ export async function generateSiteAnalysisPpt(
       color: TEXT_LIGHT,
     }
   );
-  coverSlide.addText(new Date().toLocaleDateString("ko-KR"), {
+  slide.addText(refDate, {
     x: 1,
     y: 5.2,
     w: 4,
@@ -152,29 +197,25 @@ export async function generateSiteAnalysisPpt(
     fontFace: FONT_TITLE,
     color: "999999",
   });
+}
 
-  // Slide 2: Overview
-  const overviewSlide = pptx.addSlide();
-  overviewSlide.background = { fill: BG_DARK };
-  if (mapImageBase64) {
-    overviewSlide.addImage({
-      data: mapImageBase64,
-      x: 0,
-      y: 0,
-      w: MAP_W,
-      h: SLIDE_H,
-    });
-    overviewSlide.addShape("rect", {
-      x: 0,
-      y: 0,
-      w: MAP_W,
-      h: SLIDE_H,
-      fill: { color: "000000", transparency: 70 },
-    });
-  }
-  addPanel(overviewSlide);
-  addSlideTitle(overviewSlide, "전체 현황도");
-  overviewSlide.addText(
+function addOverviewSlide(
+  pptx: PptxGenJS,
+  allPois: readonly Poi[],
+  subways: SubwayStation[],
+  schools: School[],
+  parks: Park[],
+  mountains: Mountain[],
+  apartments: Apartment[],
+  mapImageBase64: string,
+  projectName: string,
+  refDate: string
+) {
+  const slide = pptx.addSlide();
+  slide.background = { fill: BG_DARK };
+  addMapBackground(slide, mapImageBase64);
+  addSlidePanel(slide, "전체 현황도", projectName, refDate);
+  slide.addText(
     `총 ${allPois.length}개 시설\n` +
       `지하철 ${subways.length}개 | 학교 ${schools.length}개\n` +
       `공원 ${parks.length}개 | 산 ${mountains.length}개\n` +
@@ -191,33 +232,37 @@ export async function generateSiteAnalysisPpt(
     }
   );
   addLegend(
-    overviewSlide,
+    slide,
     Object.entries(CATEGORY_LABELS).map(([key, label]) => ({
       label,
       color: CATEGORY_COLORS[key as keyof typeof CATEGORY_COLORS],
     })),
     3.5
   );
+  addSlideFooter(slide, 1);
+}
 
-  // Slide 3: Transportation
-  const transportSlide = pptx.addSlide();
-  transportSlide.background = { fill: BG_DARK };
-  if (mapImageBase64) {
-    transportSlide.addImage({ data: mapImageBase64, x: 0, y: 0, w: MAP_W, h: SLIDE_H });
-    transportSlide.addShape("rect", { x: 0, y: 0, w: MAP_W, h: SLIDE_H, fill: { color: "000000", transparency: 70 } });
-  }
-  addPanel(transportSlide);
-  addSlideTitle(transportSlide, "교통 분석");
+function addTransportSlide(
+  pptx: PptxGenJS,
+  subways: SubwayStation[],
+  mapImageBase64: string,
+  projectName: string,
+  refDate: string
+) {
+  const slide = pptx.addSlide();
+  slide.background = { fill: BG_DARK };
+  addMapBackground(slide, mapImageBase64);
+  addSlidePanel(slide, "교통 분석", projectName, refDate);
 
   const lineGroups = new Map<string, SubwayStation[]>();
   subways.forEach((s) => {
-    const existing = lineGroups.get(s.line) ?? [];
-    lineGroups.set(s.line, [...existing, s]);
+    lineGroups.set(s.line, [...(lineGroups.get(s.line) ?? []), s]);
   });
+
   let tY = 1.3;
   lineGroups.forEach((stations, line) => {
     const color = stations[0]?.lineColor ?? "#2196F3";
-    transportSlide.addShape("rect", {
+    slide.addShape("rect", {
       x: PANEL_X + 0.3,
       y: tY,
       w: 0.15,
@@ -225,7 +270,7 @@ export async function generateSiteAnalysisPpt(
       fill: { color: color.replace("#", "") },
       rectRadius: 0.08,
     });
-    transportSlide.addText(`${line} (${stations.length}개역)`, {
+    slide.addText(`${line} (${stations.length}개역)`, {
       x: PANEL_X + 0.55,
       y: tY - 0.03,
       w: 3.0,
@@ -235,8 +280,7 @@ export async function generateSiteAnalysisPpt(
       color: TEXT_WHITE,
       bold: true,
     });
-    const stationNames = stations.map((s) => s.name).join(", ");
-    transportSlide.addText(stationNames, {
+    slide.addText(stations.map((s) => s.name).join(", "), {
       x: PANEL_X + 0.55,
       y: tY + 0.22,
       w: 3.2,
@@ -249,21 +293,26 @@ export async function generateSiteAnalysisPpt(
     tY += 0.7;
   });
 
-  // Slide 4: Education
-  const eduSlide = pptx.addSlide();
-  eduSlide.background = { fill: BG_DARK };
-  if (mapImageBase64) {
-    eduSlide.addImage({ data: mapImageBase64, x: 0, y: 0, w: MAP_W, h: SLIDE_H });
-    eduSlide.addShape("rect", { x: 0, y: 0, w: MAP_W, h: SLIDE_H, fill: { color: "000000", transparency: 70 } });
-  }
-  addPanel(eduSlide);
-  addSlideTitle(eduSlide, "교육 환경");
+  addSlideFooter(slide, 2);
+}
+
+function addEducationSlide(
+  pptx: PptxGenJS,
+  schools: School[],
+  mapImageBase64: string,
+  projectName: string,
+  refDate: string
+) {
+  const slide = pptx.addSlide();
+  slide.background = { fill: BG_DARK };
+  addMapBackground(slide, mapImageBase64);
+  addSlidePanel(slide, "교육 환경", projectName, refDate);
 
   const levelMap = { elementary: "초등학교", middle: "중학교", high: "고등학교" } as const;
   let eY = 1.3;
   (["elementary", "middle", "high"] as const).forEach((level) => {
     const filtered = schools.filter((s) => s.level === level);
-    eduSlide.addText(`${levelMap[level]} (${filtered.length}개)`, {
+    slide.addText(`${levelMap[level]} (${filtered.length}개)`, {
       x: PANEL_X + 0.3,
       y: eY,
       w: 3.5,
@@ -273,7 +322,7 @@ export async function generateSiteAnalysisPpt(
       color: TEXT_WHITE,
       bold: true,
     });
-    eduSlide.addText(filtered.map((s) => s.name).join(", "), {
+    slide.addText(filtered.map((s) => s.name).join(", "), {
       x: PANEL_X + 0.3,
       y: eY + 0.3,
       w: 3.5,
@@ -286,18 +335,24 @@ export async function generateSiteAnalysisPpt(
     eY += 1.1;
   });
 
-  // Slide 5: Nature
-  const natureSlide = pptx.addSlide();
-  natureSlide.background = { fill: BG_DARK };
-  if (mapImageBase64) {
-    natureSlide.addImage({ data: mapImageBase64, x: 0, y: 0, w: MAP_W, h: SLIDE_H });
-    natureSlide.addShape("rect", { x: 0, y: 0, w: MAP_W, h: SLIDE_H, fill: { color: "000000", transparency: 70 } });
-  }
-  addPanel(natureSlide);
-  addSlideTitle(natureSlide, "자연 환경");
+  addSlideFooter(slide, 3);
+}
+
+function addNatureSlide(
+  pptx: PptxGenJS,
+  mountains: Mountain[],
+  parks: Park[],
+  mapImageBase64: string,
+  projectName: string,
+  refDate: string
+) {
+  const slide = pptx.addSlide();
+  slide.background = { fill: BG_DARK };
+  addMapBackground(slide, mapImageBase64);
+  addSlidePanel(slide, "자연 환경", projectName, refDate);
 
   let nY = 1.3;
-  natureSlide.addText(`산 (${mountains.length}개)`, {
+  slide.addText(`산 (${mountains.length}개)`, {
     x: PANEL_X + 0.3,
     y: nY,
     w: 3.5,
@@ -309,7 +364,7 @@ export async function generateSiteAnalysisPpt(
   });
   nY += 0.35;
   mountains.forEach((m) => {
-    natureSlide.addText(`${m.name} (${m.elevation_m}m)`, {
+    slide.addText(`${m.name} (${m.elevation_m}m)`, {
       x: PANEL_X + 0.3,
       y: nY,
       w: 3.5,
@@ -322,7 +377,7 @@ export async function generateSiteAnalysisPpt(
   });
 
   nY += 0.3;
-  natureSlide.addText(`공원 (${parks.length}개)`, {
+  slide.addText(`공원 (${parks.length}개)`, {
     x: PANEL_X + 0.3,
     y: nY,
     w: 3.5,
@@ -334,8 +389,11 @@ export async function generateSiteAnalysisPpt(
   });
   nY += 0.35;
   parks.slice(0, 8).forEach((p) => {
-    const areaTxt = p.area_sqm >= 100000 ? `${(p.area_sqm / 10000).toFixed(1)}만㎡` : `${(p.area_sqm / 1000).toFixed(1)}천㎡`;
-    natureSlide.addText(`${p.name} (${areaTxt})`, {
+    const areaTxt =
+      p.area_sqm >= 100000
+        ? `${(p.area_sqm / 10000).toFixed(1)}만㎡`
+        : `${(p.area_sqm / 1000).toFixed(1)}천㎡`;
+    slide.addText(`${p.name} (${areaTxt})`, {
       x: PANEL_X + 0.3,
       y: nY,
       w: 3.5,
@@ -347,15 +405,20 @@ export async function generateSiteAnalysisPpt(
     nY += 0.25;
   });
 
-  // Slide 6: Apartments
-  const aptSlide = pptx.addSlide();
-  aptSlide.background = { fill: BG_DARK };
-  if (mapImageBase64) {
-    aptSlide.addImage({ data: mapImageBase64, x: 0, y: 0, w: MAP_W, h: SLIDE_H });
-    aptSlide.addShape("rect", { x: 0, y: 0, w: MAP_W, h: SLIDE_H, fill: { color: "000000", transparency: 70 } });
-  }
-  addPanel(aptSlide);
-  addSlideTitle(aptSlide, "분양 현황");
+  addSlideFooter(slide, 4);
+}
+
+function addApartmentsSlide(
+  pptx: PptxGenJS,
+  apartments: Apartment[],
+  mapImageBase64: string,
+  projectName: string,
+  refDate: string
+) {
+  const slide = pptx.addSlide();
+  slide.background = { fill: BG_DARK };
+  addMapBackground(slide, mapImageBase64);
+  addSlidePanel(slide, "분양 현황", projectName, refDate);
 
   const tableRows: PptxGenJS.TableRow[] = [
     [
@@ -371,7 +434,7 @@ export async function generateSiteAnalysisPpt(
       { text: a.sale_date, options: { fontSize: 8, color: TEXT_LIGHT } },
     ]),
   ];
-  aptSlide.addTable(tableRows, {
+  slide.addTable(tableRows, {
     x: PANEL_X + 0.15,
     y: 1.3,
     w: PANEL_W - 0.3,
@@ -380,33 +443,48 @@ export async function generateSiteAnalysisPpt(
     rowH: 0.3,
   });
 
-  // Slide 7: Summary
-  const summarySlide = pptx.addSlide();
-  summarySlide.background = { fill: BG_DARK };
-  if (mapImageBase64) {
-    summarySlide.addImage({ data: mapImageBase64, x: 0, y: 0, w: MAP_W, h: SLIDE_H });
-    summarySlide.addShape("rect", { x: 0, y: 0, w: MAP_W, h: SLIDE_H, fill: { color: "000000", transparency: 70 } });
-  }
-  addPanel(summarySlide);
-  addSlideTitle(summarySlide, "종합 분석");
+  addSlideFooter(slide, 5);
+}
 
+function addSummarySlide(
+  pptx: PptxGenJS,
+  config: AnalysisConfig,
+  subways: SubwayStation[],
+  schools: School[],
+  mountains: Mountain[],
+  parks: Park[],
+  apartments: Apartment[],
+  mapImageBase64: string,
+  projectName: string,
+  refDate: string
+) {
+  const slide = pptx.addSlide();
+  slide.background = { fill: BG_DARK };
+  addMapBackground(slide, mapImageBase64);
+  addSlidePanel(slide, "종합 분석", projectName, refDate);
+
+  const lineCount = new Set(subways.map((s) => s.line)).size;
   const totalUnits = apartments.reduce((sum, a) => sum + a.units, 0);
-  const avgPrice = apartments.length > 0
-    ? Math.round(apartments.reduce((sum, a) => sum + a.price_per_pyeong, 0) / apartments.length)
-    : 0;
+  const avgPrice =
+    apartments.length > 0
+      ? Math.round(apartments.reduce((sum, a) => sum + a.price_per_pyeong, 0) / apartments.length)
+      : 0;
+  const elemCount = schools.filter((s) => s.level === "elementary").length;
+  const middleCount = schools.filter((s) => s.level === "middle").length;
+  const highCount = schools.filter((s) => s.level === "high").length;
 
   const summaryItems = [
     `분석 중심: ${config.centerName}`,
     `분석 범위: 반경 ${config.radiusKm}km`,
-    `지하철역: ${subways.length}개 (${lineGroups.size}개 노선)`,
-    `교육시설: ${schools.length}개 (초 ${schools.filter((s) => s.level === "elementary").length} / 중 ${schools.filter((s) => s.level === "middle").length} / 고 ${schools.filter((s) => s.level === "high").length})`,
+    `지하철역: ${subways.length}개 (${lineCount}개 노선)`,
+    `교육시설: ${schools.length}개 (초 ${elemCount} / 중 ${middleCount} / 고 ${highCount})`,
     `자연환경: 산 ${mountains.length}개, 공원 ${parks.length}개`,
     `분양단지: ${apartments.length}개 (총 ${totalUnits.toLocaleString()}세대)`,
     `평균 분양가: ${avgPrice.toLocaleString()}만원/평`,
   ];
 
   summaryItems.forEach((text, i) => {
-    summarySlide.addText(text, {
+    slide.addText(text, {
       x: PANEL_X + 0.3,
       y: 1.3 + i * 0.4,
       w: PANEL_W - 0.6,
@@ -417,7 +495,7 @@ export async function generateSiteAnalysisPpt(
     });
   });
 
-  summarySlide.addText("* 본 보고서는 자동 생성되었습니다", {
+  slide.addText("* 본 보고서는 자동 생성되었습니다", {
     x: PANEL_X + 0.3,
     y: 6.5,
     w: PANEL_W - 0.6,
@@ -426,6 +504,38 @@ export async function generateSiteAnalysisPpt(
     fontFace: FONT_TITLE,
     color: "666666",
   });
+
+  addSlideFooter(slide, 6);
+}
+
+// ── Main export ───────────────────────────────────────────────────────────────
+
+export async function generateSiteAnalysisPpt(
+  config: AnalysisConfig,
+  allPois: readonly Poi[],
+  mapImageBase64: string
+): Promise<void> {
+  const pptx = new PptxGenJS();
+  pptx.layout = "LAYOUT_WIDE";
+  pptx.author = "Site Analysis Generator";
+  pptx.title = `${config.centerName} 사이트 분석`;
+
+  const subways = allPois.filter((p): p is SubwayStation => p.category === "subway");
+  const schools = allPois.filter((p): p is School => p.category === "school");
+  const parks = allPois.filter((p): p is Park => p.category === "park");
+  const mountains = allPois.filter((p): p is Mountain => p.category === "mountain");
+  const apartments = allPois.filter((p): p is Apartment => p.category === "apartment");
+
+  const refDate = new Date().toLocaleDateString("ko-KR");
+  const projectName = `${config.centerName} 사이트 분석`;
+
+  addCoverSlide(pptx, config, mapImageBase64, refDate);
+  addOverviewSlide(pptx, allPois, subways, schools, parks, mountains, apartments, mapImageBase64, projectName, refDate);
+  addTransportSlide(pptx, subways, mapImageBase64, projectName, refDate);
+  addEducationSlide(pptx, schools, mapImageBase64, projectName, refDate);
+  addNatureSlide(pptx, mountains, parks, mapImageBase64, projectName, refDate);
+  addApartmentsSlide(pptx, apartments, mapImageBase64, projectName, refDate);
+  addSummarySlide(pptx, config, subways, schools, mountains, parks, apartments, mapImageBase64, projectName, refDate);
 
   await pptx.writeFile({ fileName: `${config.centerName}_사이트분석.pptx` });
 }

@@ -56,11 +56,11 @@ export interface LayerVisibility {
 }
 
 export const CATEGORY_COLORS: Record<PoiCategory, string> = {
-  subway: "#2196F3",
-  school: "#4CAF50",
-  park: "#66BB6A",
-  mountain: "#8D6E63",
-  apartment: "#FF7043",
+  apartment: "#EF4444",
+  subway: "#F59E0B",
+  school: "#3B82F6",
+  park: "#10B981",
+  mountain: "#10B981",
 } as const;
 
 export const CATEGORY_LABELS: Record<PoiCategory, string> = {
