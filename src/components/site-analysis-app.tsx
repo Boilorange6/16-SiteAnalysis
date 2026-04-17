@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import dynamic from "next/dynamic";
 import type { AnalysisConfig, LayerVisibility, Poi } from "@/lib/types";
 import type { MapViewHandle } from "./map-view";
+import MapView from "./map-view";
 import Sidebar from "./sidebar";
 import {
   DEFAULT_CONFIG,
@@ -13,8 +13,6 @@ import {
   MOUNTAINS,
   APARTMENTS,
 } from "@/lib/seed-data";
-
-const MapView = dynamic(() => import("./map-view"), { ssr: false });
 
 const ALL_POIS: readonly Poi[] = [
   ...SUBWAY_STATIONS,

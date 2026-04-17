@@ -171,6 +171,13 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
 
     return () => {
       cancelled = true;
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
+      markersRef.current = null;
+      circleRef.current = null;
+      centerMarkerRef.current = null;
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
