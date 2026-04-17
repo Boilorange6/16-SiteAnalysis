@@ -243,6 +243,46 @@ function addRadiusCircle(slide: PptxGenJS.Slide, radiusPosition: RadiusPosition 
   });
 }
 
+export interface RouteNormalizedPosition {
+  readonly line: string;
+  readonly lineColor: string;
+  readonly points: readonly { readonly nx: number; readonly ny: number }[];
+}
+
+function addSubwayRouteLines(
+  slide: PptxGenJS.Slide,
+  routePositions: readonly RouteNormalizedPosition[]
+) {
+  routePositions.forEach((route) => {
+    const color = route.lineColor.replace("#", "");
+
+    for (let i = 0; i < route.points.length - 1; i++) {
+      const from = route.points[i];
+      const to = route.points[i + 1];
+      const x1 = from.nx * SLIDE_W;
+      const y1 = from.ny * SLIDE_H;
+      const x2 = to.nx * SLIDE_W;
+      const y2 = to.ny * SLIDE_H;
+
+      const x = Math.min(x1, x2);
+      const y = Math.min(y1, y2);
+      const w = Math.abs(x2 - x1);
+      const h = Math.abs(y2 - y1);
+      const goesRight = x2 >= x1;
+      const goesDown = y2 >= y1;
+
+      slide.addShape("line", {
+        x,
+        y,
+        w: Math.max(w, 0.005),
+        h: Math.max(h, 0.005),
+        line: { color, width: 3 },
+        flipV: goesRight !== goesDown,
+      });
+    }
+  });
+}
+
 // ── Slides ──────────────────────────────────────────────────────────────────
 
 function addCoverSlide(pptx: PptxGenJS, config: AnalysisConfig, baseMapImage: string) {
@@ -280,11 +320,13 @@ function addOverviewSlide(
   config: AnalysisConfig,
   baseMapImage: string,
   poiPositions: readonly PoiPosition[],
-  radiusPosition: RadiusPosition | null
+  radiusPosition: RadiusPosition | null,
+  routePositions: readonly RouteNormalizedPosition[]
 ) {
   const slide = pptx.addSlide();
   addFullBleedMap(slide, baseMapImage);
   addRadiusCircle(slide, radiusPosition);
+  addSubwayRouteLines(slide, routePositions);
   addPoiMarkers(slide, poiPositions, ["subway", "school", "park", "mountain", "apartment"], { showLabels: false, size: MARKER_SIZE_SM });
   addHeader(slide, "입지 현황 종합", config);
   addLegend(slide);
@@ -300,12 +342,17 @@ function addCategorySlide(
   poiPositions: readonly PoiPosition[],
   radiusPosition: RadiusPosition | null,
   pageNum: number,
-  details: string[]
+  details: string[],
+  routePositions: readonly RouteNormalizedPosition[] = []
 ) {
   const slide = pptx.addSlide();
   addFullBleedMap(slide, baseMapImage);
   addRadiusCircle(slide, radiusPosition);
-  addPoiMarkers(slide, poiPositions, Array.isArray(category) ? category : [category]);
+  const cats = Array.isArray(category) ? category : [category];
+  if (cats.includes("subway")) {
+    addSubwayRouteLines(slide, routePositions);
+  }
+  addPoiMarkers(slide, poiPositions, cats);
   addHeader(slide, title, config);
 
   const panelW = 3.5;
@@ -410,24 +457,25 @@ export async function generateSiteAnalysisPpt(
   allPois: readonly Poi[],
   baseMapImage: string,
   poiPositions: readonly PoiPosition[],
-  radiusPosition: RadiusPosition | null = null
+  radiusPosition: RadiusPosition | null = null,
+  routePositions: readonly RouteNormalizedPosition[] = []
 ): Promise<void> {
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE";
   pptx.title = `${config.centerName} 입지 분석`;
 
   addCoverSlide(pptx, config, baseMapImage);
-  addOverviewSlide(pptx, config, baseMapImage, poiPositions, radiusPosition);
-  
+  addOverviewSlide(pptx, config, baseMapImage, poiPositions, radiusPosition, routePositions);
+
   const subways = allPois.filter((p): p is SubwayStation => p.category === "subway");
-  addCategorySlide(pptx, "교통 분석", "subway", config, baseMapImage, poiPositions, radiusPosition, 2, 
-    subways.slice(0, 8).map(s => `${s.name} (${s.line})`));
+  addCategorySlide(pptx, "교통 분석", "subway", config, baseMapImage, poiPositions, radiusPosition, 2,
+    subways.slice(0, 8).map(s => `${s.name} (${s.line})`), routePositions);
 
   const schools = allPois.filter((p): p is School => p.category === "school");
-  addCategorySlide(pptx, "교육 환경", "school", config, baseMapImage, poiPositions, radiusPosition, 3, 
+  addCategorySlide(pptx, "교육 환경", "school", config, baseMapImage, poiPositions, radiusPosition, 3,
     schools.slice(0, 8).map(s => `${s.name} (${s.level === 'elementary' ? '초' : s.level === 'middle' ? '중' : '고'})`));
 
-  addCategorySlide(pptx, "자연 환경", ["park", "mountain"], config, baseMapImage, poiPositions, radiusPosition, 4, 
+  addCategorySlide(pptx, "자연 환경", ["park", "mountain"], config, baseMapImage, poiPositions, radiusPosition, 4,
     allPois.filter(p => p.category === "park" || p.category === "mountain").slice(0, 8).map(p => p.name));
 
   const apartments = allPois.filter((p): p is Apartment => p.category === "apartment");

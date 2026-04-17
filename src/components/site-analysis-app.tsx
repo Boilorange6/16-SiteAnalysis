@@ -13,6 +13,7 @@ import {
   PARKS,
   MOUNTAINS,
   APARTMENTS,
+  SUBWAY_ROUTES,
 } from "@/lib/seed-data";
 
 const ALL_POIS: readonly Poi[] = [
@@ -51,8 +52,9 @@ export default function SiteAnalysisApp() {
       const baseMapImage = await mapRef.current.captureBaseMap();
       const visiblePois = ALL_POIS.filter((p) => layers[p.category]);
       const poiPositions = mapRef.current.getPoiPositions(visiblePois);
+      const routePositions = mapRef.current.getRouteNormalizedPositions(SUBWAY_ROUTES);
       const { generateSiteAnalysisPpt } = await import("@/lib/ppt-generator");
-      await generateSiteAnalysisPpt(config, visiblePois, baseMapImage, poiPositions, radiusPosition);
+      await generateSiteAnalysisPpt(config, visiblePois, baseMapImage, poiPositions, radiusPosition, routePositions);
     } catch (err) {
       console.error("PPT generation failed:", err);
     } finally {
@@ -77,6 +79,7 @@ export default function SiteAnalysisApp() {
           config={config}
           pois={ALL_POIS}
           layers={layers}
+          subwayRoutes={SUBWAY_ROUTES}
         />
         {exporting && (
           <div className="absolute inset-0 bg-[#0F172A]/80 backdrop-blur-sm flex items-center justify-center z-50">

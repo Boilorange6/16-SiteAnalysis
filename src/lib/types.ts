@@ -40,6 +40,13 @@ export interface Apartment extends PoiBase {
 
 export type Poi = SubwayStation | School | Park | Mountain | Apartment;
 
+export interface SubwayRoute {
+  readonly line: string;
+  readonly lineColor: string;
+  readonly stationIds: readonly string[];
+  readonly coordinates?: readonly [number, number][]; // [lat, lng] — 실제 경로의 모든 점
+}
+
 export interface PoiPosition {
   readonly poi: Poi;
   readonly nx: number;

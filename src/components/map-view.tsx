@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from "react";
-import type { Poi, AnalysisConfig, LayerVisibility, SubwayStation, Apartment, PoiPosition, RadiusPosition } from "@/lib/types";
+import type { Poi, AnalysisConfig, LayerVisibility, SubwayStation, SubwayRoute, Apartment, PoiPosition, RadiusPosition } from "@/lib/types";
 import { CATEGORY_COLORS, THEME_COLORS } from "@/lib/types";
 import { haversineDistance } from "@/lib/geo";
 
@@ -9,6 +9,7 @@ interface MapViewProps {
   readonly config: AnalysisConfig;
   readonly pois: readonly Poi[];
   readonly layers: LayerVisibility;
+  readonly subwayRoutes: readonly SubwayRoute[];
 }
 
 export interface MapViewHandle {
@@ -16,6 +17,7 @@ export interface MapViewHandle {
   captureBaseMap(): Promise<string>;
   getPoiPositions(pois: readonly Poi[]): PoiPosition[];
   getRadiusPosition(): RadiusPosition | null;
+  getRouteNormalizedPositions(routes: readonly SubwayRoute[]): { line: string; lineColor: string; points: { nx: number; ny: number }[] }[];
 }
 
 const ICON_SVG: Record<string, string> = {
@@ -88,12 +90,13 @@ function getPoiExtra(poi: Poi): string {
 }
 
 const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
-  { config, pois, layers },
+  { config, pois, layers, subwayRoutes },
   ref
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import("leaflet").Map | null>(null);
   const markersRef = useRef<import("leaflet").LayerGroup | null>(null);
+  const routeLinesRef = useRef<import("leaflet").LayerGroup | null>(null);
   const circleRef = useRef<import("leaflet").Circle | null>(null);
   const centerMarkerRef = useRef<import("leaflet").Marker | null>(null);
 
@@ -119,6 +122,12 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
       const savedLayers: import("leaflet").Layer[] = [];
       markersRef.current.eachLayer((layer) => savedLayers.push(layer));
       markersRef.current.clearLayers();
+      // Hide route lines (will be drawn as PPT shapes)
+      const savedRouteLines: import("leaflet").Layer[] = [];
+      if (routeLinesRef.current) {
+        routeLinesRef.current.eachLayer((layer) => savedRouteLines.push(layer));
+        routeLinesRef.current.clearLayers();
+      }
       // Hide radius circle and center marker (will be drawn as PPT shapes)
       if (circleRef.current) circleRef.current.removeFrom(mapRef.current!);
       if (centerMarkerRef.current) centerMarkerRef.current.removeFrom(mapRef.current!);
@@ -132,6 +141,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
       });
       // Restore all hidden elements
       savedLayers.forEach((layer) => markersRef.current!.addLayer(layer));
+      savedRouteLines.forEach((layer) => routeLinesRef.current!.addLayer(layer));
       if (circleRef.current) circleRef.current.addTo(mapRef.current!);
       if (centerMarkerRef.current) centerMarkerRef.current.addTo(mapRef.current!);
       return image;
@@ -166,6 +176,21 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
         radiusNy: (swPt.y - nePt.y) / 2 / size.y,
       };
     },
+    getRouteNormalizedPositions(routes: readonly SubwayRoute[]) {
+      if (!mapRef.current) return [];
+      const size = mapRef.current.getSize();
+      if (size.x === 0 || size.y === 0) return [];
+      return routes
+        .filter((route) => route.coordinates && route.coordinates.length >= 2)
+        .map((route) => ({
+          line: route.line,
+          lineColor: route.lineColor,
+          points: route.coordinates!.map(([lat, lng]) => {
+            const pt = mapRef.current!.latLngToContainerPoint([lat, lng]);
+            return { nx: pt.x / size.x, ny: pt.y / size.y };
+          }),
+        }));
+    },
   }));
 
   useEffect(() => {
@@ -196,6 +221,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
       ).addTo(map);
 
       mapRef.current = map;
+      routeLinesRef.current = L.layerGroup().addTo(map);
       markersRef.current = L.layerGroup().addTo(map);
 
       circleRef.current = L.circle([config.centerLat, config.centerLng], {
@@ -239,6 +265,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
         mapRef.current = null;
       }
       markersRef.current = null;
+      routeLinesRef.current = null;
       circleRef.current = null;
       centerMarkerRef.current = null;
     };
@@ -263,6 +290,34 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
       (p) => layers[p.category] && haversineDistance(config.centerLat, config.centerLng, p.lat, p.lng) <= config.radiusKm * 1000
     );
 
+    // Draw subway route polylines
+    if (routeLinesRef.current) {
+      routeLinesRef.current.clearLayers();
+      if (layers.subway) {
+        const stationMap = new Map(
+          visible
+            .filter((p): p is SubwayStation => p.category === "subway")
+            .map((s) => [s.id, s])
+        );
+        subwayRoutes.forEach((route) => {
+          const coords: [number, number][] = route.coordinates && route.coordinates.length >= 2
+            ? (route.coordinates as [number, number][])
+            : route.stationIds
+                .map((id) => stationMap.get(id))
+                .filter((s): s is SubwayStation => s !== undefined)
+                .map((s) => [s.lat, s.lng]);
+          if (coords.length >= 2) {
+            const polyline = L.polyline(coords, {
+              color: route.lineColor,
+              weight: 4,
+              opacity: 0.85,
+            });
+            routeLinesRef.current!.addLayer(polyline);
+          }
+        });
+      }
+    }
+
     visible.forEach((poi) => {
       const color = poi.category === "subway" ? (poi as SubwayStation).lineColor : CATEGORY_COLORS[poi.category];
       const marker = L.marker([poi.lat, poi.lng], {
@@ -285,7 +340,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
 
       markersRef.current!.addLayer(marker);
     });
-  }, [pois, layers, config]);
+  }, [pois, layers, config, subwayRoutes]);
 
   useEffect(() => {
     const timer = setTimeout(updateMarkers, 100);
