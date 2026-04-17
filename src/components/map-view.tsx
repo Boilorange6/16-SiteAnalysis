@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from "react";
-import type { Poi, AnalysisConfig, LayerVisibility, SubwayStation, Apartment, PoiPosition } from "@/lib/types";
+import type { Poi, AnalysisConfig, LayerVisibility, SubwayStation, Apartment, PoiPosition, RadiusPosition } from "@/lib/types";
 import { CATEGORY_COLORS } from "@/lib/types";
 import { haversineDistance } from "@/lib/geo";
 
@@ -15,6 +15,7 @@ export interface MapViewHandle {
   captureImage(): Promise<string>;
   captureBaseMap(): Promise<string>;
   getPoiPositions(pois: readonly Poi[]): PoiPosition[];
+  getRadiusPosition(): RadiusPosition | null;
 }
 
 const ICON_SVG: Record<string, string> = {
@@ -94,32 +95,43 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
   const circleRef = useRef<import("leaflet").Circle | null>(null);
   const centerMarkerRef = useRef<import("leaflet").Marker | null>(null);
 
+  // Capture dimensions matching PPT map area ratio (MAP_W:SLIDE_H = 9.333:7.5)
+  const CAPTURE_W = 1920;
+  const CAPTURE_H = Math.round(1920 * 7.5 / 9.333); // ≈ 1543
+
   useImperativeHandle(ref, () => ({
     async captureImage(): Promise<string> {
       const { toJpeg } = await import("html-to-image");
       if (!containerRef.current) throw new Error("Map container not found");
       return toJpeg(containerRef.current, {
         quality: 0.92,
-        width: 1920,
-        height: 1080,
+        width: CAPTURE_W,
+        height: CAPTURE_H,
         pixelRatio: 2,
       });
     },
     async captureBaseMap(): Promise<string> {
       if (!markersRef.current || !containerRef.current)
         throw new Error("Map not ready");
+      // Hide POI markers
       const savedLayers: import("leaflet").Layer[] = [];
       markersRef.current.eachLayer((layer) => savedLayers.push(layer));
       markersRef.current.clearLayers();
+      // Hide radius circle and center marker (will be drawn as PPT shapes)
+      if (circleRef.current) circleRef.current.removeFrom(mapRef.current!);
+      if (centerMarkerRef.current) centerMarkerRef.current.removeFrom(mapRef.current!);
       await new Promise((resolve) => setTimeout(resolve, 300));
       const { toJpeg } = await import("html-to-image");
       const image = await toJpeg(containerRef.current, {
         quality: 0.92,
-        width: 1920,
-        height: 1080,
+        width: CAPTURE_W,
+        height: CAPTURE_H,
         pixelRatio: 2,
       });
+      // Restore all hidden elements
       savedLayers.forEach((layer) => markersRef.current!.addLayer(layer));
+      if (circleRef.current) circleRef.current.addTo(mapRef.current!);
+      if (centerMarkerRef.current) centerMarkerRef.current.addTo(mapRef.current!);
       return image;
     },
     getPoiPositions(pois: readonly Poi[]): PoiPosition[] {
@@ -135,6 +147,22 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
           return { poi, nx: point.x / size.x, ny: point.y / size.y };
         })
         .filter((p) => p.nx >= 0 && p.nx <= 1 && p.ny >= 0 && p.ny <= 1);
+    },
+    getRadiusPosition(): RadiusPosition | null {
+      if (!mapRef.current || !circleRef.current) return null;
+      const size = mapRef.current.getSize();
+      if (size.x === 0 || size.y === 0) return null;
+      const center = circleRef.current.getLatLng();
+      const bounds = circleRef.current.getBounds();
+      const centerPt = mapRef.current.latLngToContainerPoint(center);
+      const nePt = mapRef.current.latLngToContainerPoint(bounds.getNorthEast());
+      const swPt = mapRef.current.latLngToContainerPoint(bounds.getSouthWest());
+      return {
+        centerNx: centerPt.x / size.x,
+        centerNy: centerPt.y / size.y,
+        radiusNx: (nePt.x - swPt.x) / 2 / size.x,
+        radiusNy: (swPt.y - nePt.y) / 2 / size.y,
+      };
     },
   }));
 

@@ -46,6 +46,13 @@ export interface PoiPosition {
   readonly ny: number;
 }
 
+export interface RadiusPosition {
+  readonly centerNx: number;
+  readonly centerNy: number;
+  readonly radiusNx: number;
+  readonly radiusNy: number;
+}
+
 export interface AnalysisConfig {
   readonly centerName: string;
   readonly centerLat: number;

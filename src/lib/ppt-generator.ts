@@ -2,6 +2,7 @@ import PptxGenJS from "pptxgenjs";
 import type {
   Poi,
   PoiPosition,
+  RadiusPosition,
   AnalysisConfig,
   PoiCategory,
   SubwayStation,
@@ -215,6 +216,36 @@ function addPoiMarkers(
   });
 }
 
+/** Place an editable dashed ellipse for the analysis radius boundary */
+function addRadiusCircle(
+  slide: PptxGenJS.Slide,
+  radiusPosition: RadiusPosition | null
+) {
+  if (!radiusPosition) return;
+  const cx = radiusPosition.centerNx * MAP_W;
+  const cy = radiusPosition.centerNy * SLIDE_H;
+  const rx = radiusPosition.radiusNx * MAP_W;
+  const ry = radiusPosition.radiusNy * SLIDE_H;
+  slide.addShape("ellipse", {
+    x: cx - rx,
+    y: cy - ry,
+    w: rx * 2,
+    h: ry * 2,
+    fill: { color: "E94560", transparency: 92 },
+    line: { color: "E94560", width: 1.5, dashType: "dash" },
+  });
+  // Center point marker
+  const dotSize = 0.12;
+  slide.addShape("ellipse", {
+    x: cx - dotSize / 2,
+    y: cy - dotSize / 2,
+    w: dotSize,
+    h: dotSize,
+    fill: { color: "E94560" },
+    line: { color: "FFFFFF", width: 1.5 },
+  });
+}
+
 // ── Per-slide functions ───────────────────────────────────────────────────────
 
 function addCoverSlide(
@@ -226,12 +257,16 @@ function addCoverSlide(
   const slide = pptx.addSlide();
   slide.background = { fill: BG_DARK };
   if (baseMapImage) {
+    // Image is captured at MAP_W:SLIDE_H ratio — scale to fill slide width,
+    // center vertically (overflows top/bottom, clipped by slide bounds)
+    const coverH = SLIDE_W * SLIDE_H / MAP_W;
+    const coverY = (SLIDE_H - coverH) / 2;
     slide.addImage({
       data: baseMapImage,
       x: 0,
-      y: 0,
+      y: coverY,
       w: SLIDE_W,
-      h: SLIDE_H,
+      h: coverH,
     });
     slide.addShape("rect", {
       x: 0,
@@ -284,12 +319,14 @@ function addOverviewSlide(
   apartments: Apartment[],
   baseMapImage: string,
   poiPositions: readonly PoiPosition[],
+  radiusPosition: RadiusPosition | null,
   projectName: string,
   refDate: string
 ) {
   const slide = pptx.addSlide();
   slide.background = { fill: BG_DARK };
   addMapBackground(slide, baseMapImage, 80);
+  addRadiusCircle(slide, radiusPosition);
   addPoiMarkers(
     slide,
     poiPositions,
@@ -336,12 +373,14 @@ function addTransportSlide(
   subways: SubwayStation[],
   baseMapImage: string,
   poiPositions: readonly PoiPosition[],
+  radiusPosition: RadiusPosition | null,
   projectName: string,
   refDate: string
 ) {
   const slide = pptx.addSlide();
   slide.background = { fill: BG_DARK };
   addMapBackground(slide, baseMapImage, 80);
+  addRadiusCircle(slide, radiusPosition);
   addPoiMarkers(slide, poiPositions, ["subway"]);
   addSlidePanel(slide, "교통 분석", projectName, refDate);
 
@@ -391,12 +430,14 @@ function addEducationSlide(
   schools: School[],
   baseMapImage: string,
   poiPositions: readonly PoiPosition[],
+  radiusPosition: RadiusPosition | null,
   projectName: string,
   refDate: string
 ) {
   const slide = pptx.addSlide();
   slide.background = { fill: BG_DARK };
   addMapBackground(slide, baseMapImage, 80);
+  addRadiusCircle(slide, radiusPosition);
   addPoiMarkers(slide, poiPositions, ["school"]);
   addSlidePanel(slide, "교육 환경", projectName, refDate);
 
@@ -440,12 +481,14 @@ function addNatureSlide(
   parks: Park[],
   baseMapImage: string,
   poiPositions: readonly PoiPosition[],
+  radiusPosition: RadiusPosition | null,
   projectName: string,
   refDate: string
 ) {
   const slide = pptx.addSlide();
   slide.background = { fill: BG_DARK };
   addMapBackground(slide, baseMapImage, 80);
+  addRadiusCircle(slide, radiusPosition);
   addPoiMarkers(slide, poiPositions, ["park", "mountain"]);
   addSlidePanel(slide, "자연 환경", projectName, refDate);
 
@@ -511,12 +554,14 @@ function addApartmentsSlide(
   apartments: Apartment[],
   baseMapImage: string,
   poiPositions: readonly PoiPosition[],
+  radiusPosition: RadiusPosition | null,
   projectName: string,
   refDate: string
 ) {
   const slide = pptx.addSlide();
   slide.background = { fill: BG_DARK };
   addMapBackground(slide, baseMapImage, 80);
+  addRadiusCircle(slide, radiusPosition);
   addPoiMarkers(slide, poiPositions, ["apartment"]);
   addSlidePanel(slide, "분양 현황", projectName, refDate);
 
@@ -601,12 +646,14 @@ function addSummarySlide(
   parks: Park[],
   apartments: Apartment[],
   baseMapImage: string,
+  radiusPosition: RadiusPosition | null,
   projectName: string,
   refDate: string
 ) {
   const slide = pptx.addSlide();
   slide.background = { fill: BG_DARK };
   addMapBackground(slide, baseMapImage);
+  addRadiusCircle(slide, radiusPosition);
   addSlidePanel(slide, "종합 분석", projectName, refDate);
 
   const lineCount = new Set(subways.map((s) => s.line)).size;
@@ -663,7 +710,8 @@ export async function generateSiteAnalysisPpt(
   config: AnalysisConfig,
   allPois: readonly Poi[],
   baseMapImage: string,
-  poiPositions: readonly PoiPosition[]
+  poiPositions: readonly PoiPosition[],
+  radiusPosition: RadiusPosition | null = null
 ): Promise<void> {
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE";
@@ -695,6 +743,7 @@ export async function generateSiteAnalysisPpt(
     apartments,
     baseMapImage,
     poiPositions,
+    radiusPosition,
     projectName,
     refDate
   );
@@ -703,6 +752,7 @@ export async function generateSiteAnalysisPpt(
     subways,
     baseMapImage,
     poiPositions,
+    radiusPosition,
     projectName,
     refDate
   );
@@ -711,6 +761,7 @@ export async function generateSiteAnalysisPpt(
     schools,
     baseMapImage,
     poiPositions,
+    radiusPosition,
     projectName,
     refDate
   );
@@ -720,6 +771,7 @@ export async function generateSiteAnalysisPpt(
     parks,
     baseMapImage,
     poiPositions,
+    radiusPosition,
     projectName,
     refDate
   );
@@ -728,6 +780,7 @@ export async function generateSiteAnalysisPpt(
     apartments,
     baseMapImage,
     poiPositions,
+    radiusPosition,
     projectName,
     refDate
   );
@@ -740,6 +793,7 @@ export async function generateSiteAnalysisPpt(
     parks,
     apartments,
     baseMapImage,
+    radiusPosition,
     projectName,
     refDate
   );

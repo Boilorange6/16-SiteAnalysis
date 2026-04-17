@@ -46,11 +46,12 @@ export default function SiteAnalysisApp() {
     if (!mapRef.current) return;
     setExporting(true);
     try {
+      const radiusPosition = mapRef.current.getRadiusPosition();
       const baseMapImage = await mapRef.current.captureBaseMap();
       const visiblePois = ALL_POIS.filter((p) => layers[p.category]);
       const poiPositions = mapRef.current.getPoiPositions(visiblePois);
       const { generateSiteAnalysisPpt } = await import("@/lib/ppt-generator");
-      await generateSiteAnalysisPpt(config, visiblePois, baseMapImage, poiPositions);
+      await generateSiteAnalysisPpt(config, visiblePois, baseMapImage, poiPositions, radiusPosition);
     } catch (err) {
       console.error("PPT generation failed:", err);
     } finally {
