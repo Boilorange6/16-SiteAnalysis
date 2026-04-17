@@ -25,6 +25,19 @@ for /f "tokens=*" %%v in ('node -v') do set NODE_VER=%%v
 echo [OK] Node.js !NODE_VER! detected
 echo.
 
+REM Kill any existing process occupying port 3000
+set "OLDPID="
+for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr /R ":3000 "') do (
+    if not defined OLDPID set "OLDPID=%%a"
+)
+if defined OLDPID (
+    echo [INFO] Port 3000 is in use by PID !OLDPID!. Terminating old server...
+    taskkill /F /PID !OLDPID! >nul 2>nul
+    timeout /t 2 /nobreak > nul
+    echo [INFO] Old server terminated.
+    echo.
+)
+
 REM Step 1/2: Check dependencies
 if not exist "node_modules" (
     echo [1/2] node_modules not found - running npm install
@@ -45,12 +58,19 @@ if not exist "node_modules" (
 
 echo.
 echo [2/2] Starting Next.js dev server...
-echo       Browser will open http://localhost:3000 in about 5 seconds.
+echo       Browser will open automatically when server is ready.
 echo       Press Ctrl+C then Y in this window to stop the server.
 echo.
 
-REM Open browser asynchronously after 5 seconds
-start "" cmd /c "timeout /t 5 /nobreak > nul & start http://localhost:3000"
+REM Open browser asynchronously, polling until server is ready
+start "" cmd /c "
+:poll
+curl.exe -s --max-time 2 -o NUL http://localhost:3000 2>NUL
+if errorlevel 1 (
+    timeout /t 1 /nobreak > NUL
+    goto poll
+)
+start http://localhost:3000"
 
 REM Run dev server (foreground)
 call npm run dev
