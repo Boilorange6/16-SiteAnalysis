@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from "react";
-import type { Poi, AnalysisConfig, LayerVisibility, SubwayStation, Apartment } from "@/lib/types";
+import type { Poi, AnalysisConfig, LayerVisibility, SubwayStation, Apartment, PoiPosition } from "@/lib/types";
 import { CATEGORY_COLORS } from "@/lib/types";
 import { haversineDistance } from "@/lib/geo";
 
@@ -13,6 +13,8 @@ interface MapViewProps {
 
 export interface MapViewHandle {
   captureImage(): Promise<string>;
+  captureBaseMap(): Promise<string>;
+  getPoiPositions(pois: readonly Poi[]): PoiPosition[];
 }
 
 const ICON_SVG: Record<string, string> = {
@@ -102,6 +104,37 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
         height: 1080,
         pixelRatio: 2,
       });
+    },
+    async captureBaseMap(): Promise<string> {
+      if (!markersRef.current || !containerRef.current)
+        throw new Error("Map not ready");
+      const savedLayers: import("leaflet").Layer[] = [];
+      markersRef.current.eachLayer((layer) => savedLayers.push(layer));
+      markersRef.current.clearLayers();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const { toJpeg } = await import("html-to-image");
+      const image = await toJpeg(containerRef.current, {
+        quality: 0.92,
+        width: 1920,
+        height: 1080,
+        pixelRatio: 2,
+      });
+      savedLayers.forEach((layer) => markersRef.current!.addLayer(layer));
+      return image;
+    },
+    getPoiPositions(pois: readonly Poi[]): PoiPosition[] {
+      if (!mapRef.current) return [];
+      const size = mapRef.current.getSize();
+      if (size.x === 0 || size.y === 0) return [];
+      return pois
+        .map((poi) => {
+          const point = mapRef.current!.latLngToContainerPoint([
+            poi.lat,
+            poi.lng,
+          ]);
+          return { poi, nx: point.x / size.x, ny: point.y / size.y };
+        })
+        .filter((p) => p.nx >= 0 && p.nx <= 1 && p.ny >= 0 && p.ny <= 1);
     },
   }));
 

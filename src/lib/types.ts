@@ -40,6 +40,12 @@ export interface Apartment extends PoiBase {
 
 export type Poi = SubwayStation | School | Park | Mountain | Apartment;
 
+export interface PoiPosition {
+  readonly poi: Poi;
+  readonly nx: number;
+  readonly ny: number;
+}
+
 export interface AnalysisConfig {
   readonly centerName: string;
   readonly centerLat: number;
