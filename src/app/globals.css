@@ -11,7 +11,7 @@ html,
 body {
   height: 100%;
   overflow: hidden;
-  font-family: "맑은 고딕", "Malgun Gothic", sans-serif;
+  font-family: "맑은 고딕", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
 }
 
 .leaflet-container {
