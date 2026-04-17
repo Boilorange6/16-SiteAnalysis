@@ -15,145 +15,160 @@ import { CATEGORY_COLORS, CATEGORY_LABELS } from "./types";
 
 const SLIDE_W = 13.333;
 const SLIDE_H = 7.5;
-const MAP_W = 9.333;
-const PANEL_X = 9.333;
-const PANEL_W = 4.0;
-const TOTAL_CONTENT_SLIDES = 6;
 
-const FONT_TITLE = "맑은 고딕";
-const BG_DARK = "1A1A2E";
-const BG_PANEL = "16213E";
-const TEXT_WHITE = "FFFFFF";
-const TEXT_LIGHT = "E0E0E0";
-const ACCENT = "0F3460";
+// Design Tokens from Spec
+const FONT_MAIN = "Noto Sans KR";
+const COLOR_PRIMARY = "1E3A8A"; // Primary Navy
+const COLOR_SECONDARY = "3B82F6"; // Secondary Navy
+const COLOR_OVERLAY_DARK = "0F172A";
+const COLOR_OVERLAY_LIGHT = "F8FAFC";
+const COLOR_TEXT_BODY = "334155";
+const COLOR_TEXT_SUB = "475569";
 
-const MARKER_SIZE = 0.18;
-const MARKER_SIZE_SM = 0.13;
+const MARKER_SIZE = 0.22;
+const MARKER_SIZE_SM = 0.16;
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
-function addMapBackground(
-  slide: PptxGenJS.Slide,
-  baseMapImage: string,
-  transparency = 75
-) {
+function addFullBleedMap(slide: PptxGenJS.Slide, baseMapImage: string) {
   if (!baseMapImage) return;
   slide.addImage({
     data: baseMapImage,
     x: 0,
     y: 0,
-    w: MAP_W,
+    w: SLIDE_W,
     h: SLIDE_H,
   });
+}
+
+function addHeader(slide: PptxGenJS.Slide, title: string, config: AnalysisConfig) {
+  // Semi-transparent Header Overlay
   slide.addShape("rect", {
     x: 0,
     y: 0,
-    w: MAP_W,
-    h: SLIDE_H,
-    fill: { color: "000000", transparency },
+    w: SLIDE_W,
+    h: 1.1,
+    fill: { color: COLOR_OVERLAY_LIGHT, transparency: 15 },
   });
-}
-
-function addSlidePanel(
-  slide: PptxGenJS.Slide,
-  title: string,
-  projectName: string,
-  refDate: string
-) {
-  slide.addShape("rect", {
-    x: PANEL_X,
-    y: 0,
-    w: PANEL_W,
-    h: SLIDE_H,
-    fill: { color: BG_PANEL, transparency: 10 },
-  });
-  slide.addText(projectName, {
-    x: PANEL_X + 0.3,
-    y: 0.12,
-    w: PANEL_W * 0.6,
-    h: 0.28,
-    fontSize: 8,
-    fontFace: FONT_TITLE,
-    color: "999999",
-  });
-  slide.addText(refDate, {
-    x: PANEL_X + 0.3,
-    y: 0.12,
-    w: PANEL_W - 0.6,
-    h: 0.28,
-    fontSize: 8,
-    fontFace: FONT_TITLE,
-    color: "999999",
-    align: "right",
-  });
-  slide.addText(title, {
-    x: PANEL_X + 0.3,
-    y: 0.45,
-    w: PANEL_W - 0.6,
-    h: 0.6,
-    fontSize: 20,
-    fontFace: FONT_TITLE,
-    color: TEXT_WHITE,
+  
+  slide.addText("SITE ANALYSIS REPORT", {
+    x: 0.5,
+    y: 0.2,
+    w: 4,
+    h: 0.3,
+    fontSize: 10,
+    fontFace: FONT_MAIN,
+    color: COLOR_SECONDARY,
     bold: true,
   });
+
+  slide.addText(title, {
+    x: 0.5,
+    y: 0.45,
+    w: 8,
+    h: 0.5,
+    fontSize: 28,
+    fontFace: FONT_MAIN,
+    color: COLOR_PRIMARY,
+    bold: true,
+  });
+
+  const refDate = new Date().toLocaleDateString("ko-KR");
+  slide.addText(`${refDate} | 기준반경: ${config.radiusKm}km`, {
+    x: SLIDE_W - 4.5,
+    y: 0.45,
+    w: 4,
+    h: 0.5,
+    fontSize: 12,
+    fontFace: FONT_MAIN,
+    color: COLOR_TEXT_SUB,
+    align: "right",
+  });
+
+  // Bottom border line
   slide.addShape("rect", {
-    x: PANEL_X + 0.3,
-    y: 1.05,
-    w: 2.0,
-    h: 0.04,
-    fill: { color: "E94560" },
+    x: 0.5,
+    y: 1.0,
+    w: SLIDE_W - 1.0,
+    h: 0.03,
+    fill: { color: COLOR_PRIMARY },
   });
 }
 
-function addSlideFooter(slide: PptxGenJS.Slide, pageNum: number) {
-  slide.addText("출처: 공개 데이터 | Site Analysis Generator", {
-    x: PANEL_X + 0.3,
+function addFooter(slide: PptxGenJS.Slide, pageNum: number, total: number) {
+  slide.addText(`지도 데이터: Mapbox/ESRI | 시설 데이터: 공공데이터포털`, {
+    x: 0.5,
     y: 7.1,
-    w: 2.5,
-    h: 0.3,
-    fontSize: 7,
-    fontFace: FONT_TITLE,
-    color: "555577",
-  });
-  slide.addText(`${pageNum} / ${TOTAL_CONTENT_SLIDES}`, {
-    x: PANEL_X + 0.3,
-    y: 7.1,
-    w: PANEL_W - 0.6,
+    w: 6,
     h: 0.3,
     fontSize: 8,
-    fontFace: FONT_TITLE,
-    color: "888888",
+    fontFace: FONT_MAIN,
+    color: "666666",
+  });
+  slide.addText(`${pageNum} / ${total}`, {
+    x: SLIDE_W - 1.5,
+    y: 7.1,
+    w: 1,
+    h: 0.3,
+    fontSize: 10,
+    fontFace: FONT_MAIN,
+    color: "666666",
     align: "right",
   });
 }
 
-function addLegend(
-  slide: PptxGenJS.Slide,
-  items: { label: string; color: string }[],
-  startY: number
-) {
+function addDataPanel(slide: PptxGenJS.Slide, x: number, y: number, w: number, h: number) {
+  slide.addShape("rect", {
+    x, y, w, h,
+    fill: { color: COLOR_OVERLAY_LIGHT, transparency: 10 },
+    line: { color: COLOR_PRIMARY, width: 1 },
+    shadow: { type: "outer", blur: 10, offset: 4, color: "000000", opacity: 0.2 },
+    rectRadius: 0.1,
+  });
+}
+
+function addLegend(slide: PptxGenJS.Slide) {
+  const items = Object.entries(CATEGORY_LABELS).map(([key, label]) => ({
+    label,
+    color: CATEGORY_COLORS[key as keyof typeof CATEGORY_COLORS],
+  }));
+
+  const legW = 1.8;
+  const legH = items.length * 0.3 + 0.2;
+  const legX = SLIDE_W - legW - 0.5;
+  const legY = SLIDE_H - legH - 0.6;
+
+  slide.addShape("rect", {
+    x: legX,
+    y: legY,
+    w: legW,
+    h: legH,
+    fill: { color: COLOR_OVERLAY_LIGHT, transparency: 10 },
+    rectRadius: 0.05,
+  });
+
   items.forEach((item, i) => {
-    const y = startY + i * 0.35;
+    const y = legY + 0.1 + i * 0.3;
     slide.addShape("ellipse", {
-      x: PANEL_X + 0.3,
-      y,
-      w: 0.18,
-      h: 0.18,
+      x: legX + 0.15,
+      y: y + 0.05,
+      w: 0.15,
+      h: 0.15,
       fill: { color: item.color.replace("#", "") },
+      line: { color: "FFFFFF", width: 1 },
     });
     slide.addText(item.label, {
-      x: PANEL_X + 0.58,
-      y: y - 0.02,
-      w: 3.0,
+      x: legX + 0.4,
+      y: y,
+      w: 1.2,
       h: 0.25,
-      fontSize: 11,
-      fontFace: FONT_TITLE,
-      color: TEXT_LIGHT,
+      fontSize: 9,
+      fontFace: FONT_MAIN,
+      color: COLOR_TEXT_BODY,
     });
   });
 }
 
-/** Place editable circle markers + name labels on the map area */
 function addPoiMarkers(
   slide: PptxGenJS.Slide,
   positions: readonly PoiPosition[],
@@ -161,12 +176,10 @@ function addPoiMarkers(
   options: { showLabels?: boolean; size?: number } = {}
 ) {
   const { showLabels = true, size = MARKER_SIZE } = options;
-  const filtered = positions.filter((p) =>
-    categories.includes(p.poi.category)
-  );
+  const filtered = positions.filter((p) => categories.includes(p.poi.category));
 
   filtered.forEach(({ poi, nx, ny }) => {
-    const x = nx * MAP_W;
+    const x = nx * SLIDE_W;
     const y = ny * SLIDE_H;
 
     const color =
@@ -174,537 +187,223 @@ function addPoiMarkers(
         ? (poi as SubwayStation).lineColor.replace("#", "")
         : CATEGORY_COLORS[poi.category].replace("#", "");
 
-    // Editable circle marker (native PPT shape)
     slide.addShape("ellipse", {
       x: x - size / 2,
       y: y - size / 2,
       w: size,
       h: size,
       fill: { color },
-      line: { color: "FFFFFF", width: 1 },
-      shadow: {
-        type: "outer",
-        blur: 3,
-        offset: 1,
-        color: "000000",
-        opacity: 0.35,
-      },
+      line: { color: "FFFFFF", width: 1.5 },
+      shadow: { type: "outer", blur: 4, offset: 2, color: "000000", opacity: 0.4 },
     });
 
-    if (!showLabels) return;
-
-    // Editable name label (native PPT text box)
-    const labelW = Math.max(0.5, poi.name.length * 0.085 + 0.14);
-    const labelX =
-      x + size / 2 + labelW + 0.04 > MAP_W
-        ? x - size / 2 - labelW - 0.04
-        : x + size / 2 + 0.04;
-    const labelY = Math.max(0, Math.min(SLIDE_H - 0.18, y - 0.09));
-
-    slide.addText(poi.name, {
-      x: labelX,
-      y: labelY,
-      w: labelW,
-      h: 0.18,
-      fontSize: 6,
-      fontFace: FONT_TITLE,
-      color: TEXT_WHITE,
-      fill: { color: "000000", transparency: 40 },
-      rectRadius: 0.02,
-      valign: "middle",
-    });
+    if (showLabels) {
+      const labelW = Math.max(0.6, poi.name.length * 0.1 + 0.2);
+      slide.addText(poi.name, {
+        x: x + size / 2 + 0.05,
+        y: y - 0.12,
+        w: labelW,
+        h: 0.24,
+        fontSize: 8,
+        fontFace: FONT_MAIN,
+        color: COLOR_PRIMARY,
+        bold: true,
+        fill: { color: "FFFFFF", transparency: 20 },
+        rectRadius: 0.04,
+        align: "center",
+        valign: "middle",
+      });
+    }
   });
 }
 
-/** Place an editable dashed ellipse for the analysis radius boundary */
-function addRadiusCircle(
-  slide: PptxGenJS.Slide,
-  radiusPosition: RadiusPosition | null
-) {
+function addRadiusCircle(slide: PptxGenJS.Slide, radiusPosition: RadiusPosition | null) {
   if (!radiusPosition) return;
-  const cx = radiusPosition.centerNx * MAP_W;
+  const cx = radiusPosition.centerNx * SLIDE_W;
   const cy = radiusPosition.centerNy * SLIDE_H;
-  const rx = radiusPosition.radiusNx * MAP_W;
+  const rx = radiusPosition.radiusNx * SLIDE_W;
   const ry = radiusPosition.radiusNy * SLIDE_H;
+
   slide.addShape("ellipse", {
     x: cx - rx,
     y: cy - ry,
     w: rx * 2,
     h: ry * 2,
-    fill: { color: "E94560", transparency: 92 },
-    line: { color: "E94560", width: 1.5, dashType: "dash" },
+    fill: { color: "0EA5E9", transparency: 85 },
+    line: { color: "0EA5E9", width: 2, dashType: "dash" },
   });
-  // Center point marker
-  const dotSize = 0.12;
+
   slide.addShape("ellipse", {
-    x: cx - dotSize / 2,
-    y: cy - dotSize / 2,
-    w: dotSize,
-    h: dotSize,
-    fill: { color: "E94560" },
-    line: { color: "FFFFFF", width: 1.5 },
+    x: cx - 0.1,
+    y: cy - 0.1,
+    w: 0.2,
+    h: 0.2,
+    fill: { color: COLOR_SECONDARY },
+    line: { color: "FFFFFF", width: 2 },
   });
 }
 
-// ── Per-slide functions ───────────────────────────────────────────────────────
+// ── Slides ──────────────────────────────────────────────────────────────────
 
-function addCoverSlide(
-  pptx: PptxGenJS,
-  config: AnalysisConfig,
-  baseMapImage: string,
-  refDate: string
-) {
+function addCoverSlide(pptx: PptxGenJS, config: AnalysisConfig, baseMapImage: string) {
   const slide = pptx.addSlide();
-  slide.background = { fill: BG_DARK };
   if (baseMapImage) {
-    // Image is captured at MAP_W:SLIDE_H ratio — scale to fill slide width,
-    // center vertically (overflows top/bottom, clipped by slide bounds)
-    const coverH = SLIDE_W * SLIDE_H / MAP_W;
-    const coverY = (SLIDE_H - coverH) / 2;
-    slide.addImage({
-      data: baseMapImage,
-      x: 0,
-      y: coverY,
-      w: SLIDE_W,
-      h: coverH,
-    });
+    slide.addImage({ data: baseMapImage, x: 0, y: 0, w: SLIDE_W, h: SLIDE_H });
     slide.addShape("rect", {
-      x: 0,
-      y: 0,
-      w: SLIDE_W,
-      h: SLIDE_H,
-      fill: { color: "000000", transparency: 40 },
+      x: 0, y: 0, w: SLIDE_W, h: SLIDE_H,
+      fill: { color: COLOR_PRIMARY, transparency: 40 },
     });
+  } else {
+    slide.background = { fill: COLOR_PRIMARY };
   }
-  slide.addText(`${config.centerName}\n사이트 분석 보고서`, {
-    x: 1,
-    y: 2.0,
-    w: 8,
-    h: 2.5,
-    fontSize: 40,
-    fontFace: FONT_TITLE,
-    color: TEXT_WHITE,
-    bold: true,
-    lineSpacingMultiple: 1.4,
+
+  slide.addText(config.centerName, {
+    x: 1, y: 2.5, w: 11, h: 1,
+    fontSize: 48, fontFace: FONT_MAIN, color: "FFFFFF", bold: true, align: "center",
   });
-  slide.addText(
-    `분석 범위: 반경 ${config.radiusKm}km | 중심: ${config.centerLat.toFixed(4)}, ${config.centerLng.toFixed(4)}`,
-    {
-      x: 1,
-      y: 4.5,
-      w: 8,
-      h: 0.5,
-      fontSize: 14,
-      fontFace: FONT_TITLE,
-      color: TEXT_LIGHT,
-    }
-  );
-  slide.addText(refDate, {
-    x: 1,
-    y: 5.2,
-    w: 4,
-    h: 0.4,
-    fontSize: 12,
-    fontFace: FONT_TITLE,
-    color: "999999",
+  slide.addText("사이트 입지 분석 보고서", {
+    x: 1, y: 3.5, w: 11, h: 0.6,
+    fontSize: 24, fontFace: FONT_MAIN, color: "FFFFFF", align: "center",
+  });
+  
+  slide.addShape("rect", { x: 5, y: 4.3, w: 3.333, h: 0.05, fill: { color: COLOR_SECONDARY } });
+
+  const refDate = new Date().toLocaleDateString("ko-KR");
+  slide.addText(`${refDate} | 반경 ${config.radiusKm}km 분석`, {
+    x: 1, y: 4.8, w: 11, h: 0.4,
+    fontSize: 14, fontFace: FONT_MAIN, color: "E0E0E0", align: "center",
   });
 }
 
 function addOverviewSlide(
   pptx: PptxGenJS,
-  subways: SubwayStation[],
-  schools: School[],
-  parks: Park[],
-  mountains: Mountain[],
-  apartments: Apartment[],
+  config: AnalysisConfig,
   baseMapImage: string,
   poiPositions: readonly PoiPosition[],
-  radiusPosition: RadiusPosition | null,
-  projectName: string,
-  refDate: string
+  radiusPosition: RadiusPosition | null
 ) {
   const slide = pptx.addSlide();
-  slide.background = { fill: BG_DARK };
-  addMapBackground(slide, baseMapImage, 80);
+  addFullBleedMap(slide, baseMapImage);
   addRadiusCircle(slide, radiusPosition);
-  addPoiMarkers(
-    slide,
-    poiPositions,
-    ["subway", "school", "park", "mountain", "apartment"],
-    { showLabels: false, size: MARKER_SIZE_SM }
-  );
-  addSlidePanel(slide, "전체 현황도", projectName, refDate);
-
-  const total =
-    subways.length +
-    schools.length +
-    parks.length +
-    mountains.length +
-    apartments.length;
-  slide.addText(
-    `총 ${total}개 시설\n` +
-      `지하철 ${subways.length}개 | 학교 ${schools.length}개\n` +
-      `공원 ${parks.length}개 | 산 ${mountains.length}개\n` +
-      `분양 아파트 ${apartments.length}개`,
-    {
-      x: PANEL_X + 0.3,
-      y: 1.3,
-      w: PANEL_W - 0.6,
-      h: 1.8,
-      fontSize: 13,
-      fontFace: FONT_TITLE,
-      color: TEXT_LIGHT,
-      lineSpacingMultiple: 1.5,
-    }
-  );
-  addLegend(
-    slide,
-    Object.entries(CATEGORY_LABELS).map(([key, label]) => ({
-      label,
-      color: CATEGORY_COLORS[key as keyof typeof CATEGORY_COLORS],
-    })),
-    3.5
-  );
-  addSlideFooter(slide, 1);
+  addPoiMarkers(slide, poiPositions, ["subway", "school", "park", "mountain", "apartment"], { showLabels: false, size: MARKER_SIZE_SM });
+  addHeader(slide, "입지 현황 종합", config);
+  addLegend(slide);
+  addFooter(slide, 1, 6);
 }
 
-function addTransportSlide(
+function addCategorySlide(
   pptx: PptxGenJS,
-  subways: SubwayStation[],
+  title: string,
+  category: PoiCategory | PoiCategory[],
+  config: AnalysisConfig,
   baseMapImage: string,
   poiPositions: readonly PoiPosition[],
   radiusPosition: RadiusPosition | null,
-  projectName: string,
-  refDate: string
+  pageNum: number,
+  details: string[]
 ) {
   const slide = pptx.addSlide();
-  slide.background = { fill: BG_DARK };
-  addMapBackground(slide, baseMapImage, 80);
+  addFullBleedMap(slide, baseMapImage);
   addRadiusCircle(slide, radiusPosition);
-  addPoiMarkers(slide, poiPositions, ["subway"]);
-  addSlidePanel(slide, "교통 분석", projectName, refDate);
+  addPoiMarkers(slide, poiPositions, Array.isArray(category) ? category : [category]);
+  addHeader(slide, title, config);
 
-  const lineGroups = new Map<string, SubwayStation[]>();
-  subways.forEach((s) => {
-    lineGroups.set(s.line, [...(lineGroups.get(s.line) ?? []), s]);
+  const panelW = 3.5;
+  const panelH = Math.min(4.5, details.length * 0.4 + 0.6);
+  addDataPanel(slide, 0.5, 1.5, panelW, panelH);
+  
+  details.forEach((text, i) => {
+    slide.addText(`• ${text}`, {
+      x: 0.7, y: 1.8 + i * 0.4, w: panelW - 0.4, h: 0.35,
+      fontSize: 11, fontFace: FONT_MAIN, color: COLOR_TEXT_BODY,
+    });
   });
 
-  let tY = 1.3;
-  lineGroups.forEach((stations, line) => {
-    const color = stations[0]?.lineColor ?? "#2196F3";
-    slide.addShape("ellipse", {
-      x: PANEL_X + 0.3,
-      y: tY,
-      w: 0.15,
-      h: 0.15,
-      fill: { color: color.replace("#", "") },
-    });
-    slide.addText(`${line} (${stations.length}개역)`, {
-      x: PANEL_X + 0.55,
-      y: tY - 0.03,
-      w: 3.0,
-      h: 0.25,
-      fontSize: 11,
-      fontFace: FONT_TITLE,
-      color: TEXT_WHITE,
-      bold: true,
-    });
-    slide.addText(stations.map((s) => s.name).join(", "), {
-      x: PANEL_X + 0.55,
-      y: tY + 0.22,
-      w: 3.2,
-      h: 0.4,
-      fontSize: 9,
-      fontFace: FONT_TITLE,
-      color: TEXT_LIGHT,
-      wrap: true,
-    });
-    tY += 0.7;
-  });
-
-  addSlideFooter(slide, 2);
+  addFooter(slide, pageNum, 6);
 }
 
-function addEducationSlide(
-  pptx: PptxGenJS,
-  schools: School[],
-  baseMapImage: string,
-  poiPositions: readonly PoiPosition[],
-  radiusPosition: RadiusPosition | null,
-  projectName: string,
-  refDate: string
-) {
-  const slide = pptx.addSlide();
-  slide.background = { fill: BG_DARK };
-  addMapBackground(slide, baseMapImage, 80);
-  addRadiusCircle(slide, radiusPosition);
-  addPoiMarkers(slide, poiPositions, ["school"]);
-  addSlidePanel(slide, "교육 환경", projectName, refDate);
-
-  const levelMap = {
-    elementary: "초등학교",
-    middle: "중학교",
-    high: "고등학교",
-  } as const;
-  let eY = 1.3;
-  (["elementary", "middle", "high"] as const).forEach((level) => {
-    const filtered = schools.filter((s) => s.level === level);
-    slide.addText(`${levelMap[level]} (${filtered.length}개)`, {
-      x: PANEL_X + 0.3,
-      y: eY,
-      w: 3.5,
-      h: 0.3,
-      fontSize: 12,
-      fontFace: FONT_TITLE,
-      color: TEXT_WHITE,
-      bold: true,
-    });
-    slide.addText(filtered.map((s) => s.name).join(", "), {
-      x: PANEL_X + 0.3,
-      y: eY + 0.3,
-      w: 3.5,
-      h: 0.6,
-      fontSize: 9,
-      fontFace: FONT_TITLE,
-      color: TEXT_LIGHT,
-      wrap: true,
-    });
-    eY += 1.1;
-  });
-
-  addSlideFooter(slide, 3);
-}
-
-function addNatureSlide(
-  pptx: PptxGenJS,
-  mountains: Mountain[],
-  parks: Park[],
-  baseMapImage: string,
-  poiPositions: readonly PoiPosition[],
-  radiusPosition: RadiusPosition | null,
-  projectName: string,
-  refDate: string
-) {
-  const slide = pptx.addSlide();
-  slide.background = { fill: BG_DARK };
-  addMapBackground(slide, baseMapImage, 80);
-  addRadiusCircle(slide, radiusPosition);
-  addPoiMarkers(slide, poiPositions, ["park", "mountain"]);
-  addSlidePanel(slide, "자연 환경", projectName, refDate);
-
-  let nY = 1.3;
-  slide.addText(`산 (${mountains.length}개)`, {
-    x: PANEL_X + 0.3,
-    y: nY,
-    w: 3.5,
-    h: 0.3,
-    fontSize: 12,
-    fontFace: FONT_TITLE,
-    color: TEXT_WHITE,
-    bold: true,
-  });
-  nY += 0.35;
-  mountains.forEach((m) => {
-    slide.addText(`${m.name} (${m.elevation_m}m)`, {
-      x: PANEL_X + 0.3,
-      y: nY,
-      w: 3.5,
-      h: 0.25,
-      fontSize: 10,
-      fontFace: FONT_TITLE,
-      color: TEXT_LIGHT,
-    });
-    nY += 0.28;
-  });
-
-  nY += 0.3;
-  slide.addText(`공원 (${parks.length}개)`, {
-    x: PANEL_X + 0.3,
-    y: nY,
-    w: 3.5,
-    h: 0.3,
-    fontSize: 12,
-    fontFace: FONT_TITLE,
-    color: TEXT_WHITE,
-    bold: true,
-  });
-  nY += 0.35;
-  parks.slice(0, 8).forEach((p) => {
-    const areaTxt =
-      p.area_sqm >= 100000
-        ? `${(p.area_sqm / 10000).toFixed(1)}만㎡`
-        : `${(p.area_sqm / 1000).toFixed(1)}천㎡`;
-    slide.addText(`${p.name} (${areaTxt})`, {
-      x: PANEL_X + 0.3,
-      y: nY,
-      w: 3.5,
-      h: 0.25,
-      fontSize: 9,
-      fontFace: FONT_TITLE,
-      color: TEXT_LIGHT,
-    });
-    nY += 0.25;
-  });
-
-  addSlideFooter(slide, 4);
-}
-
-function addApartmentsSlide(
+function addApartmentSlide(
   pptx: PptxGenJS,
   apartments: Apartment[],
+  config: AnalysisConfig,
   baseMapImage: string,
   poiPositions: readonly PoiPosition[],
-  radiusPosition: RadiusPosition | null,
-  projectName: string,
-  refDate: string
+  radiusPosition: RadiusPosition | null
 ) {
   const slide = pptx.addSlide();
-  slide.background = { fill: BG_DARK };
-  addMapBackground(slide, baseMapImage, 80);
+  addFullBleedMap(slide, baseMapImage);
   addRadiusCircle(slide, radiusPosition);
   addPoiMarkers(slide, poiPositions, ["apartment"]);
-  addSlidePanel(slide, "분양 현황", projectName, refDate);
+  addHeader(slide, "주변 분양 현황", config);
 
-  const tableRows: PptxGenJS.TableRow[] = [
+  const tableW = 5.5;
+  addDataPanel(slide, 0.5, 1.5, tableW, Math.min(5, apartments.length * 0.35 + 0.8));
+
+  const rows: PptxGenJS.TableRow[] = [
     [
-      {
-        text: "단지명",
-        options: {
-          bold: true,
-          fontSize: 9,
-          color: TEXT_WHITE,
-          fill: { color: ACCENT },
-        },
-      },
-      {
-        text: "세대수",
-        options: {
-          bold: true,
-          fontSize: 9,
-          color: TEXT_WHITE,
-          fill: { color: ACCENT },
-        },
-      },
-      {
-        text: "평당가(만)",
-        options: {
-          bold: true,
-          fontSize: 9,
-          color: TEXT_WHITE,
-          fill: { color: ACCENT },
-        },
-      },
-      {
-        text: "분양일",
-        options: {
-          bold: true,
-          fontSize: 9,
-          color: TEXT_WHITE,
-          fill: { color: ACCENT },
-        },
-      },
+      { text: "단지명", options: { bold: true, color: "FFFFFF", fill: { color: COLOR_PRIMARY } } },
+      { text: "세대수", options: { bold: true, color: "FFFFFF", fill: { color: COLOR_PRIMARY }, align: "right" } },
+      { text: "평당가", options: { bold: true, color: "FFFFFF", fill: { color: COLOR_PRIMARY }, align: "right" } },
+      { text: "분양일", options: { bold: true, color: "FFFFFF", fill: { color: COLOR_PRIMARY } } },
     ],
-    ...apartments.map((a) => [
-      { text: a.name, options: { fontSize: 8, color: TEXT_LIGHT } },
-      {
-        text: `${a.units.toLocaleString()}`,
-        options: {
-          fontSize: 8,
-          color: TEXT_LIGHT,
-          align: "right" as const,
-        },
-      },
-      {
-        text: `${a.price_per_pyeong.toLocaleString()}`,
-        options: {
-          fontSize: 8,
-          color: TEXT_LIGHT,
-          align: "right" as const,
-        },
-      },
-      { text: a.sale_date, options: { fontSize: 8, color: TEXT_LIGHT } },
-    ]),
+    ...apartments.slice(0, 10).map(a => [
+      { text: a.name },
+      { text: a.units.toLocaleString(), options: { align: "right" as const } },
+      { text: a.price_per_pyeong.toLocaleString(), options: { align: "right" as const } },
+      { text: a.sale_date },
+    ])
   ];
-  slide.addTable(tableRows, {
-    x: PANEL_X + 0.15,
-    y: 1.3,
-    w: PANEL_W - 0.3,
-    fontFace: FONT_TITLE,
-    border: { type: "solid", pt: 0.5, color: "333366" },
+
+  slide.addTable(rows, {
+    x: 0.7, y: 1.8, w: tableW - 0.4,
+    fontSize: 9, fontFace: FONT_MAIN,
+    border: { type: "solid", pt: 0.5, color: "E2E8F0" },
     rowH: 0.3,
   });
 
-  addSlideFooter(slide, 5);
+  addFooter(slide, 5, 6);
 }
 
 function addSummarySlide(
   pptx: PptxGenJS,
   config: AnalysisConfig,
-  subways: SubwayStation[],
-  schools: School[],
-  mountains: Mountain[],
-  parks: Park[],
-  apartments: Apartment[],
+  pois: readonly Poi[],
   baseMapImage: string,
-  radiusPosition: RadiusPosition | null,
-  projectName: string,
-  refDate: string
+  radiusPosition: RadiusPosition | null
 ) {
   const slide = pptx.addSlide();
-  slide.background = { fill: BG_DARK };
-  addMapBackground(slide, baseMapImage);
+  addFullBleedMap(slide, baseMapImage);
   addRadiusCircle(slide, radiusPosition);
-  addSlidePanel(slide, "종합 분석", projectName, refDate);
+  addHeader(slide, "종합 분석 및 시사점", config);
 
-  const lineCount = new Set(subways.map((s) => s.line)).size;
-  const totalUnits = apartments.reduce((sum, a) => sum + a.units, 0);
-  const avgPrice =
-    apartments.length > 0
-      ? Math.round(
-          apartments.reduce((sum, a) => sum + a.price_per_pyeong, 0) /
-            apartments.length
-        )
-      : 0;
-  const elemCount = schools.filter((s) => s.level === "elementary").length;
-  const middleCount = schools.filter((s) => s.level === "middle").length;
-  const highCount = schools.filter((s) => s.level === "high").length;
+  const panelW = 6;
+  addDataPanel(slide, 0.5, 1.5, panelW, 5);
 
-  const summaryItems = [
-    `분석 중심: ${config.centerName}`,
-    `분석 범위: 반경 ${config.radiusKm}km`,
-    `지하철역: ${subways.length}개 (${lineCount}개 노선)`,
-    `교육시설: ${schools.length}개 (초 ${elemCount} / 중 ${middleCount} / 고 ${highCount})`,
-    `자연환경: 산 ${mountains.length}개, 공원 ${parks.length}개`,
-    `분양단지: ${apartments.length}개 (총 ${totalUnits.toLocaleString()}세대)`,
-    `평균 분양가: ${avgPrice.toLocaleString()}만원/평`,
+  const subways = pois.filter((p): p is SubwayStation => p.category === "subway");
+  const schools = pois.filter((p): p is School => p.category === "school");
+  const apartments = pois.filter((p): p is Apartment => p.category === "apartment");
+  const avgPrice = apartments.length ? Math.round(apartments.reduce((s, a) => s + a.price_per_pyeong, 0) / apartments.length) : 0;
+
+  const points = [
+    `교통 환경: 반경 내 지하철역 ${subways.length}개소 위치`,
+    `교육 여건: 초/중/고 총 ${schools.length}개교 인접`,
+    `공급 현황: 인근 ${apartments.length}개 단지 분양 진행 중`,
+    `가격 수준: 평균 분양가 ${avgPrice.toLocaleString()}만원/평 형성`,
+    `종합 평가: 대상지는 우수한 생활 인프라를 갖춘 입지로 판단됨`,
   ];
 
-  summaryItems.forEach((text, i) => {
+  points.forEach((text, i) => {
     slide.addText(text, {
-      x: PANEL_X + 0.3,
-      y: 1.3 + i * 0.4,
-      w: PANEL_W - 0.6,
-      h: 0.35,
-      fontSize: 11,
-      fontFace: FONT_TITLE,
-      color: TEXT_LIGHT,
+      x: 0.8, y: 2.0 + i * 0.6, w: panelW - 0.6, h: 0.5,
+      fontSize: 14, fontFace: FONT_MAIN, color: COLOR_TEXT_BODY,
+      bold: i === points.length - 1,
     });
   });
 
-  slide.addText("* 본 보고서는 자동 생성되었습니다", {
-    x: PANEL_X + 0.3,
-    y: 6.5,
-    w: PANEL_W - 0.6,
-    h: 0.3,
-    fontSize: 8,
-    fontFace: FONT_TITLE,
-    color: "666666",
-  });
-
-  addSlideFooter(slide, 6);
+  addFooter(slide, 6, 6);
 }
 
-// ── Main export ───────────────────────────────────────────────────────────────
+// ── Main ─────────────────────────────────────────────────────────────────────
 
 export async function generateSiteAnalysisPpt(
   config: AnalysisConfig,
@@ -715,88 +414,26 @@ export async function generateSiteAnalysisPpt(
 ): Promise<void> {
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE";
-  pptx.author = "Site Analysis Generator";
-  pptx.title = `${config.centerName} 사이트 분석`;
+  pptx.title = `${config.centerName} 입지 분석`;
 
-  const subways = allPois.filter(
-    (p): p is SubwayStation => p.category === "subway"
-  );
+  addCoverSlide(pptx, config, baseMapImage);
+  addOverviewSlide(pptx, config, baseMapImage, poiPositions, radiusPosition);
+  
+  const subways = allPois.filter((p): p is SubwayStation => p.category === "subway");
+  addCategorySlide(pptx, "교통 분석", "subway", config, baseMapImage, poiPositions, radiusPosition, 2, 
+    subways.slice(0, 8).map(s => `${s.name} (${s.line})`));
+
   const schools = allPois.filter((p): p is School => p.category === "school");
-  const parks = allPois.filter((p): p is Park => p.category === "park");
-  const mountains = allPois.filter(
-    (p): p is Mountain => p.category === "mountain"
-  );
-  const apartments = allPois.filter(
-    (p): p is Apartment => p.category === "apartment"
-  );
+  addCategorySlide(pptx, "교육 환경", "school", config, baseMapImage, poiPositions, radiusPosition, 3, 
+    schools.slice(0, 8).map(s => `${s.name} (${s.level === 'elementary' ? '초' : s.level === 'middle' ? '중' : '고'})`));
 
-  const refDate = new Date().toLocaleDateString("ko-KR");
-  const projectName = `${config.centerName} 사이트 분석`;
+  addCategorySlide(pptx, "자연 환경", ["park", "mountain"], config, baseMapImage, poiPositions, radiusPosition, 4, 
+    allPois.filter(p => p.category === "park" || p.category === "mountain").slice(0, 8).map(p => p.name));
 
-  addCoverSlide(pptx, config, baseMapImage, refDate);
-  addOverviewSlide(
-    pptx,
-    subways,
-    schools,
-    parks,
-    mountains,
-    apartments,
-    baseMapImage,
-    poiPositions,
-    radiusPosition,
-    projectName,
-    refDate
-  );
-  addTransportSlide(
-    pptx,
-    subways,
-    baseMapImage,
-    poiPositions,
-    radiusPosition,
-    projectName,
-    refDate
-  );
-  addEducationSlide(
-    pptx,
-    schools,
-    baseMapImage,
-    poiPositions,
-    radiusPosition,
-    projectName,
-    refDate
-  );
-  addNatureSlide(
-    pptx,
-    mountains,
-    parks,
-    baseMapImage,
-    poiPositions,
-    radiusPosition,
-    projectName,
-    refDate
-  );
-  addApartmentsSlide(
-    pptx,
-    apartments,
-    baseMapImage,
-    poiPositions,
-    radiusPosition,
-    projectName,
-    refDate
-  );
-  addSummarySlide(
-    pptx,
-    config,
-    subways,
-    schools,
-    mountains,
-    parks,
-    apartments,
-    baseMapImage,
-    radiusPosition,
-    projectName,
-    refDate
-  );
+  const apartments = allPois.filter((p): p is Apartment => p.category === "apartment");
+  addApartmentSlide(pptx, apartments, config, baseMapImage, poiPositions, radiusPosition);
+
+  addSummarySlide(pptx, config, allPois, baseMapImage, radiusPosition);
 
   await pptx.writeFile({ fileName: `${config.centerName}_사이트분석.pptx` });
 }

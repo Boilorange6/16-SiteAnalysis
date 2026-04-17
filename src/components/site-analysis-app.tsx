@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback } from "react";
 import type { AnalysisConfig, LayerVisibility, Poi } from "@/lib/types";
+import { THEME_COLORS } from "@/lib/types";
 import type { MapViewHandle } from "./map-view";
 import MapView from "./map-view";
 import Sidebar from "./sidebar";
@@ -60,7 +61,7 @@ export default function SiteAnalysisApp() {
   }, [layers, config]);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#0F0F23]">
+    <div className="flex h-screen w-screen overflow-hidden" style={{ backgroundColor: THEME_COLORS.overlayDark }}>
       <Sidebar
         config={config}
         layers={layers}
@@ -78,11 +79,11 @@ export default function SiteAnalysisApp() {
           layers={layers}
         />
         {exporting && (
-          <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-50">
-            <div className="bg-[#1A1A2E] rounded-xl p-8 text-center shadow-2xl">
-              <div className="w-12 h-12 border-4 border-[#E94560] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-              <p className="text-white font-medium">PPT 생성 중...</p>
-              <p className="text-gray-400 text-sm mt-1">지도 캡처 및 슬라이드 생성</p>
+          <div className="absolute inset-0 bg-[#0F172A]/80 backdrop-blur-sm flex items-center justify-center z-50">
+            <div className="bg-[#1E3A8A] rounded-2xl p-10 text-center shadow-2xl border border-white/10">
+              <div className="w-12 h-12 border-4 border-blue-400 border-t-white rounded-full animate-spin mx-auto mb-6" />
+              <p className="text-white text-lg font-bold">PPT 리포트 생성 중</p>
+              <p className="text-blue-200/60 text-sm mt-2 font-medium">위성지도 캡처 및 데이터 분석 중...</p>
             </div>
           </div>
         )}

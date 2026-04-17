@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from "react";
 import type { Poi, AnalysisConfig, LayerVisibility, SubwayStation, Apartment, PoiPosition, RadiusPosition } from "@/lib/types";
-import { CATEGORY_COLORS } from "@/lib/types";
+import { CATEGORY_COLORS, THEME_COLORS } from "@/lib/types";
 import { haversineDistance } from "@/lib/geo";
 
 interface MapViewProps {
@@ -19,11 +19,11 @@ export interface MapViewHandle {
 }
 
 const ICON_SVG: Record<string, string> = {
-  subway: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="4" y="3" width="16" height="14" rx="2"/><path d="M4 11h16"/><circle cx="8" cy="21" r="1"/><circle cx="16" cy="21" r="1"/><path d="M8 17l-2 4"/><path d="M16 17l2 4"/></svg>`,
-  school: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 6 3 9 0v-5"/></svg>`,
-  park: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 2a5 5 0 015 5c0 3-5 8-5 8s-5-5-5-8a5 5 0 015-5z"/><path d="M12 22v-7"/><path d="M9 17l3-2 3 2"/></svg>`,
-  mountain: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M8 21l4-10 4 10"/><path d="M2 21h20"/><path d="M15 11l4 10"/><path d="M10 15l-4 6"/></svg>`,
-  apartment: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="1"/><path d="M9 22V12h6v10"/><path d="M8 6h.01M16 6h.01M12 6h.01M8 10h.01M16 10h.01M12 10h.01M8 14h.01M16 14h.01"/></svg>`,
+  subway: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 48 48" fill="white"><path d="M14 14 h20 v16 a4 4 0 0 1 -4 4 h-12 a4 4 0 0 1 -4 -4 v-16 M18 38 l-4 4 M30 38 l4 4 M14 24 h20 M18 30 h12" stroke="white" stroke-width="2"/></svg>`,
+  school: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 48 48" fill="white"><path d="M24 14 L10 22 L24 30 L38 22 Z M10 30 L10 38 L24 44 L38 38 L38 30 M38 22 L38 34" stroke="white" stroke-width="2"/></svg>`,
+  park: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 48 48" fill="white"><path d="M24 36 L24 28 M18 28 C12 28 12 14 24 14 C36 14 36 28 30 28 Z" stroke="white" stroke-width="2"/></svg>`,
+  mountain: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 48 48" fill="white"><path d="M10 34 L20 18 L28 28 L38 34 Z M24 24 L30 14 L36 26" stroke="white" stroke-width="2"/></svg>`,
+  apartment: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 48 48" fill="white"><path d="M16 34 v-18 h16 v18 M16 34 h16 M20 22 h2 M26 22 h2 M20 28 h2 M26 28 h2" stroke="white" stroke-width="2"/></svg>`,
 };
 
 function createIcon(category: string, color: string, L: typeof import("leaflet")) {
@@ -57,17 +57,19 @@ function createIcon(category: string, color: string, L: typeof import("leaflet")
 
 function createLabel(name: string, extra: string) {
   return `<div style="
-    background:rgba(0,0,0,0.55);
-    backdrop-filter:blur(6px);
-    -webkit-backdrop-filter:blur(6px);
+    background:${THEME_COLORS.overlayDark}cc;
+    backdrop-filter:blur(8px);
+    -webkit-backdrop-filter:blur(8px);
     color:#fff;
-    padding:4px 8px;
-    border-radius:4px;
-    font-size:11px;
-    font-family:'맑은 고딕',sans-serif;
+    padding:6px 10px;
+    border-radius:6px;
+    font-size:12px;
+    font-family:'Pretendard','Noto Sans KR',sans-serif;
     white-space:nowrap;
-    line-height:1.3;
-  "><strong>${name}</strong>${extra ? `<br/><span style="color:#ccc;font-size:10px">${extra}</span>` : ""}</div>`;
+    line-height:1.4;
+    border:1px solid rgba(255,255,255,0.1);
+    box-shadow:0 4px 12px rgba(0,0,0,0.3);
+  "><strong style="color:${THEME_COLORS.secondaryNavy}">${name}</strong>${extra ? `<br/><span style="color:rgba(255,255,255,0.7);font-size:11px">${extra}</span>` : ""}</div>`;
 }
 
 function getPoiExtra(poi: Poi): string {
@@ -198,32 +200,32 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
 
       circleRef.current = L.circle([config.centerLat, config.centerLng], {
         radius: config.radiusKm * 1000,
-        color: "#E94560",
-        weight: 2,
-        fillColor: "#E94560",
-        fillOpacity: 0.08,
-        dashArray: "8 4",
+        color: "#0EA5E9",
+        weight: 3,
+        fillColor: "#0EA5E9",
+        fillOpacity: 0.15,
+        dashArray: "10 6",
       }).addTo(map);
 
       const centerMarker = L.marker([config.centerLat, config.centerLng], {
         icon: L.divIcon({
           html: `<div style="
-            width: 16px; height: 16px;
-            background: #E94560;
-            border: 3px solid white;
+            width: 20px; height: 20px;
+            background: ${THEME_COLORS.secondaryNavy};
+            border: 4px solid white;
             border-radius: 50%;
-            box-shadow: 0 0 10px rgba(233,69,96,0.6);
+            box-shadow: 0 0 15px rgba(59,130,246,0.5);
           "></div>`,
           className: "",
-          iconSize: [16, 16],
-          iconAnchor: [8, 8],
+          iconSize: [20, 20],
+          iconAnchor: [10, 10],
         }),
       })
         .addTo(map)
         .bindTooltip(config.centerName, {
           permanent: true,
           direction: "top",
-          offset: [0, -12],
+          offset: [0, -15],
           className: "center-tooltip",
         });
 
@@ -276,7 +278,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
       if (poi.category === "apartment") {
         const dashLine = L.polyline(
           [[config.centerLat, config.centerLng], [poi.lat, poi.lng]],
-          { color: "#FF7043", weight: 1, opacity: 0.4, dashArray: "6 4" }
+          { color: "#374151", weight: 1.5, opacity: 0.5, dashArray: "6 4" }
         );
         markersRef.current!.addLayer(dashLine);
       }

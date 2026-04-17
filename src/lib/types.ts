@@ -76,6 +76,17 @@ export const CATEGORY_COLORS: Record<PoiCategory, string> = {
   mountain: "#10B981",
 } as const;
 
+export const THEME_COLORS = {
+  primaryNavy: "#1E3A8A",
+  secondaryNavy: "#3B82F6",
+  pureWhite: "#FFFFFF",
+  overlayDark: "#0F172A",
+  overlayLight: "#F8FAFC",
+  background: "#F1F5F9", // Light grey background for the app frame if needed, or Navy
+  sidebarBg: "#1E3A8A",
+  accent: "#3B82F6",
+} as const;
+
 export const CATEGORY_LABELS: Record<PoiCategory, string> = {
   subway: "지하철역",
   school: "학교",
