@@ -63,14 +63,7 @@ echo       Press Ctrl+C then Y in this window to stop the server.
 echo.
 
 REM Open browser asynchronously, polling until server is ready
-start "" cmd /c "
-:poll
-curl.exe -s --max-time 2 -o NUL http://localhost:3000 2>NUL
-if errorlevel 1 (
-    timeout /t 1 /nobreak > NUL
-    goto poll
-)
-start http://localhost:3000"
+start /b powershell -NoProfile -WindowStyle Hidden -Command "while ($true) { try { Invoke-WebRequest -Uri 'http://localhost:3000' -TimeoutSec 2 -UseBasicParsing | Out-Null; Start-Process 'http://localhost:3000'; break } catch { Start-Sleep 1 } }"
 
 REM Run dev server (foreground)
 call npm run dev
