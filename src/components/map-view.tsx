@@ -1,9 +1,28 @@
 "use client";
 
-import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from "react";
-import type { Poi, AnalysisConfig, LayerVisibility, SubwayStation, SubwayRoute, Apartment, PoiPosition, RadiusPosition } from "@/lib/types";
-import { CATEGORY_COLORS, THEME_COLORS } from "@/lib/types";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import type {
+  AnalysisConfig,
+  Apartment,
+  LayerVisibility,
+  Poi,
+  PoiPosition,
+  RadiusPosition,
+  SubwayRoute,
+  SubwayStation,
+} from "@/lib/types";
+import { THEME_COLORS } from "@/lib/types";
 import { haversineDistance } from "@/lib/geo";
+import { clusterPois } from "@/lib/poi-clusters";
+import {
+  createClusterIcon,
+  createIcon,
+  createLabel,
+  getClusterColor,
+  getPoiColor,
+  getPoiExtra,
+} from "@/lib/map-marker-utils";
+import { toJpeg } from "html-to-image";
 
 interface MapViewProps {
   readonly config: AnalysisConfig;
@@ -20,73 +39,103 @@ export interface MapViewHandle {
   getRouteNormalizedPositions(routes: readonly SubwayRoute[]): { line: string; lineColor: string; points: { nx: number; ny: number }[] }[];
 }
 
-const ICON_SVG: Record<string, string> = {
-  subway: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 48 48" fill="white"><path d="M14 14 h20 v16 a4 4 0 0 1 -4 4 h-12 a4 4 0 0 1 -4 -4 v-16 M18 38 l-4 4 M30 38 l4 4 M14 24 h20 M18 30 h12" stroke="white" stroke-width="2"/></svg>`,
-  school: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 48 48" fill="white"><path d="M24 14 L10 22 L24 30 L38 22 Z M10 30 L10 38 L24 44 L38 38 L38 30 M38 22 L38 34" stroke="white" stroke-width="2"/></svg>`,
-  park: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 48 48" fill="white"><path d="M24 36 L24 28 M18 28 C12 28 12 14 24 14 C36 14 36 28 30 28 Z" stroke="white" stroke-width="2"/></svg>`,
-  mountain: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 48 48" fill="white"><path d="M10 34 L20 18 L28 28 L38 34 Z M24 24 L30 14 L36 26" stroke="white" stroke-width="2"/></svg>`,
-  apartment: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 48 48" fill="white"><path d="M16 34 v-18 h16 v18 M16 34 h16 M20 22 h2 M26 22 h2 M20 28 h2 M26 28 h2" stroke="white" stroke-width="2"/></svg>`,
-};
+const CAPTURE_W = 1920;
+const CAPTURE_H = Math.round(1920 * 7.5 / 9.333);
 
-function createIcon(category: string, color: string, L: typeof import("leaflet")) {
-  const svg = ICON_SVG[category] ?? ICON_SVG.park;
-  const html = `<div style="
-    background:white;
-    border-radius:50%;
-    width:32px;
-    height:32px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    box-shadow:0 3px 8px rgba(0,0,0,0.5),0 1px 3px rgba(0,0,0,0.3);
-  "><div style="
-    background:${color};
-    border-radius:50%;
-    width:24px;
-    height:24px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-  ">${svg.replace('width="24"', 'width="13"').replace('height="24"', 'height="13"')}</div></div>`;
-
-  return L.divIcon({
-    html,
-    className: "",
-    iconSize: [32, 32],
-    iconAnchor: [16, 16],
-  });
-}
-
-function createLabel(name: string, extra: string) {
-  return `<div style="
-    background:${THEME_COLORS.overlayDark}cc;
-    backdrop-filter:blur(8px);
-    -webkit-backdrop-filter:blur(8px);
-    color:#fff;
-    padding:6px 10px;
-    border-radius:6px;
-    font-size:12px;
-    font-family:'Pretendard','Noto Sans KR',sans-serif;
-    white-space:nowrap;
-    line-height:1.4;
-    border:1px solid rgba(255,255,255,0.1);
-    box-shadow:0 4px 12px rgba(0,0,0,0.3);
-  "><strong style="color:${THEME_COLORS.secondaryNavy}">${name}</strong>${extra ? `<br/><span style="color:rgba(255,255,255,0.7);font-size:11px">${extra}</span>` : ""}</div>`;
-}
-
-function getPoiExtra(poi: Poi): string {
-  switch (poi.category) {
-    case "subway":
-      return (poi as SubwayStation).line;
-    case "apartment": {
-      const apt = poi as Apartment;
-      return `${apt.units.toLocaleString()}세대 | ${apt.price_per_pyeong.toLocaleString()}만/평`;
+function setMarkerAccessibility(marker: import("leaflet").Marker, label: string) {
+  const applyAttributes = () => {
+    const element = marker.getElement();
+    if (!element) {
+      return;
     }
-    case "mountain":
-      return `${(poi as { elevation_m: number }).elevation_m}m`;
-    default:
-      return "";
+
+    element.setAttribute("role", "button");
+    element.setAttribute("tabindex", "0");
+    element.setAttribute("aria-label", label);
+  };
+
+  applyAttributes();
+  marker.on("add", applyAttributes);
+}
+
+function zoomToCluster(map: import("leaflet").Map, L: typeof import("leaflet"), items: readonly Poi[]) {
+  if (items.length === 0) {
+    return;
   }
+
+  if (items.length === 1) {
+    map.setView([items[0].lat, items[0].lng], Math.max(map.getZoom(), 16));
+    return;
+  }
+
+  const bounds = L.latLngBounds(items.map((item) => [item.lat, item.lng] as [number, number]));
+  if (!bounds.isValid()) {
+    return;
+  }
+
+  if (bounds.getNorthEast().equals(bounds.getSouthWest())) {
+    map.setView([items[0].lat, items[0].lng], Math.min(map.getZoom() + 2, 18));
+    return;
+  }
+
+  map.fitBounds(bounds.pad(0.4), { maxZoom: 17 });
+}
+
+function addSinglePoiMarker(
+  L: typeof import("leaflet"),
+  markersLayer: import("leaflet").LayerGroup,
+  config: AnalysisConfig,
+  poi: Poi
+) {
+  const marker = L.marker([poi.lat, poi.lng], {
+    icon: createIcon(poi.category, getPoiColor(poi), L),
+    keyboard: true,
+  });
+
+  marker.bindTooltip(createLabel(poi.name, getPoiExtra(poi)), {
+    direction: "top",
+    offset: [0, -18],
+    className: "poi-tooltip",
+  });
+  setMarkerAccessibility(marker, `${poi.name} 마커`);
+  markersLayer.addLayer(marker);
+
+  if (poi.category !== "apartment") {
+    return;
+  }
+
+  const apartment = poi as Apartment;
+  const dashLine = L.polyline(
+    [
+      [config.centerLat, config.centerLng],
+      [apartment.lat, apartment.lng],
+    ],
+    { color: "#374151", weight: 1.5, opacity: 0.5, dashArray: "6 4" }
+  );
+  markersLayer.addLayer(dashLine);
+}
+
+function addClusterMarker(
+  L: typeof import("leaflet"),
+  map: import("leaflet").Map,
+  markersLayer: import("leaflet").LayerGroup,
+  items: readonly Poi[],
+  lat: number,
+  lng: number
+) {
+  const marker = L.marker([lat, lng], {
+    icon: createClusterIcon(items.length, getClusterColor(items), L),
+    keyboard: true,
+  });
+
+  marker.bindTooltip(createLabel(`${items.length}개 POI`, "클릭하여 확대"), {
+    direction: "top",
+    offset: [0, -24],
+    className: "poi-tooltip",
+  });
+  marker.on("click", () => zoomToCluster(map, L, items));
+  setMarkerAccessibility(marker, `${items.length}개 POI 클러스터, 클릭하여 확대`);
+  markersLayer.addLayer(marker);
 }
 
 const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
@@ -99,15 +148,14 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
   const routeLinesRef = useRef<import("leaflet").LayerGroup | null>(null);
   const circleRef = useRef<import("leaflet").Circle | null>(null);
   const centerMarkerRef = useRef<import("leaflet").Marker | null>(null);
-
-  // Capture dimensions matching PPT map area ratio (MAP_W:SLIDE_H = 9.333:7.5)
-  const CAPTURE_W = 1920;
-  const CAPTURE_H = Math.round(1920 * 7.5 / 9.333); // ≈ 1543
+  const [mapReady, setMapReady] = useState(false);
 
   useImperativeHandle(ref, () => ({
     async captureImage(): Promise<string> {
-      const { toJpeg } = await import("html-to-image");
-      if (!containerRef.current) throw new Error("Map container not found");
+      if (!containerRef.current) {
+        throw new Error("Map container not found");
+      }
+
       return toJpeg(containerRef.current, {
         quality: 0.92,
         width: CAPTURE_W,
@@ -116,92 +164,114 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
       });
     },
     async captureBaseMap(): Promise<string> {
-      if (!markersRef.current || !containerRef.current)
+      if (!markersRef.current || !containerRef.current || !mapRef.current) {
         throw new Error("Map not ready");
-      // Hide POI markers
+      }
+
       const savedLayers: import("leaflet").Layer[] = [];
       markersRef.current.eachLayer((layer) => savedLayers.push(layer));
       markersRef.current.clearLayers();
-      // Hide route lines (will be drawn as PPT shapes)
+
       const savedRouteLines: import("leaflet").Layer[] = [];
       if (routeLinesRef.current) {
         routeLinesRef.current.eachLayer((layer) => savedRouteLines.push(layer));
         routeLinesRef.current.clearLayers();
       }
-      // Hide radius circle and center marker (will be drawn as PPT shapes)
-      if (circleRef.current) circleRef.current.removeFrom(mapRef.current!);
-      if (centerMarkerRef.current) centerMarkerRef.current.removeFrom(mapRef.current!);
+
+      circleRef.current?.removeFrom(mapRef.current);
+      centerMarkerRef.current?.removeFrom(mapRef.current);
       await new Promise((resolve) => setTimeout(resolve, 300));
-      const { toJpeg } = await import("html-to-image");
+
       const image = await toJpeg(containerRef.current, {
         quality: 0.92,
         width: CAPTURE_W,
         height: CAPTURE_H,
         pixelRatio: 2,
       });
-      // Restore all hidden elements
-      savedLayers.forEach((layer) => markersRef.current!.addLayer(layer));
-      savedRouteLines.forEach((layer) => routeLinesRef.current!.addLayer(layer));
-      if (circleRef.current) circleRef.current.addTo(mapRef.current!);
-      if (centerMarkerRef.current) centerMarkerRef.current.addTo(mapRef.current!);
+
+      savedLayers.forEach((layer) => markersRef.current?.addLayer(layer));
+      savedRouteLines.forEach((layer) => routeLinesRef.current?.addLayer(layer));
+      circleRef.current?.addTo(mapRef.current);
+      centerMarkerRef.current?.addTo(mapRef.current);
+
       return image;
     },
-    getPoiPositions(pois: readonly Poi[]): PoiPosition[] {
-      if (!mapRef.current) return [];
+    getPoiPositions(selectedPois: readonly Poi[]): PoiPosition[] {
+      if (!mapRef.current) {
+        return [];
+      }
+
       const size = mapRef.current.getSize();
-      if (size.x === 0 || size.y === 0) return [];
-      return pois
+      if (size.x === 0 || size.y === 0) {
+        return [];
+      }
+
+      return selectedPois
         .map((poi) => {
-          const point = mapRef.current!.latLngToContainerPoint([
-            poi.lat,
-            poi.lng,
-          ]);
+          const point = mapRef.current!.latLngToContainerPoint([poi.lat, poi.lng]);
           return { poi, nx: point.x / size.x, ny: point.y / size.y };
         })
-        .filter((p) => p.nx >= 0 && p.nx <= 1 && p.ny >= 0 && p.ny <= 1);
+        .filter((position) => position.nx >= 0 && position.nx <= 1 && position.ny >= 0 && position.ny <= 1);
     },
     getRadiusPosition(): RadiusPosition | null {
-      if (!mapRef.current || !circleRef.current) return null;
+      if (!mapRef.current || !circleRef.current) {
+        return null;
+      }
+
       const size = mapRef.current.getSize();
-      if (size.x === 0 || size.y === 0) return null;
+      if (size.x === 0 || size.y === 0) {
+        return null;
+      }
+
       const center = circleRef.current.getLatLng();
       const bounds = circleRef.current.getBounds();
-      const centerPt = mapRef.current.latLngToContainerPoint(center);
-      const nePt = mapRef.current.latLngToContainerPoint(bounds.getNorthEast());
-      const swPt = mapRef.current.latLngToContainerPoint(bounds.getSouthWest());
+      const centerPoint = mapRef.current.latLngToContainerPoint(center);
+      const northEastPoint = mapRef.current.latLngToContainerPoint(bounds.getNorthEast());
+      const southWestPoint = mapRef.current.latLngToContainerPoint(bounds.getSouthWest());
+
       return {
-        centerNx: centerPt.x / size.x,
-        centerNy: centerPt.y / size.y,
-        radiusNx: (nePt.x - swPt.x) / 2 / size.x,
-        radiusNy: (swPt.y - nePt.y) / 2 / size.y,
+        centerNx: centerPoint.x / size.x,
+        centerNy: centerPoint.y / size.y,
+        radiusNx: (northEastPoint.x - southWestPoint.x) / 2 / size.x,
+        radiusNy: (southWestPoint.y - northEastPoint.y) / 2 / size.y,
       };
     },
     getRouteNormalizedPositions(routes: readonly SubwayRoute[]) {
-      if (!mapRef.current) return [];
+      if (!mapRef.current) {
+        return [];
+      }
+
       const size = mapRef.current.getSize();
-      if (size.x === 0 || size.y === 0) return [];
+      if (size.x === 0 || size.y === 0) {
+        return [];
+      }
+
       return routes
         .filter((route) => route.coordinates && route.coordinates.length >= 2)
         .map((route) => ({
           line: route.line,
           lineColor: route.lineColor,
           points: route.coordinates!.map(([lat, lng]) => {
-            const pt = mapRef.current!.latLngToContainerPoint([lat, lng]);
-            return { nx: pt.x / size.x, ny: pt.y / size.y };
+            const point = mapRef.current!.latLngToContainerPoint([lat, lng]);
+            return { nx: point.x / size.x, ny: point.y / size.y };
           }),
         }));
     },
   }));
 
   useEffect(() => {
-    if (mapRef.current || !containerRef.current) return;
+    if (mapRef.current || !containerRef.current) {
+      return;
+    }
 
     let cancelled = false;
 
     (async () => {
       const L = (await import("leaflet")).default;
 
-      if (cancelled || !containerRef.current) return;
+      if (cancelled || !containerRef.current) {
+        return;
+      }
 
       const map = L.map(containerRef.current, {
         center: [config.centerLat, config.centerLng],
@@ -223,7 +293,6 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
       mapRef.current = map;
       routeLinesRef.current = L.layerGroup().addTo(map);
       markersRef.current = L.layerGroup().addTo(map);
-
       circleRef.current = L.circle([config.centerLat, config.centerLng], {
         radius: config.radiusKm * 1000,
         color: "#0EA5E9",
@@ -236,16 +305,18 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
       const centerMarker = L.marker([config.centerLat, config.centerLng], {
         icon: L.divIcon({
           html: `<div style="
-            width: 20px; height: 20px;
-            background: ${THEME_COLORS.secondaryNavy};
-            border: 4px solid white;
-            border-radius: 50%;
-            box-shadow: 0 0 15px rgba(59,130,246,0.5);
+            width:20px;
+            height:20px;
+            background:${THEME_COLORS.secondaryNavy};
+            border:4px solid white;
+            border-radius:50%;
+            box-shadow:0 0 15px rgba(59,130,246,0.5);
           "></div>`,
           className: "",
           iconSize: [20, 20],
           iconAnchor: [10, 10],
         }),
+        keyboard: true,
       })
         .addTo(map)
         .bindTooltip(config.centerName, {
@@ -255,25 +326,28 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
           className: "center-tooltip",
         });
 
+      setMarkerAccessibility(centerMarker, `${config.centerName} 중심 지점`);
       centerMarkerRef.current = centerMarker;
+      setMapReady(true);
     })();
 
     return () => {
       cancelled = true;
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
-      }
+      setMapReady(false);
+      mapRef.current?.remove();
+      mapRef.current = null;
       markersRef.current = null;
       routeLinesRef.current = null;
       circleRef.current = null;
       centerMarkerRef.current = null;
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Update map center, circle, and center marker when config changes
   useEffect(() => {
-    if (!mapRef.current || !circleRef.current || !centerMarkerRef.current) return;
+    if (!mapRef.current || !circleRef.current || !centerMarkerRef.current) {
+      return;
+    }
+
     mapRef.current.setView([config.centerLat, config.centerLng], mapRef.current.getZoom());
     circleRef.current.setLatLng([config.centerLat, config.centerLng]);
     circleRef.current.setRadius(config.radiusKm * 1000);
@@ -282,78 +356,99 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
   }, [config.centerLat, config.centerLng, config.centerName, config.radiusKm]);
 
   const updateMarkers = useCallback(async () => {
-    if (!markersRef.current || !mapRef.current) return;
-    const L = (await import("leaflet")).default;
-    markersRef.current.clearLayers();
+    const map = mapRef.current;
+    const markersLayer = markersRef.current;
+    if (!map || !markersLayer) {
+      return;
+    }
 
-    const visible = pois.filter(
-      (p) => layers[p.category] && haversineDistance(config.centerLat, config.centerLng, p.lat, p.lng) <= config.radiusKm * 1000
+    const L = (await import("leaflet")).default;
+    markersLayer.clearLayers();
+
+    const visiblePois = pois.filter(
+      (poi) =>
+        layers[poi.category] &&
+        haversineDistance(config.centerLat, config.centerLng, poi.lat, poi.lng) <= config.radiusKm * 1000
     );
 
-    // Draw subway route polylines
     if (routeLinesRef.current) {
       routeLinesRef.current.clearLayers();
       if (layers.subway) {
         const stationMap = new Map(
-          visible
-            .filter((p): p is SubwayStation => p.category === "subway")
-            .map((s) => [s.id, s])
+          visiblePois
+            .filter((poi): poi is SubwayStation => poi.category === "subway")
+            .map((station) => [station.id, station])
         );
+
         subwayRoutes.forEach((route) => {
-          const coords: [number, number][] = route.coordinates && route.coordinates.length >= 2
-            ? (route.coordinates as [number, number][])
-            : route.stationIds
-                .map((id) => stationMap.get(id))
-                .filter((s): s is SubwayStation => s !== undefined)
-                .map((s) => [s.lat, s.lng]);
-          if (coords.length >= 2) {
-            const polyline = L.polyline(coords, {
+          const coordinates: [number, number][] =
+            route.coordinates && route.coordinates.length >= 2
+              ? route.coordinates.map(([lat, lng]) => [lat, lng] as [number, number])
+              : route.stationIds
+                  .map((stationId) => stationMap.get(stationId))
+                  .filter((station): station is SubwayStation => station !== undefined)
+                  .map((station) => [station.lat, station.lng]);
+
+          if (coordinates.length < 2) {
+            return;
+          }
+
+          routeLinesRef.current?.addLayer(
+            L.polyline(coordinates, {
               color: route.lineColor,
               weight: 4,
               opacity: 0.85,
-            });
-            routeLinesRef.current!.addLayer(polyline);
-          }
+            })
+          );
         });
       }
     }
 
-    visible.forEach((poi) => {
-      const color = poi.category === "subway" ? (poi as SubwayStation).lineColor : CATEGORY_COLORS[poi.category];
-      const marker = L.marker([poi.lat, poi.lng], {
-        icon: createIcon(poi.category, color, L),
-      });
+    const clusters = clusterPois(
+      visiblePois.map((poi) => {
+        const point = map.latLngToContainerPoint([poi.lat, poi.lng]);
+        return { poi, x: point.x, y: point.y };
+      })
+    );
 
-      marker.bindTooltip(createLabel(poi.name, getPoiExtra(poi)), {
-        direction: "top",
-        offset: [0, -18],
-        className: "poi-tooltip",
-      });
-
-      if (poi.category === "apartment") {
-        const dashLine = L.polyline(
-          [[config.centerLat, config.centerLng], [poi.lat, poi.lng]],
-          { color: "#374151", weight: 1.5, opacity: 0.5, dashArray: "6 4" }
-        );
-        markersRef.current!.addLayer(dashLine);
+    clusters.forEach((cluster) => {
+      if (cluster.items.length === 1) {
+        addSinglePoiMarker(L, markersLayer, config, cluster.items[0]);
+        return;
       }
 
-      markersRef.current!.addLayer(marker);
+      addClusterMarker(L, map, markersLayer, cluster.items, cluster.lat, cluster.lng);
     });
-  }, [pois, layers, config, subwayRoutes]);
+  }, [config, layers, pois, subwayRoutes]);
 
   useEffect(() => {
-    const timer = setTimeout(updateMarkers, 100);
-    return () => clearTimeout(timer);
-  }, [updateMarkers]);
+    if (!mapReady) {
+      return;
+    }
 
-  return (
-    <div
-      ref={containerRef}
-      className="w-full h-full"
-      style={{ minHeight: "100%" }}
-    />
-  );
+    updateMarkers();
+  }, [mapReady, updateMarkers]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!mapReady || !map) {
+      return;
+    }
+
+    const handleRecluster = () => {
+      void updateMarkers();
+    };
+
+    map.on("zoomend", handleRecluster);
+    map.on("resize", handleRecluster);
+
+    return () => {
+      map.off("zoomend", handleRecluster);
+      map.off("resize", handleRecluster);
+    };
+  }, [mapReady, updateMarkers]);
+
+  return <div ref={containerRef} className="min-h-full h-full w-full" />;
 });
 
 export default MapView;
