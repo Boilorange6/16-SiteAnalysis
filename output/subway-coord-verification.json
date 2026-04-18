@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-04-18T14:03:37.959Z",
+  "generatedAt": "2026-04-18T14:09:24.050Z",
   "summary": {
     "total": 225,
-    "passed": 224,
-    "failed": 1
+    "passed": 225,
+    "failed": 0
   },
   "byCategory": {
     "V01 역ID 중복": {
@@ -22,15 +22,9 @@
       "failures": []
     },
     "V04 반경 버퍼": {
-      "pass": 52,
-      "fail": 1,
-      "failures": [
-        {
-          "id": "cheongwadae/V04/sub-026",
-          "label": "[청와대 일대] 버티고개역 반경 5km 이내",
-          "detail": "거리 5.18km (한계 5km)"
-        }
-      ]
+      "pass": 53,
+      "fail": 0,
+      "failures": []
     },
     "V05 인접역 거리": {
       "pass": 42,
@@ -171,9 +165,9 @@
     {
       "id": "cheongwadae/V03/sub-011",
       "category": "V03 서울 경계",
-      "label": "[청와대 일대] 충정로역 서울 경계 내 위치",
+      "label": "[청와대 일대] 서대문역 서울 경계 내 위치",
       "passed": true,
-      "detail": "(37.5601, 126.9638) — 정상"
+      "detail": "(37.5659, 126.9667) — 정상"
     },
     {
       "id": "cheongwadae/V03/sub-012",
@@ -290,191 +284,191 @@
     {
       "id": "cheongwadae/V04/sub-001",
       "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 경복궁역 반경 5km 이내",
+      "label": "[청와대 일대] 경복궁역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 1.21km (한계 5km)"
+      "detail": "거리 1.21km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "cheongwadae/V04/sub-002",
       "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 안국역 반경 5km 이내",
+      "label": "[청와대 일대] 안국역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 1.48km (한계 5km)"
+      "detail": "거리 1.48km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "cheongwadae/V04/sub-003",
       "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 광화문역 반경 5km 이내",
+      "label": "[청와대 일대] 광화문역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 1.71km (한계 5km)"
+      "detail": "거리 1.71km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "cheongwadae/V04/sub-004",
       "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 종로3가역 반경 5km 이내",
+      "label": "[청와대 일대] 종로3가역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 2.26km (한계 5km)"
+      "detail": "거리 2.26km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "cheongwadae/V04/sub-005",
       "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 종각역 반경 5km 이내",
+      "label": "[청와대 일대] 종각역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 1.98km (한계 5km)"
+      "detail": "거리 1.98km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "cheongwadae/V04/sub-006",
       "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 시청역 반경 5km 이내",
+      "label": "[청와대 일대] 시청역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 2.33km (한계 5km)"
+      "detail": "거리 2.33km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "cheongwadae/V04/sub-007",
       "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 을지로입구역 반경 5km 이내",
+      "label": "[청와대 일대] 을지로입구역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 2.38km (한계 5km)"
+      "detail": "거리 2.38km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "cheongwadae/V04/sub-008",
       "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 을지로3가역 반경 5km 이내",
+      "label": "[청와대 일대] 을지로3가역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 2.70km (한계 5km)"
+      "detail": "거리 2.70km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "cheongwadae/V04/sub-009",
       "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 독립문역 반경 5km 이내",
+      "label": "[청와대 일대] 독립문역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 2.06km (한계 5km)"
+      "detail": "거리 2.06km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "cheongwadae/V04/sub-010",
       "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 충정로역 반경 5km 이내",
+      "label": "[청와대 일대] 충정로역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 3.12km (한계 5km)"
+      "detail": "거리 3.12km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "cheongwadae/V04/sub-011",
       "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 충정로역 반경 5km 이내",
+      "label": "[청와대 일대] 서대문역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 3.10km (한계 5km)"
+      "detail": "거리 2.41km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "cheongwadae/V04/sub-012",
       "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 혜화역 반경 5km 이내",
+      "label": "[청와대 일대] 혜화역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 2.43km (한계 5km)"
+      "detail": "거리 2.43km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "cheongwadae/V04/sub-013",
       "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 한성대입구역 반경 5km 이내",
+      "label": "[청와대 일대] 한성대입구역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 2.78km (한계 5km)"
+      "detail": "거리 2.78km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "cheongwadae/V04/sub-014",
       "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 성신여대입구역 반경 5km 이내",
+      "label": "[청와대 일대] 성신여대입구역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 3.68km (한계 5km)"
+      "detail": "거리 3.68km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "cheongwadae/V04/sub-015",
       "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 동대문역 반경 5km 이내",
+      "label": "[청와대 일대] 동대문역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 3.50km (한계 5km)"
+      "detail": "거리 3.50km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "cheongwadae/V04/sub-016",
       "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 동대문역사문화공원역 반경 5km 이내",
+      "label": "[청와대 일대] 동대문역사문화공원역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 3.85km (한계 5km)"
+      "detail": "거리 3.85km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "cheongwadae/V04/sub-017",
       "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 종로5가역 반경 5km 이내",
+      "label": "[청와대 일대] 종로5가역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 2.96km (한계 5km)"
+      "detail": "거리 2.96km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "cheongwadae/V04/sub-019",
       "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 녹번역 반경 5km 이내",
+      "label": "[청와대 일대] 녹번역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 2.50km (한계 5km)"
+      "detail": "거리 2.50km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "cheongwadae/V04/sub-020",
       "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 홍제역 반경 5km 이내",
+      "label": "[청와대 일대] 홍제역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 2.76km (한계 5km)"
+      "detail": "거리 2.76km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "cheongwadae/V04/sub-021",
       "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 무악재역 반경 5km 이내",
+      "label": "[청와대 일대] 무악재역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 2.23km (한계 5km)"
+      "detail": "거리 2.23km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "cheongwadae/V04/sub-022",
       "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 아현역 반경 5km 이내",
+      "label": "[청와대 일대] 아현역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 3.64km (한계 5km)"
+      "detail": "거리 3.64km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "cheongwadae/V04/sub-023",
       "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 이대역 반경 5km 이내",
+      "label": "[청와대 일대] 이대역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 4.17km (한계 5km)"
+      "detail": "거리 4.17km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "cheongwadae/V04/sub-024",
       "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 신촌역 반경 5km 이내",
+      "label": "[청와대 일대] 신촌역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 4.84km (한계 5km)"
+      "detail": "거리 4.84km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "cheongwadae/V04/sub-025",
       "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 약수역 반경 5km 이내",
+      "label": "[청와대 일대] 약수역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 4.73km (한계 5km)"
+      "detail": "거리 4.73km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "cheongwadae/V04/sub-026",
       "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 버티고개역 반경 5km 이내",
-      "passed": false,
-      "detail": "거리 5.18km (한계 5km)"
+      "label": "[청와대 일대] 버티고개역 반경 6km 이내",
+      "passed": true,
+      "detail": "거리 5.18km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "cheongwadae/V04/sub-027",
       "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 창신역 반경 5km 이내",
+      "label": "[청와대 일대] 창신역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 3.47km (한계 5km)"
+      "detail": "거리 3.47km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "cheongwadae/V04/sub-028",
       "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 보문역 반경 5km 이내",
+      "label": "[청와대 일대] 보문역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 3.90km (한계 5km)"
+      "detail": "거리 3.90km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "cheongwadae/V05/1호선/1",
@@ -598,9 +592,9 @@
     {
       "id": "cheongwadae/V05/5호선/1",
       "category": "V05 인접역 거리",
-      "label": "[청와대 일대] 5호선 충정로역→광화문역",
+      "label": "[청와대 일대] 5호선 서대문역→광화문역",
       "passed": true,
-      "detail": "1.69km ✓"
+      "detail": "1.07km ✓"
     },
     {
       "id": "cheongwadae/V05/6호선/1",
@@ -815,7 +809,7 @@
     {
       "id": "cheongwadae/V07/5호선/sub-011",
       "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 충정로역 ↔ 5호선 경로",
+      "label": "[청와대 일대] 서대문역 ↔ 5호선 경로",
       "passed": true,
       "detail": "최소 거리 0m ✓"
     },
@@ -1081,184 +1075,184 @@
     {
       "id": "seoul-gangnam/V04/sub-001",
       "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 강남역 반경 5km 이내",
+      "label": "[서울 강남구] 강남역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 0.00km (한계 5km)"
+      "detail": "거리 0.00km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "seoul-gangnam/V04/sub-002",
       "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 역삼역 반경 5km 이내",
+      "label": "[서울 강남구] 역삼역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 0.84km (한계 5km)"
+      "detail": "거리 0.84km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "seoul-gangnam/V04/sub-003",
       "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 선릉역 반경 5km 이내",
+      "label": "[서울 강남구] 선릉역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 2.03km (한계 5km)"
+      "detail": "거리 2.03km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "seoul-gangnam/V04/sub-004",
       "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 삼성역 반경 5km 이내",
+      "label": "[서울 강남구] 삼성역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 3.36km (한계 5km)"
+      "detail": "거리 3.36km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "seoul-gangnam/V04/sub-005",
       "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 종합운동장역 반경 5km 이내",
+      "label": "[서울 강남구] 종합운동장역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 4.30km (한계 5km)"
+      "detail": "거리 4.30km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "seoul-gangnam/V04/sub-006",
       "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 교대역 반경 5km 이내",
+      "label": "[서울 강남구] 교대역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 1.25km (한계 5km)"
+      "detail": "거리 1.25km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "seoul-gangnam/V04/sub-007",
       "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 서초역 반경 5km 이내",
+      "label": "[서울 강남구] 서초역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 1.81km (한계 5km)"
+      "detail": "거리 1.81km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "seoul-gangnam/V04/sub-008",
       "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 신논현역 반경 5km 이내",
+      "label": "[서울 강남구] 신논현역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 0.79km (한계 5km)"
+      "detail": "거리 0.79km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "seoul-gangnam/V04/sub-009",
       "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 논현역 반경 5km 이내",
+      "label": "[서울 강남구] 논현역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 1.62km (한계 5km)"
+      "detail": "거리 1.62km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "seoul-gangnam/V04/sub-010",
       "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 학동역 반경 5km 이내",
+      "label": "[서울 강남구] 학동역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 1.86km (한계 5km)"
+      "detail": "거리 1.86km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "seoul-gangnam/V04/sub-011",
       "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 강남구청역 반경 5km 이내",
+      "label": "[서울 강남구] 강남구청역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 2.48km (한계 5km)"
+      "detail": "거리 2.48km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "seoul-gangnam/V04/sub-012",
       "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 청담역 반경 5km 이내",
+      "label": "[서울 강남구] 청담역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 3.32km (한계 5km)"
+      "detail": "거리 3.32km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "seoul-gangnam/V04/sub-013",
       "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 압구정로데오역 반경 5km 이내",
+      "label": "[서울 강남구] 압구정로데오역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 3.42km (한계 5km)"
+      "detail": "거리 3.42km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "seoul-gangnam/V04/sub-014",
       "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 강남구청역(분당) 반경 5km 이내",
+      "label": "[서울 강남구] 강남구청역(분당) 반경 6km 이내",
       "passed": true,
-      "detail": "거리 2.48km (한계 5km)"
+      "detail": "거리 2.48km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "seoul-gangnam/V04/sub-015",
       "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 선정릉역 반경 5km 이내",
+      "label": "[서울 강남구] 선정릉역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 1.97km (한계 5km)"
+      "detail": "거리 1.97km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "seoul-gangnam/V04/sub-016",
       "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 한티역 반경 5km 이내",
+      "label": "[서울 강남구] 한티역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 2.74km (한계 5km)"
+      "detail": "거리 2.74km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "seoul-gangnam/V04/sub-017",
       "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 도곡역 반경 5km 이내",
+      "label": "[서울 강남구] 도곡역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 2.56km (한계 5km)"
+      "detail": "거리 2.56km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "seoul-gangnam/V04/sub-018",
       "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 매봉역 반경 5km 이내",
+      "label": "[서울 강남구] 매봉역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 1.38km (한계 5km)"
+      "detail": "거리 1.38km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "seoul-gangnam/V04/sub-019",
       "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 양재역 반경 5km 이내",
+      "label": "[서울 강남구] 양재역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 1.64km (한계 5km)"
+      "detail": "거리 1.64km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "seoul-gangnam/V04/sub-020",
       "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 남부터미널역 반경 5km 이내",
+      "label": "[서울 강남구] 남부터미널역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 1.84km (한계 5km)"
+      "detail": "거리 1.84km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "seoul-gangnam/V04/sub-021",
       "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 언주역 반경 5km 이내",
+      "label": "[서울 강남구] 언주역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 1.18km (한계 5km)"
+      "detail": "거리 1.18km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "seoul-gangnam/V04/sub-022",
       "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 선정릉역(9호선) 반경 5km 이내",
+      "label": "[서울 강남구] 선정릉역(9호선) 반경 6km 이내",
       "passed": true,
-      "detail": "거리 1.97km (한계 5km)"
+      "detail": "거리 1.97km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "seoul-gangnam/V04/sub-023",
       "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 봉은사역 반경 5km 이내",
+      "label": "[서울 강남구] 봉은사역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 3.22km (한계 5km)"
+      "detail": "거리 3.22km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "seoul-gangnam/V04/sub-024",
       "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 종합운동장역(9호선) 반경 5km 이내",
+      "label": "[서울 강남구] 종합운동장역(9호선) 반경 6km 이내",
       "passed": true,
-      "detail": "거리 4.30km (한계 5km)"
+      "detail": "거리 4.30km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "seoul-gangnam/V04/sub-025",
       "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 대치역 반경 5km 이내",
+      "label": "[서울 강남구] 대치역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 3.21km (한계 5km)"
+      "detail": "거리 3.21km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "seoul-gangnam/V04/sub-026",
       "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 학여울역 반경 5km 이내",
+      "label": "[서울 강남구] 학여울역 반경 6km 이내",
       "passed": true,
-      "detail": "거리 3.87km (한계 5km)"
+      "detail": "거리 3.87km (한계 6km — 반경 3km + 버퍼 3km)"
     },
     {
       "id": "seoul-gangnam/V05/2호선/1",

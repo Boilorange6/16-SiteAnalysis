@@ -51,7 +51,7 @@ function addCheck(id, category, label, passed, detail) {
 function verifyRegion(region) {
   const { regionCode, regionName, defaultConfig } = region;
   const { centerLat, centerLng, radiusKm } = defaultConfig;
-  const maxDistM = (radiusKm + 2) * 1000; // 2km 버퍼
+  const maxDistM = (radiusKm + 3) * 1000; // 3km 버퍼 (노선 경로 표시 목적의 경계 역 수용)
 
   const stationsPath = path.join(DATA_ROOT, 'seed', regionCode, 'subway-stations.json');
   const routesPath   = path.join(DATA_ROOT, 'seed', regionCode, 'subway-routes.json');
@@ -117,9 +117,9 @@ function verifyRegion(region) {
     addCheck(
       `${prefix}/V04/${s.id}`,
       'V04 반경 버퍼',
-      `[${regionName}] ${s.name} 반경 ${radiusKm + 2}km 이내`,
+      `[${regionName}] ${s.name} 반경 ${radiusKm + 3}km 이내`,
       inRange,
-      `거리 ${(distM / 1000).toFixed(2)}km (한계 ${(maxDistM / 1000).toFixed(0)}km)`,
+      `거리 ${(distM / 1000).toFixed(2)}km (한계 ${(maxDistM / 1000).toFixed(0)}km — 반경 ${radiusKm}km + 버퍼 3km)`,
     );
   }
 

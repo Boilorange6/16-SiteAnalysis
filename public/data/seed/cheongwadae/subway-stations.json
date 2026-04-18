@@ -9,7 +9,7 @@
   { "id": "sub-008", "name": "을지로3가역", "lat": 37.5665, "lng": 126.9920, "category": "subway", "line": "2호선", "lineColor": "#33A23D" },
   { "id": "sub-009", "name": "독립문역", "lat": 37.5722, "lng": 126.9601, "category": "subway", "line": "3호선", "lineColor": "#EF7C1C" },
   { "id": "sub-010", "name": "충정로역", "lat": 37.5600, "lng": 126.9637, "category": "subway", "line": "2호선", "lineColor": "#33A23D" },
-  { "id": "sub-011", "name": "충정로역", "lat": 37.5601, "lng": 126.9638, "category": "subway", "line": "5호선", "lineColor": "#996CAC" },
+  { "id": "sub-011", "name": "서대문역", "lat": 37.5659, "lng": 126.9667, "category": "subway", "line": "5호선", "lineColor": "#996CAC" },
   { "id": "sub-012", "name": "혜화역", "lat": 37.5824, "lng": 127.0019, "category": "subway", "line": "4호선", "lineColor": "#00A4E3" },
   { "id": "sub-013", "name": "한성대입구역", "lat": 37.5884, "lng": 127.0063, "category": "subway", "line": "4호선", "lineColor": "#00A4E3" },
   { "id": "sub-014", "name": "성신여대입구역", "lat": 37.5927, "lng": 127.0159, "category": "subway", "line": "4호선", "lineColor": "#00A4E3" },
