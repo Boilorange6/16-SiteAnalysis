@@ -5,6 +5,7 @@ import type { AddressSearchResult } from "@/lib/data-provider";
 import type { AnalysisConfig, Apartment, LayerVisibility, Poi, RegionMetadata } from "@/lib/types";
 import { CATEGORY_COLORS, CATEGORY_LABELS } from "@/lib/types";
 import AddressSearch from "./address-search";
+import AddressSearchInput from "./address-search-input";
 
 interface SidebarProps {
   readonly config: AnalysisConfig;
@@ -183,23 +184,29 @@ export default function Sidebar({
                   inputClassName={inputClass}
                   focusRingClassName={focusRingClass}
                   onSelectRegion={onRegionSelect}
-                  onSelectAddress={onSelectAddress}
                 />
 
                 <div>
                   <label htmlFor={centerNameId} className="text-[10px] font-bold uppercase tracking-[0.22em] text-blue-200/55">
-                    보고서 표기명
+                    분석 중심 주소
                   </label>
-                  <input
+                  <AddressSearchInput
                     id={centerNameId}
-                    type="text"
-                    placeholder="ex. 청와대, 강남역"
                     value={form.centerName}
-                    onChange={(event) => setForm((previous) => ({ ...previous, centerName: event.target.value }))}
-                    aria-label="보고서 표기명 입력"
-                    data-testid="center-name-input"
-                    className={inputClass}
+                    loading={loading}
+                    inputClassName={inputClass}
+                    onChange={(value) => setForm((previous) => ({ ...previous, centerName: value }))}
+                    onSelect={(result) => {
+                      setForm((previous) => ({
+                        ...previous,
+                        centerName: result.name,
+                        centerLat: result.lat.toString(),
+                        centerLng: result.lng.toString(),
+                      }));
+                      onSelectAddress(result);
+                    }}
                   />
+                  <p className="mt-2 text-[11px] text-white/55">주소를 선택하면 중심 좌표와 반경 내 POI가 자동으로 갱신됩니다.</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">

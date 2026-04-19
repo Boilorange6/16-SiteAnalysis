@@ -76,34 +76,42 @@ export async function loadRegion(regionCode: string): Promise<RegionData> {
   return regionData;
 }
 
-export async function searchAddresses(query: string, size = 5): Promise<readonly AddressSearchResult[]> {
+export async function searchAddresses(query: string, page = 1, size = 5): Promise<readonly AddressSearchResult[]> {
   const params = new URLSearchParams({
     query,
+    page: String(page),
     size: String(size),
   });
   const response = await fetchJson<{ results: AddressSearchResult[] }>(`/api/address-search?${params.toString()}`);
   return response.results;
 }
 
-export async function loadDynamicRegion(config: AnalysisConfig, address: string): Promise<RegionData> {
-  const cacheKey = `dynamic-${config.centerLat.toFixed(4)}-${config.centerLng.toFixed(4)}-${config.radiusKm}`;
+export const CUSTOM_REGION_CODE = "custom";
+
+export async function loadDynamicRegion(lat: number, lng: number, radiusKm: number): Promise<RegionData> {
+  const cacheKey = `dynamic-${lat.toFixed(4)}-${lng.toFixed(4)}-${radiusKm}`;
   const cached = dynamicCache.get(cacheKey);
   if (cached) return cached;
 
   const params = new URLSearchParams({
-    lat: String(config.centerLat),
-    lng: String(config.centerLng),
-    radius: String(Math.round(config.radiusKm * 1000)),
+    lat: String(lat),
+    lng: String(lng),
+    radius: String(Math.round(radiusKm * 1000)),
     categories: "subway,school,park,mountain,apartment",
   });
   const response = await fetchJson<{ pois: Poi[] }>(`/api/poi-search?${params.toString()}`);
 
   const regionData: RegionData = {
-    regionCode: "live-search",
-    regionName: `${config.centerName} 검색 결과`,
-    address,
+    regionCode: CUSTOM_REGION_CODE,
+    regionName: "실시간 검색 결과",
+    address: `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
     aliases: [],
-    defaultConfig: config,
+    defaultConfig: {
+      centerName: "실시간 검색",
+      centerLat: lat,
+      centerLng: lng,
+      radiusKm,
+    },
     subwayStations: response.pois.filter((poi): poi is SubwayStation => poi.category === "subway"),
     schools: response.pois.filter((poi): poi is School => poi.category === "school"),
     parks: response.pois.filter((poi): poi is Park => poi.category === "park"),

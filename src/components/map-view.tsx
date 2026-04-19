@@ -148,6 +148,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
   const routeLinesRef = useRef<import("leaflet").LayerGroup | null>(null);
   const circleRef = useRef<import("leaflet").Circle | null>(null);
   const centerMarkerRef = useRef<import("leaflet").Marker | null>(null);
+  const lifecycleTokenRef = useRef(0);
   const [mapReady, setMapReady] = useState(false);
 
   useImperativeHandle(ref, () => ({
@@ -265,11 +266,13 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
     }
 
     let cancelled = false;
+    const lifecycleToken = lifecycleTokenRef.current + 1;
+    lifecycleTokenRef.current = lifecycleToken;
 
     (async () => {
       const L = (await import("leaflet")).default;
 
-      if (cancelled || !containerRef.current) {
+      if (cancelled || lifecycleTokenRef.current !== lifecycleToken || !containerRef.current) {
         return;
       }
 
@@ -289,6 +292,11 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
         "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
         { maxZoom: 18, opacity: 0.6 }
       ).addTo(map);
+
+      if (cancelled || lifecycleTokenRef.current !== lifecycleToken) {
+        map.remove();
+        return;
+      }
 
       mapRef.current = map;
       routeLinesRef.current = L.layerGroup().addTo(map);
@@ -333,6 +341,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
 
     return () => {
       cancelled = true;
+      lifecycleTokenRef.current += 1;
       setMapReady(false);
       mapRef.current?.remove();
       mapRef.current = null;
@@ -356,13 +365,24 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
   }, [config.centerLat, config.centerLng, config.centerName, config.radiusKm]);
 
   const updateMarkers = useCallback(async () => {
+    const lifecycleToken = lifecycleTokenRef.current;
     const map = mapRef.current;
     const markersLayer = markersRef.current;
-    if (!map || !markersLayer) {
+    const routeLinesLayer = routeLinesRef.current;
+    if (!map || !markersLayer || !routeLinesLayer) {
       return;
     }
 
     const L = (await import("leaflet")).default;
+    if (
+      lifecycleTokenRef.current !== lifecycleToken ||
+      mapRef.current !== map ||
+      markersRef.current !== markersLayer ||
+      routeLinesRef.current !== routeLinesLayer
+    ) {
+      return;
+    }
+
     markersLayer.clearLayers();
 
     const visiblePois = pois.filter(
@@ -371,37 +391,35 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
         haversineDistance(config.centerLat, config.centerLng, poi.lat, poi.lng) <= config.radiusKm * 1000
     );
 
-    if (routeLinesRef.current) {
-      routeLinesRef.current.clearLayers();
-      if (layers.subway) {
-        const stationMap = new Map(
-          visiblePois
-            .filter((poi): poi is SubwayStation => poi.category === "subway")
-            .map((station) => [station.id, station])
+    routeLinesLayer.clearLayers();
+    if (layers.subway) {
+      const stationMap = new Map(
+        visiblePois
+          .filter((poi): poi is SubwayStation => poi.category === "subway")
+          .map((station) => [station.id, station])
+      );
+
+      subwayRoutes.forEach((route) => {
+        const coordinates: [number, number][] =
+          route.coordinates && route.coordinates.length >= 2
+            ? route.coordinates.map(([lat, lng]) => [lat, lng] as [number, number])
+            : route.stationIds
+                .map((stationId) => stationMap.get(stationId))
+                .filter((station): station is SubwayStation => station !== undefined)
+                .map((station) => [station.lat, station.lng]);
+
+        if (coordinates.length < 2) {
+          return;
+        }
+
+        routeLinesLayer.addLayer(
+          L.polyline(coordinates, {
+            color: route.lineColor,
+            weight: 4,
+            opacity: 0.85,
+          })
         );
-
-        subwayRoutes.forEach((route) => {
-          const coordinates: [number, number][] =
-            route.coordinates && route.coordinates.length >= 2
-              ? route.coordinates.map(([lat, lng]) => [lat, lng] as [number, number])
-              : route.stationIds
-                  .map((stationId) => stationMap.get(stationId))
-                  .filter((station): station is SubwayStation => station !== undefined)
-                  .map((station) => [station.lat, station.lng]);
-
-          if (coordinates.length < 2) {
-            return;
-          }
-
-          routeLinesRef.current?.addLayer(
-            L.polyline(coordinates, {
-              color: route.lineColor,
-              weight: 4,
-              opacity: 0.85,
-            })
-          );
-        });
-      }
+      });
     }
 
     const clusters = clusterPois(

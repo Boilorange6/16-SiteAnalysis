@@ -13,6 +13,7 @@ import MapView from "./map-view";
 import Sidebar from "./sidebar";
 import { DEFAULT_CONFIG, DEFAULT_REGION_CODE } from "@/lib/seed-data";
 import {
+  CUSTOM_REGION_CODE,
   loadRegion,
   getAvailableRegions,
   loadDynamicRegion,
@@ -25,7 +26,6 @@ export default function SiteAnalysisApp() {
   const [config, setConfig] = useState<AnalysisConfig>(DEFAULT_CONFIG);
   const [regionCode, setRegionCode] = useState(DEFAULT_REGION_CODE);
   const [regionData, setRegionData] = useState<RegionData | null>(null);
-  const [dynamicAddress, setDynamicAddress] = useState<AddressSearchResult | null>(null);
   const [availableRegions, setAvailableRegions] = useState<readonly RegionMetadata[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -37,6 +37,7 @@ export default function SiteAnalysisApp() {
     apartment: true,
   });
   const [exporting, setExporting] = useState(false);
+  const isCustomRegion = regionCode === CUSTOM_REGION_CODE;
 
   useEffect(() => {
     let cancelled = false;
@@ -61,7 +62,7 @@ export default function SiteAnalysisApp() {
   }, []);
 
   useEffect(() => {
-    if (dynamicAddress) {
+    if (isCustomRegion) {
       return;
     }
 
@@ -92,10 +93,10 @@ export default function SiteAnalysisApp() {
     return () => {
       cancelled = true;
     };
-  }, [dynamicAddress, regionCode]);
+  }, [isCustomRegion, regionCode]);
 
   useEffect(() => {
-    if (!dynamicAddress) {
+    if (!isCustomRegion) {
       return;
     }
 
@@ -103,7 +104,7 @@ export default function SiteAnalysisApp() {
     setLoading(true);
     setLoadError(null);
 
-    loadDynamicRegion(config, dynamicAddress.address)
+    loadDynamicRegion(config.centerLat, config.centerLng, config.radiusKm)
       .then((data) => {
         if (!cancelled) {
           setRegionData(data);
@@ -125,7 +126,7 @@ export default function SiteAnalysisApp() {
     return () => {
       cancelled = true;
     };
-  }, [config.centerLat, config.centerLng, config.radiusKm, dynamicAddress]);
+  }, [config.centerLat, config.centerLng, config.radiusKm, isCustomRegion]);
 
   const allPois: readonly Poi[] = regionData
     ? [
@@ -141,6 +142,8 @@ export default function SiteAnalysisApp() {
   );
 
   const subwayRoutes = regionData?.subwayRoutes ?? [];
+  const displayedPois = loading ? [] : allPois;
+  const displayedSubwayRoutes = loading ? [] : subwayRoutes;
 
   const handleToggleLayer = useCallback((category: keyof LayerVisibility) => {
     setLayers((prev) => ({ ...prev, [category]: !prev[category] }));
@@ -151,13 +154,12 @@ export default function SiteAnalysisApp() {
   }, []);
 
   const handleRegionSelect = useCallback((region: RegionMetadata) => {
-    setDynamicAddress(null);
     setConfig(region.defaultConfig);
     setRegionCode(region.regionCode);
   }, []);
 
   const handleAddressSelect = useCallback((result: AddressSearchResult) => {
-    setDynamicAddress(result);
+    setRegionCode(CUSTOM_REGION_CODE);
     setConfig((previous) => ({
       centerName: result.name,
       centerLat: result.lat,
@@ -205,6 +207,13 @@ export default function SiteAnalysisApp() {
         onExport={handleExport}
       />
       <main className="relative min-h-0 flex-1">
+        <MapView
+          ref={mapRef}
+          config={config}
+          pois={displayedPois}
+          layers={layers}
+          subwayRoutes={displayedSubwayRoutes}
+        />
         {loading ? (
           <div
             className="absolute inset-0 z-[900] flex items-center justify-center bg-[#0F172A]"
@@ -231,15 +240,7 @@ export default function SiteAnalysisApp() {
               </p>
             </div>
           </div>
-        ) : (
-          <MapView
-            ref={mapRef}
-            config={config}
-            pois={allPois}
-            layers={layers}
-            subwayRoutes={subwayRoutes}
-          />
-        )}
+        ) : null}
         {exporting && (
           <div
             className="absolute inset-0 z-[950] flex items-center justify-center bg-[#0F172A]/80 backdrop-blur-sm"
