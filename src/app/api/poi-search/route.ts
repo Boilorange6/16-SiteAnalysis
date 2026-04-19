@@ -53,6 +53,7 @@ export async function GET(req: NextRequest) {
   const { lat, lng, radius, categories } = parsed.data;
   const x = String(lng);
   const y = String(lat);
+  const headerApiKey = req.headers.get("x-api-key-kakao") ?? undefined;
 
   try {
     const fetches: Promise<Poi[]>[] = [];
@@ -62,7 +63,7 @@ export async function GET(req: NextRequest) {
         // 카테고리 코드 기반 검색 (subway, school)
         const code = CATEGORY_CODES[category];
         const fetch = (async (): Promise<Poi[]> => {
-          const res = await searchByCategory(code, x, y, radius);
+          const res = await searchByCategory(code, x, y, radius, 1, 15, headerApiKey);
           if (category === "subway") {
             return res.documents.map(mapToSubwayStation);
           }
@@ -73,7 +74,7 @@ export async function GET(req: NextRequest) {
         // 키워드 기반 검색 (park, mountain, apartment)
         const keyword = KEYWORD_MAP[category];
         const fetch = (async (): Promise<Poi[]> => {
-          const res = await searchKeyword(keyword, 1, 15, x, y, radius);
+          const res = await searchKeyword(keyword, 1, 15, x, y, radius, headerApiKey);
           if (category === "park") {
             return res.documents.map(mapToPark);
           }

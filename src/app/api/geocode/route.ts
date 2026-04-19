@@ -17,8 +17,10 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  const headerApiKey = req.headers.get("x-api-key-kakao") ?? undefined;
+
   try {
-    const response = await searchAddress(parsed.data.query);
+    const response = await searchAddress(parsed.data.query, headerApiKey);
 
     if (response.documents.length === 0) {
       return NextResponse.json(

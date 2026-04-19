@@ -25,9 +25,10 @@ export async function GET(req: NextRequest) {
   }
 
   const { query, page, size } = parsed.data;
+  const headerApiKey = req.headers.get("x-api-key-kakao") ?? undefined;
 
   try {
-    const response = await searchKeyword(query, page, size);
+    const response = await searchKeyword(query, page, size, undefined, undefined, undefined, headerApiKey);
 
     const results = response.documents.map((doc) => ({
       id: doc.id,

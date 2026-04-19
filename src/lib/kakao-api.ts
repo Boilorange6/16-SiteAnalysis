@@ -1,15 +1,21 @@
 const KAKAO_BASE_URL = "https://dapi.kakao.com";
 
-function getKakaoApiKey(): string {
-  const key = process.env.KAKAO_REST_API_KEY;
+function resolveApiKey(injectedKey?: string): string {
+  const key = injectedKey ?? process.env.KAKAO_REST_API_KEY;
   if (!key) {
-    throw new Error("KAKAO_REST_API_KEY 환경 변수가 설정되지 않았습니다.");
+    throw new Error(
+      "API 키가 설정되지 않았습니다. 설정 UI에서 Kakao REST API 키를 입력하거나 환경 변수를 설정하세요."
+    );
   }
   return key;
 }
 
-async function kakaoFetch<T>(path: string, params: Record<string, string>): Promise<T> {
-  const apiKey = getKakaoApiKey();
+async function kakaoFetch<T>(
+  path: string,
+  params: Record<string, string>,
+  apiKey?: string
+): Promise<T> {
+  const resolvedKey = resolveApiKey(apiKey);
   const url = new URL(`${KAKAO_BASE_URL}${path}`);
 
   for (const [key, value] of Object.entries(params)) {
@@ -18,7 +24,7 @@ async function kakaoFetch<T>(path: string, params: Record<string, string>): Prom
 
   const res = await fetch(url.toString(), {
     headers: {
-      Authorization: `KakaoAK ${apiKey}`,
+      Authorization: `KakaoAK ${resolvedKey}`,
     },
   });
 
@@ -116,10 +122,15 @@ export interface KakaoCategoryResponse {
   documents: KakaoKeywordDocument[];
 }
 
-export async function searchAddress(query: string): Promise<KakaoAddressResponse> {
-  return kakaoFetch<KakaoAddressResponse>("/v2/local/search/address.json", {
-    query,
-  });
+export async function searchAddress(
+  query: string,
+  apiKey?: string
+): Promise<KakaoAddressResponse> {
+  return kakaoFetch<KakaoAddressResponse>(
+    "/v2/local/search/address.json",
+    { query },
+    apiKey
+  );
 }
 
 export async function searchKeyword(
@@ -128,7 +139,8 @@ export async function searchKeyword(
   size = 15,
   x?: string,
   y?: string,
-  radius?: number
+  radius?: number,
+  apiKey?: string
 ): Promise<KakaoKeywordResponse> {
   const params: Record<string, string> = {
     query,
@@ -138,7 +150,7 @@ export async function searchKeyword(
   if (x) params.x = x;
   if (y) params.y = y;
   if (radius) params.radius = String(radius);
-  return kakaoFetch<KakaoKeywordResponse>("/v2/local/search/keyword.json", params);
+  return kakaoFetch<KakaoKeywordResponse>("/v2/local/search/keyword.json", params, apiKey);
 }
 
 export async function searchByCategory(
@@ -147,14 +159,19 @@ export async function searchByCategory(
   y: string,
   radius: number,
   page = 1,
-  size = 15
+  size = 15,
+  apiKey?: string
 ): Promise<KakaoCategoryResponse> {
-  return kakaoFetch<KakaoCategoryResponse>("/v2/local/search/category.json", {
-    category_group_code: categoryGroupCode,
-    x,
-    y,
-    radius: String(radius),
-    page: String(page),
-    size: String(size),
-  });
+  return kakaoFetch<KakaoCategoryResponse>(
+    "/v2/local/search/category.json",
+    {
+      category_group_code: categoryGroupCode,
+      x,
+      y,
+      radius: String(radius),
+      page: String(page),
+      size: String(size),
+    },
+    apiKey
+  );
 }
