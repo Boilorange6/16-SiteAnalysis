@@ -1,0 +1,6 @@
+[
+  { "id": "mtn-001", "name": "구룡산", "lat": 37.4710, "lng": 127.0550, "category": "mountain", "elevation_m": 306 },
+  { "id": "mtn-002", "name": "대모산", "lat": 37.4680, "lng": 127.0720, "category": "mountain", "elevation_m": 293 },
+  { "id": "mtn-003", "name": "청계산", "lat": 37.4420, "lng": 127.0540, "category": "mountain", "elevation_m": 618 },
+  { "id": "mtn-004", "name": "우면산", "lat": 37.4720, "lng": 127.0120, "category": "mountain", "elevation_m": 293 }
+]

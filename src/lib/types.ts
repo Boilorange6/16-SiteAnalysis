@@ -67,12 +67,34 @@ export interface AnalysisConfig {
   readonly radiusKm: number;
 }
 
+export interface RegionMetadata {
+  readonly regionCode: string;
+  readonly regionName: string;
+  readonly address: string;
+  readonly aliases: readonly string[];
+  readonly defaultConfig: AnalysisConfig;
+}
+
 export interface LayerVisibility {
   readonly subway: boolean;
   readonly school: boolean;
   readonly park: boolean;
   readonly mountain: boolean;
   readonly apartment: boolean;
+}
+
+export interface RegionData {
+  readonly regionCode: string;
+  readonly regionName: string;
+  readonly address: string;
+  readonly aliases: readonly string[];
+  readonly defaultConfig: AnalysisConfig;
+  readonly subwayStations: readonly SubwayStation[];
+  readonly schools: readonly School[];
+  readonly parks: readonly Park[];
+  readonly mountains: readonly Mountain[];
+  readonly apartments: readonly Apartment[];
+  readonly subwayRoutes: readonly SubwayRoute[];
 }
 
 export const CATEGORY_COLORS: Record<PoiCategory, string> = {

@@ -1,0 +1,12 @@
+[
+  { "id": "apt-001", "name": "래미안 원베일리", "lat": 37.5100, "lng": 127.0200, "category": "apartment", "units": 2990, "price_per_pyeong": 9800, "sale_date": "2023-07", "distance_m": 1500 },
+  { "id": "apt-002", "name": "디에이치 클래스트", "lat": 37.5040, "lng": 127.0500, "category": "apartment", "units": 1320, "price_per_pyeong": 8500, "sale_date": "2024-03", "distance_m": 1800 },
+  { "id": "apt-003", "name": "개포 자이 프레지던스", "lat": 37.4830, "lng": 127.0520, "category": "apartment", "units": 3375, "price_per_pyeong": 7200, "sale_date": "2024-09", "distance_m": 2200 },
+  { "id": "apt-004", "name": "래미안 블레스티지", "lat": 37.4940, "lng": 127.0600, "category": "apartment", "units": 1957, "price_per_pyeong": 7800, "sale_date": "2024-05", "distance_m": 1100 },
+  { "id": "apt-005", "name": "더샵 청담", "lat": 37.5210, "lng": 127.0530, "category": "apartment", "units": 680, "price_per_pyeong": 9200, "sale_date": "2025-01", "distance_m": 2600 },
+  { "id": "apt-006", "name": "힐스테이트 역삼", "lat": 37.5000, "lng": 127.0380, "category": "apartment", "units": 820, "price_per_pyeong": 6800, "sale_date": "2025-06", "distance_m": 900 },
+  { "id": "apt-007", "name": "아크로리버뷰 신반포", "lat": 37.5060, "lng": 127.0050, "category": "apartment", "units": 1612, "price_per_pyeong": 8900, "sale_date": "2024-11", "distance_m": 2900 },
+  { "id": "apt-008", "name": "도곡 렉슬", "lat": 37.4890, "lng": 127.0480, "category": "apartment", "units": 1452, "price_per_pyeong": 6500, "sale_date": "2024-08", "distance_m": 1600 },
+  { "id": "apt-009", "name": "대치 아이파크", "lat": 37.4960, "lng": 127.0620, "category": "apartment", "units": 1096, "price_per_pyeong": 7500, "sale_date": "2025-03", "distance_m": 1400 },
+  { "id": "apt-010", "name": "압구정 현대", "lat": 37.5260, "lng": 127.0350, "category": "apartment", "units": 2856, "price_per_pyeong": 8800, "sale_date": "2023-12", "distance_m": 2800 }
+]

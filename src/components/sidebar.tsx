@@ -1,16 +1,23 @@
 "use client";
 
-import { useState } from "react";
-import type { AnalysisConfig, LayerVisibility, Poi, Apartment } from "@/lib/types";
-import { CATEGORY_COLORS, CATEGORY_LABELS, THEME_COLORS } from "@/lib/types";
+import { useEffect, useId, useState } from "react";
+import type { AddressSearchResult } from "@/lib/data-provider";
+import type { AnalysisConfig, Apartment, LayerVisibility, Poi, RegionMetadata } from "@/lib/types";
+import { CATEGORY_COLORS, CATEGORY_LABELS } from "@/lib/types";
+import AddressSearch from "./address-search";
 
 interface SidebarProps {
   readonly config: AnalysisConfig;
   readonly layers: LayerVisibility;
   readonly pois: readonly Poi[];
   readonly exporting: boolean;
+  readonly loading: boolean;
+  readonly regionCode: string;
+  readonly availableRegions: readonly RegionMetadata[];
   readonly onToggleLayer: (category: keyof LayerVisibility) => void;
   readonly onConfigChange: (config: AnalysisConfig) => void;
+  readonly onRegionSelect: (region: RegionMetadata) => void;
+  readonly onSelectAddress: (result: AddressSearchResult) => void;
   readonly onExport: () => void;
 }
 
@@ -19,10 +26,16 @@ export default function Sidebar({
   layers,
   pois,
   exporting,
+  loading,
+  regionCode,
+  availableRegions,
   onToggleLayer,
   onConfigChange,
+  onRegionSelect,
+  onSelectAddress,
   onExport,
 }: SidebarProps) {
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [form, setForm] = useState({
     centerName: config.centerName,
     centerLat: config.centerLat.toString(),
@@ -30,215 +43,346 @@ export default function Sidebar({
     radiusKm: config.radiusKm.toString(),
   });
 
+  const idPrefix = useId();
+  const panelId = `${idPrefix}-controls-panel`;
+  const panelTitleId = `${idPrefix}-panel-title`;
+  const centerNameId = `${idPrefix}-center-name`;
+  const latitudeId = `${idPrefix}-latitude`;
+  const longitudeId = `${idPrefix}-longitude`;
+  const radiusInputId = `${idPrefix}-radius`;
+
+  useEffect(() => {
+    setForm({
+      centerName: config.centerName,
+      centerLat: config.centerLat.toString(),
+      centerLng: config.centerLng.toString(),
+      radiusKm: config.radiusKm.toString(),
+    });
+  }, [config.centerLat, config.centerLng, config.centerName, config.radiusKm]);
+
+  useEffect(() => {
+    if (!isMobileOpen) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsMobileOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isMobileOpen]);
+
   const counts = {
-    subway: pois.filter((p) => p.category === "subway").length,
-    school: pois.filter((p) => p.category === "school").length,
-    park: pois.filter((p) => p.category === "park").length,
-    mountain: pois.filter((p) => p.category === "mountain").length,
-    apartment: pois.filter((p) => p.category === "apartment").length,
+    subway: pois.filter((poi) => poi.category === "subway").length,
+    school: pois.filter((poi) => poi.category === "school").length,
+    park: pois.filter((poi) => poi.category === "park").length,
+    mountain: pois.filter((poi) => poi.category === "mountain").length,
+    apartment: pois.filter((poi) => poi.category === "apartment").length,
   };
 
-  const apartments = pois.filter((p): p is Apartment => p.category === "apartment");
-  const totalUnits = apartments.reduce((s, a) => s + a.units, 0);
-  const avgPrice =
+  const apartments = pois.filter((poi): poi is Apartment => poi.category === "apartment");
+  const totalUnits = apartments.reduce((sum, apartment) => sum + apartment.units, 0);
+  const averagePrice =
     apartments.length > 0
-      ? Math.round(apartments.reduce((s, a) => s + a.price_per_pyeong, 0) / apartments.length)
+      ? Math.round(apartments.reduce((sum, apartment) => sum + apartment.price_per_pyeong, 0) / apartments.length)
       : 0;
 
-  function handleApply() {
-    const lat = parseFloat(form.centerLat);
-    const lng = parseFloat(form.centerLng);
-    const radius = parseFloat(form.radiusKm);
-    if (!form.centerName.trim() || isNaN(lat) || isNaN(lng) || isNaN(radius) || radius <= 0) return;
-    onConfigChange({
-      centerName: form.centerName.trim(),
-      centerLat: lat,
-      centerLng: lng,
-      radiusKm: radius,
-    });
+  const focusRingClass =
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#93C5FD] focus-visible:ring-offset-2 focus-visible:ring-offset-[#1E3A8A]";
+  const inputClass = `mt-1 w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 text-sm text-white placeholder:text-white/35 ${focusRingClass}`;
+  const panelContentClass = isMobileOpen ? "flex min-h-0 flex-1 flex-col" : "hidden min-h-0 flex-1 lg:flex lg:flex-col";
+
+  function closeMobileSheet() {
+    setIsMobileOpen(false);
   }
 
-  const inputClass =
-    "w-full mt-1 px-3 py-2 bg-white/10 text-white text-sm rounded border border-white/20 focus:border-[#3B82F6] focus:outline-none placeholder-white/30";
+  function handleApply() {
+    const centerLat = Number.parseFloat(form.centerLat);
+    const centerLng = Number.parseFloat(form.centerLng);
+    const radiusKm = Number.parseFloat(form.radiusKm);
+
+    if (!form.centerName.trim() || Number.isNaN(centerLat) || Number.isNaN(centerLng) || Number.isNaN(radiusKm) || radiusKm <= 0) {
+      return;
+    }
+
+    onConfigChange({
+      centerName: form.centerName.trim(),
+      centerLat,
+      centerLng,
+      radiusKm,
+    });
+
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      closeMobileSheet();
+    }
+  }
 
   return (
-    <aside 
-      className="w-80 text-white flex flex-col overflow-y-auto"
-      style={{ backgroundColor: THEME_COLORS.sidebarBg }}
-    >
-      <div className="p-6 border-b border-white/10">
-        <h1 className="text-xl font-bold tracking-tight">Site Analysis</h1>
-        <p className="text-xs text-blue-200/60 mt-1 uppercase tracking-wider font-semibold">Report Generator</p>
-      </div>
+    <>
+      {isMobileOpen && (
+        <button
+          type="button"
+          className="fixed inset-0 z-[980] bg-[#020617]/60 backdrop-blur-[2px] lg:hidden"
+          aria-label="분석 패널 닫기"
+          onClick={closeMobileSheet}
+        />
+      )}
 
-      <div className="p-6 space-y-6 flex-1">
-        {/* Address Search / Config */}
-        <section>
-          <h2 className="text-xs font-bold mb-3 text-blue-200/80 uppercase tracking-widest">분석 대상 설정</h2>
-          <div className="space-y-4">
-            <div>
-              <label className="text-[10px] font-bold text-blue-200/50 uppercase">주소 또는 프로젝트명</label>
-              <input
-                type="text"
-                placeholder="ex. 서울시 종로구 세종로 1"
-                value={form.centerName}
-                onChange={(e) => setForm((prev) => ({ ...prev, centerName: e.target.value }))}
-                className={inputClass}
-              />
-            </div>
-            
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-[10px] font-bold text-blue-200/50 uppercase">위도 (Lat)</label>
-                <input
-                  type="number"
-                  step="0.0001"
-                  value={form.centerLat}
-                  onChange={(e) => setForm((prev) => ({ ...prev, centerLat: e.target.value }))}
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-blue-200/50 uppercase">경도 (Lng)</label>
-                <input
-                  type="number"
-                  step="0.0001"
-                  value={form.centerLng}
-                  onChange={(e) => setForm((prev) => ({ ...prev, centerLng: e.target.value }))}
-                  className={inputClass}
-                />
-              </div>
-            </div>
+      <aside
+        id={panelId}
+        aria-labelledby={panelTitleId}
+        className={`fixed inset-x-0 bottom-0 z-[1000] flex flex-col overflow-hidden rounded-t-[2rem] border border-white/10 bg-[#1E3A8A]/95 shadow-[0_-20px_60px_rgba(2,6,23,0.45)] backdrop-blur-xl transition-[max-height] duration-300 ease-out lg:relative lg:inset-auto lg:z-auto lg:h-full lg:w-80 lg:max-h-none lg:rounded-none lg:border-x-0 lg:border-b-0 lg:border-r lg:bg-[#1E3A8A] ${
+          isMobileOpen ? "max-h-[85dvh]" : "max-h-[5.75rem]"
+        }`}
+      >
+        <button
+          type="button"
+          onClick={() => setIsMobileOpen((open) => !open)}
+          aria-expanded={isMobileOpen}
+          aria-controls={panelId}
+          aria-label={isMobileOpen ? "분석 패널 접기" : "분석 패널 펼치기"}
+          className={`flex items-center justify-center px-5 pt-3 text-white lg:hidden ${focusRingClass}`}
+          data-testid="controls-sheet-toggle"
+        >
+          <span className="h-1.5 w-16 rounded-full bg-white/25 transition-colors hover:bg-white/40" />
+        </button>
 
-            <div>
-              <label className="text-[10px] font-bold text-blue-200/50 uppercase mb-2 block">분석 반경 (Radius)</label>
-              <div className="flex gap-2">
-                {[1, 2, 3].map((r) => (
-                  <button
-                    key={r}
-                    onClick={() => {
-                      setForm(prev => ({ ...prev, radiusKm: r.toString() }));
-                      onConfigChange({ ...config, radiusKm: r });
-                    }}
-                    className={`flex-1 py-1.5 text-xs rounded transition-all border ${
-                      config.radiusKm === r 
-                      ? "bg-[#3B82F6] border-[#3B82F6] text-white font-bold shadow-lg shadow-blue-500/20" 
-                      : "bg-white/5 border-white/10 text-white/60 hover:bg-white/10"
-                    }`}
-                  >
-                    {r}km
-                  </button>
-                ))}
-                <div className="flex-1 relative">
+        <div className="flex items-start justify-between border-b border-white/10 px-5 pb-5 pt-3 lg:px-6 lg:pb-6 lg:pt-6">
+          <div>
+            <h1 id={panelTitleId} className="text-xl font-bold tracking-tight text-white">
+              Site Analysis
+            </h1>
+            <p className="mt-1 text-xs font-semibold uppercase tracking-[0.3em] text-blue-200/65">
+              Report Generator
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={closeMobileSheet}
+            className={`rounded-full border border-white/15 px-3 py-1.5 text-xs font-semibold text-white/80 transition hover:bg-white/10 hover:text-white lg:hidden ${focusRingClass}`}
+            aria-label="분석 패널 접기"
+          >
+            접기
+          </button>
+        </div>
+
+        <div className={panelContentClass}>
+          <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5 lg:px-6 lg:py-6">
+            <section>
+              <h2 className="mb-3 text-xs font-bold uppercase tracking-[0.25em] text-blue-200/80">
+                분석 대상 설정
+              </h2>
+              <div className="space-y-4">
+                <AddressSearch
+                  regions={availableRegions}
+                  selectedRegionCode={regionCode}
+                  loading={loading}
+                  inputClassName={inputClass}
+                  focusRingClassName={focusRingClass}
+                  onSelectRegion={onRegionSelect}
+                  onSelectAddress={onSelectAddress}
+                />
+
+                <div>
+                  <label htmlFor={centerNameId} className="text-[10px] font-bold uppercase tracking-[0.22em] text-blue-200/55">
+                    보고서 표기명
+                  </label>
                   <input
-                    type="number"
-                    value={form.radiusKm}
-                    onChange={(e) => setForm(prev => ({ ...prev, radiusKm: e.target.value }))}
-                    className="w-full h-full bg-white/5 border border-white/10 rounded px-2 text-xs text-center focus:outline-none focus:border-[#3B82F6]"
+                    id={centerNameId}
+                    type="text"
+                    placeholder="ex. 청와대, 강남역"
+                    value={form.centerName}
+                    onChange={(event) => setForm((previous) => ({ ...previous, centerName: event.target.value }))}
+                    aria-label="보고서 표기명 입력"
+                    data-testid="center-name-input"
+                    className={inputClass}
                   />
                 </div>
-              </div>
-            </div>
 
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor={latitudeId} className="text-[10px] font-bold uppercase tracking-[0.22em] text-blue-200/55">
+                      위도
+                    </label>
+                    <input
+                      id={latitudeId}
+                      type="number"
+                      step="0.0001"
+                      value={form.centerLat}
+                      onChange={(event) => setForm((previous) => ({ ...previous, centerLat: event.target.value }))}
+                      aria-label="분석 중심 위도 입력"
+                      data-testid="center-latitude-input"
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor={longitudeId} className="text-[10px] font-bold uppercase tracking-[0.22em] text-blue-200/55">
+                      경도
+                    </label>
+                    <input
+                      id={longitudeId}
+                      type="number"
+                      step="0.0001"
+                      value={form.centerLng}
+                      onChange={(event) => setForm((previous) => ({ ...previous, centerLng: event.target.value }))}
+                      aria-label="분석 중심 경도 입력"
+                      data-testid="center-longitude-input"
+                      className={inputClass}
+                    />
+                  </div>
+                </div>
+
+                <fieldset>
+                  <legend className="mb-2 block text-[10px] font-bold uppercase tracking-[0.22em] text-blue-200/55">
+                    분석 반경
+                  </legend>
+                  <div className="grid grid-cols-4 gap-2" role="group" aria-label="분석 반경 선택">
+                    {[1, 2, 3].map((radius) => {
+                      const selected = config.radiusKm === radius;
+                      return (
+                        <button
+                          key={radius}
+                          type="button"
+                          onClick={() => {
+                            setForm((previous) => ({ ...previous, radiusKm: radius.toString() }));
+                            onConfigChange({ ...config, radiusKm: radius });
+                          }}
+                          aria-pressed={selected}
+                          aria-label={`${radius}km 반경 선택`}
+                          data-testid={`radius-option-${radius}`}
+                          className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${focusRingClass} ${
+                            selected
+                              ? "border-[#3B82F6] bg-[#3B82F6] text-white shadow-lg shadow-blue-950/40"
+                              : "border-white/12 bg-white/5 text-white/70 hover:bg-white/10"
+                          }`}
+                        >
+                          {radius}km
+                        </button>
+                      );
+                    })}
+                    <input
+                      id={radiusInputId}
+                      type="number"
+                      min="0.5"
+                      step="0.5"
+                      value={form.radiusKm}
+                      onChange={(event) => setForm((previous) => ({ ...previous, radiusKm: event.target.value }))}
+                      aria-label="사용자 지정 반경 입력"
+                      data-testid="radius-custom-input"
+                      className={`text-center ${inputClass}`}
+                    />
+                  </div>
+                </fieldset>
+
+                <button
+                  type="button"
+                  onClick={handleApply}
+                  className={`w-full rounded-xl border border-white/12 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/20 active:scale-[0.99] ${focusRingClass}`}
+                  data-testid="config-apply-button"
+                >
+                  설정 업데이트
+                </button>
+              </div>
+            </section>
+
+            <section>
+              <h2 className="mb-3 text-xs font-bold uppercase tracking-[0.25em] text-blue-200/80">
+                반경 내 데이터 레이어
+              </h2>
+              <div className="space-y-2">
+                {(Object.keys(CATEGORY_LABELS) as Array<keyof LayerVisibility>).map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => onToggleLayer(key)}
+                    role="switch"
+                    aria-checked={layers[key]}
+                    aria-label={`${CATEGORY_LABELS[key]} 레이어 ${layers[key] ? "숨기기" : "보이기"}`}
+                    data-testid={`layer-toggle-${key}`}
+                    className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left transition ${focusRingClass} ${
+                      layers[key]
+                        ? "border-white/10 bg-white/10 text-white"
+                        : "border-white/6 bg-white/[0.04] text-white/65 hover:bg-white/10"
+                    }`}
+                  >
+                    <span
+                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md"
+                      style={{
+                        backgroundColor: layers[key] ? CATEGORY_COLORS[key] : "transparent",
+                        border: `1.5px solid ${layers[key] ? CATEGORY_COLORS[key] : "rgba(255,255,255,0.3)"}`,
+                      }}
+                      aria-hidden="true"
+                    >
+                      {layers[key] && (
+                        <svg width="10" height="8" viewBox="0 0 10 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </span>
+                    <span className="flex-1 text-sm font-medium">{CATEGORY_LABELS[key]}</span>
+                    <span className="rounded-md bg-black/20 px-1.5 py-0.5 font-mono text-[10px] text-white/45">
+                      {counts[key].toString().padStart(2, "0")}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-white/8 bg-black/20 p-4">
+              <h2 className="mb-3 text-center text-[10px] font-bold uppercase tracking-[0.24em] text-blue-200/45">
+                반경 내 분양 시장 요약
+              </h2>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="text-center">
+                  <p className="text-xl font-black leading-none text-[#EF4444]">{apartments.length}</p>
+                  <p className="mt-1 text-[9px] font-bold uppercase text-white/40">단지</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xl font-black leading-none text-[#EF4444]">
+                    {Math.round(totalUnits / 100) / 10}k
+                  </p>
+                  <p className="mt-1 text-[9px] font-bold uppercase text-white/40">총 세대</p>
+                </div>
+                <div className="col-span-2 border-t border-white/6 pt-2 text-center">
+                  <p className="text-lg font-black leading-none text-white">
+                    {averagePrice.toLocaleString()} <span className="text-xs font-normal text-white/45">만원/평</span>
+                  </p>
+                  <p className="mt-1 text-[9px] font-bold uppercase text-white/40">평균 분양가</p>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <div className="border-t border-white/10 bg-black/10 p-5 lg:p-6">
             <button
-              onClick={handleApply}
-              className="w-full py-2.5 px-4 rounded font-bold text-sm bg-white/10 hover:bg-white/20 text-white transition-all border border-white/10 active:scale-[0.98]"
+              type="button"
+              onClick={onExport}
+              disabled={exporting || loading}
+              aria-busy={exporting}
+              data-testid="ppt-export-button"
+              className={`flex w-full items-center justify-center gap-3 rounded-2xl bg-[#3B82F6] px-6 py-4 text-base font-bold text-white shadow-xl shadow-blue-950/40 transition hover:bg-[#2563EB] disabled:cursor-not-allowed disabled:bg-slate-600 active:scale-[0.99] ${focusRingClass}`}
             >
-              설정 업데이트
+              {exporting ? (
+                <>
+                  <div className="h-5 w-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                  <span>PPT 생성 중...</span>
+                </>
+              ) : (
+                <>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 15L12 3M12 15L8 11M12 15L16 11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M2 17L2.621 19.485C2.847 20.39 3.654 21 4.588 21H19.412C20.346 21 21.153 20.39 21.379 19.485L22 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  <span>PPT 보고서 다운로드</span>
+                </>
+              )}
             </button>
           </div>
-        </section>
-
-        {/* Layer Controls */}
-        <section>
-          <h2 className="text-xs font-bold mb-3 text-blue-200/80 uppercase tracking-widest">데이터 레이어</h2>
-          <div className="space-y-1">
-            {(Object.keys(CATEGORY_LABELS) as Array<keyof LayerVisibility>).map((key) => (
-              <label
-                key={key}
-                className={`flex items-center gap-3 p-2.5 rounded transition-all cursor-pointer ${
-                  layers[key] ? "bg-white/10" : "hover:bg-white/5 opacity-60"
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={layers[key]}
-                  onChange={() => onToggleLayer(key)}
-                  className="sr-only"
-                />
-                <div 
-                  className="w-4 h-4 rounded-sm flex items-center justify-center transition-all"
-                  style={{ 
-                    backgroundColor: layers[key] ? CATEGORY_COLORS[key] : "transparent",
-                    border: `1.5px solid ${layers[key] ? CATEGORY_COLORS[key] : "rgba(255,255,255,0.3)"}` 
-                  }}
-                >
-                  {layers[key] && (
-                    <svg width="10" height="8" viewBox="0 0 10 8" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  )}
-                </div>
-                <span className={`text-sm flex-1 font-medium ${layers[key] ? "text-white" : "text-white/60"}`}>
-                  {CATEGORY_LABELS[key]}
-                </span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-black/20 text-white/40 font-mono">
-                  {counts[key].toString().padStart(2, '0')}
-                </span>
-              </label>
-            ))}
-          </div>
-        </section>
-
-        {/* Apt Summary */}
-        <section className="bg-black/20 rounded-xl p-4 border border-white/5">
-          <h2 className="text-[10px] font-bold mb-3 text-blue-200/40 uppercase tracking-widest text-center">주변 분양 시장 요약</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="text-center">
-              <p className="text-xl font-black text-[#EF4444] leading-none">{apartments.length}</p>
-              <p className="text-[9px] text-white/40 mt-1 uppercase font-bold">단지</p>
-            </div>
-            <div className="text-center">
-              <p className="text-xl font-black text-[#EF4444] leading-none">
-                {Math.round(totalUnits / 100) / 10}k
-              </p>
-              <p className="text-[9px] text-white/40 mt-1 uppercase font-bold">총 세대</p>
-            </div>
-            <div className="col-span-2 pt-2 border-t border-white/5 text-center">
-              <p className="text-lg font-black text-white leading-none">
-                {avgPrice.toLocaleString()} <span className="text-xs font-normal text-white/40">만원/평</span>
-              </p>
-              <p className="text-[9px] text-white/40 mt-1 uppercase font-bold">평균 분양가</p>
-            </div>
-          </div>
-        </section>
-      </div>
-
-      <div className="p-6 bg-black/10">
-        <button
-          onClick={onExport}
-          disabled={exporting}
-          className="w-full py-4 px-6 rounded-xl font-bold text-base transition-all
-            bg-[#3B82F6] hover:bg-[#2563EB] disabled:bg-gray-600
-            text-white shadow-xl shadow-blue-900/40 
-            flex items-center justify-center gap-3 active:scale-[0.98]"
-        >
-          {exporting ? (
-            <>
-              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              <span>PPT 생성 중...</span>
-            </>
-          ) : (
-            <>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 15L12 3M12 15L8 11M12 15L16 11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M2 17L2.621 19.485C2.847 20.39 3.654 21 4.588 21H19.412C20.346 21 21.153 20.39 21.379 19.485L22 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              <span>PPT 보고서 다운로드</span>
-            </>
-          )}
-        </button>
-      </div>
-    </aside>
+        </div>
+      </aside>
+    </>
   );
 }
