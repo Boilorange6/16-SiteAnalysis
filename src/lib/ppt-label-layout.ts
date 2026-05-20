@@ -15,7 +15,7 @@ export interface PoiLabelPlacement {
   readonly h: number;
 }
 
-const LABEL_HEIGHT = 0.32;
+const LABEL_HEIGHT = 0.26;
 const LABEL_GAP = 0.08;
 const LABEL_MARGIN = 0.3;
 

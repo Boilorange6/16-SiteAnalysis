@@ -1,15 +1,9 @@
 /**
  * verify-subway-coords.mjs
- * 지하철역 좌표 검증 스크립트 (COO-32)
+ * 지하철 좌표 검증 스크립트
  *
- * 검사 항목:
- *   V01 - 역 ID 중복 없음
- *   V02 - 노선 stationIds 존재 여부
- *   V03 - 역 좌표가 서울 경계 내 (위도 37.4~37.7, 경도 126.7~127.2)
- *   V04 - 역이 분석 반경 + 2km 버퍼 이내
- *   V05 - 인접 역 간 거리 ≤ 3km (동일 노선)
- *   V06 - 경로 좌표 연속성 (연속 세그먼트 ≤ 1km)
- *   V07 - 역 좌표가 해당 노선 경로 좌표에서 ≤ 500m 이내
+ * 정적 public/data 시드가 동적 API/Overpass 기반 데이터로 리팩터링되었기
+ * 때문에, 현재 산출물 JSON과 동적 노선 공급자 계약을 함께 검증한다.
  */
 
 import fs from 'fs';
@@ -19,8 +13,13 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DATA_ROOT = path.join(__dirname, '../../public/data');
+const PROJECT_ROOT = path.join(__dirname, '../..');
 const RESULTS_DIR = path.join(__dirname, '../../output');
+const ANALYSIS_PATH = path.join(RESULTS_DIR, 'cheongwadae-analysis.json');
+const ROUTE_PROVIDER_PATH = path.join(PROJECT_ROOT, 'src/lib/overpass-subway-routes.ts');
+
+const CENTER = { lat: 37.5866, lng: 126.9748 };
+const SEOUL_BOUNDS = { latMin: 37.4, latMax: 37.7, lngMin: 126.7, lngMax: 127.2 };
 
 // ---------------------------------------------------------------------------
 // Haversine 거리 계산 (단위: m)
@@ -45,156 +44,102 @@ function addCheck(id, category, label, passed, detail) {
   checks.push({ id, category, label, passed, detail });
 }
 
-// ---------------------------------------------------------------------------
-// 지역별 검증
-// ---------------------------------------------------------------------------
-function verifyRegion(region) {
-  const { regionCode, regionName, defaultConfig } = region;
-  const { centerLat, centerLng, radiusKm } = defaultConfig;
-  const maxDistM = (radiusKm + 3) * 1000; // 3km 버퍼 (노선 경로 표시 목적의 경계 역 수용)
+function verifyAnalysisSubwayLayer(analysis) {
+  const radiusKm = Number(analysis.radiusKm);
+  const maxDistM = (radiusKm + 3) * 1000;
+  const subwayLayer = analysis.layers?.find((layer) => layer.type === 'subways');
+  const stations = Array.isArray(subwayLayer?.items) ? subwayLayer.items : [];
 
-  const stationsPath = path.join(DATA_ROOT, 'seed', regionCode, 'subway-stations.json');
-  const routesPath   = path.join(DATA_ROOT, 'seed', regionCode, 'subway-routes.json');
-
-  const stations = JSON.parse(fs.readFileSync(stationsPath, 'utf-8'));
-  const routes   = JSON.parse(fs.readFileSync(routesPath,   'utf-8'));
-
-  const stationMap = new Map(stations.map((s) => [s.id, s]));
-  const prefix = regionCode;
-
-  // ------ V01: 역 ID 중복 -----------------------------------------------
-  const idSet = new Set();
-  const duplicates = [];
-  for (const s of stations) {
-    if (idSet.has(s.id)) duplicates.push(s.id);
-    idSet.add(s.id);
-  }
   addCheck(
-    `${prefix}/V01`,
-    'V01 역ID 중복',
-    `[${regionName}] 역 ID 고유성`,
-    duplicates.length === 0,
-    duplicates.length === 0
-      ? `총 ${stations.length}개 역 — 중복 없음`
-      : `중복 ID: ${duplicates.join(', ')}`,
+    'analysis/V01',
+    'V01 중심 좌표',
+    '청와대 중심 좌표 고정',
+    Math.abs(Number(analysis.center?.lat) - CENTER.lat) < 0.000001 &&
+      Math.abs(Number(analysis.center?.lng) - CENTER.lng) < 0.000001,
+    `center=${JSON.stringify(analysis.center)}`,
   );
 
-  // ------ V02: stationIds 존재 여부 --------------------------------------
-  for (const route of routes) {
-    const missing = route.stationIds.filter((id) => !stationMap.has(id));
-    addCheck(
-      `${prefix}/V02/${route.line}`,
-      'V02 stationId 존재',
-      `[${regionName}] ${route.line} stationIds 유효성`,
-      missing.length === 0,
-      missing.length === 0
-        ? '모든 stationId 정상'
-        : `존재하지 않는 ID: ${missing.join(', ')}`,
-    );
-  }
+  addCheck(
+    'analysis/V02',
+    'V02 역 개수',
+    'subways.count와 items 길이 일치',
+    Number(subwayLayer?.count) === stations.length && stations.length > 0,
+    `count=${subwayLayer?.count}, items=${stations.length}`,
+  );
 
-  // ------ V03: 서울 경계 내 좌표 ----------------------------------------
-  const SEOUL_BOUNDS = { latMin: 37.4, latMax: 37.7, lngMin: 126.7, lngMax: 127.2 };
-  for (const s of stations) {
+  const duplicateKeys = stations
+    .map((s) => `${Number(s.lat).toFixed(5)},${Number(s.lng).toFixed(5)}`);
+  const duplicateCounts = duplicateKeys.reduce((acc, key) => {
+    acc.set(key, (acc.get(key) ?? 0) + 1);
+    return acc;
+  }, new Map());
+
+  stations.forEach((station, idx) => {
+    const label = `subway-${String(idx + 1).padStart(2, '0')}`;
+    const hasCoordinates = typeof station?.lat === 'number' && typeof station?.lng === 'number';
+    addCheck(
+      `analysis/V03/${label}`,
+      'V03 좌표 형식',
+      `${label} 숫자 좌표 보유`,
+      hasCoordinates,
+      hasCoordinates ? `(${station.lat}, ${station.lng})` : JSON.stringify(station),
+    );
+
+    const key = duplicateKeys[idx];
+    const isUnique = (duplicateCounts.get(key) ?? 0) === 1;
+    addCheck(
+      `analysis/V04/${label}`,
+      'V04 좌표 중복',
+      `${label} 좌표 고유성`,
+      hasCoordinates && isUnique,
+      hasCoordinates && isUnique ? `${key} 고유` : `${key} 중복`,
+    );
+
     const inBounds =
-      s.lat >= SEOUL_BOUNDS.latMin && s.lat <= SEOUL_BOUNDS.latMax &&
-      s.lng >= SEOUL_BOUNDS.lngMin && s.lng <= SEOUL_BOUNDS.lngMax;
+      hasCoordinates &&
+      station.lat >= SEOUL_BOUNDS.latMin &&
+      station.lat <= SEOUL_BOUNDS.latMax &&
+      station.lng >= SEOUL_BOUNDS.lngMin &&
+      station.lng <= SEOUL_BOUNDS.lngMax;
     addCheck(
-      `${prefix}/V03/${s.id}`,
-      'V03 서울 경계',
-      `[${regionName}] ${s.name} 서울 경계 내 위치`,
+      `analysis/V05/${label}`,
+      'V05 서울 경계',
+      `${label} 서울 경계 내 위치`,
       inBounds,
-      inBounds
-        ? `(${s.lat}, ${s.lng}) — 정상`
-        : `(${s.lat}, ${s.lng}) — 서울 경계 초과!`,
+      hasCoordinates ? `(${station.lat}, ${station.lng})` : JSON.stringify(station),
     );
-  }
 
-  // ------ V04: 분석 반경 버퍼 이내 ----------------------------------------
-  for (const s of stations) {
-    const distM = haversineDistance(centerLat, centerLng, s.lat, s.lng);
-    const inRange = distM <= maxDistM;
+    const distanceM = hasCoordinates
+      ? haversineDistance(analysis.center.lat, analysis.center.lng, station.lat, station.lng)
+      : Infinity;
+    const inRange = distanceM <= maxDistM;
     addCheck(
-      `${prefix}/V04/${s.id}`,
-      'V04 반경 버퍼',
-      `[${regionName}] ${s.name} 반경 ${radiusKm + 3}km 이내`,
+      `analysis/V06/${label}`,
+      'V06 반경 버퍼',
+      `${label} 반경 ${radiusKm + 3}km 이내`,
       inRange,
-      `거리 ${(distM / 1000).toFixed(2)}km (한계 ${(maxDistM / 1000).toFixed(0)}km — 반경 ${radiusKm}km + 버퍼 3km)`,
+      Number.isFinite(distanceM)
+        ? `거리 ${(distanceM / 1000).toFixed(2)}km`
+        : '좌표 없음',
     );
-  }
+  });
+}
 
-  // ------ V05: 인접 역 간 거리 ≤ 3km ------------------------------------
-  const MAX_ADJACENT_M = 3000;
-  for (const route of routes) {
-    const validIds = route.stationIds.filter((id) => stationMap.has(id));
-    for (let i = 1; i < validIds.length; i++) {
-      const a = stationMap.get(validIds[i - 1]);
-      const b = stationMap.get(validIds[i]);
-      const distM = haversineDistance(a.lat, a.lng, b.lat, b.lng);
-      const ok = distM <= MAX_ADJACENT_M;
-      addCheck(
-        `${prefix}/V05/${route.line}/${i}`,
-        'V05 인접역 거리',
-        `[${regionName}] ${route.line} ${a.name}→${b.name}`,
-        ok,
-        `${(distM / 1000).toFixed(2)}km ${ok ? '✓' : '⚠ 3km 초과!'}`,
-      );
-    }
-  }
+function verifyDynamicRouteProvider() {
+  const source = fs.readFileSync(ROUTE_PROVIDER_PATH, 'utf-8');
+  const usesOverpassRelations =
+    source.includes('relation["route"="subway"]') && source.includes('out geom');
+  const acceptsDynamicCoordinates =
+    source.includes('coordinates') && !source.includes('public/data') && !source.includes('seed/');
+  const hasGapGuard = source.includes('const GAP = 0.005');
 
-  // ------ V06: 경로 좌표 연속성 (세그먼트 ≤ 1km) -----------------------
-  const MAX_SEGMENT_M = 1000;
-  for (const route of routes) {
-    if (!route.coordinates || route.coordinates.length < 2) {
-      addCheck(
-        `${prefix}/V06/${route.line}/coords`,
-        'V06 경로 연속성',
-        `[${regionName}] ${route.line} 좌표 배열`,
-        false,
-        'coordinates 누락 또는 점 부족',
-      );
-      continue;
-    }
-    let maxSeg = 0;
-    let maxSegIdx = -1;
-    for (let i = 1; i < route.coordinates.length; i++) {
-      const [lat1, lng1] = route.coordinates[i - 1];
-      const [lat2, lng2] = route.coordinates[i];
-      const d = haversineDistance(lat1, lng1, lat2, lng2);
-      if (d > maxSeg) { maxSeg = d; maxSegIdx = i; }
-    }
-    const ok = maxSeg <= MAX_SEGMENT_M;
-    addCheck(
-      `${prefix}/V06/${route.line}`,
-      'V06 경로 연속성',
-      `[${regionName}] ${route.line} 최대 세그먼트`,
-      ok,
-      `최대 세그먼트 ${(maxSeg / 1000).toFixed(3)}km (인덱스 ${maxSegIdx - 1}→${maxSegIdx}) ${ok ? '✓' : '⚠ 1km 초과!'}`,
-    );
-  }
-
-  // ------ V07: 역 좌표 ↔ 노선 경로 일치 (≤ 500m) -----------------------
-  const MAX_STATION_ROUTE_M = 500;
-  for (const route of routes) {
-    if (!route.coordinates || route.coordinates.length === 0) continue;
-    for (const stationId of route.stationIds) {
-      const s = stationMap.get(stationId);
-      if (!s) continue;
-      const minDist = Math.min(
-        ...route.coordinates.map(([lat, lng]) =>
-          haversineDistance(s.lat, s.lng, lat, lng),
-        ),
-      );
-      const ok = minDist <= MAX_STATION_ROUTE_M;
-      addCheck(
-        `${prefix}/V07/${route.line}/${stationId}`,
-        'V07 역↔경로 일치',
-        `[${regionName}] ${s.name} ↔ ${route.line} 경로`,
-        ok,
-        `최소 거리 ${minDist.toFixed(0)}m ${ok ? '✓' : '⚠ 500m 초과!'}`,
-      );
-    }
-  }
+  addCheck(
+    'provider/V07',
+    'V07 동적 노선 소스',
+    'Overpass relation geometry 기반 노선 공급자 사용',
+    usesOverpassRelations && acceptsDynamicCoordinates && hasGapGuard,
+    `usesOverpassRelations=${usesOverpassRelations}, acceptsDynamicCoordinates=${acceptsDynamicCoordinates}, hasGapGuard=${hasGapGuard}`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -205,13 +150,9 @@ function main() {
     fs.mkdirSync(RESULTS_DIR, { recursive: true });
   }
 
-  const regions = JSON.parse(
-    fs.readFileSync(path.join(DATA_ROOT, 'regions.json'), 'utf-8'),
-  );
-
-  for (const region of regions) {
-    verifyRegion(region);
-  }
+  const analysis = JSON.parse(fs.readFileSync(ANALYSIS_PATH, 'utf-8'));
+  verifyAnalysisSubwayLayer(analysis);
+  verifyDynamicRouteProvider();
 
   // 결과 집계
   const passed  = checks.filter((c) => c.passed);

@@ -1,4 +1,4 @@
-export type PoiCategory = "subway" | "school" | "park" | "mountain" | "apartment";
+export type PoiCategory = "subway" | "school" | "park" | "mountain" | "apartment" | "officetel" | "residential" | "maintenance";
 
 export interface PoiBase {
   readonly id: string;
@@ -6,6 +6,31 @@ export interface PoiBase {
   readonly lat: number;
   readonly lng: number;
   readonly category: PoiCategory;
+}
+
+export type ResidentialStatus = "existing" | "planned";
+export type ResidentialSource = "ledger" | "applyhome" | "housing_permit";
+
+export interface ResidentialFloorplan {
+  readonly housing_type: string;
+  readonly area_sqm?: number;
+  readonly image_url?: string;
+  readonly source_url: string;
+  readonly status: "thumbnail" | "link_only";
+}
+
+interface ResidentialFields {
+  readonly units: number;
+  readonly parking_count: number;
+  readonly sale_date: string;
+  readonly distance_m: number;
+  readonly status: ResidentialStatus;
+  readonly source: ResidentialSource;
+  readonly max_floor?: number;
+  readonly move_in_month?: string;
+  readonly homepage_url?: string;
+  readonly notice_url?: string;
+  readonly floorplans?: readonly ResidentialFloorplan[];
 }
 
 export interface SubwayStation extends PoiBase {
@@ -19,10 +44,21 @@ export interface School extends PoiBase {
   readonly level: "elementary" | "middle" | "high";
 }
 
+export type ParkQuality = "major" | "neighborhood" | "children" | "small" | "green" | "unknown";
+export type ParkSource = "official" | "osm";
+
 export interface Park extends PoiBase {
   readonly category: "park";
   readonly area_sqm: number;
   readonly type: string;
+  readonly park_type?: string;
+  readonly distance_m?: number;
+  readonly access_distance_m?: number;
+  readonly address?: string;
+  readonly facilities?: readonly string[];
+  readonly source?: ParkSource;
+  readonly quality?: ParkQuality;
+  readonly boundary?: readonly [number, number][];
 }
 
 export interface Mountain extends PoiBase {
@@ -30,15 +66,55 @@ export interface Mountain extends PoiBase {
   readonly elevation_m: number;
 }
 
-export interface Apartment extends PoiBase {
+export interface Apartment extends PoiBase, ResidentialFields {
   readonly category: "apartment";
-  readonly units: number;
-  readonly price_per_pyeong: number;
-  readonly sale_date: string;
-  readonly distance_m: number;
 }
 
-export type Poi = SubwayStation | School | Park | Mountain | Apartment;
+export interface Officetel extends PoiBase, ResidentialFields {
+  readonly category: "officetel";
+}
+
+export interface ResidentialOther extends PoiBase, ResidentialFields {
+  readonly category: "residential";
+}
+
+/** Any POI with residential fields (apartment, officetel, residential) */
+export type ResidentialPoi = Apartment | Officetel | ResidentialOther;
+
+export type MaintenanceStage =
+  | "구역지정/변경"
+  | "추진위"
+  | "조합설립"
+  | "사업시행인가"
+  | "관리처분"
+  | "착공"
+  | "준공"
+  | "미확인";
+
+export type MaintenanceBoundaryStatus = "confirmed" | "unavailable";
+export type MaintenanceSource = "seoul_open_data" | "busan_data_go_kr";
+
+export interface MaintenanceProject extends PoiBase {
+  readonly category: "maintenance";
+  readonly type: string;
+  readonly stage: MaintenanceStage;
+  readonly address: string;
+  readonly area_sqm: number;
+  readonly boundary?: readonly [number, number][];
+  readonly notice_code?: string;
+  readonly notice_url?: string;
+  readonly source: MaintenanceSource;
+  readonly boundary_status: MaintenanceBoundaryStatus;
+  readonly distance_m?: number;
+  readonly planned_households?: number;
+  readonly floor_area_ratio?: number;
+  readonly building_coverage_ratio?: number;
+  readonly contractor?: string;
+  readonly architect?: string;
+  readonly union_members?: number;
+}
+
+export type Poi = SubwayStation | School | Park | Mountain | Apartment | Officetel | ResidentialOther | MaintenanceProject;
 
 export interface SubwayRoute {
   readonly line: string;
@@ -67,20 +143,15 @@ export interface AnalysisConfig {
   readonly radiusKm: number;
 }
 
-export interface RegionMetadata {
-  readonly regionCode: string;
-  readonly regionName: string;
-  readonly address: string;
-  readonly aliases: readonly string[];
-  readonly defaultConfig: AnalysisConfig;
-}
-
 export interface LayerVisibility {
   readonly subway: boolean;
   readonly school: boolean;
   readonly park: boolean;
   readonly mountain: boolean;
   readonly apartment: boolean;
+  readonly officetel: boolean;
+  readonly residential: boolean;
+  readonly maintenance: boolean;
 }
 
 export interface RegionData {
@@ -94,11 +165,17 @@ export interface RegionData {
   readonly parks: readonly Park[];
   readonly mountains: readonly Mountain[];
   readonly apartments: readonly Apartment[];
+  readonly officetels: readonly Officetel[];
+  readonly residentialOthers: readonly ResidentialOther[];
+  readonly maintenanceProjects: readonly MaintenanceProject[];
   readonly subwayRoutes: readonly SubwayRoute[];
 }
 
 export const CATEGORY_COLORS: Record<PoiCategory, string> = {
   apartment: "#EF4444",
+  officetel: "#F97316",
+  residential: "#A855F7",
+  maintenance: "#EC4899",
   subway: "#F59E0B",
   school: "#3B82F6",
   park: "#10B981",
@@ -111,7 +188,7 @@ export const THEME_COLORS = {
   pureWhite: "#FFFFFF",
   overlayDark: "#0F172A",
   overlayLight: "#F8FAFC",
-  background: "#F1F5F9", // Light grey background for the app frame if needed, or Navy
+  background: "#F1F5F9",
   sidebarBg: "#1E3A8A",
   accent: "#3B82F6",
 } as const;
@@ -121,5 +198,11 @@ export const CATEGORY_LABELS: Record<PoiCategory, string> = {
   school: "학교",
   park: "공원",
   mountain: "산",
-  apartment: "분양 아파트",
+  apartment: "아파트단지",
+  officetel: "오피스텔",
+  residential: "기타 주거시설",
+  maintenance: "정비사업",
 } as const;
+
+/** Categories that share the residential year filter */
+export const RESIDENTIAL_CATEGORIES: readonly PoiCategory[] = ["apartment", "officetel", "residential"] as const;

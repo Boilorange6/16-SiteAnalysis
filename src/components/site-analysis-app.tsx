@@ -1,33 +1,48 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import type {
   AnalysisConfig,
   LayerVisibility,
   Poi,
+  PoiCategory,
   RegionData,
-  RegionMetadata,
 } from "@/lib/types";
 import type { MapViewHandle } from "./map-view";
 import MapView from "./map-view";
-import Sidebar from "./sidebar";
-import { DEFAULT_CONFIG, DEFAULT_REGION_CODE } from "@/lib/seed-data";
+import Sidebar, { type ApartmentFilter } from "./sidebar";
 import {
-  CUSTOM_REGION_CODE,
-  loadRegion,
-  getAvailableRegions,
+  deleteAnalysisProject,
+  getApiKeyStatus,
+  listAnalysisProjects,
   loadDynamicRegion,
+  loadAnalysisProject,
+  saveAnalysisProject,
   type AddressSearchResult,
 } from "@/lib/data-provider";
 import { haversineDistance } from "@/lib/geo";
+import {
+  buildInsightOverlays,
+  computeAnalysisScores,
+  generateAnalysisNarrative,
+} from "@/lib/analysis-engine";
+import type { PptDesignConfig } from "@/lib/ppt-design-config";
+import type { SlideRenderInput } from "@/lib/ppt-canvas-renderer";
+import PptPreviewModal from "./ppt-preview-modal";
+import type { AnalysisProjectSummary, ApiKeyStatusResponse } from "@/lib/project-types";
+
+const INITIAL_CONFIG: AnalysisConfig = {
+  centerName: "",
+  centerLat: 37.5665,
+  centerLng: 126.9780,
+  radiusKm: 3,
+};
 
 export default function SiteAnalysisApp() {
   const mapRef = useRef<MapViewHandle>(null);
-  const [config, setConfig] = useState<AnalysisConfig>(DEFAULT_CONFIG);
-  const [regionCode, setRegionCode] = useState(DEFAULT_REGION_CODE);
+  const [config, setConfig] = useState<AnalysisConfig>(INITIAL_CONFIG);
   const [regionData, setRegionData] = useState<RegionData | null>(null);
-  const [availableRegions, setAvailableRegions] = useState<readonly RegionMetadata[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [layers, setLayers] = useState<LayerVisibility>({
     subway: true,
@@ -35,75 +50,32 @@ export default function SiteAnalysisApp() {
     park: true,
     mountain: true,
     apartment: true,
+    officetel: true,
+    residential: true,
+    maintenance: true,
   });
   const [exporting, setExporting] = useState(false);
-  const isCustomRegion = regionCode === CUSTOM_REGION_CODE;
+  const [hasSearched, setHasSearched] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewInput, setPreviewInput] = useState<SlideRenderInput | null>(null);
+  const [apartmentFilter, setApartmentFilter] = useState<ApartmentFilter>({ enabled: false, minYear: 2013 });
+  const [manualPois, setManualPois] = useState<Poi[]>([]);
+  const [visibleInsightOverlayIds, setVisibleInsightOverlayIds] = useState<string[]>(["station-500", "park-500"]);
+  const [apiKeyStatus, setApiKeyStatus] = useState<ApiKeyStatusResponse | null>(null);
+  const [projects, setProjects] = useState<readonly AnalysisProjectSummary[]>([]);
+  const [currentProjectId, setCurrentProjectId] = useState<number | undefined>(undefined);
+  const [projectSaving, setProjectSaving] = useState(false);
+  const [projectMessage, setProjectMessage] = useState("");
 
   useEffect(() => {
-    let cancelled = false;
-
-    getAvailableRegions()
-      .then((regions) => {
-        if (cancelled) {
-          return;
-        }
-
-        setAvailableRegions(regions);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setLoadError("검색 가능한 분석 지역 목록을 불러오지 못했습니다.");
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (isCustomRegion) {
-      return;
-    }
-
-    let cancelled = false;
-    setLoading(true);
-    setLoadError(null);
-    loadRegion(regionCode)
-      .then((data) => {
-        if (cancelled) {
-          return;
-        }
-
-        setRegionData(data);
-        setConfig(data.defaultConfig);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setRegionData(null);
-          setLoadError("선택한 지역의 POI 데이터를 불러오지 못했습니다.");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isCustomRegion, regionCode]);
-
-  useEffect(() => {
-    if (!isCustomRegion) {
-      return;
-    }
+    if (!hasSearched) return;
 
     let cancelled = false;
     setLoading(true);
     setLoadError(null);
 
+    // Geo-based search via Overpass API — no area prefix needed
     loadDynamicRegion(config.centerLat, config.centerLng, config.radiusKm)
       .then((data) => {
         if (!cancelled) {
@@ -112,7 +84,7 @@ export default function SiteAnalysisApp() {
       })
       .catch((error) => {
         if (!cancelled) {
-          const message = error instanceof Error ? error.message : "실시간 POI 데이터를 불러오지 못했습니다.";
+          const message = error instanceof Error ? error.message : "POI 데이터를 불러오지 못했습니다.";
           setRegionData(null);
           setLoadError(message);
         }
@@ -126,17 +98,35 @@ export default function SiteAnalysisApp() {
     return () => {
       cancelled = true;
     };
-  }, [config.centerLat, config.centerLng, config.radiusKm, isCustomRegion]);
+  }, [config.centerLat, config.centerLng, config.radiusKm, hasSearched, reloadNonce]);
 
-  const allPois: readonly Poi[] = regionData
-    ? [
+  const yearFilter = (poi: { sale_date: string; move_in_month?: string; status?: string }) => {
+    if (!apartmentFilter.enabled) return true;
+    const year = parseInt(poi.sale_date || poi.move_in_month || "");
+    if (poi.status === "planned" && isNaN(year)) return true;
+    if (isNaN(year)) return false;
+    return year >= apartmentFilter.minYear;
+  };
+
+  const filteredApartments = regionData ? regionData.apartments.filter(yearFilter) : [];
+  const filteredOfficetels = regionData ? regionData.officetels.filter(yearFilter) : [];
+  const filteredResidentials = regionData ? regionData.residentialOthers.filter(yearFilter) : [];
+
+  const allPois: readonly Poi[] = [
+    ...(regionData
+      ? [
         ...regionData.subwayStations,
         ...regionData.schools,
         ...regionData.parks,
         ...regionData.mountains,
-        ...regionData.apartments,
+        ...filteredApartments,
+        ...filteredOfficetels,
+        ...filteredResidentials,
+        ...regionData.maintenanceProjects,
       ]
-    : [];
+      : []),
+    ...manualPois,
+  ];
   const poisInRange = allPois.filter(
     (poi) => haversineDistance(config.centerLat, config.centerLng, poi.lat, poi.lng) <= config.radiusKm * 1000
   );
@@ -144,51 +134,266 @@ export default function SiteAnalysisApp() {
   const subwayRoutes = regionData?.subwayRoutes ?? [];
   const displayedPois = loading ? [] : allPois;
   const displayedSubwayRoutes = loading ? [] : subwayRoutes;
+  const canExport = hasSearched && !loading && !loadError && regionData !== null;
+  const exportDisabledReason = !hasSearched
+    ? "주소 검색 후 PPT를 만들 수 있습니다."
+    : loading
+      ? "데이터를 불러오는 중입니다."
+      : loadError
+        ? "데이터 로딩 오류를 해결한 뒤 다시 시도해 주세요."
+        : undefined;
 
   const handleToggleLayer = useCallback((category: keyof LayerVisibility) => {
     setLayers((prev) => ({ ...prev, [category]: !prev[category] }));
   }, []);
 
-  const handleConfigChange = useCallback((newConfig: AnalysisConfig) => {
-    setConfig(newConfig);
+  const insightOverlays = useMemo(
+    () => buildInsightOverlays(config, poisInRange),
+    [config, poisInRange],
+  );
+  const analysisScores = useMemo(
+    () => computeAnalysisScores(config, poisInRange),
+    [config, poisInRange],
+  );
+  const insightNarrative = useMemo(
+    () => generateAnalysisNarrative(config, poisInRange),
+    [config, poisInRange],
+  );
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([getApiKeyStatus(), listAnalysisProjects()])
+      .then(([status, projectList]) => {
+        if (!cancelled) {
+          setApiKeyStatus(status);
+          setProjects(projectList);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setApiKeyStatus(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const handleRegionSelect = useCallback((region: RegionMetadata) => {
-    setConfig(region.defaultConfig);
-    setRegionCode(region.regionCode);
+  const handleConfigChange = useCallback((newConfig: AnalysisConfig) => {
+    setConfig(newConfig);
+    setHasSearched(true);
   }, []);
 
   const handleAddressSelect = useCallback((result: AddressSearchResult) => {
-    setRegionCode(CUSTOM_REGION_CODE);
     setConfig((previous) => ({
       centerName: result.name,
       centerLat: result.lat,
       centerLng: result.lng,
       radiusKm: previous.radiusKm,
     }));
+    setHasSearched(true);
   }, []);
 
-  const handleExport = useCallback(async () => {
-    if (!mapRef.current) return;
+  const handleRetryLoad = useCallback(() => {
+    if (!hasSearched) return;
+    setLoadError(null);
+    setRegionData(null);
+    setReloadNonce((value) => value + 1);
+  }, [hasSearched]);
+
+  const createManualPoi = useCallback((
+    category: PoiCategory,
+    name: string,
+    lat: number,
+    lng: number,
+  ): Poi => {
+    const id = `manual-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const base = { id, name, lat, lng, category };
+    switch (category) {
+      case "subway":
+        return { ...base, category, line: "수동 등록", lineColor: "#F59E0B" };
+      case "school":
+        return { ...base, category, level: "elementary" };
+      case "park":
+        return { ...base, category, area_sqm: 0, type: "수동 등록", source: "official", quality: "unknown" };
+      case "mountain":
+        return { ...base, category, elevation_m: 0 };
+      case "maintenance":
+        return {
+          ...base,
+          category,
+          type: "수동 등록",
+          stage: "미확인",
+          address: "",
+          area_sqm: 0,
+          source: "seoul_open_data",
+          boundary_status: "unavailable",
+        };
+      case "officetel":
+      case "residential":
+      case "apartment":
+        return {
+          ...base,
+          category,
+          units: 0,
+          parking_count: 0,
+          sale_date: "",
+          distance_m: haversineDistance(config.centerLat, config.centerLng, lat, lng),
+          status: "existing",
+          source: "ledger",
+        };
+      default:
+        return { ...base, category: "park", area_sqm: 0, type: "수동 등록" };
+    }
+  }, [config.centerLat, config.centerLng]);
+
+  const handleAddManualPoi = useCallback((category: PoiCategory, name: string, lat: number, lng: number) => {
+    setManualPois((previous) => [...previous, createManualPoi(category, name, lat, lng)]);
+  }, [createManualPoi]);
+
+  const handleUpdateManualPoi = useCallback((id: string, patch: { name: string; lat: number; lng: number }) => {
+    if (!Number.isFinite(patch.lat) || !Number.isFinite(patch.lng)) {
+      return;
+    }
+    setManualPois((previous) =>
+      previous.map((poi) =>
+        poi.id === id
+          ? ({ ...poi, name: patch.name, lat: patch.lat, lng: patch.lng } as Poi)
+          : poi
+      )
+    );
+  }, []);
+
+  const handleRemoveManualPoi = useCallback((id: string) => {
+    setManualPois((previous) => previous.filter((poi) => poi.id !== id));
+  }, []);
+
+  const toggleInsightOverlay = useCallback((id: string) => {
+    setVisibleInsightOverlayIds((previous) =>
+      previous.includes(id) ? previous.filter((item) => item !== id) : [...previous, id]
+    );
+  }, []);
+
+  const refreshProjects = useCallback(async () => {
+    const projectList = await listAnalysisProjects();
+    setProjects(projectList);
+  }, []);
+
+  const handleSaveProject = useCallback(async () => {
+    setProjectSaving(true);
+    setProjectMessage("");
+    try {
+      const title = config.centerName ? `${config.centerName} ${config.radiusKm}km 분석` : "새 입지 분석";
+      const project = await saveAnalysisProject(
+        title,
+        { config, layers, manualPois, apartmentFilter },
+        currentProjectId,
+      );
+      setCurrentProjectId(project.id);
+      await refreshProjects();
+      setProjectMessage("프로젝트가 저장되었습니다.");
+    } catch (error) {
+      setProjectMessage(error instanceof Error ? error.message : "프로젝트 저장에 실패했습니다.");
+    } finally {
+      setProjectSaving(false);
+    }
+  }, [apartmentFilter, config, currentProjectId, layers, manualPois, refreshProjects]);
+
+  const handleLoadProject = useCallback(async (id: number) => {
+    setProjectSaving(true);
+    setProjectMessage("");
+    try {
+      const project = await loadAnalysisProject(id);
+      setConfig(project.payload.config);
+      setLayers(project.payload.layers);
+      setManualPois([...project.payload.manualPois]);
+      setApartmentFilter(project.payload.apartmentFilter);
+      setCurrentProjectId(project.id);
+      setHasSearched(true);
+      setProjectMessage("저장된 프로젝트를 불러왔습니다.");
+    } catch (error) {
+      setProjectMessage(error instanceof Error ? error.message : "프로젝트를 불러오지 못했습니다.");
+    } finally {
+      setProjectSaving(false);
+    }
+  }, []);
+
+  const handleDeleteProject = useCallback(async (id: number) => {
+    setProjectSaving(true);
+    setProjectMessage("");
+    try {
+      await deleteAnalysisProject(id);
+      if (currentProjectId === id) {
+        setCurrentProjectId(undefined);
+      }
+      await refreshProjects();
+      setProjectMessage("프로젝트를 삭제했습니다.");
+    } catch (error) {
+      setProjectMessage(error instanceof Error ? error.message : "프로젝트 삭제에 실패했습니다.");
+    } finally {
+      setProjectSaving(false);
+    }
+  }, [currentProjectId, refreshProjects]);
+
+  const collectExportData = useCallback(async () => {
+    if (!mapRef.current) return null;
+    const radiusPosition = mapRef.current.getRadiusPosition();
+    const baseMapImage = await mapRef.current.captureBaseMap();
+    const visiblePois = allPois.filter(
+      (poi) =>
+        layers[poi.category] &&
+        haversineDistance(config.centerLat, config.centerLng, poi.lat, poi.lng) <= config.radiusKm * 1000
+    );
+    const poiPositions = mapRef.current.getPoiPositions(visiblePois);
+    const routePositions = mapRef.current.getRouteNormalizedPositions(subwayRoutes);
+    return { config, allPois: visiblePois, baseMapImage, poiPositions, radiusPosition, routePositions };
+  }, [allPois, layers, config, subwayRoutes]);
+
+  const handlePreview = useCallback(async () => {
+    if (!mapRef.current || !canExport) return;
     setExporting(true);
     try {
-      const radiusPosition = mapRef.current.getRadiusPosition();
-      const baseMapImage = await mapRef.current.captureBaseMap();
-      const visiblePois = allPois.filter(
-        (poi) =>
-          layers[poi.category] &&
-          haversineDistance(config.centerLat, config.centerLng, poi.lat, poi.lng) <= config.radiusKm * 1000
-      );
-      const poiPositions = mapRef.current.getPoiPositions(visiblePois);
-      const routePositions = mapRef.current.getRouteNormalizedPositions(subwayRoutes);
+      const data = await collectExportData();
+      if (!data) return;
+      setPreviewInput(data);
+      setPreviewOpen(true);
+    } catch (err) {
+      console.error("Preview preparation failed:", err);
+    } finally {
+      setExporting(false);
+    }
+  }, [canExport, collectExportData]);
+
+  const handleDownloadWithDesign = useCallback(async (designConfig: PptDesignConfig) => {
+    if (!previewInput) return;
+    const { generateSiteAnalysisPpt } = await import("@/lib/ppt-generator");
+    await generateSiteAnalysisPpt(
+      previewInput.config,
+      previewInput.allPois,
+      previewInput.baseMapImage,
+      previewInput.poiPositions,
+      previewInput.radiusPosition,
+      previewInput.routePositions,
+      designConfig
+    );
+  }, [previewInput]);
+
+  const handleExport = useCallback(async () => {
+    if (!mapRef.current || !canExport) return;
+    setExporting(true);
+    try {
+      const data = await collectExportData();
+      if (!data) return;
       const { generateSiteAnalysisPpt } = await import("@/lib/ppt-generator");
-      await generateSiteAnalysisPpt(config, visiblePois, baseMapImage, poiPositions, radiusPosition, routePositions);
+      await generateSiteAnalysisPpt(
+        data.config, data.allPois, data.baseMapImage,
+        data.poiPositions, data.radiusPosition, data.routePositions
+      );
     } catch (err) {
       console.error("PPT generation failed:", err);
     } finally {
       setExporting(false);
     }
-  }, [allPois, layers, config, subwayRoutes]);
+  }, [canExport, collectExportData]);
 
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-[#0F172A]">
@@ -196,15 +401,37 @@ export default function SiteAnalysisApp() {
         config={config}
         layers={layers}
         pois={poisInRange}
+        apartmentFilter={apartmentFilter}
         exporting={exporting}
         loading={loading}
-        regionCode={regionCode}
-        availableRegions={availableRegions}
+        hasSearched={hasSearched}
+        loadError={loadError}
+        canExport={canExport}
+        exportDisabledReason={exportDisabledReason}
+        analysisScores={analysisScores}
+        insightNarrative={insightNarrative}
+        insightOverlays={insightOverlays}
+        visibleInsightOverlayIds={visibleInsightOverlayIds}
+        manualPois={manualPois}
+        apiKeyStatus={apiKeyStatus}
+        projects={projects}
+        currentProjectId={currentProjectId}
+        projectSaving={projectSaving}
+        projectMessage={projectMessage}
         onToggleLayer={handleToggleLayer}
+        onToggleInsightOverlay={toggleInsightOverlay}
         onConfigChange={handleConfigChange}
-        onRegionSelect={handleRegionSelect}
         onSelectAddress={handleAddressSelect}
+        onRetryLoad={handleRetryLoad}
+        onApartmentFilterChange={setApartmentFilter}
+        onAddManualPoi={handleAddManualPoi}
+        onUpdateManualPoi={handleUpdateManualPoi}
+        onRemoveManualPoi={handleRemoveManualPoi}
+        onSaveProject={handleSaveProject}
+        onLoadProject={handleLoadProject}
+        onDeleteProject={handleDeleteProject}
         onExport={handleExport}
+        onPreview={handlePreview}
       />
       <main className="relative min-h-0 flex-1">
         <MapView
@@ -213,8 +440,26 @@ export default function SiteAnalysisApp() {
           pois={displayedPois}
           layers={layers}
           subwayRoutes={displayedSubwayRoutes}
+          insightOverlays={insightOverlays}
+          visibleInsightOverlayIds={visibleInsightOverlayIds}
         />
-        {loading ? (
+        {!hasSearched && !loading && (
+          <div
+            className="absolute inset-0 z-[900] flex items-center justify-center bg-[#0F172A]/80"
+            role="status"
+          >
+            <div className="max-w-md rounded-2xl border border-white/10 bg-[#1E3A8A] p-10 text-center shadow-2xl">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" className="mx-auto mb-6 text-blue-300">
+                <path d="M21 21L16.65 16.65M19 11C19 15.4183 15.4183 19 11 19C6.58172 19 3 15.4183 3 11C3 6.58172 6.58172 3 11 3C15.4183 3 19 6.58172 19 11Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              <p className="text-xl font-bold text-white">분석할 장소를 검색하세요</p>
+              <p className="mt-3 text-sm text-blue-200/60">
+                좌측 패널에서 주소를 입력하면 주변 지하철역, 학교, 공원, 산, 아파트를 자동으로 분석합니다.
+              </p>
+            </div>
+          </div>
+        )}
+        {loading && (
           <div
             className="absolute inset-0 z-[900] flex items-center justify-center bg-[#0F172A]"
             role="status"
@@ -223,24 +468,40 @@ export default function SiteAnalysisApp() {
             <div className="bg-[#1E3A8A] rounded-2xl p-10 text-center shadow-2xl border border-white/10">
               <div className="w-12 h-12 border-4 border-blue-400 border-t-white rounded-full animate-spin mx-auto mb-6" />
               <p className="text-white text-lg font-bold">데이터 로딩 중</p>
-              <p className="text-blue-200/60 text-sm mt-2 font-medium">지역 POI 데이터를 불러오고 있습니다...</p>
+              <p className="text-blue-200/60 text-sm mt-2 font-medium">주변 POI 데이터를 불러오고 있습니다...</p>
             </div>
           </div>
-        ) : loadError ? (
+        )}
+        {loadError && !loading && (
           <div
             className="absolute inset-0 z-[900] flex items-center justify-center bg-[#0F172A]"
             role="alert"
             aria-live="assertive"
           >
-            <div className="max-w-md rounded-2xl border border-red-400/20 bg-[#1E293B] p-8 text-center shadow-2xl">
-              <p className="text-sm font-bold uppercase tracking-[0.28em] text-red-200/70">Load Error</p>
+            <div className="max-w-md rounded-2xl border border-red-300/25 bg-[#111827]/95 p-8 text-center shadow-2xl backdrop-blur">
+              <p className="text-xs font-bold uppercase tracking-[0.28em] text-red-200/75">데이터 로딩 실패</p>
               <p className="mt-3 text-lg font-bold text-white">{loadError}</p>
-              <p className="mt-2 text-sm text-slate-300">
-                주소 검색에서 다른 지역을 선택하거나 새로고침 후 다시 시도해 주세요.
+              <p className="mt-2 text-sm leading-6 text-slate-300">
+                외부 데이터 일부가 응답하지 않았습니다. 동일 조건으로 다시 조회하거나 다른 주소를 선택해 주세요.
               </p>
+              <button
+                type="button"
+                onClick={handleRetryLoad}
+                className="mt-5 rounded-xl bg-red-500 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-red-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200"
+              >
+                다시 조회
+              </button>
             </div>
           </div>
-        ) : null}
+        )}
+        {previewInput && (
+          <PptPreviewModal
+            open={previewOpen}
+            input={previewInput}
+            onClose={() => setPreviewOpen(false)}
+            onDownload={handleDownloadWithDesign}
+          />
+        )}
         {exporting && (
           <div
             className="absolute inset-0 z-[950] flex items-center justify-center bg-[#0F172A]/80 backdrop-blur-sm"

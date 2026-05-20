@@ -33,6 +33,9 @@ function createCategoryCounts(): Record<PoiCategory, number> {
     park: 0,
     mountain: 0,
     apartment: 0,
+    officetel: 0,
+    residential: 0,
+    maintenance: 0,
   };
 }
 

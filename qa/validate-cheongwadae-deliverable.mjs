@@ -7,10 +7,10 @@ import { execFileSync } from "child_process";
 const QA_ROOT = process.cwd();
 const DEV_ROOT =
   process.env.DEV_ROOT ||
-  "D:\\v-coding\\16-SiteAnalysis\\.climpire-worktrees\\57fd5455";
+  QA_ROOT;
 const DESIGN_ROOT =
   process.env.DESIGN_ROOT ||
-  "D:\\v-coding\\16-SiteAnalysis\\.climpire-worktrees\\5ed9a203";
+  QA_ROOT;
 
 const PATHS = {
   devPlan: path.join(DEV_ROOT, "docs", "dev-supplement-plan.md"),
@@ -29,7 +29,7 @@ const REQUIRED_LAYERS = [
   { type: "parks", icon: "park.svg" },
   { type: "apartments", icon: "apartment.svg" },
 ];
-const EXPECTED_SLIDES = 6;
+const EXPECTED_SLIDES = 7;
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
@@ -56,6 +56,11 @@ function findOutputFiles(rootDir) {
     .readdirSync(rootDir)
     .filter((entry) => /\.(pptx|ppt|pdf|png|jpg|jpeg)$/i.test(entry))
     .map((entry) => path.join(rootDir, entry));
+}
+
+function hasUsableFile(filePath, minBytes = 1024) {
+  if (!fileExists(filePath)) return false;
+  return fs.statSync(filePath).size >= minBytes;
 }
 
 function runGeneratorInIsolation(sourceScriptPath) {
@@ -104,11 +109,15 @@ function main() {
   const satelliteLayer = analysis.layers.find(
     (layer) => layer.type === "satellite_map"
   );
+  const satelliteOutputFiles = outputFiles.filter((filePath) => {
+    const basename = path.basename(filePath);
+    return basename === "map-satellite.png" || basename === "청와대_사이트분석.pptx";
+  });
   const satellitePassed =
     Boolean(satelliteLayer) &&
     satelliteLayer.source &&
     satelliteLayer.source !== "pending_selection" &&
-    outputFiles.length > 0;
+    satelliteOutputFiles.some((filePath) => hasUsableFile(filePath, 10_000));
   checks.push(
     createCheck(
       "QA-01",
@@ -117,11 +126,11 @@ function main() {
       satellitePassed,
       {
         satelliteSource: satelliteLayer?.source ?? null,
-        outputFiles,
+        outputFiles: satelliteOutputFiles,
       },
       satellitePassed
-        ? "위성지도 소스와 출력 파일이 모두 확인되었습니다."
-        : "위성지도 소스가 아직 pending_selection이며, 실제 PPT/PDF/슬라이드 이미지 출력물이 없습니다."
+        ? "위성지도 소스와 대표 지도/PPT 출력 파일이 모두 확인되었습니다."
+        : "위성지도 소스 또는 대표 지도/PPT 출력 파일이 없습니다."
     )
   );
 
@@ -203,12 +212,16 @@ function main() {
   const slideCount = Array.isArray(analysis.pptStructure)
     ? analysis.pptStructure.length
     : 0;
-  const designMentionsSixSlides =
-    designSpec.includes("총 6장 구성") && designSpec.includes("결론 및 시사점");
+  const designMentionsExpectedSlides =
+    designSpec.includes("16:9") &&
+    designSpec.includes(`1 / ${EXPECTED_SLIDES}`) &&
+    designSpec.includes("Full-bleed Map");
+  const pptFiles = outputFiles.filter((filePath) => /\.(pptx|ppt|pdf)$/i.test(filePath));
+  const usablePptFiles = pptFiles.filter((filePath) => hasUsableFile(filePath, 10_000));
   const pptPassed =
-    outputFiles.some((filePath) => /\.(pptx|ppt|pdf)$/i.test(filePath)) &&
+    usablePptFiles.length > 0 &&
     slideCount === EXPECTED_SLIDES &&
-    designMentionsSixSlides;
+    designMentionsExpectedSlides;
   checks.push(
     createCheck(
       "QA-04",
@@ -218,11 +231,12 @@ function main() {
       {
         slideCount,
         expectedSlides: EXPECTED_SLIDES,
-        outputFiles,
+        outputFiles: usablePptFiles,
+        designMentionsExpectedSlides,
       },
       pptPassed
-        ? "실제 PPT/PDF 출력물과 슬라이드 구성이 디자인 사양과 일치합니다."
-        : "디자인 사양은 6장을 요구하지만 현재 JSON은 4장만 정의하고 있으며 실제 PPT/PDF 출력물도 없습니다."
+        ? "실제 PPT/PDF 출력물과 7장 슬라이드 구성이 디자인 사양과 일치합니다."
+        : "7장 슬라이드 구조, 디자인 사양, 실제 PPT/PDF 출력물 중 일부가 누락되었습니다."
     )
   );
 
@@ -326,10 +340,10 @@ function main() {
     markdownLines.push("## QA 결론");
     markdownLines.push("");
     markdownLines.push(
-      "- 조건부 승인 유지. 실제 위성지도 출력물 부재, 개별 좌표 부재, PPT 완성본 부재로 인해 최종 승인 기준을 충족하지 못했습니다."
+      "- 조건부 승인 유지. 대표 지도 출력물, 레이어 좌표, PPT 완성본 중 하나 이상이 최종 승인 기준을 충족하지 못했습니다."
     );
     markdownLines.push(
-      "- 재검토 전 필수 보완: 위성지도 소스 확정 및 출력물 첨부, 레이어별 좌표 리스트 제공, 6장 구성의 실제 PPT/PDF 생성."
+      "- 재검토 전 필수 보완: 위성지도 소스 확정 및 출력물 첨부, 레이어별 좌표 리스트 제공, 7장 구성의 실제 PPT/PDF 생성."
     );
     markdownLines.push("");
   }

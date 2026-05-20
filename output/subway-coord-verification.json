@@ -1,1622 +1,824 @@
 {
-  "generatedAt": "2026-04-18T14:09:24.050Z",
+  "generatedAt": "2026-05-20T11:09:01.681Z",
   "summary": {
-    "total": 225,
-    "passed": 225,
+    "total": 111,
+    "passed": 111,
     "failed": 0
   },
   "byCategory": {
-    "V01 역ID 중복": {
-      "pass": 2,
+    "V01 중심 좌표": {
+      "pass": 1,
       "fail": 0,
       "failures": []
     },
-    "V02 stationId 존재": {
-      "pass": 11,
+    "V02 역 개수": {
+      "pass": 1,
       "fail": 0,
       "failures": []
     },
-    "V03 서울 경계": {
-      "pass": 53,
+    "V03 좌표 형식": {
+      "pass": 27,
       "fail": 0,
       "failures": []
     },
-    "V04 반경 버퍼": {
-      "pass": 53,
+    "V04 좌표 중복": {
+      "pass": 27,
       "fail": 0,
       "failures": []
     },
-    "V05 인접역 거리": {
-      "pass": 42,
+    "V05 서울 경계": {
+      "pass": 27,
       "fail": 0,
       "failures": []
     },
-    "V06 경로 연속성": {
-      "pass": 11,
+    "V06 반경 버퍼": {
+      "pass": 27,
       "fail": 0,
       "failures": []
     },
-    "V07 역↔경로 일치": {
-      "pass": 53,
+    "V07 동적 노선 소스": {
+      "pass": 1,
       "fail": 0,
       "failures": []
     }
   },
   "checks": [
     {
-      "id": "cheongwadae/V01",
-      "category": "V01 역ID 중복",
-      "label": "[청와대 일대] 역 ID 고유성",
+      "id": "analysis/V01",
+      "category": "V01 중심 좌표",
+      "label": "청와대 중심 좌표 고정",
       "passed": true,
-      "detail": "총 27개 역 — 중복 없음"
+      "detail": "center={\"lat\":37.5866,\"lng\":126.9748}"
     },
     {
-      "id": "cheongwadae/V02/1호선",
-      "category": "V02 stationId 존재",
-      "label": "[청와대 일대] 1호선 stationIds 유효성",
+      "id": "analysis/V02",
+      "category": "V02 역 개수",
+      "label": "subways.count와 items 길이 일치",
       "passed": true,
-      "detail": "모든 stationId 정상"
+      "detail": "count=27, items=27"
     },
     {
-      "id": "cheongwadae/V02/2호선",
-      "category": "V02 stationId 존재",
-      "label": "[청와대 일대] 2호선 stationIds 유효성",
+      "id": "analysis/V03/subway-01",
+      "category": "V03 좌표 형식",
+      "label": "subway-01 숫자 좌표 보유",
       "passed": true,
-      "detail": "모든 stationId 정상"
+      "detail": "(37.57584, 126.97356)"
     },
     {
-      "id": "cheongwadae/V02/3호선",
-      "category": "V02 stationId 존재",
-      "label": "[청와대 일대] 3호선 stationIds 유효성",
+      "id": "analysis/V04/subway-01",
+      "category": "V04 좌표 중복",
+      "label": "subway-01 좌표 고유성",
       "passed": true,
-      "detail": "모든 stationId 정상"
+      "detail": "37.57584,126.97356 고유"
     },
     {
-      "id": "cheongwadae/V02/4호선",
-      "category": "V02 stationId 존재",
-      "label": "[청와대 일대] 4호선 stationIds 유효성",
+      "id": "analysis/V05/subway-01",
+      "category": "V05 서울 경계",
+      "label": "subway-01 서울 경계 내 위치",
       "passed": true,
-      "detail": "모든 stationId 정상"
+      "detail": "(37.57584, 126.97356)"
     },
     {
-      "id": "cheongwadae/V02/5호선",
-      "category": "V02 stationId 존재",
-      "label": "[청와대 일대] 5호선 stationIds 유효성",
+      "id": "analysis/V06/subway-01",
+      "category": "V06 반경 버퍼",
+      "label": "subway-01 반경 6km 이내",
       "passed": true,
-      "detail": "모든 stationId 정상"
+      "detail": "거리 1.20km"
     },
     {
-      "id": "cheongwadae/V02/6호선",
-      "category": "V02 stationId 존재",
-      "label": "[청와대 일대] 6호선 stationIds 유효성",
+      "id": "analysis/V03/subway-02",
+      "category": "V03 좌표 형식",
+      "label": "subway-02 숫자 좌표 보유",
       "passed": true,
-      "detail": "모든 stationId 정상"
+      "detail": "(37.57652, 126.98544)"
     },
     {
-      "id": "cheongwadae/V03/sub-001",
-      "category": "V03 서울 경계",
-      "label": "[청와대 일대] 경복궁역 서울 경계 내 위치",
+      "id": "analysis/V04/subway-02",
+      "category": "V04 좌표 중복",
+      "label": "subway-02 좌표 고유성",
       "passed": true,
-      "detail": "(37.5762, 126.9707) — 정상"
+      "detail": "37.57652,126.98544 고유"
     },
     {
-      "id": "cheongwadae/V03/sub-002",
-      "category": "V03 서울 경계",
-      "label": "[청와대 일대] 안국역 서울 경계 내 위치",
+      "id": "analysis/V05/subway-02",
+      "category": "V05 서울 경계",
+      "label": "subway-02 서울 경계 내 위치",
       "passed": true,
-      "detail": "(37.5763, 126.9855) — 정상"
+      "detail": "(37.57652, 126.98544)"
     },
     {
-      "id": "cheongwadae/V03/sub-003",
-      "category": "V03 서울 경계",
-      "label": "[청와대 일대] 광화문역 서울 경계 내 위치",
+      "id": "analysis/V06/subway-02",
+      "category": "V06 반경 버퍼",
+      "label": "subway-02 반경 6km 이내",
       "passed": true,
-      "detail": "(37.5713, 126.9767) — 정상"
+      "detail": "거리 1.46km"
     },
     {
-      "id": "cheongwadae/V03/sub-004",
-      "category": "V03 서울 경계",
-      "label": "[청와대 일대] 종로3가역 서울 경계 내 위치",
+      "id": "analysis/V03/subway-03",
+      "category": "V03 좌표 형식",
+      "label": "subway-03 숫자 좌표 보유",
       "passed": true,
-      "detail": "(37.5715, 126.992) — 정상"
+      "detail": "(37.57016, 126.98292)"
     },
     {
-      "id": "cheongwadae/V03/sub-005",
-      "category": "V03 서울 경계",
-      "label": "[청와대 일대] 종각역 서울 경계 내 위치",
+      "id": "analysis/V04/subway-03",
+      "category": "V04 좌표 중복",
+      "label": "subway-03 좌표 고유성",
       "passed": true,
-      "detail": "(37.57, 126.9828) — 정상"
+      "detail": "37.57016,126.98292 고유"
     },
     {
-      "id": "cheongwadae/V03/sub-006",
-      "category": "V03 서울 경계",
-      "label": "[청와대 일대] 시청역 서울 경계 내 위치",
+      "id": "analysis/V05/subway-03",
+      "category": "V05 서울 경계",
+      "label": "subway-03 서울 경계 내 위치",
       "passed": true,
-      "detail": "(37.5657, 126.977) — 정상"
+      "detail": "(37.57016, 126.98292)"
     },
     {
-      "id": "cheongwadae/V03/sub-007",
-      "category": "V03 서울 경계",
-      "label": "[청와대 일대] 을지로입구역 서울 경계 내 위치",
+      "id": "analysis/V06/subway-03",
+      "category": "V06 반경 버퍼",
+      "label": "subway-03 반경 6km 이내",
       "passed": true,
-      "detail": "(37.566, 126.9822) — 정상"
+      "detail": "거리 1.96km"
     },
     {
-      "id": "cheongwadae/V03/sub-008",
-      "category": "V03 서울 경계",
-      "label": "[청와대 일대] 을지로3가역 서울 경계 내 위치",
+      "id": "analysis/V03/subway-04",
+      "category": "V03 좌표 형식",
+      "label": "subway-04 숫자 좌표 보유",
       "passed": true,
-      "detail": "(37.5665, 126.992) — 정상"
+      "detail": "(37.57142, 126.99189)"
     },
     {
-      "id": "cheongwadae/V03/sub-009",
-      "category": "V03 서울 경계",
-      "label": "[청와대 일대] 독립문역 서울 경계 내 위치",
+      "id": "analysis/V04/subway-04",
+      "category": "V04 좌표 중복",
+      "label": "subway-04 좌표 고유성",
       "passed": true,
-      "detail": "(37.5722, 126.9601) — 정상"
+      "detail": "37.57142,126.99189 고유"
     },
     {
-      "id": "cheongwadae/V03/sub-010",
-      "category": "V03 서울 경계",
-      "label": "[청와대 일대] 충정로역 서울 경계 내 위치",
+      "id": "analysis/V05/subway-04",
+      "category": "V05 서울 경계",
+      "label": "subway-04 서울 경계 내 위치",
       "passed": true,
-      "detail": "(37.56, 126.9637) — 정상"
+      "detail": "(37.57142, 126.99189)"
     },
     {
-      "id": "cheongwadae/V03/sub-011",
-      "category": "V03 서울 경계",
-      "label": "[청와대 일대] 서대문역 서울 경계 내 위치",
+      "id": "analysis/V06/subway-04",
+      "category": "V06 반경 버퍼",
+      "label": "subway-04 반경 6km 이내",
       "passed": true,
-      "detail": "(37.5659, 126.9667) — 정상"
+      "detail": "거리 2.26km"
     },
     {
-      "id": "cheongwadae/V03/sub-012",
-      "category": "V03 서울 경계",
-      "label": "[청와대 일대] 혜화역 서울 경계 내 위치",
+      "id": "analysis/V03/subway-05",
+      "category": "V03 좌표 형식",
+      "label": "subway-05 숫자 좌표 보유",
       "passed": true,
-      "detail": "(37.5824, 127.0019) — 정상"
+      "detail": "(37.57093, 126.97689)"
     },
     {
-      "id": "cheongwadae/V03/sub-013",
-      "category": "V03 서울 경계",
-      "label": "[청와대 일대] 한성대입구역 서울 경계 내 위치",
+      "id": "analysis/V04/subway-05",
+      "category": "V04 좌표 중복",
+      "label": "subway-05 좌표 고유성",
       "passed": true,
-      "detail": "(37.5884, 127.0063) — 정상"
+      "detail": "37.57093,126.97689 고유"
     },
     {
-      "id": "cheongwadae/V03/sub-014",
-      "category": "V03 서울 경계",
-      "label": "[청와대 일대] 성신여대입구역 서울 경계 내 위치",
+      "id": "analysis/V05/subway-05",
+      "category": "V05 서울 경계",
+      "label": "subway-05 서울 경계 내 위치",
       "passed": true,
-      "detail": "(37.5927, 127.0159) — 정상"
+      "detail": "(37.57093, 126.97689)"
     },
     {
-      "id": "cheongwadae/V03/sub-015",
-      "category": "V03 서울 경계",
-      "label": "[청와대 일대] 동대문역 서울 경계 내 위치",
+      "id": "analysis/V06/subway-05",
+      "category": "V06 반경 버퍼",
+      "label": "subway-05 반경 6km 이내",
       "passed": true,
-      "detail": "(37.5712, 127.0095) — 정상"
+      "detail": "거리 1.75km"
     },
     {
-      "id": "cheongwadae/V03/sub-016",
-      "category": "V03 서울 경계",
-      "label": "[청와대 일대] 동대문역사문화공원역 서울 경계 내 위치",
+      "id": "analysis/V03/subway-06",
+      "category": "V03 좌표 형식",
+      "label": "subway-06 숫자 좌표 보유",
       "passed": true,
-      "detail": "(37.565, 127.009) — 정상"
+      "detail": "(37.56572, 126.96633)"
     },
     {
-      "id": "cheongwadae/V03/sub-017",
-      "category": "V03 서울 경계",
-      "label": "[청와대 일대] 종로5가역 서울 경계 내 위치",
+      "id": "analysis/V04/subway-06",
+      "category": "V04 좌표 중복",
+      "label": "subway-06 좌표 고유성",
       "passed": true,
-      "detail": "(37.571, 127.002) — 정상"
+      "detail": "37.56572,126.96633 고유"
     },
     {
-      "id": "cheongwadae/V03/sub-019",
-      "category": "V03 서울 경계",
-      "label": "[청와대 일대] 녹번역 서울 경계 내 위치",
+      "id": "analysis/V05/subway-06",
+      "category": "V05 서울 경계",
+      "label": "subway-06 서울 경계 내 위치",
       "passed": true,
-      "detail": "(37.6015, 126.9535) — 정상"
+      "detail": "(37.56572, 126.96633)"
     },
     {
-      "id": "cheongwadae/V03/sub-020",
-      "category": "V03 서울 경계",
-      "label": "[청와대 일대] 홍제역 서울 경계 내 위치",
+      "id": "analysis/V06/subway-06",
+      "category": "V06 반경 버퍼",
+      "label": "subway-06 반경 6km 이내",
       "passed": true,
-      "detail": "(37.5886, 126.9436) — 정상"
+      "detail": "거리 2.44km"
     },
     {
-      "id": "cheongwadae/V03/sub-021",
-      "category": "V03 서울 경계",
-      "label": "[청와대 일대] 무악재역 서울 경계 내 위치",
+      "id": "analysis/V03/subway-07",
+      "category": "V03 좌표 형식",
+      "label": "subway-07 숫자 좌표 보유",
       "passed": true,
-      "detail": "(37.5828, 126.95) — 정상"
+      "detail": "(37.5653, 126.97703)"
     },
     {
-      "id": "cheongwadae/V03/sub-022",
-      "category": "V03 서울 경계",
-      "label": "[청와대 일대] 아현역 서울 경계 내 위치",
+      "id": "analysis/V04/subway-07",
+      "category": "V04 좌표 중복",
+      "label": "subway-07 좌표 고유성",
       "passed": true,
-      "detail": "(37.5575, 126.956) — 정상"
+      "detail": "37.56530,126.97703 고유"
     },
     {
-      "id": "cheongwadae/V03/sub-023",
-      "category": "V03 서울 경계",
-      "label": "[청와대 일대] 이대역 서울 경계 내 위치",
+      "id": "analysis/V05/subway-07",
+      "category": "V05 서울 경계",
+      "label": "subway-07 서울 경계 내 위치",
       "passed": true,
-      "detail": "(37.5569, 126.946) — 정상"
+      "detail": "(37.5653, 126.97703)"
     },
     {
-      "id": "cheongwadae/V03/sub-024",
-      "category": "V03 서울 경계",
-      "label": "[청와대 일대] 신촌역 서울 경계 내 위치",
+      "id": "analysis/V06/subway-07",
+      "category": "V06 반경 버퍼",
+      "label": "subway-07 반경 6km 이내",
       "passed": true,
-      "detail": "(37.5552, 126.9368) — 정상"
+      "detail": "거리 2.38km"
     },
     {
-      "id": "cheongwadae/V03/sub-025",
-      "category": "V03 서울 경계",
-      "label": "[청와대 일대] 약수역 서울 경계 내 위치",
+      "id": "analysis/V03/subway-08",
+      "category": "V03 좌표 형식",
+      "label": "subway-08 숫자 좌표 보유",
       "passed": true,
-      "detail": "(37.5545, 127.01) — 정상"
+      "detail": "(37.56629, 126.98222)"
     },
     {
-      "id": "cheongwadae/V03/sub-026",
-      "category": "V03 서울 경계",
-      "label": "[청와대 일대] 버티고개역 서울 경계 내 위치",
+      "id": "analysis/V04/subway-08",
+      "category": "V04 좌표 중복",
+      "label": "subway-08 좌표 고유성",
       "passed": true,
-      "detail": "(37.5478, 127.0073) — 정상"
+      "detail": "37.56629,126.98222 고유"
     },
     {
-      "id": "cheongwadae/V03/sub-027",
-      "category": "V03 서울 경계",
-      "label": "[청와대 일대] 창신역 서울 경계 내 위치",
+      "id": "analysis/V05/subway-08",
+      "category": "V05 서울 경계",
+      "label": "subway-08 서울 경계 내 위치",
       "passed": true,
-      "detail": "(37.579, 127.013) — 정상"
+      "detail": "(37.56629, 126.98222)"
     },
     {
-      "id": "cheongwadae/V03/sub-028",
-      "category": "V03 서울 경계",
-      "label": "[청와대 일대] 보문역 서울 경계 내 위치",
+      "id": "analysis/V06/subway-08",
+      "category": "V06 반경 버퍼",
+      "label": "subway-08 반경 6km 이내",
       "passed": true,
-      "detail": "(37.585, 127.019) — 정상"
+      "detail": "거리 2.35km"
     },
     {
-      "id": "cheongwadae/V04/sub-001",
-      "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 경복궁역 반경 6km 이내",
+      "id": "analysis/V03/subway-09",
+      "category": "V03 좌표 형식",
+      "label": "subway-09 숫자 좌표 보유",
       "passed": true,
-      "detail": "거리 1.21km (한계 6km — 반경 3km + 버퍼 3km)"
+      "detail": "(37.57043, 126.99214)"
     },
     {
-      "id": "cheongwadae/V04/sub-002",
-      "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 안국역 반경 6km 이내",
+      "id": "analysis/V04/subway-09",
+      "category": "V04 좌표 중복",
+      "label": "subway-09 좌표 고유성",
       "passed": true,
-      "detail": "거리 1.48km (한계 6km — 반경 3km + 버퍼 3km)"
+      "detail": "37.57043,126.99214 고유"
     },
     {
-      "id": "cheongwadae/V04/sub-003",
-      "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 광화문역 반경 6km 이내",
+      "id": "analysis/V05/subway-09",
+      "category": "V05 서울 경계",
+      "label": "subway-09 서울 경계 내 위치",
       "passed": true,
-      "detail": "거리 1.71km (한계 6km — 반경 3km + 버퍼 3km)"
+      "detail": "(37.57043, 126.99214)"
     },
     {
-      "id": "cheongwadae/V04/sub-004",
-      "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 종로3가역 반경 6km 이내",
+      "id": "analysis/V06/subway-09",
+      "category": "V06 반경 버퍼",
+      "label": "subway-09 반경 6km 이내",
       "passed": true,
-      "detail": "거리 2.26km (한계 6km — 반경 3km + 버퍼 3km)"
+      "detail": "거리 2.36km"
     },
     {
-      "id": "cheongwadae/V04/sub-005",
-      "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 종각역 반경 6km 이내",
+      "id": "analysis/V03/subway-10",
+      "category": "V03 좌표 형식",
+      "label": "subway-10 숫자 좌표 보유",
       "passed": true,
-      "detail": "거리 1.98km (한계 6km — 반경 3km + 버퍼 3km)"
+      "detail": "(37.57264, 127.0164)"
     },
     {
-      "id": "cheongwadae/V04/sub-006",
-      "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 시청역 반경 6km 이내",
+      "id": "analysis/V04/subway-10",
+      "category": "V04 좌표 중복",
+      "label": "subway-10 좌표 고유성",
       "passed": true,
-      "detail": "거리 2.33km (한계 6km — 반경 3km + 버퍼 3km)"
+      "detail": "37.57264,127.01640 고유"
     },
     {
-      "id": "cheongwadae/V04/sub-007",
-      "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 을지로입구역 반경 6km 이내",
+      "id": "analysis/V05/subway-10",
+      "category": "V05 서울 경계",
+      "label": "subway-10 서울 경계 내 위치",
       "passed": true,
-      "detail": "거리 2.38km (한계 6km — 반경 3km + 버퍼 3km)"
+      "detail": "(37.57264, 127.0164)"
     },
     {
-      "id": "cheongwadae/V04/sub-008",
-      "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 을지로3가역 반경 6km 이내",
+      "id": "analysis/V06/subway-10",
+      "category": "V06 반경 버퍼",
+      "label": "subway-10 반경 6km 이내",
       "passed": true,
-      "detail": "거리 2.70km (한계 6km — 반경 3km + 버퍼 3km)"
+      "detail": "거리 3.98km"
     },
     {
-      "id": "cheongwadae/V04/sub-009",
-      "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 독립문역 반경 6km 이내",
+      "id": "analysis/V03/subway-11",
+      "category": "V03 좌표 형식",
+      "label": "subway-11 숫자 좌표 보유",
       "passed": true,
-      "detail": "거리 2.06km (한계 6km — 반경 3km + 버퍼 3km)"
+      "detail": "(37.57977, 126.9975)"
     },
     {
-      "id": "cheongwadae/V04/sub-010",
-      "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 충정로역 반경 6km 이내",
+      "id": "analysis/V04/subway-11",
+      "category": "V04 좌표 중복",
+      "label": "subway-11 좌표 고유성",
       "passed": true,
-      "detail": "거리 3.12km (한계 6km — 반경 3km + 버퍼 3km)"
+      "detail": "37.57977,126.99750 고유"
     },
     {
-      "id": "cheongwadae/V04/sub-011",
-      "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 서대문역 반경 6km 이내",
+      "id": "analysis/V05/subway-11",
+      "category": "V05 서울 경계",
+      "label": "subway-11 서울 경계 내 위치",
       "passed": true,
-      "detail": "거리 2.41km (한계 6km — 반경 3km + 버퍼 3km)"
+      "detail": "(37.57977, 126.9975)"
     },
     {
-      "id": "cheongwadae/V04/sub-012",
-      "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 혜화역 반경 6km 이내",
+      "id": "analysis/V06/subway-11",
+      "category": "V06 반경 버퍼",
+      "label": "subway-11 반경 6km 이내",
       "passed": true,
-      "detail": "거리 2.43km (한계 6km — 반경 3km + 버퍼 3km)"
+      "detail": "거리 2.14km"
     },
     {
-      "id": "cheongwadae/V04/sub-013",
-      "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 한성대입구역 반경 6km 이내",
+      "id": "analysis/V03/subway-12",
+      "category": "V03 좌표 형식",
+      "label": "subway-12 숫자 좌표 보유",
       "passed": true,
-      "detail": "거리 2.78km (한계 6km — 반경 3km + 버퍼 3km)"
+      "detail": "(37.58089, 127.00193)"
     },
     {
-      "id": "cheongwadae/V04/sub-014",
-      "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 성신여대입구역 반경 6km 이내",
+      "id": "analysis/V04/subway-12",
+      "category": "V04 좌표 중복",
+      "label": "subway-12 좌표 고유성",
       "passed": true,
-      "detail": "거리 3.68km (한계 6km — 반경 3km + 버퍼 3km)"
+      "detail": "37.58089,127.00193 고유"
     },
     {
-      "id": "cheongwadae/V04/sub-015",
-      "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 동대문역 반경 6km 이내",
+      "id": "analysis/V05/subway-12",
+      "category": "V05 서울 경계",
+      "label": "subway-12 서울 경계 내 위치",
       "passed": true,
-      "detail": "거리 3.50km (한계 6km — 반경 3km + 버퍼 3km)"
+      "detail": "(37.58089, 127.00193)"
     },
     {
-      "id": "cheongwadae/V04/sub-016",
-      "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 동대문역사문화공원역 반경 6km 이내",
+      "id": "analysis/V06/subway-12",
+      "category": "V06 반경 버퍼",
+      "label": "subway-12 반경 6km 이내",
       "passed": true,
-      "detail": "거리 3.85km (한계 6km — 반경 3km + 버퍼 3km)"
+      "detail": "거리 2.47km"
     },
     {
-      "id": "cheongwadae/V04/sub-017",
-      "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 종로5가역 반경 6km 이내",
+      "id": "analysis/V03/subway-13",
+      "category": "V03 좌표 형식",
+      "label": "subway-13 숫자 좌표 보유",
       "passed": true,
-      "detail": "거리 2.96km (한계 6km — 반경 3km + 버퍼 3km)"
+      "detail": "(37.58907, 127.00905)"
     },
     {
-      "id": "cheongwadae/V04/sub-019",
-      "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 녹번역 반경 6km 이내",
+      "id": "analysis/V04/subway-13",
+      "category": "V04 좌표 중복",
+      "label": "subway-13 좌표 고유성",
       "passed": true,
-      "detail": "거리 2.50km (한계 6km — 반경 3km + 버퍼 3km)"
+      "detail": "37.58907,127.00905 고유"
     },
     {
-      "id": "cheongwadae/V04/sub-020",
-      "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 홍제역 반경 6km 이내",
+      "id": "analysis/V05/subway-13",
+      "category": "V05 서울 경계",
+      "label": "subway-13 서울 경계 내 위치",
       "passed": true,
-      "detail": "거리 2.76km (한계 6km — 반경 3km + 버퍼 3km)"
+      "detail": "(37.58907, 127.00905)"
     },
     {
-      "id": "cheongwadae/V04/sub-021",
-      "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 무악재역 반경 6km 이내",
+      "id": "analysis/V06/subway-13",
+      "category": "V06 반경 버퍼",
+      "label": "subway-13 반경 6km 이내",
       "passed": true,
-      "detail": "거리 2.23km (한계 6km — 반경 3km + 버퍼 3km)"
+      "detail": "거리 3.03km"
     },
     {
-      "id": "cheongwadae/V04/sub-022",
-      "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 아현역 반경 6km 이내",
+      "id": "analysis/V03/subway-14",
+      "category": "V03 좌표 형식",
+      "label": "subway-14 숫자 좌표 보유",
       "passed": true,
-      "detail": "거리 3.64km (한계 6km — 반경 3km + 버퍼 3km)"
+      "detail": "(37.59297, 126.95025)"
     },
     {
-      "id": "cheongwadae/V04/sub-023",
-      "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 이대역 반경 6km 이내",
+      "id": "analysis/V04/subway-14",
+      "category": "V04 좌표 중복",
+      "label": "subway-14 좌표 고유성",
       "passed": true,
-      "detail": "거리 4.17km (한계 6km — 반경 3km + 버퍼 3km)"
+      "detail": "37.59297,126.95025 고유"
     },
     {
-      "id": "cheongwadae/V04/sub-024",
-      "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 신촌역 반경 6km 이내",
+      "id": "analysis/V05/subway-14",
+      "category": "V05 서울 경계",
+      "label": "subway-14 서울 경계 내 위치",
       "passed": true,
-      "detail": "거리 4.84km (한계 6km — 반경 3km + 버퍼 3km)"
+      "detail": "(37.59297, 126.95025)"
     },
     {
-      "id": "cheongwadae/V04/sub-025",
-      "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 약수역 반경 6km 이내",
+      "id": "analysis/V06/subway-14",
+      "category": "V06 반경 버퍼",
+      "label": "subway-14 반경 6km 이내",
       "passed": true,
-      "detail": "거리 4.73km (한계 6km — 반경 3km + 버퍼 3km)"
+      "detail": "거리 2.28km"
     },
     {
-      "id": "cheongwadae/V04/sub-026",
-      "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 버티고개역 반경 6km 이내",
+      "id": "analysis/V03/subway-15",
+      "category": "V03 좌표 형식",
+      "label": "subway-15 숫자 좌표 보유",
       "passed": true,
-      "detail": "거리 5.18km (한계 6km — 반경 3km + 버퍼 3km)"
+      "detail": "(37.58383, 126.96969)"
     },
     {
-      "id": "cheongwadae/V04/sub-027",
-      "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 창신역 반경 6km 이내",
+      "id": "analysis/V04/subway-15",
+      "category": "V04 좌표 중복",
+      "label": "subway-15 좌표 고유성",
       "passed": true,
-      "detail": "거리 3.47km (한계 6km — 반경 3km + 버퍼 3km)"
+      "detail": "37.58383,126.96969 고유"
     },
     {
-      "id": "cheongwadae/V04/sub-028",
-      "category": "V04 반경 버퍼",
-      "label": "[청와대 일대] 보문역 반경 6km 이내",
+      "id": "analysis/V05/subway-15",
+      "category": "V05 서울 경계",
+      "label": "subway-15 서울 경계 내 위치",
       "passed": true,
-      "detail": "거리 3.90km (한계 6km — 반경 3km + 버퍼 3km)"
+      "detail": "(37.58383, 126.96969)"
     },
     {
-      "id": "cheongwadae/V05/1호선/1",
-      "category": "V05 인접역 거리",
-      "label": "[청와대 일대] 1호선 시청역→종각역",
+      "id": "analysis/V06/subway-15",
+      "category": "V06 반경 버퍼",
+      "label": "subway-15 반경 6km 이내",
       "passed": true,
-      "detail": "0.70km ✓"
+      "detail": "거리 0.55km"
     },
     {
-      "id": "cheongwadae/V05/1호선/2",
-      "category": "V05 인접역 거리",
-      "label": "[청와대 일대] 1호선 종각역→종로3가역",
+      "id": "analysis/V03/subway-16",
+      "category": "V03 좌표 형식",
+      "label": "subway-16 숫자 좌표 보유",
       "passed": true,
-      "detail": "0.83km ✓"
+      "detail": "(37.58234, 126.97292)"
     },
     {
-      "id": "cheongwadae/V05/1호선/3",
-      "category": "V05 인접역 거리",
-      "label": "[청와대 일대] 1호선 종로3가역→종로5가역",
+      "id": "analysis/V04/subway-16",
+      "category": "V04 좌표 중복",
+      "label": "subway-16 좌표 고유성",
       "passed": true,
-      "detail": "0.88km ✓"
+      "detail": "37.58234,126.97292 고유"
     },
     {
-      "id": "cheongwadae/V05/1호선/4",
-      "category": "V05 인접역 거리",
-      "label": "[청와대 일대] 1호선 종로5가역→동대문역",
+      "id": "analysis/V05/subway-16",
+      "category": "V05 서울 경계",
+      "label": "subway-16 서울 경계 내 위치",
       "passed": true,
-      "detail": "0.66km ✓"
+      "detail": "(37.58234, 126.97292)"
     },
     {
-      "id": "cheongwadae/V05/2호선/1",
-      "category": "V05 인접역 거리",
-      "label": "[청와대 일대] 2호선 신촌역→이대역",
+      "id": "analysis/V06/subway-16",
+      "category": "V06 반경 버퍼",
+      "label": "subway-16 반경 6km 이내",
       "passed": true,
-      "detail": "0.83km ✓"
+      "detail": "거리 0.50km"
     },
     {
-      "id": "cheongwadae/V05/2호선/2",
-      "category": "V05 인접역 거리",
-      "label": "[청와대 일대] 2호선 이대역→아현역",
+      "id": "analysis/V03/subway-17",
+      "category": "V03 좌표 형식",
+      "label": "subway-17 숫자 좌표 보유",
       "passed": true,
-      "detail": "0.88km ✓"
+      "detail": "(37.58599, 126.98169)"
     },
     {
-      "id": "cheongwadae/V05/2호선/3",
-      "category": "V05 인접역 거리",
-      "label": "[청와대 일대] 2호선 아현역→충정로역",
+      "id": "analysis/V04/subway-17",
+      "category": "V04 좌표 중복",
+      "label": "subway-17 좌표 고유성",
       "passed": true,
-      "detail": "0.73km ✓"
+      "detail": "37.58599,126.98169 고유"
     },
     {
-      "id": "cheongwadae/V05/2호선/4",
-      "category": "V05 인접역 거리",
-      "label": "[청와대 일대] 2호선 충정로역→을지로입구역",
+      "id": "analysis/V05/subway-17",
+      "category": "V05 서울 경계",
+      "label": "subway-17 서울 경계 내 위치",
       "passed": true,
-      "detail": "1.76km ✓"
+      "detail": "(37.58599, 126.98169)"
     },
     {
-      "id": "cheongwadae/V05/2호선/5",
-      "category": "V05 인접역 거리",
-      "label": "[청와대 일대] 2호선 을지로입구역→을지로3가역",
+      "id": "analysis/V06/subway-17",
+      "category": "V06 반경 버퍼",
+      "label": "subway-17 반경 6km 이내",
       "passed": true,
-      "detail": "0.87km ✓"
+      "detail": "거리 0.61km"
     },
     {
-      "id": "cheongwadae/V05/2호선/6",
-      "category": "V05 인접역 거리",
-      "label": "[청와대 일대] 2호선 을지로3가역→동대문역사문화공원역",
+      "id": "analysis/V03/subway-18",
+      "category": "V03 좌표 형식",
+      "label": "subway-18 숫자 좌표 보유",
       "passed": true,
-      "detail": "1.51km ✓"
+      "detail": "(37.58627, 126.98918)"
     },
     {
-      "id": "cheongwadae/V05/3호선/1",
-      "category": "V05 인접역 거리",
-      "label": "[청와대 일대] 3호선 녹번역→홍제역",
+      "id": "analysis/V04/subway-18",
+      "category": "V04 좌표 중복",
+      "label": "subway-18 좌표 고유성",
       "passed": true,
-      "detail": "1.68km ✓"
+      "detail": "37.58627,126.98918 고유"
     },
     {
-      "id": "cheongwadae/V05/3호선/2",
-      "category": "V05 인접역 거리",
-      "label": "[청와대 일대] 3호선 홍제역→무악재역",
+      "id": "analysis/V05/subway-18",
+      "category": "V05 서울 경계",
+      "label": "subway-18 서울 경계 내 위치",
       "passed": true,
-      "detail": "0.86km ✓"
+      "detail": "(37.58627, 126.98918)"
     },
     {
-      "id": "cheongwadae/V05/3호선/3",
-      "category": "V05 인접역 거리",
-      "label": "[청와대 일대] 3호선 무악재역→독립문역",
+      "id": "analysis/V06/subway-18",
+      "category": "V06 반경 버퍼",
+      "label": "subway-18 반경 6km 이내",
       "passed": true,
-      "detail": "1.48km ✓"
+      "detail": "거리 1.27km"
     },
     {
-      "id": "cheongwadae/V05/3호선/4",
-      "category": "V05 인접역 거리",
-      "label": "[청와대 일대] 3호선 독립문역→경복궁역",
+      "id": "analysis/V03/subway-19",
+      "category": "V03 좌표 형식",
+      "label": "subway-19 숫자 좌표 보유",
       "passed": true,
-      "detail": "1.03km ✓"
+      "detail": "(37.58846, 127.00622)"
     },
     {
-      "id": "cheongwadae/V05/3호선/5",
-      "category": "V05 인접역 거리",
-      "label": "[청와대 일대] 3호선 경복궁역→안국역",
+      "id": "analysis/V04/subway-19",
+      "category": "V04 좌표 중복",
+      "label": "subway-19 좌표 고유성",
       "passed": true,
-      "detail": "1.30km ✓"
+      "detail": "37.58846,127.00622 고유"
     },
     {
-      "id": "cheongwadae/V05/4호선/1",
-      "category": "V05 인접역 거리",
-      "label": "[청와대 일대] 4호선 성신여대입구역→한성대입구역",
+      "id": "analysis/V05/subway-19",
+      "category": "V05 서울 경계",
+      "label": "subway-19 서울 경계 내 위치",
       "passed": true,
-      "detail": "0.97km ✓"
+      "detail": "(37.58846, 127.00622)"
     },
     {
-      "id": "cheongwadae/V05/4호선/2",
-      "category": "V05 인접역 거리",
-      "label": "[청와대 일대] 4호선 한성대입구역→혜화역",
+      "id": "analysis/V06/subway-19",
+      "category": "V06 반경 버퍼",
+      "label": "subway-19 반경 6km 이내",
       "passed": true,
-      "detail": "0.77km ✓"
+      "detail": "거리 2.78km"
     },
     {
-      "id": "cheongwadae/V05/5호선/1",
-      "category": "V05 인접역 거리",
-      "label": "[청와대 일대] 5호선 서대문역→광화문역",
+      "id": "analysis/V03/subway-20",
+      "category": "V03 좌표 형식",
+      "label": "subway-20 숫자 좌표 보유",
       "passed": true,
-      "detail": "1.07km ✓"
+      "detail": "(37.60091, 126.95915)"
     },
     {
-      "id": "cheongwadae/V05/6호선/1",
-      "category": "V05 인접역 거리",
-      "label": "[청와대 일대] 6호선 버티고개역→약수역",
+      "id": "analysis/V04/subway-20",
+      "category": "V04 좌표 중복",
+      "label": "subway-20 좌표 고유성",
       "passed": true,
-      "detail": "0.78km ✓"
+      "detail": "37.60091,126.95915 고유"
     },
     {
-      "id": "cheongwadae/V05/6호선/2",
-      "category": "V05 인접역 거리",
-      "label": "[청와대 일대] 6호선 약수역→창신역",
+      "id": "analysis/V05/subway-20",
+      "category": "V05 서울 경계",
+      "label": "subway-20 서울 경계 내 위치",
       "passed": true,
-      "detail": "2.74km ✓"
+      "detail": "(37.60091, 126.95915)"
     },
     {
-      "id": "cheongwadae/V05/6호선/3",
-      "category": "V05 인접역 거리",
-      "label": "[청와대 일대] 6호선 창신역→보문역",
+      "id": "analysis/V06/subway-20",
+      "category": "V06 반경 버퍼",
+      "label": "subway-20 반경 6km 이내",
       "passed": true,
-      "detail": "0.85km ✓"
+      "detail": "거리 2.11km"
     },
     {
-      "id": "cheongwadae/V06/1호선",
-      "category": "V06 경로 연속성",
-      "label": "[청와대 일대] 1호선 최대 세그먼트",
+      "id": "analysis/V03/subway-21",
+      "category": "V03 좌표 형식",
+      "label": "subway-21 숫자 좌표 보유",
       "passed": true,
-      "detail": "최대 세그먼트 0.459km (인덱스 6→7) ✓"
+      "detail": "(37.60109, 126.93598)"
     },
     {
-      "id": "cheongwadae/V06/2호선",
-      "category": "V06 경로 연속성",
-      "label": "[청와대 일대] 2호선 최대 세그먼트",
+      "id": "analysis/V04/subway-21",
+      "category": "V04 좌표 중복",
+      "label": "subway-21 좌표 고유성",
       "passed": true,
-      "detail": "최대 세그먼트 0.930km (인덱스 13→14) ✓"
+      "detail": "37.60109,126.93598 고유"
     },
     {
-      "id": "cheongwadae/V06/3호선",
-      "category": "V06 경로 연속성",
-      "label": "[청와대 일대] 3호선 최대 세그먼트",
+      "id": "analysis/V05/subway-21",
+      "category": "V05 서울 경계",
+      "label": "subway-21 서울 경계 내 위치",
       "passed": true,
-      "detail": "최대 세그먼트 0.661km (인덱스 15→16) ✓"
+      "detail": "(37.60109, 126.93598)"
     },
     {
-      "id": "cheongwadae/V06/4호선",
-      "category": "V06 경로 연속성",
-      "label": "[청와대 일대] 4호선 최대 세그먼트",
+      "id": "analysis/V06/subway-21",
+      "category": "V06 반경 버퍼",
+      "label": "subway-21 반경 6km 이내",
       "passed": true,
-      "detail": "최대 세그먼트 0.310km (인덱스 4→5) ✓"
+      "detail": "거리 3.78km"
     },
     {
-      "id": "cheongwadae/V06/5호선",
-      "category": "V06 경로 연속성",
-      "label": "[청와대 일대] 5호선 최대 세그먼트",
+      "id": "analysis/V03/subway-22",
+      "category": "V03 좌표 형식",
+      "label": "subway-22 숫자 좌표 보유",
       "passed": true,
-      "detail": "최대 세그먼트 0.384km (인덱스 2→3) ✓"
+      "detail": "(37.55997, 126.96367)"
     },
     {
-      "id": "cheongwadae/V06/6호선",
-      "category": "V06 경로 연속성",
-      "label": "[청와대 일대] 6호선 최대 세그먼트",
+      "id": "analysis/V04/subway-22",
+      "category": "V04 좌표 중복",
+      "label": "subway-22 좌표 고유성",
       "passed": true,
-      "detail": "최대 세그먼트 0.437km (인덱스 10→11) ✓"
+      "detail": "37.55997,126.96367 고유"
     },
     {
-      "id": "cheongwadae/V07/1호선/sub-006",
-      "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 시청역 ↔ 1호선 경로",
+      "id": "analysis/V05/subway-22",
+      "category": "V05 서울 경계",
+      "label": "subway-22 서울 경계 내 위치",
       "passed": true,
-      "detail": "최소 거리 0m ✓"
+      "detail": "(37.55997, 126.96367)"
     },
     {
-      "id": "cheongwadae/V07/1호선/sub-005",
-      "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 종각역 ↔ 1호선 경로",
+      "id": "analysis/V06/subway-22",
+      "category": "V06 반경 버퍼",
+      "label": "subway-22 반경 6km 이내",
       "passed": true,
-      "detail": "최소 거리 0m ✓"
+      "detail": "거리 3.12km"
     },
     {
-      "id": "cheongwadae/V07/1호선/sub-004",
-      "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 종로3가역 ↔ 1호선 경로",
+      "id": "analysis/V03/subway-23",
+      "category": "V03 좌표 형식",
+      "label": "subway-23 숫자 좌표 보유",
       "passed": true,
-      "detail": "최소 거리 0m ✓"
+      "detail": "(37.55851, 126.97825)"
     },
     {
-      "id": "cheongwadae/V07/1호선/sub-017",
-      "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 종로5가역 ↔ 1호선 경로",
+      "id": "analysis/V04/subway-23",
+      "category": "V04 좌표 중복",
+      "label": "subway-23 좌표 고유성",
       "passed": true,
-      "detail": "최소 거리 0m ✓"
+      "detail": "37.55851,126.97825 고유"
     },
     {
-      "id": "cheongwadae/V07/1호선/sub-015",
-      "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 동대문역 ↔ 1호선 경로",
+      "id": "analysis/V05/subway-23",
+      "category": "V05 서울 경계",
+      "label": "subway-23 서울 경계 내 위치",
       "passed": true,
-      "detail": "최소 거리 0m ✓"
+      "detail": "(37.55851, 126.97825)"
     },
     {
-      "id": "cheongwadae/V07/2호선/sub-024",
-      "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 신촌역 ↔ 2호선 경로",
+      "id": "analysis/V06/subway-23",
+      "category": "V06 반경 버퍼",
+      "label": "subway-23 반경 6km 이내",
       "passed": true,
-      "detail": "최소 거리 0m ✓"
+      "detail": "거리 3.14km"
     },
     {
-      "id": "cheongwadae/V07/2호선/sub-023",
-      "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 이대역 ↔ 2호선 경로",
+      "id": "analysis/V03/subway-24",
+      "category": "V03 좌표 형식",
+      "label": "subway-24 숫자 좌표 보유",
       "passed": true,
-      "detail": "최소 거리 0m ✓"
+      "detail": "(37.56101, 126.99318)"
     },
     {
-      "id": "cheongwadae/V07/2호선/sub-022",
-      "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 아현역 ↔ 2호선 경로",
+      "id": "analysis/V04/subway-24",
+      "category": "V04 좌표 중복",
+      "label": "subway-24 좌표 고유성",
       "passed": true,
-      "detail": "최소 거리 0m ✓"
+      "detail": "37.56101,126.99318 고유"
     },
     {
-      "id": "cheongwadae/V07/2호선/sub-010",
-      "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 충정로역 ↔ 2호선 경로",
+      "id": "analysis/V05/subway-24",
+      "category": "V05 서울 경계",
+      "label": "subway-24 서울 경계 내 위치",
       "passed": true,
-      "detail": "최소 거리 0m ✓"
+      "detail": "(37.56101, 126.99318)"
     },
     {
-      "id": "cheongwadae/V07/2호선/sub-007",
-      "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 을지로입구역 ↔ 2호선 경로",
+      "id": "analysis/V06/subway-24",
+      "category": "V06 반경 버퍼",
+      "label": "subway-24 반경 6km 이내",
       "passed": true,
-      "detail": "최소 거리 0m ✓"
+      "detail": "거리 3.27km"
     },
     {
-      "id": "cheongwadae/V07/2호선/sub-008",
-      "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 을지로3가역 ↔ 2호선 경로",
+      "id": "analysis/V03/subway-25",
+      "category": "V03 좌표 형식",
+      "label": "subway-25 숫자 좌표 보유",
       "passed": true,
-      "detail": "최소 거리 0m ✓"
+      "detail": "(37.5647, 127.00542)"
     },
     {
-      "id": "cheongwadae/V07/2호선/sub-016",
-      "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 동대문역사문화공원역 ↔ 2호선 경로",
+      "id": "analysis/V04/subway-25",
+      "category": "V04 좌표 중복",
+      "label": "subway-25 좌표 고유성",
       "passed": true,
-      "detail": "최소 거리 0m ✓"
+      "detail": "37.56470,127.00542 고유"
     },
     {
-      "id": "cheongwadae/V07/3호선/sub-019",
-      "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 녹번역 ↔ 3호선 경로",
+      "id": "analysis/V05/subway-25",
+      "category": "V05 서울 경계",
+      "label": "subway-25 서울 경계 내 위치",
       "passed": true,
-      "detail": "최소 거리 0m ✓"
+      "detail": "(37.5647, 127.00542)"
     },
     {
-      "id": "cheongwadae/V07/3호선/sub-020",
-      "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 홍제역 ↔ 3호선 경로",
+      "id": "analysis/V06/subway-25",
+      "category": "V06 반경 버퍼",
+      "label": "subway-25 반경 6km 이내",
       "passed": true,
-      "detail": "최소 거리 0m ✓"
+      "detail": "거리 3.63km"
     },
     {
-      "id": "cheongwadae/V07/3호선/sub-021",
-      "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 무악재역 ↔ 3호선 경로",
+      "id": "analysis/V03/subway-26",
+      "category": "V03 좌표 형식",
+      "label": "subway-26 숫자 좌표 보유",
       "passed": true,
-      "detail": "최소 거리 0m ✓"
+      "detail": "(37.56961, 127.01523)"
     },
     {
-      "id": "cheongwadae/V07/3호선/sub-009",
-      "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 독립문역 ↔ 3호선 경로",
+      "id": "analysis/V04/subway-26",
+      "category": "V04 좌표 중복",
+      "label": "subway-26 좌표 고유성",
       "passed": true,
-      "detail": "최소 거리 0m ✓"
+      "detail": "37.56961,127.01523 고유"
     },
     {
-      "id": "cheongwadae/V07/3호선/sub-001",
-      "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 경복궁역 ↔ 3호선 경로",
+      "id": "analysis/V05/subway-26",
+      "category": "V05 서울 경계",
+      "label": "subway-26 서울 경계 내 위치",
       "passed": true,
-      "detail": "최소 거리 0m ✓"
+      "detail": "(37.56961, 127.01523)"
     },
     {
-      "id": "cheongwadae/V07/3호선/sub-002",
-      "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 안국역 ↔ 3호선 경로",
+      "id": "analysis/V06/subway-26",
+      "category": "V06 반경 버퍼",
+      "label": "subway-26 반경 6km 이내",
       "passed": true,
-      "detail": "최소 거리 0m ✓"
+      "detail": "거리 4.03km"
     },
     {
-      "id": "cheongwadae/V07/4호선/sub-014",
-      "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 성신여대입구역 ↔ 4호선 경로",
+      "id": "analysis/V03/subway-27",
+      "category": "V03 좌표 형식",
+      "label": "subway-27 숫자 좌표 보유",
       "passed": true,
-      "detail": "최소 거리 0m ✓"
+      "detail": "(37.59492, 126.96377)"
     },
     {
-      "id": "cheongwadae/V07/4호선/sub-013",
-      "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 한성대입구역 ↔ 4호선 경로",
+      "id": "analysis/V04/subway-27",
+      "category": "V04 좌표 중복",
+      "label": "subway-27 좌표 고유성",
       "passed": true,
-      "detail": "최소 거리 0m ✓"
+      "detail": "37.59492,126.96377 고유"
     },
     {
-      "id": "cheongwadae/V07/4호선/sub-012",
-      "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 혜화역 ↔ 4호선 경로",
+      "id": "analysis/V05/subway-27",
+      "category": "V05 서울 경계",
+      "label": "subway-27 서울 경계 내 위치",
       "passed": true,
-      "detail": "최소 거리 0m ✓"
+      "detail": "(37.59492, 126.96377)"
     },
     {
-      "id": "cheongwadae/V07/5호선/sub-011",
-      "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 서대문역 ↔ 5호선 경로",
+      "id": "analysis/V06/subway-27",
+      "category": "V06 반경 버퍼",
+      "label": "subway-27 반경 6km 이내",
       "passed": true,
-      "detail": "최소 거리 0m ✓"
+      "detail": "거리 1.34km"
     },
     {
-      "id": "cheongwadae/V07/5호선/sub-003",
-      "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 광화문역 ↔ 5호선 경로",
+      "id": "provider/V07",
+      "category": "V07 동적 노선 소스",
+      "label": "Overpass relation geometry 기반 노선 공급자 사용",
       "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "cheongwadae/V07/6호선/sub-026",
-      "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 버티고개역 ↔ 6호선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "cheongwadae/V07/6호선/sub-025",
-      "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 약수역 ↔ 6호선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "cheongwadae/V07/6호선/sub-027",
-      "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 창신역 ↔ 6호선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "cheongwadae/V07/6호선/sub-028",
-      "category": "V07 역↔경로 일치",
-      "label": "[청와대 일대] 보문역 ↔ 6호선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "seoul-gangnam/V01",
-      "category": "V01 역ID 중복",
-      "label": "[서울 강남구] 역 ID 고유성",
-      "passed": true,
-      "detail": "총 26개 역 — 중복 없음"
-    },
-    {
-      "id": "seoul-gangnam/V02/2호선",
-      "category": "V02 stationId 존재",
-      "label": "[서울 강남구] 2호선 stationIds 유효성",
-      "passed": true,
-      "detail": "모든 stationId 정상"
-    },
-    {
-      "id": "seoul-gangnam/V02/3호선",
-      "category": "V02 stationId 존재",
-      "label": "[서울 강남구] 3호선 stationIds 유효성",
-      "passed": true,
-      "detail": "모든 stationId 정상"
-    },
-    {
-      "id": "seoul-gangnam/V02/7호선",
-      "category": "V02 stationId 존재",
-      "label": "[서울 강남구] 7호선 stationIds 유효성",
-      "passed": true,
-      "detail": "모든 stationId 정상"
-    },
-    {
-      "id": "seoul-gangnam/V02/9호선",
-      "category": "V02 stationId 존재",
-      "label": "[서울 강남구] 9호선 stationIds 유효성",
-      "passed": true,
-      "detail": "모든 stationId 정상"
-    },
-    {
-      "id": "seoul-gangnam/V02/분당선",
-      "category": "V02 stationId 존재",
-      "label": "[서울 강남구] 분당선 stationIds 유효성",
-      "passed": true,
-      "detail": "모든 stationId 정상"
-    },
-    {
-      "id": "seoul-gangnam/V03/sub-001",
-      "category": "V03 서울 경계",
-      "label": "[서울 강남구] 강남역 서울 경계 내 위치",
-      "passed": true,
-      "detail": "(37.4979, 127.0276) — 정상"
-    },
-    {
-      "id": "seoul-gangnam/V03/sub-002",
-      "category": "V03 서울 경계",
-      "label": "[서울 강남구] 역삼역 서울 경계 내 위치",
-      "passed": true,
-      "detail": "(37.5007, 127.0365) — 정상"
-    },
-    {
-      "id": "seoul-gangnam/V03/sub-003",
-      "category": "V03 서울 경계",
-      "label": "[서울 강남구] 선릉역 서울 경계 내 위치",
-      "passed": true,
-      "detail": "(37.5045, 127.049) — 정상"
-    },
-    {
-      "id": "seoul-gangnam/V03/sub-004",
-      "category": "V03 서울 경계",
-      "label": "[서울 강남구] 삼성역 서울 경계 내 위치",
-      "passed": true,
-      "detail": "(37.5088, 127.0631) — 정상"
-    },
-    {
-      "id": "seoul-gangnam/V03/sub-005",
-      "category": "V03 서울 경계",
-      "label": "[서울 강남구] 종합운동장역 서울 경계 내 위치",
-      "passed": true,
-      "detail": "(37.5109, 127.0735) — 정상"
-    },
-    {
-      "id": "seoul-gangnam/V03/sub-006",
-      "category": "V03 서울 경계",
-      "label": "[서울 강남구] 교대역 서울 경계 내 위치",
-      "passed": true,
-      "detail": "(37.4934, 127.0146) — 정상"
-    },
-    {
-      "id": "seoul-gangnam/V03/sub-007",
-      "category": "V03 서울 경계",
-      "label": "[서울 강남구] 서초역 서울 경계 내 위치",
-      "passed": true,
-      "detail": "(37.492, 127.0085) — 정상"
-    },
-    {
-      "id": "seoul-gangnam/V03/sub-008",
-      "category": "V03 서울 경계",
-      "label": "[서울 강남구] 신논현역 서울 경계 내 위치",
-      "passed": true,
-      "detail": "(37.5046, 127.0247) — 정상"
-    },
-    {
-      "id": "seoul-gangnam/V03/sub-009",
-      "category": "V03 서울 경계",
-      "label": "[서울 강남구] 논현역 서울 경계 내 위치",
-      "passed": true,
-      "detail": "(37.5115, 127.021) — 정상"
-    },
-    {
-      "id": "seoul-gangnam/V03/sub-010",
-      "category": "V03 서울 경계",
-      "label": "[서울 강남구] 학동역 서울 경계 내 위치",
-      "passed": true,
-      "detail": "(37.5143, 127.0315) — 정상"
-    },
-    {
-      "id": "seoul-gangnam/V03/sub-011",
-      "category": "V03 서울 경계",
-      "label": "[서울 강남구] 강남구청역 서울 경계 내 위치",
-      "passed": true,
-      "detail": "(37.5174, 127.0413) — 정상"
-    },
-    {
-      "id": "seoul-gangnam/V03/sub-012",
-      "category": "V03 서울 경계",
-      "label": "[서울 강남구] 청담역 서울 경계 내 위치",
-      "passed": true,
-      "detail": "(37.5199, 127.053) — 정상"
-    },
-    {
-      "id": "seoul-gangnam/V03/sub-013",
-      "category": "V03 서울 경계",
-      "label": "[서울 강남구] 압구정로데오역 서울 경계 내 위치",
-      "passed": true,
-      "detail": "(37.527, 127.0402) — 정상"
-    },
-    {
-      "id": "seoul-gangnam/V03/sub-014",
-      "category": "V03 서울 경계",
-      "label": "[서울 강남구] 강남구청역(분당) 서울 경계 내 위치",
-      "passed": true,
-      "detail": "(37.5174, 127.0413) — 정상"
-    },
-    {
-      "id": "seoul-gangnam/V03/sub-015",
-      "category": "V03 서울 경계",
-      "label": "[서울 강남구] 선정릉역 서울 경계 내 위치",
-      "passed": true,
-      "detail": "(37.5104, 127.0435) — 정상"
-    },
-    {
-      "id": "seoul-gangnam/V03/sub-016",
-      "category": "V03 서울 경계",
-      "label": "[서울 강남구] 한티역 서울 경계 내 위치",
-      "passed": true,
-      "detail": "(37.5136, 127.0515) — 정상"
-    },
-    {
-      "id": "seoul-gangnam/V03/sub-017",
-      "category": "V03 서울 경계",
-      "label": "[서울 강남구] 도곡역 서울 경계 내 위치",
-      "passed": true,
-      "detail": "(37.4915, 127.0555) — 정상"
-    },
-    {
-      "id": "seoul-gangnam/V03/sub-018",
-      "category": "V03 서울 경계",
-      "label": "[서울 강남구] 매봉역 서울 경계 내 위치",
-      "passed": true,
-      "detail": "(37.4868, 127.0346) — 정상"
-    },
-    {
-      "id": "seoul-gangnam/V03/sub-019",
-      "category": "V03 서울 경계",
-      "label": "[서울 강남구] 양재역 서울 경계 내 위치",
-      "passed": true,
-      "detail": "(37.4842, 127.0344) — 정상"
-    },
-    {
-      "id": "seoul-gangnam/V03/sub-020",
-      "category": "V03 서울 경계",
-      "label": "[서울 강남구] 남부터미널역 서울 경계 내 위치",
-      "passed": true,
-      "detail": "(37.4845, 127.0154) — 정상"
-    },
-    {
-      "id": "seoul-gangnam/V03/sub-021",
-      "category": "V03 서울 경계",
-      "label": "[서울 강남구] 언주역 서울 경계 내 위치",
-      "passed": true,
-      "detail": "(37.5072, 127.034) — 정상"
-    },
-    {
-      "id": "seoul-gangnam/V03/sub-022",
-      "category": "V03 서울 경계",
-      "label": "[서울 강남구] 선정릉역(9호선) 서울 경계 내 위치",
-      "passed": true,
-      "detail": "(37.5104, 127.0435) — 정상"
-    },
-    {
-      "id": "seoul-gangnam/V03/sub-023",
-      "category": "V03 서울 경계",
-      "label": "[서울 강남구] 봉은사역 서울 경계 내 위치",
-      "passed": true,
-      "detail": "(37.514, 127.058) — 정상"
-    },
-    {
-      "id": "seoul-gangnam/V03/sub-024",
-      "category": "V03 서울 경계",
-      "label": "[서울 강남구] 종합운동장역(9호선) 서울 경계 내 위치",
-      "passed": true,
-      "detail": "(37.5109, 127.0735) — 정상"
-    },
-    {
-      "id": "seoul-gangnam/V03/sub-025",
-      "category": "V03 서울 경계",
-      "label": "[서울 강남구] 대치역 서울 경계 내 위치",
-      "passed": true,
-      "detail": "(37.4944, 127.0637) — 정상"
-    },
-    {
-      "id": "seoul-gangnam/V03/sub-026",
-      "category": "V03 서울 경계",
-      "label": "[서울 강남구] 학여울역 서울 경계 내 위치",
-      "passed": true,
-      "detail": "(37.4963, 127.0714) — 정상"
-    },
-    {
-      "id": "seoul-gangnam/V04/sub-001",
-      "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 강남역 반경 6km 이내",
-      "passed": true,
-      "detail": "거리 0.00km (한계 6km — 반경 3km + 버퍼 3km)"
-    },
-    {
-      "id": "seoul-gangnam/V04/sub-002",
-      "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 역삼역 반경 6km 이내",
-      "passed": true,
-      "detail": "거리 0.84km (한계 6km — 반경 3km + 버퍼 3km)"
-    },
-    {
-      "id": "seoul-gangnam/V04/sub-003",
-      "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 선릉역 반경 6km 이내",
-      "passed": true,
-      "detail": "거리 2.03km (한계 6km — 반경 3km + 버퍼 3km)"
-    },
-    {
-      "id": "seoul-gangnam/V04/sub-004",
-      "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 삼성역 반경 6km 이내",
-      "passed": true,
-      "detail": "거리 3.36km (한계 6km — 반경 3km + 버퍼 3km)"
-    },
-    {
-      "id": "seoul-gangnam/V04/sub-005",
-      "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 종합운동장역 반경 6km 이내",
-      "passed": true,
-      "detail": "거리 4.30km (한계 6km — 반경 3km + 버퍼 3km)"
-    },
-    {
-      "id": "seoul-gangnam/V04/sub-006",
-      "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 교대역 반경 6km 이내",
-      "passed": true,
-      "detail": "거리 1.25km (한계 6km — 반경 3km + 버퍼 3km)"
-    },
-    {
-      "id": "seoul-gangnam/V04/sub-007",
-      "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 서초역 반경 6km 이내",
-      "passed": true,
-      "detail": "거리 1.81km (한계 6km — 반경 3km + 버퍼 3km)"
-    },
-    {
-      "id": "seoul-gangnam/V04/sub-008",
-      "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 신논현역 반경 6km 이내",
-      "passed": true,
-      "detail": "거리 0.79km (한계 6km — 반경 3km + 버퍼 3km)"
-    },
-    {
-      "id": "seoul-gangnam/V04/sub-009",
-      "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 논현역 반경 6km 이내",
-      "passed": true,
-      "detail": "거리 1.62km (한계 6km — 반경 3km + 버퍼 3km)"
-    },
-    {
-      "id": "seoul-gangnam/V04/sub-010",
-      "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 학동역 반경 6km 이내",
-      "passed": true,
-      "detail": "거리 1.86km (한계 6km — 반경 3km + 버퍼 3km)"
-    },
-    {
-      "id": "seoul-gangnam/V04/sub-011",
-      "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 강남구청역 반경 6km 이내",
-      "passed": true,
-      "detail": "거리 2.48km (한계 6km — 반경 3km + 버퍼 3km)"
-    },
-    {
-      "id": "seoul-gangnam/V04/sub-012",
-      "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 청담역 반경 6km 이내",
-      "passed": true,
-      "detail": "거리 3.32km (한계 6km — 반경 3km + 버퍼 3km)"
-    },
-    {
-      "id": "seoul-gangnam/V04/sub-013",
-      "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 압구정로데오역 반경 6km 이내",
-      "passed": true,
-      "detail": "거리 3.42km (한계 6km — 반경 3km + 버퍼 3km)"
-    },
-    {
-      "id": "seoul-gangnam/V04/sub-014",
-      "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 강남구청역(분당) 반경 6km 이내",
-      "passed": true,
-      "detail": "거리 2.48km (한계 6km — 반경 3km + 버퍼 3km)"
-    },
-    {
-      "id": "seoul-gangnam/V04/sub-015",
-      "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 선정릉역 반경 6km 이내",
-      "passed": true,
-      "detail": "거리 1.97km (한계 6km — 반경 3km + 버퍼 3km)"
-    },
-    {
-      "id": "seoul-gangnam/V04/sub-016",
-      "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 한티역 반경 6km 이내",
-      "passed": true,
-      "detail": "거리 2.74km (한계 6km — 반경 3km + 버퍼 3km)"
-    },
-    {
-      "id": "seoul-gangnam/V04/sub-017",
-      "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 도곡역 반경 6km 이내",
-      "passed": true,
-      "detail": "거리 2.56km (한계 6km — 반경 3km + 버퍼 3km)"
-    },
-    {
-      "id": "seoul-gangnam/V04/sub-018",
-      "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 매봉역 반경 6km 이내",
-      "passed": true,
-      "detail": "거리 1.38km (한계 6km — 반경 3km + 버퍼 3km)"
-    },
-    {
-      "id": "seoul-gangnam/V04/sub-019",
-      "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 양재역 반경 6km 이내",
-      "passed": true,
-      "detail": "거리 1.64km (한계 6km — 반경 3km + 버퍼 3km)"
-    },
-    {
-      "id": "seoul-gangnam/V04/sub-020",
-      "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 남부터미널역 반경 6km 이내",
-      "passed": true,
-      "detail": "거리 1.84km (한계 6km — 반경 3km + 버퍼 3km)"
-    },
-    {
-      "id": "seoul-gangnam/V04/sub-021",
-      "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 언주역 반경 6km 이내",
-      "passed": true,
-      "detail": "거리 1.18km (한계 6km — 반경 3km + 버퍼 3km)"
-    },
-    {
-      "id": "seoul-gangnam/V04/sub-022",
-      "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 선정릉역(9호선) 반경 6km 이내",
-      "passed": true,
-      "detail": "거리 1.97km (한계 6km — 반경 3km + 버퍼 3km)"
-    },
-    {
-      "id": "seoul-gangnam/V04/sub-023",
-      "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 봉은사역 반경 6km 이내",
-      "passed": true,
-      "detail": "거리 3.22km (한계 6km — 반경 3km + 버퍼 3km)"
-    },
-    {
-      "id": "seoul-gangnam/V04/sub-024",
-      "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 종합운동장역(9호선) 반경 6km 이내",
-      "passed": true,
-      "detail": "거리 4.30km (한계 6km — 반경 3km + 버퍼 3km)"
-    },
-    {
-      "id": "seoul-gangnam/V04/sub-025",
-      "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 대치역 반경 6km 이내",
-      "passed": true,
-      "detail": "거리 3.21km (한계 6km — 반경 3km + 버퍼 3km)"
-    },
-    {
-      "id": "seoul-gangnam/V04/sub-026",
-      "category": "V04 반경 버퍼",
-      "label": "[서울 강남구] 학여울역 반경 6km 이내",
-      "passed": true,
-      "detail": "거리 3.87km (한계 6km — 반경 3km + 버퍼 3km)"
-    },
-    {
-      "id": "seoul-gangnam/V05/2호선/1",
-      "category": "V05 인접역 거리",
-      "label": "[서울 강남구] 2호선 서초역→교대역",
-      "passed": true,
-      "detail": "0.56km ✓"
-    },
-    {
-      "id": "seoul-gangnam/V05/2호선/2",
-      "category": "V05 인접역 거리",
-      "label": "[서울 강남구] 2호선 교대역→강남역",
-      "passed": true,
-      "detail": "1.25km ✓"
-    },
-    {
-      "id": "seoul-gangnam/V05/2호선/3",
-      "category": "V05 인접역 거리",
-      "label": "[서울 강남구] 2호선 강남역→역삼역",
-      "passed": true,
-      "detail": "0.84km ✓"
-    },
-    {
-      "id": "seoul-gangnam/V05/2호선/4",
-      "category": "V05 인접역 거리",
-      "label": "[서울 강남구] 2호선 역삼역→선릉역",
-      "passed": true,
-      "detail": "1.18km ✓"
-    },
-    {
-      "id": "seoul-gangnam/V05/2호선/5",
-      "category": "V05 인접역 거리",
-      "label": "[서울 강남구] 2호선 선릉역→삼성역",
-      "passed": true,
-      "detail": "1.33km ✓"
-    },
-    {
-      "id": "seoul-gangnam/V05/2호선/6",
-      "category": "V05 인접역 거리",
-      "label": "[서울 강남구] 2호선 삼성역→종합운동장역",
-      "passed": true,
-      "detail": "0.95km ✓"
-    },
-    {
-      "id": "seoul-gangnam/V05/3호선/1",
-      "category": "V05 인접역 거리",
-      "label": "[서울 강남구] 3호선 남부터미널역→양재역",
-      "passed": true,
-      "detail": "1.68km ✓"
-    },
-    {
-      "id": "seoul-gangnam/V05/3호선/2",
-      "category": "V05 인접역 거리",
-      "label": "[서울 강남구] 3호선 양재역→매봉역",
-      "passed": true,
-      "detail": "0.29km ✓"
-    },
-    {
-      "id": "seoul-gangnam/V05/3호선/3",
-      "category": "V05 인접역 거리",
-      "label": "[서울 강남구] 3호선 매봉역→대치역",
-      "passed": true,
-      "detail": "2.70km ✓"
-    },
-    {
-      "id": "seoul-gangnam/V05/3호선/4",
-      "category": "V05 인접역 거리",
-      "label": "[서울 강남구] 3호선 대치역→학여울역",
-      "passed": true,
-      "detail": "0.71km ✓"
-    },
-    {
-      "id": "seoul-gangnam/V05/7호선/1",
-      "category": "V05 인접역 거리",
-      "label": "[서울 강남구] 7호선 논현역→학동역",
-      "passed": true,
-      "detail": "0.98km ✓"
-    },
-    {
-      "id": "seoul-gangnam/V05/7호선/2",
-      "category": "V05 인접역 거리",
-      "label": "[서울 강남구] 7호선 학동역→강남구청역",
-      "passed": true,
-      "detail": "0.93km ✓"
-    },
-    {
-      "id": "seoul-gangnam/V05/7호선/3",
-      "category": "V05 인접역 거리",
-      "label": "[서울 강남구] 7호선 강남구청역→청담역",
-      "passed": true,
-      "detail": "1.07km ✓"
-    },
-    {
-      "id": "seoul-gangnam/V05/9호선/1",
-      "category": "V05 인접역 거리",
-      "label": "[서울 강남구] 9호선 신논현역→언주역",
-      "passed": true,
-      "detail": "0.87km ✓"
-    },
-    {
-      "id": "seoul-gangnam/V05/9호선/2",
-      "category": "V05 인접역 거리",
-      "label": "[서울 강남구] 9호선 언주역→선정릉역(9호선)",
-      "passed": true,
-      "detail": "0.91km ✓"
-    },
-    {
-      "id": "seoul-gangnam/V05/9호선/3",
-      "category": "V05 인접역 거리",
-      "label": "[서울 강남구] 9호선 선정릉역(9호선)→봉은사역",
-      "passed": true,
-      "detail": "1.34km ✓"
-    },
-    {
-      "id": "seoul-gangnam/V05/9호선/4",
-      "category": "V05 인접역 거리",
-      "label": "[서울 강남구] 9호선 봉은사역→종합운동장역(9호선)",
-      "passed": true,
-      "detail": "1.41km ✓"
-    },
-    {
-      "id": "seoul-gangnam/V05/분당선/1",
-      "category": "V05 인접역 거리",
-      "label": "[서울 강남구] 분당선 압구정로데오역→강남구청역(분당)",
-      "passed": true,
-      "detail": "1.07km ✓"
-    },
-    {
-      "id": "seoul-gangnam/V05/분당선/2",
-      "category": "V05 인접역 거리",
-      "label": "[서울 강남구] 분당선 강남구청역(분당)→선정릉역",
-      "passed": true,
-      "detail": "0.80km ✓"
-    },
-    {
-      "id": "seoul-gangnam/V05/분당선/3",
-      "category": "V05 인접역 거리",
-      "label": "[서울 강남구] 분당선 선정릉역→한티역",
-      "passed": true,
-      "detail": "0.79km ✓"
-    },
-    {
-      "id": "seoul-gangnam/V05/분당선/4",
-      "category": "V05 인접역 거리",
-      "label": "[서울 강남구] 분당선 한티역→도곡역",
-      "passed": true,
-      "detail": "2.48km ✓"
-    },
-    {
-      "id": "seoul-gangnam/V06/2호선",
-      "category": "V06 경로 연속성",
-      "label": "[서울 강남구] 2호선 최대 세그먼트",
-      "passed": true,
-      "detail": "최대 세그먼트 0.672km (인덱스 8→9) ✓"
-    },
-    {
-      "id": "seoul-gangnam/V06/3호선",
-      "category": "V06 경로 연속성",
-      "label": "[서울 강남구] 3호선 최대 세그먼트",
-      "passed": true,
-      "detail": "최대 세그먼트 0.881km (인덱스 7→8) ✓"
-    },
-    {
-      "id": "seoul-gangnam/V06/7호선",
-      "category": "V06 경로 연속성",
-      "label": "[서울 강남구] 7호선 최대 세그먼트",
-      "passed": true,
-      "detail": "최대 세그먼트 0.537km (인덱스 4→5) ✓"
-    },
-    {
-      "id": "seoul-gangnam/V06/9호선",
-      "category": "V06 경로 연속성",
-      "label": "[서울 강남구] 9호선 최대 세그먼트",
-      "passed": true,
-      "detail": "최대 세그먼트 0.711km (인덱스 6→7) ✓"
-    },
-    {
-      "id": "seoul-gangnam/V06/분당선",
-      "category": "V06 경로 연속성",
-      "label": "[서울 강남구] 분당선 최대 세그먼트",
-      "passed": true,
-      "detail": "최대 세그먼트 0.846km (인덱스 6→7) ✓"
-    },
-    {
-      "id": "seoul-gangnam/V07/2호선/sub-007",
-      "category": "V07 역↔경로 일치",
-      "label": "[서울 강남구] 서초역 ↔ 2호선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "seoul-gangnam/V07/2호선/sub-006",
-      "category": "V07 역↔경로 일치",
-      "label": "[서울 강남구] 교대역 ↔ 2호선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "seoul-gangnam/V07/2호선/sub-001",
-      "category": "V07 역↔경로 일치",
-      "label": "[서울 강남구] 강남역 ↔ 2호선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "seoul-gangnam/V07/2호선/sub-002",
-      "category": "V07 역↔경로 일치",
-      "label": "[서울 강남구] 역삼역 ↔ 2호선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "seoul-gangnam/V07/2호선/sub-003",
-      "category": "V07 역↔경로 일치",
-      "label": "[서울 강남구] 선릉역 ↔ 2호선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "seoul-gangnam/V07/2호선/sub-004",
-      "category": "V07 역↔경로 일치",
-      "label": "[서울 강남구] 삼성역 ↔ 2호선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "seoul-gangnam/V07/2호선/sub-005",
-      "category": "V07 역↔경로 일치",
-      "label": "[서울 강남구] 종합운동장역 ↔ 2호선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "seoul-gangnam/V07/3호선/sub-020",
-      "category": "V07 역↔경로 일치",
-      "label": "[서울 강남구] 남부터미널역 ↔ 3호선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "seoul-gangnam/V07/3호선/sub-019",
-      "category": "V07 역↔경로 일치",
-      "label": "[서울 강남구] 양재역 ↔ 3호선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "seoul-gangnam/V07/3호선/sub-018",
-      "category": "V07 역↔경로 일치",
-      "label": "[서울 강남구] 매봉역 ↔ 3호선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "seoul-gangnam/V07/3호선/sub-025",
-      "category": "V07 역↔경로 일치",
-      "label": "[서울 강남구] 대치역 ↔ 3호선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "seoul-gangnam/V07/3호선/sub-026",
-      "category": "V07 역↔경로 일치",
-      "label": "[서울 강남구] 학여울역 ↔ 3호선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "seoul-gangnam/V07/7호선/sub-009",
-      "category": "V07 역↔경로 일치",
-      "label": "[서울 강남구] 논현역 ↔ 7호선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "seoul-gangnam/V07/7호선/sub-010",
-      "category": "V07 역↔경로 일치",
-      "label": "[서울 강남구] 학동역 ↔ 7호선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "seoul-gangnam/V07/7호선/sub-011",
-      "category": "V07 역↔경로 일치",
-      "label": "[서울 강남구] 강남구청역 ↔ 7호선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "seoul-gangnam/V07/7호선/sub-012",
-      "category": "V07 역↔경로 일치",
-      "label": "[서울 강남구] 청담역 ↔ 7호선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "seoul-gangnam/V07/9호선/sub-008",
-      "category": "V07 역↔경로 일치",
-      "label": "[서울 강남구] 신논현역 ↔ 9호선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "seoul-gangnam/V07/9호선/sub-021",
-      "category": "V07 역↔경로 일치",
-      "label": "[서울 강남구] 언주역 ↔ 9호선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "seoul-gangnam/V07/9호선/sub-022",
-      "category": "V07 역↔경로 일치",
-      "label": "[서울 강남구] 선정릉역(9호선) ↔ 9호선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "seoul-gangnam/V07/9호선/sub-023",
-      "category": "V07 역↔경로 일치",
-      "label": "[서울 강남구] 봉은사역 ↔ 9호선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "seoul-gangnam/V07/9호선/sub-024",
-      "category": "V07 역↔경로 일치",
-      "label": "[서울 강남구] 종합운동장역(9호선) ↔ 9호선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "seoul-gangnam/V07/분당선/sub-013",
-      "category": "V07 역↔경로 일치",
-      "label": "[서울 강남구] 압구정로데오역 ↔ 분당선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "seoul-gangnam/V07/분당선/sub-014",
-      "category": "V07 역↔경로 일치",
-      "label": "[서울 강남구] 강남구청역(분당) ↔ 분당선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "seoul-gangnam/V07/분당선/sub-015",
-      "category": "V07 역↔경로 일치",
-      "label": "[서울 강남구] 선정릉역 ↔ 분당선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "seoul-gangnam/V07/분당선/sub-016",
-      "category": "V07 역↔경로 일치",
-      "label": "[서울 강남구] 한티역 ↔ 분당선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
-    },
-    {
-      "id": "seoul-gangnam/V07/분당선/sub-017",
-      "category": "V07 역↔경로 일치",
-      "label": "[서울 강남구] 도곡역 ↔ 분당선 경로",
-      "passed": true,
-      "detail": "최소 거리 0m ✓"
+      "detail": "usesOverpassRelations=true, acceptsDynamicCoordinates=true, hasGapGuard=true"
     }
   ]
 }
