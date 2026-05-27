@@ -63,7 +63,10 @@ export default function SiteAnalysisApp() {
   }, [layers, config]);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden" style={{ backgroundColor: THEME_COLORS.overlayDark }}>
+    <div
+      className="flex h-screen w-screen flex-col overflow-hidden md:flex-row"
+      style={{ backgroundColor: THEME_COLORS.overlayDark }}
+    >
       <Sidebar
         config={config}
         layers={layers}
@@ -73,7 +76,7 @@ export default function SiteAnalysisApp() {
         onConfigChange={handleConfigChange}
         onExport={handleExport}
       />
-      <main className="flex-1 relative">
+      <main className="relative min-h-0 flex-1">
         <MapView
           ref={mapRef}
           config={config}

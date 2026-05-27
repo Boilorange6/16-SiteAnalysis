@@ -62,8 +62,8 @@ export default function Sidebar({
     "w-full mt-1 px-3 py-2 bg-white/10 text-white text-sm rounded border border-white/20 focus:border-[#3B82F6] focus:outline-none placeholder-white/30";
 
   return (
-    <aside 
-      className="w-80 text-white flex flex-col overflow-y-auto"
+    <aside
+      className="h-[46vh] w-full shrink-0 text-white flex flex-col overflow-y-auto md:h-screen md:w-80"
       style={{ backgroundColor: THEME_COLORS.sidebarBg }}
     >
       <div className="p-6 border-b border-white/10">

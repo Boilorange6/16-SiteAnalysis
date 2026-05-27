@@ -49,6 +49,129 @@ body {
   display: none !important;
 }
 
+.site-subway-station-wrap,
+.site-subway-line-label-wrap,
+.site-subway-entrance-wrap {
+  background: transparent !important;
+  border: 0 !important;
+}
+
+.site-subway-station {
+  box-sizing: border-box;
+  width: max-content;
+  max-width: 132px;
+  transform: translate(-50%, -78%);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 0 2px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.05;
+  color: #2f3437;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.site-subway-station-badge {
+  --subway-color: #475569;
+  --subway-text: #fff;
+  box-sizing: border-box;
+  min-width: 15px;
+  height: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.94);
+  border-radius: 999px;
+  background: var(--subway-color);
+  color: var(--subway-text);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.22);
+  padding: 0 4px;
+  font-size: 8px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.site-subway-station-name {
+  display: inline-block;
+  max-width: 128px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: top;
+  text-shadow:
+    -1px -1px 0 rgba(255, 255, 255, 0.98),
+    1px -1px 0 rgba(255, 255, 255, 0.98),
+    -1px 1px 0 rgba(255, 255, 255, 0.98),
+    1px 1px 0 rgba(255, 255, 255, 0.98),
+    0 1px 2px rgba(255, 255, 255, 0.98);
+}
+
+.site-subway-line-label {
+  --subway-color: #475569;
+  --subway-angle: 0deg;
+  transform: translate(-50%, -50%) rotate(var(--subway-angle));
+  transform-origin: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--subway-color);
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+  text-shadow:
+    -1px -1px 0 rgba(255, 255, 255, 0.94),
+    1px -1px 0 rgba(255, 255, 255, 0.94),
+    -1px 1px 0 rgba(255, 255, 255, 0.94),
+    1px 1px 0 rgba(255, 255, 255, 0.94),
+    0 1px 2px rgba(255, 255, 255, 0.94);
+  pointer-events: none;
+}
+
+.site-subway-entrance {
+  box-sizing: border-box;
+  min-width: 15px;
+  height: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.25px solid #b59a00;
+  border-radius: 999px;
+  background: #fff4a3;
+  color: #776300;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.14);
+  padding: 0 3px;
+  font-size: 8px;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .site-subway-station {
+    transform: translate(-50%, -78%) scale(0.92);
+    max-width: 120px;
+  }
+
+  .site-subway-station-name {
+    max-width: 116px;
+  }
+
+  .site-subway-line-label {
+    font-size: 9px;
+  }
+
+  .site-subway-entrance {
+    transform: scale(0.96);
+  }
+}
+
 ::-webkit-scrollbar {
   width: 6px;
 }
