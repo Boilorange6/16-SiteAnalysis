@@ -101,3 +101,9 @@ export const CATEGORY_LABELS: Record<PoiCategory, string> = {
   mountain: "산",
   apartment: "분양 아파트",
 } as const;
+
+export interface RouteNormalizedPosition {
+  readonly line: string;
+  readonly lineColor: string;
+  readonly points: readonly { readonly nx: number; readonly ny: number }[];
+}
