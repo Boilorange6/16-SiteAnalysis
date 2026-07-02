@@ -62,6 +62,13 @@ export async function overpassFetch(query: string, opts: OverpassFetchOptions = 
         continue; // 429/5xx → 재시도
       }
       const value = await res.json();
+      // Overpass는 서버 과부하 시 HTTP 200 + remark(부분/빈 elements)를 반환한다.
+      // 부분 응답을 10분 캐시에 고정하면 안 되므로 재시도 대상으로 처리한다.
+      const remark = (value as { remark?: unknown } | null)?.remark;
+      if (remark) {
+        lastError = new Error(`Overpass partial response: ${String(remark).slice(0, 200)}`);
+        continue; // 200+remark → 캐시하지 않고 재시도
+      }
       if (cache.size >= MAX_CACHE) {
         const oldest = cache.keys().next().value;
         if (oldest !== undefined) cache.delete(oldest);

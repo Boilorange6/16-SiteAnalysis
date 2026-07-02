@@ -70,4 +70,20 @@ function makeFetch(responses) {
   assert.deepEqual(out, { elements: ["ok"] });
 }
 
+// 6) 200 + remark(부분/타임아웃 응답)는 캐시하지 않고 재시도 대상으로 처리
+{
+  __clearCacheForTest();
+  const f = makeFetch([
+    { status: 200, body: { remark: "runtime error: query timed out", elements: [] } },
+    { status: 200, body: { elements: ["ok"] } },
+  ]);
+  const out = await overpassFetch("Q6", { fetchImpl: f, maxRetries: 2 });
+  assert.deepEqual(out, { elements: ["ok"] });
+  assert.equal(f.calls(), 2);
+  // remark 응답이 캐시되지 않았음을 확인: 좋은 응답만 캐시에 남아 fetch 재호출 없이 반환
+  const cached = await overpassFetch("Q6", { fetchImpl: f, maxRetries: 0 });
+  assert.deepEqual(cached, { elements: ["ok"] });
+  assert.equal(f.calls(), 2);
+}
+
 console.log("overpass-fetch: all tests passed");
