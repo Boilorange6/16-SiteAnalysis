@@ -77,7 +77,7 @@ export function applyElement(slide: SlideLike, el: SlideElement, barChartType: u
         valign: el.valign ?? "top",
         ...(el.charSpacingPt ? { charSpacing: el.charSpacingPt } : {}),
         ...(el.fill ? { fill: fillOf(el.fill) } : {}),
-        ...(el.radiusIn ? { rectRadius: el.radiusIn } : {}),
+        ...(el.radiusIn ? { shape: "roundRect", rectRadius: el.radiusIn } : {}),
       });
       return;
 

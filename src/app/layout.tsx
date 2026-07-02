@@ -6,6 +6,7 @@ const notoSansKr = Noto_Sans_KR({
   subsets: ["latin"],
   weight: ["400", "700", "900"],
   display: "swap",
+  variable: "--font-noto",
 });
 
 export const metadata: Metadata = {
@@ -28,7 +29,7 @@ export default function RootLayout({
       <head>
         <meta charSet="utf-8" />
       </head>
-      <body className={`${notoSansKr.className} antialiased`} suppressHydrationWarning>{children}</body>
+      <body className={`${notoSansKr.variable} ${notoSansKr.className} antialiased`} suppressHydrationWarning>{children}</body>
     </html>
   );
 }

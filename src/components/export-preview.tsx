@@ -62,7 +62,12 @@ export default function ExportPreview({ specs, fileName, onClose }: ExportPrevie
   }
 
   return (
-    <div className="fixed inset-0 z-[1200] flex flex-col bg-[#0F172A]">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="PPT 내보내기 미리보기"
+      className="fixed inset-0 z-[1200] flex flex-col bg-[#0F172A]"
+    >
       {/* 헤더 */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
         <div>
@@ -98,6 +103,7 @@ export default function ExportPreview({ specs, fileName, onClose }: ExportPrevie
                   data-testid={`thumb-check-${spec.id}`}
                   checked={selected.has(spec.id)}
                   onChange={() => toggle(spec.id)}
+                  aria-label={`${spec.title} 슬라이드 포함`}
                   className="w-3.5 h-3.5 accent-[#3B82F6]"
                 />
                 <span className="text-[11px] text-white/70 font-medium truncate">

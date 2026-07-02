@@ -5,7 +5,7 @@ import type { CSSProperties } from "react";
 import type { SlideSpec, SlideElement, Fill, Stroke } from "@/lib/slide-spec";
 import { PX_W, PX_H, ptToPx, inToPx } from "@/lib/slide-spec";
 
-const FONT = "'Noto Sans KR', sans-serif";
+const FONT = "var(--font-noto), 'Noto Sans KR', sans-serif";
 const SHADOW_CSS = "0 4px 10.5px rgba(0,0,0,0.25)"; // PPT outer shadow(blur 8pt, offset 3pt) 근사
 
 function rgba(fill: Fill): string {
