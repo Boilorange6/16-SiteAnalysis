@@ -97,5 +97,10 @@ describe("applyElement", () => {
     const data = calls[0].args[1] as { labels: string[]; values: number[] }[];
     expect(data[0].labels).toEqual(["A", "B"]);
     expect(data[0].values).toEqual([3000, 2500]);
+    // pptxgenjs 차트에는 generic fontFace가 없다 — per-part 옵션으로 지정해야 적용됨
+    const opts = calls[0].args[2] as Record<string, unknown>;
+    expect(opts.catAxisLabelFontFace).toBe("Noto Sans KR");
+    expect(opts.valAxisLabelFontFace).toBe("Noto Sans KR");
+    expect(opts.dataLabelFontFace).toBe("Noto Sans KR");
   });
 });

@@ -115,7 +115,9 @@ export function applyElement(slide: SlideLike, el: SlideElement, barChartType: u
           chartColors: [hex(el.color)],
           catAxisLabelFontSize: 8, valAxisLabelFontSize: 8,
           dataLabelFontSize: 8, showValue: true,
-          fontFace: FONT,
+          catAxisLabelFontFace: FONT,
+          valAxisLabelFontFace: FONT,
+          dataLabelFontFace: FONT,
           valGridLine: { style: "none" },
           showLegend: false, showTitle: false,
         }
