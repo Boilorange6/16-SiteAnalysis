@@ -1,7 +1,6 @@
 import { inferSubwayLine } from "./overpass-api";
+import { overpassFetch } from "./server/overpass-fetch";
 import type { SubwayRoute } from "./types";
-
-const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 
 type Coord = [number, number]; // [lat, lng]
 
@@ -89,24 +88,7 @@ export async function overpassSubwayRoutes(
 out geom;
 `;
 
-  const params = new URLSearchParams({ data: query });
-  const res = await fetch(OVERPASS_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      "Accept": "*/*",
-      "User-Agent": "SiteAnalysisApp/1.0",
-    },
-    body: params.toString(),
-    signal: AbortSignal.timeout(65_000),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Overpass API error [${res.status}]: ${text.slice(0, 200)}`);
-  }
-
-  const data = (await res.json()) as { elements: OverpassRelation[] };
+  const data = (await overpassFetch(query, { timeoutMs: 65_000 })) as { elements: OverpassRelation[] };
 
   const routes: SubwayRoute[] = [];
 

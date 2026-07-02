@@ -1,4 +1,4 @@
-const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
+import { overpassFetch } from "./server/overpass-fetch";
 
 export interface OverpassElement {
   type: "node" | "way" | "relation";
@@ -39,24 +39,7 @@ export async function overpassPoiSearch(
 out center tags;
 `;
 
-  const params = new URLSearchParams({ data: query });
-  const res = await fetch(OVERPASS_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      "Accept": "*/*",
-      "User-Agent": "SiteAnalysisApp/1.0",
-    },
-    body: params.toString(),
-    signal: AbortSignal.timeout(45_000),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Overpass API error [${res.status}]: ${text.slice(0, 200)}`);
-  }
-
-  const data = (await res.json()) as { elements: OverpassElement[] };
+  const data = (await overpassFetch(query)) as { elements: OverpassElement[] };
   return data.elements;
 }
 

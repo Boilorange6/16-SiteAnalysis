@@ -1,8 +1,8 @@
 import type { Park, ParkQuality } from "../types";
 import { getBoundingBox, haversineDistance } from "../geo";
+import { overpassFetch } from "./overpass-fetch";
 
 const OFFICIAL_PARK_URL = "http://api.data.go.kr/openapi/tn_pubr_public_cty_park_info_api";
-const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const API_TIMEOUT_MS = 25_000;
 const OFFICIAL_PAGE_SIZE = 1000;
@@ -287,18 +287,7 @@ async function fetchOsmParks(lat: number, lng: number, radiusM: number): Promise
 out center geom tags;
 `;
   try {
-    const res = await fetch(OVERPASS_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        Accept: "*/*",
-        "User-Agent": "SiteAnalysisApp/1.0",
-      },
-      body: new URLSearchParams({ data: query }).toString(),
-      signal: AbortSignal.timeout(API_TIMEOUT_MS + 5_000),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json() as {
+    const data = await overpassFetch(query, { timeoutMs: API_TIMEOUT_MS + 5_000 }) as {
       elements?: Array<{
         type: "node" | "way" | "relation";
         id: number;
