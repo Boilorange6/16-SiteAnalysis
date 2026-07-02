@@ -1115,6 +1115,7 @@ function renderScoreDashboardSlide(
   drawWrappedText(ctx, scores.headline, ix(0.95), iy(4.72), ix(2.5), iy(0.28), 2, { fontSize: 10, bold: true, color: d.textColor });
 
   const startX = 4.15;
+  drawDataPanel(ctx, ix(4.0), iy(1.08), ix(8.7), iy(4.24), d);
   scores.items.forEach((item, idx) => {
     const y = 1.25 + idx * 0.87;
     const color = getScoreColor(item.score / item.max);

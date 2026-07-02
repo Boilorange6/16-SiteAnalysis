@@ -1082,6 +1082,7 @@ function addScoreDashboardSlide(
 
   const startX = 4.15;
   const startY = 1.25;
+  addDataPanel(slide, 4.0, 1.08, 8.7, 4.24, d);
   scores.items.forEach((item, idx) => {
     const y = startY + idx * 0.87;
     const ratio = item.score / item.max;
