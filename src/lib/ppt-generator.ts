@@ -422,6 +422,19 @@ function addMiniLabel(slide: PptxGenJS.Slide, label: string, x: number, y: numbe
   });
 }
 
+/** Small centered translucent card + muted text, used when a slide has no panel to host EMPTY_PANEL_TEXT in. */
+function addEmptyStateBadge(slide: PptxGenJS.Slide, d: PptDesignConfig) {
+  const w = 4.6;
+  const h = 0.56;
+  const x = (SLIDE_W - w) / 2;
+  const y = (SLIDE_H - h) / 2;
+  addDataPanel(slide, x, y, w, h, d);
+  slide.addText(EMPTY_PANEL_TEXT, {
+    x: x + 0.2, y, w: w - 0.4, h,
+    fontSize: 13, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), align: "center", valign: "middle",
+  });
+}
+
 function addMetricCard(
   slide: PptxGenJS.Slide,
   x: number,
@@ -459,15 +472,15 @@ function addMetricCard(
     slide.addShape("line", { x: x + 0.14, y: y + 0.16, w: w - 0.28, h: 0, line: { color: pptColor(d.accentColor), transparency: 15, width: 0.7 } });
   }
   slide.addText(label, {
-    x: x + 0.18, y: y + 0.12, w: w - 0.34, h: 0.18,
+    x: x + 0.18, y: y + 0.12, w: w - 0.34, h: 0.16,
     fontSize: 7.5, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), bold: true,
   });
   slide.addText(value, {
-    x: x + (d.metricStyle === "number-plate" ? 0.55 : 0.18), y: y + 0.34, w: w - 0.34, h: 0.34,
+    x: x + (d.metricStyle === "number-plate" ? 0.55 : 0.18), y: y + 0.28, w: w - 0.34, h: 0.28,
     fontSize: d.metricStyle === "number-plate" ? 16 : 18, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true,
   });
   slide.addText(detail, {
-    x: x + 0.18, y: y + h - 0.34, w: w - 0.34, h: 0.22,
+    x: x + 0.18, y: y + h - 0.24, w: w - 0.34, h: 0.24,
     fontSize: 7.5, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), fit: "shrink",
   });
 }
@@ -1024,11 +1037,16 @@ function addOverviewSlide(
   const slide = pptx.addSlide();
   addFullBleedMap(slide, baseMapImage, d);
   addConcentricRings(slide, radiusPosition, d);
+  const subwayAsMarkers = routePositions.length === 0;
   addSubwayRouteLines(slide, routePositions, d);
-  addPoiMarkers(slide, poiPositions, ["school", "park", "mountain", "apartment", "officetel", "residential"], d, {
+  addPoiMarkers(slide, poiPositions, subwayAsMarkers
+    ? ["school", "park", "mountain", "apartment", "officetel", "residential", "subway"]
+    : ["school", "park", "mountain", "apartment", "officetel", "residential"], d, {
     showLabels: false, size: d.markerSizeSm,
   });
-  addStationBars(slide, poiPositions, routePositions, d, radiusPosition, config.radiusKm);
+  if (!subwayAsMarkers) {
+    addStationBars(slide, poiPositions, routePositions, d, radiusPosition, config.radiusKm);
+  }
   addSiteMarker(slide, radiusPosition, d);
   addTitleChip(slide, "입지 현황 종합", d, `반경 ${config.radiusKm}km`);
   addLegend(slide, d);
@@ -1483,14 +1501,15 @@ function addCategorySlide(
   addConcentricRings(slide, radiusPosition, d);
   const cats = Array.isArray(category) ? category : [category];
   const hasSubway = cats.includes("subway");
+  const subwayBarsAvailable = hasSubway && routePositions.length > 0;
   if (hasSubway) {
     addSubwayRouteLines(slide, routePositions, d);
   }
-  const markerCats = hasSubway ? cats.filter(c => c !== "subway") : cats;
-  addPoiMarkers(slide, poiPositions, markerCats.length > 0 ? markerCats : cats, d, {
-    showLabels: !hasSubway,
+  const markerCats = subwayBarsAvailable ? cats.filter(c => c !== "subway") : cats;
+  addPoiMarkers(slide, poiPositions, markerCats, d, {
+    showLabels: !subwayBarsAvailable,
   });
-  if (hasSubway) {
+  if (subwayBarsAvailable) {
     addStationBars(slide, poiPositions, routePositions, d, radiusPosition, config.radiusKm);
   }
   addSiteMarker(slide, radiusPosition, d);
@@ -1536,11 +1555,17 @@ function addApartmentCalloutSlide(
   addTitleChip(slide, pageTitle, d, `반경 ${config.radiusKm}km`);
   addLegend(slide, d);
 
-  if (aptsOnPage.length === 0) return;
+  if (aptsOnPage.length === 0) {
+    addEmptyStateBadge(slide, d);
+    return;
+  }
 
   const aptIdSet = new Set(aptsOnPage.map(a => a.id));
   const aptPositions = poiPositions.filter(p => aptIdSet.has(p.poi.id));
-  if (aptPositions.length === 0) return;
+  if (aptPositions.length === 0) {
+    addEmptyStateBadge(slide, d);
+    return;
+  }
 
   const APT_CARD_W = d.calloutWidth;
   const APT_CARD_H = d.calloutHeight;

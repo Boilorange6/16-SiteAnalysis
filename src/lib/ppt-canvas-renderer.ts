@@ -585,6 +585,18 @@ function drawWrappedText(
   });
 }
 
+/** Small centered translucent card + muted text, used when a slide has no panel to host EMPTY_PANEL_TEXT in. */
+function drawEmptyStateBadge(ctx: CanvasRenderingContext2D, d: PptDesignConfig) {
+  const w = 4.6;
+  const h = 0.56;
+  const x = (SLIDE_W - w) / 2;
+  const y = (SLIDE_H - h) / 2;
+  drawDataPanel(ctx, ix(x), iy(y), ix(w), iy(h), d);
+  drawTextBox(ctx, EMPTY_PANEL_TEXT, ix(x + 0.2), iy(y), ix(w - 0.4), iy(h), {
+    fontSize: 13, color: d.mutedTextColor, align: "center", valign: "middle",
+  });
+}
+
 function drawMetricCard(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -609,13 +621,13 @@ function drawMetricCard(
   } else if (d.metricStyle === "terminal") {
     drawLine(ctx, x + 0.14, y + 0.16, w - 0.28, 0, d.accentColor, 0.7, 15);
   }
-  drawTextBox(ctx, label, ix(x + 0.18), iy(y + 0.12), ix(w - 0.34), iy(0.18), {
+  drawTextBox(ctx, label, ix(x + 0.18), iy(y + 0.12), ix(w - 0.34), iy(0.16), {
     fontSize: 7.5, bold: true, color: d.mutedTextColor,
   });
-  drawTextBox(ctx, value, ix(x + (d.metricStyle === "number-plate" ? 0.55 : 0.18)), iy(y + 0.34), ix(w - 0.34), iy(0.34), {
+  drawTextBox(ctx, value, ix(x + (d.metricStyle === "number-plate" ? 0.55 : 0.18)), iy(y + 0.28), ix(w - 0.34), iy(0.28), {
     fontSize: d.metricStyle === "number-plate" ? 16 : 18, bold: true, color: d.textColor,
   });
-  drawTextBox(ctx, detail, ix(x + 0.18), iy(y + h - 0.34), ix(w - 0.34), iy(0.22), {
+  drawTextBox(ctx, detail, ix(x + 0.18), iy(y + h - 0.24), ix(w - 0.34), iy(0.24), {
     fontSize: 7.5, color: d.mutedTextColor,
   });
 }
@@ -1080,11 +1092,16 @@ function renderOverviewSlide(
   drawBaseMap(ctx, img);
   drawMapOverlay(ctx, d);
   drawConcentricRings(ctx, input.radiusPosition, d);
+  const subwayAsMarkers = input.routePositions.length === 0;
   drawSubwayRouteLines(ctx, input.routePositions, d);
-  drawPoiMarkers(ctx, input.poiPositions, ["school", "park", "mountain", "apartment", "maintenance"], d, {
+  drawPoiMarkers(ctx, input.poiPositions, subwayAsMarkers
+    ? ["school", "park", "mountain", "apartment", "maintenance", "subway"]
+    : ["school", "park", "mountain", "apartment", "maintenance"], d, {
     showLabels: false, size: d.markerSizeSm,
   });
-  drawStationBars(ctx, input.poiPositions, input.routePositions, d, input.radiusPosition, input.config.radiusKm);
+  if (!subwayAsMarkers) {
+    drawStationBars(ctx, input.poiPositions, input.routePositions, d, input.radiusPosition, input.config.radiusKm);
+  }
   drawSiteMarker(ctx, input.radiusPosition, d);
   drawTitleChip(ctx, "입지 현황 종합", d, `반경 ${input.config.radiusKm}km`);
   drawLegend(ctx, d);
@@ -1220,12 +1237,13 @@ function renderCategorySlide(
   drawMapOverlay(ctx, d);
   drawConcentricRings(ctx, input.radiusPosition, d);
   const hasSubway = categories.includes("subway");
+  const subwayBarsAvailable = hasSubway && input.routePositions.length > 0;
   if (includeRoutes) drawSubwayRouteLines(ctx, input.routePositions, d);
-  const markerCats = hasSubway ? categories.filter(c => c !== "subway") : categories;
+  const markerCats = subwayBarsAvailable ? categories.filter(c => c !== "subway") : categories;
   if (markerCats.length > 0) {
-    drawPoiMarkers(ctx, input.poiPositions, markerCats, d, { showLabels: !hasSubway });
+    drawPoiMarkers(ctx, input.poiPositions, markerCats, d, { showLabels: !subwayBarsAvailable });
   }
-  if (hasSubway) {
+  if (subwayBarsAvailable) {
     drawStationBars(ctx, input.poiPositions, input.routePositions, d, input.radiusPosition, input.config.radiusKm);
   }
   drawSiteMarker(ctx, input.radiusPosition, d);
@@ -1394,11 +1412,17 @@ function renderApartmentCalloutSlide(
   drawTitleChip(ctx, pageTitle, d, `반경 ${input.config.radiusKm}km`);
   drawLegend(ctx, d);
 
-  if (aptsOnPage.length === 0) return;
+  if (aptsOnPage.length === 0) {
+    drawEmptyStateBadge(ctx, d);
+    return;
+  }
 
   const aptIdSet = new Set(aptsOnPage.map(a => a.id));
   const aptPositions = input.poiPositions.filter(p => aptIdSet.has(p.poi.id));
-  if (aptPositions.length === 0) return;
+  if (aptPositions.length === 0) {
+    drawEmptyStateBadge(ctx, d);
+    return;
+  }
 
   const APT_CARD_W_IN = d.calloutWidth;
   const APT_CARD_H_IN = d.calloutHeight;
