@@ -33,6 +33,7 @@ const APT_PAGE_SIZE = 12;
 // ── Static layout tokens (match ppt-generator.ts) ────────────────────────────
 
 const FONT_CANVAS = '"Noto Sans KR", "Pretendard", "맑은 고딕", sans-serif';
+const EMPTY_PANEL_TEXT = "반경 내 확인된 시설이 없습니다"; // match ppt-generator.ts
 const SITE_LABEL_OFFSET_Y = 0.20;
 const RING_RATIOS = [0.33, 0.66, 1.0] as const;
 
@@ -1232,6 +1233,11 @@ function renderCategorySlide(
   const panelW = ix(d.panelWidth);
   const panelH = Math.min(iy(4.8), details.length * iy(0.42) + iy(0.6));
   drawDataPanel(ctx, ix(d.panelX), iy(d.panelY), panelW, panelH, d);
+  if (details.length === 0) {
+    drawTextBox(ctx, EMPTY_PANEL_TEXT, ix(d.panelX + 0.2), iy(d.panelY + 0.2), panelW - ix(0.4), iy(0.36), {
+      fontSize: d.detailFontSize, color: d.mutedTextColor, valign: "middle",
+    });
+  }
   details.forEach((text, i) => {
     drawTextBox(ctx, `• ${text}`, ix(d.panelX + 0.2), iy(d.panelY + 0.2) + i * iy(0.42), panelW - ix(0.4), iy(0.36), {
       fontSize: d.detailFontSize, color: d.textColor, valign: "middle",

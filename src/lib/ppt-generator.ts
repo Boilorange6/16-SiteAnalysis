@@ -27,6 +27,8 @@ const APT_PAGE_SIZE = 12;
 
 const FONT_MAIN = "Noto Sans KR";
 
+const EMPTY_PANEL_TEXT = "반경 내 확인된 시설이 없습니다"; // match ppt-canvas-renderer.ts
+
 const SITE_LABEL_OFFSET_Y = 0.20;
 const RING_RATIOS = [0.33, 0.66, 1.0] as const;
 
@@ -1496,6 +1498,12 @@ function addCategorySlide(
   const panelW = d.panelWidth;
   const panelH = Math.min(4.8, details.length * 0.42 + 0.6);
   addDataPanel(slide, d.panelX, d.panelY, panelW, panelH, d);
+  if (details.length === 0) {
+    slide.addText(EMPTY_PANEL_TEXT, {
+      x: d.panelX + 0.2, y: d.panelY + 0.2, w: panelW - 0.4, h: 0.36,
+      fontSize: d.detailFontSize, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor),
+    });
+  }
   details.forEach((text, i) => {
     slide.addText(`• ${text}`, {
       x: d.panelX + 0.2, y: d.panelY + 0.2 + i * 0.42, w: panelW - 0.4, h: 0.36,
