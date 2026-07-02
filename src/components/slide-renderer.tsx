@@ -214,7 +214,8 @@ export default function SlideRenderer({ spec, width }: { readonly spec: SlideSpe
         }}
       >
         {spec.elements.map((el, i) => (
-          <ElementView key={i} el={el} />
+          // kind를 key에 포함해 슬라이드 전환 시 DOM 재사용으로 border/borderTop 스타일이 섞이는 것을 방지
+          <ElementView key={`${el.kind}-${i}`} el={el} />
         ))}
       </div>
     </div>

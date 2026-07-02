@@ -279,7 +279,8 @@ function natureSlide(input: SlideBuildInput): SlideSpec {
 
 function apartmentSlide(input: SlideBuildInput): SlideSpec {
   const apartments = input.pois.filter((p): p is Apartment => p.category === "apartment");
-  const top = [...apartments].sort((a, b) => b.units - a.units).slice(0, 8);
+  // 표 카드(h 0.36, 표 시작 y 0.41) 안에 헤더+7행이 정확히 들어간다 — 8행이면 카드 밖으로 넘쳐 차트와 겹침
+  const top = [...apartments].sort((a, b) => b.units - a.units).slice(0, 7);
   const chartTop = [...apartments].sort((a, b) => b.price_per_pyeong - a.price_per_pyeong).slice(0, 5);
   const avgPrice = apartments.length ? Math.round(apartments.reduce((s, a) => s + a.price_per_pyeong, 0) / apartments.length) : 0;
 

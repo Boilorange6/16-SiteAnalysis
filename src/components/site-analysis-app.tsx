@@ -93,7 +93,7 @@ export default function SiteAnalysisApp() {
         onConfigChange={handleConfigChange}
         onExport={handleExport}
       />
-      <main className="relative min-h-0 flex-1">
+      <main className="relative isolate min-h-0 flex-1">
         <MapView
           ref={mapRef}
           config={config}
@@ -102,7 +102,7 @@ export default function SiteAnalysisApp() {
           subwayRoutes={SUBWAY_ROUTES}
         />
         {exporting && (
-          <div className="absolute inset-0 bg-[#0F172A]/80 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="absolute inset-0 bg-[#0F172A]/80 backdrop-blur-sm flex items-center justify-center z-[1100]">
             <div className="bg-[#1E3A8A] rounded-2xl p-10 text-center shadow-2xl border border-white/10">
               <div className="w-12 h-12 border-4 border-blue-400 border-t-white rounded-full animate-spin mx-auto mb-6" />
               <p className="text-white text-lg font-bold">미리보기 준비 중</p>

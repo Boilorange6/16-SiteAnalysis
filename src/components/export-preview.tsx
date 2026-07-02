@@ -62,7 +62,7 @@ export default function ExportPreview({ specs, fileName, onClose }: ExportPrevie
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#0F172A]/95">
+    <div className="fixed inset-0 z-[1200] flex flex-col bg-[#0F172A]">
       {/* 헤더 */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
         <div>

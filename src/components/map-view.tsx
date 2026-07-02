@@ -1712,10 +1712,10 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
       centerMarkerRef.current?.removeFrom(mapRef.current);
       await new Promise((resolve) => setTimeout(resolve, 300));
 
+      // 컨테이너 실제 크기로 캡처해야 정규화 좌표(getPoiPositions)와 같은 좌표계가 된다.
+      // 고정 크기를 넘기면 캔버스 우/하단에 여백이 생겨 슬라이드에서 지도가 좌상단에만 그려진다.
       const image = await toJpeg(containerRef.current, {
         quality: 0.92,
-        width: CAPTURE_W,
-        height: CAPTURE_H,
         pixelRatio: 2,
       });
 
