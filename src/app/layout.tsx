@@ -1,5 +1,12 @@
 import type { Metadata, Viewport } from "next";
+import { Noto_Sans_KR } from "next/font/google";
 import "./globals.css";
+
+const notoSansKr = Noto_Sans_KR({
+  subsets: ["latin"],
+  weight: ["400", "700", "900"],
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "사이트 분석 보고서 생성기",
@@ -21,7 +28,7 @@ export default function RootLayout({
       <head>
         <meta charSet="utf-8" />
       </head>
-      <body className="antialiased" suppressHydrationWarning>{children}</body>
+      <body className={`${notoSansKr.className} antialiased`} suppressHydrationWarning>{children}</body>
     </html>
   );
 }

@@ -28,6 +28,7 @@
     "@types/node": "^22.14.1",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
+    "@vitejs/plugin-react": "^6.0.3",
     "adm-zip": "^0.5.18",
     "jsdom": "^29.1.1",
     "playwright": "^1.59.1",
