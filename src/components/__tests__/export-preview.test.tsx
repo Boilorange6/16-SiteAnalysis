@@ -62,6 +62,12 @@ describe("ExportPreview", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("빈 specs 배열에서도 크래시 없이 빈 안내 메시지를 표시하고 다운로드는 비활성화된다", () => {
+    render(<ExportPreview specs={[]} fileName="test.pptx" onClose={() => {}} />);
+    expect(screen.getByText(/표시할 슬라이드가 없습니다/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /PPT 다운로드/ })).toHaveProperty("disabled", true);
+  });
+
   it("생성 실패 시 에러 메시지를 모달 안에 표시하고 모달은 유지한다", async () => {
     vi.mocked(generatePptFromSlides).mockRejectedValueOnce(new Error("boom"));
     const user = userEvent.setup();

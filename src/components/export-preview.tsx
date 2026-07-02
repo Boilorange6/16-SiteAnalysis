@@ -110,21 +110,27 @@ export default function ExportPreview({ specs, fileName, onClose }: ExportPrevie
 
         {/* 메인 미리보기 */}
         <div className="flex-1 flex flex-col items-center justify-center p-8 min-w-0">
-          {active?.warning && (
-            <div className="mb-3 px-3 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-300 text-xs font-medium">
-              ⚠ {active.warning}
-            </div>
+          {!active ? (
+            <p className="text-white/50 text-sm">표시할 슬라이드가 없습니다</p>
+          ) : (
+            <>
+              {active.warning && (
+                <div className="mb-3 px-3 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-300 text-xs font-medium">
+                  ⚠ {active.warning}
+                </div>
+              )}
+              <div data-testid="main-slide" className="rounded-xl overflow-hidden shadow-2xl max-w-full">
+                <SlideRenderer spec={active} width={880} />
+              </div>
+              <div className="flex items-center gap-4 mt-4">
+                <button onClick={() => move(-1)} aria-label="이전 슬라이드" className="text-white/50 hover:text-white text-xl px-3 py-1 rounded hover:bg-white/10">←</button>
+                <span className="text-white/50 text-sm font-mono">
+                  {specs.findIndex((s) => s.id === active.id) + 1} / {specs.length}
+                </span>
+                <button onClick={() => move(1)} aria-label="다음 슬라이드" className="text-white/50 hover:text-white text-xl px-3 py-1 rounded hover:bg-white/10">→</button>
+              </div>
+            </>
           )}
-          <div data-testid="main-slide" className="rounded-xl overflow-hidden shadow-2xl max-w-full">
-            <SlideRenderer spec={active} width={880} />
-          </div>
-          <div className="flex items-center gap-4 mt-4">
-            <button onClick={() => move(-1)} aria-label="이전 슬라이드" className="text-white/50 hover:text-white text-xl px-3 py-1 rounded hover:bg-white/10">←</button>
-            <span className="text-white/50 text-sm font-mono">
-              {specs.findIndex((s) => s.id === active?.id) + 1} / {specs.length}
-            </span>
-            <button onClick={() => move(1)} aria-label="다음 슬라이드" className="text-white/50 hover:text-white text-xl px-3 py-1 rounded hover:bg-white/10">→</button>
-          </div>
         </div>
       </div>
 
