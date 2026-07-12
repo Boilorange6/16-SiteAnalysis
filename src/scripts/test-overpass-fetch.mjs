@@ -29,7 +29,7 @@ function makeFetch(responses) {
 {
   __clearCacheForTest();
   const f = makeFetch([{ status: 200, body: { elements: [1, 2] } }]);
-  const out = await overpassFetch("Q1", { fetchImpl: f });
+  const out = await overpassFetch("Q1", { fetchImpl: f, minIntervalMs: 0 });
   assert.deepEqual(out, { elements: [1, 2] });
   assert.equal(f.calls(), 1);
 }
@@ -38,8 +38,8 @@ function makeFetch(responses) {
 {
   __clearCacheForTest();
   const f = makeFetch([{ status: 200, body: { elements: ["a"] } }]);
-  await overpassFetch("Q2", { fetchImpl: f });
-  const out2 = await overpassFetch("Q2", { fetchImpl: f });
+  await overpassFetch("Q2", { fetchImpl: f, minIntervalMs: 0 });
+  const out2 = await overpassFetch("Q2", { fetchImpl: f, minIntervalMs: 0 });
   assert.deepEqual(out2, { elements: ["a"] });
   assert.equal(f.calls(), 1);
 }
@@ -48,7 +48,7 @@ function makeFetch(responses) {
 {
   __clearCacheForTest();
   const f = makeFetch([{ status: 429 }, { status: 200, body: { elements: ["r"] } }]);
-  const out = await overpassFetch("Q3", { fetchImpl: f, maxRetries: 2 });
+  const out = await overpassFetch("Q3", { fetchImpl: f, maxRetries: 2, minIntervalMs: 0 });
   assert.deepEqual(out, { elements: ["r"] });
   assert.equal(f.calls(), 2);
 }
@@ -57,7 +57,7 @@ function makeFetch(responses) {
 {
   __clearCacheForTest();
   const f = makeFetch([{ status: 500 }]);
-  await assert.rejects(() => overpassFetch("Q4", { fetchImpl: f, maxRetries: 2 }));
+  await assert.rejects(() => overpassFetch("Q4", { fetchImpl: f, maxRetries: 2, minIntervalMs: 0 }));
   assert.equal(f.calls(), 3);
 }
 
@@ -65,8 +65,8 @@ function makeFetch(responses) {
 {
   __clearCacheForTest();
   const f = makeFetch([{ status: 500 }, { status: 500 }, { status: 500 }, { status: 200, body: { elements: ["ok"] } }]);
-  await assert.rejects(() => overpassFetch("Q5", { fetchImpl: f, maxRetries: 2 }));
-  const out = await overpassFetch("Q5", { fetchImpl: f, maxRetries: 0 });
+  await assert.rejects(() => overpassFetch("Q5", { fetchImpl: f, maxRetries: 2, minIntervalMs: 0 }));
+  const out = await overpassFetch("Q5", { fetchImpl: f, maxRetries: 0, minIntervalMs: 0 });
   assert.deepEqual(out, { elements: ["ok"] });
 }
 
@@ -77,13 +77,41 @@ function makeFetch(responses) {
     { status: 200, body: { remark: "runtime error: query timed out", elements: [] } },
     { status: 200, body: { elements: ["ok"] } },
   ]);
-  const out = await overpassFetch("Q6", { fetchImpl: f, maxRetries: 2 });
+  const out = await overpassFetch("Q6", { fetchImpl: f, maxRetries: 2, minIntervalMs: 0 });
   assert.deepEqual(out, { elements: ["ok"] });
   assert.equal(f.calls(), 2);
   // remark 응답이 캐시되지 않았음을 확인: 좋은 응답만 캐시에 남아 fetch 재호출 없이 반환
-  const cached = await overpassFetch("Q6", { fetchImpl: f, maxRetries: 0 });
+  const cached = await overpassFetch("Q6", { fetchImpl: f, maxRetries: 0, minIntervalMs: 0 });
   assert.deepEqual(cached, { elements: ["ok"] });
   assert.equal(f.calls(), 2);
 }
 
 console.log("overpass-fetch: all tests passed");
+
+// --- 미러 폴백: 1차 실패 시 2번째 시도는 lz4 미러로 ---
+{
+  __clearCacheForTest();
+  const urls = [];
+  const impl = async (url) => {
+    urls.push(String(url));
+    if (urls.length === 1) return { ok: false, status: 429, json: async () => ({}), text: async () => "busy" };
+    return { ok: true, status: 200, json: async () => ({ elements: [1] }), text: async () => "" };
+  };
+  const out = await overpassFetch("q-mirror", { fetchImpl: impl, minIntervalMs: 0 });
+  assert.deepEqual(out, { elements: [1] });
+  assert.ok(urls[0].includes("overpass-api.de") && !urls[0].includes("lz4"));
+  assert.ok(urls[1].includes("lz4.overpass-api.de"));
+}
+// --- 최소 간격: 연속 2회 호출 사이에 minIntervalMs 이상 경과 ---
+{
+  __clearCacheForTest();
+  const stamps = [];
+  const impl = async () => {
+    stamps.push(Date.now());
+    return { ok: true, status: 200, json: async () => ({ elements: [] }), text: async () => "" };
+  };
+  await overpassFetch("q-throttle-1", { fetchImpl: impl, minIntervalMs: 120 });
+  await overpassFetch("q-throttle-2", { fetchImpl: impl, minIntervalMs: 120 });
+  assert.ok(stamps[1] - stamps[0] >= 100, `interval was ${stamps[1] - stamps[0]}ms`);
+}
+console.log("overpass-fetch: mirror/throttle tests passed");
