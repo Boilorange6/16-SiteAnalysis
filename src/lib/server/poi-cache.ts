@@ -53,7 +53,8 @@ export async function resolveSource<T>(args: {
     const live = await fetcher();
     setCachedSource(source, lat, lng, radiusM, live);
     return { value: live, status: "fresh", fetchedAt: Date.now() };
-  } catch {
+  } catch (err) {
+    console.warn(`[poi-cache] ${source} fetch failed:`, err);
     if (cached) return { value: cached.value, status: "cached", fetchedAt: cached.fetchedAt };
     return { value: null, status: "failed", fetchedAt: null };
   }
