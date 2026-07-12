@@ -23,7 +23,7 @@ const dynamicCache = new Map<string, RegionData>();
 
 const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "/site";
 
-function resolvePath(path: string): string {
+export function resolvePath(path: string): string {
   if (typeof window === "undefined") return path;
   if (path.startsWith("http")) return path;
   return `${BASE_PATH}${path}`;
