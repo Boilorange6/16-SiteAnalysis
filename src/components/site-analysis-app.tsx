@@ -455,8 +455,16 @@ export default function SiteAnalysisApp() {
     );
     const poiPositions = mapRef.current.getPoiPositions(visiblePois);
     const routePositions = mapRef.current.getRouteNormalizedPositions(subwayRoutes);
-    return { config, allPois: visiblePois, baseMapImage, poiPositions, radiusPosition, routePositions };
-  }, [allPois, layers, config, subwayRoutes]);
+    return {
+      config,
+      allPois: visiblePois,
+      baseMapImage,
+      poiPositions,
+      radiusPosition,
+      routePositions,
+      sourceStatuses: regionData?.sourceStatuses ?? [],
+    };
+  }, [allPois, layers, config, subwayRoutes, regionData]);
 
   const handlePreview = useCallback(async () => {
     if (!mapRef.current || !canExport) return;
@@ -483,7 +491,8 @@ export default function SiteAnalysisApp() {
       previewInput.poiPositions,
       previewInput.radiusPosition,
       previewInput.routePositions,
-      designConfig
+      designConfig,
+      previewInput.sourceStatuses ?? []
     );
   }, [previewInput]);
 
@@ -496,7 +505,8 @@ export default function SiteAnalysisApp() {
       const { generateSiteAnalysisPpt } = await import("@/lib/ppt-generator");
       await generateSiteAnalysisPpt(
         data.config, data.allPois, data.baseMapImage,
-        data.poiPositions, data.radiusPosition, data.routePositions
+        data.poiPositions, data.radiusPosition, data.routePositions,
+        undefined, data.sourceStatuses
       );
     } catch (err) {
       console.error("PPT generation failed:", err);

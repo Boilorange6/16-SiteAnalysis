@@ -8,7 +8,7 @@
  *   - Scale: SX = SY = 72 px/in  (1pt = 1px at 72 DPI)
  */
 
-import type { Poi, PoiPosition, RadiusPosition, PoiCategory, SubwayStation, ResidentialPoi, School, Park, MaintenanceProject } from "./types";
+import type { Poi, PoiPosition, RadiusPosition, PoiCategory, SubwayStation, ResidentialPoi, School, Park, MaintenanceProject, SourceStatus } from "./types";
 import { CATEGORY_LABELS } from "./types";
 import type { RouteNormalizedPosition } from "./ppt-generator";
 import type { PptDesignConfig } from "./ppt-design-config";
@@ -19,6 +19,7 @@ import { buildParkDetailLines, formatAreaSqm, formatDistanceM, summarizeParks } 
 import { buildMaintenanceDetailLines, formatMaintenanceArea, summarizeMaintenanceProjects } from "./maintenance-analysis";
 import { buildInsightOverlays, computeAnalysisScores, generateAnalysisNarrative, getSummaryLines } from "./analysis-engine";
 import { haversineDistance } from "./geo";
+import { sourceStatusLines, hasFailedSource } from "./source-status-text";
 
 // ── Coordinate constants ──────────────────────────────────────────────────────
 
@@ -50,6 +51,8 @@ export interface SlideRenderInput {
   readonly poiPositions: readonly PoiPosition[];
   readonly radiusPosition: RadiusPosition | null;
   readonly routePositions: readonly RouteNormalizedPosition[];
+  /** 1단계 데이터 신뢰성: 소스별 수집 상태 — 출처 슬라이드 수집일 표기·표지 누락 경고(Task 7)에서 사용 */
+  readonly sourceStatuses?: readonly SourceStatus[];
 }
 
 export interface RenderedSlide {
@@ -1081,6 +1084,9 @@ function renderCoverSlide(
     fontSize: _d.coverMetaFontSize, color: coverMetaColor, align: titleAlign, valign: "middle",
   });
   ctx.restore();
+  if (hasFailedSource(input.sourceStatuses ?? [])) {
+    drawFooterNote(ctx, "⚠ 일부 데이터 누락 — 출처 슬라이드 참조", _d);
+  }
 }
 
 function renderOverviewSlide(
@@ -1561,7 +1567,7 @@ function renderDataSourceSlide(
     const y = 1.35 + Math.floor(idx / 3) * 1.55;
     drawMetricCard(ctx, x, y, 3.55, 1.08, card.title, card.value, card.detail, card.color, d);
   });
-  drawDataPanel(ctx, ix(0.7), iy(4.72), ix(11.9), iy(1.55), d);
+  drawDataPanel(ctx, ix(0.7), iy(4.72), ix(11.9), iy(2.2), d);
   drawTextBox(ctx, "주의사항", ix(1.0), iy(4.98), ix(2.0), iy(0.25), { fontSize: 12, bold: true, color: d.textColor });
   [
     "거리 기준은 기본적으로 직선거리이며, 일부 공원은 경계 폴리곤 최단거리로 보정합니다.",
@@ -1570,6 +1576,10 @@ function renderDataSourceSlide(
     "보고서 점수는 의사결정 보조 지표이며, 최종 판단에는 현장조사·시세·법적 검토가 병행되어야 합니다.",
   ].forEach((text, idx) => {
     drawWrappedText(ctx, `• ${text}`, ix(1.0 + (idx % 2) * 5.75), iy(5.36 + Math.floor(idx / 2) * 0.42), ix(5.25), iy(0.17), 2, { fontSize: 7.8, color: d.mutedTextColor });
+  });
+  // 1단계 데이터 신뢰성: 소스별 수집일·누락 표기 (Task 7)
+  sourceStatusLines(input.sourceStatuses ?? []).forEach((text, idx) => {
+    drawTextBox(ctx, text, ix(1.0 + (idx % 2) * 5.75), iy(6.18 + Math.floor(idx / 2) * 0.2), ix(5.25), iy(0.2), { fontSize: 9, color: d.mutedTextColor });
   });
   drawFooterNote(ctx, `${input.config.centerName} / ${input.allPois.length.toLocaleString()}개 POI 기준 자동 생성`, d);
 }

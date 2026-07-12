@@ -10,6 +10,7 @@ import type {
   Park,
   ResidentialPoi,
   MaintenanceProject,
+  SourceStatus,
 } from "./types";
 import { CATEGORY_LABELS } from "./types";
 import { layoutPoiLabels } from "./ppt-label-layout";
@@ -20,6 +21,7 @@ import { buildInsightOverlays, computeAnalysisScores, generateAnalysisNarrative,
 import { haversineDistance } from "./geo";
 import type { PptDesignConfig } from "./ppt-design-config";
 import { DEFAULT_PPT_DESIGN } from "./ppt-design-config";
+import { sourceStatusLines, hasFailedSource } from "./source-status-text";
 
 const SLIDE_W = 13.333;
 const SLIDE_H = 7.5;
@@ -987,7 +989,7 @@ function addStationBars(
 
 // ── Slides ──────────────────────────────────────────────────────────────────
 
-function addCoverSlide(pptx: PptxGenJS, config: AnalysisConfig, baseMapImage: string, d: PptDesignConfig) {
+function addCoverSlide(pptx: PptxGenJS, config: AnalysisConfig, baseMapImage: string, d: PptDesignConfig, sourceStatuses: readonly SourceStatus[] = []) {
   const slide = pptx.addSlide();
   const isLightCover = usesLightCoverText(d);
   const coverTextColor = isLightCover ? d.textColor : "#FFFFFF";
@@ -1023,6 +1025,9 @@ function addCoverSlide(pptx: PptxGenJS, config: AnalysisConfig, baseMapImage: st
     fontSize: d.coverMetaFontSize, fontFace: FONT_MAIN, color: pptColor(coverMetaColor), align: titleAlign,
     margin: titleAlign === "left" ? 0 : undefined,
   });
+  if (hasFailedSource(sourceStatuses)) {
+    addFooterNote(slide, "⚠ 일부 데이터 누락 — 출처 슬라이드 참조", d);
+  }
 }
 
 function addOverviewSlide(
@@ -1440,6 +1445,7 @@ function addDataSourceSlide(
   pois: readonly Poi[],
   baseMapImage: string,
   d: PptDesignConfig,
+  sourceStatuses: readonly SourceStatus[] = [],
 ) {
   const slide = pptx.addSlide();
   addFullBleedMap(slide, baseMapImage, d);
@@ -1470,7 +1476,7 @@ function addDataSourceSlide(
     "분양·입주 일정과 평면도 링크는 원천 공고 변경에 따라 사후 확인이 필요합니다.",
     "보고서 점수는 의사결정 보조 지표이며, 최종 판단에는 현장조사·시세·법적 검토가 병행되어야 합니다.",
   ];
-  addDataPanel(slide, 0.7, 4.72, 11.9, 1.55, d);
+  addDataPanel(slide, 0.7, 4.72, 11.9, 2.2, d);
   slide.addText("주의사항", {
     x: 1.0, y: 4.98, w: 2.0, h: 0.25,
     fontSize: 12, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true,
@@ -1479,6 +1485,13 @@ function addDataSourceSlide(
     slide.addText(`• ${text}`, {
       x: 1.0 + (idx % 2) * 5.75, y: 5.36 + Math.floor(idx / 2) * 0.42, w: 5.25, h: 0.3,
       fontSize: 7.8, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), fit: "shrink",
+    });
+  });
+  // 1단계 데이터 신뢰성: 소스별 수집일·누락 표기 (Task 7)
+  sourceStatusLines(sourceStatuses).forEach((text, idx) => {
+    slide.addText(text, {
+      x: 1.0 + (idx % 2) * 5.75, y: 6.18 + Math.floor(idx / 2) * 0.2, w: 5.25, h: 0.2,
+      fontSize: 9, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor),
     });
   });
   addFooterNote(slide, `${config.centerName} / ${pois.length.toLocaleString()}개 POI 기준 자동 생성`, d);
@@ -1702,14 +1715,15 @@ export async function generateSiteAnalysisPpt(
   poiPositions: readonly PoiPosition[],
   radiusPosition: RadiusPosition | null = null,
   routePositions: readonly RouteNormalizedPosition[] = [],
-  designConfig: PptDesignConfig = DEFAULT_PPT_DESIGN
+  designConfig: PptDesignConfig = DEFAULT_PPT_DESIGN,
+  sourceStatuses: readonly SourceStatus[] = []
 ): Promise<void> {
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE";
   pptx.title = `${config.centerName} 입지 분석`;
   const d = designConfig;
 
-  addCoverSlide(pptx, config, baseMapImage, d);
+  addCoverSlide(pptx, config, baseMapImage, d, sourceStatuses);
   addOverviewSlide(pptx, config, baseMapImage, poiPositions, radiusPosition, routePositions, d);
   addScoreDashboardSlide(pptx, config, allPois, baseMapImage, d);
   addInsightSummarySlide(pptx, config, allPois, baseMapImage, d);
@@ -1745,7 +1759,7 @@ export async function generateSiteAnalysisPpt(
   });
 
   addSummarySlide(pptx, config, allPois, baseMapImage, radiusPosition, d);
-  addDataSourceSlide(pptx, config, allPois, baseMapImage, d);
+  addDataSourceSlide(pptx, config, allPois, baseMapImage, d, sourceStatuses);
 
   await pptx.writeFile({ fileName: `${config.centerName}_사이트분석.pptx` });
 }
