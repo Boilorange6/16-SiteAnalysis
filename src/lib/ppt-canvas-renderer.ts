@@ -21,6 +21,7 @@ import { buildMaintenanceDetailLines, formatMaintenanceArea, summarizeMaintenanc
 import { buildInsightOverlays, computeAnalysisScores, generateAnalysisNarrative, getSummaryLines } from "./analysis-engine";
 import { haversineDistance } from "./geo";
 import { sourceStatusLines, hasFailedSource } from "./source-status-text";
+import { toReportMapTone } from "./map-image-tone";
 
 // ── Coordinate constants ──────────────────────────────────────────────────────
 
@@ -127,6 +128,26 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     img.onerror = reject;
     img.src = src;
   });
+}
+
+/** 흑백 톤 변환된 베이스맵 로드 결과 캐시 — 원본 dataURL(+톤 여부)당 1회만 변환+디코드 */
+const toneMappedImageCache = new Map<string, Promise<HTMLImageElement>>();
+
+/**
+ * 보고서용 베이스맵 로드 — `map-image-tone.ts`(공유 단일 소스)로 흑백+어둡게 톤 변환한 뒤
+ * Image 엘리먼트로 디코드한다. pptx 렌더러(`ppt-generator.ts`)도 같은 `toReportMapTone`을
+ * 호출하므로 미리보기≠내보내기 지도 톤 불일치가 없다.
+ */
+function loadReportBaseImage(src: string, grayscale: boolean): Promise<HTMLImageElement> {
+  if (!src) return loadImage(src);
+  if (!grayscale) return loadImage(src);
+  const cacheKey = `gray:${src}`;
+  const cached = toneMappedImageCache.get(cacheKey);
+  if (cached) return cached;
+  const promise = toReportMapTone(src).then(loadImage);
+  toneMappedImageCache.set(cacheKey, promise);
+  promise.catch(() => toneMappedImageCache.delete(cacheKey));
+  return promise;
 }
 
 function drawRoundedRect(
@@ -1737,7 +1758,7 @@ export async function renderAllSlides(
   designConfig: PptDesignConfig
 ): Promise<RenderedSlide[]> {
   await ensureFontsLoaded();
-  const baseImg = await loadImage(input.baseMapImage);
+  const baseImg = await loadReportBaseImage(input.baseMapImage, designConfig.mapGrayscale !== false);
   const slideDefs = buildSlideDefs(input);
 
   return slideDefs.map(({ title, render }, index) => {
@@ -1754,7 +1775,7 @@ export async function renderSingleSlide(
   preloadedImage?: HTMLImageElement
 ): Promise<RenderedSlide> {
   await ensureFontsLoaded();
-  const baseImg = preloadedImage ?? (await loadImage(input.baseMapImage));
+  const baseImg = preloadedImage ?? (await loadReportBaseImage(input.baseMapImage, designConfig.mapGrayscale !== false));
   const slideDefs = buildSlideDefs(input);
   const def = slideDefs[slideIndex] ?? slideDefs[0];
   const [canvas, ctx] = createCanvas();
@@ -1762,6 +1783,7 @@ export async function renderSingleSlide(
   return { index: slideIndex, title: def.title, imageDataUrl: canvas.toDataURL("image/png") };
 }
 
-export async function preloadBaseImage(dataUrl: string): Promise<HTMLImageElement> {
-  return loadImage(dataUrl);
+/** 미리보기 모달이 초기 오픈 시 베이스맵을 선반입(preload)할 때 쓰는 진입점 — 기본적으로 흑백 톤 적용 */
+export async function preloadBaseImage(dataUrl: string, grayscale = true): Promise<HTMLImageElement> {
+  return loadReportBaseImage(dataUrl, grayscale);
 }

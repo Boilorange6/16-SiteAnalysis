@@ -22,6 +22,7 @@ import { haversineDistance } from "./geo";
 import type { PptDesignConfig } from "./ppt-design-config";
 import { DEFAULT_PPT_DESIGN, PPT_FONT_MAIN } from "./ppt-design-config";
 import { sourceStatusLines, hasFailedSource } from "./source-status-text";
+import { toReportMapTone } from "./map-image-tone";
 
 const SLIDE_W = 13.333;
 const SLIDE_H = 7.5;
@@ -1723,43 +1724,49 @@ export async function generateSiteAnalysisPpt(
   pptx.title = `${config.centerName} 입지 분석`;
   const d = designConfig;
 
-  addCoverSlide(pptx, config, baseMapImage, d, sourceStatuses);
-  addOverviewSlide(pptx, config, baseMapImage, poiPositions, radiusPosition, routePositions, d);
-  addScoreDashboardSlide(pptx, config, allPois, baseMapImage, d);
-  addInsightSummarySlide(pptx, config, allPois, baseMapImage, d);
-  addRadiusAnalysisSlide(pptx, config, allPois, baseMapImage, radiusPosition, d);
+  // 베이스맵 흑백 톤 변환 — 미리보기(canvas)와 동일한 map-image-tone.ts를 통해 1회 변환.
+  // 미리보기에서 이어서 내보내는 흐름이면 canvas 렌더러가 이미 변환/캐시해둔 결과를 그대로 재사용한다.
+  const reportBaseMapImage = baseMapImage && d.mapGrayscale !== false
+    ? await toReportMapTone(baseMapImage)
+    : baseMapImage;
+
+  addCoverSlide(pptx, config, reportBaseMapImage, d, sourceStatuses);
+  addOverviewSlide(pptx, config, reportBaseMapImage, poiPositions, radiusPosition, routePositions, d);
+  addScoreDashboardSlide(pptx, config, allPois, reportBaseMapImage, d);
+  addInsightSummarySlide(pptx, config, allPois, reportBaseMapImage, d);
+  addRadiusAnalysisSlide(pptx, config, allPois, reportBaseMapImage, radiusPosition, d);
 
   const subways = allPois.filter((p): p is SubwayStation => p.category === "subway");
-  addCategorySlide(pptx, "교통 분석", "subway", config, baseMapImage, poiPositions, radiusPosition,
+  addCategorySlide(pptx, "교통 분석", "subway", config, reportBaseMapImage, poiPositions, radiusPosition,
     subways.slice(0, 8).map(s => `${s.name} (${s.line})`), d, routePositions);
 
   const schools = allPois.filter((p): p is School => p.category === "school");
-  addCategorySlide(pptx, "교육 환경", "school", config, baseMapImage, poiPositions, radiusPosition,
+  addCategorySlide(pptx, "교육 환경", "school", config, reportBaseMapImage, poiPositions, radiusPosition,
     schools.slice(0, 8).map(s => `${s.name} (${s.level === "elementary" ? "초" : s.level === "middle" ? "중" : "고"})`), d);
 
   const parks = allPois.filter((p): p is Park => p.category === "park");
   const mountains = allPois.filter(p => p.category === "mountain");
-  addCategorySlide(pptx, "자연 환경", ["park", "mountain"], config, baseMapImage, poiPositions, radiusPosition,
+  addCategorySlide(pptx, "자연 환경", ["park", "mountain"], config, reportBaseMapImage, poiPositions, radiusPosition,
     [...buildParkDetailLines(parks, 7), ...mountains.slice(0, 1).map(p => `인접 산: ${p.name}`)].slice(0, 8), d);
-  addParkAccessDetailSlide(pptx, config, allPois, baseMapImage, poiPositions, radiusPosition, d);
+  addParkAccessDetailSlide(pptx, config, allPois, reportBaseMapImage, poiPositions, radiusPosition, d);
 
   const maintenanceProjects = allPois.filter((p): p is MaintenanceProject => p.category === "maintenance");
-  addCategorySlide(pptx, "개발/정비사업 현황", "maintenance", config, baseMapImage, poiPositions, radiusPosition,
+  addCategorySlide(pptx, "개발/정비사업 현황", "maintenance", config, reportBaseMapImage, poiPositions, radiusPosition,
     buildMaintenanceDetailLines(maintenanceProjects, 8), d);
-  addDevelopmentRiskMatrixSlide(pptx, config, allPois, baseMapImage, poiPositions, radiusPosition, d);
+  addDevelopmentRiskMatrixSlide(pptx, config, allPois, reportBaseMapImage, poiPositions, radiusPosition, d);
 
   const residentials = allPois.filter(
     (p): p is ResidentialPoi => p.category === "apartment" || p.category === "officetel" || p.category === "residential"
   );
-  addResidentialSupplySlide(pptx, config, allPois, baseMapImage, poiPositions, radiusPosition, d);
+  addResidentialSupplySlide(pptx, config, allPois, reportBaseMapImage, poiPositions, radiusPosition, d);
   const aptPages = pageResidentials(residentials, APT_PAGE_SIZE);
   aptPages.forEach((aptsOnPage, i) => {
-    addApartmentCalloutSlide(pptx, aptsOnPage, config, baseMapImage, poiPositions,
+    addApartmentCalloutSlide(pptx, aptsOnPage, config, reportBaseMapImage, poiPositions,
       radiusPosition, d, i, aptPages.length);
   });
 
-  addSummarySlide(pptx, config, allPois, baseMapImage, radiusPosition, d);
-  addDataSourceSlide(pptx, config, allPois, baseMapImage, d, sourceStatuses);
+  addSummarySlide(pptx, config, allPois, reportBaseMapImage, radiusPosition, d);
+  addDataSourceSlide(pptx, config, allPois, reportBaseMapImage, d, sourceStatuses);
 
   await pptx.writeFile({ fileName: `${config.centerName}_사이트분석.pptx` });
 }

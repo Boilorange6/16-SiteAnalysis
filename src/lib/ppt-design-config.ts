@@ -92,6 +92,19 @@ export interface PptDesignConfig {
   readonly mutedTextColor: string;
   readonly mapOverlayColor: string;
   readonly mapOverlayTransparency: number;
+  /**
+   * 베이스맵 흑백 톤(grayscale+어둡게, `src/lib/map-image-tone.ts`) 적용 여부.
+   * 기본 true — 원본 보고서(260311 사이트현황) slide 3·5 문법: 흑백 위성지도 위에 컬러 오버레이가 주인공.
+   */
+  readonly mapGrayscale: boolean;
+  /** 수치·대상지 강조용 빨강 (원본 보고서 핵심 수치·대상지 폴리곤 색 계열, #C00000 부근) */
+  readonly accentRed: string;
+  /** 지도 슬라이드 인사이트 카드 배경 — 라운드 검정 카드 */
+  readonly insightCardBg: string;
+  /** 인사이트 카드 본문 텍스트 — 흰 볼드 */
+  readonly insightCardText: string;
+  /** 비교 단지 폴리곤/강조색 — 베이지 (대상지 accentRed와 구분) */
+  readonly polygonComparison: string;
 
   // Cover
   readonly coverOverlayTransparency: number;
@@ -183,8 +196,16 @@ export const DEFAULT_PPT_DESIGN: PptDesignConfig = {
   overlayColor: "#FFFFFF",
   textColor: "#111827",
   mutedTextColor: "#475569",
-  mapOverlayColor: "#FFFFFF",
-  mapOverlayTransparency: 42,
+  // 베이스맵 자체가 이제 흑백+어둡게(map-image-tone.ts) 처리되므로, 예전처럼 흰 반투명 베일로
+  // 한 번 더 지도를 씻어내면(desaturate) 어둡게 한 효과가 상쇄된다 — 어둡고 채도 없는 근흑색
+  // 베일을 아주 옅게만 얹어 텍스트 가독성용 비네트 정도로만 재조정 (흑백화와 중복 적용 방지).
+  mapOverlayColor: "#0B0F14",
+  mapOverlayTransparency: 78,
+  mapGrayscale: true,
+  accentRed: "#C00000",
+  insightCardBg: "#141414",
+  insightCardText: "#FFFFFF",
+  polygonComparison: "#D8C7A0",
   coverOverlayTransparency: 28,
   coverTitleFontSize: 48,
   coverSubtitleFontSize: 24,
