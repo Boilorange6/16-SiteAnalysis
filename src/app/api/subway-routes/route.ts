@@ -15,7 +15,10 @@ const querySchema = z.object({
 
 interface CacheEntry {
   routes: SubwayRoute[];
+  /** Map 캐시 TTL 판정 전용(저장 시각) — 수집 시각과 구분한다 */
   ts: number;
+  /** 실제 수집 시각(epoch ms) — 영구 캐시 저장본이면 원래 수집 시각을 보존 */
+  fetchedAt: number;
 }
 
 const cache = new Map<string, CacheEntry>();
@@ -49,7 +52,7 @@ export async function GET(req: NextRequest) {
   // 1차: 모듈 내 인메모리 캐시(TTL 10분) — refresh=true면 건너뛴다
   const cached = cache.get(cacheKey);
   if (!refresh && cached && Date.now() - cached.ts < CACHE_TTL_MS) {
-    const source: SourceStatus = { source: "subway-routes", status: "cached", fetchedAt: cached.ts };
+    const source: SourceStatus = { source: "subway-routes", status: "cached", fetchedAt: cached.fetchedAt };
     return NextResponse.json({ routes: cached.routes, source });
   }
 
@@ -69,7 +72,8 @@ export async function GET(req: NextRequest) {
     const oldest = cache.keys().next().value;
     if (oldest) cache.delete(oldest);
   }
-  cache.set(cacheKey, { routes: r.value, ts: Date.now() });
+  // ts는 TTL 판정용(지금), fetchedAt은 실제 수집 시각 보존 — 영구 캐시 저장본을 방금 수집한 것처럼 표기하지 않는다
+  cache.set(cacheKey, { routes: r.value, ts: Date.now(), fetchedAt: r.fetchedAt ?? Date.now() });
 
   return NextResponse.json({ routes: r.value, source });
 }
