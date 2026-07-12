@@ -9,4 +9,9 @@ const TEXT = "반경 내 확인된 시설이 없습니다";
 
 assert.ok(canvas.includes(TEXT), `canvas renderer missing empty-state text: ${TEXT}`);
 assert.ok(pptx.includes(TEXT), `pptx generator missing empty-state text: ${TEXT}`);
-console.log("preview parity: empty-state OK");
+
+// 두 렌더러가 design-config의 서체 상수(PPT_FONT_MAIN)를 참조하는지 정적 검증 (하드코딩 회귀 방지)
+assert.ok(canvas.includes("PPT_FONT_MAIN"), "canvas renderer must reference PPT_FONT_MAIN from ppt-design-config");
+assert.ok(pptx.includes("PPT_FONT_MAIN"), "pptx generator must reference PPT_FONT_MAIN from ppt-design-config");
+
+console.log("preview parity: empty-state OK, font constant OK");

@@ -34,7 +34,37 @@ const APT_PAGE_SIZE = 12;
 
 // ── Static layout tokens (match ppt-generator.ts) ────────────────────────────
 
-const FONT_CANVAS = `"${PPT_FONT_MAIN}", "${PPT_FONT_NUM}", "맑은 고딕", sans-serif`;
+const FONT_CANVAS_BASE = `"${PPT_FONT_MAIN}", "${PPT_FONT_NUM}", "맑은 고딕", sans-serif`;
+
+// next/font는 해시된 패밀리명(예: '__Noto_Sans_KR_xxxx')을 CSS 변수 --font-noto-kr로 노출한다.
+// canvas ctx.font는 CSS 변수를 해석하지 못하므로, 렌더 시점에 변수 값을 읽어
+// 폰트 스택 맨 앞에 연결해야 self-host된 Noto Sans KR을 canvas가 실제로 사용한다.
+let cachedCanvasFontStack: string | null = null;
+
+function getNotoFontVarValue(): string {
+  if (typeof document === "undefined") return "";
+  try {
+    return getComputedStyle(document.documentElement).getPropertyValue("--font-noto-kr").trim();
+  } catch {
+    return "";
+  }
+}
+
+function getCanvasFontStack(): string {
+  if (cachedCanvasFontStack !== null) return cachedCanvasFontStack;
+  if (typeof document === "undefined") return FONT_CANVAS_BASE; // SSR: 캐시하지 않음
+  const varValue = getNotoFontVarValue();
+  cachedCanvasFontStack = varValue ? `${varValue}, ${FONT_CANVAS_BASE}` : FONT_CANVAS_BASE;
+  return cachedCanvasFontStack;
+}
+
+/** document.fonts.load()용 첫 패밀리명 — 해시 패밀리가 있으면 그것을, 없으면 리터럴 PPT_FONT_MAIN */
+function getNotoFamilyForLoad(): string {
+  const varValue = getNotoFontVarValue();
+  const first = varValue.split(",")[0]?.trim().replace(/^["']|["']$/g, "");
+  return first || PPT_FONT_MAIN;
+}
+
 const EMPTY_PANEL_TEXT = "반경 내 확인된 시설이 없습니다"; // match ppt-generator.ts
 const SITE_LABEL_OFFSET_Y = 0.20;
 const RING_RATIOS = [0.33, 0.66, 1.0] as const;
@@ -170,7 +200,7 @@ function drawTextBox(
       hexRgba(bgColor, bgTransparency));
   }
 
-  ctx.font = `${bold ? "bold " : ""}${fontSize}px ${FONT_CANVAS}`;
+  ctx.font = `${bold ? "bold " : ""}${fontSize}px ${getCanvasFontStack()}`;
   ctx.fillStyle = color;
   ctx.textBaseline = valign === "top" ? "top" : valign === "middle" ? "middle" : "alphabetic";
 
@@ -565,7 +595,7 @@ function drawWrappedText(
   maxLines: number,
   options: { fontSize: number; bold?: boolean; color: string }
 ) {
-  ctx.font = `${options.bold ? "bold " : ""}${options.fontSize}px ${FONT_CANVAS}`;
+  ctx.font = `${options.bold ? "bold " : ""}${options.fontSize}px ${getCanvasFontStack()}`;
   ctx.fillStyle = options.color;
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
@@ -1012,7 +1042,7 @@ function drawStationBars(
         ctx.save();
         ctx.translate(labelX, labelY);
         ctx.rotate(angleDeg * Math.PI / 180);
-        ctx.font = `bold ${d.stationLabelFontSize}px ${FONT_CANVAS}`;
+        ctx.font = `bold ${d.stationLabelFontSize}px ${getCanvasFontStack()}`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.shadowColor = "rgba(0,0,0,0.9)";
@@ -1592,9 +1622,11 @@ async function ensureFontsLoaded() {
   try {
     // 웹폰트가 아직 어떤 텍스트에도 "사용"되지 않았으면 document.fonts.ready가
     // 즉시 resolve될 수 있으므로, canvas가 그릴 글꼴을 명시적으로 먼저 로드 요청한다.
+    // Noto는 next/font가 주입한 해시 패밀리명으로 load해야 실제로 매칭된다.
+    const notoFamily = getNotoFamilyForLoad();
     await Promise.all([
-      document.fonts.load(`16px "${PPT_FONT_MAIN}"`),
-      document.fonts.load(`bold 16px "${PPT_FONT_MAIN}"`),
+      document.fonts.load(`16px "${notoFamily}"`),
+      document.fonts.load(`bold 16px "${notoFamily}"`),
       document.fonts.load(`500 16px "${PPT_FONT_NUM}"`),
       document.fonts.load(`600 16px "${PPT_FONT_NUM}"`),
     ]);
