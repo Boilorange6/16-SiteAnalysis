@@ -22,6 +22,7 @@ import { buildInsightOverlays, computeAnalysisScores, generateAnalysisNarrative,
 import { haversineDistance } from "./geo";
 import { sourceStatusLines, hasFailedSource } from "./source-status-text";
 import { toReportMapTone } from "./map-image-tone";
+import { buildFactSummary, buildFactSheetRows, type FactSheetSegment } from "./fact-summary";
 
 // ── Coordinate constants ──────────────────────────────────────────────────────
 
@@ -92,6 +93,30 @@ const COVER_TITLE_H = 1.5;
 const COVER_META_Y = 6.15;
 const COVER_META_H = 0.4;
 const COVER_META_COLOR = "#E5E7EB";
+
+// ── Fact sheet slide tokens (Task 4 — match ADD_FACT_* constants in ppt-generator.ts) ──
+const FACT_TITLE_TEXT = "팩트 시트";
+const FACT_SUBTITLE_TEXT = "반경 내 핵심 수치 자동 요약";
+const FACT_TITLE_Y = 0.55;
+const FACT_TITLE_H = 0.5;
+const FACT_TITLE_BOX_W = 3.6;
+const FACT_TITLE_FONT_SIZE = 22;
+const FACT_SUBTITLE_Y = 1.08;
+const FACT_SUBTITLE_H = 0.24;
+const FACT_FRAME_X = 0.55;
+const FACT_FRAME_Y = 1.42;
+const FACT_FRAME_W = 12.23;
+const FACT_FRAME_H = 5.3;
+const FACT_FRAME_RADIUS = 0.12;
+const FACT_TABLE_X = 0.95;
+const FACT_TABLE_Y = 1.72;
+const FACT_TABLE_W = 11.43;
+const FACT_LABEL_W = 2.6;
+const FACT_VALUE_W = 7.3;
+const FACT_SOURCE_W = FACT_TABLE_W - FACT_LABEL_W - FACT_VALUE_W; // 1.53
+const FACT_HEADER_H = 0.42;
+const FACT_ROW_H = 0.46;
+const FACT_VALUE_FONT_SIZE = 11;
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -574,9 +599,9 @@ function drawDataPanel(
   }
 }
 
-function drawFooterNote(ctx: CanvasRenderingContext2D, text: string, d: PptDesignConfig) {
+function drawFooterNote(ctx: CanvasRenderingContext2D, text: string, d: PptDesignConfig, color?: string) {
   drawTextBox(ctx, text, ix(0.55), iy(7.08), ix(12.2), iy(0.22), {
-    fontSize: 6.5, color: d.mutedTextColor, align: "right",
+    fontSize: 6.5, color: color ?? d.mutedTextColor, align: "right",
   });
 }
 
@@ -1112,7 +1137,110 @@ function renderCoverSlide(
   });
 
   if (hasFailedSource(input.sourceStatuses ?? [])) {
-    drawFooterNote(ctx, "⚠ 일부 데이터 누락 — 출처 슬라이드 참조", _d);
+    // 표지는 거의 검정 배경(coverBg)이라 공유 mutedTextColor(밝은 배경용 회색)는 대비가 낮다.
+    // 이 호출부에서만 밝은 색을 넘겨 가독성을 확보 — 다른 슬라이드의 drawFooterNote 호출은 무변경.
+    drawFooterNote(ctx, "⚠ 일부 데이터 누락 — 출처 슬라이드 참조", _d, "#E2E8F0");
+  }
+}
+
+/** 값 조각(FactSheetSegment) 배열을 한 줄에 이어 그린다 — accent 조각만 accentRed로 강조. */
+function drawFactSheetSegments(
+  ctx: CanvasRenderingContext2D,
+  segments: readonly FactSheetSegment[],
+  xPx: number,
+  yPx: number,
+  hPx: number,
+  d: PptDesignConfig,
+  fontSize: number
+) {
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  let cursor = xPx;
+  const centerY = yPx + hPx / 2;
+  segments.forEach((seg) => {
+    ctx.font = `${seg.accent ? "bold " : ""}${fontSize}px ${getCanvasFontStack()}`;
+    ctx.fillStyle = seg.accent ? d.accentRed : d.textColor;
+    ctx.fillText(seg.text, cursor, centerY);
+    cursor += ctx.measureText(seg.text).width;
+  });
+}
+
+/** 중앙 상단 제목 + 좌우 수평선 플랭크 (design doc "B. 백색 정보 슬라이드"). */
+function drawFactSheetTitle(ctx: CanvasRenderingContext2D, d: PptDesignConfig) {
+  const centerXIn = SLIDE_W / 2;
+  const boxXIn = centerXIn - FACT_TITLE_BOX_W / 2;
+  drawTextBox(ctx, FACT_TITLE_TEXT, ix(boxXIn), iy(FACT_TITLE_Y), ix(FACT_TITLE_BOX_W), iy(FACT_TITLE_H), {
+    fontSize: FACT_TITLE_FONT_SIZE, bold: true, color: d.textColor, align: "center", valign: "middle",
+  });
+  const lineY = FACT_TITLE_Y + FACT_TITLE_H / 2;
+  drawLine(ctx, FACT_FRAME_X, lineY, boxXIn - FACT_FRAME_X, 0, d.mutedTextColor, 0.8, 45);
+  const rightLineStartIn = boxXIn + FACT_TITLE_BOX_W;
+  drawLine(ctx, rightLineStartIn, lineY, (SLIDE_W - FACT_FRAME_X) - rightLineStartIn, 0, d.mutedTextColor, 0.8, 45);
+  drawTextBox(ctx, FACT_SUBTITLE_TEXT, ix(centerXIn - 2.2), iy(FACT_SUBTITLE_Y), ix(4.4), iy(FACT_SUBTITLE_H), {
+    fontSize: 10, color: d.mutedTextColor, align: "center", valign: "middle",
+  });
+}
+
+/**
+ * 백색 팩트 시트 슬라이드(Task 4, 표지 다음 2번 위치): 흰 배경 + 중앙 상단 제목(좌우 수평선
+ * 플랭크) + 라운드 대형 외곽 프레임 + 검정 헤더 표(행 라벨/값/출처, 핵심 수치는 accentRed 강조).
+ * 팩트 계산은 fact-summary.ts(buildFactSummary/buildFactSheetRows)를 pptx 렌더러와 공유해
+ * 두 렌더러가 항상 동일 수치를 표시하도록 보장한다.
+ */
+function renderFactSheetSlide(
+  ctx: CanvasRenderingContext2D,
+  _img: HTMLImageElement,
+  input: SlideRenderInput,
+  d: PptDesignConfig
+) {
+  ctx.fillStyle = d.canvasColor;
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+  drawFactSheetTitle(ctx, d);
+
+  drawRoundedRect(
+    ctx, ix(FACT_FRAME_X), iy(FACT_FRAME_Y), ix(FACT_FRAME_W), iy(FACT_FRAME_H), ix(FACT_FRAME_RADIUS),
+    undefined, hexRgba(d.mutedTextColor, 70), 1
+  );
+
+  const summary = buildFactSummary({ config: input.config, allPois: input.allPois });
+  const rows = buildFactSheetRows(input.config, summary);
+
+  let y = FACT_TABLE_Y;
+  drawRoundedRect(ctx, ix(FACT_TABLE_X), iy(y), ix(FACT_TABLE_W), iy(FACT_HEADER_H), 0, d.insightCardBg);
+  drawTextBox(ctx, "구분", ix(FACT_TABLE_X + 0.18), iy(y), ix(FACT_LABEL_W - 0.18), iy(FACT_HEADER_H), {
+    fontSize: 11, bold: true, color: d.insightCardText, align: "left", valign: "middle",
+  });
+  drawTextBox(ctx, "핵심 수치", ix(FACT_TABLE_X + FACT_LABEL_W + 0.12), iy(y), ix(FACT_VALUE_W - 0.12), iy(FACT_HEADER_H), {
+    fontSize: 11, bold: true, color: d.insightCardText, align: "left", valign: "middle",
+  });
+  drawTextBox(ctx, "출처", ix(FACT_TABLE_X + FACT_LABEL_W + FACT_VALUE_W), iy(y), ix(FACT_SOURCE_W - 0.15), iy(FACT_HEADER_H), {
+    fontSize: 9, bold: true, color: d.insightCardText, align: "right", valign: "middle",
+  });
+  y += FACT_HEADER_H;
+
+  rows.forEach((row) => {
+    drawTextBox(ctx, row.label, ix(FACT_TABLE_X + 0.18), iy(y), ix(FACT_LABEL_W - 0.18), iy(FACT_ROW_H), {
+      fontSize: 10.5, bold: true, color: d.textColor, align: "left", valign: "middle",
+    });
+    drawFactSheetSegments(
+      ctx, row.value, ix(FACT_TABLE_X + FACT_LABEL_W + 0.12), iy(y), iy(FACT_ROW_H), d, FACT_VALUE_FONT_SIZE
+    );
+    drawTextBox(ctx, row.source, ix(FACT_TABLE_X + FACT_LABEL_W + FACT_VALUE_W), iy(y), ix(FACT_SOURCE_W - 0.15), iy(FACT_ROW_H), {
+      fontSize: 7.5, color: d.mutedTextColor, align: "right", valign: "middle",
+    });
+    drawLine(ctx, FACT_TABLE_X, y + FACT_ROW_H, FACT_TABLE_W, 0, d.mutedTextColor, 0.5, 80);
+    y += FACT_ROW_H;
+  });
+
+  drawTextBox(
+    ctx, "※ 도보시간은 직선거리 기준 분속 80m 환산치이며, 실제 보행 경로와 차이가 있을 수 있습니다.",
+    ix(FACT_TABLE_X), iy(y + 0.14), ix(FACT_TABLE_W), iy(0.2),
+    { fontSize: 8, color: d.mutedTextColor, align: "left", valign: "middle" }
+  );
+
+  if (hasFailedSource(input.sourceStatuses ?? [])) {
+    drawFooterNote(ctx, "⚠ 일부 데이터 누락 — 출처 슬라이드 참조", d);
   }
 }
 
@@ -1573,13 +1701,13 @@ function renderSummarySlide(
 
 function renderDataSourceSlide(
   ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
+  _img: HTMLImageElement,
   input: SlideRenderInput,
   d: PptDesignConfig
 ) {
-  drawBaseMap(ctx, img);
-  drawMapOverlay(ctx, d);
-  ctx.fillStyle = hexRgba(d.primaryColor, 8);
+  // Task 4: 백색 정보 슬라이드 문법으로 전환 — 지도 베이스맵/오버레이 제거, 단색 흰 배경.
+  // 이하 카드·패널·출처 표기 로직은 1단계(Task 7) 그대로 보존.
+  ctx.fillStyle = d.canvasColor;
   ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
   drawTitleChip(ctx, "데이터 출처 및 신뢰도", d, "보고서 해석 전제");
   [
@@ -1655,6 +1783,7 @@ function buildSlideDefs(input: SlideRenderInput): SlideDef[] {
 
   const defs: SlideDef[] = [
     { title: "표지", render: renderCoverSlide },
+    { title: "팩트 시트", render: renderFactSheetSlide },
     { title: "입지 현황 종합", render: renderOverviewSlide },
     { title: "입지 점수 대시보드", render: renderScoreDashboardSlide },
     { title: "핵심 인사이트 요약", render: renderInsightSummarySlide },

@@ -23,6 +23,7 @@ import type { PptDesignConfig } from "./ppt-design-config";
 import { DEFAULT_PPT_DESIGN, PPT_FONT_MAIN } from "./ppt-design-config";
 import { sourceStatusLines, hasFailedSource } from "./source-status-text";
 import { toReportMapTone } from "./map-image-tone";
+import { buildFactSummary, buildFactSheetRows, type FactSheetSegment } from "./fact-summary";
 
 const SLIDE_W = 13.333;
 const SLIDE_H = 7.5;
@@ -57,6 +58,30 @@ const COVER_TITLE_H = 1.5;
 const COVER_META_Y = 6.15;
 const COVER_META_H = 0.4;
 const COVER_META_COLOR = "#E5E7EB";
+
+// ── Fact sheet slide tokens (Task 4 — match FACT_* constants in ppt-canvas-renderer.ts) ──
+const FACT_TITLE_TEXT = "팩트 시트";
+const FACT_SUBTITLE_TEXT = "반경 내 핵심 수치 자동 요약";
+const FACT_TITLE_Y = 0.55;
+const FACT_TITLE_H = 0.5;
+const FACT_TITLE_BOX_W = 3.6;
+const FACT_TITLE_FONT_SIZE = 22;
+const FACT_SUBTITLE_Y = 1.08;
+const FACT_SUBTITLE_H = 0.24;
+const FACT_FRAME_X = 0.55;
+const FACT_FRAME_Y = 1.42;
+const FACT_FRAME_W = 12.23;
+const FACT_FRAME_H = 5.3;
+const FACT_FRAME_RADIUS = 0.12;
+const FACT_TABLE_X = 0.95;
+const FACT_TABLE_Y = 1.72;
+const FACT_TABLE_W = 11.43;
+const FACT_LABEL_W = 2.6;
+const FACT_VALUE_W = 7.3;
+const FACT_SOURCE_W = FACT_TABLE_W - FACT_LABEL_W - FACT_VALUE_W; // 1.53
+const FACT_HEADER_H = 0.42;
+const FACT_ROW_H = 0.46;
+const FACT_VALUE_FONT_SIZE = 11;
 
 // ── Pagination helper ─────────────────────────────────────────────────────────
 
@@ -390,10 +415,10 @@ function addDataPanel(
   }
 }
 
-function addFooterNote(slide: PptxGenJS.Slide, text: string, d: PptDesignConfig) {
+function addFooterNote(slide: PptxGenJS.Slide, text: string, d: PptDesignConfig, color?: string) {
   slide.addText(text, {
     x: 0.55, y: 7.08, w: 12.2, h: 0.22,
-    fontSize: 6.5, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor),
+    fontSize: 6.5, fontFace: FONT_MAIN, color: pptColor(color ?? d.mutedTextColor),
     align: "right",
   });
 }
@@ -1008,6 +1033,133 @@ function addCoverSlide(pptx: PptxGenJS, config: AnalysisConfig, _baseMapImage: s
   });
 
   if (hasFailedSource(sourceStatuses)) {
+    // 표지는 거의 검정 배경(coverBg)이라 공유 mutedTextColor(밝은 배경용 회색)는 대비가 낮다.
+    // 이 호출부에서만 밝은 색을 넘겨 가독성을 확보 — 다른 슬라이드의 addFooterNote 호출은 무변경.
+    addFooterNote(slide, "⚠ 일부 데이터 누락 — 출처 슬라이드 참조", d, "#E2E8F0");
+  }
+}
+
+/** 값 조각(FactSheetSegment) 배열을 텍스트 런(run) 배열로 변환해 한 addText 호출에 담는다 — accent 조각만 accentRed로 강조. */
+function addFactSheetValueRuns(
+  slide: PptxGenJS.Slide,
+  segments: readonly FactSheetSegment[],
+  x: number, y: number, w: number, h: number,
+  d: PptDesignConfig,
+  fontSize: number
+) {
+  slide.addText(
+    segments.map((seg) => ({
+      text: seg.text,
+      options: { color: pptColor(seg.accent ? d.accentRed : d.textColor), bold: !!seg.accent },
+    })),
+    { x, y, w, h, fontSize, fontFace: FONT_MAIN, align: "left", valign: "middle", margin: 0 }
+  );
+}
+
+/** 중앙 상단 제목 + 좌우 수평선 플랭크 (design doc "B. 백색 정보 슬라이드"). */
+function addFactSheetTitle(slide: PptxGenJS.Slide, d: PptDesignConfig) {
+  const centerX = SLIDE_W / 2;
+  const boxX = centerX - FACT_TITLE_BOX_W / 2;
+  slide.addText(FACT_TITLE_TEXT, {
+    x: boxX, y: FACT_TITLE_Y, w: FACT_TITLE_BOX_W, h: FACT_TITLE_H,
+    fontSize: FACT_TITLE_FONT_SIZE, fontFace: FONT_MAIN, bold: true, color: pptColor(d.textColor),
+    align: "center", valign: "middle", margin: 0,
+  });
+  const lineY = FACT_TITLE_Y + FACT_TITLE_H / 2;
+  slide.addShape("line", {
+    x: FACT_FRAME_X, y: lineY, w: boxX - FACT_FRAME_X, h: 0,
+    line: { color: pptColor(d.mutedTextColor), transparency: 45, width: 0.8 },
+  });
+  const rightLineStart = boxX + FACT_TITLE_BOX_W;
+  slide.addShape("line", {
+    x: rightLineStart, y: lineY, w: (SLIDE_W - FACT_FRAME_X) - rightLineStart, h: 0,
+    line: { color: pptColor(d.mutedTextColor), transparency: 45, width: 0.8 },
+  });
+  slide.addText(FACT_SUBTITLE_TEXT, {
+    x: centerX - 2.2, y: FACT_SUBTITLE_Y, w: 4.4, h: FACT_SUBTITLE_H,
+    fontSize: 10, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor),
+    align: "center", valign: "middle", margin: 0,
+  });
+}
+
+/**
+ * 백색 팩트 시트 슬라이드(Task 4, 표지 다음 2번 위치): 흰 배경 + 중앙 상단 제목(좌우 수평선
+ * 플랭크) + 라운드 대형 외곽 프레임 + 검정 헤더 표(행 라벨/값/출처, 핵심 수치는 accentRed 강조).
+ * 팩트 계산은 fact-summary.ts(buildFactSummary/buildFactSheetRows)를 canvas 렌더러와 공유해
+ * 두 렌더러가 항상 동일 수치를 표시하도록 보장한다.
+ */
+function addFactSheetSlide(
+  pptx: PptxGenJS,
+  config: AnalysisConfig,
+  allPois: readonly Poi[],
+  d: PptDesignConfig,
+  sourceStatuses: readonly SourceStatus[] = []
+) {
+  const slide = pptx.addSlide();
+  slide.background = { fill: pptColor(d.canvasColor) };
+
+  addFactSheetTitle(slide, d);
+
+  slide.addShape("rect", {
+    x: FACT_FRAME_X, y: FACT_FRAME_Y, w: FACT_FRAME_W, h: FACT_FRAME_H,
+    fill: { color: pptColor(d.canvasColor), transparency: 100 },
+    line: { color: pptColor(d.mutedTextColor), transparency: 70, width: 1 },
+    rectRadius: FACT_FRAME_RADIUS,
+  });
+
+  const summary = buildFactSummary({ config, allPois });
+  const rows = buildFactSheetRows(config, summary);
+
+  let y = FACT_TABLE_Y;
+  slide.addShape("rect", {
+    x: FACT_TABLE_X, y, w: FACT_TABLE_W, h: FACT_HEADER_H,
+    fill: { color: pptColor(d.insightCardBg), transparency: 0 },
+    line: { color: pptColor(d.insightCardBg), transparency: 100 },
+  });
+  slide.addText("구분", {
+    x: FACT_TABLE_X + 0.18, y, w: FACT_LABEL_W - 0.18, h: FACT_HEADER_H,
+    fontSize: 11, fontFace: FONT_MAIN, bold: true, color: pptColor(d.insightCardText),
+    align: "left", valign: "middle", margin: 0,
+  });
+  slide.addText("핵심 수치", {
+    x: FACT_TABLE_X + FACT_LABEL_W + 0.12, y, w: FACT_VALUE_W - 0.12, h: FACT_HEADER_H,
+    fontSize: 11, fontFace: FONT_MAIN, bold: true, color: pptColor(d.insightCardText),
+    align: "left", valign: "middle", margin: 0,
+  });
+  slide.addText("출처", {
+    x: FACT_TABLE_X + FACT_LABEL_W + FACT_VALUE_W, y, w: FACT_SOURCE_W - 0.15, h: FACT_HEADER_H,
+    fontSize: 9, fontFace: FONT_MAIN, bold: true, color: pptColor(d.insightCardText),
+    align: "right", valign: "middle", margin: 0,
+  });
+  y += FACT_HEADER_H;
+
+  rows.forEach((row) => {
+    slide.addText(row.label, {
+      x: FACT_TABLE_X + 0.18, y, w: FACT_LABEL_W - 0.18, h: FACT_ROW_H,
+      fontSize: 10.5, fontFace: FONT_MAIN, bold: true, color: pptColor(d.textColor),
+      align: "left", valign: "middle", margin: 0,
+    });
+    addFactSheetValueRuns(
+      slide, row.value, FACT_TABLE_X + FACT_LABEL_W + 0.12, y, FACT_VALUE_W - 0.12, FACT_ROW_H, d, FACT_VALUE_FONT_SIZE
+    );
+    slide.addText(row.source, {
+      x: FACT_TABLE_X + FACT_LABEL_W + FACT_VALUE_W, y, w: FACT_SOURCE_W - 0.15, h: FACT_ROW_H,
+      fontSize: 7.5, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor),
+      align: "right", valign: "middle", margin: 0,
+    });
+    slide.addShape("line", {
+      x: FACT_TABLE_X, y: y + FACT_ROW_H, w: FACT_TABLE_W, h: 0,
+      line: { color: pptColor(d.mutedTextColor), transparency: 80, width: 0.5 },
+    });
+    y += FACT_ROW_H;
+  });
+
+  slide.addText("※ 도보시간은 직선거리 기준 분속 80m 환산치이며, 실제 보행 경로와 차이가 있을 수 있습니다.", {
+    x: FACT_TABLE_X, y: y + 0.14, w: FACT_TABLE_W, h: 0.2,
+    fontSize: 8, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), margin: 0,
+  });
+
+  if (hasFailedSource(sourceStatuses)) {
     addFooterNote(slide, "⚠ 일부 데이터 누락 — 출처 슬라이드 참조", d);
   }
 }
@@ -1425,17 +1577,14 @@ function addDataSourceSlide(
   pptx: PptxGenJS,
   config: AnalysisConfig,
   pois: readonly Poi[],
-  baseMapImage: string,
+  _baseMapImage: string,
   d: PptDesignConfig,
   sourceStatuses: readonly SourceStatus[] = [],
 ) {
   const slide = pptx.addSlide();
-  addFullBleedMap(slide, baseMapImage, d);
-  slide.addShape("rect", {
-    x: 0, y: 0, w: SLIDE_W, h: SLIDE_H,
-    fill: { color: pptColor(d.primaryColor), transparency: 8 },
-    line: { color: pptColor(d.primaryColor), transparency: 100 },
-  });
+  // Task 4: 백색 정보 슬라이드 문법으로 전환 — 지도 베이스맵/오버레이 제거, 단색 흰 배경.
+  // 이하 카드·패널·출처 표기 로직은 1단계(Task 7) 그대로 보존.
+  slide.background = { fill: pptColor(d.canvasColor) };
   addTitleChip(slide, "데이터 출처 및 신뢰도", d, "보고서 해석 전제");
 
   const sourceCards = [
@@ -1712,6 +1861,7 @@ export async function generateSiteAnalysisPpt(
     : baseMapImage;
 
   addCoverSlide(pptx, config, reportBaseMapImage, d, sourceStatuses);
+  addFactSheetSlide(pptx, config, allPois, d, sourceStatuses);
   addOverviewSlide(pptx, config, reportBaseMapImage, poiPositions, radiusPosition, routePositions, d);
   addScoreDashboardSlide(pptx, config, allPois, reportBaseMapImage, d);
   addInsightSummarySlide(pptx, config, allPois, reportBaseMapImage, d);
