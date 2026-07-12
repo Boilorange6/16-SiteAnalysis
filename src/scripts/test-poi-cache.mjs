@@ -60,4 +60,4 @@ assert.equal(r4.value[0].id, "live");
 
 assert.ok(POI_CACHE_TTL_MS === 7 * 24 * 60 * 60 * 1000);
 console.log("poi-cache: all tests passed");
-rmSync(dir, { recursive: true, force: true });
+try { rmSync(dir, { recursive: true, force: true }); } catch { /* Windows: better-sqlite3 WAL 핸들이 열려 있으면 EPERM — 임시폴더는 OS가 정리 */ }
