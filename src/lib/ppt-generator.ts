@@ -39,6 +39,25 @@ const LEGEND_ICON_SIZE = 0.10;
 const LEGEND_ROW_H = 0.22;
 const LEGEND_W = 1.4;
 
+// ── Cover slide tokens (Task 3 — match drawCoverFrameSquares/renderCoverSlide in ppt-canvas-renderer.ts) ──
+const COVER_FRAME_TRANSPARENCY = 60; // 흰 테두리 사각 투명도(낮은 불투명도) — alpha 0.4
+const COVER_EYEBROW_X = 0.85;
+const COVER_EYEBROW_W = 8;
+const COVER_EYEBROW_LINE1_Y = 0.6;
+const COVER_EYEBROW_LINE1_H = 0.28;
+const COVER_EYEBROW_LINE1_LETTER_SPACING = 2; // pt/px — "자간 넓게"
+const COVER_EYEBROW_LINE1_COLOR = "#9CA3AF";
+const COVER_EYEBROW_LINE2_Y = 0.94;
+const COVER_EYEBROW_LINE2_H = 0.34;
+const COVER_EYEBROW_LINE2_LETTER_SPACING = 5; // pt/px — "자간 극대"
+const COVER_TITLE_X = 0.85;
+const COVER_TITLE_Y = 4.55;
+const COVER_TITLE_W = 9.4; // 슬라이드 폭(13.333in)의 ~70%
+const COVER_TITLE_H = 1.5;
+const COVER_META_Y = 6.15;
+const COVER_META_H = 0.4;
+const COVER_META_COLOR = "#E5E7EB";
+
 // ── Pagination helper ─────────────────────────────────────────────────────────
 
 function pageResidentials(residentials: readonly ResidentialPoi[], pageSize: number): ResidentialPoi[][] {
@@ -59,24 +78,6 @@ function pageResidentials(residentials: readonly ResidentialPoi[], pageSize: num
 
 function pptColor(hex: string): string {
   return hex.replace("#", "").toUpperCase();
-}
-
-function getCoverOverlayColor(d: PptDesignConfig): string {
-  return d.panelStyle === "paper" || d.panelStyle === "document" || d.panelStyle === "organic" || d.panelStyle === "transit"
-    ? d.overlayColor
-    : d.primaryColor;
-}
-
-function usesLightCoverText(d: PptDesignConfig): boolean {
-  return d.panelStyle === "paper" ||
-    d.panelStyle === "document" ||
-    d.panelStyle === "organic" ||
-    d.panelStyle === "transit" ||
-    d.compositionStyle === "print-editorial" ||
-    d.compositionStyle === "planning-sheet" ||
-    d.compositionStyle === "landscape-report" ||
-    d.compositionStyle === "transit-atlas" ||
-    d.compositionStyle === "mono-dossier";
 }
 
 function addMapVeil(
@@ -239,36 +240,16 @@ function addCompositionBackdrop(slide: PptxGenJS.Slide, d: PptDesignConfig, _mod
   }
 }
 
-function getCoverTextLayout(d: PptDesignConfig): {
-  titleX: number;
-  titleY: number;
-  titleW: number;
-  titleAlign: "left" | "center" | "right";
-} {
-  switch (d.compositionStyle) {
-    case "none":
-      return { titleX: 0.72, titleY: 2.08, titleW: 6.8, titleAlign: "left" };
-    case "split-command":
-      return { titleX: 0.72, titleY: 2.08, titleW: 3.45, titleAlign: "left" };
-    case "print-editorial":
-      return { titleX: 0.86, titleY: 1.22, titleW: 7.9, titleAlign: "left" };
-    case "radar-hud":
-      return { titleX: 1.25, titleY: 2.25, titleW: 10.8, titleAlign: "center" };
-    case "finance-ledger":
-      return { titleX: 0.92, titleY: 1.78, titleW: 6.75, titleAlign: "left" };
-    case "planning-sheet":
-      return { titleX: 0.88, titleY: 1.15, titleW: 6.6, titleAlign: "left" };
-    case "landscape-report":
-      return { titleX: 0.9, titleY: 1.82, titleW: 6.65, titleAlign: "left" };
-    case "luxury-brochure":
-      return { titleX: 2.35, titleY: 2.22, titleW: 8.65, titleAlign: "center" };
-    case "transit-atlas":
-      return { titleX: 0.82, titleY: 1.2, titleW: 7.2, titleAlign: "left" };
-    case "war-room":
-      return { titleX: 0.76, titleY: 2.2, titleW: 3.75, titleAlign: "left" };
-    case "mono-dossier":
-      return { titleX: 1.05, titleY: 1.2, titleW: 7.25, titleAlign: "left" };
-  }
+/**
+ * 표지 문법(Task 3, design doc "A. 표지"): 거의 검정 배경 위 우측 오프셋 흰 테두리 사각 2개.
+ * 우상단 1개 + 우하단 1개, 슬라이드 밖으로 살짝 잘리는 배치(원본 보고서 표지 장식 재현).
+ * 좌표는 ppt-canvas-renderer.ts의 drawCoverFrameSquares와 동일 수치를 유지할 것.
+ */
+function addCoverFrameSquares(slide: PptxGenJS.Slide) {
+  const line = { color: pptColor("#FFFFFF"), transparency: COVER_FRAME_TRANSPARENCY, width: 1 };
+  const noFill = { color: pptColor("#000000"), transparency: 100 };
+  slide.addShape("rect", { x: 11.55, y: 0.55, w: 2.25, h: 2.25, fill: noFill, line });
+  slide.addShape("rect", { x: 10.65, y: 4.5, w: 2.85, h: 2.35, fill: noFill, line });
 }
 
 function addFullBleedMap(slide: PptxGenJS.Slide, baseMapImage: string, d: PptDesignConfig) {
@@ -990,42 +971,42 @@ function addStationBars(
 
 // ── Slides ──────────────────────────────────────────────────────────────────
 
-function addCoverSlide(pptx: PptxGenJS, config: AnalysisConfig, baseMapImage: string, d: PptDesignConfig, sourceStatuses: readonly SourceStatus[] = []) {
+/**
+ * 표지 슬라이드(Task 3 재설계) — 원본 보고서 문법: 지도 없는 거의 검정 배경, 우측 오프셋
+ * 테두리 사각 장식, 좌상단 아이브로우 2줄, 좌하단 초대형 타이틀 + 메타 행.
+ * 좌표·색·폰트는 ppt-canvas-renderer.ts의 renderCoverSlide와 동일 수치를 유지할 것.
+ */
+function addCoverSlide(pptx: PptxGenJS, config: AnalysisConfig, _baseMapImage: string, d: PptDesignConfig, sourceStatuses: readonly SourceStatus[] = []) {
   const slide = pptx.addSlide();
-  const isLightCover = usesLightCoverText(d);
-  const coverTextColor = isLightCover ? d.textColor : "#FFFFFF";
-  const coverMetaColor = isLightCover ? d.mutedTextColor : "#E5E7EB";
-  if (baseMapImage) {
-    slide.addImage({ data: baseMapImage, x: 0, y: 0, w: SLIDE_W, h: SLIDE_H });
-    addMapVeil(slide, getCoverOverlayColor(d), d.coverOverlayTransparency);
-  } else {
-    slide.background = { fill: pptColor(getCoverOverlayColor(d)) };
-  }
-  addCompositionBackdrop(slide, d, "cover");
-  addDesignFrame(slide, d);
-  const { titleX, titleY, titleW, titleAlign } = getCoverTextLayout(d);
-  if (d.titleStyle === "luxury-plaque") {
-    slide.addShape("rect", { x: 2.55, y: 2.08, w: 8.25, h: 2.55, fill: { color: pptColor(d.canvasColor), transparency: 100 }, line: { color: pptColor(d.accentColor), transparency: 18, width: 0.9 }, rectRadius: 0.02 });
-  }
+  slide.background = { fill: pptColor(d.coverBg) };
+  addCoverFrameSquares(slide);
+
+  // 좌상단 아이브로우: 1줄 주소 요약(centerName) · 2줄 "사이트 입지 분석"(Bold, 자간 극대)
+  const eyebrowLine1FontSize = Math.round(d.coverSubtitleFontSize * 0.75);
   slide.addText(config.centerName, {
-    x: titleX, y: titleY, w: titleW, h: 1,
-    fontSize: d.coverTitleFontSize, fontFace: FONT_MAIN, color: pptColor(coverTextColor), bold: true, align: titleAlign,
-    margin: titleAlign === "left" ? 0 : undefined,
+    x: COVER_EYEBROW_X, y: COVER_EYEBROW_LINE1_Y, w: COVER_EYEBROW_W, h: COVER_EYEBROW_LINE1_H,
+    fontSize: eyebrowLine1FontSize, fontFace: FONT_MAIN, color: pptColor(COVER_EYEBROW_LINE1_COLOR),
+    charSpacing: COVER_EYEBROW_LINE1_LETTER_SPACING, align: "left", valign: "top", margin: 0,
   });
-  slide.addText("사이트 입지 분석 보고서", {
-    x: titleX, y: titleY + 1.0, w: titleW, h: 0.6,
-    fontSize: d.coverSubtitleFontSize, fontFace: FONT_MAIN, color: pptColor(coverTextColor), align: titleAlign,
-    margin: titleAlign === "left" ? 0 : undefined,
+  slide.addText("사이트 입지 분석", {
+    x: COVER_EYEBROW_X, y: COVER_EYEBROW_LINE2_Y, w: COVER_EYEBROW_W, h: COVER_EYEBROW_LINE2_H,
+    fontSize: d.coverSubtitleFontSize, fontFace: FONT_MAIN, color: pptColor("#FFFFFF"), bold: true,
+    charSpacing: COVER_EYEBROW_LINE2_LETTER_SPACING, align: "left", valign: "top", margin: 0,
   });
-  if (d.titleStyle !== "plain") {
-    slide.addShape("rect", { x: titleAlign === "center" ? titleX + titleW / 2 - 1.65 : titleX, y: titleY + 1.8, w: titleAlign === "center" ? 3.3 : 2.8, h: 0.03, fill: { color: pptColor(d.accentColor), transparency: 10 }, line: { color: pptColor(d.accentColor), transparency: 100 } });
-  }
-  const refDate = new Date().toLocaleDateString("ko-KR");
-  slide.addText(`${refDate} | 반경 ${config.radiusKm}km 분석`, {
-    x: titleX, y: titleY + 2.3, w: titleW, h: 0.4,
-    fontSize: d.coverMetaFontSize, fontFace: FONT_MAIN, color: pptColor(coverMetaColor), align: titleAlign,
-    margin: titleAlign === "left" ? 0 : undefined,
+
+  // 좌하단 초대형 타이틀(centerName) + 메타 행
+  slide.addText(config.centerName, {
+    x: COVER_TITLE_X, y: COVER_TITLE_Y, w: COVER_TITLE_W, h: COVER_TITLE_H,
+    fontSize: d.coverTitleFontSize, fontFace: FONT_MAIN, color: pptColor("#FFFFFF"), bold: true,
+    align: "left", valign: "bottom", margin: 0,
   });
+  const refDate = new Date().toLocaleDateString("ko-KR"); // 기존 코드가 쓰던 날짜 산출 방식 재사용
+  slide.addText(`반경 ${config.radiusKm}km / ${refDate} / Site Analysis`, {
+    x: COVER_TITLE_X, y: COVER_META_Y, w: COVER_TITLE_W, h: COVER_META_H,
+    fontSize: d.coverMetaFontSize, fontFace: FONT_MAIN, color: pptColor(COVER_META_COLOR),
+    align: "left", valign: "top", margin: 0,
+  });
+
   if (hasFailedSource(sourceStatuses)) {
     addFooterNote(slide, "⚠ 일부 데이터 누락 — 출처 슬라이드 참조", d);
   }

@@ -74,6 +74,25 @@ const LEGEND_ICON_SIZE = 0.10;
 const LEGEND_ROW_H = 0.22;
 const LEGEND_W = 1.4;
 
+// ── Cover slide tokens (Task 3 — match addCoverFrameSquares/addCoverSlide in ppt-generator.ts) ──
+const COVER_FRAME_TRANSPARENCY = 60; // 흰 테두리 사각 투명도(낮은 불투명도) — alpha 0.4
+const COVER_EYEBROW_X = 0.85;
+const COVER_EYEBROW_W = 8;
+const COVER_EYEBROW_LINE1_Y = 0.6;
+const COVER_EYEBROW_LINE1_H = 0.28;
+const COVER_EYEBROW_LINE1_LETTER_SPACING = 2; // pt/px — "자간 넓게"
+const COVER_EYEBROW_LINE1_COLOR = "#9CA3AF";
+const COVER_EYEBROW_LINE2_Y = 0.94;
+const COVER_EYEBROW_LINE2_H = 0.34;
+const COVER_EYEBROW_LINE2_LETTER_SPACING = 5; // pt/px — "자간 극대"
+const COVER_TITLE_X = 0.85;
+const COVER_TITLE_Y = 4.55;
+const COVER_TITLE_W = 9.4; // 슬라이드 폭(13.333in)의 ~70%
+const COVER_TITLE_H = 1.5;
+const COVER_META_Y = 6.15;
+const COVER_META_H = 0.4;
+const COVER_META_COLOR = "#E5E7EB";
+
 // ── Public types ──────────────────────────────────────────────────────────────
 
 export interface SlideRenderInput {
@@ -245,24 +264,6 @@ function drawBaseMap(ctx: CanvasRenderingContext2D, img: HTMLImageElement) {
   ctx.drawImage(img, 0, 0, CANVAS_W, CANVAS_H);
 }
 
-function getCoverOverlayColor(d: PptDesignConfig): string {
-  return d.panelStyle === "paper" || d.panelStyle === "document" || d.panelStyle === "organic" || d.panelStyle === "transit"
-    ? d.overlayColor
-    : d.primaryColor;
-}
-
-function usesLightCoverText(d: PptDesignConfig): boolean {
-  return d.panelStyle === "paper" ||
-    d.panelStyle === "document" ||
-    d.panelStyle === "organic" ||
-    d.panelStyle === "transit" ||
-    d.compositionStyle === "print-editorial" ||
-    d.compositionStyle === "planning-sheet" ||
-    d.compositionStyle === "landscape-report" ||
-    d.compositionStyle === "transit-atlas" ||
-    d.compositionStyle === "mono-dossier";
-}
-
 function drawMapVeil(ctx: CanvasRenderingContext2D, color: string, transparency: number) {
   if (transparency >= 100) return;
   ctx.fillStyle = hexRgba(color, transparency);
@@ -275,10 +276,15 @@ function drawMapOverlay(ctx: CanvasRenderingContext2D, d: PptDesignConfig) {
   drawDesignFrame(ctx, d);
 }
 
-function drawCoverMapOverlay(ctx: CanvasRenderingContext2D, d: PptDesignConfig) {
-  drawMapVeil(ctx, getCoverOverlayColor(d), d.coverOverlayTransparency);
-  drawCompositionBackdrop(ctx, d, "cover");
-  drawDesignFrame(ctx, d);
+/**
+ * 표지 문법(Task 3, design doc "A. 표지"): 거의 검정 배경 위 우측 오프셋 흰 테두리 사각 2개.
+ * 우상단 1개 + 우하단 1개, 슬라이드 밖으로 살짝 잘리는 배치(원본 보고서 표지 장식 재현).
+ * 좌표는 ppt-generator.ts의 addCoverFrameSquares와 동일 수치를 유지할 것.
+ */
+function drawCoverFrameSquares(ctx: CanvasRenderingContext2D) {
+  const stroke = hexRgba("#FFFFFF", COVER_FRAME_TRANSPARENCY);
+  drawRoundedRect(ctx, ix(11.55), iy(0.55), ix(2.25), iy(2.25), 0, undefined, stroke, 1);
+  drawRoundedRect(ctx, ix(10.65), iy(4.5), ix(2.85), iy(2.35), 0, undefined, stroke, 1);
 }
 
 function drawCompositionBackdrop(ctx: CanvasRenderingContext2D, d: PptDesignConfig, _mode: "cover" | "content") {
@@ -371,38 +377,6 @@ function drawCompositionBackdrop(ctx: CanvasRenderingContext2D, d: PptDesignConf
       [1.08, 1.72, 6.52].forEach((y) => drawLine(ctx, 0.96, y, 8.95, 0, d.textColor, y === 1.08 ? 1.1 : 0.65, y === 1.08 ? 0 : 60));
       drawTextBox(ctx, "DOSSIER", ix(8.0), iy(0.62), ix(1.85), iy(0.3), { fontSize: 9, bold: true, color: d.textColor, align: "right" });
       break;
-  }
-}
-
-function getCoverTextLayout(d: PptDesignConfig): {
-  titleX: number;
-  titleY: number;
-  titleW: number;
-  titleAlign: "left" | "center" | "right";
-} {
-  switch (d.compositionStyle) {
-    case "none":
-      return { titleX: 0.72, titleY: 2.08, titleW: 6.8, titleAlign: "left" };
-    case "split-command":
-      return { titleX: 0.72, titleY: 2.08, titleW: 3.45, titleAlign: "left" };
-    case "print-editorial":
-      return { titleX: 0.86, titleY: 1.22, titleW: 7.9, titleAlign: "left" };
-    case "radar-hud":
-      return { titleX: 1.25, titleY: 2.25, titleW: 10.8, titleAlign: "center" };
-    case "finance-ledger":
-      return { titleX: 0.92, titleY: 1.78, titleW: 6.75, titleAlign: "left" };
-    case "planning-sheet":
-      return { titleX: 0.88, titleY: 1.15, titleW: 6.6, titleAlign: "left" };
-    case "landscape-report":
-      return { titleX: 0.9, titleY: 1.82, titleW: 6.65, titleAlign: "left" };
-    case "luxury-brochure":
-      return { titleX: 2.35, titleY: 2.22, titleW: 8.65, titleAlign: "center" };
-    case "transit-atlas":
-      return { titleX: 0.82, titleY: 1.2, titleW: 7.2, titleAlign: "left" };
-    case "war-room":
-      return { titleX: 0.76, titleY: 2.2, titleW: 3.75, titleAlign: "left" };
-    case "mono-dossier":
-      return { titleX: 1.05, titleY: 1.2, titleW: 7.25, titleAlign: "left" };
   }
 }
 
@@ -1096,46 +1070,47 @@ function pageResidentials(residentials: readonly ResidentialPoi[], pageSize: num
 
 // ── Slide render functions ────────────────────────────────────────────────────
 
+/**
+ * 표지 슬라이드(Task 3 재설계) — 원본 보고서 문법: 지도 없는 거의 검정 배경, 우측 오프셋
+ * 테두리 사각 장식, 좌상단 아이브로우 2줄, 좌하단 초대형 타이틀 + 메타 행.
+ * 좌표·색·폰트는 ppt-generator.ts의 addCoverSlide와 동일 수치를 유지할 것.
+ */
 function renderCoverSlide(
   ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
+  _img: HTMLImageElement,
   input: SlideRenderInput,
   _d: PptDesignConfig
 ) {
-  drawBaseMap(ctx, img);
-  drawCoverMapOverlay(ctx, _d);
-
   const { config } = input;
-  const { titleX, titleY, titleW, titleAlign } = getCoverTextLayout(_d);
-  const coverTextColor = usesLightCoverText(_d) ? _d.textColor : "#FFFFFF";
-  const coverMetaColor = usesLightCoverText(_d) ? _d.mutedTextColor : "#E5E7EB";
-  if (_d.titleStyle === "luxury-plaque") {
-    drawRoundedRect(ctx, ix(2.55), iy(2.08), ix(8.25), iy(2.55), ix(0.02), undefined, hexRgba(_d.accentColor, 18), 0.9);
-  }
+
+  ctx.fillStyle = _d.coverBg;
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  drawCoverFrameSquares(ctx);
+
+  // 좌상단 아이브로우: 1줄 주소 요약(centerName) · 2줄 "사이트 입지 분석"(Bold, 자간 극대)
+  const eyebrowLine1FontSize = Math.round(_d.coverSubtitleFontSize * 0.75);
   ctx.save();
-  ctx.shadowColor = "rgba(0,0,0,0.82)";
-  ctx.shadowBlur = 8;
-  ctx.shadowOffsetY = 2;
-  drawTextBox(ctx, config.centerName, ix(titleX), iy(titleY), ix(titleW), iy(1), {
-    fontSize: _d.coverTitleFontSize, bold: true, color: coverTextColor, align: titleAlign, valign: "middle",
-  });
-  drawTextBox(ctx, "사이트 입지 분석 보고서", ix(titleX), iy(titleY + 1.0), ix(titleW), iy(0.6), {
-    fontSize: _d.coverSubtitleFontSize, color: coverTextColor, align: titleAlign, valign: "middle",
+  ctx.letterSpacing = `${COVER_EYEBROW_LINE1_LETTER_SPACING}px`;
+  drawTextBox(ctx, config.centerName, ix(COVER_EYEBROW_X), iy(COVER_EYEBROW_LINE1_Y), ix(COVER_EYEBROW_W), iy(COVER_EYEBROW_LINE1_H), {
+    fontSize: eyebrowLine1FontSize, color: COVER_EYEBROW_LINE1_COLOR, align: "left", valign: "top",
   });
   ctx.restore();
-  if (_d.titleStyle !== "plain") {
-    ctx.fillStyle = hexRgba(_d.accentColor, 10);
-    ctx.fillRect(ix(titleAlign === "center" ? titleX + titleW / 2 - 1.65 : titleX), iy(titleY + 1.8), ix(titleAlign === "center" ? 3.3 : 2.8), iy(0.03));
-  }
-  const refDate = new Date().toLocaleDateString("ko-KR");
   ctx.save();
-  ctx.shadowColor = "rgba(0,0,0,0.72)";
-  ctx.shadowBlur = 5;
-  ctx.shadowOffsetY = 1;
-  drawTextBox(ctx, `${refDate} | 반경 ${config.radiusKm}km 분석`, ix(titleX), iy(titleY + 2.3), ix(titleW), iy(0.4), {
-    fontSize: _d.coverMetaFontSize, color: coverMetaColor, align: titleAlign, valign: "middle",
+  ctx.letterSpacing = `${COVER_EYEBROW_LINE2_LETTER_SPACING}px`;
+  drawTextBox(ctx, "사이트 입지 분석", ix(COVER_EYEBROW_X), iy(COVER_EYEBROW_LINE2_Y), ix(COVER_EYEBROW_W), iy(COVER_EYEBROW_LINE2_H), {
+    fontSize: _d.coverSubtitleFontSize, bold: true, color: "#FFFFFF", align: "left", valign: "top",
   });
   ctx.restore();
+
+  // 좌하단 초대형 타이틀(centerName) + 메타 행
+  drawTextBox(ctx, config.centerName, ix(COVER_TITLE_X), iy(COVER_TITLE_Y), ix(COVER_TITLE_W), iy(COVER_TITLE_H), {
+    fontSize: _d.coverTitleFontSize, bold: true, color: "#FFFFFF", align: "left", valign: "bottom",
+  });
+  const refDate = new Date().toLocaleDateString("ko-KR"); // 기존 코드가 쓰던 날짜 산출 방식 재사용
+  drawTextBox(ctx, `반경 ${config.radiusKm}km / ${refDate} / Site Analysis`, ix(COVER_TITLE_X), iy(COVER_META_Y), ix(COVER_TITLE_W), iy(COVER_META_H), {
+    fontSize: _d.coverMetaFontSize, color: COVER_META_COLOR, align: "left", valign: "top",
+  });
+
   if (hasFailedSource(input.sourceStatuses ?? [])) {
     drawFooterNote(ctx, "⚠ 일부 데이터 누락 — 출처 슬라이드 참조", _d);
   }
