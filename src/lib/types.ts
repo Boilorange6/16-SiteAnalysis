@@ -1,5 +1,35 @@
 export type PoiCategory = "subway" | "school" | "park" | "mountain" | "apartment" | "officetel" | "residential" | "maintenance";
 
+/** 외부 데이터 소스 식별자 (1단계 데이터 신뢰성) */
+export type PoiSourceId =
+  | "osm" | "park" | "maintenance" | "residential" | "planned-residential" | "subway-routes";
+
+export interface SourceStatus {
+  readonly source: PoiSourceId;
+  /** "fresh"=방금 수집, "cached"=저장본 사용, "failed"=수집 실패·저장본도 없음 */
+  readonly status: "fresh" | "cached" | "failed";
+  /** 수집 시각(epoch ms). failed면 null */
+  readonly fetchedAt: number | null;
+}
+
+export const POI_SOURCE_CATEGORIES: Record<PoiSourceId, readonly PoiCategory[]> = {
+  osm: ["subway", "school", "mountain"],
+  park: ["park"],
+  maintenance: ["maintenance"],
+  residential: ["apartment", "officetel", "residential"],
+  "planned-residential": ["apartment", "officetel", "residential"],
+  "subway-routes": ["subway"],
+};
+
+export const POI_SOURCE_LABELS: Record<PoiSourceId, string> = {
+  osm: "지하철역·학교·산",
+  park: "공원",
+  maintenance: "정비사업",
+  residential: "주거 단지",
+  "planned-residential": "분양 예정",
+  "subway-routes": "지하철 노선",
+};
+
 export interface PoiBase {
   readonly id: string;
   readonly name: string;
