@@ -1,6 +1,33 @@
 @import "tailwindcss";
 @import "leaflet/dist/leaflet.css";
 
+/*
+ * Pretendard (메타·숫자 계열) — 공식 릴리스(orioncactus/pretendard) woff2를 셀프호스팅.
+ * 리터럴 font-family 이름("Pretendard")으로 등록해 PPT 미리보기 canvas의
+ * ctx.font 문자열(ppt-canvas-renderer.ts의 FONT_CANVAS)과 정확히 매칭시킨다.
+ */
+@font-face {
+  font-family: "Pretendard";
+  src: url("/fonts/Pretendard-ExtraLight.woff2") format("woff2");
+  font-weight: 200;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Pretendard";
+  src: url("/fonts/Pretendard-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Pretendard";
+  src: url("/fonts/Pretendard-SemiBold.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -11,7 +38,7 @@ html,
 body {
   height: 100%;
   overflow: hidden;
-  font-family: "Pretendard", "Noto Sans KR", "맑은 고딕", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+  font-family: var(--font-noto-kr), "Pretendard", "Noto Sans KR", "맑은 고딕", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
   background: #0F172A;
   color: #F8FAFC;
 }

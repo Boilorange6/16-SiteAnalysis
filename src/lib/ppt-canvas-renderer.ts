@@ -12,6 +12,7 @@ import type { Poi, PoiPosition, RadiusPosition, PoiCategory, SubwayStation, Resi
 import { CATEGORY_LABELS } from "./types";
 import type { RouteNormalizedPosition } from "./ppt-generator";
 import type { PptDesignConfig } from "./ppt-design-config";
+import { PPT_FONT_MAIN, PPT_FONT_NUM } from "./ppt-design-config";
 import type { AnalysisConfig } from "./types";
 import { layoutPoiLabels } from "./ppt-label-layout";
 import { computeResidentialCalloutLayout } from "./ppt-callout-layout";
@@ -33,7 +34,7 @@ const APT_PAGE_SIZE = 12;
 
 // ── Static layout tokens (match ppt-generator.ts) ────────────────────────────
 
-const FONT_CANVAS = '"Noto Sans KR", "Pretendard", "맑은 고딕", sans-serif';
+const FONT_CANVAS = `"${PPT_FONT_MAIN}", "${PPT_FONT_NUM}", "맑은 고딕", sans-serif`;
 const EMPTY_PANEL_TEXT = "반경 내 확인된 시설이 없습니다"; // match ppt-generator.ts
 const SITE_LABEL_OFFSET_Y = 0.20;
 const RING_RATIOS = [0.33, 0.66, 1.0] as const;
@@ -1589,6 +1590,14 @@ function renderDataSourceSlide(
 async function ensureFontsLoaded() {
   if (typeof document === "undefined") return;
   try {
+    // 웹폰트가 아직 어떤 텍스트에도 "사용"되지 않았으면 document.fonts.ready가
+    // 즉시 resolve될 수 있으므로, canvas가 그릴 글꼴을 명시적으로 먼저 로드 요청한다.
+    await Promise.all([
+      document.fonts.load(`16px "${PPT_FONT_MAIN}"`),
+      document.fonts.load(`bold 16px "${PPT_FONT_MAIN}"`),
+      document.fonts.load(`500 16px "${PPT_FONT_NUM}"`),
+      document.fonts.load(`600 16px "${PPT_FONT_NUM}"`),
+    ]);
     await document.fonts.ready;
   } catch {
     // ignore — fallback fonts will render

@@ -20,14 +20,14 @@ import { buildMaintenanceDetailLines, formatMaintenanceArea, summarizeMaintenanc
 import { buildInsightOverlays, computeAnalysisScores, generateAnalysisNarrative, getSummaryLines } from "./analysis-engine";
 import { haversineDistance } from "./geo";
 import type { PptDesignConfig } from "./ppt-design-config";
-import { DEFAULT_PPT_DESIGN } from "./ppt-design-config";
+import { DEFAULT_PPT_DESIGN, PPT_FONT_MAIN } from "./ppt-design-config";
 import { sourceStatusLines, hasFailedSource } from "./source-status-text";
 
 const SLIDE_W = 13.333;
 const SLIDE_H = 7.5;
 const APT_PAGE_SIZE = 12;
 
-const FONT_MAIN = "Noto Sans KR";
+const FONT_MAIN = PPT_FONT_MAIN;
 
 const EMPTY_PANEL_TEXT = "반경 내 확인된 시설이 없습니다"; // match ppt-canvas-renderer.ts
 

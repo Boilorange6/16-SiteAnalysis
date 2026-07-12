@@ -1,6 +1,13 @@
 import type { PoiCategory } from "./types";
 import { CATEGORY_COLORS } from "./types";
 
+/**
+ * 보고서 서체 — 웹 미리보기(canvas)와 PPT(pptxgenjs fontFace)가 공유하는 단일 소스.
+ * PPT는 폰트를 임베드하지 않으므로 열람 PC에 아래 폰트가 설치되어 있어야 의도한 대로 보인다.
+ */
+export const PPT_FONT_MAIN = "Noto Sans KR";
+export const PPT_FONT_NUM = "Pretendard";
+
 export type CategoryColorMap = Record<PoiCategory, string>;
 export type PptLegendPosition = "bottom-left" | "bottom-right" | "top-left" | "top-right";
 export type PptLineDash = "solid" | "dash" | "dot";
