@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { verifyToken } from "@/lib/server/jwt";
 import { getUserById } from "@/lib/server/user-store";
-import type { Poi, SubwayStation, School, Park, Mountain, Apartment, Officetel, ResidentialOther, ResidentialPoi, MaintenanceProject } from "@/lib/types";
+import type { Poi, SubwayStation, School, Park, Mountain, Apartment, Officetel, ResidentialOther, ResidentialPoi, MaintenanceProject, SourceStatus } from "@/lib/types";
 import {
   overpassPoiSearch,
   getElementCoords,
@@ -15,6 +15,7 @@ import { searchResidentialFromLedger } from "@/lib/server/residential-search";
 import { mergeResidentialPois, searchPlannedResidential } from "@/lib/server/planned-residential-search";
 import { searchParks } from "@/lib/server/park-search";
 import { searchMaintenanceProjects } from "@/lib/server/maintenance-project-search";
+import { resolveSource } from "@/lib/server/poi-cache";
 
 const querySchema = z.object({
   lat: z.coerce.number().min(-90).max(90),
@@ -28,6 +29,8 @@ const querySchema = z.object({
     .string()
     .default("subway,school,park,mountain,apartment,officetel,residential,maintenance")
     .transform((val) => val.split(",").map((s) => s.trim())),
+  // 1단계 데이터 신뢰성: "true"면 소스별 캐시를 무시하고 강제 재수집
+  refresh: z.string().optional().transform((v) => v === "true"),
 });
 
 // M-1: Extract token from Authorization header or HttpOnly cookie
@@ -157,6 +160,7 @@ export async function GET(req: NextRequest) {
     radius: searchParams.get("radius") ?? 3000,
     planned: searchParams.get("planned") ?? "true",
     categories: searchParams.get("categories") ?? "subway,school,park,mountain,apartment,officetel,residential,maintenance",
+    refresh: searchParams.get("refresh") ?? undefined,
   });
 
   if (!parsed.success) {
@@ -166,7 +170,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const { lat, lng, radius, planned, categories } = parsed.data;
+  const { lat, lng, radius, planned, categories, refresh } = parsed.data;
 
   try {
     // ── Non-residential POIs from OSM ──────────────────────────────────────
@@ -179,52 +183,76 @@ export async function GET(req: NextRequest) {
     );
     const pois: Poi[] = [];
     const sourceWarnings: string[] = [];
+    const sources: SourceStatus[] = [];
 
     if (categories.includes("park")) {
-      const parks = await searchParks(lat, lng, radius)
-        .catch((err) => {
-          console.warn("[park-search] Source unavailable:", err);
-          sourceWarnings.push("park");
-          return [] as Park[];
-        });
-      pois.push(...parks);
+      const r = await resolveSource<Park[]>({
+        source: "park", lat, lng, radiusM: radius, refresh,
+        fetcher: () => searchParks(lat, lng, radius),
+      });
+      sources.push({ source: "park", status: r.status, fetchedAt: r.fetchedAt });
+      if (r.value) {
+        pois.push(...r.value);
+      } else {
+        console.warn("[park-search] Source unavailable");
+        sourceWarnings.push("park");
+      }
     }
 
     if (categories.includes("maintenance")) {
-      const projects = await searchMaintenanceProjects(lat, lng, radius)
-        .catch((err) => {
-          console.warn("[maintenance-project-search] Source unavailable:", err);
-          sourceWarnings.push("maintenance");
-          return [] as MaintenanceProject[];
-        });
-      pois.push(...projects);
+      const r = await resolveSource<MaintenanceProject[]>({
+        source: "maintenance", lat, lng, radiusM: radius, refresh,
+        fetcher: () => searchMaintenanceProjects(lat, lng, radius),
+      });
+      sources.push({ source: "maintenance", status: r.status, fetchedAt: r.fetchedAt });
+      if (r.value) {
+        pois.push(...r.value);
+      } else {
+        console.warn("[maintenance-project-search] Source unavailable");
+        sourceWarnings.push("maintenance");
+      }
     }
 
     if (osmCategories.length > 0) {
-      const elements = await overpassPoiSearch(lat, lng, radius)
-        .catch((err) => {
-          console.warn("[overpass-poi-search] Source unavailable:", err);
-          sourceWarnings.push("osm");
-          return [] as OverpassElement[];
-        });
-      const seenIds = new Set<number>();
-      const seenNames = new Set<string>();
+      const r = await resolveSource<Poi[]>({
+        source: "osm", lat, lng, radiusM: radius, refresh,
+        fetcher: async () => {
+          const elements = await overpassPoiSearch(lat, lng, radius);
+          const seenIds = new Set<number>();
+          const seenNames = new Set<string>();
+          const converted: Poi[] = [];
 
-      for (const el of elements) {
-        if (seenIds.has(el.id)) continue;
-        seenIds.add(el.id);
+          for (const el of elements) {
+            if (seenIds.has(el.id)) continue;
+            seenIds.add(el.id);
 
-        const category = classifyElement(el);
-        if (!category || !osmCategories.includes(category)) continue;
+            const category = classifyElement(el);
+            if (!category) continue;
 
-        const poi = elementToPoi(el, category, pois.length);
-        if (!poi) continue;
+            const poi = elementToPoi(el, category, converted.length);
+            if (!poi) continue;
 
-        const dedupeKey = `${category}:${poi.name}`;
-        if (seenNames.has(dedupeKey)) continue;
-        seenNames.add(dedupeKey);
+            const dedupeKey = `${category}:${poi.name}`;
+            if (seenNames.has(dedupeKey)) continue;
+            seenNames.add(dedupeKey);
 
-        pois.push(poi);
+            converted.push(poi);
+          }
+
+          return converted;
+        },
+      });
+      sources.push({ source: "osm", status: r.status, fetchedAt: r.fetchedAt });
+      if (r.value) {
+        // 캐시는 osm 소스가 생성 가능한 전체 카테고리를 담고 있으므로 요청된 카테고리로 필터링
+        for (const poi of r.value) {
+          if (osmCategories.includes(poi.category)) {
+            pois.push(poi);
+          }
+        }
+      } else {
+        console.warn("[overpass-poi-search] Source unavailable");
+        sourceWarnings.push("osm");
       }
     }
 
@@ -233,29 +261,39 @@ export async function GET(req: NextRequest) {
     const hasResidential = residentialCats.some((c) => categories.includes(c));
 
     if (hasResidential) {
-      const residentialPois = await searchResidentialFromLedger(lat, lng, radius)
-        .catch((err) => {
-          console.warn("[residential-search] Source unavailable:", err);
-          sourceWarnings.push("residential");
-          return [] as ResidentialPoi[];
-        });
-      const plannedPois = planned
-        ? await searchPlannedResidential(lat, lng, radius)
-          .catch((err) => {
-            console.warn("[planned-residential-search] Source unavailable:", err);
-            sourceWarnings.push("planned-residential");
-            return [] as ResidentialPoi[];
-          })
-        : [];
+      const residentialResult = await resolveSource<ResidentialPoi[]>({
+        source: "residential", lat, lng, radiusM: radius, refresh,
+        fetcher: () => searchResidentialFromLedger(lat, lng, radius),
+      });
+      sources.push({ source: "residential", status: residentialResult.status, fetchedAt: residentialResult.fetchedAt });
+      if (!residentialResult.value) {
+        console.warn("[residential-search] Source unavailable");
+        sourceWarnings.push("residential");
+      }
 
-      for (const rp of mergeResidentialPois(residentialPois, plannedPois)) {
+      let plannedPois: ResidentialPoi[] = [];
+      if (planned) {
+        const plannedResult = await resolveSource<ResidentialPoi[]>({
+          source: "planned-residential", lat, lng, radiusM: radius, refresh,
+          fetcher: () => searchPlannedResidential(lat, lng, radius),
+        });
+        sources.push({ source: "planned-residential", status: plannedResult.status, fetchedAt: plannedResult.fetchedAt });
+        if (plannedResult.value) {
+          plannedPois = plannedResult.value;
+        } else {
+          console.warn("[planned-residential-search] Source unavailable");
+          sourceWarnings.push("planned-residential");
+        }
+      }
+
+      for (const rp of mergeResidentialPois(residentialResult.value ?? [], plannedPois)) {
         if (categories.includes(rp.category)) {
           pois.push(rp);
         }
       }
     }
 
-    return NextResponse.json({ pois, warnings: sourceWarnings });
+    return NextResponse.json({ pois, warnings: sourceWarnings, sources });
   } catch {
     // M-2: Generic error — don't expose internal details
     return NextResponse.json({ error: "POI 검색에 실패했습니다" }, { status: 500 });

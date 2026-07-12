@@ -3,11 +3,21 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import type {
   AnalysisConfig,
+  Apartment,
   LayerVisibility,
+  MaintenanceProject,
+  Mountain,
+  Officetel,
+  Park,
   Poi,
   PoiCategory,
+  PoiSourceId,
   RegionData,
+  ResidentialOther,
+  School,
+  SubwayStation,
 } from "@/lib/types";
+import { POI_SOURCE_CATEGORIES } from "@/lib/types";
 import type { MapViewHandle } from "./map-view";
 import MapView from "./map-view";
 import Sidebar, { type ApartmentFilter } from "./sidebar";
@@ -17,6 +27,7 @@ import {
   listAnalysisProjects,
   loadDynamicRegion,
   loadAnalysisProject,
+  reloadSource,
   saveAnalysisProject,
   type AddressSearchResult,
 } from "@/lib/data-provider";
@@ -67,6 +78,15 @@ export default function SiteAnalysisApp() {
   const [currentProjectId, setCurrentProjectId] = useState<number | undefined>(undefined);
   const [projectSaving, setProjectSaving] = useState(false);
   const [projectMessage, setProjectMessage] = useState("");
+  // 1단계 데이터 신뢰성: 소스 단독 재시도 진행 상태 + 전체 새로 수집 강제 플래그
+  const [retryingSource, setRetryingSource] = useState<PoiSourceId | null>(null);
+  const forceRefreshRef = useRef(false);
+  // 재시도 fetch가 진행되는 동안(await 중) config가 바뀔 수 있으므로 병합 시점의 "현재" 좌표를
+  // 확인하기 위한 ref — useCallback 클로저 안의 config는 fetch 시작 시점 값에 고정되어 있어 사용 불가
+  const configRef = useRef(config);
+  useEffect(() => {
+    configRef.current = config;
+  }, [config]);
 
   useEffect(() => {
     if (!hasSearched) return;
@@ -75,8 +95,12 @@ export default function SiteAnalysisApp() {
     setLoading(true);
     setLoadError(null);
 
+    // handleForceRefresh가 설정한 강제 새로고침 플래그를 읽고 즉시 리셋(useEffect 의존성에는 넣지 않음)
+    const forceRefresh = forceRefreshRef.current;
+    forceRefreshRef.current = false;
+
     // Geo-based search via Overpass API — no area prefix needed
-    loadDynamicRegion(config.centerLat, config.centerLng, config.radiusKm)
+    loadDynamicRegion(config.centerLat, config.centerLng, config.radiusKm, { forceRefresh })
       .then((data) => {
         if (!cancelled) {
           setRegionData(data);
@@ -199,6 +223,92 @@ export default function SiteAnalysisApp() {
     setRegionData(null);
     setReloadNonce((value) => value + 1);
   }, [hasSearched]);
+
+  // 1단계 데이터 신뢰성: 전체 데이터 강제 새로 수집(모든 소스 캐시 무시)
+  const handleForceRefresh = useCallback(() => {
+    forceRefreshRef.current = true;
+    setReloadNonce((value) => value + 1);
+  }, []);
+
+  // 1단계 데이터 신뢰성: 실패한(또는 임의의) 소스 하나만 골라 재시도 — 해당 카테고리 POI만 교체
+  const handleRetrySource = useCallback(async (source: PoiSourceId) => {
+    if (!regionData) return;
+    // fetch 시작 시점의 좌표를 캡처 — 재시도 중 사용자가 다른 주소를 분석하면(config 변경)
+    // 병합 직전 비교로 걸러내어 옛 지역 데이터가 새 지역에 섞이는 것을 방지
+    const fetchCenterLat = config.centerLat;
+    const fetchCenterLng = config.centerLng;
+    const fetchRadiusKm = config.radiusKm;
+    setRetryingSource(source);
+    try {
+      const r = await reloadSource(fetchCenterLat, fetchCenterLng, fetchRadiusKm, source);
+
+      // 경쟁 조건 가드: fetch가 끝난 시점의 "현재" config와 시작 시점 좌표가 다르면
+      // 이미 다른 지역을 분석 중인 것이므로 병합을 건너뛴다
+      const current = configRef.current;
+      if (
+        current.centerLat !== fetchCenterLat ||
+        current.centerLng !== fetchCenterLng ||
+        current.radiusKm !== fetchRadiusKm
+      ) {
+        return;
+      }
+
+      setRegionData((prev) => {
+        if (!prev) return prev;
+
+        // allSources가 있으면(poi-search 경로) 응답에 포함된 소스들을 모두 갱신 — residential과
+        // planned-residential은 카테고리를 공유해 함께 재수집되므로 두 상태 모두 최신화해야 함.
+        // 없으면(subway-routes 경로) 해당 소스 하나만 갱신.
+        const sourceStatuses = r.allSources
+          ? prev.sourceStatuses.map((s) => r.allSources!.find((rs) => rs.source === s.source) ?? s)
+          : prev.sourceStatuses.map((s) => (s.source === source ? r.status : s));
+
+        if (source === "subway-routes") {
+          return {
+            ...prev,
+            subwayRoutes: r.routes ?? prev.subwayRoutes,
+            sourceStatuses,
+          };
+        }
+
+        const cats = POI_SOURCE_CATEGORIES[source];
+        return {
+          ...prev,
+          subwayStations: cats.includes("subway")
+            ? r.pois.filter((p): p is SubwayStation => p.category === "subway")
+            : prev.subwayStations,
+          schools: cats.includes("school")
+            ? r.pois.filter((p): p is School => p.category === "school")
+            : prev.schools,
+          parks: cats.includes("park")
+            ? r.pois.filter((p): p is Park => p.category === "park")
+            : prev.parks,
+          mountains: cats.includes("mountain")
+            ? r.pois.filter((p): p is Mountain => p.category === "mountain")
+            : prev.mountains,
+          apartments: cats.includes("apartment")
+            ? r.pois.filter((p): p is Apartment => p.category === "apartment")
+            : prev.apartments,
+          officetels: cats.includes("officetel")
+            ? r.pois.filter((p): p is Officetel => p.category === "officetel")
+            : prev.officetels,
+          residentialOthers: cats.includes("residential")
+            ? r.pois.filter((p): p is ResidentialOther => p.category === "residential")
+            : prev.residentialOthers,
+          maintenanceProjects: cats.includes("maintenance")
+            ? r.pois.filter((p): p is MaintenanceProject => p.category === "maintenance")
+            : prev.maintenanceProjects,
+          sourceStatuses,
+        };
+      });
+    } catch (error) {
+      // 재시도 실패 — 해당 소스 상태는 이미 "failed"이므로 별도 갱신 없이 콘솔 경고만 남긴다
+      // (unhandled rejection 방지, 사용자에게는 배지가 계속 ⚠️로 남는 것으로 충분)
+      console.warn(`[handleRetrySource] 소스 재시도 실패: ${source}`, error);
+    } finally {
+      setRetryingSource(null);
+    }
+  }, [regionData, config]);
 
   const createManualPoi = useCallback((
     category: PoiCategory,
@@ -345,8 +455,16 @@ export default function SiteAnalysisApp() {
     );
     const poiPositions = mapRef.current.getPoiPositions(visiblePois);
     const routePositions = mapRef.current.getRouteNormalizedPositions(subwayRoutes);
-    return { config, allPois: visiblePois, baseMapImage, poiPositions, radiusPosition, routePositions };
-  }, [allPois, layers, config, subwayRoutes]);
+    return {
+      config,
+      allPois: visiblePois,
+      baseMapImage,
+      poiPositions,
+      radiusPosition,
+      routePositions,
+      sourceStatuses: regionData?.sourceStatuses ?? [],
+    };
+  }, [allPois, layers, config, subwayRoutes, regionData]);
 
   const handlePreview = useCallback(async () => {
     if (!mapRef.current || !canExport) return;
@@ -373,7 +491,8 @@ export default function SiteAnalysisApp() {
       previewInput.poiPositions,
       previewInput.radiusPosition,
       previewInput.routePositions,
-      designConfig
+      designConfig,
+      previewInput.sourceStatuses ?? []
     );
   }, [previewInput]);
 
@@ -386,7 +505,8 @@ export default function SiteAnalysisApp() {
       const { generateSiteAnalysisPpt } = await import("@/lib/ppt-generator");
       await generateSiteAnalysisPpt(
         data.config, data.allPois, data.baseMapImage,
-        data.poiPositions, data.radiusPosition, data.routePositions
+        data.poiPositions, data.radiusPosition, data.routePositions,
+        undefined, data.sourceStatuses
       );
     } catch (err) {
       console.error("PPT generation failed:", err);
@@ -418,11 +538,15 @@ export default function SiteAnalysisApp() {
         currentProjectId={currentProjectId}
         projectSaving={projectSaving}
         projectMessage={projectMessage}
+        sourceStatuses={regionData?.sourceStatuses ?? []}
+        retryingSource={retryingSource}
         onToggleLayer={handleToggleLayer}
         onToggleInsightOverlay={toggleInsightOverlay}
         onConfigChange={handleConfigChange}
         onSelectAddress={handleAddressSelect}
         onRetryLoad={handleRetryLoad}
+        onRetrySource={handleRetrySource}
+        onForceRefresh={handleForceRefresh}
         onApartmentFilterChange={setApartmentFilter}
         onAddManualPoi={handleAddManualPoi}
         onUpdateManualPoi={handleUpdateManualPoi}
