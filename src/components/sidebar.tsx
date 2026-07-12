@@ -3,7 +3,17 @@
 import Link from "next/link";
 import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import type { AddressSearchResult } from "@/lib/data-provider";
-import type { AnalysisConfig, LayerVisibility, MaintenanceProject, Park, Poi, PoiCategory, ResidentialPoi } from "@/lib/types";
+import type {
+  AnalysisConfig,
+  LayerVisibility,
+  MaintenanceProject,
+  Park,
+  Poi,
+  PoiCategory,
+  PoiSourceId,
+  ResidentialPoi,
+  SourceStatus,
+} from "@/lib/types";
 import { CATEGORY_COLORS, CATEGORY_LABELS } from "@/lib/types";
 import { formatAreaSqm, formatDistanceM, summarizeParks } from "@/lib/park-analysis";
 import { formatMaintenanceArea, summarizeMaintenanceProjects } from "@/lib/maintenance-analysis";
@@ -40,11 +50,19 @@ interface SidebarProps {
   readonly currentProjectId?: number;
   readonly projectSaving: boolean;
   readonly projectMessage: string;
+  /** 1단계 데이터 신뢰성: 소스별 수집 상태 — Task 6에서 사이드바 UI로 렌더링 예정, 이번 태스크는 배선만 */
+  readonly sourceStatuses: readonly SourceStatus[];
+  /** 1단계 데이터 신뢰성: 재시도 진행 중인 소스(없으면 null) — Task 6에서 사용 예정 */
+  readonly retryingSource: PoiSourceId | null;
   readonly onToggleLayer: (category: keyof LayerVisibility) => void;
   readonly onToggleInsightOverlay: (id: string) => void;
   readonly onConfigChange: (config: AnalysisConfig) => void;
   readonly onSelectAddress: (result: AddressSearchResult) => void;
   readonly onRetryLoad: () => void;
+  /** 1단계 데이터 신뢰성: 소스 단독 재시도 — Task 6에서 사용 예정 */
+  readonly onRetrySource: (source: PoiSourceId) => void;
+  /** 1단계 데이터 신뢰성: 전체 강제 새로 수집 — Task 6에서 사용 예정 */
+  readonly onForceRefresh: () => void;
   readonly onApartmentFilterChange: (filter: ApartmentFilter) => void;
   readonly onAddManualPoi: (category: PoiCategory, name: string, lat: number, lng: number) => void;
   readonly onUpdateManualPoi: (id: string, patch: { name: string; lat: number; lng: number }) => void;
@@ -139,11 +157,15 @@ export default function Sidebar({
   currentProjectId,
   projectSaving,
   projectMessage,
+  sourceStatuses: _sourceStatuses, // Task 6에서 사이드바 UI로 렌더링 예정 — 이번 태스크는 배선만
+  retryingSource: _retryingSource, // Task 6에서 사용 예정
   onToggleLayer,
   onToggleInsightOverlay,
   onConfigChange,
   onSelectAddress,
   onRetryLoad,
+  onRetrySource: _onRetrySource, // Task 6에서 사용 예정
+  onForceRefresh: _onForceRefresh, // Task 6에서 사용 예정
   onApartmentFilterChange,
   onAddManualPoi,
   onUpdateManualPoi,

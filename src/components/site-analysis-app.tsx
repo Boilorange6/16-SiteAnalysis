@@ -3,11 +3,21 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import type {
   AnalysisConfig,
+  Apartment,
   LayerVisibility,
+  MaintenanceProject,
+  Mountain,
+  Officetel,
+  Park,
   Poi,
   PoiCategory,
+  PoiSourceId,
   RegionData,
+  ResidentialOther,
+  School,
+  SubwayStation,
 } from "@/lib/types";
+import { POI_SOURCE_CATEGORIES } from "@/lib/types";
 import type { MapViewHandle } from "./map-view";
 import MapView from "./map-view";
 import Sidebar, { type ApartmentFilter } from "./sidebar";
@@ -17,6 +27,7 @@ import {
   listAnalysisProjects,
   loadDynamicRegion,
   loadAnalysisProject,
+  reloadSource,
   saveAnalysisProject,
   type AddressSearchResult,
 } from "@/lib/data-provider";
@@ -67,6 +78,9 @@ export default function SiteAnalysisApp() {
   const [currentProjectId, setCurrentProjectId] = useState<number | undefined>(undefined);
   const [projectSaving, setProjectSaving] = useState(false);
   const [projectMessage, setProjectMessage] = useState("");
+  // 1단계 데이터 신뢰성: 소스 단독 재시도 진행 상태 + 전체 새로 수집 강제 플래그
+  const [retryingSource, setRetryingSource] = useState<PoiSourceId | null>(null);
+  const forceRefreshRef = useRef(false);
 
   useEffect(() => {
     if (!hasSearched) return;
@@ -75,8 +89,12 @@ export default function SiteAnalysisApp() {
     setLoading(true);
     setLoadError(null);
 
+    // handleForceRefresh가 설정한 강제 새로고침 플래그를 읽고 즉시 리셋(useEffect 의존성에는 넣지 않음)
+    const forceRefresh = forceRefreshRef.current;
+    forceRefreshRef.current = false;
+
     // Geo-based search via Overpass API — no area prefix needed
-    loadDynamicRegion(config.centerLat, config.centerLng, config.radiusKm)
+    loadDynamicRegion(config.centerLat, config.centerLng, config.radiusKm, { forceRefresh })
       .then((data) => {
         if (!cancelled) {
           setRegionData(data);
@@ -199,6 +217,71 @@ export default function SiteAnalysisApp() {
     setRegionData(null);
     setReloadNonce((value) => value + 1);
   }, [hasSearched]);
+
+  // 1단계 데이터 신뢰성: 전체 데이터 강제 새로 수집(모든 소스 캐시 무시)
+  const handleForceRefresh = useCallback(() => {
+    forceRefreshRef.current = true;
+    setReloadNonce((value) => value + 1);
+  }, []);
+
+  // 1단계 데이터 신뢰성: 실패한(또는 임의의) 소스 하나만 골라 재시도 — 해당 카테고리 POI만 교체
+  const handleRetrySource = useCallback(async (source: PoiSourceId) => {
+    if (!regionData) return;
+    setRetryingSource(source);
+    try {
+      const r = await reloadSource(config.centerLat, config.centerLng, config.radiusKm, source);
+      setRegionData((prev) => {
+        if (!prev) return prev;
+
+        // allSources가 있으면(poi-search 경로) 응답에 포함된 소스들을 모두 갱신 — residential과
+        // planned-residential은 카테고리를 공유해 함께 재수집되므로 두 상태 모두 최신화해야 함.
+        // 없으면(subway-routes 경로) 해당 소스 하나만 갱신.
+        const sourceStatuses = r.allSources
+          ? prev.sourceStatuses.map((s) => r.allSources!.find((rs) => rs.source === s.source) ?? s)
+          : prev.sourceStatuses.map((s) => (s.source === source ? r.status : s));
+
+        if (source === "subway-routes") {
+          return {
+            ...prev,
+            subwayRoutes: r.routes ?? prev.subwayRoutes,
+            sourceStatuses,
+          };
+        }
+
+        const cats = POI_SOURCE_CATEGORIES[source];
+        return {
+          ...prev,
+          subwayStations: cats.includes("subway")
+            ? r.pois.filter((p): p is SubwayStation => p.category === "subway")
+            : prev.subwayStations,
+          schools: cats.includes("school")
+            ? r.pois.filter((p): p is School => p.category === "school")
+            : prev.schools,
+          parks: cats.includes("park")
+            ? r.pois.filter((p): p is Park => p.category === "park")
+            : prev.parks,
+          mountains: cats.includes("mountain")
+            ? r.pois.filter((p): p is Mountain => p.category === "mountain")
+            : prev.mountains,
+          apartments: cats.includes("apartment")
+            ? r.pois.filter((p): p is Apartment => p.category === "apartment")
+            : prev.apartments,
+          officetels: cats.includes("officetel")
+            ? r.pois.filter((p): p is Officetel => p.category === "officetel")
+            : prev.officetels,
+          residentialOthers: cats.includes("residential")
+            ? r.pois.filter((p): p is ResidentialOther => p.category === "residential")
+            : prev.residentialOthers,
+          maintenanceProjects: cats.includes("maintenance")
+            ? r.pois.filter((p): p is MaintenanceProject => p.category === "maintenance")
+            : prev.maintenanceProjects,
+          sourceStatuses,
+        };
+      });
+    } finally {
+      setRetryingSource(null);
+    }
+  }, [regionData, config]);
 
   const createManualPoi = useCallback((
     category: PoiCategory,
@@ -418,11 +501,15 @@ export default function SiteAnalysisApp() {
         currentProjectId={currentProjectId}
         projectSaving={projectSaving}
         projectMessage={projectMessage}
+        sourceStatuses={regionData?.sourceStatuses ?? []}
+        retryingSource={retryingSource}
         onToggleLayer={handleToggleLayer}
         onToggleInsightOverlay={toggleInsightOverlay}
         onConfigChange={handleConfigChange}
         onSelectAddress={handleAddressSelect}
         onRetryLoad={handleRetryLoad}
+        onRetrySource={handleRetrySource}
+        onForceRefresh={handleForceRefresh}
         onApartmentFilterChange={setApartmentFilter}
         onAddManualPoi={handleAddManualPoi}
         onUpdateManualPoi={handleUpdateManualPoi}

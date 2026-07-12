@@ -1,6 +1,8 @@
 import type {
   Poi,
+  PoiSourceId,
   RegionData,
+  SourceStatus,
   SubwayRoute,
   SubwayStation,
   School,
@@ -11,6 +13,7 @@ import type {
   ResidentialOther,
   MaintenanceProject,
 } from "./types";
+import { POI_SOURCE_CATEGORIES } from "./types";
 import type {
   AnalysisProjectPayload,
   AnalysisProjectRecord,
@@ -75,13 +78,20 @@ export async function searchAddresses(query: string, page = 1, size = 5): Promis
   return response.results;
 }
 
-export async function loadDynamicRegion(lat: number, lng: number, radiusKm: number): Promise<RegionData> {
+export async function loadDynamicRegion(
+  lat: number,
+  lng: number,
+  radiusKm: number,
+  opts: { forceRefresh?: boolean } = {},
+): Promise<RegionData> {
   const cacheKey = `dynamic-${lat.toFixed(4)}-${lng.toFixed(4)}-${radiusKm}`;
   const cached = dynamicCache.get(cacheKey);
-  if (cached) return cached;
+  // 1단계 데이터 신뢰성: forceRefresh면 클라이언트 메모리 캐시를 무시하고 새로 수집(아래 set에서 갱신)
+  if (!opts.forceRefresh && cached) return cached;
 
   const radiusM = Math.round(radiusKm * 1000);
   const routeRadiusM = Math.round(radiusM * 1.8); // wider radius so lines extend beyond the analysis circle
+  const refreshQs = opts.forceRefresh ? "&refresh=true" : "";
 
   const poiParams = new URLSearchParams({
     lat: String(lat),
@@ -97,9 +107,17 @@ export async function loadDynamicRegion(lat: number, lng: number, radiusKm: numb
   });
 
   const [poiResponse, routeResponse] = await Promise.all([
-    fetchJson<{ pois: Poi[] }>(`/api/poi-search?${poiParams.toString()}`),
-    fetchJson<{ routes: SubwayRoute[] }>(`/api/subway-routes?${routeParams.toString()}`).catch(
-      () => ({ routes: [] as SubwayRoute[] })
+    fetchJson<{ pois: Poi[]; warnings: string[]; sources: SourceStatus[] }>(
+      `/api/poi-search?${poiParams.toString()}${refreshQs}`
+    ),
+    fetchJson<{ routes: SubwayRoute[]; source: SourceStatus }>(
+      `/api/subway-routes?${routeParams.toString()}${refreshQs}`
+    ).catch(
+      // 노선 조회가 통째로 실패해도 기존 폴백 동작(빈 배열)은 유지하되, 소스 상태는 failed로 기록
+      () => ({
+        routes: [] as SubwayRoute[],
+        source: { source: "subway-routes" as const, status: "failed" as const, fetchedAt: null },
+      })
     ),
   ]);
 
@@ -123,10 +141,42 @@ export async function loadDynamicRegion(lat: number, lng: number, radiusKm: numb
     residentialOthers: poiResponse.pois.filter((poi): poi is ResidentialOther => poi.category === "residential"),
     maintenanceProjects: poiResponse.pois.filter((poi): poi is MaintenanceProject => poi.category === "maintenance"),
     subwayRoutes: routeResponse.routes,
+    sourceStatuses: [...poiResponse.sources, routeResponse.source],
   };
 
   dynamicCache.set(cacheKey, regionData);
   return regionData;
+}
+
+/**
+ * 1단계 데이터 신뢰성: 소스 단독 재수집(재시도).
+ * subway-routes는 routes를 별도로 반환하고(pois는 빈 배열), 그 외 소스는 poi-search의
+ * sources 전체를 allSources로 함께 반환한다 — residential/planned-residential이 같은 카테고리를
+ * 공유해 함께 재수집되므로, 호출측에서 두 소스 상태를 모두 갱신할 수 있도록 하기 위함.
+ */
+export async function reloadSource(
+  lat: number,
+  lng: number,
+  radiusKm: number,
+  source: PoiSourceId,
+): Promise<{ pois: Poi[]; routes?: SubwayRoute[]; status: SourceStatus; allSources?: SourceStatus[] }> {
+  const radiusM = Math.round(radiusKm * 1000);
+
+  if (source === "subway-routes") {
+    const routeRadiusM = Math.round(radiusM * 1.8);
+    // 주의: fetchJson이 내부에서 resolvePath를 호출하므로 여기서 미리 감싸면 안 됨(authFetch 판별용 "/api/" 접두 검사가 깨짐)
+    const res = await fetchJson<{ routes: SubwayRoute[]; source: SourceStatus }>(
+      `/api/subway-routes?lat=${lat}&lng=${lng}&radius=${routeRadiusM}&refresh=true`
+    );
+    return { pois: [], routes: res.routes, status: res.source };
+  }
+
+  const cats = POI_SOURCE_CATEGORIES[source].join(",");
+  const res = await fetchJson<{ pois: Poi[]; sources: SourceStatus[] }>(
+    `/api/poi-search?lat=${lat}&lng=${lng}&radius=${radiusM}&categories=${cats}&refresh=true`
+  );
+  const status = res.sources.find((s) => s.source === source) ?? { source, status: "failed" as const, fetchedAt: null };
+  return { pois: res.pois, status, allSources: res.sources };
 }
 
 export function clearDynamicRegionCache(): void {

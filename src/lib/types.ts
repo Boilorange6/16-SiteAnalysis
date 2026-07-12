@@ -199,6 +199,8 @@ export interface RegionData {
   readonly residentialOthers: readonly ResidentialOther[];
   readonly maintenanceProjects: readonly MaintenanceProject[];
   readonly subwayRoutes: readonly SubwayRoute[];
+  /** 1단계 데이터 신뢰성: 소스별 수집 상태(fresh/cached/failed) — 사이드바 재시도 UI(Task 6)에서 사용 */
+  readonly sourceStatuses: readonly SourceStatus[];
 }
 
 export const CATEGORY_COLORS: Record<PoiCategory, string> = {
