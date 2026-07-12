@@ -86,5 +86,15 @@ function initSchema(db: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_analysis_projects_user_updated
       ON analysis_projects (user_id, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS poi_source_cache (
+      source TEXT NOT NULL,
+      lat TEXT NOT NULL,
+      lng TEXT NOT NULL,
+      radius_m INTEGER NOT NULL,
+      value_json TEXT NOT NULL,
+      fetched_at INTEGER NOT NULL,
+      PRIMARY KEY (source, lat, lng, radius_m)
+    );
   `);
 }
