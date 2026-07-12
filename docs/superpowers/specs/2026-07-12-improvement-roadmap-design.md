@@ -57,9 +57,9 @@
 - 제공받은 보고서 기준으로 SlideSpec(미리보기=내보내기 공유 모델) 디자인 교체
 - 개별 요소 편집성 원칙 유지, qa/validate-preview-parity.mjs로 미리보기-PPT 일치 검증
 
-### 2-4. 결정 보류 항목
-- PPT 속 지도에 집GPT식 지하철 오버레이(2026-07-12 웹 이식분) 반영 여부 → 템플릿 분석 후 결정
-- PPT 프리셋 3종 복원 여부(서버 유일본 백업: Obsidian Architecture/server-only-ppt-design-config.ts.bak) → 템플릿 확정되면 불필요할 가능성 높음
+### 2-4. 확정된 부속 결정 (2026-07-12 사용자 확정)
+- **PPT 속 지도**: 집GPT식 표현을 **역사도식선·역명/노선 배지 수준까지 반영** (정제 데이터 osm-subway.json 기반, 웹과 통일). 출입구 마커·커넥터는 PPT 축척(반경 전체 뷰)에서 노이즈이므로 제외. 미리보기(canvas)·내보내기(pptx) 양쪽 렌더러에 동일 적용 — 2단계 템플릿 작업에 포함
+- **PPT 프리셋 3종 복원 안 함**: 회사 템플릿 단일 디자인에 집중. 백업은 Obsidian(Architecture/server-only-ppt-design-config.ts.bak)에 보관, 필요 시 복원 가능
 
 ### 2단계 완료 기준
 1. 팀원 판정: 기존 수작업 보고서와 비교해 "다듬으면 바로 제출 가능"
