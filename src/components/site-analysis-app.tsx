@@ -81,6 +81,12 @@ export default function SiteAnalysisApp() {
   // 1단계 데이터 신뢰성: 소스 단독 재시도 진행 상태 + 전체 새로 수집 강제 플래그
   const [retryingSource, setRetryingSource] = useState<PoiSourceId | null>(null);
   const forceRefreshRef = useRef(false);
+  // 재시도 fetch가 진행되는 동안(await 중) config가 바뀔 수 있으므로 병합 시점의 "현재" 좌표를
+  // 확인하기 위한 ref — useCallback 클로저 안의 config는 fetch 시작 시점 값에 고정되어 있어 사용 불가
+  const configRef = useRef(config);
+  useEffect(() => {
+    configRef.current = config;
+  }, [config]);
 
   useEffect(() => {
     if (!hasSearched) return;
@@ -227,9 +233,26 @@ export default function SiteAnalysisApp() {
   // 1단계 데이터 신뢰성: 실패한(또는 임의의) 소스 하나만 골라 재시도 — 해당 카테고리 POI만 교체
   const handleRetrySource = useCallback(async (source: PoiSourceId) => {
     if (!regionData) return;
+    // fetch 시작 시점의 좌표를 캡처 — 재시도 중 사용자가 다른 주소를 분석하면(config 변경)
+    // 병합 직전 비교로 걸러내어 옛 지역 데이터가 새 지역에 섞이는 것을 방지
+    const fetchCenterLat = config.centerLat;
+    const fetchCenterLng = config.centerLng;
+    const fetchRadiusKm = config.radiusKm;
     setRetryingSource(source);
     try {
-      const r = await reloadSource(config.centerLat, config.centerLng, config.radiusKm, source);
+      const r = await reloadSource(fetchCenterLat, fetchCenterLng, fetchRadiusKm, source);
+
+      // 경쟁 조건 가드: fetch가 끝난 시점의 "현재" config와 시작 시점 좌표가 다르면
+      // 이미 다른 지역을 분석 중인 것이므로 병합을 건너뛴다
+      const current = configRef.current;
+      if (
+        current.centerLat !== fetchCenterLat ||
+        current.centerLng !== fetchCenterLng ||
+        current.radiusKm !== fetchRadiusKm
+      ) {
+        return;
+      }
+
       setRegionData((prev) => {
         if (!prev) return prev;
 
@@ -278,6 +301,10 @@ export default function SiteAnalysisApp() {
           sourceStatuses,
         };
       });
+    } catch (error) {
+      // 재시도 실패 — 해당 소스 상태는 이미 "failed"이므로 별도 갱신 없이 콘솔 경고만 남긴다
+      // (unhandled rejection 방지, 사용자에게는 배지가 계속 ⚠️로 남는 것으로 충분)
+      console.warn(`[handleRetrySource] 소스 재시도 실패: ${source}`, error);
     } finally {
       setRetryingSource(null);
     }

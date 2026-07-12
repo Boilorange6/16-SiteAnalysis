@@ -14,7 +14,7 @@ import type {
   ResidentialPoi,
   SourceStatus,
 } from "@/lib/types";
-import { CATEGORY_COLORS, CATEGORY_LABELS } from "@/lib/types";
+import { CATEGORY_COLORS, CATEGORY_LABELS, POI_SOURCE_LABELS } from "@/lib/types";
 import { formatAreaSqm, formatDistanceM, summarizeParks } from "@/lib/park-analysis";
 import { formatMaintenanceArea, summarizeMaintenanceProjects } from "@/lib/maintenance-analysis";
 import type { AnalysisScores, InsightNarrative, InsightOverlay } from "@/lib/analysis-engine";
@@ -50,18 +50,18 @@ interface SidebarProps {
   readonly currentProjectId?: number;
   readonly projectSaving: boolean;
   readonly projectMessage: string;
-  /** 1단계 데이터 신뢰성: 소스별 수집 상태 — Task 6에서 사이드바 UI로 렌더링 예정, 이번 태스크는 배선만 */
+  /** 1단계 데이터 신뢰성: 소스별 수집 상태 — "데이터 수집 상태" 카드에 렌더링 */
   readonly sourceStatuses: readonly SourceStatus[];
-  /** 1단계 데이터 신뢰성: 재시도 진행 중인 소스(없으면 null) — Task 6에서 사용 예정 */
+  /** 1단계 데이터 신뢰성: 재시도 진행 중인 소스(없으면 null) */
   readonly retryingSource: PoiSourceId | null;
   readonly onToggleLayer: (category: keyof LayerVisibility) => void;
   readonly onToggleInsightOverlay: (id: string) => void;
   readonly onConfigChange: (config: AnalysisConfig) => void;
   readonly onSelectAddress: (result: AddressSearchResult) => void;
   readonly onRetryLoad: () => void;
-  /** 1단계 데이터 신뢰성: 소스 단독 재시도 — Task 6에서 사용 예정 */
+  /** 1단계 데이터 신뢰성: 소스 단독 재시도 */
   readonly onRetrySource: (source: PoiSourceId) => void;
-  /** 1단계 데이터 신뢰성: 전체 강제 새로 수집 — Task 6에서 사용 예정 */
+  /** 1단계 데이터 신뢰성: 전체 강제 새로 수집 */
   readonly onForceRefresh: () => void;
   readonly onApartmentFilterChange: (filter: ApartmentFilter) => void;
   readonly onAddManualPoi: (category: PoiCategory, name: string, lat: number, lng: number) => void;
@@ -83,6 +83,13 @@ const PANEL_TABS: readonly { id: SidebarPanel; label: string; meta: string }[] =
 
 function cx(...classes: Array<string | false | undefined>) {
   return classes.filter(Boolean).join(" ");
+}
+
+/** 1단계 데이터 신뢰성: 수집 시각을 "M/D" 형태로 표시 (없으면 빈 문자열) */
+function formatFetchedDate(ts: number | null): string {
+  if (!ts) return "";
+  const d = new Date(ts);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
 function PanelCard({
@@ -157,15 +164,15 @@ export default function Sidebar({
   currentProjectId,
   projectSaving,
   projectMessage,
-  sourceStatuses: _sourceStatuses, // Task 6에서 사이드바 UI로 렌더링 예정 — 이번 태스크는 배선만
-  retryingSource: _retryingSource, // Task 6에서 사용 예정
+  sourceStatuses,
+  retryingSource,
   onToggleLayer,
   onToggleInsightOverlay,
   onConfigChange,
   onSelectAddress,
   onRetryLoad,
-  onRetrySource: _onRetrySource, // Task 6에서 사용 예정
-  onForceRefresh: _onForceRefresh, // Task 6에서 사용 예정
+  onRetrySource,
+  onForceRefresh,
   onApartmentFilterChange,
   onAddManualPoi,
   onUpdateManualPoi,
@@ -454,6 +461,45 @@ export default function Sidebar({
           }
         />
         <div className="space-y-4">
+          {sourceStatuses.length > 0 && (
+            <div className="rounded-xl border border-white/12 bg-white/5 p-3 text-xs">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="font-semibold text-white/80">데이터 수집 상태</span>
+                <button
+                  type="button"
+                  onClick={onForceRefresh}
+                  className={`rounded-lg border border-white/15 px-2 py-1 text-[11px] text-white/70 hover:bg-white/10 ${focusRingClass}`}
+                >
+                  전체 새로 수집
+                </button>
+              </div>
+              <ul className="space-y-1.5">
+                {sourceStatuses.map((s) => (
+                  <li key={s.source} className="flex items-center justify-between gap-2">
+                    <span className="text-white/70">{POI_SOURCE_LABELS[s.source]}</span>
+                    {s.status === "failed" ? (
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-amber-300">⚠️ 수집 실패</span>
+                        <button
+                          type="button"
+                          disabled={retryingSource === s.source}
+                          onClick={() => onRetrySource(s.source)}
+                          className={`rounded border border-amber-300/40 px-1.5 py-0.5 text-[11px] text-amber-200 hover:bg-amber-300/10 disabled:opacity-50 ${focusRingClass}`}
+                        >
+                          {retryingSource === s.source ? "재시도 중…" : "재시도"}
+                        </button>
+                      </span>
+                    ) : (
+                      <span className="text-emerald-300/90">
+                        {s.status === "fresh" ? "방금 수집" : `${formatFetchedDate(s.fetchedAt)} 수집본`}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <div className="rounded-xl border border-white/10 bg-white/[0.05] p-3">
             <div className="mb-2 flex items-center justify-between gap-2">
               <p className="text-xs font-bold text-white/80">API 연결</p>
