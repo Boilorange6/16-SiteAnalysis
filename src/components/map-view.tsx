@@ -32,6 +32,8 @@ import {
   type MarkerStyle,
 } from "@/lib/map-marker-utils";
 import { toJpeg } from "html-to-image";
+import { resolvePath } from "@/lib/data-provider";
+import { addOsmSubwayOverlay, type SubwayMapResponse } from "@/lib/osm-subway-overlay";
 
 interface MapViewProps {
   readonly config: AnalysisConfig;
@@ -401,6 +403,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
   const [markerStyle, setMarkerStyle] = useState<MarkerStyle>("default");
   const [markerSizePreset, setMarkerSizePreset] = useState<MarkerSizePreset>("medium");
   const [subwayStationStyle, setSubwayStationStyle] = useState<SubwayStationStyle>(DEFAULT_SUBWAY_STATION_STYLE);
+  const [subwayMapData, setSubwayMapData] = useState<SubwayMapResponse | null>(null);
   const [controlsOpen, setControlsOpen] = useState(true);
 
   useImperativeHandle(ref, () => ({
@@ -637,6 +640,32 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
     centerMarkerRef.current.setTooltipContent(config.centerName);
   }, [config.centerLat, config.centerLng, config.centerName, config.radiusKm]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const response = await fetch(resolvePath("/data/osm-subway.json"), { cache: "force-cache" });
+        if (!response.ok) {
+          throw new Error(`OSM subway data request failed: ${response.status}`);
+        }
+        const data = (await response.json()) as SubwayMapResponse;
+        if (!cancelled) {
+          setSubwayMapData(data);
+        }
+      } catch (error) {
+        console.warn("OSM subway data unavailable; falling back to seed coordinates.", error);
+        if (!cancelled) {
+          setSubwayMapData(null);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const updateMarkers = useCallback(async () => {
     const lifecycleToken = lifecycleTokenRef.current;
     const map = mapRef.current;
@@ -671,7 +700,11 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
     );
 
     routeLinesLayer.clearLayers();
-    if (layers.subway) {
+    if (layers.subway && subwayMapData) {
+      // OSM 정제 데이터가 있으면 집GPT식 오버레이(역사도식선·노선라벨·출입구 커넥터)를 사용하고,
+      // 아래의 라이브 subwayRoutes 폴리라인·naver station bar 경로는 건너뛴다 (이중 표시 방지).
+      addOsmSubwayOverlay(L, map, routeLinesLayer, config, subwayMapData);
+    } else if (layers.subway) {
       const stationMap = new Map(
         visiblePois
           .filter((poi): poi is SubwayStation => poi.category === "subway")
@@ -703,14 +736,17 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
 
     // Naver style: draw thick polyline segments at station locations
     const naverSubway = markerStyle === "naver";
-    const clusterablePois = naverSubway
+    // OSM 오버레이가 지하철 역 마커를 자체적으로 그리므로, 기본 스타일의 개별 지하철 핀 마커와
+    // 겹치지 않도록 클러스터링 대상에서도 제외한다 (이중 표시 방지).
+    const skipDefaultSubwayMarkers = layers.subway && Boolean(subwayMapData);
+    const clusterablePois = naverSubway || skipDefaultSubwayMarkers
       ? visiblePois.filter(p => p.category !== "subway")
       : visiblePois;
     const markerSize = MARKER_SIZE_PRESETS[markerSizePreset];
     const stationBarWidth = subwayStationStyle.barWidthPx;
     const stationBorderWidth = stationBarWidth + Math.max(4, Math.round(stationBarWidth * 0.4));
 
-    if (naverSubway && layers.subway) {
+    if (naverSubway && layers.subway && !subwayMapData) {
       const stations = visiblePois.filter((p): p is SubwayStation => p.category === "subway");
 
       /** Haversine distance in meters between two lat/lng points */
@@ -925,7 +961,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
 
       addClusterMarker(L, map, markersLayer, cluster.items, cluster.lat, cluster.lng, markerSize.scale);
     });
-  }, [config, layers, pois, subwayRoutes, markerStyle, markerSizePreset, subwayStationStyle]);
+  }, [config, layers, pois, subwayRoutes, markerStyle, markerSizePreset, subwayStationStyle, subwayMapData]);
 
   useEffect(() => {
     if (typeof window !== "undefined" && window.innerWidth < 640) {
