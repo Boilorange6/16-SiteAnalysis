@@ -738,14 +738,18 @@ function drawWrappedText(
 function drawEmptyStateBadge(
   ctx: CanvasRenderingContext2D,
   d: PptDesignConfig,
-  region: { x: number; y: number; w: number; h: number } = { x: 0, y: 0, w: SLIDE_W, h: SLIDE_H }
+  region: { x: number; y: number; w: number; h: number } = { x: 0, y: 0, w: SLIDE_W, h: SLIDE_H },
+  // P4R Task C fix: 범용 문구("반경 내 확인된 시설이 없습니다")가 시설은 있으나 특정 하위 데이터
+  // (일정/상세 내역 등)만 없는 케이스에서 같은 슬라이드 다른 패널과 자기모순되는 문제 — 문구를
+  // 파라미터화해 호출부가 상황에 맞는 문구를 넘길 수 있게 한다. 기본값은 기존 범용 문구 유지.
+  message: string = EMPTY_PANEL_TEXT
 ) {
   const w = 4.6;
   const h = 0.56;
   const x = region.x + (region.w - w) / 2;
   const y = region.y + (region.h - h) / 2;
   drawDataPanel(ctx, ix(x), iy(y), ix(w), iy(h), d);
-  drawTextBox(ctx, EMPTY_PANEL_TEXT, ix(x + 0.2), iy(y), ix(w - 0.4), iy(h), {
+  drawTextBox(ctx, message, ix(x + 0.2), iy(y), ix(w - 0.4), iy(h), {
     fontSize: 13, color: d.mutedTextColor, align: "center", valign: "middle",
   });
 }
@@ -1422,7 +1426,8 @@ function renderScoreDashboardSlide(
   });
   drawMetricCard(ctx, 4.15, 6.05, 2.55, 0.8, "최고 경쟁력", strongest.label, strongest.detail, getScoreColor(strongest.score / strongest.max), d);
   drawMetricCard(ctx, 6.9, 6.05, 2.55, 0.8, "보완 검토", weakest.label, weakest.detail, getScoreColor(weakest.score / weakest.max), d);
-  drawMetricCard(ctx, 9.65, 6.05, 2.55, 0.8, "분석 반경", `${input.config.radiusKm}km`, `${input.allPois.length.toLocaleString()}개 POI 반영`, "#93C5FD", d);
+  // P4R Task C fix: 저대비 지명 hex(#93C5FD) 정리 — 등급색(gradeColor)이 아닌 참고 카드이므로 무채 잉크.
+  drawMetricCard(ctx, 9.65, 6.05, 2.55, 0.8, "분석 반경", `${input.config.radiusKm}km`, `${input.allPois.length.toLocaleString()}개 POI 반영`, d.accentColor, d);
   drawFooterNote(ctx, "점수는 POI 수, 거리, 면적, 정비사업 경계 확인 여부를 조합한 내부 기준입니다.", d);
 }
 
@@ -1630,12 +1635,14 @@ function renderParkAccessDetailSlide(
   const nearestParkDistanceM = summary.nearestPark
     ? summary.nearestPark.access_distance_m ?? summary.nearestPark.distance_m ?? 0
     : null;
-  drawMetricCard(ctx, 0.55, 1.18, 2.45, 0.86, "생활권 공원", `${summary.nearby500Count}개`, "접근 500m 이내", "#10B981", d);
-  drawMetricCard(ctx, 3.18, 1.18, 2.45, 0.86, "총 녹지 면적", formatAreaSqm(summary.totalAreaSqm), `${summary.count}개 공원`, "#22C55E", d);
+  // P4R Task C fix: 구 팔레트(#10B981/#22C55E/#3B82F6/#F59E0B) 정리 — "생활권 공원"(접근성
+  // 슬라이드의 대표 지표: 500m 이내 실사용 가능 공원 수)만 accentRed로 강조하고 나머지는 무채 잉크 테두리.
+  drawMetricCard(ctx, 0.55, 1.18, 2.45, 0.86, "생활권 공원", `${summary.nearby500Count}개`, "접근 500m 이내", d.accentRed, d);
+  drawMetricCard(ctx, 3.18, 1.18, 2.45, 0.86, "총 녹지 면적", formatAreaSqm(summary.totalAreaSqm), `${summary.count}개 공원`, d.accentColor, d);
   drawMetricCard(ctx, 5.8, 1.18, 2.45, 0.86, "최근접 공원",
     nearestParkDistanceM !== null ? formatDistanceM(nearestParkDistanceM) : "미확인",
-    summary.nearestPark?.name ?? "반경 내 공원 없음", "#3B82F6", d);
-  drawMetricCard(ctx, 8.42, 1.18, 2.45, 0.86, "대형공원", `${summary.majorCount}개`, "광역 이용 가능성", "#F59E0B", d);
+    summary.nearestPark?.name ?? "반경 내 공원 없음", d.accentColor, d);
+  drawMetricCard(ctx, 8.42, 1.18, 2.45, 0.86, "대형공원", `${summary.majorCount}개`, "광역 이용 가능성", d.accentColor, d);
   // P4R Task B fix: 랭킹 리스트도 원시 ID 이름 공원 제외(표시만 — 상단 카드의 count 집계는 원본 기준).
   const topParks = [...parks]
     .filter((park) => !isRawPoiId(park.name))
@@ -1644,7 +1651,7 @@ function renderParkAccessDetailSlide(
   drawRankedList(ctx, "최근접 공원 접근거리", topParks.map((park) => ({
     label: park.name,
     meta: `${formatDistanceM(park.access_distance_m ?? park.distance_m ?? 0)} · ${park.area_sqm > 0 ? formatAreaSqm(park.area_sqm) : "면적 미확인"}`,
-    color: "#10B981",
+    color: d.accentColor,
   })), 0.55, 2.42, 5.55, d);
   drawDataPanel(ctx, ix(6.35), iy(2.42), ix(5.35), iy(3.25), d);
   drawTextBox(ctx, "공원 성격별 구성", ix(6.6), iy(2.68), ix(4.85), iy(0.25), { fontSize: 12, bold: true, color: d.textColor });
@@ -1656,7 +1663,7 @@ function renderParkAccessDetailSlide(
   ].forEach(([label, value], idx) => {
     const y = 3.18 + idx * 0.5;
     drawTextBox(ctx, String(label), ix(6.65), iy(y), ix(1.45), iy(0.22), { fontSize: 8.5, color: d.mutedTextColor });
-    drawProgressBar(ctx, 8.25, y + 0.06, 2.1, Number(value), Math.max(summary.count, 1), "#10B981", d);
+    drawProgressBar(ctx, 8.25, y + 0.06, 2.1, Number(value), Math.max(summary.count, 1), d.accentColor, d);
     drawTextBox(ctx, `${value}개`, ix(10.55), iy(y), ix(0.6), iy(0.22), { fontSize: 8.5, bold: true, color: d.textColor, align: "right" });
   });
   drawWrappedText(ctx, "경계 좌표가 있는 공원은 폴리곤 외곽선까지의 최단거리를 사용하고, 경계가 없는 공원은 면적 기반 원형 추정으로 보정합니다.", ix(6.65), iy(5.28), ix(4.65), iy(0.18), 2, { fontSize: 7.4, color: d.mutedTextColor });
@@ -1683,7 +1690,8 @@ function renderDevelopmentRiskMatrixSlide(
   const topProjects = summary.topProjects.slice(0, 7);
   if (topProjects.length === 0) {
     // P4R Task C-3: 0건일 때 거대한 빈 흰 카드 대신 콜아웃 슬라이드의 컴팩트 중앙 배지 문법.
-    drawEmptyStateBadge(ctx, d, { x: 0.55, y: 2.25, w: 7.35, h: 3.95 });
+    // P4R Task C fix: 범용 문구 대신 이 패널(정비사업 상세 테이블) 전용 문구로 정확화.
+    drawEmptyStateBadge(ctx, d, { x: 0.55, y: 2.25, w: 7.35, h: 3.95 }, "표시할 정비사업 상세 내역이 없습니다");
   } else {
     drawDataPanel(ctx, ix(0.55), iy(2.25), ix(7.35), iy(3.95), d);
     drawTextBox(ctx, "주요 정비사업 영향도 테이블", ix(0.8), iy(2.5), ix(6.8), iy(0.25), { fontSize: 12, bold: true, color: d.textColor });
@@ -1743,7 +1751,9 @@ function renderResidentialSupplySlide(
     .slice(0, 6);
   if (timeline.length === 0) {
     // P4R Task C-3: 0건일 때 거대한 빈 흰 카드 대신 콜아웃 슬라이드의 컴팩트 중앙 배지 문법.
-    drawEmptyStateBadge(ctx, d, { x: 6.42, y: 2.34, w: 5.2, h: 3.4 });
+    // P4R Task C fix: 시설(주거시설)은 있으나 일정 데이터만 없는 케이스에서 좌측 랭킹 리스트와
+    // 자기모순되지 않도록 범용 문구 대신 이 패널(분양/입주 타임라인) 전용 문구로 정확화.
+    drawEmptyStateBadge(ctx, d, { x: 6.42, y: 2.34, w: 5.2, h: 3.4 }, "일정 정보가 있는 분양/입주 데이터가 없습니다");
   } else {
     drawDataPanel(ctx, ix(6.42), iy(2.34), ix(5.2), iy(3.4), d);
     drawTextBox(ctx, "분양/입주 타임라인", ix(6.7), iy(2.6), ix(4.7), iy(0.25), { fontSize: 12, bold: true, color: d.textColor });
