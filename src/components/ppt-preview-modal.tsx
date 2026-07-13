@@ -127,7 +127,7 @@ interface PptPreviewModalProps {
   readonly open: boolean;
   readonly input: SlideRenderInput;
   readonly onClose: () => void;
-  readonly onDownload: (designConfig: PptDesignConfig) => Promise<void>;
+  readonly onDownload: (designConfig: PptDesignConfig, includeScoreDashboard: boolean) => Promise<void>;
 }
 
 export default function PptPreviewModal({ open, input, onClose, onDownload }: PptPreviewModalProps) {
@@ -139,6 +139,8 @@ export default function PptPreviewModal({ open, input, onClose, onDownload }: Pp
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>("slides");
   const [editorTab, setEditorTab] = useState<EditorTab>("theme");
   const [zoom, setZoom] = useState(100);
+  // Task 7: 점수 대시보드는 기본 제외 — 켜면 "입지 현황 종합" 다음(원위치)에 삽입.
+  const [includeScoreDashboard, setIncludeScoreDashboard] = useState(false);
   const baseImageRef = useRef<HTMLImageElement | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -148,40 +150,43 @@ export default function PptPreviewModal({ open, input, onClose, onDownload }: Pp
     setCurrentSlide(0);
     setMobilePanel("slides");
     setDesignConfig(DEFAULT_PPT_DESIGN);
+    setIncludeScoreDashboard(false);
     setRendering(true);
     (async () => {
       const { renderAllSlides, preloadBaseImage } = await import("@/lib/ppt-canvas-renderer");
       const img = await preloadBaseImage(input.baseMapImage);
       baseImageRef.current = img;
-      const rendered = await renderAllSlides(input, DEFAULT_PPT_DESIGN);
+      const rendered = await renderAllSlides(input, DEFAULT_PPT_DESIGN, false);
       setSlides(rendered);
       setRendering(false);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Re-render on designConfig change
+  // Re-render on designConfig or slide-composition (점수 대시보드 토글) change
   useEffect(() => {
     if (!open || slides.length === 0) return;
 
     // Immediately re-render the current slide
     (async () => {
       const { renderSingleSlide } = await import("@/lib/ppt-canvas-renderer");
-      const updated = await renderSingleSlide(currentSlide, input, designConfig, baseImageRef.current ?? undefined);
+      const updated = await renderSingleSlide(currentSlide, input, designConfig, baseImageRef.current ?? undefined, includeScoreDashboard);
       setSlides(prev => prev.map((s, i) => i === currentSlide ? updated : s));
     })();
 
-    // Debounced full re-render for thumbnails
+    // Debounced full re-render for thumbnails — also clamps currentSlide since
+    // toggling the score dashboard shifts the total slide count.
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       const { renderAllSlides } = await import("@/lib/ppt-canvas-renderer");
-      const rendered = await renderAllSlides(input, designConfig);
+      const rendered = await renderAllSlides(input, designConfig, includeScoreDashboard);
       setSlides(rendered);
+      setCurrentSlide(prev => Math.min(prev, rendered.length - 1));
     }, 250);
 
     return () => clearTimeout(debounceRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [designConfig]);
+  }, [designConfig, includeScoreDashboard]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -202,11 +207,11 @@ export default function PptPreviewModal({ open, input, onClose, onDownload }: Pp
   const handleDownload = useCallback(async () => {
     setDownloading(true);
     try {
-      await onDownload(designConfig);
+      await onDownload(designConfig, includeScoreDashboard);
     } finally {
       setDownloading(false);
     }
-  }, [onDownload, designConfig]);
+  }, [onDownload, designConfig, includeScoreDashboard]);
 
   const updateConfig = useCallback(<K extends keyof PptDesignConfig>(
     key: K, value: PptDesignConfig[K]
@@ -466,6 +471,23 @@ export default function PptPreviewModal({ open, input, onClose, onDownload }: Pp
 
               {editorTab === "export" && (
                 <>
+                  <EditorSection title="슬라이드 구성">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="include-score-dashboard"
+                        checked={includeScoreDashboard}
+                        onChange={(e) => setIncludeScoreDashboard(e.target.checked)}
+                        className="h-3.5 w-3.5 cursor-pointer accent-blue-400"
+                      />
+                      <label htmlFor="include-score-dashboard" className="cursor-pointer select-none text-[11px] text-white/75">
+                        점수 대시보드 포함
+                      </label>
+                    </div>
+                    <p className="pl-5 text-[9px] leading-4 text-white/35">
+                      기본적으로 팩트 중심 구성에서 제외됩니다. 켜면 &quot;입지 현황 종합&quot; 다음에 삽입됩니다.
+                    </p>
+                  </EditorSection>
                   <EditorSection title="편집 가능한 PPTX">
                     <div className="rounded-xl border border-emerald-300/20 bg-emerald-300/10 p-3 text-[11px] leading-5 text-emerald-50/80">
                       지도 이미지는 배경 이미지로, 마커/링/노선/범례/텍스트/패널은 PowerPoint에서 선택 가능한 도형과 텍스트 상자로 내보냅니다.
@@ -475,7 +497,6 @@ export default function PptPreviewModal({ open, input, onClose, onDownload }: Pp
                     <StyleSlider label="줌" value={zoom} min={60} max={160} step={10} unit="%" onChange={setZoom} />
                   </EditorSection>
                   <EditorSection title="투명도 세부">
-                    <StyleSlider label="표지 지도 억제" value={designConfig.coverOverlayTransparency} min={0} max={90} step={5} unit="%" onChange={(v) => updateConfig("coverOverlayTransparency", v)} />
                     <StyleSlider label="레이블 배경" value={designConfig.labelBgTransparency} min={0} max={90} step={5} unit="%" onChange={(v) => updateConfig("labelBgTransparency", v)} />
                     <StyleSlider label="콜아웃 배경" value={designConfig.calloutTransparency} min={0} max={90} step={5} unit="%" onChange={(v) => updateConfig("calloutTransparency", v)} />
                     <StyleSlider label="연결선" value={designConfig.leaderLineTransparency} min={0} max={90} step={5} unit="%" onChange={(v) => updateConfig("leaderLineTransparency", v)} />

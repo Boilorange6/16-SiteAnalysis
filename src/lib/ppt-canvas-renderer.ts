@@ -32,7 +32,12 @@ const SLIDE_W = 13.333;
 const SLIDE_H = 7.5;
 const SX = CANVAS_W / SLIDE_W; // ≈72
 const SY = CANVAS_H / SLIDE_H; // 72
-const APT_PAGE_SIZE = 12;
+// 아파트 콜아웃 슬라이드 1페이지당 카드 수.
+// computeResidentialCalloutLayout(ppt-callout-layout.ts)의 좌/우 컬럼 실측 수용량 합은
+// calloutHeight=0.73(Task 6, 미니 데이터표 전환) 기준 이론상 최대치이며, 실측 만석 페이지는
+// 카드가 컬럼 하단 경계에 딱 맞물려 시각적으로 "하단 적층"처럼 보인다(Task 6 QA, 이월 B).
+// 여유 마진을 둔 안전 상한 7로 낮춰 카드 간 여백을 확보한다. 양 렌더러(canvas/pptx) 동일 값 유지.
+const APT_PAGE_SIZE = 7;
 
 // ── Static layout tokens (match ppt-generator.ts) ────────────────────────────
 
@@ -1855,9 +1860,13 @@ function renderSummarySlide(
   drawDataPanel(ctx, ix(d.panelX), iy(d.panelY), panelW, iy(5), d);
 
   const points = getSummaryLines(config, allPois);
-  points.forEach((text, idx) => {
-    drawTextBox(ctx, text, ix(d.panelX + 0.3), iy(d.panelY + 0.4) + idx * iy(0.65), panelW - ix(0.5), iy(0.5), {
-      fontSize: d.summaryFontSize, bold: idx === points.length - 1, color: d.textColor, valign: "middle",
+  const lastBodyIdx = points.length - 2; // 마지막 줄은 항상 muted 점수 보조 지표 — 강조는 그 앞줄에 둔다.
+  points.forEach((point, idx) => {
+    drawTextBox(ctx, point.text, ix(d.panelX + 0.3), iy(d.panelY + 0.4) + idx * iy(0.65), panelW - ix(0.5), iy(0.5), {
+      fontSize: point.muted ? Math.max(8, Math.round(d.summaryFontSize * 0.7)) : d.summaryFontSize,
+      bold: !point.muted && idx === lastBodyIdx,
+      color: point.muted ? d.mutedTextColor : d.textColor,
+      valign: "middle",
     });
   });
 }
@@ -1937,7 +1946,12 @@ interface SlideDef {
   render: SlideRenderer;
 }
 
-function buildSlideDefs(input: SlideRenderInput): SlideDef[] {
+// 2단계 재설계(Task 7): 기본 구성은 표지→팩트시트→입지종합→교통→교육→자연→(기존 상세/현황
+// 슬라이드 유지)→아파트 콜아웃→종합 의견→출처. "입지 점수 대시보드"는 기본 제외(옵션 토글로만 노출),
+// 켜면 입지 현황 종합 바로 다음(원위치)에 삽입한다. 핵심 인사이트 요약/생활권 반경 분석은 계획서가
+// 명시적으로 언급하지 않아 "기존 상세/현황 슬라이드 유지" 묶음(자연 환경 다음, 아파트 콜아웃 전)으로
+// 이동했다 — 삭제하지 않고 위치만 재편했다(task-7-report.md 참고).
+function buildSlideDefs(input: SlideRenderInput, includeScoreDashboard = false): SlideDef[] {
   const residentials = input.allPois.filter(
     (p): p is ResidentialPoi => p.category === "apartment" || p.category === "officetel" || p.category === "residential"
   );
@@ -1948,9 +1962,7 @@ function buildSlideDefs(input: SlideRenderInput): SlideDef[] {
     { title: "표지", render: renderCoverSlide },
     { title: "팩트 시트", render: renderFactSheetSlide },
     { title: "입지 현황 종합", render: renderOverviewSlide },
-    { title: "입지 점수 대시보드", render: renderScoreDashboardSlide },
-    { title: "핵심 인사이트 요약", render: renderInsightSummarySlide },
-    { title: "생활권 반경 분석", render: renderRadiusAnalysisSlide },
+    ...(includeScoreDashboard ? [{ title: "입지 점수 대시보드", render: renderScoreDashboardSlide }] : []),
     {
       title: "교통 분석",
       render: (ctx, img, inp, d) => {
@@ -1978,6 +1990,8 @@ function buildSlideDefs(input: SlideRenderInput): SlideDef[] {
           [...buildParkDetailLines(parks, 7), ...mountains.slice(0, 1).map(p => `인접 산: ${p.name}`)].slice(0, 8));
       },
     },
+    { title: "핵심 인사이트 요약", render: renderInsightSummarySlide },
+    { title: "생활권 반경 분석", render: renderRadiusAnalysisSlide },
     { title: "공원/녹지 접근성 상세", render: renderParkAccessDetailSlide },
     {
       title: "개발/정비사업 현황",
@@ -2022,11 +2036,12 @@ function createCanvas(): [HTMLCanvasElement, CanvasRenderingContext2D] {
 
 export async function renderAllSlides(
   input: SlideRenderInput,
-  designConfig: PptDesignConfig
+  designConfig: PptDesignConfig,
+  includeScoreDashboard = false
 ): Promise<RenderedSlide[]> {
   await ensureFontsLoaded();
   const baseImg = await loadReportBaseImage(input.baseMapImage, designConfig.mapGrayscale !== false);
-  const slideDefs = buildSlideDefs(input);
+  const slideDefs = buildSlideDefs(input, includeScoreDashboard);
 
   return slideDefs.map(({ title, render }, index) => {
     const [canvas, ctx] = createCanvas();
@@ -2039,11 +2054,12 @@ export async function renderSingleSlide(
   slideIndex: number,
   input: SlideRenderInput,
   designConfig: PptDesignConfig,
-  preloadedImage?: HTMLImageElement
+  preloadedImage?: HTMLImageElement,
+  includeScoreDashboard = false
 ): Promise<RenderedSlide> {
   await ensureFontsLoaded();
   const baseImg = preloadedImage ?? (await loadReportBaseImage(input.baseMapImage, designConfig.mapGrayscale !== false));
-  const slideDefs = buildSlideDefs(input);
+  const slideDefs = buildSlideDefs(input, includeScoreDashboard);
   const def = slideDefs[slideIndex] ?? slideDefs[0];
   const [canvas, ctx] = createCanvas();
   def.render(ctx, baseImg, input, designConfig);

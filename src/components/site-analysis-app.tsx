@@ -481,7 +481,7 @@ export default function SiteAnalysisApp() {
     }
   }, [canExport, collectExportData]);
 
-  const handleDownloadWithDesign = useCallback(async (designConfig: PptDesignConfig) => {
+  const handleDownloadWithDesign = useCallback(async (designConfig: PptDesignConfig, includeScoreDashboard: boolean) => {
     if (!previewInput) return;
     const { generateSiteAnalysisPpt } = await import("@/lib/ppt-generator");
     await generateSiteAnalysisPpt(
@@ -492,7 +492,8 @@ export default function SiteAnalysisApp() {
       previewInput.radiusPosition,
       previewInput.routePositions,
       designConfig,
-      previewInput.sourceStatuses ?? []
+      previewInput.sourceStatuses ?? [],
+      includeScoreDashboard
     );
   }, [previewInput]);
 

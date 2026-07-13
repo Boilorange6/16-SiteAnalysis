@@ -245,7 +245,25 @@ export function generateAnalysisNarrative(config: AnalysisConfig, pois: readonly
   };
 }
 
-export function getSummaryLines(config: AnalysisConfig, pois: readonly Poi[]): string[] {
+/** 종합 의견 슬라이드 한 줄. `muted`가 true면 강조 없이 보조 지표 톤(작은 글자·톤 다운 색)으로 표기한다. */
+export interface SummaryLine {
+  readonly text: string;
+  readonly muted?: boolean;
+}
+
+/**
+ * 종합 의견(요약) 슬라이드 전용 라인 빌더.
+ * 2단계 재설계(Task 7): 점수를 문장 선두에서 강조하지 않고, 마지막 줄에 "참고: 종합 입지 점수 NN점(보조 지표)"
+ * 형태의 muted 라인으로 격하한다. 점수 대시보드 슬라이드(별도)는 여전히 `generateAnalysisNarrative`/
+ * `computeAnalysisScores`를 직접 써서 점수를 크게 표시하므로 이 함수의 변경 영향을 받지 않는다.
+ */
+export function getSummaryLines(config: AnalysisConfig, pois: readonly Poi[]): SummaryLine[] {
   const narrative = generateAnalysisNarrative(config, pois);
-  return [narrative.summary, ...narrative.bullets.slice(0, 4), ...(narrative.risks[0] ? [`리스크: ${narrative.risks[0]}`] : [])].slice(0, 6);
+  const scores = computeAnalysisScores(config, pois);
+  const body: SummaryLine[] = [
+    { text: `${config.centerName || "선택 입지"} 입지 종합 의견: ${scores.headline}` },
+    ...narrative.bullets.slice(0, 3).map((text) => ({ text })),
+    ...(narrative.risks[0] ? [{ text: `리스크: ${narrative.risks[0]}` }] : []),
+  ];
+  return [...body, { text: `참고: 종합 입지 점수 ${scores.total}점 (보조 지표)`, muted: true }];
 }

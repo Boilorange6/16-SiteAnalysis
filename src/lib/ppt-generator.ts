@@ -27,7 +27,12 @@ import { buildFactSummary, buildFactSheetRows, buildCategoryInsight, type FactSh
 
 const SLIDE_W = 13.333;
 const SLIDE_H = 7.5;
-const APT_PAGE_SIZE = 12;
+// 아파트 콜아웃 슬라이드 1페이지당 카드 수. ppt-canvas-renderer.ts와 동일한 값·근거를 유지한다 —
+// computeResidentialCalloutLayout(ppt-callout-layout.ts)의 좌/우 컬럼 실측 수용량 합은
+// calloutHeight=0.73(Task 6, 미니 데이터표 전환) 기준 이론상 최대치이며, 만석 페이지는 카드가
+// 컬럼 하단 경계에 딱 맞물려 시각적으로 "하단 적층"처럼 보인다(Task 6 QA, 이월 B). 여유 마진을 둔
+// 안전 상한 7로 낮춘다.
+const APT_PAGE_SIZE = 7;
 
 const FONT_MAIN = PPT_FONT_MAIN;
 
@@ -2116,11 +2121,14 @@ function addSummarySlide(
   addDataPanel(slide, d.panelX, d.panelY, panelW, 5, d);
 
   const points = getSummaryLines(config, pois);
-  points.forEach((text, idx) => {
-    slide.addText(text, {
+  const lastBodyIdx = points.length - 2; // 마지막 줄은 항상 muted 점수 보조 지표 — 강조는 그 앞줄에 둔다.
+  points.forEach((point, idx) => {
+    slide.addText(point.text, {
       x: d.panelX + 0.3, y: d.panelY + 0.4 + idx * 0.65, w: panelW - 0.5, h: 0.5,
-      fontSize: d.summaryFontSize, fontFace: FONT_MAIN, color: pptColor(d.textColor),
-      bold: idx === points.length - 1,
+      fontSize: point.muted ? Math.max(8, Math.round(d.summaryFontSize * 0.7)) : d.summaryFontSize,
+      fontFace: FONT_MAIN,
+      color: pptColor(point.muted ? d.mutedTextColor : d.textColor),
+      bold: !point.muted && idx === lastBodyIdx,
     });
   });
 }
@@ -2135,7 +2143,8 @@ export async function generateSiteAnalysisPpt(
   radiusPosition: RadiusPosition | null = null,
   routePositions: readonly RouteNormalizedPosition[] = [],
   designConfig: PptDesignConfig = DEFAULT_PPT_DESIGN,
-  sourceStatuses: readonly SourceStatus[] = []
+  sourceStatuses: readonly SourceStatus[] = [],
+  includeScoreDashboard = false
 ): Promise<void> {
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE";
@@ -2148,12 +2157,15 @@ export async function generateSiteAnalysisPpt(
     ? await toReportMapTone(baseMapImage)
     : baseMapImage;
 
+  // 2단계 재설계(Task 7): 표지→팩트시트→입지종합→교통→교육→자연→(기존 상세/현황 슬라이드 유지)
+  // →아파트 콜아웃→종합 의견→출처. 점수 대시보드는 기본 제외, 켜면 입지 현황 종합 다음(원위치)에 삽입.
+  // 슬라이드 순서는 ppt-canvas-renderer.ts의 buildSlideDefs와 동일하게 유지한다.
   addCoverSlide(pptx, config, reportBaseMapImage, d, sourceStatuses);
   addFactSheetSlide(pptx, config, allPois, d, sourceStatuses);
   addOverviewSlide(pptx, config, reportBaseMapImage, poiPositions, radiusPosition, routePositions, d);
-  addScoreDashboardSlide(pptx, config, allPois, reportBaseMapImage, d);
-  addInsightSummarySlide(pptx, config, allPois, reportBaseMapImage, d);
-  addRadiusAnalysisSlide(pptx, config, allPois, reportBaseMapImage, radiusPosition, d);
+  if (includeScoreDashboard) {
+    addScoreDashboardSlide(pptx, config, allPois, reportBaseMapImage, d);
+  }
 
   const subways = allPois.filter((p): p is SubwayStation => p.category === "subway");
   addCategorySlide(pptx, "교통 분석", "subway", config, reportBaseMapImage, poiPositions, radiusPosition,
@@ -2167,6 +2179,9 @@ export async function generateSiteAnalysisPpt(
   const mountains = allPois.filter(p => p.category === "mountain");
   addCategorySlide(pptx, "자연 환경", ["park", "mountain"], config, reportBaseMapImage, poiPositions, radiusPosition,
     [...buildParkDetailLines(parks, 7), ...mountains.slice(0, 1).map(p => `인접 산: ${p.name}`)].slice(0, 8), d, [], allPois);
+
+  addInsightSummarySlide(pptx, config, allPois, reportBaseMapImage, d);
+  addRadiusAnalysisSlide(pptx, config, allPois, reportBaseMapImage, radiusPosition, d);
   addParkAccessDetailSlide(pptx, config, allPois, reportBaseMapImage, poiPositions, radiusPosition, d);
 
   const maintenanceProjects = allPois.filter((p): p is MaintenanceProject => p.category === "maintenance");

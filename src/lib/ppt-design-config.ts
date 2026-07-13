@@ -109,7 +109,6 @@ export interface PptDesignConfig {
   // Cover
   /** 표지 배경 — 거의 검정(원본 보고서 표지 문법, #1A1A1A 부근). 지도 이미지 대신 단색으로 채운다. */
   readonly coverBg: string;
-  readonly coverOverlayTransparency: number;
   readonly coverTitleFontSize: number;
   /** 좌상단 아이브로우 2줄째("사이트 입지 분석") 폰트 크기 — 1줄째는 이 값의 ~75%로 파생 계산 */
   readonly coverSubtitleFontSize: number;
@@ -222,7 +221,6 @@ export const DEFAULT_PPT_DESIGN: PptDesignConfig = {
   insightCardText: "#FFFFFF",
   polygonComparison: "#D8C7A0",
   coverBg: "#1A1A1A",
-  coverOverlayTransparency: 28,
   coverTitleFontSize: 60,
   coverSubtitleFontSize: 15,
   coverMetaFontSize: 16,
