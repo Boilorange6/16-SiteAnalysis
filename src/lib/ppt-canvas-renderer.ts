@@ -14,7 +14,7 @@ import type { RouteNormalizedPosition } from "./ppt-generator";
 import type { PptDesignConfig } from "./ppt-design-config";
 import { PPT_FONT_MAIN, PPT_FONT_NUM } from "./ppt-design-config";
 import type { AnalysisConfig } from "./types";
-import { layoutPoiLabels } from "./ppt-label-layout";
+import { layoutPoiLabels, poiLabelText } from "./ppt-label-layout";
 import { computeResidentialCalloutLayout } from "./ppt-callout-layout";
 import { buildParkDetailLines, formatAreaSqm, formatDistanceM, summarizeParks } from "./park-analysis";
 import { buildMaintenanceDetailLines, formatMaintenanceArea, summarizeMaintenanceProjects } from "./maintenance-analysis";
@@ -22,7 +22,7 @@ import { buildInsightOverlays, computeAnalysisScores, generateAnalysisNarrative,
 import { haversineDistance } from "./geo";
 import { sourceStatusLines, hasFailedSource } from "./source-status-text";
 import { toReportMapTone } from "./map-image-tone";
-import { buildFactSummary, buildFactSheetRows, type FactSheetSegment } from "./fact-summary";
+import { buildFactSummary, buildFactSheetRows, buildCategoryInsight, type FactSheetSegment, type CategoryInsightKey } from "./fact-summary";
 
 // ── Coordinate constants ──────────────────────────────────────────────────────
 
@@ -93,6 +93,37 @@ const COVER_TITLE_H = 1.5;
 const COVER_META_Y = 6.15;
 const COVER_META_H = 0.4;
 const COVER_META_COLOR = "#E5E7EB";
+
+// ── Map section title tokens (Task 5 — 지도 분석 슬라이드 좌상단 볼드 화이트 타이틀+서브라벨) ──
+// 원본 보고서 slide 5 문법: 배경 칩 없는 볼드 화이트 대형 타이틀 + 흰 서브라벨. drawTitleChip은
+// 다른 슬라이드(팩트시트·표지 등)가 계속 쓰므로 지도 분석 슬라이드(overview/category) 전용으로 분리.
+const MAP_TITLE_X = 0.5;
+const MAP_TITLE_Y = 0.34;
+const MAP_TITLE_W = 8.0;
+const MAP_TITLE_H = 0.48;
+const MAP_TITLE_FONT_SIZE = 26;
+const MAP_SUBTITLE_Y = MAP_TITLE_Y + MAP_TITLE_H + 0.02;
+const MAP_SUBTITLE_H = 0.24;
+const MAP_SUBTITLE_FONT_SIZE = 12;
+const MAP_SUBTITLE_COLOR = "#E5E7EB";
+
+// ── Insight card tokens (Task 5 — 카테고리 슬라이드 우측 하단 라운드 검정 카드) ──
+const INSIGHT_CARD_W = 3.6;
+const INSIGHT_CARD_X = SLIDE_W - INSIGHT_CARD_W - 0.5;
+const INSIGHT_CARD_PAD = 0.26;
+const INSIGHT_CARD_TITLE_H = 0.26;
+const INSIGHT_CARD_LINE_H = 0.34;
+const INSIGHT_CARD_RADIUS = 0.1;
+const INSIGHT_CARD_BOTTOM_MARGIN = 0.55;
+const INSIGHT_CARD_LABEL = "핵심 포인트";
+const INSIGHT_CARD_LABEL_COLOR = "#9CA3AF";
+
+// ── Subway route line dash (Task 5 — 노선 폴리라인 점선화) ──
+const SUBWAY_ROUTE_DASH = [7, 5];
+/** 역사도식선(흰 캐싱) 고정색 — d.markerBorderColor는 다른 요소(범례·POI 마커 등)와 공유하는
+ * 범용 잉크색이라 지도 톤에 따라 어두울 수 있음. 역 도식선의 "흰 캐싱"은 원본 보고서 확정 문법이므로
+ * 별도 리터럴로 고정한다. */
+const STATION_CASING_COLOR = "#FFFFFF";
 
 // ── Fact sheet slide tokens (Task 4 — match ADD_FACT_* constants in ppt-generator.ts) ──
 const FACT_TITLE_TEXT = "팩트 시트";
@@ -472,11 +503,13 @@ function drawConcentricRings(
   const rx = radiusPosition.radiusNx * CANVAS_W;
   const ry = radiusPosition.radiusNy * CANVAS_H;
 
+  // 대상지 반경 링 — accentRed로 강조(원본 보고서 문법: 대상지 빨강). markerBorderColor는
+  // POI 마커·범례 등 다른 요소와 공유하는 범용 잉크색이라 대상지 전용 강조에는 accentRed를 쓴다.
   RING_RATIOS.forEach((ratio, idx) => {
     const isOuter = idx === RING_RATIOS.length - 1;
     drawEllipseShape(ctx, cx, cy, rx * ratio, ry * ratio,
       undefined,
-      hexRgba(d.markerBorderColor, d.ringTransparency),
+      hexRgba(d.accentRed, d.ringTransparency),
       isOuter ? d.ringOuterLineWidth : d.ringLineWidth,
       d.ringDash === "solid" ? undefined : d.ringDash === "dash" ? [8, 6] : [4, 4]
     );
@@ -488,15 +521,16 @@ function drawSiteMarker(ctx: CanvasRenderingContext2D, radiusPosition: RadiusPos
   const cx = radiusPosition.centerNx * CANVAS_W;
   const cy = radiusPosition.centerNy * CANVAS_H;
 
+  // 대상지 중심 마커 — accentRed로 강조(원본 보고서 문법: 폴리곤 데이터가 없어 마커+링을 빨강화).
   // outer dashed ring
   drawEllipseShape(ctx, cx, cy, ix(d.siteMarkerOuterSize / 2), iy(d.siteMarkerOuterSize / 2),
-    undefined, hexRgba(d.markerBorderColor, 10), 1.5, [5, 5]);
-  // inner white dot
+    undefined, hexRgba(d.accentRed, 10), 1.5, [5, 5]);
+  // inner dot
   drawEllipseShape(ctx, cx, cy, ix(d.siteMarkerInnerSize / 2), iy(d.siteMarkerInnerSize / 2),
-    d.markerBorderColor, undefined);
+    d.accentRed, undefined);
   // SITE label
   drawTextBox(ctx, "SITE", cx - ix(0.3), cy + iy(SITE_LABEL_OFFSET_Y), ix(0.6), iy(0.2), {
-    fontSize: d.siteLabelFontSize, bold: true, color: d.markerBorderColor, align: "center", valign: "middle",
+    fontSize: d.siteLabelFontSize, bold: true, color: d.accentRed, align: "center", valign: "middle",
   });
 }
 
@@ -566,6 +600,53 @@ function drawTitleChip(ctx: CanvasRenderingContext2D, title: string, d: PptDesig
       fontSize: d.subtitleFontSize, color: d.mutedTextColor, align: "center", valign: "middle",
     });
   }
+}
+
+/**
+ * 지도 분석 슬라이드(overview/category) 전용 좌상단 타이틀 — 원본 보고서 문법: 배경 칩 없는
+ * 볼드 화이트 대형 섹션 타이틀 + 흰 서브라벨(반경 표기). 다른 슬라이드는 drawTitleChip을 그대로 쓴다.
+ */
+function drawMapSectionTitle(ctx: CanvasRenderingContext2D, title: string, subtitle: string) {
+  drawTextBox(ctx, title, ix(MAP_TITLE_X), iy(MAP_TITLE_Y), ix(MAP_TITLE_W), iy(MAP_TITLE_H), {
+    fontSize: MAP_TITLE_FONT_SIZE, bold: true, color: "#FFFFFF", align: "left", valign: "middle",
+  });
+  drawTextBox(ctx, subtitle, ix(MAP_TITLE_X), iy(MAP_SUBTITLE_Y), ix(MAP_TITLE_W), iy(MAP_SUBTITLE_H), {
+    fontSize: MAP_SUBTITLE_FONT_SIZE, color: MAP_SUBTITLE_COLOR, align: "left", valign: "middle",
+  });
+}
+
+/** categories 배열로부터 buildCategoryInsight에 넘길 카테고리 키를 추론 — renderCategorySlide의 4개 호출부와 매핑. */
+function inferCategoryInsightKey(categories: readonly PoiCategory[]): CategoryInsightKey | null {
+  if (categories.includes("subway")) return "transit";
+  if (categories.includes("school")) return "education";
+  if (categories.includes("park") || categories.includes("mountain")) return "nature";
+  if (categories.includes("maintenance")) return "maintenance";
+  return null;
+}
+
+/**
+ * 카테고리 지도 슬라이드 우측 하단 라운드 검정 인사이트 카드 — fact-summary 기반 2-4줄 팩트 요약.
+ * lines가 비면(반경 내 데이터 0건) 아무것도 그리지 않는다 — 왼쪽 상세 패널의 EMPTY_PANEL_TEXT가
+ * 이미 그 상태를 안내하므로 카드까지 빈 상태 문구를 중복 표시하지 않는다.
+ */
+function drawInsightCard(ctx: CanvasRenderingContext2D, lines: readonly string[], d: PptDesignConfig) {
+  if (lines.length === 0) return;
+  const cardH = INSIGHT_CARD_PAD * 2 + INSIGHT_CARD_TITLE_H + lines.length * INSIGHT_CARD_LINE_H;
+  const cardY = SLIDE_H - INSIGHT_CARD_BOTTOM_MARGIN - cardH;
+  drawRoundedRect(ctx, ix(INSIGHT_CARD_X), iy(cardY), ix(INSIGHT_CARD_W), iy(cardH), ix(INSIGHT_CARD_RADIUS), d.insightCardBg);
+  drawTextBox(ctx, INSIGHT_CARD_LABEL,
+    ix(INSIGHT_CARD_X + INSIGHT_CARD_PAD), iy(cardY + INSIGHT_CARD_PAD - 0.03),
+    ix(INSIGHT_CARD_W - INSIGHT_CARD_PAD * 2), iy(INSIGHT_CARD_TITLE_H), {
+      fontSize: 10, bold: true, color: INSIGHT_CARD_LABEL_COLOR, align: "left", valign: "middle",
+    });
+  lines.forEach((text, i) => {
+    const y = cardY + INSIGHT_CARD_PAD + INSIGHT_CARD_TITLE_H + i * INSIGHT_CARD_LINE_H;
+    drawTextBox(ctx, text,
+      ix(INSIGHT_CARD_X + INSIGHT_CARD_PAD), iy(y),
+      ix(INSIGHT_CARD_W - INSIGHT_CARD_PAD * 2), iy(INSIGHT_CARD_LINE_H), {
+        fontSize: 11.5, bold: true, color: d.insightCardText, align: "left", valign: "middle",
+      });
+  });
 }
 
 function drawDataPanel(
@@ -801,9 +882,10 @@ function drawLegend(ctx: CanvasRenderingContext2D, d: PptDesignConfig) {
     const iconR = ix(LEGEND_ICON_SIZE / 2);
     const iconCX = legX + ix(0.12) + iconR;
     const iconCY = itemY + iy(LEGEND_ROW_H / 2);
-    if (d.legendStyle === "index" || d.legendStyle === "minimal") {
-      drawRoundedRect(ctx, iconCX - iconR, iconCY - iconR, iconR * 2, iconR * 2, ix(0.01), item.color, hexRgba(d.markerBorderColor, d.legendStyle === "minimal" ? 70 : 0), 0.8);
+    if (d.legendStyle === "index") {
+      drawRoundedRect(ctx, iconCX - iconR, iconCY - iconR, iconR * 2, iconR * 2, ix(0.01), item.color, hexRgba(d.markerBorderColor, 0), 0.8);
     } else {
+      // "minimal"(기본값)을 포함해 색 도트 아이콘 — 원본 보고서 범례 문법(좌하단, 색 도트+라벨).
       drawEllipseShape(ctx, iconCX, iconCY, iconR, iconR, item.color, hexRgba(d.markerBorderColor, 20), 0.8);
     }
     if (d.legendStyle !== "rail") {
@@ -864,9 +946,12 @@ function drawPoiMarkers(
   labelPlacements.forEach((placement) => {
     const poi = poiById.get(placement.poiId);
     if (!poi) return;
-    drawTextBox(ctx, poi.name,
+    // 지명 색 문법(Task 5) — 산은 초록(+고도m). 도로/수계 라벨은 이 앱에 해당 POI 카테고리·데이터가
+    // 없어 적용 불가(원본 보고서는 도로 흰/수계 하늘이지만 렌더러가 그리는 요소 범위 밖이라 미적용).
+    const labelColor = poi.category === "mountain" ? d.categoryColors.mountain : d.textColor;
+    drawTextBox(ctx, poiLabelText(poi),
       ix(placement.x), iy(placement.y), ix(placement.w), iy(placement.h), {
-        fontSize: d.labelFontSize, bold: true, color: d.textColor,
+        fontSize: d.labelFontSize, bold: true, color: labelColor,
         align: "center", valign: "middle",
         bgColor: d.overlayColor, bgTransparency: d.labelBgTransparency, bgRadius: d.panelRadius,
       });
@@ -882,6 +967,7 @@ function drawSubwayRouteLines(
     ctx.strokeStyle = route.lineColor;
     ctx.lineWidth = d.subwayLineWidth;
     ctx.lineCap = "round";
+    ctx.setLineDash(SUBWAY_ROUTE_DASH); // 원본 보고서 문법: 노선 점선(dashed) 폴리라인
     ctx.beginPath();
     route.points.forEach((pt, i) => {
       const x = pt.nx * CANVAS_W;
@@ -890,6 +976,7 @@ function drawSubwayRouteLines(
       else ctx.lineTo(x, y);
     });
     ctx.stroke();
+    ctx.setLineDash([]);
   });
 }
 
@@ -1017,11 +1104,12 @@ function drawStationBars(
         const x2 = segment[i + 1].nx * CANVAS_W;
         const y2 = segment[i + 1].ny * CANVAS_H;
 
-        // White border
+        // White border (casing) — 원본 보고서 확정 문법: 역사도식선 흰 캐싱. d.markerBorderColor는
+        // 다른 요소와 공유하는 범용 잉크색(기본값이 어두움)이라 캐싱 전용으로는 쓰지 않는다.
         ctx.beginPath();
         ctx.moveTo(x1, y1);
         ctx.lineTo(x2, y2);
-        ctx.strokeStyle = d.markerBorderColor;
+        ctx.strokeStyle = STATION_CASING_COLOR;
         ctx.lineWidth = stationBorderWidth;
         ctx.lineCap = "butt";
         ctx.stroke();
@@ -1051,6 +1139,11 @@ function drawStationBars(
 
         const cx = station.nx * CANVAS_W;
         const cy = station.ny * CANVAS_H;
+
+        // 역 위치 도트(원본 보고서 문법) — 노선색 채움 + 흰 테두리. 역사도식선과 별개로 정확한
+        // 역 좌표를 표시하는 노드 마커이자, 별도 배지 없이도 노선을 식별하게 하는 "노선 배지" 역할.
+        drawEllipseShape(ctx, cx, cy, stationBarWidth, stationBarWidth, route.lineColor, STATION_CASING_COLOR, 1.8);
+
         const length = Math.sqrt(dxPx * dxPx + dyPx * dyPx) || 1;
         const normalA = { x: -dyPx / length, y: dxPx / length };
         const normalB = { x: dyPx / length, y: -dxPx / length };
@@ -1067,7 +1160,7 @@ function drawStationBars(
         ctx.textBaseline = "middle";
         ctx.shadowColor = "rgba(0,0,0,0.9)";
         ctx.shadowBlur = 4;
-        ctx.fillStyle = d.markerBorderColor;
+        ctx.fillStyle = STATION_CASING_COLOR; // 흰 텍스트 — 원본 보고서 문법(검정 halo 위 흰 역명)
         ctx.fillText(station.poi.name, 0, 0);
         ctx.shadowColor = "transparent";
         ctx.shadowBlur = 0;
@@ -1264,7 +1357,7 @@ function renderOverviewSlide(
     drawStationBars(ctx, input.poiPositions, input.routePositions, d, input.radiusPosition, input.config.radiusKm);
   }
   drawSiteMarker(ctx, input.radiusPosition, d);
-  drawTitleChip(ctx, "입지 현황 종합", d, `반경 ${input.config.radiusKm}km`);
+  drawMapSectionTitle(ctx, "입지 현황 종합", `반경 ${input.config.radiusKm}km`);
   drawLegend(ctx, d);
 }
 
@@ -1408,7 +1501,7 @@ function renderCategorySlide(
     drawStationBars(ctx, input.poiPositions, input.routePositions, d, input.radiusPosition, input.config.radiusKm);
   }
   drawSiteMarker(ctx, input.radiusPosition, d);
-  drawTitleChip(ctx, title, d, `반경 ${input.config.radiusKm}km`);
+  drawMapSectionTitle(ctx, title, `반경 ${input.config.radiusKm}km`);
 
   const panelW = ix(d.panelWidth);
   const panelH = Math.min(iy(4.8), details.length * iy(0.42) + iy(0.6));
@@ -1423,6 +1516,15 @@ function renderCategorySlide(
       fontSize: d.detailFontSize, color: d.textColor, valign: "middle",
     });
   });
+
+  // 인사이트 카드(Task 5) — fact-summary 기반 카테고리 결론 2-4줄. 데이터 0건이면 빈 배열이라
+  // 카드를 그리지 않고 위 details의 EMPTY_PANEL_TEXT 문법을 그대로 유지한다.
+  const insightKey = inferCategoryInsightKey(categories);
+  if (insightKey) {
+    const summary = buildFactSummary({ config: input.config, allPois: input.allPois });
+    drawInsightCard(ctx, buildCategoryInsight(insightKey, summary), d);
+  }
+
   drawLegend(ctx, d);
 }
 

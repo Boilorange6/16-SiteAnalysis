@@ -1,4 +1,15 @@
-import type { PoiPosition } from "./types";
+import type { Poi, PoiPosition } from "./types";
+
+/**
+ * 지도에 실제로 그려지는 POI 라벨 문자열 — 두 렌더러(ppt-canvas-renderer.ts/ppt-generator.ts)와
+ * 레이아웃 폭 산정(layoutPoiLabels)이 모두 이 함수를 공유해 "표시 텍스트 = 폭 산정 텍스트"를 보장한다.
+ * Task 5 — 지명 색 문법(산 초록 "+높이m") 중 고도 표기 부분. mountain은 elevation_m 실측 필드를 사용
+ * (없는 데이터 발명 금지 원칙에 따라 다른 카테고리는 이름만 표기).
+ */
+export function poiLabelText(poi: Poi): string {
+  if (poi.category === "mountain") return `${poi.name} ${poi.elevation_m}m`;
+  return poi.name;
+}
 
 interface Rect {
   readonly x: number;
@@ -45,7 +56,7 @@ export function layoutPoiLabels(
   sortedPositions.forEach((position) => {
     const markerX = position.nx * slideWidth;
     const markerY = position.ny * slideHeight;
-    const labelWidth = clamp(position.poi.name.length * 0.13 + 0.35, 0.9, 2.5);
+    const labelWidth = clamp(poiLabelText(position.poi).length * 0.13 + 0.35, 0.9, 2.5);
     const preferredRightX = markerX + markerSize / 2 + LABEL_GAP;
     const preferredLeftX = markerX - labelWidth - markerSize / 2 - LABEL_GAP;
     const centeredY = markerY - LABEL_HEIGHT / 2;

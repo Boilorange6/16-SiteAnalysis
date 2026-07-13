@@ -13,7 +13,7 @@ import type {
   SourceStatus,
 } from "./types";
 import { CATEGORY_LABELS } from "./types";
-import { layoutPoiLabels } from "./ppt-label-layout";
+import { layoutPoiLabels, poiLabelText } from "./ppt-label-layout";
 import { computeResidentialCalloutLayout } from "./ppt-callout-layout";
 import { buildParkDetailLines, formatAreaSqm, formatDistanceM, summarizeParks } from "./park-analysis";
 import { buildMaintenanceDetailLines, formatMaintenanceArea, summarizeMaintenanceProjects } from "./maintenance-analysis";
@@ -23,7 +23,7 @@ import type { PptDesignConfig } from "./ppt-design-config";
 import { DEFAULT_PPT_DESIGN, PPT_FONT_MAIN } from "./ppt-design-config";
 import { sourceStatusLines, hasFailedSource } from "./source-status-text";
 import { toReportMapTone } from "./map-image-tone";
-import { buildFactSummary, buildFactSheetRows, type FactSheetSegment } from "./fact-summary";
+import { buildFactSummary, buildFactSheetRows, buildCategoryInsight, type FactSheetSegment, type CategoryInsightKey } from "./fact-summary";
 
 const SLIDE_W = 13.333;
 const SLIDE_H = 7.5;
@@ -58,6 +58,34 @@ const COVER_TITLE_H = 1.5;
 const COVER_META_Y = 6.15;
 const COVER_META_H = 0.4;
 const COVER_META_COLOR = "#E5E7EB";
+
+// ── Map section title tokens (Task 5 — match MAP_TITLE_*/MAP_SUBTITLE_* in ppt-canvas-renderer.ts) ──
+// 원본 보고서 slide 5 문법: 배경 칩 없는 볼드 화이트 대형 타이틀 + 흰 서브라벨. addTitleChip은
+// 다른 슬라이드(팩트시트·표지 등)가 계속 쓰므로 지도 분석 슬라이드(overview/category) 전용으로 분리.
+const MAP_TITLE_X = 0.5;
+const MAP_TITLE_Y = 0.34;
+const MAP_TITLE_W = 8.0;
+const MAP_TITLE_H = 0.48;
+const MAP_TITLE_FONT_SIZE = 26;
+const MAP_SUBTITLE_Y = MAP_TITLE_Y + MAP_TITLE_H + 0.02;
+const MAP_SUBTITLE_H = 0.24;
+const MAP_SUBTITLE_FONT_SIZE = 12;
+const MAP_SUBTITLE_COLOR = "#E5E7EB";
+
+// ── Insight card tokens (Task 5 — match INSIGHT_CARD_* in ppt-canvas-renderer.ts) ──
+const INSIGHT_CARD_W = 3.6;
+const INSIGHT_CARD_X = SLIDE_W - INSIGHT_CARD_W - 0.5;
+const INSIGHT_CARD_PAD = 0.26;
+const INSIGHT_CARD_TITLE_H = 0.26;
+const INSIGHT_CARD_LINE_H = 0.34;
+const INSIGHT_CARD_RADIUS = 0.1;
+const INSIGHT_CARD_BOTTOM_MARGIN = 0.55;
+const INSIGHT_CARD_LABEL = "핵심 포인트";
+const INSIGHT_CARD_LABEL_COLOR = "#9CA3AF";
+
+/** 역사도식선(흰 캐싱) 고정색 — markerBorderColor는 다른 요소와 공유하는 범용 잉크색이라
+ * 캐싱 전용으로는 쓰지 않는다(match STATION_CASING_COLOR in ppt-canvas-renderer.ts). */
+const STATION_CASING_COLOR = "#FFFFFF";
 
 // ── Fact sheet slide tokens (Task 4 — match FACT_* constants in ppt-canvas-renderer.ts) ──
 const FACT_TITLE_TEXT = "팩트 시트";
@@ -378,6 +406,64 @@ function addTitleChip(slide: PptxGenJS.Slide, title: string, d: PptDesignConfig,
   }
 }
 
+/**
+ * 지도 분석 슬라이드(overview/category) 전용 좌상단 타이틀 — 원본 보고서 문법: 배경 칩 없는
+ * 볼드 화이트 대형 섹션 타이틀 + 흰 서브라벨(반경 표기). 다른 슬라이드는 addTitleChip을 그대로 쓴다.
+ */
+function addMapSectionTitle(slide: PptxGenJS.Slide, title: string, subtitle: string) {
+  slide.addText(title, {
+    x: MAP_TITLE_X, y: MAP_TITLE_Y, w: MAP_TITLE_W, h: MAP_TITLE_H,
+    fontSize: MAP_TITLE_FONT_SIZE, fontFace: FONT_MAIN, bold: true,
+    color: pptColor("#FFFFFF"), align: "left", valign: "middle", margin: 0,
+  });
+  slide.addText(subtitle, {
+    x: MAP_TITLE_X, y: MAP_SUBTITLE_Y, w: MAP_TITLE_W, h: MAP_SUBTITLE_H,
+    fontSize: MAP_SUBTITLE_FONT_SIZE, fontFace: FONT_MAIN,
+    color: pptColor(MAP_SUBTITLE_COLOR), align: "left", valign: "middle", margin: 0,
+  });
+}
+
+/** categories 배열로부터 buildCategoryInsight에 넘길 카테고리 키를 추론 — addCategorySlide의 4개 호출부와 매핑. */
+function inferCategoryInsightKey(categories: readonly PoiCategory[]): CategoryInsightKey | null {
+  if (categories.includes("subway")) return "transit";
+  if (categories.includes("school")) return "education";
+  if (categories.includes("park") || categories.includes("mountain")) return "nature";
+  if (categories.includes("maintenance")) return "maintenance";
+  return null;
+}
+
+/**
+ * 카테고리 지도 슬라이드 우측 하단 라운드 검정 인사이트 카드 — fact-summary 기반 2-4줄 팩트 요약.
+ * lines가 비면(반경 내 데이터 0건) 아무것도 그리지 않는다 — 왼쪽 상세 패널의 EMPTY_PANEL_TEXT가
+ * 이미 그 상태를 안내하므로 카드까지 빈 상태 문구를 중복 표시하지 않는다.
+ */
+function addInsightCard(slide: PptxGenJS.Slide, lines: readonly string[], d: PptDesignConfig) {
+  if (lines.length === 0) return;
+  const cardH = INSIGHT_CARD_PAD * 2 + INSIGHT_CARD_TITLE_H + lines.length * INSIGHT_CARD_LINE_H;
+  const cardY = SLIDE_H - INSIGHT_CARD_BOTTOM_MARGIN - cardH;
+  slide.addShape("rect", {
+    x: INSIGHT_CARD_X, y: cardY, w: INSIGHT_CARD_W, h: cardH,
+    fill: { color: pptColor(d.insightCardBg), transparency: 0 },
+    line: { color: pptColor(d.insightCardBg), transparency: 100 },
+    rectRadius: INSIGHT_CARD_RADIUS,
+  });
+  slide.addText(INSIGHT_CARD_LABEL, {
+    x: INSIGHT_CARD_X + INSIGHT_CARD_PAD, y: cardY + INSIGHT_CARD_PAD - 0.03,
+    w: INSIGHT_CARD_W - INSIGHT_CARD_PAD * 2, h: INSIGHT_CARD_TITLE_H,
+    fontSize: 10, fontFace: FONT_MAIN, bold: true, color: pptColor(INSIGHT_CARD_LABEL_COLOR),
+    align: "left", valign: "middle", margin: 0,
+  });
+  lines.forEach((text, i) => {
+    const y = cardY + INSIGHT_CARD_PAD + INSIGHT_CARD_TITLE_H + i * INSIGHT_CARD_LINE_H;
+    slide.addText(text, {
+      x: INSIGHT_CARD_X + INSIGHT_CARD_PAD, y,
+      w: INSIGHT_CARD_W - INSIGHT_CARD_PAD * 2, h: INSIGHT_CARD_LINE_H,
+      fontSize: 11.5, fontFace: FONT_MAIN, bold: true, color: pptColor(d.insightCardText),
+      align: "left", valign: "middle", margin: 0,
+    });
+  });
+}
+
 function addDataPanel(
   slide: PptxGenJS.Slide,
   x: number, y: number, w: number, h: number,
@@ -629,12 +715,14 @@ function addLegend(slide: PptxGenJS.Slide, d: PptDesignConfig) {
 
   items.forEach((item, i) => {
     const y = legY + 0.08 + i * LEGEND_ROW_H;
-    const iconShape = d.legendStyle === "index" || d.legendStyle === "minimal" ? "rect" : "ellipse";
+    // "minimal"(기본값)을 포함해 색 도트 아이콘 — 원본 보고서 범례 문법(좌하단, 색 도트+라벨).
+    // "index"만 사각 스와치 유지(다른 프리셋 전용 스타일, 이 작업 범위 밖).
+    const iconShape = d.legendStyle === "index" ? "rect" : "ellipse";
     slide.addShape(iconShape, {
       x: legX + 0.12, y: y + (LEGEND_ROW_H - LEGEND_ICON_SIZE) / 2,
       w: LEGEND_ICON_SIZE, h: LEGEND_ICON_SIZE,
       fill: { color: item.color.replace("#", "") },
-      line: { color: pptColor(d.markerBorderColor), transparency: d.legendStyle === "minimal" ? 70 : 0, width: 0.8 },
+      line: { color: pptColor(d.markerBorderColor), transparency: d.legendStyle === "index" ? 0 : 20, width: 0.8 },
       rectRadius: d.legendStyle === "index" ? 0.01 : undefined,
     });
     if (d.legendStyle !== "rail") {
@@ -718,10 +806,13 @@ function addPoiMarkers(
   labelPlacements.forEach((placement) => {
     const poi = poiById.get(placement.poiId);
     if (!poi) return;
-    slide.addText(poi.name, {
+    // 지명 색 문법(Task 5, match ppt-canvas-renderer.ts) — 산은 초록(+고도m). 도로/수계 라벨은
+    // 이 앱에 해당 POI 카테고리·데이터가 없어 적용 불가.
+    const labelColor = poi.category === "mountain" ? d.categoryColors.mountain : d.textColor;
+    slide.addText(poiLabelText(poi), {
       x: placement.x, y: placement.y, w: placement.w, h: placement.h,
       fontSize: d.labelFontSize, fontFace: FONT_MAIN,
-      color: pptColor(d.textColor), bold: true,
+      color: pptColor(labelColor), bold: true,
       fill: { color: pptColor(d.overlayColor), transparency: d.labelBgTransparency },
       rectRadius: d.panelRadius / 2, margin: 0.02, align: "center", valign: "middle",
     });
@@ -739,6 +830,8 @@ function addConcentricRings(
   const rx = radiusPosition.radiusNx * SLIDE_W;
   const ry = radiusPosition.radiusNy * SLIDE_H;
 
+  // 대상지 반경 링 — accentRed로 강조(원본 보고서 문법: 대상지 빨강). markerBorderColor는
+  // POI 마커·범례 등 다른 요소와 공유하는 범용 잉크색이라 대상지 전용 강조에는 accentRed를 쓴다.
   RING_RATIOS.forEach((ratio, idx) => {
     const ringRx = rx * ratio;
     const ringRy = ry * ratio;
@@ -747,7 +840,7 @@ function addConcentricRings(
       x: cx - ringRx, y: cy - ringRy, w: ringRx * 2, h: ringRy * 2,
       fill: { color: "FFFFFF", transparency: 100 },
       line: {
-        color: pptColor(d.markerBorderColor),
+        color: pptColor(d.accentRed),
         width: isOuter ? d.ringOuterLineWidth : d.ringLineWidth,
         dashType: d.ringDash === "solid" ? undefined : d.ringDash === "dash" ? "dash" : "sysDot",
         transparency: d.ringTransparency,
@@ -761,21 +854,22 @@ function addSiteMarker(slide: PptxGenJS.Slide, radiusPosition: RadiusPosition | 
   const cx = radiusPosition.centerNx * SLIDE_W;
   const cy = radiusPosition.centerNy * SLIDE_H;
 
+  // 대상지 중심 마커 — accentRed로 강조(원본 보고서 문법: 폴리곤 데이터가 없어 마커+링을 빨강화).
   slide.addShape("ellipse", {
     x: cx - d.siteMarkerOuterSize / 2, y: cy - d.siteMarkerOuterSize / 2,
     w: d.siteMarkerOuterSize, h: d.siteMarkerOuterSize,
     fill: { color: "FFFFFF", transparency: 100 },
-    line: { color: pptColor(d.markerBorderColor), width: 1.5, dashType: "dash" },
+    line: { color: pptColor(d.accentRed), width: 1.5, dashType: "dash" },
   });
   slide.addShape("ellipse", {
     x: cx - d.siteMarkerInnerSize / 2, y: cy - d.siteMarkerInnerSize / 2,
     w: d.siteMarkerInnerSize, h: d.siteMarkerInnerSize,
-    fill: { color: pptColor(d.markerBorderColor) },
-    line: { color: pptColor(d.markerBorderColor), width: 1 },
+    fill: { color: pptColor(d.accentRed) },
+    line: { color: pptColor(d.accentRed), width: 1 },
   });
   slide.addText("SITE", {
     x: cx - 0.3, y: cy + SITE_LABEL_OFFSET_Y, w: 0.6, h: 0.2,
-    fontSize: d.siteLabelFontSize, fontFace: FONT_MAIN, bold: true, color: pptColor(d.markerBorderColor), align: "center",
+    fontSize: d.siteLabelFontSize, fontFace: FONT_MAIN, bold: true, color: pptColor(d.accentRed), align: "center",
   });
 }
 
@@ -801,7 +895,7 @@ function addSubwayRouteLines(
       const w = Math.abs(x2 - x1), h = Math.abs(y2 - y1);
       slide.addShape("line", {
         x, y, w: Math.max(w, 0.005), h: Math.max(h, 0.005),
-        line: { color, width: d.subwayLineWidth },
+        line: { color, width: d.subwayLineWidth, dashType: "dash" }, // 원본 보고서 문법: 노선 점선화
         flipV: x2 >= x1 !== y2 >= y1,
       });
     }
@@ -935,10 +1029,11 @@ function addStationBars(
         const x = Math.min(x1, x2), y = Math.min(y1, y2);
         const w = Math.abs(x2 - x1), h = Math.abs(y2 - y1);
 
-        // White border
+        // White border (casing) — 원본 보고서 확정 문법: 역사도식선 흰 캐싱. d.markerBorderColor는
+        // 다른 요소와 공유하는 범용 잉크색(기본값이 어두움)이라 캐싱 전용으로는 쓰지 않는다.
         slide.addShape("line", {
           x, y, w: Math.max(w, 0.005), h: Math.max(h, 0.005),
-          line: { color: pptColor(d.markerBorderColor), width: stationBorderWidth },
+          line: { color: pptColor(STATION_CASING_COLOR), width: stationBorderWidth },
           flipV: x2 >= x1 !== y2 >= y1,
         });
         // Colored bar
@@ -963,6 +1058,16 @@ function addStationBars(
 
         const cx = station.nx * SLIDE_W;
         const cy = station.ny * SLIDE_H;
+
+        // 역 위치 도트(원본 보고서 문법) — 노선색 채움 + 흰 테두리. 역사도식선과 별개로 정확한
+        // 역 좌표를 표시하는 노드 마커이자, 별도 배지 없이도 노선을 식별하게 하는 "노선 배지" 역할.
+        const stationDotR = stationBarWidth / 72;
+        slide.addShape("ellipse", {
+          x: cx - stationDotR, y: cy - stationDotR, w: stationDotR * 2, h: stationDotR * 2,
+          fill: { color: pptColor(route.lineColor) },
+          line: { color: pptColor(STATION_CASING_COLOR), width: 1.8 },
+        });
+
         const length = Math.sqrt(dxInch * dxInch + dyInch * dyInch) || 1;
         const normalA = { x: -dyInch / length, y: dxInch / length };
         const normalB = { x: dyInch / length, y: -dxInch / length };
@@ -981,7 +1086,7 @@ function addStationBars(
           h: labelH,
           fontSize: d.stationLabelFontSize,
           fontFace: FONT_MAIN,
-          color: pptColor(d.markerBorderColor),
+          color: pptColor(STATION_CASING_COLOR), // 흰 텍스트 — 원본 보고서 문법(검정 halo 위 흰 역명)
           bold: true,
           align: "center",
           valign: "middle",
@@ -1187,7 +1292,7 @@ function addOverviewSlide(
     addStationBars(slide, poiPositions, routePositions, d, radiusPosition, config.radiusKm);
   }
   addSiteMarker(slide, radiusPosition, d);
-  addTitleChip(slide, "입지 현황 종합", d, `반경 ${config.radiusKm}km`);
+  addMapSectionTitle(slide, "입지 현황 종합", `반경 ${config.radiusKm}km`);
   addLegend(slide, d);
 }
 
@@ -1638,7 +1743,8 @@ function addCategorySlide(
   radiusPosition: RadiusPosition | null,
   details: string[],
   d: PptDesignConfig,
-  routePositions: readonly RouteNormalizedPosition[] = []
+  routePositions: readonly RouteNormalizedPosition[] = [],
+  allPois: readonly Poi[] = []
 ) {
   const slide = pptx.addSlide();
   addFullBleedMap(slide, baseMapImage, d);
@@ -1657,7 +1763,7 @@ function addCategorySlide(
     addStationBars(slide, poiPositions, routePositions, d, radiusPosition, config.radiusKm);
   }
   addSiteMarker(slide, radiusPosition, d);
-  addTitleChip(slide, title, d, `반경 ${config.radiusKm}km`);
+  addMapSectionTitle(slide, title, `반경 ${config.radiusKm}km`);
 
   const panelW = d.panelWidth;
   const panelH = Math.min(4.8, details.length * 0.42 + 0.6);
@@ -1674,6 +1780,15 @@ function addCategorySlide(
       fontSize: d.detailFontSize, fontFace: FONT_MAIN, color: pptColor(d.textColor),
     });
   });
+
+  // 인사이트 카드(Task 5) — fact-summary 기반 카테고리 결론 2-4줄. 데이터 0건이면 빈 배열이라
+  // 카드를 그리지 않고 위 details의 EMPTY_PANEL_TEXT 문법을 그대로 유지한다.
+  const insightKey = inferCategoryInsightKey(cats);
+  if (insightKey) {
+    const summary = buildFactSummary({ config, allPois });
+    addInsightCard(slide, buildCategoryInsight(insightKey, summary), d);
+  }
+
   addLegend(slide, d);
 }
 
@@ -1869,21 +1984,21 @@ export async function generateSiteAnalysisPpt(
 
   const subways = allPois.filter((p): p is SubwayStation => p.category === "subway");
   addCategorySlide(pptx, "교통 분석", "subway", config, reportBaseMapImage, poiPositions, radiusPosition,
-    subways.slice(0, 8).map(s => `${s.name} (${s.line})`), d, routePositions);
+    subways.slice(0, 8).map(s => `${s.name} (${s.line})`), d, routePositions, allPois);
 
   const schools = allPois.filter((p): p is School => p.category === "school");
   addCategorySlide(pptx, "교육 환경", "school", config, reportBaseMapImage, poiPositions, radiusPosition,
-    schools.slice(0, 8).map(s => `${s.name} (${s.level === "elementary" ? "초" : s.level === "middle" ? "중" : "고"})`), d);
+    schools.slice(0, 8).map(s => `${s.name} (${s.level === "elementary" ? "초" : s.level === "middle" ? "중" : "고"})`), d, [], allPois);
 
   const parks = allPois.filter((p): p is Park => p.category === "park");
   const mountains = allPois.filter(p => p.category === "mountain");
   addCategorySlide(pptx, "자연 환경", ["park", "mountain"], config, reportBaseMapImage, poiPositions, radiusPosition,
-    [...buildParkDetailLines(parks, 7), ...mountains.slice(0, 1).map(p => `인접 산: ${p.name}`)].slice(0, 8), d);
+    [...buildParkDetailLines(parks, 7), ...mountains.slice(0, 1).map(p => `인접 산: ${p.name}`)].slice(0, 8), d, [], allPois);
   addParkAccessDetailSlide(pptx, config, allPois, reportBaseMapImage, poiPositions, radiusPosition, d);
 
   const maintenanceProjects = allPois.filter((p): p is MaintenanceProject => p.category === "maintenance");
   addCategorySlide(pptx, "개발/정비사업 현황", "maintenance", config, reportBaseMapImage, poiPositions, radiusPosition,
-    buildMaintenanceDetailLines(maintenanceProjects, 8), d);
+    buildMaintenanceDetailLines(maintenanceProjects, 8), d, [], allPois);
   addDevelopmentRiskMatrixSlide(pptx, config, allPois, reportBaseMapImage, poiPositions, radiusPosition, d);
 
   const residentials = allPois.filter(

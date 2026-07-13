@@ -1,7 +1,7 @@
 // 순수 로직 테스트 — 고정 POI 입력 → 기대 팩트 검증
 // 실행: npx tsx src/scripts/test-fact-summary.mjs
 import assert from "node:assert/strict";
-import { buildFactSummary, buildFactSheetRows } from "../lib/fact-summary.ts";
+import { buildFactSummary, buildFactSheetRows, buildCategoryInsight } from "../lib/fact-summary.ts";
 import { haversineDistance } from "../lib/geo.ts";
 
 const config = { centerName: "테스트 입지", centerLat: 37.5, centerLng: 127.0, radiusKm: 1 };
@@ -26,8 +26,15 @@ const residentials = [
   { id: "o1", name: "테스트오피스텔", lat: 37.5012, lng: 126.9992, category: "officetel", units: 200, parking_count: 100, sale_date: "2024-02", distance_m: 150, status: "existing", source: "ledger" },
   { id: "r1", name: "테스트생활형", lat: 37.4998, lng: 127.0002, category: "residential", units: 50, parking_count: 30, sale_date: "2024-03", distance_m: 200, status: "existing", source: "ledger" },
 ];
+const maintenanceProjects = [
+  {
+    id: "mt1", name: "테스트정비구역", lat: 37.5020, lng: 127.0010, category: "maintenance",
+    type: "재건축", stage: "조합설립", address: "서울시 어딘가 1", area_sqm: 5000,
+    source: "seoul_open_data", boundary_status: "confirmed", distance_m: 300,
+  },
+];
 
-const allPois = [...subwayStations, ...schools, ...parks, ...mountains, ...residentials];
+const allPois = [...subwayStations, ...schools, ...parks, ...mountains, ...residentials, ...maintenanceProjects];
 
 const summary = buildFactSummary({ config, allPois });
 
@@ -62,6 +69,11 @@ assert.equal(summary.nature.nearestParkDistanceM, Math.round(expectedParkDist));
 assert.equal(summary.housing.complexCount, 3);
 assert.equal(summary.housing.totalHouseholds, 750);
 
+// ── maintenance ──────────────────────────────────────────────────────────
+assert.equal(summary.maintenance.count, 1);
+assert.equal(summary.maintenance.boundaryConfirmedCount, 1);
+assert.equal(summary.maintenance.totalAreaSqm, 5000);
+
 // ── empty input → 모든 nearest/distance 필드 null, count 0 ─────────────────
 const empty = buildFactSummary({ config, allPois: [] });
 assert.equal(empty.transit.nearestStationName, null);
@@ -78,6 +90,9 @@ assert.equal(empty.nature.nearestParkName, null);
 assert.equal(empty.nature.nearestParkDistanceM, null);
 assert.equal(empty.housing.complexCount, 0);
 assert.equal(empty.housing.totalHouseholds, 0);
+assert.equal(empty.maintenance.count, 0);
+assert.equal(empty.maintenance.boundaryConfirmedCount, 0);
+assert.equal(empty.maintenance.totalAreaSqm, 0);
 
 // ── buildFactSheetRows: 8행 구조 + 핵심 수치 accent 표기 확인 ────────────────
 const rows = buildFactSheetRows(config, summary, new Date(2026, 6, 13));
@@ -93,5 +108,35 @@ assert.ok(transitRow.value.some((seg) => seg.accent && seg.text.endsWith("분"))
 // 빈 데이터 케이스: accent 없는 안내 문구 1개
 const emptyRows = buildFactSheetRows(config, empty, new Date(2026, 6, 13));
 assert.deepEqual(emptyRows[3].value, [{ text: "반경 내 확인된 역 없음" }]);
+
+// ── buildCategoryInsight (Task 5): 카테고리별 2-4줄 인사이트 카드 문장 ─────────────
+const transitInsight = buildCategoryInsight("transit", summary);
+assert.equal(transitInsight.length, 2);
+assert.ok(transitInsight[0].includes(expectedNearestSubway.s.name));
+assert.ok(transitInsight[0].includes(`${summary.transit.walkMin}분`));
+assert.ok(transitInsight[0].includes(`${summary.transit.distanceM}m`));
+assert.ok(transitInsight[1].includes(`${summary.transit.stationCount}개`));
+assert.ok(transitInsight[1].includes(`${summary.transit.lineCount}개 노선`));
+assert.deepEqual(buildCategoryInsight("transit", empty), []);
+
+const educationInsight = buildCategoryInsight("education", summary);
+assert.ok(educationInsight.some((line) => line.includes(expectedNearestSchool.s.name)));
+assert.ok(educationInsight.some((line) => line.includes(`${summary.education.schoolCount}개`)));
+assert.deepEqual(buildCategoryInsight("education", empty), []);
+
+const natureInsight = buildCategoryInsight("nature", summary);
+assert.ok(natureInsight.some((line) => line.includes("동네공원")));
+assert.ok(natureInsight.some((line) => line.includes(`산 ${summary.nature.mountainCount}개`)));
+assert.deepEqual(buildCategoryInsight("nature", empty), []);
+
+const housingInsight = buildCategoryInsight("housing", summary);
+assert.ok(housingInsight.some((line) => line.includes("3개")));
+assert.ok(housingInsight.some((line) => line.includes("750")));
+assert.deepEqual(buildCategoryInsight("housing", empty), []);
+
+const maintenanceInsight = buildCategoryInsight("maintenance", summary);
+assert.ok(maintenanceInsight.some((line) => line.includes("1건")));
+assert.ok(maintenanceInsight.some((line) => line.includes("경계 확인 1건")));
+assert.deepEqual(buildCategoryInsight("maintenance", empty), []);
 
 console.log("fact-summary: all tests passed");
