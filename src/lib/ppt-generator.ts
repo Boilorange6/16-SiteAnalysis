@@ -1490,13 +1490,14 @@ function addInsightSummarySlide(
   pptx: PptxGenJS,
   config: AnalysisConfig,
   pois: readonly Poi[],
-  baseMapImage: string,
+  _baseMapImage: string,
   d: PptDesignConfig,
 ) {
   const slide = pptx.addSlide();
-  addFullBleedMap(slide, baseMapImage, d);
-  addCompositionBackdrop(slide, d, "content");
-  addDesignFrame(slide, d);
+  // Task A: 백색(B문법) 전환 — 2단계에서 지도가 흑백·어둡게 바뀐 뒤에도 이 슬라이드는 구 문법
+  // (밝은 지도 시절의 어두운 잉크 타이틀/각주)이 남아 판독 불가했다. 팩트시트/출처 슬라이드와
+  // 동일한 단색 흰 배경으로 전환 — 지도 베이스맵/오버레이/프레임 제거.
+  slide.background = { fill: pptColor(d.canvasColor) };
   addTitleChip(slide, "핵심 인사이트 요약", d, "강점 · 리스크 · 후속 확인");
 
   const narrative = generateAnalysisNarrative(config, pois);
@@ -1537,14 +1538,14 @@ function addRadiusAnalysisSlide(
   pptx: PptxGenJS,
   config: AnalysisConfig,
   pois: readonly Poi[],
-  baseMapImage: string,
-  radiusPosition: RadiusPosition | null,
+  _baseMapImage: string,
+  _radiusPosition: RadiusPosition | null,
   d: PptDesignConfig,
 ) {
   const slide = pptx.addSlide();
-  addFullBleedMap(slide, baseMapImage, d);
-  addConcentricRings(slide, radiusPosition, d);
-  addSiteMarker(slide, radiusPosition, d);
+  // Task A: 백색(B문법) 전환 — 아래 렌더 로직 대부분이 카드/패널로 화면을 거의 다 덮으므로
+  // 지도는 장식 이상의 정보를 전달하지 못했다. 링/대상지 마커도 지도 없이는 무의미해 함께 제거.
+  slide.background = { fill: pptColor(d.canvasColor) };
   addTitleChip(slide, "생활권 반경 분석", d, "500m · 1km · 1.5km · 전체 반경");
 
   const overlays = buildInsightOverlays(config, pois);
@@ -1590,11 +1591,37 @@ function addRadiusAnalysisSlide(
     });
   });
 
-  addRankedList(slide, "지도 인사이트 레이어 기준", overlays.map((overlay) => ({
-    label: overlay.label,
-    meta: overlay.description,
-    color: overlay.color,
-  })), 0.72, 6.08, 11.6, d);
+  // Task A: 하단 오버플로 수정 — 4개 항목을 단일 열로 쌓으면 패널이 슬라이드 하단(7.5in) 밖으로
+  // 잘리고 각주와 겹쳤다(s8 결함). 2열 2행 그리드로 재배치해 7.5in 안에 들어오게 하고, 라벨 아래
+  // 설명을 줄바꿈해 다음 항목과 겹치지 않게 한다. (수치는 ppt-canvas-renderer.ts와 동일)
+  const gridX = 0.72, gridY = 5.65, gridW = 11.6, gridH = 1.3;
+  addDataPanel(slide, gridX, gridY, gridW, gridH, d);
+  slide.addText("지도 인사이트 레이어 기준", {
+    x: gridX + 0.2, y: gridY + 0.14, w: gridW - 0.4, h: 0.22,
+    fontSize: 10, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true,
+  });
+  const gridPad = 0.2, gridColGap = 0.2, gridRowH = 0.45;
+  const gridColW = (gridW - gridPad * 2 - gridColGap) / 2;
+  const gridTopY = gridY + 0.4;
+  overlays.forEach((overlay, idx) => {
+    const col = idx % 2;
+    const row = Math.floor(idx / 2);
+    const cx = gridX + gridPad + col * (gridColW + gridColGap);
+    const cy = gridTopY + row * gridRowH;
+    slide.addShape("ellipse", {
+      x: cx, y: cy + 0.04, w: 0.1, h: 0.1,
+      fill: { color: pptColor(overlay.color), transparency: 0 },
+      line: { color: pptColor(overlay.color), transparency: 100 },
+    });
+    slide.addText(overlay.label, {
+      x: cx + 0.2, y: cy, w: gridColW - 0.2, h: 0.2,
+      fontSize: 9, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true, fit: "shrink",
+    });
+    slide.addText(overlay.description, {
+      x: cx + 0.2, y: cy + 0.2, w: gridColW - 0.25, h: 0.24,
+      fontSize: 7, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), fit: "shrink",
+    });
+  });
   addFooterNote(slide, "반경 분석은 직선거리 기준이며 실제 보행 경로와 차이가 있을 수 있습니다.", d);
 }
 
@@ -1602,16 +1629,15 @@ function addParkAccessDetailSlide(
   pptx: PptxGenJS,
   config: AnalysisConfig,
   pois: readonly Poi[],
-  baseMapImage: string,
-  poiPositions: readonly PoiPosition[],
-  radiusPosition: RadiusPosition | null,
+  _baseMapImage: string,
+  _poiPositions: readonly PoiPosition[],
+  _radiusPosition: RadiusPosition | null,
   d: PptDesignConfig,
 ) {
   const slide = pptx.addSlide();
-  addFullBleedMap(slide, baseMapImage, d);
-  addConcentricRings(slide, radiusPosition, d);
-  addPoiMarkers(slide, poiPositions, ["park", "mountain"], d, { showLabels: true });
-  addSiteMarker(slide, radiusPosition, d);
+  // Task A: 백색(B문법) 전환. 부수적으로 반투명 패널 아래 지도 라벨 잔상(ghosting) 문제도
+  // 배경이 완전 불투명 흰색이 되며 함께 해소된다.
+  slide.background = { fill: pptColor(d.canvasColor) };
   addTitleChip(slide, "공원/녹지 접근성 상세", d, "경계 기준 접근거리 우선");
 
   const parks = pois.filter((p): p is Park => p.category === "park");
@@ -1664,16 +1690,14 @@ function addDevelopmentRiskMatrixSlide(
   pptx: PptxGenJS,
   config: AnalysisConfig,
   pois: readonly Poi[],
-  baseMapImage: string,
-  poiPositions: readonly PoiPosition[],
-  radiusPosition: RadiusPosition | null,
+  _baseMapImage: string,
+  _poiPositions: readonly PoiPosition[],
+  _radiusPosition: RadiusPosition | null,
   d: PptDesignConfig,
 ) {
   const slide = pptx.addSlide();
-  addFullBleedMap(slide, baseMapImage, d);
-  addConcentricRings(slide, radiusPosition, d);
-  addPoiMarkers(slide, poiPositions, ["maintenance"], d, { showLabels: true });
-  addSiteMarker(slide, radiusPosition, d);
+  // Task A: 백색(B문법) 전환.
+  slide.background = { fill: pptColor(d.canvasColor) };
   addTitleChip(slide, "개발 호재/리스크 매트릭스", d, "영향도 · 확정성 · 거리");
 
   const projects = pois.filter((p): p is MaintenanceProject => p.category === "maintenance");
@@ -1731,16 +1755,14 @@ function addResidentialSupplySlide(
   pptx: PptxGenJS,
   config: AnalysisConfig,
   pois: readonly Poi[],
-  baseMapImage: string,
-  poiPositions: readonly PoiPosition[],
-  radiusPosition: RadiusPosition | null,
+  _baseMapImage: string,
+  _poiPositions: readonly PoiPosition[],
+  _radiusPosition: RadiusPosition | null,
   d: PptDesignConfig,
 ) {
   const slide = pptx.addSlide();
-  addFullBleedMap(slide, baseMapImage, d);
-  addConcentricRings(slide, radiusPosition, d);
-  addPoiMarkers(slide, poiPositions, ["apartment", "officetel", "residential"], d, { showLabels: false });
-  addSiteMarker(slide, radiusPosition, d);
+  // Task A: 백색(B문법) 전환.
+  slide.background = { fill: pptColor(d.canvasColor) };
   addTitleChip(slide, "주거 공급 경쟁 구도", d, "세대수 · 분양예정 · 입주 시점");
 
   const residentials = getResidentialPois(pois);
@@ -1973,7 +1995,9 @@ function addApartmentCalloutSlide(
   const pageTitle = totalPages > 1
     ? `주변 분양 현황 ${pageIdx + 1}/${totalPages}`
     : "주변 분양 현황";
-  addTitleChip(slide, pageTitle, d, `반경 ${config.radiusKm}km`);
+  // Task A: 지도 배경은 유지하되, 어두운 잉크 addTitleChip 대신 Task 5의 흰 지도 섹션 타이틀
+  // 문법(addMapSectionTitle)로 교체해 판독 불가 결함을 해소한다.
+  addMapSectionTitle(slide, pageTitle, `반경 ${config.radiusKm}km`);
   addLegend(slide, d);
 
   if (aptsOnPage.length === 0) {
@@ -2107,14 +2131,13 @@ function addSummarySlide(
   pptx: PptxGenJS,
   config: AnalysisConfig,
   pois: readonly Poi[],
-  baseMapImage: string,
-  radiusPosition: RadiusPosition | null,
+  _baseMapImage: string,
+  _radiusPosition: RadiusPosition | null,
   d: PptDesignConfig
 ) {
   const slide = pptx.addSlide();
-  addFullBleedMap(slide, baseMapImage, d);
-  addConcentricRings(slide, radiusPosition, d);
-  addSiteMarker(slide, radiusPosition, d);
+  // Task A: 백색(B문법) 전환.
+  slide.background = { fill: pptColor(d.canvasColor) };
   addTitleChip(slide, "종합 분석 및 시사점", d, `반경 ${config.radiusKm}km`);
 
   const panelW = 6;

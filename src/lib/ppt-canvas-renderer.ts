@@ -1413,14 +1413,15 @@ function renderScoreDashboardSlide(
 
 function renderInsightSummarySlide(
   ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
+  _img: HTMLImageElement,
   input: SlideRenderInput,
   d: PptDesignConfig
 ) {
-  drawBaseMap(ctx, img);
-  drawMapOverlay(ctx, d);
-  drawCompositionBackdrop(ctx, d, "content");
-  drawDesignFrame(ctx, d);
+  // Task A: 백색(B문법) 전환 — 2단계에서 지도가 흑백·어둡게 바뀐 뒤에도 이 슬라이드는 구 문법
+  // (밝은 지도 시절의 어두운 잉크 타이틀/각주)이 남아 판독 불가했다. 팩트시트/출처 슬라이드와
+  // 동일한 단색 흰 배경으로 전환 — 지도 베이스맵/오버레이/프레임 제거.
+  ctx.fillStyle = d.canvasColor;
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
   drawTitleChip(ctx, "핵심 인사이트 요약", d, "강점 · 리스크 · 후속 확인");
   const narrative = generateAnalysisNarrative(input.config, input.allPois);
   drawDataPanel(ctx, ix(0.7), iy(1.15), ix(11.95), iy(1.05), d);
@@ -1445,14 +1446,14 @@ function renderInsightSummarySlide(
 
 function renderRadiusAnalysisSlide(
   ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
+  _img: HTMLImageElement,
   input: SlideRenderInput,
   d: PptDesignConfig
 ) {
-  drawBaseMap(ctx, img);
-  drawMapOverlay(ctx, d);
-  drawConcentricRings(ctx, input.radiusPosition, d);
-  drawSiteMarker(ctx, input.radiusPosition, d);
+  // Task A: 백색(B문법) 전환 — 아래 렌더 로직 대부분이 카드/패널로 화면을 거의 다 덮으므로
+  // 지도는 장식 이상의 정보를 전달하지 못했다. 링/대상지 마커도 지도 없이는 무의미해 함께 제거.
+  ctx.fillStyle = d.canvasColor;
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
   drawTitleChip(ctx, "생활권 반경 분석", d, "500m · 1km · 1.5km · 전체 반경");
   const radiusRows = [
     { label: "근린 핵심권", radiusM: 500, color: "#F59E0B", note: "도보·일상 접근성의 1차 체감권" },
@@ -1479,11 +1480,31 @@ function renderRadiusAnalysisSlide(
     });
     drawTextBox(ctx, row.note, ix(x + 0.3), iy(y + 1.48), ix(4.9), iy(0.22), { fontSize: 8, color: d.mutedTextColor });
   });
-  drawRankedList(ctx, "지도 인사이트 레이어 기준", buildInsightOverlays(input.config, input.allPois).map((overlay) => ({
-    label: overlay.label,
-    meta: overlay.description,
-    color: overlay.color,
-  })), 0.72, 6.08, 11.6, d);
+  // Task A: 하단 오버플로 수정 — 4개 항목을 단일 열로 쌓으면 패널이 슬라이드 하단(7.5in) 밖으로
+  // 잘리고 각주와 겹쳤다(s8 결함). 2열 2행 그리드로 재배치해 7.5in 안에 들어오게 하고, 라벨 아래
+  // 설명을 줄바꿈해 다음 항목과 겹치지 않게 한다.
+  const insightOverlays = buildInsightOverlays(input.config, input.allPois);
+  const gridX = 0.72, gridY = 5.65, gridW = 11.6, gridH = 1.3;
+  drawDataPanel(ctx, ix(gridX), iy(gridY), ix(gridW), iy(gridH), d);
+  drawTextBox(ctx, "지도 인사이트 레이어 기준", ix(gridX + 0.2), iy(gridY + 0.14), ix(gridW - 0.4), iy(0.22), {
+    fontSize: 10, bold: true, color: d.textColor,
+  });
+  const gridPad = 0.2, gridColGap = 0.2, gridRowH = 0.45;
+  const gridColW = (gridW - gridPad * 2 - gridColGap) / 2;
+  const gridTopY = gridY + 0.4;
+  insightOverlays.forEach((overlay, idx) => {
+    const col = idx % 2;
+    const row = Math.floor(idx / 2);
+    const cx = gridX + gridPad + col * (gridColW + gridColGap);
+    const cy = gridTopY + row * gridRowH;
+    drawEllipseShape(ctx, ix(cx + 0.06), iy(cy + 0.09), ix(0.05), ix(0.05), overlay.color);
+    drawTextBox(ctx, overlay.label, ix(cx + 0.2), iy(cy), ix(gridColW - 0.2), iy(0.2), {
+      fontSize: 9, bold: true, color: d.textColor,
+    });
+    drawWrappedText(ctx, overlay.description, ix(cx + 0.2), iy(cy + 0.2), ix(gridColW - 0.25), iy(0.12), 2, {
+      fontSize: 7, color: d.mutedTextColor,
+    });
+  });
   drawFooterNote(ctx, "반경 분석은 직선거리 기준이며 실제 보행 경로와 차이가 있을 수 있습니다.", d);
 }
 
@@ -1540,15 +1561,14 @@ function renderCategorySlide(
 
 function renderParkAccessDetailSlide(
   ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
+  _img: HTMLImageElement,
   input: SlideRenderInput,
   d: PptDesignConfig
 ) {
-  drawBaseMap(ctx, img);
-  drawMapOverlay(ctx, d);
-  drawConcentricRings(ctx, input.radiusPosition, d);
-  drawPoiMarkers(ctx, input.poiPositions, ["park", "mountain"], d, { showLabels: true });
-  drawSiteMarker(ctx, input.radiusPosition, d);
+  // Task A: 백색(B문법) 전환. 부수적으로 s9에서 있던 반투명 패널 아래 지도 라벨 잔상(ghosting)
+  // 문제도 배경이 완전 불투명 흰색이 되며 함께 해소된다.
+  ctx.fillStyle = d.canvasColor;
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
   drawTitleChip(ctx, "공원/녹지 접근성 상세", d, "경계 기준 접근거리 우선");
   const parks = input.allPois.filter((p): p is Park => p.category === "park");
   const summary = summarizeParks(parks);
@@ -1583,15 +1603,13 @@ function renderParkAccessDetailSlide(
 
 function renderDevelopmentRiskMatrixSlide(
   ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
+  _img: HTMLImageElement,
   input: SlideRenderInput,
   d: PptDesignConfig
 ) {
-  drawBaseMap(ctx, img);
-  drawMapOverlay(ctx, d);
-  drawConcentricRings(ctx, input.radiusPosition, d);
-  drawPoiMarkers(ctx, input.poiPositions, ["maintenance"], d, { showLabels: true });
-  drawSiteMarker(ctx, input.radiusPosition, d);
+  // Task A: 백색(B문법) 전환.
+  ctx.fillStyle = d.canvasColor;
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
   drawTitleChip(ctx, "개발 호재/리스크 매트릭스", d, "영향도 · 확정성 · 거리");
   const projects = input.allPois.filter((p): p is MaintenanceProject => p.category === "maintenance");
   const summary = summarizeMaintenanceProjects(projects);
@@ -1623,15 +1641,13 @@ function renderDevelopmentRiskMatrixSlide(
 
 function renderResidentialSupplySlide(
   ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
+  _img: HTMLImageElement,
   input: SlideRenderInput,
   d: PptDesignConfig
 ) {
-  drawBaseMap(ctx, img);
-  drawMapOverlay(ctx, d);
-  drawConcentricRings(ctx, input.radiusPosition, d);
-  drawPoiMarkers(ctx, input.poiPositions, ["apartment", "officetel", "residential"], d, { showLabels: false });
-  drawSiteMarker(ctx, input.radiusPosition, d);
+  // Task A: 백색(B문법) 전환.
+  ctx.fillStyle = d.canvasColor;
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
   drawTitleChip(ctx, "주거 공급 경쟁 구도", d, "세대수 · 분양예정 · 입주 시점");
   const residentials = getResidentialPois(input.allPois);
   const totalUnits = residentials.reduce((sum, apt) => sum + Math.max(0, apt.units), 0);
@@ -1726,7 +1742,9 @@ function renderApartmentCalloutSlide(
   const pageTitle = totalPages > 1
     ? `주변 분양 현황 ${pageIdx + 1}/${totalPages}`
     : "주변 분양 현황";
-  drawTitleChip(ctx, pageTitle, d, `반경 ${input.config.radiusKm}km`);
+  // Task A: 지도 배경은 유지하되, 어두운 잉크 drawTitleChip 대신 Task 5의 흰 지도 섹션 타이틀
+  // 문법(drawMapSectionTitle)로 교체해 판독 불가 결함을 해소한다.
+  drawMapSectionTitle(ctx, pageTitle, `반경 ${input.config.radiusKm}km`);
   drawLegend(ctx, d);
 
   if (aptsOnPage.length === 0) {
@@ -1845,15 +1863,14 @@ function renderApartmentCalloutSlide(
 
 function renderSummarySlide(
   ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
+  _img: HTMLImageElement,
   input: SlideRenderInput,
   d: PptDesignConfig
 ) {
   const { allPois, config } = input;
-  drawBaseMap(ctx, img);
-  drawMapOverlay(ctx, d);
-  drawConcentricRings(ctx, input.radiusPosition, d);
-  drawSiteMarker(ctx, input.radiusPosition, d);
+  // Task A: 백색(B문법) 전환.
+  ctx.fillStyle = d.canvasColor;
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
   drawTitleChip(ctx, "종합 분석 및 시사점", d, `반경 ${config.radiusKm}km`);
 
   const panelW = ix(6);
