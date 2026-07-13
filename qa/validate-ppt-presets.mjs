@@ -82,15 +82,15 @@ const checks = [
   },
   {
     id: "satellite-legibility-guard",
-    label: "PPT and preview renderers apply satellite-map veils on cover and content slides",
+    label:
+      "PPT and preview renderers apply the P4 contract: content-slide map veils + solid black cover (2026-07 report redesign)",
     pass:
       generatorSource.includes("function addMapVeil") &&
-      generatorSource.includes("d.coverOverlayTransparency") &&
       generatorSource.includes("d.mapOverlayTransparency") &&
+      generatorSource.includes("d.coverBg") &&
       canvasSource.includes("function drawMapVeil") &&
-      canvasSource.includes("drawCoverMapOverlay") &&
-      canvasSource.includes("d.coverOverlayTransparency") &&
-      canvasSource.includes("d.mapOverlayTransparency"),
+      canvasSource.includes("d.mapOverlayTransparency") &&
+      canvasSource.includes("d.coverBg"),
   },
   {
     id: "renderers-support-clean-mode",
