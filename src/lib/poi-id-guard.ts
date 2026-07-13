@@ -13,7 +13,7 @@
  * park-analysis, maintenance-analysis, ppt-label-layout, 두 렌더러)가 안전하게 공유할 수 있다.
  */
 
-/** "영문소문자(+언더스코어) - 숫자 6자리 이상" 형태의 원시 소스 ID 패턴. */
+/** "영문소문자 하이픈 숫자 6자리 이상"(예: school-4346679989) 형태의 원시 소스 ID 패턴. */
 const RAW_POI_ID_PATTERN = /^[a-z]+-\d{6,}$/;
 
 /** name이 원시 소스 ID로 보이면 true. 순수 함수 — 부수효과 없음. */

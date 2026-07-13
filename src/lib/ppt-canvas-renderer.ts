@@ -1165,19 +1165,22 @@ function drawStationBars(
         const labelX = cx + normal.x * labelOffsetPx;
         const labelY = cy + normal.y * labelOffsetPx;
 
-        ctx.save();
-        ctx.translate(labelX, labelY);
-        ctx.rotate(angleDeg * Math.PI / 180);
-        ctx.font = `bold ${d.stationLabelFontSize}px ${getCanvasFontStack()}`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.shadowColor = "rgba(0,0,0,0.9)";
-        ctx.shadowBlur = 4;
-        ctx.fillStyle = STATION_CASING_COLOR; // 흰 텍스트 — 원본 보고서 문법(검정 halo 위 흰 역명)
-        ctx.fillText(station.poi.name, 0, 0);
-        ctx.shadowColor = "transparent";
-        ctx.shadowBlur = 0;
-        ctx.restore();
+        // P4R Task B fix: 원시 ID 역명은 라벨 텍스트만 생략(도트·역사도식선은 위치 정보라 유지).
+        if (!isRawPoiId(station.poi.name)) {
+          ctx.save();
+          ctx.translate(labelX, labelY);
+          ctx.rotate(angleDeg * Math.PI / 180);
+          ctx.font = `bold ${d.stationLabelFontSize}px ${getCanvasFontStack()}`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.shadowColor = "rgba(0,0,0,0.9)";
+          ctx.shadowBlur = 4;
+          ctx.fillStyle = STATION_CASING_COLOR; // 흰 텍스트 — 원본 보고서 문법(검정 halo 위 흰 역명)
+          ctx.fillText(station.poi.name, 0, 0);
+          ctx.shadowColor = "transparent";
+          ctx.shadowBlur = 0;
+          ctx.restore();
+        }
       }
     }
   }
@@ -1589,7 +1592,9 @@ function renderParkAccessDetailSlide(
     nearestParkDistanceM !== null ? formatDistanceM(nearestParkDistanceM) : "미확인",
     summary.nearestPark?.name ?? "반경 내 공원 없음", "#3B82F6", d);
   drawMetricCard(ctx, 8.42, 1.18, 2.45, 0.86, "대형공원", `${summary.majorCount}개`, "광역 이용 가능성", "#F59E0B", d);
+  // P4R Task B fix: 랭킹 리스트도 원시 ID 이름 공원 제외(표시만 — 상단 카드의 count 집계는 원본 기준).
   const topParks = [...parks]
+    .filter((park) => !isRawPoiId(park.name))
     .sort((a, b) => (a.access_distance_m ?? a.distance_m ?? Infinity) - (b.access_distance_m ?? b.distance_m ?? Infinity))
     .slice(0, 7);
   drawRankedList(ctx, "최근접 공원 접근거리", topParks.map((park) => ({

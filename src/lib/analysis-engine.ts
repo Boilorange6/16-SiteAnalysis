@@ -10,6 +10,7 @@ import type {
 import { haversineDistance } from "./geo";
 import { formatAreaSqm, formatDistanceM, summarizeParks } from "./park-analysis";
 import { summarizeMaintenanceProjects } from "./maintenance-analysis";
+import { isRawPoiId } from "./poi-id-guard";
 
 export type ScoreKey = "traffic" | "education" | "nature" | "residential" | "development";
 export type ScoreLevel = "excellent" | "good" | "fair" | "weak";
@@ -63,8 +64,12 @@ function countWithin<T extends Poi>(pois: readonly T[], config: AnalysisConfig, 
 }
 
 function nearestDistance<T extends Poi>(pois: readonly T[], config: AnalysisConfig): number | null {
-  if (pois.length === 0) return null;
-  return Math.min(...pois.map((poi) => haversineDistance(config.centerLat, config.centerLng, poi.lat, poi.lng)));
+  // P4R Task B fix: 원시 ID 이름 POI는 최근접 후보에서 제외 — 이 거리는 "최근접 역 NNNm" 형태로
+  // 표시 문구에 쓰이므로 팩트시트(fact-summary findNearest)와 동일한 필터 후보 기준으로 통일해
+  // 두 곳의 최근접 거리가 어긋나지 않게 한다.
+  const displayable = pois.filter((poi) => !isRawPoiId(poi.name));
+  if (displayable.length === 0) return null;
+  return Math.min(...displayable.map((poi) => haversineDistance(config.centerLat, config.centerLng, poi.lat, poi.lng)));
 }
 
 export function computeAnalysisScores(config: AnalysisConfig, pois: readonly Poi[]): AnalysisScores {
@@ -241,20 +246,23 @@ export function generateAnalysisNarrative(config: AnalysisConfig, pois: readonly
     ].filter(Boolean),
     // P4R Task B-3: "PPT 첫 장에서 강조하세요"·"프로젝트를 저장하세요" 같은 앱 사용 안내문을
     // 보고서 수신자(발주처) 관점 제언으로 교체 — 데이터 조건에 따라 분기하는 일반 제언.
+    // 문구 길이 제약(리뷰 fix): canvas 렌더러의 "다음 액션" 카드는 drawWrappedText maxLines=2
+    // (2줄 ≈ 50자)라 45자를 넘기면 말줄임되고 pptx(fit:"shrink" 전문 표시)와 내용이 어긋난다.
+    // 각 항목 45자 이내·핵심 권고 선두 배치를 유지할 것.
     nextActions: [
       nearestSubway === null
-        ? "반경 내 지하철역이 확인되지 않아 현장 실사와 버스 노선 정보로 대중교통 접근성을 별도 확인하는 것을 권장합니다."
-        : `최근접 역(${formatDistanceM(nearestSubway)}) 기준 도보 접근성은 확인되나, 신설·연장 노선 계획 여부는 관계 기관 고시로 주기적으로 재확인하는 것을 권장합니다.`,
+        ? "지하철역 미확인 — 현장 실사·버스 노선으로 접근성 확인 권장"
+        : `최근접 역 ${formatDistanceM(nearestSubway)} — 신설·연장 노선은 기관 고시로 재확인 권장`,
       weakItems.length > 0
-        ? `${weakItems.map((item) => item.label).join("·")} 항목은 상대적으로 보완이 필요해 현장 실사와 최신 공고로 데이터를 교차 확인하는 것을 권장합니다.`
-        : "전 항목이 고르게 확인되었으나, 공공 데이터 갱신 주기를 고려해 핵심 지표는 정기적으로 재확인하는 것을 권장합니다.",
+        ? `${weakItems.slice(0, 2).map((item) => item.label).join("·")}${weakItems.length > 2 ? " 등" : ""} 보완 필요 — 실사·공고로 재확인 권장`
+        : "전 항목 고른 확인 — 핵심 지표는 정기 재확인 권장",
       maintenanceSummary.count > maintenanceSummary.boundaryConfirmedCount
-        ? `정비사업 ${maintenanceSummary.count - maintenanceSummary.boundaryConfirmedCount}건은 경계 미확인 상태이므로 관할 구청·조합 공고로 경계 확정 여부를 확인하는 것을 권장합니다.`
+        ? `정비사업 ${maintenanceSummary.count - maintenanceSummary.boundaryConfirmedCount}건 경계 미확인 — 관할 구청·조합 공고로 확인 권장`
         : maintenanceSummary.count > 0
-          ? "정비사업 경계는 확인되었으나 사업 단계(인가·착공 등)는 최신 공고로 재확인하는 것을 권장합니다."
-          : "반경 내 정비사업은 확인되지 않았으나, 인접 반경 밖 대규모 개발계획은 별도로 확인하는 것을 권장합니다.",
+          ? "정비사업 단계(인가·착공 등)는 최신 공고로 재확인 권장"
+          : "반경 밖 대규모 개발계획은 별도 확인 권장",
       ...(plannedCount > 0
-        ? [`분양예정 ${plannedCount}건은 일정이 변경될 수 있어 분양 공고·모델하우스 정보로 최신 공급 계획을 재확인하는 것을 권장합니다.`]
+        ? [`분양예정 ${plannedCount}건 — 분양 공고로 최신 공급 일정 재확인 권장`]
         : []),
     ],
   };
