@@ -23,6 +23,7 @@ import { haversineDistance } from "./geo";
 import { sourceStatusLines, hasFailedSource } from "./source-status-text";
 import { toReportMapTone } from "./map-image-tone";
 import { buildFactSummary, buildFactSheetRows, buildCategoryInsight, type FactSheetSegment, type CategoryInsightKey } from "./fact-summary";
+import { isRawPoiId } from "./poi-id-guard";
 
 // ── Coordinate constants ──────────────────────────────────────────────────────
 
@@ -910,12 +911,14 @@ function drawPoiMarkers(
   positions: readonly PoiPosition[],
   categories: readonly PoiCategory[],
   d: PptDesignConfig,
-  options: { showLabels?: boolean; size?: number } = {}
+  options: { showLabels?: boolean; size?: number; radiusPosition?: RadiusPosition | null } = {}
 ) {
-  const { showLabels = true } = options;
+  const { showLabels = true, radiusPosition = null } = options;
   const sizeInch = options.size ?? d.markerSize;
   const filtered = positions.filter((p) => categories.includes(p.poi.category));
-  const labelPlacements = showLabels ? layoutPoiLabels(filtered, SLIDE_W, SLIDE_H, sizeInch) : [];
+  const labelPlacements = showLabels
+    ? layoutPoiLabels(filtered, SLIDE_W, SLIDE_H, sizeInch, { radiusPosition })
+    : [];
   const poiById = new Map(filtered.map((pos) => [pos.poi.id, pos.poi]));
 
   filtered.forEach(({ poi, nx, ny }) => {
@@ -1526,7 +1529,10 @@ function renderCategorySlide(
   if (includeRoutes) drawSubwayRouteLines(ctx, input.routePositions, d);
   const markerCats = subwayBarsAvailable ? categories.filter(c => c !== "subway") : categories;
   if (markerCats.length > 0) {
-    drawPoiMarkers(ctx, input.poiPositions, markerCats, d, { showLabels: !subwayBarsAvailable });
+    drawPoiMarkers(ctx, input.poiPositions, markerCats, d, {
+      showLabels: !subwayBarsAvailable,
+      radiusPosition: input.radiusPosition,
+    });
   }
   if (subwayBarsAvailable) {
     drawStationBars(ctx, input.poiPositions, input.routePositions, d, input.radiusPosition, input.config.radiusKm);
@@ -1572,9 +1578,16 @@ function renderParkAccessDetailSlide(
   drawTitleChip(ctx, "공원/녹지 접근성 상세", d, "경계 기준 접근거리 우선");
   const parks = input.allPois.filter((p): p is Park => p.category === "park");
   const summary = summarizeParks(parks);
+  // P4R Task B-4b: "접근성 점수 NN/100"(내부 산식 점수)를 팩트 지표(최근접 공원 실거리)로 격하.
+  // summary.nearestPark는 park-analysis.ts에서 이미 원시 ID 이름을 건너뛴 표시 후보다.
+  const nearestParkDistanceM = summary.nearestPark
+    ? summary.nearestPark.access_distance_m ?? summary.nearestPark.distance_m ?? 0
+    : null;
   drawMetricCard(ctx, 0.55, 1.18, 2.45, 0.86, "생활권 공원", `${summary.nearby500Count}개`, "접근 500m 이내", "#10B981", d);
   drawMetricCard(ctx, 3.18, 1.18, 2.45, 0.86, "총 녹지 면적", formatAreaSqm(summary.totalAreaSqm), `${summary.count}개 공원`, "#22C55E", d);
-  drawMetricCard(ctx, 5.8, 1.18, 2.45, 0.86, "접근성 점수", `${summary.accessibilityScore}/100`, "면적·거리·공원 등급 반영", "#3B82F6", d);
+  drawMetricCard(ctx, 5.8, 1.18, 2.45, 0.86, "최근접 공원",
+    nearestParkDistanceM !== null ? formatDistanceM(nearestParkDistanceM) : "미확인",
+    summary.nearestPark?.name ?? "반경 내 공원 없음", "#3B82F6", d);
   drawMetricCard(ctx, 8.42, 1.18, 2.45, 0.86, "대형공원", `${summary.majorCount}개`, "광역 이용 가능성", "#F59E0B", d);
   const topParks = [...parks]
     .sort((a, b) => (a.access_distance_m ?? a.distance_m ?? Infinity) - (b.access_distance_m ?? b.distance_m ?? Infinity))
@@ -1985,7 +1998,7 @@ function buildSlideDefs(input: SlideRenderInput, includeScoreDashboard = false):
       render: (ctx, img, inp, d) => {
         const subways = inp.allPois.filter((p) => p.category === "subway") as SubwayStation[];
         renderCategorySlide(ctx, img, inp, d, "교통 분석", ["subway"],
-          subways.slice(0, 8).map(s => `${s.name} (${s.line})`), true);
+          subways.filter(s => !isRawPoiId(s.name)).slice(0, 8).map(s => `${s.name} (${s.line})`), true);
       },
     },
     {
@@ -1993,7 +2006,7 @@ function buildSlideDefs(input: SlideRenderInput, includeScoreDashboard = false):
       render: (ctx, img, inp, d) => {
         const schools = inp.allPois.filter((p): p is School => p.category === "school");
         renderCategorySlide(ctx, img, inp, d, "교육 환경", ["school"],
-          schools.slice(0, 8).map(s =>
+          schools.filter(s => !isRawPoiId(s.name)).slice(0, 8).map(s =>
             `${s.name} (${s.level === "elementary" ? "초" : s.level === "middle" ? "중" : "고"})`
           ));
       },
@@ -2002,7 +2015,7 @@ function buildSlideDefs(input: SlideRenderInput, includeScoreDashboard = false):
       title: "자연 환경",
       render: (ctx, img, inp, d) => {
         const parks = inp.allPois.filter((p): p is Park => p.category === "park");
-        const mountains = inp.allPois.filter(p => p.category === "mountain");
+        const mountains = inp.allPois.filter(p => p.category === "mountain" && !isRawPoiId(p.name));
         renderCategorySlide(ctx, img, inp, d, "자연 환경", ["park", "mountain"],
           [...buildParkDetailLines(parks, 7), ...mountains.slice(0, 1).map(p => `인접 산: ${p.name}`)].slice(0, 8));
       },

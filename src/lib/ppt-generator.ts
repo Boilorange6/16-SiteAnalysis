@@ -24,6 +24,7 @@ import { DEFAULT_PPT_DESIGN, PPT_FONT_MAIN } from "./ppt-design-config";
 import { sourceStatusLines, hasFailedSource } from "./source-status-text";
 import { toReportMapTone } from "./map-image-tone";
 import { buildFactSummary, buildFactSheetRows, buildCategoryInsight, type FactSheetSegment, type CategoryInsightKey } from "./fact-summary";
+import { isRawPoiId } from "./poi-id-guard";
 
 const SLIDE_W = 13.333;
 const SLIDE_H = 7.5;
@@ -746,12 +747,14 @@ function addPoiMarkers(
   positions: readonly PoiPosition[],
   categories: readonly PoiCategory[],
   d: PptDesignConfig,
-  options: { showLabels?: boolean; size?: number } = {}
+  options: { showLabels?: boolean; size?: number; radiusPosition?: RadiusPosition | null } = {}
 ) {
-  const { showLabels = true } = options;
+  const { showLabels = true, radiusPosition = null } = options;
   const size = options.size ?? d.markerSize;
   const filtered = positions.filter((p) => categories.includes(p.poi.category));
-  const labelPlacements = showLabels ? layoutPoiLabels(filtered, SLIDE_W, SLIDE_H, size) : [];
+  const labelPlacements = showLabels
+    ? layoutPoiLabels(filtered, SLIDE_W, SLIDE_H, size, { radiusPosition })
+    : [];
   const poiById = new Map(filtered.map((pos) => [pos.poi.id, pos.poi]));
 
   filtered.forEach(({ poi, nx, ny }) => {
@@ -1642,9 +1645,16 @@ function addParkAccessDetailSlide(
 
   const parks = pois.filter((p): p is Park => p.category === "park");
   const summary = summarizeParks(parks);
+  // P4R Task B-4b: "접근성 점수 NN/100"(내부 산식 점수)를 팩트 지표(최근접 공원 실거리)로 격하.
+  // summary.nearestPark는 park-analysis.ts에서 이미 원시 ID 이름을 건너뛴 표시 후보다.
+  const nearestParkDistanceM = summary.nearestPark
+    ? summary.nearestPark.access_distance_m ?? summary.nearestPark.distance_m ?? 0
+    : null;
   addMetricCard(slide, 0.55, 1.18, 2.45, 0.86, "생활권 공원", `${summary.nearby500Count}개`, "접근 500m 이내", "#10B981", d);
   addMetricCard(slide, 3.18, 1.18, 2.45, 0.86, "총 녹지 면적", formatAreaSqm(summary.totalAreaSqm), `${summary.count}개 공원`, "#22C55E", d);
-  addMetricCard(slide, 5.8, 1.18, 2.45, 0.86, "접근성 점수", `${summary.accessibilityScore}/100`, "면적·거리·공원 등급 반영", "#3B82F6", d);
+  addMetricCard(slide, 5.8, 1.18, 2.45, 0.86, "최근접 공원",
+    nearestParkDistanceM !== null ? formatDistanceM(nearestParkDistanceM) : "미확인",
+    summary.nearestPark?.name ?? "반경 내 공원 없음", "#3B82F6", d);
   addMetricCard(slide, 8.42, 1.18, 2.45, 0.86, "대형공원", `${summary.majorCount}개`, "광역 이용 가능성", "#F59E0B", d);
 
   const topParks = [...parks]
@@ -1896,6 +1906,7 @@ function addCategorySlide(
   const markerCats = subwayBarsAvailable ? cats.filter(c => c !== "subway") : cats;
   addPoiMarkers(slide, poiPositions, markerCats, d, {
     showLabels: !subwayBarsAvailable,
+    radiusPosition,
   });
   if (subwayBarsAvailable) {
     addStationBars(slide, poiPositions, routePositions, d, radiusPosition, config.radiusKm);
@@ -2192,14 +2203,14 @@ export async function generateSiteAnalysisPpt(
 
   const subways = allPois.filter((p): p is SubwayStation => p.category === "subway");
   addCategorySlide(pptx, "교통 분석", "subway", config, reportBaseMapImage, poiPositions, radiusPosition,
-    subways.slice(0, 8).map(s => `${s.name} (${s.line})`), d, routePositions, allPois);
+    subways.filter(s => !isRawPoiId(s.name)).slice(0, 8).map(s => `${s.name} (${s.line})`), d, routePositions, allPois);
 
   const schools = allPois.filter((p): p is School => p.category === "school");
   addCategorySlide(pptx, "교육 환경", "school", config, reportBaseMapImage, poiPositions, radiusPosition,
-    schools.slice(0, 8).map(s => `${s.name} (${s.level === "elementary" ? "초" : s.level === "middle" ? "중" : "고"})`), d, [], allPois);
+    schools.filter(s => !isRawPoiId(s.name)).slice(0, 8).map(s => `${s.name} (${s.level === "elementary" ? "초" : s.level === "middle" ? "중" : "고"})`), d, [], allPois);
 
   const parks = allPois.filter((p): p is Park => p.category === "park");
-  const mountains = allPois.filter(p => p.category === "mountain");
+  const mountains = allPois.filter(p => p.category === "mountain" && !isRawPoiId(p.name));
   addCategorySlide(pptx, "자연 환경", ["park", "mountain"], config, reportBaseMapImage, poiPositions, radiusPosition,
     [...buildParkDetailLines(parks, 7), ...mountains.slice(0, 1).map(p => `인접 산: ${p.name}`)].slice(0, 8), d, [], allPois);
 

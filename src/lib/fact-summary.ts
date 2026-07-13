@@ -12,6 +12,7 @@ import type { AnalysisConfig, Poi, SubwayStation, School, Park, ResidentialPoi, 
 import { POI_SOURCE_LABELS } from "./types";
 import { haversineDistance } from "./geo";
 import { summarizeMaintenanceProjects, formatMaintenanceArea } from "./maintenance-analysis";
+import { isRawPoiId } from "./poi-id-guard";
 
 /** 직선거리 → 도보시간 환산 속도. 성인 평균 보행속도 약 80m/분(≈4.8km/h) 가정. */
 const WALK_SPEED_M_PER_MIN = 80;
@@ -66,9 +67,15 @@ interface NearestResult<T> {
   readonly distanceM: number;
 }
 
+/**
+ * 원시 ID 이름(예: "school-4346679989")인 POI는 "최근접" 후보에서 제외하고 다음 후보로 넘어간다
+ * (P4R Task B-1). count·length 등 집계 함수는 이 함수를 거치지 않은 원본 배열을 그대로 쓰므로
+ * 영향받지 않는다.
+ */
 function findNearest<T extends Poi>(config: AnalysisConfig, pois: readonly T[]): NearestResult<T> | null {
   let best: NearestResult<T> | null = null;
   for (const poi of pois) {
+    if (isRawPoiId(poi.name)) continue;
     const distanceM = haversineDistance(config.centerLat, config.centerLng, poi.lat, poi.lng);
     if (!best || distanceM < best.distanceM) best = { poi, distanceM };
   }

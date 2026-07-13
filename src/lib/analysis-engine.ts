@@ -221,7 +221,9 @@ export function generateAnalysisNarrative(config: AnalysisConfig, pois: readonly
   const weakItems = scores.items.filter((item) => item.level === "fair" || item.level === "weak");
 
   return {
-    summary: `${config.centerName || "선택 입지"}는 종합 ${scores.total}/100점(${scores.grade}등급)입니다. ${scores.headline}`,
+    // P4R Task B-4a: 점수를 문장 선두에서 강조하지 않는다 — 강·약점 팩트 요약을 앞세우고
+    // 점수/등급은 문장 끝 괄호 보조 표기로 격하한다.
+    summary: `${config.centerName || "선택 입지"}는 ${scores.headline} (참고: 종합 ${scores.total}/100점 · ${scores.grade}등급)`,
     bullets: [
       nearestSubway === null
         ? "교통: 반경 내 지하철역 확인이 부족해 버스·도로 접근성의 보완 검토가 필요합니다."
@@ -237,10 +239,23 @@ export function generateAnalysisNarrative(config: AnalysisConfig, pois: readonly
         ? "정비사업 일부는 경계 미확인 상태라 보고서에는 출처와 확인 수준을 함께 표기해야 합니다."
         : "",
     ].filter(Boolean),
+    // P4R Task B-3: "PPT 첫 장에서 강조하세요"·"프로젝트를 저장하세요" 같은 앱 사용 안내문을
+    // 보고서 수신자(발주처) 관점 제언으로 교체 — 데이터 조건에 따라 분기하는 일반 제언.
     nextActions: [
-      "핵심 경쟁력 항목은 PPT 첫 장 요약과 종합 분석 슬라이드에서 강조하세요.",
-      "점수가 낮은 항목은 현장조사, 임장 사진, 교통 노선 계획 등 외부 근거로 보완하세요.",
-      "수동 POI로 누락된 예정지와 비공개 조사 포인트를 추가한 뒤 프로젝트를 저장하세요.",
+      nearestSubway === null
+        ? "반경 내 지하철역이 확인되지 않아 현장 실사와 버스 노선 정보로 대중교통 접근성을 별도 확인하는 것을 권장합니다."
+        : `최근접 역(${formatDistanceM(nearestSubway)}) 기준 도보 접근성은 확인되나, 신설·연장 노선 계획 여부는 관계 기관 고시로 주기적으로 재확인하는 것을 권장합니다.`,
+      weakItems.length > 0
+        ? `${weakItems.map((item) => item.label).join("·")} 항목은 상대적으로 보완이 필요해 현장 실사와 최신 공고로 데이터를 교차 확인하는 것을 권장합니다.`
+        : "전 항목이 고르게 확인되었으나, 공공 데이터 갱신 주기를 고려해 핵심 지표는 정기적으로 재확인하는 것을 권장합니다.",
+      maintenanceSummary.count > maintenanceSummary.boundaryConfirmedCount
+        ? `정비사업 ${maintenanceSummary.count - maintenanceSummary.boundaryConfirmedCount}건은 경계 미확인 상태이므로 관할 구청·조합 공고로 경계 확정 여부를 확인하는 것을 권장합니다.`
+        : maintenanceSummary.count > 0
+          ? "정비사업 경계는 확인되었으나 사업 단계(인가·착공 등)는 최신 공고로 재확인하는 것을 권장합니다."
+          : "반경 내 정비사업은 확인되지 않았으나, 인접 반경 밖 대규모 개발계획은 별도로 확인하는 것을 권장합니다.",
+      ...(plannedCount > 0
+        ? [`분양예정 ${plannedCount}건은 일정이 변경될 수 있어 분양 공고·모델하우스 정보로 최신 공급 계획을 재확인하는 것을 권장합니다.`]
+        : []),
     ],
   };
 }
