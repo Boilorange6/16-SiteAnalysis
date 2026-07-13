@@ -694,7 +694,7 @@ function addLegend(slide: PptxGenJS.Slide, d: PptDesignConfig) {
     items.slice(0, 6).forEach((item, i) => {
       const itemX = x + 0.18 + i * 0.92;
       slide.addShape("rect", { x: itemX, y: y + 0.11, w: 0.12, h: 0.12, fill: { color: pptColor(item.color), transparency: 0 }, line: { color: pptColor(item.color), transparency: 100 } });
-      slide.addText(item.label, { x: itemX + 0.16, y: y + 0.065, w: 0.6, h: 0.2, fontSize: 6.4, fontFace: FONT_MAIN, color: pptColor(d.textColor), valign: "middle", fit: "shrink" });
+      slide.addText(item.label, { x: itemX + 0.16, y: y + 0.065, w: 0.6, h: 0.2, fontSize: 6.4, fontFace: FONT_MAIN, color: pptColor(d.legendTextColor), valign: "middle", fit: "shrink" });
     });
     return;
   }
@@ -730,7 +730,7 @@ function addLegend(slide: PptxGenJS.Slide, d: PptDesignConfig) {
       slide.addText(item.label, {
         x: legX + 0.28, y, w: LEGEND_W - 0.32, h: LEGEND_ROW_H,
         fontSize: d.legendFontSize, fontFace: FONT_MAIN,
-        color: pptColor(d.textColor), valign: "middle",
+        color: pptColor(d.legendTextColor), valign: "middle",
       });
     }
   });
@@ -1903,9 +1903,55 @@ function addCategorySlide(
   addLegend(slide, d);
 }
 
+/** 대상지에서 가장 가까운 주거 단지 1개(빨강 헤더 대상) — haversine 최소 거리, 페이지 무관 전체 기준. */
+function findNearestResidentialId(config: AnalysisConfig, residentials: readonly ResidentialPoi[]): string | null {
+  let nearestId: string | null = null;
+  let minDist = Infinity;
+  for (const r of residentials) {
+    const dist = haversineDistance(config.centerLat, config.centerLng, r.lat, r.lng);
+    if (dist < minDist) {
+      minDist = dist;
+      nearestId = r.id;
+    }
+  }
+  return nearestId;
+}
+
+interface ResidentialTableRow {
+  readonly label: string;
+  readonly value: string;
+}
+
+/**
+ * 미니 데이터표 행 — 원본 보고서 문법(준공/규모/용적률/세대수) 중 이 앱의 ResidentialFields에
+ * 실재하는 필드(세대수/입주(예정)/전용면적대)만 가용 필드로 채택. 값이 없는 행은 생략.
+ * canvas 렌더러(ppt-canvas-renderer.ts)의 동명 함수와 동일 로직을 유지할 것(수치 parity).
+ */
+function buildResidentialTableRows(apt: ResidentialPoi): ResidentialTableRow[] {
+  const rows: ResidentialTableRow[] = [];
+  if (apt.units > 0) {
+    rows.push({ label: "세대수", value: `${apt.units.toLocaleString()}세대` });
+  }
+  if (apt.move_in_month) {
+    rows.push({ label: apt.status === "planned" ? "입주예정" : "입주", value: apt.move_in_month });
+  } else if (apt.sale_date) {
+    rows.push({ label: apt.status === "planned" ? "분양예정" : "분양", value: `${apt.sale_date.slice(0, 4)}년` });
+  }
+  const areas = (apt.floorplans ?? [])
+    .map((f) => f.area_sqm)
+    .filter((a): a is number => typeof a === "number" && a > 0);
+  if (areas.length > 0) {
+    const min = Math.round(Math.min(...areas));
+    const max = Math.round(Math.max(...areas));
+    rows.push({ label: "전용면적", value: min === max ? `${min}㎡` : `${min}~${max}㎡` });
+  }
+  return rows;
+}
+
 function addApartmentCalloutSlide(
   pptx: PptxGenJS,
   aptsOnPage: readonly ResidentialPoi[],
+  allResidentials: readonly ResidentialPoi[],
   config: AnalysisConfig,
   baseMapImage: string,
   poiPositions: readonly PoiPosition[],
@@ -1920,8 +1966,8 @@ function addApartmentCalloutSlide(
   addSiteMarker(slide, radiusPosition, d);
 
   const pageTitle = totalPages > 1
-    ? `주변 주거시설 현황 ${pageIdx + 1}/${totalPages}`
-    : "주변 주거시설 현황";
+    ? `주변 분양 현황 ${pageIdx + 1}/${totalPages}`
+    : "주변 분양 현황";
   addTitleChip(slide, pageTitle, d, `반경 ${config.radiusKm}km`);
   addLegend(slide, d);
 
@@ -1937,16 +1983,20 @@ function addApartmentCalloutSlide(
     return;
   }
 
-  const APT_CARD_W = d.calloutWidth;
-  const APT_CARD_H = d.calloutHeight;
+  // 표 치수: calloutWidth/calloutHeight는 헤더+최대 3행 예약 상한(겹침 방지 레이아웃 입력).
+  // 실제 그리는 행 수가 이보다 적은 단지는 예약 슬롯 안에서 세로 중앙 정렬한다.
+  const TABLE_W = d.calloutWidth;
+  const TABLE_H = d.calloutHeight;
   const CARD_MARGIN = 0.10;
+  const HEADER_H = d.calloutHeaderHeight;
+  const ROW_H = d.calloutRowHeight;
   const labelPositions = computeResidentialCalloutLayout(
     aptPositions.map(p => ({ id: p.poi.id, nx: p.nx, ny: p.ny })),
     {
       slideWidth: SLIDE_W,
       slideHeight: SLIDE_H,
-      cardWidth: APT_CARD_W,
-      cardHeight: APT_CARD_H,
+      cardWidth: TABLE_W,
+      cardHeight: TABLE_H,
       cardMargin: CARD_MARGIN,
       chipY: d.titleChipY,
       chipHeight: d.titleChipHeight,
@@ -1957,6 +2007,7 @@ function addApartmentCalloutSlide(
   );
   const labelPosById = new Map(labelPositions.map(lp => [lp.id, lp]));
   const aptById = new Map(aptsOnPage.map(a => [a.id, a]));
+  const nearestId = findNearestResidentialId(config, allResidentials);
 
   aptPositions.forEach(({ poi, nx, ny }) => {
     const lp = labelPosById.get(poi.id);
@@ -1968,13 +2019,6 @@ function addApartmentCalloutSlide(
     const markerY = ny * SLIDE_H;
     const isLeftSide = lp.labelX < SLIDE_W / 2;
 
-    // Card: fixed size, aligned to left or right edge
-    const cardX = isLeftSide
-      ? CARD_MARGIN
-      : SLIDE_W - CARD_MARGIN - APT_CARD_W;
-    const cardY = Math.max(0.05, Math.min(lp.labelY - APT_CARD_H / 2, SLIDE_H - APT_CARD_H - 0.05));
-    const cardMidY = cardY + APT_CARD_H / 2;
-
     // Marker dot
     const dotR = d.markerSize / 2;
     slide.addShape("ellipse", {
@@ -1983,56 +2027,74 @@ function addApartmentCalloutSlide(
       line: { color: pptColor(d.markerBorderColor), width: d.markerBorderWidth },
     });
 
-    // Leader line: marker → inner edge of card
+    // 표: 예약 슬롯 안에서 실제 높이(헤더+가용 행)만큼만 그리고 세로 중앙 정렬
+    const rows = buildResidentialTableRows(apt);
+    const tableH = HEADER_H + rows.length * ROW_H;
+    const tableX = isLeftSide
+      ? CARD_MARGIN
+      : SLIDE_W - CARD_MARGIN - TABLE_W;
+    const slotY = Math.max(0.05, Math.min(lp.labelY - TABLE_H / 2, SLIDE_H - TABLE_H - 0.05));
+    const tableY = slotY + (TABLE_H - tableH) / 2;
+    const tableMidY = tableY + tableH / 2;
+
+    // Leader line: marker → inner edge of table (흰 1px — 원본 보고서 콜아웃 문법)
     const lx1 = markerX, ly1 = markerY;
-    const lx2 = isLeftSide ? cardX + APT_CARD_W : cardX;
-    const ly2 = cardMidY;
+    const lx2 = isLeftSide ? tableX + TABLE_W : tableX;
+    const ly2 = tableMidY;
     slide.addShape("line", {
       x: Math.min(lx1, lx2),
       y: Math.min(ly1, ly2),
       w: Math.max(Math.abs(lx2 - lx1), 0.005),
       h: Math.max(Math.abs(ly2 - ly1), 0.005),
-      line: { color: pptColor(d.markerBorderColor), width: d.leaderLineWidth, transparency: d.leaderLineTransparency },
+      line: { color: pptColor(d.overlayColor), width: d.leaderLineWidth, transparency: d.leaderLineTransparency },
       flipV: (lx2 >= lx1) !== (ly2 >= ly1),
     });
 
-    // Card background
+    // 표 외곽 테두리
     slide.addShape("rect", {
-      x: cardX, y: cardY, w: APT_CARD_W, h: APT_CARD_H,
-      fill: { color: pptColor(d.panelColor), transparency: d.calloutTransparency },
+      x: tableX, y: tableY, w: TABLE_W, h: tableH,
+      fill: { color: pptColor(d.panelColor), transparency: 100 },
       line: { color: pptColor(d.markerBorderColor), transparency: 55, width: 0.6 },
-      rectRadius: d.panelRadius / 2,
     });
 
-    // Name
+    // 헤더 셀: 단지명 — 대상지 최근접 1곳만 빨강(accentRed), 나머지 검정
+    const isNearest = apt.id === nearestId;
+    slide.addShape("rect", {
+      x: tableX, y: tableY, w: TABLE_W, h: HEADER_H,
+      fill: { color: pptColor(isNearest ? d.accentRed : d.primaryColor), transparency: 0 },
+      line: { color: pptColor(isNearest ? d.accentRed : d.primaryColor), transparency: 100 },
+    });
     slide.addText(apt.name, {
-      x: cardX + 0.07, y: cardY + 0.05, w: APT_CARD_W - 0.14, h: 0.22,
-      fontSize: d.calloutFontSize, fontFace: FONT_MAIN, bold: true, color: pptColor(d.textColor),
+      x: tableX + 0.07, y: tableY, w: TABLE_W - 0.14, h: HEADER_H,
+      fontSize: d.calloutFontSize, fontFace: FONT_MAIN, bold: true, color: pptColor(d.overlayColor),
       valign: "middle",
     });
 
-    // Details: 156세대 / 주차180대 / 최고35층 / 2003년
-    const parts: string[] = [];
-    if (apt.status === "planned") parts.push("분양예정");
-    if (apt.units > 0) parts.push(`${apt.units}세대`);
-    if (apt.parking_count > 0) parts.push(`주차${apt.parking_count}대`);
-    if (apt.max_floor && apt.max_floor > 0) parts.push(`최고${apt.max_floor}층`);
-    if (apt.move_in_month) parts.push(`입주 ${apt.move_in_month}`);
-    else if (apt.sale_date) parts.push(`${apt.sale_date.slice(0, 4)}년`);
-    if (parts.length > 0) {
-      slide.addText(parts.join(" / "), {
-        x: cardX + 0.07, y: cardY + 0.27, w: APT_CARD_W - 0.14, h: 0.20,
+    // 데이터 행: 라벨(좌, 흐림) + 값(우, 진하게) — 백색 행. 행 사이 구분선은 canvas 렌더러와
+    // 동일하게(가로 1px only) 별도 line shape로 그려 상하좌우 테두리 렌더 편차를 없앤다.
+    rows.forEach((row, idx) => {
+      const rowY = tableY + HEADER_H + idx * ROW_H;
+      slide.addShape("rect", {
+        x: tableX, y: rowY, w: TABLE_W, h: ROW_H,
+        fill: { color: pptColor(d.panelColor), transparency: d.calloutTransparency },
+        line: { color: pptColor(d.panelColor), transparency: 100 },
+      });
+      if (idx > 0) {
+        slide.addShape("line", {
+          x: tableX, y: rowY, w: TABLE_W, h: 0,
+          line: { color: pptColor(d.markerBorderColor), transparency: 85, width: 0.5 },
+        });
+      }
+      slide.addText(row.label, {
+        x: tableX + 0.07, y: rowY, w: TABLE_W * 0.42, h: ROW_H,
         fontSize: d.calloutDetailFontSize, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), valign: "middle",
       });
-    }
-    const floorplanUrl = apt.floorplans?.[0]?.source_url || apt.homepage_url || apt.notice_url;
-    if (floorplanUrl) {
-      slide.addText("평면도 보기", {
-        x: cardX + APT_CARD_W - 0.72, y: cardY + 0.39, w: 0.65, h: 0.12,
-        fontSize: 6.5, fontFace: FONT_MAIN, color: "93C5FD", bold: true,
-        hyperlink: { url: floorplanUrl, tooltip: "공식 평면도/분양 페이지 열기" },
+      slide.addText(row.value, {
+        x: tableX + TABLE_W * 0.42, y: rowY, w: TABLE_W * 0.58 - 0.07, h: ROW_H,
+        fontSize: d.calloutDetailFontSize, fontFace: FONT_MAIN, bold: true, color: pptColor(d.textColor),
+        valign: "middle", align: "right",
       });
-    }
+    });
   });
 }
 
@@ -2118,7 +2180,7 @@ export async function generateSiteAnalysisPpt(
   addResidentialSupplySlide(pptx, config, allPois, reportBaseMapImage, poiPositions, radiusPosition, d);
   const aptPages = pageResidentials(residentials, APT_PAGE_SIZE);
   aptPages.forEach((aptsOnPage, i) => {
-    addApartmentCalloutSlide(pptx, aptsOnPage, config, reportBaseMapImage, poiPositions,
+    addApartmentCalloutSlide(pptx, aptsOnPage, residentials, config, reportBaseMapImage, poiPositions,
       radiusPosition, d, i, aptPages.length);
   });
 

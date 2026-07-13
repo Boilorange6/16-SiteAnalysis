@@ -862,7 +862,7 @@ function drawLegend(ctx: CanvasRenderingContext2D, d: PptDesignConfig) {
       ctx.fillStyle = item.color;
       ctx.fillRect(itemX, y + iy(0.11), ix(0.12), iy(0.12));
       drawTextBox(ctx, item.label, itemX + ix(0.16), y + iy(0.065), ix(0.6), iy(0.2), {
-        fontSize: 6.4, color: d.textColor, valign: "middle",
+        fontSize: 6.4, color: d.legendTextColor, valign: "middle",
       });
     });
     return;
@@ -894,7 +894,7 @@ function drawLegend(ctx: CanvasRenderingContext2D, d: PptDesignConfig) {
     if (d.legendStyle !== "rail") {
       drawTextBox(ctx, item.label,
         legX + ix(0.28), itemY, legW - ix(0.32), iy(LEGEND_ROW_H), {
-          fontSize: d.legendFontSize, color: d.textColor, valign: "middle",
+          fontSize: d.legendFontSize, color: d.legendTextColor, valign: "middle",
         });
     }
   });
@@ -1660,6 +1660,50 @@ function renderResidentialSupplySlide(
   drawFooterNote(ctx, `주거 공급 장표는 ${input.config.radiusKm}km 반경의 건축물대장·분양 공고 기반 데이터를 요약합니다.`, d);
 }
 
+/** 대상지에서 가장 가까운 주거 단지 1개(빨강 헤더 대상) — haversine 최소 거리, 페이지 무관 전체 기준. */
+function findNearestResidentialId(config: AnalysisConfig, residentials: readonly ResidentialPoi[]): string | null {
+  let nearestId: string | null = null;
+  let minDist = Infinity;
+  for (const r of residentials) {
+    const dist = haversineDistance(config.centerLat, config.centerLng, r.lat, r.lng);
+    if (dist < minDist) {
+      minDist = dist;
+      nearestId = r.id;
+    }
+  }
+  return nearestId;
+}
+
+interface ResidentialTableRow {
+  readonly label: string;
+  readonly value: string;
+}
+
+/**
+ * 미니 데이터표 행 — 원본 보고서 문법(준공/규모/용적률/세대수) 중 이 앱의 ResidentialFields에
+ * 실재하는 필드(세대수/입주(예정)/전용면적대)만 가용 필드로 채택. 값이 없는 행은 생략.
+ */
+function buildResidentialTableRows(apt: ResidentialPoi): ResidentialTableRow[] {
+  const rows: ResidentialTableRow[] = [];
+  if (apt.units > 0) {
+    rows.push({ label: "세대수", value: `${apt.units.toLocaleString()}세대` });
+  }
+  if (apt.move_in_month) {
+    rows.push({ label: apt.status === "planned" ? "입주예정" : "입주", value: apt.move_in_month });
+  } else if (apt.sale_date) {
+    rows.push({ label: apt.status === "planned" ? "분양예정" : "분양", value: `${apt.sale_date.slice(0, 4)}년` });
+  }
+  const areas = (apt.floorplans ?? [])
+    .map((f) => f.area_sqm)
+    .filter((a): a is number => typeof a === "number" && a > 0);
+  if (areas.length > 0) {
+    const min = Math.round(Math.min(...areas));
+    const max = Math.round(Math.max(...areas));
+    rows.push({ label: "전용면적", value: min === max ? `${min}㎡` : `${min}~${max}㎡` });
+  }
+  return rows;
+}
+
 function renderApartmentCalloutSlide(
   ctx: CanvasRenderingContext2D,
   img: HTMLImageElement,
@@ -1692,18 +1736,22 @@ function renderApartmentCalloutSlide(
     return;
   }
 
-  const APT_CARD_W_IN = d.calloutWidth;
-  const APT_CARD_H_IN = d.calloutHeight;
+  // 표 치수: calloutWidth/calloutHeight는 헤더+최대 3행 예약 상한(겹침 방지 레이아웃 입력).
+  // 실제 그리는 행 수가 이보다 적은 단지는 예약 슬롯 안에서 세로 중앙 정렬한다.
+  const TABLE_W_IN = d.calloutWidth;
+  const TABLE_H_IN = d.calloutHeight;
   const CARD_MARGIN_IN = 0.10;
-  const CARD_W_PX = ix(APT_CARD_W_IN);
-  const CARD_H_PX = iy(APT_CARD_H_IN);
+  const TABLE_W_PX = ix(TABLE_W_IN);
+  const TABLE_H_PX = iy(TABLE_H_IN);
+  const HEADER_H_PX = iy(d.calloutHeaderHeight);
+  const ROW_H_PX = iy(d.calloutRowHeight);
   const labelPositions = computeResidentialCalloutLayout(
     aptPositions.map(p => ({ id: p.poi.id, nx: p.nx, ny: p.ny })),
     {
       slideWidth: SLIDE_W,
       slideHeight: SLIDE_H,
-      cardWidth: APT_CARD_W_IN,
-      cardHeight: APT_CARD_H_IN,
+      cardWidth: TABLE_W_IN,
+      cardHeight: TABLE_H_IN,
       cardMargin: CARD_MARGIN_IN,
       chipY: d.titleChipY,
       chipHeight: d.titleChipHeight,
@@ -1714,6 +1762,7 @@ function renderApartmentCalloutSlide(
   );
   const labelPosById = new Map(labelPositions.map(lp => [lp.id, lp]));
   const aptById = new Map(aptsOnPage.map(a => [a.id, a]));
+  const nearestId = findNearestResidentialId(input.config, getResidentialPois(input.allPois));
 
   aptPositions.forEach(({ poi, nx, ny }) => {
     const lp = labelPosById.get(poi.id);
@@ -1725,60 +1774,67 @@ function renderApartmentCalloutSlide(
     const markerCY = ny * CANVAS_H;
     const isLeftSide = lp.labelX < SLIDE_W / 2;
 
-    // Marker dot (apartment color)
+    // Marker dot (category color)
     const dotR = ix(d.markerSize / 2);
     drawEllipseShape(ctx, markerCX, markerCY, dotR, dotR,
-      hexRgba(d.categoryColors.apartment, d.markerTransparency),
+      hexRgba(d.categoryColors[apt.category] ?? d.categoryColors.apartment, d.markerTransparency),
       hexRgba(d.markerBorderColor, 10), d.markerBorderWidth);
 
-    // Card: fixed size, aligned to left or right edge
-    const cardX = isLeftSide
+    // 표: 예약 슬롯 안에서 실제 높이(헤더+가용 행)만큼만 그리고 세로 중앙 정렬
+    const rows = buildResidentialTableRows(apt);
+    const tableHPx = HEADER_H_PX + rows.length * ROW_H_PX;
+    const tableX = isLeftSide
       ? ix(CARD_MARGIN_IN)
-      : CANVAS_W - ix(CARD_MARGIN_IN) - CARD_W_PX;
-    const cardY = Math.max(0, Math.min(lp.labelY * SY - CARD_H_PX / 2, CANVAS_H - CARD_H_PX));
-    const cardMidY = cardY + CARD_H_PX / 2;
+      : CANVAS_W - ix(CARD_MARGIN_IN) - TABLE_W_PX;
+    const slotY = Math.max(0, Math.min(lp.labelY * SY - TABLE_H_PX / 2, CANVAS_H - TABLE_H_PX));
+    const tableY = slotY + (TABLE_H_PX - tableHPx) / 2;
+    const tableMidY = tableY + tableHPx / 2;
 
-    // Leader line: marker → inner edge of card
-    const lineEndX = isLeftSide ? cardX + CARD_W_PX : cardX;
+    // Leader line: marker → inner edge of table (흰 1px — 원본 보고서 콜아웃 문법)
+    const lineEndX = isLeftSide ? tableX + TABLE_W_PX : tableX;
     ctx.beginPath();
     ctx.moveTo(markerCX, markerCY);
-    ctx.lineTo(lineEndX, cardMidY);
-    ctx.strokeStyle = hexRgba(d.markerBorderColor, d.leaderLineTransparency);
+    ctx.lineTo(lineEndX, tableMidY);
+    ctx.strokeStyle = hexRgba(d.overlayColor, d.leaderLineTransparency);
     ctx.lineWidth = d.leaderLineWidth;
     ctx.setLineDash([]);
     ctx.stroke();
 
-    // Card background
-    drawRoundedRect(ctx, cardX, cardY, CARD_W_PX, CARD_H_PX, ix(d.panelRadius / 2),
-      hexRgba(d.panelColor, d.calloutTransparency),
-      hexRgba(d.markerBorderColor, 55), 0.6);
+    // 표 외곽 테두리
+    drawRoundedRect(ctx, tableX, tableY, TABLE_W_PX, tableHPx, 0,
+      undefined, hexRgba(d.markerBorderColor, 55), 0.6);
 
-    // Name
+    // 헤더 셀: 단지명 — 대상지 최근접 1곳만 빨강(accentRed), 나머지 검정
+    const isNearest = apt.id === nearestId;
+    drawRoundedRect(ctx, tableX, tableY, TABLE_W_PX, HEADER_H_PX, 0,
+      isNearest ? d.accentRed : d.primaryColor);
     drawTextBox(ctx, apt.name,
-      cardX + ix(0.07), cardY + iy(0.05), CARD_W_PX - ix(0.14), iy(0.22), {
-        fontSize: d.calloutFontSize, bold: true, color: d.textColor, valign: "middle",
+      tableX + ix(0.07), tableY, TABLE_W_PX - ix(0.14), HEADER_H_PX, {
+        fontSize: d.calloutFontSize, bold: true, color: d.overlayColor, valign: "middle",
       });
 
-    // Details: 156세대 / 주차180대 / 최고35층 / 2003년
-    const parts: string[] = [];
-    if (apt.status === "planned") parts.push("분양예정");
-    if (apt.units > 0) parts.push(`${apt.units}세대`);
-    if (apt.parking_count > 0) parts.push(`주차${apt.parking_count}대`);
-    if (apt.max_floor && apt.max_floor > 0) parts.push(`최고${apt.max_floor}층`);
-    if (apt.move_in_month) parts.push(`입주 ${apt.move_in_month}`);
-    else if (apt.sale_date) parts.push(`${apt.sale_date.slice(0, 4)}년`);
-    if (parts.length > 0) {
-      drawTextBox(ctx, parts.join(" / "),
-        cardX + ix(0.07), cardY + iy(0.27), CARD_W_PX - ix(0.14), iy(0.20), {
+    // 데이터 행: 라벨(좌, 흐림) + 값(우, 진하게) — 백색 행
+    rows.forEach((row, idx) => {
+      const rowY = tableY + HEADER_H_PX + idx * ROW_H_PX;
+      drawRoundedRect(ctx, tableX, rowY, TABLE_W_PX, ROW_H_PX, 0,
+        hexRgba(d.panelColor, d.calloutTransparency));
+      if (idx > 0) {
+        ctx.beginPath();
+        ctx.moveTo(tableX, rowY);
+        ctx.lineTo(tableX + TABLE_W_PX, rowY);
+        ctx.strokeStyle = hexRgba(d.markerBorderColor, 85);
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+      }
+      drawTextBox(ctx, row.label,
+        tableX + ix(0.07), rowY, TABLE_W_PX * 0.42, ROW_H_PX, {
           fontSize: d.calloutDetailFontSize, color: d.mutedTextColor, valign: "middle",
         });
-    }
-    if (apt.floorplans?.[0]?.source_url || apt.homepage_url || apt.notice_url) {
-      drawTextBox(ctx, "평면도 보기",
-        cardX + CARD_W_PX - ix(0.72), cardY + iy(0.39), ix(0.65), iy(0.12), {
-          fontSize: 6.5, bold: true, color: "#93C5FD", valign: "middle", align: "right",
+      drawTextBox(ctx, row.value,
+        tableX + TABLE_W_PX * 0.42, rowY, TABLE_W_PX * 0.58 - ix(0.07), ROW_H_PX, {
+          fontSize: d.calloutDetailFontSize, bold: true, color: d.textColor, valign: "middle", align: "right",
         });
-    }
+    });
   });
 }
 

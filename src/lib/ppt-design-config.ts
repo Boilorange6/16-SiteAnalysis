@@ -159,6 +159,12 @@ export interface PptDesignConfig {
   readonly legendTransparency: number;
   readonly legendBorderTransparency: number;
   readonly legendRadius: number;
+  /**
+   * 지도 위 범례 라벨 색 — 흑백 지도 위에서 쓰이므로 기본 흰색. `textColor`(#111827,
+   * 어두운 색)는 백색 정보 슬라이드용 토큰이라 지도 범례에 재사용하면 판독 불가(Task 5 이월 결함).
+   * 지도 슬라이드의 범례(overview/category/apartment callout)만 이 토큰을 쓴다.
+   */
+  readonly legendTextColor: string;
 
   // Data panels
   readonly panelTransparency: number;
@@ -169,9 +175,15 @@ export interface PptDesignConfig {
   readonly panelY: number;
   readonly panelWidth: number;
 
-  // Residential callouts
+  // Residential callouts — 원본 보고서 slide 7 문법: 흰 리더라인 + 미니 데이터표
+  // (헤더=단지명, 행=세대수/입주/전용면적대 중 가용 필드만). calloutWidth/calloutHeight는
+  // 표 전체의 예약 치수(겹침 방지 레이아웃용 상한 — 실제 행 수가 적으면 그 안에서 세로 중앙 정렬).
   readonly calloutWidth: number;
   readonly calloutHeight: number;
+  /** 헤더 셀(단지명) 높이 */
+  readonly calloutHeaderHeight: number;
+  /** 데이터 행 1개 높이 */
+  readonly calloutRowHeight: number;
   readonly calloutTransparency: number;
   readonly calloutFontSize: number;
   readonly calloutDetailFontSize: number;
@@ -245,6 +257,7 @@ export const DEFAULT_PPT_DESIGN: PptDesignConfig = {
   legendTransparency: 10,
   legendBorderTransparency: 100,
   legendRadius: 0.05,
+  legendTextColor: "#FFFFFF",
   panelTransparency: 4,
   panelColor: "#FFFFFF",
   panelBorderTransparency: 42,
@@ -253,7 +266,9 @@ export const DEFAULT_PPT_DESIGN: PptDesignConfig = {
   panelY: 1.1,
   panelWidth: 3.5,
   calloutWidth: 2.4,
-  calloutHeight: 0.55,
+  calloutHeight: 0.73,
+  calloutHeaderHeight: 0.22,
+  calloutRowHeight: 0.17,
   calloutTransparency: 3,
   calloutFontSize: 10,
   calloutDetailFontSize: 8.5,
