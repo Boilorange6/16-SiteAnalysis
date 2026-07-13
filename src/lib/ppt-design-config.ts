@@ -237,7 +237,12 @@ export const DEFAULT_PPT_DESIGN: PptDesignConfig = {
   markerTransparency: 0,
   markerBorderWidth: 1,
   markerBorderColor: "#111827",
-  categoryColors: { ...CATEGORY_COLORS },
+  // P4R Task C-8: 도트 시인성 — CATEGORY_COLORS는 sidebar.tsx/map-marker-utils.ts(웹 지도 마커·범례)와
+  // 공유하는 토큰이라 원본을 바꾸면 웹 UI가 회귀한다. school/mountain 2개만 PPT 전용으로 오버라이드:
+  // school 원본(#3B82F6)은 흑백+어둡게 처리된 위성지도 위에서 잘 안 보여 더 밝은 하늘색으로,
+  // mountain 원본은 park과 동일값(#10B981)이라 두 카테고리가 지도에서 구분 불가 — mountain만
+  // 짙은 청록(teal)으로 바꿔 park(에메랄드 그린)과 색상(hue)이 분리되게 한다.
+  categoryColors: { ...CATEGORY_COLORS, school: "#7DD3FC", mountain: "#0F766E" },
   ringLineWidth: 0.8,
   ringOuterLineWidth: 1.2,
   ringTransparency: 35,

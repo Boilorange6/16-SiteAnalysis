@@ -729,12 +729,21 @@ function drawWrappedText(
   });
 }
 
-/** Small centered translucent card + muted text, used when a slide has no panel to host EMPTY_PANEL_TEXT in. */
-function drawEmptyStateBadge(ctx: CanvasRenderingContext2D, d: PptDesignConfig) {
+/**
+ * Small centered translucent card + muted text, used when a slide has no panel to host
+ * EMPTY_PANEL_TEXT in. `region` (default: whole slide) lets callers center the compact badge
+ * inside a sub-panel's footprint instead — P4R Task C-3: 리스크 매트릭스/주거 공급 슬라이드의
+ * "0건" 하위 테이블이 거대한 빈 흰 카드로 남던 문제를 이 문법으로 대체.
+ */
+function drawEmptyStateBadge(
+  ctx: CanvasRenderingContext2D,
+  d: PptDesignConfig,
+  region: { x: number; y: number; w: number; h: number } = { x: 0, y: 0, w: SLIDE_W, h: SLIDE_H }
+) {
   const w = 4.6;
   const h = 0.56;
-  const x = (SLIDE_W - w) / 2;
-  const y = (SLIDE_H - h) / 2;
+  const x = region.x + (region.w - w) / 2;
+  const y = region.y + (region.h - h) / 2;
   drawDataPanel(ctx, ix(x), iy(y), ix(w), iy(h), d);
   drawTextBox(ctx, EMPTY_PANEL_TEXT, ix(x + 0.2), iy(y), ix(w - 0.4), iy(h), {
     fontSize: 13, color: d.mutedTextColor, align: "center", valign: "middle",
@@ -1379,14 +1388,14 @@ function renderOverviewSlide(
 
 function renderScoreDashboardSlide(
   ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
+  _img: HTMLImageElement,
   input: SlideRenderInput,
   d: PptDesignConfig
 ) {
-  drawBaseMap(ctx, img);
-  drawMapOverlay(ctx, d);
-  drawCompositionBackdrop(ctx, d, "content");
-  drawDesignFrame(ctx, d);
+  // P4R Task C-7a: 백색(B문법) 전환 — 토글 on 시에만 노출되는 슬라이드라 Task A 일괄 전환에서
+  // 누락되어 있었다. 다른 백색 정보 슬라이드와 동일하게 지도/오버레이/프레임 제거.
+  ctx.fillStyle = d.canvasColor;
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
   drawTitleChip(ctx, "입지 점수 대시보드", d, "분석 항목별 경쟁력");
   const scores = computeAnalysisScores(input.config, input.allPois);
   const strongest = [...scores.items].sort((a, b) => b.score / b.max - a.score / a.max)[0];
@@ -1432,10 +1441,12 @@ function renderInsightSummarySlide(
   const narrative = generateAnalysisNarrative(input.config, input.allPois);
   drawDataPanel(ctx, ix(0.7), iy(1.15), ix(11.95), iy(1.05), d);
   drawWrappedText(ctx, narrative.summary, ix(1.0), iy(1.38), ix(11.35), iy(0.3), 2, { fontSize: 17, bold: true, color: d.textColor });
+  // P4R Task C-1: 구 팔레트(초록/주황/파랑) 정리 — 2단계 팔레트(무채 잉크 + accentRed 1곳)로.
+  // 3열 중 "리스크"만 주의가 필요한 항목이라 accentRed로 강조하고 나머지는 무채 잉크 스트립.
   const columns = [
-    { title: "핵심 강점", rows: narrative.bullets.slice(0, 5), color: "#22C55E" },
-    { title: "리스크", rows: narrative.risks.length ? narrative.risks.slice(0, 5) : ["현재 데이터 기준 중대한 약점은 제한적입니다."], color: "#F59E0B" },
-    { title: "다음 액션", rows: narrative.nextActions.slice(0, 5), color: "#3B82F6" },
+    { title: "핵심 강점", rows: narrative.bullets.slice(0, 5), color: d.accentColor },
+    { title: "리스크", rows: narrative.risks.length ? narrative.risks.slice(0, 5) : ["현재 데이터 기준 중대한 약점은 제한적입니다."], color: d.accentRed },
+    { title: "다음 액션", rows: narrative.nextActions.slice(0, 5), color: d.accentColor },
   ];
   columns.forEach((column, idx) => {
     const x = 0.7 + idx * 4.05;
@@ -1461,35 +1472,68 @@ function renderRadiusAnalysisSlide(
   ctx.fillStyle = d.canvasColor;
   ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
   drawTitleChip(ctx, "생활권 반경 분석", d, "500m · 1km · 1.5km · 전체 반경");
-  const radiusRows = [
-    { label: "근린 핵심권", radiusM: 500, color: "#F59E0B", note: "도보·일상 접근성의 1차 체감권" },
-    { label: "생활 편의권", radiusM: 1000, color: "#3B82F6", note: "통학·공원·역세권을 함께 판단" },
-    { label: "개발 영향권", radiusM: 1500, color: "#EC4899", note: "정비사업과 공급 변화의 영향권" },
-    { label: "보고서 분석권", radiusM: input.config.radiusKm * 1000, color: "#94A3B8", note: "PPT 전체 POI 집계 기준" },
-  ];
+  // P4R Task C-1/5: 구 팔레트(주황/파랑/핑크/회색) 정리 → 무채 잉크 + accentRed 1곳(보고서 분석권 —
+  // 이후 전 슬라이드 POI 집계가 이 반경을 기준으로 하므로 대표 지표로 선택). "개발 영향권"(1.5km
+  // 고정)과 "보고서 분석권"(설정 반경)의 반경이 완전히 같으면(분석 반경 1.5km) 두 카드의 수치가
+  // 항상 동일해 중복 카드가 되므로 하나로 합치고 "개발 영향권 겸" 부제를 붙인다(4장 → 3장).
+  const analysisRadiusM = input.config.radiusKm * 1000;
+  const developmentImpactRadiusM = 1500;
+  const mergeDevelopmentIntoAnalysisCard = analysisRadiusM === developmentImpactRadiusM;
+  interface RadiusRow { label: string; radiusM: number; color: string; note: string; subtitle?: string }
+  const radiusRows: RadiusRow[] = mergeDevelopmentIntoAnalysisCard
+    ? [
+        { label: "근린 핵심권", radiusM: 500, color: d.accentColor, note: "도보·일상 접근성의 1차 체감권" },
+        { label: "생활 편의권", radiusM: 1000, color: d.accentColor, note: "통학·공원·역세권을 함께 판단" },
+        { label: "보고서 분석권", radiusM: analysisRadiusM, color: d.accentRed, note: "PPT 전체 POI 집계 기준", subtitle: "개발 영향권 겸" },
+      ]
+    : [
+        { label: "근린 핵심권", radiusM: 500, color: d.accentColor, note: "도보·일상 접근성의 1차 체감권" },
+        { label: "생활 편의권", radiusM: 1000, color: d.accentColor, note: "통학·공원·역세권을 함께 판단" },
+        { label: "개발 영향권", radiusM: developmentImpactRadiusM, color: d.accentColor, note: "정비사업과 공급 변화의 영향권" },
+        { label: "보고서 분석권", radiusM: analysisRadiusM, color: d.accentRed, note: "PPT 전체 POI 집계 기준" },
+      ];
+  // 카드 배치: 기존 2열×2행 간격 규칙(x=0.72/6.77, y=1.25/3.6, w=5.55, h=1.95)을 그대로 재사용.
+  // 3장으로 줄면 마지막 카드만 두 열을 합친 폭(11.6 = 기존 그리드 우측 끝과 동일)으로 확장한다.
+  const cardLayouts = mergeDevelopmentIntoAnalysisCard
+    ? [
+        { x: 0.72, y: 1.25, w: 5.55, h: 1.95 },
+        { x: 6.77, y: 1.25, w: 5.55, h: 1.95 },
+        { x: 0.72, y: 3.6, w: 11.6, h: 1.95 },
+      ]
+    : [
+        { x: 0.72, y: 1.25, w: 5.55, h: 1.95 },
+        { x: 6.77, y: 1.25, w: 5.55, h: 1.95 },
+        { x: 0.72, y: 3.6, w: 5.55, h: 1.95 },
+        { x: 6.77, y: 3.6, w: 5.55, h: 1.95 },
+      ];
   radiusRows.forEach((row, idx) => {
-    const x = 0.72 + (idx % 2) * 6.05;
-    const y = 1.25 + Math.floor(idx / 2) * 2.35;
-    drawDataPanel(ctx, ix(x), iy(y), ix(5.55), iy(1.95), d);
+    const { x, y, w } = cardLayouts[idx];
+    drawDataPanel(ctx, ix(x), iy(y), ix(w), iy(1.95), d);
     drawTextBox(ctx, row.label, ix(x + 0.26), iy(y + 0.2), ix(2.6), iy(0.28), { fontSize: 13, bold: true, color: d.textColor });
+    if (row.subtitle) {
+      drawTextBox(ctx, row.subtitle, ix(x + 0.26), iy(y + 0.47), ix(3.2), iy(0.16), { fontSize: 7.5, color: d.mutedTextColor });
+    }
     const radiusLabel = row.radiusM >= 1000 ? `${(row.radiusM / 1000).toFixed(row.radiusM % 1000 === 0 ? 0 : 1)}km` : `${row.radiusM}m`;
-    drawTextBox(ctx, radiusLabel, ix(x + 4.15), iy(y + 0.16), ix(1.05), iy(0.34), { fontSize: 17, bold: true, color: row.color, align: "right" });
+    drawTextBox(ctx, radiusLabel, ix(x + w - 1.4), iy(y + 0.16), ix(1.05), iy(0.34), { fontSize: 17, bold: true, color: row.color, align: "right" });
+    const metricGap = (w - 0.6) / 4;
     [
       ["역", countWithin(input.config, input.allPois, row.radiusM, "subway")],
       ["학교", countWithin(input.config, input.allPois, row.radiusM, "school")],
       ["공원", countWithin(input.config, input.allPois, row.radiusM, "park")],
       ["정비", countWithin(input.config, input.allPois, row.radiusM, "maintenance")],
     ].forEach(([label, value], metricIdx) => {
-      const mx = x + 0.3 + metricIdx * 1.18;
+      const mx = x + 0.3 + metricIdx * metricGap;
       drawTextBox(ctx, String(label), ix(mx), iy(y + 0.72), ix(0.8), iy(0.2), { fontSize: 7, color: d.mutedTextColor, align: "center" });
       drawTextBox(ctx, String(value), ix(mx), iy(y + 0.96), ix(0.8), iy(0.34), { fontSize: 18, bold: true, color: d.textColor, align: "center" });
     });
-    drawTextBox(ctx, row.note, ix(x + 0.3), iy(y + 1.48), ix(4.9), iy(0.22), { fontSize: 8, color: d.mutedTextColor });
+    drawTextBox(ctx, row.note, ix(x + 0.3), iy(y + 1.48), ix(w - 0.65), iy(0.22), { fontSize: 8, color: d.mutedTextColor });
   });
   // Task A: 하단 오버플로 수정 — 4개 항목을 단일 열로 쌓으면 패널이 슬라이드 하단(7.5in) 밖으로
   // 잘리고 각주와 겹쳤다(s8 결함). 2열 2행 그리드로 재배치해 7.5in 안에 들어오게 하고, 라벨 아래
   // 설명을 줄바꿈해 다음 항목과 겹치지 않게 한다.
-  const insightOverlays = buildInsightOverlays(input.config, input.allPois);
+  // P4R Task C-7b: 아래 2×2 그리드는 4칸을 가정한다 — buildInsightOverlays가 그 이상을 반환해도
+  // 패널(gridH=1.3, 2행)을 벗어나지 않도록 방어적으로 4개까지만 사용한다.
+  const insightOverlays = buildInsightOverlays(input.config, input.allPois).slice(0, 4);
   const gridX = 0.72, gridY = 5.65, gridW = 11.6, gridH = 1.3;
   drawDataPanel(ctx, ix(gridX), iy(gridY), ix(gridW), iy(gridH), d);
   drawTextBox(ctx, "지도 인사이트 레이어 기준", ix(gridX + 0.2), iy(gridY + 0.14), ix(gridW - 0.4), iy(0.22), {
@@ -1631,19 +1675,29 @@ function renderDevelopmentRiskMatrixSlide(
   drawTitleChip(ctx, "개발 호재/리스크 매트릭스", d, "영향도 · 확정성 · 거리");
   const projects = input.allPois.filter((p): p is MaintenanceProject => p.category === "maintenance");
   const summary = summarizeMaintenanceProjects(projects);
-  drawMetricCard(ctx, 0.55, 1.15, 2.35, 0.82, "정비사업", `${summary.count}건`, `총 ${formatMaintenanceArea(summary.totalAreaSqm)}`, "#EC4899", d);
-  drawMetricCard(ctx, 3.05, 1.15, 2.35, 0.82, "경계 확인", `${summary.boundaryConfirmedCount}건`, `${summary.count - summary.boundaryConfirmedCount}건은 위치 확인 필요`, "#3B82F6", d);
-  drawMetricCard(ctx, 5.55, 1.15, 2.35, 0.82, "주요 사업", `${summary.topProjects.length}건`, "면적·거리 기준 선별", "#F59E0B", d);
-  drawDataPanel(ctx, ix(0.55), iy(2.25), ix(7.35), iy(3.95), d);
-  drawTextBox(ctx, "주요 정비사업 영향도 테이블", ix(0.8), iy(2.5), ix(6.8), iy(0.25), { fontSize: 12, bold: true, color: d.textColor });
-  summary.topProjects.slice(0, 7).forEach((project, idx) => {
-    const y = 2.96 + idx * 0.42;
-    const dist = project.distance_m != null ? formatDistanceM(project.distance_m) : "거리 미확인";
-    const impact = project.area_sqm >= 100_000 ? "상" : project.area_sqm >= 30_000 ? "중" : "보통";
-    drawTextBox(ctx, project.name, ix(0.82), iy(y), ix(2.8), iy(0.24), { fontSize: 8.2, bold: true, color: d.textColor });
-    drawTextBox(ctx, project.stage, ix(3.75), iy(y), ix(1.2), iy(0.24), { fontSize: 7.4, color: d.mutedTextColor });
-    drawTextBox(ctx, `${impact} · ${project.boundary_status === "confirmed" ? "확인" : "미확인"} · ${dist}`, ix(5.02), iy(y), ix(2.1), iy(0.24), { fontSize: 7.4, color: project.boundary_status === "confirmed" ? "#93C5FD" : "#FBBF24", align: "right" });
-  });
+  // P4R Task C-1: 구 팔레트(핑크/파랑/주황) 정리 — "정비사업"(총 건수, 나머지 두 지표의 상위 총량)
+  // 1곳만 accentRed로 강조하고 나머지는 무채 잉크 테두리.
+  drawMetricCard(ctx, 0.55, 1.15, 2.35, 0.82, "정비사업", `${summary.count}건`, `총 ${formatMaintenanceArea(summary.totalAreaSqm)}`, d.accentRed, d);
+  drawMetricCard(ctx, 3.05, 1.15, 2.35, 0.82, "경계 확인", `${summary.boundaryConfirmedCount}건`, `${summary.count - summary.boundaryConfirmedCount}건은 위치 확인 필요`, d.accentColor, d);
+  drawMetricCard(ctx, 5.55, 1.15, 2.35, 0.82, "주요 사업", `${summary.topProjects.length}건`, "면적·거리 기준 선별", d.accentColor, d);
+  const topProjects = summary.topProjects.slice(0, 7);
+  if (topProjects.length === 0) {
+    // P4R Task C-3: 0건일 때 거대한 빈 흰 카드 대신 콜아웃 슬라이드의 컴팩트 중앙 배지 문법.
+    drawEmptyStateBadge(ctx, d, { x: 0.55, y: 2.25, w: 7.35, h: 3.95 });
+  } else {
+    drawDataPanel(ctx, ix(0.55), iy(2.25), ix(7.35), iy(3.95), d);
+    drawTextBox(ctx, "주요 정비사업 영향도 테이블", ix(0.8), iy(2.5), ix(6.8), iy(0.25), { fontSize: 12, bold: true, color: d.textColor });
+    topProjects.forEach((project, idx) => {
+      const y = 2.96 + idx * 0.42;
+      const dist = project.distance_m != null ? formatDistanceM(project.distance_m) : "거리 미확인";
+      const impact = project.area_sqm >= 100_000 ? "상" : project.area_sqm >= 30_000 ? "중" : "보통";
+      drawTextBox(ctx, project.name, ix(0.82), iy(y), ix(2.8), iy(0.24), { fontSize: 8.2, bold: true, color: d.textColor });
+      drawTextBox(ctx, project.stage, ix(3.75), iy(y), ix(1.2), iy(0.24), { fontSize: 7.4, color: d.mutedTextColor });
+      // P4R Task C-2: 백카드 저대비 강조 텍스트(#93C5FD/#FBBF24) 정리 — 확인(정상)은 무채 잉크,
+      // 미확인(주의 필요)만 accentRed로 백배경에서도 판독 가능하게.
+      drawTextBox(ctx, `${impact} · ${project.boundary_status === "confirmed" ? "확인" : "미확인"} · ${dist}`, ix(5.02), iy(y), ix(2.1), iy(0.24), { fontSize: 7.4, color: project.boundary_status === "confirmed" ? d.textColor : d.accentRed, align: "right" });
+    });
+  }
   drawDataPanel(ctx, ix(8.25), iy(2.25), ix(4.1), iy(3.95), d);
   drawTextBox(ctx, "해석 기준", ix(8.52), iy(2.52), ix(3.45), iy(0.25), { fontSize: 12, bold: true, color: d.textColor });
   [
@@ -1672,29 +1726,34 @@ function renderResidentialSupplySlide(
   const planned = residentials.filter((apt) => apt.status === "planned");
   const totalParking = residentials.reduce((sum, apt) => sum + Math.max(0, apt.parking_count), 0);
   const avgParking = totalUnits > 0 ? totalParking / totalUnits : 0;
-  drawMetricCard(ctx, 0.55, 1.16, 2.45, 0.84, "주거시설", `${residentials.length}개`, "아파트·오피스텔 포함", "#3B82F6", d);
-  drawMetricCard(ctx, 3.2, 1.16, 2.45, 0.84, "총 세대수", `${totalUnits.toLocaleString()}세대`, `주차 ${totalParking.toLocaleString()}대`, "#22C55E", d);
-  drawMetricCard(ctx, 5.85, 1.16, 2.45, 0.84, "분양예정", `${planned.length}건`, "공급 변화 모니터링", "#F59E0B", d);
-  drawMetricCard(ctx, 8.5, 1.16, 2.45, 0.84, "주차비율", `${avgParking.toFixed(2)}대/세대`, "단지 상품성 참고", "#EC4899", d);
+  // P4R Task C-1: 구 팔레트(파랑/초록/주황/핑크) 정리 — "총 세대수"(다른 지표들의 상위 총량)만
+  // accentRed로 강조. P4R Task C-4: 주거시설 0개면 "0.00대/세대"가 무의미한 지표이므로 "-" 표기.
+  drawMetricCard(ctx, 0.55, 1.16, 2.45, 0.84, "주거시설", `${residentials.length}개`, "아파트·오피스텔 포함", d.accentColor, d);
+  drawMetricCard(ctx, 3.2, 1.16, 2.45, 0.84, "총 세대수", `${totalUnits.toLocaleString()}세대`, `주차 ${totalParking.toLocaleString()}대`, d.accentRed, d);
+  drawMetricCard(ctx, 5.85, 1.16, 2.45, 0.84, "분양예정", `${planned.length}건`, "공급 변화 모니터링", d.accentColor, d);
+  drawMetricCard(ctx, 8.5, 1.16, 2.45, 0.84, "주차비율", totalUnits > 0 ? `${avgParking.toFixed(2)}대/세대` : "-", "단지 상품성 참고", d.accentColor, d);
   drawRankedList(ctx, "대단지/주요 주거시설", [...residentials].sort((a, b) => b.units - a.units).slice(0, 7).map((apt) => ({
     label: apt.name,
     meta: `${apt.units.toLocaleString()}세대 · ${apt.distance_m ? formatDistanceM(apt.distance_m) : "거리 미확인"}`,
-    color: apt.status === "planned" ? "#F59E0B" : "#3B82F6",
+    color: apt.status === "planned" ? d.accentRed : d.accentColor,
   })), 0.55, 2.34, 5.6, d);
-  drawDataPanel(ctx, ix(6.42), iy(2.34), ix(5.2), iy(3.4), d);
-  drawTextBox(ctx, "분양/입주 타임라인", ix(6.7), iy(2.6), ix(4.7), iy(0.25), { fontSize: 12, bold: true, color: d.textColor });
   const timeline = [...residentials]
     .filter((apt) => apt.sale_date || apt.move_in_month)
     .sort((a, b) => (a.move_in_month || a.sale_date).localeCompare(b.move_in_month || b.sale_date))
     .slice(0, 6);
-  timeline.forEach((apt, idx) => {
-    const y = 3.04 + idx * 0.42;
-    drawTextBox(ctx, apt.move_in_month || apt.sale_date || "일정 미확인", ix(6.72), iy(y), ix(1.05), iy(0.22), { fontSize: 7.8, bold: true, color: apt.status === "planned" ? "#FBBF24" : d.mutedTextColor });
-    drawTextBox(ctx, apt.name, ix(7.9), iy(y), ix(2.4), iy(0.22), { fontSize: 7.8, color: d.textColor });
-    drawTextBox(ctx, `${apt.units.toLocaleString()}세대`, ix(10.25), iy(y), ix(0.82), iy(0.22), { fontSize: 7.4, color: d.mutedTextColor, align: "right" });
-  });
   if (timeline.length === 0) {
-    drawTextBox(ctx, "일정 정보가 있는 분양/입주 데이터가 없습니다.", ix(6.72), iy(3.05), ix(4.3), iy(0.28), { fontSize: 8.5, color: d.mutedTextColor });
+    // P4R Task C-3: 0건일 때 거대한 빈 흰 카드 대신 콜아웃 슬라이드의 컴팩트 중앙 배지 문법.
+    drawEmptyStateBadge(ctx, d, { x: 6.42, y: 2.34, w: 5.2, h: 3.4 });
+  } else {
+    drawDataPanel(ctx, ix(6.42), iy(2.34), ix(5.2), iy(3.4), d);
+    drawTextBox(ctx, "분양/입주 타임라인", ix(6.7), iy(2.6), ix(4.7), iy(0.25), { fontSize: 12, bold: true, color: d.textColor });
+    timeline.forEach((apt, idx) => {
+      const y = 3.04 + idx * 0.42;
+      // P4R Task C-2: 백카드 저대비 강조 텍스트(#FBBF24) 정리 — 예정일(분양예정 상태)만 accentRed.
+      drawTextBox(ctx, apt.move_in_month || apt.sale_date || "일정 미확인", ix(6.72), iy(y), ix(1.05), iy(0.22), { fontSize: 7.8, bold: true, color: apt.status === "planned" ? d.accentRed : d.mutedTextColor });
+      drawTextBox(ctx, apt.name, ix(7.9), iy(y), ix(2.4), iy(0.22), { fontSize: 7.8, color: d.textColor });
+      drawTextBox(ctx, `${apt.units.toLocaleString()}세대`, ix(10.25), iy(y), ix(0.82), iy(0.22), { fontSize: 7.4, color: d.mutedTextColor, align: "right" });
+    });
   }
   drawFooterNote(ctx, `주거 공급 장표는 ${input.config.radiusKm}km 반경의 건축물대장·분양 공고 기반 데이터를 요약합니다.`, d);
 }
@@ -1891,13 +1950,18 @@ function renderSummarySlide(
   ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
   drawTitleChip(ctx, "종합 분석 및 시사점", d, `반경 ${config.radiusKm}km`);
 
-  const panelW = ix(6);
-  drawDataPanel(ctx, ix(d.panelX), iy(d.panelY), panelW, iy(5), d);
+  // P4R Task C-6: 백색 전환 후 패널이 6in(약 ~7in 체감)로 좁아 우측 절반이 공백으로 남았다(p4rA-s14
+  // 결함). 다른 백색 정보 슬라이드(핵심 인사이트 요약 등)와 동일하게 콘텐츠 영역 전체 폭(x=0.7,
+  // w=11.95)으로 확장 — 줄 수·문구는 불변, 텍스트 박스 폭만 패널을 따라 함께 넓어진다.
+  const summaryPanelX = 0.7;
+  const summaryPanelW = 11.95;
+  const panelW = ix(summaryPanelW);
+  drawDataPanel(ctx, ix(summaryPanelX), iy(d.panelY), panelW, iy(5), d);
 
   const points = getSummaryLines(config, allPois);
   const lastBodyIdx = points.length - 2; // 마지막 줄은 항상 muted 점수 보조 지표 — 강조는 그 앞줄에 둔다.
   points.forEach((point, idx) => {
-    drawTextBox(ctx, point.text, ix(d.panelX + 0.3), iy(d.panelY + 0.4) + idx * iy(0.65), panelW - ix(0.5), iy(0.5), {
+    drawTextBox(ctx, point.text, ix(summaryPanelX + 0.3), iy(d.panelY + 0.4) + idx * iy(0.65), panelW - ix(0.5), iy(0.5), {
       fontSize: point.muted ? Math.max(8, Math.round(d.summaryFontSize * 0.7)) : d.summaryFontSize,
       bold: !point.muted && idx === lastBodyIdx,
       color: point.muted ? d.mutedTextColor : d.textColor,
