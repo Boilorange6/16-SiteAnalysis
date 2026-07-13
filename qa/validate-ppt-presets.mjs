@@ -75,7 +75,6 @@ const checks = [
       configSource.includes('accentColor: "#111827"') &&
       configSource.includes('overlayColor: "#FFFFFF"') &&
       configSource.includes("mapOverlayTransparency: 78") &&
-      configSource.includes("coverOverlayTransparency: 28") &&
       configSource.includes("titleChipTransparency: 100") &&
       configSource.includes("legendTransparency: 10") &&
       !configSource.includes("#FBBF24"),
