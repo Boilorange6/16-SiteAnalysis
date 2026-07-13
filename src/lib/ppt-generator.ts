@@ -441,7 +441,8 @@ function addInsightCard(slide: PptxGenJS.Slide, lines: readonly string[], d: Ppt
   if (lines.length === 0) return;
   const cardH = INSIGHT_CARD_PAD * 2 + INSIGHT_CARD_TITLE_H + lines.length * INSIGHT_CARD_LINE_H;
   const cardY = SLIDE_H - INSIGHT_CARD_BOTTOM_MARGIN - cardH;
-  slide.addShape("rect", {
+  // 리뷰 #2: "rect" 프리셋은 rectRadius(adj)를 무시 — 라운드는 "roundRect" 프리셋에서만 실현된다.
+  slide.addShape("roundRect", {
     x: INSIGHT_CARD_X, y: cardY, w: INSIGHT_CARD_W, h: cardH,
     fill: { color: pptColor(d.insightCardBg), transparency: 0 },
     line: { color: pptColor(d.insightCardBg), transparency: 100 },
@@ -879,27 +880,137 @@ export interface RouteNormalizedPosition {
   readonly points: readonly { readonly nx: number; readonly ny: number }[];
 }
 
+// ── 노선 변이 중복 제거 (리뷰 #1b 근본 원인) ─────────────────────────────────────
+// OSM 노선 데이터는 같은 노선을 상·하행/분할 way 단위로 여러 번 담는다(near-coincident 변이).
+// 점선 스트로크가 위상(phase)이 어긋난 채 겹치면 서로의 간격을 메워 실선처럼 붕괴한다
+// (COM 내보내기 실측: 동일 geometry 2벌인 2호선·신분당만 점선 유지, 변이가 다른 7호선 등은 실선화).
+// 같은 색의 기존 유지 경로에 거의 덮이는(90% 이상 근접) 변이를 제거해 코리더당 1획만 남긴다.
+// 두 렌더러가 이 함수를 공유해 동일 geometry 집합을 그린다.
+
+/** 겹침 판정 거리(인치) — 지도 축척에서 상·하행 트랙 간격은 이보다 훨씬 작다. */
+const ROUTE_DEDUPE_TOL_IN = 0.06;
+/** 이 비율 이상 샘플점이 기존 경로에 근접하면 중복 변이로 간주. */
+const ROUTE_DEDUPE_COVERAGE = 0.9;
+/** 커버리지 판정용 샘플점 상한(성능 바운드). */
+const ROUTE_DEDUPE_MAX_SAMPLES = 60;
+
+function routePointsInches(route: RouteNormalizedPosition): Array<{ x: number; y: number }> {
+  return route.points.map((pt) => ({ x: pt.nx * SLIDE_W, y: pt.ny * SLIDE_H }));
+}
+
+function polylineLength(pts: ReadonlyArray<{ x: number; y: number }>): number {
+  let len = 0;
+  for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+  return len;
+}
+
+function distPointToSegment(p: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }): number {
+  const abx = b.x - a.x, aby = b.y - a.y;
+  const lenSq = abx * abx + aby * aby;
+  const t = lenSq === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * abx + (p.y - a.y) * aby) / lenSq));
+  return Math.hypot(p.x - (a.x + abx * t), p.y - (a.y + aby * t));
+}
+
+function isNearPolyline(p: { x: number; y: number }, poly: ReadonlyArray<{ x: number; y: number }>, tol: number): boolean {
+  for (let i = 1; i < poly.length; i++) {
+    if (distPointToSegment(p, poly[i - 1], poly[i]) <= tol) return true;
+  }
+  return false;
+}
+
+/**
+ * 같은 색(lineColor) 노선 중 기존 유지 경로에 거의 덮이는 변이를 제거한다.
+ * 긴 경로부터 유지해 짧은 상·하행 변이·분할 way가 본선에 흡수되게 한다.
+ * 진짜 지선(다른 코리더)은 커버리지가 낮아 유지된다.
+ */
+export function dedupeRouteVariants(
+  routePositions: readonly RouteNormalizedPosition[]
+): readonly RouteNormalizedPosition[] {
+  const sorted = [...routePositions]
+    .map((route) => ({ route, pts: routePointsInches(route) }))
+    .sort((a, b) => polylineLength(b.pts) - polylineLength(a.pts));
+  const kept: Array<{ route: RouteNormalizedPosition; pts: Array<{ x: number; y: number }> }> = [];
+  for (const cand of sorted) {
+    if (cand.pts.length < 2) continue;
+    const sameColor = kept.filter((k) => k.route.lineColor === cand.route.lineColor);
+    if (sameColor.length > 0) {
+      const stride = Math.max(1, Math.ceil(cand.pts.length / ROUTE_DEDUPE_MAX_SAMPLES));
+      const samples = cand.pts.filter((_, i) => i % stride === 0);
+      const covered = samples.filter((p) => sameColor.some((k) => isNearPolyline(p, k.pts, ROUTE_DEDUPE_TOL_IN))).length;
+      if (covered / samples.length >= ROUTE_DEDUPE_COVERAGE) continue;
+    }
+    kept.push(cand);
+  }
+  return kept.map((k) => k.route);
+}
+
 function addSubwayRouteLines(
   slide: PptxGenJS.Slide,
   routePositions: readonly RouteNormalizedPosition[],
   d: PptDesignConfig
 ) {
-  routePositions.forEach((route) => {
-    const color = route.lineColor.replace("#", "");
-    for (let i = 0; i < route.points.length - 1; i++) {
-      const from = route.points[i];
-      const to = route.points[i + 1];
-      const x1 = from.nx * SLIDE_W, y1 = from.ny * SLIDE_H;
-      const x2 = to.nx * SLIDE_W, y2 = to.ny * SLIDE_H;
-      const x = Math.min(x1, x2), y = Math.min(y1, y2);
-      const w = Math.abs(x2 - x1), h = Math.abs(y2 - y1);
-      slide.addShape("line", {
-        x, y, w: Math.max(w, 0.005), h: Math.max(h, 0.005),
-        line: { color, width: d.subwayLineWidth, dashType: "dash" }, // 원본 보고서 문법: 노선 점선화
-        flipV: x2 >= x1 !== y2 >= y1,
-      });
-    }
+  // 리뷰 #1b: OSM 원시 정점 쌍마다 별도 line shape를 만들면 dashType "dash" 패턴이 shape마다
+  // 리셋되고 세그먼트가 dash 주기(3pt 선 기준 ~0.29in)보다 짧아 사실상 실선으로 렌더된다.
+  // 수정 3요소: (1) dedupeRouteVariants로 위상 어긋난 겹침 변이 제거(실선 붕괴의 근본 원인),
+  // (2) 노선 전체를 custGeom(다점 폴리라인) 한 shape로 통합해 dash가 경로를 따라 연속되게 하고
+  // (pptxgenjs 3.12 custGeom points 지원 확인 — moveTo 첫 점 + lnTo 연속, 좌표는 shape 원점 기준 인치),
+  // (3) ~0.3in 간격 리샘플링으로 정점 노이즈·XML 크기를 줄인다.
+  dedupeRouteVariants(routePositions).forEach((route) => {
+    if (route.points.length < 2) return;
+    const pts = resamplePolylineInches(
+      route.points.map((pt) => ({ x: pt.nx * SLIDE_W, y: pt.ny * SLIDE_H })),
+      ROUTE_RESAMPLE_STEP_IN
+    );
+    const minX = Math.min(...pts.map((p) => p.x)), minY = Math.min(...pts.map((p) => p.y));
+    const w = Math.max(Math.max(...pts.map((p) => p.x)) - minX, 0.01);
+    const h = Math.max(Math.max(...pts.map((p) => p.y)) - minY, 0.01);
+    // 타입 캐스트: pptxgenjs 3.12 런타임은 custGeom을 지원하지만(dist ShapeType enum·XML 생성기 확인)
+    // 타입 정의의 SHAPE_NAME 유니온에 누락되어 있어 캐스트가 필요하다.
+    slide.addShape("custGeom" as PptxGenJS.SHAPE_NAME, {
+      x: minX, y: minY, w, h,
+      points: pts.map((p) => ({ x: p.x - minX, y: p.y - minY })),
+      fill: { color: "FFFFFF", transparency: 100 }, // 열린 경로 — 채움 없음
+      line: { color: pptColor(route.lineColor), width: d.subwayLineWidth, dashType: "dash" }, // 원본 보고서 문법: 노선 점선화
+    });
   });
+}
+
+/** 리뷰 #1b — 노선 경로 리샘플 간격(인치). PPT "dash" 프리셋 주기(3pt 선 기준 대시 0.167in+간격
+ * 0.125in ≈ 0.29in)보다 약간 크게 잡아 정점당 대시 1주기 이상을 보장한다. */
+const ROUTE_RESAMPLE_STEP_IN = 0.3;
+
+/**
+ * 폴리라인을 누적 거리 기반 step 간격으로 재표본한다(인치 좌표계). 원시 정점은 버리고
+ * 시작점·등간격 보간점·끝점만 남긴다 — step보다 촘촘한 굴곡은 직선화되지만 지도 축척에서
+ * 시각 차이는 무시 가능. drawSubwayRouteLines(canvas)는 dash가 경로를 따라 연속 적용되므로
+ * 리샘플링이 불필요 — PPT 전용 헬퍼.
+ */
+function resamplePolylineInches(
+  pts: ReadonlyArray<{ x: number; y: number }>,
+  step: number
+): Array<{ x: number; y: number }> {
+  if (pts.length < 2) return [...pts];
+  const out: Array<{ x: number; y: number }> = [pts[0]];
+  let prev = pts[0];
+  let carry = 0; // 마지막 방출점 이후 누적 거리
+  for (let i = 1; i < pts.length; i++) {
+    const cur = pts[i];
+    let segLen = Math.hypot(cur.x - prev.x, cur.y - prev.y);
+    while (carry + segLen >= step && segLen > 0) {
+      const t = (step - carry) / segLen;
+      const emitted = { x: prev.x + (cur.x - prev.x) * t, y: prev.y + (cur.y - prev.y) * t };
+      out.push(emitted);
+      prev = emitted;
+      segLen = Math.hypot(cur.x - prev.x, cur.y - prev.y);
+      carry = 0;
+    }
+    carry += segLen;
+    prev = cur;
+  }
+  const last = pts[pts.length - 1];
+  const tail = out[out.length - 1];
+  if (tail.x !== last.x || tail.y !== last.y) out.push(last);
+  return out;
 }
 
 function addStationBars(

@@ -10,7 +10,7 @@
 
 import type { Poi, PoiPosition, RadiusPosition, PoiCategory, SubwayStation, ResidentialPoi, School, Park, MaintenanceProject, SourceStatus } from "./types";
 import { CATEGORY_LABELS } from "./types";
-import type { RouteNormalizedPosition } from "./ppt-generator";
+import { dedupeRouteVariants, type RouteNormalizedPosition } from "./ppt-generator";
 import type { PptDesignConfig } from "./ppt-design-config";
 import { PPT_FONT_MAIN, PPT_FONT_NUM } from "./ppt-design-config";
 import type { AnalysisConfig } from "./types";
@@ -119,7 +119,10 @@ const INSIGHT_CARD_LABEL = "핵심 포인트";
 const INSIGHT_CARD_LABEL_COLOR = "#9CA3AF";
 
 // ── Subway route line dash (Task 5 — 노선 폴리라인 점선화) ──
-const SUBWAY_ROUTE_DASH = [7, 5];
+/** butt cap 기준 대시 패턴(리뷰 #1a). round cap은 대시 양단을 lineWidth/2씩 연장해 실효 간격을
+ * 잡아먹어 실선처럼 보이므로 노선 스트로크는 반드시 lineCap="butt"와 함께 쓴다. 72px/in 캔버스에서
+ * [7,8] ≈ 대시 0.10in·간격 0.11in — PPT "dash" 프리셋(3pt 선: 대시 ~0.17in·간격 ~0.13in)과 유사 밀도. */
+const SUBWAY_ROUTE_DASH = [7, 8];
 /** 역사도식선(흰 캐싱) 고정색 — d.markerBorderColor는 다른 요소(범례·POI 마커 등)와 공유하는
  * 범용 잉크색이라 지도 톤에 따라 어두울 수 있음. 역 도식선의 "흰 캐싱"은 원본 보고서 확정 문법이므로
  * 별도 리터럴로 고정한다. */
@@ -963,10 +966,12 @@ function drawSubwayRouteLines(
   routePositions: readonly RouteNormalizedPosition[],
   d: PptDesignConfig
 ) {
-  routePositions.forEach((route) => {
+  // dedupeRouteVariants(리뷰 #1b, ppt-generator.ts 공유): 위상 어긋난 겹침 변이(상·하행/분할 way)가
+  // 서로의 대시 간격을 메워 실선처럼 보이는 문제를 두 렌더러에서 동일하게 차단한다.
+  dedupeRouteVariants(routePositions).forEach((route) => {
     ctx.strokeStyle = route.lineColor;
     ctx.lineWidth = d.subwayLineWidth;
-    ctx.lineCap = "round";
+    ctx.lineCap = "butt"; // 리뷰 #1a: round cap은 대시 양단을 늘려 점선이 실선처럼 붕괴
     ctx.setLineDash(SUBWAY_ROUTE_DASH); // 원본 보고서 문법: 노선 점선(dashed) 폴리라인
     ctx.beginPath();
     route.points.forEach((pt, i) => {
