@@ -50,6 +50,20 @@ export interface MapViewHandle {
   getPoiPositions(pois: readonly Poi[]): PoiPosition[];
   getRadiusPosition(): RadiusPosition | null;
   getRouteNormalizedPositions(routes: readonly SubwayRoute[]): { line: string; lineColor: string; points: { nx: number; ny: number }[] }[];
+  /**
+   * PPT 지도 표준 프레이밍: 분석 반경 링의 지름이 EXPORT 프레임 높이의 80%가 되도록
+   * 일시적으로 줌·중심을 재설정한 뒤 베이스맵·오버레이 좌표를 함께 추출하고, 완료 후
+   * 사용자 화면의 원래 줌·중심을 복구한다. 지도/반경 원이 준비되지 않았으면 null.
+   */
+  captureStandardFramedExport(
+    selectedPois: readonly Poi[],
+    routes: readonly SubwayRoute[]
+  ): Promise<{
+    baseMapImage: string;
+    poiPositions: PoiPosition[];
+    radiusPosition: RadiusPosition | null;
+    routePositions: { line: string; lineColor: string; points: { nx: number; ny: number }[] }[];
+  } | null>;
 }
 
 // ─── Map tile modes ────────────────────────────────────────────────────────
@@ -106,6 +120,57 @@ const DEFAULT_SUBWAY_STATION_STYLE: SubwayStationStyle = {
 // PPT export canvas: 1920×1080 (16:9 — matches SLIDE_W/SLIDE_H ratio in ppt-generator)
 const EXPORT_W = 1920;
 const EXPORT_H = 1080;
+
+// PPT 지도 표준 프레이밍: 분석 반경 링의 지름 = EXPORT 프레임 높이의 80%.
+// addFullBleedMap(ppt-generator)/drawImage(ppt-canvas-renderer) 모두 EXPORT와 동일한 16:9
+// 비율로 무크롭 스트레치 렌더링하므로, 이 프레임 높이 비율이 곧 슬라이드 지도 높이 비율과 같다.
+const STANDARD_FRAMING_DIAMETER_FRACTION = 0.8;
+// Web Mercator(EPSG:3857) 줌 0에서의 적도 기준 미터/픽셀 상수.
+const WEB_MERCATOR_METERS_PER_PIXEL_AT_ZOOM0 = 156543.03392;
+
+/**
+ * 분석 반경 링의 지름이 EXPORT 프레임 높이의 80%가 되는 소수 줌 레벨을 계산.
+ * metersPerPixel(lat, z) = 156543.03392·cos(lat)/2^z 를 z에 대해 역산.
+ * centerLat/radiusKm이 유효하지 않으면 NaN을 반환해 호출부가 재프레이밍을 건너뛰게 한다.
+ */
+function computeStandardFramingZoom(centerLat: number, radiusKm: number): number {
+  if (!Number.isFinite(centerLat) || !Number.isFinite(radiusKm) || radiusKm <= 0) {
+    return NaN;
+  }
+  const diameterM = radiusKm * 1000 * 2;
+  const targetDiameterPx = STANDARD_FRAMING_DIAMETER_FRACTION * EXPORT_H;
+  const metersPerPixelAtZoom0 = WEB_MERCATOR_METERS_PER_PIXEL_AT_ZOOM0 * Math.cos((centerLat * Math.PI) / 180);
+  if (!(metersPerPixelAtZoom0 > 0)) {
+    return NaN;
+  }
+  return Math.log2((metersPerPixelAtZoom0 * targetDiameterPx) / diameterM);
+}
+
+/**
+ * 비위성 모드 화면 캡처 대비, setView 이후 표시 영역 타일이 로드될 때까지 대기.
+ * 타일 레이어가 없거나 timeoutMs 안에 'load'가 오지 않으면 안전하게 진행한다(무한 대기 방지).
+ */
+function waitForTilesLoaded(
+  tileLayer: import("leaflet").TileLayer | null,
+  timeoutMs = 4000,
+): Promise<void> {
+  return new Promise((resolve) => {
+    if (!tileLayer) {
+      resolve();
+      return;
+    }
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      tileLayer.off("load", finish);
+      resolve();
+    };
+    const timer = setTimeout(finish, timeoutMs);
+    tileLayer.once("load", finish);
+  });
+}
 
 /**
  * 위도/경도 → PPT export 가상 캔버스(1920×1080) 정규화 좌표.
@@ -406,7 +471,8 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
   const [subwayMapData, setSubwayMapData] = useState<SubwayMapResponse | null>(null);
   const [controlsOpen, setControlsOpen] = useState(true);
 
-  useImperativeHandle(ref, () => ({
+  useImperativeHandle(ref, () => {
+    const handle: MapViewHandle = {
     async captureImage(): Promise<string> {
       if (!containerRef.current) {
         throw new Error("Map container not found");
@@ -499,7 +565,46 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
           points: route.coordinates!.map(([lat, lng]) => latLngToExportNx(map, lat, lng)),
         }));
     },
-  }));
+
+    async captureStandardFramedExport(
+      selectedPois: readonly Poi[],
+      routes: readonly SubwayRoute[]
+    ) {
+      if (!mapRef.current || !circleRef.current) return null;
+      const map = mapRef.current;
+      const originalCenter = map.getCenter();
+      const originalZoom = map.getZoom();
+      const originalZoomSnap = map.options.zoomSnap;
+      const targetZoom = computeStandardFramingZoom(config.centerLat, config.radiusKm);
+      const shouldReframe = Number.isFinite(targetZoom);
+
+      try {
+        if (shouldReframe) {
+          // Leaflet 소수 줌은 zoomSnap 제약을 받으므로 일시적으로 해제한다.
+          map.options.zoomSnap = 0;
+          map.setView([config.centerLat, config.centerLng], targetZoom, { animate: false });
+          if (mapMode !== "satellite") {
+            // 화면 캡처(toJpeg) 전에 새 뷰의 타일이 로드되길 대기.
+            await waitForTilesLoaded(tileLayerRef.current);
+          }
+        }
+
+        const baseMapImage = await handle.captureBaseMap();
+        const poiPositions = handle.getPoiPositions(selectedPois);
+        const radiusPosition = handle.getRadiusPosition();
+        const routePositions = handle.getRouteNormalizedPositions(routes);
+        return { baseMapImage, poiPositions, radiusPosition, routePositions };
+      } finally {
+        if (shouldReframe) {
+          // 사용자 화면 UX 불변: 원래 중심·줌·zoomSnap으로 복구.
+          map.setView(originalCenter, originalZoom, { animate: false });
+          map.options.zoomSnap = originalZoomSnap;
+        }
+      }
+    },
+    };
+    return handle;
+  });
 
   useEffect(() => {
     if (mapRef.current || !containerRef.current) {
