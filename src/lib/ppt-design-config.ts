@@ -232,8 +232,9 @@ export const DEFAULT_PPT_DESIGN: PptDesignConfig = {
   subtitleFontSize: 9,
   titleChipTransparency: 100,
   titleChipRadius: 0.02,
-  markerSize: 0.07,
-  markerSizeSm: 0.05,
+  // 2026-07-14 사용자 요청: 지도 동그라미 마커 1.5배 (0.07/0.05 → 0.105/0.075)
+  markerSize: 0.105,
+  markerSizeSm: 0.075,
   markerTransparency: 0,
   markerBorderWidth: 1,
   markerBorderColor: "#111827",

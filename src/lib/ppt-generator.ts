@@ -25,6 +25,7 @@ import { sourceStatusLines, hasFailedSource } from "./source-status-text";
 import { toReportMapTone } from "./map-image-tone";
 import { buildFactSummary, buildFactSheetRows, buildCategoryInsight, type FactSheetSegment, type CategoryInsightKey } from "./fact-summary";
 import { isRawPoiId } from "./poi-id-guard";
+import { groupStationShapes, STATION_GROUP_PREFIX } from "./pptx-station-group";
 
 const SLIDE_W = 13.333;
 const SLIDE_H = 7.5;
@@ -1060,6 +1061,10 @@ function addStationBars(
   const seenBars = new Set<string>();
   const seenLabels = new Set<string>();
 
+  // 역 단위 그룹화 태그 — 후처리(groupStationShapes)가 같은 키의 도형을 하나의 PPT 그룹으로 묶는다.
+  const stationTag = (station: { readonly poi: { readonly id: string; readonly name: string } }, part: string) =>
+    `${STATION_GROUP_PREFIX}${station.poi.id.replace(/\|/g, "/")}|${station.poi.name.replace(/\|/g, "/")}|${part}`;
+
   /** Slide-inch distance between two normalized points */
   function slideDistInch(
     ax: number, ay: number, bx: number, by: number
@@ -1167,12 +1172,14 @@ function addStationBars(
           x, y, w: Math.max(w, 0.005), h: Math.max(h, 0.005),
           line: { color: pptColor(STATION_CASING_COLOR), width: stationBorderWidth },
           flipV: x2 >= x1 !== y2 >= y1,
+          objectName: stationTag(station, `casing-${color}-${i}`),
         });
         // Colored bar
         slide.addShape("line", {
           x, y, w: Math.max(w, 0.005), h: Math.max(h, 0.005),
           line: { color, width: stationBarWidth },
           flipV: x2 >= x1 !== y2 >= y1,
+          objectName: stationTag(station, `bar-${color}-${i}`),
         });
       }
 
@@ -1198,6 +1205,7 @@ function addStationBars(
           x: cx - stationDotR, y: cy - stationDotR, w: stationDotR * 2, h: stationDotR * 2,
           fill: { color: pptColor(route.lineColor) },
           line: { color: pptColor(STATION_CASING_COLOR), width: 1.8 },
+          objectName: stationTag(station, "dot"),
         });
 
         const length = Math.sqrt(dxInch * dxInch + dyInch * dyInch) || 1;
@@ -1227,6 +1235,7 @@ function addStationBars(
             wrap: false,
             rotate: angleDeg,
             shadow: { type: "outer", color: "000000", opacity: 1, blur: 4 },
+            objectName: stationTag(station, "label"),
           });
         }
       }
@@ -2422,5 +2431,22 @@ export async function generateSiteAnalysisPpt(
   addSummarySlide(pptx, config, allPois, reportBaseMapImage, radiusPosition, d);
   addDataSourceSlide(pptx, config, allPois, reportBaseMapImage, d, sourceStatuses);
 
-  await pptx.writeFile({ fileName: `${config.centerName}_사이트분석.pptx` });
+  // 역 그룹화 후처리를 거쳐 다운로드 — pptxgenjs는 그룹을 지원하지 않으므로 XML 후처리로
+  // STGRP| 태깅 도형을 역 단위 그룹으로 묶는다. 후처리 실패 시 원본 그대로 저장(비치명).
+  const fileName = `${config.centerName}_사이트분석.pptx`;
+  try {
+    const raw = (await pptx.write({ outputType: "arraybuffer" })) as ArrayBuffer;
+    const grouped = await groupStationShapes(raw);
+    const blob = new Blob([grouped as BlobPart], {
+      type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  } catch {
+    await pptx.writeFile({ fileName });
+  }
 }
