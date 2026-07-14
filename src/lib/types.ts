@@ -57,6 +57,12 @@ interface ResidentialFields {
   readonly status: ResidentialStatus;
   readonly source: ResidentialSource;
   readonly max_floor?: number;
+  /** K-APT 동수 */
+  readonly dong_count?: number;
+  /** K-APT 시공사 */
+  readonly constructor_name?: string;
+  /** K-APT 부대복리시설 목록 (쉼표 구분 원문) */
+  readonly welfare_facilities?: string;
   readonly move_in_month?: string;
   readonly homepage_url?: string;
   readonly notice_url?: string;

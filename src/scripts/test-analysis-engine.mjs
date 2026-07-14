@@ -107,6 +107,9 @@ assert.ok(narrative.nextActions.length >= 3);
 
 const summaryLines = getSummaryLines(config, pois);
 assert.ok(summaryLines.length >= 5 && summaryLines.length <= 6);
-assert.match(summaryLines[0], /100점/);
+assert.doesNotMatch(summaryLines[0].text, /\d+\/100점/, "종합 의견 첫 줄은 점수를 강조하지 않아야 함");
+const lastSummaryLine = summaryLines[summaryLines.length - 1];
+assert.equal(lastSummaryLine.muted, true, "마지막 줄은 muted 보조 지표여야 함");
+assert.match(lastSummaryLine.text, /참고: 종합 입지 점수 \d+점 \(보조 지표\)/);
 
 console.log("analysis-engine smoke tests passed");

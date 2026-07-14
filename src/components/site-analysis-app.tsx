@@ -446,22 +446,22 @@ export default function SiteAnalysisApp() {
 
   const collectExportData = useCallback(async () => {
     if (!mapRef.current) return null;
-    const radiusPosition = mapRef.current.getRadiusPosition();
-    const baseMapImage = await mapRef.current.captureBaseMap();
     const visiblePois = allPois.filter(
       (poi) =>
         layers[poi.category] &&
         haversineDistance(config.centerLat, config.centerLng, poi.lat, poi.lng) <= config.radiusKm * 1000
     );
-    const poiPositions = mapRef.current.getPoiPositions(visiblePois);
-    const routePositions = mapRef.current.getRouteNormalizedPositions(subwayRoutes);
+    // PPT 지도 표준 프레이밍: 반경 링 지름 = 프레임 높이 80%가 되도록 캡처 시점에만 일시
+    // 재프레이밍하고, 완료 후 사용자 화면의 원래 줌·중심으로 자동 복구된다(map-view.tsx).
+    const framed = await mapRef.current.captureStandardFramedExport(visiblePois, subwayRoutes);
+    if (!framed) return null;
     return {
       config,
       allPois: visiblePois,
-      baseMapImage,
-      poiPositions,
-      radiusPosition,
-      routePositions,
+      baseMapImage: framed.baseMapImage,
+      poiPositions: framed.poiPositions,
+      radiusPosition: framed.radiusPosition,
+      routePositions: framed.routePositions,
       sourceStatuses: regionData?.sourceStatuses ?? [],
     };
   }, [allPois, layers, config, subwayRoutes, regionData]);
@@ -481,7 +481,7 @@ export default function SiteAnalysisApp() {
     }
   }, [canExport, collectExportData]);
 
-  const handleDownloadWithDesign = useCallback(async (designConfig: PptDesignConfig) => {
+  const handleDownloadWithDesign = useCallback(async (designConfig: PptDesignConfig, includeScoreDashboard: boolean) => {
     if (!previewInput) return;
     const { generateSiteAnalysisPpt } = await import("@/lib/ppt-generator");
     await generateSiteAnalysisPpt(
@@ -492,7 +492,8 @@ export default function SiteAnalysisApp() {
       previewInput.radiusPosition,
       previewInput.routePositions,
       designConfig,
-      previewInput.sourceStatuses ?? []
+      previewInput.sourceStatuses ?? [],
+      includeScoreDashboard
     );
   }, [previewInput]);
 

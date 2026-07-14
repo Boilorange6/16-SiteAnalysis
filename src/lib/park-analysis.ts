@@ -1,4 +1,5 @@
 import type { Park, ParkQuality } from "./types";
+import { firstDisplayable, isRawPoiId } from "./poi-id-guard";
 
 export interface ParkSummary {
   readonly count: number;
@@ -53,8 +54,10 @@ export function summarizeParks(parks: readonly Park[]): ParkSummary {
     totalAreaSqm,
     nearby500Count,
     majorCount,
-    nearestPark: sortedByAccess[0],
-    largestPark: sortedByArea[0],
+    // P4R Task B-1: 원시 ID 이름 공원은 "최근접/최대" 표시 후보에서 제외하고 다음 후보로 넘어간다.
+    // count·totalAreaSqm 등 집계는 위에서 이미 원본 parks 배열 기준으로 계산을 마쳤으므로 영향 없음.
+    nearestPark: firstDisplayable(sortedByAccess),
+    largestPark: firstDisplayable(sortedByArea),
     qualityCounts,
     accessibilityScore: Math.max(0, Math.min(100, Math.round(accessScore))),
   };
@@ -75,6 +78,7 @@ export function buildParkDetailLines(parks: readonly Park[], limit = 8): string[
   lines.push(`공원 접근성 점수 ${summary.accessibilityScore}/100`);
 
   const featured = [...parks]
+    .filter((park) => !isRawPoiId(park.name))
     .sort((a, b) => (b.area_sqm || 0) - (a.area_sqm || 0))
     .slice(0, Math.max(0, limit - lines.length))
     .map((park) => `${park.name}${park.park_type ? ` (${park.park_type})` : ""}`);

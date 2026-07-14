@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import type { AddressSearchResult } from "@/lib/data-provider";
+import { reverseGeocodeName } from "@/lib/data-provider";
 import type {
   AnalysisConfig,
   LayerVisibility,
@@ -284,7 +285,7 @@ export default function Sidebar({
     setIsMobileOpen(false);
   }
 
-  function handleApply() {
+  async function handleApply() {
     const centerLat = Number.parseFloat(form.centerLat);
     const centerLng = Number.parseFloat(form.centerLng);
     const radiusKm = Number.parseFloat(form.radiusKm);
@@ -293,8 +294,19 @@ export default function Sidebar({
       return;
     }
 
+    // 좌표만 수동 변경되고 주소명은 이전 값 그대로면 역지오코딩으로 주소명을 갱신 —
+    // 보고서 제목/파일명이 실제 분석 위치와 어긋나는 것을 방지(예: 청와대 샘플 후
+    // 좌표만 개포동으로 바꿔 분석하면 표지가 "청와대"로 나가는 문제, 2026-07-14).
+    let centerName = form.centerName.trim();
+    const coordsChanged = centerLat !== config.centerLat || centerLng !== config.centerLng;
+    const nameUntouched = centerName === config.centerName.trim();
+    if (coordsChanged && nameUntouched) {
+      const resolved = await reverseGeocodeName(centerLat, centerLng);
+      if (resolved) centerName = resolved;
+    }
+
     onConfigChange({
-      centerName: form.centerName.trim(),
+      centerName,
       centerLat,
       centerLng,
       radiusKm,

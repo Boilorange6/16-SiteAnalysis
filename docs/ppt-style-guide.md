@@ -135,6 +135,8 @@ Recommended default:
 
 If only one font can be used in generated PPTX, use `Noto Sans KR` and create hierarchy through size, weight, tracking, and whitespace.
 
+> **팀 폰트 설치 안내**: PPTX는 폰트를 임베드하지 않으므로, 생성된 보고서(`PPT_FONT_MAIN = "Noto Sans KR"`, `PPT_FONT_NUM = "Pretendard"`, 정의: `src/lib/ppt-design-config.ts`)를 의도한 대로 열람하려면 열람 PC에 Noto Sans KR과 Pretendard를 설치해야 한다.
+
 ### 5.2 Size Rules
 
 Minimum sizes:

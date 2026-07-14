@@ -68,6 +68,19 @@ export interface AddressSearchResult {
   readonly lng: number;
 }
 
+/**
+ * 좌표 → 법정동 주소명("강남구 개포동"). 좌표만 수동 수정된 분석의 보고서 제목 갱신용.
+ * 실패 시 null — 호출부가 기존 이름 유지 여부를 결정한다.
+ */
+export async function reverseGeocodeName(lat: number, lng: number): Promise<string | null> {
+  try {
+    const response = await fetchJson<{ name: string }>(`/api/reverse-geocode?lat=${lat}&lng=${lng}`);
+    return response.name || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function searchAddresses(query: string, page = 1, size = 5): Promise<readonly AddressSearchResult[]> {
   const params = new URLSearchParams({
     query,

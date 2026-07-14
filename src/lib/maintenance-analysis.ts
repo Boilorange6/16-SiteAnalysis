@@ -1,4 +1,5 @@
 import type { MaintenanceProject, MaintenanceStage } from "./types";
+import { isRawPoiId } from "./poi-id-guard";
 
 export interface MaintenanceSummary {
   readonly count: number;
@@ -36,7 +37,11 @@ export function summarizeMaintenanceProjects(projects: readonly MaintenanceProje
     typeCounts[type] = (typeCounts[type] ?? 0) + 1;
   }
 
+  // P4R Task B-1: 원시 ID 이름 사업은 "주요 사업" 표시 후보에서 제외한다. count·typeCounts·
+  // stageCounts·boundaryConfirmedCount 등 집계는 위에서 이미 원본 projects 배열 기준으로 계산했으므로
+  // 영향 없음.
   const topProjects = [...projects]
+    .filter((project) => !isRawPoiId(project.name))
     .sort((a, b) => {
       const areaDelta = (b.area_sqm || 0) - (a.area_sqm || 0);
       if (areaDelta !== 0) return areaDelta;

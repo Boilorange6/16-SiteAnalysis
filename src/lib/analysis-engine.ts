@@ -10,6 +10,7 @@ import type {
 import { haversineDistance } from "./geo";
 import { formatAreaSqm, formatDistanceM, summarizeParks } from "./park-analysis";
 import { summarizeMaintenanceProjects } from "./maintenance-analysis";
+import { isRawPoiId } from "./poi-id-guard";
 
 export type ScoreKey = "traffic" | "education" | "nature" | "residential" | "development";
 export type ScoreLevel = "excellent" | "good" | "fair" | "weak";
@@ -63,8 +64,12 @@ function countWithin<T extends Poi>(pois: readonly T[], config: AnalysisConfig, 
 }
 
 function nearestDistance<T extends Poi>(pois: readonly T[], config: AnalysisConfig): number | null {
-  if (pois.length === 0) return null;
-  return Math.min(...pois.map((poi) => haversineDistance(config.centerLat, config.centerLng, poi.lat, poi.lng)));
+  // P4R Task B fix: 원시 ID 이름 POI는 최근접 후보에서 제외 — 이 거리는 "최근접 역 NNNm" 형태로
+  // 표시 문구에 쓰이므로 팩트시트(fact-summary findNearest)와 동일한 필터 후보 기준으로 통일해
+  // 두 곳의 최근접 거리가 어긋나지 않게 한다.
+  const displayable = pois.filter((poi) => !isRawPoiId(poi.name));
+  if (displayable.length === 0) return null;
+  return Math.min(...displayable.map((poi) => haversineDistance(config.centerLat, config.centerLng, poi.lat, poi.lng)));
 }
 
 export function computeAnalysisScores(config: AnalysisConfig, pois: readonly Poi[]): AnalysisScores {
@@ -221,7 +226,9 @@ export function generateAnalysisNarrative(config: AnalysisConfig, pois: readonly
   const weakItems = scores.items.filter((item) => item.level === "fair" || item.level === "weak");
 
   return {
-    summary: `${config.centerName || "선택 입지"}는 종합 ${scores.total}/100점(${scores.grade}등급)입니다. ${scores.headline}`,
+    // P4R Task B-4a: 점수를 문장 선두에서 강조하지 않는다 — 강·약점 팩트 요약을 앞세우고
+    // 점수/등급은 문장 끝 괄호 보조 표기로 격하한다.
+    summary: `${config.centerName || "선택 입지"}는 ${scores.headline} (참고: 종합 ${scores.total}/100점 · ${scores.grade}등급)`,
     bullets: [
       nearestSubway === null
         ? "교통: 반경 내 지하철역 확인이 부족해 버스·도로 접근성의 보완 검토가 필요합니다."
@@ -237,15 +244,49 @@ export function generateAnalysisNarrative(config: AnalysisConfig, pois: readonly
         ? "정비사업 일부는 경계 미확인 상태라 보고서에는 출처와 확인 수준을 함께 표기해야 합니다."
         : "",
     ].filter(Boolean),
+    // P4R Task B-3: "PPT 첫 장에서 강조하세요"·"프로젝트를 저장하세요" 같은 앱 사용 안내문을
+    // 보고서 수신자(발주처) 관점 제언으로 교체 — 데이터 조건에 따라 분기하는 일반 제언.
+    // 문구 길이 제약(리뷰 fix): canvas 렌더러의 "다음 액션" 카드는 drawWrappedText maxLines=2
+    // (2줄 ≈ 50자)라 45자를 넘기면 말줄임되고 pptx(fit:"shrink" 전문 표시)와 내용이 어긋난다.
+    // 각 항목 45자 이내·핵심 권고 선두 배치를 유지할 것.
     nextActions: [
-      "핵심 경쟁력 항목은 PPT 첫 장 요약과 종합 분석 슬라이드에서 강조하세요.",
-      "점수가 낮은 항목은 현장조사, 임장 사진, 교통 노선 계획 등 외부 근거로 보완하세요.",
-      "수동 POI로 누락된 예정지와 비공개 조사 포인트를 추가한 뒤 프로젝트를 저장하세요.",
+      nearestSubway === null
+        ? "지하철역 미확인 — 현장 실사·버스 노선으로 접근성 확인 권장"
+        : `최근접 역 ${formatDistanceM(nearestSubway)} — 신설·연장 노선은 기관 고시로 재확인 권장`,
+      weakItems.length > 0
+        ? `${weakItems.slice(0, 2).map((item) => item.label).join("·")}${weakItems.length > 2 ? " 등" : ""} 보완 필요 — 실사·공고로 재확인 권장`
+        : "전 항목 고른 확인 — 핵심 지표는 정기 재확인 권장",
+      maintenanceSummary.count > maintenanceSummary.boundaryConfirmedCount
+        ? `정비사업 ${maintenanceSummary.count - maintenanceSummary.boundaryConfirmedCount}건 경계 미확인 — 관할 구청·조합 공고로 확인 권장`
+        : maintenanceSummary.count > 0
+          ? "정비사업 단계(인가·착공 등)는 최신 공고로 재확인 권장"
+          : "반경 밖 대규모 개발계획은 별도 확인 권장",
+      ...(plannedCount > 0
+        ? [`분양예정 ${plannedCount}건 — 분양 공고로 최신 공급 일정 재확인 권장`]
+        : []),
     ],
   };
 }
 
-export function getSummaryLines(config: AnalysisConfig, pois: readonly Poi[]): string[] {
+/** 종합 의견 슬라이드 한 줄. `muted`가 true면 강조 없이 보조 지표 톤(작은 글자·톤 다운 색)으로 표기한다. */
+export interface SummaryLine {
+  readonly text: string;
+  readonly muted?: boolean;
+}
+
+/**
+ * 종합 의견(요약) 슬라이드 전용 라인 빌더.
+ * 2단계 재설계(Task 7): 점수를 문장 선두에서 강조하지 않고, 마지막 줄에 "참고: 종합 입지 점수 NN점(보조 지표)"
+ * 형태의 muted 라인으로 격하한다. 점수 대시보드 슬라이드(별도)는 여전히 `generateAnalysisNarrative`/
+ * `computeAnalysisScores`를 직접 써서 점수를 크게 표시하므로 이 함수의 변경 영향을 받지 않는다.
+ */
+export function getSummaryLines(config: AnalysisConfig, pois: readonly Poi[]): SummaryLine[] {
   const narrative = generateAnalysisNarrative(config, pois);
-  return [narrative.summary, ...narrative.bullets.slice(0, 4), ...(narrative.risks[0] ? [`리스크: ${narrative.risks[0]}`] : [])].slice(0, 6);
+  const scores = computeAnalysisScores(config, pois);
+  const body: SummaryLine[] = [
+    { text: `${config.centerName || "선택 입지"} 입지 종합 의견: ${scores.headline}` },
+    ...narrative.bullets.slice(0, 3).map((text) => ({ text })),
+    ...(narrative.risks[0] ? [{ text: `리스크: ${narrative.risks[0]}` }] : []),
+  ];
+  return [...body, { text: `참고: 종합 입지 점수 ${scores.total}점 (보조 지표)`, muted: true }];
 }
