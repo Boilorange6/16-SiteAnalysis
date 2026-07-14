@@ -1849,12 +1849,12 @@ function buildComplexDetailRows(residentials: readonly ResidentialPoi[]): Comple
       const date = apt.move_in_month || apt.sale_date;
       return {
         name: apt.name,
-        units: apt.units > 0 ? apt.units.toLocaleString() : "-",
-        year: date ? date.slice(0, 4) : "-",
-        parking: apt.parking_count > 0 ? apt.parking_count.toLocaleString() : "-",
-        floors: apt.max_floor && apt.max_floor > 0 ? String(apt.max_floor) : "-",
-        dongs: apt.dong_count && apt.dong_count > 0 ? String(apt.dong_count) : "-",
-        constructorName: apt.constructor_name ? shortenConstructorName(apt.constructor_name) : "-",
+        units: apt.units > 0 ? apt.units.toLocaleString() : "확인필요",
+        year: date ? date.slice(0, 4) : "확인필요",
+        parking: apt.parking_count > 0 ? apt.parking_count.toLocaleString() : "확인필요",
+        floors: apt.max_floor && apt.max_floor > 0 ? String(apt.max_floor) : "확인필요",
+        dongs: apt.dong_count && apt.dong_count > 0 ? String(apt.dong_count) : "확인필요",
+        constructorName: apt.constructor_name ? shortenConstructorName(apt.constructor_name) : "확인필요",
         planned: apt.status === "planned",
       };
     });
@@ -1875,33 +1875,24 @@ function buildWelfareNote(residentials: readonly ResidentialPoi[]): string | nul
 }
 
 /**
- * 미니 데이터표 행 — 세대수/준공·입주(예정)/주차/층·동/시공사/전용면적대 중 가용 필드만,
- * 값이 없는 행은 생략. status=existing의 sale_date는 건축물대장 사용승인일·K-APT
+ * 미니 데이터표 행 — 세대수/준공·입주(예정)/주차/층·동/시공사 5행 고정.
+ * 미확인 값은 행 생략이 아니라 "확인필요"로 명시 표기(2026-07-14 사용자 지시). status=existing의 sale_date는 건축물대장 사용승인일·K-APT
  * 사용검사일이므로 라벨은 "준공". 예약 슬롯(calloutHeight)이 헤더+5행 상한이라
  * 최대 5행까지만 채택(우선순위 = push 순서, 2026-07-14 사용자 확정 규격).
  * pptx 생성기(ppt-generator.ts)의 동명 함수와 동일 로직을 유지할 것(수치 parity).
  */
 function buildResidentialTableRows(apt: ResidentialPoi): ResidentialTableRow[] {
+  const NEEDS_CHECK = "확인필요";
   const rows: ResidentialTableRow[] = [];
-  if (apt.units > 0) {
-    rows.push({ label: "세대수", value: `${apt.units.toLocaleString()}세대` });
-  }
+  rows.push({ label: "세대수", value: apt.units > 0 ? `${apt.units.toLocaleString()}세대` : NEEDS_CHECK });
   if (apt.move_in_month) {
     rows.push({ label: apt.status === "planned" ? "입주예정" : "입주", value: apt.move_in_month });
   } else if (apt.sale_date) {
     rows.push({ label: apt.status === "planned" ? "분양예정" : "준공", value: `${apt.sale_date.slice(0, 4)}년` });
+  } else {
+    rows.push({ label: apt.status === "planned" ? "입주예정" : "준공", value: NEEDS_CHECK });
   }
-  if (apt.parking_count > 0) {
-    rows.push({ label: "주차", value: `${apt.parking_count.toLocaleString()}대` });
-  }
-  const floor = apt.max_floor && apt.max_floor > 0 ? `${apt.max_floor}층` : "";
-  const dong = apt.dong_count && apt.dong_count > 0 ? `${apt.dong_count}동` : "";
-  if (floor || dong) {
-    rows.push({ label: "층·동", value: floor && dong ? `${floor}·${dong}` : floor || dong });
-  }
-  if (apt.constructor_name) {
-    rows.push({ label: "시공사", value: shortenConstructorName(apt.constructor_name) });
-  }
+  // 분양예정 단지의 전용면적대는 확정 정보라 미확정(확인필요) 행보다 우선 배치(초과분은 5행 컷)
   const areas = (apt.floorplans ?? [])
     .map((f) => f.area_sqm)
     .filter((a): a is number => typeof a === "number" && a > 0);
@@ -1910,6 +1901,11 @@ function buildResidentialTableRows(apt: ResidentialPoi): ResidentialTableRow[] {
     const max = Math.round(Math.max(...areas));
     rows.push({ label: "전용면적", value: min === max ? `${min}㎡` : `${min}~${max}㎡` });
   }
+  rows.push({ label: "주차", value: apt.parking_count > 0 ? `${apt.parking_count.toLocaleString()}대` : NEEDS_CHECK });
+  const floor = apt.max_floor && apt.max_floor > 0 ? `${apt.max_floor}층` : "";
+  const dong = apt.dong_count && apt.dong_count > 0 ? `${apt.dong_count}동` : "";
+  rows.push({ label: "층·동", value: floor && dong ? `${floor}·${dong}` : floor || dong || NEEDS_CHECK });
+  rows.push({ label: "시공사", value: apt.constructor_name ? shortenConstructorName(apt.constructor_name) : NEEDS_CHECK });
   return rows.slice(0, 5);
 }
 
@@ -2041,9 +2037,12 @@ function renderApartmentCalloutSlide(
         tableX + ix(0.07), rowY, TABLE_W_PX * 0.42, ROW_H_PX, {
           fontSize: d.calloutDetailFontSize, color: d.mutedTextColor, valign: "middle",
         });
+      // "확인필요"는 실측값과 혼동되지 않도록 비강조(흐림) 처리
+      const needsCheck = row.value === "확인필요";
       drawTextBox(ctx, row.value,
         tableX + TABLE_W_PX * 0.42, rowY, TABLE_W_PX * 0.58 - ix(0.07), ROW_H_PX, {
-          fontSize: d.calloutDetailFontSize, bold: true, color: d.textColor, valign: "middle", align: "right",
+          fontSize: d.calloutDetailFontSize, bold: !needsCheck,
+          color: needsCheck ? d.mutedTextColor : d.textColor, valign: "middle", align: "right",
         });
     });
   });

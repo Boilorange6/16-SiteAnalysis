@@ -26,8 +26,9 @@ const pptxFn = extractFnBody(pptx, "ppt-generator.ts");
 assert.equal(canvasFn, pptxFn, "buildResidentialTableRows bodies diverged between canvas renderer and pptx generator");
 
 // 콜아웃 미니표 필수 행(2026-07-14 사용자 확정 5행 규격): 세대수/준공/주차/층·동/시공사
-for (const label of ['"세대수"', '"주차"', '"준공"', '"층·동"', '"시공사"']) {
-  assert.ok(canvasFn.includes(label), `buildResidentialTableRows missing ${label} row`);
+// + 미확인 값은 행 생략이 아니라 "확인필요"로 명시 표기(2026-07-14 사용자 지시)
+for (const label of ['"세대수"', '"주차"', '"준공"', '"층·동"', '"시공사"', '"확인필요"']) {
+  assert.ok(canvasFn.includes(label), `buildResidentialTableRows missing ${label}`);
 }
 assert.ok(canvasFn.includes("slice(0, 5)"), "buildResidentialTableRows must cap rows at 5 (calloutHeight 예약 슬롯 규격)");
 
