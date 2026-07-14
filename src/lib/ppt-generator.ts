@@ -2089,6 +2089,12 @@ interface ComplexDetailRow {
   readonly planned: boolean;
 }
 
+/** 공동 시공(쉼표 구분 다수 업체)은 셀 폭을 넘치므로 첫 업체 + "외"로 축약. */
+function shortenConstructorName(name: string): string {
+  const parts = name.split(",").map((s) => s.trim()).filter(Boolean);
+  return parts.length <= 1 ? name : `${parts[0]} 외`;
+}
+
 /** 세대수 상위 7개 단지의 상세 표 행. 없는 값은 "-" (K-APT 미등록 소단지 등). */
 function buildComplexDetailRows(residentials: readonly ResidentialPoi[]): ComplexDetailRow[] {
   return [...residentials]
@@ -2103,7 +2109,7 @@ function buildComplexDetailRows(residentials: readonly ResidentialPoi[]): Comple
         parking: apt.parking_count > 0 ? apt.parking_count.toLocaleString() : "-",
         floors: apt.max_floor && apt.max_floor > 0 ? String(apt.max_floor) : "-",
         dongs: apt.dong_count && apt.dong_count > 0 ? String(apt.dong_count) : "-",
-        constructorName: apt.constructor_name || "-",
+        constructorName: apt.constructor_name ? shortenConstructorName(apt.constructor_name) : "-",
         planned: apt.status === "planned",
       };
     });
@@ -2124,9 +2130,10 @@ function buildWelfareNote(residentials: readonly ResidentialPoi[]): string | nul
 }
 
 /**
- * 미니 데이터표 행 — 세대수/준공·입주(예정)/주차/전용면적대 중 가용 필드만, 값이 없는 행은 생략.
- * status=existing의 sale_date는 건축물대장 사용승인일·K-APT 사용검사일이므로 라벨은 "준공".
- * 예약 슬롯(calloutHeight)이 헤더+3행 상한이라 최대 3행까지만 채택(우선순위 = push 순서).
+ * 미니 데이터표 행 — 세대수/준공·입주(예정)/주차/층·동/시공사/전용면적대 중 가용 필드만,
+ * 값이 없는 행은 생략. status=existing의 sale_date는 건축물대장 사용승인일·K-APT
+ * 사용검사일이므로 라벨은 "준공". 예약 슬롯(calloutHeight)이 헤더+5행 상한이라
+ * 최대 5행까지만 채택(우선순위 = push 순서, 2026-07-14 사용자 확정 규격).
  * canvas 렌더러(ppt-canvas-renderer.ts)의 동명 함수와 동일 로직을 유지할 것(수치 parity).
  */
 function buildResidentialTableRows(apt: ResidentialPoi): ResidentialTableRow[] {
@@ -2142,6 +2149,14 @@ function buildResidentialTableRows(apt: ResidentialPoi): ResidentialTableRow[] {
   if (apt.parking_count > 0) {
     rows.push({ label: "주차", value: `${apt.parking_count.toLocaleString()}대` });
   }
+  const floor = apt.max_floor && apt.max_floor > 0 ? `${apt.max_floor}층` : "";
+  const dong = apt.dong_count && apt.dong_count > 0 ? `${apt.dong_count}동` : "";
+  if (floor || dong) {
+    rows.push({ label: "층·동", value: floor && dong ? `${floor}·${dong}` : floor || dong });
+  }
+  if (apt.constructor_name) {
+    rows.push({ label: "시공사", value: shortenConstructorName(apt.constructor_name) });
+  }
   const areas = (apt.floorplans ?? [])
     .map((f) => f.area_sqm)
     .filter((a): a is number => typeof a === "number" && a > 0);
@@ -2150,7 +2165,7 @@ function buildResidentialTableRows(apt: ResidentialPoi): ResidentialTableRow[] {
     const max = Math.round(Math.max(...areas));
     rows.push({ label: "전용면적", value: min === max ? `${min}㎡` : `${min}~${max}㎡` });
   }
-  return rows.slice(0, 3);
+  return rows.slice(0, 5);
 }
 
 function addApartmentCalloutSlide(
@@ -2190,7 +2205,7 @@ function addApartmentCalloutSlide(
     return;
   }
 
-  // 표 치수: calloutWidth/calloutHeight는 헤더+최대 3행 예약 상한(겹침 방지 레이아웃 입력).
+  // 표 치수: calloutWidth/calloutHeight는 헤더+최대 5행 예약 상한(겹침 방지 레이아웃 입력).
   // 실제 그리는 행 수가 이보다 적은 단지는 예약 슬롯 안에서 세로 중앙 정렬한다.
   const TABLE_W = d.calloutWidth;
   const TABLE_H = d.calloutHeight;

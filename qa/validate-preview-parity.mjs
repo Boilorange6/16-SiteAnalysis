@@ -25,10 +25,11 @@ const canvasFn = extractFnBody(canvas, "ppt-canvas-renderer.ts");
 const pptxFn = extractFnBody(pptx, "ppt-generator.ts");
 assert.equal(canvasFn, pptxFn, "buildResidentialTableRows bodies diverged between canvas renderer and pptx generator");
 
-// 콜아웃 미니표 필수 행: 세대수 + 주차 + 준공(사용승인일 기반 연도 라벨) — 주차/준공 누락 회귀 방지
-for (const label of ['"세대수"', '"주차"', '"준공"']) {
+// 콜아웃 미니표 필수 행(2026-07-14 사용자 확정 5행 규격): 세대수/준공/주차/층·동/시공사
+for (const label of ['"세대수"', '"주차"', '"준공"', '"층·동"', '"시공사"']) {
   assert.ok(canvasFn.includes(label), `buildResidentialTableRows missing ${label} row`);
 }
+assert.ok(canvasFn.includes("slice(0, 5)"), "buildResidentialTableRows must cap rows at 5 (calloutHeight 예약 슬롯 규격)");
 
 // 주거 공급 슬라이드 단지 상세 표 — 확정 필드셋(세대수/준공/주차/최고층수/동수/시공사)과
 // 부대시설 라인이 두 렌더러 모두에 존재하는지 정적 검증 (2026-07-14 사용자 확정)

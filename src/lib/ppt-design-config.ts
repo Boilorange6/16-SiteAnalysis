@@ -269,7 +269,8 @@ export const DEFAULT_PPT_DESIGN: PptDesignConfig = {
   panelY: 1.1,
   panelWidth: 3.5,
   calloutWidth: 2.4,
-  calloutHeight: 0.73,
+  // 2026-07-14 5행 규격(세대수/준공/주차/층·동/시공사): 0.22 + 5×0.17 = 1.07
+  calloutHeight: 1.07,
   calloutHeaderHeight: 0.22,
   calloutRowHeight: 0.17,
   calloutTransparency: 3,
