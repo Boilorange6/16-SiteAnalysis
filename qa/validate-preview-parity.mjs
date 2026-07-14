@@ -30,4 +30,11 @@ for (const label of ['"세대수"', '"주차"', '"준공"']) {
   assert.ok(canvasFn.includes(label), `buildResidentialTableRows missing ${label} row`);
 }
 
-console.log("preview parity: empty-state OK, font constant OK, residential table rows OK");
+// 주거 공급 슬라이드 단지 상세 표 — 확정 필드셋(세대수/준공/주차/최고층수/동수/시공사)과
+// 부대시설 라인이 두 렌더러 모두에 존재하는지 정적 검증 (2026-07-14 사용자 확정)
+for (const label of ['"시공사"', "부대시설 · "]) {
+  assert.ok(canvas.includes(label), `canvas renderer missing supply-slide label ${label}`);
+  assert.ok(pptx.includes(label), `pptx generator missing supply-slide label ${label}`);
+}
+
+console.log("preview parity: empty-state OK, font constant OK, residential table rows OK, supply detail table OK");

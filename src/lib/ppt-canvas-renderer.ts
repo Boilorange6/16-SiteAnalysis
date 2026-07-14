@@ -1740,11 +1740,33 @@ function renderResidentialSupplySlide(
   drawMetricCard(ctx, 3.2, 1.16, 2.45, 0.84, "총 세대수", `${totalUnits.toLocaleString()}세대`, `주차 ${totalParking.toLocaleString()}대`, d.accentRed, d);
   drawMetricCard(ctx, 5.85, 1.16, 2.45, 0.84, "분양예정", `${planned.length}건`, "공급 변화 모니터링", d.accentColor, d);
   drawMetricCard(ctx, 8.5, 1.16, 2.45, 0.84, "주차비율", totalUnits > 0 ? `${avgParking.toFixed(2)}대/세대` : "-", "단지 상품성 참고", d.accentColor, d);
-  drawRankedList(ctx, "대단지/주요 주거시설", [...residentials].sort((a, b) => b.units - a.units).slice(0, 7).map((apt) => ({
-    label: apt.name,
-    meta: `${apt.units.toLocaleString()}세대 · ${apt.distance_m ? formatDistanceM(apt.distance_m) : "거리 미확인"}`,
-    color: apt.status === "planned" ? d.accentRed : d.accentColor,
-  })), 0.55, 2.34, 5.6, d);
+  // 단지 상세 표 — 확정 필드셋(세대수/준공/주차/최고층수/동수/시공사, 2026-07-14).
+  // 부대시설 목록은 셀에 안 들어가므로 표 하단 각주 1줄(최근접 단지)로 처리.
+  const detailRows = buildComplexDetailRows(residentials);
+  if (detailRows.length === 0) {
+    drawEmptyStateBadge(ctx, d, { x: 0.55, y: 2.34, w: 5.6, h: 3.4 }, "반경 내 확인된 시설이 없습니다");
+  } else {
+    drawDataPanel(ctx, ix(0.55), iy(2.34), ix(5.6), iy(3.4), d);
+    drawTextBox(ctx, "주요 단지 상세", ix(0.83), iy(2.6), ix(4.9), iy(0.25), { fontSize: 12, bold: true, color: d.textColor });
+    COMPLEX_DETAIL_COLUMNS.forEach((col) => {
+      drawTextBox(ctx, col.label, ix(col.x), iy(2.94), ix(col.w), iy(0.18), { fontSize: 7.2, bold: true, color: d.mutedTextColor, align: col.align });
+    });
+    detailRows.forEach((row, idx) => {
+      const y = 3.16 + idx * 0.3;
+      const values = complexDetailCellValues(row);
+      COMPLEX_DETAIL_COLUMNS.forEach((col, ci) => {
+        drawTextBox(ctx, values[ci], ix(col.x), iy(y), ix(col.w), iy(0.2), {
+          fontSize: ci === 0 ? 7.8 : 7.4,
+          color: ci === 0 ? (row.planned ? d.accentRed : d.textColor) : d.mutedTextColor,
+          align: col.align,
+        });
+      });
+    });
+    const welfareNote = buildWelfareNote(residentials);
+    if (welfareNote) {
+      drawTextBox(ctx, welfareNote, ix(0.8), iy(5.4), ix(5.15), iy(0.2), { fontSize: 7, color: d.mutedTextColor });
+    }
+  }
   const timeline = [...residentials]
     .filter((apt) => apt.sale_date || apt.move_in_month)
     .sort((a, b) => (a.move_in_month || a.sale_date).localeCompare(b.move_in_month || b.sale_date))
@@ -1785,6 +1807,65 @@ function findNearestResidentialId(config: AnalysisConfig, residentials: readonly
 interface ResidentialTableRow {
   readonly label: string;
   readonly value: string;
+}
+
+// ─── 주거 공급 슬라이드: 단지 상세 표 (2026-07-14 확정 필드셋) ────────────────
+// pptx 생성기(ppt-generator.ts)의 동명 심볼과 동일 로직/치수를 유지할 것(수치 parity).
+
+/** 컬럼 x/w는 인치. 좌측 패널(x0.55 w5.6) 내부 여백 기준. */
+const COMPLEX_DETAIL_COLUMNS = [
+  { label: "단지명", x: 0.8, w: 1.45, align: "left" },
+  { label: "세대수", x: 2.25, w: 0.7, align: "right" },
+  { label: "준공", x: 2.95, w: 0.55, align: "right" },
+  { label: "주차", x: 3.5, w: 0.72, align: "right" },
+  { label: "층", x: 4.22, w: 0.4, align: "right" },
+  { label: "동", x: 4.62, w: 0.4, align: "right" },
+  { label: "시공사", x: 5.12, w: 0.85, align: "left" },
+] as const;
+
+interface ComplexDetailRow {
+  readonly name: string;
+  readonly units: string;
+  readonly year: string;
+  readonly parking: string;
+  readonly floors: string;
+  readonly dongs: string;
+  readonly constructorName: string;
+  readonly planned: boolean;
+}
+
+/** 세대수 상위 7개 단지의 상세 표 행. 없는 값은 "-" (K-APT 미등록 소단지 등). */
+function buildComplexDetailRows(residentials: readonly ResidentialPoi[]): ComplexDetailRow[] {
+  return [...residentials]
+    .sort((a, b) => b.units - a.units)
+    .slice(0, 7)
+    .map((apt) => {
+      const date = apt.move_in_month || apt.sale_date;
+      return {
+        name: apt.name,
+        units: apt.units > 0 ? apt.units.toLocaleString() : "-",
+        year: date ? date.slice(0, 4) : "-",
+        parking: apt.parking_count > 0 ? apt.parking_count.toLocaleString() : "-",
+        floors: apt.max_floor && apt.max_floor > 0 ? String(apt.max_floor) : "-",
+        dongs: apt.dong_count && apt.dong_count > 0 ? String(apt.dong_count) : "-",
+        constructorName: apt.constructor_name || "-",
+        planned: apt.status === "planned",
+      };
+    });
+}
+
+function complexDetailCellValues(row: ComplexDetailRow): readonly string[] {
+  return [row.name, row.units, row.year, row.parking, row.floors, row.dongs, row.constructorName];
+}
+
+/** 부대시설 각주 — 부대시설 목록이 있는 단지 중 최근접 1개. 없으면 null. */
+function buildWelfareNote(residentials: readonly ResidentialPoi[]): string | null {
+  const withWelfare = residentials
+    .filter((apt) => apt.welfare_facilities)
+    .sort((a, b) => (a.distance_m || Infinity) - (b.distance_m || Infinity));
+  const first = withWelfare[0];
+  if (!first) return null;
+  return `부대시설 · ${first.name}: ${first.welfare_facilities}`;
 }
 
 /**

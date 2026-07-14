@@ -14,6 +14,7 @@
  */
 
 import { getDb } from "./database";
+import { enrichKaptExtras } from "./apt-enrichment";
 import type { Apartment, Officetel, ResidentialOther, ResidentialPoi } from "../types";
 
 const LEDGER_URL = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrRecapTitleInfo";
@@ -276,6 +277,7 @@ export async function searchResidentialFromLedger(
   // Step 4: 반경 필터 + POI 생성
   const pois: ResidentialPoi[] = [];
   const seenNames = new Set<string>();
+  const sigunguByName = new Map<string, string>();
   for (let i = 0; i < buildings.length; i++) {
     const b = buildings[i];
     const coord = coordResults[i];
@@ -311,12 +313,39 @@ export async function searchResidentialFromLedger(
 
     if (category === "apartment") {
       pois.push({ ...base, category: "apartment" } as Apartment);
+      sigunguByName.set(b.bldNm, b.sigunguCd);
     } else if (category === "officetel") {
       pois.push({ ...base, category: "officetel" } as Officetel);
     } else {
       pois.push({ ...base, category: "residential" } as ResidentialOther);
     }
   }
+
+  // Step 5: K-APT 단지 상세 보강 — 아파트만 (K-APT는 의무관리 공동주택 대상이라
+  // 오피스텔/소규모 주거는 이름 매칭이 안 되므로 조회 자체를 걸지 않는다).
+  // 총괄표제부에 없는 최고층수/동수/시공사/부대시설을 채우고, 주차 0·준공일 공란을 보정.
+  try {
+    const extras = await enrichKaptExtras(
+      [...sigunguByName.entries()].map(([name, sigunguCode]) => ({ name, sigunguCode }))
+    );
+    if (extras.size > 0) {
+      for (let i = 0; i < pois.length; i++) {
+        const e = extras.get(pois[i].name);
+        if (!e) continue;
+        const p = pois[i];
+        pois[i] = {
+          ...p,
+          ...(e.top_floor > 0 && !p.max_floor ? { max_floor: e.top_floor } : {}),
+          ...(e.dong_count > 0 ? { dong_count: e.dong_count } : {}),
+          ...(e.constructor_name ? { constructor_name: e.constructor_name } : {}),
+          ...(e.welfare_facilities ? { welfare_facilities: e.welfare_facilities } : {}),
+          ...(p.parking_count <= 0 && e.parking_total > 0 ? { parking_count: e.parking_total } : {}),
+          ...(!p.sale_date && e.use_date ? { sale_date: e.use_date } : {}),
+        } as ResidentialPoi;
+      }
+      console.log(`[ledger-search] K-APT extras merged for ${extras.size} complexes`);
+    }
+  } catch { /* 보강 실패는 비치명 — 대장 데이터만으로 진행 */ }
 
   console.log(`[ledger-search] ${pois.length} residential POIs after radius filter`);
   return pois;

@@ -19,6 +19,8 @@ const LIST_URL =
   "https://apis.data.go.kr/1613000/AptListService3/getSigunguAptList3";
 const INFO_URL =
   "https://apis.data.go.kr/1613000/AptBasisInfoServiceV4/getAphusBassInfoV4";
+const DETAIL_URL =
+  "https://apis.data.go.kr/1613000/AptBasisInfoServiceV4/getAphusDtlInfoV4";
 const NAVER_SEARCH_URL =
   "https://openapi.naver.com/v1/search/local.json";
 const NCP_REVERSE_GEO_URL =
@@ -35,6 +37,23 @@ export interface EnrichedAptData {
   readonly units: number;
   readonly parking_count: number;
   readonly sale_date: string;
+}
+
+/**
+ * K-APT 기본정보(BASS)+상세정보(DTL)에서 뽑는 단지 상세 필드.
+ * 주의: BASS의 kaptdaCnt는 주차대수가 아니라 세대수와 동일 값(2026-07-14 실측) —
+ * 실제 주차는 DTL의 kaptdPcnt(지상)+kaptdPcntu(지하)를 쓴다.
+ */
+export interface KaptExtras {
+  readonly top_floor: number;
+  readonly dong_count: number;
+  readonly constructor_name: string;
+  /** 부대복리시설 목록 원문 (쉼표 구분, 없으면 "") */
+  readonly welfare_facilities: string;
+  /** 지상+지하 주차대수 합 */
+  readonly parking_total: number;
+  /** 사용승인일 YYYY-MM (kaptUsedate) */
+  readonly use_date: string;
 }
 
 // ─── SQLite 영구 캐시 ─────────────────────────────────────────────────────────
@@ -57,6 +76,28 @@ function setCache(name: string, data: EnrichedAptData, source: string): void {
     db.prepare(
       "INSERT OR REPLACE INTO apt_enrichment_cache (cache_key, units, parking_count, sale_date, source, created_at) VALUES (?, ?, ?, ?, ?, ?)"
     ).run(name, data.units, data.parking_count, data.sale_date, source, Date.now() / 1000);
+  } catch { /* non-fatal */ }
+}
+
+function getCachedExtras(name: string): KaptExtras | null {
+  try {
+    const db = getDb();
+    const row = db
+      .prepare("SELECT top_floor, dong_count, constructor_name, welfare_facilities, parking_total, use_date FROM kapt_extras_cache WHERE cache_key = ? AND created_at > ?")
+      .get(name, Date.now() / 1000 - CACHE_TTL_SECONDS) as
+        { top_floor: number; dong_count: number; constructor_name: string; welfare_facilities: string; parking_total: number; use_date: string } | undefined;
+    return row ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function setCachedExtras(name: string, data: KaptExtras): void {
+  try {
+    const db = getDb();
+    db.prepare(
+      "INSERT OR REPLACE INTO kapt_extras_cache (cache_key, top_floor, dong_count, constructor_name, welfare_facilities, parking_total, use_date, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    ).run(name, data.top_floor, data.dong_count, data.constructor_name, data.welfare_facilities, data.parking_total, data.use_date, Date.now() / 1000);
   } catch { /* non-fatal */ }
 }
 
@@ -305,24 +346,54 @@ function findKaptCode(aptName: string, dong: string, nameMap: Map<string, string
   return null;
 }
 
-async function fetchKaptInfo(kaptCode: string, encodedApiKey: string): Promise<EnrichedAptData> {
-  const url = `${INFO_URL}?serviceKey=${encodedApiKey}&kaptCode=${encodeURIComponent(kaptCode)}&_type=json`;
+async function fetchKaptItem(url: string): Promise<Record<string, unknown> | null> {
   try {
     const data = await fetchJson(url);
     const body = ((data["response"] as Record<string, unknown>)?.["body"] as Record<string, unknown>) ?? {};
     let item = body["item"] as Record<string, unknown> | undefined;
     if (Array.isArray(item)) item = item[0] as Record<string, unknown>;
-    if (!item) return { units: 0, parking_count: 0, sale_date: "" };
-    const units = parseInt(String(item["hoCnt"] ?? "0"), 10) || 0;
-    const parkingCount = parseInt(String(item["kaptdaCnt"] ?? "0"), 10) || 0;
-    const raw = String(item["kaptd3"] ?? "");
-    let saleDate = "";
-    if (raw.length >= 7) saleDate = raw.includes("-") ? raw.slice(0, 7) : `${raw.slice(0, 4)}-${raw.slice(4, 6)}`;
-    else if (raw.length === 4) saleDate = raw;
-    return { units, parking_count: parkingCount, sale_date: saleDate };
+    return item ?? null;
   } catch {
-    return { units: 0, parking_count: 0, sale_date: "" };
+    return null;
   }
+}
+
+/** null/"None"/"null" 방어 — K-APT는 빈 값을 문자열 "None"으로 주기도 한다(2026-07-14 실측). */
+function kaptText(v: unknown): string {
+  const s = String(v ?? "").trim();
+  return s === "None" || s === "null" ? "" : s;
+}
+
+/** K-APT 기본정보+상세정보를 병렬 조회해 단지 상세 필드로 정규화. */
+async function fetchKaptFull(kaptCode: string, encodedApiKey: string): Promise<{ units: number; extras: KaptExtras }> {
+  const code = encodeURIComponent(kaptCode);
+  const [bass, dtl] = await Promise.all([
+    fetchKaptItem(`${INFO_URL}?serviceKey=${encodedApiKey}&kaptCode=${code}&_type=json`),
+    fetchKaptItem(`${DETAIL_URL}?serviceKey=${encodedApiKey}&kaptCode=${code}&_type=json`),
+  ]);
+  const units = parseInt(String(bass?.["hoCnt"] ?? "0"), 10) || 0;
+  const rawUse = kaptText(bass?.["kaptUsedate"]);
+  let useDate = "";
+  if (rawUse.length >= 6) useDate = rawUse.includes("-") ? rawUse.slice(0, 7) : `${rawUse.slice(0, 4)}-${rawUse.slice(4, 6)}`;
+  else if (rawUse.length === 4) useDate = rawUse;
+  const parkingGround = parseInt(String(dtl?.["kaptdPcnt"] ?? "0"), 10) || 0;
+  const parkingUnder = parseInt(String(dtl?.["kaptdPcntu"] ?? "0"), 10) || 0;
+  return {
+    units,
+    extras: {
+      top_floor: parseInt(String(bass?.["kaptTopFloor"] ?? "0"), 10) || 0,
+      dong_count: parseInt(String(bass?.["kaptDongCnt"] ?? "0"), 10) || 0,
+      constructor_name: kaptText(bass?.["kaptBcompany"]),
+      welfare_facilities: kaptText(dtl?.["welfareFacility"]),
+      parking_total: parkingGround + parkingUnder,
+      use_date: useDate,
+    },
+  };
+}
+
+async function fetchKaptInfo(kaptCode: string, encodedApiKey: string): Promise<EnrichedAptData> {
+  const { units, extras } = await fetchKaptFull(kaptCode, encodedApiKey);
+  return { units, parking_count: extras.parking_total, sale_date: extras.use_date };
 }
 
 // ─── 통합 보강 (공개 API) ─────────────────────────────────────────────────────
@@ -487,6 +558,72 @@ async function enrichViaKapt(
       }
     }
   }
+}
+
+// ─── K-APT 단지 상세 보강 (공개 API) ─────────────────────────────────────────
+
+/**
+ * 이름 매칭으로 K-APT 단지 상세(최고층수/동수/시공사/부대시설/실주차/사용승인일)를 조회.
+ * 시군구 이름 사전은 1시간 메모리 캐시, 단지별 결과는 SQLite 30일 캐시.
+ * 매칭 실패 단지는 결과 Map에 없음(호출 비용도 없음).
+ */
+export async function enrichKaptExtras(
+  apts: readonly { name: string; sigunguCode: string; dong?: string }[],
+): Promise<Map<string, KaptExtras>> {
+  const result = new Map<string, KaptExtras>();
+  const apiKey = process.env.DATA_GO_KR_API_KEY;
+  if (!apiKey || apts.length === 0) return result;
+  const encodedApiKey = encodeApiKey(apiKey);
+
+  const uncached: typeof apts[number][] = [];
+  for (const apt of apts) {
+    if (result.has(apt.name)) continue;
+    const cached = getCachedExtras(apt.name);
+    if (cached) result.set(apt.name, cached);
+    else uncached.push(apt);
+  }
+  if (uncached.length === 0) return result;
+
+  const byCode = new Map<string, typeof apts[number][]>();
+  for (const apt of uncached) {
+    if (!apt.sigunguCode) continue;
+    if (!byCode.has(apt.sigunguCode)) byCode.set(apt.sigunguCode, []);
+    byCode.get(apt.sigunguCode)!.push(apt);
+  }
+
+  for (const [code, group] of byCode) {
+    let nameMap: Map<string, string>;
+    const cached = sigunguMapCache.get(code);
+    if (cached && Date.now() - cached.ts < KAPT_CACHE_TTL_MS) {
+      nameMap = cached.map;
+    } else {
+      nameMap = await buildKaptNameMap(code, encodedApiKey);
+      if (sigunguMapCache.size >= MAX_SIGUNGU_CACHE) {
+        const oldest = sigunguMapCache.keys().next().value;
+        if (oldest) sigunguMapCache.delete(oldest);
+      }
+      sigunguMapCache.set(code, { map: nameMap, ts: Date.now() });
+    }
+    if (nameMap.size === 0) continue;
+
+    const matched: Array<{ name: string; kaptCode: string }> = [];
+    for (const apt of group) {
+      const kaptCode = findKaptCode(apt.name, apt.dong ?? "", nameMap);
+      if (kaptCode) matched.push({ name: apt.name, kaptCode });
+    }
+    if (matched.length === 0) continue;
+
+    const fulls = await Promise.all(matched.map(m => fetchKaptFull(m.kaptCode, encodedApiKey)));
+    for (let i = 0; i < matched.length; i++) {
+      const extras = fulls[i].extras;
+      const hasData = extras.top_floor > 0 || extras.dong_count > 0 || extras.constructor_name !== "" ||
+        extras.welfare_facilities !== "" || extras.parking_total > 0 || extras.use_date !== "";
+      if (!hasData) continue;
+      result.set(matched[i].name, extras);
+      setCachedExtras(matched[i].name, extras);
+    }
+  }
+  return result;
 }
 
 async function getSigunguCodeByName(aptNames: readonly string[], naverId: string, naverSecret: string): Promise<string | null> {

@@ -63,6 +63,17 @@ function initSchema(db: Database.Database): void {
       created_at REAL NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS kapt_extras_cache (
+      cache_key TEXT PRIMARY KEY,
+      top_floor INTEGER NOT NULL DEFAULT 0,
+      dong_count INTEGER NOT NULL DEFAULT 0,
+      constructor_name TEXT NOT NULL DEFAULT '',
+      welfare_facilities TEXT NOT NULL DEFAULT '',
+      parking_total INTEGER NOT NULL DEFAULT 0,
+      use_date TEXT NOT NULL DEFAULT '',
+      created_at REAL NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS geocode_cache (
       address TEXT PRIMARY KEY,
       lat REAL NOT NULL,
