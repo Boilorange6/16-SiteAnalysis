@@ -14,4 +14,20 @@ assert.ok(pptx.includes(TEXT), `pptx generator missing empty-state text: ${TEXT}
 assert.ok(canvas.includes("PPT_FONT_MAIN"), "canvas renderer must reference PPT_FONT_MAIN from ppt-design-config");
 assert.ok(pptx.includes("PPT_FONT_MAIN"), "pptx generator must reference PPT_FONT_MAIN from ppt-design-config");
 
-console.log("preview parity: empty-state OK, font constant OK");
+// 콜아웃 미니표 쌍둥이 함수(buildResidentialTableRows)의 본문이 두 렌더러에서 동일한지 정적 검증.
+// 이 함수는 의도적으로 양쪽에 중복 구현되어 있으므로(수치 parity 주석 참조) 본문 drift가 곧 버그다.
+function extractFnBody(src, file) {
+  const m = src.match(/function buildResidentialTableRows\(apt: ResidentialPoi\): ResidentialTableRow\[\] \{[\s\S]*?\n\}/);
+  assert.ok(m, `${file}: buildResidentialTableRows not found`);
+  return m[0];
+}
+const canvasFn = extractFnBody(canvas, "ppt-canvas-renderer.ts");
+const pptxFn = extractFnBody(pptx, "ppt-generator.ts");
+assert.equal(canvasFn, pptxFn, "buildResidentialTableRows bodies diverged between canvas renderer and pptx generator");
+
+// 콜아웃 미니표 필수 행: 세대수 + 주차 + 준공(사용승인일 기반 연도 라벨) — 주차/준공 누락 회귀 방지
+for (const label of ['"세대수"', '"주차"', '"준공"']) {
+  assert.ok(canvasFn.includes(label), `buildResidentialTableRows missing ${label} row`);
+}
+
+console.log("preview parity: empty-state OK, font constant OK, residential table rows OK");

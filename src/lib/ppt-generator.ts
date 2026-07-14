@@ -2034,8 +2034,9 @@ interface ResidentialTableRow {
 }
 
 /**
- * 미니 데이터표 행 — 원본 보고서 문법(준공/규모/용적률/세대수) 중 이 앱의 ResidentialFields에
- * 실재하는 필드(세대수/입주(예정)/전용면적대)만 가용 필드로 채택. 값이 없는 행은 생략.
+ * 미니 데이터표 행 — 세대수/준공·입주(예정)/주차/전용면적대 중 가용 필드만, 값이 없는 행은 생략.
+ * status=existing의 sale_date는 건축물대장 사용승인일·K-APT 사용검사일이므로 라벨은 "준공".
+ * 예약 슬롯(calloutHeight)이 헤더+3행 상한이라 최대 3행까지만 채택(우선순위 = push 순서).
  * canvas 렌더러(ppt-canvas-renderer.ts)의 동명 함수와 동일 로직을 유지할 것(수치 parity).
  */
 function buildResidentialTableRows(apt: ResidentialPoi): ResidentialTableRow[] {
@@ -2046,7 +2047,10 @@ function buildResidentialTableRows(apt: ResidentialPoi): ResidentialTableRow[] {
   if (apt.move_in_month) {
     rows.push({ label: apt.status === "planned" ? "입주예정" : "입주", value: apt.move_in_month });
   } else if (apt.sale_date) {
-    rows.push({ label: apt.status === "planned" ? "분양예정" : "분양", value: `${apt.sale_date.slice(0, 4)}년` });
+    rows.push({ label: apt.status === "planned" ? "분양예정" : "준공", value: `${apt.sale_date.slice(0, 4)}년` });
+  }
+  if (apt.parking_count > 0) {
+    rows.push({ label: "주차", value: `${apt.parking_count.toLocaleString()}대` });
   }
   const areas = (apt.floorplans ?? [])
     .map((f) => f.area_sqm)
@@ -2056,7 +2060,7 @@ function buildResidentialTableRows(apt: ResidentialPoi): ResidentialTableRow[] {
     const max = Math.round(Math.max(...areas));
     rows.push({ label: "전용면적", value: min === max ? `${min}㎡` : `${min}~${max}㎡` });
   }
-  return rows;
+  return rows.slice(0, 3);
 }
 
 function addApartmentCalloutSlide(
