@@ -1,14 +1,15 @@
 /**
- * PPTX 역 단위 그룹화 후처리 — pptxgenjs(3.x)는 도형 그룹을 지원하지 않으므로,
- * 생성된 PPTX의 슬라이드 XML에서 STGRP| 태깅된 도형들을 역 단위 <p:grpSp>로 묶는다.
- * (사용자 요구: PPT에서 한 역의 역명·역사도식 요소를 한 번에 선택/편집)
+ * PPTX 도형 그룹화 후처리 — pptxgenjs(3.x)는 도형 그룹을 지원하지 않으므로,
+ * 생성된 PPTX의 슬라이드 XML에서 GRP| 태깅된 도형들을 논리 요소 단위 <p:grpSp>로 묶는다.
+ * (사용자 요구: PPT에서 하나의 요소를 구성하는 조각들 — 역, SITE 마커, 반경 링,
+ *  범례, 콜아웃 표 — 을 한 번에 선택/편집)
  *
- * objectName 규약: `STGRP|{고유키}|{표시명}|{부위}` — 표시명이 그룹 이름("지하철역 {표시명}")이 된다.
+ * objectName 규약: `GRP|{고유키}|{표시명}|{부위}` — 표시명이 그대로 그룹 이름이 된다.
  * 그룹 xfrm은 off=chOff / ext=chExt 항등 매핑이라 자식 절대좌표(EMU)를 그대로 유지한다.
  */
 import JSZip from "jszip";
 
-export const STATION_GROUP_PREFIX = "STGRP|";
+export const GROUP_TAG_PREFIX = "GRP|";
 
 interface TaggedShape {
   readonly start: number;
@@ -31,13 +32,13 @@ function escapeXmlAttr(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-/** 슬라이드 XML 1개에서 태깅 도형들을 역 단위 grpSp로 재배치. 태깅이 없으면 원본 그대로. */
+/** 슬라이드 XML 1개에서 태깅 도형들을 요소 단위 grpSp로 재배치. 태깅이 없으면 원본 그대로. */
 export function groupSlideXml(xml: string): string {
   const tagged: TaggedShape[] = [];
   for (const m of xml.matchAll(SP_BLOCK_RE)) {
     const nm = m[0].match(NAME_RE);
-    if (!nm || !nm[1].startsWith(STATION_GROUP_PREFIX)) continue;
-    const parts = nm[1].slice(STATION_GROUP_PREFIX.length).split("|");
+    if (!nm || !nm[1].startsWith(GROUP_TAG_PREFIX)) continue;
+    const parts = nm[1].slice(GROUP_TAG_PREFIX.length).split("|");
     if (parts.length < 2) continue;
     tagged.push({ start: m.index, end: m.index + m[0].length, xml: m[0], key: parts[0], display: parts[1] });
   }
@@ -94,7 +95,7 @@ function buildGroupXml(members: readonly TaggedShape[], display: string, id: num
   if (!Number.isFinite(minX)) { minX = 0; minY = 0; maxX = 1; maxY = 1; }
   const extX = Math.max(1, maxX - minX);
   const extY = Math.max(1, maxY - minY);
-  const name = escapeXmlAttr(`지하철역 ${display}`);
+  const name = escapeXmlAttr(display);
   return (
     `<p:grpSp><p:nvGrpSpPr><p:cNvPr id="${id}" name="${name}"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>` +
     `<p:grpSpPr><a:xfrm><a:off x="${minX}" y="${minY}"/><a:ext cx="${extX}" cy="${extY}"/>` +
@@ -104,8 +105,8 @@ function buildGroupXml(members: readonly TaggedShape[], display: string, id: num
   );
 }
 
-/** PPTX 바이너리 전체를 받아 모든 슬라이드에 역 그룹화를 적용해 돌려준다. */
-export async function groupStationShapes(input: ArrayBuffer | Uint8Array): Promise<Uint8Array> {
+/** PPTX 바이너리 전체를 받아 모든 슬라이드에 태깅 그룹화를 적용해 돌려준다. */
+export async function groupTaggedShapes(input: ArrayBuffer | Uint8Array): Promise<Uint8Array> {
   const zip = await JSZip.loadAsync(input);
   const slideNames = Object.keys(zip.files).filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n));
   for (const name of slideNames) {

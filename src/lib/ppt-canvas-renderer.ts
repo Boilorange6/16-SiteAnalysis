@@ -952,7 +952,11 @@ function drawPoiMarkers(
       ctx.rotate(Math.PI / 4);
       drawRoundedRect(ctx, -r, -r, r * 2, r * 2, 0, fill, stroke, d.markerBorderWidth);
       ctx.restore();
-    } else if (d.markerStyle === "ring-dot" || d.markerStyle === "jewel" || d.markerStyle === "transit-node") {
+    } else if (d.markerStyle === "ring-dot") {
+      // 2026-07-14 사용자 요구: 링+도트 2조각 대신 단일 원 1조각 — 테두리 두께로 링 인상 대체
+      // (pptx 생성기와 parity)
+      drawEllipseShape(ctx, cx, cy, r, r, fill, hexRgba(d.markerBorderColor, 0), d.markerBorderWidth + 0.6);
+    } else if (d.markerStyle === "jewel" || d.markerStyle === "transit-node") {
       drawEllipseShape(ctx, cx, cy, r * 1.36, r * 1.36,
         d.markerStyle === "jewel" ? hexRgba(d.overlayColor, 42) : undefined,
         hexRgba(d.markerStyle === "jewel" ? d.accentColor : d.markerBorderColor, 0),

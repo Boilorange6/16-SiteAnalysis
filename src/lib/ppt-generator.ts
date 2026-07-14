@@ -25,7 +25,7 @@ import { sourceStatusLines, hasFailedSource } from "./source-status-text";
 import { toReportMapTone } from "./map-image-tone";
 import { buildFactSummary, buildFactSheetRows, buildCategoryInsight, type FactSheetSegment, type CategoryInsightKey } from "./fact-summary";
 import { isRawPoiId } from "./poi-id-guard";
-import { groupStationShapes, STATION_GROUP_PREFIX } from "./pptx-station-group";
+import { groupTaggedShapes, GROUP_TAG_PREFIX } from "./pptx-shape-group";
 
 const SLIDE_W = 13.333;
 const SLIDE_H = 7.5;
@@ -41,6 +41,14 @@ const FONT_MAIN = PPT_FONT_MAIN;
 const EMPTY_PANEL_TEXT = "반경 내 확인된 시설이 없습니다"; // match ppt-canvas-renderer.ts
 
 const SITE_LABEL_OFFSET_Y = 0.20;
+
+/**
+ * 후처리 그룹화 태그(pptx-shape-group) — 같은 key의 도형들이 display 이름의 PPT 그룹으로 묶인다.
+ * key는 슬라이드 안에서만 유일하면 된다(후처리는 슬라이드 XML 단위).
+ */
+function grpTag(key: string, display: string, part: string): string {
+  return `${GROUP_TAG_PREFIX}${key.replace(/\|/g, "/")}|${display.replace(/\|/g, "/")}|${part}`;
+}
 const RING_RATIOS = [0.33, 0.66, 1.0] as const;
 
 const LEGEND_ICON_SIZE = 0.10;
@@ -710,11 +718,12 @@ function addLegend(slide: PptxGenJS.Slide, d: PptDesignConfig) {
       fill: { color: pptColor(d.overlayColor), transparency: d.legendTransparency },
       line: { color: pptColor(d.markerBorderColor), transparency: d.legendBorderTransparency, width: 0.6 },
       rectRadius: d.legendRadius,
+      objectName: grpTag("legend", "범례", "bg"),
     });
     items.slice(0, 6).forEach((item, i) => {
       const itemX = x + 0.18 + i * 0.92;
-      slide.addShape("rect", { x: itemX, y: y + 0.11, w: 0.12, h: 0.12, fill: { color: pptColor(item.color), transparency: 0 }, line: { color: pptColor(item.color), transparency: 100 } });
-      slide.addText(item.label, { x: itemX + 0.16, y: y + 0.065, w: 0.6, h: 0.2, fontSize: 6.4, fontFace: FONT_MAIN, color: pptColor(d.legendTextColor), valign: "middle", fit: "shrink" });
+      slide.addShape("rect", { x: itemX, y: y + 0.11, w: 0.12, h: 0.12, fill: { color: pptColor(item.color), transparency: 0 }, line: { color: pptColor(item.color), transparency: 100 }, objectName: grpTag("legend", "범례", `dot-${i}`) });
+      slide.addText(item.label, { x: itemX + 0.16, y: y + 0.065, w: 0.6, h: 0.2, fontSize: 6.4, fontFace: FONT_MAIN, color: pptColor(d.legendTextColor), valign: "middle", fit: "shrink", objectName: grpTag("legend", "범례", `label-${i}`) });
     });
     return;
   }
@@ -731,6 +740,7 @@ function addLegend(slide: PptxGenJS.Slide, d: PptDesignConfig) {
       fill: { color: pptColor(d.overlayColor), transparency: d.legendTransparency },
       line: { color: pptColor(d.markerBorderColor), transparency: d.legendBorderTransparency, width: 0.8 },
       rectRadius: d.legendRadius,
+      objectName: grpTag("legend", "범례", "bg"),
     });
   }
 
@@ -745,12 +755,14 @@ function addLegend(slide: PptxGenJS.Slide, d: PptDesignConfig) {
       fill: { color: item.color.replace("#", "") },
       line: { color: pptColor(d.markerBorderColor), transparency: d.legendStyle === "index" ? 0 : 20, width: 0.8 },
       rectRadius: d.legendStyle === "index" ? 0.01 : undefined,
+      objectName: grpTag("legend", "범례", `dot-${i}`),
     });
     if (d.legendStyle !== "rail") {
       slide.addText(item.label, {
         x: legX + 0.28, y, w: LEGEND_W - 0.32, h: LEGEND_ROW_H,
         fontSize: d.legendFontSize, fontFace: FONT_MAIN,
         color: pptColor(d.legendTextColor), valign: "middle",
+        objectName: grpTag("legend", "범례", `label-${i}`),
       });
     }
   });
@@ -798,24 +810,36 @@ function addPoiMarkers(
         line: { color: pptColor(d.markerBorderColor), width: d.markerBorderWidth },
         rotate: 45,
       });
-    } else if (d.markerStyle === "ring-dot" || d.markerStyle === "jewel" || d.markerStyle === "transit-node") {
+    } else if (d.markerStyle === "ring-dot") {
+      // 2026-07-14 사용자 요구: 링+도트 2조각 대신 단일 원 1조각 — 테두리 두께로 링 인상을 대신해
+      // PPT에서 마커가 한 번의 클릭으로 통째로 선택/편집되게 한다. (canvas 렌더러와 parity)
+      slide.addShape("ellipse", {
+        x: x - size / 2, y: y - size / 2, w: size, h: size,
+        fill: fillOpts,
+        line: { color: pptColor(d.markerBorderColor), width: d.markerBorderWidth + 0.6 },
+      });
+    } else if (d.markerStyle === "jewel" || d.markerStyle === "transit-node") {
+      // 2조각 스타일 — 후처리 그룹화 태그로 마커 단위 그룹으로 묶는다.
       slide.addShape("ellipse", {
         x: x - size * 0.68, y: y - size * 0.68, w: size * 1.36, h: size * 1.36,
         fill: { color: pptColor(d.overlayColor), transparency: d.markerStyle === "jewel" ? 42 : 100 },
         line: { color: pptColor(d.markerStyle === "jewel" ? d.accentColor : d.markerBorderColor), width: d.markerBorderWidth + 0.4 },
+        objectName: grpTag(`marker-${poi.id}`, `마커 ${poi.name}`, "ring"),
       });
       slide.addShape("ellipse", {
         x: x - size / 2, y: y - size / 2, w: size, h: size,
         fill: fillOpts,
         line: { color: pptColor(d.markerBorderColor), width: d.markerStyle === "transit-node" ? 1.4 : d.markerBorderWidth },
+        objectName: grpTag(`marker-${poi.id}`, `마커 ${poi.name}`, "dot"),
       });
     } else if (d.markerStyle === "crosshair" || d.markerStyle === "signal") {
-      slide.addShape("line", { x: x - size * 0.8, y, w: size * 1.6, h: 0, line: { color: pptColor(d.markerBorderColor), transparency: 18, width: 0.8 } });
-      slide.addShape("line", { x, y: y - size * 0.8, w: 0, h: size * 1.6, line: { color: pptColor(d.markerBorderColor), transparency: 18, width: 0.8 } });
+      slide.addShape("line", { x: x - size * 0.8, y, w: size * 1.6, h: 0, line: { color: pptColor(d.markerBorderColor), transparency: 18, width: 0.8 }, objectName: grpTag(`marker-${poi.id}`, `마커 ${poi.name}`, "cross-h") });
+      slide.addShape("line", { x, y: y - size * 0.8, w: 0, h: size * 1.6, line: { color: pptColor(d.markerBorderColor), transparency: 18, width: 0.8 }, objectName: grpTag(`marker-${poi.id}`, `마커 ${poi.name}`, "cross-v") });
       slide.addShape("ellipse", {
         x: x - size / 2, y: y - size / 2, w: size, h: size,
         fill: fillOpts,
         line: { color: pptColor(d.markerStyle === "signal" ? d.accentColor : d.markerBorderColor), width: d.markerBorderWidth },
+        objectName: grpTag(`marker-${poi.id}`, `마커 ${poi.name}`, "dot"),
       });
     } else {
       slide.addShape("ellipse", {
@@ -868,6 +892,7 @@ function addConcentricRings(
         dashType: d.ringDash === "solid" ? undefined : d.ringDash === "dash" ? "dash" : "sysDot",
         transparency: d.ringTransparency,
       },
+      objectName: grpTag("radius-rings", "분석 반경", `ring-${idx}`),
     });
   });
 }
@@ -883,16 +908,19 @@ function addSiteMarker(slide: PptxGenJS.Slide, radiusPosition: RadiusPosition | 
     w: d.siteMarkerOuterSize, h: d.siteMarkerOuterSize,
     fill: { color: "FFFFFF", transparency: 100 },
     line: { color: pptColor(d.accentRed), width: 1.5, dashType: "dash" },
+    objectName: grpTag("site-marker", "분석 중심 SITE", "ring"),
   });
   slide.addShape("ellipse", {
     x: cx - d.siteMarkerInnerSize / 2, y: cy - d.siteMarkerInnerSize / 2,
     w: d.siteMarkerInnerSize, h: d.siteMarkerInnerSize,
     fill: { color: pptColor(d.accentRed) },
     line: { color: pptColor(d.accentRed), width: 1 },
+    objectName: grpTag("site-marker", "분석 중심 SITE", "dot"),
   });
   slide.addText("SITE", {
     x: cx - 0.3, y: cy + SITE_LABEL_OFFSET_Y, w: 0.6, h: 0.2,
     fontSize: d.siteLabelFontSize, fontFace: FONT_MAIN, bold: true, color: pptColor(d.accentRed), align: "center",
+    objectName: grpTag("site-marker", "분석 중심 SITE", "label"),
   });
 }
 
@@ -1061,9 +1089,9 @@ function addStationBars(
   const seenBars = new Set<string>();
   const seenLabels = new Set<string>();
 
-  // 역 단위 그룹화 태그 — 후처리(groupStationShapes)가 같은 키의 도형을 하나의 PPT 그룹으로 묶는다.
+  // 역 단위 그룹화 태그 — 후처리(groupTaggedShapes)가 같은 키의 도형을 하나의 PPT 그룹으로 묶는다.
   const stationTag = (station: { readonly poi: { readonly id: string; readonly name: string } }, part: string) =>
-    `${STATION_GROUP_PREFIX}${station.poi.id.replace(/\|/g, "/")}|${station.poi.name.replace(/\|/g, "/")}|${part}`;
+    grpTag(`station-${station.poi.id}`, `지하철역 ${station.poi.name}`, part);
 
   /** Slide-inch distance between two normalized points */
   function slideDistInch(
@@ -2246,6 +2274,8 @@ function addApartmentCalloutSlide(
     const markerX = nx * SLIDE_W;
     const markerY = ny * SLIDE_H;
     const isLeftSide = lp.labelX < SLIDE_W / 2;
+    // 콜아웃(마커·리더라인·미니표) 전체를 단지 단위 PPT 그룹으로 묶는 태그
+    const cTag = (part: string) => grpTag(`callout-${apt.id}`, `콜아웃 ${apt.name}`, part);
 
     // Marker dot
     const dotR = d.markerSize / 2;
@@ -2253,6 +2283,7 @@ function addApartmentCalloutSlide(
       x: markerX - dotR, y: markerY - dotR, w: d.markerSize, h: d.markerSize,
       fill: { color: (d.categoryColors[apt.category] ?? d.categoryColors.apartment).replace("#", "") },
       line: { color: pptColor(d.markerBorderColor), width: d.markerBorderWidth },
+      objectName: cTag("marker"),
     });
 
     // 표: 예약 슬롯 안에서 실제 높이(헤더+가용 행)만큼만 그리고 세로 중앙 정렬
@@ -2276,6 +2307,7 @@ function addApartmentCalloutSlide(
       h: Math.max(Math.abs(ly2 - ly1), 0.005),
       line: { color: pptColor(d.overlayColor), width: d.leaderLineWidth, transparency: d.leaderLineTransparency },
       flipV: (lx2 >= lx1) !== (ly2 >= ly1),
+      objectName: cTag("leader"),
     });
 
     // 표 외곽 테두리
@@ -2283,6 +2315,7 @@ function addApartmentCalloutSlide(
       x: tableX, y: tableY, w: TABLE_W, h: tableH,
       fill: { color: pptColor(d.panelColor), transparency: 100 },
       line: { color: pptColor(d.markerBorderColor), transparency: 55, width: 0.6 },
+      objectName: cTag("border"),
     });
 
     // 헤더 셀: 단지명 — 대상지 최근접 1곳만 빨강(accentRed), 나머지 검정
@@ -2291,11 +2324,13 @@ function addApartmentCalloutSlide(
       x: tableX, y: tableY, w: TABLE_W, h: HEADER_H,
       fill: { color: pptColor(isNearest ? d.accentRed : d.primaryColor), transparency: 0 },
       line: { color: pptColor(isNearest ? d.accentRed : d.primaryColor), transparency: 100 },
+      objectName: cTag("header-bg"),
     });
     slide.addText(apt.name, {
       x: tableX + 0.07, y: tableY, w: TABLE_W - 0.14, h: HEADER_H,
       fontSize: d.calloutFontSize, fontFace: FONT_MAIN, bold: true, color: pptColor(d.overlayColor),
       valign: "middle",
+      objectName: cTag("header-text"),
     });
 
     // 데이터 행: 라벨(좌, 흐림) + 값(우, 진하게) — 백색 행. 행 사이 구분선은 canvas 렌더러와
@@ -2306,16 +2341,19 @@ function addApartmentCalloutSlide(
         x: tableX, y: rowY, w: TABLE_W, h: ROW_H,
         fill: { color: pptColor(d.panelColor), transparency: d.calloutTransparency },
         line: { color: pptColor(d.panelColor), transparency: 100 },
+        objectName: cTag(`row-${idx}-bg`),
       });
       if (idx > 0) {
         slide.addShape("line", {
           x: tableX, y: rowY, w: TABLE_W, h: 0,
           line: { color: pptColor(d.markerBorderColor), transparency: 85, width: 0.5 },
+          objectName: cTag(`row-${idx}-sep`),
         });
       }
       slide.addText(row.label, {
         x: tableX + 0.07, y: rowY, w: TABLE_W * 0.42, h: ROW_H,
         fontSize: d.calloutDetailFontSize, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), valign: "middle",
+        objectName: cTag(`row-${idx}-label`),
       });
       // "확인필요"는 실측값과 혼동되지 않도록 비강조(흐림) 처리
       const needsCheck = row.value === "확인필요";
@@ -2324,6 +2362,7 @@ function addApartmentCalloutSlide(
         fontSize: d.calloutDetailFontSize, fontFace: FONT_MAIN, bold: !needsCheck,
         color: pptColor(needsCheck ? d.mutedTextColor : d.textColor),
         valign: "middle", align: "right",
+        objectName: cTag(`row-${idx}-value`),
       });
     });
   });
@@ -2436,7 +2475,7 @@ export async function generateSiteAnalysisPpt(
   const fileName = `${config.centerName}_사이트분석.pptx`;
   try {
     const raw = (await pptx.write({ outputType: "arraybuffer" })) as ArrayBuffer;
-    const grouped = await groupStationShapes(raw);
+    const grouped = await groupTaggedShapes(raw);
     const blob = new Blob([grouped as BlobPart], {
       type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     });
