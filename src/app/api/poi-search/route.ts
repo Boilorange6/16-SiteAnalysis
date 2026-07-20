@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { verifyToken } from "@/lib/server/jwt";
 import { getUserById } from "@/lib/server/user-store";
-import type { Poi, SubwayStation, School, Park, Mountain, Apartment, Officetel, ResidentialOther, ResidentialPoi, MaintenanceProject, SourceStatus } from "@/lib/types";
+import type { Poi, SubwayStation, School, Park, Mountain, Apartment, Officetel, ResidentialOther, ResidentialPoi, MaintenanceCatalogProject, SourceStatus } from "@/lib/types";
 import {
   overpassPoiSearch,
   getElementCoords,
@@ -184,6 +184,7 @@ export async function GET(req: NextRequest) {
     const pois: Poi[] = [];
     const sourceWarnings: string[] = [];
     const sources: SourceStatus[] = [];
+    const maintenanceCatalog: MaintenanceCatalogProject[] = [];
 
     if (categories.includes("park")) {
       const r = await resolveSource<Park[]>({
@@ -200,17 +201,13 @@ export async function GET(req: NextRequest) {
     }
 
     if (categories.includes("maintenance")) {
-      const r = await resolveSource<MaintenanceProject[]>({
-        source: "maintenance", lat, lng, radiusM: radius, refresh,
-        fetcher: () => searchMaintenanceProjects(lat, lng, radius),
+      const maintenance = await searchMaintenanceProjects({
+        center: { lat, lng }, radiusM: radius, refresh,
       });
-      sources.push({ source: "maintenance", status: r.status, fetchedAt: r.fetchedAt });
-      if (r.value) {
-        pois.push(...r.value);
-      } else {
-        console.warn("[maintenance-project-search] Source unavailable");
-        sourceWarnings.push("maintenance");
-      }
+      pois.push(...maintenance.projects);
+      sources.push(...maintenance.sources);
+      sourceWarnings.push(...maintenance.warnings);
+      maintenanceCatalog.push(...maintenance.catalog);
     }
 
     if (osmCategories.length > 0) {
@@ -293,7 +290,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ pois, warnings: sourceWarnings, sources });
+    return NextResponse.json({ pois, warnings: sourceWarnings, sources, maintenanceCatalog });
   } catch {
     // M-2: Generic error — don't expose internal details
     return NextResponse.json({ error: "POI 검색에 실패했습니다" }, { status: 500 });

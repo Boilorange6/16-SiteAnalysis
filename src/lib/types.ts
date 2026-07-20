@@ -15,8 +15,8 @@ export type PoiSourceId =
   | "rail-network";
 
 export const MAINTENANCE_SOURCE_IDS = [
-  "maintenance_attributes",
   "maintenance_boundaries",
+  "maintenance_attributes",
   "maintenance_seoul",
   "maintenance_busan",
 ] as const;

@@ -10,6 +10,8 @@ export type RegionalMaintenanceRecord = Omit<MaintenanceAttributeRecord, "source
   readonly source: "seoul_open_data" | "busan_data_go_kr";
   readonly official_ids?: readonly string[];
   readonly address?: string;
+  readonly notice_code?: string;
+  readonly notice_url?: string;
   readonly contractor?: string;
   readonly architect?: string;
   readonly union_members?: number;

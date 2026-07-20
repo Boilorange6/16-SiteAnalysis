@@ -5,8 +5,8 @@ import { boundaryToLeafletLatLngs } from "../lib/maintenance-map-utils.ts";
 import { applyMaintenanceRetryResult } from "../lib/maintenance-retry-state.ts";
 
 const sources = [
-  "maintenance_attributes",
   "maintenance_boundaries",
+  "maintenance_attributes",
   "maintenance_seoul",
   "maintenance_busan",
 ];
@@ -49,8 +49,8 @@ try {
   assert.deepEqual(
     failedRetry.allSources?.map((status) => status.source),
     [
-      "maintenance_attributes",
       "maintenance_boundaries",
+      "maintenance_attributes",
       "maintenance_seoul",
       "maintenance_busan",
     ],
@@ -90,7 +90,7 @@ try {
   assert.deepEqual(updatedRegion.maintenanceCatalog, []);
   assert.deepEqual(
     updatedRegion.sourceStatuses.map((status) => status.source),
-    ["osm", "maintenance_attributes", "maintenance_boundaries", "maintenance_seoul", "maintenance_busan"],
+    ["osm", "maintenance_boundaries", "maintenance_attributes", "maintenance_seoul", "maintenance_busan"],
   );
 } finally {
   globalThis.fetch = originalFetch;

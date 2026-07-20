@@ -7,6 +7,7 @@ import type {
   MaintenanceMergeDiagnostic,
   MaintenanceMergeInput,
   MergedMaintenanceResult,
+  RegionalMaintenanceRecord,
   SelectedMaintenanceRegion,
 } from "./merge-contracts";
 import {
@@ -88,10 +89,12 @@ function matchedProject(group: RecordGroup, boundary: MaintenanceBoundaryFeature
   const fields = mergeRecordFields(group);
   const [lat, lng] = representative(boundary);
   const primary = fields.primary;
+  const regional = group.records.find((record): record is RegionalMaintenanceRecord =>
+    record.source === "seoul_open_data" || record.source === "busan_data_go_kr");
   const project: MaintenanceProject = {
     id: `maintenance-${boundary.properties.source_feature_id}`,
     name: primary.name, lat, lng, category: "maintenance", type: primary.type, stage: primary.stage,
-    address: `${primary.sido} ${primary.sigungu}`.trim(),
+    address: regional?.address ?? `${primary.sido} ${primary.sigungu}`.trim(),
     area_sqm: fields.area.value ?? boundary.properties.area_sqm ?? 0,
     source: primary.source,
     ...(primary.source_updated_at ? { source_updated_at: primary.source_updated_at } : {}),
@@ -106,6 +109,8 @@ function matchedProject(group: RecordGroup, boundary: MaintenanceBoundaryFeature
     ...optional(fields.contractor.value, "contractor"),
     ...optional(fields.architect.value, "architect"),
     ...optional(fields.unionMembers.value, "union_members"),
+    ...optional(regional?.notice_code, "notice_code"),
+    ...optional(regional?.notice_url, "notice_url"),
   };
   return { project, field_provenance: provenance(fields) };
 }
