@@ -4,7 +4,9 @@ import { join, resolve } from "node:path";
 import {
   booleanIntersects,
   booleanPointInPolygon,
+  booleanValid,
   circle,
+  kinks,
   lineString,
   multiPolygon,
   point,
@@ -84,6 +86,16 @@ export class MaintenanceBoundaryArtifactError extends Error {
   }
 }
 
+class InvalidMaintenanceBoundaryError extends Error {
+  readonly name = "InvalidMaintenanceBoundaryError";
+  constructor(
+    readonly sourceFeatureId: string,
+    readonly reason: "UNCLOSED_RING" | "COORDINATE_OUT_OF_BOUNDS" | "BBOX_MISMATCH" | "INVALID_GEOMETRY",
+  ) {
+    super(`Invalid maintenance boundary ${sourceFeatureId}: ${reason.toLowerCase()}`);
+  }
+}
+
 const artifactCache = new Map<string, ArtifactCacheEntry>();
 
 function readArtifact(artifactPath: string): readonly MaintenanceBoundaryFeature[] {
@@ -102,6 +114,14 @@ function readArtifact(artifactPath: string): readonly MaintenanceBoundaryFeature
   const parsed = artifactSchema.safeParse(decoded);
   if (!parsed.success) {
     throw new MaintenanceBoundaryArtifactError("INVALID_SCHEMA", artifactPath, parsed.error);
+  }
+  try {
+    for (const feature of parsed.data.features) validateBoundaryFeature(feature);
+  } catch (error) {
+    if (error instanceof InvalidMaintenanceBoundaryError) {
+      throw new MaintenanceBoundaryArtifactError("INVALID_SCHEMA", artifactPath, error);
+    }
+    throw error;
   }
   return parsed.data.features;
 }
@@ -131,6 +151,41 @@ function turfFeature(boundary: MaintenanceBoundary): Feature<Polygon | MultiPoly
       return multiPolygon(boundary.coordinates.map((part) =>
         part.map((ring) => ring.map(([lng, lat]) => [lng, lat])),
       ));
+  }
+}
+
+function validateBoundaryFeature(feature: MaintenanceBoundaryFeature): void {
+  const parts = feature.geometry.type === "Polygon" ? [feature.geometry.coordinates] : feature.geometry.coordinates;
+  let geometryWest = Number.POSITIVE_INFINITY;
+  let geometrySouth = Number.POSITIVE_INFINITY;
+  let geometryEast = Number.NEGATIVE_INFINITY;
+  let geometryNorth = Number.NEGATIVE_INFINITY;
+  for (const part of parts) {
+    for (const ring of part) {
+      const first = ring[0];
+      const last = ring.at(-1);
+      if (!first || !last || first[0] !== last[0] || first[1] !== last[1]) {
+        throw new InvalidMaintenanceBoundaryError(feature.properties.source_feature_id, "UNCLOSED_RING");
+      }
+      for (const [lng, lat] of ring) {
+        if (lng < 124 || lng > 132 || lat < 33 || lat > 39.5) {
+          throw new InvalidMaintenanceBoundaryError(feature.properties.source_feature_id, "COORDINATE_OUT_OF_BOUNDS");
+        }
+        geometryWest = Math.min(geometryWest, lng);
+        geometrySouth = Math.min(geometrySouth, lat);
+        geometryEast = Math.max(geometryEast, lng);
+        geometryNorth = Math.max(geometryNorth, lat);
+      }
+    }
+  }
+  const [west, south, east, north] = feature.properties.bbox;
+  if (west > east || south > north
+    || west !== geometryWest || south !== geometrySouth || east !== geometryEast || north !== geometryNorth) {
+    throw new InvalidMaintenanceBoundaryError(feature.properties.source_feature_id, "BBOX_MISMATCH");
+  }
+  const geometryFeature = turfFeature(feature.geometry);
+  if (!booleanValid(geometryFeature) || kinks(geometryFeature).features.length > 0) {
+    throw new InvalidMaintenanceBoundaryError(feature.properties.source_feature_id, "INVALID_GEOMETRY");
   }
 }
 

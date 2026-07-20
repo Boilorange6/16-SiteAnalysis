@@ -3,6 +3,8 @@ import { mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { booleanPointInPolygon, multiPolygon, point, polygon as turfPolygon } from "@turf/turf";
+
 import {
   loadMaintenanceBoundaryArtifact,
   searchMaintenanceBoundaries,
@@ -113,6 +115,13 @@ assert.ok(hole && hole.distance_m > 0 && hole.distance_m < 100);
 for (const row of located) {
   assert.ok(Number.isFinite(row.representative_lat));
   assert.ok(Number.isFinite(row.representative_lng));
+  const geometry = row.geometry.type === "Polygon"
+    ? turfPolygon(row.geometry.coordinates)
+    : multiPolygon(row.geometry.coordinates);
+  assert.equal(
+    booleanPointInPolygon(point([row.representative_lng, row.representative_lat]), geometry),
+    true,
+  );
 }
 
 // Given: equal-distance results whose normalized names also match.
@@ -142,6 +151,19 @@ try {
   await writeFile(artifactPath, JSON.stringify({ type: "FeatureCollection", features: [{ nope: true }] }), "utf8");
   assert.throws(() => loadMaintenanceBoundaryArtifact(artifactPath));
   await writeFile(artifactPath, JSON.stringify({ type: "FeatureCollection", features: [] }), "utf8");
+  assert.throws(() => loadMaintenanceBoundaryArtifact(artifactPath));
+  const unclosed = polygon({
+    id: "unclosed",
+    name: "미폐합 구역",
+    rings: [[[127, 37.5], [127.001, 37.5], [127.001, 37.501], [127, 37.501], [127.0001, 37.5001]]],
+  });
+  await writeFile(artifactPath, JSON.stringify({ type: "FeatureCollection", features: [unclosed] }), "utf8");
+  assert.throws(() => loadMaintenanceBoundaryArtifact(artifactPath));
+  const falseBbox = {
+    ...collection[0],
+    properties: { ...collection[0].properties, bbox: [0, 0, 0, 0] },
+  };
+  await writeFile(artifactPath, JSON.stringify({ type: "FeatureCollection", features: [falseBbox] }), "utf8");
   assert.throws(() => loadMaintenanceBoundaryArtifact(artifactPath));
 
   // Given: a valid artifact is cached and then replaced with a newer mtime.
