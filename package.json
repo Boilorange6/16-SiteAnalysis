@@ -7,10 +7,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "tsc --noEmit",
-    "test:maintenance": "tsx src/scripts/test-maintenance-contracts.mjs && tsx src/scripts/test-maintenance-national-provider.mjs && tsx src/scripts/test-poi-cache.mjs",
+    "build:maintenance-boundaries": "tsx src/scripts/build-maintenance-boundaries.mjs",
+    "test:maintenance": "tsx src/scripts/test-maintenance-contracts.mjs && tsx src/scripts/test-maintenance-national-provider.mjs && tsx src/scripts/test-poi-cache.mjs && tsx src/scripts/test-maintenance-boundary-build.mjs",
     "test": "node src/scripts/test-analysis-engine.mjs && node src/scripts/test-cheongwadae.mjs && node qa/validate-cheongwadae-deliverable.mjs && node src/scripts/verify-subway-coords.mjs && node qa/validate-enhancement-features.mjs && node qa/validate-ppt-presets.mjs"
   },
   "dependencies": {
+    "@turf/turf": "7.3.5",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.9.0",
     "html-to-image": "^1.11.11",
@@ -20,9 +22,11 @@
     "leaflet": "^1.9.4",
     "next": "^15.3.1",
     "pptxgenjs": "^3.12.0",
+    "proj4": "2.20.9",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-leaflet": "^5.0.0",
+    "shapefile": "0.6.6",
     "zod": "^4.3.6"
   },
   "devDependencies": {

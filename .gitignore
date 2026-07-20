@@ -9,3 +9,5 @@ next-env.d.ts
 .gstack/
 docs/*.pptx
 .worktrees/
+data/maintenance/raw/
+data/maintenance/processed/
