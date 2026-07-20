@@ -91,4 +91,83 @@ async function exerciseIncompleteRollback({ failCleanup, failRestore }) {
 await exerciseIncompleteRollback({ failCleanup: "boundaries.geojson", failRestore: "boundaries.geojson" });
 await exerciseIncompleteRollback({ failCleanup: "never", failRestore: "boundaries.meta.json" });
 
+// Given: a first build with no backups and a partial final that cannot be removed.
+// When: the second promotion fails and rollback cleanup encounters that final.
+// Then: no surviving partial artifact is left unreported under a public filename.
+const firstBuildRoot = await mkdtemp(join(tmpdir(), "maintenance-first-build-rollback-"));
+try {
+  let promoted = 0;
+  let errorMessage = "";
+  const cleanupFailures = [];
+  await assert.rejects(writeBoundaryArtifactsAtomically({
+    outputDirectory: firstBuildRoot,
+    geojson: { generation: "partial" },
+    metadata: { generation: "next" },
+    quarantine: { generation: "next" },
+    fileOperations: {
+      makeDirectory: async ({ path }) => { await mkdir(path, { recursive: true }); },
+      writeText: async ({ path, contents }) => { await writeFile(path, contents, "utf8"); },
+      move: async ({ from, to }) => {
+        if (from.includes(".tmp-")) {
+          promoted += 1;
+          if (promoted === 2) throw new Error("injected second promotion failure");
+        }
+        await rename(from, to);
+      },
+      removeFile: async ({ path }) => {
+        if (path.endsWith("boundaries.geojson")) throw new Error("injected partial-final cleanup failure");
+        await rm(path, { force: true });
+      },
+    },
+  }), (error) => {
+    assert.ok(error instanceof Error);
+    errorMessage = error.message;
+    cleanupFailures.push(...(error.operationFailures ?? []));
+    return true;
+  });
+  const survivors = (await readdir(firstBuildRoot)).filter((name) => name.includes(".recovery-") || artifactNames.includes(name));
+  assert.equal(survivors.some((name) => artifactNames.includes(name)), false);
+  assert.ok(survivors.some((name) => name.includes(".recovery-")));
+  for (const survivor of survivors) assert.match(errorMessage, new RegExp(survivor.replaceAll(".", "\\.")));
+  assert.ok(cleanupFailures.some((failure) => failure.path.endsWith("boundaries.geojson") && failure.cause instanceof Error));
+} finally {
+  await rm(firstBuildRoot, { recursive: true, force: true });
+}
+
+// Given: a complete prior set and a publication whose new finals all succeed.
+// When: obsolete backup cleanup fails.
+// Then: the consistent new finals remain and a distinct actionable cleanup error lists every leftover.
+const publishedRoot = await mkdtemp(join(tmpdir(), "maintenance-published-cleanup-"));
+try {
+  await seedPrior(publishedRoot);
+  let errorMessage = "";
+  await assert.rejects(writeBoundaryArtifactsAtomically({
+    outputDirectory: publishedRoot,
+    geojson: { published: "geojson" },
+    metadata: { published: "meta" },
+    quarantine: { published: "quarantine" },
+    fileOperations: {
+      makeDirectory: async ({ path }) => { await mkdir(path, { recursive: true }); },
+      writeText: async ({ path, contents }) => { await writeFile(path, contents, "utf8"); },
+      move: async ({ from, to }) => { await rename(from, to); },
+      removeFile: async ({ path }) => {
+        if (path.includes(".backup-")) throw new Error("injected published-backup cleanup failure");
+        await rm(path, { force: true });
+      },
+    },
+  }), (error) => {
+    assert.equal(error?.name, "ArtifactPublishedCleanupError");
+    errorMessage = error.message;
+    return true;
+  });
+  assert.deepEqual(JSON.parse(await readFile(join(publishedRoot, "boundaries.geojson"), "utf8")), { published: "geojson" });
+  assert.deepEqual(JSON.parse(await readFile(join(publishedRoot, "boundaries.meta.json"), "utf8")), { published: "meta" });
+  assert.deepEqual(JSON.parse(await readFile(join(publishedRoot, "boundaries.quarantine.json"), "utf8")), { published: "quarantine" });
+  const leftovers = (await readdir(publishedRoot)).filter((name) => name.includes(".backup-"));
+  assert.equal(leftovers.length, 3);
+  for (const leftover of leftovers) assert.match(errorMessage, new RegExp(leftover.replaceAll(".", "\\.")));
+} finally {
+  await rm(publishedRoot, { recursive: true, force: true });
+}
+
 console.log("maintenance boundary safety tests passed");
