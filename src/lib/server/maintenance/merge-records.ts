@@ -17,6 +17,16 @@ export type BoundaryMatch =
   | { readonly kind: "matched"; readonly groupIndex: number }
   | { readonly kind: "unmatched"; readonly reason?: CompatibilityReason | "ambiguous"; readonly attributeId?: string };
 
+type CompatibilityFailure = {
+  readonly reason: CompatibilityReason;
+  readonly attributeId: string;
+};
+
+type BoundaryCandidates = {
+  readonly compatibleGroupIndexes: readonly number[];
+  readonly failure?: CompatibilityFailure;
+};
+
 type FieldSelection<T> = {
   readonly value?: T;
   readonly provenance?: MaintenanceFieldProvenance;
@@ -100,10 +110,13 @@ export function groupMaintenanceRecords(records: readonly MaintenanceMergeRecord
     const ids = officialIds(record);
     const key = recordKey(record);
     const uniqueWithinSource = sourceKeyCounts.get(`${record.source}|${key}`) === 1;
-    const existing = groups.find((group) => overlaps(group.ids, ids)
-      || (uniqueWithinSource && group.key === key
-        && group.records.every((candidate) => sourceKeyCounts.get(`${candidate.source}|${key}`) === 1)
-        && pairCompatibility(group.records[0] ?? record, record) === undefined));
+    const existing = groups.find((group) => {
+      const exactId = overlaps(group.ids, ids);
+      const uniqueName = uniqueWithinSource && group.key === key
+        && group.records.every((candidate) => sourceKeyCounts.get(`${candidate.source}|${key}`) === 1);
+      return (exactId || uniqueName)
+        && group.records.every((candidate) => pairCompatibility(candidate, record) === undefined);
+    });
     if (existing) {
       existing.records.push(record);
       for (const id of ids) existing.ids.add(id);
@@ -119,7 +132,7 @@ function boundaryIds(boundary: MaintenanceBoundaryFeature): ReadonlySet<string> 
     .map((value) => value.trim().toUpperCase()).filter(Boolean));
 }
 
-function boundaryCompatibility(group: RecordGroup, boundary: MaintenanceBoundaryFeature): CompatibilityReason | undefined {
+function boundaryCompatibility(group: RecordGroup, boundary: MaintenanceBoundaryFeature): CompatibilityFailure | undefined {
   const spatial = {
     sido: boundary.properties.sido ?? "", sigungu: boundary.properties.sigungu ?? "",
     area_sqm: boundary.properties.area_sqm, designation_date: boundary.properties.designation_date,
@@ -127,38 +140,61 @@ function boundaryCompatibility(group: RecordGroup, boundary: MaintenanceBoundary
   };
   for (const record of group.records) {
     const reason = pairCompatibility(record, spatial);
-    if (reason) return reason;
+    if (reason) return { reason, attributeId: record.source_record_id };
   }
   return undefined;
 }
 
-export function matchBoundary(
+function boundaryCandidates(
   boundary: MaintenanceBoundaryFeature,
-  boundaries: readonly MaintenanceBoundaryFeature[],
   groups: readonly RecordGroup[],
-): BoundaryMatch {
+): BoundaryCandidates {
   const ids = boundaryIds(boundary);
   const exact = groups.map((group, groupIndex) => ({ group, groupIndex })).filter(({ group }) => overlaps(group.ids, ids));
   const normalizedName = nameText(boundary.properties.name ?? "");
   const normalizedKey = `${comparisonText(boundary.properties.sido ?? "")}|${comparisonText(boundary.properties.sigungu ?? "")}|${normalizedName}`;
   const sameName = groups.map((group, groupIndex) => ({ group, groupIndex })).filter(({ group }) => group.nameKey === normalizedName);
   const sameAdmin = sameName.filter(({ group }) => group.key === normalizedKey);
-  const candidates = exact.length > 0 ? exact : sameAdmin;
-  const duplicateBoundary = boundaries.filter((candidate) => {
-    const candidateKey = `${comparisonText(candidate.properties.sido ?? "")}|${comparisonText(candidate.properties.sigungu ?? "")}|${nameText(candidate.properties.name ?? "")}`;
-    return candidateKey === normalizedKey;
-  }).length > 1;
-  if (candidates.length > 1 || (exact.length === 0 && duplicateBoundary)) return { kind: "unmatched", reason: "ambiguous" };
-  const candidate = candidates[0];
-  if (!candidate) {
-    return sameName.length > 0
-      ? { kind: "unmatched", reason: "admin_mismatch", attributeId: sameName[0]?.group.records[0]?.source_record_id }
-      : { kind: "unmatched" };
+  const structural = exact.length > 0 ? exact : sameAdmin;
+  const compatibleGroupIndexes: number[] = [];
+  let failure: CompatibilityFailure | undefined;
+  for (const candidate of structural) {
+    const candidateFailure = boundaryCompatibility(candidate.group, boundary);
+    if (candidateFailure) {
+      failure ??= candidateFailure;
+    } else {
+      compatibleGroupIndexes.push(candidate.groupIndex);
+    }
   }
-  const reason = boundaryCompatibility(candidate.group, boundary);
-  return reason
-    ? { kind: "unmatched", reason, attributeId: candidate.group.records[0]?.source_record_id }
-    : { kind: "matched", groupIndex: candidate.groupIndex };
+  if (structural.length === 0 && sameName.length > 0) {
+    const record = sameName[0]?.group.records[0];
+    if (record) failure = { reason: "admin_mismatch", attributeId: record.source_record_id };
+  }
+  return { compatibleGroupIndexes, ...(failure ? { failure } : {}) };
+}
+
+export function matchBoundaries(
+  boundaries: readonly MaintenanceBoundaryFeature[],
+  groups: readonly RecordGroup[],
+): readonly BoundaryMatch[] {
+  const candidates = boundaries.map((boundary) => boundaryCandidates(boundary, groups));
+  const groupDegrees = new Map<number, number>();
+  for (const candidate of candidates) {
+    for (const groupIndex of candidate.compatibleGroupIndexes) {
+      groupDegrees.set(groupIndex, (groupDegrees.get(groupIndex) ?? 0) + 1);
+    }
+  }
+  return candidates.map((candidate) => {
+    if (candidate.compatibleGroupIndexes.length > 1) return { kind: "unmatched", reason: "ambiguous" };
+    const groupIndex = candidate.compatibleGroupIndexes[0];
+    if (groupIndex === undefined) {
+      return candidate.failure
+        ? { kind: "unmatched", reason: candidate.failure.reason, attributeId: candidate.failure.attributeId }
+        : { kind: "unmatched" };
+    }
+    if (groupDegrees.get(groupIndex) !== 1) return { kind: "unmatched", reason: "ambiguous" };
+    return { kind: "matched", groupIndex };
+  });
 }
 
 const SOURCE_PRIORITY = { molit_integrated: 0, public_standard: 1, busan_data_go_kr: 2, seoul_open_data: 2 } as const;

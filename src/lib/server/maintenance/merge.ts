@@ -12,7 +12,7 @@ import type {
 import {
   comparisonText,
   groupMaintenanceRecords,
-  matchBoundary,
+  matchBoundaries,
   mergeRecordFields,
   type MergedRecordFields,
   type RecordGroup,
@@ -154,13 +154,15 @@ export function mergeMaintenanceData(input: MaintenanceMergeInput): MergedMainte
   const projects: MaintenanceProject[] = [];
   const internalProjects: { project: MaintenanceProject; field_provenance: Readonly<Record<string, MaintenanceFieldProvenance>> }[] = [];
   const diagnostics: MaintenanceMergeDiagnostic[] = [];
+  const matches = matchBoundaries(input.boundaries, groups);
 
-  for (const boundary of input.boundaries) {
+  for (const [boundaryIndex, boundary] of input.boundaries.entries()) {
     if (!boundary.properties.name?.trim()) {
       diagnostics.push({ boundary_id: boundary.properties.source_feature_id, reason: "unnamed_boundary" });
       continue;
     }
-    const match = matchBoundary(boundary, input.boundaries, groups);
+    const match = matches[boundaryIndex];
+    if (!match) continue;
     if (match.kind === "matched") {
       const group = groups[match.groupIndex];
       if (!group) continue;

@@ -89,6 +89,21 @@ function merge(overrides = {}) {
   assert.equal(duplicateBoundary.diagnostics.some(({ reason }) => reason === "ambiguous"), true);
 }
 
+// Given two boundaries sharing one exact official ID / When merged / Then the attribute group is never consumed twice.
+{
+  const result = merge({
+    attributes: [attribute({ source_record_id: "SHARED-ID" })],
+    boundaries: [
+      boundary({ source_feature_id: "SHARED-ID", name: "첫 번째 구역" }),
+      boundary({ source_feature_id: "SHARED-ID", name: "두 번째 구역" }),
+    ],
+  });
+  assert.equal(result.projects.some(({ boundary_status }) => boundary_status === "confirmed"), false);
+  assert.equal(result.projects.every(({ boundary_status }) => boundary_status === "unmatched"), true);
+  assert.equal(result.diagnostics.filter(({ reason }) => reason === "ambiguous").length, 2);
+  assert.equal(result.catalog.length, 1);
+}
+
 // Given different sigungu values / When names agree / Then admin mismatch prevents merging.
 {
   const result = merge({ boundaries: [boundary({ sigungu: "종로구" })] });
@@ -104,6 +119,48 @@ function merge(overrides = {}) {
   });
   assert.equal(result.projects[0]?.boundary_status, "unmatched");
   assert.equal(result.diagnostics.some(({ reason }) => reason === "date_mismatch"), true);
+}
+
+// Given shared-ID attributes with conflicting dates / When grouped / Then they cannot form one confirmed project.
+{
+  const common = { sido: region.sido, sigungu: region.sigungu, name: "공유 구역", type: "재개발", stage: "추진위" };
+  const result = merge({
+    attributes: [
+      { ...common, source_record_id: "SHARED-DATE", source: "molit_integrated", designation_date: "2024-01-01" },
+      { ...common, source_record_id: "SHARED-DATE", source: "public_standard", designation_date: "2024-01-02" },
+    ],
+    boundaries: [boundary({ source_feature_id: "SHARED-DATE", name: "공유 구역", designation_date: undefined })],
+  });
+  assert.equal(result.projects.some(({ boundary_status }) => boundary_status === "confirmed"), false);
+  assert.equal(result.diagnostics.some(({ reason }) => reason === "ambiguous"), true);
+}
+
+// Given transitive shared-ID areas 100, 105, and 110 / When grouped / Then endpoint incompatibility prevents confirmation.
+{
+  const common = { sido: region.sido, sigungu: region.sigungu, name: "연쇄 구역", type: "재개발", stage: "추진위" };
+  const result = merge({
+    attributes: [
+      { ...common, source_record_id: "CHAIN", source: "molit_integrated", area_sqm: 100 },
+      { ...common, source_record_id: "CHAIN", source: "public_standard", area_sqm: 105 },
+    ],
+    regional: [{ ...common, source_record_id: "CHAIN", source: "seoul_open_data", official_ids: ["CHAIN"], area_sqm: 110 }],
+    boundaries: [boundary({ source_feature_id: "CHAIN", name: "연쇄 구역", area_sqm: undefined })],
+  });
+  assert.equal(result.projects.some(({ boundary_status }) => boundary_status === "confirmed"), false);
+  assert.equal(result.diagnostics.some(({ reason }) => reason === "ambiguous"), true);
+}
+
+// Given only the second grouped attribute violates boundary area / When rejected / Then diagnostics identify that record.
+{
+  const result = merge({
+    attributes: [
+      attribute({ source_record_id: "AREA-OK", source: "molit_integrated", area_sqm: 100 }),
+      attribute({ source_record_id: "AREA-BAD", source: "public_standard", area_sqm: 105 }),
+    ],
+    boundaries: [boundary({ source_feature_id: "NO-ID", area_sqm: 99 })],
+  });
+  const diagnostic = result.diagnostics.find(({ reason }) => reason === "area_mismatch");
+  assert.equal(diagnostic?.attribute_id, "AREA-BAD");
 }
 
 // Given regional, standard, and integrated fields / When one boundary joins / Then field priority retains provenance.
