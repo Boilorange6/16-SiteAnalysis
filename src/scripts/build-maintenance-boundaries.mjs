@@ -1,58 +1,19 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
 import shapefile from "shapefile";
-import { z } from "zod";
 
 import {
   identifySupportedCrs,
   transformBoundaryFeature,
   validateArchiveMembers,
 } from "../lib/server/maintenance/boundary-build.ts";
-const provenanceCommon = z.object({
-  schema_version: z.literal(1),
-  retrieved_at: z.string().regex(/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2}))?$/),
-  source_updated_at: z.string().regex(/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2}))?$/).optional(),
-  source_url: z.string().url(),
-});
-
-const acquisitionMetadataSchema = z.union([
-  provenanceCommon.extend({ source_dataset_id: z.literal("30335"), source_layer: z.literal("UD602") }),
-  provenanceCommon.extend({ source_dataset_id: z.literal("30336"), source_layer: z.literal("UD501") }),
-]);
-
-export async function readAcquisitionMetadata({ archivePath }) {
-  const metadataPath = `${archivePath}.metadata.json`;
-  let bytes;
-  try {
-    bytes = await readFile(metadataPath);
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      throw new Error(`Missing acquisition metadata sidecar: ${metadataPath}`);
-    }
-    throw error;
-  }
-  let raw;
-  try {
-    raw = JSON.parse(bytes.toString("utf8"));
-  } catch (error) {
-    if (error instanceof SyntaxError) throw new Error(`Invalid acquisition metadata sidecar: ${metadataPath}`);
-    throw error;
-  }
-  const parsed = acquisitionMetadataSchema.safeParse(raw);
-  if (!parsed.success) throw new Error(`Invalid acquisition metadata sidecar: ${metadataPath}`);
-  return {
-    sourceUrl: parsed.data.source_url,
-    retrievedAt: parsed.data.retrieved_at,
-    sourceDatasetId: parsed.data.source_dataset_id,
-    sourceLayer: parsed.data.source_layer,
-    ...(parsed.data.source_updated_at ? { sourceUpdatedAt: parsed.data.source_updated_at } : {}),
-    metadataFile: basename(metadataPath),
-    metadataSha256: createHash("sha256").update(bytes).digest("hex"),
-  };
-}
+import { readAcquisitionMetadata } from "../lib/server/maintenance/boundary-acquisition.ts";
+export { readAcquisitionMetadata } from "../lib/server/maintenance/boundary-acquisition.ts";
+import { writeBoundaryArtifactsAtomically } from "../lib/server/maintenance/artifact-promotion.ts";
+export { writeBoundaryArtifactsAtomically } from "../lib/server/maintenance/artifact-promotion.ts";
 
 export function enforceOutputCountGate({ previousCount, nextCount, acceptLargeChange }) {
   if (previousCount === null) return false;
@@ -61,57 +22,6 @@ export function enforceOutputCountGate({ previousCount, nextCount, acceptLargeCh
     throw new Error(`Output feature count changed by more than 20% (${previousCount} -> ${nextCount}); review and pass --accept-large-change`);
   }
   return ratio > 0.2 && acceptLargeChange;
-}
-
-async function defaultPromote({ temporaryPath, finalPath }) {
-  await rename(temporaryPath, finalPath);
-}
-
-async function backupIfPresent({ finalPath, backupPath }) {
-  try {
-    await rename(finalPath, backupPath);
-    return true;
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
-    throw error;
-  }
-}
-
-export async function writeBoundaryArtifactsAtomically({ outputDirectory, geojson, metadata, quarantine, promote = defaultPromote }) {
-  await mkdir(outputDirectory, { recursive: true });
-  const nonce = `${process.pid}-${Date.now()}`;
-  const artifacts = [
-    ["boundaries.geojson", geojson],
-    ["boundaries.meta.json", metadata],
-    ["boundaries.quarantine.json", quarantine],
-  ];
-  const temporary = artifacts.map(([name, value]) => ({
-    finalPath: join(outputDirectory, name),
-    temporaryPath: join(outputDirectory, `${name}.tmp-${nonce}`),
-    backupPath: join(outputDirectory, `${name}.backup-${nonce}`),
-    value,
-  }));
-  const backedUp = [];
-  try {
-    await Promise.all(temporary.map(({ temporaryPath, value }) => writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, "utf8")));
-    try {
-      for (const artifact of temporary) {
-        if (await backupIfPresent(artifact)) backedUp.push(artifact);
-      }
-    } catch (error) {
-      for (const artifact of backedUp.reverse()) await rename(artifact.backupPath, artifact.finalPath);
-      throw error;
-    }
-    try {
-      for (const [index, artifact] of temporary.entries()) await promote({ ...artifact, index });
-    } catch (error) {
-      await Promise.all(temporary.map(({ finalPath }) => rm(finalPath, { force: true })));
-      for (const artifact of backedUp) await rename(artifact.backupPath, artifact.finalPath);
-      throw error;
-    }
-  } finally {
-    await Promise.all(temporary.flatMap(({ temporaryPath, backupPath }) => [rm(temporaryPath, { force: true }), rm(backupPath, { force: true })]));
-  }
 }
 
 function parseArguments(argv) {

@@ -58,6 +58,13 @@ function closeTo(actual: number | null, expected: number, tolerance: number): bo
   return actual !== null && Number.isFinite(actual) && Math.abs(actual - expected) <= tolerance;
 }
 
+function hasMetreProjectedUnit(wkt: string): boolean {
+  const matches = [...wkt.matchAll(/(?:^|[^A-Z])(LENGTHUNIT|UNIT)\s*\[\s*"([^"]+)"\s*,\s*([-+0-9.eE]+)/g)];
+  const projected = matches.at(-1);
+  const name = projected?.[2] ?? "";
+  return (name === "METRE" || name === "METER") && closeTo(Number(projected?.[3]), 1, 0.000000001);
+}
+
 function matchesDefinition(wkt: string, definition: CrsDefinition): boolean {
   const authority = wkt.includes(`AUTHORITY["EPSG","${definition.crs.slice(5)}"]`)
     || wkt.includes(`ID["EPSG",${definition.crs.slice(5)}]`);
@@ -66,7 +73,8 @@ function matchesDefinition(wkt: string, definition: CrsDefinition): boolean {
   const spheroid = wkt.match(/(?:SPHEROID|ELLIPSOID)\s*\[\s*"([^"]+)"\s*,\s*([-+0-9.eE]+)\s*,\s*([-+0-9.eE]+)/);
   if ((!authority && !titled) || !wkt.includes("TRANSVERSE MERCATOR") || !definition.datumSignatures.some((value) => datum.includes(value))) return false;
   if (!spheroid || !definition.spheroidSignatures.some((value) => spheroid[1]?.includes(value))) return false;
-  return closeTo(Number(spheroid[2]), definition.semiMajor, 0.001)
+  return hasMetreProjectedUnit(wkt)
+    && closeTo(Number(spheroid[2]), definition.semiMajor, 0.001)
     && closeTo(Number(spheroid[3]), definition.inverseFlattening, 0.0000001)
     && closeTo(numericParameter(wkt, ["LATITUDE OF ORIGIN", "LATITUDE OF NATURAL ORIGIN"]), 38, 0.0000001)
     && closeTo(numericParameter(wkt, ["CENTRAL MERIDIAN", "LONGITUDE OF NATURAL ORIGIN"]), definition.centralMeridian, 0.0000001)
