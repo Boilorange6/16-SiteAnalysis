@@ -68,6 +68,32 @@ function inRegion(query: RegionalProviderQuery, sido: string): boolean {
   return query.regions.some((region) => region.sido.includes(sido));
 }
 
+function selectedRegion(options: {
+  readonly row: JsonObject;
+  readonly haystack: string;
+  readonly query: RegionalProviderQuery;
+  readonly cityToken: string;
+}): SelectedMaintenanceRegion | null {
+  const rowSido = readText(options.row, ["SIDO_NM", "CTPV_NM", "sido", "sidoNm", "시도", "시도명"]);
+  const rowSigungu = readText(options.row, ["SGG_NM", "SIGUNGU_NM", "sigungu", "sigunguNm", "guNm", "자치구", "시군구", "시군구명"]);
+  if (rowSido && !rowSido.includes(options.cityToken)) return null;
+  return options.query.regions.find((region) => {
+    if (!region.sido.includes(options.cityToken)) return false;
+    if (rowSigungu) return rowSigungu === region.sigungu;
+    return options.haystack.includes(region.sigungu);
+  }) ?? null;
+}
+
+function uniqueTexts(row: JsonObject, aliases: readonly string[]): readonly string[] {
+  const values = aliases.flatMap((alias) => {
+    const value = row[alias];
+    if (typeof value !== "string" && typeof value !== "number") return [];
+    const normalized = String(value).trim();
+    return normalized ? [normalized] : [];
+  });
+  return [...new Set(values)];
+}
+
 async function coordinateFields(options: {
   readonly address: string;
   readonly geocoder?: MaintenanceGeocoder;
@@ -107,16 +133,19 @@ export async function fetchSeoulMaintenanceRecords(options: RegionalProviderOpti
   }
   const records: RegionalMaintenanceRecord[] = [];
   for (const row of rawRows) {
-    const address = `서울특별시 ${readText(row, ["PSTN_NM"]) ?? ""}`.trim();
+    const position = readText(row, ["PSTN_NM", "ADDR", "ADDRESS", "주소"]) ?? "";
     const name = readText(row, ["RGN_NM", "PSTN_NM"]);
     if (!name) continue;
-    const id = readText(row, ["RPT_MNG_CD", "PRJC_CD"]) ?? `서울특별시|${name}`;
+    const region = selectedRegion({ row, haystack: `${position} ${name}`, query: options.query, cityToken: "서울" });
+    if (!region) continue;
+    const address = position.startsWith("서울") ? position : `서울특별시 ${position}`.trim();
+    const officialIds = uniqueTexts(row, ["RPT_MNG_CD", "PRJC_CD", "DCSN_ANCMNT_MNG_CD", "NTFC_SN", "WTNNC_SN", "NOTICE_ID", "고시번호"]);
+    const id = officialIds[0] ?? `서울특별시|${region.sigungu}|${name}`;
     const typeText = readText(row, ["SCLSF", "MCLSF", "LCLSF"]) ?? "정비사업";
+    const stageText = ["RPT_TYPE", "MCLSF", "SCLSF"].map((key) => readText(row, [key])).filter(Boolean).join(" ");
     records.push({
-      source_record_id: id, source: "seoul_open_data", official_ids: [id], sido: "서울특별시",
-      sigungu: options.query.regions.find((region) => address.includes(region.sigungu))?.sigungu
-        ?? options.query.regions.find((region) => region.sido.includes("서울"))?.sigungu ?? "",
-      name, type: projectType(typeText), stage: stage(readText(row, ["RPT_TYPE", "MCLSF", "SCLSF"])), address,
+      source_record_id: id, source: "seoul_open_data", official_ids: officialIds, sido: region.sido,
+      sigungu: region.sigungu, name, type: projectType(typeText), stage: stage(stageText), address,
       ...optional(numberValue(row, ["AREA_CHG_AFTR", "AREA_EXS"]), "area_sqm"),
       ...optional(readText(row, ["DCSN_ANCMNT_MNG_CD"]), "notice_code"),
       ...optional(SEOUL_DATASET_URL, "notice_url"),
@@ -128,7 +157,15 @@ export async function fetchSeoulMaintenanceRecords(options: RegionalProviderOpti
 
 function busanPage(root: unknown): { readonly rows: readonly JsonObject[]; readonly total: number } {
   if (!isJsonObject(root)) throw new Error("부산 정비사업 API 응답 형식이 올바르지 않습니다");
-  const body = isJsonObject(root.response) && isJsonObject(root.response.body) ? root.response.body : undefined;
+  const response = root.response;
+  if (isJsonObject(response)) {
+    if (!isJsonObject(response.header)) throw new Error("부산 정비사업 API 응답 형식이 올바르지 않습니다");
+    const resultCode = readText(response.header, ["resultCode"]);
+    if (!resultCode || !["00", "0000", "INFO-000"].includes(resultCode)) {
+      throw new Error(`부산 정비사업 API 요청이 실패했습니다${resultCode ? ` (${resultCode})` : ""}`);
+    }
+  }
+  const body = isJsonObject(response) && isJsonObject(response.body) ? response.body : undefined;
   const nested = body && isJsonObject(body.items) ? body.items.item : undefined;
   const direct = root.getMaintenanceBusiness1;
   const value = nested ?? direct;
@@ -155,12 +192,13 @@ export async function fetchBusanMaintenanceRecords(options: RegionalProviderOpti
     const name = readText(row, ["zoneNm", "bsnsNm", "busiNm", "projectName", "구역명", "사업명", "AREA_NM", "name"]);
     if (!name) continue;
     const rawAddress = readText(row, ["addr", "address", "siteAddr", "lc", "position", "위치", "주소"]) ?? "";
+    const region = selectedRegion({ row, haystack: `${rawAddress} ${name}`, query: options.query, cityToken: "부산" });
+    if (!region) continue;
     const address = rawAddress.startsWith("부산") ? rawAddress : `부산광역시 ${rawAddress}`.trim();
     const id = readText(row, ["bsnsNo", "zoneNo", "manageNo", "projectId"]) ?? `부산광역시|${name}|${address}`;
     records.push({
-      source_record_id: id, source: "busan_data_go_kr", official_ids: [id], sido: "부산광역시",
-      sigungu: options.query.regions.find((region) => address.includes(region.sigungu))?.sigungu
-        ?? options.query.regions.find((region) => region.sido.includes("부산"))?.sigungu ?? "",
+      source_record_id: id, source: "busan_data_go_kr", official_ids: [id], sido: region.sido,
+      sigungu: region.sigungu,
       name, type: projectType(readText(row, ["bsnsSe", "bizType", "businessType", "사업구분", "사업유형", "type"]) ?? name),
       stage: stage(readText(row, ["prgrsSttus", "prgrsStts", "stage", "사업추진단계", "추진단계", "status"])), address,
       ...optional(numberValue(row, ["zoneArea", "area", "구역면적", "사업면적"]), "area_sqm"),

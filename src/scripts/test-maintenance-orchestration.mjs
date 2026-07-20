@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { applyMaintenanceRetryResult } from "../lib/maintenance-retry-state.ts";
 import { searchMaintenanceProjects } from "../lib/server/maintenance-project-search.ts";
 import { fetchBusanMaintenanceRecords, fetchSeoulMaintenanceRecords } from "../lib/server/maintenance/regional-provider.ts";
+import { mergeMaintenanceData } from "../lib/server/maintenance/merge.ts";
 
 const center = { lat: 37.5, lng: 127 };
 const query = { center, radiusM: 3_000, refresh: false };
@@ -49,6 +50,7 @@ function fakeKy(responses) {
 }
 
 {
+  let geocodeCalls = 0;
   await assert.rejects(fetchSeoulMaintenanceRecords({
     query: { center, radiusM: 3_000, regions: [{ sido: "서울특별시", sigungu: "강남구" }] },
     serviceKey: "",
@@ -57,25 +59,55 @@ function fakeKy(responses) {
     query: { center, radiusM: 3_000, regions: [{ sido: "서울특별시", sigungu: "강남구" }] },
     serviceKey: "seoul-test-key",
     httpClient: fakeKy([{ upisRebuild: {
-      list_total_count: 1, RESULT: { CODE: "INFO-000" },
-      row: [{ RPT_MNG_CD: "S-1", RGN_NM: "서울상세", PSTN_NM: "강남구 역삼동", SCLSF: "재건축", DCSN_ANCMNT_MNG_CD: "고시-1" }],
+      list_total_count: 2, RESULT: { CODE: "INFO-000" },
+      row: [
+        { RPT_MNG_CD: "S-1", PRJC_CD: "PROJECT-1", RGN_NM: "변경된 서울상세", PSTN_NM: "강남구 역삼동", RPT_TYPE: "정비사업", MCLSF: "조합설립", SCLSF: "재건축", DCSN_ANCMNT_MNG_CD: "고시-1", NTFC_SN: "NOTICE-1", WTNNC_SN: "WT-1" },
+        { RPT_MNG_CD: "S-OUT", RGN_NM: "타구 서울상세", PSTN_NM: "송파구 잠실동", SCLSF: "재건축" },
+      ],
     } }]),
+    geocoder: async () => {
+      geocodeCalls += 1;
+      return center;
+    },
   });
   assert.equal(records.length, 1);
+  assert.equal(geocodeCalls, 1);
+  assert.equal(records[0].sigungu, "강남구");
+  assert.equal(records[0].stage, "조합설립");
+  assert.deepEqual(records[0].official_ids, ["S-1", "PROJECT-1", "고시-1", "NOTICE-1", "WT-1"]);
   assert.equal(records[0].notice_code, "고시-1");
   assert.match(records[0].notice_url, /data\.seoul\.go\.kr/);
+
+  const renamedJoin = mergeMaintenanceData({
+    boundaries: [{ ...boundary("unrelated-id", "원래 경계명"), properties: {
+      ...boundary("unrelated-id", "원래 경계명").properties, notice_ids: ["NOTICE-1"],
+    } }],
+    attributes: [], regional: records, selectedRegions: [{ sido: "서울특별시", sigungu: "강남구" }],
+  });
+  assert.equal(renamedJoin.projects.length, 1);
+  assert.equal(renamedJoin.projects[0].boundary_status, "confirmed");
+  assert.equal(renamedJoin.projects[0].source, "seoul_open_data");
 }
 
 {
+  let geocodeCalls = 0;
   const records = await fetchBusanMaintenanceRecords({
     query: { center, radiusM: 3_000, regions: [{ sido: "부산광역시", sigungu: "해운대구" }] },
     serviceKey: "busan-test-key",
     httpClient: fakeKy([
-      { response: { body: { totalCount: 2, items: { item: [{ zoneNo: "B-1", zoneNm: "부산상세1", addr: "해운대구", zoneArea: "1200", houseHolds: "30", floorAreaRatio: "240", buildingCoverageRatio: "60", constructor: "시공사", architect: "설계사", unionMembers: "20" }] } } } },
-      { response: { body: { totalCount: 2, items: { item: [{ zoneNo: "B-2", zoneNm: "부산상세2", addr: "해운대구" }] } } } },
+      { response: { header: { resultCode: "00", resultMsg: "NORMAL SERVICE" }, body: { totalCount: 3, items: { item: [
+        { zoneNo: "B-1", zoneNm: "부산상세1", addr: "해운대구", zoneArea: "1200", houseHolds: "30", floorAreaRatio: "240", buildingCoverageRatio: "60", constructor: "시공사", architect: "설계사", unionMembers: "20" },
+        { zoneNo: "B-OUT", zoneNm: "타구 부산상세", addr: "수영구" },
+      ] } } } },
+      { response: { header: { resultCode: "00", resultMsg: "NORMAL SERVICE" }, body: { totalCount: 3, items: { item: [{ zoneNo: "B-2", zoneNm: "부산상세2", addr: "해운대구" }] } } } },
     ]),
+    geocoder: async () => {
+      geocodeCalls += 1;
+      return center;
+    },
   });
   assert.equal(records.length, 2);
+  assert.equal(geocodeCalls, 2);
   assert.equal(records[0].area_sqm, 1200);
   assert.equal(records[0].planned_households, 30);
   assert.equal(records[0].floor_area_ratio, 240);
@@ -83,6 +115,19 @@ function fakeKy(responses) {
   assert.equal(records[0].contractor, "시공사");
   assert.equal(records[0].architect, "설계사");
   assert.equal(records[0].union_members, 20);
+
+  await assert.rejects(fetchBusanMaintenanceRecords({
+    query: { center, radiusM: 3_000, regions: [{ sido: "부산광역시", sigungu: "해운대구" }] },
+    serviceKey: "SECRET-SERVICE-KEY",
+    httpClient: fakeKy([{ response: {
+      header: { resultCode: "30", resultMsg: "SERVICE KEY SECRET-SERVICE-KEY rejected at https://keyed.example.test" },
+      body: { totalCount: 0, items: { item: [] } },
+    } }]),
+  }), (error) => {
+    assert.equal(String(error).includes("SECRET-SERVICE-KEY"), false);
+    assert.equal(String(error).includes("https://"), false);
+    return true;
+  });
 }
 
 {
