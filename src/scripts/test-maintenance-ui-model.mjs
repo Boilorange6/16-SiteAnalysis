@@ -64,6 +64,15 @@ const manyProjects = Array.from({ length: 12 }, (_, index) => ({
 }));
 assert.equal(summarizeMaintenanceProjects(manyProjects).topProjects.length, 12);
 
+const rawIdProject = {
+  ...projects[0],
+  id: "raw-only",
+  name: "maintenance-123456789",
+  area_sqm: 13_000,
+};
+assert.equal(summarizeMaintenanceProjects([rawIdProject]).topProjects.length, 1);
+assert.equal(summarizeMaintenanceProjects([rawIdProject, ...manyProjects]).topProjects.length, 13);
+
 const popup = buildMaintenancePopupHtml({
   ...projects[0],
   name: '<img src=x onerror="alert(1)">',

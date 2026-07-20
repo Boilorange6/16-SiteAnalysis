@@ -1,10 +1,13 @@
 import type { NextConfig } from "next";
 
-const reactDevScriptOrigin = process.env.NODE_ENV === "development" ? " https://unpkg.com" : "";
-const reactDevStyleOrigin = process.env.NODE_ENV === "development" ? " https://fonts.googleapis.com" : "";
-const reactDevFontOrigin = process.env.NODE_ENV === "development" ? " https://fonts.gstatic.com" : "";
-const reactDevConnectOrigin = process.env.NODE_ENV === "development" ? " https://www.react-grab.com" : "";
-const reactDevWorkerSource = process.env.NODE_ENV === "development" ? "worker-src 'self' blob:" : "worker-src 'self'";
+const reactInspectionEnabled =
+  process.env.NODE_ENV === "development" &&
+  process.env.NEXT_PUBLIC_ENABLE_REACT_INSPECTOR === "1";
+const reactDevScriptOrigin = reactInspectionEnabled ? " https://unpkg.com" : "";
+const reactDevStyleOrigin = reactInspectionEnabled ? " https://fonts.googleapis.com" : "";
+const reactDevFontOrigin = reactInspectionEnabled ? " https://fonts.gstatic.com" : "";
+const reactDevConnectOrigin = reactInspectionEnabled ? " https://www.react-grab.com" : "";
+const reactDevWorkerSource = reactInspectionEnabled ? "worker-src 'self' blob:" : "worker-src 'self'";
 
 const nextConfig: NextConfig = {
   output: "standalone",

@@ -29,7 +29,7 @@ export default function RootLayout({
 }) {
   const enableReactDevTools =
     process.env.NODE_ENV === "development" &&
-    process.env.NEXT_PUBLIC_DISABLE_REACT_DEVTOOLS !== "1";
+    process.env.NEXT_PUBLIC_ENABLE_REACT_INSPECTOR === "1";
 
   return (
     <html lang="ko" className={notoSansKr.variable}>

@@ -8,20 +8,53 @@ export function installBodyAudit(page) {
   page.on("response", (response) => {
     const resourceType = response.request().resourceType();
     if (!["document", "fetch", "xhr", "script"].includes(resourceType)) return;
-    bodyReads.push(response.text()
-      .then((body) => ({ body, resourceType, url: response.url() }))
-      .catch(() => ({ body: "", resourceType, url: response.url() })));
+    if (response.status() >= 300 && response.status() < 400) return;
+    bodyReads.push(response.text().then((body) => ({ body, resourceType, url: response.url() })));
   });
   return async () => {
     const bodies = await Promise.all(bodyReads);
-    assert.ok(bodies.some((entry) => entry.resourceType === "script"), "loaded JS body was not inspected");
-    assert.ok(bodies.some((entry) => entry.url.includes("/api/poi-search")), "POI response body was not inspected");
+    const pageOrigin = new URL(page.url()).origin;
+    assert.ok(
+      bodies.some((entry) => entry.resourceType === "script" && new URL(entry.url).origin === pageOrigin && entry.body.length > 0),
+      "non-empty same-origin JS body was not inspected",
+    );
+    assert.ok(
+      bodies.some((entry) => entry.url.includes("/api/poi-search") && entry.body.length > 0),
+      "non-empty POI response body was not inspected",
+    );
     for (const entry of bodies) {
       assert.equal(entry.body.includes(forbiddenSentinel), false, `sentinel leaked in ${entry.url}`);
       assert.equal(keyLikeSecret.test(entry.body), false, `key-like secret leaked in ${entry.url}`);
     }
     return bodies.length;
   };
+}
+
+export async function exerciseMobileDialog(page) {
+  const toggle = page.getByTestId("controls-sheet-toggle");
+  await toggle.click();
+  const dialog = page.getByRole("dialog", { name: "Site Analysis" });
+  await dialog.waitFor();
+  assert.equal(await page.locator("main").getAttribute("inert"), "");
+  await page.waitForFunction(() => document.activeElement?.getAttribute("data-testid") === "controls-sheet-toggle");
+  await page.keyboard.press("Shift+Tab");
+  assert.equal(await dialog.evaluate((element) => element.contains(document.activeElement)), true, "focus escaped mobile dialog");
+
+  await page.setViewportSize({ width: 1440, height: 844 });
+  await page.waitForFunction(() => document.querySelector("main")?.getAttribute("inert") === null);
+  assert.equal(await page.locator("main").getAttribute("aria-hidden"), null);
+  assert.equal(await page.locator("aside").getAttribute("role"), null);
+  assert.equal(await page.locator("aside").getAttribute("aria-modal"), null);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("dialog", { name: "Site Analysis" }).waitFor();
+  assert.equal(await page.locator("main").getAttribute("inert"), "");
+  await page.keyboard.press("Escape");
+  await page.getByRole("dialog", { name: "Site Analysis" }).waitFor({ state: "detached" });
+  assert.equal(await page.locator("main").getAttribute("inert"), null);
+  assert.equal(await toggle.evaluate((element) => element === document.activeElement), true, "focus was not restored to sheet trigger");
+  await toggle.click();
+  await page.getByRole("dialog", { name: "Site Analysis" }).waitFor();
 }
 
 export async function waitForPopupSettled(popup) {

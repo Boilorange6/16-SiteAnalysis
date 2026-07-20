@@ -188,6 +188,7 @@ export default function Sidebar({
   onPreview,
 }: SidebarProps) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [activePanel, setActivePanel] = useState<SidebarPanel>("setup");
   const panelRef = useRef<HTMLElement>(null);
   const sheetToggleRef = useRef<HTMLButtonElement>(null);
@@ -231,7 +232,17 @@ export default function Sidebar({
   }, [config.centerLat, config.centerLng]);
 
   useEffect(() => {
-    if (!isMobileOpen) return;
+    const mediaQuery = window.matchMedia("(max-width: 1023px)");
+    const syncViewport = () => setIsMobileViewport(mediaQuery.matches);
+    syncViewport();
+    mediaQuery.addEventListener("change", syncViewport);
+    return () => mediaQuery.removeEventListener("change", syncViewport);
+  }, []);
+
+  const isMobileModalOpen = isMobileOpen && isMobileViewport;
+
+  useEffect(() => {
+    if (!isMobileModalOpen) return;
 
     const panel = panelRef.current;
     const main = document.querySelector("main");
@@ -278,9 +289,9 @@ export default function Sidebar({
       main?.removeAttribute("inert");
       if (previousAriaHidden === null) main?.removeAttribute("aria-hidden");
       else main?.setAttribute("aria-hidden", previousAriaHidden);
-      sheetToggleRef.current?.focus();
+      if (window.matchMedia("(max-width: 1023px)").matches) sheetToggleRef.current?.focus();
     };
-  }, [isMobileOpen]);
+  }, [isMobileModalOpen]);
 
   const counts = useMemo<Record<keyof LayerVisibility, number>>(() => ({
     subway: pois.filter((poi) => poi.category === "subway").length,
@@ -867,8 +878,6 @@ export default function Sidebar({
         </div>
         <button
           type="button"
-          tabIndex={-1}
-          aria-hidden="true"
           onClick={handleAddManualPoi}
           className={`w-full rounded-xl bg-[#3B82F6] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#2563EB] ${focusRingClass}`}
         >
@@ -941,7 +950,7 @@ export default function Sidebar({
 
   return (
     <>
-      {isMobileOpen && (
+      {isMobileModalOpen && (
         <button
           type="button"
           className="fixed inset-0 z-[980] bg-[#020617]/60 backdrop-blur-[2px] lg:hidden"
@@ -954,8 +963,8 @@ export default function Sidebar({
         ref={panelRef}
         id={panelId}
         aria-labelledby={panelTitleId}
-        role={isMobileOpen ? "dialog" : undefined}
-        aria-modal={isMobileOpen ? true : undefined}
+        role={isMobileModalOpen ? "dialog" : undefined}
+        aria-modal={isMobileModalOpen ? true : undefined}
         className={cx(
           "fixed inset-x-0 bottom-0 z-[1000] flex flex-col overflow-hidden rounded-t-[2rem] border border-white/10 bg-[#1E3A8A]/95 shadow-[0_-20px_60px_rgba(2,6,23,0.45)] backdrop-blur-xl transition-[max-height] duration-300 ease-out lg:relative lg:inset-auto lg:z-auto lg:h-full lg:w-[360px] lg:max-h-none lg:rounded-none lg:border-x-0 lg:border-b-0 lg:border-r lg:bg-[#1E3A8A] xl:w-[380px]",
           isMobileOpen ? "max-h-[88dvh]" : "max-h-[4.75rem]"

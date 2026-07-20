@@ -4,6 +4,7 @@ import path from "node:path";
 import { chromium } from "playwright";
 import {
   assertMaintenanceTextLayout,
+  exerciseMobileDialog,
   installBodyAudit,
   waitForPopupSettled,
 } from "./maintenance-browser-assertions.mjs";
@@ -46,7 +47,7 @@ function fixtureFor(url) {
     notice_url: "https://example.test/official-notice", boundary,
   };
   const unavailable = {
-    id: `${target.slug}-point`, name: `${target.name} 후보사업`, lat: lat + 0.006, lng: lng + 0.006,
+    id: `${target.slug}-point`, name: "maintenance-123456789", lat: lat + 0.006, lng: lng + 0.006,
     category: "maintenance", type: "가로주택정비", stage: "추진위", address: `${target.name} 위치 미확인`,
     area_sqm: 7200, planned_households: 180, implementer: "추진위원회", source: "public_standard",
     source_updated_at: "2026-07-17", boundary_status: "unavailable",
@@ -82,23 +83,6 @@ async function installRoutes(page) {
   });
 }
 
-async function exerciseMobileDialog(page) {
-  const toggle = page.getByTestId("controls-sheet-toggle");
-  await toggle.click();
-  const dialog = page.getByRole("dialog", { name: "Site Analysis" });
-  await dialog.waitFor();
-  assert.equal(await page.locator("main").getAttribute("inert"), "");
-  await page.waitForFunction(() => document.activeElement?.getAttribute("data-testid") === "controls-sheet-toggle");
-  await page.keyboard.press("Shift+Tab");
-  assert.equal(await dialog.evaluate((element) => element.contains(document.activeElement)), true, "focus escaped mobile dialog");
-  await page.keyboard.press("Escape");
-  await dialog.waitFor({ state: "detached" });
-  assert.equal(await page.locator("main").getAttribute("inert"), null);
-  assert.equal(await toggle.evaluate((element) => element === document.activeElement), true, "focus was not restored to sheet trigger");
-  await toggle.click();
-  await page.getByRole("dialog", { name: "Site Analysis" }).waitFor();
-}
-
 async function runLocation(browser, location, viewport) {
   const context = await browser.newContext({ viewport });
   const page = await context.newPage();
@@ -128,11 +112,16 @@ async function runLocation(browser, location, viewport) {
   assert.equal(await page.getByText("법적 효력 없는 참고자료", { exact: true }).count(), 1);
   assert.equal(await page.getByText("좌표가 없어 반경 지표와 지도 표시에 포함하지 않은 공식 목록입니다.").count(), 1);
   assert.equal(await page.getByRole("button", { name: /행정목록 사업/ }).count(), 0);
+  assert.equal(await page.getByText("사업명 미확인", { exact: true }).count(), 1);
+  assert.equal(await page.getByText("식별자: seoul-point", { exact: true }).count() + await page.getByText("식별자: busan-point", { exact: true }).count() + await page.getByText("식별자: daejeon-point", { exact: true }).count(), 1);
   await assertMaintenanceTextLayout(page);
 
   if (viewport.width >= 1024) {
     const maintenancePath = page.locator('.leaflet-overlay-pane path[stroke="#EC4899"]').first();
     await maintenancePath.waitFor({ state: "visible" });
+    assert.equal(await page.locator(".maintenance-boundary").count(), 1, `${location.slug} rendered an extra maintenance polygon`);
+    assert.equal(await page.locator('[data-poi-category="maintenance"][data-boundary-status="unavailable"]').count(), 1, `${location.slug} unavailable maintenance point marker missing`);
+    if (location.slug === "busan") assert.equal(await maintenancePath.getAttribute("stroke-dasharray"), "7 5");
     const pathData = await maintenancePath.getAttribute("d");
     if (location.geometry === "hole" || location.geometry === "multi") {
       assert.ok((pathData?.match(/M/g) ?? []).length >= 2, `${location.slug} nested geometry collapsed`);
@@ -165,6 +154,12 @@ async function runRetry(browser) {
   const assertBodyAudit = installBodyAudit(page);
   await installRoutes(page);
   await page.goto(baseUrl, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "보정" }).click();
+  const manualAdd = page.getByRole("button", { name: "수동 POI 추가" });
+  await manualAdd.waitFor();
+  assert.equal(await manualAdd.getAttribute("aria-hidden"), null);
+  assert.equal(await manualAdd.getAttribute("tabindex"), null);
+  await page.getByRole("button", { name: "설정" }).click();
   await page.getByRole("button", { name: "샘플 실행" }).click();
   await page.getByText("데이터 로딩 중").waitFor({ state: "hidden" });
   const retry = page.getByRole("button", { name: "재시도" });
@@ -197,15 +192,17 @@ await writeFile(path.join(artifactDir, "browser-qa-summary.json"), JSON.stringif
   viewports: ["1440x1000", "390x844"],
   verified: [
     "polygon-hole-multipolygon-paths",
-    "unmatched-dashed-and-unavailable-point-only",
+    "unmatched-svg-dasharray-and-unavailable-point-only-path-marker-counts",
     "boundary-enter-space-popup",
     "popup-opacity-one-stable-placement",
     "catalog-no-focus-action",
+    "raw-id-project-visible-as-unknown-name-with-identifier",
+    "manual-poi-add-button-keyboard-accessible",
     "retry-44px-rest-mid-settled",
-    "mobile-dialog-focus-trap-escape-restoration-inert",
+    "mobile-dialog-focus-trap-resize-desktop-cleanup-resize-back-escape-restoration-inert",
     "cjk-required-copy-font-min-12-no-horizontal-clipping",
     "no-horizontal-overflow",
-    "network-url-response-body-loaded-js-secret-scan",
+    "network-url-nonempty-api-same-origin-js-response-body-secret-scan",
   ],
 }, null, 2));
 console.log("maintenance browser QA passed");

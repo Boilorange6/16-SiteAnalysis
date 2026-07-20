@@ -2,6 +2,7 @@ import type { MaintenanceCatalogProject, MaintenanceProject } from "@/lib/types"
 import { formatDistanceM } from "@/lib/park-analysis";
 import { formatMaintenanceArea, summarizeMaintenanceProjects } from "@/lib/maintenance-analysis";
 import { maintenanceBoundaryLabel, maintenanceSourceLabel } from "@/lib/maintenance-map-utils";
+import { isRawPoiId } from "@/lib/poi-id-guard";
 
 interface MaintenanceSidebarPanelProps {
   readonly projects: readonly MaintenanceProject[];
@@ -33,6 +34,7 @@ function CountList({ label, entries }: { readonly label: string; readonly entrie
 }
 
 function ProjectCard({ project }: { readonly project: MaintenanceProject }) {
+  const hasRawName = isRawPoiId(project.name);
   const households = project.planned_households && project.planned_households > 0
     ? `${project.planned_households.toLocaleString()}세대`
     : "미확인";
@@ -40,7 +42,8 @@ function ProjectCard({ project }: { readonly project: MaintenanceProject }) {
     <li data-maintenance-detail className="rounded-xl border border-white/10 bg-white/[0.045] p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="break-words text-[13px] font-bold leading-5 text-white">{project.name}</p>
+          <p className="break-words text-[13px] font-bold leading-5 text-white">{hasRawName ? "사업명 미확인" : project.name}</p>
+          {hasRawName && <p className="break-all text-xs leading-5 text-white/60">식별자: {project.id}</p>}
           <p className="mt-0.5 text-xs leading-5 text-white/70">{project.type || "정비사업"} · {project.stage}</p>
         </div>
         <span className="shrink-0 rounded-full border border-pink-300/20 bg-pink-400/10 px-2 py-1 text-xs font-bold text-pink-100">

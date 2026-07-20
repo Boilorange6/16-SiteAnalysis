@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:inspect": "node src/scripts/run-dev-inspect.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "tsc --noEmit",

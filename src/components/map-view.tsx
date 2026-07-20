@@ -349,6 +349,14 @@ function addSinglePoiMarker(
     badgeLabel: residentialPoi?.status === "planned" ? "예정" : undefined,
   });
   const marker = L.marker([poi.lat, poi.lng], { icon, keyboard: true });
+  const applyPoiMetadata = () => {
+    const element = marker.getElement();
+    if (!element) return;
+    element.dataset.poiCategory = poi.category;
+    if (poi.category === "maintenance") element.dataset.boundaryStatus = poi.boundary_status;
+  };
+  marker.on("add", applyPoiMetadata);
+  applyPoiMetadata();
   const iconScale = poi.category === "park" ? markerScale * getParkMarkerScale(poi as Park) : markerScale;
   const tooltipOffsetY = -Math.round((32 * iconScale) / 2 + 2);
 

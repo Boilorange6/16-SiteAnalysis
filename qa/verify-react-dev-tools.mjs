@@ -26,7 +26,7 @@ try {
   assert.deepEqual(expectedScripts.every((script) => scripts.includes(script)), true);
   assert.deepEqual(cspErrors, []);
   assert.deepEqual(toolFailures, []);
-  console.log("default next dev React tooling QA passed");
+  console.log("opt-in next dev React tooling QA passed");
 } finally {
   await browser.close();
 }
