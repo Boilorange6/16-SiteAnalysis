@@ -11,6 +11,7 @@ import type {
   Apartment,
   Officetel,
   ResidentialOther,
+  MaintenanceCatalogProject,
   MaintenanceProject,
 } from "./types";
 import { POI_SOURCE_CATEGORIES } from "./types";
@@ -25,6 +26,33 @@ import { authFetch } from "./auth-fetch";
 const dynamicCache = new Map<string, RegionData>();
 
 const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "/site";
+
+interface PoiSearchResponse {
+  readonly pois: Poi[];
+  readonly warnings: readonly string[];
+  readonly sources: readonly SourceStatus[];
+  readonly maintenanceCatalog?: readonly MaintenanceCatalogProject[];
+}
+
+const POI_CATEGORY_PREDICATES = {
+  subway: (poi: Poi): poi is SubwayStation => poi.category === "subway",
+  school: (poi: Poi): poi is School => poi.category === "school",
+  park: (poi: Poi): poi is Park => poi.category === "park",
+  mountain: (poi: Poi): poi is Mountain => poi.category === "mountain",
+  apartment: (poi: Poi): poi is Apartment => poi.category === "apartment",
+  officetel: (poi: Poi): poi is Officetel => poi.category === "officetel",
+  residential: (poi: Poi): poi is ResidentialOther => poi.category === "residential",
+  maintenance: (poi: Poi): poi is MaintenanceProject => poi.category === "maintenance",
+} as const;
+
+function selectPois<Selection extends Poi>(
+  pois: readonly Poi[],
+  predicate: (poi: Poi) => poi is Selection,
+): Selection[] {
+  const selected: Selection[] = [];
+  for (const poi of pois) if (predicate(poi)) selected.push(poi);
+  return selected;
+}
 
 export function resolvePath(path: string): string {
   if (typeof window === "undefined") return path;
@@ -120,9 +148,23 @@ export async function loadDynamicRegion(
   });
 
   const [poiResponse, routeResponse] = await Promise.all([
-    fetchJson<{ pois: Poi[]; warnings: string[]; sources: SourceStatus[] }>(
+    fetchJson<PoiSearchResponse>(
       `/api/poi-search?${poiParams.toString()}${refreshQs}`
-    ),
+    ).catch(() => ({
+      pois: [],
+      warnings: [],
+      sources: [
+        { source: "osm", status: "failed", fetchedAt: null },
+        { source: "park", status: "failed", fetchedAt: null },
+        { source: "residential", status: "failed", fetchedAt: null },
+        { source: "planned-residential", status: "failed", fetchedAt: null },
+        { source: "maintenance_attributes", status: "failed", fetchedAt: null },
+        { source: "maintenance_boundaries", status: "failed", fetchedAt: null },
+        { source: "maintenance_seoul", status: "failed", fetchedAt: null },
+        { source: "maintenance_busan", status: "failed", fetchedAt: null },
+      ],
+      maintenanceCatalog: [],
+    } satisfies PoiSearchResponse)),
     fetchJson<{ routes: SubwayRoute[]; source: SourceStatus }>(
       `/api/subway-routes?${routeParams.toString()}${refreshQs}`
     ).catch(
@@ -145,14 +187,15 @@ export async function loadDynamicRegion(
       centerLng: lng,
       radiusKm,
     },
-    subwayStations: poiResponse.pois.filter((poi): poi is SubwayStation => poi.category === "subway"),
-    schools: poiResponse.pois.filter((poi): poi is School => poi.category === "school"),
-    parks: poiResponse.pois.filter((poi): poi is Park => poi.category === "park"),
-    mountains: poiResponse.pois.filter((poi): poi is Mountain => poi.category === "mountain"),
-    apartments: poiResponse.pois.filter((poi): poi is Apartment => poi.category === "apartment"),
-    officetels: poiResponse.pois.filter((poi): poi is Officetel => poi.category === "officetel"),
-    residentialOthers: poiResponse.pois.filter((poi): poi is ResidentialOther => poi.category === "residential"),
-    maintenanceProjects: poiResponse.pois.filter((poi): poi is MaintenanceProject => poi.category === "maintenance"),
+    subwayStations: selectPois(poiResponse.pois, POI_CATEGORY_PREDICATES.subway),
+    schools: selectPois(poiResponse.pois, POI_CATEGORY_PREDICATES.school),
+    parks: selectPois(poiResponse.pois, POI_CATEGORY_PREDICATES.park),
+    mountains: selectPois(poiResponse.pois, POI_CATEGORY_PREDICATES.mountain),
+    apartments: selectPois(poiResponse.pois, POI_CATEGORY_PREDICATES.apartment),
+    officetels: selectPois(poiResponse.pois, POI_CATEGORY_PREDICATES.officetel),
+    residentialOthers: selectPois(poiResponse.pois, POI_CATEGORY_PREDICATES.residential),
+    maintenanceProjects: selectPois(poiResponse.pois, POI_CATEGORY_PREDICATES.maintenance),
+    maintenanceCatalog: poiResponse.maintenanceCatalog ?? [],
     subwayRoutes: routeResponse.routes,
     sourceStatuses: [...poiResponse.sources, routeResponse.source],
   };
@@ -172,7 +215,13 @@ export async function reloadSource(
   lng: number,
   radiusKm: number,
   source: PoiSourceId,
-): Promise<{ pois: Poi[]; routes?: SubwayRoute[]; status: SourceStatus; allSources?: SourceStatus[] }> {
+): Promise<{
+  readonly pois: readonly Poi[];
+  readonly routes?: readonly SubwayRoute[];
+  readonly status: SourceStatus;
+  readonly allSources?: readonly SourceStatus[];
+  readonly maintenanceCatalog: readonly MaintenanceCatalogProject[];
+}> {
   const radiusM = Math.round(radiusKm * 1000);
 
   if (source === "subway-routes") {
@@ -181,15 +230,25 @@ export async function reloadSource(
     const res = await fetchJson<{ routes: SubwayRoute[]; source: SourceStatus }>(
       `/api/subway-routes?lat=${lat}&lng=${lng}&radius=${routeRadiusM}&refresh=true`
     );
-    return { pois: [], routes: res.routes, status: res.source };
+    return { pois: [], routes: res.routes, status: res.source, maintenanceCatalog: [] };
   }
 
   const cats = POI_SOURCE_CATEGORIES[source].join(",");
-  const res = await fetchJson<{ pois: Poi[]; sources: SourceStatus[] }>(
+  const res = await fetchJson<PoiSearchResponse>(
     `/api/poi-search?lat=${lat}&lng=${lng}&radius=${radiusM}&categories=${cats}&refresh=true`
-  );
+  ).catch(() => ({
+    pois: [],
+    warnings: [],
+    sources: [{ source, status: "failed", fetchedAt: null }],
+    maintenanceCatalog: [],
+  } satisfies PoiSearchResponse));
   const status = res.sources.find((s) => s.source === source) ?? { source, status: "failed" as const, fetchedAt: null };
-  return { pois: res.pois, status, allSources: res.sources };
+  return {
+    pois: res.pois,
+    status,
+    allSources: res.sources,
+    maintenanceCatalog: res.maintenanceCatalog ?? [],
+  };
 }
 
 export function clearDynamicRegionCache(): void {

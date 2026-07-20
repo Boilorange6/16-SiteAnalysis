@@ -2,7 +2,17 @@ export type PoiCategory = "subway" | "school" | "park" | "mountain" | "apartment
 
 /** 외부 데이터 소스 식별자 (1단계 데이터 신뢰성) */
 export type PoiSourceId =
-  | "osm" | "park" | "maintenance" | "residential" | "planned-residential" | "subway-routes";
+  | "osm"
+  | "park"
+  | "maintenance"
+  | "maintenance_attributes"
+  | "maintenance_boundaries"
+  | "maintenance_seoul"
+  | "maintenance_busan"
+  | "residential"
+  | "planned-residential"
+  | "subway-routes"
+  | "rail-network";
 
 export interface SourceStatus {
   readonly source: PoiSourceId;
@@ -16,18 +26,28 @@ export const POI_SOURCE_CATEGORIES: Record<PoiSourceId, readonly PoiCategory[]> 
   osm: ["subway", "school", "mountain"],
   park: ["park"],
   maintenance: ["maintenance"],
+  maintenance_attributes: ["maintenance"],
+  maintenance_boundaries: ["maintenance"],
+  maintenance_seoul: ["maintenance"],
+  maintenance_busan: ["maintenance"],
   residential: ["apartment", "officetel", "residential"],
   "planned-residential": ["apartment", "officetel", "residential"],
   "subway-routes": ["subway"],
+  "rail-network": ["subway"],
 };
 
 export const POI_SOURCE_LABELS: Record<PoiSourceId, string> = {
   osm: "지하철역·학교·산",
   park: "공원",
   maintenance: "정비사업",
+  maintenance_attributes: "국토부 전국 정비사업",
+  maintenance_boundaries: "국토부 정비구역 경계",
+  maintenance_seoul: "서울 정비사업 상세",
+  maintenance_busan: "부산 정비사업 상세",
   residential: "주거 단지",
   "planned-residential": "분양 예정",
   "subway-routes": "지하철 노선",
+  "rail-network": "철도 노선",
 };
 
 export interface PoiBase {
@@ -127,8 +147,40 @@ export type MaintenanceStage =
   | "준공"
   | "미확인";
 
-export type MaintenanceBoundaryStatus = "confirmed" | "unavailable";
-export type MaintenanceSource = "seoul_open_data" | "busan_data_go_kr";
+export type MaintenanceBoundary =
+  | {
+      readonly type: "Polygon";
+      readonly coordinates: readonly (readonly (readonly [number, number])[])[];
+    }
+  | {
+      readonly type: "MultiPolygon";
+      readonly coordinates: readonly (readonly (readonly (readonly [number, number])[])[])[];
+    };
+
+export type MaintenanceBoundaryStatus = "confirmed" | "unmatched" | "unavailable";
+export type MaintenanceSource =
+  | "molit_integrated"
+  | "public_standard"
+  | "molit_spatial"
+  | "seoul_open_data"
+  | "busan_data_go_kr";
+
+export interface MaintenanceCatalogProject {
+  readonly id: string;
+  readonly name: string;
+  readonly sido: string;
+  readonly sigungu: string;
+  readonly type: string;
+  readonly stage: MaintenanceStage;
+  readonly source: MaintenanceSource;
+  readonly source_updated_at?: string;
+  readonly implementer?: string;
+  readonly planned_households?: number;
+  readonly area_sqm?: number;
+  readonly designation_date?: string;
+  readonly management_agency?: string;
+  readonly spatial_status: "not_located";
+}
 
 export interface MaintenanceProject extends PoiBase {
   readonly category: "maintenance";
@@ -136,15 +188,24 @@ export interface MaintenanceProject extends PoiBase {
   readonly stage: MaintenanceStage;
   readonly address: string;
   readonly area_sqm: number;
-  readonly boundary?: readonly [number, number][];
+  readonly boundary?: MaintenanceBoundary;
   readonly notice_code?: string;
   readonly notice_url?: string;
   readonly source: MaintenanceSource;
+  readonly source_updated_at?: string;
   readonly boundary_status: MaintenanceBoundaryStatus;
+  readonly boundary_source_url?: string;
+  readonly boundary_source_id?: string;
+  readonly boundary_retrieved_at?: string;
+  readonly boundary_original_crs?: string;
   readonly distance_m?: number;
+  readonly implementer?: string;
   readonly planned_households?: number;
   readonly floor_area_ratio?: number;
   readonly building_coverage_ratio?: number;
+  readonly designation_date?: string;
+  readonly land_use_zone?: string;
+  readonly management_agency?: string;
   readonly contractor?: string;
   readonly architect?: string;
   readonly union_members?: number;
@@ -204,6 +265,7 @@ export interface RegionData {
   readonly officetels: readonly Officetel[];
   readonly residentialOthers: readonly ResidentialOther[];
   readonly maintenanceProjects: readonly MaintenanceProject[];
+  readonly maintenanceCatalog: readonly MaintenanceCatalogProject[];
   readonly subwayRoutes: readonly SubwayRoute[];
   /** 1단계 데이터 신뢰성: 소스별 수집 상태(fresh/cached/failed) — 사이드바 재시도 UI(Task 6)에서 사용 */
   readonly sourceStatuses: readonly SourceStatus[];

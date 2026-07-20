@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "tsc --noEmit",
+    "test:maintenance": "tsx src/scripts/test-maintenance-contracts.mjs",
     "test": "node src/scripts/test-analysis-engine.mjs && node src/scripts/test-cheongwadae.mjs && node qa/validate-cheongwadae-deliverable.mjs && node src/scripts/verify-subway-coords.mjs && node qa/validate-enhancement-features.mjs && node qa/validate-ppt-presets.mjs"
   },
   "dependencies": {

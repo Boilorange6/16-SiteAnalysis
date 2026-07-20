@@ -20,6 +20,7 @@ import { haversineDistance } from "@/lib/geo";
 import { clusterPois } from "@/lib/poi-clusters";
 import { formatAreaSqm, formatDistanceM } from "@/lib/park-analysis";
 import { formatMaintenanceArea } from "@/lib/maintenance-analysis";
+import { boundaryToLeafletLatLngs } from "@/lib/maintenance-map-utils";
 import {
   findStationRoutes,
   createClusterIcon,
@@ -1037,9 +1038,9 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
     }
 
     for (const project of visiblePois.filter((poi): poi is MaintenanceProject => poi.category === "maintenance")) {
-      if (!project.boundary || project.boundary.length < 3) continue;
+      if (!project.boundary) continue;
       markersLayer.addLayer(
-        L.polygon(project.boundary.map(([lat, lng]) => [lat, lng] as [number, number]), {
+        L.polygon(boundaryToLeafletLatLngs(project.boundary), {
           color: "#EC4899",
           weight: 2,
           fillColor: "#EC4899",
