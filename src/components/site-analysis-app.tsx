@@ -32,6 +32,7 @@ import {
   type AddressSearchResult,
 } from "@/lib/data-provider";
 import { haversineDistance } from "@/lib/geo";
+import { applyMaintenanceRetryResult } from "@/lib/maintenance-retry-state";
 import {
   buildInsightOverlays,
   computeAnalysisScores,
@@ -272,6 +273,10 @@ export default function SiteAnalysisApp() {
         }
 
         const cats = POI_SOURCE_CATEGORIES[source];
+        if (cats.includes("maintenance")) {
+          return applyMaintenanceRetryResult(prev, r);
+        }
+
         return {
           ...prev,
           subwayStations: cats.includes("subway")
@@ -295,9 +300,6 @@ export default function SiteAnalysisApp() {
           residentialOthers: cats.includes("residential")
             ? r.pois.filter((p): p is ResidentialOther => p.category === "residential")
             : prev.residentialOthers,
-          maintenanceProjects: cats.includes("maintenance")
-            ? r.pois.filter((p): p is MaintenanceProject => p.category === "maintenance")
-            : prev.maintenanceProjects,
           sourceStatuses,
         };
       });

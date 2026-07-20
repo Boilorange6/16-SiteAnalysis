@@ -14,7 +14,7 @@ import type {
   MaintenanceCatalogProject,
   MaintenanceProject,
 } from "./types";
-import { POI_SOURCE_CATEGORIES } from "./types";
+import { MAINTENANCE_SOURCE_IDS, POI_SOURCE_CATEGORIES } from "./types";
 import type {
   AnalysisProjectPayload,
   AnalysisProjectRecord,
@@ -234,21 +234,19 @@ export async function reloadSource(
   }
 
   const cats = POI_SOURCE_CATEGORIES[source].join(",");
+  const retriesMaintenance = source === "maintenance" || MAINTENANCE_SOURCE_IDS.some((id) => id === source);
   const res = await fetchJson<PoiSearchResponse>(
     `/api/poi-search?lat=${lat}&lng=${lng}&radius=${radiusM}&categories=${cats}&refresh=true`
   ).catch(() => ({
     pois: [],
     warnings: [],
-    sources: [{ source, status: "failed", fetchedAt: null }],
+    sources: retriesMaintenance
+      ? MAINTENANCE_SOURCE_IDS.map((maintenanceSource): SourceStatus => ({ source: maintenanceSource, status: "failed", fetchedAt: null }))
+      : [{ source, status: "failed", fetchedAt: null }],
     maintenanceCatalog: [],
   } satisfies PoiSearchResponse));
   const status = res.sources.find((s) => s.source === source) ?? { source, status: "failed" as const, fetchedAt: null };
-  return {
-    pois: res.pois,
-    status,
-    allSources: res.sources,
-    maintenanceCatalog: res.maintenanceCatalog ?? [],
-  };
+  return { pois: res.pois, status, allSources: res.sources, maintenanceCatalog: res.maintenanceCatalog ?? [] };
 }
 
 export function clearDynamicRegionCache(): void {

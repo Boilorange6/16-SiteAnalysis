@@ -14,6 +14,13 @@ export type PoiSourceId =
   | "subway-routes"
   | "rail-network";
 
+export const MAINTENANCE_SOURCE_IDS = [
+  "maintenance_attributes",
+  "maintenance_boundaries",
+  "maintenance_seoul",
+  "maintenance_busan",
+] as const;
+
 export interface SourceStatus {
   readonly source: PoiSourceId;
   /** "fresh"=방금 수집, "cached"=저장본 사용, "failed"=수집 실패·저장본도 없음 */
