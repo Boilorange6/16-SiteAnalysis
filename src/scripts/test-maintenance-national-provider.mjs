@@ -103,13 +103,14 @@ assert.deepEqual(officialStandardRow, {
   type: "미확인",
   stage: "관리처분",
   planned_households: 1560,
+  area_sqm: 279.5,
   land_use_zone: "제3종일반주거지역",
   building_coverage_ratio: 59.8,
-  floor_area_ratio: 279.5,
   designation_date: "2024-01-31",
   management_agency: "부산광역시 동래구",
   source_updated_at: "2026-03-06",
 });
+assert.equal(officialStandardRow?.floor_area_ratio, undefined);
 
 assert.equal(normalizeIntegratedRow({ 시도: "서울특별시", 구역명: "누락" }), null);
 assert.equal(normalizeStandardRow({ 시군구명: "종로구", 정비구역명: "누락" }), null);
