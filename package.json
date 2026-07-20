@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "tsc --noEmit",
     "build:maintenance-boundaries": "tsx src/scripts/build-maintenance-boundaries.mjs",
-    "test:maintenance": "tsx src/scripts/test-maintenance-contracts.mjs && tsx src/scripts/test-maintenance-national-provider.mjs && tsx src/scripts/test-poi-cache.mjs && tsx src/scripts/test-maintenance-boundary-build.mjs && tsx src/scripts/test-maintenance-boundary-safety.mjs && tsx src/scripts/test-maintenance-boundary-store.mjs && tsx src/scripts/test-maintenance-merge.mjs && tsx src/scripts/test-maintenance-orchestration.mjs",
+    "test:maintenance": "tsx src/scripts/test-maintenance-contracts.mjs && tsx src/scripts/test-maintenance-national-provider.mjs && tsx src/scripts/test-poi-cache.mjs && tsx src/scripts/test-maintenance-boundary-build.mjs && tsx src/scripts/test-maintenance-boundary-safety.mjs && tsx src/scripts/test-maintenance-boundary-store.mjs && tsx src/scripts/test-maintenance-merge.mjs && tsx src/scripts/test-maintenance-orchestration.mjs && tsx src/scripts/test-maintenance-ui-model.mjs",
     "test": "node src/scripts/test-analysis-engine.mjs && node src/scripts/test-cheongwadae.mjs && node qa/validate-cheongwadae-deliverable.mjs && node src/scripts/verify-subway-coords.mjs && node qa/validate-enhancement-features.mjs && node qa/validate-ppt-presets.mjs"
   },
   "dependencies": {

@@ -1,0 +1,34 @@
+{
+  "locations": [
+    {
+      "slug": "seoul",
+      "geometry": "hole"
+    },
+    {
+      "slug": "busan",
+      "geometry": "multi"
+    },
+    {
+      "slug": "daejeon",
+      "geometry": "polygon"
+    }
+  ],
+  "viewports": [
+    "1440x1000",
+    "390x844"
+  ],
+  "verified": [
+    "polygon",
+    "hole",
+    "multipolygon",
+    "unmatched",
+    "unavailable-point-only",
+    "popup",
+    "catalog-no-focus",
+    "retry-rest-mid-settled",
+    "keyboard-focus",
+    "CJK",
+    "no-horizontal-overflow",
+    "no-service-key-url"
+  ]
+}

@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 
+const reactDevScriptOrigin = process.env.NODE_ENV === "development" ? " https://unpkg.com" : "";
+
 const nextConfig: NextConfig = {
   output: "standalone",
   basePath: "/site",
@@ -17,7 +19,7 @@ const nextConfig: NextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+              `script-src 'self' 'unsafe-inline' 'unsafe-eval'${reactDevScriptOrigin}`,
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://tile.openstreetmap.org https://server.arcgisonline.com https://*.basemaps.cartocdn.com https://*.tile.opentopomap.org",
               "connect-src 'self' https://overpass-api.de https://lz4.overpass-api.de https://maps.apigw.ntruss.com https://apis.data.go.kr https://openapi.naver.com https://server.arcgisonline.com https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org https://*.tile.opentopomap.org",

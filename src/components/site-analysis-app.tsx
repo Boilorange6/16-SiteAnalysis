@@ -524,6 +524,7 @@ export default function SiteAnalysisApp() {
         config={config}
         layers={layers}
         pois={poisInRange}
+        maintenanceCatalog={regionData?.maintenanceCatalog ?? []}
         apartmentFilter={apartmentFilter}
         exporting={exporting}
         loading={loading}

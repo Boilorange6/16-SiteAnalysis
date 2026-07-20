@@ -19,8 +19,10 @@ import { THEME_COLORS } from "@/lib/types";
 import { haversineDistance } from "@/lib/geo";
 import { clusterPois } from "@/lib/poi-clusters";
 import { formatAreaSqm, formatDistanceM } from "@/lib/park-analysis";
-import { formatMaintenanceArea } from "@/lib/maintenance-analysis";
-import { boundaryToLeafletLatLngs } from "@/lib/maintenance-map-utils";
+import {
+  boundaryToLeafletLatLngs,
+  buildMaintenancePopupHtml,
+} from "@/lib/maintenance-map-utils";
 import {
   findStationRoutes,
   createClusterIcon,
@@ -286,34 +288,6 @@ function buildParkPopupHtml(park: Park): string {
       ${row("보유시설", escapePopupHtml(facilities))}
       ${park.address ? row("주소", escapePopupHtml(park.address)) : ""}
       ${row("출처", sourceLabel)}
-    </table>
-  </div>`;
-}
-
-function buildMaintenancePopupHtml(project: MaintenanceProject): string {
-  const row = (label: string, value: string) =>
-    `<tr><td style="color:#64748b;padding:3px 12px 3px 0;font-size:12px;white-space:nowrap">${label}</td><td style="font-weight:600;font-size:12px">${value}</td></tr>`;
-  const link = (href: string, label: string) =>
-    `<a href="${escapePopupHtml(href)}" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:underline;font-weight:700">${label}</a>`;
-  const sourceLabel = project.source === "seoul_open_data" ? "서울 열린데이터광장" : "부산 정비사업 API";
-  const optionalRows = [
-    project.planned_households ? row("계획세대수", `${project.planned_households.toLocaleString()}세대`) : "",
-    project.floor_area_ratio ? row("용적률", `${project.floor_area_ratio}%`) : "",
-    project.building_coverage_ratio ? row("건폐율", `${project.building_coverage_ratio}%`) : "",
-    project.contractor ? row("시공자", escapePopupHtml(project.contractor)) : "",
-    project.architect ? row("설계자", escapePopupHtml(project.architect)) : "",
-  ].join("");
-  return `<div style="font-family:'Noto Sans KR',system-ui,sans-serif;min-width:220px">
-    <div style="font-weight:800;font-size:13px;margin-bottom:6px;color:#DB2777;line-height:1.4">${escapePopupHtml(project.name)}</div>
-    <table style="width:100%;border-collapse:collapse">
-      ${row("유형", escapePopupHtml(project.type || "정비사업"))}
-      ${row("단계", escapePopupHtml(project.stage))}
-      ${row("면적", project.area_sqm > 0 ? formatMaintenanceArea(project.area_sqm) : "미확인")}
-      ${row("주소/위치", escapePopupHtml(project.address || "미확인"))}
-      ${project.notice_code ? row("고시관리코드", escapePopupHtml(project.notice_code)) : ""}
-      ${optionalRows}
-      ${row("경계", project.boundary_status === "confirmed" ? "공식 경계 확인" : "경계 미확인")}
-      ${row("출처", project.notice_url ? link(project.notice_url, sourceLabel) : sourceLabel)}
     </table>
   </div>`;
 }
@@ -845,9 +819,12 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
     // OSM 오버레이가 지하철 역 마커를 자체적으로 그리므로, 기본 스타일의 개별 지하철 핀 마커와
     // 겹치지 않도록 클러스터링 대상에서도 제외한다 (이중 표시 방지).
     const skipDefaultSubwayMarkers = layers.subway && Boolean(subwayMapData);
+    const pointMarkerPois = visiblePois.filter(
+      (poi) => poi.category !== "maintenance" || poi.boundary_status === "unavailable",
+    );
     const clusterablePois = naverSubway || skipDefaultSubwayMarkers
-      ? visiblePois.filter(p => p.category !== "subway")
-      : visiblePois;
+      ? pointMarkerPois.filter((poi) => poi.category !== "subway")
+      : pointMarkerPois;
     const markerSize = MARKER_SIZE_PRESETS[markerSizePreset];
     const stationBarWidth = subwayStationStyle.barWidthPx;
     const stationBorderWidth = stationBarWidth + Math.max(4, Math.round(stationBarWidth * 0.4));
@@ -1038,15 +1015,15 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
     }
 
     for (const project of visiblePois.filter((poi): poi is MaintenanceProject => poi.category === "maintenance")) {
-      if (!project.boundary) continue;
+      if (!project.boundary || project.boundary_status === "unavailable") continue;
       markersLayer.addLayer(
         L.polygon(boundaryToLeafletLatLngs(project.boundary), {
           color: "#EC4899",
           weight: 2,
           fillColor: "#EC4899",
-          fillOpacity: 0.16,
-          opacity: 0.75,
-          dashArray: "6 4",
+          fillOpacity: project.boundary_status === "confirmed" ? 0.16 : 0.08,
+          opacity: project.boundary_status === "confirmed" ? 0.85 : 0.72,
+          dashArray: project.boundary_status === "unmatched" ? "7 5" : undefined,
         }).bindPopup(buildMaintenancePopupHtml(project), { maxWidth: 320 })
       );
     }

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Noto_Sans_KR } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 
 const notoSansKr = Noto_Sans_KR({
@@ -26,10 +27,28 @@ export default function RootLayout({
 }: {
   readonly children: React.ReactNode;
 }) {
+  const enableReactDevTools =
+    process.env.NODE_ENV === "development" &&
+    process.env.NEXT_PUBLIC_DISABLE_REACT_DEVTOOLS !== "1";
+
   return (
     <html lang="ko" className={notoSansKr.variable}>
       <head>
         <meta charSet="utf-8" />
+        {enableReactDevTools && (
+          <>
+            <Script
+              src="//unpkg.com/react-grab/dist/index.global.js"
+              crossOrigin="anonymous"
+              strategy="beforeInteractive"
+            />
+            <Script
+              src="//unpkg.com/react-scan/dist/auto.global.js"
+              crossOrigin="anonymous"
+              strategy="beforeInteractive"
+            />
+          </>
+        )}
       </head>
       <body className="antialiased" suppressHydrationWarning>
         <AuthProvider>{children}</AuthProvider>

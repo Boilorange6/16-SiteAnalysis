@@ -7,6 +7,7 @@ import { reverseGeocodeName } from "@/lib/data-provider";
 import type {
   AnalysisConfig,
   LayerVisibility,
+  MaintenanceCatalogProject,
   MaintenanceProject,
   Park,
   Poi,
@@ -17,11 +18,11 @@ import type {
 } from "@/lib/types";
 import { CATEGORY_COLORS, CATEGORY_LABELS, POI_SOURCE_LABELS } from "@/lib/types";
 import { formatAreaSqm, formatDistanceM, summarizeParks } from "@/lib/park-analysis";
-import { formatMaintenanceArea, summarizeMaintenanceProjects } from "@/lib/maintenance-analysis";
 import type { AnalysisScores, InsightNarrative, InsightOverlay } from "@/lib/analysis-engine";
 import type { AnalysisProjectSummary, ApiKeyStatusResponse } from "@/lib/project-types";
 import AddressSearchInput from "./address-search-input";
 import UserMenu from "./user-menu";
+import MaintenanceSidebarPanel from "./maintenance-sidebar-panel";
 
 export interface ApartmentFilter {
   readonly enabled: boolean;
@@ -34,6 +35,7 @@ interface SidebarProps {
   readonly config: AnalysisConfig;
   readonly layers: LayerVisibility;
   readonly pois: readonly Poi[];
+  readonly maintenanceCatalog: readonly MaintenanceCatalogProject[];
   readonly apartmentFilter: ApartmentFilter;
   readonly exporting: boolean;
   readonly loading: boolean;
@@ -148,6 +150,7 @@ export default function Sidebar({
   config,
   layers,
   pois,
+  maintenanceCatalog,
   apartmentFilter,
   exporting,
   loading,
@@ -259,7 +262,6 @@ export default function Sidebar({
   const parks = pois.filter((poi): poi is Park => poi.category === "park");
   const parkSummary = summarizeParks(parks);
   const maintenanceProjects = pois.filter((poi): poi is MaintenanceProject => poi.category === "maintenance");
-  const maintenanceSummary = summarizeMaintenanceProjects(maintenanceProjects);
   const totalPoiCount = Object.values(counts).reduce((sum, count) => sum + count, 0);
   const hasAnalysisContext = hasSearched || loading || Boolean(loadError);
   const hasAnalysisResult = hasAnalysisContext && canExport;
@@ -491,7 +493,7 @@ export default function Sidebar({
                     <span className="text-white/70">{POI_SOURCE_LABELS[s.source]}</span>
                     {s.status === "failed" ? (
                       <span className="flex items-center gap-1.5">
-                        <span className="text-amber-300">⚠️ 수집 실패</span>
+                        <span className="text-amber-300">수집 실패</span>
                         <button
                           type="button"
                           disabled={retryingSource === s.source}
@@ -659,25 +661,7 @@ export default function Sidebar({
         </div>
       </PanelCard>
 
-      <PanelCard>
-        <SectionHeader title="개발/정비사업" eyebrow="Pipeline" />
-        <div className="grid grid-cols-3 gap-2">
-          <MetricTile label="사업" value={maintenanceSummary.count} tone="text-[#EC4899]" />
-          <MetricTile label="총 면적" value={formatMaintenanceArea(maintenanceSummary.totalAreaSqm)} tone="text-[#EC4899]" />
-          <MetricTile label="경계확인" value={maintenanceSummary.boundaryConfirmedCount} tone="text-[#EC4899]" />
-        </div>
-        <div className="mt-3 space-y-1 text-[11px] leading-5 text-white/60">
-          {maintenanceSummary.topProjects.length > 0 ? (
-            maintenanceSummary.topProjects.slice(0, 3).map((project) => (
-              <p key={project.id} className="truncate">
-                {project.name} · {project.stage} · {project.boundary_status === "confirmed" ? "경계확인" : "경계미확인"}
-              </p>
-            ))
-          ) : (
-            <p>반경 내 정비사업 미확인</p>
-          )}
-        </div>
-      </PanelCard>
+      <MaintenanceSidebarPanel projects={maintenanceProjects} catalog={maintenanceCatalog} />
 
       <PanelCard>
         <SectionHeader title="주거시설" eyebrow="Residential" />

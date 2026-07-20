@@ -4,9 +4,12 @@ import { isRawPoiId } from "./poi-id-guard";
 export interface MaintenanceSummary {
   readonly count: number;
   readonly totalAreaSqm: number;
+  readonly totalPlannedHouseholds: number;
   readonly boundaryConfirmedCount: number;
-  readonly typeCounts: Record<string, number>;
-  readonly stageCounts: Record<MaintenanceStage, number>;
+  readonly boundaryUnmatchedCount: number;
+  readonly boundaryUnavailableCount: number;
+  readonly typeCounts: Readonly<Record<string, number>>;
+  readonly stageCounts: Readonly<Record<MaintenanceStage, number>>;
   readonly topProjects: readonly MaintenanceProject[];
 }
 
@@ -52,7 +55,13 @@ export function summarizeMaintenanceProjects(projects: readonly MaintenanceProje
   return {
     count: projects.length,
     totalAreaSqm: projects.reduce((sum, project) => sum + Math.max(0, project.area_sqm || 0), 0),
+    totalPlannedHouseholds: projects.reduce(
+      (sum, project) => sum + Math.max(0, project.planned_households || 0),
+      0,
+    ),
     boundaryConfirmedCount: projects.filter((project) => project.boundary_status === "confirmed").length,
+    boundaryUnmatchedCount: projects.filter((project) => project.boundary_status === "unmatched").length,
+    boundaryUnavailableCount: projects.filter((project) => project.boundary_status === "unavailable").length,
     typeCounts,
     stageCounts,
     topProjects,
@@ -72,7 +81,7 @@ export function buildMaintenanceDetailLines(projects: readonly MaintenanceProjec
   const lines = [
     `정비사업 ${summary.count}건${summary.totalAreaSqm > 0 ? `, 총 ${formatMaintenanceArea(summary.totalAreaSqm)}` : ""}`,
     typeSummary ? `유형: ${typeSummary}` : "유형: 미확인",
-    `경계 확인 ${summary.boundaryConfirmedCount}건 / 미확인 ${summary.count - summary.boundaryConfirmedCount}건`,
+    `경계 확인 ${summary.boundaryConfirmedCount}건 / 미결합 ${summary.boundaryUnmatchedCount}건 / 미확인 ${summary.boundaryUnavailableCount}건`,
   ];
 
   for (const project of summary.topProjects) {
