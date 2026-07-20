@@ -58,6 +58,59 @@ assert.deepEqual(
   },
 );
 
+const officialIntegratedRow = normalizeIntegratedRow({
+  시도: "인천광역시",
+  시군구: "미추홀구",
+  구역명칭: "주안4구역",
+  "현 사업추진단계": "사업시행인가",
+  사업유형: "주택 재개발",
+  사업시행자: "주안4구역 주택재개발정비사업조합",
+  "공급 예정 세대수": "2,345",
+  데이터기준일자: "2026-03-05",
+});
+assert.deepEqual(officialIntegratedRow, {
+  source_record_id: "인천광역시|미추홀구|주안4구역",
+  source: "molit_integrated",
+  sido: "인천광역시",
+  sigungu: "미추홀구",
+  name: "주안4구역",
+  type: "재개발",
+  stage: "사업시행인가",
+  implementer: "주안4구역 주택재개발정비사업조합",
+  planned_households: 2345,
+  source_updated_at: "2026-03-05",
+});
+
+const officialStandardRow = normalizeStandardRow({
+  ZONE_NM: "사직2구역",
+  CTPV_NM: "부산광역시",
+  SGG_NM: "동래구",
+  USG_RGN: "제3종일반주거지역",
+  BDCVRT: "59.8",
+  GFA: "279.5",
+  PRGRS_STP_CN: "관리처분계획인가",
+  HH_CNT: "1,560",
+  DSGN_YMD: "20240131",
+  MNG_INST_NM: "부산광역시 동래구",
+  DATA_CRTR_YMD: "2026-03-06",
+});
+assert.deepEqual(officialStandardRow, {
+  source_record_id: "부산광역시|동래구|사직2구역",
+  source: "public_standard",
+  sido: "부산광역시",
+  sigungu: "동래구",
+  name: "사직2구역",
+  type: "미확인",
+  stage: "관리처분",
+  planned_households: 1560,
+  land_use_zone: "제3종일반주거지역",
+  building_coverage_ratio: 59.8,
+  floor_area_ratio: 279.5,
+  designation_date: "2024-01-31",
+  management_agency: "부산광역시 동래구",
+  source_updated_at: "2026-03-06",
+});
+
 assert.equal(normalizeIntegratedRow({ 시도: "서울특별시", 구역명: "누락" }), null);
 assert.equal(normalizeStandardRow({ 시군구명: "종로구", 정비구역명: "누락" }), null);
 
@@ -78,7 +131,10 @@ const httpClient = ky.create({
     if (isIntegrated) {
       const data = page === 1
         ? [
-            { 시도: "서울특별시", 시군구: "강남구", 구역명: "A" },
+            {
+              시도: "서울특별시", 시군구: "강남구", 구역명칭: "A",
+              "현사업추진단계": "조합설립인가", "공급예정세대수": "100",
+            },
             { 시도: "부산광역시", 시군구: "동구", 구역명: "B" },
           ]
         : [{ 시도: "대전광역시", 시군구: "동구", 구역명: "C" }];
@@ -93,7 +149,7 @@ const httpClient = ky.create({
         header: { resultCode: "00", resultMsg: "NORMAL SERVICE" },
         body: {
           totalCount: 1,
-          items: [{ 시도명: "광주광역시", 시군구명: "북구", 정비구역명: "D" }],
+          items: [{ CTPV_NM: "광주광역시", SGG_NM: "북구", ZONE_NM: "D" }],
         },
       },
     }), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -103,6 +159,11 @@ const httpClient = ky.create({
 const result = await fetchNationalMaintenanceAttributes({ serviceKey: "test", httpClient, pageSize: 2 });
 assert.equal(result.integrated.length, 3);
 assert.equal(result.standard.length, 1);
+assert.equal(result.integrated[0].name, "A");
+assert.equal(result.integrated[0].stage, "조합설립");
+assert.equal(result.integrated[0].planned_households, 100);
+assert.equal(result.standard[0].name, "D");
+assert.equal(result.standard[0].sido, "광주광역시");
 assert.deepEqual(requested, [
   { source: "integrated", page: 1, hasKey: true },
   { source: "integrated", page: 2, hasKey: true },
@@ -137,6 +198,21 @@ await assert.rejects(
     }),
   }),
   /UNREGISTERED KEY|XML/,
+);
+
+await assert.rejects(
+  () => fetchNationalMaintenanceAttributes({
+    serviceKey: "json-error",
+    httpClient: ky.create({
+      retry: 0,
+      timeout: 1_000,
+      fetch: async () => new Response(
+        JSON.stringify({ code: "30", msg: "SERVICE KEY IS NOT REGISTERED ERROR" }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    }),
+  }),
+  /SERVICE KEY|30/,
 );
 
 await assert.rejects(

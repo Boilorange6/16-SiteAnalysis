@@ -46,9 +46,11 @@ interface Aliases {
 
 const INTEGRATED_ALIASES: Aliases = {
   sido: ["시도", "시도명", "광역시도"], sigungu: ["시군구", "시군구명", "자치구"],
-  name: ["구역명", "정비구역명", "사업명"], recordId: ["사업번호", "정비사업코드", "구역코드", "관리번호"],
-  type: ["정비사업유형", "사업유형", "정비사업종류"], stage: ["추진단계", "사업단계", "진행단계"],
-  implementer: ["시행자", "사업시행자", "조합명"], households: ["예정세대수", "계획세대수", "세대수"],
+  name: ["구역명칭", "구역명", "정비구역명", "사업명"], recordId: ["사업번호", "정비사업코드", "구역코드", "관리번호"],
+  type: ["정비사업유형", "사업유형", "정비사업종류"],
+  stage: ["현 사업추진단계", "현사업추진단계", "추진단계", "사업단계", "진행단계"],
+  implementer: ["시행자", "사업시행자", "조합명"],
+  households: ["공급 예정 세대수", "공급예정세대수", "예정세대수", "계획세대수", "세대수"],
   area: ["정비구역면적", "구역면적", "면적"], landUseZone: ["용도지역", "토지이용구역"],
   coverageRatio: ["건폐율", "건폐율(%)"], floorAreaRatio: ["용적률", "용적률(%)"],
   designationDate: ["정비구역지정일자", "구역지정일", "지정일자"],
@@ -58,15 +60,20 @@ const INTEGRATED_ALIASES: Aliases = {
 };
 
 const STANDARD_ALIASES: Aliases = {
-  sido: ["시도명", "시도", "광역시도명"], sigungu: ["시군구명", "시군구", "자치구명"],
-  name: ["정비구역명", "구역명", "사업명"], recordId: ["정비사업코드", "정비구역코드", "관리번호"],
-  type: ["정비사업유형", "정비사업종류", "사업유형"], stage: ["추진단계", "사업단계", "진행단계"],
-  implementer: ["사업시행자", "시행자", "조합명"], households: ["계획세대수", "예정세대수", "세대수"],
-  area: ["정비구역면적", "구역면적", "면적"], landUseZone: ["용도지역", "토지이용구역"],
-  coverageRatio: ["건폐율", "건폐율(%)"], floorAreaRatio: ["용적률", "용적률(%)"],
-  designationDate: ["정비구역지정일자", "정비구역지정일", "지정일자"],
-  managementAgency: ["관리기관명", "관리기관", "담당기관"],
-  updatedAt: ["데이터기준일자", "기준일자", "최종수정일"],
+  sido: ["CTPV_NM", "시도명", "시도", "광역시도명"],
+  sigungu: ["SGG_NM", "시군구명", "시군구", "자치구명"],
+  name: ["ZONE_NM", "정비구역명", "구역명", "사업명"], recordId: ["정비사업코드", "정비구역코드", "관리번호"],
+  type: ["정비사업유형", "정비사업종류", "사업유형"],
+  stage: ["PRGRS_STP_CN", "추진단계", "사업단계", "진행단계"],
+  implementer: ["사업시행자", "시행자", "조합명"],
+  households: ["HH_CNT", "계획세대수", "예정세대수", "세대수"],
+  area: ["정비구역면적", "구역면적", "면적"],
+  landUseZone: ["USG_RGN", "용도지역", "토지이용구역"],
+  coverageRatio: ["BDCVRT", "건폐율", "건폐율(%)"],
+  floorAreaRatio: ["GFA", "용적률", "용적률(%)"],
+  designationDate: ["DSGN_YMD", "정비구역지정일자", "정비구역지정일", "지정일자"],
+  managementAgency: ["MNG_INST_NM", "관리기관명", "관리기관", "담당기관"],
+  updatedAt: ["DATA_CRTR_YMD", "데이터기준일자", "기준일자", "최종수정일"],
   lat: ["위도", "latitude", "LAT"], lng: ["경도", "longitude", "LNG"],
 };
 
