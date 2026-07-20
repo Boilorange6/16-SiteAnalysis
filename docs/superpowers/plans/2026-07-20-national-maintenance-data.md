@@ -101,6 +101,7 @@ git commit -m \"docs: 정비사업 데이터 운영 절차 추가\"
 **Files:**
 - Modify: `src/lib/types.ts`
 - Modify: `src/lib/data-provider.ts`
+- Create: `src/lib/maintenance-map-utils.ts`
 - Modify: `src/components/map-view.tsx`
 - Test: `src/scripts/test-maintenance-contracts.mjs`
 - Modify: `package.json`
@@ -126,6 +127,8 @@ for (const source of sources) {
 
 console.log(\"maintenance contracts: ok\");
 ```
+
+In the same RED phase, add Polygon and MultiPolygon fixtures that assert `boundaryToLeafletLatLngs` swaps every coordinate while preserving ring, hole, and part nesting.
 
 Add:
 
@@ -227,7 +230,7 @@ In `src/lib/data-provider.ts`:
 - default old saved payloads at load boundaries with `maintenanceCatalog ?? []`;
 - when any maintenance source is retried, replace the complete merged maintenance category rather than append duplicates.
 
-In `src/components/map-view.tsx`, update the existing boundary consumer in the same task that changes the public boundary type. Convert Polygon and MultiPolygon nested rings from `[lng, lat]` to Leaflet `[lat, lng]` with an exhaustive discriminant branch, preserving holes and parts. Task 7 may extract this conversion into `maintenance-map-utils.ts`; Task 1 must keep `npm run lint` green without a legacy single-ring union or temporary type escape hatch.
+Create `src/lib/maintenance-map-utils.ts` as the small pure conversion boundary and update `src/components/map-view.tsx` in the same task that changes the public boundary type. `boundaryToLeafletLatLngs` converts Polygon and MultiPolygon nested rings from `[lng, lat]` to Leaflet `[lat, lng]` with an exhaustive discriminant branch, preserving holes and parts. The oversized map component only imports and calls this helper; do not add conversion branches there. Task 1 must keep `npm run lint` green without a legacy single-ring union or temporary type escape hatch.
 
 - [ ] **Step 4: Verify and commit**
 
