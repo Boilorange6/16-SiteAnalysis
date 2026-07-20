@@ -1,18 +1,58 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-
 import JSZip from "jszip";
 import shapefile from "shapefile";
+import { z } from "zod";
 
 import {
   identifySupportedCrs,
   transformBoundaryFeature,
   validateArchiveMembers,
 } from "../lib/server/maintenance/boundary-build.ts";
+const provenanceCommon = z.object({
+  schema_version: z.literal(1),
+  retrieved_at: z.string().regex(/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2}))?$/),
+  source_updated_at: z.string().regex(/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2}))?$/).optional(),
+  source_url: z.string().url(),
+});
 
-const SOURCE_URL = "https://www.data.go.kr/data/15146864/fileData.do";
+const acquisitionMetadataSchema = z.union([
+  provenanceCommon.extend({ source_dataset_id: z.literal("30335"), source_layer: z.literal("UD602") }),
+  provenanceCommon.extend({ source_dataset_id: z.literal("30336"), source_layer: z.literal("UD501") }),
+]);
+
+export async function readAcquisitionMetadata({ archivePath }) {
+  const metadataPath = `${archivePath}.metadata.json`;
+  let bytes;
+  try {
+    bytes = await readFile(metadataPath);
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      throw new Error(`Missing acquisition metadata sidecar: ${metadataPath}`);
+    }
+    throw error;
+  }
+  let raw;
+  try {
+    raw = JSON.parse(bytes.toString("utf8"));
+  } catch (error) {
+    if (error instanceof SyntaxError) throw new Error(`Invalid acquisition metadata sidecar: ${metadataPath}`);
+    throw error;
+  }
+  const parsed = acquisitionMetadataSchema.safeParse(raw);
+  if (!parsed.success) throw new Error(`Invalid acquisition metadata sidecar: ${metadataPath}`);
+  return {
+    sourceUrl: parsed.data.source_url,
+    retrievedAt: parsed.data.retrieved_at,
+    sourceDatasetId: parsed.data.source_dataset_id,
+    sourceLayer: parsed.data.source_layer,
+    ...(parsed.data.source_updated_at ? { sourceUpdatedAt: parsed.data.source_updated_at } : {}),
+    metadataFile: basename(metadataPath),
+    metadataSha256: createHash("sha256").update(bytes).digest("hex"),
+  };
+}
 
 export function enforceOutputCountGate({ previousCount, nextCount, acceptLargeChange }) {
   if (previousCount === null) return false;
@@ -23,7 +63,21 @@ export function enforceOutputCountGate({ previousCount, nextCount, acceptLargeCh
   return ratio > 0.2 && acceptLargeChange;
 }
 
-export async function writeBoundaryArtifactsAtomically({ outputDirectory, geojson, metadata, quarantine }) {
+async function defaultPromote({ temporaryPath, finalPath }) {
+  await rename(temporaryPath, finalPath);
+}
+
+async function backupIfPresent({ finalPath, backupPath }) {
+  try {
+    await rename(finalPath, backupPath);
+    return true;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
+    throw error;
+  }
+}
+
+export async function writeBoundaryArtifactsAtomically({ outputDirectory, geojson, metadata, quarantine, promote = defaultPromote }) {
   await mkdir(outputDirectory, { recursive: true });
   const nonce = `${process.pid}-${Date.now()}`;
   const artifacts = [
@@ -34,13 +88,29 @@ export async function writeBoundaryArtifactsAtomically({ outputDirectory, geojso
   const temporary = artifacts.map(([name, value]) => ({
     finalPath: join(outputDirectory, name),
     temporaryPath: join(outputDirectory, `${name}.tmp-${nonce}`),
+    backupPath: join(outputDirectory, `${name}.backup-${nonce}`),
     value,
   }));
+  const backedUp = [];
   try {
     await Promise.all(temporary.map(({ temporaryPath, value }) => writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, "utf8")));
-    for (const artifact of temporary) await rename(artifact.temporaryPath, artifact.finalPath);
+    try {
+      for (const artifact of temporary) {
+        if (await backupIfPresent(artifact)) backedUp.push(artifact);
+      }
+    } catch (error) {
+      for (const artifact of backedUp.reverse()) await rename(artifact.backupPath, artifact.finalPath);
+      throw error;
+    }
+    try {
+      for (const [index, artifact] of temporary.entries()) await promote({ ...artifact, index });
+    } catch (error) {
+      await Promise.all(temporary.map(({ finalPath }) => rm(finalPath, { force: true })));
+      for (const artifact of backedUp) await rename(artifact.backupPath, artifact.finalPath);
+      throw error;
+    }
   } finally {
-    await Promise.all(temporary.map(({ temporaryPath }) => rm(temporaryPath, { force: true })));
+    await Promise.all(temporary.flatMap(({ temporaryPath, backupPath }) => [rm(temporaryPath, { force: true }), rm(backupPath, { force: true })]));
   }
 }
 
@@ -53,17 +123,6 @@ function parseArguments(argv) {
     if (value === "--output" && argv[index + 1]) options.output = argv[index += 1];
   }
   return options;
-}
-
-function sourceForLabel(label, retrievedAt, sourceUpdatedAt) {
-  const upper = label.toUpperCase();
-  if (upper.includes("30336") || upper.includes("UD501")) {
-    return { sourceUrl: SOURCE_URL, retrievedAt, sourceUpdatedAt, sourceDatasetId: "30336", sourceLayer: "UD501" };
-  }
-  if (upper.includes("30335") || upper.includes("UD602")) {
-    return { sourceUrl: SOURCE_URL, retrievedAt, sourceUpdatedAt, sourceDatasetId: "30335", sourceLayer: "UD602" };
-  }
-  throw new Error(`Cannot identify source dataset for ${label}; include 30335/UD602 or 30336/UD501 in the archive or layer name`);
 }
 
 function isBoundaryFeature(value) {
@@ -91,13 +150,13 @@ function mergeBbox(features) {
   ];
 }
 
-async function readArchive(archivePath, transformedAt) {
+async function readArchive(archivePath) {
   const bytes = await readFile(archivePath);
   const archiveSha = createHash("sha256").update(bytes).digest("hex");
+  const source = await readAcquisitionMetadata({ archivePath });
   const zip = await JSZip.loadAsync(bytes);
   const memberNames = Object.values(zip.files).filter((member) => !member.dir).map((member) => member.name);
   const layers = validateArchiveMembers(memberNames);
-  const archiveDate = (await stat(archivePath)).mtime.toISOString();
   const features = [];
   const quarantine = [];
   const crsCounts = {};
@@ -111,7 +170,6 @@ async function readArchive(archivePath, transformedAt) {
     const dbf = await zip.file(layer.dbf)?.async("uint8array");
     if (!shp || !dbf) throw new Error(`Missing SHP/DBF payload for ${layer.basename}`);
     const collection = await shapefile.read(shp, dbf, { encoding: "euc-kr" });
-    const source = sourceForLabel(`${basename(archivePath)} ${layer.basename}`, transformedAt.slice(0, 10), archiveDate);
     for (const rawFeature of collection.features) {
       inputCount += 1;
       if (!isBoundaryFeature(rawFeature)) {
@@ -123,7 +181,7 @@ async function readArchive(archivePath, transformedAt) {
       else features.push(result.feature);
     }
   }
-  return { archiveSha, archiveDate, inputCount, features, quarantine, crsCounts };
+  return { archiveSha, source, inputCount, features, quarantine, crsCounts };
 }
 
 export async function runBoundaryBuild({ inputDirectory, outputDirectory, acceptLargeChange, transformedAt = new Date().toISOString() }) {
@@ -139,7 +197,7 @@ export async function runBoundaryBuild({ inputDirectory, outputDirectory, accept
   const archives = entries.filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".zip")).map((entry) => join(inputDirectory, entry.name));
   if (archives.length === 0) throw new Error("No authorized maintenance SHP archives found");
   const results = [];
-  for (const archive of archives) results.push(await readArchive(archive, transformedAt));
+  for (const archive of archives) results.push(await readArchive(archive));
   const features = results.flatMap((result) => result.features);
   const quarantine = results.flatMap((result) => result.quarantine);
   const crsCounts = {};
@@ -149,10 +207,13 @@ export async function runBoundaryBuild({ inputDirectory, outputDirectory, accept
     nextCount: features.length,
     acceptLargeChange,
   });
-  const sourceDates = results.map((result) => result.archiveDate).sort();
+  const sourceDates = results.map((result) => result.source.sourceUpdatedAt).filter((value) => typeof value === "string").sort();
   const metadata = {
     schema_version: 1,
-    input_sha256: archives.map((archive, index) => ({ file: basename(archive), sha256: results[index].archiveSha })),
+    input_sha256: archives.flatMap((archive, index) => [
+      { file: basename(archive), sha256: results[index].archiveSha },
+      { file: results[index].source.metadataFile, sha256: results[index].source.metadataSha256 },
+    ]),
     input_feature_count: results.reduce((sum, result) => sum + result.inputCount, 0),
     output_feature_count: features.length,
     quarantined_feature_count: quarantine.length,

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { copyFile, mkdtemp, readFile, readdir, rename, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -11,6 +11,7 @@ import {
 } from "../lib/server/maintenance/boundary-build.ts";
 import {
   enforceOutputCountGate,
+  readAcquisitionMetadata,
   writeBoundaryArtifactsAtomically,
 } from "./build-maintenance-boundaries.mjs";
 
@@ -24,14 +25,13 @@ const source = {
 // Given: official Korean Central Belt CRS descriptions.
 // When: the CRS is identified.
 // Then: only supported EPSG codes are accepted.
-assert.equal(
-  identifySupportedCrs('PROJCS["Korea 2000 / Central Belt 2010",GEOGCS["GRS 1980"],AUTHORITY["EPSG","5186"]]'),
-  "EPSG:5186",
-);
-assert.equal(
-  identifySupportedCrs('PROJCS["Korean 1985 / Central Belt",GEOGCS["Korean 1985"],AUTHORITY["EPSG","2097"]]'),
-  "EPSG:2097",
-);
+const canonical5186 = 'PROJCS["KGD2002_Central_Belt_2010",GEOGCS["GCS_Korean_Geodetic_Datum_2002",DATUM["D_Korean_Geodetic_Datum_2002",SPHEROID["GRS_1980",6378137,298.257222101]],PROJECTION["Transverse_Mercator"],PARAMETER["False_Easting",200000],PARAMETER["False_Northing",600000],PARAMETER["Central_Meridian",127],PARAMETER["Scale_Factor",1],PARAMETER["Latitude_Of_Origin",38],UNIT["Meter",1],AUTHORITY["EPSG","5186"]]';
+const canonical2097 = 'PROJCS["Korean_1985_Central_Belt",GEOGCS["GCS_Korean_Datum_1985",DATUM["D_Korean_Datum_1985",SPHEROID["Bessel_1841",6377397.155,299.1528128]],PROJECTION["Transverse_Mercator"],PARAMETER["False_Easting",200000],PARAMETER["False_Northing",500000],PARAMETER["Central_Meridian",127.002890277778],PARAMETER["Scale_Factor",1],PARAMETER["Latitude_Of_Origin",38],UNIT["Meter",1],AUTHORITY["EPSG","2097"]]';
+assert.equal(identifySupportedCrs(canonical5186), "EPSG:5186");
+assert.equal(identifySupportedCrs(canonical2097), "EPSG:2097");
+assert.equal(identifySupportedCrs("EPSG:5186"), "EPSG:5186");
+assert.throws(() => identifySupportedCrs(canonical5186.replace('PARAMETER["False_Northing",600000]', 'PARAMETER["False_Northing",500000]')), /Unsupported CRS/);
+assert.throws(() => identifySupportedCrs(canonical2097.replace('SPHEROID["Bessel_1841",6377397.155,299.1528128]', 'SPHEROID["GRS_1980",6378137,298.257222101]')), /Unsupported CRS/);
 assert.throws(() => identifySupportedCrs('PROJCS["Unknown local grid"]'), /Unsupported CRS/);
 
 // Given: an incomplete shapefile archive.
@@ -122,6 +122,18 @@ const selfIntersectionResult = transformBoundaryFeature(
 );
 assert.equal(selfIntersectionResult.quarantine?.reason, "invalid_geometry");
 
+// Given: Polygon and MultiPolygon geometries without usable members.
+// When: each empty geometry is transformed.
+// Then: it is explicitly quarantined before Turf or bbox processing.
+for (const geometry of [
+  { type: "Polygon", coordinates: [] },
+  { type: "MultiPolygon", coordinates: [] },
+  { type: "MultiPolygon", coordinates: [[]] },
+]) {
+  const emptyResult = transformBoundaryFeature({ geometry, properties: { ID: `empty-${geometry.type}` } }, "EPSG:5186", source);
+  assert.equal(emptyResult.quarantine?.reason, "empty_geometry");
+}
+
 // Given: prior metadata and a 25% output-count change.
 // When: the release gate is evaluated.
 // Then: an explicit acceptance is required and retained in metadata.
@@ -144,8 +156,67 @@ try {
   assert.equal(JSON.parse(await readFile(join(atomicRoot, "boundaries.meta.json"), "utf8")).schema_version, 1);
   assert.deepEqual(JSON.parse(await readFile(join(atomicRoot, "boundaries.quarantine.json"), "utf8")), []);
   assert.equal((await readdir(atomicRoot)).some((name) => name.includes(".tmp-")), false);
+
+  // Given: a complete prior generation and a failure during the second or third promotion.
+  // When: artifact promotion fails after partially replacing finals.
+  // Then: all three prior files are restored and no temp or backup file remains.
+  for (const failAt of [2, 3]) {
+    const prior = { "boundaries.geojson": { generation: "prior-geojson" }, "boundaries.meta.json": { generation: "prior-meta" }, "boundaries.quarantine.json": { generation: "prior-quarantine" } };
+    await Promise.all(Object.entries(prior).map(([name, value]) => writeFile(join(atomicRoot, name), JSON.stringify(value), "utf8")));
+    let promotionCount = 0;
+    await assert.rejects(
+      writeBoundaryArtifactsAtomically({
+        outputDirectory: atomicRoot,
+        geojson: { generation: "next-geojson" },
+        metadata: { generation: "next-meta" },
+        quarantine: { generation: "next-quarantine" },
+        promote: async ({ temporaryPath, finalPath }) => {
+          promotionCount += 1;
+          if (promotionCount === failAt) throw new Error(`injected promotion failure ${failAt}`);
+          await rename(temporaryPath, finalPath);
+        },
+      }),
+      /injected promotion failure/,
+    );
+    for (const [name, value] of Object.entries(prior)) assert.deepEqual(JSON.parse(await readFile(join(atomicRoot, name), "utf8")), value);
+    assert.equal((await readdir(atomicRoot)).some((name) => name.includes(".tmp-") || name.includes(".backup-")), false);
+  }
 } finally {
   await rm(atomicRoot, { recursive: true, force: true });
+}
+
+// Given: a ZIP with trusted acquisition metadata stored in a sibling sidecar.
+// When: the ZIP mtime changes or the ZIP and sidecar are copied together.
+// Then: provenance remains exactly the operator-recorded metadata.
+const provenanceRoot = await mkdtemp(join(tmpdir(), "maintenance-boundaries-provenance-"));
+try {
+  const archivePath = join(provenanceRoot, "UD602.zip");
+  const sidecar = {
+    schema_version: 1,
+    retrieved_at: "2026-07-18T09:30:00+09:00",
+    source_url: "https://www.data.go.kr/data/15146864/fileData.do",
+    source_dataset_id: "30335",
+    source_layer: "UD602",
+  };
+  await writeFile(archivePath, "authorized archive fixture", "utf8");
+  await writeFile(`${archivePath}.metadata.json`, JSON.stringify(sidecar), "utf8");
+  const beforeTouch = await readAcquisitionMetadata({ archivePath });
+  await utimes(archivePath, new Date("2035-01-01T00:00:00Z"), new Date("2035-01-01T00:00:00Z"));
+  assert.deepEqual(await readAcquisitionMetadata({ archivePath }), beforeTouch);
+  const copiedArchive = join(provenanceRoot, "copied-UD602.zip");
+  await copyFile(archivePath, copiedArchive);
+  await copyFile(`${archivePath}.metadata.json`, `${copiedArchive}.metadata.json`);
+  const copiedProvenance = await readAcquisitionMetadata({ archivePath: copiedArchive });
+  for (const key of ["sourceUrl", "retrievedAt", "sourceDatasetId", "sourceLayer", "sourceUpdatedAt", "metadataSha256"]) {
+    assert.equal(copiedProvenance[key], beforeTouch[key]);
+  }
+  assert.equal(beforeTouch.sourceUpdatedAt, undefined);
+  await assert.rejects(readAcquisitionMetadata({ archivePath: join(provenanceRoot, "missing.zip") }), /Missing acquisition metadata sidecar/);
+  const invalidArchive = join(provenanceRoot, "invalid.zip");
+  await writeFile(`${invalidArchive}.metadata.json`, JSON.stringify({ ...sidecar, source_layer: "UD501" }), "utf8");
+  await assert.rejects(readAcquisitionMetadata({ archivePath: invalidArchive }), /Invalid acquisition metadata sidecar/);
+} finally {
+  await rm(provenanceRoot, { recursive: true, force: true });
 }
 
 // Given: an empty authorized input directory.

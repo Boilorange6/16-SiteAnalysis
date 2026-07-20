@@ -8,6 +8,24 @@
 
 ## 경계 빌드
 
+각 ZIP 옆에는 취득 시점과 원천을 기록한 `<ZIP 파일명>.metadata.json`을 함께 둔다. 예를 들어 `UD602.zip`의 sidecar는 `UD602.zip.metadata.json`이다. ZIP을 복사하거나 이동할 때 sidecar도 함께 복사하며, 파일 수정 시각은 출처 메타데이터로 사용하지 않는다.
+
+```json
+{
+  "schema_version": 1,
+  "retrieved_at": "2026-07-20T10:30:00+09:00",
+  "source_updated_at": "2026-07-18",
+  "source_url": "https://www.data.go.kr/data/15146864/fileData.do",
+  "source_dataset_id": "30335",
+  "source_layer": "UD602"
+}
+```
+
+- `retrieved_at`, `source_url`, `source_dataset_id`, `source_layer`는 필수다.
+- `30335`는 `UD602`, `30336`은 `UD501`과만 조합한다.
+- 원천 갱신일을 공식 페이지나 취득 기록으로 확인한 경우에만 `source_updated_at`을 적는다. 확인할 수 없으면 필드를 생략하며 ZIP의 생성·수정 시각으로 대신하지 않는다.
+- sidecar에는 API 키, 다운로드 토큰, 개인 정보 또는 연락처를 적지 않는다.
+
 ```powershell
 npm run build:maintenance-boundaries -- --input data/maintenance/raw --output data/maintenance/processed
 ```

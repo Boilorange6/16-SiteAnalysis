@@ -4,8 +4,10 @@ import { basename, dirname, extname, join } from "node:path";
 import { booleanValid, kinks } from "@turf/turf";
 import proj4 from "proj4";
 import type { Feature, MultiPolygon, Polygon, Position } from "geojson";
+import { PROJ4_DEFINITIONS, type SupportedCrs } from "./boundary-crs";
 
-export type SupportedCrs = "EPSG:5186" | "EPSG:2097";
+export { identifySupportedCrs } from "./boundary-crs";
+export type { SupportedCrs } from "./boundary-crs";
 export type SourceDatasetId = "30335" | "30336";
 export type SourceLayer = "UD602" | "UD501";
 
@@ -64,7 +66,7 @@ export interface BoundarySourceFeature {
   readonly properties: Readonly<Record<string, unknown>>;
 }
 
-export type QuarantineReason = "non_finite_coordinate" | "coordinate_out_of_bounds" | "ring_too_short" | "invalid_geometry";
+export type QuarantineReason = "empty_geometry" | "non_finite_coordinate" | "coordinate_out_of_bounds" | "ring_too_short" | "invalid_geometry";
 
 export interface BoundaryQuarantine {
   readonly reason: QuarantineReason;
@@ -79,24 +81,12 @@ export interface BoundaryTransformResult {
 
 export class BoundaryBuildError extends Error {
   readonly name = "BoundaryBuildError";
-  constructor(readonly code: "INCOMPLETE_ARCHIVE" | "UNSUPPORTED_CRS", message: string) {
+  constructor(readonly code: "INCOMPLETE_ARCHIVE", message: string) {
     super(message);
   }
 }
 
-proj4.defs("EPSG:5186", "+proj=tmerc +lat_0=38 +lon_0=127 +k=1 +x_0=200000 +y_0=600000 +ellps=GRS80 +units=m +no_defs");
-proj4.defs("EPSG:2097", "+proj=tmerc +lat_0=38 +lon_0=127.002890277778 +k=1 +x_0=200000 +y_0=500000 +ellps=bessel +towgs84=-146.43,507.89,681.46 +units=m +no_defs");
-
-export function identifySupportedCrs(wkt: string): SupportedCrs {
-  const normalized = wkt.replaceAll(/\s+/g, " ").toUpperCase();
-  const explicit5186 = /EPSG[\s":,]+5186/.test(normalized);
-  const signature5186 = normalized.includes("KOREA 2000 / CENTRAL BELT 2010") && normalized.includes("GRS 1980");
-  if (explicit5186 || signature5186) return "EPSG:5186";
-  const explicit2097 = /EPSG[\s":,]+2097/.test(normalized);
-  const signature2097 = normalized.includes("KOREAN 1985 / CENTRAL BELT") && normalized.includes("KOREAN 1985");
-  if (explicit2097 || signature2097) return "EPSG:2097";
-  throw new BoundaryBuildError("UNSUPPORTED_CRS", "Unsupported CRS: only EPSG:5186 and EPSG:2097 are accepted");
-}
+for (const [name, definition] of Object.entries(PROJ4_DEFINITIONS)) proj4.defs(name, definition);
 
 type PartialLayer = { basename: string; shp?: string; shx?: string; dbf?: string; prj?: string };
 
@@ -177,6 +167,9 @@ function transformRing(ring: readonly (readonly [number, number])[], crs: Suppor
 
 function transformGeometry(geometry: SourceGeometry, crs: SupportedCrs): GeometryResult {
   const polygons = geometry.type === "Polygon" ? [geometry.coordinates] : geometry.coordinates;
+  if (polygons.length === 0 || polygons.some((polygon) => polygon.length === 0)) {
+    return { geometry: { type: geometry.type, coordinates: [] }, reason: "empty_geometry" };
+  }
   const output: Position[][][] = [];
   for (const polygon of polygons) {
     const outputRings: Position[][] = [];
