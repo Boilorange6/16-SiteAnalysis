@@ -17,14 +17,14 @@ export type BoundaryMatch =
   | { readonly kind: "matched"; readonly groupIndex: number }
   | { readonly kind: "unmatched"; readonly reason?: CompatibilityReason | "ambiguous"; readonly attributeId?: string };
 
-type CompatibilityFailure = {
-  readonly reason: CompatibilityReason;
-  readonly attributeId: string;
+type CandidateFailure = {
+  readonly reason: CompatibilityReason | "ambiguous";
+  readonly attributeId?: string;
 };
 
 type BoundaryCandidates = {
   readonly compatibleGroupIndexes: readonly number[];
-  readonly failure?: CompatibilityFailure;
+  readonly failure?: CandidateFailure;
 };
 
 type FieldSelection<T> = {
@@ -132,7 +132,7 @@ function boundaryIds(boundary: MaintenanceBoundaryFeature): ReadonlySet<string> 
     .map((value) => value.trim().toUpperCase()).filter(Boolean));
 }
 
-function boundaryCompatibility(group: RecordGroup, boundary: MaintenanceBoundaryFeature): CompatibilityFailure | undefined {
+function boundaryCompatibility(group: RecordGroup, boundary: MaintenanceBoundaryFeature): CandidateFailure | undefined {
   const spatial = {
     sido: boundary.properties.sido ?? "", sigungu: boundary.properties.sigungu ?? "",
     area_sqm: boundary.properties.area_sqm, designation_date: boundary.properties.designation_date,
@@ -148,6 +148,7 @@ function boundaryCompatibility(group: RecordGroup, boundary: MaintenanceBoundary
 function boundaryCandidates(
   boundary: MaintenanceBoundaryFeature,
   groups: readonly RecordGroup[],
+  normalizedBoundaryNameCount: number,
 ): BoundaryCandidates {
   const ids = boundaryIds(boundary);
   const exact = groups.map((group, groupIndex) => ({ group, groupIndex })).filter(({ group }) => overlaps(group.ids, ids));
@@ -155,9 +156,13 @@ function boundaryCandidates(
   const normalizedKey = `${comparisonText(boundary.properties.sido ?? "")}|${comparisonText(boundary.properties.sigungu ?? "")}|${normalizedName}`;
   const sameName = groups.map((group, groupIndex) => ({ group, groupIndex })).filter(({ group }) => group.nameKey === normalizedName);
   const sameAdmin = sameName.filter(({ group }) => group.key === normalizedKey);
+  if (exact.length === 0 && sameAdmin.length > 0
+    && (sameAdmin.length !== 1 || normalizedBoundaryNameCount !== 1)) {
+    return { compatibleGroupIndexes: [], failure: { reason: "ambiguous" } };
+  }
   const structural = exact.length > 0 ? exact : sameAdmin;
   const compatibleGroupIndexes: number[] = [];
-  let failure: CompatibilityFailure | undefined;
+  let failure: CandidateFailure | undefined;
   for (const candidate of structural) {
     const candidateFailure = boundaryCompatibility(candidate.group, boundary);
     if (candidateFailure) {
@@ -177,7 +182,15 @@ export function matchBoundaries(
   boundaries: readonly MaintenanceBoundaryFeature[],
   groups: readonly RecordGroup[],
 ): readonly BoundaryMatch[] {
-  const candidates = boundaries.map((boundary) => boundaryCandidates(boundary, groups));
+  const boundaryNameCounts = new Map<string, number>();
+  for (const boundary of boundaries) {
+    const key = `${comparisonText(boundary.properties.sido ?? "")}|${comparisonText(boundary.properties.sigungu ?? "")}|${nameText(boundary.properties.name ?? "")}`;
+    boundaryNameCounts.set(key, (boundaryNameCounts.get(key) ?? 0) + 1);
+  }
+  const candidates = boundaries.map((boundary) => {
+    const key = `${comparisonText(boundary.properties.sido ?? "")}|${comparisonText(boundary.properties.sigungu ?? "")}|${nameText(boundary.properties.name ?? "")}`;
+    return boundaryCandidates(boundary, groups, boundaryNameCounts.get(key) ?? 0);
+  });
   const groupDegrees = new Map<number, number>();
   for (const candidate of candidates) {
     for (const groupIndex of candidate.compatibleGroupIndexes) {
@@ -189,7 +202,10 @@ export function matchBoundaries(
     const groupIndex = candidate.compatibleGroupIndexes[0];
     if (groupIndex === undefined) {
       return candidate.failure
-        ? { kind: "unmatched", reason: candidate.failure.reason, attributeId: candidate.failure.attributeId }
+        ? {
+          kind: "unmatched", reason: candidate.failure.reason,
+          ...(candidate.failure.attributeId ? { attributeId: candidate.failure.attributeId } : {}),
+        }
         : { kind: "unmatched" };
     }
     if (groupDegrees.get(groupIndex) !== 1) return { kind: "unmatched", reason: "ambiguous" };

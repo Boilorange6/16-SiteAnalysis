@@ -89,6 +89,33 @@ function merge(overrides = {}) {
   assert.equal(duplicateBoundary.diagnostics.some(({ reason }) => reason === "ambiguous"), true);
 }
 
+// Given two raw same-name attribute groups but only one area-compatible group / When name fallback runs / Then it stays ambiguous.
+{
+  const result = merge({
+    attributes: [
+      attribute({ source_record_id: "RAW-A100", area_sqm: 100 }),
+      attribute({ source_record_id: "RAW-A200", area_sqm: 200 }),
+    ],
+  });
+  assert.equal(result.projects.some(({ boundary_status }) => boundary_status === "confirmed"), false);
+  assert.equal(result.diagnostics.some(({ reason }) => reason === "ambiguous"), true);
+  assert.equal(result.catalog.length, 2);
+}
+
+// Given two raw same-name boundaries but only one area-compatible boundary / When name fallback runs / Then neither confirms.
+{
+  const result = merge({
+    boundaries: [
+      boundary({ source_feature_id: "RAW-B100", area_sqm: 100 }),
+      boundary({ source_feature_id: "RAW-B200", area_sqm: 200 }),
+    ],
+  });
+  assert.equal(result.projects.some(({ boundary_status }) => boundary_status === "confirmed"), false);
+  assert.equal(result.projects.every(({ boundary_status }) => boundary_status === "unmatched"), true);
+  assert.equal(result.diagnostics.filter(({ reason }) => reason === "ambiguous").length, 2);
+  assert.equal(result.catalog.length, 1);
+}
+
 // Given two boundaries sharing one exact official ID / When merged / Then the attribute group is never consumed twice.
 {
   const result = merge({
