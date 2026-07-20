@@ -38,12 +38,12 @@ export default function RootLayout({
         {enableReactDevTools && (
           <>
             <Script
-              src="//unpkg.com/react-grab/dist/index.global.js"
+              src="https://unpkg.com/react-grab@0.1.48/dist/index.global.js"
               crossOrigin="anonymous"
               strategy="beforeInteractive"
             />
             <Script
-              src="//unpkg.com/react-scan/dist/auto.global.js"
+              src="https://unpkg.com/react-scan@0.5.7/dist/auto.global.js"
               crossOrigin="anonymous"
               strategy="beforeInteractive"
             />

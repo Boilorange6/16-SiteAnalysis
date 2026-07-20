@@ -92,6 +92,6 @@ export function buildMaintenancePopupHtml(project: MaintenanceProject): string {
       ${popupRow("출처", sourceValue)}
       ${popupRow("기준일", escapeMaintenanceHtml(project.source_updated_at || "미확인"))}
     </table>
-    <p style="margin:9px 0 0;padding-top:8px;border-top:1px solid #e2e8f0;color:#64748b;font-size:11px;line-height:1.45">법적 효력 없는 참고자료</p>
+    <p style="margin:9px 0 0;padding-top:8px;border-top:1px solid #e2e8f0;color:#475569;font-size:12px;line-height:1.5">법적 효력 없는 참고자료</p>
   </article>`;
 }

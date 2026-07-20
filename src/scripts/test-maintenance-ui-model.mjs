@@ -56,6 +56,14 @@ assert.equal(summary.boundaryUnmatchedCount, 1);
 assert.equal(summary.boundaryUnavailableCount, 1);
 assert.deepEqual(summary.typeCounts, { 재개발: 2, 재건축: 1 });
 
+const manyProjects = Array.from({ length: 12 }, (_, index) => ({
+  ...projects[0],
+  id: `many-${index}`,
+  name: `전체 표시 사업 ${index + 1}`,
+  area_sqm: 12_000 - index,
+}));
+assert.equal(summarizeMaintenanceProjects(manyProjects).topProjects.length, 12);
+
 const popup = buildMaintenancePopupHtml({
   ...projects[0],
   name: '<img src=x onerror="alert(1)">',
@@ -70,6 +78,7 @@ assert.match(popup, /&lt;img src=x onerror=&quot;alert\(1\)&quot;&gt;/);
 assert.match(popup, /A&amp;B &lt;script&gt;/);
 assert.match(popup, /rel="noopener noreferrer"/);
 assert.match(popup, /법적 효력 없는 참고자료/);
+assert.match(popup, /font-size:12px[^>]*>법적 효력 없는 참고자료/);
 assert.match(popup, /국토부 전국 정비사업/);
 
 console.log("maintenance UI model tests passed");

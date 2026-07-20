@@ -49,8 +49,7 @@ export function summarizeMaintenanceProjects(projects: readonly MaintenanceProje
       const areaDelta = (b.area_sqm || 0) - (a.area_sqm || 0);
       if (areaDelta !== 0) return areaDelta;
       return (a.distance_m ?? Infinity) - (b.distance_m ?? Infinity);
-    })
-    .slice(0, 8);
+    });
 
   return {
     count: projects.length,

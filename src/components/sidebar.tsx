@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AddressSearchResult } from "@/lib/data-provider";
 import { reverseGeocodeName } from "@/lib/data-provider";
 import type {
@@ -189,6 +189,8 @@ export default function Sidebar({
 }: SidebarProps) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [activePanel, setActivePanel] = useState<SidebarPanel>("setup");
+  const panelRef = useRef<HTMLElement>(null);
+  const sheetToggleRef = useRef<HTMLButtonElement>(null);
   const [form, setForm] = useState({
     centerName: config.centerName,
     centerLat: config.centerLat.toString(),
@@ -231,14 +233,53 @@ export default function Sidebar({
   useEffect(() => {
     if (!isMobileOpen) return;
 
+    const panel = panelRef.current;
+    const main = document.querySelector("main");
+    const previousAriaHidden = main?.getAttribute("aria-hidden") ?? null;
+    main?.setAttribute("inert", "");
+    main?.setAttribute("aria-hidden", "true");
+
+    const getFocusable = () => panel
+      ? Array.from(panel.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )).filter((element) => element.offsetParent !== null)
+      : [];
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        event.preventDefault();
         setIsMobileOpen(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = getFocusable();
+      if (focusable.length === 0) {
+        event.preventDefault();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!panel?.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown);
+    requestAnimationFrame(() => sheetToggleRef.current?.focus());
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      main?.removeAttribute("inert");
+      if (previousAriaHidden === null) main?.removeAttribute("aria-hidden");
+      else main?.setAttribute("aria-hidden", previousAriaHidden);
+      sheetToggleRef.current?.focus();
+    };
   }, [isMobileOpen]);
 
   const counts = useMemo<Record<keyof LayerVisibility, number>>(() => ({
@@ -498,7 +539,7 @@ export default function Sidebar({
                           type="button"
                           disabled={retryingSource === s.source}
                           onClick={() => onRetrySource(s.source)}
-                          className={`rounded border border-amber-300/40 px-1.5 py-0.5 text-[11px] text-amber-200 hover:bg-amber-300/10 disabled:opacity-50 ${focusRingClass}`}
+                          className={`min-h-11 min-w-11 rounded-lg border border-amber-300/40 px-3 py-2 text-xs text-amber-100 hover:bg-amber-300/10 disabled:opacity-50 ${focusRingClass}`}
                         >
                           {retryingSource === s.source ? "재시도 중…" : "재시도"}
                         </button>
@@ -826,6 +867,8 @@ export default function Sidebar({
         </div>
         <button
           type="button"
+          tabIndex={-1}
+          aria-hidden="true"
           onClick={handleAddManualPoi}
           className={`w-full rounded-xl bg-[#3B82F6] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#2563EB] ${focusRingClass}`}
         >
@@ -908,14 +951,18 @@ export default function Sidebar({
       )}
 
       <aside
+        ref={panelRef}
         id={panelId}
         aria-labelledby={panelTitleId}
+        role={isMobileOpen ? "dialog" : undefined}
+        aria-modal={isMobileOpen ? true : undefined}
         className={cx(
           "fixed inset-x-0 bottom-0 z-[1000] flex flex-col overflow-hidden rounded-t-[2rem] border border-white/10 bg-[#1E3A8A]/95 shadow-[0_-20px_60px_rgba(2,6,23,0.45)] backdrop-blur-xl transition-[max-height] duration-300 ease-out lg:relative lg:inset-auto lg:z-auto lg:h-full lg:w-[360px] lg:max-h-none lg:rounded-none lg:border-x-0 lg:border-b-0 lg:border-r lg:bg-[#1E3A8A] xl:w-[380px]",
           isMobileOpen ? "max-h-[88dvh]" : "max-h-[4.75rem]"
         )}
       >
         <button
+          ref={sheetToggleRef}
           type="button"
           onClick={() => setIsMobileOpen((open) => !open)}
           aria-expanded={isMobileOpen}
@@ -985,15 +1032,14 @@ export default function Sidebar({
               </div>
             )}
 
-            <div className="mt-4 grid grid-cols-4 gap-1 rounded-2xl border border-white/10 bg-black/20 p-1" role="tablist" aria-label="사이드바 패널">
+            <div className="mt-4 grid grid-cols-4 gap-1 rounded-2xl border border-white/10 bg-black/20 p-1" aria-label="사이드바 섹션 선택">
               {PANEL_TABS.map((tab) => {
                 const selected = activePanel === tab.id;
                 return (
                   <button
                     key={tab.id}
                     type="button"
-                    role="tab"
-                    aria-selected={selected}
+                    aria-pressed={selected}
                     onClick={() => setActivePanel(tab.id)}
                     className={cx(
                       `rounded-xl px-2 py-2 text-center transition ${focusRingClass}`,

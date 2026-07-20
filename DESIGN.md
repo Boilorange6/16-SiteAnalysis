@@ -65,7 +65,7 @@
 - **Variants**: fresh, cached, failed, retrying.
 - **Spacing**: 6–8px row gap.
 - **States**: hover, focus-visible, disabled, loading.
-- **Accessibility**: 버튼은 44px에 가까운 터치 영역과 명시적 라벨을 가지며 진행 상태를 텍스트로 알린다.
+- **Accessibility**: 버튼은 최소 44×44px 터치 영역과 명시적 라벨을 가지며 진행 상태를 텍스트로 알린다.
 - **Motion**: 150ms opacity/color only; reduced motion에서 즉시 전환.
 - **Layout**: wrapping cluster.
 

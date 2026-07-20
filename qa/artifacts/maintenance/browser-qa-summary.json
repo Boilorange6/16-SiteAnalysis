@@ -18,17 +18,15 @@
     "390x844"
   ],
   "verified": [
-    "polygon",
-    "hole",
-    "multipolygon",
-    "unmatched",
-    "unavailable-point-only",
-    "popup",
-    "catalog-no-focus",
-    "retry-rest-mid-settled",
-    "keyboard-focus",
-    "CJK",
+    "polygon-hole-multipolygon-paths",
+    "unmatched-dashed-and-unavailable-point-only",
+    "boundary-enter-space-popup",
+    "popup-opacity-one-stable-placement",
+    "catalog-no-focus-action",
+    "retry-44px-rest-mid-settled",
+    "mobile-dialog-focus-trap-escape-restoration-inert",
+    "cjk-required-copy-font-min-12-no-horizontal-clipping",
     "no-horizontal-overflow",
-    "no-service-key-url"
+    "network-url-response-body-loaded-js-secret-scan"
   ]
 }

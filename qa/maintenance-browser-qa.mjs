@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
+import {
+  assertMaintenanceTextLayout,
+  installBodyAudit,
+  waitForPopupSettled,
+} from "./maintenance-browser-assertions.mjs";
 
 const baseUrl = process.env.MAINTENANCE_QA_URL ?? "http://127.0.0.1:3000/site/";
 const artifactDir = path.resolve("qa/artifacts/maintenance");
@@ -77,24 +82,45 @@ async function installRoutes(page) {
   });
 }
 
+async function exerciseMobileDialog(page) {
+  const toggle = page.getByTestId("controls-sheet-toggle");
+  await toggle.click();
+  const dialog = page.getByRole("dialog", { name: "Site Analysis" });
+  await dialog.waitFor();
+  assert.equal(await page.locator("main").getAttribute("inert"), "");
+  await page.waitForFunction(() => document.activeElement?.getAttribute("data-testid") === "controls-sheet-toggle");
+  await page.keyboard.press("Shift+Tab");
+  assert.equal(await dialog.evaluate((element) => element.contains(document.activeElement)), true, "focus escaped mobile dialog");
+  await page.keyboard.press("Escape");
+  await dialog.waitFor({ state: "detached" });
+  assert.equal(await page.locator("main").getAttribute("inert"), null);
+  assert.equal(await toggle.evaluate((element) => element === document.activeElement), true, "focus was not restored to sheet trigger");
+  await toggle.click();
+  await page.getByRole("dialog", { name: "Site Analysis" }).waitFor();
+}
+
 async function runLocation(browser, location, viewport) {
   const context = await browser.newContext({ viewport });
   const page = await context.newPage();
   const errors = [];
   const requestUrls = [];
+  const assertBodyAudit = installBodyAudit(page);
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("request", (request) => requestUrls.push(request.url()));
   await installRoutes(page);
   await page.goto(baseUrl, { waitUntil: "networkidle" });
 
-  if (viewport.width < 1024) await page.getByTestId("controls-sheet-toggle").click();
+  if (viewport.width < 1024) await exerciseMobileDialog(page);
   await page.getByLabel("분석 중심 주소").fill(location.name);
   await page.getByTestId("center-latitude-input").fill(String(location.lat));
   await page.getByTestId("center-longitude-input").fill(String(location.lng));
   await page.getByTestId("config-apply-button").click();
   await page.getByText("데이터 로딩 중").waitFor({ state: "hidden" });
   if (viewport.width < 1024) await page.getByTestId("controls-sheet-toggle").click();
-  await page.getByRole("tab", { name: /분석/ }).click();
+  const analysisSection = page.getByRole("button", { name: "분석 점수" });
+  await analysisSection.click();
+  assert.equal(await page.getByRole("tab").count(), 0, "misleading tab semantics remain");
+  assert.equal(await analysisSection.getAttribute("aria-pressed"), "true");
   await page.getByText("행정구역 수준 목록").scrollIntoViewIfNeeded();
   await page.screenshot({ path: path.join(artifactDir, `${location.slug}-${viewport.width}x${viewport.height}-analysis.png`) });
 
@@ -102,6 +128,7 @@ async function runLocation(browser, location, viewport) {
   assert.equal(await page.getByText("법적 효력 없는 참고자료", { exact: true }).count(), 1);
   assert.equal(await page.getByText("좌표가 없어 반경 지표와 지도 표시에 포함하지 않은 공식 목록입니다.").count(), 1);
   assert.equal(await page.getByRole("button", { name: /행정목록 사업/ }).count(), 0);
+  await assertMaintenanceTextLayout(page);
 
   if (viewport.width >= 1024) {
     const maintenancePath = page.locator('.leaflet-overlay-pane path[stroke="#EC4899"]').first();
@@ -110,32 +137,39 @@ async function runLocation(browser, location, viewport) {
     if (location.geometry === "hole" || location.geometry === "multi") {
       assert.ok((pathData?.match(/M/g) ?? []).length >= 2, `${location.slug} nested geometry collapsed`);
     }
-    const boundaryBox = await maintenancePath.boundingBox();
-    assert.ok(boundaryBox, `${location.slug} boundary has no rendered box`);
-    await maintenancePath.click({
-      force: true,
-      position: { x: boundaryBox.width * 0.15, y: boundaryBox.height * 0.5 },
-    });
+    assert.equal(await maintenancePath.getAttribute("role"), "button");
+    assert.equal(await maintenancePath.getAttribute("tabindex"), "0");
+    assert.match(await maintenancePath.getAttribute("aria-label") ?? "", /상세 열기/);
+    await maintenancePath.focus();
+    await page.keyboard.press(location.slug === "busan" ? "Space" : "Enter");
     const popup = page.locator(".leaflet-popup");
     await popup.waitFor({ state: "visible" });
     await popup.getByText(`${location.name} 중앙정비구역`, { exact: true }).waitFor();
     await popup.getByText("법적 효력 없는 참고자료", { exact: true }).waitFor();
+    assert.equal(await popup.count(), 1, `${location.slug} created more than one popup`);
+    assert.ok(Number.parseFloat(await popup.getByText("법적 효력 없는 참고자료", { exact: true }).evaluate((element) => getComputedStyle(element).fontSize)) >= 12);
+    await waitForPopupSettled(popup);
     await page.screenshot({ path: path.join(artifactDir, `${location.slug}-${viewport.width}x${viewport.height}-popup-settled.png`) });
   }
 
   assert.equal(errors.length, 0, `${location.slug} page errors: ${errors.join(" | ")}`);
   assert.equal(requestUrls.some((url) => /serviceKey=|qa-secret/i.test(url)), false, `${location.slug} service key leaked in network URL`);
+  const inspectedBodyCount = await assertBodyAudit();
+  assert.ok(inspectedBodyCount > 0);
   await context.close();
 }
 
 async function runRetry(browser) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const page = await context.newPage();
+  const assertBodyAudit = installBodyAudit(page);
   await installRoutes(page);
   await page.goto(baseUrl, { waitUntil: "networkidle" });
   await page.getByRole("button", { name: "샘플 실행" }).click();
   await page.getByText("데이터 로딩 중").waitFor({ state: "hidden" });
   const retry = page.getByRole("button", { name: "재시도" });
+  const retryBox = await retry.boundingBox();
+  assert.ok(retryBox && retryBox.width >= 44 && retryBox.height >= 44, "retry target is below 44x44px");
   await retry.focus();
   await page.screenshot({ path: path.join(artifactDir, "seoul-1440x1000-retry-focus-rest.png") });
   await retry.click();
@@ -143,6 +177,7 @@ async function runRetry(browser) {
   await page.screenshot({ path: path.join(artifactDir, "seoul-1440x1000-retry-mid.png") });
   await page.getByText("방금 수집").first().waitFor();
   await page.screenshot({ path: path.join(artifactDir, "seoul-1440x1000-retry-settled.png") });
+  await assertBodyAudit();
   await context.close();
 }
 
@@ -160,6 +195,17 @@ try {
 await writeFile(path.join(artifactDir, "browser-qa-summary.json"), JSON.stringify({
   locations: locations.map(({ slug, geometry }) => ({ slug, geometry })),
   viewports: ["1440x1000", "390x844"],
-  verified: ["polygon", "hole", "multipolygon", "unmatched", "unavailable-point-only", "popup", "catalog-no-focus", "retry-rest-mid-settled", "keyboard-focus", "CJK", "no-horizontal-overflow", "no-service-key-url"],
+  verified: [
+    "polygon-hole-multipolygon-paths",
+    "unmatched-dashed-and-unavailable-point-only",
+    "boundary-enter-space-popup",
+    "popup-opacity-one-stable-placement",
+    "catalog-no-focus-action",
+    "retry-44px-rest-mid-settled",
+    "mobile-dialog-focus-trap-escape-restoration-inert",
+    "cjk-required-copy-font-min-12-no-horizontal-clipping",
+    "no-horizontal-overflow",
+    "network-url-response-body-loaded-js-secret-scan",
+  ],
 }, null, 2));
 console.log("maintenance browser QA passed");

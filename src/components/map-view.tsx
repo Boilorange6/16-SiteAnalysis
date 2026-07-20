@@ -22,6 +22,7 @@ import { formatAreaSqm, formatDistanceM } from "@/lib/park-analysis";
 import {
   boundaryToLeafletLatLngs,
   buildMaintenancePopupHtml,
+  maintenanceBoundaryLabel,
 } from "@/lib/maintenance-map-utils";
 import {
   findStationRoutes,
@@ -207,6 +208,32 @@ function setMarkerAccessibility(marker: import("leaflet").Marker, label: string)
 
   applyAttributes();
   marker.on("add", applyAttributes);
+}
+
+function setMaintenanceBoundaryAccessibility(
+  layer: import("leaflet").Polygon,
+  project: MaintenanceProject,
+): void {
+  const applyAttributes = () => {
+    const element = layer.getElement();
+    if (!element) return;
+    element.setAttribute("role", "button");
+    element.setAttribute("tabindex", "0");
+    element.setAttribute("aria-haspopup", "dialog");
+    element.setAttribute(
+      "aria-label",
+      `${project.name} ${maintenanceBoundaryLabel(project.boundary_status)} 상세 열기`,
+    );
+    element.addEventListener("keydown", (event) => {
+      if (!(event instanceof KeyboardEvent)) return;
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      layer.openPopup();
+    });
+  };
+
+  layer.on("add", applyAttributes);
+  applyAttributes();
 }
 
 function zoomToCluster(map: import("leaflet").Map, L: typeof import("leaflet"), items: readonly Poi[]) {
@@ -1016,16 +1043,17 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
 
     for (const project of visiblePois.filter((poi): poi is MaintenanceProject => poi.category === "maintenance")) {
       if (!project.boundary || project.boundary_status === "unavailable") continue;
-      markersLayer.addLayer(
-        L.polygon(boundaryToLeafletLatLngs(project.boundary), {
-          color: "#EC4899",
-          weight: 2,
-          fillColor: "#EC4899",
-          fillOpacity: project.boundary_status === "confirmed" ? 0.16 : 0.08,
-          opacity: project.boundary_status === "confirmed" ? 0.85 : 0.72,
-          dashArray: project.boundary_status === "unmatched" ? "7 5" : undefined,
-        }).bindPopup(buildMaintenancePopupHtml(project), { maxWidth: 320 })
-      );
+      const boundaryLayer = L.polygon(boundaryToLeafletLatLngs(project.boundary), {
+        className: "maintenance-boundary",
+        color: "#EC4899",
+        weight: 2,
+        fillColor: "#EC4899",
+        fillOpacity: project.boundary_status === "confirmed" ? 0.16 : 0.08,
+        opacity: project.boundary_status === "confirmed" ? 0.85 : 0.72,
+        dashArray: project.boundary_status === "unmatched" ? "7 5" : undefined,
+      }).bindPopup(buildMaintenancePopupHtml(project), { maxWidth: 320 });
+      setMaintenanceBoundaryAccessibility(boundaryLayer, project);
+      markersLayer.addLayer(boundaryLayer);
     }
 
     const clusters = clusterPois(
