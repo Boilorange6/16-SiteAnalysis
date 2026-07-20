@@ -5,33 +5,65 @@ import { getDb } from "@/lib/server/database";
 
 export const POI_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+export interface CachedSource<T> {
+  readonly value: T;
+  readonly fetchedAt: number;
+  readonly expired: boolean;
+}
+
+export interface PoiSourceCacheKey {
+  readonly source: string;
+  readonly lat: number;
+  readonly lng: number;
+  readonly radiusM: number;
+}
+
+interface PoiSourceCacheRow {
+  readonly value_json: string;
+  readonly fetched_at: number;
+}
+
 function keyParts(lat: number, lng: number) {
   return { lat: lat.toFixed(4), lng: lng.toFixed(4) };
 }
 
 export function getCachedSource<T>(
-  source: string, lat: number, lng: number, radiusM: number
-): { value: T; fetchedAt: number } | null {
+  key: PoiSourceCacheKey,
+  options: { readonly includeExpired?: boolean } = {},
+): CachedSource<T> | null {
+  const { source, lat, lng, radiusM } = key;
   const { lat: la, lng: ln } = keyParts(lat, lng);
   const row = getDb()
-    .prepare(`SELECT value_json, fetched_at FROM poi_source_cache
-              WHERE source = ? AND lat = ? AND lng = ? AND radius_m = ?`)
-    .get(source, la, ln, Math.round(radiusM)) as { value_json: string; fetched_at: number } | undefined;
+    .prepare<[string, string, string, number], PoiSourceCacheRow>(
+      `SELECT value_json, fetched_at FROM poi_source_cache
+       WHERE source = ? AND lat = ? AND lng = ? AND radius_m = ?`,
+    )
+    .get(source, la, ln, Math.round(radiusM));
   if (!row) return null;
-  if (Date.now() - row.fetched_at > POI_CACHE_TTL_MS) return null;
-  return { value: JSON.parse(row.value_json) as T, fetchedAt: row.fetched_at };
+  const expired = Date.now() - row.fetched_at > POI_CACHE_TTL_MS;
+  if (expired && !options.includeExpired) return null;
+  try {
+    const value: T = JSON.parse(row.value_json);
+    return { value, fetchedAt: row.fetched_at, expired };
+  } catch {
+    return null;
+  }
 }
 
-export function setCachedSource(
-  source: string, lat: number, lng: number, radiusM: number, value: unknown
-): void {
+export function setCachedSource(options: {
+  readonly key: PoiSourceCacheKey;
+  readonly value: unknown;
+}): number {
+  const { source, lat, lng, radiusM } = options.key;
   const { lat: la, lng: ln } = keyParts(lat, lng);
+  const fetchedAt = Date.now();
   getDb()
     .prepare(`INSERT INTO poi_source_cache (source, lat, lng, radius_m, value_json, fetched_at)
               VALUES (?, ?, ?, ?, ?, ?)
               ON CONFLICT(source, lat, lng, radius_m) DO UPDATE SET
                 value_json = excluded.value_json, fetched_at = excluded.fetched_at`)
-    .run(source, la, ln, Math.round(radiusM), JSON.stringify(value), Date.now());
+    .run(source, la, ln, Math.round(radiusM), JSON.stringify(options.value), fetchedAt);
+  return fetchedAt;
 }
 
 export interface ResolvedSource<T> {
@@ -45,16 +77,17 @@ export async function resolveSource<T>(args: {
   refresh: boolean; fetcher: () => Promise<T>;
 }): Promise<ResolvedSource<T>> {
   const { source, lat, lng, radiusM, refresh, fetcher } = args;
-  const cached = getCachedSource<T>(source, lat, lng, radiusM);
-  if (cached && !refresh) {
+  const key = { source, lat, lng, radiusM };
+  const cached = getCachedSource<T>(key, { includeExpired: true });
+  if (cached && !cached.expired && !refresh) {
     return { value: cached.value, status: "cached", fetchedAt: cached.fetchedAt };
   }
   try {
     const live = await fetcher();
-    setCachedSource(source, lat, lng, radiusM, live);
-    return { value: live, status: "fresh", fetchedAt: Date.now() };
-  } catch (err) {
-    console.warn(`[poi-cache] ${source} fetch failed:`, err);
+    const fetchedAt = setCachedSource({ key, value: live });
+    return { value: live, status: "fresh", fetchedAt };
+  } catch {
+    console.warn(`[poi-cache] ${source} fetch failed`);
     if (cached) return { value: cached.value, status: "cached", fetchedAt: cached.fetchedAt };
     return { value: null, status: "failed", fetchedAt: null };
   }

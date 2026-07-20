@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "tsc --noEmit",
-    "test:maintenance": "tsx src/scripts/test-maintenance-contracts.mjs",
+    "test:maintenance": "tsx src/scripts/test-maintenance-contracts.mjs && tsx src/scripts/test-maintenance-national-provider.mjs && tsx src/scripts/test-poi-cache.mjs",
     "test": "node src/scripts/test-analysis-engine.mjs && node src/scripts/test-cheongwadae.mjs && node qa/validate-cheongwadae-deliverable.mjs && node src/scripts/verify-subway-coords.mjs && node qa/validate-enhancement-features.mjs && node qa/validate-ppt-presets.mjs"
   },
   "dependencies": {
@@ -16,6 +16,7 @@
     "html-to-image": "^1.11.11",
     "jose": "^6.2.2",
     "jszip": "^3.10.1",
+    "ky": "2.0.2",
     "leaflet": "^1.9.4",
     "next": "^15.3.1",
     "pptxgenjs": "^3.12.0",
