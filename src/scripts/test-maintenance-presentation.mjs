@@ -4,10 +4,14 @@ import {
   MAINTENANCE_LEGAL_FOOTER,
   MAINTENANCE_PRESENTATION_COLUMNS,
   MAINTENANCE_PRESENTATION_SOURCES,
+  GENERAL_PRESENTATION_SOURCES,
+  MAINTENANCE_PRESENTATION_TYPOGRAPHY,
   buildMaintenancePresentationRows,
+  formatMaintenanceMapBullet,
+  protectMaintenanceMapText,
   projectMaintenanceBoundaries,
 } from "../lib/maintenance-presentation.ts";
-import { maintenanceSourceStatusLines, sourceStatusLines } from "../lib/source-status-text.ts";
+import { generalSourceStatusLines, maintenanceSourceStatusLines, sourceStatusLines } from "../lib/source-status-text.ts";
 
 const project = {
   id: "presentation-1",
@@ -48,6 +52,25 @@ assert.deepEqual(
   MAINTENANCE_PRESENTATION_SOURCES.map((source) => source.id),
   ["molit_integrated", "public_standard", "molit_spatial", "seoul_open_data", "busan_data_go_kr"],
 );
+assert.equal(GENERAL_PRESENTATION_SOURCES.length, 6);
+assert.equal(GENERAL_PRESENTATION_SOURCES.length + MAINTENANCE_PRESENTATION_SOURCES.length, 11);
+assert.ok(MAINTENANCE_PRESENTATION_TYPOGRAPHY.mapBulletPt >= 14);
+assert.ok(MAINTENANCE_PRESENTATION_TYPOGRAPHY.insightPt >= 13);
+assert.ok(MAINTENANCE_PRESENTATION_TYPOGRAPHY.tableHeaderPt >= 12);
+assert.ok(MAINTENANCE_PRESENTATION_TYPOGRAPHY.tableBodyPt >= 12);
+assert.ok(MAINTENANCE_PRESENTATION_TYPOGRAPHY.sourceLabelPt >= 11);
+assert.ok(MAINTENANCE_PRESENTATION_TYPOGRAPHY.cautionPt >= 11);
+assert.ok(MAINTENANCE_PRESENTATION_TYPOGRAPHY.legalFooterPt >= 9);
+
+const protectedMapText = protectMaintenanceMapText("가로주택정비 1건 / 4.20만㎡ / 3.10만㎡");
+assert.equal(protectedMapText.replaceAll("\u2060", ""), "가로주택정비 1건 / 4.20만㎡ / 3.10만㎡");
+assert.match(protectedMapText, /가\u2060로\u2060주\u2060택\u2060정\u2060비/);
+assert.match(protectedMapText, /1\u2060건/);
+assert.match(protectedMapText, /4\u2060\.\u20602\u20600\u2060만\u2060㎡/);
+assert.match(protectedMapText, /3\u2060\.\u20601\u20600\u2060만\u2060㎡/);
+const compactMapBullet = formatMaintenanceMapBullet("서울 구조검증 홀 (조합설립, 4.20만㎡, 240m)");
+assert.equal(compactMapBullet.replaceAll("\u2060", ""), "서울 구조검증 홀 · 4.20만㎡ · 240m");
+assert.equal(compactMapBullet.includes("조합설립"), false);
 
 const projects = [
   { ...project, id: "far", name: "가장 먼 사업", distance_m: 900 },
@@ -82,19 +105,25 @@ assert.equal(incompleteRow.boundary, "경계 미확인");
 assert.match(incompleteRow.sourceDate, /기준일 미확인/);
 
 const sourceStatuses = [
+  { source: "park", status: "failed", fetchedAt: null },
   { source: "maintenance_attributes", status: "fresh", fetchedAt: Date.UTC(2026, 6, 20) },
   { source: "maintenance_boundaries", status: "cached", fetchedAt: Date.UTC(2026, 6, 19) },
   { source: "maintenance_seoul", status: "failed", fetchedAt: null },
   { source: "maintenance_busan", status: "fresh", fetchedAt: Date.UTC(2026, 6, 18) },
 ];
 const statusLines = sourceStatusLines(sourceStatuses);
-assert.equal(statusLines.length, 4);
-assert.match(statusLines[0], /국토부 전국 정비사업/);
-assert.match(statusLines[1], /국토부 정비구역 경계/);
-assert.match(statusLines[2], /서울 정비사업 상세.*수집 실패/);
-assert.match(statusLines[3], /부산 정비사업 상세/);
+assert.equal(statusLines.length, 5);
+assert.match(statusLines[0], /공원.*수집 실패/);
+assert.match(statusLines[1], /국토부 전국 정비사업/);
+assert.match(statusLines[2], /국토부 정비구역 경계/);
+assert.match(statusLines[3], /서울 정비사업 상세.*수집 실패/);
+assert.match(statusLines[4], /부산 정비사업 상세/);
 
-const independentMaintenanceLines = maintenanceSourceStatusLines(sourceStatuses.slice(0, 2));
+const generalLines = generalSourceStatusLines(sourceStatuses);
+assert.equal(generalLines.length, 1);
+assert.match(generalLines[0], /공원.*수집 실패.*누락/);
+
+const independentMaintenanceLines = maintenanceSourceStatusLines(sourceStatuses.slice(1, 3));
 assert.equal(independentMaintenanceLines.length, 4);
 assert.match(independentMaintenanceLines[0], /국토부 정비구역 경계/);
 assert.match(independentMaintenanceLines[1], /국토부 전국 정비사업/);

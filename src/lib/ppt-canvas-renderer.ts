@@ -19,16 +19,19 @@ import { computeResidentialCalloutLayout } from "./ppt-callout-layout";
 import { buildParkDetailLines, formatAreaSqm, formatDistanceM, summarizeParks } from "./park-analysis";
 import { buildMaintenanceDetailLines, formatMaintenanceArea, summarizeMaintenanceProjects } from "./maintenance-analysis";
 import {
+  GENERAL_PRESENTATION_SOURCES,
   MAINTENANCE_BOUNDARY_LEGEND,
   MAINTENANCE_LEGAL_FOOTER,
   MAINTENANCE_PRESENTATION_COLUMNS,
   MAINTENANCE_PRESENTATION_SOURCES,
+  MAINTENANCE_PRESENTATION_TYPOGRAPHY,
   buildMaintenancePresentationRows,
+  formatMaintenanceMapBullet,
   projectMaintenanceBoundaries,
 } from "./maintenance-presentation";
 import { buildInsightOverlays, computeAnalysisScores, generateAnalysisNarrative, getSummaryLines } from "./analysis-engine";
 import { haversineDistance } from "./geo";
-import { maintenanceSourceStatusLines, sourceStatusLines, hasFailedSource } from "./source-status-text";
+import { generalSourceStatusLines, maintenanceSourceStatusLines, hasFailedSource } from "./source-status-text";
 import { toReportMapTone } from "./map-image-tone";
 import { buildFactSummary, buildFactSheetRows, buildCategoryInsight, type FactSheetSegment, type CategoryInsightKey } from "./fact-summary";
 import { isRawPoiId } from "./poi-id-guard";
@@ -661,7 +664,7 @@ function drawInsightCard(ctx: CanvasRenderingContext2D, lines: readonly string[]
     drawTextBox(ctx, text,
       ix(INSIGHT_CARD_X + INSIGHT_CARD_PAD), iy(y),
       ix(INSIGHT_CARD_W - INSIGHT_CARD_PAD * 2), iy(INSIGHT_CARD_LINE_H), {
-        fontSize: 11.5, bold: true, color: d.insightCardText, align: "left", valign: "middle",
+        fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.insightPt, bold: true, color: d.insightCardText, align: "left", valign: "middle",
       });
   });
 }
@@ -697,9 +700,9 @@ function drawDataPanel(
   }
 }
 
-function drawFooterNote(ctx: CanvasRenderingContext2D, text: string, d: PptDesignConfig, color?: string) {
+function drawFooterNote(ctx: CanvasRenderingContext2D, text: string, d: PptDesignConfig, color?: string, fontSize = 6.5) {
   drawTextBox(ctx, text, ix(0.55), iy(7.08), ix(12.2), iy(0.22), {
-    fontSize: 6.5, color: color ?? d.mutedTextColor, align: "right",
+    fontSize, color: color ?? d.mutedTextColor, align: "right",
   });
 }
 
@@ -773,6 +776,7 @@ function drawMetricCard(
   detail: string,
   color: string,
   d: PptDesignConfig,
+  typography: { readonly label?: number; readonly value?: number; readonly detail?: number } = {},
 ) {
   const borderColor = d.metricStyle === "number-plate" || d.metricStyle === "terminal" ? d.accentColor : color;
   const fillTransparency = d.metricStyle === "stat-sheet" ? 4 : d.metricStyle === "terminal" ? 6 : 10;
@@ -787,13 +791,13 @@ function drawMetricCard(
     drawLine(ctx, x + 0.14, y + 0.16, w - 0.28, 0, d.accentColor, 0.7, 15);
   }
   drawTextBox(ctx, label, ix(x + 0.18), iy(y + 0.12), ix(w - 0.34), iy(0.16), {
-    fontSize: 7.5, bold: true, color: d.mutedTextColor,
+    fontSize: typography.label ?? 7.5, bold: true, color: d.mutedTextColor,
   });
   drawTextBox(ctx, value, ix(x + (d.metricStyle === "number-plate" ? 0.55 : 0.18)), iy(y + 0.28), ix(w - 0.34), iy(0.28), {
-    fontSize: d.metricStyle === "number-plate" ? 16 : 18, bold: true, color: d.textColor,
+    fontSize: typography.value ?? (d.metricStyle === "number-plate" ? 16 : 18), bold: true, color: d.textColor,
   });
   drawTextBox(ctx, detail, ix(x + 0.18), iy(y + h - 0.24), ix(w - 0.34), iy(0.24), {
-    fontSize: 7.5, color: d.mutedTextColor,
+    fontSize: typography.detail ?? 7.5, color: d.mutedTextColor,
   });
 }
 
@@ -1654,7 +1658,8 @@ function renderCategorySlide(
   drawSiteMarker(ctx, input.radiusPosition, d);
   drawMapSectionTitle(ctx, title, `반경 ${input.config.radiusKm}km`);
 
-  const panelW = ix(d.panelWidth);
+  const panelWidthIn = categories.includes("maintenance") ? Math.max(d.panelWidth, 4.1) : d.panelWidth;
+  const panelW = ix(panelWidthIn);
   const panelH = Math.min(iy(4.8), details.length * iy(0.42) + iy(0.6));
   drawDataPanel(ctx, ix(d.panelX), iy(d.panelY), panelW, panelH, d);
   if (details.length === 0) {
@@ -1663,8 +1668,9 @@ function renderCategorySlide(
     });
   }
   details.forEach((text, i) => {
-    drawTextBox(ctx, `• ${text}`, ix(d.panelX + 0.2), iy(d.panelY + 0.2) + i * iy(0.42), panelW - ix(0.4), iy(0.36), {
-      fontSize: d.detailFontSize, color: d.textColor, valign: "middle",
+    const displayText = categories.includes("maintenance") ? formatMaintenanceMapBullet(text) : text;
+    drawTextBox(ctx, `• ${displayText}`, ix(d.panelX + 0.2), iy(d.panelY + 0.2) + i * iy(0.42), panelW - ix(0.4), iy(0.36), {
+      fontSize: Math.max(d.detailFontSize, MAINTENANCE_PRESENTATION_TYPOGRAPHY.mapBulletPt), color: d.textColor, valign: "middle",
     });
   });
 
@@ -1679,7 +1685,7 @@ function renderCategorySlide(
   drawLegend(ctx, d, categories.includes("maintenance"));
   if (categories.includes("maintenance")) {
     drawTextBox(ctx, MAINTENANCE_LEGAL_FOOTER, ix(9.55), iy(7.08), ix(3.2), iy(0.18), {
-      fontSize: 6.8, color: d.legendTextColor, align: "right",
+      fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.legalFooterPt, color: d.legendTextColor, align: "right",
     });
   }
 }
@@ -1768,15 +1774,15 @@ function renderDevelopmentRiskMatrixSlide(
       { label: MAINTENANCE_PRESENTATION_COLUMNS[6], x: 9.18, w: 3.35, align: "left" },
     ] as const;
     columns.forEach((column) => {
-      drawTextBox(ctx, column.label, ix(column.x), iy(2.86), ix(column.w), iy(0.2), {
-        fontSize: 7.1, bold: true, color: d.mutedTextColor, align: column.align,
+      drawTextBox(ctx, column.label, ix(column.x), iy(2.84), ix(column.w), iy(0.3), {
+        fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.tableHeaderPt, bold: true, color: d.mutedTextColor, align: column.align,
       });
     });
     rows.forEach((row, rowIndex) => {
       const values = [row.name, row.typeStage, row.implementer, row.households, row.areaDistance, row.boundary, row.sourceDate];
       columns.forEach((column, columnIndex) => {
-        drawTextBox(ctx, values[columnIndex] ?? "", ix(column.x), iy(3.16 + rowIndex * 0.48), ix(column.w), iy(0.28), {
-          fontSize: columnIndex === 0 ? 7.6 : 6.9,
+        drawTextBox(ctx, values[columnIndex] ?? "", ix(column.x), iy(3.18 + rowIndex * 0.5), ix(column.w), iy(0.42), {
+          fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.tableBodyPt,
           bold: columnIndex === 0,
           color: columnIndex === 5 && row.boundary !== "공식 경계 확인" ? d.accentRed : d.textColor,
           align: column.align,
@@ -1785,7 +1791,7 @@ function renderDevelopmentRiskMatrixSlide(
       });
     });
   }
-  drawFooterNote(ctx, `${MAINTENANCE_LEGAL_FOOTER} · 행정구역 카탈로그는 반경 표와 점수에서 제외`, d);
+  drawFooterNote(ctx, `${MAINTENANCE_LEGAL_FOOTER} · 행정구역 카탈로그는 반경 표와 점수에서 제외`, d, undefined, MAINTENANCE_PRESENTATION_TYPOGRAPHY.legalFooterPt);
 }
 
 function renderResidentialSupplySlide(
@@ -2160,34 +2166,57 @@ function renderDataSourceSlide(
   ctx.fillStyle = d.canvasColor;
   ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
   drawTitleChip(ctx, "데이터 출처 및 신뢰도", d, "보고서 해석 전제");
-  [
-    { title: "주소/지도", value: "Naver API", detail: "지오코딩·지도 표시·검색 좌표 기준", color: "#3B82F6" },
-    ...MAINTENANCE_PRESENTATION_SOURCES.map((source) => ({
-      title: source.title,
-      value: source.value,
-      detail: source.detail,
-      color: "#EC4899",
-    })),
-  ].forEach((card, idx) => {
+  const colors = ["#3B82F6", "#F59E0B", "#10B981", "#EC4899", "#22C55E", "#94A3B8"];
+  GENERAL_PRESENTATION_SOURCES.map((source, index) => ({ ...source, color: colors[index] })).forEach((card, idx) => {
     const x = 0.7 + (idx % 3) * 4.0;
-    const y = 1.35 + Math.floor(idx / 3) * 1.55;
-    drawMetricCard(ctx, x, y, 3.55, 1.08, card.title, card.value, card.detail, card.color, d);
+    const y = 1.25 + Math.floor(idx / 3) * 1.5;
+    drawMetricCard(ctx, x, y, 3.55, 1.2, card.title, card.value, card.detail, card.color, d, {
+      label: MAINTENANCE_PRESENTATION_TYPOGRAPHY.sourceLabelPt,
+      value: MAINTENANCE_PRESENTATION_TYPOGRAPHY.sourceValuePt,
+      detail: MAINTENANCE_PRESENTATION_TYPOGRAPHY.sourceDetailPt,
+    });
   });
-  drawDataPanel(ctx, ix(0.7), iy(4.72), ix(11.9), iy(2.2), d);
-  drawTextBox(ctx, "주의사항", ix(1.0), iy(4.98), ix(2.0), iy(0.25), { fontSize: 12, bold: true, color: d.textColor });
+  drawDataPanel(ctx, ix(0.7), iy(4.32), ix(11.9), iy(2.58), d);
+  drawTextBox(ctx, "주의사항", ix(1.0), iy(4.56), ix(2.0), iy(0.28), { fontSize: 12, bold: true, color: d.textColor });
   [
     "거리 기준은 기본적으로 직선거리이며, 일부 공원은 경계 폴리곤 최단거리로 보정합니다.",
     "정비사업은 고시·공공데이터 반영 시점에 따라 단계 또는 경계 정보가 실제와 다를 수 있습니다.",
     "분양·입주 일정과 평면도 링크는 원천 공고 변경에 따라 사후 확인이 필요합니다.",
     "보고서 점수는 의사결정 보조 지표이며, 최종 판단에는 현장조사·시세·법적 검토가 병행되어야 합니다.",
   ].forEach((text, idx) => {
-    drawWrappedText(ctx, `• ${text}`, ix(1.0 + (idx % 2) * 5.75), iy(5.36 + Math.floor(idx / 2) * 0.42), ix(5.25), iy(0.17), 2, { fontSize: 7.8, color: d.mutedTextColor });
+    drawWrappedText(ctx, `• ${text}`, ix(1.0 + (idx % 2) * 5.75), iy(4.94 + Math.floor(idx / 2) * 0.52), ix(5.25), iy(0.22), 2, { fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.cautionPt, color: d.mutedTextColor });
   });
-  // 1단계 데이터 신뢰성: 소스별 수집일·누락 표기 (Task 7)
+  generalSourceStatusLines(input.sourceStatuses ?? []).forEach((text, idx) => {
+    drawTextBox(ctx, text, ix(1.0 + (idx % 2) * 5.75), iy(6.03 + Math.floor(idx / 2) * 0.27), ix(5.25), iy(0.24), { fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.statusPt, color: d.mutedTextColor });
+  });
+  drawFooterNote(ctx, `${input.config.centerName} / ${input.allPois.length.toLocaleString()}개 POI 기준 자동 생성`, d, undefined, MAINTENANCE_PRESENTATION_TYPOGRAPHY.legalFooterPt);
+}
+
+function renderMaintenanceSourceSlide(
+  ctx: CanvasRenderingContext2D,
+  _img: HTMLImageElement,
+  input: SlideRenderInput,
+  d: PptDesignConfig
+) {
+  ctx.fillStyle = d.canvasColor;
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  drawTitleChip(ctx, "정비사업 데이터 출처", d, "전국 기본 · 경계 · 지역 보강");
+  MAINTENANCE_PRESENTATION_SOURCES.forEach((source, idx) => {
+    const x = 0.7 + (idx % 3) * 4.0;
+    const y = 1.25 + Math.floor(idx / 3) * 1.5;
+    drawMetricCard(ctx, x, y, 3.55, 1.2, source.title, source.value, source.detail, "#EC4899", d, {
+      label: MAINTENANCE_PRESENTATION_TYPOGRAPHY.sourceLabelPt,
+      value: MAINTENANCE_PRESENTATION_TYPOGRAPHY.sourceValuePt,
+      detail: MAINTENANCE_PRESENTATION_TYPOGRAPHY.sourceDetailPt,
+    });
+  });
+  drawDataPanel(ctx, ix(0.7), iy(4.32), ix(11.9), iy(2.58), d);
+  drawTextBox(ctx, "수집 상태", ix(1.0), iy(4.58), ix(2.0), iy(0.28), { fontSize: 12, bold: true, color: d.textColor });
   maintenanceSourceStatusLines(input.sourceStatuses ?? []).forEach((text, idx) => {
-    drawTextBox(ctx, text, ix(1.0 + (idx % 2) * 5.75), iy(6.18 + Math.floor(idx / 2) * 0.2), ix(5.25), iy(0.2), { fontSize: 9, color: d.mutedTextColor });
+    drawTextBox(ctx, text, ix(1.0 + (idx % 2) * 5.75), iy(5.02 + Math.floor(idx / 2) * 0.48), ix(5.25), iy(0.34), { fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.statusPt, color: d.mutedTextColor });
   });
-  drawFooterNote(ctx, `${MAINTENANCE_LEGAL_FOOTER} · ${input.config.centerName} / ${input.allPois.length.toLocaleString()}개 POI 기준 자동 생성`, d);
+  drawTextBox(ctx, "원천 고시와 공공데이터의 반영 시점에 따라 단계·경계 정보가 달라질 수 있으므로 최종 판단 전 원문을 확인해야 합니다.", ix(1.0), iy(6.12), ix(11.0), iy(0.36), { fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.cautionPt, color: d.mutedTextColor });
+  drawFooterNote(ctx, `${MAINTENANCE_LEGAL_FOOTER} · ${input.config.centerName} 기준 자동 생성`, d, undefined, MAINTENANCE_PRESENTATION_TYPOGRAPHY.legalFooterPt);
 }
 
 // ── Font preload ──────────────────────────────────────────────────────────────
@@ -2301,6 +2330,7 @@ function buildSlideDefs(input: SlideRenderInput, includeScoreDashboard = false):
 
   defs.push({ title: "종합 분석", render: renderSummarySlide });
   defs.push({ title: "데이터 출처 및 신뢰도", render: renderDataSourceSlide });
+  defs.push({ title: "정비사업 데이터 출처", render: renderMaintenanceSourceSlide });
 
   return defs;
 }

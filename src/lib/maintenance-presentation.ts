@@ -17,7 +17,7 @@ export interface MaintenancePresentationRow {
 }
 
 export interface MaintenancePresentationSource {
-  readonly id: MaintenanceSource;
+  readonly id: string;
   readonly title: string;
   readonly value: string;
   readonly detail: string;
@@ -46,6 +46,28 @@ export const MAINTENANCE_PRESENTATION_COLUMNS = [
 
 export const MAINTENANCE_BOUNDARY_LEGEND = "정비사업 공식 경계(참고용)";
 export const MAINTENANCE_LEGAL_FOOTER = "법적 효력 없는 참고자료";
+
+export const MAINTENANCE_PRESENTATION_TYPOGRAPHY = {
+  mapBulletPt: 14,
+  insightPt: 13,
+  tableHeaderPt: 12,
+  tableBodyPt: 12,
+  sourceLabelPt: 11,
+  sourceValuePt: 15,
+  sourceDetailPt: 11,
+  cautionPt: 11,
+  statusPt: 11,
+  legalFooterPt: 9.5,
+} as const;
+
+export const GENERAL_PRESENTATION_SOURCES = [
+  { id: "naver", title: "주소/지도", value: "Naver API", detail: "지오코딩·지도 표시·검색 좌표 기준" },
+  { id: "poi", title: "교통/POI", value: "Naver + OSM", detail: "지하철·생활 POI·보조 경로 데이터" },
+  { id: "park", title: "공원/녹지", value: "공공데이터 + OSM", detail: "도시공원 면적, 경계 좌표 보조" },
+  { id: "maintenance", title: "정비사업", value: "공공 고시 데이터", detail: "전국·지역 정비사업 속성 보강" },
+  { id: "residential", title: "주거 공급", value: "대장/분양 정보", detail: "세대수, 주차, 분양·입주 일정" },
+  { id: "analysis", title: "보고서 산출", value: "자동 분석 모델", detail: "거리·개수·면적·단계 기반 점수화" },
+] as const satisfies readonly MaintenancePresentationSource[];
 
 export const MAINTENANCE_PRESENTATION_SOURCES = [
   {
@@ -79,6 +101,17 @@ export const MAINTENANCE_PRESENTATION_SOURCES = [
     detail: "부산 상세 속성 보강",
   },
 ] as const satisfies readonly MaintenancePresentationSource[];
+
+const WORD_JOINER = "\u2060";
+
+export function protectMaintenanceMapText(text: string): string {
+  return text.replace(/가로주택정비|\d+(?:\.\d+)?(?:만㎡|건|세대|m)/g, (token) => [...token].join(WORD_JOINER));
+}
+
+export function formatMaintenanceMapBullet(text: string): string {
+  const compact = text.replace(/\s*\([^,]+,\s*([^,]+),\s*([^)]+)\)$/, " · $1 · $2");
+  return protectMaintenanceMapText(compact);
+}
 
 function boundaryRank(project: MaintenanceProject): number {
   return project.boundary_status === "confirmed" ? 0 : 1;

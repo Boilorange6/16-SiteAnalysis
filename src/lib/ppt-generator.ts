@@ -18,18 +18,21 @@ import { computeResidentialCalloutLayout } from "./ppt-callout-layout";
 import { buildParkDetailLines, formatAreaSqm, formatDistanceM, summarizeParks } from "./park-analysis";
 import { buildMaintenanceDetailLines, formatMaintenanceArea, summarizeMaintenanceProjects } from "./maintenance-analysis";
 import {
+  GENERAL_PRESENTATION_SOURCES,
   MAINTENANCE_BOUNDARY_LEGEND,
   MAINTENANCE_LEGAL_FOOTER,
   MAINTENANCE_PRESENTATION_COLUMNS,
   MAINTENANCE_PRESENTATION_SOURCES,
+  MAINTENANCE_PRESENTATION_TYPOGRAPHY,
   buildMaintenancePresentationRows,
+  formatMaintenanceMapBullet,
   projectMaintenanceBoundaries,
 } from "./maintenance-presentation";
 import { buildInsightOverlays, computeAnalysisScores, generateAnalysisNarrative, getSummaryLines } from "./analysis-engine";
 import { haversineDistance } from "./geo";
 import type { PptDesignConfig } from "./ppt-design-config";
 import { DEFAULT_PPT_DESIGN, PPT_FONT_MAIN } from "./ppt-design-config";
-import { maintenanceSourceStatusLines, sourceStatusLines, hasFailedSource } from "./source-status-text";
+import { generalSourceStatusLines, maintenanceSourceStatusLines, hasFailedSource } from "./source-status-text";
 import { toReportMapTone } from "./map-image-tone";
 import { buildFactSummary, buildFactSheetRows, buildCategoryInsight, type FactSheetSegment, type CategoryInsightKey } from "./fact-summary";
 import { isRawPoiId } from "./poi-id-guard";
@@ -482,7 +485,7 @@ function addInsightCard(slide: PptxGenJS.Slide, lines: readonly string[], d: Ppt
     slide.addText(text, {
       x: INSIGHT_CARD_X + INSIGHT_CARD_PAD, y,
       w: INSIGHT_CARD_W - INSIGHT_CARD_PAD * 2, h: INSIGHT_CARD_LINE_H,
-      fontSize: 11.5, fontFace: FONT_MAIN, bold: true, color: pptColor(d.insightCardText),
+      fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.insightPt, fontFace: FONT_MAIN, bold: true, color: pptColor(d.insightCardText),
       align: "left", valign: "middle", margin: 0,
     });
   });
@@ -525,10 +528,10 @@ function addDataPanel(
   }
 }
 
-function addFooterNote(slide: PptxGenJS.Slide, text: string, d: PptDesignConfig, color?: string) {
+function addFooterNote(slide: PptxGenJS.Slide, text: string, d: PptDesignConfig, color?: string, fontSize = 6.5) {
   slide.addText(text, {
     x: 0.55, y: 7.08, w: 12.2, h: 0.22,
-    fontSize: 6.5, fontFace: FONT_MAIN, color: pptColor(color ?? d.mutedTextColor),
+    fontSize, fontFace: FONT_MAIN, color: pptColor(color ?? d.mutedTextColor),
     align: "right",
   });
 }
@@ -578,6 +581,7 @@ function addMetricCard(
   detail: string,
   color: string,
   d: PptDesignConfig,
+  typography: { readonly label?: number; readonly value?: number; readonly detail?: number } = {},
 ) {
   const borderColor = d.metricStyle === "number-plate" || d.metricStyle === "terminal" ? d.accentColor : color;
   const fillTransparency = d.metricStyle === "stat-sheet" ? 4 : d.metricStyle === "terminal" ? 6 : 10;
@@ -605,15 +609,15 @@ function addMetricCard(
   }
   slide.addText(label, {
     x: x + 0.18, y: y + 0.12, w: w - 0.34, h: 0.16,
-    fontSize: 7.5, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), bold: true,
+    fontSize: typography.label ?? 7.5, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), bold: true,
   });
   slide.addText(value, {
     x: x + (d.metricStyle === "number-plate" ? 0.55 : 0.18), y: y + 0.28, w: w - 0.34, h: 0.28,
-    fontSize: d.metricStyle === "number-plate" ? 16 : 18, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true,
+    fontSize: typography.value ?? (d.metricStyle === "number-plate" ? 16 : 18), fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true,
   });
   slide.addText(detail, {
     x: x + 0.18, y: y + h - 0.24, w: w - 0.34, h: 0.24,
-    fontSize: 7.5, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), fit: "shrink",
+    fontSize: typography.detail ?? 7.5, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), fit: "shrink",
   });
 }
 
@@ -1850,8 +1854,8 @@ function addDevelopmentRiskMatrixSlide(
     ] as const;
     columns.forEach((column) => {
       slide.addText(column.label, {
-        x: column.x, y: 2.86, w: column.w, h: 0.2,
-        fontSize: 7.1, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), bold: true,
+        x: column.x, y: 2.84, w: column.w, h: 0.3,
+        fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.tableHeaderPt, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), bold: true,
         align: column.align,
       });
     });
@@ -1859,15 +1863,15 @@ function addDevelopmentRiskMatrixSlide(
       const values = [row.name, row.typeStage, row.implementer, row.households, row.areaDistance, row.boundary, row.sourceDate];
       columns.forEach((column, columnIndex) => {
         slide.addText(values[columnIndex] ?? "", {
-          x: column.x, y: 3.16 + rowIndex * 0.48, w: column.w, h: 0.28,
-          fontSize: columnIndex === 0 ? 7.6 : 6.9, fontFace: FONT_MAIN,
+          x: column.x, y: 3.18 + rowIndex * 0.5, w: column.w, h: 0.42,
+          fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.tableBodyPt, fontFace: FONT_MAIN,
           color: pptColor(columnIndex === 5 && row.boundary !== "공식 경계 확인" ? d.accentRed : d.textColor),
-          bold: columnIndex === 0, align: column.align, fit: "shrink", wrap: false,
+          bold: columnIndex === 0, align: column.align, fit: "shrink", wrap: true,
         });
       });
     });
   }
-  addFooterNote(slide, `${MAINTENANCE_LEGAL_FOOTER} · 행정구역 카탈로그는 반경 표와 점수에서 제외`, d);
+  addFooterNote(slide, `${MAINTENANCE_LEGAL_FOOTER} · 행정구역 카탈로그는 반경 표와 점수에서 제외`, d, undefined, MAINTENANCE_PRESENTATION_TYPOGRAPHY.legalFooterPt);
 }
 
 function addMaintenanceBoundaries(
@@ -2021,19 +2025,16 @@ function addDataSourceSlide(
   slide.background = { fill: pptColor(d.canvasColor) };
   addTitleChip(slide, "데이터 출처 및 신뢰도", d, "보고서 해석 전제");
 
-  const sourceCards = [
-    { title: "주소/지도", value: "Naver API", detail: "지오코딩·지도 표시·검색 좌표 기준", color: "#3B82F6" },
-    ...MAINTENANCE_PRESENTATION_SOURCES.map((source) => ({
-      title: source.title,
-      value: source.value,
-      detail: source.detail,
-      color: "#EC4899",
-    })),
-  ];
+  const colors = ["#3B82F6", "#F59E0B", "#10B981", "#EC4899", "#22C55E", "#94A3B8"];
+  const sourceCards = GENERAL_PRESENTATION_SOURCES.map((source, index) => ({ ...source, color: colors[index] }));
   sourceCards.forEach((card, idx) => {
     const x = 0.7 + (idx % 3) * 4.0;
-    const y = 1.35 + Math.floor(idx / 3) * 1.55;
-    addMetricCard(slide, x, y, 3.55, 1.08, card.title, card.value, card.detail, card.color, d);
+    const y = 1.25 + Math.floor(idx / 3) * 1.5;
+    addMetricCard(slide, x, y, 3.55, 1.2, card.title, card.value, card.detail, card.color, d, {
+      label: MAINTENANCE_PRESENTATION_TYPOGRAPHY.sourceLabelPt,
+      value: MAINTENANCE_PRESENTATION_TYPOGRAPHY.sourceValuePt,
+      detail: MAINTENANCE_PRESENTATION_TYPOGRAPHY.sourceDetailPt,
+    });
   });
 
   const limitations = [
@@ -2042,25 +2043,60 @@ function addDataSourceSlide(
     "분양·입주 일정과 평면도 링크는 원천 공고 변경에 따라 사후 확인이 필요합니다.",
     "보고서 점수는 의사결정 보조 지표이며, 최종 판단에는 현장조사·시세·법적 검토가 병행되어야 합니다.",
   ];
-  addDataPanel(slide, 0.7, 4.72, 11.9, 2.2, d);
+  addDataPanel(slide, 0.7, 4.32, 11.9, 2.58, d);
   slide.addText("주의사항", {
-    x: 1.0, y: 4.98, w: 2.0, h: 0.25,
+    x: 1.0, y: 4.56, w: 2.0, h: 0.28,
     fontSize: 12, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true,
   });
   limitations.forEach((text, idx) => {
     slide.addText(`• ${text}`, {
-      x: 1.0 + (idx % 2) * 5.75, y: 5.36 + Math.floor(idx / 2) * 0.42, w: 5.25, h: 0.3,
-      fontSize: 7.8, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), fit: "shrink",
+      x: 1.0 + (idx % 2) * 5.75, y: 4.94 + Math.floor(idx / 2) * 0.52, w: 5.25, h: 0.42,
+      fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.cautionPt, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), fit: "shrink",
     });
   });
-  // 1단계 데이터 신뢰성: 소스별 수집일·누락 표기 (Task 7)
+  generalSourceStatusLines(sourceStatuses).forEach((text, idx) => {
+    slide.addText(text, {
+      x: 1.0 + (idx % 2) * 5.75, y: 6.03 + Math.floor(idx / 2) * 0.27, w: 5.25, h: 0.24,
+      fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.statusPt, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), fit: "shrink",
+    });
+  });
+  addFooterNote(slide, `${config.centerName} / ${pois.length.toLocaleString()}개 POI 기준 자동 생성`, d, undefined, MAINTENANCE_PRESENTATION_TYPOGRAPHY.legalFooterPt);
+}
+
+function addMaintenanceSourceSlide(
+  pptx: PptxGenJS,
+  config: AnalysisConfig,
+  d: PptDesignConfig,
+  sourceStatuses: readonly SourceStatus[] = [],
+) {
+  const slide = pptx.addSlide();
+  slide.background = { fill: pptColor(d.canvasColor) };
+  addTitleChip(slide, "정비사업 데이터 출처", d, "전국 기본 · 경계 · 지역 보강");
+  MAINTENANCE_PRESENTATION_SOURCES.forEach((source, idx) => {
+    const x = 0.7 + (idx % 3) * 4.0;
+    const y = 1.25 + Math.floor(idx / 3) * 1.5;
+    addMetricCard(slide, x, y, 3.55, 1.2, source.title, source.value, source.detail, "#EC4899", d, {
+      label: MAINTENANCE_PRESENTATION_TYPOGRAPHY.sourceLabelPt,
+      value: MAINTENANCE_PRESENTATION_TYPOGRAPHY.sourceValuePt,
+      detail: MAINTENANCE_PRESENTATION_TYPOGRAPHY.sourceDetailPt,
+    });
+  });
+  addDataPanel(slide, 0.7, 4.32, 11.9, 2.58, d);
+  slide.addText("수집 상태", {
+    x: 1.0, y: 4.58, w: 2.0, h: 0.28,
+    fontSize: 12, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true,
+  });
   maintenanceSourceStatusLines(sourceStatuses).forEach((text, idx) => {
     slide.addText(text, {
-      x: 1.0 + (idx % 2) * 5.75, y: 6.18 + Math.floor(idx / 2) * 0.2, w: 5.25, h: 0.2,
-      fontSize: 9, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor),
+      x: 1.0 + (idx % 2) * 5.75, y: 5.02 + Math.floor(idx / 2) * 0.48, w: 5.25, h: 0.34,
+      fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.statusPt, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), fit: "shrink",
     });
   });
-  addFooterNote(slide, `${MAINTENANCE_LEGAL_FOOTER} · ${config.centerName} / ${pois.length.toLocaleString()}개 POI 기준 자동 생성`, d);
+  slide.addText("원천 고시와 공공데이터의 반영 시점에 따라 단계·경계 정보가 달라질 수 있으므로 최종 판단 전 원문을 확인해야 합니다.", {
+    x: 1.0, y: 6.12, w: 11.0, h: 0.36,
+    fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.cautionPt, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), fit: "shrink",
+  });
+  addFooterNote(slide, `${MAINTENANCE_LEGAL_FOOTER} · ${config.centerName} 기준 자동 생성`, d, undefined, MAINTENANCE_PRESENTATION_TYPOGRAPHY.legalFooterPt);
 }
 
 function addCategorySlide(
@@ -2105,7 +2141,7 @@ function addCategorySlide(
   addSiteMarker(slide, radiusPosition, d);
   addMapSectionTitle(slide, title, `반경 ${config.radiusKm}km`);
 
-  const panelW = d.panelWidth;
+  const panelW = cats.includes("maintenance") ? Math.max(d.panelWidth, 4.1) : d.panelWidth;
   const panelH = Math.min(4.8, details.length * 0.42 + 0.6);
   addDataPanel(slide, d.panelX, d.panelY, panelW, panelH, d);
   if (details.length === 0) {
@@ -2115,9 +2151,11 @@ function addCategorySlide(
     });
   }
   details.forEach((text, i) => {
-    slide.addText(`• ${text}`, {
+    const displayText = cats.includes("maintenance") ? formatMaintenanceMapBullet(text) : text;
+    slide.addText(`• ${displayText}`, {
       x: d.panelX + 0.2, y: d.panelY + 0.2 + i * 0.42, w: panelW - 0.4, h: 0.36,
-      fontSize: d.detailFontSize, fontFace: FONT_MAIN, color: pptColor(d.textColor),
+      fontSize: Math.max(d.detailFontSize, MAINTENANCE_PRESENTATION_TYPOGRAPHY.mapBulletPt), fontFace: FONT_MAIN, color: pptColor(d.textColor),
+      fit: "shrink",
     });
   });
 
@@ -2133,7 +2171,7 @@ function addCategorySlide(
   if (cats.includes("maintenance")) {
     slide.addText(MAINTENANCE_LEGAL_FOOTER, {
       x: 9.55, y: 7.08, w: 3.2, h: 0.18,
-      fontSize: 6.8, fontFace: FONT_MAIN, color: pptColor(d.legendTextColor), align: "right",
+      fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.legalFooterPt, fontFace: FONT_MAIN, color: pptColor(d.legendTextColor), align: "right",
       fit: "shrink",
     });
   }
@@ -2525,6 +2563,7 @@ export async function generateSiteAnalysisPpt(
 
   addSummarySlide(pptx, config, allPois, reportBaseMapImage, radiusPosition, d);
   addDataSourceSlide(pptx, config, allPois, reportBaseMapImage, d, sourceStatuses);
+  addMaintenanceSourceSlide(pptx, config, d, sourceStatuses);
 
   // 역 그룹화 후처리를 거쳐 다운로드 — pptxgenjs는 그룹을 지원하지 않으므로 XML 후처리로
   // STGRP| 태깅 도형을 역 단위 그룹으로 묶는다. 후처리 실패 시 원본 그대로 저장(비치명).

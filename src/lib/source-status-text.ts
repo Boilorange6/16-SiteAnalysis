@@ -13,6 +13,11 @@ export function sourceStatusLines(statuses: readonly SourceStatus[]): string[] {
   return statuses.map(sourceStatusLine);
 }
 
+export function generalSourceStatusLines(statuses: readonly SourceStatus[]): string[] {
+  const maintenanceSources = new Set<string>(MAINTENANCE_SOURCE_IDS);
+  return statuses.filter(({ source }) => !maintenanceSources.has(source)).map(sourceStatusLine);
+}
+
 export function maintenanceSourceStatusLines(statuses: readonly SourceStatus[]): string[] {
   return MAINTENANCE_SOURCE_IDS.map((source) => {
     const status = statuses.find((candidate) => candidate.source === source);

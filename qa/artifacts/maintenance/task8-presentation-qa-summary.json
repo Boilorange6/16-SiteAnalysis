@@ -1,60 +1,88 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "qaDate": "2026-07-22",
   "fixture": {
+    "fixtureKind": "synthetic-structural",
+    "officialGeometryEvidence": false,
+    "realSourceEvidence": "task9",
+    "productPathFixture": false,
     "projectCount": 7,
+    "seoulStructuralCase": "서울 합성 Polygon 홀",
+    "busanStructuralCase": "부산 합성 MultiPolygon",
     "polygonHoleRings": 2,
     "multiPolygonParts": 2,
-    "unavailableWithoutGeometry": 2
+    "unavailableWithoutGeometry": 2,
+    "rendererConsumesSuppliedGeoJsonWithoutSynthesis": true
   },
   "canvas": {
     "maintenanceMap": {
       "file": "task8-canvas-maintenance-map.png",
-      "sha256": "f550bf6a9d092d4643e77be9bb4264569b2ed4519eb7a07fc60c718f10dcfa25"
+      "sha256": "f2aeb659fe4fae2e6d0b37b727a269c9846411a0a7f878dd58d288a217627281"
     },
     "maintenanceTable": {
       "file": "task8-canvas-maintenance-table.png",
-      "sha256": "ffd0f70250b19bf4ee539181ac869d4287119ac09b95be95bdc953f506678eda"
+      "sha256": "9661a6e0d399d109a3ccbbc37ee6c683ebbe305d0f01f4c4683c70c11f63781c"
+    },
+    "generalSources": {
+      "file": "task8-canvas-general-sources.png",
+      "sha256": "2bab7df832807785afe68770fe64ad7b6c33d33b91c6f8db8fbcc3f7791734e0"
     },
     "maintenanceSources": {
       "file": "task8-canvas-maintenance-sources.png",
-      "sha256": "96f55a38e947579ccfc6d618a438c6f3144d798ead3bc7d87c1ee9f7174b8d9c"
+      "sha256": "8ca51bba2ceb5db075bf63b527e4bf59d70a34157881492a359061fe6365f20e"
     }
   },
   "pptx": {
     "file": "task8-maintenance-report.pptx",
-    "sha256": "59a47202f14dbc9c4666e6c7e3ad2a472d09b96ddfd92d658b229ce4f32ec664",
+    "sha256": "a229b320cb5c4c815a130fa8a0d5a3b745991a39c67ade192a24f06f31c3cddf",
     "renderEngine": "Microsoft PowerPoint COM",
     "slides": {
       "maintenanceMap": {
         "number": 10,
         "file": "task8-ppt-maintenance-map.png",
-        "sha256": "55d1a0469fcaf66d6a92a29d8c2f91b793cd43f04a8bd4d3848a3690a6ef321b"
+        "sha256": "41833c7934a9497c3afaa60faf8d1db0f25f02bf16651ee337db756964e9d58f"
       },
       "maintenanceTable": {
         "number": 11,
         "file": "task8-ppt-maintenance-table.png",
-        "sha256": "5b9dbcdbc25517f5d5bc5983560380049cbfad5e5be39a0540b8f32c79dabbd7"
+        "sha256": "c779c6c89fb9f3da12cec2adc65f2960a424d55b213a3e25409b676ffa9b217c"
+      },
+      "generalSources": {
+        "number": 15,
+        "file": "task8-ppt-general-sources.png",
+        "sha256": "17b627061d28b95f9e1ce3045b6e53f10394ba4fad8286d442f98afc86259f65"
       },
       "maintenanceSources": {
-        "number": 15,
+        "number": 16,
         "file": "task8-ppt-maintenance-sources.png",
-        "sha256": "bd6126503311321fb889bdb7edcadc9062b4aeb32258600946639d6da38e77e9"
+        "sha256": "c1ecc478f1d0f76ab2bd782f62e679d8c9b13719cb304d71025eaf0d62da523f"
       }
     }
   },
   "checks": {
-    "overflowShapeCount": 0,
+    "slideCount": 16,
+    "editableTextShapeCount": 320,
+    "task8AuditedSlideOverflowShapeCount": 0,
+    "wholeDeckOverflowShapeCount": 2,
+    "preExistingCoverDecorationOverflowShapeCount": 2,
+    "mapBulletMinFontPt": 14,
+    "tableRelevantMinFontPt": 12,
+    "sourceRelevantMinFontPt": 11,
+    "semanticTokensPresent": true,
+    "parkFailureVisible": true,
     "tableColumnCount": 7,
     "tableRowCount": 6,
-    "sourceCardCount": 5,
-    "runtimeStatusCount": 4,
+    "generalSourceCardCount": 6,
+    "maintenanceSourceCardCount": 5,
+    "totalSourceCardCount": 11,
+    "maintenanceRuntimeStatusCount": 4,
     "boundaryShapes": {
-      "total": 7,
+      "maintenanceMapTotal": 7,
+      "wholeDeckTotal": 14,
       "solidRings": 4,
       "dashedRings": 3,
       "unavailableShapeCount": 0
     }
   },
-  "toolFallback": "Bundled render_slides.py and slides_test.py could not run because pdf2image is not installed. PowerPoint COM export plus shape-bound, text, and object-name audits were used instead."
+  "evidenceScope": "The images validate editable renderer structure and supplied GeoJSON handling only. Authorized real-source geometry is deferred to Task 9."
 }
