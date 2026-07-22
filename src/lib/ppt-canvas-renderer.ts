@@ -36,7 +36,14 @@ import {
 } from "./maintenance-presentation";
 import { buildInsightOverlays, computeAnalysisScores, generateAnalysisNarrative, getSummaryLines } from "./analysis-engine";
 import { haversineDistance } from "./geo";
-import { generalSourceStatusLines, maintenanceSourceStatusLines, hasFailedSource } from "./source-status-text";
+import {
+  PARK_DATA_UNAVAILABLE_NOTICE,
+  generalSourceStatusLines,
+  hasFailedSource,
+  isSourceFailed,
+  maintenanceSourceStatusLines,
+  reportPoisForSourceStatuses,
+} from "./source-status-text";
 import { toReportMapTone } from "./map-image-tone";
 import { buildFactSummary, buildFactSheetRows, buildCategoryInsight, type FactSheetSegment, type CategoryInsightKey } from "./fact-summary";
 import { isRawPoiId } from "./poi-id-guard";
@@ -662,7 +669,7 @@ function drawInsightCard(ctx: CanvasRenderingContext2D, lines: readonly string[]
   drawTextBox(ctx, INSIGHT_CARD_LABEL,
     ix(INSIGHT_CARD_X + INSIGHT_CARD_PAD), iy(cardY + INSIGHT_CARD_PAD - 0.03),
     ix(INSIGHT_CARD_W - INSIGHT_CARD_PAD * 2), iy(INSIGHT_CARD_TITLE_H), {
-      fontSize: 10, bold: true, color: INSIGHT_CARD_LABEL_COLOR, align: "left", valign: "middle",
+      fontSize: 11, bold: true, color: INSIGHT_CARD_LABEL_COLOR, align: "left", valign: "middle",
     });
   lines.forEach((text, i) => {
     const y = cardY + INSIGHT_CARD_PAD + INSIGHT_CARD_TITLE_H + i * INSIGHT_CARD_LINE_H;
@@ -865,7 +872,7 @@ function drawRankedList(
   });
   if (rows.length === 0) {
     drawTextBox(ctx, "확인된 데이터가 없습니다.", ix(x + 0.18), iy(y + 0.52), ix(w - 0.36), iy(0.25), {
-      fontSize: 8.5, color: d.mutedTextColor,
+      fontSize: 11, color: d.mutedTextColor,
     });
     return;
   }
@@ -901,7 +908,7 @@ function drawLegend(ctx: CanvasRenderingContext2D, d: PptDesignConfig, maintenan
       ctx.fillStyle = item.color;
       ctx.fillRect(itemX, y + iy(0.11), ix(0.12), iy(0.12));
       drawTextBox(ctx, item.label, itemX + ix(0.16), y + iy(0.065), ix(0.6), iy(0.2), {
-        fontSize: 6.4, color: d.legendTextColor, valign: "middle",
+        fontSize: 11, color: d.legendTextColor, valign: "middle",
       });
     });
     return;
@@ -933,7 +940,7 @@ function drawLegend(ctx: CanvasRenderingContext2D, d: PptDesignConfig, maintenan
     if (d.legendStyle !== "rail") {
       drawTextBox(ctx, item.label,
         legX + ix(0.28), itemY, legW - ix(0.32), iy(LEGEND_ROW_H), {
-          fontSize: d.legendFontSize, color: d.legendTextColor, valign: "middle",
+          fontSize: Math.max(11, d.legendFontSize), color: d.legendTextColor, valign: "middle",
         });
     }
   });
@@ -999,7 +1006,7 @@ function drawPoiMarkers(
     const labelColor = poi.category === "mountain" ? d.categoryColors.mountain : d.textColor;
     drawTextBox(ctx, poiLabelText(poi),
       ix(placement.x), iy(placement.y), ix(placement.w), iy(placement.h), {
-        fontSize: d.labelFontSize, bold: true, color: labelColor,
+        fontSize: Math.max(11, d.labelFontSize), bold: true, color: labelColor,
         align: "center", valign: "middle",
         bgColor: d.overlayColor, bgTransparency: d.labelBgTransparency, bgRadius: d.panelRadius,
       });
@@ -1350,7 +1357,11 @@ function renderFactSheetSlide(
   );
 
   const summary = buildFactSummary({ config: input.config, allPois: input.allPois });
-  const rows = buildFactSheetRows(input.config, summary);
+  const rows = buildFactSheetRows(input.config, summary).map((row) =>
+    isSourceFailed(input.sourceStatuses ?? [], "park") && row.label === "공원·산"
+      ? { ...row, value: [{ text: PARK_DATA_UNAVAILABLE_NOTICE }] }
+      : row
+  );
 
   let y = FACT_TABLE_Y;
   drawRoundedRect(ctx, ix(FACT_TABLE_X), iy(y), ix(FACT_TABLE_W), iy(FACT_HEADER_H), 0, d.insightCardBg);
@@ -1515,14 +1526,23 @@ function renderInsightSummarySlide(
   ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
   drawTitleChip(ctx, "핵심 인사이트 요약", d, "강점 · 리스크 · 후속 확인");
   const narrative = generateAnalysisNarrative(input.config, input.allPois);
+  const parkDataAvailable = !isSourceFailed(input.sourceStatuses ?? [], "park");
+  const summaryText = parkDataAvailable
+    ? narrative.summary
+    : `${input.config.centerName} 입지 인사이트: 공원 산출을 제외한 확인 데이터 기준입니다.`;
+  const insightBullets = parkDataAvailable
+    ? narrative.bullets
+    : narrative.bullets.map((text) => text.startsWith("자연:") ? PARK_DATA_UNAVAILABLE_NOTICE : text);
+  const risks = parkDataAvailable ? narrative.risks : narrative.risks.filter((text) => !text.includes("자연"));
+  const nextActions = parkDataAvailable ? narrative.nextActions : narrative.nextActions.filter((text) => !text.includes("공원"));
   drawDataPanel(ctx, ix(0.7), iy(1.15), ix(11.95), iy(1.05), d);
-  drawWrappedText(ctx, narrative.summary, ix(1.0), iy(1.38), ix(11.35), iy(0.3), 2, { fontSize: 17, bold: true, color: d.textColor });
+  drawWrappedText(ctx, summaryText, ix(1.0), iy(1.38), ix(11.35), iy(0.3), 2, { fontSize: 17, bold: true, color: d.textColor });
   // P4R Task C-1: 구 팔레트(초록/주황/파랑) 정리 — 2단계 팔레트(무채 잉크 + accentRed 1곳)로.
   // 3열 중 "리스크"만 주의가 필요한 항목이라 accentRed로 강조하고 나머지는 무채 잉크 스트립.
   const columns = [
-    { title: "핵심 강점", rows: narrative.bullets.slice(0, 4), color: d.accentColor },
-    { title: "리스크", rows: narrative.risks.length ? narrative.risks.slice(0, 4) : ["현재 데이터 기준 중대한 약점은 제한적입니다."], color: d.accentRed },
-    { title: "다음 액션", rows: narrative.nextActions.slice(0, 4), color: d.accentColor },
+    { title: "핵심 강점", rows: insightBullets.slice(0, 4), color: d.accentColor },
+    { title: "리스크", rows: risks.length ? risks.slice(0, 4) : ["현재 데이터 기준 중대한 약점은 제한적입니다."], color: d.accentRed },
+    { title: "다음 액션", rows: nextActions.slice(0, 4), color: d.accentColor },
   ];
   columns.forEach((column, idx) => {
     const x = 0.7 + idx * 4.05;
@@ -1587,7 +1607,7 @@ function renderRadiusAnalysisSlide(
     drawDataPanel(ctx, ix(x), iy(y), ix(w), iy(1.95), d);
     drawTextBox(ctx, row.label, ix(x + 0.26), iy(y + 0.2), ix(2.6), iy(0.28), { fontSize: 13, bold: true, color: d.textColor });
     if (row.subtitle) {
-      drawTextBox(ctx, row.subtitle, ix(x + 0.26), iy(y + 0.47), ix(3.2), iy(0.2), { fontSize: 10, color: d.mutedTextColor });
+      drawTextBox(ctx, row.subtitle, ix(x + 0.26), iy(y + 0.47), ix(3.2), iy(0.2), { fontSize: 11, color: d.mutedTextColor });
     }
     const radiusLabel = row.radiusM >= 1000 ? `${(row.radiusM / 1000).toFixed(row.radiusM % 1000 === 0 ? 0 : 1)}km` : `${row.radiusM}m`;
     drawTextBox(ctx, radiusLabel, ix(x + w - 1.4), iy(y + 0.16), ix(1.05), iy(0.34), { fontSize: 17, bold: true, color: row.color, align: "right" });
@@ -1595,25 +1615,27 @@ function renderRadiusAnalysisSlide(
     [
       ["역", countWithin(input.config, input.allPois, row.radiusM, "subway")],
       ["학교", countWithin(input.config, input.allPois, row.radiusM, "school")],
-      ["공원", countWithin(input.config, input.allPois, row.radiusM, "park")],
+      ["공원", isSourceFailed(input.sourceStatuses ?? [], "park") ? "—" : countWithin(input.config, input.allPois, row.radiusM, "park")],
       ["정비", countWithin(input.config, input.allPois, row.radiusM, "maintenance")],
     ].forEach(([label, value], metricIdx) => {
       const mx = x + 0.3 + metricIdx * metricGap;
-      drawTextBox(ctx, String(label), ix(mx), iy(y + 0.72), ix(0.8), iy(0.2), { fontSize: 10, color: d.mutedTextColor, align: "center" });
+      drawTextBox(ctx, String(label), ix(mx), iy(y + 0.72), ix(0.8), iy(0.2), { fontSize: 11, color: d.mutedTextColor, align: "center" });
       drawTextBox(ctx, String(value), ix(mx), iy(y + 0.96), ix(0.8), iy(0.34), { fontSize: 18, bold: true, color: d.textColor, align: "center" });
     });
-    drawTextBox(ctx, row.note, ix(x + 0.3), iy(y + 1.48), ix(w - 0.65), iy(0.24), { fontSize: 10, color: d.mutedTextColor });
+    drawTextBox(ctx, row.note, ix(x + 0.3), iy(y + 1.48), ix(w - 0.65), iy(0.24), { fontSize: 11, color: d.mutedTextColor });
   });
   // Task A: 하단 오버플로 수정 — 4개 항목을 단일 열로 쌓으면 패널이 슬라이드 하단(7.5in) 밖으로
   // 잘리고 각주와 겹쳤다(s8 결함). 2열 2행 그리드로 재배치해 7.5in 안에 들어오게 하고, 라벨 아래
   // 설명을 줄바꿈해 다음 항목과 겹치지 않게 한다.
   // P4R Task C-7b: 아래 2×2 그리드는 4칸을 가정한다 — buildInsightOverlays가 그 이상을 반환해도
   // 패널(gridH=1.3, 2행)을 벗어나지 않도록 방어적으로 4개까지만 사용한다.
-  const insightOverlays = buildInsightOverlays(input.config, input.allPois).slice(0, 4);
+  const insightOverlays = buildInsightOverlays(input.config, input.allPois)
+    .filter((overlay) => !isSourceFailed(input.sourceStatuses ?? [], "park") || overlay.scoreKey !== "nature")
+    .slice(0, 4);
   const gridX = 0.72, gridY = 5.65, gridW = 11.6, gridH = 1.3;
   drawDataPanel(ctx, ix(gridX), iy(gridY), ix(gridW), iy(gridH), d);
   drawTextBox(ctx, "지도 인사이트 레이어 기준", ix(gridX + 0.2), iy(gridY + 0.14), ix(gridW - 0.4), iy(0.22), {
-    fontSize: 10, bold: true, color: d.textColor,
+    fontSize: 11, bold: true, color: d.textColor,
   });
   const gridPad = 0.2, gridColGap = 0.2, gridRowH = 0.45;
   const gridColW = (gridW - gridPad * 2 - gridColGap) / 2;
@@ -1625,10 +1647,10 @@ function renderRadiusAnalysisSlide(
     const cy = gridTopY + row * gridRowH;
     drawEllipseShape(ctx, ix(cx + 0.06), iy(cy + 0.09), ix(0.05), ix(0.05), overlay.color);
     drawTextBox(ctx, overlay.label, ix(cx + 0.2), iy(cy), ix(gridColW - 0.2), iy(0.2), {
-      fontSize: 10, bold: true, color: d.textColor,
+      fontSize: 11, bold: true, color: d.textColor,
     });
     drawWrappedText(ctx, overlay.description, ix(cx + 0.2), iy(cy + 0.2), ix(gridColW - 0.25), iy(0.16), 2, {
-      fontSize: 10, color: d.mutedTextColor,
+      fontSize: 11, color: d.mutedTextColor,
     });
   });
   drawFooterNote(ctx, "반경 분석은 직선거리 기준이며 실제 보행 경로와 차이가 있을 수 있습니다.", d);
@@ -1696,7 +1718,7 @@ function renderCategorySlide(
   // 인사이트 카드(Task 5) — fact-summary 기반 카테고리 결론 2-4줄. 데이터 0건이면 빈 배열이라
   // 카드를 그리지 않고 위 details의 EMPTY_PANEL_TEXT 문법을 그대로 유지한다.
   const insightKey = inferCategoryInsightKey(categories);
-  if (insightKey) {
+  if (insightKey && !details.includes(PARK_DATA_UNAVAILABLE_NOTICE)) {
     const summary = buildFactSummary({ config: input.config, allPois: input.allPois });
     drawInsightCard(ctx, buildCategoryInsight(insightKey, summary), d);
   }
@@ -1720,6 +1742,14 @@ function renderParkAccessDetailSlide(
   ctx.fillStyle = d.canvasColor;
   ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
   drawTitleChip(ctx, "공원/녹지 접근성 상세", d, "경계 기준 접근거리 우선");
+  if (isSourceFailed(input.sourceStatuses ?? [], "park")) {
+    drawEmptyStateBadge(ctx, d, { x: 0.7, y: 1.15, w: 11.9, h: 5.6 }, PARK_DATA_UNAVAILABLE_NOTICE);
+    drawTextBox(ctx, "경계가 없으면 면적 기반 원형거리로 추정합니다.", ix(4.05), iy(5.62), ix(5.25), iy(0.3), {
+      fontSize: 11, color: d.mutedTextColor, align: "center", valign: "middle",
+    });
+    drawFooterNote(ctx, `대상지: ${input.config.centerName} / 공원 원천 복구 후 접근거리와 면적을 다시 산출합니다.`, d);
+    return;
+  }
   const parks = input.allPois.filter((p): p is Park => p.category === "park");
   const summary = summarizeParks(parks);
   // P4R Task B-4b: "접근성 점수 NN/100"(내부 산식 점수)를 팩트 지표(최근접 공원 실거리)로 격하.
@@ -1759,7 +1789,7 @@ function renderParkAccessDetailSlide(
     drawProgressBar(ctx, 8.25, y + 0.06, 2.1, Number(value), Math.max(summary.count, 1), d.accentColor, d);
     drawTextBox(ctx, `${value}개`, ix(10.55), iy(y), ix(0.6), iy(0.26), { fontSize: 11, bold: true, color: d.textColor, align: "right" });
   });
-  drawWrappedText(ctx, "공원 경계는 외곽선 최단거리입니다.\n경계가 없으면 면적 기반 원형거리로 계산합니다.", ix(6.65), iy(5.28), ix(4.65), iy(0.48), 2, { fontSize: 11, color: d.mutedTextColor });
+  drawWrappedText(ctx, "공원 경계는 외곽선 최단거리입니다.\n경계가 없으면 면적 기반 원형거리로 추정합니다.", ix(6.65), iy(5.28), ix(4.65), iy(0.48), 2, { fontSize: 11, color: d.mutedTextColor });
   drawFooterNote(ctx, `대상지: ${input.config.centerName} / 자연환경 데이터는 공공 도시공원·OSM 보조 데이터를 결합합니다.`, d);
 }
 
@@ -2162,11 +2192,20 @@ function renderSummarySlide(
   const panelW = ix(summaryPanelW);
   drawDataPanel(ctx, ix(summaryPanelX), iy(d.panelY), panelW, iy(5), d);
 
-  const points = getSummaryLines(config, allPois);
-  const lastBodyIdx = points.length - 2; // 마지막 줄은 항상 muted 점수 보조 지표 — 강조는 그 앞줄에 둔다.
+  const parkDataAvailable = !isSourceFailed(input.sourceStatuses ?? [], "park");
+  const points = getSummaryLines(config, allPois)
+    .map((point, index) => {
+      if (parkDataAvailable) return point;
+      if (index === 0) return { text: `${config.centerName} 입지 종합 의견: 공원 산출을 제외한 확인 데이터 기준입니다.` };
+      if (point.text.startsWith("자연:")) return { text: PARK_DATA_UNAVAILABLE_NOTICE };
+      return point;
+    })
+    .filter((point) => parkDataAvailable || !point.muted);
+  let lastBodyIdx = -1;
+  points.forEach((point, index) => { if (!point.muted) lastBodyIdx = index; });
   points.forEach((point, idx) => {
     drawTextBox(ctx, point.text, ix(summaryPanelX + 0.3), iy(d.panelY + 0.4) + idx * iy(0.65), panelW - ix(0.5), iy(0.5), {
-      fontSize: point.muted ? Math.max(8, Math.round(d.summaryFontSize * 0.7)) : d.summaryFontSize,
+      fontSize: point.muted ? Math.max(11, Math.round(d.summaryFontSize * 0.7)) : d.summaryFontSize,
       bold: !point.muted && idx === lastBodyIdx,
       color: point.muted ? d.mutedTextColor : d.textColor,
       valign: "middle",
@@ -2311,7 +2350,7 @@ function buildSlideDefs(input: SlideRenderInput, includeScoreDashboard = false):
         const parks = inp.allPois.filter((p): p is Park => p.category === "park");
         const mountains = inp.allPois.filter(p => p.category === "mountain" && !isRawPoiId(p.name));
         renderCategorySlide(ctx, img, inp, d, "자연 환경", ["park", "mountain"],
-          [...buildParkDetailLines(parks, 7), ...mountains.slice(0, 1).map(p => `인접 산: ${p.name}`)].slice(0, 8));
+          [...(isSourceFailed(inp.sourceStatuses ?? [], "park") ? [PARK_DATA_UNAVAILABLE_NOTICE] : buildParkDetailLines(parks, 7)), ...mountains.slice(0, 1).map(p => `인접 산: ${p.name}`)].slice(0, 8));
       },
     },
     { title: "핵심 인사이트 요약", render: renderInsightSummarySlide },
@@ -2359,6 +2398,16 @@ function createCanvas(): [HTMLCanvasElement, CanvasRenderingContext2D] {
   return [canvas, ctx];
 }
 
+function reportInputForSourceStatuses(input: SlideRenderInput): SlideRenderInput {
+  const allPois = reportPoisForSourceStatuses(input.allPois, input.sourceStatuses ?? []);
+  const poiIds = new Set(allPois.map((poi) => poi.id));
+  return {
+    ...input,
+    allPois,
+    poiPositions: input.poiPositions.filter(({ poi }) => poiIds.has(poi.id)),
+  };
+}
+
 export async function renderAllSlides(
   input: SlideRenderInput,
   designConfig: PptDesignConfig,
@@ -2366,11 +2415,12 @@ export async function renderAllSlides(
 ): Promise<RenderedSlide[]> {
   await ensureFontsLoaded();
   const baseImg = await loadReportBaseImage(input.baseMapImage, designConfig.mapGrayscale !== false);
-  const slideDefs = buildSlideDefs(input, includeScoreDashboard);
+  const reportInput = reportInputForSourceStatuses(input);
+  const slideDefs = buildSlideDefs(reportInput, includeScoreDashboard);
 
   return slideDefs.map(({ title, render }, index) => {
     const [canvas, ctx] = createCanvas();
-    render(ctx, baseImg, input, designConfig);
+    render(ctx, baseImg, reportInput, designConfig);
     drawSyntheticDisclosure(ctx, input.config, designConfig);
     return { index, title, imageDataUrl: canvas.toDataURL("image/png") };
   });
@@ -2385,10 +2435,11 @@ export async function renderSingleSlide(
 ): Promise<RenderedSlide> {
   await ensureFontsLoaded();
   const baseImg = preloadedImage ?? (await loadReportBaseImage(input.baseMapImage, designConfig.mapGrayscale !== false));
-  const slideDefs = buildSlideDefs(input, includeScoreDashboard);
+  const reportInput = reportInputForSourceStatuses(input);
+  const slideDefs = buildSlideDefs(reportInput, includeScoreDashboard);
   const def = slideDefs[slideIndex] ?? slideDefs[0];
   const [canvas, ctx] = createCanvas();
-  def.render(ctx, baseImg, input, designConfig);
+  def.render(ctx, baseImg, reportInput, designConfig);
   drawSyntheticDisclosure(ctx, input.config, designConfig);
   return { index: slideIndex, title: def.title, imageDataUrl: canvas.toDataURL("image/png") };
 }

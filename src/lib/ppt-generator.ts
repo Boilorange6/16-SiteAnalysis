@@ -37,7 +37,14 @@ import { buildInsightOverlays, computeAnalysisScores, generateAnalysisNarrative,
 import { haversineDistance } from "./geo";
 import type { PptDesignConfig } from "./ppt-design-config";
 import { DEFAULT_PPT_DESIGN, PPT_FONT_MAIN } from "./ppt-design-config";
-import { generalSourceStatusLines, maintenanceSourceStatusLines, hasFailedSource } from "./source-status-text";
+import {
+  PARK_DATA_UNAVAILABLE_NOTICE,
+  generalSourceStatusLines,
+  hasFailedSource,
+  isSourceFailed,
+  maintenanceSourceStatusLines,
+  reportPoisForSourceStatuses,
+} from "./source-status-text";
 import { toReportMapTone } from "./map-image-tone";
 import { buildFactSummary, buildFactSheetRows, buildCategoryInsight, type FactSheetSegment, type CategoryInsightKey } from "./fact-summary";
 import { isRawPoiId } from "./poi-id-guard";
@@ -482,7 +489,7 @@ function addInsightCard(slide: PptxGenJS.Slide, lines: readonly string[], d: Ppt
   slide.addText(INSIGHT_CARD_LABEL, {
     x: INSIGHT_CARD_X + INSIGHT_CARD_PAD, y: cardY + INSIGHT_CARD_PAD - 0.03,
     w: INSIGHT_CARD_W - INSIGHT_CARD_PAD * 2, h: INSIGHT_CARD_TITLE_H,
-    fontSize: 10, fontFace: FONT_MAIN, bold: true, color: pptColor(INSIGHT_CARD_LABEL_COLOR),
+    fontSize: 11, fontFace: FONT_MAIN, bold: true, color: pptColor(INSIGHT_CARD_LABEL_COLOR),
     align: "left", valign: "middle", margin: 0,
   });
   lines.forEach((text, i) => {
@@ -697,7 +704,7 @@ function addRankedList(
   if (rows.length === 0) {
     slide.addText("확인된 데이터가 없습니다.", {
       x: x + 0.18, y: y + 0.52, w: w - 0.36, h: 0.25,
-      fontSize: 8.5, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor),
+      fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor),
     });
     return;
   }
@@ -743,7 +750,7 @@ function addLegend(slide: PptxGenJS.Slide, d: PptDesignConfig, maintenanceRefere
     items.slice(0, 6).forEach((item, i) => {
       const itemX = x + 0.18 + i * 0.92;
       slide.addShape("rect", { x: itemX, y: y + 0.11, w: 0.12, h: 0.12, fill: { color: pptColor(item.color), transparency: 0 }, line: { color: pptColor(item.color), transparency: 100 }, objectName: grpTag("legend", "범례", `dot-${i}`) });
-      slide.addText(item.label, { x: itemX + 0.16, y: y + 0.065, w: 0.6, h: 0.2, fontSize: 6.4, fontFace: FONT_MAIN, color: pptColor(d.legendTextColor), valign: "middle", fit: "shrink", objectName: grpTag("legend", "범례", `label-${i}`) });
+      slide.addText(item.label, { x: itemX + 0.16, y: y + 0.065, w: 0.6, h: 0.2, fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.legendTextColor), valign: "middle", fit: "shrink", objectName: grpTag("legend", "범례", `label-${i}`) });
     });
     return;
   }
@@ -780,7 +787,7 @@ function addLegend(slide: PptxGenJS.Slide, d: PptDesignConfig, maintenanceRefere
     if (d.legendStyle !== "rail") {
       slide.addText(item.label, {
         x: legX + 0.28, y, w: LEGEND_W - 0.32, h: LEGEND_ROW_H,
-        fontSize: d.legendFontSize, fontFace: FONT_MAIN,
+        fontSize: Math.max(11, d.legendFontSize), fontFace: FONT_MAIN,
         color: pptColor(d.legendTextColor), valign: "middle",
         objectName: grpTag("legend", "범례", `label-${i}`),
       });
@@ -878,7 +885,7 @@ function addPoiMarkers(
     const labelColor = poi.category === "mountain" ? d.categoryColors.mountain : d.textColor;
     slide.addText(poiLabelText(poi), {
       x: placement.x, y: placement.y, w: placement.w, h: placement.h,
-      fontSize: d.labelFontSize, fontFace: FONT_MAIN,
+      fontSize: Math.max(11, d.labelFontSize), fontFace: FONT_MAIN,
       color: pptColor(labelColor), bold: true,
       fill: { color: pptColor(d.overlayColor), transparency: d.labelBgTransparency },
       rectRadius: d.panelRadius / 2, margin: 0.02, align: "center", valign: "middle",
@@ -1405,7 +1412,11 @@ function addFactSheetSlide(
   });
 
   const summary = buildFactSummary({ config, allPois });
-  const rows = buildFactSheetRows(config, summary);
+  const rows = buildFactSheetRows(config, summary).map((row) =>
+    isSourceFailed(sourceStatuses, "park") && row.label === "공원·산"
+      ? { ...row, value: [{ text: PARK_DATA_UNAVAILABLE_NOTICE }] }
+      : row
+  );
 
   let y = FACT_TABLE_Y;
   slide.addShape("rect", {
@@ -1576,6 +1587,7 @@ function addInsightSummarySlide(
   pois: readonly Poi[],
   _baseMapImage: string,
   d: PptDesignConfig,
+  sourceStatuses: readonly SourceStatus[] = [],
 ) {
   const slide = pptx.addSlide();
   // Task A: 백색(B문법) 전환 — 2단계에서 지도가 흑백·어둡게 바뀐 뒤에도 이 슬라이드는 구 문법
@@ -1585,8 +1597,17 @@ function addInsightSummarySlide(
   addTitleChip(slide, "핵심 인사이트 요약", d, "강점 · 리스크 · 후속 확인");
 
   const narrative = generateAnalysisNarrative(config, pois);
+  const parkDataAvailable = !isSourceFailed(sourceStatuses, "park");
+  const summaryText = parkDataAvailable
+    ? narrative.summary
+    : `${config.centerName} 입지 인사이트: 공원 산출을 제외한 확인 데이터 기준입니다.`;
+  const insightBullets = parkDataAvailable
+    ? narrative.bullets
+    : narrative.bullets.map((text) => text.startsWith("자연:") ? PARK_DATA_UNAVAILABLE_NOTICE : text);
+  const risks = parkDataAvailable ? narrative.risks : narrative.risks.filter((text) => !text.includes("자연"));
+  const nextActions = parkDataAvailable ? narrative.nextActions : narrative.nextActions.filter((text) => !text.includes("공원"));
   addDataPanel(slide, 0.7, 1.15, 11.95, 1.05, d);
-  slide.addText(narrative.summary, {
+  slide.addText(summaryText, {
     x: 1.0, y: 1.38, w: 11.35, h: 0.52,
     fontSize: 17, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true, fit: "shrink",
   });
@@ -1594,9 +1615,9 @@ function addInsightSummarySlide(
   // P4R Task C-1: 구 팔레트(초록/주황/파랑) 정리 — 2단계 팔레트(무채 잉크 + accentRed 1곳)로.
   // 3열 중 "리스크"만 주의가 필요한 항목이라 accentRed로 강조하고 나머지는 무채 잉크 스트립.
   const columns = [
-    { title: "핵심 강점", rows: narrative.bullets.slice(0, 4), color: d.accentColor },
-    { title: "리스크", rows: narrative.risks.length ? narrative.risks.slice(0, 4) : ["현재 데이터 기준 중대한 약점은 제한적입니다."], color: d.accentRed },
-    { title: "다음 액션", rows: narrative.nextActions.slice(0, 4), color: d.accentColor },
+    { title: "핵심 강점", rows: insightBullets.slice(0, 4), color: d.accentColor },
+    { title: "리스크", rows: risks.length ? risks.slice(0, 4) : ["현재 데이터 기준 중대한 약점은 제한적입니다."], color: d.accentRed },
+    { title: "다음 액션", rows: nextActions.slice(0, 4), color: d.accentColor },
   ];
   columns.forEach((column, idx) => {
     const x = 0.7 + idx * 4.05;
@@ -1627,6 +1648,7 @@ function addRadiusAnalysisSlide(
   _baseMapImage: string,
   _radiusPosition: RadiusPosition | null,
   d: PptDesignConfig,
+  sourceStatuses: readonly SourceStatus[] = [],
 ) {
   const slide = pptx.addSlide();
   // Task A: 백색(B문법) 전환 — 아래 렌더 로직 대부분이 카드/패널로 화면을 거의 다 덮으므로
@@ -1636,7 +1658,9 @@ function addRadiusAnalysisSlide(
 
   // P4R Task C-7b: 아래 2×2 그리드는 4칸을 가정한다 — buildInsightOverlays가 그 이상을 반환해도
   // 패널(gridH=1.3, 2행)을 벗어나지 않도록 방어적으로 4개까지만 사용한다.
-  const overlays = buildInsightOverlays(config, pois).slice(0, 4);
+  const overlays = buildInsightOverlays(config, pois)
+    .filter((overlay) => !isSourceFailed(sourceStatuses, "park") || overlay.scoreKey !== "nature")
+    .slice(0, 4);
   // P4R Task C-1/5: 구 팔레트(주황/파랑/핑크/회색) 정리 → 무채 잉크 + accentRed 1곳(보고서 분석권 —
   // 이후 전 슬라이드 POI 집계가 이 반경을 기준으로 하므로 대표 지표로 선택). "개발 영향권"(1.5km
   // 고정)과 "보고서 분석권"(설정 반경)의 반경이 완전히 같으면(분석 반경 1.5km) 두 카드의 수치가
@@ -1682,7 +1706,7 @@ function addRadiusAnalysisSlide(
     if (row.subtitle) {
       slide.addText(row.subtitle, {
         x: x + 0.26, y: y + 0.47, w: 3.2, h: 0.16,
-        fontSize: 10, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor),
+        fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor),
       });
     }
     slide.addText(row.radiusM >= 1000 ? `${(row.radiusM / 1000).toFixed(row.radiusM % 1000 === 0 ? 0 : 1)}km` : `${row.radiusM}m`, {
@@ -1693,14 +1717,14 @@ function addRadiusAnalysisSlide(
     const metrics = [
       { label: "역", value: countWithin(config, pois, row.radiusM, "subway") },
       { label: "학교", value: countWithin(config, pois, row.radiusM, "school") },
-      { label: "공원", value: countWithin(config, pois, row.radiusM, "park") },
+      { label: "공원", value: isSourceFailed(sourceStatuses, "park") ? "—" : countWithin(config, pois, row.radiusM, "park") },
       { label: "정비", value: countWithin(config, pois, row.radiusM, "maintenance") },
     ];
     metrics.forEach((metric, metricIdx) => {
       const mx = x + 0.3 + metricIdx * metricGap;
       slide.addText(metric.label, {
         x: mx, y: y + 0.72, w: 0.8, h: 0.2,
-        fontSize: 10, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), align: "center",
+        fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), align: "center",
       });
       slide.addText(String(metric.value), {
         x: mx, y: y + 0.96, w: 0.8, h: 0.34,
@@ -1709,7 +1733,7 @@ function addRadiusAnalysisSlide(
     });
     slide.addText(row.note, {
       x: x + 0.3, y: y + 1.48, w: w - 0.65, h: 0.22,
-      fontSize: 10, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor),
+      fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor),
     });
   });
 
@@ -1720,7 +1744,7 @@ function addRadiusAnalysisSlide(
   addDataPanel(slide, gridX, gridY, gridW, gridH, d);
   slide.addText("지도 인사이트 레이어 기준", {
     x: gridX + 0.2, y: gridY + 0.14, w: gridW - 0.4, h: 0.22,
-    fontSize: 10, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true,
+    fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true,
   });
   const gridPad = 0.2, gridColGap = 0.2, gridRowH = 0.45;
   const gridColW = (gridW - gridPad * 2 - gridColGap) / 2;
@@ -1737,11 +1761,11 @@ function addRadiusAnalysisSlide(
     });
     slide.addText(overlay.label, {
       x: cx + 0.2, y: cy, w: gridColW - 0.2, h: 0.2,
-      fontSize: 10, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true, fit: "shrink",
+      fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true, fit: "shrink",
     });
     slide.addText(overlay.description, {
       x: cx + 0.2, y: cy + 0.2, w: gridColW - 0.25, h: 0.24,
-      fontSize: 10, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), fit: "shrink",
+      fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), fit: "shrink",
     });
   });
   addFooterNote(slide, "반경 분석은 직선거리 기준이며 실제 보행 경로와 차이가 있을 수 있습니다.", d);
@@ -1755,12 +1779,23 @@ function addParkAccessDetailSlide(
   _poiPositions: readonly PoiPosition[],
   _radiusPosition: RadiusPosition | null,
   d: PptDesignConfig,
+  sourceStatuses: readonly SourceStatus[] = [],
 ) {
   const slide = pptx.addSlide();
   // Task A: 백색(B문법) 전환. 부수적으로 반투명 패널 아래 지도 라벨 잔상(ghosting) 문제도
   // 배경이 완전 불투명 흰색이 되며 함께 해소된다.
   slide.background = { fill: pptColor(d.canvasColor) };
   addTitleChip(slide, "공원/녹지 접근성 상세", d, "경계 기준 접근거리 우선");
+
+  if (isSourceFailed(sourceStatuses, "park")) {
+    addEmptyStateBadge(slide, d, { x: 0.7, y: 1.15, w: 11.9, h: 5.6 }, PARK_DATA_UNAVAILABLE_NOTICE);
+    slide.addText("경계가 없으면 면적 기반 원형거리로 추정합니다.", {
+      x: 4.05, y: 5.62, w: 5.25, h: 0.3,
+      fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), align: "center",
+    });
+    addFooterNote(slide, `대상지: ${config.centerName} / 공원 원천 복구 후 접근거리와 면적을 다시 산출합니다.`, d);
+    return;
+  }
 
   const parks = pois.filter((p): p is Park => p.category === "park");
   const summary = summarizeParks(parks);
@@ -1813,7 +1848,7 @@ function addParkAccessDetailSlide(
       fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true, align: "right",
     });
   });
-  slide.addText("공원 경계는 외곽선 최단거리입니다.\n경계가 없으면 면적 기반 원형거리로 계산합니다.", {
+  slide.addText("공원 경계는 외곽선 최단거리입니다.\n경계가 없으면 면적 기반 원형거리로 추정합니다.", {
     x: 6.65, y: 5.28, w: 4.65, h: 0.48,
     fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor),
   });
@@ -2180,7 +2215,7 @@ function addCategorySlide(
   // 인사이트 카드(Task 5) — fact-summary 기반 카테고리 결론 2-4줄. 데이터 0건이면 빈 배열이라
   // 카드를 그리지 않고 위 details의 EMPTY_PANEL_TEXT 문법을 그대로 유지한다.
   const insightKey = inferCategoryInsightKey(cats);
-  if (insightKey) {
+  if (insightKey && !details.includes(PARK_DATA_UNAVAILABLE_NOTICE)) {
     const summary = buildFactSummary({ config, allPois });
     addInsightCard(slide, buildCategoryInsight(insightKey, summary), d);
   }
@@ -2485,7 +2520,8 @@ function addSummarySlide(
   pois: readonly Poi[],
   _baseMapImage: string,
   _radiusPosition: RadiusPosition | null,
-  d: PptDesignConfig
+  d: PptDesignConfig,
+  sourceStatuses: readonly SourceStatus[] = [],
 ) {
   const slide = pptx.addSlide();
   // Task A: 백색(B문법) 전환.
@@ -2499,12 +2535,21 @@ function addSummarySlide(
   const panelW = 11.95;
   addDataPanel(slide, summaryPanelX, d.panelY, panelW, 5, d);
 
-  const points = getSummaryLines(config, pois);
-  const lastBodyIdx = points.length - 2; // 마지막 줄은 항상 muted 점수 보조 지표 — 강조는 그 앞줄에 둔다.
+  const parkDataAvailable = !isSourceFailed(sourceStatuses, "park");
+  const points = getSummaryLines(config, pois)
+    .map((point, index) => {
+      if (parkDataAvailable) return point;
+      if (index === 0) return { text: `${config.centerName} 입지 종합 의견: 공원 산출을 제외한 확인 데이터 기준입니다.` };
+      if (point.text.startsWith("자연:")) return { text: PARK_DATA_UNAVAILABLE_NOTICE };
+      return point;
+    })
+    .filter((point) => parkDataAvailable || !point.muted);
+  let lastBodyIdx = -1;
+  points.forEach((point, index) => { if (!point.muted) lastBodyIdx = index; });
   points.forEach((point, idx) => {
     slide.addText(point.text, {
       x: summaryPanelX + 0.3, y: d.panelY + 0.4 + idx * 0.65, w: panelW - 0.5, h: 0.5,
-      fontSize: point.muted ? Math.max(8, Math.round(d.summaryFontSize * 0.7)) : d.summaryFontSize,
+      fontSize: point.muted ? Math.max(11, Math.round(d.summaryFontSize * 0.7)) : d.summaryFontSize,
       fontFace: FONT_MAIN,
       color: pptColor(point.muted ? d.mutedTextColor : d.textColor),
       bold: !point.muted && idx === lastBodyIdx,
@@ -2529,6 +2574,10 @@ export async function generateSiteAnalysisPpt(
   pptx.layout = "LAYOUT_WIDE";
   pptx.title = `${config.centerName} 입지 분석`;
   const d = designConfig;
+  const reportPois = reportPoisForSourceStatuses(allPois, sourceStatuses);
+  const reportPoiIds = new Set(reportPois.map((poi) => poi.id));
+  const reportPoiPositions = poiPositions.filter(({ poi }) => reportPoiIds.has(poi.id));
+  const parkDataAvailable = !isSourceFailed(sourceStatuses, "park");
 
   // 베이스맵 흑백 톤 변환 — 미리보기(canvas)와 동일한 map-image-tone.ts를 통해 1회 변환.
   // 미리보기에서 이어서 내보내는 흐름이면 canvas 렌더러가 이미 변환/캐시해둔 결과를 그대로 재사용한다.
@@ -2540,46 +2589,46 @@ export async function generateSiteAnalysisPpt(
   // →아파트 콜아웃→종합 의견→출처. 점수 대시보드는 기본 제외, 켜면 입지 현황 종합 다음(원위치)에 삽입.
   // 슬라이드 순서는 ppt-canvas-renderer.ts의 buildSlideDefs와 동일하게 유지한다.
   addCoverSlide(pptx, config, reportBaseMapImage, d, sourceStatuses);
-  addFactSheetSlide(pptx, config, allPois, d, sourceStatuses);
-  addOverviewSlide(pptx, config, reportBaseMapImage, poiPositions, radiusPosition, routePositions, d);
+  addFactSheetSlide(pptx, config, reportPois, d, sourceStatuses);
+  addOverviewSlide(pptx, config, reportBaseMapImage, reportPoiPositions, radiusPosition, routePositions, d);
   if (includeScoreDashboard) {
-    addScoreDashboardSlide(pptx, config, allPois, reportBaseMapImage, d);
+    addScoreDashboardSlide(pptx, config, reportPois, reportBaseMapImage, d);
   }
 
-  const subways = allPois.filter((p): p is SubwayStation => p.category === "subway");
-  addCategorySlide(pptx, "교통 분석", "subway", config, reportBaseMapImage, poiPositions, radiusPosition,
-    subways.filter(s => !isRawPoiId(s.name)).slice(0, 8).map(s => `${s.name} (${s.line})`), d, routePositions, allPois);
+  const subways = reportPois.filter((p): p is SubwayStation => p.category === "subway");
+  addCategorySlide(pptx, "교통 분석", "subway", config, reportBaseMapImage, reportPoiPositions, radiusPosition,
+    subways.filter(s => !isRawPoiId(s.name)).slice(0, 8).map(s => `${s.name} (${s.line})`), d, routePositions, reportPois);
 
-  const schools = allPois.filter((p): p is School => p.category === "school");
-  addCategorySlide(pptx, "교육 환경", "school", config, reportBaseMapImage, poiPositions, radiusPosition,
-    schools.filter(s => !isRawPoiId(s.name)).slice(0, 8).map(s => `${s.name} (${s.level === "elementary" ? "초" : s.level === "middle" ? "중" : "고"})`), d, [], allPois);
+  const schools = reportPois.filter((p): p is School => p.category === "school");
+  addCategorySlide(pptx, "교육 환경", "school", config, reportBaseMapImage, reportPoiPositions, radiusPosition,
+    schools.filter(s => !isRawPoiId(s.name)).slice(0, 8).map(s => `${s.name} (${s.level === "elementary" ? "초" : s.level === "middle" ? "중" : "고"})`), d, [], reportPois);
 
-  const parks = allPois.filter((p): p is Park => p.category === "park");
-  const mountains = allPois.filter(p => p.category === "mountain" && !isRawPoiId(p.name));
-  addCategorySlide(pptx, "자연 환경", ["park", "mountain"], config, reportBaseMapImage, poiPositions, radiusPosition,
-    [...buildParkDetailLines(parks, 7), ...mountains.slice(0, 1).map(p => `인접 산: ${p.name}`)].slice(0, 8), d, [], allPois);
+  const parks = reportPois.filter((p): p is Park => p.category === "park");
+  const mountains = reportPois.filter(p => p.category === "mountain" && !isRawPoiId(p.name));
+  addCategorySlide(pptx, "자연 환경", ["park", "mountain"], config, reportBaseMapImage, reportPoiPositions, radiusPosition,
+    [...(parkDataAvailable ? buildParkDetailLines(parks, 7) : [PARK_DATA_UNAVAILABLE_NOTICE]), ...mountains.slice(0, 1).map(p => `인접 산: ${p.name}`)].slice(0, 8), d, [], reportPois);
 
-  addInsightSummarySlide(pptx, config, allPois, reportBaseMapImage, d);
-  addRadiusAnalysisSlide(pptx, config, allPois, reportBaseMapImage, radiusPosition, d);
-  addParkAccessDetailSlide(pptx, config, allPois, reportBaseMapImage, poiPositions, radiusPosition, d);
+  addInsightSummarySlide(pptx, config, reportPois, reportBaseMapImage, d, sourceStatuses);
+  addRadiusAnalysisSlide(pptx, config, reportPois, reportBaseMapImage, radiusPosition, d, sourceStatuses);
+  addParkAccessDetailSlide(pptx, config, reportPois, reportBaseMapImage, reportPoiPositions, radiusPosition, d, sourceStatuses);
 
-  const maintenanceProjects = allPois.filter((p): p is MaintenanceProject => p.category === "maintenance");
-  addCategorySlide(pptx, "개발/정비사업 현황", "maintenance", config, reportBaseMapImage, poiPositions, radiusPosition,
-    buildMaintenanceDetailLines(maintenanceProjects, 6), d, [], allPois);
-  addDevelopmentRiskMatrixSlide(pptx, config, allPois, reportBaseMapImage, poiPositions, radiusPosition, d);
+  const maintenanceProjects = reportPois.filter((p): p is MaintenanceProject => p.category === "maintenance");
+  addCategorySlide(pptx, "개발/정비사업 현황", "maintenance", config, reportBaseMapImage, reportPoiPositions, radiusPosition,
+    buildMaintenanceDetailLines(maintenanceProjects, 6), d, [], reportPois);
+  addDevelopmentRiskMatrixSlide(pptx, config, reportPois, reportBaseMapImage, reportPoiPositions, radiusPosition, d);
 
-  const residentials = allPois.filter(
+  const residentials = reportPois.filter(
     (p): p is ResidentialPoi => p.category === "apartment" || p.category === "officetel" || p.category === "residential"
   );
-  addResidentialSupplySlide(pptx, config, allPois, reportBaseMapImage, poiPositions, radiusPosition, d);
+  addResidentialSupplySlide(pptx, config, reportPois, reportBaseMapImage, reportPoiPositions, radiusPosition, d);
   const aptPages = pageResidentials(residentials, APT_PAGE_SIZE);
   aptPages.forEach((aptsOnPage, i) => {
-    addApartmentCalloutSlide(pptx, aptsOnPage, residentials, config, reportBaseMapImage, poiPositions,
+    addApartmentCalloutSlide(pptx, aptsOnPage, residentials, config, reportBaseMapImage, reportPoiPositions,
       radiusPosition, d, i, aptPages.length);
   });
 
-  addSummarySlide(pptx, config, allPois, reportBaseMapImage, radiusPosition, d);
-  addDataSourceSlide(pptx, config, allPois, reportBaseMapImage, d, sourceStatuses);
+  addSummarySlide(pptx, config, reportPois, reportBaseMapImage, radiusPosition, d, sourceStatuses);
+  addDataSourceSlide(pptx, config, reportPois, reportBaseMapImage, d, sourceStatuses);
   addMaintenanceSourceSlide(pptx, config, d, sourceStatuses);
 
   const slides = (pptx as PptxGenJS & { readonly slides: readonly PptxGenJS.Slide[] }).slides;

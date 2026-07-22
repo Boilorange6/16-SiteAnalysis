@@ -1,4 +1,12 @@
-import { MAINTENANCE_SOURCE_IDS, POI_SOURCE_LABELS, type SourceStatus } from "@/lib/types";
+import {
+  MAINTENANCE_SOURCE_IDS,
+  POI_SOURCE_LABELS,
+  type Poi,
+  type PoiSourceId,
+  type SourceStatus,
+} from "@/lib/types";
+
+export const PARK_DATA_UNAVAILABLE_NOTICE = "공원 데이터 수집 실패 · 산출 제외";
 
 function sourceStatusLine(status: SourceStatus): string {
   const label = POI_SOURCE_LABELS[status.source];
@@ -27,4 +35,17 @@ export function maintenanceSourceStatusLines(statuses: readonly SourceStatus[]):
 
 export function hasFailedSource(statuses: readonly SourceStatus[]): boolean {
   return statuses.some((s) => s.status === "failed");
+}
+
+export function isSourceFailed(statuses: readonly SourceStatus[], source: PoiSourceId): boolean {
+  return statuses.some((status) => status.source === source && status.status === "failed");
+}
+
+export function reportPoisForSourceStatuses(
+  pois: readonly Poi[],
+  statuses: readonly SourceStatus[],
+): readonly Poi[] {
+  return isSourceFailed(statuses, "park")
+    ? pois.filter((poi) => poi.category !== "park")
+    : pois;
 }

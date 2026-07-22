@@ -15,8 +15,14 @@ import {
   projectMaintenanceBoundaries,
   syntheticReportNotice,
 } from "../lib/maintenance-presentation.ts";
-import { generalSourceStatusLines, maintenanceSourceStatusLines, sourceStatusLines } from "../lib/source-status-text.ts";
+import {
+  generalSourceStatusLines,
+  maintenanceSourceStatusLines,
+  reportPoisForSourceStatuses,
+  sourceStatusLines,
+} from "../lib/source-status-text.ts";
 import { buildMaintenanceDetailLines, summarizeMaintenanceProjects } from "../lib/maintenance-analysis.ts";
+import { computeAnalysisScores } from "../lib/analysis-engine.ts";
 
 const project = {
   id: "presentation-1",
@@ -155,6 +161,29 @@ assert.match(statusLines[4], /부산 정비사업 상세/);
 const generalLines = generalSourceStatusLines(sourceStatuses);
 assert.equal(generalLines.length, 1);
 assert.match(generalLines[0], /공원.*수집 실패.*누락/);
+
+const stalePark = {
+  id: "stale-park",
+  name: "수집 실패 이전 공원",
+  lat: 37.501,
+  lng: 127.001,
+  category: "park",
+  area_sqm: 12_000,
+  distance_m: 120,
+};
+assert.deepEqual(
+  reportPoisForSourceStatuses([project, stalePark], sourceStatuses),
+  [project],
+);
+assert.deepEqual(
+  reportPoisForSourceStatuses([project, stalePark], [{ source: "park", status: "fresh", fetchedAt: Date.UTC(2026, 6, 20) }]),
+  [project, stalePark],
+);
+const scoreConfig = { centerName: "공원 점수", centerLat: 37.5, centerLng: 127, radiusKm: 1 };
+const freshNatureScore = computeAnalysisScores(scoreConfig, [project, stalePark]).items.find(({ key }) => key === "nature")?.score;
+const failedNatureScore = computeAnalysisScores(scoreConfig, reportPoisForSourceStatuses([project, stalePark], sourceStatuses)).items.find(({ key }) => key === "nature")?.score;
+assert.ok((freshNatureScore ?? 0) > 0);
+assert.equal(failedNatureScore, 0);
 
 const independentMaintenanceLines = maintenanceSourceStatusLines(sourceStatuses.slice(1, 3));
 assert.equal(independentMaintenanceLines.length, 4);

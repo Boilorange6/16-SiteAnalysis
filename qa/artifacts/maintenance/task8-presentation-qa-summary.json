@@ -1,152 +1,134 @@
 {
-  "schemaVersion": 5,
+  "schemaVersion": 6,
   "qaDate": "2026-07-22",
-  "implementationCommit": "50af6e0",
   "fixture": {
     "kind": "synthetic-structural",
-    "centerName": "합성 구조검증",
-    "officialGeometryEvidence": false,
-    "reportPoiCount": 17,
+    "inputPoiCount": 17,
+    "reportPoiCount": 16,
+    "inputParkPoiCount": 1,
+    "reportParkPoiCount": 0,
     "parkStatus": "failed"
   },
   "artifacts": {
-    "task8-canvas-maintenance-map.png": {
-      "bytes": 140399,
-      "sha256": "c367731856f45ca7754d8c94fdca80aa8d1c22918819ab6a92edcad378121883",
-      "resolution": "960x540"
-    },
-    "task8-canvas-maintenance-table.png": {
-      "bytes": 113364,
-      "sha256": "176917c18ad387e5aef6f4b0a9b79905bc4e5abff0904505a7551c200f029e77",
-      "resolution": "960x540"
-    },
-    "task8-canvas-general-sources.png": {
-      "bytes": 86089,
-      "sha256": "71c63a556f93fc2709598f5a7c3ed513926f0548cdf5abbb0e47b760949a0a75",
-      "resolution": "960x540"
-    },
-    "task8-canvas-maintenance-sources.png": {
-      "bytes": 71498,
-      "sha256": "aa1b1e441ae6ed110bd8211157b4418e4bbb8c3d2e067edbaf46ffc95e920c3b",
-      "resolution": "960x540"
-    },
-    "task8-ppt-maintenance-map.png": {
-      "bytes": 1600400,
-      "sha256": "8df3b347bde181b644a85d999f1423c8b885b28ca7094722b2e0195e8783bd39",
-      "resolution": "1920x1080"
-    },
-    "task8-ppt-maintenance-table.png": {
-      "bytes": 141062,
-      "sha256": "48fb4aa557330cecf34568ad042cde752c7ab9d7b3cd328d9780ca33194d00a7",
-      "resolution": "1920x1080"
-    },
-    "task8-ppt-general-sources.png": {
-      "bytes": 112598,
-      "sha256": "617987d1731617dec4f91b1eb47b3e6eef26fdf6319c66766cf3e0de9513cf65",
-      "resolution": "1920x1080"
-    },
-    "task8-ppt-maintenance-sources.png": {
-      "bytes": 91621,
-      "sha256": "0a860514cd4a8366ea2a9f239d0603640e8eec6889bbbff606142024c538fac3",
-      "resolution": "1920x1080"
-    },
     "task8-maintenance-report.pptx": {
-      "bytes": 4944446,
-      "sha256": "f5fed38d192b7837d9eb86b18f25b748bcb05c2a59b5446c9010255ee2997655"
+      "bytes": 6099854,
+      "sha256": "835cc1a0431db3715a6a9bdc414751fa3c021843dcd5927b7d42e77af64995c3"
     },
     "task8-com-audit.json": {
-      "bytes": 1985,
-      "sha256": "bf748d56e5e4f2e978dc976a86de9c6339b36078583015ced71fdd75c9c612aa"
+      "bytes": 1233,
+      "sha256": "1d4bf385a53cf6cfb82398ab0662cba3f462fdd4aec1b4ecf5cb8c272c82ed1b"
+    },
+    "task8-canvas-natural-failure.png": {
+      "bytes": 766096,
+      "sha256": "15ed8f2d73d28dc315cf8b5ed94e24ff6ebd791802d519d677fd2b19a121e1ac"
+    },
+    "task8-canvas-park-failure.png": {
+      "bytes": 37718,
+      "sha256": "a8ecfea1565da30e1f64d624de935dd2520ce1c7dd4928716d4d5fe30482123f"
+    },
+    "task8-canvas-maintenance-map.png": {
+      "bytes": 737634,
+      "sha256": "04fc3fc2e8bcecd59205f923e2c6035666ea4565ad2555c21e239038691990d9"
+    },
+    "task8-canvas-maintenance-table.png": {
+      "bytes": 103416,
+      "sha256": "b1706d4a8c3fa5cf82db4036723b33b2de4d9feacbb22f57042a9d32a3de0c59"
+    },
+    "task8-canvas-summary-failure.png": {
+      "bytes": 52732,
+      "sha256": "d97f7135162021156b0f73ed05004ff93ee58b6d9ce866b22711777f559a57e7"
+    },
+    "task8-canvas-general-sources.png": {
+      "bytes": 95217,
+      "sha256": "847be4334b8a171749e302f5ea2c2dadf7c6fa771a98bf07441755998b273200"
+    },
+    "task8-canvas-maintenance-sources.png": {
+      "bytes": 71525,
+      "sha256": "a226045dd64c70fe2cb91339b2aa6768b3f37510059315ef6021cdc7a4a45d87"
+    },
+    "task8-ppt-natural-failure.png": {
+      "bytes": 2697966,
+      "sha256": "59b7840ded6aca3699238bffea656db33dcc8a4e83d477cdfea5b4855d9836f3"
+    },
+    "task8-ppt-park-failure.png": {
+      "bytes": 23989,
+      "sha256": "d27350240c7671e52f273b4112c4da46f13959e0c00ea21e850f4153c8d1afa1"
+    },
+    "task8-ppt-maintenance-map.png": {
+      "bytes": 2449491,
+      "sha256": "4935c8683c043eb26388852c737db2fcac391653c18bd96a6ae3e4c409980b1d"
+    },
+    "task8-ppt-maintenance-table.png": {
+      "bytes": 128123,
+      "sha256": "09e9fd31b98dd1a79f1878338794d8102c84c494ba2b8efbe9b370f230fb408a"
+    },
+    "task8-ppt-summary-failure.png": {
+      "bytes": 38670,
+      "sha256": "466781b68c9e34e8376e049ae9fe9b2654656d1fdce939e68ac161098d2a739f"
+    },
+    "task8-ppt-general-sources.png": {
+      "bytes": 120439,
+      "sha256": "6888ec9a9f3f23fb7a568566ee3e86e7d1da3aa5a1cf5d1f02129f13417486a2"
+    },
+    "task8-ppt-maintenance-sources.png": {
+      "bytes": 92758,
+      "sha256": "fde9a55a5ee750c51fb34fe3dad19c3ecfe8453375eaf2e7cf3ed06c5a2b367c"
     }
   },
   "audit": {
-    "generatedAt": "2026-07-22T04:49:55.166645+00:00",
+    "generatedAt": "2026-07-22T15:04:42.8393153+09:00",
     "slideCount": 16,
     "renderResolution": "1920x1080",
-    "editableTextShapeCount": 391,
+    "editableTextShapeCount": 363,
     "invisibleControlAudit": "pass",
     "pptXmlInvisibleControlAudit": "pass",
     "lineSplitAudit": "pass",
-    "parkFailureExactText": "공원: 수집 실패 — 본 보고서에 누락",
-    "banner": {
-      "textShapeSlides": 16,
-      "uniqueFillSlides": 16,
-      "topmostTextSlides": 16,
-      "pixelCounts": {
-        "1": 8098,
-        "2": 8098,
-        "3": 8098,
-        "4": 8098,
-        "5": 8098,
-        "6": 8098,
-        "7": 8098,
-        "8": 8098,
-        "9": 8098,
-        "10": 8098,
-        "11": 8098,
-        "12": 8098,
-        "13": 8098,
-        "14": 8128,
-        "15": 8098,
-        "16": 8098
-      }
-    },
+    "parkFailureExactText": "공원 데이터 수집 실패 · 산출 제외",
+    "estimationMethodExactText": "경계가 없으면 면적 기반 원형거리로 추정합니다.",
     "meaningfulBodyMinPt": {
-      "2": 11,
-      "9": 11,
-      "11": 11,
-      "12": 11
+      "1": 16.0,
+      "6": 11.0,
+      "12": 11.0,
+      "9": 11.0,
+      "11": 11.0,
+      "15": 11.0,
+      "8": 11.0,
+      "14": 15.0,
+      "16": 11.0,
+      "3": null,
+      "4": 11.0,
+      "2": 11.0,
+      "5": 11.0,
+      "10": 11.0,
+      "7": 11.0,
+      "13": null
     },
-    "unitGeometry": {
-      "1,050세대": {
-        "lines": 1,
-        "boundHeight": 13.199999809265137,
-        "shapeHeight": 18.719999313354492,
-        "fontPt": 11
-      },
-      "1,200세대": {
-        "lines": 1,
-        "boundHeight": 13.199999809265137,
-        "shapeHeight": 18.719999313354492,
-        "fontPt": 11
-      }
+    "typographyExclusions": [
+      "title/eyebrow <=80pt",
+      "footer/legal >=475pt",
+      "※ note",
+      "synthetic disclosure >=9pt"
+    ],
+    "overlap": {
+      "staleParkLabelCount": 0,
+      "insightCardOverlapCount": 0,
+      "result": "pass"
     },
     "boundaryShapes": {
       "slide10Total": 7,
       "solidRings": 4,
       "dashedRings": 3,
-      "unavailableShapes": 0,
-      "names": [
-        "MAINTENANCE_BOUNDARY|maintenance-hole|0|0",
-        "MAINTENANCE_BOUNDARY|maintenance-hole|0|1",
-        "MAINTENANCE_BOUNDARY|maintenance-multi|0|0",
-        "MAINTENANCE_BOUNDARY|maintenance-multi|1|0",
-        "MAINTENANCE_BOUNDARY|maintenance-solid-2|0|0",
-        "MAINTENANCE_BOUNDARY|maintenance-solid-3|0|0",
-        "MAINTENANCE_BOUNDARY|maintenance-dashed-3|0|0"
-      ],
-      "canvasExactMagentaPixels": 710
+      "canvasExactMagentaPixels": 1366
     },
-    "reportPoiCount": 17,
-    "embeddedMediaCount": 6,
-    "embeddedMediaUncompressedBytes": 4857522,
-    "exclusions": [
-      "title/eyebrow <=80pt",
-      "footer >=475pt",
-      "※ note",
-      "synthetic disclosure"
-    ]
+    "inputPoiCount": 17,
+    "reportPoiCount": 16,
+    "bannerTextShapeSlides": 16,
+    "embeddedMediaCount": 7
   },
   "visual": {
     "pptSlides": "16/16 pass",
-    "canvasEvidence": "4/4 pass",
-    "combinedEvidence": "8/8 pass"
-  },
-  "gates": {
-    "focused": "pass",
-    "maintenance": "pass",
-    "lintAndTsc": "pass",
-    "nextBuild": "BUILD_EXPLICIT_EXIT_0"
+    "canvasEvidence": "7/7 pass",
+    "combinedEvidence": "14/14 pass"
   },
   "evidenceScope": "합성 구조검증 fixture의 편집 가능 구조와 supplied GeoJSON 소비만 검증하며 실데이터·공식 경계 증거로 주장하지 않습니다."
 }
