@@ -1,5 +1,6 @@
 param(
-  [string]$ArtifactDir = "qa/artifacts/maintenance"
+  [string]$ArtifactDir = "qa/artifacts/maintenance",
+  [string]$ImplementationCommit = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -11,6 +12,7 @@ $summaryPath = Join-Path $artifactRoot "task8-presentation-qa-summary.json"
 $reportPath = Join-Path $artifactRoot "task8-presentation-qa-report.md"
 $failureNotice = "공원 데이터 수집 실패 · 산출 제외"
 $methodText = "경계가 없으면 면적 기반 원형거리로 추정합니다."
+$ImplementationCommit = if ($ImplementationCommit) { $ImplementationCommit } else { (git rev-parse HEAD).Trim() }
 $controlPattern = "[​-‏‪-‮⁠⁦-⁩﻿]"
 $evidenceCopies = @{
   6 = "task8-ppt-natural-failure.png"
@@ -200,6 +202,7 @@ $auditObject = Get-Content -Raw -LiteralPath $auditPath | ConvertFrom-Json
 $summary = [ordered]@{
   schemaVersion = 6
   qaDate = (Get-Date).ToString("yyyy-MM-dd")
+  implementationCommit = $ImplementationCommit
   fixture = [ordered]@{ kind = "synthetic-structural"; inputPoiCount = 17; reportPoiCount = 16; inputParkPoiCount = 1; reportParkPoiCount = 0; parkStatus = "failed" }
   artifacts = $artifacts
   audit = $auditObject

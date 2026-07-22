@@ -1,6 +1,7 @@
 {
   "schemaVersion": 6,
   "qaDate": "2026-07-22",
+  "implementationCommit": "a673bfb7adfec8da83c431d0e3c5b8445854fc44",
   "fixture": {
     "kind": "synthetic-structural",
     "inputPoiCount": 17,
@@ -16,7 +17,7 @@
     },
     "task8-com-audit.json": {
       "bytes": 1233,
-      "sha256": "1d4bf385a53cf6cfb82398ab0662cba3f462fdd4aec1b4ecf5cb8c272c82ed1b"
+      "sha256": "ab931af5250e1a4c2811ced74b874c5d343b1109ed73087a63627fec3e5d4c7b"
     },
     "task8-canvas-natural-failure.png": {
       "bytes": 766096,
@@ -76,7 +77,7 @@
     }
   },
   "audit": {
-    "generatedAt": "2026-07-22T15:04:42.8393153+09:00",
+    "generatedAt": "2026-07-22T15:07:47.1084207+09:00",
     "slideCount": 16,
     "renderResolution": "1920x1080",
     "editableTextShapeCount": 363,
@@ -87,21 +88,21 @@
     "estimationMethodExactText": "경계가 없으면 면적 기반 원형거리로 추정합니다.",
     "meaningfulBodyMinPt": {
       "1": 16.0,
+      "7": 11.0,
+      "14": 15.0,
+      "4": 11.0,
       "6": 11.0,
+      "3": null,
+      "13": null,
       "12": 11.0,
       "9": 11.0,
       "11": 11.0,
+      "2": 11.0,
+      "10": 11.0,
       "15": 11.0,
       "8": 11.0,
-      "14": 15.0,
-      "16": 11.0,
-      "3": null,
-      "4": 11.0,
-      "2": 11.0,
       "5": 11.0,
-      "10": 11.0,
-      "7": 11.0,
-      "13": null
+      "16": 11.0
     },
     "typographyExclusions": [
       "title/eyebrow <=80pt",
