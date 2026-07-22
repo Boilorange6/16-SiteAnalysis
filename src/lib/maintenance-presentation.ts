@@ -46,6 +46,7 @@ export const MAINTENANCE_PRESENTATION_COLUMNS = [
 export const MAINTENANCE_BOUNDARY_LEGEND = "정비사업 공식 경계(참고용)";
 export const MAINTENANCE_LEGAL_FOOTER = "법적 효력 없는 참고자료";
 export const SYNTHETIC_REPORT_NOTICE = "합성 구조검증 데이터 · 실데이터 아님";
+export const SYNTHETIC_BANNER_FILL = "#C4006F";
 
 export const MAINTENANCE_PRESENTATION_TYPOGRAPHY = {
   mapBulletPt: 14,
@@ -109,19 +110,8 @@ export const MAINTENANCE_PRESENTATION_SOURCES = [
   },
 ] as const satisfies readonly MaintenancePresentationSource[];
 
-const WORD_JOINER = "\u2060";
-
-export function protectMaintenanceMapText(text: string): string {
-  return text.replace(/가로주택정비|\d+(?:\.\d+)?(?:만㎡|건|세대|m)/g, (token) => [...token].join(WORD_JOINER));
-}
-
-export function protectPresentationHeader(text: string): string {
-  return [...text].join(WORD_JOINER);
-}
-
 export function formatMaintenanceMapBullet(text: string): string {
-  const compact = text.replace(/\s*\([^,]+,\s*([^,]+),\s*([^)]+)\)$/, "\n$1·$2");
-  return protectMaintenanceMapText(compact);
+  return text.replace(/\s*\([^,]+,\s*([^,]+),\s*([^)]+)\)$/, "\n$1·$2");
 }
 
 export function syntheticReportNotice(config: AnalysisConfig): string | null {

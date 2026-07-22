@@ -1,70 +1,46 @@
 {
-  "schemaVersion": 3,
-  "auditedAt": "2026-07-22T12:01:05.6049101+09:00",
+  "generatedAt": "2026-07-22T04:02:15.005962+00:00",
   "slideCount": 16,
-  "inspectedSlideCount": 16,
-  "editableTextShapeCount": 370,
-  "wholeDeckOverflowShapeCount": 2,
-  "overflow": [
-    {
-      "slide": 1,
-      "shape": "Shape 0",
-      "left": 831.5999755859375,
-      "top": 39.599998474121094,
-      "right": 993.5999755859375,
-      "bottom": 201.5999984741211
-    },
-    {
-      "slide": 1,
-      "shape": "Shape 1",
-      "left": 766.7999877929688,
-      "top": 324.0,
-      "right": 971.9999847412109,
-      "bottom": 493.1999969482422
+  "renderResolution": "1920x1080",
+  "editableTextShapeCount": 391,
+  "invisibleControlAudit": "pass",
+  "pptXmlInvisibleControlAudit": "pass",
+  "lineSplitAudit": "pass",
+  "parkFailureExactText": "공원: 수집 실패 — 본 보고서에 누락",
+  "banner": {
+    "textShapeSlides": 16,
+    "uniqueFillSlides": 16,
+    "topmostTextSlides": 16,
+    "pixelCounts": {
+      "1": 8098,
+      "2": 8098,
+      "3": 8098,
+      "4": 8098,
+      "5": 8098,
+      "6": 8098,
+      "7": 8098,
+      "8": 8098,
+      "9": 8098,
+      "10": 8098,
+      "11": 8098,
+      "12": 8098,
+      "13": 8098,
+      "14": 8128,
+      "15": 8098,
+      "16": 8098
     }
-  ],
-  "affectedSlidesLinesAudit": "pass",
-  "affectedSlides": [
-    6,
-    7,
-    10,
-    11,
-    15
-  ],
-  "syntheticBannerShapeCount": 16,
-  "syntheticBannerSlides": [
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14,
-    15,
-    16
-  ],
-  "mapBulletMinFontPt": 14.0,
-  "slide7BodyMinFontPt": 11.0,
-  "footerMinFontPt": 9.0,
-  "tableRelevantMinFontPt": 12.0,
-  "sourceCautionMinFontPt": 11.0,
-  "tableColumnCount": 7,
-  "tableRowCount": 6,
-  "boundaryShapes": {
-    "maintenanceMapTotal": 7,
-    "wholeDeckTotal": 14,
-    "solidRings": 8,
-    "dashedRings": 6
   },
-  "compoundLines": [
-    "4.20만㎡·240m",
-    "3.10만㎡·380m"
-  ]
+  "meaningfulBodyMinPt": {
+    "2": 11.0,
+    "9": 11.0,
+    "11": 11.0,
+    "12": 11.0
+  },
+  "exclusions": [
+    "top title/eyebrow area <=80pt",
+    "footer area >=475pt",
+    "※ explanatory note",
+    "synthetic disclosure"
+  ],
+  "slide11IntactOfficialType": "가로주택정비"
 }

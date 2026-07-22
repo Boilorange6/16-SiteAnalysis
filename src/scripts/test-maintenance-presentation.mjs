@@ -10,12 +10,11 @@ import {
   SYNTHETIC_REPORT_NOTICE,
   buildMaintenancePresentationRows,
   formatMaintenanceMapBullet,
-  protectMaintenanceMapText,
-  protectPresentationHeader,
   projectMaintenanceBoundaries,
   syntheticReportNotice,
 } from "../lib/maintenance-presentation.ts";
 import { generalSourceStatusLines, maintenanceSourceStatusLines, sourceStatusLines } from "../lib/source-status-text.ts";
+import { buildMaintenanceDetailLines, summarizeMaintenanceProjects } from "../lib/maintenance-analysis.ts";
 
 const project = {
   id: "presentation-1",
@@ -52,8 +51,6 @@ assert.match(row.sourceDate, /\n/);
 assert.deepEqual(MAINTENANCE_PRESENTATION_COLUMNS, [
   "구역명", "유형·단계", "시행자", "예정세대수", "면적·거리", "경계", "출처·기준일",
 ]);
-assert.equal(protectPresentationHeader("예정세대수").replaceAll("\u2060", ""), "예정세대수");
-assert.match(protectPresentationHeader("예정세대수"), /예\u2060정\u2060세\u2060대\u2060수/);
 assert.equal(MAINTENANCE_BOUNDARY_LEGEND, "정비사업 공식 경계(참고용)");
 assert.equal(MAINTENANCE_LEGAL_FOOTER, "법적 효력 없는 참고자료");
 assert.deepEqual(
@@ -77,15 +74,22 @@ assert.equal(
   SYNTHETIC_REPORT_NOTICE,
 );
 
-const protectedMapText = protectMaintenanceMapText("가로주택정비 1건 / 4.20만㎡ / 3.10만㎡");
-assert.equal(protectedMapText.replaceAll("\u2060", ""), "가로주택정비 1건 / 4.20만㎡ / 3.10만㎡");
-assert.match(protectedMapText, /가\u2060로\u2060주\u2060택\u2060정\u2060비/);
-assert.match(protectedMapText, /1\u2060건/);
-assert.match(protectedMapText, /4\u2060\.\u20602\u20600\u2060만\u2060㎡/);
-assert.match(protectedMapText, /3\u2060\.\u20601\u20600\u2060만\u2060㎡/);
 const compactMapBullet = formatMaintenanceMapBullet("서울 구조검증 홀 (조합설립, 4.20만㎡, 240m)");
-assert.equal(compactMapBullet.replaceAll("\u2060", ""), "서울 구조검증 홀\n4.20만㎡·240m");
+assert.equal(compactMapBullet, "서울 구조검증 홀\n4.20만㎡·240m");
 assert.equal(compactMapBullet.includes("조합설립"), false);
+const generatedPresentationText = [
+  ...MAINTENANCE_PRESENTATION_COLUMNS,
+  ...GENERAL_SOURCE_CAUTIONS,
+  compactMapBullet,
+  ...Object.values(row),
+].join("\n");
+assert.doesNotMatch(generatedPresentationText, /[\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/);
+
+const streetHousingProject = { ...project, id: "street-housing", type: "가로주택정비", planned_households: 321 };
+const streetHousingSummary = summarizeMaintenanceProjects([streetHousingProject]);
+assert.equal(streetHousingSummary.totalPlannedHouseholds, 321);
+assert.deepEqual(streetHousingSummary.typeCounts, { 가로주택정비: 1 });
+assert.match(buildMaintenanceDetailLines([streetHousingProject]).join("\n"), /가로주택정비 1건/);
 
 const projects = [
   { ...project, id: "far", name: "가장 먼 사업", distance_m: 900 },

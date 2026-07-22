@@ -25,10 +25,10 @@ import {
   MAINTENANCE_PRESENTATION_COLUMNS,
   MAINTENANCE_PRESENTATION_SOURCES,
   MAINTENANCE_PRESENTATION_TYPOGRAPHY,
+  SYNTHETIC_BANNER_FILL,
   buildMaintenancePresentationRows,
   formatMaintenanceMapBullet,
   projectMaintenanceBoundaries,
-  protectPresentationHeader,
   syntheticReportNotice,
 } from "./maintenance-presentation";
 import { buildInsightOverlays, computeAnalysisScores, generateAnalysisNarrative, getSummaryLines } from "./analysis-engine";
@@ -687,10 +687,10 @@ function addRankedList(
   w: number,
   d: PptDesignConfig,
 ) {
-  addDataPanel(slide, x, y, w, 0.55 + Math.max(rows.length, 1) * 0.38, d);
+  addDataPanel(slide, x, y, w, 0.65 + Math.max(rows.length, 1) * 0.5, d);
   slide.addText(title, {
     x: x + 0.18, y: y + 0.15, w: w - 0.36, h: 0.22,
-    fontSize: 10, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true,
+    fontSize: 12, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true,
   });
   if (rows.length === 0) {
     slide.addText("확인된 데이터가 없습니다.", {
@@ -700,7 +700,7 @@ function addRankedList(
     return;
   }
   rows.forEach((row, idx) => {
-    const rowY = y + 0.52 + idx * 0.38;
+    const rowY = y + 0.55 + idx * 0.5;
     const color = row.color ?? d.markerBorderColor;
     slide.addShape("ellipse", {
       x: x + 0.18, y: rowY + 0.07, w: 0.12, h: 0.12,
@@ -709,11 +709,11 @@ function addRankedList(
     });
     slide.addText(row.label, {
       x: x + 0.38, y: rowY, w: w * 0.55, h: 0.24,
-      fontSize: 8.5, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true, fit: "shrink",
+      fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true,
     });
     slide.addText(row.meta, {
       x: x + w * 0.58, y: rowY, w: w * 0.35, h: 0.24,
-      fontSize: 7.5, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), align: "right", fit: "shrink",
+      fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), align: "right",
     });
   });
 }
@@ -1423,7 +1423,7 @@ function addFactSheetSlide(
   });
   slide.addText("출처", {
     x: FACT_TABLE_X + FACT_LABEL_W + FACT_VALUE_W, y, w: FACT_SOURCE_W - 0.15, h: FACT_HEADER_H,
-    fontSize: 9, fontFace: FONT_MAIN, bold: true, color: pptColor(d.insightCardText),
+    fontSize: 11, fontFace: FONT_MAIN, bold: true, color: pptColor(d.insightCardText),
     align: "right", valign: "middle", margin: 0,
   });
   y += FACT_HEADER_H;
@@ -1431,7 +1431,7 @@ function addFactSheetSlide(
   rows.forEach((row) => {
     slide.addText(row.label, {
       x: FACT_TABLE_X + 0.18, y, w: FACT_LABEL_W - 0.18, h: FACT_ROW_H,
-      fontSize: 10.5, fontFace: FONT_MAIN, bold: true, color: pptColor(d.textColor),
+      fontSize: 11, fontFace: FONT_MAIN, bold: true, color: pptColor(d.textColor),
       align: "left", valign: "middle", margin: 0,
     });
     addFactSheetValueRuns(
@@ -1439,7 +1439,7 @@ function addFactSheetSlide(
     );
     slide.addText(row.source, {
       x: FACT_TABLE_X + FACT_LABEL_W + FACT_VALUE_W, y, w: FACT_SOURCE_W - 0.15, h: FACT_ROW_H,
-      fontSize: 7.5, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor),
+      fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor),
       align: "right", valign: "middle", margin: 0,
     });
     slide.addShape("line", {
@@ -1451,7 +1451,7 @@ function addFactSheetSlide(
 
   slide.addText("※ 도보시간은 직선거리 기준 분속 80m 환산치이며, 실제 보행 경로와 차이가 있을 수 있습니다.", {
     x: FACT_TABLE_X, y: y + 0.14, w: FACT_TABLE_W, h: 0.2,
-    fontSize: 8, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), margin: 0,
+    fontSize: 9, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), margin: 0,
   });
 
   if (hasFailedSource(sourceStatuses)) {
@@ -1769,18 +1769,19 @@ function addParkAccessDetailSlide(
     : null;
   // P4R Task C fix: 구 팔레트(#10B981/#22C55E/#3B82F6/#F59E0B) 정리 — "생활권 공원"(접근성
   // 슬라이드의 대표 지표: 500m 이내 실사용 가능 공원 수)만 accentRed로 강조하고 나머지는 무채 잉크 테두리.
-  addMetricCard(slide, 0.55, 1.18, 2.45, 0.86, "생활권 공원", `${summary.nearby500Count}개`, "접근 500m 이내", d.accentRed, d);
-  addMetricCard(slide, 3.18, 1.18, 2.45, 0.86, "총 녹지 면적", formatAreaSqm(summary.totalAreaSqm), `${summary.count}개 공원`, d.accentColor, d);
+  const bodyTypography = { label: 11, detail: 11 } as const;
+  addMetricCard(slide, 0.55, 1.18, 2.45, 0.86, "생활권 공원", `${summary.nearby500Count}개`, "접근 500m 이내", d.accentRed, d, bodyTypography);
+  addMetricCard(slide, 3.18, 1.18, 2.45, 0.86, "총 녹지 면적", formatAreaSqm(summary.totalAreaSqm), `${summary.count}개 공원`, d.accentColor, d, bodyTypography);
   addMetricCard(slide, 5.8, 1.18, 2.45, 0.86, "최근접 공원",
     nearestParkDistanceM !== null ? formatDistanceM(nearestParkDistanceM) : "미확인",
-    summary.nearestPark?.name ?? "반경 내 공원 없음", d.accentColor, d);
-  addMetricCard(slide, 8.42, 1.18, 2.45, 0.86, "대형공원", `${summary.majorCount}개`, "광역 이용 가능성", d.accentColor, d);
+    summary.nearestPark?.name ?? "반경 내 공원 없음", d.accentColor, d, bodyTypography);
+  addMetricCard(slide, 8.42, 1.18, 2.45, 0.86, "대형공원", `${summary.majorCount}개`, "광역 이용 가능성", d.accentColor, d, bodyTypography);
 
   // P4R Task B fix: 랭킹 리스트도 원시 ID 이름 공원 제외(표시만 — 상단 카드의 count 집계는 원본 기준).
   const topParks = [...parks]
     .filter((park) => !isRawPoiId(park.name))
     .sort((a, b) => (a.access_distance_m ?? a.distance_m ?? Infinity) - (b.access_distance_m ?? b.distance_m ?? Infinity))
-    .slice(0, 7);
+    .slice(0, 5);
   addRankedList(slide, "최근접 공원 접근거리", topParks.map((park) => ({
     label: park.name,
     meta: `${formatDistanceM(park.access_distance_m ?? park.distance_m ?? 0)} · ${park.area_sqm > 0 ? formatAreaSqm(park.area_sqm) : "면적 미확인"}`,
@@ -1793,7 +1794,7 @@ function addParkAccessDetailSlide(
     { label: "어린이/소공원", value: summary.qualityCounts.children + summary.qualityCounts.small },
     { label: "녹지/기타", value: summary.qualityCounts.green + summary.qualityCounts.unknown },
   ];
-  addDataPanel(slide, 6.35, 2.42, 5.35, 3.25, d);
+  addDataPanel(slide, 6.35, 2.42, 5.35, 3.5, d);
   slide.addText("공원 성격별 구성", {
     x: 6.6, y: 2.68, w: 4.85, h: 0.25,
     fontSize: 12, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true,
@@ -1802,17 +1803,17 @@ function addParkAccessDetailSlide(
     const y = 3.18 + idx * 0.5;
     slide.addText(row.label, {
       x: 6.65, y, w: 1.45, h: 0.22,
-      fontSize: 8.5, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor),
+      fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor),
     });
     addProgressBar(slide, 8.25, y + 0.06, 2.1, row.value, Math.max(summary.count, 1), d.accentColor, d);
     slide.addText(`${row.value}개`, {
       x: 10.55, y, w: 0.6, h: 0.22,
-      fontSize: 8.5, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true, align: "right",
+      fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true, align: "right",
     });
   });
-  slide.addText("경계 좌표가 있는 공원은 폴리곤 외곽선까지의 최단거리를 사용하고, 경계가 없는 공원은 면적 기반 원형 추정으로 보정합니다.", {
-    x: 6.65, y: 5.28, w: 4.65, h: 0.34,
-    fontSize: 7.4, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), fit: "shrink",
+  slide.addText("공원 경계가 있으면 외곽선 최단거리, 없으면 면적 기반 원형으로 추정합니다.", {
+    x: 6.65, y: 5.28, w: 4.65, h: 0.48,
+    fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor),
   });
   addFooterNote(slide, `대상지: ${config.centerName} / 자연환경 데이터는 공공 도시공원·OSM 보조 데이터를 결합합니다.`, d);
 }
@@ -1832,10 +1833,11 @@ function addDevelopmentRiskMatrixSlide(
 
   const projects = pois.filter((p): p is MaintenanceProject => p.category === "maintenance");
   const summary = summarizeMaintenanceProjects(projects);
-  addMetricCard(slide, 0.55, 1.15, 2.85, 0.82, "정비사업", `${summary.count}건`, `반경 ${config.radiusKm}km`, d.accentRed, d);
-  addMetricCard(slide, 3.6, 1.15, 2.85, 0.82, "예정세대수", `${summary.totalPlannedHouseholds.toLocaleString()}세대`, "확인값 합계", d.accentColor, d);
-  addMetricCard(slide, 6.65, 1.15, 2.85, 0.82, "총 사업면적", formatMaintenanceArea(summary.totalAreaSqm), "공식 속성 합계", d.accentColor, d);
-  addMetricCard(slide, 9.7, 1.15, 2.85, 0.82, "공식 경계 확인", `${summary.boundaryConfirmedCount}건`, `미결합 ${summary.boundaryUnmatchedCount} · 미확인 ${summary.boundaryUnavailableCount}`, d.accentColor, d);
+  const bodyTypography = { label: 11, detail: 11 } as const;
+  addMetricCard(slide, 0.55, 1.15, 2.85, 0.82, "정비사업", `${summary.count}건`, `반경 ${config.radiusKm}km`, d.accentRed, d, bodyTypography);
+  addMetricCard(slide, 3.6, 1.15, 2.85, 0.82, "예정세대수", `${summary.totalPlannedHouseholds.toLocaleString()}세대`, "확인값 합계", d.accentColor, d, bodyTypography);
+  addMetricCard(slide, 6.65, 1.15, 2.85, 0.82, "총 사업면적", formatMaintenanceArea(summary.totalAreaSqm), "공식 속성 합계", d.accentColor, d, bodyTypography);
+  addMetricCard(slide, 9.7, 1.15, 2.85, 0.82, "공식 경계 확인", `${summary.boundaryConfirmedCount}건`, `미결합 ${summary.boundaryUnmatchedCount} · 미확인 ${summary.boundaryUnavailableCount}`, d.accentColor, d, bodyTypography);
 
   const rows = buildMaintenancePresentationRows(projects, 6);
   if (rows.length === 0) {
@@ -1847,13 +1849,13 @@ function addDevelopmentRiskMatrixSlide(
       fontSize: 12, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true,
     });
     const columns = [
-      { label: protectPresentationHeader(MAINTENANCE_PRESENTATION_COLUMNS[0]), x: 0.78, w: 1.45, align: "left" },
-      { label: protectPresentationHeader(MAINTENANCE_PRESENTATION_COLUMNS[1]), x: 2.23, w: 1.35, align: "left" },
-      { label: protectPresentationHeader(MAINTENANCE_PRESENTATION_COLUMNS[2]), x: 3.58, w: 1.55, align: "left" },
-      { label: protectPresentationHeader(MAINTENANCE_PRESENTATION_COLUMNS[3]), x: 5.13, w: 1.15, align: "right" },
-      { label: protectPresentationHeader(MAINTENANCE_PRESENTATION_COLUMNS[4]), x: 6.28, w: 1.35, align: "right" },
-      { label: protectPresentationHeader(MAINTENANCE_PRESENTATION_COLUMNS[5]), x: 7.63, w: 1.55, align: "left" },
-      { label: protectPresentationHeader(MAINTENANCE_PRESENTATION_COLUMNS[6]), x: 9.18, w: 3.35, align: "left" },
+      { label: MAINTENANCE_PRESENTATION_COLUMNS[0], x: 0.78, w: 1.45, align: "left" },
+      { label: MAINTENANCE_PRESENTATION_COLUMNS[1], x: 2.23, w: 1.55, align: "left" },
+      { label: MAINTENANCE_PRESENTATION_COLUMNS[2], x: 3.78, w: 1.5, align: "left" },
+      { label: MAINTENANCE_PRESENTATION_COLUMNS[3], x: 5.28, w: 1.15, align: "right" },
+      { label: MAINTENANCE_PRESENTATION_COLUMNS[4], x: 6.43, w: 1.35, align: "right" },
+      { label: MAINTENANCE_PRESENTATION_COLUMNS[5], x: 7.78, w: 1.55, align: "left" },
+      { label: MAINTENANCE_PRESENTATION_COLUMNS[6], x: 9.33, w: 3.2, align: "left" },
     ] as const;
     columns.forEach((column) => {
       slide.addText(column.label, {
@@ -1869,7 +1871,7 @@ function addDevelopmentRiskMatrixSlide(
           x: column.x, y: 3.16 + rowIndex * 0.5, w: column.w, h: 0.46,
           fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.tableBodyPt, fontFace: FONT_MAIN,
           color: pptColor(columnIndex === 5 && row.boundary !== "경계 확인" ? d.accentRed : d.textColor),
-          bold: columnIndex === 0, align: column.align, wrap: true,
+          bold: columnIndex === 0, align: column.align, wrap: columnIndex !== 1,
         });
       });
     });
@@ -1881,15 +1883,15 @@ function addSyntheticDisclosure(slide: PptxGenJS.Slide, config: AnalysisConfig, 
   const notice = syntheticReportNotice(config);
   if (!notice) return;
   slide.addShape("roundRect", {
-    x: 8.6, y: 0.08, w: 4.18, h: 0.3,
-    fill: { color: "FFF1F2", transparency: 0 },
-    line: { color: pptColor(d.accentRed), transparency: 15, width: 0.8 },
+    x: 7.85, y: 0.06, w: 4.95, h: 0.34,
+    fill: { color: pptColor(SYNTHETIC_BANNER_FILL), transparency: 0 },
+    line: { color: pptColor(SYNTHETIC_BANNER_FILL), transparency: 0, width: 0.8 },
     rectRadius: 0.05,
     objectName: "SYNTHETIC_DATA_NOTICE_BG",
   });
   slide.addText(notice, {
-    x: 8.7, y: 0.105, w: 3.98, h: 0.24,
-    fontSize: 9.5, fontFace: FONT_MAIN, color: pptColor(d.accentRed), bold: true,
+    x: 7.98, y: 0.09, w: 4.69, h: 0.27,
+    fontSize: 10.5, fontFace: FONT_MAIN, color: "FFFFFF", bold: true,
     align: "center", valign: "middle", margin: 0,
     objectName: "SYNTHETIC_DATA_NOTICE_TEXT",
   });
@@ -1952,48 +1954,41 @@ function addResidentialSupplySlide(
   const avgParking = totalUnits > 0 ? totalParking / totalUnits : 0;
   // P4R Task C-1: 구 팔레트(파랑/초록/주황/핑크) 정리 — "총 세대수"(다른 지표들의 상위 총량)만
   // accentRed로 강조. P4R Task C-4: 주거시설 0개면 "0.00대/세대"가 무의미한 지표이므로 "-" 표기.
-  addMetricCard(slide, 0.55, 1.16, 2.45, 0.84, "주거시설", `${residentials.length}개`, "아파트·오피스텔 포함", d.accentColor, d);
-  addMetricCard(slide, 3.2, 1.16, 2.45, 0.84, "총 세대수", `${totalUnits.toLocaleString()}세대`, `주차 ${totalParking.toLocaleString()}대`, d.accentRed, d);
-  addMetricCard(slide, 5.85, 1.16, 2.45, 0.84, "분양예정", `${planned.length}건`, "공급 변화 모니터링", d.accentColor, d);
-  addMetricCard(slide, 8.5, 1.16, 2.45, 0.84, "주차비율", totalUnits > 0 ? `${avgParking.toFixed(2)}대/세대` : "-", "단지 상품성 참고", d.accentColor, d);
+  const bodyTypography = { label: 11, detail: 11 } as const;
+  addMetricCard(slide, 0.55, 1.16, 2.45, 0.84, "주거시설", `${residentials.length}개`, "아파트·오피스텔 포함", d.accentColor, d, bodyTypography);
+  addMetricCard(slide, 3.2, 1.16, 2.45, 0.84, "총 세대수", `${totalUnits.toLocaleString()}세대`, `주차 ${totalParking.toLocaleString()}대`, d.accentRed, d, bodyTypography);
+  addMetricCard(slide, 5.85, 1.16, 2.45, 0.84, "분양예정", `${planned.length}건`, "공급 변화 모니터링", d.accentColor, d, bodyTypography);
+  addMetricCard(slide, 8.5, 1.16, 2.45, 0.84, "주차비율", totalUnits > 0 ? `${avgParking.toFixed(2)}대/세대` : "-", "단지 상품성 참고", d.accentColor, d, bodyTypography);
 
   // 단지 상세 표 — 확정 필드셋(세대수/준공/주차/최고층수/동수/시공사, 2026-07-14).
   // 부대시설 목록은 셀에 안 들어가므로 표 하단 각주 1줄(최근접 단지)로 처리.
   const detailRows = buildComplexDetailRows(residentials);
   if (detailRows.length === 0) {
-    addEmptyStateBadge(slide, d, { x: 0.55, y: 2.34, w: 5.6, h: 3.4 }, "반경 내 확인된 시설이 없습니다");
+    addEmptyStateBadge(slide, d, { x: 0.55, y: 2.34, w: 12.23, h: 2.7 }, "반경 내 확인된 시설이 없습니다");
   } else {
-    addDataPanel(slide, 0.55, 2.34, 5.6, 3.4, d);
+    addDataPanel(slide, 0.55, 2.34, 12.23, 2.7, d);
     slide.addText("주요 단지 상세", {
-      x: 0.83, y: 2.6, w: 4.9, h: 0.25,
+      x: 0.83, y: 2.58, w: 4.9, h: 0.28,
       fontSize: 12, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true,
     });
     COMPLEX_DETAIL_COLUMNS.forEach((col) => {
       slide.addText(col.label, {
-        x: col.x, y: 2.94, w: col.w, h: 0.18,
-        fontSize: 7.2, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), bold: true, align: col.align,
+        x: col.x, y: 2.96, w: col.w, h: 0.24,
+        fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), bold: true, align: col.align,
       });
     });
     detailRows.forEach((row, idx) => {
-      const y = 3.16 + idx * 0.3;
+      const y = 3.28 + idx * 0.34;
       const values = complexDetailCellValues(row);
       COMPLEX_DETAIL_COLUMNS.forEach((col, ci) => {
-        // wrap:false — 좁은 칸(준공/층/동)에서 "확인필요"가 2줄로 꺾이지 않도록 한 줄 축소 강제
         slide.addText(values[ci], {
-          x: col.x, y, w: col.w, h: 0.2,
-          fontSize: ci === 0 ? 7.8 : 7.4, fontFace: FONT_MAIN,
+          x: col.x, y, w: col.w, h: 0.28,
+          fontSize: 11, fontFace: FONT_MAIN,
           color: pptColor(ci === 0 ? (row.planned ? d.accentRed : d.textColor) : d.mutedTextColor),
-          align: col.align, fit: "shrink", wrap: false,
+          align: col.align, wrap: false,
         });
       });
     });
-    const welfareNote = buildWelfareNote(residentials);
-    if (welfareNote) {
-      slide.addText(welfareNote, {
-        x: 0.8, y: 5.4, w: 5.15, h: 0.2,
-        fontSize: 7, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), fit: "shrink",
-      });
-    }
   }
 
   const timeline = [...residentials]
@@ -2004,28 +1999,30 @@ function addResidentialSupplySlide(
     // P4R Task C-3: 0건일 때 거대한 빈 흰 카드 대신 콜아웃 슬라이드의 컴팩트 중앙 배지 문법.
     // P4R Task C fix: 시설(주거시설)은 있으나 일정 데이터만 없는 케이스에서 좌측 랭킹 리스트와
     // 자기모순되지 않도록 범용 문구 대신 이 패널(분양/입주 타임라인) 전용 문구로 정확화.
-    addEmptyStateBadge(slide, d, { x: 6.42, y: 2.34, w: 5.2, h: 3.4 }, "일정 정보가 있는 분양/입주 데이터가 없습니다");
+    addEmptyStateBadge(slide, d, { x: 0.55, y: 5.22, w: 12.23, h: 1.3 }, "일정 정보가 있는 분양/입주 데이터가 없습니다");
   } else {
-    addDataPanel(slide, 6.42, 2.34, 5.2, 3.4, d);
+    addDataPanel(slide, 0.55, 5.22, 12.23, 1.3, d);
     slide.addText("분양/입주 타임라인", {
-      x: 6.7, y: 2.6, w: 4.7, h: 0.25,
+      x: 0.83, y: 5.4, w: 4.7, h: 0.26,
       fontSize: 12, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true,
     });
     timeline.forEach((apt, idx) => {
-      const y = 3.04 + idx * 0.42;
+      const col = idx % 3;
+      const row = Math.floor(idx / 3);
+      const x = 0.83 + col * 4.0;
+      const y = 5.78 + row * 0.34;
       const date = apt.move_in_month || apt.sale_date;
-      // P4R Task C-2: 백카드 저대비 강조 텍스트(#FBBF24) 정리 — 예정일(분양예정 상태)만 accentRed.
       slide.addText(date || "일정 미확인", {
-        x: 6.72, y, w: 1.05, h: 0.22,
-        fontSize: 7.8, fontFace: FONT_MAIN, color: pptColor(apt.status === "planned" ? d.accentRed : d.mutedTextColor), bold: true,
+        x, y, w: 1.0, h: 0.26,
+        fontSize: 11, fontFace: FONT_MAIN, color: pptColor(apt.status === "planned" ? d.accentRed : d.mutedTextColor), bold: true,
       });
       slide.addText(apt.name, {
-        x: 7.9, y, w: 2.4, h: 0.22,
-        fontSize: 7.8, fontFace: FONT_MAIN, color: pptColor(d.textColor), fit: "shrink",
+        x: x + 1.08, y, w: 1.85, h: 0.26,
+        fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.textColor),
       });
       slide.addText(`${apt.units.toLocaleString()}세대`, {
-        x: 10.25, y, w: 0.82, h: 0.22,
-        fontSize: 7.4, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), align: "right",
+        x: x + 2.95, y, w: 0.78, h: 0.26,
+        fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), align: "right",
       });
     });
   }
@@ -2188,13 +2185,6 @@ function addCategorySlide(
 
   addLegend(slide, d, cats.includes("maintenance"));
   if (cats.includes("maintenance")) {
-    if (syntheticReportNotice(config)) {
-      slide.addText("합성 경계 구조 검증 · 실데이터 아님", {
-        x: 8.45, y: 6.7, w: 4.3, h: 0.24,
-        fontSize: 9.5, fontFace: FONT_MAIN, color: pptColor(d.accentRed), bold: true, align: "right",
-        fit: "shrink",
-      });
-    }
     slide.addText(MAINTENANCE_LEGAL_FOOTER, {
       x: 9.55, y: 7.08, w: 3.2, h: 0.18,
       fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.legalFooterPt, fontFace: FONT_MAIN, color: pptColor(d.legendTextColor), align: "right",
@@ -2225,15 +2215,14 @@ interface ResidentialTableRow {
 // ─── 주거 공급 슬라이드: 단지 상세 표 (2026-07-14 확정 필드셋) ────────────────
 // canvas 렌더러(ppt-canvas-renderer.ts)의 동명 심볼과 동일 로직/치수를 유지할 것(수치 parity).
 
-/** 컬럼 x/w는 인치. 좌측 패널(x0.55 w5.6) 내부 여백 기준. */
 const COMPLEX_DETAIL_COLUMNS = [
-  { label: "단지명", x: 0.8, w: 1.45, align: "left" },
-  { label: "세대수", x: 2.25, w: 0.7, align: "right" },
-  { label: "준공", x: 2.95, w: 0.55, align: "right" },
-  { label: "주차", x: 3.5, w: 0.72, align: "right" },
-  { label: "층", x: 4.22, w: 0.4, align: "right" },
-  { label: "동", x: 4.62, w: 0.4, align: "right" },
-  { label: "시공사", x: 5.12, w: 0.85, align: "left" },
+  { label: "단지명", x: 0.8, w: 2.3, align: "left" },
+  { label: "세대수", x: 3.1, w: 1.2, align: "right" },
+  { label: "준공", x: 4.3, w: 1.1, align: "right" },
+  { label: "주차", x: 5.4, w: 1.4, align: "right" },
+  { label: "층", x: 6.8, w: 1.0, align: "right" },
+  { label: "동", x: 7.8, w: 1.0, align: "right" },
+  { label: "시공사", x: 8.8, w: 3.5, align: "left" },
 ] as const;
 
 interface ComplexDetailRow {
@@ -2257,7 +2246,7 @@ function shortenConstructorName(name: string): string {
 function buildComplexDetailRows(residentials: readonly ResidentialPoi[]): ComplexDetailRow[] {
   return [...residentials]
     .sort((a, b) => b.units - a.units)
-    .slice(0, 7)
+    .slice(0, 5)
     .map((apt) => {
       const date = apt.move_in_month || apt.sale_date;
       return {

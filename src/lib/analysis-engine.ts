@@ -119,7 +119,7 @@ export function computeAnalysisScores(config: AnalysisConfig, pois: readonly Poi
       level: levelFor(trafficScore, 25),
       detail: nearestSubway === null
         ? "반경 내 확인된 지하철역이 없습니다."
-        : `최근접 역 ${formatDistanceM(nearestSubway)} · 700m ${subwayNear}개 · 1.2km ${subwayMid}개`,
+        : `역 ${formatDistanceM(nearestSubway)} · 700m권 ${subwayNear}곳 · 1.2km권 ${subwayMid}곳`,
     },
     {
       key: "education",
@@ -228,7 +228,7 @@ export function generateAnalysisNarrative(config: AnalysisConfig, pois: readonly
   return {
     // P4R Task B-4a: 점수를 문장 선두에서 강조하지 않는다 — 강·약점 팩트 요약을 앞세우고
     // 점수/등급은 문장 끝 괄호 보조 표기로 격하한다.
-    summary: `${config.centerName || "선택 입지"}는 ${scores.headline} (참고: 종합 ${scores.total}/100점 · ${scores.grade}등급)`,
+    summary: `${config.centerName || "선택 입지"}: ${scores.headline} (총점 ${scores.total}/100 · ${scores.grade})`,
     bullets: [
       nearestSubway === null
         ? "교통: 지하철역 미확인. 버스·도로 접근성 보완 필요."
