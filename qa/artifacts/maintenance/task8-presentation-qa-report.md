@@ -3,7 +3,7 @@
 - 결과: PASS
 - 슬라이드: 16/16
 - 입력 POI: 17개 / 보고서 산출 POI: 16개
-- 공원: 입력 0개, 원천 failed, 슬라이드 6·9·14 `공원 데이터 수집 실패 · 산출 제외`
+- 공원: 입력 stale 1개 / 보고서 0개, 원천 failed, 슬라이드 6·9·14 `공원 데이터 수집 실패 · 산출 제외`
 - 의미 본문: 전 16장 11pt 이상(예외: title/eyebrow, footer/legal, ※ note, synthetic disclosure)
 - slide 6 stale park label / 핵심 포인트 overlap: 0 / 0
 - 경계: 7 rings (solid 4, dashed 3)
@@ -12,7 +12,7 @@
 | artifact | bytes | SHA-256 |
 |---|---:|---|
 | task8-maintenance-report.pptx | 6099854 | `835cc1a0431db3715a6a9bdc414751fa3c021843dcd5927b7d42e77af64995c3` |
-| task8-com-audit.json | 1233 | `ab931af5250e1a4c2811ced74b874c5d343b1109ed73087a63627fec3e5d4c7b` |
+| task8-com-audit.json | 1233 | `628c63c49a2155ffa5a13e08919e2b8b7905e38f37383e044fbff1de27b15b1b` |
 | task8-canvas-natural-failure.png | 766096 | `15ed8f2d73d28dc315cf8b5ed94e24ff6ebd791802d519d677fd2b19a121e1ac` |
 | task8-canvas-park-failure.png | 37718 | `a8ecfea1565da30e1f64d624de935dd2520ce1c7dd4928716d4d5fe30482123f` |
 | task8-canvas-maintenance-map.png | 737634 | `04fc3fc2e8bcecd59205f923e2c6035666ea4565ad2555c21e239038691990d9` |

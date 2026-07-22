@@ -217,7 +217,7 @@ $report = @"
 - 결과: PASS
 - 슬라이드: 16/16
 - 입력 POI: 17개 / 보고서 산출 POI: 16개
-- 공원: 입력 0개, 원천 failed, 슬라이드 6·9·14 ``$failureNotice``
+- 공원: 입력 stale 1개 / 보고서 0개, 원천 failed, 슬라이드 6·9·14 ``$failureNotice``
 - 의미 본문: 전 16장 11pt 이상(예외: title/eyebrow, footer/legal, ※ note, synthetic disclosure)
 - slide 6 stale park label / 핵심 포인트 overlap: 0 / 0
 - 경계: 7 rings (solid 4, dashed 3)
