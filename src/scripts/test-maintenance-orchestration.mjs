@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import ky from "ky";
 
 import { applyMaintenanceRetryResult } from "../lib/maintenance-retry-state.ts";
 import { searchMaintenanceProjects } from "../lib/server/maintenance-project-search.ts";
@@ -78,6 +79,17 @@ function fakeKy(responses) {
   assert.equal(records[0].notice_code, "고시-1");
   assert.match(records[0].notice_url, /data\.seoul\.go\.kr/);
 
+  const sentinel = "SEOUL-TRANSPORT-SECRET-SENTINEL";
+  await assert.rejects(fetchSeoulMaintenanceRecords({
+    query: { center, radiusM: 3_000, regions: [{ sido: "서울특별시", sigungu: "강남구" }] },
+    serviceKey: sentinel,
+    httpClient: ky.create({ retry: 0, fetch: async () => new Response("Forbidden", { status: 403 }) }),
+  }), (error) => {
+    assert.equal(`${error.message}\n${error.stack}`.includes(sentinel), false);
+    assert.equal(`${error.message}\n${error.stack}`.includes("openapi.seoul.go.kr"), false);
+    return true;
+  });
+
   const renamedJoin = mergeMaintenanceData({
     boundaries: [{ ...boundary("unrelated-id", "원래 경계명"), properties: {
       ...boundary("unrelated-id", "원래 경계명").properties, notice_ids: ["NOTICE-1"],
@@ -126,6 +138,17 @@ function fakeKy(responses) {
   }), (error) => {
     assert.equal(String(error).includes("SECRET-SERVICE-KEY"), false);
     assert.equal(String(error).includes("https://"), false);
+    return true;
+  });
+
+  const sentinel = "BUSAN-TRANSPORT-SECRET-SENTINEL";
+  await assert.rejects(fetchBusanMaintenanceRecords({
+    query: { center, radiusM: 3_000, regions: [{ sido: "부산광역시", sigungu: "해운대구" }] },
+    serviceKey: sentinel,
+    httpClient: ky.create({ retry: 0, fetch: async () => new Response("Forbidden", { status: 403 }) }),
+  }), (error) => {
+    assert.equal(`${error.message}\n${error.stack}`.includes(sentinel), false);
+    assert.equal(`${error.message}\n${error.stack}`.includes("apis.data.go.kr"), false);
     return true;
   });
 }

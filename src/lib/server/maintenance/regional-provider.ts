@@ -27,6 +27,24 @@ interface RegionalProviderOptions {
   readonly serviceKey?: string;
 }
 
+export class RegionalProviderRequestError extends Error {
+  readonly name = "RegionalProviderRequestError";
+  constructor(readonly source: "seoul" | "busan") {
+    super(`${source} maintenance provider transport request failed`);
+  }
+}
+
+async function requestRegionalJson(request: {
+  readonly source: "seoul" | "busan";
+  readonly execute: () => Promise<unknown>;
+}): Promise<unknown> {
+  try {
+    return await request.execute();
+  } catch {
+    throw new RegionalProviderRequestError(request.source);
+  }
+}
+
 function client(value?: KyInstance): KyInstance {
   return value ?? ky.create({ timeout: API_TIMEOUT_MS, retry: { limit: 1, methods: ["get"] } });
 }
@@ -126,7 +144,10 @@ export async function fetchSeoulMaintenanceRecords(options: RegionalProviderOpti
   const rawRows: JsonObject[] = [];
   for (let start = 1, total = Number.POSITIVE_INFINITY; start <= total; start += SEOUL_PAGE_SIZE) {
     const end = start + SEOUL_PAGE_SIZE - 1;
-    const page = seoulRows(await http.get(`${SEOUL_URL}/${encodeURIComponent(serviceKey)}/json/${SEOUL_SERVICE}/${start}/${end}/`).json<unknown>());
+    const page = seoulRows(await requestRegionalJson({
+      source: "seoul",
+      execute: () => http.get(`${SEOUL_URL}/${encodeURIComponent(serviceKey)}/json/${SEOUL_SERVICE}/${start}/${end}/`).json<unknown>(),
+    }));
     rawRows.push(...page.rows);
     total = page.total;
     if (!page.rows.length) break;
@@ -180,9 +201,12 @@ export async function fetchBusanMaintenanceRecords(options: RegionalProviderOpti
   const http = client(options.httpClient);
   const rows: JsonObject[] = [];
   for (let pageNo = 1, total = Number.POSITIVE_INFINITY; rows.length < total && pageNo <= 20; pageNo += 1) {
-    const page = busanPage(await http.get(BUSAN_URL, { searchParams: {
-      serviceKey, pageNo: String(pageNo), numOfRows: "100", resultType: "json",
-    } }).json<unknown>());
+    const page = busanPage(await requestRegionalJson({
+      source: "busan",
+      execute: () => http.get(BUSAN_URL, { searchParams: {
+        serviceKey, pageNo: String(pageNo), numOfRows: "100", resultType: "json",
+      } }).json<unknown>(),
+    }));
     rows.push(...page.rows);
     total = page.total;
     if (!page.rows.length) break;
