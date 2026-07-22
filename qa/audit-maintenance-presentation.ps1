@@ -117,6 +117,11 @@ try {
   $slideOneBanner = @($slideShapes["1"] | Where-Object { $_.Name -eq "SYNTHETIC_DATA_NOTICE_TEXT" -and (Get-ShapeText $_).Contains("실데이터 아님") })
   Assert-True ($slideOneBanner.Count -eq 1) "slide 1 synthetic banner shape count: $($slideOneBanner.Count)"
   Assert-True ($slideOneBanner[0].TextFrame.TextRange.Lines().Count -eq 1) "slide 1 synthetic banner split across lines"
+  $slideOneTitle = @($slideShapes["1"] | Where-Object { (Get-ShapeText $_) -eq "합성 구조검증" -and (Get-MinFontPt $_) -ge 60 })
+  Assert-True ($slideOneTitle.Count -eq 1) "slide 1 short 60pt title count: $($slideOneTitle.Count)"
+  Assert-True ($slideOneTitle[0].TextFrame.TextRange.Lines().Count -eq 1) "slide 1 short title split across lines"
+  $slideOneNoticeLeaks = @($slideShapes["1"] | Where-Object { $_.Name -ne "SYNTHETIC_DATA_NOTICE_TEXT" -and (Get-ShapeText $_).Contains("실데이터 아님") })
+  Assert-True ($slideOneNoticeLeaks.Count -eq 0) "slide 1 leaked synthetic notice outside banner: $($slideOneNoticeLeaks.Count)"
   foreach ($token in @("1.2km권 0곳", "분양예정 2개", "원문 확인 필요")) { Assert-TokenOnOneLine $slideShapes["7"] $token 7 }
   Assert-TokenOnOneLine $slideShapes["10"] "점수에서 제외" 10
   Assert-TokenOnOneLine $slideShapes["10"] "공식 정비구역 경계 · 참고용" 10

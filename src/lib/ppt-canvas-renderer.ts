@@ -1883,6 +1883,7 @@ function renderResidentialSupplySlide(
     COMPLEX_DETAIL_COLUMNS.forEach((col) => {
       drawTextBox(ctx, col.label, ix(col.x), iy(2.96), ix(col.w), iy(0.24), { fontSize: 11, bold: true, color: d.mutedTextColor, align: col.align });
     });
+    drawLine(ctx, 5.55, 2.94, 0, 1.78, d.markerBorderColor, 0.8, 72);
     detailRows.forEach((row, idx) => {
       const y = 3.28 + idx * 0.34;
       const values = complexDetailCellValues(row);
@@ -2247,7 +2248,6 @@ function renderDataSourceSlide(
       value: MAINTENANCE_PRESENTATION_TYPOGRAPHY.sourceValuePt,
       detail: MAINTENANCE_PRESENTATION_TYPOGRAPHY.sourceDetailPt,
     });
-    drawLine(ctx, 5.55, 2.94, 0, 1.78, d.markerBorderColor, 0.8, 72);
   });
   drawDataPanel(ctx, ix(0.7), iy(4.32), ix(11.9), iy(2.58), d);
   drawTextBox(ctx, "주의사항", ix(1.0), iy(4.56), ix(2.0), iy(0.28), { fontSize: 12, bold: true, color: d.textColor });

@@ -88,6 +88,10 @@ assert.equal(
   syntheticReportNotice({ centerName: "합성 구조검증 데이터 · 실데이터 아님", centerLat: 0, centerLng: 0, radiusKm: 1 }),
   SYNTHETIC_REPORT_NOTICE,
 );
+assert.equal(
+  syntheticReportNotice({ centerName: "합성 구조검증", centerLat: 0, centerLng: 0, radiusKm: 1 }),
+  SYNTHETIC_REPORT_NOTICE,
+);
 
 const compactMapBullet = formatMaintenanceMapBullet("서울 구조검증 홀 (조합설립, 4.20만㎡, 240m)");
 assert.equal(compactMapBullet, "서울 구조검증 홀\n4.20만㎡·240m");

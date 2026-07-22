@@ -53,7 +53,7 @@ const pois = [
 ];
 
 export const presentationFixture = {
-  centerName: "합성 구조검증 데이터 · 실데이터 아님",
+  centerName: "합성 구조검증",
   center,
   pois,
   response: {

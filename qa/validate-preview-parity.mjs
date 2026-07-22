@@ -32,6 +32,12 @@ for (const label of ['"세대수"', '"주차"', '"준공"', '"층·동"', '"시�
 }
 assert.ok(canvasFn.includes("slice(0, 5)"), "buildResidentialTableRows must cap rows at 5 (calloutHeight 예약 슬롯 규격)");
 
+const residentialSupplyCanvas = canvas.match(/function renderResidentialSupplySlide\([\s\S]*?\n\}/)?.[0] ?? "";
+const generalSourceCanvas = canvas.match(/function renderDataSourceSlide\([\s\S]*?\n\}/)?.[0] ?? "";
+const supplyDivider = "drawLine(ctx, 5.55, 2.94, 0, 1.78, d.markerBorderColor, 0.8, 72);";
+assert.ok(residentialSupplyCanvas.includes(supplyDivider), "Canvas residential supply slide missing year/parking divider");
+assert.ok(!generalSourceCanvas.includes(supplyDivider), "Canvas general source slide must not draw residential divider");
+
 // 주거 공급 슬라이드 단지 상세 표 — 확정 필드셋(세대수/준공/주차/최고층수/동수/시공사)과
 // 부대시설 라인이 두 렌더러 모두에 존재하는지 정적 검증 (2026-07-14 사용자 확정)
 for (const label of ['"시공사"', "부대시설 · "]) {
