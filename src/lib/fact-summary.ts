@@ -51,7 +51,10 @@ export interface FactSummaryHousing {
 export interface FactSummaryMaintenance {
   readonly count: number;
   readonly boundaryConfirmedCount: number;
+  readonly boundaryUnmatchedCount: number;
+  readonly boundaryUnavailableCount: number;
   readonly totalAreaSqm: number;
+  readonly totalPlannedHouseholds: number;
 }
 
 export interface FactSummary {
@@ -127,7 +130,10 @@ export function buildFactSummary(input: FactSummaryInput): FactSummary {
     maintenance: {
       count: maintenanceSummary.count,
       boundaryConfirmedCount: maintenanceSummary.boundaryConfirmedCount,
+      boundaryUnmatchedCount: maintenanceSummary.boundaryUnmatchedCount,
+      boundaryUnavailableCount: maintenanceSummary.boundaryUnavailableCount,
       totalAreaSqm: maintenanceSummary.totalAreaSqm,
+      totalPlannedHouseholds: maintenanceSummary.totalPlannedHouseholds,
     },
   };
 }
@@ -185,8 +191,12 @@ export function buildCategoryInsight(category: CategoryInsightKey, summary: Fact
     case "maintenance": {
       const m = summary.maintenance;
       if (m.count === 0) return [];
-      const lines: string[] = [`정비사업 ${m.count}건 · 경계 확인 ${m.boundaryConfirmedCount}건`];
+      const lines: string[] = [
+        `정비사업 ${m.count}건${m.totalPlannedHouseholds > 0 ? ` · 예정 ${m.totalPlannedHouseholds.toLocaleString()}세대` : ""}`,
+        `경계 확인 ${m.boundaryConfirmedCount}건 · 미결합 ${m.boundaryUnmatchedCount}건 · 미확인 ${m.boundaryUnavailableCount}건`,
+      ];
       if (m.totalAreaSqm > 0) lines.push(`총 면적 ${formatMaintenanceArea(m.totalAreaSqm)}`);
+      lines.push("행정구역 카탈로그는 반경 집계·점수에서 제외");
       return lines;
     }
     default:

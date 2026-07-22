@@ -17,11 +17,19 @@ import { layoutPoiLabels, poiLabelText } from "./ppt-label-layout";
 import { computeResidentialCalloutLayout } from "./ppt-callout-layout";
 import { buildParkDetailLines, formatAreaSqm, formatDistanceM, summarizeParks } from "./park-analysis";
 import { buildMaintenanceDetailLines, formatMaintenanceArea, summarizeMaintenanceProjects } from "./maintenance-analysis";
+import {
+  MAINTENANCE_BOUNDARY_LEGEND,
+  MAINTENANCE_LEGAL_FOOTER,
+  MAINTENANCE_PRESENTATION_COLUMNS,
+  MAINTENANCE_PRESENTATION_SOURCES,
+  buildMaintenancePresentationRows,
+  projectMaintenanceBoundaries,
+} from "./maintenance-presentation";
 import { buildInsightOverlays, computeAnalysisScores, generateAnalysisNarrative, getSummaryLines } from "./analysis-engine";
 import { haversineDistance } from "./geo";
 import type { PptDesignConfig } from "./ppt-design-config";
 import { DEFAULT_PPT_DESIGN, PPT_FONT_MAIN } from "./ppt-design-config";
-import { sourceStatusLines, hasFailedSource } from "./source-status-text";
+import { maintenanceSourceStatusLines, sourceStatusLines, hasFailedSource } from "./source-status-text";
 import { toReportMapTone } from "./map-image-tone";
 import { buildFactSummary, buildFactSheetRows, buildCategoryInsight, type FactSheetSegment, type CategoryInsightKey } from "./fact-summary";
 import { isRawPoiId } from "./poi-id-guard";
@@ -703,11 +711,14 @@ function addRankedList(
   });
 }
 
-function addLegend(slide: PptxGenJS.Slide, d: PptDesignConfig) {
-  const items = Object.entries(CATEGORY_LABELS).map(([key, label]) => ({
+function addLegend(slide: PptxGenJS.Slide, d: PptDesignConfig, maintenanceReference = false) {
+  const categoryItems = Object.entries(CATEGORY_LABELS).map(([key, label]) => ({
     label,
     color: d.categoryColors[key as PoiCategory],
   }));
+  const items = maintenanceReference
+    ? [{ label: MAINTENANCE_BOUNDARY_LEGEND, color: d.categoryColors.maintenance }]
+    : categoryItems;
   if (d.legendStyle === "strip") {
     const rowW = 5.9;
     const rowH = 0.34;
@@ -1453,6 +1464,13 @@ function addOverviewSlide(
   const slide = pptx.addSlide();
   addFullBleedMap(slide, baseMapImage, d);
   addConcentricRings(slide, radiusPosition, d);
+  addMaintenanceBoundaries(
+    slide,
+    poiPositions.map((position) => position.poi).filter((poi): poi is MaintenanceProject => poi.category === "maintenance"),
+    config,
+    radiusPosition,
+    d,
+  );
   const subwayAsMarkers = routePositions.length === 0;
   addSubwayRouteLines(slide, routePositions, d);
   addPoiMarkers(slide, poiPositions, subwayAsMarkers
@@ -1802,69 +1820,90 @@ function addDevelopmentRiskMatrixSlide(
   d: PptDesignConfig,
 ) {
   const slide = pptx.addSlide();
-  // Task A: 백색(B문법) 전환.
   slide.background = { fill: pptColor(d.canvasColor) };
-  addTitleChip(slide, "개발 호재/리스크 매트릭스", d, "영향도 · 확정성 · 거리");
+  addTitleChip(slide, "정비사업 상세 현황", d, "공식 속성 · 경계 신뢰도 · 거리");
 
   const projects = pois.filter((p): p is MaintenanceProject => p.category === "maintenance");
   const summary = summarizeMaintenanceProjects(projects);
-  // P4R Task C-1: 구 팔레트(핑크/파랑/주황) 정리 — "정비사업"(총 건수, 나머지 두 지표의 상위 총량)
-  // 1곳만 accentRed로 강조하고 나머지는 무채 잉크 테두리.
-  addMetricCard(slide, 0.55, 1.15, 2.35, 0.82, "정비사업", `${summary.count}건`, `총 ${formatMaintenanceArea(summary.totalAreaSqm)}`, d.accentRed, d);
-  addMetricCard(slide, 3.05, 1.15, 2.35, 0.82, "경계 확인", `${summary.boundaryConfirmedCount}건`, `${summary.count - summary.boundaryConfirmedCount}건은 위치 확인 필요`, d.accentColor, d);
-  addMetricCard(slide, 5.55, 1.15, 2.35, 0.82, "주요 사업", `${summary.topProjects.length}건`, "면적·거리 기준 선별", d.accentColor, d);
+  addMetricCard(slide, 0.55, 1.15, 2.85, 0.82, "정비사업", `${summary.count}건`, `반경 ${config.radiusKm}km`, d.accentRed, d);
+  addMetricCard(slide, 3.6, 1.15, 2.85, 0.82, "예정세대수", `${summary.totalPlannedHouseholds.toLocaleString()}세대`, "확인값 합계", d.accentColor, d);
+  addMetricCard(slide, 6.65, 1.15, 2.85, 0.82, "총 사업면적", formatMaintenanceArea(summary.totalAreaSqm), "공식 속성 합계", d.accentColor, d);
+  addMetricCard(slide, 9.7, 1.15, 2.85, 0.82, "공식 경계 확인", `${summary.boundaryConfirmedCount}건`, `미결합 ${summary.boundaryUnmatchedCount} · 미확인 ${summary.boundaryUnavailableCount}`, d.accentColor, d);
 
-  const rows = summary.topProjects.slice(0, 7);
+  const rows = buildMaintenancePresentationRows(projects, 6);
   if (rows.length === 0) {
-    // P4R Task C-3: 0건일 때 거대한 빈 흰 카드 대신 콜아웃 슬라이드의 컴팩트 중앙 배지 문법.
-    // P4R Task C fix: 범용 문구 대신 이 패널(정비사업 상세 테이블) 전용 문구로 정확화.
-    addEmptyStateBadge(slide, d, { x: 0.55, y: 2.25, w: 7.35, h: 3.95 }, "표시할 정비사업 상세 내역이 없습니다");
+    addEmptyStateBadge(slide, d, { x: 0.55, y: 2.25, w: 12.23, h: 4.15 }, "표시할 정비사업 상세 내역이 없습니다");
   } else {
-    addDataPanel(slide, 0.55, 2.25, 7.35, 3.95, d);
-    slide.addText("주요 정비사업 영향도 테이블", {
-      x: 0.8, y: 2.5, w: 6.8, h: 0.25,
+    addDataPanel(slide, 0.55, 2.25, 12.23, 4.15, d);
+    slide.addText("반경 내 정비사업 상세", {
+      x: 0.78, y: 2.48, w: 4.0, h: 0.25,
       fontSize: 12, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true,
     });
-    rows.forEach((project, idx) => {
-      const y = 2.96 + idx * 0.42;
-      const dist = project.distance_m != null ? formatDistanceM(project.distance_m) : "거리 미확인";
-      const impact = project.area_sqm >= 100_000 ? "상" : project.area_sqm >= 30_000 ? "중" : "보통";
-      const confidence = project.boundary_status === "confirmed" ? "확인" : "미확인";
-      slide.addText(project.name, {
-        x: 0.82, y, w: 2.8, h: 0.24,
-        fontSize: 8.2, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true, fit: "shrink",
+    const columns = [
+      { label: MAINTENANCE_PRESENTATION_COLUMNS[0], x: 0.78, w: 1.45, align: "left" },
+      { label: MAINTENANCE_PRESENTATION_COLUMNS[1], x: 2.23, w: 1.35, align: "left" },
+      { label: MAINTENANCE_PRESENTATION_COLUMNS[2], x: 3.58, w: 1.65, align: "left" },
+      { label: MAINTENANCE_PRESENTATION_COLUMNS[3], x: 5.23, w: 1.0, align: "right" },
+      { label: MAINTENANCE_PRESENTATION_COLUMNS[4], x: 6.23, w: 1.35, align: "right" },
+      { label: MAINTENANCE_PRESENTATION_COLUMNS[5], x: 7.58, w: 1.6, align: "left" },
+      { label: MAINTENANCE_PRESENTATION_COLUMNS[6], x: 9.18, w: 3.35, align: "left" },
+    ] as const;
+    columns.forEach((column) => {
+      slide.addText(column.label, {
+        x: column.x, y: 2.86, w: column.w, h: 0.2,
+        fontSize: 7.1, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), bold: true,
+        align: column.align,
       });
-      slide.addText(project.stage, {
-        x: 3.75, y, w: 1.2, h: 0.24,
-        fontSize: 7.4, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), fit: "shrink",
-      });
-      // P4R Task C-2: 백카드 저대비 강조 텍스트(#93C5FD/#FBBF24) 정리 — 확인(정상)은 무채 잉크,
-      // 미확인(주의 필요)만 accentRed로 백배경에서도 판독 가능하게.
-      slide.addText(`${impact} · ${confidence} · ${dist}`, {
-        x: 5.02, y, w: 2.1, h: 0.24,
-        fontSize: 7.4, fontFace: FONT_MAIN, color: pptColor(project.boundary_status === "confirmed" ? d.textColor : d.accentRed), align: "right",
+    });
+    rows.forEach((row, rowIndex) => {
+      const values = [row.name, row.typeStage, row.implementer, row.households, row.areaDistance, row.boundary, row.sourceDate];
+      columns.forEach((column, columnIndex) => {
+        slide.addText(values[columnIndex] ?? "", {
+          x: column.x, y: 3.16 + rowIndex * 0.48, w: column.w, h: 0.28,
+          fontSize: columnIndex === 0 ? 7.6 : 6.9, fontFace: FONT_MAIN,
+          color: pptColor(columnIndex === 5 && row.boundary !== "공식 경계 확인" ? d.accentRed : d.textColor),
+          bold: columnIndex === 0, align: column.align, fit: "shrink", wrap: false,
+        });
       });
     });
   }
+  addFooterNote(slide, `${MAINTENANCE_LEGAL_FOOTER} · 행정구역 카탈로그는 반경 표와 점수에서 제외`, d);
+}
 
-  addDataPanel(slide, 8.25, 2.25, 4.1, 3.95, d);
-  slide.addText("해석 기준", {
-    x: 8.52, y: 2.52, w: 3.45, h: 0.25,
-    fontSize: 12, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true,
-  });
-  const notes = [
-    "영향도: 사업 면적과 대상지 거리로 판단",
-    "확정성: 공식 경계 확인 여부를 우선 반영",
-    "초기 단계 사업은 장기 호재이나 일정 변동 리스크가 큼",
-    "관리처분·착공 단계는 가시성이 높지만 공급 충격도 함께 검토",
-  ];
-  notes.forEach((note, idx) => {
-    slide.addText(`• ${note}`, {
-      x: 8.55, y: 3.02 + idx * 0.55, w: 3.35, h: 0.35,
-      fontSize: 8.4, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), fit: "shrink",
+function addMaintenanceBoundaries(
+  slide: PptxGenJS.Slide,
+  projects: readonly MaintenanceProject[],
+  config: AnalysisConfig,
+  radiusPosition: RadiusPosition | null,
+  d: PptDesignConfig,
+) {
+  const boundaries = projectMaintenanceBoundaries(projects, config, radiusPosition);
+  for (const boundary of boundaries) {
+    boundary.polygons.forEach((polygon, polygonIndex) => {
+      polygon.forEach((ring, ringIndex) => {
+        if (ring.length < 4) return;
+        const points = ring.map((point) => ({ x: point.nx * SLIDE_W, y: point.ny * SLIDE_H }));
+        const minX = Math.min(...points.map((point) => point.x));
+        const minY = Math.min(...points.map((point) => point.y));
+        const width = Math.max(Math.max(...points.map((point) => point.x)) - minX, 0.01);
+        const height = Math.max(Math.max(...points.map((point) => point.y)) - minY, 0.01);
+        slide.addShape("custGeom" as PptxGenJS.SHAPE_NAME, {
+          x: minX,
+          y: minY,
+          w: width,
+          h: height,
+          points: points.map((point) => ({ x: point.x - minX, y: point.y - minY })),
+          fill: { color: "FFFFFF", transparency: 100 },
+          line: {
+            color: pptColor(d.categoryColors.maintenance),
+            width: 2.2,
+            dashType: boundary.status === "unmatched" ? "dash" : undefined,
+          },
+          objectName: `MAINTENANCE_BOUNDARY|${boundary.projectId}|${polygonIndex}|${ringIndex}`,
+        });
+      });
     });
-  });
-  addFooterNote(slide, "정비사업 데이터는 고시·공공데이터 기준이며, 사업 단계와 고시일은 별도 실사 확인을 권장합니다.", d);
+  }
 }
 
 function addResidentialSupplySlide(
@@ -1984,11 +2023,12 @@ function addDataSourceSlide(
 
   const sourceCards = [
     { title: "주소/지도", value: "Naver API", detail: "지오코딩·지도 표시·검색 좌표 기준", color: "#3B82F6" },
-    { title: "교통/POI", value: "Naver + OSM", detail: "지하철·생활 POI·보조 경로 데이터", color: "#F59E0B" },
-    { title: "공원/녹지", value: "공공데이터 + OSM", detail: "도시공원 면적, 경계 좌표 보조", color: "#10B981" },
-    { title: "정비사업", value: "공공 고시 데이터", detail: "서울/부산 정비사업 및 경계 확인", color: "#EC4899" },
-    { title: "주거 공급", value: "대장/분양 정보", detail: "세대수, 주차, 분양/입주 일정", color: "#22C55E" },
-    { title: "보고서 산출", value: "자동 분석 모델", detail: "거리·개수·면적·단계 기반 점수화", color: "#94A3B8" },
+    ...MAINTENANCE_PRESENTATION_SOURCES.map((source) => ({
+      title: source.title,
+      value: source.value,
+      detail: source.detail,
+      color: "#EC4899",
+    })),
   ];
   sourceCards.forEach((card, idx) => {
     const x = 0.7 + (idx % 3) * 4.0;
@@ -2014,13 +2054,13 @@ function addDataSourceSlide(
     });
   });
   // 1단계 데이터 신뢰성: 소스별 수집일·누락 표기 (Task 7)
-  sourceStatusLines(sourceStatuses).forEach((text, idx) => {
+  maintenanceSourceStatusLines(sourceStatuses).forEach((text, idx) => {
     slide.addText(text, {
       x: 1.0 + (idx % 2) * 5.75, y: 6.18 + Math.floor(idx / 2) * 0.2, w: 5.25, h: 0.2,
       fontSize: 9, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor),
     });
   });
-  addFooterNote(slide, `${config.centerName} / ${pois.length.toLocaleString()}개 POI 기준 자동 생성`, d);
+  addFooterNote(slide, `${MAINTENANCE_LEGAL_FOOTER} · ${config.centerName} / ${pois.length.toLocaleString()}개 POI 기준 자동 생성`, d);
 }
 
 function addCategorySlide(
@@ -2040,6 +2080,15 @@ function addCategorySlide(
   addFullBleedMap(slide, baseMapImage, d);
   addConcentricRings(slide, radiusPosition, d);
   const cats = Array.isArray(category) ? category : [category];
+  if (cats.includes("maintenance")) {
+    addMaintenanceBoundaries(
+      slide,
+      allPois.filter((poi): poi is MaintenanceProject => poi.category === "maintenance"),
+      config,
+      radiusPosition,
+      d,
+    );
+  }
   const hasSubway = cats.includes("subway");
   const subwayBarsAvailable = hasSubway && routePositions.length > 0;
   if (hasSubway) {
@@ -2080,7 +2129,14 @@ function addCategorySlide(
     addInsightCard(slide, buildCategoryInsight(insightKey, summary), d);
   }
 
-  addLegend(slide, d);
+  addLegend(slide, d, cats.includes("maintenance"));
+  if (cats.includes("maintenance")) {
+    slide.addText(MAINTENANCE_LEGAL_FOOTER, {
+      x: 9.55, y: 7.08, w: 3.2, h: 0.18,
+      fontSize: 6.8, fontFace: FONT_MAIN, color: pptColor(d.legendTextColor), align: "right",
+      fit: "shrink",
+    });
+  }
 }
 
 /** 대상지에서 가장 가까운 주거 단지 1개(빨강 헤더 대상) — haversine 최소 거리, 페이지 무관 전체 기준. */

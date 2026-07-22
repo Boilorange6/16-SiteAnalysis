@@ -151,7 +151,7 @@ export function computeAnalysisScores(config: AnalysisConfig, pois: readonly Poi
       score: developmentScore,
       max: 15,
       level: levelFor(developmentScore, 15),
-      detail: `정비사업 ${maintenanceSummary.count}건, 경계확인 ${maintenanceSummary.boundaryConfirmedCount}건`,
+      detail: `정비사업 ${maintenanceSummary.count}건, 경계 확인 ${maintenanceSummary.boundaryConfirmedCount}건 · 미결합 ${maintenanceSummary.boundaryUnmatchedCount}건 · 미확인 ${maintenanceSummary.boundaryUnavailableCount}건${maintenanceSummary.totalPlannedHouseholds > 0 ? `, 예정 ${maintenanceSummary.totalPlannedHouseholds.toLocaleString()}세대` : ""}; 행정구역 카탈로그는 반경 집계·점수에서 제외`,
     },
   ];
 
@@ -236,12 +236,13 @@ export function generateAnalysisNarrative(config: AnalysisConfig, pois: readonly
       `교육: 초중고 ${pois.filter((p) => p.category === "school").length}개교가 확인되어 통학권 검토의 기초 데이터가 확보되었습니다.`,
       `자연: 공원 ${parkSummary.count}개, 총 ${formatAreaSqm(parkSummary.totalAreaSqm)} 규모로 녹지 접근성 점수는 ${parkSummary.accessibilityScore}/100입니다.`,
       `주거 공급: ${residentials.length}개 시설, ${totalUnits.toLocaleString()}세대 규모${plannedCount > 0 ? `, 분양예정 ${plannedCount}건` : ""}가 확인됩니다.`,
-      `개발/정비: 정비사업 ${maintenanceSummary.count}건 중 경계 확인 ${maintenanceSummary.boundaryConfirmedCount}건입니다.`,
+      `개발/정비: 정비사업 ${maintenanceSummary.count}건 중 경계 확인 ${maintenanceSummary.boundaryConfirmedCount}건 · 미결합 ${maintenanceSummary.boundaryUnmatchedCount}건 · 미확인 ${maintenanceSummary.boundaryUnavailableCount}건${maintenanceSummary.totalPlannedHouseholds > 0 ? `, 예정 ${maintenanceSummary.totalPlannedHouseholds.toLocaleString()}세대` : ""}입니다.`,
+      "정비사업 집계: 행정구역 카탈로그는 반경 집계·점수에서 제외합니다.",
     ],
     risks: [
       ...weakItems.map((item) => `${item.label}: ${item.detail}`),
-      maintenanceSummary.count > maintenanceSummary.boundaryConfirmedCount
-        ? "정비사업 일부는 경계 미확인 상태라 보고서에는 출처와 확인 수준을 함께 표기해야 합니다."
+      maintenanceSummary.boundaryUnmatchedCount + maintenanceSummary.boundaryUnavailableCount > 0
+        ? `정비사업 경계 미결합 ${maintenanceSummary.boundaryUnmatchedCount}건·미확인 ${maintenanceSummary.boundaryUnavailableCount}건은 출처와 확인 수준을 함께 검토해야 합니다.`
         : "",
     ].filter(Boolean),
     // P4R Task B-3: "PPT 첫 장에서 강조하세요"·"프로젝트를 저장하세요" 같은 앱 사용 안내문을
@@ -256,8 +257,8 @@ export function generateAnalysisNarrative(config: AnalysisConfig, pois: readonly
       weakItems.length > 0
         ? `${weakItems.slice(0, 2).map((item) => item.label).join("·")}${weakItems.length > 2 ? " 등" : ""} 보완 필요 — 실사·공고로 재확인 권장`
         : "전 항목 고른 확인 — 핵심 지표는 정기 재확인 권장",
-      maintenanceSummary.count > maintenanceSummary.boundaryConfirmedCount
-        ? `정비사업 ${maintenanceSummary.count - maintenanceSummary.boundaryConfirmedCount}건 경계 미확인 — 관할 구청·조합 공고로 확인 권장`
+      maintenanceSummary.boundaryUnmatchedCount + maintenanceSummary.boundaryUnavailableCount > 0
+        ? `정비사업 미결합 ${maintenanceSummary.boundaryUnmatchedCount}건·미확인 ${maintenanceSummary.boundaryUnavailableCount}건 — 관할 공고 확인 권장`
         : maintenanceSummary.count > 0
           ? "정비사업 단계(인가·착공 등)는 최신 공고로 재확인 권장"
           : "반경 밖 대규모 개발계획은 별도 확인 권장",

@@ -1,6 +1,7 @@
 // 순수 로직 테스트 — 고정 POI 입력 → 기대 팩트 검증
 // 실행: npx tsx src/scripts/test-fact-summary.mjs
 import assert from "node:assert/strict";
+import { computeAnalysisScores, generateAnalysisNarrative } from "../lib/analysis-engine.ts";
 import { buildFactSummary, buildFactSheetRows, buildCategoryInsight } from "../lib/fact-summary.ts";
 import { haversineDistance } from "../lib/geo.ts";
 
@@ -30,7 +31,17 @@ const maintenanceProjects = [
   {
     id: "mt1", name: "테스트정비구역", lat: 37.5020, lng: 127.0010, category: "maintenance",
     type: "재건축", stage: "조합설립", address: "서울시 어딘가 1", area_sqm: 5000,
-    source: "seoul_open_data", boundary_status: "confirmed", distance_m: 300,
+    planned_households: 1200, source: "seoul_open_data", boundary_status: "confirmed", distance_m: 300,
+  },
+  {
+    id: "mt2", name: "미결합정비구역", lat: 37.5030, lng: 127.0010, category: "maintenance",
+    type: "재개발", stage: "구역지정/변경", address: "서울시 어딘가 2", area_sqm: 3000,
+    planned_households: 300, source: "molit_spatial", boundary_status: "unmatched", distance_m: 350,
+  },
+  {
+    id: "mt3", name: "경계미확인사업", lat: 37.5040, lng: 127.0010, category: "maintenance",
+    type: "재개발", stage: "미확인", address: "서울시 어딘가 3", area_sqm: 1000,
+    source: "molit_integrated", boundary_status: "unavailable", distance_m: 400,
   },
 ];
 
@@ -70,9 +81,26 @@ assert.equal(summary.housing.complexCount, 3);
 assert.equal(summary.housing.totalHouseholds, 750);
 
 // ── maintenance ──────────────────────────────────────────────────────────
-assert.equal(summary.maintenance.count, 1);
+assert.equal(summary.maintenance.count, 3);
 assert.equal(summary.maintenance.boundaryConfirmedCount, 1);
-assert.equal(summary.maintenance.totalAreaSqm, 5000);
+assert.equal(summary.maintenance.boundaryUnmatchedCount, 1);
+assert.equal(summary.maintenance.boundaryUnavailableCount, 1);
+assert.equal(summary.maintenance.totalAreaSqm, 9000);
+assert.equal(summary.maintenance.totalPlannedHouseholds, 1500);
+
+// 정비사업 점수식은 Task 8의 설명 확장 전후로 동일해야 한다.
+const developmentItem = computeAnalysisScores(config, allPois).items.find((item) => item.key === "development");
+assert.equal(developmentItem?.score, 6);
+assert.match(developmentItem?.detail ?? "", /확인 1건/);
+assert.match(developmentItem?.detail ?? "", /미결합 1건/);
+assert.match(developmentItem?.detail ?? "", /미확인 1건/);
+assert.match(developmentItem?.detail ?? "", /1,500세대/);
+assert.match(developmentItem?.detail ?? "", /행정구역 카탈로그.*제외/);
+
+const narrative = generateAnalysisNarrative(config, allPois);
+assert.ok(narrative.bullets.some((line) => /확인 1건.*미결합 1건.*미확인 1건/.test(line)));
+assert.ok(narrative.bullets.some((line) => line.includes("1,500세대")));
+assert.ok(narrative.bullets.some((line) => /행정구역 카탈로그.*제외/.test(line)));
 
 // ── empty input → 모든 nearest/distance 필드 null, count 0 ─────────────────
 const empty = buildFactSummary({ config, allPois: [] });
@@ -92,7 +120,10 @@ assert.equal(empty.housing.complexCount, 0);
 assert.equal(empty.housing.totalHouseholds, 0);
 assert.equal(empty.maintenance.count, 0);
 assert.equal(empty.maintenance.boundaryConfirmedCount, 0);
+assert.equal(empty.maintenance.boundaryUnmatchedCount, 0);
+assert.equal(empty.maintenance.boundaryUnavailableCount, 0);
 assert.equal(empty.maintenance.totalAreaSqm, 0);
+assert.equal(empty.maintenance.totalPlannedHouseholds, 0);
 
 // ── buildFactSheetRows: 8행 구조 + 핵심 수치 accent 표기 확인 ────────────────
 const rows = buildFactSheetRows(config, summary, new Date(2026, 6, 13));
@@ -137,6 +168,10 @@ assert.deepEqual(buildCategoryInsight("housing", empty), []);
 const maintenanceInsight = buildCategoryInsight("maintenance", summary);
 assert.ok(maintenanceInsight.some((line) => line.includes("1건")));
 assert.ok(maintenanceInsight.some((line) => line.includes("경계 확인 1건")));
+assert.ok(maintenanceInsight.some((line) => /미결합 1건/.test(line)));
+assert.ok(maintenanceInsight.some((line) => /미확인 1건/.test(line)));
+assert.ok(maintenanceInsight.some((line) => line.includes("1,500세대")));
+assert.ok(maintenanceInsight.some((line) => /행정구역 카탈로그.*제외/.test(line)));
 assert.deepEqual(buildCategoryInsight("maintenance", empty), []);
 
 console.log("fact-summary: all tests passed");
