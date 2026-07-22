@@ -49,3 +49,41 @@ npm run build:maintenance-boundaries -- --input data/maintenance/raw --output da
 - 서버에는 검증된 처리 산출물만 artifact로 배포한다. 원본 ZIP, API 키, 검역 입력물은 배포 artifact에 포함하지 않는다.
 - `public/`에는 원본 또는 처리 GeoJSON을 배치하지 않는다. 경계는 서버 전용 경로에서 읽어 필요한 응답으로만 제공한다.
 - 서비스와 보고서에는 출처별 요구되는 저작자 표시(attribution)를 유지하고, 정비사업 정보가 `법적 효력 없는 참고자료`임을 명시한다.
+
+## 릴리스 검증
+
+일반 회귀 테스트는 라이선스 원본 없이 합성 구조 fixture를 사용한다. 이 fixture는 validator의 실패 분기와 파일 계약만 검증하며 공식 경계나 실데이터 증거가 아니다.
+
+```powershell
+npm run test:maintenance
+```
+
+실제 배포 artifact는 서버 전용 기본 경로 `data/maintenance/processed/`에 배치한 뒤 별도 gate를 실행한다. 실제 파일이 없거나 손상됐거나 건수·좌표·출처가 맞지 않으면 성공으로 우회하지 않고 실패한다.
+
+```powershell
+npm run qa:maintenance:release
+```
+
+검증기는 metadata schema version, 입력·출력·검역 건수 대사, 전체 좌표와 bbox의 대한민국 WGS84 범위, feature별 원천 메타데이터, Git ignore/tracked 상태, `public/` 공개 여부, 클라이언트 키 참조를 검사한다.
+
+## 공식 경계 취득 상태와 최신 운영값
+
+2026-07-22 QA에서 VWorld `30335`·`30336` 페이지와 지역별 파일 목록은 비로그인으로 조회됐지만, 다운로드 함수는 로그인을 요구했고 `downloadResourceFile.do`의 서울·부산·대전 요청은 HTTP 200과 빈 body를 반환했다. 따라서 승인 여부와 별개로 인증된 다운로드 세션 또는 사용자가 직접 내려받은 ZIP이 필요하다. 비로그인 응답을 원본 ZIP으로 간주하거나 빈 파일로 빌드하지 않는다.
+
+| 항목 | 2026-07-22 확인값 |
+|---|---|
+| 실제 artifact 생성일 | 미생성 |
+| 실제 feature 수 | 미확인 |
+| 실제 bbox | 미확인 |
+| 검증 대상 dataset ID | `30335` (`UD602`), `30336` (`UD501`) |
+| 실제 artifact에 포함된 dataset ID | 미확인 |
+| QA 일자 | 2026-07-22 |
+| release gate | `MISSING_ARTIFACT` (예상된 차단) |
+
+실제 ZIP을 확보하면 sidecar를 작성하고 경계 빌드와 `qa:maintenance:release`를 통과시킨 뒤에만 생성일·feature 수·bbox·실제 포함 dataset ID를 위 표에 갱신한다. 권한 승인 메일, 로그인 세션, 쿠키, 다운로드 토큰은 Git 밖에서 보관한다.
+
+## 키 사고 대응
+
+- provider 오류 객체, 로그, 스크린샷, QA 문서에 요청 URL이나 `serviceKey`를 남기지 않는다. 서울·부산 transport 오류는 안전한 source 식별자만 가진 오류로 변환된다.
+- 키가 URL이나 로그에 노출된 경우 즉시 추가 실호출을 중단하고 제공자 콘솔에서 키를 회전한다. 회전 전 키로 release QA를 재개하지 않는다.
+- 회전 뒤 `DATA_GO_KR_API_KEY`를 로컬·배포 secret에만 다시 설정하고 `npm run test:maintenance`, `npm run qa:maintenance:release`, 브라우저 네트워크·번들 검사를 다시 수행한다.
