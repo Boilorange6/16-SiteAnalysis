@@ -18,6 +18,8 @@ import {
 import {
   generalSourceStatusLines,
   maintenanceSourceStatusLines,
+  radiusLifestyleNote,
+  radiusMetricLabels,
   reportPoisForSourceStatuses,
   sourceStatusLines,
 } from "../lib/source-status-text.ts";
@@ -64,7 +66,7 @@ assert.match(row.sourceDate, /\n/);
 assert.deepEqual(MAINTENANCE_PRESENTATION_COLUMNS, [
   "구역명", "유형·단계", "시행자", "예정세대수", "면적·거리", "경계", "출처·기준일",
 ]);
-assert.equal(MAINTENANCE_BOUNDARY_LEGEND, "정비사업 공식 경계(참고용)");
+assert.equal(MAINTENANCE_BOUNDARY_LEGEND, "공식 정비구역 경계 · 참고용");
 assert.equal(MAINTENANCE_LEGAL_FOOTER, "법적 효력 없는 참고자료");
 assert.deepEqual(
   MAINTENANCE_PRESENTATION_SOURCES.map((source) => source.id),
@@ -161,6 +163,18 @@ assert.match(statusLines[4], /부산 정비사업 상세/);
 const generalLines = generalSourceStatusLines(sourceStatuses);
 assert.equal(generalLines.length, 1);
 assert.match(generalLines[0], /공원.*수집 실패.*누락/);
+
+const duplicateGeneralStatuses = [
+  { source: "subway-routes", status: "cached", fetchedAt: Date.UTC(2026, 6, 21) },
+  { source: "subway-routes", status: "fresh", fetchedAt: Date.UTC(2026, 6, 22) },
+];
+const duplicateGeneralLines = generalSourceStatusLines(duplicateGeneralStatuses);
+assert.equal(duplicateGeneralLines.length, 1);
+assert.match(duplicateGeneralLines[0], /지하철 노선: 2026-07-22 수집/);
+assert.deepEqual(radiusMetricLabels(sourceStatuses), ["역", "학교", "정비"]);
+assert.equal(radiusLifestyleNote(sourceStatuses), "통학·역세권을 함께 판단");
+assert.deepEqual(radiusMetricLabels([]), ["역", "학교", "공원", "정비"]);
+assert.equal(radiusLifestyleNote([]), "통학·공원·역세권을 함께 판단");
 
 const stalePark = {
   id: "stale-park",

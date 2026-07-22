@@ -43,7 +43,7 @@ export const MAINTENANCE_PRESENTATION_COLUMNS = [
   "출처·기준일",
 ] as const;
 
-export const MAINTENANCE_BOUNDARY_LEGEND = "정비사업 공식 경계(참고용)";
+export const MAINTENANCE_BOUNDARY_LEGEND = "공식 정비구역 경계 · 참고용";
 export const MAINTENANCE_LEGAL_FOOTER = "법적 효력 없는 참고자료";
 export const SYNTHETIC_REPORT_NOTICE = "합성 구조검증 데이터 · 실데이터 아님";
 export const SYNTHETIC_BANNER_FILL = "#C4006F";

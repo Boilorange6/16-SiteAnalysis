@@ -12,6 +12,7 @@ const artifactDir = path.resolve("qa/artifacts/maintenance");
 const pptxPath = path.join(artifactDir, "task8-maintenance-report.pptx");
 const evidenceSlides = new Map([
   [5, "task8-canvas-natural-failure.png"],
+  [7, "task8-canvas-radius-failure.png"],
   [8, "task8-canvas-park-failure.png"],
   [9, "task8-canvas-maintenance-map.png"],
   [10, "task8-canvas-maintenance-table.png"],

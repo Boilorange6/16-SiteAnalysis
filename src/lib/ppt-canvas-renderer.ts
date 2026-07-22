@@ -42,6 +42,8 @@ import {
   hasFailedSource,
   isSourceFailed,
   maintenanceSourceStatusLines,
+  radiusLifestyleNote,
+  radiusMetricLabels,
   reportPoisForSourceStatuses,
 } from "./source-status-text";
 import { toReportMapTone } from "./map-image-tone";
@@ -137,7 +139,7 @@ const MAP_SUBTITLE_FONT_SIZE = 12;
 const MAP_SUBTITLE_COLOR = "#E5E7EB";
 
 // ── Insight card tokens (Task 5 — 카테고리 슬라이드 우측 하단 라운드 검정 카드) ──
-const INSIGHT_CARD_W = 3.6;
+const INSIGHT_CARD_W = 4.25;
 const INSIGHT_CARD_X = SLIDE_W - INSIGHT_CARD_W - 0.5;
 const INSIGHT_CARD_PAD = 0.26;
 const INSIGHT_CARD_TITLE_H = 0.26;
@@ -897,6 +899,7 @@ function drawLegend(ctx: CanvasRenderingContext2D, d: PptDesignConfig, maintenan
   const items = maintenanceReference
     ? [{ label: MAINTENANCE_BOUNDARY_LEGEND, color: d.categoryColors.maintenance }]
     : categoryItems;
+  const legendWidth = maintenanceReference ? 3.0 : LEGEND_W;
   if (d.legendStyle === "strip") {
     const rowW = ix(5.9);
     const rowH = iy(0.34);
@@ -916,9 +919,9 @@ function drawLegend(ctx: CanvasRenderingContext2D, d: PptDesignConfig, maintenan
   const legH = iy(items.length * LEGEND_ROW_H + 0.15);
   const isRight = d.legendPosition.endsWith("right");
   const isTop = d.legendPosition.startsWith("top");
-  const legX = isRight ? CANVAS_W - ix(LEGEND_W) - ix(0.4) : ix(0.4);
+  const legX = isRight ? CANVAS_W - ix(legendWidth) - ix(0.4) : ix(0.4);
   const legY = isTop ? iy(0.4) : CANVAS_H - legH - iy(0.4);
-  const legW = ix(LEGEND_W);
+  const legW = ix(legendWidth);
 
   if (d.legendStyle !== "minimal") {
     drawRoundedRect(ctx, legX, legY, d.legendStyle === "rail" ? ix(0.54) : legW, legH, ix(d.legendRadius),
@@ -1436,7 +1439,7 @@ function drawSyntheticDisclosure(ctx: CanvasRenderingContext2D, config: Analysis
   const notice = syntheticReportNotice(config);
   if (!notice) return;
   drawRoundedRect(ctx, ix(7.85), iy(0.06), ix(4.95), iy(0.34), ix(0.05), SYNTHETIC_BANNER_FILL, SYNTHETIC_BANNER_FILL, 0.8);
-  drawTextBox(ctx, notice, ix(7.98), iy(0.09), ix(4.69), iy(0.27), {
+  drawTextBox(ctx, notice, ix(7.55), iy(0.09), ix(5.12), iy(0.27), {
     fontSize: 10.5, bold: true, color: "#FFFFFF", align: "center", valign: "middle",
   });
 }
@@ -1551,7 +1554,7 @@ function renderInsightSummarySlide(
     ctx.fillRect(ix(x), iy(2.55), ix(3.75), iy(0.08));
     drawTextBox(ctx, column.title, ix(x + 0.22), iy(2.82), ix(3.3), iy(0.28), { fontSize: 13, bold: true, color: d.textColor });
     column.rows.forEach((text, rowIdx) => {
-      drawWrappedText(ctx, `${rowIdx + 1}. ${text}`, ix(x + 0.25), iy(3.28 + rowIdx * 0.7), ix(3.25), iy(0.24), 2, { fontSize: 11, color: d.mutedTextColor });
+      drawWrappedText(ctx, `${rowIdx + 1}. ${text}`, ix(x + 0.15), iy(3.28 + rowIdx * 0.7), ix(3.45), iy(0.24), 2, { fontSize: 11, color: d.mutedTextColor });
     });
   });
   drawFooterNote(ctx, "요약 문장은 현재 검색 결과와 점수 모델을 기반으로 자동 생성됩니다.", d);
@@ -1579,12 +1582,12 @@ function renderRadiusAnalysisSlide(
   const radiusRows: RadiusRow[] = mergeDevelopmentIntoAnalysisCard
     ? [
         { label: "근린 핵심권", radiusM: 500, color: d.accentColor, note: "도보·일상 접근성의 1차 체감권" },
-        { label: "생활 편의권", radiusM: 1000, color: d.accentColor, note: "통학·공원·역세권을 함께 판단" },
+        { label: "생활 편의권", radiusM: 1000, color: d.accentColor, note: radiusLifestyleNote(input.sourceStatuses ?? []) },
         { label: "보고서 분석권", radiusM: analysisRadiusM, color: d.accentRed, note: "PPT 전체 POI 집계 기준", subtitle: "개발 영향권 겸" },
       ]
     : [
         { label: "근린 핵심권", radiusM: 500, color: d.accentColor, note: "도보·일상 접근성의 1차 체감권" },
-        { label: "생활 편의권", radiusM: 1000, color: d.accentColor, note: "통학·공원·역세권을 함께 판단" },
+        { label: "생활 편의권", radiusM: 1000, color: d.accentColor, note: radiusLifestyleNote(input.sourceStatuses ?? []) },
         { label: "개발 영향권", radiusM: developmentImpactRadiusM, color: d.accentColor, note: "정비사업과 공급 변화의 영향권" },
         { label: "보고서 분석권", radiusM: analysisRadiusM, color: d.accentRed, note: "PPT 전체 POI 집계 기준" },
       ];
@@ -1611,13 +1614,15 @@ function renderRadiusAnalysisSlide(
     }
     const radiusLabel = row.radiusM >= 1000 ? `${(row.radiusM / 1000).toFixed(row.radiusM % 1000 === 0 ? 0 : 1)}km` : `${row.radiusM}m`;
     drawTextBox(ctx, radiusLabel, ix(x + w - 1.4), iy(y + 0.16), ix(1.05), iy(0.34), { fontSize: 17, bold: true, color: row.color, align: "right" });
-    const metricGap = (w - 0.6) / 4;
-    [
-      ["역", countWithin(input.config, input.allPois, row.radiusM, "subway")],
-      ["학교", countWithin(input.config, input.allPois, row.radiusM, "school")],
-      ["공원", isSourceFailed(input.sourceStatuses ?? [], "park") ? "—" : countWithin(input.config, input.allPois, row.radiusM, "park")],
-      ["정비", countWithin(input.config, input.allPois, row.radiusM, "maintenance")],
-    ].forEach(([label, value], metricIdx) => {
+    const metricsByLabel = {
+      역: countWithin(input.config, input.allPois, row.radiusM, "subway"),
+      학교: countWithin(input.config, input.allPois, row.radiusM, "school"),
+      공원: countWithin(input.config, input.allPois, row.radiusM, "park"),
+      정비: countWithin(input.config, input.allPois, row.radiusM, "maintenance"),
+    };
+    const metrics = radiusMetricLabels(input.sourceStatuses ?? []).map((label) => [label, metricsByLabel[label]] as const);
+    const metricGap = (w - 0.6) / metrics.length;
+    metrics.forEach(([label, value], metricIdx) => {
       const mx = x + 0.3 + metricIdx * metricGap;
       drawTextBox(ctx, String(label), ix(mx), iy(y + 0.72), ix(0.8), iy(0.2), { fontSize: 11, color: d.mutedTextColor, align: "center" });
       drawTextBox(ctx, String(value), ix(mx), iy(y + 0.96), ix(0.8), iy(0.34), { fontSize: 18, bold: true, color: d.textColor, align: "center" });
@@ -1938,13 +1943,13 @@ interface ResidentialTableRow {
 // pptx 생성기(ppt-generator.ts)의 동명 심볼과 동일 로직/치수를 유지할 것(수치 parity).
 
 const COMPLEX_DETAIL_COLUMNS = [
-  { label: "단지명", x: 0.8, w: 2.3, align: "left" },
-  { label: "세대수", x: 3.1, w: 1.2, align: "right" },
-  { label: "준공", x: 4.3, w: 1.1, align: "right" },
-  { label: "주차", x: 5.4, w: 1.4, align: "right" },
-  { label: "층", x: 6.8, w: 1.0, align: "right" },
-  { label: "동", x: 7.8, w: 1.0, align: "right" },
-  { label: "시공사", x: 8.8, w: 3.5, align: "left" },
+  { label: "단지명", x: 0.8, w: 2.25, align: "left" },
+  { label: "세대수", x: 3.1, w: 1.15, align: "right" },
+  { label: "준공", x: 4.4, w: 1.05, align: "right" },
+  { label: "주차", x: 5.65, w: 1.25, align: "right" },
+  { label: "층", x: 7.0, w: 0.9, align: "right" },
+  { label: "동", x: 8.0, w: 0.9, align: "right" },
+  { label: "시공사", x: 9.0, w: 3.3, align: "left" },
 ] as const;
 
 interface ComplexDetailRow {
@@ -1985,7 +1990,16 @@ function buildComplexDetailRows(residentials: readonly ResidentialPoi[]): Comple
 }
 
 function complexDetailCellValues(row: ComplexDetailRow): readonly string[] {
-  return [row.name, row.units, row.year, row.parking, row.floors, row.dongs, row.constructorName];
+  const withUnit = (value: string, unit: string) => value === "확인필요" ? value : `${value}${unit}`;
+  return [
+    row.name,
+    withUnit(row.units, "세대"),
+    withUnit(row.year, "년"),
+    withUnit(row.parking, "대"),
+    withUnit(row.floors, "층"),
+    withUnit(row.dongs, "동"),
+    row.constructorName,
+  ];
 }
 
 /** 부대시설 각주 — 부대시설 목록이 있는 단지 중 최근접 1개. 없으면 null. */
@@ -2233,6 +2247,7 @@ function renderDataSourceSlide(
       value: MAINTENANCE_PRESENTATION_TYPOGRAPHY.sourceValuePt,
       detail: MAINTENANCE_PRESENTATION_TYPOGRAPHY.sourceDetailPt,
     });
+    drawLine(ctx, 5.55, 2.94, 0, 1.78, d.markerBorderColor, 0.8, 72);
   });
   drawDataPanel(ctx, ix(0.7), iy(4.32), ix(11.9), iy(2.58), d);
   drawTextBox(ctx, "주의사항", ix(1.0), iy(4.56), ix(2.0), iy(0.28), { fontSize: 12, bold: true, color: d.textColor });

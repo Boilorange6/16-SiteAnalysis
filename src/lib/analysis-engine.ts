@@ -242,7 +242,7 @@ export function generateAnalysisNarrative(config: AnalysisConfig, pois: readonly
     risks: [
       ...weakItems.map((item) => `${item.label}: ${item.detail}`),
       maintenanceSummary.boundaryUnmatchedCount + maintenanceSummary.boundaryUnavailableCount > 0
-        ? `정비사업 경계 미결합 ${maintenanceSummary.boundaryUnmatchedCount}건 · 미확인 ${maintenanceSummary.boundaryUnavailableCount}건. 원문 확인 필요.`
+        ? `경계 상태: 미결합 ${maintenanceSummary.boundaryUnmatchedCount}건 · 미확인 ${maintenanceSummary.boundaryUnavailableCount}건.\n원문 확인 필요.`
         : "",
     ].filter(Boolean),
     // P4R Task B-3: "PPT 첫 장에서 강조하세요"·"프로젝트를 저장하세요" 같은 앱 사용 안내문을

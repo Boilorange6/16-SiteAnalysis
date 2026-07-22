@@ -43,6 +43,8 @@ import {
   hasFailedSource,
   isSourceFailed,
   maintenanceSourceStatusLines,
+  radiusLifestyleNote,
+  radiusMetricLabels,
   reportPoisForSourceStatuses,
 } from "./source-status-text";
 import { toReportMapTone } from "./map-image-tone";
@@ -111,7 +113,7 @@ const MAP_SUBTITLE_FONT_SIZE = 12;
 const MAP_SUBTITLE_COLOR = "#E5E7EB";
 
 // ── Insight card tokens (Task 5 — match INSIGHT_CARD_* in ppt-canvas-renderer.ts) ──
-const INSIGHT_CARD_W = 3.6;
+const INSIGHT_CARD_W = 4.25;
 const INSIGHT_CARD_X = SLIDE_W - INSIGHT_CARD_W - 0.5;
 const INSIGHT_CARD_PAD = 0.26;
 const INSIGHT_CARD_TITLE_H = 0.26;
@@ -735,6 +737,7 @@ function addLegend(slide: PptxGenJS.Slide, d: PptDesignConfig, maintenanceRefere
   const items = maintenanceReference
     ? [{ label: MAINTENANCE_BOUNDARY_LEGEND, color: d.categoryColors.maintenance }]
     : categoryItems;
+  const legendWidth = maintenanceReference ? 3.0 : LEGEND_W;
   if (d.legendStyle === "strip") {
     const rowW = 5.9;
     const rowH = 0.34;
@@ -758,12 +761,12 @@ function addLegend(slide: PptxGenJS.Slide, d: PptDesignConfig, maintenanceRefere
   const legH = items.length * LEGEND_ROW_H + 0.15;
   const isRight = d.legendPosition.endsWith("right");
   const isTop = d.legendPosition.startsWith("top");
-  const legX = isRight ? SLIDE_W - LEGEND_W - 0.4 : 0.4;
+  const legX = isRight ? SLIDE_W - legendWidth - 0.4 : 0.4;
   const legY = isTop ? 0.4 : SLIDE_H - legH - 0.4;
 
   if (d.legendStyle !== "minimal") {
     slide.addShape("rect", {
-      x: legX, y: legY, w: d.legendStyle === "rail" ? 0.54 : LEGEND_W, h: legH,
+      x: legX, y: legY, w: d.legendStyle === "rail" ? 0.54 : legendWidth, h: legH,
       fill: { color: pptColor(d.overlayColor), transparency: d.legendTransparency },
       line: { color: pptColor(d.markerBorderColor), transparency: d.legendBorderTransparency, width: 0.8 },
       rectRadius: d.legendRadius,
@@ -786,7 +789,7 @@ function addLegend(slide: PptxGenJS.Slide, d: PptDesignConfig, maintenanceRefere
     });
     if (d.legendStyle !== "rail") {
       slide.addText(item.label, {
-        x: legX + 0.28, y, w: LEGEND_W - 0.32, h: LEGEND_ROW_H,
+        x: legX + 0.28, y, w: legendWidth - 0.32, h: LEGEND_ROW_H,
         fontSize: Math.max(11, d.legendFontSize), fontFace: FONT_MAIN,
         color: pptColor(d.legendTextColor), valign: "middle",
         objectName: grpTag("legend", "범례", `label-${i}`),
@@ -1633,7 +1636,7 @@ function addInsightSummarySlide(
     });
     column.rows.forEach((text, rowIdx) => {
       slide.addText(`${rowIdx + 1}. ${text}`, {
-        x: x + 0.25, y: 3.28 + rowIdx * 0.7, w: 3.25, h: 0.58,
+        x: x + 0.15, y: 3.28 + rowIdx * 0.7, w: 3.45, h: 0.58,
         fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor),
       });
     });
@@ -1672,12 +1675,12 @@ function addRadiusAnalysisSlide(
   const radiusRows: RadiusRow[] = mergeDevelopmentIntoAnalysisCard
     ? [
         { label: "근린 핵심권", radiusM: 500, color: d.accentColor, note: "도보·일상 접근성의 1차 체감권" },
-        { label: "생활 편의권", radiusM: 1000, color: d.accentColor, note: "통학·공원·역세권을 함께 판단" },
+        { label: "생활 편의권", radiusM: 1000, color: d.accentColor, note: radiusLifestyleNote(sourceStatuses) },
         { label: "보고서 분석권", radiusM: analysisRadiusM, color: d.accentRed, note: "PPT 전체 POI 집계 기준", subtitle: "개발 영향권 겸" },
       ]
     : [
         { label: "근린 핵심권", radiusM: 500, color: d.accentColor, note: "도보·일상 접근성의 1차 체감권" },
-        { label: "생활 편의권", radiusM: 1000, color: d.accentColor, note: "통학·공원·역세권을 함께 판단" },
+        { label: "생활 편의권", radiusM: 1000, color: d.accentColor, note: radiusLifestyleNote(sourceStatuses) },
         { label: "개발 영향권", radiusM: developmentImpactRadiusM, color: d.accentColor, note: "정비사업과 공급 변화의 영향권" },
         { label: "보고서 분석권", radiusM: analysisRadiusM, color: d.accentRed, note: "PPT 전체 POI 집계 기준" },
       ];
@@ -1713,13 +1716,14 @@ function addRadiusAnalysisSlide(
       x: x + w - 1.4, y: y + 0.16, w: 1.05, h: 0.34,
       fontSize: 17, fontFace: FONT_MAIN, color: pptColor(row.color), bold: true, align: "right",
     });
-    const metricGap = (w - 0.6) / 4;
-    const metrics = [
-      { label: "역", value: countWithin(config, pois, row.radiusM, "subway") },
-      { label: "학교", value: countWithin(config, pois, row.radiusM, "school") },
-      { label: "공원", value: isSourceFailed(sourceStatuses, "park") ? "—" : countWithin(config, pois, row.radiusM, "park") },
-      { label: "정비", value: countWithin(config, pois, row.radiusM, "maintenance") },
-    ];
+    const metricsByLabel = {
+      역: countWithin(config, pois, row.radiusM, "subway"),
+      학교: countWithin(config, pois, row.radiusM, "school"),
+      공원: countWithin(config, pois, row.radiusM, "park"),
+      정비: countWithin(config, pois, row.radiusM, "maintenance"),
+    };
+    const metrics = radiusMetricLabels(sourceStatuses).map((label) => ({ label, value: metricsByLabel[label] }));
+    const metricGap = (w - 0.6) / metrics.length;
     metrics.forEach((metric, metricIdx) => {
       const mx = x + 0.3 + metricIdx * metricGap;
       slide.addText(metric.label, {
@@ -1927,7 +1931,7 @@ function addSyntheticDisclosure(slide: PptxGenJS.Slide, config: AnalysisConfig, 
     objectName: "SYNTHETIC_DATA_NOTICE_BG",
   });
   slide.addText(notice, {
-    x: 7.98, y: 0.09, w: 4.69, h: 0.27,
+    x: 7.55, y: 0.09, w: 5.12, h: 0.27,
     fontSize: 10.5, fontFace: FONT_MAIN, color: "FFFFFF", bold: true,
     align: "center", valign: "middle", margin: 0,
     objectName: "SYNTHETIC_DATA_NOTICE_TEXT",
@@ -2013,6 +2017,11 @@ function addResidentialSupplySlide(
         x: col.x, y: 2.96, w: col.w, h: 0.24,
         fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), bold: true, align: col.align,
       });
+    });
+    slide.addShape("line", {
+      x: 5.55, y: 2.94, w: 0, h: 1.78,
+      line: { color: pptColor(d.markerBorderColor), transparency: 72, width: 0.8 },
+      objectName: "RESIDENTIAL_DETAIL_YEAR_PARKING_DIVIDER",
     });
     detailRows.forEach((row, idx) => {
       const y = 3.28 + idx * 0.34;
@@ -2253,13 +2262,13 @@ interface ResidentialTableRow {
 // canvas 렌더러(ppt-canvas-renderer.ts)의 동명 심볼과 동일 로직/치수를 유지할 것(수치 parity).
 
 const COMPLEX_DETAIL_COLUMNS = [
-  { label: "단지명", x: 0.8, w: 2.3, align: "left" },
-  { label: "세대수", x: 3.1, w: 1.2, align: "right" },
-  { label: "준공", x: 4.3, w: 1.1, align: "right" },
-  { label: "주차", x: 5.4, w: 1.4, align: "right" },
-  { label: "층", x: 6.8, w: 1.0, align: "right" },
-  { label: "동", x: 7.8, w: 1.0, align: "right" },
-  { label: "시공사", x: 8.8, w: 3.5, align: "left" },
+  { label: "단지명", x: 0.8, w: 2.25, align: "left" },
+  { label: "세대수", x: 3.1, w: 1.15, align: "right" },
+  { label: "준공", x: 4.4, w: 1.05, align: "right" },
+  { label: "주차", x: 5.65, w: 1.25, align: "right" },
+  { label: "층", x: 7.0, w: 0.9, align: "right" },
+  { label: "동", x: 8.0, w: 0.9, align: "right" },
+  { label: "시공사", x: 9.0, w: 3.3, align: "left" },
 ] as const;
 
 interface ComplexDetailRow {
@@ -2300,7 +2309,16 @@ function buildComplexDetailRows(residentials: readonly ResidentialPoi[]): Comple
 }
 
 function complexDetailCellValues(row: ComplexDetailRow): readonly string[] {
-  return [row.name, row.units, row.year, row.parking, row.floors, row.dongs, row.constructorName];
+  const withUnit = (value: string, unit: string) => value === "확인필요" ? value : `${value}${unit}`;
+  return [
+    row.name,
+    withUnit(row.units, "세대"),
+    withUnit(row.year, "년"),
+    withUnit(row.parking, "대"),
+    withUnit(row.floors, "층"),
+    withUnit(row.dongs, "동"),
+    row.constructorName,
+  ];
 }
 
 /** 부대시설 각주 — 부대시설 목록이 있는 단지 중 최근접 1개. 없으면 null. */

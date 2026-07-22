@@ -4,6 +4,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "maintenance-presentation-audit-helpers.ps1")
 $artifactRoot = (Resolve-Path -LiteralPath $ArtifactDir).Path
 $pptxPath = Join-Path $artifactRoot "task8-maintenance-report.pptx"
 $renderDir = Join-Path ([System.IO.Path]::GetTempPath()) ("task8-ppt-slides-" + [guid]::NewGuid().ToString("N"))
@@ -16,6 +17,7 @@ $ImplementationCommit = if ($ImplementationCommit) { $ImplementationCommit } els
 $controlPattern = "[​-‏‪-‮⁠⁦-⁩﻿]"
 $evidenceCopies = @{
   6 = "task8-ppt-natural-failure.png"
+  8 = "task8-ppt-radius-failure.png"
   9 = "task8-ppt-park-failure.png"
   10 = "task8-ppt-maintenance-map.png"
   11 = "task8-ppt-maintenance-table.png"
@@ -23,47 +25,9 @@ $evidenceCopies = @{
   15 = "task8-ppt-general-sources.png"
   16 = "task8-ppt-maintenance-sources.png"
 }
-
-function Assert-True([bool]$Condition, [string]$Message) {
-  if (-not $Condition) { throw $Message }
-}
-
-function Get-ShapeText($Shape) {
-  if ($Shape.HasTextFrame -ne -1 -or $Shape.TextFrame.HasText -ne -1) { return "" }
-  return [string]$Shape.TextFrame.TextRange.Text
-}
-
-function Test-Overlap($A, $B) {
-  return $A.Left -lt ($B.Left + $B.Width) -and ($A.Left + $A.Width) -gt $B.Left -and
-    $A.Top -lt ($B.Top + $B.Height) -and ($A.Top + $A.Height) -gt $B.Top
-}
-
-function Get-MinFontPt($Shape) {
-  $textRange = $Shape.TextFrame.TextRange
-  $minimum = [double]::PositiveInfinity
-  for ($index = 1; $index -le $textRange.Length; $index++) {
-    $size = [double]$textRange.Characters($index, 1).Font.Size
-    if ($size -gt 0 -and $size -lt $minimum) { $minimum = $size }
-  }
-  return $minimum
-}
-
-function Get-ExactPixelCount([string]$ImagePath, [int]$Red, [int]$Green, [int]$Blue) {
-  Add-Type -AssemblyName System.Drawing
-  $bitmap = [System.Drawing.Bitmap]::FromFile($ImagePath)
-  try {
-    $count = 0
-    for ($y = 0; $y -lt $bitmap.Height; $y++) {
-      for ($x = 0; $x -lt $bitmap.Width; $x++) {
-        $pixel = $bitmap.GetPixel($x, $y)
-        if ($pixel.R -eq $Red -and $pixel.G -eq $Green -and $pixel.B -eq $Blue) { $count++ }
-      }
-    }
-    return $count
-  } finally {
-    $bitmap.Dispose()
-  }
-}
+$pptSlideCount = 0
+$pptRenderedCount = 0
+$pptSelectedEvidenceCount = 0
 
 Assert-True (Test-Path -LiteralPath $pptxPath) "missing PPTX: $pptxPath"
 New-Item -ItemType Directory -Force -Path $renderDir | Out-Null
@@ -72,15 +36,19 @@ $presentation = $null
 try {
   $presentation = $powerPoint.Presentations.Open($pptxPath, $false, $false, $false)
   Assert-True ($presentation.Slides.Count -eq 16) "expected 16 slides, got $($presentation.Slides.Count)"
+  $pptSlideCount = $presentation.Slides.Count
   $presentation.Export($renderDir, "PNG", 1920, 1080)
   $renderedSlides = @{}
   foreach ($file in Get-ChildItem -LiteralPath $renderDir -Filter "*.PNG") {
     if ($file.BaseName -match "(\d+)$") { $renderedSlides[[int]$Matches[1]] = $file.FullName }
   }
+  $pptRenderedCount = $renderedSlides.Count
+  Assert-True ($pptRenderedCount -eq $pptSlideCount) "rendered PPT slide count: $pptRenderedCount/$pptSlideCount"
   foreach ($entry in $evidenceCopies.GetEnumerator()) {
     Assert-True ($renderedSlides.ContainsKey([int]$entry.Key)) "missing rendered slide $($entry.Key)"
     Copy-Item -LiteralPath $renderedSlides[[int]$entry.Key] -Destination (Join-Path $artifactRoot $entry.Value) -Force
   }
+  $pptSelectedEvidenceCount = $evidenceCopies.Count
 
   $slideTexts = @{}
   $meaningfulMin = @{}
@@ -89,10 +57,13 @@ try {
   $bannerSlides = 0
   $parkLabelShapes = @()
   $insightShapes = @()
+  $slideShapes = @{}
   foreach ($slide in $presentation.Slides) {
     $texts = @()
     $minimum = [double]::PositiveInfinity
-    foreach ($shape in $slide.Shapes) {
+    $leafShapes = @(Get-LeafShapes $slide.Shapes)
+    $slideShapes[[string]$slide.SlideIndex] = $leafShapes
+    foreach ($shape in $leafShapes) {
       $text = Get-ShapeText $shape
       if ([string]::IsNullOrWhiteSpace($text)) { continue }
       $editableTextShapeCount++
@@ -101,8 +72,9 @@ try {
       if ($shape.Name -eq "SYNTHETIC_DATA_NOTICE_TEXT") { $bannerSlides++ }
       if ($slide.SlideIndex -eq 6 -and $text -like "*구조검증공원*") { $parkLabelShapes += $shape }
       if ($slide.SlideIndex -eq 6 -and $text -eq "핵심 포인트") { $insightShapes += $shape }
-      $excluded = $shape.Top -le 80 -or $shape.Top -ge 475 -or $text.StartsWith("※") -or
-        $shape.Name -like "SYNTHETIC_DATA_NOTICE*"
+      $inGroup = Test-ShapeInGroup $shape
+      $excluded = (-not $inGroup -and ($shape.Top -le 80 -or $shape.Top -ge 475)) -or
+        $text.StartsWith("※") -or $shape.Name -like "SYNTHETIC_DATA_NOTICE*"
       if (-not $excluded) {
         $fontPt = Get-MinFontPt $shape
         if ($fontPt -lt $minimum) { $minimum = $fontPt }
@@ -116,7 +88,8 @@ try {
   Assert-True ($bannerSlides -eq 16) "synthetic banner count: $bannerSlides"
   foreach ($slideNumber in 1..16) {
     $minimum = $meaningfulMin[[string]$slideNumber]
-    Assert-True ($null -eq $minimum -or $minimum -ge 11) "slide $slideNumber meaningful body below 11pt: $minimum"
+    Assert-True ($null -ne $minimum) "slide $slideNumber has no audited meaningful text"
+    Assert-True ($minimum -ge 11) "slide $slideNumber meaningful body below 11pt: $minimum"
   }
   foreach ($slideNumber in @(6, 9, 14)) {
     Assert-True ($slideTexts[[string]$slideNumber].Contains($failureNotice)) "slide $slideNumber missing exact park failure notice"
@@ -124,12 +97,15 @@ try {
   foreach ($forbidden in @("생활권 공원", "총 녹지 면적", "최근접 공원 접근거리", "공원 성격별 구성")) {
     Assert-True (-not $slideTexts["9"].Contains($forbidden)) "slide 9 retained park metric: $forbidden"
   }
+  Assert-True (-not $slideTexts["8"].Contains("공원 —")) "slide 8 retained failed park metric content"
+  Assert-True (@($slideShapes["8"] | Where-Object { (Get-ShapeText $_).Trim() -eq "공원" }).Count -eq 0) "slide 8 retained standalone park metric label"
+  Assert-True ($slideTexts["8"].Contains("통학·역세권을 함께 판단")) "slide 8 missing failed-source lifestyle note"
   $allPresentationText = ($slideTexts.Values -join "`n")
   foreach ($forbidden in @("공원 0개", "생활공원 500m", "접근성 0/100", "공원 0개 · 산")) {
     Assert-True (-not $allPresentationText.Contains($forbidden)) "report retained failed-source park metric: $forbidden"
   }
   Assert-True ($slideTexts["9"].Contains($methodText)) "slide 9 missing exact estimation method"
-  $methodShape = @($presentation.Slides.Item(9).Shapes | Where-Object { (Get-ShapeText $_) -eq $methodText })
+  $methodShape = @($slideShapes["9"] | Where-Object { (Get-ShapeText $_) -eq $methodText })
   Assert-True ($methodShape.Count -eq 1) "estimation method shape count: $($methodShape.Count)"
   Assert-True ($methodShape[0].TextFrame.TextRange.Lines().Count -eq 1) "estimation method split across lines"
   Assert-True ($slideTexts["15"].Contains("16개 POI")) "filtered report POI footer is not 16"
@@ -138,7 +114,27 @@ try {
   foreach ($label in $parkLabelShapes) { foreach ($card in $insightShapes) { if (Test-Overlap $label $card) { $overlapCount++ } } }
   Assert-True ($overlapCount -eq 0) "slide 6 park label overlaps insight card"
 
-  $boundaryShapes = @($presentation.Slides.Item(10).Shapes | Where-Object { $_.Name -like "MAINTENANCE_BOUNDARY|*" })
+  $slideOneBanner = @($slideShapes["1"] | Where-Object { $_.Name -eq "SYNTHETIC_DATA_NOTICE_TEXT" -and (Get-ShapeText $_).Contains("실데이터 아님") })
+  Assert-True ($slideOneBanner.Count -eq 1) "slide 1 synthetic banner shape count: $($slideOneBanner.Count)"
+  Assert-True ($slideOneBanner[0].TextFrame.TextRange.Lines().Count -eq 1) "slide 1 synthetic banner split across lines"
+  foreach ($token in @("1.2km권 0곳", "분양예정 2개", "원문 확인 필요")) { Assert-TokenOnOneLine $slideShapes["7"] $token 7 }
+  Assert-TokenOnOneLine $slideShapes["10"] "점수에서 제외" 10
+  Assert-TokenOnOneLine $slideShapes["10"] "공식 정비구역 경계 · 참고용" 10
+
+  $yearShape = @($slideShapes["12"] | Where-Object { (Get-ShapeText $_) -eq "2018년" })
+  $parkingShape = @($slideShapes["12"] | Where-Object { (Get-ShapeText $_) -eq "920대" })
+  Assert-True ($yearShape.Count -eq 1 -and $parkingShape.Count -eq 1) "slide 12 missing unit-qualified year/parking values"
+  Assert-True (($parkingShape[0].Left - ($yearShape[0].Left + $yearShape[0].Width)) -ge 8) "slide 12 year/parking gutter below 8pt"
+  Assert-True (@($slideShapes["12"] | Where-Object { $_.Name -eq "RESIDENTIAL_DETAIL_YEAR_PARKING_DIVIDER" }).Count -eq 1) "slide 12 missing year/parking divider"
+
+  $subwayStatusShapes = @($slideShapes["15"] | Where-Object { (Get-ShapeText $_) -like "지하철 노선:*" })
+  Assert-True ($subwayStatusShapes.Count -eq 1) "slide 15 subway status line count: $($subwayStatusShapes.Count)"
+  $footerShape = @($slideShapes["15"] | Where-Object { (Get-ShapeText $_) -like "*16개 POI 기준 자동 생성" })
+  Assert-True ($footerShape.Count -eq 1) "slide 15 footer shape count: $($footerShape.Count)"
+  $statusBottom = ($subwayStatusShapes | ForEach-Object { $_.Top + $_.Height } | Measure-Object -Maximum).Maximum
+  Assert-True (($footerShape[0].Top - $statusBottom) -ge 8) "slide 15 source status/footer gap below 8pt"
+
+  $boundaryShapes = @($slideShapes["10"] | Where-Object { $_.Name -like "MAINTENANCE_BOUNDARY|*" })
   $solidRings = @($boundaryShapes | Where-Object { $_.Name -notlike "*dashed*" -and $_.Name -notlike "*multi*" }).Count
   $dashedRings = $boundaryShapes.Count - $solidRings
   Assert-True ($boundaryShapes.Count -eq 7) "maintenance boundary ring count: $($boundaryShapes.Count)"
@@ -163,13 +159,16 @@ try {
     slideCount = 16
     renderResolution = "1920x1080"
     editableTextShapeCount = $editableTextShapeCount
+    recursiveGroupTextAudit = "pass"
     invisibleControlAudit = "pass"
     pptXmlInvisibleControlAudit = "pass"
-    lineSplitAudit = "pass"
+    semanticLineTokens = @("실데이터 아님", "1.2km권 0곳", "분양예정 2개", "원문 확인 필요", "점수에서 제외", "공식 정비구역 경계 · 참고용")
     parkFailureExactText = $failureNotice
     estimationMethodExactText = $methodText
     meaningfulBodyMinPt = $meaningfulMin
-    typographyExclusions = @("title/eyebrow <=80pt", "footer/legal >=475pt", "※ note", "synthetic disclosure >=9pt")
+    typographyExclusions = @("ungrouped title/eyebrow <=80pt", "ungrouped footer/legal >=475pt", "※ note", "synthetic disclosure >=9pt")
+    residentialDetail = [ordered]@{ year = "2018년"; parking = "920대"; minimumGutterPt = 8; divider = "present" }
+    sourceStatus = [ordered]@{ subwayRouteLines = $subwayStatusShapes.Count; footerGapPt = [math]::Round($footerShape[0].Top - $statusBottom, 2) }
     overlap = [ordered]@{ staleParkLabelCount = $parkLabelShapes.Count; insightCardOverlapCount = $overlapCount; result = "pass" }
     boundaryShapes = [ordered]@{ slide10Total = $boundaryShapes.Count; solidRings = $solidRings; dashedRings = $dashedRings; canvasExactMagentaPixels = $canvasMagentaPixels }
     inputPoiCount = 17
@@ -187,9 +186,9 @@ try {
 
 $artifactNames = @(
   "task8-maintenance-report.pptx", "task8-com-audit.json",
-  "task8-canvas-natural-failure.png", "task8-canvas-park-failure.png", "task8-canvas-maintenance-map.png",
+  "task8-canvas-natural-failure.png", "task8-canvas-radius-failure.png", "task8-canvas-park-failure.png", "task8-canvas-maintenance-map.png",
   "task8-canvas-maintenance-table.png", "task8-canvas-summary-failure.png", "task8-canvas-general-sources.png",
-  "task8-canvas-maintenance-sources.png", "task8-ppt-natural-failure.png", "task8-ppt-park-failure.png",
+  "task8-canvas-maintenance-sources.png", "task8-ppt-natural-failure.png", "task8-ppt-radius-failure.png", "task8-ppt-park-failure.png",
   "task8-ppt-maintenance-map.png", "task8-ppt-maintenance-table.png", "task8-ppt-summary-failure.png",
   "task8-ppt-general-sources.png", "task8-ppt-maintenance-sources.png"
 )
@@ -199,14 +198,25 @@ foreach ($name in $artifactNames) {
   $artifacts[$name] = [ordered]@{ bytes = $file.Length; sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
 }
 $auditObject = Get-Content -Raw -LiteralPath $auditPath | ConvertFrom-Json
+$canvasEvidenceCount = @($artifactNames | Where-Object { $_ -like "task8-canvas-*.png" }).Count
+$pptEvidenceCount = @($artifactNames | Where-Object { $_ -like "task8-ppt-*.png" }).Count
+Assert-True ($canvasEvidenceCount -eq $pptSelectedEvidenceCount) "Canvas/PPT selected evidence mismatch: $canvasEvidenceCount/$pptSelectedEvidenceCount"
+Assert-True ($pptEvidenceCount -eq $pptSelectedEvidenceCount) "PPT selected evidence mismatch: $pptEvidenceCount/$pptSelectedEvidenceCount"
+$combinedEvidenceCount = $canvasEvidenceCount + $pptEvidenceCount
 $summary = [ordered]@{
-  schemaVersion = 6
+  schemaVersion = 7
   qaDate = (Get-Date).ToString("yyyy-MM-dd")
   implementationCommit = $ImplementationCommit
   fixture = [ordered]@{ kind = "synthetic-structural"; inputPoiCount = 17; reportPoiCount = 16; inputParkPoiCount = 1; reportParkPoiCount = 0; parkStatus = "failed" }
   artifacts = $artifacts
   audit = $auditObject
-  visual = [ordered]@{ pptSlides = "16/16 pass"; canvasEvidence = "7/7 pass"; combinedEvidence = "14/14 pass" }
+  visual = [ordered]@{
+    comFullDeck = "$pptRenderedCount/$pptSlideCount pass"
+    canvasSelectedEvidence = "$canvasEvidenceCount/$pptSelectedEvidenceCount pass"
+    pptSelectedEvidence = "$pptEvidenceCount/$pptSelectedEvidenceCount pass"
+    combinedSelectedEvidence = "$combinedEvidenceCount/$($pptSelectedEvidenceCount * 2) pass"
+    humanDirectVisual = "recorded separately; not asserted by automation"
+  }
   evidenceScope = "합성 구조검증 fixture의 편집 가능 구조와 supplied GeoJSON 소비만 검증하며 실데이터·공식 경계 증거로 주장하지 않습니다."
 }
 $summary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $summaryPath -Encoding utf8
@@ -215,10 +225,11 @@ $report = @"
 # Task 8 프레젠테이션 QA 보고서
 
 - 결과: PASS
-- 슬라이드: 16/16
+- COM 전체 장표: $pptRenderedCount/$pptSlideCount
+- 선택 증거: Canvas $canvasEvidenceCount/$pptSelectedEvidenceCount + PPT $pptEvidenceCount/$pptSelectedEvidenceCount = $combinedEvidenceCount/$($pptSelectedEvidenceCount * 2)
 - 입력 POI: 17개 / 보고서 산출 POI: 16개
 - 공원: 입력 stale 1개 / 보고서 0개, 원천 failed, 슬라이드 6·9·14 ``$failureNotice``
-- 의미 본문: 전 16장 11pt 이상(예외: title/eyebrow, footer/legal, ※ note, synthetic disclosure)
+- 의미 본문: 그룹 내부 포함 전 $pptSlideCount 장 11pt 이상(예외: ungrouped title/eyebrow, footer/legal, ※ note, synthetic disclosure)
 - slide 6 stale park label / 핵심 포인트 overlap: 0 / 0
 - 경계: 7 rings (solid 4, dashed 3)
 - 추정 문구: ``$methodText`` 1 line
