@@ -1,57 +1,66 @@
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "qaDate": "2026-07-22",
+  "implementationCommit": "50af6e0",
   "fixture": {
     "kind": "synthetic-structural",
     "centerName": "합성 구조검증",
-    "parkStatus": "failed",
-    "rasterMap": "Edge/Playwright-generated non-identifying 1280x720 PNG grid map",
-    "officialGeometryEvidence": false
+    "officialGeometryEvidence": false,
+    "reportPoiCount": 17,
+    "parkStatus": "failed"
   },
   "artifacts": {
     "task8-canvas-maintenance-map.png": {
-      "bytes": 137501,
-      "sha256": "eacc9be161cd6706962648e6d3341dd9a5b7102726a9ebf8077f37f3fb8e6fbf"
+      "bytes": 140399,
+      "sha256": "c367731856f45ca7754d8c94fdca80aa8d1c22918819ab6a92edcad378121883",
+      "resolution": "960x540"
     },
     "task8-canvas-maintenance-table.png": {
-      "bytes": 112773,
-      "sha256": "57ec20d5425f27d5c0fe1cb0d727cc00103613c1cd28ad8177fced9a276861e6"
+      "bytes": 113364,
+      "sha256": "176917c18ad387e5aef6f4b0a9b79905bc4e5abff0904505a7551c200f029e77",
+      "resolution": "960x540"
     },
     "task8-canvas-general-sources.png": {
-      "bytes": 83861,
-      "sha256": "31dc62bae0817f6ca14c4711ed0dc5735ce59e180494fc41a3c3dfe99dde56be"
+      "bytes": 86089,
+      "sha256": "71c63a556f93fc2709598f5a7c3ed513926f0548cdf5abbb0e47b760949a0a75",
+      "resolution": "960x540"
     },
     "task8-canvas-maintenance-sources.png": {
       "bytes": 71498,
-      "sha256": "aa1b1e441ae6ed110bd8211157b4418e4bbb8c3d2e067edbaf46ffc95e920c3b"
+      "sha256": "aa1b1e441ae6ed110bd8211157b4418e4bbb8c3d2e067edbaf46ffc95e920c3b",
+      "resolution": "960x540"
     },
     "task8-ppt-maintenance-map.png": {
-      "bytes": 1616431,
-      "sha256": "31efaa70f8cdba4bbac51c93a9c3769520f16db0e4863e49f18184ab44c12b48"
+      "bytes": 1600400,
+      "sha256": "8df3b347bde181b644a85d999f1423c8b885b28ca7094722b2e0195e8783bd39",
+      "resolution": "1920x1080"
     },
     "task8-ppt-maintenance-table.png": {
-      "bytes": 139735,
-      "sha256": "41c938d5fc5d53ddd4499f77795ee580f15b7cf6edf34891bf5ba1b393f588df"
+      "bytes": 141062,
+      "sha256": "48fb4aa557330cecf34568ad042cde752c7ab9d7b3cd328d9780ca33194d00a7",
+      "resolution": "1920x1080"
     },
     "task8-ppt-general-sources.png": {
       "bytes": 112598,
-      "sha256": "617987d1731617dec4f91b1eb47b3e6eef26fdf6319c66766cf3e0de9513cf65"
+      "sha256": "617987d1731617dec4f91b1eb47b3e6eef26fdf6319c66766cf3e0de9513cf65",
+      "resolution": "1920x1080"
     },
     "task8-ppt-maintenance-sources.png": {
       "bytes": 91621,
-      "sha256": "0a860514cd4a8366ea2a9f239d0603640e8eec6889bbbff606142024c538fac3"
+      "sha256": "0a860514cd4a8366ea2a9f239d0603640e8eec6889bbbff606142024c538fac3",
+      "resolution": "1920x1080"
     },
     "task8-maintenance-report.pptx": {
-      "bytes": 4991564,
-      "sha256": "866da3b3539049493fe44cb04e800adae5b9ff0a9ca00dc989f21bad767d5ab6"
+      "bytes": 4944446,
+      "sha256": "f5fed38d192b7837d9eb86b18f25b748bcb05c2a59b5446c9010255ee2997655"
     },
     "task8-com-audit.json": {
-      "bytes": 1067,
-      "sha256": "4f6d389f44ed33b0eeb083316b038f69d7f5a01e2ea415ab760dd7bf5d9cbb81"
+      "bytes": 1985,
+      "sha256": "bf748d56e5e4f2e978dc976a86de9c6339b36078583015ced71fdd75c9c612aa"
     }
   },
-  "checks": {
-    "generatedAt": "2026-07-22T04:02:15.005962+00:00",
+  "audit": {
+    "generatedAt": "2026-07-22T04:49:55.166645+00:00",
     "slideCount": 16,
     "renderResolution": "1920x1080",
     "editableTextShapeCount": 391,
@@ -88,17 +97,56 @@
       "11": 11,
       "12": 11
     },
-    "exclusions": [
-      "top title/eyebrow area <=80pt",
-      "footer area >=475pt",
-      "※ explanatory note",
-      "synthetic disclosure"
-    ],
-    "slide11IntactOfficialType": "가로주택정비",
-    "directVisualInspection": "8/8 pass",
-    "fullDeckComRender": "16/16 pass",
+    "unitGeometry": {
+      "1,050세대": {
+        "lines": 1,
+        "boundHeight": 13.199999809265137,
+        "shapeHeight": 18.719999313354492,
+        "fontPt": 11
+      },
+      "1,200세대": {
+        "lines": 1,
+        "boundHeight": 13.199999809265137,
+        "shapeHeight": 18.719999313354492,
+        "fontPt": 11
+      }
+    },
+    "boundaryShapes": {
+      "slide10Total": 7,
+      "solidRings": 4,
+      "dashedRings": 3,
+      "unavailableShapes": 0,
+      "names": [
+        "MAINTENANCE_BOUNDARY|maintenance-hole|0|0",
+        "MAINTENANCE_BOUNDARY|maintenance-hole|0|1",
+        "MAINTENANCE_BOUNDARY|maintenance-multi|0|0",
+        "MAINTENANCE_BOUNDARY|maintenance-multi|1|0",
+        "MAINTENANCE_BOUNDARY|maintenance-solid-2|0|0",
+        "MAINTENANCE_BOUNDARY|maintenance-solid-3|0|0",
+        "MAINTENANCE_BOUNDARY|maintenance-dashed-3|0|0"
+      ],
+      "canvasExactMagentaPixels": 710
+    },
+    "reportPoiCount": 17,
     "embeddedMediaCount": 6,
-    "embeddedMediaUncompressedBytes": 4905096
+    "embeddedMediaUncompressedBytes": 4857522,
+    "exclusions": [
+      "title/eyebrow <=80pt",
+      "footer >=475pt",
+      "※ note",
+      "synthetic disclosure"
+    ]
   },
-  "evidenceScope": "합성 구조검증 fixture로 편집 가능한 PPT/Canvas 구조와 supplied data 렌더링만 검증하며 실데이터 또는 공식 경계 증거로 주장하지 않습니다."
+  "visual": {
+    "pptSlides": "16/16 pass",
+    "canvasEvidence": "4/4 pass",
+    "combinedEvidence": "8/8 pass"
+  },
+  "gates": {
+    "focused": "pass",
+    "maintenance": "pass",
+    "lintAndTsc": "pass",
+    "nextBuild": "BUILD_EXPLICIT_EXIT_0"
+  },
+  "evidenceScope": "합성 구조검증 fixture의 편집 가능 구조와 supplied GeoJSON 소비만 검증하며 실데이터·공식 경계 증거로 주장하지 않습니다."
 }
