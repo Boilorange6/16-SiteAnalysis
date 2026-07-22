@@ -67,7 +67,7 @@ export function buildParkDetailLines(parks: readonly Park[], limit = 8): string[
   const summary = summarizeParks(parks);
   const lines: string[] = [
     `공원 ${summary.count}개 / 총 면적 ${formatAreaSqm(summary.totalAreaSqm)}`,
-    `500m 내 생활권 공원 ${summary.nearby500Count}개 / 대형공원 ${summary.majorCount}개`,
+    `500m 공원 ${summary.nearby500Count}개 · 대형 ${summary.majorCount}개`,
   ];
   if (summary.nearestPark) {
     lines.push(`최근접 ${summary.nearestPark.name} (${formatDistanceM(summary.nearestPark.access_distance_m ?? summary.nearestPark.distance_m ?? 0)})`);

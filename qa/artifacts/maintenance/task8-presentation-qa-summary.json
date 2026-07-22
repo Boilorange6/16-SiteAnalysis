@@ -1,14 +1,14 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "qaDate": "2026-07-22",
   "fixture": {
     "fixtureKind": "synthetic-structural",
     "officialGeometryEvidence": false,
     "realSourceEvidence": "task9",
-    "productPathFixture": false,
+    "productPathFixture": true,
     "projectCount": 7,
-    "seoulStructuralCase": "서울 합성 Polygon 홀",
-    "busanStructuralCase": "부산 합성 MultiPolygon",
+    "seoulStructuralCase": "서울 합성 홀",
+    "busanStructuralCase": "부산 합성 멀티",
     "polygonHoleRings": 2,
     "multiPolygonParts": 2,
     "unavailableWithoutGeometry": 2,
@@ -17,57 +17,63 @@
   "canvas": {
     "maintenanceMap": {
       "file": "task8-canvas-maintenance-map.png",
-      "sha256": "f2aeb659fe4fae2e6d0b37b727a269c9846411a0a7f878dd58d288a217627281"
+      "sha256": "724c415fef20308f106c115774b4b7ff4841d58fa16b98864287c6109bc4557b"
     },
     "maintenanceTable": {
       "file": "task8-canvas-maintenance-table.png",
-      "sha256": "9661a6e0d399d109a3ccbbc37ee6c683ebbe305d0f01f4c4683c70c11f63781c"
+      "sha256": "1ca0ec45acdd5a00ad5eaf769b91b51c53df9502bbfff20fa8ca8d9f38f0be04"
     },
     "generalSources": {
       "file": "task8-canvas-general-sources.png",
-      "sha256": "2bab7df832807785afe68770fe64ad7b6c33d33b91c6f8db8fbcc3f7791734e0"
+      "sha256": "f4a92f579f4420b0b2601cf08a285d97776e6f7c3912dbef3c69c42d93b448a3"
     },
     "maintenanceSources": {
       "file": "task8-canvas-maintenance-sources.png",
-      "sha256": "8ca51bba2ceb5db075bf63b527e4bf59d70a34157881492a359061fe6365f20e"
+      "sha256": "06f9155dbe6db29e288c200210413e38a9c5a29cdf0e78b92965be5f4c6acdcd"
     }
   },
   "pptx": {
     "file": "task8-maintenance-report.pptx",
-    "sha256": "a229b320cb5c4c815a130fa8a0d5a3b745991a39c67ade192a24f06f31c3cddf",
+    "sha256": "e0d9fabefe50e80b9b10052cd23886d2df751bce80662902e53faff4ac7cc243",
     "renderEngine": "Microsoft PowerPoint COM",
     "slides": {
       "maintenanceMap": {
         "number": 10,
         "file": "task8-ppt-maintenance-map.png",
-        "sha256": "41833c7934a9497c3afaa60faf8d1db0f25f02bf16651ee337db756964e9d58f"
+        "sha256": "8e4b67816d0b8c02f9438ea1567fbb71e590ae48a3859b5ac779c3f4cefef0eb"
       },
       "maintenanceTable": {
         "number": 11,
         "file": "task8-ppt-maintenance-table.png",
-        "sha256": "c779c6c89fb9f3da12cec2adc65f2960a424d55b213a3e25409b676ffa9b217c"
+        "sha256": "0ae629c444a4b98a054955fec34770ee2312e0b3e43bb0f3e0f8fc45176702ef"
       },
       "generalSources": {
         "number": 15,
         "file": "task8-ppt-general-sources.png",
-        "sha256": "17b627061d28b95f9e1ce3045b6e53f10394ba4fad8286d442f98afc86259f65"
+        "sha256": "8d7329a2ebcad80ac1e254aa878b2cb8f4e160d2c6b441477e6d05af946fb564"
       },
       "maintenanceSources": {
         "number": 16,
         "file": "task8-ppt-maintenance-sources.png",
-        "sha256": "c1ecc478f1d0f76ab2bd782f62e679d8c9b13719cb304d71025eaf0d62da523f"
+        "sha256": "e90288ecbd21e82a0c280797f697db72e1157aad5a9253dcb15c06d269f08850"
       }
     }
   },
   "checks": {
     "slideCount": 16,
-    "editableTextShapeCount": 320,
+    "editableTextShapeCount": 370,
+    "inspectedSlideCount": 16,
+    "affectedSlidesLinesAudit": "pass",
+    "syntheticBannerShapeCount": 16,
     "task8AuditedSlideOverflowShapeCount": 0,
     "wholeDeckOverflowShapeCount": 2,
     "preExistingCoverDecorationOverflowShapeCount": 2,
     "mapBulletMinFontPt": 14,
+    "slide7BodyMinFontPt": 11,
+    "footerMinFontPt": 9,
     "tableRelevantMinFontPt": 12,
     "sourceRelevantMinFontPt": 11,
+    "sourceCautionMinFontPt": 11,
     "semanticTokensPresent": true,
     "parkFailureVisible": true,
     "tableColumnCount": 7,
@@ -84,5 +90,9 @@
       "unavailableShapeCount": 0
     }
   },
-  "evidenceScope": "The images validate editable renderer structure and supplied GeoJSON handling only. Authorized real-source geometry is deferred to Task 9."
+  "comAudit": {
+    "file": "task8-com-audit.json",
+    "sha256": "24964ee04da1f69a1c0960a245e231bf898139bd1c6a9a1c510c93198ec0d707"
+  },
+  "evidenceScope": "The product-path fixture is explicitly labeled synthetic on all Canvas and PPT slides. Images validate editable renderer structure and supplied GeoJSON handling only; authorized real-source geometry remains Task 9 evidence."
 }

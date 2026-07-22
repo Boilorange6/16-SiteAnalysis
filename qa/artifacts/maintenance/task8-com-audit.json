@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 3,
+  "auditedAt": "2026-07-22T12:01:05.6049101+09:00",
+  "slideCount": 16,
+  "inspectedSlideCount": 16,
+  "editableTextShapeCount": 370,
+  "wholeDeckOverflowShapeCount": 2,
+  "overflow": [
+    {
+      "slide": 1,
+      "shape": "Shape 0",
+      "left": 831.5999755859375,
+      "top": 39.599998474121094,
+      "right": 993.5999755859375,
+      "bottom": 201.5999984741211
+    },
+    {
+      "slide": 1,
+      "shape": "Shape 1",
+      "left": 766.7999877929688,
+      "top": 324.0,
+      "right": 971.9999847412109,
+      "bottom": 493.1999969482422
+    }
+  ],
+  "affectedSlidesLinesAudit": "pass",
+  "affectedSlides": [
+    6,
+    7,
+    10,
+    11,
+    15
+  ],
+  "syntheticBannerShapeCount": 16,
+  "syntheticBannerSlides": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16
+  ],
+  "mapBulletMinFontPt": 14.0,
+  "slide7BodyMinFontPt": 11.0,
+  "footerMinFontPt": 9.0,
+  "tableRelevantMinFontPt": 12.0,
+  "sourceCautionMinFontPt": 11.0,
+  "tableColumnCount": 7,
+  "tableRowCount": 6,
+  "boundaryShapes": {
+    "maintenanceMapTotal": 7,
+    "wholeDeckTotal": 14,
+    "solidRings": 8,
+    "dashedRings": 6
+  },
+  "compoundLines": [
+    "4.20만㎡·240m",
+    "3.10만㎡·380m"
+  ]
+}

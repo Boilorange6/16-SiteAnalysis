@@ -119,7 +119,7 @@ export function computeAnalysisScores(config: AnalysisConfig, pois: readonly Poi
       level: levelFor(trafficScore, 25),
       detail: nearestSubway === null
         ? "반경 내 확인된 지하철역이 없습니다."
-        : `최근접 역 ${formatDistanceM(nearestSubway)}, 700m 내 ${subwayNear}개 / 1.2km 내 ${subwayMid}개`,
+        : `최근접 역 ${formatDistanceM(nearestSubway)} · 700m ${subwayNear}개 · 1.2km ${subwayMid}개`,
     },
     {
       key: "education",
@@ -127,7 +127,7 @@ export function computeAnalysisScores(config: AnalysisConfig, pois: readonly Poi
       score: educationScore,
       max: 20,
       level: levelFor(educationScore, 20),
-      detail: `학교 ${schools.length}개, 1km 내 ${schoolNear}개, 초등학교 ${elementaryCount}개`,
+      detail: `학교 ${schools.length}개 · 1km ${schoolNear}개 · 초등 ${elementaryCount}개`,
     },
     {
       key: "nature",
@@ -135,7 +135,7 @@ export function computeAnalysisScores(config: AnalysisConfig, pois: readonly Poi
       score: natureScore,
       max: 20,
       level: levelFor(natureScore, 20),
-      detail: `공원 ${parkSummary.count}개, 총 ${formatAreaSqm(parkSummary.totalAreaSqm)}, 접근성 ${parkSummary.accessibilityScore}/100`,
+      detail: `공원 ${parkSummary.count}개 · ${formatAreaSqm(parkSummary.totalAreaSqm)} · 접근성 ${parkSummary.accessibilityScore}/100`,
     },
     {
       key: "residential",
@@ -143,7 +143,7 @@ export function computeAnalysisScores(config: AnalysisConfig, pois: readonly Poi
       score: residentialScore,
       max: 20,
       level: levelFor(residentialScore, 20),
-      detail: `주거시설 ${residentials.length}개, 총 ${totalUnits.toLocaleString()}세대, 분양예정 ${plannedCount}개`,
+      detail: `주거 ${residentials.length}개 · ${totalUnits.toLocaleString()}세대 · 분양예정 ${plannedCount}개`,
     },
     {
       key: "development",
@@ -231,18 +231,18 @@ export function generateAnalysisNarrative(config: AnalysisConfig, pois: readonly
     summary: `${config.centerName || "선택 입지"}는 ${scores.headline} (참고: 종합 ${scores.total}/100점 · ${scores.grade}등급)`,
     bullets: [
       nearestSubway === null
-        ? "교통: 반경 내 지하철역 확인이 부족해 버스·도로 접근성의 보완 검토가 필요합니다."
-        : `교통: 최근접 지하철역은 약 ${formatDistanceM(nearestSubway)}이며, 반경 내 ${subways.length}개 역이 확인됩니다.`,
-      `교육: 초중고 ${pois.filter((p) => p.category === "school").length}개교가 확인되어 통학권 검토의 기초 데이터가 확보되었습니다.`,
-      `자연: 공원 ${parkSummary.count}개, 총 ${formatAreaSqm(parkSummary.totalAreaSqm)} 규모로 녹지 접근성 점수는 ${parkSummary.accessibilityScore}/100입니다.`,
-      `주거 공급: ${residentials.length}개 시설, ${totalUnits.toLocaleString()}세대 규모${plannedCount > 0 ? `, 분양예정 ${plannedCount}건` : ""}가 확인됩니다.`,
-      `개발/정비: 정비사업 ${maintenanceSummary.count}건 중 경계 확인 ${maintenanceSummary.boundaryConfirmedCount}건 · 미결합 ${maintenanceSummary.boundaryUnmatchedCount}건 · 미확인 ${maintenanceSummary.boundaryUnavailableCount}건${maintenanceSummary.totalPlannedHouseholds > 0 ? `, 예정 ${maintenanceSummary.totalPlannedHouseholds.toLocaleString()}세대` : ""}입니다.`,
+        ? "교통: 지하철역 미확인. 버스·도로 접근성 보완 필요."
+        : `교통: 최근접 역 ${formatDistanceM(nearestSubway)} · 반경 내 ${subways.length}개 역.`,
+      `교육: 초중고 ${pois.filter((p) => p.category === "school").length}개교 · 통학권 기초자료 확보.`,
+      `자연: 공원 ${parkSummary.count}개 · ${formatAreaSqm(parkSummary.totalAreaSqm)} · 접근성 ${parkSummary.accessibilityScore}/100.`,
+      `주거: ${residentials.length}개 시설 · ${totalUnits.toLocaleString()}세대${plannedCount > 0 ? ` · 분양예정 ${plannedCount}건` : ""}.`,
+      `개발/정비: ${maintenanceSummary.count}건 · 경계 확인 ${maintenanceSummary.boundaryConfirmedCount}건 · 미결합 ${maintenanceSummary.boundaryUnmatchedCount}건 · 미확인 ${maintenanceSummary.boundaryUnavailableCount}건${maintenanceSummary.totalPlannedHouseholds > 0 ? ` · 예정 ${maintenanceSummary.totalPlannedHouseholds.toLocaleString()}세대` : ""}.`,
       "정비사업 집계: 행정구역 카탈로그는 반경 집계·점수에서 제외합니다.",
     ],
     risks: [
       ...weakItems.map((item) => `${item.label}: ${item.detail}`),
       maintenanceSummary.boundaryUnmatchedCount + maintenanceSummary.boundaryUnavailableCount > 0
-        ? `정비사업 경계 미결합 ${maintenanceSummary.boundaryUnmatchedCount}건·미확인 ${maintenanceSummary.boundaryUnavailableCount}건은 출처와 확인 수준을 함께 검토해야 합니다.`
+        ? `정비사업 경계 미결합 ${maintenanceSummary.boundaryUnmatchedCount}건 · 미확인 ${maintenanceSummary.boundaryUnavailableCount}건. 원문 확인 필요.`
         : "",
     ].filter(Boolean),
     // P4R Task B-3: "PPT 첫 장에서 강조하세요"·"프로젝트를 저장하세요" 같은 앱 사용 안내문을
@@ -252,18 +252,18 @@ export function generateAnalysisNarrative(config: AnalysisConfig, pois: readonly
     // 각 항목 45자 이내·핵심 권고 선두 배치를 유지할 것.
     nextActions: [
       nearestSubway === null
-        ? "지하철역 미확인 — 현장 실사·버스 노선으로 접근성 확인 권장"
-        : `최근접 역 ${formatDistanceM(nearestSubway)} — 신설·연장 노선은 기관 고시로 재확인 권장`,
+        ? "지하철역 미확인 — 현장·버스 노선 확인"
+        : `최근접 역 ${formatDistanceM(nearestSubway)} — 신설·연장 기관 고시 확인`,
       weakItems.length > 0
-        ? `${weakItems.slice(0, 2).map((item) => item.label).join("·")}${weakItems.length > 2 ? " 등" : ""} 보완 필요 — 실사·공고로 재확인 권장`
-        : "전 항목 고른 확인 — 핵심 지표는 정기 재확인 권장",
+        ? `${weakItems.slice(0, 2).map((item) => item.label).join("·")}${weakItems.length > 2 ? " 등" : ""} 보완 — 현장·공고 확인`
+        : "전 항목 고른 확인 — 핵심 지표 정기 확인",
       maintenanceSummary.boundaryUnmatchedCount + maintenanceSummary.boundaryUnavailableCount > 0
-        ? `정비사업 미결합 ${maintenanceSummary.boundaryUnmatchedCount}건·미확인 ${maintenanceSummary.boundaryUnavailableCount}건 — 관할 공고 확인 권장`
+        ? `정비 미결합 ${maintenanceSummary.boundaryUnmatchedCount}건 · 미확인 ${maintenanceSummary.boundaryUnavailableCount}건 — 공고 확인`
         : maintenanceSummary.count > 0
-          ? "정비사업 단계(인가·착공 등)는 최신 공고로 재확인 권장"
-          : "반경 밖 대규모 개발계획은 별도 확인 권장",
+          ? "정비사업 단계는 최신 공고 확인"
+          : "반경 밖 대규모 개발계획 별도 확인",
       ...(plannedCount > 0
-        ? [`분양예정 ${plannedCount}건 — 분양 공고로 최신 공급 일정 재확인 권장`]
+        ? [`분양예정 ${plannedCount}건 — 공고로 일정 확인`]
         : []),
     ],
   };

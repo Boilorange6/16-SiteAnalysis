@@ -18,6 +18,7 @@ import { computeResidentialCalloutLayout } from "./ppt-callout-layout";
 import { buildParkDetailLines, formatAreaSqm, formatDistanceM, summarizeParks } from "./park-analysis";
 import { buildMaintenanceDetailLines, formatMaintenanceArea, summarizeMaintenanceProjects } from "./maintenance-analysis";
 import {
+  GENERAL_SOURCE_CAUTIONS,
   GENERAL_PRESENTATION_SOURCES,
   MAINTENANCE_BOUNDARY_LEGEND,
   MAINTENANCE_LEGAL_FOOTER,
@@ -27,6 +28,8 @@ import {
   buildMaintenancePresentationRows,
   formatMaintenanceMapBullet,
   projectMaintenanceBoundaries,
+  protectPresentationHeader,
+  syntheticReportNotice,
 } from "./maintenance-presentation";
 import { buildInsightOverlays, computeAnalysisScores, generateAnalysisNarrative, getSummaryLines } from "./analysis-engine";
 import { haversineDistance } from "./geo";
@@ -528,7 +531,7 @@ function addDataPanel(
   }
 }
 
-function addFooterNote(slide: PptxGenJS.Slide, text: string, d: PptDesignConfig, color?: string, fontSize = 6.5) {
+function addFooterNote(slide: PptxGenJS.Slide, text: string, d: PptDesignConfig, color?: string, fontSize = 9) {
   slide.addText(text, {
     x: 0.55, y: 7.08, w: 12.2, h: 0.22,
     fontSize, fontFace: FONT_MAIN, color: pptColor(color ?? d.mutedTextColor),
@@ -1589,9 +1592,9 @@ function addInsightSummarySlide(
   // P4R Task C-1: 구 팔레트(초록/주황/파랑) 정리 — 2단계 팔레트(무채 잉크 + accentRed 1곳)로.
   // 3열 중 "리스크"만 주의가 필요한 항목이라 accentRed로 강조하고 나머지는 무채 잉크 스트립.
   const columns = [
-    { title: "핵심 강점", rows: narrative.bullets.slice(0, 5), color: d.accentColor },
-    { title: "리스크", rows: narrative.risks.length ? narrative.risks.slice(0, 5) : ["현재 데이터 기준 중대한 약점은 제한적입니다."], color: d.accentRed },
-    { title: "다음 액션", rows: narrative.nextActions.slice(0, 5), color: d.accentColor },
+    { title: "핵심 강점", rows: narrative.bullets.slice(0, 4), color: d.accentColor },
+    { title: "리스크", rows: narrative.risks.length ? narrative.risks.slice(0, 4) : ["현재 데이터 기준 중대한 약점은 제한적입니다."], color: d.accentRed },
+    { title: "다음 액션", rows: narrative.nextActions.slice(0, 4), color: d.accentColor },
   ];
   columns.forEach((column, idx) => {
     const x = 0.7 + idx * 4.05;
@@ -1607,8 +1610,8 @@ function addInsightSummarySlide(
     });
     column.rows.forEach((text, rowIdx) => {
       slide.addText(`${rowIdx + 1}. ${text}`, {
-        x: x + 0.25, y: 3.28 + rowIdx * 0.55, w: 3.25, h: 0.42,
-        fontSize: 8.6, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), fit: "shrink",
+        x: x + 0.25, y: 3.28 + rowIdx * 0.7, w: 3.25, h: 0.58,
+        fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor),
       });
     });
   });
@@ -1677,7 +1680,7 @@ function addRadiusAnalysisSlide(
     if (row.subtitle) {
       slide.addText(row.subtitle, {
         x: x + 0.26, y: y + 0.47, w: 3.2, h: 0.16,
-        fontSize: 7.5, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor),
+        fontSize: 10, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor),
       });
     }
     slide.addText(row.radiusM >= 1000 ? `${(row.radiusM / 1000).toFixed(row.radiusM % 1000 === 0 ? 0 : 1)}km` : `${row.radiusM}m`, {
@@ -1695,7 +1698,7 @@ function addRadiusAnalysisSlide(
       const mx = x + 0.3 + metricIdx * metricGap;
       slide.addText(metric.label, {
         x: mx, y: y + 0.72, w: 0.8, h: 0.2,
-        fontSize: 7, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), align: "center",
+        fontSize: 10, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), align: "center",
       });
       slide.addText(String(metric.value), {
         x: mx, y: y + 0.96, w: 0.8, h: 0.34,
@@ -1704,7 +1707,7 @@ function addRadiusAnalysisSlide(
     });
     slide.addText(row.note, {
       x: x + 0.3, y: y + 1.48, w: w - 0.65, h: 0.22,
-      fontSize: 8, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor),
+      fontSize: 10, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor),
     });
   });
 
@@ -1732,11 +1735,11 @@ function addRadiusAnalysisSlide(
     });
     slide.addText(overlay.label, {
       x: cx + 0.2, y: cy, w: gridColW - 0.2, h: 0.2,
-      fontSize: 9, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true, fit: "shrink",
+      fontSize: 10, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true, fit: "shrink",
     });
     slide.addText(overlay.description, {
       x: cx + 0.2, y: cy + 0.2, w: gridColW - 0.25, h: 0.24,
-      fontSize: 7, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), fit: "shrink",
+      fontSize: 10, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), fit: "shrink",
     });
   });
   addFooterNote(slide, "반경 분석은 직선거리 기준이며 실제 보행 경로와 차이가 있을 수 있습니다.", d);
@@ -1844,13 +1847,13 @@ function addDevelopmentRiskMatrixSlide(
       fontSize: 12, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true,
     });
     const columns = [
-      { label: MAINTENANCE_PRESENTATION_COLUMNS[0], x: 0.78, w: 1.45, align: "left" },
-      { label: MAINTENANCE_PRESENTATION_COLUMNS[1], x: 2.23, w: 1.35, align: "left" },
-      { label: MAINTENANCE_PRESENTATION_COLUMNS[2], x: 3.58, w: 1.65, align: "left" },
-      { label: MAINTENANCE_PRESENTATION_COLUMNS[3], x: 5.23, w: 1.0, align: "right" },
-      { label: MAINTENANCE_PRESENTATION_COLUMNS[4], x: 6.23, w: 1.35, align: "right" },
-      { label: MAINTENANCE_PRESENTATION_COLUMNS[5], x: 7.58, w: 1.6, align: "left" },
-      { label: MAINTENANCE_PRESENTATION_COLUMNS[6], x: 9.18, w: 3.35, align: "left" },
+      { label: protectPresentationHeader(MAINTENANCE_PRESENTATION_COLUMNS[0]), x: 0.78, w: 1.45, align: "left" },
+      { label: protectPresentationHeader(MAINTENANCE_PRESENTATION_COLUMNS[1]), x: 2.23, w: 1.35, align: "left" },
+      { label: protectPresentationHeader(MAINTENANCE_PRESENTATION_COLUMNS[2]), x: 3.58, w: 1.55, align: "left" },
+      { label: protectPresentationHeader(MAINTENANCE_PRESENTATION_COLUMNS[3]), x: 5.13, w: 1.15, align: "right" },
+      { label: protectPresentationHeader(MAINTENANCE_PRESENTATION_COLUMNS[4]), x: 6.28, w: 1.35, align: "right" },
+      { label: protectPresentationHeader(MAINTENANCE_PRESENTATION_COLUMNS[5]), x: 7.63, w: 1.55, align: "left" },
+      { label: protectPresentationHeader(MAINTENANCE_PRESENTATION_COLUMNS[6]), x: 9.18, w: 3.35, align: "left" },
     ] as const;
     columns.forEach((column) => {
       slide.addText(column.label, {
@@ -1863,15 +1866,33 @@ function addDevelopmentRiskMatrixSlide(
       const values = [row.name, row.typeStage, row.implementer, row.households, row.areaDistance, row.boundary, row.sourceDate];
       columns.forEach((column, columnIndex) => {
         slide.addText(values[columnIndex] ?? "", {
-          x: column.x, y: 3.18 + rowIndex * 0.5, w: column.w, h: 0.42,
+          x: column.x, y: 3.16 + rowIndex * 0.5, w: column.w, h: 0.46,
           fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.tableBodyPt, fontFace: FONT_MAIN,
-          color: pptColor(columnIndex === 5 && row.boundary !== "공식 경계 확인" ? d.accentRed : d.textColor),
-          bold: columnIndex === 0, align: column.align, fit: "shrink", wrap: true,
+          color: pptColor(columnIndex === 5 && row.boundary !== "경계 확인" ? d.accentRed : d.textColor),
+          bold: columnIndex === 0, align: column.align, wrap: true,
         });
       });
     });
   }
   addFooterNote(slide, `${MAINTENANCE_LEGAL_FOOTER} · 행정구역 카탈로그는 반경 표와 점수에서 제외`, d, undefined, MAINTENANCE_PRESENTATION_TYPOGRAPHY.legalFooterPt);
+}
+
+function addSyntheticDisclosure(slide: PptxGenJS.Slide, config: AnalysisConfig, d: PptDesignConfig) {
+  const notice = syntheticReportNotice(config);
+  if (!notice) return;
+  slide.addShape("roundRect", {
+    x: 8.6, y: 0.08, w: 4.18, h: 0.3,
+    fill: { color: "FFF1F2", transparency: 0 },
+    line: { color: pptColor(d.accentRed), transparency: 15, width: 0.8 },
+    rectRadius: 0.05,
+    objectName: "SYNTHETIC_DATA_NOTICE_BG",
+  });
+  slide.addText(notice, {
+    x: 8.7, y: 0.105, w: 3.98, h: 0.24,
+    fontSize: 9.5, fontFace: FONT_MAIN, color: pptColor(d.accentRed), bold: true,
+    align: "center", valign: "middle", margin: 0,
+    objectName: "SYNTHETIC_DATA_NOTICE_TEXT",
+  });
 }
 
 function addMaintenanceBoundaries(
@@ -2037,18 +2058,12 @@ function addDataSourceSlide(
     });
   });
 
-  const limitations = [
-    "거리 기준은 기본적으로 직선거리이며, 일부 공원은 경계 폴리곤 최단거리로 보정합니다.",
-    "정비사업은 고시·공공데이터 반영 시점에 따라 단계 또는 경계 정보가 실제와 다를 수 있습니다.",
-    "분양·입주 일정과 평면도 링크는 원천 공고 변경에 따라 사후 확인이 필요합니다.",
-    "보고서 점수는 의사결정 보조 지표이며, 최종 판단에는 현장조사·시세·법적 검토가 병행되어야 합니다.",
-  ];
   addDataPanel(slide, 0.7, 4.32, 11.9, 2.58, d);
   slide.addText("주의사항", {
     x: 1.0, y: 4.56, w: 2.0, h: 0.28,
     fontSize: 12, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true,
   });
-  limitations.forEach((text, idx) => {
+  GENERAL_SOURCE_CAUTIONS.forEach((text, idx) => {
     slide.addText(`• ${text}`, {
       x: 1.0 + (idx % 2) * 5.75, y: 4.94 + Math.floor(idx / 2) * 0.52, w: 5.25, h: 0.42,
       fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.cautionPt, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), fit: "shrink",
@@ -2141,8 +2156,10 @@ function addCategorySlide(
   addSiteMarker(slide, radiusPosition, d);
   addMapSectionTitle(slide, title, `반경 ${config.radiusKm}km`);
 
-  const panelW = cats.includes("maintenance") ? Math.max(d.panelWidth, 4.1) : d.panelWidth;
-  const panelH = Math.min(4.8, details.length * 0.42 + 0.6);
+  const maintenanceDetails = cats.includes("maintenance");
+  const detailSteps = details.map((text) => maintenanceDetails && formatMaintenanceMapBullet(text).includes("\n") ? 0.58 : 0.42);
+  const panelW = maintenanceDetails ? Math.max(d.panelWidth, 4.1) : d.panelWidth;
+  const panelH = Math.min(4.8, 0.6 + detailSteps.reduce((sum, step) => sum + step, 0));
   addDataPanel(slide, d.panelX, d.panelY, panelW, panelH, d);
   if (details.length === 0) {
     slide.addText(EMPTY_PANEL_TEXT, {
@@ -2150,13 +2167,15 @@ function addCategorySlide(
       fontSize: d.detailFontSize, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor),
     });
   }
-  details.forEach((text, i) => {
-    const displayText = cats.includes("maintenance") ? formatMaintenanceMapBullet(text) : text;
+  let detailOffset = 0.2;
+  details.forEach((text) => {
+    const displayText = maintenanceDetails ? formatMaintenanceMapBullet(text) : text;
+    const multiline = maintenanceDetails && displayText.includes("\n");
     slide.addText(`• ${displayText}`, {
-      x: d.panelX + 0.2, y: d.panelY + 0.2 + i * 0.42, w: panelW - 0.4, h: 0.36,
+      x: d.panelX + 0.2, y: d.panelY + detailOffset, w: panelW - 0.4, h: multiline ? 0.52 : 0.36,
       fontSize: Math.max(d.detailFontSize, MAINTENANCE_PRESENTATION_TYPOGRAPHY.mapBulletPt), fontFace: FONT_MAIN, color: pptColor(d.textColor),
-      fit: "shrink",
     });
+    detailOffset += multiline ? 0.58 : 0.42;
   });
 
   // 인사이트 카드(Task 5) — fact-summary 기반 카테고리 결론 2-4줄. 데이터 0건이면 빈 배열이라
@@ -2169,6 +2188,13 @@ function addCategorySlide(
 
   addLegend(slide, d, cats.includes("maintenance"));
   if (cats.includes("maintenance")) {
+    if (syntheticReportNotice(config)) {
+      slide.addText("합성 경계 구조 검증 · 실데이터 아님", {
+        x: 8.45, y: 6.7, w: 4.3, h: 0.24,
+        fontSize: 9.5, fontFace: FONT_MAIN, color: pptColor(d.accentRed), bold: true, align: "right",
+        fit: "shrink",
+      });
+    }
     slide.addText(MAINTENANCE_LEGAL_FOOTER, {
       x: 9.55, y: 7.08, w: 3.2, h: 0.18,
       fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.legalFooterPt, fontFace: FONT_MAIN, color: pptColor(d.legendTextColor), align: "right",
@@ -2548,7 +2574,7 @@ export async function generateSiteAnalysisPpt(
 
   const maintenanceProjects = allPois.filter((p): p is MaintenanceProject => p.category === "maintenance");
   addCategorySlide(pptx, "개발/정비사업 현황", "maintenance", config, reportBaseMapImage, poiPositions, radiusPosition,
-    buildMaintenanceDetailLines(maintenanceProjects, 8), d, [], allPois);
+    buildMaintenanceDetailLines(maintenanceProjects, 6), d, [], allPois);
   addDevelopmentRiskMatrixSlide(pptx, config, allPois, reportBaseMapImage, poiPositions, radiusPosition, d);
 
   const residentials = allPois.filter(
@@ -2564,6 +2590,9 @@ export async function generateSiteAnalysisPpt(
   addSummarySlide(pptx, config, allPois, reportBaseMapImage, radiusPosition, d);
   addDataSourceSlide(pptx, config, allPois, reportBaseMapImage, d, sourceStatuses);
   addMaintenanceSourceSlide(pptx, config, d, sourceStatuses);
+
+  const slides = (pptx as PptxGenJS & { readonly slides: readonly PptxGenJS.Slide[] }).slides;
+  slides.forEach((slide) => addSyntheticDisclosure(slide, config, d));
 
   // 역 그룹화 후처리를 거쳐 다운로드 — pptxgenjs는 그룹을 지원하지 않으므로 XML 후처리로
   // STGRP| 태깅 도형을 역 단위 그룹으로 묶는다. 후처리 실패 시 원본 그대로 저장(비치명).

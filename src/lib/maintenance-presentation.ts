@@ -1,5 +1,4 @@
 import { formatMaintenanceArea } from "./maintenance-analysis";
-import { maintenanceBoundaryLabel, maintenanceSourceLabel } from "./maintenance-map-utils";
 import type { AnalysisConfig, MaintenanceProject, MaintenanceSource, RadiusPosition } from "./types";
 
 const EARTH_RADIUS_M = 6_371_000;
@@ -46,6 +45,7 @@ export const MAINTENANCE_PRESENTATION_COLUMNS = [
 
 export const MAINTENANCE_BOUNDARY_LEGEND = "정비사업 공식 경계(참고용)";
 export const MAINTENANCE_LEGAL_FOOTER = "법적 효력 없는 참고자료";
+export const SYNTHETIC_REPORT_NOTICE = "합성 구조검증 데이터 · 실데이터 아님";
 
 export const MAINTENANCE_PRESENTATION_TYPOGRAPHY = {
   mapBulletPt: 14,
@@ -68,6 +68,13 @@ export const GENERAL_PRESENTATION_SOURCES = [
   { id: "residential", title: "주거 공급", value: "대장/분양 정보", detail: "세대수, 주차, 분양·입주 일정" },
   { id: "analysis", title: "보고서 산출", value: "자동 분석 모델", detail: "거리·개수·면적·단계 기반 점수화" },
 ] as const satisfies readonly MaintenancePresentationSource[];
+
+export const GENERAL_SOURCE_CAUTIONS = [
+  "거리: 기본 직선거리\n공원은 경계 최단거리로 보정",
+  "정비사업: 고시 반영 시차 존재\n단계·경계는 원문 재확인",
+  "공급 일정·평면도 링크\n원천 공고 변경 여부 확인",
+  "점수는 의사결정 보조 지표\n현장·시세·법률 검토 병행",
+] as const;
 
 export const MAINTENANCE_PRESENTATION_SOURCES = [
   {
@@ -108,9 +115,17 @@ export function protectMaintenanceMapText(text: string): string {
   return text.replace(/가로주택정비|\d+(?:\.\d+)?(?:만㎡|건|세대|m)/g, (token) => [...token].join(WORD_JOINER));
 }
 
+export function protectPresentationHeader(text: string): string {
+  return [...text].join(WORD_JOINER);
+}
+
 export function formatMaintenanceMapBullet(text: string): string {
-  const compact = text.replace(/\s*\([^,]+,\s*([^,]+),\s*([^)]+)\)$/, " · $1 · $2");
+  const compact = text.replace(/\s*\([^,]+,\s*([^,]+),\s*([^)]+)\)$/, "\n$1·$2");
   return protectMaintenanceMapText(compact);
+}
+
+export function syntheticReportNotice(config: AnalysisConfig): string | null {
+  return config.centerName.includes("합성 구조검증") ? SYNTHETIC_REPORT_NOTICE : null;
 }
 
 function boundaryRank(project: MaintenanceProject): number {
@@ -126,19 +141,35 @@ function formatAreaDistance(project: MaintenanceProject): string {
   const distance = project.distance_m != null && Number.isFinite(project.distance_m)
     ? `${Math.round(Math.max(0, project.distance_m)).toLocaleString()}m`
     : "거리 미확인";
-  return `${area} · ${distance}`;
+  return `${area}\n${distance}`;
+}
+
+function presentationBoundaryLabel(project: MaintenanceProject): string {
+  if (project.boundary_status === "confirmed") return "경계 확인";
+  if (project.boundary_status === "unmatched") return "경계 미결합";
+  return "경계 미확인";
+}
+
+function presentationSourceLabel(source: MaintenanceSource): string {
+  switch (source) {
+    case "molit_integrated": return "국토부 통합";
+    case "public_standard": return "전국 표준";
+    case "molit_spatial": return "국토부 SHP";
+    case "seoul_open_data": return "서울 데이터";
+    case "busan_data_go_kr": return "부산 API";
+  }
 }
 
 function toPresentationRow(project: MaintenanceProject): MaintenancePresentationRow {
   const sourceDate = project.source_updated_at ?? project.boundary_retrieved_at ?? "기준일 미확인";
   return {
     name: project.name,
-    typeStage: `${project.type || "유형 미확인"} · ${project.stage}`,
+    typeStage: `${project.type || "유형 미확인"}\n${project.stage}`,
     implementer: project.implementer || "미확인",
     households: formatHouseholds(project.planned_households),
     areaDistance: formatAreaDistance(project),
-    boundary: maintenanceBoundaryLabel(project.boundary_status),
-    sourceDate: `${maintenanceSourceLabel(project.source)} · ${sourceDate}`,
+    boundary: presentationBoundaryLabel(project),
+    sourceDate: `${presentationSourceLabel(project.source)}\n${sourceDate}`,
   };
 }
 
@@ -149,8 +180,12 @@ export function buildMaintenancePresentationRows(
   const rowLimit = Math.max(0, Math.floor(limit));
   return [...projects]
     .sort((left, right) => {
-      const distanceDelta = (left.distance_m ?? Infinity) - (right.distance_m ?? Infinity);
-      if (distanceDelta !== 0) return distanceDelta;
+      const leftDistance = left.distance_m;
+      const rightDistance = right.distance_m;
+      const leftFinite = Number.isFinite(leftDistance);
+      const rightFinite = Number.isFinite(rightDistance);
+      if (leftFinite && rightFinite && leftDistance !== rightDistance) return Number(leftDistance) - Number(rightDistance);
+      if (leftFinite !== rightFinite) return leftFinite ? -1 : 1;
       const boundaryDelta = boundaryRank(left) - boundaryRank(right);
       if (boundaryDelta !== 0) return boundaryDelta;
       return left.name.localeCompare(right.name, "ko");

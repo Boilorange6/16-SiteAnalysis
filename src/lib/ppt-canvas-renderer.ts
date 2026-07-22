@@ -19,6 +19,7 @@ import { computeResidentialCalloutLayout } from "./ppt-callout-layout";
 import { buildParkDetailLines, formatAreaSqm, formatDistanceM, summarizeParks } from "./park-analysis";
 import { buildMaintenanceDetailLines, formatMaintenanceArea, summarizeMaintenanceProjects } from "./maintenance-analysis";
 import {
+  GENERAL_SOURCE_CAUTIONS,
   GENERAL_PRESENTATION_SOURCES,
   MAINTENANCE_BOUNDARY_LEGEND,
   MAINTENANCE_LEGAL_FOOTER,
@@ -28,6 +29,8 @@ import {
   buildMaintenancePresentationRows,
   formatMaintenanceMapBullet,
   projectMaintenanceBoundaries,
+  protectPresentationHeader,
+  syntheticReportNotice,
 } from "./maintenance-presentation";
 import { buildInsightOverlays, computeAnalysisScores, generateAnalysisNarrative, getSummaryLines } from "./analysis-engine";
 import { haversineDistance } from "./geo";
@@ -700,7 +703,7 @@ function drawDataPanel(
   }
 }
 
-function drawFooterNote(ctx: CanvasRenderingContext2D, text: string, d: PptDesignConfig, color?: string, fontSize = 6.5) {
+function drawFooterNote(ctx: CanvasRenderingContext2D, text: string, d: PptDesignConfig, color?: string, fontSize = 9) {
   drawTextBox(ctx, text, ix(0.55), iy(7.08), ix(12.2), iy(0.22), {
     fontSize, color: color ?? d.mutedTextColor, align: "right",
   });
@@ -1416,6 +1419,15 @@ function renderOverviewSlide(
   drawLegend(ctx, d);
 }
 
+function drawSyntheticDisclosure(ctx: CanvasRenderingContext2D, config: AnalysisConfig, d: PptDesignConfig) {
+  const notice = syntheticReportNotice(config);
+  if (!notice) return;
+  drawRoundedRect(ctx, ix(8.6), iy(0.08), ix(4.18), iy(0.3), ix(0.05), "#FFF1F2", d.accentRed, 0.8);
+  drawTextBox(ctx, notice, ix(8.7), iy(0.105), ix(3.98), iy(0.24), {
+    fontSize: 9.5, bold: true, color: d.accentRed, align: "center", valign: "middle",
+  });
+}
+
 function drawMaintenanceBoundaries(
   ctx: CanvasRenderingContext2D,
   projects: readonly MaintenanceProject[],
@@ -1506,9 +1518,9 @@ function renderInsightSummarySlide(
   // P4R Task C-1: 구 팔레트(초록/주황/파랑) 정리 — 2단계 팔레트(무채 잉크 + accentRed 1곳)로.
   // 3열 중 "리스크"만 주의가 필요한 항목이라 accentRed로 강조하고 나머지는 무채 잉크 스트립.
   const columns = [
-    { title: "핵심 강점", rows: narrative.bullets.slice(0, 5), color: d.accentColor },
-    { title: "리스크", rows: narrative.risks.length ? narrative.risks.slice(0, 5) : ["현재 데이터 기준 중대한 약점은 제한적입니다."], color: d.accentRed },
-    { title: "다음 액션", rows: narrative.nextActions.slice(0, 5), color: d.accentColor },
+    { title: "핵심 강점", rows: narrative.bullets.slice(0, 4), color: d.accentColor },
+    { title: "리스크", rows: narrative.risks.length ? narrative.risks.slice(0, 4) : ["현재 데이터 기준 중대한 약점은 제한적입니다."], color: d.accentRed },
+    { title: "다음 액션", rows: narrative.nextActions.slice(0, 4), color: d.accentColor },
   ];
   columns.forEach((column, idx) => {
     const x = 0.7 + idx * 4.05;
@@ -1517,7 +1529,7 @@ function renderInsightSummarySlide(
     ctx.fillRect(ix(x), iy(2.55), ix(3.75), iy(0.08));
     drawTextBox(ctx, column.title, ix(x + 0.22), iy(2.82), ix(3.3), iy(0.28), { fontSize: 13, bold: true, color: d.textColor });
     column.rows.forEach((text, rowIdx) => {
-      drawWrappedText(ctx, `${rowIdx + 1}. ${text}`, ix(x + 0.25), iy(3.28 + rowIdx * 0.55), ix(3.25), iy(0.18), 2, { fontSize: 8.6, color: d.mutedTextColor });
+      drawWrappedText(ctx, `${rowIdx + 1}. ${text}`, ix(x + 0.25), iy(3.28 + rowIdx * 0.7), ix(3.25), iy(0.24), 2, { fontSize: 11, color: d.mutedTextColor });
     });
   });
   drawFooterNote(ctx, "요약 문장은 현재 검색 결과와 점수 모델을 기반으로 자동 생성됩니다.", d);
@@ -1573,7 +1585,7 @@ function renderRadiusAnalysisSlide(
     drawDataPanel(ctx, ix(x), iy(y), ix(w), iy(1.95), d);
     drawTextBox(ctx, row.label, ix(x + 0.26), iy(y + 0.2), ix(2.6), iy(0.28), { fontSize: 13, bold: true, color: d.textColor });
     if (row.subtitle) {
-      drawTextBox(ctx, row.subtitle, ix(x + 0.26), iy(y + 0.47), ix(3.2), iy(0.16), { fontSize: 7.5, color: d.mutedTextColor });
+      drawTextBox(ctx, row.subtitle, ix(x + 0.26), iy(y + 0.47), ix(3.2), iy(0.2), { fontSize: 10, color: d.mutedTextColor });
     }
     const radiusLabel = row.radiusM >= 1000 ? `${(row.radiusM / 1000).toFixed(row.radiusM % 1000 === 0 ? 0 : 1)}km` : `${row.radiusM}m`;
     drawTextBox(ctx, radiusLabel, ix(x + w - 1.4), iy(y + 0.16), ix(1.05), iy(0.34), { fontSize: 17, bold: true, color: row.color, align: "right" });
@@ -1585,10 +1597,10 @@ function renderRadiusAnalysisSlide(
       ["정비", countWithin(input.config, input.allPois, row.radiusM, "maintenance")],
     ].forEach(([label, value], metricIdx) => {
       const mx = x + 0.3 + metricIdx * metricGap;
-      drawTextBox(ctx, String(label), ix(mx), iy(y + 0.72), ix(0.8), iy(0.2), { fontSize: 7, color: d.mutedTextColor, align: "center" });
+      drawTextBox(ctx, String(label), ix(mx), iy(y + 0.72), ix(0.8), iy(0.2), { fontSize: 10, color: d.mutedTextColor, align: "center" });
       drawTextBox(ctx, String(value), ix(mx), iy(y + 0.96), ix(0.8), iy(0.34), { fontSize: 18, bold: true, color: d.textColor, align: "center" });
     });
-    drawTextBox(ctx, row.note, ix(x + 0.3), iy(y + 1.48), ix(w - 0.65), iy(0.22), { fontSize: 8, color: d.mutedTextColor });
+    drawTextBox(ctx, row.note, ix(x + 0.3), iy(y + 1.48), ix(w - 0.65), iy(0.24), { fontSize: 10, color: d.mutedTextColor });
   });
   // Task A: 하단 오버플로 수정 — 4개 항목을 단일 열로 쌓으면 패널이 슬라이드 하단(7.5in) 밖으로
   // 잘리고 각주와 겹쳤다(s8 결함). 2열 2행 그리드로 재배치해 7.5in 안에 들어오게 하고, 라벨 아래
@@ -1611,10 +1623,10 @@ function renderRadiusAnalysisSlide(
     const cy = gridTopY + row * gridRowH;
     drawEllipseShape(ctx, ix(cx + 0.06), iy(cy + 0.09), ix(0.05), ix(0.05), overlay.color);
     drawTextBox(ctx, overlay.label, ix(cx + 0.2), iy(cy), ix(gridColW - 0.2), iy(0.2), {
-      fontSize: 9, bold: true, color: d.textColor,
+      fontSize: 10, bold: true, color: d.textColor,
     });
-    drawWrappedText(ctx, overlay.description, ix(cx + 0.2), iy(cy + 0.2), ix(gridColW - 0.25), iy(0.12), 2, {
-      fontSize: 7, color: d.mutedTextColor,
+    drawWrappedText(ctx, overlay.description, ix(cx + 0.2), iy(cy + 0.2), ix(gridColW - 0.25), iy(0.16), 2, {
+      fontSize: 10, color: d.mutedTextColor,
     });
   });
   drawFooterNote(ctx, "반경 분석은 직선거리 기준이며 실제 보행 경로와 차이가 있을 수 있습니다.", d);
@@ -1660,18 +1672,23 @@ function renderCategorySlide(
 
   const panelWidthIn = categories.includes("maintenance") ? Math.max(d.panelWidth, 4.1) : d.panelWidth;
   const panelW = ix(panelWidthIn);
-  const panelH = Math.min(iy(4.8), details.length * iy(0.42) + iy(0.6));
+  const maintenanceDetails = categories.includes("maintenance");
+  const detailSteps = details.map((text) => maintenanceDetails && formatMaintenanceMapBullet(text).includes("\n") ? 0.58 : 0.42);
+  const panelH = Math.min(iy(4.8), iy(0.6 + detailSteps.reduce((sum, step) => sum + step, 0)));
   drawDataPanel(ctx, ix(d.panelX), iy(d.panelY), panelW, panelH, d);
   if (details.length === 0) {
     drawTextBox(ctx, EMPTY_PANEL_TEXT, ix(d.panelX + 0.2), iy(d.panelY + 0.2), panelW - ix(0.4), iy(0.36), {
       fontSize: d.detailFontSize, color: d.mutedTextColor, valign: "middle",
     });
   }
-  details.forEach((text, i) => {
-    const displayText = categories.includes("maintenance") ? formatMaintenanceMapBullet(text) : text;
-    drawTextBox(ctx, `• ${displayText}`, ix(d.panelX + 0.2), iy(d.panelY + 0.2) + i * iy(0.42), panelW - ix(0.4), iy(0.36), {
+  let detailOffset = 0.2;
+  details.forEach((text) => {
+    const displayText = maintenanceDetails ? formatMaintenanceMapBullet(text) : text;
+    const multiline = maintenanceDetails && displayText.includes("\n");
+    drawTextBox(ctx, `• ${displayText}`, ix(d.panelX + 0.2), iy(d.panelY + detailOffset), panelW - ix(0.4), iy(multiline ? 0.52 : 0.36), {
       fontSize: Math.max(d.detailFontSize, MAINTENANCE_PRESENTATION_TYPOGRAPHY.mapBulletPt), color: d.textColor, valign: "middle",
     });
+    detailOffset += multiline ? 0.58 : 0.42;
   });
 
   // 인사이트 카드(Task 5) — fact-summary 기반 카테고리 결론 2-4줄. 데이터 0건이면 빈 배열이라
@@ -1684,6 +1701,11 @@ function renderCategorySlide(
 
   drawLegend(ctx, d, categories.includes("maintenance"));
   if (categories.includes("maintenance")) {
+    if (syntheticReportNotice(input.config)) {
+      drawTextBox(ctx, "합성 경계 구조 검증 · 실데이터 아님", ix(8.45), iy(6.7), ix(4.3), iy(0.24), {
+        fontSize: 9.5, bold: true, color: d.accentRed, align: "right",
+      });
+    }
     drawTextBox(ctx, MAINTENANCE_LEGAL_FOOTER, ix(9.55), iy(7.08), ix(3.2), iy(0.18), {
       fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.legalFooterPt, color: d.legendTextColor, align: "right",
     });
@@ -1765,13 +1787,13 @@ function renderDevelopmentRiskMatrixSlide(
     drawDataPanel(ctx, ix(0.55), iy(2.25), ix(12.23), iy(4.15), d);
     drawTextBox(ctx, "반경 내 정비사업 상세", ix(0.78), iy(2.48), ix(4), iy(0.25), { fontSize: 12, bold: true, color: d.textColor });
     const columns = [
-      { label: MAINTENANCE_PRESENTATION_COLUMNS[0], x: 0.78, w: 1.45, align: "left" },
-      { label: MAINTENANCE_PRESENTATION_COLUMNS[1], x: 2.23, w: 1.35, align: "left" },
-      { label: MAINTENANCE_PRESENTATION_COLUMNS[2], x: 3.58, w: 1.65, align: "left" },
-      { label: MAINTENANCE_PRESENTATION_COLUMNS[3], x: 5.23, w: 1, align: "right" },
-      { label: MAINTENANCE_PRESENTATION_COLUMNS[4], x: 6.23, w: 1.35, align: "right" },
-      { label: MAINTENANCE_PRESENTATION_COLUMNS[5], x: 7.58, w: 1.6, align: "left" },
-      { label: MAINTENANCE_PRESENTATION_COLUMNS[6], x: 9.18, w: 3.35, align: "left" },
+      { label: protectPresentationHeader(MAINTENANCE_PRESENTATION_COLUMNS[0]), x: 0.78, w: 1.45, align: "left" },
+      { label: protectPresentationHeader(MAINTENANCE_PRESENTATION_COLUMNS[1]), x: 2.23, w: 1.35, align: "left" },
+      { label: protectPresentationHeader(MAINTENANCE_PRESENTATION_COLUMNS[2]), x: 3.58, w: 1.55, align: "left" },
+      { label: protectPresentationHeader(MAINTENANCE_PRESENTATION_COLUMNS[3]), x: 5.13, w: 1.15, align: "right" },
+      { label: protectPresentationHeader(MAINTENANCE_PRESENTATION_COLUMNS[4]), x: 6.28, w: 1.35, align: "right" },
+      { label: protectPresentationHeader(MAINTENANCE_PRESENTATION_COLUMNS[5]), x: 7.63, w: 1.55, align: "left" },
+      { label: protectPresentationHeader(MAINTENANCE_PRESENTATION_COLUMNS[6]), x: 9.18, w: 3.35, align: "left" },
     ] as const;
     columns.forEach((column) => {
       drawTextBox(ctx, column.label, ix(column.x), iy(2.84), ix(column.w), iy(0.3), {
@@ -1781,10 +1803,10 @@ function renderDevelopmentRiskMatrixSlide(
     rows.forEach((row, rowIndex) => {
       const values = [row.name, row.typeStage, row.implementer, row.households, row.areaDistance, row.boundary, row.sourceDate];
       columns.forEach((column, columnIndex) => {
-        drawTextBox(ctx, values[columnIndex] ?? "", ix(column.x), iy(3.18 + rowIndex * 0.5), ix(column.w), iy(0.42), {
+        drawTextBox(ctx, values[columnIndex] ?? "", ix(column.x), iy(3.16 + rowIndex * 0.5), ix(column.w), iy(0.46), {
           fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.tableBodyPt,
           bold: columnIndex === 0,
-          color: columnIndex === 5 && row.boundary !== "공식 경계 확인" ? d.accentRed : d.textColor,
+          color: columnIndex === 5 && row.boundary !== "경계 확인" ? d.accentRed : d.textColor,
           align: column.align,
           valign: "middle",
         });
@@ -2178,13 +2200,10 @@ function renderDataSourceSlide(
   });
   drawDataPanel(ctx, ix(0.7), iy(4.32), ix(11.9), iy(2.58), d);
   drawTextBox(ctx, "주의사항", ix(1.0), iy(4.56), ix(2.0), iy(0.28), { fontSize: 12, bold: true, color: d.textColor });
-  [
-    "거리 기준은 기본적으로 직선거리이며, 일부 공원은 경계 폴리곤 최단거리로 보정합니다.",
-    "정비사업은 고시·공공데이터 반영 시점에 따라 단계 또는 경계 정보가 실제와 다를 수 있습니다.",
-    "분양·입주 일정과 평면도 링크는 원천 공고 변경에 따라 사후 확인이 필요합니다.",
-    "보고서 점수는 의사결정 보조 지표이며, 최종 판단에는 현장조사·시세·법적 검토가 병행되어야 합니다.",
-  ].forEach((text, idx) => {
-    drawWrappedText(ctx, `• ${text}`, ix(1.0 + (idx % 2) * 5.75), iy(4.94 + Math.floor(idx / 2) * 0.52), ix(5.25), iy(0.22), 2, { fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.cautionPt, color: d.mutedTextColor });
+  GENERAL_SOURCE_CAUTIONS.forEach((text, idx) => {
+    text.split("\n").forEach((line, lineIndex) => {
+      drawTextBox(ctx, `${lineIndex === 0 ? "• " : "  "}${line}`, ix(1.0 + (idx % 2) * 5.75), iy(4.94 + Math.floor(idx / 2) * 0.52 + lineIndex * 0.2), ix(5.25), iy(0.2), { fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.cautionPt, color: d.mutedTextColor });
+    });
   });
   generalSourceStatusLines(input.sourceStatuses ?? []).forEach((text, idx) => {
     drawTextBox(ctx, text, ix(1.0 + (idx % 2) * 5.75), iy(6.03 + Math.floor(idx / 2) * 0.27), ix(5.25), iy(0.24), { fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.statusPt, color: d.mutedTextColor });
@@ -2306,7 +2325,7 @@ function buildSlideDefs(input: SlideRenderInput, includeScoreDashboard = false):
       render: (ctx, img, inp, d) => {
         const projects = inp.allPois.filter((p): p is MaintenanceProject => p.category === "maintenance");
         renderCategorySlide(ctx, img, inp, d, "개발/정비사업 현황", ["maintenance"],
-          buildMaintenanceDetailLines(projects, 8));
+          buildMaintenanceDetailLines(projects, 6));
       },
     },
     { title: "정비사업 상세 현황", render: renderDevelopmentRiskMatrixSlide },
@@ -2355,6 +2374,7 @@ export async function renderAllSlides(
   return slideDefs.map(({ title, render }, index) => {
     const [canvas, ctx] = createCanvas();
     render(ctx, baseImg, input, designConfig);
+    drawSyntheticDisclosure(ctx, input.config, designConfig);
     return { index, title, imageDataUrl: canvas.toDataURL("image/png") };
   });
 }
@@ -2372,6 +2392,7 @@ export async function renderSingleSlide(
   const def = slideDefs[slideIndex] ?? slideDefs[0];
   const [canvas, ctx] = createCanvas();
   def.render(ctx, baseImg, input, designConfig);
+  drawSyntheticDisclosure(ctx, input.config, designConfig);
   return { index: slideIndex, title: def.title, imageDataUrl: canvas.toDataURL("image/png") };
 }
 

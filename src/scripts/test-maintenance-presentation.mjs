@@ -5,11 +5,15 @@ import {
   MAINTENANCE_PRESENTATION_COLUMNS,
   MAINTENANCE_PRESENTATION_SOURCES,
   GENERAL_PRESENTATION_SOURCES,
+  GENERAL_SOURCE_CAUTIONS,
   MAINTENANCE_PRESENTATION_TYPOGRAPHY,
+  SYNTHETIC_REPORT_NOTICE,
   buildMaintenancePresentationRows,
   formatMaintenanceMapBullet,
   protectMaintenanceMapText,
+  protectPresentationHeader,
   projectMaintenanceBoundaries,
+  syntheticReportNotice,
 } from "../lib/maintenance-presentation.ts";
 import { generalSourceStatusLines, maintenanceSourceStatusLines, sourceStatusLines } from "../lib/source-status-text.ts";
 
@@ -36,16 +40,20 @@ assert.deepEqual(Object.keys(row), [
   "name", "typeStage", "implementer", "households",
   "areaDistance", "boundary", "sourceDate",
 ]);
-assert.match(row.typeStage, /재개발.*조합설립/);
+assert.match(row.typeStage, /재개발[\s\S]*조합설립/);
+assert.match(row.typeStage, /\n/);
 assert.match(row.implementer, /조합/);
 assert.match(row.households, /1,234/);
-assert.match(row.areaDistance, /5\.0+만㎡.*300m/);
-assert.match(row.boundary, /공식 경계 확인/);
-assert.match(row.sourceDate, /국토부.*2026-07-20/);
+assert.match(row.areaDistance, /5\.0+만㎡[\s\S]*300m/);
+assert.equal(row.boundary, "경계 확인");
+assert.match(row.sourceDate, /국토부[\s\S]*2026-07-20/);
+assert.match(row.sourceDate, /\n/);
 
 assert.deepEqual(MAINTENANCE_PRESENTATION_COLUMNS, [
   "구역명", "유형·단계", "시행자", "예정세대수", "면적·거리", "경계", "출처·기준일",
 ]);
+assert.equal(protectPresentationHeader("예정세대수").replaceAll("\u2060", ""), "예정세대수");
+assert.match(protectPresentationHeader("예정세대수"), /예\u2060정\u2060세\u2060대\u2060수/);
 assert.equal(MAINTENANCE_BOUNDARY_LEGEND, "정비사업 공식 경계(참고용)");
 assert.equal(MAINTENANCE_LEGAL_FOOTER, "법적 효력 없는 참고자료");
 assert.deepEqual(
@@ -61,6 +69,13 @@ assert.ok(MAINTENANCE_PRESENTATION_TYPOGRAPHY.tableBodyPt >= 12);
 assert.ok(MAINTENANCE_PRESENTATION_TYPOGRAPHY.sourceLabelPt >= 11);
 assert.ok(MAINTENANCE_PRESENTATION_TYPOGRAPHY.cautionPt >= 11);
 assert.ok(MAINTENANCE_PRESENTATION_TYPOGRAPHY.legalFooterPt >= 9);
+assert.equal(GENERAL_SOURCE_CAUTIONS.length, 4);
+assert.equal(GENERAL_SOURCE_CAUTIONS.every((line) => line.includes("\n")), true);
+assert.equal(syntheticReportNotice({ centerName: "실데이터 보고서", centerLat: 0, centerLng: 0, radiusKm: 1 }), null);
+assert.equal(
+  syntheticReportNotice({ centerName: "합성 구조검증 데이터 · 실데이터 아님", centerLat: 0, centerLng: 0, radiusKm: 1 }),
+  SYNTHETIC_REPORT_NOTICE,
+);
 
 const protectedMapText = protectMaintenanceMapText("가로주택정비 1건 / 4.20만㎡ / 3.10만㎡");
 assert.equal(protectedMapText.replaceAll("\u2060", ""), "가로주택정비 1건 / 4.20만㎡ / 3.10만㎡");
@@ -69,7 +84,7 @@ assert.match(protectedMapText, /1\u2060건/);
 assert.match(protectedMapText, /4\u2060\.\u20602\u20600\u2060만\u2060㎡/);
 assert.match(protectedMapText, /3\u2060\.\u20601\u20600\u2060만\u2060㎡/);
 const compactMapBullet = formatMaintenanceMapBullet("서울 구조검증 홀 (조합설립, 4.20만㎡, 240m)");
-assert.equal(compactMapBullet.replaceAll("\u2060", ""), "서울 구조검증 홀 · 4.20만㎡ · 240m");
+assert.equal(compactMapBullet.replaceAll("\u2060", ""), "서울 구조검증 홀\n4.20만㎡·240m");
 assert.equal(compactMapBullet.includes("조합설립"), false);
 
 const projects = [
@@ -88,6 +103,13 @@ assert.deepEqual(rows.slice(0, 4).map((item) => item.name), [
   "최근접 사업", "나 사업", "하 사업", "가 사업",
 ]);
 assert.equal(rows.some((item) => item.name === "가장 먼 사업"), false);
+
+const missingDistanceRows = buildMaintenancePresentationRows([
+  { ...project, id: "missing-unmatched", name: "가 미결합", distance_m: undefined, boundary_status: "unmatched" },
+  { ...project, id: "missing-confirmed-z", name: "하 확정", distance_m: undefined, boundary_status: "confirmed" },
+  { ...project, id: "missing-confirmed-a", name: "나 확정", distance_m: undefined, boundary_status: "confirmed" },
+], 6);
+assert.deepEqual(missingDistanceRows.map((item) => item.name), ["나 확정", "하 확정", "가 미결합"]);
 
 const incompleteRow = buildMaintenancePresentationRows([{
   ...project,
