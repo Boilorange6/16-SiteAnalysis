@@ -28,6 +28,8 @@ import {
   SYNTHETIC_BANNER_FILL,
   buildMaintenancePresentationRows,
   formatMaintenanceMapBullet,
+  formatMaintenanceTableName,
+  formatReportPoiCount,
   projectMaintenanceBoundaries,
   syntheticReportNotice,
 } from "./maintenance-presentation";
@@ -1811,7 +1813,7 @@ function addParkAccessDetailSlide(
       fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.textColor), bold: true, align: "right",
     });
   });
-  slide.addText("공원 경계가 있으면 외곽선 최단거리, 없으면 면적 기반 원형으로 추정합니다.", {
+  slide.addText("공원 경계는 외곽선 최단거리입니다.\n경계가 없으면 면적 기반 원형거리로 계산합니다.", {
     x: 6.65, y: 5.28, w: 4.65, h: 0.48,
     fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor),
   });
@@ -1865,7 +1867,7 @@ function addDevelopmentRiskMatrixSlide(
       });
     });
     rows.forEach((row, rowIndex) => {
-      const values = [row.name, row.typeStage, row.implementer, row.households, row.areaDistance, row.boundary, row.sourceDate];
+      const values = [formatMaintenanceTableName(row.name), row.typeStage, row.implementer, row.households, row.areaDistance, row.boundary, row.sourceDate];
       columns.forEach((column, columnIndex) => {
         slide.addText(values[columnIndex] ?? "", {
           x: column.x, y: 3.16 + rowIndex * 0.5, w: column.w, h: 0.46,
@@ -2021,8 +2023,8 @@ function addResidentialSupplySlide(
         fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.textColor),
       });
       slide.addText(`${apt.units.toLocaleString()}세대`, {
-        x: x + 2.95, y, w: 0.78, h: 0.26,
-        fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), align: "right",
+        x: x + 2.95, y, w: 0.95, h: 0.26,
+        fontSize: 11, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), align: "right", wrap: false,
       });
     });
   }
@@ -2072,7 +2074,7 @@ function addDataSourceSlide(
       fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.statusPt, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), fit: "shrink",
     });
   });
-  addFooterNote(slide, `${config.centerName} / ${pois.length.toLocaleString()}개 POI 기준 자동 생성`, d, undefined, MAINTENANCE_PRESENTATION_TYPOGRAPHY.legalFooterPt);
+  addFooterNote(slide, `${config.centerName} / ${formatReportPoiCount(pois)} 기준 자동 생성`, d, undefined, MAINTENANCE_PRESENTATION_TYPOGRAPHY.legalFooterPt);
 }
 
 function addMaintenanceSourceSlide(

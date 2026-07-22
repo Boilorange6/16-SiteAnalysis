@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-22T04:02:15.005962+00:00",
+  "generatedAt": "2026-07-22T04:49:55.166645+00:00",
   "slideCount": 16,
   "renderResolution": "1920x1080",
   "editableTextShapeCount": 391,
@@ -36,11 +36,43 @@
     "11": 11.0,
     "12": 11.0
   },
+  "unitGeometry": {
+    "1,050세대": {
+      "lines": 1,
+      "boundHeight": 13.199999809265137,
+      "shapeHeight": 18.719999313354492,
+      "fontPt": 11.0
+    },
+    "1,200세대": {
+      "lines": 1,
+      "boundHeight": 13.199999809265137,
+      "shapeHeight": 18.719999313354492,
+      "fontPt": 11.0
+    }
+  },
+  "boundaryShapes": {
+    "slide10Total": 7,
+    "solidRings": 4,
+    "dashedRings": 3,
+    "unavailableShapes": 0,
+    "names": [
+      "MAINTENANCE_BOUNDARY|maintenance-hole|0|0",
+      "MAINTENANCE_BOUNDARY|maintenance-hole|0|1",
+      "MAINTENANCE_BOUNDARY|maintenance-multi|0|0",
+      "MAINTENANCE_BOUNDARY|maintenance-multi|1|0",
+      "MAINTENANCE_BOUNDARY|maintenance-solid-2|0|0",
+      "MAINTENANCE_BOUNDARY|maintenance-solid-3|0|0",
+      "MAINTENANCE_BOUNDARY|maintenance-dashed-3|0|0"
+    ],
+    "canvasExactMagentaPixels": 710
+  },
+  "reportPoiCount": 17,
+  "embeddedMediaCount": 6,
+  "embeddedMediaUncompressedBytes": 4857522,
   "exclusions": [
-    "top title/eyebrow area <=80pt",
-    "footer area >=475pt",
-    "※ explanatory note",
+    "title/eyebrow <=80pt",
+    "footer >=475pt",
+    "※ note",
     "synthetic disclosure"
-  ],
-  "slide11IntactOfficialType": "가로주택정비"
+  ]
 }

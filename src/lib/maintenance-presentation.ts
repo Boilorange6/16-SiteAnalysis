@@ -48,6 +48,17 @@ export const MAINTENANCE_LEGAL_FOOTER = "법적 효력 없는 참고자료";
 export const SYNTHETIC_REPORT_NOTICE = "합성 구조검증 데이터 · 실데이터 아님";
 export const SYNTHETIC_BANNER_FILL = "#C4006F";
 
+export function formatMaintenanceTableName(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length < 2) return name;
+  const finalToken = parts.at(-1) ?? "";
+  return finalToken.length >= 5 ? `${parts.slice(0, -1).join(" ")}\n${finalToken}` : name;
+}
+
+export function formatReportPoiCount(pois: readonly unknown[]): string {
+  return `${pois.length.toLocaleString()}개 POI`;
+}
+
 export const MAINTENANCE_PRESENTATION_TYPOGRAPHY = {
   mapBulletPt: 14,
   insightPt: 13,

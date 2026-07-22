@@ -29,6 +29,8 @@ import {
   SYNTHETIC_BANNER_FILL,
   buildMaintenancePresentationRows,
   formatMaintenanceMapBullet,
+  formatMaintenanceTableName,
+  formatReportPoiCount,
   projectMaintenanceBoundaries,
   syntheticReportNotice,
 } from "./maintenance-presentation";
@@ -1757,7 +1759,7 @@ function renderParkAccessDetailSlide(
     drawProgressBar(ctx, 8.25, y + 0.06, 2.1, Number(value), Math.max(summary.count, 1), d.accentColor, d);
     drawTextBox(ctx, `${value}개`, ix(10.55), iy(y), ix(0.6), iy(0.26), { fontSize: 11, bold: true, color: d.textColor, align: "right" });
   });
-  drawWrappedText(ctx, "공원 경계가 있으면 외곽선 최단거리, 없으면 면적 기반 원형으로 추정합니다.", ix(6.65), iy(5.28), ix(4.65), iy(0.24), 2, { fontSize: 11, color: d.mutedTextColor });
+  drawWrappedText(ctx, "공원 경계는 외곽선 최단거리입니다.\n경계가 없으면 면적 기반 원형거리로 계산합니다.", ix(6.65), iy(5.28), ix(4.65), iy(0.48), 2, { fontSize: 11, color: d.mutedTextColor });
   drawFooterNote(ctx, `대상지: ${input.config.centerName} / 자연환경 데이터는 공공 도시공원·OSM 보조 데이터를 결합합니다.`, d);
 }
 
@@ -1798,7 +1800,7 @@ function renderDevelopmentRiskMatrixSlide(
       });
     });
     rows.forEach((row, rowIndex) => {
-      const values = [row.name, row.typeStage, row.implementer, row.households, row.areaDistance, row.boundary, row.sourceDate];
+      const values = [formatMaintenanceTableName(row.name), row.typeStage, row.implementer, row.households, row.areaDistance, row.boundary, row.sourceDate];
       columns.forEach((column, columnIndex) => {
         drawTextBox(ctx, values[columnIndex] ?? "", ix(column.x), iy(3.16 + rowIndex * 0.5), ix(column.w), iy(0.46), {
           fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.tableBodyPt,
@@ -1877,7 +1879,7 @@ function renderResidentialSupplySlide(
       const y = 5.78 + row * 0.34;
       drawTextBox(ctx, apt.move_in_month || apt.sale_date || "일정 미확인", ix(x), iy(y), ix(1.0), iy(0.26), { fontSize: 11, bold: true, color: apt.status === "planned" ? d.accentRed : d.mutedTextColor });
       drawTextBox(ctx, apt.name, ix(x + 1.08), iy(y), ix(1.85), iy(0.26), { fontSize: 11, color: d.textColor });
-      drawTextBox(ctx, `${apt.units.toLocaleString()}세대`, ix(x + 2.95), iy(y), ix(0.78), iy(0.26), { fontSize: 11, color: d.mutedTextColor, align: "right" });
+      drawTextBox(ctx, `${apt.units.toLocaleString()}세대`, ix(x + 2.95), iy(y), ix(0.95), iy(0.26), { fontSize: 11, color: d.mutedTextColor, align: "right" });
     });
   }
   drawFooterNote(ctx, `주거 공급 장표는 ${input.config.radiusKm}km 반경의 건축물대장·분양 공고 기반 데이터를 요약합니다.`, d);
@@ -2203,7 +2205,7 @@ function renderDataSourceSlide(
   generalSourceStatusLines(input.sourceStatuses ?? []).forEach((text, idx) => {
     drawTextBox(ctx, text, ix(1.0 + (idx % 2) * 5.75), iy(6.03 + Math.floor(idx / 2) * 0.27), ix(5.25), iy(0.24), { fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.statusPt, color: d.mutedTextColor });
   });
-  drawFooterNote(ctx, `${input.config.centerName} / ${input.allPois.length.toLocaleString()}개 POI 기준 자동 생성`, d, undefined, MAINTENANCE_PRESENTATION_TYPOGRAPHY.legalFooterPt);
+  drawFooterNote(ctx, `${input.config.centerName} / ${formatReportPoiCount(input.allPois)} 기준 자동 생성`, d, undefined, MAINTENANCE_PRESENTATION_TYPOGRAPHY.legalFooterPt);
 }
 
 function renderMaintenanceSourceSlide(

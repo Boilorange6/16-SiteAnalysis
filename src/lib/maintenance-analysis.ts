@@ -66,15 +66,17 @@ export function buildMaintenanceDetailLines(projects: readonly MaintenanceProjec
   const summary = summarizeMaintenanceProjects(projects);
   if (summary.count === 0) return ["반경 내 정비사업 미확인"];
 
-  const typeSummary = Object.entries(summary.typeCounts)
+  const typeParts = Object.entries(summary.typeCounts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3)
     .map(([type, count]) => `${type} ${count}건`)
-    .join(" / ");
+  const typeSummary = typeParts.length > 1
+    ? `유형: ${typeParts[0]}\n${typeParts.slice(1).join(" · ")}`
+    : typeParts.length === 1 ? `유형: ${typeParts[0]}` : "";
 
   const lines = [
     `정비사업 ${summary.count}건${summary.totalAreaSqm > 0 ? `, 총 ${formatMaintenanceArea(summary.totalAreaSqm)}` : ""}`,
-    typeSummary ? `유형: ${typeSummary}` : "유형: 미확인",
+    typeSummary || "유형: 미확인",
     `경계 확인 ${summary.boundaryConfirmedCount}건 / 미결합 ${summary.boundaryUnmatchedCount}건 / 미확인 ${summary.boundaryUnavailableCount}건`,
   ];
 

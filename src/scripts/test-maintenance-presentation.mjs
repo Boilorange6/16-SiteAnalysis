@@ -9,7 +9,9 @@ import {
   MAINTENANCE_PRESENTATION_TYPOGRAPHY,
   SYNTHETIC_REPORT_NOTICE,
   buildMaintenancePresentationRows,
+  formatMaintenanceTableName,
   formatMaintenanceMapBullet,
+  formatReportPoiCount,
   projectMaintenanceBoundaries,
   syntheticReportNotice,
 } from "../lib/maintenance-presentation.ts";
@@ -41,6 +43,11 @@ assert.deepEqual(Object.keys(row), [
 ]);
 assert.match(row.typeStage, /재개발[\s\S]*조합설립/);
 assert.match(row.typeStage, /\n/);
+assert.equal(row.name, "테스트 재개발구역");
+assert.equal(formatMaintenanceTableName("종로 가로주택정비"), "종로\n가로주택정비");
+assert.equal(formatMaintenanceTableName("서울 구조검증 홀"), "서울 구조검증 홀");
+assert.doesNotMatch(formatMaintenanceTableName("종로 가로주택정비"), /[\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/);
+assert.equal(formatReportPoiCount([project, { ...project, id: "second" }]), "2개 POI");
 assert.match(row.implementer, /조합/);
 assert.match(row.households, /1,234/);
 assert.match(row.areaDistance, /5\.0+만㎡[\s\S]*300m/);
@@ -192,6 +199,8 @@ assert.equal(projected[0].polygons.length, 1);
 assert.equal(projected[0].polygons[0].length, 2);
 assert.equal(projected[1].polygons.length, 2);
 assert.equal(projected[1].status, "unmatched");
+assert.equal(projected.filter((item) => item.status === "confirmed").flatMap((item) => item.polygons).flatMap((polygon) => polygon).length, 2);
+assert.equal(projected.filter((item) => item.status === "unmatched").flatMap((item) => item.polygons).flatMap((polygon) => polygon).length, 2);
 assert.equal(projected.flatMap((item) => item.polygons).flatMap((polygon) => polygon).every((ring) => ring.length >= 4), true);
 assert.equal(projected.flatMap((item) => item.polygons).flatMap((polygon) => polygon).flat().every((point) => Number.isFinite(point.nx) && Number.isFinite(point.ny)), true);
 
