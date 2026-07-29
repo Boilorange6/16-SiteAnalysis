@@ -145,6 +145,9 @@ for (const extension of ["shp", "shx", "dbf", "prj", "cpg", "zip", "geojson", "j
   assert.equal(isPublicMaintenanceArtifact(`spatial/LSMD_CONT_UD602_서울.${extension}`), true);
   assert.equal(isPublicMaintenanceArtifact(`spatial/LSMD_CONT_UD501_부산.${extension}`), true);
 }
+for (const filename of ["LSMD_CONT_UD602_서울.sbn", "LSMD_CONT_UD501_부산.sbx", "LSMD_CONT_UD602_서울.shp.xml", "LSMD_CONT_UD501_부산.qix"]) {
+  assert.equal(isPublicMaintenanceArtifact(`spatial/${filename}`), true);
+}
 for (const safePath of ["assets/icons/maintenance.svg", "data/osm-subway.json", "docs/UD602-guide.txt", "assets/apartment.zip"]) {
   assert.equal(isPublicMaintenanceArtifact(safePath), false);
 }
@@ -202,7 +205,7 @@ try {
   );
   await rm(join(temporaryRoot, "public/data"), { recursive: true });
 
-  const canonicalPublicArtifact = join(temporaryRoot, "public/LSMD_CONT_UD501_부산.prj");
+  const canonicalPublicArtifact = join(temporaryRoot, "public/LSMD_CONT_UD501_부산.shp.xml");
   await writeFile(canonicalPublicArtifact, "synthetic projection fixture");
   await assert.rejects(
     () => validateMaintenanceRelease({ rootDirectory: temporaryRoot, artifactDirectory }),

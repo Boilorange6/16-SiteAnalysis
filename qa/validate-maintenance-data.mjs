@@ -63,12 +63,10 @@ export function isPublicMaintenanceArtifact(relativePath) {
   const normalized = relativePath.replaceAll("\\", "/").toLowerCase();
   const deployableExtension = /\.(?:geojson|shp|shx|dbf|prj|cpg|zip|json)$/;
   const filename = normalized.split("/").at(-1) ?? normalized;
+  const canonicalBoundarySource = /^lsmd_cont_ud(?:501|602)(?:[_.-]|$)/;
   return normalized.includes("data/maintenance/")
-    || (deployableExtension.test(filename)
-      && (
-        /(?:boundaries|maintenance)/.test(filename)
-        || /^lsmd_cont_ud(?:501|602)(?:[_.-]|$)/.test(filename)
-      ));
+    || canonicalBoundarySource.test(filename)
+    || (deployableExtension.test(filename) && /(?:boundaries|maintenance)/.test(filename));
 }
 
 async function validatePublicDirectory(rootDirectory) {
