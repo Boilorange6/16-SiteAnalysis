@@ -28,8 +28,10 @@ tar czf /tmp/site-analysis-deploy.tar.gz \
   --exclude="output" \
   --exclude="qa" \
   --exclude="docs" \
+  --exclude="data/maintenance/raw" \
   --exclude="logs" \
   --exclude=".env" \
+  --exclude=".env.local" \
   --exclude="*.log" \
   --exclude="*.stackdump" \
   --exclude="tsconfig.tsbuildinfo" \
