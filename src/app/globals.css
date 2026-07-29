@@ -76,6 +76,26 @@ body {
   display: none !important;
 }
 
+.maintenance-boundary-label {
+  max-width: 168px;
+  padding: 3px 5px !important;
+  border: 1px solid rgba(236, 72, 153, 0.78) !important;
+  border-radius: 4px !important;
+  background: rgba(15, 23, 42, 0.86) !important;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.35) !important;
+  color: #fbcfe8 !important;
+  font-family: "Pretendard", "Noto Sans KR", sans-serif !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  line-height: 1.25 !important;
+  text-align: center;
+  white-space: normal;
+}
+
+.maintenance-boundary-label::before {
+  display: none !important;
+}
+
 .site-subway-station-wrap,
 .site-subway-line-label-wrap,
 .site-subway-entrance-wrap {

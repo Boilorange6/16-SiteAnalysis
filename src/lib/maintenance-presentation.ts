@@ -30,6 +30,8 @@ export interface ProjectedMaintenancePoint {
 export interface ProjectedMaintenanceBoundary {
   readonly projectId: string;
   readonly status: "confirmed" | "unmatched";
+  readonly label: string;
+  readonly labelPoint: ProjectedMaintenancePoint;
   readonly polygons: readonly (readonly (readonly ProjectedMaintenancePoint[])[])[];
 }
 
@@ -47,6 +49,15 @@ export const MAINTENANCE_BOUNDARY_LEGEND = "공식 정비구역 경계 · 참고
 export const MAINTENANCE_LEGAL_FOOTER = "법적 효력 없는 참고자료";
 export const SYNTHETIC_REPORT_NOTICE = "합성 구조검증 데이터 · 실데이터 아님";
 export const SYNTHETIC_BANNER_FILL = "#C4006F";
+
+export function maintenanceBoundaryInfoLabel(project: MaintenanceProject): string {
+  const sourceDate = project.source_updated_at || project.boundary_retrieved_at || "미확인";
+  return `단계: ${project.stage} · 기준일: ${sourceDate}`;
+}
+
+export function compactMaintenanceBoundaryLabel(label: string): string {
+  return label.replace(/^단계:\s*/u, "").replace(/\s*·\s*기준일:\s*/u, " · ");
+}
 
 export function formatMaintenanceTableName(name: string): string {
   const parts = name.trim().split(/\s+/);
@@ -221,6 +232,14 @@ function projectBoundaryPoint(
   };
 }
 
+function averageProjectedPoints(points: readonly ProjectedMaintenancePoint[]): ProjectedMaintenancePoint {
+  if (points.length === 0) return { nx: 0.5, ny: 0.5 };
+  return {
+    nx: points.reduce((sum, point) => sum + point.nx, 0) / points.length,
+    ny: points.reduce((sum, point) => sum + point.ny, 0) / points.length,
+  };
+}
+
 export function projectMaintenanceBoundaries(
   projects: readonly MaintenanceProject[],
   config: AnalysisConfig,
@@ -252,11 +271,15 @@ export function projectMaintenanceBoundaries(
     const polygons = project.boundary.type === "Polygon"
       ? [project.boundary.coordinates]
       : project.boundary.coordinates;
+    const projectedPolygons = polygons.map((polygon) =>
+      polygon.map((ring) => ring.map((coordinate) => projectBoundaryPoint(coordinate, projection))));
+    const labelPoint = averageProjectedPoints(projectedPolygons[0]?.[0] ?? []);
     projected.push({
       projectId: project.id,
       status: project.boundary_status,
-      polygons: polygons.map((polygon) =>
-        polygon.map((ring) => ring.map((coordinate) => projectBoundaryPoint(coordinate, projection)))),
+      label: maintenanceBoundaryInfoLabel(project),
+      labelPoint,
+      polygons: projectedPolygons,
     });
   }
   return projected;

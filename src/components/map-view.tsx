@@ -22,8 +22,10 @@ import { formatAreaSqm, formatDistanceM } from "@/lib/park-analysis";
 import {
   boundaryToLeafletLatLngs,
   buildMaintenancePopupHtml,
+  escapeMaintenanceHtml,
   maintenanceBoundaryLabel,
 } from "@/lib/maintenance-map-utils";
+import { maintenanceBoundaryInfoLabel } from "@/lib/maintenance-presentation";
 import {
   findStationRoutes,
   createClusterIcon,
@@ -1059,7 +1061,15 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
         fillOpacity: project.boundary_status === "confirmed" ? 0.16 : 0.08,
         opacity: project.boundary_status === "confirmed" ? 0.85 : 0.72,
         dashArray: project.boundary_status === "unmatched" ? "7 5" : undefined,
-      }).bindPopup(buildMaintenancePopupHtml(project), { maxWidth: 320 });
+      })
+        .bindPopup(buildMaintenancePopupHtml(project), { maxWidth: 320 })
+        .bindTooltip(escapeMaintenanceHtml(maintenanceBoundaryInfoLabel(project)), {
+          permanent: true,
+          direction: "center",
+          className: "maintenance-boundary-label",
+          interactive: false,
+          opacity: 0.96,
+        });
       setMaintenanceBoundaryAccessibility(boundaryLayer, project);
       markersLayer.addLayer(boundaryLayer);
     }

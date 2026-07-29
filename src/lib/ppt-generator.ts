@@ -27,6 +27,7 @@ import {
   MAINTENANCE_PRESENTATION_TYPOGRAPHY,
   SYNTHETIC_BANNER_FILL,
   buildMaintenancePresentationRows,
+  compactMaintenanceBoundaryLabel,
   formatMaintenanceMapBullet,
   formatMaintenanceTableName,
   formatReportPoiCount,
@@ -1970,6 +1971,27 @@ function addMaintenanceBoundaries(
           objectName: `MAINTENANCE_BOUNDARY|${boundary.projectId}|${polygonIndex}|${ringIndex}`,
         });
       });
+    });
+    const labelWidth = 1.65;
+    const labelHeight = 0.24;
+    const labelX = Math.min(Math.max(boundary.labelPoint.nx * SLIDE_W - labelWidth / 2, 0.04), SLIDE_W - labelWidth - 0.04);
+    const labelY = Math.min(Math.max(boundary.labelPoint.ny * SLIDE_H - labelHeight / 2, 0.04), SLIDE_H - labelHeight - 0.04);
+    slide.addText(compactMaintenanceBoundaryLabel(boundary.label), {
+      x: labelX,
+      y: labelY,
+      w: labelWidth,
+      h: labelHeight,
+      fontSize: 7.2,
+      fontFace: FONT_MAIN,
+      bold: true,
+      color: "FBCFE8",
+      align: "center",
+      valign: "middle",
+      fit: "shrink",
+      margin: 0.02,
+      fill: { color: "0F172A", transparency: 18 },
+      line: { color: pptColor(d.categoryColors.maintenance), transparency: 12, width: 0.6 },
+      objectName: `MAINTENANCE_BOUNDARY_LABEL|${boundary.projectId}`,
     });
   }
 }

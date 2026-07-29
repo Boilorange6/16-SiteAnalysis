@@ -9,9 +9,11 @@ import {
   MAINTENANCE_PRESENTATION_TYPOGRAPHY,
   SYNTHETIC_REPORT_NOTICE,
   buildMaintenancePresentationRows,
+  compactMaintenanceBoundaryLabel,
   formatMaintenanceTableName,
   formatMaintenanceMapBullet,
   formatReportPoiCount,
+  maintenanceBoundaryInfoLabel,
   projectMaintenanceBoundaries,
   syntheticReportNotice,
 } from "../lib/maintenance-presentation.ts";
@@ -62,6 +64,16 @@ assert.match(row.areaDistance, /5\.0+만㎡[\s\S]*300m/);
 assert.equal(row.boundary, "경계 확인");
 assert.match(row.sourceDate, /국토부[\s\S]*2026-07-20/);
 assert.match(row.sourceDate, /\n/);
+assert.equal(maintenanceBoundaryInfoLabel(project), "단계: 조합설립 · 기준일: 2026-07-20");
+assert.equal(compactMaintenanceBoundaryLabel("단계: 조합설립 · 기준일: 2026-07-20"), "조합설립 · 2026-07-20");
+assert.equal(
+  maintenanceBoundaryInfoLabel({ ...project, source_updated_at: undefined, boundary_retrieved_at: "2026-07-22" }),
+  "단계: 조합설립 · 기준일: 2026-07-22",
+);
+assert.equal(
+  maintenanceBoundaryInfoLabel({ ...project, source_updated_at: undefined, boundary_retrieved_at: undefined }),
+  "단계: 조합설립 · 기준일: 미확인",
+);
 
 assert.deepEqual(MAINTENANCE_PRESENTATION_COLUMNS, [
   "구역명", "유형·단계", "시행자", "예정세대수", "면적·거리", "경계", "출처·기준일",
@@ -243,6 +255,9 @@ const projected = projectMaintenanceBoundaries([
 ], projectionConfig, radiusPosition);
 assert.equal(projected.length, 2);
 assert.equal(projected[0].polygons.length, 1);
+assert.equal(projected[0].label, "단계: 조합설립 · 기준일: 2026-07-20");
+assert.equal(Number.isFinite(projected[0].labelPoint.nx), true);
+assert.equal(Number.isFinite(projected[0].labelPoint.ny), true);
 assert.equal(projected[0].polygons[0].length, 2);
 assert.equal(projected[1].polygons.length, 2);
 assert.equal(projected[1].status, "unmatched");

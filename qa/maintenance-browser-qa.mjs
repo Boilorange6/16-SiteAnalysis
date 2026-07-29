@@ -119,6 +119,10 @@ async function runLocation(browser, location, viewport) {
   if (viewport.width >= 1024) {
     const maintenancePath = page.locator('.leaflet-overlay-pane path[stroke="#EC4899"]').first();
     await maintenancePath.waitFor({ state: "visible" });
+    const maintenanceLabel = page.locator(".maintenance-boundary-label").first();
+    await maintenanceLabel.waitFor({ state: "visible" });
+    assert.match(await maintenanceLabel.innerText(), /단계: (조합설립|사업시행인가)/, `${location.slug} boundary stage label missing`);
+    assert.match(await maintenanceLabel.innerText(), /기준일: 2026-07-18/, `${location.slug} boundary source date label missing`);
     assert.equal(await page.locator(".maintenance-boundary").count(), 1, `${location.slug} rendered an extra maintenance polygon`);
     assert.equal(await page.locator('[data-poi-category="maintenance"][data-boundary-status="unavailable"]').count(), 1, `${location.slug} unavailable maintenance point marker missing`);
     if (location.slug === "busan") assert.equal(await maintenancePath.getAttribute("stroke-dasharray"), "7 5");

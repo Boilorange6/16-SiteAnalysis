@@ -28,6 +28,7 @@ import {
   MAINTENANCE_PRESENTATION_TYPOGRAPHY,
   SYNTHETIC_BANNER_FILL,
   buildMaintenancePresentationRows,
+  compactMaintenanceBoundaryLabel,
   formatMaintenanceMapBullet,
   formatMaintenanceTableName,
   formatReportPoiCount,
@@ -1471,6 +1472,30 @@ function drawMaintenanceBoundaries(
       }
       ctx.stroke();
     }
+  }
+  const labelWidth = ix(1.65);
+  const labelHeight = iy(0.24);
+  for (const boundary of boundaries) {
+    const labelX = Math.min(Math.max(boundary.labelPoint.nx * CANVAS_W - labelWidth / 2, 4), CANVAS_W - labelWidth - 4);
+    const labelY = Math.min(Math.max(boundary.labelPoint.ny * CANVAS_H - labelHeight / 2, 4), CANVAS_H - labelHeight - 4);
+    drawRoundedRect(
+      ctx,
+      labelX,
+      labelY,
+      labelWidth,
+      labelHeight,
+      ix(0.03),
+      hexRgba("#0F172A", 18),
+      hexRgba(d.categoryColors.maintenance, 12),
+      1,
+    );
+    drawTextBox(ctx, compactMaintenanceBoundaryLabel(boundary.label), labelX, labelY, labelWidth, labelHeight, {
+      fontSize: 7.2,
+      bold: true,
+      color: "#FBCFE8",
+      align: "center",
+      valign: "middle",
+    });
   }
   ctx.restore();
 }
