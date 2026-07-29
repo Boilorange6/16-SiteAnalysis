@@ -59,14 +59,22 @@ function assertIgnored(rootDirectory, path) {
   }
 }
 
+export function isPublicMaintenanceArtifact(relativePath) {
+  const normalized = relativePath.replaceAll("\\", "/").toLowerCase();
+  const deployableExtension = /\.(?:geojson|shp|shx|dbf|prj|cpg|zip|json)$/;
+  const filename = normalized.split("/").at(-1) ?? normalized;
+  return normalized.includes("data/maintenance/")
+    || (deployableExtension.test(filename)
+      && (
+        /(?:boundaries|maintenance)/.test(filename)
+        || /^lsmd_cont_ud(?:501|602)(?:[_.-]|$)/.test(filename)
+      ));
+}
+
 async function validatePublicDirectory(rootDirectory) {
   const publicDirectory = join(rootDirectory, "public");
   const files = await listFiles(publicDirectory);
-  const artifact = files.find((path) => {
-    const normalized = relative(publicDirectory, path).replaceAll("\\", "/").toLowerCase();
-    return normalized.includes("data/maintenance/")
-      || /(?:boundaries|maintenance).*(?:\.geojson|\.shp|\.zip|\.meta\.json|\.quarantine\.json)$/.test(normalized);
-  });
+  const artifact = files.find((path) => isPublicMaintenanceArtifact(relative(publicDirectory, path)));
   if (artifact) {
     throw new MaintenanceDataValidationError("PUBLIC_ARTIFACT", `Maintenance artifact must not exist under public/: ${relative(rootDirectory, artifact)}`);
   }
@@ -74,7 +82,12 @@ async function validatePublicDirectory(rootDirectory) {
 
 async function validateClientSources(rootDirectory) {
   const secretValues = [process.env.DATA_GO_KR_API_KEY, process.env.SEOUL_OPEN_API_KEY].filter(Boolean);
-  const sourceRoots = [join(rootDirectory, "src/components"), join(rootDirectory, "src/app"), join(rootDirectory, "src/lib")];
+  const sourceRoots = [
+    join(rootDirectory, "src/components"),
+    join(rootDirectory, "src/app"),
+    join(rootDirectory, "src/lib"),
+    join(rootDirectory, "src/providers"),
+  ];
   for (const sourceRoot of sourceRoots) {
     for (const path of await listFiles(sourceRoot)) {
       if (![".js", ".jsx", ".mjs", ".ts", ".tsx"].includes(extname(path))) continue;
