@@ -37,7 +37,7 @@ const propertiesSchema = z.object({
   area_sqm: z.number().finite().optional(),
   designation_date: z.string().optional(),
   notice_ids: z.array(z.string()),
-  original_crs: z.union([z.literal("EPSG:5186"), z.literal("EPSG:2097")]),
+  original_crs: z.union([z.literal("EPSG:5186"), z.literal("EPSG:2097"), z.literal("EPSG:5174")]),
   source_url: z.string().min(1),
   source_updated_at: z.string().optional(),
   retrieved_at: z.string().min(1),

@@ -27,9 +27,12 @@ const source = {
 // Then: only supported EPSG codes are accepted.
 const canonical5186 = 'PROJCS["KGD2002_Central_Belt_2010",GEOGCS["GCS_Korean_Geodetic_Datum_2002",DATUM["D_Korean_Geodetic_Datum_2002",SPHEROID["GRS_1980",6378137,298.257222101]],PROJECTION["Transverse_Mercator"],PARAMETER["False_Easting",200000],PARAMETER["False_Northing",600000],PARAMETER["Central_Meridian",127],PARAMETER["Scale_Factor",1],PARAMETER["Latitude_Of_Origin",38],UNIT["Meter",1],AUTHORITY["EPSG","5186"]]';
 const canonical2097 = 'PROJCS["Korean_1985_Central_Belt",GEOGCS["GCS_Korean_Datum_1985",DATUM["D_Korean_Datum_1985",SPHEROID["Bessel_1841",6377397.155,299.1528128]],PROJECTION["Transverse_Mercator"],PARAMETER["False_Easting",200000],PARAMETER["False_Northing",500000],PARAMETER["Central_Meridian",127.002890277778],PARAMETER["Scale_Factor",1],PARAMETER["Latitude_Of_Origin",38],UNIT["Meter",1],AUTHORITY["EPSG","2097"]]';
+const canonical5174 = 'PROJCS["Korean 1985 / Modified Central Belt",GEOGCS["Korean 1985",DATUM["Korean_Datum_1985",SPHEROID["Bessel 1841",6377397.155,299.1528128,AUTHORITY["EPSG","7004"]],AUTHORITY["EPSG","6162"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",38],PARAMETER["central_meridian",127.002890277778],PARAMETER["scale_factor",1],PARAMETER["false_easting",200000],PARAMETER["false_northing",500000],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AUTHORITY["EPSG","5174"]]';
 assert.equal(identifySupportedCrs(canonical5186), "EPSG:5186");
 assert.equal(identifySupportedCrs(canonical2097), "EPSG:2097");
+assert.equal(identifySupportedCrs(canonical5174), "EPSG:5174");
 assert.equal(identifySupportedCrs("EPSG:5186"), "EPSG:5186");
+assert.equal(identifySupportedCrs("EPSG:5174"), "EPSG:5174");
 assert.throws(() => identifySupportedCrs(canonical5186.replace('PARAMETER["False_Northing",600000]', 'PARAMETER["False_Northing",500000]')), /Unsupported CRS/);
 assert.throws(() => identifySupportedCrs(canonical2097.replace('SPHEROID["Bessel_1841",6377397.155,299.1528128]', 'SPHEROID["GRS_1980",6378137,298.257222101]')), /Unsupported CRS/);
 assert.throws(() => identifySupportedCrs('PROJCS["Unknown local grid"]'), /Unsupported CRS/);

@@ -7,7 +7,7 @@ import {
 
 const KOREA_BOUNDS = Object.freeze({ west: 124, south: 33, east: 132, north: 39.5 });
 const DATASET_LAYERS = Object.freeze({ "30335": "UD602", "30336": "UD501" });
-const ORIGINAL_CRS = new Set(["EPSG:5186", "EPSG:2097"]);
+const ORIGINAL_CRS = new Set(["EPSG:5186", "EPSG:2097", "EPSG:5174"]);
 
 export class MaintenanceDataValidationError extends Error {
   constructor(code, message, options) {

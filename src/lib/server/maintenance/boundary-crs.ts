@@ -1,14 +1,15 @@
-export type SupportedCrs = "EPSG:5186" | "EPSG:2097";
+export type SupportedCrs = "EPSG:5186" | "EPSG:2097" | "EPSG:5174";
 
 export const PROJ4_DEFINITIONS = {
   "EPSG:5186": "+proj=tmerc +lat_0=38 +lon_0=127 +k=1 +x_0=200000 +y_0=600000 +ellps=GRS80 +units=m +no_defs",
   "EPSG:2097": "+proj=tmerc +lat_0=38 +lon_0=127.002890277778 +k=1 +x_0=200000 +y_0=500000 +ellps=bessel +towgs84=-146.43,507.89,681.46 +units=m +no_defs",
+  "EPSG:5174": "+proj=tmerc +lat_0=38 +lon_0=127.002890277778 +k=1 +x_0=200000 +y_0=500000 +ellps=bessel +towgs84=-146.43,507.89,681.46 +units=m +no_defs",
 } as const satisfies Readonly<Record<SupportedCrs, string>>;
 
 export class UnsupportedCrsError extends Error {
   readonly name = "UnsupportedCrsError";
   constructor() {
-    super("Unsupported CRS: only verified EPSG:5186 and EPSG:2097 definitions are accepted");
+    super("Unsupported CRS: only verified EPSG:5186, EPSG:2097, and EPSG:5174 definitions are accepted");
   }
 }
 
@@ -37,6 +38,16 @@ const DEFINITIONS: readonly CrsDefinition[] = [
   {
     crs: "EPSG:2097",
     titleSignatures: ["KOREAN 1985 CENTRAL BELT", "KOREA 1985 CENTRAL BELT"],
+    datumSignatures: ["KOREAN DATUM 1985", "KOREAN 1985", "KOREA 1985"],
+    spheroidSignatures: ["BESSEL 1841", "BESSEL"],
+    semiMajor: 6377397.155,
+    inverseFlattening: 299.1528128,
+    centralMeridian: 127.002890277778,
+    falseNorthing: 500000,
+  },
+  {
+    crs: "EPSG:5174",
+    titleSignatures: ["KOREAN 1985 / MODIFIED CENTRAL BELT"],
     datumSignatures: ["KOREAN DATUM 1985", "KOREAN 1985", "KOREA 1985"],
     spheroidSignatures: ["BESSEL 1841", "BESSEL"],
     semiMajor: 6377397.155,
@@ -87,6 +98,7 @@ export function identifySupportedCrs(input: string): SupportedCrs {
   const normalized = input.trim().toUpperCase().replaceAll("_", " ").replaceAll(/\s+/g, " ");
   if (/^EPSG\s*:\s*5186$/.test(normalized)) return "EPSG:5186";
   if (/^EPSG\s*:\s*2097$/.test(normalized)) return "EPSG:2097";
+  if (/^EPSG\s*:\s*5174$/.test(normalized)) return "EPSG:5174";
   const definition = DEFINITIONS.find((candidate) => matchesDefinition(normalized, candidate));
   if (definition) return definition.crs;
   throw new UnsupportedCrsError();
