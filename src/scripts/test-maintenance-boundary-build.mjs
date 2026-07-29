@@ -33,6 +33,21 @@ assert.equal(identifySupportedCrs(canonical2097), "EPSG:2097");
 assert.equal(identifySupportedCrs(canonical5174), "EPSG:5174");
 assert.equal(identifySupportedCrs("EPSG:5186"), "EPSG:5186");
 assert.equal(identifySupportedCrs("EPSG:5174"), "EPSG:5174");
+const officialFieldResult = transformBoundaryFeature(
+  {
+    geometry: {
+      type: "Polygon",
+      coordinates: [[[200000, 500000], [200100, 500000], [200100, 500100], [200000, 500000]]],
+    },
+    properties: { MNUM: "official-1", REMARK: "효제1구역", NTFDATE: "20260122" },
+  },
+  "EPSG:5174",
+  { ...source, sourceDatasetId: "30335", sourceLayer: "UD602" },
+);
+assert.equal(officialFieldResult.quarantine, null);
+assert.equal(officialFieldResult.feature.properties.source_feature_id, "official-1");
+assert.equal(officialFieldResult.feature.properties.name, "효제1구역");
+assert.equal(officialFieldResult.feature.properties.designation_date, "20260122");
 assert.throws(() => identifySupportedCrs(canonical5186.replace('PARAMETER["False_Northing",600000]', 'PARAMETER["False_Northing",500000]')), /Unsupported CRS/);
 assert.throws(() => identifySupportedCrs(canonical2097.replace('SPHEROID["Bessel_1841",6377397.155,299.1528128]', 'SPHEROID["GRS_1980",6378137,298.257222101]')), /Unsupported CRS/);
 assert.throws(() => identifySupportedCrs('PROJCS["Unknown local grid"]'), /Unsupported CRS/);

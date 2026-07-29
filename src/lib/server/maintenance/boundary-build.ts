@@ -117,12 +117,12 @@ export function validateArchiveMembers(memberNames: readonly string[]): readonly
 }
 
 const ALIASES = {
-  id: ["ID", "MGT_NO", "MGM_NO", "OBJECTID", "FID"],
-  name: ["NAME", "ZONE_NM", "AREA_NM", "DGM_NM", "BSNS_NM"],
+  id: ["ID", "MGT_NO", "MGM_NO", "MNUM", "OBJECTID", "FID"],
+  name: ["NAME", "ZONE_NM", "AREA_NM", "DGM_NM", "BSNS_NM", "REMARK", "ALIAS"],
   sido: ["SIDO", "SIDO_NM", "CTP_KOR_NM"],
   sigungu: ["SIGUNGU", "SIGUNGU_NM", "SIG_KOR_NM"],
   area: ["AREA", "AREA_SQM", "SHAPE_AREA"],
-  date: ["DESIGNATION_DATE", "DGM_YMD", "NTFC_DE"],
+  date: ["DESIGNATION_DATE", "DGM_YMD", "NTFC_DE", "NTFDATE"],
   notice: ["NOTICE_ID", "NTFC_NO", "PBLANC_NO"],
 } as const;
 
