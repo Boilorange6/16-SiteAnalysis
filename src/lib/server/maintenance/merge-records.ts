@@ -55,6 +55,22 @@ function nameText(value: string): string {
   return comparisonText(value).replace(/(?:정비구역|재개발구역|재건축구역)$/u, "");
 }
 
+function matchingNameText(value: string): string {
+  return nameText(value.replace(/\([^)]*\)|\[[^\]]*\]/gu, "").split(/\r?\n/u)[0] ?? "");
+}
+
+const NON_IDENTITY_NAME = /^(?:주택|도시|환경|재개발|재건축|재정비|정비|구역|사업|지구|촉진|아파트|현황|변경|결정|사항|별도확인|문의)+$/u;
+const DOMAIN_NAME_SUFFIX = /^(?:(?:주택|도시|환경|재개발|재건축|재정비|정비|구역|사업|지구|촉진|아파트|현황|변경|결정|사항|별도확인|문의|주거환경개선|주거환경정비|도시환경|도시정비형|주택정비형|공공재개발|장기전세주택|정비계획|지구단위계획|관리형|성곽마을)|\d{8})*$/u;
+
+function boundaryNameCompatible(boundaryName: string, attributeName: string): boolean {
+  const boundary = matchingNameText(boundaryName);
+  const attribute = matchingNameText(attributeName);
+  if (!boundary || attribute.length < 3 || NON_IDENTITY_NAME.test(attribute)) return false;
+  if (boundary === attribute) return true;
+  if (!boundary.startsWith(attribute)) return false;
+  return DOMAIN_NAME_SUFFIX.test(boundary.slice(attribute.length));
+}
+
 function recordKey(record: MaintenanceMergeRecord): string {
   return `${comparisonText(record.sido)}|${comparisonText(record.sigungu)}|${nameText(record.name)}`;
 }
@@ -85,8 +101,11 @@ function pairCompatibility(
   left: Pick<MaintenanceMergeRecord, "sido" | "sigungu" | "area_sqm" | "designation_date" | "source_updated_at">,
   right: Pick<MaintenanceMergeRecord, "sido" | "sigungu" | "area_sqm" | "designation_date" | "source_updated_at">,
 ): CompatibilityReason | undefined {
-  if (comparisonText(left.sido) !== comparisonText(right.sido)
-    || comparisonText(left.sigungu) !== comparisonText(right.sigungu)) return "admin_mismatch";
+  const rightSido = comparisonText(right.sido);
+  const rightSigungu = comparisonText(right.sigungu);
+  const rightAdministrationKnown = rightSido.length > 0 && rightSigungu.length > 0;
+  if (rightAdministrationKnown && (comparisonText(left.sido) !== rightSido
+    || comparisonText(left.sigungu) !== rightSigungu)) return "admin_mismatch";
   if (left.area_sqm !== undefined && right.area_sqm !== undefined) {
     const maximum = Math.max(Math.abs(left.area_sqm), Math.abs(right.area_sqm));
     if (maximum > 0 && Math.abs(left.area_sqm - right.area_sqm) / maximum > 0.05) return "area_mismatch";
@@ -156,11 +175,21 @@ function boundaryCandidates(
   const normalizedKey = `${comparisonText(boundary.properties.sido ?? "")}|${comparisonText(boundary.properties.sigungu ?? "")}|${normalizedName}`;
   const sameName = groups.map((group, groupIndex) => ({ group, groupIndex })).filter(({ group }) => group.nameKey === normalizedName);
   const sameAdmin = sameName.filter(({ group }) => group.key === normalizedKey);
+  const boundaryAdministrationUnknown = comparisonText(boundary.properties.sido ?? "").length === 0
+    || comparisonText(boundary.properties.sigungu ?? "").length === 0;
+  const fuzzyName = groups.map((group, groupIndex) => ({ group, groupIndex })).filter(({ group }) =>
+    group.records.some((record) => boundaryNameCompatible(boundary.properties.name ?? "", record.name)));
   if (exact.length === 0 && sameAdmin.length > 0
     && (sameAdmin.length !== 1 || normalizedBoundaryNameCount !== 1)) {
     return { compatibleGroupIndexes: [], failure: { reason: "ambiguous" } };
   }
-  const structural = exact.length > 0 ? exact : sameAdmin;
+  const structural = exact.length > 0
+    ? exact
+    : sameAdmin.length > 0
+      ? sameAdmin
+      : boundaryAdministrationUnknown && normalizedBoundaryNameCount === 1 && fuzzyName.length === 1
+        ? fuzzyName
+        : [];
   const compatibleGroupIndexes: number[] = [];
   let failure: CandidateFailure | undefined;
   for (const candidate of structural) {
@@ -174,6 +203,9 @@ function boundaryCandidates(
   if (structural.length === 0 && sameName.length > 0) {
     const record = sameName[0]?.group.records[0];
     if (record) failure = { reason: "admin_mismatch", attributeId: record.source_record_id };
+  }
+  if (structural.length === 0 && sameName.length === 0 && fuzzyName.length > 1) {
+    failure = { reason: "ambiguous" };
   }
   return { compatibleGroupIndexes, ...(failure ? { failure } : {}) };
 }

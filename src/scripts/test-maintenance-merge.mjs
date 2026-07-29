@@ -277,4 +277,68 @@ function merge(overrides = {}) {
   assert.equal(result.catalog.length, 1);
 }
 
+// Given a boundary without administrative names and a domain suffix / When the boundary name safely extends one attribute name / Then it confirms.
+{
+  const result = merge({
+    attributes: [attribute({
+      source_record_id: "PREFIX-1", sido: "부산광역시", sigungu: "영도구", name: "청학2", area_sqm: undefined,
+    })],
+    boundaries: [boundary({
+      source_feature_id: "PREFIX-BOUNDARY-1", name: "청학2재개발정비구역", sido: undefined, sigungu: undefined,
+      area_sqm: undefined,
+    })],
+    selectedRegions: [{ sido: "부산광역시", sigungu: "영도구" }],
+  });
+  assert.equal(result.projects[0]?.boundary_status, "confirmed");
+  assert.equal(result.projects[0]?.name, "청학2");
+  assert.equal(result.catalog.length, 0);
+}
+
+// Given the same safe prefix in two administrative regions / When boundary administration is unknown / Then the fallback remains ambiguous.
+{
+  const result = merge({
+    attributes: [
+      attribute({ source_record_id: "PREFIX-A", sido: "부산광역시", sigungu: "영도구", name: "청학2", area_sqm: undefined }),
+      attribute({ source_record_id: "PREFIX-B", sido: "부산광역시", sigungu: "금정구", name: "청학2", area_sqm: undefined }),
+    ],
+    boundaries: [boundary({
+      source_feature_id: "PREFIX-BOUNDARY-AMBIGUOUS", name: "청학2재개발정비구역", sido: undefined, sigungu: undefined,
+      area_sqm: undefined,
+    })],
+    selectedRegions: [
+      { sido: "부산광역시", sigungu: "영도구" },
+      { sido: "부산광역시", sigungu: "금정구" },
+    ],
+  });
+  assert.equal(result.projects[0]?.boundary_status, "unmatched");
+  assert.equal(result.diagnostics.some(({ reason }) => reason === "ambiguous"), true);
+  assert.equal(result.catalog.length, 2);
+}
+
+// Given legal commentary in parentheses and a parenthesized attribute alias / When matching names are cleaned / Then the project confirms.
+{
+  const result = merge({
+    attributes: [attribute({ source_record_id: "CLEAN-1", sido: "부산광역시", sigungu: "부산진구", name: "범천4", area_sqm: undefined })],
+    boundaries: [boundary({
+      source_feature_id: "CLEAN-BOUNDARY-1", name: "범천4(도시재개발법→도시및주거환경정비법)", sido: undefined,
+      sigungu: undefined, area_sqm: undefined,
+    })],
+    selectedRegions: [{ sido: "부산광역시", sigungu: "부산진구" }],
+  });
+  assert.equal(result.projects[0]?.boundary_status, "confirmed");
+}
+
+// Given a legal suffix with a parenthesized apartment alias / When matching names are cleaned / Then the project confirms.
+{
+  const result = merge({
+    attributes: [attribute({ source_record_id: "CLEAN-2", sido: "부산광역시", sigungu: "연제구", name: "연산6(한양5차아파트)", area_sqm: undefined })],
+    boundaries: [boundary({
+      source_feature_id: "CLEAN-BOUNDARY-2", name: "연산6주택재개발 정비구역", sido: undefined,
+      sigungu: undefined, area_sqm: undefined,
+    })],
+    selectedRegions: [{ sido: "부산광역시", sigungu: "연제구" }],
+  });
+  assert.equal(result.projects[0]?.boundary_status, "confirmed");
+}
+
 console.log("maintenance merge: ok");
