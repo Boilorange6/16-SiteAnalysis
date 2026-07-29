@@ -1,15 +1,18 @@
 # Task 9 Implementation Report
 
-Date: 2026-07-22 (Asia/Seoul)
+Date: 2026-07-22; final review fixes verified 2026-07-29 (Asia/Seoul)
 
 Commits:
 
 - `9b540f7` — `test: 정비사업 데이터 릴리스 검증 추가`
 - `6683345` — `docs: 전국 정비사업 실원천 QA 상태 기록`
+- `3455f99` — `docs: 정비사업 Task 9 검증 보고서 추가`
+- `2a12e09` — `fix: 릴리스 검증기 생산 계약 일치`
 
 ## Delivered
 
-- Strict release validator for schema v1, positive output, reconciled input/output/quarantine counts, Korea WGS84 metadata/feature bbox and every coordinate, feature provenance, public artifact exclusion, ignored raw/processed paths, empty `git ls-files data/maintenance`, and client key/direct keyed-call exclusion.
+- Strict release validator for schema v1, positive output, reconciled input/output/quarantine counts, Korea WGS84 metadata/feature bbox and every coordinate, dataset/layer/CRS pairing, production-compatible properties, closed and Turf-valid Polygon/MultiPolygon geometry, feature/collection bbox reconciliation, public artifact exclusion, ignored raw/processed paths, empty `git ls-files data/maintenance`, and client key/direct keyed-call exclusion.
+- Final review hardening blocks canonical `LSMD_CONT_UD501/UD602` SHP sidecars and archives under `public/`, and includes `src/providers` in client secret scanning.
 - Offline `test:maintenance` gate uses a conspicuously labeled synthetic structural fixture. `qa:maintenance:release` remains strict against `data/maintenance/processed` and fails when the licensed artifact is absent.
 - Failure-mode QA for missing key, missing/malformed artifact, stale attribute cache with synthetic 403, missing Seoul key/no sample, and >20% replacement guard.
 - Seoul/Busan transport failures now throw `RegionalProviderRequestError` without retaining request URLs or keys in `message`/`stack`; synthetic sentinel regressions cover both providers.
@@ -100,9 +103,9 @@ During the Busan live check, ky's unhandled transport exception printed a keyed 
 
 | File | SHA-256 | Pure / total LOC |
 |---|---|---:|
-| `qa/maintenance-data-validation.mjs` | `7be601ea25f0cd84902d9e44d18a189f45e0a56309526d7172e9568483072159` | 119 / 131 |
-| `qa/validate-maintenance-data.mjs` | `3337939ca44a40f89b0f52060d294a75a3723dbc2317a6b77b53b3da4c697316` | 108 / 119 |
-| `qa/test-validate-maintenance-data.mjs` | `61d5f00b09ab02534a8da41fc4b519a071fb837e505a8b7f156543ece66c5568` | 132 / 157 |
+| `qa/maintenance-data-validation.mjs` | `25ed4c8927e2ec263eb4cb7fd1b2da6e3345a5ddfb6fd56860b04fbfc4c3f360` | 191 / 207 |
+| `qa/validate-maintenance-data.mjs` | `8da81acd2a7cbd7f944bde75701fc9b9a4ca63e924f6d55187e632ba3956fbe2` | 120 / 132 |
+| `qa/test-validate-maintenance-data.mjs` | `1237b7af6aaa5bf65ac65ff9602f9a5059eeeafe3eed0dda4374402d6e976d53` | 199 / 233 |
 | `qa/test-maintenance-failure-modes.mjs` | `48255f6d5de169a38f47803af7162a1ca51a9bb5f14279442b8543fb210b6cce` | 53 / 64 |
 | `src/lib/server/maintenance/regional-provider.ts` | `905fd0ffef2072616b8248c115e210e9b69d489315af88fc52ae526ede60c43d` | 219 / 239 |
 | `src/scripts/test-maintenance-orchestration.mjs` | `46a8c99e7e5a3cf0c3838b57d500974842f21de8bca2f4a3b9c4b3bc729b530a` | 240 / 261 |
