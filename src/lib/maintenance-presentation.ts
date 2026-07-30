@@ -176,7 +176,7 @@ function toPresentationRow(project: MaintenanceProject): MaintenancePresentation
   const sourceDate = project.source_updated_at ?? project.boundary_retrieved_at ?? "기준일 미확인";
   return {
     name: project.name,
-    typeStage: `${project.type || "유형 미확인"}\n${project.stage}`,
+    typeStage: `${project.type || "유형 미확인"}\n${project.stage_detail ?? project.stage}`,
     implementer: project.implementer || "미확인",
     households: formatHouseholds(project.planned_households),
     areaDistance: formatAreaDistance(project),

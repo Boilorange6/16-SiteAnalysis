@@ -17,6 +17,17 @@ export function formatTradePrice(manwon: number): string {
   return `${manwon.toLocaleString()}만`;
 }
 
+/** PPT 표 셀용 축약 — "22.5억(26.06)" / 거래 없으면 "무거래" */
+export function formatComplexTradeCell(summary: RecentTradeSummary | undefined): string {
+  if (!summary) return "무거래";
+  const eokValue = summary.latest_price_manwon / 10_000;
+  const price = eokValue >= 1
+    ? `${(Math.round(eokValue * 10) / 10).toString().replace(/\.0$/, "")}억`
+    : `${summary.latest_price_manwon.toLocaleString()}만`;
+  const date = summary.latest_date;
+  return `${price}(${date.slice(2, 4)}.${date.slice(5, 7)})`;
+}
+
 /** "22억 5,000 (2026-06-15 · 84.9㎡) · 6개월 12건" */
 export function formatRecentTradesLine(summary: RecentTradeSummary): string {
   const area = summary.latest_area_sqm > 0 ? ` · ${summary.latest_area_sqm}㎡` : "";

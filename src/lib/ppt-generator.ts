@@ -17,6 +17,7 @@ import { layoutPoiLabels, poiLabelText } from "./ppt-label-layout";
 import { computeResidentialCalloutLayout } from "./ppt-callout-layout";
 import { buildParkDetailLines, formatAreaSqm, formatDistanceM, summarizeParks } from "./park-analysis";
 import { buildMaintenanceDetailLines, formatMaintenanceArea, summarizeMaintenanceProjects } from "./maintenance-analysis";
+import { formatComplexTradeCell } from "./maintenance-map-utils";
 import {
   GENERAL_SOURCE_CAUTIONS,
   GENERAL_PRESENTATION_SOURCES,
@@ -2284,13 +2285,14 @@ interface ResidentialTableRow {
 // canvas 렌더러(ppt-canvas-renderer.ts)의 동명 심볼과 동일 로직/치수를 유지할 것(수치 parity).
 
 const COMPLEX_DETAIL_COLUMNS = [
-  { label: "단지명", x: 0.8, w: 2.25, align: "left" },
-  { label: "세대수", x: 3.1, w: 1.15, align: "right" },
-  { label: "준공", x: 4.4, w: 1.05, align: "right" },
-  { label: "주차", x: 5.65, w: 1.25, align: "right" },
-  { label: "층", x: 7.0, w: 0.9, align: "right" },
-  { label: "동", x: 8.0, w: 0.9, align: "right" },
-  { label: "시공사", x: 9.0, w: 3.3, align: "left" },
+  { label: "단지명", x: 0.8, w: 2.15, align: "left" },
+  { label: "세대수", x: 3.0, w: 1.0, align: "right" },
+  { label: "준공", x: 4.1, w: 0.9, align: "right" },
+  { label: "주차", x: 5.1, w: 1.0, align: "right" },
+  { label: "층", x: 6.2, w: 0.65, align: "right" },
+  { label: "동", x: 6.95, w: 0.65, align: "right" },
+  { label: "시공사", x: 7.7, w: 2.2, align: "left" },
+  { label: "최근 실거래", x: 10.0, w: 2.3, align: "right" },
 ] as const;
 
 interface ComplexDetailRow {
@@ -2301,6 +2303,7 @@ interface ComplexDetailRow {
   readonly floors: string;
   readonly dongs: string;
   readonly constructorName: string;
+  readonly recentTrade: string;
   readonly planned: boolean;
 }
 
@@ -2325,6 +2328,7 @@ function buildComplexDetailRows(residentials: readonly ResidentialPoi[]): Comple
         floors: apt.max_floor && apt.max_floor > 0 ? String(apt.max_floor) : "확인필요",
         dongs: apt.dong_count && apt.dong_count > 0 ? String(apt.dong_count) : "확인필요",
         constructorName: apt.constructor_name ? shortenConstructorName(apt.constructor_name) : "확인필요",
+        recentTrade: apt.status === "planned" ? "분양전" : formatComplexTradeCell(apt.recent_trades),
         planned: apt.status === "planned",
       };
     });
@@ -2340,6 +2344,7 @@ function complexDetailCellValues(row: ComplexDetailRow): readonly string[] {
     withUnit(row.floors, "층"),
     withUnit(row.dongs, "동"),
     row.constructorName,
+    row.recentTrade,
   ];
 }
 

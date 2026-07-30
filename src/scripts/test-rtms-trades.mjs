@@ -6,7 +6,7 @@ import {
   recentDealMonths,
   summarizeTrades,
 } from "../lib/server/rtms-trades.ts";
-import { formatRecentTradesLine, formatTradePrice } from "../lib/maintenance-map-utils.ts";
+import { formatComplexTradeCell, formatRecentTradesLine, formatTradePrice } from "../lib/maintenance-map-utils.ts";
 
 // --- XML 파싱 ---
 const sampleXml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -72,5 +72,11 @@ assert.equal(
   formatRecentTradesLine({ count: 2, months: 6, latest_price_manwon: 225000, latest_date: "2026-06-15", latest_area_sqm: 84.9, max_price_manwon: 310000 }),
   "22억 5,000 (2026-06-15 · 84.9㎡) · 6개월 2건",
 );
+
+// PPT 표 셀 축약
+assert.equal(formatComplexTradeCell({ count: 2, months: 6, latest_price_manwon: 225000, latest_date: "2026-06-15", latest_area_sqm: 84.9, max_price_manwon: 310000 }), "22.5억(26.06)");
+assert.equal(formatComplexTradeCell({ count: 1, months: 6, latest_price_manwon: 310000, latest_date: "2026-03-02", latest_area_sqm: 112, max_price_manwon: 310000 }), "31억(26.03)");
+assert.equal(formatComplexTradeCell({ count: 1, months: 6, latest_price_manwon: 9800, latest_date: "2026-05-01", latest_area_sqm: 59, max_price_manwon: 9800 }), "9,800만(26.05)");
+assert.equal(formatComplexTradeCell(undefined), "무거래");
 
 console.log("test-rtms-trades: all assertions passed");
