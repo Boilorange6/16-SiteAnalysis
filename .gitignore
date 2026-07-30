@@ -11,3 +11,4 @@ docs/*.pptx
 .worktrees/
 data/maintenance/raw/
 data/maintenance/processed/
+bash.exe.stackdump
