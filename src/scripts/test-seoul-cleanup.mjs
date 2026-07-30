@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 import {
   enhanceProjectsWithSeoulCleanup,
+  findBridgeAttribute,
   isCompletedCleanupStage,
   mapCleanupStage,
   parseSeoulCleanupListPage,
@@ -94,14 +95,31 @@ function cleanupRow(overrides = {}) {
   };
 }
 
-// 폴리곤 내부 단일 후보 → 단계 적용
+// 폴리곤 내부 단일 후보 → 단계 적용 + 주소·시행자·유형·면적 채움
 {
-  const { projects, appliedCount, ambiguousCount } = enhanceProjectsWithSeoulCleanup([project()], [cleanupRow()]);
+  const { projects, appliedCount, ambiguousCount } = enhanceProjectsWithSeoulCleanup(
+    [project({ area_sqm: 0 })], [cleanupRow()],
+  );
   assert.equal(appliedCount, 1);
   assert.equal(ambiguousCount, 0);
   assert.equal(projects[0].stage, "사업시행인가");
   assert.equal(projects[0].stage_detail, "사업시행인가");
   assert.equal(projects[0].notice_url, "https://cleanup.seoul.go.kr/");
+  assert.equal(projects[0].address, "서울특별시 강남구 개포동 138");
+  assert.equal(projects[0].implementer, "개포주공3단지아파트 재건축정비사업 조합");
+  assert.equal(projects[0].type, "재건축");
+  assert.ok(projects[0].area_sqm > 100_000); // 약 1.8km x 2.2km 사각형
+}
+
+// 기존 값 보존: 숫자 있는 주소·시행자·면적·구체 유형은 덮지 않음
+{
+  const { projects } = enhanceProjectsWithSeoulCleanup([
+    project({ address: "서울특별시 강남구 개포동 100", implementer: "기존시행자", type: "재개발", area_sqm: 5000 }),
+  ], [cleanupRow()]);
+  assert.equal(projects[0].address, "서울특별시 강남구 개포동 100");
+  assert.equal(projects[0].implementer, "기존시행자");
+  assert.equal(projects[0].type, "재개발");
+  assert.equal(projects[0].area_sqm, 5000);
 }
 
 // 폴리곤 밖 좌표 → 미적용
@@ -150,6 +168,37 @@ function cleanupRow(overrides = {}) {
 {
   const { projects } = enhanceProjectsWithSeoulCleanup([project({ notice_url: "https://example.test/notice" })], [cleanupRow()]);
   assert.equal(projects[0].notice_url, "https://example.test/notice");
+}
+
+// --- 국토부 속성 브리지 매칭 ---
+const attributeRecord = {
+  sido: "서울특별시", sigungu: "강남구", name: "개포주공3단지 재건축",
+  planned_households: 1235, designation_date: "2012-11-16", implementer: "개포주공3단지 조합",
+  floor_area_ratio: 249.9,
+};
+{
+  // 조합명 ↔ 구역명 정규화 포함 매칭
+  const found = findBridgeAttribute({ sigungu: "강남구", name: "개포주공3단지아파트 재건축정비사업 조합" }, [attributeRecord]);
+  assert.equal(found?.planned_households, 1235);
+  // 다른 구 → 미매칭
+  assert.equal(findBridgeAttribute({ sigungu: "송파구", name: "개포주공3단지아파트 재건축정비사업 조합" }, [attributeRecord]), null);
+  // 후보 2건(모호) → 미매칭
+  assert.equal(findBridgeAttribute({ sigungu: "강남구", name: "개포주공3단지아파트 재건축정비사업 조합" }, [
+    attributeRecord, { ...attributeRecord, name: "개포주공3단지아파트" },
+  ]), null);
+  // 짧은 일반명 → 미매칭
+  assert.equal(findBridgeAttribute({ sigungu: "강남구", name: "재건축정비사업조합" }, [attributeRecord]), null);
+}
+{
+  // enhance에 attributes를 주면 예정세대수·구역지정일·용적률·시행자 채움
+  const { projects, bridgedCount } = enhanceProjectsWithSeoulCleanup(
+    [project({ area_sqm: 0 })], [cleanupRow()], [attributeRecord],
+  );
+  assert.equal(bridgedCount, 1);
+  assert.equal(projects[0].planned_households, 1235);
+  assert.equal(projects[0].designation_date, "2012-11-16");
+  assert.equal(projects[0].floor_area_ratio, 249.9);
+  assert.equal(projects[0].implementer, "개포주공3단지 조합");
 }
 
 // --- 종료 분리 ---

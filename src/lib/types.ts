@@ -12,6 +12,7 @@ export type PoiSourceId =
   | "maintenance_busan"
   | "residential"
   | "planned-residential"
+  | "rtms"
   | "subway-routes"
   | "rail-network";
 
@@ -42,6 +43,7 @@ export const POI_SOURCE_CATEGORIES: Record<PoiSourceId, readonly PoiCategory[]> 
   maintenance_busan: ["maintenance"],
   residential: ["apartment", "officetel", "residential"],
   "planned-residential": ["apartment", "officetel", "residential"],
+  rtms: ["apartment", "officetel", "residential", "maintenance"],
   "subway-routes": ["subway"],
   "rail-network": ["subway"],
 };
@@ -57,6 +59,7 @@ export const POI_SOURCE_LABELS: Record<PoiSourceId, string> = {
   maintenance_busan: "부산 정비사업 상세",
   residential: "주거 단지",
   "planned-residential": "분양 예정",
+  rtms: "아파트 실거래가",
   "subway-routes": "지하철 노선",
   "rail-network": "철도 노선",
 };
@@ -80,6 +83,19 @@ export interface ResidentialFloorplan {
   readonly status: "thumbnail" | "link_only";
 }
 
+/** 최근 실거래 요약 (국토부 RTMS 아파트매매 실거래가) */
+export interface RecentTradeSummary {
+  /** 최근 N개월 거래 건수 */
+  readonly count: number;
+  readonly months: number;
+  /** 최신 거래금액(만원) */
+  readonly latest_price_manwon: number;
+  readonly latest_date: string;
+  readonly latest_area_sqm: number;
+  readonly latest_floor?: number;
+  readonly max_price_manwon: number;
+}
+
 interface ResidentialFields {
   readonly units: number;
   readonly parking_count: number;
@@ -98,6 +114,7 @@ interface ResidentialFields {
   readonly homepage_url?: string;
   readonly notice_url?: string;
   readonly floorplans?: readonly ResidentialFloorplan[];
+  readonly recent_trades?: RecentTradeSummary;
 }
 
 export interface SubwayStation extends PoiBase {
@@ -222,6 +239,8 @@ export interface MaintenanceProject extends PoiBase {
   readonly contractor?: string;
   readonly architect?: string;
   readonly union_members?: number;
+  /** 구역 내 대상 단지 최근 실거래 (대표지번 기준) */
+  readonly recent_trades?: RecentTradeSummary;
 }
 
 export type Poi = SubwayStation | School | Park | Mountain | Apartment | Officetel | ResidentialOther | MaintenanceProject;

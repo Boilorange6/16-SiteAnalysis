@@ -1,7 +1,7 @@
 import { readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-import { booleanPointInPolygon, multiPolygon, point, polygon } from "@turf/turf";
+import { area as turfArea, booleanPointInPolygon, multiPolygon, point, polygon } from "@turf/turf";
 import type { Feature, MultiPolygon, Polygon } from "geojson";
 import { z } from "zod";
 
@@ -163,10 +163,61 @@ function nameCompatible(projectName: string, rowName: string): boolean {
   return left.includes(right) || right.includes(left);
 }
 
+/** 이름 브리지 매칭용 최소 속성 레코드(국토부 통합/표준 API 정규화 결과와 호환) */
+export interface BridgeAttributeRecord {
+  readonly sido: string;
+  readonly sigungu: string;
+  readonly name: string;
+  readonly implementer?: string;
+  readonly planned_households?: number;
+  readonly designation_date?: string;
+  readonly floor_area_ratio?: number;
+  readonly building_coverage_ratio?: number;
+  readonly land_use_zone?: string;
+  readonly management_agency?: string;
+}
+
+const GENERIC_NAME_TOKENS = [
+  "주택재건축정비사업", "주택재개발정비사업", "재건축정비사업", "재개발정비사업",
+  "도시환경정비사업", "가로주택정비사업", "소규모재건축사업", "소규모재건축",
+  "리모델링주택사업", "정비사업", "재건축사업", "재개발사업", "재건축", "재개발",
+  "정비구역", "사업구역", "조합", "구역", "아파트", "일대", "일원",
+];
+
+function bridgeNameKey(value: string): string {
+  let key = value.normalize("NFKC").replaceAll(/\([^)]*\)/gu, "").replaceAll(/[^\p{L}\p{N}]/gu, "");
+  for (const token of GENERIC_NAME_TOKENS) key = key.replaceAll(token, "");
+  return key;
+}
+
+/**
+ * 정보몽땅 사업장명으로 국토부 속성 레코드를 찾는다.
+ * 같은 시군구에서 정규화 이름이 서로 포함 관계인 후보가 정확히 1건일 때만 반환.
+ */
+export function findBridgeAttribute(
+  row: Pick<SeoulCleanupRow, "sigungu" | "name">,
+  attributes: readonly BridgeAttributeRecord[],
+): BridgeAttributeRecord | null {
+  const rowKey = bridgeNameKey(row.name);
+  if (rowKey.length < 3) return null;
+  const candidates = attributes.filter((attribute) => {
+    if (!attribute.sido.includes("서울") || comparisonText(attribute.sigungu) !== comparisonText(row.sigungu)) return false;
+    const attributeKey = bridgeNameKey(attribute.name);
+    if (attributeKey.length < 3) return false;
+    return attributeKey === rowKey || rowKey.includes(attributeKey) || attributeKey.includes(rowKey);
+  });
+  return candidates.length === 1 ? (candidates[0] ?? null) : null;
+}
+
+function comparisonText(value: string): string {
+  return value.normalize("NFKC").trim().replaceAll(/\s+/gu, "");
+}
+
 export interface SeoulCleanupEnhanceResult {
   readonly projects: readonly MaintenanceProject[];
   readonly appliedCount: number;
   readonly ambiguousCount: number;
+  readonly bridgedCount: number;
 }
 
 /**
@@ -176,11 +227,13 @@ export interface SeoulCleanupEnhanceResult {
 export function enhanceProjectsWithSeoulCleanup(
   projects: readonly MaintenanceProject[],
   records: readonly SeoulCleanupRow[],
+  attributes: readonly BridgeAttributeRecord[] = [],
 ): SeoulCleanupEnhanceResult {
   const located = records.filter((row) => Number.isFinite(row.lat) && Number.isFinite(row.lng));
-  if (!located.length) return { projects, appliedCount: 0, ambiguousCount: 0 };
+  if (!located.length) return { projects, appliedCount: 0, ambiguousCount: 0, bridgedCount: 0 };
   let appliedCount = 0;
   let ambiguousCount = 0;
+  let bridgedCount = 0;
   const enhanced = projects.map((project) => {
     const feature = projectPolygon(project);
     if (!feature) return project;
@@ -199,14 +252,31 @@ export function enhanceProjectsWithSeoulCleanup(
       return project;
     }
     appliedCount += 1;
+    const genericType = !project.type || project.type === "정비구역" || project.type === "정비예정구역";
+    const genericAddress = !project.address || /^[^0-9]*$/u.test(project.address);
+    const cleanupAddress = selected.address ? `서울특별시 ${selected.sigungu} ${selected.address}` : undefined;
+    const bridged = findBridgeAttribute(selected, attributes);
+    if (bridged) bridgedCount += 1;
     return {
       ...project,
       stage: mapCleanupStage(selected.stage_text),
       stage_detail: selected.stage_text,
+      ...(genericType && selected.type ? { type: selected.type } : {}),
+      ...(genericAddress && cleanupAddress ? { address: cleanupAddress } : {}),
+      ...(project.area_sqm > 0 ? {} : { area_sqm: Math.round(turfArea(feature)) }),
       ...(project.notice_url ? {} : { notice_url: SEOUL_CLEANUP_SITE_URL }),
+      ...(!project.planned_households && bridged?.planned_households ? { planned_households: bridged.planned_households } : {}),
+      ...(!project.designation_date && bridged?.designation_date ? { designation_date: bridged.designation_date } : {}),
+      ...(!project.floor_area_ratio && bridged?.floor_area_ratio ? { floor_area_ratio: bridged.floor_area_ratio } : {}),
+      ...(!project.building_coverage_ratio && bridged?.building_coverage_ratio ? { building_coverage_ratio: bridged.building_coverage_ratio } : {}),
+      ...(!project.land_use_zone && bridged?.land_use_zone ? { land_use_zone: bridged.land_use_zone } : {}),
+      ...(!project.management_agency && bridged?.management_agency ? { management_agency: bridged.management_agency } : {}),
+      ...(project.implementer ? {} : bridged?.implementer
+        ? { implementer: bridged.implementer }
+        : selected.name.includes("조합") ? { implementer: selected.name } : {}),
     };
   });
-  return { projects: enhanced, appliedCount, ambiguousCount };
+  return { projects: enhanced, appliedCount, ambiguousCount, bridgedCount };
 }
 
 export interface CompletedSplitResult {

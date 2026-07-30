@@ -4,7 +4,24 @@ import type {
   MaintenanceBoundaryStatus,
   MaintenanceProject,
   MaintenanceSource,
+  RecentTradeSummary,
 } from "./types";
+
+/** 거래금액(만원) → "22억 5,000" / "9,800만" */
+export function formatTradePrice(manwon: number): string {
+  if (manwon >= 10_000) {
+    const eok = Math.floor(manwon / 10_000);
+    const rest = manwon % 10_000;
+    return rest > 0 ? `${eok}억 ${rest.toLocaleString()}` : `${eok}억`;
+  }
+  return `${manwon.toLocaleString()}만`;
+}
+
+/** "22억 5,000 (2026-06-15 · 84.9㎡) · 6개월 12건" */
+export function formatRecentTradesLine(summary: RecentTradeSummary): string {
+  const area = summary.latest_area_sqm > 0 ? ` · ${summary.latest_area_sqm}㎡` : "";
+  return `${formatTradePrice(summary.latest_price_manwon)} (${summary.latest_date}${area}) · ${summary.months}개월 ${summary.count}건`;
+}
 
 const MAINTENANCE_SOURCE_LABELS: Readonly<Record<MaintenanceSource, string>> = {
   molit_integrated: "국토부 전국 정비사업",
@@ -88,6 +105,7 @@ export function buildMaintenancePopupHtml(project: MaintenanceProject): string {
       ${popupRow("면적", project.area_sqm > 0 ? formatMaintenanceArea(project.area_sqm) : "미확인")}
       ${popupRow("구역지정일", escapeMaintenanceHtml(project.designation_date || "미확인"))}
       ${popupRow("주소/위치", escapeMaintenanceHtml(project.address || "미확인"))}
+      ${project.recent_trades ? popupRow("최근 실거래", escapeMaintenanceHtml(formatRecentTradesLine(project.recent_trades))) : ""}
       ${popupRow("경계", maintenanceBoundaryLabel(project.boundary_status))}
       ${popupRow("출처", sourceValue)}
       ${popupRow("기준일", escapeMaintenanceHtml(project.source_updated_at || "미확인"))}

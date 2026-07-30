@@ -39,6 +39,7 @@ function dependencies(overrides = {}) {
     loadSeoulCleanup: () => {
       throw new Error("seoul cleanup artifact unavailable in tests");
     },
+    resolveRecapTitle: async () => null,
     ...overrides,
   };
 }
@@ -236,6 +237,40 @@ function fakeKy(responses) {
   assert.equal(result.projects[0].stage_detail, "조합설립인가");
   assert.equal(result.projects.some(({ name }) => name === "종료구역"), false);
   assert.equal(result.warnings.some((line) => line.includes("종료된 정비사업 1건 제외")), true);
+}
+
+{
+  // 건축물대장 완료 판별: 정보몽땅 "착공"이지만 신축 사용승인(2023) 확인 → 준공 처리·지도 제외
+  const cleanupArtifact = {
+    schema_version: 1,
+    source_url: "https://cleanup.seoul.go.kr/cleanup/bsnssttus/lscrMainIndx.do",
+    retrieved_at: "2026-07-30T03:00:00.000Z",
+    record_count: 1,
+    records: [
+      { no: 1, sigungu: "강남구", type: "재건축", name: "개포1동주공 조합", address: "개포동 660-4", stage_text: "착공", lat: 37.5, lng: 127 },
+    ],
+  };
+  const result = await searchMaintenanceProjects(query, dependencies({
+    resolveBoundaries: async () => resolved([boundary("gaepo-1", "재건축정비구역")]),
+    resolveAttributes: async () => resolved({ integrated: [], standard: [] }),
+    loadSeoulCleanup: () => cleanupArtifact,
+    resolveRecapTitle: async ({ address }) => {
+      assert.match(address, /개포동 660-4/);
+      return { households: 6702, use_approval_day: "20231128" };
+    },
+  }));
+  assert.equal(result.projects.length, 0);
+  assert.equal(result.warnings.some((line) => line.includes("종료된 정비사업 1건 제외")), true);
+
+  // 구축(1983) 사용승인만 있으면 착공 유지·표시
+  const kept = await searchMaintenanceProjects(query, dependencies({
+    resolveBoundaries: async () => resolved([boundary("gaepo-5", "재건축정비구역")]),
+    resolveAttributes: async () => resolved({ integrated: [], standard: [] }),
+    loadSeoulCleanup: () => ({ ...cleanupArtifact, records: [{ ...cleanupArtifact.records[0], stage_text: "관리처분인가" }] }),
+    resolveRecapTitle: async () => ({ households: 940, use_approval_day: "19830601" }),
+  }));
+  assert.equal(kept.projects.length, 1);
+  assert.equal(kept.projects[0].stage_detail, "관리처분인가");
 }
 
 {

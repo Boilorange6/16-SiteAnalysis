@@ -22,6 +22,14 @@ import {
   splitCompletedMaintenanceProjects,
   type SeoulCleanupArtifact,
 } from "./maintenance/seoul-cleanup";
+import {
+  LEDGER_CHECK_STAGE_PATTERN,
+  assessLedgerCompletion,
+  fetchRecapTitleInfo,
+  formatUseApprovalDay,
+  parseJibunAddress,
+  type RecapTitleInfo,
+} from "./maintenance/building-ledger";
 
 const NCP_REVERSE_GEO_URL = "https://maps.apigw.ntruss.com/map-reversegeocode/v2/gc";
 const NCP_GEOCODE_URL = "https://maps.apigw.ntruss.com/map-geocode/v2/geocode";
@@ -51,6 +59,11 @@ export interface MaintenanceSearchDependencies {
   readonly resolveBusan?: (query: RegionalProviderQuery) => Promise<ResolvedSource<readonly RegionalMaintenanceRecord[]>>;
   readonly reverseGeocodeAdmin?: (center: MaintenanceSearchQuery["center"]) => Promise<SelectedMaintenanceRegion | null>;
   readonly loadSeoulCleanup?: () => SeoulCleanupArtifact;
+  readonly resolveRecapTitle?: (query: {
+    readonly lat: number;
+    readonly lng: number;
+    readonly address: string;
+  }) => Promise<RecapTitleInfo | null>;
 }
 
 type NcpCredentials = { readonly id: string; readonly secret: string };
@@ -113,6 +126,99 @@ function defaultGeocoder(): MaintenanceGeocoder | undefined {
       return null;
     }
   };
+}
+
+function cachedLedgerJson(cacheKey: string, maxAgeSeconds: number): unknown {
+  try {
+    const row = getDb().prepare("SELECT value_json, created_at FROM building_ledger_cache WHERE cache_key = ?").get(cacheKey);
+    if (!isObject(row) || typeof row.value_json !== "string" || typeof row.created_at !== "number") return undefined;
+    if (Date.now() / 1_000 - row.created_at > maxAgeSeconds) return undefined;
+    return JSON.parse(row.value_json);
+  } catch {
+    return undefined;
+  }
+}
+
+function storeLedgerJson(cacheKey: string, value: unknown): void {
+  try {
+    getDb().prepare("INSERT OR REPLACE INTO building_ledger_cache (cache_key, value_json, created_at) VALUES (?, ?, ?)")
+      .run(cacheKey, JSON.stringify(value ?? null), Date.now() / 1_000);
+  } catch {
+  }
+}
+
+const LEGAL_CODE_CACHE_SECONDS = 365 * 24 * 3_600;
+const RECAP_CACHE_SECONDS = 90 * 24 * 3_600;
+
+/** NCP 리버스 지오코딩(orders=legalcode)으로 법정동코드 10자리를 얻는다 */
+export async function resolveLegalDongCode(
+  center: { readonly lat: number; readonly lng: number },
+): Promise<string | null> {
+  const auth = credentials();
+  if (!auth) return null;
+  const cacheKey = `legalcode:${center.lat.toFixed(4)},${center.lng.toFixed(4)}`;
+  const cached = cachedLedgerJson(cacheKey, LEGAL_CODE_CACHE_SECONDS);
+  if (typeof cached === "string") return cached;
+  try {
+    const root = await ncpClient(auth).get(NCP_REVERSE_GEO_URL, {
+      searchParams: { coords: `${center.lng},${center.lat}`, output: "json", orders: "legalcode" },
+    }).json<unknown>();
+    if (!isObject(root) || !Array.isArray(root.results) || !isObject(root.results[0])) return null;
+    const code = root.results[0].code;
+    const id = isObject(code) && typeof code.id === "string" ? code.id.trim() : "";
+    if (!/^\d{10}$/.test(id)) return null;
+    storeLedgerJson(cacheKey, id);
+    return id;
+  } catch {
+    return null;
+  }
+}
+
+function defaultRecapResolver(): NonNullable<MaintenanceSearchDependencies["resolveRecapTitle"]> {
+  const serviceKey = process.env.DATA_GO_KR_API_KEY?.trim();
+  if (!serviceKey) return async () => null;
+  return async (query) => {
+    const jibun = parseJibunAddress(query.address);
+    if (!jibun) return null;
+    const legalCode = await resolveLegalDongCode(query);
+    if (!legalCode) return null;
+    const cacheKey = `recap:${legalCode}:${jibun.bun}-${jibun.ji}`;
+    const cached = cachedLedgerJson(cacheKey, RECAP_CACHE_SECONDS);
+    if (cached !== undefined) return cached as RecapTitleInfo | null;
+    try {
+      const recap = await fetchRecapTitleInfo({
+        serviceKey,
+        sigunguCd: legalCode.slice(0, 5), bjdongCd: legalCode.slice(5, 10),
+        bun: jibun.bun, ji: jibun.ji,
+      });
+      storeLedgerJson(cacheKey, recap);
+      return recap;
+    } catch {
+      return null;
+    }
+  };
+}
+
+/** 후반부 단계인데 신축 사용승인이 확인되면 준공으로 재판정한다 */
+async function applyLedgerCompletion(
+  projects: readonly MaintenanceProject[],
+  resolveRecap: NonNullable<MaintenanceSearchDependencies["resolveRecapTitle"]>,
+): Promise<readonly MaintenanceProject[]> {
+  return Promise.all(projects.map(async (project) => {
+    if (!project.stage_detail || !LEDGER_CHECK_STAGE_PATTERN.test(project.stage_detail)) return project;
+    try {
+      const recap = await resolveRecap({ lat: project.lat, lng: project.lng, address: project.address });
+      const assessment = assessLedgerCompletion({ recap, designationDate: project.designation_date });
+      if (!assessment.completed || !assessment.use_approval_day) return project;
+      return {
+        ...project,
+        stage: "준공" as const,
+        stage_detail: `준공 · 건축물대장 사용승인 ${formatUseApprovalDay(assessment.use_approval_day)}`,
+      };
+    } catch {
+      return project;
+    }
+  }));
 }
 
 async function defaultReverseGeocode(center: MaintenanceSearchQuery["center"]): Promise<SelectedMaintenanceRegion | null> {
@@ -210,9 +316,13 @@ export async function searchMaintenanceProjects(
       source: "maintenance_seoul_cleanup", status: "cached",
       fetchedAt: Number.isFinite(retrievedAt) ? retrievedAt : null,
     };
-    projects = enhanceProjectsWithSeoulCleanup(projects, cleanup.records).projects;
+    projects = enhanceProjectsWithSeoulCleanup(
+      projects, cleanup.records,
+      attributes ? [...attributes.integrated, ...attributes.standard] : [],
+    ).projects;
   } catch {
   }
+  projects = await applyLedgerCompletion(projects, dependencies.resolveRecapTitle ?? defaultRecapResolver());
   const completedSplit = splitCompletedMaintenanceProjects(projects);
   const activeCatalog = merged.catalog.filter((project) => project.stage !== "준공");
   const sources = [

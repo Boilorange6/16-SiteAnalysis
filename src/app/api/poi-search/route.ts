@@ -15,6 +15,8 @@ import { searchResidentialFromLedger } from "@/lib/server/residential-search";
 import { mergeResidentialPois, searchPlannedResidential } from "@/lib/server/planned-residential-search";
 import { searchParks } from "@/lib/server/park-search";
 import { searchMaintenanceProjects } from "@/lib/server/maintenance-project-search";
+import { attachRecentTrades } from "@/lib/server/rtms-trades";
+import { crossCheckMaintenanceCompletion } from "@/lib/server/maintenance/completion-crosscheck";
 import { resolveSource } from "@/lib/server/poi-cache";
 
 const querySchema = z.object({
@@ -290,7 +292,22 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ pois, warnings: sourceWarnings, sources, maintenanceCatalog });
+    // ── 신축 준공 교차검증: 폴리곤 안 최근 준공 대단지 존재 시 정비사업 제외 ──
+    const crossCheck = crossCheckMaintenanceCompletion(pois);
+    if (crossCheck.removedCount > 0) {
+      sourceWarnings.push(`종료된 정비사업 ${crossCheck.removedCount}건 추가 제외(신축 준공 교차확인)`);
+    }
+
+    // ── 최근 실거래 요약 결합 (아파트 이름 매칭 · 정비구역 대표지번 매칭) ──
+    let responsePois: readonly Poi[] = crossCheck.pois;
+    if (crossCheck.pois.some((poi) => poi.category === "apartment" || poi.category === "officetel"
+      || poi.category === "residential" || poi.category === "maintenance")) {
+      const trades = await attachRecentTrades(crossCheck.pois, { lat, lng });
+      responsePois = trades.pois;
+      sources.push({ source: "rtms", status: trades.status, fetchedAt: trades.fetchedAt });
+    }
+
+    return NextResponse.json({ pois: responsePois, warnings: sourceWarnings, sources, maintenanceCatalog });
   } catch {
     // M-2: Generic error — don't expose internal details
     return NextResponse.json({ error: "POI 검색에 실패했습니다" }, { status: 500 });

@@ -74,6 +74,12 @@ function initSchema(db: Database.Database): void {
       created_at REAL NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS building_ledger_cache (
+      cache_key TEXT PRIMARY KEY,
+      value_json TEXT NOT NULL,
+      created_at REAL NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS geocode_cache (
       address TEXT PRIMARY KEY,
       lat REAL NOT NULL,
