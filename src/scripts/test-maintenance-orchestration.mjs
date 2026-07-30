@@ -36,6 +36,9 @@ function dependencies(overrides = {}) {
     resolveSeoul: async () => resolved([]),
     resolveBusan: async () => resolved([]),
     reverseGeocodeAdmin: async () => null,
+    loadSeoulCleanup: () => {
+      throw new Error("seoul cleanup artifact unavailable in tests");
+    },
     ...overrides,
   };
 }
@@ -163,6 +166,7 @@ function fakeKy(responses) {
     { source: "maintenance_boundaries", status: "fresh" },
     { source: "maintenance_attributes", status: "failed" },
     { source: "maintenance_seoul", status: "failed" },
+    { source: "maintenance_seoul_cleanup", status: "failed" },
     { source: "maintenance_busan", status: "fresh" },
   ]);
   assert.equal(result.projects[0].source, "molit_spatial");
@@ -201,8 +205,37 @@ function fakeKy(responses) {
     { source: "maintenance_boundaries", status: "fresh" },
     { source: "maintenance_attributes", status: "fresh" },
     { source: "maintenance_seoul", status: "failed" },
+    { source: "maintenance_seoul_cleanup", status: "failed" },
     { source: "maintenance_busan", status: "fresh" },
   ]);
+}
+
+{
+  // 정보몽땅 산출물 결합: 공간조인으로 단계 부여 + 종료 사업 제외
+  const cleanupArtifact = {
+    schema_version: 1,
+    source_url: "https://cleanup.seoul.go.kr/cleanup/bsnssttus/lscrMainIndx.do",
+    retrieved_at: "2026-07-30T03:00:00.000Z",
+    record_count: 2,
+    records: [
+      { no: 1, sigungu: "강남구", type: "재건축", name: "진행구역 조합", address: "역삼동 1", stage_text: "조합설립인가", lat: 37.5, lng: 127 },
+      { no: 2, sigungu: "강남구", type: "재건축", name: "종료구역 조합", address: "역삼동 2", stage_text: "조합해산", lat: 37.505, lng: 127.02 },
+    ],
+  };
+  const doneBoundary = boundary("done-1", "종료구역");
+  doneBoundary.geometry = { type: "Polygon", coordinates: [[[127.015, 37.5], [127.025, 37.5], [127.025, 37.51], [127.015, 37.51], [127.015, 37.5]]] };
+  doneBoundary.properties.bbox = [127.015, 37.5, 127.025, 37.51];
+  const result = await searchMaintenanceProjects(query, dependencies({
+    resolveBoundaries: async () => resolved([boundary("live-1", "진행구역"), doneBoundary]),
+    resolveAttributes: async () => resolved({ integrated: [], standard: [] }),
+    loadSeoulCleanup: () => cleanupArtifact,
+  }));
+  assert.equal(result.sources.find(({ source }) => source === "maintenance_seoul_cleanup")?.status, "cached");
+  assert.equal(result.projects.length, 1);
+  assert.equal(result.projects[0].stage, "조합설립");
+  assert.equal(result.projects[0].stage_detail, "조합설립인가");
+  assert.equal(result.projects.some(({ name }) => name === "종료구역"), false);
+  assert.equal(result.warnings.some((line) => line.includes("종료된 정비사업 1건 제외")), true);
 }
 
 {

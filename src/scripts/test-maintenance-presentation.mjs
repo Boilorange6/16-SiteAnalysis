@@ -216,11 +216,12 @@ assert.ok((freshNatureScore ?? 0) > 0);
 assert.equal(failedNatureScore, 0);
 
 const independentMaintenanceLines = maintenanceSourceStatusLines(sourceStatuses.slice(1, 3));
-assert.equal(independentMaintenanceLines.length, 4);
+assert.equal(independentMaintenanceLines.length, 5);
 assert.match(independentMaintenanceLines[0], /국토부 정비구역 경계/);
 assert.match(independentMaintenanceLines[1], /국토부 전국 정비사업/);
 assert.match(independentMaintenanceLines[2], /서울 정비사업 상세.*상태 미제공/);
-assert.match(independentMaintenanceLines[3], /부산 정비사업 상세.*상태 미제공/);
+assert.match(independentMaintenanceLines[3], /서울 정비사업 정보몽땅.*상태 미제공/);
+assert.match(independentMaintenanceLines[4], /부산 정비사업 상세.*상태 미제공/);
 
 const projectionConfig = { centerName: "경계 투영", centerLat: 37.5, centerLng: 127, radiusKm: 1 };
 const radiusPosition = { centerNx: 0.5, centerNy: 0.5, radiusNx: 0.2, radiusNy: 0.3 };

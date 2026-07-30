@@ -52,7 +52,7 @@ export const SYNTHETIC_BANNER_FILL = "#C4006F";
 
 export function maintenanceBoundaryInfoLabel(project: MaintenanceProject): string {
   const sourceDate = project.source_updated_at || project.boundary_retrieved_at || "미확인";
-  return `단계: ${project.stage} · 기준일: ${sourceDate}`;
+  return `단계: ${project.stage_detail ?? project.stage} · 기준일: ${sourceDate}`;
 }
 
 export function compactMaintenanceBoundaryLabel(label: string): string {

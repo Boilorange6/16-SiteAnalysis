@@ -82,7 +82,7 @@ export function buildMaintenancePopupHtml(project: MaintenanceProject): string {
     <h3 style="font-weight:800;font-size:14px;margin:0 0 8px;color:#DB2777;line-height:1.45;overflow-wrap:anywhere">${escapeMaintenanceHtml(project.name)}</h3>
     <table style="width:100%;border-collapse:collapse">
       ${popupRow("유형", escapeMaintenanceHtml(project.type || "정비사업"))}
-      ${popupRow("단계", escapeMaintenanceHtml(project.stage))}
+      ${popupRow("단계", escapeMaintenanceHtml(project.stage_detail ?? project.stage))}
       ${popupRow("시행자", escapeMaintenanceHtml(project.implementer || "미확인"))}
       ${popupRow("예정세대수", households)}
       ${popupRow("면적", project.area_sqm > 0 ? formatMaintenanceArea(project.area_sqm) : "미확인")}

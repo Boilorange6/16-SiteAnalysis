@@ -8,6 +8,7 @@ export type PoiSourceId =
   | "maintenance_attributes"
   | "maintenance_boundaries"
   | "maintenance_seoul"
+  | "maintenance_seoul_cleanup"
   | "maintenance_busan"
   | "residential"
   | "planned-residential"
@@ -18,6 +19,7 @@ export const MAINTENANCE_SOURCE_IDS = [
   "maintenance_boundaries",
   "maintenance_attributes",
   "maintenance_seoul",
+  "maintenance_seoul_cleanup",
   "maintenance_busan",
 ] as const;
 
@@ -36,6 +38,7 @@ export const POI_SOURCE_CATEGORIES: Record<PoiSourceId, readonly PoiCategory[]> 
   maintenance_attributes: ["maintenance"],
   maintenance_boundaries: ["maintenance"],
   maintenance_seoul: ["maintenance"],
+  maintenance_seoul_cleanup: ["maintenance"],
   maintenance_busan: ["maintenance"],
   residential: ["apartment", "officetel", "residential"],
   "planned-residential": ["apartment", "officetel", "residential"],
@@ -50,6 +53,7 @@ export const POI_SOURCE_LABELS: Record<PoiSourceId, string> = {
   maintenance_attributes: "국토부 전국 정비사업",
   maintenance_boundaries: "국토부 정비구역 경계",
   maintenance_seoul: "서울 정비사업 상세",
+  maintenance_seoul_cleanup: "서울 정비사업 정보몽땅",
   maintenance_busan: "부산 정비사업 상세",
   residential: "주거 단지",
   "planned-residential": "분양 예정",
@@ -193,6 +197,8 @@ export interface MaintenanceProject extends PoiBase {
   readonly category: "maintenance";
   readonly type: string;
   readonly stage: MaintenanceStage;
+  /** 정보몽땅 세분 단계 원문(예: "조합해산", "이전고시") — stage보다 상세 */
+  readonly stage_detail?: string;
   readonly address: string;
   readonly area_sqm: number;
   readonly boundary?: MaintenanceBoundary;

@@ -16,6 +16,12 @@ import {
   type RegionalProviderQuery,
 } from "./maintenance/regional-provider";
 import { resolveSource, type ResolvedSource } from "./poi-cache";
+import {
+  enhanceProjectsWithSeoulCleanup,
+  loadSeoulCleanupArtifact,
+  splitCompletedMaintenanceProjects,
+  type SeoulCleanupArtifact,
+} from "./maintenance/seoul-cleanup";
 
 const NCP_REVERSE_GEO_URL = "https://maps.apigw.ntruss.com/map-reversegeocode/v2/gc";
 const NCP_GEOCODE_URL = "https://maps.apigw.ntruss.com/map-geocode/v2/geocode";
@@ -44,6 +50,7 @@ export interface MaintenanceSearchDependencies {
   readonly resolveSeoul?: (query: RegionalProviderQuery) => Promise<ResolvedSource<readonly RegionalMaintenanceRecord[]>>;
   readonly resolveBusan?: (query: RegionalProviderQuery) => Promise<ResolvedSource<readonly RegionalMaintenanceRecord[]>>;
   readonly reverseGeocodeAdmin?: (center: MaintenanceSearchQuery["center"]) => Promise<SelectedMaintenanceRegion | null>;
+  readonly loadSeoulCleanup?: () => SeoulCleanupArtifact;
 }
 
 type NcpCredentials = { readonly id: string; readonly secret: string };
@@ -194,11 +201,28 @@ export async function searchMaintenanceProjects(
     boundaries, attributes: attributes ? [...attributes.integrated, ...attributes.standard] : [],
     regional: [...(seoulResult.value ?? []), ...(busanResult.value ?? [])], selectedRegions,
   });
+  let projects = merged.projects;
+  let cleanupStatus: SourceStatus = { source: "maintenance_seoul_cleanup", status: "failed", fetchedAt: null };
+  try {
+    const cleanup = (dependencies.loadSeoulCleanup ?? loadSeoulCleanupArtifact)();
+    const retrievedAt = Date.parse(cleanup.retrieved_at);
+    cleanupStatus = {
+      source: "maintenance_seoul_cleanup", status: "cached",
+      fetchedAt: Number.isFinite(retrievedAt) ? retrievedAt : null,
+    };
+    projects = enhanceProjectsWithSeoulCleanup(projects, cleanup.records).projects;
+  } catch {
+  }
+  const completedSplit = splitCompletedMaintenanceProjects(projects);
+  const activeCatalog = merged.catalog.filter((project) => project.stage !== "준공");
   const sources = [
     status("maintenance_boundaries", boundaryResult), status("maintenance_attributes", attributeResult),
-    status("maintenance_seoul", seoulResult), status("maintenance_busan", busanResult),
+    status("maintenance_seoul", seoulResult), cleanupStatus, status("maintenance_busan", busanResult),
   ];
   const warnings = failedWarnings(sources);
   if (!selectedRegions.length) warnings.push("정비사업 행정구역을 확인할 수 없어 목록 데이터를 표시하지 않습니다");
-  return { projects: merged.projects, catalog: merged.catalog, sources, warnings };
+  if (completedSplit.completed.length) {
+    warnings.push(`종료된 정비사업 ${completedSplit.completed.length}건 제외(준공·조합해산·조합청산·이전고시)`);
+  }
+  return { projects: completedSplit.active, catalog: activeCatalog, sources, warnings };
 }
