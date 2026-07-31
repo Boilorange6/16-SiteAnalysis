@@ -625,6 +625,16 @@ export default function SiteAnalysisApp() {
             </div>
           </div>
         )}
+        {!loading && (regionData?.sourceWarnings?.length ?? 0) > 0 && (
+          <div className="absolute bottom-4 left-4 z-[880] max-w-md rounded-xl border border-amber-400/40 bg-amber-950/90 px-4 py-3 shadow-xl">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-200/80">일부 데이터 누락</p>
+            <ul className="mt-1.5 space-y-1">
+              {regionData?.sourceWarnings?.map((message) => (
+                <li key={message} className="text-sm text-amber-50/90">{message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
         {loadError && !loading && (
           <div
             className="absolute inset-0 z-[900] flex items-center justify-center bg-[#0F172A]"

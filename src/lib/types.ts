@@ -30,6 +30,8 @@ export interface SourceStatus {
   readonly status: "fresh" | "cached" | "failed";
   /** 수집 시각(epoch ms). failed면 null */
   readonly fetchedAt: number | null;
+  /** TTL이 지난 저장본을 원천 장애로 대신 쓰는 중이면 true */
+  readonly stale?: boolean;
 }
 
 export const POI_SOURCE_CATEGORIES: Record<PoiSourceId, readonly PoiCategory[]> = {
@@ -300,6 +302,8 @@ export interface RegionData {
   readonly residentialOthers: readonly ResidentialOther[];
   readonly maintenanceProjects: readonly MaintenanceProject[];
   readonly maintenanceCatalog: readonly MaintenanceCatalogProject[];
+  /** 수집 실패 원천의 사용자 안내 문구 */
+  readonly sourceWarnings?: readonly string[];
   readonly subwayRoutes: readonly SubwayRoute[];
   /** 1단계 데이터 신뢰성: 소스별 수집 상태(fresh/cached/failed) — 사이드바 재시도 UI(Task 6)에서 사용 */
   readonly sourceStatuses: readonly SourceStatus[];

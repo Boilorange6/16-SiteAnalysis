@@ -22,6 +22,7 @@ import type {
   ApiKeyStatusResponse,
 } from "./project-types";
 import { authFetch } from "./auth-fetch";
+import { failedSourceMessages } from "./source-status-text";
 
 const dynamicCache = new Map<string, RegionData>();
 
@@ -270,6 +271,7 @@ export async function loadDynamicRegion(
     residentialOthers: selectPois(poiResponse.pois, POI_CATEGORY_PREDICATES.residential),
     maintenanceProjects: selectPois(poiResponse.pois, POI_CATEGORY_PREDICATES.maintenance),
     maintenanceCatalog: poiResponse.maintenanceCatalog ?? [],
+    sourceWarnings: failedSourceMessages(poiResponse.warnings ?? []),
     subwayRoutes: routeResponse.routes,
     sourceStatuses: [...poiResponse.sources, routeResponse.source],
   };

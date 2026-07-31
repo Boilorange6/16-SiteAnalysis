@@ -1,4 +1,5 @@
 import { formatMaintenanceArea } from "./maintenance-analysis";
+import { maintenanceStalenessNote } from "./maintenance-presentation";
 import type {
   MaintenanceBoundary,
   MaintenanceBoundaryStatus,
@@ -117,6 +118,7 @@ export function buildMaintenancePopupHtml(project: MaintenanceProject): string {
       ${popupRow("구역지정일", escapeMaintenanceHtml(project.designation_date || "미확인"))}
       ${popupRow("주소/위치", escapeMaintenanceHtml(project.address || "미확인"))}
       ${project.recent_trades ? popupRow("최근 실거래", escapeMaintenanceHtml(formatRecentTradesLine(project.recent_trades))) : ""}
+      ${maintenanceStalenessNote(project) ? popupRow("주의", `<span style="color:#B45309;font-weight:700">${escapeMaintenanceHtml(maintenanceStalenessNote(project))}</span>`) : ""}
       ${popupRow("경계", maintenanceBoundaryLabel(project.boundary_status))}
       ${popupRow("출처", sourceValue)}
       ${popupRow("기준일", escapeMaintenanceHtml(project.source_updated_at || "미확인"))}

@@ -284,3 +284,26 @@ export function projectMaintenanceBoundaries(
   }
   return projected;
 }
+
+const STALE_STAGE_YEARS = 2;
+
+/** 정비사업 단계 기준일이 2년 이상 지났으면 노후로 본다 */
+export function isStaleStage(sourceUpdatedAt: string | undefined, now: number = Date.now()): boolean {
+  if (!sourceUpdatedAt) return false;
+  const updated = Date.parse(sourceUpdatedAt);
+  if (!Number.isFinite(updated)) return false;
+  return now - updated > STALE_STAGE_YEARS * 365 * 24 * 60 * 60 * 1_000;
+}
+
+/**
+ * 조합이 원천을 갱신하지 않아 단계가 멈춘 구역을 사용자가 알아볼 수 있게 한다.
+ * (개포주공1단지가 준공 후에도 "착공"으로 남아 있던 사례)
+ */
+export function maintenanceStalenessNote(
+  project: { readonly stage?: string; readonly source_updated_at?: string },
+  now: number = Date.now(),
+): string {
+  return isStaleStage(project.source_updated_at, now)
+    ? "단계 정보 갱신 지연 — 원천 기준일이 2년 이상 지났습니다"
+    : "";
+}

@@ -298,6 +298,7 @@ function buildResidentialPopupHtml(apt: ResidentialPoi): string {
       ${row("최고층수", apt.max_floor && apt.max_floor > 0 ? `${apt.max_floor.toLocaleString()}층` : "미확인")}
       ${row(apt.status === "planned" ? "입주예정월" : "첫입주일", apt.move_in_month || apt.sale_date || "미확인")}
       ${apt.recent_trades ? row("최근 실거래", escapePopupHtml(formatRecentTradesLine(apt.recent_trades))) : ""}
+      ${apt.source === "rtms" ? row("출처", "<span style=\"color:#B45309;font-weight:700\">실거래 기반 추정</span>") : ""}
       ${apt.homepage_url ? row("홈페이지", link(apt.homepage_url, "열기")) : ""}
       ${apt.notice_url ? row("모집공고", link(apt.notice_url, "열기")) : ""}
     </table>

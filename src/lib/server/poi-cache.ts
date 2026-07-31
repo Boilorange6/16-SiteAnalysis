@@ -83,6 +83,8 @@ export function setCachedSource(options: {
 export interface ResolvedSource<T> {
   readonly value: T | null;
   readonly status: "fresh" | "cached" | "failed";
+  /** TTL이 지난 저장본을 원천 장애로 대신 쓰는 중 */
+  readonly stale?: boolean;
   readonly fetchedAt: number | null;
 }
 
@@ -102,7 +104,10 @@ export async function resolveSource<T>(args: {
     return { value: live, status: "fresh", fetchedAt };
   } catch {
     console.warn(`[poi-cache] ${source} fetch failed`);
-    if (cached) return { value: cached.value, status: "cached", fetchedAt: cached.fetchedAt };
+    // 만료 저장본으로 대체하는 경우 stale을 세워 화면·보고서가 최신처럼 보이지 않게 한다
+    if (cached) {
+      return { value: cached.value, status: "cached", fetchedAt: cached.fetchedAt, stale: cached.expired };
+    }
     return { value: null, status: "failed", fetchedAt: null };
   }
 }

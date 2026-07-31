@@ -41,6 +41,7 @@ import type { PptDesignConfig } from "./ppt-design-config";
 import { DEFAULT_PPT_DESIGN, PPT_FONT_MAIN } from "./ppt-design-config";
 import {
   PARK_DATA_UNAVAILABLE_NOTICE,
+  dataAsOfFootnote,
   generalSourceStatusLines,
   hasFailedSource,
   isSourceFailed,
@@ -2141,7 +2142,14 @@ function addDataSourceSlide(
       fontSize: MAINTENANCE_PRESENTATION_TYPOGRAPHY.statusPt, fontFace: FONT_MAIN, color: pptColor(d.mutedTextColor), fit: "shrink",
     });
   });
-  addFooterNote(slide, `${config.centerName} / ${formatReportPoiCount(pois)} 기준 자동 생성`, d, undefined, MAINTENANCE_PRESENTATION_TYPOGRAPHY.legalFooterPt);
+  const asOf = dataAsOfFootnote(sourceStatuses);
+  addFooterNote(
+    slide,
+    asOf
+      ? `${config.centerName} / ${formatReportPoiCount(pois)} 기준 자동 생성 · ${asOf}`
+      : `${config.centerName} / ${formatReportPoiCount(pois)} 기준 자동 생성`,
+    d, undefined, MAINTENANCE_PRESENTATION_TYPOGRAPHY.legalFooterPt,
+  );
 }
 
 function addMaintenanceSourceSlide(

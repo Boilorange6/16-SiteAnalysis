@@ -258,7 +258,7 @@ async function runPoiSearch(
           });
           return {
             pois: r.value ?? [],
-            sources: [{ source: "park", status: r.status, fetchedAt: r.fetchedAt }],
+            sources: [{ source: "park", status: r.status, fetchedAt: r.fetchedAt, stale: r.stale }],
             warnings: r.value ? [] : ["park"],
           };
         },
@@ -317,7 +317,7 @@ async function runPoiSearch(
           // 캐시는 osm 소스가 만들 수 있는 전체 카테고리를 담으므로 요청 카테고리로 필터링
           return {
             pois: (r.value ?? []).filter((poi) => osmCategories.includes(poi.category)),
-            sources: [{ source: "osm", status: r.status, fetchedAt: r.fetchedAt }],
+            sources: [{ source: "osm", status: r.status, fetchedAt: r.fetchedAt, stale: r.stale }],
             warnings: r.value ? [] : ["osm"],
           };
         },
@@ -343,7 +343,7 @@ async function runPoiSearch(
           ]);
 
           const sources: SourceStatus[] = [
-            { source: "residential", status: existing.status, fetchedAt: existing.fetchedAt },
+            { source: "residential", status: existing.status, fetchedAt: existing.fetchedAt, stale: existing.stale },
           ];
           const warnings: string[] = existing.value ? [] : ["residential"];
           if (plannedResult) {
@@ -351,6 +351,7 @@ async function runPoiSearch(
               source: "planned-residential",
               status: plannedResult.status,
               fetchedAt: plannedResult.fetchedAt,
+              stale: plannedResult.stale,
             });
             if (!plannedResult.value) warnings.push("planned-residential");
           }
