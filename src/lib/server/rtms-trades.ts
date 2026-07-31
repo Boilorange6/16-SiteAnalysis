@@ -1,5 +1,6 @@
 import { haversineDistance } from "../geo";
 import type { MaintenanceProject, Poi, RecentTradeSummary, ResidentialPoi } from "../types";
+import { enrichApartments, type EnrichedAptData } from "./apt-enrichment";
 import { getDb } from "./database";
 import { parseJibunAddress } from "./maintenance/building-ledger";
 import { resolveLegalDongCode } from "./maintenance-project-search";
@@ -26,6 +27,10 @@ export interface RtmsTrade {
   readonly deal_date: string; // YYYY-MM-DD
   readonly floor?: number;
   readonly build_year?: number;
+  /** 구조화 지번 코드 (집GPT 방식 — 텍스트 지번보다 견고) */
+  readonly umd_cd?: string;
+  readonly bonbun?: string;
+  readonly bubun?: string;
 }
 
 function tagText(itemXml: string, tag: string): string {
@@ -59,15 +64,24 @@ export function parseRtmsTradePage(xml: string): { readonly trades: readonly Rtm
     if (year < 2000 || month < 1 || month > 12) continue;
     const floor = tagNumber(item, "floor");
     const buildYear = tagNumber(item, "buildYear");
+    const umdCd = tagText(item, "umdCd");
+    const bonbun = tagText(item, "bonbun");
+    const bubun = tagText(item, "bubun");
+    const jibunText = tagText(item, "jibun");
     trades.push({
       apt_name: aptName,
       dong: tagText(item, "umdNm"),
-      jibun: tagText(item, "jibun"),
+      jibun: jibunText || (/^\d+$/.test(bonbun) && Number(bonbun) > 0
+        ? (Number(bubun) > 0 ? `${Number(bonbun)}-${Number(bubun)}` : String(Number(bonbun)))
+        : ""),
       price_manwon: price,
       area_sqm: tagNumber(item, "excluUseAr"),
       deal_date: `${year}-${String(month).padStart(2, "0")}-${String(Math.max(day, 1)).padStart(2, "0")}`,
       ...(floor > 0 ? { floor } : {}),
       ...(buildYear > 1900 ? { build_year: buildYear } : {}),
+      ...(umdCd ? { umd_cd: umdCd } : {}),
+      ...(bonbun ? { bonbun } : {}),
+      ...(bubun ? { bubun } : {}),
     });
   }
   const totalCount = tagNumber(xml, "totalCount");
@@ -248,6 +262,49 @@ function defaultNearbyGeocoder(): NearbyGeocoder {
   };
 }
 
+/**
+ * 네이버 지역검색으로 단지 장소를 찾는다 (집GPT 방식 — 아파트 카테고리 우선).
+ * 지번 지오코딩보다 정확한 실제 단지 좌표·정식 명칭을 얻는다.
+ */
+export type ComplexPlaceResolver = (
+  name: string,
+  center: { readonly lat: number; readonly lng: number },
+) => Promise<{ readonly lat: number; readonly lng: number } | null>;
+
+function defaultComplexPlaceResolver(): ComplexPlaceResolver {
+  const id = process.env.NAVER_CLIENT_ID?.trim();
+  const secret = process.env.NAVER_CLIENT_SECRET?.trim();
+  if (!id || !secret) return async () => null;
+  return async (name) => {
+    const cacheKey = `place:${name}`;
+    try {
+      const db = getDb();
+      const cached = db.prepare("SELECT lat, lng FROM geocode_cache WHERE address = ?").get(cacheKey) as
+        | { lat: number; lng: number } | undefined;
+      if (cached) return cached;
+      const response = await fetch(
+        `https://openapi.naver.com/v1/search/local.json?query=${encodeURIComponent(name)}&display=5`,
+        { headers: { "X-Naver-Client-Id": id, "X-Naver-Client-Secret": secret } },
+      );
+      if (!response.ok) return null;
+      const data: unknown = await response.json();
+      if (!isObject(data) || !Array.isArray(data.items)) return null;
+      const items = data.items.filter(isObject);
+      const preferred = items.find((item) => String(item.category ?? "").includes("아파트")) ?? items[0];
+      if (!preferred) return null;
+      // mapx/mapy는 WGS84 × 1e7 정수
+      const lng = Number(preferred.mapx) / 1e7;
+      const lat = Number(preferred.mapy) / 1e7;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < 33 || lat > 39) return null;
+      db.prepare("INSERT OR REPLACE INTO geocode_cache (address, lat, lng, created_at) VALUES (?, ?, ?, ?)")
+        .run(cacheKey, lat, lng, Date.now() / 1_000);
+      return { lat, lng };
+    } catch {
+      return null;
+    }
+  };
+}
+
 /** 실거래에는 있는데 주거 POI에 없는 신축 단지를 합성한다 */
 export async function synthesizeMissingComplexes(options: {
   readonly pois: readonly Poi[];
@@ -256,6 +313,12 @@ export async function synthesizeMissingComplexes(options: {
   readonly radiusM: number;
   readonly lawdCd: string;
   readonly geocode: NearbyGeocoder;
+  /** 우선 시도할 장소검색 (기본: 네이버 지역검색) */
+  readonly searchPlace?: ComplexPlaceResolver;
+  /** 세대수 보강 (기본: 건축물대장·K-APT 이름 매칭) */
+  readonly enrich?: (
+    apartments: readonly { name: string; lat: number; lng: number }[],
+  ) => Promise<Map<string, EnrichedAptData>>;
 }): Promise<readonly ResidentialPoi[]> {
   const existingNames = new Set(
     options.pois.filter(isResidentialPoi).map((poi) => normalizeAptName(poi.name)).filter((key) => key.length >= 2),
@@ -270,11 +333,17 @@ export async function synthesizeMissingComplexes(options: {
     .sort((left, right) => right[1].length - left[1].length)
     .slice(0, SYNTHETIC_MAX_GEOCODE_ATTEMPTS);
   const synthesized: ResidentialPoi[] = [];
+  const searchPlace = options.searchPlace ?? defaultComplexPlaceResolver();
   for (const [, trades] of candidates) {
     if (synthesized.length >= SYNTHETIC_MAX_COMPLEXES) break;
     const sample = trades[0];
     if (!sample) continue;
-    const coords = await options.geocode(`${sample.dong} ${sample.jibun}`, options.center);
+    // 장소검색(정확한 단지 좌표) 우선, 실패 시 지번 지오코딩 폴백
+    let coords = await searchPlace(sample.apt_name, options.center);
+    if (coords && haversineDistance(options.center.lat, options.center.lng, coords.lat, coords.lng) > options.radiusM) {
+      coords = null; // 동명이단지 오매칭 방지 — 반경 밖이면 지번 폴백
+    }
+    coords ??= await options.geocode(`${sample.dong} ${sample.jibun}`, options.center);
     if (!coords) continue;
     const distance = haversineDistance(options.center.lat, options.center.lng, coords.lat, coords.lng);
     if (distance > options.radiusM) continue;
@@ -295,7 +364,25 @@ export async function synthesizeMissingComplexes(options: {
       ...(summary ? { recent_trades: summary } : {}),
     });
   }
-  return synthesized;
+  if (!synthesized.length) return synthesized;
+  // 세대수·주차 보강 — 건축물대장 이름 매칭 + K-APT 폴백 (집GPT 방식)
+  try {
+    const enriched = await (options.enrich ?? enrichApartments)(
+      synthesized.map(({ name, lat, lng }) => ({ name, lat, lng })),
+    );
+    return synthesized.map((poi) => {
+      const extra = enriched.get(poi.name);
+      if (!extra) return poi;
+      return {
+        ...poi,
+        ...(extra.units > 0 ? { units: extra.units } : {}),
+        ...(extra.parking_count > 0 ? { parking_count: extra.parking_count } : {}),
+        ...(extra.sale_date ? { sale_date: extra.sale_date } : {}),
+      };
+    });
+  } catch {
+    return synthesized;
+  }
 }
 
 export interface AttachTradesResult {

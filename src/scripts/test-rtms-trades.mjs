@@ -95,6 +95,45 @@ assert.equal(summary?.max_build_year, 2023);
   assert.equal(synthesized[0].source, "rtms");
   assert.equal(synthesized[0].sale_date, "2023");
   assert.ok(synthesized[0].recent_trades.count >= 1);
+
+  // 장소검색이 성공하면 지번 지오코딩보다 우선, 반경 밖 결과는 버리고 지번 폴백
+  const placed = await synthesizeMissingComplexes({
+    pois: [], index, center, radiusM: 2000, lawdCd: "11680",
+    searchPlace: async () => ({ lat: 37.4804, lng: 127.0571 }),
+    geocode: async () => { throw new Error("장소검색 성공 시 지오코딩 호출 금지"); },
+    enrich: async () => new Map(),
+  });
+  assert.ok(placed.some((p) => p.name === "디에이치퍼스티어아이파크" && Math.abs(p.lat - 37.4804) < 1e-6));
+  const outOfRange = await synthesizeMissingComplexes({
+    pois: [], index, center, radiusM: 2000, lawdCd: "11680",
+    searchPlace: async () => ({ lat: 35.1, lng: 129.0 }), // 부산 동명 단지 오매칭 가정
+    geocode: async (query) => (query === "개포동 660-4" ? { lat: 37.4804, lng: 127.0571 } : null),
+    enrich: async () => new Map(),
+  });
+  assert.ok(outOfRange.some((p) => p.name === "디에이치퍼스티어아이파크"));
+
+  // 세대수 보강(enrich) 결과가 있으면 units·sale_date 갱신
+  const enriched = await synthesizeMissingComplexes({
+    pois: [], index, center, radiusM: 2000, lawdCd: "11680",
+    searchPlace: async () => ({ lat: 37.4804, lng: 127.0571 }),
+    geocode: async () => null,
+    enrich: async () => new Map([["디에이치퍼스티어아이파크", { units: 6702, parking_count: 0, sale_date: "2023-11" }]]),
+  });
+  const target = enriched.find((p) => p.name === "디에이치퍼스티어아이파크");
+  assert.equal(target?.units, 6702);
+  assert.equal(target?.sale_date, "2023-11");
+}
+
+// 구조화 지번 폴백: jibun 태그가 없어도 bonbun/bubun으로 지번 구성
+{
+  const xml = `<response><header><resultCode>000</resultCode></header><body><items><item>
+    <aptNm>테스트단지</aptNm><umdNm>개포동</umdNm><umdCd>10300</umdCd>
+    <bonbun>0660</bonbun><bubun>0004</bubun>
+    <dealAmount>100,000</dealAmount><dealYear>2026</dealYear><dealMonth>7</dealMonth><dealDay>1</dealDay>
+  </item></items><totalCount>1</totalCount></body></response>`;
+  const parsed = parseRtmsTradePage(xml);
+  assert.equal(parsed.trades[0].jibun, "660-4");
+  assert.equal(parsed.trades[0].umd_cd, "10300");
 }
 
 // PPT 표 셀 축약
