@@ -161,4 +161,44 @@ function seedRelease(root, stamp, marker) {
   rmSync(root, { recursive: true, force: true });
 }
 
+// ── resolve_server_entry: standalone 산출물 위치를 찾아낸다 ────────────────
+// Next.js가 워크스페이스 루트를 상위로 추론하면 산출물이
+// .next/standalone/<중첩 경로>/server.js 로 들어간다(2026-08-01 운영 장애 원인).
+{
+  const root = tempRoot();
+  const flat = path.join(root, "releases", "flat").replaceAll("\\", "/");
+  mkdirSync(path.join(flat, ".next", "standalone"), { recursive: true });
+  writeFileSync(path.join(flat, ".next", "standalone", "server.js"), "// entry");
+  assert.equal(
+    runLib(`resolve_server_entry '${flat}'`),
+    path.join(flat, ".next", "standalone", "server.js").replaceAll("\\", "/"),
+    "평면 배치일 때 표준 경로를 반환해야 한다",
+  );
+  rmSync(root, { recursive: true, force: true });
+}
+
+{
+  const root = tempRoot();
+  const nested = path.join(root, "releases", "nested").replaceAll("\\", "/");
+  const deep = path.join(nested, ".next", "standalone", "releases", "20260801-002231");
+  mkdirSync(deep, { recursive: true });
+  writeFileSync(path.join(deep, "server.js"), "// entry");
+  assert.equal(
+    runLib(`resolve_server_entry '${nested}'`),
+    path.join(deep, "server.js").replaceAll("\\", "/"),
+    "중첩 배치여도 실제 server.js를 찾아야 한다",
+  );
+  rmSync(root, { recursive: true, force: true });
+}
+
+{
+  // 산출물이 아예 없으면 실패해야 한다 — 운영 프로세스를 내리기 전에 막기 위함
+  const root = tempRoot();
+  const empty = path.join(root, "releases", "empty").replaceAll("\\", "/");
+  mkdirSync(path.join(empty, ".next"), { recursive: true });
+  assert.throws(() => runLib(`resolve_server_entry '${empty}' 2>/dev/null`),
+    "산출물이 없으면 0이 아닌 종료코드를 반환해야 한다");
+  rmSync(root, { recursive: true, force: true });
+}
+
 console.log("test-release-manager: all assertions passed");

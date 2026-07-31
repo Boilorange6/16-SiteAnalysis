@@ -79,3 +79,22 @@ health_check() {
   echo "health_check: ${url} 응답 ${code} (재시도 ${retries}회 소진)" >&2
   return 1
 }
+
+# standalone 산출물의 server.js 실제 경로를 찾는다.
+# Next.js가 워크스페이스 루트를 상위 디렉터리로 추론하면 산출물이
+# .next/standalone/<프로젝트 상대경로>/server.js 로 중첩된다.
+# (2026-08-01 운영 장애: releases/<stamp> 안에서 빌드해 중첩이 발생)
+resolve_server_entry() {
+  local release_dir="$1"
+  local standalone="${release_dir}/.next/standalone"
+  [[ -d "${standalone}" ]] || { echo "resolve_server_entry: ${standalone} 없음" >&2; return 1; }
+
+  if [[ -f "${standalone}/server.js" ]]; then
+    printf '%s\n' "${standalone}/server.js"
+    return 0
+  fi
+  local found
+  found="$(find "${standalone}" -maxdepth 6 -name server.js -type f 2>/dev/null | head -1)"
+  [[ -n "${found}" ]] || { echo "resolve_server_entry: server.js를 찾지 못했습니다" >&2; return 1; }
+  printf '%s\n' "${found}"
+}

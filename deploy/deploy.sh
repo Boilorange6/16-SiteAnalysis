@@ -119,7 +119,7 @@ if health_check "${HEALTH_URL}" 12 5; then
 else
     echo "ERROR: 헬스체크 실패 — 이전 릴리스로 롤백합니다." >&2
     if release_rollback "${REMOTE_DIR}"; then
-        start_app "${REMOTE_DIR}"
+        start_app "${REMOTE_DIR}/current"
         if health_check "${HEALTH_URL}" 12 5; then
             echo "롤백 완료: 이전 릴리스로 서비스가 복구되었습니다." >&2
         else
