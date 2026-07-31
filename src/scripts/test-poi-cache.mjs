@@ -27,6 +27,28 @@ assert.equal(hit.expired, false);
 // 3) 다른 반경 → miss
 assert.equal(getCachedSource({ ...osmKey, radiusM: 2000 }), null);
 
+// 3-1) 작은 반경에서는 캐시 격자도 촘촘해야 한다.
+// 고정 4자리(약 11m) 격자는 반경 100m 조회에서 11% 오차 — 경계 POI가 다른 위치 결과로 재사용된다.
+{
+  // 37.56645와 37.56654는 4자리 반올림 시 둘 다 37.5665지만 실제로는 약 10m 떨어져 있다.
+  const tight = { source: "osm-tight", lat: 37.56645, lng: 126.978, radiusM: 100 };
+  setCachedSource({ key: tight, value: [{ id: "tight" }] });
+  assert.equal(getCachedSource({ ...tight, lat: 37.56654 }), null,
+    "반경 100m에서 약 10m 떨어진 좌표는 4자리 반올림이 같더라도 캐시를 공유하면 안 된다");
+  // 0.5m 이동은 같은 조회로 봐도 된다 (기준 37.56645에서 +0.0000045도 ≈ 0.5m)
+  assert.ok(getCachedSource({ ...tight, lat: 37.5664504 }),
+    "반경 100m에서 1m 미만 이동은 같은 캐시를 써야 한다");
+}
+
+// 3-2) 큰 반경에서는 격자가 성글어야 한다 (캐시 적중률 유지).
+// 반경 100m에서는 별개로 취급되던 약 10m 차이가, 반경 5km에서는 같은 캐시를 쓴다.
+{
+  const wide = { source: "osm-wide", lat: 37.56645, lng: 126.978, radiusM: 5000 };
+  setCachedSource({ key: wide, value: [{ id: "wide" }] });
+  assert.ok(getCachedSource({ ...wide, lat: 37.56654 }),
+    "반경 5km에서 약 10m 이동은 같은 캐시를 재사용해야 한다");
+}
+
 // 4) resolveSource: 신선 캐시 있으면 fetcher를 부르지 않는다 (cache-first)
 let calls = 0;
 const r1 = await resolveSource({

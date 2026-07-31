@@ -15,6 +15,7 @@
 
 import { getDb } from "./database";
 import { enrichKaptExtras } from "./apt-enrichment";
+import { buildingDedupeKey, sampleDongPoints } from "./residential/complex-identity";
 import type { Apartment, Officetel, ResidentialOther, ResidentialPoi } from "../types";
 
 const LEDGER_URL = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrRecapTitleInfo";
@@ -98,21 +99,11 @@ async function findDongsInRadius(
   centerLat: number, centerLng: number, radiusM: number,
   ncpId: string, ncpSecret: string,
 ): Promise<DongCode[]> {
-  const offsetDeg = (radiusM / 111000); // rough degree offset
-  const points = [
-    [centerLat, centerLng],
-    [centerLat + offsetDeg, centerLng],
-    [centerLat - offsetDeg, centerLng],
-    [centerLat, centerLng + offsetDeg],
-    [centerLat, centerLng - offsetDeg],
-    [centerLat + offsetDeg * 0.7, centerLng + offsetDeg * 0.7],
-    [centerLat + offsetDeg * 0.7, centerLng - offsetDeg * 0.7],
-    [centerLat - offsetDeg * 0.7, centerLng + offsetDeg * 0.7],
-    [centerLat - offsetDeg * 0.7, centerLng - offsetDeg * 0.7],
-  ];
+  // cos(위도) 보정 + 반경별 링 밀도 — complex-identity.ts 참조
+  const points = sampleDongPoints(centerLat, centerLng, radiusM);
 
   const results = await Promise.all(
-    points.map(([lat, lng]) => reverseGeocodeToDong(lat, lng, ncpId, ncpSecret))
+    points.map(({ lat, lng }) => reverseGeocodeToDong(lat, lng, ncpId, ncpSecret))
   );
 
   const seen = new Set<string>();
@@ -286,8 +277,8 @@ export async function searchResidentialFromLedger(
     const dist = haversine(centerLat, centerLng, coord.lat, coord.lng);
     if (dist > radiusM) continue;
 
-    // Deduplicate by name (same complex may have multiple entries)
-    const dedupeKey = b.bldNm.replace(/\s+[\dA-Za-z]+동$/, "").trim();
+    // 지번 코드 기반 식별 — 이름만 쓰면 서로 다른 "현대아파트"가 병합된다
+    const dedupeKey = buildingDedupeKey({ ...b, lat: coord.lat, lng: coord.lng });
     if (seenNames.has(dedupeKey)) continue;
     seenNames.add(dedupeKey);
 

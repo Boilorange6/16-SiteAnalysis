@@ -23,8 +23,22 @@ interface PoiSourceCacheRow {
   readonly fetched_at: number;
 }
 
-function keyParts(lat: number, lng: number) {
-  return { lat: lat.toFixed(4), lng: lng.toFixed(4) };
+/**
+ * 캐시 격자 해상도를 반경에 맞춘다.
+ * 고정 4자리(약 11m)는 반경 100m 조회에서 11% 오차 — 경계 POI가 다른 위치의
+ * 결과로 재사용된다. 격자를 반경의 1% 이하로 두되, 넓은 반경에서는 적중률을
+ * 지키기 위해 최대 11m(4자리)까지만 촘촘하게 한다.
+ */
+function keyDecimals(radiusM: number): number {
+  const cellM = Math.max(radiusM * 0.01, 0.5);
+  if (cellM >= 11) return 4; // 약 11m
+  if (cellM >= 1.1) return 5; // 약 1.1m
+  return 6; // 약 0.11m
+}
+
+function keyParts(lat: number, lng: number, radiusM: number) {
+  const decimals = keyDecimals(radiusM);
+  return { lat: lat.toFixed(decimals), lng: lng.toFixed(decimals) };
 }
 
 export function getCachedSource<T>(
@@ -32,7 +46,7 @@ export function getCachedSource<T>(
   options: { readonly includeExpired?: boolean } = {},
 ): CachedSource<T> | null {
   const { source, lat, lng, radiusM } = key;
-  const { lat: la, lng: ln } = keyParts(lat, lng);
+  const { lat: la, lng: ln } = keyParts(lat, lng, radiusM);
   const row = getDb()
     .prepare<[string, string, string, number], PoiSourceCacheRow>(
       `SELECT value_json, fetched_at FROM poi_source_cache
@@ -55,7 +69,7 @@ export function setCachedSource(options: {
   readonly value: unknown;
 }): number {
   const { source, lat, lng, radiusM } = options.key;
-  const { lat: la, lng: ln } = keyParts(lat, lng);
+  const { lat: la, lng: ln } = keyParts(lat, lng, radiusM);
   const fetchedAt = Date.now();
   getDb()
     .prepare(`INSERT INTO poi_source_cache (source, lat, lng, radius_m, value_json, fetched_at)
