@@ -85,6 +85,34 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   assert.equal(result.aborted, true);
 }
 
+// ── 원천이 끝날 때마다 진행 이벤트를 방출한다 (완료를 기다리지 않는다) ────
+{
+  const events = [];
+  const result = await collectSourcesInParallel(
+    [
+      { name: "osm", run: async () => { await wait(40); return { pois: [{ id: "a" }] }; } },
+      { name: "park", run: async () => ({ pois: [{ id: "b" }, { id: "c" }] }) },
+      { name: "maintenance", run: async () => { throw new Error("장애"); } },
+    ],
+    { onProgress: (event) => events.push(event) },
+  );
+
+  assert.equal(events.length, 3, "원천 수만큼 진행 이벤트가 있어야 한다");
+  // 빨리 끝난 원천이 먼저 보고된다 — 사용자가 대기 중 상황을 알 수 있어야 한다
+  assert.equal(events[0].name, "park", "먼저 끝난 원천이 먼저 보고되어야 한다");
+  assert.equal(events[0].ok, true);
+  assert.equal(events[0].poiCount, 2);
+  assert.equal(events[0].done, 1);
+  assert.equal(events[0].total, 3);
+
+  const failed = events.find((e) => e.name === "maintenance");
+  assert.equal(failed.ok, false, "실패한 원천도 진행 이벤트로 알려야 한다");
+
+  const last = events.at(-1);
+  assert.equal(last.done, 3, "마지막 이벤트의 done은 total과 같아야 한다");
+  assert.equal(result.pois.length, 3);
+}
+
 // ── 빈 목록도 안전하다 ────────────────────────────────────────────────────
 {
   const result = await collectSourcesInParallel([]);

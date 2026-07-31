@@ -18,7 +18,7 @@ import { searchMaintenanceProjects } from "@/lib/server/maintenance-project-sear
 import { attachRecentTrades } from "@/lib/server/rtms-trades";
 import { crossCheckMaintenanceCompletion } from "@/lib/server/maintenance/completion-crosscheck";
 import { resolveSource } from "@/lib/server/poi-cache";
-import { collectSourcesInParallel, type SourceTask } from "@/lib/server/poi-collection";
+import { collectSourcesInParallel, type SourceProgressEvent, type SourceTask } from "@/lib/server/poi-collection";
 
 const querySchema = z.object({
   lat: z.coerce.number().min(-90).max(90),
@@ -34,6 +34,8 @@ const querySchema = z.object({
     .transform((val) => val.split(",").map((s) => s.trim())),
   // 1단계 데이터 신뢰성: "true"면 소스별 캐시를 무시하고 강제 재수집
   refresh: z.string().optional().transform((v) => v === "true"),
+  // 진행 상황을 NDJSON으로 흘려보낼지 — 첫 검색 대기 중 사용자에게 단계를 보여주기 위함
+  stream: z.string().optional().transform((v) => v === "true"),
 });
 
 // M-1: Extract token from Authorization header or HttpOnly cookie
@@ -164,6 +166,7 @@ export async function GET(req: NextRequest) {
     planned: searchParams.get("planned") ?? "true",
     categories: searchParams.get("categories") ?? "subway,school,park,mountain,apartment,officetel,residential,maintenance",
     refresh: searchParams.get("refresh") ?? undefined,
+    stream: searchParams.get("stream") ?? undefined,
   });
 
   if (!parsed.success) {
@@ -173,9 +176,58 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const { lat, lng, radius, planned, categories, refresh } = parsed.data;
+  const { lat, lng, radius, planned, categories, refresh, stream } = parsed.data;
+
+  // NDJSON 스트리밍: {type:"progress"} 여러 줄 뒤 마지막에 {type:"result"} 한 줄
+  if (stream) {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const write = (payload: unknown) => {
+          controller.enqueue(encoder.encode(`${JSON.stringify(payload)}\n`));
+        };
+        try {
+          const result = await runPoiSearch(
+            { lat, lng, radius, planned, categories, refresh },
+            { onProgress: (event) => write({ type: "progress", ...event }) },
+          );
+          write({ type: "result", ...result });
+        } catch {
+          write({ type: "error", error: "POI 검색에 실패했습니다" });
+        } finally {
+          controller.close();
+        }
+      },
+    });
+    return new Response(body, {
+      headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store" },
+    });
+  }
 
   try {
+    const result = await runPoiSearch({ lat, lng, radius, planned, categories, refresh });
+    return NextResponse.json(result);
+  } catch {
+    // M-2: Generic error — don't expose internal details
+    return NextResponse.json({ error: "POI 검색에 실패했습니다" }, { status: 500 });
+  }
+}
+
+interface PoiSearchParams {
+  readonly lat: number;
+  readonly lng: number;
+  readonly radius: number;
+  readonly planned: boolean;
+  readonly categories: readonly string[];
+  readonly refresh: boolean;
+}
+
+async function runPoiSearch(
+  params: PoiSearchParams,
+  hooks: { readonly onProgress?: (event: SourceProgressEvent) => void } = {},
+) {
+  const { lat, lng, radius, planned, categories, refresh } = params;
+  {
     // ── Non-residential POIs from OSM ──────────────────────────────────────
     const osmCategories = categories.filter((c) =>
       c !== "apartment" &&
@@ -313,7 +365,8 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const collected = await collectSourcesInParallel(tasks);
+    const collected = await collectSourcesInParallel(tasks,
+      hooks.onProgress ? { onProgress: hooks.onProgress } : {});
     pois.push(...collected.pois);
     sources.push(...collected.sources);
     sourceWarnings.push(...collected.warnings);
@@ -335,9 +388,6 @@ export async function GET(req: NextRequest) {
       sourceWarnings.push(`종료된 정비사업 ${crossCheck.removedCount}건 추가 제외(신축 준공 교차확인)`);
     }
 
-    return NextResponse.json({ pois: responsePois, warnings: sourceWarnings, sources, maintenanceCatalog });
-  } catch {
-    // M-2: Generic error — don't expose internal details
-    return NextResponse.json({ error: "POI 검색에 실패했습니다" }, { status: 500 });
+    return { pois: responsePois, warnings: sourceWarnings, sources, maintenanceCatalog };
   }
 }

@@ -28,19 +28,41 @@ export interface CollectResult {
   readonly aborted: boolean;
 }
 
+/** 원천 하나가 끝날 때마다 방출되는 진행 이벤트 */
+export interface SourceProgressEvent {
+  readonly name: string;
+  readonly ok: boolean;
+  readonly poiCount: number;
+  /** 지금까지 완료한 원천 수 / 전체 */
+  readonly done: number;
+  readonly total: number;
+}
+
 export async function collectSourcesInParallel(
   tasks: readonly SourceTask[],
-  options: { readonly signal?: AbortSignal } = {},
+  options: {
+    readonly signal?: AbortSignal;
+    /** 원천이 끝날 때마다 호출 — 전체 완료를 기다리지 않고 진행 상황을 알린다 */
+    readonly onProgress?: (event: SourceProgressEvent) => void;
+  } = {},
 ): Promise<CollectResult> {
   const empty: CollectResult = { pois: [], sources: [], warnings: [], catalog: [], aborted: false };
   if (options.signal?.aborted) return { ...empty, aborted: true };
   if (!tasks.length) return empty;
 
+  let done = 0;
   const settled = await Promise.all(tasks.map(async (task) => {
     try {
-      return { task, result: await task.run(), failed: false as const };
+      const result = await task.run();
+      done += 1;
+      options.onProgress?.({
+        name: task.name, ok: true, poiCount: result.pois?.length ?? 0, done, total: tasks.length,
+      });
+      return { task, result, failed: false as const };
     } catch (error) {
       console.warn(`[poi-collection] ${task.name} 실패`, error);
+      done += 1;
+      options.onProgress?.({ name: task.name, ok: false, poiCount: 0, done, total: tasks.length });
       return { task, result: {} as SourceTaskResult, failed: true as const };
     }
   }));

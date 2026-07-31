@@ -340,3 +340,11 @@ export const CATEGORY_LABELS: Record<PoiCategory, string> = {
 
 /** Categories that share the residential year filter */
 export const RESIDENTIAL_CATEGORIES: readonly PoiCategory[] = ["apartment", "officetel", "residential"] as const;
+
+/** 수집 진행 표시용 원천 이름 — 사용자에게 보이는 문구 */
+export const SOURCE_PROGRESS_LABELS: Record<string, string> = {
+  park: "공원·녹지",
+  maintenance: "정비사업",
+  osm: "지하철·학교·산",
+  residential: "주거 단지",
+};

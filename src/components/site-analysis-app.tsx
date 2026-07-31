@@ -17,7 +17,7 @@ import type {
   School,
   SubwayStation,
 } from "@/lib/types";
-import { POI_SOURCE_CATEGORIES } from "@/lib/types";
+import { POI_SOURCE_CATEGORIES, SOURCE_PROGRESS_LABELS } from "@/lib/types";
 import type { MapViewHandle } from "./map-view";
 import MapView from "./map-view";
 import Sidebar, { type ApartmentFilter } from "./sidebar";
@@ -55,6 +55,8 @@ export default function SiteAnalysisApp() {
   const [config, setConfig] = useState<AnalysisConfig>(INITIAL_CONFIG);
   const [regionData, setRegionData] = useState<RegionData | null>(null);
   const [loading, setLoading] = useState(false);
+  // 원천별 수집 진행 상황 — 첫 검색은 외부 API를 여럿 부르므로 무엇을 기다리는지 보여준다
+  const [loadProgress, setLoadProgress] = useState<{ label: string; done: number; total: number } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [layers, setLayers] = useState<LayerVisibility>({
     subway: true,
@@ -98,6 +100,7 @@ export default function SiteAnalysisApp() {
     const controller = new AbortController();
     setLoading(true);
     setLoadError(null);
+    setLoadProgress(null);
 
     // handleForceRefresh가 설정한 강제 새로고침 플래그를 읽고 즉시 리셋(useEffect 의존성에는 넣지 않음)
     const forceRefresh = forceRefreshRef.current;
@@ -107,6 +110,14 @@ export default function SiteAnalysisApp() {
     loadDynamicRegion(config.centerLat, config.centerLng, config.radiusKm, {
       forceRefresh,
       signal: controller.signal,
+      onProgress: (event) => {
+        if (cancelled) return;
+        setLoadProgress({
+          label: SOURCE_PROGRESS_LABELS[event.name] ?? event.name,
+          done: event.done,
+          total: event.total,
+        });
+      },
     })
       .then((data) => {
         if (!cancelled) {
@@ -125,6 +136,7 @@ export default function SiteAnalysisApp() {
       .finally(() => {
         if (!cancelled) {
           setLoading(false);
+          setLoadProgress(null);
         }
       });
 
@@ -605,7 +617,11 @@ export default function SiteAnalysisApp() {
             <div className="bg-[#1E3A8A] rounded-2xl p-10 text-center shadow-2xl border border-white/10">
               <div className="w-12 h-12 border-4 border-blue-400 border-t-white rounded-full animate-spin mx-auto mb-6" />
               <p className="text-white text-lg font-bold">데이터 로딩 중</p>
-              <p className="text-blue-200/60 text-sm mt-2 font-medium">주변 POI 데이터를 불러오고 있습니다...</p>
+              <p className="text-blue-200/60 text-sm mt-2 font-medium">
+                {loadProgress
+                  ? `${loadProgress.label} 완료 (${loadProgress.done}/${loadProgress.total})`
+                  : "주변 POI 데이터를 불러오고 있습니다..."}
+              </p>
             </div>
           </div>
         )}

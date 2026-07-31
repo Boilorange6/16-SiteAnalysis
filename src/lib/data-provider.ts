@@ -54,6 +54,51 @@ function selectPois<Selection extends Poi>(
   return selected;
 }
 
+/**
+ * NDJSON 스트림을 읽어 진행 이벤트를 흘리고 마지막 result를 반환한다.
+ * 서버는 원천이 끝날 때마다 progress 한 줄, 마지막에 result 한 줄을 쓴다.
+ */
+async function fetchPoiSearchStream(
+  path: string,
+  onProgress: (event: { name: string; ok: boolean; done: number; total: number }) => void,
+  signal?: AbortSignal,
+): Promise<PoiSearchResponse> {
+  const url = resolvePath(path);
+  const res = typeof window !== "undefined"
+    ? await authFetch(url, signal ? { signal } : {})
+    : await fetch(url, signal ? { signal } : {});
+  if (!res.ok || !res.body) throw new Error(`POI 검색 실패 (${res.status})`);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: PoiSearchResponse | null = null;
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const payload = JSON.parse(line) as Record<string, unknown>;
+      if (payload.type === "progress") {
+        onProgress({
+          name: String(payload.name), ok: Boolean(payload.ok),
+          done: Number(payload.done), total: Number(payload.total),
+        });
+      } else if (payload.type === "result") {
+        result = payload as unknown as PoiSearchResponse;
+      } else if (payload.type === "error") {
+        throw new Error(String(payload.error));
+      }
+    }
+  }
+  if (!result) throw new Error("POI 검색 응답이 비어 있습니다");
+  return result;
+}
+
 /** 취소로 인한 오류인지 — 취소는 데이터 실패와 구분해야 캐시·경고가 오염되지 않는다 */
 function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
@@ -128,7 +173,12 @@ export async function loadDynamicRegion(
   lat: number,
   lng: number,
   radiusKm: number,
-  opts: { forceRefresh?: boolean; signal?: AbortSignal } = {},
+  opts: {
+    forceRefresh?: boolean;
+    signal?: AbortSignal;
+    /** 원천이 하나씩 끝날 때마다 호출 — 첫 검색 대기 중 진행 상황 표시용 */
+    onProgress?: (event: { name: string; ok: boolean; done: number; total: number }) => void;
+  } = {},
 ): Promise<RegionData> {
   // 이미 취소된 요청은 네트워크를 치지 않는다 — 주소를 빠르게 바꿀 때 낭비를 막는다
   if (opts.signal?.aborted) {
@@ -157,9 +207,16 @@ export async function loadDynamicRegion(
   });
 
   const [poiResponse, routeResponse] = await Promise.all([
-    fetchJson<PoiSearchResponse>(
-      `/api/poi-search?${poiParams.toString()}${refreshQs}`,
-      opts.signal ? { signal: opts.signal } : {},
+    (opts.onProgress
+      ? fetchPoiSearchStream(
+          `/api/poi-search?${poiParams.toString()}${refreshQs}&stream=true`,
+          opts.onProgress,
+          opts.signal,
+        )
+      : fetchJson<PoiSearchResponse>(
+          `/api/poi-search?${poiParams.toString()}${refreshQs}`,
+          opts.signal ? { signal: opts.signal } : {},
+        )
     ).catch((error: unknown) => {
       if (isAbortError(error)) throw error; // 취소는 실패 폴백으로 감추지 않는다
       return ({
