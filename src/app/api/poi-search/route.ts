@@ -292,19 +292,20 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // ── 신축 준공 교차검증: 폴리곤 안 최근 준공 대단지 존재 시 정비사업 제외 ──
-    const crossCheck = crossCheckMaintenanceCompletion(pois);
-    if (crossCheck.removedCount > 0) {
-      sourceWarnings.push(`종료된 정비사업 ${crossCheck.removedCount}건 추가 제외(신축 준공 교차확인)`);
-    }
-
-    // ── 최근 실거래 요약 결합 (아파트 이름 매칭 · 정비구역 대표지번 매칭) ──
-    let responsePois: readonly Poi[] = crossCheck.pois;
-    if (crossCheck.pois.some((poi) => poi.category === "apartment" || poi.category === "officetel"
+    // ── 최근 실거래 요약 결합 + 건축물대장 누락 신축 단지 합성 ──────────────
+    let responsePois: readonly Poi[] = pois;
+    if (pois.some((poi) => poi.category === "apartment" || poi.category === "officetel"
       || poi.category === "residential" || poi.category === "maintenance")) {
-      const trades = await attachRecentTrades(crossCheck.pois, { lat, lng });
+      const trades = await attachRecentTrades(pois, { lat, lng }, { radiusM: radius });
       responsePois = trades.pois;
       sources.push({ source: "rtms", status: trades.status, fetchedAt: trades.fetchedAt });
+    }
+
+    // ── 신축 준공 교차검증: 구역 지번 신축 거래 또는 폴리곤 내 준공 대단지 → 제외 ──
+    const crossCheck = crossCheckMaintenanceCompletion(responsePois);
+    responsePois = crossCheck.pois;
+    if (crossCheck.removedCount > 0) {
+      sourceWarnings.push(`종료된 정비사업 ${crossCheck.removedCount}건 추가 제외(신축 준공 교차확인)`);
     }
 
     return NextResponse.json({ pois: responsePois, warnings: sourceWarnings, sources, maintenanceCatalog });

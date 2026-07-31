@@ -39,7 +39,6 @@ export interface CompletionCrossCheckResult {
 
 export function crossCheckMaintenanceCompletion(pois: readonly Poi[]): CompletionCrossCheckResult {
   const complexes = pois.filter(isExistingLargeComplex);
-  if (!complexes.length) return { pois, removedCount: 0 };
   let removedCount = 0;
   const kept = pois.filter((poi) => {
     if (poi.category !== "maintenance") return true;
@@ -51,7 +50,10 @@ export function crossCheckMaintenanceCompletion(pois: readonly Poi[]): Completio
     const threshold = Number.isFinite(designationYear) && designationYear > 1900
       ? designationYear
       : DEFAULT_COMPLETION_YEAR_THRESHOLD;
-    const completed = complexes.some((complex) => {
+    // 근거 1: 대표지번 실거래의 건축년도 — 구역 지번에서 신축 거래가 이뤄지면 완료
+    const tradeBuildYear = project.recent_trades?.max_build_year ?? 0;
+    // 근거 2: 폴리곤 안 최근 준공 대단지 POI
+    const completed = tradeBuildYear >= threshold || complexes.some((complex) => {
       const year = saleYear(complex);
       return year !== null && year >= threshold
         && booleanPointInPolygon(point([complex.lng, complex.lat]), feature);

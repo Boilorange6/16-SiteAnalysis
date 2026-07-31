@@ -5,6 +5,7 @@ import {
   parseRtmsTradePage,
   recentDealMonths,
   summarizeTrades,
+  synthesizeMissingComplexes,
 } from "../lib/server/rtms-trades.ts";
 import { formatComplexTradeCell, formatRecentTradesLine, formatTradePrice } from "../lib/maintenance-map-utils.ts";
 
@@ -72,6 +73,29 @@ assert.equal(
   formatRecentTradesLine({ count: 2, months: 6, latest_price_manwon: 225000, latest_date: "2026-06-15", latest_area_sqm: 84.9, max_price_manwon: 310000 }),
   "22억 5,000 (2026-06-15 · 84.9㎡) · 6개월 2건",
 );
+
+assert.equal(summary?.max_build_year, 2023);
+
+// --- 건축물대장 누락 신축 단지 합성 ---
+{
+  const center = { lat: 37.4807, lng: 127.0584 };
+  const synthesized = await synthesizeMissingComplexes({
+    pois: [
+      { id: "a", name: "개포주공5단지", lat: 37.487, lng: 127.068, category: "apartment", units: 940, parking_count: 0, sale_date: "1983-06", distance_m: 0, status: "existing", source: "ledger" },
+    ],
+    index,
+    center,
+    radiusM: 2000,
+    lawdCd: "11680",
+    geocode: async (query) => (query === "개포동 660-4" ? { lat: 37.4804, lng: 127.0571 } : null),
+  });
+  // 퍼스티어(2023 신축·기존 POI 없음)만 합성, 주공5단지(구축·이미 존재)는 제외
+  assert.equal(synthesized.length, 1);
+  assert.equal(synthesized[0].name, "디에이치퍼스티어아이파크");
+  assert.equal(synthesized[0].source, "rtms");
+  assert.equal(synthesized[0].sale_date, "2023");
+  assert.ok(synthesized[0].recent_trades.count >= 1);
+}
 
 // PPT 표 셀 축약
 assert.equal(formatComplexTradeCell({ count: 2, months: 6, latest_price_manwon: 225000, latest_date: "2026-06-15", latest_area_sqm: 84.9, max_price_manwon: 310000 }), "22.5억(26.06)");

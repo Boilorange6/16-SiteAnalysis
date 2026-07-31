@@ -77,4 +77,18 @@ function apartment(overrides = {}) {
   assert.equal(removedCount, 0);
 }
 
+// 대표지번 실거래의 건축년도가 임계 이상 → 폴리곤 내 POI 없이도 제외 (건축물대장 누락 신축 대응)
+{
+  const withNewTrade = maintenance({
+    recent_trades: { count: 1, months: 6, latest_price_manwon: 165000, latest_date: "2026-02-05", latest_area_sqm: 112, max_price_manwon: 165000, max_build_year: 2023 },
+  });
+  const { removedCount } = crossCheckMaintenanceCompletion([withNewTrade]);
+  assert.equal(removedCount, 1);
+  // 구축 거래(1983)면 유지
+  const withOldTrade = maintenance({
+    recent_trades: { count: 2, months: 6, latest_price_manwon: 195000, latest_date: "2026-05-09", latest_area_sqm: 74, max_price_manwon: 195000, max_build_year: 1983 },
+  });
+  assert.equal(crossCheckMaintenanceCompletion([withOldTrade]).removedCount, 0);
+}
+
 console.log("test-completion-crosscheck: all assertions passed");

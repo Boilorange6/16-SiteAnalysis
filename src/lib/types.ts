@@ -73,7 +73,7 @@ export interface PoiBase {
 }
 
 export type ResidentialStatus = "existing" | "planned";
-export type ResidentialSource = "ledger" | "applyhome" | "housing_permit";
+export type ResidentialSource = "ledger" | "applyhome" | "housing_permit" | "rtms";
 
 export interface ResidentialFloorplan {
   readonly housing_type: string;
@@ -94,6 +94,8 @@ export interface RecentTradeSummary {
   readonly latest_area_sqm: number;
   readonly latest_floor?: number;
   readonly max_price_manwon: number;
+  /** 매칭 거래 중 최신 건축년도 — 구역 내 신축 거래 존재(=사업 완료) 판별용 */
+  readonly max_build_year?: number;
 }
 
 interface ResidentialFields {

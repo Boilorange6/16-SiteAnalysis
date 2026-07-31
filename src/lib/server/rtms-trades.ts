@@ -1,3 +1,4 @@
+import { haversineDistance } from "../geo";
 import type { MaintenanceProject, Poi, RecentTradeSummary, ResidentialPoi } from "../types";
 import { getDb } from "./database";
 import { parseJibunAddress } from "./maintenance/building-ledger";
@@ -153,6 +154,9 @@ export function summarizeTrades(trades: readonly RtmsTrade[]): RecentTradeSummar
     latest_area_sqm: latest.area_sqm,
     ...(latest.floor ? { latest_floor: latest.floor } : {}),
     max_price_manwon: Math.max(...trades.map((trade) => trade.price_manwon)),
+    ...(trades.some((trade) => trade.build_year)
+      ? { max_build_year: Math.max(...trades.map((trade) => trade.build_year ?? 0)) }
+      : {}),
   };
 }
 
@@ -201,6 +205,99 @@ function isResidentialPoi(poi: Poi): poi is ResidentialPoi {
   return poi.category === "apartment" || poi.category === "officetel" || poi.category === "residential";
 }
 
+// ─── 건축물대장 누락 신축 단지 보강 ──────────────────────────────────────────
+// 건축HUB에 총괄·동별 표제부가 아직 없는 신축 대단지(예: 디에이치 퍼스티어 아이파크)가
+// 있다 — 실거래에는 잡히므로 RTMS 그룹에서 지오코딩으로 아파트 POI를 합성한다.
+const SYNTHETIC_MIN_BUILD_YEAR = 2015;
+const SYNTHETIC_MAX_COMPLEXES = 10;
+/** 시군구 전체 거래에서 뽑은 후보 중 지오코딩을 시도할 최대 수(반경 밖 다수 대비) */
+const SYNTHETIC_MAX_GEOCODE_ATTEMPTS = 60;
+
+export type NearbyGeocoder = (
+  query: string,
+  center: { readonly lat: number; readonly lng: number },
+) => Promise<{ readonly lat: number; readonly lng: number } | null>;
+
+function defaultNearbyGeocoder(): NearbyGeocoder {
+  const id = process.env.NCP_CLIENT_ID?.trim();
+  const secret = process.env.NCP_CLIENT_SECRET?.trim();
+  if (!id || !secret) return async () => null;
+  return async (query, center) => {
+    try {
+      const db = getDb();
+      const cached = db.prepare("SELECT lat, lng FROM geocode_cache WHERE address = ?").get(query) as
+        | { lat: number; lng: number } | undefined;
+      if (cached) return cached;
+      const url = "https://maps.apigw.ntruss.com/map-geocode/v2/geocode"
+        + `?query=${encodeURIComponent(query)}&coordinate=${center.lng},${center.lat}`;
+      const response = await fetch(url, {
+        headers: { "X-NCP-APIGW-API-KEY-ID": id, "X-NCP-APIGW-API-KEY": secret },
+      });
+      if (!response.ok) return null;
+      const data: unknown = await response.json();
+      if (!isObject(data) || !Array.isArray(data.addresses) || !isObject(data.addresses[0])) return null;
+      const lat = Number(data.addresses[0].y);
+      const lng = Number(data.addresses[0].x);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      db.prepare("INSERT OR REPLACE INTO geocode_cache (address, lat, lng, created_at) VALUES (?, ?, ?, ?)")
+        .run(query, lat, lng, Date.now() / 1_000);
+      return { lat, lng };
+    } catch {
+      return null;
+    }
+  };
+}
+
+/** 실거래에는 있는데 주거 POI에 없는 신축 단지를 합성한다 */
+export async function synthesizeMissingComplexes(options: {
+  readonly pois: readonly Poi[];
+  readonly index: RtmsTradeIndex;
+  readonly center: { readonly lat: number; readonly lng: number };
+  readonly radiusM: number;
+  readonly lawdCd: string;
+  readonly geocode: NearbyGeocoder;
+}): Promise<readonly ResidentialPoi[]> {
+  const existingNames = new Set(
+    options.pois.filter(isResidentialPoi).map((poi) => normalizeAptName(poi.name)).filter((key) => key.length >= 2),
+  );
+  const candidates = [...options.index.byName.entries()]
+    .filter(([key, trades]) => {
+      if (existingNames.has(key)) return false;
+      const buildYear = Math.max(...trades.map((trade) => trade.build_year ?? 0));
+      const sample = trades[0];
+      return buildYear >= SYNTHETIC_MIN_BUILD_YEAR && !!sample?.dong && !!sample.jibun;
+    })
+    .sort((left, right) => right[1].length - left[1].length)
+    .slice(0, SYNTHETIC_MAX_GEOCODE_ATTEMPTS);
+  const synthesized: ResidentialPoi[] = [];
+  for (const [, trades] of candidates) {
+    if (synthesized.length >= SYNTHETIC_MAX_COMPLEXES) break;
+    const sample = trades[0];
+    if (!sample) continue;
+    const coords = await options.geocode(`${sample.dong} ${sample.jibun}`, options.center);
+    if (!coords) continue;
+    const distance = haversineDistance(options.center.lat, options.center.lng, coords.lat, coords.lng);
+    if (distance > options.radiusM) continue;
+    const buildYear = Math.max(...trades.map((trade) => trade.build_year ?? 0));
+    const summary = summarizeTrades(trades);
+    synthesized.push({
+      id: `rtms-${options.lawdCd}-${sample.dong}-${sample.jibun}`,
+      name: sample.apt_name,
+      lat: coords.lat,
+      lng: coords.lng,
+      category: "apartment",
+      units: 0,
+      parking_count: 0,
+      sale_date: buildYear > 0 ? String(buildYear) : "",
+      distance_m: Math.round(distance),
+      status: "existing",
+      source: "rtms",
+      ...(summary ? { recent_trades: summary } : {}),
+    });
+  }
+  return synthesized;
+}
+
 export interface AttachTradesResult {
   readonly pois: readonly Poi[];
   readonly status: "fresh" | "cached" | "failed";
@@ -216,6 +313,9 @@ export async function attachRecentTrades(
     readonly fetchImpl?: typeof fetch;
     readonly now?: Date;
     readonly resolveLawdCd?: (center: { readonly lat: number; readonly lng: number }) => Promise<string | null>;
+    /** 지정 시 실거래에만 존재하는 신축 단지를 아파트 POI로 합성한다 */
+    readonly radiusM?: number;
+    readonly geocode?: NearbyGeocoder;
   } = {},
 ): Promise<AttachTradesResult> {
   const serviceKey = (options.serviceKey ?? process.env.DATA_GO_KR_API_KEY ?? "").trim();
@@ -263,5 +363,16 @@ export async function attachRecentTrades(
     }
     return poi;
   });
-  return { pois: enhanced, status: anyFresh ? "fresh" : "cached", fetchedAt: Date.now() };
+  let synthesized: readonly ResidentialPoi[] = [];
+  if (options.radiusM && options.radiusM > 0) {
+    try {
+      synthesized = await synthesizeMissingComplexes({
+        pois, index, center, lawdCd,
+        radiusM: options.radiusM,
+        geocode: options.geocode ?? defaultNearbyGeocoder(),
+      });
+    } catch {
+    }
+  }
+  return { pois: [...enhanced, ...synthesized], status: anyFresh ? "fresh" : "cached", fetchedAt: Date.now() };
 }
