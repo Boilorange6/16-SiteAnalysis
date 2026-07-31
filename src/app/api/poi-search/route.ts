@@ -18,6 +18,7 @@ import { searchMaintenanceProjects } from "@/lib/server/maintenance-project-sear
 import { attachRecentTrades } from "@/lib/server/rtms-trades";
 import { crossCheckMaintenanceCompletion } from "@/lib/server/maintenance/completion-crosscheck";
 import { resolveSource } from "@/lib/server/poi-cache";
+import { collectSourcesInParallel, type SourceTask } from "@/lib/server/poi-collection";
 
 const querySchema = z.object({
   lat: z.coerce.number().min(-90).max(90),
@@ -188,109 +189,135 @@ export async function GET(req: NextRequest) {
     const sources: SourceStatus[] = [];
     const maintenanceCatalog: MaintenanceCatalogProject[] = [];
 
-    if (categories.includes("park")) {
-      const r = await resolveSource<Park[]>({
-        source: "park", lat, lng, radiusM: radius, refresh,
-        fetcher: () => searchParks(lat, lng, radius),
-      });
-      sources.push({ source: "park", status: r.status, fetchedAt: r.fetchedAt });
-      if (r.value) {
-        pois.push(...r.value);
-      } else {
-        console.warn("[park-search] Source unavailable");
-        sourceWarnings.push("park");
-      }
-    }
-
-    if (categories.includes("maintenance")) {
-      const maintenance = await searchMaintenanceProjects({
-        center: { lat, lng }, radiusM: radius, refresh,
-      });
-      pois.push(...maintenance.projects);
-      sources.push(...maintenance.sources);
-      sourceWarnings.push(...maintenance.warnings);
-      maintenanceCatalog.push(...maintenance.catalog);
-    }
-
-    if (osmCategories.length > 0) {
-      const r = await resolveSource<Poi[]>({
-        source: "osm", lat, lng, radiusM: radius, refresh,
-        fetcher: async () => {
-          const elements = await overpassPoiSearch(lat, lng, radius);
-          const seenIds = new Set<number>();
-          const seenNames = new Set<string>();
-          const converted: Poi[] = [];
-
-          for (const el of elements) {
-            if (seenIds.has(el.id)) continue;
-            seenIds.add(el.id);
-
-            const category = classifyElement(el);
-            if (!category) continue;
-
-            const poi = elementToPoi(el, category, converted.length);
-            if (!poi) continue;
-
-            const dedupeKey = `${category}:${poi.name}`;
-            if (seenNames.has(dedupeKey)) continue;
-            seenNames.add(dedupeKey);
-
-            converted.push(poi);
-          }
-
-          return converted;
-        },
-      });
-      sources.push({ source: "osm", status: r.status, fetchedAt: r.fetchedAt });
-      if (r.value) {
-        // 캐시는 osm 소스가 생성 가능한 전체 카테고리를 담고 있으므로 요청된 카테고리로 필터링
-        for (const poi of r.value) {
-          if (osmCategories.includes(poi.category)) {
-            pois.push(poi);
-          }
-        }
-      } else {
-        console.warn("[overpass-poi-search] Source unavailable");
-        sourceWarnings.push("osm");
-      }
-    }
-
-    // ── Residential POIs from 건축물대장 ──────────────────────────────────
+    // ── 독립 원천 병렬 수집 ────────────────────────────────────────────────
+    // 실거래 결합·준공 교차검증만 앞선 결과에 의존하므로, 그 앞 단계는 동시에 돈다.
     const residentialCats = ["apartment", "officetel", "residential"] as const;
     const hasResidential = residentialCats.some((c) => categories.includes(c));
 
-    if (hasResidential) {
-      const residentialResult = await resolveSource<ResidentialPoi[]>({
-        source: "residential", lat, lng, radiusM: radius, refresh,
-        fetcher: () => searchResidentialFromLedger(lat, lng, radius),
+    const tasks: SourceTask[] = [];
+
+    if (categories.includes("park")) {
+      tasks.push({
+        name: "park",
+        run: async () => {
+          const r = await resolveSource<Park[]>({
+            source: "park", lat, lng, radiusM: radius, refresh,
+            fetcher: () => searchParks(lat, lng, radius),
+          });
+          return {
+            pois: r.value ?? [],
+            sources: [{ source: "park", status: r.status, fetchedAt: r.fetchedAt }],
+            warnings: r.value ? [] : ["park"],
+          };
+        },
       });
-      sources.push({ source: "residential", status: residentialResult.status, fetchedAt: residentialResult.fetchedAt });
-      if (!residentialResult.value) {
-        console.warn("[residential-search] Source unavailable");
-        sourceWarnings.push("residential");
-      }
-
-      let plannedPois: ResidentialPoi[] = [];
-      if (planned) {
-        const plannedResult = await resolveSource<ResidentialPoi[]>({
-          source: "planned-residential", lat, lng, radiusM: radius, refresh,
-          fetcher: () => searchPlannedResidential(lat, lng, radius),
-        });
-        sources.push({ source: "planned-residential", status: plannedResult.status, fetchedAt: plannedResult.fetchedAt });
-        if (plannedResult.value) {
-          plannedPois = plannedResult.value;
-        } else {
-          console.warn("[planned-residential-search] Source unavailable");
-          sourceWarnings.push("planned-residential");
-        }
-      }
-
-      for (const rp of mergeResidentialPois(residentialResult.value ?? [], plannedPois)) {
-        if (categories.includes(rp.category)) {
-          pois.push(rp);
-        }
-      }
     }
+
+    if (categories.includes("maintenance")) {
+      tasks.push({
+        name: "maintenance",
+        run: async () => {
+          const maintenance = await searchMaintenanceProjects({
+            center: { lat, lng }, radiusM: radius, refresh,
+          });
+          return {
+            pois: maintenance.projects,
+            sources: maintenance.sources,
+            warnings: maintenance.warnings,
+            catalog: maintenance.catalog,
+          };
+        },
+      });
+    }
+
+    if (osmCategories.length > 0) {
+      tasks.push({
+        name: "osm",
+        run: async () => {
+          const r = await resolveSource<Poi[]>({
+            source: "osm", lat, lng, radiusM: radius, refresh,
+            fetcher: async () => {
+              const elements = await overpassPoiSearch(lat, lng, radius);
+              const seenIds = new Set<number>();
+              const seenNames = new Set<string>();
+              const converted: Poi[] = [];
+
+              for (const el of elements) {
+                if (seenIds.has(el.id)) continue;
+                seenIds.add(el.id);
+
+                const category = classifyElement(el);
+                if (!category) continue;
+
+                const poi = elementToPoi(el, category, converted.length);
+                if (!poi) continue;
+
+                const dedupeKey = `${category}:${poi.name}`;
+                if (seenNames.has(dedupeKey)) continue;
+                seenNames.add(dedupeKey);
+
+                converted.push(poi);
+              }
+
+              return converted;
+            },
+          });
+          // 캐시는 osm 소스가 만들 수 있는 전체 카테고리를 담으므로 요청 카테고리로 필터링
+          return {
+            pois: (r.value ?? []).filter((poi) => osmCategories.includes(poi.category)),
+            sources: [{ source: "osm", status: r.status, fetchedAt: r.fetchedAt }],
+            warnings: r.value ? [] : ["osm"],
+          };
+        },
+      });
+    }
+
+    if (hasResidential) {
+      tasks.push({
+        name: "residential",
+        run: async () => {
+          // 실존 단지와 분양예정은 서로 독립이므로 함께 돌린다
+          const [existing, plannedResult] = await Promise.all([
+            resolveSource<ResidentialPoi[]>({
+              source: "residential", lat, lng, radiusM: radius, refresh,
+              fetcher: () => searchResidentialFromLedger(lat, lng, radius),
+            }),
+            planned
+              ? resolveSource<ResidentialPoi[]>({
+                  source: "planned-residential", lat, lng, radiusM: radius, refresh,
+                  fetcher: () => searchPlannedResidential(lat, lng, radius),
+                })
+              : Promise.resolve(null),
+          ]);
+
+          const sources: SourceStatus[] = [
+            { source: "residential", status: existing.status, fetchedAt: existing.fetchedAt },
+          ];
+          const warnings: string[] = existing.value ? [] : ["residential"];
+          if (plannedResult) {
+            sources.push({
+              source: "planned-residential",
+              status: plannedResult.status,
+              fetchedAt: plannedResult.fetchedAt,
+            });
+            if (!plannedResult.value) warnings.push("planned-residential");
+          }
+
+          const merged = mergeResidentialPois(existing.value ?? [], plannedResult?.value ?? []);
+          return {
+            pois: merged.filter((rp) => categories.includes(rp.category)),
+            sources,
+            warnings,
+          };
+        },
+      });
+    }
+
+    const collected = await collectSourcesInParallel(tasks);
+    pois.push(...collected.pois);
+    sources.push(...collected.sources);
+    sourceWarnings.push(...collected.warnings);
+    maintenanceCatalog.push(...collected.catalog);
 
     // ── 최근 실거래 요약 결합 + 건축물대장 누락 신축 단지 합성 ──────────────
     let responsePois: readonly Poi[] = pois;

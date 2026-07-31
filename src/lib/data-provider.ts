@@ -54,6 +54,11 @@ function selectPois<Selection extends Poi>(
   return selected;
 }
 
+/** 취소로 인한 오류인지 — 취소는 데이터 실패와 구분해야 캐시·경고가 오염되지 않는다 */
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
 export function resolvePath(path: string): string {
   if (typeof window === "undefined") return path;
   if (path.startsWith("http")) return path;
@@ -123,8 +128,12 @@ export async function loadDynamicRegion(
   lat: number,
   lng: number,
   radiusKm: number,
-  opts: { forceRefresh?: boolean } = {},
+  opts: { forceRefresh?: boolean; signal?: AbortSignal } = {},
 ): Promise<RegionData> {
+  // 이미 취소된 요청은 네트워크를 치지 않는다 — 주소를 빠르게 바꿀 때 낭비를 막는다
+  if (opts.signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
   const cacheKey = `dynamic-${lat.toFixed(4)}-${lng.toFixed(4)}-${radiusKm}`;
   const cached = dynamicCache.get(cacheKey);
   // 1단계 데이터 신뢰성: forceRefresh면 클라이언트 메모리 캐시를 무시하고 새로 수집(아래 set에서 갱신)
@@ -149,8 +158,11 @@ export async function loadDynamicRegion(
 
   const [poiResponse, routeResponse] = await Promise.all([
     fetchJson<PoiSearchResponse>(
-      `/api/poi-search?${poiParams.toString()}${refreshQs}`
-    ).catch(() => ({
+      `/api/poi-search?${poiParams.toString()}${refreshQs}`,
+      opts.signal ? { signal: opts.signal } : {},
+    ).catch((error: unknown) => {
+      if (isAbortError(error)) throw error; // 취소는 실패 폴백으로 감추지 않는다
+      return ({
       pois: [],
       warnings: [],
       sources: [
@@ -164,15 +176,20 @@ export async function loadDynamicRegion(
         { source: "maintenance_busan", status: "failed", fetchedAt: null },
       ],
       maintenanceCatalog: [],
-    } satisfies PoiSearchResponse)),
+    } satisfies PoiSearchResponse);
+    }),
     fetchJson<{ routes: SubwayRoute[]; source: SourceStatus }>(
-      `/api/subway-routes?${routeParams.toString()}${refreshQs}`
+      `/api/subway-routes?${routeParams.toString()}${refreshQs}`,
+      opts.signal ? { signal: opts.signal } : {},
     ).catch(
       // 노선 조회가 통째로 실패해도 기존 폴백 동작(빈 배열)은 유지하되, 소스 상태는 failed로 기록
-      () => ({
-        routes: [] as SubwayRoute[],
-        source: { source: "subway-routes" as const, status: "failed" as const, fetchedAt: null },
-      })
+      (error: unknown) => {
+        if (isAbortError(error)) throw error;
+        return ({
+          routes: [] as SubwayRoute[],
+          source: { source: "subway-routes" as const, status: "failed" as const, fetchedAt: null },
+        });
+      }
     ),
   ]);
 

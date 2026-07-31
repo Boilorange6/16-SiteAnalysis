@@ -93,6 +93,9 @@ export default function SiteAnalysisApp() {
     if (!hasSearched) return;
 
     let cancelled = false;
+    // 주소·반경을 빠르게 바꿀 때 이전 조회를 서버까지 실제로 취소한다.
+    // 플래그만으로는 상태 반영만 막힐 뿐 외부 API 호출이 계속 돌았다.
+    const controller = new AbortController();
     setLoading(true);
     setLoadError(null);
 
@@ -101,13 +104,18 @@ export default function SiteAnalysisApp() {
     forceRefreshRef.current = false;
 
     // Geo-based search via Overpass API — no area prefix needed
-    loadDynamicRegion(config.centerLat, config.centerLng, config.radiusKm, { forceRefresh })
+    loadDynamicRegion(config.centerLat, config.centerLng, config.radiusKm, {
+      forceRefresh,
+      signal: controller.signal,
+    })
       .then((data) => {
         if (!cancelled) {
           setRegionData(data);
         }
       })
       .catch((error) => {
+        // 취소는 실패가 아니다 — 오류 메시지를 띄우지 않는다
+        if (error instanceof Error && error.name === "AbortError") return;
         if (!cancelled) {
           const message = error instanceof Error ? error.message : "POI 데이터를 불러오지 못했습니다.";
           setRegionData(null);
@@ -122,6 +130,7 @@ export default function SiteAnalysisApp() {
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [config.centerLat, config.centerLng, config.radiusKm, hasSearched, reloadNonce]);
 

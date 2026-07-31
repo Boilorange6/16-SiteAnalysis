@@ -88,27 +88,70 @@ export function parseRtmsTradePage(xml: string): { readonly trades: readonly Rtm
   return { trades, totalCount: totalCount > 0 ? totalCount : trades.length };
 }
 
+export interface MonthlyTradesResult {
+  readonly trades: readonly RtmsTrade[];
+  /** 페이지 상한에 걸려 일부만 읽었으면 true — 조용한 과소 집계를 막기 위해 노출한다 */
+  readonly truncated: boolean;
+}
+
+/** 요청 하나당 타임아웃 — 응답 없는 원천이 전체 검색을 잡아두지 않게 한다 */
+const REQUEST_TIMEOUT_MS = 15_000;
+
+async function fetchWithTimeout(
+  url: string,
+  fetchImpl: typeof fetch,
+  signal?: AbortSignal,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const onAbort = () => controller.abort();
+  signal?.addEventListener("abort", onAbort);
+  try {
+    return await fetchImpl(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", onAbort);
+  }
+}
+
 export async function fetchMonthlyTrades(options: {
   readonly serviceKey: string;
   readonly lawdCd: string;
   readonly dealYm: string;
   /** 테스트 주입용 — 기본 global fetch (data.go.kr는 ky 기본 헤더에 NPE를 반환한다) */
   readonly fetchImpl?: typeof fetch;
-}): Promise<readonly RtmsTrade[]> {
-  const trades: RtmsTrade[] = [];
-  for (let pageNo = 1; pageNo <= MAX_PAGES; pageNo += 1) {
+  readonly maxPages?: number;
+  readonly signal?: AbortSignal;
+}): Promise<MonthlyTradesResult> {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const maxPages = options.maxPages ?? MAX_PAGES;
+  const pageUrl = (pageNo: number) =>
     // data.go.kr는 serviceKey 인코딩에 민감 — URL을 직접 구성한다
-    const url = `${APT_TRADE_URL}?serviceKey=${encodeURIComponent(options.serviceKey)}`
-      + `&LAWD_CD=${options.lawdCd}&DEAL_YMD=${options.dealYm}`
-      + `&numOfRows=${PAGE_ROWS}&pageNo=${pageNo}`;
-    const response = await (options.fetchImpl ?? fetch)(url);
+    `${APT_TRADE_URL}?serviceKey=${encodeURIComponent(options.serviceKey)}`
+    + `&LAWD_CD=${options.lawdCd}&DEAL_YMD=${options.dealYm}`
+    + `&numOfRows=${PAGE_ROWS}&pageNo=${pageNo}`;
+
+  const readPage = async (pageNo: number) => {
+    const response = await fetchWithTimeout(pageUrl(pageNo), fetchImpl, options.signal);
     if (!response.ok) throw new Error(`RTMS HTTP ${response.status}`);
-    const xml = await response.text();
-    const page = parseRtmsTradePage(xml);
-    trades.push(...page.trades);
-    if (pageNo * PAGE_ROWS >= page.totalCount) break;
+    return parseRtmsTradePage(await response.text());
+  };
+
+  const first = await readPage(1);
+  const totalPages = Math.max(1, Math.ceil(first.totalCount / PAGE_ROWS));
+  const readablePages = Math.min(totalPages, maxPages);
+  if (readablePages === 1) {
+    return { trades: first.trades, truncated: totalPages > maxPages };
   }
-  return trades;
+
+  // 남은 페이지는 동시에 — 월 6회 순차 호출이 체감 대기의 주범이었다
+  const rest = await Promise.all(
+    Array.from({ length: readablePages - 1 }, (_, index) => readPage(index + 2)),
+  );
+  return {
+    trades: [first.trades, ...rest.map((page) => page.trades)].flat(),
+    truncated: totalPages > maxPages,
+  };
 }
 
 type JsonObject = Record<string, unknown>;
@@ -389,6 +432,8 @@ export interface AttachTradesResult {
   readonly pois: readonly Poi[];
   readonly status: "fresh" | "cached" | "failed";
   readonly fetchedAt: number | null;
+  /** 페이지 상한으로 일부 거래만 읽었으면 true */
+  readonly truncated?: boolean;
 }
 
 /** 반경 중심 시군구의 최근 6개월 실거래를 수집해 아파트·정비구역 POI에 요약을 붙인다 */
@@ -400,6 +445,7 @@ export async function attachRecentTrades(
     readonly fetchImpl?: typeof fetch;
     readonly now?: Date;
     readonly resolveLawdCd?: (center: { readonly lat: number; readonly lng: number }) => Promise<string | null>;
+    readonly signal?: AbortSignal;
     /** 지정 시 실거래에만 존재하는 신축 단지를 아파트 POI로 합성한다 */
     readonly radiusM?: number;
     readonly geocode?: NearbyGeocoder;
@@ -415,27 +461,32 @@ export async function attachRecentTrades(
   const trades: RtmsTrade[] = [];
   let anyFresh = false;
   let anyFailure = false;
-  for (const [index, dealYm] of months.entries()) {
+  let anyTruncated = false;
+  // 월별 수집은 서로 독립 — 순차 6회 호출이 체감 대기의 주범이었다
+  const monthly = await Promise.all(months.map(async (dealYm, index) => {
     const cacheKey = `rtms:${lawdCd}:${dealYm}`;
     const ttl = index <= 1 ? RECENT_MONTH_TTL_SECONDS : OLD_MONTH_TTL_SECONDS;
     const cached = cachedMonth(cacheKey, ttl);
-    if (cached) {
-      trades.push(...cached);
-      continue;
-    }
+    if (cached) return { trades: cached, fresh: false, failed: false, truncated: false };
     try {
-      const monthly = await fetchMonthlyTrades({
+      const result = await fetchMonthlyTrades({
         serviceKey, lawdCd, dealYm,
         ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+        ...(options.signal ? { signal: options.signal } : {}),
       });
-      storeMonth(cacheKey, monthly);
-      trades.push(...monthly);
-      anyFresh = true;
+      storeMonth(cacheKey, result.trades);
+      return { trades: result.trades, fresh: true, failed: false, truncated: result.truncated };
     } catch {
-      anyFailure = true;
+      // 실패한 달은 만료 캐시라도 쓴다 — 요약이 통째로 비는 것보다 낫다
       const stale = cachedMonth(cacheKey, Number.POSITIVE_INFINITY);
-      if (stale) trades.push(...stale);
+      return { trades: stale ?? [], fresh: false, failed: true, truncated: false };
     }
+  }));
+  for (const month of monthly) {
+    trades.push(...month.trades);
+    if (month.fresh) anyFresh = true;
+    if (month.failed) anyFailure = true;
+    if (month.truncated) anyTruncated = true;
   }
   if (!trades.length && anyFailure) return { pois, status: "failed", fetchedAt: null };
   const index = buildTradeIndex(trades);
@@ -461,5 +512,10 @@ export async function attachRecentTrades(
     } catch {
     }
   }
-  return { pois: [...enhanced, ...synthesized], status: anyFresh ? "fresh" : "cached", fetchedAt: Date.now() };
+  return {
+    pois: [...enhanced, ...synthesized],
+    status: anyFresh ? "fresh" : "cached",
+    fetchedAt: Date.now(),
+    truncated: anyTruncated,
+  };
 }

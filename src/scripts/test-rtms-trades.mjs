@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 import {
   buildTradeIndex,
+  fetchMonthlyTrades,
   parseRtmsTradePage,
   recentDealMonths,
   summarizeTrades,
@@ -45,6 +46,39 @@ assert.deepEqual(page.trades[0], {
   price_manwon: 225000, area_sqm: 84.9, deal_date: "2026-06-15", floor: 21, build_year: 2023,
 });
 assert.throws(() => parseRtmsTradePage("<response><header><resultCode>30</resultCode><resultMsg>KEY</resultMsg></header></response>"), /30/);
+
+// --- 페이지네이션 완결성 ---
+{
+  // totalCount가 페이지 크기를 넘으면 필요한 페이지를 모두 읽어야 한다
+  const pageSize = 1000;
+  const total = 2500;
+  const seenPages = [];
+  const fetchImpl = async (url) => {
+    const pageNo = Number(new URL(url).searchParams.get("pageNo"));
+    seenPages.push(pageNo);
+    const items = Array.from({ length: Math.min(pageSize, total - (pageNo - 1) * pageSize) }, (_, i) =>
+      `<item><aptNm>단지${pageNo}_${i}</aptNm><umdNm>개포동</umdNm><jibun>1</jibun>
+       <dealAmount>100,000</dealAmount><dealYear>2026</dealYear><dealMonth>7</dealMonth><dealDay>1</dealDay></item>`).join("");
+    return { ok: true, status: 200, text: async () => `<response><header><resultCode>000</resultCode></header><body><items>${items}</items><totalCount>${total}</totalCount></body></response>` };
+  };
+  const { trades, truncated } = await fetchMonthlyTrades({ serviceKey: "k", lawdCd: "11680", dealYm: "202607", fetchImpl });
+  assert.deepEqual(seenPages.sort((a, b) => a - b), [1, 2, 3], "totalCount에 맞춰 3페이지를 모두 읽어야 한다");
+  assert.equal(trades.length, total);
+  assert.equal(truncated, false, "상한 내에서 다 읽었으면 절단이 아니다");
+}
+
+{
+  // 상한을 넘으면 절단 사실을 보고해야 한다 (조용한 과소 집계 금지)
+  const fetchImpl = async () => ({
+    ok: true, status: 200,
+    text: async () => `<response><header><resultCode>000</resultCode></header><body><items>` +
+      `<item><aptNm>단지</aptNm><umdNm>개포동</umdNm><jibun>1</jibun><dealAmount>100,000</dealAmount>` +
+      `<dealYear>2026</dealYear><dealMonth>7</dealMonth><dealDay>1</dealDay></item>` +
+      `</items><totalCount>999999</totalCount></body></response>`,
+  });
+  const { truncated } = await fetchMonthlyTrades({ serviceKey: "k", lawdCd: "11680", dealYm: "202607", fetchImpl, maxPages: 2 });
+  assert.equal(truncated, true, "페이지 상한 초과 시 truncated=true여야 한다");
+}
 
 // --- 월 목록 ---
 assert.deepEqual(recentDealMonths(new Date(Date.UTC(2026, 6, 30)), 3), ["202607", "202606", "202605"]);
