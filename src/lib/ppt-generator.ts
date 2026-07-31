@@ -13,6 +13,7 @@ import type {
   SourceStatus,
 } from "./types";
 import { CATEGORY_LABELS } from "./types";
+import { APT_PAGE_SIZE, overflowNotice, pageResidentials } from "./ppt-slide-contract";
 import { layoutPoiLabels, poiLabelText } from "./ppt-label-layout";
 import { computeResidentialCalloutLayout } from "./ppt-callout-layout";
 import { buildParkDetailLines, formatAreaSqm, formatDistanceM, summarizeParks } from "./park-analysis";
@@ -62,7 +63,6 @@ const SLIDE_H = 7.5;
 // calloutHeight=0.73(Task 6, 미니 데이터표 전환) 기준 이론상 최대치이며, 만석 페이지는 카드가
 // 컬럼 하단 경계에 딱 맞물려 시각적으로 "하단 적층"처럼 보인다(Task 6 QA, 이월 B). 여유 마진을 둔
 // 안전 상한 7로 낮춘다.
-const APT_PAGE_SIZE = 7;
 
 const FONT_MAIN = PPT_FONT_MAIN;
 
@@ -156,19 +156,6 @@ const FACT_VALUE_FONT_SIZE = 11;
 
 // ── Pagination helper ─────────────────────────────────────────────────────────
 
-function pageResidentials(residentials: readonly ResidentialPoi[], pageSize: number): ResidentialPoi[][] {
-  const dated = [...residentials]
-    .filter(a => a.sale_date)
-    .sort((a, b) => a.sale_date.localeCompare(b.sale_date));
-  const undated = residentials.filter(a => !a.sale_date);
-  const all = [...dated, ...undated];
-  if (all.length === 0) return [[]];
-  const pages: ResidentialPoi[][] = [];
-  for (let i = 0; i < all.length; i += pageSize) {
-    pages.push(all.slice(i, i + pageSize));
-  }
-  return pages;
-}
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -2418,9 +2405,11 @@ function addApartmentCalloutSlide(
   addConcentricRings(slide, radiusPosition, d);
   addSiteMarker(slide, radiusPosition, d);
 
+  // 지면 예산을 넘겨 잘린 단지가 있으면 제목에 밝힌다 — 조용한 절단 금지
+  const overflow = overflowNotice(allResidentials.length, APT_PAGE_SIZE * totalPages);
   const pageTitle = totalPages > 1
-    ? `주변 분양 현황 ${pageIdx + 1}/${totalPages}`
-    : "주변 분양 현황";
+    ? `주변 분양 현황 ${pageIdx + 1}/${totalPages}${overflow ? ` · ${overflow}` : ""}`
+    : `주변 분양 현황${overflow ? ` · ${overflow}` : ""}`;
   // Task A: 지도 배경은 유지하되, 어두운 잉크 addTitleChip 대신 Task 5의 흰 지도 섹션 타이틀
   // 문법(addMapSectionTitle)로 교체해 판독 불가 결함을 해소한다.
   addMapSectionTitle(slide, pageTitle, `반경 ${config.radiusKm}km`);

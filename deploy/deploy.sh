@@ -19,8 +19,9 @@ echo "=== SiteAnalysis Deploy (release ${RELEASE_STAMP}) ==="
 
 # ── 로컬 사전 검증 ── 서버에서 깨지는 것보다 여기서 막는 편이 싸다
 if [[ "${SKIP_LOCAL_CHECKS:-0}" != "1" ]]; then
-  echo "Running local checks (lint)..."
-  (cd "${LOCAL_DIR}" && npm run lint)
+  echo "Running local checks (lint + tests)..."
+  # CI와 동일한 결정론적 검증 — 청와대 산출물 QA는 아티팩트 의존이라 제외
+  (cd "${LOCAL_DIR}" && npm run lint && npm run test:maintenance)
 fi
 
 # ── Upload via tar (rsync not available on Windows) ──

@@ -30,7 +30,9 @@ for (const name of ["lint", "test", "test:maintenance", "build"]) {
   const workflow = path.join(root, ".github", "workflows", "ci.yml");
   assert.ok(existsSync(workflow), ".github/workflows/ci.yml이 있어야 한다");
   const content = readFileSync(workflow, "utf8");
-  for (const command of ["npm run lint", "npm run test", "npm run build"]) {
+  // CI는 결정론적 검증만 돌린다. `npm test`에 포함된 청와대 산출물 QA는 생성된
+  // PPT/PDF 아티팩트를 요구해 CI 환경에서 항상 실패한다(기존 문제, 45ea9ac에서도 재현).
+  for (const command of ["npm run lint", "npm run test:maintenance", "npm run build"]) {
     assert.ok(content.includes(command), `CI가 ${command}를 실행해야 한다`);
   }
   assert.ok(/on:\s*[\s\S]*push/.test(content), "CI는 push에서 실행되어야 한다");

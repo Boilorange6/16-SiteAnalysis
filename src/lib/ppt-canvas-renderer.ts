@@ -10,6 +10,7 @@
 
 import type { Poi, PoiPosition, RadiusPosition, PoiCategory, SubwayStation, ResidentialPoi, School, Park, MaintenanceProject, SourceStatus } from "./types";
 import { CATEGORY_LABELS } from "./types";
+import { APT_PAGE_SIZE, overflowNotice, pageResidentials } from "./ppt-slide-contract";
 import { dedupeRouteVariants, type RouteNormalizedPosition } from "./ppt-generator";
 import type { PptDesignConfig } from "./ppt-design-config";
 import { PPT_FONT_MAIN, PPT_FONT_NUM } from "./ppt-design-config";
@@ -65,7 +66,6 @@ const SY = CANVAS_H / SLIDE_H; // 72
 // calloutHeight=0.73(Task 6, 미니 데이터표 전환) 기준 이론상 최대치이며, 실측 만석 페이지는
 // 카드가 컬럼 하단 경계에 딱 맞물려 시각적으로 "하단 적층"처럼 보인다(Task 6 QA, 이월 B).
 // 여유 마진을 둔 안전 상한 7로 낮춰 카드 간 여백을 확보한다. 양 렌더러(canvas/pptx) 동일 값 유지.
-const APT_PAGE_SIZE = 7;
 
 // ── Static layout tokens (match ppt-generator.ts) ────────────────────────────
 
@@ -1237,19 +1237,6 @@ function drawStationBars(
 
 // ── Apartment pagination & label algorithm ────────────────────────────────────
 
-function pageResidentials(residentials: readonly ResidentialPoi[], pageSize: number): ResidentialPoi[][] {
-  const dated = [...residentials]
-    .filter(a => a.sale_date)
-    .sort((a, b) => a.sale_date.localeCompare(b.sale_date));
-  const undated = residentials.filter(a => !a.sale_date);
-  const all = [...dated, ...undated];
-  if (all.length === 0) return [[]];
-  const pages: ResidentialPoi[][] = [];
-  for (let i = 0; i < all.length; i += pageSize) {
-    pages.push(all.slice(i, i + pageSize));
-  }
-  return pages;
-}
 
 // ── Slide render functions ────────────────────────────────────────────────────
 
@@ -2092,6 +2079,7 @@ function renderApartmentCalloutSlide(
   drawConcentricRings(ctx, input.radiusPosition, d);
   drawSiteMarker(ctx, input.radiusPosition, d);
 
+  // 지면 예산 초과 안내는 전체 목록을 아는 호출부(defs 생성부)에서 제목에 넣는다
   const pageTitle = totalPages > 1
     ? `주변 분양 현황 ${pageIdx + 1}/${totalPages}`
     : "주변 분양 현황";
@@ -2415,9 +2403,10 @@ function buildSlideDefs(input: SlideRenderInput, includeScoreDashboard = false):
 
   // Dynamic apartment pages
   aptPages.forEach((aptsOnPage, i) => {
+    const listOverflow = overflowNotice(residentials.length, APT_PAGE_SIZE * totalPages);
     const pageTitle = totalPages > 1
-      ? `주변 분양 현황 ${i + 1}/${totalPages}`
-      : "주변 분양 현황";
+      ? `주변 분양 현황 ${i + 1}/${totalPages}${listOverflow ? ` · ${listOverflow}` : ""}`
+      : `주변 분양 현황${listOverflow ? ` · ${listOverflow}` : ""}`;
     const capturedPage = aptsOnPage;
     const capturedIdx = i;
     defs.push({
