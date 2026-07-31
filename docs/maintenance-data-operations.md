@@ -121,3 +121,18 @@ npm run build:seoul-cleanup -- --accept-large-change   # 20% 초과 변동 승�
 - **신축 준공 교차검증**: 재건축 완료 단지가 새 지번을 받아 옛 지번 조회가 실패하는 경우(예: 개포주공1단지→디에이치 퍼스티어 아이파크)를 잡기 위해, 폴리곤 안에 최근 사용승인(구역지정일 이후, 기본 2018+)된 200세대 이상 주거 POI가 있으면 완료로 판정·제외한다 (`completion-crosscheck.ts`, poi-search 라우트).
 - **실거래가(RTMS)**: `RTMSDataSvcAptTradeDev`로 반경 중심 시군구의 최근 6개월 아파트 매매를 수집(월 단위 sqlite 캐시, 최근 2개월 TTL 3일·이전 30일)해, 아파트 POI(이름 정규화 매칭)와 정비구역(대표지번 매칭) 팝업에 "최근 실거래" 요약을 표시한다. 소스 상태 `rtms`로 보고.
 - **주의**: data.go.kr 일부 서비스(RTMS·건축HUB)는 ky 기본 헤더에 NullPointerException을 반환한다 — 반드시 native fetch + 수동 URL 구성으로 호출한다.
+
+## 경기도 정비사업 (Phase 4 — 활성화 대기)
+
+`src/lib/server/maintenance/gyeonggi-provider.ts`에 파서·정규화·페이지네이션을 구현하고
+`src/scripts/test-gyeonggi-maintenance.mjs`로 검증했다. **활성화에는 두 가지가 필요하다.**
+
+1. data.go.kr에서 「경기도 일반 정비사업 추진 현황」(15119846) 활용신청 승인.
+   현재 키로 호출하면 `{"code":-3,"msg":"등록되지 않은 서비스 입니다."}`가 온다.
+2. 경기데이터드림 서비스명 확정. `GYEONGGI_SERVICE_NAME`을 `ImprvBizStus`로 두었으나
+   실호출로 검증하지 못했다(후보 4종 모두 `ERROR-310 서비스를 찾을 수 없음`).
+   승인 후 포털의 실제 서비스명으로 상수를 교체하면 된다.
+3. 서버 `.env`에 `GG_OPEN_API_KEY` 추가.
+
+활성화 전까지 앱은 기존 원천(국토부·서울·부산)으로 정상 동작하며, 경기 지역은
+`단계: 미확인`으로 남는다.

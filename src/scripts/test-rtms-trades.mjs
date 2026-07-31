@@ -8,7 +8,7 @@ import {
   summarizeTrades,
   synthesizeMissingComplexes,
 } from "../lib/server/rtms-trades.ts";
-import { formatComplexTradeCell, formatRecentTradesLine, formatTradePrice } from "../lib/maintenance-map-utils.ts";
+import { formatComplexTradeCell, formatRecentTradesLine, formatTradeDetailLine, formatTradePrice } from "../lib/maintenance-map-utils.ts";
 
 // --- XML 파싱 ---
 const sampleXml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -109,6 +109,38 @@ assert.equal(
 );
 
 assert.equal(summary?.max_build_year, 2023);
+
+// --- 실거래 상세 목록 ---
+{
+  const detail = summarizeTrades(index.byJibun.get("개포동|660-4") ?? []);
+  assert.ok(Array.isArray(detail.recent_list), "요약에 최근 거래 목록이 있어야 한다");
+  assert.equal(detail.recent_list.length, 2);
+  // 최신순 정렬
+  assert.equal(detail.recent_list[0].deal_date, "2026-06-15");
+  assert.equal(detail.recent_list[1].deal_date, "2026-03-02");
+  assert.equal(detail.recent_list[0].price_manwon, 225000);
+  assert.equal(detail.recent_list[0].area_sqm, 84.9);
+  assert.equal(detail.recent_list[0].floor, 21);
+
+  // 목록은 상한이 있어 팝업·페이로드가 비대해지지 않는다
+  const many = Array.from({ length: 30 }, (_, i) => ({
+    apt_name: "테스트", dong: "개포동", jibun: "1", price_manwon: 100000 + i,
+    area_sqm: 84, deal_date: `2026-0${(i % 6) + 1}-01`,
+  }));
+  assert.ok(summarizeTrades(many).recent_list.length <= 10, "목록은 최대 10건으로 제한한다");
+}
+
+// --- 실거래 상세 표시 포맷 ---
+{
+  assert.equal(
+    formatTradeDetailLine({ deal_date: "2026-06-15", price_manwon: 225000, area_sqm: 84.9, floor: 21 }),
+    "2026-06-15 · 22억 5,000 · 84.9㎡ · 21층",
+  );
+  assert.equal(
+    formatTradeDetailLine({ deal_date: "2026-03-02", price_manwon: 9800, area_sqm: 59 }),
+    "2026-03-02 · 9,800만 · 59㎡",
+  );
+}
 
 // --- 건축물대장 누락 신축 단지 합성 ---
 {

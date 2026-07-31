@@ -22,6 +22,7 @@ import { formatAreaSqm, formatDistanceM } from "@/lib/park-analysis";
 import {
   boundaryToLeafletLatLngs,
   buildMaintenancePopupHtml,
+  buildTradeDetailHtml,
   escapeMaintenanceHtml,
   formatRecentTradesLine,
   maintenanceBoundaryLabel,
@@ -302,6 +303,7 @@ function buildResidentialPopupHtml(apt: ResidentialPoi): string {
       ${apt.homepage_url ? row("홈페이지", link(apt.homepage_url, "열기")) : ""}
       ${apt.notice_url ? row("모집공고", link(apt.notice_url, "열기")) : ""}
     </table>
+    ${apt.recent_trades ? buildTradeDetailHtml(apt.recent_trades) : ""}
     ${floorplanBlock}
   </div>`;
 }

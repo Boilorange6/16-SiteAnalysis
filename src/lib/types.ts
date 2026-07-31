@@ -85,6 +85,14 @@ export interface ResidentialFloorplan {
   readonly status: "thumbnail" | "link_only";
 }
 
+/** 실거래 상세 1건 — 팝업 펼침 목록용 */
+export interface RecentTradeItem {
+  readonly deal_date: string;
+  readonly price_manwon: number;
+  readonly area_sqm: number;
+  readonly floor?: number;
+}
+
 /** 최근 실거래 요약 (국토부 RTMS 아파트매매 실거래가) */
 export interface RecentTradeSummary {
   /** 최근 N개월 거래 건수 */
@@ -98,6 +106,8 @@ export interface RecentTradeSummary {
   readonly max_price_manwon: number;
   /** 매칭 거래 중 최신 건축년도 — 구역 내 신축 거래 존재(=사업 완료) 판별용 */
   readonly max_build_year?: number;
+  /** 최신순 거래 상세 (최대 10건) — 팝업에서 펼쳐 본다 */
+  readonly recent_list?: readonly RecentTradeItem[];
 }
 
 interface ResidentialFields {

@@ -16,6 +16,8 @@ const MAX_PAGES = 3;
 const RECENT_MONTH_TTL_SECONDS = 3 * 24 * 3_600;
 const OLD_MONTH_TTL_SECONDS = 30 * 24 * 3_600;
 export const RTMS_SUMMARY_MONTHS = 6;
+/** 팝업 펼침 목록 상한 — 응답 페이로드가 비대해지지 않게 한다 */
+const TRADE_DETAIL_LIMIT = 10;
 
 export interface RtmsTrade {
   readonly apt_name: string;
@@ -214,6 +216,12 @@ export function summarizeTrades(trades: readonly RtmsTrade[]): RecentTradeSummar
     ...(trades.some((trade) => trade.build_year)
       ? { max_build_year: Math.max(...trades.map((trade) => trade.build_year ?? 0)) }
       : {}),
+    recent_list: sorted.slice(0, TRADE_DETAIL_LIMIT).map((trade) => ({
+      deal_date: trade.deal_date,
+      price_manwon: trade.price_manwon,
+      area_sqm: trade.area_sqm,
+      ...(trade.floor ? { floor: trade.floor } : {}),
+    })),
   };
 }
 

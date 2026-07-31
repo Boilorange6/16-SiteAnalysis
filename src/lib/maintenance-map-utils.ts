@@ -5,6 +5,7 @@ import type {
   MaintenanceBoundaryStatus,
   MaintenanceProject,
   MaintenanceSource,
+  RecentTradeItem,
   RecentTradeSummary,
 } from "./types";
 
@@ -27,6 +28,27 @@ export function formatComplexTradeCell(summary: RecentTradeSummary | undefined):
     : `${summary.latest_price_manwon.toLocaleString()}만`;
   const date = summary.latest_date;
   return `${price}(${date.slice(2, 4)}.${date.slice(5, 7)})`;
+}
+
+/** 팝업 펼침 목록 HTML — 최근 거래 상세를 접힌 상태로 제공한다 */
+export function buildTradeDetailHtml(summary: RecentTradeSummary): string {
+  const list = summary.recent_list ?? [];
+  if (list.length <= 1) return "";
+  const items = list
+    .map((item) => `<li style="padding:2px 0;color:#334155">${escapeMaintenanceHtml(formatTradeDetailLine(item))}</li>`)
+    .join("");
+  return `<details style="margin-top:6px">
+    <summary style="cursor:pointer;font-size:12px;color:#2563eb;font-weight:600">최근 거래 ${list.length}건 보기</summary>
+    <ul style="margin:4px 0 0;padding-left:16px;font-size:12px;line-height:1.5">${items}</ul>
+  </details>`;
+}
+
+/** "2026-06-15 · 22억 5,000 · 84.9㎡ · 21층" */
+export function formatTradeDetailLine(item: RecentTradeItem): string {
+  const parts = [item.deal_date, formatTradePrice(item.price_manwon)];
+  if (item.area_sqm > 0) parts.push(`${item.area_sqm}㎡`);
+  if (item.floor) parts.push(`${item.floor}층`);
+  return parts.join(" · ");
 }
 
 /** "22억 5,000 (2026-06-15 · 84.9㎡) · 6개월 12건" */
@@ -123,6 +145,7 @@ export function buildMaintenancePopupHtml(project: MaintenanceProject): string {
       ${popupRow("출처", sourceValue)}
       ${popupRow("기준일", escapeMaintenanceHtml(project.source_updated_at || "미확인"))}
     </table>
+    ${project.recent_trades ? buildTradeDetailHtml(project.recent_trades) : ""}
     <p style="margin:9px 0 0;padding-top:8px;border-top:1px solid #e2e8f0;color:#475569;font-size:12px;line-height:1.5">법적 효력 없는 참고자료</p>
   </article>`;
 }
