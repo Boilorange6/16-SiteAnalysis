@@ -18,7 +18,7 @@ import { enrichKaptExtras } from "./apt-enrichment";
 import { buildLedgerUrl, buildLedgerTitleUrl, LEDGER_PAGE_SIZE } from "./ledger-url";
 import { readOfficetelFromTitleRow } from "./residential/officetel";
 import { isRecentMiss, readGeocode, readLegalCode, recordGeocodeMiss, writeGeocode, writeLegalCode } from "./geocode-cache";
-import { readLedgerDong, upsertLedgerDong, type LedgerRow, type LedgerPurpose } from "./ledger-store";
+import { readLedgerDong, readLedgerRowsByPurpose, upsertLedgerDong, type LedgerRow, type LedgerPurpose } from "./ledger-store";
 import { buildingDedupeKey, sampleDongPoints } from "./residential/complex-identity";
 import type { Apartment, Officetel, ResidentialOther, ResidentialPoi } from "../types";
 
@@ -402,6 +402,17 @@ async function loadDongRows(
         return [] as LedgerBuilding[];
       })
     : [];
+
+  // 실시간 경로는 오피스텔을 조회하지 않는다(비용). 그런데 upsert는 법정동을 통째로
+  // 갈아치우므로, 이대로 두면 TTL이 만료될 때마다 배치가 채운 오피스텔이 지워진다.
+  // 이미 적재된 오피스텔을 그대로 실어 보낸다 — 다음 배치가 갱신할 때까지 유지된다.
+  const carriedOfficetels: LedgerRow[] = includeOfficetels
+    ? []
+    : (() => {
+        try {
+          return readLedgerRowsByPurpose(getDb(), dong.sigunguCd, dong.bjdongCd, "오피스텔");
+        } catch { return []; }
+      })();
   const buildings = [
     ...apartments.map((building) => ({ building, purpose: "공동주택" as const })),
     ...officetels.map((building) => ({ building, purpose: "오피스텔" as const })),
@@ -430,7 +441,7 @@ async function loadDongRows(
       });
     });
   }
-  return { dong, rows, fromCache: false, incomplete };
+  return { dong, rows: [...rows, ...carriedOfficetels], fromCache: false, incomplete };
 }
 
 // ─── 배치 워밍용 공개 헬퍼 ────────────────────────────────────────────────────

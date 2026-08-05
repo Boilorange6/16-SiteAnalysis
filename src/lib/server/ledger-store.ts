@@ -157,3 +157,19 @@ export function ledgerCoverage(db: Db): { dongCount: number; buildingCount: numb
   const building = db.prepare("SELECT COUNT(*) AS n FROM ledger_building").get() as { n: number };
   return { dongCount: dong.n, buildingCount: building.n, lastFetchedAt: dong.t };
 }
+
+/**
+ * 용도로 걸러 적재 행을 읽는다. **신선도를 보지 않는다.**
+ *
+ * 오피스텔은 배치(ingest:ledger)에서만 채운다. 30일 TTL이 지나면 실시간 경로가
+ * 공동주택만 다시 받아 그 법정동을 통째로 덮어쓰는데, 그때 오피스텔이 같이 사라진다.
+ * 갱신할 때 기존 오피스텔을 살려 넣으려면 만료 여부와 무관하게 읽을 수 있어야 한다.
+ */
+export function readLedgerRowsByPurpose(
+  db: Db, sigunguCd: string, bjdongCd: string, purpose: LedgerPurpose,
+): LedgerRow[] {
+  const rows = db
+    .prepare("SELECT * FROM ledger_building WHERE sigungu_cd = ? AND bjdong_cd = ? AND purpose = ?")
+    .all(sigunguCd, bjdongCd, purpose) as Array<Record<string, unknown>>;
+  return rows.map(rowFromDb);
+}

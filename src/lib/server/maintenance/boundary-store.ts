@@ -243,3 +243,35 @@ export function searchMaintenanceBoundaries(
     || left.properties.source_feature_id.localeCompare(right.properties.source_feature_id),
   );
 }
+
+/**
+ * 이 일수를 넘으면 경계가 낡았다고 본다.
+ * 상류(VWorld)는 월 단위로 갱신되고, 받아오는 건 사람 손이 필요하다.
+ */
+export const BOUNDARY_STALE_DAYS = 60;
+
+/**
+ * 경계 산출물이 낡았으면 안내 문구를 만든다.
+ *
+ * 경계 SHP는 VWorld 로그인이 필요해 자동 갱신이 불가능하다. 갱신을 잊으면
+ * 소스 상태는 계속 "정상"인 채로 데이터만 조용히 낡는다 — 그 침묵이 위험하다.
+ * 실패가 아니므로 실패 문구가 아니라 안내로 쓴다.
+ */
+export function boundaryStalenessWarning(
+  features: ReadonlyArray<{ readonly properties?: { readonly retrieved_at?: string } }>,
+  now: number,
+): string | null {
+  let oldest = Number.POSITIVE_INFINITY;
+  for (const feature of features) {
+    const raw = feature.properties?.retrieved_at;
+    if (!raw) continue;
+    const parsed = Date.parse(raw);
+    if (!Number.isFinite(parsed)) continue;
+    if (parsed < oldest) oldest = parsed;
+  }
+  if (!Number.isFinite(oldest)) return null;
+
+  const days = Math.floor((now - oldest) / 86_400_000);
+  if (days < BOUNDARY_STALE_DAYS) return null;
+  return `정비구역 경계 데이터가 ${days}일 전 기준입니다. VWorld에서 최신 SHP를 받아 갱신하세요.`;
+}

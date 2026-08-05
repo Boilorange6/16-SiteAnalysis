@@ -13,6 +13,7 @@ const {
   LEDGER_DONG_TTL_MS,
   shouldRejectDongUpdate,
   readLedgerDong,
+  readLedgerRowsByPurpose,
   upsertLedgerDong,
   readLedgerInBbox,
 } = await import("../lib/server/ledger-store.ts");
@@ -163,4 +164,33 @@ console.log("test-ledger-store: 통과");
   assert.equal(rows[0].purpose, "공동주택", "옛 행은 공동주택으로 읽혀야 한다");
   db.close();
   console.log("ledger-store: purpose 컬럼 마이그레이션 확인");
+}
+
+// ── 만료돼도 기존 행은 읽을 수 있어야 한다 ───────────────────────────────────
+// 오피스텔은 배치에서만 채운다. 30일 TTL이 지나 실시간 경로가 공동주택만 다시
+// 받아 덮어쓰면 오피스텔이 통째로 사라진다. 갱신 시 살려내려면 만료 여부와
+// 무관하게 기존 행을 읽을 수 있어야 한다.
+{
+  const db = new Database(":memory:");
+  initDatasetSchema(db);
+  const old = Date.now() - 40 * 24 * 60 * 60 * 1000;
+  upsertLedgerDong(db, "11680", "10100", [
+    { id: "a", name: "래미안", address: "역삼동 1", units: 500, parking: 0, maxFloor: 20,
+      useAprDay: "", bun: "0001", ji: "0000", lat: 37.5, lng: 127.0, purpose: "공동주택" },
+    { id: "b", name: "노블루체", address: "역삼동 761", units: 129, parking: 0, maxFloor: 15,
+      useAprDay: "", bun: "0761", ji: "0000", lat: 37.5, lng: 127.0, purpose: "오피스텔" },
+  ], old);
+
+  assert.equal(readLedgerDong(db, "11680", "10100", Date.now()), null, "만료된 적재분은 신선하지 않다");
+
+  const kept = readLedgerRowsByPurpose(db, "11680", "10100", "오피스텔");
+  assert.equal(kept.length, 1, "만료돼도 오피스텔 행은 읽을 수 있어야 한다");
+  assert.equal(kept[0].name, "노블루체");
+  assert.equal(kept[0].units, 129);
+
+  assert.equal(readLedgerRowsByPurpose(db, "11680", "10100", "공동주택").length, 1);
+  assert.equal(readLedgerRowsByPurpose(db, "99999", "99999", "오피스텔").length, 0, "없는 동은 빈 배열");
+
+  db.close();
+  console.log("ledger-store: 만료분 용도별 조회 확인");
 }

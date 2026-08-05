@@ -4,6 +4,7 @@
  *   npx tsx src/scripts/ingest-ledger.mjs 41360:11200 41310:10100   # 법정동 직접 지정
  *   npx tsx src/scripts/ingest-ledger.mjs --around 37.6241,127.1497,3000
  *   npx tsx src/scripts/ingest-ledger.mjs --from-planned            # 적재된 분양 단지 주변을 데운다
+ *   npx tsx src/scripts/ingest-ledger.mjs --known                   # 이미 적재된 법정동을 갱신 (월간 배치)
  *
  * 검색 경로는 read-through라 이 스크립트를 돌리지 않아도 동작한다.
  * 여기서는 자주 조회되는 지역을 미리 채워 첫 조회의 지연을 없앤다.
@@ -59,13 +60,18 @@ if (args[0] === "--around") {
       if (!seen.has(key)) { seen.add(key); dongs.push(d); }
     }
   }
+} else if (args[0] === "--known") {
+  // 이미 적재된 법정동 = 사용자가 실제로 분석한 지역.
+  // 오피스텔은 이 배치에서만 채워지므로, TTL(30일)이 지나기 전에 다시 데워야
+  // 실시간 경로가 공동주택만 받아 갱신하는 일이 줄어든다.
+  dongs = db.prepare("SELECT sigungu_cd AS sigunguCd, bjdong_cd AS bjdongCd FROM ledger_dong_sync").all();
 } else if (args.length > 0) {
   dongs = args.map((a) => {
     const [sigunguCd, bjdongCd] = a.split(":");
     return { sigunguCd, bjdongCd };
   });
 } else {
-  console.error("대상이 없습니다. 법정동 코드, --around, 또는 --from-planned 중 하나를 주세요.");
+  console.error("대상이 없습니다. 법정동 코드, --around, --from-planned, --known 중 하나를 주세요.");
   process.exit(1);
 }
 

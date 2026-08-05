@@ -4,6 +4,7 @@ import type { MaintenanceCatalogProject, MaintenanceProject, SourceStatus } from
 import { getDb } from "./database";
 import {
   loadMaintenanceBoundaryArtifact,
+  boundaryStalenessWarning,
   searchMaintenanceBoundaries,
   type MaintenanceBoundaryFeature,
 } from "./maintenance/boundary-store";
@@ -330,6 +331,9 @@ export async function searchMaintenanceProjects(
     status("maintenance_seoul", seoulResult), cleanupStatus, status("maintenance_busan", busanResult),
   ];
   const warnings = failedWarnings(sources);
+  // 경계는 사람이 받아야 갱신된다 — 잊히면 소스는 정상인 채로 데이터만 낡는다
+  const staleness = boundaryStalenessWarning(boundaries, Date.now());
+  if (staleness) warnings.push(staleness);
   if (!selectedRegions.length) warnings.push("정비사업 행정구역을 확인할 수 없어 목록 데이터를 표시하지 않습니다");
   if (completedSplit.completed.length) {
     warnings.push(`종료된 정비사업 ${completedSplit.completed.length}건 제외(준공·조합해산·조합청산·이전고시)`);
