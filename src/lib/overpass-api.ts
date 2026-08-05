@@ -9,6 +9,36 @@ export interface OverpassElement {
   tags?: Record<string, string>;
 }
 
+const NON_OPERATIONAL_RAIL_LIFECYCLE_KEYS = [
+  "construction", "proposed", "planned", "disused", "abandoned", "demolished", "razed",
+  "construction:railway", "proposed:railway", "planned:railway", "disused:railway", "abandoned:railway", "demolished:railway", "razed:railway",
+  "construction:station", "proposed:station", "planned:station", "disused:station", "abandoned:station", "demolished:station", "razed:station",
+  "construction:public_transport", "proposed:public_transport", "planned:public_transport", "disused:public_transport", "abandoned:public_transport",
+] as const;
+const RAIL_STATUS_KEYS = ["railway", "railway:status", "station:status", "status", "operational_status"] as const;
+const NON_OPERATIONAL_RAIL_STATUSES = new Set([
+  "construction", "under_construction", "proposed", "planned", "disused", "abandoned",
+  "demolished", "razed", "closed", "inactive", "not_in_service", "future",
+]);
+
+function normalizedTagValue(value: string | undefined): string {
+  return value?.trim().toLowerCase().replace(/[\s-]+/gu, "_") ?? "";
+}
+
+function isSubwayStation(tags: Readonly<Record<string, string>>): boolean {
+  return tags["station"] === "subway" || (tags["railway"] === "station" && tags["station"] === "subway");
+}
+
+export function isOperationalRailElement(el: OverpassElement): boolean {
+  const tags = el.tags ?? {};
+  const hasLifecycleTag = NON_OPERATIONAL_RAIL_LIFECYCLE_KEYS.some((key) => {
+    const value = normalizedTagValue(tags[key]);
+    return value.length > 0 && value !== "no" && value !== "false";
+  });
+  if (hasLifecycleTag) return false;
+  return !RAIL_STATUS_KEYS.some((key) => NON_OPERATIONAL_RAIL_STATUSES.has(normalizedTagValue(tags[key])));
+}
+
 /**
  * Fetches all POI categories within radiusM metres of (lat, lng)
  * using a single Overpass API call.
@@ -22,8 +52,8 @@ export async function overpassPoiSearch(
   const query = `
 [out:json][timeout:40];
 (
-  node["station"="subway"](around:${r},${lat},${lng});
-  node["railway"="station"]["station"="subway"](around:${r},${lat},${lng});
+  node["station"="subway"][!"construction:railway"][!"proposed:railway"][!"planned:railway"](around:${r},${lat},${lng});
+  node["railway"="station"]["station"="subway"][!"construction:railway"][!"proposed:railway"][!"planned:railway"](around:${r},${lat},${lng});
   node["amenity"="school"](around:${r},${lat},${lng});
   way["amenity"="school"](around:${r},${lat},${lng});
   node["amenity"="university"](around:${r},${lat},${lng});
@@ -40,7 +70,10 @@ out center tags;
 `;
 
   const data = (await overpassFetch(query)) as { elements: OverpassElement[] };
-  return data.elements;
+  return data.elements.filter((element) => {
+    const tags = element.tags ?? {};
+    return !isSubwayStation(tags) || isOperationalRailElement(element);
+  });
 }
 
 export function getElementCoords(el: OverpassElement): { lat: number; lng: number } | null {
@@ -58,12 +91,7 @@ export type OverpassCategory = "subway" | "school" | "park" | "mountain" | "apar
 export function classifyElement(el: OverpassElement): OverpassCategory | null {
   const tags = el.tags ?? {};
 
-  if (
-    tags["station"] === "subway" ||
-    (tags["railway"] === "station" && tags["station"] === "subway")
-  ) {
-    return "subway";
-  }
+  if (isSubwayStation(tags)) return isOperationalRailElement(el) ? "subway" : null;
   if (tags["amenity"] === "school" || tags["amenity"] === "university" || tags["amenity"] === "college") {
     return "school";
   }

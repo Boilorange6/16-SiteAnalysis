@@ -303,7 +303,7 @@ async function runPoiSearch(
         name: "osm",
         run: async () => {
           const r = await resolveSource<Poi[]>({
-            source: "osm", lat, lng, radiusM: radius, refresh,
+            source: "osm-operational-v1", lat, lng, radiusM: radius, refresh,
             fetcher: async () => {
               const elements = await overpassPoiSearch(lat, lng, radius);
               const seenIds = new Set<number>();

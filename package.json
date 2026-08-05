@@ -15,10 +15,12 @@
     "qa:maintenance-presentation:generate": "node qa/generate-maintenance-presentation-evidence.mjs",
     "qa:maintenance-presentation:audit": "pwsh -NoProfile -File qa/audit-maintenance-presentation.ps1",
     "qa:maintenance-presentation": "npm run qa:maintenance-presentation:generate && npm run qa:maintenance-presentation:audit",
-    "test": "node src/scripts/test-analysis-engine.mjs && node src/scripts/test-cheongwadae.mjs && node qa/validate-cheongwadae-deliverable.mjs && node src/scripts/verify-subway-coords.mjs && node qa/validate-enhancement-features.mjs && node qa/validate-ppt-presets.mjs && npm run test:dataset && npm run test:maintenance",
+    "test": "node src/scripts/test-analysis-engine.mjs && node src/scripts/test-cheongwadae.mjs && node qa/validate-cheongwadae-deliverable.mjs && node src/scripts/verify-subway-coords.mjs && node qa/validate-enhancement-features.mjs && node qa/validate-ppt-presets.mjs && npm run test:dataset && npm run test:rail && npm run test:maintenance",
     "test:dataset": "tsx src/scripts/test-planned-residential-fixes.mjs && tsx src/scripts/test-dataset-store.mjs && tsx src/scripts/test-geocode-cache.mjs && tsx src/scripts/test-planned-housing-ingest.mjs && tsx src/scripts/test-ledger-store.mjs && tsx src/scripts/test-dataset-status.mjs",
     "ingest:planned": "tsx src/scripts/ingest-planned-housing.mjs",
-    "ingest:ledger": "tsx src/scripts/ingest-ledger.mjs"
+    "ingest:ledger": "tsx src/scripts/ingest-ledger.mjs",
+    "test:rail": "tsx src/scripts/test-rail-network-store.mjs && tsx src/scripts/validate-planned-rail-registry.mjs && tsx src/scripts/test-planned-rail-ppt-label.mjs",
+    "build:rail-public-data": "tsx src/scripts/build-planned-rail-public-data.mjs"
   },
   "dependencies": {
     "@turf/turf": "7.3.5",

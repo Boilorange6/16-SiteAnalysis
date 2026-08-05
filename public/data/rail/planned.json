@@ -1,0 +1,132 @@
+[
+  {
+    "projectId": "seoul-line-9-phase-4",
+    "lineName": "서울 9호선 4단계 연장 (개략)",
+    "lifecycleStatus": "under_construction",
+    "statusEvidence": [
+      {
+        "url": "https://news.seoul.go.kr/citybuild/city_railroad",
+        "publisher": "서울특별시",
+        "retrievedAt": "2026-07-17",
+        "pageOrSection": "사업 현황",
+        "crs": "not_applicable",
+        "extractionMethod": "manual-page-review"
+      }
+    ],
+    "geometryEvidence": [
+      {
+        "url": "https://www.openstreetmap.org/way/898334529",
+        "publisher": "OpenStreetMap contributors",
+        "retrievedAt": "2026-07-17",
+        "pageOrSection": "way/898334529",
+        "crs": "EPSG:4326",
+        "extractionMethod": "OSM construction way review"
+      }
+    ],
+    "reviewStatus": "reviewed",
+    "nextReviewAt": "2027-01-15",
+    "segments": [
+      {
+        "segmentId": "seoul-line-9-phase-4-segment-1",
+        "lifecycle": "under_construction",
+        "operatingOverlap": "none"
+      }
+    ],
+    "geometry": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          127.1501853,
+          37.5326446
+        ],
+        [
+          127.1504601,
+          37.5333571
+        ],
+        [
+          127.1522267,
+          37.5376326
+        ],
+        [
+          127.1526385,
+          37.5385997
+        ],
+        [
+          127.1533114,
+          37.5401675
+        ],
+        [
+          127.1545195,
+          37.5432549
+        ],
+        [
+          127.1556152,
+          37.5454893
+        ],
+        [
+          127.1558605,
+          37.5464123
+        ],
+        [
+          127.1559719,
+          37.5487445
+        ],
+        [
+          127.1564127,
+          37.5552005
+        ],
+        [
+          127.1566737,
+          37.5613473
+        ],
+        [
+          127.156841,
+          37.5618887
+        ],
+        [
+          127.1571488,
+          37.5622808
+        ],
+        [
+          127.1576073,
+          37.5625682
+        ],
+        [
+          127.1580665,
+          37.5627752
+        ],
+        [
+          127.1585607,
+          37.5629167
+        ],
+        [
+          127.1592123,
+          37.5630054
+        ],
+        [
+          127.1622599,
+          37.5628635
+        ],
+        [
+          127.1644376,
+          37.5627009
+        ],
+        [
+          127.1673781,
+          37.5624993
+        ],
+        [
+          127.1693147,
+          37.5622842
+        ]
+      ]
+    },
+    "stations": [],
+    "sourceUrl": "https://news.seoul.go.kr/citybuild/city_railroad",
+    "geometrySourceUrl": "https://www.openstreetmap.org/way/898334529",
+    "geometrySourceLabel": "OpenStreetMap 공사 선형 보조",
+    "sourceType": "approximation",
+    "confidenceLabel": "medium",
+    "lastVerifiedAt": "2026-07-17"
+  }
+]
