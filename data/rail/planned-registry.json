@@ -1,0 +1,1626 @@
+{
+  "schemaVersion": "1.0",
+  "generatedAt": "2026-07-17",
+  "scope": "공사·설계·승인된 지하철·광역철도 사업. 제안 단계는 원문 노선도 확보 전 지도 미공개.",
+  "candidates": [
+    {
+      "projectId": "sinansan",
+      "stableId": "sinansan",
+      "lineName": "신안산선",
+      "lifecycleStatus": "under_construction",
+      "collectionStatus": "withheld",
+      "collectionPriority": "high",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://www.molit.go.kr/USR/NEWS/m_71/dtl.jsp?id=95089493&lcmspage=37",
+      "statusEvidence": [
+        {
+          "url": "https://www.molit.go.kr/USR/NEWS/m_71/dtl.jsp?id=95089493&lcmspage=37",
+          "publisher": "국토교통부",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "신안산선 사업 추진 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "공식 상태 자료는 여의도–광명–안산/원시 및 송산차량기지–시흥시청–광명 회랑만 확인한다. 공식 벡터·좌표 선형이 없어 역·터널·제어점을 추론하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "sinansan-segment-1",
+          "lifecycle": "under_construction",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "chungcheong-metropolitan-phase-1",
+      "stableId": "chungcheong-metropolitan-phase-1",
+      "lineName": "충청권 광역철도 1단계",
+      "lifecycleStatus": "under_construction",
+      "collectionStatus": "withheld",
+      "collectionPriority": "high",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://www.molit.go.kr/mtc/USR/WPGE0201/m_37121/DTL.jsp",
+      "statusEvidence": [
+        {
+          "url": "https://www.molit.go.kr/mtc/USR/WPGE0201/m_37121/DTL.jsp",
+          "publisher": "국토교통부 대도시권광역교통위원회",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "충청권 광역철도 1단계 사업 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        },
+        {
+          "url": "https://www.molit.go.kr/USR/NEWS/m_71/dtl.jsp?id=95085452&lcmspage=17",
+          "publisher": "국토교통부",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "계룡–신탄진 35.4km 사업 보도자료",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "계룡–신탄진 35.4km 기존선 개량 회랑의 공사 상태만 확인했다. 미개통 구간을 분리하는 공식 좌표 선형이 없어 기존 운행선과 겹치는 지오메트리를 공개하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "chungcheong-metropolitan-phase-1-segment-1",
+          "lifecycle": "under_construction",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "gtx-a-samsung-remainder",
+      "stableId": "gtx-a-samsung-remainder",
+      "lineName": "GTX-A 잔여 삼성역 구간",
+      "lifecycleStatus": "under_construction",
+      "collectionStatus": "withheld",
+      "collectionPriority": "high",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://www.molit.go.kr/2026plan/sub5_public.html",
+      "statusEvidence": [
+        {
+          "url": "https://www.molit.go.kr/2026plan/sub5_public.html",
+          "publisher": "국토교통부",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "2026 주요업무 추진계획 GTX-A 삼성역 잔여 구간",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        },
+        {
+          "url": "https://www.kr.or.kr/boardCnts/view.do?boardID=52&boardSeq=1122379&page=2",
+          "publisher": "국가철도공단",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "GTX-A 삼성역 잔여 구간 사업 안내",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "삼성역 잔여 공사 상태는 공식 자료로 확인했지만, 정확한 미개통 선형을 재사용 가능한 좌표로 제공하지 않는다. 이미 개통한 GTX-A 구간을 다시 그리지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "gtx-a-samsung-remainder-segment-1",
+          "lifecycle": "under_construction",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "samsung-dongtan-samsung-remainder",
+      "stableId": "samsung-dongtan-samsung-remainder",
+      "lineName": "삼성–동탄 광역급행철도 잔여 삼성역 구간",
+      "lifecycleStatus": "under_construction",
+      "collectionStatus": "withheld",
+      "collectionPriority": "high",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://www.molit.go.kr/2026plan/sub5_public.html",
+      "statusEvidence": [
+        {
+          "url": "https://www.molit.go.kr/2026plan/sub5_public.html",
+          "publisher": "국토교통부",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "2026 주요업무 추진계획 삼성–동탄 잔여 삼성역 구간",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        },
+        {
+          "url": "https://www.seoul.go.kr/news/news_report.do?nttNo=458565",
+          "publisher": "서울특별시",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "삼성–봉은사 약 1km 잔여 구간 보도자료",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "삼성–봉은사 약 1km 잔여 구간의 상태는 확인했으나 공식 벡터 선형이 없다. 약식 거리·명칭에서 좌표나 터널 종점을 만들지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "samsung-dongtan-samsung-remainder-segment-1",
+          "lifecycle": "under_construction",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "gtx-b-private",
+      "stableId": "gtx-b-private",
+      "lineName": "GTX-B 민자구간",
+      "lifecycleStatus": "under_construction",
+      "collectionStatus": "withheld",
+      "collectionPriority": "high",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://www.molit.go.kr/USR/NEWS/m_72/dtl.jsp?id=95087779",
+      "statusEvidence": [
+        {
+          "url": "https://www.molit.go.kr/USR/NEWS/m_72/dtl.jsp?id=95087779",
+          "publisher": "국토교통부",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "GTX-B 민자구간 착공 보도자료",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        },
+        {
+          "url": "https://bucheon.go.kr/site/homepage/menu/viewMenu?menuid=148006006003005001",
+          "publisher": "부천시",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "GTX-B 민자구간 사업 안내",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "인천대입구–용산 및 상봉–마석 구간의 공식 도식은 확인했지만 재사용 가능한 벡터 선형이 없다. 도식에서 경유역이나 선형을 좌표화하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "gtx-b-private-segment-1",
+          "lifecycle": "under_construction",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "yongsan-sangbong-gtx",
+      "stableId": "yongsan-sangbong-gtx",
+      "lineName": "용산–상봉 광역급행철도",
+      "lifecycleStatus": "under_construction",
+      "collectionStatus": "withheld",
+      "collectionPriority": "high",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://www.molit.go.kr/USR/NEWS/m_72/dtl.jsp?id=95087973",
+      "statusEvidence": [
+        {
+          "url": "https://www.molit.go.kr/USR/NEWS/m_72/dtl.jsp?id=95087973",
+          "publisher": "국토교통부",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "용산–상봉 광역급행철도 추진 보도자료",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        },
+        {
+          "url": "https://www.ddm.go.kr/www/contents.do?key=3724",
+          "publisher": "동대문구",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "용산–상봉 19.95km 사업 안내",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "용산–상봉 19.95km 공사 상태와 도식은 확인했지만 공식 지오리퍼런스 벡터가 없다. 도식의 경로를 지도 좌표로 재구성하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "yongsan-sangbong-gtx-segment-1",
+          "lifecycle": "under_construction",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "shinbundang-gwanggyo-homaesil",
+      "stableId": "shinbundang-gwanggyo-homaesil",
+      "lineName": "신분당선 광교–호매실",
+      "lifecycleStatus": "under_construction",
+      "collectionStatus": "withheld",
+      "collectionPriority": "high",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://www.kr.or.kr/sub/info.do?m=05010402",
+      "statusEvidence": [
+        {
+          "url": "https://www.kr.or.kr/sub/info.do?m=05010402",
+          "publisher": "국가철도공단",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "신분당선 광교–호매실 사업 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        },
+        {
+          "url": "https://www.kr.or.kr/boardCnts/view.do?boardID=1100472&boardSeq=1116369",
+          "publisher": "국가철도공단",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "광교–호매실 9.9km 사업 자료",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "광교–호매실 9.9km 공사 상태는 확인했으나 제공 PDF가 지오리퍼런스되지 않았다. PDF 선·정거장 표기를 좌표로 추론하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "shinbundang-gwanggyo-homaesil-segment-1",
+          "lifecycle": "under_construction",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "taehwaggang-songjeong",
+      "stableId": "taehwaggang-songjeong",
+      "lineName": "태화강–송정 광역철도",
+      "lifecycleStatus": "under_construction",
+      "collectionStatus": "withheld",
+      "collectionPriority": "high",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://www.kr.or.kr/sub/info.do?m=05010402",
+      "statusEvidence": [
+        {
+          "url": "https://www.kr.or.kr/sub/info.do?m=05010402",
+          "publisher": "국가철도공단",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "태화강–송정 광역철도 사업 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        },
+        {
+          "url": "https://www.kr.or.kr/images/template/krhome/sub/05/img_05010402_15.jpg",
+          "publisher": "국가철도공단",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "태화강–북울산(송정) 9.69km 공식 래스터 도식",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-raster-review"
+        }
+      ],
+      "withholdingReason": "태화강–북울산(송정) 9.69km 공식 래스터 도식은 확인했으나 지오리퍼런스가 없다. 끝점이 검증된 OSM 보조 선형도 확보하지 못해 좌표를 공개하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "taehwaggang-songjeong-segment-1",
+          "lifecycle": "under_construction",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "bucheon-masan",
+      "stableId": "bucheon-masan",
+      "lineName": "부전–마산 복선전철",
+      "lifecycleStatus": "under_construction",
+      "collectionStatus": "withheld",
+      "collectionPriority": "high",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://www.kr.or.kr/sub/info.do?m=05010402",
+      "statusEvidence": [
+        {
+          "url": "https://www.kr.or.kr/sub/info.do?m=05010402",
+          "publisher": "국가철도공단",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "부전–마산 복선전철 공식 공사 사업명 대조",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "geometry_conflict: canonical ID 'bucheon-masan'은 국가철도공단의 공사 사업명 '부전–마산'과 일치하지 않는다. 검증된 사업 식별자 없이 지오메트리를 연결하지 않는다.",
+      "suggestedCorrection": "별도 승인된 registry migration에서 'bujeon-masan'으로 정정할지 확인한다. 이 배치에서는 자동 이름 변경을 하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "bucheon-masan-segment-1",
+          "lifecycle": "under_construction",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "gtx-c",
+      "stableId": "gtx-c",
+      "lineName": "GTX-C",
+      "lifecycleStatus": "approved",
+      "collectionStatus": "withheld",
+      "collectionPriority": "normal",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://www.kr.or.kr/sub/info.do?m=05010402",
+      "statusEvidence": [
+        {
+          "url": "https://www.kr.or.kr/sub/info.do?m=05010402",
+          "publisher": "국가철도공단",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "GTX-C 86.5km 사업 및 2026년 착공 예정 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "source_conflict: 국가철도공단 현황은 2026년 착공 예정·공정률 0%로 적고 있어 다른 착공 표현과 상태가 완전히 조정되지 않았다. 신설 37.95km와 공용 48.51km를 분리하는 재사용 가능한 공식 벡터도 없으므로 기존 운행선이나 계획 도식을 좌표화하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "gtx-c-segment-1",
+          "lifecycle": "planned",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "daejeon-okcheon",
+      "stableId": "daejeon-okcheon",
+      "lineName": "대전–옥천 광역철도",
+      "lifecycleStatus": "approved",
+      "collectionStatus": "withheld",
+      "collectionPriority": "normal",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://www.daejeon.go.kr/tram/TramContentsHtmlView.do?menuSeq=7678",
+      "statusEvidence": [
+        {
+          "url": "https://www.daejeon.go.kr/tram/TramContentsHtmlView.do?menuSeq=7678",
+          "publisher": "대전광역시",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "오정–옥천 20.1km·정거장 4개 기존선 활용 사업 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        },
+        {
+          "url": "https://www.kr.or.kr/sub/info.do?m=05010402",
+          "publisher": "국가철도공단",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "대전–옥천 광역철도 사업 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "오정–옥천 20.1km는 경부선 기존 노선을 활용하는 정거장 개량 사업이다. 공식 자료가 미개통 공사 요소만 분리한 벡터 선형을 제공하지 않으므로 운행 중인 경부선 지오메트리를 예정선으로 재공개하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "daejeon-okcheon-segment-1",
+          "lifecycle": "planned",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "daejang-hongdae",
+      "stableId": "daejang-hongdae",
+      "lineName": "대장–홍대 광역급행철도",
+      "lifecycleStatus": "approved",
+      "collectionStatus": "withheld",
+      "collectionPriority": "normal",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://www.kr.or.kr/sub/info.do?m=05010402",
+      "statusEvidence": [
+        {
+          "url": "https://www.kr.or.kr/sub/info.do?m=05010402",
+          "publisher": "국가철도공단",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "대장–홍대 20.1km 사업 및 착공 준비 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "source_conflict: 국가철도공단은 노반 5개 공구를 '착공 준비중'으로 적으면서 추진실적에는 2025년 12월 착공기념식을 기록해 물리적 공사 상태 표현이 일치하지 않는다. 재사용 가능한 공식 벡터도 없어 기념식·도식에서 선형을 추론하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "daejang-hongdae-segment-1",
+          "lifecycle": "planned",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "yongsan-gangnam",
+      "stableId": "yongsan-gangnam",
+      "lineName": "용산–강남 복선전철",
+      "lifecycleStatus": "approved",
+      "collectionStatus": "withheld",
+      "collectionPriority": "normal",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://www.kr.or.kr/sub/info.do?m=05010402",
+      "statusEvidence": [
+        {
+          "url": "https://www.kr.or.kr/sub/info.do?m=05010402",
+          "publisher": "국가철도공단",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "용산–강남 단계별 사업 현황과 용산–신사 보완실시설계",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "공식 현황상 신사–강남 1단계는 2022년 개통했고 미완료 범위는 용산–신사 2단계뿐이다. 미완료 구간의 재사용 가능한 공식 벡터가 없어 개통 구간을 다시 그리거나 도식에서 용산–신사 선형을 추론하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "yongsan-gangnam-segment-1",
+          "lifecycle": "planned",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "seoul-line-9-phase-4",
+      "stableId": "seoul-line-9-phase-4",
+      "lineName": "서울 9호선 4단계 연장",
+      "lifecycleStatus": "under_construction",
+      "collectionStatus": "published",
+      "collectionPriority": "high",
+      "deferReason": null,
+      "geometryState": "resolved",
+      "sourceUrl": "https://news.seoul.go.kr/citybuild/city_railroad",
+      "statusEvidence": [
+        {
+          "url": "https://news.seoul.go.kr/citybuild/city_railroad",
+          "publisher": "서울특별시",
+          "retrievedAt": "2026-07-17",
+          "pageOrSection": "사업 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "geometryEvidence": [
+        {
+          "url": "https://www.openstreetmap.org/way/898334529",
+          "publisher": "OpenStreetMap contributors",
+          "retrievedAt": "2026-07-17",
+          "pageOrSection": "way/898334529",
+          "crs": "EPSG:4326",
+          "extractionMethod": "OSM construction way review"
+        }
+      ],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-15",
+      "segments": [
+        {
+          "segmentId": "seoul-line-9-phase-4-segment-1",
+          "lifecycle": "under_construction",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "seoul-northeast-line",
+      "stableId": "seoul-northeast-line",
+      "lineName": "동북선",
+      "lifecycleStatus": "under_construction",
+      "collectionStatus": "withheld",
+      "collectionPriority": "high",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://www.seoul.go.kr/news/news_report.do?nttNo=454107",
+      "statusEvidence": [
+        {
+          "url": "https://www.seoul.go.kr/news/news_report.do?nttNo=454107",
+          "publisher": "서울특별시",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "왕십리역–상계역 13.4km·16개 정거장 공사 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        },
+        {
+          "url": "https://event.seoul.go.kr/snews/data/CN_MST/seoulsibo_20220706154830_85853.pdf",
+          "publisher": "서울특별시",
+          "retrievedAt": "2026-07-19",
+          "publicationDate": "2022-07-07",
+          "pageOrSection": "서울시보 제3792호 제2022-294호 실시계획 변경(6차) 승인 및 지형도면 고시",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "서울시 최신 공사 자료로 왕십리역–상계역 13.4km 회랑과 전 구간 공사 상태를, 서울시보 고시로 실시계획·지형도면을 확인했다. 재사용 가능한 공식 벡터·좌표 선형은 없으므로 지적도·도면을 좌표화하거나 역·터널 종점을 추론하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "seoul-northeast-line-segment-1",
+          "lifecycle": "under_construction",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "seoul-wirye-tram",
+      "stableId": "seoul-wirye-tram",
+      "lineName": "위례선",
+      "lifecycleStatus": "under_construction",
+      "collectionStatus": "withheld",
+      "collectionPriority": "high",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://www.seoul.go.kr/news/news_report.do?nttNo=453106&srchCtgry=465",
+      "statusEvidence": [
+        {
+          "url": "https://www.seoul.go.kr/news/news_report.do?nttNo=453106&srchCtgry=465",
+          "publisher": "서울특별시",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "마천–복정 본선·남위례 지선, 5.4km·12개 정류장 및 2026년 12월 개통 목표",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "서울시 최신 자료는 마천–복정 본선과 남위례 지선의 공식 위상 및 2026년 12월 개통 목표를 확인하며 이전 일정을 대체한다. 재사용 가능한 공식 벡터가 없어 노선도에서 정류장 위치나 선형을 디지타이즈하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "seoul-wirye-tram-segment-1",
+          "lifecycle": "under_construction",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "ui-sinseol-banghak",
+      "stableId": "ui-sinseol-banghak",
+      "lineName": "우이–신설선 방학 연장",
+      "lifecycleStatus": "under_construction",
+      "collectionStatus": "withheld",
+      "collectionPriority": "high",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://news.seoul.go.kr/citybuild/archives/528900",
+      "statusEvidence": [
+        {
+          "url": "https://news.seoul.go.kr/citybuild/archives/528900",
+          "publisher": "서울특별시",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "솔밭공원역–방학역 3.94km·정거장 3개 우선시공 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        },
+        {
+          "url": "https://mediahub.seoul.go.kr/archives/2016301",
+          "publisher": "서울특별시 내 손안에 서울",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "우이신설 연장선 사업 설명과 개략 노선도",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "공식 자료는 솔밭공원역–방학역 3.94km와 정거장 3개 계획을 확인하지만 제공 선형은 개략 도식뿐이다. 공식 벡터·좌표가 없어 도식에서 역 위치나 터널 선형을 디지타이즈하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "ui-sinseol-banghak-segment-1",
+          "lifecycle": "under_construction",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "myeonmok-line",
+      "stableId": "myeonmok-line",
+      "lineName": "면목선",
+      "lifecycleStatus": "proposed",
+      "collectionStatus": "deferred",
+      "collectionPriority": "deferred",
+      "deferReason": "proposed_scope_excluded",
+      "geometryState": "deferred",
+      "sourceUrl": "https://www.seoul.go.kr/news/news_report.do?nttNo=459504&srchCtgry=467",
+      "statusEvidence": [
+        {
+          "url": "https://www.seoul.go.kr/news/news_report.do?nttNo=459504&srchCtgry=467",
+          "publisher": "서울특별시",
+          "retrievedAt": "2026-07-17",
+          "pageOrSection": "사업 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "geometryEvidence": [],
+      "reviewStatus": "deferred",
+      "nextReviewAt": "2027-01-15",
+      "segments": [
+        {
+          "segmentId": "myeonmok-line-segment-1",
+          "lifecycle": "proposed",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "wirye-sinsa",
+      "stableId": "wirye-sinsa",
+      "lineName": "위례신사선",
+      "lifecycleStatus": "approved",
+      "collectionStatus": "withheld",
+      "collectionPriority": "normal",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://news.seoul.go.kr/traffic/archives/516245",
+      "statusEvidence": [
+        {
+          "url": "https://news.seoul.go.kr/traffic/archives/516245",
+          "publisher": "서울특별시",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "민간투자사업에서 재정사업으로 전환된 위례신사선 추진 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "서울시는 위례신사선을 민간투자사업에서 재정사업으로 전환했고 예타·기본계획 등 착공 전 절차를 진행 중이다. 재사용 가능한 공식 벡터가 없어 이전 민자 도식이나 개략 노선도에서 좌표를 만들지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "wirye-sinsa-segment-1",
+          "lifecycle": "planned",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "gangbuk-cross",
+      "stableId": "gangbuk-cross",
+      "lineName": "강북횡단선",
+      "lifecycleStatus": "proposed",
+      "collectionStatus": "deferred",
+      "collectionPriority": "deferred",
+      "deferReason": "proposed_scope_excluded",
+      "geometryState": "deferred",
+      "sourceUrl": "https://www.seoul.go.kr/news/news_report.do?nttNo=459504&srchCtgry=467",
+      "statusEvidence": [
+        {
+          "url": "https://www.seoul.go.kr/news/news_report.do?nttNo=459504&srchCtgry=467",
+          "publisher": "서울특별시",
+          "retrievedAt": "2026-07-17",
+          "pageOrSection": "사업 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "geometryEvidence": [],
+      "reviewStatus": "deferred",
+      "nextReviewAt": "2027-01-15",
+      "segments": [
+        {
+          "segmentId": "gangbuk-cross-segment-1",
+          "lifecycle": "proposed",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "nanggok-line",
+      "stableId": "nanggok-line",
+      "lineName": "난곡선",
+      "lifecycleStatus": "proposed",
+      "collectionStatus": "deferred",
+      "collectionPriority": "deferred",
+      "deferReason": "proposed_scope_excluded",
+      "geometryState": "deferred",
+      "sourceUrl": "https://www.seoul.go.kr/news/news_report.do?nttNo=459504&srchCtgry=467",
+      "statusEvidence": [
+        {
+          "url": "https://www.seoul.go.kr/news/news_report.do?nttNo=459504&srchCtgry=467",
+          "publisher": "서울특별시",
+          "retrievedAt": "2026-07-17",
+          "pageOrSection": "사업 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "geometryEvidence": [],
+      "reviewStatus": "deferred",
+      "nextReviewAt": "2027-01-15",
+      "segments": [
+        {
+          "segmentId": "nanggok-line-segment-1",
+          "lifecycle": "proposed",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "seonam-line",
+      "stableId": "seonam-line",
+      "lineName": "서남선",
+      "lifecycleStatus": "proposed",
+      "collectionStatus": "deferred",
+      "collectionPriority": "deferred",
+      "deferReason": "proposed_scope_excluded",
+      "geometryState": "deferred",
+      "sourceUrl": "https://www.seoul.go.kr/news/news_report.do?nttNo=459504&srchCtgry=467",
+      "statusEvidence": [
+        {
+          "url": "https://www.seoul.go.kr/news/news_report.do?nttNo=459504&srchCtgry=467",
+          "publisher": "서울특별시",
+          "retrievedAt": "2026-07-17",
+          "pageOrSection": "사업 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "geometryEvidence": [],
+      "reviewStatus": "deferred",
+      "nextReviewAt": "2027-01-15",
+      "segments": [
+        {
+          "segmentId": "seonam-line-segment-1",
+          "lifecycle": "proposed",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "seobu-line",
+      "stableId": "seobu-line",
+      "lineName": "서부선",
+      "lifecycleStatus": "proposed",
+      "collectionStatus": "deferred",
+      "collectionPriority": "deferred",
+      "deferReason": "proposed_scope_excluded",
+      "geometryState": "deferred",
+      "sourceUrl": "https://www.seoul.go.kr/news/news_report.do?nttNo=459504&srchCtgry=467",
+      "statusEvidence": [
+        {
+          "url": "https://www.seoul.go.kr/news/news_report.do?nttNo=459504&srchCtgry=467",
+          "publisher": "서울특별시",
+          "retrievedAt": "2026-07-17",
+          "pageOrSection": "사업 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "geometryEvidence": [],
+      "reviewStatus": "deferred",
+      "nextReviewAt": "2027-01-15",
+      "segments": [
+        {
+          "segmentId": "seobu-line-segment-1",
+          "lifecycle": "proposed",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "seobu-southern-extension",
+      "stableId": "seobu-southern-extension",
+      "lineName": "서부선 남부연장",
+      "lifecycleStatus": "proposed",
+      "collectionStatus": "deferred",
+      "collectionPriority": "deferred",
+      "deferReason": "proposed_scope_excluded",
+      "geometryState": "deferred",
+      "sourceUrl": "https://www.seoul.go.kr/news/news_report.do?nttNo=459504&srchCtgry=467",
+      "statusEvidence": [
+        {
+          "url": "https://www.seoul.go.kr/news/news_report.do?nttNo=459504&srchCtgry=467",
+          "publisher": "서울특별시",
+          "retrievedAt": "2026-07-17",
+          "pageOrSection": "사업 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "geometryEvidence": [],
+      "reviewStatus": "deferred",
+      "nextReviewAt": "2027-01-15",
+      "segments": [
+        {
+          "segmentId": "seobu-southern-extension-segment-1",
+          "lifecycle": "proposed",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "sillim-northern-extension",
+      "stableId": "sillim-northern-extension",
+      "lineName": "신림선 북부연장",
+      "lifecycleStatus": "proposed",
+      "collectionStatus": "deferred",
+      "collectionPriority": "deferred",
+      "deferReason": "proposed_scope_excluded",
+      "geometryState": "deferred",
+      "sourceUrl": "https://www.seoul.go.kr/news/news_report.do?nttNo=459504&srchCtgry=467",
+      "statusEvidence": [
+        {
+          "url": "https://www.seoul.go.kr/news/news_report.do?nttNo=459504&srchCtgry=467",
+          "publisher": "서울특별시",
+          "retrievedAt": "2026-07-17",
+          "pageOrSection": "사업 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "geometryEvidence": [],
+      "reviewStatus": "deferred",
+      "nextReviewAt": "2027-01-15",
+      "segments": [
+        {
+          "segmentId": "sillim-northern-extension-segment-1",
+          "lifecycle": "proposed",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "wolgot-baegot",
+      "stableId": "wolgot-baegot",
+      "lineName": "월곶–배곧선",
+      "lifecycleStatus": "approved",
+      "collectionStatus": "withheld",
+      "collectionPriority": "normal",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://governor.gg.go.kr/governor-news/press/?mod=document&pageid=5&uid=17258",
+      "statusEvidence": [
+        {
+          "url": "https://governor.gg.go.kr/governor-news/press/?mod=document&pageid=5&uid=17258",
+          "publisher": "경기도",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "제2차 경기도 도시철도망 구축계획 월곶–배곧선 반영 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "경기도 공식 자료로 월곶–배곧선의 도시철도망 반영 상태를 확인했지만 계획 단계 자료에 재사용 가능한 공식 벡터·좌표 선형은 없다. 개략 노선도에서 정거장이나 선형을 디지타이즈하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "wolgot-baegot-segment-1",
+          "lifecycle": "planned",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "giheung-gwanggyo",
+      "stableId": "giheung-gwanggyo",
+      "lineName": "용인선 기흥–광교 연장",
+      "lifecycleStatus": "approved",
+      "collectionStatus": "withheld",
+      "collectionPriority": "normal",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://governor.gg.go.kr/governor-news/press/?mod=document&pageid=5&uid=17258",
+      "statusEvidence": [
+        {
+          "url": "https://governor.gg.go.kr/governor-news/press/?mod=document&pageid=5&uid=17258",
+          "publisher": "경기도",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "제2차 경기도 도시철도망 구축계획 기흥–광교 연장 반영 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        },
+        {
+          "url": "https://gnews.gg.go.kr/news/movie_view.do?b_code=&c_code=C117&lastidx=10&number=202512120856048508C117&s_code=C500",
+          "publisher": "경기도",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "기흥–광교 연장 언론브리핑 자료",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "경기도 공식 계획과 브리핑으로 용인선 기흥–광교 연장의 승인 계획 상태를 확인했다. 재사용 가능한 공식 벡터·좌표 선형이 없어 계획도에서 정거장 위치나 연결 경로를 추론하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "giheung-gwanggyo-segment-1",
+          "lifecycle": "planned",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "suwon-urban-rail-1",
+      "stableId": "suwon-urban-rail-1",
+      "lineName": "수원 도시철도 1호선",
+      "lifecycleStatus": "approved",
+      "collectionStatus": "withheld",
+      "collectionPriority": "normal",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://governor.gg.go.kr/governor-news/press/?mod=document&pageid=5&uid=17258",
+      "statusEvidence": [
+        {
+          "url": "https://governor.gg.go.kr/governor-news/press/?mod=document&pageid=5&uid=17258",
+          "publisher": "경기도",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "제2차 경기도 도시철도망 구축계획 수원 도시철도 1호선 반영 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        },
+        {
+          "url": "https://www.suwon.re.kr/data/file/research_reports/3535263116_CjEOAdiz_8c4c9f1ef27d4de72ec9f1aa42409c545b18d13d.pdf",
+          "publisher": "수원시정연구원",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "수원 도시철도 1호선 관련 연구보고서",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "경기도 계획과 수원시정연구원 보고서로 수원 도시철도 1호선의 계획 상태를 확인했다. 연구보고서 도식은 지오리퍼런스된 공식 벡터가 아니므로 노선이나 정거장을 좌표화하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "suwon-urban-rail-1-segment-1",
+          "lifecycle": "planned",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "moran-pangyo",
+      "stableId": "moran-pangyo",
+      "lineName": "모란–판교선",
+      "lifecycleStatus": "approved",
+      "collectionStatus": "withheld",
+      "collectionPriority": "normal",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://governor.gg.go.kr/governor-news/press/?mod=document&pageid=5&uid=17258",
+      "statusEvidence": [
+        {
+          "url": "https://governor.gg.go.kr/governor-news/press/?mod=document&pageid=5&uid=17258",
+          "publisher": "경기도",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "제2차 경기도 도시철도망 구축계획 모란–판교선 반영 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        },
+        {
+          "url": "https://seongnam.go.kr/contents/down/11495_25.pdf",
+          "publisher": "성남시",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "모란–판교선 관련 도시철도 계획 자료",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "모란–판교선은 성남 도시철도 1호선과 별도 canonical 사업으로 유지한다. 경기도·성남시 계획 자료는 상태와 개략 회랑만 확인하며 재사용 가능한 공식 벡터가 없어 두 노선을 결합하거나 좌표를 추론하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "moran-pangyo-segment-1",
+          "lifecycle": "planned",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "seongnam-urban-rail-1",
+      "stableId": "seongnam-urban-rail-1",
+      "lineName": "성남 도시철도 1호선",
+      "lifecycleStatus": "approved",
+      "collectionStatus": "withheld",
+      "collectionPriority": "normal",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://governor.gg.go.kr/governor-news/press/?mod=document&pageid=5&uid=17258",
+      "statusEvidence": [
+        {
+          "url": "https://governor.gg.go.kr/governor-news/press/?mod=document&pageid=5&uid=17258",
+          "publisher": "경기도",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "제2차 경기도 도시철도망 구축계획 성남 도시철도 1호선 반영 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        },
+        {
+          "url": "https://www.seongnam.go.kr/contents/down/10102_1.pdf",
+          "publisher": "성남시",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "성남 도시철도 1호선 계획 자료",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        },
+        {
+          "url": "https://www.seongnam.go.kr/contents/down/11607_80.pdf",
+          "publisher": "성남시",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "성남 도시철도 1·2호선 관련 계획 도면",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "성남 도시철도 1호선은 모란–판교선과 별도 canonical 사업으로 유지한다. 공식 계획 PDF는 개략 도면·문서이며 재사용 가능한 벡터·좌표를 제공하지 않아 노선과 정거장을 디지타이즈하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "seongnam-urban-rail-1-segment-1",
+          "lifecycle": "planned",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "seongnam-urban-rail-2",
+      "stableId": "seongnam-urban-rail-2",
+      "lineName": "성남 도시철도 2호선",
+      "lifecycleStatus": "approved",
+      "collectionStatus": "withheld",
+      "collectionPriority": "normal",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://gnews.gg.go.kr/news/news_detail_m.do?SchMonth=&SchYear=&number=202512120856048508C117&page=1&s_code=C500",
+      "statusEvidence": [
+        {
+          "url": "https://gnews.gg.go.kr/news/news_detail_m.do?SchMonth=&SchYear=&number=202512120856048508C117&page=1&s_code=C500",
+          "publisher": "경기도",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "제2차 경기도 도시철도망 구축계획 성남 도시철도 2호선 16.86km 반영 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        },
+        {
+          "url": "https://www.seongnam.go.kr/city/1002205/11440/contents.do",
+          "publisher": "성남시",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "성남 도시철도 사업 현황의 과거 13.7km 표기",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "source_conflict: 경기도 최신 계획의 성남 도시철도 2호선 16.86km를 현재 승인 상태로 채택하고 성남시 과거 자료의 13.7km는 이전 계획값으로 보존한다. 길이 충돌이 조정된 공식 벡터가 없어 어느 도식도 좌표화하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "seongnam-urban-rail-2-segment-1",
+          "lifecycle": "planned",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "gimpo-goldline-hakun",
+      "stableId": "gimpo-goldline-hakun",
+      "lineName": "김포골드라인 학운 연장",
+      "lifecycleStatus": "approved",
+      "collectionStatus": "withheld",
+      "collectionPriority": "normal",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://gnews.gg.go.kr/news/news_detail_m.do?SchMonth=&SchYear=&number=202512120856048508C117&page=1&s_code=C500",
+      "statusEvidence": [
+        {
+          "url": "https://gnews.gg.go.kr/news/news_detail_m.do?SchMonth=&SchYear=&number=202512120856048508C117&page=1&s_code=C500",
+          "publisher": "경기도",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "제2차 경기도 도시철도망 구축계획 김포골드라인 학운 연장 반영 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "경기도 공식 계획으로 김포골드라인 학운 연장의 승인 계획 상태를 확인했다. 계획 자료에 재사용 가능한 공식 벡터·좌표 선형이 없어 기존 김포골드라인에서 연장 경로나 정거장 위치를 추론하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "gimpo-goldline-hakun-segment-1",
+          "lifecycle": "planned",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "pangyo-opo",
+      "stableId": "pangyo-opo",
+      "lineName": "판교–오포선",
+      "lifecycleStatus": "approved",
+      "collectionStatus": "withheld",
+      "collectionPriority": "normal",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://gnews.gg.go.kr/news/news_detail_m.do?SchMonth=&SchYear=&number=202512120856048508C117&page=1&s_code=C500",
+      "statusEvidence": [
+        {
+          "url": "https://gnews.gg.go.kr/news/news_detail_m.do?SchMonth=&SchYear=&number=202512120856048508C117&page=1&s_code=C500",
+          "publisher": "경기도",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "제2차 경기도 도시철도망 구축계획 판교–오포선 반영 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        },
+        {
+          "url": "https://www.seongnam.go.kr/city/1002205/11440/contents.do",
+          "publisher": "성남시",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "판교–오포선 관련 성남시 철도사업 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "경기도 계획과 성남시 철도사업 자료로 판교–오포선의 계획 상태를 확인했다. 재사용 가능한 공식 벡터·좌표 선형이 없어 행정구역·도로망이나 개략 도식에서 경로를 추론하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "pangyo-opo-segment-1",
+          "lifecycle": "planned",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "dongbaek-sinbong",
+      "stableId": "dongbaek-sinbong",
+      "lineName": "동백–신봉선",
+      "lifecycleStatus": "approved",
+      "collectionStatus": "withheld",
+      "collectionPriority": "normal",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://gnews.gg.go.kr/news/news_detail_m.do?SchMonth=&SchYear=&number=202512120856048508C117&page=1&s_code=C500",
+      "statusEvidence": [
+        {
+          "url": "https://gnews.gg.go.kr/news/news_detail_m.do?SchMonth=&SchYear=&number=202512120856048508C117&page=1&s_code=C500",
+          "publisher": "경기도",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "제2차 경기도 도시철도망 구축계획 동백–신봉선 반영 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        },
+        {
+          "url": "https://www.yongin.go.kr/user/bbs/BD_selectBbs.do?q_bbsCode=1020&q_bbscttSn=20251212140213489",
+          "publisher": "용인특례시",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "동백–신봉선 용인시 추진 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "동백–신봉선의 canonical 범위는 경기도 계획에 반영된 동백–신봉 구간만이며 언남–동천 구간은 제외한다. 공식 벡터·좌표가 없어 제외 구간을 이어 붙이거나 계획도에서 정거장·선형을 디지타이즈하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "dongbaek-sinbong-segment-1",
+          "lifecycle": "planned",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "goyang-gajwa-siksa",
+      "stableId": "goyang-gajwa-siksa",
+      "lineName": "고양 가좌–식사선",
+      "lifecycleStatus": "approved",
+      "collectionStatus": "withheld",
+      "collectionPriority": "normal",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://gnews.gg.go.kr/news/news_detail_m.do?SchMonth=&SchYear=&number=202512120856048508C117&page=1&s_code=C500",
+      "statusEvidence": [
+        {
+          "url": "https://gnews.gg.go.kr/news/news_detail_m.do?SchMonth=&SchYear=&number=202512120856048508C117&page=1&s_code=C500",
+          "publisher": "경기도",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "제2차 경기도 도시철도망 구축계획 가좌–식사선 13.37km 반영 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "고양 가좌–식사선 13.37km는 대곡–고양시청–식사선과 별도 canonical 사업으로 유지한다. 공식 계획 자료에 재사용 가능한 벡터가 없어 두 고양 노선을 결합하거나 계획도에서 좌표를 만들지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "goyang-gajwa-siksa-segment-1",
+          "lifecycle": "planned",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "daegok-goyang-cityhall-siksa",
+      "stableId": "daegok-goyang-cityhall-siksa",
+      "lineName": "대곡–고양시청–식사선",
+      "lifecycleStatus": "approved",
+      "collectionStatus": "withheld",
+      "collectionPriority": "normal",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://www.2050cnc.go.kr/storage/board/base/2025/07/03/BOARD_ATTACH_1751506923708.pdf",
+      "statusEvidence": [
+        {
+          "url": "https://www.2050cnc.go.kr/storage/board/base/2025/07/03/BOARD_ATTACH_1751506923708.pdf",
+          "publisher": "2050 탄소중립녹색성장위원회",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "대곡–고양시청–식사 교통대책 관련 자료",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        },
+        {
+          "url": "https://www.goyangcouncil.go.kr/viewer/minutes.do?mem_sch=08090&schwrd=&uid=13914",
+          "publisher": "고양시의회",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "대곡–고양시청 3.1km와 고양시청–식사 3.5km 분절 사업 회의록",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "source_conflict: 공식 자료가 통합 노선 제안과 대곡–고양시청·고양시청–식사 분절 사업을 다르게 표현해 canonical segmentation이 조정되지 않았다. 재사용 가능한 공식 벡터도 없어 구간을 임의로 결합하거나 좌표화하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "daegok-goyang-cityhall-siksa-segment-1",
+          "lifecycle": "planned",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "deokjeong-okjeong",
+      "stableId": "deokjeong-okjeong",
+      "lineName": "덕정–옥정선",
+      "lifecycleStatus": "approved",
+      "collectionStatus": "withheld",
+      "collectionPriority": "normal",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://gnews.gg.go.kr/briefing/brief_sigun_view.do?BS_CODE=s017&number=112771",
+      "statusEvidence": [
+        {
+          "url": "https://gnews.gg.go.kr/briefing/brief_sigun_view.do?BS_CODE=s017&number=112771",
+          "publisher": "경기도",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "덕정역–7호선 옥정역 3.9km 도시철도망 반영 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "덕정–옥정선은 경원선 덕정역과 7호선 옥정역을 잇는 3.9km 계획 노선이며 옥정–포천 연장과 별도 사업이다. 계획 단계 자료에 재사용 가능한 공식 벡터가 없어 두 사업을 합치거나 정거장·선형을 추론하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "deokjeong-okjeong-segment-1",
+          "lifecycle": "planned",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "dongtan-tram",
+      "stableId": "dongtan-tram",
+      "lineName": "동탄 트램",
+      "lifecycleStatus": "under_construction",
+      "collectionStatus": "withheld",
+      "collectionPriority": "high",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://www.hscity.go.kr/www/partInfo/trnsport/railPrjtInfo/dongtantramInfo.jsp",
+      "statusEvidence": [
+        {
+          "url": "https://www.hscity.go.kr/www/partInfo/trnsport/railPrjtInfo/dongtantramInfo.jsp",
+          "publisher": "화성특례시",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "동탄트램 현행 총연장 34.4km 사업 소개",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        },
+        {
+          "url": "https://www.hscity.go.kr/www/user/bbs/BD_selectBbs.do?q_bbsCode=1183&q_bbscttSn=20230710170856416",
+          "publisher": "화성특례시",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "2023년 고시 게시물의 과거 총연장 34.2km",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "source_conflict: 화성시 현행 사업 페이지의 총연장 34.4km를 현재 기준으로 채택하고 2023년 고시 게시물의 34.2km는 과거 계획값으로 보존한다. 두 수치는 지오메트리 근거가 아니며 공식 벡터·좌표 선형이 없어 노선도에서 역·선형을 디지타이즈하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "dongtan-tram-segment-1",
+          "lifecycle": "under_construction",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "busan-sasang-hadan",
+      "stableId": "busan-sasang-hadan",
+      "lineName": "부산 사상–하단선",
+      "lifecycleStatus": "under_construction",
+      "collectionStatus": "withheld",
+      "collectionPriority": "high",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://www.busan.go.kr/policy01?curPage=76",
+      "statusEvidence": [
+        {
+          "url": "https://www.busan.go.kr/policy01?curPage=76",
+          "publisher": "부산광역시",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "정책실명제 사상–하단선 건설사업",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        },
+        {
+          "url": "https://www.busan.go.kr/expdetail/view?curPage=384&schDbiz=62600002014300CB&schYear=2025",
+          "publisher": "부산광역시",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "2025년 사상–하단선 세부사업 지출 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        },
+        {
+          "url": "https://www.busan.go.kr/nbgosi/view?curPage=2&gosiGbn=A&sno=77896",
+          "publisher": "부산광역시",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "사상–하단선 건설사업 관련 고시",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "부산시 정책·예산·고시 자료로 사상–하단 6.9km 건설사업의 진행 상태를 확인했다. 재사용 가능한 공식 벡터·좌표 선형이 없어 사업명과 거리에서 정거장이나 터널 경로를 추론하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "busan-sasang-hadan-segment-1",
+          "lifecycle": "under_construction",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "busan-hadan-noksan",
+      "stableId": "busan-hadan-noksan",
+      "lineName": "부산 하단–녹산선",
+      "lifecycleStatus": "approved",
+      "collectionStatus": "withheld",
+      "collectionPriority": "normal",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://www.busan.go.kr/nbtnewsBU/1651589?curPage=294&srchBeginDt=&srchEndDt=&srchKey=sj&srchText=",
+      "statusEvidence": [
+        {
+          "url": "https://www.busan.go.kr/nbtnewsBU/1651589?curPage=294&srchBeginDt=&srchEndDt=&srchKey=sj&srchText=",
+          "publisher": "부산광역시",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "하단–녹산선 기본계획 승인·추진 보도자료",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "부산시 공식 자료로 하단–녹산선 기본계획 단계의 사업 상태를 확인했지만 재사용 가능한 공식 벡터·좌표 선형은 제공되지 않는다. 개략 노선도에서 정거장이나 선형을 디지타이즈하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "busan-hadan-noksan-segment-1",
+          "lifecycle": "planned",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "daegu-line-4",
+      "stableId": "daegu-line-4",
+      "lineName": "대구 도시철도 4호선",
+      "lifecycleStatus": "approved",
+      "collectionStatus": "withheld",
+      "collectionPriority": "normal",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://www.daegu.go.kr/Subway/Default.aspx?cid=24%3A2&classNo=0&infoID=156&list=0&no=112&page=1&rNo=112&subInfoID=156",
+      "statusEvidence": [
+        {
+          "url": "https://www.daegu.go.kr/Subway/Default.aspx?cid=24%3A2&classNo=0&infoID=156&list=0&no=112&page=1&rNo=112&subInfoID=156",
+          "publisher": "대구광역시",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "도시철도 4호선 기본계획 및 향후계획",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "geometry_conflict: 대구시 기본계획은 4호선 회랑을 제시하지만 차량 시스템·설계 방식 변경 위험이 남아 현재 도식이 최종 선형임을 보장하지 않는다. 재사용 가능한 공식 벡터도 없어 기본구상 노선에서 좌표를 만들지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "daegu-line-4-segment-1",
+          "lifecycle": "planned",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "daejeon-line-2",
+      "stableId": "daejeon-line-2",
+      "lineName": "대전 도시철도 2호선",
+      "lifecycleStatus": "under_construction",
+      "collectionStatus": "withheld",
+      "collectionPriority": "high",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://www.daejeon.go.kr/djTram/contentView.do?menuSeq=7701",
+      "statusEvidence": [
+        {
+          "url": "https://www.daejeon.go.kr/djTram/contentView.do?menuSeq=7701",
+          "publisher": "대전광역시",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "도시철도 2호선 현행 승인 총연장 38.8km 사업개요",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        },
+        {
+          "url": "https://daejeon.go.kr/djTram/contentView.do?menuSeq=7702",
+          "publisher": "대전광역시",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "도시철도 2호선 노선·정거장 안내",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "source_conflict: 대전시 현행 승인 사업개요의 총연장 38.8km를 현재 기준으로 채택하고 과거 연장값은 추진 이력으로만 본다. 공식 노선 안내는 재사용 가능한 벡터가 아니므로 정거장·선형을 좌표화하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "daejeon-line-2-segment-1",
+          "lifecycle": "under_construction",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "gwangju-line-2",
+      "stableId": "gwangju-line-2",
+      "lineName": "광주 도시철도 2호선",
+      "lifecycleStatus": "under_construction",
+      "collectionStatus": "withheld",
+      "collectionPriority": "high",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://www.gwangju.go.kr/build/contentsView.do?pageId=build124",
+      "statusEvidence": [
+        {
+          "url": "https://www.gwangju.go.kr/build/contentsView.do?pageId=build124",
+          "publisher": "광주광역시",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "도시철도 2호선 41.891km 단계별 사업계획·공사 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        },
+        {
+          "url": "https://www.grtc.co.kr/subway/contents/station2Map",
+          "publisher": "광주교통공사",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "도시철도 2호선 단계별 노선도",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "광주시와 광주교통공사 자료는 41.891km 확대순환선의 단계별 공사 상태와 노선 위상을 확인하지만 노선도는 재사용 가능한 공식 벡터가 아니다. 이미지에서 정거장 좌표나 선형을 디지타이즈하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "gwangju-line-2-segment-1",
+          "lifecycle": "under_construction",
+          "operatingOverlap": "none"
+        }
+      ]
+    },
+    {
+      "projectId": "ulsan-line-1",
+      "stableId": "ulsan-line-1",
+      "lineName": "울산 도시철도 1호선",
+      "lifecycleStatus": "under_construction",
+      "collectionStatus": "withheld",
+      "collectionPriority": "high",
+      "deferReason": null,
+      "geometryState": "withheld",
+      "sourceUrl": "https://www.ulsan.go.kr/u/rep/bbs/view.do?bbsId=BBS_0000000000000027&dataId=180628&mId=001004003001000000",
+      "statusEvidence": [
+        {
+          "url": "https://ulsan.go.kr/u/traffic/contents.ulsan?mId=001006004002000000",
+          "publisher": "울산광역시",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "울산트램 건설사업의 과거 총연장 11.63km 표기",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        },
+        {
+          "url": "https://itskorea.kr/downloadFile.do?fileId=FILE_000000000096373&fileSn=1",
+          "publisher": "국토교통부",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "울산 도시철도 1호선 기본계획 승인 자료",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        },
+        {
+          "url": "https://www.ulsan.go.kr/u/rep/bbs/view.do?bbsId=BBS_0000000000000027&dataId=180628&mId=001004003001000000",
+          "publisher": "울산광역시",
+          "retrievedAt": "2026-07-19",
+          "pageOrSection": "태화강역–신복교차로 10.85km·15개 정거장 최신 공사 현황",
+          "crs": "not_applicable",
+          "extractionMethod": "manual-page-review"
+        }
+      ],
+      "withholdingReason": "source_conflict: 승인 자료와 울산시 최신 공사 자료의 10.85km를 현재 기준으로 채택하고, 사업 안내 페이지의 11.63km는 갱신되지 않은 과거 값으로 검토 표시한다. 어느 자료도 재사용 가능한 공식 벡터를 제공하지 않아 선형을 공개하지 않는다.",
+      "geometryEvidence": [],
+      "reviewStatus": "reviewed",
+      "nextReviewAt": "2027-01-19",
+      "segments": [
+        {
+          "segmentId": "ulsan-line-1-segment-1",
+          "lifecycle": "under_construction",
+          "operatingOverlap": "none"
+        }
+      ]
+    }
+  ]
+}

@@ -1,8 +1,10 @@
+import type { PlannedRailProject } from "./rail-types";
+
 export type PoiCategory = "subway" | "school" | "park" | "mountain" | "apartment" | "officetel" | "residential" | "maintenance";
 
 /** 외부 데이터 소스 식별자 (1단계 데이터 신뢰성) */
 export type PoiSourceId =
-  | "osm" | "park" | "maintenance" | "residential" | "planned-residential" | "subway-routes";
+  | "osm" | "park" | "maintenance" | "residential" | "planned-residential" | "subway-routes" | "rail-network";
 
 export interface SourceStatus {
   readonly source: PoiSourceId;
@@ -19,6 +21,7 @@ export const POI_SOURCE_CATEGORIES: Record<PoiSourceId, readonly PoiCategory[]> 
   residential: ["apartment", "officetel", "residential"],
   "planned-residential": ["apartment", "officetel", "residential"],
   "subway-routes": ["subway"],
+  "rail-network": ["subway"],
 };
 
 export const POI_SOURCE_LABELS: Record<PoiSourceId, string> = {
@@ -28,6 +31,7 @@ export const POI_SOURCE_LABELS: Record<PoiSourceId, string> = {
   residential: "주거 단지",
   "planned-residential": "분양 예정",
   "subway-routes": "지하철 노선",
+  "rail-network": "철도 네트워크",
 };
 
 export interface PoiBase {
@@ -73,6 +77,7 @@ export interface SubwayStation extends PoiBase {
   readonly category: "subway";
   readonly line: string;
   readonly lineColor: string;
+  readonly lineNames?: readonly string[];
 }
 
 export interface School extends PoiBase {
@@ -207,6 +212,9 @@ export interface RegionData {
   readonly subwayRoutes: readonly SubwayRoute[];
   /** 1단계 데이터 신뢰성: 소스별 수집 상태(fresh/cached/failed) — 사이드바 재시도 UI(Task 6)에서 사용 */
   readonly sourceStatuses: readonly SourceStatus[];
+  readonly railSnapshotVersion?: string;
+  readonly subwayMapData?: import("./osm-subway-overlay").SubwayMapResponse;
+  readonly plannedRailProjects?: readonly PlannedRailProject[];
 }
 
 export const CATEGORY_COLORS: Record<PoiCategory, string> = {

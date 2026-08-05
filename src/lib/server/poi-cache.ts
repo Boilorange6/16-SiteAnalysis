@@ -19,7 +19,12 @@ export function getCachedSource<T>(
     .get(source, la, ln, Math.round(radiusM)) as { value_json: string; fetched_at: number } | undefined;
   if (!row) return null;
   if (Date.now() - row.fetched_at > POI_CACHE_TTL_MS) return null;
-  return { value: JSON.parse(row.value_json) as T, fetchedAt: row.fetched_at };
+  try {
+    return { value: JSON.parse(row.value_json) as T, fetchedAt: row.fetched_at };
+  } catch (err) {
+    if (err instanceof SyntaxError) return null;
+    throw err;
+  }
 }
 
 export function setCachedSource(

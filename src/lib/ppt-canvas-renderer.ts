@@ -24,6 +24,7 @@ import { sourceStatusLines, hasFailedSource } from "./source-status-text";
 import { toReportMapTone } from "./map-image-tone";
 import { buildFactSummary, buildFactSheetRows, buildCategoryInsight, type FactSheetSegment, type CategoryInsightKey } from "./fact-summary";
 import { isRawPoiId } from "./poi-id-guard";
+import { buildPptLegendItems } from "./ppt-rail-legend";
 
 // ── Coordinate constants ──────────────────────────────────────────────────────
 
@@ -169,6 +170,7 @@ export interface SlideRenderInput {
   readonly routePositions: readonly RouteNormalizedPosition[];
   /** 1단계 데이터 신뢰성: 소스별 수집 상태 — 출처 슬라이드 수집일 표기·표지 누락 경고(Task 7)에서 사용 */
   readonly sourceStatuses?: readonly SourceStatus[];
+  readonly hasPlannedRail?: boolean;
 }
 
 export interface RenderedSlide {
@@ -865,14 +867,11 @@ function drawRankedList(
   });
 }
 
-function drawLegend(ctx: CanvasRenderingContext2D, d: PptDesignConfig) {
-  const items = Object.entries(CATEGORY_LABELS).map(([key, label]) => ({
-    label,
-    color: d.categoryColors[key as PoiCategory],
-  }));
+function drawLegend(ctx: CanvasRenderingContext2D, d: PptDesignConfig, hasPlannedRail = false) {
+  const items = buildPptLegendItems(d.categoryColors, hasPlannedRail);
   if (d.legendStyle === "strip") {
     const rowW = ix(5.9);
-    const rowH = iy(0.34);
+    const rowH = iy(hasPlannedRail ? 0.56 : 0.34);
     const x = d.legendPosition.endsWith("right") ? CANVAS_W - rowW - ix(0.55) : ix(0.55);
     const y = d.legendPosition.startsWith("top") ? iy(0.92) : CANVAS_H - iy(0.72);
     drawRoundedRect(ctx, x, y, rowW, rowH, ix(d.legendRadius), hexRgba(d.overlayColor, d.legendTransparency), hexRgba(d.markerBorderColor, d.legendBorderTransparency), 0.6);
@@ -884,6 +883,17 @@ function drawLegend(ctx: CanvasRenderingContext2D, d: PptDesignConfig) {
         fontSize: 6.4, color: d.legendTextColor, valign: "middle",
       });
     });
+    if (hasPlannedRail) {
+      const plannedItem = items[items.length - 1];
+      if (plannedItem) {
+        const itemY = y + iy(0.31);
+        ctx.fillStyle = plannedItem.color;
+        ctx.fillRect(x + ix(0.18), itemY + iy(0.05), ix(0.12), iy(0.12));
+        drawTextBox(ctx, plannedItem.label, x + ix(0.34), itemY, ix(2.0), iy(0.2), {
+          fontSize: 6.4, color: d.legendTextColor, valign: "middle",
+        });
+      }
+    }
     return;
   }
   const legH = iy(items.length * LEGEND_ROW_H + 0.15);
@@ -894,7 +904,7 @@ function drawLegend(ctx: CanvasRenderingContext2D, d: PptDesignConfig) {
   const legW = ix(LEGEND_W);
 
   if (d.legendStyle !== "minimal") {
-    drawRoundedRect(ctx, legX, legY, d.legendStyle === "rail" ? ix(0.54) : legW, legH, ix(d.legendRadius),
+    drawRoundedRect(ctx, legX, legY, d.legendStyle === "rail" && !hasPlannedRail ? ix(0.54) : legW, legH, ix(d.legendRadius),
       hexRgba(d.overlayColor, d.legendTransparency),
       hexRgba(d.markerBorderColor, d.legendBorderTransparency), 0.8);
   }
@@ -910,7 +920,7 @@ function drawLegend(ctx: CanvasRenderingContext2D, d: PptDesignConfig) {
       // "minimal"(기본값)을 포함해 색 도트 아이콘 — 원본 보고서 범례 문법(좌하단, 색 도트+라벨).
       drawEllipseShape(ctx, iconCX, iconCY, iconR, iconR, item.color, hexRgba(d.markerBorderColor, 20), 0.8);
     }
-    if (d.legendStyle !== "rail") {
+    if (d.legendStyle !== "rail" || hasPlannedRail) {
       drawTextBox(ctx, item.label,
         legX + ix(0.28), itemY, legW - ix(0.32), iy(LEGEND_ROW_H), {
           fontSize: d.legendFontSize, color: d.legendTextColor, valign: "middle",
@@ -1391,7 +1401,7 @@ function renderOverviewSlide(
   }
   drawSiteMarker(ctx, input.radiusPosition, d);
   drawMapSectionTitle(ctx, "입지 현황 종합", `반경 ${input.config.radiusKm}km`);
-  drawLegend(ctx, d);
+  drawLegend(ctx, d, input.hasPlannedRail);
 }
 
 function renderScoreDashboardSlide(
@@ -1618,7 +1628,7 @@ function renderCategorySlide(
     drawInsightCard(ctx, buildCategoryInsight(insightKey, summary), d);
   }
 
-  drawLegend(ctx, d);
+  drawLegend(ctx, d, input.hasPlannedRail);
 }
 
 function renderParkAccessDetailSlide(
@@ -1933,7 +1943,7 @@ function renderApartmentCalloutSlide(
   // Task A: 지도 배경은 유지하되, 어두운 잉크 drawTitleChip 대신 Task 5의 흰 지도 섹션 타이틀
   // 문법(drawMapSectionTitle)로 교체해 판독 불가 결함을 해소한다.
   drawMapSectionTitle(ctx, pageTitle, `반경 ${input.config.radiusKm}km`);
-  drawLegend(ctx, d);
+  drawLegend(ctx, d, input.hasPlannedRail);
 
   if (aptsOnPage.length === 0) {
     drawEmptyStateBadge(ctx, d);
@@ -1966,7 +1976,7 @@ function renderApartmentCalloutSlide(
       cardMargin: CARD_MARGIN_IN,
       chipY: d.titleChipY,
       chipHeight: d.titleChipHeight,
-      legendRows: Object.keys(CATEGORY_LABELS).length,
+      legendRows: Object.keys(CATEGORY_LABELS).length + (input.hasPlannedRail ? 1 : 0),
       legendRowHeight: LEGEND_ROW_H,
       legendBottomMargin: 0.4,
     },

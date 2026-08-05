@@ -26,6 +26,7 @@ import { toReportMapTone } from "./map-image-tone";
 import { buildFactSummary, buildFactSheetRows, buildCategoryInsight, type FactSheetSegment, type CategoryInsightKey } from "./fact-summary";
 import { isRawPoiId } from "./poi-id-guard";
 import { groupTaggedShapes, GROUP_TAG_PREFIX } from "./pptx-shape-group";
+import { buildPptLegendItems } from "./ppt-rail-legend";
 
 const SLIDE_W = 13.333;
 const SLIDE_H = 7.5;
@@ -703,14 +704,11 @@ function addRankedList(
   });
 }
 
-function addLegend(slide: PptxGenJS.Slide, d: PptDesignConfig) {
-  const items = Object.entries(CATEGORY_LABELS).map(([key, label]) => ({
-    label,
-    color: d.categoryColors[key as PoiCategory],
-  }));
+function addLegend(slide: PptxGenJS.Slide, d: PptDesignConfig, hasPlannedRail = false) {
+  const items = buildPptLegendItems(d.categoryColors, hasPlannedRail);
   if (d.legendStyle === "strip") {
     const rowW = 5.9;
-    const rowH = 0.34;
+    const rowH = hasPlannedRail ? 0.56 : 0.34;
     const x = d.legendPosition.endsWith("right") ? SLIDE_W - rowW - 0.55 : 0.55;
     const y = d.legendPosition.startsWith("top") ? 0.92 : SLIDE_H - 0.72;
     slide.addShape("rect", {
@@ -725,6 +723,13 @@ function addLegend(slide: PptxGenJS.Slide, d: PptDesignConfig) {
       slide.addShape("rect", { x: itemX, y: y + 0.11, w: 0.12, h: 0.12, fill: { color: pptColor(item.color), transparency: 0 }, line: { color: pptColor(item.color), transparency: 100 }, objectName: grpTag("legend", "범례", `dot-${i}`) });
       slide.addText(item.label, { x: itemX + 0.16, y: y + 0.065, w: 0.6, h: 0.2, fontSize: 6.4, fontFace: FONT_MAIN, color: pptColor(d.legendTextColor), valign: "middle", fit: "shrink", objectName: grpTag("legend", "범례", `label-${i}`) });
     });
+    if (hasPlannedRail) {
+      const plannedItem = items[items.length - 1];
+      if (plannedItem) {
+        slide.addShape("rect", { x: x + 0.18, y: y + 0.36, w: 0.12, h: 0.12, fill: { color: pptColor(plannedItem.color), transparency: 0 }, line: { color: pptColor(plannedItem.color), transparency: 100 }, objectName: grpTag("legend", "범례", "dot-planned-rail") });
+        slide.addText(plannedItem.label, { x: x + 0.34, y: y + 0.31, w: 2.0, h: 0.2, fontSize: 6.4, fontFace: FONT_MAIN, color: pptColor(d.legendTextColor), valign: "middle", fit: "shrink", objectName: grpTag("legend", "범례", "label-planned-rail") });
+      }
+    }
     return;
   }
 
@@ -736,7 +741,7 @@ function addLegend(slide: PptxGenJS.Slide, d: PptDesignConfig) {
 
   if (d.legendStyle !== "minimal") {
     slide.addShape("rect", {
-      x: legX, y: legY, w: d.legendStyle === "rail" ? 0.54 : LEGEND_W, h: legH,
+      x: legX, y: legY, w: d.legendStyle === "rail" && !hasPlannedRail ? 0.54 : LEGEND_W, h: legH,
       fill: { color: pptColor(d.overlayColor), transparency: d.legendTransparency },
       line: { color: pptColor(d.markerBorderColor), transparency: d.legendBorderTransparency, width: 0.8 },
       rectRadius: d.legendRadius,
@@ -757,7 +762,7 @@ function addLegend(slide: PptxGenJS.Slide, d: PptDesignConfig) {
       rectRadius: d.legendStyle === "index" ? 0.01 : undefined,
       objectName: grpTag("legend", "범례", `dot-${i}`),
     });
-    if (d.legendStyle !== "rail") {
+    if (d.legendStyle !== "rail" || hasPlannedRail) {
       slide.addText(item.label, {
         x: legX + 0.28, y, w: LEGEND_W - 0.32, h: LEGEND_ROW_H,
         fontSize: d.legendFontSize, fontFace: FONT_MAIN,
@@ -1448,7 +1453,8 @@ function addOverviewSlide(
   poiPositions: readonly PoiPosition[],
   radiusPosition: RadiusPosition | null,
   routePositions: readonly RouteNormalizedPosition[],
-  d: PptDesignConfig
+  d: PptDesignConfig,
+  hasPlannedRail = false
 ) {
   const slide = pptx.addSlide();
   addFullBleedMap(slide, baseMapImage, d);
@@ -1465,7 +1471,7 @@ function addOverviewSlide(
   }
   addSiteMarker(slide, radiusPosition, d);
   addMapSectionTitle(slide, "입지 현황 종합", `반경 ${config.radiusKm}km`);
-  addLegend(slide, d);
+  addLegend(slide, d, hasPlannedRail);
 }
 
 function addScoreDashboardSlide(
@@ -2034,7 +2040,8 @@ function addCategorySlide(
   details: string[],
   d: PptDesignConfig,
   routePositions: readonly RouteNormalizedPosition[] = [],
-  allPois: readonly Poi[] = []
+  allPois: readonly Poi[] = [],
+  hasPlannedRail = false
 ) {
   const slide = pptx.addSlide();
   addFullBleedMap(slide, baseMapImage, d);
@@ -2080,7 +2087,7 @@ function addCategorySlide(
     addInsightCard(slide, buildCategoryInsight(insightKey, summary), d);
   }
 
-  addLegend(slide, d);
+  addLegend(slide, d, hasPlannedRail);
 }
 
 /** 대상지에서 가장 가까운 주거 단지 1개(빨강 헤더 대상) — haversine 최소 거리, 페이지 무관 전체 기준. */
@@ -2212,7 +2219,8 @@ function addApartmentCalloutSlide(
   radiusPosition: RadiusPosition | null,
   d: PptDesignConfig,
   pageIdx: number,
-  totalPages: number
+  totalPages: number,
+  hasPlannedRail = false
 ) {
   const slide = pptx.addSlide();
   addFullBleedMap(slide, baseMapImage, d);
@@ -2225,7 +2233,7 @@ function addApartmentCalloutSlide(
   // Task A: 지도 배경은 유지하되, 어두운 잉크 addTitleChip 대신 Task 5의 흰 지도 섹션 타이틀
   // 문법(addMapSectionTitle)로 교체해 판독 불가 결함을 해소한다.
   addMapSectionTitle(slide, pageTitle, `반경 ${config.radiusKm}km`);
-  addLegend(slide, d);
+  addLegend(slide, d, hasPlannedRail);
 
   if (aptsOnPage.length === 0) {
     addEmptyStateBadge(slide, d);
@@ -2412,7 +2420,8 @@ export async function generateSiteAnalysisPpt(
   routePositions: readonly RouteNormalizedPosition[] = [],
   designConfig: PptDesignConfig = DEFAULT_PPT_DESIGN,
   sourceStatuses: readonly SourceStatus[] = [],
-  includeScoreDashboard = false
+  includeScoreDashboard = false,
+  hasPlannedRail = false
 ): Promise<void> {
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE";
@@ -2430,23 +2439,23 @@ export async function generateSiteAnalysisPpt(
   // 슬라이드 순서는 ppt-canvas-renderer.ts의 buildSlideDefs와 동일하게 유지한다.
   addCoverSlide(pptx, config, reportBaseMapImage, d, sourceStatuses);
   addFactSheetSlide(pptx, config, allPois, d, sourceStatuses);
-  addOverviewSlide(pptx, config, reportBaseMapImage, poiPositions, radiusPosition, routePositions, d);
+  addOverviewSlide(pptx, config, reportBaseMapImage, poiPositions, radiusPosition, routePositions, d, hasPlannedRail);
   if (includeScoreDashboard) {
     addScoreDashboardSlide(pptx, config, allPois, reportBaseMapImage, d);
   }
 
   const subways = allPois.filter((p): p is SubwayStation => p.category === "subway");
   addCategorySlide(pptx, "교통 분석", "subway", config, reportBaseMapImage, poiPositions, radiusPosition,
-    subways.filter(s => !isRawPoiId(s.name)).slice(0, 8).map(s => `${s.name} (${s.line})`), d, routePositions, allPois);
+    subways.filter(s => !isRawPoiId(s.name)).slice(0, 8).map(s => `${s.name} (${s.line})`), d, routePositions, allPois, hasPlannedRail);
 
   const schools = allPois.filter((p): p is School => p.category === "school");
   addCategorySlide(pptx, "교육 환경", "school", config, reportBaseMapImage, poiPositions, radiusPosition,
-    schools.filter(s => !isRawPoiId(s.name)).slice(0, 8).map(s => `${s.name} (${s.level === "elementary" ? "초" : s.level === "middle" ? "중" : "고"})`), d, [], allPois);
+    schools.filter(s => !isRawPoiId(s.name)).slice(0, 8).map(s => `${s.name} (${s.level === "elementary" ? "초" : s.level === "middle" ? "중" : "고"})`), d, [], allPois, hasPlannedRail);
 
   const parks = allPois.filter((p): p is Park => p.category === "park");
   const mountains = allPois.filter(p => p.category === "mountain" && !isRawPoiId(p.name));
   addCategorySlide(pptx, "자연 환경", ["park", "mountain"], config, reportBaseMapImage, poiPositions, radiusPosition,
-    [...buildParkDetailLines(parks, 7), ...mountains.slice(0, 1).map(p => `인접 산: ${p.name}`)].slice(0, 8), d, [], allPois);
+    [...buildParkDetailLines(parks, 7), ...mountains.slice(0, 1).map(p => `인접 산: ${p.name}`)].slice(0, 8), d, [], allPois, hasPlannedRail);
 
   addInsightSummarySlide(pptx, config, allPois, reportBaseMapImage, d);
   addRadiusAnalysisSlide(pptx, config, allPois, reportBaseMapImage, radiusPosition, d);
@@ -2454,7 +2463,7 @@ export async function generateSiteAnalysisPpt(
 
   const maintenanceProjects = allPois.filter((p): p is MaintenanceProject => p.category === "maintenance");
   addCategorySlide(pptx, "개발/정비사업 현황", "maintenance", config, reportBaseMapImage, poiPositions, radiusPosition,
-    buildMaintenanceDetailLines(maintenanceProjects, 8), d, [], allPois);
+    buildMaintenanceDetailLines(maintenanceProjects, 8), d, [], allPois, hasPlannedRail);
   addDevelopmentRiskMatrixSlide(pptx, config, allPois, reportBaseMapImage, poiPositions, radiusPosition, d);
 
   const residentials = allPois.filter(
@@ -2464,7 +2473,7 @@ export async function generateSiteAnalysisPpt(
   const aptPages = pageResidentials(residentials, APT_PAGE_SIZE);
   aptPages.forEach((aptsOnPage, i) => {
     addApartmentCalloutSlide(pptx, aptsOnPage, residentials, config, reportBaseMapImage, poiPositions,
-      radiusPosition, d, i, aptPages.length);
+      radiusPosition, d, i, aptPages.length, hasPlannedRail);
   });
 
   addSummarySlide(pptx, config, allPois, reportBaseMapImage, radiusPosition, d);

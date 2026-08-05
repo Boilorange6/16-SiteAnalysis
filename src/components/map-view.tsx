@@ -32,14 +32,16 @@ import {
   type MarkerStyle,
 } from "@/lib/map-marker-utils";
 import { toJpeg } from "html-to-image";
-import { resolvePath } from "@/lib/data-provider";
 import { addOsmSubwayOverlay, type SubwayMapResponse } from "@/lib/osm-subway-overlay";
+import type { PlannedRailGeometry, PlannedRailProject } from "@/lib/rail-types";
 
 interface MapViewProps {
   readonly config: AnalysisConfig;
   readonly pois: readonly Poi[];
   readonly layers: LayerVisibility;
   readonly subwayRoutes: readonly SubwayRoute[];
+  readonly subwayMapData?: SubwayMapResponse;
+  readonly plannedRailProjects?: readonly PlannedRailProject[];
   readonly insightOverlays?: readonly InsightOverlay[];
   readonly visibleInsightOverlayIds?: readonly string[];
 }
@@ -446,8 +448,136 @@ function MapRangeControl({
   );
 }
 
+function plannedRailGeometryLines(geometry: PlannedRailGeometry): readonly (readonly (readonly [number, number])[])[] {
+  return geometry.type === "LineString" ? [geometry.coordinates] : geometry.coordinates;
+}
+
+const PLANNED_RAIL_STATUS_LABELS: Readonly<Record<PlannedRailProject["lifecycleStatus"], string>> = {
+  proposed: "제안",
+  approved: "승인",
+  under_construction: "공사 중",
+  opening_confirmed: "개통 확정",
+};
+
+export function addPlannedRailOverlay(
+  L: typeof import("leaflet"),
+  routeLinesLayer: import("leaflet").LayerGroup,
+  projects: readonly PlannedRailProject[],
+) {
+  projects.forEach((project) => {
+    const statusLabel = PLANNED_RAIL_STATUS_LABELS[project.lifecycleStatus];
+    const geometrySourceLine = project.geometrySourceLabel
+      ? `<br/>선형 출처: ${escapePopupHtml(project.geometrySourceLabel)}`
+      : "";
+    const popupContent = `<strong>${escapePopupHtml(project.lineName)}</strong><br/>예정 철도 · ${statusLabel} · 개략선<br/>확정 역 위치 아님${geometrySourceLine}`;
+    plannedRailGeometryLines(project.geometry).forEach((line) => {
+      const latLngs: [number, number][] = line.map(([lng, lat]): [number, number] => [lat, lng]);
+      if (latLngs.length < 2) {
+        return;
+      }
+      const plannedLine = L.polyline(latLngs, {
+        color: THEME_COLORS.overlayDark,
+        weight: 4,
+        opacity: 0.78,
+        dashArray: "8 7",
+        lineCap: "round",
+        lineJoin: "round",
+        interactive: false,
+      });
+      const interactionLine = L.polyline(latLngs, {
+        color: THEME_COLORS.overlayDark,
+        weight: 20,
+        opacity: 0,
+        interactive: true,
+        lineCap: "round",
+        lineJoin: "round",
+        bubblingMouseEvents: false,
+      }).bindTooltip(popupContent, { sticky: true, opacity: 0.94 }).bindPopup(popupContent, { maxWidth: 320 });
+      const openTooltip = (event: import("leaflet").LeafletMouseEvent) => {
+        interactionLine.openTooltip(event.latlng);
+      };
+      const closeTooltip = () => {
+        interactionLine.closeTooltip();
+      };
+      const openPopup = (latlng?: import("leaflet").LatLng) => {
+        closeTooltip();
+        if (!interactionLine.isPopupOpen()) {
+          interactionLine.openPopup(latlng);
+        }
+      };
+      const handleClick = (event: import("leaflet").LeafletMouseEvent) => {
+        L.DomEvent.stop(event);
+        openPopup(event.latlng);
+      };
+      const handleKeypress = (event: import("leaflet").LeafletKeyboardEvent) => {
+        if (event.originalEvent.keyCode === 13) {
+          L.DomEvent.stop(event);
+          openPopup();
+        }
+      };
+      const handleFocus = () => {
+        interactionLine.openTooltip();
+      };
+      const handleBlur = () => {
+        closeTooltip();
+      };
+      const removeAccessibility = () => {
+        const element = interactionLine.getElement();
+        if (!element) {
+          return;
+        }
+        element.removeEventListener("focus", handleFocus);
+        element.removeEventListener("blur", handleBlur);
+      };
+      const applyAccessibility = () => {
+        const element = interactionLine.getElement();
+        if (!element) {
+          return;
+        }
+        removeAccessibility();
+        element.setAttribute("role", "button");
+        element.setAttribute("tabindex", "0");
+        element.setAttribute(
+          "aria-label",
+          `${project.lineName}, 예정 철도 ${statusLabel}, 선형 출처 ${project.geometrySourceLabel ?? "미표시"}, 상세 정보 열기`,
+        );
+        element.addEventListener("focus", handleFocus);
+        element.addEventListener("blur", handleBlur);
+      };
+      const cleanup = () => {
+        removeAccessibility();
+        interactionLine
+          .off("mouseover", openTooltip)
+          .off("mouseout", closeTooltip)
+          .off("click", handleClick)
+          .off("keypress", handleKeypress)
+          .off("popupopen")
+          .unbindTooltip()
+          .unbindPopup();
+      };
+      interactionLine
+        .off("add")
+        .off("mouseover")
+        .off("mouseout")
+        .off("click")
+        .off("keypress")
+        .on("mouseover", openTooltip)
+        .on("mouseout", closeTooltip)
+        .on("click", handleClick)
+        .on("keypress", handleKeypress)
+        .on("popupopen", closeTooltip)
+        .on("add", applyAccessibility)
+        .on("remove", cleanup);
+      applyAccessibility();
+      routeLinesLayer.addLayer(plannedLine);
+      routeLinesLayer.addLayer(interactionLine);
+      interactionLine.bringToFront();
+    });
+  });
+}
+
 const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
-  { config, pois, layers, subwayRoutes, insightOverlays = [], visibleInsightOverlayIds = [] },
+  { config, pois, layers, subwayRoutes, subwayMapData, plannedRailProjects = [], insightOverlays = [], visibleInsightOverlayIds = [] },
   ref
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -468,7 +598,6 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
   const [markerStyle, setMarkerStyle] = useState<MarkerStyle>("default");
   const [markerSizePreset, setMarkerSizePreset] = useState<MarkerSizePreset>("medium");
   const [subwayStationStyle, setSubwayStationStyle] = useState<SubwayStationStyle>(DEFAULT_SUBWAY_STATION_STYLE);
-  const [subwayMapData, setSubwayMapData] = useState<SubwayMapResponse | null>(null);
   const [controlsOpen, setControlsOpen] = useState(true);
 
   useImperativeHandle(ref, () => {
@@ -626,12 +755,15 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
         center: [config.centerLat, config.centerLng],
         zoom: 14,
         zoomControl: false,
-        attributionControl: false,
+        attributionControl: true,
       });
 
       leafletRef.current = L;
       const tileConf = TILE_CONFIGS.satellite;
-      tileLayerRef.current = L.tileLayer(tileConf.url, { maxZoom: 18 }).addTo(map);
+      tileLayerRef.current = L.tileLayer(tileConf.url, {
+        maxZoom: 18,
+        attribution: "© OpenStreetMap contributors · Esri",
+      }).addTo(map);
       if (tileConf.overlay) {
         overlayLayerRef.current = L.tileLayer(tileConf.overlay, { maxZoom: 18, opacity: tileConf.overlayOpacity ?? 0.6 }).addTo(map);
       }
@@ -745,32 +877,6 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
     centerMarkerRef.current.setTooltipContent(config.centerName);
   }, [config.centerLat, config.centerLng, config.centerName, config.radiusKm]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const response = await fetch(resolvePath("/data/osm-subway.json"), { cache: "force-cache" });
-        if (!response.ok) {
-          throw new Error(`OSM subway data request failed: ${response.status}`);
-        }
-        const data = (await response.json()) as SubwayMapResponse;
-        if (!cancelled) {
-          setSubwayMapData(data);
-        }
-      } catch (error) {
-        console.warn("OSM subway data unavailable; falling back to seed coordinates.", error);
-        if (!cancelled) {
-          setSubwayMapData(null);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const updateMarkers = useCallback(async () => {
     const lifecycleToken = lifecycleTokenRef.current;
     const map = mapRef.current;
@@ -837,6 +943,9 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
           })
         );
       });
+    }
+    if (layers.subway) {
+      addPlannedRailOverlay(L, routeLinesLayer, plannedRailProjects);
     }
 
     // Naver style: draw thick polyline segments at station locations
@@ -1066,7 +1175,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
 
       addClusterMarker(L, map, markersLayer, cluster.items, cluster.lat, cluster.lng, markerSize.scale);
     });
-  }, [config, layers, pois, subwayRoutes, markerStyle, markerSizePreset, subwayStationStyle, subwayMapData]);
+  }, [config, layers, pois, subwayRoutes, markerStyle, markerSizePreset, subwayStationStyle, subwayMapData, plannedRailProjects]);
 
   useEffect(() => {
     if (typeof window !== "undefined" && window.innerWidth < 640) {

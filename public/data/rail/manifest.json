@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "1.0.0",
+  "snapshotVersion": "2026-05-26-osm-migration-v1",
+  "generatedAt": "2026-05-26T00:00:00Z",
+  "sourceFile": "../osm-subway.json",
+  "plannedFile": "planned.json",
+  "status": "migration-baseline",
+  "notes": "초기 전환본. 운영 데이터는 기존 승인 OSM 스냅샷을 새 rail-network 계약으로 읽는다. 공식 역 원장 반영 전에는 갱신 PR을 생성하지 않는다."
+}
