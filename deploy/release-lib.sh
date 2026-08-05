@@ -106,9 +106,20 @@ resolve_server_entry() {
 # 운영에서 폰트·assets가 404가 났다. 항상 "내용"을 복사한다.
 stage_standalone_assets() {
     local release_dir="$1"
+    local shared_dir="${2:-}"
     local standalone="${release_dir}/.next/standalone"
 
     [[ -d "${standalone}" ]] || return 0
+
+    # Next standalone 빌드는 릴리스의 .env를 "복사"해 넣는다. 릴리스의 .env가
+    # 공유 .env로의 심볼릭 링크여도 복사본은 그 시점 값으로 굳는다. 그래서
+    # 운영 .env에 키를 추가하고 재시작해도 앱은 옛 값을 계속 읽었다
+    # (2026-08-05 SEOUL_OPEN_API_KEY: 파일엔 있는데 "not configured").
+    # .cache와 같은 이유로 링크로 바꿔 둔다.
+    if [[ -n "${shared_dir}" && -f "${shared_dir}/.env" ]]; then
+        rm -f "${standalone}/.env"
+        ln -sfn "${shared_dir}/.env" "${standalone}/.env"
+    fi
 
     if [[ -d "${release_dir}/.next/static" ]]; then
         mkdir -p "${standalone}/.next/static"

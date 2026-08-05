@@ -239,3 +239,37 @@ console.log("test-release-manager: all assertions passed");
   rmSync(root, { recursive: true, force: true });
   console.log("stage_standalone_assets: 중첩 없이 복사 확인");
 }
+
+// ── standalone은 공유 .env를 링크해야 한다 ───────────────────────────────────
+// Next standalone 빌드는 릴리스의 .env를 "복사"해 자기 디렉터리에 넣는다.
+// 릴리스의 .env가 공유 .env로의 심볼릭 링크여도 복사본은 값이 굳는다.
+// 그래서 운영 .env에 키를 넣고 재시작해도 반영되지 않았다
+// (2026-08-05 SEOUL_OPEN_API_KEY: 파일엔 있는데 앱은 "not configured").
+{
+  const root = mkdtempSync(path.join(tmpdir(), "stage-env-")).replaceAll("\\", "/");
+  const shared = `${root}/shared`;
+  const release = `${root}/release`;
+  mkdirSync(shared, { recursive: true });
+  writeFileSync(`${shared}/.env`, "SEOUL_OPEN_API_KEY=live-value\n");
+
+  const standalone = `${release}/.next/standalone`;
+  mkdirSync(standalone, { recursive: true });
+  writeFileSync(`${standalone}/.env`, "SEOUL_OPEN_API_KEY=\n"); // 빌드가 남긴 굳은 사본
+
+  runLib(`stage_standalone_assets '${release}' '${shared}'`);
+
+  const envPath = `${standalone}/.env`;
+  assert.ok(lstatSync(envPath).isSymbolicLink(), "standalone/.env는 심볼릭 링크여야 한다");
+  assert.equal(
+    readFileSync(envPath, "utf8").trim(),
+    "SEOUL_OPEN_API_KEY=live-value",
+    "배포 시점 사본이 아니라 공유 .env의 현재 값을 읽어야 한다",
+  );
+
+  // 공유 .env를 고치면 재배포 없이 반영된다
+  writeFileSync(`${shared}/.env`, "SEOUL_OPEN_API_KEY=rotated\n");
+  assert.equal(readFileSync(envPath, "utf8").trim(), "SEOUL_OPEN_API_KEY=rotated");
+
+  rmSync(root, { recursive: true, force: true });
+  console.log("stage_standalone_assets: 공유 .env 링크 확인");
+}
