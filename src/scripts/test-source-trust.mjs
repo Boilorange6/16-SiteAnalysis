@@ -107,3 +107,29 @@ const now = Date.UTC(2026, 6, 31);
 }
 
 console.log("test-source-trust: all assertions passed");
+
+// ── 3-3b) 정보성 안내에 실패 문구를 붙이지 않는다 ─────────────────────────
+// 정비사업 검색은 실패가 아닌 안내도 같은 warnings 배열에 담는다.
+// 전부 실패로 감싸는 바람에 운영 화면에 이런 문장이 떴다:
+//   "종료된 정비사업 4건 제외(...) 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."
+// 아무것도 안 깨졌는데 깨진 것처럼 보인다.
+{
+  const informational = [
+    "종료된 정비사업 4건 제외(준공·조합해산·조합청산·이전고시)",
+    "종료된 정비사업 2건 추가 제외(신축 준공 교차확인)",
+    "정비사업 행정구역을 확인할 수 없어 목록 데이터를 표시하지 않습니다",
+  ];
+  const messages = failedSourceMessages(informational);
+  assert.deepEqual(messages, informational, "완성된 문장은 그대로 보여야 한다");
+  for (const message of messages) {
+    assert.doesNotMatch(message, /불러오지 못했습니다/, `실패 문구가 붙으면 안 된다: ${message}`);
+  }
+}
+
+// 소스 코드명은 계속 실패 안내로 번역한다 (섞여 들어와도 각각 맞게)
+{
+  const messages = failedSourceMessages(["park", "종료된 정비사업 1건 제외(준공)"]);
+  assert.match(messages[0], /공원.*불러오지 못했습니다/, "소스 코드명은 실패 안내가 되어야 한다");
+  assert.equal(messages[1], "종료된 정비사업 1건 제외(준공)", "안내는 그대로여야 한다");
+}
+console.log("source-trust: 정보성 안내와 실패 안내 구분 확인");

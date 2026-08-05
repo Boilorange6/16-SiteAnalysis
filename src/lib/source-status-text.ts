@@ -40,10 +40,18 @@ export function missingSectionNotices(
   return notices;
 }
 
-/** 소스 코드명이 아니라 사용자가 읽을 수 있는 실패 안내로 바꾼다 */
+/**
+ * 소스 코드명이 아니라 사용자가 읽을 수 있는 실패 안내로 바꾼다.
+ *
+ * 같은 배열에 실패가 아닌 안내도 들어온다("종료된 정비사업 4건 제외(...)").
+ * 전부 실패로 감싸는 바람에 운영 화면에 이런 문장이 떴다 —
+ * "종료된 정비사업 4건 제외(...) 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."
+ * 아무것도 안 깨졌는데 깨진 것처럼 보인다. 아는 소스 코드명만 감싼다.
+ */
 export function failedSourceMessages(sources: readonly string[]): string[] {
   return sources.map((source) => {
-    const label = POI_SOURCE_LABELS[source as PoiSourceId] ?? source;
+    const label = POI_SOURCE_LABELS[source as PoiSourceId];
+    if (!label) return source;
     return `${label} 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.`;
   });
 }

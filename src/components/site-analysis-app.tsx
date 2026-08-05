@@ -633,7 +633,11 @@ export default function SiteAnalysisApp() {
         )}
         {!loading && (regionData?.sourceWarnings?.length ?? 0) > 0 && (
           <div className="absolute bottom-4 left-4 z-[880] max-w-md rounded-xl border border-amber-400/40 bg-amber-950/90 px-4 py-3 shadow-xl">
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-200/80">일부 데이터 누락</p>
+            {/* 실패가 하나도 없는데 "데이터 누락"이라고 하면 안 된다 —
+                종료된 사업 제외 같은 안내만 남는 경우가 있다 */}
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-200/80">
+              {regionData?.sourceStatuses?.some((s) => s.status === "failed") ? "일부 데이터 누락" : "안내"}
+            </p>
             <ul className="mt-1.5 space-y-1">
               {regionData?.sourceWarnings?.map((message) => (
                 <li key={message} className="text-sm text-amber-50/90">{message}</li>
