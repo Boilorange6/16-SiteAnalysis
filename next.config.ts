@@ -10,6 +10,9 @@ const reactDevConnectOrigin = reactInspectionEnabled ? " https://www.react-grab.
 const reactDevWorkerSource = reactInspectionEnabled ? "worker-src 'self' blob:" : "worker-src 'self'";
 
 const nextConfig: NextConfig = {
+  async rewrites() {
+    return [{ source: "/favicon.ico", destination: "/icon.svg" }];
+  },
   output: "standalone",
   // 상위 디렉터리에 package.json이 있으면 Next가 워크스페이스 루트를 그쪽으로 추론해
   // standalone 산출물이 .next/standalone/<상대경로>/ 로 중첩된다(2026-08-01 운영 장애).

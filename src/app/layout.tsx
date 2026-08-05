@@ -11,6 +11,10 @@ const notoSansKr = Noto_Sans_KR({
 });
 
 export const metadata: Metadata = {
+  icons: {
+    icon: "/site/icon.svg",
+    shortcut: "/site/icon.svg",
+  },
   title: "사이트 분석 보고서 생성기",
   description: "부동산 사이트 분석 PPT 자동 생성",
 };
