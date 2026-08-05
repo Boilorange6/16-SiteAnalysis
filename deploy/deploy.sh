@@ -82,8 +82,7 @@ if ! ( npm ci && npm run build ); then
     exit 1
 fi
 
-cp -r .next/static .next/standalone/.next/static 2>/dev/null || true
-cp -r public .next/standalone/public 2>/dev/null || true
+stage_standalone_assets "${RELEASE_DIR}"
 rm -rf .next/standalone/.cache
 ln -sfn "${REMOTE_DIR}/.cache" .next/standalone/.cache
 

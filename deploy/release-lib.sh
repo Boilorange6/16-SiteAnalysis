@@ -98,3 +98,25 @@ resolve_server_entry() {
   [[ -n "${found}" ]] || { echo "resolve_server_entry: server.js를 찾지 못했습니다" >&2; return 1; }
   printf '%s\n' "${found}"
 }
+
+# 빌드 산출물을 standalone 디렉터리에 올린다.
+#
+# `cp -r public <dest>/public`은 dest/public이 이미 있으면 public/public 으로 중첩된다.
+# Next standalone이 public 일부를 미리 만들어 두기 때문에 실제로 그렇게 됐고,
+# 운영에서 폰트·assets가 404가 났다. 항상 "내용"을 복사한다.
+stage_standalone_assets() {
+    local release_dir="$1"
+    local standalone="${release_dir}/.next/standalone"
+
+    [[ -d "${standalone}" ]] || return 0
+
+    if [[ -d "${release_dir}/.next/static" ]]; then
+        mkdir -p "${standalone}/.next/static"
+        cp -r "${release_dir}/.next/static/." "${standalone}/.next/static/"
+    fi
+
+    if [[ -d "${release_dir}/public" ]]; then
+        mkdir -p "${standalone}/public"
+        cp -r "${release_dir}/public/." "${standalone}/public/"
+    fi
+}

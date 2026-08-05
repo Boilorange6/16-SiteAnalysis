@@ -202,3 +202,40 @@ function seedRelease(root, stamp, marker) {
 }
 
 console.log("test-release-manager: all assertions passed");
+
+// ── stage_standalone_assets: public/ 중첩 없이 standalone에 복사한다 ──────────
+// 배경: `cp -r public .next/standalone/public`은 대상 디렉터리가 이미 있으면
+// public/public/ 으로 중첩된다. 운영에서 폰트·assets가 404가 됐다.
+{
+  const root = mkdtempSync(path.join(tmpdir(), "stage-assets-")).replaceAll("\\", "/");
+  mkdirSync(path.join(root, "public", "fonts"), { recursive: true });
+  mkdirSync(path.join(root, "public", "assets"), { recursive: true });
+  writeFileSync(path.join(root, "public", "fonts", "Pretendard-Medium.woff2"), "font");
+  writeFileSync(path.join(root, "public", "assets", "logo.svg"), "<svg/>");
+  mkdirSync(path.join(root, ".next", "static", "chunks"), { recursive: true });
+  writeFileSync(path.join(root, ".next", "static", "chunks", "main.js"), "//js");
+
+  // Next standalone은 public/ 일부를 미리 만들어 둔다 — 중첩이 생기는 조건
+  mkdirSync(path.join(root, ".next", "standalone", "public", "data"), { recursive: true });
+  writeFileSync(path.join(root, ".next", "standalone", "public", "data", "keep.json"), "{}");
+  mkdirSync(path.join(root, ".next", "standalone", ".next"), { recursive: true });
+
+  runLib(`stage_standalone_assets '${root}'`);
+
+  const sa = path.join(root, ".next", "standalone");
+  assert.ok(existsSync(path.join(sa, "public", "fonts", "Pretendard-Medium.woff2")),
+    "폰트는 public/fonts 바로 아래에 있어야 한다");
+  assert.ok(existsSync(path.join(sa, "public", "assets", "logo.svg")),
+    "assets도 public 바로 아래에 있어야 한다");
+  assert.ok(!existsSync(path.join(sa, "public", "public")),
+    "public/public 중첩이 생기면 안 된다 (운영 폰트 404의 원인)");
+  assert.ok(existsSync(path.join(sa, "public", "data", "keep.json")),
+    "standalone이 미리 만든 public 내용은 보존해야 한다");
+  assert.ok(existsSync(path.join(sa, ".next", "static", "chunks", "main.js")),
+    "정적 청크가 standalone에 있어야 한다");
+  assert.ok(!existsSync(path.join(sa, ".next", "static", "static")),
+    ".next/static도 중첩되면 안 된다");
+
+  rmSync(root, { recursive: true, force: true });
+  console.log("stage_standalone_assets: 중첩 없이 복사 확인");
+}
