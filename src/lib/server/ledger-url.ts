@@ -26,3 +26,18 @@ export function buildLedgerUrl({ sigunguCd, bjdongCd, pageNo, encodedApiKey }: L
     `&numOfRows=${LEDGER_PAGE_SIZE}&pageNo=${pageNo}&_type=xml`
   );
 }
+
+export const LEDGER_TITLE_URL =
+  "https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo";
+
+/**
+ * 표제부(동 단위) 요청 URL. 오피스텔은 총괄표제부에 없고 여기에만 있다.
+ * numOfRows는 100을 넘겨도 상류가 100으로 잘라 응답하므로 페이지 크기를 맞춘다.
+ */
+export function buildLedgerTitleUrl({ sigunguCd, bjdongCd, pageNo, encodedApiKey }: LedgerUrlParams): string {
+  return (
+    `${LEDGER_TITLE_URL}?serviceKey=${encodedApiKey}` +
+    `&sigunguCd=${sigunguCd}&bjdongCd=${bjdongCd}` +
+    `&numOfRows=${LEDGER_PAGE_SIZE}&pageNo=${pageNo}&_type=xml`
+  );
+}

@@ -60,20 +60,22 @@ const INTEGRATED_ALIASES: Aliases = {
 };
 
 const STANDARD_ALIASES: Aliases = {
-  sido: ["CTPV_NM", "시도명", "시도", "광역시도명"],
-  sigungu: ["SGG_NM", "시군구명", "시군구", "자치구명"],
-  name: ["ZONE_NM", "정비구역명", "구역명", "사업명"], recordId: ["정비사업코드", "정비구역코드", "관리번호"],
+  // 2026-08-05: 상류가 UPPER_SNAKE(CTPV_NM)에서 camelCase(ctpvNm)로 바꿨다.
+  // 어느 쪽이 와도 읽도록 둘 다 남긴다 — 못 읽으면 예외 없이 0건이 되어 가장 늦게 발견된다.
+  sido: ["CTPV_NM", "ctpvNm", "시도명", "시도", "광역시도명"],
+  sigungu: ["SGG_NM", "sggNm", "시군구명", "시군구", "자치구명"],
+  name: ["ZONE_NM", "zoneNm", "정비구역명", "구역명", "사업명"], recordId: ["정비사업코드", "정비구역코드", "관리번호"],
   type: ["정비사업유형", "정비사업종류", "사업유형"],
-  stage: ["PRGRS_STP_CN", "추진단계", "사업단계", "진행단계"],
+  stage: ["PRGRS_STP_CN", "prgrsStpCn", "추진단계", "사업단계", "진행단계"],
   implementer: ["사업시행자", "시행자", "조합명"],
-  households: ["HH_CNT", "계획세대수", "예정세대수", "세대수"],
-  area: ["GFA", "정비구역면적", "구역면적", "면적"],
-  landUseZone: ["USG_RGN", "용도지역", "토지이용구역"],
-  coverageRatio: ["BDCVRT", "건폐율", "건폐율(%)"],
+  households: ["HH_CNT", "hhCnt", "계획세대수", "예정세대수", "세대수"],
+  area: ["GFA", "gfa", "정비구역면적", "구역면적", "면적"],
+  landUseZone: ["USG_RGN", "usgRgn", "용도지역", "토지이용구역"],
+  coverageRatio: ["BDCVRT", "bdcvrt", "건폐율", "건폐율(%)"],
   floorAreaRatio: ["용적률", "용적률(%)"],
-  designationDate: ["DSGN_YMD", "정비구역지정일자", "정비구역지정일", "지정일자"],
-  managementAgency: ["MNG_INST_NM", "관리기관명", "관리기관", "담당기관"],
-  updatedAt: ["DATA_CRTR_YMD", "데이터기준일자", "기준일자", "최종수정일"],
+  designationDate: ["DSGN_YMD", "dsgnYmd", "정비구역지정일자", "정비구역지정일", "지정일자"],
+  managementAgency: ["MNG_INST_NM", "mngInstNm", "관리기관명", "관리기관", "담당기관"],
+  updatedAt: ["DATA_CRTR_YMD", "dataCrtrYmd", "데이터기준일자", "기준일자", "최종수정일"],
   lat: ["위도", "latitude", "LAT"], lng: ["경도", "longitude", "LNG"],
 };
 

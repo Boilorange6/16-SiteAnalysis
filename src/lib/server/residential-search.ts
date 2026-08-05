@@ -15,9 +15,10 @@
 
 import { getDb } from "./database";
 import { enrichKaptExtras } from "./apt-enrichment";
-import { buildLedgerUrl } from "./ledger-url";
+import { buildLedgerUrl, buildLedgerTitleUrl, LEDGER_PAGE_SIZE } from "./ledger-url";
+import { readOfficetelFromTitleRow } from "./residential/officetel";
 import { isRecentMiss, readGeocode, readLegalCode, recordGeocodeMiss, writeGeocode, writeLegalCode } from "./geocode-cache";
-import { readLedgerDong, upsertLedgerDong, type LedgerRow } from "./ledger-store";
+import { readLedgerDong, upsertLedgerDong, type LedgerRow, type LedgerPurpose } from "./ledger-store";
 import { buildingDedupeKey, sampleDongPoints } from "./residential/complex-identity";
 import type { Apartment, Officetel, ResidentialOther, ResidentialPoi } from "../types";
 
@@ -183,6 +184,107 @@ async function queryLedgerForDong(
   return buildings;
 }
 
+/**
+ * 표제부 페이지 동시 조회 수.
+ *
+ * 1이다. 6으로 올려 봤더니 상류가 50페이지 중 33~37페이지를 끊었고 오피스텔이
+ * 조용히 사라졌다(역삼동 7건 → 0건). 콜드 조회 3~4초를 아끼자고 데이터를
+ * 잃을 수는 없다. 어차피 법정동당 30일에 한 번이다.
+ */
+const OFFICETEL_PAGE_CONCURRENCY = 1;
+/** 폭주 방지 상한. 국내 최대 밀집 법정동(역삼동)이 50페이지다. */
+const OFFICETEL_MAX_PAGES = 80;
+/** 상류가 동시 요청을 간헐적으로 끊는다 — 조용한 누락보다 재시도가 싸다 */
+const OFFICETEL_PAGE_RETRIES = 3;
+
+/** 표제부를 다 못 읽었다는 신호. 부분 결과를 캐시에 굳히지 않으려고 던진다. */
+class IncompleteOfficetelScanError extends Error {
+  constructor(sigunguCd: string, bjdongCd: string, readonly failedPages: number) {
+    super(`표제부 조회 불완전: ${sigunguCd}-${bjdongCd} (${failedPages}페이지 실패)`);
+  }
+}
+
+/**
+ * 같은 법정동의 오피스텔을 표제부에서 가져온다.
+ *
+ * 총괄표제부에는 오피스텔이 없다 — 거기 "업무시설"은 세대·호수가 0인 순수 업무빌딩뿐이다.
+ * 오피스텔은 표제부에만 있고, 대신 표제부는 단지가 아니라 동 단위라 행 수가 훨씬 많다
+ * (역삼동 기준 총괄표제부 85행 vs 표제부 4,962행). 그래서 법정동 단위로 한 번 긁어
+ * 30일 TTL로 재사용하고, 공동주택 행은 총괄표제부가 담당하므로 여기서 버린다.
+ */
+async function queryOfficetelsForDong(
+  sigunguCd: string, bjdongCd: string, encodedApiKey: string,
+): Promise<LedgerBuilding[]> {
+  const collect = (xml: string): LedgerBuilding[] => {
+    const found: LedgerBuilding[] = [];
+    for (const item of parseXmlItems(xml)) {
+      const officetel = readOfficetelFromTitleRow(item);
+      if (!officetel) continue;
+      found.push({
+        bldNm: officetel.name,
+        platPlc: officetel.platPlc,
+        units: officetel.units,
+        parking: officetel.parking,
+        maxFloor: officetel.maxFloor,
+        useAprDay: officetel.useAprDay,
+        sigunguCd,
+        bjdongCd,
+        bun: officetel.bun,
+        ji: officetel.ji,
+      });
+    }
+    return found;
+  };
+
+  // 동시 조회를 올리면 상류가 간헐적으로 끊는다. 실패한 페이지를 그냥 버리면
+  // 오피스텔이 조용히 줄어들기만 해서(측정 중 7→5건) 재시도로 메운다.
+  const fetchPage = async (pageNo: number): Promise<string | null> => {
+    for (let attempt = 0; attempt < OFFICETEL_PAGE_RETRIES; attempt += 1) {
+      try {
+        return await fetchXml(buildLedgerTitleUrl({ sigunguCd, bjdongCd, pageNo, encodedApiKey }));
+      } catch {
+        if (attempt < OFFICETEL_PAGE_RETRIES - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
+        }
+      }
+    }
+    return null;
+  };
+
+  const firstPage = await fetchPage(1);
+  // 첫 페이지 실패를 빈 결과로 돌려주면 "오피스텔 없는 동"으로 30일 굳는다.
+  // 상류가 잠깐 흔들린 것과 진짜 0건은 반드시 구분해야 한다.
+  if (!firstPage) throw new IncompleteOfficetelScanError(sigunguCd, bjdongCd, 1);
+
+  const total = parseInt(firstPage.match(/<totalCount>(\d+)<\/totalCount>/)?.[1] ?? "0", 10);
+  const pageCount = Math.min(Math.ceil(total / LEDGER_PAGE_SIZE), OFFICETEL_MAX_PAGES);
+  const officetels = collect(firstPage);
+  let failedPages = 0;
+
+  // 표제부는 동 단위라 밀집 지역은 50페이지를 넘는다(역삼동 4,962행).
+  // 순차로 돌면 콜드 조회가 8초쯤 걸려서 제한된 동시성으로 나눠 받는다.
+  for (let start = 2; start <= pageCount; start += OFFICETEL_PAGE_CONCURRENCY) {
+    const batch = [];
+    for (let pageNo = start; pageNo < start + OFFICETEL_PAGE_CONCURRENCY && pageNo <= pageCount; pageNo += 1) {
+      batch.push(fetchPage(pageNo));
+    }
+    for (const xml of await Promise.all(batch)) {
+      if (xml) officetels.push(...collect(xml));
+      else failedPages += 1;
+    }
+  }
+
+  // 일부 페이지를 끝내 못 받았다면 이 법정동은 불완전하다. 조용히 적은 건수를
+  // 정상인 양 30일 캐시에 굳히는 것이 최악이라 캐시하지 않도록 알린다.
+  if (failedPages > 0) {
+    console.warn(
+      `[ledger-search] ${sigunguCd}-${bjdongCd} 표제부 ${failedPages}페이지 실패 — 오피스텔이 누락된 상태이므로 적재하지 않습니다`,
+    );
+    throw new IncompleteOfficetelScanError(sigunguCd, bjdongCd, failedPages);
+  }
+  return officetels;
+}
+
 // ─── NCP 지오코딩 + SQLite 캐시 ──────────────────────────────────────────────
 
 function getCachedCoord(address: string): { lat: number; lng: number } | null {
@@ -240,7 +342,14 @@ function rememberMiss(address: string): void {
 
 // ─── 분류 ─────────────────────────────────────────────────────────────────────
 
-function classifyResidential(bldNm: string, units: number): "apartment" | "officetel" | "residential" {
+/**
+ * 대장 용도가 이름보다 우선한다. 이름에 "오피스텔"이 없는 오피스텔이 대부분이라
+ * (역삼동 54건 중 이름에 그 단어가 든 건 없다) 이름 규칙만으로는 거의 못 잡는다.
+ */
+function classifyResidential(
+  bldNm: string, units: number, purpose: LedgerPurpose = "공동주택",
+): "apartment" | "officetel" | "residential" {
+  if (purpose === "오피스텔") return "officetel";
   const name = bldNm.toLowerCase();
   if (name.includes("오피스텔")) return "officetel";
   if (units >= 50 || name.includes("아파트") || name.includes("자이") || name.includes("래미안")
@@ -256,6 +365,8 @@ interface DongRows {
   rows: LedgerRow[];
   /** 적재분을 그대로 쓴 경우 true — 다시 저장할 필요가 없다 */
   fromCache: boolean;
+  /** 표제부를 다 못 읽어 오피스텔이 빠진 상태 — 30일 캐시에 굳히면 안 된다 */
+  incomplete?: boolean;
 }
 
 /**
@@ -271,16 +382,30 @@ async function loadDongRows(
     if (cached !== null) return { dong, rows: cached, fromCache: true };
   } catch { /* 캐시 실패는 API 조회로 이어간다 */ }
 
-  const buildings = await queryLedgerForDong(dong.sigunguCd, dong.bjdongCd, encodedApiKey);
+  // 오피스텔 조회가 불완전해도 공동주택은 살린다. 대신 이 법정동은 캐시하지 않아
+  // 다음 요청에서 다시 채우게 한다 — 빠진 채로 30일 굳는 것이 가장 나쁘다.
+  let incomplete = false;
+  const [apartments, officetels] = await Promise.all([
+    queryLedgerForDong(dong.sigunguCd, dong.bjdongCd, encodedApiKey),
+    queryOfficetelsForDong(dong.sigunguCd, dong.bjdongCd, encodedApiKey).catch(() => {
+      incomplete = true;
+      return [] as LedgerBuilding[];
+    }),
+  ]);
+  const buildings = [
+    ...apartments.map((building) => ({ building, purpose: "공동주택" as const })),
+    ...officetels.map((building) => ({ building, purpose: "오피스텔" as const })),
+  ];
   const rows: LedgerRow[] = [];
   const BATCH_SIZE = 5;
   for (let i = 0; i < buildings.length; i += BATCH_SIZE) {
     const batch = buildings.slice(i, i + BATCH_SIZE);
-    const coords = await Promise.all(batch.map(b => geocodeAddress(b.platPlc, ncpId, ncpSecret)));
-    batch.forEach((b, j) => {
+    const coords = await Promise.all(batch.map(({ building }) => geocodeAddress(building.platPlc, ncpId, ncpSecret)));
+    batch.forEach(({ building: b, purpose }, j) => {
       const coord = coords[j];
       rows.push({
-        id: `ledger-${b.sigunguCd}-${b.bjdongCd}-${b.bun}-${b.ji}`,
+        // 오피스텔과 공동주택이 같은 지번을 쓰는 경우가 있어 용도를 키에 넣는다
+        id: `ledger-${b.sigunguCd}-${b.bjdongCd}-${b.bun}-${b.ji}${purpose === "오피스텔" ? "-offi" : ""}`,
         name: b.bldNm,
         address: b.platPlc,
         units: b.units,
@@ -291,10 +416,11 @@ async function loadDongRows(
         ji: b.ji,
         lat: coord ? coord.lat : null,
         lng: coord ? coord.lng : null,
+        purpose,
       });
     });
   }
-  return { dong, rows, fromCache: false };
+  return { dong, rows, fromCache: false, incomplete };
 }
 
 // ─── 배치 워밍용 공개 헬퍼 ────────────────────────────────────────────────────
@@ -364,6 +490,9 @@ export async function searchResidentialFromLedger(
     );
   } else {
     for (const entry of fetched) {
+      // 표제부를 다 못 읽은 법정동은 오피스텔이 빠져 있다. 30일 TTL로 굳히면
+      // 다음 달까지 누락이 고정되므로 이번 응답에만 쓰고 저장은 건너뛴다.
+      if (entry.incomplete) continue;
       const result = upsertLedgerDong(getDb(), entry.dong.sigunguCd, entry.dong.bjdongCd, entry.rows, Date.now());
       if (result.status === "rejected") console.warn(`[ledger-search] ${result.message}`);
     }
@@ -396,7 +525,7 @@ export async function searchResidentialFromLedger(
       if (seenNames.has(dedupeKey)) continue;
       seenNames.add(dedupeKey);
 
-      const category = classifyResidential(b.name, b.units);
+      const category = classifyResidential(b.name, b.units, b.purpose);
       const rawDate = b.useAprDay;
       let saleDate = "";
       if (rawDate.length >= 6) saleDate = `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}`;

@@ -40,7 +40,7 @@ export const LEDGER_BUILDING_SPEC: DatasetSpec = {
   table: "ledger_building",
   columns: [
     "id", "sigungu_cd", "bjdong_cd", "name", "address",
-    "units", "parking", "max_floor", "use_apr_day", "bun", "ji", "lat", "lng",
+    "units", "parking", "max_floor", "use_apr_day", "bun", "ji", "lat", "lng", "purpose",
   ],
 };
 
@@ -90,7 +90,8 @@ export function initDatasetSchema(db: Db): void {
       bun TEXT NOT NULL DEFAULT '',
       ji TEXT NOT NULL DEFAULT '',
       lat REAL,
-      lng REAL
+      lng REAL,
+      purpose TEXT NOT NULL DEFAULT '공동주택'
     );
     CREATE INDEX IF NOT EXISTS idx_ledger_building_bbox ON ledger_building (lat, lng);
     CREATE INDEX IF NOT EXISTS idx_ledger_building_dong ON ledger_building (sigungu_cd, bjdong_cd);
@@ -133,6 +134,13 @@ export function initDatasetSchema(db: Db): void {
       created_at REAL NOT NULL
     );
   `);
+
+  // 이미 만들어진 DB에는 CREATE TABLE IF NOT EXISTS가 컬럼을 더해 주지 않는다.
+  // purpose는 오피스텔(표제부)과 공동주택(총괄표제부)을 구분하려고 나중에 붙였다.
+  const ledgerColumns = db.prepare("PRAGMA table_info(ledger_building)").all() as Array<{ name: string }>;
+  if (!ledgerColumns.some((column) => column.name === "purpose")) {
+    db.exec("ALTER TABLE ledger_building ADD COLUMN purpose TEXT NOT NULL DEFAULT '공동주택'");
+  }
 }
 
 function stagingTable(spec: DatasetSpec): string {

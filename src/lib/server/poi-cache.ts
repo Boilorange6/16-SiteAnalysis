@@ -102,8 +102,11 @@ export async function resolveSource<T>(args: {
     const live = await fetcher();
     const fetchedAt = setCachedSource({ key, value: live });
     return { value: live, status: "fresh", fetchedAt };
-  } catch {
-    console.warn(`[poi-cache] ${source} fetch failed`);
+  } catch (error) {
+    // 사유 없는 실패 로그는 진단을 불가능하게 만든다 — 2026-08-05 정비사업 4개 소스가
+    // 몇 시간 동안 "fetch failed"만 남기는 바람에 원인(상류 스키마 변경)을 찾지 못했다
+    const reason = error instanceof Error ? error.message : String(error);
+    console.warn(`[poi-cache] ${source} fetch failed: ${reason}`);
     // 만료 저장본으로 대체하는 경우 stale을 세워 화면·보고서가 최신처럼 보이지 않게 한다
     if (cached) {
       return { value: cached.value, status: "cached", fetchedAt: cached.fetchedAt, stale: cached.expired };

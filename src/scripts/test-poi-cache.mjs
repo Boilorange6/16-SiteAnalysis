@@ -114,5 +114,30 @@ assert.equal(r6.status, "failed");
 assert.equal(r6.value, null);
 
 assert.ok(POI_CACHE_TTL_MS === 7 * 24 * 60 * 60 * 1000);
+
+// ── 실패 로그는 원인을 담아야 한다 ────────────────────────────────────────────
+// 2026-08-05 운영에서 정비사업 4개 소스가 몇 시간 동안 실패했는데, 로그가
+// "fetch failed"만 남기고 오류를 통째로 버려서 원인 파악이 불가능했다.
+{
+  const originalWarn = console.warn;
+  const lines = [];
+  console.warn = (...args) => { lines.push(args.join(" ")); };
+  try {
+    await resolveSource({
+      source: "diag_probe", lat: 1, lng: 2, radiusM: 3, refresh: false,
+      fetcher: async () => { throw new Error("상류 스키마가 바뀌었다"); },
+    });
+  } finally {
+    console.warn = originalWarn;
+  }
+  assert.equal(lines.length, 1, "실패 시 경고 한 줄");
+  assert.ok(lines[0].includes("diag_probe"), "어느 소스인지 알 수 있어야 한다");
+  assert.ok(
+    lines[0].includes("상류 스키마가 바뀌었다"),
+    `실패 사유가 로그에 있어야 한다 — 실제: ${lines[0]}`,
+  );
+}
+
 console.log("poi-cache: all tests passed");
+console.log("poi-cache: 실패 로그에 원인 포함 확인");
 try { rmSync(dir, { recursive: true, force: true }); } catch { /* Windows: better-sqlite3 WAL 핸들이 열려 있으면 EPERM — 임시폴더는 OS가 정리 */ }

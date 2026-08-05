@@ -119,3 +119,48 @@ const T0 = 1_700_000_000_000;
 }
 
 console.log("test-ledger-store: 통과");
+
+// ── purpose 컬럼: 오피스텔과 공동주택을 구분해 저장한다 ───────────────────────
+// 오피스텔은 표제부에서 오고 공동주택은 총괄표제부에서 온다. 출처가 달라
+// 이름 규칙(“오피스텔” 포함)만으로는 분류가 새므로 대장에서 온 사실을 그대로 남긴다.
+{
+  const db = new Database(":memory:");
+  initDatasetSchema(db);
+  const now = Date.now();
+  upsertLedgerDong(db, "11680", "10100", [
+    { id: "a", name: "래미안", address: "역삼동 1", units: 500, parking: 300, maxFloor: 20,
+      useAprDay: "20200101", bun: "0001", ji: "0000", lat: 37.5, lng: 127.0, purpose: "공동주택" },
+    { id: "b", name: "역삼 노블루체 언주", address: "역삼동 761", units: 129, parking: 80, maxFloor: 15,
+      useAprDay: "20190315", bun: "0761", ji: "0000", lat: 37.5, lng: 127.0, purpose: "오피스텔" },
+  ], now);
+
+  const rows = readLedgerDong(db, "11680", "10100", now);
+  assert.equal(rows.length, 2);
+  const byName = Object.fromEntries(rows.map((r) => [r.name, r]));
+  assert.equal(byName["래미안"].purpose, "공동주택");
+  assert.equal(byName["역삼 노블루체 언주"].purpose, "오피스텔");
+  assert.equal(byName["역삼 노블루체 언주"].units, 129, "오피스텔 규모는 호수 기준");
+  db.close();
+  console.log("ledger-store: purpose 왕복 확인");
+}
+
+// 기존 DB(컬럼 없음)에서 올라와도 깨지지 않고 공동주택으로 읽힌다
+{
+  const db = new Database(":memory:");
+  db.exec(`CREATE TABLE ledger_building (
+    id TEXT PRIMARY KEY, sigungu_cd TEXT NOT NULL DEFAULT '', bjdong_cd TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT '', units INTEGER NOT NULL DEFAULT 0,
+    parking INTEGER NOT NULL DEFAULT 0, max_floor INTEGER NOT NULL DEFAULT 0,
+    use_apr_day TEXT NOT NULL DEFAULT '', bun TEXT NOT NULL DEFAULT '', ji TEXT NOT NULL DEFAULT '',
+    lat REAL, lng REAL);`);
+  db.prepare("INSERT INTO ledger_building (id, sigungu_cd, bjdong_cd, name, units) VALUES ('old','11680','10100','옛건물',100)").run();
+
+  initDatasetSchema(db); // 마이그레이션이 컬럼을 채워야 한다
+  db.prepare("INSERT INTO ledger_dong_sync (sigungu_cd,bjdong_cd,fetched_at,row_count) VALUES ('11680','10100',?,1)").run(Date.now());
+
+  const rows = readLedgerDong(db, "11680", "10100", Date.now());
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].purpose, "공동주택", "옛 행은 공동주택으로 읽혀야 한다");
+  db.close();
+  console.log("ledger-store: purpose 컬럼 마이그레이션 확인");
+}

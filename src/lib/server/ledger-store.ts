@@ -16,6 +16,9 @@ type Db = BetterSqlite3.Database;
 /** 건축물대장은 월 단위로 갱신된다 */
 export const LEDGER_DONG_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
+/** 오피스텔은 표제부, 공동주택은 총괄표제부에서 온다 — 출처가 달라 섞이면 안 된다 */
+export type LedgerPurpose = "공동주택" | "오피스텔";
+
 export interface LedgerRow {
   id: string;
   name: string;
@@ -29,6 +32,8 @@ export interface LedgerRow {
   ji: string;
   lat: number | null;
   lng: number | null;
+  /** 대장이 말하는 용도 — 오피스텔은 표제부, 공동주택은 총괄표제부에서 온다 */
+  purpose: LedgerPurpose;
 }
 
 export function shouldRejectDongUpdate(previousCount: number, nextCount: number): boolean {
@@ -49,6 +54,8 @@ function rowFromDb(row: Record<string, unknown>): LedgerRow {
     ji: String(row["ji"] ?? ""),
     lat: row["lat"] === null ? null : Number(row["lat"]),
     lng: row["lng"] === null ? null : Number(row["lng"]),
+    // purpose 컬럼이 없던 시절 적재분은 전부 총괄표제부(공동주택)에서 왔다
+    purpose: row["purpose"] === "오피스텔" ? "오피스텔" : "공동주택",
   };
 }
 
@@ -96,8 +103,8 @@ export function upsertLedgerDong(
     db.prepare("DELETE FROM ledger_building WHERE sigungu_cd = ? AND bjdong_cd = ?").run(sigunguCd, bjdongCd);
     const stmt = db.prepare(
       `INSERT OR REPLACE INTO ledger_building
-       (id, sigungu_cd, bjdong_cd, name, address, units, parking, max_floor, use_apr_day, bun, ji, lat, lng)
-       VALUES (@id, @sigungu_cd, @bjdong_cd, @name, @address, @units, @parking, @max_floor, @use_apr_day, @bun, @ji, @lat, @lng)`,
+       (id, sigungu_cd, bjdong_cd, name, address, units, parking, max_floor, use_apr_day, bun, ji, lat, lng, purpose)
+       VALUES (@id, @sigungu_cd, @bjdong_cd, @name, @address, @units, @parking, @max_floor, @use_apr_day, @bun, @ji, @lat, @lng, @purpose)`,
     );
     for (const row of rows) {
       stmt.run({
@@ -114,6 +121,7 @@ export function upsertLedgerDong(
         ji: row.ji ?? "",
         lat: row.lat ?? null,
         lng: row.lng ?? null,
+        purpose: row.purpose ?? "공동주택",
       });
     }
     db.prepare(

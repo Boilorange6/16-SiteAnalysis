@@ -86,6 +86,26 @@ function readTotalCount(value: unknown): number {
   throw new Error("maintenance API returned an invalid totalCount");
 }
 
+/**
+ * 행은 왔는데 하나도 못 읽었다면 상류 스키마가 바뀐 것이다.
+ *
+ * 2026-08-05에 표준 API가 CTPV_NM → ctpvNm으로 바꿨을 때 HTTP도 헤더도 정상이라
+ * 어디서도 경고가 뜨지 않았고, 정비사업이 조용히 0건이 됐다. 조용한 0건은
+ * 실패로 취급한다 — 상류가 진짜 0건을 주는 경우는 rows가 비어 있으므로 구분된다.
+ */
+function assertRowsReadable(options: {
+  readonly rows: readonly unknown[];
+  readonly records: readonly MaintenanceAttributeRecord[];
+  readonly sourceLabel: string;
+}): void {
+  const { rows, records, sourceLabel } = options;
+  if (rows.length > 0 && records.length === 0) {
+    throw new Error(
+      `${sourceLabel} schema mismatch: ${rows.length} rows returned but none could be read`,
+    );
+  }
+}
+
 function normalizeRows(
   rows: readonly unknown[],
   normalizer: (row: JsonObject) => MaintenanceAttributeRecord | null,
@@ -111,20 +131,31 @@ async function fetchIntegrated(options: {
     });
     const body = await requestJson({ ...options, endpoint: INTEGRATED_ENDPOINT, searchParams, sourceLabel: "integrated maintenance API" });
     if (!Array.isArray(body.data)) throw new Error("integrated maintenance API returned invalid data");
-    records.push(...normalizeRows(body.data, normalizeIntegratedRow));
+    const normalized = normalizeRows(body.data, normalizeIntegratedRow);
+    assertRowsReadable({ rows: body.data, records: normalized, sourceLabel: "integrated maintenance API" });
+    records.push(...normalized);
     if (page * options.pageSize >= readTotalCount(body.totalCount)) return records;
   }
 }
 
+/**
+ * 표준 API는 header/body를 `response` 안에 넣어 주기도 하고, 벗겨서 top-level로
+ * 주기도 한다. 2026-08-05에 상류가 봉투를 벗기면서 운영의 maintenance_attributes가
+ * 계속 실패했다. 어느 쪽이든 받아야 상류가 되돌려도 다시 깨지지 않는다.
+ */
+function standardEnvelope(root: JsonObject): JsonObject {
+  return isJsonObject(root.response) ? root.response : root;
+}
+
 function standardBody(options: { readonly root: JsonObject; readonly serviceKey: string }): JsonObject {
   const { root, serviceKey } = options;
-  if (!isJsonObject(root.response)) throw new Error("standard maintenance API returned invalid response");
-  const headerError = findErrorMessage(root.response.header);
+  const envelope = standardEnvelope(root);
+  const headerError = findErrorMessage(envelope.header);
   if (headerError) {
     throw new Error(`standard maintenance API: ${safeErrorText(headerError, serviceKey)}`);
   }
-  if (!isJsonObject(root.response.body)) throw new Error("standard maintenance API returned invalid body");
-  return root.response.body;
+  if (!isJsonObject(envelope.body)) throw new Error("standard maintenance API returned invalid body");
+  return envelope.body;
 }
 
 function standardItems(body: JsonObject): readonly unknown[] {
@@ -147,7 +178,10 @@ async function fetchStandard(options: {
     });
     const root = await requestJson({ ...options, endpoint: STANDARD_ENDPOINT, searchParams, sourceLabel: "standard maintenance API" });
     const body = standardBody({ root, serviceKey: options.serviceKey });
-    records.push(...normalizeRows(standardItems(body), normalizeStandardRow));
+    const rows = standardItems(body);
+    const normalized = normalizeRows(rows, normalizeStandardRow);
+    assertRowsReadable({ rows, records: normalized, sourceLabel: "standard maintenance API" });
+    records.push(...normalized);
     if (pageNo * options.pageSize >= readTotalCount(body.totalCount)) return records;
   }
 }
