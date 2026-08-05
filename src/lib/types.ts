@@ -30,8 +30,19 @@ export interface SourceStatus {
   readonly status: "fresh" | "cached" | "failed";
   /** 수집 시각(epoch ms). failed면 null */
   readonly fetchedAt: number | null;
+  /** 전국 배치 적재분을 쓰는 소스면 그 적재 상태 */
+  readonly dataset?: SourceDatasetStatus;
   /** TTL이 지난 저장본을 원천 장애로 대신 쓰는 중이면 true */
   readonly stale?: boolean;
+}
+
+/** 배치 적재 신뢰 표시 — 마지막 성공 시각·건수·거부 사유 */
+export interface SourceDatasetStatus {
+  readonly lastSuccessAt: number | null;
+  readonly rowCount: number;
+  readonly status: "ok" | "rejected";
+  readonly message: string;
+  readonly dongCount?: number;
 }
 
 export const POI_SOURCE_CATEGORIES: Record<PoiSourceId, readonly PoiCategory[]> = {

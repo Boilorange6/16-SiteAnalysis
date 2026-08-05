@@ -19,6 +19,22 @@ import { attachRecentTrades } from "@/lib/server/rtms-trades";
 import { crossCheckMaintenanceCompletion } from "@/lib/server/maintenance/completion-crosscheck";
 import { resolveSource } from "@/lib/server/poi-cache";
 import { collectSourcesInParallel, type SourceProgressEvent, type SourceTask } from "@/lib/server/poi-collection";
+import { getDb } from "@/lib/server/database";
+import { ledgerBuildingStatus, plannedHousingStatus, type DatasetStatus } from "@/lib/server/dataset-status";
+
+/** 적재 상태를 SourceStatus에 얹을 형태로 바꾼다 (적재 이력이 없으면 필드 자체를 빼둔다) */
+function toSourceDataset(status: DatasetStatus | null): { dataset: SourceStatus["dataset"] } | null {
+  if (!status) return null;
+  return {
+    dataset: {
+      lastSuccessAt: status.lastSuccessAt,
+      rowCount: status.rowCount,
+      status: status.status,
+      message: status.message,
+      ...(status.dongCount !== undefined ? { dongCount: status.dongCount } : {}),
+    },
+  };
+}
 
 const querySchema = z.object({
   lat: z.coerce.number().min(-90).max(90),
@@ -343,7 +359,13 @@ async function runPoiSearch(
           ]);
 
           const sources: SourceStatus[] = [
-            { source: "residential", status: existing.status, fetchedAt: existing.fetchedAt, stale: existing.stale },
+            {
+              source: "residential",
+              status: existing.status,
+              fetchedAt: existing.fetchedAt,
+              stale: existing.stale,
+              ...(toSourceDataset(ledgerBuildingStatus(getDb())) ?? {}),
+            },
           ];
           const warnings: string[] = existing.value ? [] : ["residential"];
           if (plannedResult) {
@@ -352,6 +374,7 @@ async function runPoiSearch(
               status: plannedResult.status,
               fetchedAt: plannedResult.fetchedAt,
               stale: plannedResult.stale,
+              ...(toSourceDataset(plannedHousingStatus(getDb())) ?? {}),
             });
             if (!plannedResult.value) warnings.push("planned-residential");
           }

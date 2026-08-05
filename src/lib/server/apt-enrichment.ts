@@ -12,9 +12,8 @@
  */
 
 import { getDb } from "./database";
+import { buildLedgerUrl } from "./ledger-url";
 
-const LEDGER_URL =
-  "https://apis.data.go.kr/1613000/BldRgstHubService/getBrRecapTitleInfo";
 const LIST_URL =
   "https://apis.data.go.kr/1613000/AptListService3/getSigunguAptList3";
 const INFO_URL =
@@ -202,7 +201,7 @@ async function getLedgerEntriesForDong(
   const entries: LedgerEntry[] = [];
   let page = 1;
   while (true) {
-    const url = `${LEDGER_URL}?serviceKey=${encodedApiKey}&sigunguCd=${sigunguCd}&bjdongCd=${bjdongCd}&numOfRows=100&pageNo=${page}`;
+    const url = buildLedgerUrl({ sigunguCd, bjdongCd, pageNo: page, encodedApiKey });
     try {
       const xml = await fetchXml(url);
       const items = parseXmlItems(xml);

@@ -556,8 +556,24 @@ export default function Sidebar({
                         </button>
                       </span>
                     ) : (
-                      <span className="text-emerald-300/90">
-                        {s.status === "fresh" ? "방금 수집" : `${formatFetchedDate(s.fetchedAt)} 수집본`}
+                      <span className="flex flex-col items-end">
+                        <span className="text-emerald-300/90">
+                          {s.status === "fresh" ? "방금 수집" : `${formatFetchedDate(s.fetchedAt)} 수집본`}
+                        </span>
+                        {s.dataset && (
+                          <span
+                            className={
+                              s.dataset.status === "rejected" ? "text-[11px] text-amber-300" : "text-[11px] text-white/45"
+                            }
+                            title={s.dataset.message || undefined}
+                          >
+                            {s.dataset.status === "rejected"
+                              ? `⚠️ 적재 거부 · 이전 데이터 사용 중 (${s.dataset.rowCount.toLocaleString()}건)`
+                              : `적재 ${s.dataset.rowCount.toLocaleString()}건${
+                                  s.dataset.dongCount ? ` · ${s.dataset.dongCount}개 법정동` : ""
+                                } · ${formatFetchedDate(s.dataset.lastSuccessAt)}`}
+                          </span>
+                        )}
                       </span>
                     )}
                   </li>

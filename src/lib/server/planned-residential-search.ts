@@ -1,15 +1,25 @@
 import { getDb } from "./database";
+import { buildLedgerUrl } from "./ledger-url";
+import { buildGeocodeCandidates, findResidentialMatchIndex, isPlannedComplexCurrent, toYearMonth } from "./planned-residential-filter";
+import { isRecentMiss, readGeocode, readLegalCode, recordGeocodeMiss, writeGeocode, writeLegalCode } from "./geocode-cache";
+import { PLANNED_HOUSING_SPEC, bboxFromRadius, queryDatasetInBbox, readIngestRun } from "./dataset-store";
 import type { Apartment, Officetel, ResidentialOther, ResidentialFloorplan, ResidentialPoi } from "../types";
 
 const APPLYHOME_BASE_URL = "https://api.odcloud.kr/api/ApplyhomeInfoDetailSvc/v1";
-const LEDGER_URL = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrRecapTitleInfo";
 const NCP_REVERSE_GEO_URL = "https://maps.apigw.ntruss.com/map-reversegeocode/v2/gc";
 const NCP_GEOCODE_URL = "https://maps.apigw.ntruss.com/map-geocode/v2/geocode";
 
 const API_TIMEOUT_MS = 18_000;
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
-const PLANNED_LOOKBACK_DAYS = 540;
+/**
+ * 모집공고일 하한. 분양~입주는 보통 30~40개월이므로, 입주예정월 기준 유예(24개월)를
+ * 채우려면 공고일은 6년까지 거슬러 올라가야 한다. 실제 편입 여부는
+ * isPlannedComplexCurrent()가 입주예정월로 판단한다.
+ */
+const PLANNED_LOOKBACK_DAYS = 2190;
 const PLANNED_LOOKAHEAD_DAYS = 730;
+/** 광역 단위(예: "경기") 조회라 페이지가 많다. 6년치를 담으려면 500행으로는 부족하다. */
+const APPLYHOME_MAX_PAGES = 20;
 const FLOORPLAN_IMAGE_HINT_RE = /(평면|floor|plan|unit|type|house|pyung|pyeong|84a|84b|59a|59b|74a|74b)/i;
 
 const plannedSearchCache = new Map<string, { expiresAt: number; pois: ResidentialPoi[] }>();
@@ -174,6 +184,14 @@ function areaNameFromSigungu(sigunguCd: string): string {
 }
 
 async function reverseGeocodeToRegion(lat: number, lng: number, ncpId: string, ncpSecret: string): Promise<RegionCode | null> {
+  // 단지마다 호출되는 지점이라 캐시 적중률이 곧 응답 시간이다.
+  try {
+    const cached = readLegalCode(getDb(), lat, lng);
+    if (cached) return cached;
+  } catch {
+    // 캐시 실패는 조회를 막지 않는다
+  }
+
   const url = `${NCP_REVERSE_GEO_URL}?coords=${lng},${lat}&output=json&orders=legalcode`;
   try {
     const data = await fetchJson(url, {
@@ -187,7 +205,13 @@ async function reverseGeocodeToRegion(lat: number, lng: number, ncpId: string, n
     const sigunguCd = codeId.slice(0, 5);
     const areaName = areaNameFromSigungu(sigunguCd);
     if (!areaName) return null;
-    return { sigunguCd, bjdongCd: codeId.slice(5, 10), areaName };
+    const region = { sigunguCd, bjdongCd: codeId.slice(5, 10), areaName };
+    try {
+      writeLegalCode(getDb(), lat, lng, region, Date.now());
+    } catch {
+      // 캐시 실패는 결과에 영향 없다
+    }
+    return region;
   } catch {
     return null;
   }
@@ -217,9 +241,7 @@ async function findRegionsInRadius(centerLat: number, centerLng: number, radiusM
 
 function getCachedCoord(address: string): { lat: number; lng: number } | null {
   try {
-    const row = getDb().prepare("SELECT lat, lng FROM geocode_cache WHERE address = ?")
-      .get(address) as { lat: number; lng: number } | undefined;
-    return row ?? null;
+    return readGeocode(getDb(), address);
   } catch {
     return null;
   }
@@ -227,19 +249,32 @@ function getCachedCoord(address: string): { lat: number; lng: number } | null {
 
 function setCachedCoord(address: string, lat: number, lng: number): void {
   try {
-    getDb().prepare("INSERT OR REPLACE INTO geocode_cache (address, lat, lng, created_at) VALUES (?, ?, ?, ?)")
-      .run(address, lat, lng, Date.now() / 1000);
+    writeGeocode(getDb(), address, lat, lng, Date.now());
   } catch {
     // cache misses are non-fatal
   }
 }
 
-async function geocodeAddress(address: string, ncpId: string, ncpSecret: string): Promise<{ lat: number; lng: number } | null> {
-  const cached = getCachedCoord(address);
-  if (cached) return cached;
-
+/** 최근에 실패한 주소는 다시 왕복하지 않는다 (후보 폴백 도입 후 주소당 최대 3회로 늘었다) */
+function isKnownGeocodeMiss(address: string): boolean {
   try {
-    const url = `${NCP_GEOCODE_URL}?query=${encodeURIComponent(address)}`;
+    return isRecentMiss(getDb(), address, Date.now());
+  } catch {
+    return false;
+  }
+}
+
+function rememberGeocodeMiss(address: string): void {
+  try {
+    recordGeocodeMiss(getDb(), address, Date.now());
+  } catch {
+    // non-fatal
+  }
+}
+
+async function geocodeOnce(query: string, ncpId: string, ncpSecret: string): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const url = `${NCP_GEOCODE_URL}?query=${encodeURIComponent(query)}`;
     const data = await fetchJson(url, {
       "X-NCP-APIGW-API-KEY-ID": ncpId,
       "X-NCP-APIGW-API-KEY": ncpSecret,
@@ -249,11 +284,31 @@ async function geocodeAddress(address: string, ncpId: string, ncpSecret: string)
     const lat = Number(addrs[0]["y"]);
     const lng = Number(addrs[0]["x"]);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    setCachedCoord(address, lat, lng);
     return { lat, lng };
   } catch {
     return null;
   }
+}
+
+/**
+ * 청약홈 공급위치는 "경기도 남양주시 다산신도시 상업 2BL (다산동 6192-1번지)"처럼
+ * 택지지구·블록 표기가 섞여 원문 그대로는 지오코딩이 실패한다.
+ * 후보를 순서대로 시도해 첫 성공을 쓴다.
+ */
+async function geocodeAddress(address: string, ncpId: string, ncpSecret: string): Promise<{ lat: number; lng: number } | null> {
+  const cached = getCachedCoord(address);
+  if (cached) return cached;
+  if (isKnownGeocodeMiss(address)) return null;
+
+  for (const candidate of buildGeocodeCandidates(address)) {
+    const coord = await geocodeOnce(candidate, ncpId, ncpSecret);
+    if (coord) {
+      setCachedCoord(address, coord.lat, coord.lng);
+      return coord;
+    }
+  }
+  rememberGeocodeMiss(address);
+  return null;
 }
 
 function sanitizeUrl(value: string): string {
@@ -315,7 +370,7 @@ async function queryApplyhome(endpoint: string, areaName: string, serviceKey: st
   const endDate = dateStringFromOffset(PLANNED_LOOKAHEAD_DAYS);
   let page = 1;
 
-  while (page <= 5) {
+  while (page <= APPLYHOME_MAX_PAGES) {
     const params = new URLSearchParams({
       page: String(page),
       perPage: "100",
@@ -396,30 +451,50 @@ function rowToComplex(row: Record<string, unknown>, kind: ApplyhomeKind): Applyh
   };
 }
 
-async function searchApplyhomeComplexes(areaNames: readonly string[], serviceKey: string): Promise<ApplyhomeComplex[]> {
-  const detailSpecs: Array<{ endpoint: string; kind: ApplyhomeKind; modelEndpoint: string }> = [
-    { endpoint: "getAPTLttotPblancDetail", kind: "apartment", modelEndpoint: "getAPTLttotPblancMdl" },
-    { endpoint: "getUrbtyOfctlLttotPblancDetail", kind: "officetel", modelEndpoint: "getUrbtyOfctlLttotPblancMdl" },
-    { endpoint: "getPblPvtRentLttotPblancDetail", kind: "residential", modelEndpoint: "getPblPvtRentLttotPblancMdl" },
-  ];
-  const complexes = new Map<string, ApplyhomeComplex>();
+const APPLYHOME_DETAIL_SPECS: Array<{ endpoint: string; kind: ApplyhomeKind; modelEndpoint: string }> = [
+  { endpoint: "getAPTLttotPblancDetail", kind: "apartment", modelEndpoint: "getAPTLttotPblancMdl" },
+  { endpoint: "getUrbtyOfctlLttotPblancDetail", kind: "officetel", modelEndpoint: "getUrbtyOfctlLttotPblancMdl" },
+  { endpoint: "getPblPvtRentLttotPblancDetail", kind: "residential", modelEndpoint: "getPblPvtRentLttotPblancMdl" },
+];
 
-  for (const areaName of areaNames) {
-    for (const spec of detailSpecs) {
-      const rows = await queryApplyhome(spec.endpoint, areaName, serviceKey);
-      for (const row of rows) {
-        const complex = rowToComplex(row, spec.kind);
-        if (!complex) continue;
-        const key = `${complex.houseManageNo}:${complex.pblancNo}:${normalizeName(complex.name)}`;
-        if (!complexes.has(key)) {
-          complex.housingTypes = await queryApplyhomeModels(spec.modelEndpoint, serviceKey, complex.houseManageNo, complex.pblancNo);
-          complexes.set(key, complex);
-        }
-      }
+/**
+ * 한 시도의 분양 공고를 가져온다. 평면도용 주택형(housingTypes)은 채우지 않는다.
+ *
+ * 전국 배치가 단지마다 주택형까지 조회하면 수천 번을 왕복한다.
+ * 주택형은 실제로 반경 안에 든 소수 단지에 대해서만 읽기 시점에 채운다.
+ */
+export async function fetchApplyhomeComplexesForArea(
+  areaName: string,
+  serviceKey: string,
+): Promise<ApplyhomeComplex[]> {
+  const complexes = new Map<string, ApplyhomeComplex>();
+  for (const spec of APPLYHOME_DETAIL_SPECS) {
+    const rows = await queryApplyhome(spec.endpoint, areaName, serviceKey);
+    for (const row of rows) {
+      const complex = rowToComplex(row, spec.kind);
+      if (!complex) continue;
+      const key = `${complex.houseManageNo}:${complex.pblancNo}:${normalizeName(complex.name)}`;
+      if (!complexes.has(key)) complexes.set(key, complex);
     }
   }
-
   return [...complexes.values()];
+}
+
+/** 반경 안에 든 단지에만 주택형을 채운다 (평면도 생성용) */
+async function fillHousingTypes(complex: ApplyhomeComplex, serviceKey: string): Promise<void> {
+  if (complex.housingTypes.length > 0) return;
+  const spec = APPLYHOME_DETAIL_SPECS.find((s) => s.kind === complex.kind) ?? APPLYHOME_DETAIL_SPECS[0];
+  complex.housingTypes = await queryApplyhomeModels(
+    spec.modelEndpoint, serviceKey, complex.houseManageNo, complex.pblancNo,
+  );
+}
+
+async function searchApplyhomeComplexes(areaNames: readonly string[], serviceKey: string): Promise<ApplyhomeComplex[]> {
+  const complexes: ApplyhomeComplex[] = [];
+  for (const areaName of areaNames) {
+    complexes.push(...await fetchApplyhomeComplexesForArea(areaName, serviceKey));
+  }
+  return complexes;
 }
 
 async function queryLedgerEnhancementsForDong(sigunguCd: string, bjdongCd: string, encodedApiKey: string): Promise<LedgerEnhancement[]> {
@@ -430,7 +505,7 @@ async function queryLedgerEnhancementsForDong(sigunguCd: string, bjdongCd: strin
   const buildings: LedgerEnhancement[] = [];
   let page = 1;
   while (page <= 5) {
-    const url = `${LEDGER_URL}?serviceKey=${encodedApiKey}&sigunguCd=${sigunguCd}&bjdongCd=${bjdongCd}&numOfRows=100&pageNo=${page}`;
+    const url = buildLedgerUrl({ sigunguCd, bjdongCd, pageNo: page, encodedApiKey });
     try {
       const xml = await fetchText(url);
       const items = parseXmlItems(xml);
@@ -516,6 +591,82 @@ function complexToPoi(complex: ApplyhomeComplex, coord: { lat: number; lng: numb
   return { ...base, category: "apartment" } as Apartment;
 }
 
+/** 반경 안에 든 단지 하나를 POI로 만든다 (건축물대장 보강 + 평면도) */
+async function buildPlannedPoi(
+  complex: ApplyhomeComplex,
+  coord: { lat: number; lng: number },
+  dist: number,
+  encodedApiKey: string,
+  ncpId: string,
+  ncpSecret: string,
+): Promise<ResidentialPoi> {
+  const region = await reverseGeocodeToRegion(coord.lat, coord.lng, ncpId, ncpSecret);
+  const enhancements = region
+    ? await queryLedgerEnhancementsForDong(region.sigunguCd, region.bjdongCd, encodedApiKey)
+    : [];
+  const enhancement = matchLedgerEnhancement(complex, enhancements);
+  const floorplans = await buildFloorplans(complex);
+  return complexToPoi(complex, coord, dist, enhancement, floorplans);
+}
+
+/** 적재분이 이보다 오래되면 실시간 API 경로로 되돌아간다 */
+const PLANNED_DATASET_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function datasetRowToComplex(row: Record<string, unknown>): ApplyhomeComplex {
+  const [houseManageNo = "", pblancNo = ""] = String(row["id"] ?? "").split(":");
+  return {
+    houseManageNo,
+    pblancNo,
+    name: String(row["name"] ?? ""),
+    address: String(row["address"] ?? ""),
+    units: Number(row["units"] ?? 0),
+    saleDate: String(row["sale_date"] ?? ""),
+    moveInMonth: String(row["move_in_month"] ?? ""),
+    homepageUrl: String(row["homepage_url"] ?? ""),
+    noticeUrl: String(row["notice_url"] ?? ""),
+    kind: (String(row["kind"] ?? "apartment") as ApplyhomeKind),
+    housingTypes: [],
+  };
+}
+
+/**
+ * 적재된 전국 분양 데이터에서 반경 안 단지를 읽는다.
+ * 적재분이 없거나 오래됐으면 null을 돌려 실시간 경로로 넘긴다.
+ */
+async function searchPlannedFromDataset(
+  centerLat: number, centerLng: number, radiusM: number,
+  serviceKey: string, encodedApiKey: string, ncpId: string, ncpSecret: string,
+): Promise<ResidentialPoi[] | null> {
+  let rows: Array<Record<string, unknown>>;
+  try {
+    const db = getDb();
+    const run = readIngestRun(db, PLANNED_HOUSING_SPEC.dataset);
+    if (!run || run.status !== "ok" || run.lastSuccessAt === null) return null;
+    if (Date.now() - run.lastSuccessAt > PLANNED_DATASET_MAX_AGE_MS) {
+      console.warn("[planned-residential-search] 적재분이 오래돼 실시간 조회로 전환합니다");
+      return null;
+    }
+    rows = queryDatasetInBbox(db, PLANNED_HOUSING_SPEC, bboxFromRadius(centerLat, centerLng, radiusM));
+  } catch {
+    return null;
+  }
+
+  const nowYm = toYearMonth(new Date());
+  const pois: ResidentialPoi[] = [];
+  for (const row of rows) {
+    const complex = datasetRowToComplex(row);
+    if (!isPlannedComplexCurrent({ moveInMonth: complex.moveInMonth, saleDate: complex.saleDate }, nowYm)) continue;
+    const lat = Number(row["lat"]);
+    const lng = Number(row["lng"]);
+    const dist = haversine(centerLat, centerLng, lat, lng);
+    if (dist > radiusM) continue;
+
+    await fillHousingTypes(complex, serviceKey);
+    pois.push(await buildPlannedPoi(complex, { lat, lng }, dist, encodedApiKey, ncpId, ncpSecret));
+  }
+  return pois;
+}
+
 export async function searchPlannedResidential(centerLat: number, centerLng: number, radiusM: number): Promise<ResidentialPoi[]> {
   const apiKey = getDataGoKrApiKey();
   const ncpId = process.env.NCP_CLIENT_ID;
@@ -525,6 +676,16 @@ export async function searchPlannedResidential(centerLat: number, centerLng: num
   const cacheKey = `${centerLat.toFixed(4)}:${centerLng.toFixed(4)}:${Math.round(radiusM)}`;
   const cached = plannedSearchCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.pois;
+
+  const serviceKeyEarly = rawApiKey(apiKey);
+  const encodedApiKeyEarly = encodeApiKey(apiKey);
+  const fromDataset = await searchPlannedFromDataset(
+    centerLat, centerLng, radiusM, serviceKeyEarly, encodedApiKeyEarly, ncpId, ncpSecret,
+  );
+  if (fromDataset) {
+    plannedSearchCache.set(cacheKey, { expiresAt: Date.now() + CACHE_TTL_MS, pois: fromDataset });
+    return fromDataset;
+  }
 
   const regions = await findRegionsInRadius(centerLat, centerLng, radiusM, ncpId, ncpSecret);
   const areaNames = [...new Set(regions.map((region) => region.areaName))];
@@ -538,32 +699,35 @@ export async function searchPlannedResidential(centerLat: number, centerLng: num
     return [];
   }
 
+  const nowYm = toYearMonth(new Date());
+  const currentComplexes = complexes.filter((complex) =>
+    isPlannedComplexCurrent({ moveInMonth: complex.moveInMonth, saleDate: complex.saleDate }, nowYm),
+  );
+
   const pois: ResidentialPoi[] = [];
-  for (const complex of complexes) {
+  let geocodeFailures = 0;
+  for (const complex of currentComplexes) {
     const coord = await geocodeAddress(complex.address, ncpId, ncpSecret);
-    if (!coord) continue;
+    if (!coord) {
+      geocodeFailures += 1;
+      continue;
+    }
     const dist = haversine(centerLat, centerLng, coord.lat, coord.lng);
     if (dist > radiusM) continue;
 
-    const region = await reverseGeocodeToRegion(coord.lat, coord.lng, ncpId, ncpSecret);
-    const enhancements = region
-      ? await queryLedgerEnhancementsForDong(region.sigunguCd, region.bjdongCd, encodedApiKey)
-      : [];
-    const enhancement = matchLedgerEnhancement(complex, enhancements);
-    const floorplans = await buildFloorplans(complex);
-    pois.push(complexToPoi(complex, coord, dist, enhancement, floorplans));
+    await fillHousingTypes(complex, serviceKey);
+    const poi = await buildPlannedPoi(complex, coord, dist, encodedApiKey, ncpId, ncpSecret);
+    pois.push(poi);
+  }
+
+  if (geocodeFailures > 0) {
+    console.warn(
+      `[planned-residential-search] ${geocodeFailures}/${currentComplexes.length} complexes dropped: geocoding failed`,
+    );
   }
 
   plannedSearchCache.set(cacheKey, { expiresAt: Date.now() + CACHE_TTL_MS, pois });
   return pois;
-}
-
-function isResidentialDuplicate(a: ResidentialPoi, b: ResidentialPoi): boolean {
-  const nameA = normalizeName(a.name);
-  const nameB = normalizeName(b.name);
-  const sameName = !!nameA && !!nameB && (nameA.includes(nameB) || nameB.includes(nameA));
-  const near = haversine(a.lat, a.lng, b.lat, b.lng) <= 180;
-  return near && (a.category === b.category || sameName);
 }
 
 function mergeResidential(existing: ResidentialPoi, planned: ResidentialPoi): ResidentialPoi {
@@ -588,7 +752,7 @@ function mergeResidential(existing: ResidentialPoi, planned: ResidentialPoi): Re
 export function mergeResidentialPois(existingPois: readonly ResidentialPoi[], plannedPois: readonly ResidentialPoi[]): ResidentialPoi[] {
   const merged: ResidentialPoi[] = [...existingPois];
   for (const planned of plannedPois) {
-    const idx = merged.findIndex((existing) => isResidentialDuplicate(existing, planned));
+    const idx = findResidentialMatchIndex(merged, planned);
     if (idx >= 0) {
       merged[idx] = mergeResidential(merged[idx], planned);
     } else {

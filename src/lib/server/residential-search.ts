@@ -15,10 +15,12 @@
 
 import { getDb } from "./database";
 import { enrichKaptExtras } from "./apt-enrichment";
+import { buildLedgerUrl } from "./ledger-url";
+import { isRecentMiss, readGeocode, readLegalCode, recordGeocodeMiss, writeGeocode, writeLegalCode } from "./geocode-cache";
+import { readLedgerDong, upsertLedgerDong, type LedgerRow } from "./ledger-store";
 import { buildingDedupeKey, sampleDongPoints } from "./residential/complex-identity";
 import type { Apartment, Officetel, ResidentialOther, ResidentialPoi } from "../types";
 
-const LEDGER_URL = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrRecapTitleInfo";
 const NCP_REVERSE_GEO_URL = "https://maps.apigw.ntruss.com/map-reversegeocode/v2/gc";
 const NCP_GEOCODE_URL = "https://maps.apigw.ntruss.com/map-geocode/v2/geocode";
 
@@ -77,6 +79,11 @@ interface DongCode {
 async function reverseGeocodeToDong(
   lat: number, lng: number, ncpId: string, ncpSecret: string,
 ): Promise<DongCode | null> {
+  try {
+    const cached = readLegalCode(getDb(), lat, lng);
+    if (cached) return { sigunguCd: cached.sigunguCd, bjdongCd: cached.bjdongCd };
+  } catch { /* 캐시 실패는 조회를 막지 않는다 */ }
+
   const url = `${NCP_REVERSE_GEO_URL}?coords=${lng},${lat}&output=json&orders=legalcode`;
   try {
     const data = await fetchJson(url, {
@@ -88,7 +95,11 @@ async function reverseGeocodeToDong(
     if (!first) return null;
     const codeId = String((first["code"] as Record<string, unknown> | undefined)?.["id"] ?? "");
     if (codeId.length < 10) return null;
-    return { sigunguCd: codeId.slice(0, 5), bjdongCd: codeId.slice(5, 10) };
+    const dong = { sigunguCd: codeId.slice(0, 5), bjdongCd: codeId.slice(5, 10) };
+    try {
+      writeLegalCode(getDb(), lat, lng, { ...dong, areaName: "" }, Date.now());
+    } catch { /* non-fatal */ }
+    return dong;
   } catch {
     return null;
   }
@@ -139,7 +150,7 @@ async function queryLedgerForDong(
   const buildings: LedgerBuilding[] = [];
   let page = 1;
   while (true) {
-    const url = `${LEDGER_URL}?serviceKey=${encodedApiKey}&sigunguCd=${sigunguCd}&bjdongCd=${bjdongCd}&numOfRows=100&pageNo=${page}`;
+    const url = buildLedgerUrl({ sigunguCd, bjdongCd, pageNo: page, encodedApiKey });
     try {
       const xml = await fetchXml(url);
       const items = parseXmlItems(xml);
@@ -176,18 +187,13 @@ async function queryLedgerForDong(
 
 function getCachedCoord(address: string): { lat: number; lng: number } | null {
   try {
-    const db = getDb();
-    const row = db.prepare("SELECT lat, lng FROM geocode_cache WHERE address = ?")
-      .get(address) as { lat: number; lng: number } | undefined;
-    return row ?? null;
+    return readGeocode(getDb(), address);
   } catch { return null; }
 }
 
 function setCachedCoord(address: string, lat: number, lng: number): void {
   try {
-    const db = getDb();
-    db.prepare("INSERT OR REPLACE INTO geocode_cache (address, lat, lng, created_at) VALUES (?, ?, ?, ?)")
-      .run(address, lat, lng, Date.now() / 1000);
+    writeGeocode(getDb(), address, lat, lng, Date.now());
   } catch { /* non-fatal */ }
 }
 
@@ -197,6 +203,10 @@ async function geocodeAddress(
   // Cache check
   const cached = getCachedCoord(address);
   if (cached) return cached;
+  // 최근 실패한 주소는 다시 왕복하지 않는다
+  try {
+    if (isRecentMiss(getDb(), address, Date.now())) return null;
+  } catch { /* non-fatal */ }
 
   try {
     const url = `${NCP_GEOCODE_URL}?query=${encodeURIComponent(address)}`;
@@ -205,15 +215,27 @@ async function geocodeAddress(
       "X-NCP-APIGW-API-KEY": ncpSecret,
     });
     const addrs = data["addresses"] as Array<Record<string, string>> | undefined;
-    if (!addrs || addrs.length === 0) return null;
+    if (!addrs || addrs.length === 0) {
+      rememberMiss(address);
+      return null;
+    }
     const lat = parseFloat(addrs[0]["y"]);
     const lng = parseFloat(addrs[0]["x"]);
-    if (isNaN(lat) || isNaN(lng)) return null;
+    if (isNaN(lat) || isNaN(lng)) {
+      rememberMiss(address);
+      return null;
+    }
     setCachedCoord(address, lat, lng);
     return { lat, lng };
   } catch {
     return null;
   }
+}
+
+function rememberMiss(address: string): void {
+  try {
+    recordGeocodeMiss(getDb(), address, Date.now());
+  } catch { /* non-fatal */ }
 }
 
 // ─── 분류 ─────────────────────────────────────────────────────────────────────
@@ -225,6 +247,86 @@ function classifyResidential(bldNm: string, units: number): "apartment" | "offic
     || name.includes("힐스테이트") || name.includes("푸르지오") || name.includes("더샵")
     || name.includes("롯데캐슬") || name.includes("e편한세상")) return "apartment";
   return "residential";
+}
+
+// ─── 법정동 read-through ──────────────────────────────────────────────────────
+
+interface DongRows {
+  dong: DongCode;
+  rows: LedgerRow[];
+  /** 적재분을 그대로 쓴 경우 true — 다시 저장할 필요가 없다 */
+  fromCache: boolean;
+}
+
+/**
+ * 한 법정동의 공동주택을 가져온다.
+ * 적재분이 신선하면 좌표까지 붙은 채로 바로 쓰고, 아니면 API로 채워 좌표를 붙인다.
+ * 저장 여부는 호출자가 결정한다 (모든 법정동이 0건이면 상류 장애이므로 저장하지 않는다).
+ */
+async function loadDongRows(
+  dong: DongCode, encodedApiKey: string, ncpId: string, ncpSecret: string,
+): Promise<DongRows> {
+  try {
+    const cached = readLedgerDong(getDb(), dong.sigunguCd, dong.bjdongCd, Date.now());
+    if (cached !== null) return { dong, rows: cached, fromCache: true };
+  } catch { /* 캐시 실패는 API 조회로 이어간다 */ }
+
+  const buildings = await queryLedgerForDong(dong.sigunguCd, dong.bjdongCd, encodedApiKey);
+  const rows: LedgerRow[] = [];
+  const BATCH_SIZE = 5;
+  for (let i = 0; i < buildings.length; i += BATCH_SIZE) {
+    const batch = buildings.slice(i, i + BATCH_SIZE);
+    const coords = await Promise.all(batch.map(b => geocodeAddress(b.platPlc, ncpId, ncpSecret)));
+    batch.forEach((b, j) => {
+      const coord = coords[j];
+      rows.push({
+        id: `ledger-${b.sigunguCd}-${b.bjdongCd}-${b.bun}-${b.ji}`,
+        name: b.bldNm,
+        address: b.platPlc,
+        units: b.units,
+        parking: b.parking,
+        maxFloor: b.maxFloor,
+        useAprDay: b.useAprDay,
+        bun: b.bun,
+        ji: b.ji,
+        lat: coord ? coord.lat : null,
+        lng: coord ? coord.lng : null,
+      });
+    });
+  }
+  return { dong, rows, fromCache: false };
+}
+
+// ─── 배치 워밍용 공개 헬퍼 ────────────────────────────────────────────────────
+
+/** 중심 좌표 주변의 법정동 목록 (배치 스크립트가 대상을 정할 때 쓴다) */
+export async function resolveDongsAround(
+  lat: number, lng: number, radiusM: number, ncpId: string, ncpSecret: string,
+): Promise<DongCode[]> {
+  return findDongsInRadius(lat, lng, radiusM, ncpId, ncpSecret);
+}
+
+export interface WarmOptions {
+  apiKey: string;
+  ncpId: string;
+  ncpSecret: string;
+  now: number;
+  /** true면 TTL이 남아 있어도 다시 조회한다 */
+  force?: boolean;
+}
+
+/** 한 법정동을 미리 채운다. 급감이면 거부하고 기존 데이터를 지킨다. */
+export async function warmLedgerDong(
+  db: ReturnType<typeof getDb>, dong: DongCode, options: WarmOptions,
+): Promise<{ status: "ok" | "rejected"; rowCount: number; message?: string }> {
+  if (!options.force) {
+    const cached = readLedgerDong(db, dong.sigunguCd, dong.bjdongCd, options.now);
+    if (cached !== null) return { status: "ok", rowCount: cached.length };
+  }
+  const encodedApiKey = encodeApiKey(options.apiKey);
+  const entry = await loadDongRows(dong, encodedApiKey, options.ncpId, options.ncpSecret);
+  const result = upsertLedgerDong(db, dong.sigunguCd, dong.bjdongCd, entry.rows, options.now);
+  return { status: result.status, rowCount: result.rowCount, message: result.message };
 }
 
 // ─── 공개 API ─────────────────────────────────────────────────────────────────
@@ -244,71 +346,84 @@ export async function searchResidentialFromLedger(
   console.log(`[ledger-search] ${dongs.length} dongs found in radius`);
   if (dongs.length === 0) return [];
 
-  // Step 2: 법정동별 건축물대장 조회 (병렬)
-  const allBuildings = await Promise.all(
-    dongs.map(d => queryLedgerForDong(d.sigunguCd, d.bjdongCd, encodedApiKey))
+  // Step 2~3: 법정동별로 적재분을 읽거나(read-through) API로 채운다.
+  // 적재분에는 좌표가 이미 들어 있어 지오코딩 왕복이 통째로 사라진다.
+  const perDong = await Promise.all(
+    dongs.map(d => loadDongRows(d, encodedApiKey, ncpId, ncpSecret)),
   );
-  const buildings = allBuildings.flat();
-  console.log(`[ledger-search] ${buildings.length} residential buildings from ledger`);
-  if (buildings.length === 0) return [];
 
-  // Step 3: 좌표 변환 (배치, 최대 동시 5개)
-  const BATCH_SIZE = 5;
-  const coordResults: ({ lat: number; lng: number } | null)[] = new Array(buildings.length).fill(null);
-  for (let i = 0; i < buildings.length; i += BATCH_SIZE) {
-    const batch = buildings.slice(i, i + BATCH_SIZE);
-    const results = await Promise.all(
-      batch.map(b => geocodeAddress(b.platPlc, ncpId, ncpSecret))
+  const fetched = perDong.filter(r => !r.fromCache);
+  const totalRows = perDong.reduce((sum, r) => sum + r.rows.length, 0);
+
+  // 새로 조회한 법정동이 여럿인데 전부 0건이면 상류 장애다.
+  // (건축물대장 응답 기본 포맷이 XML→JSON으로 바뀌었을 때 전국이 조용히 0건이 됐다)
+  const looksLikeUpstreamFailure = fetched.length >= 2 && fetched.every(r => r.rows.length === 0);
+  if (looksLikeUpstreamFailure) {
+    console.warn(
+      `[ledger-search] ${fetched.length} dongs returned zero apartments — suspect an upstream response-format change; not persisting`,
     );
-    for (let j = 0; j < results.length; j++) {
-      coordResults[i + j] = results[j];
+  } else {
+    for (const entry of fetched) {
+      const result = upsertLedgerDong(getDb(), entry.dong.sigunguCd, entry.dong.bjdongCd, entry.rows, Date.now());
+      if (result.status === "rejected") console.warn(`[ledger-search] ${result.message}`);
     }
   }
+
+  console.log(`[ledger-search] ${totalRows} residential buildings (cache hit ${perDong.length - fetched.length}/${perDong.length} dongs)`);
+  if (totalRows === 0) return [];
 
   // Step 4: 반경 필터 + POI 생성
   const pois: ResidentialPoi[] = [];
   const seenNames = new Set<string>();
   const sigunguByName = new Map<string, string>();
-  for (let i = 0; i < buildings.length; i++) {
-    const b = buildings[i];
-    const coord = coordResults[i];
-    if (!coord) continue;
+  for (const entry of perDong) {
+    for (const b of entry.rows) {
+      if (b.lat === null || b.lng === null) continue;
 
-    const dist = haversine(centerLat, centerLng, coord.lat, coord.lng);
-    if (dist > radiusM) continue;
+      const dist = haversine(centerLat, centerLng, b.lat, b.lng);
+      if (dist > radiusM) continue;
 
-    // 지번 코드 기반 식별 — 이름만 쓰면 서로 다른 "현대아파트"가 병합된다
-    const dedupeKey = buildingDedupeKey({ ...b, lat: coord.lat, lng: coord.lng });
-    if (seenNames.has(dedupeKey)) continue;
-    seenNames.add(dedupeKey);
+      // 지번 코드 기반 식별 — 이름만 쓰면 서로 다른 "현대아파트"가 병합된다
+      const dedupeKey = buildingDedupeKey({
+        bldNm: b.name,
+        sigunguCd: entry.dong.sigunguCd,
+        bjdongCd: entry.dong.bjdongCd,
+        bun: b.bun,
+        ji: b.ji,
+        lat: b.lat,
+        lng: b.lng,
+      });
+      if (seenNames.has(dedupeKey)) continue;
+      seenNames.add(dedupeKey);
 
-    const category = classifyResidential(b.bldNm, b.units);
-    const rawDate = b.useAprDay;
-    let saleDate = "";
-    if (rawDate.length >= 6) saleDate = `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}`;
-    else if (rawDate.length === 4) saleDate = rawDate;
+      const category = classifyResidential(b.name, b.units);
+      const rawDate = b.useAprDay;
+      let saleDate = "";
+      if (rawDate.length >= 6) saleDate = `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}`;
+      else if (rawDate.length === 4) saleDate = rawDate;
 
-    const base = {
-      id: `ledger-${b.sigunguCd}-${b.bjdongCd}-${b.bun}-${b.ji}`,
-      name: b.bldNm,
-      lat: coord.lat,
-      lng: coord.lng,
-      units: b.units,
-      parking_count: b.parking,
-      sale_date: saleDate,
-      distance_m: Math.round(dist),
-      status: "existing" as const,
-      source: "ledger" as const,
-      ...(b.maxFloor > 0 ? { max_floor: b.maxFloor } : {}),
-    };
+      const base = {
+        id: b.id,
+        name: b.name,
+        lat: b.lat,
+        lng: b.lng,
+        units: b.units,
+        parking_count: b.parking,
+        sale_date: saleDate,
+        distance_m: Math.round(dist),
+        status: "existing" as const,
+        source: "ledger" as const,
+        ...(b.maxFloor > 0 ? { max_floor: b.maxFloor } : {}),
+      };
 
-    if (category === "apartment") {
-      pois.push({ ...base, category: "apartment" } as Apartment);
-      sigunguByName.set(b.bldNm, b.sigunguCd);
-    } else if (category === "officetel") {
-      pois.push({ ...base, category: "officetel" } as Officetel);
-    } else {
-      pois.push({ ...base, category: "residential" } as ResidentialOther);
+      if (category === "apartment") {
+        pois.push({ ...base, category: "apartment" } as Apartment);
+        sigunguByName.set(b.name, entry.dong.sigunguCd);
+      } else if (category === "officetel") {
+        pois.push({ ...base, category: "officetel" } as Officetel);
+      } else {
+        pois.push({ ...base, category: "residential" } as ResidentialOther);
+      }
     }
   }
 

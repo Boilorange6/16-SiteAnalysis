@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { existsSync, mkdirSync } from "fs";
 import { dirname, resolve } from "path";
+import { initDatasetSchema } from "./dataset-store";
 
 const DB_PATH =
   process.env.DB_PATH || resolve(process.cwd(), ".cache/site-analysis.db");
@@ -114,4 +115,7 @@ function initSchema(db: Database.Database): void {
       PRIMARY KEY (source, lat, lng, radius_m)
     );
   `);
+
+  // 전국 배치 적재 테이블 + 지오코딩 캐시 보강 테이블
+  initDatasetSchema(db);
 }
