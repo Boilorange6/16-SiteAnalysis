@@ -205,12 +205,17 @@ class IncompleteOfficetelScanError extends Error {
 }
 
 /**
- * 같은 법정동의 오피스텔을 표제부에서 가져온다.
+ * 같은 법정동의 오피스텔을 표제부에서 가져온다. **배치 적재 전용이다.**
  *
  * 총괄표제부에는 오피스텔이 없다 — 거기 "업무시설"은 세대·호수가 0인 순수 업무빌딩뿐이다.
  * 오피스텔은 표제부에만 있고, 대신 표제부는 단지가 아니라 동 단위라 행 수가 훨씬 많다
- * (역삼동 기준 총괄표제부 85행 vs 표제부 4,962행). 그래서 법정동 단위로 한 번 긁어
- * 30일 TTL로 재사용하고, 공동주택 행은 총괄표제부가 담당하므로 여기서 버린다.
+ * (역삼동 기준 총괄표제부 85행 vs 표제부 4,962행 = 50페이지).
+ *
+ * 처음엔 실시간 검색 경로에서 같이 긁었는데, 3km 분석이 법정동 14개를 잡는 탓에
+ * 요청 한 번에 상류 700회를 때리게 됐다. 운영에서 동시 스캔이 동당 17~24페이지씩
+ * 끊겼고, 끊긴 동은 캐시하지 않으니 모든 요청이 매번 30초씩 재조회하는 상태가 됐다.
+ * 그래서 실시간 경로에서는 빼고 배치(ingest:ledger)에서만 채운다. 적재된 법정동은
+ * 검색이 DB에서 그대로 읽으므로 오피스텔이 함께 나온다.
  */
 async function queryOfficetelsForDong(
   sigunguCd: string, bjdongCd: string, encodedApiKey: string,
@@ -376,22 +381,27 @@ interface DongRows {
  */
 async function loadDongRows(
   dong: DongCode, encodedApiKey: string, ncpId: string, ncpSecret: string,
+  includeOfficetels = false, force = false,
 ): Promise<DongRows> {
-  try {
-    const cached = readLedgerDong(getDb(), dong.sigunguCd, dong.bjdongCd, Date.now());
-    if (cached !== null) return { dong, rows: cached, fromCache: true };
-  } catch { /* 캐시 실패는 API 조회로 이어간다 */ }
+  // force일 때 캐시로 빠지면 배치가 오피스텔 스캔을 통째로 건너뛴다.
+  // 적재분은 공동주택만 있던 시절 것일 수 있어서, 다시 채우라는 요청은 존중해야 한다.
+  if (!force) {
+    try {
+      const cached = readLedgerDong(getDb(), dong.sigunguCd, dong.bjdongCd, Date.now());
+      if (cached !== null) return { dong, rows: cached, fromCache: true };
+    } catch { /* 캐시 실패는 API 조회로 이어간다 */ }
+  }
 
   // 오피스텔 조회가 불완전해도 공동주택은 살린다. 대신 이 법정동은 캐시하지 않아
-  // 다음 요청에서 다시 채우게 한다 — 빠진 채로 30일 굳는 것이 가장 나쁘다.
+  // 다음 배치에서 다시 채우게 한다 — 빠진 채로 30일 굳는 것이 가장 나쁘다.
   let incomplete = false;
-  const [apartments, officetels] = await Promise.all([
-    queryLedgerForDong(dong.sigunguCd, dong.bjdongCd, encodedApiKey),
-    queryOfficetelsForDong(dong.sigunguCd, dong.bjdongCd, encodedApiKey).catch(() => {
-      incomplete = true;
-      return [] as LedgerBuilding[];
-    }),
-  ]);
+  const apartments = await queryLedgerForDong(dong.sigunguCd, dong.bjdongCd, encodedApiKey);
+  const officetels = includeOfficetels
+    ? await queryOfficetelsForDong(dong.sigunguCd, dong.bjdongCd, encodedApiKey).catch(() => {
+        incomplete = true;
+        return [] as LedgerBuilding[];
+      })
+    : [];
   const buildings = [
     ...apartments.map((building) => ({ building, purpose: "공동주택" as const })),
     ...officetels.map((building) => ({ building, purpose: "오피스텔" as const })),
@@ -450,7 +460,17 @@ export async function warmLedgerDong(
     if (cached !== null) return { status: "ok", rowCount: cached.length };
   }
   const encodedApiKey = encodeApiKey(options.apiKey);
-  const entry = await loadDongRows(dong, encodedApiKey, options.ncpId, options.ncpSecret);
+  // 오피스텔 표제부 스캔은 배치에서만 한다 — 아래 주석 참조
+  const entry = await loadDongRows(
+    dong, encodedApiKey, options.ncpId, options.ncpSecret, true, options.force ?? false,
+  );
+  if (entry.incomplete) {
+    return {
+      status: "rejected",
+      rowCount: entry.rows.length,
+      message: `${dong.sigunguCd}-${dong.bjdongCd} 표제부 조회가 불완전해 적재하지 않았습니다 (오피스텔 누락)`,
+    };
+  }
   const result = upsertLedgerDong(db, dong.sigunguCd, dong.bjdongCd, entry.rows, options.now);
   return { status: result.status, rowCount: result.rowCount, message: result.message };
 }
