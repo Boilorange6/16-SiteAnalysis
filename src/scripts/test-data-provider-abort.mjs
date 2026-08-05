@@ -61,10 +61,25 @@ function stubFetch(handler) {
     (error) => error.name === "AbortError",
   );
 
-  // 같은 좌표를 정상 조회하면 취소된 결과가 아니라 새 결과를 받아야 한다
-  stubFetch(async () => ({
+  // 같은 좌표를 정상 조회하면 취소된 결과가 아니라 새 결과를 받아야 한다.
+  // 지하철역은 poi-search가 아니라 철도 스냅샷에서만 온다
+  // (test-planned-rail-isolation.mjs: OSM 역에는 공사중 노선이 섞일 수 있다).
+  stubFetch(async (url) => ({
     ok: true, status: 200,
-    json: async () => ({ pois: [{ id: "fresh", name: "새 결과", lat: 37.7, lng: 127.2, category: "subway", line: "1", lineColor: "#000" }], warnings: [], sources: [] }),
+    json: async () => String(url).includes("/api/rail-network")
+      ? {
+          snapshotVersion: "test",
+          stations: [{
+            id: "fresh", name: "새 결과", lat: 37.7, lng: 127.2,
+            memberships: [{ lineRef: "1", lineName: "1호선", color: "#000" }],
+          }],
+          lines: [],
+          routes: [],
+          plannedProjects: [],
+          mapData: { stations: [], entrances: [], lines: [], stationAxes: [] },
+          source: { source: "rail-network", status: "fresh", fetchedAt: 1_753_000_000_000 },
+        }
+      : { pois: [], warnings: [], sources: [] },
   }));
   const region = await loadDynamicRegion(37.7, 127.2, 1, {});
   assert.equal(region.subwayStations.length, 1, "취소된 조회가 캐시에 남으면 안 된다");

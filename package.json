@@ -19,7 +19,7 @@
     "test:dataset": "tsx src/scripts/test-planned-residential-fixes.mjs && tsx src/scripts/test-dataset-store.mjs && tsx src/scripts/test-geocode-cache.mjs && tsx src/scripts/test-planned-housing-ingest.mjs && tsx src/scripts/test-ledger-store.mjs && tsx src/scripts/test-dataset-status.mjs",
     "ingest:planned": "tsx src/scripts/ingest-planned-housing.mjs",
     "ingest:ledger": "tsx src/scripts/ingest-ledger.mjs",
-    "test:rail": "tsx src/scripts/test-rail-network-store.mjs && tsx src/scripts/validate-planned-rail-registry.mjs && tsx src/scripts/test-planned-rail-ppt-label.mjs",
+    "test:rail": "tsx src/scripts/test-rail-network-store.mjs && tsx src/scripts/validate-planned-rail-registry.mjs && tsx src/scripts/test-planned-rail-ppt-label.mjs && tsx src/scripts/test-planned-rail-tooltip.mjs && tsx src/scripts/test-planned-rail-isolation.mjs",
     "build:rail-public-data": "tsx src/scripts/build-planned-rail-public-data.mjs"
   },
   "dependencies": {

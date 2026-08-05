@@ -178,8 +178,10 @@ export default function SiteAnalysisApp() {
   );
 
   const subwayRoutes = regionData?.subwayRoutes ?? [];
+  const plannedRailProjects = regionData?.plannedRailProjects ?? [];
   const displayedPois = loading ? [] : allPois;
   const displayedSubwayRoutes = loading ? [] : subwayRoutes;
+  const displayedPlannedRailProjects = loading ? [] : plannedRailProjects;
   const canExport = hasSearched && !loading && !loadError && regionData !== null;
   const exportDisabledReason = !hasSearched
     ? "주소 검색 후 PPT를 만들 수 있습니다."
@@ -486,8 +488,9 @@ export default function SiteAnalysisApp() {
       radiusPosition: framed.radiusPosition,
       routePositions: framed.routePositions,
       sourceStatuses: regionData?.sourceStatuses ?? [],
+      hasPlannedRail: displayedPlannedRailProjects.length > 0,
     };
-  }, [allPois, layers, config, subwayRoutes, regionData]);
+  }, [allPois, layers, config, subwayRoutes, regionData, displayedPlannedRailProjects]);
 
   const handlePreview = useCallback(async () => {
     if (!mapRef.current || !canExport) return;
@@ -516,7 +519,8 @@ export default function SiteAnalysisApp() {
       previewInput.routePositions,
       designConfig,
       previewInput.sourceStatuses ?? [],
-      includeScoreDashboard
+      includeScoreDashboard,
+      previewInput.hasPlannedRail
     );
   }, [previewInput]);
 
@@ -530,7 +534,7 @@ export default function SiteAnalysisApp() {
       await generateSiteAnalysisPpt(
         data.config, data.allPois, data.baseMapImage,
         data.poiPositions, data.radiusPosition, data.routePositions,
-        undefined, data.sourceStatuses
+        undefined, data.sourceStatuses, false, data.hasPlannedRail
       );
     } catch (err) {
       console.error("PPT generation failed:", err);
@@ -589,6 +593,8 @@ export default function SiteAnalysisApp() {
           pois={displayedPois}
           layers={layers}
           subwayRoutes={displayedSubwayRoutes}
+          subwayMapData={regionData?.subwayMapData}
+          plannedRailProjects={displayedPlannedRailProjects}
           insightOverlays={insightOverlays}
           visibleInsightOverlayIds={visibleInsightOverlayIds}
         />

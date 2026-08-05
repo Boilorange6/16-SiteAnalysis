@@ -23,6 +23,7 @@ import type {
 } from "./project-types";
 import { authFetch } from "./auth-fetch";
 import { failedSourceMessages } from "./source-status-text";
+import type { RailNetworkResponse } from "./rail-types";
 
 const dynamicCache = new Map<string, RegionData>();
 
@@ -139,6 +140,38 @@ async function fetchJson<T>(path: string, options: RequestInit = {}): Promise<T>
   return res.json() as Promise<T>;
 }
 
+/**
+ * 철도망 응답이 계약을 지키는지 확인한다.
+ * 형태가 어긋나면 부분 데이터로 진행하지 않고 실패로 닫는다
+ * (test-planned-rail-isolation.mjs: 신뢰할 수 없는 철도 데이터를 쓰지 않는다).
+ */
+function isRailNetworkResponse(value: unknown): value is RailNetworkResponse {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<RailNetworkResponse>;
+  return Array.isArray(candidate.stations)
+    && Array.isArray(candidate.routes)
+    && Array.isArray(candidate.plannedProjects);
+}
+
+function mapRailStations(response: RailNetworkResponse): readonly SubwayStation[] {
+  return response.stations.map((station) => {
+    const firstMembership = station.memberships[0];
+    const lineNames = station.memberships
+      .map((membership) => membership.lineRef || membership.lineName)
+      .filter((name) => name.length > 0);
+    return {
+      id: station.id,
+      name: station.name,
+      lat: station.lat,
+      lng: station.lng,
+      category: "subway",
+      line: lineNames.join("·") || "미확인",
+      lineColor: firstMembership?.color || "#64748B",
+      lineNames,
+    } satisfies SubwayStation;
+  });
+}
+
 export interface AddressSearchResult {
   readonly id: string;
   readonly name: string;
@@ -207,7 +240,7 @@ export async function loadDynamicRegion(
     radius: String(routeRadiusM),
   });
 
-  const [poiResponse, routeResponse] = await Promise.all([
+  const [poiResponse, railResponseRaw] = await Promise.all([
     (opts.onProgress
       ? fetchPoiSearchStream(
           `/api/poi-search?${poiParams.toString()}${refreshQs}&stream=true`,
@@ -221,35 +254,42 @@ export async function loadDynamicRegion(
     ).catch((error: unknown) => {
       if (isAbortError(error)) throw error; // 취소는 실패 폴백으로 감추지 않는다
       return ({
-      pois: [],
-      warnings: [],
-      sources: [
-        { source: "osm", status: "failed", fetchedAt: null },
-        { source: "park", status: "failed", fetchedAt: null },
-        { source: "residential", status: "failed", fetchedAt: null },
-        { source: "planned-residential", status: "failed", fetchedAt: null },
-        { source: "maintenance_boundaries", status: "failed", fetchedAt: null },
-        { source: "maintenance_attributes", status: "failed", fetchedAt: null },
-        { source: "maintenance_seoul", status: "failed", fetchedAt: null },
-        { source: "maintenance_busan", status: "failed", fetchedAt: null },
-      ],
-      maintenanceCatalog: [],
-    } satisfies PoiSearchResponse);
+        pois: [],
+        warnings: [],
+        sources: [
+          { source: "osm", status: "failed", fetchedAt: null },
+          { source: "park", status: "failed", fetchedAt: null },
+          { source: "residential", status: "failed", fetchedAt: null },
+          { source: "planned-residential", status: "failed", fetchedAt: null },
+          { source: "maintenance_boundaries", status: "failed", fetchedAt: null },
+          { source: "maintenance_attributes", status: "failed", fetchedAt: null },
+          { source: "maintenance_seoul", status: "failed", fetchedAt: null },
+          { source: "maintenance_busan", status: "failed", fetchedAt: null },
+        ],
+        maintenanceCatalog: [],
+      } satisfies PoiSearchResponse);
     }),
-    fetchJson<{ routes: SubwayRoute[]; source: SourceStatus }>(
-      `/api/subway-routes?${routeParams.toString()}${refreshQs}`,
+    // 철도망은 권위 스냅샷만 신뢰한다. 실패하면 빈 결과로 닫고,
+    // legacy subway-routes로 폴백하지 않는다 (test-planned-rail-isolation.mjs).
+    fetchJson<RailNetworkResponse>(
+      `/api/rail-network?${routeParams.toString()}&include=operational,planned${refreshQs}`,
       opts.signal ? { signal: opts.signal } : {},
-    ).catch(
-      // 노선 조회가 통째로 실패해도 기존 폴백 동작(빈 배열)은 유지하되, 소스 상태는 failed로 기록
-      (error: unknown) => {
-        if (isAbortError(error)) throw error;
-        return ({
-          routes: [] as SubwayRoute[],
-          source: { source: "subway-routes" as const, status: "failed" as const, fetchedAt: null },
-        });
-      }
-    ),
+    ).catch((error: unknown) => {
+      if (isAbortError(error)) throw error;
+      return null;
+    }),
   ]);
+
+  const railResponse = isRailNetworkResponse(railResponseRaw) ? railResponseRaw : null;
+
+  const railSource: SourceStatus = railResponse?.source ?? {
+    source: "rail-network",
+    status: "failed",
+    fetchedAt: null,
+  };
+  const subwayStations = railResponse ? mapRailStations(railResponse) : [];
+  // 지하철역은 철도 스냅샷만 쓴다 — poi-search의 OSM 역은 공사중 노선이 섞일 수 있다.
+  const nonSubwayPois = poiResponse.pois.filter((poi) => poi.category !== "subway");
 
   const regionData: RegionData = {
     regionCode: "custom",
@@ -262,18 +302,21 @@ export async function loadDynamicRegion(
       centerLng: lng,
       radiusKm,
     },
-    subwayStations: selectPois(poiResponse.pois, POI_CATEGORY_PREDICATES.subway),
-    schools: selectPois(poiResponse.pois, POI_CATEGORY_PREDICATES.school),
-    parks: selectPois(poiResponse.pois, POI_CATEGORY_PREDICATES.park),
-    mountains: selectPois(poiResponse.pois, POI_CATEGORY_PREDICATES.mountain),
-    apartments: selectPois(poiResponse.pois, POI_CATEGORY_PREDICATES.apartment),
-    officetels: selectPois(poiResponse.pois, POI_CATEGORY_PREDICATES.officetel),
-    residentialOthers: selectPois(poiResponse.pois, POI_CATEGORY_PREDICATES.residential),
-    maintenanceProjects: selectPois(poiResponse.pois, POI_CATEGORY_PREDICATES.maintenance),
+    subwayStations,
+    schools: selectPois(nonSubwayPois, POI_CATEGORY_PREDICATES.school),
+    parks: selectPois(nonSubwayPois, POI_CATEGORY_PREDICATES.park),
+    mountains: selectPois(nonSubwayPois, POI_CATEGORY_PREDICATES.mountain),
+    apartments: selectPois(nonSubwayPois, POI_CATEGORY_PREDICATES.apartment),
+    officetels: selectPois(nonSubwayPois, POI_CATEGORY_PREDICATES.officetel),
+    residentialOthers: selectPois(nonSubwayPois, POI_CATEGORY_PREDICATES.residential),
+    maintenanceProjects: selectPois(nonSubwayPois, POI_CATEGORY_PREDICATES.maintenance),
     maintenanceCatalog: poiResponse.maintenanceCatalog ?? [],
     sourceWarnings: failedSourceMessages(poiResponse.warnings ?? []),
-    subwayRoutes: routeResponse.routes,
-    sourceStatuses: [...poiResponse.sources, routeResponse.source],
+    subwayRoutes: railResponse?.routes ?? [],
+    sourceStatuses: [...poiResponse.sources, railSource],
+    railSnapshotVersion: railResponse?.snapshotVersion,
+    subwayMapData: railResponse?.mapData,
+    plannedRailProjects: railResponse?.plannedProjects ?? [],
   };
 
   dynamicCache.set(cacheKey, regionData);

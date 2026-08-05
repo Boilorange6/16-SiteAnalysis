@@ -719,18 +719,17 @@ function addRankedList(
   });
 }
 
-function addLegend(slide: PptxGenJS.Slide, d: PptDesignConfig, maintenanceReference = false) {
-  const categoryItems = Object.entries(CATEGORY_LABELS).map(([key, label]) => ({
-    label,
-    color: d.categoryColors[key as PoiCategory],
-  }));
+import { buildPptLegendItems } from "./ppt-rail-legend";
+
+function addLegend(slide: PptxGenJS.Slide, d: PptDesignConfig, maintenanceReference = false, hasPlannedRail = false) {
+  const categoryItems = buildPptLegendItems(d.categoryColors, hasPlannedRail);
   const items = maintenanceReference
     ? [{ label: MAINTENANCE_BOUNDARY_LEGEND, color: d.categoryColors.maintenance }]
     : categoryItems;
   const legendWidth = maintenanceReference ? 3.0 : LEGEND_W;
   if (d.legendStyle === "strip") {
     const rowW = 5.9;
-    const rowH = 0.34;
+    const rowH = hasPlannedRail && !maintenanceReference ? 0.56 : 0.34;
     const x = d.legendPosition.endsWith("right") ? SLIDE_W - rowW - 0.55 : 0.55;
     const y = d.legendPosition.startsWith("top") ? 0.92 : SLIDE_H - 0.72;
     slide.addShape("rect", {
@@ -1472,7 +1471,8 @@ function addOverviewSlide(
   poiPositions: readonly PoiPosition[],
   radiusPosition: RadiusPosition | null,
   routePositions: readonly RouteNormalizedPosition[],
-  d: PptDesignConfig
+  d: PptDesignConfig,
+  hasPlannedRail = false
 ) {
   const slide = pptx.addSlide();
   addFullBleedMap(slide, baseMapImage, d);
@@ -1496,7 +1496,7 @@ function addOverviewSlide(
   }
   addSiteMarker(slide, radiusPosition, d);
   addMapSectionTitle(slide, "입지 현황 종합", `반경 ${config.radiusKm}km`);
-  addLegend(slide, d);
+  addLegend(slide, d, false, hasPlannedRail);
 }
 
 function addScoreDashboardSlide(
@@ -2186,7 +2186,8 @@ function addCategorySlide(
   details: string[],
   d: PptDesignConfig,
   routePositions: readonly RouteNormalizedPosition[] = [],
-  allPois: readonly Poi[] = []
+  allPois: readonly Poi[] = [],
+  hasPlannedRail = false
 ) {
   const slide = pptx.addSlide();
   addFullBleedMap(slide, baseMapImage, d);
@@ -2247,7 +2248,7 @@ function addCategorySlide(
     addInsightCard(slide, buildCategoryInsight(insightKey, summary), d);
   }
 
-  addLegend(slide, d, cats.includes("maintenance"));
+  addLegend(slide, d, cats.includes("maintenance"), hasPlannedRail);
   if (cats.includes("maintenance")) {
     slide.addText(MAINTENANCE_LEGAL_FOOTER, {
       x: 9.55, y: 7.08, w: 3.2, h: 0.18,
@@ -2398,7 +2399,8 @@ function addApartmentCalloutSlide(
   radiusPosition: RadiusPosition | null,
   d: PptDesignConfig,
   pageIdx: number,
-  totalPages: number
+  totalPages: number,
+  hasPlannedRail = false
 ) {
   const slide = pptx.addSlide();
   addFullBleedMap(slide, baseMapImage, d);
@@ -2413,7 +2415,7 @@ function addApartmentCalloutSlide(
   // Task A: 지도 배경은 유지하되, 어두운 잉크 addTitleChip 대신 Task 5의 흰 지도 섹션 타이틀
   // 문법(addMapSectionTitle)로 교체해 판독 불가 결함을 해소한다.
   addMapSectionTitle(slide, pageTitle, `반경 ${config.radiusKm}km`);
-  addLegend(slide, d);
+  addLegend(slide, d, false, hasPlannedRail);
 
   if (aptsOnPage.length === 0) {
     addEmptyStateBadge(slide, d);
@@ -2610,7 +2612,8 @@ export async function generateSiteAnalysisPpt(
   routePositions: readonly RouteNormalizedPosition[] = [],
   designConfig: PptDesignConfig = DEFAULT_PPT_DESIGN,
   sourceStatuses: readonly SourceStatus[] = [],
-  includeScoreDashboard = false
+  includeScoreDashboard = false,
+  hasPlannedRail = false
 ): Promise<void> {
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE";
@@ -2632,23 +2635,23 @@ export async function generateSiteAnalysisPpt(
   // 슬라이드 순서는 ppt-canvas-renderer.ts의 buildSlideDefs와 동일하게 유지한다.
   addCoverSlide(pptx, config, reportBaseMapImage, d, sourceStatuses);
   addFactSheetSlide(pptx, config, reportPois, d, sourceStatuses);
-  addOverviewSlide(pptx, config, reportBaseMapImage, reportPoiPositions, radiusPosition, routePositions, d);
+  addOverviewSlide(pptx, config, reportBaseMapImage, reportPoiPositions, radiusPosition, routePositions, d, hasPlannedRail);
   if (includeScoreDashboard) {
     addScoreDashboardSlide(pptx, config, reportPois, reportBaseMapImage, d);
   }
 
   const subways = reportPois.filter((p): p is SubwayStation => p.category === "subway");
   addCategorySlide(pptx, "교통 분석", "subway", config, reportBaseMapImage, reportPoiPositions, radiusPosition,
-    subways.filter(s => !isRawPoiId(s.name)).slice(0, 8).map(s => `${s.name} (${s.line})`), d, routePositions, reportPois);
+    subways.filter(s => !isRawPoiId(s.name)).slice(0, 8).map(s => `${s.name} (${s.line})`), d, routePositions, reportPois, hasPlannedRail);
 
   const schools = reportPois.filter((p): p is School => p.category === "school");
   addCategorySlide(pptx, "교육 환경", "school", config, reportBaseMapImage, reportPoiPositions, radiusPosition,
-    schools.filter(s => !isRawPoiId(s.name)).slice(0, 8).map(s => `${s.name} (${s.level === "elementary" ? "초" : s.level === "middle" ? "중" : "고"})`), d, [], reportPois);
+    schools.filter(s => !isRawPoiId(s.name)).slice(0, 8).map(s => `${s.name} (${s.level === "elementary" ? "초" : s.level === "middle" ? "중" : "고"})`), d, [], reportPois, hasPlannedRail);
 
   const parks = reportPois.filter((p): p is Park => p.category === "park");
   const mountains = reportPois.filter(p => p.category === "mountain" && !isRawPoiId(p.name));
   addCategorySlide(pptx, "자연 환경", ["park", "mountain"], config, reportBaseMapImage, reportPoiPositions, radiusPosition,
-    [...(parkDataAvailable ? buildParkDetailLines(parks, 7) : [PARK_DATA_UNAVAILABLE_NOTICE]), ...mountains.slice(0, 1).map(p => `인접 산: ${p.name}`)].slice(0, 8), d, [], reportPois);
+    [...(parkDataAvailable ? buildParkDetailLines(parks, 7) : [PARK_DATA_UNAVAILABLE_NOTICE]), ...mountains.slice(0, 1).map(p => `인접 산: ${p.name}`)].slice(0, 8), d, [], reportPois, hasPlannedRail);
 
   addInsightSummarySlide(pptx, config, reportPois, reportBaseMapImage, d, sourceStatuses);
   addRadiusAnalysisSlide(pptx, config, reportPois, reportBaseMapImage, radiusPosition, d, sourceStatuses);
@@ -2656,7 +2659,7 @@ export async function generateSiteAnalysisPpt(
 
   const maintenanceProjects = reportPois.filter((p): p is MaintenanceProject => p.category === "maintenance");
   addCategorySlide(pptx, "개발/정비사업 현황", "maintenance", config, reportBaseMapImage, reportPoiPositions, radiusPosition,
-    buildMaintenanceDetailLines(maintenanceProjects, 6), d, [], reportPois);
+    buildMaintenanceDetailLines(maintenanceProjects, 6), d, [], reportPois, hasPlannedRail);
   addDevelopmentRiskMatrixSlide(pptx, config, reportPois, reportBaseMapImage, reportPoiPositions, radiusPosition, d);
 
   const residentials = reportPois.filter(
@@ -2666,7 +2669,7 @@ export async function generateSiteAnalysisPpt(
   const aptPages = pageResidentials(residentials, APT_PAGE_SIZE);
   aptPages.forEach((aptsOnPage, i) => {
     addApartmentCalloutSlide(pptx, aptsOnPage, residentials, config, reportBaseMapImage, reportPoiPositions,
-      radiusPosition, d, i, aptPages.length);
+      radiusPosition, d, i, aptPages.length, hasPlannedRail);
   });
 
   addSummarySlide(pptx, config, reportPois, reportBaseMapImage, radiusPosition, d, sourceStatuses);

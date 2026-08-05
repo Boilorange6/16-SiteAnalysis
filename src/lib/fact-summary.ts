@@ -109,7 +109,7 @@ export function buildFactSummary(input: FactSummaryInput): FactSummary {
       nearestStationName: nearestSubway?.poi.name ?? null,
       distanceM: nearestSubway ? Math.round(nearestSubway.distanceM) : null,
       walkMin: nearestSubway ? Math.ceil(nearestSubway.distanceM / WALK_SPEED_M_PER_MIN) : null,
-      lineCount: new Set(subways.map((s) => s.line)).size,
+      lineCount: new Set(subways.flatMap((station) => station.lineNames?.length ? station.lineNames : [station.line])).size,
       stationCount: subways.length,
     },
     education: {
