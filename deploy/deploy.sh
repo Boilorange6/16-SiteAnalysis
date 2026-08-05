@@ -39,6 +39,7 @@ tar czf /tmp/site-analysis-deploy.tar.gz \
   --exclude="qa" \
   --exclude="docs" \
   --exclude="data/maintenance/raw" \
+  --exclude="data/maintenance/processed" \
   --exclude="logs" \
   --exclude=".env" \
   --exclude=".env.local" \
@@ -73,6 +74,7 @@ if [[ ! -f "${REMOTE_DIR}/.env" && -f "${RELEASE_DIR}/.env.example" ]]; then
 fi
 ln -sfn "${REMOTE_DIR}/.env" "${RELEASE_DIR}/.env"
 ln -sfn "${REMOTE_DIR}/logs" "${RELEASE_DIR}/logs"
+link_shared_artifacts "${RELEASE_DIR}" "${REMOTE_DIR}"
 
 # ── 빌드 (실패해도 current는 이전 릴리스를 가리킨 채 살아 있다) ──
 cd "${RELEASE_DIR}"

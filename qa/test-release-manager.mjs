@@ -273,3 +273,45 @@ console.log("test-release-manager: all assertions passed");
   rmSync(root, { recursive: true, force: true });
   console.log("stage_standalone_assets: 공유 .env 링크 확인");
 }
+
+// ── 정비사업 산출물은 릴리스가 아니라 공유 경로에 있어야 한다 ────────────────
+// 크론이 분기마다 seoul-cleanup을 다시 만드는데, 릴리스마다 사본이 따로 있으면
+// 크론의 갱신이 앱에 영원히 닿지 않는다. 실제로 운영에서 공유 루트는 7/30,
+// 앱이 읽는 릴리스는 8/5로 갈라져 있었다. .env와 같은 이유로 링크한다.
+{
+  const root = mkdtempSync(path.join(tmpdir(), "shared-artifacts-")).replaceAll("\\", "/");
+  const shared = `${root}/shared`;
+  const release = `${root}/release`;
+  mkdirSync(`${shared}/data/maintenance/processed`, { recursive: true });
+  writeFileSync(`${shared}/data/maintenance/processed/seoul-cleanup.json`, '{"records":[1,2,3]}');
+  mkdirSync(`${release}/.next/standalone`, { recursive: true });
+
+  runLib(`link_shared_artifacts '${release}' '${shared}'`);
+
+  const linked = `${release}/data/maintenance/processed`;
+  assert.ok(lstatSync(linked).isSymbolicLink(), "릴리스의 산출물 경로는 링크여야 한다");
+  assert.equal(
+    readFileSync(`${linked}/seoul-cleanup.json`, "utf8"),
+    '{"records":[1,2,3]}',
+    "공유 산출물을 읽어야 한다",
+  );
+
+  // 크론이 공유본을 갱신하면 재배포 없이 앱에 보인다
+  writeFileSync(`${shared}/data/maintenance/processed/seoul-cleanup.json`, '{"records":[1,2,3,4]}');
+  assert.equal(readFileSync(`${linked}/seoul-cleanup.json`, "utf8"), '{"records":[1,2,3,4]}');
+
+  rmSync(root, { recursive: true, force: true });
+  console.log("link_shared_artifacts: 공유 산출물 링크 확인");
+}
+
+// 공유 경로가 비어 있어도 배포는 실패하지 않는다 (신규 서버)
+{
+  const root = mkdtempSync(path.join(tmpdir(), "shared-empty-")).replaceAll("\\", "/");
+  mkdirSync(`${root}/shared`, { recursive: true });
+  mkdirSync(`${root}/release`, { recursive: true });
+  runLib(`link_shared_artifacts '${root}/release' '${root}/shared'`);
+  assert.ok(existsSync(`${root}/shared/data/maintenance/processed`), "공유 디렉터리를 만들어 둔다");
+  assert.ok(lstatSync(`${root}/release/data/maintenance/processed`).isSymbolicLink());
+  rmSync(root, { recursive: true, force: true });
+  console.log("link_shared_artifacts: 빈 공유 경로도 안전 확인");
+}

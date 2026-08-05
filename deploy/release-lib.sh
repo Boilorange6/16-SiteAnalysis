@@ -131,3 +131,22 @@ stage_standalone_assets() {
         cp -r "${release_dir}/public/." "${standalone}/public/"
     fi
 }
+
+# 정비사업 산출물을 공유 경로로 링크한다.
+#
+# boundaries.geojson / seoul-cleanup.json은 크론이 주기적으로 다시 만든다.
+# 릴리스마다 사본을 두면 크론의 갱신이 앱에 영원히 닿지 않는다 — 실제로 운영에서
+# 공유 루트는 7/30, 앱이 읽는 릴리스는 8/5로 갈라져 있었고 아무도 몰랐다.
+# .env와 같은 이유다: 런타임에 바뀌는 것은 빌드 산출물 안에 복사해 두지 않는다.
+link_shared_artifacts() {
+    local release_dir="$1"
+    local shared_dir="$2"
+    local relative="data/maintenance/processed"
+
+    [[ -n "${shared_dir}" ]] || return 0
+
+    mkdir -p "${shared_dir}/${relative}"
+    mkdir -p "$(dirname "${release_dir}/${relative}")"
+    rm -rf "${release_dir}/${relative}"
+    ln -sfn "${shared_dir}/${relative}" "${release_dir}/${relative}"
+}
