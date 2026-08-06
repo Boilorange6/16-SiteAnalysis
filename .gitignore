@@ -12,3 +12,24 @@ docs/*.pptx
 data/maintenance/raw/
 data/maintenance/processed/
 bash.exe.stackdump
+
+# ── 로컬 도구·임시 산출물 ──────────────────────────────────────────────
+# 배포는 git archive HEAD를 쓰므로 미추적 파일이 서버로 가지는 않는다.
+# 여기 적는 이유는 git status를 읽을 수 있게 유지하기 위해서다 —
+# 잡음이 쌓이면 정작 봐야 할 변경을 놓친다.
+.omo/
+.playwright-cli/
+.playwright-mcp/
+.gstack/
+.debug-journal.md
+tmp_oa*/
+tmp_oa*.zip
+*.stackdump
+
+# API 키가 든 백업 — 저장소 안에 두지 않는다
+.env.local.bak-*
+.env.*.bak
+.env.bak*
+
+# 디버그·QA 스크린샷
+/*.png
