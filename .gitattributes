@@ -2,3 +2,9 @@
 # core.autocrlf=true인 Windows에서 새로 체크아웃하면 deploy/*.sh가 CRLF가 되고,
 # 원격 리눅스에서 `$'\r': command not found`로 배포가 죽는다.
 *.sh text eol=lf
+
+# 배포 아카이브(git archive)에서 제외 — 서버에 필요 없는 경로
+docs/                 export-ignore
+qa/                   export-ignore
+.gstack/              export-ignore
+data/maintenance/raw/ export-ignore

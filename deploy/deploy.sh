@@ -31,28 +31,9 @@ if [[ "${SKIP_LOCAL_CHECKS:-0}" != "1" ]]; then
 fi
 
 # ── Upload via tar (rsync not available on Windows) ──
-echo "Packaging project..."
-cd "${LOCAL_DIR}"
-tar czf /tmp/site-analysis-deploy.tar.gz \
-  --exclude=".git" \
-  --exclude=".next" \
-  --exclude="node_modules" \
-  --exclude=".cache" \
-  --exclude=".claude" \
-  --exclude=".climpire" \
-  --exclude=".climpire-worktrees" \
-  --exclude="output" \
-  --exclude="qa" \
-  --exclude="docs" \
-  --exclude="data/maintenance/raw" \
-  --exclude="data/maintenance/processed" \
-  --exclude="logs" \
-  --exclude=".env" \
-  --exclude=".env.local" \
-  --exclude="*.log" \
-  --exclude="*.stackdump" \
-  --exclude="tsconfig.tsbuildinfo" \
-  .
+echo "Packaging project (commit ${RELEASE_SHA:0:7})..."
+# 커밋된 트리만 담는다 — 미추적 파일(.env.local.bak, .omo/ 등)은 배포와 무관해진다
+package_release "${LOCAL_DIR}" /tmp/site-analysis-deploy.tar.gz
 
 echo "Uploading to server..."
 ssh "${SSH_OPTS[@]}" "${REMOTE_HOST}" "mkdir -p '${REMOTE_DIR}' '${REMOTE_DIR}/logs' '${REMOTE_DIR}/.cache' '${REMOTE_DIR}/releases'"

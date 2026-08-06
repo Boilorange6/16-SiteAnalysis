@@ -409,3 +409,51 @@ console.log("test-release-manager: all assertions passed");
     console.log("assert_deployable: 비상 우회 확인");
   }
 }
+
+// ── 패키징: 배포되는 것은 커밋된 것과 같아야 한다 ────────────────────────────
+// 예전에는 작업 트리를 tar했다. 그래서 미추적 파일이 그대로 서버로 갔다 —
+// 실제로 API 키가 든 .env.local.bak-*가 제외 목록(.env.local 정확히 일치)을
+// 빠져나가 배포될 뻔했다. 제외 목록을 늘리는 건 두더지잡기라서, 아예 HEAD를
+// 아카이브한다. "배포된 것 = 커밋된 것"이 정의로 성립한다.
+{
+  const dir = mkdtempSync(path.join(tmpdir(), "pack-")).replaceAll("\\", "/");
+  const git = (cmd) => execFileSync("bash", ["-c", `cd '${dir}' && ${cmd}`], { encoding: "utf8" });
+  git("git init -q -b main && git config user.email t@t && git config user.name t");
+  mkdirSync(`${dir}/src`, { recursive: true });
+  writeFileSync(`${dir}/src/app.js`, "커밋된 코드");
+  writeFileSync(`${dir}/.gitattributes`, "docs/ export-ignore\n");
+  mkdirSync(`${dir}/docs`, { recursive: true });
+  writeFileSync(`${dir}/docs/note.md`, "서버에 필요 없는 문서");
+  git("git add -A && git commit -qm first");
+
+  // 배포 직전의 작업 트리 오염을 재현한다
+  writeFileSync(`${dir}/.env.local.bak-20260805`, "NAVER_CLIENT_SECRET=진짜비밀");
+  writeFileSync(`${dir}/screenshot.png`, "x".repeat(1000));
+  writeFileSync(`${dir}/src/app.js`, "아직 커밋 안 한 변경");
+
+  const outDir = mkdtempSync(path.join(tmpdir(), "pack-out-")).replaceAll("\\", "/");
+  const out = `${outDir}/release.tar.gz`;
+  runLib(`package_release '${dir}' '${out}'`);
+  // MSYS tar는 -f 인자의 `C:`를 원격 호스트로 해석한다("Cannot connect to C:").
+  // 아카이브만 상대경로로 넘기면 된다.
+  const listed = execFileSync("bash", ["-c", `cd '${outDir}' && tar tzf release.tar.gz`], { encoding: "utf8" });
+
+  assert.ok(/src\/app\.js/.test(listed), "커밋된 파일은 담겨야 한다");
+  assert.doesNotMatch(listed, /\.env\.local\.bak/, "★ 비밀키가 든 미추적 파일이 담기면 안 된다");
+  assert.doesNotMatch(listed, /screenshot\.png/, "미추적 파일은 담기지 않는다");
+  assert.doesNotMatch(listed, /docs\//, "export-ignore된 경로는 빠진다");
+
+  // 담긴 내용은 작업 트리가 아니라 HEAD의 것이어야 한다
+  const extract = mkdtempSync(path.join(tmpdir(), "unpack-")).replaceAll("\\", "/");
+  execFileSync("bash", ["-c", `cd '${outDir}' && tar xzf release.tar.gz -C '${extract}'`]);
+  assert.equal(
+    readFileSync(`${extract}/src/app.js`, "utf8"),
+    "커밋된 코드",
+    "★ 작업 트리가 아니라 커밋된 내용이 배포돼야 한다",
+  );
+
+  rmSync(dir, { recursive: true, force: true });
+  rmSync(extract, { recursive: true, force: true });
+  rmSync(outDir, { recursive: true, force: true });
+  console.log("package_release: 커밋된 트리만 패키징 확인");
+}

@@ -208,3 +208,18 @@ assert_deployable() {
 
     echo "${sha}"
 }
+
+# 커밋된 트리를 배포 아카이브로 만든다.
+#
+# 예전에는 작업 트리를 tar하고 제외 목록으로 걸러냈다. 그 방식은 두더지잡기라
+# 반드시 샌다 — 실제로 API 키가 든 `.env.local.bak-20260805-203125`가 제외 목록
+# (`.env.local` 정확히 일치)을 빠져나가 서버로 갈 뻔했다. `.omo/` 138MB도 함께.
+#
+# HEAD를 아카이브하면 "배포된 것 = 커밋된 것"이 정의로 성립한다. 미추적 파일은
+# 존재 자체가 배포와 무관해지므로 제외 목록을 관리할 필요도 없다.
+# 서버에 필요 없는 경로는 .gitattributes의 export-ignore로 뺀다.
+package_release() {
+    local dir="$1"
+    local output="$2"
+    git -C "${dir}" archive --format=tar.gz -o "${output}" HEAD
+}
