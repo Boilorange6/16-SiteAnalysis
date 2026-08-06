@@ -315,3 +315,97 @@ console.log("test-release-manager: all assertions passed");
   rmSync(root, { recursive: true, force: true });
   console.log("link_shared_artifacts: 빈 공유 경로도 안전 확인");
 }
+
+// ── 배포 전 게이트: 무엇을 배포했는지 나중에 알 수 있어야 한다 ────────────────
+// deploy.sh는 작업 트리를 통째로 tar한다. 커밋되지 않았거나 푸시되지 않은 상태로
+// 배포하면 릴리스와 커밋의 연결이 끊긴다 — "이 릴리스에 뭐가 들었나"에 답할 수 없다.
+// 실제로 2026-08-05에 운영보다 뒤처진 브랜치를 배포할 뻔한 것을 사람이 겨우 잡았다.
+{
+  const mkRepo = (label) => {
+    const dir = mkdtempSync(path.join(tmpdir(), `gate-${label}-`)).replaceAll("\\", "/");
+    const git = (cmd) => execFileSync("bash", ["-c", `cd '${dir}' && ${cmd}`], { encoding: "utf8" });
+    git("git init -q -b main && git config user.email t@t && git config user.name t");
+    writeFileSync(`${dir}/f.txt`, "v1");
+    git("git add -A && git commit -qm first");
+    return { dir, git };
+  };
+  // 원격을 흉내낸다: bare 저장소를 만들고 push
+  const withRemote = (repo) => {
+    const remote = `${repo.dir}-remote.git`;
+    execFileSync("bash", ["-c", `git init -q --bare '${remote}'`]);
+    repo.git(`git remote add origin '${remote}' && git push -q -u origin main`);
+    return remote;
+  };
+
+  // 깨끗하고 푸시된 저장소는 통과하고, 커밋 SHA를 알려준다
+  {
+    const repo = mkRepo("ok");
+    withRemote(repo);
+    const sha = runLib(`assert_deployable '${repo.dir}'`);
+    assert.match(sha, /^[0-9a-f]{40}$/, `커밋 SHA를 출력해야 한다: ${sha}`);
+    const head = repo.git("git rev-parse HEAD").trim();
+    assert.equal(sha, head, "HEAD와 같아야 한다");
+    console.log("assert_deployable: 정상 저장소 통과 확인");
+  }
+
+  // 추적 파일이 수정돼 있으면 거부 — 커밋 안 된 변경이 운영에 실려 간다
+  {
+    const repo = mkRepo("dirty");
+    withRemote(repo);
+    writeFileSync(`${repo.dir}/f.txt`, "미커밋 변경");
+    assert.throws(
+      () => runLib(`assert_deployable '${repo.dir}'`),
+      (err) => /커밋되지 않은/.test(String(err.stderr)),
+      "더러운 트리는 거부해야 한다",
+    );
+    console.log("assert_deployable: 미커밋 변경 거부 확인");
+  }
+
+  // 추적되지 않는 파일은 거부하지 않는다 — tar가 담기는 하지만 스크린샷·임시 zip까지
+  // 막으면 게이트가 늘 걸려 결국 우회된다. 걸러야 할 것은 .gitignore가 할 일이다.
+  {
+    const repo = mkRepo("untracked");
+    withRemote(repo);
+    writeFileSync(`${repo.dir}/screenshot.png`, "x");
+    assert.match(runLib(`assert_deployable '${repo.dir}'`), /^[0-9a-f]{40}$/);
+    console.log("assert_deployable: 미추적 파일은 통과 확인");
+  }
+
+  // 푸시되지 않은 커밋은 거부 — 원격에 없으면 그 릴리스는 재현할 수 없다
+  {
+    const repo = mkRepo("unpushed");
+    withRemote(repo);
+    writeFileSync(`${repo.dir}/f.txt`, "v2");
+    repo.git("git add -A && git commit -qm second");
+    assert.throws(
+      () => runLib(`assert_deployable '${repo.dir}'`),
+      (err) => /푸시되지 않은/.test(String(err.stderr)),
+      "푸시 안 된 커밋은 거부해야 한다",
+    );
+    // 푸시하면 통과한다
+    repo.git("git push -q origin main");
+    assert.match(runLib(`assert_deployable '${repo.dir}'`), /^[0-9a-f]{40}$/);
+    console.log("assert_deployable: 미푸시 커밋 거부 확인");
+  }
+
+  // 원격이 아예 없으면 거부
+  {
+    const repo = mkRepo("noremote");
+    assert.throws(
+      () => runLib(`assert_deployable '${repo.dir}'`),
+      (err) => /푸시되지 않은|원격/.test(String(err.stderr)),
+    );
+    console.log("assert_deployable: 원격 없음 거부 확인");
+  }
+
+  // 비상 우회구가 있어야 한다 — 없으면 급할 때 게이트를 주석 처리하고,
+  // 그렇게 사라진 게이트는 돌아오지 않는다. 대신 통과 사실이 눈에 띄게 남는다.
+  {
+    const repo = mkRepo("override");
+    withRemote(repo);
+    writeFileSync(`${repo.dir}/f.txt`, "미커밋");
+    const out = runLib(`ALLOW_DIRTY_DEPLOY=1 assert_deployable '${repo.dir}' 2>&1`);
+    assert.match(out, /경고/, "우회 시 경고가 보여야 한다");
+    console.log("assert_deployable: 비상 우회 확인");
+  }
+}

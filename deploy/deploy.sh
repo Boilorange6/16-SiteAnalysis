@@ -15,7 +15,13 @@ HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:3002/site/login}"
 KEEP_RELEASES="${KEEP_RELEASES:-3}"
 RELEASE_STAMP="$(date +%Y%m%d-%H%M%S)"
 
+source "${LOCAL_DIR}/deploy/release-lib.sh"
+
 echo "=== SiteAnalysis Deploy (release ${RELEASE_STAMP}) ==="
+
+# ── 배포 게이트 ── 무엇을 배포했는지 나중에 커밋으로 되짚을 수 있어야 한다
+RELEASE_SHA="$(assert_deployable "${LOCAL_DIR}")"
+echo "Deploying commit ${RELEASE_SHA:0:7} ($(git -C "${LOCAL_DIR}" rev-parse --abbrev-ref HEAD))"
 
 # ── 로컬 사전 검증 ── 서버에서 깨지는 것보다 여기서 막는 편이 싸다
 if [[ "${SKIP_LOCAL_CHECKS:-0}" != "1" ]]; then
@@ -55,7 +61,7 @@ scp -i "${SSH_KEY}" "${LOCAL_DIR}/deploy/release-lib.sh" "${REMOTE_HOST}:${REMOT
 
 echo "Building and deploying on server..."
 ssh "${SSH_OPTS[@]}" "${REMOTE_HOST}" \
-    "APP_NAME='${APP_NAME}' REMOTE_DIR='${REMOTE_DIR}' RELEASE_STAMP='${RELEASE_STAMP}' HEALTH_URL='${HEALTH_URL}' KEEP_RELEASES='${KEEP_RELEASES}' bash -s" <<'EOF'
+    "APP_NAME='${APP_NAME}' REMOTE_DIR='${REMOTE_DIR}' RELEASE_STAMP='${RELEASE_STAMP}' RELEASE_SHA='${RELEASE_SHA}' HEALTH_URL='${HEALTH_URL}' KEEP_RELEASES='${KEEP_RELEASES}' bash -s" <<'EOF'
 set -Eeuo pipefail
 
 source "${REMOTE_DIR}/release-lib.sh"
@@ -75,6 +81,7 @@ fi
 ln -sfn "${REMOTE_DIR}/.env" "${RELEASE_DIR}/.env"
 ln -sfn "${REMOTE_DIR}/logs" "${RELEASE_DIR}/logs"
 link_shared_artifacts "${RELEASE_DIR}" "${REMOTE_DIR}"
+echo "${RELEASE_SHA}" > "${RELEASE_DIR}/RELEASE_SHA"
 
 # ── 빌드 (실패해도 current는 이전 릴리스를 가리킨 채 살아 있다) ──
 cd "${RELEASE_DIR}"

@@ -150,3 +150,61 @@ link_shared_artifacts() {
     rm -rf "${release_dir}/${relative}"
     ln -sfn "${shared_dir}/${relative}" "${release_dir}/${relative}"
 }
+
+# 배포 가능한 상태인지 확인하고 커밋 SHA를 출력한다.
+#
+# deploy.sh는 작업 트리를 통째로 tar한다. 편하지만 릴리스와 커밋의 연결이 끊긴다 —
+# "release 20260805-225153에 뭐가 들었나"에 저장소만 보고 답할 수 없다.
+# 2026-08-05에는 운영보다 뒤처진 브랜치를 배포할 뻔한 것을 배포 직전에 사람이 겨우
+# 잡았다. 다음번엔 못 잡는다. 그래서 기계가 본다.
+#
+#   1. 추적 파일에 미커밋 변경이 있으면 거부 (미추적 파일은 봐준다 — 스크린샷·임시
+#      파일까지 막으면 게이트가 늘 걸리고, 늘 걸리는 게이트는 결국 우회된다)
+#   2. HEAD가 원격에 없으면 거부 (원격에 없는 커밋은 그 릴리스를 재현할 수 없다)
+#
+# ALLOW_DIRTY_DEPLOY=1로 우회할 수 있다. 우회구가 없으면 급할 때 이 호출을 주석
+# 처리하게 되고, 그렇게 사라진 게이트는 돌아오지 않는다.
+assert_deployable() {
+    local dir="${1:-.}"
+    local sha
+    sha="$(git -C "${dir}" rev-parse HEAD 2>/dev/null)" || {
+        echo "git 저장소가 아닙니다: ${dir}" >&2
+        return 1
+    }
+
+    local dirty=""
+    git -C "${dir}" diff --quiet || dirty="yes"
+    git -C "${dir}" diff --cached --quiet || dirty="yes"
+
+    local pushed=""
+    if git -C "${dir}" branch -r --contains HEAD 2>/dev/null | grep -q .; then
+        pushed="yes"
+    fi
+
+    if [[ -n "${ALLOW_DIRTY_DEPLOY:-}" ]]; then
+        if [[ -n "${dirty}" || -z "${pushed}" ]]; then
+            echo "경고: ALLOW_DIRTY_DEPLOY로 배포 게이트를 우회합니다." >&2
+            [[ -n "${dirty}" ]] && echo "경고:   - 커밋되지 않은 변경이 있습니다" >&2
+            [[ -z "${pushed}" ]] && echo "경고:   - 이 커밋은 원격에 없습니다" >&2
+            echo "경고: 이 릴리스는 커밋으로 재현할 수 없습니다." >&2
+        fi
+        echo "${sha}"
+        return 0
+    fi
+
+    if [[ -n "${dirty}" ]]; then
+        echo "커밋되지 않은 변경이 있습니다. 배포는 커밋된 상태에서만 합니다." >&2
+        git -C "${dir}" diff --name-only HEAD | sed 's/^/  /' >&2
+        echo "  → 커밋 후 다시 실행하거나, 비상시 ALLOW_DIRTY_DEPLOY=1을 붙이세요." >&2
+        return 1
+    fi
+
+    if [[ -z "${pushed}" ]]; then
+        echo "푸시되지 않은 커밋입니다: ${sha:0:7}" >&2
+        echo "  원격에 없는 커밋은 나중에 이 릴리스를 재현할 수 없습니다." >&2
+        echo "  → git push 후 다시 실행하거나, 비상시 ALLOW_DIRTY_DEPLOY=1을 붙이세요." >&2
+        return 1
+    fi
+
+    echo "${sha}"
+}
