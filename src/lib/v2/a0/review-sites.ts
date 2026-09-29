@@ -20,5 +20,5 @@ export const REVIEW_SITES: readonly ReviewSite[] = [
   { id: "marinecity", name: "해운대 마린시티", address: "부산광역시 해운대구 우동 마린시티", center: [129.1445, 35.156], checks: "초고층, 해안" },
   { id: "bokjeong", name: "복정역", address: "서울특별시 송파구 장지동 복정역", center: [127.1265, 37.47], checks: "시군구 경계를 넘는 반경(서울·성남)" },
   { id: "sejong", name: "세종 정부청사", address: "세종특별자치시 도움6로 11", center: [127.265, 36.504], checks: "계획도시, 신규 지역" },
-  { id: "wanju", name: "완주 봉동읍", address: "전북특별자치도 완주군 봉동읍", center: [127.164, 35.944], checks: "농촌·산지, 자료 공백" },
+  { id: "wanju", name: "완주 봉동읍", address: "전북특별자치도 완주군 봉동읍", center: [127.166, 35.9419], checks: "농촌·산지, 자료 공백" },
 ];

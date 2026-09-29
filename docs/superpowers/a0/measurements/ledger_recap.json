@@ -1,0 +1,3529 @@
+{
+  "file": ".cache/v2/raw/ledger_recap/recap_202608.csv",
+  "bytes": 222085384,
+  "encoding": "utf-8",
+  "measuredAt": "2026-09-29T09:37:29.352Z",
+  "rows": 620966,
+  "fields": [
+    {
+      "field": "관리_건축물대장_PK",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "대장_구분_코드",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "대장_구분_코드_명",
+      "filled": 620912,
+      "total": 620966,
+      "fillRate": 0.9999130387170956
+    },
+    {
+      "field": "대장_종류_코드",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "대장_종류_코드_명",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "신_구_대장_구분_코드",
+      "filled": 619394,
+      "total": 620966,
+      "fillRate": 0.9974684604310059
+    },
+    {
+      "field": "신_구_대장_구분_코드_명",
+      "filled": 619394,
+      "total": 620966,
+      "fillRate": 0.9974684604310059
+    },
+    {
+      "field": "대지_위치",
+      "filled": 620962,
+      "total": 620966,
+      "fillRate": 0.9999935584234886
+    },
+    {
+      "field": "도로명_대지_위치",
+      "filled": 391940,
+      "total": 620966,
+      "fillRate": 0.6311778744729986
+    },
+    {
+      "field": "건물_명",
+      "filled": 104133,
+      "total": 620966,
+      "fillRate": 0.16769517171632586
+    },
+    {
+      "field": "시군구_코드",
+      "filled": 620965,
+      "total": 620966,
+      "fillRate": 0.9999983896058722
+    },
+    {
+      "field": "법정동_코드",
+      "filled": 620965,
+      "total": 620966,
+      "fillRate": 0.9999983896058722
+    },
+    {
+      "field": "대지_구분_코드",
+      "filled": 620965,
+      "total": 620966,
+      "fillRate": 0.9999983896058722
+    },
+    {
+      "field": "번",
+      "filled": 620965,
+      "total": 620966,
+      "fillRate": 0.9999983896058722
+    },
+    {
+      "field": "지",
+      "filled": 620958,
+      "total": 620966,
+      "fillRate": 0.9999871168469772
+    },
+    {
+      "field": "특수지_명",
+      "filled": 1425,
+      "total": 620966,
+      "fillRate": 0.0022948116321988643
+    },
+    {
+      "field": "블록",
+      "filled": 936,
+      "total": 620966,
+      "fillRate": 0.0015073289036758857
+    },
+    {
+      "field": "로트",
+      "filled": 643,
+      "total": 620966,
+      "fillRate": 0.001035483424213242
+    },
+    {
+      "field": "외필지_수",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "새주소_도로_코드",
+      "filled": 391940,
+      "total": 620966,
+      "fillRate": 0.6311778744729986
+    },
+    {
+      "field": "새주소_법정동_코드",
+      "filled": 391665,
+      "total": 620966,
+      "fillRate": 0.6307350160878373
+    },
+    {
+      "field": "새주소_지상지하_코드",
+      "filled": 612280,
+      "total": 620966,
+      "fillRate": 0.986012116605418
+    },
+    {
+      "field": "새주소_본_번",
+      "filled": 422407,
+      "total": 620966,
+      "fillRate": 0.6802417523664742
+    },
+    {
+      "field": "새주소_부_번",
+      "filled": 298802,
+      "total": 620966,
+      "fillRate": 0.48118898619248074
+    },
+    {
+      "field": "대지_면적(㎡)",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "건축_면적(㎡)",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "건폐_율(%)",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "연면적(㎡)",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "용적_률_산정_연면적(㎡)",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "용적_률(%)",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "주_용도_코드",
+      "filled": 601299,
+      "total": 620966,
+      "fillRate": 0.9683283786874
+    },
+    {
+      "field": "주_용도_코드_명",
+      "filled": 601291,
+      "total": 620966,
+      "fillRate": 0.9683154955343771
+    },
+    {
+      "field": "기타_용도",
+      "filled": 563159,
+      "total": 620966,
+      "fillRate": 0.9069079466508634
+    },
+    {
+      "field": "세대_수(세대)",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "가구_수(가구)",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "주_건축물_수",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "부속_건축물_수",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "부속_건축물_면적(㎡)",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "총_주차_수",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "옥내_기계식_대수(대)",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "옥내_기계식_면적(㎡)",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "옥외_기계식_대수(대)",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "옥외_기계식_면적(㎡)",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "옥내_자주식_대수(대)",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "옥내_자주식_면적(㎡)",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "옥외_자주식_대수(대)",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "옥외_자주식_면적(㎡)",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "허가_일",
+      "filled": 254803,
+      "total": 620966,
+      "fillRate": 0.4103332549608191
+    },
+    {
+      "field": "착공_일",
+      "filled": 238265,
+      "total": 620966,
+      "fillRate": 0.3837005568742894
+    },
+    {
+      "field": "사용승인_일",
+      "filled": 276056,
+      "total": 620966,
+      "fillRate": 0.4445589613602033
+    },
+    {
+      "field": "허가번호_년",
+      "filled": 237109,
+      "total": 620966,
+      "fillRate": 0.3818389412624846
+    },
+    {
+      "field": "허가번호_기관_코드",
+      "filled": 236953,
+      "total": 620966,
+      "fillRate": 0.3815877197785386
+    },
+    {
+      "field": "허가번호_기관_코드_명",
+      "filled": 236927,
+      "total": 620966,
+      "fillRate": 0.3815458495312143
+    },
+    {
+      "field": "허가번호_구분_코드",
+      "filled": 237658,
+      "total": 620966,
+      "fillRate": 0.3827230476386791
+    },
+    {
+      "field": "허가번호_구분_코드_명",
+      "filled": 237658,
+      "total": 620966,
+      "fillRate": 0.3827230476386791
+    },
+    {
+      "field": "호_수(호)",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "에너지효율_등급",
+      "filled": 2486,
+      "total": 620966,
+      "fillRate": 0.004003439801857107
+    },
+    {
+      "field": "에너지절감_율",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "에너지_EPI점수",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "친환경_건축물_등급",
+      "filled": 2185,
+      "total": 620966,
+      "fillRate": 0.003518711169371592
+    },
+    {
+      "field": "친환경_건축물_인증점수",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "지능형_건축물_등급",
+      "filled": 16,
+      "total": 620966,
+      "fillRate": 0.000025766306045741633
+    },
+    {
+      "field": "지능형_건축물_인증점수",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    },
+    {
+      "field": "생성_일자",
+      "filled": 620966,
+      "total": 620966,
+      "fillRate": 1
+    }
+  ],
+  "byRegion": {
+    "11": 19348,
+    "12": 57511,
+    "26": 24280,
+    "27": 10551,
+    "28": 17150,
+    "30": 7283,
+    "31": 10872,
+    "36": 4289,
+    "41": 133722,
+    "43": 40474,
+    "44": 52654,
+    "47": 81956,
+    "48": 64680,
+    "50": 20663,
+    "51": 35122,
+    "52": 40403,
+    "99": 7,
+    "(없음)": 1
+  },
+  "bySite": {
+    "guryong": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "관리_건축물대장_PK",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_구분_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_종류_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_종류_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "신_구_대장_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "신_구_대장_구분_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대지_위치",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "도로명_대지_위치",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건물_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "시군구_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "법정동_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대지_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "번",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "특수지_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "블록",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "로트",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "외필지_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_도로_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_법정동_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_지상지하_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_본_번",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_부_번",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대지_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건축_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건폐_율(%)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "연면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "용적_률_산정_연면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "용적_률(%)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주_용도_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주_용도_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "기타_용도",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "세대_수(세대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "가구_수(가구)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주_건축물_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "부속_건축물_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "부속_건축물_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "총_주차_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_기계식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_기계식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_기계식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_기계식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_자주식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_자주식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_자주식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_자주식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가_일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "착공_일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "사용승인_일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_년",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_기관_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_기관_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_구분_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "호_수(호)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "에너지효율_등급",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "에너지절감_율",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "에너지_EPI점수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "친환경_건축물_등급",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "친환경_건축물_인증점수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지능형_건축물_등급",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지능형_건축물_인증점수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "생성_일자",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "dasan": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "관리_건축물대장_PK",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_구분_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_종류_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_종류_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "신_구_대장_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "신_구_대장_구분_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대지_위치",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "도로명_대지_위치",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건물_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "시군구_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "법정동_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대지_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "번",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "특수지_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "블록",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "로트",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "외필지_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_도로_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_법정동_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_지상지하_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_본_번",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_부_번",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대지_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건축_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건폐_율(%)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "연면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "용적_률_산정_연면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "용적_률(%)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주_용도_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주_용도_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "기타_용도",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "세대_수(세대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "가구_수(가구)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주_건축물_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "부속_건축물_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "부속_건축물_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "총_주차_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_기계식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_기계식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_기계식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_기계식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_자주식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_자주식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_자주식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_자주식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가_일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "착공_일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "사용승인_일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_년",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_기관_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_기관_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_구분_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "호_수(호)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "에너지효율_등급",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "에너지절감_율",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "에너지_EPI점수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "친환경_건축물_등급",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "친환경_건축물_인증점수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지능형_건축물_등급",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지능형_건축물_인증점수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "생성_일자",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "cheongwadae": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "관리_건축물대장_PK",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_구분_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_종류_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_종류_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "신_구_대장_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "신_구_대장_구분_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대지_위치",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "도로명_대지_위치",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건물_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "시군구_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "법정동_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대지_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "번",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "특수지_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "블록",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "로트",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "외필지_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_도로_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_법정동_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_지상지하_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_본_번",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_부_번",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대지_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건축_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건폐_율(%)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "연면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "용적_률_산정_연면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "용적_률(%)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주_용도_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주_용도_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "기타_용도",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "세대_수(세대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "가구_수(가구)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주_건축물_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "부속_건축물_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "부속_건축물_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "총_주차_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_기계식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_기계식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_기계식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_기계식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_자주식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_자주식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_자주식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_자주식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가_일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "착공_일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "사용승인_일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_년",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_기관_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_기관_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_구분_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "호_수(호)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "에너지효율_등급",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "에너지절감_율",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "에너지_EPI점수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "친환경_건축물_등급",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "친환경_건축물_인증점수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지능형_건축물_등급",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지능형_건축물_인증점수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "생성_일자",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "jeongja": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "관리_건축물대장_PK",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_구분_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_종류_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_종류_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "신_구_대장_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "신_구_대장_구분_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대지_위치",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "도로명_대지_위치",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건물_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "시군구_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "법정동_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대지_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "번",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "특수지_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "블록",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "로트",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "외필지_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_도로_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_법정동_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_지상지하_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_본_번",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_부_번",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대지_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건축_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건폐_율(%)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "연면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "용적_률_산정_연면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "용적_률(%)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주_용도_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주_용도_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "기타_용도",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "세대_수(세대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "가구_수(가구)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주_건축물_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "부속_건축물_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "부속_건축물_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "총_주차_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_기계식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_기계식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_기계식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_기계식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_자주식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_자주식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_자주식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_자주식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가_일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "착공_일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "사용승인_일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_년",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_기관_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_기관_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_구분_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "호_수(호)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "에너지효율_등급",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "에너지절감_율",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "에너지_EPI점수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "친환경_건축물_등급",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "친환경_건축물_인증점수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지능형_건축물_등급",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지능형_건축물_인증점수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "생성_일자",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "marinecity": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "관리_건축물대장_PK",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_구분_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_종류_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_종류_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "신_구_대장_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "신_구_대장_구분_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대지_위치",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "도로명_대지_위치",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건물_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "시군구_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "법정동_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대지_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "번",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "특수지_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "블록",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "로트",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "외필지_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_도로_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_법정동_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_지상지하_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_본_번",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_부_번",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대지_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건축_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건폐_율(%)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "연면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "용적_률_산정_연면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "용적_률(%)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주_용도_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주_용도_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "기타_용도",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "세대_수(세대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "가구_수(가구)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주_건축물_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "부속_건축물_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "부속_건축물_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "총_주차_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_기계식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_기계식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_기계식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_기계식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_자주식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_자주식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_자주식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_자주식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가_일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "착공_일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "사용승인_일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_년",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_기관_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_기관_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_구분_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "호_수(호)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "에너지효율_등급",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "에너지절감_율",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "에너지_EPI점수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "친환경_건축물_등급",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "친환경_건축물_인증점수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지능형_건축물_등급",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지능형_건축물_인증점수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "생성_일자",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "bokjeong": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "관리_건축물대장_PK",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_구분_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_종류_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_종류_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "신_구_대장_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "신_구_대장_구분_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대지_위치",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "도로명_대지_위치",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건물_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "시군구_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "법정동_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대지_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "번",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "특수지_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "블록",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "로트",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "외필지_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_도로_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_법정동_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_지상지하_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_본_번",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_부_번",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대지_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건축_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건폐_율(%)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "연면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "용적_률_산정_연면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "용적_률(%)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주_용도_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주_용도_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "기타_용도",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "세대_수(세대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "가구_수(가구)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주_건축물_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "부속_건축물_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "부속_건축물_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "총_주차_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_기계식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_기계식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_기계식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_기계식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_자주식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_자주식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_자주식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_자주식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가_일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "착공_일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "사용승인_일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_년",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_기관_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_기관_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_구분_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "호_수(호)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "에너지효율_등급",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "에너지절감_율",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "에너지_EPI점수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "친환경_건축물_등급",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "친환경_건축물_인증점수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지능형_건축물_등급",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지능형_건축물_인증점수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "생성_일자",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "sejong": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "관리_건축물대장_PK",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_구분_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_종류_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_종류_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "신_구_대장_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "신_구_대장_구분_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대지_위치",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "도로명_대지_위치",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건물_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "시군구_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "법정동_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대지_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "번",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "특수지_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "블록",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "로트",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "외필지_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_도로_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_법정동_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_지상지하_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_본_번",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_부_번",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대지_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건축_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건폐_율(%)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "연면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "용적_률_산정_연면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "용적_률(%)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주_용도_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주_용도_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "기타_용도",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "세대_수(세대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "가구_수(가구)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주_건축물_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "부속_건축물_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "부속_건축물_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "총_주차_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_기계식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_기계식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_기계식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_기계식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_자주식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_자주식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_자주식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_자주식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가_일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "착공_일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "사용승인_일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_년",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_기관_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_기관_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_구분_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "호_수(호)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "에너지효율_등급",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "에너지절감_율",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "에너지_EPI점수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "친환경_건축물_등급",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "친환경_건축물_인증점수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지능형_건축물_등급",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지능형_건축물_인증점수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "생성_일자",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "wanju": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "관리_건축물대장_PK",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_구분_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_종류_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대장_종류_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "신_구_대장_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "신_구_대장_구분_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대지_위치",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "도로명_대지_위치",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건물_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "시군구_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "법정동_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대지_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "번",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "특수지_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "블록",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "로트",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "외필지_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_도로_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_법정동_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_지상지하_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_본_번",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "새주소_부_번",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "대지_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건축_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건폐_율(%)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "연면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "용적_률_산정_연면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "용적_률(%)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주_용도_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주_용도_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "기타_용도",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "세대_수(세대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "가구_수(가구)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주_건축물_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "부속_건축물_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "부속_건축물_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "총_주차_수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_기계식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_기계식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_기계식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_기계식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_자주식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥내_자주식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_자주식_대수(대)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "옥외_자주식_면적(㎡)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가_일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "착공_일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "사용승인_일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_년",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_기관_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_기관_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_구분_코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "허가번호_구분_코드_명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "호_수(호)",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "에너지효율_등급",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "에너지절감_율",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "에너지_EPI점수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "친환경_건축물_등급",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "친환경_건축물_인증점수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지능형_건축물_등급",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지능형_건축물_인증점수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "생성_일자",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    }
+  },
+  "pointBasis": "none",
+  "outOfRangePoints": 0
+}

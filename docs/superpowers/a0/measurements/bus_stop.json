@@ -1,0 +1,558 @@
+{
+  "file": ".cache/v2/raw/bus_stop/bus_stop_20251209.csv",
+  "bytes": 20735435,
+  "encoding": "euc-kr",
+  "measuredAt": "2026-09-29T09:43:58.095Z",
+  "rows": 227065,
+  "fields": [
+    {
+      "field": "정류장번호",
+      "filled": 227065,
+      "total": 227065,
+      "fillRate": 1
+    },
+    {
+      "field": "정류장명",
+      "filled": 227063,
+      "total": 227065,
+      "fillRate": 0.9999911919494417
+    },
+    {
+      "field": "위도",
+      "filled": 227060,
+      "total": 227065,
+      "fillRate": 0.9999779798736045
+    },
+    {
+      "field": "경도",
+      "filled": 227060,
+      "total": 227065,
+      "fillRate": 0.9999779798736045
+    },
+    {
+      "field": "정보수집일",
+      "filled": 227065,
+      "total": 227065,
+      "fillRate": 1
+    },
+    {
+      "field": "모바일단축번호",
+      "filled": 202923,
+      "total": 227065,
+      "fillRate": 0.8936780217118446
+    },
+    {
+      "field": "도시코드",
+      "filled": 227065,
+      "total": 227065,
+      "fillRate": 1
+    },
+    {
+      "field": "도시명",
+      "filled": 227065,
+      "total": 227065,
+      "fillRate": 1
+    },
+    {
+      "field": "관리도시명",
+      "filled": 227065,
+      "total": 227065,
+      "fillRate": 1
+    }
+  ],
+  "byRegion": {
+    "11": 16980,
+    "12": 3194,
+    "21": 9975,
+    "22": 5937,
+    "23": 9278,
+    "24": 4267,
+    "25": 3245,
+    "26": 3960,
+    "31": 38089,
+    "32": 8348,
+    "33": 13054,
+    "34": 24342,
+    "35": 13180,
+    "36": 18483,
+    "37": 29791,
+    "38": 20642,
+    "39": 4300
+  },
+  "bySite": {
+    "guryong": {
+      "rows": 98,
+      "fields": [
+        {
+          "field": "정류장번호",
+          "filled": 98,
+          "total": 98,
+          "fillRate": 1
+        },
+        {
+          "field": "정류장명",
+          "filled": 98,
+          "total": 98,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 98,
+          "total": 98,
+          "fillRate": 1
+        },
+        {
+          "field": "경도",
+          "filled": 98,
+          "total": 98,
+          "fillRate": 1
+        },
+        {
+          "field": "정보수집일",
+          "filled": 98,
+          "total": 98,
+          "fillRate": 1
+        },
+        {
+          "field": "모바일단축번호",
+          "filled": 98,
+          "total": 98,
+          "fillRate": 1
+        },
+        {
+          "field": "도시코드",
+          "filled": 98,
+          "total": 98,
+          "fillRate": 1
+        },
+        {
+          "field": "도시명",
+          "filled": 98,
+          "total": 98,
+          "fillRate": 1
+        },
+        {
+          "field": "관리도시명",
+          "filled": 98,
+          "total": 98,
+          "fillRate": 1
+        }
+      ]
+    },
+    "dasan": {
+      "rows": 78,
+      "fields": [
+        {
+          "field": "정류장번호",
+          "filled": 78,
+          "total": 78,
+          "fillRate": 1
+        },
+        {
+          "field": "정류장명",
+          "filled": 78,
+          "total": 78,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 78,
+          "total": 78,
+          "fillRate": 1
+        },
+        {
+          "field": "경도",
+          "filled": 78,
+          "total": 78,
+          "fillRate": 1
+        },
+        {
+          "field": "정보수집일",
+          "filled": 78,
+          "total": 78,
+          "fillRate": 1
+        },
+        {
+          "field": "모바일단축번호",
+          "filled": 78,
+          "total": 78,
+          "fillRate": 1
+        },
+        {
+          "field": "도시코드",
+          "filled": 78,
+          "total": 78,
+          "fillRate": 1
+        },
+        {
+          "field": "도시명",
+          "filled": 78,
+          "total": 78,
+          "fillRate": 1
+        },
+        {
+          "field": "관리도시명",
+          "filled": 78,
+          "total": 78,
+          "fillRate": 1
+        }
+      ]
+    },
+    "cheongwadae": {
+      "rows": 43,
+      "fields": [
+        {
+          "field": "정류장번호",
+          "filled": 43,
+          "total": 43,
+          "fillRate": 1
+        },
+        {
+          "field": "정류장명",
+          "filled": 43,
+          "total": 43,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 43,
+          "total": 43,
+          "fillRate": 1
+        },
+        {
+          "field": "경도",
+          "filled": 43,
+          "total": 43,
+          "fillRate": 1
+        },
+        {
+          "field": "정보수집일",
+          "filled": 43,
+          "total": 43,
+          "fillRate": 1
+        },
+        {
+          "field": "모바일단축번호",
+          "filled": 43,
+          "total": 43,
+          "fillRate": 1
+        },
+        {
+          "field": "도시코드",
+          "filled": 43,
+          "total": 43,
+          "fillRate": 1
+        },
+        {
+          "field": "도시명",
+          "filled": 43,
+          "total": 43,
+          "fillRate": 1
+        },
+        {
+          "field": "관리도시명",
+          "filled": 43,
+          "total": 43,
+          "fillRate": 1
+        }
+      ]
+    },
+    "jeongja": {
+      "rows": 72,
+      "fields": [
+        {
+          "field": "정류장번호",
+          "filled": 72,
+          "total": 72,
+          "fillRate": 1
+        },
+        {
+          "field": "정류장명",
+          "filled": 72,
+          "total": 72,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 72,
+          "total": 72,
+          "fillRate": 1
+        },
+        {
+          "field": "경도",
+          "filled": 72,
+          "total": 72,
+          "fillRate": 1
+        },
+        {
+          "field": "정보수집일",
+          "filled": 72,
+          "total": 72,
+          "fillRate": 1
+        },
+        {
+          "field": "모바일단축번호",
+          "filled": 72,
+          "total": 72,
+          "fillRate": 1
+        },
+        {
+          "field": "도시코드",
+          "filled": 72,
+          "total": 72,
+          "fillRate": 1
+        },
+        {
+          "field": "도시명",
+          "filled": 72,
+          "total": 72,
+          "fillRate": 1
+        },
+        {
+          "field": "관리도시명",
+          "filled": 72,
+          "total": 72,
+          "fillRate": 1
+        }
+      ]
+    },
+    "marinecity": {
+      "rows": 38,
+      "fields": [
+        {
+          "field": "정류장번호",
+          "filled": 38,
+          "total": 38,
+          "fillRate": 1
+        },
+        {
+          "field": "정류장명",
+          "filled": 38,
+          "total": 38,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 38,
+          "total": 38,
+          "fillRate": 1
+        },
+        {
+          "field": "경도",
+          "filled": 38,
+          "total": 38,
+          "fillRate": 1
+        },
+        {
+          "field": "정보수집일",
+          "filled": 38,
+          "total": 38,
+          "fillRate": 1
+        },
+        {
+          "field": "모바일단축번호",
+          "filled": 17,
+          "total": 38,
+          "fillRate": 0.4473684210526316
+        },
+        {
+          "field": "도시코드",
+          "filled": 38,
+          "total": 38,
+          "fillRate": 1
+        },
+        {
+          "field": "도시명",
+          "filled": 38,
+          "total": 38,
+          "fillRate": 1
+        },
+        {
+          "field": "관리도시명",
+          "filled": 38,
+          "total": 38,
+          "fillRate": 1
+        }
+      ]
+    },
+    "bokjeong": {
+      "rows": 67,
+      "fields": [
+        {
+          "field": "정류장번호",
+          "filled": 67,
+          "total": 67,
+          "fillRate": 1
+        },
+        {
+          "field": "정류장명",
+          "filled": 67,
+          "total": 67,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 67,
+          "total": 67,
+          "fillRate": 1
+        },
+        {
+          "field": "경도",
+          "filled": 67,
+          "total": 67,
+          "fillRate": 1
+        },
+        {
+          "field": "정보수집일",
+          "filled": 67,
+          "total": 67,
+          "fillRate": 1
+        },
+        {
+          "field": "모바일단축번호",
+          "filled": 67,
+          "total": 67,
+          "fillRate": 1
+        },
+        {
+          "field": "도시코드",
+          "filled": 67,
+          "total": 67,
+          "fillRate": 1
+        },
+        {
+          "field": "도시명",
+          "filled": 67,
+          "total": 67,
+          "fillRate": 1
+        },
+        {
+          "field": "관리도시명",
+          "filled": 67,
+          "total": 67,
+          "fillRate": 1
+        }
+      ]
+    },
+    "sejong": {
+      "rows": 125,
+      "fields": [
+        {
+          "field": "정류장번호",
+          "filled": 125,
+          "total": 125,
+          "fillRate": 1
+        },
+        {
+          "field": "정류장명",
+          "filled": 125,
+          "total": 125,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 125,
+          "total": 125,
+          "fillRate": 1
+        },
+        {
+          "field": "경도",
+          "filled": 125,
+          "total": 125,
+          "fillRate": 1
+        },
+        {
+          "field": "정보수집일",
+          "filled": 125,
+          "total": 125,
+          "fillRate": 1
+        },
+        {
+          "field": "모바일단축번호",
+          "filled": 125,
+          "total": 125,
+          "fillRate": 1
+        },
+        {
+          "field": "도시코드",
+          "filled": 125,
+          "total": 125,
+          "fillRate": 1
+        },
+        {
+          "field": "도시명",
+          "filled": 125,
+          "total": 125,
+          "fillRate": 1
+        },
+        {
+          "field": "관리도시명",
+          "filled": 125,
+          "total": 125,
+          "fillRate": 1
+        }
+      ]
+    },
+    "wanju": {
+      "rows": 21,
+      "fields": [
+        {
+          "field": "정류장번호",
+          "filled": 21,
+          "total": 21,
+          "fillRate": 1
+        },
+        {
+          "field": "정류장명",
+          "filled": 21,
+          "total": 21,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 21,
+          "total": 21,
+          "fillRate": 1
+        },
+        {
+          "field": "경도",
+          "filled": 21,
+          "total": 21,
+          "fillRate": 1
+        },
+        {
+          "field": "정보수집일",
+          "filled": 21,
+          "total": 21,
+          "fillRate": 1
+        },
+        {
+          "field": "모바일단축번호",
+          "filled": 21,
+          "total": 21,
+          "fillRate": 1
+        },
+        {
+          "field": "도시코드",
+          "filled": 21,
+          "total": 21,
+          "fillRate": 1
+        },
+        {
+          "field": "도시명",
+          "filled": 21,
+          "total": 21,
+          "fillRate": 1
+        },
+        {
+          "field": "관리도시명",
+          "filled": 21,
+          "total": 21,
+          "fillRate": 1
+        }
+      ]
+    }
+  },
+  "pointBasis": "lnglat-columns",
+  "outOfRangePoints": 7
+}

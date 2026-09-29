@@ -1,0 +1,270 @@
+{
+  "file": ".cache/v2/raw/sgis_grid/pop_2024_1k_national.csv",
+  "bytes": 85812676,
+  "encoding": "euc-kr",
+  "measuredAt": "2026-09-29T09:37:30.849Z",
+  "rows": 2658295,
+  "fields": [
+    {
+      "field": "기준연도",
+      "filled": 2658295,
+      "total": 2658295,
+      "fillRate": 1
+    },
+    {
+      "field": "격자코드",
+      "filled": 2658295,
+      "total": 2658295,
+      "fillRate": 1
+    },
+    {
+      "field": "통계항목",
+      "filled": 2658295,
+      "total": 2658295,
+      "fillRate": 1
+    },
+    {
+      "field": "통계값",
+      "filled": 2658295,
+      "total": 2658295,
+      "fillRate": 1
+    }
+  ],
+  "byRegion": {},
+  "bySite": {
+    "guryong": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "기준연도",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "격자코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "통계항목",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "통계값",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "dasan": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "기준연도",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "격자코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "통계항목",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "통계값",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "cheongwadae": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "기준연도",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "격자코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "통계항목",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "통계값",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "jeongja": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "기준연도",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "격자코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "통계항목",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "통계값",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "marinecity": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "기준연도",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "격자코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "통계항목",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "통계값",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "bokjeong": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "기준연도",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "격자코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "통계항목",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "통계값",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "sejong": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "기준연도",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "격자코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "통계항목",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "통계값",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "wanju": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "기준연도",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "격자코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "통계항목",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "통계값",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    }
+  },
+  "pointBasis": "none",
+  "outOfRangePoints": 0
+}

@@ -1,0 +1,873 @@
+{
+  "file": ".cache/v2/raw/maintenance/maintenance-std-15155703.csv",
+  "bytes": 27910,
+  "encoding": "utf-8",
+  "measuredAt": "2026-09-29T08:52:03.765Z",
+  "rows": 156,
+  "fields": [
+    {
+      "field": "구역명",
+      "filled": 156,
+      "total": 156,
+      "fillRate": 1
+    },
+    {
+      "field": "시도명",
+      "filled": 156,
+      "total": 156,
+      "fillRate": 1
+    },
+    {
+      "field": "시군구명",
+      "filled": 156,
+      "total": 156,
+      "fillRate": 1
+    },
+    {
+      "field": "용도지역",
+      "filled": 46,
+      "total": 156,
+      "fillRate": 0.2948717948717949
+    },
+    {
+      "field": "건폐율",
+      "filled": 156,
+      "total": 156,
+      "fillRate": 1
+    },
+    {
+      "field": "총면적",
+      "filled": 136,
+      "total": 156,
+      "fillRate": 0.8717948717948718
+    },
+    {
+      "field": "기준연도",
+      "filled": 156,
+      "total": 156,
+      "fillRate": 1
+    },
+    {
+      "field": "진행단계내용",
+      "filled": 156,
+      "total": 156,
+      "fillRate": 1
+    },
+    {
+      "field": "세대수",
+      "filled": 66,
+      "total": 156,
+      "fillRate": 0.4230769230769231
+    },
+    {
+      "field": "지정일자",
+      "filled": 69,
+      "total": 156,
+      "fillRate": 0.4423076923076923
+    },
+    {
+      "field": "관리기관명",
+      "filled": 156,
+      "total": 156,
+      "fillRate": 1
+    },
+    {
+      "field": "관리기관전화번호",
+      "filled": 156,
+      "total": 156,
+      "fillRate": 1
+    },
+    {
+      "field": "데이터기준일자",
+      "filled": 156,
+      "total": 156,
+      "fillRate": 1
+    },
+    {
+      "field": "제공기관코드",
+      "filled": 156,
+      "total": 156,
+      "fillRate": 1
+    },
+    {
+      "field": "제공기관명",
+      "filled": 156,
+      "total": 156,
+      "fillRate": 1
+    }
+  ],
+  "byRegion": {
+    "32": 7,
+    "33": 33,
+    "34": 21,
+    "35": 7,
+    "39": 69,
+    "40": 13,
+    "43": 2,
+    "53": 4
+  },
+  "bySite": {
+    "guryong": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "구역명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "시도명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "시군구명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "용도지역",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건폐율",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "총면적",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "기준연도",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "진행단계내용",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "세대수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지정일자",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "관리기관명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "관리기관전화번호",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "데이터기준일자",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "제공기관코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "제공기관명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "dasan": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "구역명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "시도명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "시군구명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "용도지역",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건폐율",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "총면적",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "기준연도",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "진행단계내용",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "세대수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지정일자",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "관리기관명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "관리기관전화번호",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "데이터기준일자",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "제공기관코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "제공기관명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "cheongwadae": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "구역명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "시도명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "시군구명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "용도지역",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건폐율",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "총면적",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "기준연도",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "진행단계내용",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "세대수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지정일자",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "관리기관명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "관리기관전화번호",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "데이터기준일자",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "제공기관코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "제공기관명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "jeongja": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "구역명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "시도명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "시군구명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "용도지역",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건폐율",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "총면적",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "기준연도",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "진행단계내용",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "세대수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지정일자",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "관리기관명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "관리기관전화번호",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "데이터기준일자",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "제공기관코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "제공기관명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "marinecity": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "구역명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "시도명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "시군구명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "용도지역",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건폐율",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "총면적",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "기준연도",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "진행단계내용",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "세대수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지정일자",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "관리기관명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "관리기관전화번호",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "데이터기준일자",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "제공기관코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "제공기관명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "bokjeong": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "구역명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "시도명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "시군구명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "용도지역",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건폐율",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "총면적",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "기준연도",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "진행단계내용",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "세대수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지정일자",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "관리기관명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "관리기관전화번호",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "데이터기준일자",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "제공기관코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "제공기관명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "sejong": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "구역명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "시도명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "시군구명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "용도지역",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건폐율",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "총면적",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "기준연도",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "진행단계내용",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "세대수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지정일자",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "관리기관명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "관리기관전화번호",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "데이터기준일자",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "제공기관코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "제공기관명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "wanju": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "구역명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "시도명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "시군구명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "용도지역",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "건폐율",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "총면적",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "기준연도",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "진행단계내용",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "세대수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "지정일자",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "관리기관명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "관리기관전화번호",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "데이터기준일자",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "제공기관코드",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "제공기관명",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    }
+  },
+  "pointBasis": "none",
+  "outOfRangePoints": 0
+}

@@ -1,0 +1,1150 @@
+{
+  "file": ".cache/v2/raw/school/school-location-std.csv",
+  "bytes": 4041625,
+  "encoding": "utf-8",
+  "measuredAt": "2026-09-29T09:43:54.775Z",
+  "rows": 12011,
+  "fields": [
+    {
+      "field": "학교ID",
+      "filled": 12011,
+      "total": 12011,
+      "fillRate": 1
+    },
+    {
+      "field": "학교명",
+      "filled": 12011,
+      "total": 12011,
+      "fillRate": 1
+    },
+    {
+      "field": "학교급구분",
+      "filled": 12011,
+      "total": 12011,
+      "fillRate": 1
+    },
+    {
+      "field": "설립일자",
+      "filled": 12011,
+      "total": 12011,
+      "fillRate": 1
+    },
+    {
+      "field": "설립형태",
+      "filled": 12011,
+      "total": 12011,
+      "fillRate": 1
+    },
+    {
+      "field": "본교분교구분",
+      "filled": 12011,
+      "total": 12011,
+      "fillRate": 1
+    },
+    {
+      "field": "운영상태",
+      "filled": 12011,
+      "total": 12011,
+      "fillRate": 1
+    },
+    {
+      "field": "소재지지번주소",
+      "filled": 12011,
+      "total": 12011,
+      "fillRate": 1
+    },
+    {
+      "field": "소재지도로명주소",
+      "filled": 11999,
+      "total": 12011,
+      "fillRate": 0.9990009158271584
+    },
+    {
+      "field": "시도교육청코드",
+      "filled": 12011,
+      "total": 12011,
+      "fillRate": 1
+    },
+    {
+      "field": "시도교육청명",
+      "filled": 12011,
+      "total": 12011,
+      "fillRate": 1
+    },
+    {
+      "field": "교육지원청코드",
+      "filled": 12011,
+      "total": 12011,
+      "fillRate": 1
+    },
+    {
+      "field": "교육지원청명",
+      "filled": 12011,
+      "total": 12011,
+      "fillRate": 1
+    },
+    {
+      "field": "생성일자",
+      "filled": 12011,
+      "total": 12011,
+      "fillRate": 1
+    },
+    {
+      "field": "변경일자",
+      "filled": 12004,
+      "total": 12011,
+      "fillRate": 0.9994172008991757
+    },
+    {
+      "field": "위도",
+      "filled": 12011,
+      "total": 12011,
+      "fillRate": 1
+    },
+    {
+      "field": "경도",
+      "filled": 12011,
+      "total": 12011,
+      "fillRate": 1
+    },
+    {
+      "field": "데이터기준일자",
+      "filled": 12011,
+      "total": 12011,
+      "fillRate": 1
+    },
+    {
+      "field": "제공기관코드",
+      "filled": 12011,
+      "total": 12011,
+      "fillRate": 1
+    },
+    {
+      "field": "제공기관명",
+      "filled": 12011,
+      "total": 12011,
+      "fillRate": 1
+    }
+  ],
+  "byRegion": {
+    "70": 1313,
+    "71": 615,
+    "72": 460,
+    "73": 865,
+    "74": 552,
+    "75": 2558,
+    "78": 632,
+    "80": 483,
+    "81": 724,
+    "83": 748,
+    "84": 842,
+    "87": 927,
+    "90": 987,
+    "92": 200,
+    "93": 105
+  },
+  "bySite": {
+    "guryong": {
+      "rows": 19,
+      "fields": [
+        {
+          "field": "학교ID",
+          "filled": 19,
+          "total": 19,
+          "fillRate": 1
+        },
+        {
+          "field": "학교명",
+          "filled": 19,
+          "total": 19,
+          "fillRate": 1
+        },
+        {
+          "field": "학교급구분",
+          "filled": 19,
+          "total": 19,
+          "fillRate": 1
+        },
+        {
+          "field": "설립일자",
+          "filled": 19,
+          "total": 19,
+          "fillRate": 1
+        },
+        {
+          "field": "설립형태",
+          "filled": 19,
+          "total": 19,
+          "fillRate": 1
+        },
+        {
+          "field": "본교분교구분",
+          "filled": 19,
+          "total": 19,
+          "fillRate": 1
+        },
+        {
+          "field": "운영상태",
+          "filled": 19,
+          "total": 19,
+          "fillRate": 1
+        },
+        {
+          "field": "소재지지번주소",
+          "filled": 19,
+          "total": 19,
+          "fillRate": 1
+        },
+        {
+          "field": "소재지도로명주소",
+          "filled": 19,
+          "total": 19,
+          "fillRate": 1
+        },
+        {
+          "field": "시도교육청코드",
+          "filled": 19,
+          "total": 19,
+          "fillRate": 1
+        },
+        {
+          "field": "시도교육청명",
+          "filled": 19,
+          "total": 19,
+          "fillRate": 1
+        },
+        {
+          "field": "교육지원청코드",
+          "filled": 19,
+          "total": 19,
+          "fillRate": 1
+        },
+        {
+          "field": "교육지원청명",
+          "filled": 19,
+          "total": 19,
+          "fillRate": 1
+        },
+        {
+          "field": "생성일자",
+          "filled": 19,
+          "total": 19,
+          "fillRate": 1
+        },
+        {
+          "field": "변경일자",
+          "filled": 19,
+          "total": 19,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 19,
+          "total": 19,
+          "fillRate": 1
+        },
+        {
+          "field": "경도",
+          "filled": 19,
+          "total": 19,
+          "fillRate": 1
+        },
+        {
+          "field": "데이터기준일자",
+          "filled": 19,
+          "total": 19,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관코드",
+          "filled": 19,
+          "total": 19,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관명",
+          "filled": 19,
+          "total": 19,
+          "fillRate": 1
+        }
+      ]
+    },
+    "dasan": {
+      "rows": 7,
+      "fields": [
+        {
+          "field": "학교ID",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "학교명",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "학교급구분",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "설립일자",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "설립형태",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "본교분교구분",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "운영상태",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "소재지지번주소",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "소재지도로명주소",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "시도교육청코드",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "시도교육청명",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "교육지원청코드",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "교육지원청명",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "생성일자",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "변경일자",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "경도",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "데이터기준일자",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관코드",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관명",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        }
+      ]
+    },
+    "cheongwadae": {
+      "rows": 4,
+      "fields": [
+        {
+          "field": "학교ID",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "학교명",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "학교급구분",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "설립일자",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "설립형태",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "본교분교구분",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "운영상태",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "소재지지번주소",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "소재지도로명주소",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "시도교육청코드",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "시도교육청명",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "교육지원청코드",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "교육지원청명",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "생성일자",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "변경일자",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "경도",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "데이터기준일자",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관코드",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관명",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        }
+      ]
+    },
+    "jeongja": {
+      "rows": 11,
+      "fields": [
+        {
+          "field": "학교ID",
+          "filled": 11,
+          "total": 11,
+          "fillRate": 1
+        },
+        {
+          "field": "학교명",
+          "filled": 11,
+          "total": 11,
+          "fillRate": 1
+        },
+        {
+          "field": "학교급구분",
+          "filled": 11,
+          "total": 11,
+          "fillRate": 1
+        },
+        {
+          "field": "설립일자",
+          "filled": 11,
+          "total": 11,
+          "fillRate": 1
+        },
+        {
+          "field": "설립형태",
+          "filled": 11,
+          "total": 11,
+          "fillRate": 1
+        },
+        {
+          "field": "본교분교구분",
+          "filled": 11,
+          "total": 11,
+          "fillRate": 1
+        },
+        {
+          "field": "운영상태",
+          "filled": 11,
+          "total": 11,
+          "fillRate": 1
+        },
+        {
+          "field": "소재지지번주소",
+          "filled": 11,
+          "total": 11,
+          "fillRate": 1
+        },
+        {
+          "field": "소재지도로명주소",
+          "filled": 11,
+          "total": 11,
+          "fillRate": 1
+        },
+        {
+          "field": "시도교육청코드",
+          "filled": 11,
+          "total": 11,
+          "fillRate": 1
+        },
+        {
+          "field": "시도교육청명",
+          "filled": 11,
+          "total": 11,
+          "fillRate": 1
+        },
+        {
+          "field": "교육지원청코드",
+          "filled": 11,
+          "total": 11,
+          "fillRate": 1
+        },
+        {
+          "field": "교육지원청명",
+          "filled": 11,
+          "total": 11,
+          "fillRate": 1
+        },
+        {
+          "field": "생성일자",
+          "filled": 11,
+          "total": 11,
+          "fillRate": 1
+        },
+        {
+          "field": "변경일자",
+          "filled": 11,
+          "total": 11,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 11,
+          "total": 11,
+          "fillRate": 1
+        },
+        {
+          "field": "경도",
+          "filled": 11,
+          "total": 11,
+          "fillRate": 1
+        },
+        {
+          "field": "데이터기준일자",
+          "filled": 11,
+          "total": 11,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관코드",
+          "filled": 11,
+          "total": 11,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관명",
+          "filled": 11,
+          "total": 11,
+          "fillRate": 1
+        }
+      ]
+    },
+    "marinecity": {
+      "rows": 2,
+      "fields": [
+        {
+          "field": "학교ID",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "학교명",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "학교급구분",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "설립일자",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "설립형태",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "본교분교구분",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "운영상태",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "소재지지번주소",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "소재지도로명주소",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "시도교육청코드",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "시도교육청명",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "교육지원청코드",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "교육지원청명",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "생성일자",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "변경일자",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "경도",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "데이터기준일자",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관코드",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관명",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        }
+      ]
+    },
+    "bokjeong": {
+      "rows": 2,
+      "fields": [
+        {
+          "field": "학교ID",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "학교명",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "학교급구분",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "설립일자",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "설립형태",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "본교분교구분",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "운영상태",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "소재지지번주소",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "소재지도로명주소",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "시도교육청코드",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "시도교육청명",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "교육지원청코드",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "교육지원청명",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "생성일자",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "변경일자",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "경도",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "데이터기준일자",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관코드",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관명",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        }
+      ]
+    },
+    "sejong": {
+      "rows": 5,
+      "fields": [
+        {
+          "field": "학교ID",
+          "filled": 5,
+          "total": 5,
+          "fillRate": 1
+        },
+        {
+          "field": "학교명",
+          "filled": 5,
+          "total": 5,
+          "fillRate": 1
+        },
+        {
+          "field": "학교급구분",
+          "filled": 5,
+          "total": 5,
+          "fillRate": 1
+        },
+        {
+          "field": "설립일자",
+          "filled": 5,
+          "total": 5,
+          "fillRate": 1
+        },
+        {
+          "field": "설립형태",
+          "filled": 5,
+          "total": 5,
+          "fillRate": 1
+        },
+        {
+          "field": "본교분교구분",
+          "filled": 5,
+          "total": 5,
+          "fillRate": 1
+        },
+        {
+          "field": "운영상태",
+          "filled": 5,
+          "total": 5,
+          "fillRate": 1
+        },
+        {
+          "field": "소재지지번주소",
+          "filled": 5,
+          "total": 5,
+          "fillRate": 1
+        },
+        {
+          "field": "소재지도로명주소",
+          "filled": 5,
+          "total": 5,
+          "fillRate": 1
+        },
+        {
+          "field": "시도교육청코드",
+          "filled": 5,
+          "total": 5,
+          "fillRate": 1
+        },
+        {
+          "field": "시도교육청명",
+          "filled": 5,
+          "total": 5,
+          "fillRate": 1
+        },
+        {
+          "field": "교육지원청코드",
+          "filled": 5,
+          "total": 5,
+          "fillRate": 1
+        },
+        {
+          "field": "교육지원청명",
+          "filled": 5,
+          "total": 5,
+          "fillRate": 1
+        },
+        {
+          "field": "생성일자",
+          "filled": 5,
+          "total": 5,
+          "fillRate": 1
+        },
+        {
+          "field": "변경일자",
+          "filled": 5,
+          "total": 5,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 5,
+          "total": 5,
+          "fillRate": 1
+        },
+        {
+          "field": "경도",
+          "filled": 5,
+          "total": 5,
+          "fillRate": 1
+        },
+        {
+          "field": "데이터기준일자",
+          "filled": 5,
+          "total": 5,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관코드",
+          "filled": 5,
+          "total": 5,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관명",
+          "filled": 5,
+          "total": 5,
+          "fillRate": 1
+        }
+      ]
+    },
+    "wanju": {
+      "rows": 3,
+      "fields": [
+        {
+          "field": "학교ID",
+          "filled": 3,
+          "total": 3,
+          "fillRate": 1
+        },
+        {
+          "field": "학교명",
+          "filled": 3,
+          "total": 3,
+          "fillRate": 1
+        },
+        {
+          "field": "학교급구분",
+          "filled": 3,
+          "total": 3,
+          "fillRate": 1
+        },
+        {
+          "field": "설립일자",
+          "filled": 3,
+          "total": 3,
+          "fillRate": 1
+        },
+        {
+          "field": "설립형태",
+          "filled": 3,
+          "total": 3,
+          "fillRate": 1
+        },
+        {
+          "field": "본교분교구분",
+          "filled": 3,
+          "total": 3,
+          "fillRate": 1
+        },
+        {
+          "field": "운영상태",
+          "filled": 3,
+          "total": 3,
+          "fillRate": 1
+        },
+        {
+          "field": "소재지지번주소",
+          "filled": 3,
+          "total": 3,
+          "fillRate": 1
+        },
+        {
+          "field": "소재지도로명주소",
+          "filled": 3,
+          "total": 3,
+          "fillRate": 1
+        },
+        {
+          "field": "시도교육청코드",
+          "filled": 3,
+          "total": 3,
+          "fillRate": 1
+        },
+        {
+          "field": "시도교육청명",
+          "filled": 3,
+          "total": 3,
+          "fillRate": 1
+        },
+        {
+          "field": "교육지원청코드",
+          "filled": 3,
+          "total": 3,
+          "fillRate": 1
+        },
+        {
+          "field": "교육지원청명",
+          "filled": 3,
+          "total": 3,
+          "fillRate": 1
+        },
+        {
+          "field": "생성일자",
+          "filled": 3,
+          "total": 3,
+          "fillRate": 1
+        },
+        {
+          "field": "변경일자",
+          "filled": 3,
+          "total": 3,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 3,
+          "total": 3,
+          "fillRate": 1
+        },
+        {
+          "field": "경도",
+          "filled": 3,
+          "total": 3,
+          "fillRate": 1
+        },
+        {
+          "field": "데이터기준일자",
+          "filled": 3,
+          "total": 3,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관코드",
+          "filled": 3,
+          "total": 3,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관명",
+          "filled": 3,
+          "total": 3,
+          "fillRate": 1
+        }
+      ]
+    }
+  },
+  "pointBasis": "lnglat-columns",
+  "outOfRangePoints": 0
+}

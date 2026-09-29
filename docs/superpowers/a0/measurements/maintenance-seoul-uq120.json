@@ -1,0 +1,972 @@
+{
+  "file": "D:/V-coding/16-SiteAnalysis/tmp_oa22712/945_UQ120_도시계획사업(서울플랜+)_202602/shp파일/UPIS_C_UQ120.shp",
+  "bytes": 3721664,
+  "encoding": "euc-kr",
+  "measuredAt": "2026-09-29T09:37:41.393Z",
+  "rows": 2585,
+  "fields": [
+    {
+      "field": "PRESENT_SN",
+      "filled": 2585,
+      "total": 2585,
+      "fillRate": 1
+    },
+    {
+      "field": "LCLAS_CL",
+      "filled": 2585,
+      "total": 2585,
+      "fillRate": 1
+    },
+    {
+      "field": "MLSFC_CL",
+      "filled": 0,
+      "total": 2585,
+      "fillRate": 0
+    },
+    {
+      "field": "SCLAS_CL",
+      "filled": 2585,
+      "total": 2585,
+      "fillRate": 1
+    },
+    {
+      "field": "ATRB_SE",
+      "filled": 2585,
+      "total": 2585,
+      "fillRate": 1
+    },
+    {
+      "field": "WTNNC_SN",
+      "filled": 0,
+      "total": 2585,
+      "fillRate": 0
+    },
+    {
+      "field": "NTFC_SN",
+      "filled": 0,
+      "total": 2585,
+      "fillRate": 0
+    },
+    {
+      "field": "DGM_NM",
+      "filled": 2585,
+      "total": 2585,
+      "fillRate": 1
+    },
+    {
+      "field": "DGM_AR",
+      "filled": 2585,
+      "total": 2585,
+      "fillRate": 1
+    },
+    {
+      "field": "DGM_LT",
+      "filled": 2585,
+      "total": 2585,
+      "fillRate": 1
+    },
+    {
+      "field": "SIGNGU_SE",
+      "filled": 2585,
+      "total": 2585,
+      "fillRate": 1
+    },
+    {
+      "field": "DRAWING_NO",
+      "filled": 0,
+      "total": 2585,
+      "fillRate": 0
+    },
+    {
+      "field": "CREATE_DAT",
+      "filled": 2585,
+      "total": 2585,
+      "fillRate": 1
+    },
+    {
+      "field": "PROPEL_CD",
+      "filled": 2539,
+      "total": 2585,
+      "fillRate": 0.9822050290135397
+    },
+    {
+      "field": "GRP",
+      "filled": 310,
+      "total": 2585,
+      "fillRate": 0.11992263056092843
+    },
+    {
+      "field": "SHAPE_AREA",
+      "filled": 2585,
+      "total": 2585,
+      "fillRate": 1
+    },
+    {
+      "field": "SHAPE_LEN",
+      "filled": 2585,
+      "total": 2585,
+      "fillRate": 1
+    }
+  ],
+  "byRegion": {},
+  "bySite": {
+    "guryong": {
+      "rows": 10,
+      "fields": [
+        {
+          "field": "PRESENT_SN",
+          "filled": 10,
+          "total": 10,
+          "fillRate": 1
+        },
+        {
+          "field": "LCLAS_CL",
+          "filled": 10,
+          "total": 10,
+          "fillRate": 1
+        },
+        {
+          "field": "MLSFC_CL",
+          "filled": 0,
+          "total": 10,
+          "fillRate": 0
+        },
+        {
+          "field": "SCLAS_CL",
+          "filled": 10,
+          "total": 10,
+          "fillRate": 1
+        },
+        {
+          "field": "ATRB_SE",
+          "filled": 10,
+          "total": 10,
+          "fillRate": 1
+        },
+        {
+          "field": "WTNNC_SN",
+          "filled": 0,
+          "total": 10,
+          "fillRate": 0
+        },
+        {
+          "field": "NTFC_SN",
+          "filled": 0,
+          "total": 10,
+          "fillRate": 0
+        },
+        {
+          "field": "DGM_NM",
+          "filled": 10,
+          "total": 10,
+          "fillRate": 1
+        },
+        {
+          "field": "DGM_AR",
+          "filled": 10,
+          "total": 10,
+          "fillRate": 1
+        },
+        {
+          "field": "DGM_LT",
+          "filled": 10,
+          "total": 10,
+          "fillRate": 1
+        },
+        {
+          "field": "SIGNGU_SE",
+          "filled": 10,
+          "total": 10,
+          "fillRate": 1
+        },
+        {
+          "field": "DRAWING_NO",
+          "filled": 0,
+          "total": 10,
+          "fillRate": 0
+        },
+        {
+          "field": "CREATE_DAT",
+          "filled": 10,
+          "total": 10,
+          "fillRate": 1
+        },
+        {
+          "field": "PROPEL_CD",
+          "filled": 10,
+          "total": 10,
+          "fillRate": 1
+        },
+        {
+          "field": "GRP",
+          "filled": 0,
+          "total": 10,
+          "fillRate": 0
+        },
+        {
+          "field": "SHAPE_AREA",
+          "filled": 10,
+          "total": 10,
+          "fillRate": 1
+        },
+        {
+          "field": "SHAPE_LEN",
+          "filled": 10,
+          "total": 10,
+          "fillRate": 1
+        }
+      ]
+    },
+    "dasan": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "PRESENT_SN",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "LCLAS_CL",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "MLSFC_CL",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "SCLAS_CL",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "ATRB_SE",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "WTNNC_SN",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "NTFC_SN",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "DGM_NM",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "DGM_AR",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "DGM_LT",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "SIGNGU_SE",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "DRAWING_NO",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "CREATE_DAT",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "PROPEL_CD",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "GRP",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "SHAPE_AREA",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "SHAPE_LEN",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "cheongwadae": {
+      "rows": 4,
+      "fields": [
+        {
+          "field": "PRESENT_SN",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "LCLAS_CL",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "MLSFC_CL",
+          "filled": 0,
+          "total": 4,
+          "fillRate": 0
+        },
+        {
+          "field": "SCLAS_CL",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "ATRB_SE",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "WTNNC_SN",
+          "filled": 0,
+          "total": 4,
+          "fillRate": 0
+        },
+        {
+          "field": "NTFC_SN",
+          "filled": 0,
+          "total": 4,
+          "fillRate": 0
+        },
+        {
+          "field": "DGM_NM",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "DGM_AR",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "DGM_LT",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "SIGNGU_SE",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "DRAWING_NO",
+          "filled": 0,
+          "total": 4,
+          "fillRate": 0
+        },
+        {
+          "field": "CREATE_DAT",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "PROPEL_CD",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "GRP",
+          "filled": 0,
+          "total": 4,
+          "fillRate": 0
+        },
+        {
+          "field": "SHAPE_AREA",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "SHAPE_LEN",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        }
+      ]
+    },
+    "jeongja": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "PRESENT_SN",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "LCLAS_CL",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "MLSFC_CL",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "SCLAS_CL",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "ATRB_SE",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "WTNNC_SN",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "NTFC_SN",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "DGM_NM",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "DGM_AR",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "DGM_LT",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "SIGNGU_SE",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "DRAWING_NO",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "CREATE_DAT",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "PROPEL_CD",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "GRP",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "SHAPE_AREA",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "SHAPE_LEN",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "marinecity": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "PRESENT_SN",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "LCLAS_CL",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "MLSFC_CL",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "SCLAS_CL",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "ATRB_SE",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "WTNNC_SN",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "NTFC_SN",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "DGM_NM",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "DGM_AR",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "DGM_LT",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "SIGNGU_SE",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "DRAWING_NO",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "CREATE_DAT",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "PROPEL_CD",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "GRP",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "SHAPE_AREA",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "SHAPE_LEN",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "bokjeong": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "PRESENT_SN",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "LCLAS_CL",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "MLSFC_CL",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "SCLAS_CL",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "ATRB_SE",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "WTNNC_SN",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "NTFC_SN",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "DGM_NM",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "DGM_AR",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "DGM_LT",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "SIGNGU_SE",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "DRAWING_NO",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "CREATE_DAT",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "PROPEL_CD",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "GRP",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "SHAPE_AREA",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "SHAPE_LEN",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "sejong": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "PRESENT_SN",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "LCLAS_CL",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "MLSFC_CL",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "SCLAS_CL",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "ATRB_SE",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "WTNNC_SN",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "NTFC_SN",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "DGM_NM",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "DGM_AR",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "DGM_LT",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "SIGNGU_SE",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "DRAWING_NO",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "CREATE_DAT",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "PROPEL_CD",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "GRP",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "SHAPE_AREA",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "SHAPE_LEN",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "wanju": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "PRESENT_SN",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "LCLAS_CL",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "MLSFC_CL",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "SCLAS_CL",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "ATRB_SE",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "WTNNC_SN",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "NTFC_SN",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "DGM_NM",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "DGM_AR",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "DGM_LT",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "SIGNGU_SE",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "DRAWING_NO",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "CREATE_DAT",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "PROPEL_CD",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "GRP",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "SHAPE_AREA",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "SHAPE_LEN",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    }
+  },
+  "pointBasis": "bbox-center",
+  "outOfRangePoints": 0
+}

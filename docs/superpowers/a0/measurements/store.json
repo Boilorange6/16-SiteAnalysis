@@ -1,0 +1,2177 @@
+{
+  "file": ".cache/v2/raw/store/store_national_202606.csv",
+  "bytes": 1527596999,
+  "encoding": "utf-8",
+  "measuredAt": "2026-09-29T09:44:55.476Z",
+  "rows": 2772484,
+  "fields": [
+    {
+      "field": "상가업소번호",
+      "filled": 2772484,
+      "total": 2772484,
+      "fillRate": 1
+    },
+    {
+      "field": "상호명",
+      "filled": 2772484,
+      "total": 2772484,
+      "fillRate": 1
+    },
+    {
+      "field": "지점명",
+      "filled": 256730,
+      "total": 2772484,
+      "fillRate": 0.09259927198858496
+    },
+    {
+      "field": "상권업종대분류코드",
+      "filled": 2772484,
+      "total": 2772484,
+      "fillRate": 1
+    },
+    {
+      "field": "상권업종대분류명",
+      "filled": 2772484,
+      "total": 2772484,
+      "fillRate": 1
+    },
+    {
+      "field": "상권업종중분류코드",
+      "filled": 2772484,
+      "total": 2772484,
+      "fillRate": 1
+    },
+    {
+      "field": "상권업종중분류명",
+      "filled": 2772484,
+      "total": 2772484,
+      "fillRate": 1
+    },
+    {
+      "field": "상권업종소분류코드",
+      "filled": 2772484,
+      "total": 2772484,
+      "fillRate": 1
+    },
+    {
+      "field": "상권업종소분류명",
+      "filled": 2772484,
+      "total": 2772484,
+      "fillRate": 1
+    },
+    {
+      "field": "표준산업분류코드",
+      "filled": 2771612,
+      "total": 2772484,
+      "fillRate": 0.9996854806015112
+    },
+    {
+      "field": "표준산업분류명",
+      "filled": 2771612,
+      "total": 2772484,
+      "fillRate": 0.9996854806015112
+    },
+    {
+      "field": "시도코드",
+      "filled": 2772484,
+      "total": 2772484,
+      "fillRate": 1
+    },
+    {
+      "field": "시도명",
+      "filled": 2772484,
+      "total": 2772484,
+      "fillRate": 1
+    },
+    {
+      "field": "시군구코드",
+      "filled": 2772484,
+      "total": 2772484,
+      "fillRate": 1
+    },
+    {
+      "field": "시군구명",
+      "filled": 2772484,
+      "total": 2772484,
+      "fillRate": 1
+    },
+    {
+      "field": "행정동코드",
+      "filled": 2772484,
+      "total": 2772484,
+      "fillRate": 1
+    },
+    {
+      "field": "행정동명",
+      "filled": 2772484,
+      "total": 2772484,
+      "fillRate": 1
+    },
+    {
+      "field": "법정동코드",
+      "filled": 2772484,
+      "total": 2772484,
+      "fillRate": 1
+    },
+    {
+      "field": "법정동명",
+      "filled": 2770555,
+      "total": 2772484,
+      "fillRate": 0.9993042340370585
+    },
+    {
+      "field": "지번코드",
+      "filled": 2772484,
+      "total": 2772484,
+      "fillRate": 1
+    },
+    {
+      "field": "대지구분코드",
+      "filled": 2772484,
+      "total": 2772484,
+      "fillRate": 1
+    },
+    {
+      "field": "대지구분명",
+      "filled": 2772484,
+      "total": 2772484,
+      "fillRate": 1
+    },
+    {
+      "field": "지번본번지",
+      "filled": 2770692,
+      "total": 2772484,
+      "fillRate": 0.9993536482086101
+    },
+    {
+      "field": "지번부번지",
+      "filled": 2170466,
+      "total": 2772484,
+      "fillRate": 0.782859702707031
+    },
+    {
+      "field": "지번주소",
+      "filled": 2772484,
+      "total": 2772484,
+      "fillRate": 1
+    },
+    {
+      "field": "도로명코드",
+      "filled": 2772484,
+      "total": 2772484,
+      "fillRate": 1
+    },
+    {
+      "field": "도로명",
+      "filled": 2772484,
+      "total": 2772484,
+      "fillRate": 1
+    },
+    {
+      "field": "건물본번지",
+      "filled": 2772464,
+      "total": 2772484,
+      "fillRate": 0.9999927862523282
+    },
+    {
+      "field": "건물부번지",
+      "filled": 547951,
+      "total": 2772484,
+      "fillRate": 0.19763901252450872
+    },
+    {
+      "field": "건물관리번호",
+      "filled": 2759683,
+      "total": 2772484,
+      "fillRate": 0.9953828408026881
+    },
+    {
+      "field": "건물명",
+      "filled": 992741,
+      "total": 2772484,
+      "fillRate": 0.3580691538706806
+    },
+    {
+      "field": "도로명주소",
+      "filled": 2772484,
+      "total": 2772484,
+      "fillRate": 1
+    },
+    {
+      "field": "구우편번호",
+      "filled": 2746955,
+      "total": 2772484,
+      "fillRate": 0.9907920117843781
+    },
+    {
+      "field": "신우편번호",
+      "filled": 2772484,
+      "total": 2772484,
+      "fillRate": 1
+    },
+    {
+      "field": "동정보",
+      "filled": 0,
+      "total": 2772484,
+      "fillRate": 0
+    },
+    {
+      "field": "층정보",
+      "filled": 1395376,
+      "total": 2772484,
+      "fillRate": 0.5032945185616942
+    },
+    {
+      "field": "호정보",
+      "filled": 0,
+      "total": 2772484,
+      "fillRate": 0
+    },
+    {
+      "field": "경도",
+      "filled": 2772484,
+      "total": 2772484,
+      "fillRate": 1
+    },
+    {
+      "field": "위도",
+      "filled": 2772484,
+      "total": 2772484,
+      "fillRate": 1
+    }
+  ],
+  "byRegion": {
+    "11": 554092,
+    "12": 175276,
+    "26": 159689,
+    "27": 118357,
+    "28": 136995,
+    "30": 80704,
+    "31": 54737,
+    "36": 15816,
+    "41": 672680,
+    "43": 93731,
+    "44": 124589,
+    "47": 144967,
+    "48": 172887,
+    "50": 59009,
+    "51": 110206,
+    "52": 98749
+  },
+  "bySite": {
+    "guryong": {
+      "rows": 1839,
+      "fields": [
+        {
+          "field": "상가업소번호",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "상호명",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "지점명",
+          "filled": 165,
+          "total": 1839,
+          "fillRate": 0.08972267536704731
+        },
+        {
+          "field": "상권업종대분류코드",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종대분류명",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종중분류코드",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종중분류명",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종소분류코드",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종소분류명",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "표준산업분류코드",
+          "filled": 1837,
+          "total": 1839,
+          "fillRate": 0.9989124524197933
+        },
+        {
+          "field": "표준산업분류명",
+          "filled": 1837,
+          "total": 1839,
+          "fillRate": 0.9989124524197933
+        },
+        {
+          "field": "시도코드",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "시도명",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "시군구코드",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "시군구명",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "행정동코드",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "행정동명",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "법정동코드",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "법정동명",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "지번코드",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "대지구분코드",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "대지구분명",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "지번본번지",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "지번부번지",
+          "filled": 1013,
+          "total": 1839,
+          "fillRate": 0.5508428493746601
+        },
+        {
+          "field": "지번주소",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "도로명코드",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "도로명",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "건물본번지",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "건물부번지",
+          "filled": 107,
+          "total": 1839,
+          "fillRate": 0.05818379554105492
+        },
+        {
+          "field": "건물관리번호",
+          "filled": 1828,
+          "total": 1839,
+          "fillRate": 0.9940184883088635
+        },
+        {
+          "field": "건물명",
+          "filled": 1425,
+          "total": 1839,
+          "fillRate": 0.7748776508972267
+        },
+        {
+          "field": "도로명주소",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "구우편번호",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "신우편번호",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "동정보",
+          "filled": 0,
+          "total": 1839,
+          "fillRate": 0
+        },
+        {
+          "field": "층정보",
+          "filled": 1254,
+          "total": 1839,
+          "fillRate": 0.6818923327895595
+        },
+        {
+          "field": "호정보",
+          "filled": 0,
+          "total": 1839,
+          "fillRate": 0
+        },
+        {
+          "field": "경도",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 1839,
+          "total": 1839,
+          "fillRate": 1
+        }
+      ]
+    },
+    "dasan": {
+      "rows": 2364,
+      "fields": [
+        {
+          "field": "상가업소번호",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "상호명",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "지점명",
+          "filled": 174,
+          "total": 2364,
+          "fillRate": 0.07360406091370558
+        },
+        {
+          "field": "상권업종대분류코드",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종대분류명",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종중분류코드",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종중분류명",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종소분류코드",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종소분류명",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "표준산업분류코드",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "표준산업분류명",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "시도코드",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "시도명",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "시군구코드",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "시군구명",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "행정동코드",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "행정동명",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "법정동코드",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "법정동명",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "지번코드",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "대지구분코드",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "대지구분명",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "지번본번지",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "지번부번지",
+          "filled": 1260,
+          "total": 2364,
+          "fillRate": 0.5329949238578681
+        },
+        {
+          "field": "지번주소",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "도로명코드",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "도로명",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "건물본번지",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "건물부번지",
+          "filled": 968,
+          "total": 2364,
+          "fillRate": 0.40947546531302875
+        },
+        {
+          "field": "건물관리번호",
+          "filled": 2334,
+          "total": 2364,
+          "fillRate": 0.9873096446700508
+        },
+        {
+          "field": "건물명",
+          "filled": 1805,
+          "total": 2364,
+          "fillRate": 0.7635363790186125
+        },
+        {
+          "field": "도로명주소",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "구우편번호",
+          "filled": 42,
+          "total": 2364,
+          "fillRate": 0.017766497461928935
+        },
+        {
+          "field": "신우편번호",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "동정보",
+          "filled": 0,
+          "total": 2364,
+          "fillRate": 0
+        },
+        {
+          "field": "층정보",
+          "filled": 1252,
+          "total": 2364,
+          "fillRate": 0.5296108291032149
+        },
+        {
+          "field": "호정보",
+          "filled": 0,
+          "total": 2364,
+          "fillRate": 0
+        },
+        {
+          "field": "경도",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 2364,
+          "total": 2364,
+          "fillRate": 1
+        }
+      ]
+    },
+    "cheongwadae": {
+      "rows": 1628,
+      "fields": [
+        {
+          "field": "상가업소번호",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "상호명",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "지점명",
+          "filled": 66,
+          "total": 1628,
+          "fillRate": 0.04054054054054054
+        },
+        {
+          "field": "상권업종대분류코드",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종대분류명",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종중분류코드",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종중분류명",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종소분류코드",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종소분류명",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "표준산업분류코드",
+          "filled": 1627,
+          "total": 1628,
+          "fillRate": 0.9993857493857494
+        },
+        {
+          "field": "표준산업분류명",
+          "filled": 1627,
+          "total": 1628,
+          "fillRate": 0.9993857493857494
+        },
+        {
+          "field": "시도코드",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "시도명",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "시군구코드",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "시군구명",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "행정동코드",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "행정동명",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "법정동코드",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "법정동명",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "지번코드",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "대지구분코드",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "대지구분명",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "지번본번지",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "지번부번지",
+          "filled": 1057,
+          "total": 1628,
+          "fillRate": 0.6492628992628993
+        },
+        {
+          "field": "지번주소",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "도로명코드",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "도로명",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "건물본번지",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "건물부번지",
+          "filled": 581,
+          "total": 1628,
+          "fillRate": 0.3568796068796069
+        },
+        {
+          "field": "건물관리번호",
+          "filled": 1627,
+          "total": 1628,
+          "fillRate": 0.9993857493857494
+        },
+        {
+          "field": "건물명",
+          "filled": 268,
+          "total": 1628,
+          "fillRate": 0.16461916461916462
+        },
+        {
+          "field": "도로명주소",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "구우편번호",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "신우편번호",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "동정보",
+          "filled": 0,
+          "total": 1628,
+          "fillRate": 0
+        },
+        {
+          "field": "층정보",
+          "filled": 844,
+          "total": 1628,
+          "fillRate": 0.5184275184275184
+        },
+        {
+          "field": "호정보",
+          "filled": 0,
+          "total": 1628,
+          "fillRate": 0
+        },
+        {
+          "field": "경도",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 1628,
+          "total": 1628,
+          "fillRate": 1
+        }
+      ]
+    },
+    "jeongja": {
+      "rows": 3553,
+      "fields": [
+        {
+          "field": "상가업소번호",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "상호명",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "지점명",
+          "filled": 488,
+          "total": 3553,
+          "fillRate": 0.13734871939206306
+        },
+        {
+          "field": "상권업종대분류코드",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종대분류명",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종중분류코드",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종중분류명",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종소분류코드",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종소분류명",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "표준산업분류코드",
+          "filled": 3551,
+          "total": 3553,
+          "fillRate": 0.9994370954123276
+        },
+        {
+          "field": "표준산업분류명",
+          "filled": 3551,
+          "total": 3553,
+          "fillRate": 0.9994370954123276
+        },
+        {
+          "field": "시도코드",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "시도명",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "시군구코드",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "시군구명",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "행정동코드",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "행정동명",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "법정동코드",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "법정동명",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "지번코드",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "대지구분코드",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "대지구분명",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "지번본번지",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "지번부번지",
+          "filled": 3220,
+          "total": 3553,
+          "fillRate": 0.9062763861525471
+        },
+        {
+          "field": "지번주소",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "도로명코드",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "도로명",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "건물본번지",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "건물부번지",
+          "filled": 772,
+          "total": 3553,
+          "fillRate": 0.21728117084154236
+        },
+        {
+          "field": "건물관리번호",
+          "filled": 3551,
+          "total": 3553,
+          "fillRate": 0.9994370954123276
+        },
+        {
+          "field": "건물명",
+          "filled": 2538,
+          "total": 3553,
+          "fillRate": 0.7143259217562623
+        },
+        {
+          "field": "도로명주소",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "구우편번호",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "신우편번호",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "동정보",
+          "filled": 0,
+          "total": 3553,
+          "fillRate": 0
+        },
+        {
+          "field": "층정보",
+          "filled": 2074,
+          "total": 3553,
+          "fillRate": 0.583732057416268
+        },
+        {
+          "field": "호정보",
+          "filled": 0,
+          "total": 3553,
+          "fillRate": 0
+        },
+        {
+          "field": "경도",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 3553,
+          "total": 3553,
+          "fillRate": 1
+        }
+      ]
+    },
+    "marinecity": {
+      "rows": 1255,
+      "fields": [
+        {
+          "field": "상가업소번호",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "상호명",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "지점명",
+          "filled": 184,
+          "total": 1255,
+          "fillRate": 0.14661354581673305
+        },
+        {
+          "field": "상권업종대분류코드",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종대분류명",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종중분류코드",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종중분류명",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종소분류코드",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종소분류명",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "표준산업분류코드",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "표준산업분류명",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "시도코드",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "시도명",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "시군구코드",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "시군구명",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "행정동코드",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "행정동명",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "법정동코드",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "법정동명",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "지번코드",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "대지구분코드",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "대지구분명",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "지번본번지",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "지번부번지",
+          "filled": 577,
+          "total": 1255,
+          "fillRate": 0.45976095617529883
+        },
+        {
+          "field": "지번주소",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "도로명코드",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "도로명",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "건물본번지",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "건물부번지",
+          "filled": 69,
+          "total": 1255,
+          "fillRate": 0.0549800796812749
+        },
+        {
+          "field": "건물관리번호",
+          "filled": 1254,
+          "total": 1255,
+          "fillRate": 0.999203187250996
+        },
+        {
+          "field": "건물명",
+          "filled": 1070,
+          "total": 1255,
+          "fillRate": 0.852589641434263
+        },
+        {
+          "field": "도로명주소",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "구우편번호",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "신우편번호",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "동정보",
+          "filled": 0,
+          "total": 1255,
+          "fillRate": 0
+        },
+        {
+          "field": "층정보",
+          "filled": 656,
+          "total": 1255,
+          "fillRate": 0.5227091633466135
+        },
+        {
+          "field": "호정보",
+          "filled": 0,
+          "total": 1255,
+          "fillRate": 0
+        },
+        {
+          "field": "경도",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 1255,
+          "total": 1255,
+          "fillRate": 1
+        }
+      ]
+    },
+    "bokjeong": {
+      "rows": 1822,
+      "fields": [
+        {
+          "field": "상가업소번호",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "상호명",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "지점명",
+          "filled": 219,
+          "total": 1822,
+          "fillRate": 0.12019758507135017
+        },
+        {
+          "field": "상권업종대분류코드",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종대분류명",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종중분류코드",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종중분류명",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종소분류코드",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종소분류명",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "표준산업분류코드",
+          "filled": 1820,
+          "total": 1822,
+          "fillRate": 0.9989023051591658
+        },
+        {
+          "field": "표준산업분류명",
+          "filled": 1820,
+          "total": 1822,
+          "fillRate": 0.9989023051591658
+        },
+        {
+          "field": "시도코드",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "시도명",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "시군구코드",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "시군구명",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "행정동코드",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "행정동명",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "법정동코드",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "법정동명",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "지번코드",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "대지구분코드",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "대지구분명",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "지번본번지",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "지번부번지",
+          "filled": 514,
+          "total": 1822,
+          "fillRate": 0.28210757409440174
+        },
+        {
+          "field": "지번주소",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "도로명코드",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "도로명",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "건물본번지",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "건물부번지",
+          "filled": 113,
+          "total": 1822,
+          "fillRate": 0.062019758507135016
+        },
+        {
+          "field": "건물관리번호",
+          "filled": 1756,
+          "total": 1822,
+          "fillRate": 0.9637760702524698
+        },
+        {
+          "field": "건물명",
+          "filled": 1420,
+          "total": 1822,
+          "fillRate": 0.7793633369923162
+        },
+        {
+          "field": "도로명주소",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "구우편번호",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "신우편번호",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "동정보",
+          "filled": 0,
+          "total": 1822,
+          "fillRate": 0
+        },
+        {
+          "field": "층정보",
+          "filled": 1201,
+          "total": 1822,
+          "fillRate": 0.6591657519209659
+        },
+        {
+          "field": "호정보",
+          "filled": 0,
+          "total": 1822,
+          "fillRate": 0
+        },
+        {
+          "field": "경도",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 1822,
+          "total": 1822,
+          "fillRate": 1
+        }
+      ]
+    },
+    "sejong": {
+      "rows": 898,
+      "fields": [
+        {
+          "field": "상가업소번호",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "상호명",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "지점명",
+          "filled": 199,
+          "total": 898,
+          "fillRate": 0.22160356347438753
+        },
+        {
+          "field": "상권업종대분류코드",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종대분류명",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종중분류코드",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종중분류명",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종소분류코드",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종소분류명",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "표준산업분류코드",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "표준산업분류명",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "시도코드",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "시도명",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "시군구코드",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "시군구명",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "행정동코드",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "행정동명",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "법정동코드",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "법정동명",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "지번코드",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "대지구분코드",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "대지구분명",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "지번본번지",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "지번부번지",
+          "filled": 5,
+          "total": 898,
+          "fillRate": 0.005567928730512249
+        },
+        {
+          "field": "지번주소",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "도로명코드",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "도로명",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "건물본번지",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "건물부번지",
+          "filled": 38,
+          "total": 898,
+          "fillRate": 0.042316258351893093
+        },
+        {
+          "field": "건물관리번호",
+          "filled": 879,
+          "total": 898,
+          "fillRate": 0.9788418708240535
+        },
+        {
+          "field": "건물명",
+          "filled": 818,
+          "total": 898,
+          "fillRate": 0.910913140311804
+        },
+        {
+          "field": "도로명주소",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "구우편번호",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "신우편번호",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "동정보",
+          "filled": 0,
+          "total": 898,
+          "fillRate": 0
+        },
+        {
+          "field": "층정보",
+          "filled": 545,
+          "total": 898,
+          "fillRate": 0.6069042316258352
+        },
+        {
+          "field": "호정보",
+          "filled": 0,
+          "total": 898,
+          "fillRate": 0
+        },
+        {
+          "field": "경도",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 898,
+          "total": 898,
+          "fillRate": 1
+        }
+      ]
+    },
+    "wanju": {
+      "rows": 371,
+      "fields": [
+        {
+          "field": "상가업소번호",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "상호명",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "지점명",
+          "filled": 17,
+          "total": 371,
+          "fillRate": 0.04582210242587601
+        },
+        {
+          "field": "상권업종대분류코드",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종대분류명",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종중분류코드",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종중분류명",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종소분류코드",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "상권업종소분류명",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "표준산업분류코드",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "표준산업분류명",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "시도코드",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "시도명",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "시군구코드",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "시군구명",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "행정동코드",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "행정동명",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "법정동코드",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "법정동명",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "지번코드",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "대지구분코드",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "대지구분명",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "지번본번지",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "지번부번지",
+          "filled": 316,
+          "total": 371,
+          "fillRate": 0.8517520215633423
+        },
+        {
+          "field": "지번주소",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "도로명코드",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "도로명",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "건물본번지",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "건물부번지",
+          "filled": 104,
+          "total": 371,
+          "fillRate": 0.2803234501347709
+        },
+        {
+          "field": "건물관리번호",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "건물명",
+          "filled": 42,
+          "total": 371,
+          "fillRate": 0.11320754716981132
+        },
+        {
+          "field": "도로명주소",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "구우편번호",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "신우편번호",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "동정보",
+          "filled": 0,
+          "total": 371,
+          "fillRate": 0
+        },
+        {
+          "field": "층정보",
+          "filled": 104,
+          "total": 371,
+          "fillRate": 0.2803234501347709
+        },
+        {
+          "field": "호정보",
+          "filled": 0,
+          "total": 371,
+          "fillRate": 0
+        },
+        {
+          "field": "경도",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 371,
+          "total": 371,
+          "fillRate": 1
+        }
+      ]
+    }
+  },
+  "pointBasis": "lnglat-columns",
+  "outOfRangePoints": 0
+}

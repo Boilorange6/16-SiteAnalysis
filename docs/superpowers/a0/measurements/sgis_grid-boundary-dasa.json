@@ -1,0 +1,108 @@
+{
+  "file": ".cache/v2/raw/sgis_grid/x/국가데이터처_SGIS 격자 통계 및 경계/2. 경계/grid_다사/grid_다사_1K.shp",
+  "bytes": 1170924,
+  "encoding": "utf-8",
+  "measuredAt": "2026-09-29T09:37:21.093Z",
+  "rows": 8609,
+  "fields": [
+    {
+      "field": "GRID_CD",
+      "filled": 8609,
+      "total": 8609,
+      "fillRate": 1
+    }
+  ],
+  "byRegion": {},
+  "bySite": {
+    "guryong": {
+      "rows": 4,
+      "fields": [
+        {
+          "field": "GRID_CD",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        }
+      ]
+    },
+    "dasan": {
+      "rows": 3,
+      "fields": [
+        {
+          "field": "GRID_CD",
+          "filled": 3,
+          "total": 3,
+          "fillRate": 1
+        }
+      ]
+    },
+    "cheongwadae": {
+      "rows": 3,
+      "fields": [
+        {
+          "field": "GRID_CD",
+          "filled": 3,
+          "total": 3,
+          "fillRate": 1
+        }
+      ]
+    },
+    "jeongja": {
+      "rows": 3,
+      "fields": [
+        {
+          "field": "GRID_CD",
+          "filled": 3,
+          "total": 3,
+          "fillRate": 1
+        }
+      ]
+    },
+    "marinecity": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "GRID_CD",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "bokjeong": {
+      "rows": 4,
+      "fields": [
+        {
+          "field": "GRID_CD",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        }
+      ]
+    },
+    "sejong": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "GRID_CD",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "wanju": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "GRID_CD",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    }
+  },
+  "pointBasis": "bbox-center",
+  "outOfRangePoints": 0
+}
