@@ -9,6 +9,15 @@ import proj4 from "proj4";
 import { toUtmk, UTMK, type LngLat } from "../crs";
 import type { ReviewSite } from "./review-sites";
 
+const EUC_KR_ALIASES = new Set(["euc-kr", "euckr", "cp949", "ms949", "x-windows-949", "ks_c_5601-1987"]);
+
+/** 인코딩 라벨 정규화. shapefile이 쓰는 text-encoding 폴리필은 cp949 같은 별칭을 모른다. */
+export function normalizeEncoding(label: string): string {
+  const l = label.trim().toLowerCase();
+  if (EUC_KR_ALIASES.has(l)) return "euc-kr";
+  return l === "utf8" ? "utf-8" : l;
+}
+
 export function decodeText(buf: Uint8Array): { text: string; encoding: "utf-8" | "euc-kr" } {
   const bytes = buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf ? buf.subarray(3) : buf;
   try {
@@ -215,7 +224,7 @@ export async function shpRecords(shpPath: string, opts: { encoding: string; crs:
   if (opts.crs !== "EPSG:4326" && !proj4.defs(opts.crs)) {
     throw new Error(`unknown CRS ${opts.crs} — define it with proj4.defs first (UTM-K is ${UTMK})`);
   }
-  const source = await openShapefile(shpPath, undefined, { encoding: opts.encoding });
+  const source = await openShapefile(shpPath, undefined, { encoding: normalizeEncoding(opts.encoding) });
   const first = await source.read();
   const fieldNames = first.done ? [] : Object.keys(first.value.properties ?? {});
   const toLngLat = (xy: number[]): LngLat => {

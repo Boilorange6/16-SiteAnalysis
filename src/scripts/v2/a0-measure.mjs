@@ -8,7 +8,7 @@ import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { extname } from "node:path";
 import proj4 from "proj4";
 
-const { measureRecords, csvRecords, shpRecords } = await import("../../lib/v2/a0/measure.ts");
+const { measureRecords, csvRecords, shpRecords, normalizeEncoding } = await import("../../lib/v2/a0/measure.ts");
 const { REVIEW_SITES } = await import("../../lib/v2/a0/review-sites.ts");
 const { PROJ4_DEFINITIONS } = await import("../../lib/server/maintenance/boundary-crs.ts");
 for (const [name, def] of Object.entries(PROJ4_DEFINITIONS)) proj4.defs(name, def);
@@ -38,14 +38,14 @@ let records;
 let encoding;
 let pointBasis = "none";
 if (ext === ".csv") {
-  const csvEncoding = { undefined: undefined, cp949: "euc-kr", "euc-kr": "euc-kr", "utf-8": "utf-8", utf8: "utf-8" }[encodingArg];
-  if (encodingArg !== undefined && !csvEncoding) fail(`unsupported --encoding ${encodingArg} for CSV (use utf-8 or cp949)`);
+  const csvEncoding = encodingArg === undefined ? undefined : normalizeEncoding(encodingArg);
+  if (csvEncoding !== undefined && csvEncoding !== "utf-8" && csvEncoding !== "euc-kr") fail(`unsupported --encoding ${encodingArg} for CSV (use utf-8 or cp949)`);
   const lngField = opt("lng-field");
   const latField = opt("lat-field");
   ({ fieldNames, records, encoding } = await csvRecords(file, { lngField, latField, encoding: csvEncoding }));
   if (lngField && latField) pointBasis = "lnglat-columns";
 } else if (ext === ".shp") {
-  encoding = encodingArg ?? "cp949";
+  encoding = normalizeEncoding(encodingArg ?? "euc-kr");
   const prj = file.replace(/\.shp$/i, ".prj");
   if (opt("crs") === undefined && existsSync(prj)) {
     console.error(`warning: --crs not given (assuming EPSG:5186) but ${prj} exists: ${readFileSync(prj, "utf8").slice(0, 120)}`);
