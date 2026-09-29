@@ -40,6 +40,10 @@ const { v2AppDbPath, v2DataDir, legacyDbPath } = await import("../../lib/v2/path
   assert.equal(canonicalJson(null), "null");
   assert.throws(() => canonicalJson({ a: Number.NaN }), TypeError, "NaN은 거부");
   assert.throws(() => canonicalJson([undefined]), TypeError, "배열 속 undefined는 거부");
+  for (const bad of [new Date(0), new Map(), new (class Foo { a = 1; })()]) {
+    assert.throws(() => canonicalJson({ x: bad }), TypeError, "비평범 객체는 거부");
+  }
+  assert.equal(canonicalJson(Object.assign(Object.create(null), { a: 1 })), '{"a":1}', "null 프로토타입은 허용");
   assert.equal(sha256Hex("abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
 }
 

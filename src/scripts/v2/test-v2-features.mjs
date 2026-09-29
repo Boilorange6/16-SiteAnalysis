@@ -84,4 +84,28 @@ insertFeature(db, { ...base, stableId: "bld", kind: "building", geometry: square
   );
 }
 
+// ─── 6. 중심이 유한하지 않으면 거부 ────────────────────────────────────────
+{
+  for (const bad of [[Number.NaN, 37.4869], [127.0592, Infinity]]) {
+    assert.throws(() => queryFeaturesInRadius(db, bad, 1000, ["station"]), RangeError);
+  }
+}
+
+// ─── 7. insertFeature는 원자적: r-tree 삽입 실패 시 feature 행도 남지 않는다 ──
+{
+  const broken = freshDb();
+  broken.exec("DROP TABLE feature_rtree");
+  assert.throws(() => insertFeature(broken, { ...base, stableId: "x", kind: "building", geometry: square(0, 0, 10) }));
+  assert.equal(broken.prepare("SELECT count(*) FROM feature").pluck().get(), 0);
+}
+
+// ─── 8. 중심이 다각형 안에 있으면 포함 (경계가 반경 밖이어도) ─────────────────
+{
+  const d = freshDb();
+  insertFeature(d, { ...base, stableId: "big", kind: "zone", geometry: square(-3000, -3000, 6000) });
+  const hits = queryFeaturesInRadius(d, CENTER, 500, ["zone"]);
+  assert.deepEqual(hits.map((h) => h.stableId), ["big"]);
+  assert.equal(hits[0].distanceM, null);
+}
+
 console.log("✓ v2 features");

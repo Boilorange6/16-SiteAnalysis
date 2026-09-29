@@ -53,6 +53,7 @@ assert.deepEqual(codes(evaluateIngest(obs({ next: snap({ fillRates: { height_m: 
 assert.deepEqual(codes(evaluateIngest(obs({ next: snap({ fillRates: { height_m: 0.7, approval_date: 0.95 } }) }))), []);
 // 이전에 있던 필드가 통째로 빠진 것도 급락
 assert.deepEqual(codes(evaluateIngest(obs({ next: snap({ fillRates: { approval_date: 0.95 } }) }))), ["FILL_RATE_DROP"]);
+assert.deepEqual(codes(evaluateIngest(obs({ next: snap({ fillRates: { height_m: Number.NaN, approval_date: 0.95 } }) }))), ["FILL_RATE_DROP"], "NaN 채움률은 하락");
 
 // 페이지 상한·totalCount 불일치
 assert.deepEqual(codes(evaluateIngest(obs({ pageLimitHit: true }))), ["INCOMPLETE_FETCH"]);

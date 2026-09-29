@@ -125,4 +125,15 @@ const { REVIEW_SITES } = await import("../../lib/v2/a0/review-sites.ts");
   assert.equal(normalizeEncoding("utf-8"), "utf-8");
 }
 
+// ─── 9. CLI: --site-radius 검증 ────────────────────────────────────────────
+{
+  const { spawnSync } = await import("node:child_process");
+  const csv = tmpFile("r.csv", "a\n1\n");
+  for (const bad of ["0", "-5", "abc"]) {
+    const r = spawnSync(process.execPath, ["--import", "tsx", "src/scripts/v2/a0-measure.mjs", csv, "--site-radius", bad], { encoding: "utf8" });
+    assert.equal(r.status, 2, `--site-radius ${bad}`);
+    assert.match(r.stderr, /--site-radius must be a positive number/);
+  }
+}
+
 console.log("✓ v2 a0 measure");

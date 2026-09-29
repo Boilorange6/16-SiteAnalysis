@@ -77,7 +77,10 @@ export function evaluateIngest(obs: IngestObservation): GateResult {
     if (lostTypes.length > 0) failures.push({ code: "TYPE_MISSING", detail: lostTypes.join(",") });
 
     const dropped = Object.entries(previous.fillRates)
-      .filter(([field, rate]) => rate - (next.fillRates[field] ?? 0) > FILL_RATE_DROP_THRESHOLD + 1e-9)
+      .filter(([field, rate]) => {
+        const nextRate = next.fillRates[field] ?? 0;
+        return !Number.isFinite(nextRate) || rate - nextRate > FILL_RATE_DROP_THRESHOLD + 1e-9;
+      })
       .map(([field, rate]) => `${field} ${rate} -> ${next.fillRates[field] ?? 0}`);
     if (dropped.length > 0) failures.push({ code: "FILL_RATE_DROP", detail: dropped.join("; ") });
   }

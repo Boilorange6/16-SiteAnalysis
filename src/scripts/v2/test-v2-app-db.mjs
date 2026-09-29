@@ -4,7 +4,7 @@
  * 저장된 프로젝트의 데이터 버전은 가비지 수집에서 보호되어야 한다.
  */
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -50,10 +50,19 @@ assert.throws(() => A.saveTileResult(db, tile("zzz", H1), "k4"), /unknown analys
 A.finishAnalysisRun(db, "a1", "complete");
 assert.equal(A.getAnalysisRun(db, "a1").status, "complete");
 
-// 저장 프로젝트가 참조하는 버전만 핀
-assert.deepEqual(A.pinnedManifestHashes(db), new Set());
-A.saveProject(db, { projectId: "p1", name: "다산역 검토", analysisId: "a1", board: { tiles: ["D02"] } });
-assert.deepEqual(A.pinnedManifestHashes(db), new Set([H1]));
+// 저장 프로젝트가 참조하는 버전 + 진행 중(running) 분석의 버전만 핀. a1은 complete, a2는 running.
+assert.deepEqual(A.pinnedManifestHashes(db), new Set([H2]), "running a2만 핀");
+const dataDir = mkdtempSync(join(tmpdir(), "v2-app-data-"));
+const archive = (h) => { mkdirSync(join(dataDir, "manifests"), { recursive: true }); writeFileSync(join(dataDir, "manifests", `${h}.json`), JSON.stringify({ version: "x", createdAt: "x", files: {} })); };
+// 실행이 쓴 버전이 이미 수집됐으면 저장 거부 (안 그러면 이후 모든 GC가 MISSING_PINNED_MANIFEST)
+await assert.rejects(A.saveProject(db, dataDir, { projectId: "p1", name: "n", analysisId: "a1", board: {} }), /DATA_VERSION_GONE/);
+await assert.rejects(A.saveProject(db, dataDir, { projectId: "p1", name: "n", analysisId: "zzz", board: {} }), /unknown analysis/);
+assert.deepEqual(A.pinnedManifestHashes(db), new Set([H2]), "거부된 저장은 핀을 만들지 않음");
+archive(H1);
+await A.saveProject(db, dataDir, { projectId: "p1", name: "다산역 검토", analysisId: "a1", board: { tiles: ["D02"] } });
+assert.deepEqual(A.pinnedManifestHashes(db), new Set([H1, H2]));
+A.finishAnalysisRun(db, "a2", "failed");
+assert.deepEqual(A.pinnedManifestHashes(db), new Set([H1]), "끝난 분석은 핀 해제");
 
 db.close();
 console.log("✓ v2 app db");

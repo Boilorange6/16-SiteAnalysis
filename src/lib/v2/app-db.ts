@@ -7,6 +7,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import Database from "better-sqlite3";
 import type BetterSqlite3 from "better-sqlite3";
+import { readArchivedManifest, withDataDirLock } from "./data/manifest";
 import { v2AppDbPath } from "./paths";
 import { parseTileResult, type TileResult } from "./tile-result";
 
@@ -131,7 +132,22 @@ export function loadTileResults(db: Db, analysisId: string): TileResult[] {
   return rows.map((json) => parseTileResult(JSON.parse(json)));
 }
 
-export function saveProject(db: Db, p: { projectId: string; name: string; analysisId: string; board: unknown }): void {
+/**
+ * 잠금 안에서 저장한다: 실행이 쓴 데이터 버전이 이미 수집됐으면 DATA_VERSION_GONE.
+ * (그대로 저장하면 이후 모든 GC가 MISSING_PINNED_MANIFEST로 멈춘다.)
+ */
+export async function saveProject(db: Db, dataDir: string, p: { projectId: string; name: string; analysisId: string; board: unknown }): Promise<void> {
+  await withDataDirLock(dataDir, () => {
+    const run = getAnalysisRun(db, p.analysisId);
+    if (!run) throw new Error(`unknown analysis ${p.analysisId}`);
+    if (!readArchivedManifest(dataDir, run.manifestHash)) {
+      throw new Error(`DATA_VERSION_GONE: data version ${run.manifestHash} of analysis ${p.analysisId} was already collected`);
+    }
+    insertProject(db, p);
+  });
+}
+
+function insertProject(db: Db, p: { projectId: string; name: string; analysisId: string; board: unknown }): void {
   const t = now();
   db.prepare(`INSERT INTO saved_project (project_id, name, analysis_id, board_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(project_id) DO UPDATE SET name = excluded.name, analysis_id = excluded.analysis_id, board_json = excluded.board_json, updated_at = excluded.updated_at`)
@@ -140,7 +156,8 @@ export function saveProject(db: Db, p: { projectId: string; name: string; analys
 
 export function pinnedManifestHashes(db: Db): Set<string> {
   const rows = db
-    .prepare("SELECT DISTINCT r.manifest_hash FROM saved_project p JOIN analysis_run r ON r.analysis_id = p.analysis_id")
+    .prepare(`SELECT r.manifest_hash FROM saved_project p JOIN analysis_run r ON r.analysis_id = p.analysis_id
+      UNION SELECT manifest_hash FROM analysis_run WHERE status = 'running'`)
     .pluck()
     .all() as string[];
   return new Set(rows);

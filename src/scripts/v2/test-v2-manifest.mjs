@@ -18,11 +18,12 @@ function makeDataDir() {
 }
 
 /** versions/<version>/core.sqlite 를 만들고 manifest를 돌려준다 */
-async function buildVersion(dataDir, version) {
+async function buildVersion(dataDir, version, { wal = false } = {}) {
   const rel = `versions/${version}/core.sqlite`;
   const abs = join(dataDir, rel);
   mkdirSync(join(dataDir, "versions", version), { recursive: true });
   const db = new Database(abs);
+  if (wal) db.pragma("journal_mode = WAL");
   initDataFileSchema(db, "core");
   db.close();
   return {
@@ -207,6 +208,85 @@ async function buildVersion(dataDir, version) {
   assert.ok(!existsSync(join(dir, v1.files.core.path)), "핀 해제된 v1 삭제");
   assert.ok(swept.deleted.includes("versions/v1/core.sqlite"));
   assert.ok(swept.deleted.includes(`manifests/${h1}.json`));
+}
+
+// ─── 7. WAL 모드 파일은 게시 거부 (읽기 전용 open이 -wal/-shm을 만든다) ────────
+{
+  const dir = makeDataDir();
+  const v1 = await buildVersion(dir, "v1");
+  await M.publishManifest(dir, v1, OK);
+  const w = await buildVersion(dir, "v2", { wal: true });
+  assert.equal(existsSync(join(dir, w.files.core.path) + "-wal"), false, "닫으면 -wal은 없지만 헤더는 WAL");
+  await assert.rejects(M.publishManifest(dir, w, OK), (e) => e.code === "WAL_MODE");
+  assert.deepEqual(M.readManifest(dir), v1);
+}
+
+// ─── 8. 빌더는 잠금 안에서 게시하고, 바깥 GC는 LOCKED ───────────────────────
+{
+  const dir = makeDataDir();
+  await M.publishManifest(dir, await buildVersion(dir, "v1"), OK);
+  let gcError;
+  let v2;
+  await M.withDataDirLock(dir, async () => {
+    v2 = await buildVersion(dir, "v2");
+    await assert.rejects(M.publishManifest(dir, v2, OK), (e) => e.code === "LOCKED", "잠금 안에서 잠그는 publish는 LOCKED");
+    await M.collectGarbage(dir, new Set()).catch((e) => { gcError = e; });
+    const r = await M.publishManifestLocked(dir, v2, OK);
+    assert.equal(r.published, true);
+  });
+  assert.equal(gcError?.code, "LOCKED", "빌드 중 바깥 GC는 LOCKED");
+  assert.deepEqual(M.readManifest(dir), v2);
+  assert.ok(existsSync(join(dir, v2.files.core.path)));
+  await M.withDataDirLock(dir, () => M.rollbackManifestLocked(dir));
+  assert.equal(M.readManifest(dir).version, "v1");
+  await assert.rejects(M.withDataDirLock(dir, () => M.rollbackManifest(dir)), (e) => e.code === "LOCKED");
+}
+
+// ─── 9. 열려 있는 파일은 skipped로 보고하고 GC는 계속한다 (Windows 파일 잠금) ──
+{
+  const dir = makeDataDir();
+  await M.publishManifest(dir, await buildVersion(dir, "v1"), OK);
+  await M.publishManifest(dir, await buildVersion(dir, "v2"), OK);
+  await M.publishManifest(dir, await buildVersion(dir, "v3"), OK); // v1은 수집 대상
+  mkdirSync(join(dir, "versions", "zz"), { recursive: true });
+  writeFileSync(join(dir, "versions", "zz", "core.sqlite"), "junk");
+  const held = new Database(join(dir, "versions/v1/core.sqlite"), { readonly: true });
+  try {
+    const r = await M.collectGarbage(dir, new Set());
+    if (process.platform === "win32") {
+      assert.deepEqual(r.skipped, ["versions/v1/core.sqlite"], "열린 v1은 건너뜀");
+      assert.ok(r.deleted.includes("versions/zz/core.sqlite"), "뒤 파일은 계속 지운다");
+    } else {
+      assert.deepEqual(r.skipped, []);
+    }
+  } finally {
+    held.close();
+  }
+  const again = await M.collectGarbage(dir, new Set());
+  assert.deepEqual(again.skipped, []);
+  assert.ok(!existsSync(join(dir, "versions/v1/core.sqlite")), "닫은 뒤 다음 GC가 지운다");
+}
+
+// ─── 10. POST_PUBLISH_MISMATCH: 게시 전 상태로 복원 ─────────────────────────
+{
+  // 이전본 없음(첫 게시): manifest.json을 남기지 않는다
+  const dir = makeDataDir();
+  const v1 = await buildVersion(dir, "v1");
+  await assert.rejects(M.publishManifest(dir, v1, OK, { reread: () => null }), (e) => e.code === "POST_PUBLISH_MISMATCH");
+  assert.equal(M.readManifest(dir), null);
+
+  // 이전본 있음: 직전 정상본으로 복원
+  await M.publishManifest(dir, v1, OK);
+  const v2 = await buildVersion(dir, "v2");
+  await assert.rejects(M.publishManifest(dir, v2, OK, { reread: () => v1 }), (e) => e.code === "POST_PUBLISH_MISMATCH");
+  assert.deepEqual(M.readManifest(dir), v1);
+  assert.equal(existsSync(join(dir, M.PREVIOUS_MANIFEST_FILE)), false, "prev도 게시 전 상태(없음)로");
+
+  // 같은 해시 재게시 불일치: 옛 버전이 아니라 게시 전 현재본(v2)으로 복원, prev는 v1 그대로
+  await M.publishManifest(dir, v2, OK);
+  await assert.rejects(M.publishManifest(dir, v2, OK, { reread: () => v1 }), (e) => e.code === "POST_PUBLISH_MISMATCH");
+  assert.deepEqual(M.readManifest(dir), v2);
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, M.PREVIOUS_MANIFEST_FILE), "utf8")), v1);
 }
 
 console.log("✓ v2 manifest");

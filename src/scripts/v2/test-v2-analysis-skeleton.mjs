@@ -57,7 +57,7 @@ try {
   assert.equal(d02.provenance.sources[0].releaseId, "rel-v1");
   assert.equal(d02.provenance.sources[0].sourceAsOf, "2026-09-01");
   assert.equal(A.getAnalysisRun(appDb, r1.analysisId).status, "complete");
-  A.saveProject(appDb, { projectId: "p1", name: "다산", analysisId: r1.analysisId, board: { tiles: ["D02"] } });
+  await A.saveProject(appDb, dataDir, { projectId: "p1", name: "다산", analysisId: r1.analysisId, board: { tiles: ["D02"] } });
 
   // v2 게시(5동) → 새 분석은 새 버전, 옛 분석은 그대로
   const h2 = await buildCore(dataDir, "v2", [[0, 0], [100, 0], [200, 0], [300, 0], [400, 0]]);
@@ -79,6 +79,7 @@ try {
   assert.equal(r3b.manifestHash, r3.manifestHash);
   assert.equal(r3b.tiles[0].metrics[0].value, r3.tiles[0].metrics[0].value);
 
+  // 진행 중 분석의 버전은 GC가 지우지 않는다 (v5 게시 후 v4 분석을 running으로 둔다)
   // v4 게시 → 현재 v4, 이전 v3. v2는 현재·이전·핀 어디에도 없어 삭제 대상, v1은 핀으로 유지.
   await buildCore(dataDir, "v4", [[0, 0]]);
   const { deleted } = await M.collectGarbage(dataDir, A.pinnedManifestHashes(appDb));
@@ -86,6 +87,19 @@ try {
   assert.ok(!existsSync(join(dataDir, "versions/v2/core.sqlite")), "핀 없는 v2 삭제");
   assert.ok(deleted.includes("versions/v2/core.sqlite"));
   assert.ok(!deleted.includes("versions/v1/core.sqlite"));
+
+  // 실행 중 분석의 버전 유지, 수집된 버전으로는 저장 불가하지만 GC는 계속 동작
+  const h5 = await buildCore(dataDir, "v5", [[0, 0], [50, 50]]);
+  A.createAnalysisRun(appDb, { analysisId: "run-live", address: "x", center: CENTER, radiusM: 800, analysisDate: "2026-09-29", manifestHash: h5, engineVersion: "v2-p0", parameters: {} });
+  await buildCore(dataDir, "v6", [[0, 0]]);
+  await buildCore(dataDir, "v7", [[0, 0]]); // 현재 v7, 이전 v6 — v5는 running 핀으로만 산다
+  await M.collectGarbage(dataDir, A.pinnedManifestHashes(appDb));
+  assert.ok(existsSync(join(dataDir, "versions/v5/core.sqlite")), "running 분석의 v5 유지");
+  A.finishAnalysisRun(appDb, "run-live", "complete");
+  await M.collectGarbage(dataDir, A.pinnedManifestHashes(appDb));
+  assert.ok(!existsSync(join(dataDir, "versions/v5/core.sqlite")), "끝난 뒤 v5 수집");
+  await assert.rejects(A.saveProject(appDb, dataDir, { projectId: "p2", name: "x", analysisId: "run-live", board: {} }), /DATA_VERSION_GONE/);
+  await M.collectGarbage(dataDir, A.pinnedManifestHashes(appDb)); // 저장 거부 덕에 GC가 막히지 않는다
 } finally {
   appDb.close();
 }

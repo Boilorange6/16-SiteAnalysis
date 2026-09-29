@@ -81,6 +81,7 @@ export function insertFeature(db: Db, input: FeatureInput): number {
   }
   const projected = projectGeometry(input.geometry);
   const [minX, minY, maxX, maxY] = bboxOf(projected);
+  return db.transaction(() => {
   const info = db
     .prepare(`INSERT INTO feature (stable_id, kind, source_key, release_id, geom_json, name, pnu, legal_code, properties_json)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -92,6 +93,7 @@ export function insertFeature(db: Db, input: FeatureInput): number {
   // SQLite R*Tree는 32비트 실수로 저장하되 바깥쪽으로 반올림한다 — 후보가 빠지지 않는다.
   db.prepare("INSERT INTO feature_rtree (feature_id, min_x, max_x, min_y, max_y) VALUES (?, ?, ?, ?, ?)").run(featureId, minX, maxX, minY, maxY);
   return featureId;
+  })();
 }
 
 // ponytail: 원에 외접하는 64각형 — 교차 판정이 원보다 최대 r·(1/cos(π/64)−1) ≈ 0.12% 넓다(1km에서 1.2m).
@@ -124,6 +126,7 @@ export function queryFeaturesInRadius(db: Db, center: LngLat, radiusM: number, k
     throw new RangeError(`radiusM must be in (0, ${MAX_RADIUS_M}], got ${radiusM}`);
   }
   if (kinds.length === 0) return [];
+  if (!center.every(Number.isFinite)) throw new RangeError(`center must be finite, got ${center}`);
   const [cx, cy] = toUtmk(center);
   const rows = db
     .prepare(`SELECT f.feature_id, f.stable_id, f.kind, f.release_id, f.geom_json, f.name, f.pnu, f.legal_code, f.properties_json

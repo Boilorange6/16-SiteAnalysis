@@ -31,6 +31,9 @@ const fail = (msg) => {
 const regionDigits = Number(opt("region-digits", "2"));
 if (!Number.isInteger(regionDigits) || regionDigits < 1) fail("--region-digits must be a positive integer");
 
+const siteRadius = Number(opt("site-radius", "1000"));
+if (!Number.isFinite(siteRadius) || siteRadius <= 0) fail("--site-radius must be a positive number");
+
 const ext = extname(file).toLowerCase();
 const encodingArg = opt("encoding");
 let fieldNames;
@@ -63,7 +66,7 @@ const report = await measureRecords(records, fieldNames, {
   regionField,
   regionDigits,
   sites: REVIEW_SITES,
-  siteRadiusM: Number(opt("site-radius", "1000")),
+  siteRadiusM: siteRadius,
   pointBasis,
 });
 const out = { file, bytes: statSync(file).size, encoding, measuredAt: new Date().toISOString(), ...report };

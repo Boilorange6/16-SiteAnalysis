@@ -8,6 +8,8 @@ export function canonicalJson(value: unknown): string {
   if (typeof value === "number" && !Number.isFinite(value)) throw new TypeError("canonicalJson: non-finite number");
   if (value === null || typeof value !== "object") return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  const proto = Object.getPrototypeOf(value);
+  if (proto !== Object.prototype && proto !== null) throw new TypeError("canonicalJson: only plain objects are supported");
   const entries = Object.entries(value as Record<string, unknown>)
     .filter(([, v]) => v !== undefined)
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
