@@ -12,8 +12,8 @@ export function jimokOf(v: unknown): string | null {
   return m ? m[1] : null;
 }
 
-export async function buildParcelPoints(db: BetterSqlite3.Database, records: AsyncIterable<ShpPointRecord>, releaseId: string): Promise<SourceStats> {
-  const stats = new SourceStats("parcel", releaseId, ["jimok"]);
+export async function buildParcelPoints(db: BetterSqlite3.Database, records: AsyncIterable<ShpPointRecord>, releaseId: string, sourceId = "parcel"): Promise<SourceStats> {
+  const stats = new SourceStats(sourceId, releaseId, ["jimok"]);
   const insert = db.prepare("INSERT OR IGNORE INTO parcel_point (pnu, lng, lat, jimok, release_id) VALUES (?, ?, ?, ?, ?)");
   await batched(db, records, (r) => {
     stats.read();

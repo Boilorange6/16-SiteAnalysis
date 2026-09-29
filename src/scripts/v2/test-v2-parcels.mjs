@@ -44,6 +44,9 @@ assert.equal(jimokOf(null), null);
   assert.deepEqual(lookupParcelPoint(db, "3611010100102030024"), [127.28, 36.48]);
   assert.equal(lookupParcelPoint(db, "3611010100109300000"), null);
   assert.equal(db.prepare("SELECT jimok FROM parcel_point WHERE pnu='1168010100100010000'").pluck().get(), "대");
+  assert.equal(s.sourceId, "parcel");
+  async function* one() { yield { properties: { A1: "4136011200144360000", A5: null }, point: [127.2, 37.6] }; }
+  assert.equal((await buildParcelPoints(db, one(), rel, "parcel_building")).sourceId, "parcel_building");
 }
 
 console.log("✓ v2 parcels");

@@ -104,21 +104,24 @@ if (only.has("core")) {
       ri: readShp(newest("legal_dong", /\(LIO\)\.shp$/i)),
     });
     const { parcelFiles, buildingFiles, titleFile, hasNationalTitle } = await discoverCore();
-    const parcelRel = release(db, "parcel", newestDated(parcelFiles), "국토교통부(VWorld 연속지적도형정보)", "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=23", "CC-BY");
-    const parcel = await buildParcelPoints(db, chain(...parcelFiles.map((f) => readShpPoints(f))), parcelRel);
-    parcel.expectedRegions = parcelFiles.map((f) => sidoOf(f, "AL_D002"));
-    const extra = [];
+    const parcels = [];
+    if (parcelFiles.length > 0) {
+      const parcelRel = release(db, "parcel", newestDated(parcelFiles), "국토교통부(VWorld 연속지적도형정보)", "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=23", "CC-BY");
+      const parcel = await buildParcelPoints(db, chain(...parcelFiles.map((f) => readShpPoints(f))), parcelRel);
+      parcel.expectedRegions = parcelFiles.map((f) => sidoOf(f, "AL_D002"));
+      parcels.push(parcel);
+    } else {
+      console.log("지적도 파일이 없어 모든 필지 대표점을 GIS건물에서 만듭니다");
+    }
     if (buildingFiles.length > 0) {
       // 500MB 넘는 시도 지적도는 VWorld가 일반 다운로드로 안 준다 — 그 시도만 GIS건물통합정보(A2=PNU)의 건물 대표점으로 대신한다. 지적도 뒤에 넣어 INSERT OR IGNORE가 지적도 행을 우선한다.
       const buildingRel = release(db, "parcel_building", newestDated(buildingFiles), "국토교통부(VWorld GIS건물통합정보, 필지 대표점 대체)", "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=18", "CC-BY");
       async function* buildingAsParcels(file) {
         for await (const r of readShpPoints(file)) yield { properties: { A1: r.properties.A2, A5: null }, point: r.point };
       }
-      const pb = await buildParcelPoints(db, chain(...buildingFiles.map(buildingAsParcels)), buildingRel);
-      // buildParcelPoints가 sourceId를 "parcel"로 고정해 두므로 CLI에서 덮어쓴다(런타임에서는 일반 속성)
-      Object.defineProperty(pb, "sourceId", { value: "parcel_building" });
+      const pb = await buildParcelPoints(db, chain(...buildingFiles.map(buildingAsParcels)), buildingRel, "parcel_building");
       pb.expectedRegions = buildingFiles.map((f) => sidoOf(f, "AL_D010"));
-      extra.push(pb);
+      parcels.push(pb);
     }
     const recapFile = newest("ledger_recap", /^recap_.*\.csv$/i);
     if (!hasNationalTitle) console.warn("⚠ 전국 표제부(title_YYYYMM.csv)가 없어 5개 시도 표제부로 적재합니다 — 오피스텔·단일동 커버리지 일부");
@@ -128,7 +131,7 @@ if (only.has("core")) {
       recap: (await csvRecords(recapFile)).records,
       title: (await csvRecords(titleFile)).records,
     });
-    return [...legal, parcel, ...extra, ...ledger];
+    return [...legal, ...parcels, ...ledger];
   };
 }
 if (only.has("reference")) {
