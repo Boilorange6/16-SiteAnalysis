@@ -1,0 +1,1114 @@
+{
+  "file": ".cache/v2/raw/park/park-std.csv",
+  "bytes": 4692875,
+  "encoding": "utf-8",
+  "measuredAt": "2026-09-29T09:50:05.019Z",
+  "rows": 18295,
+  "fields": [
+    {
+      "field": "관리번호",
+      "filled": 18295,
+      "total": 18295,
+      "fillRate": 1
+    },
+    {
+      "field": "공원명",
+      "filled": 18295,
+      "total": 18295,
+      "fillRate": 1
+    },
+    {
+      "field": "공원구분",
+      "filled": 18295,
+      "total": 18295,
+      "fillRate": 1
+    },
+    {
+      "field": "소재지도로명주소",
+      "filled": 3105,
+      "total": 18295,
+      "fillRate": 0.1697185023230391
+    },
+    {
+      "field": "소재지지번주소",
+      "filled": 18115,
+      "total": 18295,
+      "fillRate": 0.9901612462421426
+    },
+    {
+      "field": "위도",
+      "filled": 18295,
+      "total": 18295,
+      "fillRate": 1
+    },
+    {
+      "field": "경도",
+      "filled": 18295,
+      "total": 18295,
+      "fillRate": 1
+    },
+    {
+      "field": "공원면적",
+      "filled": 18295,
+      "total": 18295,
+      "fillRate": 1
+    },
+    {
+      "field": "공원보유시설(운동시설)",
+      "filled": 5085,
+      "total": 18295,
+      "fillRate": 0.2779447936594698
+    },
+    {
+      "field": "공원보유시설(유희시설)",
+      "filled": 5939,
+      "total": 18295,
+      "fillRate": 0.3246242142661929
+    },
+    {
+      "field": "공원보유시설(편익시설)",
+      "filled": 4794,
+      "total": 18295,
+      "fillRate": 0.2620388084176004
+    },
+    {
+      "field": "공원보유시설(교양시설)",
+      "filled": 530,
+      "total": 18295,
+      "fillRate": 0.02896966384257994
+    },
+    {
+      "field": "공원보유시설(기타시설)",
+      "filled": 2680,
+      "total": 18295,
+      "fillRate": 0.14648811150587593
+    },
+    {
+      "field": "지정고시일",
+      "filled": 14862,
+      "total": 18295,
+      "fillRate": 0.8123531019404209
+    },
+    {
+      "field": "관리기관명",
+      "filled": 17278,
+      "total": 18295,
+      "fillRate": 0.944411041268106
+    },
+    {
+      "field": "전화번호",
+      "filled": 17297,
+      "total": 18295,
+      "fillRate": 0.945449576386991
+    },
+    {
+      "field": "데이터기준일자",
+      "filled": 18295,
+      "total": 18295,
+      "fillRate": 1
+    },
+    {
+      "field": "제공기관코드",
+      "filled": 18295,
+      "total": 18295,
+      "fillRate": 1
+    },
+    {
+      "field": "제공기관명",
+      "filled": 18295,
+      "total": 18295,
+      "fillRate": 1
+    }
+  ],
+  "byRegion": {
+    "30": 489,
+    "31": 734,
+    "32": 627,
+    "33": 508,
+    "34": 852,
+    "35": 575,
+    "36": 584,
+    "37": 930,
+    "38": 466,
+    "39": 1447,
+    "40": 1405,
+    "41": 379,
+    "42": 362,
+    "43": 217,
+    "44": 408,
+    "45": 286,
+    "46": 651,
+    "47": 140,
+    "48": 153,
+    "50": 623,
+    "51": 261,
+    "52": 270,
+    "53": 790,
+    "54": 95,
+    "55": 819,
+    "56": 864,
+    "57": 993,
+    "58": 1016,
+    "59": 19,
+    "61": 466,
+    "62": 527,
+    "65": 271,
+    "B5": 68
+  },
+  "bySite": {
+    "guryong": {
+      "rows": 18,
+      "fields": [
+        {
+          "field": "관리번호",
+          "filled": 18,
+          "total": 18,
+          "fillRate": 1
+        },
+        {
+          "field": "공원명",
+          "filled": 18,
+          "total": 18,
+          "fillRate": 1
+        },
+        {
+          "field": "공원구분",
+          "filled": 18,
+          "total": 18,
+          "fillRate": 1
+        },
+        {
+          "field": "소재지도로명주소",
+          "filled": 0,
+          "total": 18,
+          "fillRate": 0
+        },
+        {
+          "field": "소재지지번주소",
+          "filled": 18,
+          "total": 18,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 18,
+          "total": 18,
+          "fillRate": 1
+        },
+        {
+          "field": "경도",
+          "filled": 18,
+          "total": 18,
+          "fillRate": 1
+        },
+        {
+          "field": "공원면적",
+          "filled": 18,
+          "total": 18,
+          "fillRate": 1
+        },
+        {
+          "field": "공원보유시설(운동시설)",
+          "filled": 14,
+          "total": 18,
+          "fillRate": 0.7777777777777778
+        },
+        {
+          "field": "공원보유시설(유희시설)",
+          "filled": 3,
+          "total": 18,
+          "fillRate": 0.16666666666666666
+        },
+        {
+          "field": "공원보유시설(편익시설)",
+          "filled": 17,
+          "total": 18,
+          "fillRate": 0.9444444444444444
+        },
+        {
+          "field": "공원보유시설(교양시설)",
+          "filled": 1,
+          "total": 18,
+          "fillRate": 0.05555555555555555
+        },
+        {
+          "field": "공원보유시설(기타시설)",
+          "filled": 0,
+          "total": 18,
+          "fillRate": 0
+        },
+        {
+          "field": "지정고시일",
+          "filled": 0,
+          "total": 18,
+          "fillRate": 0
+        },
+        {
+          "field": "관리기관명",
+          "filled": 0,
+          "total": 18,
+          "fillRate": 0
+        },
+        {
+          "field": "전화번호",
+          "filled": 18,
+          "total": 18,
+          "fillRate": 1
+        },
+        {
+          "field": "데이터기준일자",
+          "filled": 18,
+          "total": 18,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관코드",
+          "filled": 18,
+          "total": 18,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관명",
+          "filled": 18,
+          "total": 18,
+          "fillRate": 1
+        }
+      ]
+    },
+    "dasan": {
+      "rows": 9,
+      "fields": [
+        {
+          "field": "관리번호",
+          "filled": 9,
+          "total": 9,
+          "fillRate": 1
+        },
+        {
+          "field": "공원명",
+          "filled": 9,
+          "total": 9,
+          "fillRate": 1
+        },
+        {
+          "field": "공원구분",
+          "filled": 9,
+          "total": 9,
+          "fillRate": 1
+        },
+        {
+          "field": "소재지도로명주소",
+          "filled": 2,
+          "total": 9,
+          "fillRate": 0.2222222222222222
+        },
+        {
+          "field": "소재지지번주소",
+          "filled": 9,
+          "total": 9,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 9,
+          "total": 9,
+          "fillRate": 1
+        },
+        {
+          "field": "경도",
+          "filled": 9,
+          "total": 9,
+          "fillRate": 1
+        },
+        {
+          "field": "공원면적",
+          "filled": 9,
+          "total": 9,
+          "fillRate": 1
+        },
+        {
+          "field": "공원보유시설(운동시설)",
+          "filled": 0,
+          "total": 9,
+          "fillRate": 0
+        },
+        {
+          "field": "공원보유시설(유희시설)",
+          "filled": 0,
+          "total": 9,
+          "fillRate": 0
+        },
+        {
+          "field": "공원보유시설(편익시설)",
+          "filled": 0,
+          "total": 9,
+          "fillRate": 0
+        },
+        {
+          "field": "공원보유시설(교양시설)",
+          "filled": 0,
+          "total": 9,
+          "fillRate": 0
+        },
+        {
+          "field": "공원보유시설(기타시설)",
+          "filled": 0,
+          "total": 9,
+          "fillRate": 0
+        },
+        {
+          "field": "지정고시일",
+          "filled": 0,
+          "total": 9,
+          "fillRate": 0
+        },
+        {
+          "field": "관리기관명",
+          "filled": 9,
+          "total": 9,
+          "fillRate": 1
+        },
+        {
+          "field": "전화번호",
+          "filled": 9,
+          "total": 9,
+          "fillRate": 1
+        },
+        {
+          "field": "데이터기준일자",
+          "filled": 9,
+          "total": 9,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관코드",
+          "filled": 9,
+          "total": 9,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관명",
+          "filled": 9,
+          "total": 9,
+          "fillRate": 1
+        }
+      ]
+    },
+    "cheongwadae": {
+      "rows": 1,
+      "fields": [
+        {
+          "field": "관리번호",
+          "filled": 1,
+          "total": 1,
+          "fillRate": 1
+        },
+        {
+          "field": "공원명",
+          "filled": 1,
+          "total": 1,
+          "fillRate": 1
+        },
+        {
+          "field": "공원구분",
+          "filled": 1,
+          "total": 1,
+          "fillRate": 1
+        },
+        {
+          "field": "소재지도로명주소",
+          "filled": 1,
+          "total": 1,
+          "fillRate": 1
+        },
+        {
+          "field": "소재지지번주소",
+          "filled": 1,
+          "total": 1,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 1,
+          "total": 1,
+          "fillRate": 1
+        },
+        {
+          "field": "경도",
+          "filled": 1,
+          "total": 1,
+          "fillRate": 1
+        },
+        {
+          "field": "공원면적",
+          "filled": 1,
+          "total": 1,
+          "fillRate": 1
+        },
+        {
+          "field": "공원보유시설(운동시설)",
+          "filled": 1,
+          "total": 1,
+          "fillRate": 1
+        },
+        {
+          "field": "공원보유시설(유희시설)",
+          "filled": 0,
+          "total": 1,
+          "fillRate": 0
+        },
+        {
+          "field": "공원보유시설(편익시설)",
+          "filled": 1,
+          "total": 1,
+          "fillRate": 1
+        },
+        {
+          "field": "공원보유시설(교양시설)",
+          "filled": 1,
+          "total": 1,
+          "fillRate": 1
+        },
+        {
+          "field": "공원보유시설(기타시설)",
+          "filled": 1,
+          "total": 1,
+          "fillRate": 1
+        },
+        {
+          "field": "지정고시일",
+          "filled": 1,
+          "total": 1,
+          "fillRate": 1
+        },
+        {
+          "field": "관리기관명",
+          "filled": 1,
+          "total": 1,
+          "fillRate": 1
+        },
+        {
+          "field": "전화번호",
+          "filled": 1,
+          "total": 1,
+          "fillRate": 1
+        },
+        {
+          "field": "데이터기준일자",
+          "filled": 1,
+          "total": 1,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관코드",
+          "filled": 1,
+          "total": 1,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관명",
+          "filled": 1,
+          "total": 1,
+          "fillRate": 1
+        }
+      ]
+    },
+    "jeongja": {
+      "rows": 7,
+      "fields": [
+        {
+          "field": "관리번호",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "공원명",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "공원구분",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "소재지도로명주소",
+          "filled": 2,
+          "total": 7,
+          "fillRate": 0.2857142857142857
+        },
+        {
+          "field": "소재지지번주소",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "경도",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "공원면적",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "공원보유시설(운동시설)",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "공원보유시설(유희시설)",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "공원보유시설(편익시설)",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "공원보유시설(교양시설)",
+          "filled": 0,
+          "total": 7,
+          "fillRate": 0
+        },
+        {
+          "field": "공원보유시설(기타시설)",
+          "filled": 0,
+          "total": 7,
+          "fillRate": 0
+        },
+        {
+          "field": "지정고시일",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "관리기관명",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "전화번호",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "데이터기준일자",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관코드",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관명",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        }
+      ]
+    },
+    "marinecity": {
+      "rows": 7,
+      "fields": [
+        {
+          "field": "관리번호",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "공원명",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "공원구분",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "소재지도로명주소",
+          "filled": 0,
+          "total": 7,
+          "fillRate": 0
+        },
+        {
+          "field": "소재지지번주소",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "경도",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "공원면적",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "공원보유시설(운동시설)",
+          "filled": 0,
+          "total": 7,
+          "fillRate": 0
+        },
+        {
+          "field": "공원보유시설(유희시설)",
+          "filled": 0,
+          "total": 7,
+          "fillRate": 0
+        },
+        {
+          "field": "공원보유시설(편익시설)",
+          "filled": 0,
+          "total": 7,
+          "fillRate": 0
+        },
+        {
+          "field": "공원보유시설(교양시설)",
+          "filled": 0,
+          "total": 7,
+          "fillRate": 0
+        },
+        {
+          "field": "공원보유시설(기타시설)",
+          "filled": 0,
+          "total": 7,
+          "fillRate": 0
+        },
+        {
+          "field": "지정고시일",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "관리기관명",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "전화번호",
+          "filled": 1,
+          "total": 7,
+          "fillRate": 0.14285714285714285
+        },
+        {
+          "field": "데이터기준일자",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관코드",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관명",
+          "filled": 7,
+          "total": 7,
+          "fillRate": 1
+        }
+      ]
+    },
+    "bokjeong": {
+      "rows": 4,
+      "fields": [
+        {
+          "field": "관리번호",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "공원명",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "공원구분",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "소재지도로명주소",
+          "filled": 1,
+          "total": 4,
+          "fillRate": 0.25
+        },
+        {
+          "field": "소재지지번주소",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "경도",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "공원면적",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "공원보유시설(운동시설)",
+          "filled": 0,
+          "total": 4,
+          "fillRate": 0
+        },
+        {
+          "field": "공원보유시설(유희시설)",
+          "filled": 3,
+          "total": 4,
+          "fillRate": 0.75
+        },
+        {
+          "field": "공원보유시설(편익시설)",
+          "filled": 3,
+          "total": 4,
+          "fillRate": 0.75
+        },
+        {
+          "field": "공원보유시설(교양시설)",
+          "filled": 0,
+          "total": 4,
+          "fillRate": 0
+        },
+        {
+          "field": "공원보유시설(기타시설)",
+          "filled": 0,
+          "total": 4,
+          "fillRate": 0
+        },
+        {
+          "field": "지정고시일",
+          "filled": 3,
+          "total": 4,
+          "fillRate": 0.75
+        },
+        {
+          "field": "관리기관명",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "전화번호",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "데이터기준일자",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관코드",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관명",
+          "filled": 4,
+          "total": 4,
+          "fillRate": 1
+        }
+      ]
+    },
+    "sejong": {
+      "rows": 16,
+      "fields": [
+        {
+          "field": "관리번호",
+          "filled": 16,
+          "total": 16,
+          "fillRate": 1
+        },
+        {
+          "field": "공원명",
+          "filled": 16,
+          "total": 16,
+          "fillRate": 1
+        },
+        {
+          "field": "공원구분",
+          "filled": 16,
+          "total": 16,
+          "fillRate": 1
+        },
+        {
+          "field": "소재지도로명주소",
+          "filled": 10,
+          "total": 16,
+          "fillRate": 0.625
+        },
+        {
+          "field": "소재지지번주소",
+          "filled": 6,
+          "total": 16,
+          "fillRate": 0.375
+        },
+        {
+          "field": "위도",
+          "filled": 16,
+          "total": 16,
+          "fillRate": 1
+        },
+        {
+          "field": "경도",
+          "filled": 16,
+          "total": 16,
+          "fillRate": 1
+        },
+        {
+          "field": "공원면적",
+          "filled": 16,
+          "total": 16,
+          "fillRate": 1
+        },
+        {
+          "field": "공원보유시설(운동시설)",
+          "filled": 7,
+          "total": 16,
+          "fillRate": 0.4375
+        },
+        {
+          "field": "공원보유시설(유희시설)",
+          "filled": 1,
+          "total": 16,
+          "fillRate": 0.0625
+        },
+        {
+          "field": "공원보유시설(편익시설)",
+          "filled": 10,
+          "total": 16,
+          "fillRate": 0.625
+        },
+        {
+          "field": "공원보유시설(교양시설)",
+          "filled": 2,
+          "total": 16,
+          "fillRate": 0.125
+        },
+        {
+          "field": "공원보유시설(기타시설)",
+          "filled": 10,
+          "total": 16,
+          "fillRate": 0.625
+        },
+        {
+          "field": "지정고시일",
+          "filled": 11,
+          "total": 16,
+          "fillRate": 0.6875
+        },
+        {
+          "field": "관리기관명",
+          "filled": 16,
+          "total": 16,
+          "fillRate": 1
+        },
+        {
+          "field": "전화번호",
+          "filled": 16,
+          "total": 16,
+          "fillRate": 1
+        },
+        {
+          "field": "데이터기준일자",
+          "filled": 16,
+          "total": 16,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관코드",
+          "filled": 16,
+          "total": 16,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관명",
+          "filled": 16,
+          "total": 16,
+          "fillRate": 1
+        }
+      ]
+    },
+    "wanju": {
+      "rows": 2,
+      "fields": [
+        {
+          "field": "관리번호",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "공원명",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "공원구분",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "소재지도로명주소",
+          "filled": 0,
+          "total": 2,
+          "fillRate": 0
+        },
+        {
+          "field": "소재지지번주소",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "위도",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "경도",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "공원면적",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "공원보유시설(운동시설)",
+          "filled": 1,
+          "total": 2,
+          "fillRate": 0.5
+        },
+        {
+          "field": "공원보유시설(유희시설)",
+          "filled": 0,
+          "total": 2,
+          "fillRate": 0
+        },
+        {
+          "field": "공원보유시설(편익시설)",
+          "filled": 1,
+          "total": 2,
+          "fillRate": 0.5
+        },
+        {
+          "field": "공원보유시설(교양시설)",
+          "filled": 0,
+          "total": 2,
+          "fillRate": 0
+        },
+        {
+          "field": "공원보유시설(기타시설)",
+          "filled": 1,
+          "total": 2,
+          "fillRate": 0.5
+        },
+        {
+          "field": "지정고시일",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "관리기관명",
+          "filled": 1,
+          "total": 2,
+          "fillRate": 0.5
+        },
+        {
+          "field": "전화번호",
+          "filled": 1,
+          "total": 2,
+          "fillRate": 0.5
+        },
+        {
+          "field": "데이터기준일자",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관코드",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        },
+        {
+          "field": "제공기관명",
+          "filled": 2,
+          "total": 2,
+          "fillRate": 1
+        }
+      ]
+    }
+  },
+  "pointBasis": "lnglat-columns",
+  "outOfRangePoints": 1
+}

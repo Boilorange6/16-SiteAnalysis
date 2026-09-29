@@ -1,0 +1,666 @@
+{
+  "file": ".cache/v2/raw/kapt/kapt_complex_20260831.csv",
+  "bytes": 40085190,
+  "encoding": "euc-kr",
+  "measuredAt": "2026-09-29T09:50:08.422Z",
+  "rows": 307834,
+  "fields": [
+    {
+      "field": "단지고유번호",
+      "filled": 307834,
+      "total": 307834,
+      "fillRate": 1
+    },
+    {
+      "field": "필지고유번호",
+      "filled": 307834,
+      "total": 307834,
+      "fillRate": 1
+    },
+    {
+      "field": "주소",
+      "filled": 307834,
+      "total": 307834,
+      "fillRate": 1
+    },
+    {
+      "field": "단지명_공시가격",
+      "filled": 307829,
+      "total": 307834,
+      "fillRate": 0.9999837574796806
+    },
+    {
+      "field": "단지명_건축물대장",
+      "filled": 184948,
+      "total": 307834,
+      "fillRate": 0.6008043296062163
+    },
+    {
+      "field": "단지명_도로명주소",
+      "filled": 183454,
+      "total": 307834,
+      "fillRate": 0.5959510645347817
+    },
+    {
+      "field": "단지종류",
+      "filled": 307834,
+      "total": 307834,
+      "fillRate": 1
+    },
+    {
+      "field": "동수",
+      "filled": 307834,
+      "total": 307834,
+      "fillRate": 1
+    },
+    {
+      "field": "세대수",
+      "filled": 307834,
+      "total": 307834,
+      "fillRate": 1
+    },
+    {
+      "field": "사용승인일",
+      "filled": 307828,
+      "total": 307834,
+      "fillRate": 0.9999805089756167
+    },
+    {
+      "field": "도로명주소",
+      "filled": 307834,
+      "total": 307834,
+      "fillRate": 1
+    }
+  ],
+  "byRegion": {
+    "11": 106143,
+    "26": 24098,
+    "27": 9100,
+    "28": 26362,
+    "29": 2466,
+    "30": 5022,
+    "31": 4633,
+    "36": 443,
+    "41": 83742,
+    "43": 4122,
+    "44": 6436,
+    "46": 3523,
+    "47": 9183,
+    "48": 9349,
+    "50": 6107,
+    "51": 3502,
+    "52": 3603
+  },
+  "bySite": {
+    "guryong": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "단지고유번호",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "필지고유번호",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주소",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지명_공시가격",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지명_건축물대장",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지명_도로명주소",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지종류",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "동수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "세대수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "사용승인일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "도로명주소",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "dasan": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "단지고유번호",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "필지고유번호",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주소",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지명_공시가격",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지명_건축물대장",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지명_도로명주소",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지종류",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "동수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "세대수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "사용승인일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "도로명주소",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "cheongwadae": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "단지고유번호",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "필지고유번호",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주소",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지명_공시가격",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지명_건축물대장",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지명_도로명주소",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지종류",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "동수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "세대수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "사용승인일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "도로명주소",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "jeongja": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "단지고유번호",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "필지고유번호",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주소",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지명_공시가격",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지명_건축물대장",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지명_도로명주소",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지종류",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "동수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "세대수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "사용승인일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "도로명주소",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "marinecity": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "단지고유번호",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "필지고유번호",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주소",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지명_공시가격",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지명_건축물대장",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지명_도로명주소",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지종류",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "동수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "세대수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "사용승인일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "도로명주소",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "bokjeong": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "단지고유번호",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "필지고유번호",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주소",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지명_공시가격",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지명_건축물대장",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지명_도로명주소",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지종류",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "동수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "세대수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "사용승인일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "도로명주소",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "sejong": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "단지고유번호",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "필지고유번호",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주소",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지명_공시가격",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지명_건축물대장",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지명_도로명주소",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지종류",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "동수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "세대수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "사용승인일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "도로명주소",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    },
+    "wanju": {
+      "rows": 0,
+      "fields": [
+        {
+          "field": "단지고유번호",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "필지고유번호",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "주소",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지명_공시가격",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지명_건축물대장",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지명_도로명주소",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "단지종류",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "동수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "세대수",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "사용승인일",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        },
+        {
+          "field": "도로명주소",
+          "filled": 0,
+          "total": 0,
+          "fillRate": null
+        }
+      ]
+    }
+  },
+  "pointBasis": "none",
+  "outOfRangePoints": 0
+}
