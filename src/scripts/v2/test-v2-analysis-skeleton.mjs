@@ -73,9 +73,19 @@ try {
   assert.equal(r3.tiles[0].metrics[0].status, "missing");
   assert.equal(r3.tiles[0].metrics[0].value, null);
 
-  // 가비지 수집: 저장 프로젝트가 쓰는 v1은 남는다 (현재 v3, 이전 v2)
-  await M.collectGarbage(dataDir, A.pinnedManifestHashes(appDb));
+  // 같은 입력·같은 manifest 재실행: 새 analysisId, 같은 해시·같은 값
+  const r3b = runSkeletonAnalysis(appDb, dataDir, input);
+  assert.notEqual(r3b.analysisId, r3.analysisId);
+  assert.equal(r3b.manifestHash, r3.manifestHash);
+  assert.equal(r3b.tiles[0].metrics[0].value, r3.tiles[0].metrics[0].value);
+
+  // v4 게시 → 현재 v4, 이전 v3. v2는 현재·이전·핀 어디에도 없어 삭제 대상, v1은 핀으로 유지.
+  await buildCore(dataDir, "v4", [[0, 0]]);
+  const { deleted } = await M.collectGarbage(dataDir, A.pinnedManifestHashes(appDb));
   assert.ok(existsSync(join(dataDir, "versions/v1/core.sqlite")), "핀 고정된 v1 유지");
+  assert.ok(!existsSync(join(dataDir, "versions/v2/core.sqlite")), "핀 없는 v2 삭제");
+  assert.ok(deleted.includes("versions/v2/core.sqlite"));
+  assert.ok(!deleted.includes("versions/v1/core.sqlite"));
 } finally {
   appDb.close();
 }

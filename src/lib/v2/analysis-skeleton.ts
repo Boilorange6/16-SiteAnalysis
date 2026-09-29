@@ -76,6 +76,7 @@ export function runSkeletonAnalysis(
       presentation: { legend: [], camera: null, layers: ["building"], outputFace: "front" },
       provenance: {
         manifestHash: hash,
+        // 의도: 반경 안 적중 여부와 무관하게 조회한 건물 원천(파일 내 모든 building release)을 모두 나열한다.
         sources: releases.map((r) => ({ sourceId: r.source_id, releaseId: r.release_id, sourceAsOf: r.source_as_of, fetchedAt: r.fetched_at })),
       },
       limitations: hasSource ? [] : [{ kind: "not_provided", note: "건물 원천이 적재되지 않았습니다" }],
@@ -84,7 +85,11 @@ export function runSkeletonAnalysis(
     finishAnalysisRun(appDb, analysisId, "complete");
     return { analysisId, manifestHash: hash, tiles: [tile] };
   } catch (error) {
-    if (getAnalysisRun(appDb, analysisId)) finishAnalysisRun(appDb, analysisId, "failed");
+    try {
+      if (getAnalysisRun(appDb, analysisId)) finishAnalysisRun(appDb, analysisId, "failed");
+    } catch {
+      // 상태 기록 실패는 무시한다 — 원래 오류를 가리지 않는다.
+    }
     throw error;
   } finally {
     core.close();
