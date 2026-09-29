@@ -5,7 +5,7 @@
  * 자격 증명은 인자로만 받고 어디에도 기록하지 않는다.
  */
 import { createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
@@ -122,6 +122,7 @@ export class VworldSession {
       throw new VworldError("LOGIN_FAILED", `login returned non-JSON (HTTP ${res.status})`);
     }
     if (result === "success" || result === "expirePw") return result;
+    if (id) msg = msg.split(id).join("***");
     throw new VworldError("LOGIN_FAILED", `login ${result || "unknown"}: ${msg}`);
   }
 
@@ -142,8 +143,12 @@ export class VworldSession {
   async download(file: VworldFile, outPath: string): Promise<{ bytes: number; skipped: boolean }> {
     const donePath = `${outPath}.done.json`;
     if (existsSync(outPath) && existsSync(donePath)) {
-      const done = JSON.parse(readFileSync(donePath, "utf8")) as { fileSq: string; baseDate: string; bytes: number };
-      if (done.fileSq === file.fileSq && done.baseDate === file.baseDate) return { bytes: done.bytes, skipped: true };
+      try {
+        const done = JSON.parse(readFileSync(donePath, "utf8")) as { fileSq: string; baseDate: string; bytes: number };
+        if (done.fileSq === file.fileSq && done.baseDate === file.baseDate) return { bytes: done.bytes, skipped: true };
+      } catch {
+        // 손상된 완료 표식 = 미완료. 다시 받는다.
+      }
     }
     await this.pause();
     const q = new URLSearchParams({ ds_id: file.dsFileId, fileNo: file.fileSq });
@@ -169,4 +174,45 @@ export class VworldSession {
       rmSync(part, { force: true });
     }
   }
+}
+
+export interface FetchDatasetsOptions {
+  dsIds: string[];
+  regions: Set<string> | null;
+  outDir: string;
+  folders: Record<string, string>;
+  log?: (line: string) => void;
+}
+
+/** 데이터셋별 최신 전체데이터를 받는다. 어떤 오류가 나도 나머지를 계속 받고 실패 목록을 돌려준다. */
+export async function fetchDatasets(session: VworldSession, opts: FetchDatasetsOptions): Promise<{ downloaded: number; skipped: number; failures: string[] }> {
+  const log = opts.log ?? (() => {});
+  const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+  const out = { downloaded: 0, skipped: 0, failures: [] as string[] };
+  for (const ds of opts.dsIds) {
+    let files: VworldFile[];
+    try {
+      files = latestFull(await session.listFiles(ds)).filter((f) => !opts.regions || opts.regions.has(f.region));
+    } catch (e) {
+      out.failures.push(`${ds}: ${msg(e)}`);
+      continue;
+    }
+    if (files.length === 0) {
+      out.failures.push(`${ds}: no files${opts.regions ? " for " + [...opts.regions].join(",") : ""}`);
+      continue;
+    }
+    log(`ds ${ds}: ${files.length} files (기준일 ${files[0].baseDate})`);
+    for (const f of files) {
+      try {
+        const r = await session.download(f, join(opts.outDir, opts.folders[ds], f.baseDate, `${f.region}.zip`));
+        if (r.skipped) out.skipped++;
+        else out.downloaded++;
+        log(`  ${r.skipped ? "skip" : "got "} ${f.region} ${(r.bytes / 1024 ** 2).toFixed(1)} MB`);
+      } catch (e) {
+        out.failures.push(`${ds} ${f.region}: ${msg(e)}`);
+        log(`  FAIL ${f.region}: ${msg(e)}`);
+      }
+    }
+  }
+  return out;
 }

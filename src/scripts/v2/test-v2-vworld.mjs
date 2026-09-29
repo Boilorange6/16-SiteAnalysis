@@ -4,11 +4,11 @@
  */
 import assert from "node:assert/strict";
 import http from "node:http";
-import { mkdtempSync, existsSync, readFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-const { parseFileList, latestFull, VworldSession, VworldError } = await import("../../lib/v2/ingest/vworld.ts");
+const { parseFileList, latestFull, VworldSession, VworldError, fetchDatasets } = await import("../../lib/v2/ingest/vworld.ts");
 
 const row = (sq, region, size, unit, kind, base) => `<li><!--v-for="n in 10"-->
 <div class="item row"><input type="hidden" name="dsFileSq" value="${sq}"><input type="hidden" name="dsFileId" value="20171128DS00002">
@@ -52,13 +52,16 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify({ resultMap: { result: "error", msg: "아이디 또는 비밀번호가 일치하지 않습니다." } }));
   }
   if (url.pathname === "/dtmk/dtmk_ntads_s002.do") {
+    if (url.searchParams.get("dsId") === "99") {
+      return res.end(["A시", "B시", "C시"].map((r, i) => row(String(9001 + i), r, "1", "MB", "전체데이터", "2026-09-08")).join(""));
+    }
     state.listPages++;
     const page = Number(url.searchParams.get("datPageIndex"));
     const n = page === 1 ? 100 : 3;
     return res.end(Array.from({ length: n }, (_, i) => row(String(page * 1000 + i), "세종특별자치시", "1", "MB", "전체데이터", "2026-09-08")).join(""));
   }
   if (url.pathname === "/dtmk/downloadResourceFile.do") {
-    if (!state.loggedIn.has(sid) || state.expired) {
+    if (!state.loggedIn.has(sid) || state.expired || url.searchParams.get("fileNo") === "9002") {
       res.setHeader("content-type", "text/html;charset=UTF-8");
       return res.end("<html>로그인 후 이용해주세요</html>");
     }
@@ -104,6 +107,29 @@ try {
   await assert.rejects(s.download({ ...file, fileSq: "4733", region: "경상북도" }, out2), (e) => e.code === "NOT_A_FILE");
   assert.equal(existsSync(out2), false);
   assert.deepEqual(readdirSync(join(dir, "cadastral", "2026-09-08")).filter((f) => f.endsWith(".part")), [], ".part 없음");
+
+  // ─── 6. fetchDatasets: 한 파일이 실패해도 나머지는 받고 실패를 모은다 ─────
+  state.expired = false;
+  const dir2 = mkdtempSync(join(tmpdir(), "v2-vworld-"));
+  const fo = { dsIds: ["99"], regions: null, outDir: dir2, folders: { 99: "fake" } };
+  const r = await fetchDatasets(s, fo);
+  assert.equal(r.downloaded, 2);
+  assert.equal(r.skipped, 0);
+  assert.equal(r.failures.length, 1);
+  assert.match(r.failures[0], /B시/);
+  assert.ok(existsSync(join(dir2, "fake", "2026-09-08", "A시.zip")) && existsSync(join(dir2, "fake", "2026-09-08", "C시.zip")));
+  assert.equal(existsSync(join(dir2, "fake", "2026-09-08", "B시.zip")), false);
+
+  // 지역 필터가 아무것도 못 찾으면 실패 한 건
+  const none = await fetchDatasets(s, { ...fo, regions: new Set(["없는시"]) });
+  assert.deepEqual(none, { downloaded: 0, skipped: 0, failures: ["99: no files for 없는시"] });
+
+  // 손상된 .done.json은 미완료 → 다시 받고 유효하게 고친다
+  const a = join(dir2, "fake", "2026-09-08", "A시.zip");
+  writeFileSync(`${a}.done.json`, "{not json");
+  const again = await fetchDatasets(s, { ...fo, regions: new Set(["A시"]) });
+  assert.deepEqual(again, { downloaded: 1, skipped: 0, failures: [] });
+  assert.equal(JSON.parse(readFileSync(`${a}.done.json`, "utf8")).fileSq, "9001");
 } finally {
   server.close();
 }
