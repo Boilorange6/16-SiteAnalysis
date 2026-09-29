@@ -3,7 +3,8 @@
  * 품질 검사에 걸리면 현재 manifest는 그대로여야 한다.
  */
 import assert from "node:assert/strict";
-import { mkdtempSync, existsSync } from "node:fs";
+import { mkdtempSync, existsSync, rmSync } from "node:fs";
+import Database from "better-sqlite3";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -97,5 +98,46 @@ assert.equal(f.published, false);
 assert.ok(f.failures.some((x) => x.code === "EXPECTATION_BELOW" && /dasan building: 10 < 50/.test(x.detail)));
 const g = await B.buildAndPublish({ dataDir, version: "g", builders: { core: coreBuilder(10) }, expectations: [{ siteId: "dasan", kind: "building", minCount: 10 }] });
 assert.equal(g.published, true, JSON.stringify(g.failures));
+
+
+// ─── 8. 게이트 도달성 ──────────────────────────────────────────────────────
+const tweak = (n, fn) => async (db, ctx) => { const l = await coreBuilder(n)(db, ctx); fn(l[0]); return l; };
+const h = await B.buildAndPublish({ dataDir, version: "h", builders: { core: tweak(10, (s) => { s.expectedRegions = ["41", "11"]; }) } });
+assert.equal(h.published, false);
+assert.ok(h.failures.some((x) => x.code === "REGION_MISSING"), JSON.stringify(h.failures));
+const i = await B.buildAndPublish({ dataDir, version: "i", builders: { core: tweak(10, (s) => { s.pageLimitHit = true; }) } });
+assert.equal(i.published, false);
+assert.ok(i.failures.some((x) => x.code === "INCOMPLETE_FETCH"), JSON.stringify(i.failures));
+const j = await B.buildAndPublish({ dataDir, version: "j", builders: { core: tweak(10, (s) => { s.totalCountReported = 99; }) } });
+assert.equal(j.published, false);
+assert.ok(j.failures.some((x) => x.code === "INCOMPLETE_FETCH"), JSON.stringify(j.failures));
+const k = await B.buildAndPublish({ dataDir, version: "k", builders: { core: tweak(10, (s) => { s.totalCountReported = 10; s.unlocate(); }) } });
+assert.equal(k.published, true, JSON.stringify(k.failures));
+{
+  const db = M.openDataFile(dataDir, M.readManifest(dataDir), "core");
+  const run = db.prepare("SELECT * FROM ingest_run WHERE source_id='bld'").get();
+  assert.equal(run.expected_count, 10);
+  assert.equal(JSON.parse(run.snapshot_json).unlocated, 1);
+  db.close();
+}
+
+// ─── 9. 버전 가드: 다른 종류 파일만 있는 디렉터리도 거부 ────────────────────
+await B.buildAndPublish({ dataDir, version: "m", builders: { core: coreBuilder(1) } }); // 게이트에 걸려 미게시, versions/m/core.sqlite만 남음
+await assert.rejects(B.buildAndPublish({ dataDir, version: "m", builders: { reference: refBuilder() } }), /already exists/);
+
+// ─── 10. 빌더 예외 뒤 파일 핸들이 닫혀 있다 ────────────────────────────────
+rmSync(join(dataDir, "versions", "d", "core.sqlite"));
+
+// ─── 11. 이전 스냅샷이 깨졌으면 조용히 넘기지 않고 빌드 실패 ────────────────
+{
+  const m = M.readManifest(dataDir);
+  const w = new Database(join(dataDir, m.files.core.path));
+  w.prepare("UPDATE ingest_run SET snapshot_json = '{bad'").run();
+  w.close();
+  const snap = M.manifestHash(M.readManifest(dataDir));
+  await assert.rejects(B.buildAndPublish({ dataDir, version: "n", builders: { core: coreBuilder(10) } }));
+  assert.equal(M.manifestHash(M.readManifest(dataDir)), snap);
+  assert.equal(existsSync(join(dataDir, ".lock")), false);
+}
 
 console.log("✓ v2 build");

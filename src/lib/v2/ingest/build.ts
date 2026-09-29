@@ -52,6 +52,10 @@ export class SourceStats {
   rejected = 0;
   /** 읽었지만 위치를 확정하지 못해 feature로 넣지 않은 레코드 */
   unlocated = 0;
+  /** 원천이 페이지 상한에서 잘렸음 (INCOMPLETE_FETCH) */
+  pageLimitHit = false;
+  /** 원천이 밝힌 전체 건수. 모르면 null */
+  totalCountReported: number | null = null;
   readonly byRegion: Record<string, number> = {};
   readonly byType: Record<string, number> = {};
   /** 첫 적재에도 반드시 있어야 하는 지역 코드 (품질 검사 REGION_MISSING) */
@@ -105,10 +109,12 @@ export async function batched<T>(db: Db, items: AsyncIterable<T> | Iterable<T>, 
   }
 }
 
+let runSeq = 0;
+
 function recordRun(db: Db, s: SourceStats, finishedAt: string): void {
   db.prepare(`INSERT INTO ingest_run (run_id, source_id, partition_key, started_at, finished_at, status, expected_count, received_count, accepted_count, rejected_count, error_code, release_id, snapshot_json)
-    VALUES (?, ?, '', ?, ?, 'succeeded', NULL, ?, ?, ?, NULL, ?, ?)`)
-    .run(`${s.sourceId}:${s.startedAt}`, s.sourceId, s.startedAt, finishedAt, s.received, s.accepted, s.rejected + s.unlocated, s.releaseId, JSON.stringify(s.snapshot()));
+    VALUES (?, ?, '', ?, ?, 'succeeded', ?, ?, ?, ?, NULL, ?, ?)`)
+    .run(`${s.sourceId}:${s.startedAt}:${runSeq++}`, s.sourceId, s.startedAt, finishedAt, s.totalCountReported, s.received, s.accepted, s.rejected + s.unlocated, s.releaseId, JSON.stringify({ ...s.snapshot(), unlocated: s.unlocated }));
 }
 
 export type KindBuilder = (db: Db, ctx: { core: Db | null }) => Promise<SourceStats[]>;
@@ -127,17 +133,15 @@ export interface BuildOutcome {
   files: Record<string, ManifestFile>;
   stats: Record<string, SourceStats[]>;
 }
-
 function previousSnapshot(db: Db, sourceId: string): IngestSnapshot | null {
-  try {
-    const json = db
-      .prepare("SELECT snapshot_json FROM ingest_run WHERE source_id = ? AND status = 'succeeded' ORDER BY finished_at DESC LIMIT 1")
-      .pluck()
-      .get(sourceId) as string | null | undefined;
-    return json ? (JSON.parse(json) as IngestSnapshot) : null;
-  } catch {
-    return null; // 스키마 v1 파일에는 snapshot_json이 없다
-  }
+
+  const cols = db.prepare("PRAGMA table_info(ingest_run)").all() as { name: string }[];
+  if (!cols.some((c) => c.name === "snapshot_json")) return null; // 스키마 v1 파일
+  const json = db
+    .prepare("SELECT snapshot_json FROM ingest_run WHERE source_id = ? AND status = 'succeeded' ORDER BY finished_at DESC LIMIT 1")
+    .pluck()
+    .get(sourceId) as string | null | undefined;
+  return json ? (JSON.parse(json) as IngestSnapshot) : null; // 오류는 전파한다
 }
 
 function countNearSite(dataDir: string, m: Manifest, siteId: string, kind: string): number {
@@ -165,8 +169,8 @@ function gate(plan: BuildPlan, previous: Manifest | null, stats: Record<string, 
         const r = evaluateIngest({
           responseRowsReported: s.received,
           parsedRows: s.accepted,
-          pageLimitHit: false,
-          totalCountReported: null,
+          pageLimitHit: s.pageLimitHit,
+          totalCountReported: s.totalCountReported,
           next: s.snapshot(),
           previous: prevDb ? previousSnapshot(prevDb, s.sourceId) : null,
           expectedRegions: s.expectedRegions,
@@ -190,6 +194,8 @@ export function buildAndPublish(plan: BuildPlan): Promise<BuildOutcome> {
     const current = readManifest(plan.dataDir);
     const files: Record<string, ManifestFile> = {};
     const stats: Record<string, SourceStats[]> = {};
+    const versionDir = resolveDataPath(plan.dataDir, `${VERSIONS_DIR}/${plan.version}`);
+    if (existsSync(versionDir)) throw new Error(`${VERSIONS_DIR}/${plan.version} already exists; choose a new version name`);
     const handles: Db[] = [];
     let core: Db | null = null;
     try {
@@ -202,7 +208,6 @@ export function buildAndPublish(plan: BuildPlan): Promise<BuildOutcome> {
         if (!builder) continue;
         const rel = `${VERSIONS_DIR}/${plan.version}/${kind}.sqlite`;
         const abs = resolveDataPath(plan.dataDir, rel);
-        if (existsSync(abs)) throw new Error(`${rel} already exists; choose a new version name`);
         mkdirSync(dirname(abs), { recursive: true });
         const db = new Database(abs);
         handles.push(db);
