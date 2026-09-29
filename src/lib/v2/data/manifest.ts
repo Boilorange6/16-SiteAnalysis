@@ -6,7 +6,7 @@
  * 게시한 모든 manifest는 manifests/<hash>.json에 보관해, 저장된 프로젝트가 옛 버전을 다시 열 수 있게 한다.
  */
 import { createHash } from "node:crypto";
-import { copyFileSync, createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, copyFileSync, createReadStream, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync, writeSync } from "node:fs";
 import { basename, join, relative, resolve, sep } from "node:path";
 import Database from "better-sqlite3";
 import type BetterSqlite3 from "better-sqlite3";
@@ -43,7 +43,10 @@ export type ManifestErrorCode =
   | "POST_PUBLISH_MISMATCH"
   | "NO_PREVIOUS"
   | "MISSING_PINNED_MANIFEST"
-  | "UNKNOWN_FILE_KEY";
+  | "UNKNOWN_FILE_KEY"
+  | "LOCKED";
+
+const LOCK_FILE = ".lock";
 
 export class ManifestError extends Error {
   readonly name = "ManifestError";
@@ -70,10 +73,43 @@ export function sha256File(path: string): Promise<string> {
 export function resolveDataPath(dataDir: string, relPath: string): string {
   const root = resolve(dataDir);
   const abs = resolve(root, relPath);
-  if (!relPath.startsWith(`${VERSIONS_DIR}/`) || !abs.startsWith(root + sep + VERSIONS_DIR + sep)) {
-    throw new ManifestError("PATH_ESCAPE", `path must stay under ${VERSIONS_DIR}/: ${relPath}`);
+  // 정규형만 허용한다: `./`, `//`, `..`, 역슬래시 경로는 GC가 쓰는 정규화 경로와 달라 살아 있는 파일을 지우게 된다.
+  if (
+    !relPath.startsWith(`${VERSIONS_DIR}/`) ||
+    !abs.startsWith(root + sep + VERSIONS_DIR + sep) ||
+    relPath !== relative(root, abs).split(sep).join("/")
+  ) {
+    throw new ManifestError("PATH_ESCAPE", `path must be canonical and stay under ${VERSIONS_DIR}/: ${relPath}`);
   }
   return abs;
+}
+
+/**
+ * dataDir 전체에 대한 배타 잠금. publishManifest와 collectGarbage는 이 잠금 안에서만 돈다.
+ * 앞으로 만들 데이터 빌더도 versions/<v>/ 파일을 이 잠금을 쥔 채 만들어야 한다.
+ * 그래야 GC가 아직 게시되지 않은 빌드 결과를 지우지 못한다.
+ * ponytail: 크래시로 남은 낡은 잠금은 사람이 .lock을 지워야 한다. 불편해지면 잠금 나이/pid 검사를 추가한다.
+ */
+export async function withDataDirLock<T>(dataDir: string, fn: () => T | Promise<T>): Promise<T> {
+  mkdirSync(dataDir, { recursive: true });
+  const lockPath = join(dataDir, LOCK_FILE);
+  let fd: number;
+  try {
+    fd = openSync(lockPath, "wx");
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "EEXIST") throw new ManifestError("LOCKED", `data dir is locked: ${lockPath}`);
+    throw e;
+  }
+  try {
+    try {
+      writeSync(fd, `${process.pid} ${new Date().toISOString()}\n`);
+    } finally {
+      closeSync(fd);
+    }
+    return await fn();
+  } finally {
+    rmSync(lockPath, { force: true });
+  }
 }
 
 function readJson(path: string): Manifest | null {
@@ -105,33 +141,59 @@ export async function publishManifest(
   candidate: Manifest,
   check: (m: Manifest) => GateResult | Promise<GateResult>,
 ): Promise<{ published: boolean; hash: string; failures: GateFailure[] }> {
-  await verifyManifestFiles(dataDir, candidate);
-  const hash = manifestHash(candidate);
-  const gate = await check(candidate);
-  if (!gate.ok) return { published: false, hash, failures: gate.failures };
+  return withDataDirLock(dataDir, async () => {
+    await verifyManifestFiles(dataDir, candidate);
+    const hash = manifestHash(candidate);
+    const gate = await check(candidate);
+    if (!gate.ok) return { published: false, hash, failures: gate.failures };
 
-  mkdirSync(join(dataDir, MANIFEST_ARCHIVE_DIR), { recursive: true });
-  writeFileSync(join(dataDir, MANIFEST_ARCHIVE_DIR, `${hash}.json`), JSON.stringify(candidate, null, 2));
+    // 검사 도중 파일이 사라졌을 수 있다. 쓰기 전에 다시 확인한다.
+    for (const [key, file] of Object.entries(candidate.files)) {
+      if (!existsSync(resolveDataPath(dataDir, file.path))) throw new ManifestError("MISSING_FILE", `${key}: ${file.path} vanished before publish`);
+    }
 
-  const current = join(dataDir, MANIFEST_FILE);
-  const hadPrevious = existsSync(current);
-  if (hadPrevious) copyFileSync(current, join(dataDir, PREVIOUS_MANIFEST_FILE));
-  const tmp = `${current}.tmp`;
-  writeFileSync(tmp, JSON.stringify(candidate, null, 2));
-  renameSync(tmp, current);
+    mkdirSync(join(dataDir, MANIFEST_ARCHIVE_DIR), { recursive: true });
+    writeFileSync(join(dataDir, MANIFEST_ARCHIVE_DIR, `${hash}.json`), JSON.stringify(candidate, null, 2));
 
-  const reread = readManifest(dataDir);
-  if (!reread || manifestHash(reread) !== hash) {
-    if (hadPrevious) rollbackManifest(dataDir);
-    else rmSync(current, { force: true });
-    throw new ManifestError("POST_PUBLISH_MISMATCH", "manifest.json does not match the published candidate");
-  }
-  return { published: true, hash, failures: [] };
+    const current = join(dataDir, MANIFEST_FILE);
+    const hadPrevious = existsSync(current);
+    let currentHash: string | null = null;
+    try {
+      const cur = readManifest(dataDir);
+      currentHash = cur ? manifestHash(cur) : null;
+    } catch {
+      // 깨진 현재본은 다른 것으로 취급해 이전본 자리로 보낸다
+    }
+    if (hadPrevious && currentHash !== hash) {
+      const prevTmp = join(dataDir, `${PREVIOUS_MANIFEST_FILE}.tmp`);
+      copyFileSync(current, prevTmp);
+      renameSync(prevTmp, join(dataDir, PREVIOUS_MANIFEST_FILE));
+    }
+    const tmp = `${current}.tmp`;
+    writeFileSync(tmp, JSON.stringify(candidate, null, 2));
+    renameSync(tmp, current);
+
+    const reread = readManifest(dataDir);
+    if (!reread || manifestHash(reread) !== hash) {
+      if (hadPrevious) await rollbackManifest(dataDir);
+      else rmSync(current, { force: true });
+      throw new ManifestError("POST_PUBLISH_MISMATCH", "manifest.json does not match the published candidate");
+    }
+    return { published: true, hash, failures: [] };
+  });
 }
 
-export function rollbackManifest(dataDir: string): void {
+export async function rollbackManifest(dataDir: string): Promise<void> {
   const previous = join(dataDir, PREVIOUS_MANIFEST_FILE);
   if (!existsSync(previous)) throw new ManifestError("NO_PREVIOUS", "no previous manifest to roll back to");
+  let prev: Manifest;
+  try {
+    prev = JSON.parse(readFileSync(previous, "utf8")) as Manifest;
+    if (!prev || typeof prev.files !== "object" || prev.files === null) throw new Error("bad shape");
+  } catch {
+    throw new ManifestError("NO_PREVIOUS", `${PREVIOUS_MANIFEST_FILE} is unreadable`);
+  }
+  await verifyManifestFiles(dataDir, prev);
   const tmp = join(dataDir, `${MANIFEST_FILE}.tmp`);
   copyFileSync(previous, tmp);
   renameSync(tmp, join(dataDir, MANIFEST_FILE));
@@ -146,7 +208,11 @@ function* walkFiles(dir: string): Generator<string> {
   }
 }
 
-export function collectGarbage(dataDir: string, pinnedHashes: ReadonlySet<string>): { deleted: string[] } {
+export function collectGarbage(dataDir: string, pinnedHashes: ReadonlySet<string>): Promise<{ deleted: string[] }> {
+  return withDataDirLock(dataDir, () => collectGarbageLocked(dataDir, pinnedHashes));
+}
+
+function collectGarbageLocked(dataDir: string, pinnedHashes: ReadonlySet<string>): { deleted: string[] } {
   const keepFiles = new Set<string>();
   const keepManifests = new Set<string>();
   const keep = (m: Manifest) => {
@@ -160,9 +226,11 @@ export function collectGarbage(dataDir: string, pinnedHashes: ReadonlySet<string
   }
   // 하나라도 핀 원본이 없으면 무엇이 쓰이는지 모르는 것이다 — 아무것도 지우지 않는다.
   for (const hash of pinnedHashes) {
+    if (!/^[0-9a-f]{64}$/.test(hash)) throw new ManifestError("MISSING_PINNED_MANIFEST", `invalid pinned manifest hash: ${hash}`);
     const m = readArchivedManifest(dataDir, hash);
     if (!m) throw new ManifestError("MISSING_PINNED_MANIFEST", `pinned manifest ${hash} not found`);
     keep(m);
+    keepManifests.add(hash);
   }
 
   const deleted: string[] = [];

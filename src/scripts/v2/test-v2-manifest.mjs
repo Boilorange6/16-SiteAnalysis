@@ -4,7 +4,7 @@
  * 저장된 프로젝트가 쓰는 옛 버전 파일은 지워지면 안 된다.
  */
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
@@ -88,11 +88,87 @@ async function buildVersion(dataDir, version) {
   await M.publishManifest(dir, v2, OK);
   assert.deepEqual(M.readManifest(dir), v2);
   assert.deepEqual(JSON.parse(readFileSync(join(dir, M.PREVIOUS_MANIFEST_FILE), "utf8")), v1);
-  M.rollbackManifest(dir);
+  await M.rollbackManifest(dir);
   assert.deepEqual(M.readManifest(dir), v1);
 
   const fresh = makeDataDir();
-  assert.throws(() => M.rollbackManifest(fresh), (e) => e.code === "NO_PREVIOUS");
+  await assert.rejects(M.rollbackManifest(fresh), (e) => e.code === "NO_PREVIOUS");
+}
+
+// ─── 4b. 롤백은 깨진/불완전한 이전본을 설치하지 않는다 ───────────────────────
+{
+  const dir = makeDataDir();
+  await M.publishManifest(dir, await buildVersion(dir, "v1"), OK);
+  const v2 = await buildVersion(dir, "v2");
+  await M.publishManifest(dir, v2, OK);
+  const prevPath = join(dir, M.PREVIOUS_MANIFEST_FILE);
+  const good = readFileSync(prevPath, "utf8");
+  writeFileSync(prevPath, good.slice(0, 20));
+  await assert.rejects(M.rollbackManifest(dir), (e) => e.code === "NO_PREVIOUS");
+  assert.deepEqual(M.readManifest(dir), v2, "깨진 prev면 현재본 유지");
+  writeFileSync(prevPath, good);
+  rmSync(join(dir, "versions/v1/core.sqlite"));
+  await assert.rejects(M.rollbackManifest(dir), (e) => e.code === "MISSING_FILE");
+  assert.deepEqual(M.readManifest(dir), v2, "파일이 없는 prev면 현재본 유지");
+}
+
+// ─── 4c. 같은 manifest 재게시는 prev를 덮어쓰지 않는다 ───────────────────────
+{
+  const dir = makeDataDir();
+  const v1 = await buildVersion(dir, "v1");
+  await M.publishManifest(dir, v1, OK);
+  const v2 = await buildVersion(dir, "v2");
+  await M.publishManifest(dir, v2, OK);
+  await M.publishManifest(dir, v2, OK);
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, M.PREVIOUS_MANIFEST_FILE), "utf8")), v1);
+}
+
+// ─── 4d. 정규형이 아닌 경로는 거부 (GC가 살아 있는 파일을 지우던 문제) ─────────
+{
+  const dir = makeDataDir();
+  const v1 = await buildVersion(dir, "v1");
+  for (const p of ["versions/v1/./core.sqlite", "versions/v1//core.sqlite", "versions/x/../v1/core.sqlite", "versions/v1\\core.sqlite"]) {
+    const m = { ...v1, files: { core: { ...v1.files.core, path: p } } };
+    await assert.rejects(M.publishManifest(dir, m, OK), (e) => e.code === "PATH_ESCAPE", p);
+  }
+  assert.equal(M.readManifest(dir), null);
+}
+
+// ─── 4e. 잠금 ─────────────────────────────────────────────────────────────
+{
+  const dir = makeDataDir();
+  const v1 = await buildVersion(dir, "v1");
+  await M.publishManifest(dir, v1, OK);
+  assert.equal(existsSync(join(dir, ".lock")), false, "게시 후 잠금 없음");
+  const v2 = await buildVersion(dir, "v2");
+  mkdirSync(join(dir, "versions", "orphan"), { recursive: true });
+  writeFileSync(join(dir, "versions", "orphan", "core.sqlite"), "junk");
+
+  writeFileSync(join(dir, ".lock"), "other");
+  await assert.rejects(M.publishManifest(dir, v2, OK), (e) => e.code === "LOCKED" && e.message.includes(".lock"));
+  await assert.rejects(M.collectGarbage(dir, new Set()), (e) => e.code === "LOCKED");
+  assert.deepEqual(M.readManifest(dir), v1);
+  assert.ok(existsSync(join(dir, "versions", "orphan", "core.sqlite")));
+  assert.ok(existsSync(join(dir, "versions/v2/core.sqlite")));
+  assert.equal(readFileSync(join(dir, ".lock"), "utf8"), "other", "남의 잠금은 건드리지 않는다");
+  rmSync(join(dir, ".lock"));
+
+  await M.collectGarbage(dir, new Set());
+  assert.equal(existsSync(join(dir, ".lock")), false, "GC 후 잠금 없음");
+  await assert.rejects(M.withDataDirLock(dir, () => { throw new Error("boom"); }), /boom/);
+  assert.equal(existsSync(join(dir, ".lock")), false, "실패해도 잠금 해제");
+}
+
+// ─── 4f. 검사 도중 파일이 사라지면 게시하지 않는다 ───────────────────────────
+{
+  const dir = makeDataDir();
+  const v1 = await buildVersion(dir, "v1");
+  await M.publishManifest(dir, v1, OK);
+  const v2 = await buildVersion(dir, "v2");
+  const deleting = () => { rmSync(join(dir, v2.files.core.path)); return { ok: true, failures: [] }; };
+  await assert.rejects(M.publishManifest(dir, v2, deleting), (e) => e.code === "MISSING_FILE");
+  assert.deepEqual(M.readManifest(dir), v1);
+  assert.equal(existsSync(join(dir, M.PREVIOUS_MANIFEST_FILE)), false);
 }
 
 // ─── 5. 데이터 파일은 읽기 전용으로 열린다 ─────────────────────────────────
@@ -117,16 +193,17 @@ async function buildVersion(dataDir, version) {
   writeFileSync(join(dir, "versions", "orphan", "core.sqlite"), "junk");
 
   // 모르는 핀 → 아무것도 지우지 않고 중단
-  assert.throws(() => M.collectGarbage(dir, new Set(["f".repeat(64)])), (e) => e.code === "MISSING_PINNED_MANIFEST");
+  await assert.rejects(M.collectGarbage(dir, new Set(["f".repeat(64)])), (e) => e.code === "MISSING_PINNED_MANIFEST");
+  await assert.rejects(M.collectGarbage(dir, new Set(["../manifest"])), (e) => e.code === "MISSING_PINNED_MANIFEST");
   assert.ok(existsSync(join(dir, "versions", "orphan", "core.sqlite")));
 
-  const kept = M.collectGarbage(dir, new Set([h1]));
+  const kept = await M.collectGarbage(dir, new Set([h1]));
   assert.ok(existsSync(join(dir, v1.files.core.path)), "핀 고정된 v1 유지");
   assert.ok(existsSync(join(dir, "versions/v2/core.sqlite")), "이전본 v2 유지");
   assert.ok(existsSync(join(dir, "versions/v3/core.sqlite")), "현재본 v3 유지");
   assert.deepEqual(kept.deleted, ["versions/orphan/core.sqlite"]);
 
-  const swept = M.collectGarbage(dir, new Set());
+  const swept = await M.collectGarbage(dir, new Set());
   assert.ok(!existsSync(join(dir, v1.files.core.path)), "핀 해제된 v1 삭제");
   assert.ok(swept.deleted.includes("versions/v1/core.sqlite"));
   assert.ok(swept.deleted.includes(`manifests/${h1}.json`));
