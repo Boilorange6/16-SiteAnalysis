@@ -64,7 +64,7 @@ async function* chain(...gens) {
   for (const g of gens) yield* g;
 }
 
-console.log("unzip:", extractAll(join(raw, "legal_dong")).length + extractAll(join(raw, "cadastral")).length, "archive(s)");
+console.log("unzip:", extractAll(join(raw, "legal_dong")).length + extractAll(join(raw, "cadastral")).length + extractAll(join(raw, "gis_building")).length, "archive(s)");
 
 const builders = {};
 if (only.has("core")) {
@@ -80,7 +80,15 @@ if (only.has("core")) {
     const parcelFiles = latestSet("cadastral", /^AL_D002_\d+_\d{8}\.shp$/i);
     console.log(`cadastral: ${parcelFiles.length} 시도 파일`);
     const parcelRel = release(db, "parcel", parcelFiles[0], "국토교통부(VWorld 연속지적도형정보)", "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=23", "CC-BY");
-    const parcel = await buildParcelPoints(db, chain(...parcelFiles.map((f) => readShpPoints(f))), parcelRel);
+    // 500MB 넘는 시도 지적도는 VWorld가 일반 다운로드로 안 준다 — 그 시도만 GIS건물통합정보(A2=PNU)의 건물 대표점으로 대신한다
+    const sidoOf = (f, tag) => basename(f).match(new RegExp(`^${tag}_(\\d+)_`, "i"))[1];
+    const haveCadastral = new Set(parcelFiles.map((f) => sidoOf(f, "AL_D002")));
+    const buildingFiles = latestSet("gis_building", /^AL_D010_\d+_\d{8}\.shp$/i).filter((f) => !haveCadastral.has(sidoOf(f, "AL_D010")));
+    console.log(`parcel points: cadastral 시도 ${[...haveCadastral].sort().join(",")} · from buildings 시도 ${buildingFiles.map((f) => sidoOf(f, "AL_D010")).sort().join(",") || "-"}`);
+    async function* buildingAsParcels(file) {
+      for await (const r of readShpPoints(file)) yield { properties: { A1: r.properties.A2, A5: null }, point: r.point };
+    }
+    const parcel = await buildParcelPoints(db, chain(...parcelFiles.map((f) => readShpPoints(f)), ...buildingFiles.map(buildingAsParcels)), parcelRel);
     parcel.expectedRegions = Object.keys(legal[0].byRegion); // 법정구역 시군구의 시도 코드 = 지적도가 있어야 할 시도
     const recapFile = newest("ledger_recap", /^recap_.*\.csv$/i);
     const titleFiles = [...walk(join(raw, "ledger_title"))].filter((f) => /^title_\d{6}\.csv$/i.test(basename(f)));
