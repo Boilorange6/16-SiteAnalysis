@@ -183,13 +183,14 @@ export async function publishManifestLocked(dataDir: string, candidate: Manifest
   const oldCurrent = existsSync(current) ? readFileSync(current) : null;
   const oldPrev = existsSync(prevPath) ? readFileSync(prevPath) : null;
   let currentHash: string | null = null;
+  let currentUnreadable = false;
   try {
     const cur = readManifest(dataDir);
     currentHash = cur ? manifestHash(cur) : null;
   } catch {
-    // 깨진 현재본은 다른 것으로 취급해 이전본 자리로 보낸다
+    currentUnreadable = true; // 깨진 현재본은 롤백 대상이 될 수 없다 — prev를 덮지 않는다
   }
-  if (oldCurrent && currentHash !== hash) {
+  if (oldCurrent && !currentUnreadable && currentHash !== hash) {
     const prevTmp = `${prevPath}.tmp`;
     writeFileSync(prevTmp, oldCurrent);
     renameSync(prevTmp, prevPath);
@@ -250,8 +251,11 @@ export interface GcResult {
   skipped: string[];
 }
 
-export function collectGarbage(dataDir: string, pinnedHashes: ReadonlySet<string>): Promise<GcResult> {
-  return withDataDirLock(dataDir, () => collectGarbageLocked(dataDir, pinnedHashes));
+export type PinSource = ReadonlySet<string> | (() => ReadonlySet<string>);
+
+export function collectGarbage(dataDir: string, pins: PinSource): Promise<GcResult> {
+  // 핀은 잠금을 쥔 뒤에 계산한다 — 저장(saveProject)과 GC가 서로 다른 프로세스여도 경합이 없다.
+  return withDataDirLock(dataDir, () => collectGarbageLocked(dataDir, typeof pins === "function" ? pins() : pins));
 }
 
 /** 호출자가 withDataDirLock을 쥐고 있어야 한다. */
@@ -259,6 +263,7 @@ export function collectGarbageLocked(dataDir: string, pinnedHashes: ReadonlySet<
   const keepFiles = new Set<string>();
   const keepManifests = new Set<string>();
   const keep = (m: Manifest) => {
+    for (const f of Object.values(m.files)) resolveDataPath(dataDir, f.path); // 비정규 경로면 PATH_ESCAPE로 중단
     keepManifests.add(manifestHash(m));
     for (const f of Object.values(m.files)) keepFiles.add(f.path);
   };
