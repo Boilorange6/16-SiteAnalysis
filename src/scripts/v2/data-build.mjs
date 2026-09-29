@@ -27,6 +27,7 @@ if (!version || !/^[0-9A-Za-z._-]+$/.test(version)) {
   console.error("usage: data:build -- --version <name> [--raw dir] [--only core,reference,market] [--expectations file.json]");
   process.exit(2);
 }
+const flag = (name) => args.includes(`--${name}`);
 const raw = opt("raw", ".cache/v2/raw");
 const only = new Set(String(opt("only", "core,reference,market")).split(","));
 const expectations = opt("expectations") ? JSON.parse(readFileSync(opt("expectations"), "utf8")) : undefined;
@@ -66,6 +67,31 @@ async function* chain(...gens) {
 
 console.log("unzip:", extractAll(join(raw, "legal_dong")).length + extractAll(join(raw, "cadastral")).length + extractAll(join(raw, "gis_building")).length, "archive(s)");
 
+const dateOf = (f) => (basename(f).match(/(20\d{6})/) ?? [])[1] ?? "";
+const newestDated = (files) => [...files].sort((a, b) => dateOf(b).localeCompare(dateOf(a)))[0];
+const sidoOf = (f, tag) => basename(f).match(new RegExp(`^${tag}_(\\d+)_`, "i"))[1];
+
+/** 지적도·GIS건물 파일과 표제부를 고르고, 법정구역의 모든 시도가 지적도 또는 건물 파일로 덮이는지 확인한다. */
+async function discoverCore() {
+  const parcelFiles = latestSet("cadastral", /^AL_D002_\d+_\d{8}\.shp$/i);
+  const haveCadastral = new Set(parcelFiles.map((f) => sidoOf(f, "AL_D002")));
+  const buildingFiles = latestSet("gis_building", /^AL_D010_\d+_\d{8}\.shp$/i).filter((f) => !haveCadastral.has(sidoOf(f, "AL_D010")));
+  if (parcelFiles.length + buildingFiles.length === 0) throw new Error("지적도(cadastral)도 GIS건물(gis_building) 파일도 없습니다 — vworld:fetch로 받으세요");
+  const legalSido = new Set();
+  for await (const r of readShp(newest("legal_dong", /\(SIG\)\.shp$/i))) legalSido.add(String(r.properties.A1).slice(0, 2));
+  const haveBuilding = new Set(buildingFiles.map((f) => sidoOf(f, "AL_D010")));
+  const missing = [...legalSido].filter((c) => !haveCadastral.has(c) && !haveBuilding.has(c)).sort();
+  if (missing.length > 0) throw new Error(`시도 ${missing.join(",")}: 지적도도 GIS건물 파일도 없습니다 — 받은 뒤 다시 실행하세요`);
+  const titles = [...walk(join(raw, "ledger_title"))].filter((f) => /^title_\d{6}\.csv$/i.test(basename(f))).sort((a, b) => basename(b).localeCompare(basename(a)));
+  const titleFile = titles[0] ?? newest("ledger_title", /^title_5sido\.csv$/i);
+  console.log(`parcel points: cadastral 시도 ${[...haveCadastral].sort().join(",") || "-"} · from buildings 시도 ${[...haveBuilding].sort().join(",") || "-"} · title ${basename(titleFile)}`);
+  return { parcelFiles, buildingFiles, titleFile, hasNationalTitle: titles.length > 0 };
+}
+if (flag("dry-run")) {
+  await discoverCore();
+  process.exit(0);
+}
+
 const builders = {};
 if (only.has("core")) {
   builders.core = async (db) => {
@@ -77,30 +103,32 @@ if (only.has("core")) {
       emd: readShp(newest("legal_dong", /\(EMD\)\.shp$/i)),
       ri: readShp(newest("legal_dong", /\(LIO\)\.shp$/i)),
     });
-    const parcelFiles = latestSet("cadastral", /^AL_D002_\d+_\d{8}\.shp$/i);
-    console.log(`cadastral: ${parcelFiles.length} 시도 파일`);
-    const parcelRel = release(db, "parcel", parcelFiles[0], "국토교통부(VWorld 연속지적도형정보)", "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=23", "CC-BY");
-    // 500MB 넘는 시도 지적도는 VWorld가 일반 다운로드로 안 준다 — 그 시도만 GIS건물통합정보(A2=PNU)의 건물 대표점으로 대신한다
-    const sidoOf = (f, tag) => basename(f).match(new RegExp(`^${tag}_(\\d+)_`, "i"))[1];
-    const haveCadastral = new Set(parcelFiles.map((f) => sidoOf(f, "AL_D002")));
-    const buildingFiles = latestSet("gis_building", /^AL_D010_\d+_\d{8}\.shp$/i).filter((f) => !haveCadastral.has(sidoOf(f, "AL_D010")));
-    console.log(`parcel points: cadastral 시도 ${[...haveCadastral].sort().join(",")} · from buildings 시도 ${buildingFiles.map((f) => sidoOf(f, "AL_D010")).sort().join(",") || "-"}`);
-    async function* buildingAsParcels(file) {
-      for await (const r of readShpPoints(file)) yield { properties: { A1: r.properties.A2, A5: null }, point: r.point };
+    const { parcelFiles, buildingFiles, titleFile, hasNationalTitle } = await discoverCore();
+    const parcelRel = release(db, "parcel", newestDated(parcelFiles), "국토교통부(VWorld 연속지적도형정보)", "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=23", "CC-BY");
+    const parcel = await buildParcelPoints(db, chain(...parcelFiles.map((f) => readShpPoints(f))), parcelRel);
+    parcel.expectedRegions = parcelFiles.map((f) => sidoOf(f, "AL_D002"));
+    const extra = [];
+    if (buildingFiles.length > 0) {
+      // 500MB 넘는 시도 지적도는 VWorld가 일반 다운로드로 안 준다 — 그 시도만 GIS건물통합정보(A2=PNU)의 건물 대표점으로 대신한다. 지적도 뒤에 넣어 INSERT OR IGNORE가 지적도 행을 우선한다.
+      const buildingRel = release(db, "parcel_building", newestDated(buildingFiles), "국토교통부(VWorld GIS건물통합정보, 필지 대표점 대체)", "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=18", "CC-BY");
+      async function* buildingAsParcels(file) {
+        for await (const r of readShpPoints(file)) yield { properties: { A1: r.properties.A2, A5: null }, point: r.point };
+      }
+      const pb = await buildParcelPoints(db, chain(...buildingFiles.map(buildingAsParcels)), buildingRel);
+      // buildParcelPoints가 sourceId를 "parcel"로 고정해 두므로 CLI에서 덮어쓴다(런타임에서는 일반 속성)
+      Object.defineProperty(pb, "sourceId", { value: "parcel_building" });
+      pb.expectedRegions = buildingFiles.map((f) => sidoOf(f, "AL_D010"));
+      extra.push(pb);
     }
-    const parcel = await buildParcelPoints(db, chain(...parcelFiles.map((f) => readShpPoints(f)), ...buildingFiles.map(buildingAsParcels)), parcelRel);
-    parcel.expectedRegions = Object.keys(legal[0].byRegion); // 법정구역 시군구의 시도 코드 = 지적도가 있어야 할 시도
     const recapFile = newest("ledger_recap", /^recap_.*\.csv$/i);
-    const titleFiles = [...walk(join(raw, "ledger_title"))].filter((f) => /^title_\d{6}\.csv$/i.test(basename(f)));
-    const titleFile = titleFiles[0] ?? newest("ledger_title", /^title_5sido\.csv$/i);
-    if (!titleFiles[0]) console.warn("⚠ 전국 표제부(title_YYYYMM.csv)가 없어 5개 시도 표제부로 적재합니다 — 오피스텔·단일동 커버리지 일부");
+    if (!hasNationalTitle) console.warn("⚠ 전국 표제부(title_YYYYMM.csv)가 없어 5개 시도 표제부로 적재합니다 — 오피스텔·단일동 커버리지 일부");
     const ledger = await buildLedger(db, {
       recapReleaseId: release(db, "ledger_recap", recapFile, "국토교통부 건축HUB", "https://www.hub.go.kr/portal/opn/lps/idx-lgcpt-pvsn-srvc-list.do", "UNRESTRICTED"),
       titleReleaseId: release(db, "ledger_title", titleFile, "국토교통부 건축HUB", "https://www.hub.go.kr/portal/opn/lps/idx-lgcpt-pvsn-srvc-list.do", "UNRESTRICTED"),
       recap: (await csvRecords(recapFile)).records,
       title: (await csvRecords(titleFile)).records,
     });
-    return [...legal, parcel, ...ledger];
+    return [...legal, parcel, ...extra, ...ledger];
   };
 }
 if (only.has("reference")) {
