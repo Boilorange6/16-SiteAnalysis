@@ -37,6 +37,7 @@ const stats = await buildLedger(db, {
     { 관리_건축물대장_PK: "108215000068706", 건물_명: "가재마을4단지", ...addr("36110", "11100", "0", "0640", "0000"), 주_용도_코드_명: "공동주택", 기타_용도: "아파트", "세대_수(세대)": "1010", "가구_수(가구)": "0", 주_건축물_수: "12", 총_주차_수: "0", 사용승인_일: "20120330" },
     { 관리_건축물대장_PK: "P2", 건물_명: "블록단지", ...addr("41360", "10100", "2", "0001", "0000"), 주_용도_코드_명: "공동주택", "세대_수(세대)": "500", 사용승인_일: "" },
     { 관리_건축물대장_PK: "P3", 건물_명: "창고", ...addr("41360", "10100", "0", "6000", "0000"), 주_용도_코드_명: "창고시설", "세대_수(세대)": "0" },
+    { 관리_건축물대장_PK: "P5", 건물_명: "점없는단지", ...addr("41360", "10100", "0", "8000", "0000"), 주_용도_코드_명: "공동주택", "세대_수(세대)": "200" },
     { 관리_건축물대장_PK: "P4", 건물_명: "대표점없음", ...addr("41360", "10100", "0", "7000", "0000"), 주_용도_코드_명: "공동주택", "세대_수(세대)": "30", 사용승인_일: "00000000" },
   ]),
   title: from([
@@ -44,14 +45,20 @@ const stats = await buildLedger(db, {
     { 관리_건축물대장_PK: "T2", 대장_종류_코드_명: "표제부", 건물_명: "해피빌라", 동_명: "A동", ...addr("11680", "10100", "0", "0010", "0000"), 주_용도_코드_명: "공동주택", 기타_용도: "다세대주택", "세대_수(세대)": "8", 사용승인_일: "20051201" },
     { 관리_건축물대장_PK: "T3", 대장_종류_코드_명: "표제부", 건물_명: "해피빌라", 동_명: "B동", ...addr("11680", "10100", "0", "0010", "0000"), 주_용도_코드_명: "공동주택", 기타_용도: "다세대주택", "세대_수(세대)": "6", 사용승인_일: "20031101" },
     { 관리_건축물대장_PK: "T4", 대장_종류_코드_명: "표제부", 건물_명: "역삼오피스텔", ...addr("11680", "10100", "0", "0020", "0000"), 주_용도_코드_명: "업무시설", 기타_용도: "오피스텔,근린생활시설", "호_수(호)": "0", "높이(m)": "45.2", 지상_층_수: "15", 사용승인_일: "20190510" },
+    { 관리_건축물대장_PK: "T6", 대장_종류_코드_명: "표제부", 건물_명: "점없는단지", 동_명: "101동", ...addr("41360", "10100", "0", "8000", "0000"), 주_용도_코드_명: "공동주택", "세대_수(세대)": "50" }, // recap 단지는 위치 미확인 → 표제부로 다시 세지 않는다
+    { 관리_건축물대장_PK: "T7", 대장_종류_코드_명: "표제부", 건물_명: "세대미상", ...addr("11680", "10100", "0", "0010", "0000"), 주_용도_코드_명: "공동주택", "세대_수(세대)": "0" },
+    { 관리_건축물대장_PK: "T8", 대장_종류_코드_명: "표제부", 건물_명: "점없는빌라", ...addr("41360", "10100", "0", "9000", "0000"), 주_용도_코드_명: "공동주택", "세대_수(세대)": "5" },
     { 관리_건축물대장_PK: "T5", 대장_종류_코드_명: "표제부", 건물_명: "사무동", ...addr("11680", "10100", "0", "0020", "0000"), 주_용도_코드_명: "업무시설", 기타_용도: "사무소" },
   ]),
 });
 
 const byId = Object.fromEntries(stats.map((s) => [s.sourceId, s]));
-assert.deepEqual([byId.ledger_recap_housing.accepted, byId.ledger_recap_housing.unlocated, byId.ledger_recap_housing.received], [1, 2, 4], "창고는 대상 아님(읽기만), 블록·대표점없음은 위치 미확인");
-assert.equal(byId.ledger_title_housing.accepted, 1, "해피빌라 A·B동 → PNU 하나로 합침");
-assert.equal(byId.ledger_title_officetel.accepted, 1);
+const counts = (s) => [s.received, s.accepted, s.unlocated, s.rejected];
+for (const s of stats) assert.equal(s.received, s.accepted + s.unlocated + s.rejected, `${s.sourceId}: received = accepted + unlocated + rejected`);
+assert.deepEqual(counts(byId.ledger_recap_housing), [4, 1, 3, 0], "창고는 대상 아님(세지 않음), 블록·대표점없음·점없는단지는 위치 미확인");
+assert.deepEqual(counts(byId.ledger_title_housing), [4, 2, 1, 1], "T2+T3 → 2행 accept·feature 1개, T8 점 없음, T7 세대 미상 reject, T1·T6은 recap PNU라 대상 아님");
+assert.deepEqual(counts(byId.ledger_title_officetel), [1, 1, 0, 0]);
+assert.equal(db.prepare("SELECT count(*) FROM feature WHERE kind = 'housing_complex' AND stable_id LIKE 'title-housing:%'").pluck().get(), 1, "위치 미확인 recap 단지의 동은 title-housing이 되지 않는다");
 
 const props = (id) => JSON.parse(db.prepare("SELECT properties_json FROM feature WHERE stable_id = ?").pluck().get(id));
 assert.deepEqual(props("recap:108215000068706"), { source: "recap", ledgerPk: "108215000068706", mainUse: "공동주택", otherUse: "아파트", units: 1010, households: null, parking: null, approvalDate: "2012-03-30", buildingCount: 12 }, "0은 미상(null)");

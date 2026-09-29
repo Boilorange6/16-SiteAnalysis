@@ -45,12 +45,13 @@ export async function buildLedger(
   const recapPnus = new Set<string>();
 
   await batched(db, input.recap, (r) => {
-    recapStats.received++;
     const p = r.properties;
     const units = positive(p["세대_수(세대)"]);
     const mainUse = str(p["주_용도_코드_명"]);
-    if (units === null && mainUse !== "공동주택") return; // 대상 아님
+    if (units === null && mainUse !== "공동주택") return; // 대상 아님: 세지 않는다
+    recapStats.read();
     const loc = ledgerPnu(p);
+    if (loc) recapPnus.add(loc.pnu); // 위치를 못 얻어도 표제부 동을 단지로 다시 세지 않는다
     const point = loc ? lookupParcelPoint(db, loc.pnu) : null;
     if (!loc || !point) return recapStats.unlocate();
     const pk = str(p["관리_건축물대장_PK"]) ?? loc.pnu;
@@ -66,35 +67,37 @@ export async function buildLedger(
       buildingCount: positive(p["주_건축물_수"]),
     };
     insertFeature(db, { stableId: `recap:${pk}`, kind: "housing_complex", sourceKey: pk, releaseId: input.recapReleaseId, geometry: pointGeometry(point), name: str(p["건물_명"]), pnu: loc.pnu, legalCode: loc.legalCode, properties: props });
-    recapPnus.add(loc.pnu);
     recapStats.accept(props, loc.legalCode.slice(0, 2), mainUse ?? "(미상)");
   });
 
   const housingStats = new SourceStats("ledger_title_housing", input.titleReleaseId, ["units", "approvalDate"]);
   const officetelStats = new SourceStats("ledger_title_officetel", input.titleReleaseId, ["units", "floorsAbove", "approvalDate"]);
-  const housing = new Map<string, { legalCode: string; name: string | null; otherUse: string | null; units: number; approvalDate: string | null; buildingCount: number }>();
+  const housing = new Map<string, { legalCode: string; name: string | null; otherUse: string | null; units: number; approvalDate: string | null; buildingCount: number; point: readonly [number, number] }>();
 
   await batched(db, input.title, (r) => {
     const p = r.properties;
     const mainUse = str(p["주_용도_코드_명"]);
     const otherUse = str(p["기타_용도"]);
     if (mainUse === "공동주택") {
-      housingStats.received++;
-      const units = positive(p["세대_수(세대)"]);
       const loc = ledgerPnu(p);
+      if (loc && recapPnus.has(loc.pnu)) return; // 총괄표제부 단지의 동: 대상 아님
+      housingStats.read();
       if (!loc) return housingStats.unlocate();
-      if (recapPnus.has(loc.pnu) || units === null) return; // 총괄표제부 단지의 동이거나 세대 미상
-      const approval = ymd(p["사용승인_일"]);
+      const units = positive(p["세대_수(세대)"]);
+      if (units === null) return housingStats.reject(); // 세대 미상
       const cur = housing.get(loc.pnu);
+      const point = cur ? cur.point : lookupParcelPoint(db, loc.pnu);
+      if (!point) return housingStats.unlocate();
+      const approval = ymd(p["사용승인_일"]);
       if (cur) {
         cur.units += units;
         cur.buildingCount += 1;
         if (approval && (!cur.approvalDate || approval < cur.approvalDate)) cur.approvalDate = approval;
       } else {
-        housing.set(loc.pnu, { legalCode: loc.legalCode, name: str(p["건물_명"]), otherUse, units, approvalDate: approval, buildingCount: 1 });
+        housing.set(loc.pnu, { legalCode: loc.legalCode, name: str(p["건물_명"]), otherUse, units, approvalDate: approval, buildingCount: 1, point });
       }
     } else if (mainUse === "업무시설" && otherUse?.includes("오피스텔")) {
-      officetelStats.received++;
+      officetelStats.read();
       const loc = ledgerPnu(p);
       const point = loc ? lookupParcelPoint(db, loc.pnu) : null;
       if (!loc || !point) return officetelStats.unlocate();
@@ -113,11 +116,9 @@ export async function buildLedger(
   });
 
   await batched(db, housing, ([pnu, h]) => {
-    const point = lookupParcelPoint(db, pnu);
-    if (!point) return housingStats.unlocate();
     const props = { source: "title", ledgerPk: null, mainUse: "공동주택", otherUse: h.otherUse, units: h.units, households: null, parking: null, approvalDate: h.approvalDate, buildingCount: h.buildingCount };
-    insertFeature(db, { stableId: `title-housing:${pnu}`, kind: "housing_complex", sourceKey: pnu, releaseId: input.titleReleaseId, geometry: pointGeometry(point), name: h.name, pnu, legalCode: h.legalCode, properties: props });
-    housingStats.accept(props, h.legalCode.slice(0, 2), "공동주택");
+    insertFeature(db, { stableId: `title-housing:${pnu}`, kind: "housing_complex", sourceKey: pnu, releaseId: input.titleReleaseId, geometry: pointGeometry(h.point), name: h.name, pnu, legalCode: h.legalCode, properties: props });
+    for (let i = 0; i < h.buildingCount; i++) housingStats.accept(props, h.legalCode.slice(0, 2), "공동주택"); // 행 단위 집계
   });
 
   return [recapStats, housingStats, officetelStats];
