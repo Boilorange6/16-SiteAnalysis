@@ -5,7 +5,7 @@
  */
 import assert from "node:assert/strict";
 
-const { parseTileResult, tileCacheKey } = await import("../../lib/v2/tile-result.ts");
+const { parseTileResult, tileCacheKey, TileResultSchema } = await import("../../lib/v2/tile-result.ts");
 
 const HASH = "a".repeat(64);
 const valid = () => ({
@@ -29,7 +29,7 @@ const valid = () => ({
     { id: "nearest_station_m", label: "최근접 역 출입구", value: 420, unit: "m", formulaVersion: "a01-nearest@1", numerator: null, denominator: null, status: "observed" },
     { id: "bus_routes", label: "버스 노선 수", value: null, unit: "개", formulaVersion: "a01-routes@1", numerator: null, denominator: null, status: "missing" },
   ],
-  judgment: { ruleId: "A01-rail-distance@1", basisMetricIds: ["nearest_station_m"], sentence: "철도 접근은 가까운 편이다(직선 420m, 내부 제안 기준).", level: "good" },
+  judgment: { ruleId: "A01-rail-distance@1", basisMetricIds: ["nearest_station_m"], sentence: "철도 접근은 가까운 편이다(직선 420m, 내부 제안 기준).", level: "good", criteria: "직선거리 ≤500m 좋음 · 내부 제안 기준" },
   presentation: { legend: [], camera: null, layers: ["station"], outputFace: "front" },
   provenance: { manifestHash: HASH, sources: [{ sourceId: "rail", releaseId: "r1", sourceAsOf: "2026-09-01", fetchedAt: "2026-09-29T00:00:00+09:00" }] },
   limitations: [{ kind: "unknown", note: "버스 노선 연결 미확보" }],
@@ -55,10 +55,24 @@ rejects((v) => { v.judgment.basisMetricIds = ["nope"]; }, "없는 지표를 근�
 rejects((v) => { v.presentation.outputFace = "flipped"; }, "출력 면");
 rejects((v) => { v.conditions.radiusM = 0; }, "반경 0");
 
+// 어떤 규칙이 거부했는지까지 확인한다
+const rejectsAt = (mutate, path, why) => {
+  const v = valid();
+  mutate(v);
+  const r = TileResultSchema.safeParse(v);
+  assert.equal(r.success, false, why);
+  assert.ok(r.error.issues.some((i) => i.path.join(".") === path), `${why}: expected issue at ${path}, got ${r.error.issues.map((i) => i.path.join("."))}`);
+};
+rejectsAt((v) => { v.judgment.basisMetricIds = []; }, "judgment.basisMetricIds", "등급인데 근거 지표 없음");
+rejectsAt((v) => { v.judgment.criteria = null; }, "judgment.criteria", "등급인데 기준 없음");
+rejectsAt((v) => { v.conditions.analysisDate = "2026-13-45"; }, "conditions.analysisDate", "없는 달");
+rejectsAt((v) => { v.conditions.analysisDate = "2026-02-30"; }, "conditions.analysisDate", "없는 날");
+rejectsAt((v) => { v.metrics.push({ ...v.metrics[0] }); }, "metrics.2.id", "중복 지표 id");
+
 // 등급 없는 판단(사실 문장)은 근거가 missing이어도 허용
 {
   const v = valid();
-  v.judgment = { ruleId: "A06-fact@1", basisMetricIds: ["bus_routes"], sentence: "노선 연결은 미확인이다.", level: null };
+  v.judgment = { ruleId: "A06-fact@1", basisMetricIds: ["bus_routes"], sentence: "노선 연결은 미확인이다.", level: null, criteria: null };
   assert.equal(parseTileResult(v).judgment.level, null);
 }
 

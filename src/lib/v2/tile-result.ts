@@ -33,7 +33,13 @@ const ConditionsSchema = z.object({
   address: z.string(),
   center: z.tuple([z.number().finite(), z.number().finite()]),
   radiusM: z.number().positive(),
-  analysisDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  analysisDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .refine((d) => {
+      const t = new Date(`${d}T00:00:00Z`);
+      return !Number.isNaN(t.getTime()) && t.toISOString().slice(0, 10) === d;
+    }, "analysisDate must be a real calendar date"),
   timezone: z.literal("Asia/Seoul"),
   filters: z.record(z.string(), z.unknown()),
   simulation: z.record(z.string(), z.unknown()).nullable(),
@@ -56,6 +62,7 @@ export const TileResultSchema = z
         basisMetricIds: z.array(z.string()),
         sentence: z.string().min(1),
         level: z.enum(JUDGMENT_LEVELS).nullable(),
+        criteria: z.string().min(1).nullable(),
       })
       .nullable(),
     presentation: z.object({
@@ -80,6 +87,19 @@ export const TileResultSchema = z
   .superRefine((t, ctx) => {
     if (t.status === "complete" && t.provenance.sources.length === 0) {
       ctx.addIssue({ code: "custom", path: ["provenance", "sources"], message: "a complete tile needs at least one source" });
+    }
+    const seen = new Set<string>();
+    t.metrics.forEach((m, i) => {
+      if (seen.has(m.id)) ctx.addIssue({ code: "custom", path: ["metrics", i, "id"], message: `duplicate metric id ${m.id}` });
+      seen.add(m.id);
+    });
+    if (t.judgment && t.judgment.level !== null) {
+      if (t.judgment.basisMetricIds.length === 0) {
+        ctx.addIssue({ code: "custom", path: ["judgment", "basisMetricIds"], message: "a graded judgment needs basis metrics" });
+      }
+      if (t.judgment.criteria === null) {
+        ctx.addIssue({ code: "custom", path: ["judgment", "criteria"], message: "a graded judgment needs its criteria" });
+      }
     }
     if (t.judgment) {
       const byId = new Map(t.metrics.map((m) => [m.id, m]));
