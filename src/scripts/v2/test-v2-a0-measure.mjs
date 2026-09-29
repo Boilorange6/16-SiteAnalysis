@@ -3,6 +3,12 @@
  * data.go.kr CSV는 대부분 CP949다. UTF-8로 잘못 읽으면 채움률이 조용히 틀린다.
  */
 import assert from "node:assert/strict";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const dir = mkdtempSync(join(tmpdir(), "a0-measure-"));
+const tmpFile = (name, bytes) => { const p = join(dir, name); writeFileSync(p, bytes); return p; };
 
 const { decodeText, parseCsv, isFilled, measureRecords, csvRecords } = await import("../../lib/v2/a0/measure.ts");
 const { REVIEW_SITES } = await import("../../lib/v2/a0/review-sites.ts");
@@ -40,7 +46,9 @@ const { REVIEW_SITES } = await import("../../lib/v2/a0/review-sites.ts");
      "2635010100,None,,"].join("\n") + "\n",
     "utf8",
   );
-  const { fieldNames, records, encoding } = csvRecords(csv, { lngField: "lng", latField: "lat" });
+  const { fieldNames, records: stream, encoding } = await csvRecords(tmpFile("main.csv", csv), { lngField: "lng", latField: "lat" });
+  const records = [];
+  for await (const r of stream) records.push(r);
   assert.equal(encoding, "utf-8");
   assert.deepEqual(fieldNames, ["code", "height", "lng", "lat"]);
   assert.equal(records[3].point, null, "좌표 없는 행");
@@ -63,6 +71,51 @@ const { REVIEW_SITES } = await import("../../lib/v2/a0/review-sites.ts");
   for (const s of REVIEW_SITES) {
     assert.ok(s.center[0] > 124 && s.center[0] < 132 && s.center[1] > 33 && s.center[1] < 39, `${s.id} 좌표가 한국 범위`);
   }
+}
+
+// ─── 6. 스트리밍 CSV: CP949, 따옴표 속 줄바꿈·쉼표, 1 MiB 청크 경계 ──────────
+{
+  const collect = async (it) => { const a = []; for await (const r of it) a.push(r); return a; };
+
+  // CP949: "가" = B0 A1
+  const cp = await csvRecords(tmpFile("cp949.csv", Uint8Array.from([...Buffer.from("name,lng,lat\r\n"), 0xb0, 0xa1, ...Buffer.from(",127.0,37.0\r\n")])));
+  assert.equal(cp.encoding, "euc-kr");
+  const cpRows = await collect(cp.records);
+  assert.equal(cpRows[0].properties.name, "가");
+  assert.equal((await measureRecords(cpRows, cp.fieldNames)).rows, 1);
+
+  // UTF-8 BOM + 따옴표 안 줄바꿈·쉼표, 빈 줄 건너뜀
+  const q = await csvRecords(tmpFile("quoted.csv", Buffer.from("﻿name,x\n\n\"a,\nb\",1\n\"q\"\"\",2"))); // 마지막 줄은 개행 없음
+  assert.equal(q.encoding, "utf-8");
+  assert.deepEqual(q.fieldNames, ["name", "x"]);
+  assert.deepEqual((await collect(q.records)).map((r) => r.properties), [{ name: "a,\nb", x: "1" }, { name: 'q"', x: "2" }]);
+
+  // 1 MiB 경계에 한글 한 글자("가" 3바이트)가 걸리도록 채운다
+  const header = "name,lng,lat\n";
+  const rowLine = "abc,127.0,37.0\n";
+  let body = header + rowLine.repeat(60000);
+  const padLen = (1 << 20) - 1 - Buffer.byteLength(body);
+  assert.ok(padLen > 0);
+  body += "y".repeat(padLen) + "가,127.0,37.0\n" + rowLine.repeat(20000);
+  assert.ok(Buffer.byteLength(body) > 1.2 * (1 << 20) - 100_000);
+  const big = await csvRecords(tmpFile("big.csv", Buffer.from(body, "utf8")), { lngField: "lng", latField: "lat" });
+  assert.equal(big.encoding, "utf-8");
+  const bigReport = await measureRecords(big.records, big.fieldNames, { pointBasis: "lnglat-columns" });
+  assert.equal(bigReport.rows, 60000 + 1 + 20000);
+  assert.equal(bigReport.pointBasis, "lnglat-columns");
+}
+
+// ─── 7. 한국 범위 밖 좌표는 검수지에 배정하지 않고 센다 ───────────────────────
+{
+  const site = REVIEW_SITES.find((s) => s.id === "dasan");
+  const rows = [
+    { properties: { a: "1" }, point: [200000, 500000] },
+    { properties: { a: "1" }, point: site.center },
+  ];
+  const r = await measureRecords(rows, ["a"], { sites: REVIEW_SITES });
+  assert.equal(r.outOfRangePoints, 1);
+  assert.equal(r.pointBasis, "none");
+  assert.equal(Object.values(r.bySite).reduce((n, s) => n + s.rows, 0), 1);
 }
 
 console.log("✓ v2 a0 measure");

@@ -4,7 +4,7 @@
  *                         [--lng-field X --lat-field Y] [--encoding cp949] [--crs EPSG:5186]
  *                         [--site-radius 1000] [--out report.json]
  */
-import { readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { extname } from "node:path";
 import proj4 from "proj4";
 
@@ -24,25 +24,47 @@ const opt = (name, fallback) => {
   return i >= 0 ? rest[i + 1] : fallback;
 };
 
+const fail = (msg) => {
+  console.error(msg);
+  process.exit(2);
+};
+const regionDigits = Number(opt("region-digits", "2"));
+if (!Number.isInteger(regionDigits) || regionDigits < 1) fail("--region-digits must be a positive integer");
+
 const ext = extname(file).toLowerCase();
+const encodingArg = opt("encoding");
 let fieldNames;
 let records;
 let encoding;
+let pointBasis = "none";
 if (ext === ".csv") {
-  ({ fieldNames, records, encoding } = csvRecords(readFileSync(file), { lngField: opt("lng-field"), latField: opt("lat-field") }));
+  const csvEncoding = { undefined: undefined, cp949: "euc-kr", "euc-kr": "euc-kr", "utf-8": "utf-8", utf8: "utf-8" }[encodingArg];
+  if (encodingArg !== undefined && !csvEncoding) fail(`unsupported --encoding ${encodingArg} for CSV (use utf-8 or cp949)`);
+  const lngField = opt("lng-field");
+  const latField = opt("lat-field");
+  ({ fieldNames, records, encoding } = await csvRecords(file, { lngField, latField, encoding: csvEncoding }));
+  if (lngField && latField) pointBasis = "lnglat-columns";
 } else if (ext === ".shp") {
-  encoding = opt("encoding", "cp949");
+  encoding = encodingArg ?? "cp949";
+  const prj = file.replace(/\.shp$/i, ".prj");
+  if (opt("crs") === undefined && existsSync(prj)) {
+    console.error(`warning: --crs not given (assuming EPSG:5186) but ${prj} exists: ${readFileSync(prj, "utf8").slice(0, 120)}`);
+  }
   ({ fieldNames, records } = await shpRecords(file, { encoding, crs: opt("crs", "EPSG:5186") }));
+  pointBasis = "bbox-center";
 } else {
-  console.error(`unsupported file type ${ext}`);
-  process.exit(2);
+  fail(`unsupported file type ${ext}`);
 }
 
+const regionField = opt("region-field");
+if (regionField && !fieldNames.includes(regionField)) fail(`--region-field "${regionField}" not in fields: ${fieldNames.join(", ")}`);
+
 const report = await measureRecords(records, fieldNames, {
-  regionField: opt("region-field"),
-  regionDigits: Number(opt("region-digits", "2")),
+  regionField,
+  regionDigits,
   sites: REVIEW_SITES,
   siteRadiusM: Number(opt("site-radius", "1000")),
+  pointBasis,
 });
 const out = { file, bytes: statSync(file).size, encoding, measuredAt: new Date().toISOString(), ...report };
 const json = JSON.stringify(out, null, 2);
