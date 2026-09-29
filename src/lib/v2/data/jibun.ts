@@ -31,7 +31,7 @@ function sigungus(db: Db): Area[] {
   let rows = sigCache.get(db);
   if (!rows) {
     rows = db.prepare("SELECT code, name FROM legal_area WHERE level = 'sigungu'").all() as Area[];
-    sigCache.set(db, rows);
+    if (rows.length) sigCache.set(db, rows);
   }
   return rows;
 }
@@ -40,18 +40,23 @@ export function resolveJibunAddress(db: Db, address: string): { legalCode: strin
   const parsed = parseJibunAddress(address);
   if (!parsed) return null;
   const tokens = parsed.head.split(" ");
-  if (tokens.length < 3) return null;
+  if (tokens.length < 2) return null;
   const sido = SIDO_ALIASES[tokens[0]] ?? tokens[0];
   const restJoined = tokens.slice(1).join("");
 
   // 시군구: "시도 시군구" 이름에서 시도를 떼고 공백을 무시해 가장 긴 접두어를 고른다(예: "성남시 분당구")
   let best: { code: string; restName: string } | null = null;
+  let tied = false;
   for (const s of sigungus(db)) {
-    if (!s.name.startsWith(`${sido} `)) continue;
-    const restName = s.name.slice(sido.length + 1).replace(/\s+/g, "");
-    if (restJoined.startsWith(restName) && (!best || restName.length > best.restName.length)) best = { code: s.code, restName };
+    if (s.name !== sido && !s.name.startsWith(`${sido} `)) continue;
+    const restName = s.name.slice(sido.length + 1).replace(/\s+/g, ""); // 세종: 이름이 시도와 같아 ""
+    if (!restJoined.startsWith(restName)) continue;
+    if (!best || restName.length > best.restName.length) {
+      best = { code: s.code, restName };
+      tied = false;
+    } else if (restName.length === best.restName.length) tied = true;
   }
-  if (!best) return null;
+  if (!best || tied) return null;
 
   // 시군구 이름이 차지한 토큰을 건너뛴다
   let consumed = "";
@@ -61,13 +66,17 @@ export function resolveJibunAddress(db: Db, address: string): { legalCode: strin
   const rest = tokens.slice(i);
   if (rest.length < 1 || rest.length > 2) return null;
 
-  const emd = db.prepare("SELECT code FROM legal_area WHERE level = 'emd' AND parent_code = ? AND name = ?").pluck().get(best.code, rest[0]) as string | undefined;
-  if (!emd) return null;
+  const emds = db.prepare("SELECT code FROM legal_area WHERE level = 'emd' AND parent_code = ? AND name = ?").pluck().all(best.code, rest[0]) as string[];
+  if (emds.length !== 1) return null; // 없거나 동명이면 추측하지 않는다
+  const emd = emds[0];
   let legalCode = `${emd}00`;
-  if (rest.length === 2) {
-    const ri = db.prepare("SELECT code FROM legal_area WHERE level = 'ri' AND parent_code = ? AND name = ?").pluck().get(emd, rest[1]) as string | undefined;
-    if (!ri) return null;
-    legalCode = ri;
+  if (rest.length === 1) {
+    // 리가 있는 읍·면인데 리를 안 밝히면 존재하지 않는 코드가 된다
+    if (db.prepare("SELECT 1 FROM legal_area WHERE level = 'ri' AND parent_code = ? LIMIT 1").get(emd)) return null;
+  } else {
+    const ris = db.prepare("SELECT code FROM legal_area WHERE level = 'ri' AND parent_code = ? AND name = ?").pluck().all(emd, rest[1]) as string[];
+    if (ris.length !== 1) return null;
+    legalCode = ris[0];
   }
   const pnu = makePnu(legalCode, parsed.mountain, parsed.bun, parsed.ji);
   return pnu ? { legalCode, pnu } : null;

@@ -67,5 +67,31 @@ assert.equal(resolveJibunAddress(db, "경기도 성남시분당구 정자동 178
 assert.equal(resolveJibunAddress(db, "강원특별자치도 강릉시 없는동 1"), null, "모르는 동");
 assert.equal(resolveJibunAddress(db, "강원특별자치도 강릉시 견소동 219 오션시티"), null, "뒤에 건물명 → 추측하지 않음");
 assert.equal(resolveJibunAddress(db, "강원특별자치도 강릉시 주문진읍 없는리 1"), null, "모르는 리");
+assert.equal(resolveJibunAddress(db, "강원특별자치도 강릉시 주문진읍 762-5"), null, "리가 있는 읍인데 리 생략 → 가짜 코드 금지");
+
+// ─── 5. 모호하면 null (합성 데이터) ────────────────────────────────────────
+{
+  const d = new Database(":memory:");
+  initDataFileSchema(d, "core");
+  const r = insertRelease(d, { sourceId: "legal", provider: "x", sourceUrl: "x", sourceAsOf: "2026-09-09", fetchedAt: "2026-09-30T00:00:00Z", checksum: "x", licenseCode: "CC-BY" });
+  const ins = d.prepare("INSERT INTO legal_area (code, level, name, parent_code, release_id) VALUES (?, ?, ?, ?, ?)");
+  const add = (code, level, name, parent) => ins.run(code, level, name, parent, r);
+  add("41135", "sigungu", "경기도 성남시 분당구", null);
+  add("41135103", "emd", "정자동", "41135");
+  add("41135104", "emd", "중복동", "41135");
+  add("41135105", "emd", "중복동", "41135");
+  add("36110", "sigungu", "세종특별자치시", null);
+  add("36110101", "emd", "반곡동", "36110");
+  add("42111", "sigungu", "강원특별자치도 갑시", null);
+  add("42112", "sigungu", "강원특별자치도 갑 시", null); // 공백 무시 시 restName 동일
+  add("42111101", "emd", "가동", "42111");
+  assert.equal(resolveJibunAddress(d, "경기도 성남시 분당구 정자동 178")?.legalCode, "4113510300");
+  assert.equal(resolveJibunAddress(d, "경기도 성남시 분당구 중복동 1"), null, "동명 emd 두 개");
+  assert.equal(resolveJibunAddress(d, "경기도 성남시 정자동 178"), null, "구 생략");
+  assert.equal(resolveJibunAddress(d, "강원특별자치도 갑시 가동 1"), null, "시군구 후보 동률");
+  assert.equal(resolveJibunAddress(d, "세종특별자치시 반곡동 1")?.pnu, "3611010100100010000", "세종은 시군구 없음");
+  assert.equal(resolveJibunAddress(d, "세종 반곡동 1")?.legalCode, "3611010100", "세종 약칭");
+  assert.equal(resolveJibunAddress(d, "경상북도 군위군 군위읍 1"), null, "없는 시군구");
+}
 
 console.log("✓ v2 legal areas");
