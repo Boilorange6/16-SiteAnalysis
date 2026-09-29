@@ -37,9 +37,9 @@
 | 19 | osm | Geofabrik south-korea-latest.osm.pbf https://download.geofabrik.de/asia/south-korea.html | 공개 HTTP 다운로드 | OSM: "Open Data Commons Open Database License (ODbL) by the OpenStreetMap Foundation (OSMF)" · "Provide credit to OpenStreetMap by displaying our attribution notice." | ✅ 출처 표시. 파생 DB를 외부에 공개하면 공유 의무 검토 | 페이지: 274 MB ("contains all OSM data up to 2026-09-28T20:23:05Z") | 측정: P1 적재 때 | 측정: P1 적재 때 | 측정: P1 적재 때 | ✅ | **✅는 라이선스 근거만이다. 측정은 P1 적재 때.** PBF는 측정 도구 대상 아님(osmium 필요) |
 | 20 | dem | AWS Terrain Tiles https://registry.opendata.aws/terrain-tiles/ · 국토지리정보원 DEM 15059920 | Terrain Tiles: S3 공개 · NGII: 국토정보플랫폼(map.ngii.go.kr) | Terrain Tiles: "License https://github.com/tilezen/joerd/blob/master/docs/attribution.md" → "Attribution is required for many terrain tile data providers." (한국 = SRTM·GMTED2010·ETOPO1) · NGII 15059920: "이용허락범위 제한 없음" | ✅ Terrain Tiles 출처 표시 | — (미취득) | — | 해상도·수직 기준: 측정: P1 적재 때 | — | ✅ | **✅는 라이선스 근거만이다. 측정(해상도·수직 기준)은 P1 적재 때.** Terrain Tiles는 "bare-earth terrain heights" = **DEM(지표고)**, DSM 아님. 고해상도가 필요하면 NGII DEM(국토정보플랫폼 신청) |
 | 21 | weather | EPW(Climate.OneBuilding) · 기상청 ASOS https://www.data.go.kr/data/15057210/openapi.do | ASOS: OpenAPI(인증키) · EPW: 공개 ZIP | ASOS API: "공공저작물 : 출처표시 (제 1유형)" · ASOS 파일 15043648: "공공저작물 : 출처표시 (제 1유형)" · Climate.OneBuilding: 페이지에 라이선스 문구 없음 | ⚠️ ASOS ✅, EPW 조건 미확인 | — (미취득) | — | 관측 기간·결측: 측정: P1 적재 때 | — | ⚠️ | **⚠️는 라이선스 근거만이다. 측정(관측 기간·결측)은 P1 적재 때.** EPW 이용조건 미표기 → 내부 사용은 가능성이 높으나 확인 전 ASOS로 기후 통계를 만드는 경로를 기본으로 |
-| 22 | vworld_wmts | VWorld WMTS 배경·항공영상 https://vworld.kr/dev/v4dv_wmtsguide_s001.do | WMTS(인증키, 도메인 등록) | VWorld 이용약관: "오픈플랫폼에서 제공되는 데이터는 사전 승낙 없이 데이터를 무단으로 저장하지 못합니다." · "회원은 서비스를 이용하여 얻는 정보를 사전 승낙 없이 복사, 복제, 변경, 번역, 출판, 방송, 기타 등의 방법으로 사용하거나 이를 타인에게 제공할 수 없습니다." · "회원은 운영기관의 사전 승낙 없이 서비스를 이용하여 어떠한 영리행위도 할 수 없으며" | ⛔ 화면 표시는 가능, 저장·스티칭·PPT 삽입은 사전 승낙 필요 | — | — | — | — | ⛔ | 저장·스티칭·PPT 삽입 허용 여부 = 약관상 사전 승낙 없이는 불가. 승낙 전에는 벡터 배경으로 대체(spec §7) |
+| 22 | vworld_wmts | VWorld WMTS 배경·항공영상 https://vworld.kr/dev/v4dv_wmtsguide_s001.do | WMTS(인증키, 도메인 등록) | VWorld 이용약관: "오픈플랫폼에서 제공되는 데이터는 사전 승낙 없이 데이터를 무단으로 저장하지 못합니다." · "회원은 서비스를 이용하여 얻는 정보를 사전 승낙 없이 복사, 복제, 변경, 번역, 출판, 방송, 기타 등의 방법으로 사용하거나 이를 타인에게 제공할 수 없습니다." · "회원은 운영기관의 사전 승낙 없이 서비스를 이용하여 어떠한 영리행위도 할 수 없으며" | ✅ 사용자 확인(2026-09-29): 회사가 VWorld 운영기관의 사용 허가를 받았음 → 약관의 "사전 승낙"을 충족 | — | — | — | — | ✅ | 약관상 사전 승낙이 필요한 항목(저장·스티칭·PPT 삽입). 허가 확보를 사용자가 확인. 허가 문서(범위·기간)는 저장소 밖에 보관하고 `source_release.rights_json`에 허가 근거를 기록. 공개 서비스로 바꿀 때 범위 재확인 |
 
-판정 집계: ✅ 13 · ⚠️ 2 · ⛔ 1 · ⏳ 6
+판정 집계: ✅ 14 · ⚠️ 2 · ⛔ 0 · ⏳ 6 (vworld_wmts는 2026-09-29 사용자 확인으로 ⛔ → ✅)
 
 ## 검수지 좌표 확인
 
@@ -66,7 +66,7 @@
 | 4 | land_price | ⏳ | 사용자: VWorld 로그인 → "개별공시지가"(dsId=6) 기준일 2026-05-26 **CSV만** 시도별 17개(합 약 451 MB) |
 | 5 | legal_dong | ⏳ | 사용자: VWorld 로그인 → "법정구역정보"(dsId=21) 전국 SHP 1개(120 MB) |
 | 6 | school_zone | ⏳ | 사용자: 학구도안내서비스(schoolzone.emac.kr)에서 통학구역 **도형(SHP)** 제공 방법·이용조건 확인·신청. 속성 CSV에는 폴리곤이 없음(확인) |
-| 7 | vworld_wmts | ⛔ | 사용자(회사): VWorld 운영기관(공간정보산업진흥원, 1661-0115 / vworld@spacen.or.kr)에 항공영상 타일 저장·스티칭·PPT 삽입의 사전 승낙 문의. 승낙 전에는 벡터 배경 |
+| 7 | vworld_wmts | ✅ (해소) | 2026-09-29 사용자 확인: VWorld 허가 확보. 추가 조치 없음. 공개 서비스로 전환할 때만 허가 범위 재확인 |
 | 8 | maintenance | ⚠️ | 사용자: 서울 OA-20281(공공누리 4유형)을 내부 업무에 쓸지 결정 — 2026-09-29 확인은 정비구역 SHP 허락에 대한 것이다. 부산(apis.data.go.kr/6260000/MaintenanceBusinessStatus1)·경기(openapi.gg.go.kr) API 페이지의 이용허락범위는 이번에 확인하지 못함 |
 | 9 | weather | ⚠️ | Climate.OneBuilding EPW 이용조건이 페이지에 없음. 확인 전 ASOS(1유형)를 기본 경로로 |
 | 10 | sgis_grid (선택) | — | 100 m 격자가 필요하면 사용자: SGIS(sgis.mods.go.kr) 자료제공 신청. 받은 파일은 1 km 격자만 |
