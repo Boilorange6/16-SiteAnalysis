@@ -124,10 +124,14 @@ export interface BuildPlan {
   version: string;
   builders: Partial<Record<DataFileKind, KindBuilder>>;
   expectations?: SiteExpectation[];
+  /** 이 원천 id들은 이전 스냅샷과 비교하지 않는다(원천 구성이 바뀐 첫 재빌드용). 나머지 원천은 그대로 검사한다. */
+  resetBaseline?: string[];
 }
 
 export interface BuildOutcome {
   published: boolean;
+  /** 이전 스냅샷 비교를 건너뛴 원천 id */
+  baselineReset: string[];
   hash: string;
   failures: GateFailure[];
   files: Record<string, ManifestFile>;
@@ -160,22 +164,32 @@ function countNearSite(dataDir: string, m: Manifest, siteId: string, kind: strin
   return total;
 }
 
-function gate(plan: BuildPlan, previous: Manifest | null, stats: Record<string, SourceStats[]>, candidate: Manifest): GateResult {
+function gate(plan: BuildPlan, previous: Manifest | null, stats: Record<string, SourceStats[]>, candidate: Manifest, baselineReset: string[]): GateResult {
   const failures: GateFailure[] = [];
   for (const [kind, list] of Object.entries(stats)) {
     const prevDb = previous?.files[kind] ? openDataFile(plan.dataDir, previous, kind) : null;
     try {
       for (const s of list) {
+        const reset = plan.resetBaseline?.includes(s.sourceId) ?? false;
+        if (reset) {
+          console.log(`baseline reset: ${s.sourceId}`);
+          baselineReset.push(s.sourceId);
+        }
         const r = evaluateIngest({
           responseRowsReported: s.received,
           parsedRows: s.accepted,
           pageLimitHit: s.pageLimitHit,
-          totalCountReported: s.totalCountReported,
+          totalCountReported: null, // 아래에서 받은 행(received)과 직접 비교한다
           next: s.snapshot(),
-          previous: prevDb ? previousSnapshot(prevDb, s.sourceId) : null,
+          previous: prevDb && !reset ? previousSnapshot(prevDb, s.sourceId) : null,
           expectedRegions: s.expectedRegions,
         });
         for (const f of r.failures) failures.push({ code: f.code, detail: `${s.sourceId}: ${f.detail}` });
+        // 원천이 밝힌 전체 건수는 읽은 행(received)과 견준다: accepted에는 reject·unlocated 행이 빠져 있다.
+        // (quality-gate의 totalCountReported 검사는 parsedRows 기준이라 여기서는 쓰지 않는다.)
+        if (s.totalCountReported !== null && s.totalCountReported !== s.received) {
+          failures.push({ code: "INCOMPLETE_FETCH", detail: `${s.sourceId}: totalCount ${s.totalCountReported} != received ${s.received}` });
+        }
       }
     } finally {
       prevDb?.close();
@@ -226,7 +240,8 @@ export function buildAndPublish(plan: BuildPlan): Promise<BuildOutcome> {
     }
     for (const f of Object.values(files)) f.sha256 = await sha256File(resolveDataPath(plan.dataDir, f.path));
     const candidate: Manifest = { version: plan.version, createdAt: new Date().toISOString(), files: { ...(current?.files ?? {}), ...files } };
-    const result = await publishManifestLocked(plan.dataDir, candidate, (m) => gate(plan, current, stats, m));
-    return { ...result, files, stats };
+    const baselineReset: string[] = [];
+    const result = await publishManifestLocked(plan.dataDir, candidate, (m) => gate(plan, current, stats, m, baselineReset));
+    return { ...result, files, stats, baselineReset };
   });
 }

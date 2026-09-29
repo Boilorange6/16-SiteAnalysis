@@ -82,14 +82,16 @@ try {
   // ─── 2. 로그인 ───────────────────────────────────────────────────────────
   await assert.rejects(new VworldSession(opts).login("user", "wrong"), (e) => e instanceof VworldError && e.code === "LOGIN_FAILED" && !/wrong/.test(e.message));
   const s = new VworldSession(opts);
+  const beforeLogin = sleeps;
   assert.equal(await s.login("user", "pass"), "expirePw", "비밀번호 기간 초과도 로그인 성공");
+  assert.equal(sleeps - beforeLogin, 1, "로그인 GET과 POST 사이에 한 번 쉰다");
 
   // ─── 3. 목록: 페이지 넘김과 간격 ──────────────────────────────────────────
   const before = sleeps;
   const all = await s.listFiles("23");
   assert.equal(all.length, 103);
   assert.equal(state.listPages, 2);
-  assert.equal(sleeps - before, 1, "두 번째 페이지 전에 한 번 쉰다");
+  assert.equal(sleeps - before, 2, "모든 페이지 요청 전에 쉰다(1쪽 포함)");
 
   // ─── 4. 다운로드, 다시 받으면 건너뜀 ──────────────────────────────────────
   const dir = mkdtempSync(join(tmpdir(), "v2-vworld-"));

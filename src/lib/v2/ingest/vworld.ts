@@ -100,6 +100,7 @@ export class VworldSession {
 
   async login(id: string, pw: string): Promise<"success" | "expirePw"> {
     await (await this.request("/v4po_usrlogin_a001.do")).arrayBuffer();
+    await this.pause();
     const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
     const res = await this.request("/v4po_usrlogin_a004.do", {
       method: "POST",
@@ -129,7 +130,7 @@ export class VworldSession {
   async listFiles(dsId: string): Promise<VworldFile[]> {
     const all: VworldFile[] = [];
     for (let page = 1; page <= 200; page++) {
-      if (page > 1) await this.pause();
+      await this.pause();
       const q = new URLSearchParams({ svcCde: "NA", dsId, datPageIndex: String(page), datPageSize: "100", startDate: "2000-01-01", endDate: "2099-12-31" });
       const res = await this.request(`/dtmk/dtmk_ntads_s002.do?${q}`);
       if (!res.ok) throw new VworldError("HTTP", `list ${dsId} page ${page}: HTTP ${res.status}`);

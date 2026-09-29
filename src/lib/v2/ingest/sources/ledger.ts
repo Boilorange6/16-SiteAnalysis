@@ -43,6 +43,8 @@ export async function buildLedger(
 ): Promise<SourceStats[]> {
   const recapStats = new SourceStats("ledger_recap_housing", input.recapReleaseId, ["units", "parking", "approvalDate"]);
   const recapPnus = new Set<string>();
+  const recapPks = new Set<string>();
+  const officetelPks = new Set<string>();
 
   await batched(db, input.recap, (r) => {
     const p = r.properties;
@@ -55,6 +57,8 @@ export async function buildLedger(
     const point = loc ? lookupParcelPoint(db, loc.pnu) : null;
     if (!loc || !point) return recapStats.unlocate();
     const pk = str(p["관리_건축물대장_PK"]) ?? loc.pnu;
+    if (recapPks.has(pk)) return recapStats.reject(); // 같은 PK가 또 나옴: 첫 행만 남긴다
+    recapPks.add(pk);
     const props = {
       source: "recap",
       ledgerPk: pk,
@@ -102,6 +106,8 @@ export async function buildLedger(
       const point = loc ? lookupParcelPoint(db, loc.pnu) : null;
       if (!loc || !point) return officetelStats.unlocate();
       const pk = str(p["관리_건축물대장_PK"]) ?? loc.pnu;
+      if (officetelPks.has(pk)) return officetelStats.reject();
+      officetelPks.add(pk);
       const props = {
         ledgerPk: pk,
         units: positive(p["호_수(호)"]),

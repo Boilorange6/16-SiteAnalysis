@@ -67,4 +67,33 @@ assert.deepEqual(props("title:T4"), { ledgerPk: "T4", units: null, floorsAbove: 
 assert.equal(db.prepare("SELECT pnu FROM feature WHERE stable_id = 'recap:108215000068706'").pluck().get(), "3611011100106400000");
 assert.equal(db.prepare("SELECT count(*) FROM feature WHERE stable_id LIKE 'recap:P%'").pluck().get(), 0, "위치 미확인은 feature를 만들지 않는다");
 
+// ─── 3. 같은 PK가 두 번 → 첫 행만 feature, 뒤는 reject (PK 오류로 적재가 죽지 않는다) ──
+{
+  const d = new Database(":memory:");
+  initDataFileSchema(d, "core");
+  const r = insertRelease(d, { sourceId: "ledger_recap", provider: "t", sourceUrl: "https://example.invalid", sourceAsOf: "2026-08-01", fetchedAt: "2026-09-30T00:00:00Z", checksum: "x", licenseCode: "UNRESTRICTED" });
+  d.prepare("INSERT INTO parcel_point (pnu, lng, lat, jimok, release_id) VALUES (?, ?, ?, '대', ?)").run("3611011100106400000", 127.27, 36.52, r);
+  d.prepare("INSERT INTO parcel_point (pnu, lng, lat, jimok, release_id) VALUES (?, ?, ?, '대', ?)").run("1168010100100200000", 127.06, 37.49, r);
+  const a = addr("36110", "11100", "0", "0640", "0000");
+  const o = addr("11680", "10100", "0", "0020", "0000");
+  const dup = await buildLedger(d, {
+    recapReleaseId: r,
+    titleReleaseId: r,
+    recap: from([
+      { 관리_건축물대장_PK: "D1", 건물_명: "첫째", ...a, 주_용도_코드_명: "공동주택", "세대_수(세대)": "100" },
+      { 관리_건축물대장_PK: "D1", 건물_명: "둘째", ...a, 주_용도_코드_명: "공동주택", "세대_수(세대)": "200" },
+    ]),
+    title: from([
+      { 관리_건축물대장_PK: "O1", 건물_명: "오피1", ...o, 주_용도_코드_명: "업무시설", 기타_용도: "오피스텔" },
+      { 관리_건축물대장_PK: "O1", 건물_명: "오피2", ...o, 주_용도_코드_명: "업무시설", 기타_용도: "오피스텔" },
+    ]),
+  });
+  for (const s of dup) assert.equal(s.received, s.accepted + s.unlocated + s.rejected, `${s.sourceId}: 행 단위 불변식`);
+  const [recap, , officetel] = dup;
+  assert.deepEqual(counts(recap), [2, 1, 0, 1]);
+  assert.deepEqual(counts(officetel), [2, 1, 0, 1]);
+  assert.equal(d.prepare("SELECT name FROM feature WHERE stable_id = 'recap:D1'").pluck().get(), "첫째", "첫 행을 남긴다");
+  assert.equal(d.prepare("SELECT name FROM feature WHERE stable_id = 'title:O1'").pluck().get(), "오피1");
+}
+
 console.log("✓ v2 ledger");

@@ -111,12 +111,16 @@ assert.ok(i.failures.some((x) => x.code === "INCOMPLETE_FETCH"), JSON.stringify(
 const j = await B.buildAndPublish({ dataDir, version: "j", builders: { core: tweak(10, (s) => { s.totalCountReported = 99; }) } });
 assert.equal(j.published, false);
 assert.ok(j.failures.some((x) => x.code === "INCOMPLETE_FETCH"), JSON.stringify(j.failures));
-const k = await B.buildAndPublish({ dataDir, version: "k", builders: { core: tweak(10, (s) => { s.totalCountReported = 10; s.unlocate(); }) } });
+// totalCount는 읽은 행(received)과 견준다: 위치 미확인 행도 읽은 행이다
+const k = await B.buildAndPublish({ dataDir, version: "k", builders: { core: tweak(10, (s) => { s.read(); s.unlocate(); s.totalCountReported = 11; }) } });
 assert.equal(k.published, true, JSON.stringify(k.failures));
+const k2 = await B.buildAndPublish({ dataDir, version: "k2", builders: { core: async (db, ctx) => { const l = await coreBuilder(10, { received: 12 })(db, ctx); l[0].totalCountReported = 10; return l; } } });
+assert.equal(k2.published, false, "accepted(10)와 같아도 received(12)와 다르면 불완전");
+assert.ok(k2.failures.some((x) => x.code === "INCOMPLETE_FETCH" && /received 12/.test(x.detail)), JSON.stringify(k2.failures));
 {
   const db = M.openDataFile(dataDir, M.readManifest(dataDir), "core");
   const run = db.prepare("SELECT * FROM ingest_run WHERE source_id='bld'").get();
-  assert.equal(run.expected_count, 10);
+  assert.equal(run.expected_count, 11);
   assert.equal(JSON.parse(run.snapshot_json).unlocated, 1);
   db.close();
 }
@@ -138,6 +142,40 @@ rmSync(join(dataDir, "versions", "d", "core.sqlite"));
   await assert.rejects(B.buildAndPublish({ dataDir, version: "n", builders: { core: coreBuilder(10) } }));
   assert.equal(M.manifestHash(M.readManifest(dataDir)), snap);
   assert.equal(existsSync(join(dataDir, ".lock")), false);
+}
+
+// ─── 12. resetBaseline: 지정한 원천만 이전 스냅샷 비교를 건너뛴다 ───────────
+{
+  const dir = mkdtempSync(join(tmpdir(), "v2-build-reset-"));
+  const two = (nA, nB, regionA = "41") => async (db) => {
+    const rel = release(db, "sa");
+    const out = [];
+    for (const [id, n, region] of [["sa", nA, regionA], ["sb", nB, "41"]]) {
+      const s = new B.SourceStats(id, rel, []);
+      await B.batched(db, Array.from({ length: n }, (_, i) => i), (i) => {
+        s.read();
+        insertFeature(db, { stableId: `${id}${i}`, kind: "building", sourceKey: `${id}${i}`, releaseId: rel, geometry: { type: "Point", coordinates: at(i * 10, 0) } });
+        s.accept({}, region, "building");
+      });
+      out.push(s);
+    }
+    return out;
+  };
+  const v1 = await B.buildAndPublish({ dataDir: dir, version: "v1", builders: { core: two(10, 10) } });
+  assert.equal(v1.published, true, JSON.stringify(v1.failures));
+  assert.deepEqual(v1.baselineReset, []);
+  const drop = await B.buildAndPublish({ dataDir: dir, version: "v2", builders: { core: two(3, 3, "11") } });
+  assert.equal(drop.published, false);
+  assert.ok(drop.failures.some((f) => f.code === "TOTAL_DROP" && f.detail.startsWith("sa:")) && drop.failures.some((f) => f.code === "REGION_MISSING" && f.detail.startsWith("sa:")), JSON.stringify(drop.failures));
+  // sa만 리셋: sb의 급감은 여전히 잡힌다
+  const bad = await B.buildAndPublish({ dataDir: dir, version: "v3", builders: { core: two(3, 3, "11") }, resetBaseline: ["sa"] });
+  assert.equal(bad.published, false);
+  assert.deepEqual(bad.baselineReset, ["sa"]);
+  assert.ok(bad.failures.length > 0 && bad.failures.every((f) => f.detail.startsWith("sb:")), JSON.stringify(bad.failures));
+  // sb는 멀쩡하면 sa의 TOTAL_DROP·REGION_MISSING이 있어도 게시된다
+  const ok = await B.buildAndPublish({ dataDir: dir, version: "v4", builders: { core: two(3, 10, "11") }, resetBaseline: ["sa"] });
+  assert.equal(ok.published, true, JSON.stringify(ok.failures));
+  assert.deepEqual(ok.baselineReset, ["sa"]);
 }
 
 console.log("✓ v2 build");

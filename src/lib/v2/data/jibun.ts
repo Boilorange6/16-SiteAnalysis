@@ -10,7 +10,7 @@ type Db = BetterSqlite3.Database;
 const SIDO_ALIASES: Record<string, string> = {
   서울: "서울특별시", 부산: "부산광역시", 대구: "대구광역시", 인천: "인천광역시", 대전: "대전광역시", 울산: "울산광역시",
   세종: "세종특별자치시", 경기: "경기도", 강원: "강원특별자치도", 강원도: "강원특별자치도", 충북: "충청북도", 충남: "충청남도",
-  전북: "전북특별자치도", 전라북도: "전북특별자치도", 경북: "경상북도", 경남: "경상남도", 제주: "제주특별자치도", 제주도: "제주특별자치도",
+  전북: "전북특별자치도", 전라북도: "전북특별자치도", 전북특별차지도: "전북특별자치도", 경북: "경상북도", 경남: "경상남도", 제주: "제주특별자치도", 제주도: "제주특별자치도",
   광주: "전남광주통합특별시", 광주광역시: "전남광주통합특별시", 전남: "전남광주통합특별시", 전라남도: "전남광주통합특별시",
 };
 
@@ -48,8 +48,11 @@ export function resolveJibunAddress(db: Db, address: string): { legalCode: strin
   let best: { code: string; restName: string } | null = null;
   let tied = false;
   for (const s of sigungus(db)) {
-    if (s.name !== sido && !s.name.startsWith(`${sido} `)) continue;
-    const restName = s.name.slice(sido.length + 1).replace(/\s+/g, ""); // 세종: 이름이 시도와 같아 ""
+    // 원천 SIG 이름의 시도 접두어도 같은 표로 정규화한다(실제 원천 표기: "전북특별차지도", "제주도")
+    const sp = s.name.indexOf(" ");
+    const sigSido = sp < 0 ? s.name : s.name.slice(0, sp);
+    if ((SIDO_ALIASES[sigSido] ?? sigSido) !== sido) continue;
+    const restName = s.name.slice(sigSido.length + 1).replace(/\s+/g, ""); // 세종: 이름이 시도와 같아 ""
     if (!restJoined.startsWith(restName)) continue;
     if (!best || restName.length > best.restName.length) {
       best = { code: s.code, restName };

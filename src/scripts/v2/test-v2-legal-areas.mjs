@@ -85,6 +85,13 @@ assert.equal(resolveJibunAddress(db, "강원특별자치도 강릉시 주문진�
   add("42111", "sigungu", "강원특별자치도 갑시", null);
   add("42112", "sigungu", "강원특별자치도 갑 시", null); // 공백 무시 시 restName 동일
   add("42111101", "emd", "가동", "42111");
+  add("52111", "sigungu", "전북특별차지도 전주시 완산구", null); // 실제 원천 표기(오타)
+  add("52111101", "emd", "중화산동", "52111");
+  add("50110", "sigungu", "제주도 제주시", null);
+  add("50110101", "emd", "일도동", "50110");
+  assert.equal(resolveJibunAddress(d, "전북특별자치도 전주시 완산구 중화산동 1")?.pnu, "5211110100100010000", "SIG '전북특별차지도'");
+  assert.equal(resolveJibunAddress(d, "전북 전주시 완산구 중화산동 1")?.legalCode, "5211110100", "약칭도 같은 SIG");
+  assert.equal(resolveJibunAddress(d, "제주특별자치도 제주시 일도동 1")?.pnu, "5011010100100010000", "SIG '제주도'");
   assert.equal(resolveJibunAddress(d, "경기도 성남시 분당구 정자동 178")?.legalCode, "4113510300");
   assert.equal(resolveJibunAddress(d, "경기도 성남시 분당구 중복동 1"), null, "동명 emd 두 개");
   assert.equal(resolveJibunAddress(d, "경기도 성남시 정자동 178"), null, "구 생략");

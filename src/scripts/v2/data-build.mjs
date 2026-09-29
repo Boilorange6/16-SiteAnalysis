@@ -7,6 +7,7 @@ import { readdirSync, statSync, existsSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 
 const { extractAll } = await import("../../lib/v2/ingest/unzip.ts");
+const { latestShpPerSido, partCounts } = await import("../../lib/v2/ingest/shp-parts.ts");
 const { readShp, readShpPoints } = await import("../../lib/v2/ingest/shp.ts");
 const { csvRecords } = await import("../../lib/v2/a0/measure.ts");
 const { buildAndPublish, insertRelease } = await import("../../lib/v2/ingest/build.ts");
@@ -24,12 +25,13 @@ const opt = (name, fallback) => {
 };
 const version = opt("version");
 if (!version || !/^[0-9A-Za-z._-]+$/.test(version)) {
-  console.error("usage: data:build -- --version <name> [--raw dir] [--only core,reference,market] [--expectations file.json]");
+  console.error("usage: data:build -- --version <name> [--raw dir] [--only core,reference,market] [--expectations file.json] [--reset-baseline parcel,parcel_building] [--dry-run]");
   process.exit(2);
 }
 const flag = (name) => args.includes(`--${name}`);
 const raw = opt("raw", ".cache/v2/raw");
 const only = new Set(String(opt("only", "core,reference,market")).split(","));
+const resetBaseline = opt("reset-baseline") ? opt("reset-baseline").split(",") : undefined;
 const expectations = opt("expectations") ? JSON.parse(readFileSync(opt("expectations"), "utf8")) : undefined;
 
 function* walk(dir) {
@@ -40,17 +42,16 @@ function* walk(dir) {
     else yield p;
   }
 }
+/** 이름에 든 날짜(20YYMMDD, 20YYMM, 20YY-MM-DD)를 비교 가능한 숫자 문자열로. 없으면 "" */
+const nameDate = (f) => {
+  const m = basename(f).match(/(20\d{2})-?(\d{2})(?:-?(\d{2}))?/);
+  return m ? `${m[1]}${m[2]}${m[3] ?? "00"}` : "";
+};
+/** 이름 날짜가 가장 늦은 파일, 이름에 날짜가 없거나 같으면 수정시각이 늦은 파일 */
 const newest = (dir, re) => {
-  const files = [...walk(join(raw, dir))].filter((f) => re.test(basename(f))).sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
+  const files = [...walk(join(raw, dir))].filter((f) => re.test(basename(f))).sort((a, b) => nameDate(b).localeCompare(nameDate(a)) || statSync(b).mtimeMs - statSync(a).mtimeMs);
   if (files.length === 0) throw new Error(`no file matching ${re} under ${join(raw, dir)} — download it first (A0 표/vworld:fetch)`);
   return files[0];
-};
-/** 이름에 든 날짜(YYYYMMDD 또는 YYYYMM 또는 YYYY-MM-DD)가 가장 늦은 한 벌 */
-const latestSet = (dir, re) => {
-  const files = [...walk(join(raw, dir))].filter((f) => re.test(basename(f)));
-  const dateOf = (f) => (basename(f).match(/(20\d{6})/) ?? [])[1] ?? "";
-  const latest = files.map(dateOf).sort().at(-1);
-  return files.filter((f) => dateOf(f) === latest);
 };
 const asOfOf = (file) => {
   const m = basename(file).match(/(20\d{2})-?(\d{2})-?(\d{2})?/);
@@ -67,25 +68,25 @@ async function* chain(...gens) {
 
 console.log("unzip:", extractAll(join(raw, "legal_dong")).length + extractAll(join(raw, "cadastral")).length + extractAll(join(raw, "gis_building")).length, "archive(s)");
 
-const dateOf = (f) => (basename(f).match(/(20\d{6})/) ?? [])[1] ?? "";
-const newestDated = (files) => [...files].sort((a, b) => dateOf(b).localeCompare(dateOf(a)))[0];
-const sidoOf = (f, tag) => basename(f).match(new RegExp(`^${tag}_(\\d+)_`, "i"))[1];
+/** 세트들 중 가장 오래된 날짜의 첫 파일(릴리스 기준일용) */
+const oldestFile = (sets) => [...sets.values()].sort((a, b) => a.date.localeCompare(b.date))[0].files[0];
+const flat = (sets) => [...sets.values()].flatMap((v) => v.files);
 
 /** 지적도·GIS건물 파일과 표제부를 고르고, 법정구역의 모든 시도가 지적도 또는 건물 파일로 덮이는지 확인한다. */
 async function discoverCore() {
-  const parcelFiles = latestSet("cadastral", /^AL_D002_\d+_\d{8}\.shp$/i);
-  const haveCadastral = new Set(parcelFiles.map((f) => sidoOf(f, "AL_D002")));
-  const buildingFiles = latestSet("gis_building", /^AL_D010_\d+_\d{8}\.shp$/i).filter((f) => !haveCadastral.has(sidoOf(f, "AL_D010")));
-  if (parcelFiles.length + buildingFiles.length === 0) throw new Error("지적도(cadastral)도 GIS건물(gis_building) 파일도 없습니다 — vworld:fetch로 받으세요");
+  const allIn = (dir) => [...walk(join(raw, dir))];
+  const cadastral = latestShpPerSido(allIn("cadastral"), "AL_D002");
+  const buildingAll = latestShpPerSido(allIn("gis_building"), "AL_D010");
+  const buildings = new Map([...buildingAll].filter(([s]) => !cadastral.has(s)));
+  if (cadastral.size + buildings.size === 0) throw new Error("지적도(cadastral)도 GIS건물(gis_building) 파일도 없습니다 — vworld:fetch로 받으세요");
   const legalSido = new Set();
   for await (const r of readShp(newest("legal_dong", /\(SIG\)\.shp$/i))) legalSido.add(String(r.properties.A1).slice(0, 2));
-  const haveBuilding = new Set(buildingFiles.map((f) => sidoOf(f, "AL_D010")));
-  const missing = [...legalSido].filter((c) => !haveCadastral.has(c) && !haveBuilding.has(c)).sort();
+  const missing = [...legalSido].filter((c) => !cadastral.has(c) && !buildings.has(c)).sort();
   if (missing.length > 0) throw new Error(`시도 ${missing.join(",")}: 지적도도 GIS건물 파일도 없습니다 — 받은 뒤 다시 실행하세요`);
-  const titles = [...walk(join(raw, "ledger_title"))].filter((f) => /^title_\d{6}\.csv$/i.test(basename(f))).sort((a, b) => basename(b).localeCompare(basename(a)));
+  const titles = allIn("ledger_title").filter((f) => /^title_\d{6}\.csv$/i.test(basename(f))).sort((a, b) => basename(b).localeCompare(basename(a)));
   const titleFile = titles[0] ?? newest("ledger_title", /^title_5sido\.csv$/i);
-  console.log(`parcel points: cadastral 시도 ${[...haveCadastral].sort().join(",") || "-"} · from buildings 시도 ${[...haveBuilding].sort().join(",") || "-"} · title ${basename(titleFile)}`);
-  return { parcelFiles, buildingFiles, titleFile, hasNationalTitle: titles.length > 0 };
+  console.log(`parcel points: cadastral parts by 시도 ${partCounts(cadastral)} · from buildings parts by 시도 ${partCounts(buildings)} · title ${basename(titleFile)}`);
+  return { cadastral, buildings, titleFile, hasNationalTitle: titles.length > 0 };
 }
 if (flag("dry-run")) {
   await discoverCore();
@@ -103,24 +104,24 @@ if (only.has("core")) {
       emd: readShp(newest("legal_dong", /\(EMD\)\.shp$/i)),
       ri: readShp(newest("legal_dong", /\(LIO\)\.shp$/i)),
     });
-    const { parcelFiles, buildingFiles, titleFile, hasNationalTitle } = await discoverCore();
+    const { cadastral, buildings, titleFile, hasNationalTitle } = await discoverCore();
     const parcels = [];
-    if (parcelFiles.length > 0) {
-      const parcelRel = release(db, "parcel", newestDated(parcelFiles), "국토교통부(VWorld 연속지적도형정보)", "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=23", "CC-BY");
-      const parcel = await buildParcelPoints(db, chain(...parcelFiles.map((f) => readShpPoints(f))), parcelRel);
-      parcel.expectedRegions = parcelFiles.map((f) => sidoOf(f, "AL_D002"));
+    if (cadastral.size > 0) {
+      const parcelRel = release(db, "parcel", oldestFile(cadastral), "국토교통부(VWorld 연속지적도형정보)", "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=23", "CC-BY");
+      const parcel = await buildParcelPoints(db, chain(...flat(cadastral).map((f) => readShpPoints(f))), parcelRel);
+      parcel.expectedRegions = [...cadastral.keys()];
       parcels.push(parcel);
     } else {
       console.log("지적도 파일이 없어 모든 필지 대표점을 GIS건물에서 만듭니다");
     }
-    if (buildingFiles.length > 0) {
+    if (buildings.size > 0) {
       // 500MB 넘는 시도 지적도는 VWorld가 일반 다운로드로 안 준다 — 그 시도만 GIS건물통합정보(A2=PNU)의 건물 대표점으로 대신한다. 지적도 뒤에 넣어 INSERT OR IGNORE가 지적도 행을 우선한다.
-      const buildingRel = release(db, "parcel_building", newestDated(buildingFiles), "국토교통부(VWorld GIS건물통합정보, 필지 대표점 대체)", "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=18", "CC-BY");
+      const buildingRel = release(db, "parcel_building", oldestFile(buildings), "국토교통부(VWorld GIS건물통합정보, 필지 대표점 대체)", "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=18", "CC-BY");
       async function* buildingAsParcels(file) {
         for await (const r of readShpPoints(file)) yield { properties: { A1: r.properties.A2, A5: null }, point: r.point };
       }
-      const pb = await buildParcelPoints(db, chain(...buildingFiles.map(buildingAsParcels)), buildingRel, "parcel_building");
-      pb.expectedRegions = buildingFiles.map((f) => sidoOf(f, "AL_D010"));
+      const pb = await buildParcelPoints(db, chain(...flat(buildings).map(buildingAsParcels)), buildingRel, "parcel_building");
+      pb.expectedRegions = [...buildings.keys()];
       parcels.push(pb);
     }
     const recapFile = newest("ledger_recap", /^recap_.*\.csv$/i);
@@ -163,13 +164,14 @@ if (only.has("market")) {
 }
 
 const started = Date.now();
-const out = await buildAndPublish({ dataDir: v2DataDir(), version, builders, expectations });
+const out = await buildAndPublish({ dataDir: v2DataDir(), version, builders, expectations, resetBaseline });
 for (const [kind, list] of Object.entries(out.stats)) {
   for (const s of list) {
     const located = s.accepted + s.unlocated === 0 ? "-" : `${((100 * s.accepted) / (s.accepted + s.unlocated)).toFixed(1)}%`;
     console.log(`${kind.padEnd(9)} ${s.sourceId.padEnd(24)} read ${s.received} · ok ${s.accepted} · unlocated ${s.unlocated} · rejected ${s.rejected} · located ${located}`);
   }
 }
+for (const id of out.baselineReset) console.log(`baseline reset: ${id}`);
 console.log(out.published ? `published ${out.hash.slice(0, 12)} (${((Date.now() - started) / 60000).toFixed(1)} min)` : "NOT published:");
 for (const f of out.failures) console.log(`  ${f.code} ${f.detail}`);
 process.exit(out.published ? 0 : 1);

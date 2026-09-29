@@ -78,3 +78,18 @@ spec §3.5: 아래는 대조 전 후보다. 원천 총건수·독립 표본과 �
 5. 소요 시간: 두 번째 빌드는 127분(상가 277만 건이 가장 오래 걸림). 상가 적재 최적화는 P1a-2 후보.
 6. 표제부 `title_202608.zip`은 헤더 없는 `|` 구분 txt(8,064,406행, 77열)라서 A0 측정 JSON의 `fields`로 헤더를 붙인 쉼표 CSV `title_202608.csv`로 변환해 사용했다. 옛 세종 샘플 지적도는 새 세종 다운로드 성공 후 삭제했다.
 7. 경북 GIS건물은 첫 두 번 `terminated`로 끊겼고 세 번째에 받았다(재시도 필요할 수 있음).
+
+## P1b 인터페이스 메모
+
+- **planned_supply**는 청약홈(`props.source = "applyhome"`)과 입주예정(`"move_in"`) 레코드가 섞여 있고, 같은 사업이 양쪽에 있을 수 있다. 소비 쪽에서 `props.source`로 나누거나 중복을 제거해야 한다. 사업 식별은 `development_event.project_id`(= `event_id`)를 쓴다.
+- **housing_complex**(총괄표제부 `recap`)에는 단독주택(다가구) 등이 섞여 있다. `props.mainUse`로 나눠 쓴다(공동주택만 단지 집계에 넣을지 소비 쪽 결정).
+- **byRegion 키는 원천마다 다르다**(품질 검사의 지역 비교는 원천 안에서만 이뤄진다):
+
+| 원천 | byRegion 키 |
+|---|---|
+| parcel, parcel_building, ledger_*, legal_* | 시도 코드 2자리 |
+| store | 시도 코드 |
+| bus_stop | 도시명 |
+| park | 주소 첫 토큰 |
+| applyhome | 원천의 `area_name` |
+| move_in | 원천의 `지역` |
