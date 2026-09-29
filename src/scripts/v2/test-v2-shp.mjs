@@ -15,6 +15,16 @@ assert.equal(crsFromPrj('PROJCS["Korea_2000_Korea_Central_Belt_2010", GEOGCS["GC
 assert.equal(crsFromPrj('PROJCS["Korea_2000_Korea_Unified_Coordinate_System",'), "EPSG:5179");
 assert.equal(crsFromPrj('PROJCS["Korean_1985_Modified_Korea_Central_Belt",'), "EPSG:5174");
 assert.throws(() => crsFromPrj('PROJCS["WGS_1984_UTM_Zone_52N"'), /unsupported \.prj/);
+// VWorld 법정구역 SIG 실제 .prj: 이름은 다르지만 매개변수가 5186과 같다
+assert.equal(
+  crsFromPrj('PROJCS["KGD2002_Central_Belt_2010",GEOGCS["GCS_KGD2002",DATUM["D_Korea_Geodetic_Datum_2002",SPHEROID["GRS_1980",6378137.0,298.257222101]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]],PROJECTION["Transverse_Mercator"],PARAMETER["False_Easting",200000.0],PARAMETER["False_Northing",600000.0],PARAMETER["Central_Meridian",127.0],PARAMETER["Scale_Factor",1.0],PARAMETER["Latitude_Of_Origin",38.0],UNIT["Meter",1.0]]'),
+  "EPSG:5186",
+);
+// 이름을 모르는 WKT도 매개변수가 5179면 5179
+assert.equal(
+  crsFromPrj('PROJCS["Unknown_Name",GEOGCS["G",DATUM["D",SPHEROID["GRS_1980",6378137.0,298.257222101]]],PARAMETER["latitude_of_origin",38.0],PARAMETER["central_meridian",127.5],PARAMETER["scale_factor",0.9996],PARAMETER["false_easting",1000000.0],PARAMETER["false_northing",2000000.0]]'),
+  "EPSG:5179",
+);
 
 // ─── 2. 속성 정리: NUL 제거, 빈 값 null, 날짜 ───────────────────────────────
 assert.deepEqual(cleanProps({ A1: "3611033025103020002", A8: "\u0000\u0000\u0000", A9: null, A12: 0, A24: "  ", A3: new Date("2026-09-05T15:00:00.000Z") }), {

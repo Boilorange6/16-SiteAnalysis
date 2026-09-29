@@ -24,11 +24,37 @@ export interface ShpPointRecord {
 
 const PRJ_RULES: ReadonlyArray<readonly [RegExp, string]> = [
   [/Korea_2000_Korea_Central_Belt_2010/i, "EPSG:5186"],
+  [/KGD2002_Central_Belt_2010/i, "EPSG:5186"],
   [/Korea_2000_Korea_Unified_Coordinate_System/i, UTMK],
   [/Korean_1985_Modified_Korea_Central_Belt/i, "EPSG:5174"],
 ];
 
+// [semi-major, lat0, lon0, k, FE, FN]
+const PRJ_PARAMS: ReadonlyArray<readonly [string, readonly number[]]> = [
+  ["EPSG:5186", [6378137, 38, 127, 1, 200000, 600000]],
+  [UTMK, [6378137, 38, 127.5, 0.9996, 1000000, 2000000]],
+  ["EPSG:5174", [6377397.155, 38, 127.0028902777778, 1, 200000, 500000]],
+];
+
+function prjParams(text: string): number[] | null {
+  const num = (re: RegExp) => {
+    const m = re.exec(text);
+    return m ? Number(m[1]) : NaN;
+  };
+  const p = (k: string) => num(new RegExp(`PARAMETER\\["${k}",\\s*([-+0-9.eE]+)`, "i"));
+  const v = [num(/SPHEROID\["[^"]*",\s*([-+0-9.eE]+)/i), p("Latitude_Of_Origin"), p("Central_Meridian"), p("Scale_Factor"), p("False_Easting"), p("False_Northing")];
+  return v.some(Number.isNaN) ? null : v;
+}
+
 export function crsFromPrj(prjText: string): string {
+  const v = prjParams(prjText);
+  if (v) {
+    for (const [crs, ref] of PRJ_PARAMS) {
+      // 반경은 0.5 m, 각도·축척은 1e-6, 동/북거리는 0.5 m
+      const tol = [0.5, 1e-6, 1e-6, 1e-6, 0.5, 0.5];
+      if (ref.every((r, i) => Math.abs(r - v[i]) <= tol[i])) return crs;
+    }
+  }
   for (const [re, crs] of PRJ_RULES) if (re.test(prjText)) return crs;
   throw new Error(`unsupported .prj: ${prjText.slice(0, 80)}`);
 }
