@@ -45,8 +45,7 @@ const positive = (v: unknown): number | null => {
   const n = Number(String(v ?? "").replace(/,/g, "").trim());
   return Number.isFinite(n) && n > 0 ? n : null;
 };
-const inKorea = (lng: unknown, lat: unknown): lng is number =>
-  typeof lng === "number" && typeof lat === "number" && lng >= 124 && lng <= 132 && lat >= 33 && lat <= 39;
+const inKorea = (lng: number, lat: number): boolean => lng >= 124 && lng <= 132 && lat >= 33 && lat <= 39;
 
 function insertEvent(db: Db, e: { eventId: string; eventType: string; stage: string; effectiveDate: string | null; plannedMonth: string | null; units: number | null; geometryId: string | null; evidenceUrl: string; releaseId: string }): void {
   db.prepare(`INSERT INTO development_event (event_id, project_id, event_type, stage, effective_date, planned_date, planned_date_precision, units, geometry_id, evidence_url, release_id)
@@ -65,9 +64,11 @@ export async function buildSupply(
     const m = /^(\d{4})(\d{2})$/.exec(String(r.move_in_month ?? "").trim());
     const plannedMonth = m ? `${m[1]}-${m[2]}` : null;
     const units = positive(r.units);
-    const located = inKorea(r.lng, r.lat);
+    const lng = r.lng == null || String(r.lng).trim() === "" ? NaN : Number(r.lng);
+    const lat = r.lat == null || String(r.lat).trim() === "" ? NaN : Number(r.lat);
+    const located = inKorea(lng, lat);
     if (located) {
-      insertFeature(db, { stableId: id, kind: "planned_supply", sourceKey: r.id, releaseId: input.legacyReleaseId, geometry: { type: "Point", coordinates: [r.lng as number, r.lat as number] }, name: str(r.name), properties: { source: "applyhome", kind: str(r.kind), units, plannedMonth, address: str(r.address) } });
+      insertFeature(db, { stableId: id, kind: "planned_supply", sourceKey: r.id, releaseId: input.legacyReleaseId, geometry: { type: "Point", coordinates: [lng, lat] }, name: str(r.name), properties: { source: "applyhome", kind: str(r.kind), units, plannedMonth, address: str(r.address) } });
     }
     insertEvent(db, {
       eventId: id, eventType: "sale_notice", stage: "announced",
@@ -80,12 +81,15 @@ export async function buildSupply(
   });
 
   const moveIn = new SourceStats("move_in", input.moveInReleaseId, ["units", "plannedMonth"]);
+  const seen = new Set<string>();
   await batched(db, input.moveIn, (rec) => {
     moveIn.read();
     const p = rec.properties;
     const address = str(p["주소"]) ?? "";
     const name = str(p["아파트명"]);
-    const id = `movein:${sha256Hex(`${address}|${name ?? ""}`).slice(0, 16)}`;
+    const id = `movein:${sha256Hex([address, name ?? "", str(p["입주예정월"]) ?? "", str(p["세대수"]) ?? "", str(p["사업유형"]) ?? ""].join("|")).slice(0, 16)}`;
+    if (seen.has(id)) { moveIn.reject(); return; } // 다섯 필드가 모두 같은 중복 행
+    seen.add(id);
     const plannedMonth = /^\d{4}-\d{2}$/.test(str(p["입주예정월"]) ?? "") ? str(p["입주예정월"]) : null;
     const units = positive(p["세대수"]);
     const loc = resolveJibunAddress(input.core, address);

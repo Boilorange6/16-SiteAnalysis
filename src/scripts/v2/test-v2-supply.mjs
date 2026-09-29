@@ -51,4 +51,48 @@ assert.equal(mv.pnu, "5115011800102190000");
 assert.equal(db.prepare("SELECT count(*) FROM development_event WHERE event_type = 'move_in'").pluck().get(), 2);
 assert.equal(db.prepare("SELECT count(*) FROM feature WHERE kind = 'planned_supply'").pluck().get(), 2);
 
+// --- fix round 1 ---
+const mkDb = () => { const d = new Database(":memory:"); initDataFileSchema(d, "market"); return d; };
+const relOf = (d, id) => insertRelease(d, { sourceId: id, provider: "x", sourceUrl: "https://www.data.go.kr", sourceAsOf: "2026-06-30", fetchedAt: "2026-09-30T00:00:00Z", checksum: "x", licenseCode: "UNRESTRICTED" });
+const gang = (extra) => ({ 지역: "강원", 사업유형: "분양", 아파트명: "강릉 모아미래도 오션리버", 세대수: "561", 주소: "강원특별자치도 강릉시 견소동 219-0", 입주예정월: "2026-12", ...extra });
+const rows2 = [
+  gang({}),
+  gang({ 입주예정월: "2027-03" }), // 같은 주소·이름, 다른 월 → 별개 사건
+  gang({}), // 완전 중복
+  gang({ 주소: "강원특별자치도 강릉시 견소동 0-0", 아파트명: "지번 미상" }),
+];
+async function run() {
+  const d = mkDb();
+  const s = await buildSupply(d, { core, legacy: [], legacyReleaseId: relOf(d, "applyhome"), moveInReleaseId: relOf(d, "move_in"), moveIn: from(rows2) });
+  return { d, m: s.find((x) => x.sourceId === "move_in") };
+}
+const r1 = await run();
+assert.deepEqual([r1.m.received, r1.m.accepted, r1.m.unlocated, r1.m.rejected], [4, 2, 1, 1]);
+const ids1 = r1.d.prepare("SELECT event_id FROM development_event ORDER BY event_id").pluck().all();
+assert.equal(ids1.length, 3, "두 월 + 지번 미상; 중복은 저장 안 함");
+assert.equal(new Set(ids1).size, 3);
+assert.equal(r1.d.prepare("SELECT count(*) FROM feature").pluck().get(), 2);
+assert.equal(r1.d.prepare("SELECT geometry_id FROM development_event WHERE planned_date = '2026-12' AND geometry_id IS NULL").all().length, 1, "0-0 → geometry_id NULL");
+const r2 = await run();
+assert.deepEqual(r2.d.prepare("SELECT event_id FROM development_event ORDER BY event_id").pluck().all(), ids1, "id 안정");
+
+// 기존 DB 읽기 전용 + 숫자 문자열 좌표
+const { readLegacyPlannedHousing } = await import("../../lib/v2/ingest/sources/supply.ts");
+const fs = await import("node:fs");
+const os = await import("node:os");
+const path = await import("node:path");
+const tmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "supply-")), "legacy.db");
+const ld = new Database(tmp);
+ld.exec("CREATE TABLE planned_housing (id, name, address, area_name, kind, units, sale_date, move_in_month, homepage_url, notice_url, lat, lng)");
+ld.prepare("INSERT INTO planned_housing VALUES (?,?,?,?,?,?,?,?,?,?,?,?)").run("a", "가", "주소", "경기", "apartment", 10, "2026-01-01", "202801", "", "", "37.5", "127.0");
+ld.prepare("INSERT INTO planned_housing VALUES (?,?,?,?,?,?,?,?,?,?,?,?)").run("b", "나", "주소", "경기", "apartment", 10, "", "", "", "", null, null);
+ld.close();
+const before = [fs.readFileSync(tmp), fs.statSync(tmp).mtimeMs];
+const legacyRows = readLegacyPlannedHousing(tmp);
+assert.equal(legacyRows.length, 2);
+assert.ok(fs.readFileSync(tmp).equals(before[0]) && fs.statSync(tmp).mtimeMs === before[1], "읽기 전용");
+const d3 = mkDb();
+const s3 = await buildSupply(d3, { core, legacy: legacyRows, legacyReleaseId: relOf(d3, "applyhome"), moveInReleaseId: relOf(d3, "move_in"), moveIn: from([]) });
+assert.deepEqual([s3[0].accepted, s3[0].unlocated], [1, 1], "숫자 문자열 좌표는 located");
+
 console.log("✓ v2 supply");
