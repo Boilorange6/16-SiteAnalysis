@@ -83,19 +83,25 @@ export const PARK_SPEC: PointSourceSpec = {
 
 export async function buildPointSource(db: BetterSqlite3.Database, spec: PointSourceSpec, records: AsyncIterable<MeasureRecord>, releaseId: string): Promise<SourceStats> {
   const stats = new SourceStats(spec.sourceId, releaseId, spec.fillFields);
-  const seen = new Set<string>();
+  // 같은 ID라도 이름·좌표가 다르면 다른 개체다(공원 관리번호 재사용). 완전 동일한 반복만 거부한다.
+  const seen = new Map<string, string[]>();
   await batched(db, records, (r) => {
     stats.read();
     const p = r.properties;
     const id = spec.idOf(p);
     const lng = Number(str(p[spec.lngField]));
     const lat = Number(str(p[spec.latField]));
-    if (!id || seen.has(id) || str(p[spec.lngField]) === null || !(lng >= 124 && lng <= 132 && lat >= 33 && lat <= 39)) return stats.reject();
-    seen.add(id);
+    if (!id || str(p[spec.lngField]) === null || !(lng >= 124 && lng <= 132 && lat >= 33 && lat <= 39)) return stats.reject();
+    const sig = `${spec.nameOf(p)}|${lng}|${lat}`;
+    const prior = seen.get(id);
+    if (prior?.includes(sig)) return stats.reject();
+    if (prior) prior.push(sig);
+    else seen.set(id, [sig]);
+    const key = prior ? `${id}#${prior.length}` : id;
     insertFeature(db, {
-      stableId: `${spec.kind}:${id}`,
+      stableId: `${spec.kind}:${key}`,
       kind: spec.kind,
-      sourceKey: id,
+      sourceKey: key,
       releaseId,
       geometry: { type: "Point", coordinates: [lng, lat] },
       name: spec.nameOf(p),

@@ -19,9 +19,11 @@ const props = (id) => JSON.parse(db.prepare("SELECT properties_json FROM feature
     { 상가업소번호: "MA03", 상호명: "투영좌표", 시도코드: "41", 경도: "200000", 위도: "500000" },
     { 상가업소번호: "MA01", 상호명: "중복", 시도코드: "41", 경도: "127.15", 위도: "37.62" },
     { 상가업소번호: "", 상호명: "번호없음", 경도: "127.15", 위도: "37.62" },
+    { 상가업소번호: "MA01", 상호명: "다산마트", 지점명: "2호점", 시도코드: "41", 경도: "127.1506", 위도: "37.6245" },
   ]), rel("store"));
-  assert.deepEqual([s.received, s.accepted, s.rejected], [5, 1, 4]);
-  assert.deepEqual(s.byRegion, { 41: 1 });
+  assert.deepEqual([s.received, s.accepted, s.rejected], [6, 2, 4]);
+  assert.deepEqual(s.byRegion, { 41: 2 });
+  assert.equal(db.prepare("SELECT source_key FROM feature WHERE stable_id = 'store:MA01#2'").pluck().get(), "MA01#2");
   const row = db.prepare("SELECT name, legal_code, kind FROM feature WHERE stable_id = 'store:MA01'").get();
   assert.deepEqual(row, { name: "다산마트 2호점", legal_code: "4136010100", kind: "store" });
   assert.deepEqual(props("store:MA01"), { majorCategory: "소매", midCategory: "종합 소매", minorCategory: "슈퍼마켓", categoryCode: "G20405", floor: "1", address: "경기도 남양주시 다산중앙로 1" });
