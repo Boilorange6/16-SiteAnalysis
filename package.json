@@ -23,6 +23,7 @@
     "build:rail-public-data": "tsx src/scripts/build-planned-rail-public-data.mjs",
     "test:v2": "tsx src/scripts/v2/test-v2-foundations.mjs && tsx src/scripts/v2/test-v2-data-schema.mjs && tsx src/scripts/v2/test-v2-features.mjs && tsx src/scripts/v2/test-v2-quality-gate.mjs && tsx src/scripts/v2/test-v2-manifest.mjs && tsx src/scripts/v2/test-v2-tile-result.mjs && tsx src/scripts/v2/test-v2-app-db.mjs && tsx src/scripts/v2/test-v2-analysis-skeleton.mjs && tsx src/scripts/v2/test-v2-a0-measure.mjs && tsx src/scripts/v2/test-v2-vworld.mjs && tsx src/scripts/v2/test-v2-shp.mjs && tsx src/scripts/v2/test-v2-build.mjs && tsx src/scripts/v2/test-v2-parcels.mjs && tsx src/scripts/v2/test-v2-legal-areas.mjs && tsx src/scripts/v2/test-v2-ledger.mjs && tsx src/scripts/v2/test-v2-points.mjs && tsx src/scripts/v2/test-v2-supply.mjs",
     "vworld:fetch": "tsx src/scripts/v2/vworld-fetch.mjs",
+    "data:build": "tsx src/scripts/v2/data-build.mjs",
     "a0:measure": "tsx src/scripts/v2/a0-measure.mjs"
   },
   "dependencies": {
