@@ -240,7 +240,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
         {labels}
 
         {/* 대지 표시 */}
-        <rect x={cx - site} y={cy - site} width={2 * site} height={2 * site} fill={INK} stroke="#fff" strokeWidth={2.4 * u} />
+        {!muted && <rect x={cx - site} y={cy - site} width={2 * site} height={2 * site} fill={INK} stroke="#fff" strokeWidth={2.4 * u} />}
 
         {/* 범례·문구 */}
         {showLegend && (

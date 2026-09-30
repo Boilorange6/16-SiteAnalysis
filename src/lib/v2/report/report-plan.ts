@@ -22,14 +22,23 @@ export type ReportSlide =
       /** 대지·반경 지도 (그림은 렌더 단계에서 mapKey로 받는다) */
       map: MapModel | null;
     }
-  | { kind: "tile"; view: TileView; body: TileSlideBody; faceLabel: string | null; map: MapModel | null }
-  | { kind: "sources"; rows: { source: string; asOf: string; tiles: string }[] };
+  | {
+      kind: "tile";
+      view: TileView;
+      body: TileSlideBody;
+      faceLabel: string | null;
+      /** 슬라이드 전면 지도. D04 구성비 면만 null (전면 차트). 상태 슬라이드는 흐린 대지 지도 */
+      map: MapModel | null;
+      /** true면 지도를 흐리게 (상태 화면) */
+      muted: boolean;
+    }
+  | { kind: "sources"; rows: { source: string; asOf: string; tiles: string }[]; /** 배경(흐린 대지 지도) */ map: MapModel | null };
 
 export type PlannedSlide = ReportSlide & { no: number; total: number; footer: string };
 
 /** 지도 이미지 키: 표지는 "cover", 타일 장은 tileId */
 export const COVER_MAP_KEY = "cover";
-export const mapKeyOf = (p: PlannedSlide): string | null => (p.kind === "cover" ? (p.map ? COVER_MAP_KEY : null) : p.kind === "tile" && p.map ? p.view.tileId : null);
+export const mapKeyOf = (p: PlannedSlide): string | null => (p.kind === "tile" ? (p.map ? p.view.tileId : null) : p.map ? COVER_MAP_KEY : null);
 
 const STATE_MESSAGE: Record<string, string> = {
   failed: "계산 실패 — 보고서에는 결과 없이 표시합니다",
@@ -87,12 +96,15 @@ export function buildReportPlan(input: {
     const faces: ("single" | "front" | "back")[] = !v.hasFace ? ["single"] : board.faces[v.tileId] === "both" ? ["front", "back"] : [board.faces[v.tileId] === "back" ? "back" : "front"];
     for (const face of faces) {
       const message = STATE_MESSAGE[v.status];
+      const result = hasResult(v);
       raw.push({
         kind: "tile",
         view: v,
         body: hasResult(v) ? { kind: "result", face } : { kind: "state", face, message: message ?? "결과 없음 — 보고서에는 결과 없이 표시합니다" },
         faceLabel: v.hasFace ? FACE_TEXT[face === "front" ? "front" : "back"] : null,
-        map: hasResult(v) ? v.map : null,
+        // 모든 장은 지도(또는 주 시각물)가 전면: 지도 없는 결과는 지물 없는 대지 지도, 상태 장은 흐린 대지 지도
+        map: !result ? v.backdrop : v.hasFace && face === "back" ? null : (v.map ?? v.backdrop),
+        muted: !result,
         footer: v.sourceLine === "출처 없음" ? "출처 없음 · 기준일 해당 없음" : `출처 ${v.sourceLine}`,
       });
     }
@@ -110,6 +122,7 @@ export function buildReportPlan(input: {
   raw.push({
     kind: "sources",
     rows: [...bySource].map(([k, e]) => ({ source: k.split("|")[0], asOf: e.asOf, tiles: e.tiles.join(", ") })),
+    map: summary.map,
     footer: `${summary.asOfLine} · 출처 ${bySource.size}건`,
   });
 

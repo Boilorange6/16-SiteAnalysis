@@ -1,21 +1,26 @@
-/** 슬라이드 계획 → .pptx (pptxgenjs, 16:9, Alt4 톤). 브라우저·Node 공용. */
+/**
+ * 슬라이드 계획 → .pptx (pptxgenjs, 16:9). 브라우저·Node 공용.
+ * 지도 몰입형: 슬라이드 전체가 지도 이미지, 그 위에 반투명 흰 판(편집 가능한 도형·글자)을 얹는다.
+ * 판의 자리·여백은 화면 카드/펼침과 같은 문법(ui/overlay-layout)을 쓴다.
+ */
 import PptxGenJS from "pptxgenjs";
 import { PPT_FONT_MAIN as FONT } from "../../ppt-design-config";
-import type { Badge } from "../ui/tile-view";
+import { STRIP_COLORS } from "../ui/map-layers";
+import { OV, SLIDE, slideLayout, slideLegend, stripText, type Rect } from "../ui/overlay-layout";
+import type { Badge, TileView } from "../ui/tile-view";
 import { COVER_MAP_KEY, type PlannedSlide } from "./report-plan";
 
-/** 지도 이미지(PNG data URL) — 키는 report-plan의 mapKeyOf */
+/** 지도 이미지(PNG/JPEG data URL) — 키는 report-plan의 mapKeyOf */
 export type MapImages = Record<string, string>;
 
 type Slide = ReturnType<PptxGenJS["addSlide"]>;
 
-const BG = "EEF0F3";
-const INK = "16181D";
-const MUTED = "676C76";
-const LINE = "E2E4E9";
-const CARD_X = 0.5;
-const X0 = 0.95; // 카드 안쪽 여백
-const W = 11.43; // 안쪽 폭
+const INK = "15171C";
+const MUTED = "5B606B";
+const LINE = "D9DCE2";
+const PLATE_ALPHA = Math.round((1 - OV.plateAlpha) * 100); // 흰색 86% = 투명도 14
+const L = slideLayout();
+const E = SLIDE.edge;
 const hex = (c: string) => c.replace("#", "");
 type Border = PptxGenJS.BorderProps;
 const underline = (pt: number): [Border, Border, Border, Border] => [{ type: "none" }, { type: "none" }, { type: "solid", pt, color: LINE }, { type: "none" }];
@@ -25,182 +30,282 @@ const CHIP: Record<Badge["tone"], { fill: string; color: string }> = {
   limit: { fill: "F0E8DC", color: "5B4A2F" },
   model: { fill: "E6E1F7", color: "3D2E8C" },
 };
-const BAR_COLORS = ["8C5A3C", "A0522D", "C77B4A", "D9A06B", "E8C39A", "F1DCC0", "C9CCD3"];
 
-function chips(s: Slide, items: { text: string; tone: Badge["tone"] }[], x: number, y: number, maxX: number) {
-  let cx = x;
-  for (const b of items) {
-    const w = b.text.length * 0.13 + 0.32;
-    if (cx + w > maxX) break;
-    s.addShape("roundRect", { x: cx, y, w, h: 0.32, fill: { color: CHIP[b.tone].fill }, line: { color: CHIP[b.tone].fill }, rectRadius: 0.16 });
-    s.addText(b.text, { x: cx, y, w, h: 0.32, align: "center", valign: "middle", fontFace: FONT, fontSize: 10, bold: true, color: CHIP[b.tone].color, margin: 0 });
-    cx += w + 0.1;
-  }
+// ── 글자 크기 추정 (pptx는 자동 줄임이 열 때 적용되지 않으므로 미리 재서 정한다) ──
+const chW = (ch: string) => (ch.charCodeAt(0) > 0x2e80 ? 1 : 0.56);
+const textIn = (s: string, pt: number) => ([...s].reduce((w, ch) => w + chW(ch), 0) * pt) / 72;
+const linesOf = (s: string, pt: number, w: number) => Math.max(1, Math.ceil((textIn(s, pt) / w) * 1.1));
+/** maxLines 안에 들어가는 가장 큰 글자 크기 */
+function fitPt(s: string, maxPt: number, w: number, maxLines: number, minPt = 8): number {
+  let pt = maxPt;
+  while (pt > minPt && linesOf(s, pt, w) > maxLines) pt -= 0.5;
+  return pt;
 }
 
-function frame(pptx: PptxGenJS, p: PlannedSlide): Slide {
-  const s = pptx.addSlide();
-  s.background = { color: BG };
-  s.addShape("roundRect", { x: CARD_X, y: 0.35, w: 12.33, h: 6.8, fill: { color: "FFFFFF" }, line: { color: "FFFFFF" }, rectRadius: 0.12 });
-  s.addShape("line", { x: X0, y: 6.42, w: W, h: 0, line: { color: LINE, width: 0.75 } });
-  s.addText(p.footer, { x: X0, y: 6.48, w: W - 1.2, h: 0.5, valign: "top", fontFace: FONT, fontSize: 9, color: MUTED, margin: 0, fit: "shrink" });
-  s.addText(`${p.no} / ${p.total}`, { x: X0 + W - 1.1, y: 6.48, w: 1.1, h: 0.3, align: "right", valign: "top", fontFace: FONT, fontSize: 9, color: MUTED, margin: 0 });
-  return s;
+// ── 공통 도형 ──
+function plate(s: Slide, r: Rect, radius = 0.12) {
+  s.addShape("roundRect", { x: r.x, y: r.y, w: r.w, h: r.h, fill: { color: "FFFFFF", transparency: PLATE_ALPHA }, line: { color: INK, width: 0.5, transparency: 92 }, rectRadius: radius });
 }
 
-function heading(s: Slide, color: string, kicker: string, title: string) {
-  s.addText(kicker, { x: X0, y: 0.6, w: 8, h: 0.28, fontFace: FONT, fontSize: 10, bold: true, color: MUTED, margin: 0 });
-  s.addShape("ellipse", { x: X0, y: 1.02, w: 0.2, h: 0.2, fill: { color: hex(color) }, line: { color: hex(color) } });
-  s.addText(title, { x: X0 + 0.32, y: 0.9, w: W - 0.4, h: 0.45, valign: "middle", fontFace: FONT, fontSize: 24, bold: true, color: INK, margin: 0 });
-}
-
-function note(s: Slide, lines: string[], y: number, h: number) {
-  if (lines.length) s.addText(lines.map((t) => ({ text: t, options: { breakLine: true } })), { x: X0, y, w: W, h, valign: "top", fontFace: FONT, fontSize: 10, color: MUTED, margin: 0, paraSpaceAfter: 2 });
-}
-
-/** 지도 그림 자리(가로:세로 = 1.6:1). 이미지를 못 만들었으면 자리표시 사각형이 들어간다. */
-function mapBox(s: Slide, data: string | undefined, x: number, y: number, w: number) {
-  const h = w / 1.6;
-  if (data) s.addImage({ data, x, y, w, h });
+function background(s: Slide, image: string | undefined, tint?: string) {
+  if (image) s.addImage({ data: image, x: 0, y: 0, w: SLIDE.w, h: SLIDE.h });
   else {
-    s.addShape("rect", { x, y, w, h, fill: { color: "F2F2EF" }, line: { color: LINE, width: 0.75 } });
-    s.addText("지도 이미지를 만들지 못했습니다", { x, y, w, h, align: "center", valign: "middle", fontFace: FONT, fontSize: 11, color: MUTED, margin: 0 });
+    s.addShape("rect", { x: 0, y: 0, w: SLIDE.w, h: SLIDE.h, fill: { color: tint ?? "F2F2EF" }, line: { color: tint ?? "F2F2EF", width: 0 } });
+    if (!tint) s.addText("지도 이미지를 만들지 못했습니다", { x: E, y: SLIDE.h / 2 - 0.2, w: 5, h: 0.4, fontFace: FONT, fontSize: 11, color: MUTED, margin: 0 });
   }
+}
+
+/** 맨 아래 출처 띠 + 쪽 번호. 출처·기준일은 모든 장에 있다 */
+function strip(s: Slide, p: PlannedSlide, credit: boolean) {
+  const r = L.strip;
+  s.addShape("rect", { x: r.x, y: r.y, w: r.w, h: r.h, fill: { color: "FFFFFF", transparency: PLATE_ALPHA }, line: { color: "FFFFFF", width: 0, transparency: 100 } });
+  s.addShape("line", { x: r.x, y: r.y, w: r.w, h: 0, line: { color: INK, width: 0.5, transparency: 92 } });
+  const room = SLIDE.w - E - 1.7;
+  const full = stripText(p.footer, credit);
+  const text = textIn(full, 9) <= room ? full : p.footer;
+  s.addText(text, { x: E, y: r.y, w: room, h: r.h, valign: "middle", fontFace: FONT, fontSize: 9, color: "454A55", margin: 0, fit: "shrink" });
+  s.addText(`${p.no} / ${p.total}`, { x: SLIDE.w - E - 1.2, y: r.y, w: 1.2, h: r.h, align: "right", valign: "middle", fontFace: FONT, fontSize: 9, color: "454A55", margin: 0 });
+}
+
+/** 왼쪽 위 제목 판: 타일 색 점 + 번호 + 타일명 + 종류 */
+function titlePlate(s: Slide, color: string, code: string, title: string, kind: string, maxW: number) {
+  const w = Math.min(maxW, 0.62 + textIn(`${code}  `, 10) + textIn(title, 18) + textIn(`  ${kind}`, 10));
+  const r = { x: L.title.x, y: L.title.y, w, h: L.title.h };
+  plate(s, r);
+  s.addShape("ellipse", { x: r.x + 0.2, y: r.y + r.h / 2 - 0.09, w: 0.18, h: 0.18, fill: { color: hex(color) }, line: { color: hex(color) } });
+  s.addText(
+    [
+      { text: `${code}  `, options: { fontSize: 10, color: MUTED, bold: true } },
+      { text: title, options: { fontSize: 18, color: INK, bold: true } },
+      { text: `  ${kind}`, options: { fontSize: 10, color: MUTED, bold: true } },
+    ],
+    { x: r.x + 0.48, y: r.y, w: w - 0.58, h: r.h, valign: "middle", fontFace: FONT, margin: 0 },
+  );
+}
+
+/** 배지 줄바꿈 배치. draw=false면 높이만 잰다 */
+function chipRows(s: Slide, items: { text: string; tone: Badge["tone"] }[], x: number, y: number, maxW: number, draw: boolean): number {
+  let cx = x;
+  let cy = y;
+  for (const b of items) {
+    const w = Math.min(maxW, textIn(b.text, 10) + 0.3);
+    if (cx > x && cx + w > x + maxW) {
+      cx = x;
+      cy += 0.36;
+    }
+    if (draw) {
+      s.addShape("roundRect", { x: cx, y: cy, w, h: 0.3, fill: { color: CHIP[b.tone].fill }, line: { color: CHIP[b.tone].fill }, rectRadius: 0.15 });
+      s.addText(b.text, { x: cx, y: cy, w, h: 0.3, align: "center", valign: "middle", fontFace: FONT, fontSize: 10, bold: true, color: CHIP[b.tone].color, margin: 0 });
+    }
+    cx += w + 0.08;
+  }
+  return items.length ? cy - y + 0.3 : 0;
+}
+
+type Item = { h: number; draw: (y: number) => void };
+
+/** 오른쪽 정보 판: 항목을 쌓아 높이를 정한 뒤 판을 먼저 그리고 항목을 얹는다 */
+function infoPanel(s: Slide, items: Item[]) {
+  const gap = 0.12;
+  const pad = 0.22;
+  const need = items.reduce((a, i) => a + i.h, 0) + gap * Math.max(0, items.length - 1) + pad * 2;
+  const r = { x: L.info.x, y: L.info.y, w: L.info.w, h: Math.min(L.info.h, need) };
+  plate(s, r, 0.16);
+  let y = r.y + pad;
+  for (const it of items) {
+    it.draw(y);
+    y += it.h + gap;
+  }
+}
+
+const IX = L.info.x + 0.25;
+const IW = L.info.w - 0.5;
+
+const badgeItem = (s: Slide, badges: Badge[]): Item | null => {
+  const items = badges.map((b) => ({ text: b.text, tone: b.tone }));
+  const h = chipRows(s, items, IX, 0, IW, false);
+  return h ? { h, draw: (y) => void chipRows(s, items, IX, y, IW, true) } : null;
+};
+
+function headlineItems(s: Slide, h: NonNullable<TileView["headline"]>): Item[] {
+  const sub = [h.aux, h.tag].filter(Boolean).join(" · ");
+  const pt = fitPt(h.value, 36, IW, 1, 20);
+  // 라벨·값·보조어는 붙여서 한 덩어리로 (항목 사이 간격을 넣지 않는다)
+  return [
+    {
+      h: 0.24 + 0.66 + (sub ? 0.24 : 0),
+      draw: (y) => {
+        s.addText(h.label, { x: IX, y, w: IW, h: 0.24, fontFace: FONT, fontSize: fitPt(h.label, 11, IW, 1, 8), color: MUTED, margin: 0 });
+        s.addText(h.value, { x: IX, y: y + 0.24, w: IW, h: 0.66, valign: "middle", fontFace: FONT, fontSize: pt, bold: true, color: INK, margin: 0 });
+        if (sub) s.addText(sub, { x: IX, y: y + 0.9, w: IW, h: 0.24, fontFace: FONT, fontSize: 10.5, color: MUTED, margin: 0 });
+      },
+    },
+  ];
+}
+
+const textItem = (s: Slide, text: string, pt: number, color: string, bold = false, maxLines = 6): Item => {
+  const size = fitPt(text, pt, IW, maxLines, 8);
+  const h = linesOf(text, size, IW) * (size / 72) * 1.45 + 0.04;
+  return { h, draw: (y) => void s.addText(text, { x: IX, y, w: IW, h, valign: "top", fontFace: FONT, fontSize: size, bold, color, margin: 0 }) };
+};
+
+function rowItems(s: Slide, rows: TileView["rows"]): Item[] {
+  return rows.map((r) => ({
+    h: 0.3,
+    draw: (y) => {
+      s.addText(r.label, { x: IX, y, w: IW * 0.55, h: 0.28, valign: "middle", fontFace: FONT, fontSize: fitPt(r.label, 11, IW * 0.55, 1, 8), color: MUTED, margin: 0 });
+      const v = [r.value, r.aux, r.tag].filter(Boolean).join(" · ");
+      s.addText(v, { x: IX + IW * 0.55, y, w: IW * 0.45, h: 0.28, align: "right", valign: "middle", fontFace: FONT, fontSize: fitPt(v, 11, IW * 0.45, 1, 8), bold: true, color: INK, margin: 0 });
+      s.addShape("line", { x: IX, y: y + 0.3, w: IW, h: 0, line: { color: LINE, width: 0.75 } });
+    },
+  }));
+}
+
+/** 왼쪽 아래 범례 판 (지도 레이어 색) */
+function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }) {
+  const model = p.map;
+  if (!model) return;
+  const { items, notes, rect: r } = slideLegend(model);
+  if (!r) return;
+  plate(s, r);
+  items.forEach((it, i) => {
+    const y = r.y + 0.1 + i * 0.25;
+    s.addShape("ellipse", { x: r.x + 0.2, y: y + 0.06, w: 0.13, h: 0.13, fill: { color: hex(it.color) }, line: { color: "FFFFFF", width: 0.75 } });
+    s.addText(it.label, { x: r.x + 0.45, y, w: r.w - 0.55, h: 0.25, valign: "middle", fontFace: FONT, fontSize: 10, color: INK, margin: 0 });
+  });
+  notes.forEach((n, i) => {
+    s.addText(n, { x: r.x + 0.2, y: r.y + 0.1 + items.length * 0.25 + i * 0.22, w: r.w - 0.3, h: 0.22, valign: "middle", fontFace: FONT, fontSize: 8.5, color: MUTED, margin: 0, fit: "shrink" });
+  });
 }
 
 function cover(pptx: PptxGenJS, p: PlannedSlide & { kind: "cover" }, images: MapImages) {
-  const s = frame(pptx, p);
-  s.addText("사이트 분석 보고서", { x: X0, y: 0.6, w: 8, h: 0.3, fontFace: FONT, fontSize: 11, bold: true, color: MUTED, margin: 0 });
-  s.addText(p.address, { x: X0, y: 0.95, w: W, h: 0.7, valign: "middle", fontFace: FONT, fontSize: 28, bold: true, color: INK, margin: 0, fit: "shrink" });
-  const mp = !!p.map; // 지도가 있으면 지표는 왼쪽 2×2, 지도는 오른쪽
-  const cols = mp ? 2 : p.metrics.length;
-  const cw = mp ? 3.05 : W / p.metrics.length;
+  const s = pptx.addSlide();
+  background(s, images[COVER_MAP_KEY]);
+  // 왼쪽 큰 제목 판
+  const tw = 5.7;
+  const ad = p.address;
+  const apt = fitPt(ad, 28, tw - 0.6, 2, 16);
+  const ah = linesOf(ad, apt, tw - 0.6) * (apt / 72) * 1.35 + 0.05;
+  const metricsH = 0.62 * 2;
+  const chipH = p.incomplete ? 0.42 : 0;
+  const th = 0.25 + 0.3 + ah + 0.15 + metricsH + 0.3 + chipH + 0.2;
+  plate(s, { x: E, y: E, w: tw, h: th }, 0.16);
+  let y = E + 0.22;
+  s.addText("사이트 분석 보고서", { x: E + 0.3, y, w: tw - 0.6, h: 0.26, fontFace: FONT, fontSize: 11, bold: true, color: MUTED, margin: 0 });
+  y += 0.3;
+  s.addText(ad, { x: E + 0.3, y, w: tw - 0.6, h: ah, valign: "top", fontFace: FONT, fontSize: apt, bold: true, color: INK, margin: 0 });
+  y += ah + 0.15;
   p.metrics.forEach((m, i) => {
-    const x = X0 + (i % cols) * cw;
-    const y = 1.85 + Math.floor(i / cols) * 0.95;
-    s.addText(m.label, { x, y, w: cw - 0.1, h: 0.28, fontFace: FONT, fontSize: 10, color: MUTED, margin: 0 });
-    s.addText(m.value, { x, y: y + 0.28, w: cw - 0.1, h: 0.5, valign: "middle", fontFace: FONT, fontSize: mp ? 18 : 20, bold: true, color: INK, margin: 0, fit: "shrink" });
+    const x = E + 0.3 + (i % 2) * ((tw - 0.6) / 2);
+    const my = y + Math.floor(i / 2) * 0.62;
+    s.addText(m.label, { x, y: my, w: (tw - 0.6) / 2 - 0.1, h: 0.22, fontFace: FONT, fontSize: 10, color: MUTED, margin: 0 });
+    s.addText(m.value, { x, y: my + 0.22, w: (tw - 0.6) / 2 - 0.1, h: 0.36, valign: "middle", fontFace: FONT, fontSize: fitPt(m.value, 17, (tw - 0.6) / 2 - 0.1, 1, 11), bold: true, color: INK, margin: 0 });
   });
-  if (p.map) mapBox(s, images[COVER_MAP_KEY], X0 + 6.63, 1.8, 4.8);
-  const infoY = mp ? 3.85 : 2.85;
-  s.addText(p.asOfLine, { x: X0, y: infoY, w: mp ? 6 : 5.5, h: 0.32, valign: "middle", fontFace: FONT, fontSize: 11, color: MUTED, margin: 0 });
-  if (p.incomplete) chips(s, [{ text: p.incomplete, tone: "status" }], mp ? X0 : X0 + 5.6, mp ? infoY + 0.42 : infoY, mp ? X0 + 6 : X0 + W);
-  const ruleY = mp ? 4.95 : 3.4;
-  s.addShape("line", { x: X0, y: ruleY, w: W, h: 0, line: { color: LINE, width: 0.75 } });
-  const half = Math.ceil(p.lines.length / 2);
-  const colW = W / 2 - 0.2;
-  const rowH = Math.min(0.42, (mp ? 1.3 : 2.7) / Math.max(half, 1));
+  y += metricsH + 0.1;
+  s.addText(p.asOfLine, { x: E + 0.3, y, w: tw - 0.6, h: 0.26, valign: "middle", fontFace: FONT, fontSize: 11, color: MUTED, margin: 0 });
+  if (p.incomplete) chipRows(s, [{ text: p.incomplete, tone: "status" }], E + 0.3, y + 0.36, tw - 0.6, true);
+
+  // 오른쪽 타일 목록 판
+  const lw = 5.6;
+  const rowH = Math.min(0.4, 6.0 / Math.max(1, p.lines.length));
+  const lh = 0.62 + p.lines.length * rowH + 0.12;
+  const lx = SLIDE.w - E - lw;
+  plate(s, { x: lx, y: E, w: lw, h: Math.min(lh, L.info.h) }, 0.16);
+  s.addText("타일", { x: lx + 0.3, y: E + 0.18, w: lw - 0.6, h: 0.28, fontFace: FONT, fontSize: 11, bold: true, color: MUTED, margin: 0 });
   p.lines.forEach((l, i) => {
-    const col = i < half ? 0 : 1;
-    const row = col === 0 ? i : i - half;
-    const x = X0 + col * (colW + 0.4);
-    const y = ruleY + 0.15 + row * rowH;
-    s.addShape("ellipse", { x, y: y + rowH / 2 - 0.06, w: 0.12, h: 0.12, fill: { color: hex(l.color) }, line: { color: hex(l.color) } });
+    const ry = E + 0.55 + i * rowH;
+    s.addShape("ellipse", { x: lx + 0.3, y: ry + rowH / 2 - 0.06, w: 0.12, h: 0.12, fill: { color: hex(l.color) }, line: { color: hex(l.color) } });
+    const text = `${l.title}  ${l.text}`;
     s.addText(
       [
         { text: `${l.title}  `, options: { bold: true, color: INK } },
         { text: l.text, options: { color: MUTED } },
       ],
-      { x: x + 0.22, y, w: colW - 0.22, h: rowH, valign: "middle", fontFace: FONT, fontSize: 11, margin: 0, fit: "shrink" },
+      { x: lx + 0.52, y: ry, w: lw - 0.85, h: rowH, valign: "middle", fontFace: FONT, fontSize: fitPt(text, 11, lw - 0.85, 1, 8), margin: 0 },
     );
   });
+  strip(s, p, !!p.map);
 }
 
 function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapImages) {
   const v = p.view;
-  const s = frame(pptx, p);
-  heading(s, v.color, `${v.code}${p.faceLabel ? ` · ${p.faceLabel}` : ""}`, v.title);
-  chips(s, v.badges.map((b) => ({ text: b.text, tone: b.tone })), X0, 1.5, X0 + W);
+  const s = pptx.addSlide();
+  const chart = !p.map; // D04 구성비 면: 연한 타일색 바탕에 차트가 전면
+  const mix = (c: string, a: number) => {
+    const n = parseInt(hex(c), 16);
+    const ch = (sh: number) => Math.round(255 - (255 - ((n >> sh) & 255)) * a);
+    return [16, 8, 0].map((sh) => ch(sh).toString(16).padStart(2, "0")).join("").toUpperCase();
+  };
+  background(s, chart ? undefined : images[v.tileId], chart ? mix(v.color, 0.07) : undefined);
+  titlePlate(s, v.color, v.code, v.title, [v.kindLabel, p.faceLabel].filter((t, i, a) => t && a.indexOf(t) === i).join(" · "), L.info.x - 2 * E);
+
   const notes = [...v.caveats, ...v.notes];
+  const items: Item[] = [];
+  const b = badgeItem(s, v.badges);
+  if (b) items.push(b);
 
   if (p.body.kind === "state") {
-    s.addText(p.body.message, { x: X0, y: 2.4, w: W, h: 0.8, valign: "middle", fontFace: FONT, fontSize: 26, bold: true, color: INK, margin: 0 });
-    s.addText("이 타일의 수치는 만들지 않았습니다. 조건을 바꾸거나 다시 계산한 뒤 보고서를 만들 수 있습니다.", { x: X0, y: 3.3, w: W, h: 0.4, fontFace: FONT, fontSize: 13, color: MUTED, margin: 0 });
-    note(s, notes, 4.5, 1.7);
+    // 상태 화면: 흐린 대지 지도 가운데 판
+    const w = 5.0;
+    const msg = p.body.message;
+    const pt = fitPt(msg, 20, w - 0.6, 2, 13);
+    const h = 0.4 + linesOf(msg, pt, w - 0.6) * (pt / 72) * 1.4 + 0.75;
+    const r = { x: (L.info.x - w) / 2, y: (SLIDE.h - h) / 2, w, h };
+    plate(s, r, 0.16);
+    s.addText(msg, { x: r.x + 0.3, y: r.y + 0.22, w: w - 0.6, h: h - 0.9, valign: "top", fontFace: FONT, fontSize: pt, bold: true, color: INK, margin: 0 });
+    s.addText("이 타일의 수치는 만들지 않았습니다. 조건을 바꾸거나 다시 계산한 뒤 보고서를 만들 수 있습니다.", { x: r.x + 0.3, y: r.y + h - 0.68, w: w - 0.6, h: 0.5, valign: "top", fontFace: FONT, fontSize: 10.5, color: MUTED, margin: 0 });
+    notes.forEach((n) => items.push(textItem(s, n, 10, MUTED)));
+    infoPanel(s, items);
+    strip(s, p, true);
     return;
   }
 
-  if (p.map) {
-    // 왼쪽 지도 · 오른쪽 큰 숫자·표·판단, 아래 출처·기준일(프레임 푸터)
-    const RX = X0 + 6.85;
-    const RW = W - 6.85;
-    mapBox(s, images[v.tileId], X0, 1.95, 6.6);
-    const h = v.headline;
-    if (h) {
-      s.addText(h.label, { x: RX, y: 1.95, w: RW, h: 0.3, fontFace: FONT, fontSize: 12, color: MUTED, margin: 0, fit: "shrink" });
-      s.addText(h.value, { x: RX, y: 2.25, w: RW, h: 0.8, valign: "middle", fontFace: FONT, fontSize: 34, bold: true, color: INK, margin: 0, fit: "shrink" });
-      const sub = [h.aux, h.tag].filter(Boolean).join(" · ");
-      if (sub) s.addText(sub, { x: RX, y: 3.05, w: RW, h: 0.28, fontFace: FONT, fontSize: 11, color: MUTED, margin: 0 });
-    }
-    const rows = v.rows.filter((r) => r.label !== h?.label).slice(0, 5);
-    if (rows.length) {
-      const cell = (text: string, o: { bold?: boolean; right?: boolean; color?: string } = {}) => ({
-        text,
-        options: { fontFace: FONT, fontSize: 11, bold: o.bold, color: o.color ?? INK, align: (o.right ? "right" : "left") as "right" | "left", valign: "middle" as const, border: underline(0.75) },
-      });
-      s.addTable(rows.map((r) => [cell(r.label, { color: MUTED }), cell([r.value, r.aux, r.tag].filter(Boolean).join(" · "), { bold: true, right: true })]), {
-        x: RX, y: 3.4, w: RW, colW: [RW * 0.55, RW * 0.45], rowH: 0.3, margin: [0, 0.05, 0, 0.05],
-      });
-    }
-    if (v.sentence) s.addText(v.sentence, { x: RX, y: 5.0, w: RW, h: 0.75, valign: "top", fontFace: FONT, fontSize: 12, bold: true, color: INK, margin: 0, fit: "shrink" });
-    if (v.grade) notes.unshift(`거리 등급 ${v.grade.label} · ${v.grade.criteria}`);
-    if (notes.length) s.addText(notes.map((t) => ({ text: t, options: { breakLine: true } })), { x: RX, y: 5.78, w: RW, h: 0.62, valign: "top", fontFace: FONT, fontSize: 8.5, color: MUTED, margin: 0, paraSpaceAfter: 1, fit: "shrink" });
-    return;
-  }
+  if (v.headline) items.push(...headlineItems(s, v.headline));
+  if (v.sentence) items.push(textItem(s, v.sentence, 12.5, INK, true, 5));
+  // D04는 도판(지도) 면에 구성비 수치를 반복하지 않는다
+  const rows = p.body.face === "front" || p.body.face === "back" ? [] : v.rows.filter((r) => r.label !== v.headline?.label).slice(0, 5);
+  if (rows.length) items.push(...rowItems(s, rows));
+  if (v.grade) items.push(textItem(s, `거리 등급 ${v.grade.label} · ${v.grade.criteria}`, 9, MUTED, false, 3));
+  if (notes.length) items.push(textItem(s, notes.join("\n"), 9, MUTED, false, 5));
 
-  const head = v.headline;
-  if (head && p.body.face !== "back") {
-    s.addText(head.label, { x: X0, y: 2.05, w: 4.3, h: 0.3, fontFace: FONT, fontSize: 12, color: MUTED, margin: 0 });
-    s.addText(head.value, { x: X0, y: 2.35, w: 4.3, h: 0.9, valign: "middle", fontFace: FONT, fontSize: 40, bold: true, color: INK, margin: 0, fit: "shrink" });
-    const sub = [head.aux, head.tag].filter(Boolean).join(" · ");
-    if (sub) s.addText(sub, { x: X0, y: 3.25, w: 4.3, h: 0.3, fontFace: FONT, fontSize: 11, color: MUTED, margin: 0 });
-  }
+  if (chart) {
+    // 전면 구성비 차트 (왼쪽 영역)
+    const data = v.chart ?? [];
+    const max = Math.max(1, ...data.map((c) => c.value));
+    const x0 = E + 0.2;
+    const y0 = L.title.y + L.title.h + 0.4;
+    const y1 = L.strip.y - 0.4;
+    const rh = Math.min(0.72, (y1 - y0) / Math.max(1, data.length));
+    const labW = 1.9;
+    const trackW = L.info.x - E - 0.4 - x0 - labW - 1.0;
+    data.forEach((c, i) => {
+      const y = y0 + i * rh;
+      s.addText(c.label, { x: x0, y, w: labW, h: rh, valign: "middle", fontFace: FONT, fontSize: 14, bold: true, color: "454A55", margin: 0 });
+      s.addShape("rect", { x: x0 + labW, y: y + rh * 0.2, w: trackW, h: rh * 0.6, fill: { color: INK, transparency: 95 }, line: { color: INK, width: 0, transparency: 100 } });
+      s.addShape("rect", { x: x0 + labW, y: y + rh * 0.2, w: Math.max(0.04, (trackW * c.value) / max), h: rh * 0.6, fill: { color: hex(STRIP_COLORS[i % STRIP_COLORS.length]) }, line: { color: hex(STRIP_COLORS[i % STRIP_COLORS.length]), width: 0 } });
+      s.addText(`${c.value}%`, { x: x0 + labW + trackW + 0.1, y, w: 0.8, h: rh, align: "right", valign: "middle", fontFace: FONT, fontSize: 14, bold: true, color: INK, margin: 0 });
+    });
+  } else legendPlate(s, p);
 
-  if (p.body.face === "front" && v.chart) {
-    // 도판: 구성비 가로 누적 막대
-    const total = v.chart.reduce((a, c) => a + c.value, 0) || 1;
-    const bx = X0;
-    const by = 3.45;
-    let cx = bx;
-    v.chart.forEach((c, i) => {
-      const w = (W * c.value) / total;
-      s.addShape("rect", { x: cx, y: by, w, h: 0.55, fill: { color: BAR_COLORS[i % BAR_COLORS.length] }, line: { color: "FFFFFF", width: 1 } });
-      cx += w;
-    });
-    const per = 4;
-    const lw = W / per;
-    v.chart.forEach((c, i) => {
-      const x = bx + (i % per) * lw;
-      const y = by + 0.68 + Math.floor(i / per) * 0.32;
-      s.addShape("rect", { x, y: y + 0.09, w: 0.14, h: 0.14, fill: { color: BAR_COLORS[i % BAR_COLORS.length] }, line: { color: BAR_COLORS[i % BAR_COLORS.length] } });
-      s.addText(`${c.label}  ${c.value}%`, { x: x + 0.22, y, w: lw - 0.3, h: 0.32, valign: "middle", fontFace: FONT, fontSize: 11, color: INK, margin: 0 });
-    });
-  } else if (v.rows.length) {
-    // 구성비/일반: 표
-    const wide = p.body.face === "back";
-    const tx = wide ? X0 : X0 + 4.6;
-    const tw = wide ? W : W - 4.6;
-    const y = wide ? 2.0 : 2.05;
-    const cell = (text: string, o: { bold?: boolean; right?: boolean; color?: string } = {}) => ({
-      text,
-      options: { fontFace: FONT, fontSize: 12, bold: o.bold, color: o.color ?? INK, align: (o.right ? "right" : "left") as "right" | "left", valign: "middle" as const, border: underline(0.75) },
-    });
-    const rows = v.rows.map((r) => [cell(r.label, { color: MUTED }), cell([r.value, r.aux, r.tag].filter(Boolean).join(" · "), { bold: true, right: true })]);
-    s.addTable(rows, { x: tx, y, w: tw, colW: [tw * 0.55, tw * 0.45], rowH: 0.34, margin: [0, 0.05, 0, 0.05] });
-  }
-
-  if (v.sentence) s.addText(v.sentence, { x: X0, y: 4.75, w: W, h: 0.6, valign: "middle", fontFace: FONT, fontSize: 14, bold: true, color: INK, margin: 0, fit: "shrink" });
-  if (v.grade) notes.unshift(`거리 등급 ${v.grade.label} · ${v.grade.criteria}`);
-  note(s, notes, 5.4, 0.95);
+  infoPanel(s, items);
+  strip(s, p, !chart);
 }
 
-function sources(pptx: PptxGenJS, p: PlannedSlide & { kind: "sources" }) {
-  const s = frame(pptx, p);
-  heading(s, "#7A7E87", "출처", "자료 출처와 기준일");
-  const h = (t: string) => ({ text: t, options: { fontFace: FONT, fontSize: 11, bold: true, color: MUTED, border: underline(1) } });
+function sources(pptx: PptxGenJS, p: PlannedSlide & { kind: "sources" }, images: MapImages) {
+  const s = pptx.addSlide();
+  background(s, images[COVER_MAP_KEY]);
+  // 지도를 흐리게: 흰 막
+  s.addShape("rect", { x: 0, y: 0, w: SLIDE.w, h: SLIDE.h, fill: { color: "FFFFFF", transparency: 25 }, line: { color: "FFFFFF", width: 0, transparency: 100 } });
+  titlePlate(s, "#7A7E87", "", "자료 출처와 기준일", "", SLIDE.w - 2 * E);
+  const h = Math.min(L.strip.y - 1.4 - 0.3, 0.5 + 0.34 * (p.rows.length + 1));
+  const r = { x: E, y: 1.2, w: SLIDE.w - 2 * E, h };
+  plate(s, r, 0.16);
+  const hd = (t: string) => ({ text: t, options: { fontFace: FONT, fontSize: 11, bold: true, color: MUTED, border: underline(1) } });
   const c = (t: string, bold = false) => ({ text: t, options: { fontFace: FONT, fontSize: 11, bold, color: INK, border: underline(0.75) } });
-  const rows = [[h("출처"), h("기준일"), h("사용한 타일")], ...p.rows.map((r) => [c(r.source, true), c(r.asOf), c(r.tiles)])];
-  s.addTable(rows, { x: X0, y: 1.6, w: W, colW: [W * 0.25, W * 0.2, W * 0.55], rowH: 0.3, margin: [0, 0.05, 0, 0.05] });
+  const rows = [[hd("출처"), hd("기준일"), hd("사용한 타일")], ...p.rows.map((row) => [c(row.source, true), c(row.asOf), c(row.tiles)])];
+  const W = r.w - 0.6;
+  s.addTable(rows, { x: r.x + 0.3, y: r.y + 0.2, w: W, colW: [W * 0.25, W * 0.2, W * 0.55], rowH: 0.32, margin: [0, 0.05, 0, 0.05] });
+  strip(s, p, !!p.map);
 }
 
 export async function renderReportPptx(plan: PlannedSlide[], images: MapImages = {}): Promise<Uint8Array> {
@@ -210,7 +315,7 @@ export async function renderReportPptx(plan: PlannedSlide[], images: MapImages =
   for (const p of plan) {
     if (p.kind === "cover") cover(pptx, p, images);
     else if (p.kind === "tile") tile(pptx, p, images);
-    else sources(pptx, p);
+    else sources(pptx, p, images);
   }
   return (await pptx.write({ outputType: "uint8array" })) as Uint8Array;
 }

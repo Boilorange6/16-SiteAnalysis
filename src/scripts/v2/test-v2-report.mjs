@@ -79,10 +79,17 @@ const rec = boardReducer(initBoard([RECOVERED.S03]), { type: "include", id: "t-S
 const recPlan = build([RECOVERED.S03], rec);
 const recText = text(await (await JSZip.loadAsync(await renderReportPptx(recPlan))).file("ppt/slides/slide2.xml").async("string"));
 assert.ok(recText.includes("탐색용") && recText.includes("검증된 CFD 결과로 사용할 수 없습니다"));
-// D04 두 면이 서로 다른 슬라이드: 도판엔 구성비 표가 없고 구성비엔 표가 있다
+// D04 두 면이 서로 다른 슬라이드: 도판(지도)엔 구성비 수치가 없고 구성비(전면 차트)엔 있다. 도판은 지도 전면.
 const d04 = plan.map((p, i) => [p, i]).filter(([p]) => p.kind === "tile" && p.view.code === "D04");
 assert.equal(d04.length, 2);
+assert.ok(d04[0][0].map && !d04[1][0].map, "도판=지도 전면, 구성비=차트 전면(지도 없음)");
 const [x0, x1] = await Promise.all(d04.map(([, i]) => zip.file(names[i]).async("string")));
-assert.ok(!x0.includes("<a:tbl>") && x1.includes("<a:tbl>"));
+assert.ok(!text(x0).includes("31%") && text(x1).includes("31%"));
+// 지도 몰입형: 결과·상태 장 모두 전면 지도 자리가 있고 구성비 면만 예외 / 표지·출처 장도 지도 배경
+for (const p of plan) {
+  if (p.kind === "tile") assert.ok(p.map || (p.view.code === "D04" && p.body.face === "back"), `${p.view.code} 전면 지도`);
+  else assert.ok(p.map, `${p.kind} 장 지도 배경`);
+}
+assert.ok(plan.filter((p) => p.kind === "tile" && p.body.kind === "state").every((p) => p.muted), "상태 장은 흐린 지도");
 
 console.log(`v2 report tests passed (${plan.length} slides in sample deck)`);
