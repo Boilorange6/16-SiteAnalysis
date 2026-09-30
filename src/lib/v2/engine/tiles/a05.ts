@@ -12,29 +12,69 @@ export function isAged(approvalDate: string, analysisDate: string): boolean {
   return `${Number(approvalDate.slice(0, 4)) + 30}${approvalDate.slice(4)}` <= analysisDate;
 }
 
-/** 가구 수가 있으면 가구 수, 없으면 세대 수. 둘 다 없으면 null */
-const householdsOf = (p: Record<string, unknown>): number | null => num(p.households) ?? num(p.units);
+/** 대장 단지(stable_id) → 같은 필지에 연결된 K-APT 세대수. 연결·세대수가 없는 단지는 빠진다. */
+function kaptHouseholds(ctx: EngineContext, complexes: FeatureHit[]): Map<string, number> {
+  const out = new Map<string, number>();
+  const db = ctx.db("core");
+  const ids = complexes.filter((c) => num(c.properties.households) === null).map((c) => c.stableId);
+  if (!db) return out;
+  for (let i = 0; i < ids.length; i += 500) {
+    const chunk = ids.slice(i, i + 500);
+    const rows = db
+      .prepare(`SELECT l.to_stable_id AS id, f.properties_json AS props FROM feature_link l JOIN feature f ON f.stable_id = l.from_stable_id
+        WHERE l.relation_type = 'same_parcel' AND f.kind = 'kapt_complex' AND l.to_stable_id IN (${chunk.map(() => "?").join(",")}) ORDER BY f.stable_id`)
+      .all(...chunk) as Array<{ id: string; props: string }>;
+    for (const r of rows) {
+      const n = num((JSON.parse(r.props) as Record<string, unknown>).households);
+      if (n !== null && !out.has(r.id)) out.set(r.id, n);
+    }
+  }
+  return out;
+}
+
+/** 반경 안 K-APT 아파트 단지(종류 코드 1) 가운데 대장 단지와 연결되지 않은 것 */
+function kaptOnly(ctx: EngineContext): FeatureHit[] {
+  const kapts = ctx.hits("core", ["kapt_complex"]).filter((k) => k.properties.complexType === "1");
+  const db = ctx.db("core");
+  if (!db || kapts.length === 0) return kapts;
+  const linked = new Set<string>();
+  for (let i = 0; i < kapts.length; i += 500) {
+    const chunk = kapts.slice(i, i + 500).map((k) => k.stableId);
+    for (const id of db.prepare(`SELECT DISTINCT from_stable_id FROM feature_link WHERE relation_type = 'same_parcel' AND from_stable_id IN (${chunk.map(() => "?").join(",")})`).pluck().all(...chunk) as string[]) linked.add(id);
+  }
+  return kapts.filter((k) => !linked.has(k.stableId));
+}
 
 export function a05(ctx: EngineContext): TileResult {
   const sources = ctx.sources("core", ["ledger_recap", "ledger_title"]);
   if (sources.length === 0) return noDataTile(ctx, "A05", ["ledger_recap", "ledger_title"]);
+  const kaptSources = ctx.sources("core", ["kapt"]);
+  const hasKapt = kaptSources.length > 0;
   const hits = ctx.hits("core", ["housing_complex", "officetel"]);
   const complexes = hits.filter((h) => h.kind === "housing_complex");
   const apts = complexes.filter((h) => h.properties.mainUse === "공동주택");
   const others = complexes.filter((h) => h.properties.mainUse !== "공동주택");
   const officetels = hits.filter((h) => h.kind === "officetel");
   const targets: FeatureHit[] = [...complexes, ...officetels];
+  const kapt = hasKapt ? kaptHouseholds(ctx, complexes) : new Map<string, number>();
+  const kaptOnlyApts = hasKapt ? kaptOnly(ctx) : [];
+  /** 가구 수(대장) → K-APT 세대수 → 세대 수(대장) */
+  const hhOf = (h: FeatureHit): number | null => num(h.properties.households) ?? kapt.get(h.stableId) ?? num(h.properties.units);
 
-  // 세대: 가구 수 우선, 없으면 세대 수. 값을 못 얻은 단지는 합계에서 빼고 개수로 병기한다.
+  // 세대: 가구 수 우선, 없으면 K-APT(있을 때), 그다음 세대 수. 값을 못 얻은 단지는 합계에서 빼고 개수로 병기한다.
   let hh = 0;
   let hhKnown = 0;
   let fromUnits = 0;
+  let fromKapt = 0;
   for (const a of apts) {
-    const h = householdsOf(a.properties);
+    const h = hhOf(a);
     if (h === null) continue;
     hh += h;
     hhKnown += 1;
-    if (num(a.properties.households) === null) fromUnits += 1;
+    if (num(a.properties.households) === null) {
+      if (kapt.has(a.stableId)) fromKapt += 1;
+      else fromUnits += 1;
+    }
   }
   const hhUnknown = apts.length - hhKnown;
 
@@ -47,19 +87,20 @@ export function a05(ctx: EngineContext): TileResult {
   let parkHh = 0;
   for (const a of apts) {
     const p = num(a.properties.parking);
-    const h = householdsOf(a.properties);
+    const h = hhOf(a);
     if (p !== null && h !== null) {
       parkN += p;
       parkHh += h;
     }
   }
 
-  const basis = "a05-households@1:가구 수 우선, 없으면 세대 수";
+  const basis = hasKapt ? "a05-households@2:세대수: 대장, 없으면 K-APT, 그다음 대장 세대 수" : "a05-households@1:가구 수 우선, 없으면 세대 수";
   const metrics: TileDraft["metrics"] = [
     obs("apartment_complexes", "아파트 단지", apts.length, "개", "a05-count@1"),
     obs("other_residential", "기타 주거 건물", others.length, "개", "a05-count@1"),
     obs("officetels", "오피스텔", officetels.length, "개", "a05-count@1"),
-    obs("households", "확인 세대(가구 수 우선, 없으면 세대 수)", hh, "세대", basis, hhKnown, apts.length),
+    obs("households", hasKapt ? "확인 세대(세대수: 대장, 없으면 K-APT)" : "확인 세대(가구 수 우선, 없으면 세대 수)", hh, "세대", basis, hhKnown, apts.length),
+    ...(hasKapt ? [obs("households_from_kapt", "K-APT 세대수로 대신한 단지", fromKapt, "개", basis)] : []),
     obs("households_from_units", "세대 수로 대신한 단지", fromUnits, "개", basis),
     obs("households_unknown_complexes", "세대 수를 알 수 없는 단지", hhUnknown, "개", basis),
     officetelUnits.length === 0 && officetels.length > 0
@@ -72,9 +113,11 @@ export function a05(ctx: EngineContext): TileResult {
       ? missing("aged_share_pct", "30년 이상 건물 비중", "%", "a05-aged-share@1")
       : est("aged_share_pct", "30년 이상 건물 비중", Math.round((aged / dated.length) * 1000) / 10, "%", "a05-aged-share@1", aged, dated.length),
     parkHh === 0 ? missing("parking_per_household", "세대당 주차대수", "대", "a05-parking@1") : obs("parking_per_household", "세대당 주차대수", Math.round((parkN / parkHh) * 100) / 100, "대", "a05-parking@1", parkN, parkHh),
+    ...(hasKapt ? [obs("kapt_only_apartments", "K-APT에만 있는 아파트 단지", kaptOnlyApts.length, "개", "a05-kapt-only@1:단지종류 코드 1(아파트로 간주), 대장 단지와 같은 필지 연결 없음")] : []),
   ];
 
   const limitations: TileDraft["limitations"] = [];
+  if (hasKapt && kaptOnlyApts.length > 0) limitations.push({ kind: "partial", note: `K-APT에만 있는 아파트 단지 ${kaptOnlyApts.length}곳은 아파트 단지 수·세대 합계에 넣지 않았습니다(단지종류 코드 1을 아파트로 간주).` });
   if (hhUnknown > 0) limitations.push({ kind: "incomplete", note: `세대 수를 알 수 없는 단지 ${hhUnknown}곳은 세대 합계에서 제외했습니다.` });
   if (dated.length > 0) limitations.push({ kind: "estimated", note: "30년 이상 비중은 분석일 대비 사용승인일 경과연수로 추정한 값입니다." });
   const coverage = ctx.coverage("core", ["ledger_recap", "ledger_title"]);
@@ -90,11 +133,11 @@ export function a05(ctx: EngineContext): TileResult {
     status: partial ? "partial" : "complete",
     metrics,
     judgment: { ruleId: "a05-stock@1", basisMetricIds: ["apartment_complexes", "households"], sentence, level: null, criteria: null },
-    sources,
+    sources: [...sources, ...kaptSources],
     layers: ["apt", "other_housing", "officetel"],
     map: [
-      ...apts.map((h) => candidate(h, "apt", { weight: householdsOf(h.properties) })),
-      ...others.map((h) => candidate(h, "other_housing", { weight: householdsOf(h.properties) })),
+      ...apts.map((h) => candidate(h, "apt", { weight: hhOf(h) })),
+      ...others.map((h) => candidate(h, "other_housing", { weight: hhOf(h) })),
       ...officetels.map((h) => candidate(h, "officetel", { weight: num(h.properties.units) })),
     ],
     limitations,

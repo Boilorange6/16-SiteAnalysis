@@ -65,7 +65,21 @@ export async function buildEngineFixture(dataDir, version, options = {}) {
   const of = (id, dx, props) => insertFeature(db, { stableId: id, kind: "officetel", sourceKey: id, releaseId: title, geometry: pt(dx, -100), name: id, properties: props });
   of("title:off1", 150, { units: 100, approvalDate: "2015-01-01" });
   of("title:off2", 250, { units: null, approvalDate: null });
-  run(db, "ledger_recap_housing", recap, { byRegion: { 41: 10 }, byType: {}, fillRates: {}, unlocated: 2 }, 3);
+  if (options.kapt) {
+    const kp = rel(db, "kapt", "2026-08-01");
+    const kc = (id, dx, type, households, linkTo) => {
+      const sid = `kapt:${id}`;
+      insertFeature(db, { stableId: sid, kind: "kapt_complex", sourceKey: id, releaseId: kp, geometry: pt(dx, 100), name: id, properties: { complexId: id, complexType: type, households } });
+      if (linkTo) db.prepare("INSERT INTO feature_link (from_stable_id, to_stable_id, relation_type, method, confidence, release_id) VALUES (?, ?, 'same_parcel', 'pnu', 1, ?)").run(sid, linkTo, kp);
+    };
+    kc("k1", 100, "1", 510, "recap:apt1"); // 대장 가구 수 500이 우선
+    kc("k2", 200, "1", 320, "title-housing:apt2"); // 대장 가구 수 null → K-APT 320 (대장 세대 수 300 대신)
+    kc("k3", 350, "1", 700, null); // K-APT에만 있는 아파트
+    kc("k4", 360, "2", 100, null); // 종류 코드 2: 아파트로 세지 않음
+    kc("kfar", 4000, "1", 900, null); // 반경 밖
+    run(db, "kapt", kp, { byRegion: { 41: 5 }, byType: {}, fillRates: {}, unlocated: 0 });
+  }
+  run(db, "ledger_recap_housing", recap,{ byRegion: { 41: 10 }, byType: {}, fillRates: {}, unlocated: 2 }, 3);
   run(db, "ledger_title_housing", title, { byRegion: { 41: 10 }, byType: {}, fillRates: {}, unlocated: 1 }, 1);
   db.close();
   files.core = "core";
@@ -92,7 +106,41 @@ export async function buildEngineFixture(dataDir, version, options = {}) {
   pk("p1", 300, 10000);
   pk("p2", 600, 5000);
   pk("p3", 700, null);
-  run(db, "store", store, { byRegion: { 41: 6 }, byType: {}, fillRates: {}, unlocated: 0 });
+  if (options.rail) {
+    const osm = rel(db, "osm_subway", "2026-09-01");
+    const st = (name, dx, dy, lineRefs) => insertFeature(db, { stableId: `rail_station:${name}`, kind: "rail_station", sourceKey: name, releaseId: osm, geometry: pt(dx, dy), name, properties: { lineRefs, lineNames: lineRefs, lineColors: [], operator: null } });
+    const en = (station, id, dx, dy) => insertFeature(db, { stableId: `rail_entrance:${id}`, kind: "rail_entrance", sourceKey: id, releaseId: osm, geometry: pt(dx, dy), name: id, properties: { stationName: station, entranceRef: id } });
+    st("가온역", 1200, 0, ["K"]); // 반경 800 밖, 탐색 1500 안
+    en("가온역", "가온1", 1100, 0);
+    en("가온역", "가온2", 1300, 0);
+    st("먼역", 2000, 0, ["Z"]); // 탐색 1500 밖
+    en("먼역", "먼1", 1900, 0);
+    if (options.rail !== "far") {
+      st("나래역", -600, 0, ["5"]); // 출입구 자료 없음 → 역 대표점
+      st("다온역", 0, 500, ["5", "9"]); // 역 대표점은 500m지만 출입구가 650m → 출입구 기준
+      en("다온역", "다온1", 0, 650);
+    }
+    insertFeature(db, { stableId: "rail_line:5", kind: "rail_line", sourceKey: "5", releaseId: osm, geometry: { type: "LineString", coordinates: [at(-3000, 300), at(3000, 300)] }, name: "5호선", properties: { lineRef: "5", color: null } });
+    run(db, "rail_station", osm, { byRegion: { 41: 4 }, byType: {}, fillRates: {}, unlocated: 0 });
+  }
+  if (options.planned) {
+    const pl = rel(db, "planned_rail", "2026-07-17");
+    insertFeature(db, { stableId: "planned_rail_line:p1", kind: "planned_rail_line", sourceKey: "p1", releaseId: pl, geometry: { type: "LineString", coordinates: [at(-3000, -300), at(3000, -300)] }, name: "계획선", properties: { projectId: "p1", lineName: "계획선", lifecycleStatus: "under_construction", sourceType: "approximation", confidenceLabel: "medium", lastVerifiedAt: "2026-07-17", nextReviewAt: "2027-01-15" } });
+    insertFeature(db, { stableId: "planned_rail_station:p1:계획역", kind: "planned_rail_station", sourceKey: "p1:계획역", releaseId: pl, geometry: pt(200, -300), name: "계획역", properties: { projectId: "p1", lineName: "계획선", lifecycleStatus: "under_construction", lastVerifiedAt: "2026-07-17" } });
+    run(db, "planned_rail_line", pl, { byRegion: { 41: 1 }, byType: {}, fillRates: {}, unlocated: 0 });
+  }
+  if (options.school) {
+    const sc = rel(db, "school", "2026-04-01");
+    const sch = (id, dx, level, status = "운영") => insertFeature(db, { stableId: `school:${id}`, kind: "school", sourceKey: id, releaseId: sc, geometry: pt(dx, -200), name: id, properties: { schoolId: id, level, operatingStatus: status } });
+    sch("e1", 400, "초등학교");
+    sch("e2", 900, "초등학교"); // 반경 800 밖, 탐색 1500 안
+    sch("e-closed", 100, "초등학교", "폐교"); // 비운영: 제외
+    sch("m1", 500, "중학교");
+    sch("h1", 700, "고등학교");
+    sch("sp", 200, "특수학교"); // 초·중·고 아님
+    run(db, "school", sc, { byRegion: { 41: 6 }, byType: {}, fillRates: {}, unlocated: 0 });
+  }
+  run(db, "store", store,{ byRegion: { 41: 6 }, byType: {}, fillRates: {}, unlocated: 0 });
   run(db, "bus_stop", bus, { byRegion: { "경기도 남양주시": 4 }, byType: {}, fillRates: {}, unlocated: 0 });
   run(db, "park", park, { byRegion: { 경기도: 3 }, byType: {}, fillRates: {}, unlocated: 0 });
   db.close();
