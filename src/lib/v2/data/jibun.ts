@@ -8,8 +8,19 @@ import { makePnu } from "./parcels";
 
 type Db = BetterSqlite3.Database;
 
+/** 지번 뒤에 붙은 원천 설명은 숫자 지번을 바꾸지 않는 범위에서만 제거한다. */
+function normalizeJibunText(address: string): string {
+  let normalized = address.trim().replace(/\s+/g, " ");
+  normalized = normalized.replace(/\s*[（(][^（）()]*[)）]\s*$/u, "").trim();
+  normalized = normalized.replace(/\s*외\s*\d+\s*필지\s*$/u, "").trim();
+  normalized = normalized.replace(/\s*일원\s*$/u, "").trim();
+  // 범위는 첫 번째 지번만 사용한다. 두 번째 지번을 임의로 고르지 않는다.
+  normalized = normalized.replace(/(\d+(?:-\d+)?)\s*[~〜]\s*\d+(?:-\d+)?\s*(?:번지)?$/u, "$1").trim();
+  return normalized;
+}
+
 export function parseJibunAddress(address: string): { head: string; mountain: boolean; bun: number; ji: number } | null {
-  const m = address.trim().replace(/\s+/g, " ").match(/^(.*?)\s+(산\s*)?(\d+)(?:-(\d+))?(?:\s*번지)?$/);
+  const m = normalizeJibunText(address).match(/^(.*?)\s+(산\s*)?(\d+)(?:-(\d+))?(?:\s*번지)?$/);
   if (!m || !m[1]) return null;
   return { head: m[1], mountain: Boolean(m[2]), bun: Number(m[3]), ji: m[4] === undefined ? 0 : Number(m[4]) };
 }
@@ -57,13 +68,29 @@ export function resolveJibunDetailed(db: Db, address: string): { legalCode: stri
   if (rest.length < 1) return ambiguous;
   if (rest.length > 2) return notFound;
 
-  const emds = db.prepare("SELECT code FROM legal_area WHERE level = 'emd' AND parent_code = ? AND name = ?").pluck().all(best.code, rest[0]) as string[];
+  let emds = db.prepare("SELECT code, name FROM legal_area WHERE level = 'emd' AND parent_code = ? AND name = ?").all(best.code, rest[0]) as { code: string; name: string }[];
+  if (emds.length === 0) {
+    // 행정동 숫자 분할명(중화2동 등)은 법정동 이름으로 환원한다. 같은 구에 하나일 때만 허용한다.
+    const numberedDong = rest[0].match(/^(.+?)\d+동$/u);
+    if (numberedDong) emds = db.prepare("SELECT code, name FROM legal_area WHERE level = 'emd' AND parent_code = ? AND name = ?").all(best.code, `${numberedDong[1]}동`) as { code: string; name: string }[];
+  }
+  if (emds.length === 0 && rest.length === 1) {
+    // 읍면 없이 유일한 리만 온 원천(예: 함평군 기각리)을 보완한다.
+    const ris = db.prepare("SELECT code FROM legal_area WHERE level = 'ri' AND name = ? AND parent_code IN (SELECT code FROM legal_area WHERE level = 'emd' AND parent_code = ?)").pluck().all(rest[0], best.code) as string[];
+    if (ris.length === 1) {
+      const pnu = makePnu(ris[0], parsed.mountain, parsed.bun, parsed.ji);
+      return pnu ? { legalCode: ris[0], pnu } : notFound;
+    }
+    if (ris.length > 1) return ambiguous;
+  }
   if (emds.length !== 1) return emds.length === 0 ? notFound : ambiguous; // 없거나 동명이면 추측하지 않는다
-  const emd = emds[0];
+  const emd = emds[0].code;
   let legalCode = `${emd}00`;
   if (rest.length === 1) {
     // 리가 있는 읍·면인데 리를 안 밝히면 존재하지 않는 코드가 된다
-    if (db.prepare("SELECT 1 FROM legal_area WHERE level = 'ri' AND parent_code = ? LIMIT 1").get(emd)) return ambiguous;
+    const ris = db.prepare("SELECT code, name FROM legal_area WHERE level = 'ri' AND parent_code = ?").all(emd) as { code: string; name: string }[];
+    // 일부 동 레이어는 자기 자신을 10자리 `...00` 리로도 저장한다. 실제 리가 아니므로 동 이름만으로 풀 수 있다.
+    if (ris.some((ri) => !(ri.code.endsWith("00") && ri.name === emds[0].name))) return ambiguous;
   } else {
     const ris = db.prepare("SELECT code FROM legal_area WHERE level = 'ri' AND parent_code = ? AND name = ?").pluck().all(emd, rest[1]) as string[];
     if (ris.length !== 1) return ris.length === 0 ? notFound : ambiguous;
