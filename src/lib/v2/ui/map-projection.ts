@@ -41,7 +41,8 @@ export type MapTile = { z: number; x: number; y: number; left: number; top: numb
 
 /** 그림을 덮는 배경 타일(정수 줌으로 받아 소수 줌에 맞게 확대·축소해 놓는다) */
 export function tilesFor(v: Viewport): MapTile[] {
-  const z = Math.max(0, Math.min(MAX_TILE_ZOOM, Math.round(v.zoom)));
+  // 올림: 타일을 축소만 해서 배경 지명 글자가 커지지 않고 선명하다(타일 수는 늘어난다).
+  const z = Math.max(0, Math.min(MAX_TILE_ZOOM, Math.ceil(v.zoom)));
   const size = TILE_PX * 2 ** (v.zoom - z);
   const [cx, cy] = worldPx(v.center[0], v.center[1], v.zoom);
   const left0 = cx - v.width / 2;
