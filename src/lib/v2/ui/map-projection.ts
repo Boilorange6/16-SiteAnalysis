@@ -61,7 +61,8 @@ export function tilesFor(v: Viewport): MapTile[] {
  * 공급자를 바꿀 때는 이 함수와 BASEMAP_ATTRIBUTION만 고친다.
  */
 export function tileUrl(t: Pick<MapTile, "z" | "x" | "y">): string {
-  return `https://tile.openstreetmap.org/${t.z}/${t.x}/${t.y}.png`;
+  // 하위 도메인(a~c)을 쓴다: 현재 CSP의 connect-src는 *.tile.openstreetmap.org만 허용하고 tile.openstreetmap.org는 허용하지 않는다(PPT용 fetch).
+  return `https://${"abc"[(t.x + t.y) % 3]}.tile.openstreetmap.org/${t.z}/${t.x}/${t.y}.png`;
 }
 export const BASEMAP_ATTRIBUTION = "© OpenStreetMap contributors";
 

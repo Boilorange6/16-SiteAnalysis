@@ -81,15 +81,15 @@ function cover(pptx: PptxGenJS, p: PlannedSlide & { kind: "cover" }, images: Map
     s.addText(m.label, { x, y, w: cw - 0.1, h: 0.28, fontFace: FONT, fontSize: 10, color: MUTED, margin: 0 });
     s.addText(m.value, { x, y: y + 0.28, w: cw - 0.1, h: 0.5, valign: "middle", fontFace: FONT, fontSize: mp ? 18 : 20, bold: true, color: INK, margin: 0, fit: "shrink" });
   });
-  if (p.map) mapBox(s, images[COVER_MAP_KEY], X0 + 6.35, 1.8, 5.08);
+  if (p.map) mapBox(s, images[COVER_MAP_KEY], X0 + 6.63, 1.8, 4.8);
   const infoY = mp ? 3.85 : 2.85;
   s.addText(p.asOfLine, { x: X0, y: infoY, w: mp ? 6 : 5.5, h: 0.32, valign: "middle", fontFace: FONT, fontSize: 11, color: MUTED, margin: 0 });
   if (p.incomplete) chips(s, [{ text: p.incomplete, tone: "status" }], mp ? X0 : X0 + 5.6, mp ? infoY + 0.42 : infoY, mp ? X0 + 6 : X0 + W);
-  const ruleY = mp ? 5.05 : 3.4;
+  const ruleY = mp ? 4.95 : 3.4;
   s.addShape("line", { x: X0, y: ruleY, w: W, h: 0, line: { color: LINE, width: 0.75 } });
   const half = Math.ceil(p.lines.length / 2);
   const colW = W / 2 - 0.2;
-  const rowH = Math.min(0.42, (mp ? 1.25 : 2.7) / Math.max(half, 1));
+  const rowH = Math.min(0.42, (mp ? 1.3 : 2.7) / Math.max(half, 1));
   p.lines.forEach((l, i) => {
     const col = i < half ? 0 : 1;
     const row = col === 0 ? i : i - half;

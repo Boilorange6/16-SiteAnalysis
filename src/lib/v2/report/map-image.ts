@@ -1,5 +1,5 @@
 /**
- * 브라우저 전용: MapFigure(SVG)를 PNG data URL로 만든다 (보고서용 1600×1000).
+ * 브라우저 전용: MapFigure(SVG)를 이미지 data URL(1600×1000)로 만든다.
  * SVG를 이미지로 불러오면 바깥 주소의 배경 타일은 못 받으므로, 타일을 CORS로 미리 받아 data URI로 끼워 넣는다.
  * 배경 타일을 받지 못하면 배경 없이(격자) 계속한다.
  */
@@ -70,7 +70,8 @@ async function toPng(svg: string): Promise<string> {
     g.fillStyle = "#fff";
     g.fillRect(0, 0, OUT_W, OUT_H);
     g.drawImage(img, 0, 0, OUT_W, OUT_H);
-    return canvas.toDataURL("image/png");
+    // PNG는 장당 2MB 안팎이라 덱이 10MB를 넘는다. 지도(사진에 가까운 래스터)는 JPEG로 충분하다.
+    return canvas.toDataURL("image/jpeg", 0.9);
   } finally {
     URL.revokeObjectURL(url);
   }
