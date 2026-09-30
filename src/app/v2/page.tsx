@@ -12,6 +12,7 @@ import { SUMMARY_ID, boardReducer, demoFinished, demoPhase, initBoard, reportPag
 import { buildReportPlan, complexCounts, reportFileName } from "@/lib/v2/report/report-plan";
 import { downloadBytes, EXPORT_MIME } from "@/lib/v2/export/download";
 import { DEFAULT_CALLOUT_MODE } from "@/lib/v2/ui/callout-layout";
+import { stackView } from "@/lib/v2/ui/stack";
 import { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } from "@/lib/v2/ui/fixtures/godeok";
 import { toSummaryView, toTileView, type SiteSummary } from "@/lib/v2/ui/tile-view";
 import type { TileResult } from "@/lib/v2/tile-result";
@@ -40,6 +41,7 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
   const [editing, setEditing] = useState(false);
   const [demoStep, setDemoStep] = useState<number | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [stackSelection, setStackSelection] = useState<string[]>([]);
   const [note, setNote] = useState(""); // 스크린리더 안내(aria-live)
   const [basemap, setBasemap] = useState<BasemapChoice>("white"); // 보드 상태(서버에 저장하지 않음). 화면과 PPT가 같이 따른다
   const gridRef = useRef<HTMLDivElement>(null);
@@ -48,7 +50,22 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
     setNote(`${views.get(id)?.title} 타일을 ${to + 1}번째로 옮김`);
   });
 
-  const views = useMemo(() => new Map(results.map((r) => [r.tileId, toTileView(r, scene)])), [results, scene]);
+  const baseViews = useMemo(() => new Map(results.map((r) => [r.tileId, toTileView(r, scene)])), [results, scene]);
+  const views = useMemo(() => {
+    const next = new Map(baseViews);
+    for (const [id, layers] of Object.entries(board.stacks)) {
+      const layerViews = layers.map((layerId) => baseViews.get(layerId)).filter((view): view is NonNullable<typeof view> => !!view);
+      if (layerViews.length > 0) next.set(id, stackView(id, layerViews));
+    }
+    return next;
+  }, [baseViews, board.stacks]);
+  const stackableIds = useMemo(
+    () => board.order.filter((id) => {
+      const view = baseViews.get(id);
+      return !!view && (view.kindLabel === "분석" || view.kindLabel === "도판") && !Object.values(board.stacks).some((layers) => layers.includes(id));
+    }),
+    [baseViews, board.order, board.stacks],
+  );
   const summary = useMemo(() => toSummaryView(siteSummary, results), [siteSummary, results]);
   const { tiles } = reportPages(board, complexCounts(views));
   const total = board.order.length;
@@ -118,7 +135,22 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
         <header className={styles.topbar}>
           <span className={`${styles.display} ${styles.brand}`}>{editing ? "보드 편집" : "사이트 분석"}</span>
           {editing ? (
-            <span className={styles.editHint}>순서를 바꾸거나 빼세요. 순서는 보고서 순서가 됩니다.</span>
+            <>
+              <span className={styles.editHint}>순서를 바꾸거나 빼세요. 순서는 보고서 순서가 됩니다.</span>
+              {stackSelection.length >= 2 && (
+                <button
+                  type="button"
+                  className={styles.pill}
+                  onClick={() => {
+                    dispatch({ type: "stack", layers: stackSelection });
+                    setStackSelection([]);
+                    setNote(`${stackSelection.length}개 층으로 스택을 만듦`);
+                  }}
+                >
+                  스택 만들기 · {stackSelection.length}층
+                </button>
+              )}
+            </>
           ) : (
             <span className={styles.topTitle}>
               {siteSummary.address} · {summary.radius}
@@ -251,6 +283,14 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
                     setNote(`${view.title} 타일을 ${oi + dir + 1}번째로 옮김`);
                   }}
                   onRetry={() => retry(id, view.code)}
+                  stackable={stackableIds.includes(id)}
+                  stackSelected={stackSelection.includes(id)}
+                  onStackToggle={(selected) => setStackSelection((current) => selected ? [...new Set([...current, id])] : current.filter((selectedId) => selectedId !== id))}
+                  onUnstack={view.code === "STACK" ? () => {
+                    dispatch({ type: "unstack", id });
+                    setStackSelection((current) => current.filter((selectedId) => selectedId !== id));
+                    setNote(`${view.title}을 풀음`);
+                  } : undefined}
                 />
               </Fragment>
             );

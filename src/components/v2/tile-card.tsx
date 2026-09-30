@@ -231,6 +231,10 @@ export type TileCardProps = {
   onRemove: () => void;
   onMove: (dir: -1 | 1) => void;
   onRetry: () => void;
+  stackable?: boolean;
+  stackSelected?: boolean;
+  onStackToggle?: (selected: boolean) => void;
+  onUnstack?: () => void;
 };
 
 const INTERACTIVE = "button,input,label,a,select,[data-handle]";
@@ -252,6 +256,13 @@ function SummaryFace({ p, state, waiting, onFlip }: { p: TileCardProps; state: b
         <span className={styles.dot} style={{ background: view.color }} />
         <h3 className={styles.title}>{view.title}</h3>
         <span className={styles.kindTag}>{view.kindLabel}</span>
+        {view.stackLayers && <span className={styles.kindTag}>{view.stackLayers.join(" + ")}</span>}
+        {p.editing && p.stackable && p.onStackToggle && (
+          <label className={styles.check}>
+            <input type="checkbox" checked={!!p.stackSelected} onChange={(e) => p.onStackToggle!(e.target.checked)} aria-label={`${view.title} 스택에 넣기`} />
+            스택에 넣기
+          </label>
+        )}
         {!waiting && (
           <>
             <label className={styles.check}>
@@ -302,6 +313,11 @@ function SummaryFace({ p, state, waiting, onFlip }: { p: TileCardProps; state: b
                 </button>
               ))}
             </span>
+            {view.code === "STACK" && p.onUnstack && (
+              <button type="button" className={styles.iconBtn} onClick={p.onUnstack} aria-label={`${view.title} 풀기`}>
+                풀기
+              </button>
+            )}
             <button type="button" className={styles.iconBtn} onClick={p.onRemove} aria-label={`${view.title} 제거`}>
               ×
             </button>
@@ -375,7 +391,7 @@ export default function TileCard(p: TileCardProps) {
         <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="card" />
       </div>
 
-      <TitleChip view={view} />
+      <TitleChip view={view} tail={view.stackLayers ? <span className={styles.kindTag}>{view.stackLayers.join(" + ")}</span> : undefined} />
 
       {!waiting && (
         <div className={styles.ovTR}>

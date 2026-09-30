@@ -136,7 +136,7 @@ export function buildReportPlan(input: {
         kind: "tile",
         view: v,
         body: hasResult(v) ? { kind: "result", face } : { kind: "state", face, message: message ?? "결과 없음 — 보고서에는 결과 없이 표시합니다" },
-        faceLabel: v.hasFace ? FACE_TEXT[face === "front" ? "front" : "back"] : null,
+        faceLabel: v.code === "STACK" ? "스택" : v.hasFace ? FACE_TEXT[face === "front" ? "front" : "back"] : null,
         // 모든 장은 지도(또는 주 시각물)가 전면: 지도 없는 결과는 지물 없는 대지 지도, 상태 장은 흐린 대지 지도
         map: mass ? null : !result ? v.backdrop : v.hasFace && face === "back" ? null : (v.map ?? v.backdrop),
         muted: !result,

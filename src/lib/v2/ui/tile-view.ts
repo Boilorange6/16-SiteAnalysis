@@ -41,6 +41,8 @@ export type TileView = {
   callout: CalloutModel | null;
   /** S01 축측 매스. Scene이 없을 때도 카메라·반경만으로 빈 틀을 그릴 수 있다. */
   mass: MassModel | null;
+  /** STACK 카드의 층 이름. 일반 타일은 null. */
+  stackLayers: string[] | null;
 };
 
 /** 설명선 타일의 입력: 세대수 순위로 정렬된 단지 목록과 요약 (A06도 같은 모양으로 채운다) */
@@ -257,6 +259,7 @@ export function toTileView(r: TileResult, scene?: Scene | null): TileView {
     kindLabel: KIND_LABEL[cat.kind],
     callout: calloutOf(r),
     mass: massOf(r, scene),
+    stackLayers: null,
   };
 }
 

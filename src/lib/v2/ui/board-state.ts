@@ -27,6 +27,10 @@ export type BoardState = {
   view: Record<string, CardFace>;
   viewAll: CardFace;
   sizes: Record<string, TileSize>;
+  /** 원본 타일의 종류. 스택 reducer가 simulation/다른 스택을 걸러낼 때 사용한다. */
+  tileKinds: Record<string, TileResult["tileType"]>;
+  /** 스택 id → 층 타일 id(위→아래) */
+  stacks: Record<string, string[]>;
   /** 빼 둔 타일(더할 수 있는 타일). index는 빼기 전 위치 */
   removed: { id: string; index: number }[];
   undoStack: UndoEntry[];
@@ -43,7 +47,9 @@ export type BoardAction =
   | { type: "face"; id: string; face: OutputFace }
   | { type: "callout"; id: string; mode: CalloutMode }
   | { type: "view"; id: string; face: CardFace }
-  | { type: "viewAll"; face: CardFace };
+  | { type: "viewAll"; face: CardFace }
+  | { type: "stack"; layers: string[] }
+  | { type: "unstack"; id: string };
 
 /** 카드의 현재 면 (편집 중에는 화면이 항상 요약면을 쓴다) */
 export const viewOf = (s: Pick<BoardState, "view" | "viewAll">, id: string): CardFace => s.view[id] ?? s.viewAll;
@@ -59,6 +65,8 @@ export function initBoard(results: TileResult[]): BoardState {
     viewAll: "summary",
     // 주변 단지 설명선(A05)은 좌우 칸이 필요해 기본 2칸
     sizes: Object.fromEntries(results.map((r) => [r.tileId, (r.tileCode === "A05" || r.tileCode === "A06" ? 2 : 1) as TileSize])),
+    tileKinds: Object.fromEntries(results.map((r) => [r.tileId, r.tileType])),
+    stacks: {},
     removed: [],
     undoStack: [],
   };
@@ -79,9 +87,12 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
     case "remove": {
       const index = s.order.indexOf(a.id);
       if (index < 0) return s;
+      const stacks = { ...s.stacks };
+      delete stacks[a.id];
       return {
         ...s,
         order: s.order.filter((x) => x !== a.id),
+        stacks,
         removed: [...s.removed, { id: a.id, index }],
         undoStack: [...s.undoStack, { kind: "remove", id: a.id, index }],
       };
@@ -112,7 +123,21 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
         }
         case "add": {
           const removed = [...s.removed];
+          const isStack = u.trayIndex < 0 && u.id in s.stacks;
           removed.splice(Math.min(u.trayIndex, removed.length), 0, { id: u.id, index: s.order.indexOf(u.id) });
+          const stacks = { ...s.stacks };
+          if (isStack) {
+            delete stacks[u.id];
+            const included = { ...s.included };
+            const faces = { ...s.faces };
+            const sizes = { ...s.sizes };
+            const tileKinds = { ...s.tileKinds };
+            delete included[u.id];
+            delete faces[u.id];
+            delete sizes[u.id];
+            delete tileKinds[u.id];
+            return { ...s, ...rest, order: s.order.filter((x) => x !== u.id), included, faces, sizes, tileKinds, stacks };
+          }
           return { ...s, ...rest, order: s.order.filter((x) => x !== u.id), removed };
         }
       }
@@ -142,7 +167,44 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
       return { ...s, view: { ...s.view, [a.id]: a.face } };
     case "viewAll":
       return { ...s, viewAll: a.face, view: {} };
+    case "stack": {
+      const layers = [...new Set(a.layers)].filter((id) => s.order.includes(id));
+      if (layers.length < 2 || layers.some((id) => !stackable(s, id) || Object.values(s.stacks).some((stack) => stack.includes(id)))) return s;
+      let number = Object.keys(s.stacks).length + 1;
+      while (s.stacks[`stack:${number}`]) number += 1;
+      const id = `stack:${number}`;
+      return {
+        ...s,
+        order: [...s.order, id],
+        included: { ...s.included, [id]: true },
+        faces: { ...s.faces, [id]: "front" },
+        sizes: { ...s.sizes, [id]: 1 },
+        tileKinds: { ...s.tileKinds, [id]: "stack" },
+        stacks: { ...s.stacks, [id]: layers },
+        undoStack: [...s.undoStack, { kind: "add", id, trayIndex: -1 }],
+      };
+    }
+    case "unstack": {
+      if (!(a.id in s.stacks)) return s;
+      const stacks = { ...s.stacks };
+      delete stacks[a.id];
+      const included = { ...s.included };
+      const faces = { ...s.faces };
+      const sizes = { ...s.sizes };
+      const tileKinds = { ...s.tileKinds };
+      delete included[a.id];
+      delete faces[a.id];
+      delete sizes[a.id];
+      delete tileKinds[a.id];
+      return { ...s, order: s.order.filter((id) => id !== a.id), included, faces, sizes, tileKinds, stacks };
+    }
   }
+}
+
+function stackable(s: BoardState, id: string): boolean {
+  const kind = s.tileKinds[id];
+  if (kind) return kind === "analysis" || kind === "diagram";
+  return !/(?:^|-)S\d{2}$/.test(id) && !id.startsWith("stack:");
 }
 
 /**
