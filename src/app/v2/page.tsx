@@ -8,8 +8,8 @@ import { useTileDrag } from "@/components/v2/use-tile-drag";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "@/components/v2/map-box";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import styles from "@/components/v2/board.module.css";
-import { boardReducer, demoFinished, demoPhase, initBoard, reportPages } from "@/lib/v2/ui/board-state";
-import { buildReportPlan, reportFileName } from "@/lib/v2/report/report-plan";
+import { SUMMARY_ID, boardReducer, demoFinished, demoPhase, initBoard, reportPages, viewOf } from "@/lib/v2/ui/board-state";
+import { buildReportPlan, complexCounts, reportFileName } from "@/lib/v2/report/report-plan";
 import { DEFAULT_CALLOUT_MODE } from "@/lib/v2/ui/callout-layout";
 import { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } from "@/lib/v2/ui/fixtures/godeok";
 import { toSummaryView, toTileView, type SiteSummary } from "@/lib/v2/ui/tile-view";
@@ -47,7 +47,7 @@ function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: Boar
 
   const views = useMemo(() => new Map(results.map((r) => [r.tileId, toTileView(r)])), [results]);
   const summary = useMemo(() => toSummaryView(siteSummary, results), [siteSummary, results]);
-  const { tiles } = reportPages(board);
+  const { tiles } = reportPages(board, complexCounts(views));
   const total = board.order.length;
   const analysisDate = demo ? new Date().toLocaleDateString("sv-SE") : (results[0]?.conditions.analysisDate ?? new Date().toLocaleDateString("sv-SE"));
   const reportPlan = useMemo(() => buildReportPlan({ summary, views, board, analysisDate }), [summary, views, board, analysisDate]);
@@ -126,6 +126,13 @@ function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: Boar
                   {demoOn ? "데모 끄기" : "분석 중 데모"}
                 </button>
               )}
+              <span className={styles.seg} role="group" aria-label="카드 보기">
+                {(["summary", "map"] as const).map((f) => (
+                  <button key={f} type="button" aria-pressed={board.viewAll === f} onClick={() => dispatch({ type: "viewAll", face: f })}>
+                    {f === "summary" ? "요약" : "지도"}
+                  </button>
+                ))}
+              </span>
               <span className={styles.seg} role="group" aria-label="배경지도">
                 {BASEMAPS.map((b) => (
                   <button key={b.id} type="button" aria-pressed={basemap === b.id} onClick={() => setBasemap(b.id)}>
@@ -147,7 +154,7 @@ function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: Boar
         {controls}
 
         <div className={styles.grid} ref={gridRef}>
-          <SummaryCard view={summary} />
+          <SummaryCard view={summary} face={editing ? "summary" : viewOf(board, SUMMARY_ID)} onFace={(face) => dispatch({ type: "view", id: SUMMARY_ID, face })} />
           {shown.map((id, i) => {
             const view = views.get(id)!;
             const size = board.sizes[id];
@@ -180,6 +187,11 @@ function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: Boar
                   onOpen={() => setOpenId(id)}
                   onInclude={(value) => dispatch({ type: "include", id, value })}
                   onFace={(face) => dispatch({ type: "face", id, face })}
+                  cardFace={viewOf(board, id)}
+                  onCardFace={(face) => {
+                    dispatch({ type: "view", id, face });
+                    setNote(`${view.title} ${face === "map" ? "지도면" : "요약면"}`);
+                  }}
                   onRemove={() => {
                     dispatch({ type: "remove", id });
                     setNote(`${view.title} 타일을 뺌`);

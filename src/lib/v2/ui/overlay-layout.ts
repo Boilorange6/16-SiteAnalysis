@@ -39,7 +39,7 @@ export function stripText(sourceLine: string, credit = true): string {
 /** 카드/펼침 위에 오버레이가 덮는 자리(px). 지도 라벨은 이 자리를 피한다. */
 export function cardReserved(w: number, h: number, opts: { valueH?: number; titleW?: number; right?: number } = {}): Box[] {
   const e = OV.edge;
-  const right = opts.right ?? 116; // 보고서 칩 폭
+  const right = opts.right ?? 146; // 보고서 칩(보고서 · 펼치기 · 요약) 폭
   const titleW = Math.min(opts.titleW ?? 240, w - 3 * e - right); // 제목 칩은 보고서 칩을 피해 줄어든다
   const valueH = opts.valueH ?? 104;
   const valueW = Math.min(230, w - 2 * e);

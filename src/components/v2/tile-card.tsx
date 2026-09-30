@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import type { DemoPhase, TileSize } from "@/lib/v2/ui/board-state";
+import { useEffect, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import type { CardFace, DemoPhase, TileSize } from "@/lib/v2/ui/board-state";
 import { STRIP_COLORS } from "@/lib/v2/ui/map-layers";
 import { OV, badgesToShow, cardReserved, stripText } from "@/lib/v2/ui/overlay-layout";
 import { faceLabel, type Badge, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
@@ -220,6 +220,9 @@ export type TileCardProps = {
   onOpen: () => void;
   onInclude: (v: boolean) => void;
   onFace: (f: OutputFace) => void;
+  /** 화면 면 (요약면/지도면). 보고서 출력 면(face)과 무관 */
+  cardFace: CardFace;
+  onCardFace: (f: CardFace) => void;
   onRemove: () => void;
   onMove: (dir: -1 | 1) => void;
   onRetry: () => void;
@@ -227,12 +230,110 @@ export type TileCardProps = {
 
 const INTERACTIVE = "button,input,label,a,select,[data-handle]";
 
+/** 요약면: 지도 없는 흰 카드. 제목 줄 · 큰 숫자 + 한 줄 라벨 · 사실 3줄 · 상태 배지(최대 2개) · 출처 한 줄 · "지도 ↻" */
+function SummaryFace({ p, state, waiting, onFlip }: { p: TileCardProps; state: boolean; waiting: boolean; onFlip: () => void }) {
+  const { view, phase } = p;
+  const facts = view.rows.filter((r) => r.label !== view.headline?.label).slice(0, 3);
+  const head = waiting ? (phase === "running" ? "계산 중" : "대기") : (view.badges.find((b) => b.tone === "status")?.text ?? "표시할 결과가 없습니다");
+  const rest = view.badges.filter((b) => b.tone !== "status");
+  return (
+    <div className={styles.sf}>
+      <div className={styles.sfTop}>
+        {p.editing && (
+          <span className={styles.handle} data-handle onPointerDown={p.onHandleDown} title="끌어서 옮기기 (키보드는 위로·아래로 버튼)" aria-hidden>
+            ⠿
+          </span>
+        )}
+        <span className={styles.dot} style={{ background: view.color }} />
+        <h3 className={styles.title}>{view.title}</h3>
+        <span className={styles.kindTag}>{view.kindLabel}</span>
+        {!waiting && (
+          <>
+            <label className={styles.check}>
+              <input type="checkbox" checked={p.included} onChange={(e) => p.onInclude(e.target.checked)} aria-label={`${view.title} 보고서 포함`} />
+              보고서
+            </label>
+            {!p.editing && (
+              <button type="button" className={styles.open} onClick={p.onOpen} aria-label={`${view.title} 펼치기`} title="펼치기">
+                ↗
+              </button>
+            )}
+          </>
+        )}
+      </div>
+
+      {state ? (
+        <div className={styles.sfState}>
+          {waiting && <span className={styles.spinner} role="status" aria-label={`${view.title} ${head}`} />}
+          <b className={styles.statusHead}>{head}</b>
+          {!waiting && view.notes[0] && <p className={styles.statusNote}>{view.notes[0]}</p>}
+          {!waiting && rest.length > 0 && <ValueBadges badges={rest} />}
+          {!waiting && view.retryable && (
+            <button type="button" className={styles.retry} onClick={p.onRetry}>
+              이 타일 다시 계산
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className={styles.sfMain}>
+          <Headline view={view} />
+          {facts.length > 0 && <RowList rows={facts} className={styles.sfRows} />}
+        </div>
+      )}
+
+      <div className={styles.sfFoot}>
+        {p.editing ? (
+          <div className={styles.editRow}>
+            <button type="button" className={styles.iconBtn} onClick={() => p.onMove(-1)} disabled={!p.canUp} aria-label={`${view.title} 위로 이동`}>
+              위로
+            </button>
+            <button type="button" className={styles.iconBtn} onClick={() => p.onMove(1)} disabled={!p.canDown} aria-label={`${view.title} 아래로 이동`}>
+              아래로
+            </button>
+            <span className={styles.seg} role="group" aria-label={`${view.title} 크기`}>
+              {([1, 2] as const).map((n) => (
+                <button key={n} type="button" aria-pressed={p.size === n} onClick={() => p.onResize(n)} aria-label={`${view.title} ${n}칸`}>
+                  {n}칸
+                </button>
+              ))}
+            </span>
+            <button type="button" className={styles.iconBtn} onClick={p.onRemove} aria-label={`${view.title} 제거`}>
+              ×
+            </button>
+          </div>
+        ) : (
+          <>
+            {!state && <ValueBadges badges={view.badges} />}
+            <div className={styles.sfLine}>
+              <span className={styles.sfSrc} title={stripText(view.sourceLine, false)}>
+                {stripText(view.sourceLine, false)}
+              </span>
+              {!state && (
+                <button type="button" className={styles.flipBtn} onClick={onFlip} aria-pressed={false} aria-label={`${view.title} 지도 보기`}>
+                  지도 ↻
+                </button>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function TileCard(p: TileCardProps) {
   const { view, phase } = p;
   const [back, setBack] = useState(false);
   const waiting = phase === "pending" || phase === "running";
   const noResult = !waiting && view.headline === null;
   const state = waiting || noResult;
+  // 편집 중·결과 없음·계산 중에는 요약면만 (지도면에 보여 줄 것이 없다)
+  const shown: CardFace = state || p.editing ? "summary" : p.cardFace;
+  const [seen, setSeen] = useState(false);
+  useEffect(() => {
+    if (shown === "map") setSeen(true);
+  }, [shown]);
+  const mountMap = shown === "map" || seen; // 지도는 처음 뒤집을 때 만들고 그 뒤에는 유지한다
   const cls = [styles.tile, p.size === 2 && styles.span2, p.editing && styles.tileEdit, p.dragging && styles.tileDrag, state && styles.tileState, !waiting && view.status === "failed" && styles.tileFail]
     .filter(Boolean)
     .join(" ");
@@ -258,20 +359,18 @@ export default function TileCard(p: TileCardProps) {
       onClick={onClick}
       onKeyDown={onKeyDown}
     >
+      <div className={styles.flipInner} data-face={shown}>
+        <div className={`${styles.face} ${styles.faceSummary}`} data-on={shown === "summary"} inert={shown !== "summary"}>
+          <SummaryFace p={p} state={state} waiting={waiting} onFlip={() => p.onCardFace("map")} />
+        </div>
+        <div className={`${styles.face} ${styles.faceMap}`} data-on={shown === "map"} inert={shown !== "map"}>
+          {mountMap && (
+            <>
       <div className={styles.stage}>
         <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="card" />
       </div>
 
-      <TitleChip
-        view={view}
-        lead={
-          p.editing && (
-            <span className={styles.handle} data-handle onPointerDown={p.onHandleDown} title="끌어서 옮기기 (키보드는 위로·아래로 버튼)" aria-hidden>
-              ⠿
-            </span>
-          )
-        }
-      />
+      <TitleChip view={view} />
 
       {!waiting && (
         <div className={styles.ovTR}>
@@ -280,58 +379,39 @@ export default function TileCard(p: TileCardProps) {
               <input type="checkbox" checked={p.included} onChange={(e) => p.onInclude(e.target.checked)} aria-label={`${view.title} 보고서 포함`} />
               보고서
             </label>
-            {!p.editing && (
-              <button type="button" className={styles.open} onClick={p.onOpen} aria-label={`${view.title} 펼치기`} title="펼치기">
-                ↗
-              </button>
-            )}
+            <button type="button" className={styles.open} onClick={p.onOpen} aria-label={`${view.title} 펼치기`} title="펼치기">
+              ↗
+            </button>
+            <button type="button" className={styles.flipIcon} onClick={() => p.onCardFace("summary")} aria-pressed aria-label={`${view.title} 요약 보기`} title="요약 보기">
+              ↺
+            </button>
           </div>
         </div>
       )}
 
       <div className={styles.ovBL}>
-        {p.editing ? (
-          <div className={`${styles.plate} ${styles.editRow}`}>
-            <button type="button" className={styles.iconBtn} onClick={() => p.onMove(-1)} disabled={!p.canUp} aria-label={`${view.title} 위로 이동`}>
-              위로
-            </button>
-            <button type="button" className={styles.iconBtn} onClick={() => p.onMove(1)} disabled={!p.canDown} aria-label={`${view.title} 아래로 이동`}>
-              아래로
-            </button>
-            <span className={styles.seg} role="group" aria-label={`${view.title} 크기`}>
-              {([1, 2] as const).map((n) => (
-                <button key={n} type="button" aria-pressed={p.size === n} onClick={() => p.onResize(n)} aria-label={`${view.title} ${n}칸`}>
-                  {n}칸
-                </button>
-              ))}
-            </span>
-            <button type="button" className={styles.iconBtn} onClick={p.onRemove} aria-label={`${view.title} 제거`}>
-              ×
-            </button>
+        {view.hasFace && !state && (
+          <div className={`${styles.plate} ${styles.faceCtl}`}>
+            <div className={styles.seg} role="group" aria-label={`${view.title} 보기`}>
+              보기
+              <button type="button" aria-pressed={!back} onClick={() => setBack(false)}>
+                도판
+              </button>
+              <button type="button" aria-pressed={back} onClick={() => setBack(true)}>
+                구성비
+              </button>
+            </div>
+            <FaceSelect view={view} value={p.face} onChange={p.onFace} />
           </div>
-        ) : (
-          <>
-            {view.hasFace && !state && (
-              <div className={`${styles.plate} ${styles.faceCtl}`}>
-                <div className={styles.seg} role="group" aria-label={`${view.title} 보기`}>
-                  보기
-                  <button type="button" aria-pressed={!back} onClick={() => setBack(false)}>
-                    도판
-                  </button>
-                  <button type="button" aria-pressed={back} onClick={() => setBack(true)}>
-                    구성비
-                  </button>
-                </div>
-                <FaceSelect view={view} value={p.face} onChange={p.onFace} />
-              </div>
-            )}
-            {!state && !(view.hasFace && back) && (view.callout ? <CalloutPill model={view.callout} /> : <ValueCard view={view} />)}
-          </>
         )}
+        {!state && !(view.hasFace && back) && (view.callout ? <CalloutPill model={view.callout} /> : <ValueCard view={view} />)}
       </div>
 
-      {state && <StatusPlate view={view} phase={phase} onRetry={p.onRetry} />}
       <SourceStrip view={view} />
+            </>
+          )}
+        </div>
+      </div>
     </article>
   );
 }

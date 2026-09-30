@@ -166,10 +166,9 @@
   grid-column: span 2;
   grid-row: span 2;
   position: relative;
-  overflow: hidden;
   border-radius: 18px;
-  background: #f2f2ef;
   min-width: 0;
+  perspective: 1400px;
 }
 
 /* ── 몰입형 오버레이 문법: 카드·펼침·요약이 같은 자리·같은 판을 쓴다 ──
@@ -199,7 +198,7 @@
 .ovTL {
   top: 12px;
   left: 12px;
-  right: 122px; /* 오른쪽 위 보고서 칩 자리 */
+  right: 152px; /* 오른쪽 위 보고서 칩 자리 */
   max-width: none;
   container-type: inline-size;
 }
@@ -422,11 +421,10 @@
 /* ── 타일 (카드 전체가 지도) ── */
 .tile {
   position: relative;
-  overflow: hidden;
   min-width: 0;
-  background: #f2f2ef;
   border-radius: 18px;
   cursor: pointer;
+  perspective: 1400px; /* 뒤집기(요약면 ↔ 지도면) */
 }
 .tile:focus-visible {
   outline: 2px solid #2f6fdb;
@@ -1033,6 +1031,212 @@
 }
 .problem a {
   text-decoration: underline;
+}
+
+/* ── 카드 두 면: 요약면(기본, 지도 없음) ↔ 지도면(몰입형). 3D 뒤집기 ≤ 300ms, 움직임 줄이기면 페이드 ── */
+.flipInner {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transition: transform 0.28s cubic-bezier(0.3, 0.1, 0.2, 1);
+}
+.flipInner[data-face="map"] {
+  transform: rotateY(180deg);
+}
+.face {
+  position: absolute;
+  inset: 0;
+  border-radius: 18px;
+  overflow: hidden;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.faceMap {
+  transform: rotateY(180deg);
+  background: #f2f2ef;
+}
+.faceSummary {
+  background: #fff;
+}
+@media (prefers-reduced-motion: reduce) {
+  .flipInner {
+    transform: none !important;
+    transition: none;
+  }
+  .face {
+    backface-visibility: visible;
+    -webkit-backface-visibility: visible;
+    transition: opacity 0.18s;
+  }
+  .faceMap {
+    transform: none;
+  }
+  .face[data-on="false"] {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
+/* 요약면 (Alt4 스타일: 흰 카드 · 제목 줄 · 큰 숫자 · 사실 3줄 · 배지 · 출처 한 줄) */
+.sf {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px 12px;
+  container-type: inline-size;
+}
+.sfTop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+}
+.sfTop .title {
+  flex: 0 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sfTop .check {
+  margin-left: auto;
+}
+.sfTop .open {
+  padding: 3px 9px;
+}
+.sfMain {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 10px;
+  padding-top: 6px;
+}
+.sfRows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+  font-size: 12.5px;
+}
+.sfRows li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 0;
+  border-bottom: 1px solid #eef0f3;
+}
+.sfRows li > span:first-child {
+  color: var(--muted);
+}
+.sfRows li > span:last-child {
+  font-weight: 700;
+  text-align: right;
+}
+@container (min-width: 520px) {
+  .sfMain {
+    flex-direction: row;
+    align-items: center;
+    gap: 28px;
+  }
+  .sfMain > :first-child {
+    flex: 0 0 38%;
+  }
+  .sfMain > :last-child {
+    flex: 1 1 auto;
+  }
+}
+.sfState {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 8px;
+}
+.sfFoot {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sfLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 26px;
+}
+.sfSrc {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.flipBtn {
+  flex: none;
+  border: 0;
+  border-radius: 999px;
+  background: #eef0f3;
+  padding: 4px 11px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.flipBtn:hover {
+  background: #dfe2e8;
+}
+.flipBtn:focus-visible,
+.flipIcon:focus-visible {
+  outline: 2px solid #2f6fdb;
+  outline-offset: 2px;
+}
+.flipIcon {
+  flex: none;
+  border: 0;
+  border-radius: 999px;
+  background: #eef0f3;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  line-height: 1;
+}
+.flipIconPlate {
+  background: rgba(255, 255, 255, 0.86);
+  width: 34px;
+  height: 34px;
+  font-size: 16px;
+}
+.sumFront {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px 12px;
+}
+.sumBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+}
+.sumFront .chip {
+  background: #eef0f3;
+}
+.sumAsOf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #454a55;
 }
 
 /* ── 주변 단지 설명선 (A05·A06): 카드는 두 칸에만, 오버레이 판 스타일 그대로 ── */
