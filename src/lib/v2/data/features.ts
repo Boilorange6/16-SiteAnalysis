@@ -24,6 +24,8 @@ export interface FeatureInput {
   pnu?: string | null;
   legalCode?: string | null;
   properties?: Record<string, unknown>;
+  /** 저장 좌표(EPSG:5179 미터)를 소수 이 자리까지 반올림. 생략하면 그대로(수천만 건 도형의 파일 크기용) */
+  coordDecimals?: number;
 }
 
 export interface FeatureHit {
@@ -79,7 +81,11 @@ export function insertFeature(db: Db, input: FeatureInput): number {
   for (const [field, value] of [["pnu", input.pnu], ["legalCode", input.legalCode]] as const) {
     if (value != null && typeof value !== "string") throw new TypeError(`${field} must be a string (got ${typeof value})`);
   }
-  const projected = projectGeometry(input.geometry);
+  let projected = projectGeometry(input.geometry);
+  if (input.coordDecimals !== undefined) {
+    const k = 10 ** input.coordDecimals;
+    projected = { type: projected.type, coordinates: mapPositions((projected as { coordinates: unknown }).coordinates, ([x, y]) => [Math.round(x * k) / k, Math.round(y * k) / k]) } as Geometry;
+  }
   const [minX, minY, maxX, maxY] = bboxOf(projected);
   return db.transaction(() => {
   const info = db
