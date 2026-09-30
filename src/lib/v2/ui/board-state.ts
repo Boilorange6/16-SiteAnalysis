@@ -1,5 +1,6 @@
 /** 보드 상태: 순서·제거/되돌리기·이동·보고서 포함·출력 면. 순수 reducer. */
 import type { TileResult } from "../tile-result";
+import { calloutReportPages, DEFAULT_CALLOUT_MODE, type CalloutMode } from "./callout-layout";
 import type { OutputFace } from "./tile-view";
 
 export type TileSize = 1 | 2;
@@ -11,10 +12,20 @@ export type UndoEntry =
   | { kind: "remove"; id: string; index: number }
   | { kind: "add"; id: string; trayIndex: number };
 
+/** 보드 카드의 화면 면: 요약면(기본, 지도 없음) / 지도면(지도 몰입형). 보고서 출력 면(OutputFace)과 무관하다 */
+export type CardFace = "summary" | "map";
+/** 대지 요약 카드의 view 키 */
+export const SUMMARY_ID = "site-summary";
+
 export type BoardState = {
   order: string[];
   included: Record<string, boolean>;
   faces: Record<string, OutputFace>;
+  /** 주변 단지 설명선 타일의 보고서 설명표 장수: 개요만 / 상위 10 / 전체 */
+  callout: Record<string, CalloutMode>;
+  /** 카드별 화면 면. 전체 전환 뒤 카드별로 뒤집으면 그 카드만 다음 전체 전환까지 따로 간다. 보고서·되돌리기에 들어가지 않는다 */
+  view: Record<string, CardFace>;
+  viewAll: CardFace;
   sizes: Record<string, TileSize>;
   /** 빼 둔 타일(더할 수 있는 타일). index는 빼기 전 위치 */
   removed: { id: string; index: number }[];
@@ -29,7 +40,13 @@ export type BoardAction =
   | { type: "resize"; id: string; size: TileSize }
   | { type: "add"; id: string }
   | { type: "include"; id: string; value: boolean }
-  | { type: "face"; id: string; face: OutputFace };
+  | { type: "face"; id: string; face: OutputFace }
+  | { type: "callout"; id: string; mode: CalloutMode }
+  | { type: "view"; id: string; face: CardFace }
+  | { type: "viewAll"; face: CardFace };
+
+/** 카드의 현재 면 (편집 중에는 화면이 항상 요약면을 쓴다) */
+export const viewOf = (s: Pick<BoardState, "view" | "viewAll">, id: string): CardFace => s.view[id] ?? s.viewAll;
 
 export function initBoard(results: TileResult[]): BoardState {
   return {
@@ -37,6 +54,9 @@ export function initBoard(results: TileResult[]): BoardState {
     // 결과가 있는 타일만 기본 포함
     included: Object.fromEntries(results.map((r) => [r.tileId, r.status === "complete" || r.status === "partial"])),
     faces: Object.fromEntries(results.map((r) => [r.tileId, r.presentation.outputFace])),
+    callout: Object.fromEntries(results.filter((r) => r.tileCode === "A05").map((r) => [r.tileId, DEFAULT_CALLOUT_MODE])),
+    view: {},
+    viewAll: "summary",
     // 주변 단지 설명선(A05)은 좌우 칸이 필요해 기본 2칸
     sizes: Object.fromEntries(results.map((r) => [r.tileId, (r.tileCode === "A05" ? 2 : 1) as TileSize])),
     removed: [],
@@ -116,17 +136,26 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
       return { ...s, included: { ...s.included, [a.id]: a.value } };
     case "face":
       return { ...s, faces: { ...s.faces, [a.id]: a.face } };
+    case "callout":
+      return { ...s, callout: { ...s.callout, [a.id]: a.mode } };
+    case "view":
+      return { ...s, view: { ...s.view, [a.id]: a.face } };
+    case "viewAll":
+      return { ...s, viewAll: a.face, view: {} };
   }
 }
 
-/** 표지 1장 + 포함된 타일. 출력 면 both는 2장. */
-export function reportPages(s: BoardState): { tiles: number; pages: number } {
+/**
+ * 표지 1장 + 포함된 타일 + 출처 1장. 출력 면 both는 2장.
+ * 설명선 타일은 단지 수(complexCounts[tileId])와 설명표 설정에 따라 개요 + 설명표 장 수만큼 (report-plan과 같은 계산).
+ */
+export function reportPages(s: BoardState, complexCounts: Record<string, number> = {}): { tiles: number; pages: number } {
   let tiles = 0;
   let pages = 2; // 표지 + 출처
   for (const id of s.order) {
     if (!s.included[id]) continue;
     tiles += 1;
-    pages += s.faces[id] === "both" ? 2 : 1;
+    pages += id in complexCounts ? calloutReportPages(s.callout[id] ?? DEFAULT_CALLOUT_MODE, complexCounts[id]) : s.faces[id] === "both" ? 2 : 1;
   }
   return { tiles, pages };
 }

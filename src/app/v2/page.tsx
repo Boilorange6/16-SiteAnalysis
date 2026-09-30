@@ -10,6 +10,7 @@ import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import styles from "@/components/v2/board.module.css";
 import { boardReducer, demoFinished, demoPhase, initBoard, reportPages } from "@/lib/v2/ui/board-state";
 import { buildReportPlan, reportFileName } from "@/lib/v2/report/report-plan";
+import { DEFAULT_CALLOUT_MODE } from "@/lib/v2/ui/callout-layout";
 import { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } from "@/lib/v2/ui/fixtures/godeok";
 import { toSummaryView, toTileView, type SiteSummary } from "@/lib/v2/ui/tile-view";
 import type { TileResult } from "@/lib/v2/tile-result";
@@ -240,6 +241,8 @@ function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: Boar
           face={board.faces[openView.tileId]}
           onInclude={(value) => dispatch({ type: "include", id: openView.tileId, value })}
           onFace={(face) => dispatch({ type: "face", id: openView.tileId, face })}
+          calloutMode={board.callout[openView.tileId] ?? DEFAULT_CALLOUT_MODE}
+          onCalloutMode={(mode) => dispatch({ type: "callout", id: openView.tileId, mode })}
           onClose={() => setOpenId(null)}
         />
       )}

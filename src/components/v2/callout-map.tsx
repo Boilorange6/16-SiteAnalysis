@@ -30,7 +30,7 @@ export function calloutScene(model: CalloutModel, kind: CalloutFrameKind, W: num
   const perSide = detail ? 5 : 3;
   const spec = { W, H, m: PX, edge: OV.edge, top, bottom, leftBottom: detail ? undefined : bottom - PILL_H - 6, rightInset: panel, perSide, rows };
   // 세로 여유가 되면 4행 카드, 아니면 이름+세대수 2줄 카드
-  const fullFits = detail && !mobile && (bottom - top + PX.gap) >= perSide * (cardHeight(PX, "full", rows) + PX.gap);
+  const fullFits = detail && !mobile && (bottom - top + PX.gap) >= perSide * (cardHeight(PX, "full", rows) + PX.gap) - 1e-6;
   const frame: CalloutFrame = calloutFrame({ ...spec, variant: fullFits ? "full" : "compact" });
   const vp = framedViewport(model.center, model.radiusM, W, H, frame.siteX, frame.fill);
   const proj = makeProjector(vp);

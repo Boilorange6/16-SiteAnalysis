@@ -10,6 +10,7 @@ import MapFigure, { type MapFigureProps } from "@/components/v2/map-figure";
 import type { MapModel } from "../ui/map-layers";
 import { SLIDE, slideLayout, slideReserved, slideSiteX, slideLegend } from "../ui/overlay-layout";
 import { BASEMAP_STACK, framedViewport, tilesFor, tileUrl, type BasemapChoice } from "../ui/map-projection";
+import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
 import { mapKeyOf, type PlannedSlide } from "./report-plan";
 import type { MapImages } from "./render-pptx";
 
@@ -19,7 +20,7 @@ const VIEW_H = 540;
 const OUT_W = 1920;
 const OUT_H = 1080;
 const PX_PER_INCH = VIEW_W / SLIDE.w;
-type Extra = Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill">;
+type Extra = Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "scale">;
 const TILE_TIMEOUT_MS = 8000;
 
 const blobToDataUrl = (b: Blob) =>
@@ -118,6 +119,12 @@ export async function rasterizeMap(model: MapModel, tileCache: Map<string, strin
 /** 슬라이드마다 다른 오버레이 자리를 피하게 한다 (표지·출처는 지도 가운데, 타일은 오른쪽 정보 판을 뺀 영역) */
 function extraFor(p: PlannedSlide, model: MapModel): Extra {
   if (p.kind !== "tile") return { avoid: slideReserved(PX_PER_INCH, { info: false }) };
+  // 설명표 장: 두 칸 사이에 반경 원을 넣는 프레임 (렌더러가 점·표를 같은 프레임으로 놓는다)
+  if (p.callout && p.callout.page > 0) {
+    const f = slideCalloutFrame(4);
+    return { siteX: f.siteX, fill: f.fill, avoid: [], scale: false };
+  }
+  if (p.callout) return { siteX: slideSiteX(), fill: SLIDE_OVERVIEW_FILL, avoid: slideReserved(PX_PER_INCH, { legend: slideLegend(model).rect }) };
   return { muted: p.muted, siteX: slideSiteX(), avoid: slideReserved(PX_PER_INCH, { legend: slideLegend(model).rect }) };
 }
 

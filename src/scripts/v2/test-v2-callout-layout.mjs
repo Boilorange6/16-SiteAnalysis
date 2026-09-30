@@ -26,7 +26,7 @@ const feat = (o) => ({ layer: "apt", lng: 127, lat: 37, ...o });
   assert.equal(C.dotRadius(1000, 1000, 8, 15), 15);
   assert.equal(C.dotRadius(250, 1000, 8, 16), 12, "√(1/4)=1/2");
   assert.equal(C.dotRadius(null, 1000, 8, 15), 8);
-  assert.equal(C.inkOn("#5b2a12"), "#fff");
+  assert.equal(C.inkOn("#5b2a12"), "#ffffff");
   assert.equal(C.inkOn("#f7d76a"), "#16181d");
 }
 

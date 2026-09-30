@@ -1,6 +1,7 @@
 "use client";
 
 import { useContext, useEffect, useRef, useState } from "react";
+import { CALLOUT_MODES, calloutReportPages, type CalloutMode } from "@/lib/v2/ui/callout-layout";
 import { detailSiteX, OV } from "@/lib/v2/ui/overlay-layout";
 import { faceLabel, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
 import { BadgeList, FaceSelect, Headline, RowList, SourceStrip, Stage, StatusPlate, TitleChip } from "./tile-card";
@@ -13,6 +14,8 @@ type Props = {
   face: OutputFace;
   onInclude: (v: boolean) => void;
   onFace: (f: OutputFace) => void;
+  calloutMode: CalloutMode;
+  onCalloutMode: (m: CalloutMode) => void;
   onClose: () => void;
 };
 
@@ -20,7 +23,7 @@ const PANEL_W = 360;
 const insetOf = (w: number) => (w <= 720 ? 0 : PANEL_W + 2 * OV.edge);
 
 /** 펼침: 화면 거의 전체가 지도. 오른쪽에 떠 있는 정보 판. Esc로 닫고, 닫으면 열기 전 초점으로 돌아간다. */
-export default function TileDialog({ view, included, face, onInclude, onFace, onClose }: Props) {
+export default function TileDialog({ view, included, face, onInclude, onFace, calloutMode, onCalloutMode, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [back, setBack] = useState(false);
   const [more, setMore] = useState(false); // 모바일 시트 확장
@@ -110,6 +113,17 @@ export default function TileDialog({ view, included, face, onInclude, onFace, on
             <strong>보고서 {view.title}</strong>
             {view.hasFace && <div className={styles.sub}>출력 면: {faceLabel(face)}</div>}
             {view.hasFace && <FaceSelect view={view} value={face} onChange={onFace} />}
+            {view.callout && (
+              <div className={styles.seg} role="group" aria-label="보고서 설명표 페이지 수">
+                설명표 장
+                {CALLOUT_MODES.map((m) => (
+                  <button key={m.id} type="button" aria-pressed={calloutMode === m.id} onClick={() => onCalloutMode(m.id)}>
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {view.callout && <div className={styles.sub}>보고서 {calloutReportPages(calloutMode, view.callout.complexes.length)}장 (개요 포함)</div>}
             <label className={styles.check}>
               <input type="checkbox" checked={included} onChange={(e) => onInclude(e.target.checked)} aria-label={`${view.title} 보고서 포함`} />
               포함

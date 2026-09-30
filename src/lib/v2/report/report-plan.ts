@@ -3,8 +3,9 @@
  * 슬라이드 수는 board-state의 reportPages(board).pages(표지+타일+출처)와 항상 같다.
  */
 import type { BoardState } from "../ui/board-state";
+import { calloutReportPages, DEFAULT_CALLOUT_MODE, pageCount } from "../ui/callout-layout";
 import type { MapModel } from "../ui/map-layers";
-import type { SummaryView, TileView } from "../ui/tile-view";
+import type { CalloutModel, SummaryView, TileView } from "../ui/tile-view";
 import { FACE_TEXT } from "../ui/tile-view";
 
 export type TileSlideBody =
@@ -31,6 +32,8 @@ export type ReportSlide =
       map: MapModel | null;
       /** true면 지도를 흐리게 (상태 화면) */
       muted: boolean;
+      /** 주변 단지 설명선 장: page 0 = 개요, 1.. = 설명표 (지도 이미지는 단지 없이, 점·지시선·표는 pptx 도형) */
+      callout?: { model: CalloutModel; page: number; pages: number };
     }
   | { kind: "sources"; rows: { source: string; asOf: string; tiles: string }[]; /** 배경(흐린 대지 지도) */ map: MapModel | null };
 
@@ -38,7 +41,8 @@ export type PlannedSlide = ReportSlide & { no: number; total: number; footer: st
 
 /** 지도 이미지 키: 표지는 "cover", 타일 장은 tileId */
 export const COVER_MAP_KEY = "cover";
-export const mapKeyOf = (p: PlannedSlide): string | null => (p.kind === "tile" ? (p.map ? p.view.tileId : null) : p.map ? COVER_MAP_KEY : null);
+export const mapKeyOf = (p: PlannedSlide): string | null =>
+  p.kind === "tile" ? (p.map ? (p.callout && p.callout.page > 0 ? `${p.view.tileId}:cp` : p.view.tileId) : null) : p.map ? COVER_MAP_KEY : null;
 
 const STATE_MESSAGE: Record<string, string> = {
   failed: "계산 실패 — 보고서에는 결과 없이 표시합니다",
@@ -46,6 +50,10 @@ const STATE_MESSAGE: Record<string, string> = {
   not_provided: "이 단계에서는 제공하지 않습니다 — 다음 단계에서 제공 예정",
   cancelled: "취소됨 — 보고서에는 결과 없이 표시합니다",
 };
+
+/** 설명선 타일의 단지 수 (board-state.reportPages에 넘겨 장수를 계획과 맞춘다) */
+export const complexCounts = (views: Map<string, TileView>): Record<string, number> =>
+  Object.fromEntries([...views].filter(([, v]) => v.callout).map(([id, v]) => [id, v.callout!.complexes.length]));
 
 const hasResult = (v: TileView) => v.status === "complete" || v.status === "partial";
 
@@ -93,6 +101,24 @@ export function buildReportPlan(input: {
   });
 
   for (const v of tiles) {
+    if (v.callout && hasResult(v)) {
+      // 설명선 타일: 개요 1장 + 설명표 장 (설정: 개요만 / 상위 10 / 전체). 장수는 board-state.reportPages와 같은 함수
+      const cm = v.callout;
+      const count = calloutReportPages(board.callout[v.tileId] ?? DEFAULT_CALLOUT_MODE, cm.complexes.length);
+      for (let page = 0; page < count; page++) {
+        raw.push({
+          kind: "tile",
+          view: v,
+          body: { kind: "result", face: "single" },
+          faceLabel: null,
+          map: v.backdrop,
+          muted: false,
+          callout: { model: cm, page, pages: pageCount(cm.complexes.length) },
+          footer: v.sourceLine === "출처 없음" ? "출처 없음 · 기준일 해당 없음" : `출처 ${v.sourceLine}`,
+        });
+      }
+      continue;
+    }
     const faces: ("single" | "front" | "back")[] = !v.hasFace ? ["single"] : board.faces[v.tileId] === "both" ? ["front", "back"] : [board.faces[v.tileId] === "back" ? "back" : "front"];
     for (const face of faces) {
       const message = STATE_MESSAGE[v.status];

@@ -8,6 +8,7 @@
  */
 import type { MapFeature } from "../tile-result";
 import { layerStyle } from "./map-layers";
+import { SLIDE } from "./overlay-layout";
 
 export type Complex = {
   id: string;
@@ -79,10 +80,10 @@ export function dotRadius(households: number | null, maxHouseholds: number, rMin
 }
 
 /** 색 위 글자색: 밝은 색이면 어두운 글자 */
-export function inkOn(hex: string): "#fff" | "#16181d" {
+export function inkOn(hex: string): "#ffffff" | "#16181d" {
   const n = parseInt(hex.replace("#", ""), 16);
   const lum = (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
-  return lum > 0.6 ? "#16181d" : "#fff";
+  return lum > 0.6 ? "#16181d" : "#ffffff";
 }
 
 // ── 카드 행 ──
@@ -179,6 +180,8 @@ export type FrameSpec = {
   perSide: number;
   rows: number;
   variant: "full" | "compact";
+  /** 반경 원 지름 / 높이의 상한 (기본 0.8) */
+  maxFill?: number;
 };
 
 export function calloutFrame(s: FrameSpec): CalloutFrame {
@@ -191,12 +194,25 @@ export function calloutFrame(s: FrameSpec): CalloutFrame {
   const pad = m.stub * 0.6;
   const lo = left.x1 + m.stub + pad;
   const hi = right.x0 - m.stub - pad;
-  const diameter = Math.max(m.rMax * 4, Math.min(0.8 * H, hi - lo));
+  const diameter = Math.max(m.rMax * 4, Math.min((s.maxFill ?? 0.8) * H, hi - lo));
   const centerX = (left.x1 + right.x0) / 2;
   return { W, H, left, right, cardW, cardH, variant: s.variant, rows: s.rows, perSide: s.perSide, m, centerX, siteX: centerX / W, diameter, fill: diameter / H };
 }
 
-export type LayoutPoint = { id: string; x: number; y: number };
+/** 슬라이드(16:9, inch) 설명표 장의 프레임: 위는 제목 판 아래, 아래는 출처 띠 위. 행이 5개면 행 높이를 줄여 5장이 들어가게 한다 */
+export function slideCalloutFrame(rows: number): CalloutFrame {
+  const bottom = SLIDE.h - SLIDE.stripH - 0.14;
+  const top = SLIDE.edge + 0.66 + 0.14;
+  const avail = (bottom - top - 4 * INCH.gap) / 5;
+  const m: Metrics = { ...INCH, row: Math.min(INCH.row, (avail - INCH.head - INCH.pad) / rows) };
+  // 원이 아래 범례 판 위에서 끝나도록 살짝 줄인다
+  return calloutFrame({ W: SLIDE.w, H: SLIDE.h, m, edge: SLIDE.edge, top, bottom, perSide: 5, rows, variant: "full", maxFill: 0.76 });
+}
+
+/** 개요 장의 반경 원 크기 (왼쪽 아래 범례 판 위에서 끝난다) */
+export const SLIDE_OVERVIEW_FILL = 0.72;
+
+export type LayoutPoint ={ id: string; x: number; y: number };
 export type Placed = {
   id: string;
   side: "L" | "R";
@@ -209,7 +225,7 @@ export type Placed = {
 };
 
 export const capacityOf = (col: Column, f: Pick<CalloutFrame, "cardH" | "perSide" | "m">) =>
-  Math.max(0, Math.min(f.perSide, Math.floor((col.bottom - col.top + f.m.gap) / (f.cardH + f.m.gap))));
+  Math.max(0, Math.min(f.perSide, Math.floor((col.bottom - col.top + f.m.gap) / (f.cardH + f.m.gap) + 1e-6)));
 
 /** 위→아래 카드 자리(왼쪽 위 y). 바람직한 자리에서 겹치면 무리 지어 평균 위치로 옮기고(최소 간격 유지), 칸 밖은 안으로 민다 */
 export function stackTops(centers: number[], cardH: number, gap: number, top: number, bottom: number): number[] {
