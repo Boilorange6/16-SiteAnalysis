@@ -24,7 +24,9 @@ import { a10 } from "./tiles/a10";
 import { a11 } from "./tiles/a11";
 import { a12 } from "./tiles/a12";
 import { ENGINE_VERSION, makeTile } from "./tiles/common";
+import { d04 } from "./tiles/d04";
 import { notProvided } from "./tiles/not-provided";
+import { s02 } from "./tiles/s02";
 
 export const RADIUS_CHOICES = [500, 800, 1000, 2000, 3000] as const;
 export const DEFAULT_RADIUS_M = 800;
@@ -53,8 +55,8 @@ const TILES: Array<[code: string, compute: (ctx: EngineContext) => TileResult]> 
   ["A10", a10],
   ["A11", a11],
   ["A12", a12],
-  ["D04", (c) => notProvided(c, "D04")],
-  ["S02", (c) => notProvided(c, "S02")],
+  ["D04", d04],
+  ["S02", s02],
   ["S03", (c) => notProvided(c, "S03")],
 ];
 
