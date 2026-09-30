@@ -146,8 +146,13 @@ export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, inpu
       saveTileResult(appDb, tile, key);
       results.push(tile);
     }
-    const scene = buildScene(ctx);
-    if (scene) saveScene(appDb, scene);
+    // 장면은 내보내기용 부가 산출물 — 실패해도 분석 결과는 살린다
+    try {
+      const scene = buildScene(ctx);
+      if (scene) saveScene(appDb, scene);
+    } catch (e) {
+      console.warn(`scene build failed for ${analysisId}: ${(e as Error).message}`);
+    }
     finishAnalysisRun(appDb, analysisId, "complete");
     return { ok: true, analysisId, summary: buildSummary({ address: site.label, jimok: site.jimok }, input.radiusM, results), results, computed, reused };
   } catch (error) {
