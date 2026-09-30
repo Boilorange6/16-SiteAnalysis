@@ -39,6 +39,8 @@ export class EngineContext {
   readonly input: EngineInput;
   private readonly handles = new Map<FileKey, BetterSqlite3.Database>();
   private readonly refs = new Map<FileKey, SourceRef[]>();
+  private readonly hitCache = new Map<string, FeatureHit[]>();
+  private readonly memoCache = new Map<string, unknown>();
   private areas: ReturnType<typeof legalAreasForCircle> | null = null;
 
   constructor(
@@ -75,9 +77,22 @@ export class EngineContext {
     return db;
   }
 
+  /** 한 분석에서 여러 타일이 공유하는 계산을 한 번만 실행한다. null도 캐시한다. */
+  memo<T>(key: string, compute: () => T): T {
+    if (this.memoCache.has(key)) return this.memoCache.get(key) as T;
+    const value = compute();
+    this.memoCache.set(key, value);
+    return value;
+  }
+
   hits(key: FileKey, kinds: readonly string[], radiusM = this.input.radiusM): FeatureHit[] {
+    const cacheKey = JSON.stringify([key, [...kinds].sort(), radiusM]);
+    const cached = this.hitCache.get(cacheKey);
+    if (cached) return cached;
     const db = this.db(key);
-    return db ? queryFeaturesInRadius(db, this.input.center, radiusM, kinds) : [];
+    const hits = db ? queryFeaturesInRadius(db, this.input.center, radiusM, kinds) : [];
+    this.hitCache.set(cacheKey, hits);
+    return hits;
   }
 
   private allRefs(key: FileKey): SourceRef[] {
@@ -155,5 +170,7 @@ export class EngineContext {
   close(): void {
     for (const db of this.handles.values()) db.close();
     this.handles.clear();
+    this.hitCache.clear();
+    this.memoCache.clear();
   }
 }

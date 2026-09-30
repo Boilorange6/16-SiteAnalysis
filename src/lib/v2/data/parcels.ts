@@ -25,3 +25,17 @@ export function lookupParcelPoint(db: Db, pnu: string): LngLat | null {
   const row = stmt.get(pnu) as { lng: number; lat: number } | undefined;
   return row ? [row.lng, row.lat] : null;
 }
+
+/** 여러 PNU의 대표점을 한 번에 읽는다. SQLite 변수 상한을 피하려고 500개씩 나눈다. */
+export function lookupParcelPoints(db: Db, pnus: readonly string[]): Map<string, LngLat> {
+  const out = new Map<string, LngLat>();
+  const unique = [...new Set(pnus.filter((pnu) => pnu !== ""))];
+  for (let offset = 0; offset < unique.length; offset += 500) {
+    const batch = unique.slice(offset, offset + 500);
+    const rows = db
+      .prepare(`SELECT pnu, lng, lat FROM parcel_point WHERE pnu IN (${batch.map(() => "?").join(",")})`)
+      .all(...batch) as Array<{ pnu: string; lng: number; lat: number }>;
+    for (const row of rows) out.set(row.pnu, [row.lng, row.lat]);
+  }
+  return out;
+}

@@ -26,7 +26,7 @@ export interface ZoningCollection {
 }
 
 /** 현재 A12 용도지역 본문을 D08에서도 그대로 사용하도록 한 곳에서 집계한다. */
-export function collectZoning(ctx: EngineContext): ZoningCollection | null {
+function collectZoningUncached(ctx: EngineContext): ZoningCollection | null {
   const sources = ctx.sources("reference", ZONING_LAYERS);
   if (sources.length === 0) return null;
 
@@ -86,4 +86,8 @@ export function collectZoning(ctx: EngineContext): ZoningCollection | null {
     siteNames,
     fine,
   };
+}
+
+export function collectZoning(ctx: EngineContext): ZoningCollection | null {
+  return ctx.memo("zoning:circle:v1", () => collectZoningUncached(ctx));
 }

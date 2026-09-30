@@ -21,7 +21,7 @@ function kaptHouseholds(ctx: EngineContext, complexes: FeatureHit[]): Map<string
   for (let i = 0; i < ids.length; i += 500) {
     const chunk = ids.slice(i, i + 500);
     const rows = db
-      .prepare(`SELECT l.to_stable_id AS id, f.properties_json AS props FROM feature_link l JOIN feature f ON f.stable_id = l.from_stable_id
+      .prepare(`SELECT l.to_stable_id AS id, f.properties_json AS props FROM feature_link l CROSS JOIN feature f ON f.stable_id = l.from_stable_id
         WHERE l.relation_type = 'same_parcel' AND f.kind = 'kapt_complex' AND l.to_stable_id IN (${chunk.map(() => "?").join(",")}) ORDER BY f.stable_id`)
       .all(...chunk) as Array<{ id: string; props: string }>;
     for (const r of rows) {
