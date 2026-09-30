@@ -1,14 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useReducer, useState } from "react";
+import { Fragment, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import SummaryCard from "@/components/v2/summary-card";
 import TileCard from "@/components/v2/tile-card";
 import TileDialog from "@/components/v2/tile-dialog";
+import { useTileDrag } from "@/components/v2/use-tile-drag";
 import styles from "@/components/v2/board.module.css";
 import { boardReducer, demoFinished, demoPhase, initBoard, reportPages } from "@/lib/v2/ui/board-state";
 import { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } from "@/lib/v2/ui/fixtures/godeok";
 import { toSummaryView, toTileView } from "@/lib/v2/ui/tile-view";
 import type { TileResult } from "@/lib/v2/tile-result";
+
+const UNDO_LABEL = { order: "옮김", size: "크기 바꿈", remove: "삭제됨", add: "더함" } as const;
 
 /** 예시 결과로 동작하는 타일 보드. P1b 결과로 바꿀 때는 results만 교체하면 된다. */
 export default function V2BoardPage() {
@@ -18,6 +21,12 @@ export default function V2BoardPage() {
   const [editing, setEditing] = useState(false);
   const [demoStep, setDemoStep] = useState<number | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [note, setNote] = useState(""); // 스크린리더 안내(aria-live)
+  const gridRef = useRef<HTMLDivElement>(null);
+  const { drag, order: shown, start, floatStyle } = useTileDrag(board.order, gridRef, (id, from, to) => {
+    dispatch({ type: "reorder", from, to });
+    setNote(`${views.get(id)?.title} 타일을 ${to + 1}번째로 옮김`);
+  });
 
   const views = useMemo(() => new Map(results.map((r) => [r.tileId, toTileView(r)])), [results]);
   const summary = useMemo(() => toSummaryView(GODEOK_SUMMARY, results), [results]);
@@ -39,7 +48,7 @@ export default function V2BoardPage() {
     dispatch({ type: "include", id, value: true });
   };
 
-  const lastRemoved = board.removed[board.removed.length - 1];
+  const lastUndo = board.undoStack[board.undoStack.length - 1];
   const openView = openId ? views.get(openId) : undefined;
 
   return (
@@ -86,35 +95,88 @@ export default function V2BoardPage() {
           )}
         </header>
 
-        <div className={styles.grid}>
+        <div className={styles.grid} ref={gridRef}>
           <SummaryCard view={summary} />
-          {board.order.map((id, i) => {
+          {shown.map((id, i) => {
             const view = views.get(id)!;
+            const size = board.sizes[id];
+            const oi = board.order.indexOf(id);
+            const dragged = drag?.id === id;
             return (
-              <TileCard
-                key={id}
-                view={view}
-                phase={demoOn ? demoPhase(i, demoStep!) : null}
-                included={!!board.included[id]}
-                face={board.faces[id]}
-                editing={editing}
-                canUp={i > 0}
-                canDown={i < total - 1}
-                onOpen={() => setOpenId(id)}
-                onInclude={(value) => dispatch({ type: "include", id, value })}
-                onFace={(face) => dispatch({ type: "face", id, face })}
-                onRemove={() => dispatch({ type: "remove", id })}
-                onMove={(dir) => dispatch({ type: "move", id, dir })}
-                onRetry={() => retry(id, view.code)}
-              />
+              <Fragment key={id}>
+                {dragged && (
+                  <div key="ph" className={`${styles.placeholder} ${size === 2 ? styles.span2 : ""}`} data-placeholder>
+                    여기에 놓기
+                  </div>
+                )}
+                <TileCard
+                  key="card"
+                  view={view}
+                  phase={demoOn ? demoPhase(i, demoStep!) : null}
+                  included={!!board.included[id]}
+                  face={board.faces[id]}
+                  editing={editing}
+                  canUp={oi > 0}
+                  canDown={oi < total - 1}
+                  size={size}
+                  dragging={dragged}
+                  floatStyle={floatStyle(id)}
+                  onHandleDown={start(id)}
+                  onResize={(s) => {
+                    dispatch({ type: "resize", id, size: s });
+                    setNote(`${view.title} 타일을 ${s}칸으로 바꿈`);
+                  }}
+                  onOpen={() => setOpenId(id)}
+                  onInclude={(value) => dispatch({ type: "include", id, value })}
+                  onFace={(face) => dispatch({ type: "face", id, face })}
+                  onRemove={() => {
+                    dispatch({ type: "remove", id });
+                    setNote(`${view.title} 타일을 뺌`);
+                  }}
+                  onMove={(dir) => {
+                    dispatch({ type: "move", id, dir });
+                    setNote(`${view.title} 타일을 ${oi + dir + 1}번째로 옮김`);
+                  }}
+                  onRetry={() => retry(id, view.code)}
+                />
+              </Fragment>
             );
           })}
         </div>
       </div>
 
-      {editing && lastRemoved && (
-        <div className={styles.toast} role="status">
-          삭제됨 · {views.get(lastRemoved.id)?.title}
+      <div className={styles.srOnly} aria-live="polite">
+        {note}
+      </div>
+
+      {editing && (
+        <div className={styles.tray} role="region" aria-label="더할 수 있는 타일">
+          <span className={styles.trayLabel}>더할 수 있는 타일</span>
+          {board.removed.length === 0 && <span className={styles.trayLabel}>없음</span>}
+          {board.removed.map((r) => {
+            const v = views.get(r.id)!;
+            return (
+              <button
+                key={r.id}
+                type="button"
+                className={styles.trayBtn}
+                onClick={() => {
+                  dispatch({ type: "add", id: r.id });
+                  setNote(`${v.title} 타일을 끝에 더함`);
+                }}
+                aria-label={`${v.title} 더하기`}
+              >
+                <span className={styles.dot} style={{ background: v.color }} />
+                {v.title} +
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {editing && lastUndo && (
+        <div className={styles.toast} role="status" style={{ bottom: 76 }}>
+          {UNDO_LABEL[lastUndo.kind]} · {views.get(lastUndo.id)?.title}
           <button type="button" onClick={() => dispatch({ type: "undo" })}>
             되돌리기
           </button>

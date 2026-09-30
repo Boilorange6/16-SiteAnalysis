@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import type { DemoPhase } from "@/lib/v2/ui/board-state";
+import { useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import type { DemoPhase, TileSize } from "@/lib/v2/ui/board-state";
 import { faceLabel, type Badge, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
 import styles from "./board.module.css";
 
@@ -101,6 +101,11 @@ export type TileCardProps = {
   editing: boolean;
   canUp: boolean;
   canDown: boolean;
+  size: TileSize;
+  dragging: boolean;
+  floatStyle?: CSSProperties;
+  onHandleDown: (e: ReactPointerEvent<HTMLElement>) => void;
+  onResize: (size: TileSize) => void;
   onOpen: () => void;
   onInclude: (v: boolean) => void;
   onFace: (f: OutputFace) => void;
@@ -114,14 +119,19 @@ export default function TileCard(p: TileCardProps) {
   const [back, setBack] = useState(false);
   const waiting = phase === "pending" || phase === "running";
   const noResult = !waiting && view.headline === null;
-  const cls = [styles.tile, p.editing && styles.tileEdit, noResult && view.status !== "failed" && styles.tileEmpty, !waiting && view.status === "failed" && styles.tileFail]
+  const cls = [styles.tile, p.size === 2 && styles.span2, p.editing && styles.tileEdit, p.dragging && styles.tileDrag, noResult && view.status !== "failed" && styles.tileEmpty, !waiting && view.status === "failed" && styles.tileFail]
     .filter(Boolean)
     .join(" ");
   const rows = view.headline ? view.rows.filter((r) => r.label !== view.headline!.label).slice(0, 2) : [];
 
   return (
-    <article className={cls} aria-label={view.title} data-tile={view.code}>
+    <article className={cls} aria-label={view.title} data-tile={view.code} data-tile-id={view.tileId} style={p.floatStyle}>
       <div className={styles.tileHead}>
+        {p.editing && (
+          <span className={styles.handle} data-handle onPointerDown={p.onHandleDown} title="끌어서 옮기기 (키보드는 위로·아래로 버튼)" aria-hidden>
+            ⠿
+          </span>
+        )}
         <span className={styles.dot} style={{ background: view.color }} />
         <h3 className={styles.title}>{view.title}</h3>
         {phase === "running" && <span className={styles.spinner} role="status" aria-label={`${view.title} 계산 중`} />}
@@ -141,6 +151,13 @@ export default function TileCard(p: TileCardProps) {
           <button type="button" className={styles.iconBtn} onClick={() => p.onMove(1)} disabled={!p.canDown} aria-label={`${view.title} 아래로 이동`}>
             아래로
           </button>
+          <span className={styles.seg} role="group" aria-label={`${view.title} 크기`}>
+            {([1, 2] as const).map((n) => (
+              <button key={n} type="button" aria-pressed={p.size === n} onClick={() => p.onResize(n)} aria-label={`${view.title} ${n}칸`}>
+                {n}칸
+              </button>
+            ))}
+          </span>
           <button type="button" className={styles.iconBtn} onClick={p.onRemove} aria-label={`${view.title} 제거`}>
             ×
           </button>
