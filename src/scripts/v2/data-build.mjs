@@ -220,6 +220,35 @@ if (builders.reference) {
     return [...(await base(db, ctx)), school, ...zones];
   };
 }
+// 용도지역(VWorld dsId 24, 레이어별 전국 SHP): 필지 점과 갱신 주기가 달라 core가 아니라 reference에 둔다.
+const { buildZoning, zoningLayerFiles, ZONING_LAYERS, ZONING_RIGHTS } = await import("../../lib/v2/ingest/sources/zoning.ts");
+if (builders.reference && existsSync(join(raw, "zoning"))) {
+  const base = builders.reference;
+  builders.reference = async (db, ctx) => {
+    const built = await base(db, ctx);
+    extractAll(join(raw, "zoning"));
+    const found = zoningLayerFiles([...walk(join(raw, "zoning"))]);
+    const missing = ZONING_LAYERS.filter((l) => !found.has(l.key)).map((l) => l.title);
+    if (missing.length > 0) throw new Error(`용도지역 레이어 없음: ${missing.join(", ")} — vworld:fetch -- --ds 24 로 받으세요`);
+    const layers = ZONING_LAYERS.map((l) => {
+      const set = found.get(l.key);
+      const st = statSync(set.files[0]);
+      const d = set.date;
+      const releaseId = insertRelease(db, {
+        sourceId: l.sourceId,
+        provider: "국토교통부(VWorld 일별용도지역지구정보)",
+        sourceUrl: "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=24",
+        sourceAsOf: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`,
+        fetchedAt: st.mtime.toISOString(),
+        checksum: `size-mtime:${st.size}-${Math.round(st.mtimeMs)}`,
+        licenseCode: "UNRESTRICTED",
+        rights: { ...ZONING_RIGHTS, layer: l.title },
+      });
+      return { layer: l.key, releaseId, records: chain(...set.files.map((f) => readShp(f))) };
+    });
+    return [...built, ...(await buildZoning(db, layers))];
+  };
+}
 if (builders.core) {
   const base = builders.core;
   builders.core = async (db, ctx) => {

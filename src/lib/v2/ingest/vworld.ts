@@ -64,6 +64,27 @@ export function latestFull(files: VworldFile[]): VworldFile[] {
   return full.filter((f) => f.baseDate === latest);
 }
 
+/** 레이어(제목·지역)마다 가장 최근 기준일의 전체데이터. dsId 24처럼 레이어마다 갱신일이 다른 데이터셋용 */
+export function latestFullPerLayer(files: VworldFile[]): VworldFile[] {
+  const best = new Map<string, VworldFile>();
+  for (const f of files) {
+    if (f.kind !== "전체데이터") continue;
+    const k = `${f.title}|${f.region}`;
+    const cur = best.get(k);
+    if (!cur || f.baseDate > cur.baseDate) best.set(k, f);
+  }
+  return [...best.values()];
+}
+
+/** 원천 zip 파일명. 전국 단일 파일 데이터셋(dsId 24)은 지역이 모두 "전국"이라 제목으로 구분한다. */
+export const rawZipName = (f: VworldFile): string => (f.dsId === "24" ? `${f.title.replace(/\//g, "_")}.zip` : `${f.region}.zip`);
+
+export interface ListOptions {
+  /** 이 기준일(YYYY-MM-DD)보다 오래된 쪽에서 목록 넘기기를 멈춘다(목록은 최신순). 60,000건짜리 dsId 24용 */
+  since?: string;
+  titlePrefix?: string;
+}
+
 export interface VworldSessionOptions {
   base?: string;
   /** 요청 사이 간격. 기본 2000 ms */
@@ -127,7 +148,7 @@ export class VworldSession {
     throw new VworldError("LOGIN_FAILED", `login ${result || "unknown"}: ${msg}`);
   }
 
-  async listFiles(dsId: string): Promise<VworldFile[]> {
+  async listFiles(dsId: string, opts: ListOptions = {}): Promise<VworldFile[]> {
     const all: VworldFile[] = [];
     for (let page = 1; page <= 200; page++) {
       await this.pause();
@@ -135,8 +156,8 @@ export class VworldSession {
       const res = await this.request(`/dtmk/dtmk_ntads_s002.do?${q}`);
       if (!res.ok) throw new VworldError("HTTP", `list ${dsId} page ${page}: HTTP ${res.status}`);
       const items = parseFileList(await res.text(), dsId);
-      all.push(...items);
-      if (items.length < 100) return all;
+      all.push(...items.filter((f) => !opts.titlePrefix || f.title.startsWith(opts.titlePrefix)));
+      if (items.length < 100 || (opts.since && items.every((f) => f.baseDate < opts.since!))) return all;
     }
     throw new VworldError("HTTP", `list ${dsId}: more than 200 pages`);
   }
@@ -182,6 +203,8 @@ export interface FetchDatasetsOptions {
   regions: Set<string> | null;
   outDir: string;
   folders: Record<string, string>;
+  /** 지정하면 목록을 이 조건으로 좁히고(dsId 24), 레이어마다 최신 전체데이터를 받는다 */
+  layers?: { since: string; titles: Set<string> };
   log?: (line: string) => void;
 }
 
@@ -193,11 +216,13 @@ export async function fetchDatasets(session: VworldSession, opts: FetchDatasetsO
   for (const ds of opts.dsIds) {
     let files: VworldFile[];
     try {
-      files = latestFull(await session.listFiles(ds)).filter((f) => !opts.regions || opts.regions.has(f.region));
+      const layers = opts.layers;
+      files = (layers ? latestFullPerLayer(await session.listFiles(ds, { since: layers.since })).filter((f) => layers.titles.has(f.title)) : latestFull(await session.listFiles(ds))).filter((f) => !opts.regions || opts.regions.has(f.region));
     } catch (e) {
       out.failures.push(`${ds}: ${msg(e)}`);
       continue;
     }
+    for (const t of opts.layers?.titles ?? []) if (!files.some((f) => f.title === t)) out.failures.push(`${ds}: layer ${t} not found since ${opts.layers!.since}`);
     if (files.length === 0) {
       out.failures.push(`${ds}: no files${opts.regions ? " for " + [...opts.regions].join(",") : ""}`);
       continue;
@@ -205,7 +230,7 @@ export async function fetchDatasets(session: VworldSession, opts: FetchDatasetsO
     log(`ds ${ds}: ${files.length} files (기준일 ${files[0].baseDate})`);
     for (const f of files) {
       try {
-        const r = await session.download(f, join(opts.outDir, opts.folders[ds], f.baseDate, `${f.region}.zip`));
+        const r = await session.download(f, join(opts.outDir, opts.folders[ds], f.baseDate, rawZipName(f)));
         if (r.skipped) out.skipped++;
         else out.downloaded++;
         log(`  ${r.skipped ? "skip" : "got "} ${f.region} ${(r.bytes / 1024 ** 2).toFixed(1)} MB`);
