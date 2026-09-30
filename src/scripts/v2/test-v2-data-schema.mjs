@@ -80,4 +80,32 @@ function seedRelease(db) {
   );
 }
 
+// ─── 6. 스키마 v2: 필지 대표점·법정구역 이름표·적재 스냅샷 ───────────────────
+{
+  assert.equal(DATA_SCHEMA_VERSION, 2);
+  for (const kind of DATA_FILE_KINDS) {
+    const db = new Database(":memory:");
+    initDataFileSchema(db, kind);
+    const t = tables(db);
+    assert.equal(t.has("parcel_point"), kind === "core", `${kind}: parcel_point`);
+    assert.equal(t.has("legal_area"), kind === "core", `${kind}: legal_area`);
+    const cols = db.prepare("PRAGMA table_info(ingest_run)").all().map((c) => c.name);
+    assert.ok(cols.includes("snapshot_json"), `${kind}: ingest_run.snapshot_json`);
+  }
+  const db = new Database(":memory:");
+  initDataFileSchema(db, "core");
+  seedRelease(db);
+  db.prepare("INSERT INTO parcel_point (pnu, lng, lat, jimok, release_id) VALUES ('1168010100100010000', 127.05, 37.48, '대', 'r1')").run();
+  assert.equal(db.prepare("SELECT typeof(pnu) t FROM parcel_point").get().t, "text");
+  assert.throws(() => db.prepare("INSERT INTO legal_area (code, level, name, parent_code, release_id) VALUES ('11680','dong','x',null,'r1')").run(), /CHECK/);
+}
+
+// ─── 7. 버전이 다른 파일은 초기화하지 않고 거부 ─────────────────────────────
+{
+  const db = new Database(":memory:");
+  initDataFileSchema(db, "core");
+  db.prepare("UPDATE data_file_meta SET value = '1' WHERE key = 'schema_version'").run();
+  assert.throws(() => initDataFileSchema(db, "core"), /schema version 1 != 2/);
+}
+
 console.log("✓ v2 data schema");

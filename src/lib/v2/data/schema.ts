@@ -11,7 +11,7 @@ type Db = BetterSqlite3.Database;
 
 export type DataFileKind = "core" | "reference" | "market" | "osm";
 export const DATA_FILE_KINDS: readonly DataFileKind[] = ["core", "reference", "market", "osm"];
-export const DATA_SCHEMA_VERSION = 1;
+export const DATA_SCHEMA_VERSION = 2;
 export const VALUE_STATUSES = ["observed", "estimated", "suppressed", "missing", "not_applicable"] as const;
 
 const statusList = VALUE_STATUSES.map((s) => `'${s}'`).join(",");
@@ -49,7 +49,8 @@ const COMMON_SQL = `
     accepted_count INTEGER NOT NULL DEFAULT 0,
     rejected_count INTEGER NOT NULL DEFAULT 0,
     error_code TEXT,
-    release_id TEXT REFERENCES source_release(release_id)
+    release_id TEXT REFERENCES source_release(release_id),
+    snapshot_json TEXT
   );
 
   CREATE TABLE IF NOT EXISTS feature (
@@ -110,6 +111,23 @@ const CORE_SQL = `
     footprint_area_m2 REAL,
     field_provenance_json TEXT NOT NULL DEFAULT '{}'
   );
+
+  CREATE TABLE IF NOT EXISTS parcel_point (
+    pnu TEXT PRIMARY KEY,
+    lng REAL NOT NULL,
+    lat REAL NOT NULL,
+    jimok TEXT,
+    release_id TEXT NOT NULL REFERENCES source_release(release_id)
+  ) WITHOUT ROWID;
+
+  CREATE TABLE IF NOT EXISTS legal_area (
+    code TEXT PRIMARY KEY,
+    level TEXT NOT NULL CHECK (level IN ('sigungu','emd','ri')),
+    name TEXT NOT NULL,
+    parent_code TEXT,
+    release_id TEXT NOT NULL REFERENCES source_release(release_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_legal_area_parent ON legal_area (parent_code, level);
 `;
 
 const MARKET_SQL = `
@@ -155,6 +173,12 @@ export function initDataFileSchema(db: Db, kind: DataFileKind): void {
     : undefined;
   if (existing !== undefined && existing !== kind) {
     throw new Error(`data file already initialized as ${existing}`);
+  }
+  if (existing !== undefined) {
+    const stored = db.prepare("SELECT value FROM data_file_meta WHERE key='schema_version'").pluck().get() as string | undefined;
+    if (stored !== undefined && Number(stored) !== DATA_SCHEMA_VERSION) {
+      throw new Error(`data file schema version ${stored} != ${DATA_SCHEMA_VERSION}; rebuild the data file`);
+    }
   }
   db.exec(COMMON_SQL);
   if (kind === "core") db.exec(CORE_SQL);

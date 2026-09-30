@@ -9,13 +9,13 @@ import proj4 from "proj4";
 import { toUtmk, UTMK, type LngLat } from "../crs";
 import type { ReviewSite } from "./review-sites";
 
-const EUC_KR_ALIASES = new Set(["euc-kr", "euckr", "cp949", "ms949", "x-windows-949", "ks_c_5601-1987"]);
+const EUC_KR_ALIASES = new Set(["euc-kr", "euckr", "949", "cp949", "ms949", "windows-949", "x-windows-949", "ks_c_5601-1987"]);
 
 /** 인코딩 라벨 정규화. shapefile이 쓰는 text-encoding 폴리필은 cp949 같은 별칭을 모른다. */
 export function normalizeEncoding(label: string): string {
   const l = label.trim().toLowerCase();
   if (EUC_KR_ALIASES.has(l)) return "euc-kr";
-  return l === "utf8" ? "utf-8" : l;
+  return l === "utf8" || l === "65001" ? "utf-8" : l;
 }
 
 export function decodeText(buf: Uint8Array): { text: string; encoding: "utf-8" | "euc-kr" } {
