@@ -10,7 +10,7 @@ import { manifestHash, openDataFile, type Manifest } from "../data/manifest";
 import type { TileConditions, TileResult } from "../tile-result";
 
 export type Limitation = TileResult["limitations"][number];
-export type FileKey = "core" | "buildings" | "reference" | "market";
+export type FileKey = "core" | "buildings" | "parcels" | "reference" | "market";
 export interface SourceRef {
   sourceId: string;
   releaseId: string;
@@ -23,6 +23,7 @@ export interface EngineInput {
   center: LngLat;
   radiusM: number;
   analysisDate: string;
+  pnu: string | null;
 }
 
 export type InitialDataHandles = Partial<Record<FileKey, BetterSqlite3.Database>>;
@@ -35,6 +36,7 @@ interface SnapshotJson {
 export class EngineContext {
   readonly manifestHash: string;
   readonly conditions: TileConditions;
+  readonly input: EngineInput;
   private readonly handles = new Map<FileKey, BetterSqlite3.Database>();
   private readonly refs = new Map<FileKey, SourceRef[]>();
   private areas: ReturnType<typeof legalAreasForCircle> | null = null;
@@ -43,9 +45,10 @@ export class EngineContext {
     readonly dataDir: string,
     readonly manifest: Manifest,
     readonly analysisId: string,
-    readonly input: EngineInput,
+    input: EngineInput,
     initialHandles: InitialDataHandles = {},
   ) {
+    this.input = { ...input, pnu: input.pnu ?? null };
     for (const [key, db] of Object.entries(initialHandles)) {
       if (db) this.handles.set(key as FileKey, db);
     }

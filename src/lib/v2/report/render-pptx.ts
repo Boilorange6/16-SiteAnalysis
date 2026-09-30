@@ -380,7 +380,7 @@ function cover(pptx: PptxGenJS, p: PlannedSlide & { kind: "cover" }, images: Map
 function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapImages) {
   const v = p.view;
   const s = pptx.addSlide();
-  const chart = !p.map; // D04 구성비 면: 연한 타일색 바탕에 차트가 전면
+  const chart = !p.map; // 도판 구성비 면: 연한 타일색 바탕에 차트가 전면
   const mix = (c: string, a: number) => {
     const n = parseInt(hex(c), 16);
     const ch = (sh: number) => Math.round(255 - (255 - ((n >> sh) & 255)) * a);
@@ -420,7 +420,7 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   if (co && co.model.complexes.length > 0) items.push(calloutStatItem(s, co.model));
   else if (v.headline) items.push(...headlineItems(s, v.headline));
   if (v.sentence) items.push(textItem(s, v.sentence, 12.5, INK, true, 5));
-  // D04는 도판(지도) 면에 구성비 수치를 반복하지 않는다
+  // 도판(지도) 면에 구성비 수치를 반복하지 않는다
   const rows = p.body.face === "front" || p.body.face === "back" ? [] : v.rows.filter((r) => r.label !== v.headline?.label).slice(0, 5);
   if (rows.length) items.push(...rowItems(s, rows));
   if (v.grades.length > 0) items.push(textItem(s, v.grades.map((g) => `${g.label} · ${g.criteria}`).join("\n"), 9, MUTED, false, 4));
@@ -442,7 +442,7 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
       s.addText(c.label, { x: x0, y, w: labW, h: rh, valign: "middle", fontFace: FONT, fontSize: 14, bold: true, color: "454A55", margin: 0 });
       s.addShape("rect", { x: x0 + labW, y: y + rh * 0.2, w: trackW, h: rh * 0.6, fill: { color: INK, transparency: 95 }, line: { color: INK, width: 0, transparency: 100 } });
       s.addShape("rect", { x: x0 + labW, y: y + rh * 0.2, w: Math.max(0.04, (trackW * c.value) / max), h: rh * 0.6, fill: { color: hex(STRIP_COLORS[i % STRIP_COLORS.length]) }, line: { color: hex(STRIP_COLORS[i % STRIP_COLORS.length]), width: 0 } });
-      s.addText(`${c.value}%`, { x: x0 + labW + trackW + 0.1, y, w: 0.8, h: rh, align: "right", valign: "middle", fontFace: FONT, fontSize: 14, bold: true, color: INK, margin: 0 });
+      s.addText(`${c.value}${c.unit === "%" ? "%" : ` ${c.unit}`}`, { x: x0 + labW + trackW + 0.1, y, w: 0.8, h: rh, align: "right", valign: "middle", fontFace: FONT, fontSize: 14, bold: true, color: INK, margin: 0 });
     });
   } else if (co) calloutOverview(s, p);
   else legendPlate(s, p);

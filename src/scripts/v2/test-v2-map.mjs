@@ -141,15 +141,14 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   ctx.close();
 }
 
-// ── 기존 결과(features 없음)와 호환 ──
+// ── 기존 결과(features 없음)는 지도 없이 안전하게 표시 ──
 {
   const old = structuredClone(GODEOK_RESULTS.find((r) => r.tileCode === "A05"));
   delete old.presentation.features;
   delete old.presentation.featuresTotal;
   parseTileResult(old);
   const v = toTileView(old);
-  assert.deepEqual(v.map.features, []);
-  assert.ok(v.map.notes.some((n) => n.includes("표시할 지물 없음")));
+  assert.equal(v.map, null);
   // 지도 타일이 아니거나 결과가 없으면 지도 없음
   assert.equal(toTileView(GODEOK_RESULTS.find((r) => r.tileCode === "A07")).map, null);
   assert.equal(toTileView(GODEOK_RESULTS.find((r) => r.tileCode === "S02")).map, null);

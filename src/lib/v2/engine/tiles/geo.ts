@@ -107,6 +107,63 @@ const ringArea = (r: number[][]) => {
 /** 평면(미터) 면적. 구멍은 뺀다. */
 export const polygonArea = (rings: number[][][]) => rings.reduce((a, r, i) => a + (i === 0 ? ringArea(r) : -ringArea(r)), 0);
 
+function firstPosition(coords: unknown): [number, number] | null {
+  if (!Array.isArray(coords)) return null;
+  if (typeof coords[0] === "number") {
+    if (typeof coords[1] !== "number") throw new TypeError("invalid coordinate");
+    return [coords[0], coords[1]];
+  }
+  for (const child of coords) {
+    const found = firstPosition(child);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** 테스트·외부 호출의 WGS84 도형도 받아들이되, 계산 계약은 EPSG:5179 미터로 통일한다. */
+function toUtmGeometry(g: Geometry): Geometry {
+  if (g.type === "GeometryCollection") throw new TypeError("GeometryCollection is not supported");
+  const first = firstPosition(g.coordinates);
+  if (!first) throw new TypeError("empty geometry");
+  const isLngLat = Math.abs(first[0]) <= 180 && Math.abs(first[1]) <= 90;
+  if (!isLngLat) return g;
+  const project = (coords: unknown): unknown => {
+    if (!Array.isArray(coords)) throw new TypeError("invalid coordinates");
+    if (typeof coords[0] === "number") {
+      if (typeof coords[1] !== "number" || !Number.isFinite(coords[0]) || !Number.isFinite(coords[1])) throw new TypeError("invalid coordinate");
+      return [...toUtmk([coords[0], coords[1]])];
+    }
+    return coords.map(project);
+  };
+  return { ...g, coordinates: project(g.coordinates) } as Geometry;
+}
+
+function validParts(parts: number[][][][]): boolean {
+  return parts.every((polygonParts_) => polygonParts_.length > 0 && polygonParts_.every((ring) =>
+    ring.length >= 4 && ring.every((point) => point.length >= 2 && Number.isFinite(point[0]) && Number.isFinite(point[1]))
+  ));
+}
+
+/** 반경과 도형이 겹친 면적. 완전 포함이면 절단을 생략해 원본 면적을 보존한다. */
+export function areaInCircle(center: LngLat, radiusM: number, g: Geometry): { areaM2: number; parts: number[][][][]; clipped: boolean } | null {
+  if (!center.every(Number.isFinite) || !Number.isFinite(radiusM) || radiusM < 0) return null;
+  try {
+    const geometry = toUtmGeometry(g);
+    const [cx, cy] = toUtmk(center);
+    const parts = polygonParts(geometry);
+    if (parts.length === 0) return { areaM2: 0, parts: [], clipped: false };
+    if (!validParts(parts)) return null;
+    const r2 = radiusM * radiusM;
+    const allInside = parts.every((p) => p.every((ring) => ring.every(([x, y]) => (x - cx) ** 2 + (y - cy) ** 2 <= r2)));
+    if (allInside) return { areaM2: parts.reduce((s, p) => s + polygonArea(p), 0), parts, clipped: false };
+    const clipped = clipToCircle(center, radiusM, geometry);
+    if (clipped === null) return null;
+    return { areaM2: clipped.reduce((s, p) => s + polygonArea(p), 0), parts: clipped, clipped: true };
+  } catch {
+    return null;
+  }
+}
+
 /** 반경 원(면적이 πr²와 같도록 96각형)과 도형을 교차한 폴리곤 목록. 도형이 깨져 계산할 수 없으면 null. */
 export function clipToCircle(center: LngLat, radiusM: number, g: Geometry): number[][][][] | null {
   const [cx, cy] = toUtmk(center);

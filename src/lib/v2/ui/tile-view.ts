@@ -26,7 +26,7 @@ export type TileView = {
   caveats: string[];
   notes: string[];
   sourceLine: string;
-  chart: { label: string; value: number }[] | null;
+  chart: { label: string; value: number; unit: string }[] | null;
   hasFace: boolean;
   retryable: boolean;
   /** 지도 타일이면 지도 그림 입력, 아니면 null */
@@ -63,21 +63,38 @@ export type CalloutModel = {
 };
 
 const KIND_LABEL = { analysis: "분석", diagram: "도판", simulation: "시뮬레이션" } as const;
-const MAP_TILES = new Set(["A01", "A03", "A04", "A05", "A06", "D04"]);
 const MAP_NOTES: Record<string, string> = {
   D04: "대표점 · 건물 도형은 자료 적재 뒤",
+  D02: "발자국 · 높이 미상은 테두리만",
+  D05: "지상층수 기준",
+  D06: "높이 35m 기준 · [추정]은 층수×3m",
+  D07: "높이 12m 기준 · [추정]은 층수×3m",
+  D14: "운영 시설만 · 계획 철도 제외",
+  D19: "연속지적 · 참조용",
+  D20: "도형 면적 기준(공부면적 아님)",
+  D27: "1km 격자 · 비밀보호 노이즈",
   A04: "대표점 · 원천 면적 비례 (경계 아님)",
   A05: "원 크기 = 세대수 · 속 빈 원 = 세대수 미확인",
   A06: "원천별 표시 · 중복 가능",
 };
 
 function mapOf(r: TileResult): MapModel | null {
-  if (!MAP_TILES.has(r.tileCode) || (r.status !== "complete" && r.status !== "partial")) return null;
+  if (r.status !== "complete" && r.status !== "partial") return null;
   const features = r.presentation.features ?? [];
+  const polygons = r.presentation.polygons ?? [];
+  if (features.length === 0 && polygons.length === 0) return null;
   const notes = MAP_NOTES[r.tileCode] ? [MAP_NOTES[r.tileCode]] : [];
   if (r.tileCode === "A01" && r.metrics.some((m) => m.id === "nearest_rail_m" && m.status === "missing")) notes.push("철도 자료 미적재 · 버스정류장만 표시");
-  if (features.length === 0) notes.push("반경 안 표시할 지물 없음");
-  return { center: r.conditions.center, radiusM: r.conditions.radiusM, features, total: r.presentation.featuresTotal ?? features.length, notes };
+  if (features.length === 0 && polygons.length === 0) notes.push("반경 안 표시할 지물 없음");
+  return {
+    center: r.conditions.center,
+    radiusM: r.conditions.radiusM,
+    features,
+    polygons,
+    polygonsTotal: r.presentation.polygonsTotal ?? polygons.length,
+    total: r.presentation.featuresTotal ?? features.length,
+    notes,
+  };
 }
 
 const STATUS_TEXT: Partial<Record<TileResult["status"], string>> = {
@@ -171,7 +188,6 @@ export function toTileView(r: TileResult): TileView {
   }
 
   const overlap = r.tileCode === "A06";
-  const isShare = (id: string) => r.tileCode === "D04" && id.startsWith("share_");
   const metrics = r.metrics.filter((m) => !(overlap && /total|sum/.test(m.id)));
   const rows = metrics.map(metricRow);
   const caveats = CAVEATS[r.tileCode] ? [CAVEATS[r.tileCode]] : [];
@@ -210,11 +226,13 @@ export function toTileView(r: TileResult): TileView {
     caveats,
     notes: r.limitations.map((l) => l.note),
     sourceLine: sourceLineOf(r.provenance.sources),
-    chart:
-      r.tileCode === "D04"
-        ? r.metrics.filter((m) => isShare(m.id) && m.value !== null).map((m) => ({ label: m.label, value: m.value as number }))
-        : null,
-    hasFace: r.tileCode === "D04",
+    chart: (() => {
+      const data = r.metrics
+        .filter((m) => /^(share_|back_)/.test(m.id) && m.value !== null)
+        .map((m) => ({ label: m.label, value: m.value as number, unit: m.unit }));
+      return data.length > 0 ? data : null;
+    })(),
+    hasFace: r.tileType === "diagram",
     retryable: r.status === "failed",
     map: mapOf(r),
     backdrop: { center: r.conditions.center, radiusM: r.conditions.radiusM, features: [], total: 0, notes: [] },

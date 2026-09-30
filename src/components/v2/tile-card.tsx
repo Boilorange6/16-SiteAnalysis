@@ -96,19 +96,20 @@ export function FaceSelect({ view, value, onChange }: { view: TileView; value: O
   );
 }
 
-/** D04 뒤집은 면: 연한 타일색 바탕에 구성비 막대가 가득 (카드·펼침 공통) */
+/** 도판 뒤집은 면: 연한 타일색 바탕에 구성비 막대가 가득 (카드·펼침 공통) */
 export function FaceChart({ view }: { view: TileView }) {
   const chart = view.chart ?? [];
   const max = Math.max(1, ...chart.map((c) => c.value));
+  const valueText = (c: (typeof chart)[number]) => `${c.value}${c.unit === "%" ? "%" : ` ${c.unit}`}`;
   return (
-    <div className={styles.faceChart} style={{ background: `${view.color}10` }} role="img" aria-label={`${view.title} 구성비: ${chart.map((c) => `${c.label} ${c.value}%`).join(", ")}`}>
+    <div className={styles.faceChart} style={{ background: `${view.color}10` }} role="img" aria-label={`${view.title} 구성비: ${chart.map((c) => `${c.label} ${valueText(c)}`).join(", ")}`}>
       {chart.map((c, i) => (
         <div key={c.label} className={styles.fcRow}>
           <span className={styles.fcLabel}>{c.label}</span>
           <span className={styles.fcTrack}>
             <i style={{ width: `${(c.value / max) * 100}%`, background: STRIP_COLORS[i % STRIP_COLORS.length] }} />
           </span>
-          <b className={styles.fcVal}>{c.value}%</b>
+          <b className={styles.fcVal}>{valueText(c)}</b>
         </div>
       ))}
     </div>
