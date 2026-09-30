@@ -54,6 +54,7 @@ const noForbidden = (t) => {
   assert.equal(t.judgment.level, "good");
   assert.match(t.judgment.sentence, /^최근접 정류장 직선 250m → 버스 접근은 가까운 편 → 철도·실제 보행 경로는 확인 필요$/);
   assert.deepEqual(t.judgment.basisMetricIds, ["nearest_bus_m"]);
+  assert.deepEqual(t.judgment.grades.map((g) => [g.metricId, g.level]), [["nearest_bus_m", "good"]], "철도 자료가 없으면 버스 등급만");
   assert.match(t.judgment.criteria, /300m 이하 좋음 · 600m 이하 보통/);
   assert.ok(t.limitations.some((l) => l.kind === "not_provided" && l.note.includes("철도 자료 미적재")));
   noForbidden(t);
@@ -168,6 +169,9 @@ const noForbidden = (t) => {
     [0, 500, 0, 0, 200],
   );
   assert.ok(!t.metrics.some((m) => /total|sum/.test(m.id)), "합계 지표 없음");
+  const f1 = t.presentation.features.find((f) => f.name === "applyhome:1");
+  assert.deepEqual([f1.layer, f1.households, f1.plannedMonth, f1.overlap, typeof f1.distanceM, f1.type], ["applyhome", 800, "2026-12", false, "number", "아파트"], "설명선용 사업 필드");
+  assert.ok(t.presentation.features.every((f) => f.plannedMonth === null || /^\d{4}-\d{2}$/.test(f.plannedMonth)));
   assert.match(metric(t, "move_in_projects").formulaVersion, /event-link=2\/6/, "development_event 연결 가능 여부만 기록");
   assert.ok(t.limitations.some((l) => l.kind === "partial" && l.note.includes("중복") && l.note.includes("합계를 보류")));
   assert.equal(t.judgment.level, null);

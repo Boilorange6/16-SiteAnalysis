@@ -3,6 +3,7 @@
  * 일정은 월 단위이며 임의의 일자를 붙이지 않는다.
  */
 import type { TileResult } from "../../tile-result";
+import { timingBucket, type Timing } from "../../ui/callout-layout";
 import type { EngineContext } from "../context";
 import { candidate, fmt, makeTile, noDataTile, obs, type TileDraft } from "./common";
 
@@ -10,8 +11,7 @@ const SOURCES = [
   { key: "applyhome", label: "청약홈" },
   { key: "move_in", label: "입주예정" },
 ] as const;
-type Bucket = "m0_12" | "m13_24" | "later" | "past" | "unscheduled";
-const BUCKETS: Array<{ id: Bucket; label: string }> = [
+const BUCKETS: Array<{ id: Timing; label: string }> = [
   { id: "m0_12", label: "분석일 기준 0~12개월" },
   { id: "m13_24", label: "13~24개월" },
   { id: "later", label: "24개월 이후" },
@@ -19,15 +19,30 @@ const BUCKETS: Array<{ id: Bucket; label: string }> = [
   { id: "unscheduled", label: "일정 미확인" },
 ];
 
-/** plannedMonth("YYYY-MM")를 분석일 기준 개월 차로 나눈다. 형식이 다르면 일정 미확인. */
-export function bucketOf(plannedMonth: unknown, analysisDate: string): Bucket {
-  const m = typeof plannedMonth === "string" ? /^(\d{4})-(\d{2})$/.exec(plannedMonth) : null;
-  if (!m) return "unscheduled";
-  const d = Number(m[1]) * 12 + Number(m[2]) - (Number(analysisDate.slice(0, 4)) * 12 + Number(analysisDate.slice(5, 7)));
-  return d < 0 ? "past" : d <= 12 ? "m0_12" : d <= 24 ? "m13_24" : "later";
-}
+/** plannedMonth("YYYY-MM")를 분석일 기준 개월 차로 나눈다. 형식이 다르면 일정 미확인. (화면 점 색과 같은 함수) */
+export const bucketOf = timingBucket;
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null);
+
+const normName = (s: unknown) => (typeof s === "string" ? s.replace(/\([^)]*\)/g, "").replace(/[^0-9A-Za-z가-힣]/g, "").replace(/아파트$/, "") : "");
+/** "…상일동 43번지 일원" / "…상일동 43-0" → "상일동43-0" (동·본번·부번만) */
+const normAddr = (s: unknown) => {
+  const m = typeof s === "string" ? /([가-힣]+\d*[동가리])\s*(\d+)(?:-(\d+))?/.exec(s) : null;
+  return m ? `${m[1]}${m[2]}-${Number(m[3] ?? 0)}` : "";
+};
+
+/**
+ * 서로 다른 원천에 같은 사업이 있는지. development_event.project_id는 사업 하나마다 새로 붙어(원천 사이 연결 없음) 쓸 수 없어,
+ * 정규화한 이름이 같거나 주소가 같으면 "겹칠 수 있음"으로만 표시한다. 합치지 않고 합계도 만들지 않는다.
+ */
+export function markOverlaps(items: Array<{ source: string; name: string | null; address: unknown }>): boolean[] {
+  const keys = items.map((it) => ({ n: normName(it.name), a: normAddr(it.address) }));
+  return items.map((it, i) =>
+    items.some((o, j) => j !== i && o.source !== it.source && ((keys[i].n !== "" && keys[i].n === keys[j].n) || (keys[i].a.length >= 6 && keys[i].a === keys[j].a))),
+  );
+}
+
+const TYPE_TEXT: Record<string, string> = { apartment: "아파트", officetel: "오피스텔", residential: "주거" };
 
 export function a06(ctx: EngineContext): TileResult {
   const sources = ctx.sources("market", ["applyhome", "move_in"]);
@@ -58,6 +73,8 @@ export function a06(ctx: EngineContext): TileResult {
       metrics.push(obs(`${s.key}_units_${b.id}`, `${s.label} ${b.label} 세대`, inBucket.reduce((sum, h) => sum + (h.properties.units as number), 0), "세대", "a06-buckets@1", inBucket.length, withUnits.length));
     }
   }
+  const mapped = hits.filter((h) => h.properties.source === "applyhome" || h.properties.source === "move_in");
+  const overlaps = markOverlaps(mapped.map((h) => ({ source: h.properties.source as string, name: h.name, address: h.properties.address })));
   const empty = hits.length === 0;
   const sentence = empty
     ? "반경 안 분양·입주예정 사업이 확인되지 않음 → 위치를 확인하지 못한 사업은 빠져 있을 수 있음 → 사업별 연결 확인 필요"
@@ -69,16 +86,22 @@ export function a06(ctx: EngineContext): TileResult {
     judgment: { ruleId: "a06-by-source@1", basisMetricIds: ["applyhome_units", "move_in_units"], sentence, level: null, criteria: null },
     sources,
     layers: SOURCES.map((s) => s.key),
-    map: hits
-      .filter((h) => h.properties.source === "applyhome" || h.properties.source === "move_in")
-      .map((h) =>
-        candidate(h, h.properties.source as string, {
-          weight: num(h.properties.units),
-          label: typeof h.properties.plannedMonth === "string" && /^\d{4}-\d{2}$/.test(h.properties.plannedMonth) ? h.properties.plannedMonth : null,
-        }),
-      ),
+    map: mapped.map((h, i) => {
+      const month = typeof h.properties.plannedMonth === "string" && /^\d{4}-\d{2}$/.test(h.properties.plannedMonth) ? h.properties.plannedMonth : null;
+      const kind = typeof h.properties.kind === "string" ? h.properties.kind : null;
+      return candidate(h, h.properties.source as string, {
+        weight: num(h.properties.units),
+        label: month,
+        households: num(h.properties.units),
+        name: h.name,
+        type: kind === null ? null : (TYPE_TEXT[kind] ?? kind),
+        plannedMonth: month,
+        distanceM: h.distanceM === null ? null : Math.round(h.distanceM),
+        overlap: overlaps[i],
+      });
+    }),
     limitations: [
-      { kind: "partial", note: "청약홈·입주예정에 같은 사업이 중복 등장할 수 있어 합계를 보류했습니다. 중복 제거는 다음 단계입니다." },
+      { kind: "partial", note: "청약홈·입주예정에 같은 사업이 중복 등장할 수 있어 합계를 보류했습니다. 이름·주소가 같은 쌍은 \"중복 가능\"으로 표시하지만 합치지는 않습니다." },
       ...ctx.coverage("market", ["applyhome", "move_in"]),
     ],
   });

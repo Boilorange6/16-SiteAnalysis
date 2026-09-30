@@ -63,6 +63,9 @@ const MapFeatureSchema = z.object({
   buildingCount: z.number().finite().nullable().optional(),
   distanceM: z.number().finite().nullable().optional(),
   parking: z.number().finite().nullable().optional(),
+  // A06: 입주(예정) 월("YYYY-MM", 일자는 만들지 않는다)과 다른 원천과 같은 사업일 수 있음
+  plannedMonth: z.string().regex(/^\d{4}-\d{2}$/).nullable().optional(),
+  overlap: z.boolean().optional(),
 });
 
 export const TileResultSchema = z
@@ -82,6 +85,10 @@ export const TileResultSchema = z
         sentence: z.string().min(1),
         level: z.enum(JUDGMENT_LEVELS).nullable(),
         criteria: z.string().min(1).nullable(),
+        /** 근거 지표가 둘 이상인 타일(A01 철도·버스)의 등급별 판정. level은 그중 가장 나쁜 등급 */
+        grades: z
+          .array(z.object({ metricId: z.string().min(1), level: z.enum(JUDGMENT_LEVELS), criteria: z.string().min(1) }))
+          .optional(),
       })
       .nullable(),
     presentation: z.object({
@@ -123,6 +130,17 @@ export const TileResultSchema = z
       if (t.judgment.criteria === null) {
         ctx.addIssue({ code: "custom", path: ["judgment", "criteria"], message: "a graded judgment needs its criteria" });
       }
+    }
+    if (t.judgment?.grades?.length) {
+      const graded = new Map(t.metrics.map((m) => [m.id, m]));
+      t.judgment.grades.forEach((g, i) => {
+        const metric = graded.get(g.metricId);
+        if (!metric || !HAS_VALUE.has(metric.status)) {
+          ctx.addIssue({ code: "custom", path: ["judgment", "grades", i, "metricId"], message: `cannot grade on ${g.metricId}: metric missing or not observed` });
+        }
+      });
+      if (t.judgment.level === null) ctx.addIssue({ code: "custom", path: ["judgment", "level"], message: "grades need a judgment level" });
+      if (t.tileCode !== "A01" && t.tileCode !== "A02") ctx.addIssue({ code: "custom", path: ["judgment", "grades"], message: "only A01/A02 may carry grades" });
     }
     if (t.judgment) {
       const byId = new Map(t.metrics.map((m) => [m.id, m]));

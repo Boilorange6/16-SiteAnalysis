@@ -25,7 +25,12 @@ export type Complex = {
   parking: number | null;
   lng: number;
   lat: number;
+  /** A06(분양·입주예정) 사업이면 채운다. 없으면 A05 단지 */
+  supply?: SupplyInfo | null;
 };
+
+/** A06 사업 하나의 일정·원천 (월 단위, 일자는 만들지 않는다) */
+export type SupplyInfo = { plannedMonth: string | null; source: string; overlap: boolean; timing: Timing };
 
 export const PAGE_SIZE = 10;
 /** 보드 카드에 설명표를 붙이는 단지 수 */
@@ -61,6 +66,103 @@ export function rankComplexes(features: MapFeature[]): Complex[] {
   return list.map((c, i) => ({ ...c, id: `c${i + 1}`, rank: i + 1 }));
 }
 
+// ── A06: 입주(예정) 시기 버킷·정렬 ──
+export type Timing = "past" | "m0_12" | "m13_24" | "later" | "unscheduled";
+export const TIMING_ORDER: Timing[] = ["past", "m0_12", "m13_24", "later", "unscheduled"];
+export const TIMING_STYLE: Record<Timing, { label: string; color: string }> = {
+  past: { label: "이미 입주", color: "#6B7280" },
+  m0_12: { label: "0–12개월", color: "#D9480F" },
+  m13_24: { label: "13–24개월", color: "#F2A413" },
+  later: { label: "24개월 이후", color: "#3B82A0" },
+  unscheduled: { label: "미확인", color: "#C7CBD3" },
+};
+export const SUPPLY_SOURCE: Record<string, string> = { applyhome: "청약홈", move_in: "입주예정" };
+export const SUPPLY_LAYERS = new Set(Object.keys(SUPPLY_SOURCE));
+
+/** plannedMonth("YYYY-MM")를 분석일 기준 개월 차로 나눈다. 형식이 다르면 일정 미확인 (엔진 A06 버킷과 같은 함수) */
+export function timingBucket(plannedMonth: unknown, analysisDate: string): Timing {
+  const m = typeof plannedMonth === "string" ? /^(\d{4})-(\d{2})$/.exec(plannedMonth) : null;
+  if (!m) return "unscheduled";
+  const d = Number(m[1]) * 12 + Number(m[2]) - (Number(analysisDate.slice(0, 4)) * 12 + Number(analysisDate.slice(5, 7)));
+  return d < 0 ? "past" : d <= 12 ? "m0_12" : d <= 24 ? "m13_24" : "later";
+}
+export const fmtMonth = (ym: string) => `${ym.slice(0, 4)}년 ${Number(ym.slice(5, 7))}월`;
+
+/**
+ * 사업 순서: 다가오는 입주(분석월 포함 이후)를 가까운 달부터 → 이미 입주한 사업은 최근 순 → 일정 미확인.
+ * 같은 달이면 세대수 많은 순 → 가까운 순 → 이름 → 좌표. 번호 = 이 순서.
+ */
+export function rankSupply(features: MapFeature[], analysisDate: string): Complex[] {
+  const list = features
+    .filter((f) => SUPPLY_LAYERS.has(f.layer))
+    .map((f) => {
+      const plannedMonth = typeof f.plannedMonth === "string" && /^\d{4}-\d{2}$/.test(f.plannedMonth) ? f.plannedMonth : null;
+      return {
+        layer: f.layer,
+        name: f.name?.trim() || null,
+        type: f.type ?? null,
+        households: n0(f.households ?? f.weight),
+        approvalYear: null,
+        floorsMax: null,
+        buildingCount: null,
+        distanceM: n0(f.distanceM),
+        parking: null,
+        lng: f.lng,
+        lat: f.lat,
+        supply: { plannedMonth, source: f.layer, overlap: f.overlap === true, timing: timingBucket(plannedMonth, analysisDate) } satisfies SupplyInfo,
+      };
+    });
+  const group = (c: (typeof list)[number]) => (c.supply.timing === "unscheduled" ? 2 : c.supply.timing === "past" ? 1 : 0);
+  list.sort((a, b) => {
+    const ga = group(a);
+    const gb = group(b);
+    if (ga !== gb) return ga - gb;
+    const ma = a.supply.plannedMonth ?? "";
+    const mb = b.supply.plannedMonth ?? "";
+    return (ga === 1 ? (ma < mb ? 1 : ma > mb ? -1 : 0) : ma < mb ? -1 : ma > mb ? 1 : 0) ||
+      (b.households ?? -1) - (a.households ?? -1) ||
+      (a.distanceM ?? 1e12) - (b.distanceM ?? 1e12) ||
+      (a.name ?? "￿").localeCompare(b.name ?? "￿", "en") ||
+      a.lng - b.lng ||
+      a.lat - b.lat;
+  });
+  return list.map((c, i) => ({ ...c, id: `c${i + 1}`, rank: i + 1 }));
+}
+
+/** A06 카드 행: 입주(예정) 시기 / 세대수 / 원천 / 직선거리. 일정이 없으면 "일정 확인필요" */
+export function supplyRows(c: Complex): CardRow[] {
+  const s = c.supply!;
+  const unit = c.type === "오피스텔" ? "호" : "세대";
+  const src = s.overlap ? "청약홈 · 입주예정" : (SUPPLY_SOURCE[s.source] ?? s.source);
+  return [
+    { label: "입주(예정) 시기", value: s.plannedMonth ? fmtMonth(s.plannedMonth) : "일정 확인필요", missing: s.plannedMonth === null },
+    { label: "세대수", value: c.households === null ? MISSING : `${fmtInt(c.households)}${unit}`, missing: c.households === null },
+    { label: "원천", value: src, missing: false },
+    { label: "직선거리", value: c.distanceM === null ? MISSING : `${fmtInt(c.distanceM)}m`, missing: c.distanceM === null },
+  ];
+}
+
+/** 개요 값 카드: 원천별로 따로 (합계 없음) */
+export function supplyStats(all: Complex[]): { stats: Stat[]; note: string | null } {
+  const by = (src: string) => all.filter((c) => c.supply?.source === src);
+  const units = (l: Complex[]) => l.reduce((s, c) => s + (c.households ?? 0), 0);
+  const overlap = all.filter((c) => c.supply?.overlap).length;
+  const soon = all.filter((c) => c.supply?.timing === "m0_12").length;
+  return {
+    stats: [
+      { value: fmtInt(all.length), unit: "곳", label: "반경 안 사업" },
+      { value: fmtInt(units(by("applyhome"))), unit: "세대", label: `청약홈 (${fmtInt(by("applyhome").length)}곳)` },
+      { value: fmtInt(units(by("move_in"))), unit: "세대", label: `입주예정 (${fmtInt(by("move_in").length)}곳)` },
+    ],
+    note: `원천 합계는 내지 않음${overlap > 0 ? ` · 중복 가능 ${overlap}곳` : ""}${soon > 0 ? ` · 12개월 내 입주 ${soon}곳` : ""}`,
+  };
+}
+export type Stat = { value: string; unit: string; label: string };
+
+/** 색·크기 범례. A05는 준공 연대, A06은 입주 시기 */
+export type CalloutLegendSpec = { title: string; items: Array<{ label: string; color: string }>; sizeLabel: string };
+export const SUPPLY_LEGEND: CalloutLegendSpec = { title: "입주 시기", items: TIMING_ORDER.map((t) => ({ label: TIMING_STYLE[t].label, color: TIMING_STYLE[t].color })), sizeLabel: "크기 = 세대수" };
+
 // ── 점: 크기 = √세대수, 색 = 준공 연대 (D04 팔레트 공유) ──
 export const DECADE_LAYERS = ["bldg_pre1980", "bldg_1980s", "bldg_1990s", "bldg_2000s", "bldg_2010s", "bldg_2020s", "bldg_unknown"] as const;
 export function decadeLayer(year: number | null): (typeof DECADE_LAYERS)[number] {
@@ -73,6 +175,13 @@ export function decadeLayer(year: number | null): (typeof DECADE_LAYERS)[number]
   return "bldg_2020s";
 }
 export const decadeColor = (year: number | null) => layerStyle(decadeLayer(year)).color;
+export const STOCK_LEGEND: CalloutLegendSpec = {
+  title: "준공 연대",
+  items: DECADE_LAYERS.map((k, i) => ({ label: ["~79", "80년대", "90년대", "00년대", "10년대", "20년~", "미상"][i], color: layerStyle(k).color })),
+  sizeLabel: "크기 = 세대수",
+};
+/** 점·번호 원 색: A06은 입주 시기 버킷, A05는 준공 연대 */
+export const dotColor = (c: Complex) => (c.supply ? TIMING_STYLE[c.supply.timing].color : decadeColor(c.approvalYear));
 
 export function dotRadius(households: number | null, maxHouseholds: number, rMin: number, rMax: number): number {
   if (households === null || households <= 0 || maxHouseholds <= 0) return rMin;
@@ -90,6 +199,7 @@ export function inkOn(hex: string): "#ffffff" | "#16181d" {
 export type CardRow = { label: string; value: string; missing: boolean };
 
 export function cardRows(c: Complex, analysisYear: number): CardRow[] {
+  if (c.supply) return supplyRows(c);
   const row = (label: string, v: string | null): CardRow => ({ label, value: v ?? MISSING, missing: v === null });
   const floors = c.floorsMax === null ? null : `최고 ${fmtInt(c.floorsMax)}층`;
   const bldg = c.buildingCount === null ? null : `${fmtInt(c.buildingCount)}동`;
@@ -105,6 +215,25 @@ export function cardRows(c: Complex, analysisYear: number): CardRow[] {
   return rows;
 }
 export const cardName = (c: Complex) => c.name ?? `이름 ${MISSING}`;
+
+// ── 모바일(≤520px): 좌우 칸 대신 지도 아래 가로 띠 카드 (지시선 없음) ──
+export const MOBILE_MAX_W = 520;
+export const isMobileWidth = (w: number) => w <= MOBILE_MAX_W;
+export const STRIP_H = 76;
+export type StripCard = { id: string; rank: number; name: string; nameMissing: boolean; color: string; chip: string | null; lines: [string, string] };
+/** 띠 카드 모델: 순서 = 페이지 순서(번호 순), 값 4개를 두 줄로 */
+export function stripCards(items: Complex[], analysisYear: number): StripCard[] {
+  return items.map((c) => {
+    const v = cardRows(c, analysisYear).map((r) => r.value);
+    return { id: c.id, rank: c.rank, name: cardName(c), nameMissing: c.name === null, color: dotColor(c), chip: overlapChip(c), lines: [`${v[0]} · ${v[1]}`, `${v[2]} · ${v[3]}`] };
+  });
+}
+/** 띠 모양 프레임: 두 칸이 없으므로 반경 원이 가로를 거의 다 쓴다 */
+export function stripFrame(W: number, H: number, m: Metrics, top: number, bottom: number): CalloutFrame {
+  const edge = 8;
+  const diameter = Math.max(m.rMax * 4, Math.min(W - 2 * edge - 2 * m.rMax, 0.94 * (bottom - top)));
+  return { W, H, left: { x0: edge, x1: edge, top, bottom }, right: { x0: W - edge, x1: W - edge, top, bottom }, cardW: 0, cardH: 0, variant: "compact", rows: 0, perSide: 0, m, centerX: W / 2, siteX: 0.5, diameter, fill: diameter / H };
+}
 /** 카드 행 수: 페이지 안에 주차 값이 하나라도 있으면 5, 아니면 4 */
 export const rowsFor = (items: Complex[]) => (items.some((c) => c.parking !== null) ? 5 : 4);
 
@@ -128,7 +257,10 @@ export const DEFAULT_CALLOUT_MODE: CalloutMode = "top10";
 
 export const pageCount = (n: number, size = PAGE_SIZE) => Math.ceil(n / size);
 export const pageItems = (all: Complex[], page: number, size = PAGE_SIZE) => all.slice((page - 1) * size, page * size);
-export const pageRange = (page: number, n: number, size = PAGE_SIZE) => `세대수 상위 ${(page - 1) * size + 1}–${Math.min(n, page * size)} / 전체 ${fmtInt(n)}단지`;
+export const pageRange = (page: number, n: number, size = PAGE_SIZE, supply = false) =>
+  `${supply ? "입주 시기순" : "세대수 상위"} ${(page - 1) * size + 1}–${Math.min(n, page * size)} / 전체 ${fmtInt(n)}${supply ? "곳" : "단지"}`;
+/** 카드 이름 띠의 "중복 가능" 칩 */
+export const overlapChip = (c: Complex) => (c.supply?.overlap ? "중복 가능" : null);
 /** 보고서에 들어가는 A05 장 수: 개요 1장 + 설명표 장. 단지가 없으면 개요(상태 판)만 */
 export function calloutReportPages(mode: CalloutMode, n: number): number {
   if (n === 0 || mode === "overview") return 1;

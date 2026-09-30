@@ -11,7 +11,7 @@ const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
 
 const { complexCounts } = await import("../../lib/v2/report/report-plan.ts");
 const counts = complexCounts(new Map(GODEOK_RESULTS.map((r) => [r.tileId, toTileView(r)])));
-assert.deepEqual(counts, { "t-A05": 25 }, "설명선 타일만 단지 수를 가진다");
+assert.deepEqual(counts, { "t-A05": 25, "t-A06": 25 }, "설명선 타일(A05·A06)만 단지·사업 수를 가진다");
 
 const build = (results, board) =>
   buildReportPlan({
@@ -38,7 +38,7 @@ for (const b of boards) {
   assert.deepEqual(plan.map((p) => p.no), plan.map((_, i) => i + 1));
   const tileIds = plan.filter((p) => p.kind === "tile").map((p) => p.view.tileId);
   // A05는 기본 "상위 10" = 개요 + 설명표 1장 = 2장
-  const expected = b.order.filter((id) => b.included[id]).flatMap((id) => (b.faces[id] === "both" || id === "t-A05" ? [id, id] : [id]));
+  const expected = b.order.filter((id) => b.included[id]).flatMap((id) => (b.faces[id] === "both" || id === "t-A05" || id === "t-A06" ? [id, id] : [id]));
   assert.deepEqual(tileIds, expected); // 보드 순서 그대로, both는 연속 2장
 }
 // 순서 이동이 반영되고, both는 도판 → 구성비 순

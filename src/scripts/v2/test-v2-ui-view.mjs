@@ -40,7 +40,7 @@ assert.ok(!/배정\s+\S+초/.test(a02));
 // 규칙 4
 assert.ok(byCode.A01.grade && byCode.A02.grade);
 assert.ok(byCode.A01.grade.criteria.startsWith("내부 제안 기준: "));
-assert.equal(byCode.A01.grade.label, "좋음");
+assert.equal(byCode.A01.grade.label, "보통", "level = 두 등급 중 나쁜 쪽");
 for (const c of ["A05", "A06", "A07", "A09", "A12", "D04"]) assert.equal(byCode[c].grade, null, `${c} 등급 없음`);
 // 등급이 실린 결과라도 거리 타일이 아니면 뷰에서 버린다
 const graded = structuredClone(GODEOK_RESULTS.find((r) => r.tileCode === "A07"));
