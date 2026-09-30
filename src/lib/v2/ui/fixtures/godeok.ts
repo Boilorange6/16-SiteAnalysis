@@ -251,9 +251,9 @@ export const GODEOK_RESULTS: TileResult[] = [
       m("parking_per_household", "세대당 주차대수", null, "대", "missing"),
     ],
     [["gis_bldg", "2026-08-01"], ["kapt", null]],
-    j("A05-stock@1", ["households"], `아파트 ${A05_APTS.length}개 단지 ${A05_HH.toLocaleString("en-US")}세대 확인 → 재고는 아파트 중심이며 오래된 건물이 상당수 → 세대수 미상 단지 확인 필요`),
+    j("A05-stock@1", ["households"], `아파트 ${A05_APTS.length}개 단지 ${A05_HH.toLocaleString("en-US")}세대 확인 → 재고는 아파트 중심이며 오래된 건물이 상당수 → 준공연도 미상 단지 확인 필요`),
     [
-      { kind: "incomplete", note: `세대수를 알 수 없는 단지 ${A05_APTS.filter((r) => r[3] === null).length}곳은 합계에서 제외했습니다.` },
+      { kind: "incomplete", note: `준공연도를 알 수 없는 아파트 ${A05_APTS.filter((r) => r[4] === null).length}곳은 연식 집계에서 제외했습니다.` },
       { kind: "estimated", note: "30년 이상 비중은 분석 기준일 대비 경과연수로 추정한 값입니다." },
     ],
   ), [...A05_ROWS.map(complexPin), ...A05_OTHERS]),
