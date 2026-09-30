@@ -60,10 +60,10 @@ if (want.length > 0) {
 if (args.includes("--lookup")) {
   const corePath = opt("core", "D:/V-coding/16-SiteAnalysis/.cache/v2/data/versions/2026-09-30d/core.sqlite");
   const core = new Database(corePath, { readonly: true });
-  const legal = (name, sig) => core.prepare("SELECT code FROM legal_area WHERE level='emd' AND name=? AND code LIKE ?").pluck().all(name, `${sig}%`);
+  const legal = (name, sig) => core.prepare("SELECT code || '00' FROM legal_area WHERE level='emd' AND name=? AND code LIKE ?").pluck().all(name, `${sig}%`); // 법정동 10자리
   const sites = [
     { label: "강남구 개포동 12", emd: legal("개포동", "11680")[0], bun: 12 },
-    { label: "강동구 고덕동 (산·번지 후보)", emd: legal("고덕동", "11740")[0], bun: null },
+    { label: "강동구 고덕동 123", emd: legal("고덕동", "11740")[0], bun: 123 },
   ];
   const shoelace = (ring) => Math.abs(ring.reduce((a, p, i) => a + (ring[i - 1] ?? ring.at(-1))[0] * p[1] - p[0] * (ring[i - 1] ?? ring.at(-1))[1], 0)) / 2;
   const area = (g) => (g.type === "Polygon" ? [g.coordinates] : g.type === "MultiPolygon" ? g.coordinates : []).reduce((a, poly) => a + shoelace(poly[0]) - poly.slice(1).reduce((h, r) => h + shoelace(r), 0), 0);
@@ -75,13 +75,14 @@ if (args.includes("--lookup")) {
     const c = [row.lng, row.lat];
     const at = queryFeaturesInRadius(db, c, 1, ["zoning_area"]);
     console.log(`\n${site.label}: pnu ${row.pnu} (${c.map((v) => v.toFixed(5))}) jimok ${row.jimok}`);
-    console.log("  점 위 용도지역:", at.map((h) => `${h.properties.zoningName}[${h.properties.zoningClass}${h.properties.remark.length ? " " + h.properties.remark.join("/") : ""}]`).join(" + ") || "(없음)");
+    console.log("  점 위 용도지역:", at.map((h) => `${h.properties.zoningName}[${h.properties.umbrella ? "우산" : h.properties.zoningClass}${h.properties.remark.length ? " " + h.properties.remark.join("/") : ""}]`).join(" + ") || "(없음)");
     const [cx, cy] = toUtmk(c);
     const circle = { type: "Polygon", coordinates: [Array.from({ length: 129 }, (_, i) => [cx + 1000 * Math.cos((2 * Math.PI * (i % 128)) / 128), cy + 1000 * Math.sin((2 * Math.PI * (i % 128)) / 128)])] };
     const total = area(circle);
     const byClass = {}, byName = {};
     let sum = 0;
     for (const h of queryFeaturesInRadius(db, c, 1000, ["zoning_area"])) {
+      if (h.properties.umbrella) continue; // 세분 없는 "도시지역" 우산 폴리곤은 구성비에서 뺀다
       const x = intersect(featureCollection([{ type: "Feature", properties: {}, geometry: circle }, { type: "Feature", properties: {}, geometry: h.geometry }]));
       const a = x ? area(x.geometry) : 0;
       sum += a;

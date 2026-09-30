@@ -88,6 +88,8 @@ export async function buildZoning(db: Db, layers: ZoningLayerInput[]): Promise<S
       const cls = zoningClass(layer, name, code);
       const props = {
         zoningClass: cls,
+        // 세분 없이 "도시지역"이라고만 지정된 우산 폴리곤: 아래 세분 지정과 겹치므로 구성비에서는 빼야 한다
+        umbrella: layer.key === "urban" && name === "도시지역",
         zoningCode: code,
         zoningName: name,
         layer: layer.key,

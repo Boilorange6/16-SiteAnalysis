@@ -73,6 +73,7 @@ writeShp(join(dir, "AL_D124_00_20260909"), [
   { A1: "ID-1", A4: "11680", A5: "UQA122", A6: "제2종일반주거지역", A7: "20190801", A8: "7층이하", ring: square(...G, 0.01) },
   { A1: "ID-2", A4: "11680", A5: "UQA220", A6: "일반상업지역", A7: "20140100", ring: square(...G, 0.005) }, // 위 폴리곤 안에 겹침 → 그대로 둔다
   { A1: "ID-1", A4: "11740", A5: "UQA122", A6: "제2종일반주거지역", ring: square(...K, 0.01) }, // 같은 지정ID, 다른 도형
+  { A1: "ID-0", A4: "11680", A5: "UQA01X", A6: "도시지역", ring: square(...G, 0.02) }, // 우산 폴리곤
   { A1: "ID-3", A4: "11740", A5: "UQA999", A6: "도시지역기타", ring: square(127.3, 37.55, 0.01) },
   { A1: "ID-4", A4: "11740", A5: "UQA430", A6: "자연녹지지역", ring: null }, // 도형 없음 → reject
   { A1: "ID-5", A4: "xx", A5: "UQA430", A6: "자연녹지지역", ring: square(127.4, 37.55, 0.01) }, // 시군구 코드 이상 → reject
@@ -90,17 +91,19 @@ const stats = await buildZoning(db, [
 
 // ─── 1. SourceStats 불변식·시도별·분류별 ────────────────────────────────────
 for (const s of stats) assert.equal(s.received, s.accepted + s.unlocated + s.rejected, s.sourceId);
-assert.deepEqual(stats.map((s) => [s.sourceId, s.received, s.accepted, s.rejected]), [["zoning_urban", 6, 4, 2], ["zoning_management", 1, 1, 0]]);
-assert.deepEqual(stats[0].byRegion, { 11: 4 });
-assert.deepEqual(stats[0].byType, { 주거: 2, 상업: 1, 기타: 1 });
+assert.deepEqual(stats.map((s) => [s.sourceId, s.received, s.accepted, s.rejected]), [["zoning_urban", 7, 5, 2], ["zoning_management", 1, 1, 0]]);
+assert.deepEqual(stats[0].byRegion, { 11: 5 });
+assert.deepEqual(stats[0].byType, { 주거: 2, 상업: 1, 기타: 2 });
 assert.deepEqual(stats[1].byRegion, { 41: 1 });
 assert.deepEqual(stats[1].byType, { 관리: 1 });
-assert.equal(stats[0].snapshot().fillRates.designatedDate, 0.5);
+assert.equal(stats[0].snapshot().fillRates.designatedDate, 0.4);
 
 // ─── 2. 겹침 보존·같은 지정ID·속성 ──────────────────────────────────────────
 const ids = db.prepare("SELECT stable_id FROM feature ORDER BY feature_id").pluck().all();
-assert.deepEqual(ids, ["zoning:ID-1", "zoning:ID-2", "zoning:ID-1#1", "zoning:ID-3", "zoning:M-1"]);
-const hits = queryFeaturesInRadius(db, G, 100, ["zoning_area"]);
+assert.deepEqual(ids, ["zoning:ID-1", "zoning:ID-2", "zoning:ID-1#1", "zoning:ID-0", "zoning:ID-3", "zoning:M-1"]);
+const all = queryFeaturesInRadius(db, G, 100, ["zoning_area"]);
+assert.deepEqual(all.filter((h) => h.properties.umbrella).map((h) => h.properties.zoningName), ["도시지역"], "우산 폴리곤 표시");
+const hits = all.filter((h) => !h.properties.umbrella);
 assert.deepEqual(hits.map((h) => h.properties.zoningName).sort(), ["일반상업지역", "제2종일반주거지역"], "겹친 두 지정 모두 반환");
 const res = hits.find((h) => h.properties.zoningClass === "주거");
 assert.equal(res.legalCode, "1168000000");
