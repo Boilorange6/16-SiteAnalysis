@@ -9,7 +9,10 @@
  *
  * 값은 { v, s }다: 원천 행이 있으면 observed, 없으면(=비밀보호 N/A) suppressed이고 v는 null — 0으로 바꾸지 않는다.
  * 원천 행의 0은 실제 값이 아니라 소수 셀에 대한 확률 대체(0 또는 5)·노이즈(±7) 결과일 수 있어 observed 0으로 그대로 둔다.
- * 연령대는 5세 구간(21개)의 합계 성별 값이며, 구간 중 하나라도 없으면 그 구간 묶음은 suppressed다.
+ * 총괄 항목(총인구·총가구·총주택·사업체)은 행이 없으면 suppressed다(인구 행이 없는 2,660셀은 전부 사업체만 있는 셀 — 무거주와 N/A를 구분할 수 없다).
+ * 연령 구간(5세, 21개)은 다르다: 총인구가 있는 셀에서 없는 구간은 대개 95세 이상 같은 빈 구간이고, 총인구 1,000명 이상 셀 5,581개에서
+ * 구간 합이 총인구의 100.1%로 맞는다(없는 행 = 0으로 저장되지 않은 값). 그래서 ageBands에는 null로 두고, 묶음(ageGroups)은
+ * 있는 구간의 합으로 만들며 없는 구간 수를 unlisted로 남긴다. 총인구가 없는 셀의 묶음은 suppressed다.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -126,14 +129,11 @@ export function locateSigunguFromCore(core: Db | null): LocateSigungu {
 // ── 값 모델 ──
 export type GridValue = { v: number | null; s: "observed" | "suppressed" };
 const val = (n: number | undefined): GridValue => (n === undefined ? { v: null, s: "suppressed" } : { v: n, s: "observed" });
-/** 하나라도 없으면 합계를 만들지 않는다(비공개 구간을 0으로 세면 과소 집계). */
-function groupSum(cell: Record<string, number>, items: string[]): GridValue {
-  let sum = 0;
-  for (const i of items) {
-    if (cell[i] === undefined) return { v: null, s: "suppressed" };
-    sum += cell[i];
-  }
-  return { v: sum, s: "observed" };
+/** 있는 구간의 합. 총인구가 없는 셀이면 suppressed. 없는 구간 수는 unlisted에 남긴다. */
+function groupSum(cell: Record<string, number>, items: string[]): GridValue & { unlisted?: number } {
+  if (cell.to_in_001 === undefined) return { v: null, s: "suppressed" };
+  const listed = items.filter((i) => cell[i] !== undefined);
+  return { v: listed.reduce((s, i) => s + cell[i], 0), s: "observed", unlisted: items.length - listed.length };
 }
 
 export const AGE_GROUPS = {

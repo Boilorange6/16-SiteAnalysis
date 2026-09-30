@@ -11,7 +11,7 @@ import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
 import { candidate, est, fmt, makeTile, missing, noDataTile, obs, type MapCandidate, type TileDraft } from "./common";
 
-type Value = { v: number | null; s: string };
+type Value = { v: number | null; s: string; unlisted?: number };
 interface CellProps {
   cellSizeM?: number;
   dataYear?: string | null;
@@ -98,8 +98,9 @@ export function a11(ctx: EngineContext): TileResult {
   const both = cells.filter((c) => c.pop !== null && c.hh !== null && c.hh > 0);
   const singles = cells.filter((c) => c.hh !== null && c.hh > 0 && c.single !== null);
   const groupShare = (key: keyof Cell["groups"]) => {
-    const cs = cells.filter((c) => c.pop !== null && c.groups[key] !== null);
-    const whole = sum(cs, (c) => c.pop!);
+    // 분모는 세 묶음의 합(총인구가 아니다): 소규모 격자는 노이즈로 구간 합이 총인구와 달라 세 비중이 100%로 맞지 않는다
+    const cs = cells.filter((c) => c.pop !== null && Object.values(c.groups).every((g) => g !== null));
+    const whole = sum(cs, (c) => c.groups.under15! + c.groups.age15to64! + c.groups.age65plus!);
     return cs.length && whole > 0 ? { share: pct(sum(cs, (c) => c.groups[key]!), whole), cells: cs.length } : null;
   };
   const elder = groupShare("age65plus");
@@ -126,7 +127,7 @@ export function a11(ctx: EngineContext): TileResult {
       metrics.push(est("single_hh_pct", "1인 가구 비중", pct(s, h), "%", "a11-single@1:가구·1인가구 모두 공개된 격자의 Σ1인가구÷Σ가구", s, h));
     }
     for (const [id, label, g, key] of [["elder_pct", "65세 이상 비중", elder, "age65plus"], ["youth_pct", "15세 미만 비중", youth, "under15"], ["working_pct", "15~64세 비중", working, "age15to64"]] as const) {
-      if (g) metrics.push(est(id, label, g.share, "%", `a11-age@1:${key} 구간이 모두 공개된 격자의 Σ구간÷Σ인구(같은 격자)`));
+      if (g) metrics.push(est(id, label, g.share, "%", `a11-age@1:${key} Σ(격자 구간 합×면적비)÷Σ(세 구간 합×면적비), 총인구 공개 격자만`));
     }
     metrics.push(obs("cells_in_circle", "원과 겹친 격자", cells.length, "개", "a11-cells@1:1km 격자 중 원과 겹치는 것"), obs("cells_suppressed", "인구 비공개 격자", popSup.length, "개", "a11-suppressed@1:총인구 N/A"));
   }
@@ -160,9 +161,9 @@ export function a11(ctx: EngineContext): TileResult {
   if (hhCells.length < cells.length) {
     limitations.push({ kind: "suppressed", note: `가구 수가 비공개인 격자 ${cells.length - hhCells.length}개는 가구 합계에서 제외했습니다.` });
   }
-  for (const [label, g] of [["65세 이상", elder], ["15세 미만", youth], ["15~64세", working]] as const) {
-    if (g && g.cells < popCells.length) limitations.push({ kind: "suppressed", note: `${label} 비중은 연령 구간이 모두 공개된 격자 ${g.cells}개(인구 공개 ${popCells.length}개 중)만으로 계산했습니다.` });
-    else if (!g && popCells.length > 0) limitations.push({ kind: "suppressed", note: `${label} 비중: 연령 구간이 모두 공개된 격자가 없어 계산하지 않았습니다.` });
+  const unlisted = cells.some((c) => Object.values((c.hit.properties as CellProps).ageGroups ?? {}).some((g) => (g?.unlisted ?? 0) > 0));
+  if (elder && unlisted) {
+    limitations.push({ kind: "estimated", note: "연령 비중은 원천에 행이 없는 5세 구간을 0으로 보고 계산했습니다(총인구 1,000명 이상 격자에서는 구간 합이 총인구와 맞지만, 소규모 격자는 노이즈로 어긋날 수 있습니다)." });
   }
   if (cells.length > 0 && coveredM2 < circleM2 * 0.99) {
     limitations.push({ kind: "unknown", note: `원 면적의 ${pct(circleM2 - coveredM2, circleM2)}%는 자료에 격자가 없는 곳입니다(무인 지역과 자료 없음을 구분할 수 없어 인구를 더하지 않았습니다).` });

@@ -71,13 +71,14 @@ assert.deepEqual(full.households, { total: { v: 500, s: "observed" }, single: { 
 assert.deepEqual(full.business, { establishments: { v: null, s: "suppressed" }, employees: { v: 3000, s: "observed" } });
 assert.equal(full.ageBands.length, 21);
 assert.equal(full.ageBands[20], null, "없는 구간은 null(비공개), 0이 아니다");
-assert.deepEqual(full.ageGroups.under15, { v: 150, s: "observed" });
-assert.deepEqual(full.ageGroups.age65plus, { v: null, s: "suppressed" }, "구간 하나라도 없으면 묶음은 비공개");
+assert.deepEqual(full.ageGroups.under15, { v: 150, s: "observed", unlisted: 0 });
+assert.deepEqual(full.ageGroups.age65plus, { v: 350, s: "observed", unlisted: 1 }, "행이 없는 구간은 합에 넣지 않고 unlisted로 센다");
 // 비공개는 0이 아니다
 const sup = cell("다사5353");
 assert.deepEqual(sup.population.total, { v: null, s: "suppressed" });
 assert.deepEqual(sup.households.total, { v: null, s: "suppressed" });
 assert.equal(sup.ageBands[13], 7);
+assert.deepEqual(sup.ageGroups.age65plus, { v: null, s: "suppressed" }, "총인구가 없으면 묶음도 비공개");
 // 실제 0은 0이다
 assert.deepEqual(cell("다사5452").population.total, { v: 0, s: "observed" });
 assert.equal(cell("다사5452").ageBands[0], 0);

@@ -78,12 +78,13 @@ const val = (t, id) => metric(t, id)?.value;
   close(val(t, "density_per_km2"), Math.round(1200 * Math.PI / 4 / (Math.PI * 0.25)), 1e-3); // 1200/km²
   assert.equal(val(t, "avg_hh_size"), 2.4);
   assert.equal(val(t, "single_hh_pct"), 30);
-  assert.equal(val(t, "elder_pct"), 33.3); // 65세+ 8구간×50 / 1200
-  assert.equal(val(t, "youth_pct"), 12.5);
-  assert.equal(val(t, "working_pct"), 41.7);
+  assert.equal(val(t, "elder_pct"), 38.1); // 65세+ 8구간×50 / 세 묶음 합 1050
+  assert.equal(val(t, "youth_pct"), 14.3);
+  assert.equal(val(t, "working_pct"), 47.6);
+  assert.ok(!t.limitations.some((l) => l.note.includes("행이 없는 5세 구간")), "빠진 구간이 없으면 안내하지 않는다");
   assert.equal(t.judgment.level, null, "등급 없음");
   assert.equal(t.judgment.criteria, null);
-  assert.match(t.judgment.sentence, /^2024년 격자 기준 반경 500m 안 추정 인구 약 940명·약 390가구, 65세 이상 33\.3% → .+ → .+/);
+  assert.match(t.judgment.sentence, /^2024년 격자 기준 반경 500m 안 추정 인구 약 940명·약 390가구, 65세 이상 38\.1% → .+ → .+/);
   assert.equal(t.status, "complete");
   assert.ok(t.limitations.some((l) => l.kind === "estimated" && l.note.includes("±7")));
   assert.ok(!t.limitations.some((l) => l.kind === "suppressed"));
@@ -108,7 +109,8 @@ const val = (t, id) => metric(t, id)?.value;
   const sup = t.limitations.filter((l) => l.kind === "suppressed");
   assert.ok(sup.some((l) => /4개 중 2개는 인구가 비공개.*원 면적의 50%/.test(l.note)), sup.map((l) => l.note).join("|"));
   assert.ok(sup.some((l) => l.note.includes("가구 수가 비공개인 격자 2개")));
-  assert.ok(sup.some((l) => l.note.includes("65세 이상 비중은 연령 구간이 모두 공개된 격자 1개")));
+  assert.ok(t.limitations.some((l) => l.kind === "estimated" && l.note.includes("행이 없는 5세 구간을 0으로")), "5452는 구간 행이 전혀 없다");
+  assert.equal(val(t, "elder_pct"), 38.1, "5452(인구 0)는 분모에 0을 더할 뿐");
   const layers = t.presentation.features.map((f) => f.layer).sort();
   assert.deepEqual(layers.filter((l) => l === "pop_grid_na").length, 2);
   assert.equal(t.presentation.features.find((f) => f.layer === "pop_grid_na").weight, null);
