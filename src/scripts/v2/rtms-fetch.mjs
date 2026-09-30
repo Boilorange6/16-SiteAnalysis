@@ -51,4 +51,4 @@ const sum = await fetchRtms({
 });
 console.log(JSON.stringify({ done: sum.done, skipped: sum.skipped, rows: sum.rows, calls: sum.calls, failed: sum.failed.length, budgetStopped: sum.budgetStopped, deadlineHit: sum.deadlineHit, fatal: sum.fatal }));
 for (const f of sum.failed.slice(0, 20)) console.log(`FAIL ${f.cell}: ${f.error}`);
-process.exit(sum.fatal ? 1 : 0);
+process.exitCode = sum.fatal ? 1 : 0;

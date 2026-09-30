@@ -145,9 +145,11 @@ export async function fetchRtms(o: FetchOptions): Promise<FetchSummary> {
   const cells: { type: RtmsType; ym: string; lawd: string }[] = [];
   for (const type of o.types) for (const ym of o.months) for (const lawd of o.lawds) cells.push({ type, ym, lawd });
 
+  let pauseUntil = 0;
   async function call(type: RtmsType, ym: string, lawd: string, pageNo: number) {
     const url = `${RTMS_TYPES[type]}?serviceKey=${encodeURIComponent(o.serviceKey)}&LAWD_CD=${lawd}&DEAL_YMD=${ym}&numOfRows=${PAGE_ROWS}&pageNo=${pageNo}`;
     for (let attempt = 0; ; attempt++) {
+      while (Date.now() < pauseUntil) await sleep(Math.min(1000, pauseUntil - Date.now()));
       ledger.spend(type, limit); // 재시도도 호출로 센다
       sum.calls[type] = (sum.calls[type] ?? 0) + 1;
       try {
@@ -165,8 +167,11 @@ export async function fetchRtms(o: FetchOptions): Promise<FetchSummary> {
         const code = (e as { code?: string }).code ?? "";
         if (code === "22") throw new BudgetStop("서비스 측 일일 한도 초과(22)");
         if (["20", "30", "31", "32", "33"].includes(code)) throw new FatalKeyError(`서비스키 오류 code ${code}`);
-        if (attempt >= 3) throw new Error(mask(String((e as Error).message ?? e)));
-        await sleep(1000 * 2 ** attempt);
+        const throttled = /HTTP 429/.test(String((e as Error).message));
+        if (attempt >= (throttled ? 5 : 3)) throw new Error(mask(String((e as Error).message ?? e)));
+        // 429(속도 제한)는 모든 워커가 함께 쉰다 — 각자 재시도하면 호출 수만 태운다
+        if (throttled) pauseUntil = Math.max(pauseUntil, Date.now() + 8000 * (attempt + 1));
+        else await sleep(1000 * 2 ** attempt);
       }
     }
   }

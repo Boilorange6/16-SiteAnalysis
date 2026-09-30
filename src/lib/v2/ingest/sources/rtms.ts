@@ -2,8 +2,8 @@
  * 국토부 실거래(RTMS) 원본 파일 → property_transaction (market).
  *
  * - 행 한 건 = 원천 item 한 건. 취소 거래(cdealType "O")도 버리지 않고 cancelled_at을 채운다(소비 쪽이 걸러 쓴다).
- * - transaction_id = "rtms:" + sha256(자연키).slice(0,20). 자연키 = 유형|시군구|법정동|지번|단지명|동|계약일|금액(거래가 또는 보증금/월세)|전용면적|층.
- *   취소·등기일·거래유형 필드는 뺀다 — 같은 거래가 나중에 취소돼도 id가 같아야 재적재가 안정적이다.
+ * - transaction_id = "rtms:" + sha256(자연키).slice(0,20). 자연키 = 유형|시군구|법정동|지번|단지명|동|계약일|금액(거래가 또는 보증금/월세)|전용면적|층|매수자·매도자 구분|거래유형(중개/직거래)|중개사 소재지|(전월세) 계약기간·구분.
+ *   취소·등기일 필드는 뺀다 — 같은 거래가 나중에 취소돼도 id가 같아야 재적재가 안정적이다.
  *   자연키가 완전히 같은 행은 중복으로 보고 첫 행만 남기며 rejected로 센다(동·호를 밝히지 않는 원천이라 실제 별개 거래가 합쳐질 수 있는 상한).
  * - 위치: 법정동(sggCd+umdCd)+지번 → PNU(makePnu) → core parcel_point. 구조화 코드가 없으면 시군구명+읍면동+지번을 resolveJibunDetailed로 푼다.
  *   PNU를 못 만들거나 대표점이 없으면 match_status "unlocated"로 행은 남기고(location_id NULL) unlocated로 센다.
@@ -83,7 +83,7 @@ export function toTxRow(type: RtmsType, lawdOfFile: string, fetchedDate: string,
   const dealDate = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
   const name = it.aptNm ?? it.offiNm ?? "";
   const floor = num(it.floor);
-  const key = [PROPERTY[type], isRent ? "rent" : "trade", lawd, it.umdCd ?? it.umdNm ?? "", it.jibun ?? "", name, it.aptDong ?? "", dealDate, it.dealAmount?.replaceAll(",", "") ?? "", it.deposit?.replaceAll(",", "") ?? "", it.monthlyRent?.replaceAll(",", "") ?? "", it.excluUseAr ?? "", it.floor ?? ""].join("|");
+  const key = [PROPERTY[type], isRent ? "rent" : "trade", lawd, it.umdCd ?? it.umdNm ?? "", it.jibun ?? "", name, it.aptDong ?? "", dealDate, it.dealAmount?.replaceAll(",", "") ?? "", it.deposit?.replaceAll(",", "") ?? "", it.monthlyRent?.replaceAll(",", "") ?? "", it.excluUseAr ?? "", it.floor ?? "", it.buyerGbn ?? "", it.slerGbn ?? "", it.dealingGbn ?? "", it.estateAgentSggNm ?? "", it.contractTerm ?? "", it.contractType ?? ""].join("|");
   const cancelled = (it.cdealType ?? "").trim().toUpperCase() === "O";
   return {
     transactionId: `rtms:${sha256Hex(key).slice(0, 20)}`,
