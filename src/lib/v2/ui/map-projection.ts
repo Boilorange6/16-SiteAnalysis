@@ -29,9 +29,16 @@ export function viewportFor(center: readonly [number, number], radiusM: number, 
 }
 
 /** 대지를 가로 siteX(0~1) 위치에 놓은 뷰포트: 경도(메르카토르 x)는 선형이라 중심 경도만 옮기면 된다. 지도 그림·PPT 지도 이미지·설명선 점이 같은 값을 쓴다 */
-export function framedViewport(center: readonly [number, number], radiusM: number, width: number, height: number, siteX = 0.5, fill = 0.8): Viewport {
+export function framedViewport(center: readonly [number, number], radiusM: number, width: number, height: number, siteX = 0.5, fill = 0.8, siteY = 0.5): Viewport {
   const vp0 = viewportFor(center, radiusM, width, height, fill);
-  return { ...vp0, center: [center[0] + (0.5 - siteX) * width * (360 / (256 * 2 ** vp0.zoom)), center[1]] as const };
+  const lng = center[0] + (0.5 - siteX) * width * (360 / (256 * 2 ** vp0.zoom));
+  if (siteY === 0.5) return { ...vp0, center: [lng, center[1]] as const };
+  // 세로 위치는 메르카토르 y가 위도에 비선형이라 세계 픽셀에서 옮긴 뒤 위도로 되돌린다
+  const [, wy] = worldPx(center[0], center[1], vp0.zoom);
+  const size = TILE_PX * 2 ** vp0.zoom;
+  const y = wy + (0.5 - siteY) * height;
+  const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / size))) * 180) / Math.PI;
+  return { ...vp0, center: [lng, lat] as const };
 }
 
 /** (lng,lat) → 그림 좌표(px). 그림 중앙이 center. */

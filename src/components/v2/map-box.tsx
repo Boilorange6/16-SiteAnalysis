@@ -12,7 +12,7 @@ export const SetBasemapContext = createContext<(b: BasemapChoice) => void>(() =>
 
 type Box = NonNullable<MapFigureProps["avoid"]>;
 /** avoid·siteX는 실측 크기를 받아 계산하는 함수도 받는다 */
-type Opts = Pick<MapFigureProps, "legend" | "legendY" | "north" | "scale" | "credit" | "bottomInset" | "muted" | "rightInset" | "scaleLeft" | "fill" | "scaleX"> & {
+type Opts = Pick<MapFigureProps, "legend" | "legendY" | "north" | "scale" | "credit" | "bottomInset" | "muted" | "rightInset" | "scaleLeft" | "fill" | "scaleX" | "siteY"> & {
   avoid?: Box | ((w: number, h: number) => Box);
   siteX?: number | ((w: number) => number);
 };

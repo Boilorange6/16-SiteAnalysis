@@ -266,7 +266,8 @@ function calloutOverview(s: Slide, p: PlannedSlide & { kind: "tile" }) {
   if (cm.complexes.length === 0) {
     const w = 4.6;
     const h = 1.2;
-    const r = { x: slideSiteX() * SLIDE.w - w / 2, y: (SLIDE.h - h) / 2, w, h };
+    // 대지 표시를 가리지 않게 원 아래쪽에 둔다
+    const r = { x: slideSiteX() * SLIDE.w - w / 2, y: SLIDE.h / 2 + 0.9, w, h };
     plate(s, r, 0.16);
     s.addText("반경 안 확인된 단지 0", { x: r.x + 0.3, y: r.y + 0.2, w: w - 0.6, h: 0.45, fontFace: FONT, fontSize: 20, bold: true, color: INK, margin: 0 });
     s.addText(`기준 ${cm.sourceLine}`, { x: r.x + 0.3, y: r.y + 0.7, w: w - 0.6, h: 0.35, valign: "top", fontFace: FONT, fontSize: 10.5, color: MUTED, margin: 0, fit: "shrink" });

@@ -140,6 +140,8 @@ export type Pt = [number, number];
 export type Metrics = { cardW: number; compactW: number; minW: number; gap: number; stub: number; rMin: number; rMax: number; head: number; row: number; pad: number; compactH: number };
 /** 화면(px) */
 export const PX: Metrics = { cardW: 176, compactW: 136, minW: 96, gap: 8, stub: 14, rMin: 8, rMax: 15, head: 26, row: 17, pad: 6, compactH: 40 };
+/** 좁은 화면(모바일): 카드를 좁히고 점을 줄여 반경 원이 두 칸 사이에 들어가게 한다 */
+export const PX_NARROW: Metrics = { ...PX, cardW: 100, compactW: 100, minW: 88, gap: 6, stub: 10, rMin: 6, rMax: 11, compactH: 38 };
 /** 슬라이드(inch) */
 export const INCH: Metrics = { cardW: 2.55, compactW: 2.0, minW: 1.4, gap: 0.1, stub: 0.2, rMin: 0.12, rMax: 0.22, head: 0.28, row: 0.165, pad: 0.06, compactH: 0.5 };
 

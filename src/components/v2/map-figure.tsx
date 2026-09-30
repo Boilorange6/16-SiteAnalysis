@@ -47,6 +47,8 @@ export type MapFigureProps = {
   fill?: number;
   /** 축척 막대 왼쪽 끝 x(px). 지정하면 rightInset·scaleLeft 대신 이 자리에 놓는다 (설명선 칸 사이) */
   scaleX?: number;
+  /** 대지 중심의 세로 위치(0~1, 기본 0.5). 아래에서 올라오는 시트가 있으면 위로 옮긴다 */
+  siteY?: number;
 };
 
 const FONT = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif';
@@ -56,13 +58,13 @@ const textW = (s: string, fs: number) => [...s].reduce((w, ch) => w + (ch.charCo
 type Box = { x0: number; y0: number; x1: number; y1: number };
 const hit = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
 
-export default function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, bare, fixed, label, legend, legendY, north: northOpt, scale = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX }: MapFigureProps) {
+export default function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, bare, fixed, label, legend, legendY, north: northOpt, scale = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5 }: MapFigureProps) {
   const sat = layer === "Satellite";
   // 항공 사진 위에서는 어두운 선·점 테두리가 묻히므로 흰색으로 바꾼다
   const line = sat ? "#fff" : INK;
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
   const u = Math.min(1.5, Math.max(1, H / 360));
-  const vp = framedViewport(model.center, model.radiusM, W, H, siteX, fill);
+  const vp = framedViewport(model.center, model.radiusM, W, H, siteX, fill, siteY);
   const proj = makeProjector(vp);
   const mpp = metersPerPixel(model.center[1], vp.zoom);
   const [cx, cy] = proj(model.center[0], model.center[1]);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useContext, useEffect, useMemo, useState } from "react";
-import { BOARD_TOP, PX, calloutFrame, cardHeight, cardName, cardRows, decadeColor, dotRadius, fmtInt, inkOn, layoutCallouts, pageCount, pageItems, pageRange, rowsFor, DECADE_LAYERS, type CalloutFrame, type Complex, type Placed } from "@/lib/v2/ui/callout-layout";
+import { BOARD_TOP, PX, PX_NARROW, calloutFrame, cardHeight, cardName, cardRows, decadeColor, dotRadius, fmtInt, inkOn, layoutCallouts, pageCount, pageItems, pageRange, rowsFor, DECADE_LAYERS, type CalloutFrame, type Complex, type Placed } from "@/lib/v2/ui/callout-layout";
 import { LAYER_STYLES } from "@/lib/v2/ui/map-layers";
 import { framedViewport, makeProjector } from "@/lib/v2/ui/map-projection";
 import { OV } from "@/lib/v2/ui/overlay-layout";
@@ -28,11 +28,16 @@ export function calloutScene(model: CalloutModel, kind: CalloutFrameKind, W: num
   const withCards = page !== 0 || !detail ? numbered : [];
   const rows = rowsFor(withCards);
   const perSide = detail ? 5 : 3;
-  const spec = { W, H, m: PX, edge: OV.edge, top, bottom, leftBottom: detail ? undefined : bottom - PILL_H - 6, rightInset: panel, perSide, rows };
+  const m = mobile ? PX_NARROW : PX;
+  // 아래에서 올라오는 시트가 덮는 만큼을 뺀 지도 영역의 세로 가운데에 반경 원을 둔다
+  const sheet = detail && mobile;
+  const siteY = sheet ? (top + bottom) / 2 / H : 0.5;
+  const maxFill = sheet ? Math.min(0.8, (0.9 * (bottom - top)) / H) : 0.8;
+  const spec = { W, H, m, edge: mobile ? 8 : OV.edge, top, bottom, leftBottom: detail ? undefined : bottom - PILL_H - 6, rightInset: panel, perSide, rows, maxFill };
   // 세로 여유가 되면 4행 카드, 아니면 이름+세대수 2줄 카드
-  const fullFits = detail && !mobile && (bottom - top + PX.gap) >= perSide * (cardHeight(PX, "full", rows) + PX.gap) - 1e-6;
+  const fullFits = detail && !mobile && (bottom - top + m.gap) >= perSide * (cardHeight(m, "full", rows) + m.gap) - 1e-6;
   const frame: CalloutFrame = calloutFrame({ ...spec, variant: fullFits ? "full" : "compact" });
-  const vp = framedViewport(model.center, model.radiusM, W, H, frame.siteX, frame.fill);
+  const vp = framedViewport(model.center, model.radiusM, W, H, frame.siteX, frame.fill, siteY);
   const proj = makeProjector(vp);
   const hMax = Math.max(0, ...model.complexes.map((c) => c.households ?? 0));
   const pos = new Map(model.complexes.map((c) => [c.id, proj(c.lng, c.lat)]));
@@ -40,7 +45,7 @@ export function calloutScene(model: CalloutModel, kind: CalloutFrameKind, W: num
     frame,
     withCards.map((c) => ({ id: c.id, x: pos.get(c.id)![0], y: pos.get(c.id)![1] })),
   );
-  return { frame, pos, hMax, placed, overflow, numbered, withCards, panel };
+  return { frame, pos, hMax, placed, overflow, numbered, withCards, panel, siteY };
 }
 
 function Card({ c, p, frame, year, hover, onHover, onPick }: { c: Complex; p: Placed; frame: CalloutFrame; year: number; hover: boolean; onHover: (id: string | null) => void; onPick: (id: string) => void }) {
@@ -77,7 +82,7 @@ function Card({ c, p, frame, year, hover, onHover, onPick }: { c: Complex; p: Pl
       ) : (
         <div className={styles.cSub}>
           <span className={rows[0].missing ? styles.cMissing : undefined}>{rows[0].value}</span>
-          {c.approvalYear !== null && <span className={styles.cYear}>{c.approvalYear}</span>}
+          {c.approvalYear !== null && frame.cardW >= 112 && <span className={styles.cYear}>{c.approvalYear}</span>}
         </div>
       )}
     </div>
@@ -217,6 +222,7 @@ export default function CalloutMap({ model, kind, page = 0, onPage, label }: Cal
             bottomInset={OV.stripH}
             siteX={scene.frame.siteX}
             fill={scene.frame.fill}
+            siteY={scene.siteY}
             rightInset={scene.panel}
             scaleX={scaleX}
           />
@@ -239,7 +245,7 @@ export default function CalloutMap({ model, kind, page = 0, onPage, label }: Cal
             })}
             {scene.numbered.map((c) => {
               const [x, y] = scene.pos.get(c.id)!;
-              const r = dotRadius(c.households, scene.hMax, PX.rMin, PX.rMax);
+              const r = dotRadius(c.households, scene.hMax, scene.frame.m.rMin, scene.frame.m.rMax);
               const color = decadeColor(c.approvalYear);
               const on = active === c.id;
               return (
@@ -271,7 +277,7 @@ export default function CalloutMap({ model, kind, page = 0, onPage, label }: Cal
             </div>
           )}
           {empty && (
-            <div className={styles.statusWrap} style={{ right: scene.panel }}>
+            <div className={styles.statusWrap} style={{ right: scene.panel, placeItems: "end center", paddingBottom: Math.round(size.h * 0.2) }}>
               <div className={`${styles.plate} ${styles.statusPlate}`}>
                 <b className={styles.statusHead}>반경 안 확인된 단지 0</b>
                 <p className={styles.statusNote}>기준 {model.sourceLine}</p>
