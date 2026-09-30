@@ -1,9 +1,8 @@
 "use client";
 
-import { useContext, useEffect, useMemo, useState } from "react";
-import { BOARD_TOP, PX, PX_NARROW, calloutFrame, cardHeight, cardName, cardRows, decadeColor, dotRadius, fmtInt, inkOn, layoutCallouts, pageCount, pageItems, pageRange, rowsFor, DECADE_LAYERS, type CalloutFrame, type Complex, type Placed } from "@/lib/v2/ui/callout-layout";
-import { LAYER_STYLES } from "@/lib/v2/ui/map-layers";
-import { framedViewport, makeProjector } from "@/lib/v2/ui/map-projection";
+import { Fragment, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { STRIP_H, cardName, cardRows, dotColor, dotRadius, fmtInt, inkOn, overlapChip, pageCount, pageRange, stripCards, type CalloutFrame, type Complex, type Placed, type StripCard } from "@/lib/v2/ui/callout-layout";
+import { calloutScene, type CalloutFrameKind } from "@/lib/v2/ui/callout-scene";
 import { OV } from "@/lib/v2/ui/overlay-layout";
 import type { CalloutModel } from "@/lib/v2/ui/tile-view";
 import MapFigure from "./map-figure";
@@ -11,48 +10,12 @@ import { BasemapContext, useMeasured } from "./map-box";
 import styles from "./board.module.css";
 
 const INK = "#16181d";
-const PANEL_W = 360;
-/** 보드 카드 왼쪽 아래 값 판 높이 */
-const PILL_H = 32;
-
-export type CalloutFrameKind = "card" | "detail";
-
-/** 설명선 배치를 만드는 순수 계산: 프레임 종류·크기·페이지 → 점·카드 자리 */
-export function calloutScene(model: CalloutModel, kind: CalloutFrameKind, W: number, H: number, page: number) {
-  const detail = kind === "detail";
-  const mobile = W <= 520;
-  const panel = detail && W > 720 ? PANEL_W + OV.edge : 0;
-  const top = detail ? OV.edge + 34 + 6 + 32 + 8 : OV.edge + 34 + 6;
-  const bottom = detail ? H - OV.stripH - OV.edge + (mobile ? -(0.4 * H + 20) : 0) : H - OV.stripH - 8;
-  const numbered = !detail ? model.complexes.slice(0, BOARD_TOP) : page === 0 ? model.complexes : pageItems(model.complexes, page);
-  const withCards = page !== 0 || !detail ? numbered : [];
-  const rows = rowsFor(withCards);
-  const perSide = detail ? 5 : 3;
-  const m = mobile ? PX_NARROW : PX;
-  // 아래에서 올라오는 시트가 덮는 만큼을 뺀 지도 영역의 세로 가운데에 반경 원을 둔다
-  const sheet = detail && mobile;
-  const siteY = sheet ? (top + bottom) / 2 / H : 0.5;
-  const maxFill = sheet ? Math.min(0.8, (0.9 * (bottom - top)) / H) : 0.8;
-  const spec = { W, H, m, edge: mobile ? 8 : OV.edge, top, bottom, leftBottom: detail ? undefined : bottom - PILL_H - 6, rightInset: panel, perSide, rows, maxFill };
-  // 세로 여유가 되면 4행 카드, 아니면 이름+세대수 2줄 카드
-  const fullFits = detail && !mobile && (bottom - top + m.gap) >= perSide * (cardHeight(m, "full", rows) + m.gap) - 1e-6;
-  const frame: CalloutFrame = calloutFrame({ ...spec, variant: fullFits ? "full" : "compact" });
-  const vp = framedViewport(model.center, model.radiusM, W, H, frame.siteX, frame.fill, siteY);
-  const proj = makeProjector(vp);
-  const hMax = Math.max(0, ...model.complexes.map((c) => c.households ?? 0));
-  const pos = new Map(model.complexes.map((c) => [c.id, proj(c.lng, c.lat)]));
-  const otherPts = model.others.map((o) => proj(o.lng, o.lat));
-  const { placed, overflow } = layoutCallouts(
-    frame,
-    withCards.map((c) => ({ id: c.id, x: pos.get(c.id)![0], y: pos.get(c.id)![1] })),
-  );
-  return { frame, pos, otherPts, hMax, placed, overflow, numbered, withCards, panel, siteY };
-}
 
 function Card({ c, p, frame, year, hover, onHover, onPick }: { c: Complex; p: Placed; frame: CalloutFrame; year: number; hover: boolean; onHover: (id: string | null) => void; onPick: (id: string) => void }) {
-  const color = decadeColor(c.approvalYear);
+  const color = dotColor(c);
   const rows = cardRows(c, year);
   const full = frame.variant === "full";
+  const chip = overlapChip(c);
   return (
     <div
       className={`${styles.plate} ${styles.cCard} ${hover ? styles.cCardOn : ""}`}
@@ -70,6 +33,7 @@ function Card({ c, p, frame, year, hover, onHover, onPick }: { c: Complex; p: Pl
         <span className={`${styles.cName} ${c.name ? "" : styles.cMissing}`} title={cardName(c)}>
           {cardName(c)}
         </span>
+        {chip && <span className={styles.cChip}>{chip}</span>}
       </div>
       {full ? (
         <ul className={styles.cRows}>
@@ -82,36 +46,41 @@ function Card({ c, p, frame, year, hover, onHover, onPick }: { c: Complex; p: Pl
         </ul>
       ) : (
         <div className={styles.cSub}>
-          <span className={rows[0].missing ? styles.cMissing : undefined}>{rows[0].value}</span>
-          {c.approvalYear !== null && frame.cardW >= 112 && <span className={styles.cYear}>{c.approvalYear}</span>}
+          {c.supply ? (
+            <>
+              <span className={c.supply.plannedMonth === null ? styles.cMissing : undefined}>{c.supply.plannedMonth ? c.supply.plannedMonth.replace("-", ".") : "일정 확인필요"}</span>
+              <span className={rows[1].missing ? styles.cMissing : styles.cYear}>{rows[1].value}</span>
+            </>
+          ) : (
+            <>
+              <span className={rows[0].missing ? styles.cMissing : undefined}>{rows[0].value}</span>
+              {c.approvalYear !== null && frame.cardW >= 112 && <span className={styles.cYear}>{c.approvalYear}</span>}
+            </>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-const DECADE_SHORT = ["~79", "80년대", "90년대", "00년대", "10년대", "20년~", "미상"];
-
-/** 범례: 준공 연대 색 + 크기 = 세대수 */
-export function CalloutLegend({ style }: { style?: React.CSSProperties }) {
+/** 범례: A05 준공 연대 / A06 입주 시기 색 + 크기 = 세대수 */
+export function CalloutLegend({ model, style }: { model: CalloutModel; style?: React.CSSProperties }) {
   return (
     <div className={`${styles.plate} ${styles.cLegend}`} style={style} aria-label="범례">
-      <span className={styles.cLegendT}>준공 연대</span>
-      {DECADE_LAYERS.map((k, i) => (
-        <span key={k} className={styles.cLegendI}>
-          <i style={{ background: LAYER_STYLES[k].color }} />
-          {DECADE_SHORT[i]}
+      <span className={styles.cLegendT}>{model.legend.title}</span>
+      {model.legend.items.map((it) => (
+        <span key={it.label} className={styles.cLegendI}>
+          <i style={{ background: it.color }} />
+          {it.label}
         </span>
       ))}
-      <span className={styles.cLegendT}>크기 = 세대수</span>
+      <span className={styles.cLegendT}>{model.legend.sizeLabel}</span>
     </div>
   );
 }
 
 /** 개요 페이지 왼쪽 아래 핵심 값 카드 */
 export function CalloutValueCard({ model }: { model: CalloutModel }) {
-  const s = model.summary;
-  const unknown = s.apartments - s.householdsKnown;
   const stat = (value: string, unit: string, label: string) => (
     <div>
       <div>
@@ -124,24 +93,53 @@ export function CalloutValueCard({ model }: { model: CalloutModel }) {
   return (
     <div className={`${styles.plate} ${styles.valueCard} ${styles.cValue}`}>
       <div className={styles.cValueRow}>
-        {stat(fmtInt(s.count), "단지", "반경 안 단지 수")}
-        {stat(fmtInt(s.households), "세대", "확인 세대(아파트)")}
-        {stat(s.medianYear === null ? "확인필요" : String(s.medianYear), s.medianYear === null ? "" : "년", "준공 중앙값")}
+        {model.stats.map((s) => (
+          <Fragment key={s.label}>{stat(s.value, s.unit, s.label)}</Fragment>
+        ))}
       </div>
-      {unknown > 0 && <div className={styles.sub}>세대수 미확인 {unknown}곳은 합계에서 제외</div>}
+      {model.statNote && <div className={styles.sub}>{model.statNote}</div>}
     </div>
   );
 }
 
 /** 보드 카드 왼쪽 아래 한 줄 값 판 */
 export function CalloutPill({ model }: { model: CalloutModel }) {
-  const s = model.summary;
   return (
     <div className={`${styles.plate} ${styles.cPill}`}>
-      <span className={`${styles.display} ${styles.cPillN}`}>{fmtInt(s.count)}</span>
-      <span className={styles.aux}>단지</span>
-      <span className={`${styles.display} ${styles.cPillN}`}>{fmtInt(s.households)}</span>
-      <span className={styles.aux}>세대(아파트)</span>
+      {model.pill.map((p) => (
+        <Fragment key={p.unit}>
+          <span className={`${styles.display} ${styles.cPillN}`}>{p.value}</span>
+          <span className={styles.aux}>{p.unit}</span>
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
+/** 모바일 가로 띠: 번호 카드가 옆으로 밀리고, 누르면 지도의 같은 번호 점이 강조된다 */
+function Strip({ cards, active, onPick, top }: { cards: StripCard[]; active: string | null; onPick: (id: string) => void; top: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!active) return;
+    const el = ref.current?.querySelector<HTMLElement>(`[data-card="${active}"]`);
+    // 띠 안에서만 굴린다 (페이지 전체가 흔들리지 않게 scrollIntoView 대신 scrollTo)
+    if (el && ref.current) ref.current.scrollTo({ left: el.offsetLeft - 8, behavior: "smooth" });
+  }, [active]);
+  return (
+    <div ref={ref} className={styles.cStrip} style={{ top, height: STRIP_H }} role="list" aria-label="단지 설명 카드">
+      {cards.map((c) => (
+        <button key={c.id} type="button" role="listitem" data-card={c.id} className={`${styles.plate} ${styles.cStripCard} ${active === c.id ? styles.cCardOn : ""}`} onClick={() => onPick(c.id)} aria-pressed={active === c.id}>
+          <span className={styles.cStripHead}>
+            <span className={styles.cNum} style={{ background: c.color, color: inkOn(c.color) }}>
+              {c.rank}
+            </span>
+            <span className={`${styles.cName} ${c.nameMissing ? styles.cMissing : ""}`}>{c.name}</span>
+            {c.chip && <span className={styles.cChip}>{c.chip}</span>}
+          </span>
+          <span className={styles.cStripLine}>{c.lines[0]}</span>
+          <span className={styles.cStripLine}>{c.lines[1]}</span>
+        </button>
+      ))}
     </div>
   );
 }
@@ -150,7 +148,8 @@ export function CalloutPill({ model }: { model: CalloutModel }) {
 function Pager({ model, page, onPage }: { model: CalloutModel; page: number; onPage: (p: number) => void }) {
   const pages = pageCount(model.complexes.length);
   const label = page === 0 ? "개요" : `${page} / ${pages}`;
-  const range = page === 0 ? `전체 ${fmtInt(model.complexes.length)}단지 · 세대수 순` : pageRange(page, model.complexes.length);
+  const supply = model.kind === "supply";
+  const range = page === 0 ? `전체 ${fmtInt(model.complexes.length)}${model.unit} · ${supply ? "입주 시기순" : "세대수 순"}` : pageRange(page, model.complexes.length, undefined, supply);
   return (
     <div className={styles.cPagerWrap}>
       <div className={`${styles.plate} ${styles.cPager}`} role="group" aria-label="설명표 페이지">
@@ -188,6 +187,7 @@ export default function CalloutMap({ model, kind, page = 0, onPage, label }: Cal
   const detail = kind === "detail";
   const pages = pageCount(model.complexes.length);
 
+  useEffect(() => setPicked(null), [page]);
   useEffect(() => {
     if (!detail || !onPage) return;
     const onKey = (e: KeyboardEvent) => {
@@ -236,7 +236,7 @@ export default function CalloutMap({ model, kind, page = 0, onPage, label }: Cal
             {model.complexes
               .filter((c) => !scene.numbered.includes(c))
               .map((c) => (
-                <circle key={c.id} cx={scene.pos.get(c.id)![0]} cy={scene.pos.get(c.id)![1]} r={4} fill={decadeColor(c.approvalYear)} fillOpacity={0.6} stroke="#fff" strokeWidth={1} />
+                <circle key={c.id} cx={scene.pos.get(c.id)![0]} cy={scene.pos.get(c.id)![1]} r={4} fill={dotColor(c)} fillOpacity={0.6} stroke="#fff" strokeWidth={1} />
               ))}
             {scene.placed.map((p) => {
               const on = active === p.id;
@@ -251,7 +251,7 @@ export default function CalloutMap({ model, kind, page = 0, onPage, label }: Cal
             {scene.numbered.map((c) => {
               const [x, y] = scene.pos.get(c.id)!;
               const r = dotRadius(c.households, scene.hMax, scene.frame.m.rMin, scene.frame.m.rMax);
-              const color = decadeColor(c.approvalYear);
+              const color = dotColor(c);
               const on = active === c.id;
               return (
                 <g
@@ -275,7 +275,8 @@ export default function CalloutMap({ model, kind, page = 0, onPage, label }: Cal
             <Card key={p.id} c={model.complexes.find((c) => c.id === p.id)!} p={p} frame={scene.frame} year={model.analysisYear} hover={active === p.id} onHover={setHover} onPick={(id) => setPicked((v) => (v === id ? null : id))} />
           ))}
           {detail && <Pager model={model} page={page} onPage={(p) => onPage?.(Math.max(0, Math.min(pages, p)))} />}
-          {detail && size.w > 560 && !empty && <CalloutLegend style={{ left: legendX, maxWidth: Math.max(160, scaleX - 12 - legendX), bottom: OV.stripH + 12 }} />}
+          {scene.strip && page > 0 && <Strip cards={stripCards(scene.withCards, model.analysisYear)} active={active} onPick={(id) => setPicked((v) => (v === id ? null : id))} top={scene.stripTop} />}
+          {detail && size.w > 560 && !empty && <CalloutLegend model={model} style={{ left: legendX, maxWidth: Math.max(160, scaleX - 12 - legendX), bottom: OV.stripH + 12 }} />}
           {detail && page === 0 && !empty && (
             <div className={styles.ovBL}>
               <CalloutValueCard model={model} />
@@ -284,7 +285,7 @@ export default function CalloutMap({ model, kind, page = 0, onPage, label }: Cal
           {empty && (
             <div className={styles.statusWrap} style={{ right: scene.panel, placeItems: "end center", paddingBottom: Math.round(size.h * 0.2) }}>
               <div className={`${styles.plate} ${styles.statusPlate}`}>
-                <b className={styles.statusHead}>반경 안 확인된 단지 0</b>
+                <b className={styles.statusHead}>반경 안 확인된 {model.unit === "곳" ? "사업" : "단지"} 0</b>
                 <p className={styles.statusNote}>기준 {model.sourceLine}</p>
               </div>
             </div>
