@@ -98,6 +98,13 @@ export function toTileView(r: TileResult): TileView {
     if (r.tileCode === "A06" && l.note.includes("중복")) badges.push({ text: "중복 가능 · 합계 보류", note: l.note, tone: "limit" });
   }
   if (MODEL_BADGE[r.tileCode]) badges.push({ text: MODEL_BADGE[r.tileCode], tone: "model" });
+  // 같은 문구의 배지는 하나로 합치고 note는 이어 붙인다.
+  const merged = new Map<string, Badge>();
+  for (const b of badges) {
+    const prev = merged.get(b.text);
+    if (!prev) merged.set(b.text, { ...b });
+    else if (b.note && prev.note !== b.note) prev.note = prev.note ? `${prev.note} / ${b.note}` : b.note;
+  }
 
   const overlap = r.tileCode === "A06";
   const isShare = (id: string) => r.tileCode === "D04" && id.startsWith("share_");
@@ -114,7 +121,9 @@ export function toTileView(r: TileResult): TileView {
       const inside = zone?.status === "observed" ? (zone.value === 1 ? "통학구역 안" : "통학구역 밖") : "통학구역 미확인";
       headline = { value: inside, label: "대지 기준", aux: `학구도 기준일 ${asOf ?? "미확인"}` };
     } else {
-      const first = rows[0];
+      // 값이 있는 첫 지표를 대표로 쓴다 (예: 철도 미적재면 버스 거리).
+      const i = metrics.findIndex((m) => m.status === "observed" || m.status === "estimated");
+      const first = rows[i < 0 ? 0 : i];
       headline = { value: first.value, label: first.label, aux: first.aux, tag: first.tag };
     }
   }
@@ -128,7 +137,7 @@ export function toTileView(r: TileResult): TileView {
     title: cat.title,
     color: cat.color,
     status: r.status,
-    badges,
+    badges: [...merged.values()],
     headline,
     rows: allRows,
     sentence: r.judgment?.sentence ?? null,

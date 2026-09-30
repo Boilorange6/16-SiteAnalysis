@@ -120,4 +120,26 @@ assert.equal(sv.facts.length, 3);
 assert.equal(sv.asOfLine, "자료 기준일 2026-01-01 ~ 2026-09-20");
 assert.equal(sv.incomplete, true);
 
+// ── 같은 배지 합치기, 대표값은 값이 있는 첫 지표 ──
+{
+  const base = GODEOK_RESULTS.find((r) => r.tileCode === "A01");
+  const r = {
+    ...base,
+    status: "partial",
+    metrics: [
+      { ...base.metrics[0], id: "rail_x", value: null, status: "missing" },
+      ...base.metrics.filter((m) => m.value !== null).slice(0, 1),
+    ],
+    limitations: [
+      { kind: "partial", note: "가" },
+      { kind: "partial", note: "나" },
+    ],
+  };
+  const v = toTileView(r);
+  const texts = v.badges.map((b) => b.text);
+  assert.equal(new Set(texts).size, texts.length, "배지 문구 중복 없음");
+  assert.equal(v.badges.find((b) => b.text === "일부 자료만 집계").note, "가 / 나");
+  assert.notEqual(v.headline.value, "미확인", "값이 있는 지표가 대표값");
+}
+
 console.log("v2 ui view tests passed");
