@@ -276,6 +276,7 @@ if (builders.reference && existsSync(join(raw, "zoning"))) {
     return [...built, ...(await buildZoning(db, layers))];
   };
 }
+<<<<<<< HEAD
 // 개별공시지가(VWorld dsId 6, 시도별 CSV): raw/land_price가 있을 때만 reference에 이어 붙인다(없으면 건너뜀).
 const { buildLandPrice, latestLandPricePerSido, LAND_PRICE_RIGHTS } = await import("../../lib/v2/ingest/sources/land-price.ts");
 if (builders.reference && existsSync(join(raw, "land_price"))) {
@@ -304,6 +305,57 @@ if (builders.reference && existsSync(join(raw, "land_price"))) {
     }
     // core가 있으면 옛 코드(29·46 → 12, 인천 구 분할)를 현재 코드로 옮겨 저장한다. expectedRegions도 저장 코드로 바뀐다
     return [...built, await buildLandPrice(db, rows(), releaseId, list.map(([k]) => k), ctx.core)];
+  };
+}
+
+// 정비구역 경계(VWorld dsId 24 정비 5개 레이어) + 정비사업 명부 매칭: 폴더가 없으면 건너뛴다. 날짜 폴더 아래(maintenance_zone/YYYY-MM-DD/x)에 풀려 있다.
+const { buildMaintenanceZones, mzoneLayerFiles, sigunguIndexFromCore, MZONE_LAYERS, MZONE_RIGHTS } = await import("../../lib/v2/ingest/sources/maintenance-zone.ts");
+if (builders.reference && existsSync(join(raw, "maintenance_zone"))) {
+  const base = builders.reference;
+  builders.reference = async (db, ctx) => {
+    const built = await base(db, ctx);
+    extractAll(join(raw, "maintenance_zone"));
+    const found = mzoneLayerFiles([...walk(join(raw, "maintenance_zone"))]);
+    const missing = MZONE_LAYERS.filter((l) => !found.has(l.key)).map((l) => l.title);
+    if (missing.length > 0) throw new Error(`정비구역 레이어 없음: ${missing.join(", ")} — vworld:fetch -- --ds 24 로 받으세요`);
+    const layers = MZONE_LAYERS.map((l) => {
+      const set = found.get(l.key);
+      const st = statSync(set.files[0]);
+      const d = set.date;
+      const releaseId = insertRelease(db, {
+        sourceId: l.sourceId,
+        provider: "국토교통부(VWorld 일별용도지역지구정보)",
+        sourceUrl: "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=24",
+        sourceAsOf: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`,
+        fetchedAt: st.mtime.toISOString(),
+        checksum: `size-mtime:${st.size}-${Math.round(st.mtimeMs)}`,
+        licenseCode: "UNRESTRICTED",
+        rights: { ...MZONE_RIGHTS, layer: l.title },
+      });
+      return { layer: l.key, releaseId, records: chain(...set.files.map((f) => readShp(f))) };
+    });
+    // 명부: 정비사업 CSV를 임시 메모리 DB에 적재해 사업 id·이름을 그대로 얻는다(market 파일과 같은 id). 명부나 core가 없으면 폴리곤만 적재.
+    let roster;
+    if (ctx.core && existsSync(join(raw, "maintenance"))) {
+      const { default: Database } = await import("better-sqlite3");
+      const { initDataFileSchema } = await import("../../lib/v2/data/schema.ts");
+      const { buildMaintenance } = await import("../../lib/v2/ingest/sources/maintenance.ts");
+      const scratch = new Database(":memory:");
+      initDataFileSchema(scratch, "market");
+      const integratedFile = newest("maintenance", /^maintenance-integrated-.*\.csv$/i);
+      const stdFile = newest("maintenance", /^maintenance-std-.*\.csv$/i);
+      const p = "국토교통부·지방자치단체(도시정비사업)";
+      await buildMaintenance(scratch, {
+        integrated: (await csvRecords(integratedFile)).records,
+        integratedReleaseId: release(scratch, "maintenance_integrated", integratedFile, p, "", "UNRESTRICTED"),
+        std: (await csvRecords(stdFile)).records,
+        stdReleaseId: release(scratch, "maintenance_std", stdFile, p, "", "UNRESTRICTED"),
+      });
+      const projects = scratch.prepare("SELECT coverage_json FROM source_release").pluck().all().flatMap((c) => JSON.parse(c).projects ?? []);
+      scratch.close();
+      roster = { projects, sigungu: sigunguIndexFromCore(ctx.core) };
+    }
+    return [...built, ...(await buildMaintenanceZones(db, layers, roster))];
   };
 }
 if (builders.core) {
