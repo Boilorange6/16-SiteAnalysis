@@ -268,7 +268,7 @@ export const GODEOK_RESULTS: TileResult[] = [
     [["landuse", "2026-07-01"], ["land_price", "2026-01-01"]],
     j("A12-zoning@1", ["mixed_zone_share_pct"], "인접 구역에 3종일반·상업 → 용도가 섞인 지역 → 지구단위계획 확인 필요"),
   ),
-  tile(
+  withMap(tile(
     "D04",
     "diagram",
     "complete",
@@ -286,7 +286,15 @@ export const GODEOK_RESULTS: TileResult[] = [
     j("D04-decades@1", ["confirmed_share_pct"], "확인된 건물 중 1990년대 이전 준공이 67% → 노후 건물이 넓게 분포 → 재건축 요건은 별도 확인 필요"),
     [],
     "front",
-  ),
+  ), [
+    ...scatter("bldg_pre1980", 14, 41, 950, 60),
+    ...scatter("bldg_1980s", 28, 42, 950, 60),
+    ...scatter("bldg_1990s", 37, 43, 950, 60),
+    ...scatter("bldg_2000s", 22, 44, 950, 60),
+    ...scatter("bldg_2010s", 11, 45, 950, 60),
+    ...scatter("bldg_2020s", 5, 46, 950, 60),
+    ...scatter("bldg_unknown", 3, 47, 950, 60),
+  ]),
   tile("S02", "simulation", "not_provided", [], [], null, [{ kind: "not_provided", note: "일조 계산은 3D 시뮬레이션 단계에서 제공합니다." }]),
   tile("S03", "simulation", "failed", [], [], null, [{ kind: "unknown", note: "계산 영역 생성에 실패했습니다." }]),
 ];

@@ -19,6 +19,9 @@ export type LayerStyle = {
   sizeBy?: "weight";
 };
 
+/** 준공 연대 색 (지도 점과 구성비 차트가 같이 쓴다). 오래될수록 진하다 */
+export const STRIP_COLORS = ["#5b2a12", "#8f4a1f", "#c26a26", "#e08f2e", "#f0b73a", "#f7d76a", "#a9adb6"];
+
 const S = (label: string, color: string, sizeBy?: "weight"): LayerStyle => ({ label, color, sizeBy });
 
 export const LAYER_STYLES: Record<string, LayerStyle> = {
@@ -37,7 +40,20 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   officetel: S("오피스텔", "#2B9CBF", "weight"),
   applyhome: S("청약홈", "#D6478A", "weight"),
   move_in: S("입주예정", "#2F6FDB", "weight"),
+  bldg_pre1980: S("1979년 이하", STRIP_COLORS[0]),
+  bldg_1980s: S("1980년대", STRIP_COLORS[1]),
+  bldg_1990s: S("1990년대", STRIP_COLORS[2]),
+  bldg_2000s: S("2000년대", STRIP_COLORS[3]),
+  bldg_2010s: S("2010년대", STRIP_COLORS[4]),
+  bldg_2020s: S("2020년 이상", STRIP_COLORS[5]),
+  bldg_unknown: S("미상", STRIP_COLORS[6]),
 };
 const FALLBACK: LayerStyle = S("기타", "#7A7E87");
 
-export const layerStyle = (layer: string): LayerStyle => LAYER_STYLES[layer] ?? FALLBACK;
+/** 지물이 있는 레이어의 범례 항목 (정의된 순서) */
+export const legendItems = (model: MapModel) =>
+  Object.keys(LAYER_STYLES)
+    .filter((k) => model.features.some((f) => f.layer === k))
+    .map((k) => ({ layer: k, label: LAYER_STYLES[k].label, color: LAYER_STYLES[k].color }));
+
+export const layerStyle =(layer: string): LayerStyle => LAYER_STYLES[layer] ?? FALLBACK;

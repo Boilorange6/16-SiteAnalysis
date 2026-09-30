@@ -5,7 +5,7 @@ import SummaryCard from "@/components/v2/summary-card";
 import TileCard from "@/components/v2/tile-card";
 import TileDialog from "@/components/v2/tile-dialog";
 import { useTileDrag } from "@/components/v2/use-tile-drag";
-import { BasemapContext } from "@/components/v2/map-box";
+import { BASEMAPS, BasemapContext, SetBasemapContext } from "@/components/v2/map-box";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import styles from "@/components/v2/board.module.css";
 import { boardReducer, demoFinished, demoPhase, initBoard, reportPages } from "@/lib/v2/ui/board-state";
@@ -14,11 +14,6 @@ import { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } from "@/lib/v2/ui/fixtures/
 import { toSummaryView, toTileView, type SiteSummary } from "@/lib/v2/ui/tile-view";
 import type { TileResult } from "@/lib/v2/tile-result";
 
-const BASEMAPS: Array<{ id: BasemapChoice; label: string }> = [
-  { id: "white", label: "일반" },
-  { id: "Base", label: "지도" },
-  { id: "Satellite", label: "항공" },
-];
 const UNDO_LABEL ={ order: "옮김", size: "크기 바꿈", remove: "삭제됨", add: "더함" } as const;
 
 type BoardProps = {
@@ -95,6 +90,7 @@ function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: Boar
 
   return (
     <BasemapContext.Provider value={basemap}>
+    <SetBasemapContext.Provider value={setBasemap}>
     <main className={styles.root}>
       <div className={styles.page}>
         <header className={styles.topbar}>
@@ -248,6 +244,7 @@ function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: Boar
         />
       )}
     </main>
+    </SetBasemapContext.Provider>
     </BasemapContext.Provider>
   );
 }

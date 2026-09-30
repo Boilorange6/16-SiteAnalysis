@@ -28,10 +28,16 @@ export type TileView = {
   retryable: boolean;
   /** 지도 타일이면 지도 그림 입력, 아니면 null */
   map: MapModel | null;
+  /** 지물 없는 대지·반경 지도. 지도 타일이 아니거나 결과가 없을 때 전면 배경으로 쓴다 (빈 흰 카드 금지) */
+  backdrop: MapModel;
+  /** 종류 배지 문구 */
+  kindLabel: string;
 };
 
-const MAP_TILES = new Set(["A01", "A03", "A04", "A05", "A06"]);
+const KIND_LABEL = { analysis: "분석", diagram: "도판", simulation: "시뮬레이션" } as const;
+const MAP_TILES = new Set(["A01", "A03", "A04", "A05", "A06", "D04"]);
 const MAP_NOTES: Record<string, string> = {
+  D04: "대표점 · 건물 도형은 자료 적재 뒤",
   A04: "대표점 · 원천 면적 비례 (경계 아님)",
   A05: "원 크기 = 세대수 · 속 빈 원 = 세대수 미확인",
   A06: "원천별 표시 · 중복 가능",
@@ -171,6 +177,8 @@ export function toTileView(r: TileResult): TileView {
     hasFace: r.tileCode === "D04",
     retryable: r.status === "failed",
     map: mapOf(r),
+    backdrop: { center: r.conditions.center, radiusM: r.conditions.radiusM, features: [], total: 0, notes: [] },
+    kindLabel: KIND_LABEL[cat.kind],
   };
 }
 
