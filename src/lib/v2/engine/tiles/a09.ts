@@ -142,7 +142,8 @@ function withZones(ctx: EngineContext, key: FileKey, sources: ReturnType<EngineC
 }
 
 function typeOf(p: FeatureHit["properties"]): string {
-  const t = p.projectType ?? p.type ?? p.zoneType;
+  // maintenance-zone 적재는 typeLabel(원천 A6)과 layer(정비구역·재개발구역 등)를 남긴다.
+  const t = p.projectType ?? p.type ?? p.zoneType ?? p.typeLabel ?? p.layer;
   return typeof t === "string" && t.trim() !== "" ? t.trim() : "미상";
 }
 
