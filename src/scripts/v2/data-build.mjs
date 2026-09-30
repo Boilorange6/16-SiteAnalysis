@@ -163,6 +163,33 @@ if (only.has("market")) {
   };
 }
 
+// 학교·학구 연계(reference)와 K-APT 단지(core): 기존 builder 뒤에 이어 붙인다.
+const { buildKapt, buildSchoolZoneLinks, SCHOOL_SPEC, SCHOOL_ZONE_COVERAGE } = await import("../../lib/v2/ingest/sources/school-kapt.ts");
+if (builders.reference) {
+  const base = builders.reference;
+  builders.reference = async (db, ctx) => {
+    const schoolFile = newest("school", /^school-location.*\.csv$/i);
+    const linkFile = newest("school_zone", /^school-zone-link.*\.csv$/i);
+    const elemFile = newest("school_zone", /^school-zone-elem.*\.csv$/i);
+    const provider = "한국교육시설안전원";
+    const school = await buildPointSource(db, SCHOOL_SPEC, (await csvRecords(schoolFile)).records, release(db, "school", schoolFile, provider, "https://www.data.go.kr/data/15021148/standard.do", "UNRESTRICTED"));
+    const linkRel = release(db, "school_zone_link", linkFile, provider, "https://www.data.go.kr/data/15021158/standard.do", "UNRESTRICTED");
+    const elemRel = release(db, "school_zone_elem", elemFile, provider, "https://www.data.go.kr/data/15021149/standard.do", "UNRESTRICTED");
+    for (const rel of [linkRel, elemRel]) db.prepare("UPDATE source_release SET coverage_json = ? WHERE release_id = ?").run(JSON.stringify(SCHOOL_ZONE_COVERAGE), rel);
+    const zones = await buildSchoolZoneLinks(db, { link: (await csvRecords(linkFile)).records, elem: (await csvRecords(elemFile)).records, linkReleaseId: linkRel, elemReleaseId: elemRel });
+    return [...(await base(db, ctx)), school, ...zones];
+  };
+}
+if (builders.core) {
+  const base = builders.core;
+  builders.core = async (db, ctx) => {
+    const built = await base(db, ctx);
+    const file = newest("kapt", /^kapt_complex_.*\.csv$/i);
+    const releaseId = release(db, "kapt", file, "한국부동산원(공동주택 단지 식별정보)", "https://www.data.go.kr/data/15106861/fileData.do", "UNRESTRICTED");
+    return [...built, ...(await buildKapt(db, { records: (await csvRecords(file)).records, releaseId }))];
+  };
+}
+
 const started = Date.now();
 const out = await buildAndPublish({ dataDir: v2DataDir(), version, builders, expectations, resetBaseline });
 for (const [kind, list] of Object.entries(out.stats)) {
