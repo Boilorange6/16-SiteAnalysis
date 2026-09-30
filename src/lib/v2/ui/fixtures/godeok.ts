@@ -155,7 +155,7 @@ export const GODEOK_RESULTS: TileResult[] = [
     j("a03-basic-groups@1", ["basic_groups"], "기초 생활시설 4군 중 4군 확인 → 반경 안에서 일상 시설 접근 가능 → 업소 214개의 영업 여부는 현장 확인"),
     [],
   ), [
-    ...scatter("store:other", 80, 21, 1000),
+    ...scatter("store:other", 81, 21, 1000),
     ...scatter("store:eatery", 60, 22, 900),
     ...scatter("store:life_service", 30, 23, 900),
     ...scatter("store:grocery", 17, 24, 900),

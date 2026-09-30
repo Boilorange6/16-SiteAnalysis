@@ -152,6 +152,9 @@
     grid-row: auto !important;
     min-height: 420px;
   }
+  .summaryAddr {
+    font-size: 26px;
+  }
   .topTitle {
     border-left: 0;
     padding-left: 0;
@@ -183,7 +186,7 @@
 }
 .summaryPanel {
   align-self: flex-start;
-  max-width: min(78%, 560px);
+  max-width: min(88%, 640px);
   display: flex;
   flex-direction: column;
   gap: 10px;

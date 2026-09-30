@@ -1,6 +1,6 @@
 import { useId, type ReactNode } from "react";
 import { LAYER_STYLES, layerStyle, type MapModel } from "@/lib/v2/ui/map-layers";
-import { makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, viewportFor } from "@/lib/v2/ui/map-projection";
+import { BASEMAP_ATTRIBUTION, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, viewportFor } from "@/lib/v2/ui/map-projection";
 
 /**
  * 지도 그림 하나(SVG). 카드·상세·PPT가 같은 입력으로 같은 그림을 그린다.
@@ -11,10 +11,9 @@ export type MapFigureProps = {
   width: number;
   height: number;
   /** "none"이면 배경 타일 없이 격자만 (배경을 못 받았을 때) */
-  basemap?: "carto" | "none";
+  basemap?: "tiles" | "none";
   /** 배경 타일 주소 → 실제 href (PPT용: data URI로 바꿔 넣는다). 반환 undefined면 그 타일은 생략 */
   tileHref?: (url: string) => string | undefined;
-  hires?: boolean;
   /** true면 범례·문구를 그리지 않는다 (대지 요약 칸) */
   bare?: boolean;
   /** 직렬화용: width/height 속성을 붙인다. 아니면 부모를 채운다 */
@@ -29,16 +28,16 @@ const textW = (s: string, fs: number) => [...s].reduce((w, ch) => w + (ch.charCo
 type Box = { x0: number; y0: number; x1: number; y1: number };
 const hit = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
 
-export default function MapFigure({ model, width: W, height: H, basemap = "carto", tileHref, hires, bare, fixed, label }: MapFigureProps) {
+export default function MapFigure({ model, width: W, height: H, basemap = "tiles", tileHref, bare, fixed, label }: MapFigureProps) {
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
-  const u = Math.max(0.8, H / 360);
+  const u = Math.min(1.5, Math.max(1, H / 360));
   const vp = viewportFor(model.center, model.radiusM, W, H);
   const proj = makeProjector(vp);
   const mpp = metersPerPixel(model.center[1], vp.zoom);
   const [cx, cy] = [W / 2, H / 2];
   const R = model.radiusM / mpp;
 
-  const tiles = basemap === "carto" ? tilesFor(vp) : [];
+  const tiles = basemap === "tiles" ? tilesFor(vp) : [];
   const grid = scaleBar(mpp, 110 * u).px;
 
   // 500m 간격 보조 원 (반경 안쪽만)
@@ -140,6 +139,9 @@ export default function MapFigure({ model, width: W, height: H, basemap = "carto
       style={{ display: "block" }}
     >
       <defs>
+        <filter id={`s${uid}`}>
+          <feColorMatrix type="saturate" values="0.3" />
+        </filter>
         <clipPath id={`c${uid}`}>
           <rect width={W} height={H} />
         </clipPath>
@@ -156,10 +158,14 @@ export default function MapFigure({ model, width: W, height: H, basemap = "carto
             ))}
           </g>
         )}
-        {tiles.map((t) => {
-          const href = tileHref ? tileHref(tileUrl(t, hires)) : tileUrl(t, hires);
-          return href ? <image key={`${t.z}/${t.x}/${t.y}`} href={href} x={t.left} y={t.top} width={t.size + 0.6} height={t.size + 0.6} preserveAspectRatio="none" /> : null;
-        })}
+        {/* 표준 지도는 색이 진해 점이 묻히므로 채도를 낮추고 흰 막을 덮는다 */}
+        <g filter={`url(#s${uid})`}>
+          {tiles.map((t) => {
+            const href = tileHref ? tileHref(tileUrl(t)) : tileUrl(t);
+            return href ? <image key={`${t.z}/${t.x}/${t.y}`} href={href} x={t.left} y={t.top} width={t.size + 0.6} height={t.size + 0.6} preserveAspectRatio="none" /> : null;
+          })}
+        </g>
+        {tiles.length > 0 && <rect width={W} height={H} fill="#fff" fillOpacity={0.35} />}
 
         <path d={dim} fillRule="evenodd" fill="#14161c" fillOpacity={0.09} />
         {rings.map((r) => (
@@ -234,7 +240,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "carto
             {bar.label}
           </text>
           <text x={W - 4 * u} y={H - 4 * u} fontSize={6.6 * u} textAnchor="end" fill="#3b3f47" stroke="#fff" strokeOpacity={0.8} strokeWidth={2 * u} paintOrder="stroke">
-            © OpenStreetMap contributors © CARTO
+            {BASEMAP_ATTRIBUTION}
           </text>
         </g>
       </g>

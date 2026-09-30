@@ -56,11 +56,14 @@ export function tilesFor(v: Viewport): MapTile[] {
   return out;
 }
 
-/** CARTO light. hires면 @2x (PPT 이미지용) */
-export function tileUrl(t: Pick<MapTile, "z" | "x" | "y">, hires = false): string {
-  const s = "abcd"[(t.x + t.y) % 4];
-  return `https://${s}.basemaps.cartocdn.com/light_all/${t.z}/${t.x}/${t.y}${hires ? "@2x" : ""}.png`;
+/**
+ * 배경 타일 주소. OpenStreetMap 표준 타일 — CARTO light_all은 API 키 없이는 "API KEY REQUIRED" 자리표시 타일만 준다(2026-09-30 확인).
+ * 공급자를 바꿀 때는 이 함수와 BASEMAP_ATTRIBUTION만 고친다.
+ */
+export function tileUrl(t: Pick<MapTile, "z" | "x" | "y">): string {
+  return `https://tile.openstreetmap.org/${t.z}/${t.x}/${t.y}.png`;
 }
+export const BASEMAP_ATTRIBUTION = "© OpenStreetMap contributors";
 
 /** maxPx 안에 들어가는 가장 긴 1·2·5×10ⁿ m 막대 */
 export function scaleBar(mPerPx: number, maxPx: number): { meters: number; px: number; label: string } {

@@ -57,8 +57,7 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   const maxB = Math.max(...tiles.map((t) => t.top + t.size));
   assert.ok(minL <= 0 && minT <= 0 && maxR >= 800 && maxB >= 500, "덮음");
   assert.equal(new Set(tiles.map((t) => `${t.z}/${t.x}/${t.y}`)).size, tiles.length, "중복 없음");
-  assert.match(P.tileUrl(tiles[0]), /^https:\/\/[a-d]\.basemaps\.cartocdn\.com\/light_all\/\d+\/\d+\/\d+\.png$/);
-  assert.match(P.tileUrl(tiles[0], true), /@2x\.png$/);
+  assert.match(P.tileUrl(tiles[0]), /^https:\/\/tile\.openstreetmap\.org\/\d+\/\d+\/\d+\.png$/);
 }
 
 // ── 축척 막대: 1·2·5×10ⁿ m ──
@@ -174,8 +173,8 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   const html = renderToStaticMarkup(createElement(MapFigure, { model, width: 640, height: 360, fixed: true }));
   assert.match(html, /^<svg /);
   assert.ok((html.match(/<image /g) ?? []).length >= 4, "배경 타일");
-  assert.match(html, /basemaps\.cartocdn\.com/);
-  assert.match(html, /© OpenStreetMap contributors © CARTO/);
+  assert.match(html, /tile\.openstreetmap\.org/);
+  assert.match(html, /© OpenStreetMap contributors/);
   assert.match(html, /직선 210m/);
   assert.match(html, /버스정류장/);
   assert.match(html, />N</);
@@ -183,7 +182,7 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   const none = renderToStaticMarkup(createElement(MapFigure, { model, width: 640, height: 360, basemap: "none" }));
   assert.ok(!/<image /.test(none) && /<line /.test(none), "배경 없이 격자");
   const inlined = renderToStaticMarkup(createElement(MapFigure, { model, width: 640, height: 360, tileHref: () => "data:image/png;base64,AAAA" }));
-  assert.ok(!inlined.includes("cartocdn") && inlined.includes("data:image/png"));
+  assert.ok(!inlined.includes("openstreetmap.org/") && inlined.includes("data:image/png"));
   const bare = renderToStaticMarkup(createElement(MapFigure, { model: toSummaryView(GODEOK_SUMMARY, GODEOK_RESULTS).map, width: 640, height: 360, bare: true }));
   assert.ok(!bare.includes("버스정류장"));
 }
