@@ -18,12 +18,21 @@ const stageOf = (v: unknown): Stage => (STAGES as readonly string[]).includes(St
 const SOURCES = ["maintenance_zone", "maintenance_integrated", "maintenance_std"];
 const KEYS: FileKey[] = ["market", "reference"];
 
-interface Project {
+export interface Project {
   key: string;
   name: string;
   stage: Stage;
   type: string;
   households: number | null;
+}
+
+export interface MaintenanceCollection {
+  zones: FeatureHit[];
+  projects: Map<string, Project>;
+  zoneProject: Map<number, string>;
+  sources: ReturnType<EngineContext["sources"]>;
+  linked: number;
+  key: FileKey;
 }
 
 const posInt = (v: unknown): number | null => (typeof v === "number" && Number.isInteger(v) && v > 0 ? v : null);
@@ -34,6 +43,10 @@ export function sigunguMatches(areaName: string, rosterName: string): boolean {
   const rest = compact(areaName.split(/\s+/).slice(1).join(""));
   const r = compact(rosterName);
   return r !== "" && rest !== "" && (rest.includes(r) || r.includes(rest));
+}
+
+export function maintenanceSources(ctx: EngineContext): ReturnType<EngineContext["sources"]> {
+  return KEYS.flatMap((k) => ctx.sources(k, SOURCES));
 }
 
 function summarize(projects: Project[]) {
@@ -61,14 +74,18 @@ const hhText = (projects: Project[]) => {
 };
 
 export function a09(ctx: EngineContext): TileResult {
-  const sources = KEYS.flatMap((k) => ctx.sources(k, SOURCES));
-  const zoneKey = KEYS.find((k) => ctx.db(k)?.prepare("SELECT 1 FROM feature WHERE kind = 'maintenance_zone' LIMIT 1").get() !== undefined);
-  if (sources.length === 0 && !zoneKey) return notProvided(ctx, "A09");
-  return zoneKey ? withZones(ctx, zoneKey, sources) : rosterOnly(ctx, sources);
+  const sources = maintenanceSources(ctx);
+  const collection = collectMaintenance(ctx);
+  if (sources.length === 0 && !collection) return notProvided(ctx, "A09");
+  return collection ? withZones(ctx, collection) : rosterOnly(ctx, sources);
 }
 
 // ── 1) 경계가 있는 경우 ──
-function withZones(ctx: EngineContext, key: FileKey, sources: ReturnType<EngineContext["sources"]>): TileResult {
+export function collectMaintenance(ctx: EngineContext): MaintenanceCollection | null {
+  const sources = maintenanceSources(ctx);
+  const key = KEYS.find((k) => ctx.db(k)?.prepare("SELECT 1 FROM feature WHERE kind = 'maintenance_zone' LIMIT 1").get() !== undefined);
+  if (!key) return null;
+
   const zones = ctx.hits(key, ["maintenance_zone"]);
   const zdb = ctx.db(key)!;
   const market = ctx.db("market");
@@ -96,6 +113,11 @@ function withZones(ctx: EngineContext, key: FileKey, sources: ReturnType<EngineC
     // 한 사업의 구역이 여럿이면 이름·단계는 처음 것, 세대수는 한 번만 센다
     projects.set(k, prev ?? { key: k, name: z.name ?? String(p.zoneName ?? "이름 없음"), stage, type: typeOf(p), households });
   }
+  return { zones, projects, zoneProject, sources, linked, key };
+}
+
+function withZones(ctx: EngineContext, collection: MaintenanceCollection): TileResult {
+  const { zones, projects, zoneProject, sources, linked } = collection;
   const list = [...projects.values()];
 
   const metrics: TileDraft["metrics"] = [
@@ -150,7 +172,7 @@ function typeOf(p: FeatureHit["properties"]): string {
 // ── 2) 명부만 있는 경우 ──
 interface RosterRow { id: string; sido: string; sigungu: string; name: string; type: string; stage: string; households: number | null }
 
-function rosterOnly(ctx: EngineContext, sources: ReturnType<EngineContext["sources"]>): TileResult {
+export function collectMaintenanceRoster(ctx: EngineContext): Project[] {
   const market = ctx.db("market");
   const rows = (market
     ? (market.prepare("SELECT coverage_json FROM source_release WHERE source_id IN ('maintenance_integrated','maintenance_std') ORDER BY release_id").pluck().all() as Array<string | null>)
@@ -164,6 +186,12 @@ function rosterOnly(ctx: EngineContext, sources: ReturnType<EngineContext["sourc
     seen.add(r.id);
     list.push({ key: r.id, name: r.name, stage: stageOf(r.stage), type: r.type || "미상", households: posInt(r.households) });
   }
+  return list;
+}
+
+function rosterOnly(ctx: EngineContext, sources: ReturnType<EngineContext["sources"]>): TileResult {
+  const list = collectMaintenanceRoster(ctx);
+  const areas = ctx.sigungu();
   const metrics: TileDraft["metrics"] = [
     obs("roster_projects", "반경이 걸친 시군구의 정비사업(반경 내 여부 미확인)", list.length, "건", "a09-roster@1:시군구 단위 명부, 경계 없음"),
     ...commonMetrics(list, ""),
