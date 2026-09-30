@@ -1,6 +1,117 @@
-/** D11 구역·지구 — 스텁. Task 16이 구현으로 교체한다. */
+/** D11 구역·지구 — VWorld dsId 24 지구·구역 면 도형. */
 import type { TileResult } from "../../tile-result";
-import type { EngineContext } from "../context";
-import { notProvided } from "./not-provided";
+import type { EngineContext, SourceRef } from "../context";
+import { candidate, fmt, makeTile, obs, polygonCandidate, type MapCandidate, type PolygonCandidate } from "./common";
+import { clipToCircle, polygonArea } from "./geo";
 
-export function d11(ctx: EngineContext): TileResult { return notProvided(ctx, "D11"); }
+const SOURCE_PREFIX = "district_";
+const FEATURE_KIND = "district_area";
+const MISSING_NOTE = "구역·지구 레이어 미적재(dsId 24 다운로드 필요)";
+
+type DistrictHit = ReturnType<EngineContext["hits"]>[number];
+
+function sourceRefs(ctx: EngineContext): SourceRef[] {
+  const db = ctx.db("reference");
+  if (!db) return [];
+  const rows = db.prepare("SELECT source_id FROM source_release ORDER BY source_id").all() as Array<{ source_id: string }>;
+  const ids = rows.map((r) => r.source_id).filter((id) => id.startsWith(SOURCE_PREFIX));
+  return ctx.sources("reference", ids);
+}
+
+function classOf(h: DistrictHit): string {
+  const p = h.properties;
+  for (const value of [p.cls, p.class, p.typeLabel, p.layer]) {
+    if (typeof value === "string" && value.trim() !== "") return value.trim();
+  }
+  return "기타";
+}
+
+function labelOf(h: DistrictHit, cls: string): string {
+  return h.name?.trim() || (typeof h.properties.typeLabel === "string" && h.properties.typeLabel.trim() !== "" ? h.properties.typeLabel.trim() : cls);
+}
+
+function missingTile(ctx: EngineContext): TileResult {
+  return makeTile(ctx, {
+    code: "D11",
+    type: "diagram",
+    status: "not_provided",
+    metrics: [],
+    sources: [],
+    limitations: [{ kind: "not_provided", note: MISSING_NOTE }],
+  });
+}
+
+function clippedDistricts(ctx: EngineContext, hits: DistrictHit[]): {
+  areas: Map<string, number>;
+  polygons: PolygonCandidate[];
+  points: MapCandidate[];
+  validCode: number;
+  failed: number;
+} {
+  const areas = new Map<string, number>();
+  const polygons: PolygonCandidate[] = [];
+  const points: MapCandidate[] = [];
+  let validCode = 0;
+  let failed = 0;
+  for (const h of hits) {
+    const cls = classOf(h);
+    const label = labelOf(h, cls);
+    if (typeof h.properties.typeCode === "string" && h.properties.typeCode.trim() !== "") validCode++;
+    const parts = clipToCircle(ctx.input.center, ctx.input.radiusM, h.geometry);
+    if (parts === null) {
+      failed++;
+      continue;
+    }
+    const area = parts.reduce((sum, rings) => sum + Math.max(0, polygonArea(rings)), 0);
+    if (area <= 0) continue;
+    areas.set(cls, (areas.get(cls) ?? 0) + area);
+    for (const rings of parts) {
+      const poly = polygonCandidate(h.featureId, `district:${cls}`, rings, polygonArea(rings), label);
+      if (poly) polygons.push(poly);
+    }
+    // 면을 그릴 수 없는 화면에서도 같은 도형을 확인할 수 있게 대표점을 함께 보낸다.
+    const clipped: DistrictHit = { ...h, geometry: { type: "MultiPolygon", coordinates: parts } };
+    points.push(candidate(clipped, `district:${cls}`, { label }));
+  }
+  return { areas, polygons, points, validCode, failed };
+}
+
+export function d11(ctx: EngineContext): TileResult {
+  const sources = sourceRefs(ctx);
+  if (sources.length === 0) return missingTile(ctx);
+
+  const hits = ctx.hits("reference", [FEATURE_KIND]);
+  const clipped = clippedDistricts(ctx, hits);
+  const fillPct = hits.length === 0 ? 0 : Math.round((clipped.validCode / hits.length) * 1000) / 10;
+  const classes = [...clipped.areas.keys()].sort((a, b) => a.localeCompare(b));
+  const metrics = [
+    ...classes.map((cls) => {
+      const area = Math.round(clipped.areas.get(cls)!);
+      return obs(`back_area_${cls}`, `반경 교차면적: ${cls}`, area, "㎡", "d11-area@1:반경과 구역·지구 도형의 교차면적", area, null);
+    }),
+    obs("fill_code_pct", "유효 구역·지구 코드 채움률", fillPct, "%", "d11-fill-code@1:유효 typeCode가 있는 반경 교차 객체÷반경 교차 객체", clipped.validCode, hits.length),
+  ];
+  const areaText = classes.length === 0 ? "분류별 면적을 산출하지 못함" : classes.map((cls) => `${cls} ${Math.round(clipped.areas.get(cls)!)}㎡`).join("·");
+  const sentence = hits.length === 0
+    ? "반경과 교차하는 구역·지구 도형이 확인되지 않음 → 해당 원천의 공간 범위가 없거나 미적재일 수 있음 → VWorld 최신 레이어와 고시 원문 확인 필요"
+    : `반경과 교차하는 구역·지구 ${fmt(hits.length)}건(${areaText}) → 확인된 도형의 교차면적이며 규제 적용 여부나 운영 상태를 뜻하지 않음 → 지정 내용과 행위 제한은 토지이용계획확인서·고시 원문 확인 필요`;
+  const limitations: TileResult["limitations"] = [
+    { kind: "unknown", note: "원천에 지정·운영 상태의 구분이 없어 현재 효력이나 실제 운영 여부는 판단하지 않습니다." },
+    { kind: "unknown", note: "구역·지구는 서로 중첩될 수 있어 분류별 교차면적 막대의 합이 반경 원 면적과 일치하지 않을 수 있습니다." },
+    ...(clipped.validCode < hits.length ? [{ kind: "partial" as const, note: `반경 교차 객체 ${hits.length}건 중 유효 코드가 있는 ${clipped.validCode}건만 코드 채움률에 반영했습니다.` }] : []),
+    ...(clipped.failed > 0 ? [{ kind: "partial" as const, note: `도형 오류로 반경 교차면적을 계산하지 못한 ${clipped.failed}건은 면적 지표에서 제외했습니다.` }] : []),
+    ...ctx.coverage("reference", sources.map((s) => s.sourceId)),
+  ];
+  return makeTile(ctx, {
+    code: "D11",
+    type: "diagram",
+    status: "partial",
+    metrics,
+    judgment: { ruleId: "d11-district-area@1", basisMetricIds: ["fill_code_pct"], sentence, level: null, criteria: null },
+    sources,
+    layers: classes.map((cls) => `district:${cls}`),
+    map: clipped.points,
+    polygons: clipped.polygons,
+    limitations,
+  });
+}
