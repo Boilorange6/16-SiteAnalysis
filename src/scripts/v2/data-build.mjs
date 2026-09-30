@@ -16,6 +16,7 @@ const { buildLegalAreas } = await import("../../lib/v2/ingest/sources/legal-area
 const { buildLedger } = await import("../../lib/v2/ingest/sources/ledger.ts");
 const { buildPointSource, STORE_SPEC, BUS_STOP_SPEC, PARK_SPEC } = await import("../../lib/v2/ingest/sources/points.ts");
 const { buildSupply, readLegacyPlannedHousing } = await import("../../lib/v2/ingest/sources/supply.ts");
+const { buildOsmSubway, buildPlannedRail, legalCodeFromCore } = await import("../../lib/v2/ingest/sources/rail.ts");
 const { legacyDbPath, v2DataDir } = await import("../../lib/v2/paths.ts");
 
 const args = process.argv.slice(2);
@@ -136,7 +137,25 @@ if (only.has("core")) {
   };
 }
 if (only.has("reference")) {
-  builders.reference = async (db) => {
+  builders.reference = async (db, ctx) => {
+    // 철도: v1이 이미 가진 공개 파일. 기준일은 파일 안의 생성일(OSM) / 최근 검증일(계획)이며 없으면 null.
+    const subwayFile = "public/data/osm-subway.json";
+    const plannedFile = "public/data/rail/planned.json";
+    const subway = JSON.parse(readFileSync(subwayFile, "utf8"));
+    const planned = JSON.parse(readFileSync(plannedFile, "utf8"));
+    const railManifest = JSON.parse(readFileSync("public/data/rail/manifest.json", "utf8"));
+    const railRelease = (sourceId, file, asOf, url, provider, licenseCode, rights) => {
+      const st = statSync(file);
+      return insertRelease(db, { sourceId, provider, sourceUrl: url, sourceAsOf: asOf, fetchedAt: st.mtime.toISOString(), checksum: `size-mtime:${st.size}-${Math.round(st.mtimeMs)}`, licenseCode, rights });
+    };
+    const generated = typeof subway.generated_at === "string" && /^\d{4}-\d{2}-\d{2}/.test(subway.generated_at) ? subway.generated_at.slice(0, 10) : null;
+    const verified = planned.map((p) => p.lastVerifiedAt).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort().at(-1) ?? null;
+    const legalCodeOf = legalCodeFromCore(ctx.core);
+    if (!ctx.core) console.warn("⚠ core가 없어 철도 feature의 시도 코드를 (미상)으로 기록합니다");
+    const rail = [
+      ...(await buildOsmSubway(db, subway, railRelease("osm_subway", subwayFile, generated, "https://overpass-api.de/", "OpenStreetMap contributors(Overpass API, 기존 앱 스냅샷)", "ODbL-1.0", { attribution: subway.license ?? null, railSnapshotVersion: railManifest.snapshotVersion ?? null }), legalCodeOf)),
+      ...(await buildPlannedRail(db, planned, railRelease("planned_rail", plannedFile, verified, "https://news.seoul.go.kr/citybuild/city_railroad", "기존 앱 계획 철도 공개 투영(공식 상태 + OSM 보조 선형)", "ODbL-1.0", { note: "선형이 OSM 공사 선형 보조(approximation)" }), legalCodeOf)),
+    ];
     const one = async (spec, dir, re, provider, url) => {
       const file = newest(dir, re);
       return buildPointSource(db, spec, (await csvRecords(file)).records, release(db, spec.sourceId, file, provider, url, "UNRESTRICTED"));
@@ -145,6 +164,7 @@ if (only.has("reference")) {
       await one(STORE_SPEC, "store", /^store_.*\.csv$/i, "소상공인시장진흥공단", "https://www.data.go.kr/data/15083033/fileData.do"),
       await one(BUS_STOP_SPEC, "bus_stop", /^bus_stop_.*\.csv$/i, "국토교통부", "https://www.data.go.kr/data/15067528/fileData.do"),
       await one(PARK_SPEC, "park", /^park.*\.csv$/i, "지방자치단체(전국도시공원정보표준데이터)", "https://www.data.go.kr/data/15012890/standard.do"),
+      ...rail,
     ];
   };
 }
