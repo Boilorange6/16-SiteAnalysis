@@ -52,7 +52,9 @@ function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: Boar
     setMaking(true);
     try {
       const { renderReportPptx } = await import("@/lib/v2/report/render-pptx");
-      const bytes = await renderReportPptx(reportPlan);
+      // 지도 그림은 브라우저에서 SVG → PNG로 만든다. 못 만들면 자리표시로 계속한다.
+      const { buildMapImages } = await import("@/lib/v2/report/map-image");
+      const bytes = await renderReportPptx(reportPlan, await buildMapImages(reportPlan).catch(() => ({})));
       const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/vnd.openxmlformats-officedocument.presentationml.presentation" }));
       const a = document.createElement("a");
       a.href = url;

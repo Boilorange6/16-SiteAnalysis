@@ -1,0 +1,113 @@
+/**
+ * 브라우저 전용: MapFigure(SVG)를 PNG data URL로 만든다 (보고서용 1600×1000).
+ * SVG를 이미지로 불러오면 바깥 주소의 배경 타일은 못 받으므로, 타일을 CORS로 미리 받아 data URI로 끼워 넣는다.
+ * 배경 타일을 받지 못하면 배경 없이(격자) 계속한다.
+ */
+import { createElement } from "react";
+import { flushSync } from "react-dom";
+import { createRoot } from "react-dom/client";
+import MapFigure from "@/components/v2/map-figure";
+import type { MapModel } from "../ui/map-layers";
+import { tilesFor, tileUrl, viewportFor } from "../ui/map-projection";
+import { mapKeyOf, type PlannedSlide } from "./report-plan";
+import type { MapImages } from "./render-pptx";
+
+const VIEW_W = 960;
+const VIEW_H = 600;
+const OUT_W = 1600;
+const OUT_H = 1000;
+const TILE_TIMEOUT_MS = 8000;
+
+const blobToDataUrl = (b: Blob) =>
+  new Promise<string>((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(b);
+  });
+
+async function fetchTile(url: string): Promise<string | null> {
+  try {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), TILE_TIMEOUT_MS);
+    try {
+      const res = await fetch(url, { mode: "cors", signal: ctl.signal });
+      return res.ok ? await blobToDataUrl(await res.blob()) : null;
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    return null;
+  }
+}
+
+function svgOf(model: MapModel, tiles: Map<string, string>): string {
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  try {
+    const usable = tiles.size > 0;
+    flushSync(() =>
+      root.render(
+        createElement(MapFigure, { model, width: VIEW_W, height: VIEW_H, fixed: true, basemap: usable ? "tiles" : "none", tileHref: (u: string) => tiles.get(u), label: "분석 반경 지도" }),
+      ),
+    );
+    return host.innerHTML;
+  } finally {
+    root.unmount();
+  }
+}
+
+async function toPng(svg: string): Promise<string> {
+  const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = OUT_W;
+    canvas.height = OUT_H;
+    const g = canvas.getContext("2d")!;
+    g.fillStyle = "#fff";
+    g.fillRect(0, 0, OUT_W, OUT_H);
+    g.drawImage(img, 0, 0, OUT_W, OUT_H);
+    return canvas.toDataURL("image/png");
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** 한 장 그리기. tileCache는 같은 중심·반경의 여러 장이 타일을 다시 받지 않게 공유한다. */
+export async function rasterizeMap(model: MapModel, tileCache: Map<string, string | null> = new Map()): Promise<string> {
+  const vp = viewportFor(model.center, model.radiusM, VIEW_W, VIEW_H);
+  const urls = tilesFor(vp).map((t) => tileUrl(t));
+  await Promise.all(
+    urls
+      .filter((u) => !tileCache.has(u))
+      .map(async (u) => {
+        tileCache.set(u, await fetchTile(u));
+      }),
+  );
+  const got = new Map<string, string>();
+  for (const u of urls) {
+    const d = tileCache.get(u);
+    if (d) got.set(u, d);
+  }
+  return toPng(svgOf(model, got));
+}
+
+/** 계획의 모든 지도 자리에 대한 PNG. 실패한 장은 빠진다(렌더러가 자리표시를 넣는다). */
+export async function buildMapImages(plan: PlannedSlide[]): Promise<MapImages> {
+  const cache = new Map<string, string | null>();
+  const out: MapImages = {};
+  for (const p of plan) {
+    const key = mapKeyOf(p);
+    const model = p.kind === "cover" || p.kind === "tile" ? p.map : null;
+    if (!key || !model || out[key]) continue;
+    try {
+      out[key] = await rasterizeMap(model, cache);
+    } catch (e) {
+      console.warn(`지도 이미지 생성 실패 (${key})`, e);
+    }
+  }
+  return out;
+}

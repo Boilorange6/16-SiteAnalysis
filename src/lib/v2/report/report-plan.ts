@@ -3,6 +3,7 @@
  * 슬라이드 수는 board-state의 reportPages(board).pages(표지+타일+출처)와 항상 같다.
  */
 import type { BoardState } from "../ui/board-state";
+import type { MapModel } from "../ui/map-layers";
 import type { SummaryView, TileView } from "../ui/tile-view";
 import { FACE_TEXT } from "../ui/tile-view";
 
@@ -18,11 +19,17 @@ export type ReportSlide =
       asOfLine: string;
       incomplete: string | null;
       lines: { title: string; color: string; text: string }[];
+      /** 대지·반경 지도 (그림은 렌더 단계에서 mapKey로 받는다) */
+      map: MapModel | null;
     }
-  | { kind: "tile"; view: TileView; body: TileSlideBody; faceLabel: string | null }
+  | { kind: "tile"; view: TileView; body: TileSlideBody; faceLabel: string | null; map: MapModel | null }
   | { kind: "sources"; rows: { source: string; asOf: string; tiles: string }[] };
 
 export type PlannedSlide = ReportSlide & { no: number; total: number; footer: string };
+
+/** 지도 이미지 키: 표지는 "cover", 타일 장은 tileId */
+export const COVER_MAP_KEY = "cover";
+export const mapKeyOf = (p: PlannedSlide): string | null => (p.kind === "cover" ? (p.map ? COVER_MAP_KEY : null) : p.kind === "tile" && p.map ? p.view.tileId : null);
 
 const STATE_MESSAGE: Record<string, string> = {
   failed: "계산 실패 — 보고서에는 결과 없이 표시합니다",
@@ -72,6 +79,7 @@ export function buildReportPlan(input: {
     asOfLine: summary.asOfLine,
     incomplete: summary.incomplete ? `지역 자료 불완전 · ${summary.incompleteCount}개 타일` : null,
     lines: tiles.map((v) => ({ title: v.title, color: v.color, text: oneLine(v) })),
+    map: summary.map,
     footer: `${summary.asOfLine} · 출처와 기준일은 마지막 장 참조`,
   });
 
@@ -84,6 +92,7 @@ export function buildReportPlan(input: {
         view: v,
         body: hasResult(v) ? { kind: "result", face } : { kind: "state", face, message: message ?? "결과 없음 — 보고서에는 결과 없이 표시합니다" },
         faceLabel: v.hasFace ? FACE_TEXT[face === "front" ? "front" : "back"] : null,
+        map: hasResult(v) ? v.map : null,
         footer: v.sourceLine === "출처 없음" ? "출처 없음 · 기준일 해당 없음" : `출처 ${v.sourceLine}`,
       });
     }

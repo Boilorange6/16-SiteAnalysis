@@ -187,4 +187,27 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   assert.ok(!bare.includes("버스정류장"));
 }
 
+// ── PPT: 지도 이미지 자리 ──
+{
+  const JSZip = (await import("jszip")).default;
+  const { initBoard } = await import("../../lib/v2/ui/board-state.ts");
+  const { buildReportPlan, mapKeyOf } = await import("../../lib/v2/report/report-plan.ts");
+  const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
+  const plan = buildReportPlan({
+    summary: toSummaryView(GODEOK_SUMMARY, GODEOK_RESULTS),
+    views: new Map(GODEOK_RESULTS.map((r) => [r.tileId, toTileView(r)])),
+    board: initBoard(GODEOK_RESULTS),
+    analysisDate: "2026-09-30",
+  });
+  const keys = plan.map(mapKeyOf).filter(Boolean);
+  assert.deepEqual(keys, ["cover", "t-A01", "t-A03", "t-A04", "t-A05", "t-A06"], "지도 자리: 표지 + 지도 타일 5장");
+  const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  const withImg = await JSZip.loadAsync(await renderReportPptx(plan, Object.fromEntries(keys.map((k) => [k, png]))));
+  assert.equal(Object.keys(withImg.files).filter((n) => /^ppt\/media\/.+/.test(n)).length, keys.length, "지도 이미지가 슬라이드마다 들어감");
+  const noImg = await JSZip.loadAsync(await renderReportPptx(plan)); // 이미지 없음: 자리표시 사각형 + 문구
+  assert.equal(Object.keys(noImg.files).filter((n) => /^ppt\/media\/.+/.test(n)).length, 0);
+  const slide2 = await noImg.file("ppt/slides/slide2.xml").async("string");
+  assert.match(slide2, /지도 이미지를 만들지 못했습니다/);
+}
+
 console.log("v2 map tests passed");

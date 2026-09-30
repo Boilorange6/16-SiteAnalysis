@@ -21,7 +21,7 @@ export type MapFigureProps = {
   label?: string;
 };
 
-const FONT = '"Noto Sans KR","Malgun Gothic",sans-serif';
+const FONT = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif';
 const INK = "#16181d";
 
 const textW = (s: string, fs: number) => [...s].reduce((w, ch) => w + (ch.charCodeAt(0) > 0x2e80 ? fs : fs * 0.58), 0);
