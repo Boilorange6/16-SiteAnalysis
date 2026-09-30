@@ -36,6 +36,40 @@ function sigungus(db: Db): Area[] {
   return rows;
 }
 
+/** 시군구: "시도 시군구" 이름에서 시도를 떼고 공백을 무시해 가장 긴 접두어를 고른다(예: "성남시 분당구"). tokens[0]은 시도. */
+function matchSigungu(db: Db, tokens: string[]): { code: string; restName: string; tied: boolean } | null {
+  const sido = SIDO_ALIASES[tokens[0]] ?? tokens[0];
+  const restJoined = tokens.slice(1).join("");
+  let best: { code: string; restName: string; tied: boolean } | null = null;
+  for (const s of sigungus(db)) {
+    // 원천 SIG 이름의 시도 접두어도 같은 표로 정규화한다(실제 원천 표기: "전북특별차지도", "제주도")
+    const sp = s.name.indexOf(" ");
+    const sigSido = sp < 0 ? s.name : s.name.slice(0, sp);
+    if ((SIDO_ALIASES[sigSido] ?? sigSido) !== sido) continue;
+    const restName = s.name.slice(sigSido.length + 1).replace(/\s+/g, ""); // 세종: 이름이 시도와 같아 ""
+    if (!restJoined.startsWith(restName)) continue;
+    if (!best || restName.length > best.restName.length) best = { code: s.code, restName, tied: false };
+    else if (restName.length === best.restName.length) best.tied = true;
+  }
+  return best;
+}
+
+/** 2026 통합으로 시도(29 광주·46 전남)가 12(전남광주통합특별시)로 바뀌었다. 시군구는 재번호(46230 광양→12190)라 이름으로 찾고, 읍면동 3자리 이후는 그대로다(K-APT 5,989건 이름 일치 100%). */
+const RENUMBERED_SIDO: Record<string, string> = { "29": "12", "46": "12" };
+
+/**
+ * 옛 시군구 코드로 적힌 PNU를 현재 법정구역 코드로 바꾼다. 현재 코드에 있거나, 재번호 대상 시도가 아니거나,
+ * 주소로 시군구를 하나로 정할 수 없으면 PNU를 그대로 돌려준다(추측하지 않는다).
+ */
+export function remapRenumberedPnu(db: Db, pnu: string, address: string | null): string {
+  const newSido = RENUMBERED_SIDO[pnu.slice(0, 2)];
+  if (!newSido || !address || sigungus(db).some((s) => s.code === pnu.slice(0, 5))) return pnu;
+  const tokens = address.trim().split(/\s+/);
+  if (tokens.length < 2) return pnu;
+  const m = matchSigungu(db, tokens);
+  return m && !m.tied && m.code.startsWith(newSido) ? m.code + pnu.slice(5) : pnu;
+}
+
 export function resolveJibunAddress(db: Db, address: string): { legalCode: string; pnu: string } | null {
   const r = resolveJibunDetailed(db, address);
   return "pnu" in r ? r : null;
@@ -49,26 +83,10 @@ export function resolveJibunDetailed(db: Db, address: string): { legalCode: stri
   const ambiguous = { reason: "ambiguous" } as const;
   const tokens = parsed.head.split(" ");
   if (tokens.length < 2) return ambiguous;
-  const sido = SIDO_ALIASES[tokens[0]] ?? tokens[0];
-  const restJoined = tokens.slice(1).join("");
-
-  // 시군구: "시도 시군구" 이름에서 시도를 떼고 공백을 무시해 가장 긴 접두어를 고른다(예: "성남시 분당구")
-  let best: { code: string; restName: string } | null = null;
-  let tied = false;
-  for (const s of sigungus(db)) {
-    // 원천 SIG 이름의 시도 접두어도 같은 표로 정규화한다(실제 원천 표기: "전북특별차지도", "제주도")
-    const sp = s.name.indexOf(" ");
-    const sigSido = sp < 0 ? s.name : s.name.slice(0, sp);
-    if ((SIDO_ALIASES[sigSido] ?? sigSido) !== sido) continue;
-    const restName = s.name.slice(sigSido.length + 1).replace(/\s+/g, ""); // 세종: 이름이 시도와 같아 ""
-    if (!restJoined.startsWith(restName)) continue;
-    if (!best || restName.length > best.restName.length) {
-      best = { code: s.code, restName };
-      tied = false;
-    } else if (restName.length === best.restName.length) tied = true;
-  }
-  if (!best) return notFound;
-  if (tied) return ambiguous;
+  const found = matchSigungu(db, tokens);
+  if (!found) return notFound;
+  if (found.tied) return ambiguous;
+  const best = found;
 
   // 시군구 이름이 차지한 토큰을 건너뛴다
   let consumed = "";

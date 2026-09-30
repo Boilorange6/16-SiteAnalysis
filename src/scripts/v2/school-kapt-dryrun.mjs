@@ -7,6 +7,7 @@ import { existsSync } from "node:fs";
 import Database from "better-sqlite3";
 
 const { csvRecords } = await import("../../lib/v2/a0/measure.ts");
+const { remapRenumberedPnu } = await import("../../lib/v2/data/jibun.ts");
 const { sidoCodeOfName } = await import("../../lib/v2/ingest/sources/school-kapt.ts");
 
 const RAW = process.env.V2_RAW ?? "D:/V-coding/16-SiteAnalysis/.cache/v2/raw";
@@ -57,7 +58,8 @@ const AREA_OF = { "4136011200": "다산동(남양주)", "1171010900": "장지동
 const areas = Object.fromEntries(Object.values(AREA_OF).map((n) => [n, { rows: 0, located: 0, byType: {}, apt1: 0, apt1Located: 0, households1: 0 }]));
 for await (const { properties: p } of (await csvRecords(`${RAW}/kapt/kapt_complex_20260831.csv`)).records) {
   k.rows++;
-  const id = String(p["단지고유번호"]).trim(), pnu = String(p["필지고유번호"]).trim();
+  const id = String(p["단지고유번호"]).trim(), srcPnu = String(p["필지고유번호"]).trim();
+  const pnu = core && /^\d{19}$/.test(srcPnu) ? remapRenumberedPnu(core, srcPnu, String(p["주소"]).trim()) : srcPnu; // buildKapt와 같은 재번호 처리
   if (!id || ids.has(id) || !/^\d{19}$/.test(pnu)) { k.rejected++; continue; }
   ids.add(id);
   const t = String(p["단지종류"]).trim();
@@ -69,6 +71,8 @@ for await (const { properties: p } of (await csvRecords(`${RAW}/kapt/kapt_comple
   if (!String(p["사용승인일"]).trim()) ty.blankApproval++;
   if (!String(p["단지명_건축물대장"]).trim()) ty.blankLedgerName++;
   const ok = core ? !!hasPoint.get(pnu) : null;
+  if (core && srcPnu !== pnu) k.remapped = (k.remapped ?? 0) + 1;
+  if (core && srcPnu.slice(0, 2) in { 29: 1, 46: 1 }) { const o = (k.oldSido ??= {}); const s = (o[srcPnu.slice(0, 2)] ??= { rows: 0, locatedWithoutRemap: 0, locatedWithRemap: 0 }); s.rows++; if (hasPoint.get(srcPnu)) s.locatedWithoutRemap++; if (ok) s.locatedWithRemap++; }
   if (core) { if (ok) { k.located++; r.located++; ty.located++; if (housingAt.get(pnu) > 0) k.linkable++; } else k.unlocated++; }
   const area = AREA_OF[pnu.slice(0, 10)];
   if (area) {
@@ -78,7 +82,7 @@ for await (const { properties: p } of (await csvRecords(`${RAW}/kapt/kapt_comple
   }
 }
 console.log("kapt", { rows: k.rows, rejected: k.rejected, located: core ? k.located : "(no core)", unlocated: core ? k.unlocated : "(no core)", linkableToLedgerHousingComplex: core ? k.linkable : "(no core)" });
-console.log("kapt byRegion", k.byRegion);
+console.log("kapt byRegion (재번호 후 시도)", k.byRegion, "remapped", k.remapped ?? 0, "옛 시도 29·46", k.oldSido);
 for (const [t, v] of Object.entries(k.byType).sort()) {
   const hs = v.households.filter((x) => x > 0);
   console.log(`type ${t}: n=${v.n} households median=${med(hs)} max=${hs.reduce((a, b) => Math.max(a, b), 0)} buildings median=${med(v.buildings)} nameHasApt=${((100 * v.apartmentName) / v.n).toFixed(1)}% blankApproval=${((100 * v.blankApproval) / v.n).toFixed(1)}% blankLedgerName=${((100 * v.blankLedgerName) / v.n).toFixed(1)}%${core ? ` located=${((100 * v.located) / v.n).toFixed(1)}%` : ""}`);

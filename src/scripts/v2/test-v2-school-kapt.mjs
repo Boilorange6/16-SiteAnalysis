@@ -144,4 +144,47 @@ async function buildCore() {
   assert.deepEqual(ids(again.db), ids(db));
 }
 
+// ─── 4. 광주·전남 옛 시군구 코드(29·46) → 통합 코드(12): 실제 코드 ─────────────────────
+{
+  const { remapRenumberedPnu } = await import("../../lib/v2/data/jibun.ts");
+  const db = newDb("core");
+  const r = rel(db, "legal_areas");
+  const la = db.prepare("INSERT INTO legal_area (code, level, name, parent_code, release_id) VALUES (?, ?, ?, ?, ?)");
+  for (const [code, name] of [["12190", "광양시"], ["12300", "북구"], ["12330", "광산구"], ["12240", "서구"], ["12740", "고흥군"]]) la.run(code, "sigungu", `전남광주통합특별시 ${name}`, null, r);
+  la.run("11680", "sigungu", "서울특별시 강남구", null, r);
+  la.run("27140", "sigungu", "대구광역시 서구", null, r);
+  const pp = db.prepare("INSERT INTO parcel_point (pnu, lng, lat, jimok, release_id) VALUES (?, ?, ?, '대', ?)");
+  pp.run("1219010400100010000", 127.7, 34.9, r); // 광양시 성황동
+  pp.run("1230010700100010000", 126.9, 35.18, r); // 북구 용봉동 (광산구에도 용봉동이 있다)
+  const rec = (id, pnu, address) => ({ properties: { 단지고유번호: id, 필지고유번호: pnu, 주소: address, 단지종류: "1", 동수: "1", 세대수: "100", 사용승인일: "2010-01-01" } });
+
+  // 옛 46230 광양시 → 12190(재번호), 옛 29170 북구 → 12300, 읍면동 이하는 그대로
+  assert.equal(remapRenumberedPnu(db, "4623010400100010000", "전라남도 광양시 성황동 1"), "1219010400100010000");
+  assert.equal(remapRenumberedPnu(db, "2917010700100010000", "광주광역시 북구 용봉동 1"), "1230010700100010000");
+  assert.equal(remapRenumberedPnu(db, "2920014100100010000", "광주광역시 광산구 용봉동 1"), "1233014100100010000");
+  assert.equal(remapRenumberedPnu(db, "4677010100100010000", "전라남도 고흥군 고흥읍 1"), "1274010100100010000", "옛 46770 고흥군 → 12740");
+  // 손대지 않는 경우: 현재 코드, 재번호 대상 아닌 시도, 주소 없음, 다른 시도 주소(29인데 서울이라 적힌 경우), 이름 없는 시군구
+  assert.equal(remapRenumberedPnu(db, "1219010400100010000", "전라남도 광양시 성황동 1"), "1219010400100010000");
+  assert.equal(remapRenumberedPnu(db, "1168010100100010000", "서울특별시 강남구 역삼동 1"), "1168010100100010000");
+  assert.equal(remapRenumberedPnu(db, "2917010700100010000", null), "2917010700100010000");
+  assert.equal(remapRenumberedPnu(db, "2917010700100010000", "서울특별시 강남구 역삼동 1"), "2917010700100010000");
+  assert.equal(remapRenumberedPnu(db, "4699910700100010000", "전라남도 없는군 어딘가 1"), "4699910700100010000");
+  assert.equal(remapRenumberedPnu(db, "2714010100100010000", "대구광역시 서구 내당동 1"), "2714010100100010000", "대구 서구는 재번호 대상이 아니다");
+
+  // buildKapt: 옛 PNU로도 위치가 잡히고, 저장 PNU는 통합 코드, 원천 PNU는 sourcePnu에 남는다
+  async function* recs() {
+    yield rec("46230200000001", "4623010400100010000", "전라남도 광양시 성황동 1");
+    yield rec("29170200000001", "2917010700100010000", "광주광역시 북구 용봉동 1");
+    yield rec("46770200000001", "4677010100100010000", "전라남도 고흥군 고흥읍 1"); // parcel_point 없음 → unlocated
+  }
+  const [stats] = await buildKapt(db, { records: recs(), releaseId: rel(db, "kapt") });
+  invariant(stats);
+  assert.deepEqual(counts(stats), [3, 2, 1, 0]);
+  assert.deepEqual(stats.byRegion, { 12: 2 });
+  assert.deepEqual(stats.expectedRegions.sort(), ["12"], "통합 시도 12만 기대 지역");
+  const row = db.prepare("SELECT pnu, legal_code, properties_json FROM feature WHERE stable_id = 'kapt:46230200000001'").get();
+  assert.deepEqual([row.pnu, row.legal_code], ["1219010400100010000", "1219010400"]);
+  assert.equal(JSON.parse(row.properties_json).sourcePnu, "4623010400100010000");
+  assert.equal(JSON.parse(row.properties_json).approvalDate, "2010-01-01", "사용승인일은 엔진이 쓸 수 있게 props에 있다");
+}
 console.log("v2 school/kapt ingest OK");

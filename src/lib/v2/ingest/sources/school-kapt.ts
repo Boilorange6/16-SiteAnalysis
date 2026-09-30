@@ -5,6 +5,7 @@
 import type BetterSqlite3 from "better-sqlite3";
 import type { MeasureRecord } from "../../a0/measure";
 import { insertFeature } from "../../data/features";
+import { remapRenumberedPnu } from "../../data/jibun";
 import { lookupParcelPoint } from "../../data/parcels";
 import { batched, SourceStats } from "../build";
 import type { PointSourceSpec } from "./points";
@@ -116,7 +117,9 @@ export async function buildKapt(db: Db, input: { records: AsyncIterable<MeasureR
     stats.read();
     const p = r.properties;
     const id = str(p["단지고유번호"]);
-    const pnu = str(p["필지고유번호"]);
+    const sourcePnu = str(p["필지고유번호"]);
+    // 광주·전남 옛 시군구 코드(29·46)는 통합 코드(12)로 바꿔서 parcel_point를 찾는다
+    const pnu = sourcePnu && KAPT_PNU.test(sourcePnu) ? remapRenumberedPnu(db, sourcePnu, str(p["주소"])) : sourcePnu;
     const region = pnu ? pnu.slice(0, 2) : "(미상)";
     const t = (tally[region] ??= { received: 0, accepted: 0, unlocated: 0, rejected: 0 });
     t.received++;
@@ -141,6 +144,7 @@ export async function buildKapt(db: Db, input: { records: AsyncIterable<MeasureR
       nameRoad: str(p["단지명_도로명주소"]),
       address: str(p["주소"]),
       roadAddress: str(p["도로명주소"]),
+      ...(pnu !== sourcePnu ? { sourcePnu } : {}),
     };
     const stableId = `kapt:${id}`;
     insertFeature(db, {
