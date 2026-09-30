@@ -276,7 +276,6 @@ if (builders.reference && existsSync(join(raw, "zoning"))) {
     return [...built, ...(await buildZoning(db, layers))];
   };
 }
-<<<<<<< HEAD
 // 개별공시지가(VWorld dsId 6, 시도별 CSV): raw/land_price가 있을 때만 reference에 이어 붙인다(없으면 건너뜀).
 const { buildLandPrice, latestLandPricePerSido, LAND_PRICE_RIGHTS } = await import("../../lib/v2/ingest/sources/land-price.ts");
 if (builders.reference && existsSync(join(raw, "land_price"))) {
