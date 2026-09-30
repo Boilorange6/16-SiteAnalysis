@@ -43,7 +43,7 @@ try {
     const views = new Map(r1.results.map((t) => [t.tileId, toTileView(t)]));
     const plan = buildReportPlan({ summary: toSummaryView(r1.summary, r1.results), views, board: initBoard(r1.results), analysisDate: "2026-09-30" });
     const rows = plan.find((s) => s.kind === "sources").rows;
-    assert.ok(rows.some((r) => r.source === "전국 도시공원" && r.asOf === "기준일 미확인"));
+    assert.ok(rows.some((r) => r.source === "전국 도시공원" && r.asOf === "2026-09-29"));
     assert.ok(rows.some((r) => r.source === "전국 버스정류장" && r.asOf === "2025-12-09"));
     assert.ok(rows.some((r) => r.source === "건축물대장 총괄표제부" && r.asOf === "2026-08"));
   }
