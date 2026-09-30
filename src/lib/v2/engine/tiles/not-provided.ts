@@ -4,9 +4,13 @@ import { catalogEntry } from "../../ui/tile-catalog";
 import type { EngineContext } from "../context";
 import { makeTile } from "./common";
 
-export const NOT_PROVIDED_CODES = ["A02", "A07", "A09", "A10", "A12", "D04", "S02", "S03"] as const;
+export const NOT_PROVIDED_CODES = [
+  "A02", "A07", "A09", "A10", "A12",
+  "D02", "D03", "D04", "D05", "D06", "D07", "D08", "D09", "D11", "D12", "D13", "D14", "D19", "D20", "D23", "D24", "D25", "D27",
+  "S01", "S02", "S03",
+] as const;
 
-export function notProvided(ctx: EngineContext, code: string): TileResult {
+export function notProvided(ctx: EngineContext, code: string, note = "P2 적재·구현 후 제공됩니다."): TileResult {
   const kind = catalogEntry(code).kind;
   return makeTile(ctx, {
     code,
@@ -14,6 +18,6 @@ export function notProvided(ctx: EngineContext, code: string): TileResult {
     status: "not_provided",
     metrics: [],
     sources: [],
-    limitations: [{ kind: "not_provided", note: "P1a-2 적재 후 제공됩니다." }],
+    limitations: [{ kind: "not_provided", note }],
   });
 }

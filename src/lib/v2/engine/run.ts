@@ -24,8 +24,26 @@ import { a10 } from "./tiles/a10";
 import { a11 } from "./tiles/a11";
 import { a12 } from "./tiles/a12";
 import { ENGINE_VERSION, makeTile } from "./tiles/common";
+import { d02 } from "./tiles/d02";
+import { d03 } from "./tiles/d03";
 import { d04 } from "./tiles/d04";
+import { d05 } from "./tiles/d05";
+import { d06 } from "./tiles/d06";
+import { d07 } from "./tiles/d07";
+import { d08 } from "./tiles/d08";
+import { d09 } from "./tiles/d09";
+import { d11 } from "./tiles/d11";
+import { d12 } from "./tiles/d12";
+import { d13 } from "./tiles/d13";
+import { d14 } from "./tiles/d14";
+import { d19 } from "./tiles/d19";
+import { d20 } from "./tiles/d20";
+import { d23 } from "./tiles/d23";
+import { d24 } from "./tiles/d24";
+import { d25 } from "./tiles/d25";
+import { d27 } from "./tiles/d27";
 import { notProvided } from "./tiles/not-provided";
+import { s01 } from "./tiles/s01";
 import { s02 } from "./tiles/s02";
 
 export const RADIUS_CHOICES = [500, 800, 1000, 2000, 3000] as const;
@@ -55,7 +73,25 @@ const TILES: Array<[code: string, compute: (ctx: EngineContext) => TileResult]> 
   ["A10", a10],
   ["A11", a11],
   ["A12", a12],
+  ["D02", d02],
+  ["D03", d03],
   ["D04", d04],
+  ["D05", d05],
+  ["D06", d06],
+  ["D07", d07],
+  ["D08", d08],
+  ["D09", d09],
+  ["D11", d11],
+  ["D12", d12],
+  ["D13", d13],
+  ["D14", d14],
+  ["D19", d19],
+  ["D20", d20],
+  ["D23", d23],
+  ["D24", d24],
+  ["D25", d25],
+  ["D27", d27],
+  ["S01", s01],
   ["S02", s02],
   ["S03", (c) => notProvided(c, "S03")],
 ];
@@ -80,7 +116,7 @@ export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, inpu
 
   const analysisId = randomUUID();
   const analysisDate = input.analysisDate ?? todayKst();
-  const ctx = new EngineContext(dataDir, manifest, analysisId, { address: site.label, center: site.center, radiusM: input.radiusM, analysisDate }, { core });
+  const ctx = new EngineContext(dataDir, manifest, analysisId, { address: site.label, center: site.center, radiusM: input.radiusM, analysisDate, pnu: site.pnu }, { core });
   try {
     createAnalysisRun(appDb, {
       analysisId, address: site.label, center: site.center, radiusM: input.radiusM, analysisDate,

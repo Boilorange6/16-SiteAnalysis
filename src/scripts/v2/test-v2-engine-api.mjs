@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 const { buildEngineFixture } = await import("./engine-fixture.mjs");
 const A = await import("../../lib/v2/app-db.ts");
 const { postAnalysis, getAnalysis } = await import("../../lib/v2/engine/api.ts");
+const { TILE_CODES } = await import("../../lib/v2/ui/tile-catalog.ts");
 
 const dataDir = mkdtempSync(join(tmpdir(), "v2-eng-api-"));
 const emptyDir = mkdtempSync(join(tmpdir(), "v2-eng-api-empty-"));
@@ -34,7 +35,7 @@ try {
   const ok = postAnalysis(appDb, dataDir, { address, analysisDate: "2026-09-30" });
   assert.equal(ok.status, 200);
   assert.deepEqual(Object.keys(ok.body).sort(), ["analysisId", "results", "summary"]);
-  assert.equal(ok.body.results.length, 14);
+  assert.equal(ok.body.results.length, TILE_CODES.length);
   assert.equal(ok.body.summary.address, address);
   assert.equal(ok.body.results[0].conditions.radiusM, 800);
 

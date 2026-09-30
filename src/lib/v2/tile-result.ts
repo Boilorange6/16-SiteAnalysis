@@ -69,7 +69,7 @@ const MapFeatureSchema = z.object({
 });
 
 /** 면(폴리곤) 지물 상한: 개수, 고리 하나의 꼭짓점 수. 상한은 엔진이 지키고 스키마가 다시 막는다. */
-export const MAX_MAP_POLYGONS = 150;
+export const MAX_MAP_POLYGONS = 3000;
 export const MAX_POLYGON_VERTICES = 200;
 const LngLatSchema = z.tuple([z.number().finite(), z.number().finite()]);
 const MapPolygonSchema = z.object({
