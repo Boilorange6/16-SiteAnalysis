@@ -161,6 +161,9 @@ export async function fetchRtms(o: FetchOptions): Promise<FetchSummary> {
         } finally {
           clearTimeout(timer);
         }
+        if (res.status === 403 && (await res.text()).includes("SERVICE_KEY_IS_NOT_REGISTERED_ERROR")) {
+          throw Object.assign(new Error("등록되지 않은 서비스키(활용신청 필요)"), { code: "30" });
+        }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return parseRtmsXml(await res.text());
       } catch (e) {
