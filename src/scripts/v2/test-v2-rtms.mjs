@@ -59,6 +59,11 @@ try {
   const s4 = await fetchRtms({ ...common, today: "2026-10-01", lawds: ["11200", "11215", "11230", "11260"] });
   assert.equal(s4.done, 2);
   assert.deepEqual(s4.budgetStopped, []);
+  // 미등록 서비스키(403)는 재시도 없이 fatal
+  const noKey = async () => new Response("<OpenAPI_ServiceResponse><cmmMsgHeader><errMsg>SERVICE_KEY_IS_NOT_REGISTERED_ERROR</errMsg></cmmMsgHeader></OpenAPI_ServiceResponse>", { status: 403 });
+  const s5 = await fetchRtms({ ...common, types: ["apt-rent"], lawds: ["11680"], fetchImpl: noKey });
+  assert.match(s5.fatal, /서비스키/);
+  assert.equal(s5.calls["apt-rent"], 1);
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }
@@ -110,6 +115,13 @@ try {
   assert.equal(rel.source_as_of, "2026-06-30");
   assert.equal(rel.fetched_at, "2026-09-30T02:00:00.000Z");
   assert.deepEqual(JSON.parse(rel.coverage_json).byRegion["11"], { received: 6, accepted: 3, unlocated: 1, rejected: 2 });
+  // 실응답 모양(2026-08 강남구): 전월세는 umdCd·bonbun 없이 umdNm만, 오피스텔 단지명은 offiNm, 전월세엔 cdealType 없음
+  const aptRent = toTxRow("apt-rent", "11680", "2026-09-30", { aptNm: "상록수", buildYear: "1993", contractTerm: "", contractType: "", dealDay: "13", dealMonth: "8", dealYear: "2026", deposit: "40,000", excluUseAr: "74.54", floor: "3", jibun: "734", monthlyRent: "160", sggCd: "11680", umdNm: "일원동" });
+  assert.deepEqual([aptRent.contractType, aptRent.depositKrw, aptRent.rentKrw, aptRent.cancelledAt], ["monthly", 400_000_000, 1_600_000, null]);
+  const offiRent = toTxRow("offi-rent", "11680", "2026-09-30", { offiNm: "성우스타우스오피스텔", contractTerm: "26.09~28.09", contractType: "신규", dealDay: "30", dealMonth: "8", dealYear: "2026", deposit: "19,800", excluUseAr: "32.03", floor: "6", jibun: "832-33", monthlyRent: "0", sggCd: "11680", sggNm: "강남구", umdNm: "역삼동" });
+  assert.deepEqual([offiRent.propertyType, offiRent.contractType, offiRent.depositKrw], ["offi", "jeonse", 198_000_000]);
+  const offiTrade = toTxRow("offi-trade", "11680", "2026-09-30", { buyerGbn: "개인", cdealDay: "26.09.01", cdealType: "O", dealAmount: "21,000", dealDay: "12", dealMonth: "8", dealYear: "2026", dealingGbn: "중개거래", estateAgentSggNm: "서울 강남구", excluUseAr: "22.05", floor: "8", jibun: "96", offiNm: "(96)", sggCd: "11680", sggNm: "강남구", slerGbn: "개인", umdNm: "논현동" });
+  assert.deepEqual([offiTrade.propertyType, offiTrade.priceKrw, offiTrade.cancelledAt], ["offi", 210_000_000, "2026-09-01"]);
   // 결정성: 같은 입력이면 같은 id
   const again = toTxRow("apt-trade", "11680", "2026-09-30", { ...base, dealAmount: "225,000" });
   assert.ok(db.prepare("SELECT 1 FROM property_transaction WHERE transaction_id = ?").get(again.transactionId));
