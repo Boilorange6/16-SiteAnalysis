@@ -7,6 +7,7 @@ import TileDialog from "@/components/v2/tile-dialog";
 import { useTileDrag } from "@/components/v2/use-tile-drag";
 import styles from "@/components/v2/board.module.css";
 import { boardReducer, demoFinished, demoPhase, initBoard, reportPages } from "@/lib/v2/ui/board-state";
+import { buildReportPlan, reportFileName } from "@/lib/v2/report/report-plan";
 import { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } from "@/lib/v2/ui/fixtures/godeok";
 import { toSummaryView, toTileView } from "@/lib/v2/ui/tile-view";
 import type { TileResult } from "@/lib/v2/tile-result";
@@ -30,8 +31,27 @@ export default function V2BoardPage() {
 
   const views = useMemo(() => new Map(results.map((r) => [r.tileId, toTileView(r)])), [results]);
   const summary = useMemo(() => toSummaryView(GODEOK_SUMMARY, results), [results]);
-  const { tiles, pages } = reportPages(board);
+  const { tiles } = reportPages(board);
   const total = board.order.length;
+  // 표지 + 타일 + 출처 장. reportPages 는 출처 장을 세지 않으므로 계획 길이를 그대로 쓴다.
+  const analysisDate = new Date().toLocaleDateString("sv-SE");
+  const reportPlan = useMemo(() => buildReportPlan({ summary, views, board, analysisDate }), [summary, views, board, analysisDate]);
+  const [making, setMaking] = useState(false);
+  const makeReport = async () => {
+    setMaking(true);
+    try {
+      const { renderReportPptx } = await import("@/lib/v2/report/render-pptx");
+      const bytes = await renderReportPptx(reportPlan);
+      const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/vnd.openxmlformats-officedocument.presentationml.presentation" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = reportFileName(GODEOK_SUMMARY.address, analysisDate);
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } finally {
+      setMaking(false);
+    }
+  };
 
   useEffect(() => {
     if (demoStep === null || demoStep > total + 1) return;
@@ -88,8 +108,8 @@ export default function V2BoardPage() {
                 보드 편집
               </button>
               <span className={styles.reportHint}>표지 1 + 타일 {tiles}</span>
-              <button type="button" className={`${styles.pill} ${styles.pillDark}`} disabled title="P1c 다음 단계">
-                보고서 만들기 · {pages}장
+              <button type="button" className={`${styles.pill} ${styles.pillDark}`} onClick={makeReport} disabled={making || demoOn} aria-busy={making}>
+                {making ? "만드는 중…" : `보고서 만들기 · ${reportPlan.length}장`}
               </button>
             </>
           )}
