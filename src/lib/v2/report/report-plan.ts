@@ -6,6 +6,7 @@ import type { BoardState } from "../ui/board-state";
 import { calloutReportPages, DEFAULT_CALLOUT_MODE, pageCount } from "../ui/callout-layout";
 import type { MapModel } from "../ui/map-layers";
 import type { CalloutModel, SummaryView, TileView } from "../ui/tile-view";
+import type { MassModel } from "../ui/mass-projection";
 import { FACE_TEXT } from "../ui/tile-view";
 
 export type TileSlideBody =
@@ -32,6 +33,8 @@ export type ReportSlide =
       map: MapModel | null;
       /** true면 지도를 흐리게 (상태 화면) */
       muted: boolean;
+      /** S01 축측 매스 이미지. PPT에는 3D 파일 자체를 넣지 않는다. */
+      mass?: MassModel;
       /** 주변 단지 설명선 장: page 0 = 개요, 1.. = 설명표 (지도 이미지는 단지 없이, 점·지시선·표는 pptx 도형) */
       callout?: { model: CalloutModel; page: number; pages: number };
     }
@@ -41,8 +44,13 @@ export type PlannedSlide = ReportSlide & { no: number; total: number; footer: st
 
 /** 지도 이미지 키: 표지는 "cover", 타일 장은 tileId */
 export const COVER_MAP_KEY = "cover";
-export const mapKeyOf = (p: PlannedSlide): string | null =>
-  p.kind === "tile" ? (p.map ? (p.callout && p.callout.page > 0 ? `${p.view.tileId}:cp` : p.view.tileId) : null) : p.map ? COVER_MAP_KEY : null;
+export const mapKeyOf = (p: PlannedSlide): string | null => {
+  if (p.kind === "tile") {
+    if (p.mass) return `${p.view.tileId}:mass`;
+    return p.map ? (p.callout && p.callout.page > 0 ? `${p.view.tileId}:cp` : p.view.tileId) : null;
+  }
+  return p.map ? COVER_MAP_KEY : null;
+};
 
 const STATE_MESSAGE: Record<string, string> = {
   failed: "계산 실패 — 보고서에는 결과 없이 표시합니다",
@@ -123,14 +131,16 @@ export function buildReportPlan(input: {
     for (const face of faces) {
       const message = STATE_MESSAGE[v.status];
       const result = hasResult(v);
+      const mass = v.mass ?? undefined;
       raw.push({
         kind: "tile",
         view: v,
         body: hasResult(v) ? { kind: "result", face } : { kind: "state", face, message: message ?? "결과 없음 — 보고서에는 결과 없이 표시합니다" },
         faceLabel: v.hasFace ? FACE_TEXT[face === "front" ? "front" : "back"] : null,
         // 모든 장은 지도(또는 주 시각물)가 전면: 지도 없는 결과는 지물 없는 대지 지도, 상태 장은 흐린 대지 지도
-        map: !result ? v.backdrop : v.hasFace && face === "back" ? null : (v.map ?? v.backdrop),
+        map: mass ? null : !result ? v.backdrop : v.hasFace && face === "back" ? null : (v.map ?? v.backdrop),
         muted: !result,
+        ...(mass ? { mass } : {}),
         footer: v.sourceLine === "출처 없음" ? "출처 없음 · 기준일 해당 없음" : `출처 ${v.sourceLine}`,
       });
     }

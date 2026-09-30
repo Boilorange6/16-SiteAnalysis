@@ -380,7 +380,7 @@ function cover(pptx: PptxGenJS, p: PlannedSlide & { kind: "cover" }, images: Map
 function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapImages) {
   const v = p.view;
   const s = pptx.addSlide();
-  const chart = !p.map; // 도판 구성비 면: 연한 타일색 바탕에 차트가 전면
+  const chart = !p.map && !p.mass; // 도판 구성비 면: 연한 타일색 바탕에 차트가 전면
   const mix = (c: string, a: number) => {
     const n = parseInt(hex(c), 16);
     const ch = (sh: number) => Math.round(255 - (255 - ((n >> sh) & 255)) * a);
@@ -396,7 +396,7 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
     return;
   }
 
-  const notes = [...v.caveats, ...v.notes];
+  const notes = [...v.caveats, ...v.notes, ...(v.code === "S01" ? ["DXF·GLB는 내보내기에서"] : [])];
   const items: Item[] = [];
   const b = badgeItem(s, v.badges);
   if (b) items.push(b);

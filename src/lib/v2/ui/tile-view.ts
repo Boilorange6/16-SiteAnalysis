@@ -3,8 +3,10 @@
  * 규칙: 종합 점수 없음 · 도보 시간 없음 · 공급/가격/개발은 좋음·주의 평가 없음 (plan 화면 규칙 1~8).
  */
 import type { OUTPUT_FACES, TileResult } from "../tile-result";
+import type { Scene } from "../scene";
 import { fmtInt, rankComplexes, rankSupply, STOCK_LEGEND, SUPPLY_LAYERS, SUPPLY_LEGEND, summarize, supplyStats, type CalloutLegendSpec, type Complex, type Stat } from "./callout-layout";
 import type { MapModel } from "./map-layers";
+import type { MassModel } from "./mass-projection";
 import { catalogEntry, sourceName } from "./tile-catalog";
 
 export type OutputFace = (typeof OUTPUT_FACES)[number];
@@ -37,6 +39,8 @@ export type TileView = {
   kindLabel: string;
   /** 주변 단지 설명선 타일(A05) 입력. 결과가 없으면 null */
   callout: CalloutModel | null;
+  /** S01 축측 매스. Scene이 없을 때도 카메라·반경만으로 빈 틀을 그릴 수 있다. */
+  mass: MassModel | null;
 };
 
 /** 설명선 타일의 입력: 세대수 순위로 정렬된 단지 목록과 요약 (A06도 같은 모양으로 채운다) */
@@ -130,6 +134,20 @@ const MODEL_BADGE: Record<string, string> = { S02: "그림자 추정 · 법적 �
 export const FACE_TEXT: Record<OutputFace, string> = { front: "도판", back: "구성비", both: "도판 + 구성비" };
 export const faceLabel = (f: OutputFace) => FACE_TEXT[f];
 
+function massOf(r: TileResult, scene: Scene | null | undefined): MassModel | null {
+  if (r.tileCode !== "S01" || !r.presentation.camera) return null;
+  const camera = r.presentation.camera;
+  if (typeof camera.azimuthDeg !== "number" || typeof camera.elevationDeg !== "number") return null;
+  return {
+    scene: scene ?? null,
+    camera: {
+      azimuthDeg: camera.azimuthDeg,
+      elevationDeg: camera.elevationDeg,
+      radiusM: typeof camera.radiusM === "number" ? camera.radiusM : r.conditions.radiusM,
+    },
+  };
+}
+
 const group = (n: number) => {
   const [i, f] = String(n).split(".");
   return i.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (f ? `.${f}` : "");
@@ -169,7 +187,7 @@ export function sourceLineOf(sources: TileResult["provenance"]["sources"]): stri
     .join(" · ");
 }
 
-export function toTileView(r: TileResult): TileView {
+export function toTileView(r: TileResult, scene?: Scene | null): TileView {
   const cat = catalogEntry(r.tileCode);
   const badges: Badge[] = [];
   const statusText = STATUS_TEXT[r.status];
@@ -238,6 +256,7 @@ export function toTileView(r: TileResult): TileView {
     backdrop: { center: r.conditions.center, radiusM: r.conditions.radiusM, features: [], total: 0, notes: [] },
     kindLabel: KIND_LABEL[cat.kind],
     callout: calloutOf(r),
+    mass: massOf(r, scene),
   };
 }
 

@@ -7,7 +7,10 @@ import { createElement } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import MapFigure, { type MapFigureProps } from "@/components/v2/map-figure";
+import MassFigure from "@/components/v2/mass-figure";
 import type { MapModel } from "../ui/map-layers";
+import type { MassCamera, MassModel } from "../ui/mass-projection";
+import type { Scene } from "../scene";
 import { SLIDE, slideLayout, slideReserved, slideSiteX, slideLegend } from "../ui/overlay-layout";
 import { BASEMAP_STACK, framedViewport, tilesFor, tileUrl, type BasemapChoice } from "../ui/map-projection";
 import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
@@ -77,6 +80,17 @@ function svgOf(model: MapModel, tiles: Map<string, string>, layer: BasemapChoice
   }
 }
 
+function svgOfMass(mass: MassModel, width: number, height: number): string {
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  try {
+    flushSync(() => root.render(createElement(MassFigure, { scene: mass.scene, camera: mass.camera, width, height, fixed: true })));
+    return host.innerHTML;
+  } finally {
+    root.unmount();
+  }
+}
+
 async function toPng(svg: string): Promise<string> {
   const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
   try {
@@ -116,6 +130,15 @@ export async function rasterizeMap(model: MapModel, tileCache: Map<string, strin
   return toPng(svgOf(model, got, layer, extra));
 }
 
+export function rasterizeMass(mass: MassModel): Promise<string>;
+export function rasterizeMass(scene: Scene | null, camera: MassCamera, width?: number, height?: number): Promise<string>;
+export async function rasterizeMass(sceneOrMass: Scene | MassModel | null, camera?: MassCamera, width = VIEW_W, height = VIEW_H): Promise<string> {
+  const mass: MassModel = camera
+    ? { scene: sceneOrMass as Scene | null, camera }
+    : (sceneOrMass as MassModel);
+  return toPng(svgOfMass(mass, width, height));
+}
+
 /** 슬라이드마다 다른 오버레이 자리를 피하게 한다 (표지·출처는 지도 가운데, 타일은 오른쪽 정보 판을 뺀 영역) */
 function extraFor(p: PlannedSlide, model: MapModel): Extra {
   if (p.kind !== "tile") return { avoid: slideReserved(PX_PER_INCH, { info: false }) };
@@ -134,8 +157,17 @@ export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice 
   const out: MapImages = {};
   for (const p of plan) {
     const key = mapKeyOf(p);
+    if (!key || out[key]) continue;
+    if (p.kind === "tile" && p.mass) {
+      try {
+        out[key] = await rasterizeMass(p.mass);
+      } catch (e) {
+        console.warn(`매스 이미지 생성 실패 (${key})`, e);
+      }
+      continue;
+    }
     const model = p.map;
-    if (!key || !model || out[key]) continue;
+    if (!model) continue;
     try {
       out[key] = await rasterizeMap(model, cache, layer, extraFor(p, model));
     } catch (e) {

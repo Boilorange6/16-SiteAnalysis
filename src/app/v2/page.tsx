@@ -14,12 +14,14 @@ import { DEFAULT_CALLOUT_MODE } from "@/lib/v2/ui/callout-layout";
 import { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } from "@/lib/v2/ui/fixtures/godeok";
 import { toSummaryView, toTileView, type SiteSummary } from "@/lib/v2/ui/tile-view";
 import type { TileResult } from "@/lib/v2/tile-result";
+import type { Scene } from "@/lib/v2/scene";
 
 const UNDO_LABEL ={ order: "옮김", size: "크기 바꿈", remove: "삭제됨", add: "더함" } as const;
 
 type BoardProps = {
   baseResults: TileResult[];
   siteSummary: SiteSummary;
+  scene: Scene | null;
   /** true면 예시 데이터(실제 분석 전) */
   demo: boolean;
   /** 분석 요청 중 — 모든 타일이 계산 중으로 보인다 */
@@ -30,7 +32,7 @@ type BoardProps = {
 };
 
 /** 타일 보드. 결과가 바뀌면 부모가 key를 바꿔 새로 만든다. */
-function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: BoardProps) {
+function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun }: BoardProps) {
   const [overrides, setOverrides] = useState<Record<string, TileResult>>({});
   const results = useMemo(() => baseResults.map((r) => overrides[r.tileId] ?? r), [baseResults, overrides]);
   const [board, dispatch] = useReducer(boardReducer, baseResults, initBoard);
@@ -45,7 +47,7 @@ function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: Boar
     setNote(`${views.get(id)?.title} 타일을 ${to + 1}번째로 옮김`);
   });
 
-  const views = useMemo(() => new Map(results.map((r) => [r.tileId, toTileView(r)])), [results]);
+  const views = useMemo(() => new Map(results.map((r) => [r.tileId, toTileView(r, scene)])), [results, scene]);
   const summary = useMemo(() => toSummaryView(siteSummary, results), [siteSummary, results]);
   const { tiles } = reportPages(board, complexCounts(views));
   const total = board.order.length;
@@ -273,7 +275,7 @@ const RADII = [
 ] as const;
 const API = "/site/api/v2/analyses";
 
-type Live = { analysisId: string; summary: SiteSummary; results: TileResult[] };
+type Live = { analysisId: string; summary: SiteSummary; results: TileResult[]; scene: Scene | null };
 type Problem = { text: string; login: boolean };
 
 /** 주소 입력 → 분석 → 실제 결과 보드. 분석 전에는 예시 보드를 그대로 보여 준다. */
@@ -288,7 +290,14 @@ export default function V2BoardPage() {
     const body = (await res.json().catch(() => ({}))) as Partial<Live> & { error?: string };
     if (res.status === 401) return setProblem({ text: "로그인이 필요합니다.", login: true });
     if (!res.ok || !body.analysisId) return setProblem({ text: body.error ?? "분석하지 못했습니다. 잠시 뒤 다시 시도해 주세요.", login: false });
-    setLive(body as Live);
+    let scene: Scene | null = null;
+    try {
+      const sceneRes = await fetch(`${API}/${encodeURIComponent(body.analysisId)}/scene`);
+      if (sceneRes.ok) scene = (await sceneRes.json()) as Scene;
+    } catch {
+      // 장면이 없어도 분석 결과 보드는 계속 연다. S01은 빈 매스 틀을 표시한다.
+    }
+    setLive({ ...(body as Omit<Live, "scene">), scene });
     history.replaceState(null, "", `?analysis=${body.analysisId}`);
     return undefined;
   }
@@ -370,6 +379,7 @@ export default function V2BoardPage() {
       key={live?.analysisId ?? "demo"}
       baseResults={live?.results ?? GODEOK_RESULTS}
       siteSummary={live?.summary ?? GODEOK_SUMMARY}
+      scene={live?.scene ?? null}
       demo={!live}
       busy={busy}
       controls={controls}
