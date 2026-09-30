@@ -56,11 +56,17 @@ assert.equal(db.prepare("SELECT parent_code FROM legal_area WHERE code='51150250
 assert.deepEqual(parseJibunAddress("강원특별자치도 강릉시 견소동 219-0"), { head: "강원특별자치도 강릉시 견소동", mountain: false, bun: 219, ji: 0 });
 assert.deepEqual(parseJibunAddress("강원특별자치도 강릉시 송정동 산 77-3"), { head: "강원특별자치도 강릉시 송정동", mountain: true, bun: 77, ji: 3 });
 assert.deepEqual(parseJibunAddress("경기도 성남시 분당구 정자동 178번지"), { head: "경기도 성남시 분당구 정자동", mountain: false, bun: 178, ji: 0 });
+assert.deepEqual(parseJibunAddress("강원특별자치도 강릉시 견소동 219-4~7"), { head: "강원특별자치도 강릉시 견소동", mountain: false, bun: 219, ji: 4 }, "범위는 첫 지번만 사용");
+assert.deepEqual(parseJibunAddress("강원특별자치도 강릉시 견소동 219-0 외 2필지"), { head: "강원특별자치도 강릉시 견소동", mountain: false, bun: 219, ji: 0 }, "외 N필지는 첫 지번만 사용");
+assert.deepEqual(parseJibunAddress("강원특별자치도 강릉시 견소동 219-0 일원"), { head: "강원특별자치도 강릉시 견소동", mountain: false, bun: 219, ji: 0 }, "일원 뒤 첫 지번 사용");
+assert.deepEqual(parseJibunAddress("강원특별자치도 강릉시 견소동 219-0 (택지)"), { head: "강원특별자치도 강릉시 견소동", mountain: false, bun: 219, ji: 0 }, "지번 뒤 설명 제거");
 assert.equal(parseJibunAddress("강원특별자치도 강릉시 견소동"), null);
 
 // ─── 4. 주소 → PNU ────────────────────────────────────────────────────────
 assert.deepEqual(resolveJibunAddress(db, "강원특별자치도 강릉시 견소동 219-0"), { legalCode: "5115011800", pnu: "5115011800102190000" });
+assert.deepEqual(resolveJibunAddress(db, "강원특별자치도 강릉시 견소동 219-0 (택지)"), { legalCode: "5115011800", pnu: "5115011800102190000" }, "지번 뒤 괄호 설명");
 assert.deepEqual(resolveJibunAddress(db, "강원 강릉시 주문진읍 주문리 762-5"), { legalCode: "5115025021", pnu: "5115025021107620005" }, "약칭 시도 + 리");
+assert.deepEqual(resolveJibunAddress(db, "강원특별자치도 강릉시 주문리 762-5"), { legalCode: "5115025021", pnu: "5115025021107620005" }, "읍면 없이 유일한 리");
 assert.deepEqual(resolveJibunAddress(db, "강원특별자치도 강릉시 송정동 산 77-3"), { legalCode: "5115011200", pnu: "5115011200200770003" }, "산 번지");
 assert.deepEqual(resolveJibunAddress(db, "경기도 성남시 분당구 정자동 178"), { legalCode: "4113510700", pnu: "4113510700101780000" }, "두 단어 시군구");
 assert.equal(resolveJibunAddress(db, "경기도 성남시분당구 정자동 178")?.legalCode, "4113510700", "시군구 사이 공백 없음");
@@ -68,6 +74,12 @@ assert.equal(resolveJibunAddress(db, "강원특별자치도 강릉시 없는동 
 assert.equal(resolveJibunAddress(db, "강원특별자치도 강릉시 견소동 219 오션시티"), null, "뒤에 건물명 → 추측하지 않음");
 assert.equal(resolveJibunAddress(db, "강원특별자치도 강릉시 주문진읍 없는리 1"), null, "모르는 리");
 assert.equal(resolveJibunAddress(db, "강원특별자치도 강릉시 주문진읍 762-5"), null, "리가 있는 읍인데 리 생략 → 가짜 코드 금지");
+
+// 행정동 숫자 분할명과 동 레이어의 자기 자신 리 placeholder는 법정동으로 안전하게 환원한다.
+db.prepare("INSERT INTO legal_area VALUES ('51150119','emd','송절동','51150',?)").run(rel);
+db.prepare("INSERT INTO legal_area VALUES ('5115011900','ri','송절동','51150119',?)").run(rel);
+assert.deepEqual(resolveJibunAddress(db, "강원특별자치도 강릉시 송절2동 1"), { legalCode: "5115011900", pnu: "5115011900100010000" }, "숫자 분할 행정동명");
+assert.deepEqual(resolveJibunAddress(db, "강원특별자치도 강릉시 송절동 1"), { legalCode: "5115011900", pnu: "5115011900100010000" }, "동 자기 자신 리 placeholder");
 
 // ─── 5. 모호하면 null (합성 데이터) ────────────────────────────────────────
 {
