@@ -230,6 +230,15 @@ if (builders.core) {
   };
 }
 
+// 국토부 실거래: rtms:fetch로 받은 원본이 있을 때만 market에 이어 붙인다(없으면 건너뜀 — 빌드는 실패하지 않는다).
+const { buildRtms, hasRtmsRaw } = await import("../../lib/v2/ingest/sources/rtms.ts");
+if (builders.market && hasRtmsRaw(raw)) {
+  const base = builders.market;
+  builders.market = async (db, ctx) => [...(await base(db, ctx)), ...(await buildRtms(db, { core: ctx.core, rawDir: raw }))];
+} else if (builders.market) {
+  console.log("rtms: 원본 없음 — 실거래 적재 건너뜀 (npm run rtms:fetch)");
+}
+
 const started = Date.now();
 const out = await buildAndPublish({ dataDir: v2DataDir(), version, builders, expectations, resetBaseline });
 for (const [kind, list] of Object.entries(out.stats)) {
