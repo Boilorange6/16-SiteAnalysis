@@ -7,6 +7,7 @@ import { calloutReportPages, DEFAULT_CALLOUT_MODE, pageCount } from "../ui/callo
 import type { MapModel } from "../ui/map-layers";
 import type { CalloutModel, SummaryView, TileView } from "../ui/tile-view";
 import type { MassModel } from "../ui/mass-projection";
+import type { SheetGrid } from "../ui/sheet";
 import { FACE_TEXT } from "../ui/tile-view";
 
 export type TileSlideBody =
@@ -38,19 +39,27 @@ export type ReportSlide =
       /** 주변 단지 설명선 장: page 0 = 개요, 1.. = 설명표 (지도 이미지는 단지 없이, 점·지시선·표는 pptx 도형) */
       callout?: { model: CalloutModel; page: number; pages: number };
     }
+  | {
+      kind: "sheet";
+      view: TileView;
+      grid: SheetGrid;
+      cells: Array<{ view: TileView; face: "front" | "back"; mapKey: string }>;
+    }
   | { kind: "sources"; rows: { source: string; asOf: string; tiles: string }[]; /** 배경(흐린 대지 지도) */ map: MapModel | null };
 
 export type PlannedSlide = ReportSlide & { no: number; total: number; footer: string };
 
 /** 지도 이미지 키: 표지는 "cover", 타일 장은 tileId */
 export const COVER_MAP_KEY = "cover";
-export const mapKeyOf = (p: PlannedSlide): string | null => {
+export const mapKeysOf = (p: PlannedSlide): string[] => {
+  if (p.kind === "sheet") return p.cells.map((cell) => cell.mapKey);
   if (p.kind === "tile") {
-    if (p.mass) return `${p.view.tileId}:mass`;
-    return p.map ? (p.callout && p.callout.page > 0 ? `${p.view.tileId}:cp` : p.view.tileId) : null;
+    if (p.mass) return [`${p.view.tileId}:mass`];
+    return p.map ? [p.callout && p.callout.page > 0 ? `${p.view.tileId}:cp` : p.view.tileId] : [];
   }
-  return p.map ? COVER_MAP_KEY : null;
+  return p.map ? [COVER_MAP_KEY] : [];
 };
+export const mapKeyOf = (p: PlannedSlide): string | null => mapKeysOf(p)[0] ?? null;
 
 const STATE_MESSAGE: Record<string, string> = {
   failed: "계산 실패 — 보고서에는 결과 없이 표시합니다",
@@ -109,6 +118,24 @@ export function buildReportPlan(input: {
   });
 
   for (const v of tiles) {
+    if (v.code === "SHEET" && v.sheetTiles && v.sheetGrid) {
+      const cells = v.sheetTiles
+        .map((id) => views.get(id))
+        .filter((cell): cell is TileView => !!cell)
+        .map((cell) => ({
+          view: cell,
+          face: cell.hasFace && board.faces[cell.tileId] === "back" ? "back" as const : "front" as const,
+          mapKey: `${cell.tileId}:cell`,
+        }));
+      raw.push({
+        kind: "sheet",
+        view: v,
+        grid: v.sheetGrid,
+        cells,
+        footer: v.sourceLine === "출처 없음" ? "출처 없음 · 기준일 해당 없음" : `출처 ${v.sourceLine}`,
+      });
+      continue;
+    }
     if (v.callout && hasResult(v)) {
       // 설명선 타일: 개요 1장 + 설명표 장 (설정: 개요만 / 상위 10 / 전체). 장수는 board-state.reportPages와 같은 함수
       const cm = v.callout;

@@ -13,6 +13,7 @@ import { buildReportPlan, complexCounts, reportFileName } from "@/lib/v2/report/
 import { downloadBytes, EXPORT_MIME } from "@/lib/v2/export/download";
 import { DEFAULT_CALLOUT_MODE } from "@/lib/v2/ui/callout-layout";
 import { stackView } from "@/lib/v2/ui/stack";
+import { sheetView } from "@/lib/v2/ui/sheet";
 import { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } from "@/lib/v2/ui/fixtures/godeok";
 import { toSummaryView, toTileView, type SiteSummary } from "@/lib/v2/ui/tile-view";
 import type { TileResult } from "@/lib/v2/tile-result";
@@ -42,6 +43,7 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
   const [demoStep, setDemoStep] = useState<number | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [stackSelection, setStackSelection] = useState<string[]>([]);
+  const [sheetSelection, setSheetSelection] = useState<string[]>([]);
   const [note, setNote] = useState(""); // 스크린리더 안내(aria-live)
   const [basemap, setBasemap] = useState<BasemapChoice>("white"); // 보드 상태(서버에 저장하지 않음). 화면과 PPT가 같이 따른다
   const gridRef = useRef<HTMLDivElement>(null);
@@ -57,8 +59,12 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
       const layerViews = layers.map((layerId) => baseViews.get(layerId)).filter((view): view is NonNullable<typeof view> => !!view);
       if (layerViews.length > 0) next.set(id, stackView(id, layerViews));
     }
+    for (const [id, spec] of Object.entries(board.sheets)) {
+      const tileViews = spec.tiles.map((tileId) => next.get(tileId)).filter((view): view is NonNullable<typeof view> => !!view);
+      if (tileViews.length > 0) next.set(id, sheetView(id, tileViews, spec.grid));
+    }
     return next;
-  }, [baseViews, board.stacks]);
+  }, [baseViews, board.sheets, board.stacks]);
   const stackableIds = useMemo(
     () => board.order.filter((id) => {
       const view = baseViews.get(id);
@@ -66,6 +72,7 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
     }),
     [baseViews, board.order, board.stacks],
   );
+  const sheetableIds = useMemo(() => board.order.filter((id) => views.has(id) && views.get(id)!.code !== "SHEET"), [board.order, views]);
   const summary = useMemo(() => toSummaryView(siteSummary, results), [siteSummary, results]);
   const { tiles } = reportPages(board, complexCounts(views));
   const total = board.order.length;
@@ -149,6 +156,34 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
                 >
                   스택 만들기 · {stackSelection.length}층
                 </button>
+              )}
+              {sheetSelection.length >= 2 && (
+                <>
+                  <button
+                    type="button"
+                    className={styles.pill}
+                    disabled={sheetSelection.length > 4}
+                    onClick={() => {
+                      dispatch({ type: "sheet", tiles: sheetSelection, grid: "2x2" });
+                      setSheetSelection([]);
+                      setNote(`${sheetSelection.length}개 타일로 2×2 조판을 만듦`);
+                    }}
+                  >
+                    조판 만들기(2×2)
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.pill}
+                    disabled={sheetSelection.length > 6}
+                    onClick={() => {
+                      dispatch({ type: "sheet", tiles: sheetSelection, grid: "3x2" });
+                      setSheetSelection([]);
+                      setNote(`${sheetSelection.length}개 타일로 3×2 조판을 만듦`);
+                    }}
+                  >
+                    조판 만들기(3×2)
+                  </button>
+                </>
               )}
             </>
           ) : (
@@ -289,6 +324,14 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
                   onUnstack={view.code === "STACK" ? () => {
                     dispatch({ type: "unstack", id });
                     setStackSelection((current) => current.filter((selectedId) => selectedId !== id));
+                    setNote(`${view.title}을 풀음`);
+                  } : undefined}
+                  sheetable={sheetableIds.includes(id)}
+                  sheetSelected={sheetSelection.includes(id)}
+                  onSheetToggle={(selected) => setSheetSelection((current) => selected ? [...new Set([...current, id])] : current.filter((selectedId) => selectedId !== id))}
+                  onUnsheet={view.code === "SHEET" ? () => {
+                    dispatch({ type: "unsheet", id });
+                    setSheetSelection((current) => current.filter((selectedId) => selectedId !== id));
                     setNote(`${view.title}을 풀음`);
                   } : undefined}
                 />

@@ -78,5 +78,7 @@ export function stackView(id: string, layers: TileView[]): TileView {
     callout: null,
     mass: null,
     stackLayers: unique(titles),
+    sheetTiles: null,
+    sheetGrid: null,
   };
 }

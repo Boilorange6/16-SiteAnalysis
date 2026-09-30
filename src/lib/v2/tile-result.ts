@@ -84,7 +84,7 @@ export const TileResultSchema = z
     tileId: z.string().min(1),
     analysisId: z.string().min(1),
     tileType: z.enum(TILE_TYPES),
-    tileCode: z.string().regex(/^[ADS]\d{2}$|^STACK$|^SUMMARY$/),
+    tileCode: z.string().regex(/^[ADS]\d{2}$|^STACK$|^SHEET$|^SUMMARY$/),
     status: z.enum(TILE_STATUSES),
     engineVersion: z.string().min(1),
     conditions: ConditionsSchema,

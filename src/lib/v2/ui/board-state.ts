@@ -4,6 +4,8 @@ import { calloutReportPages, DEFAULT_CALLOUT_MODE, type CalloutMode } from "./ca
 import type { OutputFace } from "./tile-view";
 
 export type TileSize = 1 | 2;
+export type SheetGrid = "2x2" | "3x2";
+export type SheetSpec = { tiles: string[]; grid: SheetGrid };
 
 /** 되돌리기 한 단계. 모든 편집(순서·크기·제거·더하기)이 여기 쌓인다. */
 export type UndoEntry =
@@ -31,6 +33,8 @@ export type BoardState = {
   tileKinds: Record<string, TileResult["tileType"]>;
   /** 스택 id → 층 타일 id(위→아래) */
   stacks: Record<string, string[]>;
+  /** 조판 id → 셀 타일 id(왼쪽 위부터)와 격자 */
+  sheets: Record<string, SheetSpec>;
   /** 빼 둔 타일(더할 수 있는 타일). index는 빼기 전 위치 */
   removed: { id: string; index: number }[];
   undoStack: UndoEntry[];
@@ -49,7 +53,9 @@ export type BoardAction =
   | { type: "view"; id: string; face: CardFace }
   | { type: "viewAll"; face: CardFace }
   | { type: "stack"; layers: string[] }
-  | { type: "unstack"; id: string };
+  | { type: "unstack"; id: string }
+  | { type: "sheet"; tiles: string[]; grid: SheetGrid }
+  | { type: "unsheet"; id: string };
 
 /** 카드의 현재 면 (편집 중에는 화면이 항상 요약면을 쓴다) */
 export const viewOf = (s: Pick<BoardState, "view" | "viewAll">, id: string): CardFace => s.view[id] ?? s.viewAll;
@@ -67,6 +73,7 @@ export function initBoard(results: TileResult[]): BoardState {
     sizes: Object.fromEntries(results.map((r) => [r.tileId, (r.tileCode === "A05" || r.tileCode === "A06" ? 2 : 1) as TileSize])),
     tileKinds: Object.fromEntries(results.map((r) => [r.tileId, r.tileType])),
     stacks: {},
+    sheets: {},
     removed: [],
     undoStack: [],
   };
@@ -89,10 +96,13 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
       if (index < 0) return s;
       const stacks = { ...s.stacks };
       delete stacks[a.id];
+      const sheets = { ...s.sheets };
+      delete sheets[a.id];
       return {
         ...s,
         order: s.order.filter((x) => x !== a.id),
         stacks,
+        sheets,
         removed: [...s.removed, { id: a.id, index }],
         undoStack: [...s.undoStack, { kind: "remove", id: a.id, index }],
       };
@@ -123,11 +133,13 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
         }
         case "add": {
           const removed = [...s.removed];
-          const isStack = u.trayIndex < 0 && u.id in s.stacks;
+          const isComposite = u.trayIndex < 0 && (u.id in s.stacks || u.id in s.sheets);
           removed.splice(Math.min(u.trayIndex, removed.length), 0, { id: u.id, index: s.order.indexOf(u.id) });
           const stacks = { ...s.stacks };
-          if (isStack) {
+          if (isComposite) {
             delete stacks[u.id];
+            const sheets = { ...s.sheets };
+            delete sheets[u.id];
             const included = { ...s.included };
             const faces = { ...s.faces };
             const sizes = { ...s.sizes };
@@ -136,7 +148,7 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
             delete faces[u.id];
             delete sizes[u.id];
             delete tileKinds[u.id];
-            return { ...s, ...rest, order: s.order.filter((x) => x !== u.id), included, faces, sizes, tileKinds, stacks };
+            return { ...s, ...rest, order: s.order.filter((x) => x !== u.id), included, faces, sizes, tileKinds, stacks, sheets };
           }
           return { ...s, ...rest, order: s.order.filter((x) => x !== u.id), removed };
         }
@@ -197,6 +209,38 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
       delete sizes[a.id];
       delete tileKinds[a.id];
       return { ...s, order: s.order.filter((id) => id !== a.id), included, faces, sizes, tileKinds, stacks };
+    }
+    case "sheet": {
+      const capacity = a.grid === "2x2" ? 4 : 6;
+      const tiles = [...new Set(a.tiles)].filter((id) => s.order.includes(id));
+      if (tiles.length < 2 || tiles.length > capacity || tiles.some((id) => id in s.sheets)) return s;
+      let number = Object.keys(s.sheets).length + 1;
+      while (s.sheets[`sheet:${number}`]) number += 1;
+      const id = `sheet:${number}`;
+      return {
+        ...s,
+        order: [...s.order, id],
+        included: { ...s.included, [id]: true },
+        faces: { ...s.faces, [id]: "front" },
+        sizes: { ...s.sizes, [id]: 1 },
+        tileKinds: { ...s.tileKinds, [id]: "stack" },
+        sheets: { ...s.sheets, [id]: { tiles, grid: a.grid } },
+        undoStack: [...s.undoStack, { kind: "add", id, trayIndex: -1 }],
+      };
+    }
+    case "unsheet": {
+      if (!(a.id in s.sheets)) return s;
+      const sheets = { ...s.sheets };
+      delete sheets[a.id];
+      const included = { ...s.included };
+      const faces = { ...s.faces };
+      const sizes = { ...s.sizes };
+      const tileKinds = { ...s.tileKinds };
+      delete included[a.id];
+      delete faces[a.id];
+      delete sizes[a.id];
+      delete tileKinds[a.id];
+      return { ...s, order: s.order.filter((id) => id !== a.id), included, faces, sizes, tileKinds, sheets };
     }
   }
 }

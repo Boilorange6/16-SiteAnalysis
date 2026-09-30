@@ -11,6 +11,7 @@ import { STRIP_COLORS } from "../ui/map-layers";
 import { framedViewport, makeProjector } from "../ui/map-projection";
 import { OV, SLIDE, slideLayout, slideLegend, slideSiteX, stripText, type Rect } from "../ui/overlay-layout";
 import type { Badge, CalloutModel, TileView } from "../ui/tile-view";
+import { sheetCells, type SheetGrid } from "../ui/sheet";
 import { COVER_MAP_KEY, mapKeyOf, type PlannedSlide } from "./report-plan";
 
 /** 지도 이미지(PNG/JPEG data URL) — 키는 report-plan의 mapKeyOf */
@@ -451,6 +452,44 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   strip(s, p, !chart);
 }
 
+function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: MapImages) {
+  const s = pptx.addSlide();
+  s.background = { color: "F2F2EF" };
+  titlePlate(s, p.view.color, "SHEET", p.view.title, p.grid, SLIDE.w - 2 * E);
+  const cells = sheetCells(p.grid as SheetGrid);
+  for (const [index, cell] of p.cells.entries()) {
+    const r = cells[index];
+    if (!r) continue;
+    s.addShape("roundRect", { x: r.x, y: r.y, w: r.w, h: r.h, rectRadius: 0.08, fill: { color: "FFFFFF" }, line: { color: LINE, width: 0.75 } });
+    const chart = cell.face === "back" && cell.view.chart;
+    if (chart) {
+      const data = cell.view.chart ?? [];
+      const max = Math.max(1, ...data.map((entry) => entry.value));
+      const y0 = r.y + 0.58;
+      const rowH = Math.min(0.38, (r.h - 0.95) / Math.max(1, data.length));
+      const labelW = Math.min(1.35, r.w * 0.34);
+      const trackW = Math.max(0.5, r.w - labelW - 0.8);
+      data.forEach((entry, chartIndex) => {
+        const y = y0 + chartIndex * rowH;
+        s.addText(entry.label, { x: r.x + 0.12, y, w: labelW - 0.08, h: rowH, valign: "middle", fontFace: FONT, fontSize: fitPt(entry.label, 8.5, labelW - 0.08, 1, 6), bold: true, color: MUTED, margin: 0, fit: "shrink" });
+        s.addShape("rect", { x: r.x + labelW, y: y + rowH * 0.22, w: trackW, h: rowH * 0.56, fill: { color: INK, transparency: 94 }, line: { color: INK, width: 0, transparency: 100 } });
+        s.addShape("rect", { x: r.x + labelW, y: y + rowH * 0.22, w: Math.max(0.03, (trackW * entry.value) / max), h: rowH * 0.56, fill: { color: hex(STRIP_COLORS[chartIndex % STRIP_COLORS.length]) }, line: { color: hex(STRIP_COLORS[chartIndex % STRIP_COLORS.length]), width: 0 } });
+        s.addText(`${entry.value}${entry.unit === "%" ? "%" : ` ${entry.unit}`}`, { x: r.x + r.w - 0.68, y, w: 0.56, h: rowH, align: "right", valign: "middle", fontFace: FONT, fontSize: 8.5, bold: true, color: INK, margin: 0 });
+      });
+    } else if (images[cell.mapKey]) {
+      s.addImage({ data: images[cell.mapKey], x: r.x, y: r.y, w: r.w, h: r.h, sizing: { type: "contain", w: r.w, h: r.h }, altText: `${cell.view.title} ${cell.face === "back" ? "구성비" : "도판"}` });
+    } else {
+      s.addText("그림을 만들지 못했습니다", { x: r.x + 0.15, y: r.y + r.h / 2 - 0.12, w: r.w - 0.3, h: 0.25, align: "center", fontFace: FONT, fontSize: 9, color: MUTED, margin: 0 });
+    }
+    const faceText = cell.face === "back" ? "구성비" : "도판";
+    const chipText = `${cell.view.code} · ${cell.view.title} · ${faceText}`;
+    s.addShape("roundRect", { x: r.x + 0.1, y: r.y + 0.1, w: Math.min(r.w - 0.2, 2.9), h: 0.3, rectRadius: 0.12, fill: { color: "FFFFFF", transparency: 10 }, line: { color: INK, transparency: 88, width: 0.5 } });
+    s.addText(chipText, { x: r.x + 0.2, y: r.y + 0.1, w: Math.min(r.w - 0.4, 2.7), h: 0.3, valign: "middle", fontFace: FONT, fontSize: fitPt(chipText, 8.5, Math.min(r.w - 0.4, 2.7), 1, 6), bold: true, color: INK, margin: 0, fit: "shrink" });
+    s.addText(`출처 ${cell.view.sourceLine}`, { x: r.x + 0.12, y: r.y + r.h - 0.29, w: r.w - 0.24, h: 0.18, fontFace: FONT, fontSize: 7.5, color: MUTED, margin: 0, fit: "shrink" });
+  }
+  strip(s, p, false);
+}
+
 function sources(pptx: PptxGenJS, p: PlannedSlide & { kind: "sources" }, images: MapImages) {
   const s = pptx.addSlide();
   background(s, images[COVER_MAP_KEY]);
@@ -475,6 +514,7 @@ export async function renderReportPptx(plan: PlannedSlide[], images: MapImages =
   for (const p of plan) {
     if (p.kind === "cover") cover(pptx, p, images);
     else if (p.kind === "tile") tile(pptx, p, images);
+    else if (p.kind === "sheet") sheet(pptx, p, images);
     else sources(pptx, p, images);
   }
   const bytes = (await pptx.write({ outputType: "uint8array" })) as Uint8Array;

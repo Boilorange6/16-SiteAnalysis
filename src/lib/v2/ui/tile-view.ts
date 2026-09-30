@@ -43,6 +43,9 @@ export type TileView = {
   mass: MassModel | null;
   /** STACK 카드의 층 이름. 일반 타일은 null. */
   stackLayers: string[] | null;
+  /** SHEET 카드가 참조하는 하위 타일과 격자. 일반 타일은 null. */
+  sheetTiles: string[] | null;
+  sheetGrid: "2x2" | "3x2" | null;
 };
 
 /** 설명선 타일의 입력: 세대수 순위로 정렬된 단지 목록과 요약 (A06도 같은 모양으로 채운다) */
@@ -260,6 +263,8 @@ export function toTileView(r: TileResult, scene?: Scene | null): TileView {
     callout: calloutOf(r),
     mass: massOf(r, scene),
     stackLayers: null,
+    sheetTiles: null,
+    sheetGrid: null,
   };
 }
 

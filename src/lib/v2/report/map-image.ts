@@ -23,7 +23,7 @@ const VIEW_H = 540;
 const OUT_W = 1920;
 const OUT_H = 1080;
 const PX_PER_INCH = VIEW_W / SLIDE.w;
-type Extra = Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "scale">;
+type Extra = Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "scale" | "legend" | "bare">;
 const TILE_TIMEOUT_MS = 8000;
 
 const blobToDataUrl = (b: Blob) =>
@@ -66,7 +66,8 @@ function svgOf(model: MapModel, tiles: Map<string, string>, layer: BasemapChoice
           tileHref: (u: string) => tiles.get(u),
           label: "분석 반경 지도",
           // 범례·북쪽·저작권은 슬라이드의 판/출처 띠가 대신한다 (축척만 그림 안, 출처 띠 위)
-          legend: false,
+          legend: extra.legend ?? false,
+          bare: extra.bare,
           north: false,
           credit: false,
           bottomInset: slideLayout().strip.h * PX_PER_INCH,
@@ -156,6 +157,17 @@ export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice 
   const cache = new Map<string, string | null>();
   const out: MapImages = {};
   for (const p of plan) {
+    if (p.kind === "sheet") {
+      for (const cell of p.cells) {
+        if (!cell.view.map || out[cell.mapKey]) continue;
+        try {
+          out[cell.mapKey] = await rasterizeMap(cell.view.map, cache, layer, { siteX: 0.5, avoid: [], legend: true, bare: false });
+        } catch (e) {
+          console.warn(`조판 셀 이미지 생성 실패 (${cell.mapKey})`, e);
+        }
+      }
+      continue;
+    }
     const key = mapKeyOf(p);
     if (!key || out[key]) continue;
     if (p.kind === "tile" && p.mass) {

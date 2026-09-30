@@ -235,6 +235,10 @@ export type TileCardProps = {
   stackSelected?: boolean;
   onStackToggle?: (selected: boolean) => void;
   onUnstack?: () => void;
+  sheetable?: boolean;
+  sheetSelected?: boolean;
+  onSheetToggle?: (selected: boolean) => void;
+  onUnsheet?: () => void;
 };
 
 const INTERACTIVE = "button,input,label,a,select,[data-handle]";
@@ -257,10 +261,17 @@ function SummaryFace({ p, state, waiting, onFlip }: { p: TileCardProps; state: b
         <h3 className={styles.title}>{view.title}</h3>
         <span className={styles.kindTag}>{view.kindLabel}</span>
         {view.stackLayers && <span className={styles.kindTag}>{view.stackLayers.join(" + ")}</span>}
+        {view.sheetGrid && <span className={styles.kindTag}>{view.sheetGrid}</span>}
         {p.editing && p.stackable && p.onStackToggle && (
           <label className={styles.check}>
             <input type="checkbox" checked={!!p.stackSelected} onChange={(e) => p.onStackToggle!(e.target.checked)} aria-label={`${view.title} 스택에 넣기`} />
             스택에 넣기
+          </label>
+        )}
+        {p.editing && p.sheetable && p.onSheetToggle && (
+          <label className={styles.check}>
+            <input type="checkbox" checked={!!p.sheetSelected} onChange={(e) => p.onSheetToggle!(e.target.checked)} aria-label={`${view.title} 조판에 넣기`} />
+            조판에 넣기
           </label>
         )}
         {!waiting && (
@@ -315,6 +326,11 @@ function SummaryFace({ p, state, waiting, onFlip }: { p: TileCardProps; state: b
             </span>
             {view.code === "STACK" && p.onUnstack && (
               <button type="button" className={styles.iconBtn} onClick={p.onUnstack} aria-label={`${view.title} 풀기`}>
+                풀기
+              </button>
+            )}
+            {view.code === "SHEET" && p.onUnsheet && (
+              <button type="button" className={styles.iconBtn} onClick={p.onUnsheet} aria-label={`${view.title} 풀기`}>
                 풀기
               </button>
             )}
@@ -391,7 +407,14 @@ export default function TileCard(p: TileCardProps) {
         <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="card" />
       </div>
 
-      <TitleChip view={view} tail={view.stackLayers ? <span className={styles.kindTag}>{view.stackLayers.join(" + ")}</span> : undefined} />
+      <TitleChip
+        view={view}
+        tail={
+          view.stackLayers || view.sheetGrid ? (
+            <span className={styles.kindTag}>{view.stackLayers ? view.stackLayers.join(" + ") : view.sheetGrid}</span>
+          ) : undefined
+        }
+      />
 
       {!waiting && (
         <div className={styles.ovTR}>
