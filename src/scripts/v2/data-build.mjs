@@ -35,6 +35,13 @@ const raw = opt("raw", ".cache/v2/raw");
 const only = new Set(String(opt("only", "core,reference,market")).split(","));
 /** 기본 빌드에 넣지 않는 무거운 원천: 건물 도형·building_fact는 core가 아니라 별도 buildings 파일. --only buildings 또는 --with buildings */
 if (String(opt("with", "")).split(",").includes("buildings")) only.add("buildings");
+if (only.has("market")) {
+  const legacyPath = legacyDbPath();
+  if (!existsSync(legacyPath)) {
+    console.error(`legacy DB not found at ${legacyPath} — set DB_PATH=<existing site-analysis.db> and retry (for example, DB_PATH=D:\\path\\site-analysis.db)`);
+    process.exit(2);
+  }
+}
 /** --wait-lock [분]: 다른 빌드가 데이터 디렉터리 잠금을 쥐고 있으면 풀릴 때까지 기다린다(기본 180분) */
 const waitLockIdx = args.indexOf("--wait-lock");
 const waitLockMin = waitLockIdx < 0 ? null : /^\d+(\.\d+)?$/.test(args[waitLockIdx + 1] ?? "") ? Number(args[waitLockIdx + 1]) : 180;
