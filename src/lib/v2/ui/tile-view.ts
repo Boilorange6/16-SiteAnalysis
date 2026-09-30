@@ -42,6 +42,8 @@ export type CalloutModel = {
   center: readonly [number, number];
   radiusM: number;
   complexes: Complex[];
+  /** 연립·다세대 등 기타 공동주택: 번호 없는 작은 회색 점으로만 그린다 */
+  others: Array<{ lng: number; lat: number }>;
   analysisYear: number;
   /** 빈 상태 판·개요의 기준 문구 (출처 + 기준일) */
   sourceLine: string;
@@ -197,11 +199,13 @@ export function toTileView(r: TileResult): TileView {
   };
 }
 
-const HOUSING_LAYERS = new Set(["apt", "other_housing", "officetel"]);
+const HOUSING_LAYERS = new Set(["apt", "officetel"]); // 번호·카드·쪽은 아파트·오피스텔만
 function calloutOf(r: TileResult): CalloutModel | null {
   if (r.tileCode !== "A05" || (r.status !== "complete" && r.status !== "partial")) return null;
-  const complexes = rankComplexes((r.presentation.features ?? []).filter((f) => HOUSING_LAYERS.has(f.layer)));
+  const features = r.presentation.features ?? [];
+  const complexes = rankComplexes(features.filter((f) => HOUSING_LAYERS.has(f.layer)));
   return {
+    others: features.filter((f) => f.layer === "other_housing").map((f) => ({ lng: f.lng, lat: f.lat })),
     center: r.conditions.center,
     radiusM: r.conditions.radiusM,
     complexes,

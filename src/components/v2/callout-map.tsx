@@ -41,11 +41,12 @@ export function calloutScene(model: CalloutModel, kind: CalloutFrameKind, W: num
   const proj = makeProjector(vp);
   const hMax = Math.max(0, ...model.complexes.map((c) => c.households ?? 0));
   const pos = new Map(model.complexes.map((c) => [c.id, proj(c.lng, c.lat)]));
+  const otherPts = model.others.map((o) => proj(o.lng, o.lat));
   const { placed, overflow } = layoutCallouts(
     frame,
     withCards.map((c) => ({ id: c.id, x: pos.get(c.id)![0], y: pos.get(c.id)![1] })),
   );
-  return { frame, pos, hMax, placed, overflow, numbered, withCards, panel, siteY };
+  return { frame, pos, otherPts, hMax, placed, overflow, numbered, withCards, panel, siteY };
 }
 
 function Card({ c, p, frame, year, hover, onHover, onPick }: { c: Complex; p: Placed; frame: CalloutFrame; year: number; hover: boolean; onHover: (id: string | null) => void; onPick: (id: string) => void }) {
@@ -227,6 +228,10 @@ export default function CalloutMap({ model, kind, page = 0, onPage, label }: Cal
             scaleX={scaleX}
           />
           <svg width={size.w} height={size.h} style={{ position: "absolute", inset: 0, pointerEvents: "none" }} aria-hidden fontFamily='"Noto Sans KR","Malgun Gothic",sans-serif'>
+            {/* 연립·다세대 등 기타 공동주택: 번호·라벨 없는 작은 회색 점 */}
+            {scene.otherPts.map(([x, y], i) => (
+              <circle key={`o${i}`} cx={x} cy={y} r={2} fill="#9AA0AA" fillOpacity={0.7} />
+            ))}
             {/* 카드 없는 단지: 점만 (앞뒤 페이지·보드 카드의 나머지) */}
             {model.complexes
               .filter((c) => !scene.numbered.includes(c))

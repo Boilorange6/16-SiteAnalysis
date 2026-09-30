@@ -36,7 +36,7 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   park: S("공원 대표점", "#5C9A3C", "weight"),
   park_nearest: S("최근접 공원", "#2F7A1E", "weight"),
   apt: S("아파트 단지", "#8C6D5A", "weight"),
-  other_housing: S("기타 주거", "#C9A227", "weight"),
+  other_housing: S("기타 공동주택", "#9AA0AA"),
   officetel: S("오피스텔", "#2B9CBF", "weight"),
   applyhome: S("청약홈", "#D6478A", "weight"),
   move_in: S("입주예정", "#2F6FDB", "weight"),

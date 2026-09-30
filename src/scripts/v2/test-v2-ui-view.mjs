@@ -142,4 +142,12 @@ assert.equal(sv.incomplete, true);
   assert.notEqual(v.headline.value, "미확인", "값이 있는 지표가 대표값");
 }
 
+// ── A05 설명선: 번호·카드는 아파트·오피스텔만, 연립·다세대는 번호 없는 점 ──
+{
+  const co = byCode.A05.callout;
+  assert.ok(co.complexes.length > 0 && co.complexes.every((c) => c.layer === "apt" || c.layer === "officetel"));
+  assert.ok(co.others.length > 0, "기타 공동주택 점");
+  assert.equal(co.others.length, GODEOK_RESULTS.find((r) => r.tileCode === "A05").presentation.features.filter((f) => f.layer === "other_housing").length);
+}
+
 console.log("v2 ui view tests passed");
