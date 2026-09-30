@@ -24,8 +24,21 @@ export function zoomForRadius(latDeg: number, radiusM: number, heightPx: number,
   return Math.log2((M_PER_PX_Z0 * Math.cos(rad(latDeg))) / mpp);
 }
 
-export function viewportFor(center: readonly [number, number], radiusM: number, width: number, height: number): Viewport {
-  return { center, zoom: zoomForRadius(center[1], radiusM, height), width, height };
+export function viewportFor(center: readonly [number, number], radiusM: number, width: number, height: number, fill = 0.8): Viewport {
+  return { center, zoom: zoomForRadius(center[1], radiusM, height, fill), width, height };
+}
+
+/** 대지를 가로 siteX(0~1) 위치에 놓은 뷰포트: 경도(메르카토르 x)는 선형이라 중심 경도만 옮기면 된다. 지도 그림·PPT 지도 이미지·설명선 점이 같은 값을 쓴다 */
+export function framedViewport(center: readonly [number, number], radiusM: number, width: number, height: number, siteX = 0.5, fill = 0.8, siteY = 0.5): Viewport {
+  const vp0 = viewportFor(center, radiusM, width, height, fill);
+  const lng = center[0] + (0.5 - siteX) * width * (360 / (256 * 2 ** vp0.zoom));
+  if (siteY === 0.5) return { ...vp0, center: [lng, center[1]] as const };
+  // 세로 위치는 메르카토르 y가 위도에 비선형이라 세계 픽셀에서 옮긴 뒤 위도로 되돌린다
+  const [, wy] = worldPx(center[0], center[1], vp0.zoom);
+  const size = TILE_PX * 2 ** vp0.zoom;
+  const y = wy + (0.5 - siteY) * height;
+  const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / size))) * 180) / Math.PI;
+  return { ...vp0, center: [lng, lat] as const };
 }
 
 /** (lng,lat) → 그림 좌표(px). 그림 중앙이 center. */
@@ -41,7 +54,8 @@ export type MapTile = { z: number; x: number; y: number; left: number; top: numb
 
 /** 그림을 덮는 배경 타일(정수 줌으로 받아 소수 줌에 맞게 확대·축소해 놓는다) */
 export function tilesFor(v: Viewport): MapTile[] {
-  const z = Math.max(0, Math.min(MAX_TILE_ZOOM, Math.round(v.zoom)));
+  // 올림: 타일을 축소만 해서 배경 지명 글자가 커지지 않고 선명하다(타일 수는 늘어난다).
+  const z = Math.max(0, Math.min(MAX_TILE_ZOOM, Math.ceil(v.zoom)));
   const size = TILE_PX * 2 ** (v.zoom - z);
   const [cx, cy] = worldPx(v.center[0], v.center[1], v.zoom);
   const left0 = cx - v.width / 2;
@@ -56,15 +70,20 @@ export function tilesFor(v: Viewport): MapTile[] {
   return out;
 }
 
+/** 배경지도 종류: 일반(white)·지도(Base)·항공(Satellite 위에 Hybrid 글자). 서버 프록시의 레이어 이름과 같다. */
+export type BasemapLayer = "white" | "Base" | "Satellite" | "Hybrid";
+export type BasemapChoice = "white" | "Base" | "Satellite";
+/** 선택 하나가 겹쳐 그리는 레이어(아래→위) */
+export const BASEMAP_STACK: Record<BasemapChoice, BasemapLayer[]> = { white: ["white"], Base: ["Base"], Satellite: ["Satellite", "Hybrid"] };
+
 /**
- * 배경 타일 주소. OpenStreetMap 표준 타일 — CARTO light_all은 API 키 없이는 "API KEY REQUIRED" 자리표시 타일만 준다(2026-09-30 확인).
- * 공급자를 바꿀 때는 이 함수와 BASEMAP_ATTRIBUTION만 고친다.
+ * 배경 타일 주소 = 우리 서버 프록시(같은 출처, basePath /site). VWorld 키는 서버에만 있다.
+ * 프록시 경로의 y는 행(row), x는 열(column)이다: VWorld WMTS도 z/행/열 순서다(z15 행12700 열27946 = 서울).
  */
-export function tileUrl(t: Pick<MapTile, "z" | "x" | "y">): string {
-  // 하위 도메인(a~c)을 쓴다: 현재 CSP의 connect-src는 *.tile.openstreetmap.org만 허용하고 tile.openstreetmap.org는 허용하지 않는다(PPT용 fetch).
-  return `https://${"abc"[(t.x + t.y) % 3]}.tile.openstreetmap.org/${t.z}/${t.x}/${t.y}.png`;
+export function tileUrl(layer: BasemapLayer, z: number, x: number, y: number): string {
+  return `/site/api/v2/tiles/${layer}/${z}/${y}/${x}`;
 }
-export const BASEMAP_ATTRIBUTION = "© OpenStreetMap contributors";
+export const BASEMAP_ATTRIBUTION = "© VWorld(국토교통부)";
 
 /** maxPx 안에 들어가는 가장 긴 1·2·5×10ⁿ m 막대 */
 export function scaleBar(mPerPx: number, maxPx: number): { meters: number; px: number; label: string } {

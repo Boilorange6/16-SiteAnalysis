@@ -9,6 +9,10 @@ const { toSummaryView, toTileView } = await import("../../lib/v2/ui/tile-view.ts
 const { buildReportPlan, reportFileName } = await import("../../lib/v2/report/report-plan.ts");
 const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
 
+const { complexCounts } = await import("../../lib/v2/report/report-plan.ts");
+const counts = complexCounts(new Map(GODEOK_RESULTS.map((r) => [r.tileId, toTileView(r)])));
+assert.deepEqual(counts, { "t-A05": 25 }, "설명선 타일만 단지 수를 가진다");
+
 const build = (results, board) =>
   buildReportPlan({
     summary: toSummaryView(GODEOK_SUMMARY, results),
@@ -28,12 +32,13 @@ boards.push(boardReducer(boardReducer(initBoard(GODEOK_RESULTS), { type: "includ
 boards.push(boardReducer(initBoard(GODEOK_RESULTS), { type: "face", id: "t-D04", face: "back" }));
 for (const b of boards) {
   const plan = build(GODEOK_RESULTS, b);
-  assert.equal(plan.length, reportPages(b).pages);
+  assert.equal(plan.length, reportPages(b, counts).pages);
   assert.equal(plan[0].kind, "cover");
   assert.equal(plan.at(-1).kind, "sources");
   assert.deepEqual(plan.map((p) => p.no), plan.map((_, i) => i + 1));
   const tileIds = plan.filter((p) => p.kind === "tile").map((p) => p.view.tileId);
-  const expected = b.order.filter((id) => b.included[id]).flatMap((id) => (b.faces[id] === "both" ? [id, id] : [id]));
+  // A05는 기본 "상위 10" = 개요 + 설명표 1장 = 2장
+  const expected = b.order.filter((id) => b.included[id]).flatMap((id) => (b.faces[id] === "both" || id === "t-A05" ? [id, id] : [id]));
   assert.deepEqual(tileIds, expected); // 보드 순서 그대로, both는 연속 2장
 }
 // 순서 이동이 반영되고, both는 도판 → 구성비 순
@@ -79,10 +84,60 @@ const rec = boardReducer(initBoard([RECOVERED.S03]), { type: "include", id: "t-S
 const recPlan = build([RECOVERED.S03], rec);
 const recText = text(await (await JSZip.loadAsync(await renderReportPptx(recPlan))).file("ppt/slides/slide2.xml").async("string"));
 assert.ok(recText.includes("탐색용") && recText.includes("검증된 CFD 결과로 사용할 수 없습니다"));
-// D04 두 면이 서로 다른 슬라이드: 도판엔 구성비 표가 없고 구성비엔 표가 있다
+// D04 두 면이 서로 다른 슬라이드: 도판(지도)엔 구성비 수치가 없고 구성비(전면 차트)엔 있다. 도판은 지도 전면.
 const d04 = plan.map((p, i) => [p, i]).filter(([p]) => p.kind === "tile" && p.view.code === "D04");
 assert.equal(d04.length, 2);
+assert.ok(d04[0][0].map && !d04[1][0].map, "도판=지도 전면, 구성비=차트 전면(지도 없음)");
 const [x0, x1] = await Promise.all(d04.map(([, i]) => zip.file(names[i]).async("string")));
-assert.ok(!x0.includes("<a:tbl>") && x1.includes("<a:tbl>"));
+assert.ok(!text(x0).includes("31%") && text(x1).includes("31%"));
+// 지도 몰입형: 결과·상태 장 모두 전면 지도 자리가 있고 구성비 면만 예외 / 표지·출처 장도 지도 배경
+for (const p of plan) {
+  if (p.kind === "tile") assert.ok(p.map || (p.view.code === "D04" && p.body.face === "back"), `${p.view.code} 전면 지도`);
+  else assert.ok(p.map, `${p.kind} 장 지도 배경`);
+}
+assert.ok(plan.filter((p) => p.kind === "tile" && p.body.kind === "state").every((p) => p.muted), "상태 장은 흐린 지도");
+
+// ── 설명선 장: 개요 + 설명표, 편집 가능한 도형(단지별 그룹 callout-<id>), 확인필요, 모드별 장수, 빈 상태 ──
+{
+  const a05 = (mode) => {
+    let b = boardReducer(initBoard(GODEOK_RESULTS), { type: "callout", id: "t-A05", mode });
+    for (const id of b.order) if (id !== "t-A05") b = boardReducer(b, { type: "include", id, value: false });
+    const p = build(GODEOK_RESULTS, b);
+    assert.equal(p.length, reportPages(b, counts).pages, mode);
+    return { b, p };
+  };
+  assert.deepEqual(["overview", "top10", "all"].map((m) => a05(m).p.length), [3, 4, 6], "표지 + A05 장(1 / 2 / 1+3) + 출처");
+  const { p: plan5 } = a05("all");
+  const co = plan5.filter((p) => p.kind === "tile");
+  assert.deepEqual(co.map((p) => [p.callout.page, p.callout.pages]), [[0, 3], [1, 3], [2, 3], [3, 3]]);
+  assert.ok(co.every((p) => p.map && p.map.features.length === 0), "지도 이미지에는 단지가 없다 (점은 도형)");
+  const { mapKeyOf } = await import("../../lib/v2/report/report-plan.ts");
+  assert.deepEqual(co.map(mapKeyOf), ["t-A05", "t-A05:cp", "t-A05:cp", "t-A05:cp"], "설명표 장은 지도 범위를 공유");
+  const z = await JSZip.loadAsync(await renderReportPptx(plan5));
+  const xmls = await Promise.all(Object.keys(z.files).filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n)).sort((a, b) => parseInt(a.match(/\d+/)) - parseInt(b.match(/\d+/))).map((n) => z.file(n).async("string")));
+  const page1 = xmls[2]; // 표지, 개요, 설명표 1
+  const groups = [...page1.matchAll(/<p:grpSp><p:nvGrpSpPr><p:cNvPr id="\d+" name="(콜아웃 [^"]*)"/g)].map((m) => m[1]);
+  assert.equal(groups.length, 10, "설명표 장 = 단지 10곳이 각각 그룹");
+  assert.ok(groups.some((g) => g.includes("고덕그라시움")) && groups[0].startsWith("콜아웃 "));
+  assert.match(text(page1), /세대수 상위 1–10 \/ 전체 25단지/);
+  assert.match(text(xmls[1]), /개요 · 전체 25단지/);
+  assert.match(text(xmls[1]), /확인 세대\(아파트\)/);
+  // 마지막 설명표 장(21–25)에는 값이 없는 단지의 "확인필요"가 나온다
+  const last = text(xmls[4]);
+  assert.match(last, /세대수 상위 21–25 \/ 전체 25단지/);
+  assert.ok(text(xmls.slice(1, 5).join("")).includes("확인필요"));
+  for (const x of xmls.slice(1, 5)) assert.match(text(x), /출처/);
+  // 빈 상태: 단지 0 → 개요 1장만, 상태 판 문구
+  const empty = structuredClone(GODEOK_RESULTS.find((r) => r.tileCode === "A05"));
+  empty.presentation.features = [];
+  empty.presentation.featuresTotal = 0;
+  const eb = initBoard([empty]);
+  const ev = new Map([[empty.tileId, toTileView(empty)]]);
+  const ep = buildReportPlan({ summary: toSummaryView(GODEOK_SUMMARY, [empty]), views: ev, board: eb, analysisDate: "2026-09-30" });
+  assert.equal(ep.filter((p) => p.kind === "tile").length, 1);
+  assert.equal(ep.length, reportPages(eb, complexCounts(ev)).pages);
+  const ez = await JSZip.loadAsync(await renderReportPptx(ep));
+  assert.match(text(await ez.file("ppt/slides/slide2.xml").async("string")), /반경 안 확인된 단지 0/);
+}
 
 console.log(`v2 report tests passed (${plan.length} slides in sample deck)`);

@@ -1,5 +1,5 @@
 /**
- * 예시 결과 (P1b 분석 엔진이 붙기 전 화면 검증용). 값은 실제 조회 결과가 아니다.
+ * 예시 결과 (화면 검증용). 주소·대지·A01~A04·A06 등은 가상이고, A05 단지 점은 고덕역 실제 대장 결과에서 뽑았다.
  * 화면은 TileResult 계약만 읽으므로, 실제 결과로 바꿔도 화면 코드는 바뀌지 않는다.
  */
 // 타입만 가져온다: tile-result의 런타임(zod·node:crypto)을 브라우저 번들에 넣지 않기 위해서다.
@@ -40,7 +40,7 @@ function tile(
     engineVersion: "v2-demo",
     conditions: {
       address: "서울특별시 강동구 고덕동 123 외 2필지",
-      center: [127.1546, 37.5556],
+      center: [CENTER[0], CENTER[1]],
       radiusM: 1000,
       analysisDate: "2026-09-30",
       timezone: "Asia/Seoul",
@@ -70,7 +70,7 @@ const j = (ruleId: string, basis: string[], sentence: string, level: "good" | "f
 
 // ── 예시 지도 지물 (고덕동 주변의 그럴듯한 좌표. 실제 위치가 아니다) ──
 type MapFeature = NonNullable<TileResult["presentation"]["features"]>[number];
-const CENTER = [127.1546, 37.5556] as const;
+const CENTER = [127.1542, 37.555] as const; // 고덕역 (A05 단지 점이 실제 위치라 중심도 맞춘다)
 const M_LNG = 88_200; // 이 위도에서 경도 1도 ≈ m
 const M_LAT = 111_320;
 const at = (bearingDeg: number, distM: number): [number, number] => {
@@ -94,6 +94,57 @@ const pin = (layer: string, bearing: number, dist: number, label: string, weight
   const [lng, lat] = at(bearing, dist);
   return { layer, lng, lat, highlight: true, label, ...(weight ? { weight } : {}) };
 };
+// ── A05 예시 단지: 고덕역 반경 1km 실제 대장 결과에서 뽑은 좌표·이름·값 (아파트 22 + 오피스텔 3 + 연립·다세대 점 30) ──
+// 주소·대지 요약은 예시로 표시하지만, 단지 점은 실제 필지 대표점이라 베이스맵의 같은 이름 단지 위에 놓인다.
+// 대표점은 베이스맵 글자 위치와 최대 100m 정도 어긋날 수 있다. 값이 비어 있는 칸은 실제로 대장에 없던 값이다.
+type Housing = "apt" | "officetel";
+type Row = [name: string | null, lng: number, lat: number, households: number | null, year: number | null, floors: number | null, bldgs: number | null, parking: number | null, distM: number, layer?: Housing];
+const A05_ROWS: Row[] = [
+  ["고덕그라시움", 127.162285, 37.558069, 4932, 2019, null, 58, 7167, 791],
+  ["고덕아르테온", 127.164396, 37.555516, 4066, 2020, null, 45, 6458, 902],
+  ["래미안힐스테이트 고덕", 127.146939, 37.558943, 3658, 2016, null, 52, 6140, 776],
+  ["래미안 솔베뉴", 127.145295, 37.552575, 1900, 2019, null, 13, 2304, 831],
+  ["삼익그린맨션", 127.148258, 37.553132, 1667, 1983, null, 12, 2300, 564],
+  ["고덕주공아파트", 127.150756, 37.547889, 1320, null, null, 15, 674, 846],
+  ["고덕 아이파크", 127.154971, 37.559075, 1142, 2011, null, 15, 2024, 457],
+  ["아남아파트", 127.146029, 37.558029, 807, null, null, 10, 695, 796],
+  ["고덕숲아이파크", 127.161276, 37.551397, 687, 2018, null, 14, 917, 742],
+  ["삼익그린맨션아파트", 127.147894, 37.550994, 630, null, null, 6, null, 713],
+  ["우성아파트", 127.151864, 37.551133, 572, null, null, 10, null, 476],
+  ["신동아아파트", 127.151998, 37.553658, 570, null, null, 9, 491, 245],
+  ["한양아파트", 127.155135, 37.55048, 540, null, null, 7, 347, 508],
+  ["고덕현대아파트", 127.153544, 37.550518, 524, null, null, 8, 363, 501],
+  ["현대아파트", 127.152067, 37.556539, 448, null, null, 3, 456, 254],
+  [null, 127.159822, 37.550678, 410, null, null, 6, 185, 690],
+  ["명일삼환아파트", 127.153824, 37.553694, 306, null, null, 3, 229, 149],
+  ["현대아파트", 127.1488, 37.548515, 226, null, null, 3, 76, 863],
+  ["삼익그린11차아파트", 127.15048, 37.552007, 152, 1986, null, 1, null, 467],
+  ["삼익그린맨션아파트", 127.148383, 37.549864, 150, null, null, 2, null, 767],
+  [null, 127.158162, 37.546699, 132, null, null, 12, null, 985],
+  ["고덕아르테스미소지움", 127.157058, 37.549908, 100, 2022, null, 3, 120, 619],
+  ["고덕역 대명벨리온", 127.155116, 37.554656, 592, 2021, 20, null, null, 89, "officetel"],
+  ["고덕역 효성해링턴 타워 더퍼스트", 127.154626, 37.55464, 467, 2020, 20, null, null, 55, "officetel"],
+  ["현대델리안오피스텔", 127.155952, 37.553311, 44, 2006, 20, null, null, 243, "officetel"],
+];
+/** 연립·다세대 등 기타 공동주택 실제 위치 30곳: 번호 없는 작은 회색 점 */
+const A05_OTHER_XY: Array<[number, number]> = [
+  [127.154778, 37.553236], [127.147112, 37.549394], [127.155425, 37.547454], [127.155178, 37.547337], [127.154644, 37.548436],
+  [127.15302, 37.559486], [127.152279, 37.561474], [127.154546, 37.561716], [127.152381, 37.560202], [127.155423, 37.546595],
+  [127.161522, 37.561392], [127.154646, 37.560569], [127.152597, 37.561358], [127.154751, 37.547024], [127.15286, 37.561019],
+  [127.154576, 37.547009], [127.155612, 37.561023], [127.155278, 37.546611], [127.155207, 37.547928], [127.161026, 37.561039],
+  [127.15318, 37.548514], [127.15421, 37.548439], [127.153662, 37.559812], [127.155954, 37.56087], [127.153872, 37.561908],
+  [127.152049, 37.5603], [127.15327, 37.560104], [127.155062, 37.548558], [127.152425, 37.561495], [127.151645, 37.559939],
+];
+const A05_OTHERS = A05_OTHER_XY.map(([lng, lat]): MapFeature => ({ layer: "other_housing", lng, lat }));
+const A05_APTS = A05_ROWS.filter((r) => (r[9] ?? "apt") === "apt");
+const A05_HH = A05_APTS.reduce((s, r) => s + (r[3] ?? 0), 0);
+const A05_YEARS = A05_ROWS.map((r) => r[4]).filter((y): y is number => y !== null).sort((a, b) => a - b);
+const A05_MEDIAN_YEAR = A05_YEARS[Math.floor((A05_YEARS.length - 1) / 2)];
+const TYPE_TEXT = { apt: "아파트", officetel: "오피스텔" } as const;
+const complexPin = ([name, lng, lat, households, year, floors, bldgs, parking, distM, layer = "apt"]: Row): MapFeature => {
+  return { layer, lng, lat, weight: households, name, type: TYPE_TEXT[layer], households, approvalYear: year, floorsMax: floors, buildingCount: bldgs, distanceM: distM, parking };
+};
+
 const withMap = (t: TileResult, features: MapFeature[], total = features.length): TileResult => ({
   ...t,
   presentation: { ...t.presentation, features, featuresTotal: total },
@@ -192,23 +243,20 @@ export const GODEOK_RESULTS: TileResult[] = [
     "analysis",
     "partial",
     [
-      m("households", "확인 세대", 4120, "세대"),
-      m("complexes", "아파트 단지", 14, "개"),
-      m("median_year", "준공연도 중앙값", 1998, "년"),
+      m("apartment_complexes", "아파트 단지", A05_APTS.length, "개"),
+      m("households", "확인 세대", A05_HH, "세대"),
+      m("other_residential", "기타 공동주택(연립·다세대 등)", 179, "개"),
+      m("median_year", "준공연도 중앙값", A05_MEDIAN_YEAR, "년"),
       m("aged_share_pct", "30년 이상 건물 비중", 38, "%", "estimated"),
       m("parking_per_household", "세대당 주차대수", null, "대", "missing"),
     ],
     [["gis_bldg", "2026-08-01"], ["kapt", null]],
-    j("A05-stock@1", ["households"], "아파트 14개 단지 4,120세대 확인 → 재고는 아파트 중심이며 오래된 건물이 상당수 → 세대수 미상 단지 확인 필요"),
+    j("A05-stock@1", ["households"], `아파트 ${A05_APTS.length}개 단지 ${A05_HH.toLocaleString("en-US")}세대 확인 → 재고는 아파트 중심이며 오래된 건물이 상당수 → 준공연도 미상 단지 확인 필요`),
     [
-      { kind: "incomplete", note: "K-APT에 없는 단지 3곳은 세대수를 알 수 없어 합계에서 제외했습니다." },
+      { kind: "incomplete", note: `준공연도를 알 수 없는 아파트 ${A05_APTS.filter((r) => r[4] === null).length}곳은 연식 집계에서 제외했습니다.` },
       { kind: "estimated", note: "30년 이상 비중은 분석 기준일 대비 경과연수로 추정한 값입니다." },
     ],
-  ), [
-    ...scatter("apt", 14, 31, 950, 120, (i) => (i % 5 === 4 ? null : 180 + ((i * 137) % 700))),
-    ...scatter("other_housing", 3, 32, 800, 100, () => 60),
-    ...scatter("officetel", 2, 33, 700, 100, (i) => 120 + i * 90),
-  ]),
+  ), [...A05_ROWS.map(complexPin), ...A05_OTHERS]),
   withMap(tile(
     "A06",
     "analysis",
@@ -268,7 +316,7 @@ export const GODEOK_RESULTS: TileResult[] = [
     [["landuse", "2026-07-01"], ["land_price", "2026-01-01"]],
     j("A12-zoning@1", ["mixed_zone_share_pct"], "인접 구역에 3종일반·상업 → 용도가 섞인 지역 → 지구단위계획 확인 필요"),
   ),
-  tile(
+  withMap(tile(
     "D04",
     "diagram",
     "complete",
@@ -286,7 +334,15 @@ export const GODEOK_RESULTS: TileResult[] = [
     j("D04-decades@1", ["confirmed_share_pct"], "확인된 건물 중 1990년대 이전 준공이 67% → 노후 건물이 넓게 분포 → 재건축 요건은 별도 확인 필요"),
     [],
     "front",
-  ),
+  ), [
+    ...scatter("bldg_pre1980", 14, 41, 950, 60),
+    ...scatter("bldg_1980s", 28, 42, 950, 60),
+    ...scatter("bldg_1990s", 37, 43, 950, 60),
+    ...scatter("bldg_2000s", 22, 44, 950, 60),
+    ...scatter("bldg_2010s", 11, 45, 950, 60),
+    ...scatter("bldg_2020s", 5, 46, 950, 60),
+    ...scatter("bldg_unknown", 3, 47, 950, 60),
+  ]),
   tile("S02", "simulation", "not_provided", [], [], null, [{ kind: "not_provided", note: "일조 계산은 3D 시뮬레이션 단계에서 제공합니다." }]),
   tile("S03", "simulation", "failed", [], [], null, [{ kind: "unknown", note: "계산 영역 생성에 실패했습니다." }]),
 ];

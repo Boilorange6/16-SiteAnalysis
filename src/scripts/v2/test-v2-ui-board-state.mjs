@@ -106,6 +106,37 @@ assert.deepEqual(reportPages(s), { tiles: 9, pages: 12 }); // 포함·면 설정
   assert.deepEqual(reportPages(shuffled), p0);
 }
 
+// 카드 면(요약/지도): 기본은 모두 요약면, 전체 전환은 카드별 뒤집기를 지우고, 카드별 뒤집기는 다음 전체 전환까지 따로 간다
+{
+  const { viewOf, SUMMARY_ID } = await import("../../lib/v2/ui/board-state.ts");
+  let b = initBoard(GODEOK_RESULTS);
+  assert.equal(b.viewAll, "summary");
+  assert.ok([...b.order, SUMMARY_ID].every((id) => viewOf(b, id) === "summary"), "기본 = 요약면");
+  const undo0 = b.undoStack.length;
+  b = boardReducer(b, { type: "view", id: "t-A01", face: "map" });
+  assert.deepEqual([viewOf(b, "t-A01"), viewOf(b, "t-A02"), viewOf(b, SUMMARY_ID)], ["map", "summary", "summary"], "카드 하나만 뒤집힘");
+  b = boardReducer(b, { type: "viewAll", face: "map" });
+  assert.ok([...b.order, SUMMARY_ID].every((id) => viewOf(b, id) === "map"), "전체 전환 = 모든 카드(대지 요약 포함)");
+  b = boardReducer(b, { type: "view", id: "t-A03", face: "summary" });
+  assert.deepEqual([viewOf(b, "t-A03"), viewOf(b, "t-A04"), b.viewAll], ["summary", "map", "map"], "카드별 뒤집기는 전체 설정을 덮어쓴다");
+  b = boardReducer(b, { type: "viewAll", face: "map" });
+  assert.equal(viewOf(b, "t-A03"), "map", "다음 전체 전환이 카드별 덮어쓰기를 지운다");
+  b = boardReducer(b, { type: "viewAll", face: "summary" });
+  assert.ok(b.order.every((id) => viewOf(b, id) === "summary") && Object.keys(b.view).length === 0);
+  // 면은 되돌리기 기록·보고서에 들어가지 않는다
+  assert.equal(b.undoStack.length, undo0);
+  assert.deepEqual(reportPages(b), reportPages(boardReducer(b, { type: "view", id: "t-A05", face: "map" })));
+  assert.equal(boardReducer(boardReducer(b, { type: "view", id: "t-A05", face: "map" }), { type: "undo" }).view["t-A05"], "map", "undo는 면을 건드리지 않는다");
+  // 타일을 빼고 다시 더해도 면은 전체 설정을 따른다
+  const c = boardReducer(boardReducer(boardReducer(b, { type: "viewAll", face: "map" }), { type: "remove", id: "t-A02" }), { type: "add", id: "t-A02" });
+  assert.equal(viewOf(c, "t-A02"), "map");
+  // 설명선 타일의 보고서 장수 설정
+  assert.equal(b.callout["t-A05"], "top10");
+  assert.equal(boardReducer(b, { type: "callout", id: "t-A05", mode: "all" }).callout["t-A05"], "all");
+  assert.equal(reportPages(b, { "t-A05": 25 }).pages, reportPages(b).pages + 1, "A05: 개요 + 상위 10 = 2장 (기본 1장 대신)");
+  assert.equal(reportPages(boardReducer(b, { type: "callout", id: "t-A05", mode: "all" }), { "t-A05": 25 }).pages, reportPages(b).pages + 3);
+}
+
 // 데모
 assert.deepEqual([0, 1, 2, 3].map((st) => demoPhase(1, st)), ["pending", "pending", "running", "done"]);
 assert.equal(demoFinished(10, 0), 0);

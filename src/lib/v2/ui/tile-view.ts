@@ -3,6 +3,7 @@
  * 규칙: 종합 점수 없음 · 도보 시간 없음 · 공급/가격/개발은 좋음·주의 평가 없음 (plan 화면 규칙 1~8).
  */
 import type { OUTPUT_FACES, TileResult } from "../tile-result";
+import { rankComplexes, summarize, type Complex } from "./callout-layout";
 import type { MapModel } from "./map-layers";
 import { catalogEntry, sourceName } from "./tile-catalog";
 
@@ -28,10 +29,31 @@ export type TileView = {
   retryable: boolean;
   /** 지도 타일이면 지도 그림 입력, 아니면 null */
   map: MapModel | null;
+  /** 지물 없는 대지·반경 지도. 지도 타일이 아니거나 결과가 없을 때 전면 배경으로 쓴다 (빈 흰 카드 금지) */
+  backdrop: MapModel;
+  /** 종류 배지 문구 */
+  kindLabel: string;
+  /** 주변 단지 설명선 타일(A05) 입력. 결과가 없으면 null */
+  callout: CalloutModel | null;
 };
 
-const MAP_TILES = new Set(["A01", "A03", "A04", "A05", "A06"]);
+/** 설명선 타일의 입력: 세대수 순위로 정렬된 단지 목록과 요약 (A06도 같은 모양으로 채운다) */
+export type CalloutModel = {
+  center: readonly [number, number];
+  radiusM: number;
+  complexes: Complex[];
+  /** 연립·다세대 등 기타 공동주택: 번호 없는 작은 회색 점으로만 그린다 */
+  others: Array<{ lng: number; lat: number }>;
+  analysisYear: number;
+  /** 빈 상태 판·개요의 기준 문구 (출처 + 기준일) */
+  sourceLine: string;
+  summary: ReturnType<typeof summarize>;
+};
+
+const KIND_LABEL = { analysis: "분석", diagram: "도판", simulation: "시뮬레이션" } as const;
+const MAP_TILES = new Set(["A01", "A03", "A04", "A05", "A06", "D04"]);
 const MAP_NOTES: Record<string, string> = {
+  D04: "대표점 · 건물 도형은 자료 적재 뒤",
   A04: "대표점 · 원천 면적 비례 (경계 아님)",
   A05: "원 크기 = 세대수 · 속 빈 원 = 세대수 미확인",
   A06: "원천별 표시 · 중복 가능",
@@ -171,6 +193,25 @@ export function toTileView(r: TileResult): TileView {
     hasFace: r.tileCode === "D04",
     retryable: r.status === "failed",
     map: mapOf(r),
+    backdrop: { center: r.conditions.center, radiusM: r.conditions.radiusM, features: [], total: 0, notes: [] },
+    kindLabel: KIND_LABEL[cat.kind],
+    callout: calloutOf(r),
+  };
+}
+
+const HOUSING_LAYERS = new Set(["apt", "officetel"]); // 번호·카드·쪽은 아파트·오피스텔만
+function calloutOf(r: TileResult): CalloutModel | null {
+  if (r.tileCode !== "A05" || (r.status !== "complete" && r.status !== "partial")) return null;
+  const features = r.presentation.features ?? [];
+  const complexes = rankComplexes(features.filter((f) => HOUSING_LAYERS.has(f.layer)));
+  return {
+    others: features.filter((f) => f.layer === "other_housing").map((f) => ({ lng: f.lng, lat: f.lat })),
+    center: r.conditions.center,
+    radiusM: r.conditions.radiusM,
+    complexes,
+    analysisYear: Number(r.conditions.analysisDate.slice(0, 4)),
+    sourceLine: sourceLineOf(r.provenance.sources),
+    summary: summarize(complexes),
   };
 }
 

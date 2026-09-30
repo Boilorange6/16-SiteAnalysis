@@ -9,7 +9,7 @@ const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { a01, gradeBus } = await import("../../lib/v2/engine/tiles/a01.ts");
 const { a03, storeGroup } = await import("../../lib/v2/engine/tiles/a03.ts");
 const { a04 } = await import("../../lib/v2/engine/tiles/a04.ts");
-const { a05, isAged } = await import("../../lib/v2/engine/tiles/a05.ts");
+const { a05, isAged, isApartment } = await import("../../lib/v2/engine/tiles/a05.ts");
 const { a06, bucketOf } = await import("../../lib/v2/engine/tiles/a06.ts");
 const { notProvided } = await import("../../lib/v2/engine/tiles/not-provided.ts");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
@@ -118,16 +118,20 @@ const noForbidden = (t) => {
   assert.deepEqual([isAged("1996-09-30", "2026-09-30"), isAged("1996-10-01", "2026-09-30"), isAged("1996-09-29", "2026-09-30")], [true, false, true], "30년 경계");
   const ctx = ctxFor(800);
   const t = a05(ctx);
-  assert.deepEqual([val(t, "apartment_complexes"), val(t, "other_residential"), val(t, "officetels")], [3, 1, 2], "유형 분리, 반경 밖 단지 제외");
+  assert.deepEqual([val(t, "apartment_complexes"), val(t, "other_residential"), val(t, "officetels")], [3, 5, 2], "유형 분리(아파트 3 / 단독+연립·다세대 5), 반경 밖 단지 제외");
+  assert.equal(val(t, "other_residential_households"), 4 + 40 + 6 + 12 + 156, "기타 공동주택 세대는 아파트 세대와 따로");
+  assert.deepEqual(t.presentation.features.filter((f) => f.layer === "other_housing").length, 5);
+  assert.ok(t.presentation.features.filter((f) => f.layer === "apt").every((f) => ["아파트"].includes(f.type)), "아파트 레이어에는 아파트만");
+  assert.deepEqual([isApartment({ otherUse: "다세대주택" }), isApartment({ otherUse: "아파트, 상가" }), isApartment({ otherUse: "공동주택(연립주택)", units: 156 }), isApartment({ otherUse: "공동주택", units: 99 }), isApartment({ otherUse: "공동주택", units: 100 }), isApartment({ otherUse: null, units: null }), isApartment({ otherUse: "근린생활시설, 교육연구시설, 아파트" }), isApartment({ otherUse: "도시형생활주택(단지형다세대)", units: 500 })], [false, true, false, false, true, false, true, false], "분류 규칙 경계");
   assert.equal(val(t, "households"), 800, "가구 수 우선(500), 없으면 세대 수(300)");
   assert.match(metric(t, "households").formulaVersion, /가구 수 우선, 없으면 세대 수/);
   assert.deepEqual([metric(t, "households").numerator, metric(t, "households").denominator], [2, 3]);
   assert.deepEqual([val(t, "households_from_units"), val(t, "households_unknown_complexes")], [1, 1]);
   assert.equal(val(t, "officetel_units"), 100);
   assert.deepEqual([metric(t, "officetel_units").numerator, metric(t, "officetel_units").denominator], [1, 2]);
-  assert.equal(val(t, "median_approval_year"), 1996);
-  assert.deepEqual([metric(t, "median_approval_year").numerator, metric(t, "median_approval_year").denominator], [4, 6]);
-  assert.deepEqual([val(t, "aged_share_pct"), metric(t, "aged_share_pct").status, metric(t, "aged_share_pct").numerator, metric(t, "aged_share_pct").denominator], [25, "estimated", 1, 4]);
+  assert.equal(val(t, "median_approval_year"), 2010, "아파트·오피스텔만: 1996·2010·2015");
+  assert.deepEqual([metric(t, "median_approval_year").numerator, metric(t, "median_approval_year").denominator], [3, 5]);
+  assert.deepEqual([val(t, "aged_share_pct"), metric(t, "aged_share_pct").status, metric(t, "aged_share_pct").numerator, metric(t, "aged_share_pct").denominator], [33.3, "estimated", 1, 3]);
   assert.deepEqual([val(t, "parking_per_household"), metric(t, "parking_per_household").numerator, metric(t, "parking_per_household").denominator], [1.2, 600, 500], "주차·세대가 둘 다 있는 단지만");
   assert.equal(t.status, "partial", "세대 수 미상 단지가 있음");
   assert.ok(t.limitations.some((l) => l.kind === "incomplete" && l.note.includes("1곳")));
@@ -138,8 +142,8 @@ const noForbidden = (t) => {
   ctx.close();
 
   // 30년 경계가 분석일에 따라 바뀐다
-  const later = ctxFor(800, "2026-10-01");
-  assert.equal(val(a05(later), "aged_share_pct"), 50, "1996-10-01도 이 날 30년");
+  const later = ctxFor(800, "2040-05-01");
+  assert.equal(val(a05(later), "aged_share_pct"), 66.7, "2010-05-01은 2040-05-01에 30년(기타 공동주택은 연식에서 제외)");
   later.close();
 }
 

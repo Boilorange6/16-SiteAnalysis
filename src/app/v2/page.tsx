@@ -5,14 +5,17 @@ import SummaryCard from "@/components/v2/summary-card";
 import TileCard from "@/components/v2/tile-card";
 import TileDialog from "@/components/v2/tile-dialog";
 import { useTileDrag } from "@/components/v2/use-tile-drag";
+import { BASEMAPS, BasemapContext, SetBasemapContext } from "@/components/v2/map-box";
+import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import styles from "@/components/v2/board.module.css";
-import { boardReducer, demoFinished, demoPhase, initBoard, reportPages } from "@/lib/v2/ui/board-state";
-import { buildReportPlan, reportFileName } from "@/lib/v2/report/report-plan";
+import { SUMMARY_ID, boardReducer, demoFinished, demoPhase, initBoard, reportPages, viewOf } from "@/lib/v2/ui/board-state";
+import { buildReportPlan, complexCounts, reportFileName } from "@/lib/v2/report/report-plan";
+import { DEFAULT_CALLOUT_MODE } from "@/lib/v2/ui/callout-layout";
 import { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } from "@/lib/v2/ui/fixtures/godeok";
 import { toSummaryView, toTileView, type SiteSummary } from "@/lib/v2/ui/tile-view";
 import type { TileResult } from "@/lib/v2/tile-result";
 
-const UNDO_LABEL = { order: "옮김", size: "크기 바꿈", remove: "삭제됨", add: "더함" } as const;
+const UNDO_LABEL ={ order: "옮김", size: "크기 바꿈", remove: "삭제됨", add: "더함" } as const;
 
 type BoardProps = {
   baseResults: TileResult[];
@@ -35,6 +38,7 @@ function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: Boar
   const [demoStep, setDemoStep] = useState<number | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [note, setNote] = useState(""); // 스크린리더 안내(aria-live)
+  const [basemap, setBasemap] = useState<BasemapChoice>("white"); // 보드 상태(서버에 저장하지 않음). 화면과 PPT가 같이 따른다
   const gridRef = useRef<HTMLDivElement>(null);
   const { drag, order: shown, start, floatStyle } = useTileDrag(board.order, gridRef, (id, from, to) => {
     dispatch({ type: "reorder", from, to });
@@ -43,7 +47,7 @@ function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: Boar
 
   const views = useMemo(() => new Map(results.map((r) => [r.tileId, toTileView(r)])), [results]);
   const summary = useMemo(() => toSummaryView(siteSummary, results), [siteSummary, results]);
-  const { tiles } = reportPages(board);
+  const { tiles } = reportPages(board, complexCounts(views));
   const total = board.order.length;
   const analysisDate = demo ? new Date().toLocaleDateString("sv-SE") : (results[0]?.conditions.analysisDate ?? new Date().toLocaleDateString("sv-SE"));
   const reportPlan = useMemo(() => buildReportPlan({ summary, views, board, analysisDate }), [summary, views, board, analysisDate]);
@@ -54,7 +58,7 @@ function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: Boar
       const { renderReportPptx } = await import("@/lib/v2/report/render-pptx");
       // 지도 그림은 브라우저에서 SVG → PNG로 만든다. 못 만들면 자리표시로 계속한다.
       const { buildMapImages } = await import("@/lib/v2/report/map-image");
-      const bytes = await renderReportPptx(reportPlan, await buildMapImages(reportPlan).catch(() => ({})));
+      const bytes = await renderReportPptx(reportPlan, await buildMapImages(reportPlan, basemap).catch(() => ({})));
       const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/vnd.openxmlformats-officedocument.presentationml.presentation" }));
       const a = document.createElement("a");
       a.href = url;
@@ -86,6 +90,8 @@ function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: Boar
   const openView = openId ? views.get(openId) : undefined;
 
   return (
+    <BasemapContext.Provider value={basemap}>
+    <SetBasemapContext.Provider value={setBasemap}>
     <main className={styles.root}>
       <div className={styles.page}>
         <header className={styles.topbar}>
@@ -120,6 +126,20 @@ function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: Boar
                   {demoOn ? "데모 끄기" : "분석 중 데모"}
                 </button>
               )}
+              <span className={styles.seg} role="group" aria-label="카드 보기">
+                {(["summary", "map"] as const).map((f) => (
+                  <button key={f} type="button" aria-pressed={board.viewAll === f} onClick={() => dispatch({ type: "viewAll", face: f })}>
+                    {f === "summary" ? "요약" : "지도"}
+                  </button>
+                ))}
+              </span>
+              <span className={styles.seg} role="group" aria-label="배경지도">
+                {BASEMAPS.map((b) => (
+                  <button key={b.id} type="button" aria-pressed={basemap === b.id} onClick={() => setBasemap(b.id)}>
+                    {b.label}
+                  </button>
+                ))}
+              </span>
               <button type="button" className={styles.pill} onClick={() => setEditing(true)} disabled={demoOn || busy}>
                 보드 편집
               </button>
@@ -134,7 +154,7 @@ function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: Boar
         {controls}
 
         <div className={styles.grid} ref={gridRef}>
-          <SummaryCard view={summary} />
+          <SummaryCard view={summary} face={editing ? "summary" : viewOf(board, SUMMARY_ID)} onFace={(face) => dispatch({ type: "view", id: SUMMARY_ID, face })} />
           {shown.map((id, i) => {
             const view = views.get(id)!;
             const size = board.sizes[id];
@@ -167,6 +187,11 @@ function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: Boar
                   onOpen={() => setOpenId(id)}
                   onInclude={(value) => dispatch({ type: "include", id, value })}
                   onFace={(face) => dispatch({ type: "face", id, face })}
+                  cardFace={viewOf(board, id)}
+                  onCardFace={(face) => {
+                    dispatch({ type: "view", id, face });
+                    setNote(`${view.title} ${face === "map" ? "지도면" : "요약면"}`);
+                  }}
                   onRemove={() => {
                     dispatch({ type: "remove", id });
                     setNote(`${view.title} 타일을 뺌`);
@@ -228,10 +253,14 @@ function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: Boar
           face={board.faces[openView.tileId]}
           onInclude={(value) => dispatch({ type: "include", id: openView.tileId, value })}
           onFace={(face) => dispatch({ type: "face", id: openView.tileId, face })}
+          calloutMode={board.callout[openView.tileId] ?? DEFAULT_CALLOUT_MODE}
+          onCalloutMode={(mode) => dispatch({ type: "callout", id: openView.tileId, mode })}
           onClose={() => setOpenId(null)}
         />
       )}
     </main>
+    </SetBasemapContext.Provider>
+    </BasemapContext.Provider>
   );
 }
 

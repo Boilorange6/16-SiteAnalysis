@@ -57,7 +57,7 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   const maxB = Math.max(...tiles.map((t) => t.top + t.size));
   assert.ok(minL <= 0 && minT <= 0 && maxR >= 800 && maxB >= 500, "덮음");
   assert.equal(new Set(tiles.map((t) => `${t.z}/${t.x}/${t.y}`)).size, tiles.length, "중복 없음");
-  assert.match(P.tileUrl(tiles[0]), /^https:\/\/[abc]\.tile\.openstreetmap\.org\/\d+\/\d+\/\d+\.png$/);
+  assert.match(P.tileUrl("white", tiles[0].z, tiles[0].x, tiles[0].y), /^\/site\/api\/v2\/tiles\/white\/\d+\/\d+\/\d+$/);
 }
 
 // ── 축척 막대: 1·2·5×10ⁿ m ──
@@ -173,8 +173,11 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   const html = renderToStaticMarkup(createElement(MapFigure, { model, width: 640, height: 360, fixed: true }));
   assert.match(html, /^<svg /);
   assert.ok((html.match(/<image /g) ?? []).length >= 4, "배경 타일");
-  assert.match(html, /\.tile\.openstreetmap\.org/);
-  assert.match(html, /© OpenStreetMap contributors/);
+  assert.match(html, /\/site\/api\/v2\/tiles\/white\//);
+  assert.ok(!/openstreetmap|api\.vworld\.kr/.test(html), "바깥 주소 없음");
+  assert.match(html, /© VWorld\(국토교통부\)/);
+  const sat = renderToStaticMarkup(createElement(MapFigure, { model, width: 640, height: 360, layer: "Satellite" }));
+  assert.ok(/tiles\/Satellite\//.test(sat) && /tiles\/Hybrid\//.test(sat), "항공 = 위성 + 글자");
   assert.match(html, /직선 210m/);
   assert.match(html, /버스정류장/);
   assert.match(html, />N</);
@@ -182,7 +185,7 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   const none = renderToStaticMarkup(createElement(MapFigure, { model, width: 640, height: 360, basemap: "none" }));
   assert.ok(!/<image /.test(none) && /<line /.test(none), "배경 없이 격자");
   const inlined = renderToStaticMarkup(createElement(MapFigure, { model, width: 640, height: 360, tileHref: () => "data:image/png;base64,AAAA" }));
-  assert.ok(!inlined.includes("tile.openstreetmap.org/") && inlined.includes("data:image/png"));
+  assert.ok(!inlined.includes("/api/v2/tiles/") && inlined.includes("data:image/png"));
   const bare = renderToStaticMarkup(createElement(MapFigure, { model: toSummaryView(GODEOK_SUMMARY, GODEOK_RESULTS).map, width: 640, height: 360, bare: true }));
   assert.ok(!bare.includes("버스정류장"));
 }
@@ -200,7 +203,8 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
     analysisDate: "2026-09-30",
   });
   const keys = plan.map(mapKeyOf).filter(Boolean);
-  assert.deepEqual(keys, ["cover", "t-A01", "t-A03", "t-A04", "t-A05", "t-A06"], "지도 자리: 표지 + 지도 타일 5장");
+  // 몰입형: 모든 장이 전면 지도 (표지·타일 전부·출처 장은 표지 지도를 흐리게 다시 쓴다)
+  assert.deepEqual(keys, ["cover", "t-A01", "t-A02", "t-A03", "t-A04", "t-A05", "t-A05:cp", "t-A06", "t-A07", "t-A09", "t-A12", "t-D04", "cover"], "지도 자리: 표지 + 타일 전부 + 출처 장");
   const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
   const withImg = await JSZip.loadAsync(await renderReportPptx(plan, Object.fromEntries(keys.map((k) => [k, png]))));
   assert.equal(Object.keys(withImg.files).filter((n) => /^ppt\/media\/.+/.test(n)).length, keys.length, "지도 이미지가 슬라이드마다 들어감");

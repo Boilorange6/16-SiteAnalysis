@@ -45,7 +45,7 @@ export function hitPoint(h: FeatureHit): [number, number] {
   return [Math.round(lng * 1e6) / 1e6, Math.round(lat * 1e6) / 1e6];
 }
 
-export function candidate(h: FeatureHit, layer: string, extra: { weight?: number | null; label?: string | null; highlight?: boolean } = {}): MapCandidate {
+export function candidate(h: FeatureHit, layer: string, extra: Partial<Omit<MapFeature, "layer" | "lng" | "lat">> = {}): MapCandidate {
   const [lng, lat] = hitPoint(h);
   return { id: h.featureId, f: { layer, lng, lat, ...extra } };
 }
