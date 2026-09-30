@@ -37,12 +37,14 @@ const session = new VworldSession();
 const login = await session.login(id, pw);
 if (login === "expirePw") console.warn("⚠ VWorld 비밀번호 사용기간이 지났습니다(로그인은 됨). 다운로드를 계속합니다.");
 
-const layers = dsIds.includes("24") ? { since: opt("since", "2026-08-01"), titles: new Set(opt("layers") ? String(opt("layers")).split(",").map((n) => `국토계획/${n}`) : ZONING_LAYERS) } : undefined;
+const layers = dsIds.includes("24") ? { since: opt("since", "2026-08-01"), titles: new Set(opt("layers") ? String(opt("layers")).split(",").map((n) => (n.includes("/") ? n : `국토계획/${n}`)) : ZONING_LAYERS) } : undefined;
 if (layers && dsIds.length > 1) {
   console.error("dsId 24는 다른 데이터셋과 함께 받지 않습니다(--ds 24만).");
   process.exit(2);
 }
-const { failures } = await fetchDatasets(session, { dsIds, regions, outDir, folders: FOLDERS, layers, log: console.log });
+// --folder: dsId 24 결과를 다른 폴더(예: maintenance_zone)에 둔다
+const folders = opt("folder") ? { ...FOLDERS, 24: opt("folder") } : FOLDERS;
+const { failures } = await fetchDatasets(session, { dsIds, regions, outDir, folders, layers, log: console.log });
 if (failures.length > 0) {
   for (const f of failures) console.error(`FAIL ${f}`);
   console.error(`${failures.length} failure(s)`);
