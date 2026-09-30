@@ -130,6 +130,21 @@ const CORE_SQL = `
   CREATE INDEX IF NOT EXISTS idx_legal_area_parent ON legal_area (parent_code, level);
 `;
 
+/**
+ * 개별공시지가: 필지(PNU)당 가장 새 기준연도 한 행. 약 3,900만 행이라 release_id를 행마다 두지 않는다
+ * (원천 릴리스가 하나 — source_release의 land_price@기준일). 테이블 추가뿐이라 스키마 버전은 올리지 않는다:
+ * 새 파일은 IF NOT EXISTS로 만들어지고, 옛 reference 파일은 이 테이블 없이도 그대로 읽힌다.
+ */
+const REFERENCE_SQL = `
+  CREATE TABLE IF NOT EXISTS land_price (
+    pnu TEXT PRIMARY KEY,
+    base_year INTEGER NOT NULL,
+    base_month INTEGER,
+    price_krw_per_m2 INTEGER NOT NULL,
+    is_standard INTEGER NOT NULL DEFAULT 0
+  ) WITHOUT ROWID;
+`;
+
 const MARKET_SQL = `
   CREATE TABLE IF NOT EXISTS property_transaction (
     transaction_id TEXT PRIMARY KEY,
@@ -182,6 +197,7 @@ export function initDataFileSchema(db: Db, kind: DataFileKind): void {
   }
   db.exec(COMMON_SQL);
   if (kind === "core") db.exec(CORE_SQL);
+  if (kind === "reference") db.exec(REFERENCE_SQL);
   if (kind === "market") db.exec(MARKET_SQL);
   const upsert = db.prepare("INSERT INTO data_file_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
   upsert.run("kind", kind);

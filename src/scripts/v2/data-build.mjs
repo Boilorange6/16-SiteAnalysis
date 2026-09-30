@@ -260,6 +260,36 @@ if (builders.reference && existsSync(join(raw, "zoning"))) {
     return [...built, ...(await buildZoning(db, layers))];
   };
 }
+// 개별공시지가(VWorld dsId 6, 시도별 CSV): raw/land_price가 있을 때만 reference에 이어 붙인다(없으면 건너뜀).
+const { buildLandPrice, latestLandPricePerSido, LAND_PRICE_RIGHTS } = await import("../../lib/v2/ingest/sources/land-price.ts");
+if (builders.reference && existsSync(join(raw, "land_price"))) {
+  const base = builders.reference;
+  builders.reference = async (db, ctx) => {
+    const built = await base(db, ctx);
+    extractAll(join(raw, "land_price"));
+    const sets = latestLandPricePerSido([...walk(join(raw, "land_price"))]);
+    if (sets.size === 0) throw new Error("개별공시지가 CSV 없음 — vworld:fetch -- --ds 6 으로 받으세요");
+    const list = [...sets.entries()].sort(([a], [b]) => a.localeCompare(b));
+    const d = list.map(([, v]) => v.date).sort()[0];
+    const size = list.reduce((a, [, v]) => a + statSync(v.file).size, 0);
+    const mtime = Math.max(...list.map(([, v]) => statSync(v.file).mtimeMs));
+    const releaseId = insertRelease(db, {
+      sourceId: "land_price",
+      provider: "국토교통부(VWorld 개별공시지가정보)",
+      sourceUrl: "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=6",
+      sourceAsOf: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`,
+      fetchedAt: new Date(mtime).toISOString(),
+      checksum: `size-mtime:${size}-${Math.round(mtime)}`,
+      licenseCode: "UNRESTRICTED",
+      rights: LAND_PRICE_RIGHTS,
+    });
+    async function* rows() {
+      for (const [, v] of list) yield* (await csvRecords(v.file)).records;
+    }
+    // 시도 코드는 파일명(29 광주·46 전남 등 옛 코드 포함)과 PNU 앞 2자리가 같아야 REGION_MISSING이 걸리지 않는다
+    return [...built, await buildLandPrice(db, rows(), releaseId, list.map(([k]) => k))];
+  };
+}
 if (builders.core) {
   const base = builders.core;
   builders.core = async (db, ctx) => {
