@@ -1,13 +1,14 @@
 /** A04 공원·녹지 — 공원은 대표점 자료뿐이다(경계·입구 미적재). 개수와 대표점 거리만, 등급 없음. */
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
-import { makeTile, missing, nearestM, noDataTile, obs } from "./common";
+import { candidate, makeTile, missing, nearestHit, nearestM, noDataTile, obs } from "./common";
 
 export function a04(ctx: EngineContext): TileResult {
   const sources = ctx.sources("reference", ["park"]);
   if (sources.length === 0) return noDataTile(ctx, "A04", ["park"]);
   const hits = ctx.hits("reference", ["park"]);
   const nearest = nearestM(hits.map((h) => h.distanceM));
+  const near = nearestHit(hits);
   const areas = hits.map((h) => h.properties.areaM2).filter((a): a is number => typeof a === "number" && a > 0);
   const areaSum = Math.round(areas.reduce((s, a) => s + a, 0));
   const noArea = hits.length - areas.length;
@@ -27,7 +28,11 @@ export function a04(ctx: EngineContext): TileResult {
     metrics,
     judgment: { ruleId: "a04-park-points@1", basisMetricIds: ["parks"], sentence, level: null, criteria: null },
     sources,
-    layers: ["park"],
+    layers: ["park", "park_nearest"],
+    map: hits.map((h) => {
+      const weight = typeof h.properties.areaM2 === "number" && h.properties.areaM2 > 0 ? h.properties.areaM2 : null;
+      return h === near ? candidate(h, "park_nearest", { weight, highlight: true, label: `대표점 ${nearest}m` }) : candidate(h, "park", { weight });
+    }),
     limitations: [
       { kind: "not_provided", note: "공원 경계·입구 자료 미적재 — 반경 안 면적과 입구 거리는 계산하지 못했습니다." },
       { kind: "unknown", note: `면적 합은 원천에 적힌 공원 면적이며 반경에 걸친 공원도 전체가 들어갑니다.${noArea > 0 ? ` 면적 미기재 ${noArea}곳은 합에서 제외했습니다.` : ""}` },

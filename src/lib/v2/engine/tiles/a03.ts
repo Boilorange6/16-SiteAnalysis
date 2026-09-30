@@ -1,7 +1,7 @@
 /** A03 생활편의·상가 — 소상공인 상가정보를 업종군으로 묶어 센다. 등급 없음. */
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
-import { fmt, makeTile, missing, nearestM, noDataTile, obs } from "./common";
+import { candidate, fmt, makeTile, missing, nearestHit, nearestM, noDataTile, obs } from "./common";
 
 export const STORE_GROUPS = [
   { id: "grocery", label: "식료품", basic: true },
@@ -39,6 +39,9 @@ export function a03(ctx: EngineContext): TileResult {
     count[g] += 1;
     if (h.distanceM !== null && (nearest[g] === null || h.distanceM < nearest[g]!)) nearest[g] = h.distanceM;
   }
+  const nearestOf = Object.fromEntries(
+    STORE_GROUPS.filter((g) => g.id !== "other").map((g) => [g.id, nearestHit(hits.filter((h) => storeGroup(h.properties) === g.id))]),
+  ) as Partial<Record<StoreGroup, (typeof hits)[number] | null>>;
   const basicFound = STORE_GROUPS.filter((g) => g.basic && count[g.id] > 0);
   const basicMissing = STORE_GROUPS.filter((g) => g.basic && count[g.id] === 0);
   const areaKm2 = (Math.PI * ctx.input.radiusM * ctx.input.radiusM) / 1e6;
@@ -61,7 +64,12 @@ export function a03(ctx: EngineContext): TileResult {
     metrics,
     judgment: { ruleId: "a03-basic-groups@1", basisMetricIds: ["basic_groups"], sentence, level: null, criteria: null },
     sources,
-    layers: ["store"],
+    layers: STORE_GROUPS.map((g) => `store:${g.id}`),
+    map: hits.map((h) => {
+      const g = storeGroup(h.properties);
+      const label = STORE_GROUPS.find((x) => x.id === g)!.label;
+      return h === nearestOf[g] ? candidate(h, `store:${g}`, { highlight: true, label: `${label} ${Math.round(h.distanceM!)}m` }) : candidate(h, `store:${g}`);
+    }),
     limitations: ctx.coverage("reference", ["store"]),
   });
 }

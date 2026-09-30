@@ -1,9 +1,12 @@
 /** 타일 공통: 지표 생성기와 TileResult 조립. 결과는 항상 parseTileResult를 통과한다. */
-import { parseTileResult, type TileResult } from "../../tile-result";
+import { toLngLat } from "../../crs";
+import type { FeatureHit } from "../../data/features";
+import { MAX_MAP_FEATURES, parseTileResult, type MapFeature, type TileResult } from "../../tile-result";
+import { layerStyle } from "../../ui/map-layers";
 import { sourceName } from "../../ui/tile-catalog";
 import type { EngineContext, Limitation, SourceRef } from "../context";
 
-export const ENGINE_VERSION = "v2-p1b-1";
+export const ENGINE_VERSION = "v2-map-1";
 
 type Metric = TileResult["metrics"][number];
 
@@ -23,6 +26,48 @@ export const nearestM = (distances: Array<number | null>): number | null => {
   return ds.length ? roundM(Math.min(...ds)) : null;
 };
 
+// ── 지도 표시용 지물 ──
+export type MapCandidate = { id: number; f: MapFeature };
+
+/** 대표점(WGS84). 점은 그대로, 다른 도형은 좌표 범위의 중심. */
+export function hitPoint(h: FeatureHit): [number, number] {
+  const flat: number[][] = [];
+  const walk = (c: unknown) => {
+    if (!Array.isArray(c)) return;
+    if (typeof c[0] === "number") flat.push(c as number[]);
+    else c.forEach(walk);
+  };
+  walk((h.geometry as { coordinates?: unknown }).coordinates);
+  const xs = flat.map((p) => p[0]);
+  const ys = flat.map((p) => p[1]);
+  const [lng, lat] = toLngLat([(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2]);
+  return [Math.round(lng * 1e6) / 1e6, Math.round(lat * 1e6) / 1e6];
+}
+
+export function candidate(h: FeatureHit, layer: string, extra: { weight?: number | null; label?: string | null; highlight?: boolean } = {}): MapCandidate {
+  const [lng, lat] = hitPoint(h);
+  return { id: h.featureId, f: { layer, lng, lat, ...extra } };
+}
+
+/** 거리 최소인 히트(같으면 featureId 작은 쪽). 거리 없는 히트는 제외. */
+export function nearestHit<T extends FeatureHit>(hits: T[]): T | null {
+  let best: T | null = null;
+  for (const h of hits) {
+    if (h.distanceM === null) continue;
+    if (best === null || h.distanceM < best.distanceM! || (h.distanceM === best.distanceM && h.featureId < best.featureId)) best = h;
+  }
+  return best;
+}
+
+/** 상한을 넘으면 highlight는 모두 두고 나머지를 feature_id 순으로 등간격 추린다. 결정적. */
+export function capFeatures(items: MapCandidate[]): { features: MapFeature[]; total: number } {
+  const hl = items.filter((c) => c.f.highlight).sort((a, b) => a.id - b.id);
+  const rest = items.filter((c) => !c.f.highlight).sort((a, b) => a.id - b.id);
+  const keep = Math.max(0, MAX_MAP_FEATURES - hl.length);
+  const picked = rest.length <= keep ? rest : Array.from({ length: keep }, (_, i) => rest[Math.floor((i * rest.length) / keep)]);
+  return { features: [...picked, ...hl].map((c) => c.f), total: items.length };
+}
+
 export interface TileDraft {
   code: string;
   type?: TileResult["tileType"];
@@ -32,9 +77,13 @@ export interface TileDraft {
   sources: SourceRef[];
   limitations: Limitation[];
   layers?: string[];
+  /** 지도에 그릴 지물 후보. 상한 처리·범례는 makeTile이 한다. */
+  map?: MapCandidate[];
 }
 
 export function makeTile(ctx: EngineContext, d: TileDraft): TileResult {
+  const capped = d.map ? capFeatures(d.map) : null;
+  const legend = capped ? [...new Set(capped.features.map((f) => f.layer))].map((l) => ({ label: layerStyle(l).label, min: null, max: null })) : [];
   return parseTileResult({
     tileId: `${ctx.analysisId}-${d.code}`,
     analysisId: ctx.analysisId,
@@ -45,7 +94,13 @@ export function makeTile(ctx: EngineContext, d: TileDraft): TileResult {
     conditions: ctx.conditions,
     metrics: d.metrics,
     judgment: d.judgment ?? null,
-    presentation: { legend: [], camera: null, layers: d.layers ?? [], outputFace: "front" },
+    presentation: {
+      legend,
+      camera: null,
+      layers: d.layers ?? [],
+      outputFace: "front",
+      ...(capped ? { features: capped.features, featuresTotal: capped.total } : {}),
+    },
     provenance: { manifestHash: ctx.manifestHash, sources: d.sources },
     limitations: d.limitations,
   });

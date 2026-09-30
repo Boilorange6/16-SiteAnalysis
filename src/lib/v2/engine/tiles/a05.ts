@@ -2,7 +2,7 @@
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
 import type { FeatureHit } from "../../data/features";
-import { est, fmt, makeTile, missing, noDataTile, obs, type TileDraft } from "./common";
+import { candidate, est, fmt, makeTile, missing, noDataTile, obs, type TileDraft } from "./common";
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null);
 const year = (v: unknown): number | null => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? Number(v.slice(0, 4)) : null);
@@ -91,7 +91,12 @@ export function a05(ctx: EngineContext): TileResult {
     metrics,
     judgment: { ruleId: "a05-stock@1", basisMetricIds: ["apartment_complexes", "households"], sentence, level: null, criteria: null },
     sources,
-    layers: ["housing_complex", "officetel"],
+    layers: ["apt", "other_housing", "officetel"],
+    map: [
+      ...apts.map((h) => candidate(h, "apt", { weight: householdsOf(h.properties) })),
+      ...others.map((h) => candidate(h, "other_housing", { weight: householdsOf(h.properties) })),
+      ...officetels.map((h) => candidate(h, "officetel", { weight: num(h.properties.units) })),
+    ],
     limitations,
   });
 }

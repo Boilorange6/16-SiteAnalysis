@@ -46,6 +46,16 @@ const ConditionsSchema = z.object({
   parcelSnapshotHash: z.string().regex(/^[0-9a-f]{64}$/).nullable(),
 });
 
+export const MAX_MAP_FEATURES = 3000;
+const MapFeatureSchema = z.object({
+  layer: z.string().min(1),
+  lng: z.number().finite(),
+  lat: z.number().finite(),
+  weight: z.number().finite().nullable().optional(),
+  label: z.string().nullable().optional(),
+  highlight: z.boolean().optional(),
+});
+
 export const TileResultSchema = z
   .object({
     tileId: z.string().min(1),
@@ -70,6 +80,10 @@ export const TileResultSchema = z
       camera: z.record(z.string(), z.unknown()).nullable(),
       layers: z.array(z.string()),
       outputFace: z.enum(OUTPUT_FACES),
+      /** 지도 표시용 지물(WGS84). 없으면 지도에 지물을 그리지 않는다. 상한 MAX_MAP_FEATURES. */
+      features: z.array(MapFeatureSchema).optional(),
+      /** 상한으로 잘리기 전 전체 개수 */
+      featuresTotal: z.number().int().nonnegative().optional(),
     }),
     provenance: z.object({
       manifestHash: z.string().regex(/^[0-9a-f]{64}$/),
@@ -116,6 +130,7 @@ export const TileResultSchema = z
 
 export type TileResult = z.infer<typeof TileResultSchema>;
 export type TileConditions = TileResult["conditions"];
+export type MapFeature = z.infer<typeof MapFeatureSchema>;
 
 export function parseTileResult(value: unknown): TileResult {
   return TileResultSchema.parse(value);

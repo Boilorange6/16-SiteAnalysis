@@ -1,7 +1,7 @@
 /** A01 입지·대중교통 — 이번 판은 버스정류장만 계산한다(철도 자료 미적재). 거리는 직선. */
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
-import { makeTile, missing, nearestM, noDataTile, obs } from "./common";
+import { candidate, makeTile, missing, nearestHit, nearestM, noDataTile, obs } from "./common";
 
 export const A01_CRITERIA = "버스정류장 직선 300m 이하 좋음 · 600m 이하 보통 · 초과 주의";
 export const BUS_GOOD_M = 300;
@@ -17,6 +17,7 @@ export function a01(ctx: EngineContext): TileResult {
   if (sources.length === 0) return noDataTile(ctx, "A01", ["bus_stop"]);
   const hits = ctx.hits("reference", ["bus_stop"]);
   const nearest = nearestM(hits.map((h) => h.distanceM));
+  const near = nearestHit(hits);
   const metrics = [
     missing("nearest_rail_m", "최근접 철도역 출입구", "m", "a01-rail@0"),
     missing("rail_stations", "반경 내 운영역", "개", "a01-rail@0"),
@@ -41,7 +42,8 @@ export function a01(ctx: EngineContext): TileResult {
     metrics,
     judgment,
     sources,
-    layers: ["bus_stop"],
+    layers: ["bus_stop", "bus_nearest"],
+    map: hits.map((h) => (h === near ? candidate(h, "bus_nearest", { highlight: true, label: `직선 ${nearest}m` }) : candidate(h, "bus_stop"))),
     limitations: [
       { kind: "not_provided", note: "철도 자료 미적재 — 철도역 거리·역 수는 계산하지 못했습니다." },
       { kind: "unknown", note: "정류장별 경유 노선 연결 자료가 없어 노선 수는 계산하지 못했습니다." },

@@ -35,7 +35,7 @@ const noForbidden = (t) => {
   const t = a01(ctx);
   parseTileResult(t);
   assert.equal(t.provenance.manifestHash, hash);
-  assert.equal(t.engineVersion, "v2-p1b-1");
+  assert.equal(t.engineVersion, "v2-map-1");
   assert.deepEqual(t.provenance.sources.map((s) => [s.sourceId, s.sourceAsOf]), [["bus_stop", "2025-12-09"]]);
   assert.equal(t.conditions.radiusM, 800);
   ctx.close();

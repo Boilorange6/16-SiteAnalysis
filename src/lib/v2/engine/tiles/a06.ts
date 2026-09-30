@@ -4,7 +4,7 @@
  */
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
-import { fmt, makeTile, noDataTile, obs, type TileDraft } from "./common";
+import { candidate, fmt, makeTile, noDataTile, obs, type TileDraft } from "./common";
 
 const SOURCES = [
   { key: "applyhome", label: "청약홈" },
@@ -68,7 +68,15 @@ export function a06(ctx: EngineContext): TileResult {
     metrics,
     judgment: { ruleId: "a06-by-source@1", basisMetricIds: ["applyhome_units", "move_in_units"], sentence, level: null, criteria: null },
     sources,
-    layers: ["planned_supply"],
+    layers: SOURCES.map((s) => s.key),
+    map: hits
+      .filter((h) => h.properties.source === "applyhome" || h.properties.source === "move_in")
+      .map((h) =>
+        candidate(h, h.properties.source as string, {
+          weight: num(h.properties.units),
+          label: typeof h.properties.plannedMonth === "string" && /^\d{4}-\d{2}$/.test(h.properties.plannedMonth) ? h.properties.plannedMonth : null,
+        }),
+      ),
     limitations: [
       { kind: "partial", note: "청약홈·입주예정에 같은 사업이 중복 등장할 수 있어 합계를 보류했습니다. 중복 제거는 다음 단계입니다." },
       ...ctx.coverage("market", ["applyhome", "move_in"]),
