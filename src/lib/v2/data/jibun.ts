@@ -37,10 +37,18 @@ function sigungus(db: Db): Area[] {
 }
 
 export function resolveJibunAddress(db: Db, address: string): { legalCode: string; pnu: string } | null {
+  const r = resolveJibunDetailed(db, address);
+  return "pnu" in r ? r : null;
+}
+
+/** resolveJibunAddress와 같되, 실패 이유를 알려 준다(ambiguous = 동·리까지 더 적어야 정해짐). */
+export function resolveJibunDetailed(db: Db, address: string): { legalCode: string; pnu: string } | { reason: "parse_failed" | "not_found" | "ambiguous" } {
   const parsed = parseJibunAddress(address);
-  if (!parsed) return null;
+  if (!parsed) return { reason: "parse_failed" };
+  const notFound = { reason: "not_found" } as const;
+  const ambiguous = { reason: "ambiguous" } as const;
   const tokens = parsed.head.split(" ");
-  if (tokens.length < 2) return null;
+  if (tokens.length < 2) return ambiguous;
   const sido = SIDO_ALIASES[tokens[0]] ?? tokens[0];
   const restJoined = tokens.slice(1).join("");
 
@@ -59,28 +67,30 @@ export function resolveJibunAddress(db: Db, address: string): { legalCode: strin
       tied = false;
     } else if (restName.length === best.restName.length) tied = true;
   }
-  if (!best || tied) return null;
+  if (!best) return notFound;
+  if (tied) return ambiguous;
 
   // 시군구 이름이 차지한 토큰을 건너뛴다
   let consumed = "";
   let i = 1;
   while (i < tokens.length && consumed.length < best.restName.length) consumed += tokens[i++];
-  if (consumed !== best.restName) return null;
+  if (consumed !== best.restName) return notFound;
   const rest = tokens.slice(i);
-  if (rest.length < 1 || rest.length > 2) return null;
+  if (rest.length < 1) return ambiguous;
+  if (rest.length > 2) return notFound;
 
   const emds = db.prepare("SELECT code FROM legal_area WHERE level = 'emd' AND parent_code = ? AND name = ?").pluck().all(best.code, rest[0]) as string[];
-  if (emds.length !== 1) return null; // 없거나 동명이면 추측하지 않는다
+  if (emds.length !== 1) return emds.length === 0 ? notFound : ambiguous; // 없거나 동명이면 추측하지 않는다
   const emd = emds[0];
   let legalCode = `${emd}00`;
   if (rest.length === 1) {
     // 리가 있는 읍·면인데 리를 안 밝히면 존재하지 않는 코드가 된다
-    if (db.prepare("SELECT 1 FROM legal_area WHERE level = 'ri' AND parent_code = ? LIMIT 1").get(emd)) return null;
+    if (db.prepare("SELECT 1 FROM legal_area WHERE level = 'ri' AND parent_code = ? LIMIT 1").get(emd)) return ambiguous;
   } else {
     const ris = db.prepare("SELECT code FROM legal_area WHERE level = 'ri' AND parent_code = ? AND name = ?").pluck().all(emd, rest[1]) as string[];
-    if (ris.length !== 1) return null;
+    if (ris.length !== 1) return ris.length === 0 ? notFound : ambiguous;
     legalCode = ris[0];
   }
   const pnu = makePnu(legalCode, parsed.mountain, parsed.bun, parsed.ji);
-  return pnu ? { legalCode, pnu } : null;
+  return pnu ? { legalCode, pnu } : notFound;
 }

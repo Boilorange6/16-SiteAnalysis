@@ -128,9 +128,11 @@ export function queryFeaturesInRadius(db: Db, center: LngLat, radiusM: number, k
   if (kinds.length === 0) return [];
   if (!center.every(Number.isFinite)) throw new RangeError(`center must be finite, got ${center}`);
   const [cx, cy] = toUtmk(center);
+  // CROSS JOIN은 R*Tree를 바깥 루프로 고정한다. 그냥 JOIN이면 플래너가 kind 인덱스로 수백만 행을 훑으며
+  // 행마다 R*Tree를 찾아(전국 파일에서 반경 1km 상가 조회가 5초) 느려진다.
   const rows = db
     .prepare(`SELECT f.feature_id, f.stable_id, f.kind, f.release_id, f.geom_json, f.name, f.pnu, f.legal_code, f.properties_json
-      FROM feature_rtree r JOIN feature f ON f.feature_id = r.feature_id
+      FROM feature_rtree r CROSS JOIN feature f ON f.feature_id = r.feature_id
       WHERE r.max_x >= ? AND r.min_x <= ? AND r.max_y >= ? AND r.min_y <= ?
         AND f.kind IN (${kinds.map(() => "?").join(",")})
       ORDER BY f.feature_id`)
