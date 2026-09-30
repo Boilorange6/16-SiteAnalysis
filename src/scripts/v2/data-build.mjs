@@ -302,8 +302,8 @@ if (builders.reference && existsSync(join(raw, "land_price"))) {
     async function* rows() {
       for (const [, v] of list) yield* (await csvRecords(v.file)).records;
     }
-    // 시도 코드는 파일명(29 광주·46 전남 등 옛 코드 포함)과 PNU 앞 2자리가 같아야 REGION_MISSING이 걸리지 않는다
-    return [...built, await buildLandPrice(db, rows(), releaseId, list.map(([k]) => k))];
+    // core가 있으면 옛 코드(29·46 → 12, 인천 구 분할)를 현재 코드로 옮겨 저장한다. expectedRegions도 저장 코드로 바뀐다
+    return [...built, await buildLandPrice(db, rows(), releaseId, list.map(([k]) => k), ctx.core)];
   };
 }
 if (builders.core) {
