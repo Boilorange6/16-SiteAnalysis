@@ -147,5 +147,6 @@ export async function buildPlannedRail(db: Db, projects: Json[], releaseId: stri
       stationStats.accept({}, regionOf(code), str(p.lifecycleStatus) ?? "(미상)");
     }
   });
-  return [lineStats, stationStats];
+  // 공개 투영은 역을 비워 두는 게 정상이다(운영역 격리). 역이 한 건도 없으면 원천으로 보고하지 않는다 — EMPTY 게이트 오탐 방지.
+  return stationStats.received === 0 ? [lineStats] : [lineStats, stationStats];
 }
