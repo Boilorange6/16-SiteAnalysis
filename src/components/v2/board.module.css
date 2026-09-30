@@ -1353,6 +1353,7 @@
   font-weight: 700;
   line-height: 1;
   margin-top: -3px;
+  white-space: nowrap;
 }
 .cYear {
   color: var(--muted);
@@ -1378,7 +1379,8 @@
   right: 0;
   display: flex;
   gap: 8px;
-  padding: 0 8px;
+  padding: 3px 8px;
+  box-sizing: border-box;
   overflow-x: auto;
   overflow-y: hidden;
   scroll-snap-type: x proximity;

@@ -229,10 +229,11 @@ function calloutCard(s: Slide, c: Complex, p: Placed, f: CalloutFrame, year: num
   }
   seg(s, [p.x, p.y + m.head], [p.x + f.cardW, p.y + m.head], INK, 0.5, 90, cTag(c, "head-sep"));
   const fs = Math.min(8.5, Math.floor(m.row * 72 * 0.68 * 2) / 2);
+  const lw = c.supply ? 1.0 : 0.7; // "입주(예정) 시기"가 한 줄에 들어가게
   cardRows(c, year).forEach((r, i) => {
     const y = p.y + m.head + 0.03 + i * m.row;
-    s.addText(r.label, { x: p.x + 0.1, y, w: 0.7, h: m.row, valign: "middle", fontFace: FONT, fontSize: fs, color: MUTED, margin: 0, objectName: cTag(c, `row-${i}-label`) });
-    s.addText(r.value, { x: p.x + 0.8, y, w: f.cardW - 0.9, h: m.row, align: "right", valign: "middle", fontFace: FONT, fontSize: fitPt(r.value, fs, f.cardW - 0.9, 1, 6), bold: true, color: r.missing ? AMBER : INK, margin: 0, objectName: cTag(c, `row-${i}-value`) });
+    s.addText(r.label, { x: p.x + 0.1, y, w: lw, h: m.row, valign: "middle", fontFace: FONT, fontSize: fs, color: MUTED, margin: 0, objectName: cTag(c, `row-${i}-label`) });
+    s.addText(r.value, { x: p.x + 0.1 + lw, y, w: f.cardW - 0.2 - lw, h: m.row, align: "right", valign: "middle", fontFace: FONT, fontSize: fitPt(r.value, fs, f.cardW - 0.2 - lw, 1, 6), bold: true, color: r.missing ? AMBER : INK, margin: 0, objectName: cTag(c, `row-${i}-value`) });
   });
 }
 

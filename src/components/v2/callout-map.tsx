@@ -33,7 +33,11 @@ function Card({ c, p, frame, year, hover, onHover, onPick }: { c: Complex; p: Pl
         <span className={`${styles.cName} ${c.name ? "" : styles.cMissing}`} title={cardName(c)}>
           {cardName(c)}
         </span>
-        {chip && <span className={styles.cChip}>{chip}</span>}
+        {chip && (
+          <span className={styles.cChip} title={chip}>
+            {full ? chip : "중복"}
+          </span>
+        )}
       </div>
       {full ? (
         <ul className={styles.cRows}>
@@ -45,7 +49,7 @@ function Card({ c, p, frame, year, hover, onHover, onPick }: { c: Complex; p: Pl
           ))}
         </ul>
       ) : (
-        <div className={styles.cSub}>
+        <div className={styles.cSub} style={c.supply ? { paddingLeft: 10 } : undefined}>
           {c.supply ? (
             <>
               <span className={c.supply.plannedMonth === null ? styles.cMissing : undefined}>{c.supply.plannedMonth ? c.supply.plannedMonth.replace("-", ".") : "일정 확인필요"}</span>
