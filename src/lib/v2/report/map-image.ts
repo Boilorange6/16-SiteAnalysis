@@ -8,7 +8,7 @@ import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import MapFigure from "@/components/v2/map-figure";
 import type { MapModel } from "../ui/map-layers";
-import { tilesFor, tileUrl, viewportFor } from "../ui/map-projection";
+import { BASEMAP_STACK, tilesFor, tileUrl, viewportFor, type BasemapChoice } from "../ui/map-projection";
 import { mapKeyOf, type PlannedSlide } from "./report-plan";
 import type { MapImages } from "./render-pptx";
 
@@ -41,14 +41,14 @@ async function fetchTile(url: string): Promise<string | null> {
   }
 }
 
-function svgOf(model: MapModel, tiles: Map<string, string>): string {
+function svgOf(model: MapModel, tiles: Map<string, string>, layer: BasemapChoice): string {
   const host = document.createElement("div");
   const root = createRoot(host);
   try {
     const usable = tiles.size > 0;
     flushSync(() =>
       root.render(
-        createElement(MapFigure, { model, width: VIEW_W, height: VIEW_H, fixed: true, basemap: usable ? "tiles" : "none", tileHref: (u: string) => tiles.get(u), label: "분석 반경 지도" }),
+        createElement(MapFigure, { model, width: VIEW_W, height: VIEW_H, fixed: true, basemap: usable ? "tiles" : "none", layer, tileHref: (u: string) => tiles.get(u), label: "분석 반경 지도" }),
       ),
     );
     return host.innerHTML;
@@ -78,9 +78,9 @@ async function toPng(svg: string): Promise<string> {
 }
 
 /** 한 장 그리기. tileCache는 같은 중심·반경의 여러 장이 타일을 다시 받지 않게 공유한다. */
-export async function rasterizeMap(model: MapModel, tileCache: Map<string, string | null> = new Map()): Promise<string> {
+export async function rasterizeMap(model: MapModel, tileCache: Map<string, string | null> = new Map(), layer: BasemapChoice = "white"): Promise<string> {
   const vp = viewportFor(model.center, model.radiusM, VIEW_W, VIEW_H);
-  const urls = tilesFor(vp).map((t) => tileUrl(t));
+  const urls = BASEMAP_STACK[layer].flatMap((ly) => tilesFor(vp).map((t) => tileUrl(ly, t.z, t.x, t.y)));
   await Promise.all(
     urls
       .filter((u) => !tileCache.has(u))
@@ -93,11 +93,11 @@ export async function rasterizeMap(model: MapModel, tileCache: Map<string, strin
     const d = tileCache.get(u);
     if (d) got.set(u, d);
   }
-  return toPng(svgOf(model, got));
+  return toPng(svgOf(model, got, layer));
 }
 
 /** 계획의 모든 지도 자리에 대한 PNG. 실패한 장은 빠진다(렌더러가 자리표시를 넣는다). */
-export async function buildMapImages(plan: PlannedSlide[]): Promise<MapImages> {
+export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice = "white"): Promise<MapImages> {
   const cache = new Map<string, string | null>();
   const out: MapImages = {};
   for (const p of plan) {
@@ -105,7 +105,7 @@ export async function buildMapImages(plan: PlannedSlide[]): Promise<MapImages> {
     const model = p.kind === "cover" || p.kind === "tile" ? p.map : null;
     if (!key || !model || out[key]) continue;
     try {
-      out[key] = await rasterizeMap(model, cache);
+      out[key] = await rasterizeMap(model, cache, layer);
     } catch (e) {
       console.warn(`지도 이미지 생성 실패 (${key})`, e);
     }

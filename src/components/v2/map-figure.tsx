@@ -1,6 +1,6 @@
 import { useId, type ReactNode } from "react";
 import { LAYER_STYLES, layerStyle, type MapModel } from "@/lib/v2/ui/map-layers";
-import { BASEMAP_ATTRIBUTION, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, viewportFor } from "@/lib/v2/ui/map-projection";
+import { BASEMAP_ATTRIBUTION, BASEMAP_STACK, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, viewportFor, type BasemapChoice } from "@/lib/v2/ui/map-projection";
 
 /**
  * 지도 그림 하나(SVG). 카드·상세·PPT가 같은 입력으로 같은 그림을 그린다.
@@ -12,6 +12,8 @@ export type MapFigureProps = {
   height: number;
   /** "none"이면 배경 타일 없이 격자만 (배경을 못 받았을 때) */
   basemap?: "tiles" | "none";
+  /** 배경지도 종류 (기본 일반=white). 항공은 위성 사진 위에 글자 레이어를 겹친다 */
+  layer?: BasemapChoice;
   /** 배경 타일 주소 → 실제 href (PPT용: data URI로 바꿔 넣는다). 반환 undefined면 그 타일은 생략 */
   tileHref?: (url: string) => string | undefined;
   /** true면 범례·문구를 그리지 않는다 (대지 요약 칸) */
@@ -28,7 +30,10 @@ const textW = (s: string, fs: number) => [...s].reduce((w, ch) => w + (ch.charCo
 type Box = { x0: number; y0: number; x1: number; y1: number };
 const hit = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
 
-export default function MapFigure({ model, width: W, height: H, basemap = "tiles", tileHref, bare, fixed, label }: MapFigureProps) {
+export default function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, bare, fixed, label }: MapFigureProps) {
+  const sat = layer === "Satellite";
+  // 항공 사진 위에서는 어두운 선·점 테두리가 묻히므로 흰색으로 바꾼다
+  const line = sat ? "#fff" : INK;
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
   const u = Math.min(1.5, Math.max(1, H / 360));
   const vp = viewportFor(model.center, model.radiusM, W, H);
@@ -38,6 +43,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   const R = model.radiusM / mpp;
 
   const tiles = basemap === "tiles" ? tilesFor(vp) : [];
+  const stack = BASEMAP_STACK[layer];
   const grid = scaleBar(mpp, 110 * u).px;
 
   // 500m 간격 보조 원 (반경 안쪽만)
@@ -159,23 +165,27 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
           </g>
         )}
         {/* 표준 지도는 색이 진해 점이 묻히므로 채도를 낮추고 흰 막을 덮는다 */}
-        <g filter={`url(#s${uid})`}>
-          {tiles.map((t) => {
-            const href = tileHref ? tileHref(tileUrl(t)) : tileUrl(t);
-            return href ? <image key={`${t.z}/${t.x}/${t.y}`} href={href} x={t.left} y={t.top} width={t.size + 0.6} height={t.size + 0.6} preserveAspectRatio="none" /> : null;
-          })}
+        <g filter={sat ? undefined : `url(#s${uid})`}>
+          {stack.map((ly) =>
+            tiles.map((t) => {
+              const url = tileUrl(ly, t.z, t.x, t.y);
+              const href = tileHref ? tileHref(url) : url;
+              return href ? <image key={`${ly}/${t.z}/${t.x}/${t.y}`} href={href} x={t.left} y={t.top} width={t.size + 0.6} height={t.size + 0.6} preserveAspectRatio="none" /> : null;
+            }),
+          )}
         </g>
-        {tiles.length > 0 && <rect width={W} height={H} fill="#fff" fillOpacity={0.35} />}
+        {tiles.length > 0 && !sat && <rect width={W} height={H} fill="#fff" fillOpacity={layer === "Base" ? 0.35 : 0.15} />}
+        {tiles.length > 0 && sat && <rect width={W} height={H} fill="#000" fillOpacity={0.12} />}
 
         <path d={dim} fillRule="evenodd" fill="#14161c" fillOpacity={0.09} />
         {rings.map((r) => (
-          <circle key={r} cx={cx} cy={cy} r={r} fill="none" stroke={INK} strokeOpacity={0.35} strokeWidth={1 * u} strokeDasharray={`${4 * u} ${4 * u}`} />
+          <circle key={r} cx={cx} cy={cy} r={r} fill="none" stroke={line} strokeOpacity={sat ? 0.7 : 0.35} strokeWidth={1 * u} strokeDasharray={`${4 * u} ${4 * u}`} />
         ))}
-        <circle cx={cx} cy={cy} r={R} fill="none" stroke={INK} strokeOpacity={0.75} strokeWidth={1.6 * u} />
+        <circle cx={cx} cy={cy} r={R} fill="none" stroke={line} strokeOpacity={sat ? 0.95 : 0.75} strokeWidth={1.6 * u} />
 
         {drawn.map((d) => {
           if (d.f.highlight && d.f.layer.endsWith("_nearest"))
-            return <line key={`n${d.f.layer}`} x1={cx} y1={cy} x2={d.p[0]} y2={d.p[1]} stroke={INK} strokeWidth={1.4 * u} strokeDasharray={`${3 * u} ${3 * u}`} />;
+            return <line key={`n${d.f.layer}`} x1={cx} y1={cy} x2={d.p[0]} y2={d.p[1]} stroke={line} strokeWidth={1.4 * u} strokeDasharray={`${3 * u} ${3 * u}`} />;
           return null;
         })}
         {drawn.map((d, i) => {
@@ -191,8 +201,8 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
               r={r}
               fill={hollow ? "#fff" : st.color}
               fillOpacity={hollow ? 0.6 : st.sizeBy === "weight" ? 0.55 : d.f.highlight ? 1 : 0.85}
-              stroke={d.f.highlight ? INK : st.sizeBy === "weight" ? st.color : "#fff"}
-              strokeWidth={(d.f.highlight ? 2 : st.sizeBy === "weight" ? 1.4 : 0.8) * u}
+              stroke={sat ? "#fff" : d.f.highlight ? INK : st.sizeBy === "weight" ? st.color : "#fff"}
+              strokeWidth={(d.f.highlight ? 2 : sat ? 1.5 : st.sizeBy === "weight" ? 1.4 : 0.8) * u}
             />
           );
         })}

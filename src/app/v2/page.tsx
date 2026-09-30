@@ -5,6 +5,8 @@ import SummaryCard from "@/components/v2/summary-card";
 import TileCard from "@/components/v2/tile-card";
 import TileDialog from "@/components/v2/tile-dialog";
 import { useTileDrag } from "@/components/v2/use-tile-drag";
+import { BasemapContext } from "@/components/v2/map-box";
+import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import styles from "@/components/v2/board.module.css";
 import { boardReducer, demoFinished, demoPhase, initBoard, reportPages } from "@/lib/v2/ui/board-state";
 import { buildReportPlan, reportFileName } from "@/lib/v2/report/report-plan";
@@ -12,7 +14,12 @@ import { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } from "@/lib/v2/ui/fixtures/
 import { toSummaryView, toTileView, type SiteSummary } from "@/lib/v2/ui/tile-view";
 import type { TileResult } from "@/lib/v2/tile-result";
 
-const UNDO_LABEL = { order: "옮김", size: "크기 바꿈", remove: "삭제됨", add: "더함" } as const;
+const BASEMAPS: Array<{ id: BasemapChoice; label: string }> = [
+  { id: "white", label: "일반" },
+  { id: "Base", label: "지도" },
+  { id: "Satellite", label: "항공" },
+];
+const UNDO_LABEL ={ order: "옮김", size: "크기 바꿈", remove: "삭제됨", add: "더함" } as const;
 
 type BoardProps = {
   baseResults: TileResult[];
@@ -35,6 +42,7 @@ function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: Boar
   const [demoStep, setDemoStep] = useState<number | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [note, setNote] = useState(""); // 스크린리더 안내(aria-live)
+  const [basemap, setBasemap] = useState<BasemapChoice>("white"); // 보드 상태(서버에 저장하지 않음). 화면과 PPT가 같이 따른다
   const gridRef = useRef<HTMLDivElement>(null);
   const { drag, order: shown, start, floatStyle } = useTileDrag(board.order, gridRef, (id, from, to) => {
     dispatch({ type: "reorder", from, to });
@@ -54,7 +62,7 @@ function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: Boar
       const { renderReportPptx } = await import("@/lib/v2/report/render-pptx");
       // 지도 그림은 브라우저에서 SVG → PNG로 만든다. 못 만들면 자리표시로 계속한다.
       const { buildMapImages } = await import("@/lib/v2/report/map-image");
-      const bytes = await renderReportPptx(reportPlan, await buildMapImages(reportPlan).catch(() => ({})));
+      const bytes = await renderReportPptx(reportPlan, await buildMapImages(reportPlan, basemap).catch(() => ({})));
       const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/vnd.openxmlformats-officedocument.presentationml.presentation" }));
       const a = document.createElement("a");
       a.href = url;
@@ -86,6 +94,7 @@ function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: Boar
   const openView = openId ? views.get(openId) : undefined;
 
   return (
+    <BasemapContext.Provider value={basemap}>
     <main className={styles.root}>
       <div className={styles.page}>
         <header className={styles.topbar}>
@@ -120,6 +129,13 @@ function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: Boar
                   {demoOn ? "데모 끄기" : "분석 중 데모"}
                 </button>
               )}
+              <span className={styles.seg} role="group" aria-label="배경지도">
+                {BASEMAPS.map((b) => (
+                  <button key={b.id} type="button" aria-pressed={basemap === b.id} onClick={() => setBasemap(b.id)}>
+                    {b.label}
+                  </button>
+                ))}
+              </span>
               <button type="button" className={styles.pill} onClick={() => setEditing(true)} disabled={demoOn || busy}>
                 보드 편집
               </button>
@@ -232,6 +248,7 @@ function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: Boar
         />
       )}
     </main>
+    </BasemapContext.Provider>
   );
 }
 

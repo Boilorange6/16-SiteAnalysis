@@ -56,15 +56,20 @@ export function tilesFor(v: Viewport): MapTile[] {
   return out;
 }
 
+/** 배경지도 종류: 일반(white)·지도(Base)·항공(Satellite 위에 Hybrid 글자). 서버 프록시의 레이어 이름과 같다. */
+export type BasemapLayer = "white" | "Base" | "Satellite" | "Hybrid";
+export type BasemapChoice = "white" | "Base" | "Satellite";
+/** 선택 하나가 겹쳐 그리는 레이어(아래→위) */
+export const BASEMAP_STACK: Record<BasemapChoice, BasemapLayer[]> = { white: ["white"], Base: ["Base"], Satellite: ["Satellite", "Hybrid"] };
+
 /**
- * 배경 타일 주소. OpenStreetMap 표준 타일 — CARTO light_all은 API 키 없이는 "API KEY REQUIRED" 자리표시 타일만 준다(2026-09-30 확인).
- * 공급자를 바꿀 때는 이 함수와 BASEMAP_ATTRIBUTION만 고친다.
+ * 배경 타일 주소 = 우리 서버 프록시(같은 출처, basePath /site). VWorld 키는 서버에만 있다.
+ * 프록시 경로의 y는 행(row), x는 열(column)이다: VWorld WMTS도 z/행/열 순서다(z15 행12700 열27946 = 서울).
  */
-export function tileUrl(t: Pick<MapTile, "z" | "x" | "y">): string {
-  // 하위 도메인(a~c)을 쓴다: 현재 CSP의 connect-src는 *.tile.openstreetmap.org만 허용하고 tile.openstreetmap.org는 허용하지 않는다(PPT용 fetch).
-  return `https://${"abc"[(t.x + t.y) % 3]}.tile.openstreetmap.org/${t.z}/${t.x}/${t.y}.png`;
+export function tileUrl(layer: BasemapLayer, z: number, x: number, y: number): string {
+  return `/site/api/v2/tiles/${layer}/${z}/${y}/${x}`;
 }
-export const BASEMAP_ATTRIBUTION = "© OpenStreetMap contributors";
+export const BASEMAP_ATTRIBUTION = "© VWorld(국토교통부)";
 
 /** maxPx 안에 들어가는 가장 긴 1·2·5×10ⁿ m 막대 */
 export function scaleBar(mPerPx: number, maxPx: number): { meters: number; px: number; label: string } {
