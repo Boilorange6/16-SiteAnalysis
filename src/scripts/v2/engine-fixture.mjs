@@ -57,9 +57,15 @@ export async function buildEngineFixture(dataDir, version, options = {}) {
   insertFeature(db, { stableId: "sig:11710", kind: "legal_sigungu", sourceKey: "11710", releaseId: legal, geometry: box(600, 5000), name: "서울특별시 송파구", legalCode: "1171000000" });
   const hc = (id, dx, releaseId, props, name = id) =>
     insertFeature(db, { stableId: id, kind: "housing_complex", sourceKey: id, releaseId, geometry: pt(dx, 100), name, properties: props });
-  hc("recap:apt1", 100, recap, { source: "recap", mainUse: "공동주택", units: 480, households: 500, parking: 600, approvalDate: "1996-09-30" });
-  hc("title-housing:apt2", 200, title, { source: "title", mainUse: "공동주택", units: 300, households: null, parking: null, approvalDate: "2010-05-01" });
-  hc("recap:apt3", 300, recap, { source: "recap", mainUse: "공동주택", units: null, households: null, parking: null, approvalDate: null });
+  // 실제 대장 행 모양(고덕역 1km): 총괄표제부 "아파트, 상가", 표제부 "공동주택" 300세대, 총괄표제부 "아파트" 세대 미상
+  hc("recap:apt1", 100, recap, { source: "recap", mainUse: "공동주택", otherUse: "아파트, 상가", units: 480, households: 500, parking: 600, approvalDate: "1996-09-30" });
+  hc("title-housing:apt2", 200, title, { source: "title", mainUse: "공동주택", otherUse: "공동주택", units: 300, households: null, parking: null, approvalDate: "2010-05-01" });
+  hc("recap:apt3", 300, recap, { source: "recap", mainUse: "공동주택", otherUse: "아파트", units: null, households: null, parking: null, approvalDate: null });
+  // 연립·다세대: mainUse는 똑같이 "공동주택"이지만 아파트가 아니다
+  hc("recap:villa1", 410, recap, { source: "recap", mainUse: "공동주택", otherUse: "공동주택(도시형생활주택 단지형 다세대주택) 및 근린생활시설", units: 40, households: null, parking: 34, approvalDate: "2022-01-01" });
+  hc("title-housing:villa2", 420, title, { source: "title", mainUse: "공동주택", otherUse: "다세대주택,제2종근린생활시설", units: 6, households: null, parking: null, approvalDate: "1987-11-21" });
+  hc("title-housing:villa3", 430, title, { source: "title", mainUse: "공동주택", otherUse: "공동주택", units: 12, households: null, parking: null, approvalDate: "2002-07-26" });
+  hc("recap:villa4", 440, recap, { source: "recap", mainUse: "공동주택", otherUse: "공동주택(연립주택), 관리실, 노인정", units: 156, households: null, parking: null, approvalDate: "1991-01-01" });
   hc("recap:house", 400, recap, { source: "recap", mainUse: "단독주택", units: 4, households: null, parking: null, approvalDate: "1996-10-01" });
   hc("recap:far", 4000, recap, { source: "recap", mainUse: "공동주택", units: 999, households: 999, parking: 1, approvalDate: "2000-01-01" }); // 반경 밖
   const of = (id, dx, props) => insertFeature(db, { stableId: id, kind: "officetel", sourceKey: id, releaseId: title, geometry: pt(dx, -100), name: id, properties: props });

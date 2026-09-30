@@ -30,15 +30,35 @@ function callout(h: FeatureHit, type: string, households: number | null) {
   };
 }
 
+/**
+ * 공동주택 행이 아파트 단지인지 (총괄표제부·표제부 모두 mainUse가 "공동주택"이라 mainUse로는 못 가른다).
+ * 근거는 고덕역 1km 실측(207행)과 송파·강동 5km 총괄표제부 세대 분포:
+ *  1) 기타용도에 다세대·연립·도시형·단지형·생활주택이 있으면 아파트가 아니다 (도시형/연립 단지는 최대 159세대).
+ *  2) 기타용도에 "아파트"가 있으면 아파트 ("아파트, 상가", "공동주택(아파트),근린생활시설" 등).
+ *  3) 그 외 "공동주택"·"주거시설"·빈 값은 100세대 이상이면 아파트, 미만이면 기타 공동주택 (세대 수 미상은 기타).
+ * 고덕역 1km: 다세대·도시형 등 176행은 기타, 아파트 표기 31행이 아파트.
+ */
+const VILLA = /다세대|연립|도시형|단지형|생활주택/;
+export const AMBIGUOUS_APT_MIN_UNITS = 100;
+export function isApartment(p: Record<string, unknown>): boolean {
+  const use = typeof p.otherUse === "string" ? p.otherUse : "";
+  if (VILLA.test(use)) return false;
+  if (use.includes("아파트")) return true;
+  const units = num(p.units);
+  return units !== null && units >= AMBIGUOUS_APT_MIN_UNITS;
+}
+
 export function a05(ctx: EngineContext): TileResult {
   const sources = ctx.sources("core", ["ledger_recap", "ledger_title"]);
   if (sources.length === 0) return noDataTile(ctx, "A05", ["ledger_recap", "ledger_title"]);
   const hits = ctx.hits("core", ["housing_complex", "officetel"]);
   const complexes = hits.filter((h) => h.kind === "housing_complex");
-  const apts = complexes.filter((h) => h.properties.mainUse === "공동주택");
-  const others = complexes.filter((h) => h.properties.mainUse !== "공동주택");
+  const apts = complexes.filter((h) => h.properties.mainUse === "공동주택" && isApartment(h.properties));
+  const others = complexes.filter((h) => !apts.includes(h));
   const officetels = hits.filter((h) => h.kind === "officetel");
-  const targets: FeatureHit[] = [...complexes, ...officetels];
+  const targets: FeatureHit[] = [...apts, ...officetels]; // 연식·비중은 아파트·오피스텔 기준 (기타 공동주택은 별도 지표)
+  let othersHh = 0;
+  for (const o of others) othersHh += householdsOf(o.properties) ?? 0;
 
   // 세대: 가구 수 우선, 없으면 세대 수. 값을 못 얻은 단지는 합계에서 빼고 개수로 병기한다.
   let hh = 0;
@@ -71,8 +91,9 @@ export function a05(ctx: EngineContext): TileResult {
 
   const basis = "a05-households@1:가구 수 우선, 없으면 세대 수";
   const metrics: TileDraft["metrics"] = [
-    obs("apartment_complexes", "아파트 단지", apts.length, "개", "a05-count@1"),
-    obs("other_residential", "기타 주거 건물", others.length, "개", "a05-count@1"),
+    obs("apartment_complexes", "아파트 단지", apts.length, "개", "a05-count@2:isApartment"),
+    obs("other_residential", "기타 공동주택(연립·다세대 등)", others.length, "개", "a05-count@2:isApartment"),
+    obs("other_residential_households", "기타 공동주택 세대(세대 수 확인분)", othersHh, "세대", "a05-count@2:isApartment"),
     obs("officetels", "오피스텔", officetels.length, "개", "a05-count@1"),
     obs("households", "확인 세대(가구 수 우선, 없으면 세대 수)", hh, "세대", basis, hhKnown, apts.length),
     obs("households_from_units", "세대 수로 대신한 단지", fromUnits, "개", basis),
@@ -98,7 +119,7 @@ export function a05(ctx: EngineContext): TileResult {
   const sentence =
     hits.length === 0
       ? "반경 안 대장 자료의 주거 건물이 확인되지 않음 → 기존 공급이 없거나 대장 위치 미확인 → 현장과 대장 확인 필요"
-      : `아파트 ${apts.length}개 단지 ${fmt(hh)}세대 확인${years.length ? `, 준공연도 중앙값 ${years[Math.floor((years.length - 1) / 2)]}년` : ""} → 대장에 잡힌 기존 재고의 규모와 연식 → ${hhUnknown > 0 ? "세대수 미상 단지 확인 필요" : "위치 미확인 건물은 반경에 포함되지 않아 확인 필요"}`;
+      : `아파트 ${apts.length}개 단지 ${fmt(hh)}세대(연립·다세대 등 ${others.length}곳 별도)${years.length ? `, 준공연도 중앙값 ${years[Math.floor((years.length - 1) / 2)]}년` : ""} → 대장에 잡힌 기존 재고의 규모와 연식 → ${hhUnknown > 0 ? "세대수 미상 단지 확인 필요" : "위치 미확인 건물은 반경에 포함되지 않아 확인 필요"}`;
   const partial = limitations.some((l) => l.kind === "incomplete");
   return makeTile(ctx, {
     code: "A05",
@@ -109,7 +130,7 @@ export function a05(ctx: EngineContext): TileResult {
     layers: ["apt", "other_housing", "officetel"],
     map: [
       ...apts.map((h) => candidate(h, "apt", callout(h, "아파트", householdsOf(h.properties)))),
-      ...others.map((h) => candidate(h, "other_housing", callout(h, "기타 주거", householdsOf(h.properties)))),
+      ...others.map((h) => candidate(h, "other_housing", callout(h, "기타 공동주택", householdsOf(h.properties)))),
       ...officetels.map((h) => candidate(h, "officetel", callout(h, "오피스텔", num(h.properties.units)))),
     ],
     limitations,

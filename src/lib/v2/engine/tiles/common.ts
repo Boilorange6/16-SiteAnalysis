@@ -6,7 +6,7 @@ import { layerStyle } from "../../ui/map-layers";
 import { sourceName } from "../../ui/tile-catalog";
 import type { EngineContext, Limitation, SourceRef } from "../context";
 
-export const ENGINE_VERSION = "v2-map-2";
+export const ENGINE_VERSION = "v2-map-3";
 
 type Metric = TileResult["metrics"][number];
 
