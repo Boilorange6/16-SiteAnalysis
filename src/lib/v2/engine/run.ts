@@ -5,11 +5,12 @@
 import { randomUUID } from "node:crypto";
 import type BetterSqlite3 from "better-sqlite3";
 import type { LngLat } from "../crs";
-import { createAnalysisRun, finishAnalysisRun, findCachedTileResult, getAnalysisRun, saveTileResult } from "../app-db";
+import { createAnalysisRun, finishAnalysisRun, findCachedTileResult, getAnalysisRun, saveScene, saveTileResult } from "../app-db";
 import { openDataFile, readManifest } from "../data/manifest";
 import { tileCacheKey, type TileResult } from "../tile-result";
 import type { SiteSummary } from "../ui/tile-view";
 import { EngineContext } from "./context";
+import { buildScene } from "./scene";
 import { resolveSite, type SiteFailure, type SiteResult } from "./site";
 import { buildSummary } from "./summary";
 import { a01 } from "./tiles/a01";
@@ -145,6 +146,8 @@ export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, inpu
       saveTileResult(appDb, tile, key);
       results.push(tile);
     }
+    const scene = buildScene(ctx);
+    if (scene) saveScene(appDb, scene);
     finishAnalysisRun(appDb, analysisId, "complete");
     return { ok: true, analysisId, summary: buildSummary({ address: site.label, jimok: site.jimok }, input.radiusM, results), results, computed, reused };
   } catch (error) {
