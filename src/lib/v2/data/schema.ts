@@ -131,6 +131,7 @@ const CORE_SQL = `
     release_id TEXT NOT NULL REFERENCES source_release(release_id)
   );
   CREATE INDEX IF NOT EXISTS idx_legal_area_parent ON legal_area (parent_code, level);
+  CREATE INDEX IF NOT EXISTS idx_legal_area_level_code_name ON legal_area (level, code, name);
 `;
 
 /**

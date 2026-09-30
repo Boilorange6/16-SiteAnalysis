@@ -34,6 +34,7 @@ interface Index {
 }
 
 const indexCache = new WeakMap<Db, Index>();
+const sigunguCache = new WeakMap<Db, Area[]>();
 
 function push(m: Map<string, string[]>, k: string, v: string): void {
   const a = m.get(k);
@@ -63,7 +64,12 @@ function index(db: Db): Index {
 }
 
 export function sigungus(db: Db): Area[] {
-  return index(db).sigungus;
+  let areas = sigunguCache.get(db);
+  if (!areas) {
+    areas = (db.prepare("SELECT code, name FROM legal_area WHERE level = 'sigungu' ORDER BY code").all() as Area[]);
+    if (areas.length > 0) sigunguCache.set(db, areas);
+  }
+  return areas;
 }
 
 /** 시군구: "시도 시군구" 이름에서 시도를 떼고 공백을 무시해 가장 긴 접두어를 고른다(예: "성남시 분당구"). tokens[0]은 시도. */

@@ -25,6 +25,8 @@ export interface EngineInput {
   analysisDate: string;
 }
 
+export type InitialDataHandles = Partial<Record<FileKey, BetterSqlite3.Database>>;
+
 interface SnapshotJson {
   byRegion?: Record<string, number>;
   unlocated?: number;
@@ -42,7 +44,11 @@ export class EngineContext {
     readonly manifest: Manifest,
     readonly analysisId: string,
     readonly input: EngineInput,
+    initialHandles: InitialDataHandles = {},
   ) {
+    for (const [key, db] of Object.entries(initialHandles)) {
+      if (db) this.handles.set(key as FileKey, db);
+    }
     this.manifestHash = manifestHash(manifest);
     this.conditions = {
       address: input.address,

@@ -90,6 +90,12 @@ function seedRelease(db) {
     const t = tables(db);
     assert.equal(t.has("parcel_point"), kind === "core", `${kind}: parcel_point`);
     assert.equal(t.has("legal_area"), kind === "core", `${kind}: legal_area`);
+    const indexes = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").pluck().all());
+    assert.equal(indexes.has("idx_legal_area_level_code_name"), kind === "core", `${kind}: legal_area lookup index`);
+    if (kind === "core") {
+      const plan = db.prepare("EXPLAIN QUERY PLAN SELECT code, name FROM legal_area WHERE level = 'sigungu' ORDER BY code").all();
+      assert.ok(plan.some((r) => String(r.detail).includes("idx_legal_area_level_code_name")), "sigungu lookup uses covering index");
+    }
     const cols = db.prepare("PRAGMA table_info(ingest_run)").all().map((c) => c.name);
     assert.ok(cols.includes("snapshot_json"), `${kind}: ingest_run.snapshot_json`);
   }

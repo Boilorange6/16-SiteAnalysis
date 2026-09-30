@@ -143,7 +143,13 @@ function metricRow(m: TileResult["metrics"][number]): Row {
 
 export function sourceLineOf(sources: TileResult["provenance"]["sources"]): string {
   if (sources.length === 0) return "출처 없음";
-  return sources.map((s) => `${sourceName(s.sourceId)} ${s.sourceAsOf ?? "기준일 미확인"}`).join(" · ");
+  return sources
+    .map((s) => {
+      // source_release uses the fetched date in releaseId when sourceAsOf is unavailable.
+      const releaseDate = /@(\d{4}(?:-\d{2}){0,2})$/.exec(s.releaseId)?.[1] ?? null;
+      return `${sourceName(s.sourceId)} ${s.sourceAsOf ?? releaseDate ?? "기준일 미확인"}`;
+    })
+    .join(" · ");
 }
 
 export function toTileView(r: TileResult): TileView {

@@ -107,8 +107,8 @@ const noForbidden = (t) => {
   assert.deepEqual([metric(t, "park_area_sum_m2").numerator, metric(t, "park_area_sum_m2").denominator], [2, 3]);
   assert.equal(metric(t, "park_area_in_radius_m2").status, "missing");
   assert.equal(t.judgment.level, null, "입구 미확인 → 등급 없음");
-  assert.deepEqual(t.provenance.sources.map((s) => s.sourceAsOf), [null], "기준일 미확인은 null 그대로");
-  assert.match(toTileView(t).sourceLine, /전국 도시공원 기준일 미확인/);
+  assert.deepEqual(t.provenance.sources.map((s) => [s.releaseId, s.sourceAsOf]), [["park@2026-09-29", null]], "source_as_of가 없어도 release_id에는 fallback 날짜가 남는다");
+  assert.equal(toTileView(t).sourceLine, "전국 도시공원 2026-09-29", "release_id fallback 날짜를 기준일 라벨에 표시");
   assert.ok(t.limitations.some((l) => l.note.includes("면적 미기재 1곳")));
   noForbidden(t);
   ctx.close();
@@ -174,6 +174,12 @@ const noForbidden = (t) => {
   assert.ok(t.presentation.features.every((f) => f.plannedMonth === null || /^\d{4}-\d{2}$/.test(f.plannedMonth)));
   assert.match(metric(t, "move_in_projects").formulaVersion, /event-link=2\/6/, "development_event 연결 가능 여부만 기록");
   assert.ok(t.limitations.some((l) => l.kind === "partial" && l.note.includes("중복") && l.note.includes("합계를 보류")));
+  assert.deepEqual(
+    t.provenance.sources.map((s) => [s.releaseId, s.sourceAsOf]),
+    [["applyhome@2026-09-29", null], ["move_in@2026-06-30", "2026-06-30"]],
+    "청약홈은 release_id fallback, 입주예정은 source_as_of를 사용",
+  );
+  assert.equal(toTileView(t).sourceLine, "청약홈 2026-09-29 · 입주예정 2026-06-30", "A06 기준일 라벨");
   assert.equal(t.judgment.level, null);
   noForbidden(t);
   ctx.close();
