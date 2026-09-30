@@ -3,16 +3,10 @@
  * 확신이 없으면 null을 돌려준다 — 비슷한 동에 찍는 것보다 "위치 미확인"이 낫다.
  */
 import type BetterSqlite3 from "better-sqlite3";
+import { matchSigungu, remapPnu, remapSplitSigungu } from "./code-remap";
 import { makePnu } from "./parcels";
 
 type Db = BetterSqlite3.Database;
-
-const SIDO_ALIASES: Record<string, string> = {
-  서울: "서울특별시", 부산: "부산광역시", 대구: "대구광역시", 인천: "인천광역시", 대전: "대전광역시", 울산: "울산광역시",
-  세종: "세종특별자치시", 경기: "경기도", 강원: "강원특별자치도", 강원도: "강원특별자치도", 충북: "충청북도", 충남: "충청남도",
-  전북: "전북특별자치도", 전라북도: "전북특별자치도", 전북특별차지도: "전북특별자치도", 경북: "경상북도", 경남: "경상남도", 제주: "제주특별자치도", 제주도: "제주특별자치도",
-  광주: "전남광주통합특별시", 광주광역시: "전남광주통합특별시", 전남: "전남광주통합특별시", 전라남도: "전남광주통합특별시",
-};
 
 export function parseJibunAddress(address: string): { head: string; mountain: boolean; bun: number; ji: number } | null {
   const m = address.trim().replace(/\s+/g, " ").match(/^(.*?)\s+(산\s*)?(\d+)(?:-(\d+))?(?:\s*번지)?$/);
@@ -20,54 +14,13 @@ export function parseJibunAddress(address: string): { head: string; mountain: bo
   return { head: m[1], mountain: Boolean(m[2]), bun: Number(m[3]), ji: m[4] === undefined ? 0 : Number(m[4]) };
 }
 
-interface Area {
-  code: string;
-  name: string;
-}
-
-const sigCache = new WeakMap<Db, Area[]>();
-
-function sigungus(db: Db): Area[] {
-  let rows = sigCache.get(db);
-  if (!rows) {
-    rows = db.prepare("SELECT code, name FROM legal_area WHERE level = 'sigungu'").all() as Area[];
-    if (rows.length) sigCache.set(db, rows);
-  }
-  return rows;
-}
-
-/** 시군구: "시도 시군구" 이름에서 시도를 떼고 공백을 무시해 가장 긴 접두어를 고른다(예: "성남시 분당구"). tokens[0]은 시도. */
-function matchSigungu(db: Db, tokens: string[]): { code: string; restName: string; tied: boolean } | null {
-  const sido = SIDO_ALIASES[tokens[0]] ?? tokens[0];
-  const restJoined = tokens.slice(1).join("");
-  let best: { code: string; restName: string; tied: boolean } | null = null;
-  for (const s of sigungus(db)) {
-    // 원천 SIG 이름의 시도 접두어도 같은 표로 정규화한다(실제 원천 표기: "전북특별차지도", "제주도")
-    const sp = s.name.indexOf(" ");
-    const sigSido = sp < 0 ? s.name : s.name.slice(0, sp);
-    if ((SIDO_ALIASES[sigSido] ?? sigSido) !== sido) continue;
-    const restName = s.name.slice(sigSido.length + 1).replace(/\s+/g, ""); // 세종: 이름이 시도와 같아 ""
-    if (!restJoined.startsWith(restName)) continue;
-    if (!best || restName.length > best.restName.length) best = { code: s.code, restName, tied: false };
-    else if (restName.length === best.restName.length) best.tied = true;
-  }
-  return best;
-}
-
-/** 2026 통합으로 시도(29 광주·46 전남)가 12(전남광주통합특별시)로 바뀌었다. 시군구는 재번호(46230 광양→12190)라 이름으로 찾고, 읍면동 3자리 이후는 그대로다(K-APT 5,989건 이름 일치 100%). */
-const RENUMBERED_SIDO: Record<string, string> = { "29": "12", "46": "12" };
-
 /**
- * 옛 시군구 코드로 적힌 PNU를 현재 법정구역 코드로 바꾼다. 현재 코드에 있거나, 재번호 대상 시도가 아니거나,
- * 주소로 시군구를 하나로 정할 수 없으면 PNU를 그대로 돌려준다(추측하지 않는다).
+ * 옛 코드로 적힌 PNU를 현재 법정구역 코드로 바꾼다(광주·전남 재번호, 인천 구 분할 — code-remap.ts).
+ * 이미 현재 코드이거나 이름으로 하나로 정할 수 없으면 PNU를 그대로 돌려준다(추측하지 않는다).
  */
 export function remapRenumberedPnu(db: Db, pnu: string, address: string | null): string {
-  const newSido = RENUMBERED_SIDO[pnu.slice(0, 2)];
-  if (!newSido || !address || sigungus(db).some((s) => s.code === pnu.slice(0, 5))) return pnu;
-  const tokens = address.trim().split(/\s+/);
-  if (tokens.length < 2) return pnu;
-  const m = matchSigungu(db, tokens);
-  return m && !m.tied && m.code.startsWith(newSido) ? m.code + pnu.slice(5) : pnu;
+  const r = remapPnu(db, pnu, address);
+  return r.pnu ?? pnu;
 }
 
 export function resolveJibunAddress(db: Db, address: string): { legalCode: string; pnu: string } | null {
@@ -84,7 +37,14 @@ export function resolveJibunDetailed(db: Db, address: string): { legalCode: stri
   const tokens = parsed.head.split(" ");
   if (tokens.length < 2) return ambiguous;
   const found = matchSigungu(db, tokens);
-  if (!found) return notFound;
+  if (!found) {
+    // 2026 개편으로 갈라진 옛 구(인천 중·동·서구): 법정동 이름으로 새 구의 코드를 찾는다
+    const split = tokens.length <= 4 ? remapSplitSigungu(db, tokens) : null;
+    if (!split) return notFound;
+    if ("reason" in split) return split.reason === "ambiguous" ? ambiguous : notFound;
+    const pnu = makePnu(split.code, parsed.mountain, parsed.bun, parsed.ji);
+    return pnu ? { legalCode: split.code, pnu } : notFound;
+  }
   if (found.tied) return ambiguous;
   const best = found;
 
