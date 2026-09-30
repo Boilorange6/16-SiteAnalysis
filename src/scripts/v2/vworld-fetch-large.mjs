@@ -7,9 +7,9 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writ
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 
-const { VworldSession, latestFull } = await import("../../lib/v2/ingest/vworld.ts");
+const { VworldSession, latestFull, latestFullPerLayer, rawZipName } = await import("../../lib/v2/ingest/vworld.ts");
 const { chromium } = await import("playwright");
-const FOLDERS = { 21: "legal_dong", 23: "cadastral", 18: "gis_building" };
+const FOLDERS = { 21: "legal_dong", 23: "cadastral", 18: "gis_building", 24: "zoning" };
 const LARGE_BYTES = 500 * 1024 ** 2;
 const BASE = "https://www.vworld.kr";
 
@@ -41,9 +41,10 @@ const tar = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe")
 // 목록: 일반 세션으로 (fileSq·baseDate 등은 목록에서만 가져온다)
 const session = new VworldSession();
 await session.login(ID, PW);
-const files = latestFull(await session.listFiles(ds)).filter(
-  (f) => (!regions || regions.has(f.region)) && (all || (f.approxBytes ?? 0) > LARGE_BYTES),
-);
+// dsId 24는 레이어별 전국 파일: --layers 관리지역,... 로 고르고 레이어마다 최신 전체데이터를 쓴다
+const layerTitles = opt("layers") ? new Set(String(opt("layers")).split(",").map((n) => `국토계획/${n}`)) : null;
+const listed = ds === "24" ? latestFullPerLayer(await session.listFiles(ds, { since: opt("since", "2026-08-01") })).filter((f) => layerTitles?.has(f.title)) : latestFull(await session.listFiles(ds));
+const files = listed.filter((f) => (!regions || regions.has(f.region)) && (all || (f.approxBytes ?? 0) > LARGE_BYTES));
 if (files.length === 0) {
   console.error("받을 파일이 없습니다 (region/크기 조건 확인).");
   process.exit(1);
@@ -92,7 +93,7 @@ async function fetchOne(f, out) {
 
 let failed = 0;
 for (const f of files) {
-  const out = join(outDir, FOLDERS[ds], f.baseDate, `${f.region}.zip`);
+  const out = join(outDir, FOLDERS[ds], f.baseDate, rawZipName(f));
   let done = false;
   try {
     const d = JSON.parse(readFileSync(`${out}.done.json`, "utf8"));

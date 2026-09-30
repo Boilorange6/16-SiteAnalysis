@@ -24,6 +24,8 @@ export interface FeatureInput {
   pnu?: string | null;
   legalCode?: string | null;
   properties?: Record<string, unknown>;
+  /** 좌표 반올림 간격(미터). 큰 폴리곤 레이어의 파일 크기를 줄일 때만 쓴다 */
+  roundM?: number;
 }
 
 export interface FeatureHit {
@@ -56,9 +58,12 @@ function* positions(coords: unknown): Generator<Position> {
   for (const c of coords) yield* positions(c);
 }
 
-export function projectGeometry(geometry: Geometry): Geometry {
+/** roundM: 좌표를 이 간격(미터)으로 반올림해 JSON을 줄인다. 없으면 반올림하지 않는다. */
+export function projectGeometry(geometry: Geometry, roundM?: number): Geometry {
   if (geometry.type === "GeometryCollection") throw new TypeError("GeometryCollection is not supported");
-  return { type: geometry.type, coordinates: mapPositions(geometry.coordinates, toUtmk) } as Geometry;
+  const snap = (v: number) => (roundM ? Math.round(v / roundM) * roundM : v);
+  const fix = (v: number) => (roundM ? Number(snap(v).toFixed(Math.max(0, Math.ceil(-Math.log10(roundM))))) : v);
+  return { type: geometry.type, coordinates: mapPositions(geometry.coordinates, (p) => { const [x, y] = toUtmk(p); return [fix(x), fix(y)] as const; }) } as Geometry;
 }
 
 function bboxOf(geometry: Geometry): [number, number, number, number] {
@@ -79,7 +84,7 @@ export function insertFeature(db: Db, input: FeatureInput): number {
   for (const [field, value] of [["pnu", input.pnu], ["legalCode", input.legalCode]] as const) {
     if (value != null && typeof value !== "string") throw new TypeError(`${field} must be a string (got ${typeof value})`);
   }
-  const projected = projectGeometry(input.geometry);
+  const projected = projectGeometry(input.geometry, input.roundM);
   const [minX, minY, maxX, maxY] = bboxOf(projected);
   return db.transaction(() => {
   const info = db
