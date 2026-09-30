@@ -4,7 +4,7 @@
  * 위치: 적재기가 법정동+지번→PNU→대표점으로 연결한 거래만 쓴다(위치 미확인 거래를 동 중심에 찍지 않는다).
  */
 import { toUtmk, type LngLat } from "../../crs";
-import { lookupParcelPoint } from "../../data/parcels";
+import { lookupParcelPoints } from "../../data/parcels";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext, Limitation, SourceRef } from "../context";
 import { fmt, makeTile, missing, obs, type MapCandidate, type TileDraft } from "./common";
@@ -78,7 +78,7 @@ export function quintileOf(v: number, values: number[]): 1 | 2 | 3 | 4 | 5 {
 }
 
 /** A07·D25가 공유하는 최근 12개월 아파트 매매 집계. 위치 미확인 거래를 임의 좌표에 투영하지 않는다. */
-export function collectTrades(ctx: EngineContext): TradeCollection | null {
+function collectTradesUncached(ctx: EngineContext): TradeCollection | null {
   const sources = ctx.sources("market", [SOURCE]);
   const market = ctx.db("market");
   if (sources.length === 0 || !market) return null;
@@ -112,12 +112,15 @@ export function collectTrades(ctx: EngineContext): TradeCollection | null {
   // 필지 대표점까지의 거리로 반경 안 거래만 남긴다
   const [cx, cy] = toUtmk(center);
   const near = new Map<string, boolean>();
+  const parcelPoints = core
+    ? lookupParcelPoints(core, rows.flatMap((row) => row.location_id ? [row.location_id] : []))
+    : new Map<string, LngLat>();
   const inRadius = (pnu: string | null): boolean => {
-    if (!pnu || !core) return false;
+    if (!pnu) return false;
     let v = near.get(pnu);
     if (v === undefined) {
-      const p = lookupParcelPoint(core, pnu);
-      v = p !== null && Math.hypot(toUtmk(p)[0] - cx, toUtmk(p)[1] - cy) <= radiusM;
+      const p = parcelPoints.get(pnu);
+      v = p !== undefined && Math.hypot(toUtmk(p)[0] - cx, toUtmk(p)[1] - cy) <= radiusM;
       near.set(pnu, v);
     }
     return v;
@@ -130,9 +133,13 @@ export function collectTrades(ctx: EngineContext): TradeCollection | null {
   for (const r of priced) byPnu.set(r.location_id!, [...(byPnu.get(r.location_id!) ?? []), r.unit]);
   const points = [...byPnu]
     .sort(([a], [b]) => (a < b ? -1 : 1))
-    .map(([pnu, us], i) => ({ pnu, i, n: us.length, m: median(us) as number, at: lookupParcelPoint(core!, pnu)! }));
+    .map(([pnu, us], i) => ({ pnu, i, n: us.length, m: median(us) as number, at: parcelPoints.get(pnu)! }));
 
   return { sources, valid, priced, points, unlocated, absent, cancelled, from, mid };
+}
+
+export function collectTrades(ctx: EngineContext): TradeCollection | null {
+  return ctx.memo("trades:apt-trade:v1", () => collectTradesUncached(ctx));
 }
 
 export function a07(ctx: EngineContext): TileResult {

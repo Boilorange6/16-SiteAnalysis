@@ -81,6 +81,7 @@ const COMMON_SQL = `
     valid_to TEXT,
     PRIMARY KEY (from_stable_id, to_stable_id, relation_type)
   );
+  CREATE INDEX IF NOT EXISTS idx_feature_link_to_relation ON feature_link (to_stable_id, relation_type, from_stable_id);
 
   CREATE TABLE IF NOT EXISTS observation (
     subject_id TEXT NOT NULL,
