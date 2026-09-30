@@ -1,6 +1,6 @@
 /**
  * v2 데이터 파일 빌드·게시.
- *   npm run data:build -- --version 2026-09-30a [--raw .cache/v2/raw] [--only core,reference,market] [--expectations exp.json]
+ *   npm run data:build -- --version 2026-09-30a [--raw .cache/v2/raw] [--only core,reference,market] [--expectations exp.json] [--with buildings]
  * 원천 zip은 먼저 풀고(이미 풀린 것은 건너뜀), 원천 파일은 폴더마다 가장 새 파일을 쓴다.
  */
 import { readdirSync, statSync, existsSync, readFileSync } from "node:fs";
@@ -12,6 +12,7 @@ const { readShp, readShpPoints } = await import("../../lib/v2/ingest/shp.ts");
 const { csvRecords } = await import("../../lib/v2/a0/measure.ts");
 const { buildAndPublish, insertRelease } = await import("../../lib/v2/ingest/build.ts");
 const { buildParcelPoints } = await import("../../lib/v2/ingest/sources/parcels.ts");
+const { buildBuildings } = await import("../../lib/v2/ingest/sources/buildings.ts");
 const { buildLegalAreas } = await import("../../lib/v2/ingest/sources/legal-areas.ts");
 const { buildLedger } = await import("../../lib/v2/ingest/sources/ledger.ts");
 const { buildPointSource, STORE_SPEC, BUS_STOP_SPEC, PARK_SPEC } = await import("../../lib/v2/ingest/sources/points.ts");
@@ -30,6 +31,8 @@ if (!version || !/^[0-9A-Za-z._-]+$/.test(version)) {
   process.exit(2);
 }
 const flag = (name) => args.includes(`--${name}`);
+/** 기본 빌드에 넣지 않는 무거운 원천: --with buildings (core에 건물 도형·building_fact를 더한다) */
+const withBuildings = String(opt("with", "")).split(",").includes("buildings");
 const raw = opt("raw", ".cache/v2/raw");
 const only = new Set(String(opt("only", "core,reference,market")).split(","));
 const resetBaseline = opt("reset-baseline") ? opt("reset-baseline").split(",") : undefined;
@@ -87,7 +90,7 @@ async function discoverCore() {
   const titles = allIn("ledger_title").filter((f) => /^title_\d{6}\.csv$/i.test(basename(f))).sort((a, b) => basename(b).localeCompare(basename(a)));
   const titleFile = titles[0] ?? newest("ledger_title", /^title_5sido\.csv$/i);
   console.log(`parcel points: cadastral parts by 시도 ${partCounts(cadastral)} · from buildings parts by 시도 ${partCounts(buildings)} · title ${basename(titleFile)}`);
-  return { cadastral, buildings, titleFile, hasNationalTitle: titles.length > 0 };
+  return { cadastral, buildings, buildingAll, titleFile, hasNationalTitle: titles.length > 0 };
 }
 if (flag("dry-run")) {
   await discoverCore();
@@ -105,7 +108,7 @@ if (only.has("core")) {
       emd: readShp(newest("legal_dong", /\(EMD\)\.shp$/i)),
       ri: readShp(newest("legal_dong", /\(LIO\)\.shp$/i)),
     });
-    const { cadastral, buildings, titleFile, hasNationalTitle } = await discoverCore();
+    const { cadastral, buildings, buildingAll, titleFile, hasNationalTitle } = await discoverCore();
     const parcels = [];
     if (cadastral.size > 0) {
       const parcelRel = release(db, "parcel", oldestFile(cadastral), "국토교통부(VWorld 연속지적도형정보)", "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=23", "CC-BY");
@@ -124,6 +127,14 @@ if (only.has("core")) {
       const pb = await buildParcelPoints(db, chain(...flat(buildings).map(buildingAsParcels)), buildingRel, "parcel_building");
       pb.expectedRegions = [...buildings.keys()];
       parcels.push(pb);
+    }
+    if (withBuildings) {
+      // 건물 도형: 받은 모든 시도의 GIS건물통합정보 (core가 수 GB 커진다). 시도 하나라도 없으면 있는 시도만 적재하고 그 사실을 알린다.
+      const buildingRel = release(db, "building", oldestFile(buildingAll), "국토교통부(VWorld GIS건물통합정보)", "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=18", "CC-BY");
+      const b = await buildBuildings(db, chain(...flat(buildingAll).map((f) => readShp(f))), buildingRel);
+      b.expectedRegions = [...buildingAll.keys()];
+      parcels.push(b);
+      console.log(`buildings: 시도 ${partCounts(buildingAll)}`);
     }
     const recapFile = newest("ledger_recap", /^recap_.*\.csv$/i);
     if (!hasNationalTitle) console.warn("⚠ 전국 표제부(title_YYYYMM.csv)가 없어 5개 시도 표제부로 적재합니다 — 오피스텔·단일동 커버리지 일부");
