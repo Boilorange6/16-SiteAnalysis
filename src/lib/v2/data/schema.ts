@@ -1,7 +1,7 @@
 /**
  * v2 데이터 파일 스키마 (spec §3.2~3.3).
  *
- * 데이터 파일은 로컬 PC에서 만들어 읽기 전용으로 게시한다. 파일 하나가 한 종류(core/reference/market/osm)다.
+ * 데이터 파일은 로컬 PC에서 만들어 읽기 전용으로 게시한다. 파일 하나가 한 종류(core/buildings/parcels/reference/market/osm)다.
  * geom_json은 EPSG:5179 미터 좌표의 GeoJSON geometry다.
  * ponytail: WKB 대신 GeoJSON 텍스트 — 파일 크기가 커진다. A0 실측에서 core가 디스크 예산을 넘으면 WKB로 바꾼다.
  */
@@ -9,8 +9,8 @@ import type BetterSqlite3 from "better-sqlite3";
 
 type Db = BetterSqlite3.Database;
 
-export type DataFileKind = "core" | "buildings" | "reference" | "market" | "osm";
-export const DATA_FILE_KINDS: readonly DataFileKind[] = ["core", "buildings", "reference", "market", "osm"];
+export type DataFileKind = "core" | "buildings" | "parcels" | "reference" | "market" | "osm";
+export const DATA_FILE_KINDS: readonly DataFileKind[] = ["core", "buildings", "parcels", "reference", "market", "osm"];
 export const DATA_SCHEMA_VERSION = 2;
 export const VALUE_STATUSES = ["observed", "estimated", "suppressed", "missing", "not_applicable"] as const;
 

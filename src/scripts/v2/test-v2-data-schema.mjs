@@ -18,7 +18,7 @@ function seedRelease(db) {
 
 // ─── 1. 종류별 테이블 ──────────────────────────────────────────────────────
 {
-  assert.deepEqual([...DATA_FILE_KINDS], ["core", "buildings", "reference", "market", "osm"]);
+  assert.deepEqual([...DATA_FILE_KINDS], ["core", "buildings", "parcels", "reference", "market", "osm"]);
   for (const kind of DATA_FILE_KINDS) {
     const db = new Database(":memory:");
     initDataFileSchema(db, kind);
