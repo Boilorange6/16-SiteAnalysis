@@ -83,6 +83,7 @@ try {
 
   // 타일 하나가 던져도 분석은 끝나고, 실패 타일은 캐시되지 않는다
   const broken = mkdtempSync(join(tmpdir(), "v2-eng-run-broken-"));
+  let failedCodes = [];
   await buildEngineFixture(broken, "v1");
   const brokenInput = { ...input, analysisDate: "2026-08-01" }; // 앞선 실행의 캐시와 겹치지 않게
   const { EngineContext } = await import("../../lib/v2/engine/context.ts");
@@ -95,13 +96,16 @@ try {
     const f = runAnalysis(appDb, broken, brokenInput);
     const a04 = f.results.find((t) => t.tileCode === "A04");
     assert.deepEqual([a04.status, a04.limitations[0].note], ["failed", "계산 중 오류: boom"]);
-    assert.equal(f.results.filter((t) => t.status === "failed").length, 1);
+    // 공원을 읽는 타일(A04·D09 등)만 실패하고 나머지는 계산된다
+    failedCodes = f.results.filter((t) => t.status === "failed").map((t) => t.tileCode);
+    assert.ok(failedCodes.includes("A04") && failedCodes.includes("D09"), failedCodes.join(","));
+    assert.ok(f.results.filter((t) => t.status === "failed").every((t) => t.limitations[0].note === "계산 중 오류: boom"));
     assert.equal(A.getAnalysisRun(appDb, f.analysisId).status, "complete");
   } finally {
     EngineContext.prototype.hits = origHits;
   }
   const again = runAnalysis(appDb, broken, brokenInput);
-  assert.deepEqual(again.computed, ["A04"], "실패한 타일만 다시 계산된다");
+  assert.deepEqual([...again.computed].sort(), [...failedCodes].sort(), "실패한 타일만 다시 계산된다");
 } finally {
   appDb.close();
 }
