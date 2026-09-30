@@ -56,6 +56,17 @@ const MapFeatureSchema = z.object({
   highlight: z.boolean().optional(),
 });
 
+/** 면(폴리곤) 지물 상한: 개수, 고리 하나의 꼭짓점 수. 상한은 엔진이 지키고 스키마가 다시 막는다. */
+export const MAX_MAP_POLYGONS = 150;
+export const MAX_POLYGON_VERTICES = 200;
+const LngLatSchema = z.tuple([z.number().finite(), z.number().finite()]);
+const MapPolygonSchema = z.object({
+  layer: z.string().min(1),
+  /** 첫 고리는 바깥, 나머지는 구멍. WGS84 [lng, lat]. 첫점=끝점으로 닫는다. */
+  rings: z.array(z.array(LngLatSchema).min(4).max(MAX_POLYGON_VERTICES + 1)).min(1),
+  label: z.string().nullable().optional(),
+});
+
 export const TileResultSchema = z
   .object({
     tileId: z.string().min(1),
@@ -84,6 +95,9 @@ export const TileResultSchema = z
       features: z.array(MapFeatureSchema).optional(),
       /** 상한으로 잘리기 전 전체 개수 */
       featuresTotal: z.number().int().nonnegative().optional(),
+      /** 면 지물(선택). 없거나 그릴 수 없으면 같은 정보의 대표점 features로 대신한다. 상한 MAX_MAP_POLYGONS. */
+      polygons: z.array(MapPolygonSchema).max(MAX_MAP_POLYGONS).optional(),
+      polygonsTotal: z.number().int().nonnegative().optional(),
     }),
     provenance: z.object({
       manifestHash: z.string().regex(/^[0-9a-f]{64}$/),
@@ -131,6 +145,7 @@ export const TileResultSchema = z
 export type TileResult = z.infer<typeof TileResultSchema>;
 export type TileConditions = TileResult["conditions"];
 export type MapFeature = z.infer<typeof MapFeatureSchema>;
+export type MapPolygon = z.infer<typeof MapPolygonSchema>;
 
 export function parseTileResult(value: unknown): TileResult {
   return TileResultSchema.parse(value);

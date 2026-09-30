@@ -18,8 +18,11 @@ import { a03 } from "./tiles/a03";
 import { a04 } from "./tiles/a04";
 import { a05 } from "./tiles/a05";
 import { a06 } from "./tiles/a06";
+import { a07 } from "./tiles/a07";
+import { a09 } from "./tiles/a09";
 import { a10 } from "./tiles/a10";
 import { a11 } from "./tiles/a11";
+import { a12 } from "./tiles/a12";
 import { ENGINE_VERSION, makeTile } from "./tiles/common";
 import { notProvided } from "./tiles/not-provided";
 
@@ -45,11 +48,11 @@ const TILES: Array<[code: string, compute: (ctx: EngineContext) => TileResult]> 
   ["A04", a04],
   ["A05", a05],
   ["A06", a06],
-  ["A07", (c) => notProvided(c, "A07")],
-  ["A09", (c) => notProvided(c, "A09")],
+  ["A07", a07],
+  ["A09", a09],
   ["A10", a10],
   ["A11", a11],
-  ["A12", (c) => notProvided(c, "A12")],
+  ["A12", a12],
   ["D04", (c) => notProvided(c, "D04")],
   ["S02", (c) => notProvided(c, "S02")],
   ["S03", (c) => notProvided(c, "S03")],

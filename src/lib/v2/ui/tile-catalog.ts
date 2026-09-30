@@ -35,6 +35,15 @@ export const SOURCE_NAMES: Record<string, string> = {
   move_in: "입주예정",
   parcel: "연속지적도",
   legal_areas: "법정구역",
+  rtms_apt_trade: "국토부 아파트 매매 실거래",
+  maintenance_integrated: "정비사업 현황(통합)",
+  maintenance_std: "정비사업 현황(표준데이터)",
+  maintenance_zone: "정비구역 경계",
+  zoning_urban: "용도지역(도시지역)",
+  zoning_management: "용도지역(관리지역)",
+  zoning_agri_forest: "용도지역(농림지역)",
+  zoning_nature: "용도지역(자연환경보전지역)",
+  zoning_other: "용도지역(기타)",
 };
 export const sourceName = (id: string) => SOURCE_NAMES[id] ?? id;
 

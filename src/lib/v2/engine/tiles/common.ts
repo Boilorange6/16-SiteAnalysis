@@ -1,12 +1,13 @@
 /** 타일 공통: 지표 생성기와 TileResult 조립. 결과는 항상 parseTileResult를 통과한다. */
 import { toLngLat } from "../../crs";
 import type { FeatureHit } from "../../data/features";
-import { MAX_MAP_FEATURES, parseTileResult, type MapFeature, type TileResult } from "../../tile-result";
+import { MAX_MAP_FEATURES, MAX_MAP_POLYGONS, MAX_POLYGON_VERTICES, parseTileResult, type MapFeature, type MapPolygon, type TileResult } from "../../tile-result";
 import { layerStyle } from "../../ui/map-layers";
 import { sourceName } from "../../ui/tile-catalog";
 import type { EngineContext, Limitation, SourceRef } from "../context";
+import { simplifyRing } from "./geo";
 
-export const ENGINE_VERSION = "v2-rail-school-1";
+export const ENGINE_VERSION = "v2-trade-maint-zoning-1";
 
 type Metric = TileResult["metrics"][number];
 
@@ -68,6 +69,24 @@ export function capFeatures(items: MapCandidate[]): { features: MapFeature[]; to
   return { features: [...picked, ...hl].map((c) => c.f), total: items.length };
 }
 
+// ── 면 지물 ──
+export type PolygonCandidate = { id: number; areaM2: number; p: MapPolygon };
+
+/** EPSG:5179 미터 폴리곤([바깥, 구멍…]) → 지도용 후보. 고리마다 200점 이하로 줄이고 WGS84로 바꾼다. */
+export function polygonCandidate(id: number, layer: string, rings: number[][][], areaM2: number, label: string | null = null): PolygonCandidate | null {
+  const out = rings
+    .map((r) => simplifyRing(r, MAX_POLYGON_VERTICES))
+    .filter((r) => r.length >= 4)
+    .map((r) => r.map((xy) => { const [lng, lat] = toLngLat([xy[0], xy[1]]); return [Math.round(lng * 1e6) / 1e6, Math.round(lat * 1e6) / 1e6] as [number, number]; }));
+  return out.length === 0 || rings[0].length < 4 ? null : { id, areaM2, p: { layer, rings: out, label } };
+}
+
+/** 상한을 넘으면 면적이 큰 것부터 남긴다. 결정적. */
+export function capPolygons(items: PolygonCandidate[]): { polygons: MapPolygon[]; total: number } {
+  const sorted = [...items].sort((a, b) => b.areaM2 - a.areaM2 || a.id - b.id);
+  return { polygons: sorted.slice(0, MAX_MAP_POLYGONS).map((c) => c.p), total: items.length };
+}
+
 export interface TileDraft {
   code: string;
   type?: TileResult["tileType"];
@@ -79,11 +98,15 @@ export interface TileDraft {
   layers?: string[];
   /** 지도에 그릴 지물 후보. 상한 처리·범례는 makeTile이 한다. */
   map?: MapCandidate[];
+  /** 지도에 그릴 면 후보(선택). 같은 정보의 대표점은 map에 함께 넣어 면을 못 그리는 화면이 대신 쓴다. */
+  polygons?: PolygonCandidate[];
 }
 
 export function makeTile(ctx: EngineContext, d: TileDraft): TileResult {
   const capped = d.map ? capFeatures(d.map) : null;
-  const legend = capped ? [...new Set(capped.features.map((f) => f.layer))].map((l) => ({ label: layerStyle(l).label, min: null, max: null })) : [];
+  const cappedPoly = d.polygons ? capPolygons(d.polygons) : null;
+  const legendLayers = [...(capped?.features.map((f) => f.layer) ?? []), ...(cappedPoly?.polygons.map((p) => p.layer) ?? [])];
+  const legend = [...new Set(legendLayers.map((l) => layerStyle(l).label))].map((label) => ({ label, min: null, max: null }));
   return parseTileResult({
     tileId: `${ctx.analysisId}-${d.code}`,
     analysisId: ctx.analysisId,
@@ -100,6 +123,7 @@ export function makeTile(ctx: EngineContext, d: TileDraft): TileResult {
       layers: d.layers ?? [],
       outputFace: "front",
       ...(capped ? { features: capped.features, featuresTotal: capped.total } : {}),
+      ...(cappedPoly && cappedPoly.total > 0 ? { polygons: cappedPoly.polygons, polygonsTotal: cappedPoly.total } : {}),
     },
     provenance: { manifestHash: ctx.manifestHash, sources: d.sources },
     limitations: d.limitations,

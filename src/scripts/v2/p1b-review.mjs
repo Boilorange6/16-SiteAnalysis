@@ -29,7 +29,10 @@ const KEY = {
   A04: ["parks", "nearest_park_point_m"],
   A05: ["apartment_complexes", "households", "households_from_kapt", "kapt_only_apartments", "officetels"],
   A06: ["applyhome_units", "move_in_units"],
+  A07: ["median_price_per_m2", "valid_trades", "median_change_pct", "cancelled_trades"],
+  A09: ["zones_in_radius", "projects_in_radius", "roster_projects", "planned_households"],
   A10: ["planned_projects", "nearest_planned_station_m", "nearest_planned_line_m"],
+  A12: ["site_zoning_count", "share_sum"],
 };
 const show = (m) => (!m ? "-" : m.value === null ? "미확인" : `${m.value}`); // "-" = 지표 없음(원천 미적재)
 
@@ -44,6 +47,12 @@ for (const site of REVIEW_SITES) {
   const cells = Object.entries(KEY).map(([code, ids]) => {
     const t = r.results.find((x) => x.tileCode === code);
     const parts = ids.map((id) => `${id}=${show(t.metrics.find((m) => m.id === id))}`);
+    // A12: 대지 용도지역 이름(강조점 라벨)과 가장 큰 구성 분류
+    if (code === "A12") {
+      const site = t.presentation.features?.find((f) => f.layer === "zoning_site")?.label ?? "미확인";
+      const top = t.metrics.filter((m) => m.id.startsWith("share_class_")).sort((a, b) => b.value - a.value)[0];
+      parts.unshift(`site=${site}`, `top=${top ? `${top.label.replace("구성비: ", "")} ${top.value}%` : "-"}`);
+    }
     return `${t.status}: ${parts.join(", ")}`;
   });
   rows.push({ site, ms, cells, failed: failed.length, results: r.results });

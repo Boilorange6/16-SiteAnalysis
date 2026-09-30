@@ -97,6 +97,14 @@ export class EngineContext {
     return [...new Set(this.areas.sigungu.map((a) => a.code.slice(0, 2)))].sort();
   }
 
+  /** 반경과 교차하는 시군구(법정구역 기준) */
+  sigungu(): Array<{ code: string; name: string }> {
+    const core = this.db("core");
+    if (!core) return [];
+    this.areas ??= legalAreasForCircle(core, this.input.center, this.input.radiusM);
+    return this.areas.sigungu;
+  }
+
   /**
    * 원천의 적재 이력(ingest_run.snapshot_json)에서 읽은 한계.
    * source_release.coverage_json은 적재기가 채우지 않아 항상 비어 있다 — 기록된 것은 시도별 건수·위치 미확인 건수뿐이다.
