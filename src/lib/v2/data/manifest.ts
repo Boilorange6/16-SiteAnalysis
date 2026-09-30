@@ -337,5 +337,13 @@ export function collectGarbageLocked(dataDir: string, pinnedHashes: ReadonlySet<
 export function openDataFile(dataDir: string, m: Manifest, key: string): BetterSqlite3.Database {
   const file = m.files[key];
   if (!file) throw new ManifestError("UNKNOWN_FILE_KEY", `manifest has no file "${key}"`);
-  return new Database(resolveDataPath(dataDir, file.path), { readonly: true, fileMustExist: true });
+  const db = new Database(resolveDataPath(dataDir, file.path), { readonly: true, fileMustExist: true });
+  // Published files are immutable and read-only. Keep spatial/index pages in
+  // the process and keep SQLite's small temporary sort tables off the disk;
+  // the request path must not compete with the data build for synchronous I/O.
+  db.pragma("query_only = ON");
+  db.pragma("mmap_size = 268435456");
+  db.pragma("cache_size = -65536");
+  db.pragma("temp_store = MEMORY");
+  return db;
 }

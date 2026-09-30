@@ -10,7 +10,7 @@ import { openDataFile, readManifest } from "../data/manifest";
 import { tileCacheKey, type TileResult } from "../tile-result";
 import type { SiteSummary } from "../ui/tile-view";
 import { EngineContext } from "./context";
-import { resolveSite, type SiteFailure } from "./site";
+import { resolveSite, type SiteFailure, type SiteResult } from "./site";
 import { buildSummary } from "./summary";
 import { a01 } from "./tiles/a01";
 import { a02 } from "./tiles/a02";
@@ -64,18 +64,21 @@ export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, inpu
   const manifest = readManifest(dataDir);
   if (!manifest) throw new Error("no published manifest — run a data build first");
   const core = openDataFile(dataDir, manifest, "core");
-  const site = (() => {
-    try {
-      return resolveSite(core, input);
-    } finally {
-      core.close();
-    }
-  })();
-  if (!site.ok) return { ok: false, reason: site.reason };
+  let site: SiteResult;
+  try {
+    site = resolveSite(core, input);
+  } catch (error) {
+    core.close();
+    throw error;
+  }
+  if (!site.ok) {
+    core.close();
+    return { ok: false, reason: site.reason };
+  }
 
   const analysisId = randomUUID();
   const analysisDate = input.analysisDate ?? todayKst();
-  const ctx = new EngineContext(dataDir, manifest, analysisId, { address: site.label, center: site.center, radiusM: input.radiusM, analysisDate });
+  const ctx = new EngineContext(dataDir, manifest, analysisId, { address: site.label, center: site.center, radiusM: input.radiusM, analysisDate }, { core });
   try {
     createAnalysisRun(appDb, {
       analysisId, address: site.label, center: site.center, radiusM: input.radiusM, analysisDate,

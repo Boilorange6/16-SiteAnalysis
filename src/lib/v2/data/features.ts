@@ -140,7 +140,7 @@ export function queryFeaturesInRadius(db: Db, center: LngLat, radiusM: number, k
       FROM feature_rtree r CROSS JOIN feature f ON f.feature_id = r.feature_id
       WHERE r.max_x >= ? AND r.min_x <= ? AND r.max_y >= ? AND r.min_y <= ?
         AND f.kind IN (${kinds.map(() => "?").join(",")})
-      ORDER BY f.feature_id`)
+      `)
     .all(cx - radiusM, cx + radiusM, cy - radiusM, cy + radiusM, ...kinds) as FeatureRow[];
 
   const circle = circlePolygon(cx, cy, radiusM);
@@ -167,5 +167,9 @@ export function queryFeaturesInRadius(db: Db, center: LngLat, radiusM: number, k
       distanceM,
     });
   }
+  // R*Tree traversal does not promise feature_id order. Sorting the already
+  // exact-filtered hits in JS preserves deterministic output without making
+  // SQLite materialize a temporary B-tree for every spatial query.
+  hits.sort((a, b) => a.featureId - b.featureId);
   return hits;
 }
