@@ -156,6 +156,7 @@ async function buildCore() {
   const pp = db.prepare("INSERT INTO parcel_point (pnu, lng, lat, jimok, release_id) VALUES (?, ?, ?, '대', ?)");
   pp.run("1219010400100010000", 127.7, 34.9, r); // 광양시 성황동
   pp.run("1230010700100010000", 126.9, 35.18, r); // 북구 용봉동 (광산구에도 용봉동이 있다)
+  pp.run("1219010400100040001", 127.71, 34.91, r); // 광양시 성황동 4-1 (K-APT PNU는 본번만 4-0000)
   const rec = (id, pnu, address) => ({ properties: { 단지고유번호: id, 필지고유번호: pnu, 주소: address, 단지종류: "1", 동수: "1", 세대수: "100", 사용승인일: "2010-01-01" } });
 
   // 옛 46230 광양시 → 12190(재번호), 옛 29170 북구 → 12300, 읍면동 이하는 그대로
@@ -177,10 +178,18 @@ async function buildCore() {
     yield rec("29170200000001", "2917010700100010000", "광주광역시 북구 용봉동 1");
     yield rec("46770200000001", "4677010100100010000", "전라남도 고흥군 고흥읍 1"); // parcel_point 없음 → unlocated
   }
-  const [stats] = await buildKapt(db, { records: recs(), releaseId: rel(db, "kapt") });
+  const all = async function* () {
+    yield* recs();
+    yield rec("46230200000002", "4623010400100040000", "전라남도 광양시 성황동 4-1"); // 주소 부번으로 재조회 → 12190104 00 1 0004 0001
+    yield rec("46230200000003", "4623010400100040000", "전라남도 광양시 성황동 5-1"); // 본번이 다르면 믿지 않는다 → unlocated
+  };
+  const [stats] = await buildKapt(db, { records: all(), releaseId: rel(db, "kapt") });
   invariant(stats);
-  assert.deepEqual(counts(stats), [3, 2, 1, 0]);
-  assert.deepEqual(stats.byRegion, { 12: 2 });
+  assert.deepEqual(counts(stats), [5, 3, 2, 0]);
+  assert.deepEqual(stats.byRegion, { 12: 3 });
+  const viaAddress = JSON.parse(db.prepare("SELECT properties_json FROM feature WHERE stable_id = 'kapt:46230200000002'").pluck().get());
+  assert.equal(viaAddress.sourcePnu, "4623010400100040000");
+  assert.equal(db.prepare("SELECT pnu FROM feature WHERE stable_id = 'kapt:46230200000002'").pluck().get(), "1219010400100040001");
   assert.deepEqual(stats.expectedRegions.sort(), ["12"], "통합 시도 12만 기대 지역");
   const row = db.prepare("SELECT pnu, legal_code, properties_json FROM feature WHERE stable_id = 'kapt:46230200000001'").get();
   assert.deepEqual([row.pnu, row.legal_code], ["1219010400100010000", "1219010400"]);

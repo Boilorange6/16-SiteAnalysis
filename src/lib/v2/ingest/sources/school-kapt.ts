@@ -4,9 +4,10 @@
  */
 import type BetterSqlite3 from "better-sqlite3";
 import type { MeasureRecord } from "../../a0/measure";
+import type { LngLat } from "../../crs";
 import { insertFeature } from "../../data/features";
-import { remapRenumberedPnu } from "../../data/jibun";
-import { lookupParcelPoint } from "../../data/parcels";
+import { parseJibunAddress, remapRenumberedPnu } from "../../data/jibun";
+import { lookupParcelPoint, makePnu } from "../../data/parcels";
 import { batched, SourceStats } from "../build";
 import type { PointSourceSpec } from "./points";
 
@@ -103,6 +104,17 @@ export async function buildSchoolZoneLinks(
 const KAPT_PNU = /^\d{19}$/;
 const isoDate = (v: unknown): string | null => (/^\d{4}-\d{2}-\d{2}$/.test(String(v ?? "").trim()) ? String(v).trim() : null);
 
+/** 재번호를 끝낸 PNU의 필지 대표점. K-APT의 PNU는 부번이 0000인 경우가 많다(주소 "청운동 4-1", PNU 본번 4) — 본번이 같을 때만 주소의 부번으로 다시 찾는다. */
+export function locateKaptParcel(db: Db, pnu: string, address: string | null): { pnu: string; point: LngLat } | null {
+  const exact = lookupParcelPoint(db, pnu);
+  if (exact) return { pnu, point: exact };
+  const j = address ? parseJibunAddress(address) : null;
+  const alt = j ? makePnu(pnu.slice(0, 10), pnu[10] === "2", j.bun, j.ji) : null;
+  if (!alt || alt === pnu || alt.slice(11, 15) !== pnu.slice(11, 15)) return null;
+  const point = lookupParcelPoint(db, alt);
+  return point ? { pnu: alt, point } : null;
+}
+
 /**
  * K-APT 단지 식별정보 → kind kapt_complex. 좌표가 없어 필지고유번호(PNU) → parcel_point로 위치를 얻는다(못 얻으면 unlocated).
  * 같은 PNU의 ledger housing_complex가 있으면 feature_link(same_parcel, method "pnu")로 잇는다. 시도별 received/accepted/unlocated/rejected는 release coverage에 남긴다.
@@ -119,20 +131,21 @@ export async function buildKapt(db: Db, input: { records: AsyncIterable<MeasureR
     const id = str(p["단지고유번호"]);
     const sourcePnu = str(p["필지고유번호"]);
     // 광주·전남 옛 시군구 코드(29·46)는 통합 코드(12)로 바꿔서 parcel_point를 찾는다
-    const pnu = sourcePnu && KAPT_PNU.test(sourcePnu) ? remapRenumberedPnu(db, sourcePnu, str(p["주소"])) : sourcePnu;
-    const region = pnu ? pnu.slice(0, 2) : "(미상)";
+    const remapped = sourcePnu && KAPT_PNU.test(sourcePnu) ? remapRenumberedPnu(db, sourcePnu, str(p["주소"])) : sourcePnu;
+    const region = remapped ? remapped.slice(0, 2) : "(미상)";
     const t = (tally[region] ??= { received: 0, accepted: 0, unlocated: 0, rejected: 0 });
     t.received++;
-    if (!id || !pnu || !KAPT_PNU.test(pnu) || seen.has(id)) {
+    if (!id || !remapped || !KAPT_PNU.test(remapped) || seen.has(id)) {
       t.rejected++;
       return stats.reject();
     }
     seen.add(id);
-    const point = lookupParcelPoint(db, pnu);
-    if (!point) {
+    const found = locateKaptParcel(db, remapped, str(p["주소"]));
+    if (!found) {
       t.unlocated++;
       return stats.unlocate();
     }
+    const { pnu, point } = found;
     const props: Props = {
       complexId: id,
       complexType: str(p["단지종류"]), // 원천 코드 그대로(1·2·3). 의미는 원천 문서에 없어 해석하지 않는다
