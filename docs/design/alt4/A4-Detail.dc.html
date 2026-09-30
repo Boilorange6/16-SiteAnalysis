@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>타일 펼치기 · 학군</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&amp;family=Noto+Sans+KR:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0;font-family:"Noto Sans KR","Malgun Gothic",sans-serif;color:#15171C;background:#EEF0F3}
+a{color:#15171C}
+button{font-family:inherit}
+.dh{font-family:"Do Hyeon","Noto Sans KR",sans-serif;font-weight:400}
+.k{background:#FDF6E8;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.k b{font-family:"Do Hyeon",sans-serif;font-size:30px;font-weight:400;line-height:1.1}
+.k span{font-size:12px;color:#676C76}
+.sc{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid #EEF0F3;font-size:14px}
+.sc .t{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#FFFFFF;flex-shrink:0}
+.sc .r{margin-left:auto;font-size:13px;color:#4A4F59}
+.nav{width:44px;height:44px;border-radius:22px;border:0;background:#FFFFFF;font-size:18px;box-shadow:0 2px 8px rgba(20,23,28,.12)}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; position: relative; overflow: hidden; background: #EEF0F3">
+<div aria-hidden="true" style="position: absolute; inset: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: 72px repeat(3, minmax(0, 1fr)); gap: 16px; padding: 0 24px 24px; box-sizing: border-box; opacity: .5">
+<div style="grid-column: span 4"></div>
+<div style="grid-column: span 2; grid-row: span 2; background: #FFFFFF; border-radius: 18px"></div>
+<div style="background: #FFFFFF; border-radius: 18px"></div><div style="background: #FFFFFF; border-radius: 18px"></div><div style="background: #FFFFFF; border-radius: 18px"></div><div style="background: #FFFFFF; border-radius: 18px"></div>
+<div style="background: #FFFFFF; border-radius: 18px"></div><div style="background: #FFFFFF; border-radius: 18px"></div><div style="background: #FFFFFF; border-radius: 18px"></div><div style="background: #FFFFFF; border-radius: 18px"></div>
+</div>
+<div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(21,23,28,.45)"></div>
+
+<button class="nav" aria-label="이전 타일: 교통" style="position: absolute; left: 32px; top: 428px">←</button>
+<button class="nav" aria-label="다음 타일: 실거래 시세" style="position: absolute; right: 32px; top: 428px">→</button>
+
+<section role="dialog" aria-label="학군 상세" style="position: absolute; left: 100px; right: 100px; top: 48px; bottom: 48px; background: #FFFFFF; border-radius: 26px; overflow: hidden; display: flex">
+<div style="width: 620px; flex-shrink: 0; position: relative; background: #F4F5F2">
+<svg width="620" height="804" viewBox="0 0 620 804" role="img" aria-label="통학구역과 학교 위치 지도" style="display: block">
+<rect width="620" height="804" fill="#F4F5F2"></rect>
+<g stroke="#FFFFFF" stroke-linecap="round"><path d="M0 340 L620 300" stroke-width="14"></path><path d="M400 0 L400 804" stroke-width="14"></path><path d="M0 600 L620 560 M150 0 L150 804" stroke-width="6"></path></g>
+<path d="M120 200 L420 160 L480 440 L360 560 L140 520 Z" fill="#E39B1B" fill-opacity=".14" stroke="#E39B1B" stroke-width="3"></path>
+<path d="M420 160 L600 180 L610 470 L480 440 Z" fill="none" stroke="#C9CDD4" stroke-width="2" stroke-dasharray="6 5"></path>
+<path d="M140 520 L360 560 L330 780 L100 760 Z" fill="none" stroke="#C9CDD4" stroke-width="2" stroke-dasharray="6 5"></path>
+<rect x="280" y="360" width="36" height="30" fill="#15171C" stroke="#FFFFFF" stroke-width="3"></rect>
+<path d="M298 375 L240 300" stroke="#E39B1B" stroke-width="3" stroke-dasharray="2 6" stroke-linecap="round"></path>
+<rect x="222" y="280" width="30" height="30" rx="8" fill="#E39B1B"></rect><text x="237" y="300" text-anchor="middle" font-family="Noto Sans KR, sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">초</text>
+<rect x="500" y="300" width="30" height="30" rx="8" fill="#C98A1B"></rect><text x="515" y="320" text-anchor="middle" font-family="Noto Sans KR, sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">중</text>
+<rect x="180" y="640" width="30" height="30" rx="8" fill="#C98A1B"></rect><text x="195" y="660" text-anchor="middle" font-family="Noto Sans KR, sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">중</text>
+<g fill="#6B4CD6" fill-opacity=".55"><circle cx="440" cy="520" r="4"></circle><circle cx="452" cy="530" r="4"></circle><circle cx="430" cy="536" r="4"></circle><circle cx="462" cy="512" r="4"></circle><circle cx="446" cy="546" r="4"></circle><circle cx="470" cy="540" r="4"></circle></g>
+<g font-family="Noto Sans KR, sans-serif" font-size="12" font-weight="700" fill="#15171C"><text x="160" y="232" fill="#A06A0E">○○초 통학구역</text><text x="480" y="580" fill="#4A3A9E">학원가</text></g>
+</svg>
+<span style="position: absolute; left: 20px; bottom: 20px; background: #FFFFFF; border-radius: 12px; padding: 8px 12px; font-size: 12px">대지는 <b>○○초 통학구역 안</b>에 있습니다</span>
+</div>
+
+<div style="flex-grow: 1; min-width: 0; padding: 28px 32px; box-sizing: border-box; display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; align-items: center; gap: 10px">
+<span style="width: 12px; height: 12px; border-radius: 6px; background: #E39B1B"></span>
+<h1 class="dh" style="margin: 0; font-size: 30px">학군</h1>
+<span style="font-size: 11px; font-weight: 700; color: #8A5A00; background: #FDF1D8; padding: 3px 8px; border-radius: 6px">예시 데이터</span>
+<button aria-label="닫기" style="margin-left: auto; width: 40px; height: 40px; border: 0; border-radius: 20px; background: #EEF0F3; font-size: 18px">×</button>
+</div>
+<p style="margin: 0; font-size: 15px; line-height: 1.7; color: #33363D">배정 초등학교까지 걸어서 7분, 큰길을 건너지 않습니다. 중학교 2곳이 1km 안에 있고 학원 48곳이 동쪽에 모여 있습니다.</p>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px">
+<div class="k"><b>7분</b><span>배정 초 도보</span></div>
+<div class="k"><b>[예시]</b><span>학급당 학생 수</span></div>
+<div class="k"><b>48곳</b><span>반경 1km 학원</span></div>
+</div>
+<div>
+<div class="sc"><span class="t" style="background: #E39B1B">초</span><b>○○초등학교</b><span style="font-size: 12px; color: #A06A0E; font-weight: 700">배정</span><span class="r">480m · 7분</span></div>
+<div class="sc"><span class="t" style="background: #C98A1B">중</span>△△중학교<span class="r">720m · 11분</span></div>
+<div class="sc"><span class="t" style="background: #C98A1B">중</span>□□중학교<span class="r">940m · 14분</span></div>
+<div class="sc" style="border-bottom: 0"><span class="t" style="background: #9A6412">고</span>◇◇고등학교<span style="font-size: 12px; color: #676C76">강동송파 학교군</span><span class="r">1.1km</span></div>
+</div>
+<p style="margin: 0; font-size: 11px; color: #8A8F99">출처 · 학구도 연계 표준데이터(2026-03) · 학교알리미 공시(2026-05) · NEIS 학원교습소(2026-06)</p>
+<div style="margin-top: auto; display: flex; align-items: center; gap: 14px; padding: 14px; background: #EEF0F3; border-radius: 16px">
+<div style="width: 128px; height: 72px; background: #FFFFFF; border-radius: 8px; display: flex; align-items: center; gap: 8px; padding: 8px; box-sizing: border-box"><svg width="46" height="46" viewBox="0 0 92 92" aria-hidden="true"><circle cx="46" cy="46" r="44" fill="#FDF3E1"></circle><path d="M20 30 L60 22 L70 60 L28 70 Z" fill="#E39B1B" fill-opacity=".25" stroke="#E39B1B" stroke-width="2"></path></svg><span class="dh" style="font-size: 20px">7분</span></div>
+<div style="display: flex; flex-direction: column; gap: 2px"><b style="font-size: 14px">보고서 4쪽 · 학군</b><span style="font-size: 12px; color: #676C76">이 화면 내용이 슬라이드 한 장으로 들어갑니다</span></div>
+<label style="margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700"><input type="checkbox" checked style="margin: 0; accent-color: #15171C; width: 18px; height: 18px">포함</label>
+</div>
+</div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

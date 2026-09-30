@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>타일 채우는 중</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&amp;family=Noto+Sans+KR:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0;font-family:"Noto Sans KR","Malgun Gothic",sans-serif;color:#15171C;background:#EEF0F3}
+a{color:#15171C}
+button{font-family:inherit}
+.dh{font-family:"Do Hyeon","Noto Sans KR",sans-serif;font-weight:400}
+.tile{background:#FFFFFF;border-radius:18px;box-sizing:border-box;padding:16px 18px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.th{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700}
+.th .d{width:10px;height:10px;border-radius:5px}
+.big{font-family:"Do Hyeon",sans-serif;font-size:38px;line-height:1}
+.big small{font-family:"Noto Sans KR",sans-serif;font-size:13px;color:#676C76;margin-left:4px}
+.ln{font-size:12px;color:#4A4F59;line-height:1.5}
+.sk{background:#EEF0F3;border-radius:8px}
+.wait{border:2px dashed #D5D9DF;background:transparent}
+.spin{width:18px;height:18px;border-radius:9px;border:3px solid #E3E6EA;border-top-color:#15171C;box-sizing:border-box}
+@media (prefers-reduced-motion: no-preference){.spin{animation:sp 1s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; flex-direction: column; background: #EEF0F3">
+<header style="height: 72px; flex-shrink: 0; display: flex; align-items: center; gap: 20px; padding: 0 24px">
+<span class="dh" style="font-size: 24px">사이트 분석</span>
+<b style="font-size: 16px">고덕동 123 외 2필지</b>
+<div style="display: flex; align-items: center; gap: 10px; margin-left: 12px">
+<div style="width: 220px; height: 8px; border-radius: 4px; background: #D5D9DF; position: relative; overflow: hidden"><div style="position: absolute; left: 0; top: 0; bottom: 0; width: 58%; background: #15171C"></div></div>
+<span class="dh" style="font-size: 18px">7 / 12</span>
+</div>
+<span style="margin-left: auto; font-size: 11px; font-weight: 700; color: #8A5A00; background: #FDF1D8; padding: 3px 8px; border-radius: 6px">예시 데이터</span>
+</header>
+<main style="flex-grow: 1; min-height: 0; box-sizing: border-box; padding: 0 24px 24px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); gap: 16px">
+
+<section class="tile" style="grid-column: span 2; grid-row: span 2; padding: 0; overflow: hidden; position: relative; background: #F4F5F2">
+<svg width="100%" height="100%" viewBox="0 0 688 504" preserveAspectRatio="xMidYMid slice" role="img" aria-label="대지와 반경만 먼저 보이는 지도" style="display: block">
+<rect width="688" height="504" fill="#F4F5F2"></rect>
+<g stroke="#FFFFFF" stroke-linecap="round"><path d="M0 200 L688 170" stroke-width="14"></path><path d="M430 0 L430 504" stroke-width="14"></path></g>
+<circle cx="340" cy="260" r="230" fill="none" stroke="#15171C" stroke-opacity=".3" stroke-dasharray="5 6"></circle>
+<path d="M0 290 C160 280 320 220 430 190 L688 130" fill="none" stroke="#6B4CD6" stroke-width="6"></path>
+<rect x="318" y="244" width="40" height="34" fill="#15171C" stroke="#FFFFFF" stroke-width="3"></rect>
+</svg>
+<div style="position: absolute; left: 20px; top: 18px; display: flex; align-items: center; gap: 12px">
+<div class="sk" style="width: 90px; height: 56px; background: #E3E6EA"></div>
+<span style="font-size: 13px; color: #676C76">종합 점수는 타일이 다 모이면 계산합니다</span>
+</div>
+</section>
+
+<section class="tile"><div class="th"><span class="d" style="background: #6B4CD6"></span>교통</div><div style="display: flex; gap: 14px; align-items: center; flex-grow: 1"><svg width="92" height="92" viewBox="0 0 92 92" aria-hidden="true"><circle cx="46" cy="46" r="44" fill="#F1EEFB"></circle><path d="M4 56 C30 52 50 40 88 30" stroke="#6B4CD6" stroke-width="5" fill="none"></path></svg><div><div class="big">6<small>분</small></div><div class="ln">고덕역 도보</div></div></div><div class="ln">역 3 · 정류장 41</div></section>
+
+<section class="tile"><div class="th"><span class="d" style="background: #E39B1B"></span>학군</div><div style="display: flex; gap: 14px; align-items: center; flex-grow: 1"><svg width="92" height="92" viewBox="0 0 92 92" aria-hidden="true"><circle cx="46" cy="46" r="44" fill="#FDF3E1"></circle><path d="M20 30 L60 22 L70 60 L28 70 Z" fill="#E39B1B" fill-opacity=".25" stroke="#E39B1B" stroke-width="2"></path></svg><div><div class="big">7<small>분</small></div><div class="ln">배정 ○○초</div></div></div><div class="ln">통학구역 안</div></section>
+
+<section class="tile"><div class="th"><span class="d" style="background: #2F6FD8"></span>실거래 시세<span class="spin" style="margin-left: auto"></span></div><div style="display: flex; gap: 14px; align-items: center; flex-grow: 1"><div class="sk" style="width: 92px; height: 92px; border-radius: 46px"></div><div style="flex-grow: 1; display: flex; flex-direction: column; gap: 8px"><div class="sk" style="height: 30px; width: 70%"></div><div class="sk" style="height: 12px; width: 50%"></div></div></div><div class="ln" style="color: #676C76">시군구 2곳 거래 모으는 중</div></section>
+
+<section class="tile"><div class="th"><span class="d" style="background: #D0447E"></span>정비사업<span class="spin" style="margin-left: auto"></span></div><div style="display: flex; gap: 14px; align-items: center; flex-grow: 1"><div class="sk" style="width: 92px; height: 92px; border-radius: 46px"></div><div style="flex-grow: 1; display: flex; flex-direction: column; gap: 8px"><div class="sk" style="height: 30px; width: 50%"></div><div class="sk" style="height: 12px; width: 60%"></div></div></div><div class="ln" style="color: #676C76">서울 정비사업 단계 확인 중</div></section>
+
+<section class="tile"><div class="th"><span class="d" style="background: #C9A227"></span>용도지역</div><div style="display: flex; gap: 14px; align-items: center; flex-grow: 1"><svg width="92" height="92" viewBox="0 0 92 92" aria-hidden="true"><circle cx="46" cy="46" r="44" fill="#F9EDC2"></circle></svg><div><div class="big" style="font-size: 26px">2종일반</div><div class="ln">대지 용도지역</div></div></div><div class="ln">주변 3종 · 상업 맞닿음</div></section>
+
+<section class="tile"><div class="th"><span class="d" style="background: #A0522D"></span>건물 노후도</div><div style="display: flex; gap: 14px; align-items: center; flex-grow: 1"><svg width="92" height="92" viewBox="0 0 92 92" aria-hidden="true"><circle cx="46" cy="46" r="44" fill="#F6ECE6"></circle></svg><div><div class="big">62<small>%</small></div><div class="ln">30년 넘은 건물</div></div></div><div class="ln">반경 500m</div></section>
+
+<section class="tile wait"><div class="th" style="color: #8A8F99"><span class="d" style="background: #1E9E8A"></span>생활편의<span style="margin-left: auto; font-size: 11px; font-weight: 500">대기</span></div><div class="sk" style="flex-grow: 1; background: #E7EAEE"></div></section>
+
+<section class="tile" style="border: 2px solid #F2C1AE; background: #FFF9F6"><div class="th"><span class="d" style="background: #D0447E"></span>경기 정비사업 단계</div>
+<div style="flex-grow: 1; display: flex; flex-direction: column; justify-content: center; gap: 6px"><b style="font-size: 15px; color: #9C3D16">미확인</b><span class="ln">경기데이터드림이 응답하지 않습니다. 보고서에는 '미확인'으로 들어갑니다.</span></div>
+<button style="align-self: flex-start; height: 34px; padding: 0 14px; border: 0; border-radius: 17px; background: #15171C; color: #FFFFFF; font-size: 12px; font-weight: 700">다시 시도</button></section>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

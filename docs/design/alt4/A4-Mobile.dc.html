@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>타일 보드 모바일</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&amp;family=Noto+Sans+KR:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0;font-family:"Noto Sans KR","Malgun Gothic",sans-serif;color:#15171C;background:#EEF0F3}
+a{color:#15171C}
+.dh{font-family:"Do Hyeon","Noto Sans KR",sans-serif;font-weight:400}
+.t{background:#FFFFFF;border-radius:16px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.t .h{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700}
+.t .h i{width:8px;height:8px;border-radius:4px}
+.t .b{font-family:"Do Hyeon",sans-serif;font-size:30px;line-height:1}
+.t small{font-size:11px;color:#676C76}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; position: relative; overflow: hidden; background: #EEF0F3; display: flex; flex-direction: column; gap: 10px; padding: 12px">
+<header style="display: flex; align-items: center; gap: 8px; padding: 4px 4px 0">
+<span style="width: 12px; height: 12px; background: #15171C"></span><b style="font-size: 15px">고덕동 123 외 2필지</b>
+<span style="margin-left: auto; font-size: 10px; font-weight: 700; color: #8A5A00; background: #FDF1D8; padding: 2px 6px; border-radius: 5px">예시</span>
+</header>
+<section style="background: #FFFFFF; border-radius: 18px; overflow: hidden; position: relative; height: 230px; flex-shrink: 0">
+<svg width="366" height="230" viewBox="0 0 366 230" role="img" aria-label="대지 종합 지도" style="display: block">
+<rect width="366" height="230" fill="#F4F5F2"></rect>
+<g stroke="#FFFFFF"><path d="M0 100 L366 80" stroke-width="10"></path><path d="M240 0 L240 230" stroke-width="10"></path></g>
+<circle cx="180" cy="120" r="95" fill="none" stroke="#15171C" stroke-opacity=".3" stroke-dasharray="5 6"></circle>
+<path d="M0 150 C100 140 180 110 240 96 L366 60" fill="none" stroke="#6B4CD6" stroke-width="5"></path>
+<rect x="166" y="108" width="26" height="22" fill="#15171C" stroke="#FFFFFF" stroke-width="3"></rect>
+</svg>
+<span class="dh" style="position: absolute; left: 16px; top: 12px; font-size: 44px">78</span>
+</section>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+<div class="t"><span class="h"><i style="background: #6B4CD6"></i>교통</span><span class="b">6분</span><small>고덕역 도보</small></div>
+<div class="t"><span class="h"><i style="background: #E39B1B"></i>학군</span><span class="b">7분</span><small>배정 ○○초</small></div>
+<div class="t"><span class="h"><i style="background: #D0447E"></i>정비사업</span><span class="b">4곳</span><small>반경 1km</small></div>
+<div class="t"><span class="h"><i style="background: #A0522D"></i>노후도</span><span class="b">62%</span><small>30년 넘은 건물</small></div>
+<div class="t"><span class="h"><i style="background: #C9A227"></i>용도지역</span><span class="b" style="font-size: 22px">2종일반</span><small>대지 용도지역</small></div>
+<div class="t"><span class="h"><i style="background: #7A7F8C"></i>입주예정</span><span class="b">3,200</span><small>2028년 세대</small></div>
+</div>
+<a href="A4-Report.dc.html" style="margin-top: auto; display: flex; align-items: center; justify-content: center; height: 50px; border-radius: 25px; background: #15171C; color: #FFFFFF; font-size: 15px; font-weight: 700; text-decoration: none">보고서 만들기 · 9장</a>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

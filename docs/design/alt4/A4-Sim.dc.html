@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>타일 펼치기 · 일조</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&amp;family=Noto+Sans+KR:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0;font-family:"Noto Sans KR","Malgun Gothic",sans-serif;color:#15171C;background:#EEF0F3}
+a{color:#15171C}
+button{font-family:inherit}
+.dh{font-family:"Do Hyeon","Noto Sans KR",sans-serif;font-weight:400}
+.nav{width:44px;height:44px;border-radius:22px;border:0;background:#FFFFFF;font-size:18px;box-shadow:0 2px 8px rgba(20,23,28,.12)}
+.chip{border:0;background:#EEF0F3;border-radius:10px;padding:8px 0;font-size:12px;font-weight:700;color:#4A4F59;flex:1 1 0}
+.chip.on{background:#F2A541;color:#15171C}
+.tg{display:flex;align-items:center;justify-content:space-between;font-size:13px;padding:5px 0}
+.tg input{margin:0;accent-color:#15171C;width:16px;height:16px}
+.ex{flex:1 1 0;height:36px;border:0;border-radius:12px;background:#EEF0F3;font-size:12px;font-weight:700}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; position: relative; overflow: hidden; background: #EEF0F3">
+<div aria-hidden="true" style="position: absolute; inset: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: 114px repeat(3, 222px); gap: 16px; padding: 0 24px; box-sizing: border-box; opacity: .5">
+<div style="grid-column: span 4"></div>
+<div style="grid-column: span 2; grid-row: span 2; background: #FFFFFF; border-radius: 18px"></div>
+<div style="background: #FFFFFF; border-radius: 18px"></div><div style="background: #FFFFFF; border-radius: 18px"></div><div style="background: #FFFFFF; border-radius: 18px"></div><div style="background: #FFFFFF; border-radius: 18px"></div>
+<div style="background: #FFFFFF; border-radius: 18px"></div><div style="background: #FFFFFF; border-radius: 18px"></div><div style="background: #FFFFFF; border-radius: 18px"></div><div style="background: #FFFFFF; border-radius: 18px"></div>
+</div>
+<div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(21,23,28,.45)"></div>
+<button class="nav" aria-label="이전 타일: 준공 연대" style="position: absolute; left: 32px; top: 428px">←</button>
+<button class="nav" aria-label="다음 타일: 학군" style="position: absolute; right: 32px; top: 428px">→</button>
+
+<section role="dialog" aria-label="일조 시뮬레이션 타일" style="position: absolute; left: 100px; right: 100px; top: 48px; bottom: 48px; background: #FFFFFF; border-radius: 26px; overflow: hidden; display: flex">
+<figure aria-label="3D 모형" style="margin: 0; width: 760px; flex-shrink: 0; position: relative; background: #F7F7F5">
+<svg width="760" height="804" viewBox="0 0 800 846" role="img" aria-label="동지 정오 그림자가 드리운 대지 주변 3D 모형">
+<path d="M60 330 Q400 -10 740 330" fill="none" stroke="#F2A541" stroke-width="1.5" stroke-dasharray="4 6"></path>
+<circle cx="400" cy="160" r="14" fill="#F2A541"></circle>
+<path d="M400.0 120.0 L774.1 336.0 L400.0 552.0 L25.9 336.0Z" fill="#EEF0EC"></path><path d="M318.9 166.8 L693.1 382.8 L680.6 390.0 L306.5 174.0Z" fill="#FFFFFF"></path><path d="M181.8 246.0 L555.9 462.0 L543.4 469.2 L169.3 253.2Z" fill="#FFFFFF"></path><path d="M537.2 199.2 L549.6 206.4 L175.5 422.4 L163.1 415.2Z" fill="#FFFFFF"></path><path d="M624.5 249.6 L636.9 256.8 L262.8 472.8 L250.4 465.6Z" fill="#FFFFFF"></path><path d="M400.0 148.8 L424.3 139.8 L468.0 165.0 L424.3 190.2 L400.0 199.2 L356.4 174.0Z" fill="#3D4A6B" fill-opacity=".28"></path><path d="M462.4 177.6 L489.8 171.8 L533.4 197.0 L504.8 213.6 L456.1 231.6 L412.5 206.4Z" fill="#3D4A6B" fill-opacity=".28"></path><path d="M530.9 224.4 L564.6 215.0 L627.0 251.0 L598.3 267.6 L549.6 285.6 L487.3 249.6Z" fill="#3D4A6B" fill-opacity=".28"></path><path d="M624.5 271.2 L665.0 273.0 L702.4 294.6 L702.4 294.6 L612.0 321.6 L574.6 300.0Z" fill="#3D4A6B" fill-opacity=".28"></path><path d="M661.9 307.2 L725.8 308.1 L774.1 336.0 L774.1 336.0 L680.6 361.2 L624.5 328.8Z" fill="#3D4A6B" fill-opacity=".28"></path><path d="M318.9 195.6 L343.3 186.6 L393.1 215.4 L349.5 240.6 L325.2 249.6 L275.3 220.8Z" fill="#3D4A6B" fill-opacity=".28"></path><path d="M375.1 235.2 L399.4 226.2 L436.8 247.8 L399.4 269.4 L375.1 278.4 L337.6 256.8Z" fill="#3D4A6B" fill-opacity=".28"></path><path d="M262.8 228.0 L287.1 219.0 L330.8 244.2 L287.1 269.4 L262.8 278.4 L219.2 253.2Z" fill="#3D4A6B" fill-opacity=".28"></path><path d="M318.9 267.6 L343.3 258.6 L380.7 280.2 L343.3 301.8 L318.9 310.8 L281.5 289.2Z" fill="#3D4A6B" fill-opacity=".28"></path><path d="M543.4 325.2 L682.1 282.9 L719.6 304.5 L707.1 311.7 L524.7 379.2 L487.3 357.6Z" fill="#3D4A6B" fill-opacity=".28"></path><path d="M593.3 354.0 L732.0 311.7 L774.1 336.0 L774.1 336.0 L605.8 404.4 L555.9 375.6Z" fill="#3D4A6B" fill-opacity=".28"></path><path d="M537.2 386.4 L719.6 318.9 L761.6 343.2 L718.0 368.4 L543.4 440.4 L493.5 411.6Z" fill="#3D4A6B" fill-opacity=".28"></path><path d="M181.8 274.8 L206.1 265.8 L256.0 294.6 L212.3 319.8 L188.0 328.8 L138.1 300.0Z" fill="#3D4A6B" fill-opacity=".28"></path><path d="M237.9 314.4 L262.2 305.4 L305.8 330.6 L268.4 352.2 L244.1 361.2 L200.5 336.0Z" fill="#3D4A6B" fill-opacity=".28"></path><path d="M306.5 354.0 L355.1 336.0 L417.5 372.0 L373.8 397.2 L325.2 415.2 L262.8 379.2Z" fill="#3D4A6B" fill-opacity=".28"></path><path d="M400.0 400.8 L485.1 369.3 L528.8 394.5 L478.9 423.3 L393.8 454.8 L350.1 429.6Z" fill="#3D4A6B" fill-opacity=".28"></path><path d="M449.9 436.8 L571.5 391.8 L621.3 420.6 L577.7 445.8 L456.1 490.8 L406.2 462.0Z" fill="#3D4A6B" fill-opacity=".28"></path><path d="M250.4 386.4 L335.5 354.9 L397.8 390.9 L354.2 416.1 L269.1 447.6 L206.7 411.6Z" fill="#3D4A6B" fill-opacity=".28"></path><path d="M437.4 285.6 L487.3 314.4 L412.5 357.6 L362.6 328.8Z" fill="#E0402A" fill-opacity=".35"></path><path d="M437.4 285.6 L487.3 314.4 L412.5 357.6 L362.6 328.8Z" fill="none" stroke="#E0402A" stroke-width="2.5"></path><path d="M356.4 174.0 L400.0 199.2 L400.0 184.8 L356.4 159.6Z" fill="#C9CDD4"></path><path d="M443.6 174.0 L400.0 199.2 L400.0 184.8 L443.6 159.6Z" fill="#E3E6EA"></path><path d="M400.0 134.4 L443.6 159.6 L400.0 184.8 L356.4 159.6Z" fill="#E9B949" stroke="#9AA0AA" stroke-width=".5"></path><path d="M412.5 206.4 L456.1 231.6 L456.1 202.8 L412.5 177.6Z" fill="#C9CDD4"></path><path d="M506.0 202.8 L456.1 231.6 L456.1 202.8 L506.0 174.0Z" fill="#E3E6EA"></path><path d="M462.4 148.8 L506.0 174.0 L456.1 202.8 L412.5 177.6Z" fill="#E9B949" stroke="#9AA0AA" stroke-width=".5"></path><path d="M275.3 220.8 L325.2 249.6 L325.2 235.2 L275.3 206.4Z" fill="#C9CDD4"></path><path d="M368.8 224.4 L325.2 249.6 L325.2 235.2 L368.8 210.0Z" fill="#E3E6EA"></path><path d="M318.9 181.2 L368.8 210.0 L325.2 235.2 L275.3 206.4Z" fill="#E9B949" stroke="#9AA0AA" stroke-width=".5"></path><path d="M487.3 249.6 L549.6 285.6 L549.6 256.8 L487.3 220.8Z" fill="#C9CDD4"></path><path d="M593.3 260.4 L549.6 285.6 L549.6 256.8 L593.3 231.6Z" fill="#E3E6EA"></path><path d="M530.9 195.6 L593.3 231.6 L549.6 256.8 L487.3 220.8Z" fill="#E07A5F" stroke="#9AA0AA" stroke-width=".5"></path><path d="M219.2 253.2 L262.8 278.4 L262.8 264.0 L219.2 238.8Z" fill="#C9CDD4"></path><path d="M306.5 253.2 L262.8 278.4 L262.8 264.0 L306.5 238.8Z" fill="#E3E6EA"></path><path d="M262.8 213.6 L306.5 238.8 L262.8 264.0 L219.2 238.8Z" fill="#E9B949" stroke="#9AA0AA" stroke-width=".5"></path><path d="M337.6 256.8 L375.1 278.4 L375.1 264.0 L337.6 242.4Z" fill="#C9CDD4"></path><path d="M412.5 256.8 L375.1 278.4 L375.1 264.0 L412.5 242.4Z" fill="#E3E6EA"></path><path d="M375.1 220.8 L412.5 242.4 L375.1 264.0 L337.6 242.4Z" fill="#D5D8DC" stroke="#9AA0AA" stroke-width=".5"></path><path d="M281.5 289.2 L318.9 310.8 L318.9 296.4 L281.5 274.8Z" fill="#C9CDD4"></path><path d="M356.4 289.2 L318.9 310.8 L318.9 296.4 L356.4 274.8Z" fill="#E3E6EA"></path><path d="M318.9 253.2 L356.4 274.8 L318.9 296.4 L281.5 274.8Z" fill="#81B29A" stroke="#9AA0AA" stroke-width=".5"></path><path d="M574.6 300.0 L612.0 321.6 L612.0 249.6 L574.6 228.0Z" fill="#C9CDD4"></path><path d="M661.9 292.8 L612.0 321.6 L612.0 249.6 L661.9 220.8Z" fill="#E3E6EA"></path><path d="M624.5 199.2 L661.9 220.8 L612.0 249.6 L574.6 228.0Z" fill="#5B7DB1" stroke="#9AA0AA" stroke-width=".5"></path><path d="M138.1 300.0 L188.0 328.8 L188.0 314.4 L138.1 285.6Z" fill="#C9CDD4"></path><path d="M231.6 303.6 L188.0 328.8 L188.0 314.4 L231.6 289.2Z" fill="#E3E6EA"></path><path d="M181.8 260.4 L231.6 289.2 L188.0 314.4 L138.1 285.6Z" fill="#E9B949" stroke="#9AA0AA" stroke-width=".5"></path><path d="M624.5 328.8 L680.6 361.2 L680.6 253.2 L624.5 220.8Z" fill="#C9CDD4"></path><path d="M718.0 339.6 L680.6 361.2 L680.6 253.2 L718.0 231.6Z" fill="#E3E6EA"></path><path d="M661.9 199.2 L718.0 231.6 L680.6 253.2 L624.5 220.8Z" fill="#E9B949" stroke="#9AA0AA" stroke-width=".5"></path><path d="M200.5 336.0 L244.1 361.2 L244.1 346.8 L200.5 321.6Z" fill="#C9CDD4"></path><path d="M281.5 339.6 L244.1 361.2 L244.1 346.8 L281.5 325.2Z" fill="#E3E6EA"></path><path d="M237.9 300.0 L281.5 325.2 L244.1 346.8 L200.5 321.6Z" fill="#D5D8DC" stroke="#9AA0AA" stroke-width=".5"></path><path d="M487.3 357.6 L524.7 379.2 L524.7 271.2 L487.3 249.6Z" fill="#C9CDD4"></path><path d="M580.8 346.8 L524.7 379.2 L524.7 271.2 L580.8 238.8Z" fill="#E3E6EA"></path><path d="M543.4 217.2 L580.8 238.8 L524.7 271.2 L487.3 249.6Z" fill="#5B7DB1" stroke="#9AA0AA" stroke-width=".5"></path><path d="M555.9 375.6 L605.8 404.4 L605.8 296.4 L555.9 267.6Z" fill="#C9CDD4"></path><path d="M643.2 382.8 L605.8 404.4 L605.8 296.4 L643.2 274.8Z" fill="#E3E6EA"></path><path d="M593.3 246.0 L643.2 274.8 L605.8 296.4 L555.9 267.6Z" fill="#E07A5F" stroke="#9AA0AA" stroke-width=".5"></path><path d="M262.8 379.2 L325.2 415.2 L325.2 386.4 L262.8 350.4Z" fill="#C9CDD4"></path><path d="M368.8 390.0 L325.2 415.2 L325.2 386.4 L368.8 361.2Z" fill="#E3E6EA"></path><path d="M306.5 325.2 L368.8 361.2 L325.2 386.4 L262.8 350.4Z" fill="#E07A5F" stroke="#9AA0AA" stroke-width=".5"></path><path d="M493.5 411.6 L543.4 440.4 L543.4 332.4 L493.5 303.6Z" fill="#C9CDD4"></path><path d="M587.1 415.2 L543.4 440.4 L543.4 332.4 L587.1 307.2Z" fill="#E3E6EA"></path><path d="M537.2 278.4 L587.1 307.2 L543.4 332.4 L493.5 303.6Z" fill="#E9B949" stroke="#9AA0AA" stroke-width=".5"></path><path d="M206.7 411.6 L269.1 447.6 L269.1 397.2 L206.7 361.2Z" fill="#C9CDD4"></path><path d="M312.7 422.4 L269.1 447.6 L269.1 397.2 L312.7 372.0Z" fill="#E3E6EA"></path><path d="M250.4 336.0 L312.7 372.0 L269.1 397.2 L206.7 361.2Z" fill="#81B29A" stroke="#9AA0AA" stroke-width=".5"></path><path d="M350.1 429.6 L393.8 454.8 L393.8 404.4 L350.1 379.2Z" fill="#C9CDD4"></path><path d="M443.6 426.0 L393.8 454.8 L393.8 404.4 L443.6 375.6Z" fill="#E3E6EA"></path><path d="M400.0 350.4 L443.6 375.6 L393.8 404.4 L350.1 379.2Z" fill="#E9B949" stroke="#9AA0AA" stroke-width=".5"></path><path d="M406.2 462.0 L456.1 490.8 L456.1 418.8 L406.2 390.0Z" fill="#C9CDD4"></path><path d="M499.8 465.6 L456.1 490.8 L456.1 418.8 L499.8 393.6Z" fill="#E3E6EA"></path><path d="M449.9 364.8 L499.8 393.6 L456.1 418.8 L406.2 390.0Z" fill="#E9B949" stroke="#9AA0AA" stroke-width=".5"></path>
+</svg>
+<div style="position: absolute; left: 24px; top: 20px; display: flex; flex-direction: column; gap: 2px"><span class="dh" style="font-size: 26px">동지 12:00</span><span style="font-size: 12px; color: #676C76">태양 고도 29° · 끌어서 회전</span></div>
+<div style="position: absolute; left: 24px; right: 24px; bottom: 22px; display: flex; align-items: center; gap: 12px; background: #FFFFFF; border-radius: 16px; padding: 12px 16px; box-shadow: 0 4px 14px rgba(21,23,28,.10)">
+<button aria-label="재생" style="width: 40px; height: 40px; border: 0; border-radius: 20px; background: #F2A541; font-size: 14px">▶</button>
+<label for="sunt4" style="position: absolute; left: -9999px">시각</label>
+<input id="sunt4" type="range" min="7" max="17" value="12" style="flex-grow: 1; accent-color: #F2A541">
+<span class="dh" style="font-size: 18px">12:00</span>
+</div>
+</figure>
+
+<div style="flex-grow: 1; min-width: 0; padding: 26px 30px; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; align-items: center; gap: 10px">
+<span style="width: 12px; height: 12px; border-radius: 6px; background: #F2A541"></span>
+<h1 class="dh" style="margin: 0; font-size: 28px">일조 · 그림자</h1>
+<span style="font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 5px; background: #FDF1D8; color: #8A5A00">시뮬레이션</span>
+<button aria-label="닫기" style="margin-left: auto; width: 40px; height: 40px; border: 0; border-radius: 20px; background: #EEF0F3; font-size: 18px">×</button>
+</div>
+<div role="group" aria-label="날짜" style="display: flex; gap: 6px"><button class="chip on">동지</button><button class="chip">춘분</button><button class="chip">하지</button><button class="chip">추분</button></div>
+<div style="background: #FDF6E8; border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 12px; font-weight: 700; color: #8A5A00">대지 안 연속 2시간 일조 (09~15시)</span>
+<span class="dh" style="font-size: 40px; line-height: 1">84%</span>
+<span style="font-size: 12px; color: #4A4F59; line-height: 1.5">북동쪽 고층 4동의 그림자가 오전에 대지 북측을 가립니다. 기준: 건축법 시행령 제86조 · 예시 데이터</span>
+</div>
+<div>
+<div class="tg"><span>색 기준</span><select aria-label="색 기준" style="font: inherit; font-size: 13px; border: 1px solid #E3E6EA; border-radius: 8px; padding: 4px 8px"><option>용도</option><option>준공 연대</option><option>높이</option></select></div>
+<label class="tg"><span>대지 안 건물 지우기</span><input type="checkbox" checked></label>
+<label class="tg"><span>일조시간 지도 겹치기</span><input type="checkbox"></label>
+</div>
+<div style="display: flex; gap: 6px"><button class="ex">PNG 4000</button><button class="ex">GLB</button><button class="ex">3DM</button><button class="ex">SKP</button></div>
+<div style="margin-top: auto; display: flex; align-items: center; gap: 14px; padding: 14px; background: #EEF0F3; border-radius: 16px">
+<div style="width: 120px; height: 68px; background: #FFFFFF; border-radius: 8px; display: flex; align-items: center; justify-content: center; gap: 6px"><span style="width: 18px; height: 18px; border-radius: 9px; background: #F2A541"></span><span class="dh" style="font-size: 20px">84%</span></div>
+<div style="display: flex; flex-direction: column; gap: 2px"><b style="font-size: 14px">보고서 9쪽 · 일조</b><span style="font-size: 12px; color: #676C76">지금 시각의 장면이 슬라이드로 들어갑니다</span></div>
+<label style="margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700"><input type="checkbox" checked style="margin: 0; accent-color: #15171C; width: 18px; height: 18px">포함</label>
+</div>
+</div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
