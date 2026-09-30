@@ -11,7 +11,8 @@ const { toTileView, toSummaryView, faceLabel } = await import("../../lib/v2/ui/t
 
 // ── fixture 계약 ──
 for (const r of [...GODEOK_RESULTS, ...Object.values(RECOVERED)]) parseTileResult(r);
-assert.deepEqual(GODEOK_RESULTS.map((r) => r.tileCode).sort(), [...TILE_CODES].sort());
+// A03·A04·A10은 P1b 엔진이 더한 타일이라 예시 데이터에는 없다(엔진 결과는 test-v2-engine-run.mjs가 카탈로그 전체와 대조한다)
+assert.deepEqual(GODEOK_RESULTS.map((r) => r.tileCode).sort(), TILE_CODES.filter((c) => !["A03", "A04", "A10"].includes(c)).sort());
 const statuses = new Set(GODEOK_RESULTS.map((r) => r.status));
 for (const s of ["complete", "partial", "failed", "not_provided"]) assert.ok(statuses.has(s), `status ${s}`);
 const lims = GODEOK_RESULTS.flatMap((r) => r.limitations.map((l) => l.kind));

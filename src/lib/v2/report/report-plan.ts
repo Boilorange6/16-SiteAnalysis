@@ -43,8 +43,9 @@ function oneLine(v: TileView): string {
 function parseSources(line: string): [string, string][] {
   if (line === "출처 없음") return [];
   return line.split(" · ").map((p) => {
-    const i = p.indexOf(" ");
-    return [p.slice(0, i), p.slice(i + 1)] as [string, string];
+    // 원천 이름에 공백이 있을 수 있어, 끝의 기준일("YYYY[-MM[-DD]]" 또는 "기준일 미확인")을 떼어 낸다
+    const m = /^(.*) (\d{4}(?:-\d{2}(?:-\d{2})?)?|기준일 미확인)$/.exec(p);
+    return (m ? [m[1], m[2]] : [p, ""]) as [string, string];
   });
 }
 

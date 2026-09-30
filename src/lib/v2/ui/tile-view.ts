@@ -3,7 +3,7 @@
  * 규칙: 종합 점수 없음 · 도보 시간 없음 · 공급/가격/개발은 좋음·주의 평가 없음 (plan 화면 규칙 1~8).
  */
 import type { OUTPUT_FACES, TileResult } from "../tile-result";
-import { catalogEntry } from "./tile-catalog";
+import { catalogEntry, sourceName } from "./tile-catalog";
 
 export type OutputFace = (typeof OUTPUT_FACES)[number];
 export type Badge = { text: string; note?: string; tone: "status" | "limit" | "model" };
@@ -85,7 +85,7 @@ function metricRow(m: TileResult["metrics"][number]): Row {
 
 export function sourceLineOf(sources: TileResult["provenance"]["sources"]): string {
   if (sources.length === 0) return "출처 없음";
-  return sources.map((s) => `${s.sourceId} ${s.sourceAsOf ?? "기준일 미확인"}`).join(" · ");
+  return sources.map((s) => `${sourceName(s.sourceId)} ${s.sourceAsOf ?? "기준일 미확인"}`).join(" · ");
 }
 
 export function toTileView(r: TileResult): TileView {
@@ -146,7 +146,8 @@ export function toTileView(r: TileResult): TileView {
 }
 
 // ── 대지 요약 ──
-export type SiteSummary = { address: string; areaM2: number; zoning: string; radiusM: number; facts: string[] };
+/** 면적·용도지역이 적재되지 않은 동안은 null — 화면에는 "미확인"으로 보인다. */
+export type SiteSummary = { address: string; areaM2: number | null; zoning: string | null; radiusM: number; facts: string[] };
 export type SummaryView = {
   address: string;
   area: string;
@@ -163,8 +164,8 @@ export function toSummaryView(s: SiteSummary, results: TileResult[]): SummaryVie
   const weak = results.filter((r) => r.status !== "complete" || r.limitations.some((l) => l.kind !== "estimated"));
   return {
     address: s.address,
-    area: `${group(s.areaM2)}㎡`,
-    zoning: s.zoning,
+    area: s.areaM2 === null ? "면적 미확인" : `${group(s.areaM2)}㎡`,
+    zoning: s.zoning ?? "용도지역 미확인",
     radius: `반경 ${s.radiusM >= 1000 ? `${s.radiusM / 1000}km` : `${s.radiusM}m`}`,
     facts: s.facts.slice(0, 3),
     asOfLine: dates.length ? `자료 기준일 ${dates[0]}${dates.length > 1 && dates[0] !== dates[dates.length - 1] ? ` ~ ${dates[dates.length - 1]}` : ""}` : "자료 기준일 미확인",

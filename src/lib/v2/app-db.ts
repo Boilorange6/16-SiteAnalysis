@@ -127,6 +127,15 @@ export function saveTileResult(db: Db, result: TileResult, cacheKey: string): vo
     .run(parsed.tileId, parsed.analysisId, parsed.tileCode, cacheKey, parsed.status, JSON.stringify(parsed), now());
 }
 
+/** 같은 캐시 키로 이미 계산된 가장 최근 결과(실패한 타일은 재사용하지 않는다) */
+export function findCachedTileResult(db: Db, cacheKey: string): TileResult | null {
+  const json = db
+    .prepare("SELECT result_json FROM tile_result WHERE cache_key = ? AND status <> 'failed' ORDER BY created_at DESC LIMIT 1")
+    .pluck()
+    .get(cacheKey) as string | undefined;
+  return json ? parseTileResult(JSON.parse(json)) : null;
+}
+
 export function loadTileResults(db: Db, analysisId: string): TileResult[] {
   const rows = db.prepare("SELECT result_json FROM tile_result WHERE analysis_id = ? ORDER BY tile_code").pluck().all(analysisId) as string[];
   return rows.map((json) => parseTileResult(JSON.parse(json)));
