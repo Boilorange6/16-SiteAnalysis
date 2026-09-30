@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import SummaryCard from "@/components/v2/summary-card";
 import TileCard from "@/components/v2/tile-card";
 import TileDialog from "@/components/v2/tile-dialog";
@@ -9,16 +9,28 @@ import styles from "@/components/v2/board.module.css";
 import { boardReducer, demoFinished, demoPhase, initBoard, reportPages } from "@/lib/v2/ui/board-state";
 import { buildReportPlan, reportFileName } from "@/lib/v2/report/report-plan";
 import { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } from "@/lib/v2/ui/fixtures/godeok";
-import { toSummaryView, toTileView } from "@/lib/v2/ui/tile-view";
+import { toSummaryView, toTileView, type SiteSummary } from "@/lib/v2/ui/tile-view";
 import type { TileResult } from "@/lib/v2/tile-result";
 
 const UNDO_LABEL = { order: "옮김", size: "크기 바꿈", remove: "삭제됨", add: "더함" } as const;
 
-/** 예시 결과로 동작하는 타일 보드. P1b 결과로 바꿀 때는 results만 교체하면 된다. */
-export default function V2BoardPage() {
+type BoardProps = {
+  baseResults: TileResult[];
+  siteSummary: SiteSummary;
+  /** true면 예시 데이터(실제 분석 전) */
+  demo: boolean;
+  /** 분석 요청 중 — 모든 타일이 계산 중으로 보인다 */
+  busy: boolean;
+  controls: ReactNode;
+  /** 실패한 타일 다시 계산 (실제 분석일 때 전체 재실행) */
+  onRerun: () => void;
+};
+
+/** 타일 보드. 결과가 바뀌면 부모가 key를 바꿔 새로 만든다. */
+function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: BoardProps) {
   const [overrides, setOverrides] = useState<Record<string, TileResult>>({});
-  const results = useMemo(() => GODEOK_RESULTS.map((r) => overrides[r.tileId] ?? r), [overrides]);
-  const [board, dispatch] = useReducer(boardReducer, GODEOK_RESULTS, initBoard);
+  const results = useMemo(() => baseResults.map((r) => overrides[r.tileId] ?? r), [baseResults, overrides]);
+  const [board, dispatch] = useReducer(boardReducer, baseResults, initBoard);
   const [editing, setEditing] = useState(false);
   const [demoStep, setDemoStep] = useState<number | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -30,10 +42,10 @@ export default function V2BoardPage() {
   });
 
   const views = useMemo(() => new Map(results.map((r) => [r.tileId, toTileView(r)])), [results]);
-  const summary = useMemo(() => toSummaryView(GODEOK_SUMMARY, results), [results]);
+  const summary = useMemo(() => toSummaryView(siteSummary, results), [siteSummary, results]);
   const { tiles } = reportPages(board);
   const total = board.order.length;
-  const analysisDate = new Date().toLocaleDateString("sv-SE");
+  const analysisDate = demo ? new Date().toLocaleDateString("sv-SE") : (results[0]?.conditions.analysisDate ?? new Date().toLocaleDateString("sv-SE"));
   const reportPlan = useMemo(() => buildReportPlan({ summary, views, board, analysisDate }), [summary, views, board, analysisDate]);
   const [making, setMaking] = useState(false);
   const makeReport = async () => {
@@ -44,7 +56,7 @@ export default function V2BoardPage() {
       const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/vnd.openxmlformats-officedocument.presentationml.presentation" }));
       const a = document.createElement("a");
       a.href = url;
-      a.download = reportFileName(GODEOK_SUMMARY.address, analysisDate);
+      a.download = reportFileName(siteSummary.address, analysisDate);
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 10_000);
     } finally {
@@ -61,6 +73,7 @@ export default function V2BoardPage() {
   const finished = demoStep === null ? total : demoFinished(total, demoStep);
 
   const retry = (id: string, code: string) => {
+    if (!demo) return onRerun();
     const fixed = RECOVERED[code];
     if (!fixed) return;
     setOverrides((o) => ({ ...o, [id]: { ...fixed, tileId: id } }));
@@ -79,7 +92,7 @@ export default function V2BoardPage() {
             <span className={styles.editHint}>순서를 바꾸거나 빼세요. 순서는 보고서 순서가 됩니다.</span>
           ) : (
             <span className={styles.topTitle}>
-              {GODEOK_SUMMARY.address} · {summary.radius}
+              {siteSummary.address} · {summary.radius}
             </span>
           )}
           {demoOn && (
@@ -93,26 +106,30 @@ export default function V2BoardPage() {
             </>
           )}
           <span className={styles.spacer} />
-          <span className={styles.demoTag}>예시 데이터</span>
+          {demo && <span className={styles.demoTag}>예시 데이터</span>}
           {editing ? (
             <button type="button" className={`${styles.pill} ${styles.pillDark}`} onClick={() => setEditing(false)}>
               완료
             </button>
           ) : (
             <>
-              <button type="button" className={styles.pill} onClick={() => (demoOn ? setDemoStep(null) : setDemoStep(0))} aria-pressed={demoOn}>
-                {demoOn ? "데모 끄기" : "분석 중 데모"}
-              </button>
-              <button type="button" className={styles.pill} onClick={() => setEditing(true)} disabled={demoOn}>
+              {demo && (
+                <button type="button" className={styles.pill} onClick={() => (demoOn ? setDemoStep(null) : setDemoStep(0))} aria-pressed={demoOn}>
+                  {demoOn ? "데모 끄기" : "분석 중 데모"}
+                </button>
+              )}
+              <button type="button" className={styles.pill} onClick={() => setEditing(true)} disabled={demoOn || busy}>
                 보드 편집
               </button>
               <span className={styles.reportHint}>표지 1 + 타일 {tiles}</span>
-              <button type="button" className={`${styles.pill} ${styles.pillDark}`} onClick={makeReport} disabled={making || demoOn} aria-busy={making}>
+              <button type="button" className={`${styles.pill} ${styles.pillDark}`} onClick={makeReport} disabled={making || demoOn || busy} aria-busy={making}>
                 {making ? "만드는 중…" : `보고서 만들기 · ${reportPlan.length}장`}
               </button>
             </>
           )}
         </header>
+
+        {controls}
 
         <div className={styles.grid} ref={gridRef}>
           <SummaryCard view={summary} />
@@ -131,7 +148,7 @@ export default function V2BoardPage() {
                 <TileCard
                   key="card"
                   view={view}
-                  phase={demoOn ? demoPhase(i, demoStep!) : null}
+                  phase={busy ? "running" : demoOn ? demoPhase(i, demoStep!) : null}
                   included={!!board.included[id]}
                   face={board.faces[id]}
                   editing={editing}
@@ -213,5 +230,119 @@ export default function V2BoardPage() {
         />
       )}
     </main>
+  );
+}
+
+const RADII = [
+  { m: 500, label: "500m" },
+  { m: 800, label: "800m" },
+  { m: 1000, label: "1km" },
+  { m: 2000, label: "2km" },
+  { m: 3000, label: "3km" },
+] as const;
+const API = "/site/api/v2/analyses";
+
+type Live = { analysisId: string; summary: SiteSummary; results: TileResult[] };
+type Problem = { text: string; login: boolean };
+
+/** 주소 입력 → 분석 → 실제 결과 보드. 분석 전에는 예시 보드를 그대로 보여 준다. */
+export default function V2BoardPage() {
+  const [address, setAddress] = useState("");
+  const [radiusM, setRadiusM] = useState(800);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<Problem | null>(null);
+  const [live, setLive] = useState<Live | null>(null);
+
+  async function load(res: Response) {
+    const body = (await res.json().catch(() => ({}))) as Partial<Live> & { error?: string };
+    if (res.status === 401) return setProblem({ text: "로그인이 필요합니다.", login: true });
+    if (!res.ok || !body.analysisId) return setProblem({ text: body.error ?? "분석하지 못했습니다. 잠시 뒤 다시 시도해 주세요.", login: false });
+    setLive(body as Live);
+    history.replaceState(null, "", `?analysis=${body.analysisId}`);
+    return undefined;
+  }
+
+  async function analyze(e?: { preventDefault(): void }) {
+    e?.preventDefault();
+    if (busy) return;
+    if (!address.trim()) return setProblem({ text: "지번 주소로 입력해 주세요. 예: 서울 강동구 고덕동 123", login: false });
+    setBusy(true);
+    setProblem(null);
+    try {
+      await load(await fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address: address.trim(), radiusM }) }));
+    } catch {
+      setProblem({ text: "서버에 연결하지 못했습니다.", login: false });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // 주소창의 ?analysis=<id>로 저장된 분석을 다시 연다
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("analysis");
+    if (!id) return;
+    setBusy(true);
+    fetch(`${API}/${encodeURIComponent(id)}`)
+      .then(async (res) => {
+        await load(res);
+      })
+      .catch(() => setProblem({ text: "서버에 연결하지 못했습니다.", login: false }))
+      .finally(() => setBusy(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (live) {
+      setAddress(live.summary.address);
+      setRadiusM(live.summary.radiusM);
+    }
+  }, [live]);
+
+  const controls = (
+    <div className={styles.analyzeWrap}>
+      <form className={styles.analyzeBar} onSubmit={analyze}>
+        <input
+          className={styles.addrInput}
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          placeholder="지번 주소 (예: 서울 강동구 고덕동 123)"
+          aria-label="지번 주소"
+          disabled={busy}
+        />
+        <select className={styles.radiusSelect} value={radiusM} onChange={(e) => setRadiusM(Number(e.target.value))} aria-label="분석 반경" disabled={busy}>
+          {RADII.map((r) => (
+            <option key={r.m} value={r.m}>
+              {r.label}
+            </option>
+          ))}
+        </select>
+        <button type="submit" className={`${styles.pill} ${styles.pillDark}`} disabled={busy} aria-busy={busy}>
+          {busy ? "분석 중…" : "분석"}
+        </button>
+      </form>
+      {problem && (
+        <p className={styles.problem} role="alert">
+          {problem.text}
+          {problem.login && (
+            <>
+              {" "}
+              <a href="/site/login">/site/login으로 로그인</a>해 주세요.
+            </>
+          )}
+        </p>
+      )}
+    </div>
+  );
+
+  return (
+    <Board
+      key={live?.analysisId ?? "demo"}
+      baseResults={live?.results ?? GODEOK_RESULTS}
+      siteSummary={live?.summary ?? GODEOK_SUMMARY}
+      demo={!live}
+      busy={busy}
+      controls={controls}
+      onRerun={() => void analyze()}
+    />
   );
 }
