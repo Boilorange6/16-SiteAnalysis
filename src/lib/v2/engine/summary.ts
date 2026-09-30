@@ -1,4 +1,4 @@
-/** 대지 요약. 면적·용도지역은 아직 적재되지 않아 null. 사실 문장은 타일 결과에서 만든다(고정 문구 없음). */
+/** 대지 요약. 면적은 아직 적재되지 않아 null. 사실 문장은 타일 결과에서 만든다(고정 문구 없음). */
 import type { TileResult } from "../tile-result";
 import type { SiteSummary } from "../ui/tile-view";
 
@@ -19,5 +19,7 @@ export function buildSummary(site: { address: string; jimok: string | null }, ra
   if (apts !== null) facts.push(`아파트 ${apts}개 단지, 확인 세대 ${(hh ?? 0).toLocaleString("en-US")}세대`);
   const basic = metric(results, "A03", "basic_groups");
   if (basic !== null) facts.push(`기초 생활시설 4군 중 ${basic}군 확인`);
-  return { address: site.address, areaM2: null, zoning: null, radiusM, facts: facts.slice(0, 3) };
+  // 대지 용도지역: A12가 중심점 강조점의 라벨로 남긴 값. 없으면 null(“용도지역 미확인”)
+  const zoning = results.find((r) => r.tileCode === "A12")?.presentation.features?.find((f) => f.layer === "zoning_site")?.label ?? null;
+  return { address: site.address, areaM2: null, zoning, radiusM, facts: facts.slice(0, 3) };
 }

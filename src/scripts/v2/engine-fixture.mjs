@@ -16,9 +16,15 @@ export const CENTER = [127.1506, 37.6245];
 const [cx, cy] = toUtmk(CENTER);
 export const at = (dx, dy = 0) => [...toLngLat([cx + dx, cy + dy])];
 const pt = (dx, dy = 0) => ({ type: "Point", coordinates: at(dx, dy) });
+const rect = (x0, x1, y0, y1) => ({ type: "Polygon", coordinates: [[at(x0, y0), at(x1, y0), at(x1, y1), at(x0, y1), at(x0, y0)]] });
+/** n각형 원판(정점 n개 — 단순화 상한 검증용) */
+const disc = (dx, dy, r, n) => ({ type: "Polygon", coordinates: [Array.from({ length: n + 1 }, (_, i) => at(dx + r * Math.cos((2 * Math.PI * (i % n)) / n), dy + r * Math.sin((2 * Math.PI * (i % n)) / n)))] });
 const box = (x0, x1) => ({ type: "Polygon", coordinates: [[at(x0, -4000), at(x1, -4000), at(x1, 4000), at(x0, 4000), at(x0, -4000)]] });
 
 export const PNU_DASAN_100 = "4136011800101000000";
+/** 실거래 위치 필지(중심에서 동쪽 거리). A: 100m · B: 300m · C: 600m(송파 쪽) · FAR: 2000m(반경 밖) */
+export const TRADE_PNU = { A: "4136011800100010000", B: "4136011800100020000", C: "1171010100100030000", FAR: "4136011800100040000" };
+const TRADE_PNU_DX = { [TRADE_PNU.A]: 100, [TRADE_PNU.B]: 300, [TRADE_PNU.C]: 600, [TRADE_PNU.FAR]: 2000 };
 
 const rel = (db, sourceId, sourceAsOf, extra = {}) =>
   insertRelease(db, { sourceId, provider: "테스트", sourceUrl: "https://example.invalid", sourceAsOf, fetchedAt: "2026-09-29T00:00:00Z", checksum: "x", licenseCode: "TEST", ...extra });
@@ -53,6 +59,10 @@ export async function buildEngineFixture(dataDir, version, options = {}) {
   la.run("41360131", "emd", "별내동", "41360", legal); // 동명 → 모호
   la.run("11710", "sigungu", "서울특별시 송파구", null, legal);
   db.prepare("INSERT INTO parcel_point VALUES (?, ?, ?, ?, ?)").run(PNU_DASAN_100, CENTER[0], CENTER[1], "대", parcel);
+  if (options.trades) {
+    const pp = db.prepare("INSERT INTO parcel_point VALUES (?, ?, ?, ?, ?)");
+    for (const [pnu, dx] of Object.entries(TRADE_PNU_DX)) pp.run(pnu, ...at(dx, 0), "대", parcel);
+  }
   insertFeature(db, { stableId: "sig:41360", kind: "legal_sigungu", sourceKey: "41360", releaseId: legal, geometry: box(-5000, 5000), name: "경기도 남양주시", legalCode: "4136000000" });
   insertFeature(db, { stableId: "sig:11710", kind: "legal_sigungu", sourceKey: "11710", releaseId: legal, geometry: box(600, 5000), name: "서울특별시 송파구", legalCode: "1171000000" });
   const hc = (id, dx, releaseId, props, name = id) =>
@@ -140,6 +150,34 @@ export async function buildEngineFixture(dataDir, version, options = {}) {
     sch("sp", 200, "특수학교"); // 초·중·고 아님
     run(db, "school", sc, { byRegion: { 41: 6 }, byType: {}, fillRates: {}, unlocated: 0 });
   }
+  if (options.zoning) {
+    // z1 주거(x<200) · z2 상업(x>=200) · 우산 “도시지역” 전체. zoning:"umbrella"는 우산만, "overlap"은 관리지역 전체와 곡선 녹지 도형을 더한다.
+    const zu = rel(db, "zoning_urban", "2026-09-20");
+    const za = (id, name, cls, geometry, extra = {}, layer = "urban", umbrella = false) =>
+      insertFeature(db, { stableId: `zoning:${id}`, kind: "zoning_area", sourceKey: id, releaseId: layer === "urban" ? zu : zm, geometry, name, legalCode: "4136000000", properties: { zoningClass: cls, umbrella, zoningCode: null, zoningName: name, layer, designatedDate: null, remark: [], sourceUpdatedAt: null, ...extra } });
+    let zm = null;
+    if (options.zoning === "overlap") zm = rel(db, "zoning_management", "2026-09-20");
+    za("u", "도시지역", "기타", box(-4000, 4000), {}, "urban", true);
+    if (options.zoning !== "umbrella") {
+      za("z1", "제2종일반주거지역", "주거", rect(-4000, 200, -4000, 4000));
+      za("z2", "일반상업지역", "상업", rect(200, 4000, -4000, 4000));
+    }
+    if (options.zoning === "overlap") {
+      za("z3", "계획관리지역", "관리", box(-4000, 4000), {}, "management");
+      za("z4", "자연녹지지역", "녹지", disc(0, 500, 150, 1500));
+    }
+    run(db, "zoning_urban", zu, { byRegion: { 41: 4 }, byType: {}, fillRates: {}, unlocated: 0 });
+    if (zm) run(db, "zoning_management", zm, { byRegion: { 41: 1 }, byType: {}, fillRates: {}, unlocated: 0 });
+  }
+  if (options.maint === "zones") {
+    const mz = rel(db, "maintenance_zone", "2026-08-01");
+    const zone = (id, name, x0, x1, y0, y1, props) => insertFeature(db, { stableId: `maintenance_zone:${id}`, kind: "maintenance_zone", sourceKey: id, releaseId: mz, geometry: rect(x0, x1, y0, y1), name, properties: props });
+    zone("za", "다산1구역", 100, 300, 100, 300, { type: "재개발" });
+    zone("zb", "다산2구역", -300, -100, 0, 200, { projectType: "재건축", stage: "구역지정", households: 300 });
+    zone("zfar", "먼구역", 3000, 3200, 0, 200, { type: "재개발", stage: "착공" });
+    db.prepare("INSERT INTO feature_link (from_stable_id, to_stable_id, relation_type, method, confidence, release_id) VALUES ('maintenance_zone:za', 'maint:a', 'zone_of_project', 'name', 1, ?)").run(mz);
+    run(db, "maintenance_zone", mz, { byRegion: { 41: 3 }, byType: {}, fillRates: {}, unlocated: 0 });
+  }
   run(db, "store", store,{ byRegion: { 41: 6 }, byType: {}, fillRates: {}, unlocated: 0 });
   run(db, "bus_stop", bus, { byRegion: { "경기도 남양주시": 4 }, byType: {}, fillRates: {}, unlocated: 0 });
   run(db, "park", park, { byRegion: { 경기도: 3 }, byType: {}, fillRates: {}, unlocated: 0 });
@@ -164,6 +202,49 @@ export async function buildEngineFixture(dataDir, version, options = {}) {
       VALUES (?, ?, 'x', 'x', 'month', 1, ?, 'https://example.invalid', ?)`);
     ev.run("e1", "e1", "applyhome:1", ah);
     ev.run("e2", "e2", "movein:1", mi);
+    if (options.trades) {
+      // 분석일 2026-09-30 기준 창 (2025-09-30, 2026-09-30], 최근 반기 (2026-03-30, 2026-09-30]
+      const rt = rel(db, "rtms_apt_trade", "2026-09-30");
+      const ins = db.prepare(`INSERT INTO property_transaction (transaction_id, source_record_key, lawd_cd, deal_date, property_type, contract_type, price_krw, deposit_krw, rent_krw, area_m2, floor, cancelled_at, location_id, match_status, release_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, 5, ?, ?, ?, ?)`);
+      let n = 0;
+      // unit: 만원/㎡ (면적 100㎡ 고정이면 거래금액 = unit×100 만원)
+      const tx = (pnu, date, unit, o = {}) =>
+        ins.run(`t${++n}`, `k${n}`, o.lawd ?? "41360", date, o.type ?? "apt", o.contract ?? "trade", Math.round(unit * 100 * 10_000), "area" in o ? o.area : 100, o.cancelled ?? null, pnu, pnu === null ? "unlocated" : "located", rt);
+      for (let i = 0; i < 12; i++) tx(TRADE_PNU.A, `2026-05-${10 + i}`, 1000 + 10 * i); // 최근 반기 12건: 중앙값 1055
+      for (let i = 0; i < 12; i++) tx(TRADE_PNU.A, `2025-11-${10 + i}`, 900 + 10 * i); // 이전 반기 12건: 중앙값 955
+      tx(TRADE_PNU.B, "2026-08-01", 1500);
+      tx(TRADE_PNU.B, "2026-08-02", 1600);
+      tx(TRADE_PNU.B, "2026-08-03", 1700);
+      tx(TRADE_PNU.B, "2026-08-04", 500, { area: null }); // 면적 없음: 건수에만 들어간다
+      tx(TRADE_PNU.B, "2026-08-05", 1300, { cancelled: "2026-08-20" }); // 취소: 별도 집계
+      tx(TRADE_PNU.C, "2026-09-01", 1200, { lawd: "11710" }); // 송파 쪽 필지(600m)
+      for (let i = 0; i < 5; i++) tx(TRADE_PNU.FAR, `2026-07-1${i}`, 3000); // 반경 밖
+      tx(TRADE_PNU.A, "2025-09-30", 700); // 12개월 창의 시작일(제외)
+      tx(TRADE_PNU.A, "2025-09-29", 700);
+      tx(TRADE_PNU.A, "2026-10-05", 700); // 분석일 이후
+      tx(TRADE_PNU.A, "2026-08-10", 800, { type: "offi" }); // 오피스텔
+      tx(TRADE_PNU.A, "2026-08-11", 800, { contract: "jeonse" }); // 전월세
+      tx(null, "2026-08-12", 800); // 위치 미확인
+      tx(null, "2026-08-13", 800, { lawd: "11710" });
+      run(db, "rtms_apt_trade", rt, { byRegion: options.trades === "41360only" ? { 41: 24 } : { 41: 24, 11: 1 }, byType: {}, fillRates: {}, unlocated: 2 }, 2);
+      if (options.trades === "41360only") db.prepare("DELETE FROM property_transaction WHERE lawd_cd = '11710'").run(); // 송파 자료 없음
+    }
+    if (options.maint) {
+      const roster = [
+        { id: "maint:a", sido: "41", sigungu: "남양주시", name: "다산1구역", type: "재개발", stage: "조합", households: 1000 },
+        { id: "maint:b", sido: "41", sigungu: "남양주시", name: "다산2구역", type: "재건축", stage: "구역지정", households: null },
+        { id: "maint:c", sido: "11", sigungu: "송파구", name: "송파3구역", type: "재개발", stage: "관리처분", households: 500 },
+        { id: "maint:d", sido: "41", sigungu: "수원시", name: "수원구역", type: "재개발", stage: "착공", households: 900 },
+        { id: "maint:e", sido: "11", sigungu: "강동구", name: "강동구역", type: "재건축", stage: "사업시행", households: 300 },
+      ];
+      const mi2 = rel(db, "maintenance_integrated", "2026-06-01", { coverage: { projects: roster } });
+      const ev = db.prepare(`INSERT INTO development_event (event_id, project_id, event_type, stage, planned_date_precision, units, geometry_id, evidence_url, release_id)
+        VALUES (?, ?, 'maintenance_stage', ?, 'unknown', ?, NULL, 'https://example.invalid', ?)`);
+      ev.run("m1", "maint:a", "구역지정", null, mi2);
+      ev.run("m2", "maint:a", "조합", 1000, mi2);
+      run(db, "maintenance_integrated", mi2, { byRegion: { 41: 3, 11: 2 }, byType: {}, fillRates: {}, unlocated: 5 }, 5);
+    }
     run(db, "applyhome", ah, { byRegion: { 경기: 4 }, byType: {}, fillRates: {}, unlocated: 5 }, 5);
     run(db, "move_in", mi, { byRegion: { 경기: 3 }, byType: {}, fillRates: {}, unlocated: 0 });
     db.close();
