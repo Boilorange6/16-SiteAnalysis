@@ -68,6 +68,37 @@ const j = (ruleId: string, basis: string[], sentence: string, level: "good" | "f
   criteria,
 });
 
+// ── 예시 지도 지물 (고덕동 주변의 그럴듯한 좌표. 실제 위치가 아니다) ──
+type MapFeature = NonNullable<TileResult["presentation"]["features"]>[number];
+const CENTER = [127.1546, 37.5556] as const;
+const M_LNG = 88_200; // 이 위도에서 경도 1도 ≈ m
+const M_LAT = 111_320;
+const at = (bearingDeg: number, distM: number): [number, number] => {
+  const a = (bearingDeg * Math.PI) / 180;
+  return [Math.round((CENTER[0] + (Math.sin(a) * distM) / M_LNG) * 1e6) / 1e6, Math.round((CENTER[1] + (Math.cos(a) * distM) / M_LAT) * 1e6) / 1e6];
+};
+/** 고정 시드 의사난수로 반경 안에 흩뿌린다 (실행마다 같다) */
+function scatter(layer: string, n: number, seed: number, maxM: number, minM = 40, weight?: (i: number) => number | null, label?: (i: number) => string | null): MapFeature[] {
+  let s = seed;
+  const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+  return Array.from({ length: n }, (_, i) => {
+    const [lng, lat] = at(rnd() * 360, minM + Math.sqrt(rnd()) * (maxM - minM));
+    return { layer, lng, lat, ...(weight ? { weight: weight(i) } : {}), ...(label ? { label: label(i) } : {}) };
+  });
+}
+const dot = (layer: string, bearing: number, dist: number, weight: number | null, label: string | null = null): MapFeature => {
+  const [lng, lat] = at(bearing, dist);
+  return { layer, lng, lat, weight, label };
+};
+const pin = (layer: string, bearing: number, dist: number, label: string, weight?: number): MapFeature => {
+  const [lng, lat] = at(bearing, dist);
+  return { layer, lng, lat, highlight: true, label, ...(weight ? { weight } : {}) };
+};
+const withMap = (t: TileResult, features: MapFeature[], total = features.length): TileResult => ({
+  ...t,
+  presentation: { ...t.presentation, features, featuresTotal: total },
+});
+
 export const GODEOK_SUMMARY = {
   address: "서울특별시 강동구 고덕동 123 외 2필지",
   areaM2: 3480,
@@ -81,7 +112,7 @@ export const GODEOK_SUMMARY = {
 };
 
 export const GODEOK_RESULTS: TileResult[] = [
-  tile(
+  withMap(tile(
     "A01",
     "analysis",
     "complete",
@@ -95,7 +126,7 @@ export const GODEOK_RESULTS: TileResult[] = [
     [["rail", "2026-09-01"], ["bus_stops", "2026-08-15"]],
     j("A01-rail-distance@1", ["nearest_station_m"], "최근접 역 출입구까지 직선 480m → 철도 접근은 가까운 편 → 실제 보행 경로 확인 필요", "good", "철도 직선거리 500m 이하 좋음 · 1,000m 이하 보통 · 초과 주의"),
     [{ kind: "unknown", note: "정류장별 경유 노선 연결 자료를 확보하지 못했습니다." }],
-  ),
+  ), [...scatter("bus_stop", 40, 11, 1000), pin("bus_nearest", 40, 210, "직선 210m")], 41),
   tile(
     "A02",
     "analysis",
@@ -109,7 +140,54 @@ export const GODEOK_RESULTS: TileResult[] = [
     [["school", "2026-04-01"], ["school_zone", "2026-03-01"]],
     j("A02-zone-distance@1", ["nearest_elem_m"], "대지가 통학구역 안에 있음 → 연결 초등학교까지 직선 480m → 실제 배정은 교육청 확인 필요", "good", "연결 초등학교 직선거리 500m 이하 좋음 · 1,000m 이하 보통 · 초과 주의"),
   ),
-  tile(
+  withMap(tile(
+    "A03",
+    "analysis",
+    "complete",
+    [
+      m("basic_groups", "기초 생활시설 확인 군(4군 중)", 4, "군"),
+      m("stores", "반경 내 상가 전체", 214, "개"),
+      m("nearest_grocery_m", "최근접 식료품", 130, "m"),
+      m("nearest_pharmacy_m", "최근접 약국", 260, "m"),
+      m("store_density", "상가 밀도", 68.1, "개/㎢"),
+    ],
+    [["store", "2026-06-30"]],
+    j("a03-basic-groups@1", ["basic_groups"], "기초 생활시설 4군 중 4군 확인 → 반경 안에서 일상 시설 접근 가능 → 업소 214개의 영업 여부는 현장 확인"),
+    [],
+  ), [
+    ...scatter("store:other", 80, 21, 1000),
+    ...scatter("store:eatery", 60, 22, 900),
+    ...scatter("store:life_service", 30, 23, 900),
+    ...scatter("store:grocery", 17, 24, 900),
+    ...scatter("store:clinic", 13, 25, 900),
+    ...scatter("store:pharmacy", 8, 26, 900),
+    pin("store:grocery", 200, 130, "식료품 130m"),
+    pin("store:pharmacy", 300, 260, "약국 260m"),
+    pin("store:clinic", 80, 330, "의원 330m"),
+    pin("store:life_service", 150, 180, "생활서비스 180m"),
+    pin("store:eatery", 250, 90, "음식·카페 90m"),
+  ], 214),
+  withMap(tile(
+    "A04",
+    "analysis",
+    "partial",
+    [
+      m("parks", "반경 내 공원", 5, "곳"),
+      m("nearest_park_point_m", "공원 대표점까지", 320, "m"),
+      m("park_area_sum_m2", "반경 내 공원 원천 면적 합", 128400, "㎡"),
+      m("park_area_in_radius_m2", "반경 안에 든 공원 면적", null, "㎡", "missing"),
+    ],
+    [["park", "2026-05-31"]],
+    j("a04-park-points@1", ["parks"], "공원 5곳 확인, 대표점까지 직선 320m → 입구가 아닌 대표점 기준의 거리임 → 실제 입구와 경계 확인 필요"),
+    [{ kind: "not_provided", note: "공원 경계·입구 자료 미적재 — 반경 안 면적과 입구 거리는 계산하지 못했습니다." }],
+  ), [
+    pin("park_nearest", 320, 320, "대표점 320m", 9200),
+    dot("park", 100, 640, 61000),
+    dot("park", 210, 720, 28000),
+    dot("park", 20, 880, 21000),
+    dot("park", 160, 450, 9200),
+  ]),
+  withMap(tile(
     "A05",
     "analysis",
     "partial",
@@ -126,8 +204,12 @@ export const GODEOK_RESULTS: TileResult[] = [
       { kind: "incomplete", note: "K-APT에 없는 단지 3곳은 세대수를 알 수 없어 합계에서 제외했습니다." },
       { kind: "estimated", note: "30년 이상 비중은 분석 기준일 대비 경과연수로 추정한 값입니다." },
     ],
-  ),
-  tile(
+  ), [
+    ...scatter("apt", 14, 31, 950, 120, (i) => (i % 5 === 4 ? null : 180 + ((i * 137) % 700))),
+    ...scatter("other_housing", 3, 32, 800, 100, () => 60),
+    ...scatter("officetel", 2, 33, 700, 100, (i) => 120 + i * 90),
+  ]),
+  withMap(tile(
     "A06",
     "analysis",
     "complete",
@@ -140,7 +222,13 @@ export const GODEOK_RESULTS: TileResult[] = [
     [["applyhome", "2026-09-15"], ["movein_plan", "2026-09-01"], ["redevelopment", "2026-08-20"]],
     j("A06-schedule@1", ["presale_units", "move_in_units"], "원천별 예정 물량이 각각 확인됨 → 같은 사업이 겹쳐 잡혔을 수 있어 합계는 내지 않음 → 사업별 연결 확인 필요"),
     [{ kind: "partial", note: "청약홈·입주예정·정비사업에 같은 사업이 중복 등장할 수 있어 합계를 보류했습니다. 중복 제거는 다음 단계입니다." }],
-  ),
+  ), [
+    dot("applyhome", 30, 420, 480, "2026-11"),
+    dot("applyhome", 250, 700, 340, "2027-03"),
+    dot("move_in", 35, 460, 480, "2027-06"),
+    dot("move_in", 140, 610, 380, "2027-09"),
+    dot("move_in", 300, 820, 240, "2028-01"),
+  ]),
   tile(
     "A07",
     "analysis",

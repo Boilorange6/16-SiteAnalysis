@@ -177,26 +177,62 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background:
-    radial-gradient(circle at 62% 62%, transparent 0 118px, rgba(0, 0, 0, 0.14) 119px 120px, transparent 121px),
-    radial-gradient(circle at 62% 62%, transparent 0 236px, rgba(0, 0, 0, 0.1) 237px 238px, transparent 239px),
-    linear-gradient(100deg, transparent 0 58%, #fff 58% 60%, transparent 60%),
-    linear-gradient(8deg, transparent 0 55%, #fff 55% 57%, transparent 57%);
-}
-.summaryMap::after {
-  content: "";
-  position: absolute;
-  left: 62%;
-  top: 62%;
-  width: 34px;
-  height: 30px;
-  transform: translate(-50%, -50%);
-  background: var(--black);
-  border: 3px solid #fff;
-  border-radius: 3px;
 }
 .summary > *:not(.summaryMap) {
   position: relative;
+}
+.summaryPanel {
+  align-self: flex-start;
+  max-width: min(78%, 560px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(2px);
+}
+
+/* ── 지도 그림 자리 ── */
+.mapBox {
+  position: relative;
+  flex: none;
+  height: 180px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #f2f2ef;
+}
+@media (max-width: 520px) {
+  .mapBox {
+    height: 140px;
+  }
+}
+.dialogSplit {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 20px;
+  align-items: stretch;
+}
+.dialogMap {
+  position: relative;
+  min-height: 460px;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #f2f2ef;
+}
+.dialogInfo {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  min-width: 0;
+}
+@media (max-width: 720px) {
+  .dialogSplit {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dialogMap {
+    min-height: 260px;
+  }
 }
 .summaryKicker {
   font-size: 12px;
@@ -224,15 +260,11 @@
 .facts {
   list-style: none;
   padding: 0;
-  margin: 6px 0 0;
+  margin: 2px 0 0;
   display: grid;
-  gap: 6px;
-  max-width: 78%;
+  gap: 4px;
 }
 .facts li {
-  background: rgba(255, 255, 255, 0.92);
-  border-radius: 12px;
-  padding: 8px 12px;
   font-size: 13px;
 }
 .summaryFoot {
@@ -668,6 +700,9 @@
   place-items: center;
   padding: 24px;
   z-index: 50;
+}
+.dialogWide {
+  width: min(1120px, 100%) !important;
 }
 .dialog {
   width: min(680px, 100%);

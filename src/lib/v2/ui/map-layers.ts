@@ -1,3 +1,16 @@
+import type { MapFeature } from "../tile-result";
+
+/** MapFigure가 그리는 입력. 카드·상세·PPT가 같은 것을 쓴다. */
+export type MapModel = {
+  center: readonly [number, number];
+  radiusM: number;
+  features: MapFeature[];
+  /** 상한으로 잘리기 전 전체 개수 (features.length보다 크면 그림에 "표시 n / 전체 m"을 적는다) */
+  total: number;
+  /** 범례 밑에 적는 짧은 문구 */
+  notes: string[];
+};
+
 /** 지도 레이어 id → 라벨·색·표현 (엔진의 legend 라벨과 MapFigure가 함께 쓴다). 색은 화면 쪽에서 정한다. */
 export type LayerStyle = {
   label: string;

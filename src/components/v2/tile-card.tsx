@@ -3,6 +3,7 @@
 import { useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import type { DemoPhase, TileSize } from "@/lib/v2/ui/board-state";
 import { faceLabel, type Badge, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
+import MapBox from "./map-box";
 import styles from "./board.module.css";
 
 const BADGE_CLASS = { status: styles.badgeStatus, limit: styles.badgeLimit, model: styles.badgeModel } as const;
@@ -194,8 +195,13 @@ export default function TileCard(p: TileCardProps) {
               </>
             ) : (
               <>
+                {view.map && (
+                  <div className={styles.mapBox}>
+                    <MapBox model={view.map} label={`${view.title} 지도`} />
+                  </div>
+                )}
                 <div className={styles.headline}>
-                  {view.headline && (
+                  {view.headline && !view.map && (
                     <span className={styles.disc} style={{ background: `${view.color}22`, color: view.color }} aria-hidden>
                       {view.code}
                     </span>

@@ -34,18 +34,18 @@ assert.equal(boardReducer(s, { type: "move", id: last, dir: 1 }), s);
 s = boardReducer(s, { type: "move", id: "t-A02", dir: 1 });
 assert.deepEqual(s.order.slice(0, 2), ["t-A01", "t-A02"]);
 
-// 보고서: 표지 1 + 포함 타일(8) + 출처 1 = 10, both는 2장
-assert.deepEqual(reportPages(s), { tiles: 8, pages: 10 });
+// 보고서: 표지 1 + 포함 타일(10) + 출처 1 = 12, both는 2장
+assert.deepEqual(reportPages(s), { tiles: 10, pages: 12 });
 s = boardReducer(s, { type: "include", id: "t-A01", value: false });
-assert.deepEqual(reportPages(s), { tiles: 7, pages: 9 });
+assert.deepEqual(reportPages(s), { tiles: 9, pages: 11 });
 s = boardReducer(s, { type: "face", id: "t-D04", face: "both" });
 assert.equal(s.faces["t-D04"], "both");
-assert.deepEqual(reportPages(s), { tiles: 7, pages: 10 });
+assert.deepEqual(reportPages(s), { tiles: 9, pages: 12 });
 // 제거된 타일은 장수에서 빠진다
 s = boardReducer(s, { type: "remove", id: "t-D04" });
-assert.deepEqual(reportPages(s), { tiles: 6, pages: 8 });
+assert.deepEqual(reportPages(s), { tiles: 8, pages: 10 });
 s = boardReducer(s, { type: "undo" });
-assert.deepEqual(reportPages(s), { tiles: 7, pages: 10 }); // 포함·면 설정 유지
+assert.deepEqual(reportPages(s), { tiles: 9, pages: 12 }); // 포함·면 설정 유지
 
 // 끌어 놓기 reorder: 앞으로/뒤로/제자리/범위 밖
 {

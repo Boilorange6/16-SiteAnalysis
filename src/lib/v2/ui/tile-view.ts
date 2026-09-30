@@ -3,6 +3,7 @@
  * 규칙: 종합 점수 없음 · 도보 시간 없음 · 공급/가격/개발은 좋음·주의 평가 없음 (plan 화면 규칙 1~8).
  */
 import type { OUTPUT_FACES, TileResult } from "../tile-result";
+import type { MapModel } from "./map-layers";
 import { catalogEntry, sourceName } from "./tile-catalog";
 
 export type OutputFace = (typeof OUTPUT_FACES)[number];
@@ -25,7 +26,25 @@ export type TileView = {
   chart: { label: string; value: number }[] | null;
   hasFace: boolean;
   retryable: boolean;
+  /** 지도 타일이면 지도 그림 입력, 아니면 null */
+  map: MapModel | null;
 };
+
+const MAP_TILES = new Set(["A01", "A03", "A04", "A05", "A06"]);
+const MAP_NOTES: Record<string, string> = {
+  A04: "대표점 · 원천 면적 비례 (경계 아님)",
+  A05: "원 크기 = 세대수 · 속 빈 원 = 세대수 미확인",
+  A06: "원천별 표시 · 중복 가능",
+};
+
+function mapOf(r: TileResult): MapModel | null {
+  if (!MAP_TILES.has(r.tileCode) || (r.status !== "complete" && r.status !== "partial")) return null;
+  const features = r.presentation.features ?? [];
+  const notes = MAP_NOTES[r.tileCode] ? [MAP_NOTES[r.tileCode]] : [];
+  if (r.tileCode === "A01" && r.metrics.some((m) => m.id === "nearest_rail_m" && m.status === "missing")) notes.push("철도 자료 미적재 · 버스정류장만 표시");
+  if (features.length === 0) notes.push("반경 안 표시할 지물 없음");
+  return { center: r.conditions.center, radiusM: r.conditions.radiusM, features, total: r.presentation.featuresTotal ?? features.length, notes };
+}
 
 const STATUS_TEXT: Partial<Record<TileResult["status"], string>> = {
   partial: "일부 자료만 집계",
@@ -151,6 +170,7 @@ export function toTileView(r: TileResult): TileView {
         : null,
     hasFace: r.tileCode === "D04",
     retryable: r.status === "failed",
+    map: mapOf(r),
   };
 }
 
@@ -166,6 +186,8 @@ export type SummaryView = {
   asOfLine: string;
   incomplete: boolean;
   incompleteCount: number;
+  /** 대지·반경만 그린 배경 지도 */
+  map: MapModel | null;
 };
 
 export function toSummaryView(s: SiteSummary, results: TileResult[]): SummaryView {
@@ -180,5 +202,6 @@ export function toSummaryView(s: SiteSummary, results: TileResult[]): SummaryVie
     asOfLine: dates.length ? `자료 기준일 ${dates[0]}${dates.length > 1 && dates[0] !== dates[dates.length - 1] ? ` ~ ${dates[dates.length - 1]}` : ""}` : "자료 기준일 미확인",
     incomplete: weak.length > 0,
     incompleteCount: weak.length,
+    map: results[0] ? { center: results[0].conditions.center, radiusM: s.radiusM, features: [], total: 0, notes: [] } : null,
   };
 }
