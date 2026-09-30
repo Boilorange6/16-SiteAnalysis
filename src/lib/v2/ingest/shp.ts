@@ -96,11 +96,13 @@ function detect(shpPath: string, opts: { crs?: string; encoding?: string }) {
   return { crs, encoding };
 }
 
-export async function* readShp(shpPath: string, opts: { crs?: string; encoding?: string } = {}): AsyncGenerator<ShpRecord> {
+/** keep: 정리 전 원본 속성(문자열에 NUL 채움이 남아 있음)으로 레코드를 거른다. 걸러진 레코드는 재투영하지 않아 시군구 하나만 읽을 때 빠르다. */
+export async function* readShp(shpPath: string, opts: { crs?: string; encoding?: string; keep?: (props: Record<string, unknown>) => boolean } = {}): AsyncGenerator<ShpRecord> {
   const { crs, encoding } = detect(shpPath, opts);
   const source = await openShapefile(shpPath, undefined, { encoding });
   for (let r = await source.read(); !r.done; r = await source.read()) {
     const f = r.value;
+    if (opts.keep && !opts.keep((f.properties ?? {}) as Record<string, unknown>)) continue;
     yield { properties: cleanProps((f.properties ?? {}) as Record<string, unknown>), geometry: f.geometry ? reprojectToWgs84(f.geometry, crs) : null };
   }
 }
