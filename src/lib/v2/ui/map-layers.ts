@@ -47,6 +47,19 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   officetel: S("오피스텔", "#2B9CBF", "weight"),
   applyhome: S("청약홈", "#D6478A", "weight"),
   move_in: S("입주예정", "#2F6FDB", "weight"),
+  trade_q1: S("㎡당 하위 20%", "#BFD7F5", "weight"),
+  trade_q2: S("㎡당 20~40%", "#8FB8EC", "weight"),
+  trade_q3: S("㎡당 40~60%", "#5C97E0", "weight"),
+  trade_q4: S("㎡당 60~80%", "#2F6FDB", "weight"),
+  trade_q5: S("㎡당 상위 20%", "#1B3F8F", "weight"),
+  maint_zone: S("정비구역", "#D6478A"),
+  maint_zone_center: S("정비구역", "#D6478A"),
+  zoning_site: S("대지 용도지역", "#C9A227"),
+  ...Object.fromEntries(
+    (
+      [["주거", "#F2C94C"], ["상업", "#E05A47"], ["공업", "#8E7CC3"], ["녹지", "#5FAE5B"], ["관리", "#A8C66C"], ["농림", "#7FB77E"], ["자연환경보전", "#2F7A4E"], ["기타", "#B9BDC6"]] as const
+    ).flatMap(([c, color]) => [[`zone:${c}`, S(`${c}지역`, color)], [`zone_center:${c}`, S(`${c}지역`, color)]]),
+  ),
 };
 const FALLBACK: LayerStyle = S("기타", "#7A7E87");
 
