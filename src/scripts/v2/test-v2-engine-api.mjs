@@ -34,7 +34,7 @@ try {
   const ok = postAnalysis(appDb, dataDir, { address, analysisDate: "2026-09-30" });
   assert.equal(ok.status, 200);
   assert.deepEqual(Object.keys(ok.body).sort(), ["analysisId", "results", "summary"]);
-  assert.equal(ok.body.results.length, 13);
+  assert.equal(ok.body.results.length, 14);
   assert.equal(ok.body.summary.address, address);
   assert.equal(ok.body.results[0].conditions.radiusM, 800);
 
