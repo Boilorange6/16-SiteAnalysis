@@ -2,17 +2,32 @@
 import type { TileResult } from "../tile-result";
 import type { OutputFace } from "./tile-view";
 
+export type TileSize = 1 | 2;
+
+/** 되돌리기 한 단계. 모든 편집(순서·크기·제거·더하기)이 여기 쌓인다. */
+export type UndoEntry =
+  | { kind: "order"; id: string; order: string[] }
+  | { kind: "size"; id: string; size: TileSize }
+  | { kind: "remove"; id: string; index: number }
+  | { kind: "add"; id: string; trayIndex: number };
+
 export type BoardState = {
   order: string[];
   included: Record<string, boolean>;
   faces: Record<string, OutputFace>;
+  sizes: Record<string, TileSize>;
+  /** 빼 둔 타일(더할 수 있는 타일). index는 빼기 전 위치 */
   removed: { id: string; index: number }[];
+  undoStack: UndoEntry[];
 };
 
 export type BoardAction =
   | { type: "remove"; id: string }
   | { type: "undo" }
   | { type: "move"; id: string; dir: -1 | 1 }
+  | { type: "reorder"; from: number; to: number }
+  | { type: "resize"; id: string; size: TileSize }
+  | { type: "add"; id: string }
   | { type: "include"; id: string; value: boolean }
   | { type: "face"; id: string; face: OutputFace };
 
@@ -22,8 +37,20 @@ export function initBoard(results: TileResult[]): BoardState {
     // 결과가 있는 타일만 기본 포함
     included: Object.fromEntries(results.map((r) => [r.tileId, r.status === "complete" || r.status === "partial"])),
     faces: Object.fromEntries(results.map((r) => [r.tileId, r.presentation.outputFace])),
+    sizes: Object.fromEntries(results.map((r) => [r.tileId, 1 as TileSize])),
     removed: [],
+    undoStack: [],
   };
+}
+
+/** order 배열에서 from 위치 타일을 to 위치로 옮긴다. 범위 밖·제자리면 null. */
+function reordered(order: string[], from: number, to: number): string[] | null {
+  const n = order.length;
+  if (from < 0 || from >= n || to < 0 || to >= n || from === to) return null;
+  const next = [...order];
+  const [x] = next.splice(from, 1);
+  next.splice(to, 0, x);
+  return next;
 }
 
 export function boardReducer(s: BoardState, a: BoardAction): BoardState {
@@ -31,22 +58,58 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
     case "remove": {
       const index = s.order.indexOf(a.id);
       if (index < 0) return s;
-      return { ...s, order: s.order.filter((x) => x !== a.id), removed: [...s.removed, { id: a.id, index }] };
+      return {
+        ...s,
+        order: s.order.filter((x) => x !== a.id),
+        removed: [...s.removed, { id: a.id, index }],
+        undoStack: [...s.undoStack, { kind: "remove", id: a.id, index }],
+      };
+    }
+    case "add": {
+      const trayIndex = s.removed.findIndex((r) => r.id === a.id);
+      if (trayIndex < 0 || s.order.includes(a.id)) return s;
+      return {
+        ...s,
+        order: [...s.order, a.id],
+        removed: s.removed.filter((r) => r.id !== a.id),
+        undoStack: [...s.undoStack, { kind: "add", id: a.id, trayIndex }],
+      };
     }
     case "undo": {
-      const last = s.removed[s.removed.length - 1];
-      if (!last) return s;
-      const order = [...s.order];
-      order.splice(Math.min(last.index, order.length), 0, last.id);
-      return { ...s, order, removed: s.removed.slice(0, -1) };
+      const u = s.undoStack[s.undoStack.length - 1];
+      if (!u) return s;
+      const rest = { undoStack: s.undoStack.slice(0, -1) };
+      switch (u.kind) {
+        case "order":
+          return { ...s, ...rest, order: u.order };
+        case "size":
+          return { ...s, ...rest, sizes: { ...s.sizes, [u.id]: u.size } };
+        case "remove": {
+          const order = [...s.order];
+          order.splice(Math.min(u.index, order.length), 0, u.id);
+          return { ...s, ...rest, order, removed: s.removed.filter((r) => r.id !== u.id) };
+        }
+        case "add": {
+          const removed = [...s.removed];
+          removed.splice(Math.min(u.trayIndex, removed.length), 0, { id: u.id, index: s.order.indexOf(u.id) });
+          return { ...s, ...rest, order: s.order.filter((x) => x !== u.id), removed };
+        }
+      }
+      return s;
+    }
+    case "reorder": {
+      const order = reordered(s.order, a.from, a.to);
+      if (!order) return s;
+      return { ...s, order, undoStack: [...s.undoStack, { kind: "order", id: s.order[a.from], order: s.order }] };
     }
     case "move": {
       const i = s.order.indexOf(a.id);
-      const j = i + a.dir;
-      if (i < 0 || j < 0 || j >= s.order.length) return s;
-      const order = [...s.order];
-      [order[i], order[j]] = [order[j], order[i]];
-      return { ...s, order };
+      return i < 0 ? s : boardReducer(s, { type: "reorder", from: i, to: i + a.dir });
+    }
+    case "resize": {
+      const prev = s.sizes[a.id];
+      if (prev === undefined || prev === a.size) return s;
+      return { ...s, sizes: { ...s.sizes, [a.id]: a.size }, undoStack: [...s.undoStack, { kind: "size", id: a.id, size: prev }] };
     }
     case "include":
       return { ...s, included: { ...s.included, [a.id]: a.value } };

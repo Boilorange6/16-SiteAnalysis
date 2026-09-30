@@ -47,6 +47,65 @@ assert.deepEqual(reportPages(s), { tiles: 6, pages: 7 });
 s = boardReducer(s, { type: "undo" });
 assert.deepEqual(reportPages(s), { tiles: 7, pages: 9 }); // 포함·면 설정 유지
 
+// 끌어 놓기 reorder: 앞으로/뒤로/제자리/범위 밖
+{
+  let b = initBoard(GODEOK_RESULTS);
+  const o0 = b.order;
+  b = boardReducer(b, { type: "reorder", from: 2, to: 0 });
+  assert.deepEqual(b.order.slice(0, 3), [o0[2], o0[0], o0[1]]);
+  assert.equal(b.order.length, o0.length);
+  b = boardReducer(b, { type: "undo" });
+  assert.deepEqual(b.order, o0);
+  b = boardReducer(b, { type: "reorder", from: 0, to: o0.length - 1 });
+  assert.equal(b.order[o0.length - 1], o0[0]);
+  b = boardReducer(b, { type: "undo" });
+  for (const [from, to] of [[3, 3], [-1, 0], [0, o0.length], [o0.length, 0]]) {
+    assert.equal(boardReducer(b, { type: "reorder", from, to }), b); // 변화 없음, undo 안 쌓임
+  }
+  assert.equal(b.undoStack.length, 0);
+
+  // 크기: 기본 1, 같은 값·없는 타일 무시, undo
+  assert.equal(b.sizes["t-A01"], 1);
+  assert.equal(boardReducer(b, { type: "resize", id: "t-A01", size: 1 }), b);
+  assert.equal(boardReducer(b, { type: "resize", id: "nope", size: 2 }), b);
+  b = boardReducer(b, { type: "resize", id: "t-A01", size: 2 });
+  assert.equal(b.sizes["t-A01"], 2);
+  b = boardReducer(b, { type: "undo" });
+  assert.equal(b.sizes["t-A01"], 1);
+
+  // 더하기: 끝에 붙고, 없는 것·이미 있는 것 무시, undo하면 다시 트레이로
+  b = boardReducer(b, { type: "remove", id: "t-A05" });
+  b = boardReducer(b, { type: "remove", id: "t-A07" });
+  assert.equal(boardReducer(b, { type: "add", id: "t-A01" }), b);
+  assert.equal(boardReducer(b, { type: "add", id: "nope" }), b);
+  const beforeAdd = b;
+  b = boardReducer(b, { type: "add", id: "t-A05" });
+  assert.equal(b.order[b.order.length - 1], "t-A05");
+  assert.deepEqual(b.removed.map((r) => r.id), ["t-A07"]);
+  b = boardReducer(b, { type: "undo" });
+  assert.deepEqual(b.order, beforeAdd.order);
+  assert.deepEqual(b.removed.map((r) => r.id), ["t-A05", "t-A07"]);
+
+  // 여러 종류 섞인 되돌리기는 역순으로 모두 원상 복구
+  const base = initBoard(GODEOK_RESULTS);
+  let m = base;
+  m = boardReducer(m, { type: "reorder", from: 4, to: 1 });
+  m = boardReducer(m, { type: "resize", id: "t-A02", size: 2 });
+  m = boardReducer(m, { type: "remove", id: "t-A09" });
+  m = boardReducer(m, { type: "add", id: "t-A09" });
+  m = boardReducer(m, { type: "move", id: "t-A09", dir: -1 }); // 위/아래 버튼도 되돌릴 수 있다
+  assert.equal(m.undoStack.length, 5);
+  while (m.undoStack.length) m = boardReducer(m, { type: "undo" });
+  assert.deepEqual(m.order, base.order);
+  assert.deepEqual(m.sizes, base.sizes);
+  assert.deepEqual(m.removed, []);
+
+  // 보고서 장수는 순서·크기와 무관
+  const p0 = reportPages(base);
+  const shuffled = boardReducer(boardReducer(base, { type: "reorder", from: 0, to: 5 }), { type: "resize", id: "t-A01", size: 2 });
+  assert.deepEqual(reportPages(shuffled), p0);
+}
+
 // 데모
 assert.deepEqual([0, 1, 2, 3].map((st) => demoPhase(1, st)), ["pending", "pending", "running", "done"]);
 assert.equal(demoFinished(10, 0), 0);
