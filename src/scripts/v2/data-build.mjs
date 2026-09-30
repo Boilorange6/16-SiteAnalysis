@@ -357,6 +357,39 @@ if (builders.reference && existsSync(join(raw, "maintenance_zone"))) {
     return [...built, ...(await buildMaintenanceZones(db, layers, roster))];
   };
 }
+
+// SGIS 1 km 인구·가구 격자(reference): .cache/v2/raw/sgis_grid 폴더가 있고 CSV가 풀려 있을 때만. 시도는 core 시군구 경계로 판정한다.
+const { buildPopGrid, sgisRows, sgisDataYear, locateSigunguFromCore } = await import("../../lib/v2/ingest/sources/sgis-grid.ts");
+const sgisDir = join(raw, "sgis_grid");
+if (builders.reference && existsSync(sgisDir)) {
+  const base = builders.reference;
+  builders.reference = async (db, ctx) => {
+    const built = await base(db, ctx);
+    let year = sgisDataYear(sgisDir);
+    if (!year) {
+      extractAll(sgisDir);
+      year = sgisDataYear(sgisDir);
+    }
+    if (!year) {
+      console.log("sgis_grid: 통계 CSV 없음 — 격자 적재 건너뜀");
+      return built;
+    }
+    const zip = join(sgisDir, "sgis_grid.zip");
+    const st = statSync(existsSync(zip) ? zip : sgisDir);
+    const releaseId = insertRelease(db, {
+      sourceId: "sgis_grid",
+      provider: "국가데이터처(SGIS 격자 통계, 공공데이터포털)",
+      sourceUrl: "https://www.data.go.kr/data/15141768/fileData.do",
+      sourceAsOf: year,
+      fetchedAt: st.mtime.toISOString(),
+      checksum: `size-mtime:${st.size}-${Math.round(st.mtimeMs)}`,
+      licenseCode: "UNRESTRICTED",
+      rights: { note: "이용허락범위 제한 없음(A0 표 8행)", disclosure: "5 미만 값은 0 또는 5로 확률 대체, 그 이상은 최대 ±7 노이즈, 총괄 항목 일부 N/A(비공개)" },
+    });
+    if (!ctx.core) console.warn("⚠ core가 없어 격자의 시도 코드를 (미상)으로 기록합니다");
+    return [...built, await buildPopGrid(db, { rows: sgisRows(sgisDir), releaseId, dataYear: year, locate: locateSigunguFromCore(ctx.core) })];
+  };
+}
 if (builders.core) {
   const base = builders.core;
   builders.core = async (db, ctx) => {

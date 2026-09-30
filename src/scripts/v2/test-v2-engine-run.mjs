@@ -27,12 +27,12 @@ try {
   const r1 = runAnalysis(appDb, dataDir, input);
   assert.equal(r1.ok, true);
   assert.deepEqual(r1.results.map((t) => t.tileCode).sort(), [...TILE_CODES].sort(), "화면 카탈로그의 모든 타일 코드");
-  assert.equal(r1.computed.length, 13);
+  assert.equal(r1.computed.length, 14);
   assert.deepEqual(r1.reused, []);
   assert.ok(r1.results.every((t) => t.provenance.manifestHash === h1 && t.analysisId === r1.analysisId));
   assert.equal(A.getAnalysisRun(appDb, r1.analysisId).status, "complete");
   assert.equal(A.getAnalysisRun(appDb, r1.analysisId).parameters.jimok, "대");
-  assert.deepEqual(r1.results.map((t) => t.status), ["partial", "not_provided", "complete", "partial", "partial", "partial", "not_provided", "not_provided", "not_provided", "not_provided", "not_provided", "not_provided", "not_provided"]);
+  assert.deepEqual(r1.results.map((t) => t.status), ["partial", "not_provided", "complete", "partial", "partial", "partial", "not_provided", "not_provided", "not_provided", "no_data", "not_provided", "not_provided", "not_provided", "not_provided"]);
   r1.results.forEach((t) => toTileView(t)); // 화면 변환이 모든 결과를 받는다
 
   // 보고서 출처 장: 공백이 든 한글 원천 이름도 기준일과 정확히 나뉜다
@@ -51,14 +51,14 @@ try {
   // 2회차: 같은 조건·manifest → 재계산 없이 재사용, 값은 같고 분석 ID만 새것
   const r2 = runAnalysis(appDb, dataDir, input);
   assert.deepEqual(r2.computed, []);
-  assert.equal(r2.reused.length, 13);
+  assert.equal(r2.reused.length, 14);
   assert.notEqual(r2.analysisId, r1.analysisId);
   assert.deepEqual(r2.results.map((t) => ({ ...t, tileId: "", analysisId: "" })), r1.results.map((t) => ({ ...t, tileId: "", analysisId: "" })));
   assert.ok(r2.results.every((t) => t.analysisId === r2.analysisId && t.tileId.startsWith(r2.analysisId)));
 
   // 반경 또는 분석일이 다르면 다시 계산
-  assert.equal(runAnalysis(appDb, dataDir, { ...input, radiusM: 1000 }).computed.length, 13);
-  assert.equal(runAnalysis(appDb, dataDir, { ...input, analysisDate: "2026-10-01" }).computed.length, 13);
+  assert.equal(runAnalysis(appDb, dataDir, { ...input, radiusM: 1000 }).computed.length, 14);
+  assert.equal(runAnalysis(appDb, dataDir, { ...input, analysisDate: "2026-10-01" }).computed.length, 14);
 
   // 저장된 분석 복원: 요약도 실행 조건에서 다시 만든다
   const restored = A.loadTileResults(appDb, r1.analysisId);
@@ -69,7 +69,7 @@ try {
   // 새 manifest → 새 데이터로 재계산, 옛 분석은 그대로
   const h2 = await buildEngineFixture(dataDir, "v2", { extraBus: true });
   const r3 = runAnalysis(appDb, dataDir, input);
-  assert.deepEqual([r3.reused, r3.computed.length], [[], 13]);
+  assert.deepEqual([r3.reused, r3.computed.length], [[], 14]);
   assert.ok(r3.results.every((t) => t.provenance.manifestHash === h2));
   assert.equal(r3.results.find((t) => t.tileCode === "A01").metrics.find((m) => m.id === "bus_stops").value, 3);
   assert.deepEqual(A.loadTileResults(appDb, r1.analysisId), [...r1.results].sort((a, b) => (a.tileCode < b.tileCode ? -1 : 1)));
