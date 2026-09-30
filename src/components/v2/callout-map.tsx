@@ -153,7 +153,12 @@ function Pager({ model, page, onPage }: { model: CalloutModel; page: number; onP
   const pages = pageCount(model.complexes.length);
   const label = page === 0 ? "개요" : `${page} / ${pages}`;
   const supply = model.kind === "supply";
-  const range = page === 0 ? `전체 ${fmtInt(model.complexes.length)}${model.unit} · ${supply ? "입주 시기순" : "세대수 순"}` : pageRange(page, model.complexes.length, undefined, supply);
+  const range =
+    page === 0
+      ? supply
+        ? `전체 ${fmtInt(model.complexes.length)}${model.unit} · 입주 시기순`
+        : `전체 ${fmtInt(model.summary.count)}단지 (아파트 ${fmtInt(model.summary.apartments)} · 오피스텔 ${fmtInt(model.summary.count - model.summary.apartments)}) · 세대수 순`
+      : pageRange(page, model.complexes.length, undefined, supply);
   return (
     <div className={styles.cPagerWrap}>
       <div className={`${styles.plate} ${styles.cPager}`} role="group" aria-label="설명표 페이지">
@@ -206,8 +211,13 @@ export default function CalloutMap({ model, kind, page = 0, onPage, label }: Cal
   const active = hover ?? picked;
   const empty = model.complexes.length === 0;
   const sat = layer === "Satellite";
-  // 아래 줄: [왼쪽 아래 값 카드(개요)] [범례] ... [축척] — 축척은 두 칸 사이 지도 영역의 오른쪽 끝
-  const scaleX = scene ? scene.frame.right.x0 - 18 - 92 : 0;
+  // 아래 줄: [왼쪽 아래 값 카드(개요)] [범례] ... [축척]. 모바일 카드에서는 값 판과
+  // 축척이 같은 가로 영역을 쓰지 않도록 축척을 오른쪽 끝으로 보낸다.
+  const scaleX = scene
+    ? kind === "card" && size && size.w <= 520
+      ? Math.max(12, size.w - 100)
+      : scene.frame.right.x0 - 18 - 92
+    : 0;
   const legendX = scene ? (page === 0 ? 356 : scene.frame.left.x1 + 18) : 0;
   const backdrop = useMemo(() => ({ center: model.center, radiusM: model.radiusM, features: [], total: 0, notes: [] }), [model]);
 

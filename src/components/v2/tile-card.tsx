@@ -309,7 +309,7 @@ function SummaryFace({ p, state, waiting, onFlip }: { p: TileCardProps; state: b
                 {stripText(view.sourceLine, false)}
               </span>
               {!state && (
-                <button type="button" className={styles.flipBtn} onClick={onFlip} aria-pressed={false} aria-label={`${view.title} 지도 보기`}>
+                <button type="button" className={styles.flipBtn} onClick={onFlip} aria-pressed={false} aria-label={`${view.title} 요약/지도 보기 전환`}>
                   지도 ↻
                 </button>
               )}
@@ -360,10 +360,10 @@ export default function TileCard(p: TileCardProps) {
       onKeyDown={onKeyDown}
     >
       <div className={styles.flipInner} data-face={shown}>
-        <div className={`${styles.face} ${styles.faceSummary}`} data-on={shown === "summary"} inert={shown !== "summary"}>
+        <div className={`${styles.face} ${styles.faceSummary}`} data-on={shown === "summary"} inert={shown !== "summary"} aria-hidden={shown !== "summary"}>
           <SummaryFace p={p} state={state} waiting={waiting} onFlip={() => p.onCardFace("map")} />
         </div>
-        <div className={`${styles.face} ${styles.faceMap}`} data-on={shown === "map"} inert={shown !== "map"}>
+        <div className={`${styles.face} ${styles.faceMap}`} data-on={shown === "map"} inert={shown !== "map"} aria-hidden={shown !== "map"}>
           {mountMap && (
             <>
       <div className={styles.stage}>
@@ -382,7 +382,7 @@ export default function TileCard(p: TileCardProps) {
             <button type="button" className={styles.open} onClick={p.onOpen} aria-label={`${view.title} 펼치기`} title="펼치기">
               ↗
             </button>
-            <button type="button" className={styles.flipIcon} onClick={() => p.onCardFace("summary")} aria-pressed aria-label={`${view.title} 요약 보기`} title="요약 보기">
+            <button type="button" className={styles.flipIcon} onClick={() => p.onCardFace("summary")} aria-pressed aria-label={`${view.title} 요약/지도 보기 전환`} title="요약 보기">
               ↺
             </button>
           </div>
