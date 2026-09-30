@@ -5,10 +5,12 @@
  */
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { gunzipSync, gzipSync } from "node:zlib";
 import Database from "better-sqlite3";
 import type BetterSqlite3 from "better-sqlite3";
 import { readArchivedManifest, withDataDirLock } from "./data/manifest";
 import { v2AppDbPath } from "./paths";
+import { parseScene, type Scene } from "./scene";
 import { parseTileResult, type TileResult } from "./tile-result";
 
 type Db = BetterSqlite3.Database;
@@ -52,6 +54,13 @@ export function initV2AppSchema(db: Db): void {
       engine_version TEXT NOT NULL,
       parameters_json TEXT NOT NULL,
       status TEXT NOT NULL CHECK (status IN ('running','complete','failed')),
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS analysis_scene (
+      analysis_id TEXT PRIMARY KEY REFERENCES analysis_run(analysis_id),
+      version TEXT NOT NULL,
+      scene_gz BLOB NOT NULL,
       created_at TEXT NOT NULL
     );
 
@@ -139,6 +148,23 @@ export function findCachedTileResult(db: Db, cacheKey: string): TileResult | nul
 export function loadTileResults(db: Db, analysisId: string): TileResult[] {
   const rows = db.prepare("SELECT result_json FROM tile_result WHERE analysis_id = ? ORDER BY tile_code").pluck().all(analysisId) as string[];
   return rows.map((json) => parseTileResult(JSON.parse(json)));
+}
+
+export function saveScene(db: Db, scene: Scene): void {
+  const parsed = parseScene(scene);
+  db.prepare(`INSERT INTO analysis_scene (analysis_id, version, scene_gz, created_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT(analysis_id) DO UPDATE SET version = excluded.version, scene_gz = excluded.scene_gz, created_at = excluded.created_at`)
+    .run(parsed.analysisId, parsed.version, gzipSync(JSON.stringify(parsed)), now());
+}
+
+interface SceneRow {
+  scene_gz: Buffer;
+}
+
+export function loadScene(db: Db, analysisId: string): Scene | null {
+  const row = db.prepare("SELECT scene_gz FROM analysis_scene WHERE analysis_id = ?").get(analysisId) as SceneRow | undefined;
+  if (!row) return null;
+  return parseScene(JSON.parse(gunzipSync(row.scene_gz).toString("utf8")));
 }
 
 /**

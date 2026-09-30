@@ -1,7 +1,7 @@
 /** API 라우트의 본체. 인증은 라우트가 하고, 여기서는 입력 검증·실행·응답 모양만 다룬다(테스트하기 쉽게 분리). */
 import type BetterSqlite3 from "better-sqlite3";
 import { z } from "zod";
-import { getAnalysisRun, loadTileResults } from "../app-db";
+import { getAnalysisRun, loadScene, loadTileResults } from "../app-db";
 import { DEFAULT_RADIUS_M, RADIUS_CHOICES, restoreSummary, runAnalysis } from "./run";
 import { SITE_FAILURE_MESSAGE } from "./site";
 
@@ -44,4 +44,10 @@ export function getAnalysis(appDb: BetterSqlite3.Database, id: string): ApiReply
   if (!run) return { status: 404, body: { error: "분석을 찾을 수 없습니다" } };
   const results = loadTileResults(appDb, id);
   return { status: 200, body: { analysisId: id, summary: restoreSummary(run, results), results } };
+}
+
+export function getScene(appDb: BetterSqlite3.Database, id: string): ApiReply {
+  const scene = loadScene(appDb, id);
+  if (!scene) return { status: 404, body: { error: "장면을 찾을 수 없습니다" } };
+  return { status: 200, body: scene as unknown as Record<string, unknown> };
 }
