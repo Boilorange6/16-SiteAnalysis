@@ -2,7 +2,9 @@
  * 예시 결과 (P1b 분석 엔진이 붙기 전 화면 검증용). 값은 실제 조회 결과가 아니다.
  * 화면은 TileResult 계약만 읽으므로, 실제 결과로 바꿔도 화면 코드는 바뀌지 않는다.
  */
-import { parseTileResult, type TileResult } from "../../tile-result";
+// 타입만 가져온다: tile-result의 런타임(zod·node:crypto)을 브라우저 번들에 넣지 않기 위해서다.
+// 계약 검증(parseTileResult)은 test-v2-ui-view.mjs가 한다.
+import type { TileResult } from "../../tile-result";
 
 const HASH = "b".repeat(64);
 type Status = TileResult["metrics"][number]["status"];
@@ -29,7 +31,7 @@ function tile(
   limitations: TileResult["limitations"] = [],
   outputFace: TileResult["presentation"]["outputFace"] = "front",
 ): TileResult {
-  return parseTileResult({
+  const result: TileResult = {
     tileId: `t-${code}`,
     analysisId: "demo-godeok",
     tileType: type,
@@ -54,7 +56,8 @@ function tile(
       sources: sources.map(([sourceId, sourceAsOf]) => ({ sourceId, releaseId: `${sourceId}-demo`, sourceAsOf, fetchedAt: "2026-09-30T09:00:00+09:00" })),
     },
     limitations,
-  });
+  };
+  return result;
 }
 
 const j = (ruleId: string, basis: string[], sentence: string, level: "good" | "fair" | "caution" | null = null, criteria: string | null = null) => ({
