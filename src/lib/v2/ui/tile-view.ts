@@ -3,7 +3,7 @@
  * 규칙: 종합 점수 없음 · 도보 시간 없음 · 공급/가격/개발은 좋음·주의 평가 없음 (plan 화면 규칙 1~8).
  */
 import type { OUTPUT_FACES, TileResult } from "../tile-result";
-import { rankComplexes, summarize, type Complex } from "./callout-layout";
+import { fmtInt, rankComplexes, rankSupply, STOCK_LEGEND, SUPPLY_LAYERS, SUPPLY_LEGEND, summarize, supplyStats, type CalloutLegendSpec, type Complex, type Stat } from "./callout-layout";
 import type { MapModel } from "./map-layers";
 import { catalogEntry, sourceName } from "./tile-catalog";
 
@@ -21,6 +21,8 @@ export type TileView = {
   rows: Row[];
   sentence: string | null;
   grade: { label: string; criteria: string } | null;
+  /** 근거 지표별 등급 칩 ("철도 좋음", "버스 보통") — A01/A02만. 없으면 빈 배열 */
+  grades: Array<{ target: string; label: string; level: "good" | "fair" | "caution"; criteria: string }>;
   caveats: string[];
   notes: string[];
   sourceLine: string;
@@ -39,6 +41,16 @@ export type TileView = {
 
 /** 설명선 타일의 입력: 세대수 순위로 정렬된 단지 목록과 요약 (A06도 같은 모양으로 채운다) */
 export type CalloutModel = {
+  /** stock = A05 주변 단지, supply = A06 분양·입주예정 사업 */
+  kind: "stock" | "supply";
+  /** 개수 단위: "단지" | "곳" */
+  unit: string;
+  legend: CalloutLegendSpec;
+  /** 개요 값 카드 (원천별 값은 합치지 않는다) */
+  stats: Stat[];
+  statNote: string | null;
+  /** 보드 카드 왼쪽 아래 한 줄 값 */
+  pill: Array<{ value: string; unit: string }>;
   center: readonly [number, number];
   radiusM: number;
   complexes: Complex[];
@@ -86,6 +98,11 @@ const LIMIT_TEXT: Record<TileResult["limitations"][number]["kind"], string> = {
 const GRADE_TEXT = { good: "좋음", fair: "보통", caution: "주의" } as const;
 // 등급은 거리 지표 타일에서만 쓴다 (공급·가격·개발은 평가하지 않음).
 const GRADED_CODES = new Set(["A01", "A02"]);
+const GRADE_TARGET: Record<string, string> = { nearest_rail_m: "철도", nearest_station_m: "철도", nearest_bus_m: "버스", nearest_elem_m: "초등학교" };
+function gradeChip(r: TileResult, g: NonNullable<NonNullable<TileResult["judgment"]>["grades"]>[number]): TileView["grades"][number] {
+  const target = GRADE_TARGET[g.metricId] ?? r.metrics.find((m) => m.id === g.metricId)?.label ?? g.metricId;
+  return { target, label: `${target} ${GRADE_TEXT[g.level]}`, level: g.level, criteria: `내부 제안 기준: ${g.criteria}` };
+}
 const CAVEATS: Record<string, string> = {
   A02: "배정은 교육청 확인",
   S02: "건물·지형 모델에 의한 기하학적 일조 추정입니다. 구름·실제 기상·창면 조건 및 법적 일조 판정을 포함하지 않습니다.",
@@ -183,6 +200,7 @@ export function toTileView(r: TileResult): TileView {
     rows: allRows,
     sentence: r.judgment?.sentence ?? null,
     grade: gradedMetricOk ? { label: GRADE_TEXT[r.judgment!.level!], criteria: `내부 제안 기준: ${r.judgment!.criteria}` } : null,
+    grades: GRADED_CODES.has(r.tileCode) ? (r.judgment?.grades ?? []).map((g) => gradeChip(r, g)) : [],
     caveats,
     notes: r.limitations.map((l) => l.note),
     sourceLine: sourceLineOf(r.provenance.sources),
@@ -201,17 +219,49 @@ export function toTileView(r: TileResult): TileView {
 
 const HOUSING_LAYERS = new Set(["apt", "officetel"]); // 번호·카드·쪽은 아파트·오피스텔만
 function calloutOf(r: TileResult): CalloutModel | null {
-  if (r.tileCode !== "A05" || (r.status !== "complete" && r.status !== "partial")) return null;
+  if ((r.tileCode !== "A05" && r.tileCode !== "A06") || (r.status !== "complete" && r.status !== "partial")) return null;
   const features = r.presentation.features ?? [];
-  const complexes = rankComplexes(features.filter((f) => HOUSING_LAYERS.has(f.layer)));
-  return {
-    others: features.filter((f) => f.layer === "other_housing").map((f) => ({ lng: f.lng, lat: f.lat })),
+  const base = {
     center: r.conditions.center,
     radiusM: r.conditions.radiusM,
-    complexes,
     analysisYear: Number(r.conditions.analysisDate.slice(0, 4)),
     sourceLine: sourceLineOf(r.provenance.sources),
-    summary: summarize(complexes),
+  };
+  if (r.tileCode === "A06") {
+    const complexes = rankSupply(features.filter((f) => SUPPLY_LAYERS.has(f.layer)), r.conditions.analysisDate);
+    const sup = supplyStats(complexes);
+    const soon = complexes.filter((c) => c.supply?.timing === "m0_12").length;
+    return {
+      ...base,
+      kind: "supply",
+      unit: "곳",
+      legend: SUPPLY_LEGEND,
+      stats: sup.stats,
+      statNote: sup.note,
+      pill: [{ value: fmtInt(complexes.length), unit: "곳" }, { value: fmtInt(soon), unit: "곳 12개월 내 입주" }],
+      others: [],
+      complexes,
+      summary: summarize(complexes),
+    };
+  }
+  const complexes = rankComplexes(features.filter((f) => HOUSING_LAYERS.has(f.layer)));
+  const summary = summarize(complexes);
+  const unknown = summary.apartments - summary.householdsKnown;
+  return {
+    ...base,
+    kind: "stock",
+    unit: "단지",
+    legend: STOCK_LEGEND,
+    stats: [
+      { value: fmtInt(summary.count), unit: "단지", label: "반경 안 단지 수" },
+      { value: fmtInt(summary.households), unit: "세대", label: "확인 세대(아파트)" },
+      { value: summary.medianYear === null ? "확인필요" : String(summary.medianYear), unit: summary.medianYear === null ? "" : "년", label: "준공 중앙값" },
+    ],
+    statNote: unknown > 0 ? `세대수 미확인 ${unknown}곳은 합계에서 제외` : null,
+    pill: [{ value: fmtInt(summary.count), unit: "단지" }, { value: fmtInt(summary.households), unit: "세대(아파트)" }],
+    others: features.filter((f) => f.layer === "other_housing").map((f) => ({ lng: f.lng, lat: f.lat })),
+    complexes,
+    summary,
   };
 }
 

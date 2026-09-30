@@ -178,7 +178,7 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   assert.match(html, /© VWorld\(국토교통부\)/);
   const sat = renderToStaticMarkup(createElement(MapFigure, { model, width: 640, height: 360, layer: "Satellite" }));
   assert.ok(/tiles\/Satellite\//.test(sat) && /tiles\/Hybrid\//.test(sat), "항공 = 위성 + 글자");
-  assert.match(html, /직선 210m/);
+  assert.match(html, /직선 340m/);
   assert.match(html, /버스정류장/);
   assert.match(html, />N</);
   assert.match(html, /500m|1km|2km|200m|100m/);
@@ -204,7 +204,7 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   });
   const keys = plan.map(mapKeyOf).filter(Boolean);
   // 몰입형: 모든 장이 전면 지도 (표지·타일 전부·출처 장은 표지 지도를 흐리게 다시 쓴다)
-  assert.deepEqual(keys, ["cover", "t-A01", "t-A02", "t-A03", "t-A04", "t-A05", "t-A05:cp", "t-A06", "t-A07", "t-A09", "t-A12", "t-D04", "cover"], "지도 자리: 표지 + 타일 전부 + 출처 장");
+  assert.deepEqual(keys, ["cover", "t-A01", "t-A02", "t-A03", "t-A04", "t-A05", "t-A05:cp", "t-A06", "t-A06:cp", "t-A07", "t-A09", "t-A12", "t-D04", "cover"], "지도 자리: 표지 + 타일 전부 + 출처 장");
   const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
   const withImg = await JSZip.loadAsync(await renderReportPptx(plan, Object.fromEntries(keys.map((k) => [k, png]))));
   assert.equal(Object.keys(withImg.files).filter((n) => /^ppt\/media\/.+/.test(n)).length, keys.length, "지도 이미지가 슬라이드마다 들어감");

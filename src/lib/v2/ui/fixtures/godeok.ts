@@ -145,6 +145,46 @@ const complexPin = ([name, lng, lat, households, year, floors, bldgs, parking, d
   return { layer, lng, lat, weight: households, name, type: TYPE_TEXT[layer], households, approvalYear: year, floorsMax: floors, buildingCount: bldgs, distanceM: distM, parking };
 };
 
+// ── A06 예시 사업: 고덕역 반경 3km 실제 분양·입주예정 결과(엔진 a06, 2026-09-30 기준)에서 뽑은 25곳 ──
+// 반경 1km에는 1곳뿐이라 이 타일의 예시만 반경 3km다. 이름·좌표·세대수·월은 실제 값이고, 같은 좌표에 겹친 "더샵 강동센트럴시티" 오피스텔 4건은 뺐다.
+// 청약홈·입주예정 양쪽에 있는 "고덕강일 대성베르힐"은 엔진이 중복 가능으로 표시한 쌍이다.
+type Supply = [name: string, lng: number, lat: number, units: number, month: string, distM: number, source: "applyhome" | "move_in", type: string, overlap: boolean];
+const A06_ROWS: Supply[] = [
+  ["디 아테온(THE ATHEON)", 127.142397, 37.542982, 64, "2026-07", 1693, "applyhome", "아파트", false],
+  ["고덕강일 대성베르힐", 127.179171, 37.552762, 613, "2027-10", 2220, "applyhome", "아파트", true],
+  ["VIORR(비오르)", 127.125373, 37.541326, 53, "2026-05", 2964, "applyhome", "아파트", false],
+  ["더샵 둔촌포레", 127.146387, 37.531782, 74, "2024-11", 2667, "applyhome", "아파트", false],
+  ["에스아이팰리스 강동 센텀Ⅱ", 127.137492, 37.537912, 80, "2024-01", 2403, "applyhome", "아파트", false],
+  ["e편한세상 강동 프레스티지원", 127.126706, 37.542692, 263, "2026-01", 2786, "applyhome", "아파트", false],
+  ["천호역 마에스트로", 127.124719, 37.543144, 77, "2025-02", 2918, "applyhome", "아파트", false],
+  ["더샵 강동센트럴시티", 127.128441, 37.539119, 168, "2025-12", 2878, "applyhome", "아파트", false],
+  ["강동 중앙하이츠 시티", 127.137118, 37.537351, 36, "2024-04", 2472, "applyhome", "아파트", false],
+  ["둔촌 현대수린나", 127.145585, 37.532837, 34, "2023-10", 2574, "applyhome", "아파트", false],
+  ["강동 헤리티지 자이", 127.148697, 37.539149, 219, "2024-06", 1825, "applyhome", "아파트", false],
+  ["더샵 파크솔레이유", 127.144725, 37.529953, 73, "2023-06", 2902, "applyhome", "아파트", false],
+  ["e편한세상 강일 어반브릿지", 127.180947, 37.555526, 593, "2024-02", 2363, "applyhome", "아파트", false],
+  ["고덕강일 제일풍경채", 127.16937, 37.562815, 780, "2024-01", 1596, "applyhome", "아파트", false],
+  ["고덕 아르테스 미소지움", 127.156968, 37.549892, 37, "2022-02", 617, "applyhome", "아파트", false],
+  ["힐데스하임 천호", 127.12592, 37.542079, 101, "2022-07", 2880, "applyhome", "아파트", false],
+  ["강동 리버스시티", 127.130175, 37.539294, 18, "2026-05", 2746, "applyhome", "오피스텔", false],
+  ["더샵 강동센트럴시티", 127.131731, 37.542259, 6, "2025-12", 2437, "applyhome", "오피스텔", false],
+  ["강동역 SK Leaders VIEW", 127.136785, 37.536831, 378, "2026-08", 2536, "applyhome", "오피스텔", false],
+  ["강동 중앙하이츠 시티", 127.137118, 37.537351, 81, "2024-04", 2472, "applyhome", "오피스텔", false],
+  ["강동밀레니얼 중흥S-클래스", 127.126988, 37.541445, 147, "2024-10", 2835, "applyhome", "주거", false],
+  ["고덕강일3단지", 127.169378, 37.572533, 1305, "2027-05", 2362, "move_in", "분양", false],
+  ["고덕강일 대성베르힐", 127.179095, 37.552799, 613, "2027-10", 2212, "move_in", "분양", true],
+  ["성내동(청년안심주택)", 127.133819, 37.533623, 281, "2027-08", 2978, "move_in", "임대", false],
+  ["대명아파트가로주택정비사업", 127.135762, 37.555258, 94, "2027-04", 1629, "move_in", "분양", false],
+];
+const supplyPin = ([name, lng, lat, units, month, distM, source, type, overlap]: Supply): MapFeature => ({
+  layer: source, lng, lat, weight: units, label: month, name, type, households: units, plannedMonth: month, distanceM: distM, overlap,
+});
+const A06_UNITS = (src: string) => A06_ROWS.filter((r) => r[6] === src).reduce((s, r) => s + r[3], 0);
+const A06_COUNT = (src: string) => A06_ROWS.filter((r) => r[6] === src).length;
+
+/** A06 예시만 반경 3km (1km 안에는 실제 사업이 1곳뿐) */
+const withA06Radius = (t: TileResult): TileResult => ({ ...t, conditions: { ...t.conditions, radiusM: 3000 } });
+
 const withMap = (t: TileResult, features: MapFeature[], total = features.length): TileResult => ({
   ...t,
   presentation: { ...t.presentation, features, featuresTotal: total },
@@ -170,14 +210,20 @@ export const GODEOK_RESULTS: TileResult[] = [
     [
       m("nearest_station_m", "최근접 역 출입구", 480, "m"),
       m("stations_in_radius", "반경 내 운영역", 3, "개"),
-      m("nearest_bus_m", "최근접 버스정류장", 210, "m"),
+      m("nearest_bus_m", "최근접 버스정류장", 340, "m"),
       m("bus_stops", "버스 정류장", 41, "개"),
       m("bus_routes", "경유 버스 노선", null, "개", "missing"),
     ],
     [["rail", "2026-09-01"], ["bus_stops", "2026-08-15"]],
-    j("A01-rail-distance@1", ["nearest_station_m"], "최근접 역 출입구까지 직선 480m → 철도 접근은 가까운 편 → 실제 보행 경로 확인 필요", "good", "철도 직선거리 500m 이하 좋음 · 1,000m 이하 보통 · 초과 주의"),
+    {
+      ...j("A01-rail-distance@1", ["nearest_station_m", "nearest_bus_m"], "최근접 역 출입구까지 직선 480m, 정류장 340m → 철도 접근은 가까운 편, 버스는 보통 수준 → 실제 보행 경로 확인 필요", "fair", "철도 직선거리 500m 이하 좋음 · 1,000m 이하 보통 · 초과 주의"),
+      grades: [
+        { metricId: "nearest_station_m", level: "good", criteria: "철도역 출입구 직선 500m 이하 좋음 · 1,000m 이하 보통 · 초과 주의" },
+        { metricId: "nearest_bus_m", level: "fair", criteria: "버스정류장 직선 300m 이하 좋음 · 600m 이하 보통 · 초과 주의" },
+      ],
+    },
     [{ kind: "unknown", note: "정류장별 경유 노선 연결 자료를 확보하지 못했습니다." }],
-  ), [...scatter("bus_stop", 40, 11, 1000), pin("bus_nearest", 40, 210, "직선 210m")], 41),
+  ), [...scatter("bus_stop", 40, 11, 1000), pin("bus_nearest", 40, 340, "직선 340m")], 41),
   tile(
     "A02",
     "analysis",
@@ -257,26 +303,20 @@ export const GODEOK_RESULTS: TileResult[] = [
       { kind: "estimated", note: "30년 이상 비중은 분석 기준일 대비 경과연수로 추정한 값입니다." },
     ],
   ), [...A05_ROWS.map(complexPin), ...A05_OTHERS]),
-  withMap(tile(
+  withA06Radius(withMap(tile(
     "A06",
     "analysis",
     "complete",
     [
-      m("presale_units", "분양공고 세대", 820, "세대"),
-      m("move_in_units", "입주예정 세대", 1100, "세대"),
-      m("redevelop_units", "정비사업 예정세대", 540, "세대"),
+      m("applyhome_units", "청약홈 공급 세대", A06_UNITS("applyhome"), "세대"),
+      m("move_in_units", "입주예정 세대", A06_UNITS("move_in"), "세대"),
+      m("projects", "반경 안 사업", A06_ROWS.length, "곳"),
       m("units_total", "합계", null, "세대", "missing"),
     ],
-    [["applyhome", "2026-09-15"], ["movein_plan", "2026-09-01"], ["redevelopment", "2026-08-20"]],
-    j("A06-schedule@1", ["presale_units", "move_in_units"], "원천별 예정 물량이 각각 확인됨 → 같은 사업이 겹쳐 잡혔을 수 있어 합계는 내지 않음 → 사업별 연결 확인 필요"),
-    [{ kind: "partial", note: "청약홈·입주예정·정비사업에 같은 사업이 중복 등장할 수 있어 합계를 보류했습니다. 중복 제거는 다음 단계입니다." }],
-  ), [
-    dot("applyhome", 30, 420, 480, "2026-11"),
-    dot("applyhome", 250, 700, 340, "2027-03"),
-    dot("move_in", 35, 460, 480, "2027-06"),
-    dot("move_in", 140, 610, 380, "2027-09"),
-    dot("move_in", 300, 820, 240, "2028-01"),
-  ]),
+    [["applyhome", "2026-09-15"], ["move_in", "2026-06-30"]],
+    j("A06-schedule@1", ["applyhome_units", "move_in_units"], `청약홈 ${A06_UNITS("applyhome").toLocaleString("en-US")}세대, 입주예정 ${A06_UNITS("move_in").toLocaleString("en-US")}세대가 각각 확인됨 → 같은 사업이 겹쳐 잡혔을 수 있어 합계는 내지 않음 → 사업별 연결 확인 필요`),
+    [{ kind: "partial", note: "청약홈·입주예정에 같은 사업이 중복 등장할 수 있어 합계를 보류했습니다. 이름·주소가 같은 쌍은 \"중복 가능\"으로 표시하지만 합치지는 않습니다." }],
+  ), A06_ROWS.map(supplyPin))),
   tile(
     "A07",
     "analysis",

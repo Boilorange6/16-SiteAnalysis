@@ -7,6 +7,7 @@ import { sampleLine } from "./geo";
 
 export const A01_CRITERIA = "버스정류장 직선 300m 이하 좋음 · 600m 이하 보통 · 초과 주의";
 export const RAIL_CRITERIA = "철도역 직선 500m 이하 좋음 · 1,000m 이하 보통 · 초과 주의";
+export const A01_RAIL_CRITERIA = RAIL_CRITERIA;
 export const BUS_GOOD_M = 300;
 export const BUS_FAIR_M = 600;
 export const RAIL_GOOD_M = 500;
@@ -20,6 +21,16 @@ export function gradeBus(m: number): Grade {
 }
 export function gradeRail(m: number): Grade {
   return m <= RAIL_GOOD_M ? "good" : m <= RAIL_FAIR_M ? "fair" : "caution";
+}
+const WORST: Record<Grade, number> = { good: 0, fair: 1, caution: 2 };
+
+/** 철도(500/1,000m)·버스(300/600m) 등급. 근거 거리가 없는 쪽은 만들지 않는다. */
+export function a01Grades(railM: number | null, busM: number | null): { grades: Array<{ metricId: string; level: Grade; criteria: string }>; level: Grade | null } {
+  const grades: Array<{ metricId: string; level: Grade; criteria: string }> = [];
+  if (railM !== null) grades.push({ metricId: "nearest_rail_m", level: gradeRail(railM), criteria: A01_RAIL_CRITERIA });
+  if (busM !== null) grades.push({ metricId: "nearest_bus_m", level: gradeBus(busM), criteria: A01_CRITERIA });
+  const level = grades.length ? grades.reduce((w, g) => (WORST[g.level] > WORST[w] ? g.level : w), grades[0].level) : null;
+  return { grades, level };
 }
 const PHRASE = { good: "버스 접근은 가까운 편", fair: "버스 접근은 보통 수준", caution: "버스 접근은 먼 편" } as const;
 const RAIL_PHRASE = { good: "철도 접근은 가까운 편", fair: "철도 접근은 보통 수준", caution: "철도 접근은 먼 편" } as const;
@@ -84,7 +95,6 @@ export function a01(ctx: EngineContext): TileResult {
     obs("bus_stops", "버스 정류장", hits.length, "개", "a01-bus-count@1"),
     missing("bus_routes", "경유 버스 노선", "개", "a01-bus-routes@0"),
   ];
-
   const busTxt = nearest === null ? "반경 안 정류장 없음" : `최근접 정류장 직선 ${nearest}m`;
   const busPhrase = nearest === null ? "버스 접근은 확인되지 않음" : PHRASE[gradeBus(nearest)];
   let judgment: TileResult["judgment"];
@@ -93,7 +103,7 @@ export function a01(ctx: EngineContext): TileResult {
     judgment =
       nearest === null
         ? { ruleId: "a01-bus-distance@1", basisMetricIds: ["bus_stops"], sentence: `반경 안 버스 정류장 없음 → 버스 접근은 확인되지 않음 → ${tail}`, level: null, criteria: null }
-        : { ruleId: "a01-bus-distance@1", basisMetricIds: ["nearest_bus_m"], sentence: `${busTxt} → ${busPhrase} → ${tail}`, level: gradeBus(nearest), criteria: A01_CRITERIA };
+        : { ruleId: "a01-bus-distance@1", basisMetricIds: ["nearest_bus_m"], sentence: `${busTxt} → ${busPhrase} → ${tail}`, level: gradeBus(nearest), criteria: A01_CRITERIA, grades: a01Grades(null, nearest).grades };
   } else {
     const railTxt = railM === null ? `${searchTxt} 안 운영역 없음` : `최근접 ${usesPoint ? "역 대표점" : "역 출입구"} 직선 ${fmt(railM)}m`;
     const railPhrase = railM === null ? RAIL_PHRASE.caution : RAIL_PHRASE[gradeRail(railM)];

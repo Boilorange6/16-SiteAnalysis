@@ -78,11 +78,28 @@ export default function TileDialog({ view, included, face, onInclude, onFace, ca
             </div>
           )}
           {view.sentence && <p className={styles.dlgSentence}>{view.sentence}</p>}
-          {view.grade && (
-            <div className={styles.grade}>
-              <b>{view.grade.label}</b>
-              {view.grade.criteria}
+          {view.grades.length > 0 ? (
+            <div className={styles.gradeList}>
+              <div className={styles.gradeChips}>
+                {view.grades.map((g) => (
+                  <b key={g.target} className={styles.gradeChip} data-level={g.level}>
+                    {g.label}
+                  </b>
+                ))}
+              </div>
+              {view.grades.map((g) => (
+                <div key={g.target} className={styles.grade}>
+                  {g.target} · {g.criteria}
+                </div>
+              ))}
             </div>
+          ) : (
+            view.grade && (
+              <div className={styles.grade}>
+                <b>{view.grade.label}</b>
+                {view.grade.criteria}
+              </div>
+            )
           )}
           {view.caveats.map((c) => (
             <p key={c} className={styles.caveat}>
