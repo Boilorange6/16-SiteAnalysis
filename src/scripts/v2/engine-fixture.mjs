@@ -22,6 +22,17 @@ const disc = (dx, dy, r, n) => ({ type: "Polygon", coordinates: [Array.from({ le
 const box = (x0, x1) => ({ type: "Polygon", coordinates: [[at(x0, -4000), at(x1, -4000), at(x1, 4000), at(x0, 4000), at(x0, -4000)]] });
 
 export const PNU_DASAN_100 = "4136011800101000000";
+export const PARCEL_PNUS = [
+  PNU_DASAN_100,
+  "4136011800101000002",
+  "4136011800101000003",
+  "4136011800101000004",
+  "4136011800101000005",
+  "4136011800101000006",
+  "4136011800101000007",
+  "4136011800101000008",
+  "4136011800101000009",
+];
 /** 실거래 위치 필지(중심에서 동쪽 거리). A: 100m · B: 300m · C: 600m(송파 쪽) · FAR: 2000m(반경 밖) */
 export const TRADE_PNU = { A: "4136011800100010000", B: "4136011800100020000", C: "1171010100100030000", FAR: "4136011800100040000" };
 const TRADE_PNU_DX = { [TRADE_PNU.A]: 100, [TRADE_PNU.B]: 300, [TRADE_PNU.C]: 600, [TRADE_PNU.FAR]: 2000 };
@@ -29,13 +40,13 @@ const TRADE_PNU_DX = { [TRADE_PNU.A]: 100, [TRADE_PNU.B]: 300, [TRADE_PNU.C]: 60
 const rel = (db, sourceId, sourceAsOf, extra = {}) =>
   insertRelease(db, { sourceId, provider: "테스트", sourceUrl: "https://example.invalid", sourceAsOf, fetchedAt: "2026-09-29T00:00:00Z", checksum: "x", licenseCode: "TEST", ...extra });
 
-function run(db, sourceId, releaseId, snapshot, rejected = 0) {
+function run(db, sourceId, releaseId, snapshot, rejected = 0, count = 10) {
   db.prepare(`INSERT INTO ingest_run (run_id, source_id, started_at, finished_at, status, received_count, accepted_count, rejected_count, release_id, snapshot_json)
-    VALUES (?, ?, '2026-09-29T00:00:00Z', '2026-09-29T00:01:00Z', 'succeeded', 10, 10, ?, ?, ?)`)
-    .run(`${sourceId}:1`, sourceId, rejected, releaseId, JSON.stringify(snapshot));
+    VALUES (?, ?, '2026-09-29T00:00:00Z', '2026-09-29T00:01:00Z', 'succeeded', ?, ?, ?, ?, ?)`)
+    .run(`${sourceId}:1`, sourceId, count, count, rejected, releaseId, JSON.stringify(snapshot));
 }
 
-/** options.noMarket: market 파일을 게시하지 않는다. options.extraBus: 버스정류장을 더한다(새 버전 검증용). */
+/** options.noMarket: market 파일을 게시하지 않는다. options.extraBus: 버스정류장을 더한다(새 버전 검증용). options.buildings/parcels: 도형 파일을 게시한다. */
 export async function buildEngineFixture(dataDir, version, options = {}) {
   const dir = join(dataDir, "versions", version);
   mkdirSync(dir, { recursive: true });
@@ -99,6 +110,58 @@ export async function buildEngineFixture(dataDir, version, options = {}) {
   run(db, "ledger_title_housing", title, { byRegion: { 41: 10 }, byType: {}, fillRates: {}, unlocated: 1 }, 1);
   db.close();
   files.core = "core";
+
+  // ── buildings
+  if (options.buildings) {
+    db = open("buildings");
+    const buildingRelease = rel(db, "building", "2026-09-08");
+    const fact = db.prepare(`INSERT INTO building_fact (feature_id, ledger_pk, height_m, height_method, floors_above, floors_below, use_code, approval_date, gross_floor_area_m2, footprint_area_m2, field_provenance_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const building = (id, dx, dy, size, details, pnu = null) => {
+      const featureId = insertFeature(db, { stableId: `building:${id}`, kind: "building", sourceKey: id, releaseId: buildingRelease, geometry: rect(dx - size / 2, dx + size / 2, dy - size / 2, dy + size / 2), name: id, pnu, legalCode: pnu ? "4136011800" : null });
+      fact.run(featureId, null, details.heightM, details.method, details.floors, null, details.useCode, details.approval, null, size * size, details.method === "floors_estimate" ? JSON.stringify({ height_m: "A26*floorHeightM", floorHeightM: 3 }) : "{}");
+    };
+    building("b_apt", 0, 0, 10, { heightM: 12, method: "source", floors: 4, useCode: "02000", approval: "1979-05-01" }, PNU_DASAN_100);
+    building("b_office", 70, 0, 20, { heightM: 40, method: "source", floors: 12, useCode: "14000", approval: "1985-01-01" });
+    building("b_tower", -70, 0, 15, { heightM: 90, method: "floors_estimate", floors: 30, useCode: "02000", approval: "1995-01-01" });
+    building("b_unknown", 0, 70, 10, { heightM: null, method: "unknown", floors: null, useCode: null, approval: "2005-01-01" });
+    building("b_shop", 0, -70, 12, { heightM: 8, method: "source", floors: 2, useCode: "03000", approval: "2015-01-01" });
+    building("b_noledger", 120, 0, 10, { heightM: null, method: "unknown", floors: null, useCode: null, approval: null });
+    building("b_far", 3000, 0, 10, { heightM: 20, method: "source", floors: 6, useCode: "02000", approval: "2000-01-01" });
+    run(db, "building", buildingRelease, { byRegion: { 41: 7 }, byType: { source: 4, floors_estimate: 1, unknown: 2 }, fillRates: {}, unlocated: 0 }, 0, 7);
+    db.close();
+    files.buildings = "buildings";
+  }
+
+  // ── parcel polygons
+  if (options.parcels) {
+    db = open("parcels");
+    const parcelRelease = rel(db, "parcel_polygon", "2026-09-08");
+    const parcel = (pnu, name, jimok, geometry, areaM2, mountain = false) => insertFeature(db, {
+      stableId: `parcel:${pnu}`,
+      kind: "parcel",
+      sourceKey: pnu,
+      releaseId: parcelRelease,
+      geometry,
+      name,
+      pnu,
+      legalCode: "4136011800",
+      properties: { jimok, jibun: name.replace(jimok ?? "", ""), sigungu: "41360", areaM2, mountain },
+      roundM: 0.01,
+    });
+    parcel(PARCEL_PNUS[0], "100대", "대", rect(-20, 20, -20, 20), 1600);
+    parcel(PARCEL_PNUS[1], "100-2대", "대", rect(30, 40, 30, 40), 100);
+    parcel(PARCEL_PNUS[2], "100-3대", "대", rect(50, 70, 50, 70), 400);
+    parcel(PARCEL_PNUS[3], "100-4대", "대", rect(100, 160, 100, 160), 3600);
+    parcel(PARCEL_PNUS[4], "100-5도", "도", rect(-200, 200, 100, 110), 4000);
+    parcel(PARCEL_PNUS[5], "100-6천", "천", rect(-300, -100, -300, -200), 20000);
+    parcel(PARCEL_PNUS[6], "산100-7임", "임", rect(200, 400, -400, -200), 40000, true);
+    parcel(PARCEL_PNUS[7], "100-8대", "대", rect(700, 900, -50, 50), 20000);
+    parcel(PARCEL_PNUS[8], "100-9대", "대", rect(2000, 2100, 0, 100), 10000);
+    run(db, "parcel_polygon", parcelRelease, { byRegion: { 41: 9 }, byType: { 대: 6, 도: 1, 천: 1, 임: 1 }, fillRates: {}, unlocated: 0 }, 0, 9);
+    db.close();
+    files.parcels = "parcels";
+  }
 
   // ── reference
   db = open("reference");

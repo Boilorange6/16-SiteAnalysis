@@ -1,6 +1,6 @@
 /**
  * v2 데이터 파일 빌드·게시.
- *   npm run data:build -- --version 2026-09-30a [--raw .cache/v2/raw] [--only core,buildings,reference,market] [--expectations exp.json] [--with buildings] [--wait-lock [분]]
+ *   npm run data:build -- --version 2026-09-30a [--raw .cache/v2/raw] [--only core,buildings,parcels,reference,market] [--expectations exp.json] [--with buildings,parcels] [--wait-lock [분]]
  * 원천 zip은 먼저 풀고(이미 풀린 것은 건너뜀), 원천 파일은 폴더마다 가장 새 파일을 쓴다.
  */
 import { readdirSync, statSync, existsSync, readFileSync } from "node:fs";
@@ -12,6 +12,7 @@ const { readShp, readShpPoints } = await import("../../lib/v2/ingest/shp.ts");
 const { csvRecords } = await import("../../lib/v2/a0/measure.ts");
 const { buildAndPublish, insertRelease } = await import("../../lib/v2/ingest/build.ts");
 const { buildParcelPoints } = await import("../../lib/v2/ingest/sources/parcels.ts");
+const { buildParcelPolygons } = await import("../../lib/v2/ingest/sources/parcel-polygons.ts");
 const { buildBuildings } = await import("../../lib/v2/ingest/sources/buildings.ts");
 const { buildLegalAreas } = await import("../../lib/v2/ingest/sources/legal-areas.ts");
 const { buildLedger } = await import("../../lib/v2/ingest/sources/ledger.ts");
@@ -27,14 +28,14 @@ const opt = (name, fallback) => {
 };
 const version = opt("version");
 if (!version || !/^[0-9A-Za-z._-]+$/.test(version)) {
-  console.error("usage: data:build -- --version <name> [--raw dir] [--only core,reference,market] [--expectations file.json] [--reset-baseline parcel,parcel_building] [--dry-run]");
+  console.error("usage: data:build -- --version <name> [--raw dir] [--only core,buildings,parcels,reference,market] [--expectations file.json] [--reset-baseline parcel,parcel_building] [--dry-run]");
   process.exit(2);
 }
 const flag = (name) => args.includes(`--${name}`);
 const raw = opt("raw", ".cache/v2/raw");
 const only = new Set(String(opt("only", "core,reference,market")).split(","));
-/** 기본 빌드에 넣지 않는 무거운 원천: 건물 도형·building_fact는 core가 아니라 별도 buildings 파일. --only buildings 또는 --with buildings */
-if (String(opt("with", "")).split(",").includes("buildings")) only.add("buildings");
+/** 기본 빌드에 넣지 않는 무거운 원천: 건물·필지 도형은 core가 아니라 별도 파일. --only 또는 --with로 선택한다. */
+for (const kind of String(opt("with", "")).split(",")) if (kind === "buildings" || kind === "parcels") only.add(kind);
 if (only.has("market")) {
   const legacyPath = legacyDbPath();
   if (!existsSync(legacyPath)) {
@@ -168,6 +169,18 @@ if (only.has("buildings")) {
     b.expectedRegions = [...buildingAll.keys()];
     console.log(`buildings: 시도 ${partCounts(buildingAll)}`);
     return [b];
+  };
+}
+if (only.has("parcels")) {
+  // 연속지적 도형은 core의 대표점과 별도 게시한다. 시도별 최신 파트만 골라 첫 PNU를 유지한다.
+  builders.parcels = async (db) => {
+    const parcelAll = latestShpPerSido([...walk(join(raw, "cadastral"))], "AL_D002");
+    if (parcelAll.size === 0) throw new Error("연속지적도(cadastral) 파일이 없습니다 — vworld:fetch로 받으세요");
+    const rel = release(db, "parcel_polygon", oldestFile(parcelAll), "국토교통부(VWorld 연속지적도형정보)", "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=23", "CC-BY");
+    const p = await buildParcelPolygons(db, chain(...flat(parcelAll).map((f) => readShp(f))), rel);
+    p.expectedRegions = [...parcelAll.keys()];
+    console.log(`parcels: 시도 ${partCounts(parcelAll)}`);
+    return [p];
   };
 }
 if (only.has("reference")) {
