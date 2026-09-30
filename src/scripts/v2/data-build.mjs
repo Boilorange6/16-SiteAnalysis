@@ -429,6 +429,41 @@ if (builders.market && hasRtmsRaw(raw)) {
   console.log("rtms: 원본 없음 — 실거래 적재 건너뜀 (npm run rtms:fetch)");
 }
 
+// D11·D12 구역·지구·도시계획시설(reference): Q1 레이어 표가 확정되고 raw/districts가 있을 때만 이어 붙인다.
+const districtsDir = join(raw, "districts");
+const { buildDistricts, districtLayerFiles, DISTRICT_LAYERS, DISTRICT_RIGHTS } = await import("../../lib/v2/ingest/sources/districts.ts");
+if (builders.reference && existsSync(districtsDir)) {
+  const base = builders.reference;
+  builders.reference = async (db, ctx) => {
+    const built = await base(db, ctx);
+    extractAll(districtsDir);
+    if (DISTRICT_LAYERS.length === 0) {
+      console.log("districts: Q1 레이어 제목이 확정되지 않아 적재를 건너뜁니다");
+      return built;
+    }
+    const found = districtLayerFiles([...walk(districtsDir)]);
+    const missing = DISTRICT_LAYERS.filter((l) => !found.has(l.key)).map((l) => l.title || l.key);
+    if (missing.length > 0) throw new Error(`구역·지구·도시계획시설 레이어 없음: ${missing.join(", ")} — vworld:fetch -- --ds 24 --folder districts 로 받으세요`);
+    const layers = DISTRICT_LAYERS.map((l) => {
+      const set = found.get(l.key);
+      const st = statSync(set.files[0]);
+      const d = set.date;
+      const releaseId = insertRelease(db, {
+        sourceId: l.sourceId,
+        provider: "국토교통부(VWorld 일별용도지역지구정보)",
+        sourceUrl: "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=24",
+        sourceAsOf: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`,
+        fetchedAt: st.mtime.toISOString(),
+        checksum: `size-mtime:${st.size}-${Math.round(st.mtimeMs)}`,
+        licenseCode: "UNRESTRICTED",
+        rights: { ...DISTRICT_RIGHTS, layer: l.title || l.key, cls: l.cls, kind: l.kind },
+      });
+      return { layer: l, releaseId, records: chain(...set.files.map((f) => readShp(f))) };
+    });
+    return [...built, ...(await buildDistricts(db, layers))];
+  };
+}
+
 const started = Date.now();
 const out = await buildAndPublish({ dataDir: v2DataDir(), version, builders, expectations, resetBaseline });
 for (const [kind, list] of Object.entries(out.stats)) {
