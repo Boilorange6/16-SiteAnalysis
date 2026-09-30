@@ -1,5 +1,5 @@
 import { useId, type ReactNode } from "react";
-import { LAYER_STYLES, layerStyle, type MapModel } from "@/lib/v2/ui/map-layers";
+import { layerStyle, legendItems, type MapModel } from "@/lib/v2/ui/map-layers";
 import { BASEMAP_ATTRIBUTION, BASEMAP_STACK, framedViewport, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, type BasemapChoice } from "@/lib/v2/ui/map-projection";
 
 /**
@@ -92,13 +92,45 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
     return rank(a) - rank(b) || (b.f.weight ?? 0) - (a.f.weight ?? 0);
   });
 
+  type ScreenPolygon = {
+    polygon: NonNullable<MapModel["polygons"]>[number];
+    rings: Array<Array<[number, number]>>;
+    center: [number, number];
+    area: number;
+    index: number;
+  };
+  const polygonArea = (ring: Array<[number, number]>) => Math.abs(ring.reduce((sum, point, i) => {
+    const previous = ring[(i + ring.length - 1) % ring.length];
+    return sum + previous[0] * point[1] - point[0] * previous[1];
+  }, 0)) / 2;
+  const polygons: ScreenPolygon[] = (model.polygons ?? []).map((polygon, index) => {
+    const rings = polygon.rings.map((ring) => ring.map(([lng, lat]) => proj(lng, lat)));
+    const outer = rings[0] ?? [];
+    const xs = outer.map(([x]) => x);
+    const ys = outer.map(([, y]) => y);
+    return {
+      polygon,
+      rings,
+      center: xs.length > 0 ? [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2] : [cx, cy],
+      area: polygonArea(outer),
+      index,
+    };
+  });
+  const polygonOpacity = sat ? 0.45 : 0.35;
+  const isEstimated = (polygon: ScreenPolygon) => polygon.polygon.layer.endsWith("_est") || layerStyle(polygon.polygon.layer).label.startsWith("[추정]");
+  const hatchId = (index: number) => `hatch${uid}-${index}`;
+  const polygonPath = (rings: Array<Array<[number, number]>>) => rings.map((ring) => `${ring.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x} ${y}`).join("")}Z`).join(" ");
+
   // 범례 (지물이 있는 레이어만, 정의된 순서)
-  const present = Object.keys(LAYER_STYLES).filter((k) => model.features.some((f) => f.layer === k));
+  const present = legendItems(model).map((item) => item.layer);
   const fs = 10.5 * u;
   const pad = 6 * u;
   const legendMaxW = W - 2 * pad - 56 * u;
-  const cut = model.total > model.features.length ? `표시 ${model.features.length.toLocaleString("en-US")} / 전체 ${model.total.toLocaleString("en-US")}` : null;
-  const notes = [...model.notes, ...(cut ? [cut] : [])];
+  const cuts = [
+    ...(model.total > model.features.length ? [`표시 ${model.features.length.toLocaleString("en-US")} / 전체 ${model.total.toLocaleString("en-US")}`] : []),
+    ...(model.polygonsTotal !== undefined && model.polygonsTotal > polygons.length ? [`면 표시 ${polygons.length.toLocaleString("en-US")} / 전체 ${model.polygonsTotal.toLocaleString("en-US")}`] : []),
+  ];
+  const notes = [...model.notes, ...cuts];
   const legendRows: Array<Array<{ layer: string; x: number; w: number }>> = [[]];
   let lx = 0;
   for (const layer of present) {
@@ -129,18 +161,21 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   const site = 6.5 * u;
   boxes.push({ x0: cx - site - 2, y0: cy - site - 2, x1: cx + site + 2, y1: cy + site + 2 });
 
-  // 라벨은 강조 지물만, 겹치면 생략
+  // 라벨은 강조 지물과 면적이 큰 면 지물(최대 5개)만, 겹치면 생략
   const labels: ReactNode[] = [];
   if (!bare) {
-    // 강조 지물 라벨이 먼저 자리를 잡고, 나머지(예: 입주 월)는 남는 자리에만 놓는다
-    drawn
-      .filter((d) => d.f.label)
-      .sort((a, b) => Number(!!b.f.highlight) - Number(!!a.f.highlight))
-      .forEach((d, i) => {
-        const text = d.f.label!;
-        const w = textW(text, fs) + 4 * u;
+    const candidates = [
+      ...drawn.filter((d) => d.f.label).map((d, i) => ({ text: d.f.label!, p: d.p, radius: radiusOf(d.f), highlight: !!d.f.highlight, key: `f${i}-${d.f.layer}` })),
+      ...polygons
+        .filter((d) => d.polygon.label)
+        .sort((a, b) => b.area - a.area || a.index - b.index)
+        .slice(0, 5)
+        .map((d) => ({ text: d.polygon.label!, p: d.center, radius: 0, highlight: false, key: `p${d.index}` })),
+    ].sort((a, b) => Number(b.highlight) - Number(a.highlight));
+    candidates.forEach((d) => {
+        const w = textW(d.text, fs) + 4 * u;
         // 지물 오른쪽 → 왼쪽 → 위 → 아래 순으로 겹치지 않는 자리를 찾는다. 없으면 생략.
-        const g = radiusOf(d.f) + 3 * u;
+        const g = d.radius + 3 * u;
         const spots = [
           { x: d.p[0] + g, y: d.p[1] - fs / 2 },
           { x: d.p[0] - g - w, y: d.p[1] - fs / 2 },
@@ -154,8 +189,8 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
         const { a: anchor, b } = fit;
         boxes.push(b);
         labels.push(
-          <text key={`l${i}`} x={anchor.x + 2 * u} y={anchor.y + fs * 0.85} fontSize={fs} fontWeight={700} fill={INK} stroke="#fff" strokeWidth={3 * u} strokeLinejoin="round" paintOrder="stroke">
-            {text}
+          <text key={`l${d.key}`} x={anchor.x + 2 * u} y={anchor.y + fs * 0.85} fontSize={fs} fontWeight={700} fill={INK} stroke="#fff" strokeWidth={3 * u} strokeLinejoin="round" paintOrder="stroke">
+            {d.text}
           </text>,
         );
       });
@@ -186,6 +221,15 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
         <clipPath id={`c${uid}`}>
           <rect width={W} height={H} />
         </clipPath>
+        {polygons.filter(isEstimated).map((polygon) => {
+          const st = layerStyle(polygon.polygon.layer);
+          return (
+            <pattern key={hatchId(polygon.index)} id={hatchId(polygon.index)} patternUnits="userSpaceOnUse" width={10 * u} height={10 * u} patternTransform="rotate(45)">
+              <rect width={10 * u} height={10 * u} fill={st.color} fillOpacity={polygonOpacity} />
+              <path d={`M0 0V${10 * u}`} stroke={st.color} strokeWidth={1.2 * u} strokeOpacity={0.75} />
+            </pattern>
+          );
+        })}
       </defs>
       <g clipPath={`url(#c${uid})`}>
         <rect width={W} height={H} fill="#f2f2ef" />
@@ -213,6 +257,11 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
         {tiles.length > 0 && sat && !muted && <rect width={W} height={H} fill="#000" fillOpacity={0.12} />}
 
         <path d={dim} fillRule="evenodd" fill="#14161c" fillOpacity={0.09} />
+        {polygons.map((polygon) => {
+          const st = layerStyle(polygon.polygon.layer);
+          const estimated = isEstimated(polygon);
+          return <path key={`poly${polygon.index}`} data-poly="true" d={polygonPath(polygon.rings)} fillRule="evenodd" fill={estimated ? `url(#${hatchId(polygon.index)})` : st.color} fillOpacity={estimated ? 1 : polygonOpacity} stroke={st.color} strokeWidth={1 * u} />;
+        })}
         {rings.map((r) => (
           <circle key={r} cx={cx} cy={cy} r={r} fill="none" stroke={line} strokeOpacity={sat ? 0.7 : 0.35} strokeWidth={1 * u} strokeDasharray={`${4 * u} ${4 * u}`} />
         ))}

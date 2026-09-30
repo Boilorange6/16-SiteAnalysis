@@ -55,7 +55,7 @@ assert.ok(sigunguMatches("경기도 수원시 팔달구", "수원시") && sigung
 {
   const mk = (i) => ({ id: i, areaM2: i, p: { layer: "zone:주거", rings: [[[0, 0], [1, 0], [1, 1], [0, 0]]], label: null } });
   const c = capPolygons(Array.from({ length: 200 }, (_, i) => mk(i + 1)));
-  assert.equal(c.polygons.length, MAX_MAP_POLYGONS);
+  assert.equal(c.polygons.length, Math.min(200, MAX_MAP_POLYGONS));
   assert.equal(c.total, 200);
 }
 
