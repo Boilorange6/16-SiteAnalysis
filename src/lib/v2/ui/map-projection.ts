@@ -24,8 +24,14 @@ export function zoomForRadius(latDeg: number, radiusM: number, heightPx: number,
   return Math.log2((M_PER_PX_Z0 * Math.cos(rad(latDeg))) / mpp);
 }
 
-export function viewportFor(center: readonly [number, number], radiusM: number, width: number, height: number): Viewport {
-  return { center, zoom: zoomForRadius(center[1], radiusM, height), width, height };
+export function viewportFor(center: readonly [number, number], radiusM: number, width: number, height: number, fill = 0.8): Viewport {
+  return { center, zoom: zoomForRadius(center[1], radiusM, height, fill), width, height };
+}
+
+/** 대지를 가로 siteX(0~1) 위치에 놓은 뷰포트: 경도(메르카토르 x)는 선형이라 중심 경도만 옮기면 된다. 지도 그림·PPT 지도 이미지·설명선 점이 같은 값을 쓴다 */
+export function framedViewport(center: readonly [number, number], radiusM: number, width: number, height: number, siteX = 0.5, fill = 0.8): Viewport {
+  const vp0 = viewportFor(center, radiusM, width, height, fill);
+  return { ...vp0, center: [center[0] + (0.5 - siteX) * width * (360 / (256 * 2 ** vp0.zoom)), center[1]] as const };
 }
 
 /** (lng,lat) → 그림 좌표(px). 그림 중앙이 center. */

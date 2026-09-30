@@ -15,6 +15,21 @@ export function isAged(approvalDate: string, analysisDate: string): boolean {
 /** 가구 수가 있으면 가구 수, 없으면 세대 수. 둘 다 없으면 null */
 const householdsOf = (p: Record<string, unknown>): number | null => num(p.households) ?? num(p.units);
 
+/** 설명선 카드에 쓰는 단지 값. 엔진이 아는 것만 담고 나머지는 null (K-APT·건물 연결은 다른 브랜치가 채운다) */
+function callout(h: FeatureHit, type: string, households: number | null) {
+  return {
+    weight: households,
+    households,
+    name: h.name,
+    type,
+    approvalYear: year(h.properties.approvalDate),
+    floorsMax: num(h.properties.floorsAbove),
+    buildingCount: num(h.properties.buildingCount),
+    distanceM: h.distanceM === null ? null : Math.round(h.distanceM),
+    parking: num(h.properties.parking),
+  };
+}
+
 export function a05(ctx: EngineContext): TileResult {
   const sources = ctx.sources("core", ["ledger_recap", "ledger_title"]);
   if (sources.length === 0) return noDataTile(ctx, "A05", ["ledger_recap", "ledger_title"]);
@@ -93,9 +108,9 @@ export function a05(ctx: EngineContext): TileResult {
     sources,
     layers: ["apt", "other_housing", "officetel"],
     map: [
-      ...apts.map((h) => candidate(h, "apt", { weight: householdsOf(h.properties) })),
-      ...others.map((h) => candidate(h, "other_housing", { weight: householdsOf(h.properties) })),
-      ...officetels.map((h) => candidate(h, "officetel", { weight: num(h.properties.units) })),
+      ...apts.map((h) => candidate(h, "apt", callout(h, "아파트", householdsOf(h.properties)))),
+      ...others.map((h) => candidate(h, "other_housing", callout(h, "기타 주거", householdsOf(h.properties)))),
+      ...officetels.map((h) => candidate(h, "officetel", callout(h, "오피스텔", num(h.properties.units)))),
     ],
     limitations,
   });

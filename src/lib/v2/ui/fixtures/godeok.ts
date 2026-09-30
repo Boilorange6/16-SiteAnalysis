@@ -94,6 +94,46 @@ const pin = (layer: string, bearing: number, dist: number, label: string, weight
   const [lng, lat] = at(bearing, dist);
   return { layer, lng, lat, highlight: true, label, ...(weight ? { weight } : {}) };
 };
+// ── A05 예시 단지 25곳: 일부 값을 비워 "확인필요"가 보이게 한다 (이름·좌표·세대수는 모두 가상) ──
+type Housing = "apt" | "other_housing" | "officetel";
+type Row = [name: string | null, bearing: number, distM: number, households: number | null, year: number | null, floors: number | null, bldgs: number | null, parking: number | null, layer?: Housing];
+const A05_ROWS: Row[] = [
+  ["고덕그라시움", 95, 620, 4932, 2019, 35, 62, 5180],
+  ["고덕아르테온", 120, 540, 4066, 2020, 33, 44, 4322],
+  ["래미안힐스테이트고덕", 60, 780, 3658, 2020, 29, 51, 3900],
+  ["고덕주공3단지", 300, 470, 2410, 1984, 5, 46, null],
+  ["롯데캐슬베네루체", 20, 930, 1859, 2020, 35, 25, null],
+  ["고덕자이", 250, 700, 1824, 2019, 30, 22, 2100],
+  ["고덕주공7단지", 330, 610, 1200, 1985, 5, 34, null],
+  ["e편한세상고덕", 280, 210, 1032, 2003, 25, 13, null],
+  ["상일동아", 150, 900, 940, 1999, 20, 8, null],
+  ["고덕현대", 200, 330, 892, 1993, 15, 11, null],
+  ["강동삼성", 165, 400, 815, 1997, null, 10, null],
+  ["명일한양", 230, 820, 780, 1991, 15, 9, null],
+  ["고덕센트럴아이파크", 45, 300, 738, 2014, 29, 6, 900],
+  ["상일현대", 110, 860, 690, 1995, 18, 7, null],
+  ["한양수자인", 340, 880, 552, 2007, 22, null, null],
+  ["고덕엘리프", 190, 560, 480, 2018, 24, 5, null],
+  ["강일리버파크", 75, 150, 420, 2010, 20, 4, null],
+  ["고덕푸르지오", 265, 880, 386, 2004, null, 5, null],
+  [null, 135, 720, 350, null, 12, 4, null],
+  ["삼익그린", 220, 940, null, 1988, 15, 6, null],
+  ["고덕한신휴플러스", 15, 590, null, 2011, null, null, null],
+  ["동남연립", 305, 380, 96, 1990, 4, 3, null, "other_housing"],
+  ["햇살빌라촌", 180, 250, 64, null, 5, null, null, "other_housing"],
+  ["고덕센트럴오피스텔", 85, 430, 288, 2016, 18, 1, null, "officetel"],
+  ["상일역 라온스위트", 100, 690, 152, 2021, 15, 1, null, "officetel"],
+];
+const A05_APTS = A05_ROWS.filter((r) => (r[8] ?? "apt") === "apt");
+const A05_HH = A05_APTS.reduce((s, r) => s + (r[3] ?? 0), 0);
+const A05_YEARS = A05_ROWS.map((r) => r[4]).filter((y): y is number => y !== null).sort((a, b) => a - b);
+const A05_MEDIAN_YEAR = A05_YEARS[Math.floor((A05_YEARS.length - 1) / 2)];
+const TYPE_TEXT = { apt: "아파트", other_housing: "기타 주거", officetel: "오피스텔" } as const;
+const complexPin = ([name, bearing, distM, households, year, floors, bldgs, parking, layer = "apt"]: Row): MapFeature => {
+  const [lng, lat] = at(bearing, distM);
+  return { layer, lng, lat, weight: households, name, type: TYPE_TEXT[layer], households, approvalYear: year, floorsMax: floors, buildingCount: bldgs, distanceM: distM, parking };
+};
+
 const withMap = (t: TileResult, features: MapFeature[], total = features.length): TileResult => ({
   ...t,
   presentation: { ...t.presentation, features, featuresTotal: total },
@@ -192,23 +232,19 @@ export const GODEOK_RESULTS: TileResult[] = [
     "analysis",
     "partial",
     [
-      m("households", "확인 세대", 4120, "세대"),
-      m("complexes", "아파트 단지", 14, "개"),
-      m("median_year", "준공연도 중앙값", 1998, "년"),
+      m("apartment_complexes", "아파트 단지", A05_APTS.length, "개"),
+      m("households", "확인 세대", A05_HH, "세대"),
+      m("median_year", "준공연도 중앙값", A05_MEDIAN_YEAR, "년"),
       m("aged_share_pct", "30년 이상 건물 비중", 38, "%", "estimated"),
       m("parking_per_household", "세대당 주차대수", null, "대", "missing"),
     ],
     [["gis_bldg", "2026-08-01"], ["kapt", null]],
-    j("A05-stock@1", ["households"], "아파트 14개 단지 4,120세대 확인 → 재고는 아파트 중심이며 오래된 건물이 상당수 → 세대수 미상 단지 확인 필요"),
+    j("A05-stock@1", ["households"], `아파트 ${A05_APTS.length}개 단지 ${A05_HH.toLocaleString("en-US")}세대 확인 → 재고는 아파트 중심이며 오래된 건물이 상당수 → 세대수 미상 단지 확인 필요`),
     [
-      { kind: "incomplete", note: "K-APT에 없는 단지 3곳은 세대수를 알 수 없어 합계에서 제외했습니다." },
+      { kind: "incomplete", note: `세대수를 알 수 없는 단지 ${A05_APTS.filter((r) => r[3] === null).length}곳은 합계에서 제외했습니다.` },
       { kind: "estimated", note: "30년 이상 비중은 분석 기준일 대비 경과연수로 추정한 값입니다." },
     ],
-  ), [
-    ...scatter("apt", 14, 31, 950, 120, (i) => (i % 5 === 4 ? null : 180 + ((i * 137) % 700))),
-    ...scatter("other_housing", 3, 32, 800, 100, () => 60),
-    ...scatter("officetel", 2, 33, 700, 100, (i) => 120 + i * 90),
-  ]),
+  ), A05_ROWS.map(complexPin)),
   withMap(tile(
     "A06",
     "analysis",

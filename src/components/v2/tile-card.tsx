@@ -5,6 +5,7 @@ import type { DemoPhase, TileSize } from "@/lib/v2/ui/board-state";
 import { STRIP_COLORS } from "@/lib/v2/ui/map-layers";
 import { OV, badgesToShow, cardReserved, stripText } from "@/lib/v2/ui/overlay-layout";
 import { faceLabel, type Badge, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
+import CalloutMap, { CalloutPill } from "./callout-map";
 import MapBox from "./map-box";
 import styles from "./board.module.css";
 
@@ -177,11 +178,12 @@ export function StatusPlate({ view, phase, onRetry }: { view: TileView; phase: D
 }
 
 /** 전면 시각물: 지도(또는 흐린 대지 지도, 또는 D04 구성비 차트) */
-export function Stage({ view, state, chart, frame, siteX, rightInset, legendY }: { view: TileView; state: boolean; chart: boolean; frame: "card" | "detail"; siteX?: number | ((w: number) => number); rightInset?: number | ((w: number) => number); legendY?: number }) {
+export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, page, onPage }: { view: TileView; state: boolean; chart: boolean; frame: "card" | "detail"; siteX?: number | ((w: number) => number); rightInset?: number | ((w: number) => number); legendY?: number; page?: number; onPage?: (p: number) => void }) {
   if (chart) return <FaceChart view={view} />;
   const card = frame === "card";
   const label = `${view.title} 지도`;
   if (state) return <MapBox model={view.backdrop} muted legend={false} north={false} scale={false} credit={false} label={label} siteX={siteX} />;
+  if (view.callout) return <CalloutMap model={view.callout} kind={frame} page={page} onPage={onPage} label={label} />;
   return (
     <MapBox
       model={view.map ?? view.backdrop}
@@ -323,7 +325,7 @@ export default function TileCard(p: TileCardProps) {
                 <FaceSelect view={view} value={p.face} onChange={p.onFace} />
               </div>
             )}
-            {!state && !(view.hasFace && back) && <ValueCard view={view} />}
+            {!state && !(view.hasFace && back) && (view.callout ? <CalloutPill model={view.callout} /> : <ValueCard view={view} />)}
           </>
         )}
       </div>

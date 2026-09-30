@@ -1,6 +1,6 @@
 import { useId, type ReactNode } from "react";
 import { LAYER_STYLES, layerStyle, type MapModel } from "@/lib/v2/ui/map-layers";
-import { BASEMAP_ATTRIBUTION, BASEMAP_STACK, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, viewportFor, type BasemapChoice } from "@/lib/v2/ui/map-projection";
+import { BASEMAP_ATTRIBUTION, BASEMAP_STACK, framedViewport, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, type BasemapChoice } from "@/lib/v2/ui/map-projection";
 
 /**
  * 지도 그림 하나(SVG). 카드·상세·PPT가 같은 입력으로 같은 그림을 그린다.
@@ -43,6 +43,10 @@ export type MapFigureProps = {
   rightInset?: number;
   /** 축척을 왼쪽 아래에 (펼침) */
   scaleLeft?: boolean;
+  /** 반경 원 지름 / 그림 높이 (기본 0.8). 설명선 칸 사이에 원을 넣을 때 줄인다 */
+  fill?: number;
+  /** 축척 막대 왼쪽 끝 x(px). 지정하면 rightInset·scaleLeft 대신 이 자리에 놓는다 (설명선 칸 사이) */
+  scaleX?: number;
 };
 
 const FONT = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif';
@@ -52,15 +56,13 @@ const textW = (s: string, fs: number) => [...s].reduce((w, ch) => w + (ch.charCo
 type Box = { x0: number; y0: number; x1: number; y1: number };
 const hit = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
 
-export default function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, bare, fixed, label, legend, legendY, north: northOpt, scale = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft }: MapFigureProps) {
+export default function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, bare, fixed, label, legend, legendY, north: northOpt, scale = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX }: MapFigureProps) {
   const sat = layer === "Satellite";
   // 항공 사진 위에서는 어두운 선·점 테두리가 묻히므로 흰색으로 바꾼다
   const line = sat ? "#fff" : INK;
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
   const u = Math.min(1.5, Math.max(1, H / 360));
-  const vp0 = viewportFor(model.center, model.radiusM, W, H);
-  // 대지를 가로 siteX 위치에 놓는다: 경도(메르카토르 x)는 선형이라 중심 경도만 옮기면 된다
-  const vp = { ...vp0, center: [model.center[0] + (0.5 - siteX) * W * (360 / (256 * 2 ** vp0.zoom)), model.center[1]] as const };
+  const vp = framedViewport(model.center, model.radiusM, W, H, siteX, fill);
   const proj = makeProjector(vp);
   const mpp = metersPerPixel(model.center[1], vp.zoom);
   const [cx, cy] = proj(model.center[0], model.center[1]);
@@ -117,7 +119,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   const ly = legendY ?? pad;
   const bar = scaleBar(mpp, 88 * u);
   const barY = H - bottomInset - 20 * u;
-  const barX1 = scaleLeft ? Math.max(pad, 12) + bar.px : W - pad - rightInset;
+  const barX1 = scaleX !== undefined ? scaleX + bar.px : scaleLeft ? Math.max(pad, 12) + bar.px : W - pad - rightInset;
   const barX0 = barX1 - bar.px;
   const boxes: Box[] = showLegend ? [{ x0: pad, y0: ly, x1: pad + legendW, y1: ly + legendH }] : [];
   boxes.push(...avoid);

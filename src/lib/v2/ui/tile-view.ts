@@ -3,6 +3,7 @@
  * 규칙: 종합 점수 없음 · 도보 시간 없음 · 공급/가격/개발은 좋음·주의 평가 없음 (plan 화면 규칙 1~8).
  */
 import type { OUTPUT_FACES, TileResult } from "../tile-result";
+import { rankComplexes, summarize, type Complex } from "./callout-layout";
 import type { MapModel } from "./map-layers";
 import { catalogEntry, sourceName } from "./tile-catalog";
 
@@ -32,6 +33,19 @@ export type TileView = {
   backdrop: MapModel;
   /** 종류 배지 문구 */
   kindLabel: string;
+  /** 주변 단지 설명선 타일(A05) 입력. 결과가 없으면 null */
+  callout: CalloutModel | null;
+};
+
+/** 설명선 타일의 입력: 세대수 순위로 정렬된 단지 목록과 요약 (A06도 같은 모양으로 채운다) */
+export type CalloutModel = {
+  center: readonly [number, number];
+  radiusM: number;
+  complexes: Complex[];
+  analysisYear: number;
+  /** 빈 상태 판·개요의 기준 문구 (출처 + 기준일) */
+  sourceLine: string;
+  summary: ReturnType<typeof summarize>;
 };
 
 const KIND_LABEL = { analysis: "분석", diagram: "도판", simulation: "시뮬레이션" } as const;
@@ -179,6 +193,21 @@ export function toTileView(r: TileResult): TileView {
     map: mapOf(r),
     backdrop: { center: r.conditions.center, radiusM: r.conditions.radiusM, features: [], total: 0, notes: [] },
     kindLabel: KIND_LABEL[cat.kind],
+    callout: calloutOf(r),
+  };
+}
+
+const HOUSING_LAYERS = new Set(["apt", "other_housing", "officetel"]);
+function calloutOf(r: TileResult): CalloutModel | null {
+  if (r.tileCode !== "A05" || (r.status !== "complete" && r.status !== "partial")) return null;
+  const complexes = rankComplexes((r.presentation.features ?? []).filter((f) => HOUSING_LAYERS.has(f.layer)));
+  return {
+    center: r.conditions.center,
+    radiusM: r.conditions.radiusM,
+    complexes,
+    analysisYear: Number(r.conditions.analysisDate.slice(0, 4)),
+    sourceLine: sourceLineOf(r.provenance.sources),
+    summary: summarize(complexes),
   };
 }
 

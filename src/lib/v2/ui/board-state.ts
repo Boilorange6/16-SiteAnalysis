@@ -37,7 +37,8 @@ export function initBoard(results: TileResult[]): BoardState {
     // 결과가 있는 타일만 기본 포함
     included: Object.fromEntries(results.map((r) => [r.tileId, r.status === "complete" || r.status === "partial"])),
     faces: Object.fromEntries(results.map((r) => [r.tileId, r.presentation.outputFace])),
-    sizes: Object.fromEntries(results.map((r) => [r.tileId, 1 as TileSize])),
+    // 주변 단지 설명선(A05)은 좌우 칸이 필요해 기본 2칸
+    sizes: Object.fromEntries(results.map((r) => [r.tileId, (r.tileCode === "A05" ? 2 : 1) as TileSize])),
     removed: [],
     undoStack: [],
   };

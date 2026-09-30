@@ -54,6 +54,15 @@ const MapFeatureSchema = z.object({
   weight: z.number().finite().nullable().optional(),
   label: z.string().nullable().optional(),
   highlight: z.boolean().optional(),
+  // 단지 설명선(A05·A06)용: 엔진이 아는 값만, 모르면 null(화면에는 "확인필요")
+  name: z.string().nullable().optional(),
+  type: z.string().nullable().optional(),
+  households: z.number().finite().nullable().optional(),
+  approvalYear: z.number().int().nullable().optional(),
+  floorsMax: z.number().finite().nullable().optional(),
+  buildingCount: z.number().finite().nullable().optional(),
+  distanceM: z.number().finite().nullable().optional(),
+  parking: z.number().finite().nullable().optional(),
 });
 
 export const TileResultSchema = z

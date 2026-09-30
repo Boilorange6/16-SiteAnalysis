@@ -24,6 +24,7 @@ export default function TileDialog({ view, included, face, onInclude, onFace, on
   const ref = useRef<HTMLDivElement>(null);
   const [back, setBack] = useState(false);
   const [more, setMore] = useState(false); // 모바일 시트 확장
+  const [page, setPage] = useState(0); // 설명선 타일: 0 = 개요
   const basemap = useContext(BasemapContext);
   const setBasemap = useContext(SetBasemapContext);
 
@@ -47,7 +48,7 @@ export default function TileDialog({ view, included, face, onInclude, onFace, on
     <div className={styles.overlay} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div ref={ref} className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <div className={styles.stage}>
-          <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="detail" siteX={detailSiteX} rightInset={insetOf} legendY={OV.edge + 38 + 8} />
+          <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="detail" siteX={detailSiteX} rightInset={insetOf} legendY={OV.edge + 38 + 8} page={page} onPage={setPage} />
         </div>
 
         {state && <StatusPlate view={view} phase={null} />}

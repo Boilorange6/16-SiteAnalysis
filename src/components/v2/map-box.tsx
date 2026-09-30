@@ -12,7 +12,7 @@ export const SetBasemapContext = createContext<(b: BasemapChoice) => void>(() =>
 
 type Box = NonNullable<MapFigureProps["avoid"]>;
 /** avoid·siteX는 실측 크기를 받아 계산하는 함수도 받는다 */
-type Opts = Pick<MapFigureProps, "legend" | "legendY" | "north" | "scale" | "credit" | "bottomInset" | "muted" | "rightInset" | "scaleLeft"> & {
+type Opts = Pick<MapFigureProps, "legend" | "legendY" | "north" | "scale" | "credit" | "bottomInset" | "muted" | "rightInset" | "scaleLeft" | "fill" | "scaleX"> & {
   avoid?: Box | ((w: number, h: number) => Box);
   siteX?: number | ((w: number) => number);
 };
@@ -28,9 +28,9 @@ export const BASEMAPS: Array<{ id: BasemapChoice; label: string }> = [
  * 부모 크기에 맞춰 MapFigure를 그린다 (반경 원은 항상 높이의 80%).
  * 화면 밖 카드는 가까이 올 때까지 그리지 않는다 (보드 12장 × 배경 타일).
  */
-export default function MapBox({ model, bare, label, avoid, siteX, rightInset, ...opts }: { model: MapModel; bare?: boolean; label?: string } & Opts2) {
+/** 부모를 채우는 상자의 실측 크기와 "화면에 가까워졌는가". 서버에서는 크기를 모르고 부동소수 결과도 브라우저와 미세하게 달라, 마운트 뒤 실측 크기로만 그린다. */
+export function useMeasured() {
   const ref = useRef<HTMLDivElement>(null);
-  // 서버에서는 크기를 모르고 부동소수 결과도 브라우저와 미세하게 달라, 마운트 뒤 실측 크기로만 그린다.
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [near, setNear] = useState(false);
   useEffect(() => {
@@ -53,6 +53,11 @@ export default function MapBox({ model, bare, label, avoid, siteX, rightInset, .
       io?.disconnect();
     };
   }, []);
+  return { ref, size, near };
+}
+
+export default function MapBox({ model, bare, label, avoid, siteX, rightInset, ...opts }: { model: MapModel; bare?: boolean; label?: string } & Opts2) {
+  const { ref, size, near } = useMeasured();
   const layer = useContext(BasemapContext);
   return (
     <div ref={ref} style={{ position: "absolute", inset: 0 }}>

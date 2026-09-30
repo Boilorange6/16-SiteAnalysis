@@ -9,7 +9,7 @@ import { createRoot } from "react-dom/client";
 import MapFigure, { type MapFigureProps } from "@/components/v2/map-figure";
 import type { MapModel } from "../ui/map-layers";
 import { SLIDE, slideLayout, slideReserved, slideSiteX, slideLegend } from "../ui/overlay-layout";
-import { BASEMAP_STACK, tilesFor, tileUrl, viewportFor, type BasemapChoice } from "../ui/map-projection";
+import { BASEMAP_STACK, framedViewport, tilesFor, tileUrl, type BasemapChoice } from "../ui/map-projection";
 import { mapKeyOf, type PlannedSlide } from "./report-plan";
 import type { MapImages } from "./render-pptx";
 
@@ -19,7 +19,7 @@ const VIEW_H = 540;
 const OUT_W = 1920;
 const OUT_H = 1080;
 const PX_PER_INCH = VIEW_W / SLIDE.w;
-type Extra = Pick<MapFigureProps, "muted" | "siteX" | "avoid">;
+type Extra = Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill">;
 const TILE_TIMEOUT_MS = 8000;
 
 const blobToDataUrl = (b: Blob) =>
@@ -98,7 +98,7 @@ async function toPng(svg: string): Promise<string> {
 
 /** 한 장 그리기. tileCache는 같은 중심·반경의 여러 장이 타일을 다시 받지 않게 공유한다. */
 export async function rasterizeMap(model: MapModel, tileCache: Map<string, string | null> = new Map(), layer: BasemapChoice = "white", extra: Extra = {}): Promise<string> {
-  const vp = viewportFor(model.center, model.radiusM, VIEW_W, VIEW_H);
+  const vp = framedViewport(model.center, model.radiusM, VIEW_W, VIEW_H, extra.siteX, extra.fill);
   const urls = BASEMAP_STACK[layer].flatMap((ly) => tilesFor(vp).map((t) => tileUrl(ly, t.z, t.x, t.y)));
   await Promise.all(
     urls
