@@ -104,7 +104,7 @@ const dir = mkdtempSync(join(tmpdir(), "v2-bld-"));
 const shpPath = writeShp(dir, "AL_D010_41_20260909", rows);
 
 const db = new Database(":memory:");
-initDataFileSchema(db, "core");
+initDataFileSchema(db, "buildings");
 const rel = insertRelease(db, { sourceId: "building", provider: "t", sourceUrl: "https://x.invalid", sourceAsOf: "2026-09-09", fetchedAt: "2026-09-30T00:00:00Z", checksum: "x", licenseCode: "CC-BY" });
 const stats = await buildBuildings(db, readShp(shpPath), rel, { maxYear: 2026 });
 
@@ -144,5 +144,54 @@ assert.ok(Math.abs(width - 20) < 0.05, `5186→5179 재투영 후에도 변 길�
   const kept = [];
   for await (const r of readShp(shpPath, { keep: (p) => p.A1 === "U-FLOORS" })) kept.push(r.properties.A1);
   assert.deepEqual(kept, ["U-FLOORS"]);
+}
+// ─── buildings 파일: core 없이/있이 빌드·게시, 현재 core를 읽기 전용으로 받는다 ─────────────
+{
+  const M = await import("../../lib/v2/data/manifest.ts");
+  const B = await import("../../lib/v2/ingest/build.ts");
+  const dataDir = mkdtempSync(join(tmpdir(), "v2-bld-file-"));
+  const center = proj4("EPSG:5186", "EPSG:4326").forward([208300, 542010]);
+  const coreBuilder = async (cdb) => {
+    const r = insertRelease(cdb, { sourceId: "legal_areas", provider: "t", sourceUrl: "https://x.invalid", sourceAsOf: "2026-09-01", fetchedAt: "2026-09-30T00:00:00Z", checksum: "x", licenseCode: "CC-BY" });
+    const s = new B.SourceStats("legal_areas", r, []);
+    s.read();
+    s.accept({}, "41", "sigungu");
+    return [s];
+  };
+  const shp = () => readShp(shpPath);
+  const buildingsBuilder = (seen) => async (bdb, ctx) => {
+    seen.core = ctx.core;
+    assert.throws(() => ctx.core.prepare("CREATE TABLE x (a)").run(), /readonly/, "core는 읽기 전용");
+    const r = insertRelease(bdb, { sourceId: "building", provider: "t", sourceUrl: "https://x.invalid", sourceAsOf: "2026-09-09", fetchedAt: "2026-09-30T00:00:00Z", checksum: "x", licenseCode: "CC-BY" });
+    return [await buildBuildings(bdb, shp(), r, { maxYear: 2026 })];
+  };
+
+  // 옛 매니페스트: buildings 없음 → 그대로 유효
+  const a = await B.buildAndPublish({ dataDir, version: "a", builders: { core: coreBuilder } });
+  assert.equal(a.published, true, JSON.stringify(a.failures));
+  assert.deepEqual(Object.keys(M.readManifest(dataDir).files), ["core"]);
+
+  // --only buildings: 현재 core를 재사용
+  const seen = {};
+  const b = await B.buildAndPublish({ dataDir, version: "b", builders: { buildings: buildingsBuilder(seen) } });
+  assert.equal(b.published, true, JSON.stringify(b.failures));
+  assert.ok(seen.core, "현재 core가 ctx.core로 전달됨");
+  const m = M.readManifest(dataDir);
+  assert.equal(m.files.core.path, "versions/a/core.sqlite");
+  assert.equal(m.files.buildings.path, "versions/b/buildings.sqlite");
+  assert.equal(m.files.buildings.kind, "buildings");
+  const bdb = M.openDataFile(dataDir, m, "buildings");
+  assert.equal(queryFeaturesInRadius(bdb, center, 2000, ["building"]).length, 5);
+  assert.equal(queryFeaturesInRadius(bdb, center, 30, ["building"]).length, 1, "반경 30 m: U-BADDATE 한 동");
+  assert.equal(bdb.prepare("SELECT COUNT(*) FROM building_fact").pluck().get(), 5);
+  bdb.close();
+  const cdb = M.openDataFile(dataDir, m, "core");
+  assert.equal(cdb.prepare("SELECT COUNT(*) FROM sqlite_master WHERE name='building_fact'").pluck().get(), 0, "core에는 building_fact가 없다");
+  cdb.close();
+
+  // core만 다시 빌드해도 buildings 항목은 유지된다
+  const c = await B.buildAndPublish({ dataDir, version: "c", builders: { core: coreBuilder } });
+  assert.equal(c.published, true, JSON.stringify(c.failures));
+  assert.equal(M.readManifest(dataDir).files.buildings.path, "versions/b/buildings.sqlite");
 }
 console.log("buildings ok");

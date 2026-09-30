@@ -39,7 +39,7 @@ if (!set) throw new Error(`시도 ${sigungu.slice(0, 2)} 파일이 없습니다`
 const db = new Database(out);
 db.pragma("journal_mode = OFF");
 db.pragma("synchronous = OFF");
-initDataFileSchema(db, "core");
+initDataFileSchema(db, "buildings");
 const rel = insertRelease(db, { sourceId: "building", provider: "dryrun", sourceUrl: "https://www.vworld.kr/", sourceAsOf: set.date, fetchedAt: new Date().toISOString(), checksum: "dryrun", licenseCode: "CC-BY" });
 
 async function* chain() {

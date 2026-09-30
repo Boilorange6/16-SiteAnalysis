@@ -9,8 +9,8 @@ import type BetterSqlite3 from "better-sqlite3";
 
 type Db = BetterSqlite3.Database;
 
-export type DataFileKind = "core" | "reference" | "market" | "osm";
-export const DATA_FILE_KINDS: readonly DataFileKind[] = ["core", "reference", "market", "osm"];
+export type DataFileKind = "core" | "buildings" | "reference" | "market" | "osm";
+export const DATA_FILE_KINDS: readonly DataFileKind[] = ["core", "buildings", "reference", "market", "osm"];
 export const DATA_SCHEMA_VERSION = 2;
 export const VALUE_STATUSES = ["observed", "estimated", "suppressed", "missing", "not_applicable"] as const;
 
@@ -96,7 +96,8 @@ const COMMON_SQL = `
   );
 `;
 
-const CORE_SQL = `
+/** 건물 도형(약 1,500만 동)은 core를 키우므로 별도 파일에 둔다. building_fact는 이 파일에만 만든다(옛 core 파일에는 남아 있을 수 있다). */
+const BUILDINGS_SQL = `
   CREATE TABLE IF NOT EXISTS building_fact (
     feature_id INTEGER PRIMARY KEY REFERENCES feature(feature_id),
     ledger_pk TEXT,
@@ -111,7 +112,9 @@ const CORE_SQL = `
     footprint_area_m2 REAL,
     field_provenance_json TEXT NOT NULL DEFAULT '{}'
   );
+`;
 
+const CORE_SQL = `
   CREATE TABLE IF NOT EXISTS parcel_point (
     pnu TEXT PRIMARY KEY,
     lng REAL NOT NULL,
@@ -182,6 +185,7 @@ export function initDataFileSchema(db: Db, kind: DataFileKind): void {
   }
   db.exec(COMMON_SQL);
   if (kind === "core") db.exec(CORE_SQL);
+  if (kind === "buildings") db.exec(BUILDINGS_SQL);
   if (kind === "market") db.exec(MARKET_SQL);
   const upsert = db.prepare("INSERT INTO data_file_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
   upsert.run("kind", kind);

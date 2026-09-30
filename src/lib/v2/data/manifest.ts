@@ -113,6 +113,37 @@ export async function withDataDirLock<T>(dataDir: string, fn: () => T | Promise<
   }
 }
 
+export interface WaitLockOptions {
+  timeoutMs: number;
+  pollMs?: number;
+  logEveryMs?: number;
+  log?: (msg: string) => void;
+  /** 테스트 주입용 */
+  sleep?: (ms: number) => Promise<void>;
+  now?: () => number;
+}
+
+/**
+ * 다른 빌드가 쥔 잠금이 풀릴 때까지 기다린다(기본 30초 간격, 5분마다 한 번 로그).
+ * true면 잠금이 비었다(직후 withDataDirLock이 잡는다 — 그 사이 경쟁은 LOCKED 오류로 드러난다), false면 시간 초과.
+ */
+export async function waitForDataDirLock(dataDir: string, opts: WaitLockOptions): Promise<boolean> {
+  const { timeoutMs, pollMs = 30_000, logEveryMs = 300_000, log = console.log, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), now = Date.now } = opts;
+  const lockPath = join(dataDir, LOCK_FILE);
+  const start = now();
+  let lastLog = -Infinity;
+  while (existsSync(lockPath)) {
+    const waited = now() - start;
+    if (waited >= timeoutMs) return false;
+    if (waited - lastLog >= logEveryMs) {
+      lastLog = waited;
+      log(`data dir locked (${lockPath}); waiting ${Math.round(waited / 60000)} min of ${Math.round(timeoutMs / 60000)}…`);
+    }
+    await sleep(Math.min(pollMs, timeoutMs - waited));
+  }
+  return true;
+}
+
 function readJson(path: string): Manifest | null {
   return existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as Manifest) : null;
 }

@@ -35,7 +35,8 @@ export function runSkeletonAnalysis(
   if (!manifest) throw new Error("no published manifest — run a data build first");
   const hash = manifestHash(manifest);
   // 데이터 파일을 먼저 연다 — 열기에 실패하면 'running'으로 남는 분석 실행을 만들지 않는다.
-  const core = openDataFile(dataDir, manifest, "core");
+  // 건물은 buildings 파일에 있다. 옛 매니페스트(buildings 없음)는 core에서 읽는다.
+  const core = openDataFile(dataDir, manifest, manifest.files.buildings ? "buildings" : "core");
   const analysisId = randomUUID();
   try {
     createAnalysisRun(appDb, {

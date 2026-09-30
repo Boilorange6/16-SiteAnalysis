@@ -1,6 +1,6 @@
 /**
  * v2 데이터 파일 빌드·게시.
- *   npm run data:build -- --version 2026-09-30a [--raw .cache/v2/raw] [--only core,reference,market] [--expectations exp.json] [--with buildings]
+ *   npm run data:build -- --version 2026-09-30a [--raw .cache/v2/raw] [--only core,buildings,reference,market] [--expectations exp.json] [--with buildings] [--wait-lock [분]]
  * 원천 zip은 먼저 풀고(이미 풀린 것은 건너뜀), 원천 파일은 폴더마다 가장 새 파일을 쓴다.
  */
 import { readdirSync, statSync, existsSync, readFileSync } from "node:fs";
@@ -31,10 +31,13 @@ if (!version || !/^[0-9A-Za-z._-]+$/.test(version)) {
   process.exit(2);
 }
 const flag = (name) => args.includes(`--${name}`);
-/** 기본 빌드에 넣지 않는 무거운 원천: --with buildings (core에 건물 도형·building_fact를 더한다) */
-const withBuildings = String(opt("with", "")).split(",").includes("buildings");
 const raw = opt("raw", ".cache/v2/raw");
 const only = new Set(String(opt("only", "core,reference,market")).split(","));
+/** 기본 빌드에 넣지 않는 무거운 원천: 건물 도형·building_fact는 core가 아니라 별도 buildings 파일. --only buildings 또는 --with buildings */
+if (String(opt("with", "")).split(",").includes("buildings")) only.add("buildings");
+/** --wait-lock [분]: 다른 빌드가 데이터 디렉터리 잠금을 쥐고 있으면 풀릴 때까지 기다린다(기본 180분) */
+const waitLockIdx = args.indexOf("--wait-lock");
+const waitLockMin = waitLockIdx < 0 ? null : /^\d+(\.\d+)?$/.test(args[waitLockIdx + 1] ?? "") ? Number(args[waitLockIdx + 1]) : 180;
 const resetBaseline = opt("reset-baseline") ? opt("reset-baseline").split(",") : undefined;
 const expectations = opt("expectations") ? JSON.parse(readFileSync(opt("expectations"), "utf8")) : undefined;
 
@@ -68,6 +71,14 @@ const release = (db, sourceId, file, provider, sourceUrl, licenseCode) => {
 };
 async function* chain(...gens) {
   for (const g of gens) yield* g;
+}
+
+if (waitLockMin !== null && !flag("dry-run")) {
+  const { waitForDataDirLock } = await import("../../lib/v2/data/manifest.ts");
+  if (!(await waitForDataDirLock(v2DataDir(), { timeoutMs: waitLockMin * 60_000 }))) {
+    console.error(`data dir still locked after ${waitLockMin} min — giving up`);
+    process.exit(3);
+  }
 }
 
 console.log("unzip:", extractAll(join(raw, "legal_dong")).length + extractAll(join(raw, "cadastral")).length + extractAll(join(raw, "gis_building")).length, "archive(s)");
@@ -108,7 +119,7 @@ if (only.has("core")) {
       emd: readShp(newest("legal_dong", /\(EMD\)\.shp$/i)),
       ri: readShp(newest("legal_dong", /\(LIO\)\.shp$/i)),
     });
-    const { cadastral, buildings, buildingAll, titleFile, hasNationalTitle } = await discoverCore();
+    const { cadastral, buildings, titleFile, hasNationalTitle } = await discoverCore();
     const parcels = [];
     if (cadastral.size > 0) {
       const parcelRel = release(db, "parcel", oldestFile(cadastral), "국토교통부(VWorld 연속지적도형정보)", "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=23", "CC-BY");
@@ -128,14 +139,6 @@ if (only.has("core")) {
       pb.expectedRegions = [...buildings.keys()];
       parcels.push(pb);
     }
-    if (withBuildings) {
-      // 건물 도형: 받은 모든 시도의 GIS건물통합정보 (core가 수 GB 커진다). 시도 하나라도 없으면 있는 시도만 적재하고 그 사실을 알린다.
-      const buildingRel = release(db, "building", oldestFile(buildingAll), "국토교통부(VWorld GIS건물통합정보)", "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=18", "CC-BY");
-      const b = await buildBuildings(db, chain(...flat(buildingAll).map((f) => readShp(f))), buildingRel);
-      b.expectedRegions = [...buildingAll.keys()];
-      parcels.push(b);
-      console.log(`buildings: 시도 ${partCounts(buildingAll)}`);
-    }
     const recapFile = newest("ledger_recap", /^recap_.*\.csv$/i);
     if (!hasNationalTitle) console.warn("⚠ 전국 표제부(title_YYYYMM.csv)가 없어 5개 시도 표제부로 적재합니다 — 오피스텔·단일동 커버리지 일부");
     const ledger = await buildLedger(db, {
@@ -145,6 +148,19 @@ if (only.has("core")) {
       title: (await csvRecords(titleFile)).records,
     });
     return [...legal, ...parcels, ...ledger];
+  };
+}
+if (only.has("buildings")) {
+  // 건물 도형: 받은 모든 시도의 GIS건물통합정보. 시도 하나라도 없으면 있는 시도만 적재하고 그 사실을 알린다.
+  // 이 빌더는 현재 core를 건드리지 않는다(ctx.core는 읽기 전용으로 전달됨) — --only buildings는 매니페스트의 core를 그대로 재사용한다.
+  builders.buildings = async (db) => {
+    const buildingAll = latestShpPerSido([...walk(join(raw, "gis_building"))], "AL_D010");
+    if (buildingAll.size === 0) throw new Error("GIS건물(gis_building) 파일이 없습니다 — vworld:fetch로 받으세요");
+    const rel = release(db, "building", oldestFile(buildingAll), "국토교통부(VWorld GIS건물통합정보)", "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=18", "CC-BY");
+    const b = await buildBuildings(db, chain(...flat(buildingAll).map((f) => readShp(f))), rel);
+    b.expectedRegions = [...buildingAll.keys()];
+    console.log(`buildings: 시도 ${partCounts(buildingAll)}`);
+    return [b];
   };
 }
 if (only.has("reference")) {

@@ -18,7 +18,7 @@ function seedRelease(db) {
 
 // ─── 1. 종류별 테이블 ──────────────────────────────────────────────────────
 {
-  assert.deepEqual([...DATA_FILE_KINDS], ["core", "reference", "market", "osm"]);
+  assert.deepEqual([...DATA_FILE_KINDS], ["core", "buildings", "reference", "market", "osm"]);
   for (const kind of DATA_FILE_KINDS) {
     const db = new Database(":memory:");
     initDataFileSchema(db, kind);
@@ -27,7 +27,8 @@ function seedRelease(db) {
       assert.ok(t.has(common), `${kind}: ${common}`);
     }
     assert.ok(t.has("feature_rtree"), `${kind}: R*Tree`);
-    assert.equal(t.has("building_fact"), kind === "core", `${kind}: building_fact`);
+    assert.equal(t.has("building_fact"), kind === "buildings", `${kind}: building_fact`);
+    assert.equal(t.has("parcel_point"), kind === "core", `${kind}: parcel_point`);
     assert.equal(t.has("property_transaction"), kind === "market", `${kind}: property_transaction`);
     assert.equal(t.has("development_event"), kind === "market", `${kind}: development_event`);
     assert.deepEqual(readDataFileMeta(db), { kind, schemaVersion: DATA_SCHEMA_VERSION });
@@ -45,7 +46,7 @@ function seedRelease(db) {
 // ─── 3. PNU는 문자열 그대로, 높이 미상은 NULL ───────────────────────────────
 {
   const db = new Database(":memory:");
-  initDataFileSchema(db, "core");
+  initDataFileSchema(db, "buildings");
   seedRelease(db);
   db.prepare(`INSERT INTO feature (stable_id, kind, source_key, release_id, geom_json, pnu) VALUES ('b1','building','k1','r1','{}','1168010100100010000')`).run();
   const row = db.prepare("SELECT pnu, typeof(pnu) AS t FROM feature WHERE stable_id='b1'").get();

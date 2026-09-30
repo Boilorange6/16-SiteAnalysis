@@ -201,7 +201,8 @@ function gate(plan: BuildPlan, previous: Manifest | null, stats: Record<string, 
   return { ok: failures.length === 0, failures };
 }
 
-const BUILD_ORDER: readonly DataFileKind[] = ["core", "reference", "market", "osm"];
+// buildings는 core 뒤: 같은 실행에서 core를 만들었으면 그 파일을, 아니면 매니페스트의 현재 core를 읽기 전용으로 받는다.
+const BUILD_ORDER: readonly DataFileKind[] = ["core", "buildings", "reference", "market", "osm"];
 
 export function buildAndPublish(plan: BuildPlan): Promise<BuildOutcome> {
   return withDataDirLock(plan.dataDir, async () => {
