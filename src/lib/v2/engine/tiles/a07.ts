@@ -3,10 +3,10 @@
  * 등급 없음. 가격 상승·하락을 좋고 나쁨으로 판정하지 않는다. 시세·감정가가 아니다.
  * 위치: 적재기가 법정동+지번→PNU→대표점으로 연결한 거래만 쓴다(위치 미확인 거래를 동 중심에 찍지 않는다).
  */
-import { toUtmk } from "../../crs";
+import { toUtmk, type LngLat } from "../../crs";
 import { lookupParcelPoint } from "../../data/parcels";
 import type { TileResult } from "../../tile-result";
-import type { EngineContext, Limitation } from "../context";
+import type { EngineContext, Limitation, SourceRef } from "../context";
 import { fmt, makeTile, missing, obs, type MapCandidate, type TileDraft } from "./common";
 import { notProvided } from "./not-provided";
 
@@ -15,12 +15,36 @@ export const MIN_HALF_TRADES = 10;
 /** 3.3㎡ 환산은 보조 표시 (평 = 3.3㎡ 근사) */
 const PYEONG_M2 = 3.3;
 
-interface Row {
+export interface TradeRow {
   deal_date: string;
   price_krw: number | null;
   area_m2: number | null;
   cancelled_at: string | null;
   location_id: string | null;
+}
+
+export interface PricedTrade extends TradeRow {
+  unit: number;
+}
+
+export interface TradePoint {
+  pnu: string;
+  i: number;
+  n: number;
+  m: number;
+  at: LngLat;
+}
+
+export interface TradeCollection {
+  sources: SourceRef[];
+  valid: TradeRow[];
+  priced: PricedTrade[];
+  points: TradePoint[];
+  unlocated: number;
+  absent: Array<{ code: string; name: string }>;
+  cancelled: number;
+  from: string;
+  mid: string;
 }
 
 /** ISO 날짜에서 n개월 전(말일 보정) */
@@ -53,10 +77,11 @@ export function quintileOf(v: number, values: number[]): 1 | 2 | 3 | 4 | 5 {
   return (1 + cuts.filter((c) => v > c).length) as 1 | 2 | 3 | 4 | 5;
 }
 
-export function a07(ctx: EngineContext): TileResult {
+/** A07·D25가 공유하는 최근 12개월 아파트 매매 집계. 위치 미확인 거래를 임의 좌표에 투영하지 않는다. */
+export function collectTrades(ctx: EngineContext): TradeCollection | null {
   const sources = ctx.sources("market", [SOURCE]);
   const market = ctx.db("market");
-  if (sources.length === 0 || !market) return notProvided(ctx, "A07");
+  if (sources.length === 0 || !market) return null;
   const core = ctx.db("core");
   const { center, radiusM, analysisDate } = ctx.input;
   const from = monthsBefore(analysisDate, 12);
@@ -69,7 +94,7 @@ export function a07(ctx: EngineContext): TileResult {
         .prepare(`SELECT deal_date, price_krw, area_m2, cancelled_at, location_id FROM property_transaction
           WHERE property_type = 'apt' AND contract_type = 'trade' AND match_status = 'located'
             AND lawd_cd IN (${codes.map(() => "?").join(",")}) AND deal_date > ? AND deal_date <= ?`)
-        .all(...codes, from, analysisDate) as Row[])
+        .all(...codes, from, analysisDate) as TradeRow[])
     : [];
   const unlocated = codes.length
     ? (market
@@ -101,6 +126,20 @@ export function a07(ctx: EngineContext): TileResult {
   const cancelled = local.filter((r) => r.cancelled_at !== null).length;
   const valid = local.filter((r) => r.cancelled_at === null && r.price_krw !== null && r.price_krw > 0);
   const priced = valid.filter((r) => r.area_m2 !== null && r.area_m2 > 0).map((r) => ({ ...r, unit: r.price_krw! / 10_000 / r.area_m2! }));
+  const byPnu = new Map<string, number[]>();
+  for (const r of priced) byPnu.set(r.location_id!, [...(byPnu.get(r.location_id!) ?? []), r.unit]);
+  const points = [...byPnu]
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([pnu, us], i) => ({ pnu, i, n: us.length, m: median(us) as number, at: lookupParcelPoint(core!, pnu)! }));
+
+  return { sources, valid, priced, points, unlocated, absent, cancelled, from, mid };
+}
+
+export function a07(ctx: EngineContext): TileResult {
+  const trades = collectTrades(ctx);
+  if (!trades) return notProvided(ctx, "A07");
+  const { sources, valid, priced, points, unlocated, absent, cancelled, mid } = trades;
+  const { analysisDate } = ctx.input;
   const noArea = valid.length - priced.length;
 
   const units = sortedNums(priced.map((r) => r.unit));
@@ -137,11 +176,6 @@ export function a07(ctx: EngineContext): TileResult {
         : `최근 12개월 반경 안 아파트 매매 ${valid.length}건, ㎡당 중앙값 ${fmt(Math.round(med))}만원(중간 절반 ${rangeTxt}만원)${changeTxt} → 관측된 거래 분포이며 시세·감정가가 아니고 단지·면적 구성에 따라 달라짐${change === null ? ", 기간별 거래가 적어 변화는 판단하지 않음" : ""} → 단지·면적별 개별 거래 확인 필요`;
 
   // 지도: 필지(단지) 대표점 단위로 묶는다. 색은 이번 결과 안의 점별 중앙 단가 5분위.
-  const byPnu = new Map<string, number[]>();
-  for (const r of priced) byPnu.set(r.location_id!, [...(byPnu.get(r.location_id!) ?? []), r.unit]);
-  const points = [...byPnu]
-    .sort(([a], [b]) => (a < b ? -1 : 1))
-    .map(([pnu, us], i) => ({ pnu, i, n: us.length, m: median(us) as number, at: lookupParcelPoint(core!, pnu)! }));
   const top3 = new Set([...points].sort((a, b) => b.n - a.n || a.i - b.i).slice(0, 3).map((p) => p.pnu));
   const all = points.map((p) => p.m);
   const map: MapCandidate[] = points.map((p) => ({
