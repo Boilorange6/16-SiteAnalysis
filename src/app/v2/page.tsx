@@ -10,6 +10,7 @@ import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import styles from "@/components/v2/board.module.css";
 import { SUMMARY_ID, boardReducer, demoFinished, demoPhase, initBoard, reportPages, viewOf } from "@/lib/v2/ui/board-state";
 import { buildReportPlan, complexCounts, reportFileName } from "@/lib/v2/report/report-plan";
+import { downloadBytes, EXPORT_MIME } from "@/lib/v2/export/download";
 import { DEFAULT_CALLOUT_MODE } from "@/lib/v2/ui/callout-layout";
 import { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } from "@/lib/v2/ui/fixtures/godeok";
 import { toSummaryView, toTileView, type SiteSummary } from "@/lib/v2/ui/tile-view";
@@ -61,12 +62,30 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
       // 지도 그림은 브라우저에서 SVG → PNG로 만든다. 못 만들면 자리표시로 계속한다.
       const { buildMapImages } = await import("@/lib/v2/report/map-image");
       const bytes = await renderReportPptx(reportPlan, await buildMapImages(reportPlan, basemap).catch(() => ({})));
-      const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/vnd.openxmlformats-officedocument.presentationml.presentation" }));
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = reportFileName(siteSummary.address, analysisDate);
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      downloadBytes(reportFileName(siteSummary.address, analysisDate), bytes, EXPORT_MIME.pptx);
+    } finally {
+      setMaking(false);
+    }
+  };
+
+  const makeDxf = async (origin: "site" | "utmk" = "site") => {
+    if (!scene) return;
+    setMaking(true);
+    try {
+      const { dxfFileName, sceneToDxf } = await import("@/lib/v2/export/dxf");
+      const dxf = sceneToDxf(scene, { origin });
+      downloadBytes(dxfFileName(siteSummary.address, analysisDate), dxf, EXPORT_MIME.dxf);
+    } finally {
+      setMaking(false);
+    }
+  };
+
+  const makeGlb = async () => {
+    if (!scene) return;
+    setMaking(true);
+    try {
+      const { glbFileName, sceneToGlb } = await import("@/lib/v2/export/glb");
+      downloadBytes(glbFileName(siteSummary.address, analysisDate), sceneToGlb(scene), EXPORT_MIME.glb);
     } finally {
       setMaking(false);
     }
@@ -146,9 +165,38 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
                 보드 편집
               </button>
               <span className={styles.reportHint}>표지 1 + 타일 {tiles}</span>
-              <button type="button" className={`${styles.pill} ${styles.pillDark}`} onClick={makeReport} disabled={making || demoOn || busy} aria-busy={making}>
-                {making ? "만드는 중…" : `보고서 만들기 · ${reportPlan.length}장`}
-              </button>
+              {demo ? (
+                <button type="button" className={`${styles.pill} ${styles.pillDark}`} disabled title="실제 분석 후 사용">
+                  내보내기 ▾
+                </button>
+              ) : (
+                <details style={{ position: "relative" }}>
+                  <summary className={`${styles.pill} ${styles.pillDark}`} style={{ cursor: busy || making ? "not-allowed" : "pointer", listStyle: "none" }}>
+                    {making ? "내보내는 중…" : "내보내기 ▾"}
+                  </summary>
+                  <div
+                    role="menu"
+                    aria-label="내보내기 형식"
+                    style={{ position: "absolute", zIndex: 20, right: 0, top: "calc(100% + 8px)", minWidth: 250, padding: 10, borderRadius: 14, background: "#fff", boxShadow: "0 12px 32px rgba(0,0,0,.16)", display: "grid", gap: 6 }}
+                  >
+                    <button type="button" className={styles.pill} onClick={() => void makeReport()} disabled={making || busy}>
+                      PPT · {reportPlan.length}장
+                    </button>
+                    <button type="button" className={styles.pill} onClick={() => void makeDxf("site")} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "대지 중심 원점"}>
+                      DXF · 대지 중심
+                    </button>
+                    <button type="button" className={styles.pill} onClick={() => void makeDxf("utmk")} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "UTM-K 절대 좌표"}>
+                      DXF · UTM-K
+                    </button>
+                    <button type="button" className={styles.pill} onClick={() => void makeGlb()} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "GLB 내보내기"}>
+                      GLB
+                    </button>
+                    <p style={{ margin: "4px 2px 0", fontSize: 11, lineHeight: 1.4, color: "#5B606B" }}>
+                      DXF·GLB: 건물·필지·대지·반경. 래스터(항공사진·인구 격자·시뮬레이션 결과)는 대상 아님
+                    </p>
+                  </div>
+                </details>
+              )}
             </>
           )}
         </header>
