@@ -60,7 +60,7 @@ export default function SummaryCard({ view, face, onFace }: { view: SummaryView;
           {view.map && (face === "map" || seen) && (
             <>
               <div className={styles.stage} aria-hidden>
-                <MapBox model={view.map} bare legend={false} north={OV.edge + 34 + 8 + 13} credit={false} bottomInset={OV.stripH} />
+                <MapBox model={view.map} bare legend={false} north={OV.edge + 34 + 8 + 13} credit={false} bottomInset={OV.stripH} siteY={0.72} />
               </div>
               <div className={`${styles.plate} ${styles.summaryPanel}`}>{body}</div>
               <div className={styles.ovBL}>
