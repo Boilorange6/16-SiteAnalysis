@@ -23,13 +23,15 @@ if (!manifest) throw new Error(`no published manifest in ${dataDir}`);
 
 const appDb = openV2AppDb(join(mkdtempSync(join(tmpdir(), "v2-review-")), "app.sqlite"));
 const KEY = {
-  A01: ["nearest_bus_m", "bus_stops"],
+  A01: ["nearest_rail_m", "rail_stations", "rail_lines", "nearest_bus_m", "bus_stops"],
+  A02: ["nearest_elem_m", "elem_schools", "middle_schools", "high_schools", "in_school_zone"],
   A03: ["basic_groups", "stores"],
   A04: ["parks", "nearest_park_point_m"],
-  A05: ["apartment_complexes", "households", "officetels"],
+  A05: ["apartment_complexes", "households", "households_from_kapt", "kapt_only_apartments", "officetels"],
   A06: ["applyhome_units", "move_in_units"],
+  A10: ["planned_projects", "nearest_planned_station_m", "nearest_planned_line_m"],
 };
-const show = (m) => (m.value === null ? `${m.label.slice(0, 0)}미확인` : `${m.value}`);
+const show = (m) => (!m ? "-" : m.value === null ? "미확인" : `${m.value}`); // "-" = 지표 없음(원천 미적재)
 
 const lines = [`# P1b-1 검수 8곳 — 반경 ${radiusM}m`, "", `데이터 버전 ${manifest.version} · 분석일 ${new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" })}`, ""];
 const rows = [];
@@ -47,8 +49,8 @@ for (const site of REVIEW_SITES) {
   rows.push({ site, ms, cells, failed: failed.length, results: r.results });
   console.log(`${site.name.padEnd(10)} ${String(ms).padStart(6)}ms  failed=${failed.length}  ${cells.join(" | ")}`);
 }
-lines.push("| 지점 | 소요(ms) | A01 | A03 | A04 | A05 | A06 |", "|---|---:|---|---|---|---|---|");
+lines.push("| 지점 | 소요(ms) | " + Object.keys(KEY).join(" | ") + " |", "|---|---:|" + Object.keys(KEY).map(() => "---").join("|") + "|");
 for (const r of rows) lines.push(`| ${r.site.name} | ${r.ms} | ${r.cells.join(" | ")} |`);
-lines.push("", "지표는 `id=값` (미확인 = 값 없음). 실패 타일 수: " + rows.map((r) => `${r.site.name} ${r.failed}`).join(", "));
+lines.push("", "지표는 `id=값` (미확인 = 값 없음, - = 지표 자체가 없음). 실패 타일 수: " + rows.map((r) => `${r.site.name} ${r.failed}`).join(", "));
 if (out) writeFileSync(out, lines.join("\n") + "\n");
 appDb.close();

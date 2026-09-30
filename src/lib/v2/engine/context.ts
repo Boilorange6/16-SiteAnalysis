@@ -66,9 +66,9 @@ export class EngineContext {
     return db;
   }
 
-  hits(key: FileKey, kinds: readonly string[]): FeatureHit[] {
+  hits(key: FileKey, kinds: readonly string[], radiusM = this.input.radiusM): FeatureHit[] {
     const db = this.db(key);
-    return db ? queryFeaturesInRadius(db, this.input.center, this.input.radiusM, kinds) : [];
+    return db ? queryFeaturesInRadius(db, this.input.center, radiusM, kinds) : [];
   }
 
   private allRefs(key: FileKey): SourceRef[] {
