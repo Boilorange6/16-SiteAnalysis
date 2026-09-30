@@ -183,6 +183,26 @@ if (only.has("market")) {
   };
 }
 
+// 정비사업(market, development_event): 기존 market builder 뒤에 이어 붙인다. 원천에 위치가 없어 core는 필요 없다.
+if (builders.market) {
+  const base = builders.market;
+  builders.market = async (db, ctx) => {
+    const { buildMaintenance } = await import("../../lib/v2/ingest/sources/maintenance.ts");
+    const integratedFile = newest("maintenance", /^maintenance-integrated-.*\.csv$/i);
+    const stdFile = newest("maintenance", /^maintenance-std-.*\.csv$/i);
+    const provider = "국토교통부·지방자치단체(도시정비사업)";
+    return [
+      ...(await base(db, ctx)),
+      ...(await buildMaintenance(db, {
+        integrated: (await csvRecords(integratedFile)).records,
+        integratedReleaseId: release(db, "maintenance_integrated", integratedFile, provider, "https://www.data.go.kr/data/15160169/fileData.do", "UNRESTRICTED"),
+        std: (await csvRecords(stdFile)).records,
+        stdReleaseId: release(db, "maintenance_std", stdFile, provider, "https://www.data.go.kr/data/15155703/standard.do", "UNRESTRICTED"),
+      })),
+    ];
+  };
+}
+
 // 학교·학구 연계(reference)와 K-APT 단지(core): 기존 builder 뒤에 이어 붙인다.
 const { buildKapt, buildSchoolZoneLinks, SCHOOL_SPEC, SCHOOL_ZONE_COVERAGE } = await import("../../lib/v2/ingest/sources/school-kapt.ts");
 if (builders.reference) {
