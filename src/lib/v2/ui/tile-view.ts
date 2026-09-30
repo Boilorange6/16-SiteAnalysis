@@ -59,7 +59,10 @@ const group = (n: number) => {
   const [i, f] = String(n).split(".");
   return i.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (f ? `.${f}` : "");
 };
-const withUnit = (n: number, unit: string) => (unit === "" ? group(n) : unit.length > 2 ? `${group(n)} ${unit}` : `${group(n)}${unit}`);
+const withUnit = (n: number, unit: string) => {
+  const v = unit === "년" ? String(n) : group(n); // 연도는 자리 구분 쉼표 없음
+  return unit === "" ? v : unit.length > 2 ? `${v} ${unit}` : `${v}${unit}`;
+};
 
 function metricRow(m: TileResult["metrics"][number]): Row {
   const base = { label: m.label };

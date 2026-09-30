@@ -33,7 +33,6 @@ export default function V2BoardPage() {
   const summary = useMemo(() => toSummaryView(GODEOK_SUMMARY, results), [results]);
   const { tiles } = reportPages(board);
   const total = board.order.length;
-  // 표지 + 타일 + 출처 장. reportPages 는 출처 장을 세지 않으므로 계획 길이를 그대로 쓴다.
   const analysisDate = new Date().toLocaleDateString("sv-SE");
   const reportPlan = useMemo(() => buildReportPlan({ summary, views, board, analysisDate }), [summary, views, board, analysisDate]);
   const [making, setMaking] = useState(false);

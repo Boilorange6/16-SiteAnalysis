@@ -17,8 +17,6 @@ const build = (results, board) =>
     analysisDate: "2026-09-30",
   });
 
-// ponytail: 출처 슬라이드는 reportPages(표지 + 타일)에 아직 없으므로 +1 (board-state는 dnd 브랜치 소유, 병합 뒤 reportPages에 +1 반영 권장)
-const SOURCES = 1;
 let board = initBoard(GODEOK_RESULTS);
 const boards = [board];
 board = boardReducer(board, { type: "include", id: "t-A01", value: false });
@@ -30,7 +28,7 @@ boards.push(boardReducer(boardReducer(initBoard(GODEOK_RESULTS), { type: "includ
 boards.push(boardReducer(initBoard(GODEOK_RESULTS), { type: "face", id: "t-D04", face: "back" }));
 for (const b of boards) {
   const plan = build(GODEOK_RESULTS, b);
-  assert.equal(plan.length, reportPages(b).pages + SOURCES);
+  assert.equal(plan.length, reportPages(b).pages);
   assert.equal(plan[0].kind, "cover");
   assert.equal(plan.at(-1).kind, "sources");
   assert.deepEqual(plan.map((p) => p.no), plan.map((_, i) => i + 1));

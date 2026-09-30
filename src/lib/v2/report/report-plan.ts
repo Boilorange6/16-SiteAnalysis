@@ -1,6 +1,6 @@
 /**
  * 보드 → 보고서 슬라이드 계획. 순수 함수 (pptx 라이브러리 의존 없음).
- * 슬라이드 수는 board-state의 reportPages(board).pages 와 항상 같다.
+ * 슬라이드 수는 board-state의 reportPages(board).pages(표지+타일+출처)와 항상 같다.
  */
 import type { BoardState } from "../ui/board-state";
 import type { SummaryView, TileView } from "../ui/tile-view";

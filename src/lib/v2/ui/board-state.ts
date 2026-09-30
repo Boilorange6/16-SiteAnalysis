@@ -121,7 +121,7 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
 /** 표지 1장 + 포함된 타일. 출력 면 both는 2장. */
 export function reportPages(s: BoardState): { tiles: number; pages: number } {
   let tiles = 0;
-  let pages = 1;
+  let pages = 2; // 표지 + 출처
   for (const id of s.order) {
     if (!s.included[id]) continue;
     tiles += 1;
