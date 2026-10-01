@@ -19,7 +19,7 @@ const P2 = ["D02","D03","D04","D05","D06","D07","D08","D09","D11","D12","D13","D
 for (const c of P2) assert.ok(TILE_CATALOG[c], `catalog ${c}`);
 assert.deepEqual(TILE_CODES.filter((c) => c.startsWith("D") || c.startsWith("S")), P2);
 for (const c of P2) assert.equal(TILE_CATALOG[c].kind, c.startsWith("D") ? "diagram" : "simulation");
-assert.equal(ENGINE_VERSION, "v2-p2-spatial-1");
+assert.equal(ENGINE_VERSION, "v2-p2-spatial-2");
 
 // 2) 엔진: 모든 카탈로그 코드가 결과에 있고, 스텁은 not_provided
 const dataDir = mkdtempSync(join(tmpdir(), "v2-p2-reg-"));

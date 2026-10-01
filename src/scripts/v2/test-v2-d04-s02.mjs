@@ -102,12 +102,15 @@ assert.equal(d04View.hasFace, true);
 assert.equal(d04View.chart.length, 7);
 
 assert.equal(s02Tile.tileType, "simulation");
-assert.equal(s02Tile.engineVersion, "v2-sim-sun@1");
+assert.equal(s02Tile.engineVersion, "v2-sim-sun@2");
 assert.equal(s02Tile.judgment.level, null);
 assert.equal(s02Tile.conditions.simulation.influenceRadiusM, 300);
 assert.equal(s02Tile.conditions.simulation.gridM, 2);
 assert.equal(s02Tile.conditions.simulation.buildings.inInfluence, 6);
 assert.equal(s02Tile.conditions.simulation.buildings.excludedNoHeight, 1);
+assert.equal(s02Tile.conditions.simulation.removeBuildingsInSite, true);
+assert.ok(metric(s02Tile, "median_sun_hours").value > 1, "중심 필지 위 건물이 일조시간 중앙값을 0시간으로 만들면 안 됨");
+assert.ok(s02Tile.limitations.some((l) => l.note.includes("기존 건물 철거 가정")));
 assert.ok(s02Tile.limitations.some((l) => l.note.includes("60×60m")));
 assert.ok(s02Tile.limitations.some((l) => l.note.includes("300m")));
 assert.ok(!s02Tile.judgment.sentence.includes("법적 적합"));

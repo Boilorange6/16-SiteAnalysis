@@ -6,7 +6,7 @@ import { parseTileResult, type TileResult } from "../tile-result";
 import { computeSunlight, type SunlightInput, type SunlightResult } from "./sunlight";
 
 export const S02_LIMITATION = "건물·지형 모델에 의한 기하학적 일조 추정입니다. 구름·실제 기상·창면 조건 및 법적 일조 판정을 포함하지 않습니다.";
-export const S02_ENGINE_VERSION = "v2-sim-sun@1";
+export const S02_ENGINE_VERSION = "v2-sim-sun@2";
 
 export interface S02Input extends SunlightInput {
   analysisId: string;
