@@ -168,9 +168,9 @@ export async function buildEngineFixture(dataDir, version, options = {}) {
   if (options.terrain) {
     db = open("terrain");
     const terrainRelease = rel(db, "terrain_tiles", "2026-10-01", {
-      rights: { attribution: "Terrain Tiles: SRTM(NASA/USGS), GMTED2010, ETOPO1" },
+      rights: { attribution: "Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved", verticalDatum: "EGM2008" },
     });
-    const meta = { tile: "fx", lat0: 37.58, lon0: 127.10, rows: 181, cols: 181, cellDeg: 0.0005, nodata: DEM_NODATA, vertical: "EGM96", resolutionM: 30 };
+    const meta = { tile: "fx", lat0: 37.58, lon0: 127.10, rows: 181, cols: 181, cellDeg: 0.0005, nodata: DEM_NODATA, vertical: "EGM2008", resolutionM: 30 };
     const rows = [];
     for (let row = 0; row < meta.rows; row++) {
       const data = Buffer.alloc(meta.cols * 2);
