@@ -1,17 +1,18 @@
 "use client";
 
 import { Fragment, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { STRIP_H, cardName, cardRows, dotColor, dotRadius, fmtInt, inkOn, overlapChip, pageCount, pageRange, stripCards, type CalloutFrame, type Complex, type Placed, type StripCard } from "@/lib/v2/ui/callout-layout";
+import { STRIP_H, cardName, cardRows, clusterPoints, compactCalloutLegend, displayComplexName, dotColor, dotRadius, fmtInt, inkOn, overlapChip, pageCount, pageRange, stripCards, type CalloutFrame, type Complex, type Placed, type StripCard } from "@/lib/v2/ui/callout-layout";
 import { calloutScene, type CalloutFrameKind } from "@/lib/v2/ui/callout-scene";
 import { OV } from "@/lib/v2/ui/overlay-layout";
+import { framedViewport, metersPerPixel, scaleBar } from "@/lib/v2/ui/map-projection";
 import type { CalloutModel } from "@/lib/v2/ui/tile-view";
 import MapFigure from "./map-figure";
-import { BasemapContext, useMeasured } from "./map-box";
+import { BasemapContext, satelliteTileHref, useMeasured } from "./map-box";
 import styles from "./board.module.css";
 
 const INK = "#16181d";
 
-function Card({ c, p, frame, year, hover, onHover, onPick }: { c: Complex; p: Placed; frame: CalloutFrame; year: number; hover: boolean; onHover: (id: string | null) => void; onPick: (id: string) => void }) {
+function Card({ c, siblings, p, frame, year, hover, onHover, onPick }: { c: Complex; siblings: readonly Complex[]; p: Placed; frame: CalloutFrame; year: number; hover: boolean; onHover: (id: string | null) => void; onPick: (id: string) => void }) {
   const color = dotColor(c);
   const rows = cardRows(c, year);
   const full = frame.variant === "full";
@@ -31,7 +32,7 @@ function Card({ c, p, frame, year, hover, onHover, onPick }: { c: Complex; p: Pl
           {c.rank}
         </span>
         <span className={`${styles.cName} ${c.name ? "" : styles.cMissing}`} title={cardName(c)}>
-          {cardName(c)}
+          {displayComplexName(c, siblings)}
         </span>
         {chip && (
           <span className={styles.cChip} title={chip}>
@@ -68,17 +69,18 @@ function Card({ c, p, frame, year, hover, onHover, onPick }: { c: Complex; p: Pl
 }
 
 /** 범례: A05 준공 연대 / A06 입주 시기 색 + 크기 = 세대수 */
-export function CalloutLegend({ model, style }: { model: CalloutModel; style?: React.CSSProperties }) {
+export function CalloutLegend({ model, compact = false, style }: { model: CalloutModel; compact?: boolean; style?: React.CSSProperties }) {
+  const items = compact ? compactCalloutLegend(model.legend, model.complexes, 3) : model.legend.items;
   return (
-    <div className={`${styles.plate} ${styles.cLegend}`} style={style} aria-label="범례">
-      <span className={styles.cLegendT}>{model.legend.title}</span>
-      {model.legend.items.map((it) => (
+    <div className={`${styles.plate} ${styles.cLegend}`} style={style} aria-label={compact ? `범례 ${items.length}색` : "범례"}>
+      <span className={styles.cLegendT}>{compact ? `범례 ${items.length}색` : model.legend.title}</span>
+      {items.map((it) => (
         <span key={it.label} className={styles.cLegendI}>
-          <i style={{ background: it.color }} />
+          <i style={{ background: it.hollow ? "transparent" : it.color, borderColor: it.color }} />
           {it.label}
         </span>
       ))}
-      <span className={styles.cLegendT}>{model.legend.sizeLabel}</span>
+      <span className={styles.cLegendT}>{compact ? "색 = 구분" : model.legend.sizeLabel}</span>
     </div>
   );
 }
@@ -137,7 +139,7 @@ function Strip({ cards, active, onPick, top }: { cards: StripCard[]; active: str
             <span className={styles.cNum} style={{ background: c.color, color: inkOn(c.color) }}>
               {c.rank}
             </span>
-            <span className={`${styles.cName} ${c.nameMissing ? styles.cMissing : ""}`}>{c.name}</span>
+            <span className={`${styles.cName} ${c.nameMissing ? styles.cMissing : ""}`} title={c.fullName}>{c.name}</span>
             {c.chip && <span className={styles.cChip}>{c.chip}</span>}
           </span>
           <span className={styles.cStripLine}>{c.lines[0]}</span>
@@ -208,6 +210,17 @@ export default function CalloutMap({ model, kind, page = 0, onPage, label }: Cal
   }, [detail, onPage, page, pages]);
 
   const scene = useMemo(() => (size ? calloutScene(model, kind, size.w, size.h, page) : null), [model, kind, size, page]);
+  const clusters = useMemo(() => {
+    if (!scene) return null;
+    return clusterPoints(
+      model.complexes.map((c) => {
+        const [x, y] = scene.pos.get(c.id)!;
+        return { id: c.id, x, y, radius: dotRadius(c.households, scene.hMax, scene.frame.m.rMin, scene.frame.m.rMax) };
+      }),
+    );
+  }, [model.complexes, scene]);
+  const displayPosition = (id: string): [number, number] => clusters?.positions.get(id) ?? scene?.pos.get(id) ?? [0, 0];
+  const displayedPlaced = scene?.placed.map((p) => ({ ...p, dot: displayPosition(p.id) })) ?? [];
   const active = hover ?? picked;
   const empty = model.complexes.length === 0;
   const sat = layer === "Satellite";
@@ -220,6 +233,13 @@ export default function CalloutMap({ model, kind, page = 0, onPage, label }: Cal
     : 0;
   const legendX = scene ? (page === 0 ? 356 : scene.frame.left.x1 + 18) : 0;
   const backdrop = useMemo(() => ({ center: model.center, radiusM: model.radiusM, features: [], total: 0, notes: [] }), [model]);
+  const scale = scene && size
+    ? (() => {
+        const viewport = framedViewport(model.center, model.radiusM, size.w, size.h, scene.frame.siteX, scene.frame.fill, scene.siteY);
+        const u = Math.min(1.5, Math.max(1, size.h / 360));
+        return scaleBar(metersPerPixel(model.center[1], viewport.zoom), 88 * u);
+      })()
+    : null;
 
   return (
     <div ref={ref} style={{ position: "absolute", inset: 0 }}>
@@ -235,6 +255,7 @@ export default function CalloutMap({ model, kind, page = 0, onPage, label }: Cal
             north={detail ? 22 : OV.edge + 34 + 8 + 13}
             credit={false}
             bottomInset={OV.stripH}
+            tileHref={sat ? satelliteTileHref : undefined}
             siteX={scene.frame.siteX}
             fill={scene.frame.fill}
             siteY={scene.siteY}
@@ -242,6 +263,14 @@ export default function CalloutMap({ model, kind, page = 0, onPage, label }: Cal
             scaleX={scaleX}
           />
           <svg width={size.w} height={size.h} style={{ position: "absolute", inset: 0, pointerEvents: "none" }} aria-hidden fontFamily='"Noto Sans KR","Malgun Gothic",sans-serif'>
+            {clusters?.groups.map((group) => (
+              <g key={group.id} aria-hidden>
+                <circle cx={group.center[0]} cy={group.center[1]} r={group.radius} fill="#fff" fillOpacity={0.2} stroke={sat ? "#fff" : "#16181d"} strokeOpacity={sat ? 0.75 : 0.55} strokeWidth={1.2} strokeDasharray="3 3" />
+                <text x={group.center[0]} y={group.center[1] - group.radius - 3} textAnchor="middle" fontSize={9} fontWeight={700} fill={sat ? "#fff" : "#16181d"} stroke="#fff" strokeWidth={3} paintOrder="stroke">
+                  {group.members.length}개 겹침
+                </text>
+              </g>
+            ))}
             {/* 연립·다세대 등 기타 공동주택: 번호·라벨 없는 작은 회색 점 */}
             {scene.otherPts.map(([x, y], i) => (
               <circle key={`o${i}`} cx={x} cy={y} r={2} fill="#9AA0AA" fillOpacity={0.7} />
@@ -250,9 +279,9 @@ export default function CalloutMap({ model, kind, page = 0, onPage, label }: Cal
             {model.complexes
               .filter((c) => !scene.numbered.includes(c))
               .map((c) => (
-                <circle key={c.id} cx={scene.pos.get(c.id)![0]} cy={scene.pos.get(c.id)![1]} r={4} fill={dotColor(c)} fillOpacity={0.6} stroke="#fff" strokeWidth={1} />
+                <circle key={c.id} cx={displayPosition(c.id)[0]} cy={displayPosition(c.id)[1]} r={4} fill={dotColor(c)} fillOpacity={0.6} stroke="#fff" strokeWidth={1} />
               ))}
-            {scene.placed.map((p) => {
+            {displayedPlaced.map((p) => {
               const on = active === p.id;
               const pts = [p.dot, p.knee, p.edge].map((q) => q.join(",")).join(" ");
               return (
@@ -263,7 +292,7 @@ export default function CalloutMap({ model, kind, page = 0, onPage, label }: Cal
               );
             })}
             {scene.numbered.map((c) => {
-              const [x, y] = scene.pos.get(c.id)!;
+              const [x, y] = displayPosition(c.id);
               const r = dotRadius(c.households, scene.hMax, scene.frame.m.rMin, scene.frame.m.rMax);
               const color = dotColor(c);
               const on = active === c.id;
@@ -285,12 +314,23 @@ export default function CalloutMap({ model, kind, page = 0, onPage, label }: Cal
               );
             })}
           </svg>
-          {scene.placed.map((p) => (
-            <Card key={p.id} c={model.complexes.find((c) => c.id === p.id)!} p={p} frame={scene.frame} year={model.analysisYear} hover={active === p.id} onHover={setHover} onPick={(id) => setPicked((v) => (v === id ? null : id))} />
+          {displayedPlaced.map((p) => (
+            <Card key={p.id} c={model.complexes.find((c) => c.id === p.id)!} siblings={model.complexes} p={p} frame={scene.frame} year={model.analysisYear} hover={active === p.id} onHover={setHover} onPick={(id) => setPicked((v) => (v === id ? null : id))} />
           ))}
           {detail && <Pager model={model} page={page} onPage={(p) => onPage?.(Math.max(0, Math.min(pages, p)))} />}
           {scene.strip && page > 0 && <Strip cards={stripCards(scene.withCards, model.analysisYear)} active={active} onPick={(id) => setPicked((v) => (v === id ? null : id))} top={scene.stripTop} />}
-          {detail && size.w > 560 && !empty && <CalloutLegend model={model} style={{ left: legendX, maxWidth: Math.max(160, scaleX - 12 - legendX), bottom: OV.stripH + 12 }} />}
+          {!empty && ((detail && size.w > 560) || (!detail && size.w >= 240)) && (
+            <CalloutLegend
+              model={model}
+              compact={!detail}
+              style={detail ? { left: legendX, maxWidth: Math.max(160, scaleX - 12 - legendX), bottom: OV.stripH + 12 } : { left: 8, top: 44, right: scale && scale.meters >= 1000 ? 94 : 8, display: "flex", padding: "4px 8px", gap: "3px 7px", fontSize: 10 }}
+            />
+          )}
+          {!detail && scale && scale.meters >= 1000 && (
+            <span aria-label={`지도 축척 ${scale.label}`} style={{ position: "absolute", zIndex: 3, top: 44, right: 8, padding: "4px 7px", borderRadius: 999, background: "rgba(255,255,255,.92)", color: "#16181d", fontSize: 10, lineHeight: 1.2, fontWeight: 700, boxShadow: "0 1px 3px rgba(21,23,28,.12)" }}>
+              축척 {scale.label}
+            </span>
+          )}
           {detail && page === 0 && !empty && (
             <div className={styles.ovBL}>
               <CalloutValueCard model={model} />

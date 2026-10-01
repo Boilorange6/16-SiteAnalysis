@@ -71,7 +71,7 @@ export type Timing = "past" | "m0_12" | "m13_24" | "later" | "unscheduled";
 export const TIMING_ORDER: Timing[] = ["past", "m0_12", "m13_24", "later", "unscheduled"];
 export const TIMING_STYLE: Record<Timing, { label: string; color: string }> = {
   past: { label: "이미 입주", color: "#6B7280" },
-  m0_12: { label: "0–12개월", color: "#D9480F" },
+  m0_12: { label: "0–12개월", color: "#C2410C" },
   m13_24: { label: "13–24개월", color: "#F2A413" },
   later: { label: "24개월 이후", color: "#3B82A0" },
   unscheduled: { label: "미확인", color: "#C7CBD3" },
@@ -160,7 +160,8 @@ export function supplyStats(all: Complex[]): { stats: Stat[]; note: string | nul
 export type Stat = { value: string; unit: string; label: string };
 
 /** 색·크기 범례. A05는 준공 연대, A06은 입주 시기 */
-export type CalloutLegendSpec = { title: string; items: Array<{ label: string; color: string }>; sizeLabel: string };
+export type CalloutLegendItem = { label: string; color: string; hollow?: boolean };
+export type CalloutLegendSpec = { title: string; items: CalloutLegendItem[]; sizeLabel: string };
 export const SUPPLY_LEGEND: CalloutLegendSpec = { title: "입주 시기", items: TIMING_ORDER.map((t) => ({ label: TIMING_STYLE[t].label, color: TIMING_STYLE[t].color })), sizeLabel: "크기 = 세대수" };
 
 // ── 점: 크기 = √세대수, 색 = 준공 연대 (D04 팔레트 공유) ──
@@ -177,11 +178,23 @@ export function decadeLayer(year: number | null): (typeof DECADE_LAYERS)[number]
 export const decadeColor = (year: number | null) => layerStyle(decadeLayer(year)).color;
 export const STOCK_LEGEND: CalloutLegendSpec = {
   title: "준공 연대",
-  items: DECADE_LAYERS.map((k, i) => ({ label: ["~79", "80년대", "90년대", "00년대", "10년대", "20년~", "미상"][i], color: layerStyle(k).color })),
+  items: DECADE_LAYERS.map((k, i) => ({ label: ["~79", "80년대", "90년대", "00년대", "10년대", "20년~", "미상"][i], color: layerStyle(k).color, hollow: k === "bldg_unknown" })),
   sizeLabel: "크기 = 세대수",
 };
 /** 점·번호 원 색: A06은 입주 시기 버킷, A05는 준공 연대 */
 export const dotColor = (c: Complex) => (c.supply ? TIMING_STYLE[c.supply.timing].color : decadeColor(c.approvalYear));
+
+/** 좁은 지도에서 가장 많이 등장하는 세 가지 범주만 남기는 설명선 범례. */
+export function compactCalloutLegend(spec: CalloutLegendSpec, complexes: Complex[], limit = 3): CalloutLegendItem[] {
+  const counts = new Map<string, number>();
+  for (const c of complexes) counts.set(dotColor(c), (counts.get(dotColor(c)) ?? 0) + 1);
+  return spec.items
+    .map((item, order) => ({ ...item, count: counts.get(item.color) ?? 0, order }))
+    .filter((item) => item.count > 0)
+    .sort((a, b) => b.count - a.count || a.order - b.order)
+    .slice(0, Math.max(0, limit))
+    .map(({ count: _count, order: _order, ...item }) => item);
+}
 
 export function dotRadius(households: number | null, maxHouseholds: number, rMin: number, rMax: number): number {
   if (households === null || households <= 0 || maxHouseholds <= 0) return rMin;
@@ -216,16 +229,27 @@ export function cardRows(c: Complex, analysisYear: number): CardRow[] {
 }
 export const cardName = (c: Complex) => c.name ?? `이름 ${MISSING}`;
 
+/** 카드 폭에 맞춘 표시용 단지명. 원문은 title·aria-label에 계속 보존한다. */
+export function displayComplexName(c: Complex, siblings: readonly Complex[] = []): string {
+  const full = cardName(c);
+  if (c.name === null) return full;
+  const chars = [...full];
+  const prefix = chars.slice(0, 6).join("");
+  const duplicatePrefix = siblings.filter((s) => s.name !== null && [...s.name].slice(0, 6).join("") === prefix).length > 1;
+  if (chars.length <= 10) return duplicatePrefix ? `${full} · ${c.rank}번` : full;
+  return `${prefix}…${chars.slice(-4).join("")}${duplicatePrefix ? ` · ${c.rank}번` : ""}`;
+}
+
 // ── 모바일(≤520px): 좌우 칸 대신 지도 아래 가로 띠 카드 (지시선 없음) ──
 export const MOBILE_MAX_W = 520;
 export const isMobileWidth = (w: number) => w <= MOBILE_MAX_W;
 export const STRIP_H = 76;
-export type StripCard = { id: string; rank: number; name: string; nameMissing: boolean; color: string; chip: string | null; lines: [string, string] };
+export type StripCard = { id: string; rank: number; name: string; fullName: string; nameMissing: boolean; color: string; chip: string | null; lines: [string, string] };
 /** 띠 카드 모델: 순서 = 페이지 순서(번호 순), 값 4개를 두 줄로 */
 export function stripCards(items: Complex[], analysisYear: number): StripCard[] {
   return items.map((c) => {
     const v = cardRows(c, analysisYear).map((r) => r.value);
-    return { id: c.id, rank: c.rank, name: cardName(c), nameMissing: c.name === null, color: dotColor(c), chip: overlapChip(c), lines: [`${v[0]} · ${v[1]}`, `${v[2]} · ${v[3]}`] };
+    return { id: c.id, rank: c.rank, name: displayComplexName(c, items), fullName: cardName(c), nameMissing: c.name === null, color: dotColor(c), chip: overlapChip(c), lines: [`${v[0]} · ${v[1]}`, `${v[2]} · ${v[3]}`] };
   });
 }
 /** 띠 모양 프레임: 두 칸이 없으므로 반경 원이 가로를 거의 다 쓴다 */
@@ -357,6 +381,63 @@ export type Placed = {
   knee: Pt;
   edge: Pt;
 };
+
+export type ClusterPoint = { id: string; x: number; y: number; radius: number };
+export type ClusterGroup = { id: string; center: Pt; radius: number; members: string[] };
+export type ClusterResult = { positions: Map<string, Pt>; groups: ClusterGroup[] };
+
+/** 겹치는 지도 점을 결정적으로 펼쳐 보이고, 바깥 점선 원으로 같은 클러스터임을 알린다. */
+export function clusterPoints(points: ClusterPoint[], gap = 3): ClusterResult {
+  const parent = points.map((_, i) => i);
+  const find = (i: number): number => {
+    let root = i;
+    while (parent[root] !== root) root = parent[root];
+    while (parent[i] !== i) {
+      const next = parent[i];
+      parent[i] = root;
+      i = next;
+    }
+    return root;
+  };
+  const union = (a: number, b: number) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent[Math.max(ra, rb)] = Math.min(ra, rb);
+  };
+  for (let i = 0; i < points.length; i++) {
+    for (let j = i + 1; j < points.length; j++) {
+      const a = points[i];
+      const b = points[j];
+      if (Math.hypot(a.x - b.x, a.y - b.y) <= a.radius + b.radius + gap) union(i, j);
+    }
+  }
+
+  const groups = new Map<number, ClusterPoint[]>();
+  points.forEach((point, i) => {
+    const root = find(i);
+    const group = groups.get(root) ?? [];
+    group.push(point);
+    groups.set(root, group);
+  });
+  const positions = new Map<string, Pt>();
+  const clusters: ClusterGroup[] = [];
+  for (const members of groups.values()) {
+    members.sort((a, b) => a.id.localeCompare(b.id));
+    if (members.length === 1) {
+      positions.set(members[0].id, [members[0].x, members[0].y]);
+      continue;
+    }
+    const center: Pt = [members.reduce((sum, point) => sum + point.x, 0) / members.length, members.reduce((sum, point) => sum + point.y, 0) / members.length];
+    const maxRadius = Math.max(...members.map((point) => point.radius));
+    const spread = Math.max(12, maxRadius + 7, Math.min(30, 9 + members.length * 2));
+    members.forEach((point, i) => {
+      const angle = -Math.PI / 2 + (2 * Math.PI * i) / members.length;
+      positions.set(point.id, [center[0] + Math.cos(angle) * spread, center[1] + Math.sin(angle) * spread]);
+    });
+    clusters.push({ id: `cluster:${members[0].id}`, center, radius: spread + maxRadius + 4, members: members.map((point) => point.id) });
+  }
+  return { positions, groups: clusters };
+}
 
 export const capacityOf = (col: Column, f: Pick<CalloutFrame, "cardH" | "perSide" | "m">) =>
   Math.max(0, Math.min(f.perSide, Math.floor((col.bottom - col.top + f.m.gap) / (f.cardH + f.m.gap) + 1e-6)));

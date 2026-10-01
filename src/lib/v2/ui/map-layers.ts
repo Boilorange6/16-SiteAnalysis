@@ -46,7 +46,14 @@ export type RasterStyle = {
 };
 
 /** 준공 연대 색 (지도 점과 구성비 차트가 같이 쓴다). 오래될수록 진하다 */
-export const STRIP_COLORS = ["#5b2a12", "#8f4a1f", "#c26a26", "#e08f2e", "#f0b73a", "#f7d76a", "#a9adb6"];
+/**
+ * D04 준공 연대용 순차 램프.
+ *
+ * 같은 명도 계열의 갈색·주황은 작은 점에서 구분이 무너져, 색각 이상에도
+ * 비교적 안전한 viridis 순서를 쓴다. 인접 단계는 CIELAB ΔE 기준 12 이상이다
+ * (미상은 순차값이 아니므로 별도 슬레이트 회색으로 둔다).
+ */
+export const STRIP_COLORS = ["#440154", "#414487", "#2A788E", "#22A884", "#7AD151", "#FDE725", "#94A3B8"];
 
 const S = (label: string, color: string, sizeBy?: "weight"): LayerStyle => ({ label, color, sizeBy });
 
@@ -249,5 +256,17 @@ export const legendItems = (model: MapModel) =>
   Object.keys(LAYER_STYLES)
     .filter((k) => model.features.some((f) => f.layer === k) || (model.polygons ?? []).some((p) => p.layer === k) || (model.lines ?? []).some((l) => l.layer === k))
     .map((k) => ({ layer: k, label: LAYER_STYLES[k].label, color: LAYER_STYLES[k].color }));
+
+/** 카드 지도처럼 공간이 좁을 때, 실제로 가장 많이 그린 레이어만 남긴 미니 범례. */
+export function compactLegendItems(model: MapModel, limit = 3) {
+  const counts = new Map<string, number>();
+  for (const f of model.features) counts.set(f.layer, (counts.get(f.layer) ?? 0) + 1);
+  for (const p of model.polygons ?? []) counts.set(p.layer, (counts.get(p.layer) ?? 0) + 1);
+  for (const l of model.lines ?? []) counts.set(l.layer, (counts.get(l.layer) ?? 0) + 1);
+  return legendItems(model)
+    .map((item, order) => ({ ...item, count: counts.get(item.layer) ?? 0, order }))
+    .sort((a, b) => b.count - a.count || a.order - b.order)
+    .slice(0, Math.max(0, limit));
+}
 
 export const layerStyle =(layer: string): LayerStyle => LAYER_STYLES[layer] ?? FALLBACK;

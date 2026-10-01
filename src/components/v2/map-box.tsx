@@ -1,8 +1,9 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState } from "react";
-import { RASTER_STYLES, type MapModel } from "@/lib/v2/ui/map-layers";
+import { compactLegendItems, RASTER_STYLES, type MapModel } from "@/lib/v2/ui/map-layers";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
+import { framedViewport, metersPerPixel, scaleBar, tileUrl, tilesFor } from "@/lib/v2/ui/map-projection";
 import { inflateRaster, paintRaster } from "@/lib/v2/ui/raster-image";
 import MapFigure, { type MapFigureProps } from "./map-figure";
 
@@ -21,9 +22,12 @@ type Opts2 = Omit<Opts, "rightInset"> & { rightInset?: number | ((w: number) => 
 
 export const BASEMAPS: Array<{ id: BasemapChoice; label: string }> = [
   { id: "white", label: "일반" },
-  { id: "Base", label: "지도" },
+  { id: "Base", label: "도로" },
   { id: "Satellite", label: "항공" },
 ];
+
+/** 항공 영상 위의 VWorld POI 글자 레이어를 제외하고 우리 표기만 남긴다. */
+export const satelliteTileHref = (url: string): string | undefined => (url.includes("/Hybrid/") ? undefined : url);
 
 /**
  * 부모 크기에 맞춰 MapFigure를 그린다 (반경 원은 항상 높이의 80%).
@@ -60,7 +64,23 @@ export function useMeasured() {
 export default function MapBox({ model, bare, label, avoid, siteX, rightInset, ...opts }: { model: MapModel; bare?: boolean; label?: string } & Opts2) {
   const { ref, size, near } = useMeasured();
   const layer = useContext(BasemapContext);
+  const requestedLayer = model.basemap ?? layer;
+  const [fallbackLayer, setFallbackLayer] = useState<BasemapChoice | null>(null);
   const [rasterHrefs, setRasterHrefs] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let alive = true;
+    setFallbackLayer(null);
+    // D01은 결과가 지정한 Satellite를 유지한다. 사용자가 고른 넓은 항공 지도만
+    // 일부 타일 결손 시 도로 지도로 대체해 회색 빈 칸을 피한다.
+    if (!near || !size || requestedLayer !== "Satellite" || model.basemap === "Satellite" || model.radiusM < 1000) return () => { alive = false; };
+    const resolvedSiteX = typeof siteX === "function" ? siteX(size.w) : (siteX ?? 0.5);
+    const viewport = framedViewport(model.center, model.radiusM, size.w, size.h, resolvedSiteX, opts.fill ?? 0.8, opts.siteY ?? 0.5);
+    const tiles = tilesFor(viewport).slice(0, 6);
+    void Promise.all(tiles.map((tile) => fetch(tileUrl("Satellite", tile.z, tile.x, tile.y), { cache: "force-cache" }).then((response) => response.ok).catch(() => false))).then((ok) => {
+      if (alive && ok.length > 0 && ok.some((value) => !value)) setFallbackLayer("Base");
+    });
+    return () => { alive = false; };
+  }, [model.basemap, model.center, model.radiusM, near, requestedLayer, size, siteX, opts.fill, opts.siteY]);
   useEffect(() => {
     let alive = true;
     const rasters = model.rasters ?? [];
@@ -87,22 +107,56 @@ export default function MapBox({ model, bare, label, avoid, siteX, rightInset, .
       alive = false;
     };
   }, [model.analysisId, model.tileCode, model.rasters, near]);
+  const renderLayer = fallbackLayer ?? requestedLayer;
+  const renderModel = fallbackLayer ? { ...model, basemap: fallbackLayer } : model;
+  const compactItems = !bare && opts.legend === false ? compactLegendItems(model, 3) : [];
+  const mapHasCompactLegend = compactItems.length > 0;
+  const scale = size
+    ? (() => {
+        const resolvedSiteX = typeof siteX === "function" ? siteX(size.w) : (siteX ?? 0.5);
+        const viewport = framedViewport(model.center, model.radiusM, size.w, size.h, resolvedSiteX, opts.fill ?? 0.8, opts.siteY ?? 0.5);
+        const u = Math.min(1.5, Math.max(1, size.h / 360));
+        return scaleBar(metersPerPixel(model.center[1], viewport.zoom), 88 * u);
+      })()
+    : null;
   return (
     <div ref={ref} style={{ position: "absolute", inset: 0 }}>
       {size && near && (
         <MapFigure
-          model={model}
+          model={renderModel}
           width={size.w}
           height={size.h}
           bare={bare}
           label={label}
-          layer={model.basemap ?? layer}
+          layer={renderLayer}
+          tileHref={renderLayer === "Satellite" ? satelliteTileHref : undefined}
           rasterHref={(raster) => rasterHrefs[raster.name] ?? null}
           avoid={typeof avoid === "function" ? avoid(size.w, size.h) : avoid}
           siteX={typeof siteX === "function" ? siteX(size.w) : siteX}
           rightInset={typeof rightInset === "function" ? rightInset(size.w) : rightInset}
           {...opts}
         />
+      )}
+      {size && near && mapHasCompactLegend && (
+        <div role="group" aria-label="범례" style={{ position: "absolute", zIndex: 3, top: 44, left: 8, right: scale && scale.meters >= 1000 ? 94 : 8, display: "flex", alignItems: "center", flexWrap: "wrap", gap: "3px 8px", padding: "4px 8px", borderRadius: 7, background: "rgba(255,255,255,.92)", color: "#16181d", fontSize: 10, lineHeight: 1.2, boxShadow: "0 1px 3px rgba(21,23,28,.12)" }}>
+          <b style={{ color: "#454a55" }}>범례 {compactItems.length}색</b>
+          {compactItems.map((item) => (
+            <span key={item.layer} style={{ display: "inline-flex", alignItems: "center", gap: 3, whiteSpace: "nowrap" }}>
+              <i aria-hidden style={{ width: 8, height: 8, borderRadius: "50%", background: item.color, border: "1px solid rgba(21,23,28,.35)" }} />
+              {item.label}
+            </span>
+          ))}
+        </div>
+      )}
+      {size && near && scale && scale.meters >= 1000 && (
+        <span aria-label={`지도 축척 ${scale.label}`} style={{ position: "absolute", zIndex: 3, top: 44, right: 8, padding: "4px 7px", borderRadius: 999, background: "rgba(255,255,255,.92)", color: "#16181d", fontSize: 10, lineHeight: 1.2, fontWeight: 700, boxShadow: "0 1px 3px rgba(21,23,28,.12)" }}>
+          축척 {scale.label}
+        </span>
+      )}
+      {size && near && fallbackLayer && (
+        <span role="status" style={{ position: "absolute", zIndex: 3, left: 8, bottom: (opts.bottomInset ?? 0) + 7, padding: "3px 7px", borderRadius: 999, background: "rgba(255,255,255,.92)", color: "#7A3E12", fontSize: 10, lineHeight: 1.2, fontWeight: 700 }}>
+          항공 타일 결손 · 일반지도
+        </span>
       )}
     </div>
   );
