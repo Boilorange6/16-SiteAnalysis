@@ -70,9 +70,15 @@ function paletteColor(colors: string[], value: number, style: RasterStyle): [num
   const min = style.min ?? 0;
   const max = style.max ?? 1;
   const t = max <= min ? 0 : Math.max(0, Math.min(1, (value - min) / (max - min)));
-  const pos = t * (colors.length - 1);
-  const index = Math.min(colors.length - 2, Math.floor(pos));
-  const f = colors.length === 1 ? 0 : pos - index;
+  const suppliedStops = style.stops?.length === colors.length ? style.stops : null;
+  const stops = suppliedStops && suppliedStops.every((stop, index) => Number.isFinite(stop) && (index === 0 || stop > suppliedStops[index - 1]!))
+    ? suppliedStops.map((stop) => (max <= min ? 0 : Math.max(0, Math.min(1, (stop - min) / (max - min)))))
+    : colors.map((_, index) => (colors.length === 1 ? 0 : index / (colors.length - 1)));
+  if (t <= stops[0]!) return colorOf(colors[0]!);
+  if (t >= stops[stops.length - 1]!) return colorOf(colors.at(-1)!);
+  const index = Math.max(0, stops.findIndex((stop) => t <= stop) - 1);
+  const span = stops[index + 1]! - stops[index]!;
+  const f = span <= 0 ? 0 : (t - stops[index]!) / span;
   const a = colorOf(colors[index]!);
   const b = colorOf(colors[Math.min(colors.length - 1, index + 1)]!);
   return [Math.round(a[0] + (b[0] - a[0]) * f), Math.round(a[1] + (b[1] - a[1]) * f), Math.round(a[2] + (b[2] - a[2]) * f)];
