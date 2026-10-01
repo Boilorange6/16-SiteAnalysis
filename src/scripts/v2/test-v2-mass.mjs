@@ -61,11 +61,24 @@ assert.equal(exploded.plates?.length, EXPLODED_LAYERS.length, "분해 층마다 
 assert.equal(exploded.guides?.length, (EXPLODED_LAYERS.length - 1) * 2, "좌우 원판 접선 가이드를 층 사이마다 만든다");
 const plateWidths = exploded.plates.map((plate) => plate.rightX - plate.leftX);
 assert.ok(Math.max(...plateWidths) - Math.min(...plateWidths) < 0.01, "모든 원판은 같은 투영 폭을 쓴다");
+assert.ok(plateWidths[0] >= 800 * 0.45 && plateWidths[0] <= 800 * 0.55, "원판 폭은 도판 폭의 45~55%다");
+const exploded60 = projectExploded(contextScene, camera, 604, 570, 60);
+assert.ok((exploded60.plates[0].rightX - exploded60.plates[0].leftX) / 604 >= 0.45, "펼침 60%에서도 원판 폭을 유지한다");
+const exploded60Step = exploded60.plates[0].centerY - exploded60.plates[1].centerY;
+assert.ok(exploded60.plates.every((plate, index) => index === 0 || Math.abs((exploded60.plates[index - 1].centerY - plate.centerY) - exploded60Step) < 0.01), "펼침 60%의 층 간격은 동일하다");
 assert.ok(exploded.guides.every((guide) => guide.y1 !== guide.y2 && Number.isFinite(guide.x)), "가이드는 spread로 분리된 원판을 연결한다");
 assert.ok(exploded.labels.every((label) => {
   const plate = exploded.plates.find((candidate) => candidate.layer === label.layer);
-  return plate && Math.abs(label.x - plate.leftX - 10) < 0.01;
-}), "층 라벨은 각 원판의 왼쪽 림에 맞춘다");
+  return plate && label.x < plate.leftX && label.leaderX < plate.leftX;
+}), "층 라벨은 각 원판 바깥 왼쪽에 리더와 함께 놓인다");
+assert.ok(exploded.faces.some((face) => face.stackIndex === 4 && face.faceKind === "roof"), "건물층에 지붕 면을 그린다");
+assert.ok(exploded.faces.some((face) => face.stackIndex === 4 && face.faceKind === "wall"), "건물층에 벽 면을 그린다");
+const buildingFaces = exploded.faces.filter((face) => face.stackIndex === 4);
+assert.ok(buildingFaces.every((face, index) => index === 0 || buildingFaces[index - 1].depth <= face.depth), "건물 면은 뒤에서 앞으로 깊이순으로 그린다");
+const singleScheme = projectExploded(contextScene, camera, 800, 700, 100, "single");
+const useRoofFill = exploded.faces.find((face) => face.stackIndex === 4 && face.faceKind === "roof")?.fill;
+const singleRoofFill = singleScheme.faces.find((face) => face.stackIndex === 4 && face.faceKind === "roof")?.fill;
+assert.ok(useRoofFill && singleRoofFill && useRoofFill !== singleRoofFill, "선택 색상 체계가 지붕 색에 반영된다");
 for (const layer of EXPLODED_LAYERS) {
   assert.ok(exploded.faces.some((face) => face.layer === layer), `${layer} 층을 그린다`);
 }
@@ -79,9 +92,12 @@ assert.deepEqual(projectExploded(contextScene, camera, 800, 700, 100), exploded,
 
 const legacyExploded = projectExploded(scene, camera, 800, 700, 100);
 assert.deepEqual(new Set(legacyExploded.faces.map((face) => face.layer)), new Set(["terrain", "buildings", "complete"]), "맥락 없는 옛 장면은 지형·건물·완성만 그린다");
-assert.match(legacyExploded.labels.find((label) => label.layer === "water").text, /자료 없음/);
-assert.match(legacyExploded.labels.find((label) => label.layer === "green").text, /자료 없음/);
-assert.match(legacyExploded.labels.find((label) => label.layer === "roads").text, /자료 없음/);
+assert.equal(legacyExploded.labels.find((label) => label.layer === "water").text, "수계");
+assert.equal(legacyExploded.labels.find((label) => label.layer === "green").text, "녹지");
+assert.equal(legacyExploded.labels.find((label) => label.layer === "roads").text, "도로");
+assert.equal(legacyExploded.labels.find((label) => label.layer === "water").note, "자료 없음");
+assert.equal(legacyExploded.labels.find((label) => label.layer === "green").note, "자료 없음");
+assert.equal(legacyExploded.labels.find((label) => label.layer === "roads").note, "자료 없음");
 
 const roadsOnly = projectExploded({
   ...scene,
@@ -89,8 +105,8 @@ const roadsOnly = projectExploded({
 }, camera, 800, 700, 100);
 assert.ok(roadsOnly.faces.some((face) => face.layer === "roads"), "부분 맥락 장면은 확보된 도로를 유지한다");
 assert.ok(!roadsOnly.faces.some((face) => face.layer === "water" || face.layer === "green"), "빈 수계·녹지 층은 면을 만들지 않는다");
-assert.match(roadsOnly.labels.find((label) => label.layer === "water").text, /자료 없음/);
-assert.match(roadsOnly.labels.find((label) => label.layer === "green").text, /자료 없음/);
+assert.equal(roadsOnly.labels.find((label) => label.layer === "water").note, "자료 없음");
+assert.equal(roadsOnly.labels.find((label) => label.layer === "green").note, "자료 없음");
 
 const markup = renderToStaticMarkup(createElement(MassFigure, { scene, camera, width: 800, height: 500, fixed: true }));
 assert.ok((markup.match(/<path/g) ?? []).length >= 3, "매스 SVG는 path를 그린다");
@@ -108,10 +124,13 @@ for (const layer of EXPLODED_LAYERS) assert.match(explodedMarkup, new RegExp(`da
 assert.equal((explodedMarkup.match(/<clipPath/g) ?? []).length, EXPLODED_LAYERS.length, "각 원판은 전용 clipPath를 가진다");
 assert.equal((explodedMarkup.match(/data-guide-side=/g) ?? []).length, (EXPLODED_LAYERS.length - 1) * 2, "좌우 점선 가이드를 렌더링한다");
 assert.match(explodedMarkup, /stroke-dasharray="4 5"/);
+assert.equal((explodedMarkup.match(/data-label-leader=/g) ?? []).length, EXPLODED_LAYERS.length, "층 라벨마다 짧은 리더를 렌더링한다");
+assert.match(explodedMarkup, /data-face-kind="roof"/);
+assert.match(explodedMarkup, /data-face-kind="wall"/);
 const emptyMarkup = renderToStaticMarkup(createElement(MassFigure, { scene, camera, width: 800, height: 700, fixed: true, exploded: { spreadPct: 60 } }));
-assert.match(emptyMarkup, /수계 · 자료 없음/);
-assert.match(emptyMarkup, /녹지 · 자료 없음/);
-assert.match(emptyMarkup, /도로 · 자료 없음/);
+assert.match(emptyMarkup, />자료 없음</);
+assert.match(emptyMarkup, /published reference 재구축 전/);
+assert.match(emptyMarkup, /data-context-note="reference-not-rebuilt"/);
 assert.match(emptyMarkup, /data-plate-state="empty"/);
 assert.equal((emptyMarkup.match(/data-plate-layer=/g) ?? []).length, EXPLODED_LAYERS.length, "빈 맥락층도 빈 원판을 유지한다");
 

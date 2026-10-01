@@ -10,7 +10,7 @@ import MapFigure, { type MapFigureProps } from "@/components/v2/map-figure";
 import MassFigure from "@/components/v2/mass-figure";
 import WindRoseFigure from "@/components/v2/wind-rose-figure";
 import type { MapModel } from "../ui/map-layers";
-import type { MassCamera, MassModel } from "../ui/mass-projection";
+import type { MassCamera, MassColorScheme, MassModel } from "../ui/mass-projection";
 import type { RoseModel } from "../ui/wind-rose";
 import type { Scene } from "../scene";
 import { SLIDE, slideLayout, slideReserved, slideSiteX, slideLegend } from "../ui/overlay-layout";
@@ -26,6 +26,7 @@ const OUT_W = 1920;
 const OUT_H = 1080;
 const PX_PER_INCH = VIEW_W / SLIDE.w;
 type Extra = Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "scale" | "legend" | "bare">;
+type MassExplodedOptions = { spreadPct: number; scheme?: MassColorScheme };
 const TILE_TIMEOUT_MS = 8000;
 
 const blobToDataUrl = (b: Blob) =>
@@ -83,7 +84,7 @@ function svgOf(model: MapModel, tiles: Map<string, string>, layer: BasemapChoice
   }
 }
 
-function svgOfMass(mass: MassModel, width: number, height: number, exploded?: { spreadPct: number }): string {
+function svgOfMass(mass: MassModel, width: number, height: number, exploded?: MassExplodedOptions): string {
   const host = document.createElement("div");
   const root = createRoot(host);
   try {
@@ -144,14 +145,14 @@ export async function rasterizeMap(model: MapModel, tileCache: Map<string, strin
   return toPng(svgOf(model, got, layer, extra));
 }
 
-export function rasterizeMass(mass: MassModel, exploded?: { spreadPct: number }): Promise<string>;
-export function rasterizeMass(scene: Scene | null, camera: MassCamera, width?: number, height?: number, exploded?: { spreadPct: number }): Promise<string>;
+export function rasterizeMass(mass: MassModel, exploded?: MassExplodedOptions): Promise<string>;
+export function rasterizeMass(scene: Scene | null, camera: MassCamera, width?: number, height?: number, exploded?: MassExplodedOptions): Promise<string>;
 export async function rasterizeMass(
   sceneOrMass: Scene | MassModel | null,
-  cameraOrExploded?: MassCamera | { spreadPct: number },
+  cameraOrExploded?: MassCamera | MassExplodedOptions,
   width = VIEW_W,
   height = VIEW_H,
-  exploded?: { spreadPct: number },
+  exploded?: MassExplodedOptions,
 ): Promise<string> {
   const isCamera = Boolean(cameraOrExploded && "azimuthDeg" in cameraOrExploded && "elevationDeg" in cameraOrExploded);
   const mass: MassModel = isCamera

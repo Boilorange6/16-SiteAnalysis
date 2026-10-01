@@ -3,6 +3,8 @@ import { groundZAt, type Ring, type Scene } from "../scene";
 export const EXPLODED_LAYERS = ["terrain", "water", "green", "roads", "buildings", "complete"] as const;
 export type ExplodedLayer = (typeof EXPLODED_LAYERS)[number];
 export type MassLayer = "mass_source" | "mass_estimated" | "mass_unknown" | "ground" | ExplodedLayer;
+export type MassColorScheme = "use" | "age" | "height" | "single";
+export type MassFaceKind = "roof" | "wall" | "footprint";
 
 export type MassCamera = {
   azimuthDeg: number;
@@ -13,7 +15,7 @@ export type MassCamera = {
 export type MassModel = {
   scene: Scene | null;
   camera: MassCamera;
-  exploded?: { spreadPct: number };
+  exploded?: { spreadPct: number; scheme?: MassColorScheme };
 };
 
 export type MassFace = {
@@ -26,9 +28,11 @@ export type MassFace = {
   /** 분해 완성층이 원래 층의 색을 유지할 때만 채운다. */
   fill?: string;
   fillRule?: "evenodd";
+  /** 분해 매스의 지붕·벽·높이 미상 footprint를 구분한다. */
+  faceKind?: MassFaceKind;
 };
 
-export type MassLabel = { layer: ExplodedLayer; x: number; y: number; text: string };
+export type MassLabel = { layer: ExplodedLayer; x: number; y: number; text: string; note?: string; leaderX: number };
 export type MassPlate = {
   layer: ExplodedLayer;
   index: number;
@@ -55,7 +59,18 @@ export const CAMERA_PRESETS = {
 } as const;
 
 type RawPoint = { x: number; y: number; depth: number };
-type RawFace = { points: RawPoint[]; paths?: RawPoint[][]; shade: number; layer: MassLayer; depth: number; fill?: string; fillRule?: "evenodd"; stackIndex?: number };
+type RawFace = {
+  points: RawPoint[];
+  paths?: RawPoint[][];
+  shade: number;
+  layer: MassLayer;
+  depth: number;
+  fill?: string;
+  fillRule?: "evenodd";
+  stackIndex?: number;
+  faceKind?: MassFaceKind;
+  elevation?: number;
+};
 type WorldPoint = [number, number, number];
 
 const EPSILON = 1e-8;
@@ -100,6 +115,7 @@ function toMassFace(face: RawFace, scale: number, tx: number, ty: number, screen
   if (face.stackIndex !== undefined) output.stackIndex = face.stackIndex;
   if (face.fill !== undefined) output.fill = face.fill;
   if (face.fillRule !== undefined) output.fillRule = face.fillRule;
+  if (face.faceKind !== undefined) output.faceKind = face.faceKind;
   return output;
 }
 
@@ -180,6 +196,7 @@ function groundCellFaces(
         depth: averageDepth(points),
         fill,
         stackIndex,
+        elevation: (z00 + z10 + z11 + z01) / 4,
       });
     }
   }
@@ -205,12 +222,12 @@ function addBuildingFaces(
 
     if (sourceLayer === "mass_unknown") {
       const floor = ring.map((point) => project(point, baseZ));
-      raw.push({ points: floor, shade: 0.38, layer, depth: averageDepth(floor), fill, stackIndex });
+      raw.push({ points: floor, shade: 0.38, layer, depth: averageDepth(floor), fill, stackIndex, faceKind: "footprint" });
       continue;
     }
 
     const roof = ring.map((point) => project(point, baseZ + height));
-    raw.push({ points: roof, shade: 0.94, layer, depth: averageDepth(roof), fill, stackIndex });
+    raw.push({ points: roof, shade: 0.94, layer, depth: averageDepth(roof), fill, stackIndex, faceKind: "roof" });
 
     // 고리의 방향을 이용해 외측 법선을 복원하고, 카메라를 향하는 벽만 남긴다.
     const ccw = signedArea(ring) >= 0;
@@ -225,7 +242,7 @@ function addBuildingFaces(
       const ny = (ccw ? -dx : dx) / length;
       if (nx * cameraDirection[0] + ny * cameraDirection[1] <= 0) continue;
       const wall = [project(a, baseZ), project(b, baseZ), project(b, baseZ + height), project(a, baseZ + height)];
-      raw.push({ points: wall, shade: lightShade(nx, ny, 0), layer, depth: averageDepth(wall), fill, stackIndex });
+      raw.push({ points: wall, shade: lightShade(nx, ny, 0), layer, depth: averageDepth(wall), fill, stackIndex, faceKind: "wall" });
     }
   }
 }
@@ -292,11 +309,72 @@ const EXPLODED_LABEL_TEXT: Record<ExplodedLayer, string> = {
   complete: "완성",
 };
 
-const EXPLODED_BUILDING_FILL: Record<"mass_source" | "mass_estimated" | "mass_unknown", string> = {
-  mass_source: "#5E83B3",
-  mass_estimated: "#C58B2B",
-  mass_unknown: "#9EA5AF",
+const USE_FILL: Record<string, string> = {
+  주거: "#D59A2B",
+  근린생활: "#E27B61",
+  업무: "#6C8EBF",
+  판매: "#C86D8A",
+  숙박: "#9A72AA",
+  문화집회: "#B77A1E",
+  교육복지: "#4D956D",
+  공업: "#718096",
+  기타: "#A0AEC0",
+  미상: "#B7BDC6",
 };
+const AGE_FILL = ["#5B2A12", "#8F4A1F", "#C26A26", "#E08F2E", "#F0B73A", "#F7D76A", "#A9ADB6"];
+const HEIGHT_FILL = ["#B8D8BA", "#86BBD8", "#5C80BC", "#775DA6", "#4A2545", "#B9BDC6"];
+const SINGLE_FILL = "#5E83B3";
+const TERRAIN_FILL = ["#EEF1F4", "#D9E4E1", "#B8CECA", "#90ADA8", "#6F908B"];
+
+function useClassOf(code: string | null): string {
+  if (typeof code !== "string") return "미상";
+  const key = code.trim().slice(0, 2);
+  if (["01", "02"].includes(key)) return "주거";
+  if (["03", "04"].includes(key)) return "근린생활";
+  if (["05", "06", "13", "27"].includes(key)) return "문화집회";
+  if (key === "07") return "판매";
+  if (["08", "20", "21", "23", "26", "28", "29"].includes(key)) return "기타";
+  if (["09", "10", "11", "12"].includes(key)) return "교육복지";
+  if (["14", "24"].includes(key)) return "업무";
+  if (["15", "16"].includes(key)) return "숙박";
+  if (["17", "18", "19", "22", "25"].includes(key)) return "공업";
+  return "미상";
+}
+
+function approvalYear(value: string | null): number | null {
+  if (typeof value !== "string") return null;
+  const match = value.match(/^(\d{4})/);
+  const year = match ? Number(match[1]) : NaN;
+  return Number.isFinite(year) && year >= 1900 && year <= 2200 ? year : null;
+}
+
+function buildingFill(building: Scene["buildings"][number], scheme: MassColorScheme): string {
+  if (scheme === "single") return SINGLE_FILL;
+  if (scheme === "use") return USE_FILL[useClassOf(building.useCode)] ?? USE_FILL.미상;
+  if (scheme === "age") {
+    const year = approvalYear(building.approvalDate);
+    if (year === null) return AGE_FILL[AGE_FILL.length - 1];
+    if (year < 1980) return AGE_FILL[0];
+    if (year < 1990) return AGE_FILL[1];
+    if (year < 2000) return AGE_FILL[2];
+    if (year < 2010) return AGE_FILL[3];
+    if (year < 2020) return AGE_FILL[4];
+    return AGE_FILL[5];
+  }
+  const floors = building.floorsAbove ?? (building.heightM !== null && building.heightM > 0 ? building.heightM / 3 : null);
+  if (floors === null || !Number.isFinite(floors)) return HEIGHT_FILL[HEIGHT_FILL.length - 1];
+  if (floors <= 4) return HEIGHT_FILL[0];
+  if (floors <= 8) return HEIGHT_FILL[1];
+  if (floors <= 14) return HEIGHT_FILL[2];
+  if (floors <= 25) return HEIGHT_FILL[3];
+  return HEIGHT_FILL[4];
+}
+
+function terrainFill(elevation: number | undefined, min: number, max: number): string {
+  if (elevation === undefined || !Number.isFinite(elevation) || max - min < EPSILON) return TERRAIN_FILL[0];
+  const ratio = Math.max(0, Math.min(0.999, (elevation - min) / (max - min)));
+  return TERRAIN_FILL[Math.floor(ratio * TERRAIN_FILL.length)];
+}
 
 const EXPLODED_FILL = {
   terrain: "#EEF1F4",
@@ -407,7 +485,15 @@ function explodedTerrainFaces(
   fill: string,
 ): void {
   if (scene.ground.kind === "dem") {
-    raw.push(...groundCellFaces(scene.ground, project, layer, fill, layerIndex));
+    const values = scene.ground.z.filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+    const min = values.length > 0 ? Math.min(...values) : 0;
+    const max = values.length > 0 ? Math.max(...values) : min;
+    raw.push(
+      ...groundCellFaces(scene.ground, project, layer, fill, layerIndex).map((face) => ({
+        ...face,
+        fill: terrainFill(face.elevation, min, max),
+      })),
+    );
     return;
   }
   const points = groundRing(Math.max(1, finiteOr(scene.radiusM, 100))).map((point) => project(point, 0));
@@ -420,10 +506,10 @@ function addExplodedBuildings(
   layer: ExplodedLayer,
   project: (point: [number, number], z: number) => RawPoint,
   cameraDirection: [number, number],
+  scheme: MassColorScheme,
 ): void {
   for (const building of scene.buildings) {
-    const sourceLayer = layerOf(building.heightM, building.heightMethod);
-    addBuildingFaces(raw, building, project, cameraDirection, layer, EXPLODED_BUILDING_FILL[sourceLayer], EXPLODED_LAYERS.indexOf(layer));
+    addBuildingFaces(raw, building, project, cameraDirection, layer, buildingFill(building, scheme), EXPLODED_LAYERS.indexOf(layer));
   }
 }
 
@@ -452,6 +538,7 @@ export function projectExploded(
   width: number,
   height: number,
   spreadPct = 100,
+  scheme: MassColorScheme = "use",
 ): MassProjection & { labels: MassLabel[] } {
   const azimuth = radians(finiteOr(camera.azimuthDeg, 225));
   const elevation = radians(Math.max(-89, Math.min(89, finiteOr(camera.elevationDeg, 35))));
@@ -462,11 +549,11 @@ export function projectExploded(
   const radius = Math.max(1, finiteOr(scene.radiusM, finiteOr(camera.radiusM, 100)));
   const spread = Math.max(0, finiteOr(spreadPct, 100)) / 100;
   const gap = radius * 0.18 * spread;
-  // sitedia의 60% 캡처처럼 세로로 읽히되, 작은 도판에서도 마지막 원판이
-  // 잘리지 않도록 뷰포트 높이에 상한을 둔다. 상한 전까지는 펼침 %에 선형이다.
-  const screenStep = Math.min(height * 0.13, Math.min(width, height) * 0.24 * spread);
+  // sitedia의 60% 캡처처럼 세로로 읽히되, 실제 plate 폭을 먼저 보장한 뒤
+  // 남은 drawing height를 같은 간격으로 나눈다.
   const cameraDirection: [number, number] = [sinA, cosA];
   const raw: RawFace[] = [];
+  let screenStep = 0;
   const context = scene.context;
   const present: Record<ExplodedLayer, boolean> = {
     terrain: true,
@@ -485,14 +572,14 @@ export function projectExploded(
   if (present.water) contextPolygonFaces(raw, context?.water ?? [], "water", 1, scene.ground, projectFor("water"), EXPLODED_FILL.water);
   if (present.green) contextPolygonFaces(raw, context?.green ?? [], "green", 2, scene.ground, projectFor("green"), EXPLODED_FILL.green);
   if (present.roads) contextRoadFaces(raw, context?.roads ?? [], "roads", 3, scene.ground, projectFor("roads"), EXPLODED_FILL.roads);
-  if (present.buildings) addExplodedBuildings(raw, scene, "buildings", projectFor("buildings"), cameraDirection);
+  if (present.buildings) addExplodedBuildings(raw, scene, "buildings", projectFor("buildings"), cameraDirection, scheme);
 
   // 완성층은 각 원래 층의 색을 보존한 단일 층으로 다시 합성한다.
   explodedTerrainFaces(raw, scene, "complete", 5, projectFor("complete"), EXPLODED_FILL.terrain);
   if (present.water) contextPolygonFaces(raw, context?.water ?? [], "complete", 5, scene.ground, projectFor("complete"), EXPLODED_FILL.water);
   if (present.green) contextPolygonFaces(raw, context?.green ?? [], "complete", 5, scene.ground, projectFor("complete"), EXPLODED_FILL.green);
   if (present.roads) contextRoadFaces(raw, context?.roads ?? [], "complete", 5, scene.ground, projectFor("complete"), EXPLODED_FILL.roads);
-  if (present.buildings) addExplodedBuildings(raw, scene, "complete", projectFor("complete"), cameraDirection);
+  if (present.buildings) addExplodedBuildings(raw, scene, "complete", projectFor("complete"), cameraDirection, scheme);
 
   const plateRings = EXPLODED_LAYERS.map((layer) => groundRing(radius).map((point) => projectFor(layer)(point, 0)));
   const plateRawPoints = plateRings.flat();
@@ -502,29 +589,50 @@ export function projectExploded(
   const layoutFaces = raw.filter((face) => face.stackIndex === EXPLODED_LAYERS.indexOf("buildings"));
   const layoutPoints = [...layoutFaces.flatMap(rawPointsOf), ...plateRawPoints];
   const layoutWidth = Math.max(...layoutPoints.map((point) => point.x)) - Math.min(...layoutPoints.map((point) => point.x));
-  const layoutHeight = Math.max(...layoutPoints.map((point) => point.y)) - Math.min(...layoutPoints.map((point) => point.y));
   const plateWidth = Math.max(...plateRings[0].map((point) => point.x)) - Math.min(...plateRings[0].map((point) => point.x));
-  const targetHeight = Math.max(1, height * 0.82);
-  const byPlateWidth = plateWidth > EPSILON ? (width * 0.24) / plateWidth : 1;
-  const byWidth = layoutWidth > EPSILON ? (width * 0.9) / layoutWidth : byPlateWidth;
-  const byHeight = layoutHeight > EPSILON ? Math.max(0.0001, targetHeight - screenStep * (EXPLODED_LAYERS.length - 1)) / layoutHeight : byPlateWidth;
-  const scale = Math.max(0.0001, Math.min(byPlateWidth, byWidth, byHeight));
-  const screenPoints = [
+  const targetHeight = Math.max(1, height * 0.94);
+  const byPlateWidth = plateWidth > EPSILON ? (width * 0.5) / plateWidth : 1;
+  const byWidth = layoutWidth > EPSILON ? (width * 0.94) / layoutWidth : byPlateWidth;
+  const screenPointsAt = (candidate: number, extraStep = screenStep) => [
     ...layoutFaces.flatMap((face) => rawPointsOf(face).map((point) => ({
-      x: point.x * scale,
-      y: point.y * scale - (face.stackIndex ?? 0) * screenStep,
+      x: point.x * candidate,
+      y: point.y * candidate - (face.stackIndex ?? 0) * extraStep,
     }))),
     ...plateRings.flatMap((ring, index) => ring.map((point) => ({
-      x: point.x * scale,
-      y: point.y * scale - index * screenStep,
+      x: point.x * candidate,
+      y: point.y * candidate - index * extraStep,
     }))),
   ];
+  const heightAt = (candidate: number, extraStep = screenStep) => {
+    const points = screenPointsAt(candidate, extraStep);
+    return Math.max(...points.map((point) => point.y)) - Math.min(...points.map((point) => point.y));
+  };
+  const heightBound = Math.min(byPlateWidth, byWidth);
+  // 목표 plate 폭을 먼저 잡고, 남은 drawing height를 다섯 개의 동일한
+  // rim-to-rim 간격으로 나눈다. spread 60%부터는 full-height 캡처를 유지하고,
+  // 그보다 낮은 값에서만 간격이 선형으로 줄어든다.
+  const availableScreenStep = Math.max(0, (targetHeight - heightAt(heightBound, 0)) / (EXPLODED_LAYERS.length - 1));
+  screenStep = availableScreenStep * Math.min(1, spread / 0.6);
+  const byHeight = heightAt(heightBound) <= targetHeight
+    ? heightBound
+    : (() => {
+        let low = 0;
+        let high = heightBound;
+        for (let index = 0; index < 32; index += 1) {
+          const middle = (low + high) / 2;
+          if (heightAt(middle) <= targetHeight) low = middle;
+          else high = middle;
+        }
+        return low;
+      })();
+  const scale = Math.max(0.0001, Math.min(byPlateWidth, byWidth, byHeight));
+  const screenPoints = screenPointsAt(scale);
   const minX = Math.min(...screenPoints.map((point) => point.x));
   const maxX = Math.max(...screenPoints.map((point) => point.x));
   const minY = Math.min(...screenPoints.map((point) => point.y));
   const maxY = Math.max(...screenPoints.map((point) => point.y));
   const tx = width / 2 - (minX + maxX) / 2;
-  const ty = height * 0.43 - (minY + maxY) / 2;
+  const ty = height * 0.5 - (minY + maxY) / 2;
   const plates = EXPLODED_LAYERS.map((layer, index) => {
     const points = plateRings[index];
     const leftX = Math.min(...points.map((point) => point.x)) * scale + tx;
@@ -551,9 +659,11 @@ export function projectExploded(
   });
   const labels = plates.map((plate) => ({
     layer: plate.layer,
-    x: plate.leftX + 10,
-    y: plate.centerY,
-    text: plate.present ? EXPLODED_LABEL_TEXT[plate.layer] : `${EXPLODED_LABEL_TEXT[plate.layer]} · 자료 없음`,
+    x: Math.max(8, plate.leftX - 14),
+    y: plate.centerY - 2,
+    text: EXPLODED_LABEL_TEXT[plate.layer],
+    note: plate.present ? undefined : "자료 없음",
+    leaderX: plate.leftX - 2,
   }));
   const ordered = [...raw].sort((a, b) => a.depth - b.depth);
   return {

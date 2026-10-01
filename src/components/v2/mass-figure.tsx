@@ -1,5 +1,5 @@
 import React from "react";
-import { EXPLODED_LAYERS, type MassCamera, projectExploded, projectMass, type MassLayer } from "@/lib/v2/ui/mass-projection";
+import { EXPLODED_LAYERS, type MassCamera, type MassColorScheme, projectExploded, projectMass, type MassLayer } from "@/lib/v2/ui/mass-projection";
 import type { Scene } from "@/lib/v2/scene";
 
 export type MassFigureProps = {
@@ -9,7 +9,7 @@ export type MassFigureProps = {
   height: number;
   fixed?: boolean;
   label?: string;
-  exploded?: { spreadPct: number };
+  exploded?: { spreadPct: number; scheme?: MassColorScheme };
 };
 
 const INK = "#15171c";
@@ -65,7 +65,7 @@ function northVector(camera: MassCamera): { dx: number; dy: number } {
 function MassFigure({ scene, camera, width, height, fixed = false, label = "S01 3D 매스", exploded }: MassFigureProps) {
   const projection = scene
     ? exploded
-      ? projectExploded(scene, camera, width, height, exploded.spreadPct)
+      ? projectExploded(scene, camera, width, height, exploded.spreadPct, exploded.scheme ?? "use")
       : projectMass(scene, camera, width, height)
     : null;
   const isExploded = Boolean(exploded);
@@ -78,17 +78,26 @@ function MassFigure({ scene, camera, width, height, fixed = false, label = "S01 
   const isDem = scene?.ground.kind === "dem";
   if (!isExploded && isDem) legend.push("ground");
   const explodedPlates = projection?.plates ?? [];
+  const missingPublishedContext = isExploded && explodedPlates.some((plate) => (plate.layer === "water" || plate.layer === "green" || plate.layer === "roads") && !plate.present);
   const renderFace = (face: (typeof faces)[number], index: number) => (
     <path
-      key={`${face.layer}-${face.stackIndex ?? "base"}-${index}`}
+      key={`${face.layer}-${face.faceKind ?? "face"}-${face.stackIndex ?? "base"}-${index}`}
       d={face.path}
       data-face-layer={face.layer}
-      fill={face.layer === "mass_estimated" ? `url(#${uid}-estimate)` : shadeColor(face.fill ?? COLORS[face.layer], face.shade)}
+      {...(face.faceKind ? { "data-face-kind": face.faceKind } : {})}
+      fill={face.layer === "mass_estimated" && !face.fill ? `url(#${uid}-estimate)` : shadeColor(
+        face.fill ?? COLORS[face.layer],
+        isExploded && face.faceKind === "wall"
+          ? face.shade * 0.72
+          : isExploded && face.faceKind === "roof"
+            ? Math.min(1, face.shade * 1.06)
+            : face.shade,
+      )}
       fillRule={face.fillRule}
       fillOpacity={face.layer === "ground" ? 0.9 : 0.96}
-      stroke={face.layer === "ground" ? "#AEB4BD" : "#FFFFFF"}
-      strokeOpacity={face.layer === "ground" ? 0.7 : 0.85}
-      strokeWidth={face.layer === "ground" ? 1 : 0.8}
+      stroke={face.layer === "ground" ? "#AEB4BD" : isExploded && face.faceKind ? "#3F5265" : "#FFFFFF"}
+      strokeOpacity={face.layer === "ground" ? 0.7 : isExploded && face.faceKind ? 0.42 : 0.85}
+      strokeWidth={face.layer === "ground" ? 1 : isExploded && face.faceKind ? 0.55 : 0.8}
       strokeLinejoin="round"
     />
   );
@@ -150,11 +159,16 @@ function MassFigure({ scene, camera, width, height, fixed = false, label = "S01 
       {isExploded && projection?.labels && (
         <g aria-label="분해 층 라벨">
           {projection.labels.map((item) => (
-            <g key={item.layer} data-layer-label={item.layer} aria-label={item.text}>
-              <rect x={item.x - 7} y={item.y - 13} width={item.text.includes("자료 없음") ? 148 : 62} height="22" rx="5" fill="#FFFFFF" fillOpacity="0.92" stroke="#D5D9DF" />
-              <text x={item.x} y={item.y + 2} fontSize="11" fontWeight="700" fill={item.text.includes("자료 없음") ? "#7A808A" : INK}>
+            <g key={item.layer} data-layer-label={item.layer} aria-label={item.note ? `${item.text} · ${item.note}` : item.text}>
+              <line data-label-leader={item.layer} x1={item.x + 4} y1={item.y} x2={item.leaderX} y2={item.y} stroke="#8993A0" strokeWidth="0.8" />
+              <text x={item.x} y={item.y + 2} textAnchor="end" fontSize="9" fontWeight="700" letterSpacing="0.08em" fill={INK}>
                 {item.text}
               </text>
+              {item.note && (
+                <text x={item.x} y={item.y + 13} textAnchor="end" fontSize="8" fill="#89919C">
+                  {item.note}
+                </text>
+              )}
             </g>
           ))}
         </g>
@@ -182,6 +196,11 @@ function MassFigure({ scene, camera, width, height, fixed = false, label = "S01 
       {scene?.ground.kind === "flat" && (
         <text x={nx} y={ny + 50} textAnchor="middle" fontSize="10" fill="#5B606B">
           지형 미반영
+        </text>
+      )}
+      {missingPublishedContext && (
+        <text data-context-note="reference-not-rebuilt" x={width / 2} y={height - 58} textAnchor="middle" fontSize="9" fill="#7D8792">
+          도로·녹지·수계: published reference 재구축 전 — 빈 plate로 표시
         </text>
       )}
       {!scene && (
