@@ -2,7 +2,7 @@
  * TileResult → 화면 문자열. 화면이 쓰는 문구는 전부 여기서 만든다 (컴포넌트에는 문구 로직 없음).
  * 규칙: 종합 점수 없음 · 도보 시간 없음 · 공급/가격/개발은 좋음·주의 평가 없음 (plan 화면 규칙 1~8).
  */
-import type { OUTPUT_FACES, TileResult } from "../tile-result";
+import type { OUTPUT_FACES, RoseSeason, TileResult } from "../tile-result";
 import type { Scene } from "../scene";
 import { fmtInt, rankComplexes, rankSupply, STOCK_LEGEND, SUPPLY_LAYERS, SUPPLY_LEGEND, summarize, supplyStats, type CalloutLegendSpec, type Complex, type Stat } from "./callout-layout";
 import type { MapModel } from "./map-layers";
@@ -44,6 +44,8 @@ export type TileView = {
   mass: MassModel | null;
   /** D22 풍향·풍속 누적 모델. */
   rose?: RoseModel | null;
+  /** D22 연간·계절 풍향·풍속 누적 모델. */
+  roses?: Record<RoseSeason, RoseModel> | null;
   /** STACK 카드의 층 이름. 일반 타일은 null. */
   stackLayers: string[] | null;
   /** SHEET 카드가 참조하는 하위 타일과 격자. 일반 타일은 null. */
@@ -100,6 +102,7 @@ const MAP_NOTES: Record<string, string> = {
   D10: "항공사진 색 기반 수관 검출 · 재현율 미검증 · OSM 녹지 보조",
   D28: "OSM 보행망 · 80 m/분 · 내부 제안 기준",
   D29: "건물·지형 기준 하늘열림(SVF) · 수목 제외",
+  D22: "ASOS 최근접 관측소 · 연간·계절 16방위 바람장미",
   S03: "조기설계 참고용 · 풍동 검증 없음 · 주풍향 1방향",
 };
 
@@ -185,7 +188,13 @@ const group = (n: number) => {
   const [i, f] = String(n).split(".");
   return i.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (f ? `.${f}` : "");
 };
+/** 화면·타일·PPT가 공유하는 직선거리 표기. 1 km 이상은 소수 한 자리 km로 줄인다. */
+export function formatDistanceM(distanceM: number): string {
+  if (!Number.isFinite(distanceM) || distanceM < 0) return "미확인";
+  return distanceM >= 1000 ? `${(distanceM / 1000).toFixed(1)} km` : `${Math.round(distanceM).toLocaleString("en-US")}m`;
+}
 const withUnit = (n: number, unit: string) => {
+  if (unit === "m") return formatDistanceM(n);
   const v = unit === "년" ? String(n) : group(n); // 연도는 자리 구분 쉼표 없음
   return unit === "" ? v : unit.length > 2 ? `${v} ${unit}` : `${v}${unit}`;
 };
@@ -291,6 +300,7 @@ export function toTileView(r: TileResult, scene?: Scene | null): TileView {
     callout: calloutOf(r),
     mass: massOf(r, scene),
     rose: r.presentation.rose ?? null,
+    roses: r.presentation.roses ?? null,
     stackLayers: null,
     sheetTiles: null,
     sheetGrid: null,
