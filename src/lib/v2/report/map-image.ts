@@ -140,7 +140,7 @@ function svgOfRose(model: RoseModel, width: number, height: number, season: Rose
   const host = document.createElement("div");
   const root = createRoot(host);
   try {
-    flushSync(() => root.render(createElement(WindRoseFigure, { model, width, height, fixed: true, season })));
+    flushSync(() => root.render(createElement(WindRoseFigure, { model, width, height, fixed: true, season, chrome: "slide" })));
     return host.innerHTML;
   } finally {
     root.unmount();

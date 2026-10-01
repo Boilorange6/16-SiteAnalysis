@@ -10,13 +10,28 @@ export type WindRoseFigureProps = {
   label?: string;
   /** 보고서·화면 호출부가 선택한 계절. 모델 자체는 호출부가 roses에서 고른다. */
   season?: RoseSeason;
+  /** standalone은 자체 제목·출처를 포함하고, tile/slide은 외부 오버레이 자리를 예약한다. */
+  chrome?: WindRoseChrome;
+};
+
+export type WindRoseChrome = "standalone" | "tile" | "slide";
+export type WindRoseBox = { x0: number; y0: number; x1: number; y1: number };
+export type WindRoseLayout = {
+  cx: number;
+  cy: number;
+  rMax: number;
+  labelRadius: number;
+  titleReserved: WindRoseBox | null;
+  legend: WindRoseBox;
+  footerReserved: WindRoseBox | null;
+  labels: WindRoseBox[];
 };
 
 const INK = "#15171c";
 const MUTED = "#5B606B";
 const FONT = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif';
 /** 인쇄에서도 순서가 유지되는 따뜻한 회색 단일 명도 램프(약한 풍속 → 강한 풍속). */
-const SPEED_BIN_RENDER_COLORS = ["#EDE6DA", "#D1C6B7", "#B0A395", "#817568", "#4C433A"] as const;
+const SPEED_BIN_RENDER_COLORS = ["#D8CDBE", "#B9AA9A", "#9B8979", "#76695D", "#453B33"] as const;
 
 const hoursOf = (model: RoseModel): number =>
   model.dirs.reduce((sum, bins) => sum + bins.reduce((binSum, value) => binSum + (Number.isFinite(value) && value > 0 ? value : 0), 0), 0);
@@ -27,18 +42,52 @@ const pctOf = (value: number, total: number): string => {
 
 const SEASON_LABEL: Record<RoseSeason, string> = { annual: "연간", spring: "봄", summer: "여름", autumn: "가을", winter: "겨울" };
 
-function WindRoseFigure({ model, width, height, fixed = false, label = "D22 바람장미", season = "annual" }: WindRoseFigureProps) {
-  const cx = width * 0.38;
-  const cy = height * 0.47;
-  const rMax = Math.min(width * 0.33, height * 0.4);
+const box = (x0: number, y0: number, x1: number, y1: number): WindRoseBox => ({ x0, y0, x1, y1 });
+
+/** WindRoseFigure의 실제 장식 위치와 외부 오버레이 예약 자리를 함께 계산한다. */
+export function windRoseLayout(width: number, height: number, chrome: WindRoseChrome = "tile"): WindRoseLayout {
+  const frame = chrome !== "standalone";
+  const cx = width * 0.39;
+  const cy = frame ? height * 0.53 : height * 0.47;
+  const rMax = frame ? Math.min(width * 0.33, height * 0.389) : Math.min(width * 0.33, height * 0.4);
+  const labelRadius = frame ? rMax + 8 : rMax + 24;
+  const legendX = frame && chrome === "slide" ? 16 : frame ? width * 0.66 : width * 0.7;
+  const legendY = frame && chrome === "slide" ? height - 185 : frame ? height * 0.22 : height * 0.23;
+  const legendWidth = frame && chrome === "slide" ? 110 : width * 0.28;
+  const legendHeight = 157;
+  const labels = DIR16_NAMES.map((name, dir) => {
+    const angle = (dir * Math.PI) / 8;
+    const x = cx + Math.sin(angle) * labelRadius;
+    const y = cy - Math.cos(angle) * labelRadius;
+    const halfWidth = Math.max(8, name.length * 4.4);
+    return box(x - halfWidth, y - 10, x + halfWidth, y + 10);
+  });
+  return {
+    cx,
+    cy,
+    rMax,
+    labelRadius,
+    titleReserved: frame ? box(0, 0, Math.min(width * 0.375, 360), Math.min(height * 0.133, 72)) : null,
+    legend: box(legendX - 10, legendY - 12, legendX + legendWidth + 4, legendY + legendHeight),
+    footerReserved: frame ? box(0, Math.max(0, height - 24), width, height) : null,
+    labels,
+  };
+}
+
+function WindRoseFigure({ model, width, height, fixed = false, label = "D22 바람장미", season = "annual", chrome = "tile" }: WindRoseFigureProps) {
+  const layout = windRoseLayout(width, height, chrome);
+  const { cx, cy, rMax, labelRadius } = layout;
+  const frame = chrome !== "standalone";
   const observedHours = hoursOf(model);
   const directionPcts = model.dirs.map((bins) => (bins.reduce((sum, value) => sum + (Number.isFinite(value) && value > 0 ? value : 0), 0) / Math.max(1, observedHours)) * 100);
   const maxDirectionPct = Math.max(0, ...directionPcts);
   const wedges = roseWedges(model, cx, cy, rMax);
   const ticks = [0.25, 0.5, 0.75, 1];
-  const labelRadius = rMax + 24;
   const tickBearing = (3 * Math.PI) / 16;
   const accessibleLabel = season === "annual" ? label : `${label} · ${SEASON_LABEL[season]}`;
+  const legendX = frame && chrome === "slide" ? 16 : frame ? width * 0.66 : width * 0.7;
+  const legendY = frame && chrome === "slide" ? height - 185 : frame ? height * 0.22 : height * 0.23;
+  const legendWidth = frame && chrome === "slide" ? 110 : width * 0.28;
 
   return (
     <svg
@@ -48,14 +97,17 @@ function WindRoseFigure({ model, width, height, fixed = false, label = "D22 바�
       role="img"
       aria-label={accessibleLabel}
       data-season={season}
+      data-wind-rose-chrome={chrome}
       fontFamily={FONT}
       style={{ display: "block" }}
     >
       <rect width={width} height={height} fill="#F2F2EF" />
       <title>{`${SEASON_LABEL[season]} 바람장미`}</title>
-      <text x={16} y={26} fontSize="18" fontWeight="700" fill={INK}>
-        {SEASON_LABEL[season]} 바람장미
-      </text>
+      {!frame && (
+        <text x={16} y={26} fontSize="18" fontWeight="700" fill={INK}>
+          {SEASON_LABEL[season]} 바람장미
+        </text>
+      )}
       <g aria-label="풍향 빈도">
         {ticks.map((ratio) => {
           const radius = rMax * ratio;
@@ -90,7 +142,8 @@ function WindRoseFigure({ model, width, height, fixed = false, label = "D22 바�
           정온 {pctOf(model.calmHours, model.totalHours)}%
         </text>
       </g>
-      <g aria-label="풍속 구간" transform={`translate(${width * 0.7} ${height * 0.23})`}>
+      <g aria-label="풍속 구간" data-wind-rose-legend="true" transform={`translate(${legendX} ${legendY})`}>
+        {frame && <rect x="-10" y="-12" width={legendWidth + 14} height="157" rx="8" fill="#FFFFFF" fillOpacity="0.88" stroke="#D9DCE2" strokeWidth="0.8" />}
         <text x="0" y="0" fontSize="14" fontWeight="700" fill={INK}>
           풍속
         </text>
@@ -103,9 +156,11 @@ function WindRoseFigure({ model, width, height, fixed = false, label = "D22 바�
           </g>
         ))}
       </g>
-      <text x={16} y={height - 18} fontSize="12" fill={MUTED}>
-        결측 {pctOf(model.missingHours, model.totalHours)}% · 지점 {model.station}
-      </text>
+      {!frame && (
+        <text x={16} y={height - 18} fontSize="12" fill={MUTED}>
+          결측 {pctOf(model.missingHours, model.totalHours)}% · 지점 {model.station}
+        </text>
+      )}
     </svg>
   );
 }

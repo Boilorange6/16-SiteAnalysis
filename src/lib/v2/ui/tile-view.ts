@@ -188,7 +188,13 @@ const group = (n: number) => {
   const [i, f] = String(n).split(".");
   return i.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (f ? `.${f}` : "");
 };
+/** 화면·타일·PPT가 공유하는 직선거리 표기. 1 km 이상은 소수 한 자리 km로 줄인다. */
+export function formatDistanceM(distanceM: number): string {
+  if (!Number.isFinite(distanceM) || distanceM < 0) return "미확인";
+  return distanceM >= 1000 ? `${(distanceM / 1000).toFixed(1)} km` : `${Math.round(distanceM).toLocaleString("en-US")}m`;
+}
 const withUnit = (n: number, unit: string) => {
+  if (unit === "m") return formatDistanceM(n);
   const v = unit === "년" ? String(n) : group(n); // 연도는 자리 구분 쉼표 없음
   return unit === "" ? v : unit.length > 2 ? `${v} ${unit}` : `${v}${unit}`;
 };
