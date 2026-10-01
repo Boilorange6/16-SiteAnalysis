@@ -1,13 +1,30 @@
 import { z } from "zod";
 
-export const SCENE_VERSION = "v2-scene@1";
+export const SCENE_VERSION = "v2-scene@2";
+const LEGACY_SCENE_VERSION = "v2-scene@1";
 
-/** 좌표는 대지 중심 원점의 로컬 미터: x=동(+), y=북(+), z=위(+). 지반은 평탄(z=0). */
+/** 좌표는 대지 중심 원점의 로컬 미터: x=동(+), y=북(+), z=위(+). */
 export type Ring = [number, number][];
+
+export type SceneGround =
+  | { kind: "flat" }
+  | {
+      kind: "dem";
+      cellM: number;
+      cols: number;
+      rows: number;
+      originZ: number;
+      z: (number | null)[];
+      resolutionM: 30;
+      vertical: "EGM96";
+      sourceId: string;
+    };
 
 export interface SceneBuilding {
   id: string;
   rings: Ring[];
+  /** 발자국 대표점 지표고(원점 상대). flat이면 null. */
+  baseZ: number | null;
   heightM: number | null;
   heightMethod: "source" | "floors_estimate" | "user" | "unknown";
   floorsAbove: number | null;
@@ -29,7 +46,7 @@ export interface Scene {
   manifestHash: string;
   origin: { epsg: "EPSG:5179"; x: number; y: number; lng: number; lat: number };
   radiusM: number;
-  groundZ: 0;
+  ground: SceneGround;
   site: Ring[] | null;
   buildings: SceneBuilding[];
   parcels: SceneParcel[];
@@ -40,13 +57,34 @@ export interface Scene {
 
 export const SCENE_MAX_BUILDINGS = 5000;
 export const SCENE_MAX_PARCELS = 5000;
+export const SCENE_GRID_MAX = 65;
 
 const PointSchema = z.tuple([z.number().finite(), z.number().finite()]);
 const RingSchema: z.ZodType<Ring> = z.array(PointSchema);
 
+const SceneGroundSchema: z.ZodType<SceneGround> = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("flat") }),
+  z.object({
+    kind: z.literal("dem"),
+    cellM: z.number().finite().positive(),
+    cols: z.number().int().positive().max(SCENE_GRID_MAX),
+    rows: z.number().int().positive().max(SCENE_GRID_MAX),
+    originZ: z.number().finite(),
+    z: z.array(z.number().finite().nullable()),
+    resolutionM: z.literal(30),
+    vertical: z.literal("EGM96"),
+    sourceId: z.string().min(1),
+  }).superRefine((ground, ctx) => {
+    if (ground.z.length !== ground.cols * ground.rows) {
+      ctx.addIssue({ code: "custom", path: ["z"], message: "ground z length must equal rows × cols" });
+    }
+  }),
+]);
+
 const SceneBuildingSchema: z.ZodType<SceneBuilding> = z.object({
   id: z.string().min(1),
   rings: z.array(RingSchema),
+  baseZ: z.number().finite().nullable(),
   heightM: z.number().positive().nullable(),
   heightMethod: z.enum(["source", "floors_estimate", "user", "unknown"]),
   floorsAbove: z.number().int().nonnegative().nullable(),
@@ -74,7 +112,7 @@ export const SceneSchema: z.ZodType<Scene> = z.object({
     lat: z.number().finite(),
   }),
   radiusM: z.number().positive(),
-  groundZ: z.literal(0),
+  ground: SceneGroundSchema,
   site: z.array(RingSchema).nullable(),
   buildings: z.array(SceneBuildingSchema),
   parcels: z.array(SceneParcelSchema),
@@ -98,10 +136,67 @@ export const SceneSchema: z.ZodType<Scene> = z.object({
       note: z.string().min(1),
     }),
   ),
+}).superRefine((scene, ctx) => {
+  if (scene.ground.kind !== "flat") return;
+  scene.buildings.forEach((building, index) => {
+    if (building.baseZ !== null) {
+      ctx.addIssue({ code: "custom", path: ["buildings", index, "baseZ"], message: "flat ground requires baseZ to be null" });
+    }
+  });
 });
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export function parseScene(v: unknown): Scene {
+  if (isRecord(v) && v.version === LEGACY_SCENE_VERSION && v.groundZ === 0) {
+    const migrated: Record<string, unknown> = {
+      ...v,
+      version: SCENE_VERSION,
+      ground: { kind: "flat" },
+      buildings: Array.isArray(v.buildings)
+        ? v.buildings.map((building) => isRecord(building) ? { ...building, baseZ: null } : building)
+        : v.buildings,
+    };
+    delete migrated.groundZ;
+    return SceneSchema.parse(migrated);
+  }
   return SceneSchema.parse(v);
+}
+
+/** SceneGround의 암시적 로컬 격자 원점. row 0은 남쪽이고 격자는 장면 원점에 대칭이다. */
+function groundOrigin(ground: Extract<SceneGround, { kind: "dem" }>): { x0: number; y0: number } {
+  return {
+    x0: -((ground.cols - 1) * ground.cellM) / 2,
+    y0: -((ground.rows - 1) * ground.cellM) / 2,
+  };
+}
+
+/** 지반 격자의 상대 높이를 쌍선형 보간한다. 결측 셀이 하나라도 포함되면 null이다. */
+export function groundZAt(ground: SceneGround, x: number, y: number): number | null {
+  if (ground.kind === "flat") return 0;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  const { x0, y0 } = groundOrigin(ground);
+  const gx = (x - x0) / ground.cellM;
+  const gy = (y - y0) / ground.cellM;
+  if (gx < 0 || gy < 0 || gx > ground.cols - 1 || gy > ground.rows - 1) return null;
+
+  const xLow = Math.floor(gx);
+  const yLow = Math.floor(gy);
+  const xHigh = Math.min(xLow + 1, ground.cols - 1);
+  const yHigh = Math.min(yLow + 1, ground.rows - 1);
+  const tx = gx - xLow;
+  const ty = gy - yLow;
+  const sample = (col: number, row: number): number | null => ground.z[row * ground.cols + col] ?? null;
+  const z00 = sample(xLow, yLow);
+  const z10 = sample(xHigh, yLow);
+  const z01 = sample(xLow, yHigh);
+  const z11 = sample(xHigh, yHigh);
+  if (z00 === null || z10 === null || z01 === null || z11 === null) return null;
+  const low = z00 + (z10 - z00) * tx;
+  const high = z01 + (z11 - z01) * tx;
+  return low + (high - low) * ty;
 }
 
 const roundCentimeter = (value: number): number => {

@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 
 const { buildEngineFixture, CENTER } = await import("./engine-fixture.mjs");
 const M = await import("../../lib/v2/data/manifest.ts");
+const { SCENE_VERSION } = await import("../../lib/v2/scene.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { s01 } = await import("../../lib/v2/engine/tiles/s01.ts");
 
@@ -39,7 +40,7 @@ assert.deepEqual([metric(tile, "height_max_m").value, metric(tile, "height_max_m
 assert.deepEqual(tile.presentation.camera, { kind: "axonometric", azimuthDeg: 225, elevationDeg: 35, radiusM: 800 });
 assert.deepEqual(tile.presentation.layers, ["mass_source", "mass_estimated", "mass_unknown"]);
 assert.deepEqual(tile.conditions.simulation, {
-  scene: "v2-scene@1",
+  scene: SCENE_VERSION,
   buildingsIncluded: 6,
   buildingsTotal: 6,
   cap: 5000,
