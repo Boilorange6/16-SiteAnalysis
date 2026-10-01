@@ -1,4 +1,5 @@
 import type { Ring, Scene, SceneBuilding, SceneGround } from "../scene";
+import { cleanRing, type RingRole } from "./rings";
 
 export const RHINO_LAYERS = ["BLDG", "BLDG_EST", "BLDG_NOHEIGHT", "PARCEL", "SITE", "RADIUS", "TERRAIN"] as const;
 type RhinoLayerName = (typeof RHINO_LAYERS)[number];
@@ -22,30 +23,15 @@ async function loadRhino() {
 type RhinoModule = Awaited<ReturnType<typeof loadRhino>>;
 let rhinoPromise: ReturnType<typeof loadRhino> | null = null;
 
-function samePoint(a: readonly [number, number], b: readonly [number, number]): boolean {
-  return a[0] === b[0] && a[1] === b[1];
-}
-
-function cleanRing(ring: Ring): [number, number][] {
-  const points: [number, number][] = [];
-  for (const [x, y] of ring) {
-    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-    const point: [number, number] = [x, y];
-    if (points.length === 0 || !samePoint(points[points.length - 1], point)) points.push(point);
-  }
-  if (points.length > 1 && samePoint(points[0], points[points.length - 1])) points.pop();
-  return points.length >= 3 ? points : [];
-}
-
-function ringPoints(ring: Ring, z: number): number[][] {
-  const points = cleanRing(ring).map(([x, y]) => [x, y, z]);
+function ringPoints(ring: Ring, z: number, role: RingRole): number[][] {
+  const points = cleanRing(ring, role).map(([x, y]) => [x, y, z]);
   if (points.length < 3) return [];
   points.push([...points[0]]);
   return points;
 }
 
-function curveForRing(rhino: RhinoModule, ring: Ring, z: number) {
-  const points = ringPoints(ring, z);
+function curveForRing(rhino: RhinoModule, ring: Ring, z: number, role: RingRole) {
+  const points = ringPoints(ring, z, role);
   if (points.length === 0) return null;
   const polyline = rhino.Polyline.createFromPoints(points);
   if (!polyline || !polyline.isValid || !polyline.isClosed) return null;
@@ -82,8 +68,8 @@ function addPlanarRings(
   name?: string,
 ): void {
   const objectAttributes = attributes(rhino, layers, layer, name);
-  for (const ring of rings) {
-    const curve = curveForRing(rhino, ring, z);
+  for (const [index, ring] of rings.entries()) {
+    const curve = curveForRing(rhino, ring, z, index === 0 ? "outer" : "hole");
     if (curve) doc.objects().addCurve(curve, objectAttributes);
   }
 }
@@ -105,20 +91,20 @@ function addBuilding(
   const heightM = building.heightM;
   const hasHeight = heightM !== null && heightM > 0 && building.heightMethod !== "unknown";
   if (!hasHeight) {
-    for (const ring of building.rings) {
-      const curve = curveForRing(rhino, ring, baseZ);
+    for (const [index, ring] of building.rings.entries()) {
+      const curve = curveForRing(rhino, ring, baseZ, index === 0 ? "outer" : "hole");
       if (curve) doc.objects().addCurve(curve, objectAttributes);
     }
     return;
   }
 
-  const outer = curveForRing(rhino, building.rings[0], baseZ);
+  const outer = curveForRing(rhino, building.rings[0], baseZ, "outer");
   if (!outer) throw new Error(`building ${building.id} has no valid outer ring`);
   const extrusion = rhino.Extrusion.create(outer, heightM, true);
   if (!extrusion) throw new Error(`building ${building.id} could not be extruded`);
   for (const ring of building.rings.slice(1)) {
     // rhino3dm expects inner profiles as 2D XY curves even when the outer profile is elevated.
-    const inner = curveForRing(rhino, ring, 0);
+    const inner = curveForRing(rhino, ring, 0, "hole");
     if (!inner || !extrusion.addInnerProfile(inner)) throw new Error(`building ${building.id} has an invalid inner ring`);
   }
   doc.objects().addExtrusion(extrusion, objectAttributes);
