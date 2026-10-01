@@ -1,4 +1,4 @@
-import { SCENE_MAX_BUILDINGS, type Ring, type Scene, type SceneBuilding } from "../scene";
+import { SCENE_MAX_BUILDINGS, type Ring, type Scene, type SceneBuilding, type SceneGround } from "../scene";
 
 // earcut 2.2.4 is an existing JavaScript-only transitive dependency.
 // @ts-expect-error earcut does not ship TypeScript declarations.
@@ -10,7 +10,7 @@ type Earcut = (vertices: number[], holes?: number[], dimensions?: number) => num
 
 const earcut = earcutImport as unknown as Earcut;
 
-const MATERIAL_NAMES = ["mass_source", "mass_estimated", "mass_unknown", "ground"] as const;
+const MATERIAL_NAMES = ["mass_source", "mass_estimated", "mass_unknown", "ground", "terrain"] as const;
 
 const MATERIALS = [
   {
@@ -31,6 +31,11 @@ const MATERIALS = [
   {
     name: "ground",
     pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: 1 },
+    alphaMode: "OPAQUE",
+  },
+  {
+    name: "terrain",
+    pbrMetallicRoughness: { baseColorFactor: [0.68, 0.56, 0.34, 1], metallicFactor: 0, roughnessFactor: 1 },
     alphaMode: "OPAQUE",
   },
 ] as const;
@@ -82,16 +87,16 @@ function addSurface(target: Geometry, rings: Point2[][], up: number): void {
   for (const index of earcut(flat, holeIndices, 2)) target.indices.push(vertexOffset + index);
 }
 
-function addWalls(target: Geometry, rings: Point2[][], height: number): void {
+function addWalls(target: Geometry, rings: Point2[][], baseZ: number, height: number): void {
   for (const ring of rings) {
     for (let i = 0; i < ring.length; i += 1) {
       const a = ring[i];
       const b = ring[(i + 1) % ring.length];
       const offset = target.positions.length / 3;
-      pushPosition(target, a[0], a[1], 0);
-      pushPosition(target, b[0], b[1], 0);
-      pushPosition(target, b[0], b[1], height);
-      pushPosition(target, a[0], a[1], height);
+      pushPosition(target, a[0], a[1], baseZ);
+      pushPosition(target, b[0], b[1], baseZ);
+      pushPosition(target, b[0], b[1], baseZ + height);
+      pushPosition(target, a[0], a[1], baseZ + height);
       target.indices.push(offset, offset + 1, offset + 2, offset, offset + 2, offset + 3);
     }
   }
@@ -108,15 +113,16 @@ function addBuilding(target: Geometry, building: SceneBuilding): void {
   if (rings.length === 0) return;
 
   const materialIndex = materialIndexFor(building);
+  const baseZ = building.baseZ ?? 0;
   if (materialIndex === 2) {
     // A missing or explicitly unknown height is a footprint only, never a 0m extrusion.
-    addSurface(target, rings, 0);
+    addSurface(target, rings, baseZ);
     return;
   }
 
   const height = building.heightM as number;
-  addSurface(target, rings, height);
-  addWalls(target, rings, height);
+  addSurface(target, rings, baseZ + height);
+  addWalls(target, rings, baseZ, height);
 }
 
 function distanceSquared(building: SceneBuilding): number {
@@ -137,6 +143,39 @@ function addGround(target: Geometry, radiusM: number): void {
   for (let i = 0; i < sides; i += 1) {
     const next = (i + 1) % sides;
     target.indices.push(center, center + 1 + i, center + 1 + next);
+  }
+}
+
+function groundOrigin(ground: Extract<SceneGround, { kind: "dem" }>): [number, number] {
+  return [-((ground.cols - 1) * ground.cellM) / 2, -((ground.rows - 1) * ground.cellM) / 2];
+}
+
+function addTerrain(target: Geometry, ground: SceneGround): void {
+  if (ground.kind !== "dem") return;
+  const [x0, y0] = groundOrigin(ground);
+  const vertexByGridPoint = new Map<string, number>();
+  const zAt = (col: number, row: number): number | null => ground.z[row * ground.cols + col] ?? null;
+  const vertex = (col: number, row: number, z: number): number => {
+    const key = `${col}:${row}`;
+    const existing = vertexByGridPoint.get(key);
+    if (existing !== undefined) return existing;
+    const index = pushPosition(target, x0 + col * ground.cellM, y0 + row * ground.cellM, z);
+    vertexByGridPoint.set(key, index);
+    return index;
+  };
+  for (let row = 0; row < ground.rows - 1; row += 1) {
+    for (let col = 0; col < ground.cols - 1; col += 1) {
+      const a = zAt(col, row);
+      const b = zAt(col + 1, row);
+      const c = zAt(col + 1, row + 1);
+      const d = zAt(col, row + 1);
+      if (a === null || b === null || c === null || d === null) continue;
+      const ia = vertex(col, row, a);
+      const ib = vertex(col + 1, row, b);
+      const ic = vertex(col + 1, row + 1, c);
+      const id = vertex(col, row + 1, d);
+      target.indices.push(ia, ib, ic, ia, ic, id);
+    }
   }
 }
 
@@ -181,6 +220,7 @@ class BinaryWriter {
 }
 
 function minMax(positions: ArrayLike<number>): { min: number[]; max: number[] } {
+  if (positions.length === 0) return { min: [0, 0, 0], max: [0, 0, 0] };
   const min = [Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY];
   const max = [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY];
   for (let i = 0; i < positions.length; i += 3) {
@@ -217,6 +257,7 @@ function makeGlb(json: Record<string, unknown>, bin: Uint8Array): Uint8Array {
 
 export function sceneToGlb(scene: Scene): Uint8Array {
   const materialGeometries = [geometry(), geometry(), geometry(), geometry()];
+  if (scene.ground.kind === "dem") materialGeometries.push(geometry());
   const buildings = scene.buildings
     .map((building, index) => ({ building, index, distance: distanceSquared(building) }))
     .sort((a, b) => {
@@ -227,8 +268,11 @@ export function sceneToGlb(scene: Scene): Uint8Array {
     .slice(0, SCENE_MAX_BUILDINGS);
 
   for (const { building } of buildings) addBuilding(materialGeometries[materialIndexFor(building)], building);
-  addGround(materialGeometries[3], scene.radiusM);
-  for (const target of materialGeometries) ensureRenderable(target);
+  if (scene.ground.kind === "dem") addTerrain(materialGeometries[4], scene.ground);
+  else addGround(materialGeometries[3], scene.radiusM);
+  materialGeometries.forEach((target, index) => {
+    if (index !== 4) ensureRenderable(target);
+  });
 
   const writer = new BinaryWriter();
   const bufferViews: Array<Record<string, unknown>> = [];
@@ -272,13 +316,28 @@ export function sceneToGlb(scene: Scene): Uint8Array {
         manifestHash: scene.manifestHash,
         analysisId: scene.analysisId,
         sceneVersion: scene.version,
+        ground: scene.ground.kind === "dem"
+          ? {
+              kind: "dem",
+              cellM: scene.ground.cellM,
+              originZ: scene.ground.originZ,
+              resolutionM: scene.ground.resolutionM,
+              vertical: scene.ground.vertical,
+            }
+          : { kind: "flat" },
+        buildings: buildings.map(({ building }) => ({
+          id: building.id,
+          heightMethod: building.heightMethod,
+          floorsAbove: building.floorsAbove,
+          baseZ: building.baseZ,
+        })),
       },
     },
     scene: 0,
     scenes: [{ nodes: [0] }],
     nodes: [{ mesh: 0, name: "site-analysis" }],
     meshes: [{ name: "site-analysis", primitives }],
-    materials: MATERIAL_NAMES.map((name, index) => ({ ...MATERIALS[index], name })),
+    materials: MATERIAL_NAMES.slice(0, materialGeometries.length).map((name, index) => ({ ...MATERIALS[index], name })),
     accessors,
     bufferViews,
     buffers: [{ byteLength: bin.byteLength }],
