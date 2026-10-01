@@ -18,7 +18,7 @@ function seedRelease(db) {
 
 // ─── 1. 종류별 테이블 ──────────────────────────────────────────────────────
 {
-  assert.deepEqual([...DATA_FILE_KINDS], ["core", "buildings", "parcels", "reference", "market", "osm"]);
+  assert.deepEqual([...DATA_FILE_KINDS], ["core", "buildings", "parcels", "reference", "market", "osm", "terrain", "weather"]);
   for (const kind of DATA_FILE_KINDS) {
     const db = new Database(":memory:");
     initDataFileSchema(db, kind);
@@ -31,6 +31,10 @@ function seedRelease(db) {
     assert.equal(t.has("parcel_point"), kind === "core", `${kind}: parcel_point`);
     assert.equal(t.has("property_transaction"), kind === "market", `${kind}: property_transaction`);
     assert.equal(t.has("development_event"), kind === "market", `${kind}: development_event`);
+    assert.equal(t.has("dem_tile"), kind === "terrain", `${kind}: dem_tile`);
+    assert.equal(t.has("dem_row"), kind === "terrain", `${kind}: dem_row`);
+    assert.equal(t.has("weather_station"), kind === "weather", `${kind}: weather_station`);
+    assert.equal(t.has("wind_rose"), kind === "weather", `${kind}: wind_rose`);
     assert.deepEqual(readDataFileMeta(db), { kind, schemaVersion: DATA_SCHEMA_VERSION });
     initDataFileSchema(db, kind); // 두 번 불러도 안전
   }

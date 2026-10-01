@@ -1,6 +1,6 @@
 /**
  * v2 데이터 파일 빌드·게시.
- *   npm run data:build -- --version 2026-09-30a [--raw .cache/v2/raw] [--only core,buildings,parcels,reference,market] [--expectations exp.json] [--with buildings,parcels] [--wait-lock [분]]
+ *   npm run data:build -- --version 2026-09-30a [--raw .cache/v2/raw] [--only core,buildings,parcels,reference,market,terrain] [--expectations exp.json] [--with buildings,parcels] [--wait-lock [분]]
  * 원천 zip은 먼저 풀고(이미 풀린 것은 건너뜀), 원천 파일은 폴더마다 가장 새 파일을 쓴다.
  */
 import { readdirSync, statSync, existsSync, readFileSync } from "node:fs";
@@ -20,6 +20,7 @@ const { buildPointSource, STORE_SPEC, BUS_STOP_SPEC, PARK_SPEC } = await import(
 const { buildSupply, readLegacyPlannedHousing } = await import("../../lib/v2/ingest/sources/supply.ts");
 const { buildOsmSubway, buildPlannedRail, legalCodeFromCore } = await import("../../lib/v2/ingest/sources/rail.ts");
 const { buildOsmRoads, OSM_ROADS_LAYER, OSM_ROADS_RIGHTS } = await import("../../lib/v2/ingest/sources/osm-roads.ts");
+const { buildDemTiles } = await import("../../lib/v2/ingest/sources/dem.ts");
 const { legacyDbPath, v2DataDir } = await import("../../lib/v2/paths.ts");
 
 const args = process.argv.slice(2);
@@ -29,7 +30,7 @@ const opt = (name, fallback) => {
 };
 const version = opt("version");
 if (!version || !/^[0-9A-Za-z._-]+$/.test(version)) {
-  console.error("usage: data:build -- --version <name> [--raw dir] [--only core,buildings,parcels,reference,market] [--expectations file.json] [--reset-baseline parcel,parcel_building] [--dry-run]");
+  console.error("usage: data:build -- --version <name> [--raw dir] [--only core,buildings,parcels,reference,market,terrain] [--expectations file.json] [--reset-baseline parcel,parcel_building] [--dry-run]");
   process.exit(2);
 }
 const flag = (name) => args.includes(`--${name}`);
@@ -182,6 +183,27 @@ if (only.has("parcels")) {
     p.expectedRegions = [...parcelAll.keys()];
     console.log(`parcels: 시도 ${partCounts(parcelAll)}`);
     return [p];
+  };
+}
+if (only.has("terrain")) {
+  const demDir = join(raw, "dem");
+  const demFiles = [...walk(demDir)].filter((file) => /\.hgt(?:\.gz)?$/i.test(basename(file))).sort();
+  if (demFiles.length === 0) throw new Error(`no DEM HGT files under ${demDir} — run dem-fetch.mjs first`);
+  builders.terrain = async (db) => {
+    const stats = demFiles.map((file) => statSync(file));
+    const fetchedAt = new Date(Math.max(...stats.map((s) => s.mtimeMs))).toISOString();
+    const checksum = demFiles.map((file, i) => `${basename(file)}:${stats[i].size}-${Math.round(stats[i].mtimeMs)}`).join("|");
+    const releaseId = insertRelease(db, {
+      sourceId: "terrain_tiles",
+      provider: "Mapzen/AWS Terrain Tiles (SRTM 1 arc-second)",
+      sourceUrl: "https://registry.opendata.aws/terrain-tiles/",
+      sourceAsOf: null,
+      fetchedAt,
+      checksum,
+      licenseCode: "attribution",
+      rights: { attribution: "Terrain Tiles: SRTM(NASA/USGS), GMTED2010, ETOPO1 — https://github.com/tilezen/joerd/blob/master/docs/attribution.md" },
+    });
+    return [await buildDemTiles(db, demFiles, releaseId)];
   };
 }
 if (only.has("reference")) {

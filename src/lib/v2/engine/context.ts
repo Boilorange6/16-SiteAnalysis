@@ -10,7 +10,7 @@ import { manifestHash, openDataFile, type Manifest } from "../data/manifest";
 import type { TileConditions, TileResult } from "../tile-result";
 
 export type Limitation = TileResult["limitations"][number];
-export type FileKey = "core" | "buildings" | "parcels" | "reference" | "market";
+export type FileKey = "core" | "buildings" | "parcels" | "reference" | "market" | "terrain" | "weather";
 export interface SourceRef {
   sourceId: string;
   releaseId: string;

@@ -1,5 +1,5 @@
 /**
- * 엔진 테스트용 작은 데이터 디렉터리(core·reference·market)를 만들고 게시한다. 테스트가 아니다.
+ * 엔진 테스트용 작은 데이터 디렉터리(core·reference·market·terrain·weather)를 만들고 게시한다. 테스트가 아니다.
  * 중심점 다산(127.1506, 37.6245) 둘레에 거리를 알고 있는 점들을 둔다.
  */
 import { mkdirSync } from "node:fs";
@@ -8,6 +8,7 @@ import Database from "better-sqlite3";
 
 const { toUtmk, toLngLat } = await import("../../lib/v2/crs.ts");
 const { initDataFileSchema } = await import("../../lib/v2/data/schema.ts");
+const { DEM_NODATA, insertDemTile } = await import("../../lib/v2/data/terrain.ts");
 const { insertFeature } = await import("../../lib/v2/data/features.ts");
 const { insertRelease } = await import("../../lib/v2/ingest/build.ts");
 const M = await import("../../lib/v2/data/manifest.ts");
@@ -46,7 +47,7 @@ function run(db, sourceId, releaseId, snapshot, rejected = 0, count = 10) {
     .run(`${sourceId}:1`, sourceId, count, count, rejected, releaseId, JSON.stringify(snapshot));
 }
 
-/** options.noMarket: market 파일을 게시하지 않는다. options.extraBus: 버스정류장을 더한다(새 버전 검증용). options.buildings/parcels: 도형 파일을 게시한다. */
+/** options.noMarket: market 파일을 게시하지 않는다. options.extraBus: 버스정류장을 더한다(새 버전 검증용). options.buildings/parcels/terrain/weather/roads: 해당 파일·fixture를 게시한다. */
 export async function buildEngineFixture(dataDir, version, options = {}) {
   const dir = join(dataDir, "versions", version);
   mkdirSync(dir, { recursive: true });
@@ -163,11 +164,83 @@ export async function buildEngineFixture(dataDir, version, options = {}) {
     files.parcels = "parcels";
   }
 
+  // ── terrain: 30m에 가까운 작은 HGT 격자. 값은 중심 기준 EPSG:5179의 경사 + 언덕이다.
+  if (options.terrain) {
+    db = open("terrain");
+    const terrainRelease = rel(db, "terrain_tiles", "2026-10-01", {
+      rights: { attribution: "Terrain Tiles: SRTM(NASA/USGS), GMTED2010, ETOPO1" },
+    });
+    const meta = { tile: "fx", lat0: 37.58, lon0: 127.10, rows: 181, cols: 181, cellDeg: 0.0005, nodata: DEM_NODATA, vertical: "EGM96", resolutionM: 30 };
+    const rows = [];
+    for (let row = 0; row < meta.rows; row++) {
+      const data = Buffer.alloc(meta.cols * 2);
+      for (let col = 0; col < meta.cols; col++) {
+        const lng = meta.lon0 + col * meta.cellDeg;
+        const lat = meta.lat0 + (meta.rows - 1 - row) * meta.cellDeg;
+        const [x, y] = toUtmk([lng, lat]);
+        const dx = x - cx;
+        const dy = y - cy;
+        const height = 50 + 0.05 * dx + 30 * Math.exp(-((dx ** 2) + (dy - 300) ** 2) / (2 * 100 ** 2));
+        // HGT 표본은 정수 m이므로 가장 가까운 정수로 양자화한다.
+        data.writeInt16BE(row === 0 && col === 0 ? DEM_NODATA : Math.round(height), col * 2);
+      }
+      rows.push({ row, data });
+    }
+    insertDemTile(db, meta, terrainRelease, rows);
+    db.close();
+    files.terrain = "terrain";
+  }
+
+  // ── weather: 최근 10년 ASOS 요약. near만 장미를 넣어 전체 관측시간 합이 한 지점의 유효시간이 된다.
+  if (options.weather) {
+    db = open("weather");
+    const weatherRelease = rel(db, "asos", "2025-12-31");
+    const station = db.prepare(`INSERT INTO weather_station (station_id, name, lng, lat, elevation_m, period_start, period_end, total_hours, calm_hours, missing_hours, release_id)
+      VALUES (?, ?, ?, ?, ?, '2016-01-01', '2025-12-31', ?, ?, ?, ?)`);
+    station.run("near", "near", ...at(3000, 0), 30, 87672, 8767, 4384, weatherRelease);
+    station.run("far", "far", ...at(40000, 0), 80, 87672, 8767, 4384, weatherRelease);
+    const validHours = 87672 - 8767 - 4384;
+    const wind = db.prepare("INSERT INTO wind_rose (station_id, dir16, speed_bin, hours) VALUES ('near', ?, ?, ?)");
+    const rest = validHours - 20000;
+    const base = Math.floor(rest / 75);
+    const remainder = rest - base * 75;
+    for (let dir16 = 0; dir16 < 16; dir16++) {
+      for (let speedBin = 0; speedBin < 5; speedBin++) {
+        if (dir16 === 14 && speedBin === 1) {
+          wind.run(dir16, speedBin, 20000);
+        } else if (dir16 === 14) {
+          wind.run(dir16, speedBin, 0);
+        } else {
+          const hours = base + (dir16 === 15 && speedBin === 4 ? remainder : 0);
+          wind.run(dir16, speedBin, hours);
+        }
+      }
+    }
+    run(db, "asos", weatherRelease, { byRegion: { near: 1, far: 1 }, byType: {}, fillRates: {}, unlocated: 0 }, 0, 87672);
+    db.close();
+    files.weather = "weather";
+  }
+
   // ── reference
   db = open("reference");
   const store = rel(db, "store", "2026-06");
   const bus = rel(db, "bus_stop", "2025-12-09");
   const park = rel(db, "park", null);
+  if (options.roads) {
+    const road = rel(db, "osm_roads", "2026-09-30", { rights: { attribution: "© OpenStreetMap contributors" } });
+    const line = (stableId, points, hierarchy = "국지") => insertFeature(db, {
+      stableId: `road:${stableId}`,
+      kind: "road",
+      sourceKey: stableId,
+      releaseId: road,
+      geometry: { type: "LineString", coordinates: points.map(([dx, dy]) => at(dx, dy)) },
+      properties: { osmId: stableId, fclass: "residential", hierarchy, name: null },
+    });
+    for (const dy of [-200, 0, 200]) line(`h${dy}`, [[-600, dy], [600, dy]]);
+    for (const dx of [-200, 0, 200]) line(`v${dx}`, [[dx, -600], [dx, 600]]);
+    line("walk", [[-100, -200], [-100, 0]], "보행·자전거");
+    run(db, "osm_roads", road, { byRegion: { "41": 7 }, byType: { 국지: 6, "보행·자전거": 1 }, fillRates: {}, unlocated: 0 }, 0, 7);
+  }
   const sp = (id, dx, code, major, mid) =>
     insertFeature(db, { stableId: `store:${id}`, kind: "store", sourceKey: id, releaseId: store, geometry: pt(dx, 0), name: id, properties: { majorCategory: major, midCategory: mid, minorCategory: "x", categoryCode: code, floor: null, address: null } });
   sp("cvs", 100, "G20405", "소매", "종합 소매");
