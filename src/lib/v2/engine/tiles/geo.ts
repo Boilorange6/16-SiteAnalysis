@@ -54,6 +54,45 @@ export function sampleLine(center: LngLat, g: Geometry, radiusM: number, stepM: 
   return out;
 }
 
+/** EPSG:5179 선분과 반경 원이 교차하는 실제 길이. 표본점 개수로 근사하지 않는다. */
+export function lineLengthInCircle(center: LngLat, radiusM: number, g: Geometry): number {
+  if (!Number.isFinite(radiusM) || radiusM < 0) return 0;
+  const [cx, cy] = toUtmk(center);
+  let total = 0;
+  for (const part of lineParts(g)) {
+    for (let i = 1; i < part.length; i++) {
+      const [ax, ay] = part[i - 1];
+      const [bx, by] = part[i];
+      const dx = bx - ax;
+      const dy = by - ay;
+      const len = Math.hypot(dx, dy);
+      if (len === 0) continue;
+      const fx = ax - cx;
+      const fy = ay - cy;
+      const qa = dx * dx + dy * dy;
+      const qb = 2 * (fx * dx + fy * dy);
+      const qc = fx * fx + fy * fy - radiusM * radiusM;
+      const discriminant = qb * qb - 4 * qa * qc;
+      const cuts = [0, 1];
+      if (discriminant >= 0) {
+        const root = Math.sqrt(Math.max(0, discriminant));
+        cuts.push((-qb - root) / (2 * qa), (-qb + root) / (2 * qa));
+      }
+      cuts.sort((a, b) => a - b);
+      for (let j = 1; j < cuts.length; j++) {
+        const from = Math.max(0, cuts[j - 1]);
+        const to = Math.min(1, cuts[j]);
+        if (to <= from) continue;
+        const t = (from + to) / 2;
+        const x = fx + t * dx;
+        const y = fy + t * dy;
+        if (x * x + y * y <= radiusM * radiusM + 1e-7) total += (to - from) * len;
+      }
+    }
+  }
+  return total;
+}
+
 // ── 면(폴리곤) 보조: 지도 전송용 단순화와 반경 원 절단 ──
 
 /** 닫힌 고리를 Douglas–Peucker로 maxVertices(닫는 점 포함) 이하로 줄인다. 순수 함수, 좌표 단위 무관. */

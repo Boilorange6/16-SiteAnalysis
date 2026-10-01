@@ -6,7 +6,7 @@
 import { readdirSync, statSync, existsSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 
-const { extractAll } = await import("../../lib/v2/ingest/unzip.ts");
+const { extractAll, extractSelected } = await import("../../lib/v2/ingest/unzip.ts");
 const { latestShpPerSido, partCounts } = await import("../../lib/v2/ingest/shp-parts.ts");
 const { readShp, readShpPoints } = await import("../../lib/v2/ingest/shp.ts");
 const { csvRecords } = await import("../../lib/v2/a0/measure.ts");
@@ -19,6 +19,7 @@ const { buildLedger } = await import("../../lib/v2/ingest/sources/ledger.ts");
 const { buildPointSource, STORE_SPEC, BUS_STOP_SPEC, PARK_SPEC } = await import("../../lib/v2/ingest/sources/points.ts");
 const { buildSupply, readLegacyPlannedHousing } = await import("../../lib/v2/ingest/sources/supply.ts");
 const { buildOsmSubway, buildPlannedRail, legalCodeFromCore } = await import("../../lib/v2/ingest/sources/rail.ts");
+const { buildOsmRoads, OSM_ROADS_LAYER, OSM_ROADS_RIGHTS } = await import("../../lib/v2/ingest/sources/osm-roads.ts");
 const { legacyDbPath, v2DataDir } = await import("../../lib/v2/paths.ts");
 
 const args = process.argv.slice(2);
@@ -213,6 +214,51 @@ if (only.has("reference")) {
       await one(PARK_SPEC, "park", /^park.*\.csv$/i, "지방자치단체(전국도시공원정보표준데이터)", "https://www.data.go.kr/data/15012890/standard.do"),
       ...rail,
     ];
+  };
+}
+
+// OSM Geofabrik free shapefile(reference): dl.done이 있는 완성 zip만 선택 추출하고 도로 layer만 적재한다.
+const osmDir = join(raw, "osm");
+const osmRoadShp = () => [...walk(osmDir)].find((file) => basename(file).toLowerCase() === `${OSM_ROADS_LAYER}.shp`.toLowerCase()) ?? null;
+const osmArchive = () => [...walk(osmDir)].filter((file) => /\.zip$/i.test(file)).sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0] ?? null;
+const osmAsOf = (file) => {
+  const long = asOfOf(file);
+  if (long) return long;
+  const m = basename(file).match(/(?:^|-)(\d{2})(\d{2})(\d{2})(?:-|\.)/);
+  return m ? `20${m[1]}-${m[2]}-${m[3]}` : null;
+};
+if (builders.reference && existsSync(osmDir)) {
+  const base = builders.reference;
+  builders.reference = async (db, ctx) => {
+    const built = await base(db, ctx);
+    let roadsFile = osmRoadShp();
+    if (!roadsFile) {
+      if (!existsSync(join(osmDir, "dl.done"))) {
+        console.log("osm_roads: dl.done 없음 — 다운로드 완료 후 도로 적재를 건너뜁니다");
+        return built;
+      }
+      const extracted = extractSelected(osmDir, (entry) => new RegExp(`(?:^|/)${OSM_ROADS_LAYER}\\.(?:shp|dbf|prj|cpg)$`, "i").test(entry.replace(/\\/g, "/")));
+      roadsFile = osmRoadShp();
+      console.log(`osm_roads: roads layer sidecars ${extracted.length ? "선택 추출" : "기존 추출본 사용"}`);
+    }
+    if (!roadsFile) {
+      console.log(`osm_roads: ${OSM_ROADS_LAYER}.shp 없음 — 도로 적재 건너뜀`);
+      return built;
+    }
+    const archive = osmArchive() ?? roadsFile;
+    const st = statSync(archive);
+    const releaseId = insertRelease(db, {
+      sourceId: "osm_roads",
+      provider: "OpenStreetMap (Geofabrik free shapefile extract)",
+      sourceUrl: "https://download.geofabrik.de/asia/south-korea.html",
+      sourceAsOf: osmAsOf(archive),
+      fetchedAt: st.mtime.toISOString(),
+      checksum: `size-mtime:${st.size}-${Math.round(st.mtimeMs)}`,
+      licenseCode: "ODbL-1.0",
+      rights: OSM_ROADS_RIGHTS,
+    });
+    const stats = await buildOsmRoads(db, readShp(roadsFile), releaseId, { legalCodeOf: legalCodeFromCore(ctx.core) });
+    return [...built, stats];
   };
 }
 if (only.has("market")) {
