@@ -10,16 +10,21 @@ import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import styles from "@/components/v2/board.module.css";
 import { SUMMARY_ID, boardReducer, demoFinished, demoPhase, initBoard, reportPages, viewOf } from "@/lib/v2/ui/board-state";
 import { buildReportPlan, complexCounts, reportFileName } from "@/lib/v2/report/report-plan";
+import { downloadBytes, EXPORT_MIME } from "@/lib/v2/export/download";
 import { DEFAULT_CALLOUT_MODE } from "@/lib/v2/ui/callout-layout";
+import { stackView } from "@/lib/v2/ui/stack";
+import { sheetView } from "@/lib/v2/ui/sheet";
 import { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } from "@/lib/v2/ui/fixtures/godeok";
 import { toSummaryView, toTileView, type SiteSummary } from "@/lib/v2/ui/tile-view";
 import type { TileResult } from "@/lib/v2/tile-result";
+import type { Scene } from "@/lib/v2/scene";
 
 const UNDO_LABEL ={ order: "옮김", size: "크기 바꿈", remove: "삭제됨", add: "더함" } as const;
 
 type BoardProps = {
   baseResults: TileResult[];
   siteSummary: SiteSummary;
+  scene: Scene | null;
   /** true면 예시 데이터(실제 분석 전) */
   demo: boolean;
   /** 분석 요청 중 — 모든 타일이 계산 중으로 보인다 */
@@ -30,13 +35,15 @@ type BoardProps = {
 };
 
 /** 타일 보드. 결과가 바뀌면 부모가 key를 바꿔 새로 만든다. */
-function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: BoardProps) {
+function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun }: BoardProps) {
   const [overrides, setOverrides] = useState<Record<string, TileResult>>({});
   const results = useMemo(() => baseResults.map((r) => overrides[r.tileId] ?? r), [baseResults, overrides]);
   const [board, dispatch] = useReducer(boardReducer, baseResults, initBoard);
   const [editing, setEditing] = useState(false);
   const [demoStep, setDemoStep] = useState<number | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [stackSelection, setStackSelection] = useState<string[]>([]);
+  const [sheetSelection, setSheetSelection] = useState<string[]>([]);
   const [note, setNote] = useState(""); // 스크린리더 안내(aria-live)
   const [basemap, setBasemap] = useState<BasemapChoice>("white"); // 보드 상태(서버에 저장하지 않음). 화면과 PPT가 같이 따른다
   const gridRef = useRef<HTMLDivElement>(null);
@@ -45,7 +52,27 @@ function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: Boar
     setNote(`${views.get(id)?.title} 타일을 ${to + 1}번째로 옮김`);
   });
 
-  const views = useMemo(() => new Map(results.map((r) => [r.tileId, toTileView(r)])), [results]);
+  const baseViews = useMemo(() => new Map(results.map((r) => [r.tileId, toTileView(r, scene)])), [results, scene]);
+  const views = useMemo(() => {
+    const next = new Map(baseViews);
+    for (const [id, layers] of Object.entries(board.stacks)) {
+      const layerViews = layers.map((layerId) => baseViews.get(layerId)).filter((view): view is NonNullable<typeof view> => !!view);
+      if (layerViews.length > 0) next.set(id, stackView(id, layerViews));
+    }
+    for (const [id, spec] of Object.entries(board.sheets)) {
+      const tileViews = spec.tiles.map((tileId) => next.get(tileId)).filter((view): view is NonNullable<typeof view> => !!view);
+      if (tileViews.length > 0) next.set(id, sheetView(id, tileViews, spec.grid));
+    }
+    return next;
+  }, [baseViews, board.sheets, board.stacks]);
+  const stackableIds = useMemo(
+    () => board.order.filter((id) => {
+      const view = baseViews.get(id);
+      return !!view && (view.kindLabel === "분석" || view.kindLabel === "도판") && !Object.values(board.stacks).some((layers) => layers.includes(id));
+    }),
+    [baseViews, board.order, board.stacks],
+  );
+  const sheetableIds = useMemo(() => board.order.filter((id) => views.has(id) && views.get(id)!.code !== "SHEET"), [board.order, views]);
   const summary = useMemo(() => toSummaryView(siteSummary, results), [siteSummary, results]);
   const { tiles } = reportPages(board, complexCounts(views));
   const total = board.order.length;
@@ -59,12 +86,30 @@ function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: Boar
       // 지도 그림은 브라우저에서 SVG → PNG로 만든다. 못 만들면 자리표시로 계속한다.
       const { buildMapImages } = await import("@/lib/v2/report/map-image");
       const bytes = await renderReportPptx(reportPlan, await buildMapImages(reportPlan, basemap).catch(() => ({})));
-      const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/vnd.openxmlformats-officedocument.presentationml.presentation" }));
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = reportFileName(siteSummary.address, analysisDate);
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      downloadBytes(reportFileName(siteSummary.address, analysisDate), bytes, EXPORT_MIME.pptx);
+    } finally {
+      setMaking(false);
+    }
+  };
+
+  const makeDxf = async (origin: "site" | "utmk" = "site") => {
+    if (!scene) return;
+    setMaking(true);
+    try {
+      const { dxfFileName, sceneToDxf } = await import("@/lib/v2/export/dxf");
+      const dxf = sceneToDxf(scene, { origin });
+      downloadBytes(dxfFileName(siteSummary.address, analysisDate), dxf, EXPORT_MIME.dxf);
+    } finally {
+      setMaking(false);
+    }
+  };
+
+  const makeGlb = async () => {
+    if (!scene) return;
+    setMaking(true);
+    try {
+      const { glbFileName, sceneToGlb } = await import("@/lib/v2/export/glb");
+      downloadBytes(glbFileName(siteSummary.address, analysisDate), sceneToGlb(scene), EXPORT_MIME.glb);
     } finally {
       setMaking(false);
     }
@@ -97,7 +142,50 @@ function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: Boar
         <header className={styles.topbar}>
           <span className={`${styles.display} ${styles.brand}`}>{editing ? "보드 편집" : "사이트 분석"}</span>
           {editing ? (
-            <span className={styles.editHint}>순서를 바꾸거나 빼세요. 순서는 보고서 순서가 됩니다.</span>
+            <>
+              <span className={styles.editHint}>순서를 바꾸거나 빼세요. 순서는 보고서 순서가 됩니다.</span>
+              {stackSelection.length >= 2 && (
+                <button
+                  type="button"
+                  className={styles.pill}
+                  onClick={() => {
+                    dispatch({ type: "stack", layers: stackSelection });
+                    setStackSelection([]);
+                    setNote(`${stackSelection.length}개 층으로 스택을 만듦`);
+                  }}
+                >
+                  스택 만들기 · {stackSelection.length}층
+                </button>
+              )}
+              {sheetSelection.length >= 2 && (
+                <>
+                  <button
+                    type="button"
+                    className={styles.pill}
+                    disabled={sheetSelection.length > 4}
+                    onClick={() => {
+                      dispatch({ type: "sheet", tiles: sheetSelection, grid: "2x2" });
+                      setSheetSelection([]);
+                      setNote(`${sheetSelection.length}개 타일로 2×2 조판을 만듦`);
+                    }}
+                  >
+                    조판 만들기(2×2)
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.pill}
+                    disabled={sheetSelection.length > 6}
+                    onClick={() => {
+                      dispatch({ type: "sheet", tiles: sheetSelection, grid: "3x2" });
+                      setSheetSelection([]);
+                      setNote(`${sheetSelection.length}개 타일로 3×2 조판을 만듦`);
+                    }}
+                  >
+                    조판 만들기(3×2)
+                  </button>
+                </>
+              )}
+            </>
           ) : (
             <span className={styles.topTitle}>
               {siteSummary.address} · {summary.radius}
@@ -144,9 +232,38 @@ function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: Boar
                 보드 편집
               </button>
               <span className={styles.reportHint}>표지 1 + 타일 {tiles}</span>
-              <button type="button" className={`${styles.pill} ${styles.pillDark}`} onClick={makeReport} disabled={making || demoOn || busy} aria-busy={making}>
-                {making ? "만드는 중…" : `보고서 만들기 · ${reportPlan.length}장`}
-              </button>
+              {demo ? (
+                <button type="button" className={`${styles.pill} ${styles.pillDark}`} disabled title="실제 분석 후 사용">
+                  내보내기 ▾
+                </button>
+              ) : (
+                <details style={{ position: "relative" }}>
+                  <summary className={`${styles.pill} ${styles.pillDark}`} style={{ cursor: busy || making ? "not-allowed" : "pointer", listStyle: "none" }}>
+                    {making ? "내보내는 중…" : "내보내기 ▾"}
+                  </summary>
+                  <div
+                    role="menu"
+                    aria-label="내보내기 형식"
+                    style={{ position: "absolute", zIndex: 20, right: 0, top: "calc(100% + 8px)", minWidth: 250, padding: 10, borderRadius: 14, background: "#fff", boxShadow: "0 12px 32px rgba(0,0,0,.16)", display: "grid", gap: 6 }}
+                  >
+                    <button type="button" className={styles.pill} onClick={() => void makeReport()} disabled={making || busy}>
+                      PPT · {reportPlan.length}장
+                    </button>
+                    <button type="button" className={styles.pill} onClick={() => void makeDxf("site")} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "대지 중심 원점"}>
+                      DXF · 대지 중심
+                    </button>
+                    <button type="button" className={styles.pill} onClick={() => void makeDxf("utmk")} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "UTM-K 절대 좌표"}>
+                      DXF · UTM-K
+                    </button>
+                    <button type="button" className={styles.pill} onClick={() => void makeGlb()} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "GLB 내보내기"}>
+                      GLB
+                    </button>
+                    <p style={{ margin: "4px 2px 0", fontSize: 11, lineHeight: 1.4, color: "#5B606B" }}>
+                      DXF·GLB: 건물·필지·대지·반경. 래스터(항공사진·인구 격자·시뮬레이션 결과)는 대상 아님
+                    </p>
+                  </div>
+                </details>
+              )}
             </>
           )}
         </header>
@@ -201,6 +318,22 @@ function Board({ baseResults, siteSummary, demo, busy, controls, onRerun }: Boar
                     setNote(`${view.title} 타일을 ${oi + dir + 1}번째로 옮김`);
                   }}
                   onRetry={() => retry(id, view.code)}
+                  stackable={stackableIds.includes(id)}
+                  stackSelected={stackSelection.includes(id)}
+                  onStackToggle={(selected) => setStackSelection((current) => selected ? [...new Set([...current, id])] : current.filter((selectedId) => selectedId !== id))}
+                  onUnstack={view.code === "STACK" ? () => {
+                    dispatch({ type: "unstack", id });
+                    setStackSelection((current) => current.filter((selectedId) => selectedId !== id));
+                    setNote(`${view.title}을 풀음`);
+                  } : undefined}
+                  sheetable={sheetableIds.includes(id)}
+                  sheetSelected={sheetSelection.includes(id)}
+                  onSheetToggle={(selected) => setSheetSelection((current) => selected ? [...new Set([...current, id])] : current.filter((selectedId) => selectedId !== id))}
+                  onUnsheet={view.code === "SHEET" ? () => {
+                    dispatch({ type: "unsheet", id });
+                    setSheetSelection((current) => current.filter((selectedId) => selectedId !== id));
+                    setNote(`${view.title}을 풀음`);
+                  } : undefined}
                 />
               </Fragment>
             );
@@ -273,7 +406,7 @@ const RADII = [
 ] as const;
 const API = "/site/api/v2/analyses";
 
-type Live = { analysisId: string; summary: SiteSummary; results: TileResult[] };
+type Live = { analysisId: string; summary: SiteSummary; results: TileResult[]; scene: Scene | null };
 type Problem = { text: string; login: boolean };
 
 /** 주소 입력 → 분석 → 실제 결과 보드. 분석 전에는 예시 보드를 그대로 보여 준다. */
@@ -288,7 +421,14 @@ export default function V2BoardPage() {
     const body = (await res.json().catch(() => ({}))) as Partial<Live> & { error?: string };
     if (res.status === 401) return setProblem({ text: "로그인이 필요합니다.", login: true });
     if (!res.ok || !body.analysisId) return setProblem({ text: body.error ?? "분석하지 못했습니다. 잠시 뒤 다시 시도해 주세요.", login: false });
-    setLive(body as Live);
+    let scene: Scene | null = null;
+    try {
+      const sceneRes = await fetch(`${API}/${encodeURIComponent(body.analysisId)}/scene`);
+      if (sceneRes.ok) scene = (await sceneRes.json()) as Scene;
+    } catch {
+      // 장면이 없어도 분석 결과 보드는 계속 연다. S01은 빈 매스 틀을 표시한다.
+    }
+    setLive({ ...(body as Omit<Live, "scene">), scene });
     history.replaceState(null, "", `?analysis=${body.analysisId}`);
     return undefined;
   }
@@ -370,6 +510,7 @@ export default function V2BoardPage() {
       key={live?.analysisId ?? "demo"}
       baseResults={live?.results ?? GODEOK_RESULTS}
       siteSummary={live?.summary ?? GODEOK_SUMMARY}
+      scene={live?.scene ?? null}
       demo={!live}
       busy={busy}
       controls={controls}

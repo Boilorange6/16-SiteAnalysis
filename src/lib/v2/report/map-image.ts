@@ -7,7 +7,10 @@ import { createElement } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import MapFigure, { type MapFigureProps } from "@/components/v2/map-figure";
+import MassFigure from "@/components/v2/mass-figure";
 import type { MapModel } from "../ui/map-layers";
+import type { MassCamera, MassModel } from "../ui/mass-projection";
+import type { Scene } from "../scene";
 import { SLIDE, slideLayout, slideReserved, slideSiteX, slideLegend } from "../ui/overlay-layout";
 import { BASEMAP_STACK, framedViewport, tilesFor, tileUrl, type BasemapChoice } from "../ui/map-projection";
 import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
@@ -20,7 +23,7 @@ const VIEW_H = 540;
 const OUT_W = 1920;
 const OUT_H = 1080;
 const PX_PER_INCH = VIEW_W / SLIDE.w;
-type Extra = Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "scale">;
+type Extra = Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "scale" | "legend" | "bare">;
 const TILE_TIMEOUT_MS = 8000;
 
 const blobToDataUrl = (b: Blob) =>
@@ -63,7 +66,8 @@ function svgOf(model: MapModel, tiles: Map<string, string>, layer: BasemapChoice
           tileHref: (u: string) => tiles.get(u),
           label: "분석 반경 지도",
           // 범례·북쪽·저작권은 슬라이드의 판/출처 띠가 대신한다 (축척만 그림 안, 출처 띠 위)
-          legend: false,
+          legend: extra.legend ?? false,
+          bare: extra.bare,
           north: false,
           credit: false,
           bottomInset: slideLayout().strip.h * PX_PER_INCH,
@@ -71,6 +75,17 @@ function svgOf(model: MapModel, tiles: Map<string, string>, layer: BasemapChoice
         }),
       ),
     );
+    return host.innerHTML;
+  } finally {
+    root.unmount();
+  }
+}
+
+function svgOfMass(mass: MassModel, width: number, height: number): string {
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  try {
+    flushSync(() => root.render(createElement(MassFigure, { scene: mass.scene, camera: mass.camera, width, height, fixed: true })));
     return host.innerHTML;
   } finally {
     root.unmount();
@@ -116,6 +131,15 @@ export async function rasterizeMap(model: MapModel, tileCache: Map<string, strin
   return toPng(svgOf(model, got, layer, extra));
 }
 
+export function rasterizeMass(mass: MassModel): Promise<string>;
+export function rasterizeMass(scene: Scene | null, camera: MassCamera, width?: number, height?: number): Promise<string>;
+export async function rasterizeMass(sceneOrMass: Scene | MassModel | null, camera?: MassCamera, width = VIEW_W, height = VIEW_H): Promise<string> {
+  const mass: MassModel = camera
+    ? { scene: sceneOrMass as Scene | null, camera }
+    : (sceneOrMass as MassModel);
+  return toPng(svgOfMass(mass, width, height));
+}
+
 /** 슬라이드마다 다른 오버레이 자리를 피하게 한다 (표지·출처는 지도 가운데, 타일은 오른쪽 정보 판을 뺀 영역) */
 function extraFor(p: PlannedSlide, model: MapModel): Extra {
   if (p.kind !== "tile") return { avoid: slideReserved(PX_PER_INCH, { info: false }) };
@@ -133,9 +157,29 @@ export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice 
   const cache = new Map<string, string | null>();
   const out: MapImages = {};
   for (const p of plan) {
+    if (p.kind === "sheet") {
+      for (const cell of p.cells) {
+        if (!cell.view.map || out[cell.mapKey]) continue;
+        try {
+          out[cell.mapKey] = await rasterizeMap(cell.view.map, cache, layer, { siteX: 0.5, avoid: [], legend: true, bare: false });
+        } catch (e) {
+          console.warn(`조판 셀 이미지 생성 실패 (${cell.mapKey})`, e);
+        }
+      }
+      continue;
+    }
     const key = mapKeyOf(p);
+    if (!key || out[key]) continue;
+    if (p.kind === "tile" && p.mass) {
+      try {
+        out[key] = await rasterizeMass(p.mass);
+      } catch (e) {
+        console.warn(`매스 이미지 생성 실패 (${key})`, e);
+      }
+      continue;
+    }
     const model = p.map;
-    if (!key || !model || out[key]) continue;
+    if (!model) continue;
     try {
       out[key] = await rasterizeMap(model, cache, layer, extraFor(p, model));
     } catch (e) {

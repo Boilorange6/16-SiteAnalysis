@@ -6,6 +6,8 @@ import type { BoardState } from "../ui/board-state";
 import { calloutReportPages, DEFAULT_CALLOUT_MODE, pageCount } from "../ui/callout-layout";
 import type { MapModel } from "../ui/map-layers";
 import type { CalloutModel, SummaryView, TileView } from "../ui/tile-view";
+import type { MassModel } from "../ui/mass-projection";
+import type { SheetGrid } from "../ui/sheet";
 import { FACE_TEXT } from "../ui/tile-view";
 
 export type TileSlideBody =
@@ -32,8 +34,16 @@ export type ReportSlide =
       map: MapModel | null;
       /** true면 지도를 흐리게 (상태 화면) */
       muted: boolean;
+      /** S01 축측 매스 이미지. PPT에는 3D 파일 자체를 넣지 않는다. */
+      mass?: MassModel;
       /** 주변 단지 설명선 장: page 0 = 개요, 1.. = 설명표 (지도 이미지는 단지 없이, 점·지시선·표는 pptx 도형) */
       callout?: { model: CalloutModel; page: number; pages: number };
+    }
+  | {
+      kind: "sheet";
+      view: TileView;
+      grid: SheetGrid;
+      cells: Array<{ view: TileView; face: "front" | "back"; mapKey: string }>;
     }
   | { kind: "sources"; rows: { source: string; asOf: string; tiles: string }[]; /** 배경(흐린 대지 지도) */ map: MapModel | null };
 
@@ -41,8 +51,15 @@ export type PlannedSlide = ReportSlide & { no: number; total: number; footer: st
 
 /** 지도 이미지 키: 표지는 "cover", 타일 장은 tileId */
 export const COVER_MAP_KEY = "cover";
-export const mapKeyOf = (p: PlannedSlide): string | null =>
-  p.kind === "tile" ? (p.map ? (p.callout && p.callout.page > 0 ? `${p.view.tileId}:cp` : p.view.tileId) : null) : p.map ? COVER_MAP_KEY : null;
+export const mapKeysOf = (p: PlannedSlide): string[] => {
+  if (p.kind === "sheet") return p.cells.map((cell) => cell.mapKey);
+  if (p.kind === "tile") {
+    if (p.mass) return [`${p.view.tileId}:mass`];
+    return p.map ? [p.callout && p.callout.page > 0 ? `${p.view.tileId}:cp` : p.view.tileId] : [];
+  }
+  return p.map ? [COVER_MAP_KEY] : [];
+};
+export const mapKeyOf = (p: PlannedSlide): string | null => mapKeysOf(p)[0] ?? null;
 
 const STATE_MESSAGE: Record<string, string> = {
   failed: "계산 실패 — 보고서에는 결과 없이 표시합니다",
@@ -101,6 +118,24 @@ export function buildReportPlan(input: {
   });
 
   for (const v of tiles) {
+    if (v.code === "SHEET" && v.sheetTiles && v.sheetGrid) {
+      const cells = v.sheetTiles
+        .map((id) => views.get(id))
+        .filter((cell): cell is TileView => !!cell)
+        .map((cell) => ({
+          view: cell,
+          face: cell.hasFace && board.faces[cell.tileId] === "back" ? "back" as const : "front" as const,
+          mapKey: `${cell.tileId}:cell`,
+        }));
+      raw.push({
+        kind: "sheet",
+        view: v,
+        grid: v.sheetGrid,
+        cells,
+        footer: v.sourceLine === "출처 없음" ? "출처 없음 · 기준일 해당 없음" : `출처 ${v.sourceLine}`,
+      });
+      continue;
+    }
     if (v.callout && hasResult(v)) {
       // 설명선 타일: 개요 1장 + 설명표 장 (설정: 개요만 / 상위 10 / 전체). 장수는 board-state.reportPages와 같은 함수
       const cm = v.callout;
@@ -123,14 +158,16 @@ export function buildReportPlan(input: {
     for (const face of faces) {
       const message = STATE_MESSAGE[v.status];
       const result = hasResult(v);
+      const mass = v.mass ?? undefined;
       raw.push({
         kind: "tile",
         view: v,
         body: hasResult(v) ? { kind: "result", face } : { kind: "state", face, message: message ?? "결과 없음 — 보고서에는 결과 없이 표시합니다" },
-        faceLabel: v.hasFace ? FACE_TEXT[face === "front" ? "front" : "back"] : null,
+        faceLabel: v.code === "STACK" ? "스택" : v.hasFace ? FACE_TEXT[face === "front" ? "front" : "back"] : null,
         // 모든 장은 지도(또는 주 시각물)가 전면: 지도 없는 결과는 지물 없는 대지 지도, 상태 장은 흐린 대지 지도
-        map: !result ? v.backdrop : v.hasFace && face === "back" ? null : (v.map ?? v.backdrop),
+        map: mass ? null : !result ? v.backdrop : v.hasFace && face === "back" ? null : (v.map ?? v.backdrop),
         muted: !result,
+        ...(mass ? { mass } : {}),
         footer: v.sourceLine === "출처 없음" ? "출처 없음 · 기준일 해당 없음" : `출처 ${v.sourceLine}`,
       });
     }

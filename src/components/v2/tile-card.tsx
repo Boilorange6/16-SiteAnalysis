@@ -5,6 +5,7 @@ import type { CardFace, DemoPhase, TileSize } from "@/lib/v2/ui/board-state";
 import { STRIP_COLORS } from "@/lib/v2/ui/map-layers";
 import { OV, badgesToShow, cardReserved, stripText } from "@/lib/v2/ui/overlay-layout";
 import { faceLabel, type Badge, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
+import MassFigure from "./mass-figure";
 import CalloutMap, { CalloutPill } from "./callout-map";
 import MapBox from "./map-box";
 import styles from "./board.module.css";
@@ -184,6 +185,9 @@ export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, p
   const card = frame === "card";
   const label = `${view.title} 지도`;
   if (state) return <MapBox model={view.backdrop} muted legend={false} north={false} scale={false} credit={false} label={label} siteX={siteX} />;
+  if (view.code === "S01" && view.mass) {
+    return <MassFigure scene={view.mass.scene} camera={view.mass.camera} width={960} height={540} label={label} />;
+  }
   if (view.callout) return <CalloutMap model={view.callout} kind={frame} page={page} onPage={onPage} label={label} />;
   return (
     <MapBox
@@ -227,6 +231,14 @@ export type TileCardProps = {
   onRemove: () => void;
   onMove: (dir: -1 | 1) => void;
   onRetry: () => void;
+  stackable?: boolean;
+  stackSelected?: boolean;
+  onStackToggle?: (selected: boolean) => void;
+  onUnstack?: () => void;
+  sheetable?: boolean;
+  sheetSelected?: boolean;
+  onSheetToggle?: (selected: boolean) => void;
+  onUnsheet?: () => void;
 };
 
 const INTERACTIVE = "button,input,label,a,select,[data-handle]";
@@ -248,6 +260,20 @@ function SummaryFace({ p, state, waiting, onFlip }: { p: TileCardProps; state: b
         <span className={styles.dot} style={{ background: view.color }} />
         <h3 className={styles.title}>{view.title}</h3>
         <span className={styles.kindTag}>{view.kindLabel}</span>
+        {view.stackLayers && <span className={styles.kindTag}>{view.stackLayers.join(" + ")}</span>}
+        {view.sheetGrid && <span className={styles.kindTag}>{view.sheetGrid}</span>}
+        {p.editing && p.stackable && p.onStackToggle && (
+          <label className={styles.check}>
+            <input type="checkbox" checked={!!p.stackSelected} onChange={(e) => p.onStackToggle!(e.target.checked)} aria-label={`${view.title} 스택에 넣기`} />
+            스택에 넣기
+          </label>
+        )}
+        {p.editing && p.sheetable && p.onSheetToggle && (
+          <label className={styles.check}>
+            <input type="checkbox" checked={!!p.sheetSelected} onChange={(e) => p.onSheetToggle!(e.target.checked)} aria-label={`${view.title} 조판에 넣기`} />
+            조판에 넣기
+          </label>
+        )}
         {!waiting && (
           <>
             <label className={styles.check}>
@@ -298,6 +324,16 @@ function SummaryFace({ p, state, waiting, onFlip }: { p: TileCardProps; state: b
                 </button>
               ))}
             </span>
+            {view.code === "STACK" && p.onUnstack && (
+              <button type="button" className={styles.iconBtn} onClick={p.onUnstack} aria-label={`${view.title} 풀기`}>
+                풀기
+              </button>
+            )}
+            {view.code === "SHEET" && p.onUnsheet && (
+              <button type="button" className={styles.iconBtn} onClick={p.onUnsheet} aria-label={`${view.title} 풀기`}>
+                풀기
+              </button>
+            )}
             <button type="button" className={styles.iconBtn} onClick={p.onRemove} aria-label={`${view.title} 제거`}>
               ×
             </button>
@@ -371,7 +407,14 @@ export default function TileCard(p: TileCardProps) {
         <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="card" />
       </div>
 
-      <TitleChip view={view} />
+      <TitleChip
+        view={view}
+        tail={
+          view.stackLayers || view.sheetGrid ? (
+            <span className={styles.kindTag}>{view.stackLayers ? view.stackLayers.join(" + ") : view.sheetGrid}</span>
+          ) : undefined
+        }
+      />
 
       {!waiting && (
         <div className={styles.ovTR}>
