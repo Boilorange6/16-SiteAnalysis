@@ -1,9 +1,11 @@
-/** A01 입지·대중교통 — 버스정류장 + 철도(운영역·출입구·노선, 적재돼 있을 때). 거리는 직선. 철도와 버스 등급은 합치지 않는다. */
+/** A01 입지·대중교통 — 버스정류장 + 철도(운영역·출입구·노선, 적재돼 있을 때). 등급은 직선, 도보 지표는 보행망 라우팅으로 분리한다. */
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
 import type { FeatureHit } from "../../data/features";
-import { candidate, fmt, makeTile, missing, nearestHit, nearestM, noDataTile, obs, type MapCandidate, type TileDraft } from "./common";
+import { toUtmk } from "../../crs";
+import { candidate, fmt, hitPoint, lineCandidate, makeTile, missing, nearestHit, nearestM, noDataTile, obs, type LineCandidate, type MapCandidate, type TileDraft } from "./common";
 import { sampleLine } from "./geo";
+import { walkField, walkSources, type WalkField, type WalkRoute } from "./walk-shared";
 
 export const A01_CRITERIA = "버스정류장 직선 300m 이하 좋음 · 600m 이하 보통 · 초과 주의";
 export const RAIL_CRITERIA = "철도역 직선 500m 이하 좋음 · 1,000m 이하 보통 · 초과 주의";
@@ -47,6 +49,61 @@ interface RailStation {
   entrances: FeatureHit[];
 }
 
+interface WalkTarget {
+  hit: FeatureHit;
+  route: WalkRoute;
+}
+
+/** 보행망의 정점 스냅·Dijkstra 결과 중 최단 경로를 고른다. 직선 최근접과는 별개다. */
+function nearestWalkTarget(field: WalkField | null, hits: FeatureHit[]): WalkTarget | null {
+  if (!field) return null;
+  let best: WalkTarget | null = null;
+  for (const hit of hits) {
+    const route = field.distTo(toUtmk(hitPoint(hit)));
+    if (!route) continue;
+    if (best === null || route.distanceM < best.route.distanceM || (route.distanceM === best.route.distanceM && hit.featureId < best.hit.featureId)) {
+      best = { hit, route };
+    }
+  }
+  return best;
+}
+
+function walkMetrics(prefix: string, label: string, target: WalkTarget | null): TileDraft["metrics"] {
+  const formula = "a01-walk-nearest@1:OSM 보행망·80 m/분·정점 스냅";
+  return target
+    ? [
+        obs(`${prefix}_m`, `${label} 거리`, Math.round(target.route.distanceM), "m", formula),
+        obs(`${prefix}_min`, `${label} 도보시간`, target.route.minutes, "분", formula),
+      ]
+    : [
+        missing(`${prefix}_m`, `${label} 거리`, "m", "a01-walk-nearest@0"),
+        missing(`${prefix}_min`, `${label} 도보시간`, "분", "a01-walk-nearest@0"),
+      ];
+}
+
+function walkSentence(hasRail: boolean, rail: WalkTarget | null, bus: WalkTarget | null): string {
+  if (!rail && !bus) return hasRail ? "실제 보행 경로는 확인 필요" : "철도·실제 보행 경로는 확인 필요";
+  const parts = [
+    ...(hasRail && !rail ? ["철도 경로 미확인"] : []),
+    ...(!hasRail ? ["철도 경로 미확인"] : []),
+    ...(rail ? [`철도 ${fmt(Math.round(rail.route.distanceM))}m·${rail.route.minutes}분`] : []),
+    ...(bus ? [`버스 ${fmt(Math.round(bus.route.distanceM))}m·${bus.route.minutes}분`] : []),
+  ];
+  return `보행망 도보(OSM, 80 m/분, 내부 제안 기준): ${parts.join(" · ")}`;
+}
+
+function addWalkLine(lines: LineCandidate[], target: WalkTarget | null, label: string): void {
+  if (!target) return;
+  const line = lineCandidate(
+    target.hit.featureId,
+    "walk_route",
+    target.route.path,
+    target.route.distanceM,
+    `${label} 도보 ${fmt(Math.round(target.route.distanceM))}m · ${target.route.minutes}분`,
+  );
+  if (line) lines.push(line);
+}
+
 /** 역마다 출입구(역명 일치)가 있으면 가장 가까운 출입구, 없으면 역 대표점 */
 function railStations(ctx: EngineContext, searchM: number): RailStation[] {
   const hits = ctx.hits("reference", ["rail_station", "rail_entrance"], searchM);
@@ -69,6 +126,7 @@ export function a01(ctx: EngineContext): TileResult {
   const sources = ctx.sources("reference", ["bus_stop"]);
   if (sources.length === 0) return noDataTile(ctx, "A01", ["bus_stop"]);
   const railSources = ctx.sources("reference", ["osm_subway"]);
+  const roadSources = walkSources(ctx);
   const hasRail = railSources.length > 0;
   const hits = ctx.hits("reference", ["bus_stop"]);
   const nearest = nearestM(hits.map((h) => h.distanceM));
@@ -79,6 +137,10 @@ export function a01(ctx: EngineContext): TileResult {
   const stations = hasRail ? railStations(ctx, searchM) : [];
   const inRadius = stations.filter((s) => s.best.dist <= radiusM);
   const railBest = stations.reduce<RailStation | null>((b, s) => (b === null || s.best.dist < b.best.dist || (s.best.dist === b.best.dist && s.hit.featureId < b.hit.featureId) ? s : b), null);
+  const walk = walkField(ctx);
+  const walkRailTargets = stations.flatMap((s) => (s.entrances.length > 0 ? s.entrances : [s.hit]));
+  const walkRail = nearestWalkTarget(walk, walkRailTargets);
+  const walkBus = nearestWalkTarget(walk, hits);
   const railM = railBest ? Math.round(railBest.best.dist) : null;
   const usesPoint = railBest?.best.isStationPoint ?? false;
   const lineRefs = [...new Set(inRadius.flatMap((s) => (Array.isArray(s.hit.properties.lineRefs) ? (s.hit.properties.lineRefs as unknown[]) : []).filter((r): r is string => typeof r === "string")))].sort();
@@ -94,16 +156,17 @@ export function a01(ctx: EngineContext): TileResult {
     busMetric,
     obs("bus_stops", "버스 정류장", hits.length, "개", "a01-bus-count@1"),
     missing("bus_routes", "경유 버스 노선", "개", "a01-bus-routes@0"),
+    ...walkMetrics("walk_nearest_rail", "보행망 최근접 철도역", hasRail ? walkRail : null),
+    ...walkMetrics("walk_nearest_bus", "보행망 최근접 버스정류장", walkBus),
   ];
   const busTxt = nearest === null ? "반경 안 정류장 없음" : `최근접 정류장 직선 ${nearest}m`;
   const busPhrase = nearest === null ? "버스 접근은 확인되지 않음" : PHRASE[gradeBus(nearest)];
   let judgment: TileResult["judgment"];
   if (!hasRail) {
-    const tail = "철도·실제 보행 경로는 확인 필요";
     judgment =
       nearest === null
-        ? { ruleId: "a01-bus-distance@1", basisMetricIds: ["bus_stops"], sentence: `반경 안 버스 정류장 없음 → 버스 접근은 확인되지 않음 → ${tail}`, level: null, criteria: null }
-        : { ruleId: "a01-bus-distance@1", basisMetricIds: ["nearest_bus_m"], sentence: `${busTxt} → ${busPhrase} → ${tail}`, level: gradeBus(nearest), criteria: A01_CRITERIA, grades: a01Grades(null, nearest).grades };
+        ? { ruleId: "a01-bus-distance@1", basisMetricIds: ["bus_stops"], sentence: `반경 안 버스 정류장 없음 → 버스 접근은 확인되지 않음 → ${walkSentence(false, null, walkBus)}`, level: null, criteria: null }
+        : { ruleId: "a01-bus-distance@1", basisMetricIds: ["nearest_bus_m"], sentence: `${busTxt} → ${busPhrase} → ${walkSentence(false, null, walkBus)}`, level: gradeBus(nearest), criteria: A01_CRITERIA, grades: a01Grades(null, nearest).grades };
   } else {
     const railTxt = railM === null ? `${searchTxt} 안 운영역 없음` : `최근접 ${usesPoint ? "역 대표점" : "역 출입구"} 직선 ${fmt(railM)}m`;
     const railPhrase = railM === null ? RAIL_PHRASE.caution : RAIL_PHRASE[gradeRail(railM)];
@@ -111,7 +174,7 @@ export function a01(ctx: EngineContext): TileResult {
     judgment = {
       ruleId: "a01-rail-bus-distance@1",
       basisMetricIds: [...(railM === null ? [] : ["nearest_rail_m"]), ...(nearest === null ? ["bus_stops"] : ["nearest_bus_m"])],
-      sentence: `${railTxt}, ${busTxt} → ${railPhrase}, ${busPhrase} → 실제 보행 경로는 확인 필요`,
+      sentence: `${railTxt}, ${busTxt} → ${railPhrase}, ${busPhrase} → ${walkSentence(true, walkRail, walkBus)}`,
       level: null,
       criteria: `${RAIL_CRITERIA} / ${A01_CRITERIA}`,
     };
@@ -119,6 +182,10 @@ export function a01(ctx: EngineContext): TileResult {
 
   const map: MapCandidate[] = hits.map((h) => (h === near ? candidate(h, "bus_nearest", { highlight: true, label: `직선 ${nearest}m` }) : candidate(h, "bus_stop")));
   const layers = ["bus_stop", "bus_nearest"];
+  const lines: LineCandidate[] = [];
+  addWalkLine(lines, walkRail, "철도");
+  addWalkLine(lines, walkBus, "버스");
+  if (lines.length > 0) layers.push("walk_route");
   const limitations: TileDraft["limitations"] = [];
   if (hasRail) {
     layers.push("rail_station", "rail_entrance", "rail_line", "rail_nearest");
@@ -142,8 +209,14 @@ export function a01(ctx: EngineContext): TileResult {
     limitations.push({ kind: "not_provided", note: "철도 자료 미적재 — 철도역 거리·역 수는 계산하지 못했습니다." });
   }
   limitations.push({ kind: "unknown", note: "정류장별 경유 노선 연결 자료가 없어 노선 수는 계산하지 못했습니다." });
+  if (roadSources.length === 0) {
+    limitations.push({ kind: "not_provided", note: "보행망 자료 미적재 — 거리·시간·경로를 계산하지 못했습니다." });
+  } else {
+    limitations.push({ kind: "unknown", note: "보행망 도보는 OSM 중심선·80 m/분·정점 스냅 기준이며 실제 입구·횡단·경사는 반영하지 않았습니다." });
+    limitations.push(...ctx.coverage("reference", ["osm_roads"]));
+  }
   limitations.push(...ctx.coverage("reference", ["bus_stop"]));
   if (hasRail) limitations.push(...ctx.coverage("reference", ["osm_subway"]));
 
-  return makeTile(ctx, { code: "A01", status: "partial", metrics, judgment, sources: [...sources, ...railSources], layers, map, limitations });
+  return makeTile(ctx, { code: "A01", status: "partial", metrics, judgment, sources: [...sources, ...railSources, ...roadSources], layers, map, lines, limitations });
 }

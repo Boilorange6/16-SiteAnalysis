@@ -3,9 +3,11 @@ import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-const { buildEngineFixture, CENTER } = await import("./engine-fixture.mjs");
+const Database = (await import("better-sqlite3")).default;
+const { buildEngineFixture, CENTER, at } = await import("./engine-fixture.mjs");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
+const { insertFeature } = await import("../../lib/v2/data/features.ts");
 const { a01, gradeRail } = await import("../../lib/v2/engine/tiles/a01.ts");
 const { a02 } = await import("../../lib/v2/engine/tiles/a02.ts");
 const { a05 } = await import("../../lib/v2/engine/tiles/a05.ts");
@@ -22,8 +24,9 @@ const metric = (t, id) => t.metrics.find((m) => m.id === id);
 const val = (t, id) => metric(t, id)?.value;
 const FORBIDDEN = /도보|\d\s*분|종합/;
 const noForbidden = (t) => {
-  assert.doesNotMatch(JSON.stringify(t), FORBIDDEN, `${t.tileCode}: 금지 표현`);
-  assert.doesNotMatch(JSON.stringify(toTileView(t)), FORBIDDEN, `${t.tileCode}: 화면 문자열 금지 표현`);
+  const forbidden = t.tileCode === "A01" ? /종합/ : FORBIDDEN;
+  assert.doesNotMatch(JSON.stringify(t), forbidden, `${t.tileCode}: 금지 표현`);
+  assert.doesNotMatch(JSON.stringify(toTileView(t)), forbidden, `${t.tileCode}: 화면 문자열 금지 표현`);
 };
 const layers = (t, l) => t.presentation.features.filter((f) => f.layer === l);
 
@@ -87,6 +90,43 @@ assert.deepEqual([500, 501, 1000, 1001].map(gradeRail), ["good", "fair", "fair",
   assert.equal(t.judgment.level, "good");
   assert.ok(!metric(t, "rail_lines"));
   assert.ok(!t.presentation.layers.includes("rail_line"));
+  ctx.close();
+}
+
+// ── A01 보행망 도보시간·경로: 등급은 직선 지표에만 유지 ──
+{
+  const dir = mkdtempSync(join(tmpdir(), "v2-eng-rs-walk-"));
+  await buildEngineFixture(dir, "v1", { rail: true, roads: true });
+  const reference = new Database(join(dir, "versions", "v1", "reference.sqlite"));
+  const roadRelease = reference.prepare("SELECT release_id FROM source_release WHERE source_id = 'osm_roads'").pluck().get();
+  // OSM 중심선의 교차점이 반드시 정점이라는 T7 계약에 맞춰 중심에서 버스·나래역까지 연결한다.
+  for (const [id, end] of [["bus-approach", [300, 0]], ["rail-approach", [-600, 0]]]) {
+    insertFeature(reference, {
+      stableId: `road:${id}`,
+      kind: "road",
+      sourceKey: id,
+      releaseId: roadRelease,
+      geometry: { type: "LineString", coordinates: [at(0, 0), at(end[0], end[1])] },
+      properties: { osmId: id, fclass: "residential", hierarchy: "국지", name: null },
+    });
+  }
+  reference.close();
+  const ctx = new EngineContext(dir, M.readManifest(dir), "an-walk", { address: "x", center: CENTER, radiusM: 800, analysisDate: "2026-09-30" });
+  const t = a01(ctx);
+  assert.equal(metric(t, "walk_nearest_rail_m").status, "observed");
+  assert.equal(metric(t, "walk_nearest_rail_min").status, "observed");
+  assert.equal(metric(t, "walk_nearest_bus_m").status, "observed");
+  assert.equal(metric(t, "walk_nearest_bus_min").status, "observed");
+  assert.equal(val(t, "walk_nearest_rail_m"), 600);
+  assert.equal(val(t, "walk_nearest_rail_min"), 7, "T7 walkMinutes()의 정점 경로 반올림");
+  assert.equal(val(t, "walk_nearest_bus_m"), 300, "보행망 계약의 정점 스냅 거리");
+  assert.equal(val(t, "walk_nearest_bus_min"), 4);
+  assert.ok(t.presentation.layers.includes("walk_route"));
+  assert.ok(t.presentation.lines.some((line) => line.layer === "walk_route"));
+  assert.match(t.judgment.sentence, /보행망 도보\(OSM, 80 m\/분, 내부 제안 기준\)/);
+  assert.ok((t.judgment.grades ?? []).every((grade) => !grade.metricId.startsWith("walk_")), "등급은 직선거리 지표만 사용");
+  assert.deepEqual(t.provenance.sources.map((s) => s.sourceId), ["bus_stop", "osm_subway", "osm_roads"]);
+  assert.doesNotMatch(JSON.stringify(t), /종합|법적 적합|개발 가능|건강 위험 예측/);
   ctx.close();
 }
 
