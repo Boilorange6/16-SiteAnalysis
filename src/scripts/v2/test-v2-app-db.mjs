@@ -12,6 +12,7 @@ const A = await import("../../lib/v2/app-db.ts");
 
 const H1 = "1".repeat(64);
 const H2 = "2".repeat(64);
+const H3 = "3".repeat(64);
 const run = (id, hash) => ({
   analysisId: id, address: "경기도 남양주시 다산동", center: [127.1506, 37.6245], radiusM: 800,
   analysisDate: "2026-09-29", manifestHash: hash, engineVersion: "v2-p0", parameters: {},
@@ -31,6 +32,8 @@ assert.equal(db.pragma("journal_mode", { simple: true }), "wal");
 
 A.createAnalysisRun(db, run("a1", H1));
 A.createAnalysisRun(db, run("a2", H2));
+A.createAnalysisRun(db, run("a3", H3));
+db.prepare("UPDATE analysis_run SET created_at = datetime('now', '-3 hours') WHERE analysis_id = 'a3'").run();
 assert.equal(A.getAnalysisRun(db, "a1").manifestHash, H1);
 assert.equal(A.getAnalysisRun(db, "a1").status, "running");
 assert.deepEqual(A.getAnalysisRun(db, "a1").center, [127.1506, 37.6245]);
@@ -50,7 +53,7 @@ assert.throws(() => A.saveTileResult(db, tile("zzz", H1), "k4"), /unknown analys
 A.finishAnalysisRun(db, "a1", "complete");
 assert.equal(A.getAnalysisRun(db, "a1").status, "complete");
 
-// 저장 프로젝트가 참조하는 버전 + 진행 중(running) 분석의 버전만 핀. a1은 complete, a2는 running.
+// 저장 프로젝트가 참조하는 버전 + 최근 진행 중(running) 분석의 버전만 핀. a1은 complete, a2는 running, a3은 오래된 crash 잔재.
 assert.deepEqual(A.pinnedManifestHashes(db), new Set([H2]), "running a2만 핀");
 const dataDir = mkdtempSync(join(tmpdir(), "v2-app-data-"));
 const archive = (h) => { mkdirSync(join(dataDir, "manifests"), { recursive: true }); writeFileSync(join(dataDir, "manifests", `${h}.json`), JSON.stringify({ version: "x", createdAt: "x", files: {} })); };

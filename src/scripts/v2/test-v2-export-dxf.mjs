@@ -40,7 +40,19 @@ const scene = {
 
 const dxf = sceneToDxf(scene);
 assert.match(dxf, /AC1015/);
+assert.match(dxf, /\$HANDSEED\r\n\s*5\r\n[0-9A-F]+\r\n/);
+const handseedValue = dxf.match(/\$HANDSEED\r\n\s*5\r\n([0-9A-F]+)\r\n/)?.[1];
+const handles = [...dxf.matchAll(/\r\n\s*5\r\n([0-9A-F]+)\r\n/g)].map((match) => match[1]).filter((handle) => handle !== handseedValue);
+assert.ok(handles.length > 10, "R2000 구조와 엔티티에 핸들이 있어야 한다");
+assert.equal(new Set(handles).size, handles.length, "핸들은 중복되지 않아야 한다");
+const handseed = Number.parseInt(handseedValue, 16);
+assert.ok(handseed > Math.max(...handles.map((handle) => Number.parseInt(handle, 16))), "HANDSEED는 다음 핸들이어야 한다");
 assert.match(dxf, /\$INSUNITS\r\n 70\r\n     6/);
+assert.match(dxf, /100\r\nAcDbEntity\r\n/);
+assert.match(dxf, /100\r\nAcDbPolyline\r\n/);
+assert.match(dxf, /TABLES[\s\S]*TABLE\r\n  2\r\nBLOCK_RECORD[\s\S]*\*Model_Space[\s\S]*\*Paper_Space/);
+assert.match(dxf, /SECTION\r\n  2\r\nBLOCKS\r\n[\s\S]*BLOCK\r\n[\s\S]*\*Model_Space[\s\S]*\*Paper_Space/);
+assert.match(dxf, /SECTION\r\n  2\r\nOBJECTS\r\n[\s\S]*0\r\nDICTIONARY\r\n  5\r\n[0-9A-F]+\r\n330\r\n     0\r\n100\r\nAcDbDictionary/);
 assert.match(dxf, /\r\n$/);
 assert.ok(!dxf.includes("\n\n"), "DXF는 빈 줄 없이 CRLF 레코드여야 한다");
 for (const layer of Object.values(DXF_LAYERS)) assert.match(dxf, new RegExp(`\\n\\s*2\\r\\n${layer}\\r\\n`));

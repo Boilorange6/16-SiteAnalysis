@@ -55,6 +55,7 @@ export interface RunInput {
   center?: LngLat;
   radiusM: number;
   analysisDate?: string;
+  userId?: string | number | null;
 }
 
 export type RunOutcome =
@@ -123,6 +124,7 @@ export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, inpu
       analysisId, address: site.label, center: site.center, radiusM: input.radiusM, analysisDate,
       manifestHash: ctx.manifestHash, engineVersion: ENGINE_VERSION,
       parameters: { pnu: site.pnu, legalCode: site.legalCode, jimok: site.jimok },
+      userId: input.userId,
     });
     const results: TileResult[] = [];
     const computed: string[] = [];

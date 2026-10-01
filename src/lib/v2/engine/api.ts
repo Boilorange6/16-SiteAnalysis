@@ -25,12 +25,12 @@ export interface ApiReply {
   body: Record<string, unknown>;
 }
 
-export function postAnalysis(appDb: BetterSqlite3.Database, dataDir: string, raw: unknown): ApiReply {
+export function postAnalysis(appDb: BetterSqlite3.Database, dataDir: string, raw: unknown, userId?: string | number | null): ApiReply {
   const parsed = bodySchema.safeParse(raw);
   if (!parsed.success) return { status: 400, body: { error: parsed.error.issues[0].message } };
   let outcome;
   try {
-    outcome = runAnalysis(appDb, dataDir, parsed.data);
+    outcome = runAnalysis(appDb, dataDir, { ...parsed.data, userId });
   } catch (e) {
     if (/no published manifest/.test((e as Error).message)) return { status: 503, body: { error: "분석 데이터가 아직 게시되지 않았습니다" } };
     return { status: 500, body: { error: "분석 중 오류가 발생했습니다" } };
@@ -39,14 +39,20 @@ export function postAnalysis(appDb: BetterSqlite3.Database, dataDir: string, raw
   return { status: 200, body: { analysisId: outcome.analysisId, summary: outcome.summary, results: outcome.results } };
 }
 
-export function getAnalysis(appDb: BetterSqlite3.Database, id: string): ApiReply {
+function canRead(run: { userId?: string | number | null }, userId?: string | number | null): boolean {
+  return run.userId == null || (userId != null && run.userId === String(userId));
+}
+
+export function getAnalysis(appDb: BetterSqlite3.Database, id: string, userId?: string | number | null): ApiReply {
   const run = getAnalysisRun(appDb, id);
-  if (!run) return { status: 404, body: { error: "분석을 찾을 수 없습니다" } };
+  if (!run || !canRead(run, userId)) return { status: 404, body: { error: "분석을 찾을 수 없습니다" } };
   const results = loadTileResults(appDb, id);
   return { status: 200, body: { analysisId: id, summary: restoreSummary(run, results), results } };
 }
 
-export function getScene(appDb: BetterSqlite3.Database, id: string): ApiReply {
+export function getScene(appDb: BetterSqlite3.Database, id: string, userId?: string | number | null): ApiReply {
+  const run = getAnalysisRun(appDb, id);
+  if (!run || !canRead(run, userId)) return { status: 404, body: { error: "장면을 찾을 수 없습니다" } };
   const scene = loadScene(appDb, id);
   if (!scene) return { status: 404, body: { error: "장면을 찾을 수 없습니다" } };
   return { status: 200, body: scene as unknown as Record<string, unknown> };

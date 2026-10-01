@@ -96,6 +96,17 @@ try {
   await rm(root, { recursive: true, force: true });
 }
 
+// 세션도 없고 요청 host와 다른 Origin이면 sec-fetch-site가 없어도 거부한다.
+{
+  const { NextRequest } = await import("next/server");
+  const { GET } = await import("../../app/api/v2/tiles/[layer]/[z]/[y]/[x]/route.ts");
+  const denied = await GET(
+    new NextRequest("http://localhost/site/api/v2/tiles/white/15/12700/27946", { headers: { Origin: "https://foreign.example" } }),
+    { params: Promise.resolve(ok) },
+  );
+  assert.equal(denied.status, 403, "foreign Origin without a session");
+}
+
 // ── 요청 제한: 순간 200, 이후 초당 50 ──
 {
   resetLimiter();

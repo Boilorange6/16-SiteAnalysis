@@ -123,7 +123,7 @@ export function s02(ctx: EngineContext): TileResult {
     stepMin: 10,
     gridM: 2,
     influenceM: S02_INFLUENCE_M,
-    removeBuildingsInSite: false,
+    removeBuildingsInSite: true,
     minContinuousHours: 2,
   };
   const result = buildS02TileResult(input);

@@ -50,7 +50,7 @@ const tile = parseTileResult({
   tileType: "simulation",
   tileCode: "S01",
   status: "complete",
-  engineVersion: "v2-p2-spatial-1",
+  engineVersion: "v2-p2-spatial-2",
   conditions: { address: "테스트", center: [127.1, 37.5], radiusM: 100, analysisDate: "2026-09-30", timezone: "Asia/Seoul", filters: {}, simulation: null, parcelSnapshotHash: null },
   metrics: [{ id: "buildings", label: "반경 안 건물", value: 1, unit: "동", formulaVersion: "test@1", numerator: 1, denominator: 1, status: "observed" }],
   judgment: { ruleId: "test@1", basisMetricIds: ["buildings"], sentence: "건물 1동 확인 → 매스를 표시 → 높이 확인 필요", level: null, criteria: null },
