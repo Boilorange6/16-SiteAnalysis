@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-const { CAMERA_PRESETS, EXPLODED_LAYERS, projectExploded, projectMass } = await import("../../lib/v2/ui/mass-projection.ts");
+const { CAMERA_PRESETS, EXPLODED_LAYERS, MASS_USE_COLORS, projectExploded, projectExplodedPoint, projectMass } = await import("../../lib/v2/ui/mass-projection.ts");
 const { default: MassFigure } = await import("../../components/v2/mass-figure.tsx");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { initBoard } = await import("../../lib/v2/ui/board-state.ts");
@@ -41,6 +41,18 @@ const contextScene = {
   },
 };
 
+const cardinalScene = {
+  ...scene,
+  radiusM: 100,
+  buildings: [
+    { ...scene.buildings[0], id: "north", rings: [ring(0, 75, 4)] },
+    { ...scene.buildings[0], id: "east", rings: [ring(75, 0, 4)] },
+    { ...scene.buildings[0], id: "south", rings: [ring(0, -75, 4)] },
+    { ...scene.buildings[0], id: "west", rings: [ring(-75, 0, 4)] },
+  ],
+  context: { roads: [], green: [], water: [] },
+};
+
 assert.deepEqual(CAMERA_PRESETS, {
   azimuth: [45, 135, 225, 315],
   elevation: [20, 35, 55],
@@ -61,11 +73,42 @@ assert.equal(exploded.plates?.length, EXPLODED_LAYERS.length, "분해 층마다 
 assert.equal(exploded.guides?.length, (EXPLODED_LAYERS.length - 1) * 2, "좌우 원판 접선 가이드를 층 사이마다 만든다");
 const plateWidths = exploded.plates.map((plate) => plate.rightX - plate.leftX);
 assert.ok(Math.max(...plateWidths) - Math.min(...plateWidths) < 0.01, "모든 원판은 같은 투영 폭을 쓴다");
-assert.ok(plateWidths[0] >= 800 * 0.45 && plateWidths[0] <= 800 * 0.55, "원판 폭은 도판 폭의 45~55%다");
 const exploded60 = projectExploded(contextScene, camera, 604, 570, 60);
+assert.ok((exploded60.plates[0].rightX - exploded60.plates[0].leftX) / 604 >= 0.45 && (exploded60.plates[0].rightX - exploded60.plates[0].leftX) / 604 <= 0.55, "펼침 60% 원판 폭은 도판 폭의 45~55%다");
 assert.ok((exploded60.plates[0].rightX - exploded60.plates[0].leftX) / 604 >= 0.45, "펼침 60%에서도 원판 폭을 유지한다");
 const exploded60Step = exploded60.plates[0].centerY - exploded60.plates[1].centerY;
 assert.ok(exploded60.plates.every((plate, index) => index === 0 || Math.abs((exploded60.plates[index - 1].centerY - plate.centerY) - exploded60Step) < 0.01), "펼침 60%의 층 간격은 동일하다");
+assert.ok(exploded60Step > exploded60.plates[0].radiusY + exploded60.plates[1].radiusY, "펼침 60%의 연속 plate 사이에 보이는 gap이 있다");
+const exploded0 = projectExploded(contextScene, camera, 604, 570, 0);
+assert.ok(Math.max(...exploded0.plates.map((plate) => plate.centerY)) - Math.min(...exploded0.plates.map((plate) => plate.centerY)) < 0.01, "펼침 0%는 한 곳에 포개진다");
+const exploded100 = projectExploded(contextScene, camera, 604, 570, 100);
+assert.ok(exploded100.plates[0].centerY - exploded100.plates[1].centerY > exploded60Step, "펼침 100%는 60%보다 크게 벌어진다");
+const plate60 = exploded60.plates.find((plate) => plate.layer === "buildings");
+assert.ok(plate60 && plate60.radiusX > 0 && plate60.radiusY > 0);
+const cardinalProjection = projectExploded(cardinalScene, camera, 800, 700, 60);
+const cardinalPlate = cardinalProjection.plates.find((plate) => plate.layer === "buildings");
+const inPlateEllipse = (projection, plate, point) => {
+  const projected = projectExplodedPoint(projection, point, "buildings");
+  const u = (projected.x - plate.centerX) / plate.radiusX;
+  const v = (projected.y - plate.centerY) / plate.radiusY;
+  return { projected, normalized: u * u + v * v };
+};
+for (const [bearing, point] of [["N", [0, 75]], ["E", [75, 0]], ["S", [0, -75]], ["W", [-75, 0]]]) {
+  const actual = inPlateEllipse(cardinalProjection, cardinalPlate, point);
+  assert.ok(actual.normalized <= 1.01, `${bearing} building centroid stays inside its matching plate ellipse`);
+  const expectedX = point[0] * Math.cos((camera.azimuthDeg * Math.PI) / 180) - point[1] * Math.sin((camera.azimuthDeg * Math.PI) / 180);
+  const expectedY = -(point[0] * Math.sin((camera.azimuthDeg * Math.PI) / 180) + point[1] * Math.cos((camera.azimuthDeg * Math.PI) / 180));
+  assert.equal(Math.sign(actual.projected.x - cardinalPlate.centerX), Math.sign(expectedX), `${bearing} bearing maps to the expected screen x side`);
+  assert.equal(Math.sign(actual.projected.y - cardinalPlate.centerY), Math.sign(expectedY), `${bearing} bearing maps to the expected screen y side`);
+}
+for (let index = 0; index < 32; index += 1) {
+  const angle = (index / 32) * Math.PI * 2;
+  assert.ok(Math.abs(inPlateEllipse(cardinalProjection, cardinalPlate, [Math.cos(angle) * 100, Math.sin(angle) * 100]).normalized - 1) < 0.03, "scene bounding circle projects to the plate ellipse");
+}
+const realProjection = projectExploded(scene, camera, 604, 570, 60);
+const realPlate = realProjection.plates.find((plate) => plate.layer === "buildings");
+const fixtureFootprintsInside = scene.buildings.filter((building) => building.rings.flat().every((point) => inPlateEllipse(realProjection, realPlate, point).normalized <= 1.01)).length / scene.buildings.length;
+assert.ok(fixtureFootprintsInside >= 0.95, `at least 95% of building footprints stay inside the plate (${fixtureFootprintsInside})`);
 assert.ok(exploded.guides.every((guide) => guide.y1 !== guide.y2 && Number.isFinite(guide.x)), "가이드는 spread로 분리된 원판을 연결한다");
 assert.ok(exploded.labels.every((label) => {
   const plate = exploded.plates.find((candidate) => candidate.layer === label.layer);
@@ -114,7 +157,11 @@ assert.match(markup, /확보 높이/);
 assert.match(markup, /높이 미상/);
 assert.match(markup, /지형 미반영/);
 
-const explodedMarkup = renderToStaticMarkup(createElement(MassFigure, { scene: contextScene, camera, width: 800, height: 700, fixed: true, exploded: { spreadPct: 100 } }));
+const paletteScene = {
+  ...contextScene,
+  buildings: contextScene.buildings.map((building, index) => ({ ...building, useCode: ["01000", "04000", "14000"][index] })),
+};
+const explodedMarkup = renderToStaticMarkup(createElement(MassFigure, { scene: paletteScene, camera, width: 800, height: 700, fixed: true, exploded: { spreadPct: 100 } }));
 assert.match(explodedMarkup, /data-face-layer="water"/);
 assert.match(explodedMarkup, /data-face-layer="green"/);
 assert.match(explodedMarkup, /data-face-layer="roads"/);
@@ -127,6 +174,11 @@ assert.match(explodedMarkup, /stroke-dasharray="4 5"/);
 assert.equal((explodedMarkup.match(/data-label-leader=/g) ?? []).length, EXPLODED_LAYERS.length, "층 라벨마다 짧은 리더를 렌더링한다");
 assert.match(explodedMarkup, /data-face-kind="roof"/);
 assert.match(explodedMarkup, /data-face-kind="wall"/);
+const renderedWallFills = new Set([...explodedMarkup.matchAll(/data-face-kind="wall"[^>]*fill="([^"]+)"/g)].map((match) => match[1]));
+assert.ok(renderedWallFills.size >= 3, "벽면은 지붕 색별로 어두워지며 단일 갈색으로 고정되지 않는다");
+assert.match(explodedMarkup, /건물 용도 색 범례/);
+assert.match(explodedMarkup, />주거</);
+assert.equal(MASS_USE_COLORS.find(({ label }) => label === "주거")?.color, "#F2D46E");
 const emptyMarkup = renderToStaticMarkup(createElement(MassFigure, { scene, camera, width: 800, height: 700, fixed: true, exploded: { spreadPct: 60 } }));
 assert.match(emptyMarkup, />자료 없음</);
 assert.match(emptyMarkup, /published reference 재구축 전/);

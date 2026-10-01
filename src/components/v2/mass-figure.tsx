@@ -1,5 +1,5 @@
 import React from "react";
-import { EXPLODED_LAYERS, type MassCamera, type MassColorScheme, projectExploded, projectMass, type MassLayer } from "@/lib/v2/ui/mass-projection";
+import { EXPLODED_LAYERS, MASS_USE_COLORS, type MassCamera, type MassColorScheme, projectExploded, projectMass, type MassLayer } from "@/lib/v2/ui/mass-projection";
 import type { Scene } from "@/lib/v2/scene";
 
 export type MassFigureProps = {
@@ -75,6 +75,7 @@ function MassFigure({ scene, camera, width, height, fixed = false, label = "S01 
   const ny = 48;
   const uid = `${isExploded ? "mass-exploded" : "mass"}-${Math.round(width)}-${Math.round(height)}`;
   const legend: MassLayer[] = isExploded ? [...EXPLODED_LAYERS] : ["mass_source", "mass_estimated", "mass_unknown"];
+  const legendStep = Math.min(112, Math.max(80, (width - 20) / Math.max(1, legend.length)));
   const isDem = scene?.ground.kind === "dem";
   if (!isExploded && isDem) legend.push("ground");
   const explodedPlates = projection?.plates ?? [];
@@ -88,7 +89,7 @@ function MassFigure({ scene, camera, width, height, fixed = false, label = "S01 
       fill={face.layer === "mass_estimated" && !face.fill ? `url(#${uid}-estimate)` : shadeColor(
         face.fill ?? COLORS[face.layer],
         isExploded && face.faceKind === "wall"
-          ? face.shade * 0.72
+          ? Math.max(0.5, face.shade * 0.9)
           : isExploded && face.faceKind === "roof"
             ? Math.min(1, face.shade * 1.06)
             : face.shade,
@@ -183,9 +184,19 @@ function MassFigure({ scene, camera, width, height, fixed = false, label = "S01 
         </text>
       </g>
 
+      {isExploded && (exploded?.scheme ?? "use") === "use" && (
+        <g aria-label="건물 용도 색 범례" transform={`translate(${Math.max(16, width - 140)} 116)`}>
+          {MASS_USE_COLORS.map(({ label: colorLabel, color }, index) => (
+            <g key={colorLabel} transform={`translate(${(index % 2) * 68} ${Math.floor(index / 2) * 12})`}>
+              <rect width="8" height="8" rx="2" fill={color} />
+              <text x="11" y="8" fontSize="7" fill={INK}>{colorLabel}</text>
+            </g>
+          ))}
+        </g>
+      )}
       <g aria-label="매스 범례" transform={`translate(16 ${height - 42})`}>
         {legend.map((layer, index) => (
-          <g key={layer} transform={`translate(${index * 112} 0)`}>
+          <g key={layer} transform={`translate(${index * legendStep} 0)`}>
             <rect width="10" height="10" rx="2" fill={COLORS[layer]} />
             <text x="16" y="10" fontSize="10" fill={INK}>
               {layer === "ground" && isDem ? "지형(30m 격자)" : LABELS[layer]}
@@ -199,7 +210,7 @@ function MassFigure({ scene, camera, width, height, fixed = false, label = "S01 
         </text>
       )}
       {missingPublishedContext && (
-        <text data-context-note="reference-not-rebuilt" x={width / 2} y={height - 58} textAnchor="middle" fontSize="9" fill="#7D8792">
+        <text data-context-note="reference-not-rebuilt" x={width / 2} y={height - 8} textAnchor="middle" fontSize="9" fill="#7D8792">
           도로·녹지·수계: published reference 재구축 전 — 빈 plate로 표시
         </text>
       )}

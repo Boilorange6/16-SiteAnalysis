@@ -12,6 +12,18 @@ export type MassCamera = {
   radiusM: number;
 };
 
+export type MassProjectionTransform = {
+  scale: number;
+  tx: number;
+  ty: number;
+  screenStep: number;
+  gap: number;
+  cosA: number;
+  sinA: number;
+  cosE: number;
+  sinE: number;
+};
+
 export type MassModel = {
   scene: Scene | null;
   camera: MassCamera;
@@ -37,9 +49,12 @@ export type MassPlate = {
   layer: ExplodedLayer;
   index: number;
   path: string;
+  centerX: number;
   leftX: number;
   rightX: number;
   centerY: number;
+  radiusX: number;
+  radiusY: number;
   fill: string;
   present: boolean;
 };
@@ -51,12 +66,17 @@ export type MassProjection = {
   labels?: MassLabel[];
   plates?: MassPlate[];
   guides?: MassGuide[];
+  transform?: MassProjectionTransform;
 };
 
 export const CAMERA_PRESETS = {
   azimuth: [45, 135, 225, 315],
   elevation: [20, 35, 55],
 } as const;
+
+// sitedia S01의 낮은 plate tilt를 유지한다. 모든 exploded 층과 face가 이
+// 동일한 presentation angle을 공유해 plate 사이 gap을 확보한다.
+const EXPLODED_PRESENTATION_ELEVATION_DEG = 15;
 
 type RawPoint = { x: number; y: number; depth: number };
 type RawFace = {
@@ -300,6 +320,24 @@ export function projectMass(scene: Scene, camera: MassCamera, width: number, hei
   };
 }
 
+/** exploded plate와 같은 transform으로 로컬 scene 점을 화면에 투영한다. */
+export function projectExplodedPoint(
+  projection: MassProjection,
+  point: [number, number],
+  layer: ExplodedLayer | number,
+  z = 0,
+): { x: number; y: number } {
+  if (!projection.transform) throw new Error("projectExplodedPoint requires an exploded projection");
+  const layerIndex = typeof layer === "number" ? layer : EXPLODED_LAYERS.indexOf(layer);
+  if (layerIndex < 0 || layerIndex >= EXPLODED_LAYERS.length) throw new Error(`unknown exploded layer: ${String(layer)}`);
+  const transform = projection.transform;
+  const raw = projectRaw(point, z + layerIndex * transform.gap, transform.cosA, transform.sinA, transform.cosE, transform.sinE);
+  return {
+    x: raw.x * transform.scale + transform.tx,
+    y: raw.y * transform.scale + transform.ty - layerIndex * transform.screenStep,
+  };
+}
+
 const EXPLODED_LABEL_TEXT: Record<ExplodedLayer, string> = {
   terrain: "지형",
   water: "수계",
@@ -309,18 +347,21 @@ const EXPLODED_LABEL_TEXT: Record<ExplodedLayer, string> = {
   complete: "완성",
 };
 
-const USE_FILL: Record<string, string> = {
-  주거: "#D59A2B",
-  근린생활: "#E27B61",
-  업무: "#6C8EBF",
-  판매: "#C86D8A",
-  숙박: "#9A72AA",
-  문화집회: "#B77A1E",
-  교육복지: "#4D956D",
-  공업: "#718096",
-  기타: "#A0AEC0",
-  미상: "#B7BDC6",
-};
+/** 용도 선택의 지붕 색. sitedia S01 범례와 같은 밝기 계열을 쓴다. */
+export const MASS_USE_COLORS = [
+  { label: "주거", color: "#F2D46E" },
+  { label: "근린생활", color: "#F2B071" },
+  { label: "업무", color: "#74A7CA" },
+  { label: "판매", color: "#E17B93" },
+  { label: "숙박", color: "#A27FC3" },
+  { label: "문화집회", color: "#5BB5A4" },
+  { label: "교육복지", color: "#82C46B" },
+  { label: "공업", color: "#A28775" },
+  { label: "기타", color: "#B7BBC0" },
+  { label: "미상", color: "#D0D3D6" },
+] as const;
+
+const USE_FILL: Record<string, string> = Object.fromEntries(MASS_USE_COLORS.map(({ label, color }) => [label, color]));
 const AGE_FILL = ["#5B2A12", "#8F4A1F", "#C26A26", "#E08F2E", "#F0B73A", "#F7D76A", "#A9ADB6"];
 const HEIGHT_FILL = ["#B8D8BA", "#86BBD8", "#5C80BC", "#775DA6", "#4A2545", "#B9BDC6"];
 const SINGLE_FILL = "#5E83B3";
@@ -541,7 +582,7 @@ export function projectExploded(
   scheme: MassColorScheme = "use",
 ): MassProjection & { labels: MassLabel[] } {
   const azimuth = radians(finiteOr(camera.azimuthDeg, 225));
-  const elevation = radians(Math.max(-89, Math.min(89, finiteOr(camera.elevationDeg, 35))));
+  const elevation = radians(EXPLODED_PRESENTATION_ELEVATION_DEG);
   const cosA = Math.cos(azimuth);
   const sinA = Math.sin(azimuth);
   const cosE = Math.cos(elevation);
@@ -612,7 +653,7 @@ export function projectExploded(
   // rim-to-rim 간격으로 나눈다. spread 60%부터는 full-height 캡처를 유지하고,
   // 그보다 낮은 값에서만 간격이 선형으로 줄어든다.
   const availableScreenStep = Math.max(0, (targetHeight - heightAt(heightBound, 0)) / (EXPLODED_LAYERS.length - 1));
-  screenStep = availableScreenStep * Math.min(1, spread / 0.6);
+  screenStep = availableScreenStep * (spread / 0.6);
   const byHeight = heightAt(heightBound) <= targetHeight
     ? heightBound
     : (() => {
@@ -631,21 +672,27 @@ export function projectExploded(
   const maxX = Math.max(...screenPoints.map((point) => point.x));
   const minY = Math.min(...screenPoints.map((point) => point.y));
   const maxY = Math.max(...screenPoints.map((point) => point.y));
-  const tx = width / 2 - (minX + maxX) / 2;
+  const plateMinX = Math.min(...plateRawPoints.map((point) => point.x));
+  const plateMaxX = Math.max(...plateRawPoints.map((point) => point.x));
+  const tx = width / 2 - ((plateMinX + plateMaxX) / 2) * scale;
   const ty = height * 0.5 - (minY + maxY) / 2;
   const plates = EXPLODED_LAYERS.map((layer, index) => {
     const points = plateRings[index];
-    const leftX = Math.min(...points.map((point) => point.x)) * scale + tx;
-    const rightX = Math.max(...points.map((point) => point.x)) * scale + tx;
-    const center = projectLayerPoint([0, 0], 0, index, gap, cosA, sinA, cosE, sinE);
-    const centerY = center.y * scale + ty - index * screenStep;
+    const screenRing = points.map((point) => ({ x: point.x * scale + tx, y: point.y * scale + ty - index * screenStep }));
+    const leftX = Math.min(...screenRing.map((point) => point.x));
+    const rightX = Math.max(...screenRing.map((point) => point.x));
+    const topY = Math.min(...screenRing.map((point) => point.y));
+    const bottomY = Math.max(...screenRing.map((point) => point.y));
     return {
       layer,
       index,
       path: pathOf(points, scale, tx, ty - index * screenStep),
+      centerX: (leftX + rightX) / 2,
       leftX,
       rightX,
-      centerY,
+      centerY: (topY + bottomY) / 2,
+      radiusX: (rightX - leftX) / 2,
+      radiusY: (bottomY - topY) / 2,
       fill: EXPLODED_PLATE_FILL[layer],
       present: present[layer],
     } satisfies MassPlate;
@@ -672,5 +719,6 @@ export function projectExploded(
     labels,
     plates,
     guides,
+    transform: { scale, tx, ty, screenStep, gap, cosA, sinA, cosE, sinE },
   };
 }
