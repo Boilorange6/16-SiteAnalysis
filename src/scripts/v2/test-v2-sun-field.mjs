@@ -4,7 +4,7 @@ import { area, featureCollection, polygon, union } from "@turf/turf";
 const { kst, kstForTrueSolar, sunPosition, sunriseSunsetKstMin } = await import("../../lib/v2/sim/sun.ts");
 const { buildingShadow } = await import("../../lib/v2/sim/shadow.ts");
 const { computeSunlight } = await import("../../lib/v2/sim/sunlight.ts");
-const { computeSunField, fillRing, shadowPieces } = await import("../../lib/v2/sim/sun-field.ts");
+const { computeSunField, computeSunFields, fillRing, shadowPieces } = await import("../../lib/v2/sim/sun-field.ts");
 
 const LAT = 37.55;
 const LON = 127.15;
@@ -116,6 +116,36 @@ for (const [month, expected] of [[12, 9], [3, 11], [6, 13]]) {
   const g = grid({ x0: -20, y0: -20, cols: 20, rows: 20 });
   const r = computeSunField({ grid: g, obstacles: [], latDeg: LAT, lonDeg: LON, date: { year: 2026, month, day: month === 12 ? 22 : month === 6 ? 21 : 20 } });
   assert.ok(Math.abs(r.hourly.length - expected) <= 1, `${month} hourly count ${r.hourly.length}`);
+}
+
+// 7b) a batched calculation is bit-identical to the established one-date path.
+{
+  const inputs = [
+    { grid: grid({ x0: -40, y0: -40, cols: 40, rows: 40 }), obstacles: [box(-10, -10, 20, 20, 24)], latDeg: LAT, lonDeg: LON, date: { year: 2026, month: 6, day: 21 } },
+    { grid: grid({ x0: -40, y0: -40, cols: 40, rows: 40 }), obstacles: [box(-10, -10, 20, 20, 24)], latDeg: LAT, lonDeg: LON, date: { year: 2026, month: 12, day: 22 } },
+  ];
+  const expected = inputs.map((input) => computeSunField(input));
+  const actual = computeSunFields(inputs, { parallelism: 2 });
+  assert.equal(actual.length, expected.length);
+  for (let i = 0; i < actual.length; i++) {
+    assert.deepEqual(actual[i].sunMin, expected[i].sunMin, `batched sunMin ${i}`);
+    assert.deepEqual(actual[i].longestRunTst0915, expected[i].longestRunTst0915, `batched continuous ${i}`);
+    assert.deepEqual(actual[i].totalTst0816, expected[i].totalTst0816, `batched total ${i}`);
+    assert.deepEqual(actual[i].hourly, expected[i].hourly, `batched hourly ${i}`);
+    assert.deepEqual(actual[i].stats, expected[i].stats, `batched stats ${i}`);
+  }
+}
+
+// 7c) a structured-cloneable horizon map preserves the callback horizon result.
+{
+  const horizonMap = { x0: -40, y0: -40, cellM: 10, cols: 8, rows: 8, azimuths: 4, angleDeg: new Float32Array(8 * 8 * 4).fill(15) };
+  const common = { grid: grid({ x0: -40, y0: -40, cols: 40, rows: 40 }), obstacles: [box(-10, -10, 20, 20, 24)], latDeg: LAT, lonDeg: LON, date: { year: 2026, month: 6, day: 21 } };
+  const callback = computeSunField({ ...common, horizon: () => 15 });
+  const mapped = computeSunField({ ...common, horizonMap });
+  assert.deepEqual(mapped.sunMin, callback.sunMin, "horizon map sunMin");
+  assert.deepEqual(mapped.longestRunTst0915, callback.longestRunTst0915, "horizon map continuous");
+  assert.deepEqual(mapped.totalTst0816, callback.totalTst0816, "horizon map total");
+  assert.deepEqual(mapped.hourly, callback.hourly, "horizon map hourly");
 }
 
 // 8) quality-first performance gate: 800m radius at 2m cells and 3,000 buildings.

@@ -2,7 +2,7 @@
 import type BetterSqlite3 from "better-sqlite3";
 import type { Geometry, Position } from "geojson";
 import { toLngLat, toUtmk } from "../../crs";
-import { computeSunField, fillRing, type Obstacle, type SunFieldResult, type SunGrid } from "../../sim/sun-field";
+import { computeSunField, computeSunFields, fillRing, type HorizonSampler, type Obstacle, type SunFieldInput, type SunFieldResult, type SunGrid } from "../../sim/sun-field";
 import { terrainHorizon, type HorizonMap } from "../../sim/horizon";
 import type { EngineContext, SourceRef } from "../context";
 import { demReader } from "./terrain-shared";
@@ -185,8 +185,9 @@ function coarseGround(
   return out;
 }
 
-function makeHorizonLookup(horizon: HorizonMap): (x: number, y: number, azimuthDeg: number) => number {
+function makeHorizonLookup(horizon: HorizonMap): HorizonSampler {
   const byAzimuth = new Map<number, Float32Array>();
+  const expandedByAzimuth = new Map<number, Float32Array>();
   let lastAzimuth = Number.NaN;
   let lastValues: Float32Array | null = null;
   const valuesFor = (azimuthDeg: number): Float32Array => {
@@ -207,7 +208,7 @@ function makeHorizonLookup(horizon: HorizonMap): (x: number, y: number, azimuthD
     byAzimuth.set(normalized, values);
     return values;
   };
-  return (x, y, azimuthDeg) => {
+  const lookup = ((x: number, y: number, azimuthDeg: number) => {
     if (azimuthDeg !== lastAzimuth || lastValues === null) {
       lastAzimuth = azimuthDeg;
       lastValues = valuesFor(azimuthDeg);
@@ -219,10 +220,30 @@ function makeHorizonLookup(horizon: HorizonMap): (x: number, y: number, azimuthD
     const col = Math.max(0, Math.min(horizon.cols - 1, Math.round((x - horizon.x0) / horizon.cellM - 0.5)));
     const row = Math.max(0, Math.min(horizon.rows - 1, Math.round((y - horizon.y0) / horizon.cellM - 0.5)));
     return values[row * horizon.cols + col];
+  }) as HorizonSampler;
+  lookup.valuesForGrid = (grid, azimuthDeg) => {
+    const normalized = Math.round((((azimuthDeg % 360) + 360) % 360) * 1000) / 1000;
+    const cached = expandedByAzimuth.get(normalized);
+    if (cached && cached.length === grid.cols * grid.rows) return cached;
+    const source = valuesFor(azimuthDeg);
+    const expanded = new Float32Array(grid.cols * grid.rows);
+    for (let row = 0; row < grid.rows; row++) {
+      const y = grid.y0 + (row + 0.5) * grid.cellM;
+      const sourceRow = Math.max(0, Math.min(horizon.rows - 1, Math.round((y - horizon.y0) / horizon.cellM - 0.5)));
+      const target = row * grid.cols;
+      for (let col = 0; col < grid.cols; col++) {
+        const x = grid.x0 + (col + 0.5) * grid.cellM;
+        const sourceCol = Math.max(0, Math.min(horizon.cols - 1, Math.round((x - horizon.x0) / horizon.cellM - 0.5)));
+        expanded[target + col] = source[sourceRow * horizon.cols + sourceCol];
+      }
+    }
+    expandedByAzimuth.set(normalized, expanded);
+    return expanded;
   };
+  return lookup;
 }
 
-function horizonLookupFor(ctx: EngineContext, horizon: HorizonMap): (x: number, y: number, azimuthDeg: number) => number {
+function horizonLookupFor(ctx: EngineContext, horizon: HorizonMap): HorizonSampler {
   return ctx.memo("sun:horizon:lookup", () => makeHorizonLookup(horizon));
 }
 
@@ -303,22 +324,71 @@ function dateFor(ctx: EngineContext, dateKey: SunDateKey): { year: number; month
 export function sunFieldFor(ctx: EngineContext, dateKey: SunDateKey): SunFieldResult | null {
   return ctx.memo("sun:field:" + dateKey, () => {
     const grid = sunGridFor(ctx);
-    if (!grid) return null;
-    const obstacles = sunObstaclesFor(ctx, null);
+    if (!grid) {
+      precomputedFieldsFor(ctx).set(dateKey, null);
+      return null;
+    }
     const horizon = horizonFor(ctx);
-    const date = dateFor(ctx, dateKey);
-    return computeSunField({
+    const field = computeSunField({
       grid,
-      obstacles,
+      obstacles: sunObstaclesFor(ctx, null),
       latDeg: ctx.input.center[1],
       lonDeg: ctx.input.center[0],
-      date,
+      date: dateFor(ctx, dateKey),
       stepMin: 10,
       hourlyFrom: 5,
       continuousTst: [540, 900],
       totalTst: [480, 960],
       horizon: horizon ? horizonLookupFor(ctx, horizon) : undefined,
     });
+    precomputedFieldsFor(ctx).set(dateKey, field);
+    return field;
+  });
+}
+
+function precomputedFieldsFor(ctx: EngineContext): Map<SunDateKey, SunFieldResult | null> {
+  return ctx.memo("sun:fields:precomputed", () => new Map<SunDateKey, SunFieldResult | null>());
+}
+
+function sunFieldInputFor(
+  ctx: EngineContext,
+  dateKey: SunDateKey,
+  grid: SunGrid,
+  obstacles: readonly Obstacle[],
+  horizon: HorizonMap | null,
+): SunFieldInput {
+  const date = dateFor(ctx, dateKey);
+  return {
+    grid,
+    obstacles,
+    latDeg: ctx.input.center[1],
+    lonDeg: ctx.input.center[0],
+    date,
+    stepMin: 10,
+    hourlyFrom: 5,
+    continuousTst: [540, 900],
+    totalTst: [480, 960],
+    horizonMap: horizon ?? undefined,
+  };
+}
+
+/** S02의 다섯 날짜를 한 번에 계산한다. DEM 지평선은 구조화 복제 가능한 맵으로 worker에 전달한다. */
+export function sunFieldsFor(ctx: EngineContext): Map<SunDateKey, SunFieldResult | null> {
+  return ctx.memo("sun:fields", () => {
+    const keys: SunDateKey[] = ["spring", "summer", "autumn", "winter", "analysis"];
+    const grid = sunGridFor(ctx);
+    if (!grid) return new Map(keys.map((key) => [key, null]));
+    const obstacles = sunObstaclesFor(ctx, null);
+    const horizon = horizonFor(ctx);
+    const fields = precomputedFieldsFor(ctx);
+    const missing = keys.filter((key) => !fields.has(key));
+    const results = computeSunFields(missing.map((key) => sunFieldInputFor(ctx, key, grid, obstacles, horizon)));
+    for (let index = 0; index < missing.length; index++) {
+      const key = missing[index];
+      const field = results[index];
+      fields.set(key, ctx.memo("sun:field:" + key, () => field));
+    }
+    return new Map(keys.map((key) => [key, fields.get(key) ?? null]));
   });
 }
 
