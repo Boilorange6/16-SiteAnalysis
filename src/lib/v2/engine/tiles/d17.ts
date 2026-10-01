@@ -1,8 +1,8 @@
 /** D17 지형·등고선 — DEM 상대고 밴드와 절대고 등고선. */
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
-import { bandPolygons, contourLines, gridStats, type LocalGrid } from "./raster-grid";
-import { DEM_LIMITATION, demGridFor, demReader, demSources } from "./terrain-shared";
+import { relativeTerrainGrid, terrainBandPolygons, terrainContourLines, terrainGridFor, terrainGridStats, terrainValuesInCircle } from "./terrain-grid";
+import { DEM_LIMITATION, demReader, demSources } from "./terrain-shared";
 import { est, makeTile, obs } from "./common";
 import { notProvided } from "./not-provided";
 
@@ -12,20 +12,6 @@ const CONTOUR_INTERVAL_M = 5;
 
 const percent = (part: number, whole: number): number => whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0;
 
-function valuesInCircle(grid: LocalGrid, radiusM: number): number[] {
-  const values: number[] = [];
-  for (let row = 0; row < grid.rows; row++) {
-    for (let col = 0; col < grid.cols; col++) {
-      const x = grid.x0 + col * grid.cellM;
-      const y = grid.y0 + row * grid.cellM;
-      if (Math.hypot(x - grid.cx, y - grid.cy) > radiusM + 1e-9) continue;
-      const value = grid.values[row * grid.cols + col];
-      if (Number.isFinite(value)) values.push(value);
-    }
-  }
-  return values;
-}
-
 function median(values: number[]): number | null {
   if (values.length === 0) return null;
   const ordered = [...values].sort((a, b) => a - b);
@@ -33,16 +19,12 @@ function median(values: number[]): number | null {
   return ordered.length % 2 === 0 ? (ordered[middle - 1] + ordered[middle]) / 2 : ordered[middle];
 }
 
-function relativeGrid(grid: LocalGrid, originZ: number): LocalGrid {
-  return { ...grid, values: Float64Array.from(grid.values, (value) => Number.isFinite(value) ? value - originZ : Number.NaN) };
-}
-
 export function d17(ctx: EngineContext): TileResult {
   const reader = demReader(ctx);
-  const grid = demGridFor(ctx, 30);
+  const grid = terrainGridFor(ctx, 30);
   if (!reader || !grid) return notProvided(ctx, "D17", "지형(DEM) 미적재");
 
-  const absoluteValues = valuesInCircle(grid, ctx.input.radiusM);
+  const absoluteValues = terrainValuesInCircle(grid, ctx.input.radiusM);
   if (absoluteValues.length === 0) {
     return makeTile(ctx, {
       code: "D17",
@@ -59,15 +41,15 @@ export function d17(ctx: EngineContext): TileResult {
   const originZ = readerCenter ?? median(absoluteValues);
   if (originZ === null) return notProvided(ctx, "D17", "지형(DEM) 유효 표고 미확인");
 
-  const relative = relativeGrid(grid, originZ);
-  const stats = gridStats(relative, ctx.input.radiusM);
-  const relativeValues = valuesInCircle(relative, ctx.input.radiusM);
+  const relative = relativeTerrainGrid(grid, originZ);
+  const stats = terrainGridStats(relative, ctx.input.radiusM);
+  const relativeValues = terrainValuesInCircle(relative, ctx.input.radiusM);
   const reliefMin = Math.min(...relativeValues);
   const reliefMax = Math.max(...relativeValues);
   const reliefMedian = median(relativeValues) as number;
   const circleAreaM2 = Math.PI * ctx.input.radiusM ** 2;
-  const bands = bandPolygons(ctx.input.center, ctx.input.radiusM, relative, RELIEF_BREAKS, RELIEF_LAYERS, "dem_nodata");
-  const lines = contourLines(ctx.input.center, ctx.input.radiusM, grid, CONTOUR_INTERVAL_M, "contour");
+  const bands = terrainBandPolygons(ctx.input.center, ctx.input.radiusM, relative, RELIEF_BREAKS, RELIEF_LAYERS, "dem_nodata");
+  const lines = terrainContourLines(ctx.input.center, ctx.input.radiusM, grid, CONTOUR_INTERVAL_M, "contour");
   const nodataArea = bands.areaM2.at(-1) ?? 0;
   const centerStatus = readerCenter === null ? "estimated" : "observed";
 

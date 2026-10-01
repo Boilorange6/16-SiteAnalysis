@@ -1,8 +1,8 @@
 /** D18 경사도 — DEM 중앙차분 경사 밴드. */
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
-import { bandPolygons, gridStats, type LocalGrid } from "./raster-grid";
-import { DEM_LIMITATION, demGridFor, demSources } from "./terrain-shared";
+import { slopeGridFor, terrainBandPolygons, terrainClassGrid, terrainGridFor, terrainGridStats, terrainValuesInCircle } from "./terrain-grid";
+import { DEM_LIMITATION, demSources } from "./terrain-shared";
 import { est, makeTile } from "./common";
 import { notProvided } from "./not-provided";
 
@@ -11,71 +11,15 @@ const SLOPE_LAYERS = ["slope_0_5", "slope_5_10", "slope_10_15", "slope_15_20", "
 
 const percent = (part: number, whole: number): number => whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0;
 
-function slopeGrid(dem: LocalGrid): LocalGrid {
-  const values = new Float64Array(dem.values.length);
-  values.fill(Number.NaN);
-  for (let row = 1; row < dem.rows - 1; row++) {
-    for (let col = 1; col < dem.cols - 1; col++) {
-      const west = dem.values[row * dem.cols + col - 1];
-      const east = dem.values[row * dem.cols + col + 1];
-      const south = dem.values[(row - 1) * dem.cols + col];
-      const north = dem.values[(row + 1) * dem.cols + col];
-      if (![west, east, south, north].every(Number.isFinite)) continue;
-      const dzdx = (east - west) / (2 * dem.cellM);
-      const dzdy = (north - south) / (2 * dem.cellM);
-      values[row * dem.cols + col] = Math.atan(Math.hypot(dzdx, dzdy)) * (180 / Math.PI);
-    }
-  }
-  // localGrid has one cell of padding around the analysis circle. Its outer
-  // frame is never a reported cell, but leaving it NaN makes isobands treat
-  // the whole circle as a missing fringe. Reuse the nearest central-difference
-  // value only for that outside padding; missing neighbors inside the circle
-  // remain NaN and are counted as slope_nodata.
-  for (const row of [0, dem.rows - 1]) {
-    for (let col = 0; col < dem.cols; col++) {
-      const sourceRow = row === 0 ? 1 : dem.rows - 2;
-      const candidate = values[sourceRow * dem.cols + Math.min(dem.cols - 2, Math.max(1, col))];
-      if (Number.isFinite(candidate)) values[row * dem.cols + col] = candidate;
-    }
-  }
-  for (let col of [0, dem.cols - 1]) {
-    for (let row = 1; row < dem.rows - 1; row++) {
-      const sourceCol = col === 0 ? 1 : dem.cols - 2;
-      const candidate = values[row * dem.cols + sourceCol];
-      if (Number.isFinite(candidate)) values[row * dem.cols + col] = candidate;
-    }
-  }
-  return { ...dem, values };
-}
-
-function valuesInCircle(grid: LocalGrid, radiusM: number): number[] {
-  const values: number[] = [];
-  for (let row = 0; row < grid.rows; row++) {
-    for (let col = 0; col < grid.cols; col++) {
-      const x = grid.x0 + col * grid.cellM;
-      const y = grid.y0 + row * grid.cellM;
-      if (Math.hypot(x - grid.cx, y - grid.cy) > radiusM + 1e-9) continue;
-      const value = grid.values[row * grid.cols + col];
-      if (Number.isFinite(value)) values.push(value);
-    }
-  }
-  return values;
-}
-
-function median(values: number[]): number | null {
-  if (values.length === 0) return null;
-  const ordered = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(ordered.length / 2);
-  return ordered.length % 2 === 0 ? (ordered[middle - 1] + ordered[middle]) / 2 : ordered[middle];
-}
-
 export function d18(ctx: EngineContext): TileResult {
-  const dem = demGridFor(ctx, 30);
+  const dem = terrainGridFor(ctx, 30);
   if (!dem) return notProvided(ctx, "D18", "지형(DEM) 미적재");
 
-  const slope = slopeGrid(dem);
-  const stats = gridStats(slope, ctx.input.radiusM);
-  const values = valuesInCircle(slope, ctx.input.radiusM);
+  const slope = slopeGridFor(ctx, 30);
+  if (!slope) return notProvided(ctx, "D18", "지형(DEM) 미적재");
+  const reportedSlope = terrainClassGrid(slope);
+  const stats = terrainGridStats(reportedSlope, ctx.input.radiusM);
+  const values = terrainValuesInCircle(reportedSlope, ctx.input.radiusM);
   if (values.length === 0) {
     return makeTile(ctx, {
       code: "D18",
@@ -89,8 +33,10 @@ export function d18(ctx: EngineContext): TileResult {
   }
 
   const circleAreaM2 = Math.PI * ctx.input.radiusM ** 2;
-  const bands = bandPolygons(ctx.input.center, ctx.input.radiusM, slope, SLOPE_BREAKS, SLOPE_LAYERS, "slope_nodata");
-  const slopeMedian = median(values) as number;
+  const ordered = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(ordered.length / 2);
+  const slopeMedian = ordered.length % 2 === 0 ? (ordered[middle - 1] + ordered[middle]) / 2 : ordered[middle];
+  const bands = terrainBandPolygons(ctx.input.center, ctx.input.radiusM, reportedSlope, SLOPE_BREAKS, SLOPE_LAYERS, "slope_nodata");
   const slopeMax = Math.max(...values);
   const nodataArea = bands.areaM2.at(-1) ?? 0;
   const metrics: TileResult["metrics"] = [
