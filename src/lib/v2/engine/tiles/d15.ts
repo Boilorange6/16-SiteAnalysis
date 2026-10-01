@@ -1,5 +1,5 @@
 /** D15 가구 — 도로 중심선으로 폐합된 블록의 면적·반경 교차 구성. */
-import { difference, featureCollection, lineIntersect, lineSplit, lineString, multiPoint, polygon, polygonize } from "@turf/turf";
+import { difference, featureCollection, lineString, polygon } from "@turf/turf";
 import type { Geometry, Position } from "geojson";
 import { toUtmk } from "../../crs";
 import type { FeatureHit } from "../../data/features";
@@ -127,6 +127,53 @@ function pointOnSegment(point: number[], a: number[], b: number[]): boolean {
   return (point[0] - a[0]) * (point[0] - b[0]) + (point[1] - a[1]) * (point[1] - b[1]) <= 1e-5;
 }
 
+function cross(a: number[], b: number[]): number {
+  return a[0] * b[1] - a[1] * b[0];
+}
+
+/** 2점 선분끼리의 교차점. Turf lineIntersect보다 싸고, 겹치는 선분의 끝점도 노드로 보존한다. */
+function segmentIntersections(a: number[], b: number[], c: number[], d: number[]): number[][] {
+  const left = (first: number[], second: number[]) => first[0] < second[0] || (first[0] === second[0] && first[1] < second[1]) ? first : second;
+  const first = left(a, b);
+  const second = first === a ? b : a;
+  const third = left(c, d);
+  const fourth = third === c ? d : c;
+  const x1 = first[0];
+  const y1 = first[1];
+  const x2 = second[0];
+  const y2 = second[1];
+  const x3 = third[0];
+  const y3 = third[1];
+  const x4 = fourth[0];
+  const y4 = fourth[1];
+  const dx1 = x2 - x1;
+  const dy1 = y2 - y1;
+  const dx2 = x4 - x3;
+  const dy2 = y4 - y3;
+  // 기존 Turf sweepline의 선분 교차식과 같은 연산 순서를 사용해 교차점 반올림
+  // 경계에서도 기존 노드 좌표를 보존한다.
+  const denominator = (dy2 * dx1) - (dx2 * dy1);
+  if (denominator !== 0) {
+    const numeratorA = (dx2 * (y1 - y3)) - (dy2 * (x1 - x3));
+    const numeratorB = (dx1 * (y1 - y3)) - (dy1 * (x1 - x3));
+    const parameterA = numeratorA / denominator;
+    const parameterB = numeratorB / denominator;
+    if (parameterA < 0 || parameterA > 1 || parameterB < 0 || parameterB > 1) return [];
+    // 끝점 접촉은 endpointTouches가 원래 끝점 좌표로 보존한다.
+    if (parameterA === 0 || parameterA === 1 || parameterB === 0 || parameterB === 1) return [];
+    return [[x1 + parameterA * dx1, y1 + parameterA * dy1]];
+  }
+
+  // 평행·비공선이면 교차하지 않는다. 공선 겹침은 양쪽 끝점 중 선분 위에 있는 것만 남긴다.
+  if (cross([c[0] - a[0], c[1] - a[1]], [dx1, dy1]) !== 0) return [];
+  return uniquePoints([
+    ...(pointOnSegment(a, c, d) ? [a] : []),
+    ...(pointOnSegment(b, c, d) ? [b] : []),
+    ...(pointOnSegment(c, a, b) ? [c] : []),
+    ...(pointOnSegment(d, a, b) ? [d] : []),
+  ]);
+}
+
 function lineEndpoints(line: RoadLine): number[][] {
   const coordinates = line.feature.geometry.coordinates as number[][];
   return [coordinates[0], coordinates[coordinates.length - 1]];
@@ -161,6 +208,24 @@ function manualLineSplit(a: number[], b: number[], points: number[][]): Array<Re
       [a[0] + to * dx, a[1] + to * dy],
     ] as Position[]);
   });
+}
+
+/** lineSplit의 2점 선분 경로를 로컬 좌표에서 재현한다(끝점은 원래 선분 좌표를 유지). */
+function manualPointSplit(a: number[], b: number[], points: number[][]): Array<ReturnType<typeof lineString>> {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const length2 = dx * dx + dy * dy;
+  const entries = [
+    { parameter: 0, point: a },
+    { parameter: 1, point: b },
+    ...points.map((point) => ({
+      parameter: length2 <= EPS ? 0 : Math.max(0, Math.min(1, ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / length2)),
+      point,
+    })),
+  ];
+  entries.sort((left, right) => left.parameter - right.parameter);
+  const unique = entries.filter((entry, index) => index === 0 || entry.parameter - entries[index - 1].parameter > 1e-9);
+  return unique.slice(1).map((to, index) => lineString([unique[index].point, to.point] as Position[]));
 }
 
 /** 격자 버킷으로 후보를 줄인 뒤, 겹치는 bbox 쌍만 Turf 교차를 호출한다. */
@@ -205,11 +270,13 @@ function nodeRoadLines(lines: RoadLine[], bounds: Bbox): Array<ReturnType<typeof
     const b = lines[j];
     const aEndpoints = lineEndpoints(a);
     const bEndpoints = lineEndpoints(b);
-    const intersections = lineIntersect(a.feature, b.feature).features.map((point) => point.geometry.coordinates as number[]);
-    const extraA = aEndpoints.filter((point) => pointOnSegment(point, bEndpoints[0], bEndpoints[1]));
-    const extraB = bEndpoints.filter((point) => pointOnSegment(point, aEndpoints[0], aEndpoints[1]));
-    splitPoints[i].push(...intersections, ...extraA, ...extraB);
-    splitPoints[j].push(...intersections, ...extraA, ...extraB);
+    const intersections = segmentIntersections(aEndpoints[0], aEndpoints[1], bEndpoints[0], bEndpoints[1]);
+    const endpointTouches = [
+      ...aEndpoints.filter((point) => pointOnSegment(point, bEndpoints[0], bEndpoints[1])),
+      ...bEndpoints.filter((point) => pointOnSegment(point, aEndpoints[0], aEndpoints[1])),
+    ];
+    splitPoints[i].push(...intersections, ...endpointTouches);
+    splitPoints[j].push(...intersections, ...endpointTouches);
   }
 
   const result: Array<ReturnType<typeof lineString>> = [];
@@ -218,13 +285,22 @@ function nodeRoadLines(lines: RoadLine[], bounds: Bbox): Array<ReturnType<typeof
     const [start, end] = lineEndpoints(lines[i]);
     const points = uniquePoints(splitPoints[i].map((point) => snapToSegment(point, start, end)));
     const [originX, originY] = bounds;
-    const sourceCoordinates = lines[i].feature.geometry.coordinates as number[][];
-    const localLine = lineString(sourceCoordinates.map(([x, y]) => [x - originX, y - originY]) as Position[]);
-    const localPoints = points.map(([x, y]) => [x - originX, y - originY] as Position);
-    const turfSplit = localPoints.length > 0 ? lineSplit(localLine, multiPoint(localPoints)).features : [localLine];
+    const localStart: [number, number] = [start[0] - originX, start[1] - originY];
+    const localEnd: [number, number] = [end[0] - originX, end[1] - originY];
+    const truncatedLocalPoints = uniquePoints(points.map(([x, y]) => [
+      Math.round((x - originX) * 1e7) / 1e7,
+      Math.round((y - originY) * 1e7) / 1e7,
+    ]));
+    const inLineBbox = (point: number[]) => point[0] >= Math.min(localStart[0], localEnd[0]) && point[0] <= Math.max(localStart[0], localEnd[0])
+      && point[1] >= Math.min(localStart[1], localEnd[1]) && point[1] <= Math.max(localStart[1], localEnd[1]);
+    const internalTruncatedPoints = truncatedLocalPoints.filter((point) => inLineBbox(point)
+      && !(point[0] === localStart[0] && point[1] === localStart[1])
+      && !(point[0] === localEnd[0] && point[1] === localEnd[1]));
     const expected = splitParameters(points, start, end).length - 1;
-    const split = turfSplit.length === expected
-      ? turfSplit.map((piece) => lineString((piece.geometry.coordinates as number[][]).map(([x, y]) => [x + originX, y + originY]) as Position[]))
+    const split = internalTruncatedPoints.length + 1 === expected
+      ? manualPointSplit(localStart, localEnd, internalTruncatedPoints).map((piece) => lineString(
+        (piece.geometry.coordinates as number[][]).map(([x, y]) => [x + originX, y + originY]) as Position[],
+      ))
       : manualLineSplit(start, end, points);
     for (const piece of split) {
       const coordinates = piece.geometry.coordinates as number[][];
@@ -246,21 +322,333 @@ function nodeRoadLines(lines: RoadLine[], bounds: Bbox): Array<ReturnType<typeof
   return result;
 }
 
+/** 차수 2 노드를 통과하는 선분 연쇄를 하나의 LineString으로 합쳐 polygonize 간선을 줄인다. */
+function mergeDegreeTwoChains(lines: Array<ReturnType<typeof lineString>>): Array<ReturnType<typeof lineString>> {
+  type Edge = { a: string; b: string; coordinates: number[][] };
+  const edges: Edge[] = [];
+  const adjacency = new Map<string, number[]>();
+  const points = new Map<string, number[]>();
+  const addIncident = (key: string, edgeIndex: number) => {
+    const incident = adjacency.get(key) ?? [];
+    incident.push(edgeIndex);
+    adjacency.set(key, incident);
+  };
+
+  for (const line of lines) {
+    const coordinates = line.geometry.coordinates as number[][];
+    if (coordinates.length < 2) continue;
+    const start = coordinates[0];
+    const end = coordinates[coordinates.length - 1];
+    const a = coordinateKey(start);
+    const b = coordinateKey(end);
+    if (a === b) continue;
+    const edgeIndex = edges.length;
+    edges.push({ a, b, coordinates: [start, end] });
+    points.set(a, start);
+    points.set(b, end);
+    addIncident(a, edgeIndex);
+    addIncident(b, edgeIndex);
+  }
+
+  const degree = (key: string) => adjacency.get(key)?.length ?? 0;
+  const visited = new Set<number>();
+  const merged: Array<ReturnType<typeof lineString>> = [];
+
+  const trace = (startNode: string, firstEdge: number) => {
+    const startPoint = points.get(startNode);
+    if (!startPoint) return;
+    const path = [startPoint];
+    let node = startNode;
+    let edgeIndex = firstEdge;
+    while (!visited.has(edgeIndex)) {
+      visited.add(edgeIndex);
+      const edge = edges[edgeIndex];
+      const forward = edge.a === node;
+      const oriented = forward ? edge.coordinates : [...edge.coordinates].reverse();
+      for (const point of oriented.slice(1)) path.push(point);
+      node = forward ? edge.b : edge.a;
+      if (node === startNode || degree(node) !== 2) break;
+      const next = adjacency.get(node)?.find((candidate) => candidate !== edgeIndex && !visited.has(candidate));
+      if (next === undefined) break;
+      edgeIndex = next;
+    }
+    if (path.length >= 2) merged.push(lineString(path as Position[]));
+  };
+
+  // 끝점·교차점·분기점에서 시작하면 모든 단순 연쇄를 한 번씩 걷는다.
+  for (const [node, incident] of adjacency) {
+    if (degree(node) === 2) continue;
+    for (const edgeIndex of incident) if (!visited.has(edgeIndex)) trace(node, edgeIndex);
+  }
+  // 모든 노드가 차수 2인 고립 순환도로도 누락시키지 않는다.
+  for (let edgeIndex = 0; edgeIndex < edges.length; edgeIndex++) {
+    if (!visited.has(edgeIndex)) trace(edges[edgeIndex].a, edgeIndex);
+  }
+  return merged;
+}
+
+/**
+ * Turf polygonize의 배열 splice 기반 그래프 대신, 이미 노딩된 선망의 반쪽 변을
+ * 각 노드의 각도 순서로 한 번씩 순회한다. 시계방향의 단순 면만 반환하므로
+ * 열린 외곽·댕글·bridge는 폐합 블록으로 승격되지 않는다.
+ */
+function polygonizeRoads(lines: Array<ReturnType<typeof lineString>>) {
+  const exactKey = (point: number[]) => `${point[0]},${point[1]}`;
+  type DirectedEdge = {
+    from: string;
+    to: string;
+    sym: number;
+    undirected: number;
+    next: number;
+    label: number;
+    ring: number;
+  };
+  type Node = { point: number[]; outgoing: number[] };
+  type UndirectedEdge = { a: string; b: string; active: boolean };
+  const nodes = new Map<string, Node>();
+  const edges: DirectedEdge[] = [];
+  const undirectedEdges: UndirectedEdge[] = [];
+  const incident = new Map<string, number[]>();
+  const ensureNode = (point: number[]) => {
+    const key = exactKey(point);
+    let node = nodes.get(key);
+    if (!node) {
+      node = { point, outgoing: [] };
+      nodes.set(key, node);
+      incident.set(key, []);
+    }
+    return { key, node };
+  };
+
+  for (const line of lines) {
+    const coordinates = line.geometry.coordinates as number[][];
+    for (let i = 1; i < coordinates.length; i++) {
+      const from = ensureNode(coordinates[i - 1]);
+      const to = ensureNode(coordinates[i]);
+      if (from.key === to.key) continue;
+      const undirected = undirectedEdges.length;
+      const forward = edges.length;
+      const reverse = forward + 1;
+      edges.push(
+        { from: from.key, to: to.key, sym: reverse, undirected, next: -1, label: -1, ring: -1 },
+        { from: to.key, to: from.key, sym: forward, undirected, next: -1, label: -1, ring: -1 },
+      );
+      undirectedEdges.push({ a: from.key, b: to.key, active: true });
+      from.node.outgoing.push(forward);
+      to.node.outgoing.push(reverse);
+      incident.get(from.key)!.push(undirected);
+      incident.get(to.key)!.push(undirected);
+    }
+  }
+  const degree = new Map<string, number>();
+  for (const [key, nodeEdges] of incident) degree.set(key, nodeEdges.length);
+  const otherNode = (edgeIndex: number, key: string) => {
+    const edge = undirectedEdges[edgeIndex];
+    return edge.a === key ? edge.b : edge.a;
+  };
+  const dangleQueue = [...nodes.keys()].filter((key) => (degree.get(key) ?? 0) <= 1);
+  const removedDangleNodes = new Set<string>();
+  while (dangleQueue.length > 0) {
+    const key = dangleQueue.pop()!;
+    if (removedDangleNodes.has(key) || (degree.get(key) ?? 0) > 1) continue;
+    removedDangleNodes.add(key);
+    for (const edgeIndex of incident.get(key)!) {
+      const edge = undirectedEdges[edgeIndex];
+      if (!edge.active) continue;
+      edge.active = false;
+      const other = otherNode(edgeIndex, key);
+      degree.set(key, (degree.get(key) ?? 1) - 1);
+      degree.set(other, (degree.get(other) ?? 1) - 1);
+      if ((degree.get(other) ?? 0) <= 1) dangleQueue.push(other);
+    }
+  }
+
+  // Tarjan bridge detection removes cut edges in O(V + E), matching polygonize's
+  // deleteCutEdges without its repeated directed-edge array filtering.
+  const discovery = new Map<string, number>();
+  const low = new Map<string, number>();
+  const bridge = new Set<number>();
+  let discoveryIndex = 0;
+  for (const root of nodes.keys()) {
+    if (discovery.has(root) || (degree.get(root) ?? 0) === 0) continue;
+    discovery.set(root, discoveryIndex++);
+    low.set(root, discovery.get(root)!);
+    const stack: Array<{ key: string; parent: string | null; parentEdge: number; nextIncident: number }> = [
+      { key: root, parent: null, parentEdge: -1, nextIncident: 0 },
+    ];
+    while (stack.length > 0) {
+      const frame = stack[stack.length - 1];
+      const nodeEdges = incident.get(frame.key)!;
+      while (frame.nextIncident < nodeEdges.length && !undirectedEdges[nodeEdges[frame.nextIncident]].active) frame.nextIncident++;
+      if (frame.nextIncident >= nodeEdges.length) {
+        stack.pop();
+        if (frame.parent !== null) {
+          low.set(frame.parent, Math.min(low.get(frame.parent)!, low.get(frame.key)!));
+          if (low.get(frame.key)! > discovery.get(frame.parent)!) bridge.add(frame.parentEdge);
+        }
+        continue;
+      }
+      const edgeIndex = nodeEdges[frame.nextIncident++];
+      if (edgeIndex === frame.parentEdge) continue;
+      const other = otherNode(edgeIndex, frame.key);
+      if (!discovery.has(other)) {
+        discovery.set(other, discoveryIndex++);
+        low.set(other, discovery.get(other)!);
+        stack.push({ key: other, parent: frame.key, parentEdge: edgeIndex, nextIncident: 0 });
+      } else {
+        low.set(frame.key, Math.min(low.get(frame.key)!, discovery.get(other)!));
+      }
+    }
+  }
+  for (const edgeIndex of bridge) undirectedEdges[edgeIndex].active = false;
+
+  const isActive = (edgeIndex: number) => undirectedEdges[edges[edgeIndex].undirected].active;
+  const sameDirected = (left: number, right: number) => edges[left].from === edges[right].from && edges[left].to === edges[right].to;
+  const compareEdges = (left: number, right: number, node: Node) => {
+    const a = nodes.get(edges[left].to)!.point;
+    const b = nodes.get(edges[right].to)!.point;
+    const ax = a[0] - node.point[0];
+    const ay = a[1] - node.point[1];
+    const bx = b[0] - node.point[0];
+    const by = b[1] - node.point[1];
+    if (ax >= 0 && bx < 0) return 1;
+    if (ax < 0 && bx >= 0) return -1;
+    if (ax === 0 && bx === 0) {
+      if (ay >= 0 || by >= 0) return ay - by;
+      return by - ay;
+    }
+    const orientation = Math.sign(ax * (by - ay) - (bx - ax) * ay);
+    if (orientation < 0) return 1;
+    if (orientation > 0) return -1;
+    return (ax * ax + ay * ay) - (bx * bx + by * by);
+  };
+  for (const node of nodes.values()) node.outgoing.sort((left, right) => compareEdges(left, right, node));
+
+  const signedArea = (ring: number[][]) => {
+    let sum = 0;
+    for (let index = 1; index < ring.length; index++) {
+      sum += ring[index - 1][0] * ring[index][1] - ring[index][0] * ring[index - 1][1];
+    }
+    return sum / 2;
+  };
+  const splitRepeatedRing = (keys: string[]) => {
+    const result: string[][] = [];
+    const stack: string[] = [];
+    const positions = new Map<string, number>();
+    for (const key of [...keys, keys[0]]) {
+      const previous = positions.get(key);
+      if (previous !== undefined) {
+        const cycle = stack.slice(previous);
+        if (cycle.length >= 3) result.push(cycle);
+        stack.splice(previous + 1);
+        positions.clear();
+        stack.forEach((stackKey, index) => positions.set(stackKey, index));
+        continue;
+      }
+      positions.set(key, stack.length);
+      stack.push(key);
+    }
+    return result.length > 0 ? result : [keys];
+  };
+  const computeNextClockwise = () => {
+    for (const node of nodes.values()) {
+      const outgoing = node.outgoing.filter(isActive);
+      for (let index = 0; index < outgoing.length; index++) {
+        const previous = outgoing[(index === 0 ? outgoing.length : index) - 1];
+        edges[edges[previous].sym].next = outgoing[index];
+      }
+    }
+  };
+
+  computeNextClockwise();
+  const maximalRingStarts: number[] = [];
+  let label = 0;
+  for (let start = 0; start < edges.length; start++) {
+    if (!isActive(start) || edges[start].label >= 0) continue;
+    maximalRingStarts.push(start);
+    let current = start;
+    do {
+      edges[current].label = label;
+      current = edges[current].next;
+    } while (!sameDirected(start, current));
+    label++;
+  }
+
+  const computeNextCounterClockwise = (node: Node, ringLabel: number) => {
+    const outgoing = node.outgoing.filter(isActive);
+    let firstOut = -1;
+    let previousIn = -1;
+    for (let index = outgoing.length - 1; index >= 0; index--) {
+      const directed = outgoing[index];
+      const symmetric = edges[directed].sym;
+      const out = edges[directed].label === ringLabel ? directed : -1;
+      const incoming = edges[symmetric].label === ringLabel ? symmetric : -1;
+      if (out < 0 && incoming < 0) continue;
+      if (incoming >= 0) previousIn = incoming;
+      if (out >= 0) {
+        if (previousIn >= 0) {
+          edges[previousIn].next = out;
+          previousIn = -1;
+        }
+        if (firstOut < 0) firstOut = out;
+      }
+    }
+    if (previousIn >= 0) edges[previousIn].next = firstOut;
+  };
+
+  for (const start of maximalRingStarts) {
+    const ringLabel = edges[start].label;
+    const intersectionNodes = new Set<string>();
+    let current = start;
+    do {
+      const node = nodes.get(edges[current].from)!;
+      if (node.outgoing.filter((edgeIndex) => isActive(edgeIndex) && edges[edgeIndex].label === ringLabel).length > 1) {
+        intersectionNodes.add(edges[current].from);
+      }
+      current = edges[current].next;
+    } while (!sameDirected(start, current));
+    for (const key of intersectionNodes) computeNextCounterClockwise(nodes.get(key)!, ringLabel);
+  }
+
+  const rings: number[][] = [];
+  for (let start = 0; start < edges.length; start++) {
+    if (!isActive(start) || edges[start].ring >= 0) continue;
+    const ring: number[] = [];
+    let current = start;
+    do {
+      if (current < 0 || current >= edges.length || ring.length > edges.length) throw new Error(`invalid edge-ring traversal at ${start} -> ${current}`);
+      ring.push(current);
+      edges[current].ring = rings.length;
+      current = edges[current].next;
+    } while (!sameDirected(start, current));
+    rings.push(ring);
+  }
+
+  const polygonRings = rings.flatMap((ring) => splitRepeatedRing(ring.map((edgeIndex) => edges[edgeIndex].from)).map((keys) => {
+    const coordinates = keys.map((key) => nodes.get(key)!.point);
+    const closed = [...coordinates, coordinates[0]];
+    return { keys, coordinates: closed, area: signedArea(closed) };
+  }));
+  const polygons = polygonRings.filter((ring) => ring.keys.length >= 3 && ring.area < -1e-4).map((ring) => polygon([ring.coordinates as Position[]]));
+  return featureCollection(polygons);
+}
+
 function touchesBoundary(rings: number[][][], bounds: Bbox): boolean {
   const [minX, minY, maxX, maxY] = bounds;
   return rings.some((ring) => ring.some(([x, y]) =>
     Math.abs(x - minX) <= 1e-5 || Math.abs(x - maxX) <= 1e-5 || Math.abs(y - minY) <= 1e-5 || Math.abs(y - maxY) <= 1e-5));
 }
 
-function closedBlocks(lines: RoadLine[], bounds: Bbox): Block[] {
-  if (lines.length === 0) return [];
+function closedBlocks(lines: RoadLine[], bounds: Bbox): { blocks: Block[]; polygonizeFailed: boolean } {
+  if (lines.length === 0) return { blocks: [], polygonizeFailed: false };
   const noded = nodeRoadLines(lines, bounds);
-  if (noded.length === 0) return [];
-  let polygons: ReturnType<typeof polygonize>;
+  if (noded.length === 0) return { blocks: [], polygonizeFailed: false };
+  const merged = mergeDegreeTwoChains(noded);
+  let polygons: ReturnType<typeof polygonizeRoads>;
   try {
-    polygons = polygonize(featureCollection(noded));
+    polygons = polygonizeRoads(merged);
   } catch {
-    return [];
+    return { blocks: [], polygonizeFailed: true };
   }
   const blocks: Block[] = [];
   for (const [index, feature] of polygons.features.entries()) {
@@ -269,7 +657,7 @@ function closedBlocks(lines: RoadLine[], bounds: Bbox): Block[] {
     if (areaM2 <= 1e-4 || touchesBoundary(rings, bounds)) continue;
     blocks.push({ id: index + 1, rings, areaM2 });
   }
-  return blocks;
+  return { blocks, polygonizeFailed: false };
 }
 
 function median(values: number[]): number | null {
@@ -334,7 +722,8 @@ export function d15(ctx: EngineContext): TileResult {
   const [cx, cy] = toUtmk(ctx.input.center);
   const bounds: Bbox = [cx - readRadiusM, cy - readRadiusM, cx + readRadiusM, cy + readRadiusM];
   const roads = roadLines(ctx.hits("reference", ["road"], readRadiusM), bounds);
-  const { blocks, failed } = measureBlocks(ctx, closedBlocks(roads, bounds));
+  const closed = closedBlocks(roads, bounds);
+  const { blocks, failed } = measureBlocks(ctx, closed.blocks);
   const circleAreaM2 = Math.PI * ctx.input.radiusM ** 2;
   const circleAreaRounded = Math.round(circleAreaM2);
   const closedAreaM2 = blocks.reduce((sum, block) => sum + block.crossAreaM2, 0);
@@ -372,6 +761,7 @@ export function d15(ctx: EngineContext): TileResult {
     { kind: "partial", note: "OSM 중심선 기준 폐합 — 도로 폭·사유 통로 미반영, 보행로 제외" },
     { kind: "unknown", note: "폐합 블록 면적은 EPSG:5179 평면 도형 계산값이며 실제 대지·도로 폭·필지 경계를 뜻하지 않습니다." },
     { kind: "unknown", note: "© OpenStreetMap contributors · ODbL 1.0" },
+    ...(closed.polygonizeFailed ? [{ kind: "partial" as const, note: "도로망 폐합 계산이 일부 실패해 폐합 블록을 산출하지 못했습니다. 지도·지표는 도로망의 나머지 부분만 반영할 수 있습니다." }] : []),
     ...(failed > 0 ? [{ kind: "partial" as const, note: `도형 오류로 반경 교차 면적을 계산하지 못한 ${failed}개 블록은 면적 구성에서 제외했습니다.` }] : []),
     ...coverage,
   ];
