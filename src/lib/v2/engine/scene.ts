@@ -1,4 +1,4 @@
-import { toUtmk } from "../crs";
+import { toLngLat, toUtmk } from "../crs";
 import type { FeatureHit } from "../data/features";
 import {
   SCENE_VERSION,
@@ -16,7 +16,8 @@ import type { EngineContext, SourceRef } from "./context";
 import { buildingRows, BUILDING_SOURCES } from "./tiles/buildings-shared";
 import { polygonParts } from "./tiles/geo";
 import { hitPoint } from "./tiles/common";
-import { demGridFor, demReader, demSources, DEM_LIMITATION } from "./tiles/terrain-shared";
+import { demReader, demSources, DEM_LIMITATION } from "./tiles/terrain-shared";
+import type { LocalGrid } from "./tiles/raster-grid";
 
 function localRings(hit: FeatureHit, origin: { x: number; y: number }): Ring[] {
   return polygonParts(hit.geometry).flatMap((rings) => rings.map((ring) => toLocalRing(ring, origin)));
@@ -73,6 +74,30 @@ function sceneCellM(radiusM: number): number {
   return cellM;
 }
 
+function sceneDemGrid(
+  reader: NonNullable<ReturnType<typeof demReader>>,
+  center: readonly [number, number],
+  radiusM: number,
+  cellM: number,
+): LocalGrid {
+  const [cx, cy] = toUtmk(center);
+  const cols = Math.floor((2 * (radiusM + cellM)) / cellM) + 1;
+  const rows = cols;
+  const x0 = -((cols - 1) * cellM) / 2;
+  const y0 = -((rows - 1) * cellM) / 2;
+  const values = new Float64Array(cols * rows);
+  values.fill(Number.NaN);
+
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      const [lng, lat] = toLngLat([cx + x0 + col * cellM, cy + y0 + row * cellM]);
+      const value = reader.elevation(lng, lat);
+      values[row * cols + col] = value === null || !Number.isFinite(value) ? Number.NaN : value;
+    }
+  }
+  return { cx, cy, cellM, cols, rows, x0: cx + x0, y0: cy + y0, values };
+}
+
 type TerrainForScene = { reader: NonNullable<ReturnType<typeof demReader>>; originZ: number };
 
 function makeBuilding(
@@ -114,7 +139,7 @@ export function buildScene(ctx: EngineContext): Scene | null {
   if (!rows) return null;
 
   const reader = demReader(ctx);
-  const grid = reader ? demGridFor(ctx, sceneCellM(ctx.input.radiusM)) : null;
+  const grid = reader ? sceneDemGrid(reader, ctx.input.center, ctx.input.radiusM, sceneCellM(ctx.input.radiusM)) : null;
   const finiteGround = grid
     ? Array.from(grid.values).filter((value): value is number => Number.isFinite(value))
     : [];

@@ -8,6 +8,7 @@ const { toUtmk } = await import("../../lib/v2/crs.ts");
 const { openV2AppDb, loadScene } = await import("../../lib/v2/app-db.ts");
 const { runAnalysis } = await import("../../lib/v2/engine/run.ts");
 const { getScene } = await import("../../lib/v2/engine/api.ts");
+const { groundZAt } = await import("../../lib/v2/scene.ts");
 
 const input = { address: "경기도 남양주시 다산동 100", radiusM: 800, analysisDate: "2026-09-30" };
 const dataDir = mkdtempSync(join(tmpdir(), "v2-scene-build-"));
@@ -73,6 +74,16 @@ try {
   assert.ok(terrainScene.sources.some((source) => source.sourceId === "terrain_tiles"));
   assert.ok(terrainScene.limitations.some((limitation) => limitation.kind === "estimated" && limitation.note.includes("EGM96")));
   assert.deepEqual(loadScene(appDb, terrainOutcome.analysisId), terrainScene, "DEM scene round-trips through app DB");
+
+  const largeTerrainOutcome = runAnalysis(appDb, terrainDir, { ...input, radiusM: 3000, analysisDate: "2026-10-02" });
+  assert.equal(largeTerrainOutcome.ok, true);
+  const largeTerrainScene = loadScene(appDb, largeTerrainOutcome.analysisId);
+  assert.ok(largeTerrainScene?.ground.kind === "dem");
+  const largeOffice = largeTerrainScene.buildings.find((building) => building.id === "building:b_office");
+  assert.ok(largeOffice?.baseZ !== null);
+  const groundAtOffice = groundZAt(largeTerrainScene.ground, 70, 0);
+  assert.ok(groundAtOffice !== null);
+  assert.ok(Math.abs(groundAtOffice - largeOffice.baseZ) <= 0.3, `office ground ${groundAtOffice} vs baseZ ${largeOffice.baseZ}`);
 
   const noBuildingsDir = mkdtempSync(join(tmpdir(), "v2-scene-no-buildings-"));
   await buildEngineFixture(noBuildingsDir, "v1");
