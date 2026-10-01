@@ -57,6 +57,8 @@ function MassFigure({ scene, camera, width, height, fixed = false, label = "S01 
   const ny = 48;
   const uid = `mass-${Math.round(width)}-${Math.round(height)}`;
   const legend: MassLayer[] = ["mass_source", "mass_estimated", "mass_unknown"];
+  const isDem = scene?.ground.kind === "dem";
+  if (isDem) legend.push("ground");
 
   return (
     <svg
@@ -103,11 +105,16 @@ function MassFigure({ scene, camera, width, height, fixed = false, label = "S01 
           <g key={layer} transform={`translate(${index * 112} 0)`}>
             <rect width="10" height="10" rx="2" fill={COLORS[layer]} />
             <text x="16" y="10" fontSize="10" fill={INK}>
-              {LABELS[layer]}
+              {layer === "ground" && isDem ? "지형(30m 격자)" : LABELS[layer]}
             </text>
           </g>
         ))}
       </g>
+      {scene?.ground.kind === "flat" && (
+        <text x={nx} y={ny + 50} textAnchor="middle" fontSize="10" fill="#5B606B">
+          지형 미반영
+        </text>
+      )}
       {!scene && (
         <text x={width / 2} y={height / 2} textAnchor="middle" fontSize="13" fontWeight="700" fill="#5B606B">
           건물 도형 미적재 · 매스 틀만 표시
