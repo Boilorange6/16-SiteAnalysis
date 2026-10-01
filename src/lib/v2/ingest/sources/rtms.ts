@@ -59,6 +59,7 @@ export interface TxRow {
   dealDate: string;
   propertyType: string;
   contractType: string;
+  renewal: "new" | "renewal" | null;
   priceKrw: number | null;
   depositKrw: number | null;
   rentKrw: number | null;
@@ -83,6 +84,8 @@ export function toTxRow(type: RtmsType, lawdOfFile: string, fetchedDate: string,
   const dealDate = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
   const name = it.aptNm ?? it.offiNm ?? "";
   const floor = num(it.floor);
+  const contractType = isRent ? ((monthly ?? 0) > 0 ? "monthly" : "jeonse") : "trade";
+  const renewal = !isRent ? null : it.contractType?.trim() === "신규" ? "new" : it.contractType?.trim() === "갱신" ? "renewal" : null;
   const key = [PROPERTY[type], isRent ? "rent" : "trade", lawd, it.umdCd ?? it.umdNm ?? "", it.jibun ?? "", name, it.aptDong ?? "", dealDate, it.dealAmount?.replaceAll(",", "") ?? "", it.deposit?.replaceAll(",", "") ?? "", it.monthlyRent?.replaceAll(",", "") ?? "", it.excluUseAr ?? "", it.floor ?? "", it.buyerGbn ?? "", it.slerGbn ?? "", it.dealingGbn ?? "", it.estateAgentSggNm ?? "", it.contractTerm ?? "", it.contractType ?? ""].join("|");
   const cancelled = (it.cdealType ?? "").trim().toUpperCase() === "O";
   return {
@@ -91,7 +94,8 @@ export function toTxRow(type: RtmsType, lawdOfFile: string, fetchedDate: string,
     lawd,
     dealDate,
     propertyType: PROPERTY[type],
-    contractType: isRent ? ((monthly ?? 0) > 0 ? "monthly" : "jeonse") : "trade",
+    contractType,
+    renewal,
     priceKrw: price,
     depositKrw: deposit,
     rentKrw: monthly,
@@ -144,8 +148,8 @@ export async function buildRtms(db: Db, input: { core: Db; rawDir: string; now?:
   const sigName = new Map((input.core.prepare("SELECT code, name FROM legal_area WHERE level = 'sigungu'").all() as { code: string; name: string }[]).map((r) => [r.code, r.name]));
   const runAt = (input.now ?? new Date()).toISOString();
   const out: SourceStats[] = [];
-  const insert = db.prepare(`INSERT INTO property_transaction (transaction_id, source_record_key, lawd_cd, deal_date, property_type, contract_type, price_krw, deposit_krw, rent_krw, area_m2, floor, cancelled_at, location_id, match_status, release_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  const insert = db.prepare(`INSERT INTO property_transaction (transaction_id, source_record_key, lawd_cd, deal_date, property_type, contract_type, renewal, price_krw, deposit_krw, rent_krw, area_m2, floor, cancelled_at, location_id, match_status, release_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
 
   for (const [type, files] of listRtmsFiles(input.rawDir)) {
     const latestYm = files.map((f) => f.split(/[\\/]/).at(-2) as string).sort().at(-1) as string;
@@ -175,7 +179,7 @@ export async function buildRtms(db: Db, input: { core: Db; rawDir: string; now?:
       }
       seen.add(row.transactionId);
       const loc = locate(input.core, sigName, row.lawd, item);
-      insert.run(row.transactionId, row.sourceRecordKey, row.lawd, row.dealDate, row.propertyType, row.contractType, row.priceKrw, row.depositKrw, row.rentKrw, row.areaM2, row.floor, row.cancelledAt, loc?.pnu ?? null, loc ? "located" : "unlocated", releaseId);
+      insert.run(row.transactionId, row.sourceRecordKey, row.lawd, row.dealDate, row.propertyType, row.contractType, row.renewal, row.priceKrw, row.depositKrw, row.rentKrw, row.areaM2, row.floor, row.cancelledAt, loc?.pnu ?? null, loc ? "located" : "unlocated", releaseId);
       const region = row.lawd.slice(0, 2);
       if (!loc) {
         t.unlocated++;

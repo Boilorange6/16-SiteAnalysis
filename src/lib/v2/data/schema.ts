@@ -158,6 +158,7 @@ const MARKET_SQL = `
     deal_date TEXT NOT NULL,
     property_type TEXT NOT NULL,
     contract_type TEXT NOT NULL,
+    renewal TEXT,
     price_krw INTEGER,
     deposit_krw INTEGER,
     rent_krw INTEGER,
@@ -227,6 +228,27 @@ const WEATHER_SQL = `
     speed_bin INTEGER NOT NULL,
     hours INTEGER NOT NULL,
     PRIMARY KEY (station_id, dir16, speed_bin)
+  ) WITHOUT ROWID;
+  CREATE TABLE IF NOT EXISTS wind_rose_season (
+    station_id TEXT NOT NULL,
+    season TEXT NOT NULL,
+    dir16 INTEGER NOT NULL,
+    speed_bin INTEGER NOT NULL,
+    hours INTEGER NOT NULL,
+    calm_hours INTEGER NOT NULL,
+    PRIMARY KEY (station_id, season, dir16, speed_bin)
+  ) WITHOUT ROWID;
+  CREATE TABLE IF NOT EXISTS weather_season_hour (
+    station_id TEXT NOT NULL,
+    season TEXT NOT NULL,
+    hour INTEGER NOT NULL,
+    n INTEGER NOT NULL,
+    ta_med REAL,
+    hm_med REAL,
+    ws_med REAL,
+    ghi_med_wm2 REAL,
+    cloud_med REAL,
+    PRIMARY KEY (station_id, season, hour)
   ) WITHOUT ROWID;
 `;
 
