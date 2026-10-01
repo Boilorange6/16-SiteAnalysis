@@ -15,7 +15,7 @@ import { parseTileResult, type TileResult } from "./tile-result";
 
 type Db = BetterSqlite3.Database;
 
-export const V2_APP_SCHEMA_VERSION = 1;
+export const V2_APP_SCHEMA_VERSION = 2;
 
 export interface AnalysisRunInput {
   analysisId: string;
@@ -26,6 +26,7 @@ export interface AnalysisRunInput {
   manifestHash: string;
   engineVersion: string;
   parameters: Record<string, unknown>;
+  userId?: string | number | null;
 }
 
 export function openV2AppDb(path: string = v2AppDbPath()): Db {
@@ -53,6 +54,7 @@ export function initV2AppSchema(db: Db): void {
       manifest_hash TEXT NOT NULL,
       engine_version TEXT NOT NULL,
       parameters_json TEXT NOT NULL,
+      user_id TEXT,
       status TEXT NOT NULL CHECK (status IN ('running','complete','failed')),
       created_at TEXT NOT NULL
     );
@@ -85,6 +87,10 @@ export function initV2AppSchema(db: Db): void {
       updated_at TEXT NOT NULL
     );
   `);
+  const analysisColumns = db.prepare("PRAGMA table_info(analysis_run)").all() as Array<{ name: string }>;
+  if (!analysisColumns.some((column) => column.name === "user_id")) {
+    db.exec("ALTER TABLE analysis_run ADD COLUMN user_id TEXT");
+  }
   db.prepare("INSERT INTO schema_meta (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     .run(String(V2_APP_SCHEMA_VERSION));
 }
@@ -92,9 +98,9 @@ export function initV2AppSchema(db: Db): void {
 const now = () => new Date().toISOString();
 
 export function createAnalysisRun(db: Db, r: AnalysisRunInput): void {
-  db.prepare(`INSERT INTO analysis_run (analysis_id, address, center_lng, center_lat, radius_m, analysis_date, manifest_hash, engine_version, parameters_json, status, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?)`)
-    .run(r.analysisId, r.address, r.center[0], r.center[1], r.radiusM, r.analysisDate, r.manifestHash, r.engineVersion, JSON.stringify(r.parameters), now());
+  db.prepare(`INSERT INTO analysis_run (analysis_id, address, center_lng, center_lat, radius_m, analysis_date, manifest_hash, engine_version, parameters_json, user_id, status, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?)`)
+    .run(r.analysisId, r.address, r.center[0], r.center[1], r.radiusM, r.analysisDate, r.manifestHash, r.engineVersion, JSON.stringify(r.parameters), r.userId == null ? null : String(r.userId), now());
 }
 
 export function finishAnalysisRun(db: Db, analysisId: string, status: "complete" | "failed"): void {
@@ -103,7 +109,7 @@ export function finishAnalysisRun(db: Db, analysisId: string, status: "complete"
 
 interface RunRow {
   analysis_id: string; address: string; center_lng: number; center_lat: number; radius_m: number;
-  analysis_date: string; manifest_hash: string; engine_version: string; parameters_json: string; status: string;
+  analysis_date: string; manifest_hash: string; engine_version: string; parameters_json: string; user_id: string | null; status: string;
 }
 
 export function getAnalysisRun(db: Db, analysisId: string): (AnalysisRunInput & { status: string }) | null {
@@ -118,6 +124,7 @@ export function getAnalysisRun(db: Db, analysisId: string): (AnalysisRunInput & 
     manifestHash: row.manifest_hash,
     engineVersion: row.engine_version,
     parameters: JSON.parse(row.parameters_json) as Record<string, unknown>,
+    userId: row.user_id === null ? null : row.user_id,
     status: row.status,
   };
 }

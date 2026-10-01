@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const appDb = openV2AppDb();
   try {
-    const reply = postAnalysis(appDb, v2DataDir(), body);
+    const reply = postAnalysis(appDb, v2DataDir(), body, auth.id);
     return NextResponse.json(reply.body, { status: reply.status });
   } finally {
     appDb.close();

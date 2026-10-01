@@ -11,7 +11,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   const appDb = openV2AppDb();
   try {
-    const reply = getAnalysis(appDb, id);
+    const reply = getAnalysis(appDb, id, auth.id);
     return NextResponse.json(reply.body, { status: reply.status });
   } finally {
     appDb.close();

@@ -32,12 +32,13 @@ try {
   assert.equal(appDb.prepare("SELECT count(*) FROM analysis_run").pluck().get(), 0, "검증 실패는 실행을 남기지 않는다");
 
   // 정상: 기본 반경 800
-  const ok = postAnalysis(appDb, dataDir, { address, analysisDate: "2026-09-30" });
+  const ok = postAnalysis(appDb, dataDir, { address, analysisDate: "2026-09-30" }, 17);
   assert.equal(ok.status, 200);
   assert.deepEqual(Object.keys(ok.body).sort(), ["analysisId", "results", "summary"]);
   assert.equal(ok.body.results.length, TILE_CODES.length);
   assert.equal(ok.body.summary.address, address);
   assert.equal(ok.body.results[0].conditions.radiusM, 800);
+  assert.equal(appDb.prepare("SELECT user_id FROM analysis_run WHERE analysis_id = ?").pluck().get(ok.body.analysisId), "17");
 
   // 대지 확정 실패 → 422, 이유별 안내
   const cases = [["경기도 남양주시 다산동", "parse_failed", /지번 주소로 입력/], ["경기도 남양주시 별내동 1", "ambiguous", /동·리까지/], ["경기도 남양주시 다산동 999", "no_point", /필지 위치 미확보/]];
@@ -51,10 +52,11 @@ try {
   assert.equal(postAnalysis(appDb, emptyDir, { address }).status, 503);
 
   // 복원
-  const got = getAnalysis(appDb, ok.body.analysisId);
+  const got = getAnalysis(appDb, ok.body.analysisId, 17);
   assert.equal(got.status, 200);
   assert.deepEqual(got.body.summary, ok.body.summary);
   assert.deepEqual(got.body.results.map((t) => t.tileCode), ok.body.results.map((t) => t.tileCode).sort());
+  assert.equal(getAnalysis(appDb, ok.body.analysisId, 18).status, 404);
   assert.equal(getAnalysis(appDb, "nope").status, 404);
 } finally {
   appDb.close();
