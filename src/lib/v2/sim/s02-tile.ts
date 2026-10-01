@@ -3,7 +3,10 @@
  * 등급(level)은 매기지 않고, 법적 일조 판정 표현은 어디에도 쓰지 않는다.
  */
 import { parseTileResult, type TileResult } from "../tile-result";
+import { polygonArea } from "../engine/tiles/geo";
+import { polygonCandidate } from "../engine/tiles/common";
 import { computeSunlight, type SunlightInput, type SunlightResult } from "./sunlight";
+import type { XY } from "./shadow";
 
 export const S02_LIMITATION = "건물·지형 모델에 의한 기하학적 일조 추정입니다. 구름·실제 기상·창면 조건 및 법적 일조 판정을 포함하지 않습니다.";
 export const S02_ENGINE_VERSION = "v2-sim-sun@2";
@@ -18,6 +21,14 @@ export interface S02Input extends SunlightInput {
   radiusM: number;
   manifestHash: string;
   sources: readonly { sourceId: string; releaseId: string; sourceAsOf: string | null; fetchedAt: string }[];
+  siteKind?: "parcel" | "box";
+}
+
+export type S02ShadowParts = Record<"09" | "12" | "15", number[][][][]>;
+
+export interface S02Presentation {
+  site: readonly XY[];
+  shadows: S02ShadowParts;
 }
 
 type Metric = TileResult["metrics"][number];
@@ -28,7 +39,7 @@ function metric(id: string, label: string, unit: string, value: number | null, n
   return { id, label, value, unit, formulaVersion, numerator, denominator, status: value === null ? "missing" : "estimated" };
 }
 
-export function buildS02TileResult(input: S02Input, precomputed?: SunlightResult): TileResult {
+export function buildS02TileResult(input: S02Input, precomputed?: SunlightResult, visual?: S02Presentation): TileResult {
   const r = precomputed ?? computeSunlight(input);
   const calc = r.counts.calculated;
   const N = r.params.minContinuousHours;
@@ -68,6 +79,30 @@ export function buildS02TileResult(input: S02Input, precomputed?: SunlightResult
 
   const status: TileResult["status"] = calc === 0 ? "no_data" : incomplete > 0 || r.counts.uncalculated > 0 || input.sources.length === 0 ? "partial" : "complete";
 
+  const polygons: NonNullable<TileResult["presentation"]["polygons"]> = [];
+  const layers = ["shadow_09", "shadow_12", "shadow_15", "sun_face"];
+  const legend = ["shadow_09", "shadow_12", "shadow_15", "sun_face"].map((layer) => ({
+    label: ({ shadow_09: "09:00 그림자", shadow_12: "12:00 그림자", shadow_15: "15:00 그림자", sun_face: "수광면" } as Record<string, string>)[layer],
+    min: null,
+    max: null,
+  }));
+  if (visual) {
+    const site = [...visual.site];
+    if (site.length >= 3) {
+      const ring = site.map(([x, y]) => [x, y] as number[]);
+      if (ring.length > 0 && (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1])) ring.push([...ring[0]]);
+      const siteCandidate = polygonCandidate(0, "sun_face", [ring], polygonArea([ring]), "수광면");
+      if (siteCandidate) polygons.push(siteCandidate.p);
+    }
+    let id = 1;
+    for (const [hour, layer] of [["09", "shadow_09"], ["12", "shadow_12"], ["15", "shadow_15"]] as const) {
+      for (const rings of visual.shadows[hour]) {
+        const candidate = polygonCandidate(id++, layer, rings, polygonArea(rings));
+        if (candidate) polygons.push(candidate.p);
+      }
+    }
+  }
+
   return parseTileResult({
     tileId: input.tileId ?? `${input.analysisId}:S02`,
     analysisId: input.analysisId,
@@ -90,6 +125,8 @@ export function buildS02TileResult(input: S02Input, precomputed?: SunlightResult
         influenceRadiusM: r.params.influenceM,
         removeBuildingsInSite: r.params.removeBuildingsInSite,
         minContinuousHours: N,
+        site: input.siteKind ?? "box",
+        cuts: ["09:00", "12:00", "15:00"],
         buildings: r.buildings,
         cells: r.counts,
       },
@@ -97,7 +134,13 @@ export function buildS02TileResult(input: S02Input, precomputed?: SunlightResult
     },
     metrics,
     judgment: { ruleId: "S02-sunlight-summary@1", basisMetricIds: ["median_sun_hours", shareId], sentence, level: null, criteria: null },
-    presentation: { legend: [], camera: null, layers: ["shadow", "sunlight_hours"], outputFace: "front" },
+    presentation: {
+      legend: visual ? legend : [],
+      camera: null,
+      layers: visual ? layers : ["shadow", "sunlight_hours"],
+      outputFace: "front",
+      ...(visual ? { polygons, polygonsTotal: polygons.length } : {}),
+    },
     provenance: { manifestHash: input.manifestHash, sources: input.sources.map((s) => ({ ...s })) },
     limitations,
   });
