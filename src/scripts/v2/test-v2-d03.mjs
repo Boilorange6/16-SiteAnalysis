@@ -36,7 +36,7 @@ const tile = d03(ctx);
 parseTileResult(tile);
 
 assert.equal(tile.status, "partial");
-assert.equal(tile.engineVersion, "v2-p3-terrain-1");
+assert.equal(tile.engineVersion, "v2-p4-ext-1");
 assert.deepEqual(tile.provenance.sources.map((source) => source.sourceId), ["building"]);
 assert.equal(metric(tile, "fill_use_pct").value, 66.7);
 assert.deepEqual([metric(tile, "fill_use_pct").numerator, metric(tile, "fill_use_pct").denominator], [4, 6]);

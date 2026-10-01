@@ -20,11 +20,13 @@ import { a04 } from "./tiles/a04";
 import { a05 } from "./tiles/a05";
 import { a06 } from "./tiles/a06";
 import { a07 } from "./tiles/a07";
+import { a08 } from "./tiles/a08";
 import { a09 } from "./tiles/a09";
 import { a10 } from "./tiles/a10";
 import { a11 } from "./tiles/a11";
 import { a12 } from "./tiles/a12";
 import { ENGINE_VERSION, makeTile } from "./tiles/common";
+import { d01 } from "./tiles/d01";
 import { d02 } from "./tiles/d02";
 import { d03 } from "./tiles/d03";
 import { d04 } from "./tiles/d04";
@@ -33,6 +35,7 @@ import { d06 } from "./tiles/d06";
 import { d07 } from "./tiles/d07";
 import { d08 } from "./tiles/d08";
 import { d09 } from "./tiles/d09";
+import { d10 } from "./tiles/d10";
 import { d11 } from "./tiles/d11";
 import { d12 } from "./tiles/d12";
 import { d13 } from "./tiles/d13";
@@ -50,9 +53,13 @@ import { d24 } from "./tiles/d24";
 import { d25 } from "./tiles/d25";
 import { d26 } from "./tiles/d26";
 import { d27 } from "./tiles/d27";
+import { d28 } from "./tiles/d28";
+import { d29 } from "./tiles/d29";
 import { notProvided } from "./tiles/not-provided";
 import { s01 } from "./tiles/s01";
 import { s02 } from "./tiles/s02";
+import { s03 } from "./tiles/s03";
+import { s04 } from "./tiles/s04";
 
 export const RADIUS_CHOICES = [500, 800, 1000, 2000, 3000] as const;
 export const DEFAULT_RADIUS_M = 800;
@@ -78,10 +85,12 @@ const TILES: Array<[code: string, compute: (ctx: EngineContext) => TileResult]> 
   ["A05", a05],
   ["A06", a06],
   ["A07", a07],
+  ["A08", a08],
   ["A09", a09],
   ["A10", a10],
   ["A11", a11],
   ["A12", a12],
+  ["D01", d01],
   ["D02", d02],
   ["D03", d03],
   ["D04", d04],
@@ -90,6 +99,7 @@ const TILES: Array<[code: string, compute: (ctx: EngineContext) => TileResult]> 
   ["D07", d07],
   ["D08", d08],
   ["D09", d09],
+  ["D10", d10],
   ["D11", d11],
   ["D12", d12],
   ["D13", d13],
@@ -107,9 +117,12 @@ const TILES: Array<[code: string, compute: (ctx: EngineContext) => TileResult]> 
   ["D25", d25],
   ["D26", d26],
   ["D27", d27],
+  ["D28", d28],
+  ["D29", d29],
   ["S01", s01],
   ["S02", s02],
-  ["S03", (c) => notProvided(c, "S03")],
+  ["S03", s03],
+  ["S04", s04],
 ];
 
 export const todayKst = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });

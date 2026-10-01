@@ -26,7 +26,7 @@ const ctx = new EngineContext(dataDir, manifest, "s01-test", {
 const tile = s01(ctx);
 assert.equal(tile.tileType, "simulation");
 assert.equal(tile.status, "partial");
-assert.equal(tile.engineVersion, "v2-p3-terrain-1");
+assert.equal(tile.engineVersion, "v2-p4-ext-1");
 assert.equal(metric(tile, "buildings").value, 6);
 assert.deepEqual(
   [metric(tile, "height_known_pct").value, metric(tile, "height_known_pct").numerator, metric(tile, "height_known_pct").denominator],

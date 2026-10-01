@@ -32,7 +32,7 @@ try {
   assert.ok(r1.results.every((t) => t.provenance.manifestHash === h1 && t.analysisId === r1.analysisId));
   assert.equal(A.getAnalysisRun(appDb, r1.analysisId).status, "complete");
   assert.equal(A.getAnalysisRun(appDb, r1.analysisId).parameters.jimok, "대");
-  assert.deepEqual(r1.results.slice(0, 11).map((t) => t.status), ["partial", "not_provided", "complete", "partial", "partial", "partial", "not_provided", "not_provided", "not_provided", "no_data", "not_provided"]);
+  assert.deepEqual(r1.results.filter((t) => t.tileCode.startsWith("A")).map((t) => t.status), ["partial", "not_provided", "complete", "partial", "partial", "partial", "not_provided", "not_provided", "not_provided", "not_provided", "no_data", "not_provided"]);
   // P2 타일은 구현 진행에 따라 상태가 바뀐다 — 오류 없이 계약 상태 중 하나면 된다
   assert.ok(r1.results.slice(11).every((t) => ["complete", "partial", "no_data", "not_provided"].includes(t.status)), "P2 타일은 계약 상태만 낸다");
   r1.results.forEach((t) => toTileView(t)); // 화면 변환이 모든 결과를 받는다

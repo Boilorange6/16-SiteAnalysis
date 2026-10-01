@@ -7,7 +7,7 @@ import { canonicalJson, sha256Hex } from "./canonical-json";
 import { VALUE_STATUSES } from "./data/schema";
 
 export const TILE_TYPES = ["analysis", "diagram", "simulation", "stack"] as const;
-export const TILE_STATUSES = ["complete", "partial", "failed", "cancelled", "no_data", "not_provided"] as const;
+export const TILE_STATUSES = ["complete", "partial", "failed", "cancelled", "no_data", "not_provided", "pending", "running"] as const;
 export const OUTPUT_FACES = ["front", "back", "both"] as const;
 export const JUDGMENT_LEVELS = ["good", "fair", "caution"] as const;
 export const LIMITATION_KINDS = ["unknown", "estimated", "suppressed", "partial", "incomplete", "not_provided"] as const;

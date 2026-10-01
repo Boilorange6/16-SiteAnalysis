@@ -27,6 +27,16 @@ export type LayerStyle = {
   sizeBy?: "weight";
 };
 
+export type RasterStyle = {
+  mode: "stepped" | "continuous" | "mask";
+  colors: string[];
+  breaks?: number[];
+  min?: number;
+  max?: number;
+  opacity?: number;
+  label?: string;
+};
+
 /** 준공 연대 색 (지도 점과 구성비 차트가 같이 쓴다). 오래될수록 진하다 */
 export const STRIP_COLORS = ["#5b2a12", "#8f4a1f", "#c26a26", "#e08f2e", "#f0b73a", "#f7d76a", "#a9adb6"];
 
@@ -196,6 +206,33 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   shadow_09: S("09:00 그림자", "#6D7580"),
   shadow_12: S("12:00 그림자", "#535A65"),
   shadow_15: S("15:00 그림자", "#383E48"),
+  rent_jeonse: S("전세 거래 지점", "#2B6CB0", "weight"),
+  rent_monthly: S("월세 거래 지점", "#63B3ED", "weight"),
+  walk_route: S("보행 경로", "#7A5BA6"),
+  canopy: S("수관", "#2E7D32"),
+  osm_green: S("OSM 녹지 면", "#5FAE5B"),
+  osm_water: S("OSM 수계 면", "#4F9DA6"),
+  walk_5: S("도보 5분", "#C6A15B"),
+  walk_10: S("도보 10분", "#A47551"),
+  walk_15: S("도보 15분", "#7A5BA6"),
+  walk_net: S("보행망", "#4F8A9E"),
+  wind_inflow: S("유입 방향", "#2B9CBF"),
+};
+
+/** 래스터의 값→색 규칙. 실제 픽셀화는 ui/raster-image.ts가 담당한다. */
+export const RASTER_STYLES: Record<string, RasterStyle> = {
+  sun_hours: {
+    mode: "stepped",
+    colors: ["#18234C", "#243B70", "#31568D", "#4377A0", "#5E96A7", "#82B39C", "#B5C57C", "#D9C65E", "#F0B545", "#F39A31", "#F47A26", "#F05A21", "#E83D1D"],
+    breaks: Array.from({ length: 12 }, (_, i) => i + 1),
+    label: "일조시간",
+  },
+  shade_mask: { mode: "mask", colors: ["#3D4A63"], opacity: 0.55, label: "그림자" },
+  shade_flow: { mode: "continuous", colors: ["#22304C", "#586B89", "#B7C4D7"], min: 0, max: 1, label: "그림자 흐름" },
+  wind_ratio: { mode: "continuous", colors: ["#440154", "#31688E", "#35B779", "#FDE725"], min: 0, max: 1.2, label: "U/U유입" },
+  utci: { mode: "stepped", colors: ["#313695", "#4575B4", "#74ADD1", "#ABD9E9", "#66BD63", "#1A9850", "#FEE08B", "#FDAE61", "#F46D43", "#D73027"], breaks: [9, 26, 32, 38, 46], label: "UTCI" },
+  svf: { mode: "continuous", colors: ["#808080", "#B8D7E8", "#DDF5FF"], min: 0, max: 1, label: "하늘열림(SVF)" },
+  canopy: { mode: "mask", colors: ["#2E7D32"], opacity: 0.7, label: "수관" },
 };
 const FALLBACK: LayerStyle = S("기타", "#7A7E87");
 
