@@ -10,7 +10,7 @@ import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import styles from "@/components/v2/board.module.css";
 import { SUMMARY_ID, boardReducer, demoFinished, demoPhase, initBoard, reportPages, viewOf } from "@/lib/v2/ui/board-state";
 import { buildReportPlan, complexCounts, reportFileName } from "@/lib/v2/report/report-plan";
-import { downloadBytes, EXPORT_MIME } from "@/lib/v2/export/download";
+import { downloadBytes, exportFileName, EXPORT_MIME } from "@/lib/v2/export/download";
 import { DEFAULT_CALLOUT_MODE } from "@/lib/v2/ui/callout-layout";
 import { stackView } from "@/lib/v2/ui/stack";
 import { sheetView } from "@/lib/v2/ui/sheet";
@@ -46,6 +46,7 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
   const [sheetSelection, setSheetSelection] = useState<string[]>([]);
   const [note, setNote] = useState(""); // 스크린리더 안내(aria-live)
   const [basemap, setBasemap] = useState<BasemapChoice>("white"); // 보드 상태(서버에 저장하지 않음). 화면과 PPT가 같이 따른다
+  const [rhinoUnavailable, setRhinoUnavailable] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
   const { drag, order: shown, start, floatStyle } = useTileDrag(board.order, gridRef, (id, from, to) => {
     dispatch({ type: "reorder", from, to });
@@ -116,6 +117,22 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
     try {
       const { glbFileName, sceneToGlb } = await import("@/lib/v2/export/glb");
       downloadBytes(glbFileName(siteSummary.address, analysisDate), sceneToGlb(scene), EXPORT_MIME.glb);
+    } finally {
+      setMaking(false);
+    }
+  };
+
+  const make3dm = async () => {
+    if (!scene) return;
+    setMaking(true);
+    try {
+      const { sceneTo3dm } = await import("@/lib/v2/export/rhino");
+      const bytes = await sceneTo3dm(scene);
+      downloadBytes(exportFileName("3dm", siteSummary.address, analysisDate), bytes, EXPORT_MIME["3dm"]);
+      setRhinoUnavailable(false);
+    } catch {
+      // rhino3dm의 동적 import/WASM 로딩 실패는 메뉴 옆의 상태로 알린다.
+      setRhinoUnavailable(true);
     } finally {
       setMaking(false);
     }
@@ -264,8 +281,13 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
                     <button type="button" className={styles.pill} onClick={() => void makeGlb()} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "GLB 내보내기"}>
                       GLB
                     </button>
+                    <button type="button" className={styles.pill} onClick={() => void make3dm()} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "3DM 내보내기"}>
+                      3DM
+                    </button>
+                    {rhinoUnavailable && <span role="status" style={{ margin: "0 2px", fontSize: 11, color: "#9A3B2F" }}>3DM 변환기 미설치</span>}
                     <p style={{ margin: "4px 2px 0", fontSize: 11, lineHeight: 1.4, color: "#5B606B" }}>
-                      DXF·GLB: 건물·필지·대지·반경. 래스터(항공사진·인구 격자·시뮬레이션 결과)는 대상 아님
+                      DXF·GLB: 건물·필지·대지·반경. 래스터(항공사진·인구 격자·시뮬레이션 결과)는 대상 아님<br />
+                      3DM: 건물(닫힌 솔리드)·필지·대지·반경·지형 메시
                     </p>
                   </div>
                 </details>
