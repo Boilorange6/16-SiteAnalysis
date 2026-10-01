@@ -29,9 +29,11 @@ try {
   const run = runAnalysis(appDb, dataDir, { center: CENTER, radiusM: 800, analysisDate: "2026-09-30" });
   assert.equal(run.ok, true);
   assert.deepEqual(run.results.map((result) => result.tileCode), expected, "run result order");
-  for (const code of ["A08", "D01", "D10", "D28", "D29", "S04"]) {
+  // 아직 스텁인 P4 타일만 확인한다 — 구현한 작업은 여기서 자기 코드를 뺀다(D01: T20).
+  const STUBS = { A08: "not_provided", D28: "not_provided", D10: "pending", D29: "pending", S04: "pending" };
+  for (const [code, status] of Object.entries(STUBS)) {
     const tile = run.results.find((result) => result.tileCode === code);
-    assert.equal(tile?.status, ["D10", "D29", "S04"].includes(code) ? "pending" : "not_provided", `${code} stub status`);
+    assert.equal(tile?.status, status, `${code} stub status`);
   }
 
   const base = run.results[0];
