@@ -74,6 +74,7 @@ export type CalloutModel = {
 const KIND_LABEL = { analysis: "분석", diagram: "도판", simulation: "시뮬레이션" } as const;
 const MAP_NOTES: Record<string, string> = {
   D04: "대표점 · 건물 도형은 자료 적재 뒤",
+  D13: "도로 중심선 · 실제 폭·공식 도로대장 아님 · © OpenStreetMap contributors",
   D02: "발자국 · 높이 미상은 테두리만",
   D05: "지상층수 기준",
   D06: "높이 35m 기준 · [추정]은 층수×3m",

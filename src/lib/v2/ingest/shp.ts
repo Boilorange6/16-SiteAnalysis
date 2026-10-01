@@ -23,6 +23,7 @@ export interface ShpPointRecord {
 }
 
 const PRJ_RULES: ReadonlyArray<readonly [RegExp, string]> = [
+  [/WGS[ _-]?84|GCS_WGS_1984/i, "EPSG:4326"],
   [/Korea_2000_Korea_Central_Belt_2010/i, "EPSG:5186"],
   [/KGD2002_Central_Belt_2010/i, "EPSG:5186"],
   [/Korea_2000_Korea_Unified_Coordinate_System/i, UTMK],

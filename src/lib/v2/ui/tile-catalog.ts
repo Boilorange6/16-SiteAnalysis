@@ -64,6 +64,7 @@ export const SOURCE_NAMES: Record<string, string> = {
   maintenance_integrated: "정비사업 현황(통합)",
   maintenance_std: "정비사업 현황(표준데이터)",
   maintenance_zone: "정비구역 경계",
+  osm_roads: "OpenStreetMap 도로 · © OpenStreetMap contributors",
   zoning_urban: "용도지역(도시지역)",
   zoning_management: "용도지역(관리지역)",
   zoning_agri_forest: "용도지역(농림지역)",

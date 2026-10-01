@@ -21,14 +21,14 @@ assert.deepEqual(TILE_CODES.filter((c) => c.startsWith("D") || c.startsWith("S")
 for (const c of P2) assert.equal(TILE_CATALOG[c].kind, c.startsWith("D") ? "diagram" : "simulation");
 assert.equal(ENGINE_VERSION, "v2-p2-spatial-1");
 
-// 2) 엔진: 모든 카탈로그 코드가 결과에 있고, 스텁은 not_provided
+// 2) 엔진: 모든 카탈로그 코드가 결과에 있고, 아직 미제공인 스텁은 not_provided
 const dataDir = mkdtempSync(join(tmpdir(), "v2-p2-reg-"));
 await buildEngineFixture(dataDir, "v1");
 const appDb = A.openV2AppDb(join(mkdtempSync(join(tmpdir(), "v2-p2-reg-app-")), "app.sqlite"));
 const run = runAnalysis(appDb, dataDir, { center: CENTER, radiusM: 800, analysisDate: "2026-09-30" });
 assert.equal(run.ok, true);
 assert.deepEqual(run.results.map((r) => r.tileCode), TILE_CODES, "결과 순서 = 카탈로그 순서");
-for (const c of ["D02", "D19", "D27", "S01", "D13"]) {
+for (const c of ["D02", "D19", "D27", "S01"]) {
   const t = run.results.find((r) => r.tileCode === c);
   assert.equal(t.status, "not_provided");
   assert.equal(t.tileType, c.startsWith("S") ? "simulation" : "diagram");
@@ -36,7 +36,7 @@ for (const c of ["D02", "D19", "D27", "S01", "D13"]) {
 appDb.close();
 
 // 3) 레이어 스타일: 계획의 id가 모두 정의돼 있다(타일 작업이 그대로 쓴다)
-const ids = ["bldg_footprint","bldg_point","use:주거","use:미상","floors_1_4","floors_26p","floors_unknown","tall_ge35","tall_ge35_est","tall_unknown","low_le12","low_le12_est","green_zone","green_parcel","water_parcel","district:기타","facility:교통","parcel","parcel_site","lot_lt100","lot_ge3000","lot_road_water","maint_stage:구역지정","maint_stage:미확인","pop_dens_0","pop_dens_5"];
+const ids = ["bldg_footprint","bldg_point","use:주거","use:미상","floors_1_4","floors_26p","floors_unknown","tall_ge35","tall_ge35_est","tall_unknown","low_le12","low_le12_est","green_zone","green_parcel","water_parcel","district:기타","facility:교통","road:고속도로","road:간선","road:보조간선","road:집산","road:국지","road:보행·자전거","road:기타","parcel","parcel_site","lot_lt100","lot_ge3000","lot_road_water","maint_stage:구역지정","maint_stage:미확인","pop_dens_0","pop_dens_5"];
 for (const id of ids) assert.ok(LAYER_STYLES[id], `layer ${id}`);
 assert.ok(layerStyle("tall_ge35_est").label.startsWith("[추정]"));
 

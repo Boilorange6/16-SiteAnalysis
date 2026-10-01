@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 전국 건물 도형·연속지적 도형을 분석 엔진에 연결해 정적 도판 18종 중 원천이 있는 15종(D02·D03·D05~D09·D14·D19·D20·D23~D25·D27 + 기존 D04; D11·D12는 코드 준비, D13은 원천 없음)과 구성비 뒷면, 레이어 스택·조판, S01 3D 매스, DXF·GLB 내보내기를 만들어 spec §6 "v1" 완료 기준에 닿는다.
+**Goal:** 전국 건물 도형·연속지적 도형을 분석 엔진에 연결해 정적 도판 18종 중 원천이 있는 16종(D02·D03·D05~D09·D13·D14·D19·D20·D23~D25·D27 + 기존 D04; D11·D12는 코드 준비)과 구성비 뒷면, 레이어 스택·조판, S01 3D 매스, DXF·GLB 내보내기를 만들어 spec §6 "v1" 완료 기준에 닿는다. D13 도로는 Judge 결정에 따라 Geofabrik OSM free SHP를 사용한다.
 
 **Architecture:** 모든 도판은 기존 분석 타일과 같은 `TileResult` 계약(`src/lib/v2/tile-result.ts`)으로 엔진(`src/lib/v2/engine/tiles/dXX.ts`)이 만든다. 앞면은 `presentation.features/polygons`(지도), 뒷면은 `share_*`/`back_*` 지표(구성비)다. 화면·PPT는 결과만 읽는다. 건물 도형은 별도 `buildings` 데이터 파일(이미 있음), 필지 도형은 새 `parcels` 데이터 파일(이 계획)에 두고 R*Tree로 반경 조회한다. DXF·GLB·S01은 분석 때 저장하는 **장면(Scene)** 한 벌에서 만든다(내보내기 중 데이터 조회 없음, spec §5.2). 스택·조판은 보드 상태(순수 reducer)와 슬라이드 계획의 확장이다.
 
@@ -69,7 +69,7 @@
 | D09 공원·녹지·하천 | reference `park`(점, `areaM2`), `zoning_area(녹지)`, **parcels 지목**(천·구·유·공·임) | `a04.ts`, `a12.ts` | **T10** (하천·수면은 지목 대체, OSM 수계는 없음) |
 | D11 구역·지구 | VWorld dsId 24의 지구·구역 레이어 — **미다운로드** | `zoning.ts` 패턴 | **T16** 코드 준비, 데이터 차단(open Q1) |
 | D12 도시계획시설 | VWorld dsId 24 "도시계획시설/…" 레이어 — **미다운로드** | 〃 | **T16** 코드 준비, 데이터 차단(open Q1) |
-| D13 도로 | **원천 없음**(OSM PBF 미수집·파서 없음) | — | **차단**(open Q2). 카탈로그에는 `not_provided`로 등록 |
+| D13 도로 | Geofabrik OSM free SHP `gis_osm_roads_free_1`(WGS84 선) | `osm-roads.ts`, `d13.ts` | **부분 제공**(OSM 위계·중심선 길이, 공식 도로대장 아님) |
 | D14 지하철·버스 | reference `rail_station/rail_entrance/rail_line`, `bus_stop` | `a01.ts` | **T11** |
 | D19 지적 / D20 필지 규모 | **parcels**(신규 파일, `feature(parcel)`) | `parcels.ts`(점) → 새 적재기 | **T3 + T9** |
 | D23 정비사업 | reference `maintenance_zone`, market `development_event` | `a09.ts` 내부 재사용 | **T12** |
@@ -199,14 +199,14 @@ assert.deepEqual(TILE_CODES.filter((c) => c.startsWith("D") || c.startsWith("S")
 for (const c of P2) assert.equal(TILE_CATALOG[c].kind, c.startsWith("D") ? "diagram" : "simulation");
 assert.equal(ENGINE_VERSION, "v2-p2-spatial-1");
 
-// 2) 엔진: 모든 카탈로그 코드가 결과에 있고, 스텁은 not_provided
+// 2) 엔진: 모든 카탈로그 코드가 결과에 있고, 아직 미제공인 스텁은 not_provided
 const dataDir = mkdtempSync(join(tmpdir(), "v2-p2-reg-"));
 await buildEngineFixture(dataDir, "v1");
 const appDb = A.openV2AppDb(join(mkdtempSync(join(tmpdir(), "v2-p2-reg-app-")), "app.sqlite"));
 const run = runAnalysis(appDb, dataDir, { center: CENTER, radiusM: 800, analysisDate: "2026-09-30" });
 assert.equal(run.ok, true);
 assert.deepEqual(run.results.map((r) => r.tileCode), TILE_CODES, "결과 순서 = 카탈로그 순서");
-for (const c of ["D02", "D19", "D27", "S01", "D13"]) {
+for (const c of ["D02", "D19", "D27", "S01"]) {
   const t = run.results.find((r) => r.tileCode === c);
   assert.equal(t.status, "not_provided");
   assert.equal(t.tileType, c.startsWith("S") ? "simulation" : "diagram");
@@ -259,7 +259,7 @@ import type { EngineContext } from "../context";
 import { notProvided } from "./not-provided";
 export function d02(ctx: EngineContext): TileResult { return notProvided(ctx, "D02"); }
 ```
-D13은 스텁이 최종본이다(원천 없음): limitation note `"도로 원천(OSM PBF) 미적재 — 원천 확보 후 제공"`을 주도록 `notProvided(ctx, "D13", note)`에 선택 인자를 더한다.
+D13은 Geofabrik OSM free SHP의 `road` feature를 적재하고, 반경 내 중심선 길이·위계별 구성비·최근접 간선 이상 도로와 선 지도 레이어를 제공한다. ODbL 1.0 및 `© OpenStreetMap contributors`를 source release와 타일 출처/한계에 남긴다.
 
 `run.ts` — `TILES`를 카탈로그 순서로 교체(`A01…A12, D02, D03, D04(d04), D05…D27, S01(s01), S02(s02), S03(notProvided)`), `EngineContext` 생성 시 `pnu: site.pnu` 전달.
 
@@ -723,7 +723,7 @@ export function glbFileName(address: string, analysisDate: string): string;
 | # | 결정 | 권고 기본값 | 영향 |
 |---|---|---|---|
 | Q1 | D11·D12에 쓸 VWorld dsId 24 레이어 제목 목록(수십 개 중). 권고: D11 = 지구단위계획구역·개발제한구역·택지개발예정지구·도시개발구역·산업단지(국가·일반·도시첨단·농공) / D12 = 도시계획시설 전 분류(교통·공간·유통공급·공공문화체육·보건위생·환경기초) | 사용자가 VWorld 로그인 후 `npm run vworld:fetch -- --ds 24 --layers "<제목,…>" --folder districts`. 제목은 페이지 목록에서 확인(`vworld-fetch`가 못 찾는 제목은 실패 목록으로 알려 준다) | T16 데이터, D11·D12 제공 시점 |
-| Q2 | D13 도로 원천. 후보 (a) Geofabrik OSM PBF — PBF 디코더가 없어 **의존성 1개 추가**(예: `osm-pbf-parser`) 또는 QGIS/osmium으로 GeoJSON 변환 후 적재, (b) 행안부 도로명주소 도로구간 SHP(위계 없음, 공공누리 1유형), (c) 지적 지목 '도'(도로 부지만, 위계 없음 — D20의 `lot_road_water`로 이미 보임) | **P2에서는 D13 미제공 유지**, P3 앞에 (a)를 의존성 추가 승인과 함께 진행 | D13, D15 가구(P3) |
+| Q2 | D13 도로 원천. Judge 결정: Geofabrik OSM free SHP `gis_osm_roads_free_1`를 사용하고 기존 SHP reader를 재사용한다(PBF·새 의존성 없음). | **해결** — P2에서 D13 부분 제공. OSM 커버리지·갱신 시점과 공식 도로대장 아님을 표시 | D13, D15 가구(P3) |
 | Q3 | parcels 파일 저장 형식 — GeoJSON 텍스트(현행) vs 좌표 정밀도 낮춤(10cm) vs WKB 전환. 드라이런 실측 후 결정 | 세종 드라이런 실측 → 전국 40GB 이하면 현행 유지, 넘으면 `roundM: 0.1` | 디스크·빌드 시간 |
 | Q4 | DXF 좌표 원점 | 기본 대지 중심(0,0), 옵션 `utmk`(절대좌표) 둘 다 제공, 화면 기본은 대지 중심 | CAD 배치 편의 |
 | Q5 | D03 주용도코드 → 10분류 매핑표(위 T6 표) | 표 그대로. 다르게 묶을 코드가 있으면 `USE_CLASSES` 한 곳만 바꾼다 | D03 구성비 |
@@ -736,13 +736,13 @@ export function glbFileName(address: string, analysisDate: string): string;
 
 ## 차단 항목 요약
 
-- **D13 도로**: 원천 없음(OSM 미수집·파서 없음). 카탈로그 `not_provided` + 사유 표시(spec §6.2 예외 목록에는 없으므로 v1 완료 선언 전 Q2 결정 필요).
+- **D13 도로**: Q2 해결. Geofabrik OSM free SHP를 `osm_roads` reference source로 적재하고 카탈로그·범례·타일을 부분 제공한다. OSM은 공식 도로대장이 아니며 coverage/currency 한계를 표시한다.
 - **D11·D12**: 코드는 T16으로 준비, 데이터는 Q1 뒤 다운로드.
 - **D01 항공사진·D10 수목·D26 통학구역·A02 배정 학교**: 계획 범위 밖(P4, spec §6.2 허용).
 - **데이터 빌드**(buildings·parcels): 잠금 해제 후 운영자 실행. 코드 작업은 픽스처로 진행되므로 차단되지 않는다.
 
 ## 자체 검토 결과
 
-- spec §6 P2 행 대조: A02(학구 제외) ✔ 현행, A11 ✔, A12 T8, 도판 18종 중 16종 작업 배정·2종(D11·D12) 코드 준비·D13 차단 명시, 구성비 T1, 단순 스택 T22, 조판 T23, DXF T19+T21, S01 T17+T18, GLB T20+T21, 장면(평탄 지반) T4a/T4b.
+- spec §6 P2 행 대조: A02(학구 제외) ✔ 현행, A11 ✔, A12 T8, 도판 18종 중 16종 작업·D13 부분 제공·2종(D11·D12) 코드 준비, 구성비 T1, 단순 스택 T22, 조판 T23, DXF T19+T21, S01 T17+T18, GLB T20+T21, 장면(평탄 지반) T4a/T4b.
 - 이름 일관성: `buildingRows`/`buildingsReady`(T1) ← T5·T6·T7·T17·T4b, `areaInCircle`(T1) ← T5·T9·T10·T15, `collectZoning`(T8)·`collectMaintenance`(T12)·`collectTrades`(T14)는 각 작업 안에서만 쓰임, `Scene`·`toLocalRing`(T4a) ← T4b·T18·T19·T20, `mapKeysOf`(T23)가 `mapKeyOf`를 대체할 때 T18의 `":mass"` 키 유지.
 - Review Focus 5개는 각각 T7·T18·T20 / T1·T9 / T3·T8·T9 / T19·T20 / T22·T23 테스트에 들어 있다.
