@@ -4,12 +4,11 @@ import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
 import { buildingRows, BUILDING_SOURCES, type BuildingRow } from "./buildings-shared";
 import { est, hitPoint, makeTile, missing, obs, type TileDraft } from "./common";
-import { gridQuantiles, localGrid, bandPolygons } from "./raster-grid";
+import { gridQuantiles } from "./raster-grid";
+import { kdeBandPolygons, kdeGrid, KDE_BANDWIDTH_M, KDE_ZERO_THRESHOLD } from "./d16-kde";
 import { notProvided } from "./not-provided";
 
-const KDE_BANDWIDTH_M = 100;
 const INPUT_BUFFER_M = 300;
-const ZERO_THRESHOLD = 0.5;
 const DENSITY_LAYERS = ["dens_0", "dens_q1", "dens_q2", "dens_q3", "dens_q4", "dens_q5"] as const;
 
 const round3 = (value: number) => Math.round(value * 1000) / 1000;
@@ -52,22 +51,13 @@ function nextUp(value: number): number {
 
 /** 같은 KDE 값이 반복돼도 isobands가 요구하는 엄격한 오름차순 경계를 유지한다. */
 function displayBreaks(quantiles: number[], hasPositive: boolean): number[] {
-  if (!hasPositive) return [ZERO_THRESHOLD, 1, 2, 3, 4];
-  const out: number[] = [ZERO_THRESHOLD];
+  if (!hasPositive) return [KDE_ZERO_THRESHOLD, 1, 2, 3, 4];
+  const out: number[] = [KDE_ZERO_THRESHOLD];
   for (const value of quantiles) {
     const previous = out[out.length - 1];
     out.push(value > previous ? value : nextUp(previous));
   }
   return out;
-}
-
-function kdeValue(x: number, y: number, points: Array<[number, number]>): number {
-  const normalizer = 1 / (2 * Math.PI * KDE_BANDWIDTH_M ** 2);
-  const value = points.reduce((sum, [px, py]) => {
-    const distanceSquared = (x - px) ** 2 + (y - py) ** 2;
-    return sum + Math.exp(-distanceSquared / (2 * KDE_BANDWIDTH_M ** 2)) * normalizer;
-  }, 0);
-  return value * 1e6;
 }
 
 export function d16(ctx: EngineContext): TileResult {
@@ -82,10 +72,7 @@ export function d16(ctx: EngineContext): TileResult {
   const points = rows
     .map((row) => toUtmk(hitPoint(row.hit)))
     .filter((point): point is [number, number] => point.every(Number.isFinite));
-  const grid = localGrid(ctx.input.center, radiusM, cellM, (x, y) => {
-    const value = kdeValue(x, y, points);
-    return value < ZERO_THRESHOLD ? 0 : value;
-  });
+  const grid = kdeGrid(ctx.input.center, radiusM, cellM, points);
   const positiveGrid = {
     ...grid,
     values: Float64Array.from(grid.values, (value) => value > 0 ? value : Number.NaN),
@@ -93,7 +80,7 @@ export function d16(ctx: EngineContext): TileResult {
   const quantiles = gridQuantiles(positiveGrid, radiusM, [0.2, 0.4, 0.6, 0.8]);
   const hasPositive = quantiles.every(Number.isFinite);
   const breaks = displayBreaks(quantiles, hasPositive);
-  const bands = bandPolygons(ctx.input.center, radiusM, grid, breaks, [...DENSITY_LAYERS], null);
+  const bands = kdeBandPolygons(ctx.input.center, radiusM, grid, breaks, [...DENSITY_LAYERS]);
   const circleAreaM2 = Math.round(Math.PI * radiusM ** 2);
   const shares = bands.areaM2.map((area) => ({
     value: pct(area, circleAreaM2),
