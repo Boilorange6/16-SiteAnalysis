@@ -1,6 +1,6 @@
-import { useId, type ReactNode } from "react";
+import { useId, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { layerStyle, legendItems, type MapModel } from "@/lib/v2/ui/map-layers";
-import { BASEMAP_ATTRIBUTION, BASEMAP_STACK, framedViewport, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, type BasemapChoice } from "@/lib/v2/ui/map-projection";
+import { BASEMAP_ATTRIBUTION, BASEMAP_STACK, framedViewport, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, worldPx, type BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { rasterAffine } from "@/lib/v2/ui/raster-image";
 import type { RasterRef } from "@/lib/v2/tile-result";
 
@@ -53,7 +53,17 @@ export type MapFigureProps = {
   scaleX?: number;
   /** 대지 중심의 세로 위치(0~1, 기본 0.5). 아래에서 올라오는 시트가 있으면 위로 옮긴다 */
   siteY?: number;
+  /** 상세 창에서 행/지도 선택을 같은 fid로 강조한다. */
+  selectedFids?: readonly string[];
+  /** 상세 창의 보행 경로 등 WGS84 경로선. */
+  path?: Array<[number, number]>;
+  /** 점·면·선 지물을 클릭하거나 Enter/Space로 선택했을 때의 좌표. */
+  onFeatureClick?: (feature: { fid?: string; lng: number; lat: number; kind: "feature" | "polygon" | "line" }) => void;
+  /** 래스터 지점처럼 별도 벡터 지물이 없는 곳을 클릭했을 때의 WGS84 좌표. */
+  onMapClick?: (coordinate: { lng: number; lat: number }) => void;
 };
+
+export type MapFigurePick = NonNullable<MapFigureProps["onFeatureClick"]> extends (feature: infer T) => void ? T : never;
 
 const FONT = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif';
 const INK = "#16181d";
@@ -62,7 +72,7 @@ const textW = (s: string, fs: number) => [...s].reduce((w, ch) => w + (ch.charCo
 type Box = { x0: number; y0: number; x1: number; y1: number };
 const hit = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
 
-export default function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, bare, fixed, label, legend, legendY, north: northOpt, scale = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5 }: MapFigureProps) {
+export default function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, bare, fixed, label, legend, legendY, north: northOpt, scale = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, selectedFids = [], path = [], onFeatureClick, onMapClick }: MapFigureProps) {
   const activeLayer = model.basemap ?? layer;
   const sat = activeLayer === "Satellite";
   // 항공 사진 위에서는 어두운 선·점 테두리가 묻히므로 흰색으로 바꾼다
@@ -86,7 +96,9 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   const rings: number[] = [];
   for (let m = 500; m < model.radiusM - 1; m += 500) rings.push(m / mpp);
 
-  const feats = model.features.map((f) => ({ f, p: proj(f.lng, f.lat) }));
+  const selected = new Set(selectedFids);
+  const isSelected = (fid: string | undefined) => !!fid && selected.has(fid);
+  const feats = model.features.map((f) => ({ f, p: proj(f.lng, f.lat), selected: isSelected(f.fid) }));
   const linePaths = (model.lines ?? []).map((l, index) => ({ l, points: l.points.map(([lng, lat]) => proj(lng, lat)), index }));
   const wmax = Math.max(0, ...model.features.map((f) => f.weight ?? 0));
   const radiusOf = (f: MapFigureProps["model"]["features"][number]) => {
@@ -97,7 +109,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
     return f.weight && wmax > 0 ? min + (max - min) * Math.sqrt(f.weight / wmax) : min;
   };
   const drawn = [...feats].sort((a, b) => {
-    const rank = (x: (typeof feats)[number]) => (x.f.highlight ? 2 : x.f.layer === "store:other" ? 0 : 1);
+    const rank = (x: (typeof feats)[number]) => (x.f.highlight || x.selected ? 2 : x.f.layer === "store:other" ? 0 : 1);
     return rank(a) - rank(b) || (b.f.weight ?? 0) - (a.f.weight ?? 0);
   });
 
@@ -129,6 +141,46 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   const isEstimated = (polygon: ScreenPolygon) => polygon.polygon.layer.endsWith("_est") || layerStyle(polygon.polygon.layer).label.startsWith("[추정]");
   const hatchId = (index: number) => `hatch${uid}-${index}`;
   const polygonPath = (rings: Array<Array<[number, number]>>) => rings.map((ring) => `${ring.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x} ${y}`).join("")}Z`).join(" ");
+  const centerOf = (points: Array<[number, number]>): [number, number] => {
+    if (points.length === 0) return model.center as [number, number];
+    const total = points.reduce(([lng, lat], [nextLng, nextLat]) => [lng + nextLng, lat + nextLat], [0, 0]);
+    return [total[0] / points.length, total[1] / points.length];
+  };
+  const pickProps = (pick: MapFigurePick, key: string, labelText: string) => {
+    if (!onFeatureClick) return {};
+    const choose = () => onFeatureClick(pick);
+    const onKeyDown = (event: ReactKeyboardEvent<SVGElement>) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      choose();
+    };
+    return {
+      "data-map-feature": key,
+      role: "button" as const,
+      tabIndex: 0,
+      "aria-label": labelText,
+      onClick: choose,
+      onKeyDown,
+      style: { cursor: "pointer" },
+    };
+  };
+  const routePoints = path.map((point) => proj(point[0], point[1]));
+  const [worldCenterX, worldCenterY] = worldPx(vp.center[0], vp.center[1], vp.zoom);
+  const mapClick = (event: ReactMouseEvent<SVGSVGElement>) => {
+    if (!onMapClick) return;
+    const target = event.target as Element;
+    if (target.closest("[data-map-feature]")) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const x = (event.clientX - rect.left) * (W / rect.width);
+    const y = (event.clientY - rect.top) * (H / rect.height);
+    const size = 256 * 2 ** vp.zoom;
+    const worldX = worldCenterX + x - W / 2;
+    const worldY = worldCenterY + y - H / 2;
+    const lng = (worldX / size) * 360 - 180;
+    const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * worldY) / size))) * 180) / Math.PI;
+    if (Number.isFinite(lng) && Number.isFinite(lat)) onMapClick({ lng, lat });
+  };
 
   // 범례 (지물이 있는 레이어만, 정의된 순서)
   const present = legendItems(model).map((item) => item.layer);
@@ -175,7 +227,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   const labels: ReactNode[] = [];
   if (!bare) {
     const candidates = [
-      ...drawn.filter((d) => d.f.label).map((d, i) => ({ text: d.f.label!, p: d.p, radius: radiusOf(d.f), highlight: !!d.f.highlight, key: `f${i}-${d.f.layer}`, small: false })),
+      ...drawn.filter((d) => d.f.label).map((d, i) => ({ text: d.f.label!, p: d.p, radius: radiusOf(d.f), highlight: !!d.f.highlight || d.selected, key: `f${i}-${d.f.layer}`, small: false })),
       ...polygons
         .filter((d) => d.polygon.label)
         .sort((a, b) => b.area - a.area || a.index - b.index)
@@ -222,6 +274,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
       aria-label={label ?? "분석 반경 지도"}
       fontFamily={FONT}
       style={{ display: "block" }}
+      onClick={mapClick}
     >
       <defs>
         <filter id={`s${uid}`}>
@@ -290,11 +343,16 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
         {polygons.map((polygon) => {
           const st = layerStyle(polygon.polygon.layer);
           const estimated = isEstimated(polygon);
-          return <path key={`poly${polygon.index}`} data-poly="true" d={polygonPath(polygon.rings)} fillRule="evenodd" fill={estimated ? `url(#${hatchId(polygon.index)})` : st.color} fillOpacity={estimated ? 1 : polygonOpacity} stroke={st.color} strokeWidth={1 * u} />;
+          const polygonFid = polygon.polygon.fid;
+          const polygonCenter = centerOf(polygon.polygon.rings[0] ?? []);
+          const polygonSelected = isSelected(polygonFid);
+          return <path key={`poly${polygon.index}`} data-poly="true" d={polygonPath(polygon.rings)} fillRule="evenodd" fill={estimated ? `url(#${hatchId(polygon.index)})` : st.color} fillOpacity={estimated ? 1 : polygonOpacity} stroke={polygonSelected ? INK : st.color} strokeWidth={(polygonSelected ? 3 : 1) * u} {...pickProps({ fid: polygonFid, lng: polygonCenter[0], lat: polygonCenter[1], kind: "polygon" }, polygonFid ?? `polygon-${polygon.index}`, `${layerStyle(polygon.polygon.layer).label} 면${polygonFid ? ` ${polygonFid}` : ""}`)} />;
         })}
         {linePaths.map((d) => {
           const st = layerStyle(d.l.layer);
-          return <polyline key={`line${d.index}`} data-line="true" points={d.points.map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke={st.color} strokeWidth={1.5 * u} strokeLinejoin="round" />;
+          const lineSelected = isSelected(d.l.fid);
+          const center = centerOf(d.l.points);
+          return <polyline key={`line${d.index}`} data-line="true" points={d.points.map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke={lineSelected ? INK : st.color} strokeWidth={(lineSelected ? 4 : 1.5) * u} strokeLinejoin="round" {...pickProps({ fid: d.l.fid, lng: center[0], lat: center[1], kind: "line" }, d.l.fid ?? `line-${d.index}`, `${layerStyle(d.l.layer).label} 선${d.l.fid ? ` ${d.l.fid}` : ""}`)} />;
         })}
         {rings.map((r) => (
           <circle key={r} cx={cx} cy={cy} r={r} fill="none" stroke={line} strokeOpacity={sat ? 0.7 : 0.35} strokeWidth={1 * u} strokeDasharray={`${4 * u} ${4 * u}`} />
@@ -307,8 +365,8 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
           return null;
         })}
         {drawn.map((d, i) => {
-          const st = layerStyle(d.f.layer);
-          const r = radiusOf(d.f);
+           const st = layerStyle(d.f.layer);
+           const r = radiusOf(d.f);
           if (d.p[0] < -r || d.p[1] < -r || d.p[0] > W + r || d.p[1] > H + r) return null;
           const hollow = st.sizeBy === "weight" && !d.f.weight;
           return (
@@ -317,13 +375,22 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
               cx={d.p[0]}
               cy={d.p[1]}
               r={r}
-              fill={hollow ? "#fff" : st.color}
-              fillOpacity={hollow ? 0.6 : st.sizeBy === "weight" ? 0.55 : d.f.highlight ? 1 : 0.85}
-              stroke={sat ? "#fff" : d.f.highlight ? INK : st.sizeBy === "weight" ? st.color : "#fff"}
-              strokeWidth={(d.f.highlight ? 2 : sat ? 1.5 : st.sizeBy === "weight" ? 1.4 : 0.8) * u}
-            />
-          );
-        })}
+               fill={hollow ? "#fff" : st.color}
+               fillOpacity={hollow ? 0.6 : st.sizeBy === "weight" ? 0.55 : d.f.highlight ? 1 : 0.85}
+               stroke={sat ? "#fff" : d.f.highlight || d.selected ? INK : st.sizeBy === "weight" ? st.color : "#fff"}
+               strokeWidth={(d.f.highlight || d.selected ? 2.8 : sat ? 1.5 : st.sizeBy === "weight" ? 1.4 : 0.8) * u}
+               {...pickProps({ fid: d.f.fid, lng: d.f.lng, lat: d.f.lat, kind: "feature" }, d.f.fid ?? `feature-${i}`, `${st.label}${d.f.label ? ` ${d.f.label}` : ""}`)}
+             />
+           );
+         })}
+        {routePoints.length >= 2 && (
+          <>
+            <polyline data-route="true" points={routePoints.map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke="#fff" strokeWidth={8 * u} strokeLinecap="round" strokeLinejoin="round" opacity={0.92} />
+            <polyline data-route="true" points={routePoints.map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke="#D97706" strokeWidth={4.5 * u} strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx={routePoints[0]![0]} cy={routePoints[0]![1]} r={5.5 * u} fill={INK} stroke="#fff" strokeWidth={2 * u} />
+            <circle cx={routePoints.at(-1)![0]} cy={routePoints.at(-1)![1]} r={6.5 * u} fill="#D97706" stroke="#fff" strokeWidth={2.5 * u} />
+          </>
+        )}
         {labels}
 
         {/* 대지 표시 */}
