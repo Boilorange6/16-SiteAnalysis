@@ -126,12 +126,14 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
     if (!scene) return;
     setMaking(true);
     try {
-      const { sceneTo3dm } = await import("@/lib/v2/export/rhino");
-      const bytes = await sceneTo3dm(scene);
+      // rhino3dm은 브라우저 번들에 넣을 수 없어(Node 전용 ws·fs 참조) 서버에서 변환한다.
+      const res = await fetch("/site/api/v2/export/3dm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(scene) });
+      if (!res.ok) throw new Error(`3dm ${res.status}`);
+      const bytes = new Uint8Array(await res.arrayBuffer());
       downloadBytes(exportFileName("3dm", siteSummary.address, analysisDate), bytes, EXPORT_MIME["3dm"]);
       setRhinoUnavailable(false);
     } catch {
-      // rhino3dm의 동적 import/WASM 로딩 실패는 메뉴 옆의 상태로 알린다.
+      // 서버 변환 실패는 메뉴 옆의 상태로 알린다.
       setRhinoUnavailable(true);
     } finally {
       setMaking(false);
@@ -284,7 +286,7 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
                     <button type="button" className={styles.pill} onClick={() => void make3dm()} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "3DM 내보내기"}>
                       3DM
                     </button>
-                    {rhinoUnavailable && <span role="status" style={{ margin: "0 2px", fontSize: 11, color: "#9A3B2F" }}>3DM 변환기 미설치</span>}
+                    {rhinoUnavailable && <span role="status" style={{ margin: "0 2px", fontSize: 11, color: "#9A3B2F" }}>3DM 변환 실패 — 잠시 뒤 다시 시도</span>}
                     <p style={{ margin: "4px 2px 0", fontSize: 11, lineHeight: 1.4, color: "#5B606B" }}>
                       DXF·GLB: 건물·필지·대지·반경. 래스터(항공사진·인구 격자·시뮬레이션 결과)는 대상 아님<br />
                       3DM: 건물(닫힌 솔리드)·필지·대지·반경·지형 메시
