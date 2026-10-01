@@ -48,6 +48,32 @@ try {
   assert.equal(apiScene.status, 200);
   assert.deepEqual(apiScene.body, scene);
 
+  const terrainDir = mkdtempSync(join(tmpdir(), "v2-scene-terrain-"));
+  await buildEngineFixture(terrainDir, "v1", { buildings: true, parcels: true, terrain: true });
+  const terrainOutcome = runAnalysis(appDb, terrainDir, { ...input, analysisDate: "2026-10-01" });
+  assert.equal(terrainOutcome.ok, true);
+  const terrainScene = loadScene(appDb, terrainOutcome.analysisId);
+  assert.ok(terrainScene);
+  assert.equal(terrainScene.ground.kind, "dem");
+  assert.equal(terrainScene.ground.cols, 56);
+  assert.equal(terrainScene.ground.rows, 56);
+  assert.ok(Math.abs(terrainScene.ground.originZ - 50) <= 0.5);
+  const office = terrainScene.buildings.find((building) => building.id === "building:b_office");
+  assert.ok(office);
+  assert.ok(office.baseZ !== null && Math.abs(office.baseZ - 3.5) <= 0.75, `office baseZ ${office.baseZ}`);
+  const unknown = terrainScene.buildings.find((building) => building.id === "building:b_unknown");
+  assert.ok(unknown);
+  assert.equal(unknown.heightM, null);
+  assert.ok(unknown.baseZ !== null, "unknown-height building still gets terrain baseZ");
+  const hill = terrainScene.ground.kind === "dem" ? terrainScene.ground.z
+    .map((value, index) => value === null ? null : [value, index] )
+    .filter((value) => value !== null)
+    .reduce((best, value) => value[0] > best[0] ? value : best, [-Infinity, -1]) : null;
+  assert.ok(hill && hill[0] > 25, "terrain grid keeps the fixture hill");
+  assert.ok(terrainScene.sources.some((source) => source.sourceId === "terrain_tiles"));
+  assert.ok(terrainScene.limitations.some((limitation) => limitation.kind === "estimated" && limitation.note.includes("EGM96")));
+  assert.deepEqual(loadScene(appDb, terrainOutcome.analysisId), terrainScene, "DEM scene round-trips through app DB");
+
   const noBuildingsDir = mkdtempSync(join(tmpdir(), "v2-scene-no-buildings-"));
   await buildEngineFixture(noBuildingsDir, "v1");
   const withoutBuildings = runAnalysis(appDb, noBuildingsDir, { ...input, analysisDate: "2026-10-01" });
