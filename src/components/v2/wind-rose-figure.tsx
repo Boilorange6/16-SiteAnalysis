@@ -16,7 +16,7 @@ const INK = "#15171c";
 const MUTED = "#5B606B";
 const FONT = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif';
 /** 인쇄에서도 순서가 유지되는 따뜻한 회색 단일 명도 램프(약한 풍속 → 강한 풍속). */
-const SPEED_BIN_RENDER_COLORS = ["#DDD7CC", "#C5BDB0", "#A9A095", "#877D71", "#5C534A"] as const;
+const SPEED_BIN_RENDER_COLORS = ["#EDE6DA", "#D1C6B7", "#B0A395", "#817568", "#4C433A"] as const;
 
 const hoursOf = (model: RoseModel): number =>
   model.dirs.reduce((sum, bins) => sum + bins.reduce((binSum, value) => binSum + (Number.isFinite(value) && value > 0 ? value : 0), 0), 0);
@@ -30,7 +30,7 @@ const SEASON_LABEL: Record<RoseSeason, string> = { annual: "연간", spring: "�
 function WindRoseFigure({ model, width, height, fixed = false, label = "D22 바람장미", season = "annual" }: WindRoseFigureProps) {
   const cx = width * 0.38;
   const cy = height * 0.47;
-  const rMax = Math.min(width * 0.27, height * 0.34);
+  const rMax = Math.min(width * 0.33, height * 0.4);
   const observedHours = hoursOf(model);
   const directionPcts = model.dirs.map((bins) => (bins.reduce((sum, value) => sum + (Number.isFinite(value) && value > 0 ? value : 0), 0) / Math.max(1, observedHours)) * 100);
   const maxDirectionPct = Math.max(0, ...directionPcts);
@@ -53,7 +53,7 @@ function WindRoseFigure({ model, width, height, fixed = false, label = "D22 바�
     >
       <rect width={width} height={height} fill="#F2F2EF" />
       <title>{`${SEASON_LABEL[season]} 바람장미`}</title>
-      <text x={16} y={26} fontSize="16" fontWeight="700" fill={INK}>
+      <text x={16} y={26} fontSize="18" fontWeight="700" fill={INK}>
         {SEASON_LABEL[season]} 바람장미
       </text>
       <g aria-label="풍향 빈도">
@@ -63,7 +63,7 @@ function WindRoseFigure({ model, width, height, fixed = false, label = "D22 바�
         })}
         <line data-north-tick="true" x1={cx} y1={cy - rMax - 2} x2={cx} y2={cy - rMax - 11} stroke={INK} strokeWidth="1.5" />
         {wedges.map((wedge) => (
-          <path key={`${wedge.dir}-${wedge.bin}`} d={wedge.path} fill={SPEED_BIN_RENDER_COLORS[wedge.bin]} fillOpacity="0.9" stroke="#FFFFFF" strokeWidth="0.7" data-rose-dir={wedge.dir} data-rose-bin={wedge.bin} data-pct={wedge.pct} />
+          <path key={`${wedge.dir}-${wedge.bin}`} d={wedge.path} fill={SPEED_BIN_RENDER_COLORS[wedge.bin]} fillOpacity="0.9" stroke="#FFFFFF" strokeWidth="1.1" strokeLinejoin="round" data-rose-dir={wedge.dir} data-rose-bin={wedge.bin} data-pct={wedge.pct} />
         ))}
         {ticks.map((ratio) => {
           const value = maxDirectionPct * ratio;
@@ -80,30 +80,30 @@ function WindRoseFigure({ model, width, height, fixed = false, label = "D22 바�
           const angle = (dir * Math.PI) / 8;
           const [x, y] = [cx + Math.sin(angle) * labelRadius, cy - Math.cos(angle) * labelRadius];
           return (
-            <text key={name} x={x} y={y + 4} textAnchor="middle" fontSize="11" fontWeight="700" fill={INK}>
+            <text key={name} x={x} y={y + 5} textAnchor="middle" fontSize="14" fontWeight="700" fill={INK}>
               {name}
             </text>
           );
         })}
         <circle cx={cx} cy={cy} r="30" fill="#F2F2EF" stroke="#FFFFFF" strokeWidth="1" />
-        <text x={cx} y={cy + 4} textAnchor="middle" fontSize="12" fontWeight="700" fill={INK}>
+        <text x={cx} y={cy + 5} textAnchor="middle" fontSize="14" fontWeight="700" fill={INK}>
           정온 {pctOf(model.calmHours, model.totalHours)}%
         </text>
       </g>
       <g aria-label="풍속 구간" transform={`translate(${width * 0.7} ${height * 0.23})`}>
-        <text x="0" y="0" fontSize="12" fontWeight="700" fill={INK}>
+        <text x="0" y="0" fontSize="14" fontWeight="700" fill={INK}>
           풍속
         </text>
         {SPEED_BIN_LABELS.map((name, index) => (
-          <g key={name} transform={`translate(0 ${20 + index * 22})`}>
-            <rect width="12" height="12" rx="2" fill={SPEED_BIN_RENDER_COLORS[index]} />
-            <text x="20" y="10" fontSize="11" fill={INK}>
+          <g key={name} transform={`translate(0 ${22 + index * 25})`}>
+            <rect width="15" height="15" rx="2" fill={SPEED_BIN_RENDER_COLORS[index]} stroke="#FFFFFF" strokeWidth="0.8" />
+            <text x="23" y="12" fontSize="13" fill={INK}>
               {name}
             </text>
           </g>
         ))}
       </g>
-      <text x={16} y={height - 18} fontSize="11" fill={MUTED}>
+      <text x={16} y={height - 18} fontSize="12" fill={MUTED}>
         결측 {pctOf(model.missingHours, model.totalHours)}% · 지점 {model.station}
       </text>
     </svg>

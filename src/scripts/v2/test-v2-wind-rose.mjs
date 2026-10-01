@@ -28,7 +28,10 @@ assert.match(summerMarkup, /data-season="summer"/);
 assert.match(summerMarkup, /여름 바람장미/);
 assert.match(summerMarkup, /data-north-tick="true"/);
 assert.match(summerMarkup, /stroke-width="4"/);
-assert.match(summerMarkup, /#DDD7CC/);
+assert.match(summerMarkup, /font-size="14"/);
+assert.match(summerMarkup, /stroke-width="1.1"/);
+assert.match(summerMarkup, /#EDE6DA/);
+assert.match(summerMarkup, /#4C433A/);
 
 const d22Result = structuredClone(GODEOK_RESULTS.find((r) => r.tileCode === "D04"));
 d22Result.tileId = "t-D22";
