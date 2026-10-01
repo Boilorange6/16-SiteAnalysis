@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 
 const { buildEngineFixture } = await import("./engine-fixture.mjs");
 const A = await import("../../lib/v2/app-db.ts");
-const { postAnalysis, getAnalysis } = await import("../../lib/v2/engine/api.ts");
+const { postAnalysis, getAnalysis, getAnalysisStatus } = await import("../../lib/v2/engine/api.ts");
 const { HEAVY_TILES, DATE_INDEPENDENT, listJobs, recoverRunningJobs, runHeavyTiles, runQueuedJobs, startJobRunner } = await import("../../lib/v2/engine/jobs.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");
@@ -24,6 +24,11 @@ try {
   assert.ok(Array.isArray(first.body.jobs));
   assert.deepEqual(first.body.jobs.filter((job) => job.status === "queued").map((job) => job.code), [...HEAVY_TILES]);
   for (const code of HEAVY_TILES) assert.equal(first.body.results.find((result) => result.tileCode === code)?.status, "pending", `${code} pending 자리표시`);
+  const initialStatus = getAnalysisStatus(appDb, first.body.analysisId, 17);
+  assert.equal(initialStatus.status, 200);
+  assert.equal(initialStatus.body.revision, first.body.revision);
+  assert.ok(initialStatus.body.tiles.every((tile) => tile.status));
+  assert.equal(getAnalysisStatus(appDb, first.body.analysisId, 17).body.revision, initialStatus.body.revision, "변경 없는 상태 응답은 revision을 유지");
 
   runHeavyTiles(appDb, dataDir, first.body.analysisId);
   const done = getAnalysis(appDb, first.body.analysisId, 17);
@@ -32,6 +37,7 @@ try {
   assert.ok(done.body.jobs.every((job) => job.elapsedMs > 0));
   assert.ok(done.body.results.filter((result) => HEAVY_TILES.includes(result.tileCode)).every((result) => ["complete", "partial", "not_provided"].includes(result.status)));
   assert.equal(A.getAnalysisRun(appDb, first.body.analysisId).status, "complete");
+  assert.notEqual(getAnalysisStatus(appDb, first.body.analysisId, 17).body.revision, initialStatus.body.revision, "타일 완료 시 revision 변경");
 
   // 같은 조건은 무거운 결과와 래스터 캐시를 재사용해 새 job을 만들지 않는다.
   const reused = postAnalysis(appDb, dataDir, input, 17);
@@ -129,6 +135,9 @@ try {
   assert.deepEqual(replaced.included, edited.included);
   assert.deepEqual(replaced.faces, edited.faces);
   assert.deepEqual(replaced.results, refreshed);
+  const partialReplaced = boardReducer(edited, { type: "replaceResults", results: [refreshed[0]] });
+  assert.equal(partialReplaced.results.length, edited.results.length, "부분 결과 교체가 기존 타일을 버리지 않음");
+  assert.deepEqual(partialReplaced.results.find((result) => result.tileId === refreshed[0].tileId), refreshed[0]);
 
   // 실제 worker_threads 진입점도 TSX 개발 실행에서 큐를 비운다.
   const workerPost = postAnalysis(appDb, dataDir, { ...input, analysisDate: "2026-07-01" }, 17);

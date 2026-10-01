@@ -31,6 +31,8 @@ try {
   assert.equal(r1.computed.length, TILE_CODES.length - HEAVY_TILES.length);
   assert.deepEqual(r1.queued, [...HEAVY_TILES]);
   assert.deepEqual(r1.reused, []);
+  assert.ok(Object.keys(r1.timingsMs.tiles).length >= r1.computed.length, "경량 타일별 시간 기록");
+  assert.ok(r1.results.filter((t) => !HEAVY_TILES.includes(t.tileCode)).every((t) => Number.isFinite(t.elapsedMs)), "경량 결과 elapsedMs");
   assert.ok(r1.results.every((t) => t.provenance.manifestHash === h1 && t.analysisId === r1.analysisId));
   assert.equal(A.getAnalysisRun(appDb, r1.analysisId).status, "running");
   assert.equal(A.getAnalysisRun(appDb, r1.analysisId).parameters.jimok, "대");
@@ -60,7 +62,8 @@ try {
   assert.deepEqual(r2.computed, []);
   assert.equal(r2.reused.length, TILE_CODES.length);
   assert.notEqual(r2.analysisId, r1.analysisId);
-  assert.deepEqual(r2.results.map((t) => ({ ...t, tileId: "", analysisId: "" })), r1Final.map((t) => ({ ...t, tileId: "", analysisId: "" })));
+  const withoutElapsed = ({ elapsedMs: _elapsedMs, ...tile }) => tile;
+  assert.deepEqual(r2.results.map((t) => withoutElapsed({ ...t, tileId: "", analysisId: "" })), r1Final.map((t) => withoutElapsed({ ...t, tileId: "", analysisId: "" })));
   assert.ok(r2.results.every((t) => t.analysisId === r2.analysisId && t.tileId.startsWith(r2.analysisId)));
 
   // 반경 또는 분석일이 다르면 다시 계산
