@@ -1,4 +1,4 @@
-/** D21 일조시간 — S02 셀 공유·구간 면·미계산 분모 계약. */
+/** D21은 S02 동지 일조 래스터를 재사용하고 별도 폴리곤을 만들지 않는다. */
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
@@ -7,15 +7,13 @@ import { tmpdir } from "node:os";
 const { buildEngineFixture, CENTER, PNU_DASAN_100 } = await import("./engine-fixture.mjs");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
-const { d21 } = await import("../../lib/v2/engine/tiles/d21.ts");
 const { s02 } = await import("../../lib/v2/engine/tiles/s02.ts");
-const { toUtmk } = await import("../../lib/v2/crs.ts");
-const { polygonArea } = await import("../../lib/v2/engine/tiles/geo.ts");
+const { d21 } = await import("../../lib/v2/engine/tiles/d21.ts");
 
-const dataDir = mkdtempSync(join(tmpdir(), "v2-d21-"));
+const dataDir = mkdtempSync(join(tmpdir(), "v2-d21-raster-"));
 await buildEngineFixture(dataDir, "v1", { buildings: true, parcels: true });
 const manifest = M.readManifest(dataDir);
-const ctx = new EngineContext(dataDir, manifest, "d21-test", {
+const ctx = new EngineContext(dataDir, manifest, "d21-raster", {
   address: "경기도 남양주시 다산동 100",
   center: CENTER,
   radiusM: 800,
@@ -23,34 +21,32 @@ const ctx = new EngineContext(dataDir, manifest, "d21-test", {
   pnu: PNU_DASAN_100,
 });
 
-const metric = (tile, id) => tile.metrics.find((item) => item.id === id);
 try {
-  const tile = d21(ctx);
   const s02Tile = s02(ctx);
-  assert.equal(tile.tileCode, "D21");
-  assert.ok(["complete", "partial"].includes(tile.status));
-  assert.equal(metric(tile, "median_sun_hours").value, metric(s02Tile, "median_sun_hours").value);
-  const shares = Array.from({ length: 6 }, (_, i) => metric(tile, `share_sun_${i + 1}`).value);
-  assert.ok(shares.every((value) => typeof value === "number"));
-  assert.ok(Math.abs(shares.reduce((sum, value) => sum + value, 0) - 100) <= 0.5, `share sum ${shares.reduce((sum, value) => sum + value, 0)}`);
-  assert.ok(metric(tile, "share_sun_5").value >= 0, "최대 6시간 셀은 6~8시간 구간에 들어갈 수 있다");
-  assert.equal(metric(tile, "share_sun_6").value, 0, "09~15 창에서 8시간 이상 구간은 비어 있어야 한다");
-  assert.equal(metric(tile, "fill_calculated_pct").value, metric(s02Tile, "uncalculated_ratio").value === 0 ? 100 : 100 - metric(s02Tile, "uncalculated_ratio").value);
-  assert.ok(tile.presentation.polygons?.some((polygon) => polygon.layer.startsWith("sun_")));
-  assert.ok(tile.presentation.layers.includes("sun_uncalc"));
-  const cells = tile.conditions.simulation.cells;
-  const calculatedOrUncalculated = cells.calculated + cells.uncalculated;
-  const sunPolygonArea = (tile.presentation.polygons ?? [])
-    .filter((polygon) => polygon.layer.startsWith("sun_"))
-    .reduce((sum, polygon) => sum + polygonArea(polygon.rings.map((ring) => ring.map((point) => toUtmk(point)))), 0);
-  assert.ok(
-    sunPolygonArea <= calculatedOrUncalculated * tile.conditions.simulation.gridM ** 2 * 1.5,
-    `sun polygon area ${sunPolygonArea} must stay near ${calculatedOrUncalculated} grid cells`,
-  );
-  assert.ok(tile.limitations.some((limitation) => limitation.note.includes("09:00–15:00")));
-  assert.ok(!tile.judgment.sentence.includes("법적"));
+  const s02Ref = s02Tile.presentation.rasters.find((ref) => ref.name === "sun_hours_winter");
+  const s02Items = ctx.takeRasters("S02");
+  const s02Blob = s02Items.find(({ ref }) => ref.name === "sun_hours_winter");
+  assert.ok(s02Ref && s02Blob);
+
+  const tile = d21(ctx);
+  const d21Ref = tile.presentation.rasters.find((ref) => ref.name === "sun_hours_winter");
+  const d21Items = ctx.takeRasters("D21");
+  const d21Blob = d21Items.find(({ ref }) => ref.name === "sun_hours_winter");
+  assert.ok(d21Ref && d21Blob);
+  assert.equal(d21Ref.sha256, s02Ref.sha256, "D21 points at the same winter raster bytes");
+  assert.equal(d21Blob.ref.sha256, s02Blob.ref.sha256, "D21 re-emission is byte-identical");
+  assert.equal(tile.presentation.polygons, undefined, "D21 no longer converts the raster to band polygons");
+  assert.equal(tile.presentation.rasters.length, 1);
+  const hourLegend = tile.presentation.legend.filter((item) => item.label.startsWith("동지 일조시간 · "));
+  assert.equal(hourLegend.length, 13, "D21 keeps the complete 0..12+ sun-hour legend");
+  assert.deepEqual(hourLegend.at(-1), { label: "동지 일조시간 · 12시간 이상", min: 12, max: null });
+  assert.ok(tile.metrics.some((metric) => metric.id === "mean_sun_h_winter"));
+  assert.ok(tile.metrics.some((metric) => metric.id === "share_cont2h_0915_pct_winter"));
+  assert.ok(!tile.limitations.some((limitation) => limitation.note.includes("09:00–15:00") && limitation.note.includes("최대 6시간")));
+  assert.ok(!tile.judgment.sentence.includes("최대 6시간"));
+  assert.ok(!tile.judgment.sentence.includes("법적 일조권 충족"));
 } finally {
   ctx.close();
 }
 
-console.log("✓ v2 D21 sunlight hours");
+console.log("✓ v2 D21 winter raster reuse");

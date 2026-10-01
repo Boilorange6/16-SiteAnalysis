@@ -1,5 +1,6 @@
-/** S02 수광면·정시 그림자·D21 공유 계산 계약. */
+/** S02 반경 전체 일조장·계절 날짜·정시 그림자 래스터 계약. */
 import assert from "node:assert/strict";
+import { inflateRawSync } from "node:zlib";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -7,58 +8,84 @@ import { tmpdir } from "node:os";
 const { buildEngineFixture, CENTER, PNU_DASAN_100 } = await import("./engine-fixture.mjs");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
-const { s02, sunlightFor } = await import("../../lib/v2/engine/tiles/s02.ts");
-const { polygonArea } = await import("../../lib/v2/engine/tiles/geo.ts");
+const { s02 } = await import("../../lib/v2/engine/tiles/s02.ts");
+const { sunFieldFor, sunGridFor, sunObstaclesFor } = await import("../../lib/v2/engine/tiles/sun-shared.ts");
 
-const dataDir = mkdtempSync(join(tmpdir(), "v2-s02-cuts-"));
-await buildEngineFixture(dataDir, "v1", { buildings: true, parcels: true });
+const dataDir = mkdtempSync(join(tmpdir(), "v2-s02-raster-"));
+await buildEngineFixture(dataDir, "v1", { buildings: true, parcels: true, terrain: true });
 const manifest = M.readManifest(dataDir);
+const ctx = new EngineContext(dataDir, manifest, "s02-raster", {
+  address: "경기도 남양주시 다산동 100",
+  center: CENTER,
+  radiusM: 800,
+  analysisDate: "2026-09-30",
+  pnu: PNU_DASAN_100,
+});
 
-function makeContext(id, pnu) {
-  return new EngineContext(dataDir, manifest, id, {
-    address: "경기도 남양주시 다산동 100",
-    center: CENTER,
-    radiusM: 800,
-    analysisDate: "2026-09-30",
-    pnu,
-  });
-}
-
-const parcelCtx = makeContext("s02-parcel", PNU_DASAN_100);
 try {
-  const shared = sunlightFor(parcelCtx);
-  assert.ok(shared);
-  assert.strictEqual(shared, sunlightFor(parcelCtx), "공유 일조 계산은 ctx 안에서 memoized 되어야 한다");
-  assert.equal(shared.siteKind, "parcel");
-  assert.equal(shared.site.length, 4, "필지 외곽의 고유 꼭짓점");
-  const uniqueSite = shared.site;
-  assert.ok(Math.abs(uniqueSite[1][0] - uniqueSite[0][0]) >= 20);
-  assert.ok(Math.abs(uniqueSite[2][1] - uniqueSite[1][1]) >= 20);
+  const computeStarted = performance.now();
+  const grid = sunGridFor(ctx);
+  assert.ok(grid, "sun grid");
+  assert.equal(grid.cellM, 2, "800m analysis uses the quality 2m grid");
+  assert.equal(grid.receiver.length, grid.cols * grid.rows);
+  assert.ok(grid.receiver.includes(2), "building footprints are roof receiver cells");
 
-  const tile = s02(parcelCtx);
-  assert.equal(tile.engineVersion, "v2-sim-sun@2");
-  assert.equal(tile.conditions.simulation.site, "parcel");
-  assert.deepEqual(new Set(tile.presentation.layers), new Set(["shadow_09", "shadow_12", "shadow_15", "sun_face"]));
+  const obstacles = sunObstaclesFor(ctx, null);
+  assert.equal(obstacles.length, 6, "all buildings in radius + 400m are used");
+  assert.ok(obstacles.some((obstacle) => !Number.isFinite(obstacle.heightM)), "unknown height is retained as excluded obstacle");
+
+  const winter = sunFieldFor(ctx, "winter");
+  assert.ok(winter);
+  assert.strictEqual(winter, sunFieldFor(ctx, "winter"), "seasonal field is memoized");
+  assert.ok(winter.hourly.length >= 8 && winter.hourly.length <= 10);
+
+  const tile = s02(ctx);
+  const computeElapsedMs = Math.round(performance.now() - computeStarted);
+  assert.equal(tile.status, "partial", "unknown-height building is reported as partial");
+  assert.equal(tile.conditions.simulation.model, "sun-raster@1");
+  assert.equal(tile.conditions.simulation.stepMin, 10);
+  assert.equal(tile.conditions.simulation.cellM, 2);
+  assert.equal(tile.conditions.simulation.influenceM, 400);
+  assert.equal(tile.conditions.simulation.terrain, "glo30-horizon");
+  assert.deepEqual(tile.conditions.simulation.tstWindows, { continuous: "09-15", total: "08-16" });
+  assert.equal(tile.conditions.simulation.hourlyMinAltDeg, 5);
+  assert.equal(Object.keys(tile.conditions.simulation.dates).length, 5);
+  assert.equal(tile.conditions.simulation.dates.winter.date, "2026-12-22");
+  const hourLegend = tile.presentation.legend.filter((item) => item.label.startsWith("일조시간 · "));
+  assert.equal(hourLegend.length, 13, "sun-hour legend has 0..12+ hourly bins");
+  assert.deepEqual(hourLegend[0], { label: "일조시간 · 0시간", min: 0, max: 1 });
+  assert.deepEqual(hourLegend.at(-1), { label: "일조시간 · 12시간 이상", min: 12, max: null });
+  assert.ok(tile.presentation.rasters?.some((ref) => ref.name === "sun_hours_winter"));
+  assert.ok(tile.presentation.rasters?.some((ref) => ref.name === "shade_winter_flow"));
   assert.ok(tile.presentation.polygons?.some((polygon) => polygon.layer === "sun_face"));
-  for (const layer of ["shadow_09", "shadow_12", "shadow_15"]) {
-    assert.ok(tile.presentation.polygons?.some((polygon) => polygon.layer === layer), `${layer} 면`);
-  }
 
-  const shadowArea = (hour) => shared.shadows[hour].reduce((sum, rings) => sum + polygonArea(rings), 0);
-  assert.ok(shadowArea("12") < shadowArea("09"), "9시 그림자가 12시보다 넓어야 한다");
+  const rasters = ctx.takeRasters("S02");
+  const rasterBytes = rasters.reduce((sum, item) => sum + item.blob.length, 0);
+  assert.ok(computeElapsedMs <= 15_000, `five-date S02 budget: ${computeElapsedMs}ms`);
+  assert.ok(rasterBytes <= 6 * 1024 * 1024, `five-date S02 raster budget: ${rasterBytes} bytes`);
+  const names = rasters.map(({ ref }) => ref.name);
+  const keys = ["spring", "summer", "autumn", "winter", "analysis"];
+  const expectedBase = keys.flatMap((key) => ["sun_hours_" + key, "shade_" + key + "_flow"]);
+  assert.deepEqual(names.filter((name) => expectedBase.includes(name)).sort(), expectedBase.sort());
+  assert.equal(names.filter((name) => name.startsWith("shade_") && /_h\d{2}$/.test(name)).length, keys.reduce((sum, key) => sum + sunFieldFor(ctx, key).hourly.length, 0));
+
+  const sunRef = tile.presentation.rasters.find((ref) => ref.name === "sun_hours_winter");
+  const sunBlob = rasters.find(({ ref }) => ref.name === "sun_hours_winter").blob;
+  const sunRaw = inflateRawSync(sunBlob);
+  assert.equal(sunRaw.length, sunRef.cols * sunRef.rows);
+  const roof = grid.receiver.findIndex((value) => value === 2);
+  assert.ok(roof >= 0);
+  assert.equal(sunRaw[roof], 254, "roof cells are nodata 254");
+  assert.ok(sunRaw.includes(255), "outside-radius cells are nodata 255");
+
+  assert.ok(tile.metrics.some((metric) => metric.id === "mean_sun_h_winter"));
+  assert.ok(tile.metrics.every((metric) => metric.value === null || (metric.unit === "%" ? metric.value >= 0 && metric.value <= 100 : true)));
+  assert.ok(tile.limitations.some((limitation) => limitation.note.includes("높이 미상")));
+  assert.ok(tile.limitations.some((limitation) => limitation.note.includes("400 m")));
+  assert.ok(tile.judgment.sentence.includes("진태양시 09~15"));
+  assert.ok(!tile.judgment.sentence.includes("법적 일조권 충족"));
+  assert.ok(Buffer.byteLength(JSON.stringify(tile), "utf8") < 200_000, "raster bytes stay outside result JSON");
+  console.log(`✓ v2 S02 full-radius seasonal raster contract (${computeElapsedMs}ms, ${rasterBytes} compressed bytes)`);
 } finally {
-  parcelCtx.close();
+  ctx.close();
 }
-
-const boxCtx = makeContext("s02-box", null);
-try {
-  const shared = sunlightFor(boxCtx);
-  assert.ok(shared);
-  assert.equal(shared.siteKind, "box");
-  assert.equal(shared.site.length, 4);
-  assert.equal(s02(boxCtx).conditions.simulation.site, "box");
-} finally {
-  boxCtx.close();
-}
-
-console.log("✓ v2 S02 cuts and shared sunlight");

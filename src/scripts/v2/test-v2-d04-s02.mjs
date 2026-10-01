@@ -14,10 +14,8 @@ const { insertFeature } = await import("../../lib/v2/data/features.ts");
 const { insertRelease } = await import("../../lib/v2/ingest/build.ts");
 const M = await import("../../lib/v2/data/manifest.ts");
 const A = await import("../../lib/v2/app-db.ts");
-const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { runAnalysis } = await import("../../lib/v2/engine/run.ts");
 const { runHeavyTiles } = await import("../../lib/v2/engine/jobs.ts");
-const { s02: s02Engine } = await import("../../lib/v2/engine/tiles/s02.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 
 const CENTER = [127.1506, 37.6245];
@@ -109,33 +107,18 @@ assert.equal(d04View.hasFace, true);
 assert.equal(d04View.chart.length, 7);
 
 assert.equal(s02Tile.tileType, "simulation");
-assert.equal(s02Tile.engineVersion, "v2-sim-sun@2");
-assert.equal(s02Tile.judgment.level, null);
-assert.equal(s02Tile.conditions.simulation.site, "box");
-assert.deepEqual(s02Tile.conditions.simulation.cuts, ["09:00", "12:00", "15:00"]);
-assert.equal(s02Tile.conditions.simulation.influenceRadiusM, 300);
-assert.equal(s02Tile.conditions.simulation.gridM, 2);
-assert.equal(s02Tile.conditions.simulation.buildings.inInfluence, 6);
-assert.equal(s02Tile.conditions.simulation.buildings.excludedNoHeight, 1);
-assert.equal(s02Tile.conditions.simulation.removeBuildingsInSite, true);
-assert.deepEqual(new Set(s02Tile.presentation.layers), new Set(["shadow_09", "shadow_12", "shadow_15", "sun_face"]));
-assert.ok(metric(s02Tile, "median_sun_hours").value > 1, "중심 필지 위 건물이 일조시간 중앙값을 0시간으로 만들면 안 됨");
-assert.ok(s02Tile.limitations.some((l) => l.note.includes("기존 건물 철거 가정")));
-assert.ok(s02Tile.limitations.some((l) => l.note.includes("60×60m")));
-assert.ok(s02Tile.limitations.some((l) => l.note.includes("300m")));
-assert.ok(!s02Tile.judgment.sentence.includes("법적 적합"));
+assert.equal(s02Tile.status, "partial");
+assert.equal(s02Tile.conditions.simulation.model, "sun-raster@1");
+assert.equal(s02Tile.conditions.simulation.cellM, 2);
+assert.equal(s02Tile.conditions.simulation.influenceM, 400);
+assert.equal(s02Tile.conditions.simulation.dates.analysis.date, "2026-09-30");
+assert.ok(metric(s02Tile, "mean_sun_h_winter").value >= 0);
+assert.ok(s02Tile.presentation.rasters.some((ref) => ref.name === "sun_hours_winter"));
+assert.ok(s02Tile.limitations.some((l) => l.note.includes("높이 미상")));
+assert.ok(!s02Tile.judgment.sentence.includes("법적 일조권 충족"));
 
-// 2) 직접 S02 실행 시간: 현재 엔진 어댑터의 상한 입력이 2초 이내인지 확인한다.
-const manifest = M.readManifest(dataDir);
-const ctx = new EngineContext(dataDir, manifest, "timed", { address: "테스트", center: CENTER, radiusM: 800, analysisDate: "2026-09-30" });
-const started = performance.now();
-s02Engine(ctx);
-const s02Ms = performance.now() - started;
-ctx.close();
-console.log(`S02 engine perf: ${s02Ms.toFixed(0)} ms (max 200 buildings, influence 300m)`);
-assert.ok(s02Ms < 2000, `S02 엔진 연결이 2초를 초과했습니다: ${s02Ms.toFixed(0)} ms`);
 
-// 3) buildings 파일 자체가 없는 게시 버전은 두 타일 모두 not_provided.
+// 2) buildings 파일 자체가 없는 게시 버전은 not_provided.
 const absentDir = await makeData({ buildings: false });
 const absentDb = A.openV2AppDb(join(mkdtempSync(join(tmpdir(), "v2-d04-s02-absent-app-")), "app.sqlite"));
 const absent = runAnalysis(absentDb, absentDir, { center: CENTER, radiusM: 800, analysisDate: "2026-09-30" });
@@ -143,7 +126,7 @@ assert.equal(tile(absent, "D04").status, "not_provided");
 assert.equal(heavyTile(absentDb, absentDir, absent, "S02").status, "not_provided");
 absentDb.close();
 
-// 4) 건물 파일이 있어도 필요한 building_fact 열이 없으면 예외 대신 not_provided.
+// 3) 건물 파일이 있어도 필요한 building_fact 열이 없으면 예외 대신 not_provided.
 const brokenDir = await makeData({ brokenBuildings: true });
 const brokenDb = A.openV2AppDb(join(mkdtempSync(join(tmpdir(), "v2-d04-s02-broken-app-")), "app.sqlite"));
 const broken = runAnalysis(brokenDb, brokenDir, { center: CENTER, radiusM: 800, analysisDate: "2026-09-30" });
