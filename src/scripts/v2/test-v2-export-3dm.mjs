@@ -32,7 +32,7 @@ const scene = {
   buildings: [
     {
       id: "building-10m",
-      rings: [[[0, 0], [10, 0], [10, 10], [0, 10]]],
+      rings: [[[0, 0], [0, 10], [10, 10], [10, 0]]],
       baseZ: 2,
       heightM: 10,
       heightMethod: "source",
@@ -89,6 +89,11 @@ const extrusions = geometries.filter((geometry) => geometry.constructor.name ===
 assert.equal(extrusions.length, 2, "높이를 아는 두 건물은 압출 솔리드");
 assert.ok(extrusions.every((extrusion) => extrusion.isSolid), "건물 압출은 닫힌 솔리드");
 assert.equal(extrusions.find((extrusion) => extrusion.profileCount === 2)?.profileCount, 2, "구멍 profile");
+const clockwise = objects.find((object) => object.attributes().name === "building-10m");
+assert.ok(clockwise);
+const clockwiseBox = clockwise.geometry().getBoundingBox();
+assert.equal(clockwiseBox.min[2], 2, "시계방향 외곽 고리도 baseZ에서 시작해야 한다");
+assert.equal(clockwiseBox.max[2], 12, "시계방향 외곽 고리의 높이는 +Z로 압출해야 한다");
 
 const unknown = objects.find((object) => object.attributes().name === "building-unknown");
 assert.ok(unknown);

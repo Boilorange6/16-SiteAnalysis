@@ -63,4 +63,32 @@ assert.ok(lines.every((candidate) => /m$/.test(candidate.l.label ?? "")));
 const lineXs = lines.map((candidate) => candidate.l.points.map((point) => toUtmk(point)[0] - cx));
 assert.ok(lineXs.some((xs) => Math.max(...xs) - Math.min(...xs) < 1), "평면 등고선은 수직선이어야 한다");
 
+const contourHole = {
+  cx,
+  cy,
+  cellM: 10,
+  cols: 9,
+  rows: 9,
+  x0: cx - 40,
+  y0: cy - 40,
+  values: new Float64Array(9 * 9),
+};
+for (let row = 0; row < contourHole.rows; row += 1) {
+  for (let col = 0; col < contourHole.cols; col += 1) {
+    const x = contourHole.x0 + col * contourHole.cellM;
+    const y = contourHole.y0 + row * contourHole.cellM;
+    contourHole.values[row * contourHole.cols + col] = 0.5 * (x - cx) + 0.1 * (y - cy);
+  }
+}
+for (let row = 3; row <= 5; row += 1) {
+  for (let col = 3; col <= 5; col += 1) contourHole.values[row * contourHole.cols + col] = Number.NaN;
+}
+const holeLines = contourLines(CENTER, 38, contourHole, 2, "contour");
+const contourKeys = holeLines.map((line) => {
+  const forward = JSON.stringify(line.l.points);
+  const reverse = JSON.stringify([...line.l.points].reverse());
+  return forward < reverse ? forward : reverse;
+});
+assert.equal(new Set(contourKeys).size, contourKeys.length, "결측 셀 경계에 같은 등고선이 break별로 중복되면 안 된다");
+
 console.log("✓ v2 raster grid");

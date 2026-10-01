@@ -13,7 +13,7 @@ const scene = {
   buildings: [
     {
       id: "source-square",
-      rings: [[[0, 0], [10, 0], [10, 10], [0, 10]]],
+      rings: [[[0, 0], [0, 10], [10, 10], [10, 0]]],
       baseZ: null,
       heightM: 10,
       heightMethod: "source",
@@ -77,6 +77,24 @@ function accessorPositions(gltf, bin, accessorIndex) {
   return [...values];
 }
 
+function accessorIndices(gltf, bin, accessorIndex) {
+  const accessor = gltf.accessors[accessorIndex];
+  const bufferView = gltf.bufferViews[accessor.bufferView];
+  const start = (bufferView.byteOffset ?? 0) + (accessor.byteOffset ?? 0);
+  const Ctor = accessor.componentType === 5125 ? Uint32Array : Uint16Array;
+  return [...new Ctor(bin.buffer, bin.byteOffset + start, accessor.count)];
+}
+
+function cross(a, b, c) {
+  const ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+  const ac = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+  return [
+    ab[1] * ac[2] - ab[2] * ac[1],
+    ab[2] * ac[0] - ab[0] * ac[2],
+    ab[0] * ac[1] - ab[1] * ac[0],
+  ];
+}
+
 const bytes = sceneToGlb(scene);
 assert.ok(bytes instanceof Uint8Array, "sceneToGlb returns Uint8Array");
 const { json, bin } = readGlb(bytes);
@@ -105,6 +123,18 @@ const sourcePositions = accessorPositions(json, bin, sourcePrimitive.attributes.
 assert.equal(Math.max(...sourcePositions.filter((_, i) => i % 3 === 1)), 10, "source building height");
 assert.ok(sourcePositions.some((value, i) => i % 3 === 0 && value === 10), "east is +X");
 assert.ok(sourcePositions.some((value, i) => i % 3 === 2 && value === -10), "north is -Z");
+const sourceIndices = accessorIndices(json, bin, sourcePrimitive.indices);
+assert.equal(sourceIndices.length, 30, "source square has one roof and four two-triangle walls");
+for (let i = 6; i < sourceIndices.length; i += 3) {
+  const points = [0, 1, 2].map((offset) => {
+    const index = sourceIndices[i + offset] * 3;
+    return sourcePositions.slice(index, index + 3);
+  });
+  const normal = cross(points[0], points[1], points[2]);
+  const center = points.reduce((sum, point) => [sum[0] + point[0] / 3, sum[1] + point[1] / 3, sum[2] + point[2] / 3], [0, 0, 0]);
+  const outward = [center[0] - 5, 0, center[2] + 5];
+  assert.ok(normal[0] * outward[0] + normal[2] * outward[2] > 0, `wall triangle ${i / 3} must face outward`);
+}
 
 const estimatedPrimitive = json.meshes[0].primitives[1];
 const estimatedIndices = json.accessors[estimatedPrimitive.indices].count;

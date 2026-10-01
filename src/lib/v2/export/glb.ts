@@ -1,4 +1,5 @@
-import { SCENE_MAX_BUILDINGS, type Ring, type Scene, type SceneBuilding, type SceneGround } from "../scene";
+import { SCENE_MAX_BUILDINGS, type Scene, type SceneBuilding, type SceneGround } from "../scene";
+import { cleanRings } from "./rings";
 
 // earcut 2.2.4 is an existing JavaScript-only transitive dependency.
 // @ts-expect-error earcut does not ship TypeScript declarations.
@@ -44,25 +45,8 @@ function geometry(): Geometry {
   return { positions: [], indices: [] };
 }
 
-function samePoint(a: Point2, b: Point2): boolean {
-  return a[0] === b[0] && a[1] === b[1];
-}
-
-/** Rings in Scene are not required to repeat their first point. */
-function cleanRing(ring: Ring): Point2[] {
-  const points: Point2[] = [];
-  for (const point of ring) {
-    const [x, y] = point;
-    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-    const normalized: Point2 = [x, y];
-    if (points.length === 0 || !samePoint(points[points.length - 1], normalized)) points.push(normalized);
-  }
-  if (points.length > 1 && samePoint(points[0], points[points.length - 1])) points.pop();
-  return points.length >= 3 ? points : [];
-}
-
 function validRings(building: SceneBuilding): Point2[][] {
-  return building.rings.map(cleanRing).filter((ring) => ring.length >= 3);
+  return cleanRings(building.rings);
 }
 
 /** Scene x/y is east/north; glTF is x/y/z = east/up/-north. */

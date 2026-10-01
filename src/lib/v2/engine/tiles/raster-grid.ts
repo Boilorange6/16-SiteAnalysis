@@ -1,5 +1,5 @@
 /** 로컬 미터 격자를 만들고 등치면·등고선을 지도 후보로 변환한다. */
-import { difference, featureCollection, isobands, isolines, point, polygon } from "@turf/turf";
+import { difference, featureCollection, intersect, isobands, isolines, point, polygon } from "@turf/turf";
 import type { Feature, FeatureCollection, MultiPolygon, Point, Polygon } from "geojson";
 import { toLngLat, toUtmk, type LngLat } from "../../crs";
 import { areaInCircle, polygonArea } from "./geo";
@@ -151,6 +151,39 @@ function turfGrid(g: LocalGrid, missingValue: number): FeatureCollection<Point> 
   return featureCollection(points);
 }
 
+/** 등고선 보간용으로만 결측 격자를 인접 유효값 평균으로 채운다. 원본 값은 바꾸지 않는다. */
+function fillMissingValues(g: LocalGrid): Float64Array {
+  let values = Float64Array.from(g.values);
+  for (let pass = 0; pass < g.rows + g.cols; pass += 1) {
+    const next = values.slice();
+    let filled = 0;
+    for (let row = 0; row < g.rows; row += 1) {
+      for (let col = 0; col < g.cols; col += 1) {
+        const index = row * g.cols + col;
+        if (Number.isFinite(values[index])) continue;
+        let sum = 0;
+        let count = 0;
+        for (const [dc, dr] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
+          const neighborCol = col + dc;
+          const neighborRow = row + dr;
+          if (neighborCol < 0 || neighborCol >= g.cols || neighborRow < 0 || neighborRow >= g.rows) continue;
+          const neighbor = values[neighborRow * g.cols + neighborCol];
+          if (!Number.isFinite(neighbor)) continue;
+          sum += neighbor;
+          count += 1;
+        }
+        if (count > 0) {
+          next[index] = sum / count;
+          filled += 1;
+        }
+      }
+    }
+    values = next;
+    if (filled === 0) break;
+  }
+  return values;
+}
+
 type BandGeometry = { type: "Polygon"; coordinates: number[][][] };
 
 function appendBandGeometry(
@@ -193,9 +226,23 @@ function circleRing(center: LngLat, radiusM: number): [number, number][] {
   });
 }
 
-/** 등치면이 누락한 격자 외곽 영역을 기존 밴드 도형에서 뺀 원으로 복구한다. */
-function uncoveredCircleParts(center: LngLat, radiusM: number, bandParts: number[][][][]): number[][][][] {
-  let remaining: Feature<Polygon | MultiPolygon> | null = polygon([circleRing(center, radiusM)]);
+/** 등치면이 누락한 격자 외곽 영역을 원과 격자 셀 외곽의 교집합에서 복구한다. */
+function uncoveredCircleParts(center: LngLat, radiusM: number, g: LocalGrid, bandParts: number[][][][]): number[][][][] {
+  const halfCell = g.cellM / 2;
+  const xMin = g.x0 - halfCell;
+  const yMin = g.y0 - halfCell;
+  const xMax = g.x0 + (g.cols - 1) * g.cellM + halfCell;
+  const yMax = g.y0 + (g.rows - 1) * g.cellM + halfCell;
+  const gridRing: [number, number][] = [[xMin, yMin], [xMax, yMin], [xMax, yMax], [xMin, yMax], [xMin, yMin]];
+  let remaining: Feature<Polygon | MultiPolygon> | null;
+  try {
+    remaining = intersect(featureCollection<Polygon | MultiPolygon>([
+      polygon([circleRing(center, radiusM)]),
+      polygon([gridRing]),
+    ]));
+  } catch {
+    return [];
+  }
   for (const rings of bandParts) {
     if (!remaining) break;
     try {
@@ -302,7 +349,7 @@ export function bandPolygons(
       if (polygons[index].p.layer === targetLayer) polygons.splice(index, 1);
     }
     const emittedParts = observedParts.flatMap((parts, index) => index === targetIndex ? [] : parts);
-    const uncovered = uncoveredCircleParts(center, radiusM, emittedParts);
+    const uncovered = uncoveredCircleParts(center, radiusM, g, emittedParts);
     id = appendPolygonParts(targetLayer, id, uncovered.length > 0 ? uncovered : cellParts[targetIndex], polygons);
   }
 
@@ -447,7 +494,8 @@ export function contourLines(center: LngLat, radiusM: number, g: LocalGrid, inte
   const maxBreak = Math.floor(Math.max(...values) / intervalM + 1e-10) * intervalM;
   if (minBreak > maxBreak) return [];
   const breaks = Array.from({ length: Math.floor((maxBreak - minBreak) / intervalM + 0.5) + 1 }, (_, index) => minBreak + index * intervalM);
-  const grid = turfGrid(g, Math.min(...values) - NODATA_OFFSET);
+  const contourGrid = { ...g, values: fillMissingValues(g) };
+  const grid = turfGrid(contourGrid, Math.min(...values) - NODATA_OFFSET);
   const output: LineCandidate[] = [];
   let id = 1;
   const lines = isolines(grid, breaks, { zProperty: "elevation" });
