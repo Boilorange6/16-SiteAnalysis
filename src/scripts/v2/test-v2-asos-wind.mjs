@@ -22,6 +22,7 @@ const fixtureDir = join(process.cwd(), "src", "scripts", "v2", "fixtures");
 const stations = readStationCsv(readFileSync(join(fixtureDir, "asos-station-sample.csv"), "utf8"));
 assert.equal(stations.length, 2);
 assert.deepEqual(stations[0], { stnId: "near", name: "근거리 관측소", lng: 127.1843, lat: 37.6245, elevationM: 30, start: "2010-01-01", end: null });
+const stationsForBuild = [...stations, { stnId: "closed", name: "폐쇄 관측소", lng: 127, lat: 37, elevationM: null, start: "2010-01-01", end: "2024-12-31" }];
 
 const sourceRows = readFileSync(join(fixtureDir, "asos-sample.jsonl"), "utf8")
   .trim()
@@ -44,11 +45,13 @@ const releaseId = insertRelease(db, {
   checksum: "fixture",
   licenseCode: "TEST",
 });
-const stats = await buildAsosWind(db, stations, hourly(), releaseId, { start: "2025-01-01", end: "2025-01-03" });
+const stats = await buildAsosWind(db, stationsForBuild, hourly(), releaseId, { start: "2025-01-01", end: "2025-01-03" });
 assert.equal(stats.received, 48);
 assert.equal(stats.accepted, 48);
 assert.equal(stats.rejected, 0);
 assert.deepEqual(stats.byRegion, { near: 24, far: 24 });
+assert.equal(db.prepare("SELECT 1 FROM weather_station WHERE station_id = 'closed'").get(), undefined);
+assert.deepEqual([...stats.expectedRegions].sort(), ["far", "near"]);
 
 const near = db.prepare("SELECT * FROM weather_station WHERE station_id = 'near'").get();
 assert.equal(near.total_hours, 72);

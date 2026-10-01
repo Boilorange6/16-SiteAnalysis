@@ -49,10 +49,13 @@ export function d22(ctx: EngineContext): TileResult {
   const stations = db.prepare(`SELECT station_id, name, lng, lat, elevation_m, period_start, period_end,
       total_hours, calm_hours, missing_hours FROM weather_station ORDER BY station_id`).all() as StationRow[];
   if (stations.length === 0 || sources.length === 0) return notProvided(ctx, "D22", "기상(ASOS) 관측소 자료가 없습니다");
+  const eligibleStations = stations.filter((row) => row.total_hours - row.missing_hours >= 8_760);
+  const excludedStationCount = stations.length - eligibleStations.length;
+  if (eligibleStations.length === 0) return notProvided(ctx, "D22", `관측시간 8,760시간 이상인 ASOS 관측소가 없습니다(${excludedStationCount}개 제외)`);
 
   const [cx, cy] = toUtmk(ctx.input.center);
   let nearest: { row: StationRow; distanceM: number } | null = null;
-  for (const row of stations) {
+  for (const row of eligibleStations) {
     if (![row.lng, row.lat].every(Number.isFinite)) continue;
     const [x, y] = toUtmk([row.lng, row.lat]);
     const distanceM = Math.hypot(x - cx, y - cy);
@@ -118,7 +121,10 @@ export function d22(ctx: EngineContext): TileResult {
     judgment: { ruleId: "D22-wind-rose@1", basisMetricIds: ["station_distance_m", "prevailing_dir_deg"], sentence, level: null, criteria: null },
     sources,
     layers: [],
-    limitations: [{ kind: "unknown", note: "관측소 장기 빈도이며 대지 국지 흐름이 아님 · 지점·기간 표시" }],
+    limitations: [
+      { kind: "unknown", note: "관측소 장기 빈도이며 대지 국지 흐름이 아님 · 지점·기간 표시" },
+      ...(excludedStationCount > 0 ? [{ kind: "partial" as const, note: `관측시간 8,760시간 미만인 ASOS 관측소 ${excludedStationCount}개를 제외했습니다.` }] : []),
+    ],
   });
   return withRose(tile, { station: row.name, dirs, calmHours, missingHours, totalHours });
 }

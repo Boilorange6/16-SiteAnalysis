@@ -181,9 +181,13 @@ export async function buildAsosWind(
   const periodEnd = dayStart(period.end) + DAY_MS;
   if (periodEnd <= periodStart) throw new Error(`잘못된 ASOS 기간 ${period.start}..${period.end}`);
 
-  const aggregates = new Map(stations.map((station) => [station.stnId, aggregateFor(station, periodStart, periodEnd)]));
+  const aggregates = new Map<string, StationAggregate>();
+  for (const station of stations) {
+    const aggregate = aggregateFor(station, periodStart, periodEnd);
+    if (aggregate.totalHours > 0) aggregates.set(station.stnId, aggregate);
+  }
   const stats = new SourceStats(ASOS_SOURCE_ID, releaseId, []);
-  stats.expectedRegions = stations.map((station) => station.stnId);
+  stats.expectedRegions = [...aggregates.keys()];
 
   for await (const row of hourly) {
     stats.read();
