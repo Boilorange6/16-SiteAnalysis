@@ -7,6 +7,14 @@ import { BUILDING_SOURCES, buildingRows, type BuildingRow } from "./buildings-sh
 import { notProvided } from "./not-provided";
 
 const LAYERS = ["mass_source", "mass_estimated", "mass_unknown"] as const;
+const DEM_LIMITATION = {
+  kind: "estimated",
+  note: "SRTM 1″(약 30m) 지표고를 보간한 지형입니다. 측량값·표면고(건물·수목)가 아니며 EGM96 기준입니다.",
+} as const;
+const FLAT_GROUND_LIMITATION = {
+  kind: "not_provided",
+  note: "지형(DEM) 미적재 — 평탄 지반",
+} as const;
 const pct = (part: number, whole: number): number => Math.round((part / whole) * 1000) / 10;
 
 function knownRows(rows: BuildingRow[]): BuildingRow[] {
@@ -48,10 +56,12 @@ export function s01(ctx: EngineContext): TileResult {
   const medianHeight = median(heights);
   const maxHeight = heights.length === 0 ? null : Math.max(...heights);
   const included = Math.min(total, SCENE_MAX_BUILDINGS);
+  // T7의 demReader가 병합되기 전에도 같은 게시 파일 계약으로 지형 상태를 기록한다.
+  const demReady = ctx.db("terrain") !== null;
   const coverage = ctx.coverage("buildings", BUILDING_SOURCES);
   const limitations: TileResult["limitations"] = [
     { kind: "estimated", note: "공개 도형과 확보 높이로 만든 매스. 높이 미상 건물은 바닥 모양만 표시" },
-    { kind: "estimated", note: "지반 평탄(DEM은 P3)" },
+    demReady ? DEM_LIMITATION : FLAT_GROUND_LIMITATION,
     ...(unknown > 0 ? [{ kind: "incomplete" as const, note: `높이 미상 건물 ${unknown}동은 높이를 세우지 않고 바닥 모양만 표시했습니다.` }] : []),
     ...(total > included ? [{ kind: "partial" as const, note: `성능 상한 ${SCENE_MAX_BUILDINGS.toLocaleString("en-US")}동으로 반경 안 건물 ${total.toLocaleString("en-US")}동 중 ${included.toLocaleString("en-US")}동만 장면에 포함합니다.` }] : []),
     ...coverage,
@@ -96,7 +106,7 @@ export function s01(ctx: EngineContext): TileResult {
         buildingsIncluded: included,
         buildingsTotal: total,
         cap: SCENE_MAX_BUILDINGS,
-        ground: "flat",
+        ground: demReady ? "dem" : "flat",
       },
     },
     metrics,

@@ -47,9 +47,27 @@ assert.deepEqual(tile.conditions.simulation, {
   ground: "flat",
 });
 assert.ok(tile.limitations.some((entry) => entry.note.includes("공개 도형과 확보 높이로 만든 매스")));
-assert.ok(tile.limitations.some((entry) => entry.note.includes("지반 평탄")));
+assert.ok(tile.limitations.some((entry) => entry.kind === "not_provided" && entry.note === "지형(DEM) 미적재 — 평탄 지반"));
 assert.doesNotMatch(JSON.stringify(tile), /법적/);
 ctx.close();
+
+const demDir = mkdtempSync(join(tmpdir(), "v2-s01-dem-"));
+await buildEngineFixture(demDir, "v1", { buildings: true, terrain: true });
+const demManifest = M.readManifest(demDir);
+const demCtx = new EngineContext(demDir, demManifest, "s01-dem", {
+  address: "경기도 남양주시 다산동 100",
+  center: CENTER,
+  radiusM: 800,
+  analysisDate: "2026-09-30",
+  pnu: null,
+});
+const demTile = s01(demCtx);
+assert.equal(demTile.conditions.simulation.ground, "dem");
+assert.equal(demTile.metrics.some((entry) => entry.id === "ground_relief_m"), false);
+assert.ok(demTile.limitations.some((entry) => entry.note.includes("SRTM 1″(약 30m)")));
+assert.ok(demTile.limitations.some((entry) => entry.note.includes("EGM96")));
+assert.doesNotMatch(JSON.stringify(demTile), /법적/);
+demCtx.close();
 
 const absentDir = mkdtempSync(join(tmpdir(), "v2-s01-absent-"));
 await buildEngineFixture(absentDir, "v1");

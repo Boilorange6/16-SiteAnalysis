@@ -25,8 +25,14 @@ export type MassProjection = {
   scale: number;
 };
 
+export const CAMERA_PRESETS = {
+  azimuth: [45, 135, 225, 315],
+  elevation: [20, 35, 55],
+} as const;
+
 type RawPoint = { x: number; y: number; depth: number };
 type RawFace = { points: RawPoint[]; shade: number; layer: MassLayer; depth: number };
+type WorldPoint = [number, number, number];
 
 const EPSILON = 1e-8;
 
@@ -89,6 +95,51 @@ function groundRing(radius: number): [number, number][] {
   });
 }
 
+function groundCellFaces(
+  ground: Extract<Scene["ground"], { kind: "dem" }>,
+  project: (point: [number, number], z: number) => RawPoint,
+): RawFace[] {
+  const x0 = -((ground.cols - 1) * ground.cellM) / 2;
+  const y0 = -((ground.rows - 1) * ground.cellM) / 2;
+  const sample = (row: number, col: number): number | null => {
+    const value = ground.z[row * ground.cols + col];
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
+  };
+  const cross = (a: WorldPoint, b: WorldPoint, c: WorldPoint): [number, number, number] => [
+    (b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]),
+    (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]),
+    (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]),
+  ];
+  const faces: RawFace[] = [];
+  for (let row = 0; row < ground.rows - 1; row += 1) {
+    for (let col = 0; col < ground.cols - 1; col += 1) {
+      const z00 = sample(row, col);
+      const z10 = sample(row, col + 1);
+      const z11 = sample(row + 1, col + 1);
+      const z01 = sample(row + 1, col);
+      if (z00 === null || z10 === null || z11 === null || z01 === null) continue;
+
+      const world: WorldPoint[] = [
+        [x0 + col * ground.cellM, y0 + row * ground.cellM, z00],
+        [x0 + (col + 1) * ground.cellM, y0 + row * ground.cellM, z10],
+        [x0 + (col + 1) * ground.cellM, y0 + (row + 1) * ground.cellM, z11],
+        [x0 + col * ground.cellM, y0 + (row + 1) * ground.cellM, z01],
+      ];
+      const [nx, ny, nz] = cross(world[0], world[1], world[2]);
+      const normalLength = Math.hypot(nx, ny, nz);
+      if (normalLength < EPSILON) continue;
+      const points = world.map(([x, y, z]) => project([x, y], z));
+      faces.push({
+        points,
+        shade: lightShade(nx / normalLength, ny / normalLength, nz / normalLength),
+        layer: "ground",
+        depth: averageDepth(points),
+      });
+    }
+  }
+  return faces;
+}
+
 function addBuildingFaces(
   raw: RawFace[],
   building: Scene["buildings"][number],
@@ -100,14 +151,15 @@ function addBuildingFaces(
   for (const sourceRing of building.rings) {
     const ring = cleanRing(sourceRing);
     if (ring.length < 3) continue;
+    const baseZ = typeof building.baseZ === "number" && Number.isFinite(building.baseZ) ? building.baseZ : 0;
 
     if (layer === "mass_unknown") {
-      const floor = ring.map((point) => project(point, 0));
+      const floor = ring.map((point) => project(point, baseZ));
       raw.push({ points: floor, shade: 0.38, layer, depth: averageDepth(floor) });
       continue;
     }
 
-    const roof = ring.map((point) => project(point, height));
+    const roof = ring.map((point) => project(point, baseZ + height));
     raw.push({ points: roof, shade: 0.94, layer, depth: averageDepth(roof) });
 
     // 고리의 방향을 이용해 외측 법선을 복원하고, 카메라를 향하는 벽만 남긴다.
@@ -122,7 +174,7 @@ function addBuildingFaces(
       const nx = (ccw ? dy : -dy) / length;
       const ny = (ccw ? -dx : dx) / length;
       if (nx * cameraDirection[0] + ny * cameraDirection[1] <= 0) continue;
-      const wall = [project(a, 0), project(b, 0), project(b, height), project(a, height)];
+      const wall = [project(a, baseZ), project(b, baseZ), project(b, baseZ + height), project(a, baseZ + height)];
       raw.push({ points: wall, shade: lightShade(nx, ny, 0), layer, depth: averageDepth(wall) });
     }
   }
@@ -144,14 +196,19 @@ export function projectMass(scene: Scene, camera: MassCamera, width: number, hei
   const raw: RawFace[] = [];
 
   const radius = Math.max(1, finiteOr(scene.radiusM, finiteOr(camera.radiusM, 100)));
-  const ground = groundRing(radius).map((point) => project(point, 0));
-  raw.push({ points: ground, shade: 0.08, layer: "ground", depth: -Number.MAX_VALUE });
+  if (scene.ground.kind === "dem") {
+    raw.push(...groundCellFaces(scene.ground, project));
+  } else {
+    const ground = groundRing(radius).map((point) => project(point, 0));
+    raw.push({ points: ground, shade: 0.08, layer: "ground", depth: -Number.MAX_VALUE });
+  }
 
   for (const building of scene.buildings) addBuildingFaces(raw, building, project, cameraDirection);
 
-  const groundHeight = Math.max(...ground.map((point) => point.y)) - Math.min(...ground.map((point) => point.y));
-  const groundWidth = Math.max(...ground.map((point) => point.x)) - Math.min(...ground.map((point) => point.x));
   const allPoints = raw.flatMap((face) => face.points);
+  if (allPoints.length === 0) return { faces: [], scale: 1 };
+  const groundPoints = raw.filter((face) => face.layer === "ground").flatMap((face) => face.points);
+  const groundHeight = groundPoints.length > 0 ? Math.max(...groundPoints.map((point) => point.y)) - Math.min(...groundPoints.map((point) => point.y)) : 0;
   const allWidth = Math.max(...allPoints.map((point) => point.x)) - Math.min(...allPoints.map((point) => point.x));
   const allHeight = Math.max(...allPoints.map((point) => point.y)) - Math.min(...allPoints.map((point) => point.y));
   const targetHeight = Math.max(1, height * 0.8);
@@ -168,11 +225,8 @@ export function projectMass(scene: Scene, camera: MassCamera, width: number, hei
   const tx = width / 2 - ((minX + maxX) / 2) * scale;
   const ty = height * 0.54 - ((minY + maxY) / 2) * scale;
 
-  const ordered = [...raw].sort((a, b) => {
-    if (a.layer === "ground" && b.layer !== "ground") return -1;
-    if (a.layer !== "ground" && b.layer === "ground") return 1;
-    return a.depth - b.depth;
-  });
+  // 평탄 원판은 depth가 -MAX라 뒤에 남고, DEM 셀은 건물과 같은 깊이 정렬에 참여한다.
+  const ordered = [...raw].sort((a, b) => a.depth - b.depth);
   return {
     faces: ordered.map((face) => ({ path: pathOf(face.points, scale, tx, ty), shade: face.shade, layer: face.layer, depth: face.depth })),
     scale,
