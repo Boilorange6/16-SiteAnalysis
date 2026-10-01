@@ -23,13 +23,25 @@ const markup = renderToStaticMarkup(React.createElement(WindRoseFigure, { model,
 assert.ok((markup.match(/<path/g) ?? []).length >= 80);
 assert.match(markup, /정온 10%/);
 assert.match(markup, /결측 5% · 지점 near/);
+const summerMarkup = renderToStaticMarkup(React.createElement(WindRoseFigure, { model, width: 960, height: 540, fixed: true, season: "summer" }));
+assert.match(summerMarkup, /data-season="summer"/);
+assert.match(summerMarkup, /여름 바람장미/);
 
 const d22Result = structuredClone(GODEOK_RESULTS.find((r) => r.tileCode === "D04"));
 d22Result.tileId = "t-D22";
 d22Result.tileCode = "D22";
-d22Result.presentation = { ...d22Result.presentation, features: [], featuresTotal: 0, polygons: [], lines: [], rose: model };
+d22Result.presentation = {
+  ...d22Result.presentation,
+  features: [],
+  featuresTotal: 0,
+  polygons: [],
+  lines: [],
+  rose: model,
+  roses: { annual: model, spring: model, summer: model, autumn: model, winter: model },
+};
 const view = toTileView(d22Result);
 assert.deepEqual(view.rose, model);
+assert.deepEqual(view.roses.summer, model);
 const board = initBoard([d22Result]);
 const plan = buildReportPlan({ summary: toSummaryView(GODEOK_SUMMARY, [d22Result]), views: new Map([[d22Result.tileId, view]]), board, analysisDate: "2026-09-30" });
 const d22Slide = plan.find((p) => p.kind === "tile" && p.view.code === "D22");

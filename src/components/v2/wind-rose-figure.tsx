@@ -1,5 +1,6 @@
 import React from "react";
 import { DIR16_NAMES, roseWedges, SPEED_BIN_COLORS, SPEED_BIN_LABELS, type RoseModel } from "@/lib/v2/ui/wind-rose";
+import type { RoseSeason } from "@/lib/v2/tile-result";
 
 export type WindRoseFigureProps = {
   model: RoseModel;
@@ -7,6 +8,8 @@ export type WindRoseFigureProps = {
   height: number;
   fixed?: boolean;
   label?: string;
+  /** 보고서·화면 호출부가 선택한 계절. 모델 자체는 호출부가 roses에서 고른다. */
+  season?: RoseSeason;
 };
 
 const INK = "#15171c";
@@ -20,7 +23,9 @@ const pctOf = (value: number, total: number): string => {
   return Number.isInteger(pct) ? String(pct) : pct.toFixed(1);
 };
 
-function WindRoseFigure({ model, width, height, fixed = false, label = "D22 바람장미" }: WindRoseFigureProps) {
+const SEASON_LABEL: Record<RoseSeason, string> = { annual: "연간", spring: "봄", summer: "여름", autumn: "가을", winter: "겨울" };
+
+function WindRoseFigure({ model, width, height, fixed = false, label = "D22 바람장미", season = "annual" }: WindRoseFigureProps) {
   const cx = width * 0.38;
   const cy = height * 0.47;
   const rMax = Math.min(width * 0.27, height * 0.34);
@@ -30,6 +35,7 @@ function WindRoseFigure({ model, width, height, fixed = false, label = "D22 바�
   const wedges = roseWedges(model, cx, cy, rMax);
   const ticks = [0.25, 0.5, 0.75, 1];
   const labelRadius = rMax + 24;
+  const accessibleLabel = season === "annual" ? label : `${label} · ${SEASON_LABEL[season]}`;
 
   return (
     <svg
@@ -37,11 +43,16 @@ function WindRoseFigure({ model, width, height, fixed = false, label = "D22 바�
       viewBox={`0 0 ${width} ${height}`}
       {...(fixed ? { width, height } : { width: "100%", height: "100%" })}
       role="img"
-      aria-label={label}
+      aria-label={accessibleLabel}
+      data-season={season}
       fontFamily={FONT}
       style={{ display: "block" }}
     >
       <rect width={width} height={height} fill="#F2F2EF" />
+      <title>{`${SEASON_LABEL[season]} 바람장미`}</title>
+      <text x={16} y={26} fontSize="16" fontWeight="700" fill={INK}>
+        {SEASON_LABEL[season]} 바람장미
+      </text>
       <g aria-label="풍향 빈도">
         {ticks.map((ratio) => {
           const radius = rMax * ratio;

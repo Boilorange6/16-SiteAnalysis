@@ -85,13 +85,25 @@ const MapPolygonSchema = z.object({
   rings: z.array(z.array(LngLatSchema).min(4).max(MAX_POLYGON_VERTICES + 1)).min(1),
   label: z.string().nullable().optional(),
 });
-const RoseSchema = z.object({
+export const ROSE_SEASONS = ["annual", "spring", "summer", "autumn", "winter"] as const;
+export type RoseSeason = (typeof ROSE_SEASONS)[number];
+
+export const RoseSchema = z.object({
   station: z.string().min(1),
   dirs: z.array(z.array(z.number().finite().nonnegative()).length(5)).length(16),
   calmHours: z.number().finite().nonnegative(),
   missingHours: z.number().finite().nonnegative(),
   totalHours: z.number().finite().nonnegative(),
 });
+export type Rose = z.infer<typeof RoseSchema>;
+export const RoseSetSchema = z.object({
+  annual: RoseSchema,
+  spring: RoseSchema,
+  summer: RoseSchema,
+  autumn: RoseSchema,
+  winter: RoseSchema,
+});
+export type RoseSet = z.infer<typeof RoseSetSchema>;
 
 /** 격자 남서 모서리·셀 크기를 포함한 압축 래스터 참조. 바이너리는 앱 DB에 둔다. */
 export const RasterRefSchema = z.object({
@@ -154,6 +166,8 @@ export const TileResultSchema = z
       linesTotal: z.number().int().nonnegative().optional(),
       /** D22 바람장미: 북쪽부터 시계방향 16방위 × 풍속 5구간 시간수. */
       rose: RoseSchema.optional(),
+      /** D22 계절·연간 바람장미. 옛 weather 파일에서는 연간 rose만 유지한다. */
+      roses: RoseSetSchema.optional(),
       /** 지도 위에 겹칠 압축 격자 결과. 바이너리는 tile_raster에 저장한다. */
       rasters: z.array(RasterRefSchema).max(96).optional(),
       /** D01처럼 타일 자체가 고정하는 항공영상 배경. */

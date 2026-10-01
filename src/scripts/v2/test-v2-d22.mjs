@@ -8,7 +8,7 @@ import Database from "better-sqlite3";
 const { buildEngineFixture, CENTER, at } = await import("./engine-fixture.mjs");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
-const { DIR16_DEGREES, DIR16_NAMES, d22 } = await import("../../lib/v2/engine/tiles/d22.ts");
+const { DIR16_DEGREES, DIR16_NAMES, d22, prevailingBySeason } = await import("../../lib/v2/engine/tiles/d22.ts");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 
 const dataDir = mkdtempSync(join(tmpdir(), "v2-d22-"));
@@ -37,7 +37,11 @@ const ctx = new EngineContext(dataDir, manifest, "d22-test", {
   radiusM: 800,
   analysisDate: "2026-09-30",
 });
+const startedAt = performance.now();
 const result = d22(ctx);
+const elapsedMs = performance.now() - startedAt;
+assert.ok(elapsedMs < 1500, `D22 engine exceeded 1500 ms budget: ${elapsedMs.toFixed(1)} ms`);
+console.log(`D22 engine perf: ${elapsedMs.toFixed(1)} ms (budget 1500 ms)`);
 parseTileResult(result);
 const metric = (id) => result.metrics.find((item) => item.id === id);
 
@@ -65,11 +69,41 @@ assert.equal(result.presentation.rose.dirs.flat().reduce((sum, hours) => sum + h
 assert.equal(result.presentation.rose.calmHours, 8767);
 assert.equal(result.presentation.rose.missingHours, 4384);
 assert.equal(result.presentation.rose.totalHours, 87672);
+assert.ok(result.presentation.roses);
+assert.deepEqual(Object.keys(result.presentation.roses).sort(), ["annual", "autumn", "spring", "summer", "winter"]);
+assert.equal(result.presentation.roses.annual.dirs[14][1], result.presentation.rose.dirs[14][1]);
+assert.equal(result.presentation.roses.summer.dirs[10][1], 20000);
+assert.equal(result.presentation.roses.winter.dirs[14][1], 20000);
+assert.equal(metric("prevailing_dir_deg_summer").value, 225);
+assert.equal(metric("prevailing_dir_deg_winter").value, 315);
+assert.equal(metric("calm_pct_summer").value, 0.5);
+const prevailing = prevailingBySeason(ctx);
+assert.equal(prevailing.station.id, "near");
+assert.equal(prevailing.annual.name, "NW");
+assert.deepEqual(prevailing.seasons.summer, { deg: 225, name: "SW", pct: 100 });
+assert.deepEqual(prevailing.seasons.winter, { deg: 315, name: "NW", pct: 100 });
 assert.match(result.judgment.sentence, /NW/);
 assert.doesNotMatch(JSON.stringify(result), /좋음|법적 적합|개발 가능/);
 assert.equal(DIR16_NAMES[14], "NW");
 assert.equal(DIR16_DEGREES[14], 315);
 ctx.close();
+
+const legacyDir = mkdtempSync(join(tmpdir(), "v2-d22-legacy-"));
+await buildEngineFixture(legacyDir, "v1", { weather: "legacy" });
+const legacyCtx = new EngineContext(legacyDir, M.readManifest(legacyDir), "d22-legacy", {
+  address: "테스트",
+  center: CENTER,
+  radiusM: 800,
+  analysisDate: "2026-09-30",
+});
+const legacy = d22(legacyCtx);
+parseTileResult(legacy);
+assert.equal(legacy.status, "complete");
+assert.equal(legacy.presentation.roses, undefined);
+assert.equal(legacy.presentation.rose.dirs[14][1], 20000);
+assert.equal(legacy.metrics.find((item) => item.id === "prevailing_dir_deg_summer"), undefined);
+assert.ok(legacy.limitations.some((limitation) => limitation.note === "계절 장미 미적재"));
+legacyCtx.close();
 
 const noWeatherDir = mkdtempSync(join(tmpdir(), "v2-d22-empty-"));
 await buildEngineFixture(noWeatherDir, "v1");
