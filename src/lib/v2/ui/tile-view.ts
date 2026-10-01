@@ -98,7 +98,8 @@ function mapOf(r: TileResult): MapModel | null {
   if (r.status !== "complete" && r.status !== "partial") return null;
   const features = r.presentation.features ?? [];
   const polygons = r.presentation.polygons ?? [];
-  if (features.length === 0 && polygons.length === 0) return null;
+  const lines = r.presentation.lines ?? [];
+  if (features.length === 0 && polygons.length === 0 && lines.length === 0) return null;
   const notes = MAP_NOTES[r.tileCode] ? [MAP_NOTES[r.tileCode]] : [];
   if (r.tileCode === "A01" && r.metrics.some((m) => m.id === "nearest_rail_m" && m.status === "missing")) notes.push("철도 자료 미적재 · 버스정류장만 표시");
   if (features.length === 0 && polygons.length === 0) notes.push("반경 안 표시할 지물 없음");
@@ -108,6 +109,8 @@ function mapOf(r: TileResult): MapModel | null {
     features,
     polygons,
     polygonsTotal: r.presentation.polygonsTotal ?? polygons.length,
+    lines,
+    linesTotal: r.presentation.linesTotal ?? lines.length,
     total: r.presentation.featuresTotal ?? features.length,
     notes,
   };

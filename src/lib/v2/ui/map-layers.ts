@@ -1,4 +1,4 @@
-import type { MapFeature, MapPolygon } from "../tile-result";
+import type { MapFeature, MapLine, MapPolygon } from "../tile-result";
 
 /** MapFigure가 그리는 입력. 카드·상세·PPT가 같은 것을 쓴다. */
 export type MapModel = {
@@ -9,6 +9,10 @@ export type MapModel = {
   polygons?: MapPolygon[];
   /** 상한으로 잘리기 전 전체 면 지물 개수 */
   polygonsTotal?: number;
+  /** 선 지물(WGS84) */
+  lines?: MapLine[];
+  /** 상한으로 잘리기 전 전체 선 지물 개수 */
+  linesTotal?: number;
   /** 상한으로 잘리기 전 전체 개수 (features.length보다 크면 그림에 "표시 n / 전체 m"을 적는다) */
   total: number;
   /** 범례 밑에 적는 짧은 문구 */
@@ -192,7 +196,7 @@ const FALLBACK: LayerStyle = S("기타", "#7A7E87");
 /** 지물이 있는 레이어의 범례 항목 (정의된 순서) */
 export const legendItems = (model: MapModel) =>
   Object.keys(LAYER_STYLES)
-    .filter((k) => model.features.some((f) => f.layer === k) || (model.polygons ?? []).some((p) => p.layer === k))
+    .filter((k) => model.features.some((f) => f.layer === k) || (model.polygons ?? []).some((p) => p.layer === k) || (model.lines ?? []).some((l) => l.layer === k))
     .map((k) => ({ layer: k, label: LAYER_STYLES[k].label, color: LAYER_STYLES[k].color }));
 
 export const layerStyle =(layer: string): LayerStyle => LAYER_STYLES[layer] ?? FALLBACK;
