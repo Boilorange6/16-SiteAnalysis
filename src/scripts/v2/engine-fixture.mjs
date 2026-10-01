@@ -47,7 +47,7 @@ function run(db, sourceId, releaseId, snapshot, rejected = 0, count = 10) {
     .run(`${sourceId}:1`, sourceId, count, count, rejected, releaseId, JSON.stringify(snapshot));
 }
 
-/** options.noMarket: market 파일을 게시하지 않는다. options.extraBus: 버스정류장을 더한다(새 버전 검증용). options.buildings/parcels/terrain/weather/roads: 해당 파일·fixture를 게시한다. */
+/** options.noMarket: market 파일을 게시하지 않는다. options.extraBus: 버스정류장을 더한다(새 버전 검증용). options.buildings/parcels/terrain/weather/roads/rents: 해당 파일·fixture를 게시한다. */
 export async function buildEngineFixture(dataDir, version, options = {}) {
   const dir = join(dataDir, "versions", version);
   mkdirSync(dir, { recursive: true });
@@ -71,7 +71,7 @@ export async function buildEngineFixture(dataDir, version, options = {}) {
   la.run("41360131", "emd", "별내동", "41360", legal); // 동명 → 모호
   la.run("11710", "sigungu", "서울특별시 송파구", null, legal);
   db.prepare("INSERT INTO parcel_point VALUES (?, ?, ?, ?, ?)").run(PNU_DASAN_100, CENTER[0], CENTER[1], "대", parcel);
-  if (options.trades) {
+  if (options.trades || options.rents) {
     const pp = db.prepare("INSERT INTO parcel_point VALUES (?, ?, ?, ?, ?)");
     for (const [pnu, dx] of Object.entries(TRADE_PNU_DX)) pp.run(pnu, ...at(dx, 0), "대", parcel);
   }
@@ -252,6 +252,7 @@ export async function buildEngineFixture(dataDir, version, options = {}) {
     files.weather = "weather";
   }
 
+  // P4-T6: landuse/water fixture
   // ── reference
   db = open("reference");
   const store = rel(db, "store", "2026-06");
@@ -360,6 +361,7 @@ export async function buildEngineFixture(dataDir, version, options = {}) {
   // ── market
   if (!options.noMarket) {
     db = open("market");
+    if (options.rents === "nocolumn") db.exec("ALTER TABLE property_transaction DROP COLUMN renewal;");
     const ah = rel(db, "applyhome", null);
     const mi = rel(db, "move_in", "2026-06-30");
     const ps = (id, dx, releaseId, props) =>
@@ -402,6 +404,41 @@ export async function buildEngineFixture(dataDir, version, options = {}) {
       tx(null, "2026-08-13", 800, { lawd: "11710" });
       run(db, "rtms_apt_trade", rt, { byRegion: options.trades === "41360only" ? { 41: 24 } : { 41: 24, 11: 1 }, byType: {}, fillRates: {}, unlocated: 2 }, 2);
       if (options.trades === "41360only") db.prepare("DELETE FROM property_transaction WHERE lawd_cd = '11710'").run(); // 송파 자료 없음
+    }
+    if (options.rents) {
+      const rentRelease = rel(db, "rtms_apt_rent", "2026-09-30");
+      const hasRenewal = db.prepare("PRAGMA table_info(property_transaction)").all().some((column) => column.name === "renewal");
+      const rentInsert = hasRenewal
+        ? db.prepare(`INSERT INTO property_transaction (transaction_id, source_record_key, lawd_cd, deal_date, property_type, contract_type, renewal, price_krw, deposit_krw, rent_krw, area_m2, floor, cancelled_at, location_id, match_status, release_id)
+          VALUES (?, ?, ?, ?, 'apt', ?, ?, NULL, ?, ?, 84, 4, ?, ?, ?, ?)`)
+        : db.prepare(`INSERT INTO property_transaction (transaction_id, source_record_key, lawd_cd, deal_date, property_type, contract_type, price_krw, deposit_krw, rent_krw, area_m2, floor, cancelled_at, location_id, match_status, release_id)
+          VALUES (?, ?, ?, ?, 'apt', ?, NULL, ?, ?, 84, 4, ?, ?, ?, ?)`);
+      let n = 0;
+      const rent = (pnu, date, depositManwon, monthlyManwon, renewal = null, o = {}) => {
+        const locationId = "location" in o ? o.location : pnu;
+        const matchStatus = locationId === null ? "unlocated" : "located";
+        const contract = monthlyManwon > 0 ? "monthly" : "jeonse";
+        if (hasRenewal) rentInsert.run(`r${++n}`, `rk${n}`, o.lawd ?? (pnu === TRADE_PNU.C ? "11710" : "41360"), date, contract, renewal, depositManwon * 10_000, monthlyManwon * 10_000, o.cancelled ?? null, locationId, matchStatus, rentRelease);
+        else rentInsert.run(`r${++n}`, `rk${n}`, o.lawd ?? (pnu === TRADE_PNU.C ? "11710" : "41360"), date, contract, depositManwon * 10_000, monthlyManwon * 10_000, o.cancelled ?? null, locationId, matchStatus, rentRelease);
+      };
+      // A: 전세 6건(신규 4·갱신 2), B: 전세 2·월세 4, C: 반경 밖 전세 3(1건 취소), 별도 위치 미확인 1건.
+      rent(TRADE_PNU.A, "2026-01-10", 42_000, 0, "new");
+      rent(TRADE_PNU.A, "2026-02-10", 44_000, 0, "new");
+      rent(TRADE_PNU.A, "2026-03-10", 46_000, 0, "new");
+      rent(TRADE_PNU.A, "2026-04-10", 48_000, 0, "new");
+      rent(TRADE_PNU.A, "2026-05-10", 49_000, 0, "renewal");
+      rent(TRADE_PNU.A, "2026-06-10", 50_000, 0, "renewal");
+      rent(TRADE_PNU.B, "2026-07-01", 10_000, 0);
+      rent(TRADE_PNU.B, "2026-07-02", 12_000, 0);
+      rent(TRADE_PNU.B, "2026-08-01", 10_000, 80);
+      rent(TRADE_PNU.B, "2026-08-02", 10_000, 90);
+      rent(TRADE_PNU.B, "2026-08-03", 10_000, 100);
+      rent(TRADE_PNU.B, "2026-08-04", 10_000, 120);
+      rent(TRADE_PNU.C, "2026-08-10", 30_000, 0);
+      rent(TRADE_PNU.C, "2026-08-11", 31_000, 0, null, { cancelled: "2026-08-20" });
+      rent(TRADE_PNU.C, "2026-08-12", 32_000, 0);
+      rent(null, "2026-08-13", 15_000, 0, null, { location: null });
+      run(db, "rtms_apt_rent", rentRelease, { byRegion: { 41: 12, 11: 3 }, byType: {}, fillRates: {}, unlocated: 1 }, 1, 16);
     }
     if (options.maint) {
       const roster = [

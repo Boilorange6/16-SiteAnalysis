@@ -158,6 +158,7 @@ const MARKET_SQL = `
     deal_date TEXT NOT NULL,
     property_type TEXT NOT NULL,
     contract_type TEXT NOT NULL,
+    renewal TEXT,
     price_krw INTEGER,
     deposit_krw INTEGER,
     rent_krw INTEGER,
