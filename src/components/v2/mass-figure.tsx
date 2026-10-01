@@ -77,6 +77,21 @@ function MassFigure({ scene, camera, width, height, fixed = false, label = "S01 
   const legend: MassLayer[] = isExploded ? [...EXPLODED_LAYERS] : ["mass_source", "mass_estimated", "mass_unknown"];
   const isDem = scene?.ground.kind === "dem";
   if (!isExploded && isDem) legend.push("ground");
+  const explodedPlates = projection?.plates ?? [];
+  const renderFace = (face: (typeof faces)[number], index: number) => (
+    <path
+      key={`${face.layer}-${face.stackIndex ?? "base"}-${index}`}
+      d={face.path}
+      data-face-layer={face.layer}
+      fill={face.layer === "mass_estimated" ? `url(#${uid}-estimate)` : shadeColor(face.fill ?? COLORS[face.layer], face.shade)}
+      fillRule={face.fillRule}
+      fillOpacity={face.layer === "ground" ? 0.9 : 0.96}
+      stroke={face.layer === "ground" ? "#AEB4BD" : "#FFFFFF"}
+      strokeOpacity={face.layer === "ground" ? 0.7 : 0.85}
+      strokeWidth={face.layer === "ground" ? 1 : 0.8}
+      strokeLinejoin="round"
+    />
+  );
 
   return (
     <svg
@@ -93,22 +108,44 @@ function MassFigure({ scene, camera, width, height, fixed = false, label = "S01 
           <rect width="8" height="8" fill={COLORS.mass_estimated} fillOpacity="0.28" />
           <path d="M0 8L8 0" stroke={COLORS.mass_estimated} strokeWidth="1" strokeOpacity="0.75" />
         </pattern>
+        {isExploded && explodedPlates.map((plate) => (
+          <clipPath key={plate.layer} id={`${uid}-clip-${plate.layer}`} clipPathUnits="userSpaceOnUse">
+            <path d={plate.path} />
+          </clipPath>
+        ))}
       </defs>
       <rect width={width} height={height} fill="#F2F2EF" />
-      {faces.map((face, index) => (
-        <path
-          key={`${face.layer}-${index}`}
-          d={face.path}
-          data-face-layer={face.layer}
-          fill={face.layer === "mass_estimated" ? `url(#${uid}-estimate)` : shadeColor(face.fill ?? COLORS[face.layer], face.shade)}
-          fillRule={face.fillRule}
-          fillOpacity={face.layer === "ground" ? 0.9 : 0.96}
-          stroke={face.layer === "ground" ? "#AEB4BD" : "#FFFFFF"}
-          strokeOpacity={face.layer === "ground" ? 0.7 : 0.85}
-          strokeWidth={face.layer === "ground" ? 1 : 0.8}
-          strokeLinejoin="round"
-        />
-      ))}
+      {isExploded && explodedPlates.length > 0 ? (
+        <>
+          <g aria-label="원판 연결 가이드">
+            {projection?.guides?.map((guide, index) => (
+              <line
+                key={`${guide.side}-${index}`}
+                x1={guide.x}
+                y1={guide.y1}
+                x2={guide.x}
+                y2={guide.y2}
+                data-guide-side={guide.side}
+                stroke="#98A1AD"
+                strokeWidth="0.9"
+                strokeDasharray="4 5"
+                strokeOpacity="0.8"
+              />
+            ))}
+          </g>
+          {explodedPlates.map((plate) => (
+            <g key={plate.layer} data-plate-layer={plate.layer} data-plate-state={plate.present ? "data" : "empty"}>
+              <path d={plate.path} fill={plate.fill} fillOpacity="0.84" stroke="#B2BAC5" strokeWidth="1.1" strokeOpacity="0.9" />
+              <g clipPath={`url(#${uid}-clip-${plate.layer})`}>
+                {faces.filter((face) => face.stackIndex === plate.index).map(renderFace)}
+              </g>
+              <path d={plate.path} fill="none" stroke="#AAB3BF" strokeWidth="1.1" strokeOpacity="0.95" />
+            </g>
+          ))}
+        </>
+      ) : (
+        faces.map(renderFace)
+      )}
 
       {isExploded && projection?.labels && (
         <g aria-label="분해 층 라벨">

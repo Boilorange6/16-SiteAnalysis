@@ -57,10 +57,24 @@ assert.ok(projection.scale > 0);
 const exploded = projectExploded(contextScene, camera, 800, 700, 100);
 assert.deepEqual(exploded.labels.map((label) => label.layer), [...EXPLODED_LAYERS], "분해 라벨은 아래층부터 완성층 순서다");
 assert.ok(exploded.labels.every((label, index) => index === 0 || label.y < exploded.labels[index - 1].y), "분해 층 라벨의 화면 y는 위로 단조 증가한다");
+assert.equal(exploded.plates?.length, EXPLODED_LAYERS.length, "분해 층마다 동일한 원판을 만든다");
+assert.equal(exploded.guides?.length, (EXPLODED_LAYERS.length - 1) * 2, "좌우 원판 접선 가이드를 층 사이마다 만든다");
+const plateWidths = exploded.plates.map((plate) => plate.rightX - plate.leftX);
+assert.ok(Math.max(...plateWidths) - Math.min(...plateWidths) < 0.01, "모든 원판은 같은 투영 폭을 쓴다");
+assert.ok(exploded.guides.every((guide) => guide.y1 !== guide.y2 && Number.isFinite(guide.x)), "가이드는 spread로 분리된 원판을 연결한다");
+assert.ok(exploded.labels.every((label) => {
+  const plate = exploded.plates.find((candidate) => candidate.layer === label.layer);
+  return plate && Math.abs(label.x - plate.leftX - 10) < 0.01;
+}), "층 라벨은 각 원판의 왼쪽 림에 맞춘다");
 for (const layer of EXPLODED_LAYERS) {
   assert.ok(exploded.faces.some((face) => face.layer === layer), `${layer} 층을 그린다`);
 }
 assert.ok(exploded.faces.filter((face) => face.layer === "roads").length >= 1, "도로 폭을 가진 리본 면을 그린다");
+const outlierContext = projectExploded({
+  ...contextScene,
+  context: { ...contextScene.context, roads: [{ points: [[-10000, 0], [10000, 0]], widthM: 80, hierarchy: "간선" }] },
+}, camera, 800, 700, 100);
+assert.deepEqual(outlierContext.plates, exploded.plates, "반경 밖으로 튀는 맥락선도 원판 축척을 흔들지 않는다");
 assert.deepEqual(projectExploded(contextScene, camera, 800, 700, 100), exploded, "분해 SVG 입력은 결정적이다");
 
 const legacyExploded = projectExploded(scene, camera, 800, 700, 100);
@@ -90,10 +104,16 @@ assert.match(explodedMarkup, /data-face-layer="green"/);
 assert.match(explodedMarkup, /data-face-layer="roads"/);
 assert.match(explodedMarkup, /data-face-layer="complete"/);
 assert.match(explodedMarkup, /data-layer-label="complete"/);
+for (const layer of EXPLODED_LAYERS) assert.match(explodedMarkup, new RegExp(`data-plate-layer="${layer}"`));
+assert.equal((explodedMarkup.match(/<clipPath/g) ?? []).length, EXPLODED_LAYERS.length, "각 원판은 전용 clipPath를 가진다");
+assert.equal((explodedMarkup.match(/data-guide-side=/g) ?? []).length, (EXPLODED_LAYERS.length - 1) * 2, "좌우 점선 가이드를 렌더링한다");
+assert.match(explodedMarkup, /stroke-dasharray="4 5"/);
 const emptyMarkup = renderToStaticMarkup(createElement(MassFigure, { scene, camera, width: 800, height: 700, fixed: true, exploded: { spreadPct: 60 } }));
 assert.match(emptyMarkup, /수계 · 자료 없음/);
 assert.match(emptyMarkup, /녹지 · 자료 없음/);
 assert.match(emptyMarkup, /도로 · 자료 없음/);
+assert.match(emptyMarkup, /data-plate-state="empty"/);
+assert.equal((emptyMarkup.match(/data-plate-layer=/g) ?? []).length, EXPLODED_LAYERS.length, "빈 맥락층도 빈 원판을 유지한다");
 
 const demScene = {
   ...scene,

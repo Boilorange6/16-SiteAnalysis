@@ -21,17 +21,32 @@ export type MassFace = {
   shade: number;
   layer: MassLayer;
   depth: number;
+  /** 분해 도판에서 면을 해당 원판 clip 그룹으로 보낼 때 사용한다. */
+  stackIndex?: number;
   /** 분해 완성층이 원래 층의 색을 유지할 때만 채운다. */
   fill?: string;
   fillRule?: "evenodd";
 };
 
 export type MassLabel = { layer: ExplodedLayer; x: number; y: number; text: string };
+export type MassPlate = {
+  layer: ExplodedLayer;
+  index: number;
+  path: string;
+  leftX: number;
+  rightX: number;
+  centerY: number;
+  fill: string;
+  present: boolean;
+};
+export type MassGuide = { side: "left" | "right"; x: number; y1: number; y2: number };
 
 export type MassProjection = {
   faces: MassFace[];
   scale: number;
   labels?: MassLabel[];
+  plates?: MassPlate[];
+  guides?: MassGuide[];
 };
 
 export const CAMERA_PRESETS = {
@@ -82,6 +97,7 @@ function rawPointsOf(face: RawFace): RawPoint[] {
 
 function toMassFace(face: RawFace, scale: number, tx: number, ty: number, screenStep = 0): MassFace {
   const output: MassFace = { path: pathOfFace(face, scale, tx, ty, screenStep), shade: face.shade, layer: face.layer, depth: face.depth };
+  if (face.stackIndex !== undefined) output.stackIndex = face.stackIndex;
   if (face.fill !== undefined) output.fill = face.fill;
   if (face.fillRule !== undefined) output.fillRule = face.fillRule;
   return output;
@@ -289,6 +305,15 @@ const EXPLODED_FILL = {
   roads: "#727B88",
 } as const;
 
+const EXPLODED_PLATE_FILL: Record<ExplodedLayer, string> = {
+  terrain: "#F0F2F4",
+  water: "#E8F5F8",
+  green: "#EEF7EC",
+  roads: "#F0F2F5",
+  buildings: "#EEF2F7",
+  complete: "#F4F3F0",
+};
+
 function projectLayerPoint(
   point: [number, number],
   z: number,
@@ -417,8 +442,9 @@ function hasBuildings(scene: Scene): boolean {
 /**
  * 장면을 지형·수계·녹지·도로·건물·완성의 여섯 축측 층으로 펼친다.
  * 각 층은 반경 × 0.18 × spreadPct/100 만큼 z축으로 떨어뜨리고, 화면에서는
- * 겹치지 않도록 같은 순서의 세로 여백을 둔다. 맥락 원천이 비어 있으면 해당
- * 면은 만들지 않고 labels에 자료 없음 상태를 남긴다.
+ * 겹치지 않도록 같은 순서의 세로 여백을 둔다. 모든 층에 같은 반경 원판을
+ * 반환해 SVG가 층별로 clip하고, 맥락 원천이 비어 있어도 빈 원판과 자료 없음
+ * 라벨을 유지한다.
  */
 export function projectExploded(
   scene: Scene,
@@ -436,7 +462,9 @@ export function projectExploded(
   const radius = Math.max(1, finiteOr(scene.radiusM, finiteOr(camera.radiusM, 100)));
   const spread = Math.max(0, finiteOr(spreadPct, 100)) / 100;
   const gap = radius * 0.18 * spread;
-  const screenStep = Math.min(width, height) * 0.16 * spread;
+  // sitedia의 60% 캡처처럼 세로로 읽히되, 작은 도판에서도 마지막 원판이
+  // 잘리지 않도록 뷰포트 높이에 상한을 둔다. 상한 전까지는 펼침 %에 선형이다.
+  const screenStep = Math.min(height * 0.13, Math.min(width, height) * 0.24 * spread);
   const cameraDirection: [number, number] = [sinA, cosA];
   const raw: RawFace[] = [];
   const context = scene.context;
@@ -466,53 +494,73 @@ export function projectExploded(
   if (present.roads) contextRoadFaces(raw, context?.roads ?? [], "complete", 5, scene.ground, projectFor("complete"), EXPLODED_FILL.roads);
   if (present.buildings) addExplodedBuildings(raw, scene, "complete", projectFor("complete"), cameraDirection);
 
-  const allPoints = raw.flatMap(rawPointsOf);
-  const labelX = Math.max(16, Math.min(width - 178, width * 0.045));
-  if (allPoints.length === 0) {
-    return {
-      faces: [],
-      scale: 1,
-      labels: EXPLODED_LAYERS.map((layer, index) => ({
-        layer,
-        x: labelX,
-        y: height * 0.5 - index * screenStep,
-        text: present[layer] ? EXPLODED_LABEL_TEXT[layer] : `${EXPLODED_LABEL_TEXT[layer]} · 자료 없음`,
-      })),
-    };
-  }
-
-  const terrainPoints = raw.filter((face) => face.layer === "terrain").flatMap(rawPointsOf);
-  const terrainHeight = terrainPoints.length > 0 ? Math.max(...terrainPoints.map((point) => point.y)) - Math.min(...terrainPoints.map((point) => point.y)) : 0;
-  const allWidth = Math.max(...allPoints.map((point) => point.x)) - Math.min(...allPoints.map((point) => point.x));
-  const allHeight = Math.max(...allPoints.map((point) => point.y)) - Math.min(...allPoints.map((point) => point.y));
-  const targetHeight = Math.max(1, height * 0.84);
-  const byTerrain = terrainHeight > EPSILON ? (height * 0.22) / terrainHeight : 1;
-  const byWidth = allWidth > EPSILON ? (width * 0.24) / allWidth : byTerrain;
-  const byHeight = allHeight > EPSILON ? Math.max(0.0001, targetHeight - screenStep * (EXPLODED_LAYERS.length - 1)) / allHeight : byTerrain;
-  const scale = Math.max(0.0001, Math.min(byTerrain, byWidth, byHeight));
-  const screenPoints = raw.flatMap((face) => rawPointsOf(face).map((point) => ({
-    x: point.x * scale,
-    y: point.y * scale - (face.stackIndex ?? 0) * screenStep,
-  })));
+  const plateRings = EXPLODED_LAYERS.map((layer) => groundRing(radius).map((point) => projectFor(layer)(point, 0)));
+  const plateRawPoints = plateRings.flat();
+  // 맥락선이 반경 밖으로 조금 돌출해도 plate의 축척·중심을 흔들지 않는다.
+  // 건물층의 실제 높이만 plate 여백 계산에 참여시키고, 모든 face는 아래 SVG
+  // clipPath에서 최종적으로 반경 원 안으로 잘린다.
+  const layoutFaces = raw.filter((face) => face.stackIndex === EXPLODED_LAYERS.indexOf("buildings"));
+  const layoutPoints = [...layoutFaces.flatMap(rawPointsOf), ...plateRawPoints];
+  const layoutWidth = Math.max(...layoutPoints.map((point) => point.x)) - Math.min(...layoutPoints.map((point) => point.x));
+  const layoutHeight = Math.max(...layoutPoints.map((point) => point.y)) - Math.min(...layoutPoints.map((point) => point.y));
+  const plateWidth = Math.max(...plateRings[0].map((point) => point.x)) - Math.min(...plateRings[0].map((point) => point.x));
+  const targetHeight = Math.max(1, height * 0.82);
+  const byPlateWidth = plateWidth > EPSILON ? (width * 0.24) / plateWidth : 1;
+  const byWidth = layoutWidth > EPSILON ? (width * 0.9) / layoutWidth : byPlateWidth;
+  const byHeight = layoutHeight > EPSILON ? Math.max(0.0001, targetHeight - screenStep * (EXPLODED_LAYERS.length - 1)) / layoutHeight : byPlateWidth;
+  const scale = Math.max(0.0001, Math.min(byPlateWidth, byWidth, byHeight));
+  const screenPoints = [
+    ...layoutFaces.flatMap((face) => rawPointsOf(face).map((point) => ({
+      x: point.x * scale,
+      y: point.y * scale - (face.stackIndex ?? 0) * screenStep,
+    }))),
+    ...plateRings.flatMap((ring, index) => ring.map((point) => ({
+      x: point.x * scale,
+      y: point.y * scale - index * screenStep,
+    }))),
+  ];
   const minX = Math.min(...screenPoints.map((point) => point.x));
   const maxX = Math.max(...screenPoints.map((point) => point.x));
   const minY = Math.min(...screenPoints.map((point) => point.y));
   const maxY = Math.max(...screenPoints.map((point) => point.y));
   const tx = width / 2 - (minX + maxX) / 2;
-  const ty = height * 0.56 - (minY + maxY) / 2;
-  const labels = EXPLODED_LAYERS.map((layer, index) => {
+  const ty = height * 0.43 - (minY + maxY) / 2;
+  const plates = EXPLODED_LAYERS.map((layer, index) => {
+    const points = plateRings[index];
+    const leftX = Math.min(...points.map((point) => point.x)) * scale + tx;
+    const rightX = Math.max(...points.map((point) => point.x)) * scale + tx;
     const center = projectLayerPoint([0, 0], 0, index, gap, cosA, sinA, cosE, sinE);
+    const centerY = center.y * scale + ty - index * screenStep;
     return {
       layer,
-      x: labelX,
-      y: center.y * scale + ty - index * screenStep,
-      text: present[layer] ? EXPLODED_LABEL_TEXT[layer] : `${EXPLODED_LABEL_TEXT[layer]} · 자료 없음`,
-    };
+      index,
+      path: pathOf(points, scale, tx, ty - index * screenStep),
+      leftX,
+      rightX,
+      centerY,
+      fill: EXPLODED_PLATE_FILL[layer],
+      present: present[layer],
+    } satisfies MassPlate;
   });
+  const guides = plates.slice(0, -1).flatMap((plate, index) => {
+    const next = plates[index + 1];
+    return [
+      { side: "left" as const, x: plate.leftX, y1: plate.centerY, y2: next.centerY },
+      { side: "right" as const, x: plate.rightX, y1: plate.centerY, y2: next.centerY },
+    ];
+  });
+  const labels = plates.map((plate) => ({
+    layer: plate.layer,
+    x: plate.leftX + 10,
+    y: plate.centerY,
+    text: plate.present ? EXPLODED_LABEL_TEXT[plate.layer] : `${EXPLODED_LABEL_TEXT[plate.layer]} · 자료 없음`,
+  }));
   const ordered = [...raw].sort((a, b) => a.depth - b.depth);
   return {
     faces: ordered.map((face) => toMassFace(face, scale, tx, ty, screenStep)),
     scale,
     labels,
+    plates,
+    guides,
   };
 }
