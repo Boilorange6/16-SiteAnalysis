@@ -199,7 +199,7 @@ function insertProject(db: Db, p: { projectId: string; name: string; analysisId:
 export function pinnedManifestHashes(db: Db): Set<string> {
   const rows = db
     .prepare(`SELECT r.manifest_hash FROM saved_project p JOIN analysis_run r ON r.analysis_id = p.analysis_id
-      UNION SELECT manifest_hash FROM analysis_run WHERE status = 'running'`)
+      UNION SELECT manifest_hash FROM analysis_run WHERE status = 'running' AND datetime(created_at) > datetime('now', '-2 hours')`)
     .pluck()
     .all() as string[];
   return new Set(rows);
