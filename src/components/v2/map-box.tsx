@@ -21,7 +21,7 @@ type Opts = Pick<MapFigureProps, "legend" | "legendY" | "north" | "scale" | "cre
 type Opts2 = Omit<Opts, "rightInset"> & { rightInset?: number | ((w: number) => number) };
 
 export const BASEMAPS: Array<{ id: BasemapChoice; label: string }> = [
-  { id: "white", label: "일반" },
+  { id: "white", label: "일반지도" },
   { id: "Base", label: "도로" },
   { id: "Satellite", label: "항공" },
 ];
