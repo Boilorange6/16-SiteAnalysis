@@ -41,6 +41,21 @@ export interface SceneParcel {
   isSite: boolean;
 }
 
+export interface SceneRoad {
+  points: [number, number][];
+  widthM: number;
+  hierarchy: string;
+}
+
+/** 장면 중심에서 반경 안에 잘라 둔 도로·녹지·수계 맥락층. */
+export interface SceneContext {
+  roads: SceneRoad[];
+  green: Ring[][];
+  water: Ring[][];
+  /** 수관은 무거운 분석 타일이 채울 자리이며 장면 생성 때는 생략한다. */
+  canopy?: Ring[][];
+}
+
 export interface Scene {
   version: typeof SCENE_VERSION;
   analysisId: string;
@@ -51,6 +66,7 @@ export interface Scene {
   site: Ring[] | null;
   buildings: SceneBuilding[];
   parcels: SceneParcel[];
+  context?: SceneContext;
   counts: { buildingsTotal: number; buildingsIncluded: number; parcelsTotal: number; parcelsIncluded: number };
   sources: Array<{ sourceId: string; releaseId: string; sourceAsOf: string | null; fetchedAt: string }>;
   limitations: Array<{ kind: "unknown" | "estimated" | "partial" | "incomplete" | "not_provided"; note: string }>;
@@ -101,6 +117,19 @@ const SceneParcelSchema: z.ZodType<SceneParcel> = z.object({
   isSite: z.boolean(),
 });
 
+const SceneRoadSchema: z.ZodType<SceneRoad> = z.object({
+  points: z.array(PointSchema).min(2),
+  widthM: z.number().finite().positive(),
+  hierarchy: z.string().min(1),
+});
+
+const SceneContextSchema: z.ZodType<SceneContext> = z.object({
+  roads: z.array(SceneRoadSchema),
+  green: z.array(z.array(RingSchema)),
+  water: z.array(z.array(RingSchema)),
+  canopy: z.array(z.array(RingSchema)).optional(),
+});
+
 export const SceneSchema: z.ZodType<Scene> = z.object({
   version: z.literal(SCENE_VERSION),
   analysisId: z.string().min(1),
@@ -117,6 +146,7 @@ export const SceneSchema: z.ZodType<Scene> = z.object({
   site: z.array(RingSchema).nullable(),
   buildings: z.array(SceneBuildingSchema),
   parcels: z.array(SceneParcelSchema),
+  context: SceneContextSchema.optional(),
   counts: z.object({
     buildingsTotal: z.number().int().nonnegative(),
     buildingsIncluded: z.number().int().nonnegative(),
