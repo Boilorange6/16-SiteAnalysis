@@ -15,7 +15,7 @@ const A = await import("../../lib/v2/app-db.ts");
 const { runAnalysis } = await import("../../lib/v2/engine/run.ts");
 
 // 1) 카탈로그: P2 코드가 모두 있고 순서가 A → D(코드순) → S 이다
-const P2 = ["D02","D03","D04","D05","D06","D07","D08","D09","D11","D12","D13","D14","D15","D16","D17","D18","D19","D20","D21","D22","D23","D24","D25","D27","S01","S02","S03"];
+const P2 = ["D02","D03","D04","D05","D06","D07","D08","D09","D11","D12","D13","D14","D15","D16","D17","D18","D19","D20","D21","D22","D23","D24","D25","D26","D27","S01","S02","S03"];
 for (const c of P2) assert.ok(TILE_CATALOG[c], `catalog ${c}`);
 assert.deepEqual(TILE_CODES.filter((c) => c.startsWith("D") || c.startsWith("S")), P2);
 for (const c of P2) assert.equal(TILE_CATALOG[c].kind, c.startsWith("D") ? "diagram" : "simulation");
