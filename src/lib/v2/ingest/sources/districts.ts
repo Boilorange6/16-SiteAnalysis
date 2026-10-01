@@ -1,9 +1,10 @@
 /**
- * VWorld 일별용도지역지구정보(dsId 24)의 Q1 확정 전 구역·지구 및 도시계획시설 적재기.
+ * VWorld 일별용도지역지구정보(dsId 24)의 구역·지구 및 도시계획시설 적재기.
  *
- * D11/D12의 제목 목록은 아직 확정되지 않았으므로 레이어 표는 비워 둔다. Q1 후에는
- * DISTRICT_LAYERS에 { key, sourceId, title, kind, cls, fileTag }를 채우거나, data-build가
- * fileTag와 레이어 메타데이터를 함께 DistrictLayerInput으로 넘기면 된다.
+ * 이 원본의 DBF 필드는 A0~A9로 고정되어 있다. A1은 지정 ID, A3은 갱신일,
+ * A4는 5자리 시군구 코드, A5는 종류 코드, A6은 종류명/하위종류, A7은 고시일,
+ * A8/A9는 비고다. 따라서 D11/D12의 도판 이름은 A6을 쓰고, 분류 묶음은
+ * DISTRICT_LAYERS의 cls를 쓴다.
  */
 import type BetterSqlite3 from "better-sqlite3";
 import type { Geometry } from "geojson";
@@ -18,7 +19,7 @@ type Db = BetterSqlite3.Database;
 export type DistrictLayerKind = "district_area" | "plan_facility";
 export type DistrictShapeKind = "polygon" | "line" | "point";
 
-/** Q1 확정 후 채울 레이어 정의. fileTag는 파일 태그 기반 resolver를 쓸 때만 필요하다. */
+/** VWorld dsId 24에서 내려받은 D11/D12 레이어 정의. fileTag는 파일 태그 resolver에 사용한다. */
 export interface DistrictLayerDefinition {
   key: string;
   sourceId: string;
@@ -28,13 +29,24 @@ export interface DistrictLayerDefinition {
   fileTag?: string;
 }
 
-/**
- * 제목·분류가 정해지기 전에는 임의의 VWorld 레이어를 등록하지 않는다.
- * sourceId 규칙은 buildDistricts의 동적 resolver에도 적용된다.
- */
-export const DISTRICT_LAYERS: readonly DistrictLayerDefinition[] = [];
+/** Q1 확정 레이어 표. 제목은 VWorld의 slash 포함 제목이며 zip 파일명은 slash를 underscore로 바꾼 값이다. */
+export const DISTRICT_LAYERS = [
+  { key: "area", sourceId: "district_area", title: "국토계획/구역", kind: "district_area", cls: "구역", fileTag: "AL_D140" },
+  { key: "greenbelt", sourceId: "district_greenbelt", title: "개발제한구역지관리/개발제한구역", kind: "district_area", cls: "개발제한구역", fileTag: "AL_D032" },
+  { key: "land_development", sourceId: "district_land_development", title: "택지개발/택지개발예정구역", kind: "district_area", cls: "택지개발예정지구", fileTag: "AL_D025" },
+  { key: "urban_development", sourceId: "district_urban_development", title: "도시개발/도시개발구역", kind: "district_area", cls: "도시개발구역", fileTag: "AL_D033" },
+  { key: "industrial", sourceId: "district_industrial", title: "산업입지/산업단지", kind: "district_area", cls: "산업단지", fileTag: "AL_D060" },
+  { key: "transport", sourceId: "facility_transport", title: "국토계획/교통시설", kind: "plan_facility", cls: "교통", fileTag: "AL_D142" },
+  { key: "space", sourceId: "facility_space", title: "국토계획/공간시설", kind: "plan_facility", cls: "공간", fileTag: "AL_D143" },
+  { key: "distribution_supply", sourceId: "facility_distribution_supply", title: "국토계획/유통및공급시설", kind: "plan_facility", cls: "유통·공급", fileTag: "AL_D144" },
+  { key: "public_culture_sports", sourceId: "facility_public_culture_sports", title: "국토계획/공공문화체육시설", kind: "plan_facility", cls: "공공·문화체육", fileTag: "AL_D145" },
+  { key: "disaster_prevention", sourceId: "facility_disaster_prevention", title: "국토계획/방재시설", kind: "plan_facility", cls: "방재", fileTag: "AL_D146" },
+  { key: "health_hygiene", sourceId: "facility_health_hygiene", title: "국토계획/보건위생시설", kind: "plan_facility", cls: "보건위생", fileTag: "AL_D147" },
+  { key: "environmental_basic", sourceId: "facility_environmental_basic", title: "국토계획/환경기초시설", kind: "plan_facility", cls: "환경기초", fileTag: "AL_D148" },
+  { key: "other_infrastructure", sourceId: "facility_other_infrastructure", title: "국토계획/기타기반시설", kind: "plan_facility", cls: "기타", fileTag: "AL_D149" },
+] as const satisfies readonly DistrictLayerDefinition[];
 
-/** Q1 전에는 파일 태그로 key를 공급하므로 string이어야 한다. */
+/** 호환 입력과 파일 태그 기반 적재를 위해 레이어 키는 문자열이다. */
 export type DistrictLayerKey = string;
 
 /** source_release.rights_json에 기록할 dsId 24 이용 근거. */
@@ -50,8 +62,8 @@ export interface DistrictLayerFileSpec {
 
 /**
  * 기존 zoning/mzone의 { layer, releaseId, records } 입력을 유지한다.
- * Q1 전에는 layer를 문자열 접두사(district_<key>/facility_<key>)로 주거나,
- * layer 객체 또는 선택적 kind/cls/sourceId를 함께 주면 된다.
+ * layer를 문자열 접두사(district_<key>/facility_<key>)로 주거나, layer 객체 또는
+ * 선택적 kind/cls/sourceId를 함께 주면 된다.
  */
 export interface DistrictLayerInput {
   layer: DistrictLayerKey | DistrictLayerDefinition;
@@ -177,6 +189,7 @@ export async function buildDistricts(db: Db, layers: readonly DistrictLayerInput
       const kind = shapeKind(geometry);
       if (!geometry || !id || !sigungu || !/^\d{5}$/.test(sigungu) || !kind || (layer.kind === "district_area" && kind !== "polygon")) return stats.reject();
 
+      // dsId 24 DBF: A5=종류 코드, A6=종류명/하위종류. A8/A9는 비고로 보존한다.
       const typeCode = text(p.A5);
       const typeLabel = text(p.A6);
       const remarkA8 = text(p.A8);

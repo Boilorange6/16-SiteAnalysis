@@ -20,10 +20,17 @@ function sourceRefs(ctx: EngineContext): SourceRef[] {
 
 function classOf(h: DistrictHit): string {
   const p = h.properties;
-  for (const value of [p.cls, p.class, p.typeLabel, p.layer]) {
-    if (typeof value === "string" && value.trim() !== "") return value.trim();
+  const configured = [p.cls, p.class, p.typeLabel, p.layer].find((value): value is string => typeof value === "string" && value.trim() !== "")?.trim() ?? "기타";
+  // 표의 레이어 묶음은 원천 cls로 보존하되, 지도·범례는 기존 D11 canonical 키를 사용한다.
+  if (p.cls === "구역" || p.layer === "area") {
+    const subKind = typeof p.typeLabel === "string" ? p.typeLabel.trim() : "";
+    return subKind.includes("지구단위계획") ? "지구단위계획" : "기타";
   }
-  return "기타";
+  return ({
+    개발제한구역: "개발제한",
+    택지개발예정지구: "택지·도시개발",
+    도시개발구역: "택지·도시개발",
+  } as Record<string, string>)[configured] ?? configured;
 }
 
 function labelOf(h: DistrictHit, cls: string): string {
@@ -97,7 +104,7 @@ export function d11(ctx: EngineContext): TileResult {
     : `반경과 교차하는 구역·지구 ${fmt(hits.length)}건(${areaText}) → 확인된 도형의 교차면적이며 규제 적용 여부나 운영 상태를 뜻하지 않음 → 지정 내용과 행위 제한은 토지이용계획확인서·고시 원문 확인 필요`;
   const limitations: TileResult["limitations"] = [
     { kind: "unknown", note: "원천에 지정·운영 상태의 구분이 없어 현재 효력이나 실제 운영 여부는 판단하지 않습니다." },
-    { kind: "unknown", note: "구역·지구는 서로 중첩될 수 있어 분류별 교차면적 막대의 합이 반경 원 면적과 일치하지 않을 수 있습니다." },
+    { kind: "unknown", note: "구역·지구는 서로 중첩될 수 있어 뒷면 면적 막대 합계 100% 아님(분류별 교차면적 합이 반경 원 면적과 일치하지 않을 수 있음)." },
     ...(clipped.validCode < hits.length ? [{ kind: "partial" as const, note: `반경 교차 객체 ${hits.length}건 중 유효 코드가 있는 ${clipped.validCode}건만 코드 채움률에 반영했습니다.` }] : []),
     ...(clipped.failed > 0 ? [{ kind: "partial" as const, note: `도형 오류로 반경 교차면적을 계산하지 못한 ${clipped.failed}건은 면적 지표에서 제외했습니다.` }] : []),
     ...ctx.coverage("reference", sources.map((s) => s.sourceId)),

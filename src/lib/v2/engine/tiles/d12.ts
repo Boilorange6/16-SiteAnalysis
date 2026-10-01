@@ -24,7 +24,11 @@ function sourceRefs(ctx: EngineContext): SourceRef[] {
 function classOf(h: FacilityHit): string {
   const p = h.properties;
   for (const value of [p.cls, p.class, p.typeLabel, p.layer]) {
-    if (typeof value === "string" && value.trim() !== "") return value.trim();
+    if (typeof value === "string" && value.trim() !== "") {
+      const cls = value.trim();
+      // 표의 읽기 좋은 분류명은 보존하되, 화면 범례의 기존 canonical 키로 내보낸다.
+      return ({ "유통·공급": "유통공급", "공공·문화체육": "공공문화체육" } as Record<string, string>)[cls] ?? cls;
+    }
   }
   return "기타";
 }
