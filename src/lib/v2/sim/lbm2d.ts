@@ -35,6 +35,10 @@ export interface Wind2DInput {
   smagorinskyCs?: number;
   /** 이 스텝부터 마지막 시간 평균에 포함한다. 기본값은 마지막 40% 구간. */
   averageFrom?: number;
+  /** Node 분석 worker에서만 사용. 2 이상이면 행을 worker_threads로 분할한다. */
+  parallelism?: number;
+  /** 지정하면 평균 시작 이후 residual이 이 값 이하일 때 조기 종료한다. */
+  convergenceResidual?: number;
 }
 
 export interface Wind2DResult {
@@ -109,7 +113,250 @@ function validateInput(input: Wind2DInput): { n: number; steps: number; u0: numb
   const averageFrom = input.averageFrom ?? Math.ceil(steps * 0.6);
   assertInteger("averageFrom", averageFrom, 0);
   if (averageFrom > steps) throw new RangeError("averageFrom must not be greater than steps");
+  if (input.parallelism !== undefined) assertInteger("parallelism", input.parallelism, 1);
+  if (input.convergenceResidual !== undefined && (!(input.convergenceResidual >= 0) || !Number.isFinite(input.convergenceResidual))) {
+    throw new RangeError("convergenceResidual must be finite and non-negative");
+  }
   return { n: input.nx * input.ny, steps, u0, nu, cs, averageFrom };
+}
+
+const EDGE_LEFT = 1;
+const EDGE_RIGHT = 2;
+const EDGE_BOTTOM = 4;
+const EDGE_TOP = 8;
+
+interface PreparedGrid {
+  fluid: Int32Array;
+  fluidCount: number;
+  regular: Uint8Array;
+  edge: Uint8Array;
+  east: Int32Array;
+  north: Int32Array;
+  west: Int32Array;
+  south: Int32Array;
+  northEast: Int32Array;
+  northWest: Int32Array;
+  southWest: Int32Array;
+  southEast: Int32Array;
+}
+
+/** Build the topology once; the hot loop only follows these integer indices. */
+function prepareGrid(nx: number, ny: number, solid: Uint8Array): PreparedGrid {
+  const n = nx * ny;
+  const fluid = new Int32Array(n);
+  const regular = new Uint8Array(n);
+  const edge = new Uint8Array(n);
+  const east = new Int32Array(n), north = new Int32Array(n), west = new Int32Array(n), south = new Int32Array(n);
+  const northEast = new Int32Array(n), northWest = new Int32Array(n), southWest = new Int32Array(n), southEast = new Int32Array(n);
+  east.fill(-1); north.fill(-1); west.fill(-1); south.fill(-1);
+  northEast.fill(-1); northWest.fill(-1); southWest.fill(-1); southEast.fill(-1);
+
+  let fluidCount = 0;
+  for (let y = 0; y < ny; y++) {
+    const row = y * nx;
+    for (let x = 0; x < nx; x++) {
+      const idx = row + x;
+      if (solid[idx] !== 0) continue;
+
+      let boundary = 0;
+      if (x === 0) boundary |= EDGE_LEFT;
+      if (x === nx - 1) boundary |= EDGE_RIGHT;
+      if (y === 0) boundary |= EDGE_BOTTOM;
+      if (y === ny - 1) boundary |= EDGE_TOP;
+      edge[idx] = boundary;
+      fluid[fluidCount++] = idx;
+
+      if (boundary === 0
+        && solid[idx - 1] === 0 && solid[idx + 1] === 0
+        && solid[idx - nx] === 0 && solid[idx + nx] === 0
+        && solid[idx - nx - 1] === 0 && solid[idx - nx + 1] === 0
+        && solid[idx + nx - 1] === 0 && solid[idx + nx + 1] === 0) {
+        regular[idx] = 1;
+      }
+
+      if (x + 1 < nx && solid[idx + 1] === 0) east[idx] = idx + 1;
+      if (y + 1 < ny && solid[idx + nx] === 0) north[idx] = idx + nx;
+      if (x > 0 && solid[idx - 1] === 0) west[idx] = idx - 1;
+      if (y > 0 && solid[idx - nx] === 0) south[idx] = idx - nx;
+      if (x + 1 < nx && y + 1 < ny && solid[idx + nx + 1] === 0) northEast[idx] = idx + nx + 1;
+      if (x > 0 && y + 1 < ny && solid[idx + nx - 1] === 0) northWest[idx] = idx + nx - 1;
+      if (x > 0 && y > 0 && solid[idx - nx - 1] === 0) southWest[idx] = idx - nx - 1;
+      if (x + 1 < nx && y > 0 && solid[idx - nx + 1] === 0) southEast[idx] = idx - nx + 1;
+    }
+  }
+  return { fluid, fluidCount, regular, edge, east, north, west, south, northEast, northWest, southWest, southEast };
+}
+
+interface SyncWorker {
+  unref?: () => void;
+}
+
+interface WorkerThreadsBuiltin {
+  Worker?: new (filename: URL, options: { workerData: Record<string, unknown>; execArgv?: string[] }) => SyncWorker;
+}
+
+function nodeBuiltin(name: string): unknown {
+  if (typeof process === "undefined") return undefined;
+  const getBuiltinModule = (process as unknown as { getBuiltinModule?: (id: string) => unknown }).getBuiltinModule;
+  return getBuiltinModule?.(name);
+}
+
+function copyToShared(source: ArrayBufferView): SharedArrayBuffer {
+  const shared = new SharedArrayBuffer(source.byteLength);
+  new Uint8Array(shared).set(new Uint8Array(source.buffer, source.byteOffset, source.byteLength));
+  return shared;
+}
+
+function firstFluidAt(fluid: Int32Array, count: number, value: number): number {
+  let low = 0, high = count;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (fluid[middle] < value) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+function workerCountFor(input: Wind2DInput, n: number, steps: number, ny: number, onProgress?: (step: number) => void): number {
+  const requested = input.parallelism;
+  // A synchronous callback cannot be serviced while the caller waits on the
+  // SAB barrier. Keep the progress-capable path single-threaded.
+  if (onProgress || input.convergenceResidual !== undefined || typeof SharedArrayBuffer === "undefined") return 1;
+  if (requested === 1) return 1;
+  if (requested !== undefined) return Math.min(requested, ny);
+  if (n < 250_000 || steps < 1_000) return 1;
+  const os = nodeBuiltin("node:os") as { availableParallelism?: () => number } | undefined;
+  return Math.min(Math.max(1, os?.availableParallelism?.() ?? 1), ny);
+}
+
+function computeWind2DParallel(
+  input: Wind2DInput,
+  grid: PreparedGrid,
+  inflow: Float64Array,
+  n: number,
+  steps: number,
+  u0: number,
+  nu: number,
+  cs: number,
+  averageFrom: number,
+  workerCount: number,
+): Wind2DResult {
+  const Worker = (nodeBuiltin("node:worker_threads") as WorkerThreadsBuiltin | undefined)?.Worker;
+  if (!Worker) throw new Error("parallel D2Q9 requires Node worker_threads");
+
+  const stateBytes = Float32Array.BYTES_PER_ELEMENT * 9 * n;
+  const stateA = new SharedArrayBuffer(stateBytes);
+  const stateB = new SharedArrayBuffer(stateBytes);
+  const initial = new Float32Array(stateA);
+  for (let idx = 0; idx < n; idx++) {
+    const base = idx * 9;
+    for (let k = 0; k < 9; k++) initial[base + k] = inflow[k];
+  }
+
+  const sumU = new SharedArrayBuffer(Float64Array.BYTES_PER_ELEMENT * n);
+  const sumV = new SharedArrayBuffer(Float64Array.BYTES_PER_ELEMENT * n);
+  const prevUx = new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * n);
+  const prevUy = new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * n);
+  const deltaParts = new SharedArrayBuffer(Float64Array.BYTES_PER_ELEMENT * workerCount);
+  const speedParts = new SharedArrayBuffer(Float64Array.BYTES_PER_ELEMENT * workerCount);
+  // [push arrivals, barrier generation, finished workers, error flag]
+  const control = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 4);
+
+  const workerDataBase = {
+    nx: input.nx,
+    ny: input.ny,
+    n,
+    steps,
+    u0,
+    nu,
+    cs,
+    averageFrom,
+    firstAverage: Math.max(1, averageFrom),
+    workerCount,
+    stateA,
+    stateB,
+    solid: copyToShared(input.solid),
+    regular: copyToShared(grid.regular),
+    edge: copyToShared(grid.edge),
+    east: copyToShared(grid.east),
+    north: copyToShared(grid.north),
+    west: copyToShared(grid.west),
+    south: copyToShared(grid.south),
+    northEast: copyToShared(grid.northEast),
+    northWest: copyToShared(grid.northWest),
+    southWest: copyToShared(grid.southWest),
+    southEast: copyToShared(grid.southEast),
+    sumU,
+    sumV,
+    prevUx,
+    prevUy,
+    deltaParts,
+    speedParts,
+    control,
+    inflow: Array.from(inflow),
+    fluid: copyToShared(grid.fluid),
+  };
+
+  const workers: SyncWorker[] = [];
+  const workerUrl = new URL("./lbm2d-worker.mjs", import.meta.url);
+  for (let workerId = 0; workerId < workerCount; workerId++) {
+    const rowStart = Math.floor(workerId * input.ny / workerCount);
+    const rowEnd = Math.floor((workerId + 1) * input.ny / workerCount);
+    const worker = new Worker(workerUrl, {
+      workerData: {
+        ...workerDataBase,
+        workerId,
+        rowStart,
+        rowEnd,
+        fluidStart: firstFluidAt(grid.fluid, grid.fluidCount, rowStart * input.nx),
+        fluidEnd: firstFluidAt(grid.fluid, grid.fluidCount, rowEnd * input.nx),
+      },
+      // The caller may itself be launched with --input-type=module or tsx;
+      // the worker is plain .mjs and must not inherit those eval-only flags.
+      execArgv: [],
+    });
+    worker.unref?.();
+    workers.push(worker);
+  }
+
+  const controlView = new Int32Array(control);
+  while (Atomics.load(controlView, 2) < workerCount) {
+    if (Atomics.load(controlView, 3) !== 0) break;
+    Atomics.wait(controlView, 2, Atomics.load(controlView, 2));
+  }
+  if (Atomics.load(controlView, 3) !== 0) throw new Error("parallel D2Q9 worker failed");
+
+  const delta = new Float64Array(deltaParts);
+  const speed = new Float64Array(speedParts);
+  let delta2 = 0;
+  let speed2 = 0;
+  for (let workerId = 0; workerId < workerCount; workerId++) {
+    delta2 += delta[workerId];
+    speed2 += speed[workerId];
+  }
+  const residual = speed2 > 0 ? Math.sqrt(delta2 / speed2) : 0;
+  const finalState = steps % 2 === 0 ? stateA : stateB;
+  const final = new Float32Array(finalState);
+  const sumsU = new Float64Array(sumU), sumsV = new Float64Array(sumV);
+  const outU = new Float32Array(n), outV = new Float32Array(n);
+  outU.fill(Number.NaN); outV.fill(Number.NaN);
+  if (steps >= Math.max(1, averageFrom)) {
+    for (let cell = 0; cell < grid.fluidCount; cell++) {
+      const idx = grid.fluid[cell];
+      const base = idx * 9;
+      const rho = final[base] + final[base + 1] + final[base + 2] + final[base + 3] + final[base + 4] + final[base + 5] + final[base + 6] + final[base + 7] + final[base + 8];
+      const invRho = rho > 0 ? 1 / rho : 1;
+      sumsU[idx] += (final[base + 1] - final[base + 3] + final[base + 5] - final[base + 6] - final[base + 7] + final[base + 8]) * invRho / u0;
+      sumsV[idx] += (final[base + 2] - final[base + 4] + final[base + 5] + final[base + 6] - final[base + 7] - final[base + 8]) * invRho / u0;
+    }
+  }
+  const samples = steps - Math.max(1, averageFrom) + 1;
+  for (let cell = 0; cell < grid.fluidCount; cell++) {
+    const idx = grid.fluid[cell];
+    outU[idx] = sumsU[idx] / samples;
+    outV[idx] = sumsV[idx] / samples;
+  }
+  return { u: outU, v: outV, steps, residual };
 }
 
 /**
@@ -132,39 +379,47 @@ export function computeWind2D(input: Wind2DInput, onProgress?: (step: number) =>
     return { u: outU, v: outV, steps, residual: 0 };
   }
 
+  const grid = prepareGrid(nx, ny, solid);
+  const inflow = new Float64Array(9);
+  equilibrium(1, u0, 0, inflow);
+  const workerCount = workerCountFor(input, n, steps, ny, onProgress);
+  if (workerCount > 1) return computeWind2DParallel(input, grid, inflow, n, steps, u0, nu, cs, averageFrom, workerCount);
+
   const f = Array.from({ length: 9 }, () => new Float32Array(n));
-  const post = Array.from({ length: 9 }, () => new Float32Array(n));
   const next = Array.from({ length: 9 }, () => new Float32Array(n));
   const sumU = new Float64Array(n);
   const sumV = new Float64Array(n);
   const prevUx = new Float32Array(n);
   const prevUy = new Float32Array(n);
-  const inflow = new Float64Array(9);
-  equilibrium(1, u0, 0, inflow);
-
   // 초기장은 정지하지 않고 유입 평형으로 시작해 과도 구간을 줄인다.
   for (let k = 0; k < 9; k++) f[k].fill(inflow[k]);
 
   let residual = 0;
   let current = f;
-  const currentPost = post;
   let currentNext = next;
+  const baseTau = 0.5 + 3 * nu;
+  const baseOmega = 1 / baseTau;
+  const smagFactor = 3 * cs * cs;
+  const inverseU0 = 1 / u0;
+  const firstAverage = Math.max(1, averageFrom);
+  const convergenceResidual = input.convergenceResidual;
+  let completedSteps = 0;
 
   for (let step = 1; step <= steps; step++) {
-    // current*를 고정 배열 변수에 다시 연결한다. 배열 swap 뒤에도 inner loop가
-    // 동적 2차원 접근을 하지 않도록 한다.
+    // Collision and push-streaming are fused. The next buffer receives each
+    // post-collision population exactly once, so there is no post or pull pass.
     const c0 = current[0], c1 = current[1], c2 = current[2], c3 = current[3], c4 = current[4], c5 = current[5], c6 = current[6], c7 = current[7], c8 = current[8];
-    const q0 = currentPost[0], q1 = currentPost[1], q2 = currentPost[2], q3 = currentPost[3], q4 = currentPost[4], q5 = currentPost[5], q6 = currentPost[6], q7 = currentPost[7], q8 = currentPost[8];
+    const n0 = currentNext[0], n1 = currentNext[1], n2 = currentNext[2], n3 = currentNext[3], n4 = currentNext[4], n5 = currentNext[5], n6 = currentNext[6], n7 = currentNext[7], n8 = currentNext[8];
     let delta2 = 0;
     let speed2 = 0;
 
-    for (let idx = 0; idx < n; idx++) {
-      if (solid[idx] !== 0) continue;
+    for (let cell = 0; cell < grid.fluidCount; cell++) {
+      const idx = grid.fluid[cell];
       const a0 = c0[idx], a1 = c1[idx], a2 = c2[idx], a3 = c3[idx], a4 = c4[idx], a5 = c5[idx], a6 = c6[idx], a7 = c7[idx], a8 = c8[idx];
       let rho = a0 + a1 + a2 + a3 + a4 + a5 + a6 + a7 + a8;
       let ux = (a1 - a3 + a5 - a6 - a7 + a8) / rho;
       let uy = (a2 - a4 + a5 + a6 - a7 - a8) / rho;
-      if (!(rho > 0) || !Number.isFinite(rho) || !Number.isFinite(ux) || !Number.isFinite(uy)) {
+      if (!(rho > 0)) {
         // 불안정한 입력은 조용히 결과를 내보내지 않는다. 유입 평형을 복구해
         // 잔여 셀이 NaN으로 번지는 것을 막고 마지막 residual로 드러낸다.
         rho = 1;
@@ -172,7 +427,7 @@ export function computeWind2D(input: Wind2DInput, onProgress?: (step: number) =>
         uy = 0;
       }
 
-      if (step > 1) {
+      if (step > 1 && (step === steps || convergenceResidual !== undefined)) {
         const du = ux - prevUx[idx], dv = uy - prevUy[idx];
         delta2 += du * du + dv * dv;
         speed2 += ux * ux + uy * uy;
@@ -180,83 +435,124 @@ export function computeWind2D(input: Wind2DInput, onProgress?: (step: number) =>
       prevUx[idx] = ux;
       prevUy[idx] = uy;
 
-      // 비평형 운동량 텐서로 국소 strain rate를 추정한다.
-      const pxx = a1 + a3 + a5 + a6 + a7 + a8;
-      const pyy = a2 + a4 + a5 + a6 + a7 + a8;
-      const pxy = a5 - a6 + a7 - a8;
       const ux2 = ux * ux, uy2 = uy * uy;
-      const sxx = -(pxx - rho * (CS2 + ux2)) / (2 * rho * CS2 * (0.5 + 3 * nu));
-      const syy = -(pyy - rho * (CS2 + uy2)) / (2 * rho * CS2 * (0.5 + 3 * nu));
-      const sxy = -(pxy - rho * ux * uy) / (2 * rho * CS2 * (0.5 + 3 * nu));
-      const strain = Math.sqrt(Math.max(0, 2 * (sxx * sxx + syy * syy + 2 * sxy * sxy)));
-      const tau = 0.5 + 3 * (nu + cs * cs * strain);
-      const omega = 1 / tau;
+      let omega = baseOmega;
+      // Smagorinsky is zero in the equilibrium bulk. Avoid the square root
+      // there, while retaining it for every non-zero local strain.
+      if (smagFactor !== 0) {
+        const inverseRho = 1 / rho;
+        const pxx = (a1 + a3 + a5 + a6 + a7 + a8) * inverseRho;
+        const pyy = (a2 + a4 + a5 + a6 + a7 + a8) * inverseRho;
+        const pxy = (a5 - a6 + a7 - a8) * inverseRho;
+        const strainScale = 1 / (2 * CS2 * baseTau);
+        const sxx = -(pxx - CS2 - ux2) * strainScale;
+        const syy = -(pyy - CS2 - uy2) * strainScale;
+        const sxy = -(pxy - ux * uy) * strainScale;
+        const strain2 = 2 * (sxx * sxx + syy * syy + 2 * sxy * sxy);
+        if (strain2 > 1e-12) omega = 1 / (baseTau + smagFactor * Math.sqrt(strain2));
+      }
       const uu = ux2 + uy2;
       const common = 1 - 1.5 * uu;
       let cu = ux;
-      q0[idx] = a0 + omega * (WEIGHT[0] * rho * common - a0);
-      q1[idx] = a1 + omega * (WEIGHT[1] * rho * (common + 3 * cu + 4.5 * cu * cu) - a1);
+      const q0 = a0 + omega * (WEIGHT[0] * rho * common - a0);
+      const q1 = a1 + omega * (WEIGHT[1] * rho * (common + 3 * cu + 4.5 * cu * cu) - a1);
       cu = uy;
-      q2[idx] = a2 + omega * (WEIGHT[2] * rho * (common + 3 * cu + 4.5 * cu * cu) - a2);
+      const q2 = a2 + omega * (WEIGHT[2] * rho * (common + 3 * cu + 4.5 * cu * cu) - a2);
       cu = -ux;
-      q3[idx] = a3 + omega * (WEIGHT[3] * rho * (common + 3 * cu + 4.5 * cu * cu) - a3);
+      const q3 = a3 + omega * (WEIGHT[3] * rho * (common + 3 * cu + 4.5 * cu * cu) - a3);
       cu = -uy;
-      q4[idx] = a4 + omega * (WEIGHT[4] * rho * (common + 3 * cu + 4.5 * cu * cu) - a4);
+      const q4 = a4 + omega * (WEIGHT[4] * rho * (common + 3 * cu + 4.5 * cu * cu) - a4);
       cu = ux + uy;
-      q5[idx] = a5 + omega * (WEIGHT[5] * rho * (common + 3 * cu + 4.5 * cu * cu) - a5);
+      const q5 = a5 + omega * (WEIGHT[5] * rho * (common + 3 * cu + 4.5 * cu * cu) - a5);
       cu = -ux + uy;
-      q6[idx] = a6 + omega * (WEIGHT[6] * rho * (common + 3 * cu + 4.5 * cu * cu) - a6);
+      const q6 = a6 + omega * (WEIGHT[6] * rho * (common + 3 * cu + 4.5 * cu * cu) - a6);
       cu = -ux - uy;
-      q7[idx] = a7 + omega * (WEIGHT[7] * rho * (common + 3 * cu + 4.5 * cu * cu) - a7);
+      const q7 = a7 + omega * (WEIGHT[7] * rho * (common + 3 * cu + 4.5 * cu * cu) - a7);
       cu = ux - uy;
-      q8[idx] = a8 + omega * (WEIGHT[8] * rho * (common + 3 * cu + 4.5 * cu * cu) - a8);
-    }
+      const q8 = a8 + omega * (WEIGHT[8] * rho * (common + 3 * cu + 4.5 * cu * cu) - a8);
 
-    residual = step > 1 && speed2 > 0 ? Math.sqrt(delta2 / speed2) : 0;
+      // Direction 0 always remains in the source cell.
+      n0[idx] = q0;
+      if (grid.regular[idx] !== 0) {
+        // The common case has eight fluid neighbours and no boundary branch.
+        n1[idx + 1] = q1;
+        n2[idx + nx] = q2;
+        n3[idx - 1] = q3;
+        n4[idx - nx] = q4;
+        n5[idx + nx + 1] = q5;
+        n6[idx + nx - 1] = q6;
+        n7[idx - nx - 1] = q7;
+        n8[idx - nx + 1] = q8;
+      } else {
+        const boundary = grid.edge[idx];
+        let target = grid.east[idx];
+        if (target >= 0) n1[target] = q1;
+        else if ((boundary & EDGE_RIGHT) === 0) n3[idx] = q1;
 
-    // Pull streaming. x 경계의 미정 population은 아래 inflow/outflow 보정으로
-    // 덮고, y 경계는 MIRROR_Y로 접선 속도를 보존한다.
-    const n0 = currentNext[0], n1 = currentNext[1], n2 = currentNext[2], n3 = currentNext[3], n4 = currentNext[4], n5 = currentNext[5], n6 = currentNext[6], n7 = currentNext[7], n8 = currentNext[8];
-    const q = currentPost;
-    for (let y = 0; y < ny; y++) {
-      const row = y * nx;
-      for (let x = 0; x < nx; x++) {
-        const idx = row + x;
-        if (solid[idx] !== 0) continue;
-        for (let k = 0; k < 9; k++) {
-          const sx = x - CX[k];
-          const sy = y - CY[k];
-          let value: number;
-          if (sx < 0) {
-            value = inflow[k];
-          } else if (sx >= nx) {
-            const upstream = idx - 1;
-            value = upstream >= row && solid[upstream] === 0 ? q[k][upstream] : inflow[k];
-          } else if (sy < 0 || sy >= ny) {
-            value = q[MIRROR_Y[k]][idx];
-          } else {
-            const source = sy * nx + sx;
-            value = solid[source] !== 0 ? q[OPP[k]][idx] : q[k][source];
-          }
-          switch (k) {
-            case 0: n0[idx] = value; break;
-            case 1: n1[idx] = value; break;
-            case 2: n2[idx] = value; break;
-            case 3: n3[idx] = value; break;
-            case 4: n4[idx] = value; break;
-            case 5: n5[idx] = value; break;
-            case 6: n6[idx] = value; break;
-            case 7: n7[idx] = value; break;
-            case 8: n8[idx] = value; break;
-          }
+        target = grid.north[idx];
+        if (target >= 0) n2[target] = q2;
+        else n4[idx] = q2;
+
+        target = grid.west[idx];
+        if (target >= 0) n3[target] = q3;
+        else if ((boundary & EDGE_LEFT) === 0) n1[idx] = q3;
+
+        target = grid.south[idx];
+        if (target >= 0) n4[target] = q4;
+        else n2[idx] = q4;
+
+        target = grid.northEast[idx];
+        if (target >= 0) n5[target] = q5;
+        else if ((boundary & EDGE_RIGHT) === 0) {
+          if ((boundary & EDGE_TOP) !== 0) n8[idx] = q5;
+          else n7[idx] = q5;
         }
+
+        target = grid.northWest[idx];
+        if (target >= 0) n6[target] = q6;
+        else if ((boundary & EDGE_LEFT) === 0) {
+          if ((boundary & EDGE_TOP) !== 0) n7[idx] = q6;
+          else n8[idx] = q6;
+        }
+
+        target = grid.southWest[idx];
+        if (target >= 0) n7[target] = q7;
+        else if ((boundary & EDGE_LEFT) === 0) {
+          if ((boundary & EDGE_BOTTOM) !== 0) n6[idx] = q7;
+          else n5[idx] = q7;
+        }
+
+        target = grid.southEast[idx];
+        if (target >= 0) n8[target] = q8;
+        else if ((boundary & EDGE_RIGHT) === 0) {
+          if ((boundary & EDGE_BOTTOM) !== 0) n5[idx] = q8;
+          else n6[idx] = q8;
+        }
+      }
+
+      // A sample at the start of the next iteration is the state after this
+      // iteration. This folds the old second macro pass into collision.
+      if (step > firstAverage) {
+        sumU[idx] += ux * inverseU0;
+        sumV[idx] += uy * inverseU0;
       }
     }
 
-    // x=0: 유입 평형을 강제한다. x=nx-1: 마지막 유체 셀의 population을 복사한다.
+    const hasResidual = step > 1 && (step === steps || convergenceResidual !== undefined);
+    const stepResidual = hasResidual && speed2 > 0 ? Math.sqrt(delta2 / speed2) : 0;
+    if (hasResidual) residual = stepResidual;
+    const shouldStop = convergenceResidual !== undefined
+      && step >= firstAverage
+      && step > 1
+      && stepResidual <= convergenceResidual;
+
+    // x=0: fixed equilibrium inflow. x=nx-1: zero-gradient copy of the
+    // already-streamed upstream cell, matching the previous pull scheme.
     for (let y = 0; y < ny; y++) {
       const left = y * nx;
-      if (solid[left] === 0) for (let k = 0; k < 9; k++) currentNext[k][left] = inflow[k];
+      if (solid[left] === 0) {
+        for (let k = 0; k < 9; k++) currentNext[k][left] = inflow[k];
+      }
       const right = left + nx - 1;
       if (solid[right] === 0) {
         const upstream = right - 1;
@@ -267,31 +563,34 @@ export function computeWind2D(input: Wind2DInput, onProgress?: (step: number) =>
     const old = current;
     current = currentNext;
     currentNext = old;
+    completedSteps = step;
 
-    if (step >= averageFrom) {
-      const a0 = current[0], a1 = current[1], a2 = current[2], a3 = current[3], a4 = current[4], a5 = current[5], a6 = current[6], a7 = current[7], a8 = current[8];
-      for (let idx = 0; idx < n; idx++) {
-        if (solid[idx] !== 0) continue;
-        const rho = a0[idx] + a1[idx] + a2[idx] + a3[idx] + a4[idx] + a5[idx] + a6[idx] + a7[idx] + a8[idx];
-        const invRho = rho > 0 && Number.isFinite(rho) ? 1 / rho : 1;
-        sumU[idx] += (a1[idx] - a3[idx] + a5[idx] - a6[idx] - a7[idx] + a8[idx]) * invRho / u0;
-        sumV[idx] += (a2[idx] - a4[idx] + a5[idx] + a6[idx] - a7[idx] - a8[idx]) * invRho / u0;
-      }
-    }
-    if (onProgress && progressAt(step, steps)) onProgress(step);
+    if (onProgress && (shouldStop || progressAt(step, steps))) onProgress(step);
+    if (shouldStop) break;
   }
 
-  const samples = Math.max(1, steps - Math.max(1, averageFrom) + 1);
-  for (let idx = 0; idx < n; idx++) {
-    if (solid[idx] !== 0) {
-      outU[idx] = Number.NaN;
-      outV[idx] = Number.NaN;
-    } else {
-      outU[idx] = sumU[idx] / samples;
-      outV[idx] = sumV[idx] / samples;
+  // Include the final state, which is not available at the next iteration's
+  // collision entry point.
+  const a0 = current[0], a1 = current[1], a2 = current[2], a3 = current[3], a4 = current[4], a5 = current[5], a6 = current[6], a7 = current[7], a8 = current[8];
+  if (completedSteps >= firstAverage) {
+    for (let cell = 0; cell < grid.fluidCount; cell++) {
+      const idx = grid.fluid[cell];
+      const rho = a0[idx] + a1[idx] + a2[idx] + a3[idx] + a4[idx] + a5[idx] + a6[idx] + a7[idx] + a8[idx];
+      const invRho = rho > 0 ? 1 / rho : 1;
+      sumU[idx] += (a1[idx] - a3[idx] + a5[idx] - a6[idx] - a7[idx] + a8[idx]) * invRho * inverseU0;
+      sumV[idx] += (a2[idx] - a4[idx] + a5[idx] + a6[idx] - a7[idx] - a8[idx]) * invRho * inverseU0;
     }
   }
-  return { u: outU, v: outV, steps, residual };
+
+  const samples = Math.max(1, completedSteps - firstAverage + 1);
+  outU.fill(Number.NaN);
+  outV.fill(Number.NaN);
+  for (let cell = 0; cell < grid.fluidCount; cell++) {
+    const idx = grid.fluid[cell];
+    outU[idx] = sumU[idx] / samples;
+    outV[idx] = sumV[idx] / samples;
+  }
+  return { u: outU, v: outV, steps: completedSteps, residual };
 }
 
 function readDirection(value: number | WindDirection): number {

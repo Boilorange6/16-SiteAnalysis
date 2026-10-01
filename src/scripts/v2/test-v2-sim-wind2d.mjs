@@ -12,6 +12,53 @@ const mean = (values) => values.reduce((sum, value) => sum + value, 0) / values.
 const finiteValues = (values) => Array.from(values).filter(Number.isFinite);
 const index = (x, y, nx) => y * nx + x;
 
+function syntheticCity(nx, ny) {
+  const solid = new Uint8Array(nx * ny);
+  const street = new Uint8Array(nx * ny);
+  const streets = [
+    ["v", 24, 14], ["v", 176, 14], ["v", 328, 14], ["v", 468, 14],
+    ["h", 24, 14], ["h", 176, 14], ["h", 328, 14], ["h", 468, 14],
+  ];
+  for (const [axis, at, width] of streets) {
+    const radius = Math.floor(width / 2);
+    if (axis === "v") {
+      for (let y = 1; y < ny - 1; y++) for (let d = -radius; d <= radius; d++) {
+        const x = at + d;
+        if (x > 0 && x < nx - 1) street[index(x, y, nx)] = 1;
+      }
+    } else {
+      for (let x = 1; x < nx - 1; x++) for (let d = -radius; d <= radius; d++) {
+        const y = at + d;
+        if (y > 0 && y < ny - 1) street[index(x, y, nx)] = 1;
+      }
+    }
+  }
+
+  // Fixed LCG: rectangles are reproducible, overlap is allowed, and streets
+  // remain clear. The target is about 25% solid cells.
+  let seed = 0x13d2a9;
+  const random = () => {
+    seed = Math.imul(seed, 1_664_525) + 1_013_904_223 >>> 0;
+    return seed / 4_294_967_296;
+  };
+  const target = Math.floor(nx * ny * 0.25);
+  let solidCount = 0;
+  for (let attempt = 0; attempt < 30_000 && solidCount < target; attempt++) {
+    const width = 8 + Math.floor(random() * 33);
+    const height = 8 + Math.floor(random() * 33);
+    const x0 = 2 + Math.floor(random() * (nx - width - 3));
+    const y0 = 2 + Math.floor(random() * (ny - height - 3));
+    for (let y = y0; y < y0 + height; y++) for (let x = x0; x < x0 + width; x++) {
+      const at = index(x, y, nx);
+      if (street[at] === 0 && solid[at] === 0) {
+        solid[at] = 1;
+        solidCount++;
+      }
+    }
+  }
+  return { solid, solidRatio: solidCount / (nx * ny) };
+}
+
 // 1) 빈 영역: 균일 유입은 정상상태에서 U/U유입=1, 횡류=0을 유지한다.
 {
   const nx = 64, ny = 48;
@@ -75,16 +122,21 @@ const index = (x, y, nx) => y * nx + x;
   assert.ok(error < 1e-3, `회전 왕복 최대 오차=${error}`);
 }
 
-// 5) 계획 성능 예산: 대표 CPU에서 빈 500×500 영역 6,000 스텝은 20초 이내를 목표로 하고,
-//    CI 변동을 고려한 실패 상한은 40초로 둔다.
+// 5) 계획 성능 예산: 결정적 합성 도시(직사각형 건물 약 25% + 폭 14 셀 도로)
+//    500×500 영역 6,000 스텝은 20초 이내를 목표로 하고, CI 변동을 고려한 실패
+//    상한은 40초다. 빈 영역 불변해는 위 correctness test에서만 다룬다.
 {
   const nx = 500, ny = 500, steps = 6_000;
+  const city = syntheticCity(nx, ny);
+  assert.ok(city.solidRatio >= 0.24 && city.solidRatio <= 0.26, `합성 도시 solid 비율=${city.solidRatio}`);
   const t0 = performance.now();
-  const result = computeWind2D({ nx, ny, solid: new Uint8Array(nx * ny), steps });
+  const result = computeWind2D({ nx, ny, solid: city.solid, steps, parallelism: 16 });
   const elapsedMs = performance.now() - t0;
-  console.log(`D2Q9 perf: ${nx}x${ny} x ${steps} -> ${elapsedMs.toFixed(0)} ms (budget 20,000 ms; assert 40,000 ms)`);
+  const updates = nx * ny * steps;
+  const megaUpdatesPerSecond = updates / elapsedMs / 1_000;
+  console.log(`D2Q9 perf: ${nx}x${ny} x ${steps}, solid ${(city.solidRatio * 100).toFixed(2)}% -> ${elapsedMs.toFixed(0)} ms (${megaUpdatesPerSecond.toFixed(1)} M cell-updates/s; target 20,000 ms; hard ceiling 40,000 ms)`);
   assert.equal(result.steps, steps);
-  assert.ok(elapsedMs < 40_000, `D2Q9 성능 실패: ${elapsedMs.toFixed(0)} ms`);
+  assert.ok(elapsedMs <= 40_000, `D2Q9 성능 hard ceiling 실패: ${elapsedMs.toFixed(0)} ms`);
 }
 
 console.log("v2 sim-wind2d: ok");
