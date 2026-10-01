@@ -1,0 +1,77 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "objectid": "6127",
+        "hakgudo_id": "Z000100973",
+        "hakgudo_nm": "옥산초통학구역",
+        "hakgudo_gb": "0",
+        "sd_cd": "27",
+        "sgg_cd": "230",
+        "edu_up_nm": "대구광역시교육청",
+        "edu_nm": "대구광역시서부교육지원청",
+        "base_dt": "2026-03-20"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[128.5965, 35.8804], [128.5992, 35.8804], [128.5992, 35.8820], [128.5965, 35.8820], [128.5965, 35.8804]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "objectid": "6128",
+        "hakgudo_id": "Z000100973",
+        "hakgudo_nm": "옥산초통학구역",
+        "hakgudo_gb": "0",
+        "sd_cd": "27",
+        "sgg_cd": "230",
+        "edu_up_nm": "대구광역시교육청",
+        "edu_nm": "대구광역시서부교육지원청",
+        "base_dt": "2026-03-20"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[128.5992, 35.8804], [128.6010, 35.8804], [128.6010, 35.8820], [128.5992, 35.8820], [128.5992, 35.8804]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "objectid": "2001",
+        "hakgudo_id": "Z000200001",
+        "hakgudo_nm": "안성중학교군",
+        "hakgudo_gb": "0",
+        "sd_cd": "41",
+        "sgg_cd": "183",
+        "edu_up_nm": "경기도교육청",
+        "edu_nm": "경기도안성교육지원청",
+        "base_dt": "2026-03-20"
+      },
+      "geometry": {
+        "type": "MultiPolygon",
+        "coordinates": [[[[127.2740, 37.0075], [127.2770, 37.0075], [127.2770, 37.0095], [127.2740, 37.0095], [127.2740, 37.0075]]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "objectid": "3001",
+        "hakgudo_id": "Z000300001",
+        "hakgudo_nm": "테스트고등학교군",
+        "hakgudo_gb": "0",
+        "sd_cd": "11",
+        "sgg_cd": "680",
+        "edu_up_nm": "서울특별시교육청",
+        "edu_nm": "서울특별시강남서초교육지원청",
+        "base_dt": "2026-03-20"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[127.0400, 37.4900], [127.0450, 37.4900], [127.0450, 37.4950], [127.0400, 37.4950], [127.0400, 37.4900]]]
+      }
+    }
+  ]
+}

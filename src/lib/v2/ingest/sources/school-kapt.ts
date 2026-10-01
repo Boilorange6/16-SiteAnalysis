@@ -1,6 +1,6 @@
 /**
  * 학교 위치·학구 연계(reference)와 K-APT(부동산원 단지 식별정보, core) 원천.
- * 학구 폴리곤은 원천에 없다 — 학구ID ↔ 학교ID ↔ 공간객체ID 관계만 feature_link로 남겨 두고, 폴리곤 원천이 생기면 이어 붙인다.
+ * 학교 학구도 폴리곤은 school-zones.ts가 적재하고, 이 파일은 학구ID ↔ 학교ID 관계를 남긴다.
  */
 import type BetterSqlite3 from "better-sqlite3";
 import type { MeasureRecord } from "../../a0/measure";
@@ -63,7 +63,7 @@ export const SCHOOL_SPEC: PointSourceSpec = {
 
 export const SCHOOL_ZONE_COVERAGE = {
   polygons: false,
-  note: "학구 폴리곤 없음 — 학구ID↔학교ID(serves_zone)·학구ID↔공간객체ID(zone_geometry) 관계만 적재. 폴리곤 원천이 생기면 school_zone:<학구ID> 또는 공간객체ID로 잇는다.",
+  note: "CSV 학구 속성에는 도형이 없어 학구ID↔학교ID(serves_zone)·학구ID↔공간객체ID(zone_geometry) 관계를 적재합니다. VWorld 도형이 있으면 school_zone:<학구ID> feature로 연결합니다.",
 };
 
 function insertLink(db: Db, from: string, to: string, relation: string, method: string, releaseId: string): boolean {
@@ -73,7 +73,7 @@ function insertLink(db: Db, from: string, to: string, relation: string, method: 
 /** 학구–학교 연계: school:<학교ID> —serves_zone→ school_zone:<학구ID>. 학교 feature가 없으면 unlocated. 통학구역(초등) 파일: school_zone:<학구ID> —zone_geometry→ school_zone_geom:<공간객체ID>. */
 export async function buildSchoolZoneLinks(
   db: Db,
-  input: { link: AsyncIterable<MeasureRecord>; elem: AsyncIterable<MeasureRecord>; linkReleaseId: string; elemReleaseId: string },
+  input: { link: AsyncIterable<MeasureRecord>; elem: AsyncIterable<MeasureRecord>; linkReleaseId: string; elemReleaseId: string; zoneIds?: ReadonlySet<string> },
 ): Promise<SourceStats[]> {
   const link = new SourceStats("school_zone_link", input.linkReleaseId, ["학교ID", "학구ID"]);
   const elem = new SourceStats("school_zone_elem", input.elemReleaseId, ["학구ID", "공간객체ID"]);
@@ -84,6 +84,7 @@ export async function buildSchoolZoneLinks(
     const zone = str(p["학구ID"]);
     const school = str(p["학교ID"]);
     if (!zone || !school) return link.reject();
+    if (input.zoneIds && !input.zoneIds.has(`school_zone:${zone}`)) return link.unlocate();
     if (!hasSchool.get(`school:${school}`)) return link.unlocate();
     if (!insertLink(db, `school:${school}`, `school_zone:${zone}`, "serves_zone", "school_zone_link", input.linkReleaseId)) return link.reject(); // 같은 연계 반복
     link.accept(p, sidoCodeOfName(p["시도교육청명"]), str(p["학교급구분"]) ?? "(미상)");

@@ -12,7 +12,7 @@ const { toTileView, toSummaryView, faceLabel } = await import("../../lib/v2/ui/t
 // ── fixture 계약 ──
 for (const r of [...GODEOK_RESULTS, ...Object.values(RECOVERED)]) parseTileResult(r);
 // A03·A04·A10과 P2/P3 새 타일은 예시 데이터에 없다(엔진 결과는 test-v2-engine-run.mjs가 카탈로그 전체와 대조한다)
-const NOT_IN_GODEOK = ["A10", "A11", "D02", "D03", "D05", "D06", "D07", "D08", "D09", "D11", "D12", "D13", "D14", "D15", "D16", "D17", "D18", "D19", "D20", "D21", "D22", "D23", "D24", "D25", "D27", "S01"];
+const NOT_IN_GODEOK = ["A10", "A11", "D02", "D03", "D05", "D06", "D07", "D08", "D09", "D11", "D12", "D13", "D14", "D15", "D16", "D17", "D18", "D19", "D20", "D21", "D22", "D23", "D24", "D25", "D26", "D27", "S01"];
 assert.deepEqual(GODEOK_RESULTS.map((r) => r.tileCode).sort(), TILE_CODES.filter((c) => !NOT_IN_GODEOK.includes(c)).sort());
 const statuses = new Set(GODEOK_RESULTS.map((r) => r.status));
 for (const s of ["complete", "partial", "failed", "not_provided"]) assert.ok(statuses.has(s), `status ${s}`);

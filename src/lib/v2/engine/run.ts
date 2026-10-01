@@ -48,6 +48,7 @@ import { d22 } from "./tiles/d22";
 import { d23 } from "./tiles/d23";
 import { d24 } from "./tiles/d24";
 import { d25 } from "./tiles/d25";
+import { d26 } from "./tiles/d26";
 import { d27 } from "./tiles/d27";
 import { notProvided } from "./tiles/not-provided";
 import { s01 } from "./tiles/s01";
@@ -104,6 +105,7 @@ const TILES: Array<[code: string, compute: (ctx: EngineContext) => TileResult]> 
   ["D23", d23],
   ["D24", d24],
   ["D25", d25],
+  ["D26", d26],
   ["D27", d27],
   ["S01", s01],
   ["S02", s02],

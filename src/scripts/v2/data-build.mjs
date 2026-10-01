@@ -368,6 +368,7 @@ if (builders.market) {
 
 // 학교·학구 연계(reference)와 K-APT 단지(core): 기존 builder 뒤에 이어 붙인다.
 const { buildKapt, buildSchoolZoneLinks, SCHOOL_SPEC, SCHOOL_ZONE_COVERAGE } = await import("../../lib/v2/ingest/sources/school-kapt.ts");
+const { buildSchoolZones, readSchoolZoneGeoJson, SCHOOL_ZONE_LAYERS, SCHOOL_ZONE_RIGHTS, SCHOOL_ZONE_SOURCE_ID } = await import("../../lib/v2/ingest/sources/school-zones.ts");
 if (builders.reference) {
   const base = builders.reference;
   builders.reference = async (db, ctx) => {
@@ -378,9 +379,48 @@ if (builders.reference) {
     const school = await buildPointSource(db, SCHOOL_SPEC, (await csvRecords(schoolFile)).records, release(db, "school", schoolFile, provider, "https://www.data.go.kr/data/15021148/standard.do", "UNRESTRICTED"));
     const linkRel = release(db, "school_zone_link", linkFile, provider, "https://www.data.go.kr/data/15021158/standard.do", "UNRESTRICTED");
     const elemRel = release(db, "school_zone_elem", elemFile, provider, "https://www.data.go.kr/data/15021149/standard.do", "UNRESTRICTED");
-    for (const rel of [linkRel, elemRel]) db.prepare("UPDATE source_release SET coverage_json = ? WHERE release_id = ?").run(JSON.stringify(SCHOOL_ZONE_COVERAGE), rel);
-    const zones = await buildSchoolZoneLinks(db, { link: (await csvRecords(linkFile)).records, elem: (await csvRecords(elemFile)).records, linkReleaseId: linkRel, elemReleaseId: elemRel });
-    return [...(await base(db, ctx)), school, ...zones];
+    const vworldDir = join(raw, "school_zone", "vworld");
+    const vworldFiles = SCHOOL_ZONE_LAYERS.map((layer) => ({ layer, file: join(vworldDir, `${layer.apiLayer}.geojson`) }));
+    const haveVworld = vworldFiles.every(({ file }) => existsSync(file));
+    let zoneRelease = null;
+    let zoneStats = [];
+    let zoneIds = null;
+    if (haveVworld) {
+      const done = vworldFiles.map(({ file }) => {
+        try { return JSON.parse(readFileSync(`${file}.done.json`, "utf8")); } catch { return {}; }
+      });
+      const baseDates = done.flatMap((d) => Array.isArray(d.base_dates) ? d.base_dates : typeof d.base_dt === "string" ? [d.base_dt] : []).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+      const files = vworldFiles.map(({ file }) => statSync(file));
+      const sourceAsOf = baseDates.at(-1) ?? null;
+      const fetchedAt = new Date(Math.max(...files.map((st) => st.mtimeMs))).toISOString();
+      const checksum = vworldFiles.map(({ file }, i) => `${basename(file)}:${files[i].size}-${Math.round(files[i].mtimeMs)}`).join("|");
+      zoneRelease = insertRelease(db, {
+        sourceId: SCHOOL_ZONE_SOURCE_ID,
+        provider: "국토교통부(VWorld Data API 학교 학구도·학교군)",
+        sourceUrl: "https://api.vworld.kr/req/data",
+        sourceAsOf,
+        fetchedAt,
+        checksum,
+        licenseCode: "UNRESTRICTED",
+        rights: SCHOOL_ZONE_RIGHTS,
+      });
+      zoneStats = await buildSchoolZones(db, vworldFiles.map(({ layer, file }) => ({ layer: layer.key, releaseId: zoneRelease, records: readSchoolZoneGeoJson(file) })));
+      zoneIds = new Set(db.prepare("SELECT stable_id FROM feature WHERE kind IN ('school_zone_elem', 'school_zone_middle', 'school_zone_high')").pluck().all());
+      const totalRows = zoneStats.reduce((n, s) => n + s.received, 0);
+      const totalFeatures = zoneStats.reduce((n, s) => n + s.accepted, 0);
+      db.prepare("UPDATE source_release SET rights_json = ?, coverage_json = ? WHERE release_id = ?").run(
+        JSON.stringify(SCHOOL_ZONE_RIGHTS),
+        JSON.stringify({ polygons: true, layers: vworldFiles.map(({ layer }) => layer.apiLayer), features: totalFeatures, rows: totalRows }),
+        zoneRelease,
+      );
+      console.log(`school_zone: VWorld polygons ${totalFeatures.toLocaleString()} features / ${totalRows.toLocaleString()} rows`);
+    } else {
+      console.log("school_zone: VWorld GeoJSON 3종이 모두 없어 폴리곤 적재를 건너뜁니다");
+    }
+    const csvCoverage = { ...SCHOOL_ZONE_COVERAGE, polygons: zoneIds !== null, polygonSource: zoneIds !== null ? "school_zone" : null };
+    for (const rel of [linkRel, elemRel]) db.prepare("UPDATE source_release SET coverage_json = ? WHERE release_id = ?").run(JSON.stringify(csvCoverage), rel);
+    const zones = await buildSchoolZoneLinks(db, { link: (await csvRecords(linkFile)).records, elem: (await csvRecords(elemFile)).records, linkReleaseId: linkRel, elemReleaseId: elemRel, zoneIds });
+    return [...(await base(db, ctx)), school, ...zoneStats, ...zones];
   };
 }
 // 용도지역(VWorld dsId 24, 레이어별 전국 SHP): 필지 점과 갱신 주기가 달라 core가 아니라 reference에 둔다.
