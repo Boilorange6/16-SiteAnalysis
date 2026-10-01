@@ -206,6 +206,54 @@ if (only.has("terrain")) {
     return [await buildDemTiles(db, demFiles, releaseId)];
   };
 }
+if (only.has("weather")) {
+  const asosDir = join(raw, "asos");
+  const stationFile = join(asosDir, "META_관측지점정보.csv");
+  if (!existsSync(stationFile)) throw new Error(`ASOS 지점 메타 파일이 없습니다: ${stationFile} — weather-fetch.mjs를 먼저 실행하세요`);
+  const { decodeText } = await import("../../lib/v2/a0/measure.ts");
+  const { buildAsosWind, readStationCsv } = await import("../../lib/v2/ingest/sources/asos-wind.ts");
+  const stations = readStationCsv(decodeText(readFileSync(stationFile)).text);
+  if (stations.length === 0) throw new Error(`ASOS 지점 메타 파일에 유효한 지점이 없습니다: ${stationFile}`);
+  const period = { start: opt("period-start", "2016-01-01"), end: opt("period-end", "2025-12-31") };
+  const hourlyFiles = [...walk(asosDir)]
+    .filter((file) => /^\d{4}\.jsonl$/i.test(basename(file)))
+    .sort();
+  if (hourlyFiles.length === 0) throw new Error(`ASOS 시간자료 JSONL이 없습니다: ${asosDir} — weather-fetch.mjs를 먼저 실행하세요`);
+  builders.weather = async (db) => {
+    const sourceFiles = [stationFile, ...hourlyFiles];
+    const fileStats = sourceFiles.map((file) => statSync(file));
+    const fetchedAt = new Date(Math.max(...fileStats.map((stat) => stat.mtimeMs))).toISOString();
+    const checksum = sourceFiles.map((file, i) => `${file.slice(asosDir.length + 1)}:${fileStats[i].size}-${Math.round(fileStats[i].mtimeMs)}`).join("|");
+    const releaseId = insertRelease(db, {
+      sourceId: "asos",
+      provider: "기상청 ASOS 시간자료",
+      sourceUrl: "https://www.data.go.kr/data/15139432/openapi.do",
+      sourceAsOf: period.end,
+      fetchedAt,
+      checksum,
+      licenseCode: "KOGL-1",
+      rights: { attribution: "기상청 ASOS 시간자료 · 공공저작물 출처표시 제1유형" },
+    });
+    async function* rows() {
+      const { createReadStream } = await import("node:fs");
+      const { createInterface } = await import("node:readline");
+      for (const file of hourlyFiles) {
+        const lines = createInterface({ input: createReadStream(file), crlfDelay: Infinity });
+        for await (const line of lines) {
+          if (!line.trim()) continue;
+          const row = JSON.parse(line);
+          const numberOrNull = (value) => {
+            if (value === null || value === undefined || String(value).trim() === "" || String(value).trim() === "-") return null;
+            const number = Number(value);
+            return Number.isFinite(number) ? number : null;
+          };
+          yield { stnId: String(row.stnId ?? ""), tm: String(row.tm ?? ""), ws: numberOrNull(row.ws), wd: numberOrNull(row.wd) };
+        }
+      }
+    }
+    return [await buildAsosWind(db, stations, rows(), releaseId, period)];
+  };
+}
 if (only.has("reference")) {
   builders.reference = async (db, ctx) => {
     // 철도: v1이 이미 가진 공개 파일. 기준일은 파일 안의 생성일(OSM) / 최근 검증일(계획)이며 없으면 null.
