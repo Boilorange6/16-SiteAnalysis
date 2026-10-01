@@ -10,7 +10,7 @@ import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import styles from "@/components/v2/board.module.css";
 import { SUMMARY_ID, boardReducer, demoFinished, demoPhase, initBoard, reportPages, viewOf } from "@/lib/v2/ui/board-state";
 import { buildReportPlan, complexCounts, reportFileName } from "@/lib/v2/report/report-plan";
-import { downloadBytes, exportFileName, EXPORT_MIME } from "@/lib/v2/export/download";
+import { downloadBytes, exportFileName, EXPORT_MIME, DAE_MIME } from "@/lib/v2/export/download";
 import { DEFAULT_CALLOUT_MODE } from "@/lib/v2/ui/callout-layout";
 import { stackView } from "@/lib/v2/ui/stack";
 import { sheetView } from "@/lib/v2/ui/sheet";
@@ -120,6 +120,17 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
     try {
       const { glbFileName, sceneToGlb } = await import("@/lib/v2/export/glb");
       downloadBytes(glbFileName(siteSummary.address, analysisDate), sceneToGlb(scene), EXPORT_MIME.glb);
+    } finally {
+      setMaking(false);
+    }
+  };
+
+  const makeDae = async () => {
+    if (!scene) return;
+    setMaking(true);
+    try {
+      const { daeFileName, sceneToDae } = await import("@/lib/v2/export/dae");
+      downloadBytes(daeFileName(siteSummary.address, analysisDate), sceneToDae(scene), DAE_MIME);
     } finally {
       setMaking(false);
     }
@@ -285,6 +296,9 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
                     </button>
                     <button type="button" className={styles.pill} onClick={() => void makeGlb()} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "GLB 내보내기"}>
                       GLB
+                    </button>
+                    <button type="button" className={styles.pill} onClick={() => void makeDae()} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "SketchUp 가져오기용 DAE 내보내기"}>
+                      DAE · SketchUp
                     </button>
                     <button type="button" className={styles.pill} onClick={() => void make3dm()} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "3DM 내보내기"}>
                       3DM
