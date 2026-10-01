@@ -1,20 +1,31 @@
 /** P4 무거운 타일 작업 큐. 프로세스마다 작업자 하나, 분석 하나를 타일 순서대로 계산한다. */
 import { performance } from "node:perf_hooks";
 import { Worker } from "node:worker_threads";
+import { existsSync } from "node:fs";
 import { inflateRawSync } from "node:zlib";
 import type BetterSqlite3 from "better-sqlite3";
 import { enqueueAnalysisJobs, ensureAnalysisJobTable, finishAnalysisRun, getAnalysisRun, openV2AppDb, saveTileResult, findCachedTileResult } from "../app-db";
-import { openDataFile, readManifest } from "../data/manifest";
-import { tileCacheKey, type RasterRef, type TileResult } from "../tile-result";
+import { ManifestError, manifestHash, openDataFile, readArchivedManifest, resolveDataPath, type Manifest } from "../data/manifest";
+import { parseTileResult, tileCacheKey, type RasterRef, type TileConditions, type TileResult } from "../tile-result";
 import { loadTileRaster, saveTileRasters } from "../raster-store";
 import { EngineContext, type RasterValues } from "./context";
 import { TILES } from "./run";
 import { ENGINE_VERSION, makeTile } from "./tiles/common";
+import { catalogEntry } from "../ui/tile-catalog";
 
 type Db = BetterSqlite3.Database;
 
 export const HEAVY_TILES = ["S02", "D21", "D29", "D10", "S03", "S04"] as const;
 export const DATE_INDEPENDENT = new Set(["S03", "D10", "D29", "D01", "D28"]);
+export const DATA_VERSION_CHANGED_REASON = "데이터 버전이 바뀌어 다시 계산해야 합니다";
+const JOB_FAILURE_REASON = "계산에 실패했습니다. 다시 계산해 주세요";
+
+class PinnedManifestUnavailable extends Error {
+  constructor(cause?: unknown) {
+    super(DATA_VERSION_CHANGED_REASON, cause === undefined ? undefined : { cause });
+    this.name = "PinnedManifestUnavailable";
+  }
+}
 
 type JobRow = {
   analysis_id: string;
@@ -38,6 +49,96 @@ export type JobInfo = {
   elapsedMs: number | null;
   error: string | null;
 };
+
+type AnalysisRun = NonNullable<ReturnType<typeof getAnalysisRun>>;
+
+function conditionsForRun(run: AnalysisRun): TileConditions {
+  return {
+    address: run.address,
+    center: [run.center[0], run.center[1]],
+    radiusM: run.radiusM,
+    analysisDate: run.analysisDate,
+    timezone: "Asia/Seoul",
+    filters: {},
+    simulation: null,
+    parcelSnapshotHash: null,
+  };
+}
+
+function cacheKeyForRun(run: AnalysisRun, code: string): string {
+  const conditions = DATE_INDEPENDENT.has(code) ? { ...conditionsForRun(run), analysisDate: "date-independent" } : conditionsForRun(run);
+  return tileCacheKey({ tileCode: code, manifestHash: run.manifestHash, engineVersion: run.engineVersion, conditions });
+}
+
+function readPinnedManifest(dataDir: string, hash: string): Manifest {
+  if (!/^[0-9a-f]{64}$/.test(hash)) throw new PinnedManifestUnavailable(new Error("invalid manifest hash"));
+  try {
+    const archived = readArchivedManifest(dataDir, hash);
+    if (!archived || manifestHash(archived) !== hash) throw new Error("archived manifest is missing or does not match its hash");
+    if (!archived.files.core) throw new Error("archived manifest has no core file");
+    for (const file of Object.values(archived.files)) {
+      if (!existsSync(resolveDataPath(dataDir, file.path))) throw new Error(`missing data file: ${file.path}`);
+    }
+    return archived;
+  } catch (error) {
+    throw new PinnedManifestUnavailable(error);
+  }
+}
+
+function isMissingPinnedData(error: unknown): boolean {
+  if (error instanceof PinnedManifestUnavailable || error instanceof ManifestError) return true;
+  const code = (error as { code?: string } | null)?.code;
+  if (code === "ENOENT") return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return /MANIFEST_HASH_MISMATCH|unable to open database file|no such file|missing data file/i.test(message);
+}
+
+function jobFailureReason(error: unknown): string {
+  return isMissingPinnedData(error) ? DATA_VERSION_CHANGED_REASON : JOB_FAILURE_REASON;
+}
+
+function savedTile(db: Db, analysisId: string, code: string): { result: TileResult; cacheKey: string } | null {
+  const row = db.prepare("SELECT cache_key, result_json FROM tile_result WHERE analysis_id = ? AND tile_code = ?").get(analysisId, code) as { cache_key: string; result_json: string } | undefined;
+  if (!row) return null;
+  return { cacheKey: row.cache_key, result: parseTileResult(JSON.parse(row.result_json)) };
+}
+
+function failureTile(db: Db, run: AnalysisRun, code: string, reason: string): { result: TileResult; cacheKey: string } {
+  const existing = savedTile(db, run.analysisId, code);
+  if (existing) {
+    return {
+      cacheKey: existing.cacheKey,
+      result: parseTileResult({
+        ...existing.result,
+        tileId: `${run.analysisId}-${code}`,
+        analysisId: run.analysisId,
+        status: "failed",
+        metrics: [],
+        judgment: null,
+        provenance: { ...existing.result.provenance, manifestHash: run.manifestHash, sources: [] },
+        limitations: [{ kind: "unknown", note: reason }],
+      }),
+    };
+  }
+  const conditions = conditionsForRun(run);
+  return {
+    cacheKey: cacheKeyForRun(run, code),
+    result: parseTileResult({
+      tileId: `${run.analysisId}-${code}`,
+      analysisId: run.analysisId,
+      tileType: catalogEntry(code).kind,
+      tileCode: code,
+      status: "failed",
+      engineVersion: run.engineVersion,
+      conditions,
+      metrics: [],
+      judgment: null,
+      presentation: { legend: [], camera: null, layers: [], outputFace: "front" },
+      provenance: { manifestHash: run.manifestHash, sources: [] },
+      limitations: [{ kind: "unknown", note: reason }],
+    }),
+  };
+}
 
 export function listJobs(db: Db, analysisId: string): JobInfo[] {
   ensureAnalysisJobTable(db);
@@ -77,10 +178,45 @@ function markDone(db: Db, analysisId: string, code: string, elapsedMs: number): 
     .run(new Date().toISOString(), elapsedMs, analysisId, code);
 }
 
-function markFailed(db: Db, analysisId: string, code: string, elapsedMs: number, error: unknown): void {
-  const message = String(error instanceof Error ? error.message : error).slice(0, 500);
+function markFailed(db: Db, analysisId: string, code: string, elapsedMs: number, reason: string): void {
   db.prepare("UPDATE analysis_job SET status = 'failed', finished_at = ?, elapsed_ms = ?, error = ? WHERE analysis_id = ? AND tile_code = ?")
-    .run(new Date().toISOString(), elapsedMs, message, analysisId, code);
+    .run(new Date().toISOString(), elapsedMs, reason, analysisId, code);
+}
+
+function saveFailedJob(db: Db, run: AnalysisRun, code: string, elapsedMs: number, reason: string, ctx: EngineContext | null, cacheKey: string | null = null): void {
+  markFailed(db, run.analysisId, code, elapsedMs, reason);
+  try {
+    const fallback = ctx ? null : failureTile(db, run, code, reason);
+    const failed = ctx
+      ? makeTile(ctx, {
+        code,
+        status: "failed",
+        metrics: [],
+        sources: [],
+        limitations: [{ kind: "unknown", note: reason }],
+      })
+      : fallback!.result;
+    const key = cacheKey ?? (ctx ? keyFor(ctx, code) : fallback!.cacheKey);
+    saveTileResult(db, failed, key);
+  } catch (error) {
+    // 상태 행은 이미 failed로 남겼다. 저장된 pending 타일이 손상된 경우에도 큐를 막지 않는다.
+    console.warn(`v2 analysis job ${run.analysisId}/${code} failed-result save skipped: ${String(error instanceof Error ? error.message : error).slice(0, 200)}`);
+  }
+}
+
+function finishIfIdle(db: Db, analysisId: string): void {
+  const remaining = listJobs(db, analysisId).some((job) => job.status === "queued" || job.status === "running");
+  if (!remaining) finishAnalysisRun(db, analysisId, "complete");
+}
+
+function failRemainingJobs(db: Db, run: AnalysisRun, error: unknown): void {
+  const reason = jobFailureReason(error);
+  for (const code of HEAVY_TILES) {
+    const job = listJobs(db, run.analysisId).find((candidate) => candidate.code === code);
+    if (!job || (job.status !== "queued" && job.status !== "running")) continue;
+    saveFailedJob(db, run, code, 1, reason, null);
+  }
+  finishIfIdle(db, run.analysisId);
 }
 
 function keyFor(ctx: EngineContext, code: string): string {
@@ -121,26 +257,40 @@ export function runHeavyTiles(appDb: Db, dataDir: string, analysisId: string): v
   ensureAnalysisJobTable(appDb);
   const run = getAnalysisRun(appDb, analysisId);
   if (!run) throw new Error(`unknown analysis ${analysisId}`);
-  const manifest = readManifest(dataDir);
-  if (!manifest) throw new Error("no published manifest — run a data build first");
-  const core = openDataFile(dataDir, manifest, "core");
-  const ctx = new EngineContext(
-    dataDir,
-    manifest,
-    analysisId,
-    { address: run.address, center: run.center, radiusM: run.radiusM, analysisDate: run.analysisDate, pnu: typeof run.parameters.pnu === "string" ? run.parameters.pnu : null },
-    { core },
-    { rasterReader: rasterReader(appDb, analysisId) },
-  );
+  let ctx: EngineContext | null = null;
+  let core: BetterSqlite3.Database | null = null;
+  try {
+    // 재현성: 현재 manifest가 아니라 분석 행에 기록된 보관본만 연다.
+    const manifest = readPinnedManifest(dataDir, run.manifestHash);
+    core = openDataFile(dataDir, manifest, "core");
+    ctx = new EngineContext(
+      dataDir,
+      manifest,
+      analysisId,
+      { address: run.address, center: run.center, radiusM: run.radiusM, analysisDate: run.analysisDate, pnu: typeof run.parameters.pnu === "string" ? run.parameters.pnu : null },
+      { core },
+      { rasterReader: rasterReader(appDb, analysisId) },
+    );
+  } catch (error) {
+    core?.close();
+    failRemainingJobs(appDb, run, error);
+    return;
+  }
+  const engine = ctx;
+  if (!engine) {
+    failRemainingJobs(appDb, run, new Error("engine context was not created"));
+    return;
+  }
   try {
     for (const code of HEAVY_TILES) {
       const job = listJobs(appDb, analysisId).find((candidate) => candidate.code === code);
       if (!job || job.status !== "queued") continue;
       if (!markRunning(appDb, analysisId, code, new Date().toISOString())) continue;
       const started = performance.now();
-      const key = keyFor(ctx, code);
+      let key: string | null = null;
       let emitted: Array<{ ref: RasterRef; blob: Buffer }> = [];
       try {
+        key = keyFor(engine, code);
         const cached = findCachedTileResult(appDb, key);
         let tile: TileResult;
         if (cached) {
@@ -148,31 +298,22 @@ export function runHeavyTiles(appDb: Db, dataDir: string, analysisId: string): v
         } else {
           const compute = TILES.find(([candidate]) => candidate === code)?.[1];
           if (!compute) throw new Error(`unknown heavy tile ${code}`);
-          tile = compute(ctx);
-          emitted = ctx.takeRasters(code);
+          tile = compute(engine);
+          emitted = engine.takeRasters(code);
           tile = tileWithRasters(tile, emitted);
         }
         if (emitted.length > 0) saveTileRasters(appDb, key, emitted);
         saveTileResult(appDb, tile, key);
         markDone(appDb, analysisId, code, Math.max(1, Math.round(performance.now() - started)));
       } catch (error) {
-        ctx.takeRasters(code);
-        const failed = makeTile(ctx, {
-          code,
-          status: "failed",
-          metrics: [],
-          sources: [],
-          limitations: [{ kind: "unknown", note: `계산 중 오류: ${String(error instanceof Error ? error.message : error).slice(0, 200)}` }],
-        });
-        saveTileResult(appDb, failed, key);
-        markFailed(appDb, analysisId, code, Math.max(1, Math.round(performance.now() - started)), error);
+        engine.takeRasters(code);
+        saveFailedJob(appDb, run, code, Math.max(1, Math.round(performance.now() - started)), jobFailureReason(error), engine, key);
       }
     }
   } finally {
-    ctx.close();
+    engine.close();
   }
-  const remaining = listJobs(appDb, analysisId).some((job) => job.status === "queued" || job.status === "running");
-  if (!remaining) finishAnalysisRun(appDb, analysisId, "complete");
+  finishIfIdle(appDb, analysisId);
 }
 
 let activeWorker: Worker | null = null;
@@ -205,7 +346,20 @@ export function runQueuedJobs(appDbPath: string, dataDir: string): void {
     for (;;) {
       const analysisId = nextQueuedAnalysis(db);
       if (!analysisId) break;
-      runHeavyTiles(db, dataDir, analysisId);
+      try {
+        runHeavyTiles(db, dataDir, analysisId);
+      } catch (error) {
+        // 한 분석/타일의 예외가 worker_threads 전체를 종료시키지 않는다.
+        const run = getAnalysisRun(db, analysisId);
+        if (run) {
+          try {
+            failRemainingJobs(db, run, error);
+          } catch (recoveryError) {
+            console.warn(`v2 analysis job recovery failed for ${analysisId}: ${String(recoveryError instanceof Error ? recoveryError.message : recoveryError).slice(0, 200)}`);
+          }
+        }
+        console.warn(`v2 analysis job failed for ${analysisId}: ${String(error instanceof Error ? error.message : error).slice(0, 200)}`);
+      }
     }
   } finally {
     db.close();
