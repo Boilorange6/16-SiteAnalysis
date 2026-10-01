@@ -10,7 +10,7 @@ const { insertRelease, SourceStats } = await import("../../lib/v2/ingest/build.t
 const { queryFeaturesInRadius } = await import("../../lib/v2/data/features.ts");
 const { buildOsmRoads, OSM_ROADS_RIGHTS, ROAD_HIERARCHIES, roadHierarchy } = await import("../../lib/v2/ingest/sources/osm-roads.ts");
 const { crsFromPrj } = await import("../../lib/v2/ingest/shp.ts");
-const { lineLengthInCircle } = await import("../../lib/v2/engine/tiles/geo.ts");
+const { clipLineToCircle, lineLengthInCircle } = await import("../../lib/v2/engine/tiles/geo.ts");
 const { d13 } = await import("../../lib/v2/engine/tiles/d13.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
@@ -74,6 +74,23 @@ const line = (osmId, fclass, a, b, extra = {}) => ({
 const across = { type: "LineString", coordinates: [[cx - 1200, cy], [cx + 1200, cy]] };
 assert.ok(Math.abs(lineLengthInCircle(CENTER, 800, across) - 1600) < 0.05);
 assert.equal(lineLengthInCircle(CENTER, 800, { type: "LineString", coordinates: [[cx + 900, cy], [cx + 1200, cy]] }), 0);
+const clippedAcross = clipLineToCircle(CENTER, 800, across);
+assert.equal(clippedAcross.length, 1, "원을 가로지르는 선은 하나의 선 경로로 잘린다");
+assert.equal(clippedAcross[0].length, 2, "직선은 원 경계의 두 절점으로 보존한다");
+assert.ok(Math.abs(Math.hypot(clippedAcross[0][0][0] - cx, clippedAcross[0][0][1] - cy) - 800) < 0.01);
+assert.ok(Math.abs(Math.hypot(clippedAcross[0][1][0] - cx, clippedAcross[0][1][1] - cy) - 800) < 0.01);
+assert.equal(clipLineToCircle(CENTER, 800, { type: "LineString", coordinates: [[cx + 900, cy], [cx + 1200, cy]] }).length, 0);
+assert.equal(clipLineToCircle(CENTER, 800, { type: "MultiLineString", coordinates: [across.coordinates, [[cx + 900, cy], [cx + 1200, cy]]] }).length, 1);
+assert.equal(
+  clipLineToCircle(CENTER, 800, { type: "LineString", coordinates: [[cx - 100, cy], [cx, cy + 100], [cx + 100, cy]] })[0].length,
+  3,
+  "원 안의 원래 꼭짓점은 보존한다",
+);
+assert.equal(
+  clipLineToCircle(CENTER, 800, { type: "LineString", coordinates: [[cx - 1200, cy], [cx - 700, cy], [cx - 500, cy + 900], [cx + 500, cy + 900], [cx + 700, cy]] }).length,
+  2,
+  "원 밖으로 나갔다 다시 들어오는 선은 두 경로로 나눈다",
+);
 
 // ── D13 engine fixture: metrics·100% 구성비·최근접 간선 이상·지도 ──────────────
 const dataDir = mkdtempSync(join(tmpdir(), "v2-d13-"));
@@ -142,10 +159,12 @@ const shares = tile.metrics.filter((item) => item.id.startsWith("share_road_"));
 assert.equal(shares.length, ROAD_HIERARCHIES.length);
 assert.ok(Math.abs(shares.reduce((sum, item) => sum + item.value, 0) - 100) < 1e-9);
 assert.ok(shares.every((item) => item.denominator === metric("road_length_in_radius_m").numerator));
-assert.ok(tile.presentation.features.length > 0);
-assert.ok(tile.presentation.features.some((feature) => feature.layer === "road:간선"));
-assert.ok(tile.presentation.features.some((feature) => feature.layer === "road:보행·자전거"));
-assert.ok(tile.presentation.features.some((feature) => feature.layer === "road:기타"));
+assert.equal(tile.presentation.features?.length ?? 0, 0, "도로 중심선은 대표점이 아니라 선 지물이다");
+assert.ok(tile.presentation.lines.length > 0);
+assert.ok(tile.presentation.lines.some((line) => line.layer === "road:간선"));
+assert.ok(tile.presentation.lines.some((line) => line.layer === "road:보행·자전거"));
+assert.ok(tile.presentation.lines.some((line) => line.layer === "road:기타"));
+assert.ok(tile.presentation.lines.every((line) => line.points.length >= 2));
 assert.match(toTileView(tile).sourceLine, /OSM 도로\(Geofabrik\)/);
 ctx.close();
 

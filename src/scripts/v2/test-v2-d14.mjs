@@ -46,7 +46,9 @@ const noForbidden = (tile) => {
   assert.equal(tile.presentation.features.filter((feature) => feature.layer === "bus_stop").length, 2);
   assert.equal(tile.presentation.features.filter((feature) => feature.layer === "rail_station").length, 2);
   assert.equal(tile.presentation.features.filter((feature) => feature.layer === "rail_entrance").length, 1);
-  assert.ok(tile.presentation.features.filter((feature) => feature.layer === "rail_line").length > 10, "철도 노선 표본점 표시");
+  assert.equal(tile.presentation.features.filter((feature) => feature.layer === "rail_line").length, 0, "철도 노선은 대표점이 아니라 선 지물이다");
+  assert.ok(tile.presentation.lines.filter((line) => line.layer === "rail_line").length > 0, "철도 노선 선 표시");
+  assert.ok(tile.presentation.lines.filter((line) => line.layer === "rail_line").every((line) => line.points.length >= 2));
   assert.ok(tile.limitations.some((limitation) => limitation.note.includes("운영 시설만") && limitation.note.includes("D24")));
   assert.equal(tile.judgment.level, null);
   noForbidden(tile);
