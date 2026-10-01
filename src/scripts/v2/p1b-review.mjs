@@ -60,6 +60,11 @@ for (const site of REVIEW_SITES) {
 }
 lines.push("| 지점 | 소요(ms) | " + Object.keys(KEY).join(" | ") + " |", "|---|---:|" + Object.keys(KEY).map(() => "---").join("|") + "|");
 for (const r of rows) lines.push(`| ${r.site.name} | ${r.ms} | ${r.cells.join(" | ")} |`);
+// 도판(D)·장면(S) 타일: 상태/면 지물 수
+const dCodes = [...new Set(rows.flatMap((r) => r.results.map((t) => t.tileCode)).filter((c) => /^[DS]/.test(c)))].sort();
+lines.push("", "| 지점 | " + dCodes.join(" | ") + " |", "|---|" + dCodes.map(() => "---").join("|") + "|");
+for (const r of rows) lines.push(`| ${r.site.name} | ` + dCodes.map((c) => { const t = r.results.find((x) => x.tileCode === c); return t ? `${t.status}/${t.presentation.features?.length ?? 0}` : "-"; }).join(" | ") + " |");
+lines.push("", "도판 셀은 `상태/지물 수`.");
 lines.push("", "지표는 `id=값` (미확인 = 값 없음, - = 지표 자체가 없음). 실패 타일 수: " + rows.map((r) => `${r.site.name} ${r.failed}`).join(", "));
 if (out) writeFileSync(out, lines.join("\n") + "\n");
 appDb.close();
