@@ -1,5 +1,5 @@
 import { useId, type ReactNode } from "react";
-import { layerStyle, legendItems, type MapModel } from "@/lib/v2/ui/map-layers";
+import { layerStyle, legendItems, RASTER_STYLES, type MapModel, type RasterStyle } from "@/lib/v2/ui/map-layers";
 import { BASEMAP_ATTRIBUTION, BASEMAP_STACK, framedViewport, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, type BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { rasterAffine } from "@/lib/v2/ui/raster-image";
 import type { RasterRef } from "@/lib/v2/tile-result";
@@ -61,6 +61,16 @@ const INK = "#16181d";
 const textW = (s: string, fs: number) => [...s].reduce((w, ch) => w + (ch.charCodeAt(0) > 0x2e80 ? fs : fs * 0.58), 0);
 type Box = { x0: number; y0: number; x1: number; y1: number };
 const hit = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+
+function rasterStopPositions(style: RasterStyle): number[] {
+  const colors = style.colors;
+  const min = style.min ?? 0;
+  const max = style.max ?? 1;
+  const supplied = style.stops?.length === colors.length ? style.stops : null;
+  const valid = supplied && supplied.every((stop, index) => Number.isFinite(stop) && (index === 0 || stop > supplied[index - 1]!));
+  const values = valid ? supplied! : colors.map((_, index) => (colors.length === 1 ? min : min + ((max - min) * index) / (colors.length - 1)));
+  return values.map((value) => max <= min ? 0 : Math.max(0, Math.min(1, (value - min) / (max - min))));
+}
 
 export default function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, bare, fixed, label, legend, legendY, north: northOpt, scale = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5 }: MapFigureProps) {
   const activeLayer = model.basemap ?? layer;
@@ -130,8 +140,11 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   const hatchId = (index: number) => `hatch${uid}-${index}`;
   const polygonPath = (rings: Array<Array<[number, number]>>) => rings.map((ring) => `${ring.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x} ${y}`).join("")}Z`).join(" ");
 
-  // 범례 (지물이 있는 레이어만, 정의된 순서)
+  // 범례 (지물이 있는 레이어만, 정의된 순서 + 숫자 래스터 범례)
   const present = legendItems(model).map((item) => item.layer);
+  const rasterLegends = (model.rasters ?? [])
+    .map((ref) => ({ ref, style: RASTER_STYLES[ref.palette] }))
+    .filter((entry): entry is { ref: RasterRef; style: RasterStyle } => Boolean(entry.style) && entry.style.mode !== "mask" && entry.style.colors.length > 0 && Number.isFinite(entry.style.min) && Number.isFinite(entry.style.max));
   const fs = 10.5 * u;
   const pad = 6 * u;
   const legendMaxW = W - 2 * pad - 56 * u;
@@ -154,13 +167,25 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   }
   const rowH = fs * 1.5;
   const legendRowsN = present.length ? legendRows.length : 0;
+  const rasterBarH = 12 * u;
+  const rasterBarW = Math.max(80 * u, Math.min(240 * u, legendMaxW - 3 * pad));
+  const rasterBlockH = rowH + rasterBarH + rowH * 0.85 + rowH * 0.9 + pad * 0.7;
+  const rasterLegendW = Math.max(
+    rasterBarW + 2 * pad,
+    ...rasterLegends.map(({ ref, style }) => Math.max(textW(style.label ?? ref.label ?? ref.name, fs), textW(style.legendNote ?? "", fs * 0.82)) + 2 * pad),
+  );
   const legendW = Math.min(
     legendMaxW,
-    Math.max(0, ...legendRows.map((r) => r.reduce((s, i) => s + i.w, 0)), ...notes.map((n) => textW(n, fs * 0.95))) + 2 * pad,
+    Math.max(rasterLegendW, 0, ...legendRows.map((r) => r.reduce((s, i) => s + i.w, 0)), ...notes.map((n) => textW(n, fs * 0.95))) + 2 * pad,
   );
-  const legendH = legendRowsN * rowH + notes.length * rowH * 0.95 + (legendRowsN + notes.length ? pad * 1.4 : 0);
+  const legendH = rasterLegends.length * rasterBlockH + legendRowsN * rowH + notes.length * rowH * 0.95 + (rasterLegends.length + legendRowsN + notes.length ? pad * 1.4 : 0);
   const showLegend = (legend ?? !bare) && legendH > 0;
-  const ly = legendY ?? pad;
+  // The finished box is clamped to the SVG viewport so a title-relative
+  // legend position cannot clip the numeric gradient at the top or bottom.
+  const ly = Math.max(pad, Math.min(legendY ?? pad, Math.max(pad, H - legendH - pad)));
+  const legendTop = ly + pad * 0.7;
+  const rowsTop = legendTop + rasterLegends.length * rasterBlockH;
+  const notesTop = rowsTop + legendRowsN * rowH;
   const bar = scaleBar(mpp, 88 * u);
   const barY = H - bottomInset - 20 * u;
   const barX1 = scaleX !== undefined ? scaleX + bar.px : scaleLeft ? Math.max(pad, 12) + bar.px : W - pad - rightInset;
@@ -234,11 +259,21 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
         <clipPath id={`c${uid}`}>
           <rect width={W} height={H} />
         </clipPath>
+        <clipPath id={`r${uid}`}>
+          <path d={`M${cx - R} ${cy}a${R} ${R} 0 1 0 ${2 * R} 0a${R} ${R} 0 1 0 ${-2 * R} 0Z`} />
+        </clipPath>
+        {rasterLegends.map(({ ref, style }) => (
+          <linearGradient key={`raster-gradient-${ref.name}`} id={`raster-gradient-${uid}-${ref.name}`} x1="0%" y1="0%" x2="100%" y2="0%">
+            {style.colors.map((color, index) => (
+              <stop key={`${color}-${index}`} offset={`${(rasterStopPositions(style)[index] ?? 0) * 100}%`} stopColor={color} />
+            ))}
+          </linearGradient>
+        ))}
         {polygons.filter(isEstimated).map((polygon) => {
           const st = layerStyle(polygon.polygon.layer);
           return (
             <pattern key={hatchId(polygon.index)} id={hatchId(polygon.index)} patternUnits="userSpaceOnUse" width={10 * u} height={10 * u} patternTransform="rotate(45)">
-              <rect width={10 * u} height={10 * u} fill={st.color} fillOpacity={polygonOpacity} />
+              <rect width={10 * u} height={10 * u} fill={st.fill ?? st.color} fillOpacity={st.fillOpacity ?? polygonOpacity} />
               <path d={`M0 0V${10 * u}`} stroke={st.color} strokeWidth={1.2 * u} strokeOpacity={0.75} />
             </pattern>
           );
@@ -281,21 +316,25 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
             height={ref.rows}
             preserveAspectRatio="none"
             transform={`matrix(${matrix.join(",")})`}
-            style={{ imageRendering: "pixelated" }}
+            // Continuous SVF is resampled smoothly at presentation scale;
+            // class/mask rasters retain cell boundaries for categorical maps.
+            style={{ imageRendering: ref.kind === "scalar" ? "auto" : "pixelated" }}
             opacity={1}
           />
         ))}
 
         <path d={dim} fillRule="evenodd" fill="#14161c" fillOpacity={0.09} />
-        {polygons.map((polygon) => {
-          const st = layerStyle(polygon.polygon.layer);
-          const estimated = isEstimated(polygon);
-          return <path key={`poly${polygon.index}`} data-poly="true" d={polygonPath(polygon.rings)} fillRule="evenodd" fill={estimated ? `url(#${hatchId(polygon.index)})` : st.color} fillOpacity={estimated ? 1 : polygonOpacity} stroke={st.color} strokeWidth={1 * u} />;
-        })}
-        {linePaths.map((d) => {
-          const st = layerStyle(d.l.layer);
-          return <polyline key={`line${d.index}`} data-line="true" points={d.points.map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke={st.color} strokeWidth={1.5 * u} strokeLinejoin="round" />;
-        })}
+        <g clipPath={`url(#r${uid})`} data-radius-clip="true">
+          {polygons.map((polygon) => {
+            const st = layerStyle(polygon.polygon.layer);
+            const estimated = isEstimated(polygon);
+            return <path key={`poly${polygon.index}`} data-poly="true" d={polygonPath(polygon.rings)} fillRule="evenodd" fill={estimated ? `url(#${hatchId(polygon.index)})` : st.fill ?? st.color} fillOpacity={estimated ? 1 : st.fillOpacity ?? polygonOpacity} stroke={st.stroke ?? st.color} strokeWidth={(st.strokeWidth ?? 1) * u} />;
+          })}
+          {linePaths.map((d) => {
+            const st = layerStyle(d.l.layer);
+            return <polyline key={`line${d.index}`} data-line="true" points={d.points.map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke={st.color} strokeWidth={1.5 * u} strokeLinejoin="round" />;
+          })}
+        </g>
         {rings.map((r) => (
           <circle key={r} cx={cx} cy={cy} r={r} fill="none" stroke={line} strokeOpacity={sat ? 0.7 : 0.35} strokeWidth={1 * u} strokeDasharray={`${4 * u} ${4 * u}`} />
         ))}
@@ -333,18 +372,40 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
         {showLegend && (
           <g>
             <rect x={pad} y={ly} width={legendW} height={legendH} rx={6 * u} fill="#fff" fillOpacity={0.9} />
+            {rasterLegends.map(({ ref, style }, index) => {
+              const top = legendTop + index * rasterBlockH;
+              const x = pad + pad * 0.8;
+              const min = style.min ?? 0;
+              const max = style.max ?? 1;
+              const ticks = style.legendTicks?.length ? style.legendTicks : [min, max];
+              const tickPosition = (tick: number) => max <= min ? 0 : Math.max(0, Math.min(1, (tick - min) / (max - min)));
+              const tickLabel = (tick: number) => `${Math.round(tickPosition(tick) * 100)}%`;
+              const barY = top + rowH + pad * 0.25;
+              const tickY = barY + rasterBarH + rowH * 0.72;
+              return (
+                <g key={`raster-legend-${ref.name}`} data-raster-legend={ref.name}>
+                  <text x={x} y={top + rowH * 0.72} fontSize={fs} fontWeight={700} fill={INK}>{style.label ?? ref.label ?? ref.name}</text>
+                  <rect x={x} y={barY} width={rasterBarW} height={rasterBarH} rx={2 * u} fill={`url(#raster-gradient-${uid}-${ref.name})`} stroke="#64748B" strokeWidth={0.6 * u} />
+                  {ticks.map((tick) => {
+                    const position = tickPosition(tick);
+                    return <text key={tick} x={x + rasterBarW * position} y={tickY} textAnchor={position === 0 ? "start" : position === 1 ? "end" : "middle"} fontSize={fs * 0.82} fill="#334155">{tickLabel(tick)}</text>;
+                  })}
+                  {style.legendNote && <text x={x} y={tickY + rowH * 0.9} fontSize={fs * 0.82} fill="#555a64">{style.legendNote}</text>}
+                </g>
+              );
+            })}
             {legendRows.map((row, ri) =>
               row.map((it) => (
                 <g key={it.layer}>
-                  <circle cx={pad * 1.8 + it.x + 4 * u} cy={ly + pad * 0.7 + ri * rowH + rowH / 2} r={4 * u} fill={layerStyle(it.layer).color} fillOpacity={0.85} />
-                  <text x={pad * 1.8 + it.x + 11 * u} y={ly + pad * 0.7 + ri * rowH + rowH * 0.72} fontSize={fs} fill={INK}>
+                  <circle cx={pad * 1.8 + it.x + 4 * u} cy={rowsTop + ri * rowH + rowH / 2} r={4 * u} fill={layerStyle(it.layer).color} fillOpacity={0.85} />
+                  <text x={pad * 1.8 + it.x + 11 * u} y={rowsTop + ri * rowH + rowH * 0.72} fontSize={fs} fill={INK}>
                     {layerStyle(it.layer).label}
                   </text>
                 </g>
               )),
             )}
             {notes.map((n, i) => (
-              <text key={n} x={pad + pad * 0.8} y={ly + pad * 0.7 + legendRowsN * rowH + i * rowH * 0.95 + rowH * 0.72} fontSize={fs * 0.95} fill="#555a64">
+              <text key={n} x={pad + pad * 0.8} y={notesTop + i * rowH * 0.95 + rowH * 0.72} fontSize={fs * 0.95} fill="#555a64">
                 {n}
               </text>
             ))}

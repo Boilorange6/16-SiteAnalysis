@@ -33,16 +33,27 @@ export type LayerStyle = {
   color: string;
   /** weight로 원 크기(√비례)를 정한다. 아니면 작은 점 */
   sizeBy?: "weight";
+  /** 면 지물의 채움·테두리. 없으면 color를 둘 다 쓴다. */
+  fill?: string;
+  stroke?: string;
+  fillOpacity?: number;
+  strokeWidth?: number;
 };
 
 export type RasterStyle = {
   mode: "stepped" | "continuous" | "mask";
   colors: string[];
+  /** continuous 팔레트의 데이터 도메인 stop. 색을 균등 분배하지 않을 때 쓴다. */
+  stops?: number[];
   breaks?: number[];
   min?: number;
   max?: number;
   opacity?: number;
   label?: string;
+  /** 숫자 범례에 표시할 tick(데이터 도메인 값). */
+  legendTicks?: number[];
+  /** 색상 선택 근거를 숫자 범례에 함께 적는 짧은 문구. */
+  legendNote?: string;
 };
 
 /** 준공 연대 색 (지도 점과 구성비 차트가 같이 쓴다). 오래될수록 진하다 */
@@ -117,6 +128,7 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   bldg_unknown: S("미상", STRIP_COLORS[6]),
   bldg_footprint: S("건물 발자국", "#8B5A3C"),
   bldg_point: S("건물(대표점)", "#A0522D"),
+  svf_building: { label: "건물 마스크", color: "#64748B", fill: "#CBD5E1", stroke: "#64748B", fillOpacity: 0.86, strokeWidth: 0.75 },
   "use:주거": S("주거", "#D69E2E"),
   "use:근린생활": S("근린생활", "#E07A5F"),
   "use:업무": S("업무", "#6C8EBF"),
@@ -239,7 +251,18 @@ export const RASTER_STYLES: Record<string, RasterStyle> = {
   shade_flow: { mode: "continuous", colors: ["#22304C", "#586B89", "#B7C4D7"], min: 0, max: 1, label: "그림자 흐름" },
   wind_ratio: { mode: "continuous", colors: ["#440154", "#31688E", "#35B779", "#FDE725"], min: 0, max: 1.2, label: "U/U유입" },
   utci: { mode: "stepped", colors: ["#313695", "#4575B4", "#74ADD1", "#ABD9E9", "#66BD63", "#1A9850", "#FEE08B", "#FDAE61", "#F46D43", "#D73027"], breaks: [9, 26, 32, 38, 46], label: "UTCI" },
-  svf: { mode: "continuous", colors: ["#808080", "#B8D7E8", "#DDF5FF"], min: 0, max: 1, label: "하늘열림(SVF)" },
+  svf: {
+    mode: "continuous",
+    // CIELAB L*: 18.8 → 98.4. The upper half is deliberately split at
+    // 0.65/0.75/0.85/0.92 because the real Godeok distribution is top-heavy.
+    colors: ["#1b2b5a", "#203b80", "#245a93", "#477da5", "#6f9fc2", "#9fc5dc", "#d2e8f4", "#f7fbff"],
+    stops: [0, 0.25, 0.5, 0.65, 0.75, 0.85, 0.92, 1],
+    min: 0,
+    max: 1,
+    label: "하늘열림(SVF)",
+    legendTicks: [0, 0.25, 0.5, 0.75, 1],
+    legendNote: "색 stop: 0·25·50·65·75·85·92·100% · 낮음=닫힘, 높음=열림",
+  },
   canopy: { mode: "mask", colors: ["#2E7D32"], opacity: 0.7, label: "수관" },
 };
 const FALLBACK: LayerStyle = S("기타", "#7A7E87");

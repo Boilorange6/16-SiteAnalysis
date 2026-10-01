@@ -15,6 +15,7 @@ const { default: MapFigure } = await import("../../components/v2/map-figure.tsx"
 const { framedViewport, worldPx } = await import("../../lib/v2/ui/map-projection.ts");
 const { toUtmk, toLngLat } = await import("../../lib/v2/crs.ts");
 const { rasterAffine, paintRgba } = await import("../../lib/v2/ui/raster-image.ts");
+const { RASTER_STYLES } = await import("../../lib/v2/ui/map-layers.ts");
 const { encodeRaster, loadTileRaster, saveTileRasters } = await import("../../lib/v2/raster-store.ts");
 const { getTileRaster } = await import("../../lib/v2/engine/raster-api.ts");
 const A = await import("../../lib/v2/app-db.ts");
@@ -112,6 +113,15 @@ assert.equal(rgba.length, 16);
 assert.equal(rgba[7], 0, "nodata는 투명");
 assert.notDeepEqual([...rgba.slice(0, 4)], [...rgba.slice(4, 8)], "계단 팔레트 경계 색");
 
+const svfStyle = RASTER_STYLES.svf;
+assert.deepEqual(svfStyle.stops, [0, 0.25, 0.5, 0.65, 0.75, 0.85, 0.92, 1], "SVF는 상위 구간을 세분한 stop을 쓴다");
+assert.equal(svfStyle.colors[0], "#1b2b5a", "SVF 최저값은 navy");
+assert.equal(svfStyle.colors.at(-1), "#f7fbff", "SVF 최고값은 near-white");
+const svfRef = { ...encoded.ref, name: "svf", scale: 1 / 250, palette: "svf" };
+const svfRgba = paintRgba(svfRef, new Uint8Array([250, 255, 0, 125]), svfStyle, 2, 2);
+assert.ok(svfRgba[0] < 80 && svfRgba[1] < 100 && svfRgba[2] < 150, "SVF 0은 어두운 navy");
+assert.ok(svfRgba[8] > 235 && svfRgba[9] > 240 && svfRgba[10] > 245, "SVF 1은 near-white");
+
 const svg = renderToStaticMarkup(createElement(MapFigure, {
   model: view.map,
   width: 800,
@@ -122,7 +132,24 @@ const svg = renderToStaticMarkup(createElement(MapFigure, {
 }));
 assert.match(svg, /<image/);
 assert.match(svg, /matrix\(/);
+assert.match(svg, /image-rendering:auto/);
+assert.match(svg, /data-radius-clip="true"/);
 assert.ok(svg.indexOf("data-raster") < svg.indexOf("data-poly") || !svg.includes("data-poly"), "래스터는 면보다 아래");
+
+const svfModel = { ...view.map, rasters: [svfRef], notes: ["SVF 색 구간 0·25·50·65·75·85·92·100%"] };
+const svfSvg = renderToStaticMarkup(createElement(MapFigure, {
+  model: svfModel,
+  width: 800,
+  height: 500,
+  basemap: "none",
+  fixed: true,
+  legend: true,
+  legendY: -20,
+  rasterHref: () => "data:image/png;base64,AAAA",
+}));
+assert.match(svfSvg, /data-raster-legend="svf"/);
+for (const tick of ["0%", "25%", "50%", "75%", "100%"])
+  assert.match(svfSvg, new RegExp(tick.replace("%", "\\%")), `SVF 범례 ${tick}`);
 
 if (process.env.P4_VISUAL === "1") {
   const requireMain = createRequire("D:/V-coding/16-SiteAnalysis/package.json");

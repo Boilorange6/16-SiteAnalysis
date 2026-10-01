@@ -1,9 +1,9 @@
 /** D29 개방감(SVF) — 건물·DEM 기반 지면 하늘열림 도판. */
 import { parseTileResult, type TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
-import { BUILDING_SOURCES, buildingRows } from "./buildings-shared";
-import { est, makeTile, missing } from "./common";
-import { polygonParts } from "./geo";
+import { BUILDING_SOURCES, buildingRows, type BuildingRow } from "./buildings-shared";
+import { est, makeTile, missing, polygonCandidate } from "./common";
+import { polygonArea, polygonParts } from "./geo";
 import { notProvided } from "./not-provided";
 import { DEM_LIMITATION, demSources } from "./terrain-shared";
 import {
@@ -113,6 +113,15 @@ function rasterValues(grid: { cols: number; rows: number }, svf: Float32Array): 
   return values;
 }
 
+/** 지도 위에서는 계산용 확장 반경이 아닌 표시 반경의 건물만 회색 마스크로 그린다. */
+function buildingMaskPolygons(rows: BuildingRow[]) {
+  return rows.flatMap((row) => polygonParts(row.hit.geometry).flatMap((rings, partIndex) => {
+    const areaM2 = Math.max(0, polygonArea(rings) || row.footprintM2 || 0);
+    const candidate = polygonCandidate(row.hit.featureId * 1000 + partIndex, "svf_building", rings, areaM2);
+    return candidate ? [candidate] : [];
+  }));
+}
+
 export function d29(ctx: EngineContext): TileResult {
   const shared = svfFor(ctx, null);
   if (!shared) return notProvided(ctx, "D29", "건물 자료가 없어 하늘열림을 계산하지 못했습니다.");
@@ -136,6 +145,8 @@ export function d29(ctx: EngineContext): TileResult {
   }
 
   const rows = buildingRows(ctx, Math.min(5000, ctx.input.radiusM + SVF_MAX_DIST_M + SVF_CELL_M)) ?? [];
+  const displayRows = buildingRows(ctx, ctx.input.radiusM) ?? rows;
+  const buildingPolygons = buildingMaskPolygons(displayRows);
   const unknownBuildings = rows.filter((row) => row.heightM === null).length;
   let demMissingCells = 0;
   for (let row = 0; row < shared.grid.rows; row += 1) {
@@ -203,6 +214,7 @@ export function d29(ctx: EngineContext): TileResult {
     sources,
     layers: ["svf"],
     limitations,
+    polygons: buildingPolygons,
   });
   const raster = ctx.emitRaster("D29", {
     ref: {
@@ -245,7 +257,7 @@ export function d29(ctx: EngineContext): TileResult {
     },
     presentation: {
       ...tile.presentation,
-      legend: [{ label: "하늘열림(SVF)", min: 0, max: 1 }],
+      legend: [{ label: "하늘열림(SVF)", min: 0, max: 1 }, { label: "건물 마스크", min: null, max: null }],
       rasters: [raster],
     },
   });
