@@ -1,4 +1,4 @@
-import type { Scene, Ring } from "../scene";
+import type { Scene, Ring, SceneGround } from "../scene";
 
 export const DXF_LAYERS = {
   BLDG: "BLDG",
@@ -8,6 +8,7 @@ export const DXF_LAYERS = {
   SITE: "SITE",
   RADIUS: "RADIUS",
   META: "META",
+  TERRAIN: "TERRAIN",
 } as const;
 
 export interface DxfOptions {
@@ -45,7 +46,15 @@ class HandleAllocator {
   }
 }
 
-function addLwPolyline(lines: string[], ring: Ring, layer: string, thickness: number | undefined, handles: HandleAllocator, owner: string): void {
+function addLwPolyline(
+  lines: string[],
+  ring: Ring,
+  layer: string,
+  thickness: number | undefined,
+  elevation: number | undefined,
+  handles: HandleAllocator,
+  owner: string,
+): void {
   if (ring.length === 0) return;
   pushPairs(lines, [
     [0, "LWPOLYLINE"],
@@ -57,8 +66,52 @@ function addLwPolyline(lines: string[], ring: Ring, layer: string, thickness: nu
     [90, ring.length],
     [70, 1],
   ]);
+  if (elevation !== undefined) pushPairs(lines, [[38, numberText(elevation)]]);
   if (thickness !== undefined) pushPairs(lines, [[39, numberText(thickness)]]);
   for (const [x, y] of ring) pushPairs(lines, [[10, numberText(x)], [20, numberText(y)]]);
+}
+
+function groundOrigin(ground: Extract<SceneGround, { kind: "dem" }>): [number, number] {
+  return [-((ground.cols - 1) * ground.cellM) / 2, -((ground.rows - 1) * ground.cellM) / 2];
+}
+
+type FacePoint = readonly [number, number, number];
+
+function add3dFace(lines: string[], points: readonly [FacePoint, FacePoint, FacePoint, FacePoint], handles: HandleAllocator, owner: string): void {
+  pushPairs(lines, [
+    [0, "3DFACE"], [5, handles.allocate()], [330, owner], [100, "AcDbEntity"], [8, DXF_LAYERS.TERRAIN], [100, "AcDbFace"],
+  ]);
+  points.forEach(([x, y, z], index) => pushPairs(lines, [
+    [10 + index, numberText(x)], [20 + index, numberText(y)], [30 + index, numberText(z)],
+  ]));
+}
+
+function addTerrainFaces(
+  lines: string[],
+  ground: SceneGround,
+  offset: readonly [number, number],
+  handles: HandleAllocator,
+  owner: string,
+): void {
+  if (ground.kind !== "dem") return;
+  const [x0, y0] = groundOrigin(ground);
+  const zAt = (col: number, row: number): number | null => ground.z[row * ground.cols + col] ?? null;
+  const point = (col: number, row: number, z: number): FacePoint => [
+    x0 + col * ground.cellM + offset[0],
+    y0 + row * ground.cellM + offset[1],
+    z,
+  ];
+  for (let row = 0; row < ground.rows - 1; row += 1) {
+    for (let col = 0; col < ground.cols - 1; col += 1) {
+      const a = zAt(col, row);
+      const b = zAt(col + 1, row);
+      const c = zAt(col + 1, row + 1);
+      const d = zAt(col, row + 1);
+      if (a === null || b === null || c === null || d === null) continue;
+      add3dFace(lines, [point(col, row, a), point(col + 1, row, b), point(col + 1, row + 1, c), point(col + 1, row + 1, c)], handles, owner);
+      add3dFace(lines, [point(col, row, a), point(col + 1, row + 1, c), point(col, row + 1, d), point(col, row + 1, d)], handles, owner);
+    }
+  }
 }
 
 function addCircle(lines: string[], origin: readonly [number, number], radiusM: number, layer: string, handles: HandleAllocator, owner: string): void {
@@ -193,7 +246,10 @@ function addObjects(lines: string[], handles: HandleAllocator): void {
 }
 
 function metaText(scene: Scene): string {
-  return `origin EPSG:5179 E=${numberText(scene.origin.x)} N=${numberText(scene.origin.y)}; unit m; north=+Y; manifest ${scene.manifestHash.slice(0, 12)}; scene ${scene.version}`;
+  const ground = scene.ground.kind === "dem"
+    ? `ground dem 30m EGM96 originZ=${numberText(scene.ground.originZ)}`
+    : "ground flat";
+  return `origin EPSG:5179 E=${numberText(scene.origin.x)} N=${numberText(scene.origin.y)}; unit m; north=+Y; manifest ${scene.manifestHash.slice(0, 12)}; scene ${scene.version}; ${ground}`;
 }
 
 /** Scene의 로컬 미터 좌표를 AutoCAD R2000 DXF로 변환한다. */
@@ -223,17 +279,20 @@ export function sceneToDxf(scene: Scene, opts: DxfOptions = {}): string {
   for (const building of scene.buildings) {
     const layer = buildingLayer(building.heightM, building.heightMethod);
     const thickness = building.heightM !== null && Number.isFinite(building.heightM) && building.heightM > 0 ? building.heightM : undefined;
-    for (const ring of building.rings) addLwPolyline(entityLines, localOrUtmkRing(ring, offset), layer, thickness, handles, blockRecords.model);
+    const elevation = scene.ground.kind === "dem" && building.baseZ !== null && Number.isFinite(building.baseZ) ? building.baseZ : undefined;
+    for (const ring of building.rings) addLwPolyline(entityLines, localOrUtmkRing(ring, offset), layer, thickness, elevation, handles, blockRecords.model);
   }
+
+  addTerrainFaces(entityLines, scene.ground, offset, handles, blockRecords.model);
 
   let hasSiteParcel = false;
   for (const parcel of scene.parcels) {
     const layer = parcel.isSite ? DXF_LAYERS.SITE : DXF_LAYERS.PARCEL;
     hasSiteParcel ||= parcel.isSite;
-    for (const ring of parcel.rings) addLwPolyline(entityLines, localOrUtmkRing(ring, offset), layer, undefined, handles, blockRecords.model);
+    for (const ring of parcel.rings) addLwPolyline(entityLines, localOrUtmkRing(ring, offset), layer, undefined, undefined, handles, blockRecords.model);
   }
   if (!hasSiteParcel && scene.site !== null) {
-    for (const ring of scene.site) addLwPolyline(entityLines, localOrUtmkRing(ring, offset), DXF_LAYERS.SITE, undefined, handles, blockRecords.model);
+    for (const ring of scene.site) addLwPolyline(entityLines, localOrUtmkRing(ring, offset), DXF_LAYERS.SITE, undefined, undefined, handles, blockRecords.model);
   }
 
   addCircle(entityLines, originPoint, scene.radiusM, DXF_LAYERS.RADIUS, handles, blockRecords.model);
