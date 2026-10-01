@@ -48,6 +48,8 @@ const ConditionsSchema = z.object({
 
 export const MAX_MAP_FEATURES = 3000;
 const MapFeatureSchema = z.object({
+  /** 상세 창의 목록 줄과 지도 대표점을 연결하는 안정적인 지물 키. */
+  fid: z.string().min(1).optional(),
   layer: z.string().min(1),
   lng: z.number().finite(),
   lat: z.number().finite(),
@@ -75,11 +77,15 @@ const LngLatSchema = z.tuple([z.number().finite(), z.number().finite()]);
 export const MAX_MAP_LINES = 2000;
 export const MAX_LINE_VERTICES = 200;
 const MapLineSchema = z.object({
+  /** 상세 창에서 선 지물과 목록을 연결할 때만 사용한다. */
+  fid: z.string().min(1).optional(),
   layer: z.string().min(1),
   points: z.array(LngLatSchema).min(2).max(MAX_LINE_VERTICES),
   label: z.string().nullable().optional(),
 });
 const MapPolygonSchema = z.object({
+  /** 상세 창에서 면 지물과 목록을 연결하는 안정적인 지물 키. */
+  fid: z.string().min(1).optional(),
   layer: z.string().min(1),
   /** 첫 고리는 바깥, 나머지는 구멍. WGS84 [lng, lat]. 첫점=끝점으로 닫는다. */
   rings: z.array(z.array(LngLatSchema).min(4).max(MAX_POLYGON_VERTICES + 1)).min(1),
