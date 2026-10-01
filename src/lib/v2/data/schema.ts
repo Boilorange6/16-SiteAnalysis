@@ -195,8 +195,12 @@ const TERRAIN_SQL = `
     rows INTEGER NOT NULL,
     cols INTEGER NOT NULL,
     cell_deg REAL NOT NULL,
+    cell_lon_deg REAL,
+    cell_lat_deg REAL,
     nodata INTEGER NOT NULL,
     vertical TEXT NOT NULL,
+    sample_format TEXT NOT NULL DEFAULT 'int16be',
+    grid_model TEXT NOT NULL DEFAULT 'point',
     resolution_m REAL NOT NULL,
     release_id TEXT NOT NULL REFERENCES source_release(release_id)
   );
@@ -271,7 +275,16 @@ export function initDataFileSchema(db: Db, kind: DataFileKind): void {
   if (kind === "buildings") db.exec(BUILDINGS_SQL);
   if (kind === "reference") db.exec(REFERENCE_SQL);
   if (kind === "market") db.exec(MARKET_SQL);
-  if (kind === "terrain") db.exec(TERRAIN_SQL);
+  if (kind === "terrain") {
+    db.exec(TERRAIN_SQL);
+    // Existing published terrain files predate the GLO-30 sample metadata.
+    // Keep them readable while making newly built files explicit.
+    const columns = new Set((db.prepare("PRAGMA table_info(dem_tile)").all() as Array<{ name: string }>).map((column) => column.name));
+    if (!columns.has("cell_lon_deg")) db.exec("ALTER TABLE dem_tile ADD COLUMN cell_lon_deg REAL");
+    if (!columns.has("cell_lat_deg")) db.exec("ALTER TABLE dem_tile ADD COLUMN cell_lat_deg REAL");
+    if (!columns.has("sample_format")) db.exec("ALTER TABLE dem_tile ADD COLUMN sample_format TEXT NOT NULL DEFAULT 'int16be'");
+    if (!columns.has("grid_model")) db.exec("ALTER TABLE dem_tile ADD COLUMN grid_model TEXT NOT NULL DEFAULT 'point'");
+  }
   if (kind === "weather") db.exec(WEATHER_SQL);
   const upsert = db.prepare("INSERT INTO data_file_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
   upsert.run("kind", kind);

@@ -51,7 +51,7 @@ const layerIds = [
 ];
 for (const id of layerIds) assert.ok(LAYER_STYLES[id], `layer ${id}`);
 
-assert.equal(sourceName("terrain_tiles"), "Terrain Tiles(SRTM 1″ 지표고)");
+assert.equal(sourceName("terrain_tiles"), "Copernicus DEM GLO-30 지표고");
 assert.equal(sourceName("asos"), "기상청 ASOS 시간자료");
 assert.equal(sourceName("osm_roads"), "OSM 도로(Geofabrik)");
 

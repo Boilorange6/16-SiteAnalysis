@@ -156,7 +156,7 @@ export function buildScene(ctx: EngineContext): Scene | null {
         originZ: terrain.originZ,
         z: Array.from(grid.values, (value) => Number.isFinite(value) ? roundCentimeter(value - terrain.originZ) : null),
         resolutionM: 30,
-        vertical: "EGM96",
+        vertical: terrain.reader.verticalDatum() ?? "EGM2008",
         sourceId: "terrain_tiles",
       }
     : { kind: "flat" };

@@ -72,7 +72,7 @@ try {
     .reduce((best, value) => value[0] > best[0] ? value : best, [-Infinity, -1]) : null;
   assert.ok(hill && hill[0] > 25, "terrain grid keeps the fixture hill");
   assert.ok(terrainScene.sources.some((source) => source.sourceId === "terrain_tiles"));
-  assert.ok(terrainScene.limitations.some((limitation) => limitation.kind === "estimated" && limitation.note.includes("EGM96")));
+  assert.ok(terrainScene.limitations.some((limitation) => limitation.kind === "estimated" && limitation.note.includes("EGM2008")));
   assert.deepEqual(loadScene(appDb, terrainOutcome.analysisId), terrainScene, "DEM scene round-trips through app DB");
 
   const largeTerrainOutcome = runAnalysis(appDb, terrainDir, { ...input, radiusM: 3000, analysisDate: "2026-10-02" });

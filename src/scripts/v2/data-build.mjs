@@ -1,6 +1,6 @@
 /**
  * v2 데이터 파일 빌드·게시.
- *   npm run data:build -- --version 2026-09-30a [--raw .cache/v2/raw] [--only core,buildings,parcels,reference,market,terrain] [--expectations exp.json] [--with buildings,parcels] [--wait-lock [분]]
+ *   npm run data:build -- --version 2026-09-30a [--raw .cache/v2/raw] [--dem-source glo30|hgt] [--only core,buildings,parcels,reference,market,terrain] [--expectations exp.json] [--with buildings,parcels] [--wait-lock [분]]
  * 원천 zip은 먼저 풀고(이미 풀린 것은 건너뜀), 원천 파일은 폴더마다 가장 새 파일을 쓴다.
  */
 import { readdirSync, statSync, existsSync, readFileSync } from "node:fs";
@@ -22,6 +22,7 @@ const { buildOsmSubway, buildPlannedRail, legalCodeFromCore } = await import("..
 const { buildOsmRoads, OSM_ROADS_LAYER, OSM_ROADS_RIGHTS } = await import("../../lib/v2/ingest/sources/osm-roads.ts");
 const { buildOsmAreas, OSM_GREEN_LAYERS, OSM_LANDUSE_SOURCE_ID, OSM_WATER_LAYERS, OSM_WATER_SOURCE_ID } = await import("../../lib/v2/ingest/sources/osm-landuse.ts");
 const { buildDemTiles } = await import("../../lib/v2/ingest/sources/dem.ts");
+const { GLO30_PROVIDER, GLO30_RIGHTS, GLO30_SOURCE_URL } = await import("../../lib/v2/data/terrain.ts");
 const { legacyDbPath, v2DataDir } = await import("../../lib/v2/paths.ts");
 
 const args = process.argv.slice(2);
@@ -31,7 +32,7 @@ const opt = (name, fallback) => {
 };
 const version = opt("version");
 if (!version || !/^[0-9A-Za-z._-]+$/.test(version)) {
-  console.error("usage: data:build -- --version <name> [--raw dir] [--only core,buildings,parcels,reference,market,terrain] [--expectations file.json] [--reset-baseline parcel,parcel_building] [--dry-run]");
+  console.error("usage: data:build -- --version <name> [--raw dir] [--dem-source glo30|hgt] [--only core,buildings,parcels,reference,market,terrain] [--expectations file.json] [--reset-baseline parcel,parcel_building] [--dry-run]");
   process.exit(2);
 }
 const flag = (name) => args.includes(`--${name}`);
@@ -187,22 +188,27 @@ if (only.has("parcels")) {
   };
 }
 if (only.has("terrain")) {
-  const demDir = join(raw, "dem");
-  const demFiles = [...walk(demDir)].filter((file) => /\.hgt(?:\.gz)?$/i.test(basename(file))).sort();
-  if (demFiles.length === 0) throw new Error(`no DEM HGT files under ${demDir} — run dem-fetch.mjs first`);
+  const demSource = String(opt("dem-source", "glo30")).toLowerCase();
+  if (demSource !== "glo30" && demSource !== "hgt") throw new Error(`unsupported --dem-source ${demSource}; choose glo30 or hgt`);
+  const demDir = join(raw, "dem", demSource);
+  const demPattern = demSource === "glo30" ? /\.tif(?:f)?$/i : /\.hgt(?:\.gz)?$/i;
+  const demFiles = [...walk(demDir)].filter((file) => demPattern.test(basename(file))).sort();
+  if (demFiles.length === 0) throw new Error(`no DEM ${demSource} files under ${demDir} — run dem-fetch.mjs first`);
   builders.terrain = async (db) => {
     const stats = demFiles.map((file) => statSync(file));
     const fetchedAt = new Date(Math.max(...stats.map((s) => s.mtimeMs))).toISOString();
     const checksum = demFiles.map((file, i) => `${basename(file)}:${stats[i].size}-${Math.round(stats[i].mtimeMs)}`).join("|");
     const releaseId = insertRelease(db, {
       sourceId: "terrain_tiles",
-      provider: "Mapzen/AWS Terrain Tiles (SRTM 1 arc-second)",
-      sourceUrl: "https://registry.opendata.aws/terrain-tiles/",
+      provider: demSource === "glo30" ? GLO30_PROVIDER : "Mapzen/AWS Terrain Tiles (SRTM 1 arc-second)",
+      sourceUrl: demSource === "glo30" ? GLO30_SOURCE_URL : "https://registry.opendata.aws/terrain-tiles/",
       sourceAsOf: null,
       fetchedAt,
       checksum,
       licenseCode: "attribution",
-      rights: { attribution: "Terrain Tiles: SRTM(NASA/USGS), GMTED2010, ETOPO1 — https://github.com/tilezen/joerd/blob/master/docs/attribution.md" },
+      rights: demSource === "glo30"
+        ? { attribution: GLO30_RIGHTS, verticalDatum: "EGM2008" }
+        : { attribution: "Terrain Tiles: SRTM(NASA/USGS), GMTED2010, ETOPO1 — https://github.com/tilezen/joerd/blob/master/docs/attribution.md", verticalDatum: "EGM96" },
     });
     return [await buildDemTiles(db, demFiles, releaseId)];
   };

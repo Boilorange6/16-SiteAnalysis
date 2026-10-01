@@ -73,7 +73,7 @@ export const SOURCE_NAMES: Record<string, string> = {
   maintenance_std: "정비사업 현황(표준데이터)",
   maintenance_zone: "정비구역 경계",
   osm_roads: "OSM 도로(Geofabrik)",
-  terrain_tiles: "Terrain Tiles(SRTM 1″ 지표고)",
+  terrain_tiles: "Copernicus DEM GLO-30 지표고",
   asos: "기상청 ASOS 시간자료",
   zoning_urban: "용도지역(도시지역)",
   zoning_management: "용도지역(관리지역)",

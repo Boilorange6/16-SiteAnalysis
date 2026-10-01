@@ -5,7 +5,7 @@ import { localGrid, type LocalGrid } from "./raster-grid";
 
 export const DEM_LIMITATION = {
   kind: "estimated",
-  note: "SRTM 1″(약 30m) 지표고를 보간한 지형입니다. 측량값·표면고(건물·수목)가 아니며 EGM96 기준입니다.",
+  note: "Copernicus DEM GLO-30(약 30m) 지표고를 보간한 지형입니다. 측량값·표면고(건물·수목)가 아니며 EGM2008 기준입니다.",
 } as const;
 
 /** 한 분석 안에서 terrain.sqlite와 DemReader를 한 번만 연다. */

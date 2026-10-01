@@ -9,12 +9,13 @@ import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
 
 const { DATA_FILE_KINDS, initDataFileSchema } = await import("../../lib/v2/data/schema.ts");
-const { DemReader, DEM_NODATA, hgtMeta, insertDemTile } = await import("../../lib/v2/data/terrain.ts");
-const { buildDemTiles } = await import("../../lib/v2/ingest/sources/dem.ts");
+const { DemReader, DEM_NODATA, GLO30_NODATA, hgtMeta, insertDemTile } = await import("../../lib/v2/data/terrain.ts");
+const { buildDemTiles, buildGlo30Tiles, glo30Meta } = await import("../../lib/v2/ingest/sources/dem.ts");
 const { insertRelease } = await import("../../lib/v2/ingest/build.ts");
 const { buildEngineFixture, CENTER, at } = await import("./engine-fixture.mjs");
 const { openDataFile, readManifest } = await import("../../lib/v2/data/manifest.ts");
 const { queryFeaturesInRadius } = await import("../../lib/v2/data/features.ts");
+const { fromFile, writeArrayBuffer } = await import("geotiff");
 
 assert.ok(DATA_FILE_KINDS.includes("terrain"));
 assert.ok(DATA_FILE_KINDS.includes("weather"));
@@ -82,7 +83,68 @@ assert.deepEqual(hgtMeta("N37E127.hgt.gz"), hgtMeta("N37E127"));
   rmSync(dir, { recursive: true, force: true });
 }
 
-// ─── 3. terrain·weather·roads fixture가 manifest와 조회 계약을 채운다 ──
+// ─── 3. Tiny Float32 GeoTIFF fixture: actual width/height, area edges, nodata ──
+{
+  const dir = mkdtempSync(join(tmpdir(), "v2-terrain-glo30-fixture-"));
+  const path = join(dir, "Copernicus_DSM_COG_10_N37_00_E127_00_DEM.tif");
+  const values = new Float32Array([
+    10, 20, 30, 40,
+    20, 30, GLO30_NODATA, 50,
+    30, 40, 50, 60,
+  ]);
+  const buffer = writeArrayBuffer(values, {
+    width: 4,
+    height: 3,
+    BitsPerSample: [32],
+    SampleFormat: [3],
+    SamplesPerPixel: [1],
+    PhotometricInterpretation: 1,
+    ModelPixelScale: [0.25, 1 / 3, 0],
+    ModelTiepoint: [0, 0, 0, 127, 38, 0],
+    GeographicTypeGeoKey: 4326,
+    GTModelTypeGeoKey: 2,
+    GTRasterTypeGeoKey: 1,
+    GDAL_NODATA: String(GLO30_NODATA),
+  });
+  writeFileSync(path, Buffer.from(buffer));
+  const tiff = await fromFile(path);
+  const image = await tiff.getImage();
+  const meta = glo30Meta(path, image);
+  assert.equal(meta.cols, 4, "GLO-30 stores the actual image width");
+  assert.equal(meta.rows, 3, "GLO-30 stores the actual image height");
+  assert.equal(meta.sampleFormat, "float32le");
+  assert.equal(meta.gridModel, "area");
+  assert.ok(Math.abs(meta.cellLonDeg - 0.25) < 1e-12);
+  assert.ok(Math.abs(meta.cellLatDeg - 1 / 3) < 1e-12);
+  await tiff.close();
+
+  const db = new Database(":memory:");
+  initDataFileSchema(db, "terrain");
+  const releaseId = insertRelease(db, {
+    sourceId: "terrain_tiles",
+    provider: "test GLO-30",
+    sourceUrl: "https://example.invalid/glo30",
+    sourceAsOf: "2026-10-01",
+    fetchedAt: "2026-10-01T00:00:00Z",
+    checksum: "glo30-fixture",
+    licenseCode: "TEST",
+  });
+  await buildGlo30Tiles(db, [path], releaseId);
+  const stored = db.prepare("SELECT rows, cols, sample_format, grid_model FROM dem_tile WHERE tile = 'N37E127'").get();
+  assert.deepEqual(stored, { rows: 3, cols: 4, sample_format: "float32le", grid_model: "area" });
+  const reader = new DemReader(db);
+  assert.equal(reader.verticalDatum(), "EGM2008");
+  assert.equal(reader.elevation(127.125, 38 - 1 / 6), 10, "pixel center");
+  assert.ok(Math.abs(reader.elevation(127.25, 38 - 1 / 3) - 20) < 1e-5, "bilinear center between four Float32 samples");
+  assert.ok(Math.abs(reader.elevation(127, 37) - 30) < 1e-5, "south-west tile edge clamps to the edge pixel");
+  assert.ok(Math.abs(reader.elevation(128, 38) - 40) < 1e-5, "north-east tile edge clamps to the edge pixel");
+  assert.equal(reader.elevation(127.75, 38 - 1 / 3), null, "nodata neighbour is not interpolated as zero");
+  assert.equal(reader.elevation(128.01, 38), null, "outside the actual non-square tile extent");
+  db.close();
+  rmSync(dir, { recursive: true, force: true });
+}
+
+// ─── 4. terrain·weather·roads fixture가 manifest와 조회 계약을 채운다 ──
 {
   const dir = mkdtempSync(join(tmpdir(), "v2-terrain-fixture-"));
   await buildEngineFixture(dir, "fx", { terrain: true, weather: true, roads: true });

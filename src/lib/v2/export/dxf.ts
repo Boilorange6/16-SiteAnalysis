@@ -247,7 +247,7 @@ function addObjects(lines: string[], handles: HandleAllocator): void {
 
 function metaText(scene: Scene): string {
   const ground = scene.ground.kind === "dem"
-    ? `ground dem 30m EGM96 originZ=${numberText(scene.ground.originZ)}`
+    ? `ground dem 30m ${scene.ground.vertical} originZ=${numberText(scene.ground.originZ)}`
     : "ground flat";
   return `origin EPSG:5179 E=${numberText(scene.origin.x)} N=${numberText(scene.origin.y)}; unit m; north=+Y; manifest ${scene.manifestHash.slice(0, 12)}; scene ${scene.version}; ${ground}`;
 }

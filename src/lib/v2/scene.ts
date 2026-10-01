@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { DemVertical } from "./data/terrain";
 
 export const SCENE_VERSION = "v2-scene@2";
 const LEGACY_SCENE_VERSION = "v2-scene@1";
@@ -16,7 +17,7 @@ export type SceneGround =
       originZ: number;
       z: (number | null)[];
       resolutionM: 30;
-      vertical: "EGM96";
+      vertical: DemVertical;
       sourceId: string;
     };
 
@@ -72,7 +73,7 @@ const SceneGroundSchema: z.ZodType<SceneGround> = z.discriminatedUnion("kind", [
     originZ: z.number().finite(),
     z: z.array(z.number().finite().nullable()),
     resolutionM: z.literal(30),
-    vertical: z.literal("EGM96"),
+    vertical: z.enum(["EGM96", "EGM2008"]),
     sourceId: z.string().min(1),
   }).superRefine((ground, ctx) => {
     if (ground.z.length !== ground.cols * ground.rows) {

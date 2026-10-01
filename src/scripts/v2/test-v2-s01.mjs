@@ -64,8 +64,8 @@ const demCtx = new EngineContext(demDir, demManifest, "s01-dem", {
 const demTile = s01(demCtx);
 assert.equal(demTile.conditions.simulation.ground, "dem");
 assert.equal(demTile.metrics.some((entry) => entry.id === "ground_relief_m"), false);
-assert.ok(demTile.limitations.some((entry) => entry.note.includes("SRTM 1″(약 30m)")));
-assert.ok(demTile.limitations.some((entry) => entry.note.includes("EGM96")));
+assert.ok(demTile.limitations.some((entry) => entry.note.includes("Copernicus DEM GLO-30(약 30m)")));
+assert.ok(demTile.limitations.some((entry) => entry.note.includes("EGM2008")));
 assert.doesNotMatch(JSON.stringify(demTile), /법적/);
 demCtx.close();
 
