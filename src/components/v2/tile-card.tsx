@@ -159,7 +159,7 @@ export function ValueCard({ view }: { view: TileView }) {
 }
 
 /** 상태 화면 가운데 판: 미제공·실패·자료 없음·대기·계산 중 */
-export function StatusPlate({ view, phase, onRetry }: { view: TileView; phase: DemoPhase | null; onRetry?: () => void }) {
+export function StatusPlate({ view, phase, onRetry, waitingNote }: { view: TileView; phase: DemoPhase | null; onRetry?: () => void; waitingNote?: string | null }) {
   const waiting = phase === "pending" || phase === "running";
   const head = waiting ? (phase === "running" ? "계산 중" : "대기") : (view.badges.find((b) => b.tone === "status")?.text ?? "표시할 결과가 없습니다");
   const rest = view.badges.filter((b) => b.tone !== "status");
@@ -168,6 +168,7 @@ export function StatusPlate({ view, phase, onRetry }: { view: TileView; phase: D
       <div className={`${styles.plate} ${styles.statusPlate}`}>
         {waiting && <span className={styles.spinner} role="status" aria-label={`${view.title} ${head}`} />}
         <b className={styles.statusHead}>{head}</b>
+        {waiting && waitingNote && <p className={styles.statusNote}>{waitingNote}</p>}
         {!waiting && view.notes[0] && <p className={styles.statusNote}>{view.notes[0]}</p>}
         {!waiting && rest.length > 0 && <ValueBadges badges={rest} />}
         {!waiting && view.retryable && onRetry && (
@@ -227,6 +228,8 @@ export type TileCardProps = {
   onHandleDown: (e: ReactPointerEvent<HTMLElement>) => void;
   onResize: (size: TileSize) => void;
   onOpen: () => void;
+  /** queued/running 타일에 표시할 대기 위치·경과 시간 안내 */
+  waitingNote?: string | null;
   onInclude: (v: boolean) => void;
   onFace: (f: OutputFace) => void;
   /** 화면 면 (요약면/지도면). 보고서 출력 면(face)과 무관 */
@@ -297,6 +300,7 @@ function SummaryFace({ p, state, waiting, onFlip }: { p: TileCardProps; state: b
         <div className={styles.sfState}>
           {waiting && <span className={styles.spinner} role="status" aria-label={`${view.title} ${head}`} />}
           <b className={styles.statusHead}>{head}</b>
+          {waiting && p.waitingNote && <p className={styles.statusNote}>{p.waitingNote}</p>}
           {!waiting && view.notes[0] && <p className={styles.statusNote}>{view.notes[0]}</p>}
           {!waiting && rest.length > 0 && <ValueBadges badges={rest} />}
           {!waiting && view.retryable && (

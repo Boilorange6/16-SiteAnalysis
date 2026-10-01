@@ -107,6 +107,7 @@ assert.equal(byCode.S02.sourceLine, "출처 없음");
 assert.ok(byCode.A12.sentence.includes("→"));
 assert.equal(byCode.D04.chart.length, 7);
 assert.ok(byCode.D04.hasFace && !byCode.A01.hasFace);
+assert.ok(byCode.D04.map.notes.every((note) => !note.includes("건물 도형은 자료 적재 뒤")), "D04 오래된 도형 안내 제거");
 assert.deepEqual([faceLabel("front"), faceLabel("back"), faceLabel("both")], ["도판", "구성비", "도판 + 구성비"]);
 
 // 실패 타일은 다시 계산 가능, 값 없는 타일은 headline 없음
@@ -141,6 +142,17 @@ assert.equal(sv.incomplete, true);
   assert.equal(new Set(texts).size, texts.length, "배지 문구 중복 없음");
   assert.equal(v.badges.find((b) => b.text === "일부 자료만 집계").note, "가 / 나");
   assert.notEqual(v.headline.value, "미확인", "값이 있는 지표가 대표값");
+}
+
+// R13: 원천 limitation 문구가 반복돼도 상세 창의 li key가 겹치지 않도록 화면 문구를 합친다.
+{
+  const base = structuredClone(GODEOK_RESULTS.find((x) => x.tileCode === "A09"));
+  base.limitations = [
+    { kind: "partial", note: "같은 안내" },
+    { kind: "unknown", note: "같은 안내" },
+    { kind: "estimated", note: "다른 안내" },
+  ];
+  assert.deepEqual(toTileView(base).notes, ["같은 안내", "다른 안내"]);
 }
 
 // ── A05 설명선: 번호·카드는 아파트·오피스텔만, 연립·다세대는 번호 없는 점 ──
