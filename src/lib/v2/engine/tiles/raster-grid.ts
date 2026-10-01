@@ -1,5 +1,5 @@
 /** 로컬 미터 격자를 만들고 등치면·등고선을 지도 후보로 변환한다. */
-import { difference, featureCollection, isobands, isolines, point, polygon } from "@turf/turf";
+import { difference, featureCollection, intersect, isobands, isolines, point, polygon } from "@turf/turf";
 import type { Feature, FeatureCollection, MultiPolygon, Point, Polygon } from "geojson";
 import { toLngLat, toUtmk, type LngLat } from "../../crs";
 import { areaInCircle, polygonArea } from "./geo";
@@ -193,9 +193,23 @@ function circleRing(center: LngLat, radiusM: number): [number, number][] {
   });
 }
 
-/** 등치면이 누락한 격자 외곽 영역을 기존 밴드 도형에서 뺀 원으로 복구한다. */
-function uncoveredCircleParts(center: LngLat, radiusM: number, bandParts: number[][][][]): number[][][][] {
-  let remaining: Feature<Polygon | MultiPolygon> | null = polygon([circleRing(center, radiusM)]);
+/** 등치면이 누락한 격자 외곽 영역을 원과 격자 셀 외곽의 교집합에서 복구한다. */
+function uncoveredCircleParts(center: LngLat, radiusM: number, g: LocalGrid, bandParts: number[][][][]): number[][][][] {
+  const halfCell = g.cellM / 2;
+  const xMin = g.x0 - halfCell;
+  const yMin = g.y0 - halfCell;
+  const xMax = g.x0 + (g.cols - 1) * g.cellM + halfCell;
+  const yMax = g.y0 + (g.rows - 1) * g.cellM + halfCell;
+  const gridRing: [number, number][] = [[xMin, yMin], [xMax, yMin], [xMax, yMax], [xMin, yMax], [xMin, yMin]];
+  let remaining: Feature<Polygon | MultiPolygon> | null;
+  try {
+    remaining = intersect(featureCollection<Polygon | MultiPolygon>([
+      polygon([circleRing(center, radiusM)]),
+      polygon([gridRing]),
+    ]));
+  } catch {
+    return [];
+  }
   for (const rings of bandParts) {
     if (!remaining) break;
     try {
@@ -302,7 +316,7 @@ export function bandPolygons(
       if (polygons[index].p.layer === targetLayer) polygons.splice(index, 1);
     }
     const emittedParts = observedParts.flatMap((parts, index) => index === targetIndex ? [] : parts);
-    const uncovered = uncoveredCircleParts(center, radiusM, emittedParts);
+    const uncovered = uncoveredCircleParts(center, radiusM, g, emittedParts);
     id = appendPolygonParts(targetLayer, id, uncovered.length > 0 ? uncovered : cellParts[targetIndex], polygons);
   }
 

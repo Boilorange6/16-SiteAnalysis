@@ -9,6 +9,8 @@ const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { d21 } = await import("../../lib/v2/engine/tiles/d21.ts");
 const { s02 } = await import("../../lib/v2/engine/tiles/s02.ts");
+const { toUtmk } = await import("../../lib/v2/crs.ts");
+const { polygonArea } = await import("../../lib/v2/engine/tiles/geo.ts");
 
 const dataDir = mkdtempSync(join(tmpdir(), "v2-d21-"));
 await buildEngineFixture(dataDir, "v1", { buildings: true, parcels: true });
@@ -36,6 +38,15 @@ try {
   assert.equal(metric(tile, "fill_calculated_pct").value, metric(s02Tile, "uncalculated_ratio").value === 0 ? 100 : 100 - metric(s02Tile, "uncalculated_ratio").value);
   assert.ok(tile.presentation.polygons?.some((polygon) => polygon.layer.startsWith("sun_")));
   assert.ok(tile.presentation.layers.includes("sun_uncalc"));
+  const cells = tile.conditions.simulation.cells;
+  const calculatedOrUncalculated = cells.calculated + cells.uncalculated;
+  const sunPolygonArea = (tile.presentation.polygons ?? [])
+    .filter((polygon) => polygon.layer.startsWith("sun_"))
+    .reduce((sum, polygon) => sum + polygonArea(polygon.rings.map((ring) => ring.map((point) => toUtmk(point)))), 0);
+  assert.ok(
+    sunPolygonArea <= calculatedOrUncalculated * tile.conditions.simulation.gridM ** 2 * 1.5,
+    `sun polygon area ${sunPolygonArea} must stay near ${calculatedOrUncalculated} grid cells`,
+  );
   assert.ok(tile.limitations.some((limitation) => limitation.note.includes("09:00–15:00")));
   assert.ok(!tile.judgment.sentence.includes("법적"));
 } finally {
