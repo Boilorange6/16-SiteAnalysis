@@ -5,7 +5,7 @@ import type { EngineContext } from "../context";
 export const BUILDING_SOURCES = ["building", "gis_bldg"] as const;
 
 const FEATURE_COLUMNS = ["feature_id", "stable_id", "kind", "release_id", "geom_json", "name", "pnu", "legal_code", "properties_json"] as const;
-const FACT_COLUMNS = ["feature_id", "height_m", "height_method", "floors_above", "use_code", "approval_date", "footprint_area_m2"] as const;
+const FACT_COLUMNS = ["feature_id", "height_m", "height_method", "floors_above", "use_code", "approval_date", "gross_floor_area_m2", "footprint_area_m2"] as const;
 
 export interface BuildingRow {
   hit: FeatureHit;
@@ -14,6 +14,7 @@ export interface BuildingRow {
   floorsAbove: number | null;
   useCode: string | null;
   approvalDate: string | null;
+  grossFloorM2: number | null;
   footprintM2: number | null;
 }
 
@@ -49,7 +50,7 @@ export function buildingRows(ctx: EngineContext, radiusM = ctx.input.radiusM): B
   for (let i = 0; i < hits.length; i += 500) {
     const chunk = hits.slice(i, i + 500);
     const rows = db
-      .prepare(`SELECT feature_id, height_m, height_method, floors_above, use_code, approval_date, footprint_area_m2 FROM building_fact WHERE feature_id IN (${chunk.map(() => "?").join(",")})`)
+      .prepare(`SELECT feature_id, height_m, height_method, floors_above, use_code, approval_date, gross_floor_area_m2, footprint_area_m2 FROM building_fact WHERE feature_id IN (${chunk.map(() => "?").join(",")})`)
       .all(...chunk.map((hit) => hit.featureId)) as Array<Record<string, unknown>>;
     const byFeature = new Map(rows.map((row) => [row.feature_id as number, row]));
     for (const hit of chunk) {
@@ -61,6 +62,7 @@ export function buildingRows(ctx: EngineContext, radiusM = ctx.input.radiusM): B
         floorsAbove: positiveNumber(row?.floors_above),
         useCode: typeof row?.use_code === "string" ? row.use_code : null,
         approvalDate: typeof row?.approval_date === "string" ? row.approval_date : null,
+        grossFloorM2: positiveNumber(row?.gross_floor_area_m2),
         footprintM2: positiveNumber(row?.footprint_area_m2),
       });
     }
