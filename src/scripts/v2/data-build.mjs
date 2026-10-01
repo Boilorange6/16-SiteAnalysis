@@ -20,6 +20,7 @@ const { buildPointSource, STORE_SPEC, BUS_STOP_SPEC, PARK_SPEC } = await import(
 const { buildSupply, readLegacyPlannedHousing } = await import("../../lib/v2/ingest/sources/supply.ts");
 const { buildOsmSubway, buildPlannedRail, legalCodeFromCore } = await import("../../lib/v2/ingest/sources/rail.ts");
 const { buildOsmRoads, OSM_ROADS_LAYER, OSM_ROADS_RIGHTS } = await import("../../lib/v2/ingest/sources/osm-roads.ts");
+const { buildOsmAreas, OSM_GREEN_LAYERS, OSM_LANDUSE_SOURCE_ID, OSM_WATER_LAYERS, OSM_WATER_SOURCE_ID } = await import("../../lib/v2/ingest/sources/osm-landuse.ts");
 const { buildDemTiles } = await import("../../lib/v2/ingest/sources/dem.ts");
 const { legacyDbPath, v2DataDir } = await import("../../lib/v2/paths.ts");
 
@@ -329,6 +330,70 @@ if (builders.reference && existsSync(osmDir)) {
     });
     const stats = await buildOsmRoads(db, readShp(roadsFile), releaseId, { legalCodeOf: legalCodeFromCore(ctx.core) });
     return [...built, stats];
+  };
+}
+
+// OSM Geofabrik free shapefile(reference): 도로 블록 뒤에 녹지·수계 면을 이어 붙인다.
+const osmAreaLayers = [...OSM_GREEN_LAYERS, ...OSM_WATER_LAYERS];
+const osmAreaShp = (layer) => [...walk(osmDir)].find((file) => basename(file).toLowerCase() === `${layer}.shp`.toLowerCase()) ?? null;
+if (builders.reference && existsSync(osmDir)) {
+  const base = builders.reference;
+  builders.reference = async (db, ctx) => {
+    const built = await base(db, ctx);
+    let areaFiles = new Map(osmAreaLayers.map((layer) => [layer, osmAreaShp(layer)]).filter(([, file]) => file));
+    if (areaFiles.size < osmAreaLayers.length) {
+      if (!existsSync(join(osmDir, "dl.done"))) {
+        console.log("osm_landuse: dl.done 없음 — 다운로드 완료 후 녹지·수계 적재를 건너뜁니다");
+        return built;
+      }
+      // osm_roads의 선택 추출이 먼저 만든 .extracted marker가 있으면 선택 추출을
+      // 다시 허용한다. 기존 도로 파일은 보존되고, target sidecar만 추가된다.
+      const archive = osmArchive();
+      if (archive) {
+        const { unlinkSync } = await import("node:fs");
+        const marker = join(osmDir, basename(archive, ".zip"), ".extracted");
+        if (existsSync(marker)) unlinkSync(marker);
+      }
+      const extracted = extractSelected(osmDir, (entry) => new RegExp(`(?:^|/)gis_osm_(?:landuse_a|natural_a|water_a)_free_1\\.(?:shp|dbf|prj|cpg)$`, "i").test(entry.replace(/\\/g, "/")));
+      areaFiles = new Map(osmAreaLayers.map((layer) => [layer, osmAreaShp(layer)]).filter(([, file]) => file));
+      console.log(`osm_landuse: area layer sidecars ${extracted.length ? "선택 추출" : "기존 추출본 사용"}`);
+    }
+    if (areaFiles.size === 0) {
+      console.log("osm_landuse: 녹지·수계 면 layer 없음 — 적재 건너뜀");
+      return built;
+    }
+
+    const archive = osmArchive() ?? areaFiles.values().next().value;
+    const st = statSync(archive);
+    const sourceMeta = (sourceId, layers) => ({
+      sourceId,
+      provider: "OpenStreetMap (Geofabrik free shapefile extract)",
+      sourceUrl: "https://download.geofabrik.de/asia/south-korea.html",
+      sourceAsOf: osmAsOf(archive),
+      fetchedAt: st.mtime.toISOString(),
+      checksum: `size-mtime:${st.size}-${Math.round(st.mtimeMs)}`,
+      licenseCode: "ODbL-1.0",
+      rights: { ...OSM_ROADS_RIGHTS, layer: layers },
+    });
+    const buildGroup = async (kind, sourceId, layers) => {
+      const present = layers.map((layer) => [layer, areaFiles.get(layer)]).filter(([, file]) => file);
+      if (present.length === 0) return null;
+      const releaseId = insertRelease(db, sourceMeta(sourceId, present.map(([layer]) => layer)));
+      async function* records() {
+        for (const [layer, file] of present) {
+          for await (const record of readShp(file)) {
+            yield { ...record, properties: { ...record.properties, layer } };
+          }
+        }
+      }
+      return buildOsmAreas(db, records(), releaseId, kind);
+    };
+    const stats = [];
+    const landuse = await buildGroup("landuse", OSM_LANDUSE_SOURCE_ID, OSM_GREEN_LAYERS);
+    const water = await buildGroup("water", OSM_WATER_SOURCE_ID, OSM_WATER_LAYERS);
+    if (landuse) stats.push(landuse);
+    if (water) stats.push(water);
+    return [...built, ...stats];
   };
 }
 if (only.has("market")) {

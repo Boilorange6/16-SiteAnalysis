@@ -47,7 +47,7 @@ function run(db, sourceId, releaseId, snapshot, rejected = 0, count = 10) {
     .run(`${sourceId}:1`, sourceId, count, count, rejected, releaseId, JSON.stringify(snapshot));
 }
 
-/** options.noMarket: market 파일을 게시하지 않는다. options.extraBus: 버스정류장을 더한다(새 버전 검증용). options.buildings/parcels/terrain/weather/roads: 해당 파일·fixture를 게시한다. */
+/** options.noMarket: market 파일을 게시하지 않는다. options.extraBus: 버스정류장을 더한다(새 버전 검증용). options.buildings/parcels/terrain/weather/roads/landuse: 해당 파일·fixture를 게시한다. */
 export async function buildEngineFixture(dataDir, version, options = {}) {
   const dir = join(dataDir, "versions", version);
   mkdirSync(dir, { recursive: true });
@@ -240,6 +240,26 @@ export async function buildEngineFixture(dataDir, version, options = {}) {
     for (const dx of [-200, 0, 200]) line(`v${dx}`, [[dx, -600], [dx, 600]]);
     line("walk", [[-100, -200], [-100, 0]], "보행·자전거");
     run(db, "osm_roads", road, { byRegion: { "41": 7 }, byType: { 국지: 6, "보행·자전거": 1 }, fillRates: {}, unlocated: 0 }, 0, 7);
+  }
+  // P4-T6: landuse/water fixture — 녹지 3면(중첩 grass 포함)과 수계 1면.
+  if (options.landuse) {
+    const landuse = rel(db, "osm_landuse", "2026-09-29", { rights: { license: "ODbL 1.0", attribution: "© OpenStreetMap contributors" } });
+    const water = rel(db, "osm_water", "2026-09-29", { rights: { license: "ODbL 1.0", attribution: "© OpenStreetMap contributors" } });
+    const area = (id, sourceLayer, kind, fclass, cls, geometry, name, releaseId) => insertFeature(db, {
+      stableId: `osm:${sourceLayer}:${id}`,
+      kind,
+      sourceKey: id,
+      releaseId,
+      geometry,
+      name,
+      properties: { osmId: id, fclass, cls, name, layer: sourceLayer },
+    });
+    area("forest", "gis_osm_landuse_a_free_1", "landuse", "forest", "forest", rect(200, 400, 200, 400), "fixture forest", landuse);
+    area("park", "gis_osm_landuse_a_free_1", "landuse", "park", "park", rect(-400, -200, -100, 100), "fixture park", landuse);
+    area("grass", "gis_osm_natural_a_free_1", "landuse", "meadow", "grass", rect(-350, -250, -50, 50), "fixture grass", landuse);
+    area("riverbank", "gis_osm_water_a_free_1", "water", "riverbank", "water", rect(-150, 150, -430, -370), "fixture water", water);
+    run(db, "osm_landuse", landuse, { byRegion: { "(미상)": 3 }, byType: { forest: 1, park: 1, grass: 1 }, fillRates: { name: 1 }, unlocated: 0 }, 0, 3);
+    run(db, "osm_water", water, { byRegion: { "(미상)": 1 }, byType: { water: 1 }, fillRates: { name: 1 }, unlocated: 0 }, 0, 1);
   }
   const sp = (id, dx, code, major, mid) =>
     insertFeature(db, { stableId: `store:${id}`, kind: "store", sourceKey: id, releaseId: store, geometry: pt(dx, 0), name: id, properties: { majorCategory: major, midCategory: mid, minorCategory: "x", categoryCode: code, floor: null, address: null } });
