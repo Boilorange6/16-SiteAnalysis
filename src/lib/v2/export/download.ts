@@ -5,11 +5,14 @@ export const EXPORT_MIME = {
   "3dm": "application/octet-stream",
 } as const;
 
-export type ExportFormat = keyof typeof EXPORT_MIME;
+/** Collada is kept separate so existing callers that enumerate EXPORT_MIME remain stable. */
+export const DAE_MIME = "model/vnd.collada+xml";
+
+export type ExportFormat = keyof typeof EXPORT_MIME | "dae";
 
 export function mimeFor(format: string): string {
   const key = format.toLowerCase() as ExportFormat;
-  const mime = EXPORT_MIME[key];
+  const mime = key === "dae" ? DAE_MIME : EXPORT_MIME[key];
   if (!mime) throw new RangeError(`지원하지 않는 내보내기 형식: ${format}`);
   return mime;
 }
