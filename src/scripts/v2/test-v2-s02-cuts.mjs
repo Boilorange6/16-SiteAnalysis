@@ -51,6 +51,10 @@ try {
   assert.equal(tile.conditions.simulation.hourlyMinAltDeg, 5);
   assert.equal(Object.keys(tile.conditions.simulation.dates).length, 5);
   assert.equal(tile.conditions.simulation.dates.winter.date, "2026-12-22");
+  const hourLegend = tile.presentation.legend.filter((item) => item.label.startsWith("일조시간 · "));
+  assert.equal(hourLegend.length, 13, "sun-hour legend has 0..12+ hourly bins");
+  assert.deepEqual(hourLegend[0], { label: "일조시간 · 0시간", min: 0, max: 1 });
+  assert.deepEqual(hourLegend.at(-1), { label: "일조시간 · 12시간 이상", min: 12, max: null });
   assert.ok(tile.presentation.rasters?.some((ref) => ref.name === "sun_hours_winter"));
   assert.ok(tile.presentation.rasters?.some((ref) => ref.name === "shade_winter_flow"));
   assert.ok(tile.presentation.polygons?.some((polygon) => polygon.layer === "sun_face"));

@@ -37,6 +37,9 @@ try {
   assert.equal(d21Blob.ref.sha256, s02Blob.ref.sha256, "D21 re-emission is byte-identical");
   assert.equal(tile.presentation.polygons, undefined, "D21 no longer converts the raster to band polygons");
   assert.equal(tile.presentation.rasters.length, 1);
+  const hourLegend = tile.presentation.legend.filter((item) => item.label.startsWith("동지 일조시간 · "));
+  assert.equal(hourLegend.length, 13, "D21 keeps the complete 0..12+ sun-hour legend");
+  assert.deepEqual(hourLegend.at(-1), { label: "동지 일조시간 · 12시간 이상", min: 12, max: null });
   assert.ok(tile.metrics.some((metric) => metric.id === "mean_sun_h_winter"));
   assert.ok(tile.metrics.some((metric) => metric.id === "share_cont2h_0915_pct_winter"));
   assert.ok(!tile.limitations.some((limitation) => limitation.note.includes("09:00–15:00") && limitation.note.includes("최대 6시간")));

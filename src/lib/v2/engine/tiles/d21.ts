@@ -1,7 +1,7 @@
 /** D21 동지 일조시간 — S02의 전 반경 래스터를 참조한다. */
 import { parseTileResult, type RasterRef, type TileResult } from "../../tile-result";
 import type { RasterData } from "../../raster-store";
-import { S02_LIMITATION, s02RasterData } from "../../sim/s02-tile";
+import { S02_LIMITATION, s02RasterData, sunHoursLegend } from "../../sim/s02-tile";
 import type { SunFieldResult } from "../../sim/sun-field";
 import type { EngineContext } from "../context";
 import { notProvided } from "./not-provided";
@@ -95,9 +95,7 @@ export function d21(ctx: EngineContext): TileResult {
     metrics: winterMetrics(field, grid.cellM),
     judgment: { ruleId: "D21-sunlight-hours@2", basisMetricIds: ["mean_sun_h_winter", "share_cont2h_0915_pct_winter"], sentence, level: null, criteria: null },
     presentation: {
-      legend: [
-        { label: "동지 일조시간", min: 0, max: 13 },
-      ],
+      legend: sunHoursLegend("동지 일조시간"),
       camera: null,
       layers: [],
       outputFace: "front",

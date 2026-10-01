@@ -153,6 +153,15 @@ export function buildS02TileResult(input: S02Input, precomputed?: SunlightResult
 export const S02_RASTER_ENGINE_VERSION = "v2-sun-raster@1";
 export const S02_DATE_KEYS = ["spring", "summer", "autumn", "winter", "analysis"] as const;
 
+/** Map/report consumers need explicit one-hour bins; a single 0..13 range loses the 12+ cut. */
+export function sunHoursLegend(prefix = "일조시간"): TileResult["presentation"]["legend"] {
+  return Array.from({ length: 13 }, (_, index) => ({
+    label: index === 12 ? `${prefix} · 12시간 이상` : `${prefix} · ${index}시간`,
+    min: index,
+    max: index === 12 ? null : index + 1,
+  }));
+}
+
 export interface S02RasterField {
   key: SunDateKey;
   date: string;
@@ -395,7 +404,7 @@ export function buildS02RasterTileResult(input: S02RasterTileInput): TileResult 
     presentation: {
       legend: [
         { label: "수광면", min: null, max: null },
-        { label: "일조시간", min: 0, max: 13 },
+        ...sunHoursLegend(),
         { label: "그림자", min: null, max: null },
         { label: "그림자 흐름", min: 0, max: 1 },
       ],
