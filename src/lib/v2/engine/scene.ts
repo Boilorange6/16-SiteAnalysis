@@ -4,6 +4,7 @@ import {
   SCENE_VERSION,
   SCENE_MAX_BUILDINGS,
   SCENE_MAX_PARCELS,
+  SCENE_GRID_MAX,
   parseScene,
   toLocalRing,
   type Ring,
@@ -15,6 +16,7 @@ import type { EngineContext, SourceRef } from "./context";
 import { buildingRows, BUILDING_SOURCES } from "./tiles/buildings-shared";
 import { polygonParts } from "./tiles/geo";
 import { hitPoint } from "./tiles/common";
+import { demGridFor, demReader, demSources, DEM_LIMITATION } from "./tiles/terrain-shared";
 
 function localRings(hit: FeatureHit, origin: { x: number; y: number }): Ring[] {
   return polygonParts(hit.geometry).flatMap((rings) => rings.map((ring) => toLocalRing(ring, origin)));
@@ -50,11 +52,39 @@ function uniqueSources(...groups: SourceRef[][]): SourceRef[] {
   return out;
 }
 
-function makeBuilding(row: NonNullable<ReturnType<typeof buildingRows>>[number], origin: { x: number; y: number }): SceneBuilding {
+function roundCentimeter(value: number): number {
+  const rounded = Math.round(value * 100) / 100;
+  return Object.is(rounded, -0) ? 0 : rounded;
+}
+
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const ordered = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(ordered.length / 2);
+  return ordered.length % 2 === 0 ? (ordered[middle - 1] + ordered[middle]) / 2 : ordered[middle];
+}
+
+function sceneCellM(radiusM: number): number {
+  let cellM = Math.max(30, Math.ceil((2 * radiusM) / 64));
+  // The local-grid padding can add one cell. Keep the serialized Scene within
+  // its contract for the largest supported radius without changing the 800 m
+  // fixture (30 m, 56 × 56).
+  while (Math.floor((2 * (radiusM + cellM)) / cellM) + 1 > SCENE_GRID_MAX) cellM++;
+  return cellM;
+}
+
+type TerrainForScene = { reader: NonNullable<ReturnType<typeof demReader>>; originZ: number };
+
+function makeBuilding(
+  row: NonNullable<ReturnType<typeof buildingRows>>[number],
+  origin: { x: number; y: number },
+  terrain: TerrainForScene | null,
+): SceneBuilding {
+  const elevation = terrain?.reader.elevation(...hitPoint(row.hit)) ?? null;
   return {
     id: row.hit.stableId,
     rings: localRings(row.hit, origin),
-    baseZ: null,
+    baseZ: elevation === null || terrain === null ? null : roundCentimeter(elevation - terrain.originZ),
     heightM: row.heightM,
     heightMethod: row.heightMethod,
     floorsAbove: row.floorsAbove,
@@ -83,13 +113,36 @@ export function buildScene(ctx: EngineContext): Scene | null {
   const rows = buildingRows(ctx);
   if (!rows) return null;
 
+  const reader = demReader(ctx);
+  const grid = reader ? demGridFor(ctx, sceneCellM(ctx.input.radiusM)) : null;
+  const finiteGround = grid
+    ? Array.from(grid.values).filter((value): value is number => Number.isFinite(value))
+    : [];
+  const originZ = reader
+    ? reader.elevation(...ctx.input.center) ?? median(finiteGround)
+    : null;
+  const terrain = reader && grid && originZ !== null ? { reader, originZ } : null;
+  const ground: Scene["ground"] = terrain && grid
+    ? {
+        kind: "dem",
+        cellM: grid.cellM,
+        cols: grid.cols,
+        rows: grid.rows,
+        originZ: terrain.originZ,
+        z: Array.from(grid.values, (value) => Number.isFinite(value) ? roundCentimeter(value - terrain.originZ) : null),
+        resolutionM: 30,
+        vertical: "EGM96",
+        sourceId: "terrain_tiles",
+      }
+    : { kind: "flat" };
+
   const [originX, originY] = toUtmk(ctx.input.center);
   const origin = { x: originX, y: originY };
   const buildingsByDistance = [...rows].sort((a, b) =>
     hitDistanceM(a.hit, ctx.input.center) - hitDistanceM(b.hit, ctx.input.center) || a.hit.featureId - b.hit.featureId,
   );
   const buildingHits = buildingsByDistance.slice(0, SCENE_MAX_BUILDINGS);
-  const buildings = buildingHits.map((row) => makeBuilding(row, origin));
+  const buildings = buildingHits.map((row) => makeBuilding(row, origin, terrain));
 
   const parcelsDb = ctx.db("parcels");
   const parcelHits = parcelsDb ? ctx.hits("parcels", ["parcel"]) : [];
@@ -109,6 +162,15 @@ export function buildScene(ctx: EngineContext): Scene | null {
   if (unknownHeightCount > 0) {
     limitations.push({ kind: "incomplete", note: `높이 미상 건물 ${unknownHeightCount.toLocaleString()}동은 바닥 모양만 포함했습니다.` });
   }
+  if (ground.kind === "dem") {
+    limitations.push(DEM_LIMITATION);
+    const missingBaseZ = buildings.filter((building) => building.baseZ === null).length;
+    if (missingBaseZ > 0) {
+      limitations.push({ kind: "incomplete", note: `지형 결측으로 건물 ${missingBaseZ.toLocaleString()}동의 바닥 표고를 확인하지 못했습니다.` });
+    }
+  } else {
+    limitations.push({ kind: "not_provided", note: "지형(DEM) 미적재 — 평탄 지반" });
+  }
   if (!parcelsDb) {
     limitations.push({ kind: "not_provided", note: "필지 도형 미적재" });
   }
@@ -119,7 +181,7 @@ export function buildScene(ctx: EngineContext): Scene | null {
     manifestHash: ctx.manifestHash,
     origin: { epsg: "EPSG:5179" as const, x: originX, y: originY, lng: ctx.input.center[0], lat: ctx.input.center[1] },
     radiusM: ctx.input.radiusM,
-    ground: { kind: "flat" as const },
+    ground,
     site: siteHit ? localRings(siteHit, origin) : null,
     buildings,
     parcels,
@@ -132,6 +194,7 @@ export function buildScene(ctx: EngineContext): Scene | null {
     sources: uniqueSources(
       ctx.sources("buildings", BUILDING_SOURCES),
       parcelsDb ? ctx.sources("parcels", ["parcel_polygon"]) : [],
+      terrain ? demSources(ctx) : [],
     ),
     limitations,
   } satisfies Scene;
