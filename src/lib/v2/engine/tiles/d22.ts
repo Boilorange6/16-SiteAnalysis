@@ -251,7 +251,7 @@ export function d22(ctx: EngineContext): TileResult {
     sources,
     layers: [],
     limitations: [
-      { kind: "unknown", note: "관측소 장기 빈도이며 대지 국지 흐름이 아님 · 지점·기간 표시" },
+      { kind: "unknown", note: `관측소 ${row.name} ASOS(${row.period_start}~${row.period_end}) 장기 빈도이며 대지 국지 흐름이 아님 · 관측소·기간 차이로 참고값과 최빈 풍향이 다를 수 있음` },
       ...(excludedStationCount > 0 ? [{ kind: "partial" as const, note: `관측시간 8,760시간 미만인 ASOS 관측소 ${excludedStationCount}개를 제외했습니다.` }] : []),
       ...(!seasonTable ? [{ kind: "not_provided" as const, note: "계절 장미 미적재" }] : []),
       ...(missingSeasons.length > 0 ? [{ kind: "partial" as const, note: `계절 장미 미적재: ${missingSeasons.join(", ")}` }] : []),

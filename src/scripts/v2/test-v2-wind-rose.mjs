@@ -26,6 +26,9 @@ assert.match(markup, /결측 5% · 지점 near/);
 const summerMarkup = renderToStaticMarkup(React.createElement(WindRoseFigure, { model, width: 960, height: 540, fixed: true, season: "summer" }));
 assert.match(summerMarkup, /data-season="summer"/);
 assert.match(summerMarkup, /여름 바람장미/);
+assert.match(summerMarkup, /data-north-tick="true"/);
+assert.match(summerMarkup, /stroke-width="4"/);
+assert.match(summerMarkup, /#DDD7CC/);
 
 const d22Result = structuredClone(GODEOK_RESULTS.find((r) => r.tileCode === "D04"));
 d22Result.tileId = "t-D22";
