@@ -3,8 +3,7 @@ import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
 import { bandPolygons, gridStats, type LocalGrid } from "./raster-grid";
 import { DEM_LIMITATION, demGridFor, demSources } from "./terrain-shared";
-import { est, makeTile, polygonCandidate, type PolygonCandidate } from "./common";
-import { areaInCircle } from "./geo";
+import { est, makeTile } from "./common";
 import { notProvided } from "./not-provided";
 
 const SLOPE_BREAKS = [5, 10, 15, 20];
@@ -70,40 +69,6 @@ function median(values: number[]): number | null {
   return ordered.length % 2 === 0 ? (ordered[middle - 1] + ordered[middle]) / 2 : ordered[middle];
 }
 
-function slopeBandIndex(value: number): number {
-  for (let index = 0; index < SLOPE_BREAKS.length; index++) if (value < SLOPE_BREAKS[index]) return index;
-  return SLOPE_LAYERS.length - 1;
-}
-
-/** isobands가 외곽 지배 밴드의 폐곡선을 잃는 경우를 위한 셀 면 fallback. */
-function cellBandPolygons(ctx: EngineContext, grid: LocalGrid): { polygons: PolygonCandidate[]; areaM2: number[] } {
-  const areaM2 = Array.from({ length: SLOPE_LAYERS.length + 1 }, () => 0);
-  const polygons: PolygonCandidate[] = [];
-  const half = grid.cellM / 2;
-  let id = 1;
-  for (let row = 0; row < grid.rows; row++) {
-    for (let col = 0; col < grid.cols; col++) {
-      const x = grid.x0 + col * grid.cellM;
-      const y = grid.y0 + row * grid.cellM;
-      const square = {
-        type: "Polygon" as const,
-        coordinates: [[[x - half, y - half], [x + half, y - half], [x + half, y + half], [x - half, y + half], [x - half, y - half]]],
-      };
-      const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, square);
-      if (!clipped || clipped.areaM2 <= 0) continue;
-      const value = grid.values[row * grid.cols + col];
-      const bandIndex = Number.isFinite(value) ? slopeBandIndex(value) : SLOPE_LAYERS.length;
-      areaM2[bandIndex] += clipped.areaM2;
-      const layer = Number.isFinite(value) ? SLOPE_LAYERS[bandIndex] : "slope_nodata";
-      for (const rings of clipped.parts) {
-        const polygon = polygonCandidate(id++, layer, rings, clipped.areaM2);
-        if (polygon) polygons.push(polygon);
-      }
-    }
-  }
-  return { polygons, areaM2 };
-}
-
 export function d18(ctx: EngineContext): TileResult {
   const dem = demGridFor(ctx, 30);
   if (!dem) return notProvided(ctx, "D18", "지형(DEM) 미적재");
@@ -124,11 +89,7 @@ export function d18(ctx: EngineContext): TileResult {
   }
 
   const circleAreaM2 = Math.PI * ctx.input.radiusM ** 2;
-  const interpolatedBands = bandPolygons(ctx.input.center, ctx.input.radiusM, slope, SLOPE_BREAKS, SLOPE_LAYERS, "slope_nodata");
-  const interpolatedArea = interpolatedBands.areaM2.reduce((sum, value) => sum + value, 0);
-  const bands = Math.abs(interpolatedArea - circleAreaM2) / circleAreaM2 <= 0.02
-    ? interpolatedBands
-    : cellBandPolygons(ctx, slope);
+  const bands = bandPolygons(ctx.input.center, ctx.input.radiusM, slope, SLOPE_BREAKS, SLOPE_LAYERS, "slope_nodata");
   const slopeMedian = median(values) as number;
   const slopeMax = Math.max(...values);
   const nodataArea = bands.areaM2.at(-1) ?? 0;

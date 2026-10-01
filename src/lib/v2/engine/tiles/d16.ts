@@ -3,7 +3,7 @@ import { toUtmk } from "../../crs";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
 import { buildingRows, BUILDING_SOURCES } from "./buildings-shared";
-import { est, hitPoint, makeTile, missing, obs, polygonCandidate, type TileDraft } from "./common";
+import { est, hitPoint, makeTile, missing, obs, type TileDraft } from "./common";
 import { gridQuantiles, localGrid, bandPolygons } from "./raster-grid";
 import { notProvided } from "./not-provided";
 
@@ -63,31 +63,13 @@ export function d16(ctx: EngineContext): TileResult {
   const breaks = displayBreaks(quantiles, hasPositive);
   const bands = bandPolygons(ctx.input.center, radiusM, grid, breaks, [...DENSITY_LAYERS], null);
   const circleAreaM2 = Math.round(Math.PI * radiusM ** 2);
-  // isobands represents a high-density island but does not always emit the
-  // exterior complement of its low band. Keep that complement as a deliberate
-  // background polygon and derive dens_0 as the remaining circle area.
-  const positiveAreas = bands.areaM2.slice(1);
-  const positiveAreaM2 = positiveAreas.reduce((sum, area) => sum + area, 0);
-  const bandAreas = [Math.max(0, circleAreaM2 - positiveAreaM2), ...positiveAreas];
-  const shares = bandAreas.map((area) => ({
+  const shares = bands.areaM2.map((area) => ({
     value: pct(area, circleAreaM2),
     numerator: Math.round(area),
     denominator: circleAreaM2,
   }));
   const finiteGridValues = Array.from(grid.values).filter(Number.isFinite);
   const maxDensity = finiteGridValues.length > 0 ? Math.max(...finiteGridValues) : 0;
-  const [cx, cy] = toUtmk(ctx.input.center);
-  const segmentCount = 96;
-  const correctedRadius = radiusM * Math.sqrt((2 * Math.PI) / (segmentCount * Math.sin((2 * Math.PI) / segmentCount)));
-  const ring = Array.from({ length: segmentCount + 1 }, (_, index) => {
-    const angle = (2 * Math.PI * (index % segmentCount)) / segmentCount;
-    return [cx + correctedRadius * Math.cos(angle), cy + correctedRadius * Math.sin(angle)];
-  });
-  const background = polygonCandidate(0, "dens_0", [ring], circleAreaM2);
-  const polygons = [
-    ...(background ? [background] : []),
-    ...bands.polygons.filter((polygon) => polygon.p.layer !== "dens_0"),
-  ];
   const coverage = ctx.coverage("buildings", BUILDING_SOURCES);
   const limitations: TileDraft["limitations"] = [
     { kind: "estimated", note: "커널 밀도 추정 — 동수 기준, 연면적·용적률과 혼합 안 함 · 반경 밖 300m 건물 포함" },
@@ -116,7 +98,7 @@ export function d16(ctx: EngineContext): TileResult {
     judgment: { ruleId: "D16-kde@1", basisMetricIds: ["buildings_input", "dens_max"], sentence, level: null, criteria: null },
     sources: ctx.sources("buildings", BUILDING_SOURCES),
     layers: [...DENSITY_LAYERS],
-    polygons,
+    polygons: bands.polygons,
     limitations,
   });
 }

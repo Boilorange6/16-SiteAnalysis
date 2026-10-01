@@ -1,6 +1,6 @@
 /** 로컬 미터 격자를 만들고 등치면·등고선을 지도 후보로 변환한다. */
-import { featureCollection, isobands, isolines, point } from "@turf/turf";
-import type { Feature, FeatureCollection, Point } from "geojson";
+import { difference, featureCollection, isobands, isolines, point, polygon } from "@turf/turf";
+import type { Feature, FeatureCollection, MultiPolygon, Point, Polygon } from "geojson";
 import { toLngLat, toUtmk, type LngLat } from "../../crs";
 import { areaInCircle, polygonArea } from "./geo";
 import { polygonCandidate, type PolygonCandidate } from "./common";
@@ -161,11 +161,55 @@ function appendBandGeometry(
   id: number,
   areaM2: { value: number },
   polygons: PolygonCandidate[],
+  collectedParts: number[][][][],
 ): number {
   const clipped = areaInCircle(center, radiusM, geometry);
   if (!clipped || clipped.areaM2 <= 0) return id;
   areaM2.value += clipped.areaM2;
+  collectedParts.push(...clipped.parts);
   for (const rings of clipped.parts) {
+    const partAreaM2 = polygonArea(rings);
+    if (partAreaM2 <= 0) continue;
+    const candidate = polygonCandidate(id++, layer, rings, partAreaM2);
+    if (candidate) polygons.push(candidate);
+  }
+  return id;
+}
+
+function bandIndex(value: number, breaks: number[]): number {
+  for (let index = 0; index < breaks.length; index++) {
+    if (value < breaks[index]) return index;
+  }
+  return breaks.length;
+}
+
+function circleRing(center: LngLat, radiusM: number): [number, number][] {
+  const [cx, cy] = toUtmk(center);
+  const segmentCount = 96;
+  const correctedRadius = radiusM * Math.sqrt((2 * Math.PI) / (segmentCount * Math.sin((2 * Math.PI) / segmentCount)));
+  return Array.from({ length: segmentCount + 1 }, (_, index) => {
+    const angle = (2 * Math.PI * (index % segmentCount)) / segmentCount;
+    return [cx + correctedRadius * Math.cos(angle), cy + correctedRadius * Math.sin(angle)];
+  });
+}
+
+/** 등치면이 누락한 격자 외곽 영역을 기존 밴드 도형에서 뺀 원으로 복구한다. */
+function uncoveredCircleParts(center: LngLat, radiusM: number, bandParts: number[][][][]): number[][][][] {
+  let remaining: Feature<Polygon | MultiPolygon> | null = polygon([circleRing(center, radiusM)]);
+  for (const rings of bandParts) {
+    if (!remaining) break;
+    try {
+      remaining = difference(featureCollection<Polygon | MultiPolygon>([remaining, polygon(rings)]));
+    } catch {
+      return [];
+    }
+  }
+  if (!remaining) return [];
+  return remaining.geometry.type === "Polygon" ? [remaining.geometry.coordinates] : remaining.geometry.coordinates;
+}
+
+function appendPolygonParts(layer: string, id: number, parts: number[][][][], polygons: PolygonCandidate[]): number {
+  for (const rings of parts) {
     const partAreaM2 = polygonArea(rings);
     if (partAreaM2 <= 0) continue;
     const candidate = polygonCandidate(id++, layer, rings, partAreaM2);
@@ -198,8 +242,9 @@ export function bandPolygons(
   const boundaries = [baseMin - NODATA_LOW_OFFSET, baseMin - 1, ...breaks, baseMax + 1];
   const contours = isobands(turfGrid(g, missingValue), boundaries, { zProperty: "elevation" });
   const polygons: PolygonCandidate[] = [];
-  const normalAreas = Array.from({ length: layers.length }, () => 0);
-  let nodataArea = 0;
+  const bandCount = layers.length + (nodataLayer === null ? 0 : 1);
+  const observedAreas = Array.from({ length: bandCount }, () => 0);
+  const observedParts = Array.from({ length: bandCount }, () => [] as number[][][][]);
   let id = 1;
 
   contours.features.forEach((feature, turfIndex) => {
@@ -208,20 +253,60 @@ export function bandPolygons(
       if (nodataLayer === null) return;
       for (const coordinates of feature.geometry.coordinates) {
         const holder = { value: 0 };
-        id = appendBandGeometry(center, radiusM, { type: "Polygon", coordinates }, nodataLayer, id, holder, polygons);
-        nodataArea += holder.value;
+        id = appendBandGeometry(center, radiusM, { type: "Polygon", coordinates }, nodataLayer, id, holder, polygons, observedParts[layers.length]);
+        observedAreas[layers.length] += holder.value;
       }
       return;
     }
     if (bandIndex >= layers.length) return;
     for (const coordinates of feature.geometry.coordinates) {
       const holder = { value: 0 };
-      id = appendBandGeometry(center, radiusM, { type: "Polygon", coordinates }, layers[bandIndex], id, holder, polygons);
-      normalAreas[bandIndex] += holder.value;
+      id = appendBandGeometry(center, radiusM, { type: "Polygon", coordinates }, layers[bandIndex], id, holder, polygons, observedParts[bandIndex]);
+      observedAreas[bandIndex] += holder.value;
     }
   });
 
-  return { polygons, areaM2: nodataLayer === null ? normalAreas : [...normalAreas, nodataArea] };
+  // Isobands can lose the band that reaches the grid boundary. Calculate the
+  // reported shares from clipped sample cells, which tile the circle without
+  // depending on a contour being closed, then restore the missing outer
+  // geometry as the circle minus all emitted bands.
+  const cellAreas = Array.from({ length: bandCount }, () => 0);
+  const halfCell = g.cellM / 2;
+  const cellParts = Array.from({ length: bandCount }, () => [] as number[][][][]);
+  let hasNoData = false;
+  for (let row = 0; row < g.rows; row++) {
+    for (let col = 0; col < g.cols; col++) {
+      const [x, y] = gridPoint(g, col, row);
+      const cell: BandGeometry = {
+        type: "Polygon",
+        coordinates: [[[x - halfCell, y - halfCell], [x + halfCell, y - halfCell], [x + halfCell, y + halfCell], [x - halfCell, y + halfCell], [x - halfCell, y - halfCell]]],
+      };
+      const clipped = areaInCircle(center, radiusM, cell);
+      if (!clipped || clipped.areaM2 <= 0) continue;
+      const value = g.values[row * g.cols + col];
+      if (!Number.isFinite(value)) hasNoData = true;
+      const index = Number.isFinite(value)
+        ? bandIndex(value, breaks)
+        : (nodataLayer === null ? -1 : layers.length);
+      if (index < 0 || index >= bandCount) continue;
+      cellAreas[index] += clipped.areaM2;
+      cellParts[index].push(...clipped.parts);
+    }
+  }
+
+  const deficits = cellAreas.map((area, index) => area - observedAreas[index]);
+  const targetIndex = deficits.reduce((best, deficit, index) => deficit > deficits[best] ? index : best, 0);
+  if (deficits[targetIndex] > 1e-6 && (nodataLayer !== null || !hasNoData)) {
+    const targetLayer = targetIndex === layers.length ? nodataLayer! : layers[targetIndex];
+    for (let index = polygons.length - 1; index >= 0; index--) {
+      if (polygons[index].p.layer === targetLayer) polygons.splice(index, 1);
+    }
+    const emittedParts = observedParts.flatMap((parts, index) => index === targetIndex ? [] : parts);
+    const uncovered = uncoveredCircleParts(center, radiusM, emittedParts);
+    id = appendPolygonParts(targetLayer, id, uncovered.length > 0 ? uncovered : cellParts[targetIndex], polygons);
+  }
+
+  return { polygons, areaM2: cellAreas };
 }
 
 function clippedSegment(
