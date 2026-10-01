@@ -22,6 +22,8 @@ export interface SvfShared {
   grid: LocalGrid;
   /** row-major SVF. 반경 밖·건물 지붕·결측 지면은 NaN이다. */
   svf: Float32Array;
+  /** GLO-30이 게시되지 않은 경우 false이고, 지형은 평탄면으로 계산된다. */
+  terrainAvailable: boolean;
 }
 
 interface Bounds {
@@ -43,6 +45,7 @@ interface RasterState {
   dsm: Float32Array;
   receiver: Uint8Array;
   buildingMask: Uint8Array;
+  obstacleMask: Uint8Array;
 }
 
 const RAD = Math.PI / 180;
@@ -126,7 +129,7 @@ function coarseSample(grid: LocalGrid, x: number, y: number): number | null {
   return values[0] * (1 - tx) * (1 - ty) + values[1] * tx * (1 - ty) + values[2] * (1 - tx) * ty + values[3] * tx * ty;
 }
 
-function domainGrid(ctx: EngineContext, reader: NonNullable<ReturnType<typeof demReader>>): { grid: LocalGrid; ground: Float32Array; dsm: Float32Array; receiver: Uint8Array } {
+function domainGrid(ctx: EngineContext, reader: ReturnType<typeof demReader>): { grid: LocalGrid; ground: Float32Array; dsm: Float32Array; receiver: Uint8Array } {
   const [cx, cy] = toUtmk(ctx.input.center);
   // The reported raster covers the selected analysis circle. Terrain beyond
   // this extent is supplied by the separate 30m horizon map; keeping the
@@ -140,7 +143,7 @@ function domainGrid(ctx: EngineContext, reader: NonNullable<ReturnType<typeof de
   // DEM is about 30m data. Sample it once on a coarse local grid and
   // interpolate to the 2m DSM instead of doing four SQLite row lookups per
   // 2m cell. The 2m resolution is retained for buildings and the SVF raster.
-  const coarse = localGrid(
+  const coarse = reader === null ? null : localGrid(
     ctx.input.center,
     ctx.input.radiusM + SVF_MAX_DIST_M + SVF_CELL_M,
     SVF_HORIZON_CELL_M,
@@ -154,17 +157,32 @@ function domainGrid(ctx: EngineContext, reader: NonNullable<ReturnType<typeof de
   const values = new Float64Array(count);
   values.fill(Number.NaN);
 
-  for (let row = 0; row < rows; row += 1) {
-    for (let col = 0; col < cols; col += 1) {
-      const x = x0 + (col + 0.5) * SVF_CELL_M;
+  if (coarse === null) {
+    // Keep the no-DEM path branch-free in the hot SVF loop below: flat ground
+    // is a deliberate fallback, not a missing receiver surface.
+    ground.fill(0);
+    dsm.fill(0);
+    values.fill(0);
+    for (let row = 0; row < rows; row += 1) {
       const y = y0 + (row + 0.5) * SVF_CELL_M;
-      const elevation = coarseSample(coarse, x, y);
-      if (elevation === null || !Number.isFinite(elevation)) continue;
-      const index = row * cols + col;
-      ground[index] = elevation;
-      dsm[index] = elevation;
-      values[index] = elevation;
-      if (Math.hypot(x - cx, y - cy) <= ctx.input.radiusM + SVF_CELL_M / 2) receiver[index] = 1;
+      for (let col = 0; col < cols; col += 1) {
+        const x = x0 + (col + 0.5) * SVF_CELL_M;
+        if (Math.hypot(x - cx, y - cy) <= ctx.input.radiusM + SVF_CELL_M / 2) receiver[row * cols + col] = 1;
+      }
+    }
+  } else {
+    for (let row = 0; row < rows; row += 1) {
+      for (let col = 0; col < cols; col += 1) {
+        const x = x0 + (col + 0.5) * SVF_CELL_M;
+        const y = y0 + (row + 0.5) * SVF_CELL_M;
+        const elevation = coarseSample(coarse, x, y);
+        if (elevation === null || !Number.isFinite(elevation)) continue;
+        const index = row * cols + col;
+        ground[index] = elevation;
+        dsm[index] = elevation;
+        values[index] = elevation;
+        if (Math.hypot(x - cx, y - cy) <= ctx.input.radiusM + SVF_CELL_M / 2) receiver[index] = 1;
+      }
     }
   }
 
@@ -266,28 +284,76 @@ function horizonAtFast(horizon: HorizonMap, x: number, y: number, azDeg: number)
   return south * (1 - ty) + north * ty;
 }
 
+function obstacleIntegral(mask: Uint8Array, cols: number, rows: number): Uint32Array {
+  const stride = cols + 1;
+  const sums = new Uint32Array((rows + 1) * stride);
+  for (let row = 0; row < rows; row += 1) {
+    let rowSum = 0;
+    const source = row * cols;
+    const current = (row + 1) * stride;
+    const previous = row * stride;
+    for (let col = 0; col < cols; col += 1) {
+      rowSum += mask[source + col];
+      sums[current + col + 1] = sums[previous + col + 1] + rowSum;
+    }
+  }
+  return sums;
+}
+
+function hasObstacleNear(integral: Uint32Array, cols: number, rows: number, col: number, row: number, radiusCells: number): boolean {
+  const stride = cols + 1;
+  const col0 = Math.max(0, col - radiusCells);
+  const col1 = Math.min(cols - 1, col + radiusCells);
+  const row0 = Math.max(0, row - radiusCells);
+  const row1 = Math.min(rows - 1, row + radiusCells);
+  const total = integral[(row1 + 1) * stride + col1 + 1]
+    - integral[row0 * stride + col1 + 1]
+    - integral[(row1 + 1) * stride + col0]
+    + integral[row0 * stride + col0];
+  return total !== 0;
+}
+
 /** T11 skyViewFactor의 결정적 계산을 유지하되 horizonAt의 반복 검증을 제거한 worker용 경로. */
-function skyViewFactorNoTerrain(dsm: Float32Array, grid: LocalGrid, receiver: Uint8Array): Float32Array {
+function skyViewFactorNoTerrain(dsm: Float32Array, grid: LocalGrid, receiver: Uint8Array, obstacleMask: Uint8Array): Float32Array {
   const result = new Float32Array(dsm.length);
   result.fill(Number.NaN);
   const rays = raySamples(grid.cellM, SVF_MAX_DIST_M, SVF_DIRS);
+  const integral = obstacleIntegral(obstacleMask, grid.cols, grid.rows);
+  const radiusCells = Math.ceil(SVF_MAX_DIST_M / grid.cellM);
+  const interiorStart = radiusCells;
+  const interiorEndCol = grid.cols - radiusCells;
+  const interiorEndRow = grid.rows - radiusCells;
   for (let row = 0; row < grid.rows; row += 1) {
     for (let col = 0; col < grid.cols; col += 1) {
       const index = row * grid.cols + col;
       if (receiver[index] === 0 || !Number.isFinite(dsm[index])) continue;
+      if (!hasObstacleNear(integral, grid.cols, grid.rows, col, row, radiusCells)) {
+        result[index] = 1;
+        continue;
+      }
       const observer = dsm[index] + SVF_EYE_M;
       let blockedSquareSinSum = 0;
+      const interior = col >= interiorStart && col < interiorEndCol && row >= interiorStart && row < interiorEndRow;
       for (let directionIndex = 0; directionIndex < SVF_DIRS; directionIndex += 1) {
         let highestSlope = 0;
         const ray = rays[directionIndex];
-        for (let sampleIndex = 0; sampleIndex < ray.distances.length; sampleIndex += 1) {
-          const sampleCol = col + ray.colOffsets[sampleIndex];
-          const sampleRow = row + ray.rowOffsets[sampleIndex];
-          if (sampleCol < 0 || sampleCol >= grid.cols || sampleRow < 0 || sampleRow >= grid.rows) break;
-          const elevation = dsm[index + ray.rowOffsets[sampleIndex] * grid.cols + ray.colOffsets[sampleIndex]];
-          if (!Number.isFinite(elevation)) continue;
-          const slope = (elevation - observer) * ray.inverseDistances[sampleIndex];
-          if (slope > highestSlope) highestSlope = slope;
+        if (interior) {
+          for (let sampleIndex = 0; sampleIndex < ray.distances.length; sampleIndex += 1) {
+            const elevation = dsm[index + ray.rowOffsets[sampleIndex] * grid.cols + ray.colOffsets[sampleIndex]];
+            if (!Number.isFinite(elevation)) continue;
+            const slope = (elevation - observer) * ray.inverseDistances[sampleIndex];
+            if (slope > highestSlope) highestSlope = slope;
+          }
+        } else {
+          for (let sampleIndex = 0; sampleIndex < ray.distances.length; sampleIndex += 1) {
+            const sampleCol = col + ray.colOffsets[sampleIndex];
+            const sampleRow = row + ray.rowOffsets[sampleIndex];
+            if (sampleCol < 0 || sampleCol >= grid.cols || sampleRow < 0 || sampleRow >= grid.rows) break;
+            const elevation = dsm[index + ray.rowOffsets[sampleIndex] * grid.cols + ray.colOffsets[sampleIndex]];
+            if (!Number.isFinite(elevation)) continue;
+            const slope = (elevation - observer) * ray.inverseDistances[sampleIndex];
+            if (slope > highestSlope) highestSlope = slope;
+          }
         }
         blockedSquareSinSum += (highestSlope * highestSlope) / (1 + highestSlope * highestSlope);
       }
@@ -297,7 +363,7 @@ function skyViewFactorNoTerrain(dsm: Float32Array, grid: LocalGrid, receiver: Ui
   return result;
 }
 
-function skyViewFactorFast(dsm: Float32Array, grid: LocalGrid, receiver: Uint8Array, horizon: HorizonMap): Float32Array {
+function skyViewFactorFast(dsm: Float32Array, grid: LocalGrid, receiver: Uint8Array, obstacleMask: Uint8Array, horizon: HorizonMap): Float32Array {
   const result = new Float32Array(dsm.length);
   result.fill(Number.NaN);
   const rays = raySamples(grid.cellM, SVF_MAX_DIST_M, SVF_DIRS);
@@ -309,7 +375,11 @@ function skyViewFactorFast(dsm: Float32Array, grid: LocalGrid, receiver: Uint8Ar
       break;
     }
   }
-  if (!hasPositiveTerrain) return skyViewFactorNoTerrain(dsm, grid, receiver);
+  if (!hasPositiveTerrain) return skyViewFactorNoTerrain(dsm, grid, receiver, obstacleMask);
+  const radiusCells = Math.ceil(SVF_MAX_DIST_M / grid.cellM);
+  const interiorStart = radiusCells;
+  const interiorEndCol = grid.cols - radiusCells;
+  const interiorEndRow = grid.rows - radiusCells;
   for (let row = 0; row < grid.rows; row += 1) {
     for (let col = 0; col < grid.cols; col += 1) {
       const index = row * grid.cols + col;
@@ -318,17 +388,27 @@ function skyViewFactorFast(dsm: Float32Array, grid: LocalGrid, receiver: Uint8Ar
       let blockedSquareSinSum = 0;
       const x = grid.x0 + (col + 0.5) * grid.cellM;
       const y = grid.y0 + (row + 0.5) * grid.cellM;
+      const interior = col >= interiorStart && col < interiorEndCol && row >= interiorStart && row < interiorEndRow;
       for (let directionIndex = 0; directionIndex < SVF_DIRS; directionIndex += 1) {
         let highestSlope = 0;
         const ray = rays[directionIndex];
-        for (let sampleIndex = 0; sampleIndex < ray.distances.length; sampleIndex += 1) {
-          const sampleCol = col + ray.colOffsets[sampleIndex];
-          const sampleRow = row + ray.rowOffsets[sampleIndex];
-          if (sampleCol < 0 || sampleCol >= grid.cols || sampleRow < 0 || sampleRow >= grid.rows) break;
-          const elevation = dsm[index + ray.rowOffsets[sampleIndex] * grid.cols + ray.colOffsets[sampleIndex]];
-          if (!Number.isFinite(elevation)) continue;
-          const slope = (elevation - observer) * ray.inverseDistances[sampleIndex];
-          if (slope > highestSlope) highestSlope = slope;
+        if (interior) {
+          for (let sampleIndex = 0; sampleIndex < ray.distances.length; sampleIndex += 1) {
+            const elevation = dsm[index + ray.rowOffsets[sampleIndex] * grid.cols + ray.colOffsets[sampleIndex]];
+            if (!Number.isFinite(elevation)) continue;
+            const slope = (elevation - observer) * ray.inverseDistances[sampleIndex];
+            if (slope > highestSlope) highestSlope = slope;
+          }
+        } else {
+          for (let sampleIndex = 0; sampleIndex < ray.distances.length; sampleIndex += 1) {
+            const sampleCol = col + ray.colOffsets[sampleIndex];
+            const sampleRow = row + ray.rowOffsets[sampleIndex];
+            if (sampleCol < 0 || sampleCol >= grid.cols || sampleRow < 0 || sampleRow >= grid.rows) break;
+            const elevation = dsm[index + ray.rowOffsets[sampleIndex] * grid.cols + ray.colOffsets[sampleIndex]];
+            if (!Number.isFinite(elevation)) continue;
+            const slope = (elevation - observer) * ray.inverseDistances[sampleIndex];
+            if (slope > highestSlope) highestSlope = slope;
+          }
         }
         let sine = highestSlope / Math.sqrt(1 + highestSlope * highestSlope);
         const terrainAngle = horizonAtFast(horizon, x, y, directions[directionIndex]);
@@ -353,6 +433,7 @@ function applyBuildings(state: RasterState, rows: BuildingRow[]): number {
         unknownCells += 1;
         return;
       }
+      state.obstacleMask[index] = 1;
       if (obstacle.heightM > state.dsm[index] - state.ground[index]) {
         // dsm initially equals the ground. Keep the highest roof when an
         // overlapping source polygon is encountered.
@@ -372,13 +453,26 @@ function applyCanopy(state: RasterState, canopy: number[][][][] | null): void {
     forEachCoveredCell(state.grid, obstacle, (index) => {
       if (state.buildingMask[index] !== 0 || !Number.isFinite(state.ground[index])) return;
       const ground = state.ground[index];
+      state.obstacleMask[index] = 1;
       state.dsm[index] = Math.max(state.dsm[index], ground + CANOPY_ASSUMED_HEIGHT_M);
     });
   }
 }
 
-function terrainFor(ctx: EngineContext, reader: NonNullable<ReturnType<typeof demReader>>): HorizonMap {
+function terrainFor(ctx: EngineContext, reader: ReturnType<typeof demReader>): HorizonMap {
   const [cx, cy] = toUtmk(ctx.input.center);
+  if (reader === null) {
+    return terrainHorizon(
+      () => 0,
+      {
+        minX: cx - ctx.input.radiusM,
+        minY: cy - ctx.input.radiusM,
+        maxX: cx + ctx.input.radiusM,
+        maxY: cy + ctx.input.radiusM,
+      },
+      { cellM: SVF_HORIZON_CELL_M, azimuths: SVF_HORIZON_AZIMUTHS, searchM: SVF_HORIZON_SEARCH_M },
+    );
+  }
   // The DEM is a 30m product. A 30m local cache keeps the horizon scan from
   // issuing millions of repeated SQLite interpolation queries at every ray
   // sample while preserving the DEM's native spatial detail.
@@ -406,15 +500,19 @@ export function svfFor(ctx: EngineContext, canopy: number[][][][] | null): SvfSh
   return ctx.memo(memoKey, () => {
     const rows = buildingRows(ctx, Math.min(5000, ctx.input.radiusM + SVF_MAX_DIST_M + SVF_CELL_M));
     const reader = demReader(ctx);
-    if (rows === null || !reader) return null;
+    if (rows === null) return null;
 
     const base = domainGrid(ctx, reader);
-    const state: RasterState = { ...base, buildingMask: new Uint8Array(base.dsm.length) };
+    const state: RasterState = {
+      ...base,
+      buildingMask: new Uint8Array(base.dsm.length),
+      obstacleMask: new Uint8Array(base.dsm.length),
+    };
     applyBuildings(state, rows);
     applyCanopy(state, canopy);
     state.grid.values = Float64Array.from(state.dsm);
     const horizon = terrainFor(ctx, reader);
-    const svf = skyViewFactorFast(state.dsm, state.grid, state.receiver, horizon);
-    return { grid: state.grid, svf };
+    const svf = skyViewFactorFast(state.dsm, state.grid, state.receiver, state.obstacleMask, horizon);
+    return { grid: state.grid, svf, terrainAvailable: reader !== null };
   });
 }

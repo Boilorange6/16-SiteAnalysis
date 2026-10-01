@@ -20,7 +20,12 @@ import {
 
 const SVF_BREAKS = [0.3, 0.5, 0.7];
 const SVF_LAYERS = ["svf_lt03", "svf_03_05", "svf_05_07", "svf_ge07"] as const;
+const SVF_BAND_LABELS = ["0.3 미만", "0.3~0.5", "0.5~0.7", "0.7 이상"] as const;
 const RASTER_NODATA = 255;
+const FLAT_TERRAIN_LIMITATION = {
+  kind: "partial",
+  note: "Copernicus DEM GLO-30이 아직 게시되지 않아 지형 지평선은 평탄면(0°)으로 처리했습니다. 건물 기하만 반영한 부분 결과입니다.",
+} as const;
 
 function percent(part: number, whole: number): number {
   return whole <= 0 ? 0 : Math.round((part / whole) * 1000) / 10;
@@ -33,6 +38,11 @@ function quantile(values: number[], q: number): number | null {
   const lower = Math.floor(position);
   const upper = Math.ceil(position);
   return lower === upper ? sorted[lower] : sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
+}
+
+/** API 지표는 래스터보다 짧게 표시해 상세 패널의 값·단위가 겹치지 않게 한다. */
+function ratioMetric(value: number): number {
+  return Math.round(value * 1000) / 1000;
 }
 
 function circleValues(grid: { cx: number; cy: number; cellM: number; cols: number; rows: number; x0: number; y0: number }, svf: Float32Array, radiusM: number): { values: number[]; totalCells: number } {
@@ -105,10 +115,11 @@ function rasterValues(grid: { cols: number; rows: number }, svf: Float32Array): 
 
 export function d29(ctx: EngineContext): TileResult {
   const shared = svfFor(ctx, null);
-  if (!shared) return notProvided(ctx, "D29", "건물 또는 지형(DEM) 자료가 없어 하늘열림을 계산하지 못했습니다.");
+  if (!shared) return notProvided(ctx, "D29", "건물 자료가 없어 하늘열림을 계산하지 못했습니다.");
 
   const { values, totalCells } = circleValues(shared.grid, shared.svf, ctx.input.radiusM);
   const sources = [...ctx.sources("buildings", BUILDING_SOURCES), ...demSources(ctx)];
+  const terrainLimitation = shared.terrainAvailable ? DEM_LIMITATION : FLAT_TERRAIN_LIMITATION;
   if (values.length === 0) {
     return makeTile(ctx, {
       code: "D29",
@@ -120,7 +131,7 @@ export function d29(ctx: EngineContext): TileResult {
       ],
       sources,
       layers: ["svf"],
-      limitations: [DEM_LIMITATION, { kind: "not_provided", note: "반경 안에서 유효한 지면·건물 DSM 셀을 확인하지 못했습니다." }],
+      limitations: [terrainLimitation, { kind: "not_provided", note: "반경 안에서 유효한 지면·건물 DSM 셀을 확인하지 못했습니다." }],
     });
   }
 
@@ -149,11 +160,11 @@ export function d29(ctx: EngineContext): TileResult {
   const metrics: TileResult["metrics"] = [
     est("fill_svf_pct", "SVF 유효 지면 채움률", fillPct, "%", "d29-fill-svf@1:유효 SVF 셀 면적÷원 안 셀 면적", validArea, totalArea),
     est("back_nodata_pct", "SVF 결측·건물 지붕 면적률", nodataPct, "%", "d29-back-nodata@1:유효하지 않은 원 안 셀 면적÷원 안 셀 면적", Math.max(0, totalArea - validArea), totalArea),
-    est("svf_median", "하늘열림 중앙값", quantile(values, 0.5) as number, "비율", "d29-svf-median@1:유효 지면 SVF 중앙값", null, validArea),
-    est("svf_p10", "하늘열림 P10", quantile(values, 0.1) as number, "비율", "d29-svf-p10@1:유효 지면 SVF 10백분위", null, validArea),
+    est("svf_median", "하늘열림 중앙값", ratioMetric(quantile(values, 0.5) as number), "비율", "d29-svf-median@1:유효 지면 SVF 중앙값", null, validArea),
+    est("svf_p10", "하늘열림 P10", ratioMetric(quantile(values, 0.1) as number), "비율", "d29-svf-p10@1:유효 지면 SVF 10백분위", null, validArea),
     ...SVF_LAYERS.map((layer, index) => est(
       `share_${layer}_pct`,
-      `하늘열림 ${layer} 면적 구성비`,
+      `하늘열림 ${SVF_BAND_LABELS[index]} 면적 구성비`,
       percent(bucketCounts[index] * SVF_CELL_M ** 2, validArea),
       "%",
       `d29-svf-share@1:${layer} 구간의 유효 지면 셀 면적÷유효 지면 셀 면적`,
@@ -162,11 +173,11 @@ export function d29(ctx: EngineContext): TileResult {
     )),
     siteMedian === null
       ? missing("svf_site_median", "대지 하늘열림 중앙값", "비율", "d29-svf-site-median@1:대상 필지 안 유효 SVF 셀 중앙값")
-      : est("svf_site_median", "대지 하늘열림 중앙값", siteMedian, "비율", "d29-svf-site-median@1:대상 필지 안 유효 SVF 셀 중앙값", null, site.values.length * SVF_CELL_M ** 2),
+      : est("svf_site_median", "대지 하늘열림 중앙값", ratioMetric(siteMedian), "비율", "d29-svf-site-median@1:대상 필지 안 유효 SVF 셀 중앙값", null, site.values.length * SVF_CELL_M ** 2),
   ];
 
   const limitations: TileResult["limitations"] = [
-    DEM_LIMITATION,
+    terrainLimitation,
     { kind: "estimated", note: "건물·지형 DSM과 32방위 표본으로 계산한 기하학적 지표입니다." },
     { kind: "estimated", note: "건물은 단순 매스로 표현했으며 높이·지붕 형태·차양은 단순화했습니다." },
     { kind: "estimated", note: "수목 제외 — 수관·차양은 반영하지 않았습니다." },
@@ -226,6 +237,7 @@ export function d29(ctx: EngineContext): TileResult {
         terrainHorizonCellM: SVF_HORIZON_CELL_M,
         terrainHorizonAzimuths: SVF_HORIZON_AZIMUTHS,
         terrainHorizonSearchM: SVF_HORIZON_SEARCH_M,
+        terrain: shared.terrainAvailable ? "dem-glo30" : "flat-no-dem",
         canopy: "excluded",
         buildings: rows.length,
         unknownHeightBuildings: unknownBuildings,

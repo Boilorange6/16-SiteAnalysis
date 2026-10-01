@@ -34,43 +34,45 @@ function insertBuilding(db, releaseId, id, x0, x1, y0, y1, heightM = 20) {
     VALUES (?, NULL, ?, 'source', NULL, NULL, NULL, NULL, NULL, ?, '{}')`).run(featureId, heightM, (x1 - x0) * (y1 - y0));
 }
 
-async function makeFixture({ buildings = null } = {}) {
+async function makeFixture({ buildings = null, terrain = true } = {}) {
   const dataDir = mkdtempSync(join(tmpdir(), "v2-d29-"));
   const version = "v1";
   const versionDir = join(dataDir, "versions", version);
   mkdirSync(versionDir, { recursive: true });
   const files = {};
 
-  const terrainPath = join(versionDir, "terrain.sqlite");
-  const terrain = new Database(terrainPath);
-  initDataFileSchema(terrain, "terrain");
-  const terrainRelease = insertRelease(terrain, {
-    sourceId: "terrain_tiles",
-    provider: "테스트 DEM",
-    sourceUrl: "https://example.invalid/terrain",
-    sourceAsOf: "2026-10-01",
-    fetchedAt: "2026-10-01T00:00:00Z",
-    checksum: "d29-terrain",
-    licenseCode: "TEST",
-  });
-  const meta = {
-    tile: "flat",
-    lat0: 37.60,
-    lon0: 127.12,
-    rows: 101,
-    cols: 101,
-    cellDeg: 0.0005,
-    nodata: DEM_NODATA,
-    vertical: "EGM2008",
-    resolutionM: 30,
-  };
-  insertDemTile(terrain, meta, terrainRelease, Array.from({ length: meta.rows }, (_, row) => {
-    const data = Buffer.alloc(meta.cols * 2);
-    for (let col = 0; col < meta.cols; col += 1) data.writeInt16BE(0, col * 2);
-    return { row, data };
-  }));
-  terrain.close();
-  files.terrain = "terrain";
+  if (terrain) {
+    const terrainPath = join(versionDir, "terrain.sqlite");
+    const terrainDb = new Database(terrainPath);
+    initDataFileSchema(terrainDb, "terrain");
+    const terrainRelease = insertRelease(terrainDb, {
+      sourceId: "terrain_tiles",
+      provider: "테스트 DEM",
+      sourceUrl: "https://example.invalid/terrain",
+      sourceAsOf: "2026-10-01",
+      fetchedAt: "2026-10-01T00:00:00Z",
+      checksum: "d29-terrain",
+      licenseCode: "TEST",
+    });
+    const meta = {
+      tile: "flat",
+      lat0: 37.60,
+      lon0: 127.12,
+      rows: 101,
+      cols: 101,
+      cellDeg: 0.0005,
+      nodata: DEM_NODATA,
+      vertical: "EGM2008",
+      resolutionM: 30,
+    };
+    insertDemTile(terrainDb, meta, terrainRelease, Array.from({ length: meta.rows }, (_, row) => {
+      const data = Buffer.alloc(meta.cols * 2);
+      for (let col = 0; col < meta.cols; col += 1) data.writeInt16BE(0, col * 2);
+      return { row, data };
+    }));
+    terrainDb.close();
+    files.terrain = "terrain";
+  }
 
   if (buildings !== null) {
     const buildingsPath = join(versionDir, "buildings.sqlite");
@@ -200,6 +202,20 @@ try {
   assert.equal(tile.presentation.rasters, undefined);
 } finally {
   missingCtx.close();
+}
+
+// Buildings remain useful when GLO-30 is not published: use a flat terrain
+// horizon and mark the result partial instead of hiding the building SVF.
+const flatDir = await makeFixture({ buildings: walls, terrain: false });
+const flatCtx = makeContext(flatDir, 80);
+try {
+  const tile = d29(flatCtx);
+  assert.equal(tile.status, "partial");
+  assert.ok(tile.presentation.rasters?.some((item) => item.name === "svf"));
+  assert.ok(tile.limitations.some((item) => item.note.includes("평탄면(0°)")));
+  assert.equal(tile.conditions.simulation.terrain, "flat-no-dem");
+} finally {
+  flatCtx.close();
 }
 
 console.log("✓ v2 D29 sky-view-factor tile");
