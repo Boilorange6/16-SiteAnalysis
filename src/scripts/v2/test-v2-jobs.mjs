@@ -1,13 +1,13 @@
 /** P4 T3 백그라운드 큐·무거운 타일·폴링 응답·보드 결과 교체 회귀. */
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 const { buildEngineFixture } = await import("./engine-fixture.mjs");
 const A = await import("../../lib/v2/app-db.ts");
 const { postAnalysis, getAnalysis } = await import("../../lib/v2/engine/api.ts");
-const { HEAVY_TILES, DATE_INDEPENDENT, listJobs, recoverRunningJobs, runHeavyTiles, startJobRunner } = await import("../../lib/v2/engine/jobs.ts");
+const { HEAVY_TILES, DATE_INDEPENDENT, listJobs, recoverRunningJobs, runHeavyTiles, runQueuedJobs, startJobRunner } = await import("../../lib/v2/engine/jobs.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");
 const { boardReducer, initBoard } = await import("../../lib/v2/ui/board-state.ts");
@@ -62,6 +62,53 @@ try {
   assert.ok(failedJobs.some((job) => job.status === "failed"));
   assert.ok(failedJobs.some((job) => job.status === "done"));
   assert.equal(A.getAnalysisRun(appDb, failure.body.analysisId).status, "complete");
+
+  // 게시 버전이 바뀌어도 큐는 분석 시점의 보관 manifest를 사용하고, 한 분석의 실패가 다음 분석을 막지 않는다.
+  const pinnedDataDir = mkdtempSync(join(tmpdir(), "v2-jobs-pinned-data-"));
+  const pinnedAppDbPath = join(mkdtempSync(join(tmpdir(), "v2-jobs-pinned-app-")), "app.sqlite");
+  const pinnedAppDb = A.openV2AppDb(pinnedAppDbPath);
+  const fixtureOptions = { buildings: true, parcels: true, terrain: true, landuse: true };
+  const pinnedA = await buildEngineFixture(pinnedDataDir, "manifest-a", fixtureOptions);
+  const oldAnalysis = postAnalysis(pinnedAppDb, pinnedDataDir, input, 71);
+  assert.equal(oldAnalysis.status, 202);
+  const pinnedB = await buildEngineFixture(pinnedDataDir, "manifest-b", fixtureOptions);
+  const newAnalysis = postAnalysis(pinnedAppDb, pinnedDataDir, { ...input, analysisDate: "2026-10-01" }, 72);
+  assert.equal(newAnalysis.status, 202);
+  pinnedAppDb.close();
+  runQueuedJobs(pinnedAppDbPath, pinnedDataDir);
+  const pinnedCheck = A.openV2AppDb(pinnedAppDbPath);
+  try {
+    assert.ok(listJobs(pinnedCheck, oldAnalysis.body.analysisId).every((job) => job.status === "done"), "old manifest job completes");
+    assert.ok(listJobs(pinnedCheck, newAnalysis.body.analysisId).every((job) => job.status === "done"), "new manifest job completes after old one");
+    assert.ok(A.loadTileResults(pinnedCheck, oldAnalysis.body.analysisId).filter((result) => HEAVY_TILES.includes(result.tileCode)).every((result) => result.provenance.manifestHash === pinnedA));
+    assert.ok(A.loadTileResults(pinnedCheck, newAnalysis.body.analysisId).filter((result) => HEAVY_TILES.includes(result.tileCode)).every((result) => result.provenance.manifestHash === pinnedB));
+  } finally {
+    pinnedCheck.close();
+  }
+
+  const missingDataDir = mkdtempSync(join(tmpdir(), "v2-jobs-missing-data-"));
+  const missingAppDbPath = join(mkdtempSync(join(tmpdir(), "v2-jobs-missing-app-")), "app.sqlite");
+  const missingAppDb = A.openV2AppDb(missingAppDbPath);
+  const missingA = await buildEngineFixture(missingDataDir, "manifest-a", fixtureOptions);
+  const staleAnalysis = postAnalysis(missingAppDb, missingDataDir, input, 73);
+  const currentB = await buildEngineFixture(missingDataDir, "manifest-b", fixtureOptions);
+  const currentAnalysis = postAnalysis(missingAppDb, missingDataDir, { ...input, analysisDate: "2026-10-01" }, 74);
+  missingAppDb.close();
+  rmSync(join(missingDataDir, "manifests", `${missingA}.json`));
+  runQueuedJobs(missingAppDbPath, missingDataDir);
+  const missingCheck = A.openV2AppDb(missingAppDbPath);
+  try {
+    const staleJobs = listJobs(missingCheck, staleAnalysis.body.analysisId);
+    assert.ok(staleJobs.every((job) => job.status === "failed"), "missing pinned manifest fails every stale job");
+    assert.ok(staleJobs.every((job) => job.error === "데이터 버전이 바뀌어 다시 계산해야 합니다"), "job exposes re-run reason");
+    const staleResults = A.loadTileResults(missingCheck, staleAnalysis.body.analysisId).filter((result) => HEAVY_TILES.includes(result.tileCode));
+    assert.ok(staleResults.every((result) => result.status === "failed"));
+    assert.ok(staleResults.every((result) => result.limitations.some((limitation) => limitation.note === "데이터 버전이 바뀌어 다시 계산해야 합니다")), "tile exposes re-run reason");
+    assert.ok(listJobs(missingCheck, currentAnalysis.body.analysisId).every((job) => job.status === "done"), "worker continues with current manifest jobs");
+    assert.ok(A.loadTileResults(missingCheck, currentAnalysis.body.analysisId).filter((result) => HEAVY_TILES.includes(result.tileCode)).every((result) => result.provenance.manifestHash === currentB));
+  } finally {
+    missingCheck.close();
+  }
 
   // 재시작 때 worker가 잡고 있던 running 행은 queued로 되돌린다.
   A.ensureAnalysisJobTable(appDb);
