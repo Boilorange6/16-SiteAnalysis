@@ -1,10 +1,18 @@
-import type { MapFeature, MapLine, MapPolygon } from "../tile-result";
+import type { MapFeature, MapLine, MapPolygon, RasterRef } from "../tile-result";
+import type { BasemapChoice } from "./map-projection";
 
 /** MapFigure가 그리는 입력. 카드·상세·PPT가 같은 것을 쓴다. */
 export type MapModel = {
   center: readonly [number, number];
   radiusM: number;
   features: MapFeature[];
+  /** 결과가 저장된 분석과 타일. 브라우저 래스터 조회 경로를 만들 때만 사용한다. */
+  analysisId?: string;
+  tileCode?: string;
+  /** 결과가 지정한 고정 배경(D01은 Satellite). */
+  basemap?: BasemapChoice;
+  /** 지도에 겹칠 압축 래스터 참조. */
+  rasters?: RasterRef[];
   /** 면 지물(WGS84). T2의 MapFigure가 점보다 먼저 그린다. */
   polygons?: MapPolygon[];
   /** 상한으로 잘리기 전 전체 면 지물 개수 */

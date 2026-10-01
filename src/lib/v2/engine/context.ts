@@ -7,7 +7,8 @@ import type { LngLat } from "../crs";
 import { queryFeaturesInRadius, type FeatureHit } from "../data/features";
 import { legalAreasForCircle } from "../data/legal-areas";
 import { manifestHash, openDataFile, type Manifest } from "../data/manifest";
-import type { TileConditions, TileResult } from "../tile-result";
+import type { RasterRef, TileConditions, TileResult } from "../tile-result";
+import { encodeRaster, MAX_TILE_RASTER_BYTES, type RasterData } from "../raster-store";
 
 export type Limitation = TileResult["limitations"][number];
 export type FileKey = "core" | "buildings" | "parcels" | "reference" | "market" | "terrain" | "weather";
@@ -27,6 +28,8 @@ export interface EngineInput {
 }
 
 export type InitialDataHandles = Partial<Record<FileKey, BetterSqlite3.Database>>;
+export type RasterValues = Uint8Array | Uint16Array | Int16Array;
+export type RasterReader = (code: string, name: string) => { ref: RasterRef; values: RasterValues } | null;
 
 interface SnapshotJson {
   byRegion?: Record<string, number>;
@@ -41,7 +44,9 @@ export class EngineContext {
   private readonly refs = new Map<FileKey, SourceRef[]>();
   private readonly hitCache = new Map<string, FeatureHit[]>();
   private readonly memoCache = new Map<string, unknown>();
+  private readonly rasterItems = new Map<string, Array<{ ref: RasterRef; blob: Buffer }>>();
   private areas: ReturnType<typeof legalAreasForCircle> | null = null;
+  readonly rasterReader: RasterReader | undefined;
 
   constructor(
     readonly dataDir: string,
@@ -49,7 +54,9 @@ export class EngineContext {
     readonly analysisId: string,
     input: EngineInput,
     initialHandles: InitialDataHandles = {},
+    options: { rasterReader?: RasterReader } = {},
   ) {
+    this.rasterReader = options.rasterReader;
     this.input = { ...input, pnu: input.pnu ?? null };
     for (const [key, db] of Object.entries(initialHandles)) {
       if (db) this.handles.set(key as FileKey, db);
@@ -83,6 +90,24 @@ export class EngineContext {
     const value = compute();
     this.memoCache.set(key, value);
     return value;
+  }
+
+  /** 타일 계산이 만든 래스터를 압축해 보관한다. 상한을 넘으면 품질을 몰래 낮추지 않고 실패시킨다. */
+  emitRaster(code: string, r: RasterData): RasterRef {
+    const encoded = encodeRaster(r);
+    const items = this.rasterItems.get(code) ?? [];
+    if (items.some((item) => item.ref.name === encoded.ref.name)) throw new Error(`DUPLICATE_RASTER: ${code}/${encoded.ref.name}`);
+    const total = items.reduce((sum, item) => sum + item.blob.length, 0) + encoded.blob.length;
+    if (total > MAX_TILE_RASTER_BYTES) throw new Error(`TILE_RASTERS_TOO_LARGE: ${code} ${total} bytes`);
+    items.push(encoded);
+    this.rasterItems.set(code, items);
+    return encoded.ref;
+  }
+
+  takeRasters(code: string): Array<{ ref: RasterRef; blob: Buffer }> {
+    const items = this.rasterItems.get(code) ?? [];
+    this.rasterItems.delete(code);
+    return items;
   }
 
   hits(key: FileKey, kinds: readonly string[], radiusM = this.input.radiusM): FeatureHit[] {
@@ -172,5 +197,6 @@ export class EngineContext {
     this.handles.clear();
     this.hitCache.clear();
     this.memoCache.clear();
+    this.rasterItems.clear();
   }
 }

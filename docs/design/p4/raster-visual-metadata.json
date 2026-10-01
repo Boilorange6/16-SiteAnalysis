@@ -1,0 +1,7 @@
+{
+  "mapPngPath": "docs/design/p4/raster-map-compare.png",
+  "pptPngPath": "docs/design/p4/raster-ppt-compare.png",
+  "rasterBytes": 538,
+  "polygonRadiusM": 300,
+  "cells": "80x80 @ 10m"
+}

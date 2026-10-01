@@ -1,8 +1,9 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState } from "react";
-import type { MapModel } from "@/lib/v2/ui/map-layers";
+import { RASTER_STYLES, type MapModel } from "@/lib/v2/ui/map-layers";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
+import { inflateRaster, paintRaster } from "@/lib/v2/ui/raster-image";
 import MapFigure, { type MapFigureProps } from "./map-figure";
 
 /** 보드가 고른 배경지도 종류. 카드·상세·요약의 모든 지도가 같이 따른다. */
@@ -59,6 +60,33 @@ export function useMeasured() {
 export default function MapBox({ model, bare, label, avoid, siteX, rightInset, ...opts }: { model: MapModel; bare?: boolean; label?: string } & Opts2) {
   const { ref, size, near } = useMeasured();
   const layer = useContext(BasemapContext);
+  const [rasterHrefs, setRasterHrefs] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let alive = true;
+    const rasters = model.rasters ?? [];
+    setRasterHrefs({});
+    if (!near || !model.analysisId || !model.tileCode || rasters.length === 0) return () => { alive = false; };
+    void Promise.all(
+      rasters.map(async (raster) => {
+        const style = RASTER_STYLES[raster.palette];
+        if (!style) return null;
+        try {
+          const response = await fetch(`/site/api/v2/analyses/${encodeURIComponent(model.analysisId!)}/tiles/${encodeURIComponent(model.tileCode!)}/rasters/${encodeURIComponent(raster.name)}`);
+          if (!response.ok) return null;
+          const values = await inflateRaster(raster, await response.arrayBuffer());
+          return [raster.name, paintRaster(raster, values, style)] as const;
+        } catch {
+          return null;
+        }
+      }),
+    ).then((items) => {
+      if (!alive) return;
+      setRasterHrefs(Object.fromEntries(items.filter((item): item is readonly [string, string] => item !== null)));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [model.analysisId, model.tileCode, model.rasters, near]);
   return (
     <div ref={ref} style={{ position: "absolute", inset: 0 }}>
       {size && near && (
@@ -68,7 +96,8 @@ export default function MapBox({ model, bare, label, avoid, siteX, rightInset, .
           height={size.h}
           bare={bare}
           label={label}
-          layer={layer}
+          layer={model.basemap ?? layer}
+          rasterHref={(raster) => rasterHrefs[raster.name] ?? null}
           avoid={typeof avoid === "function" ? avoid(size.w, size.h) : avoid}
           siteX={typeof siteX === "function" ? siteX(size.w) : siteX}
           rightInset={typeof rightInset === "function" ? rightInset(size.w) : rightInset}

@@ -108,14 +108,20 @@ function mapOf(r: TileResult): MapModel | null {
   const features = r.presentation.features ?? [];
   const polygons = r.presentation.polygons ?? [];
   const lines = r.presentation.lines ?? [];
-  if (features.length === 0 && polygons.length === 0 && lines.length === 0) return null;
+  const rasters = r.presentation.rasters ?? [];
+  const basemap = r.presentation.basemap;
+  if (features.length === 0 && polygons.length === 0 && lines.length === 0 && rasters.length === 0 && !basemap) return null;
   const notes = MAP_NOTES[r.tileCode] ? [MAP_NOTES[r.tileCode]] : [];
   if (r.tileCode === "A01" && r.metrics.some((m) => m.id === "nearest_rail_m" && m.status === "missing")) notes.push("철도 자료 미적재 · 버스정류장만 표시");
-  if (features.length === 0 && polygons.length === 0) notes.push("반경 안 표시할 지물 없음");
+  if (features.length === 0 && polygons.length === 0 && lines.length === 0) notes.push("반경 안 표시할 지물 없음");
   return {
     center: r.conditions.center,
     radiusM: r.conditions.radiusM,
     features,
+    analysisId: r.analysisId,
+    tileCode: r.tileCode,
+    basemap,
+    rasters,
     polygons,
     polygonsTotal: r.presentation.polygonsTotal ?? polygons.length,
     lines,

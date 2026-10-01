@@ -93,6 +93,27 @@ const RoseSchema = z.object({
   totalHours: z.number().finite().nonnegative(),
 });
 
+/** 격자 남서 모서리·셀 크기를 포함한 압축 래스터 참조. 바이너리는 앱 DB에 둔다. */
+export const RasterRefSchema = z.object({
+  name: z.string().regex(/^[a-z0-9_]{1,48}$/),
+  kind: z.enum(["scalar", "classes", "mask", "vector2"]),
+  crs: z.literal("EPSG:5179"),
+  x0: z.number().finite(),
+  y0: z.number().finite(),
+  cellM: z.number().positive(),
+  cols: z.number().int().min(1).max(4096),
+  rows: z.number().int().min(1).max(4096),
+  dtype: z.enum(["u8", "u16", "i16", "bits"]),
+  bands: z.union([z.literal(1), z.literal(2)]),
+  scale: z.number().finite(),
+  offset: z.number().finite(),
+  nodata: z.number().int().nullable(),
+  palette: z.string().min(1),
+  label: z.string().nullable().optional(),
+  bytes: z.number().int().positive(),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/),
+});
+
 export const TileResultSchema = z
   .object({
     tileId: z.string().min(1),
@@ -133,6 +154,10 @@ export const TileResultSchema = z
       linesTotal: z.number().int().nonnegative().optional(),
       /** D22 바람장미: 북쪽부터 시계방향 16방위 × 풍속 5구간 시간수. */
       rose: RoseSchema.optional(),
+      /** 지도 위에 겹칠 압축 격자 결과. 바이너리는 tile_raster에 저장한다. */
+      rasters: z.array(RasterRefSchema).max(96).optional(),
+      /** D01처럼 타일 자체가 고정하는 항공영상 배경. */
+      basemap: z.enum(["Satellite"]).optional(),
     }),
     provenance: z.object({
       manifestHash: z.string().regex(/^[0-9a-f]{64}$/),
@@ -193,6 +218,10 @@ export type TileConditions = TileResult["conditions"];
 export type MapFeature = z.infer<typeof MapFeatureSchema>;
 export type MapPolygon = z.infer<typeof MapPolygonSchema>;
 export type MapLine = z.infer<typeof MapLineSchema>;
+export type RasterRef = z.infer<typeof RasterRefSchema>;
+export type RasterKind = RasterRef["kind"];
+export type RasterDType = RasterRef["dtype"];
+export type BasemapChoice = NonNullable<TileResult["presentation"]["basemap"]>;
 
 export function parseTileResult(value: unknown): TileResult {
   return TileResultSchema.parse(value);
