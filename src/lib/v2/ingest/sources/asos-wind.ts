@@ -133,12 +133,12 @@ function dateText(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
-function hourOf(value: string): { ms: number; key: string } | null {
+function hourOf(value: string): { ms: number } | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/.exec(value.trim());
   if (!match || match[5] !== "00") return null;
   const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4])));
   if (date.toISOString().slice(0, 16) !== value.trim().replace(" ", "T")) return null;
-  return { ms: date.getTime(), key: `${match[1]}-${match[2]}-${match[3]} ${match[4]}:00` };
+  return { ms: date.getTime() };
 }
 
 interface StationAggregate {
@@ -149,7 +149,7 @@ interface StationAggregate {
   calmHours: number;
   missingHours: number;
   dirs: number[][];
-  seen: Set<string>;
+  seenHours: Uint8Array;
 }
 
 function aggregateFor(station: AsosStation, periodStart: number, periodEnd: number): StationAggregate {
@@ -166,7 +166,7 @@ function aggregateFor(station: AsosStation, periodStart: number, periodEnd: numb
     calmHours: 0,
     missingHours: 0,
     dirs: Array.from({ length: 16 }, () => Array(5).fill(0)),
-    seen: new Set<string>(),
+    seenHours: new Uint8Array(Math.ceil(totalHours / 8)),
   };
 }
 
@@ -198,11 +198,14 @@ export async function buildAsosWind(
       continue;
     }
     if (time.ms < aggregate.startMs || time.ms >= aggregate.endMs) continue;
-    if (aggregate.seen.has(time.key)) {
+    const hourIndex = Math.floor((time.ms - aggregate.startMs) / HOUR_MS);
+    const byteIndex = Math.floor(hourIndex / 8);
+    const bit = 1 << (hourIndex % 8);
+    if ((aggregate.seenHours[byteIndex] & bit) !== 0) {
       stats.reject();
       continue;
     }
-    aggregate.seen.add(time.key);
+    aggregate.seenHours[byteIndex] |= bit;
     stats.accept({ stnId: aggregate.station.stnId, ws: row.ws, wd: row.wd }, aggregate.station.stnId, "hour");
 
     const speedBin = speedBinOf(row.ws);
