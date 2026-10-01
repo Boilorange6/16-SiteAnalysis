@@ -1,7 +1,7 @@
 /**
  * v2 데이터 파일 스키마 (spec §3.2~3.3).
  *
- * 데이터 파일은 로컬 PC에서 만들어 읽기 전용으로 게시한다. 파일 하나가 한 종류(core/buildings/parcels/reference/market/osm)다.
+ * 데이터 파일은 로컬 PC에서 만들어 읽기 전용으로 게시한다. 파일 하나가 한 종류(core/buildings/parcels/reference/market/osm/terrain/weather)다.
  * geom_json은 EPSG:5179 미터 좌표의 GeoJSON geometry다.
  * ponytail: WKB 대신 GeoJSON 텍스트 — 파일 크기가 커진다. A0 실측에서 core가 디스크 예산을 넘으면 WKB로 바꾼다.
  */
@@ -9,8 +9,8 @@ import type BetterSqlite3 from "better-sqlite3";
 
 type Db = BetterSqlite3.Database;
 
-export type DataFileKind = "core" | "buildings" | "parcels" | "reference" | "market" | "osm";
-export const DATA_FILE_KINDS: readonly DataFileKind[] = ["core", "buildings", "parcels", "reference", "market", "osm"];
+export type DataFileKind = "core" | "buildings" | "parcels" | "reference" | "market" | "osm" | "terrain" | "weather";
+export const DATA_FILE_KINDS: readonly DataFileKind[] = ["core", "buildings", "parcels", "reference", "market", "osm", "terrain", "weather"];
 export const DATA_SCHEMA_VERSION = 2;
 export const VALUE_STATUSES = ["observed", "estimated", "suppressed", "missing", "not_applicable"] as const;
 
@@ -186,6 +186,50 @@ const MARKET_SQL = `
   CREATE INDEX IF NOT EXISTS idx_devevent_project ON development_event (project_id);
 `;
 
+const TERRAIN_SQL = `
+  CREATE TABLE IF NOT EXISTS dem_tile (
+    tile TEXT PRIMARY KEY,
+    lat0 REAL NOT NULL,
+    lon0 REAL NOT NULL,
+    rows INTEGER NOT NULL,
+    cols INTEGER NOT NULL,
+    cell_deg REAL NOT NULL,
+    nodata INTEGER NOT NULL,
+    vertical TEXT NOT NULL,
+    resolution_m REAL NOT NULL,
+    release_id TEXT NOT NULL REFERENCES source_release(release_id)
+  );
+  CREATE TABLE IF NOT EXISTS dem_row (
+    tile TEXT NOT NULL,
+    row INTEGER NOT NULL,
+    data BLOB NOT NULL,
+    PRIMARY KEY (tile, row)
+  ) WITHOUT ROWID;
+`;
+
+const WEATHER_SQL = `
+  CREATE TABLE IF NOT EXISTS weather_station (
+    station_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    lng REAL NOT NULL,
+    lat REAL NOT NULL,
+    elevation_m REAL,
+    period_start TEXT NOT NULL,
+    period_end TEXT NOT NULL,
+    total_hours INTEGER NOT NULL,
+    calm_hours INTEGER NOT NULL,
+    missing_hours INTEGER NOT NULL,
+    release_id TEXT NOT NULL REFERENCES source_release(release_id)
+  );
+  CREATE TABLE IF NOT EXISTS wind_rose (
+    station_id TEXT NOT NULL,
+    dir16 INTEGER NOT NULL,
+    speed_bin INTEGER NOT NULL,
+    hours INTEGER NOT NULL,
+    PRIMARY KEY (station_id, dir16, speed_bin)
+  ) WITHOUT ROWID;
+`;
+
 export function initDataFileSchema(db: Db, kind: DataFileKind): void {
   const hasMeta = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='data_file_meta'").get() !== undefined;
   const existing = hasMeta
@@ -205,6 +249,8 @@ export function initDataFileSchema(db: Db, kind: DataFileKind): void {
   if (kind === "buildings") db.exec(BUILDINGS_SQL);
   if (kind === "reference") db.exec(REFERENCE_SQL);
   if (kind === "market") db.exec(MARKET_SQL);
+  if (kind === "terrain") db.exec(TERRAIN_SQL);
+  if (kind === "weather") db.exec(WEATHER_SQL);
   const upsert = db.prepare("INSERT INTO data_file_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
   upsert.run("kind", kind);
   upsert.run("schema_version", String(DATA_SCHEMA_VERSION));
