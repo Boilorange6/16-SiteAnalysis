@@ -3,17 +3,28 @@ import assert from "node:assert/strict";
 const { DXF_LAYERS, dxfFileName, sceneToDxf } = await import("../../lib/v2/export/dxf.ts");
 
 const scene = {
-  version: "v2-scene@1",
+  version: "v2-scene@2",
   analysisId: "analysis-dxf-1",
   manifestHash: "manifest-hash-abcdef1234567890",
   origin: { epsg: "EPSG:5179", x: 930000.12, y: 1810000.34, lng: 127.1, lat: 37.5 },
   radiusM: 800,
-  groundZ: 0,
+  ground: {
+    kind: "dem",
+    cellM: 10,
+    cols: 3,
+    rows: 3,
+    originZ: 50,
+    z: [0, 1, 2, 3, 4, 5, 6, 7, 8],
+    resolutionM: 30,
+    vertical: "EGM96",
+    sourceId: "terrain:fixture",
+  },
   site: [[[0, 0], [20, 0], [20, 20], [0, 20]]],
   buildings: [
     {
       id: "building-40m",
       rings: [[[1, 1], [9, 1], [9, 9], [1, 9]]],
+      baseZ: 2.5,
       heightM: 40,
       heightMethod: "source",
       floorsAbove: 12,
@@ -23,6 +34,7 @@ const scene = {
     {
       id: "building-unknown",
       rings: [[[11, 1], [19, 1], [19, 9], [11, 9]]],
+      baseZ: 0,
       heightM: null,
       heightMethod: "unknown",
       floorsAbove: null,
@@ -60,10 +72,13 @@ assert.equal((dxf.match(/LWPOLYLINE/g) ?? []).length, 3, "2동 + 1필지 고리"
 assert.equal((dxf.match(/\r\n\s*39\r\n40\.00\r\n/g) ?? []).length, 1, "높이 40m 건물에만 두께");
 assert.match(dxf, /8\r\nBLDG_NOHEIGHT\r\n/);
 assert.match(dxf, /8\r\nSITE\r\n/);
+assert.match(dxf, /8\r\nTERRAIN\r\n/);
 assert.match(dxf, /CIRCLE/);
 assert.match(dxf, /POINT/);
 assert.match(dxf, /TEXT/);
-assert.match(dxf, /origin EPSG:5179 E=930000\.12 N=1810000\.34; unit m; north=\+Y; manifest manifest-has; scene v2-scene@1/);
+assert.match(dxf, /origin EPSG:5179 E=930000\.12 N=1810000\.34; unit m; north=\+Y; manifest manifest-has; scene v2-scene@2; ground dem 30m EGM96 originZ=50\.00/);
+assert.equal((dxf.match(/3DFACE/g) ?? []).length, 8, "3x3 DEM 격자의 유효 셀 4개를 두 삼각형씩 출력");
+assert.match(dxf, /\r\n\s*38\r\n2\.50\r\n/, "DEM 건물은 바닥 상대 표고를 38 코드로 출력");
 assert.match(dxf, /EOF\r\n$/);
 assert.match(dxf, /\r\n\s*10\r\n1\.00\r\n\s*20\r\n1\.00/, "기본 site 원점은 로컬 좌표를 유지");
 
@@ -80,6 +95,17 @@ assert.match(siteFallback, /8\r\nSITE\r\n/);
 
 const nonSiteParcel = sceneToDxf({ ...scene, buildings: [], site: null, parcels: [{ ...scene.parcels[0], isSite: false }] });
 assert.match(nonSiteParcel, /8\r\nPARCEL\r\n/);
+
+const flatScene = {
+  ...scene,
+  version: "v2-scene@2",
+  ground: { kind: "flat" },
+  buildings: scene.buildings.map((building) => ({ ...building, baseZ: null })),
+};
+const flatDxf = sceneToDxf(flatScene);
+assert.match(flatDxf, /ground flat/);
+assert.doesNotMatch(flatDxf, /\r\n\s*38\r\n/, "flat 지반에는 건물 바닥 표고를 넣지 않는다");
+assert.equal((flatDxf.match(/3DFACE/g) ?? []).length, 0, "flat 지반에는 TERRAIN 3DFACE가 없다");
 
 const absolute = sceneToDxf(scene, { origin: "utmk" });
 assert.match(absolute, /10\r\n930001\.12\r\n\s*20\r\n1810001\.34/);

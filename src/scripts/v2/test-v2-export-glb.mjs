@@ -3,17 +3,18 @@ import assert from "node:assert/strict";
 const { glbFileName, sceneToGlb } = await import("../../lib/v2/export/glb.ts");
 
 const scene = {
-  version: "v2-scene@1",
+  version: "v2-scene@2",
   analysisId: "analysis-glb",
   manifestHash: "manifest-hash-123",
   origin: { epsg: "EPSG:5179", x: 1000000, y: 2000000, lng: 127.1, lat: 37.5 },
   radiusM: 800,
-  groundZ: 0,
+  ground: { kind: "flat" },
   site: [[[0, 0], [20, 0], [20, 20], [0, 20]]],
   buildings: [
     {
       id: "source-square",
       rings: [[[0, 0], [10, 0], [10, 10], [0, 10]]],
+      baseZ: null,
       heightM: 10,
       heightMethod: "source",
       floorsAbove: 3,
@@ -26,6 +27,7 @@ const scene = {
         [[-10, -10], [10, -10], [10, 10], [-10, 10]],
         [[-2, -2], [-2, 2], [2, 2], [2, -2]],
       ],
+      baseZ: null,
       heightM: 6,
       heightMethod: "floors_estimate",
       floorsAbove: 2,
@@ -35,6 +37,7 @@ const scene = {
     {
       id: "unknown-square",
       rings: [[[20, 0], [24, 0], [24, 4], [20, 4]]],
+      baseZ: null,
       heightM: null,
       heightMethod: "unknown",
       floorsAbove: null,
@@ -85,7 +88,13 @@ assert.deepEqual(json.asset.extras, {
   north: "-Z",
   manifestHash: "manifest-hash-123",
   analysisId: "analysis-glb",
-  sceneVersion: "v2-scene@1",
+  sceneVersion: "v2-scene@2",
+  ground: { kind: "flat" },
+  buildings: [
+    { id: "source-square", heightMethod: "source", floorsAbove: 3, baseZ: null },
+    { id: "estimated-hole", heightMethod: "floors_estimate", floorsAbove: 2, baseZ: null },
+    { id: "unknown-square", heightMethod: "unknown", floorsAbove: null, baseZ: null },
+  ],
 });
 assert.equal(json.meshes[0].primitives.length, 4, "source/estimated/unknown/ground primitives");
 assert.equal(json.materials.length, 4);
@@ -108,6 +117,47 @@ assert.ok(unknownPositions.every((value, i) => i % 3 !== 1 || value === 0), "unk
 
 const groundPrimitive = json.meshes[0].primitives[3];
 assert.equal(json.accessors[groundPrimitive.indices].count, 64 * 3, "64-sided ground disk");
+
+const demScene = {
+  ...scene,
+  analysisId: "analysis-glb-dem",
+  ground: {
+    kind: "dem",
+    cellM: 10,
+    cols: 3,
+    rows: 3,
+    originZ: 100,
+    z: [0, 1, 2, 3, 4, 5, 6, 7, 8],
+    resolutionM: 30,
+    vertical: "EGM96",
+    sourceId: "terrain:fixture",
+  },
+  buildings: [
+    { ...scene.buildings[0], baseZ: 5 },
+    { ...scene.buildings[1], baseZ: 2 },
+    { ...scene.buildings[2], baseZ: 3 },
+  ],
+};
+const demBytes = sceneToGlb(demScene);
+const { json: demJson, bin: demBin } = readGlb(demBytes);
+assert.equal(demJson.meshes[0].primitives.length, 5, "DEM은 terrain primitive을 추가한다");
+assert.equal(demJson.materials.length, 5, "DEM terrain 재질");
+assert.deepEqual(demJson.asset.extras.ground, {
+  kind: "dem",
+  cellM: 10,
+  originZ: 100,
+  resolutionM: 30,
+  vertical: "EGM96",
+});
+assert.equal(demJson.asset.extras.buildings.length, 3);
+const terrainPrimitive = demJson.meshes[0].primitives[4];
+const terrainPositions = accessorPositions(demJson, demBin, terrainPrimitive.attributes.POSITION);
+assert.equal(terrainPositions.length / 3, 9, "유효한 3x3 격자점 9개");
+const demSourcePositions = accessorPositions(demJson, demBin, demJson.meshes[0].primitives[0].attributes.POSITION);
+assert.equal(Math.max(...demSourcePositions.filter((_, i) => i % 3 === 1)), 15, "건물 높이는 baseZ 위에 더한다");
+const demUnknownPositions = accessorPositions(demJson, demBin, demJson.meshes[0].primitives[2].attributes.POSITION);
+assert.ok(demUnknownPositions.length > 0);
+assert.ok(demUnknownPositions.every((value, i) => i % 3 !== 1 || value === 3), "미상 건물은 baseZ 바닥만 출력");
 
 assert.equal(glbFileName("서울특별시 강동구/고덕동 123", "2026-09-30"), "사이트분석_서울특별시_강동구_고덕동_123_20260930.glb");
 
