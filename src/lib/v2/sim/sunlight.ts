@@ -84,6 +84,13 @@ function withinDistance(ring: readonly XY[], site: readonly XY[], r: number): bo
   return false;
 }
 
+/** 철거 가정이면 대지와 겹치는 발자국은 수광면과 그림자 원천 모두에서 뺀다. */
+export function shadowSourcesFor(buildings: readonly Building[], site: readonly XY[], removeBuildingsInSite: boolean): readonly Building[] {
+  if (!removeBuildingsInSite) return buildings;
+  const siteBox = ringBBox(site);
+  return buildings.filter((building) => !bboxOverlap(ringBBox(building.ring), siteBox));
+}
+
 export function computeSunlight(input: SunlightInput): SunlightResult {
   const g = input.gridM ?? 2;
   const stepMin = input.stepMin ?? 10;
@@ -98,7 +105,8 @@ export function computeSunlight(input: SunlightInput): SunlightResult {
 
   // 1) 영향 영역 안 건물
   const influencing = input.buildings.filter((b) => withinDistance(b.ring, site, influenceM));
-  const heights = influencing.filter((b) => b.heightM !== null && b.heightM > 0);
+  const shadowBuildings = shadowSourcesFor(influencing, site, remove);
+  const heights = shadowBuildings.filter((b) => b.heightM !== null && b.heightM > 0);
   const noHeight = influencing.filter((b) => b.heightM === null);
   const footprints = influencing.map((b) => ({ b, box: ringBBox(b.ring) })).filter((f) => bboxOverlap(f.box, sb));
 
