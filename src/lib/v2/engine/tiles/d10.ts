@@ -173,7 +173,7 @@ export function d10(ctx: EngineContext, options: CanopyForOptions = {}): TileRes
       },
       values,
     });
-    return { ...tile, presentation: { ...tile.presentation, rasters: [ref] } };
+    return { ...tile, presentation: { ...tile.presentation, basemap: "Satellite", rasters: [ref] } };
   }
   return tile;
 }
