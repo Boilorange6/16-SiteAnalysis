@@ -82,6 +82,12 @@ const MAP_NOTES: Record<string, string> = {
   D14: "운영 시설만 · 계획 철도 제외",
   D19: "연속지적 · 참조용",
   D20: "도형 면적 기준(공부면적 아님)",
+  D15: "OSM 도로로 폐합된 블록 · 반경 밖 500m까지 읽음",
+  D16: "건물 수 KDE · 대역폭 100m · 20백분위 구간",
+  D17: "SRTM 1″(약 30m) 지표고 · EGM96 · 중심 상대고",
+  D18: "30m 격자 경사 · 옹벽·미세 지형 미반영",
+  D21: "기하학적 일조 · 09~15시 10분 간격",
+  S02: "09·12·15시 그림자 · 일조시간은 D21",
   D27: "1km 격자 · 비밀보호 노이즈",
   A04: "대표점 · 원천 면적 비례 (경계 아님)",
   A05: "원 크기 = 세대수 · 속 빈 원 = 세대수 미확인",
@@ -92,7 +98,8 @@ function mapOf(r: TileResult): MapModel | null {
   if (r.status !== "complete" && r.status !== "partial") return null;
   const features = r.presentation.features ?? [];
   const polygons = r.presentation.polygons ?? [];
-  if (features.length === 0 && polygons.length === 0) return null;
+  const lines = r.presentation.lines ?? [];
+  if (features.length === 0 && polygons.length === 0 && lines.length === 0) return null;
   const notes = MAP_NOTES[r.tileCode] ? [MAP_NOTES[r.tileCode]] : [];
   if (r.tileCode === "A01" && r.metrics.some((m) => m.id === "nearest_rail_m" && m.status === "missing")) notes.push("철도 자료 미적재 · 버스정류장만 표시");
   if (features.length === 0 && polygons.length === 0) notes.push("반경 안 표시할 지물 없음");
@@ -102,6 +109,8 @@ function mapOf(r: TileResult): MapModel | null {
     features,
     polygons,
     polygonsTotal: r.presentation.polygonsTotal ?? polygons.length,
+    lines,
+    linesTotal: r.presentation.linesTotal ?? lines.length,
     total: r.presentation.featuresTotal ?? features.length,
     notes,
   };

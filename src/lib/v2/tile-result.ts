@@ -72,11 +72,25 @@ const MapFeatureSchema = z.object({
 export const MAX_MAP_POLYGONS = 3000;
 export const MAX_POLYGON_VERTICES = 200;
 const LngLatSchema = z.tuple([z.number().finite(), z.number().finite()]);
+export const MAX_MAP_LINES = 2000;
+export const MAX_LINE_VERTICES = 200;
+const MapLineSchema = z.object({
+  layer: z.string().min(1),
+  points: z.array(LngLatSchema).min(2).max(MAX_LINE_VERTICES),
+  label: z.string().nullable().optional(),
+});
 const MapPolygonSchema = z.object({
   layer: z.string().min(1),
   /** 첫 고리는 바깥, 나머지는 구멍. WGS84 [lng, lat]. 첫점=끝점으로 닫는다. */
   rings: z.array(z.array(LngLatSchema).min(4).max(MAX_POLYGON_VERTICES + 1)).min(1),
   label: z.string().nullable().optional(),
+});
+const RoseSchema = z.object({
+  station: z.string().min(1),
+  dirs: z.array(z.array(z.number().finite().nonnegative()).length(5)).length(16),
+  calmHours: z.number().finite().nonnegative(),
+  missingHours: z.number().finite().nonnegative(),
+  totalHours: z.number().finite().nonnegative(),
 });
 
 export const TileResultSchema = z
@@ -114,6 +128,11 @@ export const TileResultSchema = z
       /** 면 지물(선택). 없거나 그릴 수 없으면 같은 정보의 대표점 features로 대신한다. 상한 MAX_MAP_POLYGONS. */
       polygons: z.array(MapPolygonSchema).max(MAX_MAP_POLYGONS).optional(),
       polygonsTotal: z.number().int().nonnegative().optional(),
+      /** 선 지물(WGS84). 상한 MAX_MAP_LINES. */
+      lines: z.array(MapLineSchema).max(MAX_MAP_LINES).optional(),
+      linesTotal: z.number().int().nonnegative().optional(),
+      /** D22 바람장미: 북쪽부터 시계방향 16방위 × 풍속 5구간 시간수. */
+      rose: RoseSchema.optional(),
     }),
     provenance: z.object({
       manifestHash: z.string().regex(/^[0-9a-f]{64}$/),
@@ -173,6 +192,7 @@ export type TileResult = z.infer<typeof TileResultSchema>;
 export type TileConditions = TileResult["conditions"];
 export type MapFeature = z.infer<typeof MapFeatureSchema>;
 export type MapPolygon = z.infer<typeof MapPolygonSchema>;
+export type MapLine = z.infer<typeof MapLineSchema>;
 
 export function parseTileResult(value: unknown): TileResult {
   return TileResultSchema.parse(value);

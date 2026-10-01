@@ -1,13 +1,13 @@
 /** 타일 공통: 지표 생성기와 TileResult 조립. 결과는 항상 parseTileResult를 통과한다. */
 import { toLngLat } from "../../crs";
 import type { FeatureHit } from "../../data/features";
-import { MAX_MAP_FEATURES, MAX_MAP_POLYGONS, MAX_POLYGON_VERTICES, parseTileResult, type MapFeature, type MapPolygon, type TileResult } from "../../tile-result";
+import { MAX_LINE_VERTICES, MAX_MAP_FEATURES, MAX_MAP_LINES, MAX_MAP_POLYGONS, MAX_POLYGON_VERTICES, parseTileResult, type MapFeature, type MapLine, type MapPolygon, type TileResult } from "../../tile-result";
 import { layerStyle } from "../../ui/map-layers";
 import { sourceName } from "../../ui/tile-catalog";
 import type { EngineContext, Limitation, SourceRef } from "../context";
 import { simplifyRing } from "./geo";
 
-export const ENGINE_VERSION = "v2-p2-spatial-2";
+export const ENGINE_VERSION = "v2-p3-terrain-1";
 
 type Metric = TileResult["metrics"][number];
 
@@ -87,6 +87,75 @@ export function capPolygons(items: PolygonCandidate[]): { polygons: MapPolygon[]
   return { polygons: sorted.slice(0, MAX_MAP_POLYGONS).map((c) => c.p), total: items.length };
 }
 
+// ── 선 지물 ──
+export type LineCandidate = { id: number; lengthM: number; l: MapLine };
+
+const pointSegmentDistance = (p: number[], a: number[], b: number[]) => {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const t = dx === 0 && dy === 0 ? 0 : Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy)));
+  return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
+};
+
+/** 열린 선의 끝점을 보존하는 Douglas–Peucker 단순화. */
+function simplifyOpenLine(points: number[][], maxVertices: number): number[][] {
+  if (points.length <= maxVertices) return points;
+  const keepAt = (tolerance: number): number[] => {
+    const keep = new Uint8Array(points.length);
+    keep[0] = 1;
+    keep[points.length - 1] = 1;
+    const stack: Array<[number, number]> = [[0, points.length - 1]];
+    while (stack.length > 0) {
+      const [from, to] = stack.pop()!;
+      let far = -1;
+      let farDistance = tolerance;
+      for (let i = from + 1; i < to; i++) {
+        const distance = pointSegmentDistance(points[i], points[from], points[to]);
+        if (distance > farDistance) {
+          farDistance = distance;
+          far = i;
+        }
+      }
+      if (far >= 0) {
+        keep[far] = 1;
+        stack.push([from, far], [far, to]);
+      }
+    }
+    return Array.from(keep.keys()).filter((i) => keep[i] === 1);
+  };
+
+  const xs = points.map((point) => point[0]);
+  const ys = points.map((point) => point[1]);
+  let low = 0;
+  let high = Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+  for (let i = 0; i < 40; i++) {
+    const middle = (low + high) / 2;
+    if (keepAt(middle).length <= maxVertices) high = middle;
+    else low = middle;
+  }
+  let indexes = keepAt(high);
+  if (indexes.length > maxVertices) {
+    indexes = Array.from({ length: maxVertices }, (_, i) => Math.round((i * (points.length - 1)) / (maxVertices - 1)));
+  }
+  return indexes.map((i) => points[i]);
+}
+
+/** EPSG:5179 열린 선형 → 지도용 선. 200점을 넘으면 끝점을 보존해 단순화한다. */
+export function lineCandidate(id: number, layer: string, pathM: number[][], lengthM: number, label?: string | null): LineCandidate | null {
+  if (pathM.length < 2 || pathM.some((point) => point.length < 2 || !Number.isFinite(point[0]) || !Number.isFinite(point[1]))) return null;
+  const points = simplifyOpenLine(pathM, MAX_LINE_VERTICES).map((point) => {
+    const [lng, lat] = toLngLat([point[0], point[1]]);
+    return [Math.round(lng * 1e6) / 1e6, Math.round(lat * 1e6) / 1e6] as [number, number];
+  });
+  return { id, lengthM, l: { layer, points, label: label ?? null } };
+}
+
+/** 상한을 넘으면 긴 선부터 남긴다. 결정적. */
+export function capLines(items: LineCandidate[]): { lines: MapLine[]; total: number } {
+  const sorted = [...items].sort((a, b) => b.lengthM - a.lengthM || a.id - b.id);
+  return { lines: sorted.slice(0, MAX_MAP_LINES).map((candidate) => candidate.l), total: items.length };
+}
+
 export interface TileDraft {
   code: string;
   type?: TileResult["tileType"];
@@ -100,12 +169,19 @@ export interface TileDraft {
   map?: MapCandidate[];
   /** 지도에 그릴 면 후보(선택). 같은 정보의 대표점은 map에 함께 넣어 면을 못 그리는 화면이 대신 쓴다. */
   polygons?: PolygonCandidate[];
+  /** 지도에 그릴 선 후보(선택). 상한 처리·범례는 makeTile이 한다. */
+  lines?: LineCandidate[];
 }
 
 export function makeTile(ctx: EngineContext, d: TileDraft): TileResult {
   const capped = d.map ? capFeatures(d.map) : null;
   const cappedPoly = d.polygons ? capPolygons(d.polygons) : null;
-  const legendLayers = [...(capped?.features.map((f) => f.layer) ?? []), ...(cappedPoly?.polygons.map((p) => p.layer) ?? [])];
+  const cappedLine = d.lines ? capLines(d.lines) : null;
+  const legendLayers = [
+    ...(capped?.features.map((f) => f.layer) ?? []),
+    ...(cappedPoly?.polygons.map((p) => p.layer) ?? []),
+    ...(cappedLine?.lines.map((l) => l.layer) ?? []),
+  ];
   const legend = [...new Set(legendLayers.map((l) => layerStyle(l).label))].map((label) => ({ label, min: null, max: null }));
   return parseTileResult({
     tileId: `${ctx.analysisId}-${d.code}`,
@@ -124,6 +200,7 @@ export function makeTile(ctx: EngineContext, d: TileDraft): TileResult {
       outputFace: "front",
       ...(capped ? { features: capped.features, featuresTotal: capped.total } : {}),
       ...(cappedPoly && cappedPoly.total > 0 ? { polygons: cappedPoly.polygons, polygonsTotal: cappedPoly.total } : {}),
+      ...(cappedLine && cappedLine.total > 0 ? { lines: cappedLine.lines, linesTotal: cappedLine.total } : {}),
     },
     provenance: { manifestHash: ctx.manifestHash, sources: d.sources },
     limitations: d.limitations,

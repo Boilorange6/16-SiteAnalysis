@@ -37,8 +37,14 @@ import { d11 } from "./tiles/d11";
 import { d12 } from "./tiles/d12";
 import { d13 } from "./tiles/d13";
 import { d14 } from "./tiles/d14";
+import { d15 } from "./tiles/d15";
+import { d16 } from "./tiles/d16";
+import { d17 } from "./tiles/d17";
+import { d18 } from "./tiles/d18";
 import { d19 } from "./tiles/d19";
 import { d20 } from "./tiles/d20";
+import { d21 } from "./tiles/d21";
+import { d22 } from "./tiles/d22";
 import { d23 } from "./tiles/d23";
 import { d24 } from "./tiles/d24";
 import { d25 } from "./tiles/d25";
@@ -87,8 +93,14 @@ const TILES: Array<[code: string, compute: (ctx: EngineContext) => TileResult]> 
   ["D12", d12],
   ["D13", d13],
   ["D14", d14],
+  ["D15", d15],
+  ["D16", d16],
+  ["D17", d17],
+  ["D18", d18],
   ["D19", d19],
   ["D20", d20],
+  ["D21", d21],
+  ["D22", d22],
   ["D23", d23],
   ["D24", d24],
   ["D25", d25],

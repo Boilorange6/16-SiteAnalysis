@@ -6,7 +6,6 @@ import { tmpdir } from "node:os";
 
 const { buildEngineFixture, CENTER } = await import("./engine-fixture.mjs");
 const M = await import("../../lib/v2/data/manifest.ts");
-const { SCENE_VERSION } = await import("../../lib/v2/scene.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { s01 } = await import("../../lib/v2/engine/tiles/s01.ts");
 
@@ -26,7 +25,7 @@ const ctx = new EngineContext(dataDir, manifest, "s01-test", {
 const tile = s01(ctx);
 assert.equal(tile.tileType, "simulation");
 assert.equal(tile.status, "partial");
-assert.equal(tile.engineVersion, "v2-p2-spatial-2");
+assert.equal(tile.engineVersion, "v2-p3-terrain-1");
 assert.equal(metric(tile, "buildings").value, 6);
 assert.deepEqual(
   [metric(tile, "height_known_pct").value, metric(tile, "height_known_pct").numerator, metric(tile, "height_known_pct").denominator],
@@ -40,7 +39,7 @@ assert.deepEqual([metric(tile, "height_max_m").value, metric(tile, "height_max_m
 assert.deepEqual(tile.presentation.camera, { kind: "axonometric", azimuthDeg: 225, elevationDeg: 35, radiusM: 800 });
 assert.deepEqual(tile.presentation.layers, ["mass_source", "mass_estimated", "mass_unknown"]);
 assert.deepEqual(tile.conditions.simulation, {
-  scene: SCENE_VERSION,
+  scene: "v2-scene@1",
   buildingsIncluded: 6,
   buildingsTotal: 6,
   cap: 5000,

@@ -1,4 +1,4 @@
-import type { MapFeature, MapPolygon } from "../tile-result";
+import type { MapFeature, MapLine, MapPolygon } from "../tile-result";
 
 /** MapFigure가 그리는 입력. 카드·상세·PPT가 같은 것을 쓴다. */
 export type MapModel = {
@@ -9,6 +9,10 @@ export type MapModel = {
   polygons?: MapPolygon[];
   /** 상한으로 잘리기 전 전체 면 지물 개수 */
   polygonsTotal?: number;
+  /** 선 지물(WGS84) */
+  lines?: MapLine[];
+  /** 상한으로 잘리기 전 전체 선 지물 개수 */
+  linesTotal?: number;
   /** 상한으로 잘리기 전 전체 개수 (features.length보다 크면 그림에 "표시 n / 전체 m"을 적는다) */
   total: number;
   /** 범례 밑에 적는 짧은 문구 */
@@ -150,13 +154,49 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   pop_dens_3: S("5,000~10,000명/㎢", "#63B0AB", "weight"),
   pop_dens_4: S("10,000~20,000명/㎢", "#2B8C88", "weight"),
   pop_dens_5: S("20,000명/㎢ 이상", "#125C5A", "weight"),
+  block_lt05: S("0.5ha 미만", "#F2C94C"),
+  block_05_1: S("0.5~1ha", "#E5A11C"),
+  block_1_2: S("1~2ha", "#D9822B"),
+  block_2_5: S("2~5ha", "#C45A36"),
+  block_ge5: S("5ha 이상", "#8D3B2F"),
+  block_open: S("미폐합", "#9AA0AA"),
+  dens_0: S("0", "#F0F4F8", "weight"),
+  dens_q1: S("하위 20%", "#CFE8E6", "weight"),
+  dens_q2: S("20~40%", "#9CCFCB", "weight"),
+  dens_q3: S("40~60%", "#63B0AB", "weight"),
+  dens_q4: S("60~80%", "#2B8C88", "weight"),
+  dens_q5: S("상위 20%", "#125C5A", "weight"),
+  relief_lt_m20: S("−20m 미만", "#6B4F3A"),
+  relief_m20_m5: S("−20~−5m", "#9A6B46"),
+  relief_m5_5: S("−5~5m", "#C7A66A"),
+  relief_5_20: S("5~20m", "#8AA56F"),
+  relief_ge20: S("20m 이상", "#4F7D58"),
+  dem_nodata: S("지형 결측", "#B9BDC6"),
+  contour: S("등고선", "#4B5563"),
+  slope_0_5: S("0~5°", "#E6E2F4"),
+  slope_5_10: S("5~10°", "#C4B9E4"),
+  slope_10_15: S("10~15°", "#9D8BC8"),
+  slope_15_20: S("15~20°", "#765EA8"),
+  slope_ge20: S("20° 이상", "#4A3575"),
+  slope_nodata: S("경사 결측", "#B9BDC6"),
+  sun_0: S("0시간", "#F0F4F8"),
+  sun_0_2: S("0 초과~2시간", "#F9D976"),
+  sun_2_4: S("2~4시간", "#F4BA45"),
+  sun_4_6: S("4~6시간", "#EC8E2F"),
+  sun_6_8: S("6~8시간", "#D85B2A"),
+  sun_ge8: S("8시간 이상", "#A93D27"),
+  sun_uncalc: S("미계산", "#B9BDC6"),
+  sun_face: S("수광면", "#F08A24"),
+  shadow_09: S("09:00 그림자", "#6D7580"),
+  shadow_12: S("12:00 그림자", "#535A65"),
+  shadow_15: S("15:00 그림자", "#383E48"),
 };
 const FALLBACK: LayerStyle = S("기타", "#7A7E87");
 
 /** 지물이 있는 레이어의 범례 항목 (정의된 순서) */
 export const legendItems = (model: MapModel) =>
   Object.keys(LAYER_STYLES)
-    .filter((k) => model.features.some((f) => f.layer === k) || (model.polygons ?? []).some((p) => p.layer === k))
+    .filter((k) => model.features.some((f) => f.layer === k) || (model.polygons ?? []).some((p) => p.layer === k) || (model.lines ?? []).some((l) => l.layer === k))
     .map((k) => ({ layer: k, label: LAYER_STYLES[k].label, color: LAYER_STYLES[k].color }));
 
 export const layerStyle =(layer: string): LayerStyle => LAYER_STYLES[layer] ?? FALLBACK;

@@ -79,6 +79,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   for (let m = 500; m < model.radiusM - 1; m += 500) rings.push(m / mpp);
 
   const feats = model.features.map((f) => ({ f, p: proj(f.lng, f.lat) }));
+  const linePaths = (model.lines ?? []).map((l, index) => ({ l, points: l.points.map(([lng, lat]) => proj(lng, lat)), index }));
   const wmax = Math.max(0, ...model.features.map((f) => f.weight ?? 0));
   const radiusOf = (f: MapFigureProps["model"]["features"][number]) => {
     const st = layerStyle(f.layer);
@@ -129,6 +130,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   const cuts = [
     ...(model.total > model.features.length ? [`표시 ${model.features.length.toLocaleString("en-US")} / 전체 ${model.total.toLocaleString("en-US")}`] : []),
     ...(model.polygonsTotal !== undefined && model.polygonsTotal > polygons.length ? [`면 표시 ${polygons.length.toLocaleString("en-US")} / 전체 ${model.polygonsTotal.toLocaleString("en-US")}`] : []),
+    ...(model.linesTotal !== undefined && model.linesTotal > linePaths.length ? [`선 표시 ${linePaths.length.toLocaleString("en-US")} / 전체 ${model.linesTotal.toLocaleString("en-US")}`] : []),
   ];
   const notes = [...model.notes, ...cuts];
   const legendRows: Array<Array<{ layer: string; x: number; w: number }>> = [[]];
@@ -165,12 +167,15 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   const labels: ReactNode[] = [];
   if (!bare) {
     const candidates = [
-      ...drawn.filter((d) => d.f.label).map((d, i) => ({ text: d.f.label!, p: d.p, radius: radiusOf(d.f), highlight: !!d.f.highlight, key: `f${i}-${d.f.layer}` })),
+      ...drawn.filter((d) => d.f.label).map((d, i) => ({ text: d.f.label!, p: d.p, radius: radiusOf(d.f), highlight: !!d.f.highlight, key: `f${i}-${d.f.layer}`, small: false })),
       ...polygons
         .filter((d) => d.polygon.label)
         .sort((a, b) => b.area - a.area || a.index - b.index)
         .slice(0, 5)
-        .map((d) => ({ text: d.polygon.label!, p: d.center, radius: 0, highlight: false, key: `p${d.index}` })),
+        .map((d) => ({ text: d.polygon.label!, p: d.center, radius: 0, highlight: false, key: `p${d.index}`, small: false })),
+      ...linePaths
+        .filter((d) => d.l.label)
+        .map((d) => ({ text: d.l.label!, p: d.points[Math.floor(d.points.length / 2)]!, radius: 0, highlight: false, key: `l${d.index}`, small: true })),
     ].sort((a, b) => Number(b.highlight) - Number(a.highlight));
     candidates.forEach((d) => {
         const w = textW(d.text, fs) + 4 * u;
@@ -189,7 +194,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
         const { a: anchor, b } = fit;
         boxes.push(b);
         labels.push(
-          <text key={`l${d.key}`} x={anchor.x + 2 * u} y={anchor.y + fs * 0.85} fontSize={fs} fontWeight={700} fill={INK} stroke="#fff" strokeWidth={3 * u} strokeLinejoin="round" paintOrder="stroke">
+          <text key={`l${d.key}`} x={anchor.x + 2 * u} y={anchor.y + fs * 0.85} fontSize={d.small ? fs * 0.85 : fs} fontWeight={d.small ? 500 : 700} fill={INK} stroke="#fff" strokeWidth={3 * u} strokeLinejoin="round" paintOrder="stroke">
             {d.text}
           </text>,
         );
@@ -261,6 +266,10 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
           const st = layerStyle(polygon.polygon.layer);
           const estimated = isEstimated(polygon);
           return <path key={`poly${polygon.index}`} data-poly="true" d={polygonPath(polygon.rings)} fillRule="evenodd" fill={estimated ? `url(#${hatchId(polygon.index)})` : st.color} fillOpacity={estimated ? 1 : polygonOpacity} stroke={st.color} strokeWidth={1 * u} />;
+        })}
+        {linePaths.map((d) => {
+          const st = layerStyle(d.l.layer);
+          return <polyline key={`line${d.index}`} data-line="true" points={d.points.map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke={st.color} strokeWidth={1.5 * u} strokeLinejoin="round" />;
         })}
         {rings.map((r) => (
           <circle key={r} cx={cx} cy={cy} r={r} fill="none" stroke={line} strokeOpacity={sat ? 0.7 : 0.35} strokeWidth={1 * u} strokeDasharray={`${4 * u} ${4 * u}`} />

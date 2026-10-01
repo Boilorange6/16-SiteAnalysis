@@ -15,11 +15,11 @@ const A = await import("../../lib/v2/app-db.ts");
 const { runAnalysis } = await import("../../lib/v2/engine/run.ts");
 
 // 1) 카탈로그: P2 코드가 모두 있고 순서가 A → D(코드순) → S 이다
-const P2 = ["D02","D03","D04","D05","D06","D07","D08","D09","D11","D12","D13","D14","D19","D20","D23","D24","D25","D27","S01","S02","S03"];
+const P2 = ["D02","D03","D04","D05","D06","D07","D08","D09","D11","D12","D13","D14","D15","D16","D17","D18","D19","D20","D21","D22","D23","D24","D25","D27","S01","S02","S03"];
 for (const c of P2) assert.ok(TILE_CATALOG[c], `catalog ${c}`);
 assert.deepEqual(TILE_CODES.filter((c) => c.startsWith("D") || c.startsWith("S")), P2);
 for (const c of P2) assert.equal(TILE_CATALOG[c].kind, c.startsWith("D") ? "diagram" : "simulation");
-assert.equal(ENGINE_VERSION, "v2-p2-spatial-2");
+assert.equal(ENGINE_VERSION, "v2-p3-terrain-1");
 
 // 2) 엔진: 모든 카탈로그 코드가 결과에 있고, 아직 미제공인 스텁은 not_provided
 const dataDir = mkdtempSync(join(tmpdir(), "v2-p2-reg-"));

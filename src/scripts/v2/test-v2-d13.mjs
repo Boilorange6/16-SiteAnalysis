@@ -146,7 +146,7 @@ assert.ok(tile.presentation.features.length > 0);
 assert.ok(tile.presentation.features.some((feature) => feature.layer === "road:간선"));
 assert.ok(tile.presentation.features.some((feature) => feature.layer === "road:보행·자전거"));
 assert.ok(tile.presentation.features.some((feature) => feature.layer === "road:기타"));
-assert.match(toTileView(tile).sourceLine, /OpenStreetMap 도로/);
+assert.match(toTileView(tile).sourceLine, /OSM 도로\(Geofabrik\)/);
 ctx.close();
 
 const absent = new EngineContext("", { version: "v1", createdAt: "2026-10-01T00:00:00Z", files: {} }, "d13-missing", {
