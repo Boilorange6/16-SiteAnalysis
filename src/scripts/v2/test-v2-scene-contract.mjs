@@ -43,6 +43,17 @@ assert.equal(scene.version, SCENE_VERSION);
 assert.equal(scene.buildings[1].heightM, null, "미상 높이는 null이어야 한다");
 assert.equal(scene.buildings[0].baseZ, null, "평탄 지반의 바닥 높이는 null이어야 한다");
 assert.equal(scene.sources[0].sourceAsOf, null, "기준일 미상은 null이어야 한다");
+assert.equal(scene.context, undefined, "옛 장면은 선택적 맥락층 없이도 읽혀야 한다");
+
+const contextual = validScene();
+contextual.context = {
+  roads: [{ points: [[-10, 0], [10, 0]], widthM: 6, hierarchy: "국지" }],
+  green: [[[[20, 20], [30, 20], [30, 30], [20, 20]]]],
+  water: [[[[40, 40], [50, 40], [50, 50], [40, 40]]]],
+  canopy: [[[[60, 60], [70, 60], [70, 70], [60, 60]]]],
+};
+const parsedContextual = parseScene(contextual);
+assert.deepEqual(parsedContextual.context, contextual.context, "맥락층은 장면 계약에 보존되어야 한다");
 
 const rejects = (mutate, message) => {
   const candidate = validScene();
@@ -66,6 +77,13 @@ rejects((candidate) => {
     sourceId: "terrain-sample",
   };
 }, "ground z length");
+rejects((candidate) => {
+  candidate.context = {
+    roads: [{ points: [[0, 0], [1, 1]], widthM: 0, hierarchy: "국지" }],
+    green: [],
+    water: [],
+  };
+}, "context road width");
 
 const legacy = validScene();
 legacy.version = "v2-scene@1";

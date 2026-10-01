@@ -10,11 +10,12 @@ import {
   type Ring,
   type Scene,
   type SceneBuilding,
+  type SceneContext,
   type SceneParcel,
 } from "../scene";
 import type { EngineContext, SourceRef } from "./context";
 import { buildingRows, BUILDING_SOURCES } from "./tiles/buildings-shared";
-import { polygonParts } from "./tiles/geo";
+import { areaInCircle, clipLineToCircle, linePathLength, polygonArea, polygonParts } from "./tiles/geo";
 import { hitPoint } from "./tiles/common";
 import { demReader, demSources, DEM_LIMITATION } from "./tiles/terrain-shared";
 import type { LocalGrid } from "./tiles/raster-grid";
@@ -133,6 +134,131 @@ function makeParcel(hit: FeatureHit, origin: { x: number; y: number }, sitePnu: 
   };
 }
 
+export const SCENE_MAX_ROADS = 4000;
+export const SCENE_MAX_CONTEXT_POLYGONS = 2000;
+
+/** OSM hierarchy별 장면 표현 폭. OSM 차로 수·maxspeed는 장면 폭에 사용하지 않는다. */
+export const ROAD_WIDTH_M: Readonly<Record<string, number>> = Object.freeze({
+  고속도로: 25,
+  간선: 20,
+  보조간선: 15,
+  집산: 10,
+  국지: 6,
+  "보행·자전거": 3,
+  기타: 6,
+});
+
+export function roadWidthM(hierarchy: unknown): number {
+  const key = typeof hierarchy === "string" ? hierarchy.trim() : "";
+  return ROAD_WIDTH_M[key] ?? ROAD_WIDTH_M["기타"];
+}
+
+function roadHierarchy(hit: FeatureHit): string {
+  const hierarchy = hit.properties.hierarchy;
+  return typeof hierarchy === "string" && hierarchy.trim() !== "" ? hierarchy.trim() : "기타";
+}
+
+function localContextPoint(point: readonly number[], origin: { x: number; y: number }): [number, number] {
+  return [roundCentimeter(point[0] - origin.x), roundCentimeter(point[1] - origin.y)];
+}
+
+function localContextPath(path: number[][], origin: { x: number; y: number }): [number, number][] {
+  const out: [number, number][] = [];
+  for (const point of path) {
+    if (point.length < 2 || !Number.isFinite(point[0]) || !Number.isFinite(point[1])) continue;
+    const local = localContextPoint(point, origin);
+    const previous = out.at(-1);
+    if (!previous || previous[0] !== local[0] || previous[1] !== local[1]) out.push(local);
+  }
+  return out.length >= 2 ? out : [];
+}
+
+function localContextPolygons(
+  hit: FeatureHit,
+  center: readonly [number, number],
+  radiusM: number,
+  origin: { x: number; y: number },
+): Ring[][] {
+  const clipped = areaInCircle(center, radiusM, hit.geometry);
+  if (!clipped) return [];
+  return clipped.parts
+    .map((polygon) => polygon
+      .map((ring) => toLocalRing(ring, origin))
+      .filter((ring) => ring.length >= 4))
+    .filter((polygon) => polygon.length > 0 && polygonArea(polygon) > 0);
+}
+
+type RoadCandidate = { road: SceneContext["roads"][number]; lengthM: number; order: number };
+type PolygonCandidate = { kind: "green" | "water"; polygon: Ring[]; areaM2: number; order: number };
+
+interface SceneContextBuild {
+  context?: SceneContext;
+  sources: SourceRef[];
+  limitations: Scene["limitations"];
+}
+
+function buildSceneContext(ctx: EngineContext, origin: { x: number; y: number }): SceneContextBuild {
+  const roadSources = ctx.sources("reference", ["osm_roads"]);
+  const greenSources = ctx.sources("reference", ["osm_landuse"]);
+  const waterSources = ctx.sources("reference", ["osm_water"]);
+  const sources = uniqueSources(roadSources, greenSources, waterSources);
+  if (sources.length === 0) return { sources: [], limitations: [] };
+
+  const roadCandidates: RoadCandidate[] = [];
+  let roadOrder = 0;
+  if (roadSources.length > 0) {
+    for (const hit of ctx.hits("reference", ["road"])) {
+      const hierarchy = roadHierarchy(hit);
+      const paths = clipLineToCircle(ctx.input.center, ctx.input.radiusM, hit.geometry);
+      for (const path of paths) {
+        const points = localContextPath(path, origin);
+        if (points.length < 2) continue;
+        roadCandidates.push({
+          road: { points, widthM: roadWidthM(hierarchy), hierarchy },
+          lengthM: linePathLength(path),
+          order: roadOrder++,
+        });
+      }
+    }
+  }
+
+  const polygonCandidates: PolygonCandidate[] = [];
+  let polygonOrder = 0;
+  const addPolygons = (kind: "green" | "water", sourceReady: boolean, hits: FeatureHit[]) => {
+    if (!sourceReady) return;
+    for (const hit of hits) {
+      for (const polygon of localContextPolygons(hit, ctx.input.center, ctx.input.radiusM, origin)) {
+        polygonCandidates.push({ kind, polygon, areaM2: Math.max(0, polygonArea(polygon)), order: polygonOrder++ });
+      }
+    }
+  };
+  addPolygons("green", greenSources.length > 0, ctx.hits("reference", ["landuse"]));
+  addPolygons("water", waterSources.length > 0, ctx.hits("reference", ["water"]));
+
+  const roads = roadCandidates
+    .sort((a, b) => b.lengthM - a.lengthM || a.order - b.order)
+    .slice(0, SCENE_MAX_ROADS)
+    .map(({ road }) => road);
+  const polygons = polygonCandidates
+    .sort((a, b) => b.areaM2 - a.areaM2 || a.order - b.order)
+    .slice(0, SCENE_MAX_CONTEXT_POLYGONS);
+  const green = polygons.filter((candidate) => candidate.kind === "green").map((candidate) => candidate.polygon);
+  const water = polygons.filter((candidate) => candidate.kind === "water").map((candidate) => candidate.polygon);
+
+  const limitations: Scene["limitations"] = [];
+  if (roadCandidates.length > SCENE_MAX_ROADS) {
+    limitations.push({ kind: "partial", note: `반경 안 도로 ${roadCandidates.length.toLocaleString()}개 중 장면에는 ${SCENE_MAX_ROADS.toLocaleString()}개까지 포함했습니다.` });
+  }
+  if (polygonCandidates.length > SCENE_MAX_CONTEXT_POLYGONS) {
+    limitations.push({ kind: "partial", note: `반경 안 녹지·수계 면 ${polygonCandidates.length.toLocaleString()}개 중 면적이 큰 ${SCENE_MAX_CONTEXT_POLYGONS.toLocaleString()}개까지 장면에 포함했습니다.` });
+  }
+  if (roadSources.length === 0) limitations.push({ kind: "not_provided", note: "OSM 도로 자료 미적재 — 장면 도로 맥락층 없음" });
+  if (greenSources.length === 0) limitations.push({ kind: "not_provided", note: "OSM 녹지 면 자료 미적재 — 장면 녹지 맥락층 없음" });
+  if (waterSources.length === 0) limitations.push({ kind: "not_provided", note: "OSM 수계 면 자료 미적재 — 장면 수계 맥락층 없음" });
+
+  return { context: { roads, green, water }, sources, limitations };
+}
+
 /** 건물·필지 도형을 내보내기와 S01이 함께 쓰는 대지 중심 로컬 장면으로 만든다. */
 export function buildScene(ctx: EngineContext): Scene | null {
   const rows = buildingRows(ctx);
@@ -163,6 +289,7 @@ export function buildScene(ctx: EngineContext): Scene | null {
 
   const [originX, originY] = toUtmk(ctx.input.center);
   const origin = { x: originX, y: originY };
+  const context = buildSceneContext(ctx, origin);
   const buildingsByDistance = [...rows].sort((a, b) =>
     hitDistanceM(a.hit, ctx.input.center) - hitDistanceM(b.hit, ctx.input.center) || a.hit.featureId - b.hit.featureId,
   );
@@ -220,8 +347,10 @@ export function buildScene(ctx: EngineContext): Scene | null {
       ctx.sources("buildings", BUILDING_SOURCES),
       parcelsDb ? ctx.sources("parcels", ["parcel_polygon"]) : [],
       terrain ? demSources(ctx) : [],
+      context.sources,
     ),
-    limitations,
+    limitations: [...limitations, ...context.limitations],
+    ...(context.context ? { context: context.context } : {}),
   } satisfies Scene;
   return parseScene(scene);
 }
