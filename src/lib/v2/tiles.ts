@@ -20,6 +20,18 @@ export const TILE_CACHE_CONTROL = "public, max-age=604800, immutable";
 export type TileParams = { layer: string; z: string; y: string; x: string };
 export type TileRef = { layer: TileLayer; z: number; y: number; x: number };
 
+/** Origin이 없을 때만 Referer를 보조로 사용하고, 실제 요청 host와 정확히 비교한다. */
+export function sameOriginRequest(origin: string | null, referer: string | null, requestHost: string | null): boolean {
+  if (!requestHost) return false;
+  const candidate = origin ?? referer;
+  if (!candidate) return false;
+  try {
+    return new URL(candidate).host.toLowerCase() === requestHost.trim().toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
 /** 검증: 화이트리스트 레이어, 정수 z 6–19, 0 ≤ y,x < 2^z. 실패하면 null. */
 export function parseTile(p: TileParams): TileRef | null {
   if (!Object.prototype.hasOwnProperty.call(TILE_LAYERS, p.layer)) return null;
