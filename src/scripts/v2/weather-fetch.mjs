@@ -115,7 +115,11 @@ async function fetchPage(station, year, startDate, endDate, pageNo) {
 function normalizedRow(row, stationId) {
   const tm = textOf(row.tm);
   if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(tm)) return null;
-  return { stnId: textOf(row.stnId) || stationId, tm, ws: numberOrNull(row.ws), wd: numberOrNull(row.wd) };
+  // 바람장미는 ws·wd만 쓴다. 기온·습도·일사·전운량은 S04(열쾌적)가 다시 받지 않도록 같은 응답에서 함께 남긴다.
+  return {
+    stnId: textOf(row.stnId) || stationId, tm, ws: numberOrNull(row.ws), wd: numberOrNull(row.wd),
+    ta: numberOrNull(row.ta), hm: numberOrNull(row.hm), icsr: numberOrNull(row.icsr), dc10Tca: numberOrNull(row.dc10Tca),
+  };
 }
 
 for (const station of stations) {
