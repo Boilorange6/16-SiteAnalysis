@@ -34,7 +34,7 @@ try {
   for (const code of P3) {
     const result = run.results.find((tile) => tile.tileCode === code);
     assert.ok(result, `result ${code}`);
-    assert.equal(result.status, "not_provided", `${code} status`);
+    assert.equal(result.status, code === "D21" ? "pending" : "not_provided", `${code} status`);
     assert.equal(result.tileType, "diagram", `${code} tileType`);
   }
 } finally {

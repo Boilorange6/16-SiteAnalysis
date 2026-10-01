@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 const { buildEngineFixture } = await import("./engine-fixture.mjs");
 const A = await import("../../lib/v2/app-db.ts");
 const { postAnalysis, getAnalysis } = await import("../../lib/v2/engine/api.ts");
+const { runHeavyTiles } = await import("../../lib/v2/engine/jobs.ts");
 const { TILE_CODES } = await import("../../lib/v2/ui/tile-catalog.ts");
 
 const dataDir = mkdtempSync(join(tmpdir(), "v2-eng-api-"));
@@ -33,11 +34,13 @@ try {
 
   // 정상: 기본 반경 800
   const ok = postAnalysis(appDb, dataDir, { address, analysisDate: "2026-09-30" }, 17);
-  assert.equal(ok.status, 200);
-  assert.deepEqual(Object.keys(ok.body).sort(), ["analysisId", "results", "summary"]);
+  assert.equal(ok.status, 202);
+  assert.deepEqual(Object.keys(ok.body).sort(), ["analysisId", "jobs", "results", "summary", "timingsMs"]);
   assert.equal(ok.body.results.length, TILE_CODES.length);
   assert.equal(ok.body.summary.address, address);
   assert.equal(ok.body.results[0].conditions.radiusM, 800);
+  assert.ok(ok.body.jobs.some((job) => job.status === "queued"));
+  assert.ok(ok.body.timingsMs.light > 0);
   assert.equal(appDb.prepare("SELECT user_id FROM analysis_run WHERE analysis_id = ?").pluck().get(ok.body.analysisId), "17");
 
   // 대지 확정 실패 → 422, 이유별 안내
@@ -56,6 +59,10 @@ try {
   assert.equal(got.status, 200);
   assert.deepEqual(got.body.summary, ok.body.summary);
   assert.deepEqual(got.body.results.map((t) => t.tileCode), ok.body.results.map((t) => t.tileCode).sort());
+  assert.ok(got.body.jobs.some((job) => job.status === "queued"));
+  runHeavyTiles(appDb, dataDir, ok.body.analysisId);
+  const finished = getAnalysis(appDb, ok.body.analysisId, 17);
+  assert.ok(finished.body.jobs.every((job) => ["done", "failed"].includes(job.status)));
   assert.equal(getAnalysis(appDb, ok.body.analysisId, 18).status, 404);
   assert.equal(getAnalysis(appDb, "nope").status, 404);
 } finally {

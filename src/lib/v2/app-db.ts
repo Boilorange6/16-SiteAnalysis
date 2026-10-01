@@ -17,6 +17,19 @@ type Db = BetterSqlite3.Database;
 
 export const V2_APP_SCHEMA_VERSION = 2;
 
+export type AnalysisJobStatus = "queued" | "running" | "done" | "failed";
+export type AnalysisJob = {
+  analysisId: string;
+  code: string;
+  status: AnalysisJobStatus;
+  priority: number;
+  enqueuedAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  elapsedMs: number | null;
+  error: string | null;
+};
+
 export interface AnalysisRunInput {
   analysisId: string;
   address: string;
@@ -93,6 +106,26 @@ export function initV2AppSchema(db: Db): void {
   }
   db.prepare("INSERT INTO schema_meta (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     .run(String(V2_APP_SCHEMA_VERSION));
+  ensureAnalysisJobTable(db);
+}
+
+/** P4 작업 큐. 기존 앱 DB에도 CREATE IF NOT EXISTS로 붙인다. */
+export function ensureAnalysisJobTable(db: Db): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS analysis_job (
+      analysis_id TEXT NOT NULL REFERENCES analysis_run(analysis_id),
+      tile_code TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('queued','running','done','failed')),
+      priority INTEGER NOT NULL DEFAULT 0,
+      enqueued_at TEXT NOT NULL,
+      started_at TEXT,
+      finished_at TEXT,
+      elapsed_ms REAL,
+      error TEXT,
+      PRIMARY KEY (analysis_id, tile_code)
+    );
+    CREATE INDEX IF NOT EXISTS idx_analysis_job_queue ON analysis_job (status, priority, enqueued_at);
+  `);
 }
 
 const now = () => new Date().toISOString();
@@ -101,6 +134,20 @@ export function createAnalysisRun(db: Db, r: AnalysisRunInput): void {
   db.prepare(`INSERT INTO analysis_run (analysis_id, address, center_lng, center_lat, radius_m, analysis_date, manifest_hash, engine_version, parameters_json, user_id, status, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?)`)
     .run(r.analysisId, r.address, r.center[0], r.center[1], r.radiusM, r.analysisDate, r.manifestHash, r.engineVersion, JSON.stringify(r.parameters), r.userId == null ? null : String(r.userId), now());
+}
+
+export function enqueueAnalysisJobs(db: Db, analysisId: string, codes: readonly string[]): void {
+  ensureAnalysisJobTable(db);
+  const insert = db.prepare(`
+    INSERT INTO analysis_job (analysis_id, tile_code, status, priority, enqueued_at)
+    VALUES (?, ?, 'queued', ?, ?)
+    ON CONFLICT(analysis_id, tile_code) DO NOTHING
+  `);
+  const enqueue = db.transaction((items: readonly string[]) => {
+    const at = now();
+    items.forEach((code, priority) => insert.run(analysisId, code, priority, at));
+  });
+  enqueue(codes);
 }
 
 export function finishAnalysisRun(db: Db, analysisId: string, status: "complete" | "failed"): void {

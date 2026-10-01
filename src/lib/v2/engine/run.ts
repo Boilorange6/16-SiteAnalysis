@@ -5,10 +5,12 @@
 import { randomUUID } from "node:crypto";
 import type BetterSqlite3 from "better-sqlite3";
 import type { LngLat } from "../crs";
-import { createAnalysisRun, finishAnalysisRun, findCachedTileResult, getAnalysisRun, saveScene, saveTileResult } from "../app-db";
+import { createAnalysisRun, enqueueAnalysisJobs, finishAnalysisRun, findCachedTileResult, getAnalysisRun, saveScene, saveTileResult } from "../app-db";
 import { openDataFile, readManifest } from "../data/manifest";
 import { tileCacheKey, type TileResult } from "../tile-result";
+import { saveTileRasters } from "../raster-store";
 import type { SiteSummary } from "../ui/tile-view";
+import { catalogEntry } from "../ui/tile-catalog";
 import { EngineContext } from "./context";
 import { buildScene } from "./scene";
 import { resolveSite, type SiteFailure, type SiteResult } from "./site";
@@ -73,11 +75,15 @@ export interface RunInput {
 }
 
 export type RunOutcome =
-  | { ok: true; analysisId: string; summary: SiteSummary; results: TileResult[]; computed: string[]; reused: string[] }
+  | { ok: true; analysisId: string; summary: SiteSummary; results: TileResult[]; computed: string[]; reused: string[]; queued: string[] }
   | { ok: false; reason: SiteFailure };
 
+export const HEAVY_TILE_CODES = ["S02", "D21", "D29", "D10", "S03", "S04"] as const;
+const HEAVY_TILE_SET = new Set<string>(HEAVY_TILE_CODES);
+export const DATE_INDEPENDENT_CODES = new Set(["S03", "D10", "D29", "D01", "D28"]);
+
 /** 화면 순서(카탈로그 순). 계산하는 타일 다음에 아직 제공하지 않는 타일이 코드 순서에 끼어든다. */
-const TILES: Array<[code: string, compute: (ctx: EngineContext) => TileResult]> = [
+export const TILES: Array<[code: string, compute: (ctx: EngineContext) => TileResult]> = [
   ["A01", a01],
   ["A02", a02],
   ["A03", a03],
@@ -127,6 +133,29 @@ const TILES: Array<[code: string, compute: (ctx: EngineContext) => TileResult]> 
 
 export const todayKst = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
 
+function cacheKeyFor(ctx: EngineContext, code: string): string {
+  const conditions = DATE_INDEPENDENT_CODES.has(code) ? { ...ctx.conditions, analysisDate: "date-independent" } : ctx.conditions;
+  return tileCacheKey({ tileCode: code, manifestHash: ctx.manifestHash, engineVersion: ENGINE_VERSION, conditions });
+}
+
+function pendingTile(ctx: EngineContext, code: string): TileResult {
+  return makeTile(ctx, {
+    code,
+    type: catalogEntry(code).kind,
+    status: "pending",
+    metrics: [],
+    sources: [],
+    limitations: [{ kind: "not_provided", note: "백그라운드 계산 대기 중입니다." }],
+  });
+}
+
+function attachRasters(tile: TileResult, items: Array<{ ref: NonNullable<TileResult["presentation"]["rasters"]>[number]; blob: Buffer }>): TileResult {
+  if (items.length === 0) return tile;
+  const refs = new Map((tile.presentation.rasters ?? []).map((ref) => [ref.name, ref]));
+  for (const item of items) refs.set(item.ref.name, item.ref);
+  return { ...tile, presentation: { ...tile.presentation, rasters: [...refs.values()] } };
+}
+
 export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, input: RunInput): RunOutcome {
   const manifest = readManifest(dataDir);
   if (!manifest) throw new Error("no published manifest — run a data build first");
@@ -156,18 +185,29 @@ export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, inpu
     const results: TileResult[] = [];
     const computed: string[] = [];
     const reused: string[] = [];
+    const pending = new Set<string>();
     for (const [code, compute] of TILES) {
-      const key = tileCacheKey({ tileCode: code, manifestHash: ctx.manifestHash, engineVersion: ENGINE_VERSION, conditions: ctx.conditions });
+      const key = cacheKeyFor(ctx, code);
       const cached = findCachedTileResult(appDb, key);
       let tile: TileResult;
       if (cached) {
-        tile = { ...cached, tileId: `${analysisId}-${code}`, analysisId };
+        tile = { ...cached, tileId: `${analysisId}-${code}`, analysisId, conditions: ctx.conditions };
         reused.push(code);
+      } else if (HEAVY_TILE_SET.has(code)) {
+        tile = pendingTile(ctx, code);
+        pending.add(code);
       } else {
         try {
           tile = compute(ctx);
+          const rasters = ctx.takeRasters(code);
+          if (rasters.length > 0) {
+            // 가벼운 타일도 래스터를 만들면 캐시 키와 함께 저장한다.
+            saveTileRasters(appDb, key, rasters);
+            tile = attachRasters(tile, rasters);
+          }
           computed.push(code);
         } catch (e) {
+          ctx.takeRasters(code);
           // 한 타일의 실패가 분석 전체를 막지 않는다 — 실패 타일은 재시도할 수 있고 캐시되지 않는다
           tile = makeTile(ctx, { code, status: "failed", metrics: [], sources: [], limitations: [{ kind: "unknown", note: `계산 중 오류: ${String((e as Error).message).slice(0, 200)}` }] });
         }
@@ -175,6 +215,8 @@ export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, inpu
       saveTileResult(appDb, tile, key);
       results.push(tile);
     }
+    const queued = HEAVY_TILE_CODES.filter((code) => pending.has(code));
+    if (queued.length > 0) enqueueAnalysisJobs(appDb, analysisId, queued);
     // 장면은 내보내기용 부가 산출물 — 실패해도 분석 결과는 살린다
     try {
       const scene = buildScene(ctx);
@@ -182,8 +224,8 @@ export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, inpu
     } catch (e) {
       console.warn(`scene build failed for ${analysisId}: ${(e as Error).message}`);
     }
-    finishAnalysisRun(appDb, analysisId, "complete");
-    return { ok: true, analysisId, summary: buildSummary({ address: site.label, jimok: site.jimok }, input.radiusM, results), results, computed, reused };
+    if (queued.length === 0) finishAnalysisRun(appDb, analysisId, "complete");
+    return { ok: true, analysisId, summary: buildSummary({ address: site.label, jimok: site.jimok }, input.radiusM, results), results, computed, reused, queued };
   } catch (error) {
     try {
       if (getAnalysisRun(appDb, analysisId)) finishAnalysisRun(appDb, analysisId, "failed");

@@ -37,8 +37,11 @@ type BoardProps = {
 /** 타일 보드. 결과가 바뀌면 부모가 key를 바꿔 새로 만든다. */
 function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun }: BoardProps) {
   const [overrides, setOverrides] = useState<Record<string, TileResult>>({});
-  const results = useMemo(() => baseResults.map((r) => overrides[r.tileId] ?? r), [baseResults, overrides]);
   const [board, dispatch] = useReducer(boardReducer, baseResults, initBoard);
+  useEffect(() => {
+    dispatch({ type: "replaceResults", results: baseResults });
+  }, [baseResults]);
+  const results = useMemo(() => board.results.map((r) => overrides[r.tileId] ?? r), [board.results, overrides]);
   const [editing, setEditing] = useState(false);
   const [demoStep, setDemoStep] = useState<number | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -438,7 +441,8 @@ const RADII = [
 ] as const;
 const API = "/site/api/v2/analyses";
 
-type Live = { analysisId: string; summary: SiteSummary; results: TileResult[]; scene: Scene | null };
+type JobState = { code: string; status: "queued" | "running" | "done" | "failed"; elapsedMs: number | null };
+type Live = { analysisId: string; summary: SiteSummary; results: TileResult[]; jobs: JobState[]; scene: Scene | null };
 type Problem = { text: string; login: boolean };
 
 /** 주소 입력 → 분석 → 실제 결과 보드. 분석 전에는 예시 보드를 그대로 보여 준다. */
@@ -448,26 +452,29 @@ export default function V2BoardPage() {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [live, setLive] = useState<Live | null>(null);
+  const activeJobs = live?.jobs.some((job) => job.status === "queued" || job.status === "running") ?? false;
 
-  async function load(res: Response) {
+  async function load(res: Response, refreshScene = true) {
     const body = (await res.json().catch(() => ({}))) as Partial<Live> & { error?: string };
     if (res.status === 401) return setProblem({ text: "로그인이 필요합니다.", login: true });
     if (!res.ok || !body.analysisId) return setProblem({ text: body.error ?? "분석하지 못했습니다. 잠시 뒤 다시 시도해 주세요.", login: false });
-    let scene: Scene | null = null;
-    try {
-      const sceneRes = await fetch(`${API}/${encodeURIComponent(body.analysisId)}/scene`);
-      if (sceneRes.ok) scene = (await sceneRes.json()) as Scene;
-    } catch {
-      // 장면이 없어도 분석 결과 보드는 계속 연다. S01은 빈 매스 틀을 표시한다.
+    let scene: Scene | null = live?.analysisId === body.analysisId ? live.scene : null;
+    if (refreshScene) {
+      try {
+        const sceneRes = await fetch(`${API}/${encodeURIComponent(body.analysisId)}/scene`);
+        if (sceneRes.ok) scene = (await sceneRes.json()) as Scene;
+      } catch {
+        // 장면이 없어도 분석 결과 보드는 계속 연다. S01은 빈 매스 틀을 표시한다.
+      }
     }
-    setLive({ ...(body as Omit<Live, "scene">), scene });
+    setLive({ analysisId: body.analysisId, summary: body.summary!, results: body.results ?? [], jobs: body.jobs ?? [], scene });
     history.replaceState(null, "", `?analysis=${body.analysisId}`);
     return undefined;
   }
 
   async function analyze(e?: { preventDefault(): void }) {
     e?.preventDefault();
-    if (busy) return;
+    if (busy || activeJobs) return;
     if (!address.trim()) return setProblem({ text: "지번 주소로 입력해 주세요. 예: 서울 강동구 고덕동 123", login: false });
     setBusy(true);
     setProblem(null);
@@ -495,6 +502,28 @@ export default function V2BoardPage() {
   }, []);
 
   useEffect(() => {
+    if (!live || !activeJobs) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      try {
+        const response = await fetch(`${API}/${encodeURIComponent(live.analysisId)}`);
+        if (!cancelled) await load(response, false);
+      } catch {
+        // 다음 주기에 다시 시도한다. 이미 받은 결과 보드는 유지한다.
+      }
+      if (!cancelled) timer = setTimeout(poll, 1000);
+    };
+    timer = setTimeout(poll, 1000);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+    // load는 렌더마다 새 함수지만, analysisId/jobs 상태가 바뀔 때만 폴링을 재설정한다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live?.analysisId, activeJobs]);
+
+  useEffect(() => {
     if (live) {
       setAddress(live.summary.address);
       setRadiusM(live.summary.radiusM);
@@ -510,17 +539,17 @@ export default function V2BoardPage() {
           onChange={(e) => setAddress(e.target.value)}
           placeholder="지번 주소 (예: 서울 강동구 고덕동 123)"
           aria-label="지번 주소"
-          disabled={busy}
+          disabled={busy || activeJobs}
         />
-        <select className={styles.radiusSelect} value={radiusM} onChange={(e) => setRadiusM(Number(e.target.value))} aria-label="분석 반경" disabled={busy}>
+        <select className={styles.radiusSelect} value={radiusM} onChange={(e) => setRadiusM(Number(e.target.value))} aria-label="분석 반경" disabled={busy || activeJobs}>
           {RADII.map((r) => (
             <option key={r.m} value={r.m}>
               {r.label}
             </option>
           ))}
         </select>
-        <button type="submit" className={`${styles.pill} ${styles.pillDark}`} disabled={busy} aria-busy={busy}>
-          {busy ? "분석 중…" : "분석"}
+        <button type="submit" className={`${styles.pill} ${styles.pillDark}`} disabled={busy || activeJobs} aria-busy={busy || activeJobs}>
+          {busy || activeJobs ? "분석 중…" : "분석"}
         </button>
       </form>
       {problem && (
@@ -544,7 +573,7 @@ export default function V2BoardPage() {
       siteSummary={live?.summary ?? GODEOK_SUMMARY}
       scene={live?.scene ?? null}
       demo={!live}
-      busy={busy}
+      busy={busy || activeJobs}
       controls={controls}
       onRerun={() => void analyze()}
     />

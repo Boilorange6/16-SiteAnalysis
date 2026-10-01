@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, isUser } from "@/lib/server/auth";
 import { openV2AppDb } from "@/lib/v2/app-db";
 import { postAnalysis } from "@/lib/v2/engine/api";
-import { v2DataDir } from "@/lib/v2/paths";
+import { v2AppDbPath, v2DataDir } from "@/lib/v2/paths";
+import { startJobRunner } from "@/lib/v2/engine/jobs";
 
 export const runtime = "nodejs";
 
@@ -13,6 +14,7 @@ export async function POST(req: NextRequest) {
   const appDb = openV2AppDb();
   try {
     const reply = postAnalysis(appDb, v2DataDir(), body, auth.id);
+    if (reply.status === 202) startJobRunner({ appDbPath: v2AppDbPath(), dataDir: v2DataDir() });
     return NextResponse.json(reply.body, { status: reply.status });
   } finally {
     appDb.close();

@@ -31,7 +31,7 @@ try {
   assert.deepEqual(run.results.map((result) => result.tileCode), expected, "run result order");
   for (const code of ["A08", "D01", "D10", "D28", "D29", "S04"]) {
     const tile = run.results.find((result) => result.tileCode === code);
-    assert.equal(tile?.status, "not_provided", `${code} stub status`);
+    assert.equal(tile?.status, ["D10", "D29", "S04"].includes(code) ? "pending" : "not_provided", `${code} stub status`);
   }
 
   const base = run.results[0];
