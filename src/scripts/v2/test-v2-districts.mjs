@@ -9,9 +9,26 @@ const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { d11 } = await import("../../lib/v2/engine/tiles/d11.ts");
 const { d12 } = await import("../../lib/v2/engine/tiles/d12.ts");
 
-assert.deepEqual(DISTRICT_LAYERS, [], "Q1 레이어 제목 확정 전에는 임의의 레이어를 등록하지 않는다");
+assert.deepEqual(DISTRICT_LAYERS.map(({ key, sourceId, title, kind, cls, fileTag }) => ({ key, sourceId, title, kind, cls, fileTag })), [
+  { key: "area", sourceId: "district_area", title: "국토계획/구역", kind: "district_area", cls: "구역", fileTag: "AL_D140" },
+  { key: "greenbelt", sourceId: "district_greenbelt", title: "개발제한구역지관리/개발제한구역", kind: "district_area", cls: "개발제한구역", fileTag: "AL_D032" },
+  { key: "land_development", sourceId: "district_land_development", title: "택지개발/택지개발예정구역", kind: "district_area", cls: "택지개발예정지구", fileTag: "AL_D025" },
+  { key: "urban_development", sourceId: "district_urban_development", title: "도시개발/도시개발구역", kind: "district_area", cls: "도시개발구역", fileTag: "AL_D033" },
+  { key: "industrial", sourceId: "district_industrial", title: "산업입지/산업단지", kind: "district_area", cls: "산업단지", fileTag: "AL_D060" },
+  { key: "transport", sourceId: "facility_transport", title: "국토계획/교통시설", kind: "plan_facility", cls: "교통", fileTag: "AL_D142" },
+  { key: "space", sourceId: "facility_space", title: "국토계획/공간시설", kind: "plan_facility", cls: "공간", fileTag: "AL_D143" },
+  { key: "distribution_supply", sourceId: "facility_distribution_supply", title: "국토계획/유통및공급시설", kind: "plan_facility", cls: "유통·공급", fileTag: "AL_D144" },
+  { key: "public_culture_sports", sourceId: "facility_public_culture_sports", title: "국토계획/공공문화체육시설", kind: "plan_facility", cls: "공공·문화체육", fileTag: "AL_D145" },
+  { key: "disaster_prevention", sourceId: "facility_disaster_prevention", title: "국토계획/방재시설", kind: "plan_facility", cls: "방재", fileTag: "AL_D146" },
+  { key: "health_hygiene", sourceId: "facility_health_hygiene", title: "국토계획/보건위생시설", kind: "plan_facility", cls: "보건위생", fileTag: "AL_D147" },
+  { key: "environmental_basic", sourceId: "facility_environmental_basic", title: "국토계획/환경기초시설", kind: "plan_facility", cls: "환경기초", fileTag: "AL_D148" },
+  { key: "other_infrastructure", sourceId: "facility_other_infrastructure", title: "국토계획/기타기반시설", kind: "plan_facility", cls: "기타", fileTag: "AL_D149" },
+]);
 assert.match(DISTRICT_RIGHTS.basis, /15045898/);
 assert.equal(districtLayerFiles(["/r/AL_D999_00_20260101.shp"], "AL_D999").size, 1);
+const resolved = districtLayerFiles(DISTRICT_LAYERS.map((layer) => `/r/${layer.fileTag}_00_20260909.shp`));
+assert.deepEqual([...resolved.keys()], DISTRICT_LAYERS.map((layer) => layer.key), "all 13 configured file tags resolve");
+assert.deepEqual(resolved.get("other_infrastructure"), { date: "20260909", files: ["/r/AL_D149_00_20260909.shp"] });
 
 const center = [127.1506, 37.6245];
 const square = (x0, x1, y0, y1) => ({ type: "Polygon", coordinates: [[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]] });
@@ -33,19 +50,22 @@ const release = (sourceId) => insertRelease(db, {
   licenseCode: "TEST",
   rights: DISTRICT_RIGHTS,
 });
-const districtRelease = release("district_unit");
-const facilityRelease = release("facility_transport");
+const districtLayer = DISTRICT_LAYERS.find((layer) => layer.key === "area");
+const facilityLayer = DISTRICT_LAYERS.find((layer) => layer.key === "transport");
+const districtRelease = release(districtLayer.sourceId);
+const facilityRelease = release(facilityLayer.sourceId);
 const stats = await buildDistricts(db, [
   {
-    layer: { key: "unit", sourceId: "district_unit", title: "미정 구역", kind: "district_area", cls: "지구단위계획" },
+    layer: districtLayer,
     releaseId: districtRelease,
     records: rows(
-      record("Z1", square(127.149, 127.152, 37.623, 37.626), { A6: "지구단위계획" }),
+      record("Z1", square(127.149, 127.152, 37.623, 37.626), { A5: "UQQ300", A6: "지구단위계획구역" }),
+      record("Z2", square(127.1495, 127.1515, 37.6235, 37.6255), { A5: "UQQ200", A6: "시가화조정구역" }),
       record("Z-invalid", { type: "LineString", coordinates: [[127.149, 37.624], [127.152, 37.624]] }, { A6: "잘못된 구역" }),
     ),
   },
   {
-    layer: { key: "transport", sourceId: "facility_transport", title: "미정 교통시설", kind: "plan_facility", cls: "교통" },
+    layer: facilityLayer,
     releaseId: facilityRelease,
     records: rows(
       record("F-area", square(127.1495, 127.1505, 37.624, 37.625), { A6: "도로" }),
@@ -56,16 +76,19 @@ const stats = await buildDistricts(db, [
 ]);
 assert.ok(stats.every((s) => s instanceof SourceStats));
 assert.deepEqual(stats.map((s) => [s.sourceId, s.received, s.accepted, s.rejected]), [
-  ["district_unit", 2, 1, 1],
+  ["district_area", 3, 2, 1],
   ["facility_transport", 3, 3, 0],
 ]);
 assert.equal(stats[0].snapshot().fillRates.announcedDate, 1);
 const stored = db.prepare("SELECT kind, name, legal_code, properties_json FROM feature ORDER BY feature_id").all();
 assert.equal(stored[0].kind, "district_area");
 assert.equal(stored[0].legal_code, "4136000000");
+assert.equal(stored[0].name, "지구단위계획구역");
+assert.equal(JSON.parse(stored[0].properties_json).typeCode, "UQQ300");
+assert.equal(JSON.parse(stored[0].properties_json).typeLabel, "지구단위계획구역");
 assert.equal(JSON.parse(stored[0].properties_json).shapeKind, "polygon");
 assert.equal(JSON.parse(stored[1].properties_json).shapeKind, "polygon");
-assert.equal(JSON.parse(stored[3].properties_json).shapeKind, "point");
+assert.equal(JSON.parse(stored[4].properties_json).shapeKind, "point");
 
 const manifest = {
   version: "test",
@@ -82,10 +105,11 @@ const makeContext = (handle) => new EngineContext("", manifest, "district-test",
 const district = d11(makeContext(db));
 assert.equal(district.status, "partial");
 assert.equal(district.tileType, "diagram");
-assert.equal(district.provenance.sources[0].sourceId, "district_unit");
+assert.equal(district.provenance.sources[0].sourceId, "district_area");
 assert.ok(district.metrics.some((m) => m.id === "back_area_지구단위계획" && m.value > 0));
 assert.ok(district.metrics.some((m) => m.id === "fill_code_pct" && m.value > 0));
-assert.ok(district.presentation.polygons.some((p) => p.layer === "district:지구단위계획"));
+assert.ok(district.presentation.polygons.some((p) => p.layer === "district:지구단위계획" && p.label === "지구단위계획구역"));
+assert.ok(district.limitations.some((l) => l.note.includes("합계 100% 아님")));
 
 const facility = d12(makeContext(db));
 assert.equal(facility.status, "partial");
