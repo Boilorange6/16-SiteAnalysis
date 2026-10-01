@@ -4,7 +4,7 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { CALLOUT_MODES, calloutReportPages, type CalloutMode } from "@/lib/v2/ui/callout-layout";
 import { CAMERA_PRESETS } from "@/lib/v2/ui/mass-projection";
 import { detailSiteX, OV } from "@/lib/v2/ui/overlay-layout";
-import type { CameraPreset } from "@/lib/v2/ui/board-state";
+import type { CameraPreset, CutCount } from "@/lib/v2/ui/board-state";
 import { faceLabel, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
 import { BadgeList, FaceSelect, Headline, RowList, SourceStrip, Stage, StatusPlate, TitleChip } from "./tile-card";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "./map-box";
@@ -20,6 +20,8 @@ type Props = {
   onCalloutMode: (m: CalloutMode) => void;
   camera?: CameraPreset | null;
   onCamera?: (camera: CameraPreset) => void;
+  cuts?: CutCount;
+  onCuts?: (cuts: CutCount) => void;
   onClose: () => void;
 };
 
@@ -27,7 +29,7 @@ const PANEL_W = 360;
 const insetOf = (w: number) => (w <= 720 ? 0 : PANEL_W + 2 * OV.edge);
 
 /** 펼침: 화면 거의 전체가 지도. 오른쪽에 떠 있는 정보 판. Esc로 닫고, 닫으면 열기 전 초점으로 돌아간다. */
-export default function TileDialog({ view, included, face, onInclude, onFace, calloutMode, onCalloutMode, camera, onCamera, onClose }: Props) {
+export default function TileDialog({ view, included, face, onInclude, onFace, calloutMode, onCalloutMode, camera, onCamera, cuts, onCuts, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [back, setBack] = useState(false);
   const [more, setMore] = useState(false); // 모바일 시트 확장
@@ -178,6 +180,15 @@ export default function TileDialog({ view, included, face, onInclude, onFace, ca
               </div>
             )}
             {view.callout && <div className={styles.sub}>보고서 {calloutReportPages(calloutMode, view.callout.complexes.length)}장 (개요 포함)</div>}
+            {view.code === "S02" && cuts !== undefined && onCuts && (
+              <label className={styles.seg}>
+                슬라이드 컷
+                <select aria-label="슬라이드 컷" value={cuts} onChange={(e) => onCuts(Number(e.target.value) === 3 ? 3 : 1)}>
+                  <option value={1}>1컷</option>
+                  <option value={3}>09·12·15 3컷</option>
+                </select>
+              </label>
+            )}
             <label className={styles.check}>
               <input type="checkbox" checked={included} onChange={(e) => onInclude(e.target.checked)} aria-label={`${view.title} 보고서 포함`} />
               포함

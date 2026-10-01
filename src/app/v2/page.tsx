@@ -396,6 +396,8 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
           onCalloutMode={(mode) => dispatch({ type: "callout", id: openView.tileId, mode })}
           camera={openView.mass?.camera}
           onCamera={(camera) => dispatch({ type: "camera", id: openView.tileId, camera })}
+          cuts={openView.code === "S02" ? (board.cuts[openView.tileId] ?? 1) : undefined}
+          onCuts={openView.code === "S02" ? (cuts) => dispatch({ type: "cuts", id: openView.tileId, cuts }) : undefined}
           onClose={() => setOpenId(null)}
         />
       )}

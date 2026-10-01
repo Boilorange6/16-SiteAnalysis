@@ -8,6 +8,7 @@ export type TileSize = 1 | 2;
 export type SheetGrid = "2x2" | "3x2";
 export type SheetSpec = { tiles: string[]; grid: SheetGrid };
 export type CameraPreset = { azimuthDeg: number; elevationDeg: number };
+export type CutCount = 1 | 3;
 
 /** 되돌리기 한 단계. 모든 편집(순서·크기·제거·더하기)이 여기 쌓인다. */
 export type UndoEntry =
@@ -39,6 +40,8 @@ export type BoardState = {
   sheets: Record<string, SheetSpec>;
   /** S01 타일 id → 저장된 카메라 프리셋 */
   cameras: Record<string, CameraPreset>;
+  /** S02 타일 id → 보고서에 넣을 그림자 컷 수 */
+  cuts: Record<string, CutCount>;
   /** 빼 둔 타일(더할 수 있는 타일). index는 빼기 전 위치 */
   removed: { id: string; index: number }[];
   undoStack: UndoEntry[];
@@ -60,7 +63,8 @@ export type BoardAction =
   | { type: "unstack"; id: string }
   | { type: "sheet"; tiles: string[]; grid: SheetGrid }
   | { type: "unsheet"; id: string }
-  | { type: "camera"; id: string; camera: CameraPreset };
+  | { type: "camera"; id: string; camera: CameraPreset }
+  | { type: "cuts"; id: string; cuts: CutCount };
 
 /** 카드의 현재 면 (편집 중에는 화면이 항상 요약면을 쓴다) */
 export const viewOf = (s: Pick<BoardState, "view" | "viewAll">, id: string): CardFace => s.view[id] ?? s.viewAll;
@@ -80,6 +84,7 @@ export function initBoard(results: TileResult[]): BoardState {
     stacks: {},
     sheets: {},
     cameras: {},
+    cuts: {},
     removed: [],
     undoStack: [],
   };
@@ -251,6 +256,9 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
     case "camera":
       if (!isCameraPreset(a.camera)) return s;
       return { ...s, cameras: { ...s.cameras, [a.id]: { ...a.camera } } };
+    case "cuts":
+      if (a.cuts !== 1 && a.cuts !== 3) return s;
+      return { ...s, cuts: { ...s.cuts, [a.id]: a.cuts } };
   }
 }
 

@@ -78,6 +78,22 @@ export const complexCounts = (views: Map<string, TileView>): Record<string, numb
 
 const hasResult = (v: TileView) => v.status === "complete" || v.status === "partial";
 
+const S02_CUTS = [
+  { layer: "shadow_09", note: "09:00", key: "cut09" },
+  { layer: "shadow_12", note: "12:00", key: "cut12" },
+  { layer: "shadow_15", note: "15:00", key: "cut15" },
+] as const;
+
+/** S02 3컷 조판용으로 그림자 시각 하나와 수광면만 남긴다. 원본 뷰는 변경하지 않는다. */
+export function viewWithOnlyLayer(view: TileView, layer: string, note: string): TileView {
+  const polygons = (view.map?.polygons ?? []).filter((polygon) => polygon.layer === layer || polygon.layer === "sun_face");
+  return {
+    ...view,
+    notes: [note, ...view.notes.filter((existing) => existing !== note)],
+    map: view.map ? { ...view.map, polygons, polygonsTotal: polygons.length } : null,
+  };
+}
+
 function oneLine(v: TileView): string {
   if (!hasResult(v)) return (v.badges[0]?.text ?? "결과 없음") + " · 결과 없음";
   if (!v.headline) return "결과 있음";
@@ -135,6 +151,21 @@ export function buildReportPlan(input: {
         kind: "sheet",
         view: v,
         grid: v.sheetGrid,
+        cells,
+        footer: v.sourceLine === "출처 없음" ? "출처 없음 · 기준일 해당 없음" : `출처 ${v.sourceLine}`,
+      });
+      continue;
+    }
+    if (v.code === "S02" && board.cuts[v.tileId] === 3 && hasResult(v)) {
+      const cells = S02_CUTS.map(({ layer, note, key }) => ({
+        view: viewWithOnlyLayer(v, layer, note),
+        face: "front" as const,
+        mapKey: `${v.tileId}:${key}`,
+      }));
+      raw.push({
+        kind: "sheet",
+        view: v,
+        grid: "3x1",
         cells,
         footer: v.sourceLine === "출처 없음" ? "출처 없음 · 기준일 해당 없음" : `출처 ${v.sourceLine}`,
       });
