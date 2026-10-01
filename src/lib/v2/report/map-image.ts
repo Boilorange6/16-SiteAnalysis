@@ -10,7 +10,7 @@ import MapFigure, { type MapFigureProps } from "@/components/v2/map-figure";
 import MassFigure from "@/components/v2/mass-figure";
 import WindRoseFigure from "@/components/v2/wind-rose-figure";
 import type { MapModel } from "../ui/map-layers";
-import type { MassCamera, MassModel } from "../ui/mass-projection";
+import type { MassCamera, MassColorScheme, MassModel } from "../ui/mass-projection";
 import type { RoseModel } from "../ui/wind-rose";
 import type { RoseSeason } from "../tile-result";
 import type { Scene } from "../scene";
@@ -29,6 +29,7 @@ const OUT_W = 1920;
 const OUT_H = 1080;
 const PX_PER_INCH = VIEW_W / SLIDE.w;
 type Extra = Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "scale" | "legend" | "bare">;
+type MassExplodedOptions = { spreadPct: number; scheme?: MassColorScheme };
 const TILE_TIMEOUT_MS = 8000;
 
 const rasterKey = (analysisId: string, code: string, name: string) => `${analysisId}/${code}/${name}`;
@@ -125,11 +126,11 @@ export async function prefetchRasters(plan: PlannedSlide[], analysisId: string):
   return cache;
 }
 
-function svgOfMass(mass: MassModel, width: number, height: number): string {
+function svgOfMass(mass: MassModel, width: number, height: number, exploded?: MassExplodedOptions): string {
   const host = document.createElement("div");
   const root = createRoot(host);
   try {
-    flushSync(() => root.render(createElement(MassFigure, { scene: mass.scene, camera: mass.camera, width, height, fixed: true })));
+    flushSync(() => root.render(createElement(MassFigure, { scene: mass.scene, camera: mass.camera, width, height, fixed: true, exploded: exploded ?? mass.exploded })));
     return host.innerHTML;
   } finally {
     root.unmount();
@@ -194,13 +195,23 @@ export async function rasterizeMap(
   return toPng(svgOf(model, got, activeLayer, extra, rasterCache));
 }
 
-export function rasterizeMass(mass: MassModel): Promise<string>;
-export function rasterizeMass(scene: Scene | null, camera: MassCamera, width?: number, height?: number): Promise<string>;
-export async function rasterizeMass(sceneOrMass: Scene | MassModel | null, camera?: MassCamera, width = VIEW_W, height = VIEW_H): Promise<string> {
-  const mass: MassModel = camera
-    ? { scene: sceneOrMass as Scene | null, camera }
-    : (sceneOrMass as MassModel);
-  return toPng(svgOfMass(mass, width, height));
+export function rasterizeMass(mass: MassModel, exploded?: MassExplodedOptions): Promise<string>;
+export function rasterizeMass(scene: Scene | null, camera: MassCamera, width?: number, height?: number, exploded?: MassExplodedOptions): Promise<string>;
+export async function rasterizeMass(
+  sceneOrMass: Scene | MassModel | null,
+  cameraOrExploded?: MassCamera | MassExplodedOptions,
+  width = VIEW_W,
+  height = VIEW_H,
+  exploded?: MassExplodedOptions,
+): Promise<string> {
+  const isCamera = Boolean(cameraOrExploded && "azimuthDeg" in cameraOrExploded && "elevationDeg" in cameraOrExploded);
+  const mass: MassModel = isCamera
+    ? { scene: sceneOrMass as Scene | null, camera: cameraOrExploded as MassCamera, exploded }
+    : {
+        ...(sceneOrMass as MassModel),
+        exploded: exploded ?? (cameraOrExploded && "spreadPct" in cameraOrExploded ? cameraOrExploded : undefined),
+      };
+  return toPng(svgOfMass(mass, width, height, mass.exploded));
 }
 
 export async function rasterizeRose(model: RoseModel, width = VIEW_W, height = VIEW_H, season: RoseSeason = "annual"): Promise<string> {
