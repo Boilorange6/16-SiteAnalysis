@@ -16,6 +16,42 @@ export interface SunPosition {
   altitudeDeg: number;
 }
 
+/** NOAA equation of time in minutes for an absolute instant. */
+export function equationOfTimeMin(at: Date): number {
+  const jd = at.getTime() / 86400000 + 2440587.5;
+  const T = (jd - 2451545.0) / 36525;
+  const L0 = (280.46646 + T * (36000.76983 + T * 0.0003032)) % 360;
+  const M = 357.52911 + T * (35999.05029 - 0.0001537 * T);
+  const e = 0.016708634 - T * (0.000042037 + 0.0000001267 * T);
+  const Mr = M * RAD;
+  const C = Math.sin(Mr) * (1.914602 - T * (0.004817 + 0.000014 * T)) + Math.sin(2 * Mr) * (0.019993 - 0.000101 * T) + Math.sin(3 * Mr) * 0.000289;
+  const omega = 125.04 - 1934.136 * T;
+  const lambda = L0 + C - 0.00569 - 0.00478 * Math.sin(omega * RAD);
+  const eps0 = 23 + (26 + (21.448 - T * (46.815 + T * (0.00059 - T * 0.001813))) / 60) / 60;
+  const eps = eps0 + 0.00256 * Math.cos(omega * RAD);
+  const y = Math.tan((eps * RAD) / 2) ** 2;
+  const L0r = L0 * RAD;
+  return (
+    4 / RAD * (y * Math.sin(2 * L0r) - 2 * e * Math.sin(Mr) + 4 * e * y * Math.sin(Mr) * Math.cos(2 * L0r) - 0.5 * y * y * Math.sin(4 * L0r) - 1.25 * e * e * Math.sin(2 * Mr)));
+}
+
+/** True solar clock minutes (0..1440) from UTC instant and longitude. */
+export function trueSolarMin(lonDeg: number, at: Date): number {
+  const utcMin = at.getUTCHours() * 60 + at.getUTCMinutes() + at.getUTCSeconds() / 60 + at.getUTCMilliseconds() / 60000;
+  const value = utcMin + equationOfTimeMin(at) + 4 * lonDeg;
+  return ((value % 1440) + 1440) % 1440;
+}
+
+/** Convert true-solar minutes on a KST calendar date back to KST wall-clock minutes. */
+export function kstForTrueSolar(lonDeg: number, year: number, month: number, day: number, tstMin: number): number {
+  // P4 labels the true-solar window against the KST standard meridian (135E).
+  // Equation of time changes by only a few seconds over a day; evaluating at
+  // local noon avoids a date-boundary ambiguity.
+  const eot = equationOfTimeMin(kst(year, month, day, 12));
+  const value = tstMin + (135 - lonDeg) * 4 + eot;
+  return ((value % 1440) + 1440) % 1440;
+}
+
 export function sunPosition(latDeg: number, lonDeg: number, at: Date): SunPosition {
   const jd = at.getTime() / 86400000 + 2440587.5;
   const T = (jd - 2451545.0) / 36525;
@@ -29,14 +65,8 @@ export function sunPosition(latDeg: number, lonDeg: number, at: Date): SunPositi
   const eps0 = 23 + (26 + (21.448 - T * (46.815 + T * (0.00059 - T * 0.001813))) / 60) / 60;
   const eps = eps0 + 0.00256 * Math.cos(omega * RAD);
   const decl = Math.asin(Math.sin(eps * RAD) * Math.sin(lambda * RAD));
-  const y = Math.tan((eps * RAD) / 2) ** 2;
-  const L0r = L0 * RAD;
-  const eqTimeMin =
-    4 / RAD * (y * Math.sin(2 * L0r) - 2 * e * Math.sin(Mr) + 4 * e * y * Math.sin(Mr) * Math.cos(2 * L0r) - 0.5 * y * y * Math.sin(4 * L0r) - 1.25 * e * e * Math.sin(2 * Mr));
-
-  const utcMin = (at.getUTCHours() * 60 + at.getUTCMinutes()) + at.getUTCSeconds() / 60 + at.getUTCMilliseconds() / 60000;
-  const trueSolarMin = (((utcMin + eqTimeMin + 4 * lonDeg) % 1440) + 1440) % 1440;
-  const ha = (trueSolarMin / 4 < 0 ? trueSolarMin / 4 + 180 : trueSolarMin / 4 - 180) * RAD;
+  const trueSolar = trueSolarMin(lonDeg, at);
+  const ha = (trueSolar / 4 < 0 ? trueSolar / 4 + 180 : trueSolar / 4 - 180) * RAD;
 
   const lat = latDeg * RAD;
   const cosZ = Math.sin(lat) * Math.sin(decl) + Math.cos(lat) * Math.cos(decl) * Math.cos(ha);
