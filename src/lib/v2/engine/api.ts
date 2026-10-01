@@ -1,8 +1,10 @@
 /** API 라우트의 본체. 인증은 라우트가 하고, 여기서는 입력 검증·실행·응답 모양만 다룬다(테스트하기 쉽게 분리). */
+import { performance } from "node:perf_hooks";
 import type BetterSqlite3 from "better-sqlite3";
 import { z } from "zod";
 import { getAnalysisRun, loadScene, loadTileResults } from "../app-db";
 import { DEFAULT_RADIUS_M, RADIUS_CHOICES, restoreSummary, runAnalysis } from "./run";
+import { listJobs } from "./jobs";
 import { SITE_FAILURE_MESSAGE } from "./site";
 
 const realDate = (d: string) => {
@@ -29,6 +31,7 @@ export function postAnalysis(appDb: BetterSqlite3.Database, dataDir: string, raw
   const parsed = bodySchema.safeParse(raw);
   if (!parsed.success) return { status: 400, body: { error: parsed.error.issues[0].message } };
   let outcome;
+  const started = performance.now();
   try {
     outcome = runAnalysis(appDb, dataDir, { ...parsed.data, userId });
   } catch (e) {
@@ -36,7 +39,16 @@ export function postAnalysis(appDb: BetterSqlite3.Database, dataDir: string, raw
     return { status: 500, body: { error: "분석 중 오류가 발생했습니다" } };
   }
   if (!outcome.ok) return { status: 422, body: { error: SITE_FAILURE_MESSAGE[outcome.reason], reason: outcome.reason } };
-  return { status: 200, body: { analysisId: outcome.analysisId, summary: outcome.summary, results: outcome.results } };
+  return {
+    status: 202,
+    body: {
+      analysisId: outcome.analysisId,
+      summary: outcome.summary,
+      results: outcome.results,
+      jobs: listJobs(appDb, outcome.analysisId),
+      timingsMs: { light: Math.max(1, Math.round(performance.now() - started)) },
+    },
+  };
 }
 
 function canRead(run: { userId?: string | number | null }, userId?: string | number | null): boolean {
@@ -47,7 +59,7 @@ export function getAnalysis(appDb: BetterSqlite3.Database, id: string, userId?: 
   const run = getAnalysisRun(appDb, id);
   if (!run || !canRead(run, userId)) return { status: 404, body: { error: "분석을 찾을 수 없습니다" } };
   const results = loadTileResults(appDb, id);
-  return { status: 200, body: { analysisId: id, summary: restoreSummary(run, results), results } };
+  return { status: 200, body: { analysisId: id, summary: restoreSummary(run, results), results, jobs: listJobs(appDb, id) } };
 }
 
 export function getScene(appDb: BetterSqlite3.Database, id: string, userId?: string | number | null): ApiReply {

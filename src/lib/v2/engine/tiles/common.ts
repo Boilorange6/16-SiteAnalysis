@@ -7,7 +7,7 @@ import { sourceName } from "../../ui/tile-catalog";
 import type { EngineContext, Limitation, SourceRef } from "../context";
 import { simplifyRing } from "./geo";
 
-export const ENGINE_VERSION = "v2-p3-terrain-1";
+export const ENGINE_VERSION = "v2-p4-ext-1";
 
 type Metric = TileResult["metrics"][number];
 

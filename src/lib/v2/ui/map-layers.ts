@@ -1,10 +1,18 @@
-import type { MapFeature, MapLine, MapPolygon } from "../tile-result";
+import type { MapFeature, MapLine, MapPolygon, RasterRef } from "../tile-result";
+import type { BasemapChoice } from "./map-projection";
 
 /** MapFigure가 그리는 입력. 카드·상세·PPT가 같은 것을 쓴다. */
 export type MapModel = {
   center: readonly [number, number];
   radiusM: number;
   features: MapFeature[];
+  /** 결과가 저장된 분석과 타일. 브라우저 래스터 조회 경로를 만들 때만 사용한다. */
+  analysisId?: string;
+  tileCode?: string;
+  /** 결과가 지정한 고정 배경(D01은 Satellite). */
+  basemap?: BasemapChoice;
+  /** 지도에 겹칠 압축 래스터 참조. */
+  rasters?: RasterRef[];
   /** 면 지물(WGS84). T2의 MapFigure가 점보다 먼저 그린다. */
   polygons?: MapPolygon[];
   /** 상한으로 잘리기 전 전체 면 지물 개수 */
@@ -25,6 +33,16 @@ export type LayerStyle = {
   color: string;
   /** weight로 원 크기(√비례)를 정한다. 아니면 작은 점 */
   sizeBy?: "weight";
+};
+
+export type RasterStyle = {
+  mode: "stepped" | "continuous" | "mask";
+  colors: string[];
+  breaks?: number[];
+  min?: number;
+  max?: number;
+  opacity?: number;
+  label?: string;
 };
 
 /** 준공 연대 색 (지도 점과 구성비 차트가 같이 쓴다). 오래될수록 진하다 */
@@ -196,6 +214,33 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   shadow_09: S("09:00 그림자", "#6D7580"),
   shadow_12: S("12:00 그림자", "#535A65"),
   shadow_15: S("15:00 그림자", "#383E48"),
+  rent_jeonse: S("전세 거래 지점", "#2B6CB0", "weight"),
+  rent_monthly: S("월세 거래 지점", "#63B3ED", "weight"),
+  walk_route: S("보행 경로", "#7A5BA6"),
+  canopy: S("수관", "#2E7D32"),
+  osm_green: S("OSM 녹지 면", "#5FAE5B"),
+  osm_water: S("OSM 수계 면", "#4F9DA6"),
+  walk_5: S("도보 5분", "#C6A15B"),
+  walk_10: S("도보 10분", "#A47551"),
+  walk_15: S("도보 15분", "#7A5BA6"),
+  walk_net: S("보행망", "#4F8A9E"),
+  wind_inflow: S("유입 방향", "#2B9CBF"),
+};
+
+/** 래스터의 값→색 규칙. 실제 픽셀화는 ui/raster-image.ts가 담당한다. */
+export const RASTER_STYLES: Record<string, RasterStyle> = {
+  sun_hours: {
+    mode: "stepped",
+    colors: ["#18234C", "#243B70", "#31568D", "#4377A0", "#5E96A7", "#82B39C", "#B5C57C", "#D9C65E", "#F0B545", "#F39A31", "#F47A26", "#F05A21", "#E83D1D"],
+    breaks: Array.from({ length: 12 }, (_, i) => i + 1),
+    label: "일조시간",
+  },
+  shade_mask: { mode: "mask", colors: ["#3D4A63"], opacity: 0.55, label: "그림자" },
+  shade_flow: { mode: "continuous", colors: ["#22304C", "#586B89", "#B7C4D7"], min: 0, max: 1, label: "그림자 흐름" },
+  wind_ratio: { mode: "continuous", colors: ["#440154", "#31688E", "#35B779", "#FDE725"], min: 0, max: 1.2, label: "U/U유입" },
+  utci: { mode: "stepped", colors: ["#313695", "#4575B4", "#74ADD1", "#ABD9E9", "#66BD63", "#1A9850", "#FEE08B", "#FDAE61", "#F46D43", "#D73027"], breaks: [9, 26, 32, 38, 46], label: "UTCI" },
+  svf: { mode: "continuous", colors: ["#808080", "#B8D7E8", "#DDF5FF"], min: 0, max: 1, label: "하늘열림(SVF)" },
+  canopy: { mode: "mask", colors: ["#2E7D32"], opacity: 0.7, label: "수관" },
 };
 const FALLBACK: LayerStyle = S("기타", "#7A7E87");
 

@@ -7,9 +7,23 @@ const { initBoard, boardReducer, reportPages, demoPhase, demoFinished } = await 
 const ids = GODEOK_RESULTS.map((r) => r.tileId);
 let s = initBoard(GODEOK_RESULTS);
 assert.deepEqual(s.order, ids);
+assert.deepEqual(s.results, GODEOK_RESULTS);
 assert.equal(s.included["t-A01"], true);
 assert.equal(s.included["t-S02"], false); // not_provided
 assert.equal(s.included["t-S03"], false); // failed
+
+// 백그라운드 폴링 결과 교체는 편집 상태를 건드리지 않는다.
+{
+  let edited = boardReducer(s, { type: "move", id: "t-A02", dir: 1 });
+  edited = boardReducer(edited, { type: "include", id: "t-A01", value: false });
+  edited = boardReducer(edited, { type: "face", id: "t-D04", face: "both" });
+  const refreshed = GODEOK_RESULTS.map((result) => ({ ...result, status: "running" }));
+  const next = boardReducer(edited, { type: "replaceResults", results: refreshed });
+  assert.deepEqual(next.results, refreshed);
+  assert.deepEqual(next.order, edited.order);
+  assert.deepEqual(next.included, edited.included);
+  assert.deepEqual(next.faces, edited.faces);
+}
 
 // 제거 → 되돌리기: 순서까지 복원, 여러 번도 역순으로
 const s0 = s;

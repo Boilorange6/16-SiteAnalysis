@@ -23,6 +23,8 @@ export type CardFace = "summary" | "map";
 export const SUMMARY_ID = "site-summary";
 
 export type BoardState = {
+  /** 폴링으로 갱신되는 최신 결과. 편집 상태와 분리해 replaceResults가 이것만 바꾼다. */
+  results: TileResult[];
   order: string[];
   included: Record<string, boolean>;
   faces: Record<string, OutputFace>;
@@ -48,6 +50,7 @@ export type BoardState = {
 };
 
 export type BoardAction =
+  | { type: "replaceResults"; results: TileResult[] }
   | { type: "remove"; id: string }
   | { type: "undo" }
   | { type: "move"; id: string; dir: -1 | 1 }
@@ -71,6 +74,7 @@ export const viewOf = (s: Pick<BoardState, "view" | "viewAll">, id: string): Car
 
 export function initBoard(results: TileResult[]): BoardState {
   return {
+    results: [...results],
     order: results.map((r) => r.tileId),
     // 결과가 있는 타일만 기본 포함
     included: Object.fromEntries(results.map((r) => [r.tileId, r.status === "complete" || r.status === "partial"])),
@@ -102,6 +106,8 @@ function reordered(order: string[], from: number, to: number): string[] | null {
 
 export function boardReducer(s: BoardState, a: BoardAction): BoardState {
   switch (a.type) {
+    case "replaceResults":
+      return { ...s, results: [...a.results] };
     case "remove": {
       const index = s.order.indexOf(a.id);
       if (index < 0) return s;

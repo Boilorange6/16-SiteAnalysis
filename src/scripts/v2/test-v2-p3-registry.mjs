@@ -13,16 +13,16 @@ const { runAnalysis } = await import("../../lib/v2/engine/run.ts");
 
 const P3 = ["D15", "D16", "D17", "D18", "D21", "D22"];
 const DS_ORDER = [
-  "D02", "D03", "D04", "D05", "D06", "D07", "D08", "D09", "D11", "D12", "D13", "D14",
-  "D15", "D16", "D17", "D18", "D19", "D20", "D21", "D22", "D23", "D24", "D25", "D26", "D27",
-  "S01", "S02", "S03",
+  "D01", "D02", "D03", "D04", "D05", "D06", "D07", "D08", "D09", "D10", "D11", "D12", "D13", "D14",
+  "D15", "D16", "D17", "D18", "D19", "D20", "D21", "D22", "D23", "D24", "D25", "D26", "D27", "D28", "D29",
+  "S01", "S02", "S03", "S04",
 ];
 
 for (const code of P3) {
   assert.equal(TILE_CATALOG[code].kind, "diagram", `catalog ${code}`);
 }
 assert.deepEqual(TILE_CODES.filter((code) => code.startsWith("D") || code.startsWith("S")), DS_ORDER);
-assert.equal(ENGINE_VERSION, "v2-p3-terrain-1");
+assert.equal(ENGINE_VERSION, "v2-p4-ext-1");
 
 const dataDir = mkdtempSync(join(tmpdir(), "v2-p3-reg-"));
 await buildEngineFixture(dataDir, "v1");
@@ -34,7 +34,7 @@ try {
   for (const code of P3) {
     const result = run.results.find((tile) => tile.tileCode === code);
     assert.ok(result, `result ${code}`);
-    assert.equal(result.status, "not_provided", `${code} status`);
+    assert.equal(result.status, code === "D21" ? "pending" : "not_provided", `${code} status`);
     assert.equal(result.tileType, "diagram", `${code} tileType`);
   }
 } finally {

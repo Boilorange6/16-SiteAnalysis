@@ -5,10 +5,12 @@
 import { randomUUID } from "node:crypto";
 import type BetterSqlite3 from "better-sqlite3";
 import type { LngLat } from "../crs";
-import { createAnalysisRun, finishAnalysisRun, findCachedTileResult, getAnalysisRun, saveScene, saveTileResult } from "../app-db";
+import { createAnalysisRun, enqueueAnalysisJobs, finishAnalysisRun, findCachedTileResult, getAnalysisRun, saveScene, saveTileResult } from "../app-db";
 import { openDataFile, readManifest } from "../data/manifest";
 import { tileCacheKey, type TileResult } from "../tile-result";
+import { saveTileRasters } from "../raster-store";
 import type { SiteSummary } from "../ui/tile-view";
+import { catalogEntry } from "../ui/tile-catalog";
 import { EngineContext } from "./context";
 import { buildScene } from "./scene";
 import { resolveSite, type SiteFailure, type SiteResult } from "./site";
@@ -20,11 +22,13 @@ import { a04 } from "./tiles/a04";
 import { a05 } from "./tiles/a05";
 import { a06 } from "./tiles/a06";
 import { a07 } from "./tiles/a07";
+import { a08 } from "./tiles/a08";
 import { a09 } from "./tiles/a09";
 import { a10 } from "./tiles/a10";
 import { a11 } from "./tiles/a11";
 import { a12 } from "./tiles/a12";
 import { ENGINE_VERSION, makeTile } from "./tiles/common";
+import { d01 } from "./tiles/d01";
 import { d02 } from "./tiles/d02";
 import { d03 } from "./tiles/d03";
 import { d04 } from "./tiles/d04";
@@ -33,6 +37,7 @@ import { d06 } from "./tiles/d06";
 import { d07 } from "./tiles/d07";
 import { d08 } from "./tiles/d08";
 import { d09 } from "./tiles/d09";
+import { d10 } from "./tiles/d10";
 import { d11 } from "./tiles/d11";
 import { d12 } from "./tiles/d12";
 import { d13 } from "./tiles/d13";
@@ -50,9 +55,13 @@ import { d24 } from "./tiles/d24";
 import { d25 } from "./tiles/d25";
 import { d26 } from "./tiles/d26";
 import { d27 } from "./tiles/d27";
+import { d28 } from "./tiles/d28";
+import { d29 } from "./tiles/d29";
 import { notProvided } from "./tiles/not-provided";
 import { s01 } from "./tiles/s01";
 import { s02 } from "./tiles/s02";
+import { s03 } from "./tiles/s03";
+import { s04 } from "./tiles/s04";
 
 export const RADIUS_CHOICES = [500, 800, 1000, 2000, 3000] as const;
 export const DEFAULT_RADIUS_M = 800;
@@ -66,11 +75,15 @@ export interface RunInput {
 }
 
 export type RunOutcome =
-  | { ok: true; analysisId: string; summary: SiteSummary; results: TileResult[]; computed: string[]; reused: string[] }
+  | { ok: true; analysisId: string; summary: SiteSummary; results: TileResult[]; computed: string[]; reused: string[]; queued: string[] }
   | { ok: false; reason: SiteFailure };
 
+export const HEAVY_TILE_CODES = ["S02", "D21", "D29", "D10", "S03", "S04"] as const;
+const HEAVY_TILE_SET = new Set<string>(HEAVY_TILE_CODES);
+export const DATE_INDEPENDENT_CODES = new Set(["S03", "D10", "D29", "D01", "D28"]);
+
 /** 화면 순서(카탈로그 순). 계산하는 타일 다음에 아직 제공하지 않는 타일이 코드 순서에 끼어든다. */
-const TILES: Array<[code: string, compute: (ctx: EngineContext) => TileResult]> = [
+export const TILES: Array<[code: string, compute: (ctx: EngineContext) => TileResult]> = [
   ["A01", a01],
   ["A02", a02],
   ["A03", a03],
@@ -78,10 +91,12 @@ const TILES: Array<[code: string, compute: (ctx: EngineContext) => TileResult]> 
   ["A05", a05],
   ["A06", a06],
   ["A07", a07],
+  ["A08", a08],
   ["A09", a09],
   ["A10", a10],
   ["A11", a11],
   ["A12", a12],
+  ["D01", d01],
   ["D02", d02],
   ["D03", d03],
   ["D04", d04],
@@ -90,6 +105,7 @@ const TILES: Array<[code: string, compute: (ctx: EngineContext) => TileResult]> 
   ["D07", d07],
   ["D08", d08],
   ["D09", d09],
+  ["D10", d10],
   ["D11", d11],
   ["D12", d12],
   ["D13", d13],
@@ -107,12 +123,38 @@ const TILES: Array<[code: string, compute: (ctx: EngineContext) => TileResult]> 
   ["D25", d25],
   ["D26", d26],
   ["D27", d27],
+  ["D28", d28],
+  ["D29", d29],
   ["S01", s01],
   ["S02", s02],
-  ["S03", (c) => notProvided(c, "S03")],
+  ["S03", s03],
+  ["S04", s04],
 ];
 
 export const todayKst = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
+
+function cacheKeyFor(ctx: EngineContext, code: string): string {
+  const conditions = DATE_INDEPENDENT_CODES.has(code) ? { ...ctx.conditions, analysisDate: "date-independent" } : ctx.conditions;
+  return tileCacheKey({ tileCode: code, manifestHash: ctx.manifestHash, engineVersion: ENGINE_VERSION, conditions });
+}
+
+function pendingTile(ctx: EngineContext, code: string): TileResult {
+  return makeTile(ctx, {
+    code,
+    type: catalogEntry(code).kind,
+    status: "pending",
+    metrics: [],
+    sources: [],
+    limitations: [{ kind: "not_provided", note: "백그라운드 계산 대기 중입니다." }],
+  });
+}
+
+function attachRasters(tile: TileResult, items: Array<{ ref: NonNullable<TileResult["presentation"]["rasters"]>[number]; blob: Buffer }>): TileResult {
+  if (items.length === 0) return tile;
+  const refs = new Map((tile.presentation.rasters ?? []).map((ref) => [ref.name, ref]));
+  for (const item of items) refs.set(item.ref.name, item.ref);
+  return { ...tile, presentation: { ...tile.presentation, rasters: [...refs.values()] } };
+}
 
 export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, input: RunInput): RunOutcome {
   const manifest = readManifest(dataDir);
@@ -143,18 +185,29 @@ export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, inpu
     const results: TileResult[] = [];
     const computed: string[] = [];
     const reused: string[] = [];
+    const pending = new Set<string>();
     for (const [code, compute] of TILES) {
-      const key = tileCacheKey({ tileCode: code, manifestHash: ctx.manifestHash, engineVersion: ENGINE_VERSION, conditions: ctx.conditions });
+      const key = cacheKeyFor(ctx, code);
       const cached = findCachedTileResult(appDb, key);
       let tile: TileResult;
       if (cached) {
-        tile = { ...cached, tileId: `${analysisId}-${code}`, analysisId };
+        tile = { ...cached, tileId: `${analysisId}-${code}`, analysisId, conditions: ctx.conditions };
         reused.push(code);
+      } else if (HEAVY_TILE_SET.has(code)) {
+        tile = pendingTile(ctx, code);
+        pending.add(code);
       } else {
         try {
           tile = compute(ctx);
+          const rasters = ctx.takeRasters(code);
+          if (rasters.length > 0) {
+            // 가벼운 타일도 래스터를 만들면 캐시 키와 함께 저장한다.
+            saveTileRasters(appDb, key, rasters);
+            tile = attachRasters(tile, rasters);
+          }
           computed.push(code);
         } catch (e) {
+          ctx.takeRasters(code);
           // 한 타일의 실패가 분석 전체를 막지 않는다 — 실패 타일은 재시도할 수 있고 캐시되지 않는다
           tile = makeTile(ctx, { code, status: "failed", metrics: [], sources: [], limitations: [{ kind: "unknown", note: `계산 중 오류: ${String((e as Error).message).slice(0, 200)}` }] });
         }
@@ -162,6 +215,8 @@ export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, inpu
       saveTileResult(appDb, tile, key);
       results.push(tile);
     }
+    const queued = HEAVY_TILE_CODES.filter((code) => pending.has(code));
+    if (queued.length > 0) enqueueAnalysisJobs(appDb, analysisId, queued);
     // 장면은 내보내기용 부가 산출물 — 실패해도 분석 결과는 살린다
     try {
       const scene = buildScene(ctx);
@@ -169,8 +224,8 @@ export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, inpu
     } catch (e) {
       console.warn(`scene build failed for ${analysisId}: ${(e as Error).message}`);
     }
-    finishAnalysisRun(appDb, analysisId, "complete");
-    return { ok: true, analysisId, summary: buildSummary({ address: site.label, jimok: site.jimok }, input.radiusM, results), results, computed, reused };
+    if (queued.length === 0) finishAnalysisRun(appDb, analysisId, "complete");
+    return { ok: true, analysisId, summary: buildSummary({ address: site.label, jimok: site.jimok }, input.radiusM, results), results, computed, reused, queued };
   } catch (error) {
     try {
       if (getAnalysisRun(appDb, analysisId)) finishAnalysisRun(appDb, analysisId, "failed");

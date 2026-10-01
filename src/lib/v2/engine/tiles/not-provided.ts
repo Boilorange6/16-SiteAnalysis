@@ -5,12 +5,12 @@ import type { EngineContext } from "../context";
 import { makeTile } from "./common";
 
 export const NOT_PROVIDED_CODES = [
-  "A02", "A07", "A09", "A10", "A12",
-  "D02", "D03", "D04", "D05", "D06", "D07", "D08", "D09", "D11", "D12", "D14", "D15", "D16", "D17", "D18", "D19", "D20", "D21", "D22", "D23", "D24", "D25", "D26", "D27",
-  "S01", "S02", "S03",
+  "A02", "A07", "A08", "A09", "A10", "A12",
+  "D01", "D02", "D03", "D04", "D05", "D06", "D07", "D08", "D09", "D10", "D11", "D12", "D14", "D15", "D16", "D17", "D18", "D19", "D20", "D21", "D22", "D23", "D24", "D25", "D26", "D27", "D28", "D29",
+  "S01", "S02", "S03", "S04",
 ] as const;
 
-export function notProvided(ctx: EngineContext, code: string, note = "P3 적재·구현 후 제공됩니다."): TileResult {
+export function notProvided(ctx: EngineContext, code: string, note = "P4 적재·구현 후 제공됩니다."): TileResult {
   const kind = catalogEntry(code).kind;
   return makeTile(ctx, {
     code,

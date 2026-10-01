@@ -1,6 +1,8 @@
 import { useId, type ReactNode } from "react";
 import { layerStyle, legendItems, type MapModel } from "@/lib/v2/ui/map-layers";
 import { BASEMAP_ATTRIBUTION, BASEMAP_STACK, framedViewport, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, type BasemapChoice } from "@/lib/v2/ui/map-projection";
+import { rasterAffine } from "@/lib/v2/ui/raster-image";
+import type { RasterRef } from "@/lib/v2/tile-result";
 
 /**
  * 지도 그림 하나(SVG). 카드·상세·PPT가 같은 입력으로 같은 그림을 그린다.
@@ -16,6 +18,8 @@ export type MapFigureProps = {
   layer?: BasemapChoice;
   /** 배경 타일 주소 → 실제 href (PPT용: data URI로 바꿔 넣는다). 반환 undefined면 그 타일은 생략 */
   tileHref?: (url: string) => string | undefined;
+  /** 결과 래스터 이름 → 압축 해제·팔레트 처리한 이미지 data URL (MapBox/PPT가 주입) */
+  rasterHref?: (ref: RasterRef) => string | null;
   /** true면 범례·문구를 그리지 않는다 (대지 요약 칸) */
   bare?: boolean;
   /** 직렬화용: width/height 속성을 붙인다. 아니면 부모를 채운다 */
@@ -58,8 +62,9 @@ const textW = (s: string, fs: number) => [...s].reduce((w, ch) => w + (ch.charCo
 type Box = { x0: number; y0: number; x1: number; y1: number };
 const hit = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
 
-export default function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, bare, fixed, label, legend, legendY, north: northOpt, scale = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5 }: MapFigureProps) {
-  const sat = layer === "Satellite";
+export default function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, bare, fixed, label, legend, legendY, north: northOpt, scale = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5 }: MapFigureProps) {
+  const activeLayer = model.basemap ?? layer;
+  const sat = activeLayer === "Satellite";
   // 항공 사진 위에서는 어두운 선·점 테두리가 묻히므로 흰색으로 바꾼다
   const line = sat ? "#fff" : INK;
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
@@ -71,7 +76,10 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   const R = model.radiusM / mpp;
 
   const tiles = basemap === "tiles" ? tilesFor(vp) : [];
-  const stack = BASEMAP_STACK[layer];
+  const stack = BASEMAP_STACK[activeLayer];
+  const rasterImages = (model.rasters ?? [])
+    .map((ref) => ({ ref, href: rasterHref?.(ref) ?? null, matrix: rasterAffine(ref, vp) }))
+    .filter((item): item is typeof item & { href: string } => !!item.href);
   const grid = scaleBar(mpp, 110 * u).px;
 
   // 500m 간격 보조 원 (반경 안쪽만)
@@ -258,8 +266,25 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
             }),
           )}
         </g>
-        {tiles.length > 0 && (!sat || muted) && <rect width={W} height={H} fill="#fff" fillOpacity={muted ? 0.5 : layer === "Base" ? 0.35 : 0.15} />}
+        {tiles.length > 0 && (!sat || muted) && <rect width={W} height={H} fill="#fff" fillOpacity={muted ? 0.5 : activeLayer === "Base" ? 0.35 : 0.15} />}
         {tiles.length > 0 && sat && !muted && <rect width={W} height={H} fill="#000" fillOpacity={0.12} />}
+
+        {/* 격자 셀 경계가 보이는 원해상도 래스터. 배경 타일 위, 면·선·점 아래에 둔다. */}
+        {rasterImages.map(({ ref, href, matrix }) => (
+          <image
+            key={`raster-${ref.name}`}
+            data-raster={ref.name}
+            href={href}
+            x={0}
+            y={0}
+            width={ref.cols}
+            height={ref.rows}
+            preserveAspectRatio="none"
+            transform={`matrix(${matrix.join(",")})`}
+            style={{ imageRendering: "pixelated" }}
+            opacity={1}
+          />
+        ))}
 
         <path d={dim} fillRule="evenodd" fill="#14161c" fillOpacity={0.09} />
         {polygons.map((polygon) => {

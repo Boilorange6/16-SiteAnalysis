@@ -15,6 +15,8 @@ import type { RoseModel } from "../ui/wind-rose";
 import type { Scene } from "../scene";
 import { SLIDE, slideLayout, slideReserved, slideSiteX, slideLegend } from "../ui/overlay-layout";
 import { BASEMAP_STACK, framedViewport, tilesFor, tileUrl, type BasemapChoice } from "../ui/map-projection";
+import { inflateRaster, paintRaster } from "../ui/raster-image";
+import { RASTER_STYLES } from "../ui/map-layers";
 import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
 import { mapKeyOf, type PlannedSlide } from "./report-plan";
 import type { MapImages } from "./render-pptx";
@@ -27,6 +29,11 @@ const OUT_H = 1080;
 const PX_PER_INCH = VIEW_W / SLIDE.w;
 type Extra = Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "scale" | "legend" | "bare">;
 const TILE_TIMEOUT_MS = 8000;
+
+const rasterKey = (analysisId: string, code: string, name: string) => `${analysisId}/${code}/${name}`;
+
+/** 결과 타일이 지정한 배경을 PPT·화면 공통으로 우선한다(D01은 항상 Satellite). */
+export const effectiveLayer = (model: MapModel, layer: BasemapChoice): BasemapChoice => model.basemap ?? layer;
 
 const blobToDataUrl = (b: Blob) =>
   new Promise<string>((resolve, reject) => {
@@ -51,11 +58,12 @@ async function fetchTile(url: string): Promise<string | null> {
   }
 }
 
-function svgOf(model: MapModel, tiles: Map<string, string>, layer: BasemapChoice, extra: Extra): string {
+function svgOf(model: MapModel, tiles: Map<string, string>, layer: BasemapChoice, extra: Extra, rasterCache: Map<string, string>): string {
   const host = document.createElement("div");
   const root = createRoot(host);
   try {
     const usable = tiles.size > 0;
+    const activeLayer = effectiveLayer(model, layer);
     flushSync(() =>
       root.render(
         createElement(MapFigure, {
@@ -64,8 +72,9 @@ function svgOf(model: MapModel, tiles: Map<string, string>, layer: BasemapChoice
           height: VIEW_H,
           fixed: true,
           basemap: usable ? "tiles" : "none",
-          layer,
+          layer: activeLayer,
           tileHref: (u: string) => tiles.get(u),
+          rasterHref: (ref) => (model.analysisId && model.tileCode ? rasterCache.get(rasterKey(model.analysisId, model.tileCode, ref.name)) ?? null : null),
           label: "분석 반경 지도",
           // 범례·북쪽·저작권은 슬라이드의 판/출처 띠가 대신한다 (축척만 그림 안, 출처 띠 위)
           legend: extra.legend ?? false,
@@ -81,6 +90,38 @@ function svgOf(model: MapModel, tiles: Map<string, string>, layer: BasemapChoice
   } finally {
     root.unmount();
   }
+}
+
+async function loadRasters(model: MapModel, rasterCache: Map<string, string>): Promise<void> {
+  if (!model.analysisId || !model.tileCode || !model.rasters?.length) return;
+  await Promise.all(
+    model.rasters.map(async (ref) => {
+      const key = rasterKey(model.analysisId!, model.tileCode!, ref.name);
+      if (rasterCache.has(key)) return;
+      const style = RASTER_STYLES[ref.palette];
+      if (!style) return;
+      try {
+        const response = await fetch(`/site/api/v2/analyses/${encodeURIComponent(model.analysisId!)}/tiles/${encodeURIComponent(model.tileCode!)}/rasters/${encodeURIComponent(ref.name)}`);
+        if (!response.ok) return;
+        const values = await inflateRaster(ref, await response.arrayBuffer());
+        rasterCache.set(key, paintRaster(ref, values, style));
+      } catch {
+        // 래스터를 못 받은 장도 벡터·배경만으로 보고서를 계속 만든다.
+      }
+    }),
+  );
+}
+
+/** 보고서 계획에 포함된 모든 래스터를 미리 받아 MapFigure가 외부 URL을 참조하지 않게 한다. */
+export async function prefetchRasters(plan: PlannedSlide[], analysisId: string): Promise<Map<string, string>> {
+  const models: MapModel[] = [];
+  for (const slide of plan) {
+    if (slide.kind === "sheet") models.push(...slide.cells.map((cell) => cell.view.map).filter((model): model is MapModel => !!model));
+    else if (slide.map) models.push(slide.map);
+  }
+  const cache = new Map<string, string>();
+  await Promise.all(models.map((model) => loadRasters(model.analysisId ? model : { ...model, analysisId }, cache)));
+  return cache;
 }
 
 function svgOfMass(mass: MassModel, width: number, height: number): string {
@@ -126,9 +167,16 @@ async function toPng(svg: string): Promise<string> {
 }
 
 /** 한 장 그리기. tileCache는 같은 중심·반경의 여러 장이 타일을 다시 받지 않게 공유한다. */
-export async function rasterizeMap(model: MapModel, tileCache: Map<string, string | null> = new Map(), layer: BasemapChoice = "white", extra: Extra = {}): Promise<string> {
+export async function rasterizeMap(
+  model: MapModel,
+  tileCache: Map<string, string | null> = new Map(),
+  layer: BasemapChoice = "white",
+  extra: Extra = {},
+  rasterCache: Map<string, string> = new Map(),
+): Promise<string> {
   const vp = framedViewport(model.center, model.radiusM, VIEW_W, VIEW_H, extra.siteX, extra.fill);
-  const urls = BASEMAP_STACK[layer].flatMap((ly) => tilesFor(vp).map((t) => tileUrl(ly, t.z, t.x, t.y)));
+  const activeLayer = effectiveLayer(model, layer);
+  const urls = BASEMAP_STACK[activeLayer].flatMap((ly) => tilesFor(vp).map((t) => tileUrl(ly, t.z, t.x, t.y)));
   await Promise.all(
     urls
       .filter((u) => !tileCache.has(u))
@@ -141,7 +189,8 @@ export async function rasterizeMap(model: MapModel, tileCache: Map<string, strin
     const d = tileCache.get(u);
     if (d) got.set(u, d);
   }
-  return toPng(svgOf(model, got, layer, extra));
+  await loadRasters(model, rasterCache);
+  return toPng(svgOf(model, got, activeLayer, extra, rasterCache));
 }
 
 export function rasterizeMass(mass: MassModel): Promise<string>;
@@ -172,13 +221,14 @@ function extraFor(p: PlannedSlide, model: MapModel): Extra {
 /** 계획의 모든 지도 자리에 대한 PNG. 실패한 장은 빠진다(렌더러가 자리표시를 넣는다). */
 export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice = "white"): Promise<MapImages> {
   const cache = new Map<string, string | null>();
+  const rasterCache = await prefetchRasters(plan, "");
   const out: MapImages = {};
   for (const p of plan) {
     if (p.kind === "sheet") {
       for (const cell of p.cells) {
         if (!cell.view.map || out[cell.mapKey]) continue;
         try {
-          out[cell.mapKey] = await rasterizeMap(cell.view.map, cache, layer, { siteX: 0.5, avoid: [], legend: true, bare: false });
+          out[cell.mapKey] = await rasterizeMap(cell.view.map, cache, effectiveLayer(cell.view.map, layer), { siteX: 0.5, avoid: [], legend: true, bare: false }, rasterCache);
         } catch (e) {
           console.warn(`조판 셀 이미지 생성 실패 (${cell.mapKey})`, e);
         }
@@ -206,7 +256,7 @@ export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice 
     const model = p.map;
     if (!model) continue;
     try {
-      out[key] = await rasterizeMap(model, cache, layer, extraFor(p, model));
+      out[key] = await rasterizeMap(model, cache, effectiveLayer(model, layer), extraFor(p, model), rasterCache);
     } catch (e) {
       console.warn(`지도 이미지 생성 실패 (${key})`, e);
     }

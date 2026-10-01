@@ -12,7 +12,7 @@ const { toTileView, toSummaryView, faceLabel } = await import("../../lib/v2/ui/t
 // ── fixture 계약 ──
 for (const r of [...GODEOK_RESULTS, ...Object.values(RECOVERED)]) parseTileResult(r);
 // A03·A04·A10과 P2/P3 새 타일은 예시 데이터에 없다(엔진 결과는 test-v2-engine-run.mjs가 카탈로그 전체와 대조한다)
-const NOT_IN_GODEOK = ["A10", "A11", "D02", "D03", "D05", "D06", "D07", "D08", "D09", "D11", "D12", "D13", "D14", "D15", "D16", "D17", "D18", "D19", "D20", "D21", "D22", "D23", "D24", "D25", "D26", "D27", "S01"];
+const NOT_IN_GODEOK = ["A08", "A10", "A11", "D01", "D02", "D03", "D05", "D06", "D07", "D08", "D09", "D10", "D11", "D12", "D13", "D14", "D15", "D16", "D17", "D18", "D19", "D20", "D21", "D22", "D23", "D24", "D25", "D26", "D27", "D28", "D29", "S01", "S04"];
 assert.deepEqual(GODEOK_RESULTS.map((r) => r.tileCode).sort(), TILE_CODES.filter((c) => !NOT_IN_GODEOK.includes(c)).sort());
 const statuses = new Set(GODEOK_RESULTS.map((r) => r.status));
 for (const s of ["complete", "partial", "failed", "not_provided"]) assert.ok(statuses.has(s), `status ${s}`);
@@ -93,8 +93,8 @@ assert.ok(!byCode.A05.badges.some((b) => b.text === "중복 가능 · 합계 보
 
 // 규칙 5: 모델 한계는 상태와 무관하게 항상
 assert.ok(byCode.S02.badges.some((b) => b.text === "그림자 추정 · 법적 판정 아님"));
-assert.ok(byCode.S03.badges.some((b) => b.text === "탐색용"));
-assert.ok(toTileView(RECOVERED.S03).badges.some((b) => b.text === "탐색용"));
+assert.ok(byCode.S03.badges.some((b) => b.text === "탐색용 · 검증 CFD 아님"));
+assert.ok(toTileView(RECOVERED.S03).badges.some((b) => b.text === "탐색용 · 검증 CFD 아님"));
 assert.ok(!byCode.A01.badges.some((b) => b.text === "탐색용"));
 
 // 규칙 6

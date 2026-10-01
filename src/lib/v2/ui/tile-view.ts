@@ -96,6 +96,11 @@ const MAP_NOTES: Record<string, string> = {
   A04: "대표점 · 원천 면적 비례 (경계 아님)",
   A05: "원 크기 = 세대수 · 속 빈 원 = 세대수 미확인",
   A06: "원천별 표시 · 중복 가능",
+  D01: "VWorld 항공영상 · 촬영시기 미확인",
+  D10: "항공사진 색 기반 수관 검출 · 재현율 미검증 · OSM 녹지 보조",
+  D28: "OSM 보행망 · 80 m/분 · 내부 제안 기준",
+  D29: "건물·지형 기준 하늘열림(SVF) · 수목 제외",
+  S03: "조기설계 참고용 · 풍동 검증 없음 · 주풍향 1방향",
 };
 
 function mapOf(r: TileResult): MapModel | null {
@@ -103,14 +108,20 @@ function mapOf(r: TileResult): MapModel | null {
   const features = r.presentation.features ?? [];
   const polygons = r.presentation.polygons ?? [];
   const lines = r.presentation.lines ?? [];
-  if (features.length === 0 && polygons.length === 0 && lines.length === 0) return null;
+  const rasters = r.presentation.rasters ?? [];
+  const basemap = r.presentation.basemap;
+  if (features.length === 0 && polygons.length === 0 && lines.length === 0 && rasters.length === 0 && !basemap) return null;
   const notes = MAP_NOTES[r.tileCode] ? [MAP_NOTES[r.tileCode]] : [];
   if (r.tileCode === "A01" && r.metrics.some((m) => m.id === "nearest_rail_m" && m.status === "missing")) notes.push("철도 자료 미적재 · 버스정류장만 표시");
-  if (features.length === 0 && polygons.length === 0) notes.push("반경 안 표시할 지물 없음");
+  if (features.length === 0 && polygons.length === 0 && lines.length === 0) notes.push("반경 안 표시할 지물 없음");
   return {
     center: r.conditions.center,
     radiusM: r.conditions.radiusM,
     features,
+    analysisId: r.analysisId,
+    tileCode: r.tileCode,
+    basemap,
+    rasters,
     polygons,
     polygonsTotal: r.presentation.polygonsTotal ?? polygons.length,
     lines,
@@ -126,6 +137,8 @@ const STATUS_TEXT: Partial<Record<TileResult["status"], string>> = {
   cancelled: "취소됨",
   no_data: "자료 없음",
   not_provided: "다음 단계에서 제공",
+  pending: "계산 대기",
+  running: "계산 중",
 };
 const LIMIT_TEXT: Record<TileResult["limitations"][number]["kind"], string> = {
   estimated: "추정",
@@ -147,8 +160,9 @@ const CAVEATS: Record<string, string> = {
   A02: "배정은 교육청 확인",
   S02: "건물·지형 모델에 의한 기하학적 일조 추정입니다. 구름·실제 기상·창면 조건 및 법적 일조 판정을 포함하지 않습니다.",
   S03: "브라우저 탐색용 바람 모형입니다. 보행 안전·구조설계·인허가·검증된 CFD 결과로 사용할 수 없습니다.",
+  S04: "UTCI 근사 · 계절×시각 대표 기상 · 자리끼리 비교",
 };
-const MODEL_BADGE: Record<string, string> = { S02: "그림자 추정 · 법적 판정 아님", S03: "탐색용" };
+const MODEL_BADGE: Record<string, string> = { S02: "그림자 추정 · 법적 판정 아님", S03: "탐색용 · 검증 CFD 아님", S04: "근사 · 건강 위험 예측 아님" };
 
 export const FACE_TEXT: Record<OutputFace, string> = { front: "도판", back: "구성비", both: "도판 + 구성비" };
 export const faceLabel = (f: OutputFace) => FACE_TEXT[f];
