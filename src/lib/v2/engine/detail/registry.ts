@@ -28,6 +28,8 @@ export interface DetailColumn {
 
 export interface DetailRow {
   fid: string;
+  /** 같은 집계 행에 포함된 모든 지도 지물. fid는 하위 호환용 대표 지물이다. */
+  fids?: string[];
   lng: number;
   lat: number;
   cells: Record<string, DetailValue>;
@@ -52,6 +54,8 @@ export interface DetailControl {
 export type DetailAt = {
   card: DetailCard;
   fid?: string;
+  /** 클릭한 원시 조각이 속한 집계 행의 전체 지도 지물 키. */
+  fids?: string[];
   path?: Array<[number, number]>;
 };
 
@@ -85,6 +89,7 @@ export interface DetailListQuery {
   q?: string;
   sort?: string;
   dir?: "asc" | "desc";
+  within10?: boolean;
   offset?: number;
   limit?: number;
 }
@@ -228,6 +233,7 @@ function compareValues(a: DetailValue, b: DetailValue): number {
 
 function visibleRows(payload: DetailPayload, query: DetailListQuery | undefined): { rows: DetailRow[]; total: number } {
   let rows = query?.q ? payload.rows.filter((row) => rowMatches(row, query.q!)) : [...payload.rows];
+  if (query?.within10) rows = rows.filter((row) => row.cells.within_10_min === "예");
   const sort = query?.sort && payload.csvColumns.some((column) => column.key === query.sort) ? query.sort : null;
   if (sort) {
     const direction = query?.dir === "desc" ? -1 : 1;

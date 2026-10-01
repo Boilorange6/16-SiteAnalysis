@@ -66,7 +66,7 @@ export function capFeatures(items: MapCandidate[]): { features: MapFeature[]; to
   const rest = items.filter((c) => !c.f.highlight).sort((a, b) => a.id - b.id);
   const keep = Math.max(0, MAX_MAP_FEATURES - hl.length);
   const picked = rest.length <= keep ? rest : Array.from({ length: keep }, (_, i) => rest[Math.floor((i * rest.length) / keep)]);
-  return { features: [...picked, ...hl].map((c) => c.f), total: items.length };
+  return { features: [...picked, ...hl].map((c) => ({ ...c.f, fid: c.f.fid ?? String(c.id) })), total: items.length };
 }
 
 // ── 면 지물 ──
@@ -84,7 +84,7 @@ export function polygonCandidate(id: number, layer: string, rings: number[][][],
 /** 상한을 넘으면 면적이 큰 것부터 남긴다. 결정적. */
 export function capPolygons(items: PolygonCandidate[]): { polygons: MapPolygon[]; total: number } {
   const sorted = [...items].sort((a, b) => b.areaM2 - a.areaM2 || a.id - b.id);
-  return { polygons: sorted.slice(0, MAX_MAP_POLYGONS).map((c) => c.p), total: items.length };
+  return { polygons: sorted.slice(0, MAX_MAP_POLYGONS).map((c) => ({ ...c.p, fid: c.p.fid ?? String(c.id) })), total: items.length };
 }
 
 // ── 선 지물 ──
@@ -153,7 +153,7 @@ export function lineCandidate(id: number, layer: string, pathM: number[][], leng
 /** 상한을 넘으면 긴 선부터 남긴다. 결정적. */
 export function capLines(items: LineCandidate[]): { lines: MapLine[]; total: number } {
   const sorted = [...items].sort((a, b) => b.lengthM - a.lengthM || a.id - b.id);
-  return { lines: sorted.slice(0, MAX_MAP_LINES).map((candidate) => candidate.l), total: items.length };
+  return { lines: sorted.slice(0, MAX_MAP_LINES).map((candidate) => ({ ...candidate.l, fid: candidate.l.fid ?? String(candidate.id) })), total: items.length };
 }
 
 export interface TileDraft {

@@ -10,6 +10,7 @@ const { toUtmk } = await import("../../lib/v2/crs.ts");
 const { readManifest } = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { DETAIL_SPECS, collectDetail, detailAt, detailCsv, getDetailList } = await import("../../lib/v2/engine/detail/registry.ts");
+const { d08 } = await import("../../lib/v2/engine/tiles/d08.ts");
 const { createAnalysisRun, openV2AppDb } = await import("../../lib/v2/app-db.ts");
 
 const dataDir = mkdtempSync(join(tmpdir(), "v2-detail-data-"));
@@ -126,9 +127,40 @@ try {
 
   const zones = collectDetail(ctx, "D08");
   assert.equal(zones.rows.length, 3);
-  assert.ok(zones.rows.every((row) => row.fid && typeof row.cells.area_m2 === "number"));
+  assert.ok(zones.rows.every((row) => row.fid && Array.isArray(row.fids) && row.fids.length >= 1 && typeof row.cells.area_m2 === "number"));
+  const zoningTile = d08(ctx);
+  assert.ok(zoningTile.presentation.polygons?.every((polygon) => polygon.fid), "zoning polygons keep detail fids");
   const zoneAt = detailAt(ctx, "D08", CENTER[0], CENTER[1]);
   assert.ok(zoneAt?.fid, "zone point lookup returns fid");
+  assert.ok(zoneAt?.fids?.includes(zoneAt.fid), "zone point lookup returns every aggregate fid");
+
+  const sameZone = (featureId, x0) => ({
+    featureId,
+    stableId: `same-zone:${featureId}`,
+    kind: "zoning_area",
+    releaseId: "fixture-zone",
+    name: "같은 용도지역",
+    pnu: null,
+    legalCode: null,
+    properties: { zoningName: "같은 용도지역", zoningClass: "주거" },
+    geometry: { type: "Polygon", coordinates: [[[cx + x0, cy - 100], [cx + x0 + 100, cy - 100], [cx + x0 + 100, cy], [cx + x0, cy], [cx + x0, cy - 100]]] },
+    distanceM: null,
+  });
+  const zoneFixtureMemo = new Map();
+  const zoneFixtureContext = {
+    analysisId: "zone-aggregate-fixture",
+    input: { address: "합성", center: CENTER, radiusM: 800, analysisDate: "2026-10-01", pnu: null },
+    detailControls: {},
+    memo(key, compute) { if (!zoneFixtureMemo.has(key)) zoneFixtureMemo.set(key, compute()); return zoneFixtureMemo.get(key); },
+    db() { return null; },
+    sources() { return []; },
+    hits() { return [sameZone(1, -200), sameZone(2, 0)]; },
+  };
+  const aggregateRows = DETAIL_SPECS.D08.rows(zoneFixtureContext);
+  assert.equal(aggregateRows.length, 1, "same name and source aggregate into one row");
+  assert.deepEqual(aggregateRows[0].fids, ["1", "2"]);
+  assert.equal(aggregateRows[0].cells.pieces, 2);
+  assert.ok(aggregateRows[0].cells.area_m2 > 0);
 
   const parcels = collectDetail(ctx, "D19");
   // fixture의 100-9 필지는 중심에서 2km라 800m 상세 목록에서 제외한다.
@@ -140,12 +172,40 @@ try {
   const walk = collectDetail(ctx, "D28");
   // fixture의 세 번째 버스 정류장은 1.5km라 800m 목록에서 제외한다.
   assert.equal(walk.rows.length, 2);
+  assert.ok(walk.columns.findIndex((column) => column.key === "walk_min") < walk.columns.findIndex((column) => column.key === "straight_m"));
+  assert.ok(walk.rows.every((row) => row.cells.within_10_min === "예" || row.cells.within_10_min === "아니오" || row.cells.within_10_min === null));
+  const walkMinutes = walk.rows.map((row) => row.cells.walk_min).filter((value) => typeof value === "number");
+  assert.deepEqual(walkMinutes, [...walkMinutes].sort((a, b) => a - b));
+  const firstUnroutable = walk.rows.findIndex((row) => row.cells.walk_min === null);
+  assert.ok(firstUnroutable < 0 || walk.rows.slice(firstUnroutable).every((row) => row.cells.walk_min === null), "unroutable transit rows sort last");
+  assert.match(walk.card.subtitle, /역 \d+곳 · 정류장 \d+곳 \(걸어서 10분 안\)/);
   const walkStarted = performance.now();
   const walkAt = detailAt(ctx, "D28", ...at(-100, -200));
   const walkElapsed = performance.now() - walkStarted;
   assert.ok(walkAt?.path && walkAt.path.length >= 2, "walking detail returns a WGS84 route");
   assert.equal(walkAt?.card.fields.some((field) => field.label.includes("걸어서")), true);
   assert.ok(walkElapsed < 300, `walking detail must be <= 300ms, got ${walkElapsed.toFixed(1)}ms`);
+
+  const transit = collectDetail(ctx, "D14");
+  assert.ok(transit.rows.every((row) => typeof row.cells.walk_min === "number" || row.cells.walk_min === null));
+  assert.match(transit.card.subtitle, /걸어서 10분 안/);
+  const transitAt = detailAt(ctx, "D14", CENTER[0], CENTER[1]);
+  assert.ok(transitAt?.card.fields.some((field) => field.label === "걸어서"));
+
+  const noWalkMemo = new Map();
+  const noWalkContext = {
+    analysisId: "no-walk-graph",
+    input: { address: "합성", center: CENTER, radiusM: 800, analysisDate: "2026-10-01", pnu: null },
+    detailControls: {},
+    memo(key, compute) { if (!noWalkMemo.has(key)) noWalkMemo.set(key, compute()); return noWalkMemo.get(key); },
+    db() { return null; },
+    sources() { return []; },
+    hits(key, kinds) {
+      if (kinds.includes("bus_stop")) return [{ featureId: 1, stableId: "bus:1", kind: "bus_stop", releaseId: "fixture", name: "정류장", pnu: null, legalCode: null, properties: {}, geometry: { type: "Point", coordinates: [cx, cy] }, distanceM: 0 }];
+      return [];
+    },
+  };
+  assert.match(DETAIL_SPECS.D14.summary(noWalkContext).subtitle, /보행망 없음/);
 
   const densityNarrow = collectDetail(ctx, "D16", { bandwidth: "57", metric: "buildings" });
   const densityWide = collectDetail(ctx, "D16", { bandwidth: "160", metric: "buildings" });
@@ -175,6 +235,9 @@ try {
   assert.equal(getDetailList(appDb, dataDir, "owned-detail", "D03", "other-user").status, 404);
   assert.equal(getDetailList(appDb, dataDir, "owned-detail", "D03", "owner-1").status, 200);
   assert.equal(getDetailList(appDb, dataDir, "owned-detail", "not-a-tile", "owner-1").status, 404);
+  const within10 = getDetailList(appDb, dataDir, "owned-detail", "D14", "owner-1", { within10: true });
+  assert.equal(within10.status, 200);
+  assert.ok(within10.body.rows.every((row) => row.cells.within_10_min === "예"));
 
   ctx.close();
   ctx = null;

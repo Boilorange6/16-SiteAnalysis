@@ -17,9 +17,10 @@ export const ROAD_COLUMNS: DetailColumn[] = [
 export const TRANSIT_COLUMNS: DetailColumn[] = [
   { key: "name", label: "이름", kind: "text" },
   { key: "type", label: "구분", kind: "category" },
-  { key: "stop_no", label: "역·정류장 번호", kind: "text", csvOnly: true },
-  { key: "straight_m", label: "직선(m)", kind: "number" },
   { key: "walk_min", label: "걸어서(분)", kind: "number" },
+  { key: "straight_m", label: "직선(m)", kind: "number" },
+  { key: "within_10_min", label: "10분 안", kind: "category" },
+  { key: "stop_no", label: "역·정류장 번호", kind: "text", csvOnly: true },
 ];
 
 export const WALK_COLUMNS = TRANSIT_COLUMNS;
@@ -99,16 +100,24 @@ function transitHits(ctx: DetailContext): FeatureHit[] {
 
 function transitRows(ctx: DetailContext, hits: readonly FeatureHit[], withWalk: boolean): DetailRow[] {
   const field = withWalk ? walkField(ctx) : null;
-  return hits.map((hit) => {
+  const rows = hits.map((hit) => {
     const [lng, lat] = hitPoint(hit);
     const route = field ? field.distTo(toUtmk([lng, lat])) : null;
     return { fid: String(hit.featureId), lng, lat, cells: {
       name: hit.name,
       type: hit.kind === "rail_station" ? "철도역" : "버스 정류장",
       stop_no: text(hit.properties.stopNo) ?? text(hit.properties.stationCode) ?? text(hit.properties.stationName),
-       straight_m: hit.distanceM,
       walk_min: route ? route.minutes : null,
+      straight_m: hit.distanceM,
+      within_10_min: route ? (route.minutes <= 10 ? "예" : "아니오") : null,
     } };
+  });
+  return rows.sort((a, b) => {
+    const aMinutes = typeof a.cells.walk_min === "number" ? a.cells.walk_min : null;
+    const bMinutes = typeof b.cells.walk_min === "number" ? b.cells.walk_min : null;
+    if (aMinutes === null && bMinutes !== null) return 1;
+    if (aMinutes !== null && bMinutes === null) return -1;
+    return (aMinutes ?? 0) - (bMinutes ?? 0) || a.fid.localeCompare(b.fid, "en", { numeric: true });
   });
 }
 
@@ -126,18 +135,41 @@ function transitCard(ctx: DetailContext, hit: FeatureHit, withWalk: boolean): De
 }
 
 function transitSpec(code: "D14" | "D28"): DetailSpec {
-  const withWalk = code === "D28";
+  const withWalk = true;
   return {
-    columns: withWalk ? WALK_COLUMNS : TRANSIT_COLUMNS,
-    controls: withWalk ? undefined : undefined,
+    columns: WALK_COLUMNS,
+    controls: undefined,
     summary(ctx) {
       const rows = transitRows(ctx, transitHits(ctx), withWalk);
-      const stationCount = rows.filter((row) => row.cells.type === "철도역").length;
-      return { title: catalogEntry(code).title, subtitle: `${stationCount}역 · ${rows.length - stationCount}정류장`, fields: [{ label: "지물 수", value: `${rows.length.toLocaleString("ko-KR")}개` }], source: transitSource(ctx) };
+      const field = walkField(ctx);
+      const within = rows.filter((row) => row.cells.within_10_min === "예");
+      const stationCount = within.filter((row) => row.cells.type === "철도역").length;
+      const stopCount = within.length - stationCount;
+      if (!field) {
+        return {
+          title: catalogEntry(code).title,
+          subtitle: "보행망 없음 · 도보 시간 미산출",
+          fields: [
+            { label: "보행망", value: "없음" },
+            { label: "지물 수", value: `${rows.length.toLocaleString("ko-KR")}개` },
+          ],
+          missing: ["보행망", "걸어서(분)"],
+          source: transitSource(ctx),
+        };
+      }
+      return {
+        title: catalogEntry(code).title,
+        subtitle: `역 ${stationCount}곳 · 정류장 ${stopCount}곳 (걸어서 10분 안)`,
+        fields: [
+          { label: "10분 안", value: `역 ${stationCount}곳 · 정류장 ${stopCount}곳` },
+          { label: "전체 지물", value: `${rows.length.toLocaleString("ko-KR")}개` },
+        ],
+        source: transitSource(ctx),
+      };
     },
     rows(ctx) { return transitRows(ctx, transitHits(ctx), withWalk); },
     at(ctx, lng, lat) {
-      if (withWalk) {
+      if (code === "D28") {
         const field = walkField(ctx);
         if (!field) return null;
         const route = field.distTo(toUtmk([lng, lat]));
@@ -154,7 +186,7 @@ function transitSpec(code: "D14" | "D28"): DetailSpec {
         const distance = Math.hypot(hx - x, hy - y);
         if (closest === null || distance < closest.distance) closest = { hit, distance };
       }
-      return closest ? { card: transitCard(ctx, closest.hit, false), fid: String(closest.hit.featureId) } : null;
+      return closest ? { card: transitCard(ctx, closest.hit, true), fid: String(closest.hit.featureId) } : null;
     },
   };
 }

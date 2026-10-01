@@ -1,6 +1,6 @@
 import { booleanPointInPolygon } from "@turf/turf";
 import type { Geometry } from "geojson";
-import { toUtmk } from "../../crs";
+import { toLngLat, toUtmk } from "../../crs";
 import type { FeatureHit } from "../../data/features";
 import { sourceLineOf } from "../../ui/tile-view";
 import { catalogEntry } from "../../ui/tile-catalog";
@@ -26,21 +26,20 @@ const ZONE_COLORS: Record<string, string> = {
 export const ZONE_COLUMNS: DetailColumn[] = [
   { key: "name", label: "이름", kind: "text" },
   { key: "class", label: "분류", kind: "category" },
-  { key: "area_m2", label: "면적(㎡)", kind: "number" },
+  { key: "area_m2", label: "틀 안 면적(㎡)", kind: "number" },
   { key: "share_pct", label: "비율(%)", kind: "number" },
   { key: "buildings", label: "건물 수", kind: "number" },
-  { key: "pieces", label: "조각", kind: "number" },
+  { key: "pieces", label: "조각 수", kind: "number" },
+  { key: "source", label: "자료", kind: "text", csvOnly: true },
   { key: "decision_area_m2", label: "결정 면적(㎡)", kind: "number", csvOnly: true },
   { key: "execution", label: "집행", kind: "text", csvOnly: true },
 ];
 
 export const FACILITY_COLUMNS: DetailColumn[] = [
-  { key: "name", label: "이름", kind: "text" },
-  { key: "class", label: "분류", kind: "category" },
-  { key: "shape", label: "형상", kind: "category" },
-  { key: "area_m2", label: "면적(㎡)", kind: "number" },
-  { key: "length_m", label: "길이(m)", kind: "number" },
-  { key: "count", label: "개수", kind: "number" },
+  ...ZONE_COLUMNS,
+  { key: "shape", label: "형상", kind: "category", csvOnly: true },
+  { key: "length_m", label: "길이(m)", kind: "number", csvOnly: true },
+  { key: "count", label: "개수", kind: "number", csvOnly: true },
   { key: "remark", label: "비고", kind: "text", csvOnly: true },
 ];
 
@@ -122,44 +121,180 @@ function pointInGeometry(lng: number, lat: number, geometry: Geometry): boolean 
   }
 }
 
+function ringCentroid(ring: number[][]): { area: number; x: number; y: number } | null {
+  let twiceArea = 0;
+  let x = 0;
+  let y = 0;
+  for (let index = 1; index < ring.length; index++) {
+    const [ax, ay] = ring[index - 1];
+    const [bx, by] = ring[index];
+    const cross = ax * by - bx * ay;
+    twiceArea += cross;
+    x += (ax + bx) * cross;
+    y += (ay + by) * cross;
+  }
+  if (!Number.isFinite(twiceArea) || Math.abs(twiceArea) < 1e-9) return null;
+  return { area: Math.abs(twiceArea) / 2, x: x / (3 * twiceArea), y: y / (3 * twiceArea) };
+}
+
+/** 건물 수는 대표점(bbox 중심)이 아닌 실제 면적 중심을 구역에 대조한다. */
+function buildingCentroid(hit: FeatureHit): [number, number] {
+  const parts = shapeParts(hit.geometry);
+  let areaTotal = 0;
+  let xTotal = 0;
+  let yTotal = 0;
+  for (const rings of parts) {
+    const outer = ringCentroid(rings[0] ?? []);
+    if (!outer) continue;
+    let area = outer.area;
+    let x = outer.x * outer.area;
+    let y = outer.y * outer.area;
+    for (const hole of rings.slice(1)) {
+      const inner = ringCentroid(hole);
+      if (!inner) continue;
+      area -= inner.area;
+      x -= inner.x * inner.area;
+      y -= inner.y * inner.area;
+    }
+    if (area > 0) {
+      areaTotal += area;
+      xTotal += x;
+      yTotal += y;
+    }
+  }
+  if (areaTotal > 0) return [...toLngLat([xTotal / areaTotal, yTotal / areaTotal])] as [number, number];
+  return hitPoint(hit);
+}
+
 function buildingCount(ctx: DetailContext, geometry: Geometry): number | null {
-  const rows = buildingRows(ctx);
+  const rows = ctx.memo("detail:zone-building-rows", () => buildingRows(ctx));
   if (rows === null) return null;
   let count = 0;
   for (const row of rows) {
-    const [lng, lat] = hitPoint(row.hit);
+    const [lng, lat] = buildingCentroid(row.hit);
     if (pointInGeometry(lng, lat, geometry)) count++;
   }
   return count;
 }
 
-function zoneRows(ctx: DetailContext, hits: readonly FeatureHit[]): DetailRow[] {
+function sourceIdOf(ctx: DetailContext, key: "reference" | "market", hit: FeatureHit): string {
+  return ctx.memo(`detail:source-id:${key}:${hit.releaseId}`, () => {
+    try {
+      const row = ctx.db(key)?.prepare("SELECT source_id FROM source_release WHERE release_id = ?").get(hit.releaseId) as { source_id?: string } | undefined;
+      return text(row?.source_id) ?? hit.releaseId;
+    } catch {
+      return hit.releaseId;
+    }
+  });
+}
+
+function rawZoneRow(ctx: DetailContext, hit: FeatureHit, sourceKey: "reference" | "market" = "reference"): DetailRow {
   const circleArea = Math.PI * ctx.input.radiusM ** 2;
-  return hits.map((hit) => {
-    const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, hit.geometry);
-    const area = clipped?.areaM2 ?? 0;
-    const [lng, lat] = hitPoint(hit);
-    return {
-      fid: String(hit.featureId),
-      lng,
-      lat,
-      cells: {
-        name: nameOf(hit),
-        class: classOf(hit),
-        area_m2: area,
-        share_pct: circleArea > 0 ? (area / circleArea) * 100 : null,
-        buildings: buildingCount(ctx, hit.geometry),
-        pieces: pieceCount(hit.geometry),
-        decision_area_m2: number(hit.properties.decisionAreaM2) ?? number(hit.properties.decision_area_m2),
-        execution: text(hit.properties.execution) ?? text(hit.properties.implementation),
-      },
+  const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, hit.geometry);
+  const area = clipped?.areaM2 ?? 0;
+  const [lng, lat] = hitPoint(hit);
+  return {
+    fid: String(hit.featureId),
+    lng,
+    lat,
+    cells: {
+      name: nameOf(hit),
+      class: classOf(hit),
+      area_m2: area,
+      share_pct: circleArea > 0 ? (area / circleArea) * 100 : null,
+      buildings: buildingCount(ctx, hit.geometry),
+      pieces: pieceCount(hit.geometry),
+      source: sourceIdOf(ctx, sourceKey, hit),
+      decision_area_m2: number(hit.properties.decisionAreaM2) ?? number(hit.properties.decision_area_m2),
+      execution: text(hit.properties.execution) ?? text(hit.properties.implementation),
+    },
+  };
+}
+
+interface ZoneGroup {
+  name: string;
+  sourceId: string;
+  hits: FeatureHit[];
+}
+
+function zoneGroups(ctx: DetailContext, hits: readonly FeatureHit[], sourceKey: "reference" | "market"): ZoneGroup[] {
+  const groups = new Map<string, ZoneGroup>();
+  for (const hit of hits) {
+    const name = nameOf(hit);
+    const sourceId = sourceIdOf(ctx, sourceKey, hit);
+    const key = `${sourceId}\u0000${name}`;
+    const group = groups.get(key);
+    if (group) group.hits.push(hit);
+    else groups.set(key, { name, sourceId, hits: [hit] });
+  }
+  return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name, "ko-KR") || a.sourceId.localeCompare(b.sourceId, "en"));
+}
+
+function groupBuildings(ctx: DetailContext, hits: readonly FeatureHit[]): number | null {
+  const rows = ctx.memo("detail:zone-building-rows", () => buildingRows(ctx));
+  if (rows === null) return null;
+  let count = 0;
+  for (const row of rows) {
+    const [lng, lat] = buildingCentroid(row.hit);
+    if (hits.some((hit) => pointInGeometry(lng, lat, hit.geometry))) count++;
+  }
+  return count;
+}
+
+function aggregateNumber(hits: readonly FeatureHit[], keys: readonly string[]): number | null {
+  const values = hits.map((hit) => keys.map((key) => number(hit.properties[key])).find((value): value is number => value !== null)).filter((value): value is number => value !== undefined);
+  return values.length > 0 ? values.reduce((sum, value) => sum + value, 0) : null;
+}
+
+function aggregateText(hits: readonly FeatureHit[], keys: readonly string[]): string | null {
+  const values = [...new Set(hits.flatMap((hit) => keys.map((key) => text(hit.properties[key]))).filter((value): value is string => value !== null))];
+  return values.length > 0 ? values.join(" / ") : null;
+}
+
+function facilityCells(ctx: DetailContext, hits: readonly FeatureHit[]): Record<string, string | number | null> {
+  const shapes = [...new Set(hits.map((hit) => hit.geometry.type === "Polygon" || hit.geometry.type === "MultiPolygon" ? "면" : hit.geometry.type.includes("Line") ? "선" : "점"))];
+  const lengths = hits.map((hit) => hit.geometry.type.includes("Line") ? lineLengthInCircle(ctx.input.center, ctx.input.radiusM, hit.geometry) : null).filter((value): value is number => value !== null);
+  const pointCount = hits.filter((hit) => hit.geometry.type === "Point" || hit.geometry.type === "MultiPoint").length;
+  return {
+    shape: shapes.join(" / ") || null,
+    length_m: lengths.length > 0 ? lengths.reduce((sum, value) => sum + value, 0) : null,
+    count: pointCount > 0 ? pointCount : null,
+    remark: aggregateText(hits, ["remark", "remarkA8", "remarkA9"]),
+  };
+}
+
+function aggregateZoneRows(ctx: DetailContext, hits: readonly FeatureHit[], sourceKey: "reference" | "market", facility = false): DetailRow[] {
+  const circleArea = Math.PI * ctx.input.radiusM ** 2;
+  return zoneGroups(ctx, hits, sourceKey).map((group) => {
+    const fids = group.hits.map((hit) => String(hit.featureId));
+    const area = group.hits.reduce((sum, hit) => sum + (areaInCircle(ctx.input.center, ctx.input.radiusM, hit.geometry)?.areaM2 ?? 0), 0);
+    const classes = [...new Set(group.hits.map(classOf))];
+    const cells: Record<string, string | number | null> = {
+      name: group.name,
+      class: classes.join(" / "),
+      area_m2: area,
+      share_pct: circleArea > 0 ? (area / circleArea) * 100 : null,
+      buildings: groupBuildings(ctx, group.hits),
+      pieces: group.hits.reduce((sum, hit) => sum + pieceCount(hit.geometry), 0),
+      source: group.sourceId,
+      decision_area_m2: aggregateNumber(group.hits, ["decisionAreaM2", "decision_area_m2"]),
+      execution: aggregateText(group.hits, ["execution", "implementation"]),
     };
+    if (facility) Object.assign(cells, facilityCells(ctx, group.hits));
+    const [lng, lat] = hitPoint(group.hits[0]);
+    return { fid: fids[0], fids, lng, lat, cells };
   });
 }
 
 function zoneCard(ctx: DetailContext, hit: FeatureHit, columns: DetailColumn[] = ZONE_COLUMNS, source = ""): DetailCard {
-  const row = zoneRows(ctx, [hit])[0];
+  const row = rawZoneRow(ctx, hit);
   const cells = row.cells;
+  const missing = columns === FACILITY_COLUMNS
+    ? [
+      ...(cells.decision_area_m2 === null ? ["결정 면적"] : []),
+      ...(cells.execution === null ? ["집행"] : []),
+    ]
+    : [];
   return {
     title: String(cells.name ?? "이름 없음"),
     subtitle: String(cells.class ?? "기타"),
@@ -174,7 +309,7 @@ function zoneCard(ctx: DetailContext, hit: FeatureHit, columns: DetailColumn[] =
       ...ctx.sources("reference", ZONING_SOURCES),
       ...ctx.sources("reference", sourceIdsWithPrefix(ctx, "reference", "district_")),
     ]),
-    ...(columns === FACILITY_COLUMNS ? { missing: ["결정 면적", "집행"] } : {}),
+    ...(missing.length > 0 ? { missing } : {}),
   };
 }
 
@@ -187,7 +322,7 @@ function featureSpec(
     columns: ZONE_COLUMNS,
     summary(ctx) {
       const hits = hitsFor(ctx);
-      const rows = zoneRows(ctx, hits);
+      const rows = aggregateZoneRows(ctx, hits, "reference");
       const area = rows.reduce((sum, row) => sum + (number(row.cells.area_m2) ?? 0), 0);
       return {
         title: catalogEntry(code).title,
@@ -200,11 +335,14 @@ function featureSpec(
       };
     },
     rows(ctx) {
-      return zoneRows(ctx, hitsFor(ctx));
+      return aggregateZoneRows(ctx, hitsFor(ctx), "reference");
     },
     at(ctx, lng, lat) {
-      const hit = hitsFor(ctx).find((candidate) => pointInGeometry(lng, lat, candidate.geometry));
-      return hit ? { card: zoneCard(ctx, hit, ZONE_COLUMNS, sourceLineOf(sourcesFor(ctx))), fid: String(hit.featureId) } : null;
+      const hits = hitsFor(ctx);
+      const hit = hits.find((candidate) => pointInGeometry(lng, lat, candidate.geometry));
+      if (!hit) return null;
+      const group = zoneGroups(ctx, hits, "reference").find((candidate) => candidate.hits.some((piece) => piece.featureId === hit.featureId));
+      return { card: zoneCard(ctx, hit, ZONE_COLUMNS, sourceLineOf(sourcesFor(ctx))), fid: String(hit.featureId), fids: group?.hits.map((piece) => String(piece.featureId)) ?? [String(hit.featureId)] };
     },
   };
 }
@@ -231,29 +369,21 @@ function facilityHits(ctx: DetailContext): FeatureHit[] {
   return ctx.hits("reference", ["plan_facility"]);
 }
 
-function facilityRows(ctx: DetailContext, hits: readonly FeatureHit[]): DetailRow[] {
-  return hits.map((hit) => {
-    const shape = hit.geometry.type === "Polygon" || hit.geometry.type === "MultiPolygon" ? "면" : hit.geometry.type.includes("Line") ? "선" : "점";
-    const area = shape === "면" ? areaInCircle(ctx.input.center, ctx.input.radiusM, hit.geometry)?.areaM2 ?? 0 : null;
-    const length = shape === "선" ? lineLengthInCircle(ctx.input.center, ctx.input.radiusM, hit.geometry) : null;
-    const [lng, lat] = hitPoint(hit);
-    return { fid: String(hit.featureId), lng, lat, cells: {
-      name: nameOf(hit), class: classOf(hit), shape, area_m2: area, length_m: length, count: shape === "점" ? 1 : null, remark: text(hit.properties.remark),
-    } };
-  });
-}
-
 function facilitySpec(): DetailSpec {
   return {
     columns: FACILITY_COLUMNS,
     summary(ctx) {
-      const rows = facilityRows(ctx, facilityHits(ctx));
-      return { title: catalogEntry("D12").title, subtitle: `${rows.length.toLocaleString("ko-KR")}개`, fields: [{ label: "시설 수", value: `${rows.length.toLocaleString("ko-KR")}개` }], source: sourceLine(ctx, "reference", sourceIdsWithPrefix(ctx, "reference", "facility_")) };
+      const rows = aggregateZoneRows(ctx, facilityHits(ctx), "reference", true);
+      const area = rows.reduce((sum, row) => sum + (number(row.cells.area_m2) ?? 0), 0);
+      return { title: catalogEntry("D12").title, subtitle: `${rows.length.toLocaleString("ko-KR")}곳`, fields: [{ label: "틀 안 면적 합계", value: area > 0 ? `${Math.round(area)}㎡` : null }, { label: "시설 구역 수", value: `${rows.length.toLocaleString("ko-KR")}곳` }], source: sourceLine(ctx, "reference", sourceIdsWithPrefix(ctx, "reference", "facility_")) };
     },
-    rows(ctx) { return facilityRows(ctx, facilityHits(ctx)); },
+    rows(ctx) { return aggregateZoneRows(ctx, facilityHits(ctx), "reference", true); },
     at(ctx, lng, lat) {
-      const hit = facilityHits(ctx).find((candidate) => pointInGeometry(lng, lat, candidate.geometry));
-      return hit ? { card: zoneCard(ctx, hit, FACILITY_COLUMNS), fid: String(hit.featureId) } : null;
+      const hits = facilityHits(ctx);
+      const hit = hits.find((candidate) => pointInGeometry(lng, lat, candidate.geometry));
+      if (!hit) return null;
+      const group = zoneGroups(ctx, hits, "reference").find((candidate) => candidate.hits.some((piece) => piece.featureId === hit.featureId));
+      return { card: zoneCard(ctx, hit, FACILITY_COLUMNS, sourceLine(ctx, "reference", sourceIdsWithPrefix(ctx, "reference", "facility_"))), fid: String(hit.featureId), fids: group?.hits.map((piece) => String(piece.featureId)) ?? [String(hit.featureId)] };
     },
   };
 }

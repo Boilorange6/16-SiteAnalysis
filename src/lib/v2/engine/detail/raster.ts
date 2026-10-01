@@ -67,7 +67,22 @@ function densityRows(ctx: DetailContext): DetailRow[] {
   const safeBandwidth = Number.isFinite(bandwidth) && bandwidth > 0 ? bandwidth : 100;
   return ctx.memo(`detail:density:${metric}:${safeBandwidth}`, () => {
     const rows = buildingRows(ctx) ?? [];
-    const positions = rows.map((row) => toUtmk(hitPoint(row.hit)));
+    const lngs = new Float64Array(rows.length);
+    const lats = new Float64Array(rows.length);
+    const xs = new Float64Array(rows.length);
+    const ys = new Float64Array(rows.length);
+    const weights = new Float64Array(rows.length);
+    weights.fill(Number.NaN);
+    for (let index = 0; index < rows.length; index++) {
+      const [lng, lat] = hitPoint(rows[index].hit);
+      lngs[index] = lng;
+      lats[index] = lat;
+      const [x, y] = toUtmk([lng, lat]);
+      xs[index] = x;
+      ys[index] = y;
+      const weight = metric === "buildings" ? 1 : rows[index].grossFloorM2;
+      if (weight !== null) weights[index] = weight;
+    }
     const parcelAreas = new Map<string, number>();
     for (const parcel of ctx.hits("parcels", ["parcel"])) {
       if (!parcel.pnu) continue;
@@ -80,23 +95,22 @@ function densityRows(ctx: DetailContext): DetailRow[] {
     }
     const denominator = 2 * Math.PI * safeBandwidth ** 2;
     return rows.map((row, index) => {
-      const [lng, lat] = hitPoint(row.hit);
-      const [x, y] = positions[index];
+      const x = xs[index];
+      const y = ys[index];
       let weighted = 0;
       let hasWeight = false;
       for (let other = 0; other < rows.length; other++) {
-        const weight = metric === "buildings" ? 1 : rows[other].grossFloorM2;
-        if (weight === null) continue;
-        const [otherX, otherY] = positions[other];
-        weighted += weight * Math.exp(-((x - otherX) ** 2 + (y - otherY) ** 2) / (2 * safeBandwidth ** 2));
+        const weight = weights[other];
+        if (!Number.isFinite(weight)) continue;
+        weighted += weight * Math.exp(-((x - xs[other]) ** 2 + (y - ys[other]) ** 2) / (2 * safeBandwidth ** 2));
         hasWeight = true;
       }
       const gfa = row.grossFloorM2;
       const parcelArea = row.hit.pnu ? parcelAreas.get(row.hit.pnu) ?? null : null;
       return {
         fid: String(row.hit.featureId),
-        lng,
-        lat,
+        lng: lngs[index],
+        lat: lats[index],
         cells: {
           name: row.hit.name,
           metric,

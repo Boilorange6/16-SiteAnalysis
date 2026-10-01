@@ -14,6 +14,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const rawOffset = Number(search.get("offset"));
   const rawLimit = Number(search.get("limit"));
   const dir = search.get("dir");
+  const within10 = search.get("within10");
   const appDb = openV2AppDb();
   try {
     const reply = getDetailList(appDb, v2DataDir(), id, code, auth.id, {
@@ -21,6 +22,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       q: search.get("q") ?? undefined,
       sort: search.get("sort") ?? undefined,
       dir: dir === "desc" ? "desc" : "asc",
+      within10: within10 === "1" || within10 === "true" ? true : undefined,
       offset: Number.isFinite(rawOffset) ? rawOffset : undefined,
       limit: Number.isFinite(rawLimit) ? rawLimit : undefined,
     });
