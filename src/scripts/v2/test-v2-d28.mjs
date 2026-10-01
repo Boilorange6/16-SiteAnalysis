@@ -114,6 +114,14 @@ assert.deepEqual(
   [...new Set(result.presentation.polygons.map((polygon) => polygon.layer))].sort(),
   ["walk_10", "walk_15", "walk_5"],
 );
+const smoothRing = result.presentation.polygons[0].rings[0];
+const diagonalEdges = smoothRing.reduce((count, point, index) => {
+  const next = smoothRing[(index + 1) % smoothRing.length];
+  const [aX, aY] = toUtmk(point);
+  const [bX, bY] = toUtmk(next);
+  return count + (Math.abs(aX - bX) > 0.1 && Math.abs(aY - bY) > 0.1 ? 1 : 0);
+}, 0);
+assert.ok(diagonalEdges > 0, "marching-squares smoothing must remove cell-only right-angle edges");
 assert.ok(result.presentation.lines?.length > 0);
 assert.ok(result.presentation.lines.every((line) => line.layer === "walk_net" && line.points.length >= 2));
 assert.ok(result.presentation.lines.every((line) => line.points.every((point) => {
@@ -125,6 +133,27 @@ assert.ok(result.limitations.some((limitation) => limitation.note.includes("80 m
 assert.ok(result.limitations.some((limitation) => limitation.note.includes("경사")));
 assert.doesNotMatch(JSON.stringify(result), /종합|법적 적합|개발 가능|건강 위험 예측/);
 
+// The T7 reference benchmark is a 50,451-node graph. Keep the D28-specific
+// vectorization and presentation work inside the task's 1.5 s budget too.
+function performanceRoads() {
+  const out = [];
+  const xCount = 251;
+  const yCount = 201;
+  const x0 = -1250;
+  const y0 = -1000;
+  const node = (x, y) => [x0 + x * 10, y0 + y * 10];
+  for (let y = 0; y < yCount; y++) for (let x = 0; x + 1 < xCount; x++) out.push(road(`perf-h-${x}-${y}`, [node(x, y), node(x + 1, y)]));
+  for (let x = 0; x < xCount; x++) for (let y = 0; y + 1 < yCount; y++) out.push(road(`perf-v-${x}-${y}`, [node(x, y), node(x, y + 1)]));
+  return out;
+}
+const perfStarted = performance.now();
+const perfResult = parseTileResult(d28(fakeContext(performanceRoads())));
+const perfElapsedMs = performance.now() - perfStarted;
+assert.ok(perfElapsedMs <= 1500, `D28 50,451-node benchmark exceeded the 1.5 s budget: ${Math.round(perfElapsedMs)} ms`);
+assert.equal(metric("network_nodes").value, field.nodes);
+assert.equal(perfResult.metrics.find((item) => item.id === "network_nodes").value, 50451);
+assert.ok(perfResult.metrics.find((item) => item.id === "area_10min_km2").value > 0);
+
 const notProvided = parseTileResult(d28(fakeContext([], [source])));
 assert.equal(notProvided.status, "not_provided");
 assert.match(notProvided.limitations[0].note, /보행망/);
@@ -135,7 +164,7 @@ if (process.env.D28_RENDER_PATH) {
     const [x, y] = toUtmk([lng, lat]);
     return [600 + (x - cx) * 0.55, 600 - (y - cy) * 0.55];
   };
-  const colors = { walk_5: "#C6A15B", walk_10: "#A47551", walk_15: "#7A5BA6", walk_net: "#4F8A9E" };
+  const colors = { walk_5: "#4D9D7E", walk_10: "#8FC9B3", walk_15: "#CDE8DC", walk_net: "#5AA88E" };
   const polygons = (result.presentation.polygons ?? []).map((polygon) => {
     const points = polygon.rings[0].map(project).map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
     return `<polygon points="${points}" fill="${colors[polygon.layer]}" fill-opacity="0.58" stroke="${colors[polygon.layer]}" stroke-width="1"/>`;
@@ -148,7 +177,7 @@ if (process.env.D28_RENDER_PATH) {
     const value = metric(id).value.toFixed(3);
     return `<text x="44" y="${54 + index * 27}" font-family="Arial,sans-serif" font-size="20" fill="#24303a">${["5분", "10분", "15분"][index]} 도달 면적 ${value} km²</text>`;
   }).join("");
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200"><rect width="1200" height="1200" fill="#f7f5f1"/><text x="44" y="34" font-family="Arial,sans-serif" font-size="24" font-weight="700" fill="#19232d">D28 도보권 — 합성 도로 픽스처</text>${labels}<circle cx="600" cy="600" r="440" fill="none" stroke="#263746" stroke-width="3" stroke-dasharray="10 8"/>${polygons}${lines}<circle cx="600" cy="600" r="5" fill="#17212b"/><text x="610" y="596" font-family="Arial,sans-serif" font-size="16" fill="#17212b">대지 중심</text><g font-family="Arial,sans-serif" font-size="17"><rect x="44" y="1080" width="20" height="20" fill="#C6A15B" fill-opacity="0.58"/><text x="72" y="1097">5분</text><rect x="142" y="1080" width="20" height="20" fill="#A47551" fill-opacity="0.58"/><text x="170" y="1097">10분</text><rect x="255" y="1080" width="20" height="20" fill="#7A5BA6" fill-opacity="0.58"/><text x="283" y="1097">15분</text><line x1="380" y1="1090" x2="420" y2="1090" stroke="#4F8A9E" stroke-width="3"/><text x="430" y="1097">보행망 선</text><line x1="570" y1="1090" x2="610" y2="1090" stroke="#263746" stroke-width="3" stroke-dasharray="10 8"/><text x="620" y="1097">분석 반경 800 m</text></g></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200"><rect width="1200" height="1200" fill="#f7f5f1"/><text x="44" y="34" font-family="Arial,sans-serif" font-size="24" font-weight="700" fill="#19232d">D28 도보권 — 합성 도로 픽스처</text>${labels}<circle cx="600" cy="600" r="440" fill="none" stroke="#263746" stroke-width="3" stroke-dasharray="10 8"/>${polygons}${lines}<circle cx="600" cy="600" r="5" fill="#17212b"/><text x="610" y="596" font-family="Arial,sans-serif" font-size="16" fill="#17212b">대지 중심</text><g font-family="Arial,sans-serif" font-size="17"><rect x="44" y="1080" width="20" height="20" fill="#4D9D7E" fill-opacity="0.58"/><text x="72" y="1097">5분</text><rect x="142" y="1080" width="20" height="20" fill="#8FC9B3" fill-opacity="0.58"/><text x="170" y="1097">10분</text><rect x="255" y="1080" width="20" height="20" fill="#CDE8DC" fill-opacity="0.58"/><text x="283" y="1097">15분</text><line x1="380" y1="1090" x2="420" y2="1090" stroke="#5AA88E" stroke-width="3"/><text x="430" y="1097">보행망 선</text><line x1="570" y1="1090" x2="610" y2="1090" stroke="#263746" stroke-width="3" stroke-dasharray="10 8"/><text x="620" y="1097">분석 반경 800 m</text></g></svg>`;
   mkdirSync(dirname(process.env.D28_RENDER_PATH), { recursive: true });
   await sharp(Buffer.from(svg)).png().toFile(process.env.D28_RENDER_PATH);
 }
