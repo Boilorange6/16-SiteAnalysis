@@ -220,10 +220,10 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   canopy: S("수관", "#2E7D32"),
   osm_green: S("OSM 녹지 면", "#5FAE5B"),
   osm_water: S("OSM 수계 면", "#4F9DA6"),
-  walk_5: S("도보 5분", "#C6A15B"),
-  walk_10: S("도보 10분", "#A47551"),
-  walk_15: S("도보 15분", "#7A5BA6"),
-  walk_net: S("보행망", "#4F8A9E"),
+  walk_5: S("도보 5분", "#4D9D7E"),
+  walk_10: S("도보 10분", "#8FC9B3"),
+  walk_15: S("도보 15분", "#CDE8DC"),
+  walk_net: S("보행망", "#5AA88E"),
   wind_inflow: S("유입 방향", "#2B9CBF"),
 };
 
