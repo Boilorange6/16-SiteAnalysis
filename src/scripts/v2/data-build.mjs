@@ -3,14 +3,14 @@
  *   npm run data:build -- --version 2026-09-30a [--raw .cache/v2/raw] [--dem-source glo30|hgt] [--only core,buildings,parcels,reference,market,terrain] [--expectations exp.json] [--with buildings,parcels] [--wait-lock [분]]
  * 원천 zip은 먼저 풀고(이미 풀린 것은 건너뜀), 원천 파일은 폴더마다 가장 새 파일을 쓴다.
  */
-import { readdirSync, statSync, existsSync, readFileSync } from "node:fs";
+import { readdirSync, statSync, existsSync, readFileSync, openSync, readSync, closeSync } from "node:fs";
 import { basename, join } from "node:path";
 
 const { extractAll, extractSelected } = await import("../../lib/v2/ingest/unzip.ts");
 const { latestShpPerSido, partCounts } = await import("../../lib/v2/ingest/shp-parts.ts");
 const { readShp, readShpPoints } = await import("../../lib/v2/ingest/shp.ts");
 const { csvRecords } = await import("../../lib/v2/a0/measure.ts");
-const { buildAndPublish, insertRelease } = await import("../../lib/v2/ingest/build.ts");
+const { buildAndPublish, insertRelease, registerIngestProgressTotal } = await import("../../lib/v2/ingest/build.ts");
 const { buildParcelPoints } = await import("../../lib/v2/ingest/sources/parcels.ts");
 const { buildParcelPolygons } = await import("../../lib/v2/ingest/sources/parcel-polygons.ts");
 const { buildBuildings } = await import("../../lib/v2/ingest/sources/buildings.ts");
@@ -81,6 +81,25 @@ const release = (db, sourceId, file, provider, sourceUrl, licenseCode) => {
   // ponytail: 수 GB 원천의 SHA-256 대신 크기·수정시각 — 원천 무결성 검증이 필요해지면 스트리밍 해시로 바꾼다
   return insertRelease(db, { sourceId, provider, sourceUrl, sourceAsOf: asOfOf(file), fetchedAt: st.mtime.toISOString(), checksum: `size-mtime:${st.size}-${Math.round(st.mtimeMs)}`, licenseCode });
 };
+
+/** DBF header record count is available before SHP decoding and is cheap to read. */
+const dbfRecordCount = (shpFile) => {
+  const dbfFile = shpFile.replace(/\.shp$/i, ".dbf");
+  if (!existsSync(dbfFile)) return 0;
+  const fd = openSync(dbfFile, "r");
+  try {
+    const header = Buffer.alloc(8);
+    if (readSync(fd, header, 0, header.length, 0) !== header.length) return 0;
+    return header.readUInt32LE(4);
+  } finally {
+    closeSync(fd);
+  }
+};
+const registerShpProgress = (sourceId, files) => {
+  const total = files.reduce((sum, file) => sum + dbfRecordCount(file), 0);
+  if (total > 0) registerIngestProgressTotal(sourceId, total);
+  return total;
+};
 async function* chain(...gens) {
   for (const g of gens) yield* g;
 }
@@ -134,6 +153,7 @@ if (only.has("core")) {
     const { cadastral, buildings, titleFile, hasNationalTitle } = await discoverCore();
     const parcels = [];
     if (cadastral.size > 0) {
+      registerShpProgress("parcel", flat(cadastral));
       const parcelRel = release(db, "parcel", oldestFile(cadastral), "국토교통부(VWorld 연속지적도형정보)", "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=23", "CC-BY");
       const parcel = await buildParcelPoints(db, chain(...flat(cadastral).map((f) => readShpPoints(f))), parcelRel);
       parcel.expectedRegions = [...cadastral.keys()];
@@ -144,6 +164,7 @@ if (only.has("core")) {
     if (buildings.size > 0) {
       // 500MB 넘는 시도 지적도는 VWorld가 일반 다운로드로 안 준다 — 그 시도만 GIS건물통합정보(A2=PNU)의 건물 대표점으로 대신한다. 지적도 뒤에 넣어 INSERT OR IGNORE가 지적도 행을 우선한다.
       const buildingRel = release(db, "parcel_building", oldestFile(buildings), "국토교통부(VWorld GIS건물통합정보, 필지 대표점 대체)", "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=18", "CC-BY");
+      registerShpProgress("parcel_building", flat(buildings));
       async function* buildingAsParcels(file) {
         for await (const r of readShpPoints(file)) yield { properties: { A1: r.properties.A2, A5: null }, point: r.point };
       }
@@ -168,6 +189,7 @@ if (only.has("buildings")) {
   builders.buildings = async (db) => {
     const buildingAll = latestShpPerSido([...walk(join(raw, "gis_building"))], "AL_D010");
     if (buildingAll.size === 0) throw new Error("GIS건물(gis_building) 파일이 없습니다 — vworld:fetch로 받으세요");
+    registerShpProgress("building", flat(buildingAll));
     const rel = release(db, "building", oldestFile(buildingAll), "국토교통부(VWorld GIS건물통합정보)", "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=18", "CC-BY");
     const b = await buildBuildings(db, chain(...flat(buildingAll).map((f) => readShp(f))), rel);
     b.expectedRegions = [...buildingAll.keys()];
@@ -180,6 +202,7 @@ if (only.has("parcels")) {
   builders.parcels = async (db) => {
     const parcelAll = latestShpPerSido([...walk(join(raw, "cadastral"))], "AL_D002");
     if (parcelAll.size === 0) throw new Error("연속지적도(cadastral) 파일이 없습니다 — vworld:fetch로 받으세요");
+    registerShpProgress("parcel_polygon", flat(parcelAll));
     const rel = release(db, "parcel_polygon", oldestFile(parcelAll), "국토교통부(VWorld 연속지적도형정보)", "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=23", "CC-BY");
     const p = await buildParcelPolygons(db, chain(...flat(parcelAll).map((f) => readShp(f))), rel);
     p.expectedRegions = [...parcelAll.keys()];

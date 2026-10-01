@@ -9,7 +9,7 @@ import Database from "better-sqlite3";
 import type BetterSqlite3 from "better-sqlite3";
 import { isFilled } from "../a0/measure";
 import { REVIEW_SITES } from "../a0/review-sites";
-import { queryFeaturesInRadius } from "../data/features";
+import { abortFeatureBulk, beginFeatureBulk, finishFeatureBulk, queryFeaturesInRadius } from "../data/features";
 import {
   openDataFile,
   publishManifestLocked,
@@ -25,6 +25,57 @@ import { checkExpectations, evaluateIngest, type GateFailure, type GateResult, t
 import { DATA_FILE_KINDS, DATA_SCHEMA_VERSION, initDataFileSchema, type DataFileKind } from "../data/schema";
 
 type Db = BetterSqlite3.Database;
+
+const PROGRESS_EVERY_ROWS = 250_000;
+const BUILD_CACHE_SIZE_KIB = 1_048_576; // 1 GiB; negative SQLite values are KiB.
+const progressTotals = new Map<string, number>();
+
+interface RestoredPragmas {
+  journalMode: string;
+  synchronous: number;
+  tempStore: number;
+  cacheSize: number;
+}
+
+/** data-build supplies cheap DBF header totals for ETA without changing gate semantics. */
+export function registerIngestProgressTotal(sourceId: string, total: number): void {
+  if (!sourceId || !Number.isSafeInteger(total) || total <= 0) throw new RangeError(`invalid progress total for ${sourceId}: ${total}`);
+  progressTotals.set(sourceId, total);
+}
+
+function duration(seconds: number): string {
+  if (!Number.isFinite(seconds)) return "-";
+  if (seconds < 60) return `${seconds.toFixed(0)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = Math.round(seconds - minutes * 60);
+  return `${minutes}m${String(rest).padStart(2, "0")}s`;
+}
+
+function buildPragmas(db: Db): RestoredPragmas {
+  const original: RestoredPragmas = {
+    journalMode: String(db.pragma("journal_mode", { simple: true })),
+    synchronous: Number(db.pragma("synchronous", { simple: true })),
+    tempStore: Number(db.pragma("temp_store", { simple: true })),
+    cacheSize: Number(db.pragma("cache_size", { simple: true })),
+  };
+  db.pragma("foreign_keys = ON");
+  db.pragma("journal_mode = OFF");
+  db.pragma("synchronous = OFF");
+  db.pragma("temp_store = MEMORY");
+  db.pragma(`cache_size = -${BUILD_CACHE_SIZE_KIB}`);
+  return original;
+}
+
+function restorePragmas(db: Db, original: RestoredPragmas): void {
+  db.pragma(`synchronous = ${original.synchronous}`);
+  db.pragma(`temp_store = ${original.tempStore}`);
+  db.pragma(`cache_size = ${original.cacheSize}`);
+  const journalMode = original.journalMode.toUpperCase();
+  if (!["DELETE", "TRUNCATE", "PERSIST", "MEMORY", "OFF", "WAL"].includes(journalMode)) {
+    throw new Error(`cannot restore unknown journal_mode ${original.journalMode}`);
+  }
+  db.pragma(`journal_mode = ${journalMode}`);
+}
 
 export interface ReleaseInput {
   sourceId: string;
@@ -62,11 +113,25 @@ export class SourceStats {
   expectedRegions: string[] = [];
   readonly startedAt = new Date().toISOString();
   private readonly filled = new Map<string, number>();
+  private readonly progressTotal: number | null;
+  private progressNext = PROGRESS_EVERY_ROWS;
+  private readonly progressStartedAt = Date.now();
 
-  constructor(readonly sourceId: string, readonly releaseId: string, readonly fillFields: readonly string[]) {}
+  constructor(readonly sourceId: string, readonly releaseId: string, readonly fillFields: readonly string[]) {
+    this.progressTotal = progressTotals.get(sourceId) ?? null;
+    progressTotals.delete(sourceId);
+  }
 
   read(): void {
     this.received++;
+    if (this.received >= this.progressNext) {
+      const elapsed = Math.max((Date.now() - this.progressStartedAt) / 1000, 0.001);
+      const rowsPerSecond = this.received / elapsed;
+      const total = this.progressTotal;
+      const eta = total === null ? "" : ` ETA ${duration(Math.max(0, total - this.received) / Math.max(rowsPerSecond, 0.001))}`;
+      console.log(`[ingest] source=${this.sourceId} rows=${this.received}${total === null ? "" : `/${total}`} rows/s=${rowsPerSecond.toFixed(0)} elapsed=${duration(elapsed)}${eta}`);
+      this.progressNext += PROGRESS_EVERY_ROWS;
+    }
   }
 
   accept(props: Record<string, unknown>, region: string, type: string): void {
@@ -91,7 +156,7 @@ export class SourceStats {
   }
 }
 
-export async function batched<T>(db: Db, items: AsyncIterable<T> | Iterable<T>, fn: (item: T) => void, size = 5000): Promise<void> {
+export async function batched<T>(db: Db, items: AsyncIterable<T> | Iterable<T>, fn: (item: T) => void, size = 50_000): Promise<void> {
   let n = 0;
   db.exec("BEGIN");
   try {
@@ -226,15 +291,27 @@ export function buildAndPublish(plan: BuildPlan): Promise<BuildOutcome> {
         mkdirSync(dirname(abs), { recursive: true });
         const db = new Database(abs);
         handles.push(db);
-        db.pragma("journal_mode = DELETE");
-        db.pragma("foreign_keys = ON");
-        initDataFileSchema(db, kind);
-        const kindStats = await builder(db, { core });
-        const finishedAt = new Date().toISOString();
-        for (const s of kindStats) recordRun(db, s, finishedAt);
-        stats[kind] = kindStats;
-        files[kind] = { path: rel, sha256: "", kind, schemaVersion: DATA_SCHEMA_VERSION };
-        if (kind === "core") core = db;
+        const originalPragmas = buildPragmas(db);
+        let bulkStarted = false;
+        let pragmasRestored = false;
+        try {
+          initDataFileSchema(db, kind);
+          beginFeatureBulk(db);
+          bulkStarted = true;
+          const kindStats = await builder(db, { core });
+          finishFeatureBulk(db);
+          bulkStarted = false;
+          const finishedAt = new Date().toISOString();
+          for (const s of kindStats) recordRun(db, s, finishedAt);
+          stats[kind] = kindStats;
+          files[kind] = { path: rel, sha256: "", kind, schemaVersion: DATA_SCHEMA_VERSION };
+          restorePragmas(db, originalPragmas);
+          pragmasRestored = true;
+          if (kind === "core") core = db;
+        } finally {
+          if (bulkStarted) abortFeatureBulk(db);
+          if (!pragmasRestored) restorePragmas(db, originalPragmas);
+        }
       }
     } finally {
       for (const db of handles) db.close();

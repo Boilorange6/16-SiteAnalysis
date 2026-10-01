@@ -9,6 +9,22 @@ import { booleanIntersects, polygon } from "@turf/turf";
 import { toUtmk, type LngLat } from "../crs";
 
 type Db = BetterSqlite3.Database;
+type Statement = BetterSqlite3.Statement;
+
+interface FeatureStatements {
+  insertFeature: Statement;
+  insertRtree: Statement;
+}
+
+interface FeatureBulkState {
+  insertPendingRtree: Statement;
+}
+
+// The feature path is hot for national building and parcel imports. Keep the
+// statements attached to the database instead of preparing them for every
+// record. WeakMap also lets better-sqlite3 release the statements with the DB.
+const statementCache = new WeakMap<Db, FeatureStatements>();
+const bulkState = new WeakMap<Db, FeatureBulkState>();
 
 export const MAX_RADIUS_M = 5000;
 const CIRCLE_SEGMENTS = 64;
@@ -41,6 +57,69 @@ export interface FeatureHit {
   geometry: Geometry;
   /** Point/MultiPoint만 값이 있다 */
   distanceM: number | null;
+}
+
+function statementsFor(db: Db): FeatureStatements {
+  const cached = statementCache.get(db);
+  if (cached) return cached;
+  const statements = {
+    insertFeature: db.prepare(`INSERT INTO feature (stable_id, kind, source_key, release_id, geom_json, name, pnu, legal_code, properties_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+    insertRtree: db.prepare("INSERT INTO feature_rtree (feature_id, min_x, max_x, min_y, max_y) VALUES (?, ?, ?, ?, ?)"),
+  };
+  statementCache.set(db, statements);
+  return statements;
+}
+
+/**
+ * Start the build-only feature bulk path. The published schema is unchanged:
+ * the two secondary indexes are rebuilt after the feature rows, and R*Tree
+ * rows are inserted in feature_id order after the source has been consumed.
+ */
+export function beginFeatureBulk(db: Db): void {
+  if (bulkState.has(db)) throw new Error("feature bulk mode is already active");
+  db.exec(`
+    DROP INDEX IF EXISTS idx_feature_kind;
+    DROP INDEX IF EXISTS idx_feature_pnu;
+    DROP TABLE IF EXISTS temp.feature_rtree_pending;
+    CREATE TEMP TABLE feature_rtree_pending (
+      feature_id INTEGER PRIMARY KEY,
+      min_x REAL NOT NULL,
+      max_x REAL NOT NULL,
+      min_y REAL NOT NULL,
+      max_y REAL NOT NULL
+    );
+  `);
+  bulkState.set(db, {
+    insertPendingRtree: db.prepare("INSERT INTO temp.feature_rtree_pending (feature_id, min_x, max_x, min_y, max_y) VALUES (?, ?, ?, ?, ?)"),
+  });
+}
+
+/** Finish the build-only feature bulk path and restore the published indexes. */
+export function finishFeatureBulk(db: Db): void {
+  const state = bulkState.get(db);
+  if (!state) return;
+  if (db.inTransaction) throw new Error("finishFeatureBulk must run outside a transaction");
+  db.exec(`
+    INSERT INTO feature_rtree (feature_id, min_x, max_x, min_y, max_y)
+      SELECT feature_id, min_x, max_x, min_y, max_y
+      FROM temp.feature_rtree_pending
+      ORDER BY feature_id;
+    DROP TABLE temp.feature_rtree_pending;
+    CREATE INDEX IF NOT EXISTS idx_feature_kind ON feature (kind);
+    CREATE INDEX IF NOT EXISTS idx_feature_pnu ON feature (pnu);
+  `);
+  bulkState.delete(db);
+}
+
+/** Best-effort cleanup when a build is abandoned before finalization. */
+export function abortFeatureBulk(db: Db): void {
+  if (!bulkState.has(db)) return;
+  try {
+    db.exec("DROP TABLE IF EXISTS temp.feature_rtree_pending");
+  } finally {
+    bulkState.delete(db);
+  }
 }
 
 function mapPositions(coords: unknown, fn: (p: LngLat) => readonly [number, number]): unknown {
@@ -86,19 +165,25 @@ export function insertFeature(db: Db, input: FeatureInput): number {
   }
   const projected = projectGeometry(input.geometry, input.roundM);
   const [minX, minY, maxX, maxY] = bboxOf(projected);
-  return db.transaction(() => {
-  const info = db
-    .prepare(`INSERT INTO feature (stable_id, kind, source_key, release_id, geom_json, name, pnu, legal_code, properties_json)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(
+  const statements = statementsFor(db);
+  const write = () => {
+    const info = statements.insertFeature.run(
       input.stableId, input.kind, input.sourceKey, input.releaseId, JSON.stringify(projected),
       input.name ?? null, input.pnu ?? null, input.legalCode ?? null, JSON.stringify(input.properties ?? {}),
     );
-  const featureId = Number(info.lastInsertRowid);
-  // SQLite R*Tree는 32비트 실수로 저장하되 바깥쪽으로 반올림한다 — 후보가 빠지지 않는다.
-  db.prepare("INSERT INTO feature_rtree (feature_id, min_x, max_x, min_y, max_y) VALUES (?, ?, ?, ?, ?)").run(featureId, minX, maxX, minY, maxY);
-  return featureId;
-  })();
+    const featureId = Number(info.lastInsertRowid);
+    const bulk = bulkState.get(db);
+    if (bulk) {
+      bulk.insertPendingRtree.run(featureId, minX, maxX, minY, maxY);
+    } else {
+      // SQLite R*Tree stores 32-bit floats and rounds outward — candidates are not lost.
+      statements.insertRtree.run(featureId, minX, maxX, minY, maxY);
+    }
+    return featureId;
+  };
+  // Source builders use batched(), so avoid a nested savepoint for every row.
+  // Direct callers retain the original per-feature atomicity.
+  return db.inTransaction ? write() : db.transaction(write)();
 }
 
 // ponytail: 원에 외접하는 64각형 — 교차 판정이 원보다 최대 r·(1/cos(π/64)−1) ≈ 0.12% 넓다(1km에서 1.2m).
