@@ -54,9 +54,11 @@ assert.equal(PLANNED_STAGES.cancelled, "중단/변경");
 
   assert.ok(tile.presentation.layers.includes("planned_rail_line"));
   assert.ok(tile.presentation.layers.includes("planned_rail_station"));
-  const lineFeatures = tile.presentation.features.filter((f) => f.layer === "planned_rail_line");
+  assert.equal(tile.presentation.features.filter((f) => f.layer === "planned_rail_line").length, 0, "계획 선형은 대표점이 아니라 선 지물이다");
+  const lineFeatures = tile.presentation.lines.filter((line) => line.layer === "planned_rail_line");
   assert.ok(lineFeatures.length > 0);
-  assert.ok(lineFeatures.every((f) => f.label === "[개략]"), "개략 선형은 지도에 [개략]을 표시한다");
+  assert.ok(lineFeatures.every((line) => line.label === "[개략]"), "개략 선형은 지도에 [개략]을 표시한다");
+  assert.ok(lineFeatures.every((line) => line.points.length >= 2));
   noForbidden(tile);
   ctx.close();
 }

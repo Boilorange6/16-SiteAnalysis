@@ -1,10 +1,8 @@
 /** D24 계획 철도 — 등록된 계획·공사 사업을 운영 철도와 분리해 표시한다. */
-import type { Geometry } from "geojson";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
-import { toUtmk } from "../../crs";
-import { candidate, makeTile, missing, nearestHit, obs, type MapCandidate, type TileDraft } from "./common";
-import { sampleLine } from "./geo";
+import { candidate, lineCandidate, makeTile, missing, nearestHit, obs, type LineCandidate, type MapCandidate, type TileDraft } from "./common";
+import { clipLineToCircle, lineLengthInCircle, linePathLength } from "./geo";
 import { notProvided } from "./not-provided";
 
 const STAGE_LABELS = ["구상", "공식 계획", "승인", "공사", "중단/변경", "미확인"] as const;
@@ -39,44 +37,6 @@ const stageOf = (value: unknown): StageLabel => {
   const raw = typeof value === "string" ? value.trim() : "";
   return raw === "" ? "미확인" : PLANNED_STAGES[raw] ?? "미확인";
 };
-
-function lineParts(geometry: Geometry): number[][][] {
-  if (geometry.type === "LineString") return [geometry.coordinates as number[][]];
-  if (geometry.type === "MultiLineString") return geometry.coordinates as number[][][];
-  return [];
-}
-
-/** 한 선분이 원 안에 들어가는 구간의 실제 길이(표본점 개수로 근사하지 않는다). */
-function segmentLengthInCircle(a: number[], b: number[], cx: number, cy: number, radiusM: number): number {
-  const dx = b[0] - a[0];
-  const dy = b[1] - a[1];
-  const segmentLength = Math.hypot(dx, dy);
-  if (segmentLength === 0 || radiusM < 0) return 0;
-
-  const fx = a[0] - cx;
-  const fy = a[1] - cy;
-  const qa = dx * dx + dy * dy;
-  const qb = 2 * (fx * dx + fy * dy);
-  const qc = fx * fx + fy * fy - radiusM * radiusM;
-  const discriminant = qb * qb - 4 * qa * qc;
-  if (discriminant < 0) return 0;
-
-  const root = Math.sqrt(Math.max(0, discriminant));
-  const enter = (-qb - root) / (2 * qa);
-  const leave = (-qb + root) / (2 * qa);
-  const from = Math.max(0, enter);
-  const to = Math.min(1, leave);
-  return to <= from ? 0 : (to - from) * segmentLength;
-}
-
-function lineLengthInCircle(center: Parameters<typeof toUtmk>[0], radiusM: number, geometry: Geometry): number {
-  const [cx, cy] = toUtmk(center);
-  return lineParts(geometry).reduce((total, part) => {
-    let length = total;
-    for (let i = 1; i < part.length; i++) length += segmentLengthInCircle(part[i - 1], part[i], cx, cy, radiusM);
-    return length;
-  }, 0);
-}
 
 interface ProjectSummary {
   stage: StageLabel;
@@ -149,10 +109,13 @@ export function d24(ctx: EngineContext): TileResult {
   ];
 
   const map: MapCandidate[] = [];
+  const lineCandidates: LineCandidate[] = [];
   for (const line of lines) {
-    const lineFeatures = sampleLine(ctx.input.center, line.geometry, radiusM, Math.max(50, radiusM / 30), line.featureId, "planned_rail_line");
     const label = line.properties.sourceType === "approximation" ? "[개략]" : null;
-    map.push(...lineFeatures.map((feature) => label === null ? feature : { id: feature.id, f: { ...feature.f, label } }));
+    for (const path of clipLineToCircle(ctx.input.center, radiusM, line.geometry)) {
+      const clipped = lineCandidate(line.featureId, "planned_rail_line", path, linePathLength(path), label);
+      if (clipped) lineCandidates.push(clipped);
+    }
   }
   const nearestStation = nearestHit(stations);
   for (const station of stations) {
@@ -171,6 +134,7 @@ export function d24(ctx: EngineContext): TileResult {
     sources,
     layers: ["planned_rail_line", "planned_rail_station"],
     map,
+    lines: lineCandidates,
     limitations: [
       { kind: "partial", note: `공개 계획 철도 목록이 일부(${total}건)만 포함` },
       ...(approx ? [{ kind: "estimated" as const, note: "[개략] 선형은 보조 지오메트리이며 확정 노선처럼 해석하지 않습니다." }] : []),

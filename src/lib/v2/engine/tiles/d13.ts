@@ -2,8 +2,8 @@
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
 import { ROAD_HIERARCHIES, type RoadHierarchy } from "../../ingest/sources/osm-roads";
-import { distanceToLineM, lineLengthInCircle, sampleLine } from "./geo";
-import { makeTile, missing, obs, type MapCandidate, type TileDraft } from "./common";
+import { clipLineToCircle, distanceToLineM, lineLengthInCircle, linePathLength } from "./geo";
+import { lineCandidate, makeTile, missing, obs, type LineCandidate, type TileDraft } from "./common";
 import { notProvided } from "./not-provided";
 
 const ROAD_SOURCES = ["osm_roads"] as const;
@@ -29,14 +29,16 @@ export function d13(ctx: EngineContext): TileResult {
 
   const roads = ctx.hits("reference", ["road"]);
   const lengths = ROAD_HIERARCHIES.map(() => 0);
-  const map: MapCandidate[] = [];
-  const stepM = Math.max(50, ctx.input.radiusM / 30);
+  const lines: LineCandidate[] = [];
   for (const road of roads) {
     const hierarchy = hierarchyOf(road.properties.hierarchy);
     const index = ROAD_HIERARCHIES.indexOf(hierarchy);
     const length = lineLengthInCircle(ctx.input.center, ctx.input.radiusM, road.geometry);
     lengths[index] += length;
-    map.push(...sampleLine(ctx.input.center, road.geometry, ctx.input.radiusM, stepM, road.featureId, `road:${hierarchy}`));
+    for (const path of clipLineToCircle(ctx.input.center, ctx.input.radiusM, road.geometry)) {
+      const line = lineCandidate(road.featureId, `road:${hierarchy}`, path, linePathLength(path));
+      if (line) lines.push(line);
+    }
   }
 
   const total = lengths.reduce((sum, length) => sum + length, 0);
@@ -81,7 +83,7 @@ export function d13(ctx: EngineContext): TileResult {
     judgment: { ruleId: "D13-osm-roads@1", basisMetricIds: ["road_length_in_radius_m", "nearest_arterial_or_higher_m"], sentence, level: null, criteria: null },
     sources,
     layers: ROAD_LAYERS,
-    map,
+    lines,
     limitations: [
       { kind: "partial", note: "Geofabrik OSM 무료 SHP에서 확보한 도로 중심선만 집계합니다. OSM 커버리지와 갱신 시점은 지역별로 다릅니다." },
       { kind: "unknown", note: "중심선 길이는 실제 도로 폭·차로 수·통행 가능 여부·공식 도로 등급을 뜻하지 않으며 공식 도로대장이 아닙니다." },

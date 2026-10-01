@@ -54,6 +54,79 @@ export function sampleLine(center: LngLat, g: Geometry, radiusM: number, stepM: 
   return out;
 }
 
+type SegmentInterval = [number, number];
+
+/** EPSG:5179 선분에서 원 내부에 해당하는 매개변수 구간을 구한다. */
+function segmentIntervalInCircle(a: number[], b: number[], cx: number, cy: number, radiusM: number): SegmentInterval | null {
+  if (a.length < 2 || b.length < 2 || !Number.isFinite(a[0]) || !Number.isFinite(a[1]) || !Number.isFinite(b[0]) || !Number.isFinite(b[1])) return null;
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const qa = dx * dx + dy * dy;
+  if (qa === 0) return null;
+  const fx = a[0] - cx;
+  const fy = a[1] - cy;
+  const qb = 2 * (fx * dx + fy * dy);
+  const qc = fx * fx + fy * fy - radiusM * radiusM;
+  const discriminant = qb * qb - 4 * qa * qc;
+  if (discriminant < 0) return qc <= 0 ? [0, 1] : null;
+  const root = Math.sqrt(Math.max(0, discriminant));
+  const enter = (-qb - root) / (2 * qa);
+  const leave = (-qb + root) / (2 * qa);
+  const from = Math.max(0, enter);
+  const to = Math.min(1, leave);
+  return to - from > 1e-12 ? [from, to] : null;
+}
+
+/**
+ * EPSG:5179 선형을 반경 원 안의 연속 선 경로로 잘라낸다.
+ * 각 반환 경로는 원 안에 있는 부분 하나이며, 원 경계의 교점과 원래 꼭짓점을 보존한다.
+ */
+export function clipLineToCircle(center: LngLat, radiusM: number, g: Geometry): number[][][] {
+  if (!center.every(Number.isFinite) || !Number.isFinite(radiusM) || radiusM <= 0) return [];
+  const [cx, cy] = toUtmk(center);
+  const out: number[][][] = [];
+  const append = (path: number[][], point: number[]) => {
+    const last = path.at(-1);
+    if (!last || Math.hypot(point[0] - last[0], point[1] - last[1]) > 1e-7) path.push([point[0], point[1]]);
+  };
+  const flush = (path: number[][]) => {
+    if (path.length >= 2) out.push(path.slice());
+    path.length = 0;
+  };
+
+  for (const part of lineParts(g)) {
+    let path: number[][] = [];
+    for (let i = 1; i < part.length; i++) {
+      const a = part[i - 1];
+      const b = part[i];
+      const interval = segmentIntervalInCircle(a, b, cx, cy, radiusM);
+      if (interval === null) {
+        flush(path);
+        path = [];
+        continue;
+      }
+      const [from, to] = interval;
+      const start = [a[0] + (b[0] - a[0]) * from, a[1] + (b[1] - a[1]) * from];
+      const end = [a[0] + (b[0] - a[0]) * to, a[1] + (b[1] - a[1]) * to];
+      if (path.length > 0 && Math.hypot(start[0] - path.at(-1)![0], start[1] - path.at(-1)![1]) > 1e-7) {
+        flush(path);
+        path = [];
+      }
+      append(path, start);
+      append(path, end);
+    }
+    flush(path);
+  }
+  return out;
+}
+
+/** EPSG:5179 선 경로의 평면 길이. 반경 절단 후 선 후보의 상한 정렬에 쓴다. */
+export function linePathLength(path: readonly number[][]): number {
+  let total = 0;
+  for (let i = 1; i < path.length; i++) total += Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]);
+  return total;
+}
+
 /** EPSG:5179 선분과 반경 원이 교차하는 실제 길이. 표본점 개수로 근사하지 않는다. */
 export function lineLengthInCircle(center: LngLat, radiusM: number, g: Geometry): number {
   if (!Number.isFinite(radiusM) || radiusM < 0) return 0;

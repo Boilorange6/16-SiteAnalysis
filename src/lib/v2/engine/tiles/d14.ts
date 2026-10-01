@@ -2,8 +2,8 @@
 import type { FeatureHit } from "../../data/features";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
-import { candidate, makeTile, missing, noDataTile, obs, type MapCandidate, type TileDraft } from "./common";
-import { sampleLine } from "./geo";
+import { candidate, lineCandidate, makeTile, missing, noDataTile, obs, type LineCandidate, type MapCandidate, type TileDraft } from "./common";
+import { clipLineToCircle, linePathLength } from "./geo";
 
 const BUS_SOURCES = ["bus_stop"] as const;
 const RAIL_SOURCES = ["osm_subway"] as const;
@@ -64,13 +64,18 @@ export function d14(ctx: EngineContext): TileResult {
   ];
 
   const map: MapCandidate[] = busStops.map((hit) => candidate(hit, "bus_stop"));
+  const lineCandidates: LineCandidate[] = [];
   const layers = ["bus_stop"];
   if (hasRail) {
     layers.push("rail_station", "rail_entrance", "rail_line");
     stations.forEach((hit) => map.push(candidate(hit, "rail_station")));
     entrances.forEach((hit) => map.push(candidate(hit, "rail_entrance")));
-    const stepM = Math.max(50, ctx.input.radiusM / 30);
-    lines.forEach((hit) => map.push(...sampleLine(ctx.input.center, hit.geometry, ctx.input.radiusM, stepM, hit.featureId, "rail_line")));
+    lines.forEach((hit) => {
+      for (const path of clipLineToCircle(ctx.input.center, ctx.input.radiusM, hit.geometry)) {
+        const line = lineCandidate(hit.featureId, "rail_line", path, linePathLength(path));
+        if (line) lineCandidates.push(line);
+      }
+    });
   }
 
   const coverage = [
@@ -108,6 +113,7 @@ export function d14(ctx: EngineContext): TileResult {
     sources: [...busSources, ...railSources],
     layers,
     map,
+    lines: lineCandidates,
     limitations,
   });
 }
