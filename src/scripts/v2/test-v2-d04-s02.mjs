@@ -16,6 +16,7 @@ const M = await import("../../lib/v2/data/manifest.ts");
 const A = await import("../../lib/v2/app-db.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { runAnalysis } = await import("../../lib/v2/engine/run.ts");
+const { runHeavyTiles } = await import("../../lib/v2/engine/jobs.ts");
 const { s02: s02Engine } = await import("../../lib/v2/engine/tiles/s02.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 
@@ -76,13 +77,19 @@ function tile(result, code) {
   assert.ok(found, `${code} result`);
   return found;
 }
+/** 무거운 타일: 백그라운드 작업을 돌린 뒤 저장된 결과를 읽는다. */
+function heavyTile(db, dir, result, code) {
+  assert.equal(tile(result, code).status, "pending");
+  runHeavyTiles(db, dir, result.analysisId);
+  return A.loadTileResults(db, result.analysisId).find((t) => t.tileCode === code);
+}
 
 // 1) buildings 파일이 있는 분석: D04 연대 분포와 S02 연결을 함께 확인한다.
 const dataDir = await makeData();
 const appDb = A.openV2AppDb(join(mkdtempSync(join(tmpdir(), "v2-d04-s02-app-")), "app.sqlite"));
 const run = runAnalysis(appDb, dataDir, { center: CENTER, radiusM: 800, analysisDate: "2026-09-30" });
 const d04 = tile(run, "D04");
-const s02Tile = tile(run, "S02");
+const s02Tile = heavyTile(appDb, dataDir, run, "S02");
 const metric = (result, id) => result.metrics.find((m) => m.id === id);
 
 assert.equal(d04.status, "complete");
@@ -133,7 +140,7 @@ const absentDir = await makeData({ buildings: false });
 const absentDb = A.openV2AppDb(join(mkdtempSync(join(tmpdir(), "v2-d04-s02-absent-app-")), "app.sqlite"));
 const absent = runAnalysis(absentDb, absentDir, { center: CENTER, radiusM: 800, analysisDate: "2026-09-30" });
 assert.equal(tile(absent, "D04").status, "not_provided");
-assert.equal(tile(absent, "S02").status, "not_provided");
+assert.equal(heavyTile(absentDb, absentDir, absent, "S02").status, "not_provided");
 absentDb.close();
 
 // 4) 건물 파일이 있어도 필요한 building_fact 열이 없으면 예외 대신 not_provided.
@@ -141,7 +148,7 @@ const brokenDir = await makeData({ brokenBuildings: true });
 const brokenDb = A.openV2AppDb(join(mkdtempSync(join(tmpdir(), "v2-d04-s02-broken-app-")), "app.sqlite"));
 const broken = runAnalysis(brokenDb, brokenDir, { center: CENTER, radiusM: 800, analysisDate: "2026-09-30" });
 assert.equal(tile(broken, "D04").status, "not_provided");
-assert.equal(tile(broken, "S02").status, "not_provided");
+assert.equal(heavyTile(brokenDb, brokenDir, broken, "S02").status, "not_provided");
 brokenDb.close();
 appDb.close();
 
