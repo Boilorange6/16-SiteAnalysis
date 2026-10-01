@@ -49,7 +49,6 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
   const [sheetSelection, setSheetSelection] = useState<string[]>([]);
   const [note, setNote] = useState(""); // 스크린리더 안내(aria-live)
   const [basemap, setBasemap] = useState<BasemapChoice>("white"); // 보드 상태(서버에 저장하지 않음). 화면과 PPT가 같이 따른다
-  const [rhinoUnavailable, setRhinoUnavailable] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
   const { drag, order: shown, start, floatStyle } = useTileDrag(board.order, gridRef, (id, from, to) => {
     dispatch({ type: "reorder", from, to });
@@ -89,57 +88,76 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
   const analysisDate = demo ? new Date().toLocaleDateString("sv-SE") : (results[0]?.conditions.analysisDate ?? new Date().toLocaleDateString("sv-SE"));
   const reportPlan = useMemo(() => buildReportPlan({ summary, views, board, analysisDate }), [summary, views, board, analysisDate]);
   const [making, setMaking] = useState(false);
+  const [makingKind, setMakingKind] = useState<string | null>(null);
+  const [exportProblem, setExportProblem] = useState<string | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
   const makeReport = async () => {
     setMaking(true);
+    setMakingKind("PPT");
+    setExportProblem(null);
     try {
       const { renderReportPptx } = await import("@/lib/v2/report/render-pptx");
       // 지도 그림은 브라우저에서 SVG → PNG로 만든다. 못 만들면 자리표시로 계속한다.
       const { buildMapImages } = await import("@/lib/v2/report/map-image");
       const bytes = await renderReportPptx(reportPlan, await buildMapImages(reportPlan, basemap).catch(() => ({})));
       downloadBytes(reportFileName(siteSummary.address, analysisDate), bytes, EXPORT_MIME.pptx);
+    } catch {
+      setExportProblem("PPT 내보내기에 실패했습니다. 잠시 뒤 다시 시도해 주세요.");
     } finally {
       setMaking(false);
+      setMakingKind(null);
     }
   };
 
   const makeDxf = async (origin: "site" | "utmk" = "site") => {
     if (!scene) return;
     setMaking(true);
+    setMakingKind(origin === "site" ? "DXF · 대지 중심" : "DXF · UTM-K");
+    setExportProblem(null);
     try {
       const { dxfFileName, sceneToDxf } = await import("@/lib/v2/export/dxf");
       const dxf = sceneToDxf(scene, { origin });
       downloadBytes(dxfFileName(siteSummary.address, analysisDate), dxf, EXPORT_MIME.dxf);
+    } catch {
+      setExportProblem(`DXF 내보내기에 실패했습니다. 잠시 뒤 다시 시도해 주세요.`);
     } finally {
       setMaking(false);
+      setMakingKind(null);
     }
   };
 
   const makeGlb = async () => {
     if (!scene) return;
     setMaking(true);
+    setMakingKind("GLB");
+    setExportProblem(null);
     try {
       const { glbFileName, sceneToGlb } = await import("@/lib/v2/export/glb");
       downloadBytes(glbFileName(siteSummary.address, analysisDate), sceneToGlb(scene), EXPORT_MIME.glb);
+    } catch {
+      setExportProblem("GLB 내보내기에 실패했습니다. 잠시 뒤 다시 시도해 주세요.");
     } finally {
       setMaking(false);
+      setMakingKind(null);
     }
   };
 
   const make3dm = async () => {
     if (!scene) return;
     setMaking(true);
+    setMakingKind("3DM");
+    setExportProblem(null);
     try {
       // rhino3dm은 브라우저 번들에 넣을 수 없어(Node 전용 ws·fs 참조) 서버에서 변환한다.
       const res = await fetch("/site/api/v2/export/3dm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(scene) });
       if (!res.ok) throw new Error(`3dm ${res.status}`);
       const bytes = new Uint8Array(await res.arrayBuffer());
       downloadBytes(exportFileName("3dm", siteSummary.address, analysisDate), bytes, EXPORT_MIME["3dm"]);
-      setRhinoUnavailable(false);
     } catch {
-      // 서버 변환 실패는 메뉴 옆의 상태로 알린다.
-      setRhinoUnavailable(true);
+      setExportProblem("3DM 내보내기에 실패했습니다. 잠시 뒤 다시 시도해 주세요.");
     } finally {
       setMaking(false);
+      setMakingKind(null);
     }
   };
 
@@ -222,16 +240,6 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
               {siteSummary.address} · {summary.radius}
             </span>
           )}
-          {demoOn && (
-            <>
-              <div className={styles.progress} role="progressbar" aria-label="분석 진행" aria-valuemin={0} aria-valuemax={total} aria-valuenow={finished}>
-                <div className={styles.progressFill} style={{ width: `${(finished / total) * 100}%` }} />
-              </div>
-              <span className={styles.progressText}>
-                {finished} / {total}
-              </span>
-            </>
-          )}
           <span className={styles.spacer} />
           {demo && <span className={styles.demoTag}>예시 데이터</span>}
           {editing ? (
@@ -241,68 +249,144 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
           ) : (
             <>
               {demo && (
-                <button type="button" className={styles.pill} onClick={() => (demoOn ? setDemoStep(null) : setDemoStep(0))} aria-pressed={demoOn}>
+                <button type="button" className={`${styles.pill} ${styles.demoToggle}`} onClick={() => (demoOn ? setDemoStep(null) : setDemoStep(0))} aria-pressed={demoOn}>
                   {demoOn ? "데모 끄기" : "분석 중 데모"}
                 </button>
               )}
-              <span className={styles.seg} role="group" aria-label="카드 보기">
-                {(["summary", "map"] as const).map((f) => (
-                  <button key={f} type="button" aria-pressed={board.viewAll === f} onClick={() => dispatch({ type: "viewAll", face: f })}>
-                    {f === "summary" ? "요약" : "지도"}
-                  </button>
-                ))}
-              </span>
-              <span className={styles.seg} role="group" aria-label="배경지도">
-                {BASEMAPS.map((b) => (
-                  <button key={b.id} type="button" aria-pressed={basemap === b.id} onClick={() => setBasemap(b.id)}>
-                    {b.label}
-                  </button>
-                ))}
-              </span>
-              <button type="button" className={styles.pill} onClick={() => setEditing(true)} disabled={demoOn || busy}>
-                보드 편집
-              </button>
-              <span className={styles.reportHint}>표지 1 + 타일 {tiles}</span>
-              {demo ? (
-                <button type="button" className={`${styles.pill} ${styles.pillDark}`} disabled title="실제 분석 후 사용">
-                  내보내기 ▾
+              <div className={styles.desktopTools}>
+                <span className={styles.segGroup}>
+                  <span className={styles.segLabel}>카드</span>
+                  <span className={styles.seg} role="group" aria-label="카드 보기">
+                    {(["summary", "map"] as const).map((f) => (
+                      <button key={f} type="button" aria-pressed={board.viewAll === f} onClick={() => dispatch({ type: "viewAll", face: f })}>
+                        {f === "summary" ? "요약" : "지도"}
+                      </button>
+                    ))}
+                  </span>
+                </span>
+                <span className={styles.segGroup}>
+                  <span className={styles.segLabel}>배경지도</span>
+                  <span className={styles.seg} role="group" aria-label="배경지도">
+                    {BASEMAPS.map((b) => (
+                      <button key={b.id} type="button" aria-pressed={basemap === b.id} onClick={() => setBasemap(b.id)}>
+                        {b.label}
+                      </button>
+                    ))}
+                  </span>
+                </span>
+                <button type="button" className={styles.pill} onClick={() => setEditing(true)} disabled={demoOn || busy}>
+                  보드 편집
                 </button>
-              ) : (
-                <details style={{ position: "relative" }}>
-                  <summary className={`${styles.pill} ${styles.pillDark}`} style={{ cursor: busy || making ? "not-allowed" : "pointer", listStyle: "none" }}>
-                    {making ? "내보내는 중…" : "내보내기 ▾"}
-                  </summary>
-                  <div
-                    role="menu"
-                    aria-label="내보내기 형식"
-                    style={{ position: "absolute", zIndex: 20, right: 0, top: "calc(100% + 8px)", minWidth: 250, padding: 10, borderRadius: 14, background: "#fff", boxShadow: "0 12px 32px rgba(0,0,0,.16)", display: "grid", gap: 6 }}
-                  >
-                    <button type="button" className={styles.pill} onClick={() => void makeReport()} disabled={making || busy}>
-                      PPT · {reportPlan.length}장
+                <span className={styles.reportHint}>표지 1 + 타일 {tiles}</span>
+                {demo ? (
+                  <button type="button" className={`${styles.pill} ${styles.pillDark}`} disabled title="실제 분석 후 사용">
+                    내보내기 ▾
+                  </button>
+                ) : (
+                  <details className={styles.exportDetails} open={exportOpen} onToggle={(event) => setExportOpen(event.currentTarget.open)}>
+                    <summary
+                      className={`${styles.pill} ${styles.pillDark}`}
+                      aria-label="내보내기 형식"
+                      aria-expanded={exportOpen}
+                      aria-disabled={busy || making}
+                      onClick={(e) => {
+                        if (busy || making) e.preventDefault();
+                      }}
+                    >
+                      {making ? `${makingKind ?? "파일"} 만드는 중…` : "내보내기 ▾"}
+                    </summary>
+                    <div className={styles.exportMenu} aria-label="내보내기 형식">
+                      <button type="button" className={styles.pill} onClick={() => void makeReport()} disabled={making || busy}>
+                        PPT · {reportPlan.length}장
+                      </button>
+                      <button type="button" className={styles.pill} onClick={() => void makeDxf("site")} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "대지 중심 원점"}>
+                        DXF · 대지 중심
+                      </button>
+                      <button type="button" className={styles.pill} onClick={() => void makeDxf("utmk")} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "UTM-K 절대 좌표"}>
+                        DXF · UTM-K
+                      </button>
+                      <button type="button" className={styles.pill} onClick={() => void makeGlb()} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "GLB 내보내기"}>
+                        GLB
+                      </button>
+                      <button type="button" className={styles.pill} onClick={() => void make3dm()} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "3DM 내보내기"}>
+                        3DM
+                      </button>
+                      <p className={styles.exportNote}>
+                        DXF·GLB: 건물·필지·대지·반경. 래스터(항공사진·인구 격자·시뮬레이션 결과)는 대상 아님<br />
+                        3DM: 건물(닫힌 솔리드)·필지·대지·반경·지형 메시
+                      </p>
+                    </div>
+                  </details>
+                )}
+              </div>
+              {exportProblem && <span className={styles.exportError} role="alert">{exportProblem}</span>}
+              <details className={styles.mobileTools}>
+                <summary className={`${styles.pill} ${styles.pillDark}`} aria-label="보기·편집·내보내기 메뉴">
+                  더 보기
+                </summary>
+                <div className={styles.mobileToolsPanel}>
+                  <span className={styles.segGroup}>
+                    <span className={styles.segLabel}>카드</span>
+                    <span className={styles.seg} role="group" aria-label="카드 보기">
+                      {(["summary", "map"] as const).map((f) => (
+                        <button key={f} type="button" aria-pressed={board.viewAll === f} onClick={() => dispatch({ type: "viewAll", face: f })}>
+                          {f === "summary" ? "요약" : "지도"}
+                        </button>
+                      ))}
+                    </span>
+                  </span>
+                  <span className={styles.segGroup}>
+                    <span className={styles.segLabel}>배경지도</span>
+                    <span className={styles.seg} role="group" aria-label="배경지도">
+                      {BASEMAPS.map((b) => (
+                        <button key={b.id} type="button" aria-pressed={basemap === b.id} onClick={() => setBasemap(b.id)}>
+                          {b.label}
+                        </button>
+                      ))}
+                    </span>
+                  </span>
+                  <button type="button" className={styles.pill} onClick={() => setEditing(true)} disabled={demoOn || busy}>
+                    보드 편집
+                  </button>
+                  <span className={styles.reportHint}>표지 1 + 타일 {tiles}</span>
+                  {demo ? (
+                    <button type="button" className={`${styles.pill} ${styles.pillDark}`} disabled title="실제 분석 후 사용">
+                      내보내기 ▾
                     </button>
-                    <button type="button" className={styles.pill} onClick={() => void makeDxf("site")} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "대지 중심 원점"}>
-                      DXF · 대지 중심
-                    </button>
-                    <button type="button" className={styles.pill} onClick={() => void makeDxf("utmk")} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "UTM-K 절대 좌표"}>
-                      DXF · UTM-K
-                    </button>
-                    <button type="button" className={styles.pill} onClick={() => void makeGlb()} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "GLB 내보내기"}>
-                      GLB
-                    </button>
-                    <button type="button" className={styles.pill} onClick={() => void make3dm()} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "3DM 내보내기"}>
-                      3DM
-                    </button>
-                    {rhinoUnavailable && <span role="status" style={{ margin: "0 2px", fontSize: 11, color: "#9A3B2F" }}>3DM 변환 실패 — 잠시 뒤 다시 시도</span>}
-                    <p style={{ margin: "4px 2px 0", fontSize: 11, lineHeight: 1.4, color: "#5B606B" }}>
-                      DXF·GLB: 건물·필지·대지·반경. 래스터(항공사진·인구 격자·시뮬레이션 결과)는 대상 아님<br />
-                      3DM: 건물(닫힌 솔리드)·필지·대지·반경·지형 메시
-                    </p>
-                  </div>
-                </details>
-              )}
+                  ) : (
+                    <div className={styles.mobileExportActions}>
+                      <button type="button" className={styles.pill} onClick={() => void makeReport()} disabled={making || busy}>
+                        PPT · {reportPlan.length}장
+                      </button>
+                      <button type="button" className={styles.pill} onClick={() => void makeDxf("site")} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "대지 중심 원점"}>
+                        DXF · 대지 중심
+                      </button>
+                      <button type="button" className={styles.pill} onClick={() => void makeDxf("utmk")} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "UTM-K 절대 좌표"}>
+                        DXF · UTM-K
+                      </button>
+                      <button type="button" className={styles.pill} onClick={() => void makeGlb()} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "GLB 내보내기"}>
+                        GLB
+                      </button>
+                      <button type="button" className={styles.pill} onClick={() => void make3dm()} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "3DM 내보내기"}>
+                        3DM
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </details>
             </>
           )}
         </header>
+
+        {demoOn && (
+          <div className={styles.progressRow}>
+            <span className={styles.progressLabel}>분석 중</span>
+            <div className={styles.progress} role="progressbar" aria-label="분석 진행" aria-valuemin={0} aria-valuemax={total} aria-valuenow={finished}>
+              <div className={styles.progressFill} style={{ width: `${(finished / total) * 100}%` }} />
+            </div>
+            <span className={styles.progressText}>{finished} / {total}</span>
+          </div>
+        )}
 
         {controls}
 
@@ -453,7 +537,7 @@ type Problem = { text: string; login: boolean };
 /** 주소 입력 → 분석 → 실제 결과 보드. 분석 전에는 예시 보드를 그대로 보여 준다. */
 export default function V2BoardPage() {
   const [address, setAddress] = useState("");
-  const [radiusM, setRadiusM] = useState(800);
+  const [radiusM, setRadiusM] = useState(1000);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [live, setLive] = useState<Live | null>(null);
@@ -494,6 +578,8 @@ export default function V2BoardPage() {
 
   // 주소창의 ?analysis=<id>로 저장된 분석을 다시 연다
   useEffect(() => {
+    const queryAddress = new URLSearchParams(window.location.search).get("address");
+    if (queryAddress) setAddress(queryAddress);
     const id = new URLSearchParams(window.location.search).get("analysis");
     if (!id) return;
     setBusy(true);
@@ -537,6 +623,7 @@ export default function V2BoardPage() {
 
   const controls = (
     <div className={styles.analyzeWrap}>
+      {!live && <p className={styles.demoContext}>예시: 고덕동 123 · 반경 1km — 주소를 넣으면 실제 분석</p>}
       <form className={styles.analyzeBar} onSubmit={analyze}>
         <input
           className={styles.addrInput}
@@ -563,7 +650,7 @@ export default function V2BoardPage() {
           {problem.login && (
             <>
               {" "}
-              <a href="/site/login">/site/login으로 로그인</a>해 주세요.
+              <a href={`/site/login?next=${encodeURIComponent(`/site/v2?address=${address.trim()}`)}`}>로그인하기</a>로 이동해 주세요.
             </>
           )}
         </p>
