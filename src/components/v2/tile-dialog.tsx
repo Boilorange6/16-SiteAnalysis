@@ -2,7 +2,9 @@
 
 import { useContext, useEffect, useRef, useState } from "react";
 import { CALLOUT_MODES, calloutReportPages, type CalloutMode } from "@/lib/v2/ui/callout-layout";
+import { CAMERA_PRESETS } from "@/lib/v2/ui/mass-projection";
 import { detailSiteX, OV } from "@/lib/v2/ui/overlay-layout";
+import type { CameraPreset } from "@/lib/v2/ui/board-state";
 import { faceLabel, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
 import { BadgeList, FaceSelect, Headline, RowList, SourceStrip, Stage, StatusPlate, TitleChip } from "./tile-card";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "./map-box";
@@ -16,6 +18,8 @@ type Props = {
   onFace: (f: OutputFace) => void;
   calloutMode: CalloutMode;
   onCalloutMode: (m: CalloutMode) => void;
+  camera?: CameraPreset | null;
+  onCamera?: (camera: CameraPreset) => void;
   onClose: () => void;
 };
 
@@ -23,7 +27,7 @@ const PANEL_W = 360;
 const insetOf = (w: number) => (w <= 720 ? 0 : PANEL_W + 2 * OV.edge);
 
 /** 펼침: 화면 거의 전체가 지도. 오른쪽에 떠 있는 정보 판. Esc로 닫고, 닫으면 열기 전 초점으로 돌아간다. */
-export default function TileDialog({ view, included, face, onInclude, onFace, calloutMode, onCalloutMode, onClose }: Props) {
+export default function TileDialog({ view, included, face, onInclude, onFace, calloutMode, onCalloutMode, camera, onCamera, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [back, setBack] = useState(false);
   const [more, setMore] = useState(false); // 모바일 시트 확장
@@ -115,6 +119,39 @@ export default function TileDialog({ view, included, face, onInclude, onFace, ca
               <button type="button" aria-pressed={back} onClick={() => setBack(true)}>
                 구성비
               </button>
+            </div>
+          )}
+          {view.code === "S01" && camera && onCamera && (
+            <div className={styles.seg} role="group" aria-label="카메라">
+              <span>카메라</span>
+              <label>
+                방위
+                <select
+                  aria-label="카메라 방위"
+                  value={camera.azimuthDeg}
+                  onChange={(e) => onCamera({ azimuthDeg: Number(e.target.value), elevationDeg: camera.elevationDeg })}
+                >
+                  {CAMERA_PRESETS.azimuth.map((azimuthDeg, index) => (
+                    <option key={azimuthDeg} value={azimuthDeg}>
+                      {["북동 상공", "남동 상공", "남서 상공", "북서 상공"][index]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                앙각
+                <select
+                  aria-label="카메라 앙각"
+                  value={camera.elevationDeg}
+                  onChange={(e) => onCamera({ azimuthDeg: camera.azimuthDeg, elevationDeg: Number(e.target.value) })}
+                >
+                  {CAMERA_PRESETS.elevation.map((elevationDeg) => (
+                    <option key={elevationDeg} value={elevationDeg}>
+                      {elevationDeg}°
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
           )}
           {view.rows.length > 0 && <RowList rows={view.rows} className={styles.list} />}

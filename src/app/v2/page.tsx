@@ -54,7 +54,13 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
 
   const baseViews = useMemo(() => new Map(results.map((r) => [r.tileId, toTileView(r, scene)])), [results, scene]);
   const views = useMemo(() => {
-    const next = new Map(baseViews);
+    const next = new Map(
+      [...baseViews].map(([id, view]) => {
+        const camera = board.cameras[id];
+        if (!camera || !view.mass) return [id, view] as const;
+        return [id, { ...view, mass: { ...view.mass, camera: { ...view.mass.camera, ...camera } } }] as const;
+      }),
+    );
     for (const [id, layers] of Object.entries(board.stacks)) {
       const layerViews = layers.map((layerId) => baseViews.get(layerId)).filter((view): view is NonNullable<typeof view> => !!view);
       if (layerViews.length > 0) next.set(id, stackView(id, layerViews));
@@ -64,7 +70,7 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
       if (tileViews.length > 0) next.set(id, sheetView(id, tileViews, spec.grid));
     }
     return next;
-  }, [baseViews, board.sheets, board.stacks]);
+  }, [baseViews, board.cameras, board.sheets, board.stacks]);
   const stackableIds = useMemo(
     () => board.order.filter((id) => {
       const view = baseViews.get(id);
@@ -388,6 +394,8 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
           onFace={(face) => dispatch({ type: "face", id: openView.tileId, face })}
           calloutMode={board.callout[openView.tileId] ?? DEFAULT_CALLOUT_MODE}
           onCalloutMode={(mode) => dispatch({ type: "callout", id: openView.tileId, mode })}
+          camera={openView.mass?.camera}
+          onCamera={(camera) => dispatch({ type: "camera", id: openView.tileId, camera })}
           onClose={() => setOpenId(null)}
         />
       )}
