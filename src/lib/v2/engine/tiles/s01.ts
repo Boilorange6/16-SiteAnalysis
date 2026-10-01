@@ -5,12 +5,9 @@ import type { EngineContext } from "../context";
 import { ENGINE_VERSION, est, missing, obs } from "./common";
 import { BUILDING_SOURCES, buildingRows, type BuildingRow } from "./buildings-shared";
 import { notProvided } from "./not-provided";
+import { DEM_LIMITATION, demReader } from "./terrain-shared";
 
 const LAYERS = ["mass_source", "mass_estimated", "mass_unknown"] as const;
-const DEM_LIMITATION = {
-  kind: "estimated",
-  note: "SRTM 1″(약 30m) 지표고를 보간한 지형입니다. 측량값·표면고(건물·수목)가 아니며 EGM96 기준입니다.",
-} as const;
 const FLAT_GROUND_LIMITATION = {
   kind: "not_provided",
   note: "지형(DEM) 미적재 — 평탄 지반",
@@ -56,8 +53,7 @@ export function s01(ctx: EngineContext): TileResult {
   const medianHeight = median(heights);
   const maxHeight = heights.length === 0 ? null : Math.max(...heights);
   const included = Math.min(total, SCENE_MAX_BUILDINGS);
-  // T7의 demReader가 병합되기 전에도 같은 게시 파일 계약으로 지형 상태를 기록한다.
-  const demReady = ctx.db("terrain") !== null;
+  const demReady = demReader(ctx) !== null;
   const coverage = ctx.coverage("buildings", BUILDING_SOURCES);
   const limitations: TileResult["limitations"] = [
     { kind: "estimated", note: "공개 도형과 확보 높이로 만든 매스. 높이 미상 건물은 바닥 모양만 표시" },

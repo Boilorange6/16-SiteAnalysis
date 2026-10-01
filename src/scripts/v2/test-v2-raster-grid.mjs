@@ -37,6 +37,14 @@ const ge20Expected = (RADIUS_M ** 2 * Math.acos(400 / RADIUS_M) - 400 * Math.sqr
 assert.ok(Math.abs(ge20Share - ge20Expected) < 0.05, `relief_ge20 share ${ge20Share} should follow the plane segment ${ge20Expected}`);
 assert.ok(bands.polygons.some((candidate) => candidate.p.layer === "relief_ge20"));
 
+// Turf may omit most of the dominant outer band when an island is surrounded
+// by another band. The returned shares must still cover the analysis circle.
+const island = localGrid(CENTER, RADIUS_M, CELL_M, (x, y) => Math.hypot(x - cx, y - cy) < 250 ? 100 : 0);
+const islandBands = bandPolygons(CENTER, RADIUS_M, island, [25, 50, 75], ["island_0", "island_1", "island_2", "island_3"], null);
+const islandArea = islandBands.areaM2.reduce((sum, value) => sum + value, 0);
+assert.ok(Math.abs(islandArea - circleArea) / circleArea < 0.02, `island band area ${islandArea} should cover the circle ${circleArea}`);
+assert.ok(islandBands.areaM2[0] / circleArea > 0.7, "dominant outer band should retain its circle area");
+
 const missing = localGrid(CENTER, RADIUS_M, CELL_M, (x, y) => {
   const dx = x - cx;
   const dy = y - cy;
