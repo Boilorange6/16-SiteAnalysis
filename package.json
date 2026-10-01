@@ -23,7 +23,7 @@
     "build:rail-public-data": "tsx src/scripts/build-planned-rail-public-data.mjs",
     "test:v2": "node src/scripts/v2/run-tests.mjs",
     "rtms:fetch": "tsx src/scripts/v2/rtms-fetch.mjs",
-    "vworld:fetch":"tsx src/scripts/v2/vworld-fetch.mjs",
+    "vworld:fetch": "tsx src/scripts/v2/vworld-fetch.mjs",
     "vworld:fetch-large": "tsx src/scripts/v2/vworld-fetch-large.mjs",
     "data:build": "tsx src/scripts/v2/data-build.mjs",
     "a0:measure": "tsx src/scripts/v2/a0-measure.mjs",
@@ -46,6 +46,7 @@
     "react-leaflet": "^5.0.0",
     "rhino3dm": "^8.35.0",
     "shapefile": "0.6.6",
+    "sharp": "^0.34.5",
     "zod": "^4.3.6"
   },
   "devDependencies": {
