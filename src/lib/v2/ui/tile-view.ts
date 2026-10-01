@@ -8,6 +8,7 @@ import { fmtInt, rankComplexes, rankSupply, STOCK_LEGEND, SUPPLY_LAYERS, SUPPLY_
 import type { MapModel } from "./map-layers";
 import type { MassModel } from "./mass-projection";
 import { catalogEntry, sourceName } from "./tile-catalog";
+import type { RoseModel } from "./wind-rose";
 
 export type OutputFace = (typeof OUTPUT_FACES)[number];
 export type Badge = { text: string; note?: string; tone: "status" | "limit" | "model" };
@@ -41,6 +42,8 @@ export type TileView = {
   callout: CalloutModel | null;
   /** S01 축측 매스. Scene이 없을 때도 카메라·반경만으로 빈 틀을 그릴 수 있다. */
   mass: MassModel | null;
+  /** D22 풍향·풍속 누적 모델. */
+  rose?: RoseModel | null;
   /** STACK 카드의 층 이름. 일반 타일은 null. */
   stackLayers: string[] | null;
   /** SHEET 카드가 참조하는 하위 타일과 격자. 일반 타일은 null. */
@@ -272,6 +275,7 @@ export function toTileView(r: TileResult, scene?: Scene | null): TileView {
     kindLabel: KIND_LABEL[cat.kind],
     callout: calloutOf(r),
     mass: massOf(r, scene),
+    rose: r.presentation.rose ?? null,
     stackLayers: null,
     sheetTiles: null,
     sheetGrid: null,

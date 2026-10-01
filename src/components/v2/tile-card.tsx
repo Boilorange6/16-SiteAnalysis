@@ -6,6 +6,7 @@ import { STRIP_COLORS } from "@/lib/v2/ui/map-layers";
 import { OV, badgesToShow, cardReserved, stripText } from "@/lib/v2/ui/overlay-layout";
 import { faceLabel, type Badge, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
 import MassFigure from "./mass-figure";
+import WindRoseFigure from "./wind-rose-figure";
 import CalloutMap, { CalloutPill } from "./callout-map";
 import MapBox from "./map-box";
 import styles from "./board.module.css";
@@ -187,6 +188,9 @@ export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, p
   if (state) return <MapBox model={view.backdrop} muted legend={false} north={false} scale={false} credit={false} label={label} siteX={siteX} />;
   if (view.code === "S01" && view.mass) {
     return <MassFigure scene={view.mass.scene} camera={view.mass.camera} width={960} height={540} label={label} />;
+  }
+  if (view.rose) {
+    return <WindRoseFigure model={view.rose} width={960} height={540} label={label} />;
   }
   if (view.callout) return <CalloutMap model={view.callout} kind={frame} page={page} onPage={onPage} label={label} />;
   return (

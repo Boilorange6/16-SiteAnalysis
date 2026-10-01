@@ -11,6 +11,7 @@ import { STRIP_COLORS } from "../ui/map-layers";
 import { framedViewport, makeProjector } from "../ui/map-projection";
 import { OV, SLIDE, slideLayout, slideLegend, slideSiteX, stripText, type Rect } from "../ui/overlay-layout";
 import type { Badge, CalloutModel, TileView } from "../ui/tile-view";
+import type { RoseModel } from "../ui/wind-rose";
 import { sheetCells, type SheetGrid } from "../ui/sheet";
 import { COVER_MAP_KEY, mapKeyOf, type PlannedSlide } from "./report-plan";
 
@@ -152,6 +153,14 @@ const textItem = (s: Slide, text: string, pt: number, color: string, bold = fals
   const h = linesOf(text, size, IW) * (size / 72) * 1.45 + 0.04;
   return { h, draw: (y) => void s.addText(text, { x: IX, y, w: IW, h, valign: "top", fontFace: FONT, fontSize: size, bold, color, margin: 0 }) };
 };
+
+function roseSummary(model: RoseModel): string {
+  const pct = (hours: number) => {
+    const value = model.totalHours > 0 ? (hours / model.totalHours) * 100 : 0;
+    return Number.isInteger(value) ? String(value) : value.toFixed(1);
+  };
+  return `정온 ${pct(model.calmHours)}% · 결측 ${pct(model.missingHours)}% · 지점 ${model.station}`;
+}
 
 function rowItems(s: Slide, rows: TileView["rows"]): Item[] {
   return rows.map((r) => ({
@@ -381,7 +390,7 @@ function cover(pptx: PptxGenJS, p: PlannedSlide & { kind: "cover" }, images: Map
 function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapImages) {
   const v = p.view;
   const s = pptx.addSlide();
-  const chart = !p.map && !p.mass; // 도판 구성비 면: 연한 타일색 바탕에 차트가 전면
+  const chart = !p.map && !p.mass && !p.rose; // 도판 구성비 면: 연한 타일색 바탕에 차트가 전면
   const mix = (c: string, a: number) => {
     const n = parseInt(hex(c), 16);
     const ch = (sh: number) => Math.round(255 - (255 - ((n >> sh) & 255)) * a);
@@ -397,7 +406,7 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
     return;
   }
 
-  const notes = [...v.caveats, ...v.notes, ...(v.code === "S01" ? ["DXF·GLB는 내보내기에서"] : [])];
+  const notes = [...v.caveats, ...v.notes, ...(v.code === "S01" ? ["DXF·GLB는 내보내기에서"] : []), ...(p.rose ? [roseSummary(p.rose)] : [])];
   const items: Item[] = [];
   const b = badgeItem(s, v.badges);
   if (b) items.push(b);

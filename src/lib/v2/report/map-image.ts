@@ -8,8 +8,10 @@ import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import MapFigure, { type MapFigureProps } from "@/components/v2/map-figure";
 import MassFigure from "@/components/v2/mass-figure";
+import WindRoseFigure from "@/components/v2/wind-rose-figure";
 import type { MapModel } from "../ui/map-layers";
 import type { MassCamera, MassModel } from "../ui/mass-projection";
+import type { RoseModel } from "../ui/wind-rose";
 import type { Scene } from "../scene";
 import { SLIDE, slideLayout, slideReserved, slideSiteX, slideLegend } from "../ui/overlay-layout";
 import { BASEMAP_STACK, framedViewport, tilesFor, tileUrl, type BasemapChoice } from "../ui/map-projection";
@@ -92,6 +94,17 @@ function svgOfMass(mass: MassModel, width: number, height: number): string {
   }
 }
 
+function svgOfRose(model: RoseModel, width: number, height: number): string {
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  try {
+    flushSync(() => root.render(createElement(WindRoseFigure, { model, width, height, fixed: true })));
+    return host.innerHTML;
+  } finally {
+    root.unmount();
+  }
+}
+
 async function toPng(svg: string): Promise<string> {
   const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
   try {
@@ -140,6 +153,10 @@ export async function rasterizeMass(sceneOrMass: Scene | MassModel | null, camer
   return toPng(svgOfMass(mass, width, height));
 }
 
+export async function rasterizeRose(model: RoseModel, width = VIEW_W, height = VIEW_H): Promise<string> {
+  return toPng(svgOfRose(model, width, height));
+}
+
 /** 슬라이드마다 다른 오버레이 자리를 피하게 한다 (표지·출처는 지도 가운데, 타일은 오른쪽 정보 판을 뺀 영역) */
 function extraFor(p: PlannedSlide, model: MapModel): Extra {
   if (p.kind !== "tile") return { avoid: slideReserved(PX_PER_INCH, { info: false }) };
@@ -175,6 +192,14 @@ export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice 
         out[key] = await rasterizeMass(p.mass);
       } catch (e) {
         console.warn(`매스 이미지 생성 실패 (${key})`, e);
+      }
+      continue;
+    }
+    if (p.kind === "tile" && p.rose) {
+      try {
+        out[key] = await rasterizeRose(p.rose);
+      } catch (e) {
+        console.warn(`바람장미 이미지 생성 실패 (${key})`, e);
       }
       continue;
     }
