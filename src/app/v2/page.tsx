@@ -25,6 +25,7 @@ type BoardProps = {
   baseResults: TileResult[];
   siteSummary: SiteSummary;
   scene: Scene | null;
+  jobs: JobState[];
   /** true면 예시 데이터(실제 분석 전) */
   demo: boolean;
   /** 분석 요청 중 — 모든 타일이 계산 중으로 보인다 */
@@ -35,7 +36,7 @@ type BoardProps = {
 };
 
 /** 타일 보드. 결과가 바뀌면 부모가 key를 바꿔 새로 만든다. */
-function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun }: BoardProps) {
+function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, onRerun }: BoardProps) {
   const [overrides, setOverrides] = useState<Record<string, TileResult>>({});
   const [board, dispatch] = useReducer(boardReducer, baseResults, initBoard);
   useEffect(() => {
@@ -85,6 +86,17 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
   const summary = useMemo(() => toSummaryView(siteSummary, results), [siteSummary, results]);
   const { tiles } = reportPages(board, complexCounts(views));
   const total = board.order.length;
+  const activeJobs = jobs.some((job) => job.status === "queued" || job.status === "running");
+  const actionBusy = busy || activeJobs;
+  const completedJobs = jobs.filter((job) => job.status === "done" || job.status === "failed").length;
+  const jobPhases = useMemo(() => {
+    const phases = new Map<string, "pending" | "running">();
+    for (const job of jobs) {
+      if (job.status === "queued") phases.set(job.code, "pending");
+      if (job.status === "running") phases.set(job.code, "running");
+    }
+    return phases;
+  }, [jobs]);
   const analysisDate = demo ? new Date().toLocaleDateString("sv-SE") : (results[0]?.conditions.analysisDate ?? new Date().toLocaleDateString("sv-SE"));
   const reportPlan = useMemo(() => buildReportPlan({ summary, views, board, analysisDate }), [summary, views, board, analysisDate]);
   const [making, setMaking] = useState(false);
@@ -274,7 +286,7 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
                     ))}
                   </span>
                 </span>
-                <button type="button" className={styles.pill} onClick={() => setEditing(true)} disabled={demoOn || busy}>
+                <button type="button" className={styles.pill} onClick={() => setEditing(true)} disabled={demoOn || actionBusy}>
                   보드 편집
                 </button>
                 <span className={styles.reportHint}>표지 1 + 타일 {tiles}</span>
@@ -288,27 +300,27 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
                       className={`${styles.pill} ${styles.pillDark}`}
                       aria-label="내보내기 형식"
                       aria-expanded={exportOpen}
-                      aria-disabled={busy || making}
+                      aria-disabled={actionBusy || making}
                       onClick={(e) => {
-                        if (busy || making) e.preventDefault();
+                        if (actionBusy || making) e.preventDefault();
                       }}
                     >
                       {making ? `${makingKind ?? "파일"} 만드는 중…` : "내보내기 ▾"}
                     </summary>
                     <div className={styles.exportMenu} aria-label="내보내기 형식">
-                      <button type="button" className={styles.pill} onClick={() => void makeReport()} disabled={making || busy}>
+                      <button type="button" className={styles.pill} onClick={() => void makeReport()} disabled={making || actionBusy}>
                         PPT · {reportPlan.length}장
                       </button>
-                      <button type="button" className={styles.pill} onClick={() => void makeDxf("site")} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "대지 중심 원점"}>
+                      <button type="button" className={styles.pill} onClick={() => void makeDxf("site")} disabled={!scene || making || actionBusy} title={!scene ? "건물 도형 미적재" : "대지 중심 원점"}>
                         DXF · 대지 중심
                       </button>
-                      <button type="button" className={styles.pill} onClick={() => void makeDxf("utmk")} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "UTM-K 절대 좌표"}>
+                      <button type="button" className={styles.pill} onClick={() => void makeDxf("utmk")} disabled={!scene || making || actionBusy} title={!scene ? "건물 도형 미적재" : "UTM-K 절대 좌표"}>
                         DXF · UTM-K
                       </button>
-                      <button type="button" className={styles.pill} onClick={() => void makeGlb()} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "GLB 내보내기"}>
+                      <button type="button" className={styles.pill} onClick={() => void makeGlb()} disabled={!scene || making || actionBusy} title={!scene ? "건물 도형 미적재" : "GLB 내보내기"}>
                         GLB
                       </button>
-                      <button type="button" className={styles.pill} onClick={() => void make3dm()} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "3DM 내보내기"}>
+                      <button type="button" className={styles.pill} onClick={() => void make3dm()} disabled={!scene || making || actionBusy} title={!scene ? "건물 도형 미적재" : "3DM 내보내기"}>
                         3DM
                       </button>
                       <p className={styles.exportNote}>
@@ -345,7 +357,7 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
                       ))}
                     </span>
                   </span>
-                  <button type="button" className={styles.pill} onClick={() => setEditing(true)} disabled={demoOn || busy}>
+                  <button type="button" className={styles.pill} onClick={() => setEditing(true)} disabled={demoOn || actionBusy}>
                     보드 편집
                   </button>
                   <span className={styles.reportHint}>표지 1 + 타일 {tiles}</span>
@@ -355,19 +367,19 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
                     </button>
                   ) : (
                     <div className={styles.mobileExportActions}>
-                      <button type="button" className={styles.pill} onClick={() => void makeReport()} disabled={making || busy}>
+                      <button type="button" className={styles.pill} onClick={() => void makeReport()} disabled={making || actionBusy}>
                         PPT · {reportPlan.length}장
                       </button>
-                      <button type="button" className={styles.pill} onClick={() => void makeDxf("site")} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "대지 중심 원점"}>
+                      <button type="button" className={styles.pill} onClick={() => void makeDxf("site")} disabled={!scene || making || actionBusy} title={!scene ? "건물 도형 미적재" : "대지 중심 원점"}>
                         DXF · 대지 중심
                       </button>
-                      <button type="button" className={styles.pill} onClick={() => void makeDxf("utmk")} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "UTM-K 절대 좌표"}>
+                      <button type="button" className={styles.pill} onClick={() => void makeDxf("utmk")} disabled={!scene || making || actionBusy} title={!scene ? "건물 도형 미적재" : "UTM-K 절대 좌표"}>
                         DXF · UTM-K
                       </button>
-                      <button type="button" className={styles.pill} onClick={() => void makeGlb()} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "GLB 내보내기"}>
+                      <button type="button" className={styles.pill} onClick={() => void makeGlb()} disabled={!scene || making || actionBusy} title={!scene ? "건물 도형 미적재" : "GLB 내보내기"}>
                         GLB
                       </button>
-                      <button type="button" className={styles.pill} onClick={() => void make3dm()} disabled={!scene || making || busy} title={!scene ? "건물 도형 미적재" : "3DM 내보내기"}>
+                      <button type="button" className={styles.pill} onClick={() => void make3dm()} disabled={!scene || making || actionBusy} title={!scene ? "건물 도형 미적재" : "3DM 내보내기"}>
                         3DM
                       </button>
                     </div>
@@ -384,7 +396,17 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
             <div className={styles.progress} role="progressbar" aria-label="분석 진행" aria-valuemin={0} aria-valuemax={total} aria-valuenow={finished}>
               <div className={styles.progressFill} style={{ width: `${(finished / total) * 100}%` }} />
             </div>
-            <span className={styles.progressText}>{finished} / {total}</span>
+            <span className={styles.progressText} aria-live="polite">{finished} / {total}</span>
+          </div>
+        )}
+
+        {!demo && activeJobs && jobs.length > 0 && (
+          <div className={styles.progressRow}>
+            <span className={styles.progressLabel}>분석 중</span>
+            <div className={styles.progress} role="progressbar" aria-label="분석 진행" aria-valuemin={0} aria-valuemax={jobs.length} aria-valuenow={completedJobs}>
+              <div className={styles.progressFill} style={{ width: `${(completedJobs / jobs.length) * 100}%` }} />
+            </div>
+            <span className={styles.progressText} aria-live="polite">{completedJobs} / {jobs.length} 계산 중</span>
           </div>
         )}
 
@@ -407,7 +429,7 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
                 <TileCard
                   key="card"
                   view={view}
-                  phase={busy ? "running" : demoOn ? demoPhase(i, demoStep!) : null}
+                  phase={demoOn ? demoPhase(i, demoStep!) : (jobPhases.get(view.code) ?? null)}
                   included={!!board.included[id]}
                   face={board.faces[id]}
                   editing={editing}
@@ -533,6 +555,13 @@ const API = "/site/api/v2/analyses";
 type JobState = { code: string; status: "queued" | "running" | "done" | "failed"; elapsedMs: number | null };
 type Live = { analysisId: string; summary: SiteSummary; results: TileResult[]; jobs: JobState[]; scene: Scene | null };
 type Problem = { text: string; login: boolean };
+const POLL_DELAYS_MS = [1000, 2000, 5000] as const;
+
+function liveRevision(value: Pick<Live, "jobs" | "results">): string {
+  const jobs = value.jobs.map((job) => `${job.code}:${job.status}`).join(",");
+  const results = value.results.map((result) => `${result.tileId}:${result.status}`).join(",");
+  return `${jobs}|${results}`;
+}
 
 /** 주소 입력 → 분석 → 실제 결과 보드. 분석 전에는 예시 보드를 그대로 보여 준다. */
 export default function V2BoardPage() {
@@ -543,10 +572,16 @@ export default function V2BoardPage() {
   const [live, setLive] = useState<Live | null>(null);
   const activeJobs = live?.jobs.some((job) => job.status === "queued" || job.status === "running") ?? false;
 
-  async function load(res: Response, refreshScene = true) {
+  async function load(res: Response, refreshScene = true, update = true): Promise<Live | undefined> {
     const body = (await res.json().catch(() => ({}))) as Partial<Live> & { error?: string };
-    if (res.status === 401) return setProblem({ text: "로그인이 필요합니다.", login: true });
-    if (!res.ok || !body.analysisId) return setProblem({ text: body.error ?? "분석하지 못했습니다. 잠시 뒤 다시 시도해 주세요.", login: false });
+    if (res.status === 401) {
+      setProblem({ text: "로그인이 필요합니다.", login: true });
+      return undefined;
+    }
+    if (!res.ok || !body.analysisId) {
+      setProblem({ text: body.error ?? "분석하지 못했습니다. 잠시 뒤 다시 시도해 주세요.", login: false });
+      return undefined;
+    }
     let scene: Scene | null = live?.analysisId === body.analysisId ? live.scene : null;
     if (refreshScene) {
       try {
@@ -556,9 +591,12 @@ export default function V2BoardPage() {
         // 장면이 없어도 분석 결과 보드는 계속 연다. S01은 빈 매스 틀을 표시한다.
       }
     }
-    setLive({ analysisId: body.analysisId, summary: body.summary!, results: body.results ?? [], jobs: body.jobs ?? [], scene });
-    history.replaceState(null, "", `?analysis=${body.analysisId}`);
-    return undefined;
+    const next: Live = { analysisId: body.analysisId, summary: body.summary!, results: body.results ?? [], jobs: body.jobs ?? [], scene };
+    if (update) {
+      setLive(next);
+      history.replaceState(null, "", `?analysis=${body.analysisId}`);
+    }
+    return next;
   }
 
   async function analyze(e?: { preventDefault(): void }) {
@@ -596,16 +634,30 @@ export default function V2BoardPage() {
     if (!live || !activeJobs) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let currentLive = live;
+    let delayIndex = 0;
     const poll = async () => {
+      let shouldContinue = true;
       try {
         const response = await fetch(`${API}/${encodeURIComponent(live.analysisId)}`);
-        if (!cancelled) await load(response, false);
+        const next = await load(response, false, false);
+        if (next && !cancelled) {
+          const changed = liveRevision(currentLive) !== liveRevision(next);
+          if (changed) {
+            currentLive = next;
+            setLive(next);
+            delayIndex = 0;
+          } else {
+            delayIndex = Math.min(delayIndex + 1, POLL_DELAYS_MS.length - 1);
+          }
+          shouldContinue = next.jobs.some((job) => job.status === "queued" || job.status === "running");
+        }
       } catch {
-        // 다음 주기에 다시 시도한다. 이미 받은 결과 보드는 유지한다.
+        delayIndex = Math.min(delayIndex + 1, POLL_DELAYS_MS.length - 1);
       }
-      if (!cancelled) timer = setTimeout(poll, 1000);
+      if (!cancelled && shouldContinue) timer = setTimeout(poll, POLL_DELAYS_MS[delayIndex]);
     };
-    timer = setTimeout(poll, 1000);
+    timer = setTimeout(poll, POLL_DELAYS_MS[0]);
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
@@ -665,7 +717,8 @@ export default function V2BoardPage() {
       siteSummary={live?.summary ?? GODEOK_SUMMARY}
       scene={live?.scene ?? null}
       demo={!live}
-      busy={busy || activeJobs}
+      jobs={live?.jobs ?? []}
+      busy={busy}
       controls={controls}
       onRerun={() => void analyze()}
     />
