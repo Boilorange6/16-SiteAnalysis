@@ -14,7 +14,7 @@ export const TILE_LAYERS = {
 export type TileLayer = keyof typeof TILE_LAYERS;
 
 const MIN_Z = 6;
-const MAX_Z = 19;
+export const MAX_Z = 19;
 export const TILE_CACHE_CONTROL = "public, max-age=604800, immutable";
 
 export type TileParams = { layer: string; z: string; y: string; x: string };
