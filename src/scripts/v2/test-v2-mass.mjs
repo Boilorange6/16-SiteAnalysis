@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-const { CAMERA_PRESETS, projectMass } = await import("../../lib/v2/ui/mass-projection.ts");
+const { CAMERA_PRESETS, EXPLODED_LAYERS, projectExploded, projectMass } = await import("../../lib/v2/ui/mass-projection.ts");
 const { default: MassFigure } = await import("../../components/v2/mass-figure.tsx");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { initBoard } = await import("../../lib/v2/ui/board-state.ts");
@@ -32,10 +32,20 @@ const scene = {
 };
 const camera = { azimuthDeg: 225, elevationDeg: 35, radiusM: 100 };
 
+const contextScene = {
+  ...scene,
+  context: {
+    water: [[ring(55, -20, 12)]],
+    green: [[ring(-45, 25, 18)]],
+    roads: [{ points: [[-90, 0], [90, 0]], widthM: 8, hierarchy: "집산" }],
+  },
+};
+
 assert.deepEqual(CAMERA_PRESETS, {
   azimuth: [45, 135, 225, 315],
   elevation: [20, 35, 55],
 });
+assert.deepEqual(EXPLODED_LAYERS, ["terrain", "water", "green", "roads", "buildings", "complete"]);
 
 const projection = projectMass(scene, camera, 800, 500);
 const sourceFaces = projection.faces.filter((face) => face.layer === "mass_source");
@@ -44,11 +54,46 @@ assert.ok(sourceFaces.every((face, i) => i === 0 || sourceFaces[i - 1].depth <= 
 assert.equal(projection.faces.filter((face) => face.layer === "mass_unknown").length, 1, "높이 미상 건물은 바닥 모양 하나만 그린다");
 assert.ok(projection.scale > 0);
 
+const exploded = projectExploded(contextScene, camera, 800, 700, 100);
+assert.deepEqual(exploded.labels.map((label) => label.layer), [...EXPLODED_LAYERS], "분해 라벨은 아래층부터 완성층 순서다");
+assert.ok(exploded.labels.every((label, index) => index === 0 || label.y < exploded.labels[index - 1].y), "분해 층 라벨의 화면 y는 위로 단조 증가한다");
+for (const layer of EXPLODED_LAYERS) {
+  assert.ok(exploded.faces.some((face) => face.layer === layer), `${layer} 층을 그린다`);
+}
+assert.ok(exploded.faces.filter((face) => face.layer === "roads").length >= 1, "도로 폭을 가진 리본 면을 그린다");
+assert.deepEqual(projectExploded(contextScene, camera, 800, 700, 100), exploded, "분해 SVG 입력은 결정적이다");
+
+const legacyExploded = projectExploded(scene, camera, 800, 700, 100);
+assert.deepEqual(new Set(legacyExploded.faces.map((face) => face.layer)), new Set(["terrain", "buildings", "complete"]), "맥락 없는 옛 장면은 지형·건물·완성만 그린다");
+assert.match(legacyExploded.labels.find((label) => label.layer === "water").text, /자료 없음/);
+assert.match(legacyExploded.labels.find((label) => label.layer === "green").text, /자료 없음/);
+assert.match(legacyExploded.labels.find((label) => label.layer === "roads").text, /자료 없음/);
+
+const roadsOnly = projectExploded({
+  ...scene,
+  context: { roads: contextScene.context.roads, green: [], water: [] },
+}, camera, 800, 700, 100);
+assert.ok(roadsOnly.faces.some((face) => face.layer === "roads"), "부분 맥락 장면은 확보된 도로를 유지한다");
+assert.ok(!roadsOnly.faces.some((face) => face.layer === "water" || face.layer === "green"), "빈 수계·녹지 층은 면을 만들지 않는다");
+assert.match(roadsOnly.labels.find((label) => label.layer === "water").text, /자료 없음/);
+assert.match(roadsOnly.labels.find((label) => label.layer === "green").text, /자료 없음/);
+
 const markup = renderToStaticMarkup(createElement(MassFigure, { scene, camera, width: 800, height: 500, fixed: true }));
 assert.ok((markup.match(/<path/g) ?? []).length >= 3, "매스 SVG는 path를 그린다");
 assert.match(markup, /확보 높이/);
 assert.match(markup, /높이 미상/);
 assert.match(markup, /지형 미반영/);
+
+const explodedMarkup = renderToStaticMarkup(createElement(MassFigure, { scene: contextScene, camera, width: 800, height: 700, fixed: true, exploded: { spreadPct: 100 } }));
+assert.match(explodedMarkup, /data-face-layer="water"/);
+assert.match(explodedMarkup, /data-face-layer="green"/);
+assert.match(explodedMarkup, /data-face-layer="roads"/);
+assert.match(explodedMarkup, /data-face-layer="complete"/);
+assert.match(explodedMarkup, /data-layer-label="complete"/);
+const emptyMarkup = renderToStaticMarkup(createElement(MassFigure, { scene, camera, width: 800, height: 700, fixed: true, exploded: { spreadPct: 60 } }));
+assert.match(emptyMarkup, /수계 · 자료 없음/);
+assert.match(emptyMarkup, /녹지 · 자료 없음/);
+assert.match(emptyMarkup, /도로 · 자료 없음/);
 
 const demScene = {
   ...scene,

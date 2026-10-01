@@ -1,6 +1,8 @@
-import type { Ring, Scene } from "../scene";
+import { groundZAt, type Ring, type Scene } from "../scene";
 
-export type MassLayer = "mass_source" | "mass_estimated" | "mass_unknown" | "ground";
+export const EXPLODED_LAYERS = ["terrain", "water", "green", "roads", "buildings", "complete"] as const;
+export type ExplodedLayer = (typeof EXPLODED_LAYERS)[number];
+export type MassLayer = "mass_source" | "mass_estimated" | "mass_unknown" | "ground" | ExplodedLayer;
 
 export type MassCamera = {
   azimuthDeg: number;
@@ -11,6 +13,7 @@ export type MassCamera = {
 export type MassModel = {
   scene: Scene | null;
   camera: MassCamera;
+  exploded?: { spreadPct: number };
 };
 
 export type MassFace = {
@@ -18,11 +21,17 @@ export type MassFace = {
   shade: number;
   layer: MassLayer;
   depth: number;
+  /** 분해 완성층이 원래 층의 색을 유지할 때만 채운다. */
+  fill?: string;
+  fillRule?: "evenodd";
 };
+
+export type MassLabel = { layer: ExplodedLayer; x: number; y: number; text: string };
 
 export type MassProjection = {
   faces: MassFace[];
   scale: number;
+  labels?: MassLabel[];
 };
 
 export const CAMERA_PRESETS = {
@@ -31,7 +40,7 @@ export const CAMERA_PRESETS = {
 } as const;
 
 type RawPoint = { x: number; y: number; depth: number };
-type RawFace = { points: RawPoint[]; shade: number; layer: MassLayer; depth: number };
+type RawFace = { points: RawPoint[]; paths?: RawPoint[][]; shade: number; layer: MassLayer; depth: number; fill?: string; fillRule?: "evenodd"; stackIndex?: number };
 type WorldPoint = [number, number, number];
 
 const EPSILON = 1e-8;
@@ -62,6 +71,22 @@ function pathOf(points: RawPoint[], scale: number, tx: number, ty: number): stri
     .join("")}Z`;
 }
 
+function pathOfFace(face: RawFace, scale: number, tx: number, ty: number, screenStep = 0): string {
+  const layerTy = ty - (face.stackIndex ?? 0) * screenStep;
+  return (face.paths ?? [face.points]).map((points) => pathOf(points, scale, tx, layerTy)).join("");
+}
+
+function rawPointsOf(face: RawFace): RawPoint[] {
+  return (face.paths ?? [face.points]).flat();
+}
+
+function toMassFace(face: RawFace, scale: number, tx: number, ty: number, screenStep = 0): MassFace {
+  const output: MassFace = { path: pathOfFace(face, scale, tx, ty, screenStep), shade: face.shade, layer: face.layer, depth: face.depth };
+  if (face.fill !== undefined) output.fill = face.fill;
+  if (face.fillRule !== undefined) output.fillRule = face.fillRule;
+  return output;
+}
+
 function averageDepth(points: RawPoint[]): number {
   return points.reduce((sum, point) => sum + point.depth, 0) / Math.max(1, points.length);
 }
@@ -76,7 +101,7 @@ function lightShade(nx: number, ny: number, nz: number): number {
   return Math.max(0.2, Math.min(1, 0.42 + Math.max(0, dot) * 0.58));
 }
 
-function layerOf(heightM: number | null, heightMethod: string): MassLayer {
+function layerOf(heightM: number | null, heightMethod: string): "mass_source" | "mass_estimated" | "mass_unknown" {
   if (heightM === null || !Number.isFinite(heightM) || heightM <= 0) return "mass_unknown";
   return heightMethod === "floors_estimate" ? "mass_estimated" : "mass_source";
 }
@@ -98,6 +123,9 @@ function groundRing(radius: number): [number, number][] {
 function groundCellFaces(
   ground: Extract<Scene["ground"], { kind: "dem" }>,
   project: (point: [number, number], z: number) => RawPoint,
+  layer: MassLayer = "ground",
+  fill?: string,
+  stackIndex?: number,
 ): RawFace[] {
   const x0 = -((ground.cols - 1) * ground.cellM) / 2;
   const y0 = -((ground.rows - 1) * ground.cellM) / 2;
@@ -132,8 +160,10 @@ function groundCellFaces(
       faces.push({
         points,
         shade: lightShade(nx / normalLength, ny / normalLength, nz / normalLength),
-        layer: "ground",
+        layer,
         depth: averageDepth(points),
+        fill,
+        stackIndex,
       });
     }
   }
@@ -145,22 +175,26 @@ function addBuildingFaces(
   building: Scene["buildings"][number],
   project: (point: [number, number], z: number) => RawPoint,
   cameraDirection: [number, number],
+  outputLayer?: MassLayer,
+  fill?: string,
+  stackIndex?: number,
 ): void {
-  const layer = layerOf(building.heightM, building.heightMethod);
-  const height = layer === "mass_unknown" ? 0 : (building.heightM as number);
+  const sourceLayer = layerOf(building.heightM, building.heightMethod);
+  const layer = outputLayer ?? sourceLayer;
+  const height = sourceLayer === "mass_unknown" ? 0 : (building.heightM as number);
   for (const sourceRing of building.rings) {
     const ring = cleanRing(sourceRing);
     if (ring.length < 3) continue;
     const baseZ = typeof building.baseZ === "number" && Number.isFinite(building.baseZ) ? building.baseZ : 0;
 
-    if (layer === "mass_unknown") {
+    if (sourceLayer === "mass_unknown") {
       const floor = ring.map((point) => project(point, baseZ));
-      raw.push({ points: floor, shade: 0.38, layer, depth: averageDepth(floor) });
+      raw.push({ points: floor, shade: 0.38, layer, depth: averageDepth(floor), fill, stackIndex });
       continue;
     }
 
     const roof = ring.map((point) => project(point, baseZ + height));
-    raw.push({ points: roof, shade: 0.94, layer, depth: averageDepth(roof) });
+    raw.push({ points: roof, shade: 0.94, layer, depth: averageDepth(roof), fill, stackIndex });
 
     // 고리의 방향을 이용해 외측 법선을 복원하고, 카메라를 향하는 벽만 남긴다.
     const ccw = signedArea(ring) >= 0;
@@ -175,7 +209,7 @@ function addBuildingFaces(
       const ny = (ccw ? -dx : dx) / length;
       if (nx * cameraDirection[0] + ny * cameraDirection[1] <= 0) continue;
       const wall = [project(a, baseZ), project(b, baseZ), project(b, baseZ + height), project(a, baseZ + height)];
-      raw.push({ points: wall, shade: lightShade(nx, ny, 0), layer, depth: averageDepth(wall) });
+      raw.push({ points: wall, shade: lightShade(nx, ny, 0), layer, depth: averageDepth(wall), fill, stackIndex });
     }
   }
 }
@@ -207,7 +241,7 @@ export function projectMass(scene: Scene, camera: MassCamera, width: number, hei
 
   const allPoints = raw.flatMap((face) => face.points);
   if (allPoints.length === 0) return { faces: [], scale: 1 };
-  const groundPoints = raw.filter((face) => face.layer === "ground").flatMap((face) => face.points);
+  const groundPoints = raw.filter((face) => face.layer === "ground").flatMap(rawPointsOf);
   const groundHeight = groundPoints.length > 0 ? Math.max(...groundPoints.map((point) => point.y)) - Math.min(...groundPoints.map((point) => point.y)) : 0;
   const allWidth = Math.max(...allPoints.map((point) => point.x)) - Math.min(...allPoints.map((point) => point.x));
   const allHeight = Math.max(...allPoints.map((point) => point.y)) - Math.min(...allPoints.map((point) => point.y));
@@ -228,7 +262,257 @@ export function projectMass(scene: Scene, camera: MassCamera, width: number, hei
   // 평탄 원판은 depth가 -MAX라 뒤에 남고, DEM 셀은 건물과 같은 깊이 정렬에 참여한다.
   const ordered = [...raw].sort((a, b) => a.depth - b.depth);
   return {
-    faces: ordered.map((face) => ({ path: pathOf(face.points, scale, tx, ty), shade: face.shade, layer: face.layer, depth: face.depth })),
+    faces: ordered.map((face) => toMassFace(face, scale, tx, ty)),
     scale,
+  };
+}
+
+const EXPLODED_LABEL_TEXT: Record<ExplodedLayer, string> = {
+  terrain: "지형",
+  water: "수계",
+  green: "녹지",
+  roads: "도로",
+  buildings: "건물",
+  complete: "완성",
+};
+
+const EXPLODED_BUILDING_FILL: Record<"mass_source" | "mass_estimated" | "mass_unknown", string> = {
+  mass_source: "#5E83B3",
+  mass_estimated: "#C58B2B",
+  mass_unknown: "#9EA5AF",
+};
+
+const EXPLODED_FILL = {
+  terrain: "#EEF1F4",
+  water: "#61AFC7",
+  green: "#8ACB78",
+  roads: "#727B88",
+} as const;
+
+function projectLayerPoint(
+  point: [number, number],
+  z: number,
+  layerIndex: number,
+  gap: number,
+  cosA: number,
+  sinA: number,
+  cosE: number,
+  sinE: number,
+): RawPoint {
+  return projectRaw(point, z + layerIndex * gap, cosA, sinA, cosE, sinE);
+}
+
+function contextPolygonFaces(
+  raw: RawFace[],
+  polygons: Ring[][],
+  layer: MassLayer,
+  layerIndex: number,
+  ground: Scene["ground"],
+  project: (point: [number, number], z: number) => RawPoint,
+  fill: string,
+): void {
+  for (const polygon of polygons) {
+    const rings = polygon.map(cleanRing).filter((ring) => ring.length >= 3);
+    if (rings.length === 0) continue;
+    const projectedRings = rings.map((ring) => ring.map((point) => project(point, groundZAt(ground, point[0], point[1]) ?? 0)));
+    const points = projectedRings[0];
+    const allPoints = projectedRings.flat();
+    raw.push({
+      points,
+      paths: projectedRings,
+      shade: 0.86,
+      layer,
+      depth: averageDepth(allPoints),
+      fill,
+      fillRule: "evenodd",
+      stackIndex: layerIndex,
+    });
+  }
+}
+
+function contextRoadFaces(
+  raw: RawFace[],
+  roads: NonNullable<Scene["context"]>["roads"],
+  layer: MassLayer,
+  layerIndex: number,
+  ground: Scene["ground"],
+  project: (point: [number, number], z: number) => RawPoint,
+  fill: string,
+): void {
+  for (const road of roads) {
+    const points = road.points
+      .filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y))
+      .map(([x, y]) => [x, y] as [number, number]);
+    const width = Number.isFinite(road.widthM) && road.widthM > 0 ? road.widthM : 0;
+    if (points.length < 2 || width <= 0) continue;
+    for (let index = 0; index < points.length - 1; index += 1) {
+      const a = points[index];
+      const b = points[index + 1];
+      const dx = b[0] - a[0];
+      const dy = b[1] - a[1];
+      const length = Math.hypot(dx, dy);
+      if (length < EPSILON) continue;
+      const nx = (-dy / length) * width * 0.5;
+      const ny = (dx / length) * width * 0.5;
+      const ring: [number, number][] = [
+        [a[0] + nx, a[1] + ny],
+        [b[0] + nx, b[1] + ny],
+        [b[0] - nx, b[1] - ny],
+        [a[0] - nx, a[1] - ny],
+      ];
+      const projected = ring.map((point) => project(point, groundZAt(ground, point[0], point[1]) ?? 0));
+      raw.push({
+        points: projected,
+        shade: 0.76,
+        layer,
+        depth: averageDepth(projected),
+        fill,
+        stackIndex: layerIndex,
+      });
+    }
+  }
+}
+
+function explodedTerrainFaces(
+  raw: RawFace[],
+  scene: Scene,
+  layer: ExplodedLayer,
+  layerIndex: number,
+  project: (point: [number, number], z: number) => RawPoint,
+  fill: string,
+): void {
+  if (scene.ground.kind === "dem") {
+    raw.push(...groundCellFaces(scene.ground, project, layer, fill, layerIndex));
+    return;
+  }
+  const points = groundRing(Math.max(1, finiteOr(scene.radiusM, 100))).map((point) => project(point, 0));
+  raw.push({ points, shade: 0.95, layer, depth: averageDepth(points), fill, stackIndex: layerIndex });
+}
+
+function addExplodedBuildings(
+  raw: RawFace[],
+  scene: Scene,
+  layer: ExplodedLayer,
+  project: (point: [number, number], z: number) => RawPoint,
+  cameraDirection: [number, number],
+): void {
+  for (const building of scene.buildings) {
+    const sourceLayer = layerOf(building.heightM, building.heightMethod);
+    addBuildingFaces(raw, building, project, cameraDirection, layer, EXPLODED_BUILDING_FILL[sourceLayer], EXPLODED_LAYERS.indexOf(layer));
+  }
+}
+
+function hasContextPolygons(polygons: Ring[][] | undefined): boolean {
+  return (polygons ?? []).some((polygon) => polygon.some((ring) => cleanRing(ring).length >= 3));
+}
+
+function hasContextRoads(roads: NonNullable<Scene["context"]>["roads"] | undefined): boolean {
+  return (roads ?? []).some((road) => road.points.filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y)).length >= 2 && Number.isFinite(road.widthM) && road.widthM > 0);
+}
+
+function hasBuildings(scene: Scene): boolean {
+  return scene.buildings.some((building) => building.rings.some((ring) => cleanRing(ring).length >= 3));
+}
+
+/**
+ * 장면을 지형·수계·녹지·도로·건물·완성의 여섯 축측 층으로 펼친다.
+ * 각 층은 반경 × 0.18 × spreadPct/100 만큼 z축으로 떨어뜨리고, 화면에서는
+ * 겹치지 않도록 같은 순서의 세로 여백을 둔다. 맥락 원천이 비어 있으면 해당
+ * 면은 만들지 않고 labels에 자료 없음 상태를 남긴다.
+ */
+export function projectExploded(
+  scene: Scene,
+  camera: MassCamera,
+  width: number,
+  height: number,
+  spreadPct = 100,
+): MassProjection & { labels: MassLabel[] } {
+  const azimuth = radians(finiteOr(camera.azimuthDeg, 225));
+  const elevation = radians(Math.max(-89, Math.min(89, finiteOr(camera.elevationDeg, 35))));
+  const cosA = Math.cos(azimuth);
+  const sinA = Math.sin(azimuth);
+  const cosE = Math.cos(elevation);
+  const sinE = Math.sin(elevation);
+  const radius = Math.max(1, finiteOr(scene.radiusM, finiteOr(camera.radiusM, 100)));
+  const spread = Math.max(0, finiteOr(spreadPct, 100)) / 100;
+  const gap = radius * 0.18 * spread;
+  const screenStep = Math.min(width, height) * 0.16 * spread;
+  const cameraDirection: [number, number] = [sinA, cosA];
+  const raw: RawFace[] = [];
+  const context = scene.context;
+  const present: Record<ExplodedLayer, boolean> = {
+    terrain: true,
+    water: hasContextPolygons(context?.water),
+    green: hasContextPolygons(context?.green),
+    roads: hasContextRoads(context?.roads),
+    buildings: hasBuildings(scene),
+    complete: true,
+  };
+  const projectFor = (layer: ExplodedLayer) => {
+    const layerIndex = EXPLODED_LAYERS.indexOf(layer);
+    return (point: [number, number], z: number) => projectLayerPoint(point, z, layerIndex, gap, cosA, sinA, cosE, sinE);
+  };
+
+  explodedTerrainFaces(raw, scene, "terrain", 0, projectFor("terrain"), EXPLODED_FILL.terrain);
+  if (present.water) contextPolygonFaces(raw, context?.water ?? [], "water", 1, scene.ground, projectFor("water"), EXPLODED_FILL.water);
+  if (present.green) contextPolygonFaces(raw, context?.green ?? [], "green", 2, scene.ground, projectFor("green"), EXPLODED_FILL.green);
+  if (present.roads) contextRoadFaces(raw, context?.roads ?? [], "roads", 3, scene.ground, projectFor("roads"), EXPLODED_FILL.roads);
+  if (present.buildings) addExplodedBuildings(raw, scene, "buildings", projectFor("buildings"), cameraDirection);
+
+  // 완성층은 각 원래 층의 색을 보존한 단일 층으로 다시 합성한다.
+  explodedTerrainFaces(raw, scene, "complete", 5, projectFor("complete"), EXPLODED_FILL.terrain);
+  if (present.water) contextPolygonFaces(raw, context?.water ?? [], "complete", 5, scene.ground, projectFor("complete"), EXPLODED_FILL.water);
+  if (present.green) contextPolygonFaces(raw, context?.green ?? [], "complete", 5, scene.ground, projectFor("complete"), EXPLODED_FILL.green);
+  if (present.roads) contextRoadFaces(raw, context?.roads ?? [], "complete", 5, scene.ground, projectFor("complete"), EXPLODED_FILL.roads);
+  if (present.buildings) addExplodedBuildings(raw, scene, "complete", projectFor("complete"), cameraDirection);
+
+  const allPoints = raw.flatMap(rawPointsOf);
+  const labelX = Math.max(16, Math.min(width - 178, width * 0.045));
+  if (allPoints.length === 0) {
+    return {
+      faces: [],
+      scale: 1,
+      labels: EXPLODED_LAYERS.map((layer, index) => ({
+        layer,
+        x: labelX,
+        y: height * 0.5 - index * screenStep,
+        text: present[layer] ? EXPLODED_LABEL_TEXT[layer] : `${EXPLODED_LABEL_TEXT[layer]} · 자료 없음`,
+      })),
+    };
+  }
+
+  const terrainPoints = raw.filter((face) => face.layer === "terrain").flatMap(rawPointsOf);
+  const terrainHeight = terrainPoints.length > 0 ? Math.max(...terrainPoints.map((point) => point.y)) - Math.min(...terrainPoints.map((point) => point.y)) : 0;
+  const allWidth = Math.max(...allPoints.map((point) => point.x)) - Math.min(...allPoints.map((point) => point.x));
+  const allHeight = Math.max(...allPoints.map((point) => point.y)) - Math.min(...allPoints.map((point) => point.y));
+  const targetHeight = Math.max(1, height * 0.84);
+  const byTerrain = terrainHeight > EPSILON ? (height * 0.22) / terrainHeight : 1;
+  const byWidth = allWidth > EPSILON ? (width * 0.24) / allWidth : byTerrain;
+  const byHeight = allHeight > EPSILON ? Math.max(0.0001, targetHeight - screenStep * (EXPLODED_LAYERS.length - 1)) / allHeight : byTerrain;
+  const scale = Math.max(0.0001, Math.min(byTerrain, byWidth, byHeight));
+  const screenPoints = raw.flatMap((face) => rawPointsOf(face).map((point) => ({
+    x: point.x * scale,
+    y: point.y * scale - (face.stackIndex ?? 0) * screenStep,
+  })));
+  const minX = Math.min(...screenPoints.map((point) => point.x));
+  const maxX = Math.max(...screenPoints.map((point) => point.x));
+  const minY = Math.min(...screenPoints.map((point) => point.y));
+  const maxY = Math.max(...screenPoints.map((point) => point.y));
+  const tx = width / 2 - (minX + maxX) / 2;
+  const ty = height * 0.56 - (minY + maxY) / 2;
+  const labels = EXPLODED_LAYERS.map((layer, index) => {
+    const center = projectLayerPoint([0, 0], 0, index, gap, cosA, sinA, cosE, sinE);
+    return {
+      layer,
+      x: labelX,
+      y: center.y * scale + ty - index * screenStep,
+      text: present[layer] ? EXPLODED_LABEL_TEXT[layer] : `${EXPLODED_LABEL_TEXT[layer]} · 자료 없음`,
+    };
+  });
+  const ordered = [...raw].sort((a, b) => a.depth - b.depth);
+  return {
+    faces: ordered.map((face) => toMassFace(face, scale, tx, ty, screenStep)),
+    scale,
+    labels,
   };
 }

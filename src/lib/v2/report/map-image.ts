@@ -83,11 +83,11 @@ function svgOf(model: MapModel, tiles: Map<string, string>, layer: BasemapChoice
   }
 }
 
-function svgOfMass(mass: MassModel, width: number, height: number): string {
+function svgOfMass(mass: MassModel, width: number, height: number, exploded?: { spreadPct: number }): string {
   const host = document.createElement("div");
   const root = createRoot(host);
   try {
-    flushSync(() => root.render(createElement(MassFigure, { scene: mass.scene, camera: mass.camera, width, height, fixed: true })));
+    flushSync(() => root.render(createElement(MassFigure, { scene: mass.scene, camera: mass.camera, width, height, fixed: true, exploded: exploded ?? mass.exploded })));
     return host.innerHTML;
   } finally {
     root.unmount();
@@ -144,13 +144,23 @@ export async function rasterizeMap(model: MapModel, tileCache: Map<string, strin
   return toPng(svgOf(model, got, layer, extra));
 }
 
-export function rasterizeMass(mass: MassModel): Promise<string>;
-export function rasterizeMass(scene: Scene | null, camera: MassCamera, width?: number, height?: number): Promise<string>;
-export async function rasterizeMass(sceneOrMass: Scene | MassModel | null, camera?: MassCamera, width = VIEW_W, height = VIEW_H): Promise<string> {
-  const mass: MassModel = camera
-    ? { scene: sceneOrMass as Scene | null, camera }
-    : (sceneOrMass as MassModel);
-  return toPng(svgOfMass(mass, width, height));
+export function rasterizeMass(mass: MassModel, exploded?: { spreadPct: number }): Promise<string>;
+export function rasterizeMass(scene: Scene | null, camera: MassCamera, width?: number, height?: number, exploded?: { spreadPct: number }): Promise<string>;
+export async function rasterizeMass(
+  sceneOrMass: Scene | MassModel | null,
+  cameraOrExploded?: MassCamera | { spreadPct: number },
+  width = VIEW_W,
+  height = VIEW_H,
+  exploded?: { spreadPct: number },
+): Promise<string> {
+  const isCamera = Boolean(cameraOrExploded && "azimuthDeg" in cameraOrExploded && "elevationDeg" in cameraOrExploded);
+  const mass: MassModel = isCamera
+    ? { scene: sceneOrMass as Scene | null, camera: cameraOrExploded as MassCamera, exploded }
+    : {
+        ...(sceneOrMass as MassModel),
+        exploded: exploded ?? (cameraOrExploded && "spreadPct" in cameraOrExploded ? cameraOrExploded : undefined),
+      };
+  return toPng(svgOfMass(mass, width, height, mass.exploded));
 }
 
 export async function rasterizeRose(model: RoseModel, width = VIEW_W, height = VIEW_H): Promise<string> {

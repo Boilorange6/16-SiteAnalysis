@@ -1,5 +1,5 @@
 import React from "react";
-import { type MassCamera, projectMass, type MassLayer } from "@/lib/v2/ui/mass-projection";
+import { EXPLODED_LAYERS, type MassCamera, projectExploded, projectMass, type MassLayer } from "@/lib/v2/ui/mass-projection";
 import type { Scene } from "@/lib/v2/scene";
 
 export type MassFigureProps = {
@@ -9,6 +9,7 @@ export type MassFigureProps = {
   height: number;
   fixed?: boolean;
   label?: string;
+  exploded?: { spreadPct: number };
 };
 
 const INK = "#15171c";
@@ -17,12 +18,24 @@ const COLORS: Record<MassLayer, string> = {
   mass_estimated: "#C58B2B",
   mass_unknown: "#9EA5AF",
   ground: "#E2E4E8",
+  terrain: "#D8DDE4",
+  water: "#61AFC7",
+  green: "#8ACB78",
+  roads: "#727B88",
+  buildings: "#5E83B3",
+  complete: "#D8DDE4",
 };
 const LABELS: Record<MassLayer, string> = {
   mass_source: "확보 높이",
   mass_estimated: "추정 높이",
   mass_unknown: "높이 미상",
   ground: "대지·반경",
+  terrain: "지형",
+  water: "수계",
+  green: "녹지",
+  roads: "도로",
+  buildings: "건물",
+  complete: "완성",
 };
 
 function shadeColor(hex: string, shade: number): string {
@@ -49,16 +62,21 @@ function northVector(camera: MassCamera): { dx: number; dy: number } {
   return { dx: (dx / length) * 28, dy: (dy / length) * 28 };
 }
 
-function MassFigure({ scene, camera, width, height, fixed = false, label = "S01 3D 매스" }: MassFigureProps) {
-  const projection = scene ? projectMass(scene, camera, width, height) : null;
+function MassFigure({ scene, camera, width, height, fixed = false, label = "S01 3D 매스", exploded }: MassFigureProps) {
+  const projection = scene
+    ? exploded
+      ? projectExploded(scene, camera, width, height, exploded.spreadPct)
+      : projectMass(scene, camera, width, height)
+    : null;
+  const isExploded = Boolean(exploded);
   const faces = projection?.faces ?? [{ path: emptyGroundPath(width, height), shade: 0.08, layer: "ground" as const, depth: 0 }];
   const arrow = northVector(camera);
   const nx = width - 42;
   const ny = 48;
-  const uid = `mass-${Math.round(width)}-${Math.round(height)}`;
-  const legend: MassLayer[] = ["mass_source", "mass_estimated", "mass_unknown"];
+  const uid = `${isExploded ? "mass-exploded" : "mass"}-${Math.round(width)}-${Math.round(height)}`;
+  const legend: MassLayer[] = isExploded ? [...EXPLODED_LAYERS] : ["mass_source", "mass_estimated", "mass_unknown"];
   const isDem = scene?.ground.kind === "dem";
-  if (isDem) legend.push("ground");
+  if (!isExploded && isDem) legend.push("ground");
 
   return (
     <svg
@@ -82,7 +100,8 @@ function MassFigure({ scene, camera, width, height, fixed = false, label = "S01 
           key={`${face.layer}-${index}`}
           d={face.path}
           data-face-layer={face.layer}
-          fill={face.layer === "mass_estimated" ? `url(#${uid}-estimate)` : shadeColor(COLORS[face.layer], face.shade)}
+          fill={face.layer === "mass_estimated" ? `url(#${uid}-estimate)` : shadeColor(face.fill ?? COLORS[face.layer], face.shade)}
+          fillRule={face.fillRule}
           fillOpacity={face.layer === "ground" ? 0.9 : 0.96}
           stroke={face.layer === "ground" ? "#AEB4BD" : "#FFFFFF"}
           strokeOpacity={face.layer === "ground" ? 0.7 : 0.85}
@@ -90,6 +109,19 @@ function MassFigure({ scene, camera, width, height, fixed = false, label = "S01 
           strokeLinejoin="round"
         />
       ))}
+
+      {isExploded && projection?.labels && (
+        <g aria-label="분해 층 라벨">
+          {projection.labels.map((item) => (
+            <g key={item.layer} data-layer-label={item.layer} aria-label={item.text}>
+              <rect x={item.x - 7} y={item.y - 13} width={item.text.includes("자료 없음") ? 148 : 62} height="22" rx="5" fill="#FFFFFF" fillOpacity="0.92" stroke="#D5D9DF" />
+              <text x={item.x} y={item.y + 2} fontSize="11" fontWeight="700" fill={item.text.includes("자료 없음") ? "#7A808A" : INK}>
+                {item.text}
+              </text>
+            </g>
+          ))}
+        </g>
+      )}
 
       <g aria-label="북쪽" transform={`translate(${nx} ${ny})`}>
         <circle r="18" fill="#FFFFFF" fillOpacity="0.9" />
