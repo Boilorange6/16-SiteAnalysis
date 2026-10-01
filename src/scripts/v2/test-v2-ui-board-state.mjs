@@ -137,6 +137,18 @@ assert.deepEqual(reportPages(s), { tiles: 9, pages: 12 }); // 포함·면 설정
   assert.equal(reportPages(boardReducer(b, { type: "callout", id: "t-A05", mode: "all" }), { "t-A05": 25 }).pages, reportPages(b).pages + 3);
 }
 
+// S01 카메라 프리셋: 보드에 저장하지만 출력 면처럼 되돌리기에는 넣지 않고, 프리셋 밖 값은 무시한다.
+{
+  let b = initBoard(GODEOK_RESULTS);
+  assert.deepEqual(b.cameras, {});
+  b = boardReducer(b, { type: "camera", id: "t-S01", camera: { azimuthDeg: 315, elevationDeg: 35 } });
+  assert.deepEqual(b.cameras["t-S01"], { azimuthDeg: 315, elevationDeg: 35 });
+  assert.equal(b.undoStack.length, 0);
+  const invalid = boardReducer(b, { type: "camera", id: "t-S01", camera: { azimuthDeg: 0, elevationDeg: 35 } });
+  assert.equal(invalid, b, "프리셋 밖 방위는 무시");
+  assert.equal(boardReducer(b, { type: "camera", id: "t-S01", camera: { azimuthDeg: 315, elevationDeg: 90 } }), b, "프리셋 밖 앙각은 무시");
+}
+
 // 데모
 assert.deepEqual([0, 1, 2, 3].map((st) => demoPhase(1, st)), ["pending", "pending", "running", "done"]);
 assert.equal(demoFinished(10, 0), 0);

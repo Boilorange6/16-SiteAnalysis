@@ -1,6 +1,6 @@
 import type { TileView } from "./tile-view";
 
-export type SheetGrid = "2x2" | "3x2";
+export type SheetGrid = "2x2" | "3x2" | "3x1";
 export type SheetRect = { x: number; y: number; w: number; h: number };
 
 const SLIDE = { w: 13.333, h: 7.5, edge: 0.3, titleH: 0.66, stripH: 0.36 } as const;
@@ -8,6 +8,15 @@ const GAP = 0.15;
 
 /** 16:9 슬라이드의 제목 띠 아래부터 출처 띠 위까지 겹치지 않는 셀을 만든다. */
 export function sheetCells(grid: SheetGrid): SheetRect[] {
+  if (grid === "3x1") {
+    const top = SLIDE.edge + SLIDE.titleH;
+    const bottom = SLIDE.h - SLIDE.stripH - 0.03;
+    const columns = 3;
+    const cellW = (SLIDE.w - 2 * SLIDE.edge - (columns - 1) * GAP) / columns;
+    const cellH = cellW * (9 / 16);
+    const y = top + (bottom - top - cellH) / 2;
+    return Array.from({ length: columns }, (_, column) => ({ x: SLIDE.edge + column * (cellW + GAP), y, w: cellW, h: cellH }));
+  }
   const columns = grid === "2x2" ? 2 : 3;
   const rows = 2;
   const top = SLIDE.edge + SLIDE.titleH;

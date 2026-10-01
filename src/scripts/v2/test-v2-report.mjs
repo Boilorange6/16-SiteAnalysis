@@ -52,6 +52,21 @@ assert.ok(src.some((r) => r.source === "kapt" && r.asOf === "기준일 미확인
 assert.ok(!src.some((r) => r.source === "land_price")); // A12 제외됨
 assert.equal(reportFileName("서울특별시 강동구 고덕동 123 외 2필지", "2026-09-30"), "사이트분석_서울특별시_강동구_고덕동_123_외_2필지_20260930.pptx");
 
+// S01 카메라는 Board가 만든 뷰에 들어온 값을 보고서 계획과 동일하게 보존한다.
+{
+  const s01Result = structuredClone(GODEOK_RESULTS.find((r) => r.tileCode === "D04"));
+  s01Result.tileId = "t-S01";
+  s01Result.tileCode = "S01";
+  s01Result.tileType = "simulation";
+  s01Result.presentation = { ...s01Result.presentation, camera: { azimuthDeg: 315, elevationDeg: 35, radiusM: 1000 } };
+  const s01View = toTileView(s01Result);
+  const s01Board = initBoard([s01Result]);
+  const s01Plan = buildReportPlan({ summary: toSummaryView(GODEOK_SUMMARY, [s01Result]), views: new Map([["t-S01", s01View]]), board: s01Board, analysisDate: "2026-09-30" });
+  const s01Slide = s01Plan.find((p) => p.kind === "tile" && p.view.code === "S01");
+  assert.ok(s01Slide?.mass);
+  assert.equal(s01Slide.mass.camera.azimuthDeg, 315);
+}
+
 // 실제 렌더: 상태 슬라이드(S02 미제공·S03 실패)와 D04 두 면을 포함한 덱
 const deckBoard = boardReducer(boardReducer(boardReducer(initBoard(GODEOK_RESULTS), { type: "include", id: "t-S02", value: true }), { type: "include", id: "t-S03", value: true }), { type: "face", id: "t-D04", face: "both" });
 const plan = build(GODEOK_RESULTS, deckBoard);

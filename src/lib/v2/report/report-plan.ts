@@ -9,6 +9,7 @@ import type { CalloutModel, SummaryView, TileView } from "../ui/tile-view";
 import type { MassModel } from "../ui/mass-projection";
 import type { SheetGrid } from "../ui/sheet";
 import { FACE_TEXT } from "../ui/tile-view";
+import type { RoseModel } from "../ui/wind-rose";
 
 export type TileSlideBody =
   | { kind: "result"; face: "single" | "front" | "back" }
@@ -36,6 +37,8 @@ export type ReportSlide =
       muted: boolean;
       /** S01 축측 매스 이미지. PPT에는 3D 파일 자체를 넣지 않는다. */
       mass?: MassModel;
+      /** D22 바람장미 이미지. PPT에는 SVG를 PNG로 바꿔 전면에 넣는다. */
+      rose?: RoseModel;
       /** 주변 단지 설명선 장: page 0 = 개요, 1.. = 설명표 (지도 이미지는 단지 없이, 점·지시선·표는 pptx 도형) */
       callout?: { model: CalloutModel; page: number; pages: number };
     }
@@ -55,6 +58,7 @@ export const mapKeysOf = (p: PlannedSlide): string[] => {
   if (p.kind === "sheet") return p.cells.map((cell) => cell.mapKey);
   if (p.kind === "tile") {
     if (p.mass) return [`${p.view.tileId}:mass`];
+    if (p.rose) return [`${p.view.tileId}:rose`];
     return p.map ? [p.callout && p.callout.page > 0 ? `${p.view.tileId}:cp` : p.view.tileId] : [];
   }
   return p.map ? [COVER_MAP_KEY] : [];
@@ -73,6 +77,22 @@ export const complexCounts = (views: Map<string, TileView>): Record<string, numb
   Object.fromEntries([...views].filter(([, v]) => v.callout).map(([id, v]) => [id, v.callout!.complexes.length]));
 
 const hasResult = (v: TileView) => v.status === "complete" || v.status === "partial";
+
+const S02_CUTS = [
+  { layer: "shadow_09", note: "09:00", key: "cut09" },
+  { layer: "shadow_12", note: "12:00", key: "cut12" },
+  { layer: "shadow_15", note: "15:00", key: "cut15" },
+] as const;
+
+/** S02 3컷 조판용으로 그림자 시각 하나와 수광면만 남긴다. 원본 뷰는 변경하지 않는다. */
+export function viewWithOnlyLayer(view: TileView, layer: string, note: string): TileView {
+  const polygons = (view.map?.polygons ?? []).filter((polygon) => polygon.layer === layer || polygon.layer === "sun_face");
+  return {
+    ...view,
+    notes: [note, ...view.notes.filter((existing) => existing !== note)],
+    map: view.map ? { ...view.map, polygons, polygonsTotal: polygons.length } : null,
+  };
+}
 
 function oneLine(v: TileView): string {
   if (!hasResult(v)) return (v.badges[0]?.text ?? "결과 없음") + " · 결과 없음";
@@ -136,6 +156,21 @@ export function buildReportPlan(input: {
       });
       continue;
     }
+    if (v.code === "S02" && board.cuts[v.tileId] === 3 && hasResult(v)) {
+      const cells = S02_CUTS.map(({ layer, note, key }) => ({
+        view: viewWithOnlyLayer(v, layer, note),
+        face: "front" as const,
+        mapKey: `${v.tileId}:${key}`,
+      }));
+      raw.push({
+        kind: "sheet",
+        view: v,
+        grid: "3x1",
+        cells,
+        footer: v.sourceLine === "출처 없음" ? "출처 없음 · 기준일 해당 없음" : `출처 ${v.sourceLine}`,
+      });
+      continue;
+    }
     if (v.callout && hasResult(v)) {
       // 설명선 타일: 개요 1장 + 설명표 장 (설정: 개요만 / 상위 10 / 전체). 장수는 board-state.reportPages와 같은 함수
       const cm = v.callout;
@@ -159,15 +194,18 @@ export function buildReportPlan(input: {
       const message = STATE_MESSAGE[v.status];
       const result = hasResult(v);
       const mass = v.mass ?? undefined;
+      // D22의 뒷면은 사용자가 구성비를 선택할 수 있으므로 장미 그림은 도판 면에만 둔다.
+      const rose = face === "back" ? undefined : v.rose ?? undefined;
       raw.push({
         kind: "tile",
         view: v,
         body: hasResult(v) ? { kind: "result", face } : { kind: "state", face, message: message ?? "결과 없음 — 보고서에는 결과 없이 표시합니다" },
         faceLabel: v.code === "STACK" ? "스택" : v.hasFace ? FACE_TEXT[face === "front" ? "front" : "back"] : null,
         // 모든 장은 지도(또는 주 시각물)가 전면: 지도 없는 결과는 지물 없는 대지 지도, 상태 장은 흐린 대지 지도
-        map: mass ? null : !result ? v.backdrop : v.hasFace && face === "back" ? null : (v.map ?? v.backdrop),
+        map: mass || rose ? null : !result ? v.backdrop : v.hasFace && face === "back" ? null : (v.map ?? v.backdrop),
         muted: !result,
         ...(mass ? { mass } : {}),
+        ...(rose ? { rose } : {}),
         footer: v.sourceLine === "출처 없음" ? "출처 없음 · 기준일 해당 없음" : `출처 ${v.sourceLine}`,
       });
     }

@@ -2,6 +2,7 @@ export const EXPORT_MIME = {
   pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   dxf: "application/dxf",
   glb: "model/gltf-binary",
+  "3dm": "application/octet-stream",
 } as const;
 
 export type ExportFormat = keyof typeof EXPORT_MIME;
