@@ -14,6 +14,7 @@ import { downloadBytes, exportFileName, EXPORT_MIME, DAE_MIME } from "@/lib/v2/e
 import { DEFAULT_CALLOUT_MODE } from "@/lib/v2/ui/callout-layout";
 import { stackView } from "@/lib/v2/ui/stack";
 import { sheetView } from "@/lib/v2/ui/sheet";
+import { exportAvailability, formatElapsedMs, jobProgress } from "@/lib/v2/ui/board-status";
 import { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } from "@/lib/v2/ui/fixtures/godeok";
 import { toSummaryView, toTileView, type SiteSummary } from "@/lib/v2/ui/tile-view";
 import type { TileResult } from "@/lib/v2/tile-result";
@@ -46,6 +47,7 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
   const [editing, setEditing] = useState(false);
   const [demoStep, setDemoStep] = useState<number | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const dialogOpenerRef = useRef<HTMLElement | null>(null);
   const [stackSelection, setStackSelection] = useState<string[]>([]);
   const [sheetSelection, setSheetSelection] = useState<string[]>([]);
   const [note, setNote] = useState(""); // 스크린리더 안내(aria-live)
@@ -88,21 +90,66 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
   const total = board.order.length;
   const activeJobs = jobs.some((job) => job.status === "queued" || job.status === "running");
   const actionBusy = busy || activeJobs;
-  const completedJobs = jobs.filter((job) => job.status === "done" || job.status === "failed").length;
-  const jobPhases = useMemo(() => {
-    const phases = new Map<string, "pending" | "running">();
-    for (const job of jobs) {
-      if (job.status === "queued") phases.set(job.code, "pending");
-      if (job.status === "running") phases.set(job.code, "running");
+  const [nowMs, setNowMs] = useState(0);
+  useEffect(() => {
+    if (!activeJobs) {
+      setNowMs(0);
+      return;
     }
-    return phases;
-  }, [jobs]);
-  const analysisDate = demo ? new Date().toLocaleDateString("sv-SE") : (results[0]?.conditions.analysisDate ?? new Date().toLocaleDateString("sv-SE"));
+    setNowMs(Date.now());
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [activeJobs]);
+  const progressNow = nowMs || Date.now();
+  const jobState = useMemo(() => jobProgress(jobs, progressNow), [jobs, progressNow]);
+  const analysisDate = results[0]?.conditions.analysisDate ?? "기준일 미확인";
   const reportPlan = useMemo(() => buildReportPlan({ summary, views, board, analysisDate }), [summary, views, board, analysisDate]);
   const [making, setMaking] = useState(false);
   const [makingKind, setMakingKind] = useState<string | null>(null);
   const [exportProblem, setExportProblem] = useState<string | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const exportState = exportAvailability({ activeJobs, making, requesting: busy, sceneReady: !!scene });
+
+  useEffect(() => {
+    if (openId !== null) return;
+    const opener = dialogOpenerRef.current;
+    if (!opener) return;
+    const frame = window.requestAnimationFrame(() => {
+      // TileDialog의 unmount cleanup은 page가 아직 inert일 때 실행될 수 있다.
+      // inert 제거 뒤 한 프레임에 다시 잡아야 Esc/닫기 후 BODY로 빠지지 않는다.
+      if (opener.isConnected && !opener.closest("[inert]")) opener.focus();
+      dialogOpenerRef.current = null;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [openId]);
+
+  useEffect(() => {
+    if (openId === null) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      const dialog = document.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]');
+      if (!dialog) return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
+        'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
+      )).filter((element) => element.getClientRects().length > 0);
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const current = document.activeElement;
+      const index = current instanceof HTMLElement ? focusable.indexOf(current) : -1;
+      if (event.shiftKey && (index <= 0 || !dialog.contains(current))) {
+        event.preventDefault();
+        focusable[focusable.length - 1].focus();
+      } else if (!event.shiftKey && (index === focusable.length - 1 || !dialog.contains(current))) {
+        event.preventDefault();
+        focusable[0].focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [openId]);
   const makeReport = async () => {
     setMaking(true);
     setMakingKind("PPT");
@@ -207,7 +254,21 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
     <BasemapContext.Provider value={basemap}>
     <SetBasemapContext.Provider value={setBasemap}>
     <main className={styles.root}>
-      <div className={styles.page} inert={openView ? true : undefined}>
+      <div
+        className={styles.page}
+        inert={openView ? true : undefined}
+        onClickCapture={(event) => {
+          const target = event.target;
+          if (!(target instanceof HTMLElement)) return;
+          const opener = target.closest<HTMLButtonElement>('button[aria-label$=" 펼치기"]');
+          if (opener) {
+            dialogOpenerRef.current = opener;
+            return;
+          }
+          const card = target.closest<HTMLElement>("[data-tile-id]");
+          if (card && card.tabIndex >= 0) dialogOpenerRef.current = card;
+        }}
+      >
         <a className={styles.skipLink} href="#v2-board-grid">
           보드로 건너뛰기
         </a>
@@ -311,32 +372,33 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
                       className={`${styles.pill} ${styles.pillDark}`}
                       aria-label="내보내기 형식"
                       aria-expanded={exportOpen}
-                      aria-disabled={actionBusy || making}
+                      aria-disabled={busy || making}
                       onClick={(e) => {
-                        if (actionBusy || making) e.preventDefault();
+                        if (busy || making) e.preventDefault();
                       }}
                     >
                       {making ? `${makingKind ?? "파일"} 만드는 중…` : "내보내기 ▾"}
                     </summary>
                     <div className={styles.exportMenu} aria-label="내보내기 형식">
-                      <button type="button" className={styles.pill} onClick={() => void makeReport()} disabled={making || actionBusy}>
+                      <button type="button" className={styles.pill} onClick={() => void makeReport()} disabled={!exportState.ppt.enabled} title={exportState.ppt.reason ?? exportState.ppt.pendingNote ?? undefined}>
                         PPT · {reportPlan.length}장
                       </button>
-                      <button type="button" className={styles.pill} onClick={() => void makeDxf("site")} disabled={!scene || making || actionBusy} title={!scene ? "건물 도형 미적재" : "대지 중심 원점"}>
+                      <button type="button" className={styles.pill} onClick={() => void makeDxf("site")} disabled={!exportState.dxf.enabled} title={exportState.dxf.reason ?? "대지 중심 원점"} aria-label={`DXF · 대지 중심${exportState.dxf.reason ? ` — ${exportState.dxf.reason}` : ""}`}>
                         DXF · 대지 중심
                       </button>
-                      <button type="button" className={styles.pill} onClick={() => void makeDxf("utmk")} disabled={!scene || making || actionBusy} title={!scene ? "건물 도형 미적재" : "UTM-K 절대 좌표"}>
+                      <button type="button" className={styles.pill} onClick={() => void makeDxf("utmk")} disabled={!exportState.dxf.enabled} title={exportState.dxf.reason ?? "UTM-K 절대 좌표"} aria-label={`DXF · UTM-K${exportState.dxf.reason ? ` — ${exportState.dxf.reason}` : ""}`}>
                         DXF · UTM-K
                       </button>
-                      <button type="button" className={styles.pill} onClick={() => void makeGlb()} disabled={!scene || making || actionBusy} title={!scene ? "건물 도형 미적재" : "GLB 내보내기"}>
+                      <button type="button" className={styles.pill} onClick={() => void makeGlb()} disabled={!exportState.glb.enabled} title={exportState.glb.reason ?? "GLB 내보내기"} aria-label={`GLB${exportState.glb.reason ? ` — ${exportState.glb.reason}` : ""}`}>
                         GLB
                       </button>
-                      <button type="button" className={styles.pill} onClick={() => void makeDae()} disabled={!scene || making || actionBusy} title={!scene ? "건물 도형 미적재" : "SketchUp 가져오기용 DAE 내보내기"}>
+                      <button type="button" className={styles.pill} onClick={() => void makeDae()} disabled={!exportState.dae.enabled} title={exportState.dae.reason ?? "SketchUp 가져오기용 DAE 내보내기"} aria-label={`DAE · SketchUp${exportState.dae.reason ? ` — ${exportState.dae.reason}` : ""}`}>
                         DAE · SketchUp
                       </button>
-                      <button type="button" className={styles.pill} onClick={() => void make3dm()} disabled={!scene || making || actionBusy} title={!scene ? "건물 도형 미적재" : "3DM 내보내기"}>
+                      <button type="button" className={styles.pill} onClick={() => void make3dm()} disabled={!exportState["3dm"].enabled} title={exportState["3dm"].reason ?? "3DM 내보내기"} aria-label={`3DM${exportState["3dm"].reason ? ` — ${exportState["3dm"].reason}` : ""}`}>
                         3DM
                       </button>
+                      {exportState.ppt.pendingNote && <p className={styles.exportPendingNote}>{exportState.ppt.pendingNote}</p>}
                       <p className={styles.exportNote}>
                         DXF·GLB: 건물·필지·대지·반경. 래스터(항공사진·인구 격자·시뮬레이션 결과)는 대상 아님<br />
                         3DM: 건물(닫힌 솔리드)·필지·대지·반경·지형 메시
@@ -381,24 +443,25 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
                     </button>
                   ) : (
                     <div className={styles.mobileExportActions}>
-                      <button type="button" className={styles.pill} onClick={() => void makeReport()} disabled={making || actionBusy}>
+                      <button type="button" className={styles.pill} onClick={() => void makeReport()} disabled={!exportState.ppt.enabled} title={exportState.ppt.reason ?? exportState.ppt.pendingNote ?? undefined}>
                         PPT · {reportPlan.length}장
                       </button>
-                      <button type="button" className={styles.pill} onClick={() => void makeDxf("site")} disabled={!scene || making || actionBusy} title={!scene ? "건물 도형 미적재" : "대지 중심 원점"}>
+                      <button type="button" className={styles.pill} onClick={() => void makeDxf("site")} disabled={!exportState.dxf.enabled} title={exportState.dxf.reason ?? "대지 중심 원점"} aria-label={`DXF · 대지 중심${exportState.dxf.reason ? ` — ${exportState.dxf.reason}` : ""}`}>
                         DXF · 대지 중심
                       </button>
-                      <button type="button" className={styles.pill} onClick={() => void makeDxf("utmk")} disabled={!scene || making || actionBusy} title={!scene ? "건물 도형 미적재" : "UTM-K 절대 좌표"}>
+                      <button type="button" className={styles.pill} onClick={() => void makeDxf("utmk")} disabled={!exportState.dxf.enabled} title={exportState.dxf.reason ?? "UTM-K 절대 좌표"} aria-label={`DXF · UTM-K${exportState.dxf.reason ? ` — ${exportState.dxf.reason}` : ""}`}>
                         DXF · UTM-K
                       </button>
-                      <button type="button" className={styles.pill} onClick={() => void makeGlb()} disabled={!scene || making || actionBusy} title={!scene ? "건물 도형 미적재" : "GLB 내보내기"}>
+                      <button type="button" className={styles.pill} onClick={() => void makeGlb()} disabled={!exportState.glb.enabled} title={exportState.glb.reason ?? "GLB 내보내기"} aria-label={`GLB${exportState.glb.reason ? ` — ${exportState.glb.reason}` : ""}`}>
                         GLB
                       </button>
-                      <button type="button" className={styles.pill} onClick={() => void makeDae()} disabled={!scene || making || actionBusy} title={!scene ? "건물 도형 미적재" : "SketchUp 가져오기용 DAE 내보내기"}>
+                      <button type="button" className={styles.pill} onClick={() => void makeDae()} disabled={!exportState.dae.enabled} title={exportState.dae.reason ?? "SketchUp 가져오기용 DAE 내보내기"} aria-label={`DAE · SketchUp${exportState.dae.reason ? ` — ${exportState.dae.reason}` : ""}`}>
                         DAE · SketchUp
                       </button>
-                      <button type="button" className={styles.pill} onClick={() => void make3dm()} disabled={!scene || making || actionBusy} title={!scene ? "건물 도형 미적재" : "3DM 내보내기"}>
+                      <button type="button" className={styles.pill} onClick={() => void make3dm()} disabled={!exportState["3dm"].enabled} title={exportState["3dm"].reason ?? "3DM 내보내기"} aria-label={`3DM${exportState["3dm"].reason ? ` — ${exportState["3dm"].reason}` : ""}`}>
                         3DM
                       </button>
+                      {exportState.ppt.pendingNote && <p className={styles.exportPendingNote}>{exportState.ppt.pendingNote}</p>}
                     </div>
                   )}
                 </div>
@@ -420,10 +483,13 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
         {!demo && activeJobs && jobs.length > 0 && (
           <div className={styles.progressRow}>
             <span className={styles.progressLabel}>분석 중</span>
-            <div className={styles.progress} role="progressbar" aria-label="분석 진행" aria-valuemin={0} aria-valuemax={jobs.length} aria-valuenow={completedJobs}>
-              <div className={styles.progressFill} style={{ width: `${(completedJobs / jobs.length) * 100}%` }} />
+            <div className={styles.progress} role="progressbar" aria-label="분석 진행" aria-valuemin={0} aria-valuemax={jobs.length} aria-valuenow={jobState.completed}>
+              <div className={styles.progressFill} style={{ width: `${(jobState.completed / jobs.length) * 100}%` }} />
             </div>
-            <span className={styles.progressText} aria-live="polite">{completedJobs} / {jobs.length} 계산 중</span>
+            <span className={styles.progressText} aria-live="polite">{jobState.completed} / {jobs.length} 계산 중</span>
+            <span className={styles.progressMeta}>경과 {formatElapsedMs(jobState.elapsedMs)}</span>
+            {jobState.waitingLabel && <span className={styles.progressQueue}>{jobState.waitingLabel}</span>}
+            <span className={styles.progressRetry}>{jobState.retryLabel}</span>
           </div>
         )}
 
@@ -446,7 +512,8 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
                 <TileCard
                   key="card"
                   view={view}
-                  phase={demoOn ? demoPhase(i, demoStep!) : (jobPhases.get(view.code) ?? null)}
+                  phase={demoOn ? demoPhase(i, demoStep!) : (jobState.byCode.get(view.code)?.phase ?? null)}
+                  waitingNote={demoOn ? null : (jobState.byCode.get(view.code)?.note ?? null)}
                   included={!!board.included[id]}
                   face={board.faces[id]}
                   editing={editing}
@@ -569,7 +636,7 @@ const RADII = [
 ] as const;
 const API = "/site/api/v2/analyses";
 
-type JobState = { code: string; status: "queued" | "running" | "done" | "failed"; elapsedMs: number | null };
+type JobState = { code: string; status: "queued" | "running" | "done" | "failed"; enqueuedAt?: string | null; startedAt?: string | null; elapsedMs: number | null };
 type Live = { analysisId: string; summary: SiteSummary; results: TileResult[]; jobs: JobState[]; scene: Scene | null };
 type Problem = { text: string; login: boolean };
 const POLL_DELAYS_MS = [1000, 2000, 5000] as const;

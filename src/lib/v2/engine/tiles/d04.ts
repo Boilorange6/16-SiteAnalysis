@@ -3,7 +3,8 @@ import type BetterSqlite3 from "better-sqlite3";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
 import { DECADE_LAYERS, decadeLayer } from "../../ui/callout-layout";
-import { candidate, makeTile, missing, obs, type TileDraft } from "./common";
+import { candidate, makeTile, missing, obs, polygonCandidate, type PolygonCandidate, type TileDraft } from "./common";
+import { areaInCircle, polygonArea } from "./geo";
 import { notProvided } from "./not-provided";
 
 const BUILDING_SOURCES = ["building", "gis_bldg"] as const;
@@ -60,6 +61,19 @@ export function d04(ctx: EngineContext): TileResult {
   const hits = ctx.hits("buildings", ["building"]);
   const facts = factByFeature(db, hits.map((h) => h.featureId));
   const years = new Map(hits.map((h) => [h.featureId, approvalYear(facts.get(h.featureId)?.approval_date, ctx.input.analysisDate)]));
+  const polygons: PolygonCandidate[] = [];
+  let failedGeometry = 0;
+  for (const hit of hits) {
+    const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, hit.geometry);
+    if (clipped === null) {
+      failedGeometry += 1;
+      continue;
+    }
+    for (const rings of clipped.parts) {
+      const polygon = polygonCandidate(hit.featureId, decadeLayer(years.get(hit.featureId) ?? null), rings, polygonArea(rings), hit.name);
+      if (polygon) polygons.push(polygon);
+    }
+  }
   const total = hits.length;
   const confirmed = [...years.values()].filter((year): year is number => year !== null).length;
   const byLayer = new Map<string, number>(DECADE_LAYERS.map((layer) => [layer, 0]));
@@ -78,11 +92,15 @@ export function d04(ctx: EngineContext): TileResult {
   ];
 
   const coverage = ctx.coverage("buildings", BUILDING_SOURCES);
-  const status: TileResult["status"] = coverage.some((l) => l.kind === "partial" || l.kind === "incomplete") ? "partial" : "complete";
+  const status: TileResult["status"] = failedGeometry > 0 || coverage.some((l) => l.kind === "partial" || l.kind === "incomplete") ? "partial" : "complete";
   const sentence = total === 0
     ? "반경 안 건물이 확인되지 않아 준공 연대를 산출하지 못함 → 건물 자료와 현장 확인 필요"
     : `반경 안 건물 ${total.toLocaleString("en-US")}동 중 사용승인일 확인 ${pct(confirmed, total)}% → 확인된 건물의 준공 연대를 집계하고 미상은 별도로 표시 → 개별 건축물대장 확인 필요`;
 
+  const limitations = [
+    ...coverage,
+    ...(failedGeometry > 0 ? [{ kind: "partial" as const, note: `도형 오류로 지도에 표시하지 못한 ${failedGeometry}건은 발자국에서 빠졌습니다.` }] : []),
+  ];
   return makeTile(ctx, {
     code: "D04",
     type: "diagram",
@@ -92,6 +110,7 @@ export function d04(ctx: EngineContext): TileResult {
     sources,
     layers: [...DECADE_LAYERS],
     map: hits.map((hit) => candidate(hit, decadeLayer(years.get(hit.featureId) ?? null))),
-    limitations: coverage,
+    polygons,
+    limitations,
   });
 }

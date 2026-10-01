@@ -252,19 +252,34 @@ export const RASTER_STYLES: Record<string, RasterStyle> = {
 const FALLBACK: LayerStyle = S("기타", "#7A7E87");
 
 /** 지물이 있는 레이어의 범례 항목 (정의된 순서) */
-export const legendItems = (model: MapModel) =>
-  Object.keys(LAYER_STYLES)
-    .filter((k) => model.features.some((f) => f.layer === k) || (model.polygons ?? []).some((p) => p.layer === k) || (model.lines ?? []).some((l) => l.layer === k))
-    .map((k) => ({ layer: k, label: LAYER_STYLES[k].label, color: LAYER_STYLES[k].color }));
+export const legendItems = (model: MapModel) => {
+  const present = new Set([
+    ...model.features.map((feature) => feature.layer),
+    ...(model.polygons ?? []).map((polygon) => polygon.layer),
+    ...(model.lines ?? []).map((line) => line.layer),
+  ]);
+  const seenLabels = new Set<string>();
+  return Object.keys(LAYER_STYLES).flatMap((layer) => {
+    if (!present.has(layer)) return [];
+    const style = LAYER_STYLES[layer];
+    if (seenLabels.has(style.label)) return [];
+    seenLabels.add(style.label);
+    return [{ layer, label: style.label, color: style.color }];
+  });
+};
 
 /** 카드 지도처럼 공간이 좁을 때, 실제로 가장 많이 그린 레이어만 남긴 미니 범례. */
 export function compactLegendItems(model: MapModel, limit = 3) {
   const counts = new Map<string, number>();
-  for (const f of model.features) counts.set(f.layer, (counts.get(f.layer) ?? 0) + 1);
-  for (const p of model.polygons ?? []) counts.set(p.layer, (counts.get(p.layer) ?? 0) + 1);
-  for (const l of model.lines ?? []) counts.set(l.layer, (counts.get(l.layer) ?? 0) + 1);
+  const add = (layer: string) => {
+    const label = LAYER_STYLES[layer]?.label;
+    if (label) counts.set(label, (counts.get(label) ?? 0) + 1);
+  };
+  for (const f of model.features) add(f.layer);
+  for (const p of model.polygons ?? []) add(p.layer);
+  for (const l of model.lines ?? []) add(l.layer);
   return legendItems(model)
-    .map((item, order) => ({ ...item, count: counts.get(item.layer) ?? 0, order }))
+    .map((item, order) => ({ ...item, count: counts.get(item.label) ?? 0, order }))
     .sort((a, b) => b.count - a.count || a.order - b.order)
     .slice(0, Math.max(0, limit));
 }
