@@ -6,7 +6,7 @@ import type { FeatureHit } from "../../data/features";
 import { parseTileResult, type TileResult } from "../../tile-result";
 import { buildingShadow, pointInRings, type Building, type XY } from "../../sim/shadow";
 import { kst, sunPosition } from "../../sim/sun";
-import { computeSunlight, type SunlightResult } from "../../sim/sunlight";
+import { computeSunlight, shadowSourcesFor, type SunlightResult } from "../../sim/sunlight";
 import { buildS02TileResult, type S02Input, type S02Presentation, type S02ShadowParts } from "../../sim/s02-tile";
 import type { EngineContext, SourceRef } from "../context";
 import { areaInCircle, polygonArea } from "./geo";
@@ -155,12 +155,13 @@ function withinInfluence(ring: readonly XY[], site: readonly XY[], radiusM: numb
   return false;
 }
 
-function shadowsAtHours(buildings: readonly Building[], site: readonly XY[], center: LngLat, radiusM: number, latDeg: number, lonDeg: number, date: string): S02ShadowParts {
+function shadowsAtHours(buildings: readonly Building[], site: readonly XY[], center: LngLat, radiusM: number, latDeg: number, lonDeg: number, date: string, removeBuildingsInSite: boolean): S02ShadowParts {
   const { year, month, day } = dateParts(date);
   const shadows = emptyShadows();
+  const shadowBuildings = shadowSourcesFor(buildings, site, removeBuildingsInSite);
   for (const hour of CUT_HOURS) {
     const sun = sunPosition(latDeg, lonDeg, kst(year, month, day, Number(hour)));
-    for (const building of buildings) {
+    for (const building of shadowBuildings) {
       if (!withinInfluence(building.ring, site, S02_INFLUENCE_M)) continue;
       const shadow = buildingShadow(building, sun);
       if (!shadow) continue;
@@ -219,7 +220,7 @@ function computeShared(ctx: EngineContext): SunlightShared | null {
     site: parcel.site,
     siteKind: parcel.siteKind,
     sources,
-    shadows: shadowsAtHours(buildings, parcel.site, ctx.input.center, ctx.input.radiusM, ctx.input.center[1], ctx.input.center[0], ctx.input.analysisDate),
+    shadows: shadowsAtHours(buildings, parcel.site, ctx.input.center, ctx.input.radiusM, ctx.input.center[1], ctx.input.center[0], ctx.input.analysisDate, true),
   };
 }
 

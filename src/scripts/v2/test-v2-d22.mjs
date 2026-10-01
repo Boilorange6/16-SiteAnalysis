@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import Database from "better-sqlite3";
 
-const { buildEngineFixture, CENTER } = await import("./engine-fixture.mjs");
+const { buildEngineFixture, CENTER, at } = await import("./engine-fixture.mjs");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { DIR16_DEGREES, DIR16_NAMES, d22 } = await import("../../lib/v2/engine/tiles/d22.ts");
@@ -12,6 +13,23 @@ const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 
 const dataDir = mkdtempSync(join(tmpdir(), "v2-d22-"));
 await buildEngineFixture(dataDir, "v1", { weather: true });
+const weatherDb = new Database(join(dataDir, "versions", "v1", "weather.sqlite"));
+const releaseId = weatherDb.prepare("SELECT release_id FROM source_release WHERE source_id = 'asos' LIMIT 1").pluck().get();
+weatherDb.prepare(`INSERT INTO weather_station
+  (station_id, name, lng, lat, elevation_m, period_start, period_end, total_hours, calm_hours, missing_hours, release_id)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+  "short",
+  "short",
+  ...at(100),
+  15,
+  "2016-01-01",
+  "2025-12-31",
+  10000,
+  0,
+  2000,
+  releaseId,
+);
+weatherDb.close();
 const manifest = M.readManifest(dataDir);
 const ctx = new EngineContext(dataDir, manifest, "d22-test", {
   address: "테스트",
@@ -27,6 +45,7 @@ assert.equal(result.tileCode, "D22");
 assert.equal(result.tileType, "diagram");
 assert.equal(result.status, "complete");
 assert.equal(metric("station_distance_m").value, 3000);
+assert.ok(result.limitations.some((limitation) => limitation.note.includes("8,760시간") && limitation.note.includes("1개")));
 assert.equal(metric("station_elevation_m").value, 30);
 assert.equal(metric("period_years").value, 10);
 assert.equal(metric("fill_hours_pct").value, 95);

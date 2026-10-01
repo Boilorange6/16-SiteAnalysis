@@ -105,13 +105,16 @@ const noonWin = { ...base, windowStartMin: 12 * 60 + 20, windowEndMin: 12 * 60 +
 
 // 7) removeBuildingsInSite: 대지 안 건물 셀 제외
 {
-  const inSite = [box(1010, 2010, 10, 10, 20, "in")];
+  const inSite = [box(1010, 2010, 10, 10, 90, "in")];
   const kept = computeSunlight({ ...base, buildings: inSite });
   assert.equal(kept.counts.removed, 0);
   assert.ok(kept.cells.filter((c) => c.hours === 0).length >= 25, "지붕 셀은 자기 그림자 안");
   const removed = computeSunlight({ ...base, buildings: inSite, removeBuildingsInSite: true });
   assert.equal(removed.counts.removed, 25);
   assert.equal(removed.params.removeBuildingsInSite, true);
+  assert.equal(removed.buildings.used, 0, "철거 가정 건물은 그림자 원천에서도 제외");
+  assert.ok(removed.steps.every((step) => step.shadedRatio === 0), "철거 가정 건물이 이웃 셀을 가리지 않음");
+  assert.equal(removed.cells.filter((cell) => cell.state === "calculated" && cell.hours === 0).length, 0, "이웃 셀에 잔여 그림자가 없음");
 }
 
 // 8) S02 TileResult
