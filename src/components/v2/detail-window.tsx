@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import type { TileView } from "@/lib/v2/ui/tile-view";
 import { RASTER_STYLES } from "@/lib/v2/ui/map-layers";
 import { inflateRaster, paintRaster } from "@/lib/v2/ui/raster-image";
-import { detailApiUrl, filterDetailRows, missingLabel, sanitizeDetailText, sortDetailRows, tableColumns, type DetailAt, type DetailCard, type DetailControl, type DetailPayload, type DetailRow } from "@/lib/v2/ui/detail-state";
+import { detailApiUrl, detailListApiUrl, filterDetailRows, formatDetailCardValue, normalizeDetailPayload, sanitizeDetailText, sortDetailRows, tableColumns, type DetailAt, type DetailCard, type DetailControl, type DetailPayload, type DetailRow } from "@/lib/v2/ui/detail-state";
 import MapFigure, { type MapFigurePick } from "./map-figure";
 import DetailTable from "./detail-table";
 
@@ -37,7 +37,7 @@ const DETAIL_WINDOW_CSS = `
 .detail-map-viewport:fullscreen { border: 0; border-radius: 0; }
 .detail-map-canvas { position: absolute; inset: 0; transform-origin: 50% 50%; will-change: transform; }
 .detail-map-canvas svg { width: 100%; height: 100%; }
-.detail-map-hint { position: absolute; z-index: 4; top: 14px; left: 14px; max-width: min(280px, calc(100% - 110px)); padding: 8px 10px; border: 1px solid rgba(214,218,224,.82); border-radius: 8px; background: rgba(255,255,255,.9); color: #454a55; font-size: 12px; line-height: 1.35; pointer-events: none; }
+.detail-map-hint { position: absolute; z-index: 4; bottom: 14px; left: 14px; max-width: min(280px, calc(100% - 110px)); padding: 8px 10px; border: 1px solid rgba(214,218,224,.82); border-radius: 8px; background: rgba(255,255,255,.9); color: #454a55; font-size: 12px; line-height: 1.35; pointer-events: none; }
 .detail-map-controls { position: absolute; z-index: 5; top: 14px; right: 14px; display: grid; gap: 8px; }
 .detail-map-controls button { display: grid; width: 44px; height: 44px; place-items: center; border: 1px solid #d5d9e1; border-radius: 9px; background: rgba(255,255,255,.94); box-shadow: 0 2px 8px rgba(30,36,46,.1); font-size: 22px; line-height: 1; }
 .detail-map-controls button:hover { background: #fff; }
@@ -93,6 +93,7 @@ const DETAIL_WINDOW_CSS = `
 .detail-state strong { display: block; margin-bottom: 5px; color: #252a33; }
 .detail-state button { min-height: 44px; margin-top: 12px; border: 1px solid #bcc4d0; border-radius: 8px; background: #fff; padding: 0 14px; font-size: 12px; font-weight: 700; }
 .detail-loading { display: grid; gap: 9px; }
+.detail-loading-text { color: #677181; font-size: 12px; }
 .detail-skeleton { height: 12px; border-radius: 5px; background: linear-gradient(90deg, #edf0f3 25%, #f7f8f9 50%, #edf0f3 75%); background-size: 200% 100%; animation: detail-shimmer 1.2s ease-in-out infinite; }
 .detail-skeleton-wide { width: 82%; height: 25px; }
 @keyframes detail-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
@@ -108,7 +109,7 @@ const DETAIL_WINDOW_CSS = `
   .detail-body { display: grid; grid-template-rows: minmax(250px, 42%) minmax(0, 58%); grid-template-columns: 1fr; }
   .detail-map-panel { padding: 8px 8px 6px; }
   .detail-map-viewport { min-height: 0; border-radius: 10px; }
-  .detail-map-hint { top: 10px; left: 10px; max-width: 190px; padding: 6px 8px; font-size: 11px; }
+  .detail-map-hint { top: auto; bottom: 10px; left: 10px; max-width: 190px; padding: 6px 8px; font-size: 11px; }
   .detail-map-controls { top: 10px; right: 10px; gap: 6px; }
   .detail-map-controls button { width: 42px; height: 42px; }
   .detail-panel { padding: 8px; border-top: 1px solid #dfe2e7; border-left: 0; }
@@ -136,6 +137,8 @@ const DETAIL_WINDOW_CSS = `
 }
 @media (max-width: 380px) { .detail-header h2 { max-width: 145px; } .detail-header-code { font-size: 11px; } .detail-map-hint { max-width: 155px; } }
 `;
+
+const DETAIL_REQUEST_TIMEOUT_MS = 30_000;
 
 function controlsToRecord(controls: DetailControl[], requested: Readonly<Record<string, string>>): Record<string, string> {
   return Object.fromEntries(controls.map((control) => [control.key, control.options.some((option) => option.value === requested[control.key]) ? requested[control.key] : control.default]));
@@ -178,7 +181,7 @@ function CardView({ card, code, selected, busy }: { card: DetailCard; code: stri
         {card.fields.map((field) => (
           <div className="detail-field" key={field.label}>
             <dt>{sanitizeDetailText(field.label)}</dt>
-            <dd>{missingLabel(field.value)}</dd>
+            <dd>{formatDetailCardValue(field.value)}</dd>
           </div>
         ))}
       </dl>
@@ -191,14 +194,14 @@ function CardView({ card, code, selected, busy }: { card: DetailCard; code: stri
 function LoadingCard({ code }: { code: string }) {
   return (
     <section className="detail-card" aria-busy="true" aria-label={`${code} 상세 불러오는 중`}>
-      <div className="detail-loading"><div className="detail-skeleton detail-skeleton-wide" /><div className="detail-skeleton" /><div className="detail-skeleton" /><div className="detail-skeleton" /></div>
+      <div className="detail-loading"><span className="detail-loading-text" aria-live="polite">상세 자료를 불러오는 중…</span><div className="detail-skeleton detail-skeleton-wide" /><div className="detail-skeleton" /><div className="detail-skeleton" /><div className="detail-skeleton" /></div>
     </section>
   );
 }
 
 export default function DetailWindow({ view, onClose }: DetailWindowProps) {
   const model = view.map ?? view.backdrop;
-  const analysisId = view.map?.analysisId ?? null;
+  const analysisId = view.map?.analysisId ?? (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("analysis") : null);
   const code = view.code;
   const dialogRef = useRef<HTMLElement>(null);
   const mapViewportRef = useRef<HTMLDivElement>(null);
@@ -276,11 +279,13 @@ export default function DetailWindow({ view, onClose }: DetailWindowProps) {
     }
     setLoadState("loading");
     setError(null);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), DETAIL_REQUEST_TIMEOUT_MS);
     try {
-      const response = await fetch(detailApiUrl(analysisId, code, "", requestedControls), { credentials: "same-origin" });
+      const response = await fetch(detailListApiUrl(analysisId, code, requestedControls), { credentials: "same-origin", signal: controller.signal });
       const body = await response.json().catch(() => ({})) as Partial<DetailPayload> & { error?: string };
       if (!response.ok || !body.card || !Array.isArray(body.rows) || !Array.isArray(body.columns)) throw new Error(body.error ?? "상세 자료를 불러오지 못했습니다.");
-      const nextPayload = body as DetailPayload;
+      const nextPayload = normalizeDetailPayload(body as DetailPayload, model.features, model.radiusM);
       const nextControls = controlsToRecord(nextPayload.controls ?? [], requestedControls);
       setControls(nextControls);
       setPayload(nextPayload);
@@ -291,9 +296,11 @@ export default function DetailWindow({ view, onClose }: DetailWindowProps) {
       setLoadState("ready");
     } catch (caught) {
       setLoadState("error");
-      setError(caught instanceof Error ? caught.message : "상세 자료를 불러오지 못했습니다.");
+      setError(caught instanceof DOMException && caught.name === "AbortError" ? "상세 자료 계산 시간이 초과되었습니다. 다시 시도해 주세요." : caught instanceof Error ? caught.message : "상세 자료를 불러오지 못했습니다.");
+    } finally {
+      window.clearTimeout(timeout);
     }
-  }, [analysisId, code]);
+  }, [analysisId, code, model.features, model.radiusM]);
 
   useEffect(() => {
     if (!mounted) return;

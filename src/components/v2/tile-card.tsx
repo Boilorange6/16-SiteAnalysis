@@ -398,7 +398,10 @@ export default function TileCard(p: TileCardProps) {
     .filter(Boolean)
     .join(" ");
   const openable = !p.editing && !waiting;
-  const detailable = openable && hasDetail(view.code) && !!view.map?.analysisId;
+  // 결과가 빈 상태여도 T34 상세 API는 분석 ID로 요약/결측을 보여 줄 수 있다.
+  // 지도 모델이 없는 타일(D19/D20/D22/D28/D29)도 현재 분석 URL을 사용해 상세를 연다.
+  const hasAnalysisContext = !!view.map?.analysisId || (typeof window !== "undefined" && new URLSearchParams(window.location.search).has("analysis"));
+  const detailable = openable && hasDetail(view.code) && hasAnalysisContext;
   const [detailOpen, setDetailOpen] = useState(false);
   const onClick = (e: MouseEvent<HTMLElement>) => {
     if (openable && !(e.target as HTMLElement).closest(INTERACTIVE)) p.onOpen();
