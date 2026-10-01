@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { CardFace, DemoPhase, TileSize } from "@/lib/v2/ui/board-state";
 import { STRIP_COLORS } from "@/lib/v2/ui/map-layers";
 import { OV, badgesToShow, cardReserved, stripText } from "@/lib/v2/ui/overlay-layout";
@@ -350,7 +350,7 @@ function SummaryFace({ p, state, waiting, onFlip }: { p: TileCardProps; state: b
                 {stripText(view.sourceLine, false)}
               </span>
               {!state && (
-                <button type="button" className={styles.flipBtn} onClick={onFlip} aria-pressed={false} aria-label={`${view.title} 요약/지도 보기 전환`}>
+                <button type="button" className={styles.flipBtn} data-card-face-button="map" onClick={onFlip} aria-pressed={false} aria-label={`${view.title} 요약/지도 보기 전환`}>
                   지도 ↻
                 </button>
               )}
@@ -365,6 +365,8 @@ function SummaryFace({ p, state, waiting, onFlip }: { p: TileCardProps; state: b
 export default function TileCard(p: TileCardProps) {
   const { view, phase } = p;
   const [back, setBack] = useState(false);
+  const cardRef = useRef<HTMLElement>(null);
+  const focusFace = useRef<CardFace | null>(null);
   const waiting = phase === "pending" || phase === "running";
   const noResult = !waiting && view.headline === null;
   const state = waiting || noResult;
@@ -375,6 +377,16 @@ export default function TileCard(p: TileCardProps) {
     if (shown === "map") setSeen(true);
   }, [shown]);
   const mountMap = shown === "map" || seen; // 지도는 처음 뒤집을 때 만들고 그 뒤에는 유지한다
+  useEffect(() => {
+    if (focusFace.current !== shown) return;
+    const buttonFace = shown === "map" ? "summary" : "map";
+    cardRef.current?.querySelector<HTMLButtonElement>(`[data-on="true"] [data-card-face-button="${buttonFace}"]`)?.focus();
+    focusFace.current = null;
+  }, [shown]);
+  const onCardFace = (face: CardFace) => {
+    focusFace.current = face;
+    p.onCardFace(face);
+  };
   const cls = [styles.tile, p.size === 2 && styles.span2, p.editing && styles.tileEdit, p.dragging && styles.tileDrag, state && styles.tileState, !waiting && view.status === "failed" && styles.tileFail]
     .filter(Boolean)
     .join(" ");
@@ -391,6 +403,7 @@ export default function TileCard(p: TileCardProps) {
 
   return (
     <article
+      ref={cardRef}
       className={cls}
       aria-label={view.title}
       data-tile={view.code}
@@ -402,7 +415,7 @@ export default function TileCard(p: TileCardProps) {
     >
       <div className={styles.flipInner} data-face={shown}>
         <div className={`${styles.face} ${styles.faceSummary}`} data-on={shown === "summary"} inert={shown !== "summary"} aria-hidden={shown !== "summary"}>
-          <SummaryFace p={p} state={state} waiting={waiting} onFlip={() => p.onCardFace("map")} />
+          <SummaryFace p={p} state={state} waiting={waiting} onFlip={() => onCardFace("map")} />
         </div>
         <div className={`${styles.face} ${styles.faceMap}`} data-on={shown === "map"} inert={shown !== "map"} aria-hidden={shown !== "map"}>
           {mountMap && (
@@ -430,7 +443,7 @@ export default function TileCard(p: TileCardProps) {
             <button type="button" className={styles.open} onClick={p.onOpen} aria-label={`${view.title} 펼치기`} title="펼치기">
               ↗
             </button>
-            <button type="button" className={styles.flipIcon} onClick={() => p.onCardFace("summary")} aria-pressed aria-label={`${view.title} 요약/지도 보기 전환`} title="요약 보기">
+            <button type="button" className={styles.flipIcon} data-card-face-button="summary" onClick={() => onCardFace("summary")} aria-pressed aria-label={`${view.title} 요약/지도 보기 전환`} title="요약 보기">
               ↺
             </button>
           </div>

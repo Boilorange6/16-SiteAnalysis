@@ -166,7 +166,10 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
     <BasemapContext.Provider value={basemap}>
     <SetBasemapContext.Provider value={setBasemap}>
     <main className={styles.root}>
-      <div className={styles.page}>
+      <div className={styles.page} inert={openView ? true : undefined}>
+        <a className={styles.skipLink} href="#v2-board-grid">
+          보드로 건너뛰기
+        </a>
         <header className={styles.topbar}>
           <span className={`${styles.display} ${styles.brand}`}>{editing ? "보드 편집" : "사이트 분석"}</span>
           {editing ? (
@@ -303,7 +306,7 @@ function Board({ baseResults, siteSummary, scene, demo, busy, controls, onRerun 
 
         {controls}
 
-        <div className={styles.grid} ref={gridRef}>
+        <div className={styles.grid} id="v2-board-grid" ref={gridRef} tabIndex={-1}>
           <SummaryCard view={summary} face={editing ? "summary" : viewOf(board, SUMMARY_ID)} onFace={(face) => dispatch({ type: "view", id: SUMMARY_ID, face })} />
           {shown.map((id, i) => {
             const view = views.get(id)!;

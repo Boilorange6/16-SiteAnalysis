@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CardFace } from "@/lib/v2/ui/board-state";
 import type { SummaryView } from "@/lib/v2/ui/tile-view";
 import { OV } from "@/lib/v2/ui/overlay-layout";
@@ -13,9 +13,21 @@ import styles from "./board.module.css";
  */
 export default function SummaryCard({ view, face, onFace }: { view: SummaryView; face: CardFace; onFace: (f: CardFace) => void }) {
   const [seen, setSeen] = useState(false);
+  const summaryRef = useRef<HTMLElement>(null);
+  const focusFace = useRef<CardFace | null>(null);
   useEffect(() => {
     if (face === "map") setSeen(true);
   }, [face]);
+  useEffect(() => {
+    if (focusFace.current !== face) return;
+    const buttonFace = face === "map" ? "summary" : "map";
+    summaryRef.current?.querySelector<HTMLButtonElement>(`[data-on="true"] [data-card-face-button="${buttonFace}"]`)?.focus();
+    focusFace.current = null;
+  }, [face]);
+  const changeFace = (next: CardFace) => {
+    focusFace.current = next;
+    onFace(next);
+  };
   const asOf = (
     <>
       <span>{view.asOfLine}</span>
@@ -43,14 +55,14 @@ export default function SummaryCard({ view, face, onFace }: { view: SummaryView;
     </>
   );
   return (
-    <section className={styles.summary} aria-label="대지 요약" data-tile="summary">
+    <section ref={summaryRef} className={styles.summary} aria-label="대지 요약" data-tile="summary">
       <div className={styles.flipInner} data-face={face}>
         <div className={`${styles.face} ${styles.faceSummary} ${styles.sumFront}`} data-on={face === "summary"} inert={face !== "summary"}>
           <div className={styles.sumBody}>{body}</div>
           <div className={styles.sfLine}>
             <div className={styles.sumAsOf}>{asOf}</div>
             {view.map && (
-              <button type="button" className={styles.flipBtn} onClick={() => onFace("map")} aria-pressed={false} aria-label="대지 요약 지도 보기">
+              <button type="button" className={styles.flipBtn} data-card-face-button="map" onClick={() => changeFace("map")} aria-pressed={false} aria-label="대지 요약 지도 보기">
                 지도 ↻
               </button>
             )}
@@ -67,7 +79,7 @@ export default function SummaryCard({ view, face, onFace }: { view: SummaryView;
                 <div className={`${styles.plate} ${styles.summaryAsOf}`}>{asOf}</div>
               </div>
               <div className={styles.ovTR}>
-                <button type="button" className={`${styles.plate} ${styles.flipIcon} ${styles.flipIconPlate}`} onClick={() => onFace("summary")} aria-pressed aria-label="대지 요약 보기" title="요약 보기">
+                <button type="button" className={`${styles.plate} ${styles.flipIcon} ${styles.flipIconPlate}`} data-card-face-button="summary" onClick={() => changeFace("summary")} aria-pressed aria-label="대지 요약 보기" title="요약 보기">
                   ↺
                 </button>
               </div>
