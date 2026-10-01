@@ -81,8 +81,7 @@ export function beginFeatureBulk(db: Db): void {
   db.exec(`
     DROP INDEX IF EXISTS idx_feature_kind;
     DROP INDEX IF EXISTS idx_feature_pnu;
-    DROP TABLE IF EXISTS temp.feature_rtree_pending;
-    CREATE TEMP TABLE feature_rtree_pending (
+    CREATE TABLE IF NOT EXISTS feature_rtree_pending (
       feature_id INTEGER PRIMARY KEY,
       min_x REAL NOT NULL,
       max_x REAL NOT NULL,
@@ -91,32 +90,43 @@ export function beginFeatureBulk(db: Db): void {
     );
   `);
   bulkState.set(db, {
-    insertPendingRtree: db.prepare("INSERT INTO temp.feature_rtree_pending (feature_id, min_x, max_x, min_y, max_y) VALUES (?, ?, ?, ?, ?)"),
+    insertPendingRtree: db.prepare("INSERT INTO feature_rtree_pending (feature_id, min_x, max_x, min_y, max_y) VALUES (?, ?, ?, ?, ?)"),
   });
 }
 
 /** Finish the build-only feature bulk path and restore the published indexes. */
-export function finishFeatureBulk(db: Db): void {
+export function finishFeatureBulk(db: Db, options: { dropPending?: boolean } = {}): void {
   const state = bulkState.get(db);
   if (!state) return;
   if (db.inTransaction) throw new Error("finishFeatureBulk must run outside a transaction");
-  db.exec(`
-    INSERT INTO feature_rtree (feature_id, min_x, max_x, min_y, max_y)
-      SELECT feature_id, min_x, max_x, min_y, max_y
-      FROM temp.feature_rtree_pending
-      ORDER BY feature_id;
-    DROP TABLE temp.feature_rtree_pending;
-    CREATE INDEX IF NOT EXISTS idx_feature_kind ON feature (kind);
-    CREATE INDEX IF NOT EXISTS idx_feature_pnu ON feature (pnu);
-  `);
+  db.transaction(() => {
+    // DELETE makes a retry after a crash during deferred work idempotent.
+    db.exec(`
+      DELETE FROM feature_rtree;
+      INSERT INTO feature_rtree (feature_id, min_x, max_x, min_y, max_y)
+        SELECT feature_id, min_x, max_x, min_y, max_y
+        FROM feature_rtree_pending
+        ORDER BY feature_id;
+      CREATE INDEX IF NOT EXISTS idx_feature_kind ON feature (kind);
+      CREATE INDEX IF NOT EXISTS idx_feature_pnu ON feature (pnu);
+    `);
+    if (options.dropPending !== false) db.exec("DROP TABLE feature_rtree_pending");
+  })();
   bulkState.delete(db);
+}
+
+/** Remove persistent bbox staging after the finalization marker is committed. */
+export function dropFeatureBulkStaging(db: Db): void {
+  db.exec("DROP TABLE IF EXISTS feature_rtree_pending");
 }
 
 /** Best-effort cleanup when a build is abandoned before finalization. */
 export function abortFeatureBulk(db: Db): void {
   if (!bulkState.has(db)) return;
   try {
-    db.exec("DROP TABLE IF EXISTS temp.feature_rtree_pending");
+    // A resumable build must retain committed bboxes from completed files. An
+    // active file transaction has already been rolled back by the source
+    // helper, so leaving this table intact is safe and restartable.
   } finally {
     bulkState.delete(db);
   }

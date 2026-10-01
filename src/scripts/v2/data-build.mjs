@@ -4,13 +4,19 @@
  * 원천 zip은 먼저 풀고(이미 풀린 것은 건너뜀), 원천 파일은 폴더마다 가장 새 파일을 쓴다.
  */
 import { readdirSync, statSync, existsSync, readFileSync, openSync, readSync, closeSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, join, relative } from "node:path";
 
 const { extractAll, extractSelected } = await import("../../lib/v2/ingest/unzip.ts");
 const { latestShpPerSido, partCounts } = await import("../../lib/v2/ingest/shp-parts.ts");
 const { readShp, readShpPoints } = await import("../../lib/v2/ingest/shp.ts");
 const { csvRecords } = await import("../../lib/v2/a0/measure.ts");
-const { buildAndPublish, insertRelease, registerIngestProgressTotal } = await import("../../lib/v2/ingest/build.ts");
+const {
+  buildAndPublish,
+  buildResumableSourceFiles,
+  insertRelease,
+  reclaimStaleDataDirLock,
+  registerIngestProgressTotal,
+} = await import("../../lib/v2/ingest/build.ts");
 const { buildParcelPoints } = await import("../../lib/v2/ingest/sources/parcels.ts");
 const { buildParcelPolygons } = await import("../../lib/v2/ingest/sources/parcel-polygons.ts");
 const { buildBuildings } = await import("../../lib/v2/ingest/sources/buildings.ts");
@@ -32,10 +38,11 @@ const opt = (name, fallback) => {
 };
 const version = opt("version");
 if (!version || !/^[0-9A-Za-z._-]+$/.test(version)) {
-  console.error("usage: data:build -- --version <name> [--raw dir] [--dem-source glo30|hgt] [--only core,buildings,parcels,reference,market,terrain] [--expectations file.json] [--reset-baseline parcel,parcel_building] [--dry-run]");
+  console.error("usage: data:build -- --version <name> [--raw dir] [--dem-source glo30|hgt] [--only core,buildings,parcels,reference,market,terrain] [--with buildings,parcels] [--resume] [--expectations file.json] [--reset-baseline parcel,parcel_building] [--dry-run]");
   process.exit(2);
 }
 const flag = (name) => args.includes(`--${name}`);
+const resume = flag("resume");
 const raw = opt("raw", ".cache/v2/raw");
 const only = new Set(String(opt("only", "core,reference,market")).split(","));
 /** 기본 빌드에 넣지 않는 무거운 원천: 건물·필지 도형은 core가 아니라 별도 파일. --only 또는 --with로 선택한다. */
@@ -100,11 +107,27 @@ const registerShpProgress = (sourceId, files) => {
   if (total > 0) registerIngestProgressTotal(sourceId, total);
   return total;
 };
+const progressFiles = (files) => [...files].map((file) => {
+  const st = statSync(file);
+  return {
+    absPath: file,
+    path: relative(raw, file).replaceAll("\\", "/"),
+    size: st.size,
+    mtimeMs: Math.round(st.mtimeMs),
+    rows: dbfRecordCount(file),
+  };
+}).sort((a, b) => a.path.localeCompare(b.path));
+const progressSpec = (sourceId, kind, files, parameters) => ({
+  sourceId,
+  parameters: JSON.stringify({ schema: 1, kind, sourceId, ...parameters }),
+  files: files.map(({ path, size, mtimeMs, rows }) => ({ path, size, mtimeMs, rows })),
+});
 async function* chain(...gens) {
   for (const g of gens) yield* g;
 }
 
 if (waitLockMin !== null && !flag("dry-run")) {
+  reclaimStaleDataDirLock(v2DataDir());
   const { waitForDataDirLock } = await import("../../lib/v2/data/manifest.ts");
   if (!(await waitForDataDirLock(v2DataDir(), { timeoutMs: waitLockMin * 60_000 }))) {
     console.error(`data dir still locked after ${waitLockMin} min — giving up`);
@@ -140,6 +163,7 @@ if (flag("dry-run")) {
 }
 
 const builders = {};
+const progress = {};
 if (only.has("core")) {
   builders.core = async (db) => {
     const sig = newest("legal_dong", /\(SIG\)\.shp$/i);
@@ -186,12 +210,20 @@ if (only.has("core")) {
 if (only.has("buildings")) {
   // 건물 도형: 받은 모든 시도의 GIS건물통합정보. 시도 하나라도 없으면 있는 시도만 적재하고 그 사실을 알린다.
   // 이 빌더는 현재 core를 건드리지 않는다(ctx.core는 읽기 전용으로 전달됨) — --only buildings는 매니페스트의 core를 그대로 재사용한다.
+  const buildingAll = latestShpPerSido([...walk(join(raw, "gis_building"))], "AL_D010");
+  if (buildingAll.size === 0) throw new Error("GIS건물(gis_building) 파일이 없습니다 — vworld:fetch로 받으세요");
+  const buildingFiles = progressFiles(flat(buildingAll));
+  const buildingProgress = progressSpec("building", "buildings", buildingFiles, { sourcePattern: "gis_building/AL_D010", maxYear: new Date().getUTCFullYear() });
+  progress.buildings = buildingProgress;
+  const buildingByPath = new Map(buildingFiles.map((file) => [file.path, file.absPath]));
   builders.buildings = async (db) => {
-    const buildingAll = latestShpPerSido([...walk(join(raw, "gis_building"))], "AL_D010");
-    if (buildingAll.size === 0) throw new Error("GIS건물(gis_building) 파일이 없습니다 — vworld:fetch로 받으세요");
-    registerShpProgress("building", flat(buildingAll));
     const rel = release(db, "building", oldestFile(buildingAll), "국토교통부(VWorld GIS건물통합정보)", "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=18", "CC-BY");
-    const b = await buildBuildings(db, chain(...flat(buildingAll).map((f) => readShp(f))), rel);
+    const b = await buildResumableSourceFiles(db, {
+      spec: buildingProgress,
+      releaseId: rel,
+      fillFields: ["heightM", "floorsAbove", "useCode", "approvalDate"],
+      buildFile: (file) => buildBuildings(db, readShp(buildingByPath.get(file.path)), rel, { maxYear: JSON.parse(buildingProgress.parameters).maxYear }),
+    });
     b.expectedRegions = [...buildingAll.keys()];
     console.log(`buildings: 시도 ${partCounts(buildingAll)}`);
     return [b];
@@ -199,12 +231,20 @@ if (only.has("buildings")) {
 }
 if (only.has("parcels")) {
   // 연속지적 도형은 core의 대표점과 별도 게시한다. 시도별 최신 파트만 골라 첫 PNU를 유지한다.
+  const parcelAll = latestShpPerSido([...walk(join(raw, "cadastral"))], "AL_D002");
+  if (parcelAll.size === 0) throw new Error("연속지적도(cadastral) 파일이 없습니다 — vworld:fetch로 받으세요");
+  const parcelFiles = progressFiles(flat(parcelAll));
+  const parcelProgress = progressSpec("parcel_polygon", "parcels", parcelFiles, { sourcePattern: "cadastral/AL_D002" });
+  progress.parcels = parcelProgress;
+  const parcelByPath = new Map(parcelFiles.map((file) => [file.path, file.absPath]));
   builders.parcels = async (db) => {
-    const parcelAll = latestShpPerSido([...walk(join(raw, "cadastral"))], "AL_D002");
-    if (parcelAll.size === 0) throw new Error("연속지적도(cadastral) 파일이 없습니다 — vworld:fetch로 받으세요");
-    registerShpProgress("parcel_polygon", flat(parcelAll));
     const rel = release(db, "parcel_polygon", oldestFile(parcelAll), "국토교통부(VWorld 연속지적도형정보)", "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=23", "CC-BY");
-    const p = await buildParcelPolygons(db, chain(...flat(parcelAll).map((f) => readShp(f))), rel);
+    const p = await buildResumableSourceFiles(db, {
+      spec: parcelProgress,
+      releaseId: rel,
+      fillFields: ["jimok", "jibun", "sigungu", "areaM2"],
+      buildFile: (file) => buildParcelPolygons(db, readShp(parcelByPath.get(file.path)), rel),
+    });
     p.expectedRegions = [...parcelAll.keys()];
     console.log(`parcels: 시도 ${partCounts(parcelAll)}`);
     return [p];
@@ -724,7 +764,7 @@ if (builders.reference && existsSync(districtsDir)) {
 }
 
 const started = Date.now();
-const out = await buildAndPublish({ dataDir: v2DataDir(), version, builders, expectations, resetBaseline });
+const out = await buildAndPublish({ dataDir: v2DataDir(), version, builders, progress, resume, expectations, resetBaseline });
 for (const [kind, list] of Object.entries(out.stats)) {
   for (const s of list) {
     const located = s.accepted + s.unlocated === 0 ? "-" : `${((100 * s.accepted) / (s.accepted + s.unlocated)).toFixed(1)}%`;

@@ -140,14 +140,17 @@ try {
   after.close();
 
   const logs = [];
-  const originalLog = console.log;
-  console.log = (message) => logs.push(String(message));
+  const originalWrite = process.stdout.write;
+  process.stdout.write = (message, ...rest) => {
+    logs.push(String(message));
+    return true;
+  };
   try {
     registerIngestProgressTotal("progress-test", 500_000);
     const progress = new SourceStats("progress-test", "progress-test@1", []);
     for (let i = 0; i < 250_000; i++) progress.read();
   } finally {
-    console.log = originalLog;
+    process.stdout.write = originalWrite;
   }
   assert.match(logs.join("\n"), /source=progress-test rows=250000\/500000 rows\/s=.* elapsed=.* ETA/);
 } finally {
