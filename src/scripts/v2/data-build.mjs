@@ -247,7 +247,16 @@ if (only.has("weather")) {
             const number = Number(value);
             return Number.isFinite(number) ? number : null;
           };
-          yield { stnId: String(row.stnId ?? ""), tm: String(row.tm ?? ""), ws: numberOrNull(row.ws), wd: numberOrNull(row.wd) };
+          yield {
+            stnId: String(row.stnId ?? ""),
+            tm: String(row.tm ?? ""),
+            ws: numberOrNull(row.ws),
+            wd: numberOrNull(row.wd),
+            ta: numberOrNull(row.ta),
+            hm: numberOrNull(row.hm),
+            icsr: numberOrNull(row.icsr),
+            dc10Tca: numberOrNull(row.dc10Tca),
+          };
         }
       }
     }

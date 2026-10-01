@@ -216,6 +216,37 @@ export async function buildEngineFixture(dataDir, version, options = {}) {
         }
       }
     }
+    if (options.weather === "legacy") {
+      // P4-T4: 새 계절 테이블이 없는 옛 weather 파일 모양.
+      db.exec("DROP TABLE weather_season_hour; DROP TABLE wind_rose_season;");
+    } else {
+      const seasonSpecs = [
+        { season: "spring", dir16: 12, ta: 18, hm: 55, ws: 1.8, ghi: 600, cloud: 4 },
+        { season: "summer", dir16: 10, ta: 31, hm: 60, ws: 2.2, ghi: 750, cloud: 5 },
+        { season: "autumn", dir16: 0, ta: 20, hm: 55, ws: 2.0, ghi: 550, cloud: 4 },
+        { season: "winter", dir16: 14, ta: 3, hm: 50, ws: 3.0, ghi: 420, cloud: 3 },
+      ];
+      const insertSeasonWind = db.prepare("INSERT INTO wind_rose_season (station_id, season, dir16, speed_bin, hours, calm_hours) VALUES (?, ?, ?, ?, ?, ?)");
+      const insertSeasonHour = db.prepare(`INSERT INTO weather_season_hour
+        (station_id, season, hour, n, ta_med, hm_med, ws_med, ghi_med_wm2, cloud_med)
+        VALUES (?, ?, ?, 300, ?, ?, ?, ?, ?)`);
+      for (const stationId of ["near", "far"]) {
+        for (const spec of seasonSpecs) {
+          const calmHours = stationId === "near" ? 100 : 200;
+          for (let dir16 = 0; dir16 < 16; dir16++) {
+            for (let speedBin = 0; speedBin < 5; speedBin++) {
+              insertSeasonWind.run(stationId, spec.season, dir16, speedBin, dir16 === spec.dir16 && speedBin === 1 ? 20000 : 0, calmHours);
+            }
+          }
+          for (let hour = 0; hour < 24; hour++) {
+            const ws = options.weather === "calm" ? 0.3 : spec.ws;
+            const ghi = hour >= 8 && hour <= 17 ? spec.ghi : 0;
+            const ta = hour === 14 ? spec.ta : spec.ta - 5;
+            insertSeasonHour.run(stationId, spec.season, hour, ta, spec.hm, ws, ghi, spec.cloud);
+          }
+        }
+      }
+    }
     run(db, "asos", weatherRelease, { byRegion: { near: 1, far: 1 }, byType: {}, fillRates: {}, unlocated: 0 }, 0, 87672);
     db.close();
     files.weather = "weather";
