@@ -72,15 +72,15 @@ function Card({ c, siblings, p, frame, year, hover, onHover, onPick }: { c: Comp
 export function CalloutLegend({ model, compact = false, style }: { model: CalloutModel; compact?: boolean; style?: React.CSSProperties }) {
   const items = compact ? compactCalloutLegend(model.legend, model.complexes, 3) : model.legend.items;
   return (
-    <div className={`${styles.plate} ${styles.cLegend}`} style={style} aria-label={compact ? `범례 ${items.length}색` : "범례"}>
-      <span className={styles.cLegendT}>{compact ? `범례 ${items.length}색` : model.legend.title}</span>
+    <div className={`${styles.plate} ${styles.cLegend}`} style={style} role="group" aria-label={compact ? `범례 ${items.length}색` : "범례"}>
+      {!compact && <span className={styles.cLegendT}>{model.legend.title}</span>}
       {items.map((it) => (
         <span key={it.label} className={styles.cLegendI}>
           <i style={{ background: it.hollow ? "transparent" : it.color, borderColor: it.color }} />
           {it.label}
         </span>
       ))}
-      <span className={styles.cLegendT}>{compact ? "색 = 구분" : model.legend.sizeLabel}</span>
+      {!compact && <span className={styles.cLegendT}>{model.legend.sizeLabel}</span>}
     </div>
   );
 }

@@ -21,6 +21,7 @@ import type { TileResult } from "@/lib/v2/tile-result";
 import type { Scene } from "@/lib/v2/scene";
 
 const UNDO_LABEL ={ order: "옮김", size: "크기 바꿈", remove: "삭제됨", add: "더함" } as const;
+const DEMO_START_LABEL = "분석 데모";
 
 type BoardProps = {
   baseResults: TileResult[];
@@ -334,7 +335,7 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
             <>
               {demo && (
                 <button type="button" className={`${styles.pill} ${styles.demoToggle}`} onClick={() => (demoOn ? setDemoStep(null) : setDemoStep(0))} aria-pressed={demoOn}>
-                  {demoOn ? "데모 끄기" : "분석 중 데모"}
+                  {demoOn ? "데모 끄기" : DEMO_START_LABEL}
                 </button>
               )}
               <div className={styles.desktopTools}>
