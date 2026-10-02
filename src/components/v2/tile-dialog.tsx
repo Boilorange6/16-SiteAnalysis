@@ -7,6 +7,7 @@ import { detailSiteX, OV } from "@/lib/v2/ui/overlay-layout";
 import type { CameraPreset, CutCount } from "@/lib/v2/ui/board-state";
 import { faceLabel, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
 import { BadgeList, FaceSelect, Headline, RowList, SourceStrip, Stage, StatusPlate, TitleChip } from "./tile-card";
+import WindPanel from "./wind-panel";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "./map-box";
 import styles from "./board.module.css";
 
@@ -22,6 +23,7 @@ type Props = {
   onCamera?: (camera: CameraPreset) => void;
   cuts?: CutCount;
   onCuts?: (cuts: CutCount) => void;
+  onWindUploaded?: () => void;
   onClose: () => void;
 };
 
@@ -29,11 +31,12 @@ const PANEL_W = 360;
 const insetOf = (w: number) => (w <= 720 ? 0 : PANEL_W + 2 * OV.edge);
 
 /** 펼침: 화면 거의 전체가 지도. 오른쪽에 떠 있는 정보 판. Esc로 닫고, 닫으면 열기 전 초점으로 돌아간다. */
-export default function TileDialog({ view, included, face, onInclude, onFace, calloutMode, onCalloutMode, camera, onCamera, cuts, onCuts, onClose }: Props) {
+export default function TileDialog({ view, included, face, onInclude, onFace, calloutMode, onCalloutMode, camera, onCamera, cuts, onCuts, onWindUploaded, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [back, setBack] = useState(false);
   const [more, setMore] = useState(false); // 모바일 시트 확장
   const [page, setPage] = useState(0); // 설명선 타일: 0 = 개요
+  const [windLayerZ, setWindLayerZ] = useState(6);
   const basemap = useContext(BasemapContext);
   const setBasemap = useContext(SetBasemapContext);
 
@@ -57,7 +60,7 @@ export default function TileDialog({ view, included, face, onInclude, onFace, ca
     <div className={styles.overlay} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div ref={ref} className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <div className={styles.stage}>
-          <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="detail" siteX={detailSiteX} rightInset={insetOf} legendY={OV.edge + 38 + 8} page={page} onPage={setPage} />
+          <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="detail" siteX={detailSiteX} rightInset={insetOf} legendY={OV.edge + 38 + 8} page={page} onPage={setPage} windLayerZ={windLayerZ} />
         </div>
 
         {state && <StatusPlate view={view} phase={null} />}
@@ -78,6 +81,7 @@ export default function TileDialog({ view, included, face, onInclude, onFace, ca
 
         <aside className={`${styles.plate} ${styles.dlgPanel} ${more ? styles.dlgPanelOpen : ""}`} aria-label={`${view.title} 정보`}>
           <BadgeList badges={view.badges} />
+          {view.code === "S03" && <WindPanel view={view} layerZ={windLayerZ} onLayerZ={setWindLayerZ} onUploaded={onWindUploaded} />}
           {view.headline && (
             <div className={styles.stat}>
               <Headline view={view} />

@@ -36,10 +36,12 @@ type BoardProps = {
   controls: ReactNode;
   /** 실패한 타일 다시 계산 (실제 분석일 때 전체 재실행) */
   onRerun: () => void;
+  /** 브라우저 S03 업로드·대체 요청 뒤 결과와 작업 폴링을 다시 연다. */
+  onWindUploaded: () => void;
 };
 
 /** 타일 보드. 결과가 바뀌면 부모가 key를 바꿔 새로 만든다. */
-function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, onRerun }: BoardProps) {
+function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, onRerun, onWindUploaded }: BoardProps) {
   const [overrides, setOverrides] = useState<Record<string, TileResult>>({});
   const [board, dispatch] = useReducer(boardReducer, baseResults, initBoard);
   useEffect(() => {
@@ -546,6 +548,7 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
                     setNote(`${view.title} 타일을 ${oi + dir + 1}번째로 옮김`);
                   }}
                   onRetry={() => retry(id, view.code)}
+                  onWindUploaded={onWindUploaded}
                   stackable={stackableIds.includes(id)}
                   stackSelected={stackSelection.includes(id)}
                   onStackToggle={(selected) => setStackSelection((current) => selected ? [...new Set([...current, id])] : current.filter((selectedId) => selectedId !== id))}
@@ -620,6 +623,7 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
           onCamera={(camera) => dispatch({ type: "camera", id: openView.tileId, camera })}
           cuts={openView.code === "S02" ? (board.cuts[openView.tileId] ?? 1) : undefined}
           onCuts={openView.code === "S02" ? (cuts) => dispatch({ type: "cuts", id: openView.tileId, cuts }) : undefined}
+          onWindUploaded={onWindUploaded}
           onClose={() => setOpenId(null)}
         />
       )}
@@ -671,6 +675,7 @@ export default function V2BoardPage() {
   const [problem, setProblem] = useState<Problem | null>(null);
   const [live, setLive] = useState<Live | null>(null);
   const activeJobs = live?.jobs.some((job) => job.status === "queued" || job.status === "running") ?? false;
+  const [windRefresh, setWindRefresh] = useState(0);
 
   async function load(res: Response, refreshScene = true, update = true, base: Live | null = live): Promise<Live | undefined> {
     const body = (await res.json().catch(() => ({}))) as Partial<Live> & { error?: string };
@@ -790,6 +795,24 @@ export default function V2BoardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live?.analysisId, activeJobs]);
 
+  // Browser WebGPU uploads update S03 directly; fetch the fresh result once,
+  // then the normal job poller continues if S04 was enqueued by the server.
+  useEffect(() => {
+    if (!live || windRefresh === 0) return;
+    let cancelled = false;
+    void fetch(`${API}/${encodeURIComponent(live.analysisId)}`)
+      .then((response) => load(response, false, true, live))
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setWindRefresh(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // load is intentionally the current page loader; the refresh token is the dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live?.analysisId, windRefresh]);
+
   useEffect(() => {
     if (live && !addressDirtyRef.current) {
       setAddress(live.summary.address);
@@ -853,6 +876,7 @@ export default function V2BoardPage() {
       busy={busy}
       controls={controls}
       onRerun={() => void analyze()}
+      onWindUploaded={() => setWindRefresh((value) => value + 1)}
     />
   );
 }

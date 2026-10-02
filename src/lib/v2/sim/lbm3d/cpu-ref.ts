@@ -22,6 +22,13 @@ export interface Lbm3dField {
   precision: "f16" | "f32";
   mlups: number;
   residual: number;
+  /** GPU-only readback diagnostics; absent on the CPU reference. */
+  fieldChecksum?: number;
+  densityChecksum?: number;
+  densityDrift?: number;
+  densityDriftMax?: number;
+  velocityDelta?: number;
+  dispatch?: { x: number; y: number; z: number; limit: number; strideX: number; strideXY: number };
 }
 
 export interface CpuRunOptions {
@@ -88,6 +95,12 @@ function makeState(c: Lbm3dCase): Float32Array {
   return state;
 }
 
+function initialFluidMass(c: Lbm3dCase): number {
+  let mass = 0;
+  for (let index = 0; index < c.solid.length; index += 1) if (c.solid[index] === 0) mass += 1;
+  return mass;
+}
+
 function abortIfRequested(signal: AbortSignal | undefined): void {
   if (!signal?.aborted) return;
   const error = new Error("D3Q19 CPU reference run aborted");
@@ -139,6 +152,7 @@ export function runCpuReference(c: Lbm3dCase, options: CpuRunOptions = {}): Lbm3
   const lastU = new Float32Array(cells);
   const lastV = new Float32Array(cells);
   const averageFrom = Math.min(Math.max(0, Math.floor(c.averageFrom)), Math.max(0, c.steps - 1));
+  const targetMass = initialFluidMass(c);
   let averageSamples = 0;
   let residual = 0;
 
@@ -247,6 +261,20 @@ export function runCpuReference(c: Lbm3dCase, options: CpuRunOptions = {}): Lbm3
             avgU[i] = f32(avgU[i] + normalizedU);
             avgV[i] = f32(avgV[i] + normalizedV);
           }
+        }
+      }
+    }
+    let outputMass = 0;
+    for (let index = 0; index < cells; index += 1) {
+      if (c.solid[index] !== 0) continue;
+      for (let q = 0; q < Q; q += 1) outputMass += output[q * cells + index];
+    }
+    if (outputMass > 0 && Number.isFinite(outputMass)) {
+      const correction = targetMass / outputMass;
+      if (Number.isFinite(correction) && correction > 0) {
+        for (let index = 0; index < cells; index += 1) {
+          if (c.solid[index] !== 0) continue;
+          for (let q = 0; q < Q; q += 1) output[q * cells + index] = f32(output[q * cells + index] * correction);
         }
       }
     }

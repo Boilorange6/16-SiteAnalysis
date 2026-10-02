@@ -46,6 +46,8 @@ export type TileView = {
   rose?: RoseModel | null;
   /** D22 연간·계절 풍향·풍속 누적 모델. */
   roses?: Record<RoseSeason, RoseModel> | null;
+  /** S03 작업/결과 조건에 선언된 계절별 유입 풍향(도). */
+  windDirections?: Record<string, number>;
   /** STACK 카드의 층 이름. 일반 타일은 null. */
   stackLayers: string[] | null;
   /** SHEET 카드가 참조하는 하위 타일과 격자. 일반 타일은 null. */
@@ -281,6 +283,24 @@ function metricRow(m: TileResult["metrics"][number]): Row {
   }
 }
 
+function windDirectionsOf(r: TileResult): Record<string, number> | undefined {
+  if (r.tileCode !== "S03" || !r.conditions.simulation) return undefined;
+  const simulation = r.conditions.simulation;
+  const simulationCase = simulation.case;
+  if (!simulationCase || typeof simulationCase !== "object") return undefined;
+  const inflow = (simulationCase as Record<string, unknown>).inflow;
+  if (!inflow || typeof inflow !== "object") return undefined;
+  const directions: Record<string, number> = {};
+  for (const season of ["annual", "spring", "summer", "autumn", "winter"]) {
+    const candidate = (inflow as Record<string, unknown>)[season];
+    if (!candidate || typeof candidate !== "object") continue;
+    const degrees = (candidate as Record<string, unknown>).deg;
+    if (typeof degrees !== "number" || !Number.isFinite(degrees)) continue;
+    directions[season] = ((degrees % 360) + 360) % 360;
+  }
+  return Object.keys(directions).length > 0 ? directions : undefined;
+}
+
 export function sourceLineOf(sources: TileResult["provenance"]["sources"]): string {
   if (sources.length === 0) return "출처 없음";
   return sources
@@ -336,6 +356,7 @@ export function toTileView(r: TileResult, scene?: Scene | null): TileView {
   const allRows = r.tileCode === "A02" ? metrics.filter((m) => m.id !== "in_school_zone").map(metricRow) : rows;
 
   const gradedMetricOk = r.judgment?.level != null && GRADED_CODES.has(r.tileCode) && r.judgment.criteria;
+  const windDirections = windDirectionsOf(r);
   return {
     tileId: r.tileId,
     code: r.tileCode,
@@ -366,6 +387,7 @@ export function toTileView(r: TileResult, scene?: Scene | null): TileView {
     mass: massOf(r, scene),
     rose: r.presentation.rose ?? null,
     roses: r.presentation.roses ?? null,
+    ...(windDirections ? { windDirections } : {}),
     stackLayers: null,
     sheetTiles: null,
     sheetGrid: null,
