@@ -113,6 +113,12 @@ assert.equal(rgba.length, 16);
 assert.equal(rgba[7], 0, "nodata는 투명");
 assert.notDeepEqual([...rgba.slice(0, 4)], [...rgba.slice(4, 8)], "계단 팔레트 경계 색");
 
+const roofRef = { ...encoded.ref, name: "sun_hours_summer", palette: "sun_hours", cols: 3, rows: 3, nodata: 255 };
+const roofRgba = paintRgba(roofRef, new Uint8Array(9).fill(254), RASTER_STYLES.sun_hours, 3, 3);
+assert.ok(roofRgba[0] < 120 && roofRgba[1] < 140 && roofRgba[2] < 160, "건물 표식 외곽선은 어두운 중립색");
+const roofCenter = (1 * 3 + 1) * 4;
+assert.ok(roofRgba[roofCenter] > 240 && roofRgba[roofCenter + 1] > 240 && roofRgba[roofCenter + 2] > 240, "건물 표식 내부는 밝은 중립색");
+
 const svfStyle = RASTER_STYLES.svf;
 assert.deepEqual(svfStyle.stops, [0, 0.25, 0.5, 0.65, 0.75, 0.85, 0.92, 1], "SVF는 상위 구간을 세분한 stop을 쓴다");
 assert.equal(svfStyle.colors[0], "#1b2b5a", "SVF 최저값은 navy");
@@ -150,6 +156,90 @@ const svfSvg = renderToStaticMarkup(createElement(MapFigure, {
 assert.match(svfSvg, /data-raster-legend="svf"/);
 for (const tick of ["0%", "25%", "50%", "75%", "100%"])
   assert.match(svfSvg, new RegExp(tick.replace("%", "\\%")), `SVF 범례 ${tick}`);
+
+const sunRef = { ...encoded.ref, name: "sun_hours_summer", palette: "sun_hours", label: "하지 일조시간" };
+const sunLegend = Array.from({ length: 16 }, (_, index) => ({
+  label: index === 15 ? "일조시간 · 15시간 이상" : `일조시간 · ${index}시간`,
+  min: index,
+  max: index === 15 ? null : index + 1,
+}));
+const sunModel = {
+  ...view.map,
+  tileCode: "S02",
+  notes: [],
+  polygons: [{ layer: "sun_face", rings: [[[127.149, 37.549], [127.151, 37.549], [127.151, 37.551], [127.149, 37.551]]] }],
+  rasters: [sunRef],
+  rasterOptions: [sunRef],
+  defaultRaster: sunRef.name,
+  legend: sunLegend,
+};
+const sunSvg = renderToStaticMarkup(createElement(MapFigure, {
+  model: sunModel,
+  width: 375,
+  height: 360,
+  basemap: "none",
+  fixed: true,
+  rasterHref: () => "data:image/png;base64,AAAA",
+}));
+assert.match(sunSvg, /data-raster-legend-title="true"[^>]*>하지 평균 일조시간 \(시간\)</);
+assert.equal((sunSvg.match(/data-raster-legend-entry=/g) ?? []).length, 16, "S02 범례는 16칸 단일 바");
+for (const tick of ["0", "3", "6", "9", "12", "15+"]) {
+  assert.match(sunSvg, new RegExp(`data-raster-legend-tick="${tick.replace("+", "\\+")}"`), `S02 범례 ${tick}`);
+}
+assert.doesNotMatch(sunSvg, />일조시간 · 6시간</, "반복 스와치 라벨을 그리지 않음");
+
+const sunCardSvg = renderToStaticMarkup(createElement(MapFigure, {
+  model: sunModel,
+  width: 336,
+  height: 280,
+  basemap: "none",
+  fixed: true,
+  legend: false,
+  rasterHref: () => "data:image/png;base64,AAAA",
+}));
+const sunCardLegendY = Number(sunCardSvg.match(/data-map-legend-panel="true"[^>]*\bx="[^"]+"\s+y="([0-9.]+)"/)?.[1] ?? 0);
+assert.ok(sunCardLegendY >= 60, "카드 래스터 범례는 상단 chrome 아래에 배치");
+
+const winterRef = { ...sunRef, name: "sun_hours_winter", label: "동지 일조시간" };
+const winterLegend = sunLegend.slice(0, 13).map((entry, index, all) => ({ ...entry, label: index === all.length - 1 ? "일조시간 · 12시간 이상" : entry.label, max: index === all.length - 1 ? null : entry.max }));
+const winterCardSvg = renderToStaticMarkup(createElement(MapFigure, {
+  model: { ...sunModel, tileCode: "D21", polygons: [], rasters: [winterRef], rasterOptions: [winterRef], defaultRaster: winterRef.name, legend: winterLegend },
+  width: 336,
+  height: 280,
+  basemap: "none",
+  fixed: true,
+  legend: false,
+  rasterHref: () => "data:image/png;base64,AAAA",
+}));
+assert.match(winterCardSvg, /data-raster-legend-rail="true"/);
+assert.match(winterCardSvg, /data-raster-legend-title="true"[^>]*>동지 평균 일조시간 \(시간\)</);
+assert.equal((winterCardSvg.match(/data-raster-legend-entry=/g) ?? []).length, 13, "D21 카드 rail은 모든 stepped cell을 유지");
+
+const buildingModel = {
+  ...svfModel,
+  polygons: [{ layer: "svf_building", rings: [[[127.149, 37.549], [127.151, 37.549], [127.151, 37.551], [127.149, 37.551]]], fid: "building-1" }],
+};
+const buildingSvg = renderToStaticMarkup(createElement(MapFigure, {
+  model: buildingModel,
+  width: 800,
+  height: 500,
+  basemap: "none",
+  fixed: true,
+  rasterHref: () => "data:image/png;base64,AAAA",
+}));
+assert.match(buildingSvg, /fill="#F8FAFC"/, "래스터 위 건물은 중립 채움");
+assert.match(buildingSvg, /stroke="#475569"/, "래스터 위 건물은 중립 외곽선");
+const buildingCardSvg = renderToStaticMarkup(createElement(MapFigure, {
+  model: buildingModel,
+  width: 336,
+  height: 280,
+  basemap: "none",
+  fixed: true,
+  legend: false,
+  rasterHref: () => "data:image/png;base64,AAAA",
+}));
+assert.match(buildingCardSvg, /data-raster-legend-rail="true"/, "작은 continuous 카드 범례는 오른쪽 rail");
+assert.equal((buildingCardSvg.match(/data-raster-legend-tick=/g) ?? []).length, 5, "D29 카드 rail도 숫자 tick을 유지");
 
 if (process.env.P4_VISUAL === "1") {
   const requireMain = createRequire("D:/V-coding/16-SiteAnalysis/package.json");
