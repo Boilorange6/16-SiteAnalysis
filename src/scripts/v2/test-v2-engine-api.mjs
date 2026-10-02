@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 const { buildEngineFixture } = await import("./engine-fixture.mjs");
 const A = await import("../../lib/v2/app-db.ts");
 const { postAnalysis, getAnalysis, getAnalysisStatus } = await import("../../lib/v2/engine/api.ts");
+const { ROAD_ADDRESS_UNSUPPORTED_MESSAGE, isRoadAddress } = await import("../../lib/v2/site.ts");
 const { runHeavyTiles } = await import("../../lib/v2/engine/jobs.ts");
 const { TILE_CODES } = await import("../../lib/v2/ui/tile-catalog.ts");
 
@@ -32,6 +33,9 @@ try {
   }
   assert.equal(appDb.prepare("SELECT count(*) FROM analysis_run").pluck().get(), 0, "검증 실패는 실행을 남기지 않는다");
 
+  assert.equal(isRoadAddress("서울특별시 강동구 아리수로 250"), true);
+  assert.equal(isRoadAddress("서울특별시 강동구 고덕동 250"), false);
+
   // 정상: 기본 반경 800
   const ok = postAnalysis(appDb, dataDir, { address, analysisDate: "2026-09-30" }, 17);
   assert.equal(ok.status, 202);
@@ -48,11 +52,17 @@ try {
   assert.equal(appDb.prepare("SELECT user_id FROM analysis_run WHERE analysis_id = ?").pluck().get(ok.body.analysisId), "17");
 
   // 대지 확정 실패 → 422, 이유별 안내
-  const cases = [["경기도 남양주시 다산동", "parse_failed", /지번 주소로 입력/], ["경기도 남양주시 별내동 1", "ambiguous", /동·리까지/], ["경기도 남양주시 다산동 999", "no_point", /필지 위치 미확보/]];
+  const cases = [
+    ["서울특별시 강동구 아리수로 250", "road_address_unsupported", new RegExp(ROAD_ADDRESS_UNSUPPORTED_MESSAGE)],
+    ["경기도 남양주시 다산동", "parse_failed", /지번 주소로 입력/],
+    ["경기도 남양주시 별내동 1", "ambiguous", /동·리까지/],
+    ["경기도 남양주시 다산동 999", "no_point", /필지 위치 미확보/],
+  ];
   for (const [a, reason, msg] of cases) {
     const r = postAnalysis(appDb, dataDir, { address: a });
     assert.deepEqual([r.status, r.body.reason], [422, reason]);
-    assert.match(r.body.error, msg);
+    if (reason === "road_address_unsupported") assert.equal(r.body.error, ROAD_ADDRESS_UNSUPPORTED_MESSAGE);
+    else assert.match(r.body.error, msg);
   }
 
   // 게시된 데이터가 없으면 503

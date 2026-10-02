@@ -1,4 +1,5 @@
 import type { Scene, Ring, SceneGround } from "../scene";
+import { exportFileName } from "./download";
 
 export const DXF_LAYERS = {
   BLDG: "BLDG",
@@ -318,17 +319,6 @@ export function sceneToDxf(scene: Scene, opts: DxfOptions = {}): string {
   return `${lines.join(CRLF)}${CRLF}`;
 }
 
-function filenamePart(value: string): string {
-  return value.trim().replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_");
-}
-
-function compactDate(value: string): string {
-  const match = value.match(/^(\d{4})[-/]?(\d{2})[-/]?(\d{2})/);
-  if (!match) throw new TypeError(`analysisDate must start with YYYYMMDD or YYYY-MM-DD, got ${value}`);
-  return `${match[1]}${match[2]}${match[3]}`;
-}
-
 export function dxfFileName(address: string, analysisDate: string): string {
-  const safeAddress = filenamePart(address) || "미상";
-  return `사이트분석_${safeAddress}_${compactDate(analysisDate)}.dxf`;
+  return exportFileName("dxf", address, analysisDate);
 }

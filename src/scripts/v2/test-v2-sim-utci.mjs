@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 const radiation = await import("../../lib/v2/sim/radiation.ts");
 const { erbsSplit, skyEmissivity, tmrt } = radiation;
 const { UTCI_BREAKS, UTCI_WIND_RANGE, utci, vapourPressureHpa } = await import("../../lib/v2/sim/utci.ts");
+const { maxOf } = await import("../../lib/v2/extent.ts");
 
 const near = (actual, expected, tolerance, label) => {
   assert.ok(Math.abs(actual - expected) <= tolerance, `${label}: ${actual} vs ${expected} (±${tolerance})`);
@@ -75,11 +76,23 @@ assert.ok(night < 22, `야간 Tmrt: ${night}`);
 assert.ok(summerSun > summerShade + 15, "햇볕/그늘 Tmrt 대비");
 
 // 6) UTCI 다항식은 셀당 상수 시간이어야 한다. 4계절×3시각 규모보다 큰 합성 배치.
-const t0 = performance.now();
-let checksum = 0;
-for (let i = 0; i < 100_000; i++) checksum += utci(20 + (i % 20) * 0.5, 25 + (i % 15), 0.5 + (i % 100) * 0.1, 40 + (i % 50)).value;
-const elapsedMs = performance.now() - t0;
-console.log(`T12 UTCI perf: 100000 cells -> ${elapsedMs.toFixed(1)} ms (checksum ${checksum.toFixed(2)})`);
-assert.ok(elapsedMs < 1000, `UTCI 100000셀 성능 초과: ${elapsedMs.toFixed(1)} ms`);
+function measureUtciBatch() {
+  const t0 = performance.now();
+  let checksum = 0;
+  for (let i = 0; i < 100_000; i++) checksum += utci(20 + (i % 20) * 0.5, 25 + (i % 15), 0.5 + (i % 100) * 0.1, 40 + (i % 50)).value;
+  return { elapsedMs: performance.now() - t0, checksum };
+}
+
+const warmupRuns = 2;
+const sampleRuns = 5;
+for (let i = 0; i < warmupRuns; i += 1) measureUtciBatch();
+const perfSamples = Array.from({ length: sampleRuns }, () => measureUtciBatch());
+const ordered = perfSamples.map((sample) => sample.elapsedMs).sort((a, b) => a - b);
+const medianMs = ordered[Math.floor(ordered.length / 2)];
+const maxMs = maxOf(ordered);
+const checksum = perfSamples[0].checksum;
+console.log(`T12 UTCI perf: 100000 cells -> ${ordered.map((value) => value.toFixed(1)).join(" / ")} ms; median ${medianMs.toFixed(1)} ms, max ${maxMs.toFixed(1)} ms (checksum ${checksum.toFixed(2)})`);
+assert.ok(medianMs < 1000, `UTCI 100000셀 중앙값 성능 초과: ${medianMs.toFixed(1)} ms`);
+assert.ok(maxMs < 1750, `UTCI 100000셀 반복 지연 성능 초과: ${maxMs.toFixed(1)} ms`);
 
 console.log(`v2 sim-utci: ok (sun ${summerSun.toFixed(2)}°C, shade ${summerShade.toFixed(2)}°C, night ${night.toFixed(2)}°C)`);

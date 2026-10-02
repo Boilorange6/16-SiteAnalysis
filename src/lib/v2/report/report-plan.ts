@@ -10,6 +10,7 @@ import type { MassModel } from "../ui/mass-projection";
 import type { SheetGrid } from "../ui/sheet";
 import { FACE_TEXT } from "../ui/tile-view";
 import type { RoseModel } from "../ui/wind-rose";
+import { exportFileName } from "../export/download";
 
 export type TileSlideBody =
   | { kind: "result"; face: "single" | "front" | "back" }
@@ -232,6 +233,5 @@ export function buildReportPlan(input: {
 
 /** 다운로드 파일명: 사이트분석_<주소>_<YYYYMMDD>.pptx */
 export function reportFileName(address: string, analysisDate: string): string {
-  const safe = address.replace(/[\\/:*?"<>|\s]+/g, "_").replace(/^_+|_+$/g, "");
-  return `사이트분석_${safe}_${analysisDate.replace(/-/g, "")}.pptx`;
+  return exportFileName("pptx", address, analysisDate);
 }
