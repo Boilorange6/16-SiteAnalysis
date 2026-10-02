@@ -258,17 +258,35 @@ export function queryFeaturesInRadius(db: Db, center: LngLat, radiusM: number, k
   const circle = circlePolygon(cx, cy, radiusM);
   const candidateRadius = radiusM / Math.cos(Math.PI / CIRCLE_SEGMENTS);
   const candidateRadiusSquared = candidateRadius * candidateRadius;
+  const radiusSquared = radiusM * radiusM;
   const hits: FeatureHit[] = [];
   for (const row of rows) {
     const dx = cx < row.min_x ? row.min_x - cx : cx > row.max_x ? cx - row.max_x : 0;
     const dy = cy < row.min_y ? row.min_y - cy : cy > row.max_y ? cy - row.max_y : 0;
     if (dx * dx + dy * dy > candidateRadiusSquared) continue;
+    // The R*Tree bbox is rounded outward. If all four corners of that
+    // conservative bbox are inside the true circle, every possible feature
+    // geometry is inside the circle polygon as well, so Turf cannot reject it.
+    // Boundary/intersecting candidates still take the exact existing path.
+    let bboxInsideCircle = false;
+    if (row.kind === "parcel") {
+      const minDx = row.min_x - cx;
+      const maxDx = row.max_x - cx;
+      const minDy = row.min_y - cy;
+      const maxDy = row.max_y - cy;
+      bboxInsideCircle = Math.max(
+        minDx * minDx + minDy * minDy,
+        minDx * minDx + maxDy * maxDy,
+        maxDx * maxDx + minDy * minDy,
+        maxDx * maxDx + maxDy * maxDy,
+      ) <= radiusSquared;
+    }
     const geometry = JSON.parse(row.geom_json) as Geometry;
     let distanceM: number | null = null;
     if (geometry.type === "Point" || geometry.type === "MultiPoint") {
       distanceM = minOf([...positions(geometry.coordinates)].map(([x, y]) => Math.hypot(x - cx, y - cy)));
       if (distanceM > radiusM) continue;
-    } else if (!booleanIntersects(circle, geometry)) {
+    } else if (!bboxInsideCircle && !booleanIntersects(circle, geometry)) {
       continue;
     }
     hits.push({

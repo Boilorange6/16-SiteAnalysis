@@ -58,7 +58,12 @@ export function sampleLine(center: LngLat, g: Geometry, radiusM: number, stepM: 
 type SegmentInterval = [number, number];
 
 type AreaInCircleResult = { areaM2: number; parts: number[][][][]; clipped: boolean };
-const areaInCircleCache = new WeakMap<Geometry, Map<string, AreaInCircleResult | null>>();
+type AreaInCircleCache = {
+  key: string;
+  result: AreaInCircleResult | null;
+  variants?: Map<string, AreaInCircleResult | null>;
+};
+const areaInCircleCache = new WeakMap<Geometry, AreaInCircleCache>();
 
 function circleCacheKey(center: LngLat, radiusM: number): string {
   return `${center[0]}:${center[1]}:${radiusM}`;
@@ -276,11 +281,9 @@ export function areaInCircle(center: LngLat, radiusM: number, g: Geometry): Area
   if (!center.every(Number.isFinite) || !Number.isFinite(radiusM) || radiusM < 0) return null;
   const key = circleCacheKey(center, radiusM);
   let cache = areaInCircleCache.get(g);
-  if (!cache) {
-    cache = new Map();
-    areaInCircleCache.set(g, cache);
-  }
-  if (cache.has(key)) return cache.get(key)!;
+  if (cache?.key === key) return cache.result;
+  const cachedVariant = cache?.variants?.get(key);
+  if (cachedVariant !== undefined) return cachedVariant;
   let result: AreaInCircleResult | null = null;
   try {
     const geometry = toUtmGeometry(g);
@@ -301,7 +304,13 @@ export function areaInCircle(center: LngLat, radiusM: number, g: Geometry): Area
   } catch {
     result = null;
   }
-  cache.set(key, result);
+  if (!cache) {
+    areaInCircleCache.set(g, { key, result });
+  } else if (!cache.variants) {
+    cache.variants = new Map([[cache.key, cache.result], [key, result]]);
+  } else {
+    cache.variants.set(key, result);
+  }
   return result;
 }
 
