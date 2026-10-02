@@ -8,7 +8,17 @@
  * on the hot path and concave footprints retain their shape.
  */
 import type { XY } from "./shadow";
+import type { HorizonMap } from "./horizon";
 import { kst, kstForTrueSolar, sunPosition, sunriseSunsetKstMin, trueSolarMin } from "./sun";
+import { availableParallelism } from "node:os";
+import {
+  isMainThread,
+  MessageChannel,
+  receiveMessageOnPort,
+  Worker,
+  type MessagePort,
+  workerData,
+} from "node:worker_threads";
 
 const RAD = Math.PI / 180;
 const EPSILON = 1e-10;
@@ -37,7 +47,9 @@ export interface SunFieldInput {
   lonDeg: number;
   date: { year: number; month: number; day: number };
   stepMin?: number;
-  horizon?: (x: number, y: number, azDeg: number) => number;
+  horizon?: HorizonSampler;
+  /** Structured-cloneable DEM horizon for date workers; callback remains for legacy callers. */
+  horizonMap?: HorizonMap;
   hourlyFrom?: number;
   continuousTst?: [number, number];
   totalTst?: [number, number];
@@ -54,6 +66,17 @@ export interface SunFieldResult {
   hourly: Array<{ kstHour: number; altDeg: number; azDeg: number; shade: Uint8Array }>;
   stats: { receivers: number; meanHours: number; shareLt1h: number; shareCont2h: number; shareTotal4h: number };
   obstacles: { buildings: number; canopy: number; excludedNoHeight: number };
+}
+
+export interface HorizonSampler {
+  (x: number, y: number, azDeg: number): number;
+  /** Optional fast path for a fixed receiver grid. */
+  valuesForGrid?: (grid: Pick<SunGrid, "x0" | "y0" | "cellM" | "cols" | "rows">, azDeg: number) => Float32Array;
+}
+
+export interface SunFieldBatchOptions {
+  /** Maximum number of date workers. Defaults to the available CPU count minus the caller. */
+  parallelism?: number;
 }
 
 interface BBox {
@@ -83,6 +106,36 @@ interface SolarInterval {
 interface ShadowComponents {
   dxPerHeight: number;
   dyPerHeight: number;
+}
+
+interface ScanEdge {
+  firstRow: number;
+  lastRow: number;
+  minY: number;
+  maxY: number;
+  xAtFirst: number;
+  dxPerRow: number;
+}
+
+function horizonValuesForGrid(horizon: HorizonMap, grid: Pick<SunGrid, "x0" | "y0" | "cellM" | "cols" | "rows">, azimuthDeg: number): Float32Array {
+  const normalized = Math.round((((azimuthDeg % 360) + 360) % 360) * 1000) / 1000;
+  const direction = (normalized / 360) * horizon.azimuths;
+  const az0 = Math.floor(direction) % horizon.azimuths;
+  const az1 = (az0 + 1) % horizon.azimuths;
+  const ta = direction - Math.floor(direction);
+  const expanded = new Float32Array(grid.cols * grid.rows);
+  for (let row = 0; row < grid.rows; row++) {
+    const y = grid.y0 + (row + 0.5) * grid.cellM;
+    const sourceRow = Math.max(0, Math.min(horizon.rows - 1, Math.round((y - horizon.y0) / horizon.cellM - 0.5)));
+    const target = row * grid.cols;
+    for (let col = 0; col < grid.cols; col++) {
+      const x = grid.x0 + (col + 0.5) * grid.cellM;
+      const sourceCol = Math.max(0, Math.min(horizon.cols - 1, Math.round((x - horizon.x0) / horizon.cellM - 0.5)));
+      const source = (sourceRow * horizon.cols + sourceCol) * horizon.azimuths;
+      expanded[target + col] = horizon.angleDeg[source + az0] * (1 - ta) + horizon.angleDeg[source + az1] * ta;
+    }
+  }
+  return expanded;
 }
 
 const indexOf = (row: number, col: number, cols: number) => row * cols + col;
@@ -228,6 +281,45 @@ function addInterval(diff: Int32Array, stride: number, row: number, grid: Pick<S
   diff[offset + lastCol + 1]--;
 }
 
+function scanEdges(
+  grid: Pick<SunGrid, "y0" | "cellM" | "rows">,
+  source: readonly XY[],
+): ScanEdge[] {
+  const edges: ScanEdge[] = [];
+  for (let i = 0; i < source.length; i++) {
+    const a = source[i];
+    const b = source[(i + 1) % source.length];
+    const dy = b[1] - a[1];
+    if (Math.abs(dy) <= EPSILON) continue;
+    const minY = Math.min(a[1], b[1]);
+    const maxY = Math.max(a[1], b[1]);
+    const firstRow = Math.max(0, Math.ceil((minY - grid.y0) / grid.cellM - 0.5 - EPSILON));
+    const lastRow = Math.min(grid.rows - 1, Math.floor((maxY - grid.y0) / grid.cellM - 0.5 + EPSILON));
+    if (firstRow > lastRow) continue;
+    const y = grid.y0 + (firstRow + 0.5) * grid.cellM;
+    edges.push({
+      firstRow,
+      lastRow,
+      minY,
+      maxY,
+      xAtFirst: a[0] + ((y - a[1]) * (b[0] - a[0])) / dy,
+      dxPerRow: ((b[0] - a[0]) / dy) * grid.cellM,
+    });
+  }
+  edges.sort((a, b) => a.firstRow - b.firstRow || a.lastRow - b.lastRow);
+  return edges;
+}
+
+function insertSorted(values: number[], count: number, value: number): number {
+  let at = count;
+  while (at > 0 && values[at - 1] > value) {
+    values[at] = values[at - 1];
+    at--;
+  }
+  values[at] = value;
+  return count + 1;
+}
+
 function rasterizeOpenRingToDiff(
   diff: Int32Array,
   stride: number,
@@ -236,21 +328,23 @@ function rasterizeOpenRingToDiff(
   crossings: number[],
 ): void {
   if (source.length < 3) return;
-  const [firstRow, lastRow] = rowRange(grid, ringBBox(source));
-  if (firstRow > lastRow) return;
+  const edges = scanEdges(grid, source);
+  if (edges.length < 2) return;
+  const firstRow = edges[0].firstRow;
+  const lastRow = edges.reduce((max, edge) => Math.max(max, edge.lastRow), -1);
+  const active: ScanEdge[] = [];
+  let nextEdge = 0;
   for (let row = firstRow; row <= lastRow; row++) {
+    while (nextEdge < edges.length && edges[nextEdge].firstRow <= row) active.push(edges[nextEdge++]);
+    for (let i = active.length - 1; i >= 0; i--) if (active[i].lastRow < row) active.splice(i, 1);
     const y = grid.y0 + (row + 0.5) * grid.cellM;
-    crossings.length = 0;
-    let previous = source[source.length - 1];
-    for (const current of source) {
-      const [x1, y1] = previous;
-      const [x2, y2] = current;
-      if ((y1 > y) !== (y2 > y)) crossings.push(x1 + ((y - y1) * (x2 - x1)) / (y2 - y1));
-      previous = current;
+    let crossingCount = 0;
+    for (const edge of active) {
+      // Preserve the original half-open edge rule exactly: the lower endpoint
+      // participates and the upper endpoint does not.
+      if (y >= edge.minY && y < edge.maxY) crossingCount = insertSorted(crossings, crossingCount, edge.xAtFirst + (row - edge.firstRow) * edge.dxPerRow);
     }
-    if (crossings.length < 2) continue;
-    crossings.sort((a, b) => a - b);
-    for (let i = 0; i + 1 < crossings.length; i += 2) addInterval(diff, stride, row, grid, crossings[i], crossings[i + 1]);
+    for (let i = 0; i + 1 < crossingCount; i += 2) addInterval(diff, stride, row, grid, crossings[i], crossings[i + 1]);
   }
 }
 
@@ -261,7 +355,11 @@ function rasterizeConvexToDiff(
   source: readonly XY[],
 ): void {
   if (source.length < 3) return;
-  const edges: Array<{ firstRow: number; lastRow: number; xAtFirst: number; dxPerRow: number }> = [];
+  const firstRows = new Int32Array(source.length);
+  const lastRows = new Int32Array(source.length);
+  const xAtFirst = new Float64Array(source.length);
+  const dxPerRow = new Float64Array(source.length);
+  let edgeCount = 0;
   let minRow = grid.rows;
   let maxRow = -1;
   for (let i = 0; i < source.length; i++) {
@@ -275,17 +373,21 @@ function rasterizeConvexToDiff(
     const lastRow = Math.min(grid.rows - 1, Math.floor((edgeMaxY - grid.y0) / grid.cellM - 0.5 + EPSILON));
     if (firstRow > lastRow) continue;
     const y = grid.y0 + (firstRow + 0.5) * grid.cellM;
-    edges.push({ firstRow, lastRow, xAtFirst: a[0] + ((y - a[1]) * (b[0] - a[0])) / dy, dxPerRow: ((b[0] - a[0]) / dy) * grid.cellM });
+    firstRows[edgeCount] = firstRow;
+    lastRows[edgeCount] = lastRow;
+    xAtFirst[edgeCount] = a[0] + ((y - a[1]) * (b[0] - a[0])) / dy;
+    dxPerRow[edgeCount] = ((b[0] - a[0]) / dy) * grid.cellM;
+    edgeCount++;
     if (firstRow < minRow) minRow = firstRow;
     if (lastRow > maxRow) maxRow = lastRow;
   }
-  if (minRow > maxRow) return;
+  if (edgeCount < 2 || minRow > maxRow) return;
   for (let row = minRow; row <= maxRow; row++) {
     let left = Infinity;
     let right = -Infinity;
-    for (const edge of edges) {
-      if (row < edge.firstRow || row > edge.lastRow) continue;
-      const x = edge.xAtFirst + (row - edge.firstRow) * edge.dxPerRow;
+    for (let edge = 0; edge < edgeCount; edge++) {
+      if (row < firstRows[edge] || row > lastRows[edge]) continue;
+      const x = xAtFirst[edge] + (row - firstRows[edge]) * dxPerRow[edge];
       if (x < left) left = x;
       if (x > right) right = x;
     }
@@ -360,6 +462,15 @@ function setRoofReceivers(grid: SunGrid, obstacles: readonly PreparedObstacle[])
   for (let i = 0; i < roof.length; i++) if (roof[i] && grid.receiver[i] === 1) grid.receiver[i] = 2;
 }
 
+function receiverIndices(grid: SunGrid): Uint32Array {
+  let count = 0;
+  for (const value of grid.receiver) if (value === 1) count++;
+  const indices = new Uint32Array(count);
+  let at = 0;
+  for (let index = 0; index < grid.receiver.length; index++) if (grid.receiver[index] === 1) indices[at++] = index;
+  return indices;
+}
+
 function setBit(bits: Uint8Array, at: number): void {
   bits[at >> 3] |= 1 << (at & 7);
 }
@@ -388,7 +499,8 @@ function makeShadeMask(
   grid: SunGrid,
   obstacles: readonly PreparedObstacle[],
   sun: { altitudeDeg: number; azimuthDeg: number },
-  horizon: SunFieldInput["horizon"],
+  horizon: HorizonSampler | undefined,
+  horizonValues: Float32Array | null,
   diff: Int32Array,
 ): Uint8Array {
   const shade = new Uint8Array(grid.cols * grid.rows);
@@ -410,22 +522,21 @@ function makeShadeMask(
     const offset = row * stride;
     let covered = 0;
     const target = row * grid.cols;
+    const y = grid.y0 + (row + 0.5) * grid.cellM;
     for (let col = 0; col < grid.cols; col++) {
       covered += diff[offset + col];
-      if (covered > 0 && grid.receiver[target + col] !== 0) shade[target + col] = 1;
-    }
-  }
-  if (horizon) {
-    for (let row = 0; row < grid.rows; row++) {
-      const y = grid.y0 + (row + 0.5) * grid.cellM;
-      const offset = row * grid.cols;
-      for (let col = 0; col < grid.cols; col++) {
-        const i = offset + col;
-        if (grid.receiver[i] !== 1) continue;
+      const i = target + col;
+      if (grid.receiver[i] === 0) continue;
+      let terrainShade = false;
+      if (grid.receiver[i] === 1 && horizonValues) {
+        const horizonDeg = horizonValues[i];
+        terrainShade = Number.isFinite(horizonDeg) && horizonDeg > sun.altitudeDeg;
+      } else if (horizon && grid.receiver[i] === 1) {
         const x = grid.x0 + (col + 0.5) * grid.cellM;
         const horizonDeg = horizon(x, y, sun.azimuthDeg);
-        if (Number.isFinite(horizonDeg) && horizonDeg > sun.altitudeDeg) shade[i] = 1;
+        terrainShade = Number.isFinite(horizonDeg) && horizonDeg > sun.altitudeDeg;
       }
+      if (covered > 0 || terrainShade) shade[i] = 1;
     }
   }
   return shade;
@@ -469,6 +580,7 @@ export function computeSunField(input: SunFieldInput): SunFieldResult {
   setRoofReceivers(grid, prepared);
 
   const size = grid.cols * grid.rows;
+  const receiverCells = receiverIndices(grid);
   const sunMinFloat = new Float64Array(size);
   const longestFloat = new Float64Array(size);
   const totalFloat = new Float64Array(size);
@@ -482,11 +594,11 @@ export function computeSunField(input: SunFieldInput): SunFieldResult {
     const midKst = (startKst + endKst) / 2;
     const sun = sunPosition(input.latDeg, input.lonDeg, kst(year, month, day, 0, midKst));
     const interval = solarInterval(input.lonDeg, input.date, startKst, endKst);
-    const shade = makeShadeMask(grid, prepared, sun, input.horizon, shadowDiff);
+    const horizonValues = input.horizon?.valuesForGrid?.(grid, sun.azimuthDeg) ?? (input.horizonMap ? horizonValuesForGrid(input.horizonMap, grid, sun.azimuthDeg) : null);
+    const shade = makeShadeMask(grid, prepared, sun, input.horizon, horizonValues, shadowDiff);
     const continuousMin = intervalOverlap(interval.startTst, interval.endTst, continuous[0], continuous[1]);
     const totalMin = intervalOverlap(interval.startTst, interval.endTst, total[0], total[1]);
-    for (let i = 0; i < size; i++) {
-      if (grid.receiver[i] !== 1) continue;
+    for (const i of receiverCells) {
       if (shade[i]) {
         if (continuousMin > 0) running[i] = 0;
         continue;
@@ -505,7 +617,8 @@ export function computeSunField(input: SunFieldInput): SunFieldResult {
   for (let hour = firstHour; hour <= 23; hour++) {
     const sun = sunPosition(input.latDeg, input.lonDeg, kst(year, month, day, hour));
     if (sun.altitudeDeg < 5) continue;
-    const shade = makeShadeMask(grid, prepared, sun, input.horizon, shadowDiff);
+    const horizonValues = input.horizon?.valuesForGrid?.(grid, sun.azimuthDeg) ?? (input.horizonMap ? horizonValuesForGrid(input.horizonMap, grid, sun.azimuthDeg) : null);
+    const shade = makeShadeMask(grid, prepared, sun, input.horizon, horizonValues, shadowDiff);
     const bits = new Uint8Array(Math.ceil(size / 8));
     for (let i = 0; i < size; i++) if (shade[i]) setBit(bits, i);
     hourly.push({ kstHour: hour, altDeg: sun.altitudeDeg, azDeg: sun.azimuthDeg, shade: bits });
@@ -519,8 +632,7 @@ export function computeSunField(input: SunFieldInput): SunFieldResult {
   let lt1h = 0;
   let cont2h = 0;
   let total4h = 0;
-  for (let i = 0; i < size; i++) {
-    if (grid.receiver[i] !== 1) continue;
+  for (const i of receiverCells) {
     receivers++;
     sumHours += sunMin[i] / 60;
     if (sunMin[i] < 60) lt1h++;
@@ -554,6 +666,107 @@ export function computeSunField(input: SunFieldInput): SunFieldResult {
   };
 }
 
+/**
+ * Compute independent dates concurrently in Node. The one-date function remains
+ * the source of truth; workers only change scheduling and transfer the exact
+ * typed-array result back. Callback horizons stay on the sync path, while a
+ * HorizonMap is structured-cloneable and can travel with each date worker.
+ */
+export function computeSunFields(inputs: readonly SunFieldInput[], options: SunFieldBatchOptions = {}): SunFieldResult[] {
+  if (inputs.length < 2 || options.parallelism === 1 || inputs.some((input) => input.horizon !== undefined)) return inputs.map(computeSunField);
+  const available = Math.max(1, availableParallelism() - 1);
+  const requested = options.parallelism ?? available;
+  if (!Number.isInteger(requested) || requested < 1) throw new RangeError("parallelism must be a positive integer");
+  const workerCount = Math.min(inputs.length, requested, available);
+  if (workerCount < 2) return inputs.map(computeSunField);
+
+  const results: SunFieldResult[] = new Array(inputs.length);
+  for (let start = 0; start < inputs.length; start += workerCount) {
+    const jobs = inputs.slice(start, start + workerCount).map((input, offset) => startWorker(input, start + offset));
+    try {
+      for (const job of jobs) {
+        const waitStatus = Atomics.wait(job.done, 0, 0, 300_000);
+        if (waitStatus === "timed-out") throw new Error(`sun-field worker timed out at date ${job.index}`);
+        const packet = receiveMessageOnPort(job.port)?.message as SunFieldWorkerMessage | undefined;
+        if (!packet?.ok) throw new Error(packet?.error ?? `sun-field worker failed at date ${job.index}`);
+        results[job.index] = packet.result;
+      }
+    } finally {
+      for (const job of jobs) {
+        job.port.close();
+        void job.worker.terminate();
+      }
+    }
+  }
+  return results;
+}
+
+interface SunFieldWorkerMessage {
+  ok: boolean;
+  result: SunFieldResult;
+  error?: string;
+}
+
+interface SunFieldWorkerJob {
+  index: number;
+  done: Int32Array;
+  port: MessagePort;
+  worker: Worker;
+}
+
+function workerExecArgv(): string[] {
+  const args = [...process.execArgv];
+  const filtered: string[] = [];
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index];
+    if (arg === "--eval" || arg === "-e" || arg === "--print" || arg === "-p" || arg === "--input-type") {
+      index++;
+      continue;
+    }
+    if (arg.startsWith("--eval=") || arg.startsWith("--print=") || arg.startsWith("--input-type=")) continue;
+    filtered.push(arg);
+  }
+  return filtered;
+}
+
+function resultTransferList(result: SunFieldResult): ArrayBuffer[] {
+  return [
+    result.sunMin.buffer,
+    result.longestRunTst0915.buffer,
+    result.totalTst0816.buffer,
+    ...result.hourly.map((hour) => hour.shade.buffer),
+  ] as ArrayBuffer[];
+}
+
+function startWorker(input: SunFieldInput, index: number): SunFieldWorkerJob {
+  const { port1, port2 } = new MessageChannel();
+  const done = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
+  const worker = new Worker(new URL("./sun-field.ts", import.meta.url), {
+    workerData: { kind: "sun-field", input, port: port2, done: done.buffer },
+    transferList: [port2],
+    execArgv: workerExecArgv(),
+  });
+  return { index, done, port: port1, worker };
+}
+
+function runSunFieldWorker(): void {
+  const payload = workerData as { kind?: string; input?: SunFieldInput; port?: MessagePort; done?: SharedArrayBuffer };
+  if (payload.kind !== "sun-field" || !payload.input || !payload.port || !payload.done) return;
+  const done = new Int32Array(payload.done);
+  try {
+    const result = computeSunField(payload.input);
+    payload.port.postMessage({ ok: true, result } satisfies SunFieldWorkerMessage, resultTransferList(result));
+  } catch (error) {
+    payload.port.postMessage({ ok: false, result: {} as SunFieldResult, error: error instanceof Error ? error.message : String(error) } satisfies SunFieldWorkerMessage);
+  } finally {
+    Atomics.store(done, 0, 1);
+    Atomics.notify(done, 0);
+    payload.port.close();
+  }
+}
+
 function kstForTstOffset(lonDeg: number, date: SunFieldInput["date"]): number {
   return kstForTrueSolar(lonDeg, date.year, date.month, date.day, 12 * 60) - 12 * 60;
 }
+
+if (!isMainThread && workerData && typeof workerData === "object" && (workerData as { kind?: string }).kind === "sun-field") runSunFieldWorker();

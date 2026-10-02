@@ -9,7 +9,7 @@ import {
   SUN_INFLUENCE_M,
   sunBuildingReady,
   sunDateValue,
-  sunFieldFor,
+  sunFieldsFor,
   sunGridFor,
   sunSources,
   horizonFor,
@@ -82,9 +82,10 @@ export function sunFieldBundleFor(ctx: EngineContext): S02Shared | null {
     const grid = sunGridFor(ctx);
     if (!grid) return null;
     const parcel = parcelSite(ctx);
+    const fieldsByDate = sunFieldsFor(ctx);
     const fields: S02RasterField[] = [];
     for (const key of S02_DATE_KEYS) {
-      const field = sunFieldFor(ctx, key as SunDateKey);
+      const field = fieldsByDate.get(key as SunDateKey) ?? null;
       if (!field) return null;
       fields.push({ key: key as SunDateKey, date: sunDateValue(ctx, key as SunDateKey), field });
     }
