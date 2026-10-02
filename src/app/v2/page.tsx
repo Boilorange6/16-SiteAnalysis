@@ -486,7 +486,7 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
             <div className={styles.progress} role="progressbar" aria-label="분석 진행" aria-valuemin={0} aria-valuemax={jobs.length} aria-valuenow={jobState.completed}>
               <div className={styles.progressFill} style={{ width: `${(jobState.completed / jobs.length) * 100}%` }} />
             </div>
-            <span className={styles.progressText} aria-live="polite">{jobState.completed} / {jobs.length} 계산 중</span>
+            <span className={styles.progressText} aria-live="polite" aria-atomic="true">{jobState.completed} / {jobs.length} 계산 중</span>
             <span className={styles.progressMeta}>경과 {formatElapsedMs(jobState.elapsedMs)}</span>
             {jobState.waitingLabel && <span className={styles.progressQueue}>{jobState.waitingLabel}</span>}
             <span className={styles.progressRetry}>{jobState.retryLabel}</span>
@@ -637,14 +637,16 @@ const RADII = [
 const API = "/site/api/v2/analyses";
 
 type JobState = { code: string; status: "queued" | "running" | "done" | "failed"; enqueuedAt?: string | null; startedAt?: string | null; elapsedMs: number | null };
-type Live = { analysisId: string; summary: SiteSummary; results: TileResult[]; jobs: JobState[]; scene: Scene | null };
+type TileState = { code: string; status: TileResult["status"]; revision: string; elapsedMs?: number | null };
+type Live = { analysisId: string; summary: SiteSummary; results: TileResult[]; jobs: JobState[]; tiles: TileState[]; revision: string; scene: Scene | null };
 type Problem = { text: string; login: boolean };
 const POLL_DELAYS_MS = [1000, 2000, 5000] as const;
 
-function liveRevision(value: Pick<Live, "jobs" | "results">): string {
-  const jobs = value.jobs.map((job) => `${job.code}:${job.status}`).join(",");
-  const results = value.results.map((result) => `${result.tileId}:${result.status}`).join(",");
-  return `${jobs}|${results}`;
+function mergeResults(existing: TileResult[], incoming: TileResult[]): TileResult[] {
+  if (existing.length === 0) return [...incoming];
+  const replacements = new Map(incoming.map((result) => [result.tileCode, result]));
+  const existingCodes = new Set(existing.map((result) => result.tileCode));
+  return [...existing.map((result) => replacements.get(result.tileCode) ?? result), ...incoming.filter((result) => !existingCodes.has(result.tileCode))];
 }
 
 /** 주소 입력 → 분석 → 실제 결과 보드. 분석 전에는 예시 보드를 그대로 보여 준다. */
@@ -656,7 +658,7 @@ export default function V2BoardPage() {
   const [live, setLive] = useState<Live | null>(null);
   const activeJobs = live?.jobs.some((job) => job.status === "queued" || job.status === "running") ?? false;
 
-  async function load(res: Response, refreshScene = true, update = true): Promise<Live | undefined> {
+  async function load(res: Response, refreshScene = true, update = true, base: Live | null = live): Promise<Live | undefined> {
     const body = (await res.json().catch(() => ({}))) as Partial<Live> & { error?: string };
     if (res.status === 401) {
       setProblem({ text: "로그인이 필요합니다.", login: true });
@@ -666,7 +668,8 @@ export default function V2BoardPage() {
       setProblem({ text: body.error ?? "분석하지 못했습니다. 잠시 뒤 다시 시도해 주세요.", login: false });
       return undefined;
     }
-    let scene: Scene | null = live?.analysisId === body.analysisId ? live.scene : null;
+    const prior = base?.analysisId === body.analysisId ? base : null;
+    let scene: Scene | null = prior?.scene ?? null;
     if (refreshScene) {
       try {
         const sceneRes = await fetch(`${API}/${encodeURIComponent(body.analysisId)}/scene`);
@@ -675,7 +678,16 @@ export default function V2BoardPage() {
         // 장면이 없어도 분석 결과 보드는 계속 연다. S01은 빈 매스 틀을 표시한다.
       }
     }
-    const next: Live = { analysisId: body.analysisId, summary: body.summary!, results: body.results ?? [], jobs: body.jobs ?? [], scene };
+    const incoming = (body.results ?? []) as TileResult[];
+    const next: Live = {
+      analysisId: body.analysisId,
+      summary: body.summary ?? prior!.summary,
+      results: prior ? mergeResults(prior.results, incoming) : incoming,
+      jobs: body.jobs ?? prior?.jobs ?? [],
+      tiles: body.tiles ?? prior?.tiles ?? [],
+      revision: body.revision ?? prior?.revision ?? "",
+      scene,
+    };
     if (update) {
       setLive(next);
       history.replaceState(null, "", `?analysis=${body.analysisId}`);
@@ -723,18 +735,31 @@ export default function V2BoardPage() {
     const poll = async () => {
       let shouldContinue = true;
       try {
-        const response = await fetch(`${API}/${encodeURIComponent(live.analysisId)}`);
-        const next = await load(response, false, false);
-        if (next && !cancelled) {
-          const changed = liveRevision(currentLive) !== liveRevision(next);
-          if (changed) {
-            currentLive = next;
-            setLive(next);
-            delayIndex = 0;
-          } else {
-            delayIndex = Math.min(delayIndex + 1, POLL_DELAYS_MS.length - 1);
+        const headers: HeadersInit = currentLive.revision ? { "If-None-Match": `"${currentLive.revision}"` } : {};
+        const response = await fetch(`${API}/${encodeURIComponent(currentLive.analysisId)}?status=1`, { headers });
+        if (response.status === 304) {
+          shouldContinue = currentLive.jobs.some((job) => job.status === "queued" || job.status === "running");
+          delayIndex = Math.min(delayIndex + 1, POLL_DELAYS_MS.length - 1);
+        } else if (response.ok) {
+          const status = (await response.json()) as { revision: string; tiles: TileState[]; jobs: JobState[] };
+          const changedCodes = status.tiles.filter((tile) => currentLive.tiles.find((old) => old.code === tile.code)?.revision !== tile.revision).map((tile) => tile.code);
+          let next: Live = { ...currentLive, revision: status.revision, tiles: status.tiles, jobs: status.jobs };
+          if (changedCodes.length > 0) {
+            const resultResponse = await fetch(`${API}/${encodeURIComponent(currentLive.analysisId)}?tiles=${encodeURIComponent(changedCodes.join(","))}`);
+            const loaded = await load(resultResponse, false, false, currentLive);
+            if (loaded) next = loaded;
           }
-          shouldContinue = next.jobs.some((job) => job.status === "queued" || job.status === "running");
+          if (!cancelled) {
+            const changed = next.revision !== currentLive.revision || changedCodes.length > 0;
+            currentLive = next;
+            if (changed) {
+              setLive(next);
+              delayIndex = 0;
+            } else {
+              delayIndex = Math.min(delayIndex + 1, POLL_DELAYS_MS.length - 1);
+            }
+          }
+          shouldContinue = status.jobs.some((job) => job.status === "queued" || job.status === "running");
         }
       } catch {
         delayIndex = Math.min(delayIndex + 1, POLL_DELAYS_MS.length - 1);

@@ -9,7 +9,7 @@ import { ManifestError, manifestHash, openDataFile, readArchivedManifest, resolv
 import { parseTileResult, tileCacheKey, type RasterRef, type TileConditions, type TileResult } from "../tile-result";
 import { loadTileRaster, saveTileRasters } from "../raster-store";
 import { EngineContext, type RasterValues } from "./context";
-import { TILES } from "./run";
+import { saveTileResultWithElapsed, TILES } from "./run";
 import { ENGINE_VERSION, makeTile } from "./tiles/common";
 import { catalogEntry } from "../ui/tile-catalog";
 
@@ -197,7 +197,8 @@ function saveFailedJob(db: Db, run: AnalysisRun, code: string, elapsedMs: number
       })
       : fallback!.result;
     const key = cacheKey ?? (ctx ? keyFor(ctx, code) : fallback!.cacheKey);
-    saveTileResult(db, failed, key);
+    if (elapsedMs > 0) saveTileResultWithElapsed(db, failed, key, elapsedMs);
+    else saveTileResult(db, failed, key);
   } catch (error) {
     // 상태 행은 이미 failed로 남겼다. 저장된 pending 타일이 손상된 경우에도 큐를 막지 않는다.
     console.warn(`v2 analysis job ${run.analysisId}/${code} failed-result save skipped: ${String(error instanceof Error ? error.message : error).slice(0, 200)}`);
@@ -303,8 +304,9 @@ export function runHeavyTiles(appDb: Db, dataDir: string, analysisId: string): v
           tile = tileWithRasters(tile, emitted);
         }
         if (emitted.length > 0) saveTileRasters(appDb, key, emitted);
-        saveTileResult(appDb, tile, key);
-        markDone(appDb, analysisId, code, Math.max(1, Math.round(performance.now() - started)));
+        const elapsedMs = Math.max(1, Math.round(performance.now() - started));
+        saveTileResultWithElapsed(appDb, tile, key, elapsedMs);
+        markDone(appDb, analysisId, code, elapsedMs);
       } catch (error) {
         engine.takeRasters(code);
         saveFailedJob(appDb, run, code, Math.max(1, Math.round(performance.now() - started)), jobFailureReason(error), engine, key);
