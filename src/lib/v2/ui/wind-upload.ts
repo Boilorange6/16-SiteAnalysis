@@ -74,8 +74,10 @@ export function windDirectionLabel(degrees: number | null): string {
   return DIRECTION_NAMES[index] ?? "풍향 미상";
 }
 
-/** Completed S03 results expose the season direction in their metric rows. */
-export function windDirectionFromView(view: TileView, season: WindSeason, fallback = 180): number {
+/** S03 작업/결과 조건을 우선 읽고, 구형 결과에서는 계절 지표를 보조로 읽는다. */
+export function windDirectionFromView(view: TileView, season: WindSeason, fallback: number | null = null): number | null {
+  const declared = view.windDirections?.[season];
+  if (typeof declared === "number" && Number.isFinite(declared)) return normalizedDegrees(declared);
   const row = view.rows.find((candidate) => candidate.label.toLowerCase().includes(season) && candidate.label.includes("유입 풍향"));
   if (!row) return fallback;
   const match = row.value.match(/-?\d+(?:\.\d+)?/);
@@ -253,7 +255,11 @@ export async function runWindUpload(options: {
   const fetchImpl = options.fetchImpl ?? fetch;
   const availability = options.availability ?? await webgpuAvailable();
   if (!availability.ok) throw new Error(availability.reason ?? "이 브라우저는 WebGPU를 지원하지 않습니다");
-  const inflowFromDeg = options.inflowFromDeg ?? windDirectionFromView(options.view, options.season);
+  const requestedDirection = options.inflowFromDeg ?? windDirectionFromView(options.view, options.season);
+  if (requestedDirection === null || !Number.isFinite(requestedDirection)) {
+    throw new Error(`S03 ${options.season} 유입 풍향을 확인할 수 없습니다`);
+  }
+  const inflowFromDeg = normalizedDegrees(requestedDirection);
   const { ref, values: obstacle } = await obstacleValuesFor(options.view, fetchImpl);
   const { simulation, planReason } = caseFor(obstacle, ref, availability, inflowFromDeg, options.onProgress);
   const field = await runWorker(simulation, options.signal, options.onProgress ?? (() => undefined));

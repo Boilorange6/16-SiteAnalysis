@@ -65,7 +65,7 @@ export default function WindPanel({ view, compact = false, phase = null, layerZ 
   const selectedOption = options.find((option) => option.z === layerZ) ?? options[0] ?? null;
   const activeZ = selectedOption?.z ?? layerZ;
   const analysisId = view.map?.analysisId ?? null;
-  const selectedSeason: WindSeason = range === "annual" ? "annual" : "annual";
+  const selectedSeason: WindSeason = range === "annual" ? "annual" : (progress?.season ?? "annual");
   const direction = windDirectionFromView(view, selectedSeason);
   const running = status === "running" || phase === "running";
   const waiting = view.status === "pending" || view.status === "running" || phase === "pending" || phase === "running";

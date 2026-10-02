@@ -9,6 +9,10 @@
 export interface Lbm3dWgslOptions {
   precision?: "f16" | "f32";
   groupSizes?: readonly number[];
+  /** Number of invocations covered by one dispatch y slice. */
+  dispatchStrideX?: number;
+  /** Number of invocations covered by one dispatch z slice. */
+  dispatchStrideXY?: number;
 }
 
 const DEFAULT_GROUP_SIZES = [19] as const;
@@ -17,7 +21,7 @@ function switchFunction(name: string, values: readonly number[], type: "i32" | "
   return `${values.map((value, i) => `  if (q == ${i}u) { return ${value}${type === "u32" ? "u" : ""}; }`).join("\n")}\n  return 0${type === "u32" ? "u" : ""};`;
 }
 
-function groupFunction(groupSizes: readonly number[], scalar: "f16" | "f32"): { load: string; store: string; declarations: string } {
+function groupFunction(groupSizes: readonly number[], scalar: "f16" | "f32"): { load: string; loadOutput: string; store: string; declarations: string } {
   const declarations: string[] = [];
   let start = 0;
   for (let group = 0; group < groupSizes.length; group++) {
@@ -26,17 +30,20 @@ function groupFunction(groupSizes: readonly number[], scalar: "f16" | "f32"): { 
     start += groupSizes[group];
   }
   const loadParts: string[] = [];
+  const loadOutputParts: string[] = [];
   const storeParts: string[] = [];
   start = 0;
   for (let group = 0; group < groupSizes.length; group++) {
     const end = start + groupSizes[group];
     loadParts.push(`  if (q < ${end}u) { return f32(distIn${group}[(q - ${start}u) * cell_count() + cell]); }`);
+    loadOutputParts.push(`  if (q < ${end}u) { return f32(distOut${group}[(q - ${start}u) * cell_count() + cell]); }`);
     storeParts.push(`  if (q < ${end}u) { distOut${group}[(q - ${start}u) * cell_count() + cell] = ${scalar}(value); return; }`);
     start = end;
   }
   return {
     declarations: declarations.join("\n"),
     load: `${loadParts.join("\n")}\n  return 0.0;`,
+    loadOutput: `${loadOutputParts.join("\n")}\n  return 0.0;`,
     store: `${storeParts.join("\n")}`,
   };
 }
@@ -47,6 +54,11 @@ export function d3q19KernelWgsl(options: Lbm3dWgslOptions = {}): string {
   const groupSizes = options.groupSizes && options.groupSizes.length > 0 ? options.groupSizes : DEFAULT_GROUP_SIZES;
   if (groupSizes.reduce((sum, size) => sum + size, 0) !== 19) throw new RangeError("D3Q19 group sizes must sum to 19");
   if (groupSizes.some((size) => !Number.isInteger(size) || size < 1)) throw new RangeError("D3Q19 group sizes must be positive integers");
+  const dispatchStrideX = options.dispatchStrideX ?? 4_194_240;
+  const dispatchStrideXY = options.dispatchStrideXY ?? dispatchStrideX;
+  if (!Number.isInteger(dispatchStrideX) || dispatchStrideX < 1 || !Number.isInteger(dispatchStrideXY) || dispatchStrideXY < dispatchStrideX) {
+    throw new RangeError("D3Q19 dispatch strides must be positive integers");
+  }
   const group = groupFunction(groupSizes, precision);
   const solidBinding = groupSizes.length * 2;
   const averageBinding = solidBinding + 1;
@@ -71,12 +83,16 @@ struct Params {
   tau0: f32,
   averageFrom: u32,
   averageEvery: u32,
+  initialMass: f32,
+  massScale: f32,
 }
 
 ${group.declarations}
 @group(0) @binding(${solidBinding}) var<storage, read> solid: array<u32>;
 @group(0) @binding(${averageBinding}) var<storage, read_write> average: array<vec2<f32>>;
 @group(0) @binding(${paramsBinding}) var<uniform> params: Params;
+@group(0) @binding(${paramsBinding + 1}) var<storage, read_write> density: array<f32>;
+@group(0) @binding(${paramsBinding + 2}) var<storage, read_write> mass: atomic<u32>;
 
 const CX: array<i32, 19> = array<i32, 19>(${cx.join(", ")});
 const CY: array<i32, 19> = array<i32, 19>(${cy.join(", ")});
@@ -111,19 +127,24 @@ fn load_dist(q: u32, cell: u32) -> f32 {
 ${group.load}
 }
 
+fn load_output(q: u32, cell: u32) -> f32 {
+${group.loadOutput}
+}
+
 fn store_dist(q: u32, cell: u32, value: f32) {
 ${group.store}
 }
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-  // The host tiles very large 1D domains over a second dispatch dimension;
-  // 65,535 is the WebGPU minimum per-dimension workgroup limit.
-  let cell = gid.x + gid.y * 4194240u;
+  // The host tiles very large 1D domains over 2D/3D dispatch dimensions;
+  // strides are generated from the adapter's workgroup limit.
+  let cell = gid.x + gid.y * ${dispatchStrideX}u + gid.z * ${dispatchStrideXY}u;
   if (cell >= cell_count()) { return; }
   if (solid[cell] != 0u) {
     for (var q: u32 = 0u; q < 19u; q = q + 1u) { store_dist(q, cell, 0.0); }
     average[cell] = vec2<f32>(0.0, 0.0);
+    density[cell] = 0.0;
     return;
   }
 
@@ -210,10 +231,31 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (x == 0u) { post = equilibrium(q, 1.0, u_in, 0.0, 0.0); }
     store_dist(q, cell, post);
   }
+  density[cell] = select(rho, 1.0, x == 0u);
   let normalized = select(vec2<f32>(ux / u_in, uy / u_in), vec2<f32>(1.0, 0.0), x == 0u);
   if (params.step >= params.averageFrom && params.step % params.averageEvery == 0u) {
     average[cell] = average[cell] + normalized;
   }
+}
+
+@compute @workgroup_size(64)
+fn measure(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let cell = gid.x + gid.y * ${dispatchStrideX}u + gid.z * ${dispatchStrideXY}u;
+  if (cell >= cell_count() || solid[cell] != 0u) { return; }
+  var rho = 0.0;
+  for (var q: u32 = 0u; q < 19u; q = q + 1u) { rho = rho + load_output(q, cell); }
+  density[cell] = rho;
+  atomicAdd(&mass, u32(max(rho, 0.0) * params.massScale + 0.5));
+}
+
+@compute @workgroup_size(64)
+fn normalize(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let cell = gid.x + gid.y * ${dispatchStrideX}u + gid.z * ${dispatchStrideXY}u;
+  if (cell >= cell_count() || solid[cell] != 0u) { return; }
+  let measuredMass = f32(atomicLoad(&mass)) / params.massScale;
+  let factor = select(1.0, params.initialMass / measuredMass, measuredMass > 0.0);
+  for (var q: u32 = 0u; q < 19u; q = q + 1u) { store_dist(q, cell, load_output(q, cell) * factor); }
+  density[cell] = density[cell] * factor;
 }
 `;
 }

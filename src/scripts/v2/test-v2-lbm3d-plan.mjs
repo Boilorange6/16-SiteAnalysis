@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 
+const { minOf } = await import("../../lib/v2/extent.ts");
 const { planGrid, voxelize } = await import("../../lib/v2/sim/lbm3d/plan.ts");
 const { runCpuReference } = await import("../../lib/v2/sim/lbm3d/cpu-ref.ts");
 const { d3q19KernelWgsl } = await import("../../lib/v2/sim/lbm3d/kernels.wgsl.ts");
@@ -15,6 +16,11 @@ const MB = 1024 ** 2;
   assert.match(f32, /@compute/);
   assert.match(f32, /Smagorinsky/);
   assert.match(f32, /4194240u/);
+  assert.match(f32, /0\.9 \* 6\.0 \* weight/);
+  const tiled = d3q19KernelWgsl({ dispatchStrideX: 128, dispatchStrideXY: 256 });
+  assert.match(tiled, /gid\.y \* 128u/);
+  assert.match(tiled, /gid\.z \* 256u/);
+  assert.match(tiled, /var<storage, read_write> density/);
   assert.match(f16, /enable f16/);
   assert.match(f16, /array<f16>/);
   assert.match(f16, /@binding\(5\)/);
@@ -84,6 +90,9 @@ function makeCase(withBox = false) {
   return { nx, ny, nz, cellM: 4, solid, uLattice: 0.06, profileAlpha: 0.25, zRefM: 10, cs: 0.16, tau0: 0.8, steps: 300, averageFrom: 180, layersZm: [6, 10, 14] };
 }
 
+let emptyChannelMean = 0;
+let buildingWakeMinimum = 0;
+
 // 4) The CPU reference is deterministic, has a near-unity empty-channel
 // ratio, and produces a measurable obstacle wake.
 {
@@ -93,14 +102,14 @@ function makeCase(withBox = false) {
   // The reference S03 walking layer is 6 m; its open-channel U/Uin should be
   // close to one despite the z=0 ground bounce-back.
   const values = Array.from(emptyA.layers[0].u).filter(Number.isFinite);
-  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
-  assert.ok(Math.abs(mean - 1) <= 0.05, `empty channel mean U/Uin ${mean}`);
+  emptyChannelMean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  assert.ok(Math.abs(emptyChannelMean - 1) <= 0.05, `empty channel mean U/Uin ${emptyChannelMean}`);
 
   const obstacle = runCpuReference(makeCase(true));
   const wakeLayer = obstacle.layers[1].u;
   const downstream = Array.from(wakeLayer).filter((value, index) => Number.isFinite(value) && index % 24 >= 12 && index % 24 <= 18);
-  const wake = Math.min(...downstream);
-  assert.ok(wake < 0.7, `obstacle wake ${wake}`);
+  buildingWakeMinimum = minOf(downstream);
+  assert.ok(buildingWakeMinimum < 0.7, `obstacle wake ${buildingWakeMinimum}`);
 }
 
-console.log("v2 lbm3d plan/cpu: ok");
+console.log(`v2 lbm3d plan/cpu: ok · ground factor 0.9 · empty U/Uin ${emptyChannelMean.toFixed(4)} · building wake min ${buildingWakeMinimum.toFixed(5)}`);

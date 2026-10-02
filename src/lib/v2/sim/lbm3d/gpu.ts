@@ -7,10 +7,12 @@ export type { Lbm3dField, Lbm3dLayer } from "./cpu-ref";
 export interface WebGpuAvailability {
   ok: boolean;
   reason: string | null;
+  adapter?: string;
   limits?: {
     maxBufferSize: number;
     maxStorageBufferBindingSize: number;
     maxStorageBuffersPerShaderStage: number;
+    maxComputeWorkgroupsPerDimension: number;
   };
   f16?: boolean;
 }
@@ -24,21 +26,30 @@ export interface Lbm3dRunOptions {
 
 interface GpuAdapterLike {
   name?: string;
+  info?: { vendor?: string; architecture?: string; device?: string; description?: string };
   features?: { has: (feature: string) => boolean };
   limits: Record<string, number>;
   requestDevice: (descriptor?: Record<string, unknown>) => Promise<GpuDeviceLike>;
 }
 
+interface GpuDeviceLostInfo {
+  reason?: string;
+  message?: string;
+}
+
 interface GpuDeviceLike {
   limits: Record<string, number>;
+  lost: Promise<GpuDeviceLostInfo>;
   createShaderModule: (descriptor: { code: string }) => unknown;
+  createBindGroupLayout: (descriptor: { entries: Array<Record<string, unknown>> }) => unknown;
+  createPipelineLayout: (descriptor: { bindGroupLayouts: unknown[] }) => unknown;
   createComputePipeline: (descriptor: Record<string, unknown>) => GpuPipelineLike;
   createBuffer: (descriptor: { size: number; usage: number; mappedAtCreation?: boolean }) => GpuBufferLike;
   createBindGroup: (descriptor: { layout: unknown; entries: Array<{ binding: number; resource: { buffer: GpuBufferLike } }> }) => unknown;
   createCommandEncoder: () => GpuCommandEncoderLike;
   queue: GpuQueueLike;
-  pushErrorScope?: (filter: "out-of-memory" | "validation" | "internal") => void;
-  popErrorScope?: () => Promise<{ message?: string } | null>;
+  pushErrorScope: (filter: "out-of-memory" | "validation" | "internal") => void;
+  popErrorScope: () => Promise<{ message?: string } | null>;
 }
 
 interface GpuPipelineLike {
@@ -82,18 +93,80 @@ const BUFFER_COPY_SRC = 4;
 const BUFFER_COPY_DST = 8;
 const BUFFER_UNIFORM = 64;
 const BUFFER_STORAGE = 128;
+const SHADER_STAGE_COMPUTE = 4;
 const Q = D3Q19_VELOCITIES.length;
 const WORKGROUP_SIZE = 64;
-const MAX_DISPATCH_X = 65_535;
 const AVERAGE_EVERY = 64;
+const MASS_CHECK_EVERY = 256;
+const MASS_SCALE = 256;
+const MAX_DENSITY_DRIFT = 1e-3;
 
 function navigatorGpu(): NavigatorWithGpu["gpu"] | undefined {
   return (globalThis as typeof globalThis & { navigator?: NavigatorWithGpu }).navigator?.gpu;
 }
 
-function limit(adapter: GpuAdapterLike, key: string, fallback: number): number {
-  const value = Number(adapter.limits[key]);
+function limit(source: { limits: Record<string, number> }, key: string, fallback: number): number {
+  const value = Number(source.limits[key]);
   return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function adapterLabel(adapter: GpuAdapterLike): string {
+  const labels: string[] = [];
+  for (const value of [adapter.name, adapter.info?.description, adapter.info?.device, adapter.info?.vendor, adapter.info?.architecture]) {
+    if (typeof value === "string" && value.trim().length > 0 && !labels.includes(value.trim())) labels.push(value.trim());
+  }
+  return labels.length > 0 ? labels.join(" · ") : "WebGPU adapter (name unavailable)";
+}
+
+type GpuErrorFilter = "out-of-memory" | "validation" | "internal";
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function withGpuErrorScopes<T>(
+  device: GpuDeviceLike,
+  label: string,
+  work: () => T | Promise<T>,
+  assertAlive: () => void,
+): Promise<T> {
+  const filters: GpuErrorFilter[] = ["validation", "internal", "out-of-memory"];
+  for (const filter of filters) device.pushErrorScope(filter);
+  let result: T | undefined;
+  let thrown: unknown = null;
+  try {
+    assertAlive();
+    result = await work();
+    assertAlive();
+  } catch (error) {
+    thrown = error;
+  }
+  const errors: string[] = [];
+  for (let index = filters.length - 1; index >= 0; index -= 1) {
+    try {
+      const error = await device.popErrorScope();
+      if (error) errors.push(error.message ?? "알 수 없는 WebGPU 오류");
+    } catch (error) {
+      errors.push(errorText(error));
+    }
+  }
+  if (thrown !== null) throw thrown;
+  if (errors.length > 0) throw new Error(`${label}: ${errors.join("; ")}`);
+  return result as T;
+}
+
+async function submitAndWait(
+  device: GpuDeviceLike,
+  commands: unknown[],
+  label: string,
+  assertAlive: () => void,
+): Promise<void> {
+  await withGpuErrorScopes(device, label, async () => {
+    device.queue.submit(commands);
+    await device.queue.onSubmittedWorkDone();
+    // Let GPUDevice.lost's fulfillment callback run before the next command.
+    await Promise.resolve();
+  }, assertAlive);
 }
 
 export async function webgpuAvailable(): Promise<WebGpuAvailability> {
@@ -109,10 +182,12 @@ export async function webgpuAvailable(): Promise<WebGpuAvailability> {
   return {
     ok: true,
     reason: null,
+    adapter: adapterLabel(adapter),
     limits: {
       maxBufferSize: limit(adapter, "maxBufferSize", 256 * 1024 * 1024),
       maxStorageBufferBindingSize: limit(adapter, "maxStorageBufferBindingSize", 128 * 1024 * 1024),
       maxStorageBuffersPerShaderStage: limit(adapter, "maxStorageBuffersPerShaderStage", 8),
+      maxComputeWorkgroupsPerDimension: limit(adapter, "maxComputeWorkgroupsPerDimension", 65_535),
     },
     f16: Boolean(adapter.features?.has("shader-f16")),
   };
@@ -201,11 +276,15 @@ function balancedGroups(cells: number, bytesPerValue: number, limits: { maxBuffe
   const perDirectionBytes = cells * bytesPerValue;
   const perGroupLimit = Math.min(limits.maxBufferSize, limits.maxStorageBufferBindingSize);
   const required = Math.max(1, Math.ceil((Q * perDirectionBytes) / perGroupLimit));
-  const maxGroups = Math.max(1, Math.floor((limits.maxStorageBuffersPerShaderStage - 2) / 2));
+  const maxGroups = Math.max(1, Math.floor((limits.maxStorageBuffersPerShaderStage - 4) / 2));
   if (required > maxGroups) {
     throw new Error(`WebGPU storage binding limit needs ${required} direction groups but only ${maxGroups} fit`);
   }
-  const groups = Math.min(required, Q);
+  // Some drivers advertise a large maxStorageBufferBindingSize but reject a
+  // single several-hundred-MB allocation. Keep the full-resolution model and
+  // split only those large direction arrays into smaller compatible bindings.
+  const preferred = Q * perDirectionBytes >= 128 * 1024 * 1024 ? Math.min(4, maxGroups, Q) : required;
+  const groups = Math.min(Math.max(required, preferred), Q);
   const sizes: number[] = [];
   let remaining = Q;
   for (let group = 0; group < groups; group++) {
@@ -216,8 +295,8 @@ function balancedGroups(cells: number, bytesPerValue: number, limits: { maxBuffe
   return sizes;
 }
 
-function writeParams(c: Lbm3dCase, step: number, averageFrom: number): ArrayBuffer {
-  const bytes = new ArrayBuffer(48);
+function writeParams(c: Lbm3dCase, step: number, averageFrom: number, initialMass: number): ArrayBuffer {
+  const bytes = new ArrayBuffer(64);
   const view = new DataView(bytes);
   view.setUint32(0, c.nx, true);
   view.setUint32(4, c.ny, true);
@@ -231,6 +310,8 @@ function writeParams(c: Lbm3dCase, step: number, averageFrom: number): ArrayBuff
   view.setFloat32(36, c.tau0, true);
   view.setUint32(40, averageFrom, true);
   view.setUint32(44, AVERAGE_EVERY, true);
+  view.setFloat32(48, initialMass, true);
+  view.setFloat32(52, MASS_SCALE, true);
   return bytes;
 }
 
@@ -274,54 +355,162 @@ function buildLayers(c: Lbm3dCase, average: Float32Array, samples: number): Lbm3
   return layers;
 }
 
+function initialFluidMass(c: Lbm3dCase): number {
+  let mass = 0;
+  for (let index = 0; index < c.solid.length; index += 1) if (c.solid[index] === 0) mass += 1;
+  return mass;
+}
+
+function sumDensity(values: Float32Array): number {
+  let sum = 0;
+  for (const value of values) {
+    if (!Number.isFinite(value)) return Number.NaN;
+    sum += value;
+  }
+  return sum;
+}
+
+function checksum(values: Float32Array): number {
+  let result = 0;
+  for (let index = 0; index < values.length; index += 1) {
+    const value = values[index];
+    if (!Number.isFinite(value)) return Number.NaN;
+    result += value * ((index % 4096) + 1);
+  }
+  return result;
+}
+
+function velocityDeltaFromInitial(c: Lbm3dCase, average: Float32Array, samples: number): number {
+  if (samples <= 0) return 0;
+  let maximum = 0;
+  for (let index = 0; index < c.solid.length; index += 1) {
+    if (c.solid[index] !== 0) continue;
+    const u = average[index * 2] / samples;
+    const v = average[index * 2 + 1] / samples;
+    if (!Number.isFinite(u) || !Number.isFinite(v)) continue;
+    maximum = Math.max(maximum, Math.hypot(u - 1, v));
+  }
+  return maximum;
+}
+
+async function readFloatBuffer(
+  device: GpuDeviceLike,
+  source: GpuBufferLike,
+  destination: GpuBufferLike,
+  byteLength: number,
+  label: string,
+  assertAlive: () => void,
+): Promise<Float32Array> {
+  const encoder = device.createCommandEncoder();
+  encoder.copyBufferToBuffer(source, 0, destination, 0, align4(byteLength));
+  await submitAndWait(device, [encoder.finish()], `${label} readback submit`, assertAlive);
+  await destination.mapAsync(BUFFER_MAP_READ);
+  assertAlive();
+  const values = new Float32Array(destination.getMappedRange().slice(0));
+  destination.unmap();
+  return values;
+}
+
 /** Execute the D3Q19 WGSL kernel. This deliberately does not fall back to CPU. */
 export async function runLbm3d(c: Lbm3dCase, options: Lbm3dRunOptions = {}): Promise<Lbm3dField> {
   validateCase(c);
+  const started = globalThis.performance?.now() ?? Date.now();
   const gpu = navigatorGpu();
   if (!gpu) throw new Error("WebGPU unavailable: navigator.gpu is unavailable");
   const adapter = await gpu.requestAdapter();
   if (!adapter) throw new Error("WebGPU unavailable: no adapter");
   const useF16 = options.precision !== "f32" && Boolean(adapter.features?.has("shader-f16"));
-  const device = await adapter.requestDevice(useF16 ? { requiredFeatures: ["shader-f16"] } : {});
-  const limits = {
+  const adapterLimits = {
     maxBufferSize: limit(adapter, "maxBufferSize", 256 * 1024 * 1024),
     maxStorageBufferBindingSize: limit(adapter, "maxStorageBufferBindingSize", 128 * 1024 * 1024),
     maxStorageBuffersPerShaderStage: limit(adapter, "maxStorageBuffersPerShaderStage", 8),
+    maxComputeWorkgroupsPerDimension: limit(adapter, "maxComputeWorkgroupsPerDimension", 65_535),
+  };
+  const device = await adapter.requestDevice({
+    ...(useF16 ? { requiredFeatures: ["shader-f16"] } : {}),
+    requiredLimits: {
+      maxBufferSize: adapterLimits.maxBufferSize,
+      maxStorageBufferBindingSize: adapterLimits.maxStorageBufferBindingSize,
+      maxStorageBuffersPerShaderStage: adapterLimits.maxStorageBuffersPerShaderStage,
+      maxComputeWorkgroupsPerDimension: adapterLimits.maxComputeWorkgroupsPerDimension,
+    },
+  });
+  let lostInfo: GpuDeviceLostInfo | null = null;
+  void device.lost.then((info) => { lostInfo = info; });
+  const assertAlive = () => {
+    if (lostInfo) throw new Error(`WebGPU device lost: ${lostInfo.reason ?? "unknown"}${lostInfo.message ? ` — ${lostInfo.message}` : ""}`);
+  };
+  const limits = {
+    maxBufferSize: limit(device, "maxBufferSize", 256 * 1024 * 1024),
+    maxStorageBufferBindingSize: limit(device, "maxStorageBufferBindingSize", 128 * 1024 * 1024),
+    maxStorageBuffersPerShaderStage: limit(device, "maxStorageBuffersPerShaderStage", 8),
+    maxComputeWorkgroupsPerDimension: limit(device, "maxComputeWorkgroupsPerDimension", 65_535),
   };
   const cells = c.nx * c.ny * c.nz;
   const precision = useF16 ? "f16" : "f32";
   const groups = balancedGroups(cells, useF16 ? 2 : 4, limits);
-  device.pushErrorScope?.("validation");
-  const module = device.createShaderModule({ code: d3q19KernelWgsl({ precision, groupSizes: groups }) });
-  const pipeline = device.createComputePipeline({ layout: "auto", compute: { module, entryPoint: "main" } });
-  const shaderError = await device.popErrorScope?.();
-  if (shaderError) throw new Error(`D3Q19 WGSL validation failed: ${shaderError.message ?? "unknown shader error"}`);
+  const workgroups = Math.ceil(cells / WORKGROUP_SIZE);
+  const dispatchX = Math.min(workgroups, limits.maxComputeWorkgroupsPerDimension);
+  const remainingYz = Math.ceil(workgroups / dispatchX);
+  const dispatchY = Math.min(remainingYz, limits.maxComputeWorkgroupsPerDimension);
+  const dispatchZ = Math.ceil(remainingYz / dispatchY);
+  if (dispatchZ > limits.maxComputeWorkgroupsPerDimension) {
+    throw new Error(`D3Q19 dispatch exceeds adapter limit: ${dispatchX}×${dispatchY}×${dispatchZ}`);
+  }
+  const dispatchStrideX = dispatchX * WORKGROUP_SIZE;
+  const dispatchStrideXY = dispatchStrideX * dispatchY;
+  const pipelines = await withGpuErrorScopes(device, "D3Q19 pipeline creation", () => {
+    const module = device.createShaderModule({ code: d3q19KernelWgsl({ precision, groupSizes: groups, dispatchStrideX, dispatchStrideXY }) });
+    const bindingEntries: Array<Record<string, unknown>> = [];
+    for (let binding = 0; binding < groups.length; binding += 1) {
+      bindingEntries.push({ binding, visibility: SHADER_STAGE_COMPUTE, buffer: { type: "read-only-storage" } });
+      bindingEntries.push({ binding: groups.length + binding, visibility: SHADER_STAGE_COMPUTE, buffer: { type: "storage" } });
+    }
+    bindingEntries.push({ binding: groups.length * 2, visibility: SHADER_STAGE_COMPUTE, buffer: { type: "read-only-storage" } });
+    bindingEntries.push({ binding: groups.length * 2 + 1, visibility: SHADER_STAGE_COMPUTE, buffer: { type: "storage" } });
+    bindingEntries.push({ binding: groups.length * 2 + 2, visibility: SHADER_STAGE_COMPUTE, buffer: { type: "uniform" } });
+    bindingEntries.push({ binding: groups.length * 2 + 3, visibility: SHADER_STAGE_COMPUTE, buffer: { type: "storage" } });
+    bindingEntries.push({ binding: groups.length * 2 + 4, visibility: SHADER_STAGE_COMPUTE, buffer: { type: "storage" } });
+    const bindGroupLayout = device.createBindGroupLayout({ entries: bindingEntries });
+    const pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] });
+    const pipeline = device.createComputePipeline({ layout: pipelineLayout, compute: { module, entryPoint: "main" } });
+    const measurePipeline = device.createComputePipeline({ layout: pipelineLayout, compute: { module, entryPoint: "measure" } });
+    const normalizePipeline = device.createComputePipeline({ layout: pipelineLayout, compute: { module, entryPoint: "normalize" } });
+    return { pipeline, measurePipeline, normalizePipeline, bindGroupLayout };
+  }, assertAlive);
   const buffers: GpuBufferLike[] = [];
   const createBuffer = (size: number, usage: number): GpuBufferLike => {
     const buffer = device.createBuffer({ size: align4(size), usage });
     buffers.push(buffer);
     return buffer;
   };
-  const makeState = (): GpuBufferLike[] => {
+  const writeBuffer = async (buffer: GpuBufferLike, data: ArrayBuffer | ArrayBufferView, label: string): Promise<void> => {
+    await withGpuErrorScopes(device, label, () => device.queue.writeBuffer(buffer, 0, data), assertAlive);
+  };
+  const makeState = async (): Promise<GpuBufferLike[]> => {
     const state: GpuBufferLike[] = [];
     let startQ = 0;
     for (const countQ of groups) {
       const bytes = createBuffer(cells * countQ * (useF16 ? 2 : 4), BUFFER_STORAGE | BUFFER_COPY_DST);
-      device.queue.writeBuffer(bytes, 0, packInitialState(c, startQ, countQ, precision));
+      await writeBuffer(bytes, packInitialState(c, startQ, countQ, precision), `D3Q19 initial state ${startQ}`);
       state.push(bytes);
       startQ += countQ;
     }
     return state;
   };
-  const stateA = makeState();
-  const stateB = makeState();
+  const stateA = await makeState();
+  const stateB = await makeState();
   const solid = createBuffer(cells * 4, BUFFER_STORAGE | BUFFER_COPY_DST);
   const solidValues = Uint32Array.from(c.solid, (value) => Number(value));
-  device.queue.writeBuffer(solid, 0, solidValues);
+  await writeBuffer(solid, solidValues, "D3Q19 solid mask");
   const average = createBuffer(cells * 8, BUFFER_STORAGE | BUFFER_COPY_SRC | BUFFER_COPY_DST);
-  device.queue.writeBuffer(average, 0, new Float32Array(cells * 2));
-  const params = createBuffer(48, BUFFER_UNIFORM | BUFFER_COPY_DST);
-  const layout = pipeline.getBindGroupLayout(0);
+  await writeBuffer(average, new Float32Array(cells * 2), "D3Q19 average buffer");
+  const density = createBuffer(cells * 4, BUFFER_STORAGE | BUFFER_COPY_SRC | BUFFER_COPY_DST);
+  const densityReadback = createBuffer(cells * 4, BUFFER_MAP_READ | BUFFER_COPY_DST);
+  const averageReadback = createBuffer(cells * 8, BUFFER_MAP_READ | BUFFER_COPY_DST);
+  const mass = createBuffer(4, BUFFER_STORAGE | BUFFER_COPY_DST | BUFFER_COPY_SRC);
+  const params = createBuffer(64, BUFFER_UNIFORM | BUFFER_COPY_DST);
+  const layout = pipelines.bindGroupLayout;
   const makeBindGroup = (input: GpuBufferLike[], output: GpuBufferLike[]): unknown => {
     const entries: Array<{ binding: number; resource: { buffer: GpuBufferLike } }> = [];
     input.forEach((buffer, index) => entries.push({ binding: index, resource: { buffer } }));
@@ -329,42 +518,63 @@ export async function runLbm3d(c: Lbm3dCase, options: Lbm3dRunOptions = {}): Pro
     entries.push({ binding: groups.length * 2, resource: { buffer: solid } });
     entries.push({ binding: groups.length * 2 + 1, resource: { buffer: average } });
     entries.push({ binding: groups.length * 2 + 2, resource: { buffer: params } });
+    entries.push({ binding: groups.length * 2 + 3, resource: { buffer: density } });
+    entries.push({ binding: groups.length * 2 + 4, resource: { buffer: mass } });
     return device.createBindGroup({ layout, entries });
   };
   const bindAtoB = makeBindGroup(stateA, stateB);
   const bindBtoA = makeBindGroup(stateB, stateA);
   const averageFrom = Math.min(Math.max(0, Math.floor(c.averageFrom)), Math.max(0, c.steps - 1));
-  const started = globalThis.performance?.now() ?? Date.now();
+  const initialMass = initialFluidMass(c);
+  if (!(initialMass > 0)) throw new Error("D3Q19 case has no fluid cells");
+  let densityValues: Float32Array<ArrayBufferLike> = new Float32Array(0);
+  let densityDrift = 0;
+  let densityDriftMax = 0;
+  const checkDensity = async (step: number): Promise<void> => {
+    densityValues = await readFloatBuffer(device, density, densityReadback, cells * 4, `D3Q19 density step ${step}`, assertAlive);
+    const mass = sumDensity(densityValues);
+    if (!Number.isFinite(mass)) throw new Error(`D3Q19 density checksum is not finite at step ${step}`);
+    densityDrift = Math.abs(mass / initialMass - 1);
+    densityDriftMax = Math.max(densityDriftMax, densityDrift);
+    if (densityDrift > MAX_DENSITY_DRIFT) {
+      throw new Error(`D3Q19 density drift ${densityDrift.toExponential(3)} exceeds ${MAX_DENSITY_DRIFT.toExponential(1)} at step ${step}`);
+    }
+  };
   try {
     for (let step = 0; step < c.steps; step++) {
       if (options.signal?.aborted) throw abortError();
-      device.queue.writeBuffer(params, 0, writeParams(c, step, averageFrom));
+      await writeBuffer(params, writeParams(c, step, averageFrom, initialMass), `D3Q19 params step ${step + 1}`);
+      await writeBuffer(mass, new Uint32Array([0]), `D3Q19 mass reset step ${step + 1}`);
       const encoder = device.createCommandEncoder();
       const pass = encoder.beginComputePass();
-      pass.setPipeline(pipeline);
+      pass.setPipeline(pipelines.pipeline);
       pass.setBindGroup(0, step % 2 === 0 ? bindAtoB : bindBtoA);
-      const workgroups = Math.ceil(cells / WORKGROUP_SIZE);
-      pass.dispatchWorkgroups(Math.min(workgroups, MAX_DISPATCH_X), Math.ceil(workgroups / MAX_DISPATCH_X), 1);
+      pass.dispatchWorkgroups(dispatchX, dispatchY, dispatchZ);
       pass.end();
-      device.queue.submit([encoder.finish()]);
-      // Yield periodically so an AbortSignal from the UI/worker can be
-      // observed while the queue is processing a long case.
-      if ((step + 1) % 16 === 0 || step === c.steps - 1) await device.queue.onSubmittedWorkDone();
+      const measurePass = encoder.beginComputePass();
+      measurePass.setPipeline(pipelines.measurePipeline);
+      measurePass.setBindGroup(0, step % 2 === 0 ? bindAtoB : bindBtoA);
+      measurePass.dispatchWorkgroups(dispatchX, dispatchY, dispatchZ);
+      measurePass.end();
+      const normalizePass = encoder.beginComputePass();
+      normalizePass.setPipeline(pipelines.normalizePipeline);
+      normalizePass.setBindGroup(0, step % 2 === 0 ? bindAtoB : bindBtoA);
+      normalizePass.dispatchWorkgroups(dispatchX, dispatchY, dispatchZ);
+      normalizePass.end();
+      await submitAndWait(device, [encoder.finish()], `D3Q19 compute step ${step + 1}`, assertAlive);
+      if ((step + 1) % MASS_CHECK_EVERY === 0 || step === c.steps - 1) await checkDensity(step + 1);
       if ((step + 1) % 256 === 0 || step === c.steps - 1) {
         const elapsedMs = (globalThis.performance?.now() ?? Date.now()) - started;
         options.onProgress?.({ step: step + 1, steps: c.steps, mlups: ((cells * (step + 1)) / Math.max(elapsedMs, 0.001)) / 1000, elapsedMs });
       }
     }
-    const readback = createBuffer(cells * 8, BUFFER_MAP_READ | BUFFER_COPY_DST);
-    const encoder = device.createCommandEncoder();
-    encoder.copyBufferToBuffer(average, 0, readback, 0, align4(cells * 8));
-    device.queue.submit([encoder.finish()]);
-    await device.queue.onSubmittedWorkDone();
-    await readback.mapAsync(BUFFER_MAP_READ);
-    const averageValues = new Float32Array(readback.getMappedRange().slice(0));
-    readback.unmap();
-    const elapsedMs = (globalThis.performance?.now() ?? Date.now()) - started;
+    const averageValues = await readFloatBuffer(device, average, averageReadback, cells * 8, "D3Q19 average", assertAlive);
     const samples = averageSampleCount(c.steps, averageFrom);
+    const fieldChecksum = checksum(averageValues);
+    if (!Number.isFinite(fieldChecksum) || Math.abs(fieldChecksum) <= 1e-6) throw new Error("D3Q19 velocity field checksum is empty");
+    const velocityDelta = velocityDeltaFromInitial(c, averageValues, samples);
+    if (!(velocityDelta > 1e-3)) throw new Error(`D3Q19 velocity field did not change from its initial state (${velocityDelta.toExponential(3)})`);
+    const elapsedMs = (globalThis.performance?.now() ?? Date.now()) - started;
     return {
       cellM: c.cellM,
       nx: c.nx,
@@ -372,10 +582,16 @@ export async function runLbm3d(c: Lbm3dCase, options: Lbm3dRunOptions = {}): Pro
       layers: buildLayers(c, averageValues, samples),
       steps: c.steps,
       elapsedMs,
-      adapter: adapter.name || "WebGPU adapter",
+      adapter: adapterLabel(adapter),
       precision,
       mlups: ((cells * c.steps) / Math.max(elapsedMs, 0.001)) / 1000,
       residual: 1 / Math.max(c.steps, 1),
+      fieldChecksum,
+      densityChecksum: checksum(densityValues),
+      densityDrift,
+      densityDriftMax,
+      velocityDelta,
+      dispatch: { x: dispatchX, y: dispatchY, z: dispatchZ, limit: limits.maxComputeWorkgroupsPerDimension, strideX: dispatchStrideX, strideXY: dispatchStrideXY },
     };
   } finally {
     for (const buffer of buffers) {

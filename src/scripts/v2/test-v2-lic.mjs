@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 
 const { lic } = await import("../../lib/v2/ui/lic.ts");
+const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
+const { windDirectionFromView, windDirectionLabel } = await import("../../lib/v2/ui/wind-upload.ts");
+const { RECOVERED } = await import("../../lib/v2/ui/fixtures/godeok.ts");
 
 function correlation(values, width, height, dx, dy) {
   let sum = 0;
@@ -36,5 +39,26 @@ assert.ok(alongStream > acrossStream, `stream direction correlation ${alongStrea
 
 const zeroField = lic(new Float32Array(cols * rows), new Float32Array(cols * rows), cols, rows, 24, 12, { lengthPx: 20, seed: 17 });
 assert.ok(Array.from(zeroField).every((value) => Number.isFinite(value)), "zero field must still render finite texture values");
+
+const s03 = {
+  ...RECOVERED.S03,
+  conditions: {
+    ...RECOVERED.S03.conditions,
+    simulation: {
+      case: {
+        inflow: {
+          annual: { deg: 45 },
+          winter: { deg: 225 },
+        },
+      },
+    },
+  },
+};
+const s03View = toTileView(s03);
+assert.equal(s03View.windDirections?.annual, 45);
+assert.equal(windDirectionFromView(s03View, "annual"), 45);
+assert.equal(windDirectionFromView(s03View, "winter"), 225);
+assert.equal(windDirectionLabel(windDirectionFromView(s03View, "annual")), "북동(NE)");
+assert.equal(windDirectionFromView(toTileView(RECOVERED.S03), "annual"), null, "missing S03 direction must not default to south");
 
 console.log(`✓ v2 LIC deterministic directional texture (${alongStream.toFixed(4)} > ${acrossStream.toFixed(4)})`);
