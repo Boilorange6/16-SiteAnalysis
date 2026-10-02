@@ -3,6 +3,7 @@ import type { Feature, Geometry, MultiPolygon, Polygon } from "geojson";
 import { bboxClip, featureCollection, intersect, multiPolygon, polygon } from "@turf/turf";
 import { toLngLat, toUtmk, type LngLat } from "../../crs";
 import type { MapCandidate } from "./common";
+import { maxOf, minOf } from "../../extent";
 
 function lineParts(g: Geometry): number[][][] {
   if (g.type === "LineString") return [g.coordinates];
@@ -191,7 +192,7 @@ export function simplifyRing(ring: number[][], maxVertices = 200): number[][] {
   const xs = ring.map((p) => p[0]);
   const ys = ring.map((p) => p[1]);
   let lo = 0;
-  let hi = Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+  let hi = Math.hypot(maxOf(xs) - minOf(xs), maxOf(ys) - minOf(ys));
   for (let k = 0; k < 40; k++) {
     const mid = (lo + hi) / 2;
     if (keepAt(mid).length <= maxVertices) hi = mid;

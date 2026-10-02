@@ -5,6 +5,7 @@ import { ROAD_HIERARCHIES, type RoadHierarchy } from "../../ingest/sources/osm-r
 import { clipLineToCircle, distanceToLineM, lineLengthInCircle, linePathLength } from "./geo";
 import { lineCandidate, makeTile, missing, obs, type LineCandidate, type TileDraft } from "./common";
 import { notProvided } from "./not-provided";
+import { maxOf, minOf } from "../../extent";
 
 const ROAD_SOURCES = ["osm_roads"] as const;
 const ROAD_LAYERS = ROAD_HIERARCHIES.map((hierarchy) => `road:${hierarchy}`);
@@ -61,7 +62,7 @@ export function d13(ctx: EngineContext): TileResult {
   const nearestDistances = nearestCandidates
     .map((hit) => distanceToLineM(ctx.input.center, hit.geometry))
     .filter((distance): distance is number => distance !== null);
-  const nearest = nearestDistances.length ? Math.round(Math.min(...nearestDistances)) : null;
+  const nearest = nearestDistances.length ? Math.round(minOf(nearestDistances)) : null;
   const nearestMetric = nearest === null
     ? missing("nearest_arterial_or_higher_m", "최근접 간선 이상 도로 중심선", "m", "d13-nearest@1:검색 반경 안 간선·고속도로 중심선까지의 최단 거리")
     : obs("nearest_arterial_or_higher_m", "최근접 간선 이상 도로 중심선", nearest, "m", "d13-nearest@1:검색 반경 안 간선·고속도로 중심선까지의 최단 거리", nearest, null);

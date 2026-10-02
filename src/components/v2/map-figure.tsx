@@ -3,6 +3,7 @@ import { layerStyle, legendItems, RASTER_STYLES, type MapModel, type RasterStyle
 import { BASEMAP_ATTRIBUTION, BASEMAP_STACK, framedViewport, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, worldPx, type BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { rasterAffine } from "@/lib/v2/ui/raster-image";
 import type { RasterRef } from "@/lib/v2/tile-result";
+import { maxOf, minOf } from "@/lib/v2/extent";
 
 /**
  * 지도 그림 하나(SVG). 카드·상세·PPT가 같은 입력으로 같은 그림을 그린다.
@@ -142,7 +143,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
     return {
       polygon,
       rings,
-      center: xs.length > 0 ? [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2] : [cx, cy],
+      center: xs.length > 0 ? [(minOf(xs) + maxOf(xs)) / 2, (minOf(ys) + maxOf(ys)) / 2] : [cx, cy],
       area: polygonArea(outer),
       index,
     };

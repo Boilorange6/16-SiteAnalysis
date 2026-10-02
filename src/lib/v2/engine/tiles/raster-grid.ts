@@ -4,6 +4,7 @@ import type { Feature, FeatureCollection, MultiPolygon, Point, Polygon } from "g
 import { toLngLat, toUtmk, type LngLat } from "../../crs";
 import { areaInCircle, polygonArea } from "./geo";
 import { polygonCandidate, type PolygonCandidate } from "./common";
+import { maxOf, minOf } from "../../extent";
 
 export interface LocalGrid {
   /** 중심점의 EPSG:5179 x 좌표 */
@@ -455,7 +456,7 @@ function simplifyOpenPath(path: [number, number][], maxVertices: number): [numbe
   };
 
   let low = 0;
-  let high = Math.max(...path.map((point) => Math.hypot(point[0] - path[0][0], point[1] - path[0][1])));
+  let high = maxOf(path.map((point) => Math.hypot(point[0] - path[0][0], point[1] - path[0][1])));
   for (let i = 0; i < 40; i++) {
     const middle = (low + high) / 2;
     if (keptAt(middle).length <= maxVertices) high = middle;
@@ -490,12 +491,12 @@ export function contourLines(center: LngLat, radiusM: number, g: LocalGrid, inte
 
   const values = finiteValues(g);
   if (values.length === 0) return [];
-  const minBreak = Math.ceil(Math.min(...values) / intervalM - 1e-10) * intervalM;
-  const maxBreak = Math.floor(Math.max(...values) / intervalM + 1e-10) * intervalM;
+  const minBreak = Math.ceil(minOf(values) / intervalM - 1e-10) * intervalM;
+  const maxBreak = Math.floor(maxOf(values) / intervalM + 1e-10) * intervalM;
   if (minBreak > maxBreak) return [];
   const breaks = Array.from({ length: Math.floor((maxBreak - minBreak) / intervalM + 0.5) + 1 }, (_, index) => minBreak + index * intervalM);
   const contourGrid = { ...g, values: fillMissingValues(g) };
-  const grid = turfGrid(contourGrid, Math.min(...values) - NODATA_OFFSET);
+  const grid = turfGrid(contourGrid, minOf(values) - NODATA_OFFSET);
   const output: LineCandidate[] = [];
   let id = 1;
   const lines = isolines(grid, breaks, { zProperty: "elevation" });

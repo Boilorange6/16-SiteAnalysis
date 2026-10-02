@@ -5,6 +5,7 @@ import { relativeTerrainGrid, terrainBandPolygons, terrainContourLines, terrainG
 import { DEM_LIMITATION, demReader, demSources } from "./terrain-shared";
 import { est, makeTile, obs } from "./common";
 import { notProvided } from "./not-provided";
+import { maxOf, minOf } from "../../extent";
 
 const RELIEF_BREAKS = [-20, -5, 5, 20];
 const RELIEF_LAYERS = ["relief_lt_m20", "relief_m20_m5", "relief_m5_5", "relief_5_20", "relief_ge20"];
@@ -44,8 +45,8 @@ export function d17(ctx: EngineContext): TileResult {
   const relative = relativeTerrainGrid(grid, originZ);
   const stats = terrainGridStats(relative, ctx.input.radiusM);
   const relativeValues = terrainValuesInCircle(relative, ctx.input.radiusM);
-  const reliefMin = Math.min(...relativeValues);
-  const reliefMax = Math.max(...relativeValues);
+  const reliefMin = minOf(relativeValues);
+  const reliefMax = maxOf(relativeValues);
   const reliefMedian = median(relativeValues) as number;
   const circleAreaM2 = Math.PI * ctx.input.radiusM ** 2;
   const bands = terrainBandPolygons(ctx.input.center, ctx.input.radiusM, relative, RELIEF_BREAKS, RELIEF_LAYERS, "dem_nodata");

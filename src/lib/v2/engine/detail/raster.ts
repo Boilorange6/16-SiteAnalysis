@@ -10,6 +10,7 @@ import { buildingRows } from "../tiles/buildings-shared";
 import { hitPoint } from "../tiles/common";
 import { demGridFor, demSources } from "../tiles/terrain-shared";
 import type { LocalGrid } from "../tiles/raster-grid";
+import { maxOf, minOf } from "../../extent";
 
 export const DENSITY_COLUMNS: DetailColumn[] = [
   { key: "name", label: "이름", kind: "text" },
@@ -228,8 +229,8 @@ function terrainSpec(code: "D17" | "D18", kind: "elevation" | "slope"): DetailSp
     summary(ctx) {
       const rows = gridRows(ctx, kind);
       const values = rows.map((row) => number(row.cells.value)).filter((value): value is number => value !== null);
-      const min = values.length > 0 ? Math.min(...values) : null;
-      const max = values.length > 0 ? Math.max(...values) : null;
+      const min = values.length > 0 ? minOf(values) : null;
+      const max = values.length > 0 ? maxOf(values) : null;
       return { title: catalogEntry(code).title, subtitle: `${rows.length.toLocaleString("ko-KR")}개 표본`, fields: [{ label: "최솟값", value: min === null ? null : `${min}${kind === "elevation" ? "m" : "°"}` }, { label: "최댓값", value: max === null ? null : `${max}${kind === "elevation" ? "m" : "°"}` }], source: sourceLineOf(demSources(ctx)), ...(rows.length === 0 ? { missing: ["DEM 표본"] } : {}) };
     },
     rows(ctx) { return gridRows(ctx, kind); },

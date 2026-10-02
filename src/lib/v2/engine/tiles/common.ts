@@ -6,6 +6,7 @@ import { layerStyle } from "../../ui/map-layers";
 import { sourceName } from "../../ui/tile-catalog";
 import type { EngineContext, Limitation, SourceRef } from "../context";
 import { simplifyRing } from "./geo";
+import { maxOf, minOf } from "../../extent";
 
 export const ENGINE_VERSION = "v2-p4-ext-1";
 
@@ -24,7 +25,7 @@ export function missing(id: string, label: string, unit: string, formulaVersion:
 export const roundM = (m: number) => Math.round(m);
 export const nearestM = (distances: Array<number | null>): number | null => {
   const ds = distances.filter((d): d is number => d !== null);
-  return ds.length ? roundM(Math.min(...ds)) : null;
+  return ds.length ? roundM(minOf(ds)) : null;
 };
 
 // ── 지도 표시용 지물 ──
@@ -41,7 +42,7 @@ export function hitPoint(h: FeatureHit): [number, number] {
   walk((h.geometry as { coordinates?: unknown }).coordinates);
   const xs = flat.map((p) => p[0]);
   const ys = flat.map((p) => p[1]);
-  const [lng, lat] = toLngLat([(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2]);
+  const [lng, lat] = toLngLat([(minOf(xs) + maxOf(xs)) / 2, (minOf(ys) + maxOf(ys)) / 2]);
   return [Math.round(lng * 1e6) / 1e6, Math.round(lat * 1e6) / 1e6];
 }
 
@@ -127,7 +128,7 @@ function simplifyOpenLine(points: number[][], maxVertices: number): number[][] {
   const xs = points.map((point) => point[0]);
   const ys = points.map((point) => point[1]);
   let low = 0;
-  let high = Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+  let high = Math.hypot(maxOf(xs) - minOf(xs), maxOf(ys) - minOf(ys));
   for (let i = 0; i < 40; i++) {
     const middle = (low + high) / 2;
     if (keepAt(middle).length <= maxVertices) high = middle;
