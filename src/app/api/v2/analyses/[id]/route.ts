@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, isUser } from "@/lib/server/auth";
 import { openV2AppDb } from "@/lib/v2/app-db";
 import { getAnalysis, getAnalysisStatus } from "@/lib/v2/engine/api";
-import { startJobRunner } from "@/lib/v2/engine/jobs";
 import { v2AppDbPath, v2DataDir } from "@/lib/v2/paths";
 
 export const runtime = "nodejs";
@@ -25,7 +24,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   const appDb = openV2AppDb();
   try {
-    startJobRunner({ appDbPath: v2AppDbPath(), dataDir: v2DataDir() });
+    void import("@/lib/v2/engine/jobs")
+      .then(({ startJobRunner }) => startJobRunner({ appDbPath: v2AppDbPath(), dataDir: v2DataDir() }))
+      .catch((error) => console.warn(`v2 analysis worker start failed: ${String(error).slice(0, 200)}`));
     if (req.nextUrl.searchParams.get("status") === "1") return responseFor(req, getAnalysisStatus(appDb, id, auth.id));
     const requested = req.nextUrl.searchParams.get("tiles");
     const tileCodes = requested === null ? undefined : requested.split(",").map((code) => code.trim()).filter(Boolean);

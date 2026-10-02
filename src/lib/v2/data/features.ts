@@ -25,6 +25,7 @@ interface FeatureBulkState {
 // statements attached to the database instead of preparing them for every
 // record. WeakMap also lets better-sqlite3 release the statements with the DB.
 const statementCache = new WeakMap<Db, FeatureStatements>();
+const queryStatementCache = new WeakMap<Db, Map<string, Statement>>();
 const bulkState = new WeakMap<Db, FeatureBulkState>();
 
 export const MAX_RADIUS_M = 5000;
@@ -220,6 +221,10 @@ interface FeatureRow {
   pnu: string | null;
   legal_code: string | null;
   properties_json: string;
+  min_x: number;
+  max_x: number;
+  min_y: number;
+  max_y: number;
 }
 
 export function queryFeaturesInRadius(db: Db, center: LngLat, radiusM: number, kinds: readonly string[]): FeatureHit[] {
@@ -231,17 +236,33 @@ export function queryFeaturesInRadius(db: Db, center: LngLat, radiusM: number, k
   const [cx, cy] = toUtmk(center);
   // CROSS JOIN은 R*Tree를 바깥 루프로 고정한다. 그냥 JOIN이면 플래너가 kind 인덱스로 수백만 행을 훑으며
   // 행마다 R*Tree를 찾아(전국 파일에서 반경 1km 상가 조회가 5초) 느려진다.
-  const rows = db
-    .prepare(`SELECT f.feature_id, f.stable_id, f.kind, f.release_id, f.geom_json, f.name, f.pnu, f.legal_code, f.properties_json
+  const sortedKinds = [...kinds].sort();
+  const statementKey = sortedKinds.join("\u0000");
+  let queries = queryStatementCache.get(db);
+  if (!queries) {
+    queries = new Map();
+    queryStatementCache.set(db, queries);
+  }
+  let query = queries.get(statementKey);
+  if (!query) {
+    query = db.prepare(`SELECT f.feature_id, f.stable_id, f.kind, f.release_id, f.geom_json, f.name, f.pnu, f.legal_code, f.properties_json,
+        r.min_x, r.max_x, r.min_y, r.max_y
       FROM feature_rtree r CROSS JOIN feature f ON f.feature_id = r.feature_id
       WHERE r.max_x >= ? AND r.min_x <= ? AND r.max_y >= ? AND r.min_y <= ?
-        AND f.kind IN (${kinds.map(() => "?").join(",")})
-      `)
-    .all(cx - radiusM, cx + radiusM, cy - radiusM, cy + radiusM, ...kinds) as FeatureRow[];
+        AND f.kind IN (${sortedKinds.map(() => "?").join(",")})
+      `);
+    queries.set(statementKey, query);
+  }
+  const rows = query.all(cx - radiusM, cx + radiusM, cy - radiusM, cy + radiusM, ...sortedKinds) as FeatureRow[];
 
   const circle = circlePolygon(cx, cy, radiusM);
+  const candidateRadius = radiusM / Math.cos(Math.PI / CIRCLE_SEGMENTS);
+  const candidateRadiusSquared = candidateRadius * candidateRadius;
   const hits: FeatureHit[] = [];
   for (const row of rows) {
+    const dx = cx < row.min_x ? row.min_x - cx : cx > row.max_x ? cx - row.max_x : 0;
+    const dy = cy < row.min_y ? row.min_y - cy : cy > row.max_y ? cy - row.max_y : 0;
+    if (dx * dx + dy * dy > candidateRadiusSquared) continue;
     const geometry = JSON.parse(row.geom_json) as Geometry;
     let distanceM: number | null = null;
     if (geometry.type === "Point" || geometry.type === "MultiPoint") {
