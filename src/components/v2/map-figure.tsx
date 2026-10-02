@@ -1,7 +1,7 @@
 import { useId, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { layerStyle, legendItems, RASTER_STYLES, type MapModel, type RasterStyle } from "@/lib/v2/ui/map-layers";
 import { BASEMAP_ATTRIBUTION, BASEMAP_STACK, framedViewport, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, worldPx, type BasemapChoice } from "@/lib/v2/ui/map-projection";
-import { rasterAffine } from "@/lib/v2/ui/raster-image";
+import { rasterAffine, rasterLegendColor, resolveRasterStyle } from "@/lib/v2/ui/raster-image";
 import type { RasterRef } from "@/lib/v2/tile-result";
 import { maxOf, minOf } from "@/lib/v2/extent";
 
@@ -21,12 +21,14 @@ export type MapFigureProps = {
   tileHref?: (url: string) => string | undefined;
   /** 결과 래스터 이름 → 압축 해제·팔레트 처리한 이미지 data URL (MapBox/PPT가 주입) */
   rasterHref?: (ref: RasterRef) => string | null;
+  /** 컷 렌더러가 직접 지정할 수 있는 래스터 이름. TileView의 viewWithOnlyRaster와 함께 쓴다. */
+  rasterName?: string;
   /** true면 범례·문구를 그리지 않는다 (대지 요약 칸) */
   bare?: boolean;
   /** 직렬화용: width/height 속성을 붙인다. 아니면 부모를 채운다 */
   fixed?: boolean;
   label?: string;
-  /** 몰입형: 범례를 그리지 않는다 (기본은 bare가 아니면 그림). 색 의미는 강조 라벨·바깥 판이 전달한다 */
+  /** 몰입형: 벡터 범례를 그리지 않는다 (래스터 숫자 범례는 카드·PPT 의미 보존을 위해 유지) */
   legend?: boolean;
   /** 범례 위쪽 위치(px). 제목 칩 아래에 놓을 때 */
   legendY?: number;
@@ -83,7 +85,61 @@ function rasterStopPositions(style: RasterStyle): number[] {
   return values.map((value) => max <= min ? 0 : Math.max(0, Math.min(1, (value - min) / (max - min))));
 }
 
-export default function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, bare, fixed, label, legend, legendY, north: northOpt, scale = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, selectedFids = [], path = [], onFeatureClick, onMapClick }: MapFigureProps) {
+type RasterLegendEntry = { label: string; min: number | null; max: number | null };
+type RasterPresentationModel = MapModel & {
+  legend?: RasterLegendEntry[];
+  defaultRaster?: string;
+  rasterOptions?: RasterRef[];
+};
+type PrimaryRasterRef = RasterRef & { primary?: boolean };
+type RasterLegendConfig = { ref: RasterRef; style: RasterStyle; entries: RasterLegendEntry[] };
+
+function rasterCandidates(model: RasterPresentationModel): RasterRef[] {
+  const displayed = model.rasters ?? [];
+  const options = model.rasterOptions ?? [];
+  // Keep the full option list for normal tile views, but honor an explicit
+  // caller-provided raster that is not part of that list (test/cut models).
+  if (displayed.some((ref) => !options.some((option) => option.name === ref.name))) return displayed;
+  return options.length > 0 ? options : displayed;
+}
+
+function selectedRaster(model: RasterPresentationModel, requestedName?: string): RasterRef | null {
+  const refs = rasterCandidates(model);
+  if (refs.length === 0) return null;
+  const requested = requestedName ?? model.defaultRaster;
+  if (requested) {
+    const declared = refs.find((ref) => ref.name === requested);
+    if (declared) return declared;
+  }
+  const primary = refs.find((ref) => (ref as PrimaryRasterRef).primary === true);
+  return primary ?? refs[0] ?? null;
+}
+
+function relevantRasterLegend(ref: RasterRef, styleLabel: string | undefined, legend: RasterLegendEntry[]): RasterLegendEntry[] {
+  const numeric = legend.filter((entry) => entry.min !== null || entry.max !== null);
+  const matched = legend.filter((entry) => {
+    if (ref.palette === "sun_hours") return entry.label.includes("일조시간");
+    if (ref.palette === "shade_flow") return entry.label.includes("그림자 흐름");
+    if (ref.palette === "shade_mask") return entry.label.includes("그림자") && !entry.label.includes("흐름");
+    return legend.length === 1 || (!!styleLabel && entry.label.includes(styleLabel)) || (!!ref.label && entry.label.includes(ref.label));
+  });
+  if (matched.length > 0) return matched;
+  if (numeric.length > 0) return numeric;
+  return legend;
+}
+
+function derivedSteppedLegend(ref: RasterRef, style: RasterStyle): RasterLegendEntry[] {
+  const label = style.label ?? ref.label ?? ref.name;
+  const breaks = style.breaks ?? [];
+  return style.colors.map((_, index) => ({
+    label: `${label} · ${index === style.colors.length - 1 ? `${breaks.at(-1) ?? index} 이상` : String(index)}`,
+    min: index,
+    max: index === style.colors.length - 1 ? null : index + 1,
+  }));
+}
+
+export default function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, fixed, label, legend, legendY, north: northOpt, scale = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, selectedFids = [], path = [], onFeatureClick, onMapClick }: MapFigureProps) {
+  const rasterModel = model as RasterPresentationModel;
   const activeLayer = model.basemap ?? layer;
   const sat = activeLayer === "Satellite";
   // 항공 사진 위에서는 어두운 선·점 테두리가 묻히므로 흰색으로 바꾼다
@@ -98,7 +154,8 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
 
   const tiles = basemap === "tiles" ? tilesFor(vp) : [];
   const stack = BASEMAP_STACK[activeLayer];
-  const rasterImages = (model.rasters ?? [])
+  const activeRaster = selectedRaster(rasterModel, rasterName);
+  const rasterImages = (activeRaster ? [activeRaster] : [])
     .map((ref) => ({ ref, href: rasterHref?.(ref) ?? null, matrix: rasterAffine(ref, vp) }))
     .filter((item): item is typeof item & { href: string } => !!item.href);
   const grid = scaleBar(mpp, 110 * u).px;
@@ -111,7 +168,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   const isSelected = (fid: string | undefined) => !!fid && selected.has(fid);
   const feats = model.features.map((f) => ({ f, p: proj(f.lng, f.lat), selected: isSelected(f.fid) }));
   const linePaths = (model.lines ?? []).map((l, index) => ({ l, points: l.points.map(([lng, lat]) => proj(lng, lat)), index }));
-  const wmax = Math.max(0, ...model.features.map((f) => f.weight ?? 0));
+  const wmax = Math.max(0, maxOf(model.features.map((f) => f.weight ?? 0)));
   const radiusOf = (f: MapFigureProps["model"]["features"][number]) => {
     const st = layerStyle(f.layer);
     if (st.sizeBy !== "weight") return (f.highlight ? 4.6 : 2.6) * u;
@@ -193,11 +250,20 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
     if (Number.isFinite(lng) && Number.isFinite(lat)) onMapClick({ lng, lat });
   };
 
-  // 범례 (지물이 있는 레이어만, 정의된 순서 + 숫자 래스터 범례)
+  // 범례 (지물이 있는 레이어 + 선택된 래스터의 숫자 범례)
   const present = legendItems(model).map((item) => item.layer);
-  const rasterLegends = (model.rasters ?? [])
-    .map((ref) => ({ ref, style: RASTER_STYLES[ref.palette] }))
-    .filter((entry): entry is { ref: RasterRef; style: RasterStyle } => Boolean(entry.style) && entry.style.mode !== "mask" && entry.style.colors.length > 0 && Number.isFinite(entry.style.min) && Number.isFinite(entry.style.max));
+  const rasterPresentation = rasterModel.legend ?? [];
+  const rasterStyle = activeRaster ? RASTER_STYLES[activeRaster.palette] : undefined;
+  const resolvedRasterStyle = activeRaster && rasterStyle ? resolveRasterStyle(activeRaster, rasterStyle) : undefined;
+  const matchedRasterEntries = activeRaster && resolvedRasterStyle ? relevantRasterLegend(activeRaster, resolvedRasterStyle.label, rasterPresentation) : [];
+  const rasterEntries = activeRaster && resolvedRasterStyle?.mode === "stepped"
+    ? (matchedRasterEntries.length > 0
+      ? matchedRasterEntries
+      : derivedSteppedLegend(activeRaster, resolvedRasterStyle))
+    : [];
+  const rasterLegends: RasterLegendConfig[] = activeRaster && resolvedRasterStyle && resolvedRasterStyle.mode !== "mask"
+    ? [{ ref: activeRaster, style: resolvedRasterStyle, entries: rasterEntries }]
+    : [];
   const fs = 10.5 * u;
   const pad = 6 * u;
   const legendMaxW = W - 2 * pad - 56 * u;
@@ -220,30 +286,73 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   }
   const rowH = fs * 1.5;
   const legendRowsN = present.length ? legendRows.length : 0;
+  const rasterFs = Math.max(8.5, fs * 0.9);
+  const rasterRowH = rasterFs * 1.55;
   const rasterBarH = 12 * u;
   const rasterBarW = Math.max(80 * u, Math.min(240 * u, legendMaxW - 3 * pad));
-  const rasterBlockH = rowH + rasterBarH + rowH * 0.85 + rowH * 0.9 + pad * 0.7;
-  const rasterLegendW = Math.max(
-    rasterBarW + 2 * pad,
-    ...rasterLegends.map(({ ref, style }) => Math.max(textW(style.label ?? ref.label ?? ref.name, fs), textW(style.legendNote ?? "", fs * 0.82)) + 2 * pad),
-  );
-  const legendW = Math.min(
+  const compactRasterLegend = H < 360 && rasterLegends.some(({ style, entries }) => style.mode === "stepped" && entries.length > 8);
+  const rasterLegendRows: Array<Array<{ ref: RasterRef; entry: RasterLegendEntry; x: number; w: number; color: string }>> = [[]];
+  let rasterX = 0;
+  for (const { ref, style, entries } of rasterLegends) {
+    if (style.mode !== "stepped" || compactRasterLegend) continue;
+    for (const entry of entries) {
+      const color = rasterLegendColor(ref, style, entry) ?? style.colors[0] ?? "#43566B";
+      const itemW = 12 * u + textW(entry.label, rasterFs) + 10 * u;
+      if (rasterX + itemW > legendMaxW && rasterLegendRows.at(-1)!.length > 0) {
+        rasterLegendRows.push([]);
+        rasterX = 0;
+      }
+      rasterLegendRows.at(-1)!.push({ ref, entry, x: rasterX, w: itemW, color });
+      rasterX += itemW;
+    }
+  }
+  const rasterRowsN = rasterLegends.some(({ style }) => style.mode === "continuous")
+    ? 0
+    : rasterLegendRows[0]!.length > 0
+      ? rasterLegendRows.length
+      : 0;
+  const vectorLegendW = Math.min(
     legendMaxW,
-    Math.max(rasterLegendW, 0, ...legendRows.map((r) => r.reduce((s, i) => s + i.w, 0)), ...notes.map((n) => textW(n, fs * 0.95))) + 2 * pad,
+    Math.max(0, maxOf([
+      ...legendRows.map((r) => r.reduce((sum, item) => sum + item.w, 0)),
+      ...notes.map((n) => textW(n, fs * 0.95)),
+    ])) + 2 * pad,
   );
-  const legendH = rasterLegends.length * rasterBlockH + legendRowsN * rowH + notes.length * rowH * 0.95 + (rasterLegends.length + legendRowsN + notes.length ? pad * 1.4 : 0);
-  const showLegend = (legend ?? !bare) && legendH > 0;
-  // The finished box is clamped to the SVG viewport so a title-relative
-  // legend position cannot clip the numeric gradient at the top or bottom.
-  const ly = Math.max(pad, Math.min(legendY ?? pad, Math.max(pad, H - legendH - pad)));
-  const legendTop = ly + pad * 0.7;
-  const rowsTop = legendTop + rasterLegends.length * rasterBlockH;
-  const notesTop = rowsTop + legendRowsN * rowH;
+  const rasterLegendW = compactRasterLegend
+    ? Math.min(120 * u, legendMaxW)
+    : rasterLegends.some(({ style }) => style.mode === "continuous")
+      ? Math.min(legendMaxW, Math.max(rasterBarW + 2 * pad, maxOf(rasterLegends.map(({ ref, style }) => Math.max(textW(style.label ?? ref.label ?? ref.name, fs), textW(style.legendNote ?? "", fs * 0.82)) + 2 * pad))))
+      : Math.min(legendMaxW, Math.max(0, maxOf(rasterLegendRows.map((row) => row.reduce((sum, item) => sum + item.w, 0)))) + 2 * pad);
+  const vectorLegendH = legendRowsN * rowH + notes.length * rowH * 0.95 + (legendRowsN + notes.length ? pad * 1.4 : 0);
+  const rasterLegendH = compactRasterLegend
+    ? 4 * rasterRowH + pad * 0.9
+    : rasterLegends.some(({ style }) => style.mode === "continuous")
+      ? (rasterLegends.length > 0 ? 3 * rowH + pad * 1.2 : 0)
+      : rasterRowsN > 0
+        ? rasterRowsN * rasterRowH + pad * 1.2
+        : 0;
+  const vectorLegendVisible = (legend ?? !bare) && vectorLegendH > 0;
+  // 카드/PPT는 벡터 범례를 바깥 UI가 맡지만, 래스터 숫자 범례는 지도 자체에 남겨야 한다.
+  const rasterLegendVisible = !bare && rasterLegendH > 0;
+  const ly = legendY ?? pad;
+  const rasterOffset = legend === false && H >= 500 ? 72 * u : 48 * u;
+  const rasterLy = rasterLegendVisible
+    ? compactRasterLegend
+      ? Math.max(pad, Math.min(pad + 9 * rasterRowH, H - bottomInset - rasterLegendH - 10 * u))
+      : vectorLegendVisible
+        ? ly + vectorLegendH + 4 * u
+        : legendY ?? pad + rasterOffset
+    : 0;
+  const panelY = vectorLegendVisible ? ly : rasterLy;
+  const panelW = Math.max(vectorLegendVisible ? vectorLegendW : 0, rasterLegendVisible ? rasterLegendW : 0);
+  const panelH = (vectorLegendVisible ? vectorLegendH : 0) + (rasterLegendVisible ? rasterLegendH + (vectorLegendVisible ? 4 * u : 0) : 0);
+  const panelX = compactRasterLegend ? Math.max(pad, W - pad - panelW) : pad;
+  const showLegend = vectorLegendVisible || rasterLegendVisible;
   const bar = scaleBar(mpp, 88 * u);
   const barY = H - bottomInset - 20 * u;
   const barX1 = scaleX !== undefined ? scaleX + bar.px : scaleLeft ? Math.max(pad, 12) + bar.px : W - pad - rightInset;
   const barX0 = barX1 - bar.px;
-  const boxes: Box[] = showLegend ? [{ x0: pad, y0: ly, x1: pad + legendW, y1: ly + legendH }] : [];
+  const boxes: Box[] = showLegend ? [{ x0: panelX, y0: panelY, x1: panelX + panelW, y1: panelY + panelH }] : [];
   boxes.push(...avoid);
   if (scale) boxes.push({ x0: barX0 - 8 * u, y0: barY - 16 * u, x1: W, y1: H });
   const site = 6.5 * u;
@@ -316,7 +425,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
         <clipPath id={`r${uid}`}>
           <path d={`M${cx - R} ${cy}a${R} ${R} 0 1 0 ${2 * R} 0a${R} ${R} 0 1 0 ${-2 * R} 0Z`} />
         </clipPath>
-        {rasterLegends.map(({ ref, style }) => (
+        {rasterLegends.filter(({ style }) => style.mode === "continuous").map(({ ref, style }) => (
           <linearGradient key={`raster-gradient-${ref.name}`} id={`raster-gradient-${uid}-${ref.name}`} x1="0%" y1="0%" x2="100%" y2="0%">
             {style.colors.map((color, index) => (
               <stop key={`${color}-${index}`} offset={`${(rasterStopPositions(style)[index] ?? 0) * 100}%`} stopColor={color} />
@@ -439,44 +548,95 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
         {/* 범례·문구 */}
         {showLegend && (
           <g>
-            <rect x={pad} y={ly} width={legendW} height={legendH} rx={6 * u} fill="#fff" fillOpacity={0.9} />
-            {rasterLegends.map(({ ref, style }, index) => {
-              const top = legendTop + index * rasterBlockH;
-              const x = pad + pad * 0.8;
+            <rect x={panelX} y={panelY} width={panelW} height={panelH} rx={6 * u} fill="#fff" fillOpacity={0.9} />
+            {vectorLegendVisible && (
+              <>
+                {legendRows.map((row, ri) =>
+                  row.map((it, ii) => (
+                    <g key={`legend-${ri}-${ii}-${it.layer}`}>
+                      <circle cx={panelX + pad * 1.8 + it.x + 4 * u} cy={ly + pad * 0.7 + ri * rowH + rowH / 2} r={4 * u} fill={layerStyle(it.layer).color} fillOpacity={0.85} />
+                      <text x={panelX + pad * 1.8 + it.x + 11 * u} y={ly + pad * 0.7 + ri * rowH + rowH * 0.72} fontSize={fs} fill={INK}>
+                        {layerStyle(it.layer).label}
+                      </text>
+                    </g>
+                  )),
+                )}
+                {notes.map((n, i) => (
+                  <text key={`note-${i}-${n}`} x={panelX + pad + pad * 0.8} y={ly + pad * 0.7 + legendRowsN * rowH + i * rowH * 0.95 + rowH * 0.72} fontSize={fs * 0.95} fill="#555a64">
+                    {n}
+                  </text>
+                ))}
+              </>
+            )}
+            {rasterLegendVisible && rasterLegends.map(({ ref, style, entries }) => {
+              const x = panelX + pad * 1.8;
+              if (style.mode === "stepped") {
+                if (compactRasterLegend) {
+                  const anchors = [entries[0], entries[Math.floor(entries.length / 2)], entries.at(-1)]
+                    .filter((entry, index, all): entry is RasterLegendEntry => !!entry && all.findIndex((candidate) => candidate?.label === entry.label) === index);
+                  return (
+                    <g key={`raster-legend-${ref.name}`} data-raster-legend={ref.name}>
+                      <text x={panelX + pad * 1.4} y={rasterLy + pad * 0.55 + rasterFs * 0.8} fontSize={Math.max(7.5, rasterFs * 0.82)} fontWeight={700} fill={INK}>
+                        {style.label ?? ref.label ?? ref.name}
+                      </text>
+                      <g transform={`translate(${panelX + pad * 1.4} ${rasterLy + pad * 0.55 + rasterRowH * 1.15})`}>
+                        {entries.map((entry, index) => (
+                          <rect
+                            key={`${ref.name}-${entry.label}`}
+                            data-raster-legend-entry={entry.label}
+                            aria-label={entry.label}
+                            x={(index / entries.length) * (rasterLegendW - 2.8 * pad)}
+                            y={0}
+                            width={(rasterLegendW - 2.8 * pad) / entries.length + 0.5}
+                            height={10 * u}
+                            fill={rasterLegendColor(ref, style, entry) ?? style.colors[0] ?? "#43566B"}
+                          />
+                        ))}
+                      </g>
+                      {anchors.map((entry, index) => (
+                        <text key={`${ref.name}-anchor-${entry.label}`} x={panelX + pad * 1.4 + (index / Math.max(1, anchors.length - 1)) * (rasterLegendW - 2.8 * pad)} y={rasterLy + pad * 0.55 + rasterRowH * 2.18} textAnchor={index === anchors.length - 1 ? "end" : index === 0 ? "start" : "middle"} fontSize={Math.max(7.5, rasterFs * 0.8)} fill="#3f4652">
+                          {entry.label.replace(/^[^·]+·\s*/, "")}
+                        </text>
+                      ))}
+                    </g>
+                  );
+                }
+                return (
+                  <g key={`raster-legend-${ref.name}`} data-raster-legend={ref.name}>
+                    {rasterLegendRows.map((row, ri) =>
+                      row.filter((item) => item.ref.name === ref.name).map((item, ii) => (
+                        <g key={`${ref.name}-${ri}-${ii}-${item.entry.label}`} data-raster-legend-entry={item.entry.label}>
+                          <rect x={x + item.x} y={rasterLy + pad * 0.45 + ri * rasterRowH + 2 * u} width={9 * u} height={9 * u} rx={1.5 * u} fill={item.color} stroke="#334155" strokeOpacity={0.35} strokeWidth={0.6 * u} />
+                          <text x={x + item.x + 13 * u} y={rasterLy + pad * 0.45 + ri * rasterRowH + rasterRowH * 0.72} fontSize={rasterFs} fill={INK}>
+                            {item.entry.label}
+                          </text>
+                        </g>
+                      )),
+                    )}
+                  </g>
+                );
+              }
               const min = style.min ?? 0;
               const max = style.max ?? 1;
               const ticks = style.legendTicks?.length ? style.legendTicks : [min, max];
               const tickPosition = (tick: number) => max <= min ? 0 : Math.max(0, Math.min(1, (tick - min) / (max - min)));
               const tickLabel = (tick: number) => `${Math.round(tickPosition(tick) * 100)}%`;
-              const barY = top + rowH + pad * 0.25;
+              const continuousTop = rasterLy + pad * 0.7;
+              const continuousX = panelX + pad * 0.8;
+              const barY = continuousTop + rowH + pad * 0.25;
               const tickY = barY + rasterBarH + rowH * 0.72;
               return (
                 <g key={`raster-legend-${ref.name}`} data-raster-legend={ref.name}>
-                  <text x={x} y={top + rowH * 0.72} fontSize={fs} fontWeight={700} fill={INK}>{style.label ?? ref.label ?? ref.name}</text>
-                  <rect x={x} y={barY} width={rasterBarW} height={rasterBarH} rx={2 * u} fill={`url(#raster-gradient-${uid}-${ref.name})`} stroke="#64748B" strokeWidth={0.6 * u} />
+                  <text x={continuousX} y={continuousTop + rowH * 0.72} fontSize={fs} fontWeight={700} fill={INK}>{style.label ?? ref.label ?? ref.name}</text>
+                  <rect x={continuousX} y={barY} width={rasterBarW} height={rasterBarH} rx={2 * u} fill={`url(#raster-gradient-${uid}-${ref.name})`} stroke="#64748B" strokeWidth={0.6 * u} />
                   {ticks.map((tick) => {
                     const position = tickPosition(tick);
-                    return <text key={tick} x={x + rasterBarW * position} y={tickY} textAnchor={position === 0 ? "start" : position === 1 ? "end" : "middle"} fontSize={fs * 0.82} fill="#334155">{tickLabel(tick)}</text>;
+                    return <text key={`${ref.name}-tick-${tick}`} x={continuousX + rasterBarW * position} y={tickY} textAnchor={position === 0 ? "start" : position === 1 ? "end" : "middle"} fontSize={fs * 0.82} fill="#334155">{tickLabel(tick)}</text>;
                   })}
-                  {style.legendNote && <text x={x} y={tickY + rowH * 0.9} fontSize={fs * 0.82} fill="#555a64">{style.legendNote}</text>}
+                  {style.legendNote && <text x={continuousX} y={tickY + rowH * 0.9} fontSize={fs * 0.82} fill="#555a64">{style.legendNote}</text>}
                 </g>
               );
             })}
-            {legendRows.map((row, ri) =>
-              row.map((it, ii) => (
-                <g key={`legend-${ri}-${ii}-${it.layer}`}>
-                  <circle cx={pad * 1.8 + it.x + 4 * u} cy={rowsTop + ri * rowH + rowH / 2} r={4 * u} fill={layerStyle(it.layer).color} fillOpacity={0.85} />
-                  <text x={pad * 1.8 + it.x + 11 * u} y={rowsTop + ri * rowH + rowH * 0.72} fontSize={fs} fill={INK}>
-                    {layerStyle(it.layer).label}
-                  </text>
-                </g>
-              )),
-            )}
-            {notes.map((n, i) => (
-              <text key={`note-${i}-${n}`} x={pad + pad * 0.8} y={notesTop + i * rowH * 0.95 + rowH * 0.72} fontSize={fs * 0.95} fill="#555a64">
-                {n}
-              </text>
-            ))}
           </g>
         )}
 

@@ -2,7 +2,7 @@
  * TileResult → 화면 문자열. 화면이 쓰는 문구는 전부 여기서 만든다 (컴포넌트에는 문구 로직 없음).
  * 규칙: 종합 점수 없음 · 도보 시간 없음 · 공급/가격/개발은 좋음·주의 평가 없음 (plan 화면 규칙 1~8).
  */
-import type { OUTPUT_FACES, RoseSeason, TileResult } from "../tile-result";
+import type { OUTPUT_FACES, RasterRef, RoseSeason, TileResult } from "../tile-result";
 import type { Scene } from "../scene";
 import { fmtInt, rankComplexes, rankSupply, STOCK_LEGEND, SUPPLY_LAYERS, SUPPLY_LEGEND, summarize, supplyStats, type CalloutLegendSpec, type Complex, type Stat } from "./callout-layout";
 import type { MapModel } from "./map-layers";
@@ -106,14 +106,17 @@ const MAP_NOTES: Record<string, string> = {
   S03: "조기설계 참고용 · 풍동 검증 없음 · 주풍향 1방향",
 };
 
-function mapOf(r: TileResult): MapModel | null {
+function mapOf(r: TileResult): RasterMapModel | null {
   if (r.status !== "complete" && r.status !== "partial") return null;
   const features = r.presentation.features ?? [];
   const polygons = r.presentation.polygons ?? [];
   const lines = r.presentation.lines ?? [];
-  const rasters = r.presentation.rasters ?? [];
-  const basemap = r.presentation.basemap;
-  if (features.length === 0 && polygons.length === 0 && lines.length === 0 && rasters.length === 0 && !basemap) return null;
+  const presentation = r.presentation as ExtendedPresentation;
+  const rasterOptions = presentation.rasters ?? [];
+  const defaultRaster = rasterDefaultName(r.tileCode, rasterOptions, presentation);
+  const rasters = defaultRaster ? rasterOptions.filter((ref) => ref.name === defaultRaster) : [];
+  const basemap = presentation.basemap;
+  if (features.length === 0 && polygons.length === 0 && lines.length === 0 && rasterOptions.length === 0 && !basemap) return null;
   const notes = MAP_NOTES[r.tileCode] ? [MAP_NOTES[r.tileCode]] : [];
   if (r.tileCode === "A01" && r.metrics.some((m) => m.id === "nearest_rail_m" && m.status === "missing")) notes.push("철도 자료 미적재 · 버스정류장만 표시");
   if (features.length === 0 && polygons.length === 0 && lines.length === 0) notes.push("반경 안 표시할 지물 없음");
@@ -131,6 +134,28 @@ function mapOf(r: TileResult): MapModel | null {
     linesTotal: r.presentation.linesTotal ?? lines.length,
     total: r.presentation.featuresTotal ?? features.length,
     notes,
+    ...(r.presentation.legend.length > 0 ? { legend: r.tileCode === "S02" ? extendSunHoursLegend(r.presentation.legend) : r.presentation.legend } : {}),
+    ...(rasterOptions.length > 0 ? { rasterOptions } : {}),
+    ...(defaultRaster ? { defaultRaster, rasters } : {}),
+  };
+}
+
+/** T31의 컷 선택이 카드·상세·PPT 공통 경로를 재사용하도록 래스터 하나만 남긴다. */
+export function viewWithOnlyRaster(view: TileView, rasterName: string, note: string): TileView {
+  if (!view.map) return view;
+  const model = view.map as RasterMapModel;
+  const options = model.rasterOptions ?? model.rasters ?? [];
+  const selected = options.find((ref) => ref.name === rasterName);
+  if (!selected) return view;
+  const nextMap: RasterMapModel = {
+    ...model,
+    rasters: [selected],
+    defaultRaster: selected.name,
+    ...(note && !model.notes.includes(note) ? { notes: [...model.notes, note] } : {}),
+  };
+  return {
+    ...view,
+    map: nextMap,
   };
 }
 
@@ -166,6 +191,44 @@ const CAVEATS: Record<string, string> = {
   S04: "UTCI 근사 · 계절×시각 대표 기상 · 자리끼리 비교",
 };
 const MODEL_BADGE: Record<string, string> = { S02: "그림자 추정 · 법적 판정 아님", S03: "탐색용 · 검증 CFD 아님", S04: "근사 · 건강 위험 예측 아님" };
+
+type ExtendedPresentation = TileResult["presentation"] & {
+  /** T31이 저장 결과 계약에 추가할 수 있는 명시적 기본 래스터. */
+  defaultRaster?: string;
+};
+
+/** MapModel은 기존 타일 레이어와의 호환을 위해 유지하고, 래스터 표시 메타만 런타임으로 확장한다. */
+type RasterMapModel = MapModel & {
+  legend?: TileResult["presentation"]["legend"];
+  defaultRaster?: string;
+  /** 화면에는 기본 래스터만 넣고, 컷 전환용 전체 목록은 별도로 보존한다. */
+  rasterOptions?: RasterRef[];
+};
+
+type PrimaryRasterRef = RasterRef & { primary?: boolean };
+
+function rasterDefaultName(tileCode: string, refs: RasterRef[], presentation: ExtendedPresentation): string | null {
+  const declared = presentation.defaultRaster;
+  if (declared && refs.some((ref) => ref.name === declared)) return declared;
+  const primary = refs.find((ref) => (ref as PrimaryRasterRef).primary === true);
+  if (primary) return primary.name;
+  // 현재 S02 결과는 날짜 순서가 춘분부터지만, 카드·상세의 대표 장면은 하지로 고정한다.
+  if (tileCode === "S02" && refs.some((ref) => ref.name === "sun_hours_summer")) return "sun_hours_summer";
+  return refs[0]?.name ?? null;
+}
+
+/** 화면용 일조 범례는 하지 낮 길이까지 읽히도록 0~15시간과 15+를 보여 준다. */
+function extendSunHoursLegend(legend: TileResult["presentation"]["legend"]): TileResult["presentation"]["legend"] {
+  const sunEntries = legend.filter((entry) => entry.label.includes("일조시간") && (entry.min !== null || entry.max !== null));
+  if (sunEntries.length === 0) return legend;
+  const prefix = sunEntries[0]!.label.split(" · ")[0] ?? "일조시간";
+  const hourly = Array.from({ length: 16 }, (_, index) => ({
+    label: index === 15 ? `${prefix} · 15시간 이상` : `${prefix} · ${index}시간`,
+    min: index,
+    max: index === 15 ? null : index + 1,
+  }));
+  return [...legend.filter((entry) => !entry.label.includes("일조시간")), ...hourly];
+}
 
 export const FACE_TEXT: Record<OutputFace, string> = { front: "도판", back: "구성비", both: "도판 + 구성비" };
 export const faceLabel = (f: OutputFace) => FACE_TEXT[f];
@@ -261,8 +324,10 @@ export function toTileView(r: TileResult, scene?: Scene | null): TileView {
       const inside = zone?.status === "observed" ? (zone.value === 1 ? "통학구역 안" : "통학구역 밖") : "통학구역 미확인";
       headline = { value: inside, label: "대지 기준", aux: `학구도 기준일 ${asOf ?? "미확인"}` };
     } else {
-      // 값이 있는 첫 지표를 대표로 쓴다 (예: 철도 미적재면 버스 거리).
-      const i = metrics.findIndex((m) => m.status === "observed" || m.status === "estimated");
+      // S02는 춘분부터 저장된 지표 순서와 무관하게 하지 평균 일조를 대표로 쓴다.
+      const preferred = r.tileCode === "S02" ? metrics.find((m) => m.id === "mean_sun_h_summer") : undefined;
+      // 그 밖의 타일은 값이 있는 첫 지표를 대표로 쓴다 (예: 철도 미적재면 버스 거리).
+      const i = preferred ? metrics.indexOf(preferred) : metrics.findIndex((m) => m.status === "observed" || m.status === "estimated");
       const first = rows[i < 0 ? 0 : i];
       headline = { value: first.value, label: first.label, aux: first.aux, tag: first.tag };
     }

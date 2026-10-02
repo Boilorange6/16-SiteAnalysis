@@ -6,6 +6,55 @@ import type { RasterStyle } from "./map-layers";
 
 type RasterValues = Uint8Array | Uint16Array | Int16Array;
 
+/**
+ * S02의 일조시간은 하지의 낮 길이(약 15시간)까지 읽혀야 한다.
+ *
+ * `map-layers.ts`의 공용 팔레트는 다른 작업자가 소유하므로, 여기서는
+ * 래스터를 실제로 칠하는 경로에서만 화면용 팔레트를 확장한다. 낮은 값은
+ * 채도가 낮은 청회색으로 시작하고 높은 값으로 갈수록 차분한 황금색·주황색으로
+ * 이동한다. 숫자 구간은 0~1, ..., 14~15, 15+이다.
+ */
+export const SUN_HOURS_COLORS = [
+  "#43566B",
+  "#4E6478",
+  "#5A7184",
+  "#678095",
+  "#748EA2",
+  "#829CAF",
+  "#91A9B7",
+  "#A1B5B8",
+  "#B1BDA9",
+  "#C2BE93",
+  "#D1B77B",
+  "#DDA963",
+  "#E19A4F",
+  "#E28A43",
+  "#DF793B",
+  "#D76835",
+] as const;
+
+export const SUN_HOURS_BREAKS = Array.from({ length: SUN_HOURS_COLORS.length - 1 }, (_, index) => index + 1);
+
+/** 화면과 PPT가 같은 래스터 팔레트를 사용하도록 스타일을 해석한다. */
+export function resolveRasterStyle(ref: Pick<RasterRef, "palette">, style: RasterStyle): RasterStyle {
+  if (ref.palette !== "sun_hours" || style.mode !== "stepped") return style;
+  return { ...style, colors: [...SUN_HOURS_COLORS], breaks: [...SUN_HOURS_BREAKS] };
+}
+
+/** 범례의 stepped 항목에 대응하는 색. 연속형은 gradient를 그리므로 null을 돌려준다. */
+export function rasterLegendColor(
+  ref: Pick<RasterRef, "palette">,
+  style: RasterStyle,
+  entry: { min: number | null; max: number | null },
+): string | null {
+  const resolved = resolveRasterStyle(ref, style);
+  if (resolved.mode === "continuous") return null;
+  if (resolved.mode === "mask") return resolved.colors[0] ?? "#43566B";
+  const value = entry.min ?? entry.max ?? 0;
+  const index = Math.min(resolved.colors.length - 1, (resolved.breaks ?? []).filter((breakValue) => value >= breakValue).length);
+  return resolved.colors[index] ?? null;
+}
+
 function bytesPerSample(ref: RasterRef): number {
   return ref.dtype === "u16" || ref.dtype === "i16" ? 2 : 1;
 }
@@ -92,8 +141,9 @@ function rawAt(values: RasterValues, index: number): number {
 export function paintRgba(ref: RasterRef, values: RasterValues, style: RasterStyle, width = ref.cols, height = ref.rows): Uint8ClampedArray {
   const expected = ref.cols * ref.rows * ref.bands;
   if (values.length !== expected) throw new Error(`RASTER_LENGTH_MISMATCH: ${ref.name}`);
+  const resolvedStyle = resolveRasterStyle(ref, style);
   const rgba = new Uint8ClampedArray(width * height * 4);
-  const opacity = Math.max(0, Math.min(1, style.opacity ?? 1));
+  const opacity = Math.max(0, Math.min(1, resolvedStyle.opacity ?? 1));
   for (let y = 0; y < height; y += 1) {
     const sourceY = Math.min(ref.rows - 1, Math.floor((y * ref.rows) / height));
     const sourceRow = ref.rows - 1 - sourceY;
@@ -111,8 +161,8 @@ export function paintRgba(ref: RasterRef, values: RasterValues, style: RasterSty
         const v = rawAt(values, base + 1) * ref.scale + ref.offset;
         value = Math.hypot(value, v);
       }
-      const isMask = ref.kind === "mask" || ref.dtype === "bits" || style.mode === "mask";
-      const color = isMask ? colorOf(style.colors[0] ?? "#ffffff") : paletteColor(style.colors, value, style);
+      const isMask = ref.kind === "mask" || ref.dtype === "bits" || resolvedStyle.mode === "mask";
+      const color = isMask ? colorOf(resolvedStyle.colors[0] ?? "#ffffff") : paletteColor(resolvedStyle.colors, value, resolvedStyle);
       rgba[out] = color[0];
       rgba[out + 1] = color[1];
       rgba[out + 2] = color[2];
