@@ -21,9 +21,11 @@ function isSelected(row: DetailRow, selectedFids: readonly string[]): boolean {
   return rowFids(row).some((fid) => selectedFids.includes(fid));
 }
 
-function rowAddress(row: DetailRow): string | null {
-  const address = row.cells.address;
-  return address === null || address === undefined || address === "" ? null : sanitizeDetailText(String(address));
+function rowAddress(row: DetailRow, columns: ReturnType<typeof tableColumns>): string | null {
+  const column = columns.find((candidate) => candidate.key === "address");
+  if (!column) return null;
+  const address = formatDetailValue(row.cells.address ?? null, column, row);
+  return address === "—" ? null : sanitizeDetailText(address);
 }
 
 function selectWithKeyboard(event: KeyboardEvent<HTMLElement>, row: DetailRow, onSelectRow: (row: DetailRow) => void): void {
@@ -106,7 +108,7 @@ export default function DetailTable({ payload, rows, selectedFids, onSelectRow, 
         {rows.map((row) => {
           const selected = isSelected(row, selectedFids);
           const title = rowTitle(row, columns);
-          const address = rowAddress(row);
+          const address = rowAddress(row, columns);
           return (
             <button
               key={row.fid}

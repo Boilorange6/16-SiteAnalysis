@@ -279,7 +279,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
         const { a: anchor, b } = fit;
         boxes.push(b);
         labels.push(
-          <text key={`l${d.key}`} x={anchor.x + 2 * u} y={anchor.y + fs * 0.85} fontSize={d.small ? fs * 0.85 : fs} fontWeight={d.small ? 500 : 700} fill={INK} stroke="#fff" strokeWidth={3 * u} strokeLinejoin="round" paintOrder="stroke">
+          <text key={`label-${d.key}`} x={anchor.x + 2 * u} y={anchor.y + fs * 0.85} fontSize={d.small ? fs * 0.85 : fs} fontWeight={d.small ? 500 : 700} fill={INK} stroke="#fff" strokeWidth={3 * u} strokeLinejoin="round" paintOrder="stroke">
             {d.text}
           </text>,
         );
@@ -350,7 +350,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
             tiles.map((t) => {
               const url = tileUrl(ly, t.z, t.x, t.y);
               const href = tileHref ? tileHref(url) : url;
-              return href ? <image key={`${ly}/${t.z}/${t.x}/${t.y}`} href={href} x={t.left} y={t.top} width={t.size + 0.6} height={t.size + 0.6} preserveAspectRatio="none" /> : null;
+              return href ? <image key={`tile-${ly}/${t.z}/${t.x}/${t.y}`} href={href} x={t.left} y={t.top} width={t.size + 0.6} height={t.size + 0.6} preserveAspectRatio="none" /> : null;
             }),
           )}
         </g>
@@ -393,14 +393,14 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
             return <polyline key={`line${d.index}`} data-line="true" points={d.points.map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke={lineSelected ? INK : st.color} strokeWidth={(lineSelected ? 4 : 1.5) * u} strokeLinejoin="round" {...pickProps({ fid: d.l.fid, lng: center[0], lat: center[1], kind: "line" }, d.l.fid ?? `line-${d.index}`, `${layerStyle(d.l.layer).label} 선${d.l.fid ? ` ${d.l.fid}` : ""}`)} />;
           })}
         </g>
-        {rings.map((r) => (
-          <circle key={r} cx={cx} cy={cy} r={r} fill="none" stroke={line} strokeOpacity={sat ? 0.7 : 0.35} strokeWidth={1 * u} strokeDasharray={`${4 * u} ${4 * u}`} />
+        {rings.map((r, i) => (
+          <circle key={`ring-${i}-${r}`} cx={cx} cy={cy} r={r} fill="none" stroke={line} strokeOpacity={sat ? 0.7 : 0.35} strokeWidth={1 * u} strokeDasharray={`${4 * u} ${4 * u}`} />
         ))}
         <circle cx={cx} cy={cy} r={R} fill="none" stroke={line} strokeOpacity={sat ? 0.95 : 0.75} strokeWidth={1.6 * u} />
 
-        {drawn.map((d) => {
+        {drawn.map((d, i) => {
           if (d.f.highlight && d.f.layer.endsWith("_nearest"))
-            return <line key={`n${d.f.layer}`} x1={cx} y1={cy} x2={d.p[0]} y2={d.p[1]} stroke={line} strokeWidth={1.4 * u} strokeDasharray={`${3 * u} ${3 * u}`} />;
+            return <line key={`nearest-${i}-${d.f.fid ?? d.f.layer}`} x1={cx} y1={cy} x2={d.p[0]} y2={d.p[1]} stroke={line} strokeWidth={1.4 * u} strokeDasharray={`${3 * u} ${3 * u}`} />;
           return null;
         })}
         {drawn.map((d, i) => {
@@ -410,7 +410,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
           const hollow = st.sizeBy === "weight" && !d.f.weight;
           return (
             <circle
-              key={i}
+              key={`feature-${i}-${d.f.fid ?? d.f.layer}`}
               cx={d.p[0]}
               cy={d.p[1]}
               r={r}
@@ -462,8 +462,8 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
               );
             })}
             {legendRows.map((row, ri) =>
-              row.map((it) => (
-                <g key={it.layer}>
+              row.map((it, ii) => (
+                <g key={`legend-${ri}-${ii}-${it.layer}`}>
                   <circle cx={pad * 1.8 + it.x + 4 * u} cy={rowsTop + ri * rowH + rowH / 2} r={4 * u} fill={layerStyle(it.layer).color} fillOpacity={0.85} />
                   <text x={pad * 1.8 + it.x + 11 * u} y={rowsTop + ri * rowH + rowH * 0.72} fontSize={fs} fill={INK}>
                     {layerStyle(it.layer).label}
@@ -472,7 +472,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
               )),
             )}
             {notes.map((n, i) => (
-              <text key={n} x={pad + pad * 0.8} y={notesTop + i * rowH * 0.95 + rowH * 0.72} fontSize={fs * 0.95} fill="#555a64">
+              <text key={`note-${i}-${n}`} x={pad + pad * 0.8} y={notesTop + i * rowH * 0.95 + rowH * 0.72} fontSize={fs * 0.95} fill="#555a64">
                 {n}
               </text>
             ))}
