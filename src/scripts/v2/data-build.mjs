@@ -282,9 +282,9 @@ if (only.has("weather")) {
   if (!existsSync(stationFile)) throw new Error(`ASOS 지점 메타 파일이 없습니다: ${stationFile} — weather-fetch.mjs를 먼저 실행하세요`);
   const { decodeText } = await import("../../lib/v2/a0/measure.ts");
   const { buildAsosWind, readStationCsv } = await import("../../lib/v2/ingest/sources/asos-wind.ts");
-  const stations = readStationCsv(decodeText(readFileSync(stationFile)).text);
-  if (stations.length === 0) throw new Error(`ASOS 지점 메타 파일에 유효한 지점이 없습니다: ${stationFile}`);
   const period = { start: opt("period-start", "2016-01-01"), end: opt("period-end", "2025-12-31") };
+  const stations = readStationCsv(decodeText(readFileSync(stationFile)).text, period);
+  if (stations.length === 0) throw new Error(`ASOS 지점 메타 파일에 유효한 지점이 없습니다: ${stationFile}`);
   const hourlyFiles = [...walk(asosDir)]
     .filter((file) => /^\d{4}\.jsonl$/i.test(basename(file)))
     .sort();

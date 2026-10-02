@@ -100,7 +100,7 @@ function headerIndex(headers: string[], names: readonly string[], required = tru
 }
 
 /** 기상자료개방포털 META_관측지점정보.csv의 EUC-KR 디코딩 후 텍스트를 읽는다. */
-export function readStationCsv(text: string): AsosStation[] {
+export function readStationCsv(text: string, period?: { start: string; end: string }): AsosStation[] {
   const rows = parseCsv(text).filter((row) => row.some((cell) => clean(cell) !== ""));
   if (rows.length === 0) return [];
   const headers = rows[0].map((header) => clean(header));
@@ -113,17 +113,15 @@ export function readStationCsv(text: string): AsosStation[] {
   const end = headerIndex(headers, ["종료일", "관측종료일", "end"], false);
   if (start < 0) throw new Error("ASOS 지점 메타에 시작일 헤더가 없습니다");
 
-  const stations: AsosStation[] = [];
-  const seen = new Set<string>();
+  const candidates = new Map<string, AsosStation[]>();
   for (const row of rows.slice(1)) {
     const stnId = clean(row[id]);
     const stationName = clean(row[name]) || stnId;
     const latitude = numberOf(row[lat]);
     const longitude = numberOf(row[lng]);
     const started = dateOf(row[start]);
-    if (!stnId || latitude === null || longitude === null || started === null || seen.has(stnId)) continue;
-    seen.add(stnId);
-    stations.push({
+    if (!stnId || latitude === null || longitude === null || started === null) continue;
+    const station: AsosStation = {
       stnId,
       name: stationName,
       lng: longitude,
@@ -131,9 +129,24 @@ export function readStationCsv(text: string): AsosStation[] {
       elevationM: elevation >= 0 ? numberOf(row[elevation]) : null,
       start: started,
       end: end >= 0 ? dateOf(row[end]) : null,
-    });
+    };
+    const list = candidates.get(stnId) ?? [];
+    list.push(station);
+    candidates.set(stnId, list);
   }
-  return stations;
+  if (!period) return [...candidates.values()].map((list) => list[0]);
+
+  const periodStart = dayStart(period.start);
+  const periodEnd = dayStart(period.end) + DAY_MS;
+  if (periodEnd <= periodStart) throw new Error(`잘못된 ASOS 기간 ${period.start}..${period.end}`);
+  const overlap = (station: AsosStation): number => {
+    const stationStart = dayStart(station.start);
+    const stationEnd = station.end === null ? periodEnd : dayStart(station.end) + DAY_MS;
+    return Math.max(0, Math.min(periodEnd, stationEnd) - Math.max(periodStart, stationStart));
+  };
+  return [...candidates.values()].map((list) => list
+    .map((station, index) => ({ station, index, overlap: overlap(station) }))
+    .sort((a, b) => b.overlap - a.overlap || dayStart(b.station.start) - dayStart(a.station.start) || a.index - b.index)[0].station);
 }
 
 function dayStart(value: string): number {
@@ -302,12 +315,18 @@ export async function buildAsosWind(
     if (aggregate.totalHours > 0) aggregates.set(station.stnId, aggregate);
   }
   const stats = new SourceStats(ASOS_SOURCE_ID, releaseId, []);
-  stats.expectedRegions = [...aggregates.keys()];
+  const stationById = new Map(stations.map((station) => [station.stnId, station]));
+  const observedStations = new Set<string>();
 
   for await (const row of hourly) {
     stats.read();
-    const aggregate = aggregates.get(clean(row.stnId));
+    const stationId = clean(row.stnId);
+    const aggregate = aggregates.get(stationId);
     const time = typeof row.tm === "string" ? hourOf(row.tm) : null;
+    if (!stationById.has(stationId)) {
+      stats.unlocate();
+      continue;
+    }
     if (!aggregate || !time) {
       stats.reject();
       continue;
@@ -322,6 +341,7 @@ export async function buildAsosWind(
     }
     aggregate.seenHours[byteIndex] |= bit;
     stats.accept({ stnId: aggregate.station.stnId, ws: row.ws, wd: row.wd }, aggregate.station.stnId, "hour");
+    observedStations.add(aggregate.station.stnId);
 
     const season = seasonOfMonth(time.month);
     const seasonRose = aggregate.seasonRoses.get(season) ?? { dirs: Array.from({ length: 16 }, () => Array(5).fill(0)), calmHours: 0 };
@@ -350,6 +370,16 @@ export async function buildAsosWind(
     }
   }
 
+  const observedIds = [...aggregates.keys()].filter((stationId) => observedStations.has(stationId));
+  const noObservationStations = [...aggregates.keys()].filter((stationId) => !observedStations.has(stationId));
+  stats.expectedRegions = observedIds;
+  db.prepare("UPDATE source_release SET coverage_json = ? WHERE release_id = ?").run(JSON.stringify({
+    byRegion: stats.byRegion,
+    observedStations: observedIds,
+    noObservationStations,
+    noObservationNote: "기간 내 유효 ASOS raw 행이 없는 메타 지점은 관측값을 합성하지 않고 weather_station과 지역 gate에서 제외했다.",
+  }), releaseId);
+
   const insertStation = db.prepare(`INSERT INTO weather_station
     (station_id, name, lng, lat, elevation_m, period_start, period_end, total_hours, calm_hours, missing_hours, release_id)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
@@ -368,6 +398,7 @@ export async function buildAsosWind(
       db.prepare(`DELETE FROM weather_station WHERE station_id IN (${marks})`).run(...stationIds);
     }
     for (const aggregate of aggregates.values()) {
+      if (!observedStations.has(aggregate.station.stnId)) continue;
       const missingByGap = Math.max(0, aggregate.totalHours - aggregate.calmHours - aggregate.dirs.flat().reduce((sum, hours) => sum + hours, 0));
       const missingHours = Math.max(aggregate.missingHours, missingByGap);
       insertStation.run(

@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
 
 const { initDataFileSchema } = await import("../../lib/v2/data/schema.ts");
+const { evaluateIngest } = await import("../../lib/v2/data/quality-gate.ts");
 const { insertRelease } = await import("../../lib/v2/ingest/build.ts");
 const { buildEngineFixture } = await import("./engine-fixture.mjs");
 const { ASOS_SOURCE_ID, SPEED_BREAKS, buildAsosWind, dir16Of, readStationCsv, seasonOfMonth, speedBinOf } = await import("../../lib/v2/ingest/sources/asos-wind.ts");
@@ -85,6 +86,70 @@ assert.equal(winter02.ghi_med_wm2, 0, "야간 결측 일사는 계산된 0으로
 const calmBySeason = db.prepare("SELECT season, calm_hours FROM wind_rose_season WHERE station_id = 'near' GROUP BY season ORDER BY season").all();
 assert.ok(calmBySeason.some((row) => row.calm_hours === 1));
 db.close();
+
+// 기간 밖의 미래 메타 행이 먼저 오는 지점과 raw가 비어 있는 활성 지점을 함께 둔다.
+// 기존 구현은 미래 행을 고정 선택해 251의 유효 행을 버리고, 빈 지점까지
+// expectedRegions에 넣어 publish gate의 REGION_MISSING을 재현한다.
+{
+  const metadata = [
+    "지점,지점명,위도,경도,노장해발고도(m),시작일,종료일",
+    "251,미래 이전 예정,35.42,126.69,50,2026-06-02,",
+    "251,고창군,35.4266,126.697,58.84,2010-12-01,2026-06-02",
+    "empty,자료 없는 활성 지점,35.5,127.1,10,2010-01-01,",
+  ].join("\n");
+  const period = { start: "2016-01-01", end: "2025-12-31" };
+  const periodStations = readStationCsv(metadata, period);
+  const station251 = periodStations.find((station) => station.stnId === "251");
+  assert.equal(station251?.start, "2010-12-01");
+
+  const gateDb = new Database(":memory:");
+  initDataFileSchema(gateDb, "weather");
+  const gateRelease = insertRelease(gateDb, {
+    sourceId: "asos",
+    provider: "test",
+    sourceUrl: "https://example.invalid",
+    sourceAsOf: "2025-12-31",
+    fetchedAt: "2026-10-01T00:00:00Z",
+    checksum: "region-missing-regression",
+    licenseCode: "TEST",
+  });
+  async function* gateRows() {
+    yield { stnId: "251", tm: "2025-01-01 00:00", ws: 1, wd: 360 };
+    yield { stnId: "unknown", tm: "2025-01-01 01:00", ws: 1, wd: 360 };
+  }
+  const gateStats = await buildAsosWind(gateDb, periodStations, gateRows(), gateRelease, period);
+  assert.equal(gateStats.rejected, 0);
+  assert.equal(gateStats.unlocated, 1, "metadata 없는 지점은 reject가 아니라 unlocated로 기록");
+  const oldGate = evaluateIngest({
+    responseRowsReported: 2,
+    parsedRows: gateStats.accepted,
+    pageLimitHit: false,
+    totalCountReported: null,
+    next: gateStats.snapshot(),
+    previous: null,
+    expectedRegions: ["251", "empty"],
+  });
+  assert.ok(oldGate.failures.some((failure) => failure.code === "REGION_MISSING"));
+  const fixedGate = evaluateIngest({
+    responseRowsReported: 2,
+    parsedRows: gateStats.accepted,
+    pageLimitHit: false,
+    totalCountReported: null,
+    next: gateStats.snapshot(),
+    previous: null,
+    expectedRegions: gateStats.expectedRegions,
+  });
+  assert.equal(fixedGate.ok, true, JSON.stringify(fixedGate.failures));
+  assert.deepEqual(gateStats.expectedRegions, ["251"]);
+  assert.equal(gateDb.prepare("SELECT 1 FROM weather_station WHERE station_id = 'empty'").get(), undefined);
+  assert.deepEqual(JSON.parse(gateDb.prepare("SELECT coverage_json FROM source_release WHERE release_id = ?").pluck().get(gateRelease)), {
+    byRegion: { "251": 1 },
+    observedStations: ["251"],
+    noObservationStations: ["empty"],
+    noObservationNote: "기간 내 유효 ASOS raw 행이 없는 메타 지점은 관측값을 합성하지 않고 weather_station과 지역 gate에서 제외했다.",
+  });
+  gateDb.close();
+}
 
 // 예전 raw 행(ta/hm/icsr/dc10Tca 없음)도 바람장미는 적재하고 대표 기상은 항목별 null이어야 한다.
 {
