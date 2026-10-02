@@ -7,7 +7,8 @@ import { performance } from "node:perf_hooks";
 import type BetterSqlite3 from "better-sqlite3";
 import type { LngLat } from "../crs";
 import { createAnalysisRun, enqueueAnalysisJobs, finishAnalysisRun, findCachedTileResult, getAnalysisRun, saveScene, saveTileResult } from "../app-db";
-import { openDataFile, readManifest } from "../data/manifest";
+import { acquireDataFile, releaseDataFile } from "../data/file-pool";
+import { readManifest } from "../data/manifest";
 import { tileCacheKey, type TileResult } from "../tile-result";
 import { saveTileRasters } from "../raster-store";
 import type { SiteSummary } from "../ui/tile-view";
@@ -38,7 +39,6 @@ import { d06 } from "./tiles/d06";
 import { d07 } from "./tiles/d07";
 import { d08 } from "./tiles/d08";
 import { d09 } from "./tiles/d09";
-import { d10 } from "./tiles/d10";
 import { d11 } from "./tiles/d11";
 import { d12 } from "./tiles/d12";
 import { d13 } from "./tiles/d13";
@@ -49,7 +49,6 @@ import { d17 } from "./tiles/d17";
 import { d18 } from "./tiles/d18";
 import { d19 } from "./tiles/d19";
 import { d20 } from "./tiles/d20";
-import { d21 } from "./tiles/d21";
 import { d22 } from "./tiles/d22";
 import { d23 } from "./tiles/d23";
 import { d24 } from "./tiles/d24";
@@ -57,11 +56,8 @@ import { d25 } from "./tiles/d25";
 import { d26 } from "./tiles/d26";
 import { d27 } from "./tiles/d27";
 import { d28 } from "./tiles/d28";
-import { d29 } from "./tiles/d29";
 import { notProvided } from "./tiles/not-provided";
 import { s01 } from "./tiles/s01";
-import { s02 } from "./tiles/s02";
-import { s03 } from "./tiles/s03";
 import { s04 } from "./tiles/s04";
 
 export const RADIUS_CHOICES = [500, 800, 1000, 2000, 3000] as const;
@@ -86,6 +82,11 @@ export const HEAVY_TILE_CODES = ["S02", "D21", "D29", "D10", "S03", "S04"] as co
 const HEAVY_TILE_SET = new Set<string>(HEAVY_TILE_CODES);
 export const DATE_INDEPENDENT_CODES = new Set(["S03", "D10", "D29", "D01", "D28"]);
 
+/** 무거운 타일은 POST의 경량 계산 경로에서 호출되지 않는다. 작업자는 jobs.ts에서 로드한다. */
+const deferredHeavyTile = (): TileResult => {
+  throw new Error("heavy tile compute is only available in the analysis worker");
+};
+
 /** 화면 순서(카탈로그 순). 계산하는 타일 다음에 아직 제공하지 않는 타일이 코드 순서에 끼어든다. */
 export const TILES: Array<[code: string, compute: (ctx: EngineContext) => TileResult]> = [
   ["A01", a01],
@@ -109,7 +110,7 @@ export const TILES: Array<[code: string, compute: (ctx: EngineContext) => TileRe
   ["D07", d07],
   ["D08", d08],
   ["D09", d09],
-  ["D10", d10],
+  ["D10", deferredHeavyTile],
   ["D11", d11],
   ["D12", d12],
   ["D13", d13],
@@ -120,7 +121,7 @@ export const TILES: Array<[code: string, compute: (ctx: EngineContext) => TileRe
   ["D18", d18],
   ["D19", d19],
   ["D20", d20],
-  ["D21", d21],
+  ["D21", deferredHeavyTile],
   ["D22", d22],
   ["D23", d23],
   ["D24", d24],
@@ -128,10 +129,10 @@ export const TILES: Array<[code: string, compute: (ctx: EngineContext) => TileRe
   ["D26", d26],
   ["D27", d27],
   ["D28", d28],
-  ["D29", d29],
+  ["D29", deferredHeavyTile],
   ["S01", s01],
-  ["S02", s02],
-  ["S03", s03],
+  ["S02", deferredHeavyTile],
+  ["S03", deferredHeavyTile],
   ["S04", s04],
 ];
 
@@ -185,22 +186,29 @@ export function saveTileResultWithElapsed(db: BetterSqlite3.Database, tile: Tile
 export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, input: RunInput): RunOutcome {
   const manifest = readManifest(dataDir);
   if (!manifest) throw new Error("no published manifest — run a data build first");
-  const core = openDataFile(dataDir, manifest, "core");
+  const core = acquireDataFile(dataDir, manifest, "core");
   let site: SiteResult;
   try {
     site = resolveSite(core, input);
   } catch (error) {
-    core.close();
+    releaseDataFile(core);
     throw error;
   }
   if (!site.ok) {
-    core.close();
+    releaseDataFile(core);
     return { ok: false, reason: site.reason };
   }
 
   const analysisId = randomUUID();
   const analysisDate = input.analysisDate ?? todayKst();
-  const ctx = new EngineContext(dataDir, manifest, analysisId, { address: site.label, center: site.center, radiusM: input.radiusM, analysisDate, pnu: site.pnu }, { core });
+  const ctx = new EngineContext(
+    dataDir,
+    manifest,
+    analysisId,
+    { address: site.label, center: site.center, radiusM: input.radiusM, analysisDate, pnu: site.pnu },
+    { core },
+    { reuseDataFiles: true, pooledKeys: ["core"] },
+  );
   try {
     createAnalysisRun(appDb, {
       analysisId, address: site.label, center: site.center, radiusM: input.radiusM, analysisDate,

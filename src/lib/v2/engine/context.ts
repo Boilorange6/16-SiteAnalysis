@@ -5,6 +5,7 @@
 import type BetterSqlite3 from "better-sqlite3";
 import type { LngLat } from "../crs";
 import { queryFeaturesInRadius, type FeatureHit } from "../data/features";
+import { acquireDataFile, releaseDataFile } from "../data/file-pool";
 import { legalAreasForCircle } from "../data/legal-areas";
 import { manifestHash, openDataFile, type Manifest } from "../data/manifest";
 import type { RasterRef, TileConditions, TileResult } from "../tile-result";
@@ -54,12 +55,18 @@ export class EngineContext {
     readonly analysisId: string,
     input: EngineInput,
     initialHandles: InitialDataHandles = {},
-    options: { rasterReader?: RasterReader } = {},
+    options: { rasterReader?: RasterReader; reuseDataFiles?: boolean; pooledKeys?: readonly FileKey[] } = {},
   ) {
     this.rasterReader = options.rasterReader;
+    this.reuseDataFiles = options.reuseDataFiles === true;
+    const pooledKeys = new Set(options.pooledKeys ?? []);
     this.input = { ...input, pnu: input.pnu ?? null };
     for (const [key, db] of Object.entries(initialHandles)) {
-      if (db) this.handles.set(key as FileKey, db);
+      if (db) {
+        const fileKey = key as FileKey;
+        this.handles.set(fileKey, db);
+        if (options.reuseDataFiles === true && pooledKeys.has(fileKey)) this.pooledKeys.add(fileKey);
+      }
     }
     this.manifestHash = manifestHash(manifest);
     this.conditions = {
@@ -74,12 +81,18 @@ export class EngineContext {
     };
   }
 
+  private readonly pooledKeys = new Set<FileKey>();
+  private readonly reuseDataFiles: boolean;
+
   db(key: FileKey): BetterSqlite3.Database | null {
     if (!this.manifest.files[key]) return null; // 게시되지 않은 파일: 자료 없음
     let db = this.handles.get(key);
     if (!db) {
-      db = openDataFile(this.dataDir, this.manifest, key);
+      db = this.reuseDataFiles
+        ? acquireDataFile(this.dataDir, this.manifest, key)
+        : openDataFile(this.dataDir, this.manifest, key);
       this.handles.set(key, db);
+      if (this.reuseDataFiles) this.pooledKeys.add(key);
     }
     return db;
   }
@@ -193,8 +206,12 @@ export class EngineContext {
   }
 
   close(): void {
-    for (const db of this.handles.values()) db.close();
+    for (const [key, db] of this.handles) {
+      if (this.pooledKeys.has(key)) releaseDataFile(db);
+      else db.close();
+    }
     this.handles.clear();
+    this.pooledKeys.clear();
     this.hitCache.clear();
     this.memoCache.clear();
     this.rasterItems.clear();

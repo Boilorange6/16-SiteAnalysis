@@ -31,8 +31,12 @@ export const nearestM = (distances: Array<number | null>): number | null => {
 // ── 지도 표시용 지물 ──
 export type MapCandidate = { id: number; f: MapFeature };
 
+const hitPointCache = new WeakMap<FeatureHit, [number, number]>();
+
 /** 대표점(WGS84). 점은 그대로, 다른 도형은 좌표 범위의 중심. */
 export function hitPoint(h: FeatureHit): [number, number] {
+  const cached = hitPointCache.get(h);
+  if (cached) return [cached[0], cached[1]];
   const flat: number[][] = [];
   const walk = (c: unknown) => {
     if (!Array.isArray(c)) return;
@@ -43,7 +47,9 @@ export function hitPoint(h: FeatureHit): [number, number] {
   const xs = flat.map((p) => p[0]);
   const ys = flat.map((p) => p[1]);
   const [lng, lat] = toLngLat([(minOf(xs) + maxOf(xs)) / 2, (minOf(ys) + maxOf(ys)) / 2]);
-  return [Math.round(lng * 1e6) / 1e6, Math.round(lat * 1e6) / 1e6];
+  const value: [number, number] = [Math.round(lng * 1e6) / 1e6, Math.round(lat * 1e6) / 1e6];
+  hitPointCache.set(h, value);
+  return [value[0], value[1]];
 }
 
 export function candidate(h: FeatureHit, layer: string, extra: Partial<Omit<MapFeature, "layer" | "lng" | "lat">> = {}): MapCandidate {
@@ -73,12 +79,25 @@ export function capFeatures(items: MapCandidate[]): { features: MapFeature[]; to
 // ── 면 지물 ──
 export type PolygonCandidate = { id: number; areaM2: number; p: MapPolygon };
 
+const polygonRingCache = new WeakMap<number[][], Array<[number, number]>>();
+
+function projectedRing(ring: number[][]): Array<[number, number]> {
+  const cached = polygonRingCache.get(ring);
+  if (cached) return cached;
+  const value = simplifyRing(ring, MAX_POLYGON_VERTICES).map((xy) => {
+    const [lng, lat] = toLngLat([xy[0], xy[1]]);
+    return [Math.round(lng * 1e6) / 1e6, Math.round(lat * 1e6) / 1e6] as [number, number];
+  });
+  polygonRingCache.set(ring, value);
+  return value;
+}
+
 /** EPSG:5179 미터 폴리곤([바깥, 구멍…]) → 지도용 후보. 고리마다 200점 이하로 줄이고 WGS84로 바꾼다. */
 export function polygonCandidate(id: number, layer: string, rings: number[][][], areaM2: number, label: string | null = null): PolygonCandidate | null {
   const out = rings
-    .map((r) => simplifyRing(r, MAX_POLYGON_VERTICES))
+    .map((r) => projectedRing(r))
     .filter((r) => r.length >= 4)
-    .map((r) => r.map((xy) => { const [lng, lat] = toLngLat([xy[0], xy[1]]); return [Math.round(lng * 1e6) / 1e6, Math.round(lat * 1e6) / 1e6] as [number, number]; }));
+    .map((r) => r);
   return out.length === 0 || rings[0].length < 4 ? null : { id, areaM2, p: { layer, rings: out, label } };
 }
 

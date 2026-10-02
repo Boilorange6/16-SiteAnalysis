@@ -5,7 +5,7 @@ import type BetterSqlite3 from "better-sqlite3";
 import { z } from "zod";
 import { getAnalysisRun, loadScene } from "../app-db";
 import { DEFAULT_RADIUS_M, RADIUS_CHOICES, restoreSummary, runAnalysis } from "./run";
-import { listJobs, type JobInfo } from "./jobs";
+import { listJobs, type JobInfo } from "./jobs-store";
 import { SITE_FAILURE_MESSAGE } from "./site";
 import { parseTileResult, type TileResult } from "../tile-result";
 

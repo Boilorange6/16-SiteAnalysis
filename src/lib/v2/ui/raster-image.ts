@@ -137,6 +137,27 @@ function rawAt(values: RasterValues, index: number): number {
   return values[index] ?? 0;
 }
 
+const RASTER_BUILDING_FILL: [number, number, number] = [248, 250, 252];
+const RASTER_BUILDING_EDGE: [number, number, number] = [71, 85, 105];
+
+/** S02의 254 셀은 일조값이 아니라 건물 지붕 표식이다. 높은 일조색으로 칠하면
+ * 건물과 배경이 합쳐지므로, 공용 래스터 경로에서 중립 발자국으로 처리한다. */
+function isBuildingMarker(ref: RasterRef, raw: number): boolean {
+  return raw === 254 && (ref.palette === "sun_hours" || ref.palette === "shade_flow");
+}
+
+function isBuildingCell(values: RasterValues, ref: RasterRef, row: number, col: number): boolean {
+  if (row < 0 || row >= ref.rows || col < 0 || col >= ref.cols) return false;
+  return isBuildingMarker(ref, rawAt(values, row * ref.cols + col));
+}
+
+function isBuildingEdge(values: RasterValues, ref: RasterRef, row: number, col: number): boolean {
+  return !isBuildingCell(values, ref, row - 1, col)
+    || !isBuildingCell(values, ref, row + 1, col)
+    || !isBuildingCell(values, ref, row, col - 1)
+    || !isBuildingCell(values, ref, row, col + 1);
+}
+
 /** 브라우저 canvas와 PPT data URL이 공유하는 원해상도 RGBA 칠하기. row 0은 격자의 남쪽이다. */
 export function paintRgba(ref: RasterRef, values: RasterValues, style: RasterStyle, width = ref.cols, height = ref.rows): Uint8ClampedArray {
   const expected = ref.cols * ref.rows * ref.bands;
@@ -154,6 +175,14 @@ export function paintRgba(ref: RasterRef, values: RasterValues, style: RasterSty
       const out = (y * width + x) * 4;
       if (ref.nodata !== null && (raw === ref.nodata || (ref.bands === 2 && rawAt(values, base + 1) === ref.nodata))) {
         rgba[out + 3] = 0;
+        continue;
+      }
+      if (ref.bands === 1 && isBuildingMarker(ref, raw)) {
+        const color = isBuildingEdge(values, ref, sourceRow, sourceX) ? RASTER_BUILDING_EDGE : RASTER_BUILDING_FILL;
+        rgba[out] = color[0];
+        rgba[out + 1] = color[1];
+        rgba[out + 2] = color[2];
+        rgba[out + 3] = 255;
         continue;
       }
       let value = raw * ref.scale + ref.offset;

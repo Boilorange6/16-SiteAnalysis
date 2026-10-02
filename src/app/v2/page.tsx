@@ -19,6 +19,7 @@ import { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } from "@/lib/v2/ui/fixtures/
 import { toSummaryView, toTileView, type SiteSummary } from "@/lib/v2/ui/tile-view";
 import type { TileResult } from "@/lib/v2/tile-result";
 import type { Scene } from "@/lib/v2/scene";
+import { isRoadAddress, ROAD_ADDRESS_UNSUPPORTED_MESSAGE } from "@/lib/v2/site";
 
 const UNDO_LABEL ={ order: "옮김", size: "크기 바꿈", remove: "삭제됨", add: "더함" } as const;
 const DEMO_START_LABEL = "분석 데모";
@@ -643,6 +644,14 @@ type Live = { analysisId: string; summary: SiteSummary; results: TileResult[]; j
 type Problem = { text: string; login: boolean };
 const POLL_DELAYS_MS = [1000, 2000, 5000] as const;
 
+const ADDRESS_INPUT_ID = "v2-address-input";
+
+function readHydratedAddress(): string {
+  if (typeof document === "undefined") return "";
+  const input = document.getElementById(ADDRESS_INPUT_ID);
+  return input instanceof HTMLInputElement ? input.value : "";
+}
+
 function mergeResults(existing: TileResult[], incoming: TileResult[]): TileResult[] {
   if (existing.length === 0) return [...incoming];
   const replacements = new Map(incoming.map((result) => [result.tileCode, result]));
@@ -652,7 +661,11 @@ function mergeResults(existing: TileResult[], incoming: TileResult[]): TileResul
 
 /** 주소 입력 → 분석 → 실제 결과 보드. 분석 전에는 예시 보드를 그대로 보여 준다. */
 export default function V2BoardPage() {
-  const [address, setAddress] = useState("");
+  // React hydration can start after a user has typed into the server-rendered input.
+  // Seed the controlled value from that DOM value so hydration does not erase it.
+  const hydratedAddress = readHydratedAddress();
+  const [address, setAddress] = useState(() => hydratedAddress);
+  const addressDirtyRef = useRef(hydratedAddress.length > 0);
   const [radiusM, setRadiusM] = useState(1000);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -700,6 +713,7 @@ export default function V2BoardPage() {
     e?.preventDefault();
     if (busy || activeJobs) return;
     if (!address.trim()) return setProblem({ text: "지번 주소로 입력해 주세요. 예: 서울 강동구 고덕동 123", login: false });
+    if (isRoadAddress(address)) return setProblem({ text: ROAD_ADDRESS_UNSUPPORTED_MESSAGE, login: false });
     setBusy(true);
     setProblem(null);
     try {
@@ -714,7 +728,7 @@ export default function V2BoardPage() {
   // 주소창의 ?analysis=<id>로 저장된 분석을 다시 연다
   useEffect(() => {
     const queryAddress = new URLSearchParams(window.location.search).get("address");
-    if (queryAddress) setAddress(queryAddress);
+    if (queryAddress && !addressDirtyRef.current) setAddress(queryAddress);
     const id = new URLSearchParams(window.location.search).get("analysis");
     if (!id) return;
     setBusy(true);
@@ -777,7 +791,7 @@ export default function V2BoardPage() {
   }, [live?.analysisId, activeJobs]);
 
   useEffect(() => {
-    if (live) {
+    if (live && !addressDirtyRef.current) {
       setAddress(live.summary.address);
       setRadiusM(live.summary.radiusM);
     }
@@ -787,12 +801,20 @@ export default function V2BoardPage() {
     <div className={styles.analyzeWrap}>
       {!live && <p className={styles.demoContext}>예시: 고덕동 123 · 반경 1km — 주소를 넣으면 실제 분석</p>}
       <form className={styles.analyzeBar} onSubmit={analyze}>
+        <label className={styles.srOnly} htmlFor={ADDRESS_INPUT_ID}>지번 주소</label>
         <input
+          id={ADDRESS_INPUT_ID}
           className={styles.addrInput}
           value={address}
-          onChange={(e) => setAddress(e.target.value)}
+          onChange={(e) => {
+            addressDirtyRef.current = true;
+            setAddress(e.target.value);
+            if (problem && !problem.login) setProblem(null);
+          }}
           placeholder="지번 주소 (예: 서울 강동구 고덕동 123)"
           aria-label="지번 주소"
+          aria-invalid={problem && !problem.login ? true : undefined}
+          aria-describedby={problem && !problem.login ? "v2-address-error" : undefined}
           disabled={busy || activeJobs}
         />
         <select className={styles.radiusSelect} value={radiusM} onChange={(e) => setRadiusM(Number(e.target.value))} aria-label="분석 반경" disabled={busy || activeJobs}>
@@ -807,7 +829,7 @@ export default function V2BoardPage() {
         </button>
       </form>
       {problem && (
-        <p className={styles.problem} role="alert">
+        <p id="v2-address-error" className={styles.problem} role="alert">
           {problem.text}
           {problem.login && (
             <>
