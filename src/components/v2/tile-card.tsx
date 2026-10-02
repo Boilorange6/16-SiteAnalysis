@@ -5,11 +5,14 @@ import type { CardFace, DemoPhase, TileSize } from "@/lib/v2/ui/board-state";
 import { STRIP_COLORS } from "@/lib/v2/ui/map-layers";
 import { OV, badgesToShow, cardReserved, stripText } from "@/lib/v2/ui/overlay-layout";
 import { faceLabel, type Badge, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
+import { viewWithOnlyRaster } from "@/lib/v2/ui/tile-view";
+import { windRasterName } from "@/lib/v2/ui/wind-upload";
 import MassFigure from "./mass-figure";
 import WindRoseFigure from "./wind-rose-figure";
 import CalloutMap, { CalloutPill } from "./callout-map";
 import MapBox from "./map-box";
 import DetailWindow from "./detail-window";
+import WindPanel from "./wind-panel";
 import styles from "./board.module.css";
 import { hasDetail } from "@/lib/v2/ui/detail-state";
 
@@ -184,11 +187,18 @@ export function StatusPlate({ view, phase, onRetry, waitingNote }: { view: TileV
 }
 
 /** 전면 시각물: 지도(또는 흐린 대지 지도, 또는 D04 구성비 차트) */
-export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, page, onPage }: { view: TileView; state: boolean; chart: boolean; frame: "card" | "detail"; siteX?: number | ((w: number) => number); rightInset?: number | ((w: number) => number); legendY?: number; page?: number; onPage?: (p: number) => void }) {
+function stageViewForWind(view: TileView, layerZ: number | undefined): TileView {
+  if (view.code !== "S03" || layerZ === undefined) return view;
+  const name = windRasterName(view, layerZ);
+  return name ? viewWithOnlyRaster(view, name, "") : view;
+}
+
+export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, page, onPage, windLayerZ }: { view: TileView; state: boolean; chart: boolean; frame: "card" | "detail"; siteX?: number | ((w: number) => number); rightInset?: number | ((w: number) => number); legendY?: number; page?: number; onPage?: (p: number) => void; windLayerZ?: number }) {
+  const displayView = stageViewForWind(view, windLayerZ);
   if (chart) return <FaceChart view={view} />;
   const card = frame === "card";
   const label = `${view.title} 지도`;
-  if (state) return <MapBox model={view.backdrop} muted legend={false} north={false} scale={false} credit={false} label={label} siteX={siteX} />;
+  if (state) return <MapBox model={displayView.backdrop} muted legend={false} north={false} scale={false} credit={false} label={label} siteX={siteX} />;
   if (view.code === "S01" && view.mass) {
     return <MassFigure scene={view.mass.scene} camera={view.mass.camera} width={960} height={540} label={label} />;
   }
@@ -198,7 +208,7 @@ export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, p
   if (view.callout) return <CalloutMap model={view.callout} kind={frame} page={page} onPage={onPage} label={label} />;
   return (
     <MapBox
-      model={view.map ?? view.backdrop}
+      model={displayView.map ?? displayView.backdrop}
       label={label}
       legend={!card}
       legendY={legendY}
@@ -237,6 +247,7 @@ export type TileCardProps = {
   /** 화면 면 (요약면/지도면). 보고서 출력 면(face)과 무관 */
   cardFace: CardFace;
   onCardFace: (f: CardFace) => void;
+  onWindUploaded?: () => void;
   onRemove: () => void;
   onMove: (dir: -1 | 1) => void;
   onRetry: () => void;
@@ -315,6 +326,9 @@ function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardProps
               이 타일 다시 계산
             </button>
           )}
+          {view.code === "S03" && (view.status === "pending" || view.status === "running") && (
+            <WindPanel view={view} compact phase={phase} onUploaded={p.onWindUploaded} />
+          )}
         </div>
       ) : (
         <div className={styles.sfMain}>
@@ -376,6 +390,7 @@ function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardProps
 export default function TileCard(p: TileCardProps) {
   const { view, phase } = p;
   const [back, setBack] = useState(false);
+  const [windLayerZ, setWindLayerZ] = useState(6);
   const cardRef = useRef<HTMLElement>(null);
   const focusFace = useRef<CardFace | null>(null);
   const waiting = phase === "pending" || phase === "running";
@@ -433,12 +448,20 @@ export default function TileCard(p: TileCardProps) {
         <div className={`${styles.face} ${styles.faceSummary}`} data-on={shown === "summary"} inert={shown !== "summary"} aria-hidden={shown !== "summary"}>
           <SummaryFace p={p} state={state} waiting={waiting} onFlip={() => onCardFace("map")} onDetail={detailable ? () => setDetailOpen(true) : undefined} />
         </div>
-        <div className={`${styles.face} ${styles.faceMap}`} data-on={shown === "map"} inert={shown !== "map"} aria-hidden={shown !== "map"}>
+      <div className={`${styles.face} ${styles.faceMap}`} data-on={shown === "map"} inert={shown !== "map"} aria-hidden={shown !== "map"}>
           {mountMap && (
             <>
       <div className={styles.stage}>
-        <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="card" />
+        <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="card" windLayerZ={windLayerZ} />
       </div>
+
+      {view.code === "S03" && !state && (
+        <div style={{ position: "absolute", zIndex: 4, left: 12, right: 12, bottom: 42, display: "flex", justifyContent: "flex-end", pointerEvents: "none" }}>
+          <div style={{ width: "min(320px, 100%)", pointerEvents: "auto" }}>
+            <WindPanel view={view} compact layerZ={windLayerZ} onLayerZ={setWindLayerZ} onUploaded={p.onWindUploaded} />
+          </div>
+        </div>
+      )}
 
       <TitleChip
         view={view}

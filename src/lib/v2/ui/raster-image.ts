@@ -3,6 +3,7 @@ import { toLngLat } from "../crs";
 import type { RasterRef } from "../tile-result";
 import { worldPx, type Viewport } from "./map-projection";
 import type { RasterStyle } from "./map-layers";
+import { lic } from "./lic";
 
 type RasterValues = Uint8Array | Uint16Array | Int16Array;
 
@@ -137,10 +138,83 @@ function rawAt(values: RasterValues, index: number): number {
   return values[index] ?? 0;
 }
 
+export type VectorPaintOptions = { lengthPx?: number; seed?: number };
+
+/**
+ * Vector rasters use LIC texture over the same U/Uin colour ramp as scalar
+ * wind values. The upload contract stores obstacle cells as (0, 0); those
+ * cells are rendered white so buildings remain legible over the map.
+ */
+export function paintVector(
+  ref: RasterRef,
+  values: RasterValues,
+  style: RasterStyle,
+  width = ref.cols,
+  height = ref.rows,
+  options: VectorPaintOptions = {},
+): Uint8ClampedArray {
+  const expected = ref.cols * ref.rows * ref.bands;
+  if (ref.kind !== "vector2" || ref.bands !== 2) throw new Error(`RASTER_VECTOR_REQUIRED: ${ref.name}`);
+  if (values.length !== expected) throw new Error(`RASTER_LENGTH_MISMATCH: ${ref.name}`);
+  const resolvedStyle = resolveRasterStyle(ref, style);
+  const fieldU = new Float32Array(ref.cols * ref.rows);
+  const fieldV = new Float32Array(ref.cols * ref.rows);
+  // Raster row 0 is south, while the image/LIC coordinate origin is north.
+  // Store the field in display order and invert north-positive v to screen y.
+  for (let displayY = 0; displayY < ref.rows; displayY += 1) {
+    const sourceY = ref.rows - 1 - displayY;
+    for (let x = 0; x < ref.cols; x += 1) {
+      const index = displayY * ref.cols + x;
+      const sourceIndex = sourceY * ref.cols + x;
+      const base = sourceIndex * 2;
+      const u = rawAt(values, base) * ref.scale + ref.offset;
+      const v = rawAt(values, base + 1) * ref.scale + ref.offset;
+      // An exact zero pair is the compact obstacle marker used by S03 uploads.
+      // Normal fluid cells have a non-zero normalized inflow component.
+      if (!Number.isFinite(u) || !Number.isFinite(v) || (u === 0 && v === 0)) {
+        fieldU[index] = Number.NaN;
+        fieldV[index] = Number.NaN;
+      } else {
+        fieldU[index] = u;
+        fieldV[index] = -v;
+      }
+    }
+  }
+  const texture = lic(fieldU, fieldV, ref.cols, ref.rows, width, height, options);
+  const rgba = new Uint8ClampedArray(width * height * 4);
+  const opacity = Math.max(0, Math.min(1, resolvedStyle.opacity ?? 1));
+  for (let y = 0; y < height; y += 1) {
+    const sourceY = Math.min(ref.rows - 1, Math.floor((y * ref.rows) / height));
+    for (let x = 0; x < width; x += 1) {
+      const sourceX = Math.min(ref.cols - 1, Math.floor((x * ref.cols) / width));
+      const sourceIndex = sourceY * ref.cols + sourceX;
+      const out = (y * width + x) * 4;
+      const u = fieldU[sourceIndex] ?? Number.NaN;
+      const v = fieldV[sourceIndex] ?? Number.NaN;
+      if (!Number.isFinite(u) || !Number.isFinite(v)) {
+        rgba[out] = 255;
+        rgba[out + 1] = 255;
+        rgba[out + 2] = 255;
+        rgba[out + 3] = Math.round(255 * opacity);
+        continue;
+      }
+      const [red, green, blue] = paletteColor(resolvedStyle.colors, Math.hypot(u, v), resolvedStyle);
+      const textureValue = texture[y * width + x] ?? 0.5;
+      const gain = 0.72 + textureValue * 0.48;
+      rgba[out] = Math.min(255, Math.round(red * gain));
+      rgba[out + 1] = Math.min(255, Math.round(green * gain));
+      rgba[out + 2] = Math.min(255, Math.round(blue * gain));
+      rgba[out + 3] = Math.round(255 * opacity);
+    }
+  }
+  return rgba;
+}
+
 /** 브라우저 canvas와 PPT data URL이 공유하는 원해상도 RGBA 칠하기. row 0은 격자의 남쪽이다. */
 export function paintRgba(ref: RasterRef, values: RasterValues, style: RasterStyle, width = ref.cols, height = ref.rows): Uint8ClampedArray {
   const expected = ref.cols * ref.rows * ref.bands;
   if (values.length !== expected) throw new Error(`RASTER_LENGTH_MISMATCH: ${ref.name}`);
+  if (ref.kind === "vector2" && ref.bands === 2) return paintVector(ref, values, style, width, height);
   const resolvedStyle = resolveRasterStyle(ref, style);
   const rgba = new Uint8ClampedArray(width * height * 4);
   const opacity = Math.max(0, Math.min(1, resolvedStyle.opacity ?? 1));
