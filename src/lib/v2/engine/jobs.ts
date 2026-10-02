@@ -5,13 +5,21 @@ import { existsSync } from "node:fs";
 import { inflateRawSync } from "node:zlib";
 import type BetterSqlite3 from "better-sqlite3";
 import { enqueueAnalysisJobs, ensureAnalysisJobTable, finishAnalysisRun, getAnalysisRun, openV2AppDb, saveTileResult, findCachedTileResult } from "../app-db";
-import { ManifestError, manifestHash, openDataFile, readArchivedManifest, resolveDataPath, type Manifest } from "../data/manifest";
+import { acquireDataFile, releaseDataFile } from "../data/file-pool";
+import { ManifestError, manifestHash, readArchivedManifest, resolveDataPath, type Manifest } from "../data/manifest";
 import { parseTileResult, tileCacheKey, type RasterRef, type TileConditions, type TileResult } from "../tile-result";
 import { loadTileRaster, saveTileRasters } from "../raster-store";
 import { EngineContext, type RasterValues } from "./context";
 import { saveTileResultWithElapsed, TILES } from "./run";
+import { d10 } from "./tiles/d10";
+import { d21 } from "./tiles/d21";
+import { d29 } from "./tiles/d29";
+import { s02 } from "./tiles/s02";
+import { s03 } from "./tiles/s03";
+import { s04 } from "./tiles/s04";
 import { ENGINE_VERSION, makeTile } from "./tiles/common";
 import { catalogEntry } from "../ui/tile-catalog";
+import { listJobs, type JobInfo } from "./jobs-store";
 
 type Db = BetterSqlite3.Database;
 
@@ -36,17 +44,6 @@ type JobRow = {
   started_at: string | null;
   finished_at: string | null;
   elapsed_ms: number | null;
-  error: string | null;
-};
-
-export type JobInfo = {
-  code: string;
-  status: JobRow["status"];
-  priority: number;
-  enqueuedAt: string;
-  startedAt: string | null;
-  finishedAt: string | null;
-  elapsedMs: number | null;
   error: string | null;
 };
 
@@ -140,21 +137,17 @@ function failureTile(db: Db, run: AnalysisRun, code: string, reason: string): { 
   };
 }
 
-export function listJobs(db: Db, analysisId: string): JobInfo[] {
-  ensureAnalysisJobTable(db);
-  const rows = db.prepare(`SELECT analysis_id, tile_code, status, priority, enqueued_at, started_at, finished_at, elapsed_ms, error
-    FROM analysis_job WHERE analysis_id = ? ORDER BY priority, enqueued_at`).all(analysisId) as JobRow[];
-  return rows.map((row) => ({
-    code: row.tile_code,
-    status: row.status,
-    priority: row.priority,
-    enqueuedAt: row.enqueued_at,
-    startedAt: row.started_at,
-    finishedAt: row.finished_at,
-    elapsedMs: row.elapsed_ms,
-    error: row.error,
-  }));
-}
+export { listJobs } from "./jobs-store";
+export type { JobInfo } from "./jobs-store";
+
+const HEAVY_TILE_COMPUTES: Record<(typeof HEAVY_TILES)[number], (ctx: EngineContext) => TileResult> = {
+  S02: s02,
+  D21: d21,
+  D29: d29,
+  D10: d10,
+  S03: s03,
+  S04: s04,
+};
 
 export function recoverRunningJobs(db: Db): number {
   ensureAnalysisJobTable(db);
@@ -263,17 +256,17 @@ export function runHeavyTiles(appDb: Db, dataDir: string, analysisId: string): v
   try {
     // 재현성: 현재 manifest가 아니라 분석 행에 기록된 보관본만 연다.
     const manifest = readPinnedManifest(dataDir, run.manifestHash);
-    core = openDataFile(dataDir, manifest, "core");
+    core = acquireDataFile(dataDir, manifest, "core");
     ctx = new EngineContext(
       dataDir,
       manifest,
       analysisId,
       { address: run.address, center: run.center, radiusM: run.radiusM, analysisDate: run.analysisDate, pnu: typeof run.parameters.pnu === "string" ? run.parameters.pnu : null },
       { core },
-      { rasterReader: rasterReader(appDb, analysisId) },
+      { rasterReader: rasterReader(appDb, analysisId), reuseDataFiles: true, pooledKeys: ["core"] },
     );
   } catch (error) {
-    core?.close();
+    if (core) releaseDataFile(core);
     failRemainingJobs(appDb, run, error);
     return;
   }
@@ -297,7 +290,7 @@ export function runHeavyTiles(appDb: Db, dataDir: string, analysisId: string): v
         if (cached) {
           tile = { ...cached, tileId: `${analysisId}-${code}`, analysisId, conditions: ctx.conditions };
         } else {
-          const compute = TILES.find(([candidate]) => candidate === code)?.[1];
+          const compute = HEAVY_TILE_COMPUTES[code as (typeof HEAVY_TILES)[number]] ?? TILES.find(([candidate]) => candidate === code)?.[1];
           if (!compute) throw new Error(`unknown heavy tile ${code}`);
           tile = compute(engine);
           emitted = engine.takeRasters(code);

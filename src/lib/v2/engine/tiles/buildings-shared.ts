@@ -40,7 +40,7 @@ const heightMethod = (value: unknown): BuildingRow["heightMethod"] =>
   value === "source" || value === "floors_estimate" || value === "user" ? value : "unknown";
 
 /** 반경 안 building 히트와 building_fact를 결합한다. 파일·필수 열이 없으면 null. */
-export function buildingRows(ctx: EngineContext, radiusM = ctx.input.radiusM): BuildingRow[] | null {
+function buildingRowsUncached(ctx: EngineContext, radiusM: number): BuildingRow[] | null {
   if (!buildingsReady(ctx)) return null;
   const db = ctx.db("buildings");
   if (!db) return null;
@@ -68,4 +68,9 @@ export function buildingRows(ctx: EngineContext, radiusM = ctx.input.radiusM): B
     }
   }
   return out;
+}
+
+/** 한 분석에서 같은 반경의 건물 행·fact 결합을 여러 타일이 공유한다. */
+export function buildingRows(ctx: EngineContext, radiusM = ctx.input.radiusM): BuildingRow[] | null {
+  return ctx.memo(`buildings:rows:${radiusM}`, () => buildingRowsUncached(ctx, radiusM));
 }

@@ -57,6 +57,18 @@ export function sampleLine(center: LngLat, g: Geometry, radiusM: number, stepM: 
 
 type SegmentInterval = [number, number];
 
+type AreaInCircleResult = { areaM2: number; parts: number[][][][]; clipped: boolean };
+type AreaInCircleCache = {
+  key: string;
+  result: AreaInCircleResult | null;
+  variants?: Map<string, AreaInCircleResult | null>;
+};
+const areaInCircleCache = new WeakMap<Geometry, AreaInCircleCache>();
+
+function circleCacheKey(center: LngLat, radiusM: number): string {
+  return `${center[0]}:${center[1]}:${radiusM}`;
+}
+
 /** EPSG:5179 선분에서 원 내부에 해당하는 매개변수 구간을 구한다. */
 function segmentIntervalInCircle(a: number[], b: number[], cx: number, cy: number, radiusM: number): SegmentInterval | null {
   if (a.length < 2 || b.length < 2 || !Number.isFinite(a[0]) || !Number.isFinite(a[1]) || !Number.isFinite(b[0]) || !Number.isFinite(b[1])) return null;
@@ -218,7 +230,14 @@ const ringArea = (r: number[][]) => {
   return Math.abs(s) / 2;
 };
 /** 평면(미터) 면적. 구멍은 뺀다. */
-export const polygonArea = (rings: number[][][]) => rings.reduce((a, r, i) => a + (i === 0 ? ringArea(r) : -ringArea(r)), 0);
+const polygonAreaCache = new WeakMap<number[][][], number>();
+export function polygonArea(rings: number[][][]): number {
+  const cached = polygonAreaCache.get(rings);
+  if (cached !== undefined) return cached;
+  const value = rings.reduce((a, r, i) => a + (i === 0 ? ringArea(r) : -ringArea(r)), 0);
+  polygonAreaCache.set(rings, value);
+  return value;
+}
 
 function firstPosition(coords: unknown): [number, number] | null {
   if (!Array.isArray(coords)) return null;
@@ -258,23 +277,41 @@ function validParts(parts: number[][][][]): boolean {
 }
 
 /** 반경과 도형이 겹친 면적. 완전 포함이면 절단을 생략해 원본 면적을 보존한다. */
-export function areaInCircle(center: LngLat, radiusM: number, g: Geometry): { areaM2: number; parts: number[][][][]; clipped: boolean } | null {
+export function areaInCircle(center: LngLat, radiusM: number, g: Geometry): AreaInCircleResult | null {
   if (!center.every(Number.isFinite) || !Number.isFinite(radiusM) || radiusM < 0) return null;
+  const key = circleCacheKey(center, radiusM);
+  let cache = areaInCircleCache.get(g);
+  if (cache?.key === key) return cache.result;
+  const cachedVariant = cache?.variants?.get(key);
+  if (cachedVariant !== undefined) return cachedVariant;
+  let result: AreaInCircleResult | null = null;
   try {
     const geometry = toUtmGeometry(g);
     const [cx, cy] = toUtmk(center);
     const parts = polygonParts(geometry);
-    if (parts.length === 0) return { areaM2: 0, parts: [], clipped: false };
-    if (!validParts(parts)) return null;
-    const r2 = radiusM * radiusM;
-    const allInside = parts.every((p) => p.every((ring) => ring.every(([x, y]) => (x - cx) ** 2 + (y - cy) ** 2 <= r2)));
-    if (allInside) return { areaM2: parts.reduce((s, p) => s + polygonArea(p), 0), parts, clipped: false };
-    const clipped = clipToCircle(center, radiusM, geometry);
-    if (clipped === null) return null;
-    return { areaM2: clipped.reduce((s, p) => s + polygonArea(p), 0), parts: clipped, clipped: true };
+    if (parts.length === 0) {
+      result = { areaM2: 0, parts: [], clipped: false };
+    } else if (validParts(parts)) {
+      const r2 = radiusM * radiusM;
+      const allInside = parts.every((p) => p.every((ring) => ring.every(([x, y]) => (x - cx) ** 2 + (y - cy) ** 2 <= r2)));
+      if (allInside) {
+        result = { areaM2: parts.reduce((s, p) => s + polygonArea(p), 0), parts, clipped: false };
+      } else {
+        const clipped = clipToCircle(center, radiusM, geometry);
+        result = clipped === null ? null : { areaM2: clipped.reduce((s, p) => s + polygonArea(p), 0), parts: clipped, clipped: true };
+      }
+    }
   } catch {
-    return null;
+    result = null;
   }
+  if (!cache) {
+    areaInCircleCache.set(g, { key, result });
+  } else if (!cache.variants) {
+    cache.variants = new Map([[cache.key, cache.result], [key, result]]);
+  } else {
+    cache.variants.set(key, result);
+  }
+  return result;
 }
 
 /** 반경 원(면적이 πr²와 같도록 96각형)과 도형을 교차한 폴리곤 목록. 도형이 깨져 계산할 수 없으면 null. */
