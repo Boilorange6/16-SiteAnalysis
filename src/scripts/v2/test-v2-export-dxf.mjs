@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
 const { DXF_LAYERS, dxfFileName, sceneToDxf } = await import("../../lib/v2/export/dxf.ts");
+const { maxOf } = await import("../../lib/v2/extent.ts");
 
 const scene = {
   version: "v2-scene@2",
@@ -58,7 +59,7 @@ const handles = [...dxf.matchAll(/\r\n\s*5\r\n([0-9A-F]+)\r\n/g)].map((match) =>
 assert.ok(handles.length > 10, "R2000 구조와 엔티티에 핸들이 있어야 한다");
 assert.equal(new Set(handles).size, handles.length, "핸들은 중복되지 않아야 한다");
 const handseed = Number.parseInt(handseedValue, 16);
-assert.ok(handseed > Math.max(...handles.map((handle) => Number.parseInt(handle, 16))), "HANDSEED는 다음 핸들이어야 한다");
+assert.ok(handseed > maxOf(handles.map((handle) => Number.parseInt(handle, 16))), "HANDSEED는 다음 핸들이어야 한다");
 assert.match(dxf, /\$INSUNITS\r\n 70\r\n     6/);
 assert.match(dxf, /100\r\nAcDbEntity\r\n/);
 assert.match(dxf, /100\r\nAcDbPolyline\r\n/);
@@ -111,7 +112,7 @@ const absolute = sceneToDxf(scene, { origin: "utmk" });
 assert.match(absolute, /10\r\n930001\.12\r\n\s*20\r\n1810001\.34/);
 assert.match(absolute, /10\r\n930000\.12\r\n\s*20\r\n1810000\.34/);
 
-assert.equal(dxfFileName("서울특별시 강남구/테스트", "2026-09-30"), "사이트분석_서울특별시 강남구_테스트_20260930.dxf");
+assert.equal(dxfFileName("서울특별시 강남구/테스트", "2026-09-30"), "사이트분석_서울특별시_강남구_테스트_20260930.dxf");
 assert.equal(dxfFileName(" 주소 ", "20260930"), "사이트분석_주소_20260930.dxf");
 
 console.log("✓ v2 DXF export");

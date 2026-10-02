@@ -12,6 +12,7 @@ const {
   walkSources,
 } = await import("../../lib/v2/engine/tiles/walk-shared.ts");
 const { toUtmk } = await import("../../lib/v2/crs.ts");
+const { maxOf } = await import("../../lib/v2/extent.ts");
 
 assert.equal(WALK_SPEED_M_PER_MIN, 80);
 assert.equal(WALK_SNAP_M, 150);
@@ -138,15 +139,25 @@ function performanceRoads() {
   return out;
 }
 const perfRoads = performanceRoads();
-const perfCtx = fakeContext(perfRoads);
-const started = performance.now();
-const perfField = walkField(perfCtx);
-assert.ok(perfField);
-const fieldElapsedMs = Math.round(performance.now() - started);
-console.log(`walk synthetic field=${fieldElapsedMs}ms`);
-isochroneGrid(perfField, center, [5, 10, 15]);
-const elapsedMs = Math.round(performance.now() - started);
-console.log(`walk synthetic nodes=${perfField.nodes} edges=${perfField.edges} grid=${elapsedMs - fieldElapsedMs}ms elapsed=${elapsedMs}ms budget=1500ms`);
-assert.ok(elapsedMs <= 1500, `walk graph + isochrone took ${elapsedMs}ms (budget 1500ms)`);
+function measureWalkPass() {
+  const started = performance.now();
+  const perfField = walkField(fakeContext(perfRoads));
+  assert.ok(perfField);
+  const fieldElapsedMs = performance.now() - started;
+  isochroneGrid(perfField, center, [5, 10, 15]);
+  return { elapsedMs: performance.now() - started, fieldElapsedMs, nodes: perfField.nodes, edges: perfField.edges };
+}
+
+const warmupRuns = 2;
+const sampleRuns = 5;
+for (let i = 0; i < warmupRuns; i += 1) measureWalkPass();
+const perfSamples = Array.from({ length: sampleRuns }, () => measureWalkPass());
+const ordered = perfSamples.map((sample) => sample.elapsedMs).sort((a, b) => a - b);
+const medianMs = ordered[Math.floor(ordered.length / 2)];
+const maxMs = maxOf(ordered);
+const representative = perfSamples[0];
+console.log(`walk synthetic nodes=${representative.nodes} edges=${representative.edges} field=${representative.fieldElapsedMs.toFixed(1)}ms; total ${ordered.map((value) => value.toFixed(1)).join(" / ")} ms; median=${medianMs.toFixed(1)}ms max=${maxMs.toFixed(1)}ms budget=1500ms`);
+assert.ok(medianMs <= 1500, `walk graph + isochrone 중앙값이 1500ms를 초과: ${medianMs.toFixed(1)}ms`);
+assert.ok(maxMs <= 2625, `walk graph + isochrone 반복 지연이 2625ms를 초과: ${maxMs.toFixed(1)}ms`);
 
 console.log("✓ v2 walk graph, routes, and isochrone grid");

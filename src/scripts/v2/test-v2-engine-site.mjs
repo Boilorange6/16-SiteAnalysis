@@ -21,7 +21,7 @@ try {
     ["경기도 남양주시 별내동 1", "ambiguous", "동명이 둘"],
     ["경기도 남양주시 없는동 1", "not_found", "없는 동"],
     ["경기도 남양주시 다산동 999", "no_point", "필지 위치 없음"],
-    ["경기도 남양주시 다산로 100", "not_found", "도로명 주소는 받지 않는다"],
+    ["경기도 남양주시 다산로 100", "road_address_unsupported", "도로명 주소는 아직 지원하지 않는다"],
     ["", "parse_failed", "빈 입력"],
   ];
   for (const [address, reason, why] of cases) {

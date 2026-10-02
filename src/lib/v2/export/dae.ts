@@ -1,5 +1,6 @@
 import type { Scene } from "../scene";
 import { sceneToGlb } from "./glb";
+import { exportFileName } from "./download";
 
 /** DAE의 레이어는 3DM/DXF와 같은 이름을 써서 SketchUp에서 바로 구분한다. */
 export const DAE_LAYERS = ["BLDG", "BLDG_EST", "BLDG_NOHEIGHT", "PARCEL", "SITE", "RADIUS", "TERRAIN"] as const;
@@ -257,6 +258,5 @@ export function sceneToDae(scene: Scene): string {
 }
 
 export function daeFileName(address: string, analysisDate: string): string {
-  const safe = address.replace(/[\\/:*?"<>|\s]+/g, "_").replace(/^_+|_+$/g, "") || "미상";
-  return `사이트분석_${safe}_${analysisDate.replace(/-/g, "")}.dae`;
+  return exportFileName("dae", address, analysisDate);
 }

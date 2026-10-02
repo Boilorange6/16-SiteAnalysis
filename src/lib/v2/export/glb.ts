@@ -1,5 +1,6 @@
 import { SCENE_MAX_BUILDINGS, type Scene, type SceneBuilding, type SceneGround } from "../scene";
 import { cleanRings } from "./rings";
+import { exportFileName } from "./download";
 
 // earcut 2.2.4 is an existing JavaScript-only transitive dependency.
 // @ts-expect-error earcut does not ship TypeScript declarations.
@@ -331,6 +332,5 @@ export function sceneToGlb(scene: Scene): Uint8Array {
 }
 
 export function glbFileName(address: string, analysisDate: string): string {
-  const safe = address.replace(/[\\/:*?"<>|\s]+/g, "_").replace(/^_+|_+$/g, "");
-  return `사이트분석_${safe}_${analysisDate.replace(/-/g, "")}.glb`;
+  return exportFileName("glb", address, analysisDate);
 }
