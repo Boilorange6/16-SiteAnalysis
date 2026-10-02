@@ -7,6 +7,7 @@ import { est, hitPoint, makeTile, missing, obs, type TileDraft } from "./common"
 import { gridQuantiles } from "./raster-grid";
 import { kdeBandPolygons, kdeGrid, KDE_BANDWIDTH_M, KDE_ZERO_THRESHOLD } from "./d16-kde";
 import { notProvided } from "./not-provided";
+import { maxOf, minOf } from "../../extent";
 
 const INPUT_BUFFER_M = 300;
 const DENSITY_LAYERS = ["dens_0", "dens_q1", "dens_q2", "dens_q3", "dens_q4", "dens_q5"] as const;
@@ -88,7 +89,7 @@ export function d16(ctx: EngineContext): TileResult {
     denominator: circleAreaM2,
   }));
   const finiteGridValues = Array.from(grid.values).filter(Number.isFinite);
-  const maxDensity = finiteGridValues.length > 0 ? Math.max(...finiteGridValues) : 0;
+  const maxDensity = finiteGridValues.length > 0 ? maxOf(finiteGridValues) : 0;
   const coverage = ctx.coverage("buildings", BUILDING_SOURCES);
   const limitations: TileDraft["limitations"] = [
     { kind: "estimated", note: "커널 밀도 추정 — 동수 기준, 연면적·용적률과 혼합 안 함 · 반경 밖 300m 건물 포함" },

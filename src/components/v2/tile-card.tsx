@@ -9,7 +9,9 @@ import MassFigure from "./mass-figure";
 import WindRoseFigure from "./wind-rose-figure";
 import CalloutMap, { CalloutPill } from "./callout-map";
 import MapBox from "./map-box";
+import DetailWindow from "./detail-window";
 import styles from "./board.module.css";
+import { hasDetail } from "@/lib/v2/ui/detail-state";
 
 const BADGE_CLASS = { status: styles.badgeStatus, limit: styles.badgeLimit, model: styles.badgeModel } as const;
 const FACES: OutputFace[] = ["front", "back", "both"];
@@ -159,7 +161,7 @@ export function ValueCard({ view }: { view: TileView }) {
 }
 
 /** 상태 화면 가운데 판: 미제공·실패·자료 없음·대기·계산 중 */
-export function StatusPlate({ view, phase, onRetry }: { view: TileView; phase: DemoPhase | null; onRetry?: () => void }) {
+export function StatusPlate({ view, phase, onRetry, waitingNote }: { view: TileView; phase: DemoPhase | null; onRetry?: () => void; waitingNote?: string | null }) {
   const waiting = phase === "pending" || phase === "running";
   const head = waiting ? (phase === "running" ? "계산 중" : "대기") : (view.badges.find((b) => b.tone === "status")?.text ?? "표시할 결과가 없습니다");
   const rest = view.badges.filter((b) => b.tone !== "status");
@@ -168,6 +170,7 @@ export function StatusPlate({ view, phase, onRetry }: { view: TileView; phase: D
       <div className={`${styles.plate} ${styles.statusPlate}`}>
         {waiting && <span className={styles.spinner} role="status" aria-label={`${view.title} ${head}`} />}
         <b className={styles.statusHead}>{head}</b>
+        {waiting && waitingNote && <p className={styles.statusNote}>{waitingNote}</p>}
         {!waiting && view.notes[0] && <p className={styles.statusNote}>{view.notes[0]}</p>}
         {!waiting && rest.length > 0 && <ValueBadges badges={rest} />}
         {!waiting && view.retryable && onRetry && (
@@ -227,6 +230,8 @@ export type TileCardProps = {
   onHandleDown: (e: ReactPointerEvent<HTMLElement>) => void;
   onResize: (size: TileSize) => void;
   onOpen: () => void;
+  /** queued/running 타일에 표시할 대기 위치·경과 시간 안내 */
+  waitingNote?: string | null;
   onInclude: (v: boolean) => void;
   onFace: (f: OutputFace) => void;
   /** 화면 면 (요약면/지도면). 보고서 출력 면(face)과 무관 */
@@ -248,7 +253,7 @@ export type TileCardProps = {
 const INTERACTIVE = "button,input,label,a,select,[data-handle]";
 
 /** 요약면: 지도 없는 흰 카드. 제목 줄 · 큰 숫자 + 한 줄 라벨 · 사실 3줄 · 상태 배지(최대 2개) · 출처 한 줄 · "지도 ↻" */
-function SummaryFace({ p, state, waiting, onFlip }: { p: TileCardProps; state: boolean; waiting: boolean; onFlip: () => void }) {
+function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardProps; state: boolean; waiting: boolean; onFlip: () => void; onDetail?: () => void }) {
   const { view, phase } = p;
   const facts = view.rows.filter((r) => r.label !== view.headline?.label).slice(0, 3);
   const head = waiting ? (phase === "running" ? "계산 중" : "대기") : (view.badges.find((b) => b.tone === "status")?.text ?? "표시할 결과가 없습니다");
@@ -289,6 +294,11 @@ function SummaryFace({ p, state, waiting, onFlip }: { p: TileCardProps; state: b
                 ↗
               </button>
             )}
+            {onDetail && (
+              <button type="button" className={styles.open} data-detail-button onClick={onDetail} aria-label={`${view.title} 상세 열기`} title="상세">
+                상세
+              </button>
+            )}
           </>
         )}
       </div>
@@ -297,6 +307,7 @@ function SummaryFace({ p, state, waiting, onFlip }: { p: TileCardProps; state: b
         <div className={styles.sfState}>
           {waiting && <span className={styles.spinner} role="status" aria-label={`${view.title} ${head}`} />}
           <b className={styles.statusHead}>{head}</b>
+          {waiting && p.waitingNote && <p className={styles.statusNote}>{p.waitingNote}</p>}
           {!waiting && view.notes[0] && <p className={styles.statusNote}>{view.notes[0]}</p>}
           {!waiting && rest.length > 0 && <ValueBadges badges={rest} />}
           {!waiting && view.retryable && (
@@ -391,6 +402,11 @@ export default function TileCard(p: TileCardProps) {
     .filter(Boolean)
     .join(" ");
   const openable = !p.editing && !waiting;
+  // 결과가 빈 상태여도 T34 상세 API는 분석 ID로 요약/결측을 보여 줄 수 있다.
+  // 지도 모델이 없는 타일(D19/D20/D22/D28/D29)도 현재 분석 URL을 사용해 상세를 연다.
+  const hasAnalysisContext = !!view.map?.analysisId || (typeof window !== "undefined" && new URLSearchParams(window.location.search).has("analysis"));
+  const detailable = openable && hasDetail(view.code) && hasAnalysisContext;
+  const [detailOpen, setDetailOpen] = useState(false);
   const onClick = (e: MouseEvent<HTMLElement>) => {
     if (openable && !(e.target as HTMLElement).closest(INTERACTIVE)) p.onOpen();
   };
@@ -415,7 +431,7 @@ export default function TileCard(p: TileCardProps) {
     >
       <div className={styles.flipInner} data-face={shown}>
         <div className={`${styles.face} ${styles.faceSummary}`} data-on={shown === "summary"} inert={shown !== "summary"} aria-hidden={shown !== "summary"}>
-          <SummaryFace p={p} state={state} waiting={waiting} onFlip={() => onCardFace("map")} />
+          <SummaryFace p={p} state={state} waiting={waiting} onFlip={() => onCardFace("map")} onDetail={detailable ? () => setDetailOpen(true) : undefined} />
         </div>
         <div className={`${styles.face} ${styles.faceMap}`} data-on={shown === "map"} inert={shown !== "map"} aria-hidden={shown !== "map"}>
           {mountMap && (
@@ -443,6 +459,11 @@ export default function TileCard(p: TileCardProps) {
             <button type="button" className={styles.open} onClick={p.onOpen} aria-label={`${view.title} 펼치기`} title="펼치기">
               ↗
             </button>
+            {detailable && (
+              <button type="button" className={styles.open} data-detail-button onClick={() => setDetailOpen(true)} aria-label={`${view.title} 상세 열기`} title="상세">
+                상세
+              </button>
+            )}
             <button type="button" className={styles.flipIcon} data-card-face-button="summary" onClick={() => onCardFace("summary")} aria-pressed aria-label={`${view.title} 요약/지도 보기 전환`} title="요약 보기">
               ↺
             </button>
@@ -473,6 +494,7 @@ export default function TileCard(p: TileCardProps) {
           )}
         </div>
       </div>
+      {detailOpen && detailable && <DetailWindow view={view} onClose={() => setDetailOpen(false)} />}
     </article>
   );
 }

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 
 const { buildEngineFixture } = await import("./engine-fixture.mjs");
 const A = await import("../../lib/v2/app-db.ts");
-const { postAnalysis, getAnalysis } = await import("../../lib/v2/engine/api.ts");
+const { postAnalysis, getAnalysis, getAnalysisStatus } = await import("../../lib/v2/engine/api.ts");
 const { runHeavyTiles } = await import("../../lib/v2/engine/jobs.ts");
 const { TILE_CODES } = await import("../../lib/v2/ui/tile-catalog.ts");
 
@@ -35,12 +35,16 @@ try {
   // 정상: 기본 반경 800
   const ok = postAnalysis(appDb, dataDir, { address, analysisDate: "2026-09-30" }, 17);
   assert.equal(ok.status, 202);
-  assert.deepEqual(Object.keys(ok.body).sort(), ["analysisId", "jobs", "results", "summary", "timingsMs"]);
+  assert.deepEqual(Object.keys(ok.body).sort(), ["analysisId", "jobs", "results", "revision", "summary", "tiles", "timingsMs"]);
   assert.equal(ok.body.results.length, TILE_CODES.length);
   assert.equal(ok.body.summary.address, address);
   assert.equal(ok.body.results[0].conditions.radiusM, 800);
   assert.ok(ok.body.jobs.some((job) => job.status === "queued"));
   assert.ok(ok.body.timingsMs.light > 0);
+  assert.ok(Object.keys(ok.body.timingsMs.tiles).length > 0, "POST가 경량 타일별 시간을 공개");
+  assert.ok(ok.body.results.filter((tile) => !["S02", "D21", "D29", "D10", "S03", "S04"].includes(tile.tileCode)).every((tile) => Number.isFinite(tile.elapsedMs)), "경량 결과에 elapsedMs");
+  assert.ok(typeof ok.body.revision === "string" && ok.body.revision.length > 0);
+  assert.equal(ok.body.tiles.length, ok.body.results.length);
   assert.equal(appDb.prepare("SELECT user_id FROM analysis_run WHERE analysis_id = ?").pluck().get(ok.body.analysisId), "17");
 
   // 대지 확정 실패 → 422, 이유별 안내
@@ -60,6 +64,18 @@ try {
   assert.deepEqual(got.body.summary, ok.body.summary);
   assert.deepEqual(got.body.results.map((t) => t.tileCode), ok.body.results.map((t) => t.tileCode).sort());
   assert.ok(got.body.jobs.some((job) => job.status === "queued"));
+  assert.ok(got.body.results.filter((tile) => !["S02", "D21", "D29", "D10", "S03", "S04"].includes(tile.tileCode)).every((tile) => Number.isFinite(tile.elapsedMs)), "복원 결과에도 elapsedMs");
+  assert.equal(got.body.revision, ok.body.revision);
+  const partial = getAnalysis(appDb, ok.body.analysisId, 17, { tileCodes: ["A01"] });
+  assert.equal(partial.status, 200);
+  assert.deepEqual(partial.body.results.map((tile) => tile.tileCode), ["A01"]);
+  const status = getAnalysisStatus(appDb, ok.body.analysisId, 17);
+  assert.equal(status.status, 200);
+  assert.ok(status.body.revision);
+  assert.equal(status.body.tiles.length, ok.body.results.length);
+  assert.ok(status.body.tiles.every((tile) => typeof tile.revision === "string" && tile.revision.length > 0));
+  assert.ok(!("results" in status.body) && !("summary" in status.body), "상태 응답은 전체 결과를 포함하지 않음");
+  assert.ok(Buffer.byteLength(JSON.stringify(status.body)) < 10_000, "상태 응답은 10KB 미만");
   runHeavyTiles(appDb, dataDir, ok.body.analysisId);
   const finished = getAnalysis(appDb, ok.body.analysisId, 17);
   assert.ok(finished.body.jobs.every((job) => ["done", "failed"].includes(job.status)));

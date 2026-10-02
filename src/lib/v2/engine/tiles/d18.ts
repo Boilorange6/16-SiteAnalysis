@@ -5,6 +5,7 @@ import { slopeGridFor, terrainBandPolygons, terrainClassGrid, terrainGridFor, te
 import { DEM_LIMITATION, demSources } from "./terrain-shared";
 import { est, makeTile } from "./common";
 import { notProvided } from "./not-provided";
+import { maxOf, minOf } from "../../extent";
 
 const SLOPE_BREAKS = [5, 10, 15, 20];
 const SLOPE_LAYERS = ["slope_0_5", "slope_5_10", "slope_10_15", "slope_15_20", "slope_ge20"];
@@ -37,7 +38,7 @@ export function d18(ctx: EngineContext): TileResult {
   const middle = Math.floor(ordered.length / 2);
   const slopeMedian = ordered.length % 2 === 0 ? (ordered[middle - 1] + ordered[middle]) / 2 : ordered[middle];
   const bands = terrainBandPolygons(ctx.input.center, ctx.input.radiusM, reportedSlope, SLOPE_BREAKS, SLOPE_LAYERS, "slope_nodata");
-  const slopeMax = Math.max(...values);
+  const slopeMax = maxOf(values);
   const nodataArea = bands.areaM2.at(-1) ?? 0;
   const metrics: TileResult["metrics"] = [
     est("fill_slope_pct", "경사 계산 가능 셀 채움률", percent(stats.valid, stats.cells), "%", "d18-fill-slope@1:원 안 셀 중심 중 중앙차분 경사 계산 가능 셀÷원 안 셀", stats.valid, stats.cells),

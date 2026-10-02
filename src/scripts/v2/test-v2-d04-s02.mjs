@@ -100,11 +100,16 @@ assert.equal(d04.judgment.ruleId, "D04-decades@1");
 assert.deepEqual(d04.judgment.basisMetricIds, ["confirmed_share_pct"]);
 assert.equal(d04.judgment.level, null);
 assert.equal(d04.presentation.featuresTotal, 6);
+assert.equal(d04.presentation.polygonsTotal, 6, "D04 건물 발자국 전체 개수");
+assert.equal(d04.presentation.polygons.length, 6, "D04 건물 발자국 도형");
+assert.ok(d04.presentation.polygons.every((polygon) => polygon.layer.startsWith("bldg_")), "D04 연대 레이어 도형");
 assert.ok(d04.presentation.features.some((f) => f.layer === "bldg_unknown"));
 assert.equal(d04.provenance.sources[0].sourceId, "building");
 const d04View = toTileView(d04);
 assert.equal(d04View.hasFace, true);
 assert.equal(d04View.chart.length, 7);
+assert.equal(d04View.map.polygons.length, 6, "D04 화면도 발자국을 그린다");
+assert.ok(d04View.map.notes.some((note) => note.includes("건물 발자국")));
 
 assert.equal(s02Tile.tileType, "simulation");
 assert.equal(s02Tile.status, "partial");

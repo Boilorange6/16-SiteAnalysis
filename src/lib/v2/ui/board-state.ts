@@ -107,7 +107,17 @@ function reordered(order: string[], from: number, to: number): string[] | null {
 export function boardReducer(s: BoardState, a: BoardAction): BoardState {
   switch (a.type) {
     case "replaceResults":
-      return { ...s, results: [...a.results] };
+      {
+        const replacements = new Map(a.results.map((result) => [result.tileCode, result]));
+        const existingCodes = new Set(s.results.map((result) => result.tileCode));
+        return {
+          ...s,
+          results: [
+            ...s.results.map((result) => replacements.get(result.tileCode) ?? result),
+            ...a.results.filter((result) => !existingCodes.has(result.tileCode)),
+          ],
+        };
+      }
     case "remove": {
       const index = s.order.indexOf(a.id);
       if (index < 0) return s;

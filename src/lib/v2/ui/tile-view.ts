@@ -78,7 +78,7 @@ export type CalloutModel = {
 
 const KIND_LABEL = { analysis: "분석", diagram: "도판", simulation: "시뮬레이션" } as const;
 const MAP_NOTES: Record<string, string> = {
-  D04: "대표점 · 건물 도형은 자료 적재 뒤",
+  D04: "건물 발자국 · 준공 연대별 색",
   D13: "도로 중심선 · 실제 폭·공식 도로대장 아님 · © OpenStreetMap contributors",
   D02: "발자국 · 높이 미상은 테두리만",
   D05: "지상층수 기준",
@@ -349,7 +349,7 @@ export function toTileView(r: TileResult, scene?: Scene | null): TileView {
     grade: gradedMetricOk ? { label: GRADE_TEXT[r.judgment!.level!], criteria: `내부 제안 기준: ${r.judgment!.criteria}` } : null,
     grades: GRADED_CODES.has(r.tileCode) ? (r.judgment?.grades ?? []).map((g) => gradeChip(r, g)) : [],
     caveats,
-    notes: r.limitations.map((l) => l.note),
+    notes: [...new Set(r.limitations.map((l) => l.note))],
     sourceLine: sourceLineOf(r.provenance.sources),
     chart: (() => {
       const data = r.metrics

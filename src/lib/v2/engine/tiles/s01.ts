@@ -6,6 +6,7 @@ import { ENGINE_VERSION, est, missing, obs } from "./common";
 import { BUILDING_SOURCES, buildingRows, type BuildingRow } from "./buildings-shared";
 import { notProvided } from "./not-provided";
 import { DEM_LIMITATION, demReader } from "./terrain-shared";
+import { maxOf, minOf } from "../../extent";
 
 const LAYERS = ["mass_source", "mass_estimated", "mass_unknown"] as const;
 const FLAT_GROUND_LIMITATION = {
@@ -51,7 +52,7 @@ export function s01(ctx: EngineContext): TileResult {
   const sourcePct = total === 0 ? null : pct(source.length, total);
   const heights = known.flatMap((row) => (row.heightM === null ? [] : [row.heightM]));
   const medianHeight = median(heights);
-  const maxHeight = heights.length === 0 ? null : Math.max(...heights);
+  const maxHeight = heights.length === 0 ? null : maxOf(heights);
   const included = Math.min(total, SCENE_MAX_BUILDINGS);
   const demReady = demReader(ctx) !== null;
   const coverage = ctx.coverage("buildings", BUILDING_SOURCES);

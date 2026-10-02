@@ -1,11 +1,13 @@
 /** API 라우트의 본체. 인증은 라우트가 하고, 여기서는 입력 검증·실행·응답 모양만 다룬다(테스트하기 쉽게 분리). */
+import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import type BetterSqlite3 from "better-sqlite3";
 import { z } from "zod";
-import { getAnalysisRun, loadScene, loadTileResults } from "../app-db";
+import { getAnalysisRun, loadScene } from "../app-db";
 import { DEFAULT_RADIUS_M, RADIUS_CHOICES, restoreSummary, runAnalysis } from "./run";
-import { listJobs } from "./jobs";
+import { listJobs, type JobInfo } from "./jobs";
 import { SITE_FAILURE_MESSAGE } from "./site";
+import { parseTileResult, type TileResult } from "../tile-result";
 
 const realDate = (d: string) => {
   const t = new Date(`${d}T00:00:00Z`);
@@ -27,6 +29,58 @@ export interface ApiReply {
   body: Record<string, unknown>;
 }
 
+type StoredTileMetaRow = { tile_code: string; status: string; created_at: string };
+type StoredTileRow = StoredTileMetaRow & { result_json: string };
+type TileState = { code: string; status: TileResult["status"]; revision: string; elapsedMs: number | null };
+type AnalysisSnapshot = { revision: string; tiles: TileState[]; jobs: JobInfo[] };
+type StatusJob = Pick<JobInfo, "code" | "status" | "elapsedMs">;
+
+function storedElapsed(raw: unknown): number | null {
+  const value = (raw as { elapsedMs?: unknown } | null)?.elapsedMs;
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function readTileMetadata(db: BetterSqlite3.Database, analysisId: string): StoredTileMetaRow[] {
+  return db.prepare("SELECT tile_code, status, created_at FROM tile_result WHERE analysis_id = ? ORDER BY tile_code").all(analysisId) as StoredTileMetaRow[];
+}
+
+function readTileRows(db: BetterSqlite3.Database, analysisId: string, tileCodes?: readonly string[]): StoredTileRow[] {
+  if (tileCodes === undefined) {
+    return db.prepare("SELECT tile_code, status, created_at, result_json FROM tile_result WHERE analysis_id = ? ORDER BY tile_code").all(analysisId) as StoredTileRow[];
+  }
+  if (tileCodes.length === 0) return [];
+  const placeholders = tileCodes.map(() => "?").join(",");
+  return db.prepare(`SELECT tile_code, status, created_at, result_json FROM tile_result WHERE analysis_id = ? AND tile_code IN (${placeholders}) ORDER BY tile_code`)
+    .all(analysisId, ...tileCodes) as StoredTileRow[];
+}
+
+function analysisSnapshot(db: BetterSqlite3.Database, analysisId: string, run: { status: string }): AnalysisSnapshot {
+  const jobs = listJobs(db, analysisId);
+  const jobsByCode = new Map(jobs.map((job) => [job.code, job]));
+  const rows = readTileMetadata(db, analysisId);
+  const tiles = rows.map((row) => {
+    const job = jobsByCode.get(row.tile_code);
+    const revision = [row.status, row.created_at].join("|");
+    return { code: row.tile_code, status: row.status as TileResult["status"], revision, elapsedMs: job?.elapsedMs ?? null };
+  });
+  const fingerprint = JSON.stringify({
+    status: run.status,
+    tiles: tiles.map(({ code, status, revision }) => ({ code, status, revision })),
+    jobs,
+  });
+  const revision = createHash("sha256").update(fingerprint).digest("hex");
+  return { revision, tiles, jobs };
+}
+
+function loadResults(db: BetterSqlite3.Database, analysisId: string, tileCodes?: readonly string[]): TileResult[] {
+  return readTileRows(db, analysisId, tileCodes).map((row) => {
+    const raw = JSON.parse(row.result_json);
+    const result = parseTileResult(raw);
+    const elapsedMs = storedElapsed(raw);
+    return elapsedMs === null ? result : Object.assign(result, { elapsedMs });
+  });
+}
+
 export function postAnalysis(appDb: BetterSqlite3.Database, dataDir: string, raw: unknown, userId?: string | number | null): ApiReply {
   const parsed = bodySchema.safeParse(raw);
   if (!parsed.success) return { status: 400, body: { error: parsed.error.issues[0].message } };
@@ -39,14 +93,17 @@ export function postAnalysis(appDb: BetterSqlite3.Database, dataDir: string, raw
     return { status: 500, body: { error: "분석 중 오류가 발생했습니다" } };
   }
   if (!outcome.ok) return { status: 422, body: { error: SITE_FAILURE_MESSAGE[outcome.reason], reason: outcome.reason } };
+  const snapshot = analysisSnapshot(appDb, outcome.analysisId, getAnalysisRun(appDb, outcome.analysisId)!);
   return {
     status: 202,
     body: {
       analysisId: outcome.analysisId,
       summary: outcome.summary,
       results: outcome.results,
-      jobs: listJobs(appDb, outcome.analysisId),
-      timingsMs: { light: Math.max(1, Math.round(performance.now() - started)) },
+      jobs: snapshot.jobs,
+      tiles: snapshot.tiles,
+      revision: snapshot.revision,
+      timingsMs: { light: Math.max(1, Math.round(performance.now() - started)), ...outcome.timingsMs },
     },
   };
 }
@@ -55,11 +112,21 @@ function canRead(run: { userId?: string | number | null }, userId?: string | num
   return run.userId == null || (userId != null && run.userId === String(userId));
 }
 
-export function getAnalysis(appDb: BetterSqlite3.Database, id: string, userId?: string | number | null): ApiReply {
+export function getAnalysis(appDb: BetterSqlite3.Database, id: string, userId?: string | number | null, options: { tileCodes?: readonly string[] } = {}): ApiReply {
   const run = getAnalysisRun(appDb, id);
   if (!run || !canRead(run, userId)) return { status: 404, body: { error: "분석을 찾을 수 없습니다" } };
-  const results = loadTileResults(appDb, id);
-  return { status: 200, body: { analysisId: id, summary: restoreSummary(run, results), results, jobs: listJobs(appDb, id) } };
+  const snapshot = analysisSnapshot(appDb, id, run);
+  const results = loadResults(appDb, id, options.tileCodes);
+  return { status: 200, body: { analysisId: id, summary: restoreSummary(run, loadResults(appDb, id)), results, jobs: snapshot.jobs, tiles: snapshot.tiles, revision: snapshot.revision } };
+}
+
+export function getAnalysisStatus(appDb: BetterSqlite3.Database, id: string, userId?: string | number | null): ApiReply {
+  const run = getAnalysisRun(appDb, id);
+  if (!run || !canRead(run, userId)) return { status: 404, body: { error: "분석을 찾을 수 없습니다" } };
+  const snapshot = analysisSnapshot(appDb, id, run);
+  const tiles = snapshot.tiles.map(({ code, status, revision }) => ({ code, status, revision }));
+  const jobs: StatusJob[] = snapshot.jobs.map(({ code, status, elapsedMs }) => ({ code, status, elapsedMs }));
+  return { status: 200, body: { analysisId: id, revision: snapshot.revision, tiles, jobs } };
 }
 
 export function getScene(appDb: BetterSqlite3.Database, id: string, userId?: string | number | null): ApiReply {

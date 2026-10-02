@@ -5,7 +5,7 @@ import * as React from "react";
 import { createElement } from "react";
 
 globalThis.React = React;
-const { legendItems, LAYER_STYLES } = await import("../../lib/v2/ui/map-layers.ts");
+const { compactLegendItems, legendItems, LAYER_STYLES } = await import("../../lib/v2/ui/map-layers.ts");
 const { MAX_MAP_POLYGONS } = await import("../../lib/v2/tile-result.ts");
 const { capPolygons, polygonCandidate } = await import("../../lib/v2/engine/tiles/common.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
@@ -31,6 +31,24 @@ assert.ok(svg.indexOf("data-poly") < svg.indexOf("<circle"), "면이 점보다 �
 const order = Object.keys(LAYER_STYLES);
 assert.deepEqual(legendItems(model).map((i) => i.layer), ["bldg_footprint", "tall_ge35_est", "bldg_point"].sort((a, b) => order.indexOf(a) - order.indexOf(b)), "범례에 면 레이어 포함, 정의 순서");
 assert.equal(MAX_MAP_POLYGONS, 3000);
+
+const zoningModel = {
+  center: [127.1505, 37.6205],
+  radiusM: 500,
+  features: [
+    { layer: "zone:주거", lng: 127.15, lat: 37.62 },
+    { layer: "zone_center:주거", lng: 127.151, lat: 37.621 },
+    { layer: "zone:상업", lng: 127.152, lat: 37.622 },
+    { layer: "zone_center:상업", lng: 127.153, lat: 37.623 },
+  ],
+  total: 4,
+  notes: [],
+};
+const zoningLegend = legendItems(zoningModel);
+assert.equal(zoningLegend.filter((item) => item.label === "주거지역").length, 1, "주거지역 범례 중복 제거");
+assert.equal(zoningLegend.filter((item) => item.label === "상업지역").length, 1, "상업지역 범례 중복 제거");
+assert.equal(compactLegendItems(zoningModel).find((item) => item.label === "주거지역")?.count, 2, "주거지역 alias 개수 합산");
+
 const many = Array.from({ length: 3200 }, (_, i) => polygonCandidate(i, "parcel", [[[0, 0], [10, 0], [10, 10 + i], [0, 0]]], 50 + i)).filter(Boolean);
 assert.equal(capPolygons(many).polygons.length, 3000);
 

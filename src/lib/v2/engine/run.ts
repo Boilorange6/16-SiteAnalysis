@@ -3,6 +3,7 @@
  * 분석마다 manifest를 다시 읽는다(다른 프로세스가 새 버전을 게시할 수 있다).
  */
 import { randomUUID } from "node:crypto";
+import { performance } from "node:perf_hooks";
 import type BetterSqlite3 from "better-sqlite3";
 import type { LngLat } from "../crs";
 import { createAnalysisRun, enqueueAnalysisJobs, finishAnalysisRun, findCachedTileResult, getAnalysisRun, saveScene, saveTileResult } from "../app-db";
@@ -75,8 +76,11 @@ export interface RunInput {
 }
 
 export type RunOutcome =
-  | { ok: true; analysisId: string; summary: SiteSummary; results: TileResult[]; computed: string[]; reused: string[]; queued: string[] }
+  | { ok: true; analysisId: string; summary: SiteSummary; results: TileResult[]; computed: string[]; reused: string[]; queued: string[]; timingsMs: { tiles: Record<string, number>; scene: number } }
   | { ok: false; reason: SiteFailure };
+
+/** TileResult 계약을 건드리지 않고 API/저장 JSON에 계산 소요를 함께 노출하는 T3 부가 필드. */
+export type TimedTileResult = TileResult & { elapsedMs: number };
 
 export const HEAVY_TILE_CODES = ["S02", "D21", "D29", "D10", "S03", "S04"] as const;
 const HEAVY_TILE_SET = new Set<string>(HEAVY_TILE_CODES);
@@ -156,6 +160,28 @@ function attachRasters(tile: TileResult, items: Array<{ ref: NonNullable<TileRes
   return { ...tile, presentation: { ...tile.presentation, rasters: [...refs.values()] } };
 }
 
+export function withTileElapsed(tile: TileResult, elapsedMs: number): TimedTileResult {
+  return Object.assign(tile, { elapsedMs: Math.max(0, Math.round(elapsedMs)) });
+}
+
+/**
+ * T1의 TileResult 스키마는 그대로 두고, 저장된 결과 JSON에 T3 측정값만 보존한다.
+ * parseTileResult는 알 수 없는 필드를 제거하므로 읽기 API가 raw JSON에서 다시 붙인다.
+ */
+export function saveTileResultWithElapsed(db: BetterSqlite3.Database, tile: TileResult, cacheKey: string, elapsedMs: number): TimedTileResult {
+  const timed = withTileElapsed(tile, elapsedMs);
+  const persist = db.transaction(() => {
+    saveTileResult(db, timed, cacheKey);
+    const row = db.prepare("SELECT result_json FROM tile_result WHERE analysis_id = ? AND tile_code = ?").get(tile.analysisId, tile.tileCode) as { result_json: string } | undefined;
+    if (!row) throw new Error(`saved tile is missing: ${tile.analysisId}/${tile.tileCode}`);
+    const json = JSON.parse(row.result_json) as Record<string, unknown>;
+    json.elapsedMs = timed.elapsedMs;
+    db.prepare("UPDATE tile_result SET result_json = ? WHERE analysis_id = ? AND tile_code = ?").run(JSON.stringify(json), tile.analysisId, tile.tileCode);
+  });
+  persist();
+  return timed;
+}
+
 export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, input: RunInput): RunOutcome {
   const manifest = readManifest(dataDir);
   if (!manifest) throw new Error("no published manifest — run a data build first");
@@ -186,7 +212,9 @@ export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, inpu
     const computed: string[] = [];
     const reused: string[] = [];
     const pending = new Set<string>();
+    const tileTimings: Record<string, number> = {};
     for (const [code, compute] of TILES) {
+      const tileStarted = performance.now();
       const key = cacheKeyFor(ctx, code);
       const cached = findCachedTileResult(appDb, key);
       let tile: TileResult;
@@ -212,20 +240,28 @@ export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, inpu
           tile = makeTile(ctx, { code, status: "failed", metrics: [], sources: [], limitations: [{ kind: "unknown", note: `계산 중 오류: ${String((e as Error).message).slice(0, 200)}` }] });
         }
       }
-      saveTileResult(appDb, tile, key);
-      results.push(tile);
+      if (!HEAVY_TILE_SET.has(code)) {
+        const elapsedMs = Math.max(0, Math.round(performance.now() - tileStarted));
+        tileTimings[code] = elapsedMs;
+        results.push(saveTileResultWithElapsed(appDb, tile, key, elapsedMs));
+      } else {
+        saveTileResult(appDb, tile, key);
+        results.push(tile);
+      }
     }
     const queued = HEAVY_TILE_CODES.filter((code) => pending.has(code));
     if (queued.length > 0) enqueueAnalysisJobs(appDb, analysisId, queued);
     // 장면은 내보내기용 부가 산출물 — 실패해도 분석 결과는 살린다
+    const sceneStarted = performance.now();
     try {
       const scene = buildScene(ctx);
       if (scene) saveScene(appDb, scene);
     } catch (e) {
       console.warn(`scene build failed for ${analysisId}: ${(e as Error).message}`);
     }
+    const sceneElapsedMs = Math.max(0, Math.round(performance.now() - sceneStarted));
     if (queued.length === 0) finishAnalysisRun(appDb, analysisId, "complete");
-    return { ok: true, analysisId, summary: buildSummary({ address: site.label, jimok: site.jimok }, input.radiusM, results), results, computed, reused, queued };
+    return { ok: true, analysisId, summary: buildSummary({ address: site.label, jimok: site.jimok }, input.radiusM, results), results, computed, reused, queued, timingsMs: { tiles: tileTimings, scene: sceneElapsedMs } };
   } catch (error) {
     try {
       if (getAnalysisRun(appDb, analysisId)) finishAnalysisRun(appDb, analysisId, "failed");

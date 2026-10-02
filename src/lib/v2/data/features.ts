@@ -7,6 +7,7 @@ import type BetterSqlite3 from "better-sqlite3";
 import type { Geometry, Position } from "geojson";
 import { booleanIntersects, polygon } from "@turf/turf";
 import { toUtmk, type LngLat } from "../crs";
+import { maxOf, minOf } from "../extent";
 
 type Db = BetterSqlite3.Database;
 type Statement = BetterSqlite3.Statement;
@@ -244,7 +245,7 @@ export function queryFeaturesInRadius(db: Db, center: LngLat, radiusM: number, k
     const geometry = JSON.parse(row.geom_json) as Geometry;
     let distanceM: number | null = null;
     if (geometry.type === "Point" || geometry.type === "MultiPoint") {
-      distanceM = Math.min(...[...positions(geometry.coordinates)].map(([x, y]) => Math.hypot(x - cx, y - cy)));
+      distanceM = minOf([...positions(geometry.coordinates)].map(([x, y]) => Math.hypot(x - cx, y - cy)));
       if (distanceM > radiusM) continue;
     } else if (!booleanIntersects(circle, geometry)) {
       continue;

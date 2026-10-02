@@ -1,4 +1,5 @@
 import { groundZAt, type Ring, type Scene } from "../scene";
+import { maxOf, minOf } from "../extent";
 
 export const EXPLODED_LAYERS = ["terrain", "water", "green", "roads", "buildings", "complete"] as const;
 export type ExplodedLayer = (typeof EXPLODED_LAYERS)[number];
@@ -295,9 +296,9 @@ export function projectMass(scene: Scene, camera: MassCamera, width: number, hei
   const allPoints = raw.flatMap((face) => face.points);
   if (allPoints.length === 0) return { faces: [], scale: 1 };
   const groundPoints = raw.filter((face) => face.layer === "ground").flatMap(rawPointsOf);
-  const groundHeight = groundPoints.length > 0 ? Math.max(...groundPoints.map((point) => point.y)) - Math.min(...groundPoints.map((point) => point.y)) : 0;
-  const allWidth = Math.max(...allPoints.map((point) => point.x)) - Math.min(...allPoints.map((point) => point.x));
-  const allHeight = Math.max(...allPoints.map((point) => point.y)) - Math.min(...allPoints.map((point) => point.y));
+  const groundHeight = groundPoints.length > 0 ? maxOf(groundPoints.map((point) => point.y)) - minOf(groundPoints.map((point) => point.y)) : 0;
+  const allWidth = maxOf(allPoints.map((point) => point.x)) - minOf(allPoints.map((point) => point.x));
+  const allHeight = maxOf(allPoints.map((point) => point.y)) - minOf(allPoints.map((point) => point.y));
   const targetHeight = Math.max(1, height * 0.8);
   // 반경 원의 투영 높이를 그림 높이의 80%에 맞추되, 폭과 전체 건물이 잘리지 않게 한다.
   const byGround = groundHeight > EPSILON ? targetHeight / groundHeight : 1;
@@ -305,10 +306,10 @@ export function projectMass(scene: Scene, camera: MassCamera, width: number, hei
   const byHeight = allHeight > EPSILON ? (height * 0.92) / allHeight : byGround;
   const scale = Math.max(0.0001, Math.min(byGround, byWidth, byHeight));
 
-  const minX = Math.min(...allPoints.map((point) => point.x));
-  const maxX = Math.max(...allPoints.map((point) => point.x));
-  const minY = Math.min(...allPoints.map((point) => point.y));
-  const maxY = Math.max(...allPoints.map((point) => point.y));
+  const minX = minOf(allPoints.map((point) => point.x));
+  const maxX = maxOf(allPoints.map((point) => point.x));
+  const minY = minOf(allPoints.map((point) => point.y));
+  const maxY = maxOf(allPoints.map((point) => point.y));
   const tx = width / 2 - ((minX + maxX) / 2) * scale;
   const ty = height * 0.54 - ((minY + maxY) / 2) * scale;
 
@@ -527,8 +528,8 @@ function explodedTerrainFaces(
 ): void {
   if (scene.ground.kind === "dem") {
     const values = scene.ground.z.filter((value): value is number => typeof value === "number" && Number.isFinite(value));
-    const min = values.length > 0 ? Math.min(...values) : 0;
-    const max = values.length > 0 ? Math.max(...values) : min;
+    const min = values.length > 0 ? minOf(values) : 0;
+    const max = values.length > 0 ? maxOf(values) : min;
     raw.push(
       ...groundCellFaces(scene.ground, project, layer, fill, layerIndex).map((face) => ({
         ...face,
@@ -629,8 +630,8 @@ export function projectExploded(
   // clipPath에서 최종적으로 반경 원 안으로 잘린다.
   const layoutFaces = raw.filter((face) => face.stackIndex === EXPLODED_LAYERS.indexOf("buildings"));
   const layoutPoints = [...layoutFaces.flatMap(rawPointsOf), ...plateRawPoints];
-  const layoutWidth = Math.max(...layoutPoints.map((point) => point.x)) - Math.min(...layoutPoints.map((point) => point.x));
-  const plateWidth = Math.max(...plateRings[0].map((point) => point.x)) - Math.min(...plateRings[0].map((point) => point.x));
+  const layoutWidth = maxOf(layoutPoints.map((point) => point.x)) - minOf(layoutPoints.map((point) => point.x));
+  const plateWidth = maxOf(plateRings[0].map((point) => point.x)) - minOf(plateRings[0].map((point) => point.x));
   const targetHeight = Math.max(1, height * 0.94);
   const byPlateWidth = plateWidth > EPSILON ? (width * 0.5) / plateWidth : 1;
   const byWidth = layoutWidth > EPSILON ? (width * 0.94) / layoutWidth : byPlateWidth;
@@ -646,7 +647,7 @@ export function projectExploded(
   ];
   const heightAt = (candidate: number, extraStep = screenStep) => {
     const points = screenPointsAt(candidate, extraStep);
-    return Math.max(...points.map((point) => point.y)) - Math.min(...points.map((point) => point.y));
+    return maxOf(points.map((point) => point.y)) - minOf(points.map((point) => point.y));
   };
   const heightBound = Math.min(byPlateWidth, byWidth);
   // 목표 plate 폭을 먼저 잡고, 남은 drawing height를 다섯 개의 동일한
@@ -668,21 +669,21 @@ export function projectExploded(
       })();
   const scale = Math.max(0.0001, Math.min(byPlateWidth, byWidth, byHeight));
   const screenPoints = screenPointsAt(scale);
-  const minX = Math.min(...screenPoints.map((point) => point.x));
-  const maxX = Math.max(...screenPoints.map((point) => point.x));
-  const minY = Math.min(...screenPoints.map((point) => point.y));
-  const maxY = Math.max(...screenPoints.map((point) => point.y));
-  const plateMinX = Math.min(...plateRawPoints.map((point) => point.x));
-  const plateMaxX = Math.max(...plateRawPoints.map((point) => point.x));
+  const minX = minOf(screenPoints.map((point) => point.x));
+  const maxX = maxOf(screenPoints.map((point) => point.x));
+  const minY = minOf(screenPoints.map((point) => point.y));
+  const maxY = maxOf(screenPoints.map((point) => point.y));
+  const plateMinX = minOf(plateRawPoints.map((point) => point.x));
+  const plateMaxX = maxOf(plateRawPoints.map((point) => point.x));
   const tx = width / 2 - ((plateMinX + plateMaxX) / 2) * scale;
   const ty = height * 0.5 - (minY + maxY) / 2;
   const plates = EXPLODED_LAYERS.map((layer, index) => {
     const points = plateRings[index];
     const screenRing = points.map((point) => ({ x: point.x * scale + tx, y: point.y * scale + ty - index * screenStep }));
-    const leftX = Math.min(...screenRing.map((point) => point.x));
-    const rightX = Math.max(...screenRing.map((point) => point.x));
-    const topY = Math.min(...screenRing.map((point) => point.y));
-    const bottomY = Math.max(...screenRing.map((point) => point.y));
+    const leftX = minOf(screenRing.map((point) => point.x));
+    const rightX = maxOf(screenRing.map((point) => point.x));
+    const topY = minOf(screenRing.map((point) => point.y));
+    const bottomY = maxOf(screenRing.map((point) => point.y));
     return {
       layer,
       index,
