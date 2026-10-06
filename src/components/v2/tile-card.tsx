@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEv
 import type { CardFace, DemoPhase, TileSize } from "@/lib/v2/ui/board-state";
 import { STRIP_COLORS } from "@/lib/v2/ui/map-layers";
 import { OV, badgesToShow, cardReserved, stripText } from "@/lib/v2/ui/overlay-layout";
-import { faceLabel, type Badge, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
+import { faceLabel, shortHeadlineLabel, type Badge, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
 import { viewWithOnlyRaster } from "@/lib/v2/ui/tile-view";
 import { windRasterName, WIND_LAYER_HEIGHTS } from "@/lib/v2/ui/wind-upload";
 import { ROSE_SEASONS, type RoseSeason } from "@/lib/v2/ui/rose-season";
@@ -104,17 +104,16 @@ export function Headline({ view, small }: { view: TileView; small?: boolean }) {
   const h = view.headline;
   if (!h) return <div className={styles.sub}>표시할 결과가 없습니다</div>;
   const longAux = !!h.aux && h.aux.length > 4; // "직선" 같은 짧은 보조어만 숫자 옆에 둔다
+  const label = shortHeadlineLabel(h.label);
   return (
     <div className={styles.bigWrap}>
-      <div>
+      <div className={styles.bigLine}>
         <span className={`${styles.display} ${styles.big} ${small || h.value.length > 5 ? styles.bigSmall : ""}`}>{h.value}</span>
         {h.aux && !longAux && <span className={styles.aux}>{h.aux}</span>}
+        <span className={styles.headlineLabel}>· {label}</span>
         {h.tag && <span className={styles.tag}>{h.tag}</span>}
       </div>
-      <div className={styles.sub}>
-        {h.label}
-        {longAux && ` · ${h.aux}`}
-      </div>
+      {longAux && <div className={styles.sub}>{h.aux}</div>}
     </div>
   );
 }
@@ -444,6 +443,7 @@ function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, mas
   const { view } = p;
   const h = view.headline;
   const shortAux = h?.aux && h.aux.length <= 4 ? h.aux : "";
+  const headlineLabel = h ? shortHeadlineLabel(h.label) : "";
   const extra = view.stackLayers ? view.stackLayers.join(" + ") : view.sheetGrid;
   const text = stripText(view.sourceLine);
   // 제목과 핵심 숫자가 함께 들어가지 않으면 숫자를 통째로 숨긴다(잘린 숫자는 오독되고, 숫자는 요약 면에 있다).
@@ -473,10 +473,9 @@ function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, mas
         <h3 className={styles.mfTitle} title={view.title}>{view.title}</h3>
         {view.filterChip && <span className={styles.filterChip} title={view.filterChip}>{view.filterChip}</span>}
         {h && (
-          <span data-mf-key className={`${styles.mfKey} ${keyHidden ? styles.mfKeyHidden : ""}`} aria-hidden={keyHidden || undefined} title={`${h.label}${h.aux ? ` · ${h.aux}` : ""}`}>
+          <span data-mf-key className={`${styles.mfKey} ${keyHidden ? styles.mfKeyHidden : ""}`} aria-hidden={keyHidden || undefined} title={`${headlineLabel}${h.aux ? ` · ${h.aux}` : ""}`}>
             <b>{h.value}</b>
-            {shortAux && <small className={styles.mfKeyLabel}>{shortAux}</small>}
-            <small className={styles.mfKeyLabel}>{h.label}</small>
+            {shortAux && <small>{shortAux}</small>}
           </span>
         )}
         {extra && <span className={`${styles.kindTag} ${styles.mfKeyLabel}`}>{extra}</span>}
@@ -503,6 +502,14 @@ function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, mas
           </Svg>
         </button>
       </header>
+      {h && (
+        <div className={styles.mfMetricLine} title={`${h.value} · ${headlineLabel}${h.aux ? ` · ${h.aux}` : ""}`}>
+          {keyHidden && <b>{h.value} · </b>}
+          <span> {headlineLabel}</span>
+          {h.aux && h.aux.length > 4 && <span> · {h.aux}</span>}
+          {h.tag && <span className={styles.tag}>{h.tag}</span>}
+        </div>
+      )}
       {view.code === "S03" && !state && <WindStrip view={view} layerZ={windLayerZ} onLayerZ={onWindLayerZ} onOpen={p.onOpen} />}
       {view.code === "D22" && !state && <RoseSeasonSelect view={view} value={p.roseSeason} onChange={p.onRoseSeason} />}
       <div className={styles.mfMap}>

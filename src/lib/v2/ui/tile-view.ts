@@ -331,30 +331,70 @@ function massOf(r: TileResult, scene: Scene | null | undefined): MassModel | nul
   };
 }
 
-const group = (n: number) => {
-  const [i, f] = String(n).split(".");
-  return i.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (f ? `.${f}` : "");
-};
+const INTEGER_METRIC_UNITS = new Set([
+  "동",
+  "세대",
+  "곳",
+  "건",
+  "개",
+  "개소",
+  "명",
+  "가구",
+  "호",
+  "역",
+  "정거장",
+  "층",
+  "년",
+  "z",
+  "m",
+  "km",
+  "㎡",
+  "m²",
+  "㎢",
+  "km²",
+  "ha",
+  "원/㎡",
+  "만원/㎡",
+  "동/㎢",
+  "동/km²",
+  "명/㎢",
+  "명/km²",
+  "가구/㎢",
+  "가구/km²",
+  "W/m²",
+]);
+const ONE_DECIMAL_METRIC_UNITS = new Set(["%", "°C", "m/s", "도"]);
+
+/** 화면·타일·PPT가 공유하는 단위별 표시 자릿수 규칙. */
+export function formatMetricValue(value: number, unit: string): string {
+  if (!Number.isFinite(value)) return "미확인";
+  const decimals = ONE_DECIMAL_METRIC_UNITS.has(unit) ? 1 : INTEGER_METRIC_UNITS.has(unit) ? 0 : 2;
+  return new Intl.NumberFormat("en-US", {
+    useGrouping: unit !== "년",
+    minimumFractionDigits: decimals === 1 ? 1 : 0,
+    maximumFractionDigits: decimals,
+  }).format(value);
+}
+
+/** 긴 원천 label을 카드 헤더에서 읽을 수 있는 짧은 의미 라벨로 정리한다. */
+export function shortHeadlineLabel(label: string): string {
+  const normalized = label.replace(/\s+/g, " ").trim();
+  const firstClause = normalized.split(" · ")[0]?.trim() ?? normalized;
+  return firstClause.replace(/^(반경\s*(안|내)\s*)/, "").trim() || normalized;
+}
+
 /** 화면·타일·PPT가 공유하는 직선거리 표기. 1 km 이상은 소수 한 자리 km로 줄인다. */
 export function formatDistanceM(distanceM: number): string {
   if (!Number.isFinite(distanceM) || distanceM < 0) return "미확인";
-  return distanceM >= 1000 ? `${(distanceM / 1000).toFixed(1)} km` : `${Math.round(distanceM).toLocaleString("en-US")}m`;
+  return distanceM >= 1000 ? `${(distanceM / 1000).toFixed(1)} km` : `${formatMetricValue(distanceM, "m")}m`;
 }
 const withUnit = (n: number, unit: string) => {
   if (unit === "m") return formatDistanceM(n);
-  const v = unit === "년" ? String(n) : group(n); // 연도는 자리 구분 쉼표 없음
+  const v = formatMetricValue(n, unit);
   return unit === "" ? v : unit.length > 2 && !unit.startsWith("/") ? `${v} ${unit}` : `${v}${unit}`;
 };
 
-/** S04 표시 규칙: °C·m/s·도는 소수 1자리, %·W/m²는 정수(1% 미만 면적률만 0 대신 소수 1자리). */
-function roundForDisplay(n: number, unit: string): number {
-  if (unit === "°C" || unit === "m/s" || unit === "도") return Math.round(n * 10) / 10;
-  if (unit === "W/m²") return Math.round(n);
-  if (unit === "%") return n > 0 && n < 1 ? Math.round(n * 10) / 10 : Math.round(n);
-  return n;
-}
-
-function metricRow(m: TileResult["metrics"][number], round = false): Row {
+function metricRow(m: TileResult["metrics"][number], _round = false): Row {
   const base = { label: m.label };
   switch (m.status) {
     case "missing":
@@ -366,10 +406,7 @@ function metricRow(m: TileResult["metrics"][number], round = false): Row {
     default:
       return {
         ...base,
-        // °C·m/s·도는 정수값이어도 소수 1자리를 유지한다(35.0°C).
-        value: round && (m.unit === "°C" || m.unit === "m/s" || m.unit === "도")
-          ? `${roundForDisplay(m.value as number, m.unit).toFixed(1)}${m.unit.length > 2 ? " " : ""}${m.unit}`
-          : withUnit(round ? roundForDisplay(m.value as number, m.unit) : (m.value as number), m.unit),
+        value: withUnit(m.value as number, m.unit),
         ...(m.unit === "m" ? { aux: "직선" } : {}),
         ...(m.status === "estimated" ? { tag: "추정" } : {}),
       };
@@ -663,9 +700,9 @@ export function toSummaryView(s: SiteSummary, results: TileResult[]): SummaryVie
   const siteParcel = s.siteParcel === undefined ? siteParcelFromResults(results) : s.siteParcel;
   return {
     address: s.address,
-    area: s.areaM2 === null ? "면적 미확인" : `${group(s.areaM2)}㎡`,
+    area: s.areaM2 === null ? "면적 미확인" : `${formatMetricValue(s.areaM2, "㎡")}㎡`,
     areaSource: s.areaM2 === null ? "대상 필지 도형 자료 미확인" : "도형 면적 · 공부면적 아님",
-    landPrice: typeof s.landPriceM2 === "number" && Number.isFinite(s.landPriceM2) ? `공시지가: ${group(s.landPriceM2)}${s.landPriceUnit ?? "원/㎡"}` : "공시지가 미확인",
+    landPrice: typeof s.landPriceM2 === "number" && Number.isFinite(s.landPriceM2) ? `공시지가: ${formatMetricValue(s.landPriceM2, s.landPriceUnit ?? "원/㎡")}${s.landPriceUnit ?? "원/㎡"}` : "공시지가 미확인",
     jimok: s.jimok ? `지목: ${s.jimok}` : "지목 미확인",
     zoning: s.zoning ?? "용도지역 미확인",
     radius: `반경 ${s.radiusM >= 1000 ? `${s.radiusM / 1000}km` : `${s.radiusM}m`}`,

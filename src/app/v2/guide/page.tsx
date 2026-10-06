@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import type { CSSProperties } from "react";
 import { guideTileGroups, guideTiles } from "@/lib/v2/ui/guide-catalog";
 import { readGuideSourceSnapshot, type GuideSourceRelease } from "@/lib/v2/ui/guide-sources";
-import { sourceName } from "@/lib/v2/ui/tile-catalog";
+import { cleanSourceText, sourceName } from "@/lib/v2/ui/tile-catalog";
 import { NEIGHBORHOOD_REFERENCE, RADIUS_OPTIONS } from "@/lib/v2/ui/radius-options";
 import styles from "./guide.module.css";
 
@@ -37,6 +37,10 @@ function updateCycle(row: GuideSourceRelease): string {
     if (typeof value === "string" && value.trim()) return value;
   }
   return "갱신 주기 미기록";
+}
+
+function providerLabel(row: GuideSourceRelease): string {
+  return cleanSourceText(row.provider || sourceName(row.sourceId)) || sourceName(row.sourceId);
 }
 
 function fallbackSourceRows(sourceIds: string[]): GuideSourceRelease[] {
@@ -243,7 +247,7 @@ export default function GuidePage() {
                   {sourceRows.map((row) => (
                     <tr key={`${row.sourceId}:${row.releaseId}`}>
                       <th scope="row"><span>{sourceName(row.sourceId)}</span></th>
-                      <td>{row.sourceUrl && /^https?:\/\//.test(row.sourceUrl) ? <a href={row.sourceUrl} target="_blank" rel="noreferrer">{row.provider}</a> : row.provider}</td>
+                      <td>{row.sourceUrl && /^https?:\/\//.test(row.sourceUrl) ? <a href={row.sourceUrl} target="_blank" rel="noreferrer">{providerLabel(row)}</a> : providerLabel(row)}</td>
                       <td>{dateFromRelease(row)}</td>
                       <td>{row.licenseCode || "미기록"}</td>
                       <td>{updateCycle(row)}</td>
@@ -259,7 +263,7 @@ export default function GuidePage() {
                   <div className={styles.sourceCardHeading}>
                     <h3>{sourceName(row.sourceId)}</h3>
                   </div>
-                  <p>{row.sourceUrl && /^https?:\/\//.test(row.sourceUrl) ? <a href={row.sourceUrl} target="_blank" rel="noreferrer">{row.provider}</a> : row.provider}</p>
+                  <p>{row.sourceUrl && /^https?:\/\//.test(row.sourceUrl) ? <a href={row.sourceUrl} target="_blank" rel="noreferrer">{providerLabel(row)}</a> : providerLabel(row)}</p>
                   <dl>
                     <div><dt>기준일</dt><dd>{dateFromRelease(row)}</dd></div>
                     <div><dt>라이선스</dt><dd>{row.licenseCode || "미기록"}</dd></div>

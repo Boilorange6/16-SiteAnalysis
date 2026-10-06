@@ -89,7 +89,7 @@ export const SOURCE_NAMES: Record<string, string> = {
   ledger_recap: "건축물대장 총괄표제부",
   ledger_title: "건축물대장 표제부",
   building: "GIS건물통합정보",
-  building_juso: "도로명주소 건물(TL_SPBD_BULD)",
+  building_juso: "도로명주소 건물",
   gis_bldg: "GIS건물통합정보",
   applyhome: "청약홈",
   move_in: "입주예정",
@@ -148,7 +148,18 @@ export const SOURCE_NAMES: Record<string, string> = {
   mzone_promotion: "정비사업 현황",
   mzone_redevelopment: "정비사업 현황",
 };
-export const sourceName = (id: string) => SOURCE_NAMES[id] ?? id;
+/** 내부 원천 파일명·코드는 사용자용 출처 문자열에 노출하지 않는다. */
+export function cleanSourceText(value: string): string {
+  return value
+    .replace(/\bTL_[A-Z0-9_]+\b/gi, "")
+    .replace(/\b[A-Z][A-Z0-9_]*\.(?:shp|dbf|shx|prj|zip|csv)\b/gi, "")
+    .replace(/\(\s*\)/g, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([)·])/g, "$1")
+    .trim();
+}
+
+export const sourceName = (id: string) => cleanSourceText(SOURCE_NAMES[id] ?? id);
 
 export function catalogEntry(code: string): TileCatalogEntry {
   return (TILE_CATALOG as Record<string, TileCatalogEntry>)[code] ?? {

@@ -868,6 +868,13 @@
 .bigWrap {
   min-width: 0;
 }
+.bigLine {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 5px;
+  min-width: 0;
+}
 .big {
   font-size: 38px;
   line-height: 1.05;
@@ -900,6 +907,13 @@
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+}
+.headlineLabel {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 .badgeWrap {
   position: relative;
@@ -1834,8 +1848,8 @@ button.badge:focus-visible {
   min-height: 22px;
   height: auto;
   border-bottom: 0;
-  padding-top: 4px;
-  padding-bottom: 3px;
+  padding-top: 3px;
+  padding-bottom: 2px;
   align-items: flex-start;
 }
 .cNum {
@@ -1855,8 +1869,24 @@ button.badge:focus-visible {
   overflow: visible;
   white-space: normal;
   text-overflow: clip;
-  line-height: 1.15;
+  line-height: 1.1;
   overflow-wrap: anywhere;
+}
+.cCard[data-narrow] .cHead {
+  gap: 4px;
+  padding-top: 2px;
+  padding-bottom: 1px;
+  font-size: 11px;
+}
+.cCard[data-narrow] .cNum {
+  width: 16px;
+  height: 16px;
+  font-size: 9.5px;
+}
+.cCard[data-narrow] .cSub {
+  gap: 3px;
+  padding-left: 20px;
+  font-size: 9px;
 }
 .cMissing {
   color: #9a5b00;
@@ -1898,7 +1928,7 @@ button.badge:focus-visible {
   font-size: 11px;
   font-weight: 700;
   line-height: 1;
-  margin-top: -3px;
+  margin-top: 0;
   white-space: nowrap;
 }
 .cYear {
@@ -1941,9 +1971,9 @@ button.badge:focus-visible {
   height: 100%;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 3px;
-  padding: 0 10px;
+  justify-content: flex-start;
+  gap: 2px;
+  padding: 5px 10px;
   text-align: left;
   scroll-snap-align: start;
   cursor: pointer;
@@ -1959,6 +1989,9 @@ button.badge:focus-visible {
   min-width: 0;
   font-size: 12px;
   font-weight: 700;
+}
+.cStripHead .cName {
+  line-height: 1.05;
 }
 .cStripLine {
   font-size: 11px;
@@ -2158,11 +2191,6 @@ button.badge:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-@container (max-width: 420px) {
-  .mfKeyLabel {
-    display: none;
-  }
-}
 @container (max-width: 270px) {
   .mfKey {
     display: none;
@@ -2239,6 +2267,25 @@ button.badge:focus-visible {
   border-top: 1px solid #ececf0;
 }
 .mfFoot span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mfMetricLine {
+  flex: none;
+  min-height: 20px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 12px;
+  border-bottom: 1px solid #ececf0;
+  color: #5c5f66;
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mfMetricLine > span:first-of-type {
   overflow: hidden;
   text-overflow: ellipsis;
 }

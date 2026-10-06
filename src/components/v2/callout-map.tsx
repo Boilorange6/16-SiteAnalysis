@@ -22,6 +22,7 @@ function Card({ c, siblings, p, frame, year, hover, onHover, onPick }: { c: Comp
       className={`${styles.plate} ${styles.cCard} ${hover ? styles.cCardOn : ""}`}
       role="group"
       aria-label={`${c.rank}번 ${cardName(c)}`}
+      data-narrow={frame.cardW < 112 ? "true" : undefined}
       style={{ left: p.x, top: p.y, width: frame.cardW, height: frame.cardH }}
       onMouseEnter={() => onHover(c.id)}
       onMouseLeave={() => onHover(null)}

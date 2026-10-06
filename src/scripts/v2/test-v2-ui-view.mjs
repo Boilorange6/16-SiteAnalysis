@@ -79,7 +79,7 @@ for (const [k, t] of Object.entries(LIM_TEXT)) {
 const rowOf = (v, label) => v.rows.find((r) => r.label === label);
 assert.equal(rowOf(byCode.A01, "경유 버스 노선").value, "미확인");
 assert.equal(rowOf(byCode.A07, "소형 면적대 중앙값").value, "비공개");
-assert.equal(rowOf(byCode.A05, "30년 이상 건물 비중").value, "38%");
+assert.equal(rowOf(byCode.A05, "30년 이상 건물 비중").value, "38.0%");
 assert.equal(rowOf(byCode.A05, "30년 이상 건물 비중").tag, "추정");
 assert.equal(rowOf(byCode.A09, "철거 착수 사업").value, "0곳");
 {
@@ -185,8 +185,8 @@ assert.equal(sv.incomplete, true);
 
 assert.deepEqual(new Set(Object.keys(HEADLINE_POLICY)), new Set(TILE_CODES), "45개 타일 모두 헤드라인 선정 정책 보유");
 assert.equal(byCode.D04.headlineMetricId, "share_pre2000");
-assert.equal(byCode.D04.headline.value, "67%", "D04는 확인율이 아니라 1990년대 이전 준공 비율");
-assert.ok(byCode.D04.badges.some((badge) => badge.text === "확인율 98%"), "D04 확인율은 보조 배지");
+assert.equal(byCode.D04.headline.value, "67.0%", "D04는 확인율이 아니라 1990년대 이전 준공 비율");
+assert.ok(byCode.D04.badges.some((badge) => badge.text === "확인율 98.0%"), "D04 확인율은 보조 배지");
 assert.equal(HEADLINE_POLICY.D16.ids[0], "dens_max", "D16 KDE 대역폭은 헤드라인이 아님");
 assert.equal(HEADLINE_POLICY.D01.ids[0], "imagery_capture_date", "D01 최대 줌은 헤드라인이 아님");
 assert.equal(HEADLINE_POLICY.A12.ids[2], "site_zoning_count", "A12 지정 수는 보조 후보");
@@ -199,7 +199,7 @@ assert.equal(HEADLINE_POLICY.D24.ids[0], "line_length_in_radius_m", "D24 단계 
   const metric = (id, label, value, unit) => ({ ...base.metrics[0], id, label, value, unit, status: "observed" });
   const d16 = toTileView({ ...base, tileCode: "D16", tileId: "test-D16", tileType: "diagram", metrics: [metric("kde_bandwidth_m", "KDE 대역폭", 100, "m"), metric("dens_max", "최대 건물 밀도", 23.4, "동/㎢")], limitations: [], judgment: { ...base.judgment, basisMetricIds: ["buildings_input", "dens_max"] } });
   assert.equal(d16.headlineMetricId, "dens_max");
-  assert.equal(d16.headline.value, "23.4 동/㎢");
+   assert.equal(d16.headline.value, "23 동/㎢");
   assert.ok(d16.badges.some((badge) => badge.text === "KDE 대역폭 100m"));
   const d01 = toTileView({ ...base, tileCode: "D01", tileId: "test-D01", tileType: "diagram", metrics: [metric("imagery_zoom_max", "항공영상 WMTS 최대 줌", 19, "z")], limitations: [], judgment: { ...base.judgment, basisMetricIds: ["imagery_zoom_max"] } });
   assert.equal(d01.headlineMetricId, "imagery_available");
