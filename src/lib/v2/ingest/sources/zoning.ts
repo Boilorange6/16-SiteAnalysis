@@ -70,8 +70,8 @@ export interface ZoningLayerInput {
   records: AsyncIterable<ShpRecord>;
 }
 
-export async function buildZoning(db: Db, layers: ZoningLayerInput[]): Promise<SourceStats[]> {
-  const seen = new Map<string, number>();
+/** seen: 같은 지정ID의 순번 계수. 파일 단위로 나눠 적재할 때 호출 사이에 넘겨 같은 stable id 순번을 이어 간다. */
+export async function buildZoning(db: Db, layers: ZoningLayerInput[], seen = new Map<string, number>()): Promise<SourceStats[]> {
   const out: SourceStats[] = [];
   for (const input of layers) {
     const layer = ZONING_LAYERS.find((l) => l.key === input.layer)!;
@@ -106,4 +106,11 @@ export async function buildZoning(db: Db, layers: ZoningLayerInput[]): Promise<S
     out.push(stats);
   }
   return out;
+}
+
+/** 적재된 용도지역 행에서 지정ID별 순번 계수를 다시 센다(--resume 후 파일 단위 적재를 잇는 용도). */
+export function seedZoningSeen(db: Db): Map<string, number> {
+  const seen = new Map<string, number>();
+  for (const [key, n] of db.prepare("SELECT source_key, COUNT(*) FROM feature WHERE kind = 'zoning_area' GROUP BY source_key").raw().iterate() as Iterable<[string, number]>) seen.set(`zoning:${key}`, n);
+  return seen;
 }

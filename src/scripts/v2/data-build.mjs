@@ -5,14 +5,18 @@
  */
 import { readdirSync, statSync, existsSync, readFileSync, openSync, readSync, closeSync } from "node:fs";
 import { basename, join, relative } from "node:path";
+import { inspect } from "node:util";
 
 const { extractAll, extractSelected } = await import("../../lib/v2/ingest/unzip.ts");
 const { latestShpPerSido, partCounts } = await import("../../lib/v2/ingest/shp-parts.ts");
 const { readShp, readShpPoints } = await import("../../lib/v2/ingest/shp.ts");
 const { csvRecords } = await import("../../lib/v2/a0/measure.ts");
 const {
+  addBuildLog,
   buildAndPublish,
   buildResumableSourceFiles,
+  buildResumableSteps,
+  progressLog,
   insertRelease,
   reclaimStaleDataDirLock,
   registerIngestProgressTotal,
@@ -38,9 +42,12 @@ const opt = (name, fallback) => {
 };
 const version = opt("version");
 if (!version || !/^[0-9A-Za-z._-]+$/.test(version)) {
-  console.error("usage: data:build -- --version <name> [--raw dir] [--dem-source glo30|hgt] [--only core,buildings,parcels,reference,market,terrain] [--with buildings,parcels] [--resume] [--expectations file.json] [--reset-baseline parcel,parcel_building] [--dry-run]");
+  console.error("usage: data:build -- --version <name> [--raw dir] [--dem-source glo30|hgt] [--only core,buildings,parcels,reference,market,terrain] [--with buildings,parcels] [--resume] [--log file] [--expectations file.json] [--reset-baseline parcel,parcel_building] [--dry-run]");
   process.exit(2);
 }
+// 로그: 콘솔 출력도 로그 파일(--log, 버전 폴더의 build.log)에 덧붙이고, 셸이 죽어 stdout이 닫혀도 빌드는 계속된다.
+if (opt("log")) addBuildLog(opt("log"));
+for (const m of ["log", "warn"]) console[m] = (...a) => progressLog(a.map((x) => (typeof x === "string" ? x : inspect(x))).join(" "));
 const flag = (name) => args.includes(`--${name}`);
 const resume = flag("resume");
 const raw = opt("raw", ".cache/v2/raw");
@@ -333,147 +340,6 @@ if (only.has("weather")) {
     return [await buildAsosWind(db, stations, rows(), releaseId, period)];
   };
 }
-if (only.has("reference")) {
-  builders.reference = async (db, ctx) => {
-    // 철도: v1이 이미 가진 공개 파일. 기준일은 파일 안의 생성일(OSM) / 최근 검증일(계획)이며 없으면 null.
-    const subwayFile = "public/data/osm-subway.json";
-    const plannedFile = "public/data/rail/planned.json";
-    const subway = JSON.parse(readFileSync(subwayFile, "utf8"));
-    const planned = JSON.parse(readFileSync(plannedFile, "utf8"));
-    const railManifest = JSON.parse(readFileSync("public/data/rail/manifest.json", "utf8"));
-    const railRelease = (sourceId, file, asOf, url, provider, licenseCode, rights) => {
-      const st = statSync(file);
-      return insertRelease(db, { sourceId, provider, sourceUrl: url, sourceAsOf: asOf, fetchedAt: st.mtime.toISOString(), checksum: `size-mtime:${st.size}-${Math.round(st.mtimeMs)}`, licenseCode, rights });
-    };
-    const generated = typeof subway.generated_at === "string" && /^\d{4}-\d{2}-\d{2}/.test(subway.generated_at) ? subway.generated_at.slice(0, 10) : null;
-    const verified = planned.map((p) => p.lastVerifiedAt).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort().at(-1) ?? null;
-    const legalCodeOf = legalCodeFromCore(ctx.core);
-    if (!ctx.core) console.warn("⚠ core가 없어 철도 feature의 시도 코드를 (미상)으로 기록합니다");
-    const rail = [
-      ...(await buildOsmSubway(db, subway, railRelease("osm_subway", subwayFile, generated, "https://overpass-api.de/", "OpenStreetMap contributors(Overpass API, 기존 앱 스냅샷)", "ODbL-1.0", { attribution: subway.license ?? null, railSnapshotVersion: railManifest.snapshotVersion ?? null }), legalCodeOf)),
-      ...(await buildPlannedRail(db, planned, railRelease("planned_rail", plannedFile, verified, "https://news.seoul.go.kr/citybuild/city_railroad", "기존 앱 계획 철도 공개 투영(공식 상태 + OSM 보조 선형)", "ODbL-1.0", { note: "선형이 OSM 공사 선형 보조(approximation)" }), legalCodeOf)),
-    ];
-    const one = async (spec, dir, re, provider, url) => {
-      const file = newest(dir, re);
-      return buildPointSource(db, spec, (await csvRecords(file)).records, release(db, spec.sourceId, file, provider, url, "UNRESTRICTED"));
-    };
-    return [
-      await one(STORE_SPEC, "store", /^store_.*\.csv$/i, "소상공인시장진흥공단", "https://www.data.go.kr/data/15083033/fileData.do"),
-      await one(BUS_STOP_SPEC, "bus_stop", /^bus_stop_.*\.csv$/i, "국토교통부", "https://www.data.go.kr/data/15067528/fileData.do"),
-      await one(PARK_SPEC, "park", /^park.*\.csv$/i, "지방자치단체(전국도시공원정보표준데이터)", "https://www.data.go.kr/data/15012890/standard.do"),
-      ...rail,
-    ];
-  };
-}
-
-// OSM Geofabrik free shapefile(reference): dl.done이 있는 완성 zip만 선택 추출하고 도로 layer만 적재한다.
-const osmDir = join(raw, "osm");
-const osmRoadShp = () => [...walk(osmDir)].find((file) => basename(file).toLowerCase() === `${OSM_ROADS_LAYER}.shp`.toLowerCase()) ?? null;
-const osmArchive = () => [...walk(osmDir)].filter((file) => /\.zip$/i.test(file)).sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0] ?? null;
-const osmAsOf = (file) => {
-  const long = asOfOf(file);
-  if (long) return long;
-  const m = basename(file).match(/(?:^|-)(\d{2})(\d{2})(\d{2})(?:-|\.)/);
-  return m ? `20${m[1]}-${m[2]}-${m[3]}` : null;
-};
-if (builders.reference && existsSync(osmDir)) {
-  const base = builders.reference;
-  builders.reference = async (db, ctx) => {
-    const built = await base(db, ctx);
-    let roadsFile = osmRoadShp();
-    if (!roadsFile) {
-      if (!existsSync(join(osmDir, "dl.done"))) {
-        console.log("osm_roads: dl.done 없음 — 다운로드 완료 후 도로 적재를 건너뜁니다");
-        return built;
-      }
-      const extracted = extractSelected(osmDir, (entry) => new RegExp(`(?:^|/)${OSM_ROADS_LAYER}\\.(?:shp|dbf|prj|cpg)$`, "i").test(entry.replace(/\\/g, "/")));
-      roadsFile = osmRoadShp();
-      console.log(`osm_roads: roads layer sidecars ${extracted.length ? "선택 추출" : "기존 추출본 사용"}`);
-    }
-    if (!roadsFile) {
-      console.log(`osm_roads: ${OSM_ROADS_LAYER}.shp 없음 — 도로 적재 건너뜀`);
-      return built;
-    }
-    const archive = osmArchive() ?? roadsFile;
-    const st = statSync(archive);
-    const releaseId = insertRelease(db, {
-      sourceId: "osm_roads",
-      provider: "OpenStreetMap (Geofabrik free shapefile extract)",
-      sourceUrl: "https://download.geofabrik.de/asia/south-korea.html",
-      sourceAsOf: osmAsOf(archive),
-      fetchedAt: st.mtime.toISOString(),
-      checksum: `size-mtime:${st.size}-${Math.round(st.mtimeMs)}`,
-      licenseCode: "ODbL-1.0",
-      rights: OSM_ROADS_RIGHTS,
-    });
-    const stats = await buildOsmRoads(db, readShp(roadsFile), releaseId, { legalCodeOf: legalCodeFromCore(ctx.core) });
-    return [...built, stats];
-  };
-}
-
-// OSM Geofabrik free shapefile(reference): 도로 블록 뒤에 녹지·수계 면을 이어 붙인다.
-const osmAreaLayers = [...OSM_GREEN_LAYERS, ...OSM_WATER_LAYERS];
-const osmAreaShp = (layer) => [...walk(osmDir)].find((file) => basename(file).toLowerCase() === `${layer}.shp`.toLowerCase()) ?? null;
-if (builders.reference && existsSync(osmDir)) {
-  const base = builders.reference;
-  builders.reference = async (db, ctx) => {
-    const built = await base(db, ctx);
-    let areaFiles = new Map(osmAreaLayers.map((layer) => [layer, osmAreaShp(layer)]).filter(([, file]) => file));
-    if (areaFiles.size < osmAreaLayers.length) {
-      if (!existsSync(join(osmDir, "dl.done"))) {
-        console.log("osm_landuse: dl.done 없음 — 다운로드 완료 후 녹지·수계 적재를 건너뜁니다");
-        return built;
-      }
-      // osm_roads의 선택 추출이 먼저 만든 .extracted marker가 있으면 선택 추출을
-      // 다시 허용한다. 기존 도로 파일은 보존되고, target sidecar만 추가된다.
-      const archive = osmArchive();
-      if (archive) {
-        const { unlinkSync } = await import("node:fs");
-        const marker = join(osmDir, basename(archive, ".zip"), ".extracted");
-        if (existsSync(marker)) unlinkSync(marker);
-      }
-      const extracted = extractSelected(osmDir, (entry) => new RegExp(`(?:^|/)gis_osm_(?:landuse_a|natural_a|water_a)_free_1\\.(?:shp|dbf|prj|cpg)$`, "i").test(entry.replace(/\\/g, "/")));
-      areaFiles = new Map(osmAreaLayers.map((layer) => [layer, osmAreaShp(layer)]).filter(([, file]) => file));
-      console.log(`osm_landuse: area layer sidecars ${extracted.length ? "선택 추출" : "기존 추출본 사용"}`);
-    }
-    if (areaFiles.size === 0) {
-      console.log("osm_landuse: 녹지·수계 면 layer 없음 — 적재 건너뜀");
-      return built;
-    }
-
-    const archive = osmArchive() ?? areaFiles.values().next().value;
-    const st = statSync(archive);
-    const sourceMeta = (sourceId, layers) => ({
-      sourceId,
-      provider: "OpenStreetMap (Geofabrik free shapefile extract)",
-      sourceUrl: "https://download.geofabrik.de/asia/south-korea.html",
-      sourceAsOf: osmAsOf(archive),
-      fetchedAt: st.mtime.toISOString(),
-      checksum: `size-mtime:${st.size}-${Math.round(st.mtimeMs)}`,
-      licenseCode: "ODbL-1.0",
-      rights: { ...OSM_ROADS_RIGHTS, layer: layers },
-    });
-    const buildGroup = async (kind, sourceId, layers) => {
-      const present = layers.map((layer) => [layer, areaFiles.get(layer)]).filter(([, file]) => file);
-      if (present.length === 0) return null;
-      const releaseId = insertRelease(db, sourceMeta(sourceId, present.map(([layer]) => layer)));
-      async function* records() {
-        for (const [layer, file] of present) {
-          for await (const record of readShp(file)) {
-            yield { ...record, properties: { ...record.properties, layer } };
-          }
-        }
-      }
-      return buildOsmAreas(db, records(), releaseId, kind);
-    };
-    const stats = [];
-    const landuse = await buildGroup("landuse", OSM_LANDUSE_SOURCE_ID, OSM_GREEN_LAYERS);
-    const water = await buildGroup("water", OSM_WATER_SOURCE_ID, OSM_WATER_LAYERS);
-    if (landuse) stats.push(landuse);
-    if (water) stats.push(water);
-    return [...built, ...stats];
-  };
-}
 if (only.has("market")) {
   builders.market = async (db, ctx) => {
     if (!ctx.core) throw new Error("market needs core (build core first or publish a core file)");
@@ -512,203 +378,16 @@ if (builders.market) {
 // 학교·학구 연계(reference)와 K-APT 단지(core): 기존 builder 뒤에 이어 붙인다.
 const { buildKapt, buildSchoolZoneLinks, SCHOOL_SPEC, SCHOOL_ZONE_COVERAGE } = await import("../../lib/v2/ingest/sources/school-kapt.ts");
 const { buildSchoolZones, readSchoolZoneGeoJson, SCHOOL_ZONE_LAYERS, SCHOOL_ZONE_RIGHTS, SCHOOL_ZONE_SOURCE_ID } = await import("../../lib/v2/ingest/sources/school-zones.ts");
-if (builders.reference) {
-  const base = builders.reference;
-  builders.reference = async (db, ctx) => {
-    const schoolFile = newest("school", /^school-location.*\.csv$/i);
-    const linkFile = newest("school_zone", /^school-zone-link.*\.csv$/i);
-    const elemFile = newest("school_zone", /^school-zone-elem.*\.csv$/i);
-    const provider = "한국교육시설안전원";
-    const school = await buildPointSource(db, SCHOOL_SPEC, (await csvRecords(schoolFile)).records, release(db, "school", schoolFile, provider, "https://www.data.go.kr/data/15021148/standard.do", "UNRESTRICTED"));
-    const linkRel = release(db, "school_zone_link", linkFile, provider, "https://www.data.go.kr/data/15021158/standard.do", "UNRESTRICTED");
-    const elemRel = release(db, "school_zone_elem", elemFile, provider, "https://www.data.go.kr/data/15021149/standard.do", "UNRESTRICTED");
-    const vworldDir = join(raw, "school_zone", "vworld");
-    const vworldFiles = SCHOOL_ZONE_LAYERS.map((layer) => ({ layer, file: join(vworldDir, `${layer.apiLayer}.geojson`) }));
-    const haveVworld = vworldFiles.every(({ file }) => existsSync(file));
-    let zoneRelease = null;
-    let zoneStats = [];
-    let zoneIds = null;
-    if (haveVworld) {
-      const done = vworldFiles.map(({ file }) => {
-        try { return JSON.parse(readFileSync(`${file}.done.json`, "utf8")); } catch { return {}; }
-      });
-      const baseDates = done.flatMap((d) => Array.isArray(d.base_dates) ? d.base_dates : typeof d.base_dt === "string" ? [d.base_dt] : []).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
-      const files = vworldFiles.map(({ file }) => statSync(file));
-      const sourceAsOf = baseDates.at(-1) ?? null;
-      const fetchedAt = new Date(Math.max(...files.map((st) => st.mtimeMs))).toISOString();
-      const checksum = vworldFiles.map(({ file }, i) => `${basename(file)}:${files[i].size}-${Math.round(files[i].mtimeMs)}`).join("|");
-      zoneRelease = insertRelease(db, {
-        sourceId: SCHOOL_ZONE_SOURCE_ID,
-        provider: "국토교통부(VWorld Data API 학교 학구도·학교군)",
-        sourceUrl: "https://api.vworld.kr/req/data",
-        sourceAsOf,
-        fetchedAt,
-        checksum,
-        licenseCode: "UNRESTRICTED",
-        rights: SCHOOL_ZONE_RIGHTS,
-      });
-      zoneStats = await buildSchoolZones(db, vworldFiles.map(({ layer, file }) => ({ layer: layer.key, releaseId: zoneRelease, records: readSchoolZoneGeoJson(file) })));
-      zoneIds = new Set(db.prepare("SELECT stable_id FROM feature WHERE kind IN ('school_zone_elem', 'school_zone_middle', 'school_zone_high')").pluck().all());
-      const totalRows = zoneStats.reduce((n, s) => n + s.received, 0);
-      const totalFeatures = zoneStats.reduce((n, s) => n + s.accepted, 0);
-      db.prepare("UPDATE source_release SET rights_json = ?, coverage_json = ? WHERE release_id = ?").run(
-        JSON.stringify(SCHOOL_ZONE_RIGHTS),
-        JSON.stringify({ polygons: true, layers: vworldFiles.map(({ layer }) => layer.apiLayer), features: totalFeatures, rows: totalRows }),
-        zoneRelease,
-      );
-      console.log(`school_zone: VWorld polygons ${totalFeatures.toLocaleString()} features / ${totalRows.toLocaleString()} rows`);
-    } else {
-      console.log("school_zone: VWorld GeoJSON 3종이 모두 없어 폴리곤 적재를 건너뜁니다");
-    }
-    const csvCoverage = { ...SCHOOL_ZONE_COVERAGE, polygons: zoneIds !== null, polygonSource: zoneIds !== null ? "school_zone" : null };
-    for (const rel of [linkRel, elemRel]) db.prepare("UPDATE source_release SET coverage_json = ? WHERE release_id = ?").run(JSON.stringify(csvCoverage), rel);
-    const zones = await buildSchoolZoneLinks(db, { link: (await csvRecords(linkFile)).records, elem: (await csvRecords(elemFile)).records, linkReleaseId: linkRel, elemReleaseId: elemRel, zoneIds });
-    return [...(await base(db, ctx)), school, ...zoneStats, ...zones];
-  };
-}
 // 용도지역(VWorld dsId 24, 레이어별 전국 SHP): 필지 점과 갱신 주기가 달라 core가 아니라 reference에 둔다.
-const { buildZoning, zoningLayerFiles, ZONING_LAYERS, ZONING_RIGHTS } = await import("../../lib/v2/ingest/sources/zoning.ts");
-if (builders.reference && existsSync(join(raw, "zoning"))) {
-  const base = builders.reference;
-  builders.reference = async (db, ctx) => {
-    const built = await base(db, ctx);
-    extractAll(join(raw, "zoning"));
-    const found = zoningLayerFiles([...walk(join(raw, "zoning"))]);
-    const missing = ZONING_LAYERS.filter((l) => !found.has(l.key)).map((l) => l.title);
-    if (missing.length > 0) throw new Error(`용도지역 레이어 없음: ${missing.join(", ")} — vworld:fetch -- --ds 24 로 받으세요`);
-    const layers = ZONING_LAYERS.map((l) => {
-      const set = found.get(l.key);
-      const st = statSync(set.files[0]);
-      const d = set.date;
-      const releaseId = insertRelease(db, {
-        sourceId: l.sourceId,
-        provider: "국토교통부(VWorld 일별용도지역지구정보)",
-        sourceUrl: "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=24",
-        sourceAsOf: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`,
-        fetchedAt: st.mtime.toISOString(),
-        checksum: `size-mtime:${st.size}-${Math.round(st.mtimeMs)}`,
-        licenseCode: "UNRESTRICTED",
-        rights: { ...ZONING_RIGHTS, layer: l.title },
-      });
-      return { layer: l.key, releaseId, records: chain(...set.files.map((f) => readShp(f))) };
-    });
-    return [...built, ...(await buildZoning(db, layers))];
-  };
-}
-// 개별공시지가(VWorld dsId 6, 시도별 CSV): raw/land_price가 있을 때만 reference에 이어 붙인다(없으면 건너뜀).
 const { buildLandPrice, latestLandPricePerSido, LAND_PRICE_RIGHTS } = await import("../../lib/v2/ingest/sources/land-price.ts");
-if (builders.reference && existsSync(join(raw, "land_price"))) {
-  const base = builders.reference;
-  builders.reference = async (db, ctx) => {
-    const built = await base(db, ctx);
-    extractAll(join(raw, "land_price"));
-    const sets = latestLandPricePerSido([...walk(join(raw, "land_price"))]);
-    if (sets.size === 0) throw new Error("개별공시지가 CSV 없음 — vworld:fetch -- --ds 6 으로 받으세요");
-    const list = [...sets.entries()].sort(([a], [b]) => a.localeCompare(b));
-    const d = list.map(([, v]) => v.date).sort()[0];
-    const size = list.reduce((a, [, v]) => a + statSync(v.file).size, 0);
-    const mtime = Math.max(...list.map(([, v]) => statSync(v.file).mtimeMs));
-    const releaseId = insertRelease(db, {
-      sourceId: "land_price",
-      provider: "국토교통부(VWorld 개별공시지가정보)",
-      sourceUrl: "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=6",
-      sourceAsOf: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`,
-      fetchedAt: new Date(mtime).toISOString(),
-      checksum: `size-mtime:${size}-${Math.round(mtime)}`,
-      licenseCode: "UNRESTRICTED",
-      rights: LAND_PRICE_RIGHTS,
-    });
-    async function* rows() {
-      for (const [, v] of list) yield* (await csvRecords(v.file)).records;
-    }
-    // core가 있으면 옛 코드(29·46 → 12, 인천 구 분할)를 현재 코드로 옮겨 저장한다. expectedRegions도 저장 코드로 바뀐다
-    return [...built, await buildLandPrice(db, rows(), releaseId, list.map(([k]) => k), ctx.core)];
-  };
-}
+const { buildZoning, seedZoningSeen, zoningLayerFiles, ZONING_LAYERS, ZONING_RIGHTS } = await import("../../lib/v2/ingest/sources/zoning.ts");
 
 // 정비구역 경계(VWorld dsId 24 정비 5개 레이어) + 정비사업 명부 매칭: 폴더가 없으면 건너뛴다. 날짜 폴더 아래(maintenance_zone/YYYY-MM-DD/x)에 풀려 있다.
-const { buildMaintenanceZones, mzoneLayerFiles, sigunguIndexFromCore, MZONE_LAYERS, MZONE_RIGHTS } = await import("../../lib/v2/ingest/sources/maintenance-zone.ts");
-if (builders.reference && existsSync(join(raw, "maintenance_zone"))) {
-  const base = builders.reference;
-  builders.reference = async (db, ctx) => {
-    const built = await base(db, ctx);
-    extractAll(join(raw, "maintenance_zone"));
-    const found = mzoneLayerFiles([...walk(join(raw, "maintenance_zone"))]);
-    const missing = MZONE_LAYERS.filter((l) => !found.has(l.key)).map((l) => l.title);
-    if (missing.length > 0) throw new Error(`정비구역 레이어 없음: ${missing.join(", ")} — vworld:fetch -- --ds 24 로 받으세요`);
-    const layers = MZONE_LAYERS.map((l) => {
-      const set = found.get(l.key);
-      const st = statSync(set.files[0]);
-      const d = set.date;
-      const releaseId = insertRelease(db, {
-        sourceId: l.sourceId,
-        provider: "국토교통부(VWorld 일별용도지역지구정보)",
-        sourceUrl: "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=24",
-        sourceAsOf: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`,
-        fetchedAt: st.mtime.toISOString(),
-        checksum: `size-mtime:${st.size}-${Math.round(st.mtimeMs)}`,
-        licenseCode: "UNRESTRICTED",
-        rights: { ...MZONE_RIGHTS, layer: l.title },
-      });
-      return { layer: l.key, releaseId, records: chain(...set.files.map((f) => readShp(f))) };
-    });
-    // 명부: 정비사업 CSV를 임시 메모리 DB에 적재해 사업 id·이름을 그대로 얻는다(market 파일과 같은 id). 명부나 core가 없으면 폴리곤만 적재.
-    let roster;
-    if (ctx.core && existsSync(join(raw, "maintenance"))) {
-      const { default: Database } = await import("better-sqlite3");
-      const { initDataFileSchema } = await import("../../lib/v2/data/schema.ts");
-      const { buildMaintenance } = await import("../../lib/v2/ingest/sources/maintenance.ts");
-      const scratch = new Database(":memory:");
-      initDataFileSchema(scratch, "market");
-      const integratedFile = newest("maintenance", /^maintenance-integrated-.*\.csv$/i);
-      const stdFile = newest("maintenance", /^maintenance-std-.*\.csv$/i);
-      const p = "국토교통부·지방자치단체(도시정비사업)";
-      await buildMaintenance(scratch, {
-        integrated: (await csvRecords(integratedFile)).records,
-        integratedReleaseId: release(scratch, "maintenance_integrated", integratedFile, p, "", "UNRESTRICTED"),
-        std: (await csvRecords(stdFile)).records,
-        stdReleaseId: release(scratch, "maintenance_std", stdFile, p, "", "UNRESTRICTED"),
-      });
-      const projects = scratch.prepare("SELECT coverage_json FROM source_release").pluck().all().flatMap((c) => JSON.parse(c).projects ?? []);
-      scratch.close();
-      roster = { projects, sigungu: sigunguIndexFromCore(ctx.core) };
-    }
-    return [...built, ...(await buildMaintenanceZones(db, layers, roster))];
-  };
-}
+const { loadMaintenanceZones, finishMaintenanceZones, mzoneLayerFiles, sigunguIndexFromCore, MZONE_LAYERS, MZONE_RIGHTS } = await import("../../lib/v2/ingest/sources/maintenance-zone.ts");
 
 // SGIS 1 km 인구·가구 격자(reference): .cache/v2/raw/sgis_grid 폴더가 있고 CSV가 풀려 있을 때만. 시도는 core 시군구 경계로 판정한다.
 const { buildPopGrid, sgisRows, sgisDataYear, locateSigunguFromCore } = await import("../../lib/v2/ingest/sources/sgis-grid.ts");
 const sgisDir = join(raw, "sgis_grid");
-if (builders.reference && existsSync(sgisDir)) {
-  const base = builders.reference;
-  builders.reference = async (db, ctx) => {
-    const built = await base(db, ctx);
-    let year = sgisDataYear(sgisDir);
-    if (!year) {
-      extractAll(sgisDir);
-      year = sgisDataYear(sgisDir);
-    }
-    if (!year) {
-      console.log("sgis_grid: 통계 CSV 없음 — 격자 적재 건너뜀");
-      return built;
-    }
-    const zip = join(sgisDir, "sgis_grid.zip");
-    const st = statSync(existsSync(zip) ? zip : sgisDir);
-    const releaseId = insertRelease(db, {
-      sourceId: "sgis_grid",
-      provider: "국가데이터처(SGIS 격자 통계, 공공데이터포털)",
-      sourceUrl: "https://www.data.go.kr/data/15141768/fileData.do",
-      sourceAsOf: year,
-      fetchedAt: st.mtime.toISOString(),
-      checksum: `size-mtime:${st.size}-${Math.round(st.mtimeMs)}`,
-      licenseCode: "UNRESTRICTED",
-      rights: { note: "이용허락범위 제한 없음(A0 표 8행)", disclosure: "5 미만 값은 0 또는 5로 확률 대체, 그 이상은 최대 ±7 노이즈, 총괄 항목 일부 N/A(비공개)" },
-    });
-    if (!ctx.core) console.warn("⚠ core가 없어 격자의 시도 코드를 (미상)으로 기록합니다");
-    return [...built, await buildPopGrid(db, { rows: sgisRows(sgisDir), releaseId, dataYear: year, locate: locateSigunguFromCore(ctx.core) })];
-  };
-}
 if (builders.core) {
   const base = builders.core;
   builders.core = async (db, ctx) => {
@@ -730,41 +409,372 @@ if (builders.market && hasRtmsRaw(raw)) {
 
 // D11·D12 구역·지구·도시계획시설(reference): Q1 레이어 표가 확정되고 raw/districts가 있을 때만 이어 붙인다.
 const districtsDir = join(raw, "districts");
-const { buildDistricts, districtLayerFiles, DISTRICT_LAYERS, DISTRICT_RIGHTS } = await import("../../lib/v2/ingest/sources/districts.ts");
-if (builders.reference && existsSync(districtsDir)) {
-  const base = builders.reference;
-  builders.reference = async (db, ctx) => {
-    const built = await base(db, ctx);
+const { buildDistricts, seedDistrictSeen, districtLayerFiles, DISTRICT_LAYERS, DISTRICT_RIGHTS } = await import("../../lib/v2/ingest/sources/districts.ts");
+
+// ── reference: 원천(파일) 단위 단계. 단계마다 한 트랜잭션 + 진행표 행이라 PC가 꺼져도 --resume으로 끝난 단계를 건너뛰고 이어 간다. ──
+// 단계 순서 = 실행 순서. slot = 중단 없는 빌드가 돌려주던 통계 목록의 순서(ingest_run 순번을 그대로 두려는 것).
+if (only.has("reference")) {
+  // 폴더는 안에 파일이 늘면 수정시각이 바뀌므로 지문에서 뺀다(0).
+  const fileStat = (f) => { const st = statSync(f); return st.isDirectory() ? { size: 0, mtimeMs: 0 } : st; };
+  const fp = (files) => ({ size: files.reduce((a, f) => a + fileStat(f).size, 0), mtimeMs: Math.round(Math.max(0, ...files.map((f) => fileStat(f).mtimeMs))) });
+  const steps = [];
+  /** id: 진행표 경로(안정적 이름), files: 지문용 원천 파일들 */
+  const step = (id, files, rows, slot, run, extra = {}) => steps.push({ file: { path: id, ...fp(files), rows }, slot, run, ...extra });
+  let db_; // 단계 실행 중인 reference DB와 core (builder가 채운다)
+  let core_ = null;
+  const SLOT = { store: 0, bus_stop: 1, park: 2, subway: 3, planned: 4, roads: 5, landuse: 6, water: 7, school: 8, zones: 9, links: 10, zoning: 11, land_price: 20, mzone: 21, sgis: 22, districts: 23 };
+  const provider = "한국교육시설안전원";
+
+  // 학교·학구: 점(CSV) → 학구 폴리곤(VWorld GeoJSON) → 학교-학구 연계(CSV, 폴리곤 id로 걸러냄)
+  const schoolFile = newest("school", /^school-location.*\.csv$/i);
+  const linkFile = newest("school_zone", /^school-zone-link.*\.csv$/i);
+  const elemFile = newest("school_zone", /^school-zone-elem.*\.csv$/i);
+  const vworldDir = join(raw, "school_zone", "vworld");
+  const vworldFiles = SCHOOL_ZONE_LAYERS.map((layer) => ({ layer, file: join(vworldDir, `${layer.apiLayer}.geojson`) }));
+  const haveVworld = vworldFiles.every(({ file }) => existsSync(file));
+  const zoneReleaseOf = () => {
+    const done = vworldFiles.map(({ file }) => {
+      try { return JSON.parse(readFileSync(`${file}.done.json`, "utf8")); } catch { return {}; }
+    });
+    const baseDates = done.flatMap((d) => Array.isArray(d.base_dates) ? d.base_dates : typeof d.base_dt === "string" ? [d.base_dt] : []).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+    const sts = vworldFiles.map(({ file }) => statSync(file));
+    return insertRelease(db_, {
+      sourceId: SCHOOL_ZONE_SOURCE_ID,
+      provider: "국토교통부(VWorld Data API 학교 학구도·학교군)",
+      sourceUrl: "https://api.vworld.kr/req/data",
+      sourceAsOf: baseDates.at(-1) ?? null,
+      fetchedAt: new Date(Math.max(...sts.map((st) => st.mtimeMs))).toISOString(),
+      checksum: vworldFiles.map(({ file }, i) => `${basename(file)}:${sts[i].size}-${Math.round(sts[i].mtimeMs)}`).join("|"),
+      licenseCode: "UNRESTRICTED",
+      rights: SCHOOL_ZONE_RIGHTS,
+    });
+  };
+  step(`school/${basename(schoolFile)}`, [schoolFile], 0, SLOT.school, async () => [
+    await buildPointSource(db_, SCHOOL_SPEC, (await csvRecords(schoolFile)).records, release(db_, "school", schoolFile, provider, "https://www.data.go.kr/data/15021148/standard.do", "UNRESTRICTED")),
+  ]);
+  if (haveVworld) {
+    step("school_zone/vworld", vworldFiles.map(({ file }) => file), 0, SLOT.zones, async () => {
+      const zoneRelease = zoneReleaseOf();
+      const zoneStats = await buildSchoolZones(db_, vworldFiles.map(({ layer, file }) => ({ layer: layer.key, releaseId: zoneRelease, records: readSchoolZoneGeoJson(file) })));
+      const totalRows = zoneStats.reduce((n, s) => n + s.received, 0);
+      const totalFeatures = zoneStats.reduce((n, s) => n + s.accepted, 0);
+      db_.prepare("UPDATE source_release SET rights_json = ?, coverage_json = ? WHERE release_id = ?").run(
+        JSON.stringify(SCHOOL_ZONE_RIGHTS),
+        JSON.stringify({ polygons: true, layers: vworldFiles.map(({ layer }) => layer.apiLayer), features: totalFeatures, rows: totalRows }),
+        zoneRelease,
+      );
+      console.log(`school_zone: VWorld polygons ${totalFeatures.toLocaleString()} features / ${totalRows.toLocaleString()} rows`);
+      return zoneStats;
+    });
+  } else {
+    console.log("school_zone: VWorld GeoJSON 3종이 모두 없어 폴리곤 적재를 건너뜁니다");
+  }
+  step("school_zone/link", [linkFile, elemFile], 0, SLOT.links, async () => {
+    const linkRel = release(db_, "school_zone_link", linkFile, provider, "https://www.data.go.kr/data/15021158/standard.do", "UNRESTRICTED");
+    const elemRel = release(db_, "school_zone_elem", elemFile, provider, "https://www.data.go.kr/data/15021149/standard.do", "UNRESTRICTED");
+    const zoneIds = haveVworld ? new Set(db_.prepare("SELECT stable_id FROM feature WHERE kind IN ('school_zone_elem', 'school_zone_middle', 'school_zone_high')").pluck().all()) : null;
+    const csvCoverage = { ...SCHOOL_ZONE_COVERAGE, polygons: zoneIds !== null, polygonSource: zoneIds !== null ? "school_zone" : null };
+    for (const rel of [linkRel, elemRel]) db_.prepare("UPDATE source_release SET coverage_json = ? WHERE release_id = ?").run(JSON.stringify(csvCoverage), rel);
+    return buildSchoolZoneLinks(db_, { link: (await csvRecords(linkFile)).records, elem: (await csvRecords(elemFile)).records, linkReleaseId: linkRel, elemReleaseId: elemRel, zoneIds });
+  });
+
+  // 철도: v1이 이미 가진 공개 파일. 기준일은 파일 안의 생성일(OSM) / 최근 검증일(계획)이며 없으면 null.
+  const subwayFile = "public/data/osm-subway.json";
+  const plannedFile = "public/data/rail/planned.json";
+  const railManifestFile = "public/data/rail/manifest.json";
+  const railRelease = (sourceId, file, asOf, url, prov, licenseCode, rights) => {
+    const st = statSync(file);
+    return insertRelease(db_, { sourceId, provider: prov, sourceUrl: url, sourceAsOf: asOf, fetchedAt: st.mtime.toISOString(), checksum: `size-mtime:${st.size}-${Math.round(st.mtimeMs)}`, licenseCode, rights });
+  };
+  step("rail/osm-subway", [subwayFile, railManifestFile], 0, SLOT.subway, async () => {
+    const subway = JSON.parse(readFileSync(subwayFile, "utf8"));
+    const railManifest = JSON.parse(readFileSync(railManifestFile, "utf8"));
+    if (!core_) console.warn("⚠ core가 없어 철도 feature의 시도 코드를 (미상)으로 기록합니다");
+    const generated = typeof subway.generated_at === "string" && /^\d{4}-\d{2}-\d{2}/.test(subway.generated_at) ? subway.generated_at.slice(0, 10) : null;
+    return buildOsmSubway(db_, subway, railRelease("osm_subway", subwayFile, generated, "https://overpass-api.de/", "OpenStreetMap contributors(Overpass API, 기존 앱 스냅샷)", "ODbL-1.0", { attribution: subway.license ?? null, railSnapshotVersion: railManifest.snapshotVersion ?? null }), legalCodeFromCore(core_));
+  });
+  step("rail/planned", [plannedFile], 0, SLOT.planned, async () => {
+    const planned = JSON.parse(readFileSync(plannedFile, "utf8"));
+    const verified = planned.map((p) => p.lastVerifiedAt).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort().at(-1) ?? null;
+    return buildPlannedRail(db_, planned, railRelease("planned_rail", plannedFile, verified, "https://news.seoul.go.kr/citybuild/city_railroad", "기존 앱 계획 철도 공개 투영(공식 상태 + OSM 보조 선형)", "ODbL-1.0", { note: "선형이 OSM 공사 선형 보조(approximation)" }), legalCodeFromCore(core_));
+  });
+
+  // 점 CSV 3종
+  for (const [spec, dir, re, prov, url, slot] of [
+    [STORE_SPEC, "store", /^store_.*\.csv$/i, "소상공인시장진흥공단", "https://www.data.go.kr/data/15083033/fileData.do", SLOT.store],
+    [BUS_STOP_SPEC, "bus_stop", /^bus_stop_.*\.csv$/i, "국토교통부", "https://www.data.go.kr/data/15067528/fileData.do", SLOT.bus_stop],
+    [PARK_SPEC, "park", /^park.*\.csv$/i, "지방자치단체(전국도시공원정보표준데이터)", "https://www.data.go.kr/data/15012890/standard.do", SLOT.park],
+  ]) {
+    const file = newest(dir, re);
+    step(`${dir}/${basename(file)}`, [file], 0, slot, async () => [
+      await buildPointSource(db_, spec, (await csvRecords(file)).records, release(db_, spec.sourceId, file, prov, url, "UNRESTRICTED")),
+    ]);
+  }
+
+  // OSM Geofabrik free shapefile: dl.done가 있는 완성 zip만 선택 추출한다. 도로 → 녹지·수계 순.
+  const osmDir = join(raw, "osm");
+  const osmFind = (layer) => [...walk(osmDir)].find((file) => basename(file).toLowerCase() === `${layer}.shp`.toLowerCase()) ?? null;
+  const osmArchive = () => [...walk(osmDir)].filter((file) => /\.zip$/i.test(file)).sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0] ?? null;
+  const osmAsOf = (file) => {
+    const long = asOfOf(file);
+    if (long) return long;
+    const m = basename(file).match(/(?:^|-)(\d{2})(\d{2})(\d{2})(?:-|\.)/);
+    return m ? `20${m[1]}-${m[2]}-${m[3]}` : null;
+  };
+  const osmMeta = (sourceId, archive, rights) => {
+    const st = statSync(archive);
+    return { sourceId, provider: "OpenStreetMap (Geofabrik free shapefile extract)", sourceUrl: "https://download.geofabrik.de/asia/south-korea.html", sourceAsOf: osmAsOf(archive), fetchedAt: st.mtime.toISOString(), checksum: `size-mtime:${st.size}-${Math.round(st.mtimeMs)}`, licenseCode: "ODbL-1.0", rights };
+  };
+  if (existsSync(osmDir)) {
+    let roadsFile = osmFind(OSM_ROADS_LAYER);
+    if (!roadsFile && existsSync(join(osmDir, "dl.done"))) {
+      const extracted = extractSelected(osmDir, (entry) => new RegExp(`(?:^|/)${OSM_ROADS_LAYER}\\.(?:shp|dbf|prj|cpg)$`, "i").test(entry.replace(/\\/g, "/")));
+      roadsFile = osmFind(OSM_ROADS_LAYER);
+      console.log(`osm_roads: roads layer sidecars ${extracted.length ? "선택 추출" : "기존 추출본 사용"}`);
+    }
+    if (roadsFile) {
+      const archive = osmArchive() ?? roadsFile;
+      step(`osm_roads/${basename(roadsFile)}`, [roadsFile], dbfRecordCount(roadsFile), SLOT.roads, async () => {
+        const releaseId = insertRelease(db_, osmMeta("osm_roads", archive, OSM_ROADS_RIGHTS));
+        return [await buildOsmRoads(db_, readShp(roadsFile), releaseId, { legalCodeOf: legalCodeFromCore(core_) })];
+      });
+    } else {
+      console.log(existsSync(join(osmDir, "dl.done")) ? `osm_roads: ${OSM_ROADS_LAYER}.shp 없음 — 도로 적재 건너뜀` : "osm_roads: dl.done 없음 — 다운로드 완료 후 도로 적재를 건너뜁니다");
+    }
+
+    const osmAreaLayers = [...OSM_GREEN_LAYERS, ...OSM_WATER_LAYERS];
+    let areaFiles = new Map(osmAreaLayers.map((layer) => [layer, osmFind(layer)]).filter(([, file]) => file));
+    if (areaFiles.size < osmAreaLayers.length && existsSync(join(osmDir, "dl.done"))) {
+      // osm_roads의 선택 추출이 만든 .extracted marker가 있으면 선택 추출을 다시 허용한다(기존 도로 파일은 보존, target sidecar만 추가).
+      const archive = osmArchive();
+      if (archive) {
+        const { unlinkSync } = await import("node:fs");
+        const marker = join(osmDir, basename(archive, ".zip"), ".extracted");
+        if (existsSync(marker)) unlinkSync(marker);
+      }
+      const extracted = extractSelected(osmDir, (entry) => new RegExp(`(?:^|/)gis_osm_(?:landuse_a|natural_a|water_a)_free_1\\.(?:shp|dbf|prj|cpg)$`, "i").test(entry.replace(/\\/g, "/")));
+      areaFiles = new Map(osmAreaLayers.map((layer) => [layer, osmFind(layer)]).filter(([, file]) => file));
+      console.log(`osm_landuse: area layer sidecars ${extracted.length ? "선택 추출" : "기존 추출본 사용"}`);
+    } else if (areaFiles.size < osmAreaLayers.length) {
+      console.log("osm_landuse: dl.done 없음 — 다운로드 완료 후 녹지·수계 적재를 건너뜁니다");
+    }
+    if (areaFiles.size === 0) {
+      console.log("osm_landuse: 녹지·수계 면 layer 없음 — 적재 건너뜀");
+    } else {
+      const archive = osmArchive() ?? areaFiles.values().next().value;
+      for (const [kind, sourceId, layers, slot] of [["landuse", OSM_LANDUSE_SOURCE_ID, OSM_GREEN_LAYERS, SLOT.landuse], ["water", OSM_WATER_SOURCE_ID, OSM_WATER_LAYERS, SLOT.water]]) {
+        const present = layers.map((layer) => [layer, areaFiles.get(layer)]).filter(([, file]) => file);
+        for (const [layer, file] of present) {
+          step(`osm_${kind}/${basename(file)}`, [file], dbfRecordCount(file), slot, async () => {
+            const releaseId = insertRelease(db_, osmMeta(sourceId, archive, { ...OSM_ROADS_RIGHTS, layer: present.map(([l]) => l) }));
+            async function* records() {
+              for await (const record of readShp(file)) yield { ...record, properties: { ...record.properties, layer } };
+            }
+            return [await buildOsmAreas(db_, records(), releaseId, kind)];
+          });
+        }
+      }
+    }
+  }
+
+  // 같은 지정ID가 여러 도형이면 stable id에 순번을 붙인다. 파일 단위 단계 사이에 순번 계수를 잇고, 재개 때는 DB에서 다시 센다.
+  const seenCounts = new WeakMap();
+  const seenFor = (name, seed) => {
+    let byName = seenCounts.get(db_);
+    if (!byName) seenCounts.set(db_, (byName = new Map()));
+    if (!byName.has(name)) {
+      const seen = new Map();
+      for (const [key, n] of seed()) seen.set(key, n);
+      byName.set(name, seen);
+    }
+    return byName.get(name);
+  };
+  const shpSteps = (files, slot, run) => {
+    for (const file of files) step(rawRelOf(file), [file], dbfRecordCount(file), slot, () => run(file));
+  };
+  const rawRelOf = (file) => relative(raw, file).replaceAll("\\", "/");
+
+  // 용도지역(VWorld dsId 24, 레이어별 전국 SHP): 필지 점과 갱신 주기가 달라 core가 아니라 reference에 둔다.
+  if (existsSync(join(raw, "zoning"))) {
+    extractAll(join(raw, "zoning"));
+    const found = zoningLayerFiles([...walk(join(raw, "zoning"))]);
+    const missing = ZONING_LAYERS.filter((l) => !found.has(l.key)).map((l) => l.title);
+    if (missing.length > 0) throw new Error(`용도지역 레이어 없음: ${missing.join(", ")} — vworld:fetch -- --ds 24 로 받으세요`);
+    for (const [i, l] of ZONING_LAYERS.entries()) {
+      const set = found.get(l.key);
+      shpSteps(set.files, SLOT.zoning + i, async (file) => {
+        const st = statSync(set.files[0]);
+        const d = set.date;
+        const releaseId = insertRelease(db_, {
+          sourceId: l.sourceId,
+          provider: "국토교통부(VWorld 일별용도지역지구정보)",
+          sourceUrl: "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=24",
+          sourceAsOf: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`,
+          fetchedAt: st.mtime.toISOString(),
+          checksum: `size-mtime:${st.size}-${Math.round(st.mtimeMs)}`,
+          licenseCode: "UNRESTRICTED",
+          rights: { ...ZONING_RIGHTS, layer: l.title },
+        });
+        const seen = seenFor("zoning", () => seedZoningSeen(db_));
+        return buildZoning(db_, [{ layer: l.key, releaseId, records: readShp(file) }], seen);
+      });
+    }
+  }
+
+  // 개별공시지가(VWorld dsId 6, 시도별 CSV): raw/land_price가 있을 때만(없으면 건너뜀). 시도 파일마다 한 단계.
+  if (existsSync(join(raw, "land_price"))) {
+    extractAll(join(raw, "land_price"));
+    const sets = latestLandPricePerSido([...walk(join(raw, "land_price"))]);
+    if (sets.size === 0) throw new Error("개별공시지가 CSV 없음 — vworld:fetch -- --ds 6 으로 받으세요");
+    const list = [...sets.entries()].sort(([a], [b]) => a.localeCompare(b));
+    for (const [sido, v] of list) {
+      step(rawRelOf(v.file), [v.file], 0, SLOT.land_price, async () => {
+        const d = list.map(([, x]) => x.date).sort()[0];
+        const size = list.reduce((a, [, x]) => a + statSync(x.file).size, 0);
+        const mtime = Math.max(...list.map(([, x]) => statSync(x.file).mtimeMs));
+        const releaseId = insertRelease(db_, {
+          sourceId: "land_price",
+          provider: "국토교통부(VWorld 개별공시지가정보)",
+          sourceUrl: "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=6",
+          sourceAsOf: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`,
+          fetchedAt: new Date(mtime).toISOString(),
+          checksum: `size-mtime:${size}-${Math.round(mtime)}`,
+          licenseCode: "UNRESTRICTED",
+          rights: LAND_PRICE_RIGHTS,
+        });
+        async function* rows() {
+          yield* (await csvRecords(v.file)).records;
+        }
+        // core가 있으면 옛 코드(29·46 → 12, 인천 구 분할)를 현재 코드로 옮겨 저장한다. expectedRegions도 저장 코드로 바뀐다
+        return [await buildLandPrice(db_, rows(), releaseId, [sido], core_)];
+      });
+    }
+  }
+
+  // 정비구역 경계(VWorld dsId 24 정비 5개 레이어) + 정비사업 명부 매칭: 폴더가 없으면 건너뛴다. 레이어마다 한 단계, 명부 매칭은 마지막 단계.
+  if (existsSync(join(raw, "maintenance_zone"))) {
+    extractAll(join(raw, "maintenance_zone"));
+    const found = mzoneLayerFiles([...walk(join(raw, "maintenance_zone"))]);
+    const missing = MZONE_LAYERS.filter((l) => !found.has(l.key)).map((l) => l.title);
+    if (missing.length > 0) throw new Error(`정비구역 레이어 없음: ${missing.join(", ")} — vworld:fetch -- --ds 24 로 받으세요`);
+    for (const l of MZONE_LAYERS) {
+      const set = found.get(l.key);
+      step(`maintenance_zone/${l.key}`, set.files, set.files.reduce((a, f) => a + dbfRecordCount(f), 0), SLOT.mzone, async () => {
+        const st = statSync(set.files[0]);
+        const d = set.date;
+        const releaseId = insertRelease(db_, {
+          sourceId: l.sourceId,
+          provider: "국토교통부(VWorld 일별용도지역지구정보)",
+          sourceUrl: "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=24",
+          sourceAsOf: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`,
+          fetchedAt: st.mtime.toISOString(),
+          checksum: `size-mtime:${st.size}-${Math.round(st.mtimeMs)}`,
+          licenseCode: "UNRESTRICTED",
+          rights: { ...MZONE_RIGHTS, layer: l.title },
+        });
+        return loadMaintenanceZones(db_, [{ layer: l.key, releaseId, records: chain(...set.files.map((f) => readShp(f))) }]);
+      });
+    }
+    // 명부: 정비사업 CSV를 임시 메모리 DB에 적재해 사업 id·이름을 그대로 얻는다(market 파일과 같은 id). 명부나 core가 없으면 폴리곤만 적재.
+    // 멱등(INSERT OR IGNORE + 같은 UPDATE)이라 트랜잭션으로 감싸지 않는다 — linkZones가 스스로 BEGIN/COMMIT 한다.
+    const rosterFiles = existsSync(join(raw, "maintenance")) ? [newest("maintenance", /^maintenance-integrated-.*\.csv$/i), newest("maintenance", /^maintenance-std-.*\.csv$/i)] : [];
+    step("maintenance_zone/link", rosterFiles.length ? rosterFiles : [join(raw, "maintenance_zone")], 0, SLOT.mzone, async (prior) => {
+      let roster;
+      if (core_ && rosterFiles.length) {
+        const { default: Database } = await import("better-sqlite3");
+        const { initDataFileSchema } = await import("../../lib/v2/data/schema.ts");
+        const { buildMaintenance } = await import("../../lib/v2/ingest/sources/maintenance.ts");
+        const scratch = new Database(":memory:");
+        initDataFileSchema(scratch, "market");
+        const [integratedFile, stdFile] = rosterFiles;
+        const p = "국토교통부·지방자치단체(도시정비사업)";
+        await buildMaintenance(scratch, {
+          integrated: (await csvRecords(integratedFile)).records,
+          integratedReleaseId: release(scratch, "maintenance_integrated", integratedFile, p, "", "UNRESTRICTED"),
+          std: (await csvRecords(stdFile)).records,
+          stdReleaseId: release(scratch, "maintenance_std", stdFile, p, "", "UNRESTRICTED"),
+        });
+        const projects = scratch.prepare("SELECT coverage_json FROM source_release").pluck().all().flatMap((c) => JSON.parse(c).projects ?? []);
+        scratch.close();
+        roster = { projects, sigungu: sigunguIndexFromCore(core_) };
+      }
+      finishMaintenanceZones(db_, prior.filter((s) => MZONE_LAYERS.some((l) => l.sourceId === s.sourceId)), roster);
+      return [];
+    }, { atomic: false });
+  }
+
+  // SGIS 1 km 인구·가구 격자: .cache/v2/raw/sgis_grid 폴더가 있고 CSV가 풀려 있을 때만. 시도는 core 시군구 경계로 판정한다.
+  if (existsSync(sgisDir)) {
+    let year = sgisDataYear(sgisDir);
+    if (!year) {
+      extractAll(sgisDir);
+      year = sgisDataYear(sgisDir);
+    }
+    if (!year) {
+      console.log("sgis_grid: 통계 CSV 없음 — 격자 적재 건너뜀");
+    } else {
+      const zip = join(sgisDir, "sgis_grid.zip");
+      const src = existsSync(zip) ? zip : sgisDir;
+      step("sgis_grid", [src], 0, SLOT.sgis, async () => {
+        const st = statSync(src);
+        const releaseId = insertRelease(db_, {
+          sourceId: "sgis_grid",
+          provider: "국가데이터처(SGIS 격자 통계, 공공데이터포털)",
+          sourceUrl: "https://www.data.go.kr/data/15141768/fileData.do",
+          sourceAsOf: year,
+          fetchedAt: st.mtime.toISOString(),
+          checksum: `size-mtime:${st.size}-${Math.round(st.mtimeMs)}`,
+          licenseCode: "UNRESTRICTED",
+          rights: { note: "이용허락범위 제한 없음(A0 표 8행)", disclosure: "5 미만 값은 0 또는 5로 확률 대체, 그 이상은 최대 ±7 노이즈, 총괄 항목 일부 N/A(비공개)" },
+        });
+        if (!core_) console.warn("⚠ core가 없어 격자의 시도 코드를 (미상)으로 기록합니다");
+        return [await buildPopGrid(db_, { rows: sgisRows(sgisDir), releaseId, dataYear: year, locate: locateSigunguFromCore(core_) })];
+      });
+    }
+  }
+
+  // D11·D12 구역·지구·도시계획시설: Q1 레이어 표가 확정되고 raw/districts가 있을 때만. 레이어의 파일마다 한 단계.
+  if (existsSync(districtsDir)) {
     extractAll(districtsDir);
     if (DISTRICT_LAYERS.length === 0) {
       console.log("districts: Q1 레이어 제목이 확정되지 않아 적재를 건너뜁니다");
-      return built;
+    } else {
+      const found = districtLayerFiles([...walk(districtsDir)]);
+      const missing = DISTRICT_LAYERS.filter((l) => !found.has(l.key)).map((l) => l.title || l.key);
+      if (missing.length > 0) throw new Error(`구역·지구·도시계획시설 레이어 없음: ${missing.join(", ")} — vworld:fetch -- --ds 24 --folder districts 로 받으세요`);
+      for (const [i, l] of DISTRICT_LAYERS.entries()) {
+        const set = found.get(l.key);
+        shpSteps(set.files, SLOT.districts + i, async (file) => {
+          const st = statSync(set.files[0]);
+          const d = set.date;
+          const releaseId = insertRelease(db_, {
+            sourceId: l.sourceId,
+            provider: "국토교통부(VWorld 일별용도지역지구정보)",
+            sourceUrl: "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=24",
+            sourceAsOf: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`,
+            fetchedAt: st.mtime.toISOString(),
+            checksum: `size-mtime:${st.size}-${Math.round(st.mtimeMs)}`,
+            licenseCode: "UNRESTRICTED",
+            rights: { ...DISTRICT_RIGHTS, layer: l.title || l.key, cls: l.cls, kind: l.kind },
+          });
+          const seen = seenFor("districts", () => seedDistrictSeen(db_));
+          return buildDistricts(db_, [{ layer: l, releaseId, records: readShp(file) }], seen);
+        });
+      }
     }
-    const found = districtLayerFiles([...walk(districtsDir)]);
-    const missing = DISTRICT_LAYERS.filter((l) => !found.has(l.key)).map((l) => l.title || l.key);
-    if (missing.length > 0) throw new Error(`구역·지구·도시계획시설 레이어 없음: ${missing.join(", ")} — vworld:fetch -- --ds 24 --folder districts 로 받으세요`);
-    const layers = DISTRICT_LAYERS.map((l) => {
-      const set = found.get(l.key);
-      const st = statSync(set.files[0]);
-      const d = set.date;
-      const releaseId = insertRelease(db, {
-        sourceId: l.sourceId,
-        provider: "국토교통부(VWorld 일별용도지역지구정보)",
-        sourceUrl: "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=24",
-        sourceAsOf: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`,
-        fetchedAt: st.mtime.toISOString(),
-        checksum: `size-mtime:${st.size}-${Math.round(st.mtimeMs)}`,
-        licenseCode: "UNRESTRICTED",
-        rights: { ...DISTRICT_RIGHTS, layer: l.title || l.key, cls: l.cls, kind: l.kind },
-      });
-      return { layer: l, releaseId, records: chain(...set.files.map((f) => readShp(f))) };
-    });
-    return [...built, ...(await buildDistricts(db, layers))];
+  }
+
+  const referenceProgress = progressSpec("reference", "reference", steps.map((s) => s.file), { steps: steps.map((s) => s.file.path) });
+  progress.reference = referenceProgress;
+  builders.reference = async (db, ctx) => {
+    db_ = db;
+    core_ = ctx.core;
+    return buildResumableSteps(db, referenceProgress, steps);
   };
 }
 
 const started = Date.now();
-const out = await buildAndPublish({ dataDir: v2DataDir(), version, builders, progress, resume, expectations, resetBaseline });
+const out = await buildAndPublish({ dataDir: v2DataDir(), version, builders, progress, resume, expectations, resetBaseline, logFile: opt("log") });
 for (const [kind, list] of Object.entries(out.stats)) {
   for (const s of list) {
     const located = s.accepted + s.unlocated === 0 ? "-" : `${((100 * s.accepted) / (s.accepted + s.unlocated)).toFixed(1)}%`;

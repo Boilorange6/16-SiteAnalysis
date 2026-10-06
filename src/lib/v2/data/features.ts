@@ -200,7 +200,7 @@ export function insertFeature(db: Db, input: FeatureInput): number {
 
 // ponytail: 원에 외접하는 64각형 — 교차 판정이 원보다 최대 r·(1/cos(π/64)−1) ≈ 0.12% 넓다(1km에서 1.2m).
 // 경계 1m 안쪽 정밀도가 필요해지면 선분–원 거리 판정으로 바꾼다.
-function circlePolygon(cx: number, cy: number, r: number) {
+export function circlePolygon(cx: number, cy: number, r: number) {
   const outer = r / Math.cos(Math.PI / CIRCLE_SEGMENTS);
   const ring: [number, number][] = [];
   for (let i = 0; i < CIRCLE_SEGMENTS; i++) {
