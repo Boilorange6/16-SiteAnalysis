@@ -8,7 +8,7 @@ import { useTileDrag } from "@/components/v2/use-tile-drag";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "@/components/v2/map-box";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import styles from "@/components/v2/board.module.css";
-import { SUMMARY_ID, boardReducer, demoFinished, demoPhase, initBoard, reportPages, viewOf } from "@/lib/v2/ui/board-state";
+import { SUMMARY_ID, boardReducer, boardStorageKey, demoFinished, demoPhase, initBoard, reportPages, serializeBoardState, viewOf } from "@/lib/v2/ui/board-state";
 import { buildReportPlan, complexCounts, reportFileName } from "@/lib/v2/report/report-plan";
 import { downloadBytes, exportFileName, EXPORT_MIME, DAE_MIME } from "@/lib/v2/export/download";
 import { DEFAULT_CALLOUT_MODE } from "@/lib/v2/ui/callout-layout";
@@ -45,9 +45,29 @@ type BoardProps = {
 function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, onRerun, onWindUploaded }: BoardProps) {
   const [overrides, setOverrides] = useState<Record<string, TileResult>>({});
   const [board, dispatch] = useReducer(boardReducer, baseResults, initBoard);
+  const storageKey = boardStorageKey(baseResults[0]?.analysisId ?? "demo");
+  const [storageReady, setStorageReady] = useState(false);
   useEffect(() => {
     dispatch({ type: "replaceResults", results: baseResults });
   }, [baseResults]);
+  useEffect(() => {
+    let snapshot: string | null = null;
+    try {
+      snapshot = window.localStorage.getItem(storageKey);
+    } catch {
+      snapshot = null;
+    }
+    dispatch({ type: "restore", snapshot });
+    setStorageReady(true);
+  }, [storageKey]);
+  useEffect(() => {
+    if (!storageReady) return;
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(serializeBoardState(board)));
+    } catch {
+      // 저장소가 막힌 브라우저에서는 현재 세션의 보드 상태만 유지한다.
+    }
+  }, [board, storageKey, storageReady]);
   const results = useMemo(() => board.results.map((r) => overrides[r.tileId] ?? r), [board.results, overrides]);
   const [editing, setEditing] = useState(false);
   const [demoStep, setDemoStep] = useState<number | null>(null);
@@ -64,7 +84,7 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
   });
 
   const analysisSiteParcel = useMemo(() => (siteSummary.siteParcel === undefined ? siteParcelFromResults(results) : siteSummary.siteParcel), [siteSummary.siteParcel, results]);
-  const baseViews = useMemo(() => new Map(results.map((r) => [r.tileId, toTileView(r, scene, analysisSiteParcel)])), [results, scene, analysisSiteParcel]);
+  const baseViews = useMemo(() => new Map(results.map((r) => [r.tileId, toTileView(r, scene, analysisSiteParcel, board.a05Filter[r.tileId] ?? null)])), [results, scene, analysisSiteParcel, board.a05Filter]);
   const views = useMemo(() => {
     const next = new Map(
       [...baseViews].map(([id, view]) => {
@@ -622,6 +642,12 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
           onFace={(face) => dispatch({ type: "face", id: openView.tileId, face })}
           calloutMode={board.callout[openView.tileId] ?? DEFAULT_CALLOUT_MODE}
           onCalloutMode={(mode) => dispatch({ type: "callout", id: openView.tileId, mode })}
+          a05Filter={board.a05Filter[openView.tileId] ?? null}
+          a05Counts={openView.a05Counts ?? null}
+          onA05Filter={(filter) => {
+            dispatch({ type: "a05Filter", id: openView.tileId, filter });
+            setNote(filter ? `${openView.title} 필터 적용` : `${openView.title} 필터 초기화`);
+          }}
           camera={openView.mass?.camera}
           onCamera={(camera) => dispatch({ type: "camera", id: openView.tileId, camera })}
           cuts={openView.code === "S02" ? (board.cuts[openView.tileId] ?? 1) : undefined}

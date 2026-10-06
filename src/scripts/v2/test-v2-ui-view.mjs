@@ -163,6 +163,20 @@ assert.equal(sv.incomplete, true);
   assert.equal(co.others.length, GODEOK_RESULTS.find((r) => r.tileCode === "A05").presentation.features.filter((f) => f.layer === "other_housing").length);
 }
 
+// A05 필터는 원본 TileResult 없이 화면용 지도·설명선·지표를 같은 파생 결과로 바꾼다.
+{
+  const original = GODEOK_RESULTS.find((r) => r.tileCode === "A05");
+  const originalFeatures = original.presentation.features;
+  const filtered = toTileView(original, null, null, { types: ["apt"], year: { min: 2010 } });
+  assert.equal(filtered.filterChip, "필터 · 유형 아파트, 준공연도 2010년 이상");
+  assert.match(filtered.filterLine, /^적용 필터: 유형 아파트, 준공연도 2010년 이상 · 정보 없음 포함 \d+건$/);
+  assert.match(filtered.sentence, /필터 적용/);
+  assert.ok(filtered.callout.complexes.every((c) => c.layer === "apt"));
+  assert.ok(filtered.map.features.every((f) => f.layer === "apt"));
+  assert.equal(filtered.a05Counts.total, originalFeatures.filter((f) => ["apt", "other_housing", "officetel"].includes(f.layer)).length);
+  assert.deepEqual(original.presentation.features, originalFeatures, "원본 TileResult 불변");
+}
+
 console.log("v2 ui view tests passed");
 
 // ── 원천 id 표시 이름: 엔진·예시 보드가 쓰는 모든 원천 id에 사람이 읽는 이름이 있어야 한다 ──

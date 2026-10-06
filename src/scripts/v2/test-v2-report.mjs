@@ -79,6 +79,25 @@ const zip = await JSZip.loadAsync(bytes);
 const names = Object.keys(zip.files).filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n)).sort((a, b) => parseInt(a.match(/\d+/)) - parseInt(b.match(/\d+/)));
 assert.equal(names.length, plan.length);
 const text = (xml) => [...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((m) => m[1]).join("|"); // 공백이 아닌 구분자: 텍스트 조각 경계가 "숫자 분" 오탐을 만들지 않게
+// A05 필터 결과와 한 줄 문구가 보고서 계획·PPT까지 전달된다.
+{
+  const a05Result = GODEOK_RESULTS.find((result) => result.tileCode === "A05");
+  const a05Board = initBoard([a05Result]);
+  const a05View = toTileView(a05Result, null, null, { types: ["apt"], year: { min: 2010 } });
+  const filteredPlan = buildReportPlan({
+    summary: toSummaryView(GODEOK_SUMMARY, [a05Result]),
+    views: new Map([[a05Result.tileId, a05View]]),
+    board: a05Board,
+    analysisDate: "2026-10-06",
+  });
+  const filteredSlides = filteredPlan.filter((slide) => slide.kind === "tile");
+  assert.ok(filteredSlides.length > 0 && filteredSlides.every((slide) => slide.view.filterLine?.startsWith("적용 필터:")));
+  assert.ok(filteredSlides.every((slide) => slide.footer.includes("적용 필터:") && slide.footer.includes("정보 없음 포함")));
+  const filteredZip = await JSZip.loadAsync(await renderReportPptx(filteredPlan));
+  const filteredXml = await filteredZip.file("ppt/slides/slide2.xml").async("string");
+  assert.match(text(filteredXml), /적용 필터: .*정보 없음 포함/);
+  assert.match(text(filteredXml), /필터 적용/);
+}
 for (const [i, n] of names.entries()) {
   const t = text(await zip.file(n).async("string"));
   assert.match(t, /출처|기준일/, `slide ${i + 1} 출처/기준일 줄 없음`);

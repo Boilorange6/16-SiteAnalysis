@@ -421,6 +421,7 @@ function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, onF
       <header ref={headRef} className={styles.mfHead}>
         <span className={styles.dot} style={{ background: view.color }} />
         <h3 className={styles.mfTitle} title={view.title}>{view.title}</h3>
+        {view.filterChip && <span className={styles.filterChip} title={view.filterChip}>{view.filterChip}</span>}
         {h && (
           <span data-mf-key className={`${styles.mfKey} ${keyHidden ? styles.mfKeyHidden : ""}`} aria-hidden={keyHidden || undefined} title={`${h.label}${h.aux ? ` · ${h.aux}` : ""}`}>
             <b>{h.value}</b>
@@ -477,6 +478,7 @@ function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardProps
         <span className={styles.dot} style={{ background: view.color }} />
         <h3 className={styles.title}>{view.title}</h3>
         <span className={styles.kindTag}>{view.kindLabel}</span>
+        {view.filterChip && <span className={styles.filterChip} title={view.filterChip}>{view.filterChip}</span>}
         {view.stackLayers && <span className={styles.kindTag}>{view.stackLayers.join(" + ")}</span>}
         {view.sheetGrid && <span className={styles.kindTag}>{view.sheetGrid}</span>}
         {p.editing && p.stackable && p.onStackToggle && (

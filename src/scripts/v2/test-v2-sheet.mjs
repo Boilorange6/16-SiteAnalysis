@@ -7,6 +7,7 @@ const { sheetCells, sheetView } = await import("../../lib/v2/ui/sheet.ts");
 const { initBoard, boardReducer, reportPages } = await import("../../lib/v2/ui/board-state.ts");
 const { buildReportPlan, complexCounts, mapKeysOf } = await import("../../lib/v2/report/report-plan.ts");
 const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
+const { SOURCE_NAMES } = await import("../../lib/v2/ui/tile-catalog.ts");
 
 const overlap = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 const inside = (cell) => cell.x >= 0 && cell.y >= 0 && cell.x + cell.w <= 13.333 + 1e-6 && cell.y + cell.h <= 7.5 + 1e-6;
@@ -57,6 +58,6 @@ const xml = await zip.file(`ppt/slides/slide${sheetSlideNo}.xml`).async("string"
 const text = [...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((match) => match[1]).join("|");
 assert.equal((xml.match(/<p:pic>/g) ?? []).length, 4);
 assert.ok(text.includes("A01") && text.includes("D04"));
-assert.ok(text.includes("출처") && text.includes("rail") && text.includes("GIS건물통합정보"));
+assert.ok(text.includes("출처") && text.includes(SOURCE_NAMES.rail) && text.includes("GIS건물통합정보"));
 
 console.log("✓ v2 sheet layout and report");

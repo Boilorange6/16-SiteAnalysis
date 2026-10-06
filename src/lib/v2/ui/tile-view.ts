@@ -4,6 +4,7 @@
  */
 import type { MapPolygon, OUTPUT_FACES, RasterRef, RoseSeason, TileResult } from "../tile-result";
 import type { Scene } from "../scene";
+import { describeA05Filter, reaggregateA05, type A05Counts, type A05Filter } from "../engine/a05-filter";
 import { fmtInt, rankComplexes, rankSupply, STOCK_LEGEND, SUPPLY_LAYERS, SUPPLY_LEGEND, summarize, supplyStats, type CalloutLegendSpec, type Complex, type Stat } from "./callout-layout";
 import type { MapModel } from "./map-layers";
 import type { MassModel } from "./mass-projection";
@@ -39,6 +40,12 @@ export type TileView = {
   backdrop: MapModel;
   /** 종류 배지 문구 */
   kindLabel: string;
+  /** A05 재집계 필터의 카드용 짧은 칩. 필터가 없으면 null */
+  filterChip?: string | null;
+  /** 보고서/PPT와 요약 문장에 쓰는 A05 필터 한 줄 */
+  filterLine?: string | null;
+  /** A05 확장 보기의 결과 요약에 쓰는 필드별 정보 없음 건수 */
+  a05Counts?: A05Counts | null;
   /** 주변 단지 설명선 타일(A05) 입력. 결과가 없으면 null */
   callout: CalloutModel | null;
   /** S01 축측 매스. Scene이 없을 때도 카메라·반경만으로 빈 틀을 그릴 수 있다. */
@@ -77,6 +84,8 @@ export type CalloutModel = {
   /** 빈 상태 판·개요의 기준 문구 (출처 + 기준일) */
   sourceLine: string;
   summary: ReturnType<typeof summarize>;
+  /** A05 필터가 적용된 보고서 한 줄 */
+  filterLine?: string | null;
 };
 
 const KIND_LABEL = { analysis: "분석", diagram: "도판", simulation: "시뮬레이션" } as const;
@@ -336,7 +345,19 @@ export function sourceLineOf(sources: TileResult["provenance"]["sources"]): stri
   return [...new Set(lines)].join(" · ");
 }
 
-export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParcel?: readonly MapPolygon[] | null): TileView {
+export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParcel?: readonly MapPolygon[] | null, a05Filter?: A05Filter | null): TileView {
+  const a05Aggregation = r.tileCode === "A05" ? reaggregateA05(r, a05Filter) : null;
+  const filterDescription = a05Aggregation?.filter ? describeA05Filter(a05Aggregation.filter) : null;
+  const filterChip = filterDescription ? `필터 · ${filterDescription}` : null;
+  const filterLine = filterDescription ? `적용 필터: ${filterDescription} · 정보 없음 포함 ${a05Aggregation!.counts.unknownKept}건` : null;
+  // 재집계는 현재 화면용 파생 결과만 바꾼다. 원본 TileResult와 그 features 배열은 그대로 둔다.
+  if (a05Aggregation?.filter) {
+    r = {
+      ...r,
+      metrics: a05Aggregation.metrics,
+      presentation: { ...r.presentation, features: a05Aggregation.features, featuresTotal: a05Aggregation.features.length },
+    };
+  }
   const cat = catalogEntry(r.tileCode);
   const badges: Badge[] = [];
   const statusText = STATUS_TEXT[r.status];
@@ -395,6 +416,8 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
 
   const gradedMetricOk = r.judgment?.level != null && GRADED_CODES.has(r.tileCode) && r.judgment.criteria;
   const windDirections = windDirectionsOf(r);
+  const callout = calloutOf(r);
+  if (callout && filterLine) callout.filterLine = filterLine;
   return {
     tileId: r.tileId,
     code: r.tileCode,
@@ -404,7 +427,7 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
     badges: [...merged.values()],
     headline,
     rows: allRows,
-    sentence: r.judgment?.sentence ?? null,
+    sentence: r.judgment?.sentence ? `${r.judgment.sentence}${filterLine ? " · 필터 적용" : ""}` : filterLine ? "필터 적용" : null,
     grade: gradedMetricOk ? { label: GRADE_TEXT[r.judgment!.level!], criteria: `내부 제안 기준: ${r.judgment!.criteria}` } : null,
     grades: GRADED_CODES.has(r.tileCode) ? (r.judgment?.grades ?? []).map((g) => gradeChip(r, g)) : [],
     caveats,
@@ -421,7 +444,10 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
     map: mapOf(r, analysisSiteParcel),
     backdrop: { center: r.conditions.center, radiusM: r.conditions.radiusM, features: [], total: 0, notes: [], siteParcel: analysisSiteParcel === undefined ? siteParcelFromResults([r]) : analysisSiteParcel ? [...analysisSiteParcel] : null },
     kindLabel: KIND_LABEL[cat.kind],
-    callout: calloutOf(r),
+    filterChip,
+    filterLine,
+    a05Counts: a05Aggregation?.counts ?? null,
+    callout,
     mass: massOf(r, scene),
     rose: r.presentation.rose ?? null,
     roses: r.presentation.roses ?? null,
