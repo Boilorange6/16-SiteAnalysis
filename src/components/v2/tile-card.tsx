@@ -396,13 +396,33 @@ function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, onF
   const shortAux = h?.aux && h.aux.length <= 4 ? h.aux : "";
   const extra = view.stackLayers ? view.stackLayers.join(" + ") : view.sheetGrid;
   const text = stripText(view.sourceLine);
+  // 제목과 핵심 숫자가 함께 들어가지 않으면 숫자를 통째로 숨긴다(잘린 숫자는 오독되고, 숫자는 요약 면에 있다).
+  const headRef = useRef<HTMLElement>(null);
+  const [keyHidden, setKeyHidden] = useState(false);
+  useEffect(() => {
+    const head = headRef.current;
+    if (!head) return;
+    const measure = () => {
+      const title = head.querySelector<HTMLElement>("h3");
+      const key = head.querySelector<HTMLElement>("[data-mf-key]");
+      if (!title || !key) return;
+      let used = 0;
+      for (const c of head.children) if (c !== title && c !== key) used += (c as HTMLElement).offsetWidth;
+      const pad = parseFloat(getComputedStyle(head).paddingLeft) + parseFloat(getComputedStyle(head).paddingRight);
+      setKeyHidden(title.scrollWidth + key.scrollWidth + 8 + used + pad > head.clientWidth);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(head);
+    return () => ro.disconnect();
+  }, [view.title, h?.value]);
   return (
     <div className={styles.mf}>
-      <header className={styles.mfHead}>
+      <header ref={headRef} className={styles.mfHead}>
         <span className={styles.dot} style={{ background: view.color }} />
         <h3 className={styles.mfTitle} title={view.title}>{view.title}</h3>
         {h && (
-          <span className={styles.mfKey} title={`${h.label}${h.aux ? ` · ${h.aux}` : ""}`}>
+          <span data-mf-key className={`${styles.mfKey} ${keyHidden ? styles.mfKeyHidden : ""}`} aria-hidden={keyHidden || undefined} title={`${h.label}${h.aux ? ` · ${h.aux}` : ""}`}>
             <b>{h.value}</b>
             {shortAux && <small className={styles.mfKeyLabel}>{shortAux}</small>}
             <small className={styles.mfKeyLabel}>{h.label}</small>
