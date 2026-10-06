@@ -2,7 +2,7 @@
 import type BetterSqlite3 from "better-sqlite3";
 import type { Geometry, Position } from "geojson";
 import { toLngLat, toUtmk } from "../../crs";
-import { computeSunField, computeSunFields, fillRing, type HorizonSampler, type Obstacle, type SunFieldInput, type SunFieldResult, type SunGrid } from "../../sim/sun-field";
+import { computeSunField, computeSunFields, fillRing, horizonValuesForGrid, type HorizonSampler, type Obstacle, type SunFieldInput, type SunFieldResult, type SunGrid } from "../../sim/sun-field";
 import { terrainHorizon, type HorizonMap } from "../../sim/horizon";
 import type { EngineContext, SourceRef } from "../context";
 import { demReader } from "./terrain-shared";
@@ -214,29 +214,23 @@ function makeHorizonLookup(horizon: HorizonMap): HorizonSampler {
       lastValues = valuesFor(azimuthDeg);
     }
     const values = lastValues;
-    // The DEM horizon itself is a 30m observation grid. Nearest-cell lookup
-    // avoids repeating four spatial interpolations for every 2m receiver;
-    // the terrain height was already bilinearly expanded in groundZ.
-    const col = Math.max(0, Math.min(horizon.cols - 1, Math.round((x - horizon.x0) / horizon.cellM - 0.5)));
-    const row = Math.max(0, Math.min(horizon.rows - 1, Math.round((y - horizon.y0) / horizon.cellM - 0.5)));
-    return values[row * horizon.cols + col];
+    // 30 m 지평선 격자를 이중선형 보간한다(최근접은 30 m 계단 블록을 만든다).
+    const fx = Math.max(0, Math.min(horizon.cols - 1, (x - horizon.x0) / horizon.cellM - 0.5));
+    const fy = Math.max(0, Math.min(horizon.rows - 1, (y - horizon.y0) / horizon.cellM - 0.5));
+    const c0 = Math.min(Math.max(horizon.cols - 2, 0), Math.floor(fx));
+    const r0 = Math.min(Math.max(horizon.rows - 2, 0), Math.floor(fy));
+    const c1 = Math.min(horizon.cols - 1, c0 + 1);
+    const r1 = Math.min(horizon.rows - 1, r0 + 1);
+    const tx = horizon.cols > 1 ? fx - c0 : 0;
+    const ty = horizon.rows > 1 ? fy - r0 : 0;
+    const at = (r: number, c: number) => values[r * horizon.cols + c];
+    return (at(r0, c0) * (1 - tx) + at(r0, c1) * tx) * (1 - ty) + (at(r1, c0) * (1 - tx) + at(r1, c1) * tx) * ty;
   }) as HorizonSampler;
   lookup.valuesForGrid = (grid, azimuthDeg) => {
     const normalized = Math.round((((azimuthDeg % 360) + 360) % 360) * 1000) / 1000;
     const cached = expandedByAzimuth.get(normalized);
     if (cached && cached.length === grid.cols * grid.rows) return cached;
-    const source = valuesFor(azimuthDeg);
-    const expanded = new Float32Array(grid.cols * grid.rows);
-    for (let row = 0; row < grid.rows; row++) {
-      const y = grid.y0 + (row + 0.5) * grid.cellM;
-      const sourceRow = Math.max(0, Math.min(horizon.rows - 1, Math.round((y - horizon.y0) / horizon.cellM - 0.5)));
-      const target = row * grid.cols;
-      for (let col = 0; col < grid.cols; col++) {
-        const x = grid.x0 + (col + 0.5) * grid.cellM;
-        const sourceCol = Math.max(0, Math.min(horizon.cols - 1, Math.round((x - horizon.x0) / horizon.cellM - 0.5)));
-        expanded[target + col] = source[sourceRow * horizon.cols + sourceCol];
-      }
-    }
+    const expanded = horizonValuesForGrid(horizon, grid, azimuthDeg);
     expandedByAzimuth.set(normalized, expanded);
     return expanded;
   };

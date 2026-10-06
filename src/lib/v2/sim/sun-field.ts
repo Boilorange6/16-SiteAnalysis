@@ -117,22 +117,39 @@ interface ScanEdge {
   dxPerRow: number;
 }
 
-function horizonValuesForGrid(horizon: HorizonMap, grid: Pick<SunGrid, "x0" | "y0" | "cellM" | "cols" | "rows">, azimuthDeg: number): Float32Array {
+/** 30 m 지평선 격자를 수신 격자(2 m)로 이중선형 보간한다. 최근접 복제는 30 m 계단 블록을 만든다. */
+export function horizonValuesForGrid(horizon: HorizonMap, grid: Pick<SunGrid, "x0" | "y0" | "cellM" | "cols" | "rows">, azimuthDeg: number): Float32Array {
   const normalized = Math.round((((azimuthDeg % 360) + 360) % 360) * 1000) / 1000;
   const direction = (normalized / 360) * horizon.azimuths;
   const az0 = Math.floor(direction) % horizon.azimuths;
   const az1 = (az0 + 1) % horizon.azimuths;
   const ta = direction - Math.floor(direction);
+  const azimuthValue = (row: number, col: number) => {
+    const source = (row * horizon.cols + col) * horizon.azimuths;
+    return horizon.angleDeg[source + az0] * (1 - ta) + horizon.angleDeg[source + az1] * ta;
+  };
   const expanded = new Float32Array(grid.cols * grid.rows);
+  const colIndex = new Int32Array(grid.cols);
+  const colFrac = new Float64Array(grid.cols);
+  for (let col = 0; col < grid.cols; col++) {
+    const f = Math.max(0, Math.min(horizon.cols - 1, (grid.x0 + (col + 0.5) * grid.cellM - horizon.x0) / horizon.cellM - 0.5));
+    const c0 = Math.min(horizon.cols - 2 < 0 ? 0 : horizon.cols - 2, Math.floor(f));
+    colIndex[col] = c0;
+    colFrac[col] = horizon.cols > 1 ? f - c0 : 0;
+  }
   for (let row = 0; row < grid.rows; row++) {
-    const y = grid.y0 + (row + 0.5) * grid.cellM;
-    const sourceRow = Math.max(0, Math.min(horizon.rows - 1, Math.round((y - horizon.y0) / horizon.cellM - 0.5)));
+    const fy = Math.max(0, Math.min(horizon.rows - 1, (grid.y0 + (row + 0.5) * grid.cellM - horizon.y0) / horizon.cellM - 0.5));
+    const r0 = Math.min(horizon.rows - 2 < 0 ? 0 : horizon.rows - 2, Math.floor(fy));
+    const r1 = Math.min(horizon.rows - 1, r0 + 1);
+    const ty = horizon.rows > 1 ? fy - r0 : 0;
     const target = row * grid.cols;
     for (let col = 0; col < grid.cols; col++) {
-      const x = grid.x0 + (col + 0.5) * grid.cellM;
-      const sourceCol = Math.max(0, Math.min(horizon.cols - 1, Math.round((x - horizon.x0) / horizon.cellM - 0.5)));
-      const source = (sourceRow * horizon.cols + sourceCol) * horizon.azimuths;
-      expanded[target + col] = horizon.angleDeg[source + az0] * (1 - ta) + horizon.angleDeg[source + az1] * ta;
+      const c0 = colIndex[col];
+      const c1 = Math.min(horizon.cols - 1, c0 + 1);
+      const tx = colFrac[col];
+      const bottom = azimuthValue(r0, c0) * (1 - tx) + azimuthValue(r0, c1) * tx;
+      const top = azimuthValue(r1, c0) * (1 - tx) + azimuthValue(r1, c1) * tx;
+      expanded[target + col] = bottom * (1 - ty) + top * ty;
     }
   }
   return expanded;

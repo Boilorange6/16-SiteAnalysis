@@ -368,8 +368,11 @@ export function buildS02RasterTileResult(input: S02RasterTileInput): TileResult 
   const winterMean = winter?.field.stats.meanHours ?? NaN;
   const winterCont = winter?.field.stats.shareCont2h ?? NaN;
   const winterTotal = winter?.field.stats.shareTotal4h ?? NaN;
+  const summer = fields.find((item) => item.key === "summer");
+  // 헤드라인(tile-view의 mean_sun_h_summer)과 같은 하지를 먼저 말하고, 동지를 이어 붙인다.
+  const lead = summer ? "하지 반경 안 지면의 평균 일조 " + round1(summer.field.stats.meanHours) + "시간, 동지 " + round1(winterMean) + "시간" : "동지 반경 안 지면의 평균 일조 " + round1(winterMean) + "시간";
   const sentence = winter
-    ? "동지 반경 안 지면의 평균 일조 " + round1(winterMean) + "시간, 진태양시 09~15 연속 2시간 확보 " + pct100(winterCont) + "%, 08~16 총 4시간 " + pct100(winterTotal) + "% → 건물·지형 모델의 기하학적 추정이며 창면·기상·법적 판정이 아님 → 세대 창 위치 기준 정밀 일조 검토로 확인할 것"
+    ? lead + ", 동지 진태양시 09~15 연속 2시간 확보 " + pct100(winterCont) + "%, 08~16 총 4시간 " + pct100(winterTotal) + "% → 건물·지형 모델의 기하학적 추정이며 창면·기상·법적 판정이 아님 → 세대 창 위치 기준 정밀 일조 검토로 확인할 것"
     : "동지 일조장을 계산하지 못함 → 건물·지형 자료를 확인할 것";
   const polygon = sitePolygon(input.site);
   return parseTileResult({
@@ -400,7 +403,7 @@ export function buildS02RasterTileResult(input: S02RasterTileInput): TileResult 
       parcelSnapshotHash: null,
     },
     metrics,
-    judgment: { ruleId: "S02-sunlight-summary@2", basisMetricIds: ["mean_sun_h_winter", "share_cont2h_0915_pct_winter", "share_total4h_0816_pct_winter"], sentence, level: null, criteria: null },
+    judgment: { ruleId: "S02-sunlight-summary@2", basisMetricIds: ["mean_sun_h_summer", "mean_sun_h_winter", "share_cont2h_0915_pct_winter", "share_total4h_0816_pct_winter"], sentence, level: null, criteria: null },
     presentation: {
       legend: [
         { label: "수광면", min: null, max: null },

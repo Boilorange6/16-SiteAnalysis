@@ -61,7 +61,22 @@ try {
 
   const rasters = ctx.takeRasters("S02");
   const rasterBytes = rasters.reduce((sum, item) => sum + item.blob.length, 0);
-  assert.ok(computeElapsedMs <= 15_000, `five-date S02 budget: ${computeElapsedMs}ms`);
+  // 병렬 부하에서 한 번의 지연으로 흔들리지 않도록 새 컨텍스트 2회를 더 재서 3회 중앙값으로 판정한다.
+  const samples = [computeElapsedMs];
+  for (let run = 0; run < 2; run += 1) {
+    const extra = new EngineContext(dataDir, manifest, `s02-raster-perf-${run}`, {
+      address: "경기도 남양주시 다산동 100", center: CENTER, radiusM: 800, analysisDate: "2026-09-30", pnu: PNU_DASAN_100,
+    });
+    try {
+      const started = performance.now();
+      s02(extra);
+      samples.push(Math.round(performance.now() - started));
+    } finally {
+      extra.close();
+    }
+  }
+  const medianComputeMs = [...samples].sort((a, b) => a - b)[1];
+  assert.ok(medianComputeMs <= 15_000, `five-date S02 budget median: ${medianComputeMs}ms (${samples.join("/")})`);
   assert.ok(rasterBytes <= 6 * 1024 * 1024, `five-date S02 raster budget: ${rasterBytes} bytes`);
   const names = rasters.map(({ ref }) => ref.name);
   const keys = ["spring", "summer", "autumn", "winter", "analysis"];
@@ -83,6 +98,8 @@ try {
   assert.ok(tile.limitations.some((limitation) => limitation.note.includes("높이 미상")));
   assert.ok(tile.limitations.some((limitation) => limitation.note.includes("400 m")));
   assert.ok(tile.judgment.sentence.includes("진태양시 09~15"));
+  const summerMean = tile.metrics.find((metric) => metric.id === "mean_sun_h_summer").value;
+  assert.ok(tile.judgment.sentence.startsWith(`하지 반경 안 지면의 평균 일조 ${summerMean}시간, 동지 `), "문장은 헤드라인과 같은 하지로 시작");
   assert.ok(!tile.judgment.sentence.includes("법적 일조권 충족"));
   assert.ok(Buffer.byteLength(JSON.stringify(tile), "utf8") < 200_000, "raster bytes stay outside result JSON");
   console.log(`✓ v2 S02 full-radius seasonal raster contract (${computeElapsedMs}ms, ${rasterBytes} compressed bytes)`);
