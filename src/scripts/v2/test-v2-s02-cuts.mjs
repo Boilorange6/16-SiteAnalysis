@@ -61,22 +61,25 @@ try {
 
   const rasters = ctx.takeRasters("S02");
   const rasterBytes = rasters.reduce((sum, item) => sum + item.blob.length, 0);
-  // 병렬 부하에서 한 번의 지연으로 흔들리지 않도록 새 컨텍스트 2회를 더 재서 3회 중앙값으로 판정한다.
-  const samples = [computeElapsedMs];
-  for (let run = 0; run < 2; run += 1) {
-    const extra = new EngineContext(dataDir, manifest, `s02-raster-perf-${run}`, {
+  // 병렬 부하에서 한 번의 지연으로 흔들리지 않도록 워밍업 1회 뒤 5회 중앙값으로 판정한다.
+  const measureS02 = (id) => {
+    const extra = new EngineContext(dataDir, manifest, id, {
       address: "경기도 남양주시 다산동 100", center: CENTER, radiusM: 800, analysisDate: "2026-09-30", pnu: PNU_DASAN_100,
     });
     try {
       const started = performance.now();
       s02(extra);
-      samples.push(Math.round(performance.now() - started));
+      return Math.round(performance.now() - started);
     } finally {
       extra.close();
     }
-  }
-  const medianComputeMs = [...samples].sort((a, b) => a - b)[1];
-  assert.ok(medianComputeMs <= 15_000, `five-date S02 budget median: ${medianComputeMs}ms (${samples.join("/")})`);
+  };
+  measureS02("s02-raster-perf-warmup");
+  const sampleRuns = 5;
+  const samples = Array.from({ length: sampleRuns }, (_, run) => measureS02(`s02-raster-perf-${run}`));
+  const orderedSamples = [...samples].sort((a, b) => a - b);
+  const medianComputeMs = orderedSamples[Math.floor(orderedSamples.length / 2)];
+  assert.ok(medianComputeMs <= 15_000, `S02 budget median: ${medianComputeMs}ms (${samples.join("/")})`);
   assert.ok(rasterBytes <= 6 * 1024 * 1024, `five-date S02 raster budget: ${rasterBytes} bytes`);
   const names = rasters.map(({ ref }) => ref.name);
   const keys = ["spring", "summer", "autumn", "winter", "analysis"];
@@ -102,7 +105,7 @@ try {
   assert.ok(tile.judgment.sentence.startsWith(`하지 반경 안 지면의 평균 일조 ${summerMean}시간, 동지 `), "문장은 헤드라인과 같은 하지로 시작");
   assert.ok(!tile.judgment.sentence.includes("법적 일조권 충족"));
   assert.ok(Buffer.byteLength(JSON.stringify(tile), "utf8") < 200_000, "raster bytes stay outside result JSON");
-  console.log(`✓ v2 S02 full-radius seasonal raster contract (${computeElapsedMs}ms, ${rasterBytes} compressed bytes)`);
+  console.log(`✓ v2 S02 full-radius seasonal raster contract (${computeElapsedMs}ms; perf ${samples.join("/")}ms, median ${medianComputeMs}ms; ${rasterBytes} compressed bytes)`);
 } finally {
   ctx.close();
 }

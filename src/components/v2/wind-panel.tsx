@@ -35,6 +35,7 @@ const MUTED = "#536174";
 const LINE = "#cbd4df";
 const BLUE = "#1559a6";
 const DARK = "#1b2638";
+const WIND_TIMING_NOTE = "계절당 약 40초 · 5계절 약 3–4분 (기기마다 다름)";
 
 function secondsLeft(progress: ProgressState | null): string {
   if (!progress || !progress.step || !progress.steps || !progress.elapsedMs || progress.step <= 0) return "남은 시간 계산 중";
@@ -173,9 +174,9 @@ export default function WindPanel({ view, compact = false, phase = null, layerZ 
         lineHeight: 1.35,
       }}
     >
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-        <h4 id={titleId} style={{ margin: 0, fontSize: compact ? 12 : 14, lineHeight: 1.3, fontWeight: 800 }}>{headline}</h4>
-        <span data-wind-status style={{ flex: "none", color: status === "error" ? "#8d2618" : MUTED, fontWeight: 700 }}>{statusText}</span>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", justifyContent: "space-between", gap: "4px 8px" }}>
+        <h4 id={titleId} style={{ flex: "1 1 16rem", minWidth: 0, margin: 0, fontSize: compact ? 12 : 14, lineHeight: 1.3, fontWeight: 800, wordBreak: "keep-all", overflowWrap: "normal", textWrap: "balance" }}>{headline}</h4>
+        <span data-wind-status style={{ flex: "0 1 auto", minWidth: 0, maxWidth: "100%", color: status === "error" ? "#8d2618" : MUTED, fontWeight: 700, wordBreak: "keep-all" }}>{statusText}</span>
       </div>
 
       {!compact && <p style={{ margin: 0, color: MUTED }}>건물 사이 가속·후류 정체를 LIC 유선 질감과 U/U유입 색띠로 표시합니다.</p>}
@@ -194,7 +195,7 @@ export default function WindPanel({ view, compact = false, phase = null, layerZ 
             <option value="all">전체 5계절</option>
           </select>
         </label>
-        {!compact && <span style={{ color: MUTED, fontSize: 11 }}>계절별 약 2분 · 백그라운드가 아닌 브라우저 GPU 실행</span>}
+        {!compact && <span style={{ gridColumn: "1 / -1", color: MUTED, fontSize: 11 }}>{WIND_TIMING_NOTE} · 브라우저 GPU 실행</span>}
       </div>
 
       <label style={{ display: "grid", gap: 4, fontWeight: 700 }}>
@@ -244,7 +245,7 @@ export default function WindPanel({ view, compact = false, phase = null, layerZ 
         {availability === null && <button type="button" disabled style={{ minHeight: 44, padding: "0 13px", border: 0, borderRadius: 8, background: "#d9e0ea", color: MUTED, fontWeight: 800 }}>GPU 확인 중…</button>}
         {availability?.ok && (
           <button type="button" onClick={() => void runGpu()} disabled={!canUseAnalysis || running} aria-busy={running} style={{ minHeight: 44, padding: "0 13px", border: 0, borderRadius: 8, background: DARK, color: "#fff", fontWeight: 800, cursor: canUseAnalysis && !running ? "pointer" : "not-allowed", opacity: canUseAnalysis && !running ? 1 : 0.55 }}>
-            {view.status === "complete" || view.status === "partial" ? "계절 추가 계산(GPU)" : "바람 계산(GPU, 약 2분/계절)"}
+            {view.status === "complete" || view.status === "partial" ? "계절 추가 계산(GPU)" : "바람 계산(GPU, 약 40초/계절)"}
           </button>
         )}
         {availability && !availability.ok && (
