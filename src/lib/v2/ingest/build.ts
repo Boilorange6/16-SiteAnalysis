@@ -3,7 +3,7 @@
  * 한 번의 데이터 디렉터리 잠금 안에서 새 버전 파일을 만들고, 원천별 적재 이력과 스냅샷을 남기고,
  * 품질 검사를 통과하면 게시한다. 검사에 걸리면 새 파일은 참조되지 않은 채 남고 다음 GC가 치운다.
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import Database from "better-sqlite3";
 import type BetterSqlite3 from "better-sqlite3";
@@ -33,6 +33,7 @@ import { DATA_FILE_KINDS, DATA_SCHEMA_VERSION, initDataFileSchema, type DataFile
 type Db = BetterSqlite3.Database;
 
 const PROGRESS_EVERY_ROWS = 250_000;
+const HEARTBEAT_MS = 60_000;
 const BUILD_CACHE_SIZE_KIB = 1_048_576; // 1 GiB; negative SQLite values are KiB.
 const progressTotals = new Map<string, number>();
 
@@ -53,8 +54,35 @@ function clearIngestProgressTotal(sourceId: string): void {
   progressTotals.delete(sourceId);
 }
 
-function progressLog(message: string): void {
-  process.stdout.write(`${message}\n`);
+// 셸이 죽어도 진행 상황이 남도록 로그 파일에 먼저 덧붙인다(stdout이 닫혀 있어도 빌드는 계속된다).
+const logFiles = new Set<string>();
+let stdoutGuarded = false;
+
+/** 진행 로그를 이 파일에도 덧붙인다. 반환값은 해제 함수. */
+export function addBuildLog(file: string): () => void {
+  mkdirSync(dirname(file), { recursive: true });
+  logFiles.add(file);
+  return () => void logFiles.delete(file);
+}
+
+export function progressLog(message: string): void {
+  const line = `${new Date().toISOString()} ${message}\n`;
+  for (const file of logFiles) {
+    try {
+      appendFileSync(file, line);
+    } catch {
+      // 로그 때문에 빌드를 죽이지 않는다
+    }
+  }
+  if (!stdoutGuarded) {
+    stdoutGuarded = true;
+    process.stdout.on("error", () => {});
+  }
+  try {
+    process.stdout.write(`${message}\n`);
+  } catch {
+    // stdout이 닫힘
+  }
 }
 
 function duration(seconds: number): string {
@@ -147,6 +175,7 @@ export class SourceStats {
   private readonly progressTotal: number | null;
   private progressNext = PROGRESS_EVERY_ROWS;
   private readonly progressStartedAt = Date.now();
+  private lastLogAt = Date.now();
 
   constructor(readonly sourceId: string, readonly releaseId: string, readonly fillFields: readonly string[]) {
     this.progressTotal = progressTotals.get(sourceId) ?? null;
@@ -155,13 +184,14 @@ export class SourceStats {
 
   read(): void {
     this.received++;
-    if (this.received >= this.progressNext) {
+    if (this.received >= this.progressNext || ((this.received & 1023) === 0 && Date.now() - this.lastLogAt >= HEARTBEAT_MS)) {
       const elapsed = Math.max((Date.now() - this.progressStartedAt) / 1000, 0.001);
       const rowsPerSecond = this.received / elapsed;
       const total = this.progressTotal;
       const eta = total === null ? "" : ` ETA ${duration(Math.max(0, total - this.received) / Math.max(rowsPerSecond, 0.001))}`;
       progressLog(`[ingest] source=${this.sourceId} rows=${this.received}${total === null ? "" : `/${total}`} rows/s=${rowsPerSecond.toFixed(0)} elapsed=${duration(elapsed)}${eta}`);
-      this.progressNext += PROGRESS_EVERY_ROWS;
+      while (this.progressNext <= this.received) this.progressNext += PROGRESS_EVERY_ROWS;
+      this.lastLogAt = Date.now();
     }
   }
 
@@ -421,14 +451,18 @@ function beginIngestFile(db: Db, sourceId: string, file: BuildSourceFile): void 
 }
 
 function completeIngestFile(db: Db, stats: SourceStats): void {
+  commitIngestFile(db, stats.sourceId, stats.received, JSON.stringify(stats.progressRecord()));
+}
+
+function commitIngestFile(db: Db, sourceId: string, received: number, statsJson: string): void {
   const active = ingestFileTransactions.get(db);
   if (!active || !db.inTransaction) throw new Error("completeIngestFile has no active transaction");
-  if (stats.sourceId !== active.sourceId) throw new Error(`progress source mismatch: ${stats.sourceId} != ${active.sourceId}`);
+  if (sourceId !== active.sourceId) throw new Error(`progress source mismatch: ${sourceId} != ${active.sourceId}`);
   try {
     db.prepare(`INSERT INTO build_progress
       (source_id, file_path, file_size, file_mtime_ms, rows, finished_at, stats_json)
       VALUES (?, ?, ?, ?, ?, ?, ?)`)
-      .run(active.sourceId, active.file.path, active.file.size, active.file.mtimeMs, stats.received, new Date().toISOString(), JSON.stringify(stats.progressRecord()));
+      .run(active.sourceId, active.file.path, active.file.size, active.file.mtimeMs, received, new Date().toISOString(), statsJson);
     db.exec("COMMIT");
     ingestFileTransactions.delete(db);
   } catch (error) {
@@ -497,6 +531,86 @@ export async function buildResumableSourceFiles(db: Db, options: ResumableSource
   return aggregate;
 }
 
+export interface ResumableStep {
+  /** 진행표의 "파일": 안정적인 경로 이름과 원천 입력의 지문(크기·수정시각) */
+  file: BuildSourceFile;
+  /** 반환 목록에서의 위치(중단 없는 빌드의 원래 순서). 같은 위치면 실행 순서. 기본값은 실행 순서. */
+  slot?: number;
+  /** false면 파일 트랜잭션으로 감싸지 않는다: 스스로 트랜잭션을 관리하고 다시 실행해도 같은 결과(멱등)여야 한다 */
+  atomic?: boolean;
+  /** prior = 앞서 끝난 단계들(이전 실행에서 끝난 것 포함)의 원천별 합산 통계 */
+  run: (prior: readonly SourceStats[]) => Promise<SourceStats[]>;
+}
+
+interface StepStatsJson {
+  steps: { sourceId: string; releaseId: string; fillFields: string[]; record: SourceStatsProgress }[];
+}
+
+function mergeBySource(lists: readonly (readonly SourceStats[])[]): SourceStats[] {
+  const out = new Map<string, SourceStats>();
+  for (const list of lists) {
+    for (const stats of list) {
+      let into = out.get(stats.sourceId);
+      if (!into) {
+        into = new SourceStats(stats.sourceId, stats.releaseId, stats.fillFields);
+        out.set(stats.sourceId, into);
+      }
+      into.merge(stats);
+    }
+  }
+  return [...out.values()];
+}
+
+/**
+ * 원천 여러 개(또는 여러 파일)를 단계별로 적재한다. 단계 하나가 한 트랜잭션이고 진행표 행이 같은 COMMIT에 들어간다.
+ * 끝난 단계는 --resume에서 건너뛰고 저장해 둔 통계로 대신한다. 결과는 slot 순서로 원천별로 합쳐 돌려준다.
+ */
+export async function buildResumableSteps(db: Db, specInput: BuildProgressSpec, steps: readonly ResumableStep[]): Promise<SourceStats[]> {
+  const spec = normalizeProgressSpec(specInput);
+  ensureBuildProgressSchema(db);
+  if (progressMeta(db, "fingerprint") !== progressFingerprint(spec)) throw new Error(`build progress was not prepared for ${spec.sourceId}`);
+  validateProgressRows(db, spec);
+  const known = new Map(spec.files.map((file) => [file.path, file]));
+  if (steps.length !== known.size || steps.some((step) => !known.has(step.file.path.replaceAll("\\", "/")))) {
+    throw new Error(`build steps do not match the progress specification of ${spec.sourceId}`);
+  }
+  const done: { slot: number; index: number; list: SourceStats[] }[] = [];
+  const t0 = Date.now();
+  for (const [index, step] of steps.entries()) {
+    const file = known.get(step.file.path.replaceAll("\\", "/"))!;
+    const saved = progressRowFor(db, spec.sourceId, file.path);
+    const slot = step.slot ?? index;
+    const label = `step ${index + 1}/${steps.length} ${file.path}`;
+    if (saved) {
+      const json = JSON.parse(saved.statsJson) as StepStatsJson;
+      const list = json.steps.map((s) => SourceStats.fromProgress(s.sourceId, s.releaseId, s.fillFields, JSON.stringify(s.record)));
+      done.push({ slot, index, list });
+      progressLog(`[ingest] ${label} resumed rows=${saved.rows}`);
+      continue;
+    }
+    progressLog(`[ingest] ${label} start${file.rows > 0 ? ` expected=${file.rows}` : ""}`);
+    const started = Date.now();
+    const atomic = step.atomic !== false;
+    if (atomic) beginIngestFile(db, spec.sourceId, file);
+    try {
+      const list = await step.run(mergeBySource(done.map((d) => d.list)));
+      const received = list.reduce((sum, s) => sum + s.received, 0);
+      const json: StepStatsJson = { steps: list.map((s) => ({ sourceId: s.sourceId, releaseId: s.releaseId, fillFields: [...s.fillFields], record: s.progressRecord() })) };
+      if (!atomic) beginIngestFile(db, spec.sourceId, file);
+      commitIngestFile(db, spec.sourceId, received, JSON.stringify(json));
+      done.push({ slot, index, list });
+      const elapsed = Math.max((Date.now() - started) / 1000, 0.001);
+      progressLog(`[ingest] ${label} done rows=${received} rows/s=${(received / elapsed).toFixed(0)} elapsed=${duration(elapsed)} total=${duration((Date.now() - t0) / 1000)}`);
+    } catch (error) {
+      if (atomic) abortIngestFile(db, spec.sourceId);
+      else if (ingestFileTransactions.has(db)) abortIngestFile(db, spec.sourceId);
+      throw error;
+    }
+  }
+  done.sort((a, b) => a.slot - b.slot || a.index - b.index);
+  return mergeBySource(done.map((d) => d.list));
+}
+
 export function assertBuildProgressComplete(db: Db, specInput: BuildProgressSpec): void {
   const spec = normalizeProgressSpec(specInput);
   const rows = progressRows(db, spec.sourceId);
@@ -548,6 +662,8 @@ export interface BuildPlan {
   /** Per-file progress makes a builder resumable without coupling it to SHP. */
   progress?: Partial<Record<DataFileKind, BuildProgressSpec>>;
   resume?: boolean;
+  /** 진행 로그를 덧붙일 파일(버전 폴더의 build.log에는 항상 쓴다) */
+  logFile?: string;
   expectations?: SiteExpectation[];
   /** 이 원천 id들은 이전 스냅샷과 비교하지 않는다(원천 구성이 바뀐 첫 재빌드용). 나머지 원천은 그대로 검사한다. */
   resetBaseline?: string[];
@@ -656,6 +772,9 @@ export function buildAndPublish(plan: BuildPlan): Promise<BuildOutcome> {
         }
       }
     }
+    mkdirSync(versionDir, { recursive: true });
+    const stopLogs = [addBuildLog(join(versionDir, "build.log")), ...(plan.logFile ? [addBuildLog(plan.logFile)] : [])];
+    progressLog(`[build] version=${plan.version} resume=${Boolean(plan.resume)} kinds=${Object.keys(plan.builders).join(",")}`);
     const handles: Db[] = [];
     let core: Db | null = null;
     try {
@@ -729,6 +848,7 @@ export function buildAndPublish(plan: BuildPlan): Promise<BuildOutcome> {
       }
     } finally {
       for (const db of handles) db.close();
+      for (const stop of stopLogs) stop();
     }
     for (const f of Object.values(files)) f.sha256 = await sha256File(resolveDataPath(plan.dataDir, f.path));
     const candidate: Manifest = { version: plan.version, createdAt: new Date().toISOString(), files: { ...(current?.files ?? {}), ...files } };

@@ -173,8 +173,7 @@ export interface DistrictFeatureProperties extends Record<string, unknown> {
  * 구역·지구는 면만, 시설은 면·선·점을 허용한다. 같은 A1이 여러 도형으로
  * 나오는 원천은 기존 zoning/mzone 관례대로 stable id 뒤에 #순번을 붙여 모두 보존한다.
  */
-export async function buildDistricts(db: Db, layers: readonly DistrictLayerInput[]): Promise<SourceStats[]> {
-  const seen = new Map<string, number>();
+export async function buildDistricts(db: Db, layers: readonly DistrictLayerInput[], seen = new Map<string, number>()): Promise<SourceStats[]> {
   const out: SourceStats[] = [];
 
   for (const input of layers) {
@@ -235,4 +234,12 @@ export async function buildDistricts(db: Db, layers: readonly DistrictLayerInput
     out.push(stats);
   }
   return out;
+}
+
+/** 적재된 구역·시설 행에서 stable id 순번 계수를 다시 센다(--resume 후 파일 단위 적재를 잇는 용도). */
+export function seedDistrictSeen(db: Db): Map<string, number> {
+  const seen = new Map<string, number>();
+  const rows = db.prepare("SELECT kind, source_key, json_extract(properties_json, '$.layer'), COUNT(*) FROM feature WHERE kind IN ('district_area', 'plan_facility') GROUP BY kind, source_key, json_extract(properties_json, '$.layer')").raw().iterate() as Iterable<[string, string, string, number]>;
+  for (const [kind, id, layer, n] of rows) seen.set(`${kind === "district_area" ? "district" : "facility"}:${layer}:${id}`, n);
+  return seen;
 }
