@@ -8,7 +8,7 @@ import { mkdtempSync, existsSync, readFileSync, readdirSync, writeFileSync } fro
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-const { parseFileList, latestFull, VworldSession, VworldError, fetchDatasets } = await import("../../lib/v2/ingest/vworld.ts");
+const { parseFileList, latestFull, latestPerRegion, VworldSession, VworldError, fetchDatasets } = await import("../../lib/v2/ingest/vworld.ts");
 
 const row = (sq, region, size, unit, kind, base) => `<li><!--v-for="n in 10"-->
 <div class="item row"><input type="hidden" name="dsFileSq" value="${sq}"><input type="hidden" name="dsFileId" value="20171128DS00002">
@@ -27,6 +27,17 @@ ${unit}</span><span>구분<em>${kind}</em></span><span>기준일<em class="xxs">
   assert.equal(files[1].approxBytes, 1203 * 1024 ** 2, "천 단위 쉼표");
   assert.equal(files[2].approxBytes, 12 * 1024);
   assert.deepEqual(latestFull(files).map((f) => f.fileSq), ["4729", "4733"], "전체데이터 중 최신 기준일만");
+}
+
+// ─── 1b. MK(도로명주소 건물, dsId 30056) 목록 파싱 ─────────────────────────
+{
+  const html = readFileSync(new URL("./fixtures/vworld-mk-30056-list.html", import.meta.url), "utf8");
+  const files = parseFileList(html, "30056");
+  assert.equal(files.length, 3);
+  assert.deepEqual(files[0], { dsId: "30056", dsFileId: "30056", fileSq: "66", region: "충북", title: "(도로명주소)건물_충북.zip", format: "shp", approxBytes: 69 * 1024 ** 2, kind: "데이터", baseDate: "2026-09" });
+  assert.deepEqual(files.map((f) => f.region), ["충북", "충남", "제주"]);
+  const older = { ...files[0], fileSq: "1", baseDate: "2026-08" };
+  assert.deepEqual(latestPerRegion([older, ...files]).map((f) => f.fileSq), ["66", "70", "60"], "시도마다 최신 기준일");
 }
 
 // ─── 가짜 VWorld 서버 ──────────────────────────────────────────────────────
