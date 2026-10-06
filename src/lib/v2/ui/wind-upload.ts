@@ -12,6 +12,13 @@ export const WIND_SEASONS = ["annual", "spring", "summer", "autumn", "winter"] a
 export type WindSeason = (typeof WIND_SEASONS)[number];
 export const WIND_LAYER_HEIGHTS = [2, 6, 10, 14, 22, 30] as const;
 export const WIND_RAW_SCALE = 0.001;
+/**
+ * Early stop of the time average: stop once the running window mean changes by
+ * less than 0.1 % (relative L2 over the output layers) for two successive
+ * 1024-step blocks. The field then agrees with the full-length f32 run to the
+ * f16 storage noise (~0.14 %); unsteady flows never reach it and run to `steps`.
+ */
+export const WIND_CONVERGENCE = { epsilon: 1e-3 } as const;
 export const WIND_BUFFER_M = 200;
 
 type WindMap = NonNullable<TileView["map"]> & { rasterOptions?: RasterRef[] };
@@ -182,7 +189,7 @@ function runWorker(
       onAbort();
       return;
     }
-    worker.postMessage({ type: "run", id, case: simulation }, [simulation.solid.buffer]);
+    worker.postMessage({ type: "run", id, case: simulation, convergence: WIND_CONVERGENCE }, [simulation.solid.buffer]);
   });
 }
 

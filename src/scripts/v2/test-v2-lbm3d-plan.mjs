@@ -16,7 +16,10 @@ const MB = 1024 ** 2;
   assert.match(f32, /@compute/);
   assert.match(f32, /Smagorinsky/);
   assert.match(f32, /4194240u/);
-  assert.match(f32, /0\.9 \* 6\.0 \* weight/);
+  assert.match(f32, /0\.9 \* 6\.0 \* /);
+  // Unrolled D3Q19: 19 incoming/outgoing values, no rolled direction loop over a private array.
+  assert.match(f32, /var v18: f32;/);
+  assert.doesNotMatch(f32, /array<f32, 19>/);
   const tiled = d3q19KernelWgsl({ dispatchStrideX: 128, dispatchStrideXY: 256 });
   assert.match(tiled, /gid\.y \* 128u/);
   assert.match(tiled, /gid\.z \* 256u/);

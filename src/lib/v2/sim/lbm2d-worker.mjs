@@ -7,7 +7,7 @@ const EDGE_BOTTOM = 4;
 const EDGE_TOP = 8;
 
 const {
-  nx, ny, n, steps, u0, nu, cs, firstAverage, workerId, workerCount, rowStart, rowEnd,
+  nx, ny, n, steps, u0, nu, cs, firstAverage, workerId, workerCount, rowStart, rowEnd, stallForTest,
   fluid: fluidBuffer, fluidStart, fluidEnd,
   stateA: stateABuffer, stateB: stateBBuffer,
   solid: solidBuffer, regular: regularBuffer, edge: edgeBuffer,
@@ -74,6 +74,9 @@ function applyXBoundaries(currentNext) {
     }
   }
 }
+
+// 테스트 전용: 시작하지 않는 worker를 흉내 낸다(호출자의 bounded wait가 시간 안에 오류를 내야 한다).
+if (stallForTest) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
 
 try {
   for (let step = 1; step <= steps; step++) {
