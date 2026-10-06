@@ -1,7 +1,9 @@
 /** D10 수관 래스터·벡터를 S04가 재사용하는 공통 계산. */
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { deflateSync, inflateSync } from "node:zlib";
 import type { LngLat } from "../../crs";
 import type { Mosaic } from "../imagery";
 import type { EngineContext } from "../context";
@@ -27,6 +29,8 @@ export interface CanopyForOptions {
   /** 테스트·재현용으로 이미 디코드한 모자이크를 주입한다. 작업자는 기본 경로를 사용한다. */
   mosaic?: Mosaic;
   cacheRoot?: string;
+  /** 검출 결과(격자·벡터)를 분석 간에 재사용하는 디렉터리. 기본은 항공사진 캐시 옆 `canopy-result`. 'off'면 끈다. */
+  resultCacheDir?: string;
 }
 
 type Edge = { start: string; end: string; direction: number };
@@ -334,15 +338,62 @@ function loadMosaic(ctx: EngineContext, options: CanopyForOptions): Mosaic | nul
   return satelliteMosaicSync(ctx.input.center, ctx.input.radiusM, options.cacheRoot ?? process.env.V2_AERIAL_CACHE_DIR ?? DEFAULT_AERIAL_CACHE_ROOT);
 }
 
+const CANOPY_RESULT_VERSION = "canopy-result-1";
+
+/** 같은 영상 픽셀·중심·반경이면 검출·격자·벡터 결과가 같으므로, 영상 내용 해시를 키로 디스크에 보관한다. */
+function resultCachePath(ctx: EngineContext, mosaic: Mosaic, options: CanopyForOptions): string | null {
+  if (options.resultCacheDir === "off" || (options.mosaic && !options.resultCacheDir)) return null;
+  const aerialRoot = options.cacheRoot ?? process.env.V2_AERIAL_CACHE_DIR ?? DEFAULT_AERIAL_CACHE_ROOT;
+  const dir = options.resultCacheDir ?? process.env.V2_CANOPY_RESULT_DIR ?? join(dirname(aerialRoot), "canopy-result");
+  const hash = createHash("sha1");
+  hash.update(JSON.stringify([CANOPY_RESULT_VERSION, ctx.input.center, ctx.input.radiusM, mosaic.z, mosaic.x0Px, mosaic.y0Px, mosaic.width, mosaic.height, mosaic.mPerPx, mosaic.missingTiles, mosaic.totalTiles]));
+  hash.update(mosaic.rgb);
+  if (mosaic.valid) hash.update(mosaic.valid);
+  return join(dir, `${hash.digest("hex")}.bin`);
+}
+
+function readResultCache(file: string): CanopyResult | null {
+  try {
+    const bytes = readFileSync(file);
+    const headerLength = bytes.readUInt32LE(0);
+    const header = JSON.parse(bytes.subarray(4, 4 + headerLength).toString("utf8")) as Omit<CanopyResult, "grid"> & { grid: Omit<LocalGrid, "values"> };
+    const raw = inflateSync(bytes.subarray(4 + headerLength));
+    const values = new Float64Array(raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength));
+    if (values.length !== header.grid.cols * header.grid.rows) return null;
+    return { ...header, grid: { ...header.grid, values } };
+  } catch {
+    return null;
+  }
+}
+
+function writeResultCache(file: string, result: CanopyResult): void {
+  try {
+    const { values, ...grid } = result.grid;
+    const header = Buffer.from(JSON.stringify({ ...result, grid }));
+    const length = Buffer.alloc(4);
+    length.writeUInt32LE(header.length, 0);
+    const body = deflateSync(Buffer.from(values.buffer, values.byteOffset, values.byteLength), { level: 1 });
+    mkdirSync(dirname(file), { recursive: true });
+    const temporary = `${file}.${process.pid}.tmp`;
+    writeFileSync(temporary, Buffer.concat([length, header, body]));
+    renameSync(temporary, file);
+  } catch {
+    // The cache is an optimisation only.
+  }
+}
+
 /** 한 분석의 모든 무거운 수관 소비자가 같은 모자이크·벡터를 재사용한다. */
 export function canopyFor(ctx: EngineContext, options: CanopyForOptions = {}): CanopyResult | null {
   return ctx.memo("canopy:polygons", () => {
     const mosaic = loadMosaic(ctx, options);
     if (!mosaic || mosaic.totalTiles <= 0 || mosaic.missingTiles >= mosaic.totalTiles) return null;
+    const cacheFile = resultCachePath(ctx, mosaic, options);
+    const cached = cacheFile ? readResultCache(cacheFile) : null;
+    if (cached) return cached;
     const detected = detectCanopy(mosaic);
     const grid = canopyToGrid(mosaic, detected.mask, ctx.input.center, ctx.input.radiusM, 1);
     const stats = canopyCellStats(grid, ctx.input.radiusM);
-    return {
+    const result: CanopyResult = {
       grid,
       polygons: vectorPolygons(ctx, grid),
       threshold: detected.threshold,
@@ -350,5 +401,7 @@ export function canopyFor(ctx: EngineContext, options: CanopyForOptions = {}): C
       missingTiles: mosaic.missingTiles,
       totalTiles: mosaic.totalTiles,
     };
+    if (cacheFile) writeResultCache(cacheFile, result);
+    return result;
   });
 }

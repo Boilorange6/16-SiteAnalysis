@@ -8,6 +8,7 @@ import { inflateRawSync } from "node:zlib";
 import { buildEngineFixture, CENTER } from "./engine-fixture.mjs";
 import { EngineContext } from "../../lib/v2/engine/context.ts";
 import { RASTER_OFFSET, RASTER_SCALE, rawUtci, s04, UTCI_HOURS } from "../../lib/v2/engine/tiles/s04.ts";
+import { cacheEngineVersion, ENGINE_VERSION } from "../../lib/v2/engine/tiles/common.ts";
 import { toTileView } from "../../lib/v2/ui/tile-view.ts";
 import { encodeRaster } from "../../lib/v2/raster-store.ts";
 import { toUtmk } from "../../lib/v2/crs.ts";
@@ -46,10 +47,10 @@ function makeCanopy() {
   };
 }
 
-function makeWindReader(seasons = SEASONS, ratio = 1) {
+function makeWindReader(seasons = SEASONS, ratio = 1, partial = false, solidBlock = false) {
   const [x, y] = toUtmk(CENTER);
-  const cols = 404;
-  const rows = 404;
+  const cols = partial ? 100 : 404;
+  const rows = partial ? 100 : 404;
   const cellM = 4;
   const values = new Int16Array(cols * rows * 2);
   values[0] = Math.round(ratio * 1000);
@@ -57,13 +58,23 @@ function makeWindReader(seasons = SEASONS, ratio = 1) {
     values[index] = Math.round(ratio * 1000);
     values[index + 1] = 0;
   }
+  // solidBlock: a 6x6-cell (24 m) block that S03 marks solid (ratio exactly 0 + obstacle_height > 0), like its footprint halo.
+  const obstacle = new Uint16Array(cols * rows);
+  if (solidBlock) {
+    for (let row = 190; row < 196; row += 1) {
+      for (let col = 190; col < 196; col += 1) {
+        values[(row * cols + col) * 2] = 0;
+        obstacle[row * cols + col] = 300;
+      }
+    }
+  }
   const encoded = encodeRaster({
     ref: {
       name: "fixture_wind",
       kind: "vector2",
       crs: "EPSG:5179",
-      x0: x - 808,
-      y0: y - 808,
+      x0: x - (partial ? 200 : 808),
+      y0: y - (partial ? 200 : 808),
       cellM,
       cols,
       rows,
@@ -82,6 +93,7 @@ function makeWindReader(seasons = SEASONS, ratio = 1) {
       { ref: { ...encoded.ref, name: `wind_${season}_z06` }, values },
     ]),
   );
+  if (solidBlock) entries.set("S03/obstacle_height", { ref: { ...encoded.ref, name: "obstacle_height", kind: "scalar", bands: 1, dtype: "u16", scale: 0.1, nodata: 0 }, values: obstacle });
   return (code, name) => entries.get(`${code}/${name}`) ?? null;
 }
 
@@ -202,6 +214,11 @@ async function main() {
     const medianDecoded = decoded[Math.floor((decoded.length - 1) / 2)];
     assert.ok(Math.abs(medianDecoded - metricValue(normal, `utci_median${summer14}`)) <= 0.5, "raster median agrees with the reported median");
 
+    // Cache: only S04 gets a new cross-analysis cache key; the shared ENGINE_VERSION (and other tiles' keys) is untouched.
+    assert.equal(cacheEngineVersion("S03"), ENGINE_VERSION);
+    assert.notEqual(cacheEngineVersion("S04"), ENGINE_VERSION);
+    assert.ok(cacheEngineVersion("S04").startsWith(ENGINE_VERSION));
+
     // Palette: the standard ten classes are visibly separated in the hot range.
     const style = RASTER_STYLES.utci;
     for (const classBreak of [-40, -27, -13, 0, 9, 26, 32, 38, 46]) assert.ok(style.breaks.includes(classBreak), `standard class boundary ${classBreak} is a palette break`);
@@ -262,15 +279,41 @@ async function main() {
       const calmContext = makeContext(calmDir, makeWindReader());
       const calm = s04(calmContext);
       const calmRasters = calmContext.takeRasters("S04");
-      assert.ok(calmRasters.some((item) => inflateRawSync(item.blob).includes(253)), "calm wind cells use the out-of-range sentinel");
+      const calmSummer = inflateRawSync(calmRasters.find((item) => item.ref.name === "utci_summer_h14").blob);
+      assert.ok(!calmSummer.includes(253), "calm cells are computed at the 0.5 m/s floor, not dropped");
       calmContext.close();
-      assert.equal(calm.status, "partial");
-      assert.equal(metricValue(calm, "share_out_of_range_pct"), 100);
-      assert.equal(metric(calm, "utci_median_summer_h14").value, null);
-      assert.equal(metric(calm, "utci_p90_summer_h14").value, null);
-      assert.doesNotMatch(readFileSync(new URL("../../lib/v2/engine/tiles/s04.ts", import.meta.url), "utf8"), /Math\.(?:min|max)\([^)]*(?:0\.5|17)/);
+      assert.equal(calm.status, "complete");
+      assert.equal(metricValue(calm, "share_wind_clamped_low_pct"), 100, "all cells were clamped up to 0.5 m/s");
+      assert.equal(metricValue(calm, "share_wind_clamped_high_pct"), 0);
+      assert.equal(metricValue(calm, "share_out_of_range_pct"), 0);
+      assert.ok(metric(calm, "utci_median_summer_h14").value !== null && metric(calm, "utci_p90_summer_h14").value !== null);
+      assert.ok(calm.limitations.some((item) => item.note.includes("바람 0.5 m/s 미만 100%는 0.5 m/s로 계산")), "clamp limitation note");
+      // UTCI at the floor equals UTCI at exactly 0.5 m/s.
+      const floorRef = s04(makeContext(calmDir, makeWindReader(SEASONS, 0.5 / metricValue(calm, "input_ws10_ms_summer_h14"))));
+      assert.equal(metricValue(floorRef, "utci_median_summer_h14"), metricValue(calm, "utci_median_summer_h14"));
+      // Genuinely missing wind input (no S03 layer for the cell grid) keeps the grey sentinel.
+      const partialContext = makeContext(calmDir, makeWindReader(SEASONS, 1, true));
+      const partialWind = s04(partialContext);
+      const partialSummer = inflateRawSync(partialContext.takeRasters("S04").find((item) => item.ref.name === "utci_summer_h14").blob);
+      partialContext.close();
+      assert.ok(partialSummer.includes(253), "cells outside the S03 wind grid keep the missing-input sentinel");
+      const missingShare = metricValue(partialWind, "share_out_of_range_pct");
+      assert.ok(missingShare > 0 && missingShare < 100, `partial wind coverage (${missingShare}%)`);
+      assert.ok(metricValue(partialWind, "utci_median_summer_h14") !== null);
     } finally {
       rmSync(calmDir, { recursive: true, force: true });
+    }
+
+    // S03 solid cells that S04 does not draw as buildings (4 m footprint halo) take the nearest open-ground wind.
+    const haloDir = await fixture({});
+    try {
+      const haloContext = makeContext(haloDir, makeWindReader(SEASONS, 1, false, true));
+      const halo = s04(haloContext);
+      haloContext.close();
+      assert.equal(metricValue(halo, "share_wind_clamped_low_pct"), 0, "solid-halo cells are not read as calm");
+      assert.equal(metricValue(halo, "share_out_of_range_pct"), 0);
+    } finally {
+      rmSync(haloDir, { recursive: true, force: true });
     }
 
     const legacyDir = await fixture({ weather: "legacy" });

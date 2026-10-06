@@ -88,6 +88,8 @@ interface SeasonHourResult {
   treeShadeCells: number;
   consideredCells: number;
   outOfRangeCells: number;
+  clampedLowCells: number;
+  clampedHighCells: number;
   categoryCounts: number[];
 }
 
@@ -199,6 +201,48 @@ function windRatioAt(layer: WindLayer, x: number, y: number): number | null {
   return Number.isFinite(ratio) ? ratio : null;
 }
 
+/** S03 obstacle cells (buildings) on the 4 m wind grid; null when the layer was not stored. */
+function obstacleLayerFor(ctx: EngineContext): { ref: RasterRef; values: Uint8Array | Uint16Array | Int16Array } | null {
+  return ctx.memo("s04:obstacle", () => {
+    const layer = ctx.rasterReader?.("S03", "obstacle_height") ?? null;
+    return layer && layer.ref.bands === 1 && layer.values.length >= layer.ref.cols * layer.ref.rows ? layer : null;
+  });
+}
+
+/**
+ * Relative wind at (x, y). S03's 4 m grid marks every cell a footprint touches as solid (ratio exactly 0), which is
+ * up to ~8 m wider than S04's 2 m footprints; those halo cells are open ground in reality, so they take the nearest
+ * fluid cell's value instead of a false calm.
+ */
+function windRatioNear(layer: WindLayer, obstacle: ReturnType<typeof obstacleLayerFor>, x: number, y: number): number | null {
+  const direct = windRatioAt(layer, x, y);
+  if (!obstacle || direct === null || direct !== 0) return direct;
+  const { ref } = layer;
+  const col = Math.floor((x - ref.x0) / ref.cellM);
+  const row = Math.floor((y - ref.y0) / ref.cellM);
+  const solidAt = (c: number, r: number): boolean => {
+    const value = obstacle.values[r * obstacle.ref.cols + c];
+    return value !== undefined && value !== obstacle.ref.nodata && value > 0;
+  };
+  if (col >= obstacle.ref.cols || row >= obstacle.ref.rows || !solidAt(col, row)) return direct;
+  let best: number | null = null;
+  let bestDistance = Infinity;
+  for (let radius = 1; radius <= 3 && best === null; radius += 1) {
+    for (let dr = -radius; dr <= radius; dr += 1) {
+      for (let dc = -radius; dc <= radius; dc += 1) {
+        if (Math.max(Math.abs(dr), Math.abs(dc)) !== radius) continue;
+        const c = col + dc;
+        const r = row + dr;
+        if (c < 0 || r < 0 || c >= obstacle.ref.cols || r >= obstacle.ref.rows || solidAt(c, r)) continue;
+        const ratio = windRatioAt(layer, ref.x0 + (c + 0.5) * ref.cellM, ref.y0 + (r + 0.5) * ref.cellM);
+        const distance = Math.hypot(ref.x0 + (c + 0.5) * ref.cellM - x, ref.y0 + (r + 0.5) * ref.cellM - y);
+        if (ratio !== null && distance < bestDistance) { best = ratio; bestDistance = distance; }
+      }
+    }
+  }
+  return best;
+}
+
 /** value → cell count. UTCI has few thousand distinct values per cut, so quantiles never need a per-cell array. */
 type Hist = { counts: Map<number, number>; n: number };
 
@@ -253,6 +297,7 @@ function treeShadeFor(ctx: EngineContext, grid: { x0: number; y0: number; cellM:
     for (const tree of obstacles.filter((obstacle) => obstacle.kind === "canopy")) {
       const vector = shadowVectorFor(tree.heightM, sun);
       if (!vector) continue;
+      // ponytail: serial; worker-thread fan-out measured no faster (clone + startup ≈ the 1.7 s it saves).
       for (const piece of shadowPieces(tree.ring, vector)) fillRing(mask, grid, piece);
     }
     return mask;
@@ -354,7 +399,7 @@ function categoryLegend(): Array<{ label: string; min: number | null; max: numbe
     { label: "UTCI 강한 열스트레스 (32~38°C)", min: 32, max: 38 },
     { label: "UTCI 매우 강한 열스트레스 (38~46°C)", min: 38, max: 46 },
     { label: "UTCI 극한 열스트레스 (≥46°C)", min: 46, max: null },
-    { label: "계산 범위 밖(바람)", min: null, max: null },
+    { label: "바람 입력 없음", min: null, max: null },
     { label: "건물", min: null, max: null },
     { label: "반경 밖", min: null, max: null },
   ];
@@ -369,7 +414,7 @@ function caseMetrics(result: SeasonHourResult): TileResult["metrics"] {
   const shadeMedian = quantile(result.shadeValues, 0.5);
   const shares = result.categoryCounts.map((count, index) => est(
     `share_utci_${index < UTCI_CATEGORIES.length ? UTCI_CATEGORIES[index].key : "out_of_range"}_pct${suffix}`,
-    `UTCI ${index < UTCI_CATEGORIES.length ? UTCI_CATEGORIES[index].label : "계산 범위 밖"} 면적 구성비 · ${SEASON_KO[result.season]} ${result.hour}시`,
+    `UTCI ${index < UTCI_CATEGORIES.length ? UTCI_CATEGORIES[index].label : "바람 입력 없음"} 면적 구성비 · ${SEASON_KO[result.season]} ${result.hour}시`,
     percentage(count, denominator),
     "%",
     "s04-share@1:UTCI 범주 셀 면적÷계산 대상 셀 면적",
@@ -387,7 +432,9 @@ function caseMetrics(result: SeasonHourResult): TileResult["metrics"] {
     optionalMetric(`sun_shade_diff_c${suffix}`, `양지−그늘 UTCI 차이 · ${SEASON_KO[result.season]} ${result.hour}시`, sunMedian !== null && shadeMedian !== null ? sunMedian - shadeMedian : null, "°C", "s04-sun-shade@1:양지 중앙값−그늘 중앙값"),
     est(`shade_pct${suffix}`, `그늘 면적률 · ${SEASON_KO[result.season]} ${result.hour}시`, percentage(result.shadeCells, denominator), "%", "s04-shade-share@1:그늘 셀 면적÷계산 대상 셀 면적", result.shadeCells, denominator),
     est(`tree_shade_pct${suffix}`, `수관 그늘 면적률 · ${SEASON_KO[result.season]} ${result.hour}시`, percentage(result.treeShadeCells, denominator), "%", "s04-tree-shade@1:수관 그림자 셀 면적÷계산 대상 셀 면적", result.treeShadeCells, denominator),
-    est(`share_out_of_range_pct_${result.season}_h${result.hour}`, `UTCI 바람 입력 범위 밖 면적률 · ${SEASON_KO[result.season]} ${result.hour}시`, outPct, "%", "s04-out-of-range@1:UTCI 풍속 0.5~17m/s 밖 셀 면적÷계산 대상 셀 면적", result.outOfRangeCells, denominator),
+    est(`share_out_of_range_pct_${result.season}_h${result.hour}`, `바람 입력 없음 면적률 · ${SEASON_KO[result.season]} ${result.hour}시`, outPct, "%", "s04-out-of-range@2:S03 바람 값이 없는 셀 면적÷계산 대상 셀 면적", result.outOfRangeCells, denominator),
+    est(`share_wind_clamped_low_pct${suffix}`, `바람 0.5 m/s 미만(0.5 m/s로 계산) 면적률 · ${SEASON_KO[result.season]} ${result.hour}시`, percentage(result.clampedLowCells, denominator), "%", "s04-wind-clamp-low@1:국지 10 m 풍속 < 0.5 m/s 셀 면적÷계산 대상 셀 면적", result.clampedLowCells, denominator),
+    est(`share_wind_clamped_high_pct${suffix}`, `바람 17 m/s 초과(17 m/s로 계산) 면적률 · ${SEASON_KO[result.season]} ${result.hour}시`, percentage(result.clampedHighCells, denominator), "%", "s04-wind-clamp-high@1:국지 10 m 풍속 > 17 m/s 셀 면적÷계산 대상 셀 면적", result.clampedHighCells, denominator),
     ...shares,
   ];
 }
@@ -402,8 +449,10 @@ function representativeAliases(metrics: TileResult["metrics"], result: SeasonHou
     const original = metrics.find((item) => item.id === `${base}${suffix}`);
     return original ? { ...original, id: base } : null;
   }).filter((item): item is TileResult["metrics"][number] => item !== null);
-  const out = metrics.find((item) => item.id === "share_out_of_range_pct_summer_h14");
-  if (out) aliases.push({ ...out, id: "share_out_of_range_pct" });
+  for (const base of ["share_out_of_range_pct", "share_wind_clamped_low_pct", "share_wind_clamped_high_pct"]) {
+    const original = metrics.find((item) => item.id === `${base}_summer_h14`);
+    if (original) aliases.push({ ...original, id: base });
+  }
   return [...metrics, ...aliases];
 }
 
@@ -444,6 +493,8 @@ function calculateCase(
   let treeShadeCells = 0;
   let consideredCells = 0;
   let outOfRangeCells = 0;
+  let clampedLowCells = 0;
+  let clampedHighCells = 0;
   const tmrtCache = new Map<number, number>();
   const combos = new Map<number, Combo>();
   const evaluateUtci = utciEvaluator(input.ta_med ?? Number.NaN, input.hm_med ?? Number.NaN);
@@ -461,22 +512,27 @@ function calculateCase(
       const svfValue = shared.svf[index];
       if (!Number.isFinite(svfValue)) continue;
       const ratio = ratioGrid[index];
-      if (Number.isNaN(ratio) || !inputsFinite) continue;
+      if (!inputsFinite) continue;
       const x = grid.x0 + (col + 0.5) * grid.cellM;
-      const va10Local = ratio * input.ws_med!;
       const fieldShade = sun.altitudeDeg > 0 && fieldShadeAt(hourlyShade, x, y);
       const treeShade = sun.altitudeDeg > 0 && treeMask[index] === 1;
       const shade = sun.altitudeDeg <= 0 || fieldShade || treeShade;
       consideredCells += 1;
       if (shade) shadeCells += 1;
       if (treeShade && !fieldShade) treeShadeCells += 1;
-      const inRange = va10Local >= UTCI_WIND_RANGE[0] && va10Local <= UTCI_WIND_RANGE[1];
-      if (!inRange) {
+      // Only cells with no S03 wind at all are left without a UTCI value (grey sentinel).
+      if (Number.isNaN(ratio)) {
         outOfRangeCells += 1;
         categoryCounts[UTCI_CATEGORIES.length] += 1;
         values[index] = RASTER_OUT_OF_RANGE;
         continue;
       }
+      // UTCI's regression is defined for 0.5–17 m/s 10 m wind; as in the operational procedure, calmer/stronger
+      // cells are evaluated at the range limit instead of being dropped (the clamped area is reported).
+      const va10Raw = ratio * input.ws_med!;
+      if (va10Raw < UTCI_WIND_RANGE[0]) clampedLowCells += 1;
+      else if (va10Raw > UTCI_WIND_RANGE[1]) clampedHighCells += 1;
+      const va10Local = Math.min(UTCI_WIND_RANGE[1], Math.max(UTCI_WIND_RANGE[0], va10Raw));
       const sky = Math.max(0, Math.min(1, svfValue));
       const tmrtKey = Math.round(sky * 1000) * 2 + (shade ? 1 : 0);
       let radiant = tmrtCache.get(tmrtKey);
@@ -539,7 +595,7 @@ function calculateCase(
     values,
   };
   const raster = ctx.emitRaster("S04", rasterData);
-  return { season, hour, raster, inRangeValues, sunValues, shadeValues, input, sunAltitude: sun.altitudeDeg, shadeCells, treeShadeCells, consideredCells, outOfRangeCells, categoryCounts };
+  return { season, hour, raster, inRangeValues, sunValues, shadeValues, input, sunAltitude: sun.altitudeDeg, shadeCells, treeShadeCells, consideredCells, outOfRangeCells, clampedLowCells, clampedHighCells, categoryCounts };
 }
 
 export function s04(ctx: EngineContext): TileResult {
@@ -585,6 +641,7 @@ export function s04(ctx: EngineContext): TileResult {
       if (Math.hypot(grid.x0 + (col + 0.5) * grid.cellM - cx, y - cy) <= ctx.input.radiusM) inside[row * grid.cols + col] = 1;
     }
   }
+  const obstacleLayer = shared ? obstacleLayerFor(ctx) : null;
   for (const ready of shared ? readySeasons : []) {
     const ratioGrid = new Float64Array(grid.cols * grid.rows).fill(Number.NaN);
     for (let row = 0; row < grid.rows; row += 1) {
@@ -592,7 +649,7 @@ export function s04(ctx: EngineContext): TileResult {
       for (let col = 0; col < grid.cols; col += 1) {
         const index = row * grid.cols + col;
         if (inside[index] === 0) continue;
-        const ratio = windRatioAt(ready.wind, grid.x0 + (col + 0.5) * grid.cellM, y);
+        const ratio = windRatioNear(ready.wind, obstacleLayer, grid.x0 + (col + 0.5) * grid.cellM, y);
         if (ratio !== null) ratioGrid[index] = ratio;
       }
     }
@@ -605,7 +662,18 @@ export function s04(ctx: EngineContext): TileResult {
   const allOutOfRange = calculated.some((result) => result.consideredCells > 0 && result.outOfRangeCells === result.consideredCells);
   const status: TileResult["status"] = calculated.length === 0 ? "pending" : missingSeasons.length > 0 || allOutOfRange ? "partial" : "complete";
   if (missingSeasons.length > 0) limitations.push({ kind: "partial", note: `다음 계절은 S03 바람장 또는 계절×시각 대표 기상이 없어 계산 대기입니다: ${missingSeasons.join(", ")}` });
-  if (allOutOfRange) limitations.push({ kind: "partial", note: `UTCI 풍속 범위(${UTCI_WIND_RANGE[0]}~${UTCI_WIND_RANGE[1]}m/s) 밖 셀이 있어 해당 셀은 통계에서 제외했습니다.` });
+  if (allOutOfRange) limitations.push({ kind: "partial", note: "S03 바람 값이 없는 셀은 UTCI를 계산하지 않고 통계에서 제외했습니다." });
+  if (calculated.length > 0 && windSourceFor(ctx).includes("d2q9")) {
+    limitations.push({ kind: "estimated", note: "S03가 2D 대체 계산(건물 위로 넘는 흐름 없음)이라 건물 사이·안뜰의 바람이 실제보다 약하게 나와 0.5 m/s 하한 적용 면적이 커질 수 있습니다." });
+  }
+  const clampBase = representative ?? calculated[0];
+  if (clampBase && clampBase.consideredCells > 0) {
+    const low = percentage(clampBase.clampedLowCells, clampBase.consideredCells);
+    const high = percentage(clampBase.clampedHighCells, clampBase.consideredCells);
+    const when = `${SEASON_KO[clampBase.season]} ${clampBase.hour}시 기준`;
+    if (low > 0) limitations.push({ kind: "estimated", note: `바람 ${UTCI_WIND_RANGE[0]} m/s 미만 ${low}%는 ${UTCI_WIND_RANGE[0]} m/s로 계산했습니다(${when}, UTCI 풍속 적용 범위 하한 · 컷별 비율은 지표 참고).` });
+    if (high > 0) limitations.push({ kind: "estimated", note: `바람 ${UTCI_WIND_RANGE[1]} m/s 초과 ${high}%는 ${UTCI_WIND_RANGE[1]} m/s로 계산했습니다(${when}).` });
+  }
 
   const sentence = representative
     ? `여름 14시 UTCI 중앙값 ${metricValueFor(withAliases, "utci_median_summer_h14")}°C, 양지·그늘 차이 ${metricValueFor(withAliases, "sun_shade_diff_c_summer_h14")}°C → 계절·시각 자리끼리 비교하고 현장 조건을 확인하세요`

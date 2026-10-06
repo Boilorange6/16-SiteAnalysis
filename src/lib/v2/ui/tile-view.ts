@@ -121,7 +121,7 @@ function mapOf(r: TileResult): RasterMapModel | null {
   if (r.tileCode === "A01" && r.metrics.some((m) => m.id === "nearest_rail_m" && m.status === "missing")) notes.push("철도 자료 미적재 · 버스정류장만 표시");
   // 래스터가 그려지는 타일은 건물·그림자를 래스터 셀이 담당하므로 "지물 없음"이 아니다.
   if (features.length === 0 && polygons.length === 0 && lines.length === 0 && rasterOptions.length === 0) notes.push("반경 안 표시할 지물 없음");
-  if (rasters.some((ref) => ref.palette === "utci")) notes.push("흰색 = 건물 · 회색 = 풍속 입력 범위 밖");
+  if (rasters.some((ref) => ref.palette === "utci")) notes.push("흰색 = 건물 · 회색 = 바람 입력 없음");
   return {
     center: r.conditions.center,
     radiusM: r.conditions.radiusM,
@@ -286,7 +286,10 @@ function metricRow(m: TileResult["metrics"][number], round = false): Row {
     default:
       return {
         ...base,
-        value: withUnit(round ? roundForDisplay(m.value as number, m.unit) : (m.value as number), m.unit),
+        // °C·m/s·도는 정수값이어도 소수 1자리를 유지한다(35.0°C).
+        value: round && (m.unit === "°C" || m.unit === "m/s" || m.unit === "도")
+          ? `${roundForDisplay(m.value as number, m.unit).toFixed(1)}${m.unit.length > 2 ? " " : ""}${m.unit}`
+          : withUnit(round ? roundForDisplay(m.value as number, m.unit) : (m.value as number), m.unit),
         ...(m.unit === "m" ? { aux: "직선" } : {}),
         ...(m.status === "estimated" ? { tag: "추정" } : {}),
       };

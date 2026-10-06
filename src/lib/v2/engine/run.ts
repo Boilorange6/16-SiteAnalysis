@@ -29,7 +29,7 @@ import { a09 } from "./tiles/a09";
 import { a10 } from "./tiles/a10";
 import { a11 } from "./tiles/a11";
 import { a12 } from "./tiles/a12";
-import { ENGINE_VERSION, makeTile } from "./tiles/common";
+import { cacheEngineVersion, ENGINE_VERSION, makeTile } from "./tiles/common";
 import { d01 } from "./tiles/d01";
 import { d02 } from "./tiles/d02";
 import { d03 } from "./tiles/d03";
@@ -140,7 +140,7 @@ export const todayKst = () => new Date().toLocaleDateString("sv-SE", { timeZone:
 
 function cacheKeyFor(ctx: EngineContext, code: string): string {
   const conditions = DATE_INDEPENDENT_CODES.has(code) ? { ...ctx.conditions, analysisDate: "date-independent" } : ctx.conditions;
-  return tileCacheKey({ tileCode: code, manifestHash: ctx.manifestHash, engineVersion: ENGINE_VERSION, conditions });
+  return tileCacheKey({ tileCode: code, manifestHash: ctx.manifestHash, engineVersion: cacheEngineVersion(code), conditions });
 }
 
 function pendingTile(ctx: EngineContext, code: string): TileResult {
