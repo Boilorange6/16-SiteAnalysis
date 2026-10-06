@@ -91,7 +91,7 @@ const MAP_NOTES: Record<string, string> = {
   D20: "도형 면적 기준(공부면적 아님)",
   D15: "OSM 도로로 폐합된 블록 · 반경 밖 500m까지 읽음",
   D16: "건물 수 KDE · 대역폭 100m · 20백분위 구간",
-  D17: "Copernicus DEM GLO-30(약 30m) 지표고 · EGM2008 · 중심 상대고",
+  D17: "Copernicus GLO-30 표면모델(DSM, 30 m) · EGM2008 · 중심 상대고",
   D18: "Copernicus DEM GLO-30 30m 격자 경사 · EGM2008 · 옹벽·미세 지형 미반영",
   D21: "기하학적 일조 · 09~15시 10분 간격",
   S02: "하지 평균 일조시간 · 건물·지형 그림자 반영",
@@ -318,13 +318,14 @@ function windDirectionsOf(r: TileResult): Record<string, number> | undefined {
 
 export function sourceLineOf(sources: TileResult["provenance"]["sources"]): string {
   if (sources.length === 0) return "출처 없음";
-  return sources
+  const lines = sources
     .map((s) => {
       // source_release uses the fetched date in releaseId when sourceAsOf is unavailable.
       const releaseDate = /@(\d{4}(?:-\d{2}){0,2})$/.exec(s.releaseId)?.[1] ?? null;
       return `${sourceName(s.sourceId)} ${s.sourceAsOf ?? releaseDate ?? "기준일 미확인"}`;
-    })
-    .join(" · ");
+    });
+  // 같은 제공처·같은 기준일은 한 번만 (원천 id가 여러 개여도 이름이 같으면 합친다)
+  return [...new Set(lines)].join(" · ");
 }
 
 export function toTileView(r: TileResult, scene?: Scene | null): TileView {

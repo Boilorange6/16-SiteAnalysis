@@ -3,7 +3,7 @@ import type { Geometry } from "geojson";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
 import { areaInCircle, polygonArea } from "./geo";
-import { BUILDING_SOURCES, buildingRows, type BuildingRow } from "./buildings-shared";
+import { BUILDING_SOURCES, buildingRows, isCounted, type BuildingRow } from "./buildings-shared";
 import { est, makeTile, missing, obs, polygonCandidate, type TileDraft } from "./common";
 import { notProvided } from "./not-provided";
 
@@ -25,8 +25,9 @@ export function d06(ctx: EngineContext): TileResult {
   const rows = buildingRows(ctx);
   if (rows === null) return notProvided(ctx, "D06");
 
-  const total = rows.length;
-  const classified = rows.map((row) => ({ row, layer: bucket(row.heightM, row.heightMethod), area: heightArea(ctx, row) }));
+  const total = rows.filter((row) => isCounted(ctx, row)).length; // 동수·구성비는 중심점이 반경 안인 건물만, 그림은 교차 전부
+  const all = rows.map((row) => ({ row, layer: bucket(row.heightM, row.heightMethod), area: heightArea(ctx, row) }));
+  const classified = all.filter(({ row }) => isCounted(ctx, row)); // 동수·구성비는 중심점이 반경 안인 건물만
   const sourceKnown = classified.filter(({ row }) => row.heightMethod === "source" && row.heightM !== null).length;
   const tallSource = classified.filter(({ layer }) => layer === "tall_ge35").length;
   const tallEstimated = classified.filter(({ layer }) => layer === "tall_ge35_est").length;
@@ -37,7 +38,7 @@ export function d06(ctx: EngineContext): TileResult {
   const tallAreaM2 = tallEntries.reduce((sum, { area }) => sum + (area?.areaM2 ?? 0), 0);
   const polygons: NonNullable<TileDraft["polygons"]> = [];
   let geometryFailures = 0;
-  for (const { row, layer, area } of classified) {
+  for (const { row, layer, area } of all) { // 그림은 교차 전부
     const rowPolygons = area
       ? area.parts.flatMap((rings, index) => {
         const polygon = polygonCandidate(row.hit.featureId * 1000 + index, layer, rings, polygonArea(rings), row.hit.name);

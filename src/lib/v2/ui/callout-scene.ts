@@ -16,10 +16,10 @@ export function calloutScene(model: CalloutModel, kind: CalloutFrameKind, W: num
   // 모바일 펼침: 좌우 칸 대신 지도 아래(시트 위)에 가로 띠 카드. 모든 페이지에서 같은 자리를 비워 두어 지도 범위가 변하지 않는다
   const strip = detail && mobile;
   const panel = detail && W > 720 ? PANEL_W + OV.edge : 0;
-  const top = detail ? OV.edge + 34 + 6 + 32 + 8 : OV.edge + 34 + 6;
+  const top = detail ? OV.edge + 34 + 6 + 32 + 8 : OV.edge; // 카드는 머리·출처가 지도 밖이라 위쪽 칩 자리를 비우지 않는다
   const sheetTop = H - OV.stripH - OV.edge - (0.4 * H + 20);
   const stripTop = sheetTop - 8 - STRIP_H;
-  const bottom = detail ? (strip ? stripTop - 6 : H - OV.stripH - OV.edge + (mobile ? -(0.4 * H + 20) : 0)) : H - OV.stripH - 8;
+  const bottom = detail ? (strip ? stripTop - 6 : H - OV.stripH - OV.edge + (mobile ? -(0.4 * H + 20) : 0)) : H - 8;
   const numbered = !detail ? model.complexes.slice(0, BOARD_TOP) : page === 0 ? model.complexes : pageItems(model.complexes, page);
   const withCards = page !== 0 || !detail ? numbered : [];
   const rows = rowsFor(withCards);

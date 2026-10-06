@@ -1794,3 +1794,273 @@
     display: none;
   }
 }
+
+/* ── 지도 면 (카드): 헤더 40px · 지도 · 출처 24px. 지도 위에는 북쪽·축척·한 줄 범례만 둔다 ── */
+.mf {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+}
+.mfHead {
+  flex: none;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 4px 0 12px;
+  border-bottom: 1px solid #ececf0;
+  container-type: inline-size;
+  position: relative;
+  z-index: 3;
+}
+.mfHead .dot {
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+}
+.mfTitle {
+  flex: 0 1 auto;
+  min-width: 3em;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mfKey {
+  /* 숫자는 잘리면 오독된다(88.9% → "88.9("): 줄어드는 쪽은 제목, 숫자가 안 들어가면 아래 container 규칙으로 통째로 숨긴다 */
+  flex: none;
+  min-width: 0;
+  margin-left: 6px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  color: var(--ink);
+}
+.mfKey b {
+  font-weight: 700;
+}
+.mfKey small {
+  font-size: 11px;
+  font-weight: 500;
+  color: #5c5f66;
+}
+.mfKey .mfKeyLabel {
+  margin-left: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@container (max-width: 420px) {
+  .mfKeyLabel {
+    display: none;
+  }
+}
+@container (max-width: 270px) {
+  .mfKey {
+    display: none;
+  }
+}
+.mfCheck {
+  margin: -2px 0 -2px auto;
+  min-height: 44px;
+  padding: 0 3px 0 6px;
+  color: #3a3d44;
+}
+/* 아이콘 버튼: 눈에 보이는 원은 32px, 눌리는 자리는 44×44 */
+.mfBtn {
+  position: relative;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin: -2px 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  border-radius: 50%;
+}
+.mfBtn::before {
+  content: "";
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #f1f1f4;
+}
+.mfBtn svg {
+  position: relative;
+}
+.mfBtn:hover::before {
+  background: #e2e3e8;
+}
+.mfBtn.mfBtnDark,
+.mfBtn.mfBtnOn {
+  color: #fff;
+}
+.mfBtn.mfBtnDark::before,
+.mfBtn.mfBtnOn::before,
+.mfBtn.mfBtnDark:hover::before {
+  background: var(--black);
+}
+.mfBtn:focus-visible {
+  outline: none;
+}
+.mfBtn:focus-visible::before {
+  outline: 2px solid #2f6fdb;
+  outline-offset: 2px;
+}
+.mfMap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  background: #e9e9ec;
+}
+.mfFoot {
+  flex: none;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  font-size: 11px;
+  color: #5c5f66;
+  white-space: nowrap;
+  overflow: hidden;
+  border-top: 1px solid #ececf0;
+}
+.mfFoot span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mfWind {
+  flex: none;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 12px;
+  border-bottom: 1px solid #ececf0;
+  font-size: 12px;
+  color: #3a3d44;
+}
+.mfWindLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mfWindLabel input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  accent-color: #1559a6;
+}
+.mfWindLabel input:focus-visible,
+.mfWindBtn:focus-visible,
+.mfSegBtn:focus-visible,
+.mfMenuItem:focus-visible {
+  outline: 2px solid #2f6fdb;
+  outline-offset: 2px;
+}
+.mfWindLabel output {
+  min-width: 3.2em;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.mfWindBtn {
+  flex: none;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: #f1f1f4;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.mfMenu {
+  position: absolute;
+  z-index: 8;
+  top: 42px;
+  right: 8px;
+  width: 216px;
+  max-width: calc(100% - 16px);
+  box-sizing: border-box;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: #fff;
+  color: var(--ink);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(20, 20, 30, 0.18), 0 0 0 1px #e4e4e9;
+  font-size: 13px;
+}
+.mfMenuItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: #f4f4f7;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mfMenuItem span {
+  font-size: 12px;
+  color: #5c5f66;
+}
+.mfMenuHead {
+  padding: 8px 10px 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #5c5f66;
+}
+.mfSeg {
+  display: flex;
+  gap: 4px;
+  padding: 0 6px 4px;
+}
+.mfSegBtn {
+  flex: 1;
+  min-height: 34px;
+  border: 0;
+  border-radius: 999px;
+  background: #f1f1f4;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.mfSegWide {
+  flex: 1.3;
+}
+.mfSegBtn[aria-checked="true"] {
+  background: var(--black);
+  color: #fff;
+}
+@media (pointer: coarse) {
+  .mfSegBtn,
+  .mfMenuItem {
+    min-height: 44px;
+  }
+  .mfWind {
+    height: 44px;
+  }
+}

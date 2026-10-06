@@ -252,9 +252,9 @@ export default function CalloutMap({ model, kind, page = 0, onPage, label }: Cal
             layer={layer}
             label={label}
             legend={false}
-            north={detail ? 22 : OV.edge + 34 + 8 + 13}
+            north={22}
             credit={false}
-            bottomInset={OV.stripH}
+            bottomInset={detail ? OV.stripH : 0}
             tileHref={sat ? satelliteTileHref : undefined}
             siteX={scene.frame.siteX}
             fill={scene.frame.fill}
@@ -323,13 +323,8 @@ export default function CalloutMap({ model, kind, page = 0, onPage, label }: Cal
             <CalloutLegend
               model={model}
               compact={!detail}
-              style={detail ? { left: legendX, maxWidth: Math.max(160, scaleX - 12 - legendX), bottom: OV.stripH + 12 } : { left: 8, top: 44, right: scale && scale.meters >= 1000 ? 94 : 8, display: "flex", padding: "4px 8px", gap: "3px 7px", fontSize: 10 }}
+              style={detail ? { left: legendX, maxWidth: Math.max(160, scaleX - 12 - legendX), bottom: OV.stripH + 12 } : { left: 8, bottom: 8, maxWidth: "calc(100% - 128px)", display: "flex", flexWrap: "nowrap", whiteSpace: "nowrap", overflow: "hidden", padding: "3px 9px", gap: 8, borderRadius: 999, fontSize: 11 }}
             />
-          )}
-          {!detail && scale && scale.meters >= 1000 && (
-            <span aria-label={`지도 축척 ${scale.label}`} style={{ position: "absolute", zIndex: 3, top: 44, right: 8, padding: "4px 7px", borderRadius: 999, background: "rgba(255,255,255,.92)", color: "#16181d", fontSize: 10, lineHeight: 1.2, fontWeight: 700, boxShadow: "0 1px 3px rgba(21,23,28,.12)" }}>
-              축척 {scale.label}
-            </span>
           )}
           {detail && page === 0 && !empty && (
             <div className={styles.ovBL}>

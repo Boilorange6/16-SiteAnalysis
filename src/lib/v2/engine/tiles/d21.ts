@@ -58,7 +58,7 @@ export function d21(ctx: EngineContext): TileResult {
     { kind: "estimated", note: S02_LIMITATION },
     { kind: "estimated", note: "반경 밖 400 m까지 건물 그림자를 포함했습니다." },
     { kind: "estimated", note: "경사면 법선은 반영하지 않고 수평 수광면으로 계산했습니다." },
-    { kind: horizonFor(ctx) ? "estimated" : "unknown", note: horizonFor(ctx) ? "Copernicus DEM GLO-30 지형 지평선을 반영했습니다." : "게시된 DEM이 없어 지형 지평선을 반영하지 않았습니다." },
+    { kind: horizonFor(ctx) ? "estimated" : "unknown", note: horizonFor(ctx) ? "Copernicus GLO-30(표면모델 DSM, 2011~15년·30 m·평활화) 지형 지평선을 반영했습니다. 서울에서 건물 신호는 미미합니다." : "게시된 DEM이 없어 지형 지평선을 반영하지 않았습니다." },
     ...(field.obstacles.excludedNoHeight > 0 ? [{ kind: "incomplete" as const, note: "높이 미상 " + field.obstacles.excludedNoHeight + "동은 그림자에서 제외하고 지붕 셀도 제외했습니다." }] : []),
     ...coverage,
   ];

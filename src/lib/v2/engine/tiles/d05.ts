@@ -3,7 +3,7 @@ import type { Geometry } from "geojson";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
 import { areaInCircle, polygonArea } from "./geo";
-import { BUILDING_SOURCES, buildingRows, type BuildingRow } from "./buildings-shared";
+import { BUILDING_SOURCES, buildingRows, isCounted, type BuildingRow } from "./buildings-shared";
 import { makeTile, missing, obs, polygonCandidate, type TileDraft } from "./common";
 import { notProvided } from "./not-provided";
 
@@ -54,7 +54,7 @@ export function d05(ctx: EngineContext): TileResult {
   const rows = buildingRows(ctx);
   if (rows === null) return notProvided(ctx, "D05");
 
-  const total = rows.length;
+  const total = rows.filter((row) => isCounted(ctx, row)).length; // 동수·구성비는 중심점이 반경 안인 건물만, 그림은 교차 전부
   const floorCounts = new Map<string, number>(FLOOR_BUCKETS.map(({ layer }) => [layer, 0]));
   const heightCounts = new Map<string, number>(HEIGHT_BUCKETS.map(({ id }) => [id, 0]));
   const polygons: NonNullable<TileDraft["polygons"]> = [];
@@ -64,11 +64,12 @@ export function d05(ctx: EngineContext): TileResult {
 
   for (const row of rows) {
     const floorLayer = bucket(row.floorsAbove);
-    floorCounts.set(floorLayer, (floorCounts.get(floorLayer) ?? 0) + 1);
-    if (row.floorsAbove !== null) floorsKnown += 1;
+    const counted = isCounted(ctx, row);
+    if (counted) floorCounts.set(floorLayer, (floorCounts.get(floorLayer) ?? 0) + 1);
+    if (counted && row.floorsAbove !== null) floorsKnown += 1;
 
     const heightId = heightBucket(row);
-    if (heightId !== null) {
+    if (counted && heightId !== null) {
       sourceHeights += 1;
       heightCounts.set(heightId, (heightCounts.get(heightId) ?? 0) + 1);
     }

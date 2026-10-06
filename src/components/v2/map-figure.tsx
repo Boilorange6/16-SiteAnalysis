@@ -237,15 +237,36 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   // 같은 색·숫자 정보를 보존한다. 상세·PPT는 기존 가로 레이아웃이다.
   const cardRailRasterLegend = legend === false
     && H < 360
-    && rasterLegends.length > 0
-    && (present.length === 0 || rasterLegends.some(({ style }) => style.mode === "continuous"));
+    && rasterLegends.length > 0;
   const steppedTitle = steppedConfig ? steppedLegendTitle(steppedConfig.ref, steppedConfig.style) : "";
   const steppedTitleAvailable = Math.max(8 * u, legendMaxW - 2.8 * pad);
   const steppedTitleFs = steppedTitle
     ? Math.max(7.5, Math.min(rasterFs, rasterFs * steppedTitleAvailable / Math.max(1, textW(steppedTitle, rasterFs))))
     : rasterFs;
-  const rasterRailW = (steppedConfig?.style.legendLabels ? 92 : 58) * u;
-  const rasterRailH = Math.min(142 * u, Math.max(96 * u, H - 2 * pad - 68 * u));
+  // 카드 범례: 지도 왼쪽 아래 한 줄 알약 (제목 · 최소 · 얇은 막대 · 최대). 제목은 축척 막대 앞에서 말줄임.
+  const compactCfg = cardRailRasterLegend ? rasterLegends[0] : undefined;
+  const compactEnds = ((): [string, string] => {
+    if (!compactCfg) return ["", ""];
+    const { ref, style, entries } = compactCfg;
+    if (style.mode !== "stepped") return ["0%", "100%"];
+    if (style.legendLabels) {
+      const names = steppedLegendNames(style, entries.length);
+      return [names[0]?.label ?? "", names.at(-1)?.label ?? ""];
+    }
+    const ticks = steppedLegendTicksFor(ref, entries, style);
+    return [ticks[0]?.label ?? "", ticks.at(-1)?.label ?? ""];
+  })();
+  const compactFullTitle = compactCfg ? (compactCfg.style.mode === "stepped" ? steppedLegendTitle(compactCfg.ref, compactCfg.style) : (compactCfg.style.label ?? compactCfg.ref.label ?? compactCfg.ref.name)) : "";
+  const compactFs = 10 * u;
+  const compactBarW = 48 * u;
+  const compactFixedW = 2 * 8 * u + 4 * 4 * u + compactBarW + textW(compactEnds[0], compactFs) + textW(compactEnds[1], compactFs);
+  const compactTitleMax = Math.max(0, W - 8 - 112 * u - compactFixedW);
+  let compactTitle = compactFullTitle;
+  while (compactTitle.length > 4 && textW(compactTitle, compactFs) > compactTitleMax) compactTitle = compactTitle.slice(0, -1).replace(/\s+$/, "");
+  if (compactTitle !== compactFullTitle) compactTitle += "…";
+  const compactTitleW = textW(compactTitle, compactFs);
+  const rasterRailW = compactFixedW + compactTitleW;
+  const rasterRailH = 22 * u;
   const steppedBarW = Math.max(64 * u, Math.min(360 * u, Math.max(64 * u, legendMaxW - 3 * pad)));
   // 칸이 좁으면(모바일) 범주명을 두 줄로 어긋나게 놓아 글자 크기를 유지한다.
   const nameStagger = !!steppedConfig?.style.legendLabels && steppedBarW / Math.max(1, rasterEntries.length) < 29;
@@ -281,7 +302,9 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   // 차지한다. 그 아래에서 시작해야 색 바가 카드 chrome에 가려지지 않는다.
   const requestedLy = Math.max(pad, legendY ?? (legend === false ? 68 * u : pad));
   const preliminaryPanelH = (vectorLegendVisible ? vectorLegendH : 0) + (rasterLegendVisible ? rasterLegendH + (vectorLegendVisible ? 4 * u : 0) : 0);
-  const ly = Math.min(requestedLy, Math.max(pad, H - bottomInset - preliminaryPanelH - pad));
+  const ly = cardRailRasterLegend && rasterLegendVisible
+    ? H - bottomInset - preliminaryPanelH - 8
+    : Math.min(requestedLy, Math.max(pad, H - bottomInset - preliminaryPanelH - pad));
   const rasterLy = rasterLegendVisible
     ? vectorLegendVisible
       ? ly + vectorLegendH + 4 * u
@@ -290,19 +313,17 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   const panelY = vectorLegendVisible ? ly : rasterLy;
   const panelW = Math.max(vectorLegendVisible ? vectorLegendW : 0, rasterLegendVisible ? rasterLegendW : 0);
   const panelH = preliminaryPanelH;
-  const panelX = cardRailRasterLegend ? Math.max(pad, W - pad - panelW) : pad;
+  const panelX = cardRailRasterLegend ? 8 : pad;
   const showLegend = vectorLegendVisible || rasterLegendVisible;
   const legendMargin = 6 * u;
   const maxRadius = rasterLegendVisible
     ? cardRailRasterLegend
-      ? Math.max(1, Math.min((H - bottomInset) / 2, (W - panelW - 3 * pad) / 2))
+      ? fill * H / 2
       : Math.max(1, (H - bottomInset - panelY - panelH - 2 * legendMargin) / 2)
     : fill * H / 2;
   const mapRadius = rasterLegendVisible ? Math.min(fill * H / 2, maxRadius) : fill * H / 2;
   const mapFill = H > 0 ? Math.max(0.02, Math.min(fill, (2 * mapRadius) / H)) : fill;
-  const mapSiteX = cardRailRasterLegend
-    ? Math.min(siteX, Math.max(0.2, (panelX - legendMargin - mapRadius) / Math.max(1, W)))
-    : siteX;
+  const mapSiteX = siteX;
   const preferredCenterY = H * siteY;
   const mapCenterY = rasterLegendVisible
     ? cardRailRasterLegend
@@ -491,7 +512,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
           <path d={`M${cx - R} ${cy}a${R} ${R} 0 1 0 ${2 * R} 0a${R} ${R} 0 1 0 ${-2 * R} 0Z`} />
         </clipPath>
         {rasterLegends.filter(({ style }) => style.mode === "continuous").map(({ ref, style }) => (
-          <linearGradient key={`raster-gradient-${ref.name}`} id={`raster-gradient-${uid}-${ref.name}`} x1="0%" y1="0%" x2={cardRailRasterLegend ? "0%" : "100%"} y2={cardRailRasterLegend ? "100%" : "0%"}>
+          <linearGradient key={`raster-gradient-${ref.name}`} id={`raster-gradient-${uid}-${ref.name}`} x1="0%" y1="0%" x2="100%" y2="0%">
             {style.colors.map((color, index) => (
               <stop key={`${color}-${index}`} offset={`${(rasterStopPositions(style)[index] ?? 0) * 100}%`} stopColor={color} />
             ))}
@@ -615,7 +636,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
         {/* 범례·문구 */}
         {showLegend && (
           <g>
-            <rect data-map-legend-panel="true" x={panelX} y={panelY} width={panelW} height={panelH} rx={6 * u} fill="#fff" fillOpacity={0.94} />
+            <rect data-map-legend-panel="true" x={panelX} y={panelY} width={panelW} height={panelH} rx={cardRailRasterLegend ? 11 * u : 6 * u} fill="#fff" fillOpacity={0.94} />
             {vectorLegendVisible && (
               <>
                 {legendRows.map((row, ri) =>
@@ -637,51 +658,36 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
             )}
             {rasterLegendVisible && rasterLegends.map(({ ref, style, entries }) => {
               if (cardRailRasterLegend) {
-                const railX = panelX + pad;
-                const railTitle = style.mode === "stepped" ? steppedLegendTitle(ref, style) : style.label ?? ref.label ?? ref.name;
-                const railTitleW = Math.max(8 * u, panelW - 2 * pad);
-                const railTitleFs = Math.max(6, Math.min(8.5, rasterFs * railTitleW / Math.max(1, textW(railTitle, rasterFs))));
-                const railTop = rasterLy + pad + railTitleFs + 5 * u;
-                const railHeight = Math.max(40 * u, panelH - (railTop - rasterLy) - 2 * pad - rasterFs);
-                const railBarW = 10 * u;
-                const railTickX = railX + 17 * u;
-                const ticks = style.mode === "stepped" && style.legendLabels
-                  ? steppedLegendNames(style, entries.length).map((name, index) => ({ label: `${index === 0 ? `<${entries[0]?.max ?? ""}` : entries[index]?.min ?? ""} ${name.label}`, position: name.position }))
-                  : style.mode === "stepped"
-                  ? steppedLegendTicksFor(ref, entries, style)
-                  : (style.legendTicks?.length ? style.legendTicks : [style.min ?? 0, style.max ?? 1]).map((tick) => ({
-                    label: `${Math.round((style.max ?? 1) <= (style.min ?? 0) ? 0 : ((tick - (style.min ?? 0)) / ((style.max ?? 1) - (style.min ?? 0))) * 100)}%`,
-                    position: (style.max ?? 1) <= (style.min ?? 0) ? 0 : Math.max(0, Math.min(1, (tick - (style.min ?? 0)) / ((style.max ?? 1) - (style.min ?? 0)))),
-                  }));
+                const midY = rasterLy + panelH / 2;
+                const barX = panelX + 8 * u + compactTitleW + 4 * u + textW(compactEnds[0], compactFs) + 4 * u;
                 return (
                   <g key={`raster-legend-${ref.name}`} data-raster-legend={ref.name} data-raster-legend-rail="true">
-                    <title>{style.legendNote ?? railTitle}</title>
-                    <text data-raster-legend-title="true" x={railX} y={rasterLy + pad + railTitleFs} fontSize={railTitleFs} fontWeight={700} fill={INK} textLength={railTitleW} lengthAdjust="spacingAndGlyphs">
-                      {railTitle}
+                    <title>{style.legendNote ? `${compactFullTitle} · ${style.legendNote}` : compactFullTitle}</title>
+                    <text data-raster-legend-title="true" x={panelX + 8 * u} y={midY} dominantBaseline="central" fontSize={compactFs} fontWeight={700} fill={INK}>
+                      {compactTitle}
+                    </text>
+                    <text data-raster-legend-tick={compactEnds[0]} x={barX - 4 * u} y={midY} textAnchor="end" dominantBaseline="central" fontSize={compactFs} fill="#334155">
+                      {compactEnds[0]}
                     </text>
                     <g data-raster-legend-bar="true">
                       {style.mode === "stepped"
                         ? entries.map((entry, index) => (
                           <rect
-                            key={`${ref.name}-rail-cell-${index}-${entry.label}`}
+                            key={`${ref.name}-pill-cell-${index}-${entry.label}`}
                             data-raster-legend-entry={entry.label}
                             aria-label={entry.label}
-                            x={railX}
-                            y={railTop + (index / entries.length) * railHeight}
-                            width={railBarW}
-                            height={railHeight / entries.length + 0.25}
+                            x={barX + (index / entries.length) * compactBarW}
+                            y={midY - 3.5 * u}
+                            width={compactBarW / entries.length + 0.25}
+                            height={7 * u}
                             fill={rasterLegendColor(ref, style, entry) ?? style.colors[0] ?? "#43566B"}
-                            stroke="#fff"
-                            strokeWidth={0.45 * u}
                           />
                         ))
-                        : <rect x={railX} y={railTop} width={railBarW} height={railHeight} rx={2 * u} fill={`url(#raster-gradient-${uid}-${ref.name})`} stroke="#64748B" strokeWidth={0.6 * u} />}
+                        : <rect x={barX} y={midY - 3.5 * u} width={compactBarW} height={7 * u} rx={2 * u} fill={`url(#raster-gradient-${uid}-${ref.name})`} stroke="#64748B" strokeWidth={0.6 * u} />}
                     </g>
-                    {ticks.map((tick, index) => (
-                      <text key={`${ref.name}-rail-tick-${index}-${tick.label}`} data-raster-legend-tick={tick.label} x={railTickX} y={railTop + railHeight * tick.position} dominantBaseline={tick.position === 0 ? "hanging" : tick.position === 1 ? "auto" : "middle"} fontSize={Math.max(6.5, rasterFs * 0.78)} fill="#334155">
-                        {tick.label}
-                      </text>
-                    ))}
+                    <text data-raster-legend-tick={compactEnds[1]} x={barX + compactBarW + 4 * u} y={midY} dominantBaseline="central" fontSize={compactFs} fill="#334155">
+                      {compactEnds[1]}
+                    </text>
                   </g>
                 );
               }

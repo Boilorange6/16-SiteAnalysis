@@ -198,7 +198,7 @@ const sunCardSvg = renderToStaticMarkup(createElement(MapFigure, {
   rasterHref: () => "data:image/png;base64,AAAA",
 }));
 const sunCardLegendY = Number(sunCardSvg.match(/data-map-legend-panel="true"[^>]*\bx="[^"]+"\s+y="([0-9.]+)"/)?.[1] ?? 0);
-assert.ok(sunCardLegendY >= 60, "카드 래스터 범례는 상단 chrome 아래에 배치");
+assert.ok(sunCardLegendY >= 150, "카드 래스터 범례는 지도 왼쪽 아래 한 줄 알약");
 
 const winterRef = { ...sunRef, name: "sun_hours_winter", label: "동지 일조시간" };
 const winterLegend = sunLegend.slice(0, 13).map((entry, index, all) => ({ ...entry, label: index === all.length - 1 ? "일조시간 · 12시간 이상" : entry.label, max: index === all.length - 1 ? null : entry.max }));
@@ -212,7 +212,7 @@ const winterCardSvg = renderToStaticMarkup(createElement(MapFigure, {
   rasterHref: () => "data:image/png;base64,AAAA",
 }));
 assert.match(winterCardSvg, /data-raster-legend-rail="true"/);
-assert.match(winterCardSvg, /data-raster-legend-title="true"[^>]*>동지 평균 일조시간 \(시간\)</);
+assert.match(winterCardSvg, /data-raster-legend-title="true"[^>]*>동지 평균 일조시간/); // 카드 알약은 축척 막대 앞에서 제목을 말줄임한다(전체는 <title>)
 assert.equal((winterCardSvg.match(/data-raster-legend-entry=/g) ?? []).length, 13, "D21 카드 rail은 모든 stepped cell을 유지");
 
 const buildingModel = {
@@ -239,7 +239,7 @@ const buildingCardSvg = renderToStaticMarkup(createElement(MapFigure, {
   rasterHref: () => "data:image/png;base64,AAAA",
 }));
 assert.match(buildingCardSvg, /data-raster-legend-rail="true"/, "작은 continuous 카드 범례는 오른쪽 rail");
-assert.equal((buildingCardSvg.match(/data-raster-legend-tick=/g) ?? []).length, 5, "D29 카드 rail도 숫자 tick을 유지");
+assert.equal((buildingCardSvg.match(/data-raster-legend-tick=/g) ?? []).length, 2, "D29 카드 알약은 최소·최대 tick만");
 
 if (process.env.P4_VISUAL === "1") {
   const requireMain = createRequire("D:/V-coding/16-SiteAnalysis/package.json");

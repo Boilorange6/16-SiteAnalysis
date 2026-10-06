@@ -109,8 +109,20 @@ export default function MapBox({ model, bare, label, avoid, siteX, rightInset, .
   }, [model.analysisId, model.tileCode, model.rasters, near]);
   const renderLayer = fallbackLayer ?? requestedLayer;
   const renderModel = fallbackLayer ? { ...model, basemap: fallbackLayer } : model;
-  const compactItems = !bare && opts.legend === false ? compactLegendItems(model, 3) : [];
+  // 카드 범례: 왼쪽 아래 한 줄 알약. 축척 막대(오른쪽 아래) 앞까지 들어가는 만큼만 보이고 나머지는 "+n".
+  const allLegend = !bare && opts.legend === false ? compactLegendItems(model, 99) : [];
+  const legendRoom = size ? size.w - 8 - 112 - 40 : 0;
+  let fitted = 0;
+  for (let used = 0, i = 0; i < Math.min(3, allLegend.length); i++) {
+    used += 18 + [...allLegend[i]!.label].reduce((w, ch) => w + (ch.charCodeAt(0) > 0x2e80 ? 11 : 6.4), 0);
+    if (used > legendRoom) break;
+    fitted = i + 1;
+  }
+  const compactItems = allLegend.slice(0, Math.max(1, fitted));
+  const legendMore = allLegend.length - compactItems.length;
   const mapHasCompactLegend = compactItems.length > 0;
+  // 래스터 범례(SVG 알약)가 같은 자리를 쓰면 그 위로 올린다
+  const legendBottom = model.rasters?.length ? 38 : 8;
   const scale = size
     ? (() => {
         const resolvedSiteX = typeof siteX === "function" ? siteX(size.w) : (siteX ?? 0.5);
@@ -138,23 +150,23 @@ export default function MapBox({ model, bare, label, avoid, siteX, rightInset, .
         />
       )}
       {size && near && mapHasCompactLegend && (
-        <div role="group" aria-label="범례" style={{ position: "absolute", zIndex: 3, top: 44, left: 8, right: scale && scale.meters >= 1000 ? 94 : 8, display: "flex", alignItems: "center", flexWrap: "wrap", gap: "3px 8px", padding: "4px 8px", borderRadius: 7, background: "rgba(255,255,255,.92)", color: "#16181d", fontSize: 10, lineHeight: 1.2, boxShadow: "0 1px 3px rgba(21,23,28,.12)" }}>
-          <b style={{ color: "#454a55" }}>범례 {compactItems.length}색</b>
+        <div role="group" aria-label="범례" style={{ position: "absolute", zIndex: 3, bottom: legendBottom, left: 8, maxWidth: "calc(100% - 128px)", display: "flex", alignItems: "center", gap: 8, padding: "3px 9px", borderRadius: 999, background: "rgba(255,255,255,.92)", color: "#16181d", fontSize: 11, lineHeight: 1.3, whiteSpace: "nowrap", overflow: "hidden", boxShadow: "0 1px 3px rgba(21,23,28,.12)" }}>
           {compactItems.map((item) => (
             <span key={item.layer} style={{ display: "inline-flex", alignItems: "center", gap: 3, whiteSpace: "nowrap" }}>
               <i aria-hidden style={{ width: 8, height: 8, borderRadius: "50%", background: item.color, border: "1px solid rgba(21,23,28,.35)" }} />
               {item.label}
             </span>
           ))}
+          {legendMore > 0 && <span style={{ color: "#454a55" }} title={allLegend.slice(compactItems.length).map((i) => i.label).join(" · ")}>+{legendMore}</span>}
         </div>
       )}
-      {size && near && scale && scale.meters >= 1000 && (
+      {size && near && scale && scale.meters >= 1000 && opts.legend !== false && (
         <span aria-label={`지도 축척 ${scale.label}`} style={{ position: "absolute", zIndex: 3, top: 44, right: 8, padding: "4px 7px", borderRadius: 999, background: "rgba(255,255,255,.92)", color: "#16181d", fontSize: 10, lineHeight: 1.2, fontWeight: 700, boxShadow: "0 1px 3px rgba(21,23,28,.12)" }}>
           축척 {scale.label}
         </span>
       )}
       {size && near && fallbackLayer && (
-        <span role="status" style={{ position: "absolute", zIndex: 3, left: 8, bottom: (opts.bottomInset ?? 0) + 7, padding: "3px 7px", borderRadius: 999, background: "rgba(255,255,255,.92)", color: "#7A3E12", fontSize: 10, lineHeight: 1.2, fontWeight: 700 }}>
+        <span role="status" style={{ position: "absolute", zIndex: 3, left: 8, ...(opts.legend === false ? { top: 8 } : { bottom: (opts.bottomInset ?? 0) + 7 }), padding: "3px 7px", borderRadius: 999, background: "rgba(255,255,255,.92)", color: "#7A3E12", fontSize: 10, lineHeight: 1.2, fontWeight: 700 }}>
           항공 타일 결손 · 일반지도
         </span>
       )}

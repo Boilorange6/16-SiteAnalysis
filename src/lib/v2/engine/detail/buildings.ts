@@ -2,7 +2,7 @@ import { booleanPointInPolygon } from "@turf/turf";
 import { toUtmk } from "../../crs";
 import { sourceLineOf } from "../../ui/tile-view";
 import { catalogEntry } from "../../ui/tile-catalog";
-import { buildingRows, BUILDING_SOURCES, type BuildingRow } from "../tiles/buildings-shared";
+import { buildingRows, BUILDING_SOURCES, isCounted, type BuildingRow } from "../tiles/buildings-shared";
 import { hitPoint } from "../tiles/common";
 import { useClassOf } from "../tiles/d03";
 import type { DetailCard, DetailColumn, DetailRow, DetailSpec, DetailContext } from "./registry";
@@ -84,8 +84,9 @@ function factRows(ctx: DetailContext, rows: readonly BuildingRow[]): Map<number,
   return facts;
 }
 
-function details(ctx: DetailContext): BuildingDetail[] | null {
-  const rows = buildingRows(ctx);
+function details(ctx: DetailContext, countedOnly = false): BuildingDetail[] | null {
+  const all = buildingRows(ctx);
+  const rows = all && countedOnly ? all.filter((row) => isCounted(ctx, row)) : all; // 표·동수는 중심점이 반경 안인 건물만, 지도 클릭은 교차 전부
   if (rows === null) return null;
   const facts = factRows(ctx, rows);
   return rows.map((row) => ({ row, fact: facts.get(row.hit.featureId) ?? {} }));
@@ -212,7 +213,7 @@ function specFor(code: typeof BUILDING_CODES[number]): DetailSpec {
   return {
     columns: BUILDING_COLUMNS,
     summary(ctx) {
-      const values = details(ctx);
+      const values = details(ctx, true);
       const rows = values ?? [];
       const knownUse = rows.filter((row) => useClassOf(row.row.useCode) !== "미상").length;
       const gross = rows.reduce((sum, row) => sum + (row.row.grossFloorM2 ?? 0), 0);
@@ -228,7 +229,7 @@ function specFor(code: typeof BUILDING_CODES[number]): DetailSpec {
       };
     },
     rows(ctx) {
-      return (details(ctx) ?? []).map((detail) => rowOf(ctx, detail));
+      return (details(ctx, true) ?? []).map((detail) => rowOf(ctx, detail));
     },
     at(ctx, lng, lat) {
       const values = details(ctx) ?? [];
