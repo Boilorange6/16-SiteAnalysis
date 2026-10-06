@@ -178,12 +178,17 @@ function rowItems(s: Slide, rows: TileView["rows"]): Item[] {
 function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }) {
   const model = p.map;
   if (!model) return;
-  const { items, notes, rect: r } = slideLegend(model);
+  const { items, notes, rect: r } = slideLegend(model, !p.muted);
   if (!r) return;
   plate(s, r);
   items.forEach((it, i) => {
     const y = r.y + 0.1 + i * 0.25;
-    s.addShape("ellipse", { x: r.x + 0.2, y: y + 0.06, w: 0.13, h: 0.13, fill: { color: hex(it.color) }, line: { color: "FFFFFF", width: 0.75 } });
+    if (it.site) {
+      s.addShape("diamond", { x: r.x + 0.19, y: y + 0.04, w: 0.16, h: 0.16, fill: { color: "FFFFFF" }, line: { color: "111111", width: 0.8 } });
+      s.addShape("ellipse", { x: r.x + 0.25, y: y + 0.1, w: 0.04, h: 0.04, fill: { color: "111111" }, line: { color: "111111", width: 0 } });
+    } else {
+      s.addShape("ellipse", { x: r.x + 0.2, y: y + 0.06, w: 0.13, h: 0.13, fill: { color: hex(it.color) }, line: { color: "FFFFFF", width: 0.75 } });
+    }
     s.addText(it.label, { x: r.x + 0.45, y, w: r.w - 0.55, h: 0.25, valign: "middle", fontFace: FONT, fontSize: 10, color: INK, margin: 0 });
   });
   notes.forEach((n, i) => {

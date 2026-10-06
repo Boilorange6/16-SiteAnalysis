@@ -80,8 +80,11 @@ export function slideLegendRect(items: number, notes: number, labelChars: number
 }
 
 /** 지도 모델 → 범례 항목·문구·자리 (슬라이드 그리기와 지도 이미지의 라벨 회피가 같은 값을 쓴다) */
-export function slideLegend(model: MapModel) {
-  const items = legendItems(model);
+export function slideLegend(model: MapModel, includeSite = true) {
+  const items: Array<{ layer: string; label: string; color: string; site?: boolean }> = [
+    ...legendItems(model).filter((item) => item.layer !== "parcel_site" && item.layer !== "pnu"),
+    ...(includeSite ? [{ layer: "__site_marker", label: "대지", color: "#111", site: true as const }] : []),
+  ];
   const notes = [...model.notes, ...(model.total > model.features.length ? [`표시 ${model.features.length.toLocaleString("en-US")} / 전체 ${model.total.toLocaleString("en-US")}`] : [])];
   const rect = slideLegendRect(items.length, notes.length, Math.max(0, ...items.map((i) => i.label.length), ...notes.map((n) => n.length * 0.75)));
   return { items, notes, rect };
