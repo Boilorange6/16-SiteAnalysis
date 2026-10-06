@@ -3,7 +3,7 @@
  * 한 번의 데이터 디렉터리 잠금 안에서 새 버전 파일을 만들고, 원천별 적재 이력과 스냅샷을 남기고,
  * 품질 검사를 통과하면 게시한다. 검사에 걸리면 새 파일은 참조되지 않은 채 남고 다음 GC가 치운다.
  */
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import Database from "better-sqlite3";
 import type BetterSqlite3 from "better-sqlite3";
@@ -27,10 +27,144 @@ import {
   type Manifest,
   type ManifestFile,
 } from "../data/manifest";
-import { checkExpectations, evaluateIngest, type GateFailure, type GateResult, type IngestSnapshot, type SiteExpectation } from "../data/quality-gate";
+import { checkExpectations, evaluateIngest, type GateFailure, type GateFailureCode, type GateResult, type IngestSnapshot, type SiteExpectation } from "../data/quality-gate";
 import { DATA_FILE_KINDS, DATA_SCHEMA_VERSION, initDataFileSchema, type DataFileKind } from "../data/schema";
 
 type Db = BetterSqlite3.Database;
+
+type IntegrityFailure = { code: GateFailureCode; detail: string };
+
+export interface SqliteIntegrityResult {
+  ok: boolean;
+  failures: IntegrityFailure[];
+  elapsedMs: number;
+  sizeBytes: number;
+  pageCount: number | null;
+  rtreeMode: "rtreecheck" | "sample" | "none";
+}
+
+function tableExists(db: Db, name: string): boolean {
+  return db.prepare("SELECT 1 FROM sqlite_master WHERE name = ? LIMIT 1").get(name) !== undefined;
+}
+
+function* geometryPositions(value: unknown): Generator<[number, number]> {
+  if (!Array.isArray(value)) return;
+  if (typeof value[0] === "number" && typeof value[1] === "number") {
+    yield [value[0], value[1]];
+    return;
+  }
+  for (const child of value) yield* geometryPositions(child);
+}
+
+function geometryBbox(json: string): [number, number, number, number] {
+  const geometry = JSON.parse(json) as { coordinates?: unknown };
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const [x, y] of geometryPositions(geometry.coordinates)) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error("geometry contains a non-finite coordinate");
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y);
+  }
+  if (minX === Infinity) throw new Error("geometry has no coordinates");
+  return [minX, minY, maxX, maxY];
+}
+
+function checkRtreeSamples(db: Db, sampleLimit: number): IntegrityFailure[] {
+  const failures: IntegrityFailure[] = [];
+  const count = Number(db.prepare("SELECT COUNT(*) FROM feature").pluck().get());
+  const rtreeCount = Number(db.prepare("SELECT COUNT(*) FROM feature_rtree").pluck().get());
+  if (count !== rtreeCount) {
+    failures.push({ code: "RTREE_INTEGRITY", detail: `feature rows ${count} != feature_rtree rows ${rtreeCount}` });
+    return failures;
+  }
+  if (count === 0) return failures;
+
+  const bounds = db.prepare("SELECT MIN(feature_id) AS minId, MAX(feature_id) AS maxId FROM feature").get() as { minId: number; maxId: number };
+  const samples = Math.max(1, Math.min(sampleLimit, count));
+  const targets = Array.from({ length: samples }, (_, index) =>
+    samples === 1 ? bounds.minId : Math.round(bounds.minId + (bounds.maxId - bounds.minId) * (index / (samples - 1))),
+  );
+  const seen = new Set<number>();
+  for (const target of targets) {
+    const feature = db.prepare("SELECT feature_id, geom_json FROM feature WHERE feature_id >= ? ORDER BY feature_id LIMIT 1").get(target) as { feature_id: number; geom_json: string } | undefined;
+    if (!feature || seen.has(feature.feature_id)) continue;
+    seen.add(feature.feature_id);
+    const rtree = db.prepare("SELECT min_x, max_x, min_y, max_y FROM feature_rtree WHERE feature_id = ?").get(feature.feature_id) as { min_x: number; max_x: number; min_y: number; max_y: number } | undefined;
+    if (!rtree) {
+      failures.push({ code: "RTREE_INTEGRITY", detail: `feature_id ${feature.feature_id} has no R*Tree row` });
+      continue;
+    }
+    try {
+      const [minX, minY, maxX, maxY] = geometryBbox(feature.geom_json);
+      const tolerance = (value: number) => Math.max(0.01, Math.abs(value) * 1e-7);
+      if (rtree.min_x > minX + tolerance(minX) || rtree.max_x < maxX - tolerance(maxX) || rtree.min_y > minY + tolerance(minY) || rtree.max_y < maxY - tolerance(maxY)) {
+        failures.push({ code: "RTREE_INTEGRITY", detail: `feature_id ${feature.feature_id} bbox does not cover geometry` });
+      }
+    } catch (error) {
+      failures.push({ code: "RTREE_INTEGRITY", detail: `feature_id ${feature.feature_id} bbox sample failed: ${String(error instanceof Error ? error.message : error)}` });
+    }
+  }
+  return failures;
+}
+
+function checkRtree(db: Db): { failures: IntegrityFailure[]; mode: SqliteIntegrityResult["rtreeMode"] } {
+  if (!tableExists(db, "feature") || !tableExists(db, "feature_rtree")) return { failures: [], mode: "none" };
+  const failures: IntegrityFailure[] = [];
+  const count = Number(db.prepare("SELECT COUNT(*) FROM feature").pluck().get());
+  const rtreeCount = Number(db.prepare("SELECT COUNT(*) FROM feature_rtree").pluck().get());
+  if (count !== rtreeCount) failures.push({ code: "RTREE_INTEGRITY", detail: `feature rows ${count} != feature_rtree rows ${rtreeCount}` });
+  try {
+    const row = db.prepare("SELECT rtreecheck('feature_rtree') AS result").get() as { result: unknown };
+    if (String(row?.result ?? "") !== "ok") failures.push({ code: "RTREE_INTEGRITY", detail: `rtreecheck(feature_rtree) returned ${String(row?.result ?? "<empty>")}` });
+    return { failures, mode: "rtreecheck" };
+  } catch (error) {
+    if (!/no such function\s*:\s*rtreecheck/i.test(String(error))) {
+      failures.push({ code: "RTREE_INTEGRITY", detail: `rtreecheck(feature_rtree) failed: ${String(error instanceof Error ? error.message : error)}` });
+      return { failures, mode: "rtreecheck" };
+    }
+    failures.push(...checkRtreeSamples(db, 32));
+    return { failures, mode: "sample" };
+  }
+}
+
+/** 게시 직전 SQLite 파일의 전체 무결성·FK·공간 인덱스를 검사한다. */
+export function checkSqliteIntegrity(path: string): SqliteIntegrityResult {
+  const started = process.hrtime.bigint();
+  const failures: IntegrityFailure[] = [];
+  let sizeBytes = 0;
+  let pageCount: number | null = null;
+  let rtreeMode: SqliteIntegrityResult["rtreeMode"] = "none";
+  try {
+    sizeBytes = statSync(path).size;
+    const db = new Database(path, { readonly: true, fileMustExist: true });
+    try {
+      db.pragma("foreign_keys = ON");
+      pageCount = Number(db.pragma("page_count", { simple: true }));
+      const integrityRows = db.prepare("PRAGMA integrity_check").all() as Array<Record<string, unknown>>;
+      const integrityMessages = integrityRows.map((row) => String(Object.values(row)[0] ?? ""));
+      if (integrityMessages.length !== 1 || integrityMessages[0] !== "ok") {
+        failures.push({ code: "SQLITE_INTEGRITY", detail: `PRAGMA integrity_check: ${integrityMessages.join("; ") || "no result"}` });
+      }
+      const foreignRows = db.prepare("PRAGMA foreign_key_check").all() as Array<Record<string, unknown>>;
+      if (foreignRows.length > 0) {
+        failures.push({ code: "FOREIGN_KEY", detail: `PRAGMA foreign_key_check returned ${foreignRows.length} row(s): ${JSON.stringify(foreignRows.slice(0, 8))}` });
+      }
+      const rtree = checkRtree(db);
+      failures.push(...rtree.failures);
+      rtreeMode = rtree.mode;
+    } finally {
+      db.close();
+    }
+  } catch (error) {
+    failures.push({ code: "SQLITE_INTEGRITY", detail: `SQLite integrity inspection failed: ${String(error instanceof Error ? error.message : error)}` });
+  }
+  const elapsedMs = Number(process.hrtime.bigint() - started) / 1_000_000;
+  return { ok: failures.length === 0, failures, elapsedMs, sizeBytes, pageCount, rtreeMode };
+}
 
 const PROGRESS_EVERY_ROWS = 250_000;
 const HEARTBEAT_MS = 60_000;
@@ -738,6 +872,21 @@ function gate(plan: BuildPlan, previous: Manifest | null, stats: Record<string, 
   }
   if (plan.expectations && plan.expectations.length > 0) {
     failures.push(...checkExpectations(plan.expectations, (siteId, kind) => countNearSite(plan.dataDir, candidate, siteId, kind)).failures);
+  }
+  // Only the files produced by this build need a fresh full scan. Existing
+  // files were already hash-verified by publishManifestLocked and are not
+  // re-scanned on a reference-only rebuild.
+  for (const kind of Object.keys(stats)) {
+    const file = candidate.files[kind];
+    if (!file || !(DATA_FILE_KINDS as readonly string[]).includes(file.kind)) continue;
+    const abs = resolveDataPath(plan.dataDir, file.path);
+    const checked = checkSqliteIntegrity(abs);
+    progressLog(`[gate] sqlite kind=${kind} integrity=${checked.ok ? "ok" : "FAIL"} rtree=${checked.rtreeMode} pages=${checked.pageCount ?? "-"} bytes=${checked.sizeBytes} elapsed=${checked.elapsedMs.toFixed(1)}ms`);
+    for (const failure of checked.failures) {
+      const gateFailure = { code: failure.code, detail: `${kind}: ${failure.detail}` } satisfies GateFailure;
+      failures.push(gateFailure);
+      progressLog(`[gate] FAIL code=${gateFailure.code} detail=${gateFailure.detail}`);
+    }
   }
   return { ok: failures.length === 0, failures };
 }
