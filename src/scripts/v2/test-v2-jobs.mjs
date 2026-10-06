@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 
 const { buildEngineFixture } = await import("./engine-fixture.mjs");
 const A = await import("../../lib/v2/app-db.ts");
-const { postAnalysis, getAnalysis, getAnalysisStatus } = await import("../../lib/v2/engine/api.ts");
+const { cancelAnalysis, postAnalysis, getAnalysis, getAnalysisStatus } = await import("../../lib/v2/engine/api.ts");
 const { HEAVY_TILES, DATE_INDEPENDENT, listJobs, recoverRunningJobs, runHeavyTiles, runQueuedJobs, startJobRunner } = await import("../../lib/v2/engine/jobs.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");
@@ -29,6 +29,37 @@ try {
   assert.equal(initialStatus.body.revision, first.body.revision);
   assert.ok(initialStatus.body.tiles.every((tile) => tile.status));
   assert.equal(getAnalysisStatus(appDb, first.body.analysisId, 17).body.revision, initialStatus.body.revision, "변경 없는 상태 응답은 revision을 유지");
+
+  // 소유자만 취소할 수 있고, 아직 시작하지 않은 무거운 타일은 즉시 취소된다.
+  const queuedCancel = postAnalysis(appDb, dataDir, { ...input, radiusM: 500 }, 17);
+  assert.equal(queuedCancel.status, 202);
+  assert.equal(cancelAnalysis(appDb, queuedCancel.body.analysisId, 18).status, 404, "남의 분석 취소는 숨긴다");
+  const queuedCancelled = cancelAnalysis(appDb, queuedCancel.body.analysisId, 17);
+  assert.equal(queuedCancelled.status, 200);
+  assert.equal(queuedCancelled.body.status, "cancelled");
+  assert.ok(queuedCancelled.body.jobs.every((job) => job.status === "cancelled" && job.retryable), JSON.stringify(queuedCancelled.body.jobs));
+  assert.ok(queuedCancelled.body.results === undefined, "취소 응답은 상태·작업만 반환해도 된다");
+  const queuedCancelledRead = getAnalysis(appDb, queuedCancel.body.analysisId, 17);
+  assert.equal(queuedCancelledRead.status, 200);
+  assert.equal(queuedCancelledRead.body.status, "cancelled");
+  assert.ok(queuedCancelledRead.body.results.filter((result) => HEAVY_TILES.includes(result.tileCode)).every((result) => result.status === "cancelled"));
+  assert.ok(queuedCancelledRead.body.jobs.every((job) => job.status === "cancelled" && job.error.includes("다시 실행")));
+
+  // 실행 중인 행은 요청 시 running을 유지해 현재 타일을 마치고, 재시작 복구 시 cancelled로 확정한다.
+  const runningCancel = postAnalysis(appDb, dataDir, { ...input, radiusM: 1000 }, 17);
+  const runningCode = runningCancel.body.jobs.find((job) => job.status === "queued")?.code;
+  assert.ok(runningCode);
+  appDb.prepare("UPDATE analysis_job SET status = 'running', started_at = ? WHERE analysis_id = ? AND tile_code = ?")
+    .run(new Date().toISOString(), runningCancel.body.analysisId, runningCode);
+  const runningRequested = cancelAnalysis(appDb, runningCancel.body.analysisId, 17);
+  assert.equal(runningRequested.status, 200);
+  const runningJob = listJobs(appDb, runningCancel.body.analysisId).find((job) => job.code === runningCode);
+  assert.equal(runningJob.status, "running");
+  assert.ok(runningJob.cancelRequestedAt);
+  assert.equal(recoverRunningJobs(appDb), 1);
+  const recoveredCancelled = listJobs(appDb, runningCancel.body.analysisId);
+  assert.ok(recoveredCancelled.every((job) => job.status === "cancelled" && job.retryable));
+  assert.equal(getAnalysis(appDb, runningCancel.body.analysisId, 17).body.results.find((result) => result.tileCode === runningCode)?.status, "cancelled");
 
   runHeavyTiles(appDb, dataDir, first.body.analysisId);
   const done = getAnalysis(appDb, first.body.analysisId, 17);

@@ -39,7 +39,8 @@ try {
   // 정상: 기본 반경 800
   const ok = postAnalysis(appDb, dataDir, { address, analysisDate: "2026-09-30" }, 17);
   assert.equal(ok.status, 202);
-  assert.deepEqual(Object.keys(ok.body).sort(), ["analysisId", "jobs", "results", "revision", "summary", "tiles", "timingsMs"]);
+  assert.deepEqual(Object.keys(ok.body).sort(), ["analysisId", "jobs", "results", "revision", "status", "summary", "tiles", "timingsMs"]);
+  assert.equal(ok.body.status, "running");
   assert.equal(ok.body.results.length, TILE_CODES.length);
   assert.equal(ok.body.summary.address, address);
   assert.equal(ok.body.results[0].conditions.radiusM, 800);
@@ -99,9 +100,12 @@ try {
 const { NextRequest } = await import("next/server");
 const post = (await import("../../app/api/v2/analyses/route.ts")).POST;
 const get = (await import("../../app/api/v2/analyses/[id]/route.ts")).GET;
+const del = (await import("../../app/api/v2/analyses/[id]/route.ts")).DELETE;
 const noAuth = await post(new NextRequest("http://localhost/site/api/v2/analyses", { method: "POST", body: JSON.stringify({ address }) }));
 assert.equal(noAuth.status, 401);
 const noAuthGet = await get(new NextRequest("http://localhost/site/api/v2/analyses/x"), { params: Promise.resolve({ id: "x" }) });
 assert.equal(noAuthGet.status, 401);
+const noAuthDelete = await del(new NextRequest("http://localhost/site/api/v2/analyses/x", { method: "DELETE" }), { params: Promise.resolve({ id: "x" }) });
+assert.equal(noAuthDelete.status, 401);
 
 console.log("✓ v2 engine api");

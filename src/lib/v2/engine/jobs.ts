@@ -4,7 +4,7 @@ import { Worker } from "node:worker_threads";
 import { existsSync } from "node:fs";
 import { inflateRawSync } from "node:zlib";
 import type BetterSqlite3 from "better-sqlite3";
-import { enqueueAnalysisJobs, ensureAnalysisJobTable, finishAnalysisRun, getAnalysisRun, openV2AppDb, saveTileResult, findCachedTileResult } from "../app-db";
+import { ANALYSIS_CANCELLED_REASON, cancelQueuedAnalysisJobs, cancelRunningAnalysisJobs, enqueueAnalysisJobs, ensureAnalysisJobTable, finishAnalysisRun, getAnalysisRun, isAnalysisCancellationRequested, openV2AppDb, saveTileResult, findCachedTileResult } from "../app-db";
 import { acquireDataFile, releaseDataFile } from "../data/file-pool";
 import { ManifestError, manifestHash, readArchivedManifest, resolveDataPath, type Manifest } from "../data/manifest";
 import { parseTileResult, tileCacheKey, type RasterRef, type TileConditions, type TileResult } from "../tile-result";
@@ -39,13 +39,14 @@ class PinnedManifestUnavailable extends Error {
 type JobRow = {
   analysis_id: string;
   tile_code: string;
-  status: "queued" | "running" | "done" | "failed";
+  status: "queued" | "running" | "done" | "failed" | "cancelled";
   priority: number;
   enqueued_at: string;
   started_at: string | null;
   finished_at: string | null;
   elapsed_ms: number | null;
   error: string | null;
+  cancel_requested_at: string | null;
 };
 
 type AnalysisRun = NonNullable<ReturnType<typeof getAnalysisRun>>;
@@ -152,8 +153,9 @@ const HEAVY_TILE_COMPUTES: Record<(typeof HEAVY_TILES)[number], (ctx: EngineCont
 
 export function recoverRunningJobs(db: Db): number {
   ensureAnalysisJobTable(db);
+  const cancelled = cancelRunningAnalysisJobs(db);
   const result = db.prepare("UPDATE analysis_job SET status = 'queued', started_at = NULL, finished_at = NULL, elapsed_ms = NULL, error = NULL WHERE status = 'running'").run();
-  return result.changes;
+  return cancelled + result.changes;
 }
 
 function nextQueuedAnalysis(db: Db): string | null {
@@ -168,13 +170,18 @@ function markRunning(db: Db, analysisId: string, code: string, startedAt: string
 }
 
 function markDone(db: Db, analysisId: string, code: string, elapsedMs: number): void {
-  db.prepare("UPDATE analysis_job SET status = 'done', finished_at = ?, elapsed_ms = ?, error = NULL WHERE analysis_id = ? AND tile_code = ?")
+  db.prepare("UPDATE analysis_job SET status = 'done', finished_at = ?, elapsed_ms = ?, error = NULL WHERE analysis_id = ? AND tile_code = ? AND status = 'running'")
     .run(new Date().toISOString(), elapsedMs, analysisId, code);
 }
 
 function markFailed(db: Db, analysisId: string, code: string, elapsedMs: number, reason: string): void {
-  db.prepare("UPDATE analysis_job SET status = 'failed', finished_at = ?, elapsed_ms = ?, error = ? WHERE analysis_id = ? AND tile_code = ?")
+  db.prepare("UPDATE analysis_job SET status = 'failed', finished_at = ?, elapsed_ms = ?, error = ? WHERE analysis_id = ? AND tile_code = ? AND status = 'running'")
     .run(new Date().toISOString(), elapsedMs, reason, analysisId, code);
+}
+
+function markCancelled(db: Db, analysisId: string, code: string, elapsedMs: number): void {
+  db.prepare("UPDATE analysis_job SET status = 'cancelled', finished_at = ?, elapsed_ms = ?, error = ? WHERE analysis_id = ? AND tile_code = ? AND status = 'running'")
+    .run(new Date().toISOString(), elapsedMs, ANALYSIS_CANCELLED_REASON, analysisId, code);
 }
 
 function saveFailedJob(db: Db, run: AnalysisRun, code: string, elapsedMs: number, reason: string, ctx: EngineContext | null, cacheKey: string | null = null): void {
@@ -205,6 +212,11 @@ function finishIfIdle(db: Db, analysisId: string): void {
 }
 
 function failRemainingJobs(db: Db, run: AnalysisRun, error: unknown): void {
+  if (isAnalysisCancellationRequested(db, run.analysisId)) {
+    cancelQueuedAnalysisJobs(db, run.analysisId);
+    finishIfIdle(db, run.analysisId);
+    return;
+  }
   const reason = jobFailureReason(error);
   for (const code of HEAVY_TILES) {
     const job = listJobs(db, run.analysisId).find((candidate) => candidate.code === code);
@@ -253,6 +265,11 @@ export function runHeavyTiles(appDb: Db, dataDir: string, analysisId: string): v
   ensureAnalysisJobTable(appDb);
   const run = getAnalysisRun(appDb, analysisId);
   if (!run) throw new Error(`unknown analysis ${analysisId}`);
+  if (run.status === "cancelled") {
+    cancelQueuedAnalysisJobs(appDb, analysisId);
+    finishIfIdle(appDb, analysisId);
+    return;
+  }
   let ctx: EngineContext | null = null;
   let core: BetterSqlite3.Database | null = null;
   try {
@@ -279,6 +296,10 @@ export function runHeavyTiles(appDb: Db, dataDir: string, analysisId: string): v
   }
   try {
     for (const code of HEAVY_TILES) {
+      if (isAnalysisCancellationRequested(appDb, analysisId)) {
+        cancelQueuedAnalysisJobs(appDb, analysisId);
+        break;
+      }
       const job = listJobs(appDb, analysisId).find((candidate) => candidate.code === code);
       if (!job || job.status !== "queued") continue;
       if (!markRunning(appDb, analysisId, code, new Date().toISOString())) continue;
@@ -300,11 +321,40 @@ export function runHeavyTiles(appDb: Db, dataDir: string, analysisId: string): v
         }
         if (emitted.length > 0) saveTileRasters(appDb, key, emitted);
         const elapsedMs = Math.max(1, Math.round(performance.now() - started));
-        saveTileResultWithElapsed(appDb, tile, key, elapsedMs);
-        markDone(appDb, analysisId, code, elapsedMs);
+        if (isAnalysisCancellationRequested(appDb, analysisId)) {
+          markCancelled(appDb, analysisId, code, elapsedMs);
+          const cancelled = makeTile(engine, {
+            code,
+            status: "cancelled",
+            metrics: [],
+            sources: [],
+            limitations: [{ kind: "unknown", note: ANALYSIS_CANCELLED_REASON }],
+          });
+          saveTileResultWithElapsed(appDb, cancelled, key, elapsedMs);
+        } else {
+          saveTileResultWithElapsed(appDb, tile, key, elapsedMs);
+          markDone(appDb, analysisId, code, elapsedMs);
+        }
       } catch (error) {
         engine.takeRasters(code);
-        saveFailedJob(appDb, run, code, Math.max(1, Math.round(performance.now() - started)), jobFailureReason(error), engine, key);
+        const elapsedMs = Math.max(1, Math.round(performance.now() - started));
+        if (isAnalysisCancellationRequested(appDb, analysisId)) {
+          markCancelled(appDb, analysisId, code, elapsedMs);
+          try {
+            const cancelled = makeTile(engine, {
+              code,
+              status: "cancelled",
+              metrics: [],
+              sources: [],
+              limitations: [{ kind: "unknown", note: ANALYSIS_CANCELLED_REASON }],
+            });
+            saveTileResultWithElapsed(appDb, cancelled, key ?? keyFor(engine, code), elapsedMs);
+          } catch (saveError) {
+            console.warn(`v2 analysis job ${analysisId}/${code} cancelled-result save skipped: ${String(saveError instanceof Error ? saveError.message : saveError).slice(0, 200)}`);
+          }
+        } else {
+          saveFailedJob(appDb, run, code, elapsedMs, jobFailureReason(error), engine, key);
+        }
       }
     }
   } finally {
