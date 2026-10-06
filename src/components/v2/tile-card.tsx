@@ -400,7 +400,7 @@ function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, onF
     <div className={styles.mf}>
       <header className={styles.mfHead}>
         <span className={styles.dot} style={{ background: view.color }} />
-        <h3 className={styles.mfTitle}>{view.title}</h3>
+        <h3 className={styles.mfTitle} title={view.title}>{view.title}</h3>
         {h && (
           <span className={styles.mfKey} title={`${h.label}${h.aux ? ` · ${h.aux}` : ""}`}>
             <b>{h.value}</b>
