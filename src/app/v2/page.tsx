@@ -329,7 +329,7 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
             </span>
           )}
           <span className={styles.spacer} />
-          {demo && <span className={styles.demoTag}>예시 데이터</span>}
+          {demo && <span className={styles.demoTag}>데모 데이터</span>}
           {editing ? (
             <button type="button" className={`${styles.pill} ${styles.pillDark}`} onClick={() => setEditing(false)}>
               완료
@@ -642,6 +642,14 @@ const RADII = [
 ] as const;
 const API = "/site/api/v2/analyses";
 
+/** 401이면 refresh 쿠키로 한 번 갱신하고 같은 요청을 다시 보낸다. */
+async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(url, { ...init, credentials: "include" });
+  if (res.status !== 401) return res;
+  const refreshed = await fetch("/site/api/auth/refresh", { method: "POST", credentials: "include" }).then((r) => r.ok, () => false);
+  return refreshed ? fetch(url, { ...init, credentials: "include" }) : res;
+}
+
 type JobState = { code: string; status: "queued" | "running" | "done" | "failed"; enqueuedAt?: string | null; startedAt?: string | null; elapsedMs: number | null };
 type TileState = { code: string; status: TileResult["status"]; revision: string; elapsedMs?: number | null };
 type Live = { analysisId: string; summary: SiteSummary; results: TileResult[]; jobs: JobState[]; tiles: TileState[]; revision: string; scene: Scene | null };
@@ -676,6 +684,7 @@ export default function V2BoardPage() {
   const [live, setLive] = useState<Live | null>(null);
   const activeJobs = live?.jobs.some((job) => job.status === "queued" || job.status === "running") ?? false;
   const [windRefresh, setWindRefresh] = useState(0);
+  const [wantedId, setWantedId] = useState<string | null>(null);
 
   async function load(res: Response, refreshScene = true, update = true, base: Live | null = live): Promise<Live | undefined> {
     const body = (await res.json().catch(() => ({}))) as Partial<Live> & { error?: string };
@@ -691,7 +700,7 @@ export default function V2BoardPage() {
     let scene: Scene | null = prior?.scene ?? null;
     if (refreshScene) {
       try {
-        const sceneRes = await fetch(`${API}/${encodeURIComponent(body.analysisId)}/scene`);
+        const sceneRes = await apiFetch(`${API}/${encodeURIComponent(body.analysisId)}/scene`);
         if (sceneRes.ok) scene = (await sceneRes.json()) as Scene;
       } catch {
         // 장면이 없어도 분석 결과 보드는 계속 연다. S01은 빈 매스 틀을 표시한다.
@@ -722,7 +731,7 @@ export default function V2BoardPage() {
     setBusy(true);
     setProblem(null);
     try {
-      await load(await fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address: address.trim(), radiusM }) }));
+      await load(await apiFetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address: address.trim(), radiusM }) }));
     } catch {
       setProblem({ text: "서버에 연결하지 못했습니다.", login: false });
     } finally {
@@ -736,8 +745,9 @@ export default function V2BoardPage() {
     if (queryAddress && !addressDirtyRef.current) setAddress(queryAddress);
     const id = new URLSearchParams(window.location.search).get("analysis");
     if (!id) return;
+    setWantedId(id);
     setBusy(true);
-    fetch(`${API}/${encodeURIComponent(id)}`)
+    apiFetch(`${API}/${encodeURIComponent(id)}`)
       .then(async (res) => {
         await load(res);
       })
@@ -756,7 +766,7 @@ export default function V2BoardPage() {
       let shouldContinue = true;
       try {
         const headers: HeadersInit = currentLive.revision ? { "If-None-Match": `"${currentLive.revision}"` } : {};
-        const response = await fetch(`${API}/${encodeURIComponent(currentLive.analysisId)}?status=1`, { headers });
+        const response = await apiFetch(`${API}/${encodeURIComponent(currentLive.analysisId)}?status=1`, { headers });
         if (response.status === 304) {
           shouldContinue = currentLive.jobs.some((job) => job.status === "queued" || job.status === "running");
           delayIndex = Math.min(delayIndex + 1, POLL_DELAYS_MS.length - 1);
@@ -765,7 +775,7 @@ export default function V2BoardPage() {
           const changedCodes = status.tiles.filter((tile) => currentLive.tiles.find((old) => old.code === tile.code)?.revision !== tile.revision).map((tile) => tile.code);
           let next: Live = { ...currentLive, revision: status.revision, tiles: status.tiles, jobs: status.jobs };
           if (changedCodes.length > 0) {
-            const resultResponse = await fetch(`${API}/${encodeURIComponent(currentLive.analysisId)}?tiles=${encodeURIComponent(changedCodes.join(","))}`);
+            const resultResponse = await apiFetch(`${API}/${encodeURIComponent(currentLive.analysisId)}?tiles=${encodeURIComponent(changedCodes.join(","))}`);
             const loaded = await load(resultResponse, false, false, currentLive);
             if (loaded) next = loaded;
           }
@@ -800,7 +810,7 @@ export default function V2BoardPage() {
   useEffect(() => {
     if (!live || windRefresh === 0) return;
     let cancelled = false;
-    void fetch(`${API}/${encodeURIComponent(live.analysisId)}`)
+    void apiFetch(`${API}/${encodeURIComponent(live.analysisId)}`)
       .then((response) => load(response, false, true, live))
       .catch(() => undefined)
       .finally(() => {
@@ -864,6 +874,32 @@ export default function V2BoardPage() {
       )}
     </div>
   );
+
+  // ?analysis= 주소는 불러오기 전·실패 시에도 예시 보드를 보여 주지 않는다(예시 숫자를 내 결과로 오해하는 것을 막는다).
+  if (wantedId && !live) {
+    const loginHref = `/site/login?next=${encodeURIComponent(`/site/v2?analysis=${wantedId}`)}`;
+    return (
+      <main style={{ maxWidth: 480, margin: "15vh auto", padding: "0 16px", textAlign: "center" }}>
+        {busy || !problem ? (
+          <p role="status">분석 결과를 불러오는 중…</p>
+        ) : problem.login ? (
+          <>
+            <h1 style={{ fontSize: 20 }}>로그인이 만료되었습니다</h1>
+            <p role="alert">저장된 분석을 보려면 다시 로그인해 주세요.</p>
+            <a href={loginHref} style={{ display: "inline-block", minHeight: 44, lineHeight: "44px", padding: "0 20px", background: "#1b1b1b", color: "#fff", borderRadius: 8 }}>
+              다시 로그인
+            </a>
+          </>
+        ) : (
+          <>
+            <h1 style={{ fontSize: 20 }}>분석을 불러오지 못했습니다</h1>
+            <p role="alert">{problem.text}</p>
+            <a href="/site/v2">새 분석 시작</a>
+          </>
+        )}
+      </main>
+    );
+  }
 
   return (
     <Board

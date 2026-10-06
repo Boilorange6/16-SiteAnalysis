@@ -100,7 +100,7 @@ assert.ok(!byCode.A01.badges.some((b) => b.text === "탐색용"));
 // 규칙 6
 assert.ok(byCode.A05.sourceLine.includes("kapt 기준일 미확인"));
 assert.equal(byCode.A07.sourceLine, "molit_rtms 2026-09-20");
-assert.equal(byCode.A01.sourceLine, "rail 2026-09-01 · bus_stops 2026-08-15");
+assert.equal(byCode.A01.sourceLine, "OSM 철도(역·출입구·노선) 2026-09-01 · 전국 버스정류장 2026-08-15");
 assert.equal(byCode.S02.sourceLine, "출처 없음");
 
 // 규칙 7·8
@@ -164,3 +164,23 @@ assert.equal(sv.incomplete, true);
 }
 
 console.log("v2 ui view tests passed");
+
+// ── 원천 id 표시 이름: 엔진·예시 보드가 쓰는 모든 원천 id에 사람이 읽는 이름이 있어야 한다 ──
+{
+  const { SOURCE_NAMES } = await import("../../lib/v2/ui/tile-catalog.ts");
+  const { readdirSync, readFileSync, statSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const ids = new Set(["rail", "bus_stops"]);
+  for (const r of [...GODEOK_RESULTS, ...Object.values(RECOVERED)]) for (const s of r.provenance.sources) ids.add(s.sourceId);
+  const walk = (dir) => {
+    for (const f of readdirSync(dir)) {
+      const p = join(dir, f);
+      if (statSync(p).isDirectory()) walk(p);
+      else if (/\.ts$/.test(f)) for (const m of readFileSync(p, "utf8").matchAll(/sourceId: *"([a-z0-9_]+)"/g)) ids.add(m[1]);
+    }
+  };
+  walk(new URL("../../lib/v2", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
+  const missing = [...ids].filter((id) => !SOURCE_NAMES[id]);
+  assert.deepEqual(missing, [], `SOURCE_NAMES에 없는 원천 id: ${missing.join(", ")}`);
+  console.log(`source names ok (${ids.size} ids)`);
+}
