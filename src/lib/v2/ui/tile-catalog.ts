@@ -107,6 +107,23 @@ export const SOURCE_NAMES: Record<string, string> = {
   facility_health_hygiene: "국토교통부 VWorld 도시계획시설",
   facility_environmental_basic: "국토교통부 VWorld 도시계획시설",
   facility_other_infrastructure: "국토교통부 VWorld 도시계획시설",
+  kapt: "K-APT 공동주택 관리정보",
+  molit_rtms: "국토부 아파트 실거래",
+  redevelopment: "정비사업 현황",
+  landuse: "OSM 토지이용·자연 면(Geofabrik)",
+  rail: "OSM 철도(역·출입구·노선)",
+  bus_stops: "전국 버스정류장",
+  reference: "참조 데이터",
+  legal: "법정구역",
+  gis_building: "GIS건물통합정보",
+  osm_buildings: "OSM 건물(Geofabrik)",
+  school_zone_elem: "VWorld 학교 학구도·학교군",
+  fallback_d2q9: "내장 보정 모델(D2Q9 LBM)",
+  mzone_zone: "정비구역 경계",
+  mzone_improvement: "정비사업 현황",
+  mzone_planned: "정비사업 현황",
+  mzone_promotion: "정비사업 현황",
+  mzone_redevelopment: "정비사업 현황",
 };
 export const sourceName = (id: string) => SOURCE_NAMES[id] ?? id;
 
