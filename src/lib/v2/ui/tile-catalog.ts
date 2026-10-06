@@ -1,53 +1,75 @@
-/** 타일 코드 → 화면용 제목·종류·색 (카탈로그 2026-09-29). */
+/** 타일 코드 → 화면용 제목·종류·설명·원천·색 (카탈로그 2026-09-29). */
 export type TileKind = "analysis" | "diagram" | "simulation";
+export type TileCatalogEntry = {
+  title: string;
+  kind: TileKind;
+  description: string;
+  sources: readonly string[];
+  color: string;
+};
+
+const BUILDING_SOURCES = ["building", "building_juso", "gis_bldg"] as const;
+const ZONING_SOURCES = ["zoning_urban", "zoning_management", "zoning_agri_forest", "zoning_nature", "zoning_other"] as const;
+const DISTRICT_SOURCES = ["district_area", "district_greenbelt", "district_land_development", "district_urban_development", "district_industrial"] as const;
+const FACILITY_SOURCES = [
+  "facility_transport",
+  "facility_space",
+  "facility_distribution_supply",
+  "facility_public_culture_sports",
+  "facility_disaster_prevention",
+  "facility_health_hygiene",
+  "facility_environmental_basic",
+  "facility_other_infrastructure",
+] as const;
+const MAINTENANCE_SOURCES = ["maintenance_zone", "maintenance_integrated", "maintenance_std"] as const;
 
 export const TILE_CATALOG = {
-  A01: { title: "입지·대중교통", kind: "analysis", color: "#6A50D3" },
-  A02: { title: "학교·통학구역", kind: "analysis", color: "#E5A11C" },
-  A03: { title: "생활편의·상가", kind: "analysis", color: "#3F9E6B" },
-  A04: { title: "공원·녹지", kind: "analysis", color: "#5C9A3C" },
-  A05: { title: "기존 주거 공급", kind: "analysis", color: "#8C6D5A" },
-  A06: { title: "분양·입주예정 공급", kind: "analysis", color: "#7A7E87" },
-  A07: { title: "매매 실거래", kind: "analysis", color: "#2F6FDB" },
-  A08: { title: "임대차 실거래", kind: "analysis", color: "#2B6CB0" },
-  A09: { title: "정비사업", kind: "analysis", color: "#D6478A" },
-  A10: { title: "계획 철도", kind: "analysis", color: "#8A5BC7" },
-  A11: { title: "인구·가구", kind: "analysis", color: "#2B7A78" },
-  A12: { title: "토지·용도지역", kind: "analysis", color: "#C9A227" },
-  D01: { title: "항공사진", kind: "diagram", color: "#5A6B7B" },
-  D02: { title: "건물", kind: "diagram", color: "#A0522D" },
-  D03: { title: "건축물 용도", kind: "diagram", color: "#B05A3C" },
-  D04: { title: "준공 연대", kind: "diagram", color: "#A0522D" },
-  D05: { title: "건축물 높이", kind: "diagram", color: "#A5673F" },
-  D06: { title: "고층 건물", kind: "diagram", color: "#8B5E83" },
-  D07: { title: "저층 건물", kind: "diagram", color: "#7D6E58" },
-  D08: { title: "용도지역", kind: "diagram", color: "#6D7F4F" },
-  D09: { title: "공원·녹지·하천", kind: "diagram", color: "#4F8A68" },
-  D10: { title: "수관·녹지", kind: "diagram", color: "#3F7D4E" },
-  D11: { title: "구역·지구", kind: "diagram", color: "#537A8F" },
-  D12: { title: "도시계획시설", kind: "diagram", color: "#4E7599" },
-  D13: { title: "도로", kind: "diagram", color: "#657B8D" },
-  D14: { title: "지하철·버스", kind: "diagram", color: "#5B7B9A" },
-  D15: { title: "가구", kind: "diagram", color: "#8A6A4A" },
-  D16: { title: "건물 밀도", kind: "diagram", color: "#4F8A68" },
-  D17: { title: "지형·등고선", kind: "diagram", color: "#6B778D" },
-  D18: { title: "경사도", kind: "diagram", color: "#7C6CAB" },
-  D19: { title: "지적", kind: "diagram", color: "#8A6A4A" },
-  D20: { title: "필지 규모", kind: "diagram", color: "#957B58" },
-  D21: { title: "일조시간", kind: "diagram", color: "#E29A2D" },
-  D22: { title: "바람장미", kind: "diagram", color: "#2B9CBF" },
-  D23: { title: "정비사업", kind: "diagram", color: "#86657C" },
-  D24: { title: "계획 철도", kind: "diagram", color: "#6D6790" },
-  D25: { title: "실거래", kind: "diagram", color: "#667A9C" },
-  D26: { title: "통학구역", kind: "diagram", color: "#C56A2D" },
-  D27: { title: "인구", kind: "diagram", color: "#557F7C" },
-  D28: { title: "도보권", kind: "diagram", color: "#7A5BA6" },
-  D29: { title: "개방감(하늘열림)", kind: "diagram", color: "#4C8FB8" },
-  S01: { title: "3D 매스", kind: "simulation", color: "#3E6FB0" },
-  S02: { title: "일조·그림자", kind: "simulation", color: "#F08A24" },
-  S03: { title: "바람 흐름 탐색", kind: "simulation", color: "#2B9CBF" },
-  S04: { title: "열쾌적(UTCI)", kind: "simulation", color: "#D9534F" },
-} as const satisfies Record<string, { title: string; kind: TileKind; color: string }>;
+  A01: { title: "입지·대중교통", kind: "analysis", description: "지하철·버스와 대지의 접근 거리를 확인합니다.", sources: ["osm_subway", "bus_stop", "osm_roads"], color: "#6A50D3" },
+  A02: { title: "학교·통학구역", kind: "analysis", description: "학교 위치와 학구도·학교군, 학구 연계를 함께 봅니다.", sources: ["school", "school_zone", "school_zone_link"], color: "#E5A11C" },
+  A03: { title: "생활편의·상가", kind: "analysis", description: "생활편의 업종을 유형별로 세어 일상 접근성을 봅니다.", sources: ["store"], color: "#3F9E6B" },
+  A04: { title: "공원·녹지", kind: "analysis", description: "공원 대표점·원천 면적과 보행 접근을 참고합니다.", sources: ["park", "osm_roads"], color: "#5C9A3C" },
+  A05: { title: "기존 주거 공급", kind: "analysis", description: "기존 공동주택의 단지·세대·준공 흐름을 원천별로 봅니다.", sources: ["ledger_recap", "ledger_title", "kapt"], color: "#8C6D5A" },
+  A06: { title: "분양·입주예정 공급", kind: "analysis", description: "분양·입주예정 물량을 원천별로 나눠 중복 가능성을 남깁니다.", sources: ["applyhome", "move_in"], color: "#7A7E87" },
+  A07: { title: "매매 실거래", kind: "analysis", description: "아파트 매매 실거래의 위치·가격·기간을 확인합니다.", sources: ["rtms_apt_trade"], color: "#2F6FDB" },
+  A08: { title: "임대차 실거래", kind: "analysis", description: "아파트 전월세 실거래의 보증금·임대료 흐름을 확인합니다.", sources: ["rtms_apt_rent", "rtms_apt_trade"], color: "#2B6CB0" },
+  A09: { title: "정비사업", kind: "analysis", description: "정비구역과 사업단계를 현황 원천별로 확인합니다.", sources: MAINTENANCE_SOURCES, color: "#D6478A" },
+  A10: { title: "계획 철도", kind: "analysis", description: "계획 철도의 노선·단계와 개략 여부를 표시합니다.", sources: ["planned_rail"], color: "#8A5BC7" },
+  A11: { title: "인구·가구", kind: "analysis", description: "SGIS 1 km 격자 인구·가구를 반경과 함께 읽습니다.", sources: ["sgis_grid"], color: "#2B7A78" },
+  A12: { title: "토지·용도지역", kind: "analysis", description: "용도지역 구성과 개별공시지가를 함께 봅니다.", sources: [...ZONING_SOURCES, "land_price"], color: "#C9A227" },
+  D01: { title: "항공사진", kind: "diagram", description: "항공영상 배경에서 대지와 주변 형태를 확인합니다.", sources: ["vworld_wmts"], color: "#5A6B7B" },
+  D02: { title: "건물", kind: "diagram", description: "건물 발자국과 높이 확보 여부를 평면으로 봅니다.", sources: BUILDING_SOURCES, color: "#A0522D" },
+  D03: { title: "건축물 용도", kind: "diagram", description: "건축물 용도를 건물 단위 구성으로 봅니다.", sources: BUILDING_SOURCES, color: "#B05A3C" },
+  D04: { title: "준공 연대", kind: "diagram", description: "사용승인 연대별 건물 분포를 봅니다.", sources: BUILDING_SOURCES, color: "#A0522D" },
+  D05: { title: "건축물 높이", kind: "diagram", description: "확인·추정 높이와 높이 구간 구성을 봅니다.", sources: BUILDING_SOURCES, color: "#A5673F" },
+  D06: { title: "고층 건물", kind: "diagram", description: "35 m 기준 고층 건물 비율을 봅니다.", sources: BUILDING_SOURCES, color: "#8B5E83" },
+  D07: { title: "저층 건물", kind: "diagram", description: "12 m 기준 저층 건물 비율을 봅니다.", sources: BUILDING_SOURCES, color: "#7D6E58" },
+  D08: { title: "용도지역", kind: "diagram", description: "용도지역 면적 구성과 겹침·미확인 구간을 봅니다.", sources: ZONING_SOURCES, color: "#6D7F4F" },
+  D09: { title: "공원·녹지·하천", kind: "diagram", description: "공원·녹지·하천과 필지의 면적 관계를 봅니다.", sources: ["park", ...ZONING_SOURCES, "parcel_polygon"], color: "#4F8A68" },
+  D10: { title: "수관·녹지", kind: "diagram", description: "항공사진 기반 수관과 OSM 녹지·수계를 함께 봅니다.", sources: ["vworld_wmts", "osm_landuse", "osm_water", "parcel_polygon"], color: "#3F7D4E" },
+  D11: { title: "구역·지구", kind: "diagram", description: "용도지구·구역 경계를 계층별로 확인합니다.", sources: DISTRICT_SOURCES, color: "#537A8F" },
+  D12: { title: "도시계획시설", kind: "diagram", description: "도시계획시설의 선·면·점을 유형별로 확인합니다.", sources: FACILITY_SOURCES, color: "#4E7599" },
+  D13: { title: "도로", kind: "diagram", description: "OSM 도로 중심선 길이와 위계를 확인합니다.", sources: ["osm_roads"], color: "#657B8D" },
+  D14: { title: "지하철·버스", kind: "diagram", description: "운영 중 지하철·버스 시설을 분리해 확인합니다.", sources: ["bus_stop", "osm_subway"], color: "#5B7B9A" },
+  D15: { title: "가구", kind: "diagram", description: "OSM 자동차 도로로 묶은 가구 형태를 참고합니다.", sources: ["osm_roads"], color: "#8A6A4A" },
+  D16: { title: "건물 밀도", kind: "diagram", description: "건물 동수 기반 밀도 추정 분포를 봅니다.", sources: BUILDING_SOURCES, color: "#4F8A68" },
+  D17: { title: "지형·등고선", kind: "diagram", description: "DEM 표면고와 중심 상대 고도·등고선을 봅니다.", sources: ["terrain_tiles"], color: "#6B778D" },
+  D18: { title: "경사도", kind: "diagram", description: "DEM 30 m 격자 기반 경사도를 봅니다.", sources: ["terrain_tiles"], color: "#7C6CAB" },
+  D19: { title: "지적", kind: "diagram", description: "연속지적 도형과 지목을 참조용으로 봅니다.", sources: ["parcel_polygon"], color: "#8A6A4A" },
+  D20: { title: "필지 규모", kind: "diagram", description: "연속지적 도형 면적의 구간별 구성을 봅니다.", sources: ["parcel_polygon"], color: "#957B58" },
+  D21: { title: "일조시간", kind: "diagram", description: "건물·지형 장애물을 반영한 기하학적 일조시간을 봅니다.", sources: [...BUILDING_SOURCES, "parcel_polygon"], color: "#E29A2D" },
+  D22: { title: "바람장미", kind: "diagram", description: "최근접 ASOS 관측소의 연간·계절 풍향을 봅니다.", sources: ["asos"], color: "#2B9CBF" },
+  D23: { title: "정비사업", kind: "diagram", description: "정비구역과 사업단계를 지도·목록으로 확인합니다.", sources: MAINTENANCE_SOURCES, color: "#86657C" },
+  D24: { title: "계획 철도", kind: "diagram", description: "계획 철도 공개 목록의 선형과 개략 여부를 봅니다.", sources: ["planned_rail"], color: "#6D6790" },
+  D25: { title: "실거래", kind: "diagram", description: "위치가 확인된 아파트 매매 실거래를 도판으로 봅니다.", sources: ["rtms_apt_trade"], color: "#667A9C" },
+  D26: { title: "통학구역", kind: "diagram", description: "대지 주변 학구도·학교군 경계를 강조합니다.", sources: ["school_zone"], color: "#C56A2D" },
+  D27: { title: "인구", kind: "diagram", description: "비밀보호 처리가 된 1 km 인구 격자를 봅니다.", sources: ["sgis_grid"], color: "#557F7C" },
+  D28: { title: "도보권", kind: "diagram", description: "OSM 보행망과 80 m/분 기준의 도달 면적을 봅니다.", sources: ["osm_roads"], color: "#7A5BA6" },
+  D29: { title: "개방감(하늘열림)", kind: "diagram", description: "건물·지형 기준 하늘열림(SVF)을 봅니다.", sources: [...BUILDING_SOURCES, "terrain_tiles"], color: "#4C8FB8" },
+  S01: { title: "3D 매스", kind: "simulation", description: "공개 도형과 확보·추정 높이로 주변 매스를 확인합니다.", sources: BUILDING_SOURCES, color: "#3E6FB0" },
+  S02: { title: "일조·그림자", kind: "simulation", description: "대표 날짜의 건물·지형 그림자를 상대적으로 비교합니다.", sources: [...BUILDING_SOURCES, "parcel_polygon"], color: "#F08A24" },
+  S03: { title: "바람 흐름 탐색", kind: "simulation", description: "입력 풍향을 기준으로 바람 흐름을 설계 초기에 탐색합니다.", sources: ["asos", "browser_lbm", "fallback_d2q9"], color: "#2B9CBF" },
+  S04: { title: "열쾌적(UTCI)", kind: "simulation", description: "대표 기상과 매스 조건에서 장소 간 열쾌적을 비교합니다.", sources: ["asos", ...BUILDING_SOURCES], color: "#D9534F" },
+} as const satisfies Record<string, TileCatalogEntry>;
 
 export type TileCode = keyof typeof TILE_CATALOG;
 export const TILE_CODES = Object.keys(TILE_CATALOG) as TileCode[];
@@ -128,6 +150,12 @@ export const SOURCE_NAMES: Record<string, string> = {
 };
 export const sourceName = (id: string) => SOURCE_NAMES[id] ?? id;
 
-export function catalogEntry(code: string): { title: string; kind: TileKind; color: string } {
-  return (TILE_CATALOG as Record<string, { title: string; kind: TileKind; color: string }>)[code] ?? { title: code, kind: "analysis", color: "#7A7E87" };
+export function catalogEntry(code: string): TileCatalogEntry {
+  return (TILE_CATALOG as Record<string, TileCatalogEntry>)[code] ?? {
+    title: code,
+    kind: "analysis",
+    description: "카탈로그에 설명이 등록되지 않았습니다.",
+    sources: [],
+    color: "#7A7E87",
+  };
 }

@@ -280,6 +280,7 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
         </a>
         <header className={styles.topbar}>
           <span className={`${styles.display} ${styles.brand}`}>{editing ? "보드 편집" : "사이트 분석"}</span>
+          <a className={styles.pill} href="/site/v2/guide">가이드</a>
           {editing ? (
             <>
               <span className={styles.editHint}>순서를 바꾸거나 빼세요. 순서는 보고서 순서가 됩니다.</span>
