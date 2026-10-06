@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 SERVER_IP="43.200.41.165"
-SSH_KEY="${SSH_KEY:-D:/V-coding/LightsailDefaultKey-ap-northeast-2.pem}"
+SSH_KEY="${SSH_KEY:-${HOME}/.ssh/LightsailDefaultKey-ap-northeast-2.pem}"
 REMOTE_USER="bitnami"
 REMOTE_DIR="/home/bitnami/site-analysis"
 LOCAL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
