@@ -98,8 +98,8 @@ assert.ok(toTileView(RECOVERED.S03).badges.some((b) => b.text === "탐색용 · 
 assert.ok(!byCode.A01.badges.some((b) => b.text === "탐색용"));
 
 // 규칙 6
-assert.ok(byCode.A05.sourceLine.includes("kapt 기준일 미확인"));
-assert.equal(byCode.A07.sourceLine, "molit_rtms 2026-09-20");
+assert.ok(byCode.A05.sourceLine.includes("K-APT 공동주택 관리정보 기준일 미확인"));
+assert.equal(byCode.A07.sourceLine, "국토부 아파트 실거래 2026-09-20");
 assert.equal(byCode.A01.sourceLine, "OSM 철도(역·출입구·노선) 2026-09-01 · 전국 버스정류장 2026-08-15");
 assert.equal(byCode.S02.sourceLine, "출처 없음");
 
