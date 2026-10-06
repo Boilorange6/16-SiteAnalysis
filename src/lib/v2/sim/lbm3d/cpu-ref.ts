@@ -29,6 +29,30 @@ export interface Lbm3dField {
   densityDriftMax?: number;
   velocityDelta?: number;
   dispatch?: { x: number; y: number; z: number; limit: number; strideX: number; strideXY: number };
+  /** `steps` is what was actually run; this is the requested upper bound. */
+  stepsPlanned?: number;
+  /** Throughput of the compute loop only (no setup/readback). */
+  kernelMlups?: number;
+  /** Largest |raw mass / initial mass - 1| seen before the global mass correction (natural per-step drift). */
+  massRawDriftMax?: number;
+  /** Largest mass-correction factor deviation |factor - 1| applied. */
+  massFactorMax?: number;
+  convergence?: Lbm3dConvergenceReport;
+}
+
+export interface Lbm3dConvergenceReport {
+  /** Averaging blocks completed (each `blockSteps` steps). */
+  blocks: number;
+  blockSteps: number;
+  /** 1-based index of the first block in the averaging window (0 = window never opened). */
+  windowStartBlock: number;
+  /** Relative L2 change between consecutive block means; NaN for the first block. */
+  blockResiduals: number[];
+  /** Relative L2 change of the window's running mean after each block; NaN outside the window / first window block. */
+  windowResiduals: number[];
+  stoppedEarly: boolean;
+  epsilon: number;
+  spinupEpsilon: number;
 }
 
 export interface CpuRunOptions {

@@ -1,8 +1,8 @@
-import { runLbm3d, type Lbm3dField } from "./gpu";
+import { runLbm3d, type Lbm3dConvergence, type Lbm3dField } from "./gpu";
 import type { Lbm3dCase } from "./plan";
 
 export type Lbm3dWorkerRequest =
-  | { type: "run"; id?: string; case: Lbm3dCase }
+  | { type: "run"; id?: string; case: Lbm3dCase; convergence?: Lbm3dConvergence }
   | { type: "cancel"; id?: string };
 
 export type Lbm3dWorkerMessage =
@@ -32,6 +32,7 @@ export function installLbm3dWorker(scope: WorkerScopeLike): void {
     active = { id: request.id, controller };
     void runLbm3d(request.case, {
       signal: controller.signal,
+      convergence: request.convergence,
       onProgress: (progress) => scope.postMessage({ type: "progress", id: request.id, ...progress }),
     }).then((field) => {
       if (active?.controller !== controller) return;

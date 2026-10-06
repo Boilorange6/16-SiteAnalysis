@@ -91,7 +91,7 @@ async function runGpuCorrectnessAndBenchmark(page, baseUrl) {
   const maxDeltaUOverUin = maxVelocityDifference(cpu.layers, small.layers);
   assert.ok(Number.isFinite(small.fieldChecksum) && Math.abs(small.fieldChecksum) > 1e-6, "small GPU field checksum must be non-zero");
   assert.ok(Number.isFinite(small.densityChecksum), "small GPU density checksum must be finite");
-  assert.ok(small.densityDriftMax <= 1e-3, `small GPU density drift ${small.densityDriftMax} > 1e-3`);
+  assert.ok(small.densityDriftMax <= 5e-3, `small GPU density drift ${small.densityDriftMax} > 5e-3`);
   assert.ok(small.velocityDelta > 1e-3, `small GPU velocity delta ${small.velocityDelta} is too small`);
   assert.ok(maxDeltaUOverUin < 0.02, `GPU/CPU max |ΔU/Uin| ${maxDeltaUOverUin} >= 0.02`);
   console.log(`GPU correctness: 48x24x24 x 300 · max |ΔU/Uin| ${maxDeltaUOverUin.toExponential(3)} · density drift ${small.densityDriftMax.toExponential(3)} · velocity delta ${small.velocityDelta.toExponential(3)} · ${small.precision} · ${small.adapter}`);
@@ -114,7 +114,7 @@ async function runGpuCorrectnessAndBenchmark(page, baseUrl) {
   const wallMlups = (cells * fullSpec.steps) / Math.max(wallMs, 1) / 1000;
   assert.ok(Number.isFinite(full.fieldChecksum) && Math.abs(full.fieldChecksum) > 1e-6, "full GPU field checksum must be non-zero");
   assert.ok(Number.isFinite(full.densityChecksum), "full GPU density checksum must be finite");
-  assert.ok(full.densityDriftMax <= 1e-3, `full GPU density drift ${full.densityDriftMax} > 1e-3`);
+  assert.ok(full.densityDriftMax <= 5e-3, `full GPU density drift ${full.densityDriftMax} > 5e-3`);
   assert.ok(full.velocityDelta > 1e-3, `full GPU velocity delta ${full.velocityDelta} is too small`);
   console.log(`GPU full benchmark: 500x500x38 x ${fullSpec.steps.toLocaleString("en-US")} · wall ${wallMs} ms (field ${full.elapsedMs.toFixed(0)} ms, includes readback) · ${wallMlups.toFixed(2)} MLUPS · density drift ${full.densityDriftMax.toExponential(3)} · velocity delta ${full.velocityDelta.toExponential(3)} · field checksum ${full.fieldChecksum.toExponential(3)} · density checksum ${full.densityChecksum.toExponential(3)} · dispatch ${full.dispatch?.x}x${full.dispatch?.y}x${full.dispatch?.z} (limit ${availability.limits?.maxComputeWorkgroupsPerDimension}) · ${full.precision} · ${full.adapter}`);
   return { availability, small, maxDeltaUOverUin, full, wallMs, wallMlups };

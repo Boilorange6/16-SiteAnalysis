@@ -43,6 +43,10 @@ export interface Wind2DInput {
   parallelism?: number;
   /** 지정하면 평균 시작 이후 residual이 이 값 이하일 때 조기 종료한다. */
   convergenceResidual?: number;
+  /** 병렬 worker의 진행(스텝 배리어/완료)이 이 시간(ms) 동안 없으면 오류로 중단한다. 기본 30 s. */
+  workerStallMs?: number;
+  /** 테스트 전용: 이 worker는 시작하지 않은 것처럼 영원히 멈춘다. */
+  workerStallForTest?: number;
 }
 
 export interface Wind2DResult {
@@ -174,10 +178,8 @@ function prepareGrid(nx: number, ny: number, solid: Uint8Array): PreparedGrid {
   return { fluid, fluidCount, regular, edge, east, north, west, south, northEast, northWest, southWest, southEast };
 }
 
-interface SyncWorker {
-  unref?: () => void;
-}
-
+const WORKER_POLL_MS = 250;
+const WORKER_STALL_MS = 30_000;
 
 function nodeBuiltin(name: string): unknown {
   if (typeof process === "undefined") return undefined;
@@ -279,7 +281,7 @@ function computeWind2DParallel(
     fluid: copyToShared(grid.fluid),
   };
 
-  const workers: SyncWorker[] = [];
+  const workers: Worker[] = [];
   for (let workerId = 0; workerId < workerCount; workerId++) {
     const rowStart = Math.floor(workerId * input.ny / workerCount);
     const rowEnd = Math.floor((workerId + 1) * input.ny / workerCount);
@@ -290,6 +292,7 @@ function computeWind2DParallel(
       workerData: {
         ...workerDataBase,
         workerId,
+        stallForTest: input.workerStallForTest === workerId,
         rowStart,
         rowEnd,
         fluidStart: firstFluidAt(grid.fluid, grid.fluidCount, rowStart * input.nx),
@@ -299,16 +302,39 @@ function computeWind2DParallel(
       // the worker is plain .mjs and must not inherit those eval-only flags.
       execArgv: [],
     });
-    worker.unref?.();
+    worker.unref();
     workers.push(worker);
   }
 
   const controlView = new Int32Array(control);
+  // 이벤트 루프가 막혀 있어 worker의 error/exit 이벤트를 받을 수 없다. 대신 배리어 세대(1)·완료 수(2)의
+  // 진행을 짧은 간격으로 확인하고, stallMs 동안 변화가 없으면 시작 실패/종료로 보고 중단한다.
+  const stallMs = input.workerStallMs ?? WORKER_STALL_MS;
+  let lastGeneration = Atomics.load(controlView, 1);
+  let lastDone = Atomics.load(controlView, 2);
+  let lastProgressAt = Date.now();
+  let failure: string | null = null;
   while (Atomics.load(controlView, 2) < workerCount) {
-    if (Atomics.load(controlView, 3) !== 0) break;
-    Atomics.wait(controlView, 2, Atomics.load(controlView, 2));
+    if (Atomics.load(controlView, 3) !== 0) { failure = "parallel D2Q9 worker failed"; break; }
+    Atomics.wait(controlView, 2, Atomics.load(controlView, 2), WORKER_POLL_MS);
+    const generation = Atomics.load(controlView, 1);
+    const done = Atomics.load(controlView, 2);
+    if (generation !== lastGeneration || done !== lastDone) {
+      lastGeneration = generation;
+      lastDone = done;
+      lastProgressAt = Date.now();
+    } else if (Date.now() - lastProgressAt > stallMs) {
+      failure = `parallel D2Q9 worker stalled: no progress for ${stallMs} ms (${done}/${workerCount} finished, step barrier ${generation}); worker did not start or died`;
+      break;
+    }
   }
-  if (Atomics.load(controlView, 3) !== 0) throw new Error("parallel D2Q9 worker failed");
+  if (failure !== null || Atomics.load(controlView, 3) !== 0) {
+    // 배리어에서 기다리는 worker를 깨우고 스레드를 정리한다. terminate()는 동기적으로 스레드 종료를 요청한다.
+    Atomics.store(controlView, 3, 1);
+    Atomics.notify(controlView, 1, workerCount);
+    for (const worker of workers) void worker.terminate().catch(() => undefined);
+    throw new Error(failure ?? "parallel D2Q9 worker failed");
+  }
 
   const delta = new Float64Array(deltaParts);
   const speed = new Float64Array(speedParts);

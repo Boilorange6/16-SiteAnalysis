@@ -1,7 +1,18 @@
+/**
+ * Real-GPU regression for the D3Q19 WebGPU kernel (not part of `npm run test:v2`; needs Chrome + WebGPU).
+ * - small-case parity against the CPU reference (f32 and f16)
+ * - cancellation raises AbortError
+ * - convergence early stop agrees with the full-length run and mass bookkeeping stays tight
+ * Skips (exit 0) when no WebGPU adapter is available.
+ */
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { chromium } from "playwright";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 
+const requireFromMain = createRequire("file:///D:/V-coding/16-SiteAnalysis/package.json");
+const { chromium } = requireFromMain("playwright");
+const { build } = requireFromMain("esbuild");
 const { runCpuReference } = await import("../../../lib/v2/sim/lbm3d/cpu-ref.ts");
 
 function makeCase({ nx, ny, nz, steps }) {
@@ -21,6 +32,16 @@ const chromeCandidates = [
   "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
   `${process.env.LOCALAPPDATA ?? ""}/Google/Chrome/Application/chrome.exe`,
 ].filter((path) => path && existsSync(path));
+
+const bundle = await build({
+  entryPoints: [fileURLToPath(new URL("../../../lib/v2/sim/lbm3d/gpu.ts", import.meta.url))],
+  bundle: true,
+  format: "iife",
+  globalName: "Lbm3dGpu",
+  platform: "browser",
+  target: "es2022",
+  write: false,
+});
 const browser = await chromium.launch({
   headless: true,
   ...(chromeCandidates[0] ? { executablePath: chromeCandidates[0] } : {}),
@@ -28,66 +49,65 @@ const browser = await chromium.launch({
 });
 try {
   const page = await browser.newPage();
-  // WebGPU needs a real file/secure origin; about:blank from setContent can
-  // report navigator.gpu as unavailable even when Chrome supports it. The
-  // standalone harness is the same browser-facing bundle the Judge opens.
-  await page.goto("file:///D:/V-coding/16-SiteAnalysis/.worktrees/v2-p4-t14/src/scripts/v2/lbm3d-harness.html");
-  await page.waitForFunction(() => globalThis.__lbm3dResult !== undefined, null, { timeout: 120000 });
-  const gpuResult = await page.evaluate(async (rawCase) => {
-    const c = { ...rawCase, solid: Uint8Array.from(rawCase.solid) };
-    const available = await globalThis.Lbm3dGpu.webgpuAvailable();
-    if (!available.ok) return { skip: available.reason };
-    const field = await globalThis.Lbm3dGpu.runLbm3d(c);
-    const f32Field = await globalThis.Lbm3dGpu.runLbm3d(c, { precision: "f32" });
-    const controller = new AbortController();
-    let cancelled = null;
-    try {
-      await globalThis.Lbm3dGpu.runLbm3d({ ...c, steps: 300, averageFrom: 180 }, {
-        signal: controller.signal,
-        onProgress: (progress) => { if (progress.step >= 256) controller.abort(); },
-      });
-    } catch (error) {
-      cancelled = { name: error?.name, message: error?.message };
-    }
-    return {
-      available,
-      field: { ...field, layers: field.layers.map((layer) => ({ zM: layer.zM, u: Array.from(layer.u), v: Array.from(layer.v) })) },
-      f32Field: { ...f32Field, layers: f32Field.layers.map((layer) => ({ zM: layer.zM, u: Array.from(layer.u), v: Array.from(layer.v) })) },
-      cancelled,
-    };
-  }, { ...makeCase({ nx: 24, ny: 12, nz: 12, steps: 300 }), solid: Array.from(makeCase({ nx: 24, ny: 12, nz: 12, steps: 300 }).solid) });
-
-  if (gpuResult.skip) {
-    console.log(`SKIP: WebGPU unavailable (${gpuResult.skip})`);
+  // WebGPU needs a secure origin; a file:// page qualifies, about:blank may not.
+  await page.goto(new URL("./blank.html", import.meta.url).href);
+  await page.addScriptTag({ content: bundle.outputFiles[0].text });
+  const available = await page.evaluate(() => globalThis.Lbm3dGpu.webgpuAvailable());
+  if (!available.ok) {
+    console.log(`SKIP: WebGPU unavailable (${available.reason})`);
   } else {
-    const c = makeCase({ nx: 24, ny: 12, nz: 12, steps: 300 });
-    const cpu = runCpuReference(c);
-    const gpuLayer = gpuResult.field.layers[1].u;
-    const cpuLayer = Array.from(cpu.layers[1].u);
-    let maxDifference = 0;
-    for (let i = 0; i < cpuLayer.length; i++) {
-      if (Number.isFinite(cpuLayer[i]) && Number.isFinite(gpuLayer[i])) maxDifference = Math.max(maxDifference, Math.abs(cpuLayer[i] - gpuLayer[i]));
-    }
-    const tolerance = gpuResult.field.precision === "f16" ? 1e-2 : 2e-3;
-    assert.ok(maxDifference < tolerance, `GPU/CPU max difference ${maxDifference} >= ${tolerance}`);
-    let f32Difference = 0;
-    const f32Layer = gpuResult.f32Field.layers[1].u;
-    for (let i = 0; i < cpuLayer.length; i++) {
-      if (Number.isFinite(cpuLayer[i]) && Number.isFinite(f32Layer[i])) f32Difference = Math.max(f32Difference, Math.abs(cpuLayer[i] - f32Layer[i]));
-    }
-    assert.ok(f32Difference < 2e-3, `GPU f32/CPU max difference ${f32Difference} >= 0.002`);
-    assert.equal(gpuResult.cancelled?.name, "AbortError", "GPU cancellation must use AbortError");
-    console.log(`GPU parity: f16 ${maxDifference.toExponential(3)} (< ${tolerance}), f32 ${f32Difference.toExponential(3)} (< 2e-3), adapter ${gpuResult.field.adapter}`);
+    const run = (spec, options) => page.evaluate(async ({ spec: s, options: o }) => {
+      const field = await globalThis.Lbm3dGpu.runLbm3d({ ...s, solid: Uint8Array.from(s.solid) }, o);
+      return { ...field, layers: field.layers.map((l) => ({ zM: l.zM, u: Array.from(l.u), v: Array.from(l.v) })) };
+    }, { spec: { ...spec, solid: Array.from(spec.solid) }, options });
+    const maxDiff = (a, b) => {
+      let m = 0;
+      for (let l = 0; l < a.layers.length; l++) {
+        for (let i = 0; i < a.layers[l].u.length; i++) {
+          const x = a.layers[l].u[i], y = b.layers[l].u[i];
+          if (Number.isFinite(x) && Number.isFinite(y)) m = Math.max(m, Math.abs(x - y));
+        }
+      }
+      return m;
+    };
 
-    const timingCase = makeCase({ nx: 64, ny: 64, nz: 32, steps: 1000 });
-    const timing = await page.evaluate(async (raw) => {
-      const c = { ...raw, solid: Uint8Array.from(raw.solid) };
-      const field = await globalThis.Lbm3dGpu.runLbm3d(c);
-      return { elapsedMs: field.elapsedMs, mlups: field.mlups, precision: field.precision, adapter: field.adapter };
-    }, { ...timingCase, solid: Array.from(timingCase.solid) });
-    console.log(`GPU timing: 64x64x32 x 1,000 -> ${timing.elapsedMs.toFixed(0)} ms, ${timing.mlups.toFixed(2)} MLUPS, ${timing.precision}, ${timing.adapter}`);
+    // 1) parity with the CPU reference
+    const small = makeCase({ nx: 24, ny: 12, nz: 12, steps: 300 });
+    const cpu = runCpuReference(small);
+    const f32 = await run(small, { precision: "f32" });
+    const f16 = await run(small, { precision: "f16" });
+    const d32 = maxDiff({ layers: cpu.layers.map((l) => ({ u: Array.from(l.u) })) }, f32);
+    const d16 = maxDiff({ layers: cpu.layers.map((l) => ({ u: Array.from(l.u) })) }, f16);
+    assert.ok(d32 < 2e-3, `GPU f32 / CPU max |dU/Uin| ${d32} >= 2e-3`);
+    assert.ok(d16 < 1e-2, `GPU f16 / CPU max |dU/Uin| ${d16} >= 1e-2`);
+    assert.ok(f32.densityDriftMax <= 5e-3 && f32.massFactorMax <= 5e-3, "mass bookkeeping drifted");
+    console.log(`GPU parity: f32 ${d32.toExponential(2)}, f16 ${d16.toExponential(2)}, mass raw drift ${f32.massRawDriftMax.toExponential(2)} · ${f32.adapter}`);
 
-    await page.screenshot({ path: "C:/Users/da/AppData/Local/Temp/claude/D--V-coding-16-SiteAnalysis/afa71a56-ea0e-4d38-b7d3-3843d21b9e14/scratchpad/p4-t14/lbm3d-gpu-field.png" });
+    // 2) cancellation
+    const aborted = await page.evaluate(async (spec) => {
+      const controller = new AbortController();
+      try {
+        await globalThis.Lbm3dGpu.runLbm3d({ ...spec, solid: Uint8Array.from(spec.solid), steps: 4000, averageFrom: 2400 }, {
+          signal: controller.signal,
+          onProgress: () => controller.abort(),
+        });
+      } catch (error) {
+        return error?.name;
+      }
+      return null;
+    }, { ...small, solid: Array.from(small.solid) });
+    assert.equal(aborted, "AbortError", "GPU cancellation must use AbortError");
+
+    // 3) early stop vs the full-length run
+    const medium = makeCase({ nx: 64, ny: 64, nz: 24, steps: 9000 });
+    const full = await run(medium, { precision: "f32" });
+    const early = await run(medium, { precision: "f32", convergence: { epsilon: 1e-3 } });
+    assert.ok(early.steps <= medium.steps, "early stop must not exceed the planned steps");
+    assert.ok(early.convergence && early.convergence.blocks >= 4, "convergence report must list the averaged blocks");
+    const dEarly = maxDiff(full, early);
+    assert.ok(dEarly < 5e-3, `early-stop field differs by ${dEarly}`);
+    assert.ok(early.massRawDriftMax <= 5e-3, `mass drift ${early.massRawDriftMax}`);
+    console.log(`early stop: ${early.steps}/${medium.steps} steps, max |dU/Uin| vs full ${dEarly.toExponential(2)}, window from block ${early.convergence.windowStartBlock}`);
   }
 } finally {
   await browser.close();
