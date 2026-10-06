@@ -251,7 +251,7 @@ export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice 
     if (!key || out[key]) continue;
     if (p.kind === "tile" && p.mass) {
       try {
-        out[key] = await rasterizeMass(p.mass);
+        out[key] = await rasterizeMass(p.mass, p.mass.exploded);
       } catch (e) {
         console.warn(`매스 이미지 생성 실패 (${key})`, e);
       }

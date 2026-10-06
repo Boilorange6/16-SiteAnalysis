@@ -171,6 +171,7 @@ export default function TileDialog({ view, included, face, onInclude, onFace, ca
   const [more, setMore] = useState(false); // 모바일 시트 확장
   const [page, setPage] = useState(0); // 설명선 타일: 0 = 개요
   const [windLayerZ, setWindLayerZ] = useState(6);
+  const [massExploded, setMassExploded] = useState(false);
   const basemap = useContext(BasemapContext);
   const setBasemap = useContext(SetBasemapContext);
 
@@ -194,7 +195,7 @@ export default function TileDialog({ view, included, face, onInclude, onFace, ca
     <div className={styles.overlay} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div ref={ref} className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <div className={styles.stage}>
-          <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="detail" siteX={detailSiteX} rightInset={insetOf} legendY={OV.edge + 38 + 8} page={page} onPage={setPage} windLayerZ={windLayerZ} />
+          <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="detail" siteX={detailSiteX} rightInset={insetOf} legendY={OV.edge + 38 + 8} page={page} onPage={setPage} windLayerZ={windLayerZ} massExploded={massExploded} />
         </div>
 
         {state && <StatusPlate view={view} phase={null} />}
@@ -293,6 +294,17 @@ export default function TileDialog({ view, included, face, onInclude, onFace, ca
                   ))}
                 </select>
               </label>
+            </div>
+          )}
+          {view.code === "S01" && view.mass && (
+            <div className={styles.seg} role="group" aria-label="S01 매스 보기">
+              <span>표현</span>
+              <button type="button" aria-pressed={!massExploded} onClick={() => setMassExploded(false)}>
+                기본 매스
+              </button>
+              <button type="button" aria-pressed={massExploded} onClick={() => setMassExploded(true)}>
+                분해
+              </button>
             </div>
           )}
           {view.rows.length > 0 && <RowList rows={view.rows} className={styles.list} />}

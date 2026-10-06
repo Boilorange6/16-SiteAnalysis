@@ -243,6 +243,7 @@ const plan = buildReportPlan({ summary: toSummaryView({ address: "테스트", ar
 const massSlide = plan.find((p) => p.kind === "tile");
 assert.ok(massSlide && massSlide.kind === "tile");
 assert.equal(mapKeyOf(massSlide), "t-S01:mass");
+assert.deepEqual(massSlide.mass?.exploded, { spreadPct: 24, scheme: "use" }, "S01 PPT는 분해 면을 같은 MassFigure 경로로 렌더링");
 const zip = await JSZip.loadAsync(await renderReportPptx(plan));
 const xml = await zip.file("ppt/slides/slide2.xml").async("string");
 assert.match(xml, /DXF·GLB는 내보내기에서/);

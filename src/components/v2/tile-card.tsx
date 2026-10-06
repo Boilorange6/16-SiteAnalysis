@@ -193,14 +193,14 @@ function stageViewForWind(view: TileView, layerZ: number | undefined): TileView 
   return name ? viewWithOnlyRaster(view, name, "") : view;
 }
 
-export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, page, onPage, windLayerZ }: { view: TileView; state: boolean; chart: boolean; frame: "card" | "detail"; siteX?: number | ((w: number) => number); rightInset?: number | ((w: number) => number); legendY?: number; page?: number; onPage?: (p: number) => void; windLayerZ?: number }) {
+export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, page, onPage, windLayerZ, massExploded = false }: { view: TileView; state: boolean; chart: boolean; frame: "card" | "detail"; siteX?: number | ((w: number) => number); rightInset?: number | ((w: number) => number); legendY?: number; page?: number; onPage?: (p: number) => void; windLayerZ?: number; massExploded?: boolean }) {
   const displayView = stageViewForWind(view, windLayerZ);
   if (chart) return <FaceChart view={view} />;
   const card = frame === "card";
   const label = `${view.title} 지도`;
   if (state) return <MapBox model={displayView.backdrop} muted legend={false} north={false} scale={false} credit={false} label={label} siteX={siteX} />;
   if (view.code === "S01" && view.mass) {
-    return <MassFigure scene={view.mass.scene} camera={view.mass.camera} width={960} height={540} label={label} />;
+    return <MassFigure scene={view.mass.scene} camera={view.mass.camera} width={960} height={540} label={label} exploded={massExploded ? { spreadPct: 24, scheme: "use" } : undefined} />;
   }
   if (view.rose) {
     return <WindRoseFigure model={view.rose} width={960} height={540} label={label} />;
@@ -390,7 +390,7 @@ function WindStrip({ view, layerZ, onLayerZ, onOpen }: { view: TileView; layerZ:
 }
 
 /** 지도 면: 헤더 40px(지도 밖) · 지도(남은 높이 전부) · 출처 24px(지도 밖). 지도 위에는 북쪽·축척·한 줄 범례만 둔다. */
-function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, onFlip, onDetail }: { p: TileCardProps; active: boolean; state: boolean; back: boolean; onBack: (v: boolean) => void; windLayerZ: number; onWindLayerZ: (z: number) => void; onFlip: () => void; onDetail?: () => void }) {
+function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, massExploded, onMassExploded, onFlip, onDetail }: { p: TileCardProps; active: boolean; state: boolean; back: boolean; onBack: (v: boolean) => void; windLayerZ: number; onWindLayerZ: (z: number) => void; massExploded: boolean; onMassExploded: (value: boolean) => void; onFlip: () => void; onDetail?: () => void }) {
   const { view } = p;
   const h = view.headline;
   const shortAux = h?.aux && h.aux.length <= 4 ? h.aux : "";
@@ -440,6 +440,11 @@ function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, onF
             <path d="M8 7h9v9" />
           </Svg>
         </button>
+        {view.code === "S01" && !state && view.mass && (
+          <button type="button" className={`${styles.mfWindBtn} ${massExploded ? styles.mfBtnOn : ""}`} aria-pressed={massExploded} onClick={() => onMassExploded(!massExploded)}>
+            {massExploded ? "기본 매스" : "분해"}
+          </button>
+        )}
         <MoreMenu view={view} active={active} back={back} onBack={onBack} face={p.face} onFace={p.onFace} onDetail={onDetail} />
         <button type="button" className={styles.mfBtn} data-card-face-button="summary" onClick={onFlip} aria-pressed aria-label={`${view.title} 요약/지도 보기 전환`} title="요약 보기">
           <Svg size={15}>
@@ -451,7 +456,7 @@ function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, onF
       {view.code === "S03" && !state && <WindStrip view={view} layerZ={windLayerZ} onLayerZ={onWindLayerZ} onOpen={p.onOpen} />}
       <div className={styles.mfMap}>
         <div className={styles.stage}>
-          <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="card" windLayerZ={windLayerZ} />
+          <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="card" windLayerZ={windLayerZ} massExploded={massExploded} />
         </div>
       </div>
       <footer className={styles.mfFoot} title={text}>
@@ -590,6 +595,7 @@ export default function TileCard(p: TileCardProps) {
   const { view, phase } = p;
   const [back, setBack] = useState(false);
   const [windLayerZ, setWindLayerZ] = useState(6);
+  const [massExploded, setMassExploded] = useState(false);
   const cardRef = useRef<HTMLElement>(null);
   const focusFace = useRef<CardFace | null>(null);
   const waiting = phase === "pending" || phase === "running";
@@ -649,7 +655,7 @@ export default function TileCard(p: TileCardProps) {
         </div>
       <div className={`${styles.face} ${styles.faceMap}`} data-on={shown === "map"} inert={shown !== "map"} aria-hidden={shown !== "map"}>
           {mountMap && (
-            <MapFace p={p} active={shown === "map"} state={state} back={back} onBack={setBack} windLayerZ={windLayerZ} onWindLayerZ={setWindLayerZ} onFlip={() => onCardFace("summary")} onDetail={detailable ? () => setDetailOpen(true) : undefined} />
+            <MapFace p={p} active={shown === "map"} state={state} back={back} onBack={setBack} windLayerZ={windLayerZ} onWindLayerZ={setWindLayerZ} massExploded={massExploded} onMassExploded={setMassExploded} onFlip={() => onCardFace("summary")} onDetail={detailable ? () => setDetailOpen(true) : undefined} />
           )}
         </div>
       </div>

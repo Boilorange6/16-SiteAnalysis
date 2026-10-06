@@ -196,7 +196,8 @@ export function buildReportPlan(input: {
     for (const face of faces) {
       const message = STATE_MESSAGE[v.status];
       const result = hasResult(v);
-      const mass = v.mass ?? undefined;
+      // S01 보고서는 화면 토글과 독립적으로 분해 면을 기본 포함한다. 화면·PPT가 같은 MassFigure 경로를 쓴다.
+      const mass = v.mass ? { ...v.mass, exploded: v.mass.exploded ?? { spreadPct: 24, scheme: "use" as const } } : undefined;
       // D22의 뒷면은 사용자가 구성비를 선택할 수 있으므로 장미 그림은 도판 면에만 둔다.
       const rose = face === "back" ? undefined : v.rose ?? undefined;
       raw.push({
