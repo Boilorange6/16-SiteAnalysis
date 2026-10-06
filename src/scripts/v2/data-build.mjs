@@ -1,6 +1,7 @@
 /**
  * v2 데이터 파일 빌드·게시.
  *   npm run data:build -- --version 2026-09-30a [--raw .cache/v2/raw] [--dem-source glo30|hgt] [--only core,buildings,parcels,reference,market,terrain] [--expectations exp.json] [--with buildings,parcels] [--wait-lock [분]]
+ *   buildings 전용: [--sido 11,41] 이 시도만 · [--no-juso] 도로명주소 건물 보조 원천 제외
  * 원천 zip은 먼저 풀고(이미 풀린 것은 건너뜀), 원천 파일은 폴더마다 가장 새 파일을 쓴다.
  */
 import { readdirSync, statSync, existsSync, readFileSync, openSync, readSync, closeSync } from "node:fs";
@@ -23,7 +24,8 @@ const {
 } = await import("../../lib/v2/ingest/build.ts");
 const { buildParcelPoints } = await import("../../lib/v2/ingest/sources/parcels.ts");
 const { buildParcelPolygons } = await import("../../lib/v2/ingest/sources/parcel-polygons.ts");
-const { buildBuildings } = await import("../../lib/v2/ingest/sources/buildings.ts");
+const { buildBuildings, FLOOR_HEIGHT_M } = await import("../../lib/v2/ingest/sources/buildings.ts");
+const { buildJusoBuildings, gisFeatureIdBound, jusoShpPerSido, shpExtent, JUSO_LICENSE_CODE, JUSO_PROVIDER, JUSO_RIGHTS, JUSO_SOURCE_ID, JUSO_SOURCE_URL, OVERLAP_MIN } = await import("../../lib/v2/ingest/sources/juso-buildings.ts");
 const { buildLegalAreas } = await import("../../lib/v2/ingest/sources/legal-areas.ts");
 const { buildLedger } = await import("../../lib/v2/ingest/sources/ledger.ts");
 const { buildPointSource, STORE_SPEC, BUS_STOP_SPEC, PARK_SPEC } = await import("../../lib/v2/ingest/sources/points.ts");
@@ -147,6 +149,7 @@ console.log("unzip:", extractAll(join(raw, "legal_dong")).length + extractAll(jo
 /** 세트들 중 가장 오래된 날짜의 첫 파일(릴리스 기준일용) */
 const oldestFile = (sets) => [...sets.values()].sort((a, b) => a.date.localeCompare(b.date))[0].files[0];
 const flat = (sets) => [...sets.values()].flatMap((v) => v.files);
+const oldestJuso = (sets) => [...sets.values()].sort((a, b) => a.date.localeCompare(b.date))[0].file;
 
 /** 지적도·GIS건물 파일과 표제부를 고르고, 법정구역의 모든 시도가 지적도 또는 건물 파일로 덮이는지 확인한다. */
 async function discoverCore() {
@@ -217,23 +220,69 @@ if (only.has("core")) {
 if (only.has("buildings")) {
   // 건물 도형: 받은 모든 시도의 GIS건물통합정보. 시도 하나라도 없으면 있는 시도만 적재하고 그 사실을 알린다.
   // 이 빌더는 현재 core를 건드리지 않는다(ctx.core는 읽기 전용으로 전달됨) — --only buildings는 매니페스트의 core를 그대로 재사용한다.
-  const buildingAll = latestShpPerSido([...walk(join(raw, "gis_building"))], "AL_D010");
+  // --sido 11,41: 이 시도만 적재한다(GIS건물·도로명주소 건물 모두). 검증용 — 재개할 때도 같은 값을 줘야 한다.
+  const sidoOnly = opt("sido") ? new Set(String(opt("sido")).split(",")) : null;
+  const buildingAll = new Map([...latestShpPerSido([...walk(join(raw, "gis_building"))], "AL_D010")].filter(([s]) => !sidoOnly || sidoOnly.has(s)));
   if (buildingAll.size === 0) throw new Error("GIS건물(gis_building) 파일이 없습니다 — vworld:fetch로 받으세요");
+  const maxYear = new Date().getUTCFullYear();
   const buildingFiles = progressFiles(flat(buildingAll));
-  const buildingProgress = progressSpec("building", "buildings", buildingFiles, { sourcePattern: "gis_building/AL_D010", maxYear: new Date().getUTCFullYear() });
+  // 행안부 도로명주소 건물(보조 원천): raw/juso가 있으면 GIS건물 단계 뒤에 시도 파일마다 한 단계씩 잇는다. --no-juso로 끈다.
+  let jusoAll = new Map();
+  if (!flag("no-juso") && existsSync(join(raw, "juso"))) {
+    extractSelected(join(raw, "juso"), (entry) => {
+      const m = /(?:^|[\\/])TL_SPBD_BULD_(\d{2})_\d{6}\.(?:shp|dbf|prj|shx|cpg)$/i.exec(entry);
+      return m !== null && (!sidoOnly || sidoOnly.has(m[1]));
+    });
+    jusoAll = new Map([...jusoShpPerSido([...walk(join(raw, "juso"))])].filter(([s]) => !sidoOnly || sidoOnly.has(s)));
+  }
+  const jusoFiles = progressFiles([...jusoAll.values()].map((v) => v.file));
+  const withJuso = jusoFiles.length > 0;
+  const buildingProgress = progressSpec("building", "buildings", [...buildingFiles, ...jusoFiles], {
+    sourcePattern: "gis_building/AL_D010", maxYear,
+    ...(withJuso ? { juso: { sourcePattern: "juso/TL_SPBD_BULD", overlapMin: OVERLAP_MIN, floorHeightM: FLOOR_HEIGHT_M } } : {}),
+  });
   progress.buildings = buildingProgress;
-  const buildingByPath = new Map(buildingFiles.map((file) => [file.path, file.absPath]));
+  const buildingByPath = new Map([...buildingFiles, ...jusoFiles].map((file) => [file.path, file.absPath]));
   builders.buildings = async (db) => {
     const rel = release(db, "building", oldestFile(buildingAll), "국토교통부(VWorld GIS건물통합정보)", "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=18", "CC-BY");
-    const b = await buildResumableSourceFiles(db, {
-      spec: buildingProgress,
-      releaseId: rel,
-      fillFields: ["heightM", "floorsAbove", "useCode", "approvalDate"],
-      buildFile: (file) => buildBuildings(db, readShp(buildingByPath.get(file.path)), rel, { maxYear: JSON.parse(buildingProgress.parameters).maxYear }),
+    console.log(`buildings: 시도 ${partCounts(buildingAll)}${withJuso ? ` · 도로명주소 건물 시도 ${[...jusoAll.keys()].join(",")}` : " · 도로명주소 건물 없음(GIS건물만)"}`);
+    if (!withJuso) {
+      const b = await buildResumableSourceFiles(db, {
+        spec: buildingProgress,
+        releaseId: rel,
+        fillFields: ["heightM", "floorsAbove", "useCode", "approvalDate"],
+        buildFile: (file) => buildBuildings(db, readShp(buildingByPath.get(file.path)), rel, { maxYear }),
+      });
+      b.expectedRegions = [...buildingAll.keys()];
+      return [b];
+    }
+    const jusoRel = insertRelease(db, {
+      sourceId: JUSO_SOURCE_ID, provider: JUSO_PROVIDER, sourceUrl: JUSO_SOURCE_URL,
+      sourceAsOf: asOfOf(oldestJuso(jusoAll)), fetchedAt: statSync(oldestJuso(jusoAll)).mtime.toISOString(),
+      checksum: `size-mtime:${jusoFiles.reduce((a, f) => a + f.size, 0)}-${Math.max(...jusoFiles.map((f) => f.mtimeMs))}`,
+      licenseCode: JUSO_LICENSE_CODE, rights: JUSO_RIGHTS,
     });
-    b.expectedRegions = [...buildingAll.keys()];
-    console.log(`buildings: 시도 ${partCounts(buildingAll)}`);
-    return [b];
+    const sidoOfFile = new Map([...buildingAll].flatMap(([sido, v]) => v.files.map((f) => [f, sido])));
+    const steps = [
+      ...buildingFiles.map((file) => ({
+        file,
+        run: async () => {
+          const s = await buildBuildings(db, readShp(file.absPath), rel, { maxYear });
+          s.expectedRegions = [sidoOfFile.get(file.absPath)];
+          return [s];
+        },
+      })),
+      // 도로명주소 건물: 위 GIS건물 단계가 모두 끝난 뒤(순서 보장) — 겹침 판정 기준이 되는 GIS 건물 feature_id 상한을 처음 한 번 정해 둔다.
+      ...[...jusoAll].map(([sido, v]) => ({
+        file: jusoFiles.find((f) => f.absPath === v.file),
+        run: async () => {
+          const s = await buildJusoBuildings(db, readShp(v.file, { native: true }), jusoRel, { extent: shpExtent(v.file), gisMaxFeatureId: gisFeatureIdBound(db) });
+          s.expectedRegions = [sido];
+          return [s];
+        },
+      })),
+    ];
+    return buildResumableSteps(db, buildingProgress, steps);
   };
 }
 if (only.has("parcels")) {
