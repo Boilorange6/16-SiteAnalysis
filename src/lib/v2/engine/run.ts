@@ -2,7 +2,7 @@
  * 분석 실행: manifest 읽기 → 대지 확정 → 타일 계산(캐시 우선) → 저장. analysis-skeleton.ts의 흐름을 따른다.
  * 분석마다 manifest를 다시 읽는다(다른 프로세스가 새 버전을 게시할 수 있다).
  */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import type BetterSqlite3 from "better-sqlite3";
 import type { LngLat } from "../crs";
@@ -10,7 +10,9 @@ import { createAnalysisRun, enqueueAnalysisJobs, finishAnalysisRun, findCachedTi
 import { acquireDataFile, releaseDataFile } from "../data/file-pool";
 import { readManifest } from "../data/manifest";
 import { tileCacheKey, type TileResult } from "../tile-result";
-import { saveTileRasters } from "../raster-store";
+import { loadTileRaster, saveTileRasters } from "../raster-store";
+import { canonicalJson, sha256Hex } from "../canonical-json";
+import { SEASONS } from "../ingest/sources/asos-wind";
 import type { SiteSummary } from "../ui/tile-view";
 import { catalogEntry } from "../ui/tile-catalog";
 import { EngineContext } from "./context";
@@ -138,9 +140,24 @@ export const TILES: Array<[code: string, compute: (ctx: EngineContext) => TileRe
 
 export const todayKst = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
 
-function cacheKeyFor(ctx: EngineContext, code: string): string {
+function cacheKeyFor(ctx: EngineContext, code: string, upstream: string | null = null): string {
   const conditions = DATE_INDEPENDENT_CODES.has(code) ? { ...ctx.conditions, analysisDate: "date-independent" } : ctx.conditions;
-  return tileCacheKey({ tileCode: code, manifestHash: ctx.manifestHash, engineVersion: cacheEngineVersion(code), conditions });
+  const key = tileCacheKey({ tileCode: code, manifestHash: ctx.manifestHash, engineVersion: cacheEngineVersion(code), conditions });
+  return upstream ? sha256Hex(`${key}:${upstream}`) : key;
+}
+
+/** S04 reads S03's stored wind/obstacle rasters, and S03's own cache key does not change when a 2D/3D/uploaded wind
+ * replaces them — so the S04 key also hashes the raster bytes it will read. */
+export function s03InputsHash(db: BetterSqlite3.Database, analysisId: string): string {
+  const row = db.prepare("SELECT cache_key FROM tile_result WHERE analysis_id = ? AND tile_code = 'S03' AND status IN ('complete','partial')").get(analysisId) as { cache_key: string } | undefined;
+  const hash = createHash("sha256");
+  for (const name of [...SEASONS.map((season) => `wind_${season}_z06`), "obstacle_height"]) {
+    const stored = row ? loadTileRaster(db, row.cache_key, name) : null;
+    hash.update(`${name}:`);
+    if (stored) hash.update(canonicalJson(stored.ref)).update(stored.blob);
+    hash.update("\n");
+  }
+  return hash.digest("hex");
 }
 
 function pendingTile(ctx: EngineContext, code: string): TileResult {
@@ -223,7 +240,7 @@ export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, inpu
     const tileTimings: Record<string, number> = {};
     for (const [code, compute] of TILES) {
       const tileStarted = performance.now();
-      const key = cacheKeyFor(ctx, code);
+      const key = cacheKeyFor(ctx, code, code === "S04" ? s03InputsHash(appDb, analysisId) : null);
       const cached = findCachedTileResult(appDb, key);
       let tile: TileResult;
       if (cached) {

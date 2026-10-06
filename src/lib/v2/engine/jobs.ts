@@ -9,8 +9,9 @@ import { acquireDataFile, releaseDataFile } from "../data/file-pool";
 import { ManifestError, manifestHash, readArchivedManifest, resolveDataPath, type Manifest } from "../data/manifest";
 import { parseTileResult, tileCacheKey, type RasterRef, type TileConditions, type TileResult } from "../tile-result";
 import { loadTileRaster, saveTileRasters } from "../raster-store";
+import { sha256Hex } from "../canonical-json";
 import { EngineContext, type RasterValues } from "./context";
-import { saveTileResultWithElapsed, TILES } from "./run";
+import { s03InputsHash, saveTileResultWithElapsed, TILES } from "./run";
 import { d10 } from "./tiles/d10";
 import { d21 } from "./tiles/d21";
 import { d29 } from "./tiles/d29";
@@ -213,9 +214,10 @@ function failRemainingJobs(db: Db, run: AnalysisRun, error: unknown): void {
   finishIfIdle(db, run.analysisId);
 }
 
-function keyFor(ctx: EngineContext, code: string): string {
+function keyFor(ctx: EngineContext, code: string, upstream: string | null = null): string {
   const conditions = DATE_INDEPENDENT.has(code) ? { ...ctx.conditions, analysisDate: "date-independent" } : ctx.conditions;
-  return tileCacheKey({ tileCode: code, manifestHash: ctx.manifestHash, engineVersion: cacheEngineVersion(code), conditions });
+  const key = tileCacheKey({ tileCode: code, manifestHash: ctx.manifestHash, engineVersion: cacheEngineVersion(code), conditions });
+  return upstream ? sha256Hex(`${key}:${upstream}`) : key;
 }
 
 function valuesFromStored(ref: RasterRef, blob: Buffer): RasterValues {
@@ -284,7 +286,7 @@ export function runHeavyTiles(appDb: Db, dataDir: string, analysisId: string): v
       let key: string | null = null;
       let emitted: Array<{ ref: RasterRef; blob: Buffer }> = [];
       try {
-        key = keyFor(engine, code);
+        key = keyFor(engine, code, code === "S04" ? s03InputsHash(appDb, analysisId) : null);
         const cached = findCachedTileResult(appDb, key);
         let tile: TileResult;
         if (cached) {

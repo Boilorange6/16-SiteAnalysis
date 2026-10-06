@@ -1,16 +1,17 @@
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
+import { createHash } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { deflateRawSync } from "node:zlib";
+import { deflateRawSync, inflateRawSync } from "node:zlib";
 
 const { buildEngineFixture, CENTER } = await import("./engine-fixture.mjs");
 const A = await import("../../lib/v2/app-db.ts");
 const { runAnalysis } = await import("../../lib/v2/engine/run.ts");
 const { runHeavyTiles } = await import("../../lib/v2/engine/jobs.ts");
 const { getAnalysisRun } = A;
-const { loadTileRaster } = await import("../../lib/v2/raster-store.ts");
+const { loadTileRaster, saveTileRasters } = await import("../../lib/v2/raster-store.ts");
 const { loadTileResults } = A;
 const { putWindField, runWindFallbackJob } = await import("../../lib/v2/engine/wind-api.ts");
 
@@ -117,6 +118,24 @@ try {
   assert.ok(fallbackTile.metrics.every((metric) => metric.unit !== "m/s"));
   assert.match(fallbackTile.limitations.map((item) => item.note).join(" "), /2D 평면 대체 계산/);
   assert.equal(fallbackTile.conditions.simulation.fallbackReason, "WebGPU 미지원: 테스트 사유");
+
+  // S04 캐시 키는 S03 바람 래스터 내용을 따라간다(S03 cache_key는 2D/3D/업로드 교체에도 그대로).
+  const s04Key = () => appDb.prepare("SELECT cache_key FROM tile_result WHERE analysis_id = ? AND tile_code = 'S04'").get(fallback.analysisId)?.cache_key;
+  runHeavyTiles(appDb, dataDir, fallback.analysisId);
+  const s04Before = s04Key();
+  assert.ok(s04Before);
+  const s03Key = s03State(appDb, fallback.analysisId).row.cache_key;
+  const windName = fallbackTile.presentation.rasters.map((ref) => ref.name).find((name) => /^wind_(spring|summer|autumn|winter)_z06$/.test(name));
+  assert.ok(windName, "2D 대체 계산이 계절 바람 래스터를 남김");
+  const windRaster = loadTileRaster(appDb, s03Key, windName);
+  const raw = inflateRawSync(windRaster.blob);
+  raw[0] ^= 1;
+  const blob = deflateRawSync(raw);
+  const ref = { ...windRaster.ref, bytes: blob.length, sha256: createHash("sha256").update(blob).digest("hex") };
+  saveTileRasters(appDb, s03Key, [{ ref, blob }]);
+  appDb.prepare("UPDATE analysis_job SET status = 'queued' WHERE analysis_id = ? AND tile_code = 'S04'").run(fallback.analysisId);
+  runHeavyTiles(appDb, dataDir, fallback.analysisId);
+  assert.notEqual(s04Key(), s04Before, "S03 바람이 바뀌면 S04를 캐시에서 재사용하지 않음");
 
   assert.equal(getAnalysisRun(appDb, first.analysisId).userId, "7");
   assert.ok(loadTileResults(appDb, first.analysisId).some((tile) => tile.tileCode === "S03"));
