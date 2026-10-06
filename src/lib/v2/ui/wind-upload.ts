@@ -1,6 +1,6 @@
 import type { RasterRef } from "../tile-result";
 import { maxOf } from "../extent";
-import { rotateFromWindFrame } from "../sim/lbm2d";
+import { rotateFromWindFrame } from "../sim/wind-frame";
 import { webgpuAvailable, type WebGpuAvailability } from "../sim/lbm3d/gpu";
 import { planGrid, voxelize, type Lbm3dCase } from "../sim/lbm3d/plan";
 import type { Lbm3dField } from "../sim/lbm3d/cpu-ref";
