@@ -17,23 +17,24 @@ import {
 } from "../../sim/radiation";
 import { fillRing, shadowPieces } from "../../sim/sun-field";
 import { kst, sunPosition } from "../../sim/sun";
-import { UTCI_BREAKS, UTCI_WIND_RANGE, utci } from "../../sim/utci";
+import { UTCI_BREAKS, UTCI_WIND_RANGE, utciEvaluator } from "../../sim/utci";
 import type { RasterData } from "../../raster-store";
 import type { EngineContext, SourceRef } from "../context";
 import { CANOPY_ASSUMED_HEIGHT_M, canopyFor } from "./canopy-shared";
 import { est, makeTile, missing, obs } from "./common";
-import { BUILDING_SOURCES } from "./buildings-shared";
+import { BUILDING_SOURCES, buildingRows } from "./buildings-shared";
 import { notProvided } from "./not-provided";
-import { SEASON_SUN_DATES, sunDateValue, sunFieldFor, sunFieldsFor, sunGridFor, sunObstaclesFor } from "./sun-shared";
-import { svfFor } from "./svf-shared";
+import { SEASON_SUN_DATES, sunDateValue, sunGridFor, sunHourlyShadeFor, sunObstaclesFor } from "./sun-shared";
+import { SVF_CELL_M, SVF_MAX_DIST_M, svfFor } from "./svf-shared";
 
 /** UTCI representative hours are KST wall-clock hours. */
 export const UTCI_HOURS = [10, 14, 18] as const;
 export const UTCI_CELL_M = 2;
 
 const UTCI_SEASONS = [...SEASONS] as readonly Season[];
-const RASTER_SCALE = 0.25;
-const RASTER_OFFSET = -40;
+// u8 0..252 → -50..+76 °C (0.5 °C step). 253–255 are sentinels, so data never collides with them.
+export const RASTER_SCALE = 0.5;
+export const RASTER_OFFSET = -50;
 const RASTER_OUT_OF_RANGE = 253;
 const RASTER_BUILDING = 254;
 const RASTER_OUTSIDE = 255;
@@ -44,7 +45,8 @@ const UTCI_CATEGORIES = [
   { key: "extreme_cold", label: "극한 한랭", test: (value: number) => value < -40 },
   { key: "very_strong_cold", label: "매우 강한 한랭", test: (value: number) => value >= -40 && value < -27 },
   { key: "strong_cold", label: "강한 한랭", test: (value: number) => value >= -27 && value < -13 },
-  { key: "moderate_cold", label: "중간 한랭", test: (value: number) => value >= -13 && value < UTCI_BREAKS[0] },
+  { key: "moderate_cold", label: "중간 한랭", test: (value: number) => value >= -13 && value < 0 },
+  { key: "slight_cold", label: "약한 한랭", test: (value: number) => value >= 0 && value < UTCI_BREAKS[0] },
   { key: "no_thermal_stress", label: "열적 쾌적", test: (value: number) => value >= UTCI_BREAKS[0] && value < UTCI_BREAKS[1] },
   { key: "moderate_heat", label: "중간 열스트레스", test: (value: number) => value >= UTCI_BREAKS[1] && value < UTCI_BREAKS[2] },
   { key: "strong_heat", label: "강한 열스트레스", test: (value: number) => value >= UTCI_BREAKS[2] && value < UTCI_BREAKS[3] },
@@ -77,9 +79,9 @@ interface SeasonHourResult {
   season: Season;
   hour: (typeof UTCI_HOURS)[number];
   raster: RasterRef;
-  inRangeValues: number[];
-  sunValues: number[];
-  shadeValues: number[];
+  inRangeValues: Hist;
+  sunValues: Hist;
+  shadeValues: Hist;
   input: WeatherRow;
   sunAltitude: number;
   shadeCells: number;
@@ -197,13 +199,31 @@ function windRatioAt(layer: WindLayer, x: number, y: number): number | null {
   return Number.isFinite(ratio) ? ratio : null;
 }
 
-function quantile(values: number[], q: number): number | null {
-  if (values.length === 0) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const position = (sorted.length - 1) * q;
+/** value → cell count. UTCI has few thousand distinct values per cut, so quantiles never need a per-cell array. */
+type Hist = { counts: Map<number, number>; n: number };
+
+function addHist(hist: Hist, value: number, count: number): void {
+  hist.counts.set(value, (hist.counts.get(value) ?? 0) + count);
+  hist.n += count;
+}
+
+/** Same linear-interpolated quantile as sorting every cell value, computed from the histogram. */
+function quantile(hist: Hist, q: number): number | null {
+  if (hist.n === 0) return null;
+  const entries = [...hist.counts].sort((a, b) => a[0] - b[0]);
+  const position = (hist.n - 1) * q;
   const lower = Math.floor(position);
   const upper = Math.ceil(position);
-  return lower === upper ? sorted[lower] : sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
+  const at = (rank: number): number => {
+    let seen = 0;
+    for (const [value, count] of entries) {
+      seen += count;
+      if (rank < seen) return value;
+    }
+    return entries[entries.length - 1][0];
+  };
+  const low = at(lower);
+  return lower === upper ? low : low + (at(upper) - low) * (position - lower);
 }
 
 function dayOfYear(year: number, month: number, day: number): number {
@@ -248,8 +268,8 @@ interface HourlyShadeGrid {
   rows: number;
 }
 
-function hourlyShadeGrid(field: ReturnType<typeof sunFieldFor>, hour: number, grid: ReturnType<typeof sunGridFor>): HourlyShadeGrid | null {
-  const hourly = field?.hourly.find((item) => item.kstHour === hour);
+function hourlyShadeGrid(hourlyMasks: ReturnType<typeof sunHourlyShadeFor> extends Map<unknown, infer V> ? V : never, hour: number, grid: ReturnType<typeof sunGridFor>): HourlyShadeGrid | null {
+  const hourly = hourlyMasks?.find((item) => item.kstHour === hour);
   if (!hourly || !grid) return null;
   return { shade: hourly.shade, x0: grid.x0, y0: grid.y0, cellM: grid.cellM, cols: grid.cols, rows: grid.rows };
 }
@@ -268,9 +288,7 @@ function categoryIndex(value: number): number {
   return UTCI_CATEGORIES.length - 1;
 }
 
-function rawUtci(value: number): number {
-  // 253–255 are reserved for out-of-range, building and outside. The public
-  // u8/0.25/-40 contract is retained; exact unquantized values remain in metrics.
+export function rawUtci(value: number): number {
   return Math.max(0, Math.min(RASTER_OUT_OF_RANGE - 1, Math.round((value - RASTER_OFFSET) / RASTER_SCALE)));
 }
 
@@ -300,13 +318,13 @@ function windSourceFor(ctx: EngineContext): string {
 
 function metricForInput(row: WeatherRow, season: Season, hour: number): TileResult["metrics"] {
   const suffix = `_${season}_h${hour}`;
-  const label = `대표 기상 ${hour}시간 중앙값 · ${SEASON_KO[season]}`;
+  const label = `${SEASON_KO[season]} ${hour}시 대표 기상`;
   return [
-    obs(`input_ta_c${suffix}`, `${label} 기온`, row.ta_med!, "°C", "s04-input@1:weather_season_hour.ta_med"),
-    obs(`input_rh_pct${suffix}`, `${label} 습도`, row.hm_med!, "%", "s04-input@1:weather_season_hour.hm_med"),
-    obs(`input_ws10_ms${suffix}`, `${label} 관측소 10m 풍속`, row.ws_med!, "m/s", "s04-input@1:weather_season_hour.ws_med"),
-    obs(`input_ghi_wm2${suffix}`, `${label} 일사량`, row.ghi_med_wm2!, "W/m²", "s04-input@1:weather_season_hour.ghi_med_wm2"),
-    obs(`input_cloud10${suffix}`, `${label} 운량`, row.cloud_med!, "10분위", "s04-input@1:weather_season_hour.cloud_med"),
+    obs(`input_ta_c${suffix}`, `${label} 기온`, round1(row.ta_med!), "°C", "s04-input@1:weather_season_hour.ta_med"),
+    obs(`input_rh_pct${suffix}`, `${label} 습도`, Math.round(row.hm_med!), "%", "s04-input@1:weather_season_hour.hm_med"),
+    obs(`input_ws10_ms${suffix}`, `${label} 관측소 10m 풍속`, round1(row.ws_med!), "m/s", "s04-input@1:weather_season_hour.ws_med"),
+    obs(`input_ghi_wm2${suffix}`, `${label} 일사량`, Math.round(row.ghi_med_wm2!), "W/m²", "s04-input@1:weather_season_hour.ghi_med_wm2"),
+    obs(`input_cloud10${suffix}`, `${label} 운량`, round1(row.cloud_med!), "/10", "s04-input@1:weather_season_hour.cloud_med"),
   ];
 }
 
@@ -326,10 +344,11 @@ function optionalMetric(
 
 function categoryLegend(): Array<{ label: string; min: number | null; max: number | null }> {
   return [
-    { label: "UTCI 극한 한랭 (< −40°C)", min: -40, max: -40 },
+    { label: "UTCI 극한 한랭 (< −40°C)", min: -50, max: -40 },
     { label: "UTCI 매우 강한 한랭 (−40~−27°C)", min: -40, max: -27 },
     { label: "UTCI 강한 한랭 (−27~−13°C)", min: -27, max: -13 },
-    { label: "UTCI 중간 한랭 (−13~9°C)", min: -13, max: 9 },
+    { label: "UTCI 중간 한랭 (−13~0°C)", min: -13, max: 0 },
+    { label: "UTCI 약한 한랭 (0~9°C)", min: 0, max: 9 },
     { label: "UTCI 열적 쾌적 (9~26°C)", min: 9, max: 26 },
     { label: "UTCI 중간 열스트레스 (26~32°C)", min: 26, max: 32 },
     { label: "UTCI 강한 열스트레스 (32~38°C)", min: 32, max: 38 },
@@ -361,10 +380,10 @@ function caseMetrics(result: SeasonHourResult): TileResult["metrics"] {
   return [
     ...metricForInput(result.input, result.season, result.hour),
     obs(`sun_alt_deg${suffix}`, `태양고도 · ${SEASON_KO[result.season]} ${result.hour}시`, round1(result.sunAltitude), "도", "s04-sun@1:SEASON_SUN_DATES·KST 시각 태양고도"),
-    optionalMetric(`utci_median${suffix}`, `UTCI 중앙값 · ${SEASON_KO[result.season]} ${result.hour}시`, inRangeMedian, "°C", "s04-utci@1:Bröde2012 + 6방향 tmrt", null, result.inRangeValues.length),
-    optionalMetric(`utci_p90${suffix}`, `UTCI P90 · ${SEASON_KO[result.season]} ${result.hour}시`, p90, "°C", "s04-utci@1:Bröde2012 + 6방향 tmrt", null, result.inRangeValues.length),
-    optionalMetric(`utci_sun_median${suffix}`, `양지 UTCI 중앙값 · ${SEASON_KO[result.season]} ${result.hour}시`, sunMedian, "°C", "s04-utci-sun@1:in-range sunlit cells", null, result.sunValues.length),
-    optionalMetric(`utci_shade_median${suffix}`, `그늘 UTCI 중앙값 · ${SEASON_KO[result.season]} ${result.hour}시`, shadeMedian, "°C", "s04-utci-shade@1:in-range shaded cells", null, result.shadeValues.length),
+    optionalMetric(`utci_median${suffix}`, `UTCI 중앙값 · ${SEASON_KO[result.season]} ${result.hour}시`, inRangeMedian, "°C", "s04-utci@1:Bröde2012 + 6방향 tmrt", null, result.inRangeValues.n),
+    optionalMetric(`utci_p90${suffix}`, `UTCI P90 · ${SEASON_KO[result.season]} ${result.hour}시`, p90, "°C", "s04-utci@1:Bröde2012 + 6방향 tmrt", null, result.inRangeValues.n),
+    optionalMetric(`utci_sun_median${suffix}`, `양지 UTCI 중앙값 · ${SEASON_KO[result.season]} ${result.hour}시`, sunMedian, "°C", "s04-utci-sun@1:in-range sunlit cells", null, result.sunValues.n),
+    optionalMetric(`utci_shade_median${suffix}`, `그늘 UTCI 중앙값 · ${SEASON_KO[result.season]} ${result.hour}시`, shadeMedian, "°C", "s04-utci-shade@1:in-range shaded cells", null, result.shadeValues.n),
     optionalMetric(`sun_shade_diff_c${suffix}`, `양지−그늘 UTCI 차이 · ${SEASON_KO[result.season]} ${result.hour}시`, sunMedian !== null && shadeMedian !== null ? sunMedian - shadeMedian : null, "°C", "s04-sun-shade@1:양지 중앙값−그늘 중앙값"),
     est(`shade_pct${suffix}`, `그늘 면적률 · ${SEASON_KO[result.season]} ${result.hour}시`, percentage(result.shadeCells, denominator), "%", "s04-shade-share@1:그늘 셀 면적÷계산 대상 셀 면적", result.shadeCells, denominator),
     est(`tree_shade_pct${suffix}`, `수관 그늘 면적률 · ${SEASON_KO[result.season]} ${result.hour}시`, percentage(result.treeShadeCells, denominator), "%", "s04-tree-shade@1:수관 그림자 셀 면적÷계산 대상 셀 면적", result.treeShadeCells, denominator),
@@ -401,48 +420,50 @@ function calculateCase(
   ctx: EngineContext,
   shared: NonNullable<ReturnType<typeof svfFor>>,
   obstacles: ReturnType<typeof sunObstaclesFor>,
+  hourlyShadeBySeason: ReturnType<typeof sunHourlyShadeFor>,
   buildingMask: Uint8Array,
-  wind: WindLayer,
+  inside: Uint8Array,
+  ratioGrid: Float64Array,
   input: WeatherRow,
   season: Season,
   hour: (typeof UTCI_HOURS)[number],
 ): SeasonHourResult {
   const grid = shared.grid;
-  const field = sunFieldFor(ctx, season);
+  const hourlyMasks = hourlyShadeBySeason.get(season) ?? null;
   const { year, month, day } = dateParts(ctx, season);
   const sun = sunPosition(ctx.input.center[1], ctx.input.center[0], kst(year, month, day, hour));
   const dayNumber = dayOfYear(year, month, day);
   const treeMask = treeShadeFor(ctx, grid, obstacles, season, hour);
-  const hourlyShade = hourlyShadeGrid(field, hour, sunGridFor(ctx));
+  const hourlyShade = hourlyShadeGrid(hourlyMasks, hour, sunGridFor(ctx));
   const values = new Uint8Array(grid.cols * grid.rows);
   values.fill(RASTER_OUTSIDE);
-  const inRangeValues: number[] = [];
-  const sunValues: number[] = [];
-  const shadeValues: number[] = [];
+  // Per distinct (Tmrt, wind) pair: UTCI value, its raster byte and class, and how many sunlit/shaded cells map to it.
+  interface Combo { value: number; raw: number; category: number; sun: number; shade: number }
   const categoryCounts = Array.from({ length: UTCI_CATEGORIES.length + 1 }, () => 0);
   let shadeCells = 0;
   let treeShadeCells = 0;
   let consideredCells = 0;
   let outOfRangeCells = 0;
   const tmrtCache = new Map<number, number>();
-  const utciCache = new Map<string, number>();
-  const [cx, cy] = toUtmk(ctx.input.center);
+  const combos = new Map<number, Combo>();
+  const evaluateUtci = utciEvaluator(input.ta_med ?? Number.NaN, input.hm_med ?? Number.NaN);
+  const inputsFinite = finite(input.ws_med) && finite(input.ta_med) && finite(input.hm_med) && finite(input.ghi_med_wm2) && finite(input.cloud_med);
 
   for (let rowIndex = 0; rowIndex < grid.rows; rowIndex += 1) {
     const y = grid.y0 + (rowIndex + 0.5) * grid.cellM;
     for (let col = 0; col < grid.cols; col += 1) {
       const index = rowIndex * grid.cols + col;
-      const x = grid.x0 + (col + 0.5) * grid.cellM;
-      if (Math.hypot(x - cx, y - cy) > ctx.input.radiusM) continue;
+      if (inside[index] === 0) continue;
       if (buildingMask[index] === 1) {
         values[index] = RASTER_BUILDING;
         continue;
       }
       const svfValue = shared.svf[index];
       if (!Number.isFinite(svfValue)) continue;
-      const ratio = windRatioAt(wind, x, y);
-      if (ratio === null || !finite(input.ws_med) || !finite(input.ta_med) || !finite(input.hm_med) || !finite(input.ghi_med_wm2) || !finite(input.cloud_med)) continue;
-      const va10Local = ratio * input.ws_med;
+      const ratio = ratioGrid[index];
+      if (Number.isNaN(ratio) || !inputsFinite) continue;
+      const x = grid.x0 + (col + 0.5) * grid.cellM;
+      const va10Local = ratio * input.ws_med!;
       const fieldShade = sun.altitudeDeg > 0 && fieldShadeAt(hourlyShade, x, y);
       const treeShade = sun.altitudeDeg > 0 && treeMask[index] === 1;
       const shade = sun.altitudeDeg <= 0 || fieldShade || treeShade;
@@ -461,10 +482,10 @@ function calculateCase(
       let radiant = tmrtCache.get(tmrtKey);
       if (radiant === undefined) {
         radiant = tmrt({
-          taC: input.ta_med,
-          rhPct: input.hm_med,
-          ghiWm2: input.ghi_med_wm2,
-          cloud10: input.cloud_med,
+          taC: input.ta_med!,
+          rhPct: input.hm_med!,
+          ghiWm2: input.ghi_med_wm2!,
+          cloud10: input.cloud_med!,
           sunAltDeg: sun.altitudeDeg,
           dayOfYear: dayNumber,
           svf: tmrtKey / 2000 - (shade ? 0.0005 : 0),
@@ -475,20 +496,26 @@ function calculateCase(
       }
       const vaKey = Math.round(va10Local * 100);
       const radiantKey = Math.round(radiant * 10);
-      const cacheKey = `${radiantKey}:${vaKey}`;
-      let value = utciCache.get(cacheKey);
-      if (value === undefined) {
-        value = utci(input.ta_med, radiantKey / 10, vaKey / 100, input.hm_med).value;
-        utciCache.set(cacheKey, value);
+      const comboKey = (radiantKey + 4096) * 8192 + vaKey;
+      let combo = combos.get(comboKey);
+      if (combo === undefined) {
+        const value = evaluateUtci(radiantKey / 10, vaKey / 100);
+        combo = { value, raw: Number.isFinite(value) ? rawUtci(value) : RASTER_OUTSIDE, category: Number.isFinite(value) ? categoryIndex(value) : -1, sun: 0, shade: 0 };
+        combos.set(comboKey, combo);
       }
-      if (!Number.isFinite(value)) continue;
-      inRangeValues.push(value);
-      const category = categoryIndex(value);
-      categoryCounts[category] += 1;
-      values[index] = rawUtci(value);
-      if (shade) shadeValues.push(value);
-      else sunValues.push(value);
+      if (combo.category < 0) continue;
+      categoryCounts[combo.category] += 1;
+      values[index] = combo.raw;
+      if (shade) combo.shade += 1;
+      else combo.sun += 1;
     }
+  }
+  const inRangeValues: Hist = { counts: new Map(), n: 0 };
+  const sunValues: Hist = { counts: new Map(), n: 0 };
+  const shadeValues: Hist = { counts: new Map(), n: 0 };
+  for (const combo of combos.values()) {
+    if (combo.sun > 0) { addHist(sunValues, combo.value, combo.sun); addHist(inRangeValues, combo.value, combo.sun); }
+    if (combo.shade > 0) { addHist(shadeValues, combo.value, combo.shade); addHist(inRangeValues, combo.value, combo.shade); }
   }
 
   const rasterData: RasterData = {
@@ -520,18 +547,6 @@ export function s04(ctx: EngineContext): TileResult {
   if (weather.kind === "not_provided") return notProvided(ctx, "S04", weather.note);
   if (weather.kind === "legacy") return notProvided(ctx, "S04", weather.note);
 
-  const canopy = canopyFor(ctx);
-  const shared = svfFor(ctx, canopy?.polygons ?? null);
-  if (!shared) return notProvided(ctx, "S04", "건물 자료가 없어 UTCI 복사·그늘장을 계산하지 못했습니다.");
-
-  const allObstacles = sunObstaclesFor(ctx, canopy?.polygons ?? null);
-  const buildingMask = new Uint8Array(shared.grid.cols * shared.grid.rows);
-  for (const obstacle of sunObstaclesFor(ctx, null)) fillRing(buildingMask, shared.grid, obstacle.ring);
-
-  const sources = mergeSources(weather.sources, ctx.sources("buildings", BUILDING_SOURCES));
-  const limitations = fixedLimitations();
-  if (!canopy) limitations.push({ kind: "not_provided", note: "항공사진 수관 자료 미적재 — 수관 그림자를 반영하지 않았습니다." });
-
   const calculated: SeasonHourResult[] = [];
   const missingSeasons: Season[] = [];
   const readySeasons: Array<{ season: Season; wind: WindLayer; rows: WeatherRow[] }> = [];
@@ -545,10 +560,43 @@ export function s04(ctx: EngineContext): TileResult {
     }
     readySeasons.push({ season, wind, rows });
   }
-  if (readySeasons.length === UTCI_SEASONS.length) sunFieldsFor(ctx);
-  else for (const ready of readySeasons) sunFieldFor(ctx, ready.season);
-  for (const ready of readySeasons) {
-    for (let index = 0; index < UTCI_HOURS.length; index += 1) calculated.push(calculateCase(ctx, shared, allObstacles, buildingMask, ready.wind, ready.rows[index]!, ready.season, UTCI_HOURS[index]));
+  const noBuildings = "건물 자료가 없어 UTCI 복사·그늘장을 계산하지 못했습니다.";
+  // Season readiness is cheap; a result still waiting for S03 wind must not pay for canopy detection and SVF.
+  const calcReady = readySeasons.length > 0;
+  const canopy = calcReady ? canopyFor(ctx) : null;
+  const shared = calcReady ? svfFor(ctx, canopy?.polygons ?? null) : null;
+  if (calcReady ? !shared : buildingRows(ctx, Math.min(5000, ctx.input.radiusM + SVF_MAX_DIST_M + SVF_CELL_M)) === null) return notProvided(ctx, "S04", noBuildings);
+
+  const sources = mergeSources(weather.sources, ctx.sources("buildings", BUILDING_SOURCES));
+  const limitations = fixedLimitations();
+  if (calcReady && !canopy) limitations.push({ kind: "not_provided", note: "항공사진 수관 자료 미적재 — 수관 그림자를 반영하지 않았습니다." });
+
+  const allObstacles = shared ? sunObstaclesFor(ctx, canopy?.polygons ?? null) : [];
+  const buildingMask = new Uint8Array(shared ? shared.grid.cols * shared.grid.rows : 0);
+  if (shared) for (const obstacle of sunObstaclesFor(ctx, null)) fillRing(buildingMask, shared.grid, obstacle.ring);
+  const hourlyShadeBySeason = shared ? sunHourlyShadeFor(ctx, readySeasons.map((ready) => ready.season), UTCI_HOURS) : new Map();
+  // Radius mask once; S03 relative-wind magnitude resampled onto the 2 m grid once per season (shared by its three hours).
+  const grid = shared?.grid ?? { cols: 0, rows: 0, x0: 0, y0: 0, cellM: UTCI_CELL_M };
+  const inside = new Uint8Array(grid.cols * grid.rows);
+  const [cx, cy] = toUtmk(ctx.input.center);
+  for (let row = 0; row < grid.rows; row += 1) {
+    const y = grid.y0 + (row + 0.5) * grid.cellM;
+    for (let col = 0; col < grid.cols; col += 1) {
+      if (Math.hypot(grid.x0 + (col + 0.5) * grid.cellM - cx, y - cy) <= ctx.input.radiusM) inside[row * grid.cols + col] = 1;
+    }
+  }
+  for (const ready of shared ? readySeasons : []) {
+    const ratioGrid = new Float64Array(grid.cols * grid.rows).fill(Number.NaN);
+    for (let row = 0; row < grid.rows; row += 1) {
+      const y = grid.y0 + (row + 0.5) * grid.cellM;
+      for (let col = 0; col < grid.cols; col += 1) {
+        const index = row * grid.cols + col;
+        if (inside[index] === 0) continue;
+        const ratio = windRatioAt(ready.wind, grid.x0 + (col + 0.5) * grid.cellM, y);
+        if (ratio !== null) ratioGrid[index] = ratio;
+      }
+    }
+    for (let index = 0; index < UTCI_HOURS.length; index += 1) calculated.push(calculateCase(ctx, shared!, allObstacles, hourlyShadeBySeason, buildingMask, inside, ratioGrid, ready.rows[index]!, ready.season, UTCI_HOURS[index]));
   }
 
   const metrics = calculated.reduce<TileResult["metrics"]>((all, result) => [...all, ...caseMetrics(result)], []);

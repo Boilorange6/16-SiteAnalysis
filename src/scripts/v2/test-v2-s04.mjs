@@ -7,7 +7,8 @@ import { inflateRawSync } from "node:zlib";
 
 import { buildEngineFixture, CENTER } from "./engine-fixture.mjs";
 import { EngineContext } from "../../lib/v2/engine/context.ts";
-import { s04, UTCI_HOURS } from "../../lib/v2/engine/tiles/s04.ts";
+import { RASTER_OFFSET, RASTER_SCALE, rawUtci, s04, UTCI_HOURS } from "../../lib/v2/engine/tiles/s04.ts";
+import { toTileView } from "../../lib/v2/ui/tile-view.ts";
 import { encodeRaster } from "../../lib/v2/raster-store.ts";
 import { toUtmk } from "../../lib/v2/crs.ts";
 import { paintRgba } from "../../lib/v2/ui/raster-image.ts";
@@ -117,7 +118,7 @@ function assertCategoryShare(tile, suffix) {
     .filter((item) => item.id.startsWith("share_utci_") && item.id.endsWith(suffix))
     .map((item) => item.value)
     .filter((value) => value !== null);
-  assert.equal(shares.length, 10, "ten UTCI category shares are present");
+  assert.equal(shares.length, 11, "ten UTCI class shares plus out-of-range are present");
   const total = shares.reduce((sum, value) => sum + value, 0);
   assert.ok(Math.abs(total - 100) <= 1, `category shares sum to 100 (got ${total})`);
 }
@@ -188,7 +189,49 @@ async function main() {
 
     assert.equal(normal.presentation.rasters.length, 12);
     assert.ok(normal.presentation.rasters.every((raster) => raster.cellM === 2));
-    assert.ok(normal.presentation.rasters.every((raster) => raster.scale === 0.25 && raster.offset === -40));
+    assert.ok(normal.presentation.rasters.every((raster) => raster.scale === 0.5 && raster.offset === -50 && raster.palette === "utci"));
+
+    // Encoding: hot cells must not saturate; 253/254/255 never collide with data.
+    assert.ok(Math.abs(rawUtci(40) * RASTER_SCALE + RASTER_OFFSET - 40) <= 0.5, "40 °C round-trips within 0.5 °C");
+    for (const celsius of [-39.8, -13, 9, 26.3, 38.6, 46, 52.2]) assert.ok(Math.abs(rawUtci(celsius) * RASTER_SCALE + RASTER_OFFSET - celsius) <= 0.25 + 1e-9, `${celsius} °C round-trips`);
+    assert.equal(rawUtci(500), 252, "values above the range clamp below the sentinels");
+    assert.equal(rawUtci(-500), 0);
+    for (let celsius = -60; celsius <= 90; celsius += 0.1) assert.ok(rawUtci(celsius) < 253, "data never reaches a sentinel byte");
+    const decoded = [...normalRaw].filter((raw) => raw < 253).map((raw) => raw * RASTER_SCALE + RASTER_OFFSET).sort((a, b) => a - b);
+    assert.ok(decoded[decoded.length - 1] > 30, "summer afternoon raster keeps hot values above the old 23 °C ceiling");
+    const medianDecoded = decoded[Math.floor((decoded.length - 1) / 2)];
+    assert.ok(Math.abs(medianDecoded - metricValue(normal, `utci_median${summer14}`)) <= 0.5, "raster median agrees with the reported median");
+
+    // Palette: the standard ten classes are visibly separated in the hot range.
+    const style = RASTER_STYLES.utci;
+    for (const classBreak of [-40, -27, -13, 0, 9, 26, 32, 38, 46]) assert.ok(style.breaks.includes(classBreak), `standard class boundary ${classBreak} is a palette break`);
+    assert.equal(style.colors.length, style.breaks.length + 1);
+    assert.equal(style.legendLabels.length, 10, "ten Korean class names");
+    assert.equal(new Set(style.colors).size, style.colors.length, "every step has its own color");
+    const swatch = (celsius) => {
+      const rawOne = new Uint8Array([rawUtci(celsius)]);
+      return [...paintRgba({ ...normal.presentation.rasters[0], cols: 1, rows: 1 }, rawOne, style)].join(",");
+    };
+    assert.equal(new Set([27, 33, 40, 48].map(swatch)).size, 4, "26/32/38/46 classes paint four distinct colors");
+    assert.notEqual(swatch(33.2), swatch(35.1), "shaded (33.2) and sunlit (35.1) cells of the same class are visibly different");
+    assert.notEqual(swatch(31), swatch(33), "adjacent classes differ");
+    const sentinel = (raw) => [...paintRgba({ ...normal.presentation.rasters[0], cols: 1, rows: 1 }, new Uint8Array([raw]), style)].join(",");
+    assert.equal(sentinel(255).split(",")[3], "0", "outside is transparent");
+    assert.notEqual(sentinel(253), sentinel(rawUtci(48)), "out-of-range wind is not painted as extreme heat");
+    const block = paintRgba({ ...normal.presentation.rasters[0], cols: 3, rows: 3 }, new Uint8Array(9).fill(254), style);
+    assert.equal([...block.slice(16, 20)].join(","), "248,250,252,255", "building interior is a white footprint (edge cells are outlined)");
+
+    // Display: representative cut drives the headline and default raster, numbers are rounded.
+    const view = toTileView(normal);
+    assert.equal(view.headline.label, "UTCI 중앙값 · 여름 14시");
+    assert.match(view.headline.value, /^-?\d+\.\d°C$/);
+    assert.equal(view.headline.value, `${metricValue(normal, `utci_median${summer14}`).toFixed(1)}°C`);
+    assert.equal(view.map.rasters[0].name, "utci_summer_h14");
+    assert.equal(view.map.rasterOptions.length, 12, "the other eleven cuts stay selectable");
+    assert.ok(!view.map.notes.includes("반경 안 표시할 지물 없음"));
+    assert.ok(view.rows.every((row) => !/\d\.\d{2,}/.test(row.value)), "no long decimals in rows");
+    assert.ok(view.rows.some((row) => row.label === "봄 10시 대표 기상 운량" && row.value === "5/10") || view.rows.some((row) => /대표 기상 운량$/.test(row.label) && /\/10$/.test(row.value)));
+    assert.ok(view.rows.every((row) => !/대표 기상 \d+시간 중앙값|10분위/.test(row.label + row.value)));
 
     const partialDir = await fixture({});
     try {

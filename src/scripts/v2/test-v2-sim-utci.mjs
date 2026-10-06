@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 
 const radiation = await import("../../lib/v2/sim/radiation.ts");
 const { erbsSplit, skyEmissivity, tmrt } = radiation;
-const { UTCI_BREAKS, UTCI_WIND_RANGE, utci, vapourPressureHpa } = await import("../../lib/v2/sim/utci.ts");
+const { UTCI_BREAKS, UTCI_WIND_RANGE, utci, utciEvaluator, vapourPressureHpa } = await import("../../lib/v2/sim/utci.ts");
 const { maxOf } = await import("../../lib/v2/extent.ts");
 
 const near = (actual, expected, tolerance, label) => {
@@ -96,3 +96,12 @@ assert.ok(medianMs < 1000, `UTCI 100000셀 중앙값 성능 초과: ${medianMs.t
 assert.ok(maxMs < 1750, `UTCI 100000셀 반복 지연 성능 초과: ${maxMs.toFixed(1)} ms`);
 
 console.log(`v2 sim-utci: ok (sun ${summerSun.toFixed(2)}°C, shade ${summerShade.toFixed(2)}°C, night ${night.toFixed(2)}°C)`);
+
+// S04 batch evaluator: identical polynomial, folded constants (floating-point rounding only).
+for (const [ta, rh] of [[-8.4, 61], [14.2, 53], [29.2, 58], [36, 40]]) {
+  const evaluate = utciEvaluator(ta, rh);
+  for (const tmrtOffset of [-12, 0, 7, 25, 38]) {
+    for (const va of [0.5, 1.3, 3.1, 8, 17]) near(evaluate(ta + tmrtOffset, va), utci(ta, ta + tmrtOffset, va, rh).value, 1e-9, `utciEvaluator ${ta}/${rh}/${tmrtOffset}/${va}`);
+  }
+}
+console.log("v2 sim-utci evaluator: ok");

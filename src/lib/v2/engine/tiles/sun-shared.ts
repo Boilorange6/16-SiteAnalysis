@@ -392,6 +392,40 @@ export function sunFieldsFor(ctx: EngineContext): Map<SunDateKey, SunFieldResult
   });
 }
 
+type HourlyShade = SunFieldResult["hourly"];
+
+/**
+ * Hourly shade masks for the given dates and KST hours (S04 needs only 3 hours per season).
+ * A date S02 already computed in this context is reused; otherwise only the requested hours are
+ * rasterized (same makeShadeMask as the full-day field, so masks are bit-identical) instead of
+ * the whole day's 10-minute pass, and the dates run on the sun-field workers in parallel.
+ */
+export function sunHourlyShadeFor(ctx: EngineContext, keys: readonly SunDateKey[], hours: readonly number[]): Map<SunDateKey, HourlyShade | null> {
+  const out = new Map<SunDateKey, HourlyShade | null>();
+  const full = precomputedFieldsFor(ctx);
+  const light = ctx.memo("sun:hours", () => new Map<string, HourlyShade | null>());
+  const missing: SunDateKey[] = [];
+  for (const key of keys) {
+    if (full.has(key)) out.set(key, full.get(key)?.hourly ?? null);
+    else if (light.has(`${key}:${hours.join(",")}`)) out.set(key, light.get(`${key}:${hours.join(",")}`) ?? null);
+    else missing.push(key);
+  }
+  if (missing.length === 0) return out;
+  const grid = sunGridFor(ctx);
+  if (!grid) {
+    for (const key of missing) out.set(key, null);
+    return out;
+  }
+  const obstacles = sunObstaclesFor(ctx, null);
+  const horizon = horizonFor(ctx);
+  const results = computeSunFields(missing.map((key) => ({ ...sunFieldInputFor(ctx, key, grid, obstacles, horizon), onlyHours: hours })));
+  missing.forEach((key, index) => {
+    light.set(`${key}:${hours.join(",")}`, results[index].hourly);
+    out.set(key, results[index].hourly);
+  });
+  return out;
+}
+
 export function sunDateValue(ctx: EngineContext, dateKey: SunDateKey): string {
   const date = dateFor(ctx, dateKey);
   return String(date.year).padStart(4, "0") + "-" + String(date.month).padStart(2, "0") + "-" + String(date.day).padStart(2, "0");
