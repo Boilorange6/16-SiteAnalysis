@@ -7,7 +7,7 @@ import { OV, badgesToShow, cardReserved, stripText } from "@/lib/v2/ui/overlay-l
 import { faceLabel, type Badge, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
 import { viewWithOnlyRaster } from "@/lib/v2/ui/tile-view";
 import { windRasterName, WIND_LAYER_HEIGHTS } from "@/lib/v2/ui/wind-upload";
-import { ROSE_SEASONS, type RoseSeason } from "@/lib/v2/tile-result";
+import { ROSE_SEASONS, type RoseSeason } from "@/lib/v2/ui/rose-season";
 import MassFigure from "./mass-figure";
 import WindRoseFigure from "./wind-rose-figure";
 import CalloutMap from "./callout-map";
