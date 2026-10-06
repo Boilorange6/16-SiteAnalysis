@@ -80,21 +80,15 @@ type ScreenPoint = readonly [number, number];
 export type SiteMarkerMode = "parcel" | "ring";
 
 const SITE_MARKER_EDGE_PX = 10;
-/** 작은 필지는 윤곽이 점처럼 뭉개지므로 후보 1 링으로 바꾼다. */
-export function siteMarkerMode(ring?: readonly ScreenPoint[] | null): SiteMarkerMode {
-  if (!ring || ring.length < 4) return "ring";
-  const first = ring[0]!;
-  const last = ring.at(-1)!;
-  const closed = Math.hypot(first[0] - last[0], first[1] - last[1]) < 0.01;
-  const points = closed ? ring.slice(0, -1) : ring;
-  if (points.length < 3) return "ring";
-  let shortest = Infinity;
-  for (let i = 0; i < points.length; i += 1) {
-    const a = points[i]!;
-    const b = points[(i + 1) % points.length]!;
-    shortest = Math.min(shortest, Math.hypot(a[0] - b[0], a[1] - b[1]));
+/** 작은 필지는 윤곽이 점처럼 뭉개지므로 후보 1 링으로 바꾼다. 크기는 필지 외곽 상자의 짧은 변으로 본다
+ * (꼭짓점 사이 변 길이로 보면 꼭짓점이 촘촘한 큰 필지도 링이 된다). */
+export function siteMarkerMode(points?: readonly ScreenPoint[] | null): SiteMarkerMode {
+  if (!points || points.length < 3) return "ring";
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of points) {
+    x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
   }
-  return shortest >= SITE_MARKER_EDGE_PX ? "parcel" : "ring";
+  return Math.min(x1 - x0, y1 - y0) >= SITE_MARKER_EDGE_PX ? "parcel" : "ring";
 }
 
 /** fixed SVG는 보고서/PPT, 높이가 작은 MapBox는 카드, 나머지는 상세 보기다. */
@@ -494,7 +488,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   const siteR = siteMarkerRadius(H, fixed);
   const sitePoints = siteParcels.flatMap((polygon) => polygon.rings.flat());
   const sitePath = siteParcels.map((polygon) => polygonPath(polygon.rings)).join(" ");
-  const siteMode: SiteMarkerMode = siteParcels.length > 0 && siteParcels.every((polygon) => siteMarkerMode(polygon.rings[0]) === "parcel") ? "parcel" : "ring";
+  const siteMode: SiteMarkerMode = siteMarkerMode(siteParcels.flatMap((polygon) => polygon.rings[0] ?? []));
   const diamondExtent = 1.1 * siteR;
   const markerHalfStroke = siteMode === "parcel" ? Math.max(0.5 * siteR, 2.4) / 2 : 0.25 * siteR;
   const siteBounds = siteMode === "parcel" && sitePoints.length > 0

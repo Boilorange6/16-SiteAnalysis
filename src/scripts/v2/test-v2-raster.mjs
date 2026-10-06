@@ -21,18 +21,19 @@ const { getTileRaster } = await import("../../lib/v2/engine/raster-api.ts");
 const A = await import("../../lib/v2/app-db.ts");
 const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");
 
-// 대지 윤곽은 모든 변이 10px 이상일 때만 쓰고, 카드·상세·PPT는 승인된 r을 쓴다.
+// 대지 윤곽은 필지 외곽 상자의 짧은 변이 10px 이상일 때만 쓰고, 카드·상세·PPT는 승인된 r을 쓴다.
 assert.deepEqual(
   [
     siteMarkerMode([[0, 0], [12, 0], [12, 12], [0, 12], [0, 0]]),
     siteMarkerMode([[0, 0], [10, 0], [10, 12], [0, 12], [0, 0]]),
     siteMarkerMode([[0, 0], [9, 0], [9, 12], [0, 12], [0, 0]]),
     siteMarkerMode([[0, 0], [12, 0], [12, 12], [0, 12]]),
+    siteMarkerMode([[0, 0], [0.5, 0], [1, 0], [60, 0], [60, 40], [0, 40], [0, 0]]),
     siteMarkerRadius(280),
     siteMarkerRadius(540),
     siteMarkerRadius(540, true),
   ],
-  ["parcel", "parcel", "ring", "parcel", 4, 7, 10],
+  ["parcel", "parcel", "ring", "parcel", "parcel", 4, 7, 10],
   "대지 표식 판정과 컨텍스트별 반지름",
 );
 
