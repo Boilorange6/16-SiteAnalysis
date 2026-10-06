@@ -28,7 +28,7 @@ export function calloutScene(model: CalloutModel, kind: CalloutFrameKind, W: num
   // 아래에서 올라오는 시트가 덮는 만큼을 뺀 지도 영역의 세로 가운데에 반경 원을 둔다
   const sheet = detail && mobile;
   const siteY = sheet ? (top + bottom) / 2 / H : 0.5;
-  const maxFill = sheet ? Math.min(0.8, (0.9 * (bottom - top)) / H) : 0.8;
+  const maxFill = sheet ? Math.min(0.8, (0.9 * (bottom - top)) / H) : detail ? 0.8 : Math.max(0.3, (H - 14) / H);
   const spec = { W, H, m, edge: mobile ? 8 : OV.edge, top, bottom, leftBottom: detail ? undefined : bottom - PILL_H - 6, rightInset: panel, perSide, rows, maxFill };
   // 세로 여유가 되면 4행 카드, 아니면 이름+세대수 2줄 카드
   const fullFits = detail && !mobile && (bottom - top + m.gap) >= perSide * (cardHeight(m, "full", rows) + m.gap) - 1e-6;
