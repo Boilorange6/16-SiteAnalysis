@@ -507,11 +507,13 @@ function calloutOf(r: TileResult): CalloutModel | null {
 }
 
 // ── 대지 요약 ──
-/** 면적·용도지역이 적재되지 않은 동안은 null — 화면에는 "미확인"으로 보인다. */
-export type SiteSummary = { address: string; areaM2: number | null; zoning: string | null; radiusM: number; facts: string[]; siteParcel?: MapPolygon[] | null };
+export type SiteSummary = { address: string; areaM2: number | null; landPriceM2?: number | null; landPriceUnit?: string | null; jimok?: string | null; zoning: string | null; radiusM: number; facts: string[]; siteParcel?: MapPolygon[] | null };
 export type SummaryView = {
   address: string;
   area: string;
+  areaSource: string;
+  landPrice: string;
+  jimok: string;
   zoning: string;
   radius: string;
   facts: string[];
@@ -524,11 +526,15 @@ export type SummaryView = {
 
 export function toSummaryView(s: SiteSummary, results: TileResult[]): SummaryView {
   const dates = results.flatMap((r) => r.provenance.sources.map((x) => x.sourceAsOf)).filter((d): d is string => !!d).sort();
-  const weak = results.filter((r) => r.status !== "complete" || r.limitations.some((l) => l.kind !== "estimated"));
+  const weakStatuses = new Set<TileResult["status"]>(["failed", "not_provided", "no_data", "cancelled"]);
+  const weak = results.filter((r) => weakStatuses.has(r.status));
   const siteParcel = s.siteParcel === undefined ? siteParcelFromResults(results) : s.siteParcel;
   return {
     address: s.address,
     area: s.areaM2 === null ? "면적 미확인" : `${group(s.areaM2)}㎡`,
+    areaSource: s.areaM2 === null ? "대상 필지 도형 자료 미확인" : "도형 면적 · 공부면적 아님",
+    landPrice: typeof s.landPriceM2 === "number" && Number.isFinite(s.landPriceM2) ? `공시지가: ${group(s.landPriceM2)}${s.landPriceUnit ?? "원/㎡"}` : "공시지가 미확인",
+    jimok: s.jimok ? `지목: ${s.jimok}` : "지목 미확인",
     zoning: s.zoning ?? "용도지역 미확인",
     radius: `반경 ${s.radiusM >= 1000 ? `${s.radiusM / 1000}km` : `${s.radiusM}m`}`,
     facts: s.facts.slice(0, 3),

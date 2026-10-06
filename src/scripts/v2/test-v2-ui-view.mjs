@@ -8,6 +8,7 @@ const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { TILE_CODES } = await import("../../lib/v2/ui/tile-catalog.ts");
 const { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } = await import("../../lib/v2/ui/fixtures/godeok.ts");
 const { toTileView, toSummaryView, faceLabel } = await import("../../lib/v2/ui/tile-view.ts");
+const { buildSummary } = await import("../../lib/v2/engine/summary.ts");
 
 // ── fixture 계약 ──
 for (const r of [...GODEOK_RESULTS, ...Object.values(RECOVERED)]) parseTileResult(r);
@@ -121,6 +122,29 @@ assert.equal(sv.radius, "반경 1km");
 assert.equal(sv.facts.length, 3);
 assert.equal(sv.asOfLine, "자료 기준일 2026-01-01 ~ 2026-09-20");
 assert.equal(sv.incomplete, true);
+
+// R12: A12 도형 면적·지가·지목은 요약으로 승격하고, 추정/부분 안내만으로 불완전 배지를 세지 않는다.
+{
+  const results = structuredClone(GODEOK_RESULTS);
+  const a12 = results.find((r) => r.tileCode === "A12");
+  a12.metrics.push({ id: "parcel_area_m2", label: "대상 필지 도형 면적", value: 3210, unit: "㎡", formulaVersion: "test", numerator: null, denominator: null, status: "observed" });
+  a12.metrics.push({ id: "land_price", label: "대상 필지 개별공시지가", value: 2_410_000, unit: "원/㎡", formulaVersion: "test", numerator: null, denominator: null, status: "observed" });
+  const summary = buildSummary({ address: "테스트", jimok: "대" }, 800, results);
+  assert.equal(summary.areaM2, 3210, "A12 도형 면적을 대지 요약으로 승격");
+  assert.equal(summary.landPriceM2, 2_410_000, "A12 개별공시지가를 요약으로 승격");
+  assert.equal(summary.jimok, "대", "지목을 요약으로 승격");
+  const base = structuredClone(results[0]);
+  const countView = toSummaryView({ address: "테스트", areaM2: 3210, landPriceM2: 2_410_000, landPriceUnit: "원/㎡", jimok: "대", zoning: null, radiusM: 800, facts: [] }, [
+    { ...base, status: "complete", limitations: [{ kind: "estimated", note: "추정" }] },
+    { ...base, status: "partial", limitations: [{ kind: "unknown", note: "미확인" }] },
+    { ...base, status: "failed", limitations: [] },
+    { ...base, status: "not_provided", limitations: [{ kind: "not_provided", note: "미제공" }] },
+  ]);
+  assert.equal(countView.incompleteCount, 2, "실패·미제공만 일부 자료 불완전 개수에 포함");
+  assert.match(countView.areaSource, /도형 면적/);
+  assert.equal(countView.jimok, "지목: 대");
+  assert.match(countView.landPrice, /공시지가: 2,410,000원\/㎡/);
+}
 
 // ── 같은 배지 합치기, 대표값은 값이 있는 첫 지표 ──
 {
