@@ -36,8 +36,9 @@ export interface FeatureInput {
   kind: string;
   sourceKey: string;
   releaseId: string;
-  /** WGS84 경위도 */
+  /** WGS84 경위도. geometryIsUtmk면 이미 EPSG:5179 미터 좌표 */
   geometry: Geometry;
+  geometryIsUtmk?: boolean;
   name?: string | null;
   pnu?: string | null;
   legalCode?: string | null;
@@ -150,11 +151,11 @@ function* positions(coords: unknown): Generator<Position> {
 }
 
 /** roundM: 좌표를 이 간격(미터)으로 반올림해 JSON을 줄인다. 없으면 반올림하지 않는다. */
-export function projectGeometry(geometry: Geometry, roundM?: number): Geometry {
+export function projectGeometry(geometry: Geometry, roundM?: number, alreadyUtmk = false): Geometry {
   if (geometry.type === "GeometryCollection") throw new TypeError("GeometryCollection is not supported");
   const snap = (v: number) => (roundM ? Math.round(v / roundM) * roundM : v);
   const fix = (v: number) => (roundM ? Number(snap(v).toFixed(Math.max(0, Math.ceil(-Math.log10(roundM))))) : v);
-  return { type: geometry.type, coordinates: mapPositions(geometry.coordinates, (p) => { const [x, y] = toUtmk(p); return [fix(x), fix(y)] as const; }) } as Geometry;
+  return { type: geometry.type, coordinates: mapPositions(geometry.coordinates, (p) => { const [x, y] = alreadyUtmk ? p : toUtmk(p); return [fix(x), fix(y)] as const; }) } as Geometry;
 }
 
 function bboxOf(geometry: Geometry): [number, number, number, number] {
@@ -175,7 +176,7 @@ export function insertFeature(db: Db, input: FeatureInput): number {
   for (const [field, value] of [["pnu", input.pnu], ["legalCode", input.legalCode]] as const) {
     if (value != null && typeof value !== "string") throw new TypeError(`${field} must be a string (got ${typeof value})`);
   }
-  const projected = projectGeometry(input.geometry, input.roundM);
+  const projected = projectGeometry(input.geometry, input.roundM, input.geometryIsUtmk);
   const [minX, minY, maxX, maxY] = bboxOf(projected);
   const statements = statementsFor(db);
   const write = () => {

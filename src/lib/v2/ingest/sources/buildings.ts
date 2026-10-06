@@ -18,7 +18,7 @@ import type { ShpRecord } from "../shp";
 export const FLOOR_HEIGHT_M = 3.0;
 const MIN_YEAR = 1800;
 /** 도형 좌표는 1 cm로 반올림해 저장한다(꼭짓점은 그대로) — 원천 정밀도와 좌표 재투영 오차보다 작다. 파일 크기 약 18% 절감. */
-const COORD_DECIMALS = 2;
+export const COORD_DECIMALS = 2;
 
 const str = (v: unknown): string | null => {
   const s = typeof v === "string" ? v.trim() : "";
