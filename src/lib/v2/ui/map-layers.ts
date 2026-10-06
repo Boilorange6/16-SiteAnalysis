@@ -54,6 +54,8 @@ export type RasterStyle = {
   legendTicks?: number[];
   /** 색상 선택 근거를 숫자 범례에 함께 적는 짧은 문구. */
   legendNote?: string;
+  /** stepped 칸마다 붙이는 짧은 범주명(색에만 의존하지 않기 위한 글자 범례). colors와 같은 길이. */
+  legendLabels?: string[];
 };
 
 /** 준공 연대 색 (지도 점과 구성비 차트가 같이 쓴다). 오래될수록 진하다 */
@@ -257,7 +259,17 @@ export const RASTER_STYLES: Record<string, RasterStyle> = {
   shade_mask: { mode: "mask", colors: ["#3D4A63"], opacity: 0.55, label: "그림자" },
   shade_flow: { mode: "continuous", colors: ["#22304C", "#586B89", "#B7C4D7"], min: 0, max: 1, label: "그림자 흐름" },
   wind_ratio: { mode: "continuous", colors: ["#440154", "#31688E", "#35B779", "#FDE725"], min: 0, max: 1.2, label: "U/U유입" },
-  utci: { mode: "stepped", colors: ["#313695", "#4575B4", "#74ADD1", "#ABD9E9", "#66BD63", "#1A9850", "#FEE08B", "#FDAE61", "#F46D43", "#D73027"], breaks: [9, 26, 32, 38, 46], label: "UTCI" },
+  // UTCI 표준 10개 열스트레스 범주(-40·-27·-13·0·9·26·32·38·46). 한랭은 청색, 쾌적은 녹색, 열 쪽은
+  // 노랑→주황→빨강→암적색으로 색상·명도가 함께 달라진다. 열 범주(26 이상)는 범주 안을 2~3 °C 단위로 나눠
+  // 같은 색 계열의 진하기를 단계적으로 바꿨다: 같은 범주 안의 양지(≈35)와 그늘(≈33)도 지도에서 구분된다.
+  // 범례는 10개 범주의 첫 단계 색과 범주명을 보여 준다.
+  utci: {
+    mode: "stepped",
+    colors: ["#26236B", "#3B4BA8", "#4F7FC4", "#7DB0DC", "#B9DCEE", "#5DB075", "#F9E27A", "#F5D13F", "#F8A94A", "#F28C28", "#E3731A", "#E5482F", "#D7301F", "#B3231A", "#6E0F1F"],
+    breaks: [-40, -27, -13, 0, 9, 26, 29, 32, 34, 36, 38, 40, 43, 46],
+    label: "UTCI (°C)",
+    legendLabels: ["극한한랭", "매우한랭", "강한한랭", "중간한랭", "약한한랭", "열적쾌적", "중간열", "강한열", "매우열", "극한열"],
+  },
   svf: {
     mode: "continuous",
     // CIELAB L*: 18.8 → 98.4. The upper half is deliberately split at

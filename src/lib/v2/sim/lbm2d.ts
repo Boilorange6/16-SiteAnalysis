@@ -9,6 +9,8 @@
  * 풀지 않는다. WebGPU D3Q19를 사용할 수 없을 때의 대체 모형으로만 사용한다.
  */
 
+import { Worker } from "node:worker_threads";
+
 const CS2 = 1 / 3;
 const RAD = Math.PI / 180;
 const DEFAULT_NU = 0.01;
@@ -191,9 +193,6 @@ interface SyncWorker {
   unref?: () => void;
 }
 
-interface WorkerThreadsBuiltin {
-  Worker?: new (filename: URL, options: { workerData: Record<string, unknown>; execArgv?: string[] }) => SyncWorker;
-}
 
 function nodeBuiltin(name: string): unknown {
   if (typeof process === "undefined") return undefined;
@@ -241,8 +240,6 @@ function computeWind2DParallel(
   averageFrom: number,
   workerCount: number,
 ): Wind2DResult {
-  const Worker = (nodeBuiltin("node:worker_threads") as WorkerThreadsBuiltin | undefined)?.Worker;
-  if (!Worker) throw new Error("parallel D2Q9 requires Node worker_threads");
 
   const stateBytes = Float32Array.BYTES_PER_ELEMENT * 9 * n;
   const stateA = new SharedArrayBuffer(stateBytes);
@@ -298,11 +295,13 @@ function computeWind2DParallel(
   };
 
   const workers: SyncWorker[] = [];
-  const workerUrl = new URL("./lbm2d-worker.mjs", import.meta.url);
   for (let workerId = 0; workerId < workerCount; workerId++) {
     const rowStart = Math.floor(workerId * input.ny / workerCount);
     const rowEnd = Math.floor((workerId + 1) * input.ny / workerCount);
-    const worker = new Worker(workerUrl, {
+    // Worker must be the static `node:worker_threads` import with an inline `new URL(...)`: webpack only turns that
+    // exact shape into a worker chunk. With Worker fetched via process.getBuiltinModule it treated the URL as a static
+    // asset ("/site/_next/static/media/...", no file: scheme) and Node threw "filename must be string or URL".
+    const worker = new Worker(new URL("./lbm2d-worker.mjs", import.meta.url), {
       workerData: {
         ...workerDataBase,
         workerId,

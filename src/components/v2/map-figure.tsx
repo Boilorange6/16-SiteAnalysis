@@ -147,8 +147,12 @@ function steppedLegendTitle(ref: RasterRef, style: RasterStyle): string {
   return style.label ?? ref.label ?? ref.name;
 }
 
-function steppedLegendTicksFor(ref: RasterRef, entries: RasterLegendEntry[]): Array<{ label: string; position: number }> {
+/** 범주명이 있는 팔레트(UTCI)는 칸 경계마다 하한 숫자를 모두 적는다. */
+function steppedLegendTicksFor(ref: RasterRef, entries: RasterLegendEntry[], style?: RasterStyle): Array<{ label: string; position: number }> {
   if (entries.length === 0) return [];
+  if (style?.legendLabels) {
+    return entries.flatMap((entry, index) => (index === 0 || entry.min === null ? [] : [{ label: String(entry.min), position: index / entries.length }]));
+  }
   const last = entries.length - 1;
   const indexes = ref.palette === "sun_hours"
     ? [0, 3, 6, 9, 12, last].filter((index) => index <= last)
@@ -165,6 +169,11 @@ function steppedLegendTicksFor(ref: RasterRef, entries: RasterLegendEntry[]): Ar
       position: entries.length === 1 ? 0 : index === last ? 1 : index / entries.length,
     };
   });
+}
+
+/** 칸 가운데에 놓는 범주명 (stepped + legendLabels). */
+function steppedLegendNames(style: RasterStyle, count: number): Array<{ label: string; position: number }> {
+  return (style.legendLabels ?? []).slice(0, count).map((label, index) => ({ label, position: (index + 0.5) / count }));
 }
 
 function isBuildingLayer(layer: string): boolean {
@@ -235,9 +244,11 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   const steppedTitleFs = steppedTitle
     ? Math.max(7.5, Math.min(rasterFs, rasterFs * steppedTitleAvailable / Math.max(1, textW(steppedTitle, rasterFs))))
     : rasterFs;
-  const rasterRailW = 58 * u;
+  const rasterRailW = (steppedConfig?.style.legendLabels ? 92 : 58) * u;
   const rasterRailH = Math.min(142 * u, Math.max(96 * u, H - 2 * pad - 68 * u));
   const steppedBarW = Math.max(64 * u, Math.min(360 * u, Math.max(64 * u, legendMaxW - 3 * pad)));
+  // 칸이 좁으면(모바일) 범주명을 두 줄로 어긋나게 놓아 글자 크기를 유지한다.
+  const nameStagger = !!steppedConfig?.style.legendLabels && steppedBarW / Math.max(1, rasterEntries.length) < 29;
   const vectorLegendW = Math.min(
     legendMaxW,
     Math.max(0, maxOf([
@@ -254,7 +265,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
       : 0;
   const vectorLegendH = legendRowsN * rowH + notes.length * rowH * 0.95 + (legendRowsN + notes.length ? pad * 1.4 : 0);
   const steppedLegendH = steppedRasterLegend
-    ? 2 * pad + steppedTitleFs + 4 * u + rasterBarH + rasterFs * 1.25
+    ? 2 * pad + steppedTitleFs + 4 * u + rasterBarH + rasterFs * 1.25 + (steppedConfig?.style.legendLabels ? rasterFs * (nameStagger ? 2.1 : 1.15) : 0)
     : 0;
   const rasterLegendH = cardRailRasterLegend
     ? rasterRailH
@@ -634,8 +645,10 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
                 const railHeight = Math.max(40 * u, panelH - (railTop - rasterLy) - 2 * pad - rasterFs);
                 const railBarW = 10 * u;
                 const railTickX = railX + 17 * u;
-                const ticks = style.mode === "stepped"
-                  ? steppedLegendTicksFor(ref, entries)
+                const ticks = style.mode === "stepped" && style.legendLabels
+                  ? steppedLegendNames(style, entries.length).map((name, index) => ({ label: `${index === 0 ? `<${entries[0]?.max ?? ""}` : entries[index]?.min ?? ""} ${name.label}`, position: name.position }))
+                  : style.mode === "stepped"
+                  ? steppedLegendTicksFor(ref, entries, style)
                   : (style.legendTicks?.length ? style.legendTicks : [style.min ?? 0, style.max ?? 1]).map((tick) => ({
                     label: `${Math.round((style.max ?? 1) <= (style.min ?? 0) ? 0 : ((tick - (style.min ?? 0)) / ((style.max ?? 1) - (style.min ?? 0))) * 100)}%`,
                     position: (style.max ?? 1) <= (style.min ?? 0) ? 0 : Math.max(0, Math.min(1, (tick - (style.min ?? 0)) / ((style.max ?? 1) - (style.min ?? 0)))),
@@ -678,7 +691,8 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
                 const titleY = rasterLy + pad + steppedTitleFs;
                 const barY = titleY + 4 * u;
                 const tickY = barY + rasterBarH + rasterFs;
-                const ticks = steppedLegendTicksFor(ref, entries);
+                const ticks = steppedLegendTicksFor(ref, entries, style);
+                const names = steppedLegendNames(style, entries.length);
                 return (
                   <g key={`raster-legend-${ref.name}`} data-raster-legend={ref.name}>
                     <text data-raster-legend-title="true" x={barX} y={titleY} fontSize={steppedTitleFs} fontWeight={700} fill={INK}>
@@ -703,6 +717,11 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
                     {ticks.map((tick, index) => (
                       <text key={`${ref.name}-tick-${index}-${tick.label}`} data-raster-legend-tick={tick.label} x={barX + barWidth * tick.position} y={tickY} textAnchor={tick.position === 0 ? "start" : tick.position === 1 ? "end" : "middle"} fontSize={Math.max(7.5, rasterFs * 0.82)} fill="#334155">
                         {tick.label}
+                      </text>
+                    ))}
+                    {names.map((name, nameIndex) => (
+                      <text key={`${ref.name}-name-${name.label}`} data-raster-legend-name={name.label} x={barX + barWidth * name.position} y={tickY + rasterFs * 1.1 + (nameStagger && nameIndex % 2 === 1 ? rasterFs : 0)} textAnchor="middle" fontSize={Math.max(7, Math.min(rasterFs * 0.82, (nameStagger ? 2 : 1) * (barWidth / entries.length) / 3.9))} fill="#1F2937">
+                        {name.label}
                       </text>
                     ))}
                   </g>

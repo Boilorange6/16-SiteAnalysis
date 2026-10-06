@@ -144,7 +144,13 @@ const RASTER_BUILDING_EDGE: [number, number, number] = [71, 85, 105];
 /** S02의 254 셀은 일조값이 아니라 건물 지붕 표식이다. 높은 일조색으로 칠하면
  * 건물과 배경이 합쳐지므로, 공용 래스터 경로에서 중립 발자국으로 처리한다. */
 function isBuildingMarker(ref: RasterRef, raw: number): boolean {
-  return raw === 254 && (ref.palette === "sun_hours" || ref.palette === "shade_flow");
+  return raw === 254 && (ref.palette === "sun_hours" || ref.palette === "shade_flow" || ref.palette === "utci");
+}
+
+/** S04의 253은 UTCI 풍속 입력 범위 밖 셀이다. 온도 색을 주면 극한열로 오독되므로 중립 회색으로 칠한다. */
+const RASTER_OUT_OF_RANGE_FILL: [number, number, number] = [196, 202, 211];
+function isOutOfRangeMarker(ref: RasterRef, raw: number): boolean {
+  return raw === 253 && ref.palette === "utci";
 }
 
 function isBuildingCell(values: RasterValues, ref: RasterRef, row: number, col: number): boolean {
@@ -256,6 +262,13 @@ export function paintRgba(ref: RasterRef, values: RasterValues, style: RasterSty
         rgba[out] = color[0];
         rgba[out + 1] = color[1];
         rgba[out + 2] = color[2];
+        rgba[out + 3] = 255;
+        continue;
+      }
+      if (ref.bands === 1 && isOutOfRangeMarker(ref, raw)) {
+        rgba[out] = RASTER_OUT_OF_RANGE_FILL[0];
+        rgba[out + 1] = RASTER_OUT_OF_RANGE_FILL[1];
+        rgba[out + 2] = RASTER_OUT_OF_RANGE_FILL[2];
         rgba[out + 3] = 255;
         continue;
       }

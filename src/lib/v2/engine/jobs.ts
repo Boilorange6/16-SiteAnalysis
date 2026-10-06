@@ -17,7 +17,7 @@ import { d29 } from "./tiles/d29";
 import { s02 } from "./tiles/s02";
 import { s03 } from "./tiles/s03";
 import { s04 } from "./tiles/s04";
-import { ENGINE_VERSION, makeTile } from "./tiles/common";
+import { cacheEngineVersion, makeTile } from "./tiles/common";
 import { catalogEntry } from "../ui/tile-catalog";
 import { listJobs, type JobInfo } from "./jobs-store";
 
@@ -64,7 +64,7 @@ function conditionsForRun(run: AnalysisRun): TileConditions {
 
 function cacheKeyForRun(run: AnalysisRun, code: string): string {
   const conditions = DATE_INDEPENDENT.has(code) ? { ...conditionsForRun(run), analysisDate: "date-independent" } : conditionsForRun(run);
-  return tileCacheKey({ tileCode: code, manifestHash: run.manifestHash, engineVersion: run.engineVersion, conditions });
+  return tileCacheKey({ tileCode: code, manifestHash: run.manifestHash, engineVersion: cacheEngineVersion(code, run.engineVersion), conditions });
 }
 
 function readPinnedManifest(dataDir: string, hash: string): Manifest {
@@ -215,7 +215,7 @@ function failRemainingJobs(db: Db, run: AnalysisRun, error: unknown): void {
 
 function keyFor(ctx: EngineContext, code: string): string {
   const conditions = DATE_INDEPENDENT.has(code) ? { ...ctx.conditions, analysisDate: "date-independent" } : ctx.conditions;
-  return tileCacheKey({ tileCode: code, manifestHash: ctx.manifestHash, engineVersion: ENGINE_VERSION, conditions });
+  return tileCacheKey({ tileCode: code, manifestHash: ctx.manifestHash, engineVersion: cacheEngineVersion(code), conditions });
 }
 
 function valuesFromStored(ref: RasterRef, blob: Buffer): RasterValues {

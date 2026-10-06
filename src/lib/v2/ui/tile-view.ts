@@ -121,7 +121,9 @@ function mapOf(r: TileResult): RasterMapModel | null {
   if (features.length === 0 && polygons.length === 0 && lines.length === 0 && rasterOptions.length === 0 && !basemap) return null;
   const notes = MAP_NOTES[r.tileCode] ? [MAP_NOTES[r.tileCode]] : [];
   if (r.tileCode === "A01" && r.metrics.some((m) => m.id === "nearest_rail_m" && m.status === "missing")) notes.push("철도 자료 미적재 · 버스정류장만 표시");
-  if (features.length === 0 && polygons.length === 0 && lines.length === 0) notes.push("반경 안 표시할 지물 없음");
+  // 래스터가 그려지는 타일은 건물·그림자를 래스터 셀이 담당하므로 "지물 없음"이 아니다.
+  if (features.length === 0 && polygons.length === 0 && lines.length === 0 && rasterOptions.length === 0) notes.push("반경 안 표시할 지물 없음");
+  if (rasters.some((ref) => ref.palette === "utci")) notes.push("흰색 = 건물 · 회색 = 바람 입력 없음");
   return {
     center: r.conditions.center,
     radiusM: r.conditions.radiusM,
@@ -216,6 +218,8 @@ function rasterDefaultName(tileCode: string, refs: RasterRef[], presentation: Ex
   if (primary) return primary.name;
   // 현재 S02 결과는 날짜 순서가 춘분부터지만, 카드·상세의 대표 장면은 하지로 고정한다.
   if (tileCode === "S02" && refs.some((ref) => ref.name === "sun_hours_summer")) return "sun_hours_summer";
+  // S04의 대표 컷은 문장·헤드라인과 같은 여름 14시다. 나머지 11컷은 rasterOptions로 남는다.
+  if (tileCode === "S04" && refs.some((ref) => ref.name === "utci_summer_h14")) return "utci_summer_h14";
   return refs[0]?.name ?? null;
 }
 
@@ -261,10 +265,18 @@ export function formatDistanceM(distanceM: number): string {
 const withUnit = (n: number, unit: string) => {
   if (unit === "m") return formatDistanceM(n);
   const v = unit === "년" ? String(n) : group(n); // 연도는 자리 구분 쉼표 없음
-  return unit === "" ? v : unit.length > 2 ? `${v} ${unit}` : `${v}${unit}`;
+  return unit === "" ? v : unit.length > 2 && !unit.startsWith("/") ? `${v} ${unit}` : `${v}${unit}`;
 };
 
-function metricRow(m: TileResult["metrics"][number]): Row {
+/** S04 표시 규칙: °C·m/s·도는 소수 1자리, %·W/m²는 정수(1% 미만 면적률만 0 대신 소수 1자리). */
+function roundForDisplay(n: number, unit: string): number {
+  if (unit === "°C" || unit === "m/s" || unit === "도") return Math.round(n * 10) / 10;
+  if (unit === "W/m²") return Math.round(n);
+  if (unit === "%") return n > 0 && n < 1 ? Math.round(n * 10) / 10 : Math.round(n);
+  return n;
+}
+
+function metricRow(m: TileResult["metrics"][number], round = false): Row {
   const base = { label: m.label };
   switch (m.status) {
     case "missing":
@@ -276,7 +288,10 @@ function metricRow(m: TileResult["metrics"][number]): Row {
     default:
       return {
         ...base,
-        value: withUnit(m.value as number, m.unit),
+        // °C·m/s·도는 정수값이어도 소수 1자리를 유지한다(35.0°C).
+        value: round && (m.unit === "°C" || m.unit === "m/s" || m.unit === "도")
+          ? `${roundForDisplay(m.value as number, m.unit).toFixed(1)}${m.unit.length > 2 ? " " : ""}${m.unit}`
+          : withUnit(round ? roundForDisplay(m.value as number, m.unit) : (m.value as number), m.unit),
         ...(m.unit === "m" ? { aux: "직선" } : {}),
         ...(m.status === "estimated" ? { tag: "추정" } : {}),
       };
@@ -331,8 +346,18 @@ export function toTileView(r: TileResult, scene?: Scene | null): TileView {
   }
 
   const overlap = r.tileCode === "A06";
-  const metrics = r.metrics.filter((m) => !(overlap && /total|sum/.test(m.id)));
-  const rows = metrics.map(metricRow);
+  const isS04 = r.tileCode === "S04";
+  let metrics = r.metrics.filter((m) => !(overlap && /total|sum/.test(m.id)));
+  if (isS04) {
+    // 대표 컷(여름 14시) 지표를 맨 앞에 두고, 같은 값의 접미사 없는 별칭 지표는 행에서 뺀다.
+    const cutSuffix = /_(spring|summer|autumn|winter)_h\d+$/;
+    const representative = (id: string) => id.endsWith("_summer_h14");
+    metrics = [
+      ...metrics.filter((m) => representative(m.id)),
+      ...metrics.filter((m) => cutSuffix.test(m.id) && !representative(m.id)),
+    ];
+  }
+  const rows = metrics.map((m) => metricRow(m, isS04));
   const caveats = CAVEATS[r.tileCode] ? [CAVEATS[r.tileCode]] : [];
 
   let headline: TileView["headline"] = null;
@@ -345,7 +370,11 @@ export function toTileView(r: TileResult, scene?: Scene | null): TileView {
       headline = { value: inside, label: "대지 기준", aux: `학구도 기준일 ${asOf ?? "미확인"}` };
     } else {
       // S02는 춘분부터 저장된 지표 순서와 무관하게 하지 평균 일조를 대표로 쓴다.
-      const preferred = r.tileCode === "S02" ? metrics.find((m) => m.id === "mean_sun_h_summer") : undefined;
+      const preferred = r.tileCode === "S02"
+        ? metrics.find((m) => m.id === "mean_sun_h_summer")
+        : isS04
+        ? (metrics.find((m) => m.id === "utci_median_summer_h14" && m.status === "estimated") ?? metrics.find((m) => m.id.startsWith("utci_median_") && m.status === "estimated"))
+        : undefined;
       // 그 밖의 타일은 값이 있는 첫 지표를 대표로 쓴다 (예: 철도 미적재면 버스 거리).
       const i = preferred ? metrics.indexOf(preferred) : metrics.findIndex((m) => m.status === "observed" || m.status === "estimated");
       const first = rows[i < 0 ? 0 : i];
@@ -353,7 +382,7 @@ export function toTileView(r: TileResult, scene?: Scene | null): TileView {
     }
   }
   // A02의 통학구역 지표는 headline이 대신 보여 준다.
-  const allRows = r.tileCode === "A02" ? metrics.filter((m) => m.id !== "in_school_zone").map(metricRow) : rows;
+  const allRows = r.tileCode === "A02" ? metrics.filter((m) => m.id !== "in_school_zone").map((m) => metricRow(m)) : rows;
 
   const gradedMetricOk = r.judgment?.level != null && GRADED_CODES.has(r.tileCode) && r.judgment.criteria;
   const windDirections = windDirectionsOf(r);

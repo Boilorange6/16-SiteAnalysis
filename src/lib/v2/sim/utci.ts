@@ -133,6 +133,34 @@ function evaluateOffset(taC: number, deltaTmrtC: number, wind10: number, vapourP
   return offset;
 }
 
+/**
+ * Same polynomial as `utci()` for many cells that share one air temperature and humidity: the Ta polynomial
+ * and vapour-pressure powers are folded into per-term constants once, and Tmrt/wind powers are built by
+ * repeated multiplication. Results agree with `utci()` to floating-point rounding (~1e-12 °C).
+ */
+export function utciEvaluator(taC: number, rhPct: number): (tmrtC: number, va10: number) => number {
+  const pa = vapourPressureHpa(taC, rhPct) / 10;
+  const constants = TERMS.map(([paPower, deltaPower, windPower, coefficients]) => ({
+    deltaPower,
+    windPower,
+    k: pa ** paPower * evaluateTaPolynomial(coefficients, taC),
+  }));
+  const deltaPowers = new Float64Array(7);
+  const windPowers = new Float64Array(7);
+  return (tmrtC, va10) => {
+    if (![tmrtC, va10].every(Number.isFinite) || !Number.isFinite(taC) || !Number.isFinite(pa)) return Number.NaN;
+    deltaPowers[0] = 1;
+    windPowers[0] = 1;
+    for (let power = 1; power < 7; power += 1) {
+      deltaPowers[power] = deltaPowers[power - 1] * (tmrtC - taC);
+      windPowers[power] = windPowers[power - 1] * va10;
+    }
+    let offset = 0;
+    for (const term of constants) offset += term.k * deltaPowers[term.deltaPower] * windPowers[term.windPower];
+    return taC + offset;
+  };
+}
+
 /** Magnus saturation-pressure conversion followed by RH → vapour pressure. */
 export function vapourPressureHpa(taC: number, rhPct: number): number {
   if (!Number.isFinite(taC) || !Number.isFinite(rhPct)) return Number.NaN;

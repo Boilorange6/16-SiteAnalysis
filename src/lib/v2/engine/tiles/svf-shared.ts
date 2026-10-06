@@ -1,5 +1,6 @@
 /** D29/S04가 공유하는 지형·건물 DSM과 하늘열림(SVF) 계산. */
 import { toLngLat, toUtmk } from "../../crs";
+import { SVF_DIRS, SVF_EYE_M, SVF_MAX_DIST_M, skyViewFactorParallel } from "../../sim/svf-kernel";
 import { terrainHorizon, type HorizonMap } from "../../sim/horizon";
 import type { EngineContext } from "../context";
 import { buildingRows, type BuildingRow } from "./buildings-shared";
@@ -8,10 +9,8 @@ import { demReader } from "./terrain-shared";
 import type { LocalGrid } from "./raster-grid";
 import { localGrid } from "./raster-grid";
 
+export { SVF_DIRS, SVF_EYE_M, SVF_MAX_DIST_M };
 export const SVF_CELL_M = 2;
-export const SVF_DIRS = 32;
-export const SVF_MAX_DIST_M = 300;
-export const SVF_EYE_M = 1.1;
 export const SVF_HORIZON_CELL_M = 30;
 export const SVF_HORIZON_AZIMUTHS = 72;
 export const SVF_HORIZON_SEARCH_M = 5000;
@@ -48,7 +47,6 @@ interface RasterState {
   obstacleMask: Uint8Array;
 }
 
-const RAD = Math.PI / 180;
 
 function boundsForRings(rings: number[][][]): Bounds | null {
   let minX = Infinity;
@@ -69,13 +67,15 @@ function boundsForRings(rings: number[][][]): Bounds | null {
     : null;
 }
 
-function pointOnSegment(x: number, y: number, a: number[], b: number[]): boolean {
-  const dx = b[0] - a[0];
-  const dy = b[1] - a[1];
+function onSegment(x: number, y: number, ax: number, ay: number, bx: number, by: number): boolean {
+  // Bounding-box reject (1e-7 m tolerance) keeps the exact distance test below for the rare near-edge cell.
+  if (x < Math.min(ax, bx) - 1e-7 || x > Math.max(ax, bx) + 1e-7 || y < Math.min(ay, by) - 1e-7 || y > Math.max(ay, by) + 1e-7) return false;
+  const dx = bx - ax;
+  const dy = by - ay;
   const length2 = dx * dx + dy * dy;
-  if (length2 === 0) return Math.hypot(x - a[0], y - a[1]) <= 1e-7;
-  const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / length2));
-  return Math.hypot(x - (a[0] + t * dx), y - (a[1] + t * dy)) <= 1e-7;
+  if (length2 === 0) return Math.hypot(x - ax, y - ay) <= 1e-7;
+  const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / length2));
+  return Math.hypot(x - (ax + t * dx), y - (ay + t * dy)) <= 1e-7;
 }
 
 function pointInRing(x: number, y: number, ring: number[][]): boolean {
@@ -84,9 +84,38 @@ function pointInRing(x: number, y: number, ring: number[][]): boolean {
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
     const a = ring[i];
     const b = ring[j];
-    if (pointOnSegment(x, y, a, b)) return true;
+    if (onSegment(x, y, a[0], a[1], b[0], b[1])) return true;
     const crosses = (a[1] > y) !== (b[1] > y);
     if (crosses && x < ((b[0] - a[0]) * (y - a[1])) / (b[1] - a[1]) + a[0]) inside = !inside;
+  }
+  return inside;
+}
+
+/** Flat [ax, ay, bx, by, ...] of the ring edges that can touch the scanline y (same edges pointInRing would act on). */
+function edgesAtY(ring: number[][], y: number): number[] | null {
+  if (ring.length < 3) return null;
+  const edges: number[] = [];
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i];
+    const b = ring[j];
+    if (y < Math.min(a[1], b[1]) - 1e-7 || y > Math.max(a[1], b[1]) + 1e-7) continue;
+    edges.push(a[0], a[1], b[0], b[1]);
+  }
+  return edges;
+}
+
+/** pointInRing restricted to the scanline's edges; identical result because the skipped edges neither cross nor touch. */
+function pointInEdges(x: number, y: number, edges: number[] | null): boolean {
+  if (edges === null) return false;
+  let inside = false;
+  for (let k = 0; k < edges.length; k += 4) {
+    const ax = edges[k];
+    const ay = edges[k + 1];
+    const bx = edges[k + 2];
+    const by = edges[k + 3];
+    if (onSegment(x, y, ax, ay, bx, by)) return true;
+    const crosses = (ay > y) !== (by > y);
+    if (crosses && x < ((bx - ax) * (y - ay)) / (by - ay) + ax) inside = !inside;
   }
   return inside;
 }
@@ -207,219 +236,16 @@ function forEachCoveredCell(grid: LocalGrid, obstacle: Obstacle, visit: (index: 
   if (!range) return;
   for (let row = range.row0; row <= range.row1; row += 1) {
     const y = grid.y0 + (row + 0.5) * grid.cellM;
+    const scan = obstacle.rings.map((ring) => edgesAtY(ring, y));
+    if (scan[0] === undefined || scan[0] === null || scan[0].length === 0) continue;
     for (let col = range.col0; col <= range.col1; col += 1) {
       const x = grid.x0 + (col + 0.5) * grid.cellM;
-      if (pointInRings(x, y, obstacle.rings)) visit(row * grid.cols + col);
+      if (!pointInEdges(x, y, scan[0])) continue;
+      let inHole = false;
+      for (let hole = 1; hole < scan.length && !inHole; hole += 1) inHole = pointInEdges(x, y, scan[hole]);
+      if (!inHole) visit(row * grid.cols + col);
     }
   }
-}
-
-function rayDistances(cellM: number, maxDistM: number): number[] {
-  const nearEnd = Math.min(maxDistM, Math.max(cellM * 8, 24));
-  const distances: number[] = [];
-  if (maxDistM < cellM) return [maxDistM];
-  for (let distance = cellM; distance <= nearEnd + 1e-9; distance += cellM) distances.push(Math.min(distance, maxDistM));
-  if (nearEnd >= maxDistM - 1e-9) return distances;
-  let distance = nearEnd * 2;
-  while (distance < maxDistM - 1e-9) {
-    distances.push(distance);
-    distance *= 2;
-  }
-  distances.push(maxDistM);
-  return distances;
-}
-
-interface RaySamples {
-  distances: Float64Array;
-  inverseDistances: Float64Array;
-  colOffsets: Int32Array;
-  rowOffsets: Int32Array;
-}
-
-function raySamples(cellM: number, maxDistM: number, dirs: number): RaySamples[] {
-  const distances = rayDistances(cellM, maxDistM);
-  return Array.from({ length: dirs }, (_, directionIndex) => {
-    const az = (360 * directionIndex * RAD) / dirs;
-    const sin = Math.sin(az);
-    const cos = Math.cos(az);
-    const colOffsets = Int32Array.from(distances, (distance) => Math.round((sin * distance) / cellM));
-    const rowOffsets = Int32Array.from(distances, (distance) => Math.round((cos * distance) / cellM));
-    const distanceValues = Float64Array.from(distances);
-    return { distances: distanceValues, inverseDistances: Float64Array.from(distanceValues, (distance) => 1 / distance), colOffsets, rowOffsets };
-  });
-}
-
-function clamp(value: number, minimum: number, maximum: number): number {
-  return Math.max(minimum, Math.min(maximum, value));
-}
-
-/** horizonAt와 같은 보간이지만, 이미 검증된 내부 HorizonMap의 반복 검사를 생략한다. */
-function horizonAtFast(horizon: HorizonMap, x: number, y: number, azDeg: number): number {
-  const px = clamp((x - horizon.x0) / horizon.cellM - 0.5, 0, horizon.cols - 1);
-  const py = clamp((y - horizon.y0) / horizon.cellM - 0.5, 0, horizon.rows - 1);
-  const col0 = Math.floor(px);
-  const row0 = Math.floor(py);
-  const col1 = Math.min(horizon.cols - 1, col0 + 1);
-  const row1 = Math.min(horizon.rows - 1, row0 + 1);
-  const tx = px - col0;
-  const ty = py - row0;
-  const direction = (((azDeg % 360) + 360) % 360) / 360 * horizon.azimuths;
-  const az0 = Math.floor(direction) % horizon.azimuths;
-  const az1 = (az0 + 1) % horizon.azimuths;
-  const ta = direction - Math.floor(direction);
-  const southWest0 = horizon.angleDeg[(row0 * horizon.cols + col0) * horizon.azimuths + az0];
-  const southWest1 = horizon.angleDeg[(row0 * horizon.cols + col0) * horizon.azimuths + az1];
-  const southEast0 = horizon.angleDeg[(row0 * horizon.cols + col1) * horizon.azimuths + az0];
-  const southEast1 = horizon.angleDeg[(row0 * horizon.cols + col1) * horizon.azimuths + az1];
-  const northWest0 = horizon.angleDeg[(row1 * horizon.cols + col0) * horizon.azimuths + az0];
-  const northWest1 = horizon.angleDeg[(row1 * horizon.cols + col0) * horizon.azimuths + az1];
-  const northEast0 = horizon.angleDeg[(row1 * horizon.cols + col1) * horizon.azimuths + az0];
-  const northEast1 = horizon.angleDeg[(row1 * horizon.cols + col1) * horizon.azimuths + az1];
-  const southWest = southWest0 * (1 - ta) + southWest1 * ta;
-  const southEast = southEast0 * (1 - ta) + southEast1 * ta;
-  const northWest = northWest0 * (1 - ta) + northWest1 * ta;
-  const northEast = northEast0 * (1 - ta) + northEast1 * ta;
-  const south = southWest * (1 - tx) + southEast * tx;
-  const north = northWest * (1 - tx) + northEast * tx;
-  return south * (1 - ty) + north * ty;
-}
-
-function obstacleIntegral(mask: Uint8Array, cols: number, rows: number): Uint32Array {
-  const stride = cols + 1;
-  const sums = new Uint32Array((rows + 1) * stride);
-  for (let row = 0; row < rows; row += 1) {
-    let rowSum = 0;
-    const source = row * cols;
-    const current = (row + 1) * stride;
-    const previous = row * stride;
-    for (let col = 0; col < cols; col += 1) {
-      rowSum += mask[source + col];
-      sums[current + col + 1] = sums[previous + col + 1] + rowSum;
-    }
-  }
-  return sums;
-}
-
-function hasObstacleNear(integral: Uint32Array, cols: number, rows: number, col: number, row: number, radiusCells: number): boolean {
-  const stride = cols + 1;
-  const col0 = Math.max(0, col - radiusCells);
-  const col1 = Math.min(cols - 1, col + radiusCells);
-  const row0 = Math.max(0, row - radiusCells);
-  const row1 = Math.min(rows - 1, row + radiusCells);
-  const total = integral[(row1 + 1) * stride + col1 + 1]
-    - integral[row0 * stride + col1 + 1]
-    - integral[(row1 + 1) * stride + col0]
-    + integral[row0 * stride + col0];
-  return total !== 0;
-}
-
-/** T11 skyViewFactor의 결정적 계산을 유지하되 horizonAt의 반복 검증을 제거한 worker용 경로. */
-function skyViewFactorNoTerrain(dsm: Float32Array, grid: LocalGrid, receiver: Uint8Array, obstacleMask: Uint8Array): Float32Array {
-  const result = new Float32Array(dsm.length);
-  result.fill(Number.NaN);
-  const rays = raySamples(grid.cellM, SVF_MAX_DIST_M, SVF_DIRS);
-  const integral = obstacleIntegral(obstacleMask, grid.cols, grid.rows);
-  const radiusCells = Math.ceil(SVF_MAX_DIST_M / grid.cellM);
-  const interiorStart = radiusCells;
-  const interiorEndCol = grid.cols - radiusCells;
-  const interiorEndRow = grid.rows - radiusCells;
-  for (let row = 0; row < grid.rows; row += 1) {
-    for (let col = 0; col < grid.cols; col += 1) {
-      const index = row * grid.cols + col;
-      if (receiver[index] === 0 || !Number.isFinite(dsm[index])) continue;
-      if (!hasObstacleNear(integral, grid.cols, grid.rows, col, row, radiusCells)) {
-        result[index] = 1;
-        continue;
-      }
-      const observer = dsm[index] + SVF_EYE_M;
-      let blockedSquareSinSum = 0;
-      const interior = col >= interiorStart && col < interiorEndCol && row >= interiorStart && row < interiorEndRow;
-      for (let directionIndex = 0; directionIndex < SVF_DIRS; directionIndex += 1) {
-        let highestSlope = 0;
-        const ray = rays[directionIndex];
-        if (interior) {
-          for (let sampleIndex = 0; sampleIndex < ray.distances.length; sampleIndex += 1) {
-            const elevation = dsm[index + ray.rowOffsets[sampleIndex] * grid.cols + ray.colOffsets[sampleIndex]];
-            if (!Number.isFinite(elevation)) continue;
-            const slope = (elevation - observer) * ray.inverseDistances[sampleIndex];
-            if (slope > highestSlope) highestSlope = slope;
-          }
-        } else {
-          for (let sampleIndex = 0; sampleIndex < ray.distances.length; sampleIndex += 1) {
-            const sampleCol = col + ray.colOffsets[sampleIndex];
-            const sampleRow = row + ray.rowOffsets[sampleIndex];
-            if (sampleCol < 0 || sampleCol >= grid.cols || sampleRow < 0 || sampleRow >= grid.rows) break;
-            const elevation = dsm[index + ray.rowOffsets[sampleIndex] * grid.cols + ray.colOffsets[sampleIndex]];
-            if (!Number.isFinite(elevation)) continue;
-            const slope = (elevation - observer) * ray.inverseDistances[sampleIndex];
-            if (slope > highestSlope) highestSlope = slope;
-          }
-        }
-        blockedSquareSinSum += (highestSlope * highestSlope) / (1 + highestSlope * highestSlope);
-      }
-      result[index] = Math.max(0, Math.min(1, 1 - blockedSquareSinSum / SVF_DIRS));
-    }
-  }
-  return result;
-}
-
-function skyViewFactorFast(dsm: Float32Array, grid: LocalGrid, receiver: Uint8Array, obstacleMask: Uint8Array, horizon: HorizonMap): Float32Array {
-  const result = new Float32Array(dsm.length);
-  result.fill(Number.NaN);
-  const rays = raySamples(grid.cellM, SVF_MAX_DIST_M, SVF_DIRS);
-  const directions = Array.from({ length: SVF_DIRS }, (_, index) => (360 * index) / SVF_DIRS);
-  let hasPositiveTerrain = false;
-  for (const value of horizon.angleDeg) {
-    if (value > 1e-6) {
-      hasPositiveTerrain = true;
-      break;
-    }
-  }
-  if (!hasPositiveTerrain) return skyViewFactorNoTerrain(dsm, grid, receiver, obstacleMask);
-  const radiusCells = Math.ceil(SVF_MAX_DIST_M / grid.cellM);
-  const interiorStart = radiusCells;
-  const interiorEndCol = grid.cols - radiusCells;
-  const interiorEndRow = grid.rows - radiusCells;
-  for (let row = 0; row < grid.rows; row += 1) {
-    for (let col = 0; col < grid.cols; col += 1) {
-      const index = row * grid.cols + col;
-      if (receiver[index] === 0 || !Number.isFinite(dsm[index])) continue;
-      const observer = dsm[index] + SVF_EYE_M;
-      let blockedSquareSinSum = 0;
-      const x = grid.x0 + (col + 0.5) * grid.cellM;
-      const y = grid.y0 + (row + 0.5) * grid.cellM;
-      const interior = col >= interiorStart && col < interiorEndCol && row >= interiorStart && row < interiorEndRow;
-      for (let directionIndex = 0; directionIndex < SVF_DIRS; directionIndex += 1) {
-        let highestSlope = 0;
-        const ray = rays[directionIndex];
-        if (interior) {
-          for (let sampleIndex = 0; sampleIndex < ray.distances.length; sampleIndex += 1) {
-            const elevation = dsm[index + ray.rowOffsets[sampleIndex] * grid.cols + ray.colOffsets[sampleIndex]];
-            if (!Number.isFinite(elevation)) continue;
-            const slope = (elevation - observer) * ray.inverseDistances[sampleIndex];
-            if (slope > highestSlope) highestSlope = slope;
-          }
-        } else {
-          for (let sampleIndex = 0; sampleIndex < ray.distances.length; sampleIndex += 1) {
-            const sampleCol = col + ray.colOffsets[sampleIndex];
-            const sampleRow = row + ray.rowOffsets[sampleIndex];
-            if (sampleCol < 0 || sampleCol >= grid.cols || sampleRow < 0 || sampleRow >= grid.rows) break;
-            const elevation = dsm[index + ray.rowOffsets[sampleIndex] * grid.cols + ray.colOffsets[sampleIndex]];
-            if (!Number.isFinite(elevation)) continue;
-            const slope = (elevation - observer) * ray.inverseDistances[sampleIndex];
-            if (slope > highestSlope) highestSlope = slope;
-          }
-        }
-        let sine = highestSlope / Math.sqrt(1 + highestSlope * highestSlope);
-        const terrainAngle = horizonAtFast(horizon, x, y, directions[directionIndex]);
-        const terrainSine = Math.sin(terrainAngle * RAD);
-        if (terrainSine > sine) sine = terrainSine;
-        blockedSquareSinSum += sine * sine;
-      }
-      result[index] = Math.max(0, Math.min(1, 1 - blockedSquareSinSum / SVF_DIRS));
-    }
-  }
-  return result;
 }
 
 function applyBuildings(state: RasterState, rows: BuildingRow[]): number {
@@ -512,7 +338,8 @@ export function svfFor(ctx: EngineContext, canopy: number[][][][] | null): SvfSh
     applyCanopy(state, canopy);
     state.grid.values = Float64Array.from(state.dsm);
     const horizon = terrainFor(ctx, reader);
-    const svf = skyViewFactorFast(state.dsm, state.grid, state.receiver, state.obstacleMask, horizon);
+    const svf = skyViewFactorParallel(state.dsm, state.grid, state.receiver, state.obstacleMask, horizon);
     return { grid: state.grid, svf, terrainAvailable: reader !== null };
   });
 }
+

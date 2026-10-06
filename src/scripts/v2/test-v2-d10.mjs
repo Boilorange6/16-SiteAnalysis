@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import * as React from "react";
 import sharp from "sharp";
 
@@ -422,6 +422,32 @@ try {
   assert.deepEqual(firstTile.presentation.polygons, secondTile.presentation.polygons, "동일 입력 벡터 결정성");
   firstContext.close();
   secondContext.close();
+
+  // Cross-analysis canopy cache: a cache hit must be indistinguishable from a fresh detection.
+  const resultCacheDir = await mkdtemp(join(tmpdir(), "v2-canopy-result-"));
+  try {
+    const run = (id, options) => {
+      const context = new EngineContext(dataDir, manifest, id, input(), {}, {});
+      const result = canopyFor(context, options);
+      context.close();
+      return result;
+    };
+    const fresh = run("canopy-cache-off", { mosaic: syntheticMosaic(CENTER, 800), resultCacheDir: "off" });
+    const stored = run("canopy-cache-write", { mosaic: syntheticMosaic(CENTER, 800), resultCacheDir });
+    const hit = run("canopy-cache-hit", { mosaic: syntheticMosaic(CENTER, 800), resultCacheDir });
+    assert.ok(readdirSync(resultCacheDir).some((name) => name.endsWith(".bin")), "result file written");
+    for (const candidate of [stored, hit]) {
+      assert.deepEqual(candidate.polygons, fresh.polygons, "cached polygons identical");
+      assert.deepEqual(candidate.grid, fresh.grid, "cached grid identical (including NaN cells)");
+      assert.equal(candidate.threshold, fresh.threshold);
+      assert.equal(candidate.coveragePct, fresh.coveragePct);
+      assert.equal(candidate.totalTiles, fresh.totalTiles);
+    }
+    const different = run("canopy-cache-other", { mosaic: syntheticMosaic(CENTER, 800, 0.5), resultCacheDir });
+    assert.notDeepEqual(different.polygons, fresh.polygons, "a different image never reuses the cached result");
+  } finally {
+    await rm(resultCacheDir, { recursive: true, force: true });
+  }
 
   const partialContext = new EngineContext(dataDir, manifest, "d10-partial", input(), {}, {});
   const partialTile = d10(partialContext, { mosaic: syntheticMosaic(CENTER, 800, 0.5) });

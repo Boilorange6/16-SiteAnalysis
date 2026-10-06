@@ -51,6 +51,8 @@ export interface SunFieldInput {
   /** Structured-cloneable DEM horizon for date workers; callback remains for legacy callers. */
   horizonMap?: HorizonMap;
   hourlyFrom?: number;
+  /** Only these KST hours get an hourly shade mask and the 10-minute interval pass is skipped (sunMin/longest/total stay 0). */
+  onlyHours?: readonly number[];
   continuousTst?: [number, number];
   totalTst?: [number, number];
 }
@@ -606,7 +608,7 @@ export function computeSunField(input: SunFieldInput): SunFieldResult {
   const sunrise = solar.sunrise;
   const sunset = solar.sunset;
 
-  for (let startKst = sunrise; startKst < sunset - EPSILON; startKst += stepMin) {
+  for (let startKst = sunrise; input.onlyHours === undefined && startKst < sunset - EPSILON; startKst += stepMin) {
     const endKst = Math.min(sunset, startKst + stepMin);
     const midKst = (startKst + endKst) / 2;
     const sun = sunPosition(input.latDeg, input.lonDeg, kst(year, month, day, 0, midKst));
@@ -633,7 +635,7 @@ export function computeSunField(input: SunFieldInput): SunFieldResult {
   const firstHour = Math.max(0, Math.floor(input.hourlyFrom ?? 5));
   for (let hour = firstHour; hour <= 23; hour++) {
     const sun = sunPosition(input.latDeg, input.lonDeg, kst(year, month, day, hour));
-    if (sun.altitudeDeg < 5) continue;
+    if (sun.altitudeDeg < 5 || (input.onlyHours !== undefined && !input.onlyHours.includes(hour))) continue;
     const horizonValues = input.horizon?.valuesForGrid?.(grid, sun.azimuthDeg) ?? (input.horizonMap ? horizonValuesForGrid(input.horizonMap, grid, sun.azimuthDeg) : null);
     const shade = makeShadeMask(grid, prepared, sun, input.horizon, horizonValues, shadowDiff);
     const bits = new Uint8Array(Math.ceil(size / 8));
@@ -731,7 +733,7 @@ interface SunFieldWorkerJob {
   worker: Worker;
 }
 
-function workerExecArgv(): string[] {
+export function workerExecArgv(): string[] {
   const args = [...process.execArgv];
   const filtered: string[] = [];
   for (let index = 0; index < args.length; index++) {
