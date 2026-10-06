@@ -22,6 +22,7 @@ import type { TileResult } from "@/lib/v2/tile-result";
 import type { RoseSeason } from "@/lib/v2/tile-result";
 import type { Scene } from "@/lib/v2/scene";
 import { isRoadAddress, ROAD_ADDRESS_UNSUPPORTED_MESSAGE } from "@/lib/v2/site";
+import { RADIUS_CAPTION, RADIUS_OPTIONS } from "@/lib/v2/ui/radius-options";
 
 const UNDO_LABEL ={ order: "옮김", size: "크기 바꿈", remove: "삭제됨", add: "더함" } as const;
 const DEMO_START_LABEL = "분석 데모";
@@ -685,13 +686,6 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
   );
 }
 
-const RADII = [
-  { m: 500, label: "500m" },
-  { m: 800, label: "800m" },
-  { m: 1000, label: "1km" },
-  { m: 2000, label: "2km" },
-  { m: 3000, label: "3km" },
-] as const;
 const API = "/site/api/v2/analyses";
 
 /** 401이면 refresh 쿠키로 한 번 갱신하고 같은 요청을 다시 보낸다. */
@@ -921,8 +915,8 @@ export default function V2BoardPage() {
           aria-describedby={problem && !problem.login ? "v2-address-error" : undefined}
           disabled={busy || activeJobs}
         />
-        <select className={styles.radiusSelect} value={radiusM} onChange={(e) => setRadiusM(Number(e.target.value))} aria-label="분석 반경" disabled={busy || activeJobs}>
-          {RADII.map((r) => (
+        <select className={styles.radiusSelect} value={radiusM} onChange={(e) => setRadiusM(Number(e.target.value))} aria-label="분석 반경" aria-describedby="v2-radius-help" disabled={busy || activeJobs}>
+          {RADIUS_OPTIONS.map((r) => (
             <option key={r.m} value={r.m}>
               {r.label}
             </option>
@@ -932,6 +926,7 @@ export default function V2BoardPage() {
           {busy || activeJobs ? "분석 중…" : "분석"}
         </button>
       </form>
+      <p id="v2-radius-help" className={styles.radiusCaption}>반경 해석: {RADIUS_CAPTION}</p>
       {problem && (
         <p id="v2-address-error" className={styles.problem} role="alert">
           {problem.text}

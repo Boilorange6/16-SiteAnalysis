@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { guideTileGroups, guideTiles } from "@/lib/v2/ui/guide-catalog";
 import { readGuideSourceSnapshot, type GuideSourceRelease } from "@/lib/v2/ui/guide-sources";
 import { sourceName } from "@/lib/v2/ui/tile-catalog";
+import { NEIGHBORHOOD_REFERENCE, RADIUS_OPTIONS } from "@/lib/v2/ui/radius-options";
 import styles from "./guide.module.css";
 
 export const dynamic = "force-static";
@@ -11,16 +12,6 @@ export const metadata: Metadata = {
   title: "가이드·데이터 출처 | 사이트 분석",
   description: "주소와 반경으로 사이트 분석 보드를 읽고, 데이터 출처와 해석 한계를 확인하는 가이드입니다.",
 };
-
-const RADIUS_OPTIONS = [
-  { value: "500m", purpose: "역세권", note: "앱 선택값" },
-  { value: "800m", purpose: "도보권", note: "앱 선택값" },
-  { value: "1km", purpose: "생활권", note: "앱 선택값" },
-  { value: "2km", purpose: "생활권", note: "앱 선택값" },
-  { value: "3km", purpose: "생활권·광역", note: "앱 선택값" },
-] as const;
-
-const NEIGHBORHOOD_REFERENCE = { value: "300m", purpose: "근린권", note: "해석 기준 · 현재 선택 메뉴에는 없음" } as const;
 
 const BADGE_GUIDE = [
   { label: "추정", tone: "estimate", description: "공개 자료나 모델로 계산한 값입니다. 확인값과 섞어 읽지 않습니다." },
@@ -147,13 +138,13 @@ export default function GuidePage() {
                   <p className={styles.miniLabel}>현재 앱 선택값</p>
                   <ul className={styles.radiusList}>
                     {RADIUS_OPTIONS.map((radius) => (
-                      <li key={radius.value}>
-                        <strong>{radius.value}</strong>
+                      <li key={radius.label}>
+                        <strong>{radius.label}</strong>
                         <span>{radius.purpose}</span>
                       </li>
                     ))}
                   </ul>
-                  <p className={styles.radiusNote}><strong>{NEIGHBORHOOD_REFERENCE.value} · {NEIGHBORHOOD_REFERENCE.purpose}</strong>는 실무 해석 기준입니다. 현재 `RADII` 메뉴에는 포함되지 않습니다.</p>
+                  <p className={styles.radiusNote}><strong>{NEIGHBORHOOD_REFERENCE.label} · {NEIGHBORHOOD_REFERENCE.purpose}</strong>는 실무 해석 기준입니다. 현재 반경 선택 메뉴에는 포함되지 않습니다.</p>
                 </div>
               </li>
               <li className={styles.stepCard}>
