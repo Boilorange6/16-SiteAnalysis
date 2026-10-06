@@ -175,7 +175,8 @@ function markDone(db: Db, analysisId: string, code: string, elapsedMs: number): 
 }
 
 function markFailed(db: Db, analysisId: string, code: string, elapsedMs: number, reason: string): void {
-  db.prepare("UPDATE analysis_job SET status = 'failed', finished_at = ?, elapsed_ms = ?, error = ? WHERE analysis_id = ? AND tile_code = ? AND status = 'running'")
+  // queued도 실패 처리한다: failRemainingJobs가 데이터 버전 교체 시 대기 행을 실패로 닫지 않으면 runQueuedJobs가 같은 분석을 무한 반복한다.
+  db.prepare("UPDATE analysis_job SET status = 'failed', finished_at = ?, elapsed_ms = ?, error = ? WHERE analysis_id = ? AND tile_code = ? AND status IN ('queued', 'running')")
     .run(new Date().toISOString(), elapsedMs, reason, analysisId, code);
 }
 
