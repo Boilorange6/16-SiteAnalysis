@@ -8,6 +8,7 @@ const { initBoard, boardReducer, reportPages } = await import("../../lib/v2/ui/b
 const { toSummaryView, toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 const { buildReportPlan, reportFileName } = await import("../../lib/v2/report/report-plan.ts");
 const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
+const { SOURCE_NAMES } = await import("../../lib/v2/ui/tile-catalog.ts");
 
 const { complexCounts } = await import("../../lib/v2/report/report-plan.ts");
 const counts = complexCounts(new Map(GODEOK_RESULTS.map((r) => [r.tileId, toTileView(r)])));
@@ -48,8 +49,8 @@ assert.ok(ids2.indexOf("A09") < ids2.indexOf("A07") && !ids2.includes("A12") && 
 assert.deepEqual(p2.filter((p) => p.kind === "tile" && p.view.code === "D04").map((p) => p.body.face), ["front", "back"]);
 // 출처 슬라이드는 포함된 타일의 원천만, 기준일 미확인도 표시
 const src = p2.at(-1).rows;
-assert.ok(src.some((r) => r.source === "kapt" && r.asOf === "기준일 미확인"));
-assert.ok(!src.some((r) => r.source === "land_price")); // A12 제외됨
+assert.ok(src.some((r) => r.source === SOURCE_NAMES.kapt && r.asOf === "기준일 미확인"));
+assert.ok(!src.some((r) => r.source === SOURCE_NAMES.land_price)); // A12 제외됨
 assert.equal(reportFileName("서울특별시 강동구 고덕동 123 외 2필지", "2026-09-30"), "사이트분석_서울특별시_강동구_고덕동_123_외_2필지_20260930.pptx");
 
 // S01 카메라는 Board가 만든 뷰에 들어온 값을 보고서 계획과 동일하게 보존한다.
