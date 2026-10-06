@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, isUser } from "@/lib/server/auth";
 import { openV2AppDb } from "@/lib/v2/app-db";
-import { getAnalysis, getAnalysisStatus } from "@/lib/v2/engine/api";
+import { cancelAnalysis, getAnalysis, getAnalysisStatus } from "@/lib/v2/engine/api";
 import { v2AppDbPath, v2DataDir } from "@/lib/v2/paths";
 
 export const runtime = "nodejs";
@@ -31,6 +31,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const requested = req.nextUrl.searchParams.get("tiles");
     const tileCodes = requested === null ? undefined : requested.split(",").map((code) => code.trim()).filter(Boolean);
     return responseFor(req, getAnalysis(appDb, id, auth.id, { tileCodes }));
+  } finally {
+    appDb.close();
+  }
+}
+
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAuth(_req);
+  if (!isUser(auth)) return auth;
+  const { id } = await params;
+  const appDb = openV2AppDb();
+  try {
+    const reply = cancelAnalysis(appDb, id, auth.id);
+    return NextResponse.json(reply.body, { status: reply.status });
   } finally {
     appDb.close();
   }

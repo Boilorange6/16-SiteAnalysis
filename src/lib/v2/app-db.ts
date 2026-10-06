@@ -17,7 +17,7 @@ type Db = BetterSqlite3.Database;
 
 export const V2_APP_SCHEMA_VERSION = 2;
 
-export type AnalysisJobStatus = "queued" | "running" | "done" | "failed";
+export type AnalysisJobStatus = "queued" | "running" | "done" | "failed" | "cancelled";
 export type AnalysisJob = {
   analysisId: string;
   code: string;
@@ -28,6 +28,7 @@ export type AnalysisJob = {
   finishedAt: string | null;
   elapsedMs: number | null;
   error: string | null;
+  cancelledAt: string | null;
 };
 
 export interface AnalysisRunInput {
@@ -69,7 +70,8 @@ export function initV2AppSchema(db: Db): void {
       parameters_json TEXT NOT NULL,
       user_id TEXT,
       status TEXT NOT NULL CHECK (status IN ('running','complete','failed')),
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      cancelled_at TEXT
     );
 
     CREATE TABLE IF NOT EXISTS analysis_scene (
@@ -104,6 +106,9 @@ export function initV2AppSchema(db: Db): void {
   if (!analysisColumns.some((column) => column.name === "user_id")) {
     db.exec("ALTER TABLE analysis_run ADD COLUMN user_id TEXT");
   }
+  if (!analysisColumns.some((column) => column.name === "cancelled_at")) {
+    db.exec("ALTER TABLE analysis_run ADD COLUMN cancelled_at TEXT");
+  }
   db.prepare("INSERT INTO schema_meta (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     .run(String(V2_APP_SCHEMA_VERSION));
   ensureAnalysisJobTable(db);
@@ -111,21 +116,51 @@ export function initV2AppSchema(db: Db): void {
 
 /** P4 작업 큐. 기존 앱 DB에도 CREATE IF NOT EXISTS로 붙인다. */
 export function ensureAnalysisJobTable(db: Db): void {
-  db.exec(`
+  const existing = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'analysis_job'").pluck().get() as string | undefined;
+  const columns = existing === undefined ? new Set<string>() : new Set((db.prepare("PRAGMA table_info(analysis_job)").all() as Array<{ name: string }>).map((column) => column.name));
+  const needsMigration = existing !== undefined && (!/cancelled/.test(existing) || !columns.has("cancel_requested_at"));
+  if (needsMigration) {
+    db.exec("DROP INDEX IF EXISTS idx_analysis_job_queue");
+    db.exec("ALTER TABLE analysis_job RENAME TO analysis_job_legacy");
+    db.exec(`
+      CREATE TABLE analysis_job (
+        analysis_id TEXT NOT NULL REFERENCES analysis_run(analysis_id),
+        tile_code TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('queued','running','done','failed','cancelled')),
+        priority INTEGER NOT NULL DEFAULT 0,
+        enqueued_at TEXT NOT NULL,
+        started_at TEXT,
+        finished_at TEXT,
+        elapsed_ms REAL,
+        error TEXT,
+        cancel_requested_at TEXT,
+        PRIMARY KEY (analysis_id, tile_code)
+      );
+    `);
+    const cancelColumn = columns.has("cancel_requested_at") ? "cancel_requested_at" : "NULL";
+    db.exec(`INSERT INTO analysis_job
+      (analysis_id, tile_code, status, priority, enqueued_at, started_at, finished_at, elapsed_ms, error, cancel_requested_at)
+      SELECT analysis_id, tile_code, status, priority, enqueued_at, started_at, finished_at, elapsed_ms, error, ${cancelColumn}
+      FROM analysis_job_legacy`);
+    db.exec("DROP TABLE analysis_job_legacy");
+  } else {
+    db.exec(`
     CREATE TABLE IF NOT EXISTS analysis_job (
       analysis_id TEXT NOT NULL REFERENCES analysis_run(analysis_id),
       tile_code TEXT NOT NULL,
-      status TEXT NOT NULL CHECK (status IN ('queued','running','done','failed')),
+      status TEXT NOT NULL CHECK (status IN ('queued','running','done','failed','cancelled')),
       priority INTEGER NOT NULL DEFAULT 0,
       enqueued_at TEXT NOT NULL,
       started_at TEXT,
       finished_at TEXT,
       elapsed_ms REAL,
       error TEXT,
+      cancel_requested_at TEXT,
       PRIMARY KEY (analysis_id, tile_code)
     );
-    CREATE INDEX IF NOT EXISTS idx_analysis_job_queue ON analysis_job (status, priority, enqueued_at);
   `);
+  }
+  db.exec("CREATE INDEX IF NOT EXISTS idx_analysis_job_queue ON analysis_job (status, priority, enqueued_at)");
 }
 
 const now = () => new Date().toISOString();
@@ -156,10 +191,10 @@ export function finishAnalysisRun(db: Db, analysisId: string, status: "complete"
 
 interface RunRow {
   analysis_id: string; address: string; center_lng: number; center_lat: number; radius_m: number;
-  analysis_date: string; manifest_hash: string; engine_version: string; parameters_json: string; user_id: string | null; status: string;
+  analysis_date: string; manifest_hash: string; engine_version: string; parameters_json: string; user_id: string | null; status: string; cancelled_at: string | null;
 }
 
-export function getAnalysisRun(db: Db, analysisId: string): (AnalysisRunInput & { status: string }) | null {
+export function getAnalysisRun(db: Db, analysisId: string): (AnalysisRunInput & { status: string; cancelledAt: string | null }) | null {
   const row = db.prepare("SELECT * FROM analysis_run WHERE analysis_id = ?").get(analysisId) as RunRow | undefined;
   if (!row) return null;
   return {
@@ -172,8 +207,84 @@ export function getAnalysisRun(db: Db, analysisId: string): (AnalysisRunInput & 
     engineVersion: row.engine_version,
     parameters: JSON.parse(row.parameters_json) as Record<string, unknown>,
     userId: row.user_id === null ? null : row.user_id,
-    status: row.status,
+    status: row.cancelled_at === null ? row.status : "cancelled",
+    cancelledAt: row.cancelled_at,
   };
+}
+
+export const ANALYSIS_CANCELLED_REASON = "사용자가 취소했습니다. 다시 실행할 수 있습니다";
+
+function markTileResultCancelled(db: Db, analysisId: string, tileCode: string, at: string): void {
+  const row = db.prepare("SELECT result_json FROM tile_result WHERE analysis_id = ? AND tile_code = ?").get(analysisId, tileCode) as { result_json: string } | undefined;
+  if (!row) return;
+  try {
+    const result = JSON.parse(row.result_json) as { status?: string; limitations?: unknown };
+    result.status = "cancelled";
+    const limitations = Array.isArray(result.limitations) ? result.limitations : [];
+    if (!limitations.some((item) => item && typeof item === "object" && "note" in item && (item as { note?: unknown }).note === ANALYSIS_CANCELLED_REASON)) {
+      limitations.push({ kind: "unknown", note: ANALYSIS_CANCELLED_REASON });
+    }
+    result.limitations = limitations;
+    db.prepare("UPDATE tile_result SET status = 'cancelled', result_json = ?, created_at = ? WHERE analysis_id = ? AND tile_code = ?")
+      .run(JSON.stringify(result), at, analysisId, tileCode);
+  } catch {
+    // A malformed pending result must not prevent the job state from being cancelled.
+  }
+}
+
+/** Mark queued tiles cancelled and make their pending result explicitly retryable. */
+export function cancelQueuedAnalysisJobs(db: Db, analysisId: string, at = now()): number {
+  ensureAnalysisJobTable(db);
+  const queued = db.prepare("SELECT tile_code FROM analysis_job WHERE analysis_id = ? AND status = 'queued'").all(analysisId) as Array<{ tile_code: string }>;
+  if (queued.length === 0) return 0;
+  db.prepare("UPDATE analysis_job SET status = 'cancelled', finished_at = ?, error = ?, cancel_requested_at = COALESCE(cancel_requested_at, ?) WHERE analysis_id = ? AND status = 'queued'")
+    .run(at, ANALYSIS_CANCELLED_REASON, at, analysisId);
+  for (const job of queued) markTileResultCancelled(db, analysisId, job.tile_code, at);
+  return queued.length;
+}
+
+/** A worker that died after a cancellation request must not resurrect its running tile. */
+export function cancelRunningAnalysisJobs(db: Db, analysisId?: string, at = now()): number {
+  ensureAnalysisJobTable(db);
+  const rows = db.prepare(`SELECT analysis_id, tile_code FROM analysis_job
+    WHERE status = 'running' AND cancel_requested_at IS NOT NULL
+      ${analysisId === undefined ? "" : "AND analysis_id = ?"}`).all(...(analysisId === undefined ? [] : [analysisId])) as Array<{ analysis_id: string; tile_code: string }>;
+  if (rows.length === 0) return 0;
+  const update = db.prepare("UPDATE analysis_job SET status = 'cancelled', finished_at = ?, error = ? WHERE analysis_id = ? AND tile_code = ? AND status = 'running'");
+  for (const row of rows) {
+    update.run(at, ANALYSIS_CANCELLED_REASON, row.analysis_id, row.tile_code);
+    markTileResultCancelled(db, row.analysis_id, row.tile_code, at);
+  }
+  return rows.length;
+}
+
+export interface AnalysisCancellation {
+  queued: number;
+  running: number;
+  cancelledAt: string;
+}
+
+/** Set a cancellation request. A running tile is allowed to finish; the worker stops at the next tile boundary. */
+export function requestAnalysisCancellation(db: Db, analysisId: string): AnalysisCancellation | null {
+  ensureAnalysisJobTable(db);
+  const run = getAnalysisRun(db, analysisId);
+  if (!run) return null;
+  const at = now();
+  const result = db.transaction(() => {
+    db.prepare("UPDATE analysis_run SET cancelled_at = COALESCE(cancelled_at, ?) WHERE analysis_id = ? AND status = 'running'").run(at, analysisId);
+    const running = db.prepare("UPDATE analysis_job SET cancel_requested_at = COALESCE(cancel_requested_at, ?) WHERE analysis_id = ? AND status = 'running'").run(at, analysisId).changes;
+    const queued = cancelQueuedAnalysisJobs(db, analysisId, at);
+    const active = Number(db.prepare("SELECT COUNT(*) FROM analysis_job WHERE analysis_id = ? AND status IN ('queued','running')").pluck().get(analysisId));
+    if (active === 0) db.prepare("UPDATE analysis_run SET status = 'complete' WHERE analysis_id = ? AND cancelled_at IS NOT NULL").run(analysisId);
+    const cancelledAt = db.prepare("SELECT cancelled_at FROM analysis_run WHERE analysis_id = ?").pluck().get(analysisId) as string | null;
+    return { queued, running, cancelledAt: cancelledAt ?? at };
+  })();
+  return result;
+}
+
+export function isAnalysisCancellationRequested(db: Db, analysisId: string): boolean {
+  const value = db.prepare("SELECT cancelled_at FROM analysis_run WHERE analysis_id = ?").pluck().get(analysisId) as string | null | undefined;
+  return value != null;
 }
 
 export function saveTileResult(db: Db, result: TileResult, cacheKey: string): void {
@@ -193,7 +304,7 @@ export function saveTileResult(db: Db, result: TileResult, cacheKey: string): vo
 /** 같은 캐시 키로 이미 계산된 가장 최근 결과(실패한 타일은 재사용하지 않는다) */
 export function findCachedTileResult(db: Db, cacheKey: string): TileResult | null {
   const json = db
-    .prepare("SELECT result_json FROM tile_result WHERE cache_key = ? AND status NOT IN ('failed','pending','running') ORDER BY created_at DESC LIMIT 1")
+    .prepare("SELECT result_json FROM tile_result WHERE cache_key = ? AND status NOT IN ('failed','cancelled','pending','running') ORDER BY created_at DESC LIMIT 1")
     .pluck()
     .get(cacheKey) as string | undefined;
   return json ? parseTileResult(JSON.parse(json)) : null;
@@ -273,7 +384,7 @@ export function loadProject(db: Db, projectId: string): SavedProject | null {
 export function pinnedManifestHashes(db: Db): Set<string> {
   const rows = db
     .prepare(`SELECT r.manifest_hash FROM saved_project p JOIN analysis_run r ON r.analysis_id = p.analysis_id
-      UNION SELECT manifest_hash FROM analysis_run WHERE status = 'running' AND datetime(created_at) > datetime('now', '-2 hours')`)
+      UNION SELECT manifest_hash FROM analysis_run WHERE status = 'running' AND cancelled_at IS NULL AND datetime(created_at) > datetime('now', '-2 hours')`)
     .pluck()
     .all() as string[];
   return new Set(rows);

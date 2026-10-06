@@ -46,6 +46,11 @@ const scene = {
   parcels: [
     { pnu: "1111010100100010000", rings: [[[0, 0], [20, 0], [20, 20], [0, 20]]], jimok: "대", areaM2: 400, isSite: true },
   ],
+  context: {
+    roads: [{ points: [[-30, -10], [30, -10]], widthM: 8, hierarchy: "간선" }],
+    green: [[[[-40, 20], [-20, 20], [-20, 40], [-40, 40]]]],
+    water: [[[[20, -40], [50, -40], [50, -30], [20, -30]]]],
+  },
   counts: { buildingsTotal: 2, buildingsIncluded: 2, parcelsTotal: 1, parcelsIncluded: 1 },
   sources: [],
   limitations: [],
@@ -69,7 +74,14 @@ assert.match(dxf, /SECTION\r\n  2\r\nOBJECTS\r\n[\s\S]*0\r\nDICTIONARY\r\n  5\r\
 assert.match(dxf, /\r\n$/);
 assert.ok(!dxf.includes("\n\n"), "DXF는 빈 줄 없이 CRLF 레코드여야 한다");
 for (const layer of Object.values(DXF_LAYERS)) assert.match(dxf, new RegExp(`\\n\\s*2\\r\\n${layer}\\r\\n`));
-assert.equal((dxf.match(/LWPOLYLINE/g) ?? []).length, 3, "2동 + 1필지 고리");
+assert.equal((dxf.match(/LWPOLYLINE/g) ?? []).length, 6, "2동 + 1필지 + 도로·녹지·수계 고리");
+assert.match(dxf, /8\r\nROAD\r\n[\s\S]*?70\r\n     0\r\n[\s\S]*?43\r\n8\.00\r\n/, "도로 중심선은 열린 폴리라인과 폭을 가진다");
+assert.match(dxf, /8\r\nGREEN\r\n/);
+assert.match(dxf, /8\r\nWATER\r\n/);
+for (const [layer, color] of Object.entries({ ...DXF_LAYERS, ROAD: "ROAD", GREEN: "GREEN", WATER: "WATER" })) {
+  const colorIndex = Object.values(DXF_LAYERS).indexOf(layer) + 1;
+  assert.match(dxf, new RegExp(`2\\r\\n${layer}\\r\\n\\s*70\\r\\n\\s*0\\r\\n\\s*62\\r\\n\\s*${colorIndex}\\r\\n`), `${color} 색 인덱스`);
+}
 assert.equal((dxf.match(/\r\n\s*39\r\n40\.00\r\n/g) ?? []).length, 1, "높이 40m 건물에만 두께");
 assert.match(dxf, /8\r\nBLDG_NOHEIGHT\r\n/);
 assert.match(dxf, /8\r\nSITE\r\n/);
@@ -90,11 +102,11 @@ const estimated = sceneToDxf({
 assert.match(estimated, /8\r\nBLDG_EST\r\n/);
 assert.match(estimated, /\r\n\s*39\r\n12\.00\r\n/);
 
-const siteFallback = sceneToDxf({ ...scene, buildings: [], parcels: [] });
+const siteFallback = sceneToDxf({ ...scene, buildings: [], parcels: [], context: { roads: [], green: [], water: [] } });
 assert.equal((siteFallback.match(/LWPOLYLINE/g) ?? []).length, 1, "parcels가 없어도 scene.site를 SITE로 출력");
 assert.match(siteFallback, /8\r\nSITE\r\n/);
 
-const nonSiteParcel = sceneToDxf({ ...scene, buildings: [], site: null, parcels: [{ ...scene.parcels[0], isSite: false }] });
+const nonSiteParcel = sceneToDxf({ ...scene, buildings: [], site: null, parcels: [{ ...scene.parcels[0], isSite: false }], context: { roads: [], green: [], water: [] } });
 assert.match(nonSiteParcel, /8\r\nPARCEL\r\n/);
 
 const flatScene = {

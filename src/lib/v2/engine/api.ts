@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import type BetterSqlite3 from "better-sqlite3";
 import { z } from "zod";
-import { getAnalysisRun, loadScene } from "../app-db";
+import { getAnalysisRun, loadScene, requestAnalysisCancellation } from "../app-db";
 import { DEFAULT_RADIUS_M, RADIUS_CHOICES, restoreSummary, runAnalysis } from "./run";
 import { listJobs, type JobInfo } from "./jobs-store";
 import { SITE_FAILURE_MESSAGE } from "./site";
@@ -33,7 +33,7 @@ type StoredTileMetaRow = { tile_code: string; status: string; created_at: string
 type StoredTileRow = StoredTileMetaRow & { result_json: string };
 type TileState = { code: string; status: TileResult["status"]; revision: string; elapsedMs: number | null };
 type AnalysisSnapshot = { revision: string; tiles: TileState[]; jobs: JobInfo[] };
-type StatusJob = Pick<JobInfo, "code" | "status" | "elapsedMs">;
+type StatusJob = Pick<JobInfo, "code" | "status" | "elapsedMs" | "error" | "retryable" | "cancelRequestedAt">;
 
 function storedElapsed(raw: unknown): number | null {
   const value = (raw as { elapsedMs?: unknown } | null)?.elapsedMs;
@@ -98,6 +98,7 @@ export function postAnalysis(appDb: BetterSqlite3.Database, dataDir: string, raw
     status: 202,
     body: {
       analysisId: outcome.analysisId,
+      status: getAnalysisRun(appDb, outcome.analysisId)?.status ?? "running",
       summary: outcome.summary,
       results: outcome.results,
       jobs: snapshot.jobs,
@@ -117,7 +118,7 @@ export function getAnalysis(appDb: BetterSqlite3.Database, id: string, userId?: 
   if (!run || !canRead(run, userId)) return { status: 404, body: { error: "분석을 찾을 수 없습니다" } };
   const snapshot = analysisSnapshot(appDb, id, run);
   const results = loadResults(appDb, id, options.tileCodes);
-  return { status: 200, body: { analysisId: id, summary: restoreSummary(run, loadResults(appDb, id)), results, jobs: snapshot.jobs, tiles: snapshot.tiles, revision: snapshot.revision } };
+  return { status: 200, body: { analysisId: id, status: run.status, summary: restoreSummary(run, loadResults(appDb, id)), results, jobs: snapshot.jobs, tiles: snapshot.tiles, revision: snapshot.revision } };
 }
 
 export function getAnalysisStatus(appDb: BetterSqlite3.Database, id: string, userId?: string | number | null): ApiReply {
@@ -125,8 +126,35 @@ export function getAnalysisStatus(appDb: BetterSqlite3.Database, id: string, use
   if (!run || !canRead(run, userId)) return { status: 404, body: { error: "분석을 찾을 수 없습니다" } };
   const snapshot = analysisSnapshot(appDb, id, run);
   const tiles = snapshot.tiles.map(({ code, status, revision }) => ({ code, status, revision }));
-  const jobs: StatusJob[] = snapshot.jobs.map(({ code, status, elapsedMs }) => ({ code, status, elapsedMs }));
-  return { status: 200, body: { analysisId: id, revision: snapshot.revision, tiles, jobs } };
+  const jobs: StatusJob[] = snapshot.jobs.map(({ code, status, elapsedMs, error, retryable, cancelRequestedAt }) => ({ code, status, elapsedMs, error, retryable, cancelRequestedAt }));
+  return { status: 200, body: { analysisId: id, status: run.status, revision: snapshot.revision, tiles, jobs } };
+}
+
+/** Cancel only an owned analysis. Queued jobs are cancelled immediately; a running worker observes the request at its next tile boundary. */
+export function cancelAnalysis(appDb: BetterSqlite3.Database, id: string, userId?: string | number | null): ApiReply {
+  const run = getAnalysisRun(appDb, id);
+  if (!run || run.userId == null || userId == null || String(run.userId) !== String(userId)) {
+    return { status: 404, body: { error: "분석을 찾을 수 없습니다" } };
+  }
+  if (run.status === "cancelled") {
+    const snapshot = analysisSnapshot(appDb, id, run);
+    return { status: 200, body: { analysisId: id, status: run.status, jobs: snapshot.jobs, tiles: snapshot.tiles, revision: snapshot.revision } };
+  }
+  if (run.status !== "running") return { status: 409, body: { error: "이미 종료된 분석입니다", status: run.status } };
+  requestAnalysisCancellation(appDb, id);
+  const cancelled = getAnalysisRun(appDb, id)!;
+  const snapshot = analysisSnapshot(appDb, id, cancelled);
+  return {
+    status: 200,
+    body: {
+      analysisId: id,
+      status: cancelled.status,
+      jobs: snapshot.jobs,
+      tiles: snapshot.tiles,
+      revision: snapshot.revision,
+      cancelRequested: true,
+    },
+  };
 }
 
 export function getScene(appDb: BetterSqlite3.Database, id: string, userId?: string | number | null): ApiReply {

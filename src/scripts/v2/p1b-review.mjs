@@ -30,9 +30,17 @@ const KEY = {
   A05: ["apartment_complexes", "households", "households_from_kapt", "kapt_only_apartments", "officetels"],
   A06: ["applyhome_units", "move_in_units"],
   A07: ["median_price_per_m2", "valid_trades", "median_change_pct", "cancelled_trades"],
+  A08: ["jeonse_count", "monthly_count"],
   A09: ["zones_in_radius", "projects_in_radius", "roster_projects", "planned_households"],
   A10: ["planned_projects", "nearest_planned_station_m", "nearest_planned_line_m"],
   A12: ["site_zoning_count", "share_sum"],
+  D01: ["imagery_zoom_max"],
+  D10: ["canopy_pct", "fill_imagery_pct"],
+  D28: ["area_10min_km2"],
+  D29: ["svf_median"],
+  S02: ["mean_sun_h_winter", "share_cont2h_0915_pct_winter"],
+  S03: ["urel_median_annual"],
+  S04: ["utci_median_summer_h14", "share_out_of_range_pct"],
 };
 const show = (m) => (!m ? "-" : m.value === null ? "미확인" : `${m.value}`); // "-" = 지표 없음(원천 미적재)
 
@@ -46,14 +54,14 @@ for (const site of REVIEW_SITES) {
   const failed = r.results.filter((t) => t.status === "failed");
   const cells = Object.entries(KEY).map(([code, ids]) => {
     const t = r.results.find((x) => x.tileCode === code);
-    const parts = ids.map((id) => `${id}=${show(t.metrics.find((m) => m.id === id))}`);
+    const parts = ids.map((id) => `${id}=${show(t?.metrics?.find((m) => m.id === id))}`);
     // A12: 대지 용도지역 이름(강조점 라벨)과 가장 큰 구성 분류
-    if (code === "A12") {
+    if (code === "A12" && t) {
       const site = t.presentation.features?.find((f) => f.layer === "zoning_site")?.label ?? "미확인";
       const top = t.metrics.filter((m) => m.id.startsWith("share_class_")).sort((a, b) => b.value - a.value)[0];
       parts.unshift(`site=${site}`, `top=${top ? `${top.label.replace("구성비: ", "")} ${top.value}%` : "-"}`);
     }
-    return `${t.status}: ${parts.join(", ")}`;
+    return `${t?.status ?? "-"}: ${parts.join(", ")}`;
   });
   rows.push({ site, ms, cells, failed: failed.length, results: r.results });
   console.log(`${site.name.padEnd(10)} ${String(ms).padStart(6)}ms  failed=${failed.length}  ${cells.join(" | ")}`);

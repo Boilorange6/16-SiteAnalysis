@@ -49,6 +49,11 @@ const a = await B.buildAndPublish({ dataDir, version: "a", builders: { core: cor
 assert.equal(a.published, true, JSON.stringify(a.failures));
 assert.deepEqual(Object.keys(M.readManifest(dataDir).files).sort(), ["core", "reference"]);
 assert.equal(a.files.core.path, "versions/a/core.sqlite");
+const measuredIntegrity = B.checkSqliteIntegrity(join(dataDir, a.files.core.path));
+assert.equal(measuredIntegrity.ok, true, JSON.stringify(measuredIntegrity.failures));
+assert.equal(measuredIntegrity.rtreeMode, "rtreecheck");
+assert.ok(measuredIntegrity.elapsedMs >= 0);
+console.log(`integrity fixture: ${measuredIntegrity.sizeBytes} bytes/${measuredIntegrity.pageCount} pages/${measuredIntegrity.elapsedMs.toFixed(1)}ms; rtree=${measuredIntegrity.rtreeMode}`);
 {
   const db = M.openDataFile(dataDir, M.readManifest(dataDir), "core");
   const run = db.prepare("SELECT * FROM ingest_run WHERE source_id='bld'").get();
@@ -176,6 +181,29 @@ rmSync(join(dataDir, "versions", "d", "core.sqlite"));
   const ok = await B.buildAndPublish({ dataDir: dir, version: "v4", builders: { core: two(3, 10, "11") }, resetBaseline: ["sa"] });
   assert.equal(ok.published, true, JSON.stringify(ok.failures));
   assert.deepEqual(ok.baselineReset, ["sa"]);
+}
+
+// ─── 13. 게시 전 FK 무결성 실패는 gate에서 막고 이유를 남긴다 ───────────────
+{
+  const dir = mkdtempSync(join(tmpdir(), "v2-build-integrity-fk-"));
+  const corrupt = await B.buildAndPublish({
+    dataDir: dir,
+    version: "corrupt",
+    builders: {
+      core: async (db, ctx) => {
+        const stats = await coreBuilder(1)(db, ctx);
+        db.pragma("foreign_keys = OFF");
+        db.prepare(`INSERT INTO feature_link (from_stable_id, to_stable_id, relation_type, method, confidence, release_id)
+          VALUES ('missing-from', 'missing-to', 'test', 'fixture', NULL, 'missing-release')`).run();
+        db.pragma("foreign_keys = ON");
+        return stats;
+      },
+    },
+  });
+  assert.equal(corrupt.published, false, JSON.stringify(corrupt.failures));
+  assert.ok(corrupt.failures.some((failure) => failure.code === "FOREIGN_KEY" && failure.detail.startsWith("core:")), JSON.stringify(corrupt.failures));
+  assert.equal(M.readManifest(dir), null, "FK 무결성 실패는 첫 게시도 막는다");
+  rmSync(dir, { recursive: true, force: true });
 }
 
 console.log("✓ v2 build");
