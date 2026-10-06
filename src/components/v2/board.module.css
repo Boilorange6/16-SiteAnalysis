@@ -1831,9 +1831,12 @@ button.badge:focus-visible {
   min-width: 0;
 }
 .cHead[data-compact] {
-  height: 22px;
+  min-height: 22px;
+  height: auto;
   border-bottom: 0;
   padding-top: 4px;
+  padding-bottom: 3px;
+  align-items: flex-start;
 }
 .cNum {
   flex: none;
@@ -1849,9 +1852,11 @@ button.badge:focus-visible {
 }
 .cName {
   min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
 }
 .cMissing {
   color: #9a5b00;
@@ -1949,7 +1954,7 @@ button.badge:focus-visible {
 }
 .cStripHead {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
   min-width: 0;
   font-size: 12px;
