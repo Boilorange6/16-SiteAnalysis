@@ -6,13 +6,13 @@ import { STRIP_COLORS } from "@/lib/v2/ui/map-layers";
 import { OV, badgesToShow, cardReserved, stripText } from "@/lib/v2/ui/overlay-layout";
 import { faceLabel, type Badge, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
 import { viewWithOnlyRaster } from "@/lib/v2/ui/tile-view";
-import { windRasterName } from "@/lib/v2/ui/wind-upload";
+import { windRasterName, WIND_LAYER_HEIGHTS } from "@/lib/v2/ui/wind-upload";
 import MassFigure from "./mass-figure";
 import WindRoseFigure from "./wind-rose-figure";
-import CalloutMap, { CalloutPill } from "./callout-map";
+import CalloutMap from "./callout-map";
 import MapBox from "./map-box";
 import DetailWindow from "./detail-window";
-import WindPanel from "./wind-panel";
+import WindPanel, { mapOptions } from "./wind-panel";
 import styles from "./board.module.css";
 import { hasDetail } from "@/lib/v2/ui/detail-state";
 
@@ -212,12 +212,17 @@ export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, p
       label={label}
       legend={!card}
       legendY={legendY}
-      north={card ? OV.edge + 38 + 8 + 13 : 22}
+      north={22}
       credit={false}
-      bottomInset={OV.stripH}
+      bottomInset={card ? 0 : OV.stripH}
+      fill={card ? 0.76 : undefined}
       avoid={(w, h) => {
         const inset = typeof rightInset === "function" ? rightInset(w) : (rightInset ?? 0);
-        return [...cardReserved(w, h, card ? { valueH: view.headline ? 104 : 0 } : { valueH: 0, right: 0 }), ...(inset ? [{ x0: w - inset, y0: 0, x1: w, y1: h }] : [])];
+        // 카드: 지도 위에는 북쪽(오른쪽 위)·범례 알약(왼쪽 아래)·축척(오른쪽 아래)만 있다
+        const reserved = card
+          ? [{ x0: w - 44, y0: 0, x1: w, y1: 44 }, { x0: 0, y0: h - 34, x1: w, y1: h }]
+          : cardReserved(w, h, { valueH: 0, right: 0 });
+        return [...reserved, ...(inset ? [{ x0: w - inset, y0: 0, x1: w, y1: h }] : [])];
       }}
       siteX={siteX}
       rightInset={rightInset}
@@ -261,7 +266,179 @@ export type TileCardProps = {
   onUnsheet?: () => void;
 };
 
-const INTERACTIVE = "button,input,label,a,select,[data-handle]";
+const INTERACTIVE = "button,input,label,a,select,[data-handle],[role=menu]";
+
+const Svg = ({ children, size = 16, fill }: { children: ReactNode; size?: number; fill?: boolean }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill={fill ? "currentColor" : "none"} stroke={fill ? "none" : "currentColor"} strokeWidth={2.3} strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
+    {children}
+  </svg>
+);
+
+/** ⋯ 더 보기: 상세 보기 · 지도에 보기(도판/구성비) · 보고서에 넣을 그림(도판/구성비/둘 다). Esc·바깥 누름·Tab으로 닫히고 닫힐 때 ⋯ 버튼으로 포커스가 돌아온다. */
+function MoreMenu({ view, active, back, onBack, face, onFace, onDetail }: { view: TileView; active: boolean; back: boolean; onBack: (v: boolean) => void; face: OutputFace; onFace: (f: OutputFace) => void; onDetail?: () => void }) {
+  const [open, setOpen] = useState(false);
+  const trigRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const items = () => Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role^="menuitem"]') ?? []);
+  useEffect(() => {
+    if (!open) return;
+    items()[0]?.focus();
+    const onDown = (e: Event) => {
+      const t = e.target as Node;
+      if (!menuRef.current?.contains(t) && !trigRef.current?.contains(t)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [open]);
+  useEffect(() => {
+    if (!active) setOpen(false); // 카드가 뒤집히면 메뉴도 닫는다
+  }, [active]);
+  if (!onDetail && !view.hasFace) return null;
+  const close = (refocus: boolean) => {
+    setOpen(false);
+    if (refocus) trigRef.current?.focus();
+  };
+  const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      close(true);
+    } else if (e.key === "Tab") {
+      close(false);
+    } else if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Home" || e.key === "End") {
+      e.preventDefault();
+      const list = items();
+      const at = list.indexOf(document.activeElement as HTMLElement);
+      const next = e.key === "Home" ? 0 : e.key === "End" ? list.length - 1 : (at + (e.key === "ArrowDown" ? 1 : -1) + list.length) % list.length;
+      list[next]?.focus();
+    }
+  };
+  const seg = (label: string, on: boolean, pick: () => void, wide?: boolean) => (
+    <button key={label} type="button" role="menuitemradio" aria-checked={on} className={`${styles.mfSegBtn} ${wide ? styles.mfSegWide : ""}`} onClick={pick}>
+      {label}
+    </button>
+  );
+  return (
+    <>
+      <button ref={trigRef} type="button" className={`${styles.mfBtn} ${open ? styles.mfBtnOn : ""}`} data-more-button aria-haspopup="menu" aria-expanded={open} aria-label={`${view.title} 더 보기`} title="더 보기" onClick={() => setOpen((v) => !v)}>
+        <Svg fill>
+          <circle cx="5" cy="12" r="2" />
+          <circle cx="12" cy="12" r="2" />
+          <circle cx="19" cy="12" r="2" />
+        </Svg>
+      </button>
+      {open && (
+        <div ref={menuRef} role="menu" aria-label={`${view.title} 더 보기`} className={styles.mfMenu} onKeyDown={onKeyDown}>
+          {onDetail && (
+            <button
+              type="button"
+              role="menuitem"
+              className={styles.mfMenuItem}
+              onClick={() => {
+                close(true); // 상세 창이 닫힐 때 돌아갈 자리를 ⋯ 버튼으로 둔다
+                onDetail();
+              }}
+            >
+              상세 보기<span>표·출처 전체</span>
+            </button>
+          )}
+          {view.hasFace && (
+            <>
+              <div className={styles.mfMenuHead} id={`mf-view-${view.tileId}`}>지도에 보기</div>
+              <div role="group" aria-labelledby={`mf-view-${view.tileId}`} className={styles.mfSeg}>
+                {seg("도판", !back, () => onBack(false))}
+                {seg("구성비", back, () => onBack(true))}
+              </div>
+              <div className={styles.mfMenuHead} id={`mf-out-${view.tileId}`}>보고서에 넣을 그림</div>
+              <div role="group" aria-labelledby={`mf-out-${view.tileId}`} className={styles.mfSeg}>
+                {FACES.map((f) => seg(f === "both" ? "둘 다" : faceLabel(f), face === f, () => onFace(f), f === "both"))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+/** S03: 바람장 표시 높이만 카드에서 바로 고른다. 계산·업로드 같은 큰 패널은 펼침에 있다. */
+function WindStrip({ view, layerZ, onLayerZ, onOpen }: { view: TileView; layerZ: number; onLayerZ: (z: number) => void; onOpen: () => void }) {
+  const options = mapOptions(view);
+  const z = options.find((o) => o.z === layerZ)?.z ?? options[0]?.z ?? layerZ;
+  return (
+    <div className={styles.mfWind} data-wind-strip>
+      <label className={styles.mfWindLabel}>
+        <span>높이</span>
+        <input
+          type="range"
+          min={0}
+          max={WIND_LAYER_HEIGHTS.length - 1}
+          step={1}
+          value={Math.max(0, WIND_LAYER_HEIGHTS.indexOf(z as (typeof WIND_LAYER_HEIGHTS)[number]))}
+          onChange={(e) => onLayerZ(WIND_LAYER_HEIGHTS[Number(e.target.value)] ?? z)}
+          disabled={options.length === 0}
+          aria-label="바람장 표시 높이"
+          aria-valuetext={`${z} m`}
+        />
+        <output data-wind-height>{z} m</output>
+      </label>
+      <button type="button" className={styles.mfWindBtn} onClick={onOpen} title="바람 계산·업로드는 펼침에서">
+        계산·설정 ↗
+      </button>
+    </div>
+  );
+}
+
+/** 지도 면: 헤더 40px(지도 밖) · 지도(남은 높이 전부) · 출처 24px(지도 밖). 지도 위에는 북쪽·축척·한 줄 범례만 둔다. */
+function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, onFlip, onDetail }: { p: TileCardProps; active: boolean; state: boolean; back: boolean; onBack: (v: boolean) => void; windLayerZ: number; onWindLayerZ: (z: number) => void; onFlip: () => void; onDetail?: () => void }) {
+  const { view } = p;
+  const h = view.headline;
+  const shortAux = h?.aux && h.aux.length <= 4 ? h.aux : "";
+  const extra = view.stackLayers ? view.stackLayers.join(" + ") : view.sheetGrid;
+  const text = stripText(view.sourceLine);
+  return (
+    <div className={styles.mf}>
+      <header className={styles.mfHead}>
+        <span className={styles.dot} style={{ background: view.color }} />
+        <h3 className={styles.mfTitle}>{view.title}</h3>
+        {h && (
+          <span className={styles.mfKey} title={`${h.label}${h.aux ? ` · ${h.aux}` : ""}`}>
+            <b>{h.value}</b>
+            {shortAux && <small className={styles.mfKeyLabel}>{shortAux}</small>}
+            <small className={styles.mfKeyLabel}>{h.label}</small>
+          </span>
+        )}
+        {extra && <span className={`${styles.kindTag} ${styles.mfKeyLabel}`}>{extra}</span>}
+        <label className={`${styles.check} ${styles.mfCheck}`}>
+          <input type="checkbox" checked={p.included} onChange={(e) => p.onInclude(e.target.checked)} aria-label={`${view.title} 보고서 포함`} />
+          보고서
+        </label>
+        <button type="button" className={`${styles.mfBtn} ${styles.mfBtnDark}`} onClick={p.onOpen} aria-label={`${view.title} 펼치기`} title="펼치기">
+          <Svg size={14}>
+            <path d="M7 17L17 7" />
+            <path d="M8 7h9v9" />
+          </Svg>
+        </button>
+        <MoreMenu view={view} active={active} back={back} onBack={onBack} face={p.face} onFace={p.onFace} onDetail={onDetail} />
+        <button type="button" className={styles.mfBtn} data-card-face-button="summary" onClick={onFlip} aria-pressed aria-label={`${view.title} 요약/지도 보기 전환`} title="요약 보기">
+          <Svg size={15}>
+            <path d="M3 12a9 9 0 1 0 3-6.7" />
+            <path d="M3 4v5h5" />
+          </Svg>
+        </button>
+      </header>
+      {view.code === "S03" && !state && <WindStrip view={view} layerZ={windLayerZ} onLayerZ={onWindLayerZ} onOpen={p.onOpen} />}
+      <div className={styles.mfMap}>
+        <div className={styles.stage}>
+          <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="card" windLayerZ={windLayerZ} />
+        </div>
+      </div>
+      <footer className={styles.mfFoot} title={text}>
+        <span>{text}</span>
+      </footer>
+    </div>
+  );
+}
 
 /** 요약면: 지도 없는 흰 카드. 제목 줄 · 큰 숫자 + 한 줄 라벨 · 사실 3줄 · 상태 배지(최대 2개) · 출처 한 줄 · "지도 ↻" */
 function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardProps; state: boolean; waiting: boolean; onFlip: () => void; onDetail?: () => void }) {
@@ -450,70 +627,7 @@ export default function TileCard(p: TileCardProps) {
         </div>
       <div className={`${styles.face} ${styles.faceMap}`} data-on={shown === "map"} inert={shown !== "map"} aria-hidden={shown !== "map"}>
           {mountMap && (
-            <>
-      <div className={styles.stage}>
-        <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="card" windLayerZ={windLayerZ} />
-      </div>
-
-      {view.code === "S03" && !state && (
-        <div style={{ position: "absolute", zIndex: 4, left: 12, right: 12, bottom: 42, display: "flex", justifyContent: "flex-end", pointerEvents: "none" }}>
-          <div style={{ width: "min(320px, 100%)", pointerEvents: "auto" }}>
-            <WindPanel view={view} compact layerZ={windLayerZ} onLayerZ={setWindLayerZ} onUploaded={p.onWindUploaded} />
-          </div>
-        </div>
-      )}
-
-      <TitleChip
-        view={view}
-        tail={
-          view.stackLayers || view.sheetGrid ? (
-            <span className={styles.kindTag}>{view.stackLayers ? view.stackLayers.join(" + ") : view.sheetGrid}</span>
-          ) : undefined
-        }
-      />
-
-      {!waiting && (
-        <div className={styles.ovTR}>
-          <div className={`${styles.plate} ${styles.reportChip}`}>
-            <label className={styles.check}>
-              <input type="checkbox" checked={p.included} onChange={(e) => p.onInclude(e.target.checked)} aria-label={`${view.title} 보고서 포함`} />
-              보고서
-            </label>
-            <button type="button" className={styles.open} onClick={p.onOpen} aria-label={`${view.title} 펼치기`} title="펼치기">
-              ↗
-            </button>
-            {detailable && (
-              <button type="button" className={styles.open} data-detail-button onClick={() => setDetailOpen(true)} aria-label={`${view.title} 상세 열기`} title="상세">
-                상세
-              </button>
-            )}
-            <button type="button" className={styles.flipIcon} data-card-face-button="summary" onClick={() => onCardFace("summary")} aria-pressed aria-label={`${view.title} 요약/지도 보기 전환`} title="요약 보기">
-              ↺
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className={styles.ovBL}>
-        {view.hasFace && !state && (
-          <div className={`${styles.plate} ${styles.faceCtl}`}>
-            <div className={styles.seg} role="group" aria-label={`${view.title} 보기`}>
-              보기
-              <button type="button" aria-pressed={!back} onClick={() => setBack(false)}>
-                도판
-              </button>
-              <button type="button" aria-pressed={back} onClick={() => setBack(true)}>
-                구성비
-              </button>
-            </div>
-            <FaceSelect view={view} value={p.face} onChange={p.onFace} />
-          </div>
-        )}
-        {!state && !(view.hasFace && back) && (view.callout ? <CalloutPill model={view.callout} /> : <ValueCard view={view} />)}
-      </div>
-
-      <SourceStrip view={view} />
-            </>
+            <MapFace p={p} active={shown === "map"} state={state} back={back} onBack={setBack} windLayerZ={windLayerZ} onWindLayerZ={setWindLayerZ} onFlip={() => onCardFace("summary")} onDetail={detailable ? () => setDetailOpen(true) : undefined} />
           )}
         </div>
       </div>

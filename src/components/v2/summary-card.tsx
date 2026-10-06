@@ -70,21 +70,33 @@ export default function SummaryCard({ view, face, onFace }: { view: SummaryView;
         </div>
         <div className={`${styles.face} ${styles.faceMap}`} data-on={face === "map"} inert={face !== "map"}>
           {view.map && (face === "map" || seen) && (
-            <>
-              <div className={styles.stage} aria-hidden>
-                <MapBox model={view.map} bare legend={false} north={OV.edge + 34 + 8 + 13} credit={false} bottomInset={OV.stripH} siteY={0.72} />
-              </div>
-              <div className={`${styles.plate} ${styles.summaryPanel}`}>{body}</div>
-              <div className={styles.ovBL}>
-                <div className={`${styles.plate} ${styles.summaryAsOf}`}>{asOf}</div>
-              </div>
-              <div className={styles.ovTR}>
-                <button type="button" className={`${styles.plate} ${styles.flipIcon} ${styles.flipIconPlate}`} data-card-face-button="summary" onClick={() => changeFace("summary")} aria-pressed aria-label="대지 요약 보기" title="요약 보기">
-                  ↺
+            <div className={styles.mf}>
+              <header className={styles.mfHead}>
+                <span className={styles.dot} style={{ background: "#16181d" }} />
+                <h2 className={styles.mfTitle} style={{ flex: "none" }}>대지 요약</h2>
+                <span className={styles.mfKey} style={{ flex: "0 1 auto" }} title={view.address}>
+                  <b>{view.address}</b>
+                </span>
+                <span style={{ marginLeft: "auto" }} />
+                <button type="button" className={styles.mfBtn} data-card-face-button="summary" onClick={() => changeFace("summary")} aria-pressed aria-label="대지 요약 보기" title="요약 보기">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
+                    <path d="M3 12a9 9 0 1 0 3-6.7" />
+                    <path d="M3 4v5h5" />
+                  </svg>
                 </button>
+              </header>
+              <div className={styles.mfMap}>
+                <div className={styles.stage} aria-hidden>
+                  <MapBox model={view.map} bare legend={false} north={22} credit={false} />
+                </div>
               </div>
-              <div className={styles.srcStrip}>배경지도 {OV.sourceCredit}</div>
-            </>
+              <footer className={styles.mfFoot} title={`${view.asOfLine} · 배경지도 ${OV.sourceCredit}`}>
+                <span>
+                  {view.asOfLine}
+                  {view.incomplete ? ` · 일부 자료 불완전 (타일 ${view.incompleteCount}개)` : ""} · 배경지도 {OV.sourceCredit}
+                </span>
+              </footer>
+            </div>
           )}
         </div>
       </div>

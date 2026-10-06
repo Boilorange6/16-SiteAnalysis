@@ -1,4 +1,6 @@
 import type BetterSqlite3 from "better-sqlite3";
+import type { Geometry } from "geojson";
+import { toUtmk } from "../../crs";
 import type { FeatureHit } from "../../data/features";
 import type { EngineContext } from "../context";
 
@@ -16,6 +18,61 @@ export interface BuildingRow {
   approvalDate: string | null;
   grossFloorM2: number | null;
   footprintM2: number | null;
+}
+
+/** 발자국의 면적 가중 중심(EPSG:5179 m). 홀은 뺀다. 면적이 0이면 꼭짓점 평균. */
+export function geometryCentroid(geometry: Geometry): [number, number] | null {
+  if (geometry.type === "Point") return [geometry.coordinates[0]!, geometry.coordinates[1]!];
+  const polygons = geometry.type === "Polygon" ? [geometry.coordinates] : geometry.type === "MultiPolygon" ? geometry.coordinates : null;
+  if (!polygons) return null;
+  const ox = polygons[0]?.[0]?.[0]?.[0] ?? 0;
+  const oy = polygons[0]?.[0]?.[0]?.[1] ?? 0; // 큰 좌표값끼리의 곱 오차를 줄이려고 첫 꼭짓점을 원점으로 옮긴다
+  let total = 0;
+  let sx = 0;
+  let sy = 0;
+  let vx = 0;
+  let vy = 0;
+  let vn = 0;
+  for (const rings of polygons) {
+    rings.forEach((ring, ringIndex) => {
+      let a = 0;
+      let rx = 0;
+      let ry = 0;
+      for (let i = 0; i + 1 < ring.length; i += 1) {
+        const x0 = ring[i]![0]! - ox;
+        const y0 = ring[i]![1]! - oy;
+        const x1 = ring[i + 1]![0]! - ox;
+        const y1 = ring[i + 1]![1]! - oy;
+        const cross = x0 * y1 - x1 * y0;
+        a += cross;
+        rx += (x0 + x1) * cross;
+        ry += (y0 + y1) * cross;
+        if (ringIndex === 0) {
+          vx += x0;
+          vy += y0;
+          vn += 1;
+        }
+      }
+      if (a === 0) return;
+      const area = Math.abs(a / 2) * (ringIndex === 0 ? 1 : -1);
+      total += area;
+      sx += (rx / (3 * a)) * area;
+      sy += (ry / (3 * a)) * area;
+    });
+  }
+  if (Math.abs(total) > 1e-9) return [ox + sx / total, oy + sy / total];
+  return vn > 0 ? [ox + vx / vn, oy + vy / vn] : null;
+}
+
+/**
+ * 동수 집계용 반경 판정: 발자국의 중심점이 반경 원 안에 있는 건물만 센다(벤치마크와 같은 정의).
+ * 반경에 걸친 건물까지 넣는 "교차" 선택(buildingRows)은 그림·3D·그림자가 그대로 쓴다.
+ */
+export function isCounted(ctx: EngineContext, row: { hit: { geometry: Geometry } }): boolean {
+  const [cx, cy] = ctx.memo("buildings:center-utmk", () => toUtmk(ctx.input.center));
+  const c = geometryCentroid(row.hit.geometry);
+  if (!c) return true; // 중심을 못 구하는 도형은 빼지 않는다(교차로 선택된 그대로 센다)
+  return Math.hypot(c[0] - cx, c[1] - cy) <= ctx.input.radiusM;
 }
 
 function columns(db: BetterSqlite3.Database, table: string): Set<string> {

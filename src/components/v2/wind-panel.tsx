@@ -46,7 +46,7 @@ function seasonLabel(season: WindSeason): string {
   return { annual: "연간", spring: "봄", summer: "여름", autumn: "가을", winter: "겨울" }[season];
 }
 
-function mapOptions(view: TileView): Array<{ name: string; z: number }> {
+export function mapOptions(view: TileView): Array<{ name: string; z: number }> {
   const refs = (view.map as (NonNullable<TileView["map"]> & { rasterOptions?: Array<{ name: string }> }) | null)?.rasterOptions ?? view.map?.rasters ?? [];
   return WIND_LAYER_HEIGHTS.flatMap((z) => {
     const name = refs.find((ref) => ref.name === windRasterName(view, z))?.name;

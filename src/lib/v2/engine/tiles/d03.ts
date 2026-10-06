@@ -1,7 +1,7 @@
 /** D03 건축물 용도 — 반경 안 건물의 주용도코드 분포. */
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
-import { buildingRows, BUILDING_SOURCES, type BuildingRow } from "./buildings-shared";
+import { buildingRows, BUILDING_SOURCES, isCounted, type BuildingRow } from "./buildings-shared";
 import { makeTile, missing, obs, polygonCandidate, type PolygonCandidate, type TileDraft } from "./common";
 import { areaInCircle, polygonArea, polygonParts } from "./geo";
 import { notProvided } from "./not-provided";
@@ -42,7 +42,7 @@ export function d03(ctx: EngineContext): TileResult {
   const rows = buildingRows(ctx);
   if (rows === null) return notProvided(ctx, "D03");
 
-  const total = rows.length;
+  const total = rows.filter((row) => isCounted(ctx, row)).length; // 동수·구성비는 중심점이 반경 안인 건물만, 그림은 교차 전부
   const counts = emptyClassCounts();
   const areaByClass = emptyClassCounts();
   const polygons: PolygonCandidate[] = [];
@@ -52,8 +52,9 @@ export function d03(ctx: EngineContext): TileResult {
 
   for (const row of rows) {
     const useClass = useClassOf(row.useCode);
-    counts.set(useClass, (counts.get(useClass) ?? 0) + 1);
-    if (useClass !== "미상") confirmed += 1;
+    const counted = isCounted(ctx, row);
+    if (counted) counts.set(useClass, (counts.get(useClass) ?? 0) + 1);
+    if (counted && useClass !== "미상") confirmed += 1;
 
     const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, row.hit.geometry);
     if (clipped === null) {
@@ -83,13 +84,13 @@ export function d03(ctx: EngineContext): TileResult {
   const areaFormula = "d03-area-share@1:반경 교차 발자국 면적÷유효 발자국 면적(footprintM2 확인 동)";
   const metrics: TileDraft["metrics"] = [
     total === 0
-      ? missing("fill_use_pct", "주용도 확인 동수", "%", "d03-fill-use@1:주용도 확인 동수÷반경 교차 건물 동수")
-      : obs("fill_use_pct", "주용도 확인 동수", pct(confirmed, total), "%", "d03-fill-use@1:주용도 확인 동수÷반경 교차 건물 동수", confirmed, total),
+      ? missing("fill_use_pct", "주용도 확인 동수", "%", "d03-fill-use@1:주용도 확인 동수÷반경 안(중심점 기준) 건물 동수")
+      : obs("fill_use_pct", "주용도 확인 동수", pct(confirmed, total), "%", "d03-fill-use@1:주용도 확인 동수÷반경 안(중심점 기준) 건물 동수", confirmed, total),
     ...USE_CLASSES.map((useClass, index) => {
       const count = counts.get(useClass) ?? 0;
       return total === 0
-        ? missing(`share_use_${index + 1}`, `구성비: ${useClass}`, "%", "d03-share-use@1:분류별 건물 동수÷반경 교차 건물 동수")
-        : obs(`share_use_${index + 1}`, `구성비: ${useClass}`, pct(count, total), "%", "d03-share-use@1:분류별 건물 동수÷반경 교차 건물 동수", count, total);
+        ? missing(`share_use_${index + 1}`, `구성비: ${useClass}`, "%", "d03-share-use@1:분류별 건물 동수÷반경 안(중심점 기준) 건물 동수")
+        : obs(`share_use_${index + 1}`, `구성비: ${useClass}`, pct(count, total), "%", "d03-share-use@1:분류별 건물 동수÷반경 안(중심점 기준) 건물 동수", count, total);
     }),
     ...USE_CLASSES.map((useClass, index) => {
       const area = areaByClass.get(useClass) ?? 0;

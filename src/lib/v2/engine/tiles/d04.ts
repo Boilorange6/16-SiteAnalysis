@@ -5,6 +5,7 @@ import type { EngineContext } from "../context";
 import { DECADE_LAYERS, decadeLayer } from "../../ui/callout-layout";
 import { candidate, makeTile, missing, obs, polygonCandidate, type PolygonCandidate, type TileDraft } from "./common";
 import { areaInCircle, polygonArea } from "./geo";
+import { isCounted } from "./buildings-shared";
 import { notProvided } from "./not-provided";
 
 const BUILDING_SOURCES = ["building", "gis_bldg"] as const;
@@ -60,7 +61,8 @@ export function d04(ctx: EngineContext): TileResult {
 
   const hits = ctx.hits("buildings", ["building"]);
   const facts = factByFeature(db, hits.map((h) => h.featureId));
-  const years = new Map(hits.map((h) => [h.featureId, approvalYear(facts.get(h.featureId)?.approval_date, ctx.input.analysisDate)]));
+  const allYears = new Map(hits.map((h) => [h.featureId, approvalYear(facts.get(h.featureId)?.approval_date, ctx.input.analysisDate)]));
+  const years = new Map(hits.filter((h) => isCounted(ctx, { hit: h })).map((h) => [h.featureId, allYears.get(h.featureId) ?? null])); // 동수·구성비는 중심점이 반경 안인 건물만, 그림은 교차 전부
   const polygons: PolygonCandidate[] = [];
   let failedGeometry = 0;
   for (const hit of hits) {
@@ -70,11 +72,11 @@ export function d04(ctx: EngineContext): TileResult {
       continue;
     }
     for (const rings of clipped.parts) {
-      const polygon = polygonCandidate(hit.featureId, decadeLayer(years.get(hit.featureId) ?? null), rings, polygonArea(rings), hit.name);
+      const polygon = polygonCandidate(hit.featureId, decadeLayer(allYears.get(hit.featureId) ?? null), rings, polygonArea(rings), hit.name);
       if (polygon) polygons.push(polygon);
     }
   }
-  const total = hits.length;
+  const total = years.size;
   const confirmed = [...years.values()].filter((year): year is number => year !== null).length;
   const byLayer = new Map<string, number>(DECADE_LAYERS.map((layer) => [layer, 0]));
   for (const year of years.values()) {
@@ -109,7 +111,7 @@ export function d04(ctx: EngineContext): TileResult {
     judgment: { ruleId: "D04-decades@1", basisMetricIds: ["confirmed_share_pct"], sentence, level: null, criteria: null },
     sources,
     layers: [...DECADE_LAYERS],
-    map: hits.map((hit) => candidate(hit, decadeLayer(years.get(hit.featureId) ?? null))),
+    map: hits.map((hit) => candidate(hit, decadeLayer(allYears.get(hit.featureId) ?? null))),
     polygons,
     limitations,
   });
