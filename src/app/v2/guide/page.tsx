@@ -45,7 +45,7 @@ function updateCycle(row: GuideSourceRelease): string {
     const value = row.rights[key];
     if (typeof value === "string" && value.trim()) return value;
   }
-  return "manifest 미기록";
+  return "갱신 주기 미기록";
 }
 
 function fallbackSourceRows(sourceIds: string[]): GuideSourceRelease[] {
@@ -57,7 +57,7 @@ function fallbackSourceRows(sourceIds: string[]): GuideSourceRelease[] {
     sourceAsOf: null,
     publishedAt: null,
     fetchedAt: "",
-    licenseCode: "manifest 미기록",
+    licenseCode: "라이선스 미기록",
     rights: {},
     fileKey: "catalog",
   }));
@@ -69,12 +69,12 @@ function sourceIdsFromCatalog(): string[] {
 
 function sourceStateText(snapshot: ReturnType<typeof readGuideSourceSnapshot>): string {
   if (snapshot.rows.length > 0) {
-    return `현재 게시 manifest${snapshot.manifestVersion ? ` ${snapshot.manifestVersion}` : ""}의 source_release 메타를 읽었습니다. 기준일은 원천별로 다를 수 있습니다.`;
+    return `현재 게시 자료 목록${snapshot.manifestVersion ? ` ${snapshot.manifestVersion}` : ""}에서 출처 정보를 읽었습니다. 기준일은 원천별로 다를 수 있습니다.`;
   }
   if (snapshot.manifestVersion) {
-    return `게시 manifest ${snapshot.manifestVersion}는 확인했지만 source_release 메타를 읽지 못했습니다. 아래 표는 카탈로그 원천 기준이며 기준일은 각 타일 출처 줄을 참조하세요.`;
+    return `게시 자료 목록 ${snapshot.manifestVersion}는 확인했지만 출처 정보를 읽지 못했습니다. 아래 표는 카탈로그 원천 기준이며 기준일은 각 타일 출처 줄을 참조하세요.`;
   }
-  return "게시 manifest를 읽을 수 없어 카탈로그 원천 기준으로 표시합니다. 기준일은 각 타일의 출처 줄을 참조하세요.";
+  return "게시 자료 목록을 읽을 수 없어 카탈로그 원천 기준으로 표시합니다. 기준일은 각 타일의 출처 줄을 참조하세요.";
 }
 
 export default function GuidePage() {
@@ -237,26 +237,26 @@ export default function GuidePage() {
             </div>
 
             <div className={styles.sourceMeta}>
-              <span>manifest 생성일 <strong>{snapshot.manifestCreatedAt ? dateOnly(snapshot.manifestCreatedAt) : "미확인"}</strong></span>
+              <span>자료 목록 확인일 <strong>{snapshot.manifestCreatedAt ? dateOnly(snapshot.manifestCreatedAt) : "미확인"}</strong></span>
               <span>표시 행 <strong>{sourceRows.length.toLocaleString("ko-KR")}</strong></span>
               <span>기준일·라이선스·갱신 주기는 원천별 메타 우선</span>
             </div>
 
             <div className={styles.sourceTableWrap}>
               <table className={styles.sourceTable}>
-                <caption>게시 manifest의 원천 릴리스 메타데이터</caption>
+              <caption>게시 자료의 출처 정보</caption>
                 <thead>
                   <tr><th scope="col">원천</th><th scope="col">제공처·자료</th><th scope="col">기준일</th><th scope="col">라이선스</th><th scope="col">갱신 주기</th><th scope="col">확인</th></tr>
                 </thead>
                 <tbody>
                   {sourceRows.map((row) => (
                     <tr key={`${row.sourceId}:${row.releaseId}`}>
-                      <th scope="row"><span>{sourceName(row.sourceId)}</span><small>{row.sourceId}</small></th>
+                      <th scope="row"><span>{sourceName(row.sourceId)}</span></th>
                       <td>{row.sourceUrl && /^https?:\/\//.test(row.sourceUrl) ? <a href={row.sourceUrl} target="_blank" rel="noreferrer">{row.provider}</a> : row.provider}</td>
                       <td>{dateFromRelease(row)}</td>
                       <td>{row.licenseCode || "미기록"}</td>
                       <td>{updateCycle(row)}</td>
-                      <td><small>{row.fileKey} · {dateOnly(row.fetchedAt || null)}</small></td>
+                      <td><small>{dateOnly(row.fetchedAt || null)}</small></td>
                     </tr>
                   ))}
                 </tbody>
@@ -267,14 +267,13 @@ export default function GuidePage() {
                 <article key={`${row.sourceId}:${row.releaseId}`} className={styles.sourceCard}>
                   <div className={styles.sourceCardHeading}>
                     <h3>{sourceName(row.sourceId)}</h3>
-                    <span>{row.sourceId}</span>
                   </div>
                   <p>{row.sourceUrl && /^https?:\/\//.test(row.sourceUrl) ? <a href={row.sourceUrl} target="_blank" rel="noreferrer">{row.provider}</a> : row.provider}</p>
                   <dl>
                     <div><dt>기준일</dt><dd>{dateFromRelease(row)}</dd></div>
                     <div><dt>라이선스</dt><dd>{row.licenseCode || "미기록"}</dd></div>
                     <div><dt>갱신 주기</dt><dd>{updateCycle(row)}</dd></div>
-                    <div><dt>확인</dt><dd>{row.fileKey} · {dateOnly(row.fetchedAt || null)}</dd></div>
+                    <div><dt>확인일</dt><dd>{dateOnly(row.fetchedAt || null)}</dd></div>
                   </dl>
                 </article>
               ))}

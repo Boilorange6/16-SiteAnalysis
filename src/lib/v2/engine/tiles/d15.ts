@@ -716,7 +716,7 @@ function measureBlocks(ctx: EngineContext, blocks: Block[]): { blocks: MeasuredB
 
 export function d15(ctx: EngineContext): TileResult {
   const sources = ctx.sources("reference", ROAD_SOURCES);
-  if (sources.length === 0) return notProvided(ctx, "D15", "도로(OSM) 미적재 — 원천 확보 후 제공");
+  if (sources.length === 0) return notProvided(ctx, "D15", "도로(OSM) 자료를 확인하지 못했습니다. 최신 자료 확인 후 제공됩니다.");
 
   const readRadiusM = ctx.input.radiusM + BLOCK_ROAD_FILTER.bufferM;
   const [cx, cy] = toUtmk(ctx.input.center);

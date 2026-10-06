@@ -85,7 +85,7 @@ assert.deepEqual([500, 501, 1000, 1001].map(gradeRail), ["good", "fair", "fair",
   // 철도 원천이 없는 버전(기존 게시본): 지금까지와 같은 동작
   const ctx = (await make({}))(800);
   const t = a01(ctx);
-  assert.ok(t.limitations.some((l) => l.kind === "not_provided" && l.note.includes("철도 자료 미적재")));
+  assert.ok(t.limitations.some((l) => l.kind === "not_provided" && l.note.includes("철도 자료를 확인하지 못해")));
   assert.equal(metric(t, "nearest_rail_m").status, "missing");
   assert.equal(t.judgment.level, "good");
   assert.ok(!metric(t, "rail_lines"));

@@ -54,7 +54,7 @@ const makeContext = async (options, radiusM = 800) => {
     assert.ok(tile.presentation.polygons.some((p) => p.layer === "green_zone"));
     assert.ok(tile.presentation.polygons.some((p) => p.layer === "water_parcel"));
     assert.ok(tile.presentation.polygons.some((p) => p.layer === "green_parcel"));
-    assert.ok(tile.limitations.some((l) => l.note.includes("OSM 수계 미적재")));
+    assert.ok(tile.limitations.some((l) => l.note.includes("OSM 수계 자료는 확인하지 못했습니다")));
     assert.ok(tile.limitations.some((l) => l.note.includes("계획 공원")));
     assert.ok(tile.limitations.some((l) => l.note.includes("녹지지역은 지목과 겹칠 수 있어")));
     assert.equal(tile.judgment.level, null);

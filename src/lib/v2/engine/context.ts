@@ -191,14 +191,14 @@ export class EngineContext {
       for (const [region, n] of Object.entries(snap.byRegion ?? {})) if (n > 0) regions.add(region);
     }
     if (unlocated + rejected > 0) {
-      out.push({ kind: "partial", note: `적재 때 위치를 확인하지 못한 ${unlocated}건과 형식 오류·중복 ${rejected}건은 제외되었습니다(전국 합계, 이 반경 안 건수는 알 수 없음).` });
+      out.push({ kind: "partial", note: `자료를 정리하는 과정에서 위치를 확인하지 못한 ${unlocated}건과 추가 확인이 필요한 ${rejected}건은 제외되었습니다. 전체 자료 기준 집계라 이 반경 안 건수와는 다를 수 있습니다.` });
     }
     const coded = regions.size > 0 && [...regions].every((r) => /^\d{2}$/.test(r));
     const sido = this.sidoCodes();
     if (coded && sido.length > 0) {
       const absent = sido.filter((c) => !regions.has(c));
-      if (absent.length > 0) out.push({ kind: "incomplete", note: `반경이 걸친 시도 ${absent.join(", ")}의 자료가 적재되지 않았습니다.` });
-      out.push({ kind: "unknown", note: "적재 이력에는 시도별 건수만 있어 시군구 단위 완전성은 확인할 수 없습니다." });
+      if (absent.length > 0) out.push({ kind: "incomplete", note: `반경이 걸친 시도 ${absent.join(", ")}의 자료를 확인하지 못했습니다.` });
+      out.push({ kind: "unknown", note: "시도별 집계만 있어 시군구 단위 완전성은 확인할 수 없습니다." });
     } else {
       out.push({ kind: "unknown", note: "지역 완전성이 시도 코드로 기록되지 않아 이 반경의 누락 여부를 확인할 수 없습니다." });
     }

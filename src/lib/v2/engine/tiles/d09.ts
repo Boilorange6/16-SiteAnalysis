@@ -64,7 +64,7 @@ export function d09(ctx: EngineContext): TileResult {
   const parcelSources = ctx.sources("parcels", ["parcel_polygon"]);
 
   if (parkSources.length === 0 && zoningSources.length === 0 && parcelSources.length === 0) {
-    return notProvided(ctx, "D09", "공원·녹지·하천 원천(공원·용도지역·필지 도형)이 적재되지 않았습니다.");
+    return notProvided(ctx, "D09", "공원·녹지·하천 자료(공원·용도지역·필지 도형)를 확인하지 못했습니다.");
   }
 
   const circleAreaM2 = Math.PI * ctx.input.radiusM * ctx.input.radiusM;
@@ -86,22 +86,22 @@ export function d09(ctx: EngineContext): TileResult {
   const metrics: TileDraft["metrics"] = [
     parkSources.length > 0
       ? obs("parks", "반경 내 운영 공원(대표점)", parkHits.length, "곳", "d09-parks@1:park 점이 반경 안에 있는 개수")
-      : missing("parks", "반경 내 운영 공원(대표점)", "곳", "d09-parks@1:park 원천 미적재"),
+      : missing("parks", "반경 내 운영 공원(대표점)", "곳", "d09-parks@1:공원 자료 확인 불가"),
     parkSources.length > 0
       ? obs("park_area_source_m2", "공원 원천 면적 합(반경 교차 아님)", rounded(parkAreaSum), "㎡", "d09-park-area-source@1:반경 안 park 점의 areaM2 합, 경계 교차면적 아님", parkAreas.length, parkHits.length)
-      : missing("park_area_source_m2", "공원 원천 면적 합(반경 교차 아님)", "㎡", "d09-park-area-source@1:park 원천 미적재"),
+      : missing("park_area_source_m2", "공원 원천 면적 합(반경 교차 아님)", "㎡", "d09-park-area-source@1:공원 자료 확인 불가"),
     parcelSources.length > 0
       ? obs("share_water_pct", "수면·하천 지목 구성비", pct(water.areaM2, circleAreaM2), "%", "d09-water-share@1:지목 천·구·유 도형의 반경 교차면적÷π·r²", rounded(water.areaM2), circleAreaRounded)
-      : missing("share_water_pct", "수면·하천 지목 구성비", "%", "d09-water-share@1:필지 도형 원천 미적재"),
+      : missing("share_water_pct", "수면·하천 지목 구성비", "%", "d09-water-share@1:필지 도형 자료 확인 불가"),
     parcelSources.length > 0
       ? obs("share_green_parcel_pct", "공원·임야 지목 녹지 구성비", pct(greenParcel.areaM2, circleAreaM2), "%", "d09-green-parcel-share@1:지목 임·공 도형의 반경 교차면적÷π·r²", rounded(greenParcel.areaM2), circleAreaRounded)
-      : missing("share_green_parcel_pct", "공원·임야 지목 녹지 구성비", "%", "d09-green-parcel-share@1:필지 도형 원천 미적재"),
+      : missing("share_green_parcel_pct", "공원·임야 지목 녹지 구성비", "%", "d09-green-parcel-share@1:필지 도형 자료 확인 불가"),
     zoningSources.length > 0
       ? obs("share_green_zone_pct", "녹지지역 구성비", pct(greenZone.areaM2, circleAreaM2), "%", "d09-green-zone-share@1:zoningClass=녹지 도형의 반경 교차면적÷π·r²", rounded(greenZone.areaM2), circleAreaRounded)
-      : missing("share_green_zone_pct", "녹지지역 구성비", "%", "d09-green-zone-share@1:용도지역 원천 미적재"),
+      : missing("share_green_zone_pct", "녹지지역 구성비", "%", "d09-green-zone-share@1:용도지역 자료 확인 불가"),
     parcelSources.length > 0
       ? obs("back_other_pct", "기타 면적 구성비(수면·지목 녹지 제외)", pct(circleAreaM2 - water.areaM2 - greenParcel.areaM2, circleAreaM2), "%", "d09-other-share@1:100%-수면-지목 녹지, 녹지지역은 제외하지 않음", rounded(circleAreaM2 - water.areaM2 - greenParcel.areaM2), circleAreaRounded)
-      : missing("back_other_pct", "기타 면적 구성비(수면·지목 녹지 제외)", "%", "d09-other-share@1:필지 도형 원천 미적재"),
+      : missing("back_other_pct", "기타 면적 구성비(수면·지목 녹지 제외)", "%", "d09-other-share@1:필지 도형 자료 확인 불가"),
   ];
 
   const observedMetricIds = metrics.filter((metric) => metric.status === "observed").map((metric) => metric.id);
@@ -119,13 +119,13 @@ export function d09(ctx: EngineContext): TileResult {
   map.push(...water.map, ...greenParcel.map, ...greenZone.map);
 
   const limitations: Limitation[] = [
-    { kind: "not_provided", note: "하천·수면은 지적 지목 기준(OSM 수계 미적재)" },
+    { kind: "not_provided", note: "하천·수면은 지적 지목 기준이며 OSM 수계 자료는 확인하지 못했습니다." },
     { kind: "not_provided", note: "계획 공원(도시계획시설)은 D12" },
     { kind: "unknown", note: "녹지지역은 지목과 겹칠 수 있어 합계 100% 아님" },
   ];
-  if (parkSources.length === 0) limitations.push({ kind: "not_provided", note: "공원 원천이 적재되지 않아 운영 공원 수와 원천 면적을 계산하지 않았습니다." });
-  if (parcelSources.length === 0) limitations.push({ kind: "not_provided", note: "필지 도형이 적재되지 않아 지목별 수면·녹지와 기타 면적을 계산하지 않았습니다." });
-  if (zoningSources.length === 0) limitations.push({ kind: "not_provided", note: "용도지역 원천이 적재되지 않아 녹지지역 구성비를 계산하지 않았습니다." });
+  if (parkSources.length === 0) limitations.push({ kind: "not_provided", note: "공원 자료를 확인하지 못해 운영 공원 수와 원천 면적을 계산하지 않았습니다." });
+  if (parcelSources.length === 0) limitations.push({ kind: "not_provided", note: "필지 도형 자료를 확인하지 못해 지목별 수면·녹지와 기타 면적을 계산하지 않았습니다." });
+  if (zoningSources.length === 0) limitations.push({ kind: "not_provided", note: "용도지역 자료를 확인하지 못해 녹지지역 구성비를 계산하지 않았습니다." });
   if (parkHits.length > parkAreas.length) limitations.push({ kind: "unknown", note: `공원 ${parkHits.length - parkAreas.length}곳은 원천 면적이 없어 면적 합에서 제외했습니다.` });
   if (water.failed > 0 || greenParcel.failed > 0 || greenZone.failed > 0) {
     limitations.push({ kind: "partial", note: `도형 오류로 수면 ${water.failed}건·지목 녹지 ${greenParcel.failed}건·녹지지역 ${greenZone.failed}건은 교차면적에서 제외했습니다.` });

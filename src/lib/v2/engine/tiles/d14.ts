@@ -54,13 +54,13 @@ export function d14(ctx: EngineContext): TileResult {
   const stationsWithEntrances = hasRail ? countStationsWithEntrances(stations, entrances) : 0;
 
   const metrics: TileDraft["metrics"] = [
-    hasRail ? obs("back_stations", "운영 철도역", stations.length, "역", "d14-stations@1:반경 내 rail_station 개수") : missing("back_stations", "운영 철도역", "역", "d14-rail@0:철도 원천 미적재"),
-    hasRail ? obs("back_entrances", "철도역 출입구", entrances.length, "곳", "d14-entrances@1:반경 내 rail_entrance 개수") : missing("back_entrances", "철도역 출입구", "곳", "d14-rail@0:철도 원천 미적재"),
+    hasRail ? obs("back_stations", "운영 철도역", stations.length, "역", "d14-stations@1:반경 내 rail_station 개수") : missing("back_stations", "운영 철도역", "역", "d14-rail@0:철도 자료 확인 불가"),
+    hasRail ? obs("back_entrances", "철도역 출입구", entrances.length, "곳", "d14-entrances@1:반경 내 rail_entrance 개수") : missing("back_entrances", "철도역 출입구", "곳", "d14-rail@0:철도 자료 확인 불가"),
     obs("back_bus_stops", "버스정류장", busStops.length, "곳", "d14-bus-stops@1:반경 내 bus_stop 개수"),
     hasRail && stations.length > 0
       ? obs("fill_entrance_pct", "출입구 확인 역", pct(stationsWithEntrances, stations.length), "%", "d14-entrance-fill@1:출입구가 연결된 역÷반경 내 운영역", stationsWithEntrances, stations.length)
-      : missing("fill_entrance_pct", "출입구 확인 역", "%", hasRail ? "d14-entrance-fill@1:역 0곳으로 분모 없음" : "d14-rail@0:철도 원천 미적재"),
-    hasRail ? obs("rail_lines", "반경 내 철도 노선", uniqueLines.size, "개", "d14-lines@1:반경과 교차한 고유 rail_line 개수") : missing("rail_lines", "반경 내 철도 노선", "개", "d14-rail@0:철도 원천 미적재"),
+      : missing("fill_entrance_pct", "출입구 확인 역", "%", hasRail ? "d14-entrance-fill@1:역 0곳으로 분모 없음" : "d14-rail@0:철도 자료 확인 불가"),
+    hasRail ? obs("rail_lines", "반경 내 철도 노선", uniqueLines.size, "개", "d14-lines@1:반경과 교차한 고유 rail_line 개수") : missing("rail_lines", "반경 내 철도 노선", "개", "d14-rail@0:철도 자료 확인 불가"),
   ];
 
   const map: MapCandidate[] = busStops.map((hit) => candidate(hit, "bus_stop"));
@@ -84,7 +84,7 @@ export function d14(ctx: EngineContext): TileResult {
   ];
   const limitations: TileDraft["limitations"] = [
     { kind: "unknown", note: "운영 시설만 표시하며 계획 철도는 D24에서 다룹니다." },
-    ...(hasRail ? [] : [{ kind: "not_provided" as const, note: "철도 자료 미적재 — 철도역·출입구·노선은 계산하지 못했습니다." }]),
+    ...(hasRail ? [] : [{ kind: "not_provided" as const, note: "철도 자료를 확인하지 못해 철도역·출입구·노선은 계산하지 못했습니다." }]),
     ...coverage,
   ];
   const status: TileResult["status"] = hasRail && !coverage.some((limitation) => limitation.kind === "partial" || limitation.kind === "incomplete") ? "complete" : "partial";
@@ -99,7 +99,7 @@ export function d14(ctx: EngineContext): TileResult {
     : {
         ruleId: "D14-transit@1",
         basisMetricIds: ["back_bus_stops"],
-        sentence: `반경 안 버스정류장 ${busStops.length}곳 확인, 철도 자료 미적재 → 버스 시설만 표시하고 철도 수치는 산출하지 않음 → 철도 운영 현황과 환승 동선은 원천 확인 필요`,
+        sentence: `반경 안 버스정류장 ${busStops.length}곳 확인, 철도 자료를 확인하지 못함 → 버스 시설만 표시하고 철도 수치는 산출하지 않음 → 철도 운영 현황과 환승 동선은 원천 확인 필요`,
         level: null,
         criteria: null,
       };

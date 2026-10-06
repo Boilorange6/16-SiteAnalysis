@@ -75,7 +75,7 @@ export function d10(ctx: EngineContext, options: CanopyForOptions = {}): TileRes
   const waterSources = ctx.sources("reference", ["osm_water"]);
   const canopy = canopyFor(ctx, options);
   const hasOsm = greenSources.length > 0 || waterSources.length > 0;
-  if (!canopy && !hasOsm) return notProvided(ctx, "D10", "VWorld 항공영상을 받지 못했고 OSM 녹지·수계 보조층도 적재되지 않았습니다.");
+  if (!canopy && !hasOsm) return notProvided(ctx, "D10", "VWorld 항공영상과 OSM 녹지·수계 보조 자료를 확인하지 못했습니다.");
 
   const imagerySources = canopy ? [VWORLD_WMTS_SOURCE] : [];
   const validAreaM2 = canopy ? canopyCellStats(canopy.grid, ctx.input.radiusM).valid * canopy.grid.cellM ** 2 : 0;
@@ -95,10 +95,10 @@ export function d10(ctx: EngineContext, options: CanopyForOptions = {}): TileRes
         : missing("fill_imagery_pct", "항공영상 타일 채움률", "%", "d10-imagery-fill@1:VWorld WMTS 타일을 받지 못함"),
     greenSources.length > 0
       ? obs("osm_green_pct", "OSM 녹지 면적률", Math.min(100, percent(green.areaM2, circleArea(ctx.input.radiusM))), "%", "d10-osm-green@1:OSM landuse 반경 교차면적÷π·r²", Math.round(green.areaM2), Math.round(circleArea(ctx.input.radiusM)))
-      : missing("osm_green_pct", "OSM 녹지 면적률", "%", "d10-osm-green@1:OSM landuse 미적재"),
+      : missing("osm_green_pct", "OSM 녹지 면적률", "%", "d10-osm-green@1:OSM 토지이용 자료 확인 불가"),
     waterSources.length > 0
       ? obs("osm_water_pct", "OSM 수계 면적률", Math.min(100, percent(water.areaM2, circleArea(ctx.input.radiusM))), "%", "d10-osm-water@1:OSM water 반경 교차면적÷π·r²", Math.round(water.areaM2), Math.round(circleArea(ctx.input.radiusM)))
-      : missing("osm_water_pct", "OSM 수계 면적률", "%", "d10-osm-water@1:OSM water 미적재"),
+      : missing("osm_water_pct", "OSM 수계 면적률", "%", "d10-osm-water@1:OSM 수계 자료 확인 불가"),
     canopy
       ? est("exg_threshold", "ExG 검출 임계값", Math.round(canopy.threshold * 1000) / 1000, "ExG", "d10-exg-threshold@1:유효 항공영상 ExG Otsu 임계값(0.04~0.20)")
       : missing("exg_threshold", "ExG 검출 임계값", "ExG", "d10-exg-threshold@1:유효 항공영상 없음"),
@@ -115,8 +115,8 @@ export function d10(ctx: EngineContext, options: CanopyForOptions = {}): TileRes
   ];
   if (!canopy) limitations.push({ kind: "not_provided", note: "VWorld 항공영상을 받지 못해 수관 래스터·수관 면을 계산하지 않았습니다." });
   if (canopy && canopy.missingTiles > 0) limitations.push({ kind: "partial", note: `VWorld 항공영상 ${canopy.missingTiles}/${canopy.totalTiles}개 타일을 받지 못해 유효 영역만 표시했습니다.` });
-  if (greenSources.length === 0) limitations.push({ kind: "not_provided", note: "OSM 녹지 면 자료 미적재 — 항공사진 수관과 별도인 보조층을 표시하지 않았습니다." });
-  if (waterSources.length === 0) limitations.push({ kind: "not_provided", note: "OSM 수계 면 자료 미적재 — 항공사진 수관과 별도인 보조층을 표시하지 않았습니다." });
+  if (greenSources.length === 0) limitations.push({ kind: "not_provided", note: "OSM 녹지 면 자료를 확인하지 못해 항공사진 수관과 별도인 보조층을 표시하지 않았습니다." });
+  if (waterSources.length === 0) limitations.push({ kind: "not_provided", note: "OSM 수계 면 자료를 확인하지 못해 항공사진 수관과 별도인 보조층을 표시하지 않았습니다." });
 
   const polygonCandidates: PolygonCandidate[] = [];
   if (canopy) {

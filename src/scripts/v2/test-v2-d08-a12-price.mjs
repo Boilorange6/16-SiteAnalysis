@@ -92,7 +92,7 @@ async function makeFixture(options, prices = false) {
   const tile = a12(ctx);
   clean(tile);
   assert.equal(metric(tile, "nearby_price_median").status, "missing");
-  assert.match(metric(tile, "nearby_price_median").formulaVersion, /parcels 파일 없음/);
+  assert.match(metric(tile, "nearby_price_median").formulaVersion, /주변 필지 자료 없음/);
   assert.equal(metric(tile, "parcel_area_m2").status, "missing");
   ctx.close();
 }

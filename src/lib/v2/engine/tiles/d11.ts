@@ -6,7 +6,7 @@ import { clipToCircle, polygonArea } from "./geo";
 
 const SOURCE_PREFIX = "district_";
 const FEATURE_KIND = "district_area";
-const MISSING_NOTE = "구역·지구 레이어 미적재(dsId 24 다운로드 필요)";
+const MISSING_NOTE = "구역·지구 자료를 확인할 수 없습니다. 최신 자료 확인이 필요합니다.";
 
 type DistrictHit = ReturnType<EngineContext["hits"]>[number];
 
@@ -100,7 +100,7 @@ export function d11(ctx: EngineContext): TileResult {
   ];
   const areaText = classes.length === 0 ? "분류별 면적을 산출하지 못함" : classes.map((cls) => `${cls} ${Math.round(clipped.areas.get(cls)!)}㎡`).join("·");
   const sentence = hits.length === 0
-    ? "반경과 교차하는 구역·지구 도형이 확인되지 않음 → 해당 원천의 공간 범위가 없거나 미적재일 수 있음 → VWorld 최신 레이어와 고시 원문 확인 필요"
+    ? "반경과 교차하는 구역·지구 도형이 확인되지 않음 → 자료 범위가 없거나 아직 확인되지 않을 수 있음 → VWorld 최신 자료와 고시 원문 확인 필요"
     : `반경과 교차하는 구역·지구 ${fmt(hits.length)}건(${areaText}) → 확인된 도형의 교차면적이며 규제 적용 여부나 운영 상태를 뜻하지 않음 → 지정 내용과 행위 제한은 토지이용계획확인서·고시 원문 확인 필요`;
   const limitations: TileResult["limitations"] = [
     { kind: "unknown", note: "원천에 지정·운영 상태의 구분이 없어 현재 효력이나 실제 운영 여부는 판단하지 않습니다." },

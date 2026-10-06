@@ -65,7 +65,7 @@ const noForbidden = (t) => {
   assert.deepEqual(t.judgment.basisMetricIds, ["nearest_bus_m"]);
   assert.deepEqual(t.judgment.grades.map((g) => [g.metricId, g.level]), [["nearest_bus_m", "good"]], "철도 자료가 없으면 버스 등급만");
   assert.match(t.judgment.criteria, /300m 이하 좋음 · 600m 이하 보통/);
-  assert.ok(t.limitations.some((l) => l.kind === "not_provided" && l.note.includes("철도 자료 미적재")));
+  assert.ok(t.limitations.some((l) => l.kind === "not_provided" && l.note.includes("철도 자료를 확인하지 못해")));
   noForbidden(t);
   ctx.close();
 
@@ -181,7 +181,7 @@ const noForbidden = (t) => {
   assert.deepEqual([val(t, "parking_per_household"), metric(t, "parking_per_household").numerator, metric(t, "parking_per_household").denominator], [1.2, 600, 500], "주차·세대가 둘 다 있는 단지만");
   assert.equal(t.status, "partial", "세대 수 미상 단지가 있음");
   assert.ok(t.limitations.some((l) => l.kind === "incomplete" && l.note.includes("1곳")));
-  assert.ok(t.limitations.some((l) => l.kind === "partial" && l.note.includes("위치를 확인하지 못한 3건") && l.note.includes("형식 오류·중복 1건")), "위치 미확인 recap 2 + title 1; rejected_count는 위치 미확인을 포함해 기록돼(3, 1) 순수 거부는 1");
+  assert.ok(t.limitations.some((l) => l.kind === "partial" && l.note.includes("위치를 확인하지 못한 3건") && l.note.includes("추가 확인이 필요한 1건")), "위치 미확인 recap 2 + title 1; rejected_count는 위치 미확인을 포함해 기록돼(3, 1) 순수 거부는 1");
   assert.equal(t.judgment.level, null);
   assert.deepEqual(t.provenance.sources.map((s) => s.sourceId), ["ledger_recap", "ledger_title"]);
   noForbidden(t);
@@ -274,7 +274,7 @@ const noForbidden = (t) => {
   const results = [a01(ctx), a03(ctx), a05(ctx)];
   const s = buildSummary({ address: "경기도 남양주시 다산동 100", jimok: "대" }, 800, results);
   assert.deepEqual([s.areaM2, s.zoning, s.radiusM], [null, null, 800]);
-  assert.deepEqual(s.facts, ["지목 대", "최근접 버스정류장 직선 250m, 반경 안 2곳", "아파트 3개 단지, 확인 세대 800세대"]);
+  assert.deepEqual(s.facts, ["최근접 버스정류장 직선 250m, 반경 안 2곳", "아파트 3개 단지, 확인 세대 800세대", "기초 생활시설 4군 중 3군 확인"]);
   ctx.close();
 }
 

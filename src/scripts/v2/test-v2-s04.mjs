@@ -322,7 +322,7 @@ async function main() {
       const legacy = s04(legacyContext);
       legacyContext.close();
       assert.equal(legacy.status, "not_provided");
-      assert.ok(legacy.limitations.some((item) => item.note === "계절×시각 대표 기상 미적재 — weather 재빌드 필요"));
+      assert.ok(legacy.limitations.some((item) => item.note === "계절·시각별 대표 기상 자료를 확인하지 못했습니다."));
     } finally {
       rmSync(legacyDir, { recursive: true, force: true });
     }

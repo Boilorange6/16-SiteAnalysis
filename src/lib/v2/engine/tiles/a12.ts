@@ -95,8 +95,8 @@ function priceDetails(ctx: EngineContext): PriceDetails {
   const parcelPnus = parcelHits.map((hit) => hit.pnu).filter((value): value is string => typeof value === "string" && value !== "");
   let nearbyReason: string | null = null;
   if (!parcelsDb) {
-    nearbyReason = "parcels 파일 없음";
-    metrics.push(unavailable("nearby_price_median", "주변 필지 공시지가 중앙값", "원/㎡", "a12-nearby-price@1:parcels 파일 없음"));
+    nearbyReason = "주변 필지 자료 없음";
+    metrics.push(unavailable("nearby_price_median", "주변 필지 공시지가 중앙값", "원/㎡", "a12-nearby-price@1:주변 필지 자료 없음"));
   } else if (!landPriceTable || !reference) {
     nearbyReason = "land_price 테이블 없음";
     metrics.push(unavailable("nearby_price_median", "주변 필지 공시지가 중앙값", "원/㎡", "a12-nearby-price@1:land_price 테이블 없음", 0, parcelHits.length));
@@ -125,8 +125,8 @@ function priceDetails(ctx: EngineContext): PriceDetails {
 
   let parcelAreaReason: string | null = null;
   if (!parcelsDb) {
-    parcelAreaReason = "parcels 파일 없음";
-    metrics.push(unavailable("parcel_area_m2", "대상 필지 도형 면적", "㎡", "a12-parcel-area@1:parcels 파일 없음"));
+    parcelAreaReason = "필지 도형 자료 없음";
+    metrics.push(unavailable("parcel_area_m2", "대상 필지 도형 면적", "㎡", "a12-parcel-area@1:필지 도형 자료 없음"));
   } else if (!pnu) {
     parcelAreaReason = "pnu 없음";
     metrics.push(unavailable("parcel_area_m2", "대상 필지 도형 면적", "㎡", "a12-parcel-area@1:pnu 없음"));
@@ -155,7 +155,7 @@ function zoningLimitations(ctx: EngineContext, zoning: ZoningCollection, include
     ...(zoning.umbrellas > 0 ? [{ kind: "suppressed" as const, note: `세분 없이 “도시지역”으로만 지정된 도형 ${zoning.umbrellas}건은 다른 지정과 겹쳐 구성비에서 제외했습니다.` }] : []),
     ...(zoning.fine.length > 1 ? [{ kind: "unknown" as const, note: "대지 중심점에 복수의 용도지역 지정이 있어 모두 표시했습니다. 어느 것이 적용되는지 확인이 필요합니다." }] : []),
     ...(zoning.clipFailed > 0 ? [{ kind: "partial" as const, note: `도형 오류로 반경 절단이 안 된 ${zoning.clipFailed}건은 구성비에서 빠졌습니다.` }] : []),
-    ...(missingLayers.length > 0 ? [{ kind: "incomplete" as const, note: `용도지역 레이어 ${missingLayers.length}종(${missingLayers.join(", ")})이 적재되지 않았습니다.` }] : []),
+    ...(missingLayers.length > 0 ? [{ kind: "incomplete" as const, note: `용도지역 자료 ${missingLayers.length}종(${missingLayers.join(", ")})을 확인하지 못했습니다.` }] : []),
     ...ctx.coverage("reference", ZONING_LAYERS),
   ];
 }

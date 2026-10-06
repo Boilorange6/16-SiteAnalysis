@@ -243,7 +243,7 @@ export function noDataTile(ctx: EngineContext, code: string, missingSources: str
     status: "no_data",
     metrics: [],
     sources: [],
-    limitations: [{ kind: "not_provided", note: `${missingSources.map(sourceName).join(", ")} 자료가 적재되지 않았습니다.` }],
+    limitations: [{ kind: "not_provided", note: `${missingSources.map(sourceName).join(", ")} 자료를 확인할 수 없습니다.` }],
   });
 }
 

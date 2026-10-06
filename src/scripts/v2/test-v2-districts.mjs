@@ -127,8 +127,8 @@ const missingD11 = d11(makeContext(empty));
 const missingD12 = d12(makeContext(empty));
 assert.equal(missingD11.status, "not_provided");
 assert.equal(missingD12.status, "not_provided");
-assert.ok(missingD11.limitations.some((l) => l.note.includes("dsId 24 다운로드 필요")));
-assert.ok(missingD12.limitations.some((l) => l.note.includes("dsId 24 다운로드 필요")));
+assert.ok(missingD11.limitations.some((l) => l.note.includes("구역·지구 자료를 확인할 수 없습니다")));
+assert.ok(missingD12.limitations.some((l) => l.note.includes("도시계획시설 자료를 확인할 수 없습니다")));
 
 empty.close();
 db.close();

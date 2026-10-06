@@ -118,6 +118,8 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
   const summary = useMemo(() => toSummaryView(siteSummary, results), [siteSummary, results]);
   const { tiles } = reportPages(board, complexCounts(views));
   const total = board.order.length;
+  const notProvidedIds = shown.filter((id) => views.get(id)?.status === "not_provided");
+  const visibleShown = shown.filter((id) => views.get(id)?.status !== "not_provided");
   const activeJobs = jobs.some((job) => job.status === "queued" || job.status === "running");
   const actionBusy = busy || activeJobs;
   const [nowMs, setNowMs] = useState(0);
@@ -529,7 +531,7 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
 
         <div className={styles.grid} id="v2-board-grid" ref={gridRef} tabIndex={-1}>
           <SummaryCard view={summary} face={editing ? "summary" : viewOf(board, SUMMARY_ID)} onFace={(face) => dispatch({ type: "view", id: SUMMARY_ID, face })} />
-          {shown.map((id, i) => {
+          {visibleShown.map((id, i) => {
             const view = views.get(id)!;
             const size = board.sizes[id];
             const oi = board.order.indexOf(id);
@@ -600,6 +602,17 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
             );
           })}
         </div>
+        {notProvidedIds.length > 0 && (
+          <details className={styles.notProvidedGroup}>
+            <summary className={styles.notProvidedSummary}>준비 중 {notProvidedIds.length}개</summary>
+            <ul className={styles.notProvidedList} aria-label="준비 중인 타일">
+              {notProvidedIds.map((id) => {
+                const view = views.get(id)!;
+                return <li key={id} className={styles.notProvidedItem}><span className={styles.dot} style={{ background: view.color }} />{view.title}<span>자료 확인 후 제공</span></li>;
+              })}
+            </ul>
+          </details>
+        )}
       </div>
 
       <div className={styles.srOnly} aria-live="polite">

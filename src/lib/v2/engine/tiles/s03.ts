@@ -7,7 +7,7 @@ import { buildWindCase, windCaseSimulation } from "../wind-metrics";
 
 export const s03 = (ctx: EngineContext): TileResult => {
   if (!ctx.db("weather") || ctx.sources("weather", ["asos"]).length === 0) {
-    return notProvided(ctx, "S03", "기상(ASOS) 미적재 — 유입 풍향 없음");
+    return notProvided(ctx, "S03", "기상(ASOS) 자료를 확인하지 못해 유입 풍향이 없습니다.");
   }
   const windCase = buildWindCase(ctx);
   if (!windCase) return notProvided(ctx, "S03", "건축물 자료 또는 유입 풍향이 없어 바람 사례를 만들 수 없습니다");

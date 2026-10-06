@@ -266,7 +266,7 @@ const areaKm2 = (areaM2: number) => round3(areaM2 / 1_000_000);
 
 export function d28(ctx: EngineContext): TileResult {
   const sources = walkSources(ctx);
-  if (sources.length === 0) return notProvided(ctx, "D28", "OSM 보행망 자료가 적재되지 않았습니다.");
+  if (sources.length === 0) return notProvided(ctx, "D28", "OSM 보행망 자료를 확인하지 못했습니다.");
 
   const field = walkField(ctx);
   if (!field) return notProvided(ctx, "D28", "OSM 보행망이 없거나 대지 중심을 보행망에 스냅할 수 없습니다.");

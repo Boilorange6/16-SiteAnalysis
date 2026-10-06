@@ -64,9 +64,9 @@ function displayBreaks(quantiles: number[], hasPositive: boolean): number[] {
 export function d16(ctx: EngineContext): TileResult {
   const radiusM = ctx.input.radiusM;
   const radiusRows = buildingRows(ctx);
-  if (radiusRows === null) return notProvided(ctx, "D16", "건물 자료가 적재되지 않았습니다.");
+  if (radiusRows === null) return notProvided(ctx, "D16", "건물 자료를 확인하지 못했습니다.");
   const rows = buildingRows(ctx, Math.min(5000, radiusM + INPUT_BUFFER_M));
-  if (rows === null) return notProvided(ctx, "D16", "건물 자료가 적재되지 않았습니다.");
+  if (rows === null) return notProvided(ctx, "D16", "건물 자료를 확인하지 못했습니다.");
   const countedRadiusRows = radiusRows.filter((row) => isCounted(ctx, row));
   const gfa = gfaMetrics(countedRadiusRows, radiusM);
 

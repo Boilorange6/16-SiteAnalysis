@@ -86,7 +86,7 @@ export function runSkeletonAnalysis(
         // 의도: 반경 안 적중 여부와 무관하게 조회한 건물 원천(파일 내 모든 building release)을 모두 나열한다.
         sources: releases.map((r) => ({ sourceId: r.source_id, releaseId: r.release_id, sourceAsOf: r.source_as_of, fetchedAt: r.fetched_at })),
       },
-      limitations: hasSource ? [] : [{ kind: "not_provided", note: "건물 원천이 적재되지 않았습니다" }],
+      limitations: hasSource ? [] : [{ kind: "not_provided", note: "건물 자료를 확인하지 못했습니다." }],
     });
     saveTileResult(appDb, tile, tileCacheKey({ tileCode: "D02", manifestHash: hash, engineVersion: SKELETON_ENGINE_VERSION, conditions }));
     finishAnalysisRun(appDb, analysisId, "complete");

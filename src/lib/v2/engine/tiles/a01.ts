@@ -206,11 +206,11 @@ export function a01(ctx: EngineContext): TileResult {
     else if (railM > radiusM) limitations.push({ kind: "unknown", note: `최근접 역은 분석 반경(${fmt(radiusM)}m) 밖이라 지도에는 표시하지 않았습니다.` });
     limitations.push({ kind: "unknown", note: "철도는 OSM 스냅샷의 역·출입구·노선 기호이며 운영 빈도·배차는 확인하지 않았습니다." });
   } else {
-    limitations.push({ kind: "not_provided", note: "철도 자료 미적재 — 철도역 거리·역 수는 계산하지 못했습니다." });
+    limitations.push({ kind: "not_provided", note: "철도 자료를 확인하지 못해 철도역 거리·역 수는 계산하지 못했습니다." });
   }
   limitations.push({ kind: "unknown", note: "정류장별 경유 노선 연결 자료가 없어 노선 수는 계산하지 못했습니다." });
   if (roadSources.length === 0) {
-    limitations.push({ kind: "not_provided", note: "보행망 자료 미적재 — 거리·시간·경로를 계산하지 못했습니다." });
+    limitations.push({ kind: "not_provided", note: "보행망 자료를 확인하지 못해 거리·시간·경로를 계산하지 못했습니다." });
   } else {
     limitations.push({ kind: "unknown", note: "보행망 도보는 OSM 중심선·80 m/분·정점 스냅 기준이며 실제 입구·횡단·경사는 반영하지 않았습니다." });
     limitations.push(...ctx.coverage("reference", ["osm_roads"]));

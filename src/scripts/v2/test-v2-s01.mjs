@@ -47,7 +47,7 @@ assert.deepEqual(tile.conditions.simulation, {
   ground: "flat",
 });
 assert.ok(tile.limitations.some((entry) => entry.note.includes("공개 도형과 확보 높이로 만든 매스")));
-assert.ok(tile.limitations.some((entry) => entry.kind === "not_provided" && entry.note === "지형(DEM) 미적재 — 평탄 지반"));
+assert.ok(tile.limitations.some((entry) => entry.kind === "not_provided" && entry.note === "지형 자료를 확인하지 못해 평탄 지반으로 표시합니다."));
 assert.doesNotMatch(JSON.stringify(tile), /법적/);
 ctx.close();
 
