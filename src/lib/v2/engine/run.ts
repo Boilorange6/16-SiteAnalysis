@@ -272,6 +272,9 @@ export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, inpu
         tileTimings[code] = elapsedMs;
         results.push(saveTileResultWithElapsed(appDb, tile, key, elapsedMs));
       } else {
+        // This is queue/cache lookup time, not the worker's heavy compute time.
+        // The worker stores its authoritative elapsed_ms on analysis_job.
+        tileTimings[code] = Math.max(0, Math.round(performance.now() - tileStarted));
         saveTileResult(appDb, tile, key);
         results.push(tile);
       }
