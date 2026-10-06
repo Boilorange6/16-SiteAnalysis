@@ -858,14 +858,50 @@
   flex-wrap: wrap;
   gap: 4px;
 }
+.badgeWrap {
+  position: relative;
+  display: inline-flex;
+  z-index: 4;
+}
 .badge {
   font-size: 11px;
   font-weight: 700;
   border-radius: 999px;
   padding: 2px 8px;
+  border: 0;
   background: #eceef2;
   color: #454a55;
-  cursor: help;
+  font-family: inherit;
+  line-height: 1.35;
+}
+button.badge {
+  cursor: pointer;
+}
+button.badge:hover {
+  filter: brightness(0.97);
+}
+button.badge:focus-visible {
+  outline: 2px solid #2f6fdb;
+  outline-offset: 2px;
+}
+.badgePopover {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  bottom: calc(100% + 6px);
+  width: max-content;
+  max-width: min(280px, 70vw);
+  padding: 8px 10px;
+  border: 1px solid #cdd1d9;
+  border-radius: 9px;
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.16);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .badgeStatus {
   background: #fde8d9;

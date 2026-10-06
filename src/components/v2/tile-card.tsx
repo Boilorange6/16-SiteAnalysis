@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { CardFace, DemoPhase, TileSize } from "@/lib/v2/ui/board-state";
 import { STRIP_COLORS } from "@/lib/v2/ui/map-layers";
 import { OV, badgesToShow, cardReserved, stripText } from "@/lib/v2/ui/overlay-layout";
@@ -20,6 +20,40 @@ import { hasDetail } from "@/lib/v2/ui/detail-state";
 const BADGE_CLASS = { status: styles.badgeStatus, limit: styles.badgeLimit, model: styles.badgeModel } as const;
 const FACES: OutputFace[] = ["front", "back", "both"];
 const ROSE_SEASON_LABEL: Record<RoseSeason, string> = { annual: "연간", spring: "봄", summer: "여름", autumn: "가을", winter: "겨울" };
+
+function BadgeHint({ text, note, tone }: { text: string; note?: string; tone?: Badge["tone"] }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLSpanElement>(null);
+  const popoverId = `badge-note-${useId().replace(/:/g, "")}`;
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!wrapRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        (wrapRef.current?.querySelector("button") as HTMLButtonElement | null)?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+  const className = `${styles.badge} ${tone ? BADGE_CLASS[tone] : ""}`;
+  if (!note) return <span className={className}>{text}</span>;
+  return (
+    <span ref={wrapRef} className={styles.badgeWrap}>
+      <button type="button" className={className} aria-expanded={open} aria-controls={popoverId} aria-describedby={open ? popoverId : undefined} onClick={() => setOpen((value) => !value)}>
+        {text}
+      </button>
+      {open && <span id={popoverId} className={styles.badgePopover} role="tooltip">{note}</span>}
+    </span>
+  );
+}
 
 export function RoseSeasonSelect({ view, value, onChange }: { view: TileView; value: RoseSeason; onChange: (season: RoseSeason) => void }) {
   if (view.code !== "D22" || !view.rose) return null;
@@ -42,9 +76,7 @@ export function BadgeList({ badges, extra }: { badges: Badge[]; extra?: string }
   return (
     <div className={styles.badges}>
       {badges.map((b, i) => (
-        <span key={`${b.text}-${i}`} className={`${styles.badge} ${BADGE_CLASS[b.tone]}`} title={b.note}>
-          {b.text}
-        </span>
+        <BadgeHint key={`${b.text}-${i}`} text={b.text} note={b.note} tone={b.tone} />
       ))}
       {extra && <span className={styles.badge}>{extra}</span>}
     </div>
@@ -59,14 +91,10 @@ export function ValueBadges({ badges }: { badges: Badge[] }) {
   return (
     <div className={styles.badges}>
       {shown.map((b, i) => (
-        <span key={`${b.text}-${i}`} className={`${styles.badge} ${BADGE_CLASS[b.tone]}`} title={b.note}>
-          {b.text}
-        </span>
+        <BadgeHint key={`${b.text}-${i}`} text={b.text} note={b.note} tone={b.tone} />
       ))}
       {more > 0 && (
-        <span className={styles.badge} title={hidden.map((b) => b.text).join(" · ")}>
-          +{more}
-        </span>
+        <BadgeHint text={`+${more}`} note={hidden.map((b) => b.note ? `${b.text}: ${b.note}` : b.text).join(" · ")} />
       )}
     </div>
   );

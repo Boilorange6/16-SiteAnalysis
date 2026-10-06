@@ -121,6 +121,10 @@ assert.match(dialogSource, /StatusPlate view=\{view\} phase=\{null\} onRetry=\{o
 const pageSource = readFileSync(new URL("../../app/v2/page.tsx", import.meta.url), "utf8");
 assert.match(pageSource, /method: "DELETE"/, "진행 중 분석 취소는 DELETE API를 사용해야 한다");
 assert.match(pageSource, /계산 취소/, "진행 표시 영역에 계산 취소 버튼이 있어야 한다");
+const tileCardSource = readFileSync(new URL("../../components/v2/tile-card.tsx", import.meta.url), "utf8");
+assert.match(tileCardSource, /aria-expanded=\{open\}/, "배지 설명은 키보드·터치 버튼으로 열어야 한다");
+assert.match(tileCardSource, /<BadgeHint text=\{`\+\$\{more\}`\}/, "+N 배지도 설명 팝오버를 가져야 한다");
+assert.doesNotMatch(tileCardSource, /title=\{b\.note\}/, "배지 설명을 title 툴팁에만 의존하지 않는다");
 
 // 대지 요약
 const sv = toSummaryView(GODEOK_SUMMARY, GODEOK_RESULTS);
