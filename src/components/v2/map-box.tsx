@@ -17,6 +17,8 @@ type Box = NonNullable<MapFigureProps["avoid"]>;
 type Opts = Pick<MapFigureProps, "legend" | "legendY" | "north" | "scale" | "credit" | "bottomInset" | "muted" | "rightInset" | "scaleLeft" | "fill" | "scaleX" | "siteY"> & {
   avoid?: Box | ((w: number, h: number) => Box);
   siteX?: number | ((w: number) => number);
+  /** 반경 원 위아래 여백(px): 지도 높이에서 fill을 정한다(카드). fill보다 우선 */
+  pad?: number;
 };
 type Opts2 = Omit<Opts, "rightInset"> & { rightInset?: number | ((w: number) => number) };
 
@@ -61,8 +63,9 @@ export function useMeasured() {
   return { ref, size, near };
 }
 
-export default function MapBox({ model, bare, label, avoid, siteX, rightInset, ...opts }: { model: MapModel; bare?: boolean; label?: string } & Opts2) {
+export default function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, ...optsIn }: { model: MapModel; bare?: boolean; label?: string } & Opts2) {
   const { ref, size, near } = useMeasured();
+  const opts = { ...optsIn, fill: pad && size ? Math.max(0.3, (size.h - 2 * pad) / size.h) : optsIn.fill };
   const layer = useContext(BasemapContext);
   const requestedLayer = model.basemap ?? layer;
   const [fallbackLayer, setFallbackLayer] = useState<BasemapChoice | null>(null);

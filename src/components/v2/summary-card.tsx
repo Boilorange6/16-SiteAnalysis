@@ -87,7 +87,7 @@ export default function SummaryCard({ view, face, onFace }: { view: SummaryView;
               </header>
               <div className={styles.mfMap}>
                 <div className={styles.stage} aria-hidden>
-                  <MapBox model={view.map} bare legend={false} north={22} credit={false} />
+                  <MapBox model={view.map} bare legend={false} north={22} credit={false} pad={7} />
                 </div>
               </div>
               <footer className={styles.mfFoot} title={`${view.asOfLine} · 배경지도 ${OV.sourceCredit}`}>
