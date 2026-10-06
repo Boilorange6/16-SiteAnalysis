@@ -146,7 +146,14 @@ export interface MzoneLayerInput {
 export interface MzoneRoster { id: string; sido: string; sigungu: string; name: string; type: string }
 export interface Zone { stableId: string; releaseId: string; layer: MzoneLayerKey; sigungu: string; name: string | null; altName: string | null; typeLabel: string | null }
 
-export async function buildMaintenanceZones(db: Db, layers: MzoneLayerInput[], roster?: { projects: readonly MzoneRoster[]; sigungu: Map<string, string> }): Promise<SourceStats[]> {
+export type MzoneRosterInput = { projects: readonly MzoneRoster[]; sigungu: Map<string, string> };
+
+export async function buildMaintenanceZones(db: Db, layers: MzoneLayerInput[], roster?: MzoneRosterInput): Promise<SourceStats[]> {
+  return finishMaintenanceZones(db, await loadMaintenanceZones(db, layers), roster);
+}
+
+/** 레이어별 구역 폴리곤만 적재한다(명부 매칭·release 설명 갱신은 finishMaintenanceZones). 레이어 단위로 나눠 호출해도 같은 결과다 — 순번 계수는 레이어 키마다 따로다. */
+export async function loadMaintenanceZones(db: Db, layers: MzoneLayerInput[]): Promise<SourceStats[]> {
   const seen = new Map<string, number>();
   const out: SourceStats[] = [];
   for (const input of layers) {
@@ -181,6 +188,11 @@ export async function buildMaintenanceZones(db: Db, layers: MzoneLayerInput[], r
     }, 1000);
     out.push(stats);
   }
+  return out;
+}
+
+/** 적재된 구역을 명부와 매칭하고 release의 coverage·rights를 쓴다. 다시 실행해도 결과가 같다. */
+export function finishMaintenanceZones(db: Db, out: SourceStats[], roster?: MzoneRosterInput): SourceStats[] {
   const link = roster ? linkZones(db, roster.projects, roster.sigungu) : null;
   for (const st of out) {
     const l = link?.byRelease.get(st.releaseId);

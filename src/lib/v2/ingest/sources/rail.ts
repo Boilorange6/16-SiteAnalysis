@@ -8,6 +8,7 @@ import type BetterSqlite3 from "better-sqlite3";
 import type { Geometry } from "geojson";
 import { insertFeature, queryFeaturesInRadius } from "../../data/features";
 import { batched, SourceStats } from "../build";
+import { fastLegalCodeFromCore } from "./legal-lookup";
 
 type Db = BetterSqlite3.Database;
 type Json = Record<string, unknown>;
@@ -17,8 +18,11 @@ export type LegalCodeOf = (lng: number, lat: number) => string | null;
 
 export const UNKNOWN_REGION = "(미상)";
 
-/** core의 legal_sigungu 경계로 좌표의 법정코드를 찾는다. core가 없으면 항상 null. */
-export function legalCodeFromCore(core: Db | null, radiusM = 50): LegalCodeOf {
+/** core의 legal_sigungu 경계로 좌표의 법정코드를 찾는다. core가 없으면 항상 null. 결과는 아래 느린 기준 구현과 같다(legal-lookup.ts). */
+export const legalCodeFromCore = fastLegalCodeFromCore;
+
+/** 기준 구현(질의마다 R*Tree + turf). 빠른 조회와 같은 결과인지 검증하는 테스트용. */
+export function legalCodeFromCoreSlow(core: Db | null, radiusM = 50): LegalCodeOf {
   return (lng, lat) => {
     if (!core) return null;
     const hit = queryFeaturesInRadius(core, [lng, lat], radiusM, ["legal_sigungu"])[0];

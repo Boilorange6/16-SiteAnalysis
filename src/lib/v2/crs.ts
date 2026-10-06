@@ -10,12 +10,15 @@ proj4.defs(UTMK, "+proj=tmerc +lat_0=38 +lon_0=127.5 +k=0.9996 +x_0=1000000 +y_0
 export type LngLat = readonly [number, number];
 export type XY = readonly [number, number];
 
+// proj4(from, to, p)는 호출마다 변환 객체를 새로 만든다 — 정점마다 부르면 적재 시간의 상당 부분이 된다(결과는 같다).
+const WGS84_TO_UTMK = proj4("EPSG:4326", UTMK);
+
 export function toUtmk([lng, lat]: LngLat): XY {
-  const [x, y] = proj4("EPSG:4326", UTMK, [lng, lat]);
+  const [x, y] = WGS84_TO_UTMK.forward([lng, lat]);
   return [x, y];
 }
 
 export function toLngLat([x, y]: XY): LngLat {
-  const [lng, lat] = proj4(UTMK, "EPSG:4326", [x, y]);
+  const [lng, lat] = WGS84_TO_UTMK.inverse([x, y]);
   return [lng, lat];
 }
