@@ -4,6 +4,7 @@ import { BASEMAP_ATTRIBUTION, BASEMAP_STACK, framedViewport, makeProjector, mete
 import { rasterAffine, rasterLegendColor, resolveRasterStyle } from "@/lib/v2/ui/raster-image";
 import type { RasterRef } from "@/lib/v2/tile-result";
 import { maxOf, minOf } from "@/lib/v2/extent";
+import { isSiteParcelLayer } from "@/lib/v2/ui/site-parcel";
 
 /**
  * 지도 그림 하나(SVG). 카드·상세·PPT가 같은 입력으로 같은 그림을 그린다.
@@ -79,8 +80,6 @@ type ScreenPoint = readonly [number, number];
 export type SiteMarkerMode = "parcel" | "ring";
 
 const SITE_MARKER_EDGE_PX = 10;
-const isSiteParcelLayer = (layer: string) => layer === "parcel_site" || layer === "pnu";
-
 /** 작은 필지는 윤곽이 점처럼 뭉개지므로 후보 1 링으로 바꾼다. */
 export function siteMarkerMode(ring?: readonly ScreenPoint[] | null): SiteMarkerMode {
   if (!ring || ring.length < 4) return "ring";
@@ -426,6 +425,20 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
       index,
     };
   });
+  const siteParcelModels = model.siteParcel === undefined ? (model.polygons ?? []).filter((polygon) => isSiteParcelLayer(polygon.layer)) : (model.siteParcel ?? []);
+  const siteParcels: ScreenPolygon[] = siteParcelModels.map((polygon, index) => {
+    const rings = polygon.rings.map((ring) => ring.map(([lng, lat]) => proj(lng, lat)));
+    const outer = rings[0] ?? [];
+    const xs = outer.map(([x]) => x);
+    const ys = outer.map(([, y]) => y);
+    return {
+      polygon,
+      rings,
+      center: xs.length > 0 ? [(minOf(xs) + maxOf(xs)) / 2, (minOf(ys) + maxOf(ys)) / 2] : [cx, cy],
+      area: polygonArea(outer),
+      index: polygons.length + index,
+    };
+  });
   const polygonOpacity = sat ? 0.45 : 0.35;
   const isEstimated = (polygon: ScreenPolygon) => polygon.polygon.layer.endsWith("_est") || layerStyle(polygon.polygon.layer).label.startsWith("[추정]");
   const hatchId = (index: number) => `hatch${uid}-${index}`;
@@ -479,7 +492,6 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   boxes.push(...avoid);
   if (scale) boxes.push({ x0: barX0 - 8 * u, y0: barY - 16 * u, x1: W, y1: H });
   const siteR = siteMarkerRadius(H, fixed);
-  const siteParcels = polygons.filter((polygon) => isSiteParcelLayer(polygon.polygon.layer));
   const sitePoints = siteParcels.flatMap((polygon) => polygon.rings.flat());
   const sitePath = siteParcels.map((polygon) => polygonPath(polygon.rings)).join(" ");
   const siteMode: SiteMarkerMode = siteParcels.length > 0 && siteParcels.every((polygon) => siteMarkerMode(polygon.rings[0]) === "parcel") ? "parcel" : "ring";

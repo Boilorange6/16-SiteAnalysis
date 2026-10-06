@@ -15,6 +15,8 @@ export type MapModel = {
   rasters?: RasterRef[];
   /** 면 지물(WGS84). T2의 MapFigure가 점보다 먼저 그린다. */
   polygons?: MapPolygon[];
+  /** 분석 단위로 한 번 전달하는 대상 필지(멀티파트·홀 포함). 일반 면 지물과 분리해 그린다. */
+  siteParcel?: MapPolygon[] | null;
   /** 상한으로 잘리기 전 전체 면 지물 개수 */
   polygonsTotal?: number;
   /** 선 지물(WGS84) */

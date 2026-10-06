@@ -8,7 +8,7 @@ const A = await import("../../lib/v2/app-db.ts");
 const { runAnalysis, restoreSummary } = await import("../../lib/v2/engine/run.ts");
 const { HEAVY_TILES, runHeavyTiles } = await import("../../lib/v2/engine/jobs.ts");
 const { TILE_CODES } = await import("../../lib/v2/ui/tile-catalog.ts");
-const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
+const { toSummaryView, toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 
 const dataDir = mkdtempSync(join(tmpdir(), "v2-eng-run-"));
 const appDb = A.openV2AppDb(join(mkdtempSync(join(tmpdir(), "v2-eng-run-app-")), "app.sqlite"));
@@ -79,6 +79,12 @@ try {
   assert.deepEqual(restored.map((t) => t.tileCode), [...TILE_CODES].sort());
   assert.deepEqual(restoreSummary(A.getAnalysisRun(appDb, r1.analysisId), restored), r1Summary);
   assert.equal(r1Summary.facts.length, 3);
+  const oldSaved = structuredClone(restored);
+  const oldSavedD19 = oldSaved.find((tile) => tile.tileCode === "D19");
+  if (oldSavedD19) delete oldSavedD19.presentation.polygons;
+  const oldSavedSummary = restoreSummary(A.getAnalysisRun(appDb, r1.analysisId), oldSaved);
+  assert.equal(oldSavedSummary.siteParcel, null, "옛 저장 분석의 필지 정보 없음은 null");
+  assert.doesNotThrow(() => toSummaryView(oldSavedSummary, oldSaved), "옛 저장 분석은 링 폴백으로 복원");
 
   // 새 manifest → 새 데이터로 재계산, 옛 분석은 그대로
   const h2 = await buildEngineFixture(dataDir, "v2", { extraBus: true });

@@ -211,6 +211,31 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   assert.equal(Object.keys(noImg.files).filter((n) => /^ppt\/media\/.+/.test(n)).length, 0);
   const slide2 = await noImg.file("ppt/slides/slide2.xml").async("string");
   assert.match(slide2, /지도 이미지를 만들지 못했습니다/);
+
+  const siteRing = [[127.1502, 37.6202], [127.151, 37.6202], [127.151, 37.621], [127.1502, 37.6202]];
+  const siteSummary = toSummaryView({ ...GODEOK_SUMMARY, siteParcel: [{ layer: "parcel_site", rings: [siteRing] }] }, GODEOK_RESULTS);
+  const siteViews = new Map(GODEOK_RESULTS.map((result) => [result.tileId, toTileView(result, null, siteSummary.map.siteParcel)]));
+  const sitePlan = buildReportPlan({ summary: siteSummary, views: siteViews, board: initBoard(GODEOK_RESULTS), analysisDate: "2026-09-30" });
+  assert.ok(sitePlan.find((slide) => slide.kind === "cover").map.siteParcel?.length === 1, "보고서 표지 지도에 분석 필지 전달");
+  assert.ok(sitePlan.find((slide) => slide.kind === "tile" && slide.view.code === "A01").map.siteParcel?.length === 1, "보고서 타일 지도에 분석 필지 전달");
+  for (const code of ["A01", "D04"]) {
+    assert.deepEqual(siteViews.get(`t-${code}`).map.siteParcel, siteSummary.map.siteParcel, `${code} 카드 지도에 같은 분석 필지 전달`);
+  }
+  // S02·S04는 실제 결과가 없는 fixture에서도 래스터 지도 계약만 채워 카드 전달 경로를 검증한다.
+  const rasterBase = structuredClone(GODEOK_RESULTS.find((result) => result.tileCode === "D04"));
+  for (const code of ["S02", "S04"]) {
+    const rasterResult = {
+      ...rasterBase,
+      tileId: `t-${code}-parcel-test`,
+      tileCode: code,
+      tileType: "simulation",
+      presentation: {
+        ...rasterBase.presentation,
+        rasters: [{ name: `${code.toLowerCase()}_cut`, kind: "scalar", crs: "EPSG:5179", x0: 0, y0: 0, cellM: 1, cols: 1, rows: 1, dtype: "u8", bands: 1, scale: 1, offset: 0, nodata: 255, palette: "utci", label: "test" }],
+      },
+    };
+    assert.deepEqual(toTileView(rasterResult, null, siteSummary.map.siteParcel).map.siteParcel, siteSummary.map.siteParcel, `${code} 래스터 지도에 같은 분석 필지 전달`);
+  }
 }
 
 console.log("v2 map tests passed");

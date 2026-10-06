@@ -143,7 +143,9 @@ export const todayKst = () => new Date().toLocaleDateString("sv-SE", { timeZone:
 function cacheKeyFor(ctx: EngineContext, code: string, upstream: string | null = null): string {
   const conditions = DATE_INDEPENDENT_CODES.has(code) ? { ...ctx.conditions, analysisDate: "date-independent" } : ctx.conditions;
   const key = tileCacheKey({ tileCode: code, manifestHash: ctx.manifestHash, engineVersion: cacheEngineVersion(code), conditions });
-  return upstream ? sha256Hex(`${key}:${upstream}`) : key;
+  const sitePnu = code === "D19" ? `site-pnu:${ctx.input.pnu ?? "none"}` : null;
+  const suffix = sitePnu ?? upstream;
+  return suffix ? sha256Hex(`${key}:${suffix}`) : key;
 }
 
 /** S04 reads S03's stored wind/obstacle rasters, and S03's own cache key does not change when a 2D/3D/uploaded wind
