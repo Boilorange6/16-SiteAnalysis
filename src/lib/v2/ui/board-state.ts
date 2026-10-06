@@ -1,5 +1,6 @@
 /** 보드 상태: 순서·제거/되돌리기·이동·보고서 포함·출력 면. 순수 reducer. */
 import type { TileResult } from "../tile-result";
+import { normalizeA05Filter, type A05Filter } from "../engine/a05-filter";
 import { calloutReportPages, DEFAULT_CALLOUT_MODE, type CalloutMode } from "./callout-layout";
 import { CAMERA_PRESETS } from "./mass-projection";
 import type { OutputFace } from "./tile-view";
@@ -21,6 +22,8 @@ export type UndoEntry =
 export type CardFace = "summary" | "map";
 /** 대지 요약 카드의 view 키 */
 export const SUMMARY_ID = "site-summary";
+export const BOARD_STATE_VERSION = 1;
+export const boardStorageKey = (analysisId: string): string => `site-analysis:v2:board:${analysisId}`;
 
 export type BoardState = {
   /** 폴링으로 갱신되는 최신 결과. 편집 상태와 분리해 replaceResults가 이것만 바꾼다. */
@@ -30,6 +33,8 @@ export type BoardState = {
   faces: Record<string, OutputFace>;
   /** 주변 단지 설명선 타일의 보고서 설명표 장수: 개요만 / 상위 10 / 전체 */
   callout: Record<string, CalloutMode>;
+  /** A05 타일별 재집계 필터. 결과(TileResult)와 분리해 저장한다. */
+  a05Filter: Record<string, A05Filter>;
   /** 카드별 화면 면. 전체 전환 뒤 카드별로 뒤집으면 그 카드만 다음 전체 전환까지 따로 간다. 보고서·되돌리기에 들어가지 않는다 */
   view: Record<string, CardFace>;
   viewAll: CardFace;
@@ -51,6 +56,7 @@ export type BoardState = {
 
 export type BoardAction =
   | { type: "replaceResults"; results: TileResult[] }
+  | { type: "restore"; snapshot: unknown }
   | { type: "remove"; id: string }
   | { type: "undo" }
   | { type: "move"; id: string; dir: -1 | 1 }
@@ -60,6 +66,7 @@ export type BoardAction =
   | { type: "include"; id: string; value: boolean }
   | { type: "face"; id: string; face: OutputFace }
   | { type: "callout"; id: string; mode: CalloutMode }
+  | { type: "a05Filter"; id: string; filter: A05Filter | null }
   | { type: "view"; id: string; face: CardFace }
   | { type: "viewAll"; face: CardFace }
   | { type: "stack"; layers: string[] }
@@ -80,6 +87,7 @@ export function initBoard(results: TileResult[]): BoardState {
     included: Object.fromEntries(results.map((r) => [r.tileId, r.status === "complete" || r.status === "partial"])),
     faces: Object.fromEntries(results.map((r) => [r.tileId, r.presentation.outputFace])),
     callout: Object.fromEntries(results.filter((r) => r.tileCode === "A05" || r.tileCode === "A06").map((r) => [r.tileId, DEFAULT_CALLOUT_MODE])),
+    a05Filter: {},
     view: {},
     viewAll: "summary",
     // 주변 단지 설명선(A05)은 좌우 칸이 필요해 기본 2칸
@@ -106,6 +114,8 @@ function reordered(order: string[], from: number, to: number): string[] | null {
 
 export function boardReducer(s: BoardState, a: BoardAction): BoardState {
   switch (a.type) {
+    case "restore":
+      return restoreBoardState(s.results, a.snapshot);
     case "replaceResults":
       {
         const replacements = new Map(a.results.map((result) => [result.tileCode, result]));
@@ -202,6 +212,13 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
       return { ...s, faces: { ...s.faces, [a.id]: a.face } };
     case "callout":
       return { ...s, callout: { ...s.callout, [a.id]: a.mode } };
+    case "a05Filter": {
+      const filter = normalizeA05Filter(a.filter);
+      const a05Filter = { ...s.a05Filter };
+      if (filter) a05Filter[a.id] = filter;
+      else delete a05Filter[a.id];
+      return { ...s, a05Filter };
+    }
     case "view":
       return { ...s, view: { ...s.view, [a.id]: a.face } };
     case "viewAll":
@@ -276,6 +293,160 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
       if (a.cuts !== 1 && a.cuts !== 3) return s;
       return { ...s, cuts: { ...s.cuts, [a.id]: a.cuts } };
   }
+}
+
+export type BoardStateSnapshot = {
+  version: number;
+  order: string[];
+  included: Record<string, boolean>;
+  faces: Record<string, OutputFace>;
+  callout: Record<string, CalloutMode>;
+  a05Filter: Record<string, A05Filter>;
+  view: Record<string, CardFace>;
+  viewAll: CardFace;
+  sizes: Record<string, TileSize>;
+  tileKinds: Record<string, TileResult["tileType"]>;
+  stacks: Record<string, string[]>;
+  sheets: Record<string, SheetSpec>;
+  cameras: Record<string, CameraPreset>;
+  cuts: Record<string, CutCount>;
+  removed: { id: string; index: number }[];
+};
+
+/** 프로젝트/브라우저 저장용 보드 설정. 분석 결과와 undo 기록은 현재 결과에 다시 붙인다. */
+export function serializeBoardState(s: BoardState): BoardStateSnapshot {
+  const a05Filter: Record<string, A05Filter> = {};
+  for (const [id, filter] of Object.entries(s.a05Filter)) {
+    const normalized = normalizeA05Filter(filter);
+    if (normalized) a05Filter[id] = normalized;
+  }
+  return {
+    version: BOARD_STATE_VERSION,
+    order: [...s.order],
+    included: { ...s.included },
+    faces: { ...s.faces },
+    callout: { ...s.callout },
+    a05Filter,
+    view: { ...s.view },
+    viewAll: s.viewAll,
+    sizes: { ...s.sizes },
+    tileKinds: { ...s.tileKinds },
+    stacks: Object.fromEntries(Object.entries(s.stacks).map(([id, layers]) => [id, [...layers]])),
+    sheets: Object.fromEntries(Object.entries(s.sheets).map(([id, spec]) => [id, { tiles: [...spec.tiles], grid: spec.grid }])),
+    cameras: Object.fromEntries(Object.entries(s.cameras).map(([id, camera]) => [id, { ...camera }])),
+    cuts: { ...s.cuts },
+    removed: s.removed.map((item) => ({ ...item })),
+  };
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
+const recordOf = (value: unknown): Record<string, unknown> => (isRecord(value) ? value : {});
+const stringsOf = (value: unknown): string[] => (Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []);
+const unique = (values: readonly string[]) => [...new Set(values)];
+const isOutputFace = (value: unknown): value is OutputFace => value === "front" || value === "back" || value === "both";
+const isCalloutMode = (value: unknown): value is CalloutMode => value === "overview" || value === "top10" || value === "all";
+const isCardFace = (value: unknown): value is CardFace => value === "summary" || value === "map";
+const isTileSize = (value: unknown): value is TileSize => value === 1 || value === 2;
+const isTileKind = (value: unknown): value is TileResult["tileType"] => value === "analysis" || value === "diagram" || value === "simulation" || value === "stack";
+
+function rawSnapshot(raw: unknown): Record<string, unknown> | null {
+  if (typeof raw === "string") {
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      return isRecord(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+  return isRecord(raw) ? raw : null;
+}
+
+/** 옛 저장본(버전/필터 필드 없음 포함)을 현재 분석 결과에 안전하게 붙인다. */
+export function restoreBoardState(results: TileResult[], raw: unknown): BoardState {
+  const base = initBoard(results);
+  const saved = rawSnapshot(raw);
+  if (!saved) return base;
+
+  const baseIds = new Set(base.order);
+  const savedStacks: Record<string, string[]> = {};
+  for (const [id, layers] of Object.entries(recordOf(saved.stacks))) {
+    const valid = unique(stringsOf(layers)).filter((layer) => baseIds.has(layer));
+    if (valid.length >= 2) savedStacks[id] = valid;
+  }
+  const savedSheets: Record<string, SheetSpec> = {};
+  for (const [id, spec] of Object.entries(recordOf(saved.sheets))) {
+    if (!isRecord(spec)) continue;
+    const tiles = unique(stringsOf(spec.tiles)).filter((tile) => baseIds.has(tile));
+    const grid = spec.grid === "2x2" || spec.grid === "3x2" ? spec.grid : null;
+    if (tiles.length >= 2 && grid) savedSheets[id] = { tiles, grid };
+  }
+  const compositeIds = new Set([...Object.keys(savedStacks), ...Object.keys(savedSheets)]);
+  const validIds = new Set([...baseIds, ...compositeIds]);
+  const savedOrder = unique(stringsOf(saved.order)).filter((id) => validIds.has(id));
+  const order = savedOrder.length > 0 ? savedOrder : base.order;
+
+  const included = { ...base.included };
+  for (const [id, value] of Object.entries(recordOf(saved.included))) if (validIds.has(id) && typeof value === "boolean") included[id] = value;
+  const faces = { ...base.faces };
+  for (const [id, value] of Object.entries(recordOf(saved.faces))) if (validIds.has(id) && isOutputFace(value)) faces[id] = value;
+  const callout = { ...base.callout };
+  for (const [id, value] of Object.entries(recordOf(saved.callout))) if (validIds.has(id) && isCalloutMode(value)) callout[id] = value;
+  const a05Filter: Record<string, A05Filter> = {};
+  for (const [id, value] of Object.entries(recordOf(saved.a05Filter))) {
+    if (!validIds.has(id)) continue;
+    const normalized = normalizeA05Filter(isRecord(value) ? (value as A05Filter) : null);
+    if (normalized) a05Filter[id] = normalized;
+  }
+  const view = { ...base.view };
+  for (const [id, value] of Object.entries(recordOf(saved.view))) if (validIds.has(id) && isCardFace(value)) view[id] = value;
+  const sizes = { ...base.sizes };
+  for (const [id, value] of Object.entries(recordOf(saved.sizes))) if (validIds.has(id) && isTileSize(value)) sizes[id] = value;
+  const tileKinds = { ...base.tileKinds };
+  for (const [id, value] of Object.entries(recordOf(saved.tileKinds))) if (validIds.has(id) && isTileKind(value)) tileKinds[id] = value;
+  for (const id of Object.keys(savedStacks)) {
+    included[id] = included[id] ?? true;
+    faces[id] = faces[id] ?? "front";
+    sizes[id] = sizes[id] ?? 1;
+    tileKinds[id] = "stack";
+  }
+  for (const id of Object.keys(savedSheets)) {
+    included[id] = included[id] ?? true;
+    faces[id] = faces[id] ?? "front";
+    sizes[id] = sizes[id] ?? 1;
+    tileKinds[id] = "stack";
+  }
+  const cameras: Record<string, CameraPreset> = {};
+  for (const [id, value] of Object.entries(recordOf(saved.cameras))) if (validIds.has(id) && isRecord(value) && isCameraPreset(value as CameraPreset)) cameras[id] = { azimuthDeg: value.azimuthDeg as number, elevationDeg: value.elevationDeg as number };
+  const cuts: Record<string, CutCount> = {};
+  for (const [id, value] of Object.entries(recordOf(saved.cuts))) if (validIds.has(id) && (value === 1 || value === 3)) cuts[id] = value;
+  const removed: { id: string; index: number }[] = [];
+  const removedIds = new Set<string>();
+  if (Array.isArray(saved.removed)) {
+    for (const item of saved.removed) {
+      if (!isRecord(item) || typeof item.id !== "string" || typeof item.index !== "number" || !baseIds.has(item.id) || order.includes(item.id) || removedIds.has(item.id)) continue;
+      removedIds.add(item.id);
+      removed.push({ id: item.id, index: item.index });
+    }
+  }
+
+  return {
+    ...base,
+    order,
+    included,
+    faces,
+    callout,
+    a05Filter,
+    view,
+    viewAll: isCardFace(saved.viewAll) ? saved.viewAll : base.viewAll,
+    sizes,
+    tileKinds,
+    stacks: savedStacks,
+    sheets: savedSheets,
+    cameras,
+    cuts,
+    removed,
+    undoStack: [],
+  };
 }
 
 function isCameraPreset(camera: CameraPreset): boolean {

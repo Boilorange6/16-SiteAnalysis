@@ -62,7 +62,11 @@ await assert.rejects(A.saveProject(db, dataDir, { projectId: "p1", name: "n", an
 await assert.rejects(A.saveProject(db, dataDir, { projectId: "p1", name: "n", analysisId: "zzz", board: {} }), /unknown analysis/);
 assert.deepEqual(A.pinnedManifestHashes(db), new Set([H2]), "거부된 저장은 핀을 만들지 않음");
 archive(H1);
-await A.saveProject(db, dataDir, { projectId: "p1", name: "다산역 검토", analysisId: "a1", board: { tiles: ["D02"] } });
+const savedBoard = { version: 1, order: ["a1-D02", "a1-A05"], a05Filter: { "a1-A05": { types: ["apt"], year: { min: 2010, max: null } } } };
+await A.saveProject(db, dataDir, { projectId: "p1", name: "다산역 검토", analysisId: "a1", board: savedBoard });
+assert.deepEqual(A.loadProject(db, "p1").board, savedBoard, "프로젝트 보드 저장→불러오기 왕복");
+await A.saveProject(db, dataDir, { projectId: "p1", name: "다산역 검토", analysisId: "a1", board: { order: ["a1-D02"] } });
+assert.deepEqual(A.loadProject(db, "p1").board, { order: ["a1-D02"] }, "a05Filter 없는 옛 프로젝트도 불러옴");
 assert.deepEqual(A.pinnedManifestHashes(db), new Set([H1, H2]));
 A.finishAnalysisRun(db, "a2", "failed");
 assert.deepEqual(A.pinnedManifestHashes(db), new Set([H1]), "끝난 분석은 핀 해제");

@@ -430,6 +430,7 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   if (co && co.model.complexes.length > 0) items.push(calloutStatItem(s, co.model));
   else if (v.headline) items.push(...headlineItems(s, v.headline));
   if (v.sentence) items.push(textItem(s, v.sentence, 12.5, INK, true, 5));
+  if (v.filterLine) items.push(textItem(s, v.filterLine, 10, MUTED, true, 2));
   // 도판(지도) 면에 구성비 수치를 반복하지 않는다
   const rows = p.body.face === "front" || p.body.face === "back" ? [] : v.rows.filter((r) => r.label !== v.headline?.label).slice(0, 5);
   if (rows.length) items.push(...rowItems(s, rows));

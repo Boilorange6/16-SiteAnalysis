@@ -426,6 +426,19 @@
   border-radius: 999px;
   padding: 1px 7px;
 }
+.filterChip {
+  flex: none;
+  max-width: 46%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 700;
+  color: #1f4a9c;
+  background: #e3ecfb;
+  border-radius: 999px;
+  padding: 1px 7px;
+}
 .reportChip {
   display: inline-flex;
   align-items: center;
@@ -1206,6 +1219,160 @@
 }
 .plate.seg {
   padding: 3px 8px;
+}
+
+/* ── A05 재집계 ── */
+.a05Panel {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+}
+.a05PanelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.a05PanelTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+.a05Reset {
+  flex: none;
+  min-width: 44px;
+  min-height: 40px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.a05Reset:hover {
+  background: #eef0f3;
+}
+.a05TypeBlock {
+  display: grid;
+  gap: 8px;
+}
+.a05SectionLabel {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.a05Types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.a05Chip {
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 40px;
+  padding: 7px 12px;
+  border: 1px solid #d5d8de;
+  border-radius: 999px;
+  background: #eef0f3;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+.a05Chip:hover {
+  background: #dfe2e8;
+}
+.a05Chip[aria-pressed="true"] {
+  border-color: var(--black);
+  background: var(--black);
+  color: #fff;
+}
+.a05Reset:focus-visible,
+.a05Chip:focus-visible,
+.a05Input:focus-visible {
+  outline: 2px solid #2f6fdb;
+  outline-offset: 2px;
+}
+.a05Ranges {
+  display: grid;
+  gap: 10px;
+}
+.a05Range {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.a05RangeLegend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 8px;
+  width: 100%;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+.a05RangeUnknown {
+  color: #7a5200;
+  font-size: 11px;
+  font-weight: 700;
+}
+.a05RangeInputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 7px;
+}
+.a05Bound {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.a05BoundLabel,
+.a05Unit {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.a05Input {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 9px;
+  border: 1px solid #cfd3da;
+  border-radius: 9px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.a05Summary {
+  margin: 0;
+  padding-top: 2px;
+  color: #454a55;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 420px) {
+  .a05RangeInputs {
+    grid-template-columns: 1fr;
+  }
+}
+@media (pointer: coarse) {
+  .a05Reset,
+  .a05Chip,
+  .a05Input {
+    min-height: 44px;
+  }
 }
 
 /* ── 알림 ── */

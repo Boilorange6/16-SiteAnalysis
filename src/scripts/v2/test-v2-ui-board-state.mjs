@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 
 const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");
-const { initBoard, boardReducer, reportPages, demoPhase, demoFinished } = await import("../../lib/v2/ui/board-state.ts");
+const { initBoard, boardReducer, reportPages, demoPhase, demoFinished, serializeBoardState, restoreBoardState } = await import("../../lib/v2/ui/board-state.ts");
 
 const ids = GODEOK_RESULTS.map((r) => r.tileId);
 let s = initBoard(GODEOK_RESULTS);
@@ -168,5 +168,21 @@ assert.deepEqual([0, 1, 2, 3].map((st) => demoPhase(1, st)), ["pending", "pendin
 assert.equal(demoFinished(10, 0), 0);
 assert.equal(demoFinished(10, 8), 7);
 assert.equal(demoFinished(10, 99), 10);
+
+// A05 필터는 결과와 분리된 보드 설정으로 저장·복원되고, 필드가 없던 옛 저장본도 연다.
+{
+  let b = initBoard(GODEOK_RESULTS);
+  b = boardReducer(b, { type: "a05Filter", id: "t-A05", filter: { types: ["apt"], year: { min: 2010 } } });
+  const snapshot = serializeBoardState(b);
+  assert.equal(snapshot.version, 1);
+  assert.deepEqual(snapshot.a05Filter["t-A05"], { types: ["apt"], year: { min: 2010, max: null } });
+  const restored = restoreBoardState(GODEOK_RESULTS, JSON.stringify(snapshot));
+  assert.deepEqual(restored.a05Filter, snapshot.a05Filter, "저장→불러오기 왕복으로 A05 필터 유지");
+  const old = { ...snapshot };
+  delete old.a05Filter;
+  assert.deepEqual(restoreBoardState(GODEOK_RESULTS, old).a05Filter, {}, "a05Filter 없는 옛 저장본 호환");
+  const refreshed = boardReducer(b, { type: "replaceResults", results: GODEOK_RESULTS.map((result) => ({ ...result })) });
+  assert.deepEqual(refreshed.a05Filter, b.a05Filter, "재분석 결과 교체에도 필터 유지");
+}
 
 console.log("v2 ui board-state tests passed");

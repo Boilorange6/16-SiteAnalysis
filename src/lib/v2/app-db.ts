@@ -243,6 +243,33 @@ function insertProject(db: Db, p: { projectId: string; name: string; analysisId:
     .run(p.projectId, p.name, p.analysisId, JSON.stringify(p.board), t, t);
 }
 
+export type SavedProject = {
+  projectId: string;
+  name: string;
+  analysisId: string;
+  board: unknown;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** 저장된 보드 설정을 복원한다. board_json에 없는 새 필드는 호출자가 기본값으로 보완한다. */
+export function loadProject(db: Db, projectId: string): SavedProject | null {
+  const row = db
+    .prepare("SELECT project_id, name, analysis_id, board_json, created_at, updated_at FROM saved_project WHERE project_id = ?")
+    .get(projectId) as
+    | { project_id: string; name: string; analysis_id: string; board_json: string; created_at: string; updated_at: string }
+    | undefined;
+  if (!row) return null;
+  return {
+    projectId: row.project_id,
+    name: row.name,
+    analysisId: row.analysis_id,
+    board: JSON.parse(row.board_json) as unknown,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 export function pinnedManifestHashes(db: Db): Set<string> {
   const rows = db
     .prepare(`SELECT r.manifest_hash FROM saved_project p JOIN analysis_run r ON r.analysis_id = p.analysis_id

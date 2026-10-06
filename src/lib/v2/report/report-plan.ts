@@ -41,7 +41,7 @@ export type ReportSlide =
       /** D22 바람장미 이미지. PPT에는 SVG를 PNG로 바꿔 전면에 넣는다. */
       rose?: RoseModel;
       /** 주변 단지 설명선 장: page 0 = 개요, 1.. = 설명표 (지도 이미지는 단지 없이, 점·지시선·표는 pptx 도형) */
-      callout?: { model: CalloutModel; page: number; pages: number };
+      callout?: { model: CalloutModel; page: number; pages: number; filterLine?: string | null };
     }
   | {
       kind: "sheet";
@@ -97,8 +97,9 @@ export function viewWithOnlyLayer(view: TileView, layer: string, note: string): 
 
 function oneLine(v: TileView): string {
   if (!hasResult(v)) return (v.badges[0]?.text ?? "결과 없음") + " · 결과 없음";
-  if (!v.headline) return "결과 있음";
-  return `${v.headline.label} ${v.headline.value}${v.headline.aux ? ` ${v.headline.aux}` : ""}`;
+  if (!v.headline) return `결과 있음${v.filterLine ? " · 필터 적용" : ""}`;
+  const line = `${v.headline.label} ${v.headline.value}${v.headline.aux ? ` ${v.headline.aux}` : ""}`;
+  return `${line}${v.filterLine ? " · 필터 적용" : ""}`;
 }
 
 /** sourceLine("id 2026-09-01 · id2 기준일 미확인") → [id, 기준일] */
@@ -176,6 +177,7 @@ export function buildReportPlan(input: {
       // 설명선 타일: 개요 1장 + 설명표 장 (설정: 개요만 / 상위 10 / 전체). 장수는 board-state.reportPages와 같은 함수
       const cm = v.callout;
       const count = calloutReportPages(board.callout[v.tileId] ?? DEFAULT_CALLOUT_MODE, cm.complexes.length);
+      const sourceFooter = v.sourceLine === "출처 없음" ? "출처 없음 · 기준일 해당 없음" : `출처 ${v.sourceLine}`;
       for (let page = 0; page < count; page++) {
         raw.push({
           kind: "tile",
@@ -184,8 +186,8 @@ export function buildReportPlan(input: {
           faceLabel: null,
           map: v.backdrop,
           muted: false,
-          callout: { model: cm, page, pages: pageCount(cm.complexes.length) },
-          footer: v.sourceLine === "출처 없음" ? "출처 없음 · 기준일 해당 없음" : `출처 ${v.sourceLine}`,
+          callout: { model: cm, page, pages: pageCount(cm.complexes.length), filterLine: v.filterLine },
+          footer: v.filterLine ? `${v.filterLine} · ${sourceFooter}` : sourceFooter,
         });
       }
       continue;
