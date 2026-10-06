@@ -63,6 +63,7 @@ export function stackView(id: string, layers: TileView[]): TileView {
     status: statusOf(layers),
     badges: badgeUnion(layers),
     headline: { value: `${layers.length}층`, label: titles.join(" + ") },
+    headlineMetricId: null,
     rows,
     sentence: unique(layers.map((layer) => layer.sentence).filter((sentence): sentence is string => !!sentence)).join(" / ") || null,
     grade: null,

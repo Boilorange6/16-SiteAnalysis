@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { TILE_CODES } = await import("../../lib/v2/ui/tile-catalog.ts");
 const { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } = await import("../../lib/v2/ui/fixtures/godeok.ts");
-const { toTileView, toSummaryView, faceLabel } = await import("../../lib/v2/ui/tile-view.ts");
+const { HEADLINE_POLICY, toTileView, toSummaryView, faceLabel } = await import("../../lib/v2/ui/tile-view.ts");
 const { buildSummary } = await import("../../lib/v2/engine/summary.ts");
 
 // ── fixture 계약 ──
@@ -146,7 +146,7 @@ assert.equal(sv.incomplete, true);
   assert.match(countView.landPrice, /공시지가: 2,410,000원\/㎡/);
 }
 
-// ── 같은 배지 합치기, 대표값은 값이 있는 첫 지표 ──
+// ── 같은 배지 합치기, 헤드라인은 타일별 결론 정책 ──
 {
   const base = GODEOK_RESULTS.find((r) => r.tileCode === "A01");
   const r = {
@@ -165,7 +165,32 @@ assert.equal(sv.incomplete, true);
   const texts = v.badges.map((b) => b.text);
   assert.equal(new Set(texts).size, texts.length, "배지 문구 중복 없음");
   assert.equal(v.badges.find((b) => b.text === "일부 자료만 집계").note, "가 / 나");
-  assert.notEqual(v.headline.value, "미확인", "값이 있는 지표가 대표값");
+  assert.equal(v.headlineMetricId, "nearest_station_m", "A01 결론 지표 정책 유지");
+  assert.notEqual(v.headline.value, "미확인", "결론 지표 값이 대표값");
+}
+
+assert.deepEqual(new Set(Object.keys(HEADLINE_POLICY)), new Set(TILE_CODES), "45개 타일 모두 헤드라인 선정 정책 보유");
+assert.equal(byCode.D04.headlineMetricId, "share_pre2000");
+assert.equal(byCode.D04.headline.value, "67%", "D04는 확인율이 아니라 1990년대 이전 준공 비율");
+assert.ok(byCode.D04.badges.some((badge) => badge.text === "확인율 98%"), "D04 확인율은 보조 배지");
+assert.equal(HEADLINE_POLICY.D16.ids[0], "dens_max", "D16 KDE 대역폭은 헤드라인이 아님");
+assert.equal(HEADLINE_POLICY.D01.ids[0], "imagery_capture_date", "D01 최대 줌은 헤드라인이 아님");
+assert.equal(HEADLINE_POLICY.A12.ids[2], "site_zoning_count", "A12 지정 수는 보조 후보");
+assert.equal(HEADLINE_POLICY.D23.ids[0], "zone_area_in_radius_m2", "D23 단계 건수가 아닌 구역 면적");
+assert.equal(HEADLINE_POLICY.D24.ids[0], "line_length_in_radius_m", "D24 단계 건수가 아닌 계획 선형 길이");
+
+// 파라미터만 있는 헤드라인 회귀: 결론은 dens_max/항공영상 제공, 파라미터는 배지로 남긴다.
+{
+  const base = GODEOK_RESULTS[0];
+  const metric = (id, label, value, unit) => ({ ...base.metrics[0], id, label, value, unit, status: "observed" });
+  const d16 = toTileView({ ...base, tileCode: "D16", tileId: "test-D16", tileType: "diagram", metrics: [metric("kde_bandwidth_m", "KDE 대역폭", 100, "m"), metric("dens_max", "최대 건물 밀도", 23.4, "동/㎢")], limitations: [], judgment: { ...base.judgment, basisMetricIds: ["buildings_input", "dens_max"] } });
+  assert.equal(d16.headlineMetricId, "dens_max");
+  assert.equal(d16.headline.value, "23.4 동/㎢");
+  assert.ok(d16.badges.some((badge) => badge.text === "KDE 대역폭 100m"));
+  const d01 = toTileView({ ...base, tileCode: "D01", tileId: "test-D01", tileType: "diagram", metrics: [metric("imagery_zoom_max", "항공영상 WMTS 최대 줌", 19, "z")], limitations: [], judgment: { ...base.judgment, basisMetricIds: ["imagery_zoom_max"] } });
+  assert.equal(d01.headlineMetricId, "imagery_available");
+  assert.equal(d01.headline.value, "항공영상 제공");
+  assert.ok(d01.badges.some((badge) => badge.text === "최대 줌 19z"));
 }
 
 // R13: 원천 limitation 문구가 반복돼도 상세 창의 li key가 겹치지 않도록 화면 문구를 합친다.

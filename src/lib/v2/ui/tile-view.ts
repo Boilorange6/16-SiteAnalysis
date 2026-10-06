@@ -8,7 +8,7 @@ import { describeA05Filter, reaggregateA05, type A05Counts, type A05Filter } fro
 import { fmtInt, rankComplexes, rankSupply, STOCK_LEGEND, SUPPLY_LAYERS, SUPPLY_LEGEND, summarize, supplyStats, type CalloutLegendSpec, type Complex, type Stat } from "./callout-layout";
 import type { MapModel } from "./map-layers";
 import type { MassModel } from "./mass-projection";
-import { catalogEntry, sourceName } from "./tile-catalog";
+import { catalogEntry, sourceName, TILE_CODES, type TileCode } from "./tile-catalog";
 import type { RoseModel } from "./wind-rose";
 import { isSiteParcelLayer, siteParcelFromResults } from "./site-parcel";
 
@@ -23,6 +23,8 @@ export type TileView = {
   status: TileResult["status"];
   badges: Badge[];
   headline: { value: string; label: string; aux?: string; tag?: string } | null;
+  /** 헤드라인에 선택된 결론 지표. 파라미터·확인율 지표는 여기에 오지 않는다. */
+  headlineMetricId: string | null;
   rows: Row[];
   sentence: string | null;
   grade: { label: string; criteria: string } | null;
@@ -61,6 +63,65 @@ export type TileView = {
   /** SHEET 카드가 참조하는 하위 타일과 격자. 일반 타일은 null. */
   sheetTiles: string[] | null;
   sheetGrid: "2x2" | "3x2" | "3x1" | null;
+};
+
+export type HeadlinePolicy = {
+  /** 앞에서부터 값이 있는 결론 지표를 선택한다. */
+  ids?: readonly string[];
+  /** 접두사가 붙은 분류 지표 중 가장 큰 값을 선택한다. */
+  maxPrefix?: string;
+};
+
+/**
+ * 타일별 핵심값 정책. 확인율·설정값·자료 채움률은 배지/행으로 남기고,
+ * 화면 첫 값은 타일의 결론을 설명하는 값으로 고정한다.
+ */
+export const HEADLINE_POLICY: Record<TileCode, HeadlinePolicy> = {
+  A01: { ids: ["nearest_station_m", "nearest_bus_m"] },
+  A02: { ids: ["in_school_zone", "nearest_elem_m"] },
+  A03: { ids: ["basic_groups"] },
+  A04: { ids: ["parks", "nearest_park_point_m"] },
+  A05: { ids: ["households", "apartment_complexes"] },
+  A06: { ids: ["applyhome_units", "move_in_units", "projects"] },
+  A07: { ids: ["median_price_per_m2", "valid_trades"] },
+  A08: { ids: ["jeonse_to_trade_ratio_pct", "jeonse_deposit_per_m2", "monthly_rent_median", "jeonse_count", "monthly_count"] },
+  A09: { ids: ["projects_in_radius", "zones_in_radius", "roster_projects"] },
+  A10: { ids: ["planned_projects"] },
+  A11: { ids: ["density_per_km2", "pop_est", "hh_est"] },
+  A12: { ids: ["share_class_1", "mixed_zone_share_pct", "site_zoning_count"] },
+  D01: { ids: ["imagery_capture_date", "imagery_zoom_max"] },
+  D02: { ids: ["share_footprint_pct", "buildings"] },
+  D03: { maxPrefix: "share_use_" },
+  D04: { ids: ["share_pre2000", "share_pre1980", "share_1990s"] },
+  D05: { maxPrefix: "share_floors_" },
+  D06: { ids: ["share_tall_pct"] },
+  D07: { ids: ["share_low_pct"] },
+  D08: { maxPrefix: "share_class_" },
+  D09: { maxPrefix: "share_" },
+  D10: { ids: ["canopy_pct", "osm_green_pct"] },
+  D11: { maxPrefix: "back_area_" },
+  D12: { maxPrefix: "back_count_" },
+  D13: { ids: ["road_length_in_radius_m", "nearest_arterial_or_higher_m"] },
+  D14: { ids: ["back_stations", "back_bus_stops"] },
+  D15: { ids: ["median_block_ha", "blocks"] },
+  D16: { ids: ["dens_max", "gfa_per_ha"] },
+  D17: { ids: ["relief_median_m", "center_elevation_m"] },
+  D18: { ids: ["slope_median_deg", "slope_max_deg"] },
+  D19: { ids: ["parcels", "site_parcel_found"] },
+  D20: { ids: ["median_parcel_m2", "parcels"] },
+  D21: { ids: ["mean_sun_h_winter", "share_cont2h_0915_pct_winter"] },
+  D22: { ids: ["prevailing_dir_deg", "station_distance_m"] },
+  D23: { ids: ["zone_area_in_radius_m2", "planned_households"] },
+  D24: { ids: ["line_length_in_radius_m", "back_stations"] },
+  D25: { maxPrefix: "back_q" },
+  D26: { ids: ["site_elem_zone", "back_elem_count"] },
+  D27: { maxPrefix: "share_dens_" },
+  D28: { ids: ["area_10min_km2", "reach_ratio_10min_pct"] },
+  D29: { ids: ["svf_median", "share_svf_lt03_pct"] },
+  S01: { ids: ["height_median_m", "height_known_pct", "buildings"] },
+  S02: { ids: ["mean_sun_h_summer"] },
+  S03: { ids: ["rel_wind_median", "rel_wind_high_share"] },
+  S04: { ids: ["utci_median_summer_h14", "shade_pct_summer_h14"] },
 };
 
 /** 설명선 타일의 입력: 세대수 순위로 정렬된 단지 목록과 요약 (A06도 같은 모양으로 채운다) */
@@ -315,6 +376,56 @@ function metricRow(m: TileResult["metrics"][number], round = false): Row {
   }
 }
 
+type HeadlineMetric = TileResult["metrics"][number];
+
+function d04HeadlineMetric(metrics: TileResult["metrics"]): HeadlineMetric | null {
+  const parts = ["share_pre1980", "share_1980s", "share_1990s"].map((id) => metrics.find((metric) => metric.id === id));
+  if (parts.every((metric) => metric?.value === null || metric === undefined)) return null;
+  const value = parts.reduce((sum, metric) => sum + (typeof metric?.value === "number" ? metric.value : 0), 0);
+  const status = parts.some((metric) => metric?.status === "estimated") ? "estimated" : "observed";
+  return {
+    id: "share_pre2000",
+    label: "1990년대 이전 준공",
+    value,
+    unit: "%",
+    formulaVersion: "ui-headline@1:1979년 이하+1980년대+1990년대",
+    numerator: null,
+    denominator: null,
+    status,
+  };
+}
+
+function policyMetric(r: TileResult, metrics: TileResult["metrics"]): HeadlineMetric | null {
+  const policy = HEADLINE_POLICY[r.tileCode as TileCode];
+  const exact = policy?.ids?.map((id) => metrics.find((metric) => metric.id === id)).filter((metric): metric is HeadlineMetric => metric !== undefined) ?? [];
+  const maxPrefix = policy?.maxPrefix;
+  if (maxPrefix) {
+    const prefixed = metrics.filter((metric) => metric.id.startsWith(maxPrefix));
+    const max = prefixed.filter((metric) => metric.value !== null).sort((a, b) => (b.value as number) - (a.value as number))[0];
+    if (max) return max;
+    if (prefixed[0]) return prefixed[0];
+  }
+  if (exact.length > 0) return exact[0]!;
+  const basis = r.judgment?.basisMetricIds ?? [];
+  return basis.map((id) => metrics.find((metric) => metric.id === id)).find((metric): metric is HeadlineMetric => metric !== undefined) ?? null;
+}
+
+function parameterBadges(r: TileResult): Badge[] {
+  const find = (id: string) => r.metrics.find((metric) => metric.id === id);
+  const out: Badge[] = [];
+  const add = (id: string, prefix: string, note: string) => {
+    const metric = find(id);
+    if (!metric) return;
+    const row = metricRow(metric);
+    out.push({ text: `${prefix} ${row.value}`, note, tone: "limit" });
+  };
+  if (r.tileCode === "D04") add("confirmed_share_pct", "확인율", "사용승인일이 확인된 건물의 비율입니다. 준공 연대 분포 자체와는 다른 보조 지표입니다.");
+  if (r.tileCode === "D16") add("kde_bandwidth_m", "KDE 대역폭", "건물 밀도 추정에 사용한 계산 설정값입니다. 지역 결론 수치가 아닙니다.");
+  if (r.tileCode === "D01") add("imagery_zoom_max", "최대 줌", "항공영상 배경의 표시 수준입니다. 촬영시기는 별도로 확인되지 않았습니다.");
+  if (r.tileCode === "A12") add("site_zoning_count", "중심점 지정", "대지 중심점이 들어간 용도지역 도형 수입니다. 지정의 적합성 판정이 아닙니다.");
+  return out;
+}
+
 function windDirectionsOf(r: TileResult): Record<string, number> | undefined {
   if (r.tileCode !== "S03" || !r.conditions.simulation) return undefined;
   const simulation = r.conditions.simulation;
@@ -366,6 +477,7 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
     badges.push({ text: LIMIT_TEXT[l.kind], note: l.note, tone: "limit" });
     if (r.tileCode === "A06" && l.note.includes("중복")) badges.push({ text: "중복 가능 · 합계 보류", note: l.note, tone: "limit" });
   }
+  badges.push(...parameterBadges(r));
   if (MODEL_BADGE[r.tileCode]) badges.push({ text: MODEL_BADGE[r.tileCode], tone: "model" });
   // 같은 문구의 배지는 하나로 합치고 note는 이어 붙인다.
   const merged = new Map<string, Badge>();
@@ -391,6 +503,7 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
   const caveats = CAVEATS[r.tileCode] ? [CAVEATS[r.tileCode]] : [];
 
   let headline: TileView["headline"] = null;
+  let headlineMetricId: string | null = null;
   const hasResult = r.status === "complete" || r.status === "partial";
   if (hasResult && metrics.length > 0) {
     if (r.tileCode === "A02") {
@@ -398,17 +511,35 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
       const asOf = r.provenance.sources.find((s) => s.sourceId === "school_zone")?.sourceAsOf;
       const inside = zone?.status === "observed" ? (zone.value === 1 ? "통학구역 안" : "통학구역 밖") : "통학구역 미확인";
       headline = { value: inside, label: "대지 기준", aux: `학구도 기준일 ${asOf ?? "미확인"}` };
+      headlineMetricId = "in_school_zone";
+    } else if (r.tileCode === "A12") {
+      const zoning = r.presentation.features?.find((feature) => feature.layer === "zoning_site")?.label;
+      const selected = zoning ? null : policyMetric(r, metrics);
+      if (zoning) {
+        headline = { value: zoning, label: "대지 중심점 용도지역" };
+        headlineMetricId = "site_zoning_label";
+      } else if (selected) {
+        const row = metricRow(selected);
+        headline = { value: row.value, label: row.label, aux: row.aux, tag: row.tag };
+        headlineMetricId = selected.id;
+      }
+    } else if (r.tileCode === "D01") {
+      headline = { value: "항공영상 제공", label: "배경 결론", aux: "촬영시기 미확인" };
+      headlineMetricId = "imagery_available";
+    } else if (r.tileCode === "D04") {
+      const selected = d04HeadlineMetric(metrics) ?? policyMetric(r, metrics);
+      if (selected) {
+        const row = metricRow(selected);
+        headline = { value: row.value, label: row.label, aux: row.aux, tag: row.tag };
+        headlineMetricId = selected.id;
+      }
     } else {
-      // S02는 춘분부터 저장된 지표 순서와 무관하게 하지 평균 일조를 대표로 쓴다.
-      const preferred = r.tileCode === "S02"
-        ? metrics.find((m) => m.id === "mean_sun_h_summer")
-        : isS04
-        ? (metrics.find((m) => m.id === "utci_median_summer_h14" && m.status === "estimated") ?? metrics.find((m) => m.id.startsWith("utci_median_") && m.status === "estimated"))
-        : undefined;
-      // 그 밖의 타일은 값이 있는 첫 지표를 대표로 쓴다 (예: 철도 미적재면 버스 거리).
-      const i = preferred ? metrics.indexOf(preferred) : metrics.findIndex((m) => m.status === "observed" || m.status === "estimated");
-      const first = rows[i < 0 ? 0 : i];
-      headline = { value: first.value, label: first.label, aux: first.aux, tag: first.tag };
+      const selected = policyMetric(r, metrics);
+      if (selected) {
+        const row = metricRow(selected, isS04);
+        headline = { value: row.value, label: row.label, aux: row.aux, tag: row.tag };
+        headlineMetricId = selected.id;
+      }
     }
   }
   // A02의 통학구역 지표는 headline이 대신 보여 준다.
@@ -426,6 +557,7 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
     status: r.status,
     badges: [...merged.values()],
     headline,
+    headlineMetricId,
     rows: allRows,
     sentence: r.judgment?.sentence ? `${r.judgment.sentence}${filterLine ? " · 필터 적용" : ""}` : filterLine ? "필터 적용" : null,
     grade: gradedMetricOk ? { label: GRADE_TEXT[r.judgment!.level!], criteria: `내부 제안 기준: ${r.judgment!.criteria}` } : null,
