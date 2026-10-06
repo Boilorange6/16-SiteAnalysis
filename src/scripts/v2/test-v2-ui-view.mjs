@@ -62,6 +62,7 @@ const withStatus = (status) => {
 const STATUS_TEXT = { partial: "일부 자료만 집계", failed: "계산 실패", cancelled: "취소됨", no_data: "자료 없음", not_provided: "다음 단계에서 제공" };
 for (const [k, t] of Object.entries(STATUS_TEXT)) assert.ok(withStatus(k).badges.some((b) => b.text === t), `status ${k}`);
 assert.ok(!withStatus("complete").badges.some((b) => Object.values(STATUS_TEXT).includes(b.text)));
+assert.equal(withStatus("cancelled").retryable, true, "취소된 타일은 다시 계산 가능");
 
 // 규칙 5: limitation kind
 const LIM_TEXT = { estimated: "추정", incomplete: "지역 자료 불완전", partial: "일부 자료만 집계", unknown: "미확인", suppressed: "비공개", not_provided: "자료 미확보" };
@@ -117,6 +118,9 @@ assert.ok(byCode.S03.retryable && !byCode.A01.retryable);
 assert.equal(byCode.S02.headline, null);
 const dialogSource = readFileSync(new URL("../../components/v2/tile-dialog.tsx", import.meta.url), "utf8");
 assert.match(dialogSource, /StatusPlate view=\{view\} phase=\{null\} onRetry=\{onRetry\}/, "펼침 상태판도 재계산 콜백을 받아야 한다");
+const pageSource = readFileSync(new URL("../../app/v2/page.tsx", import.meta.url), "utf8");
+assert.match(pageSource, /method: "DELETE"/, "진행 중 분석 취소는 DELETE API를 사용해야 한다");
+assert.match(pageSource, /계산 취소/, "진행 표시 영역에 계산 취소 버튼이 있어야 한다");
 
 // 대지 요약
 const sv = toSummaryView(GODEOK_SUMMARY, GODEOK_RESULTS);

@@ -166,6 +166,28 @@
   font-weight: 700;
   white-space: nowrap;
 }
+.progressCancel {
+  min-height: 36px;
+  margin-left: auto;
+  padding: 0 12px;
+  border: 1px solid #a93d32;
+  border-radius: 999px;
+  background: #fff;
+  color: #8b2f27;
+  font-size: 12px;
+  font-weight: 700;
+}
+.progressCancel:hover:not(:disabled) {
+  background: #fff4f2;
+}
+.progressCancel:focus-visible {
+  outline: 2px solid #2f6fdb;
+  outline-offset: 2px;
+}
+.progressCancel:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
 .editHint {
   color: var(--muted);
   font-size: 13px;

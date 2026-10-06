@@ -1,6 +1,6 @@
 /** 보드에 표시하는 백그라운드 작업·내보내기 상태의 순수 화면 규칙. */
 
-export type BoardJobStatus = "queued" | "running" | "done" | "failed";
+export type BoardJobStatus = "queued" | "running" | "done" | "failed" | "cancelled";
 
 export type BoardJob = {
   code: string;
@@ -45,7 +45,7 @@ export function formatElapsedMs(elapsedMs: number | null): string {
 }
 
 function liveElapsed(job: BoardJob, nowMs: number): number | null {
-  if ((job.status === "done" || job.status === "failed") && typeof job.elapsedMs === "number" && Number.isFinite(job.elapsedMs)) {
+  if ((job.status === "done" || job.status === "failed" || job.status === "cancelled") && typeof job.elapsedMs === "number" && Number.isFinite(job.elapsedMs)) {
     return Math.max(0, job.elapsedMs);
   }
   const origin = timestamp(job.status === "running" ? (job.startedAt ?? job.enqueuedAt) : job.enqueuedAt);
@@ -61,7 +61,7 @@ export function jobProgress(jobs: readonly BoardJob[], nowMs = Date.now()): JobP
   const active = jobs.filter((job) => job.status === "queued" || job.status === "running");
   const queued = active.filter((job) => job.status === "queued").length;
   const running = active.filter((job) => job.status === "running").length;
-  const completed = jobs.filter((job) => job.status === "done" || job.status === "failed").length;
+  const completed = jobs.filter((job) => job.status === "done" || job.status === "failed" || job.status === "cancelled").length;
   const enqueued = active.map((job) => timestamp(job.enqueuedAt)).filter((value): value is number => value !== null);
   const fallbackStarts = active.map((job) => timestamp(job.startedAt)).filter((value): value is number => value !== null);
   const earliest = enqueued.length > 0 ? Math.min(...enqueued) : (fallbackStarts.length > 0 ? Math.min(...fallbackStarts) : null);

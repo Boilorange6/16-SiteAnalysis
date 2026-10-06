@@ -38,12 +38,15 @@ type BoardProps = {
   controls: ReactNode;
   /** 실패한 타일 다시 계산 (실제 분석일 때 전체 재실행) */
   onRerun: () => void;
+  /** 진행 중인 실제 분석을 취소한다. */
+  onCancel?: () => void;
+  canceling?: boolean;
   /** 브라우저 S03 업로드·대체 요청 뒤 결과와 작업 폴링을 다시 연다. */
   onWindUploaded: () => void;
 };
 
 /** 타일 보드. 결과가 바뀌면 부모가 key를 바꿔 새로 만든다. */
-function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, onRerun, onWindUploaded }: BoardProps) {
+function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, onRerun, onCancel, canceling = false, onWindUploaded }: BoardProps) {
   const [overrides, setOverrides] = useState<Record<string, TileResult>>({});
   const [board, dispatch] = useReducer(boardReducer, baseResults, initBoard);
   const storageKey = boardStorageKey(baseResults[0]?.analysisId ?? "demo");
@@ -518,6 +521,7 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
             <span className={styles.progressMeta}>경과 {formatElapsedMs(jobState.elapsedMs)}</span>
             {jobState.waitingLabel && <span className={styles.progressQueue}>{jobState.waitingLabel}</span>}
             <span className={styles.progressRetry}>{jobState.retryLabel}</span>
+            {onCancel && <button type="button" className={styles.progressCancel} onClick={onCancel} disabled={canceling} aria-busy={canceling}>{canceling ? "취소 중…" : "계산 취소"}</button>}
           </div>
         )}
 
@@ -715,6 +719,7 @@ export default function V2BoardPage() {
   const addressDirtyRef = useRef(hydratedAddress.length > 0);
   const [radiusM, setRadiusM] = useState(1000);
   const [busy, setBusy] = useState(false);
+  const [canceling, setCanceling] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [live, setLive] = useState<Live | null>(null);
   const activeJobs = live?.jobs.some((job) => job.status === "queued" || job.status === "running") ?? false;
@@ -771,6 +776,24 @@ export default function V2BoardPage() {
       setProblem({ text: "서버에 연결하지 못했습니다.", login: false });
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function cancelCurrentAnalysis() {
+    if (!live || !activeJobs || canceling) return;
+    setCanceling(true);
+    setProblem(null);
+    const id = live.analysisId;
+    try {
+      const response = await apiFetch(`${API}/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const snapshot = await load(response, false, false, live);
+      if (!snapshot) return;
+      // DELETE 응답은 작업·타일 상태만 담으므로, 취소된 TileResult도 즉시 보드에 반영한다.
+      await load(await apiFetch(`${API}/${encodeURIComponent(id)}`), false, true, snapshot);
+    } catch {
+      setProblem({ text: "계산을 취소하지 못했습니다. 잠시 뒤 다시 시도해 주세요.", login: false });
+    } finally {
+      setCanceling(false);
     }
   }
 
@@ -947,6 +970,8 @@ export default function V2BoardPage() {
       busy={busy}
       controls={controls}
       onRerun={() => void analyze()}
+      onCancel={() => void cancelCurrentAnalysis()}
+      canceling={canceling}
       onWindUploaded={() => setWindRefresh((value) => value + 1)}
     />
   );

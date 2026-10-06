@@ -572,7 +572,7 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
       return data.length > 0 ? data : null;
     })(),
     hasFace: r.tileType === "diagram",
-    retryable: r.status === "failed",
+    retryable: r.status === "failed" || r.status === "cancelled",
     map: mapOf(r, analysisSiteParcel),
     backdrop: { center: r.conditions.center, radiusM: r.conditions.radiusM, features: [], total: 0, notes: [], siteParcel: analysisSiteParcel === undefined ? siteParcelFromResults([r]) : analysisSiteParcel ? [...analysisSiteParcel] : null },
     kindLabel: KIND_LABEL[cat.kind],

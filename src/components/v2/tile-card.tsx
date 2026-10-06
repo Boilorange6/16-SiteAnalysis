@@ -186,6 +186,7 @@ export function StatusPlate({ view, phase, onRetry, waitingNote }: { view: TileV
   const waiting = phase === "pending" || phase === "running";
   const head = waiting ? (phase === "running" ? "계산 중" : "대기") : (view.badges.find((b) => b.tone === "status")?.text ?? "표시할 결과가 없습니다");
   const rest = view.badges.filter((b) => b.tone !== "status");
+  const retryText = view.status === "cancelled" ? "다시 계산" : "이 타일 다시 계산";
   return (
     <div className={styles.statusWrap}>
       <div className={`${styles.plate} ${styles.statusPlate}`}>
@@ -196,7 +197,7 @@ export function StatusPlate({ view, phase, onRetry, waitingNote }: { view: TileV
         {!waiting && rest.length > 0 && <ValueBadges badges={rest} />}
         {!waiting && view.retryable && onRetry && (
           <button type="button" className={styles.retry} onClick={onRetry}>
-            이 타일 다시 계산
+            {retryText}
           </button>
         )}
       </div>
@@ -494,6 +495,7 @@ function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardProps
   const facts = view.rows.filter((r) => r.label !== view.headline?.label).slice(0, 3);
   const head = waiting ? (phase === "running" ? "계산 중" : "대기") : (view.badges.find((b) => b.tone === "status")?.text ?? "표시할 결과가 없습니다");
   const rest = view.badges.filter((b) => b.tone !== "status");
+  const retryText = view.status === "cancelled" ? "다시 계산" : "이 타일 다시 계산";
   return (
     <div className={styles.sf}>
       <div className={styles.sfTop}>
@@ -549,7 +551,7 @@ function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardProps
           {!waiting && rest.length > 0 && <ValueBadges badges={rest} />}
           {!waiting && view.retryable && (
             <button type="button" className={styles.retry} onClick={p.onRetry}>
-              이 타일 다시 계산
+              {retryText}
             </button>
           )}
           {view.code === "S03" && (view.status === "pending" || view.status === "running") && (
