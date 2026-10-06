@@ -1822,7 +1822,7 @@
 }
 .mfTitle {
   flex: 0 1 auto;
-  min-width: 3em;
+  min-width: 5em;
   margin: 0;
   font-size: 14px;
   font-weight: 700;
@@ -1831,7 +1831,7 @@
   text-overflow: ellipsis;
 }
 .mfKey {
-  /* 숫자는 잘리면 오독된다(88.9% → "88.9("): 줄어드는 쪽은 제목, 숫자가 안 들어가면 아래 container 규칙으로 통째로 숨긴다 */
+  /* 숫자는 잘리면 오독된다(88.9% → "88.9("): 줄이지 않고, 안 들어가면 MapFace가 .mfKeyHidden으로 통째로 숨긴다 */
   flex: none;
   min-width: 0;
   margin-left: 6px;
@@ -1846,6 +1846,15 @@
 }
 .mfKey b {
   font-weight: 700;
+}
+/* 자리가 모자랄 때: 폭은 0이지만 scrollWidth는 재야 하므로 display:none 대신 띄워 숨긴다 */
+.mfKeyHidden {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+}
+.mfCheck {
+  flex: none;
 }
 .mfKey small {
   font-size: 11px;
