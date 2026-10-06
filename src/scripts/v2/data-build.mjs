@@ -239,11 +239,11 @@ if (only.has("buildings")) {
   const withJuso = jusoFiles.length > 0;
   const buildingProgress = progressSpec("building", "buildings", [...buildingFiles, ...jusoFiles], {
     sourcePattern: "gis_building/AL_D010", maxYear,
-    ...(withJuso ? { juso: { sourcePattern: "juso/TL_SPBD_BULD", overlapMin: OVERLAP_MIN, floorHeightM: FLOOR_HEIGHT_M } } : {}),
+    ...(withJuso ? { juso: { sourcePattern: "juso/TL_SPBD_BULD", overlapMin: OVERLAP_MIN, floorHeightM: FLOOR_HEIGHT_M, replacementRule: "core-pnu-approval-name-v1" } } : {}),
   });
   progress.buildings = buildingProgress;
   const buildingByPath = new Map([...buildingFiles, ...jusoFiles].map((file) => [file.path, file.absPath]));
-  builders.buildings = async (db) => {
+  builders.buildings = async (db, ctx) => {
     const rel = release(db, "building", oldestFile(buildingAll), "국토교통부(VWorld GIS건물통합정보)", "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=18", "CC-BY");
     console.log(`buildings: 시도 ${partCounts(buildingAll)}${withJuso ? ` · 도로명주소 건물 시도 ${[...jusoAll.keys()].join(",")}` : " · 도로명주소 건물 없음(GIS건물만)"}`);
     if (!withJuso) {
@@ -276,7 +276,12 @@ if (only.has("buildings")) {
       ...[...jusoAll].map(([sido, v]) => ({
         file: jusoFiles.find((f) => f.absPath === v.file),
         run: async () => {
-          const s = await buildJusoBuildings(db, readShp(v.file, { native: true }), jusoRel, { extent: shpExtent(v.file), gisMaxFeatureId: gisFeatureIdBound(db) });
+          const s = await buildJusoBuildings(db, readShp(v.file, { native: true }), jusoRel, {
+            extent: shpExtent(v.file),
+            gisMaxFeatureId: gisFeatureIdBound(db),
+            core: ctx.core,
+            coreApprovalMaxDate: new Date().toISOString().slice(0, 10),
+          });
           s.expectedRegions = [sido];
           return [s];
         },

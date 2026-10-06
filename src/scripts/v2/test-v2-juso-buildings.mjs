@@ -128,15 +128,16 @@ assert.deepEqual(native[0].geometry.coordinates[0][0], [955220, 1954744], "nativ
 const X0 = 955000, Y0 = 1954000;
 const gisRel = (db) => insertRelease(db, { sourceId: "building", provider: "t", sourceUrl: "https://x.invalid", sourceAsOf: "2026-09-09", fetchedAt: "2026-09-30T00:00:00Z", checksum: "x", licenseCode: "CC-BY" });
 const jusoRel = (db) => insertRelease(db, { sourceId: JUSO_SOURCE_ID, provider: "t", sourceUrl: "https://x.invalid", sourceAsOf: "2026-09", fetchedAt: "2026-09-30T00:00:00Z", checksum: "x", licenseCode: "UNKNOWN" });
-function addGis(db, rel, id, geometry, { height = null, name = null } = {}) {
-  const fid = insertFeature(db, { stableId: `building:${id}`, kind: "building", sourceKey: id, releaseId: rel, geometry, geometryIsUtmk: true, name });
-  db.prepare("INSERT INTO building_fact (feature_id, height_m, height_method, field_provenance_json) VALUES (?, ?, ?, '{}')").run(fid, height, height === null ? "unknown" : "source");
+function addGis(db, rel, id, geometry, { height = null, name = null, pnu = null, floors = null, useCode = null, approvalDate = null } = {}) {
+  const fid = insertFeature(db, { stableId: `building:${id}`, kind: "building", sourceKey: id, releaseId: rel, geometry, geometryIsUtmk: true, name, pnu });
+  db.prepare("INSERT INTO building_fact (feature_id, height_m, height_method, floors_above, use_code, approval_date, field_provenance_json) VALUES (?, ?, ?, ?, ?, ?, '{}')")
+    .run(fid, height, height === null ? "unknown" : "source", floors, useCode, approvalDate);
   return fid;
 }
 async function* iter(list) {
   for (const x of list) yield x;
 }
-const jrec = (id, geometry, floors, nm = null, dc = null) => ({ properties: { BD_MGT_SN: id, BULD_NM: nm, BULD_NM_DC: dc, GRO_FLO_CO: floors, UND_FLO_CO: 1, SIG_CD: "11740", EMD_CD: "102", LI_CD: "00", MNTN_YN: "0", LNBR_MNNM: 313, LNBR_SLNO: 2, BDTYP_CD: "02003" }, geometry });
+const jrec = (id, geometry, floors, nm = null, dc = null, overrides = {}) => ({ properties: { BD_MGT_SN: id, BULD_NM: nm, BULD_NM_DC: dc, GRO_FLO_CO: floors, UND_FLO_CO: 1, SIG_CD: "11740", EMD_CD: "102", LI_CD: "00", MNTN_YN: "0", LNBR_MNNM: 313, LNBR_SLNO: 2, BDTYP_CD: "02003", ...overrides }, geometry });
 const extent = [X0 - 100, Y0 - 100, X0 + 1000, Y0 + 100];
 
 {
@@ -167,7 +168,7 @@ const extent = [X0 - 100, Y0 - 100, X0 + 1000, Y0 + 100];
   assert.equal(stats.received, 8);
   assert.deepEqual([stats.accepted, stats.rejected], [3, 5]);
   assert.deepEqual(stats.byType, { floors_estimate: 2, unknown: 1 });
-  assert.deepEqual(JSON.parse(db.prepare("SELECT coverage_json FROM source_release WHERE source_id = ?").pluck().get(JUSO_SOURCE_ID)), { added: 3, deduped: 3, attachedHeight: 1, attachedName: 2, intersectErrors: 0, polyclipFallbacks: 0 });
+  assert.deepEqual(JSON.parse(db.prepare("SELECT coverage_json FROM source_release WHERE source_id = ?").pluck().get(JUSO_SOURCE_ID)), { added: 3, deduped: 3, retired: 0, attachedHeight: 1, attachedName: 2, intersectErrors: 0, polyclipFallbacks: 0 });
 
   const fact = (id) => db.prepare("SELECT b.*, f.name, f.pnu, f.legal_code, f.release_id, f.properties_json FROM building_fact b JOIN feature f USING (feature_id) WHERE f.stable_id = ?").get(id);
   const a = fact("building:A");
@@ -196,6 +197,58 @@ const extent = [X0 - 100, Y0 - 100, X0 + 1000, Y0 + 100];
   // 저장 좌표는 5179 그대로(1 cm 단위)
   assert.deepEqual(JSON.parse(db.prepare("SELECT geom_json FROM feature WHERE stable_id = 'juso:J3'").pluck().get()).coordinates[0][0], [X0 + 500, Y0]);
   void [gA, gB, gC];
+}
+
+// ─── 신축 대체 판정: core PNU 근거가 있을 때만 옛 GIS를 retired로 남긴다 ────────
+{
+  const core = new Database(":memory:");
+  initDataFileSchema(core, "core");
+  const coreRel = insertRelease(core, { sourceId: "ledger_recap", provider: "t", sourceUrl: "https://x.invalid/core", sourceAsOf: "2026-09-09", fetchedAt: "2026-09-30T00:00:00Z", checksum: "core", licenseCode: "TEST" });
+  insertFeature(core, {
+    stableId: "recap:replacement",
+    kind: "housing_complex",
+    sourceKey: "replacement",
+    releaseId: coreRel,
+    geometry: { type: "Point", coordinates: [X0, Y0] },
+    geometryIsUtmk: true,
+    pnu: "1174010200103130002",
+    properties: { approvalDate: "2019-09-27" },
+  });
+
+  const db = new Database(":memory:");
+  initDataFileSchema(db, "buildings");
+  ensureBuildProgressSchema(db);
+  beginFeatureBulk(db);
+  const g = gisRel(db);
+  const pnu = "1174010200103130002";
+  addGis(db, g, "replacement-old", sq(X0, Y0, 100), { name: "고덕주공아파트", pnu, floors: 5, useCode: "02000", approvalDate: "1983-12-29" });
+  addGis(db, g, "same-building", sq(X0 + 200, Y0, 100), { height: 15, name: "같은건물", approvalDate: "2019-09-27" });
+  addGis(db, g, "no-evidence", sq(X0 + 400, Y0, 100), { name: "옛이름", approvalDate: "1983-12-29" });
+  const bound = gisFeatureIdBound(db);
+  const j = jusoRel(db);
+  const stats = await buildJusoBuildings(db, iter([
+    jrec("J-REPLACE", sq(X0 + 30, Y0, 100), 5, "고덕그라시움", "101동"), // 70% overlap + newer core date + different name
+    jrec("J-SAME", sq(X0 + 230, Y0, 100), 5, "같은건물"), // same name and same approval date → GIS remains
+    jrec("J-NOEVIDENCE", sq(X0 + 430, Y0, 100), 5, "새이름", null, { SIG_CD: null, EMD_CD: null, LI_CD: null }), // no PNU/core evidence → GIS remains
+  ]), j, { extent: [X0 - 100, Y0 - 100, X0 + 1000, Y0 + 200], gisMaxFeatureId: bound, core, coreApprovalMaxDate: "2026-10-06" });
+
+  assert.deepEqual([stats.accepted, stats.rejected], [1, 2], "대체 juso만 새 행으로 승인");
+  assert.deepEqual(JSON.parse(db.prepare("SELECT coverage_json FROM source_release WHERE source_id = ?").pluck().get(JUSO_SOURCE_ID)), { added: 1, deduped: 2, retired: 1, attachedHeight: 1, attachedName: 0, intersectErrors: 0, polyclipFallbacks: 0 });
+  const replacement = db.prepare("SELECT f.properties_json, b.floors_above, b.use_code, b.approval_date FROM feature f JOIN building_fact b USING (feature_id) WHERE f.stable_id = 'building:replacement-old'").get();
+  assert.deepEqual([replacement.floors_above, replacement.use_code, replacement.approval_date], [5, "02000", "1983-12-29"], "옛 GIS 행과 추적 가능한 원천 속성은 삭제하지 않음");
+  assert.deepEqual(JSON.parse(replacement.properties_json), { retired: true, retiredReason: "juso-newer-core-approval", replacedBy: "juso:J-REPLACE" });
+  assert.equal(db.prepare("SELECT COUNT(*) FROM feature WHERE stable_id = 'juso:J-REPLACE'").pluck().get(), 1);
+  assert.equal(db.prepare("SELECT COUNT(*) FROM feature WHERE stable_id IN ('juso:J-SAME', 'juso:J-NOEVIDENCE')").pluck().get(), 0);
+  assert.equal(db.prepare("SELECT COUNT(*) FROM feature WHERE stable_id = 'building:same-building' AND properties_json = '{}'").pluck().get(), 1);
+  assert.equal(db.prepare("SELECT COUNT(*) FROM feature WHERE stable_id = 'building:no-evidence' AND properties_json = '{}'").pluck().get(), 1);
+  assert.deepEqual(db.prepare("SELECT from_stable_id, to_stable_id, relation_type, method FROM feature_link").get(), {
+    from_stable_id: "building:replacement-old",
+    to_stable_id: "juso:J-REPLACE",
+    relation_type: "replaced_by",
+    method: "overlap+core_pnu_approval+name",
+  });
+  core.close();
+  db.close();
 }
 
 // ─── 단계별 재개: 시도 파일 한 단계, 어느 단계에서 죽어도 결과가 같다 ──────────────────

@@ -1,8 +1,11 @@
 /**
  * 행정안전부 도로명주소 건물 도형(VWorld dsId 30056, TL_SPBD_BULD_<시도>_<YYYYMM>, EPSG:5179) → 보조 건물 원천.
  * GIS건물통합정보(AL_D010)에 없는 건물(최근 준공·대단지)을 채우고, 층수로 높이가 없는 GIS 건물에 높이를 보태는 용도다.
- *   - GIS 건물과 겹치는 도로명주소 건물(겹친 면적 ≥ 작은 쪽 면적의 50%)은 새 건물로 넣지 않는다.
- *     대신 그 GIS 건물의 높이가 미상이면 지상층수×층고(GIS와 같은 FLOOR_HEIGHT_M)로, 이름이 없으면 건물명을 보탠다(출처는 field_provenance_json).
+ *   - GIS 건물과 겹치는 도로명주소 건물(겹친 면적 ≥ 작은 쪽 면적의 50%)은 기본적으로 같은 건물로 본다.
+ *     다만 오래된 GIS 승인일·core PNU 승인일·서로 다른 이름이 모두 확인되면 옛 GIS를 retired로 표시하고
+ *     juso 행을 새 건물로 넣는다(삭제하지 않고 feature_link로 대체 관계를 남긴다).
+ *     같은 건물로 본 경우에는 그 GIS 건물의 높이가 미상이면 지상층수×층고(GIS와 같은 FLOOR_HEIGHT_M)로,
+ *     이름이 없으면 건물명을 보탠다(출처는 field_provenance_json).
  *   - 겹치지 않는 건물은 `juso:<건물관리번호>` 새 건물이다. 사용승인일·용도코드는 원천에 없어 비운다(BDTYP_CD는 건축물대장 용도코드와 체계가 달라 properties에만 둔다).
  * 시도 파일 하나가 한 단계(buildResumableSteps)다. GIS 건물 단계가 모두 끝난 뒤에 돌아야 한다.
  */
@@ -27,6 +30,8 @@ export const JUSO_LICENSE_CODE = "UNKNOWN";
 export const JUSO_RIGHTS = { attribution: "행정안전부 도로명주소 건물(VWorld 제공)", licenseStatus: "unverified", note: "VWorld 30056 이용조건 미확인 — 공개 서비스·내보내기 전 판정 필요" };
 /** 겹침 판정: 겹친 면적 / 작은 쪽 면적 */
 export const OVERLAP_MIN = 0.5;
+/** 이 연도 이하의 GIS 승인일만 신축 대체 후보의 옛 건물로 본다. 근거가 없으면 GIS를 유지한다. */
+export const RETIRED_GIS_MAX_APPROVAL_YEAR = 2010;
 const CELL_M = 64;
 const GEOM_CACHE_MAX = 100_000;
 const PAD_M = 10;
@@ -61,6 +66,58 @@ const str = (v: unknown): string | null => {
   const s = typeof v === "string" ? v.trim() : "";
   return s === "" ? null : s;
 };
+
+/** 단지·동 이름의 표기 차이(공백·괄호·구두점)만 제거한다. 모르는 접두어는 보수적으로 남긴다. */
+export function normalizeBuildingName(value: string | null): string | null {
+  const name = value?.trim();
+  return name ? name.normalize("NFKC").toLocaleLowerCase("ko-KR").replace(/[\s()·,._\-/\\]/g, "") : null;
+}
+
+function validCoreApprovalDate(value: unknown, maxDate: string): string | null {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value) || value > maxDate) return null;
+  const date = new Date(value + "T00:00:00Z");
+  return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value ? null : value;
+}
+
+const coreApprovalCache = new WeakMap<Db, Map<string, Map<string, string>>>();
+
+/**
+ * core의 해당 시도 PNU만 한 번 읽어 juso 파일의 모든 행이 공유한다.
+ * 전국 적재에서도 행마다 core를 조회하지 않고 시도별 range scan 1회로 끝낸다.
+ */
+export function coreApprovalByPnu(core: Db | null | undefined, sido: string, maxDate = "9999-12-31"): Map<string, string> {
+  if (!core || !/^\d{2}$/.test(sido)) return new Map();
+  let byKey = coreApprovalCache.get(core);
+  if (!byKey) coreApprovalCache.set(core, (byKey = new Map()));
+  const key = `${sido}:${maxDate}`;
+  const cached = byKey.get(key);
+  if (cached) return cached;
+
+  const dates = new Map<string, string>();
+  try {
+    const start = `${sido}${"0".repeat(17)}`;
+    const next = Number(sido) + 1;
+    const end = next <= 99 ? `${String(next).padStart(2, "0")}${"0".repeat(17)}` : null;
+    const sql = `SELECT pnu, properties_json FROM feature
+      WHERE pnu >= ? ${end ? "AND pnu < ?" : ""}
+        AND kind IN ('housing_complex', 'officetel')`;
+    const rows = (end ? core.prepare(sql).all(start, end) : core.prepare(sql).all(start)) as Array<{ pnu: string; properties_json: string }>;
+    for (const row of rows) {
+      let approval: unknown = null;
+      try {
+        approval = (JSON.parse(row.properties_json) as { approvalDate?: unknown }).approvalDate;
+      } catch {
+        // malformed optional properties are not evidence for replacement
+      }
+      const date = validCoreApprovalDate(approval, maxDate);
+      if (date && (!dates.has(row.pnu) || date < dates.get(row.pnu)!)) dates.set(row.pnu, date);
+    }
+  } catch {
+    // core가 없는 구버전/부분 파일이면 적재를 보수적으로 계속한다.
+  }
+  byKey.set(key, dates);
+  return dates;
+}
 
 const ringArea = (ring: Position[]): number => {
   let s = 0;
@@ -187,6 +244,9 @@ export function overlapArea(a: Polygon | MultiPolygon, b: Polygon | MultiPolygon
 
 interface GisIndex {
   ids: number[];
+  stableIds: string[];
+  names: (string | null)[];
+  approvalDates: (string | null)[];
   bbox: number[];
   /** 1 = 높이 미상, 2 = 이름 없음 */
   need: number[];
@@ -197,13 +257,16 @@ interface GisIndex {
 function loadGisIndex(db: Db, extent: readonly number[], maxId: number): GisIndex {
   const hasPending = db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'feature_rtree_pending'").pluck().get() !== undefined;
   const table = hasPending ? "feature_rtree_pending" : "feature_rtree";
-  const q = db.prepare(`SELECT p.feature_id, p.min_x, p.max_x, p.min_y, p.max_y, b.height_method = 'unknown', f.name IS NULL
+  const q = db.prepare(`SELECT p.feature_id, p.min_x, p.max_x, p.min_y, p.max_y, b.height_method = 'unknown', f.name IS NULL, f.stable_id, f.name, b.approval_date
     FROM ${table} p CROSS JOIN feature f ON f.feature_id = p.feature_id CROSS JOIN building_fact b ON b.feature_id = p.feature_id
     WHERE p.feature_id <= ? AND p.max_x >= ? AND p.min_x <= ? AND p.max_y >= ? AND p.min_y <= ?`).raw(true);
-  const idx: GisIndex = { ids: [], bbox: [], need: [], cells: new Map() };
+  const idx: GisIndex = { ids: [], stableIds: [], names: [], approvalDates: [], bbox: [], need: [], cells: new Map() };
   for (const r of q.iterate(maxId, extent[0] - PAD_M, extent[2] + PAD_M, extent[1] - PAD_M, extent[3] + PAD_M) as Iterable<number[]>) {
     const i = idx.ids.length;
     idx.ids.push(r[0]);
+    idx.stableIds.push(r[7] as unknown as string);
+    idx.names.push((r[8] as unknown as string | null) ?? null);
+    idx.approvalDates.push((r[9] as unknown as string | null) ?? null);
     idx.bbox.push(r[1], r[3], r[2], r[4]); // x0 y0 x1 y1
     idx.need.push((r[5] ? 1 : 0) | (r[6] ? 2 : 0));
     for (let ix = Math.floor(r[1] / CELL_M); ix <= Math.floor(r[2] / CELL_M); ix++) {
@@ -232,6 +295,8 @@ export interface JusoCounts {
   added: number;
   /** GIS 건물과 겹쳐 새로 넣지 않은 수 */
   deduped: number;
+  /** core PNU 승인일·이름 근거로 GIS를 옛 건물로 표시하고 juso를 새로 넣은 수 */
+  retired: number;
   attachedHeight: number;
   attachedName: number;
   intersectErrors: number;
@@ -244,12 +309,13 @@ export async function buildJusoBuildings(
   /** geometry는 EPSG:5179 미터(readShp의 native 모드) */
   records: AsyncIterable<ShpRecord>,
   releaseId: string,
-  opts: { extent: readonly number[]; gisMaxFeatureId: number; floorHeightM?: number },
+  opts: { extent: readonly number[]; gisMaxFeatureId: number; floorHeightM?: number; core?: Db | null; coreApprovalMaxDate?: string },
 ): Promise<SourceStats> {
   const floorHeightM = opts.floorHeightM ?? FLOOR_HEIGHT_M;
   const stats = new SourceStats(JUSO_SOURCE_ID, releaseId, ["heightM", "floorsAbove"]);
-  const counts: JusoCounts = { added: 0, deduped: 0, attachedHeight: 0, attachedName: 0, intersectErrors: 0, polyclipFallbacks: 0 };
+  const counts: JusoCounts = { added: 0, deduped: 0, retired: 0, attachedHeight: 0, attachedName: 0, intersectErrors: 0, polyclipFallbacks: 0 };
   const gis = loadGisIndex(db, opts.extent, opts.gisMaxFeatureId);
+  const coreApprovalBySido = new Map<string, Map<string, string>>();
   const geomOf = db.prepare("SELECT geom_json FROM feature WHERE feature_id = ?").pluck();
   const geomCache = new Map<number, { g: Polygon | MultiPolygon; area: number }>();
   const gisGeom = (id: number) => {
@@ -263,9 +329,47 @@ export async function buildJusoBuildings(
   };
   const insertFact = db.prepare(`INSERT INTO building_fact (feature_id, ledger_pk, height_m, height_method, floors_above, floors_below, use_code, approval_date, gross_floor_area_m2, footprint_area_m2, field_provenance_json)
     VALUES (?, NULL, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?)`);
+  const getFeatureProperties = db.prepare("SELECT properties_json FROM feature WHERE feature_id = ?").pluck();
+  const setFeatureProperties = db.prepare("UPDATE feature SET properties_json = ? WHERE feature_id = ?");
+  const insertReplacementLink = db.prepare(`INSERT INTO feature_link (from_stable_id, to_stable_id, relation_type, method, confidence, release_id)
+    VALUES (?, ?, 'replaced_by', 'overlap+core_pnu_approval+name', 1, ?)
+    ON CONFLICT(from_stable_id, to_stable_id, relation_type) DO UPDATE SET method = excluded.method, confidence = excluded.confidence, release_id = excluded.release_id`);
   const provHeight = (id: string) => ({ source: "juso:GRO_FLO_CO*floorHeightM", floorHeightM, jusoBuildingMgtSn: id });
   /** GIS 건물 feature_id → 가장 믿을 만한(층수가 있고 겹침이 큰) 도로명주소 건물 */
   const attach = new Map<number, { score: number; floors: number | null; heightM: number | null; name: string | null; id: string }>();
+
+  const coreApprovalFor = (pnu: string | null, legalCode: string | null): string | null => {
+    if (!pnu || !legalCode) return null;
+    const sido = legalCode.slice(0, 2);
+    let map = coreApprovalBySido.get(sido);
+    if (!map) {
+      map = coreApprovalByPnu(opts.core, sido, opts.coreApprovalMaxDate);
+      coreApprovalBySido.set(sido, map);
+    }
+    return map.get(pnu) ?? null;
+  };
+
+  const markRetired = (featureId: number, stableId: string, replacementId: string): boolean => {
+    let properties: Record<string, unknown>;
+    try {
+      properties = JSON.parse((getFeatureProperties.get(featureId) as string | undefined) ?? "{}") as Record<string, unknown>;
+    } catch {
+      properties = {};
+    }
+    if (properties.retired === true && properties.replacedBy === replacementId) {
+      insertReplacementLink.run(stableId, replacementId, releaseId);
+      return false;
+    }
+    if (properties.retired === true && typeof properties.replacedBy === "string" && properties.replacedBy !== replacementId) return false;
+    setFeatureProperties.run(JSON.stringify({
+      ...properties,
+      retired: true,
+      retiredReason: "juso-newer-core-approval",
+      replacedBy: replacementId,
+    }), featureId);
+    insertReplacementLink.run(stableId, replacementId, releaseId);
+    return true;
+  };
 
   await batched(db, records, (r) => {
     stats.read();
@@ -278,6 +382,10 @@ export async function buildJusoBuildings(
     const h = heightOf({ A26: p.GRO_FLO_CO }, floorHeightM);
     const nm = str(p.BULD_NM);
     const name = nm && str(p.BULD_NM_DC) ? `${nm} ${str(p.BULD_NM_DC)}` : nm ?? str(p.BULD_NM_DC);
+    const legal = `${str(p.SIG_CD) ?? ""}${str(p.EMD_CD) ?? ""}${str(p.LI_CD) ?? ""}`;
+    const legalCode = /^\d{10}$/.test(legal) ? legal : null;
+    const pnu = legalCode ? makePnu(legalCode, str(p.MNTN_YN) === "1", p.LNBR_MNNM as number, p.LNBR_SLNO as number) : null;
+    const coreApprovalDate = coreApprovalFor(pnu, legalCode);
 
     // 겹치는 GIS 건물 찾기: 격자 → bbox → (겹친 bbox 면적이 작은 쪽 면적의 50% 미만이면 탈락) → 정확한 교차 면적
     const [x0, y0, x1, y1] = bboxOf(g);
@@ -299,7 +407,22 @@ export async function buildJusoBuildings(
         }
       }
     }
-    if (best) {
+    const oldApprovalDate = best ? gis.approvalDates[best.i] : null;
+    const oldName = best ? normalizeBuildingName(gis.names[best.i]) : null;
+    const currentName = normalizeBuildingName(name);
+    const oldYear = oldApprovalDate ? Number(oldApprovalDate.slice(0, 4)) : NaN;
+    const isReplacement = Boolean(
+      best && oldName && currentName && oldName !== currentName
+      && Number.isInteger(oldYear) && oldYear <= RETIRED_GIS_MAX_APPROVAL_YEAR
+      && coreApprovalDate && oldApprovalDate && coreApprovalDate > oldApprovalDate,
+    );
+    const replacement = isReplacement && best ? {
+      featureId: gis.ids[best.i],
+      stableId: gis.stableIds[best.i],
+      replacementId: `juso:${id}`,
+    } : null;
+
+    if (best && !replacement) {
       counts.deduped++;
       const need = gis.need[best.i];
       if (need !== 0) {
@@ -311,9 +434,6 @@ export async function buildJusoBuildings(
       return stats.reject();
     }
 
-    const legal = `${str(p.SIG_CD) ?? ""}${str(p.EMD_CD) ?? ""}${str(p.LI_CD) ?? ""}`;
-    const legalCode = /^\d{10}$/.test(legal) ? legal : null;
-    const pnu = legalCode ? makePnu(legalCode, str(p.MNTN_YN) === "1", p.LNBR_MNNM as number, p.LNBR_SLNO as number) : null;
     let featureId: number;
     try {
       featureId = insertFeature(db, {
@@ -327,6 +447,7 @@ export async function buildJusoBuildings(
     const und = typeof p.UND_FLO_CO === "number" && Number.isInteger(p.UND_FLO_CO) && p.UND_FLO_CO >= 0 ? p.UND_FLO_CO : null;
     const prov = h.method === "floors_estimate" ? { origin: "juso-supplement", height_m: provHeight(id), floors_above: "juso:GRO_FLO_CO", footprint_area_m2: "polygon" } : { origin: "juso-supplement", footprint_area_m2: "polygon" };
     insertFact.run(featureId, h.heightM, h.method, h.floorsAbove, und, Math.round(area * 100) / 100, JSON.stringify(prov));
+    if (replacement && markRetired(replacement.featureId, replacement.stableId, replacement.replacementId)) counts.retired++;
     counts.added++;
     stats.accept({ heightM: h.heightM, floorsAbove: h.floorsAbove }, str(p.SIG_CD)?.slice(0, 2) ?? "(미상)", h.method);
   });

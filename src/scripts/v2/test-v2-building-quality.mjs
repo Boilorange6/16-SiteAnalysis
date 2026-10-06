@@ -19,6 +19,7 @@ const {
   buildingRetirementLimitations,
   buildingRetirementInfo,
   buildingRows,
+  filterRetiredRows,
   isCounted,
 } = await import("../../lib/v2/engine/tiles/buildings-shared.ts");
 
@@ -134,6 +135,10 @@ assert.ok(rows);
 assert.deepEqual(BUILDING_SOURCES, ["building", "building_juso", "gis_bldg"]);
 assert.equal(buildingRetirementInfo(ctx).candidatePairs, 1);
 assert.equal(buildingRetirementInfo(ctx).excludedCount, 1);
+const markedFixture = { ...rows.find((row) => row.hit.stableId === "building:same-name"), hit: { ...rows.find((row) => row.hit.stableId === "building:same-name").hit, properties: { retired: true, replacedBy: "juso:replacement" } } };
+const markedSelection = filterRetiredRows([markedFixture]);
+assert.equal(markedSelection.retirement.ingestMarkedCount, 1, "적재 retired 표시는 질의 시점에서 바로 제외");
+assert.deepEqual(markedSelection.rows, []);
 assert.deepEqual(rows.filter((row) => row.hit.stableId.includes("retired")), []);
 assert.equal(rows.filter((row) => row.hit.stableId === "building:same-name").length, 1);
 assert.equal(rows.filter((row) => row.hit.stableId === "juso:unnamed-current").length, 1);

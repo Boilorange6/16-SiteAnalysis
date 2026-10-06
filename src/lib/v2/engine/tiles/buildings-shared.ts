@@ -1,12 +1,11 @@
 import type BetterSqlite3 from "better-sqlite3";
 import type { Geometry, MultiPolygon, Polygon } from "geojson";
-import { overlapArea, planarArea } from "../../ingest/sources/juso-buildings";
+import { normalizeBuildingName, overlapArea, planarArea, RETIRED_GIS_MAX_APPROVAL_YEAR } from "../../ingest/sources/juso-buildings";
 import { toUtmk } from "../../crs";
 import type { FeatureHit } from "../../data/features";
 import type { EngineContext } from "../context";
 
 export const BUILDING_SOURCES = ["building", "building_juso", "gis_bldg"] as const;
-export const RETIRED_GIS_MAX_APPROVAL_YEAR = 2010;
 export const RETIRED_MIN_OVERLAP_RATIO = 0.2;
 export const RETIRED_MAX_OVERLAP_RATIO = 0.5;
 const RETIREMENT_CELL_M = 64;
@@ -169,20 +168,23 @@ function bbox(geometry: ArealGeometry): [number, number, number, number] {
   ];
 }
 
-function compactName(value: string | null): string | null {
-  const name = value?.trim();
-  return name ? name.replace(/[\s()·,.-]/g, "") : null;
-}
-
 export interface BuildingRetirementInfo {
   candidatePairs: number;
+  /** 적재 단계에서 retired=true로 직접 표시된 GIS 행 수 */
+  ingestMarkedCount: number;
+  /** 적재 표시가 없는 구버전 DB에서 질의 시점 규칙으로 찾은 pair 수 */
+  legacyCandidatePairs: number;
   excludedCount: number;
   excludedStableIds: string[];
 }
 
-function filterRetiredRows(rows: BuildingRow[]): { rows: BuildingRow[]; retirement: BuildingRetirementInfo } {
-  const gis = rows.filter((row) => row.hit.stableId.startsWith("building:"));
-  const juso = rows.filter((row) => row.hit.stableId.startsWith("juso:") && areal(row.hit.geometry));
+/** 적재에서 표시한 retired 행은 즉시 제외하고, 표시가 없는 옛 DB에만 호환용 규칙을 적용한다. */
+export function filterRetiredRows(rows: BuildingRow[]): { rows: BuildingRow[]; retirement: BuildingRetirementInfo } {
+  const marked = rows.filter((row) => row.hit.properties.retired === true || row.hit.properties.retired === "true");
+  const markedIds = new Set(marked.map((row) => row.hit.featureId));
+  const active = rows.filter((row) => !markedIds.has(row.hit.featureId));
+  const gis = active.filter((row) => row.hit.stableId.startsWith("building:"));
+  const juso = active.filter((row) => row.hit.stableId.startsWith("juso:") && areal(row.hit.geometry));
   const byCell = new Map<string, BuildingRow[]>();
   for (const row of juso) {
     const box = bbox(row.hit.geometry as ArealGeometry);
@@ -201,7 +203,7 @@ function filterRetiredRows(rows: BuildingRow[]): { rows: BuildingRow[]; retireme
   for (const old of gis) {
     if (!areal(old.hit.geometry)) continue;
     const oldYear = old.approvalDate ? Number(old.approvalDate.slice(0, 4)) : NaN;
-    const oldName = compactName(old.hit.name);
+    const oldName = normalizeBuildingName(old.hit.name);
     if (!oldName || !Number.isInteger(oldYear) || oldYear > RETIRED_GIS_MAX_APPROVAL_YEAR) continue;
     const oldArea = planarArea(old.hit.geometry);
     if (!(oldArea > 0)) continue;
@@ -213,7 +215,7 @@ function filterRetiredRows(rows: BuildingRow[]): { rows: BuildingRow[]; retireme
       }
     }
     for (const current of candidates.values()) {
-      const currentName = compactName(current.hit.name);
+      const currentName = normalizeBuildingName(current.hit.name);
       if (!currentName || currentName === oldName || !current.approvalDate || current.approvalDate <= old.approvalDate!) continue;
       const overlapRatio = overlapArea(old.hit.geometry, current.hit.geometry as ArealGeometry) / oldArea;
       if (overlapRatio < RETIRED_MIN_OVERLAP_RATIO || overlapRatio >= RETIRED_MAX_OVERLAP_RATIO) continue;
@@ -221,10 +223,16 @@ function filterRetiredRows(rows: BuildingRow[]): { rows: BuildingRow[]; retireme
       excluded.add(old.hit.featureId);
     }
   }
-  const excludedStableIds = rows.filter((row) => excluded.has(row.hit.featureId)).map((row) => row.hit.stableId);
+  const excludedStableIds = rows.filter((row) => markedIds.has(row.hit.featureId) || excluded.has(row.hit.featureId)).map((row) => row.hit.stableId);
   return {
-    rows: rows.filter((row) => !excluded.has(row.hit.featureId)),
-    retirement: { candidatePairs, excludedCount: excludedStableIds.length, excludedStableIds },
+    rows: active.filter((row) => !excluded.has(row.hit.featureId)),
+    retirement: {
+      candidatePairs,
+      ingestMarkedCount: marked.length,
+      legacyCandidatePairs: candidatePairs,
+      excludedCount: excludedStableIds.length,
+      excludedStableIds,
+    },
   };
 }
 
@@ -274,9 +282,16 @@ export function buildingRetirementLimitations(ctx: EngineContext, radiusM = ctx.
   const selection = ctx.memo("buildings:selection:" + radiusM, () => buildingRowsUncached(ctx, radiusM));
   const info = selection?.retirement;
   if (!info || info.excludedCount === 0) return [];
+  const notes: string[] = [];
+  if (info.ingestMarkedCount > 0) {
+    notes.push("적재 단계에서 core PNU 승인일·이름·겹침 근거로 대체됨(retired) 표시한 GIS " + info.ingestMarkedCount + "동을 제외했습니다");
+  }
+  if (info.legacyCandidatePairs > 0) {
+    notes.push("retired 표시가 없는 구버전 DB에서는 도로명주소 보충 도형과 " + RETIRED_MIN_OVERLAP_RATIO * 100 + "% 이상 " + RETIRED_MAX_OVERLAP_RATIO * 100 + "% 미만 겹치고 GIS 사용승인일이 " + RETIRED_GIS_MAX_APPROVAL_YEAR + "년 이하인 옛 건물 중, 대장 PNU 준공일이 더 최신이고 건물명이 다른 " + info.legacyCandidatePairs + " pair(" + info.excludedCount + "동)를 호환 규칙으로 제외했습니다");
+  }
   return [{
     kind: "partial",
-    note: "현행 도로명주소 보충 도형과 " + RETIRED_MIN_OVERLAP_RATIO * 100 + "% 이상 " + RETIRED_MAX_OVERLAP_RATIO * 100 + "% 미만 겹치고 GIS 사용승인일이 " + RETIRED_GIS_MAX_APPROVAL_YEAR + "년 이하인 옛 건물 중, 대장 PNU 준공일이 더 최신이고 건물명이 다른 " + info.excludedCount + "동을 철거 잔존 후보로 제외했습니다. 조인·이름 근거가 없는 후보는 오탐 방지를 위해 유지했습니다.",
+    note: notes.join(". ") + ". 조인·이름 근거가 없거나 적재 표시가 없는 후보는 오탐 방지를 위해 유지했습니다.",
   }];
 }
 
