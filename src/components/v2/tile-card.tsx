@@ -215,7 +215,7 @@ export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, p
       north={22}
       credit={false}
       bottomInset={card ? 0 : OV.stripH}
-      fill={card ? 0.76 : undefined}
+      pad={card ? 7 : undefined}
       avoid={(w, h) => {
         const inset = typeof rightInset === "function" ? rightInset(w) : (rightInset ?? 0);
         // 카드: 지도 위에는 북쪽(오른쪽 위)·범례 알약(왼쪽 아래)·축척(오른쪽 아래)만 있다
@@ -429,9 +429,9 @@ function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, onF
           </span>
         )}
         {extra && <span className={`${styles.kindTag} ${styles.mfKeyLabel}`}>{extra}</span>}
-        <label className={`${styles.check} ${styles.mfCheck}`}>
+        <label className={`${styles.check} ${styles.mfCheck}`} title="보고서에 포함">
           <input type="checkbox" checked={p.included} onChange={(e) => p.onInclude(e.target.checked)} aria-label={`${view.title} 보고서 포함`} />
-          보고서
+          <span className={styles.mfCheckText}>보고서</span>
         </label>
         <button type="button" className={`${styles.mfBtn} ${styles.mfBtnDark}`} onClick={p.onOpen} aria-label={`${view.title} 펼치기`} title="펼치기">
           <Svg size={14}>

@@ -109,7 +109,9 @@ const MAP_NOTES: Record<string, string> = {
 };
 
 function mapOf(r: TileResult): RasterMapModel | null {
-  if (r.status !== "complete" && r.status !== "partial") return null;
+  // S03 is "pending" until the browser uploads a wind field, but the panel needs map.analysisId to run.
+  const windAwaitingUpload = r.tileCode === "S03" && r.status === "pending";
+  if (r.status !== "complete" && r.status !== "partial" && !windAwaitingUpload) return null;
   const features = r.presentation.features ?? [];
   const polygons = r.presentation.polygons ?? [];
   const lines = r.presentation.lines ?? [];
