@@ -6,6 +6,7 @@ import type { SunFieldResult } from "../../sim/sun-field";
 import type { EngineContext } from "../context";
 import { notProvided } from "./not-provided";
 import { SEASON_LABEL, SUN_INFLUENCE_M, horizonFor, sunBuildingReady, sunDateValue, sunFieldFor, sunGridFor, sunSources } from "./sun-shared";
+import { BUILDING_SOURCES, buildingRetirementLimitations } from "./buildings-shared";
 
 const round1 = (value: number) => Math.round(value * 10) / 10;
 const pct100 = (value: number) => round1(value * 100);
@@ -51,7 +52,8 @@ export function d21(ctx: EngineContext): TileResult {
 
   const ref = rasterFor(ctx, field, grid);
   const coverage: TileResult["limitations"] = [
-    ...ctx.coverage("buildings", ["building", "gis_bldg"]),
+    ...buildingRetirementLimitations(ctx, Math.min(5000, ctx.input.radiusM + SUN_INFLUENCE_M)),
+    ...ctx.coverage("buildings", BUILDING_SOURCES),
     ...(ctx.db("parcels") && ctx.input.pnu ? ctx.coverage("parcels", PARCEL_SOURCES) : []),
   ];
   const limitations: TileResult["limitations"] = [

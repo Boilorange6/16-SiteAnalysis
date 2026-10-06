@@ -6,7 +6,7 @@ import { sourceLineOf } from "../../ui/tile-view";
 import { catalogEntry } from "../../ui/tile-catalog";
 import type { DetailCard, DetailColumn, DetailRow, DetailSpec, DetailContext } from "./registry";
 import { areaInCircle, polygonArea, lineLengthInCircle } from "../tiles/geo";
-import { buildingRows } from "../tiles/buildings-shared";
+import { buildingRows, isCounted } from "../tiles/buildings-shared";
 import { hitPoint } from "../tiles/common";
 import { SCHOOL_ZONE_KINDS, schoolZoneSources, zoneBaseDate, zoneName, zoneOffice } from "../tiles/school-zone-shared";
 
@@ -167,7 +167,7 @@ function buildingCentroid(hit: FeatureHit): [number, number] {
 }
 
 function buildingCount(ctx: DetailContext, geometry: Geometry): number | null {
-  const rows = ctx.memo("detail:zone-building-rows", () => buildingRows(ctx));
+  const rows = ctx.memo("detail:zone-building-rows", () => buildingRows(ctx))?.filter((row) => isCounted(ctx, row)) ?? null;
   if (rows === null) return null;
   let count = 0;
   for (const row of rows) {
@@ -231,7 +231,7 @@ function zoneGroups(ctx: DetailContext, hits: readonly FeatureHit[], sourceKey: 
 }
 
 function groupBuildings(ctx: DetailContext, hits: readonly FeatureHit[]): number | null {
-  const rows = ctx.memo("detail:zone-building-rows", () => buildingRows(ctx));
+  const rows = ctx.memo("detail:zone-building-rows", () => buildingRows(ctx))?.filter((row) => isCounted(ctx, row)) ?? null;
   if (rows === null) return null;
   let count = 0;
   for (const row of rows) {

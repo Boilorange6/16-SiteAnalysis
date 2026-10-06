@@ -3,7 +3,7 @@ import { SCENE_MAX_BUILDINGS, SCENE_VERSION } from "../../scene";
 import { parseTileResult, type TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
 import { ENGINE_VERSION, est, missing, obs } from "./common";
-import { BUILDING_SOURCES, buildingRows, type BuildingRow } from "./buildings-shared";
+import { BUILDING_SOURCES, buildingRetirementLimitations, buildingRows, isCounted, type BuildingRow } from "./buildings-shared";
 import { notProvided } from "./not-provided";
 import { DEM_LIMITATION, demReader } from "./terrain-shared";
 import { maxOf, minOf } from "../../extent";
@@ -40,8 +40,9 @@ function sentence(total: number, known: number, knownPct: number | null, estimat
 }
 
 export function s01(ctx: EngineContext): TileResult {
-  const rows = buildingRows(ctx);
-  if (rows === null) return notProvided(ctx, "S01");
+  const intersectingRows = buildingRows(ctx);
+  if (intersectingRows === null) return notProvided(ctx, "S01");
+  const rows = intersectingRows.filter((row) => isCounted(ctx, row));
 
   const total = rows.length;
   const known = knownRows(rows);
@@ -53,20 +54,23 @@ export function s01(ctx: EngineContext): TileResult {
   const heights = known.flatMap((row) => (row.heightM === null ? [] : [row.heightM]));
   const medianHeight = median(heights);
   const maxHeight = heights.length === 0 ? null : maxOf(heights);
-  const included = Math.min(total, SCENE_MAX_BUILDINGS);
+  const sceneTotal = intersectingRows.length;
+  const included = Math.min(sceneTotal, SCENE_MAX_BUILDINGS);
   const demReady = demReader(ctx) !== null;
   const coverage = ctx.coverage("buildings", BUILDING_SOURCES);
+  const retirementLimitations = buildingRetirementLimitations(ctx);
   const limitations: TileResult["limitations"] = [
     { kind: "estimated", note: "공개 도형과 확보 높이로 만든 매스. 높이 미상 건물은 바닥 모양만 표시" },
     demReady ? DEM_LIMITATION : FLAT_GROUND_LIMITATION,
     ...(unknown > 0 ? [{ kind: "incomplete" as const, note: `높이 미상 건물 ${unknown}동은 높이를 세우지 않고 바닥 모양만 표시했습니다.` }] : []),
-    ...(total > included ? [{ kind: "partial" as const, note: `성능 상한 ${SCENE_MAX_BUILDINGS.toLocaleString("en-US")}동으로 반경 안 건물 ${total.toLocaleString("en-US")}동 중 ${included.toLocaleString("en-US")}동만 장면에 포함합니다.` }] : []),
+    ...(sceneTotal > included ? [{ kind: "partial" as const, note: `성능 상한 ${SCENE_MAX_BUILDINGS.toLocaleString("en-US")}동으로 교차 건물 ${sceneTotal.toLocaleString("en-US")}동 중 ${included.toLocaleString("en-US")}동만 장면에 포함합니다.` }] : []),
+    ...retirementLimitations,
     ...coverage,
   ];
-  const status: TileResult["status"] = unknown > 0 || total > included || coverage.some((entry) => entry.kind === "partial" || entry.kind === "incomplete") ? "partial" : "complete";
+  const status: TileResult["status"] = unknown > 0 || sceneTotal > included || retirementLimitations.length > 0 || coverage.some((entry) => entry.kind === "partial" || entry.kind === "incomplete") ? "partial" : "complete";
 
   const metrics: TileResult["metrics"] = [
-    obs("buildings", "반경 안 건물", total, "동", "s01-buildings@1:반경 안 건물 수"),
+    obs("buildings", "반경 안 건물(중심점 기준)", total, "동", "s01-buildings@2:발자국 중심점이 반경 원 안에 있는 건물 동수"),
     total === 0
       ? missing("height_known_pct", "높이 확인 건물 비율", "%", "s01-height-known@1:(source+floors_estimate)÷전체 건물")
       : (estimated.length > 0
@@ -101,7 +105,7 @@ export function s01(ctx: EngineContext): TileResult {
       simulation: {
         scene: SCENE_VERSION,
         buildingsIncluded: included,
-        buildingsTotal: total,
+        buildingsTotal: sceneTotal,
         cap: SCENE_MAX_BUILDINGS,
         ground: demReady ? "dem" : "flat",
       },

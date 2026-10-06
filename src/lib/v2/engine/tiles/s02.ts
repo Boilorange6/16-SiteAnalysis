@@ -17,6 +17,7 @@ import {
 } from "./sun-shared";
 import { polygonArea } from "./geo";
 import { notProvided } from "./not-provided";
+import { BUILDING_SOURCES, buildingRetirementLimitations } from "./buildings-shared";
 
 export const S02_INFLUENCE_M = SUN_INFLUENCE_M;
 export const S02_SITE_HALF_M = 30;
@@ -62,7 +63,8 @@ function parcelSite(ctx: EngineContext): { site: XY[]; siteKind: "parcel" | "box
 
 function coverageFor(ctx: EngineContext, siteKind: "parcel" | "box"): TileResult["limitations"] {
   return [
-    ...ctx.coverage("buildings", ["building", "gis_bldg"]),
+    ...buildingRetirementLimitations(ctx, Math.min(5000, ctx.input.radiusM + SUN_INFLUENCE_M)),
+    ...ctx.coverage("buildings", BUILDING_SOURCES),
     ...(siteKind === "parcel" ? ctx.coverage("parcels", PARCEL_SOURCES) : []),
   ];
 }

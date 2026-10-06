@@ -1,7 +1,7 @@
 /** D03 건축물 용도 — 반경 안 건물의 주용도코드 분포. */
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
-import { buildingRows, BUILDING_SOURCES, isCounted, type BuildingRow } from "./buildings-shared";
+import { buildingRetirementLimitations, buildingRows, BUILDING_SOURCES, isCounted, type BuildingRow } from "./buildings-shared";
 import { makeTile, missing, obs, polygonCandidate, type PolygonCandidate, type TileDraft } from "./common";
 import { areaInCircle, polygonArea, polygonParts } from "./geo";
 import { notProvided } from "./not-provided";
@@ -100,7 +100,7 @@ export function d03(ctx: EngineContext): TileResult {
     }),
   ];
 
-  const limitations = [...coverage];
+  const limitations = [...buildingRetirementLimitations(ctx), ...coverage];
   if (areaDenominator <= 0 && total > 0) {
     limitations.push({ kind: "unknown", note: "footprintM2가 확인된 건물이 없어 발자국 면적 구성비를 산출하지 못했습니다." });
   } else if (areaDenominator > 0 && rows.some((row) => row.footprintM2 === null)) {

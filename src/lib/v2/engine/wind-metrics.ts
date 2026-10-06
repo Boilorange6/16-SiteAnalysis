@@ -13,7 +13,7 @@ import type { EngineContext, SourceRef } from "./context";
 import { computeWind2D, rotateFromWindFrame } from "../sim/lbm2d";
 import { pointInRings, ringBBox, type XY } from "../sim/shadow";
 import { demReader } from "./tiles/terrain-shared";
-import { buildingRows, buildingsReady, BUILDING_SOURCES, type BuildingRow } from "./tiles/buildings-shared";
+import { buildingRetirementLimitations, buildingRows, buildingsReady, BUILDING_SOURCES, type BuildingRow } from "./tiles/buildings-shared";
 import { prevailingBySeason, type PrevailingDirection } from "./tiles/d22";
 import { est, missing, obs } from "./tiles/common";
 
@@ -264,6 +264,7 @@ export function buildWindCase(ctx: EngineContext): WindCase | null {
     { kind: "estimated", note: "조기설계 참고용 — 풍동·검증 CFD 아님 · 주풍향 1방향 입력 · 보행 안전·인허가 판단에 쓰지 않음" },
     { kind: "estimated", note: "상대풍속 U/U유입만 제공하며 실제 풍속 단위는 제공하지 않음" },
     { kind: "unknown", note: "지형·수목 미포함(지형은 기복이 작을 때만 장애물 높이에 반영)" },
+    ...buildingRetirementLimitations(ctx, Math.min(5000, ctx.input.radiusM + WIND_BUFFER_M)),
   ];
   if (Object.values(weather.inflow).some((direction) => direction?.source === "annual")) {
     limitations.push({ kind: "not_provided", note: "계절 장미 미적재 — 계절 사례는 연간 최빈 풍향을 대체 입력으로 사용했습니다." });

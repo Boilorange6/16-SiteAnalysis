@@ -6,7 +6,7 @@ import { catalogEntry } from "../../ui/tile-catalog";
 import { sourceLineOf } from "../../ui/tile-view";
 import { toLngLat, toUtmk } from "../../crs";
 import { areaInCircle, lineLengthInCircle, polygonArea } from "../tiles/geo";
-import { buildingRows } from "../tiles/buildings-shared";
+import { buildingRows, isCounted } from "../tiles/buildings-shared";
 import { hitPoint } from "../tiles/common";
 import { demGridFor, demSources } from "../tiles/terrain-shared";
 import type { LocalGrid } from "../tiles/raster-grid";
@@ -67,7 +67,7 @@ function densityRows(ctx: DetailContext): DetailRow[] {
   const bandwidth = Number(control(ctx, "bandwidth", "100"));
   const safeBandwidth = Number.isFinite(bandwidth) && bandwidth > 0 ? bandwidth : 100;
   return ctx.memo(`detail:density:${metric}:${safeBandwidth}`, () => {
-    const rows = buildingRows(ctx) ?? [];
+    const rows = (buildingRows(ctx) ?? []).filter((row) => isCounted(ctx, row));
     const lngs = new Float64Array(rows.length);
     const lats = new Float64Array(rows.length);
     const xs = new Float64Array(rows.length);
@@ -167,7 +167,7 @@ function densitySpec(): DetailSpec {
           { label: "지표", value: metric },
           { label: "대역폭", value: `${bandwidth}m` },
         ],
-        source: sourceText(ctx, "buildings", ["building", "gis_bldg"]),
+        source: sourceText(ctx, "buildings", ["building", "building_juso", "gis_bldg"]),
         ...(() => { const missing = [...(rows.length === 0 ? ["건물 자료"] : []), ...(gfa.length === 0 ? ["연면적"] : []), ...(far.length === 0 ? ["용적률"] : []), ...(coverage.length === 0 ? ["건폐율"] : [])]; return missing.length > 0 ? { missing } : {}; })(),
       };
     },
@@ -182,7 +182,7 @@ function densitySpec(): DetailSpec {
         if (!best || distance < best.distance) best = { row, distance };
       }
       if (!best || best.distance > 120) return null;
-      return { card: { title: String(best.row.cells.name ?? "건물 밀도"), fields: [{ label: "밀도", value: best.row.cells.value === null ? null : String(best.row.cells.value) }, { label: "대역폭", value: `${best.row.cells.bandwidth_m}m` }], source: sourceText(ctx, "buildings", ["building", "gis_bldg"]) }, fid: best.row.fid };
+      return { card: { title: String(best.row.cells.name ?? "건물 밀도"), fields: [{ label: "밀도", value: best.row.cells.value === null ? null : String(best.row.cells.value) }, { label: "대역폭", value: `${best.row.cells.bandwidth_m}m` }], source: sourceText(ctx, "buildings", ["building", "building_juso", "gis_bldg"]) }, fid: best.row.fid };
     },
   };
 }

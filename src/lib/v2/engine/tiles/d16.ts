@@ -2,7 +2,7 @@
 import { toUtmk } from "../../crs";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
-import { buildingRows, BUILDING_SOURCES, type BuildingRow } from "./buildings-shared";
+import { buildingRetirementLimitations, buildingRows, BUILDING_SOURCES, isCounted, isCountedWithin, type BuildingRow } from "./buildings-shared";
 import { est, hitPoint, makeTile, missing, obs, type TileDraft } from "./common";
 import { gridQuantiles } from "./raster-grid";
 import { kdeBandPolygons, kdeGrid, KDE_BANDWIDTH_M, KDE_ZERO_THRESHOLD } from "./d16-kde";
@@ -67,10 +67,12 @@ export function d16(ctx: EngineContext): TileResult {
   if (radiusRows === null) return notProvided(ctx, "D16", "건물 자료가 적재되지 않았습니다.");
   const rows = buildingRows(ctx, Math.min(5000, radiusM + INPUT_BUFFER_M));
   if (rows === null) return notProvided(ctx, "D16", "건물 자료가 적재되지 않았습니다.");
-  const gfa = gfaMetrics(radiusRows, radiusM);
+  const countedRadiusRows = radiusRows.filter((row) => isCounted(ctx, row));
+  const gfa = gfaMetrics(countedRadiusRows, radiusM);
 
   const cellM = Math.max(20, Math.ceil((2 * radiusM) / 80));
   const points = rows
+    .filter((row) => isCountedWithin(ctx, row, radiusM + INPUT_BUFFER_M))
     .map((row) => toUtmk(hitPoint(row.hit)))
     .filter((point): point is [number, number] => point.every(Number.isFinite));
   const grid = kdeGrid(ctx.input.center, radiusM, cellM, points);
@@ -91,9 +93,11 @@ export function d16(ctx: EngineContext): TileResult {
   const finiteGridValues = Array.from(grid.values).filter(Number.isFinite);
   const maxDensity = finiteGridValues.length > 0 ? maxOf(finiteGridValues) : 0;
   const coverage = ctx.coverage("buildings", BUILDING_SOURCES);
+  const retirementLimitations = buildingRetirementLimitations(ctx, Math.min(5000, radiusM + INPUT_BUFFER_M));
   const limitations: TileDraft["limitations"] = [
     { kind: "estimated", note: "커널 밀도 추정 — 동수 기준, 연면적·용적률과 혼합 안 함 · 반경 밖 300m 건물 포함" },
     { kind: "unknown", note: "연면적은 대장 값이며 동수 KDE와 섞지 않음" },
+    ...retirementLimitations,
     ...coverage,
   ];
   const status: TileResult["status"] = limitations.some((limitation) => limitation.kind === "partial" || limitation.kind === "incomplete") ? "partial" : "complete";

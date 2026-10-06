@@ -4,7 +4,8 @@
  */
 import { randomUUID } from "node:crypto";
 import type BetterSqlite3 from "better-sqlite3";
-import type { LngLat } from "./crs";
+import { toUtmk, type LngLat } from "./crs";
+import { geometryCentroid } from "./engine/tiles/buildings-shared";
 import { queryFeaturesInRadius } from "./data/features";
 import { manifestHash, openDataFile, readManifest } from "./data/manifest";
 import { createAnalysisRun, finishAnalysisRun, getAnalysisRun, saveTileResult } from "./app-db";
@@ -44,6 +45,11 @@ export function runSkeletonAnalysis(
       analysisDate: input.analysisDate, manifestHash: hash, engineVersion: SKELETON_ENGINE_VERSION, parameters: {},
     });
     const hits = queryFeaturesInRadius(core, input.center, input.radiusM, ["building"]);
+    const [cx, cy] = toUtmk(input.center);
+    const counted = hits.filter((hit) => {
+      const center = geometryCentroid(hit.geometry);
+      return !center || Math.hypot(center[0] - cx, center[1] - cy) <= input.radiusM;
+    }).length;
     // 반경 안 건물이 0동이어도 건물 원천이 적재돼 있으면 "0동 관측"이다. 원천 자체가 없으면 "자료 없음"이다.
     const releases = core
       .prepare(`SELECT release_id, source_id, source_as_of, fetched_at FROM source_release
@@ -70,8 +76,8 @@ export function runSkeletonAnalysis(
       engineVersion: SKELETON_ENGINE_VERSION,
       conditions,
       metrics: [{
-        id: "building_count", label: "반경 내 건물", value: hasSource ? hits.length : null, unit: "동",
-        formulaVersion: "d02-count@1", numerator: null, denominator: null, status: hasSource ? "observed" : "missing",
+        id: "building_count", label: "반경 내 건물(중심점 기준)", value: hasSource ? counted : null, unit: "동",
+        formulaVersion: "d02-count@2", numerator: counted, denominator: hits.length, status: hasSource ? "observed" : "missing",
       }],
       judgment: null,
       presentation: { legend: [], camera: null, layers: ["building"], outputFace: "front" },
