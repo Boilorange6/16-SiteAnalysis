@@ -83,7 +83,7 @@ function measureUtciBatch() {
   return { elapsedMs: performance.now() - t0, checksum };
 }
 
-const warmupRuns = 2;
+const warmupRuns = 1;
 const sampleRuns = 5;
 for (let i = 0; i < warmupRuns; i += 1) measureUtciBatch();
 const perfSamples = Array.from({ length: sampleRuns }, () => measureUtciBatch());

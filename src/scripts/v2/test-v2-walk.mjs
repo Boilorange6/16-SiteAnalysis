@@ -148,7 +148,7 @@ function measureWalkPass() {
   return { elapsedMs: performance.now() - started, fieldElapsedMs, nodes: perfField.nodes, edges: perfField.edges };
 }
 
-const warmupRuns = 2;
+const warmupRuns = 1;
 const sampleRuns = 5;
 for (let i = 0; i < warmupRuns; i += 1) measureWalkPass();
 const perfSamples = Array.from({ length: sampleRuns }, () => measureWalkPass());

@@ -19,6 +19,7 @@ import { est, missing, obs } from "./tiles/common";
 
 export const WIND_SEASONS = ["annual", "spring", "summer", "autumn", "winter"] as const;
 export type WindSeason = (typeof WIND_SEASONS)[number];
+const WIND_SEASON_LABEL: Record<WindSeason, string> = { annual: "연간", spring: "봄", summer: "여름", autumn: "가을", winter: "겨울" };
 export const PEDESTRIAN_LAYER_Z = 6;
 export const WIND_CELL_M = 4;
 export const WIND_BUFFER_M = 200;
@@ -430,9 +431,10 @@ function percent(part: number, total: number): number | null {
 
 function shareMetric(season: WindSeason, index: number, value: number | null, numerator: number, denominator: number): TileResult["metrics"][number] {
   const labels = ["0.5 미만", "0.5~0.8", "0.8~1.2", "1.2~1.5", "1.5 이상"];
+  const seasonLabel = WIND_SEASON_LABEL[season];
   return value === null
-    ? missing(`share_wind_${index}_${season}`, `${season} 보행층 상대풍속 ${labels[index]} 면적`, "%", `s03-share-${index}@1:유효 셀 중 ${labels[index]} 비율`)
-    : est(`share_wind_${index}_${season}`, `${season} 보행층 상대풍속 ${labels[index]} 면적`, value, "%", `s03-share-${index}@1:유효 셀 중 ${labels[index]} 비율`, numerator, denominator);
+    ? missing(`share_wind_${index}_${season}`, `${seasonLabel} 보행층 상대풍속 ${labels[index]} 면적`, "%", `s03-share-${index}@1:유효 셀 중 ${labels[index]} 비율`)
+    : est(`share_wind_${index}_${season}`, `${seasonLabel} 보행층 상대풍속 ${labels[index]} 면적`, value, "%", `s03-share-${index}@1:유효 셀 중 ${labels[index]} 비율`, numerator, denominator);
 }
 
 /** i16 vector2 한 층을 S03 표시 지표로 만든다. 단위는 의도적으로 m/s가 아니다. */
@@ -469,20 +471,21 @@ export function metricsForWindField(input: WindMetricInput): WindMetricResult {
   const denominator = speeds.length;
   const median = quantile(speeds, 0.5);
   const p90 = quantile(speeds, 0.9);
+  const seasonLabel = WIND_SEASON_LABEL[input.season];
   return {
     validCells: denominator,
     median,
     p90,
     metrics: [
-      median === null ? missing(`urel_median_${input.season}`, `${input.season} 보행층 상대풍속 중앙값`, "U/U유입", "s03-urel-median@1:유효 셀 중앙값") : est(`urel_median_${input.season}`, `${input.season} 보행층 상대풍속 중앙값`, median, "U/U유입", "s03-urel-median@1:유효 셀 중앙값", null, denominator),
-      p90 === null ? missing(`urel_p90_${input.season}`, `${input.season} 보행층 상대풍속 P90`, "U/U유입", "s03-urel-p90@1:유효 셀 90백분위") : est(`urel_p90_${input.season}`, `${input.season} 보행층 상대풍속 P90`, p90, "U/U유입", "s03-urel-p90@1:유효 셀 90백분위", null, denominator),
+      median === null ? missing(`urel_median_${input.season}`, `${seasonLabel} 보행층 상대풍속 중앙값`, "U/U유입", "s03-urel-median@1:유효 셀 중앙값") : est(`urel_median_${input.season}`, `${seasonLabel} 보행층 상대풍속 중앙값`, median, "U/U유입", "s03-urel-median@1:유효 셀 중앙값", null, denominator),
+      p90 === null ? missing(`urel_p90_${input.season}`, `${seasonLabel} 보행층 상대풍속 P90`, "U/U유입", "s03-urel-p90@1:유효 셀 90백분위") : est(`urel_p90_${input.season}`, `${seasonLabel} 보행층 상대풍속 P90`, p90, "U/U유입", "s03-urel-p90@1:유효 셀 90백분위", null, denominator),
       ...bins.map((countInBin, index) => shareMetric(input.season, index, percent(countInBin, denominator), countInBin, denominator)),
       percent(calm, denominator) === null
-        ? missing(`share_calm_lt02_${input.season}`, `${input.season} 상대풍속 0.2 미만 면적`, "%", "s03-calm@1:유효 셀 중 상대풍속 0.2 미만")
-        : est(`share_calm_lt02_${input.season}`, `${input.season} 상대풍속 0.2 미만 면적`, percent(calm, denominator)!, "%", "s03-calm@1:유효 셀 중 상대풍속 0.2 미만", calm, denominator),
+        ? missing(`share_calm_lt02_${input.season}`, `${seasonLabel} 상대풍속 0.2 미만 면적`, "%", "s03-calm@1:유효 셀 중 상대풍속 0.2 미만")
+        : est(`share_calm_lt02_${input.season}`, `${seasonLabel} 상대풍속 0.2 미만 면적`, percent(calm, denominator)!, "%", "s03-calm@1:유효 셀 중 상대풍속 0.2 미만", calm, denominator),
       input.inflowFromDeg === null
-        ? missing(`inflow_from_deg_${input.season}`, `${input.season} 유입 풍향`, "도", "s03-inflow@1:D22 최근접 ASOS 최빈 풍향")
-        : obs(`inflow_from_deg_${input.season}`, `${input.season} 유입 풍향`, input.inflowFromDeg, "도", "s03-inflow@1:D22 최근접 ASOS 최빈 풍향"),
+        ? missing(`inflow_from_deg_${input.season}`, `${seasonLabel} 유입 풍향`, "도", "s03-inflow@1:D22 최근접 ASOS 최빈 풍향")
+        : obs(`inflow_from_deg_${input.season}`, `${seasonLabel} 유입 풍향`, input.inflowFromDeg, "도", "s03-inflow@1:D22 최근접 ASOS 최빈 풍향"),
       est("cell_m", "바람 격자 셀 크기", frame.cellM, "m", "s03-grid@1:바람장 래스터 셀 크기"),
       est("domain_buffer_m", "바람장 반경 버퍼", Math.round((Math.max(frame.cols, frame.rows) * frame.cellM) / 2 - input.radiusM), "m", "s03-grid@1:분석 반경 외 계산 버퍼"),
       est("steps", "반복 스텝", input.steps, "step", "s03-steps@1:LBM 반복 횟수"),
