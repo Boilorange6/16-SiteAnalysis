@@ -2,13 +2,14 @@
  * TileResult → 화면 문자열. 화면이 쓰는 문구는 전부 여기서 만든다 (컴포넌트에는 문구 로직 없음).
  * 규칙: 종합 점수 없음 · 도보 시간 없음 · 공급/가격/개발은 좋음·주의 평가 없음 (plan 화면 규칙 1~8).
  */
-import type { OUTPUT_FACES, RasterRef, RoseSeason, TileResult } from "../tile-result";
+import type { MapPolygon, OUTPUT_FACES, RasterRef, RoseSeason, TileResult } from "../tile-result";
 import type { Scene } from "../scene";
 import { fmtInt, rankComplexes, rankSupply, STOCK_LEGEND, SUPPLY_LAYERS, SUPPLY_LEGEND, summarize, supplyStats, type CalloutLegendSpec, type Complex, type Stat } from "./callout-layout";
 import type { MapModel } from "./map-layers";
 import type { MassModel } from "./mass-projection";
 import { catalogEntry, sourceName } from "./tile-catalog";
 import type { RoseModel } from "./wind-rose";
+import { isSiteParcelLayer, siteParcelFromResults } from "./site-parcel";
 
 export type OutputFace = (typeof OUTPUT_FACES)[number];
 export type Badge = { text: string; note?: string; tone: "status" | "limit" | "model" };
@@ -108,19 +109,23 @@ const MAP_NOTES: Record<string, string> = {
   S03: "조기설계 참고용 · 풍동 검증 없음 · 주풍향 1방향",
 };
 
-function mapOf(r: TileResult): RasterMapModel | null {
+function mapOf(r: TileResult, analysisSiteParcel?: readonly MapPolygon[] | null): RasterMapModel | null {
   // S03 is "pending" until the browser uploads a wind field, but the panel needs map.analysisId to run.
   const windAwaitingUpload = r.tileCode === "S03" && r.status === "pending";
   if (r.status !== "complete" && r.status !== "partial" && !windAwaitingUpload) return null;
   const features = r.presentation.features ?? [];
-  const polygons = r.presentation.polygons ?? [];
+  const allPolygons = r.presentation.polygons ?? [];
+  const ownSiteParcel = allPolygons.filter((polygon) => isSiteParcelLayer(polygon.layer));
+  const siteParcel = analysisSiteParcel === undefined ? (ownSiteParcel.length > 0 ? ownSiteParcel : null) : analysisSiteParcel;
+  const polygons = allPolygons.filter((polygon) => !isSiteParcelLayer(polygon.layer));
   const lines = r.presentation.lines ?? [];
   const presentation = r.presentation as ExtendedPresentation;
   const rasterOptions = presentation.rasters ?? [];
   const defaultRaster = rasterDefaultName(r.tileCode, rasterOptions, presentation);
   const rasters = defaultRaster ? rasterOptions.filter((ref) => ref.name === defaultRaster) : [];
   const basemap = presentation.basemap;
-  if (features.length === 0 && polygons.length === 0 && lines.length === 0 && rasterOptions.length === 0 && !basemap) return null;
+  const polygonsTotal = Math.max(0, (r.presentation.polygonsTotal ?? allPolygons.length) - ownSiteParcel.length);
+  if (features.length === 0 && polygons.length === 0 && lines.length === 0 && rasterOptions.length === 0 && !basemap && !siteParcel?.length) return null;
   const notes = MAP_NOTES[r.tileCode] ? [MAP_NOTES[r.tileCode]] : [];
   if (r.tileCode === "A01" && r.metrics.some((m) => m.id === "nearest_rail_m" && m.status === "missing")) notes.push("철도 자료 미적재 · 버스정류장만 표시");
   // 래스터가 그려지는 타일은 건물·그림자를 래스터 셀이 담당하므로 "지물 없음"이 아니다.
@@ -135,7 +140,8 @@ function mapOf(r: TileResult): RasterMapModel | null {
     basemap,
     rasters,
     polygons,
-    polygonsTotal: r.presentation.polygonsTotal ?? polygons.length,
+    ...(siteParcel && siteParcel.length > 0 ? { siteParcel: [...siteParcel] } : { siteParcel: null }),
+    polygonsTotal,
     lines,
     linesTotal: r.presentation.linesTotal ?? lines.length,
     total: r.presentation.featuresTotal ?? features.length,
@@ -330,7 +336,7 @@ export function sourceLineOf(sources: TileResult["provenance"]["sources"]): stri
   return [...new Set(lines)].join(" · ");
 }
 
-export function toTileView(r: TileResult, scene?: Scene | null): TileView {
+export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParcel?: readonly MapPolygon[] | null): TileView {
   const cat = catalogEntry(r.tileCode);
   const badges: Badge[] = [];
   const statusText = STATUS_TEXT[r.status];
@@ -412,8 +418,8 @@ export function toTileView(r: TileResult, scene?: Scene | null): TileView {
     })(),
     hasFace: r.tileType === "diagram",
     retryable: r.status === "failed",
-    map: mapOf(r),
-    backdrop: { center: r.conditions.center, radiusM: r.conditions.radiusM, features: [], total: 0, notes: [] },
+    map: mapOf(r, analysisSiteParcel),
+    backdrop: { center: r.conditions.center, radiusM: r.conditions.radiusM, features: [], total: 0, notes: [], siteParcel: analysisSiteParcel === undefined ? siteParcelFromResults([r]) : analysisSiteParcel ? [...analysisSiteParcel] : null },
     kindLabel: KIND_LABEL[cat.kind],
     callout: calloutOf(r),
     mass: massOf(r, scene),
@@ -476,7 +482,7 @@ function calloutOf(r: TileResult): CalloutModel | null {
 
 // ── 대지 요약 ──
 /** 면적·용도지역이 적재되지 않은 동안은 null — 화면에는 "미확인"으로 보인다. */
-export type SiteSummary = { address: string; areaM2: number | null; zoning: string | null; radiusM: number; facts: string[] };
+export type SiteSummary = { address: string; areaM2: number | null; zoning: string | null; radiusM: number; facts: string[]; siteParcel?: MapPolygon[] | null };
 export type SummaryView = {
   address: string;
   area: string;
@@ -493,6 +499,7 @@ export type SummaryView = {
 export function toSummaryView(s: SiteSummary, results: TileResult[]): SummaryView {
   const dates = results.flatMap((r) => r.provenance.sources.map((x) => x.sourceAsOf)).filter((d): d is string => !!d).sort();
   const weak = results.filter((r) => r.status !== "complete" || r.limitations.some((l) => l.kind !== "estimated"));
+  const siteParcel = s.siteParcel === undefined ? siteParcelFromResults(results) : s.siteParcel;
   return {
     address: s.address,
     area: s.areaM2 === null ? "면적 미확인" : `${group(s.areaM2)}㎡`,
@@ -502,6 +509,6 @@ export function toSummaryView(s: SiteSummary, results: TileResult[]): SummaryVie
     asOfLine: dates.length ? `자료 기준일 ${dates[0]}${dates.length > 1 && dates[0] !== dates[dates.length - 1] ? ` ~ ${dates[dates.length - 1]}` : ""}` : "자료 기준일 미확인",
     incomplete: weak.length > 0,
     incompleteCount: weak.length,
-    map: results[0] ? { center: results[0].conditions.center, radiusM: s.radiusM, features: [], total: 0, notes: [] } : null,
+    map: results[0] ? { center: results[0].conditions.center, radiusM: s.radiusM, features: [], total: 0, notes: [], siteParcel } : null,
   };
 }

@@ -113,7 +113,14 @@ export default function MapBox({ model, bare, label, avoid, siteX, rightInset, p
   const renderLayer = fallbackLayer ?? requestedLayer;
   const renderModel = fallbackLayer ? { ...model, basemap: fallbackLayer } : model;
   // 카드 범례: 왼쪽 아래 한 줄 알약. 축척 막대(오른쪽 아래) 앞까지 들어가는 만큼만 보이고 나머지는 "+n".
-  const allLegend = !bare && opts.legend === false ? compactLegendItems(model, 99) : [];
+  const allLegend = !bare && opts.legend === false
+    ? [
+        ...(!opts.muted ? [{ layer: "__site_marker", label: "대지", color: "#111", count: 1, order: -1, site: true as const }] : []),
+        ...compactLegendItems(model, 99)
+          .filter((item) => item.layer !== "parcel_site" && item.layer !== "pnu")
+          .map((item) => ({ ...item, site: false as const })),
+      ]
+    : [];
   const legendRoom = size ? size.w - 8 - 112 - 40 : 0;
   let fitted = 0;
   for (let used = 0, i = 0; i < Math.min(3, allLegend.length); i++) {
@@ -156,7 +163,14 @@ export default function MapBox({ model, bare, label, avoid, siteX, rightInset, p
         <div role="group" aria-label="범례" style={{ position: "absolute", zIndex: 3, bottom: legendBottom, left: 8, maxWidth: "calc(100% - 128px)", display: "flex", alignItems: "center", gap: 8, padding: "3px 9px", borderRadius: 999, background: "rgba(255,255,255,.92)", color: "#16181d", fontSize: 11, lineHeight: 1.3, whiteSpace: "nowrap", overflow: "hidden", boxShadow: "0 1px 3px rgba(21,23,28,.12)" }}>
           {compactItems.map((item) => (
             <span key={item.layer} style={{ display: "inline-flex", alignItems: "center", gap: 3, whiteSpace: "nowrap" }}>
-              <i aria-hidden style={{ width: 8, height: 8, borderRadius: "50%", background: item.color, border: "1px solid rgba(21,23,28,.35)" }} />
+              {item.site ? (
+                <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden focusable="false">
+                  <rect x="1.8" y="1.8" width="6.4" height="6.4" fill="#fff" stroke="#111" strokeWidth="1" transform="rotate(45 5 5)" />
+                  <circle cx="5" cy="5" r="1.2" fill="#111" />
+                </svg>
+              ) : (
+                <i aria-hidden style={{ width: 8, height: 8, borderRadius: "50%", background: item.color, border: "1px solid rgba(21,23,28,.35)" }} />
+              )}
               {item.label}
             </span>
           ))}

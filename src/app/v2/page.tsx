@@ -17,6 +17,7 @@ import { sheetView } from "@/lib/v2/ui/sheet";
 import { exportAvailability, formatElapsedMs, jobProgress } from "@/lib/v2/ui/board-status";
 import { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } from "@/lib/v2/ui/fixtures/godeok";
 import { toSummaryView, toTileView, type SiteSummary } from "@/lib/v2/ui/tile-view";
+import { siteParcelFromResults } from "@/lib/v2/ui/site-parcel";
 import type { TileResult } from "@/lib/v2/tile-result";
 import type { Scene } from "@/lib/v2/scene";
 import { isRoadAddress, ROAD_ADDRESS_UNSUPPORTED_MESSAGE } from "@/lib/v2/site";
@@ -62,7 +63,8 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
     setNote(`${views.get(id)?.title} 타일을 ${to + 1}번째로 옮김`);
   });
 
-  const baseViews = useMemo(() => new Map(results.map((r) => [r.tileId, toTileView(r, scene)])), [results, scene]);
+  const analysisSiteParcel = useMemo(() => (siteSummary.siteParcel === undefined ? siteParcelFromResults(results) : siteSummary.siteParcel), [siteSummary.siteParcel, results]);
+  const baseViews = useMemo(() => new Map(results.map((r) => [r.tileId, toTileView(r, scene, analysisSiteParcel)])), [results, scene, analysisSiteParcel]);
   const views = useMemo(() => {
     const next = new Map(
       [...baseViews].map(([id, view]) => {

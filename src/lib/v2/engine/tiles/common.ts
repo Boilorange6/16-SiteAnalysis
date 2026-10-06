@@ -3,6 +3,7 @@ import { toLngLat } from "../../crs";
 import type { FeatureHit } from "../../data/features";
 import { MAX_LINE_VERTICES, MAX_MAP_FEATURES, MAX_MAP_LINES, MAX_MAP_POLYGONS, MAX_POLYGON_VERTICES, parseTileResult, type MapFeature, type MapLine, type MapPolygon, type TileResult } from "../../tile-result";
 import { layerStyle } from "../../ui/map-layers";
+import { isSiteParcelLayer } from "../../ui/site-parcel";
 import { sourceName } from "../../ui/tile-catalog";
 import type { EngineContext, Limitation, SourceRef } from "../context";
 import { simplifyRing } from "./geo";
@@ -111,7 +112,7 @@ export function polygonCandidate(id: number, layer: string, rings: number[][][],
 
 /** 상한을 넘으면 면적이 큰 것부터 남긴다. 결정적. */
 export function capPolygons(items: PolygonCandidate[]): { polygons: MapPolygon[]; total: number } {
-  const sorted = [...items].sort((a, b) => b.areaM2 - a.areaM2 || a.id - b.id);
+  const sorted = [...items].sort((a, b) => Number(isSiteParcelLayer(b.p.layer)) - Number(isSiteParcelLayer(a.p.layer)) || b.areaM2 - a.areaM2 || a.id - b.id);
   return { polygons: sorted.slice(0, MAX_MAP_POLYGONS).map((c) => ({ ...c.p, fid: c.p.fid ?? String(c.id) })), total: items.length };
 }
 

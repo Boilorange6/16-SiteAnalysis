@@ -11,7 +11,7 @@ globalThis.React = React;
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 const { effectiveLayer } = await import("../../lib/v2/report/map-image.ts");
-const { default: MapFigure } = await import("../../components/v2/map-figure.tsx");
+const { default: MapFigure, siteMarkerMode, siteMarkerRadius } = await import("../../components/v2/map-figure.tsx");
 const { framedViewport, worldPx } = await import("../../lib/v2/ui/map-projection.ts");
 const { toUtmk, toLngLat } = await import("../../lib/v2/crs.ts");
 const { rasterAffine, paintRgba } = await import("../../lib/v2/ui/raster-image.ts");
@@ -20,6 +20,22 @@ const { encodeRaster, loadTileRaster, saveTileRasters } = await import("../../li
 const { getTileRaster } = await import("../../lib/v2/engine/raster-api.ts");
 const A = await import("../../lib/v2/app-db.ts");
 const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");
+
+// 대지 윤곽은 필지 외곽 상자의 짧은 변이 10px 이상일 때만 쓰고, 카드·상세·PPT는 승인된 r을 쓴다.
+assert.deepEqual(
+  [
+    siteMarkerMode([[0, 0], [12, 0], [12, 12], [0, 12], [0, 0]]),
+    siteMarkerMode([[0, 0], [10, 0], [10, 12], [0, 12], [0, 0]]),
+    siteMarkerMode([[0, 0], [9, 0], [9, 12], [0, 12], [0, 0]]),
+    siteMarkerMode([[0, 0], [12, 0], [12, 12], [0, 12]]),
+    siteMarkerMode([[0, 0], [0.5, 0], [1, 0], [60, 0], [60, 40], [0, 40], [0, 0]]),
+    siteMarkerRadius(280),
+    siteMarkerRadius(540),
+    siteMarkerRadius(540, true),
+  ],
+  ["parcel", "parcel", "ring", "parcel", "parcel", 4, 7, 10],
+  "대지 표식 판정과 컨텍스트별 반지름",
+);
 
 const refInput = {
   name: "sun_hours",
@@ -140,6 +156,7 @@ assert.match(svg, /<image/);
 assert.match(svg, /matrix\(/);
 assert.match(svg, /image-rendering:auto/);
 assert.match(svg, /data-radius-clip="true"/);
+assert.match(svg, /role="img" aria-label="분석 대지"/);
 assert.ok(svg.indexOf("data-raster") < svg.indexOf("data-poly") || !svg.includes("data-poly"), "래스터는 면보다 아래");
 
 const svfModel = { ...view.map, rasters: [svfRef], notes: ["SVF 색 구간 0·25·50·65·75·85·92·100%"] };

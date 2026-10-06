@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 const Database = (await import("better-sqlite3")).default;
-const { buildEngineFixture, CENTER, at } = await import("./engine-fixture.mjs");
+const { buildEngineFixture, CENTER, PNU_DASAN_100, at } = await import("./engine-fixture.mjs");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { insertFeature } = await import("../../lib/v2/data/features.ts");
@@ -13,10 +13,11 @@ const { a03, storeGroup } = await import("../../lib/v2/engine/tiles/a03.ts");
 const { a04 } = await import("../../lib/v2/engine/tiles/a04.ts");
 const { a05, isAged, isApartment } = await import("../../lib/v2/engine/tiles/a05.ts");
 const { a06, bucketOf } = await import("../../lib/v2/engine/tiles/a06.ts");
+const { d19 } = await import("../../lib/v2/engine/tiles/d19.ts");
 const { notProvided } = await import("../../lib/v2/engine/tiles/not-provided.ts");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { buildSummary } = await import("../../lib/v2/engine/summary.ts");
-const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
+const { toSummaryView, toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 
 const dataDir = mkdtempSync(join(tmpdir(), "v2-eng-tiles-"));
 const hash = await buildEngineFixture(dataDir, "v1");
@@ -275,6 +276,34 @@ const noForbidden = (t) => {
   assert.deepEqual([s.areaM2, s.zoning, s.radiusM], [null, null, 800]);
   assert.deepEqual(s.facts, ["지목 대", "최근접 버스정류장 직선 250m, 반경 안 2곳", "아파트 3개 단지, 확인 세대 800세대"]);
   ctx.close();
+}
+
+// ── 대상 필지는 D19 원천에서 요약으로 한 번 승격하고 모든 지도에 공유 ──
+{
+  const parcelsDir = mkdtempSync(join(tmpdir(), "v2-eng-tiles-site-parcel-"));
+  await buildEngineFixture(parcelsDir, "v1", { parcels: true });
+  const parcelsManifest = M.readManifest(parcelsDir);
+  const ctx = new EngineContext(parcelsDir, parcelsManifest, "an-site", {
+    address: "경기도 남양주시 다산동 100",
+    center: CENTER,
+    radiusM: 800,
+    analysisDate: "2026-09-30",
+    pnu: PNU_DASAN_100,
+  });
+  const siteResult = d19(ctx);
+  const transitResult = a01(ctx);
+  const summary = buildSummary({ address: "경기도 남양주시 다산동 100", jimok: "대" }, 800, [siteResult, transitResult]);
+  assert.ok(summary.siteParcel && summary.siteParcel.length > 0, "D19 대상 필지가 요약에 전달");
+  assert.equal(summary.siteParcel[0].layer, "parcel_site");
+  const transitView = toTileView(transitResult, null, summary.siteParcel);
+  assert.deepEqual(transitView.map.siteParcel, summary.siteParcel, "A01 지도도 요약 필지를 공유");
+  assert.equal(toSummaryView(summary, [siteResult, transitResult]).map.siteParcel.length, summary.siteParcel.length, "요약 지도도 같은 필지를 사용");
+  ctx.close();
+
+  const oldResult = { ...transitResult, presentation: { ...transitResult.presentation, polygons: undefined, polygonsTotal: undefined } };
+  const oldSummary = buildSummary({ address: "옛 분석", jimok: null }, 800, [oldResult]);
+  assert.equal(oldSummary.siteParcel, null, "옛 저장본의 필지 없음은 null");
+  assert.doesNotThrow(() => toSummaryView(oldSummary, [oldResult]), "옛 저장본은 링 폴백으로 열림");
 }
 
 console.log("✓ v2 engine tiles");

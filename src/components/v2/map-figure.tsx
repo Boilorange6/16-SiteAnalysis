@@ -4,6 +4,7 @@ import { BASEMAP_ATTRIBUTION, BASEMAP_STACK, framedViewport, makeProjector, mete
 import { rasterAffine, rasterLegendColor, resolveRasterStyle } from "@/lib/v2/ui/raster-image";
 import type { RasterRef } from "@/lib/v2/tile-result";
 import { maxOf, minOf } from "@/lib/v2/extent";
+import { isSiteParcelLayer } from "@/lib/v2/ui/site-parcel";
 
 /**
  * 지도 그림 하나(SVG). 카드·상세·PPT가 같은 입력으로 같은 그림을 그린다.
@@ -74,6 +75,27 @@ const INK = "#16181d";
 const textW = (s: string, fs: number) => [...s].reduce((w, ch) => w + (ch.charCodeAt(0) > 0x2e80 ? fs : fs * 0.58), 0);
 type Box = { x0: number; y0: number; x1: number; y1: number };
 const hit = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+type ScreenPoint = readonly [number, number];
+
+export type SiteMarkerMode = "parcel" | "ring";
+
+const SITE_MARKER_EDGE_PX = 10;
+/** 작은 필지는 윤곽이 점처럼 뭉개지므로 후보 1 링으로 바꾼다. 크기는 필지 외곽 상자의 짧은 변으로 본다
+ * (꼭짓점 사이 변 길이로 보면 꼭짓점이 촘촘한 큰 필지도 링이 된다). */
+export function siteMarkerMode(points?: readonly ScreenPoint[] | null): SiteMarkerMode {
+  if (!points || points.length < 3) return "ring";
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of points) {
+    x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+  }
+  return Math.min(x1 - x0, y1 - y0) >= SITE_MARKER_EDGE_PX ? "parcel" : "ring";
+}
+
+/** fixed SVG는 보고서/PPT, 높이가 작은 MapBox는 카드, 나머지는 상세 보기다. */
+export function siteMarkerRadius(height: number, fixed = false): number {
+  if (fixed) return 10;
+  return height < 360 ? 4 : 7;
+}
 
 function rasterStopPositions(style: RasterStyle): number[] {
   const colors = style.colors;
@@ -192,7 +214,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
 
   // 범례 (지물이 있는 레이어 + 선택된 래스터의 숫자 범례). 이 레이아웃은
   // 뷰포트를 만들기 전에 계산해, 래스터 범례가 반경 원을 가리지 않도록 위쪽을 예약한다.
-  const present = legendItems(model).map((item) => item.layer);
+  const present = legendItems(model).map((item) => item.layer).filter((layer) => !isSiteParcelLayer(layer));
   const rasterPresentation = rasterModel.legend ?? [];
   const rasterStyle = activeRaster ? RASTER_STYLES[activeRaster.palette] : undefined;
   const resolvedRasterStyle = activeRaster && rasterStyle ? resolveRasterStyle(activeRaster, rasterStyle) : undefined;
@@ -214,7 +236,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
     ...(model.linesTotal !== undefined && model.linesTotal > (model.lines?.length ?? 0) ? [`선 표시 ${(model.lines?.length ?? 0).toLocaleString("en-US")} / 전체 ${model.linesTotal.toLocaleString("en-US")}`] : []),
   ];
   const notes = [...model.notes, ...cuts];
-  const legendRows: Array<Array<{ layer: string; x: number; w: number }>> = [[]];
+  const legendRows: Array<Array<{ layer: string; x: number; w: number; site?: boolean }>> = [[]];
   let lx = 0;
   for (const layer of present) {
     const w = 12 * u + textW(layerStyle(layer).label, fs) + 8 * u;
@@ -225,8 +247,16 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
     legendRows.at(-1)!.push({ layer, x: lx, w });
     lx += w;
   }
+  if (!bare && !muted) {
+    const w = 12 * u + textW("대지", fs) + 8 * u;
+    if (lx + w > legendMaxW && legendRows.at(-1)!.length) {
+      legendRows.push([]);
+      lx = 0;
+    }
+    legendRows.at(-1)!.push({ layer: "__site_marker", x: lx, w, site: true });
+  }
   const rowH = fs * 1.5;
-  const legendRowsN = present.length ? legendRows.length : 0;
+  const legendRowsN = legendRows.some((row) => row.length) ? legendRows.length : 0;
   const rasterFs = Math.max(8.5, fs * 0.9);
   const rasterBarH = 12 * u;
   const rasterBarW = Math.max(80 * u, Math.min(240 * u, Math.max(1, legendMaxW - 3 * pad)));
@@ -389,6 +419,20 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
       index,
     };
   });
+  const siteParcelModels = model.siteParcel === undefined ? (model.polygons ?? []).filter((polygon) => isSiteParcelLayer(polygon.layer)) : (model.siteParcel ?? []);
+  const siteParcels: ScreenPolygon[] = siteParcelModels.map((polygon, index) => {
+    const rings = polygon.rings.map((ring) => ring.map(([lng, lat]) => proj(lng, lat)));
+    const outer = rings[0] ?? [];
+    const xs = outer.map(([x]) => x);
+    const ys = outer.map(([, y]) => y);
+    return {
+      polygon,
+      rings,
+      center: xs.length > 0 ? [(minOf(xs) + maxOf(xs)) / 2, (minOf(ys) + maxOf(ys)) / 2] : [cx, cy],
+      area: polygonArea(outer),
+      index: polygons.length + index,
+    };
+  });
   const polygonOpacity = sat ? 0.45 : 0.35;
   const isEstimated = (polygon: ScreenPolygon) => polygon.polygon.layer.endsWith("_est") || layerStyle(polygon.polygon.layer).label.startsWith("[추정]");
   const hatchId = (index: number) => `hatch${uid}-${index}`;
@@ -441,8 +485,21 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   const boxes: Box[] = showLegend ? [{ x0: panelX, y0: panelY, x1: panelX + panelW, y1: panelY + panelH }] : [];
   boxes.push(...avoid);
   if (scale) boxes.push({ x0: barX0 - 8 * u, y0: barY - 16 * u, x1: W, y1: H });
-  const site = 6.5 * u;
-  boxes.push({ x0: cx - site - 2, y0: cy - site - 2, x1: cx + site + 2, y1: cy + site + 2 });
+  const siteR = siteMarkerRadius(H, fixed);
+  const sitePoints = siteParcels.flatMap((polygon) => polygon.rings.flat());
+  const sitePath = siteParcels.map((polygon) => polygonPath(polygon.rings)).join(" ");
+  const siteMode: SiteMarkerMode = siteMarkerMode(siteParcels.flatMap((polygon) => polygon.rings[0] ?? []));
+  const diamondExtent = 1.1 * siteR;
+  const markerHalfStroke = siteMode === "parcel" ? Math.max(0.5 * siteR, 2.4) / 2 : 0.25 * siteR;
+  const siteBounds = siteMode === "parcel" && sitePoints.length > 0
+    ? {
+        x0: Math.min(cx - diamondExtent, ...sitePoints.map(([x]) => x)) - markerHalfStroke,
+        y0: Math.min(cy - diamondExtent, ...sitePoints.map(([, y]) => y)) - markerHalfStroke,
+        x1: Math.max(cx + diamondExtent, ...sitePoints.map(([x]) => x)) + markerHalfStroke,
+        y1: Math.max(cy + diamondExtent, ...sitePoints.map(([, y]) => y)) + markerHalfStroke,
+      }
+    : { x0: cx - 2.25 * siteR, y0: cy - 2.25 * siteR, x1: cx + 2.25 * siteR, y1: cy + 2.25 * siteR };
+  if (!muted) boxes.push(siteBounds);
 
   // 라벨은 강조 지물과 면적이 큰 면 지물(최대 5개)만, 겹치면 생략
   const labels: ReactNode[] = [];
@@ -575,6 +632,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
         <path d={dim} fillRule="evenodd" fill="#14161c" fillOpacity={0.09} />
         <g clipPath={`url(#r${uid})`} data-radius-clip="true">
           {polygons.map((polygon) => {
+            if (isSiteParcelLayer(polygon.polygon.layer)) return null;
             const st = layerStyle(polygon.polygon.layer);
             const estimated = isEstimated(polygon);
             const neutralBuilding = rasterImages.length > 0 && isBuildingLayer(polygon.polygon.layer);
@@ -631,7 +689,32 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
         {labels}
 
         {/* 대지 표시 */}
-        {!muted && <rect x={cx - site} y={cy - site} width={2 * site} height={2 * site} fill={INK} stroke="#fff" strokeWidth={2.4 * u} />}
+        {!muted && (
+          <g role="img" aria-label="분석 대지">
+            {siteMode === "parcel" && sitePath ? (
+              <>
+                <path d={sitePath} fillRule="evenodd" fill="rgba(255,255,255,.18)" stroke="#fff" strokeWidth={Math.max(0.5 * siteR, 2.4)} strokeLinejoin="round" clipPath={`url(#r${uid})`} />
+                <path d={sitePath} fill="none" stroke="#111" strokeWidth={Math.max(0.2 * siteR, 1.2)} strokeLinejoin="round" clipPath={`url(#r${uid})`} />
+              </>
+            ) : (
+              <>
+                <circle r={1.25 * siteR} cx={cx} cy={cy} fill="none" stroke="#fff" strokeWidth={0.55 * siteR} />
+                <circle r={1.25 * siteR} cx={cx} cy={cy} fill="none" stroke="#111" strokeWidth={0.22 * siteR} />
+                <path d={`M${cx} ${cy - 2 * siteR}V${cy - 0.6 * siteR}M${cx} ${cy + 0.6 * siteR}V${cy + 2 * siteR}M${cx - 2 * siteR} ${cy}H${cx - 0.6 * siteR}M${cx + 0.6 * siteR} ${cy}H${cx + 2 * siteR}`} fill="none" stroke="#fff" strokeWidth={0.5 * siteR} strokeLinecap="butt" />
+                <path d={`M${cx} ${cy - 2 * siteR}V${cy - 0.6 * siteR}M${cx} ${cy + 0.6 * siteR}V${cy + 2 * siteR}M${cx - 2 * siteR} ${cy}H${cx - 0.6 * siteR}M${cx + 0.6 * siteR} ${cy}H${cx + 2 * siteR}`} fill="none" stroke="#111" strokeWidth={0.2 * siteR} strokeLinecap="butt" />
+                <circle r={0.28 * siteR} cx={cx} cy={cy} fill="#111" stroke="#fff" strokeWidth={0.12 * siteR} />
+              </>
+            )}
+            {siteMode === "parcel" && (
+              <>
+                <g transform={`translate(${cx} ${cy}) rotate(45)`}>
+                  <rect x={-0.7 * siteR} y={-0.7 * siteR} width={1.4 * siteR} height={1.4 * siteR} fill="#fff" stroke="#111" strokeWidth={0.22 * siteR} />
+                </g>
+                <circle cx={cx} cy={cy} r={0.2 * siteR} fill="#111" />
+              </>
+            )}
+          </g>
+        )}
 
         {/* 범례·문구 */}
         {showLegend && (
@@ -642,9 +725,16 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
                 {legendRows.map((row, ri) =>
                   row.map((it, ii) => (
                     <g key={`legend-${ri}-${ii}-${it.layer}`}>
-                      <circle cx={panelX + pad * 1.8 + it.x + 4 * u} cy={ly + pad * 0.7 + ri * rowH + rowH / 2} r={4 * u} fill={layerStyle(it.layer).color} fillOpacity={0.85} />
+                      {it.site ? (
+                        <g transform={`translate(${panelX + pad * 1.8 + it.x + 4 * u} ${ly + pad * 0.7 + ri * rowH + rowH / 2})`} aria-hidden="true">
+                          <rect x={-3.2 * u} y={-3.2 * u} width={6.4 * u} height={6.4 * u} fill="#fff" stroke="#111" strokeWidth={0.9 * u} transform="rotate(45)" />
+                          <circle r={0.9 * u} fill="#111" />
+                        </g>
+                      ) : (
+                        <circle cx={panelX + pad * 1.8 + it.x + 4 * u} cy={ly + pad * 0.7 + ri * rowH + rowH / 2} r={4 * u} fill={layerStyle(it.layer).color} fillOpacity={0.85} />
+                      )}
                       <text x={panelX + pad * 1.8 + it.x + 11 * u} y={ly + pad * 0.7 + ri * rowH + rowH * 0.72} fontSize={fs} fill={INK}>
-                        {layerStyle(it.layer).label}
+                        {it.site ? "대지" : layerStyle(it.layer).label}
                       </text>
                     </g>
                   )),

@@ -51,8 +51,16 @@ assert.equal(compactLegendItems(zoningModel).find((item) => item.label === "주�
 
 const many = Array.from({ length: 3200 }, (_, i) => polygonCandidate(i, "parcel", [[[0, 0], [10, 0], [10, 10 + i], [0, 0]]], 50 + i)).filter(Boolean);
 assert.equal(capPolygons(many).polygons.length, 3000);
+const target = polygonCandidate(99999, "parcel_site", [[[0, 0], [1, 0], [1, 1], [0, 0]]], 1);
+assert.ok(capPolygons([...many, target]).polygons.some((polygon) => polygon.layer === "parcel_site"), "대상 필지는 면 상한에서도 보존");
 
 // tile-view가 polygons를 MapModel로 넘긴다
 const base = { tileId: "x-D19", analysisId: "x", tileType: "diagram", tileCode: "D19", status: "complete", engineVersion: "t", conditions: { address: "a", center: [127.1505, 37.6205], radiusM: 500, analysisDate: "2026-09-30", timezone: "Asia/Seoul", filters: {}, simulation: null, parcelSnapshotHash: null }, metrics: [], judgment: null, presentation: { legend: [], camera: null, layers: ["parcel"], outputFace: "front", polygons: [{ layer: "parcel", rings: [ring(0)] }], polygonsTotal: 1 }, provenance: { manifestHash: "a".repeat(64), sources: [{ sourceId: "parcel_polygon", releaseId: "parcel_polygon@2026-09-08", sourceAsOf: "2026-09-08", fetchedAt: "2026-09-30T00:00:00Z" }] }, limitations: [] };
 assert.equal(toTileView(base).map.polygons.length, 1);
+const targetPart = { layer: "parcel_site", rings: [ring(0), [[127.1502, 37.6202], [127.1504, 37.6202], [127.1504, 37.6204], [127.1502, 37.6202]]] };
+const targetResult = { ...base, presentation: { ...base.presentation, polygons: [targetPart, { layer: "parcel", rings: [ring(0.002)] }] } };
+const targetView = toTileView(targetResult);
+assert.equal(targetView.map.siteParcel.length, 1, "대상 필지는 공통 지도 입력으로 분리");
+assert.equal(targetView.map.siteParcel[0].rings.length, 2, "대상 필지 홀 보존");
+assert.equal(targetView.map.polygons.length, 1, "D19 대상 필지는 일반 면에서 중복 제외");
 console.log("✓ v2 map polygons");
