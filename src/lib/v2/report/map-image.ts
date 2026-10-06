@@ -259,7 +259,7 @@ export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice 
     }
     if (p.kind === "tile" && p.rose) {
       try {
-        out[key] = await rasterizeRose(p.rose);
+        out[key] = await rasterizeRose(p.rose, VIEW_W, VIEW_H, p.roseSeason ?? "annual");
       } catch (e) {
         console.warn(`바람장미 이미지 생성 실패 (${key})`, e);
       }

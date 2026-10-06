@@ -162,6 +162,8 @@ function roseSummary(model: RoseModel): string {
   return `정온 ${pct(model.calmHours)}% · 결측 ${pct(model.missingHours)}% · 지점 ${model.station}`;
 }
 
+const ROSE_SEASON_LABEL = { annual: "연간", spring: "봄", summer: "여름", autumn: "가을", winter: "겨울" } as const;
+
 function rowItems(s: Slide, rows: TileView["rows"]): Item[] {
   return rows.map((r) => ({
     h: 0.3,
@@ -411,7 +413,12 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
     return;
   }
 
-  const notes = [...v.caveats, ...v.notes, ...(v.code === "S01" ? ["DXF·GLB는 내보내기에서"] : []), ...(p.rose ? [roseSummary(p.rose)] : [])];
+  const notes = [
+    ...v.caveats,
+    ...v.notes,
+    ...(v.code === "S01" ? ["DXF·GLB는 내보내기에서"] : []),
+    ...(p.rose ? [roseSummary(p.rose), `바람장미 선택 계절 · ${ROSE_SEASON_LABEL[p.roseSeason ?? "annual"]}`] : []),
+  ];
   const items: Item[] = [];
   const b = badgeItem(s, v.badges);
   if (b) items.push(b);

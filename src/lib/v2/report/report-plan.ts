@@ -10,6 +10,7 @@ import type { MassModel } from "../ui/mass-projection";
 import type { SheetGrid } from "../ui/sheet";
 import { FACE_TEXT } from "../ui/tile-view";
 import type { RoseModel } from "../ui/wind-rose";
+import type { RoseSeason } from "../tile-result";
 import { exportFileName } from "../export/download";
 
 export type TileSlideBody =
@@ -40,6 +41,8 @@ export type ReportSlide =
       mass?: MassModel;
       /** D22 바람장미 이미지. PPT에는 SVG를 PNG로 바꿔 전면에 넣는다. */
       rose?: RoseModel;
+      /** D22 화면에서 고른 계절. 저장값이 없으면 연간이다. */
+      roseSeason?: RoseSeason;
       /** 주변 단지 설명선 장: page 0 = 개요, 1.. = 설명표 (지도 이미지는 단지 없이, 점·지시선·표는 pptx 도형) */
       callout?: { model: CalloutModel; page: number; pages: number; filterLine?: string | null };
     }
@@ -200,6 +203,7 @@ export function buildReportPlan(input: {
       const mass = v.mass ? { ...v.mass, exploded: v.mass.exploded ?? { spreadPct: 24, scheme: "use" as const } } : undefined;
       // D22의 뒷면은 사용자가 구성비를 선택할 수 있으므로 장미 그림은 도판 면에만 둔다.
       const rose = face === "back" ? undefined : v.rose ?? undefined;
+      const roseSeason = board.roseSeasons[v.tileId] ?? "annual";
       raw.push({
         kind: "tile",
         view: v,
@@ -209,7 +213,7 @@ export function buildReportPlan(input: {
         map: mass || rose ? null : !result ? v.backdrop : v.hasFace && face === "back" ? null : (v.map ?? v.backdrop),
         muted: !result,
         ...(mass ? { mass } : {}),
-        ...(rose ? { rose } : {}),
+        ...(rose ? { rose, roseSeason } : {}),
         footer: v.sourceLine === "출처 없음" ? "출처 없음 · 기준일 해당 없음" : `출처 ${v.sourceLine}`,
       });
     }

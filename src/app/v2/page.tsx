@@ -19,6 +19,7 @@ import { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } from "@/lib/v2/ui/fixtures/
 import { toSummaryView, toTileView, type SiteSummary } from "@/lib/v2/ui/tile-view";
 import { siteParcelFromResults } from "@/lib/v2/ui/site-parcel";
 import type { TileResult } from "@/lib/v2/tile-result";
+import type { RoseSeason } from "@/lib/v2/tile-result";
 import type { Scene } from "@/lib/v2/scene";
 import { isRoadAddress, ROAD_ADDRESS_UNSUPPORTED_MESSAGE } from "@/lib/v2/site";
 
@@ -557,6 +558,8 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
                   onOpen={() => setOpenId(id)}
                   onInclude={(value) => dispatch({ type: "include", id, value })}
                   onFace={(face) => dispatch({ type: "face", id, face })}
+                  roseSeason={board.roseSeasons[id] ?? "annual"}
+                  onRoseSeason={(season: RoseSeason) => dispatch({ type: "roseSeason", id, season })}
                   cardFace={viewOf(board, id)}
                   onCardFace={(face) => {
                     dispatch({ type: "view", id, face });
@@ -640,6 +643,8 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
           face={board.faces[openView.tileId]}
           onInclude={(value) => dispatch({ type: "include", id: openView.tileId, value })}
           onFace={(face) => dispatch({ type: "face", id: openView.tileId, face })}
+          roseSeason={board.roseSeasons[openView.tileId] ?? "annual"}
+          onRoseSeason={(season) => dispatch({ type: "roseSeason", id: openView.tileId, season })}
           calloutMode={board.callout[openView.tileId] ?? DEFAULT_CALLOUT_MODE}
           onCalloutMode={(mode) => dispatch({ type: "callout", id: openView.tileId, mode })}
           a05Filter={board.a05Filter[openView.tileId] ?? null}

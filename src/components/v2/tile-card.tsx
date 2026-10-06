@@ -7,6 +7,7 @@ import { OV, badgesToShow, cardReserved, stripText } from "@/lib/v2/ui/overlay-l
 import { faceLabel, type Badge, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
 import { viewWithOnlyRaster } from "@/lib/v2/ui/tile-view";
 import { windRasterName, WIND_LAYER_HEIGHTS } from "@/lib/v2/ui/wind-upload";
+import { ROSE_SEASONS, type RoseSeason } from "@/lib/v2/tile-result";
 import MassFigure from "./mass-figure";
 import WindRoseFigure from "./wind-rose-figure";
 import CalloutMap from "./callout-map";
@@ -18,6 +19,23 @@ import { hasDetail } from "@/lib/v2/ui/detail-state";
 
 const BADGE_CLASS = { status: styles.badgeStatus, limit: styles.badgeLimit, model: styles.badgeModel } as const;
 const FACES: OutputFace[] = ["front", "back", "both"];
+const ROSE_SEASON_LABEL: Record<RoseSeason, string> = { annual: "연간", spring: "봄", summer: "여름", autumn: "가을", winter: "겨울" };
+
+export function RoseSeasonSelect({ view, value, onChange }: { view: TileView; value: RoseSeason; onChange: (season: RoseSeason) => void }) {
+  if (view.code !== "D22" || !view.rose) return null;
+  const options = ROSE_SEASONS.filter((season) => season === "annual" ? !!view.rose : !!view.roses?.[season]);
+  const selected = options.includes(value) ? value : "annual";
+  return (
+    <div className={styles.mfWind} data-wind-season>
+      <label className={styles.mfWindLabel}>
+        <span>계절</span>
+        <select value={selected} onChange={(event) => onChange(event.currentTarget.value as RoseSeason)} aria-label={`${view.title} 계절`}>
+          {options.map((season) => <option key={season} value={season}>{ROSE_SEASON_LABEL[season]}</option>)}
+        </select>
+      </label>
+    </div>
+  );
+}
 
 export function BadgeList({ badges, extra }: { badges: Badge[]; extra?: string }) {
   if (badges.length === 0 && !extra) return null;
@@ -193,7 +211,7 @@ function stageViewForWind(view: TileView, layerZ: number | undefined): TileView 
   return name ? viewWithOnlyRaster(view, name, "") : view;
 }
 
-export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, page, onPage, windLayerZ, massExploded = false }: { view: TileView; state: boolean; chart: boolean; frame: "card" | "detail"; siteX?: number | ((w: number) => number); rightInset?: number | ((w: number) => number); legendY?: number; page?: number; onPage?: (p: number) => void; windLayerZ?: number; massExploded?: boolean }) {
+export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, page, onPage, windLayerZ, massExploded = false, roseSeason = "annual" }: { view: TileView; state: boolean; chart: boolean; frame: "card" | "detail"; siteX?: number | ((w: number) => number); rightInset?: number | ((w: number) => number); legendY?: number; page?: number; onPage?: (p: number) => void; windLayerZ?: number; massExploded?: boolean; roseSeason?: RoseSeason }) {
   const displayView = stageViewForWind(view, windLayerZ);
   if (chart) return <FaceChart view={view} />;
   const card = frame === "card";
@@ -202,8 +220,9 @@ export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, p
   if (view.code === "S01" && view.mass) {
     return <MassFigure scene={view.mass.scene} camera={view.mass.camera} width={960} height={540} label={label} exploded={massExploded ? { spreadPct: 24, scheme: "use" } : undefined} />;
   }
-  if (view.rose) {
-    return <WindRoseFigure model={view.rose} width={960} height={540} label={label} />;
+  const seasonalRose = view.roses?.[roseSeason];
+  if (seasonalRose || view.rose) {
+    return <WindRoseFigure model={seasonalRose ?? view.rose!} width={960} height={540} label={label} season={seasonalRose ? roseSeason : "annual"} />;
   }
   if (view.callout) return <CalloutMap model={view.callout} kind={frame} page={page} onPage={onPage} label={label} />;
   return (
@@ -249,6 +268,8 @@ export type TileCardProps = {
   waitingNote?: string | null;
   onInclude: (v: boolean) => void;
   onFace: (f: OutputFace) => void;
+  roseSeason: RoseSeason;
+  onRoseSeason: (season: RoseSeason) => void;
   /** 화면 면 (요약면/지도면). 보고서 출력 면(face)과 무관 */
   cardFace: CardFace;
   onCardFace: (f: CardFace) => void;
@@ -454,9 +475,10 @@ function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, mas
         </button>
       </header>
       {view.code === "S03" && !state && <WindStrip view={view} layerZ={windLayerZ} onLayerZ={onWindLayerZ} onOpen={p.onOpen} />}
+      {view.code === "D22" && !state && <RoseSeasonSelect view={view} value={p.roseSeason} onChange={p.onRoseSeason} />}
       <div className={styles.mfMap}>
         <div className={styles.stage}>
-          <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="card" windLayerZ={windLayerZ} massExploded={massExploded} />
+          <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="card" windLayerZ={windLayerZ} massExploded={massExploded} roseSeason={p.roseSeason} />
         </div>
       </div>
       <footer className={styles.mfFoot} title={text}>
