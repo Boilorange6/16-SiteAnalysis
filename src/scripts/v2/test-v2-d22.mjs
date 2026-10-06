@@ -102,7 +102,7 @@ assert.equal(legacy.status, "complete");
 assert.equal(legacy.presentation.roses, undefined);
 assert.equal(legacy.presentation.rose.dirs[14][1], 20000);
 assert.equal(legacy.metrics.find((item) => item.id === "prevailing_dir_deg_summer"), undefined);
-assert.ok(legacy.limitations.some((limitation) => limitation.note === "계절 장미 미적재"));
+assert.ok(legacy.limitations.some((limitation) => limitation.note === "계절별 바람장미 자료를 확인하지 못했습니다."));
 legacyCtx.close();
 
 const noWeatherDir = mkdtempSync(join(tmpdir(), "v2-d22-empty-"));
@@ -115,7 +115,7 @@ const noWeatherCtx = new EngineContext(noWeatherDir, M.readManifest(noWeatherDir
 });
 const noWeather = d22(noWeatherCtx);
 assert.equal(noWeather.status, "not_provided");
-assert.equal(noWeather.limitations[0].note, "기상(ASOS) 미적재");
+assert.equal(noWeather.limitations[0].note, "기상(ASOS) 자료를 확인하지 못했습니다.");
 noWeatherCtx.close();
 
 console.log("✓ v2 D22 wind rose");

@@ -10,7 +10,7 @@ export const NOT_PROVIDED_CODES = [
   "S01", "S02", "S03", "S04",
 ] as const;
 
-export function notProvided(ctx: EngineContext, code: string, note = "P4 적재·구현 후 제공됩니다."): TileResult {
+export function notProvided(ctx: EngineContext, code: string, note = "현재 자료를 확인할 수 없습니다. 준비되면 제공됩니다."): TileResult {
   const kind = catalogEntry(code).kind;
   return makeTile(ctx, {
     code,

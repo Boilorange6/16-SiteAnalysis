@@ -251,7 +251,7 @@ export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice 
     if (!key || out[key]) continue;
     if (p.kind === "tile" && p.mass) {
       try {
-        out[key] = await rasterizeMass(p.mass);
+        out[key] = await rasterizeMass(p.mass, p.mass.exploded);
       } catch (e) {
         console.warn(`매스 이미지 생성 실패 (${key})`, e);
       }
@@ -259,7 +259,7 @@ export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice 
     }
     if (p.kind === "tile" && p.rose) {
       try {
-        out[key] = await rasterizeRose(p.rose);
+        out[key] = await rasterizeRose(p.rose, VIEW_W, VIEW_H, p.roseSeason ?? "annual");
       } catch (e) {
         console.warn(`바람장미 이미지 생성 실패 (${key})`, e);
       }

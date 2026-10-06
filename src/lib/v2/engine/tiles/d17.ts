@@ -23,7 +23,7 @@ function median(values: number[]): number | null {
 export function d17(ctx: EngineContext): TileResult {
   const reader = demReader(ctx);
   const grid = terrainGridFor(ctx, 30);
-  if (!reader || !grid) return notProvided(ctx, "D17", "지형(DEM) 미적재");
+  if (!reader || !grid) return notProvided(ctx, "D17", "지형 자료를 확인하지 못했습니다.");
 
   const absoluteValues = terrainValuesInCircle(grid, ctx.input.radiusM);
   if (absoluteValues.length === 0) {

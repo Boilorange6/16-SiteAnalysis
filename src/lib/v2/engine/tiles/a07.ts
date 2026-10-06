@@ -200,7 +200,7 @@ export function a07(ctx: EngineContext): TileResult {
     { kind: "partial", note: "아파트 매매만 다룹니다(오피스텔·연립다세대·전월세 제외)." },
     { kind: "unknown", note: "동·호를 공개하지 않아 같은 조건의 거래가 하나로 합쳐졌을 수 있습니다(실제 건수는 이보다 많을 수 있음)." },
     ...(unlocated > 0 ? [{ kind: "partial" as const, note: `반경과 겹치는 시군구에 위치를 확인하지 못한 거래 ${fmt(unlocated)}건이 있어 반경 안 여부를 알 수 없고 위 지표에서 빠집니다.` }] : []),
-    ...(absent.length > 0 ? [{ kind: "incomplete" as const, note: `시군구 ${absent.map((s) => s.name || s.code).join(", ")}의 거래 자료가 적재되지 않았습니다.` }] : []),
+    ...(absent.length > 0 ? [{ kind: "incomplete" as const, note: `시군구 ${absent.map((s) => s.name || s.code).join(", ")}의 거래 자료를 확인하지 못했습니다.` }] : []),
     ...(noArea > 0 ? [{ kind: "partial" as const, note: `전용면적이 없는 ${noArea}건은 건수에만 들어가고 ㎡당 가격에서는 빠집니다.` }] : []),
     { kind: "unknown", note: "계약일 기준이며 신고 지연·정정으로 최근 거래는 나중에 늘거나 바뀔 수 있습니다." },
     ...ctx.coverage("market", [SOURCE]),

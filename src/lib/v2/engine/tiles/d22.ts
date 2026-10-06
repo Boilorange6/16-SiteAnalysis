@@ -169,7 +169,7 @@ export function prevailingBySeason(ctx: EngineContext): PrevailingBySeason | nul
 
 export function d22(ctx: EngineContext): TileResult {
   const db = ctx.db("weather");
-  if (!db) return notProvided(ctx, "D22", "기상(ASOS) 미적재");
+  if (!db) return notProvided(ctx, "D22", "기상(ASOS) 자료를 확인하지 못했습니다.");
 
   const sources = ctx.sources("weather", ["asos"]);
   const stations = db.prepare(`SELECT station_id, name, lng, lat, elevation_m, period_start, period_end,
@@ -253,8 +253,8 @@ export function d22(ctx: EngineContext): TileResult {
     limitations: [
       { kind: "unknown", note: `관측소 ${row.name} ASOS(${row.period_start}~${row.period_end}) 장기 빈도이며 대지 국지 흐름이 아님 · 관측소·기간 차이로 참고값과 최빈 풍향이 다를 수 있음` },
       ...(excludedStationCount > 0 ? [{ kind: "partial" as const, note: `관측시간 8,760시간 미만인 ASOS 관측소 ${excludedStationCount}개를 제외했습니다.` }] : []),
-      ...(!seasonTable ? [{ kind: "not_provided" as const, note: "계절 장미 미적재" }] : []),
-      ...(missingSeasons.length > 0 ? [{ kind: "partial" as const, note: `계절 장미 미적재: ${missingSeasons.join(", ")}` }] : []),
+      ...(!seasonTable ? [{ kind: "not_provided" as const, note: "계절별 바람장미 자료를 확인하지 못했습니다." }] : []),
+      ...(missingSeasons.length > 0 ? [{ kind: "partial" as const, note: `계절별 바람장미 자료 일부를 확인하지 못했습니다: ${missingSeasons.join(", ")}` }] : []),
     ],
   });
   const annualModel = asRose(row.name, annual);

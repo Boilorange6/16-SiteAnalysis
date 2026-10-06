@@ -72,7 +72,7 @@ const noForbidden = (tile) => {
   for (const id of ["back_stations", "back_entrances", "fill_entrance_pct", "rail_lines"]) {
     assert.equal(metric(tile, id).status, "missing", `${id}: 철도 미적재는 missing`);
   }
-  assert.ok(tile.limitations.some((limitation) => limitation.kind === "not_provided" && limitation.note.includes("철도 자료 미적재")));
+  assert.ok(tile.limitations.some((limitation) => limitation.kind === "not_provided" && limitation.note.includes("철도 자료를 확인하지 못해")));
   assert.ok(!tile.presentation.features.some((feature) => feature.layer.startsWith("rail_")));
   noForbidden(tile);
   ctx.close();

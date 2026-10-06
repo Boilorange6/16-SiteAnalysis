@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { CardFace, DemoPhase, TileSize } from "@/lib/v2/ui/board-state";
 import { STRIP_COLORS } from "@/lib/v2/ui/map-layers";
 import { OV, badgesToShow, cardReserved, stripText } from "@/lib/v2/ui/overlay-layout";
-import { faceLabel, type Badge, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
+import { faceLabel, shortHeadlineLabel, type Badge, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
 import { viewWithOnlyRaster } from "@/lib/v2/ui/tile-view";
 import { windRasterName, WIND_LAYER_HEIGHTS } from "@/lib/v2/ui/wind-upload";
+import { ROSE_SEASONS, type RoseSeason } from "@/lib/v2/ui/rose-season";
 import MassFigure from "./mass-figure";
 import WindRoseFigure from "./wind-rose-figure";
 import CalloutMap from "./callout-map";
@@ -18,15 +19,64 @@ import { hasDetail } from "@/lib/v2/ui/detail-state";
 
 const BADGE_CLASS = { status: styles.badgeStatus, limit: styles.badgeLimit, model: styles.badgeModel } as const;
 const FACES: OutputFace[] = ["front", "back", "both"];
+const ROSE_SEASON_LABEL: Record<RoseSeason, string> = { annual: "연간", spring: "봄", summer: "여름", autumn: "가을", winter: "겨울" };
+
+function BadgeHint({ text, note, tone }: { text: string; note?: string; tone?: Badge["tone"] }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLSpanElement>(null);
+  const popoverId = `badge-note-${useId().replace(/:/g, "")}`;
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!wrapRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        (wrapRef.current?.querySelector("button") as HTMLButtonElement | null)?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+  const className = `${styles.badge} ${tone ? BADGE_CLASS[tone] : ""}`;
+  if (!note) return <span className={className}>{text}</span>;
+  return (
+    <span ref={wrapRef} className={styles.badgeWrap}>
+      <button type="button" className={className} aria-expanded={open} aria-controls={popoverId} aria-describedby={open ? popoverId : undefined} onClick={() => setOpen((value) => !value)}>
+        {text}
+      </button>
+      {open && <span id={popoverId} className={styles.badgePopover} role="tooltip">{note}</span>}
+    </span>
+  );
+}
+
+export function RoseSeasonSelect({ view, value, onChange }: { view: TileView; value: RoseSeason; onChange: (season: RoseSeason) => void }) {
+  if (view.code !== "D22" || !view.rose) return null;
+  const options = ROSE_SEASONS.filter((season) => season === "annual" ? !!view.rose : !!view.roses?.[season]);
+  const selected = options.includes(value) ? value : "annual";
+  return (
+    <div className={styles.mfWind} data-wind-season>
+      <label className={styles.mfWindLabel}>
+        <span>계절</span>
+        <select value={selected} onChange={(event) => onChange(event.currentTarget.value as RoseSeason)} aria-label={`${view.title} 계절`}>
+          {options.map((season) => <option key={season} value={season}>{ROSE_SEASON_LABEL[season]}</option>)}
+        </select>
+      </label>
+    </div>
+  );
+}
 
 export function BadgeList({ badges, extra }: { badges: Badge[]; extra?: string }) {
   if (badges.length === 0 && !extra) return null;
   return (
     <div className={styles.badges}>
       {badges.map((b, i) => (
-        <span key={`${b.text}-${i}`} className={`${styles.badge} ${BADGE_CLASS[b.tone]}`} title={b.note}>
-          {b.text}
-        </span>
+        <BadgeHint key={`${b.text}-${i}`} text={b.text} note={b.note} tone={b.tone} />
       ))}
       {extra && <span className={styles.badge}>{extra}</span>}
     </div>
@@ -41,14 +91,10 @@ export function ValueBadges({ badges }: { badges: Badge[] }) {
   return (
     <div className={styles.badges}>
       {shown.map((b, i) => (
-        <span key={`${b.text}-${i}`} className={`${styles.badge} ${BADGE_CLASS[b.tone]}`} title={b.note}>
-          {b.text}
-        </span>
+        <BadgeHint key={`${b.text}-${i}`} text={b.text} note={b.note} tone={b.tone} />
       ))}
       {more > 0 && (
-        <span className={styles.badge} title={hidden.map((b) => b.text).join(" · ")}>
-          +{more}
-        </span>
+        <BadgeHint text={`+${more}`} note={hidden.map((b) => b.note ? `${b.text}: ${b.note}` : b.text).join(" · ")} />
       )}
     </div>
   );
@@ -58,17 +104,16 @@ export function Headline({ view, small }: { view: TileView; small?: boolean }) {
   const h = view.headline;
   if (!h) return <div className={styles.sub}>표시할 결과가 없습니다</div>;
   const longAux = !!h.aux && h.aux.length > 4; // "직선" 같은 짧은 보조어만 숫자 옆에 둔다
+  const label = shortHeadlineLabel(h.label);
   return (
     <div className={styles.bigWrap}>
-      <div>
+      <div className={styles.bigLine}>
         <span className={`${styles.display} ${styles.big} ${small || h.value.length > 5 ? styles.bigSmall : ""}`}>{h.value}</span>
         {h.aux && !longAux && <span className={styles.aux}>{h.aux}</span>}
+        <span className={styles.headlineLabel}>· {label}</span>
         {h.tag && <span className={styles.tag}>{h.tag}</span>}
       </div>
-      <div className={styles.sub}>
-        {h.label}
-        {longAux && ` · ${h.aux}`}
-      </div>
+      {longAux && <div className={styles.sub}>{h.aux}</div>}
     </div>
   );
 }
@@ -168,6 +213,7 @@ export function StatusPlate({ view, phase, onRetry, waitingNote }: { view: TileV
   const waiting = phase === "pending" || phase === "running";
   const head = waiting ? (phase === "running" ? "계산 중" : "대기") : (view.badges.find((b) => b.tone === "status")?.text ?? "표시할 결과가 없습니다");
   const rest = view.badges.filter((b) => b.tone !== "status");
+  const retryText = view.status === "cancelled" ? "다시 계산" : "이 타일 다시 계산";
   return (
     <div className={styles.statusWrap}>
       <div className={`${styles.plate} ${styles.statusPlate}`}>
@@ -178,7 +224,7 @@ export function StatusPlate({ view, phase, onRetry, waitingNote }: { view: TileV
         {!waiting && rest.length > 0 && <ValueBadges badges={rest} />}
         {!waiting && view.retryable && onRetry && (
           <button type="button" className={styles.retry} onClick={onRetry}>
-            이 타일 다시 계산
+            {retryText}
           </button>
         )}
       </div>
@@ -193,17 +239,18 @@ function stageViewForWind(view: TileView, layerZ: number | undefined): TileView 
   return name ? viewWithOnlyRaster(view, name, "") : view;
 }
 
-export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, page, onPage, windLayerZ }: { view: TileView; state: boolean; chart: boolean; frame: "card" | "detail"; siteX?: number | ((w: number) => number); rightInset?: number | ((w: number) => number); legendY?: number; page?: number; onPage?: (p: number) => void; windLayerZ?: number }) {
+export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, page, onPage, windLayerZ, massExploded = false, roseSeason = "annual" }: { view: TileView; state: boolean; chart: boolean; frame: "card" | "detail"; siteX?: number | ((w: number) => number); rightInset?: number | ((w: number) => number); legendY?: number; page?: number; onPage?: (p: number) => void; windLayerZ?: number; massExploded?: boolean; roseSeason?: RoseSeason }) {
   const displayView = stageViewForWind(view, windLayerZ);
   if (chart) return <FaceChart view={view} />;
   const card = frame === "card";
   const label = `${view.title} 지도`;
   if (state) return <MapBox model={displayView.backdrop} muted legend={false} north={false} scale={false} credit={false} label={label} siteX={siteX} />;
   if (view.code === "S01" && view.mass) {
-    return <MassFigure scene={view.mass.scene} camera={view.mass.camera} width={960} height={540} label={label} />;
+    return <MassFigure scene={view.mass.scene} camera={view.mass.camera} width={960} height={540} label={label} exploded={massExploded ? { spreadPct: 24, scheme: "use" } : undefined} />;
   }
-  if (view.rose) {
-    return <WindRoseFigure model={view.rose} width={960} height={540} label={label} />;
+  const seasonalRose = view.roses?.[roseSeason];
+  if (seasonalRose || view.rose) {
+    return <WindRoseFigure model={seasonalRose ?? view.rose!} width={960} height={540} label={label} season={seasonalRose ? roseSeason : "annual"} />;
   }
   if (view.callout) return <CalloutMap model={view.callout} kind={frame} page={page} onPage={onPage} label={label} />;
   return (
@@ -249,6 +296,8 @@ export type TileCardProps = {
   waitingNote?: string | null;
   onInclude: (v: boolean) => void;
   onFace: (f: OutputFace) => void;
+  roseSeason: RoseSeason;
+  onRoseSeason: (season: RoseSeason) => void;
   /** 화면 면 (요약면/지도면). 보고서 출력 면(face)과 무관 */
   cardFace: CardFace;
   onCardFace: (f: CardFace) => void;
@@ -390,10 +439,11 @@ function WindStrip({ view, layerZ, onLayerZ, onOpen }: { view: TileView; layerZ:
 }
 
 /** 지도 면: 헤더 40px(지도 밖) · 지도(남은 높이 전부) · 출처 24px(지도 밖). 지도 위에는 북쪽·축척·한 줄 범례만 둔다. */
-function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, onFlip, onDetail }: { p: TileCardProps; active: boolean; state: boolean; back: boolean; onBack: (v: boolean) => void; windLayerZ: number; onWindLayerZ: (z: number) => void; onFlip: () => void; onDetail?: () => void }) {
+function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, massExploded, onMassExploded, onFlip, onDetail }: { p: TileCardProps; active: boolean; state: boolean; back: boolean; onBack: (v: boolean) => void; windLayerZ: number; onWindLayerZ: (z: number) => void; massExploded: boolean; onMassExploded: (value: boolean) => void; onFlip: () => void; onDetail?: () => void }) {
   const { view } = p;
   const h = view.headline;
   const shortAux = h?.aux && h.aux.length <= 4 ? h.aux : "";
+  const headlineLabel = h ? shortHeadlineLabel(h.label) : "";
   const extra = view.stackLayers ? view.stackLayers.join(" + ") : view.sheetGrid;
   const text = stripText(view.sourceLine);
   // 제목과 핵심 숫자가 함께 들어가지 않으면 숫자를 통째로 숨긴다(잘린 숫자는 오독되고, 숫자는 요약 면에 있다).
@@ -423,10 +473,9 @@ function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, onF
         <h3 className={styles.mfTitle} title={view.title}>{view.title}</h3>
         {view.filterChip && <span className={styles.filterChip} title={view.filterChip}>{view.filterChip}</span>}
         {h && (
-          <span data-mf-key className={`${styles.mfKey} ${keyHidden ? styles.mfKeyHidden : ""}`} aria-hidden={keyHidden || undefined} title={`${h.label}${h.aux ? ` · ${h.aux}` : ""}`}>
+          <span data-mf-key className={`${styles.mfKey} ${keyHidden ? styles.mfKeyHidden : ""}`} aria-hidden={keyHidden || undefined} title={`${headlineLabel}${h.aux ? ` · ${h.aux}` : ""}`}>
             <b>{h.value}</b>
-            {shortAux && <small className={styles.mfKeyLabel}>{shortAux}</small>}
-            <small className={styles.mfKeyLabel}>{h.label}</small>
+            {shortAux && <small>{shortAux}</small>}
           </span>
         )}
         {extra && <span className={`${styles.kindTag} ${styles.mfKeyLabel}`}>{extra}</span>}
@@ -440,6 +489,11 @@ function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, onF
             <path d="M8 7h9v9" />
           </Svg>
         </button>
+        {view.code === "S01" && !state && view.mass && (
+          <button type="button" className={`${styles.mfWindBtn} ${massExploded ? styles.mfBtnOn : ""}`} aria-pressed={massExploded} onClick={() => onMassExploded(!massExploded)}>
+            {massExploded ? "기본 매스" : "분해"}
+          </button>
+        )}
         <MoreMenu view={view} active={active} back={back} onBack={onBack} face={p.face} onFace={p.onFace} onDetail={onDetail} />
         <button type="button" className={styles.mfBtn} data-card-face-button="summary" onClick={onFlip} aria-pressed aria-label={`${view.title} 요약/지도 보기 전환`} title="요약 보기">
           <Svg size={15}>
@@ -448,10 +502,19 @@ function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, onF
           </Svg>
         </button>
       </header>
+      {h && (
+        <div className={styles.mfMetricLine} title={`${h.value} · ${headlineLabel}${h.aux ? ` · ${h.aux}` : ""}`}>
+          {keyHidden && <b>{h.value} · </b>}
+          <span> {headlineLabel}</span>
+          {h.aux && h.aux.length > 4 && <span> · {h.aux}</span>}
+          {h.tag && <span className={styles.tag}>{h.tag}</span>}
+        </div>
+      )}
       {view.code === "S03" && !state && <WindStrip view={view} layerZ={windLayerZ} onLayerZ={onWindLayerZ} onOpen={p.onOpen} />}
+      {view.code === "D22" && !state && <RoseSeasonSelect view={view} value={p.roseSeason} onChange={p.onRoseSeason} />}
       <div className={styles.mfMap}>
         <div className={styles.stage}>
-          <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="card" windLayerZ={windLayerZ} />
+          <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="card" windLayerZ={windLayerZ} massExploded={massExploded} roseSeason={p.roseSeason} />
         </div>
       </div>
       <footer className={styles.mfFoot} title={text}>
@@ -467,6 +530,7 @@ function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardProps
   const facts = view.rows.filter((r) => r.label !== view.headline?.label).slice(0, 3);
   const head = waiting ? (phase === "running" ? "계산 중" : "대기") : (view.badges.find((b) => b.tone === "status")?.text ?? "표시할 결과가 없습니다");
   const rest = view.badges.filter((b) => b.tone !== "status");
+  const retryText = view.status === "cancelled" ? "다시 계산" : "이 타일 다시 계산";
   return (
     <div className={styles.sf}>
       <div className={styles.sfTop}>
@@ -522,7 +586,7 @@ function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardProps
           {!waiting && rest.length > 0 && <ValueBadges badges={rest} />}
           {!waiting && view.retryable && (
             <button type="button" className={styles.retry} onClick={p.onRetry}>
-              이 타일 다시 계산
+              {retryText}
             </button>
           )}
           {view.code === "S03" && (view.status === "pending" || view.status === "running") && (
@@ -590,6 +654,7 @@ export default function TileCard(p: TileCardProps) {
   const { view, phase } = p;
   const [back, setBack] = useState(false);
   const [windLayerZ, setWindLayerZ] = useState(6);
+  const [massExploded, setMassExploded] = useState(false);
   const cardRef = useRef<HTMLElement>(null);
   const focusFace = useRef<CardFace | null>(null);
   const waiting = phase === "pending" || phase === "running";
@@ -649,7 +714,7 @@ export default function TileCard(p: TileCardProps) {
         </div>
       <div className={`${styles.face} ${styles.faceMap}`} data-on={shown === "map"} inert={shown !== "map"} aria-hidden={shown !== "map"}>
           {mountMap && (
-            <MapFace p={p} active={shown === "map"} state={state} back={back} onBack={setBack} windLayerZ={windLayerZ} onWindLayerZ={setWindLayerZ} onFlip={() => onCardFace("summary")} onDetail={detailable ? () => setDetailOpen(true) : undefined} />
+            <MapFace p={p} active={shown === "map"} state={state} back={back} onBack={setBack} windLayerZ={windLayerZ} onWindLayerZ={setWindLayerZ} massExploded={massExploded} onMassExploded={setMassExploded} onFlip={() => onCardFace("summary")} onDetail={detailable ? () => setDetailOpen(true) : undefined} />
           )}
         </div>
       </div>

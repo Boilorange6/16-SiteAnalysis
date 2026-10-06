@@ -19,8 +19,10 @@ import { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } from "@/lib/v2/ui/fixtures/
 import { toSummaryView, toTileView, type SiteSummary } from "@/lib/v2/ui/tile-view";
 import { siteParcelFromResults } from "@/lib/v2/ui/site-parcel";
 import type { TileResult } from "@/lib/v2/tile-result";
+import type { RoseSeason } from "@/lib/v2/tile-result";
 import type { Scene } from "@/lib/v2/scene";
 import { isRoadAddress, ROAD_ADDRESS_UNSUPPORTED_MESSAGE } from "@/lib/v2/site";
+import { RADIUS_CAPTION, RADIUS_OPTIONS } from "@/lib/v2/ui/radius-options";
 
 const UNDO_LABEL ={ order: "옮김", size: "크기 바꿈", remove: "삭제됨", add: "더함" } as const;
 const DEMO_START_LABEL = "분석 데모";
@@ -37,12 +39,15 @@ type BoardProps = {
   controls: ReactNode;
   /** 실패한 타일 다시 계산 (실제 분석일 때 전체 재실행) */
   onRerun: () => void;
+  /** 진행 중인 실제 분석을 취소한다. */
+  onCancel?: () => void;
+  canceling?: boolean;
   /** 브라우저 S03 업로드·대체 요청 뒤 결과와 작업 폴링을 다시 연다. */
   onWindUploaded: () => void;
 };
 
 /** 타일 보드. 결과가 바뀌면 부모가 key를 바꿔 새로 만든다. */
-function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, onRerun, onWindUploaded }: BoardProps) {
+function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, onRerun, onCancel, canceling = false, onWindUploaded }: BoardProps) {
   const [overrides, setOverrides] = useState<Record<string, TileResult>>({});
   const [board, dispatch] = useReducer(boardReducer, baseResults, initBoard);
   const storageKey = boardStorageKey(baseResults[0]?.analysisId ?? "demo");
@@ -114,6 +119,8 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
   const summary = useMemo(() => toSummaryView(siteSummary, results), [siteSummary, results]);
   const { tiles } = reportPages(board, complexCounts(views));
   const total = board.order.length;
+  const notProvidedIds = shown.filter((id) => views.get(id)?.status === "not_provided");
+  const visibleShown = shown.filter((id) => views.get(id)?.status !== "not_provided");
   const activeJobs = jobs.some((job) => job.status === "queued" || job.status === "running");
   const actionBusy = busy || activeJobs;
   const [nowMs, setNowMs] = useState(0);
@@ -517,6 +524,7 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
             <span className={styles.progressMeta}>경과 {formatElapsedMs(jobState.elapsedMs)}</span>
             {jobState.waitingLabel && <span className={styles.progressQueue}>{jobState.waitingLabel}</span>}
             <span className={styles.progressRetry}>{jobState.retryLabel}</span>
+            {onCancel && <button type="button" className={styles.progressCancel} onClick={onCancel} disabled={canceling} aria-busy={canceling}>{canceling ? "취소 중…" : "계산 취소"}</button>}
           </div>
         )}
 
@@ -524,7 +532,7 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
 
         <div className={styles.grid} id="v2-board-grid" ref={gridRef} tabIndex={-1}>
           <SummaryCard view={summary} face={editing ? "summary" : viewOf(board, SUMMARY_ID)} onFace={(face) => dispatch({ type: "view", id: SUMMARY_ID, face })} />
-          {shown.map((id, i) => {
+          {visibleShown.map((id, i) => {
             const view = views.get(id)!;
             const size = board.sizes[id];
             const oi = board.order.indexOf(id);
@@ -557,6 +565,8 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
                   onOpen={() => setOpenId(id)}
                   onInclude={(value) => dispatch({ type: "include", id, value })}
                   onFace={(face) => dispatch({ type: "face", id, face })}
+                  roseSeason={board.roseSeasons[id] ?? "annual"}
+                  onRoseSeason={(season: RoseSeason) => dispatch({ type: "roseSeason", id, season })}
                   cardFace={viewOf(board, id)}
                   onCardFace={(face) => {
                     dispatch({ type: "view", id, face });
@@ -593,6 +603,17 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
             );
           })}
         </div>
+        {notProvidedIds.length > 0 && (
+          <details className={styles.notProvidedGroup}>
+            <summary className={styles.notProvidedSummary}>준비 중 {notProvidedIds.length}개</summary>
+            <ul className={styles.notProvidedList} aria-label="준비 중인 타일">
+              {notProvidedIds.map((id) => {
+                const view = views.get(id)!;
+                return <li key={id} className={styles.notProvidedItem}><span className={styles.dot} style={{ background: view.color }} />{view.title}<span>자료 확인 후 제공</span></li>;
+              })}
+            </ul>
+          </details>
+        )}
       </div>
 
       <div className={styles.srOnly} aria-live="polite">
@@ -640,6 +661,9 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
           face={board.faces[openView.tileId]}
           onInclude={(value) => dispatch({ type: "include", id: openView.tileId, value })}
           onFace={(face) => dispatch({ type: "face", id: openView.tileId, face })}
+          onRetry={() => retry(openView.tileId, openView.code)}
+          roseSeason={board.roseSeasons[openView.tileId] ?? "annual"}
+          onRoseSeason={(season) => dispatch({ type: "roseSeason", id: openView.tileId, season })}
           calloutMode={board.callout[openView.tileId] ?? DEFAULT_CALLOUT_MODE}
           onCalloutMode={(mode) => dispatch({ type: "callout", id: openView.tileId, mode })}
           a05Filter={board.a05Filter[openView.tileId] ?? null}
@@ -662,13 +686,6 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
   );
 }
 
-const RADII = [
-  { m: 500, label: "500m" },
-  { m: 800, label: "800m" },
-  { m: 1000, label: "1km" },
-  { m: 2000, label: "2km" },
-  { m: 3000, label: "3km" },
-] as const;
 const API = "/site/api/v2/analyses";
 
 /** 401이면 refresh 쿠키로 한 번 갱신하고 같은 요청을 다시 보낸다. */
@@ -709,6 +726,7 @@ export default function V2BoardPage() {
   const addressDirtyRef = useRef(hydratedAddress.length > 0);
   const [radiusM, setRadiusM] = useState(1000);
   const [busy, setBusy] = useState(false);
+  const [canceling, setCanceling] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [live, setLive] = useState<Live | null>(null);
   const activeJobs = live?.jobs.some((job) => job.status === "queued" || job.status === "running") ?? false;
@@ -765,6 +783,24 @@ export default function V2BoardPage() {
       setProblem({ text: "서버에 연결하지 못했습니다.", login: false });
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function cancelCurrentAnalysis() {
+    if (!live || !activeJobs || canceling) return;
+    setCanceling(true);
+    setProblem(null);
+    const id = live.analysisId;
+    try {
+      const response = await apiFetch(`${API}/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const snapshot = await load(response, false, false, live);
+      if (!snapshot) return;
+      // DELETE 응답은 작업·타일 상태만 담으므로, 취소된 TileResult도 즉시 보드에 반영한다.
+      await load(await apiFetch(`${API}/${encodeURIComponent(id)}`), false, true, snapshot);
+    } catch {
+      setProblem({ text: "계산을 취소하지 못했습니다. 잠시 뒤 다시 시도해 주세요.", login: false });
+    } finally {
+      setCanceling(false);
     }
   }
 
@@ -879,8 +915,8 @@ export default function V2BoardPage() {
           aria-describedby={problem && !problem.login ? "v2-address-error" : undefined}
           disabled={busy || activeJobs}
         />
-        <select className={styles.radiusSelect} value={radiusM} onChange={(e) => setRadiusM(Number(e.target.value))} aria-label="분석 반경" disabled={busy || activeJobs}>
-          {RADII.map((r) => (
+        <select className={styles.radiusSelect} value={radiusM} onChange={(e) => setRadiusM(Number(e.target.value))} aria-label="분석 반경" aria-describedby="v2-radius-help" disabled={busy || activeJobs}>
+          {RADIUS_OPTIONS.map((r) => (
             <option key={r.m} value={r.m}>
               {r.label}
             </option>
@@ -890,6 +926,7 @@ export default function V2BoardPage() {
           {busy || activeJobs ? "분석 중…" : "분석"}
         </button>
       </form>
+      <p id="v2-radius-help" className={styles.radiusCaption}>반경 해석: {RADIUS_CAPTION}</p>
       {problem && (
         <p id="v2-address-error" className={styles.problem} role="alert">
           {problem.text}
@@ -941,6 +978,8 @@ export default function V2BoardPage() {
       busy={busy}
       controls={controls}
       onRerun={() => void analyze()}
+      onCancel={() => void cancelCurrentAnalysis()}
+      canceling={canceling}
       onWindUploaded={() => setWindRefresh((value) => value + 1)}
     />
   );

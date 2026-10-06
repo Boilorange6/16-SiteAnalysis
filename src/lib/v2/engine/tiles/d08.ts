@@ -43,7 +43,7 @@ export function d08(ctx: EngineContext): TileResult {
     ...(zoning.umbrellas > 0 ? [{ kind: "suppressed" as const, note: `세분 없이 “도시지역”으로만 지정된 도형 ${zoning.umbrellas}건은 다른 지정과 겹쳐 구성비에서 제외했습니다.` }] : []),
     ...(fine.length > 1 ? [{ kind: "unknown" as const, note: "대지 중심점에 복수의 용도지역 지정이 있어 모두 표시했습니다. 어느 것이 적용되는지 확인이 필요합니다." }] : []),
     ...(zoning.clipFailed > 0 ? [{ kind: "partial" as const, note: `도형 오류로 반경 절단이 안 된 ${zoning.clipFailed}건은 구성비에서 빠졌습니다.` }] : []),
-    ...(missingLayers.length > 0 ? [{ kind: "incomplete" as const, note: `용도지역 레이어 ${missingLayers.length}종(${missingLayers.join(", ")})이 적재되지 않았습니다.` }] : []),
+    ...(missingLayers.length > 0 ? [{ kind: "incomplete" as const, note: `용도지역 자료 ${missingLayers.length}종(${missingLayers.join(", ")})을 확인하지 못했습니다.` }] : []),
     ...coverage,
   ];
   const status: TileResult["status"] = limitations.some((limitation) => limitation.kind === "partial" || limitation.kind === "incomplete") ? "partial" : "complete";

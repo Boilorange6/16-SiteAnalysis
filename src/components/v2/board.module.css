@@ -166,6 +166,28 @@
   font-weight: 700;
   white-space: nowrap;
 }
+.progressCancel {
+  min-height: 36px;
+  margin-left: auto;
+  padding: 0 12px;
+  border: 1px solid #a93d32;
+  border-radius: 999px;
+  background: #fff;
+  color: #8b2f27;
+  font-size: 12px;
+  font-weight: 700;
+}
+.progressCancel:hover:not(:disabled) {
+  background: #fff4f2;
+}
+.progressCancel:focus-visible {
+  outline: 2px solid #2f6fdb;
+  outline-offset: 2px;
+}
+.progressCancel:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
 .editHint {
   color: var(--muted);
   font-size: 13px;
@@ -677,6 +699,49 @@
   font-weight: 700;
   font-size: 13px;
 }
+.notProvidedGroup {
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+}
+.notProvidedSummary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.notProvidedSummary:focus-visible {
+  outline: 2px solid #2f6fdb;
+  outline-offset: -2px;
+  border-radius: 13px;
+}
+.notProvidedList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 6px 14px;
+  margin: 0;
+  padding: 0 14px 14px;
+  list-style: none;
+}
+.notProvidedItem {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 32px;
+  color: var(--ink);
+  font-size: 12px;
+}
+.notProvidedItem > span:last-child {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+}
 .tray {
   position: sticky;
   bottom: 0;
@@ -803,6 +868,13 @@
 .bigWrap {
   min-width: 0;
 }
+.bigLine {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 5px;
+  min-width: 0;
+}
 .big {
   font-size: 38px;
   line-height: 1.05;
@@ -836,14 +908,57 @@
   flex-wrap: wrap;
   gap: 4px;
 }
+.headlineLabel {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.badgeWrap {
+  position: relative;
+  display: inline-flex;
+  z-index: 4;
+}
 .badge {
   font-size: 11px;
   font-weight: 700;
   border-radius: 999px;
   padding: 2px 8px;
+  border: 0;
   background: #eceef2;
   color: #454a55;
-  cursor: help;
+  font-family: inherit;
+  line-height: 1.35;
+}
+button.badge {
+  cursor: pointer;
+}
+button.badge:hover {
+  filter: brightness(0.97);
+}
+button.badge:focus-visible {
+  outline: 2px solid #2f6fdb;
+  outline-offset: 2px;
+}
+.badgePopover {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  bottom: calc(100% + 6px);
+  width: max-content;
+  max-width: min(280px, 70vw);
+  padding: 8px 10px;
+  border: 1px solid #cdd1d9;
+  border-radius: 9px;
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.16);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .badgeStatus {
   background: #fde8d9;
@@ -1443,6 +1558,12 @@
   font-weight: 700;
   font-family: inherit;
 }
+.radiusCaption {
+  margin: 7px 4px 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
 .addrInput:focus-visible,
 .radiusSelect:focus-visible {
   outline: 2px solid #2f6fdb;
@@ -1724,9 +1845,12 @@
   min-width: 0;
 }
 .cHead[data-compact] {
-  height: 22px;
+  min-height: 22px;
+  height: auto;
   border-bottom: 0;
-  padding-top: 4px;
+  padding-top: 3px;
+  padding-bottom: 2px;
+  align-items: flex-start;
 }
 .cNum {
   flex: none;
@@ -1742,9 +1866,27 @@
 }
 .cName {
   min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+.cCard[data-narrow] .cHead {
+  gap: 4px;
+  padding-top: 2px;
+  padding-bottom: 1px;
+  font-size: 11px;
+}
+.cCard[data-narrow] .cNum {
+  width: 16px;
+  height: 16px;
+  font-size: 9.5px;
+}
+.cCard[data-narrow] .cSub {
+  gap: 3px;
+  padding-left: 20px;
+  font-size: 9px;
 }
 .cMissing {
   color: #9a5b00;
@@ -1786,7 +1928,7 @@
   font-size: 11px;
   font-weight: 700;
   line-height: 1;
-  margin-top: -3px;
+  margin-top: 0;
   white-space: nowrap;
 }
 .cYear {
@@ -1829,9 +1971,9 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 3px;
-  padding: 0 10px;
+  justify-content: flex-start;
+  gap: 2px;
+  padding: 5px 10px;
   text-align: left;
   scroll-snap-align: start;
   cursor: pointer;
@@ -1842,11 +1984,14 @@
 }
 .cStripHead {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
   min-width: 0;
   font-size: 12px;
   font-weight: 700;
+}
+.cStripHead .cName {
+  line-height: 1.05;
 }
 .cStripLine {
   font-size: 11px;
@@ -2046,11 +2191,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-@container (max-width: 420px) {
-  .mfKeyLabel {
-    display: none;
-  }
-}
 @container (max-width: 270px) {
   .mfKey {
     display: none;
@@ -2127,6 +2267,25 @@
   border-top: 1px solid #ececf0;
 }
 .mfFoot span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mfMetricLine {
+  flex: none;
+  min-height: 20px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 12px;
+  border-bottom: 1px solid #ececf0;
+  color: #5c5f66;
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mfMetricLine > span:first-of-type {
   overflow: hidden;
   text-overflow: ellipsis;
 }

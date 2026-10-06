@@ -8,7 +8,7 @@ import { clipToCircle, polygonArea, sampleLine } from "./geo";
 
 const SOURCE_PREFIX = "facility_";
 const FEATURE_KIND = "plan_facility";
-const MISSING_NOTE = "도시계획시설 레이어 미적재(dsId 24 다운로드 필요)";
+const MISSING_NOTE = "도시계획시설 자료를 확인할 수 없습니다. 최신 자료 확인이 필요합니다.";
 
 type FacilityHit = ReturnType<EngineContext["hits"]>[number];
 type FacilityShape = "polygon" | "line" | "point";
@@ -160,7 +160,7 @@ export function d12(ctx: EngineContext): TileResult {
     ...countClasses.map((cls) => `${cls} ${counts.get(cls)}개`),
   ].join("·");
   const sentence = hits.length === 0
-    ? "반경과 교차하는 도시계획시설 도형이 확인되지 않음 → 계획시설 원천의 공간 범위가 없거나 미적재일 수 있음 → 도시계획시설 결정·고시와 현장 운영 상태 확인 필요"
+    ? "반경과 교차하는 도시계획시설 도형이 확인되지 않음 → 자료 범위가 없거나 아직 확인되지 않을 수 있음 → 도시계획시설 결정·고시와 현장 운영 상태 확인 필요"
     : `반경과 교차하는 도시계획시설 ${fmt(hits.length)}건${summary ? `(${summary})` : ""} → 면·선·점 도형을 원천 형상별로 집계했으며 계획 결정이 곧 운영을 뜻하지 않음 → 시설 결정·고시와 실제 운영 여부 확인 필요`;
   const limitations: TileResult["limitations"] = [
     { kind: "unknown", note: "원천에 지정·운영 상태의 구분이 없어 계획시설 결정만으로 현재 운영 여부는 판단하지 않습니다." },

@@ -216,7 +216,7 @@ function MassFigure({ scene, camera, width, height, fixed = false, label = "S01 
       )}
       {!scene && (
         <text x={width / 2} y={height / 2} textAnchor="middle" fontSize="13" fontWeight="700" fill="#5B606B">
-          건물 도형 미적재 · 매스 틀만 표시
+          건물 도형을 확인할 수 없어 매스 틀만 표시
         </text>
       )}
     </svg>

@@ -1,5 +1,5 @@
 /** 보드 상태: 순서·제거/되돌리기·이동·보고서 포함·출력 면. 순수 reducer. */
-import type { TileResult } from "../tile-result";
+import type { RoseSeason, TileResult } from "../tile-result";
 import { normalizeA05Filter, type A05Filter } from "../engine/a05-filter";
 import { calloutReportPages, DEFAULT_CALLOUT_MODE, type CalloutMode } from "./callout-layout";
 import { CAMERA_PRESETS } from "./mass-projection";
@@ -49,6 +49,8 @@ export type BoardState = {
   cameras: Record<string, CameraPreset>;
   /** S02 타일 id → 보고서에 넣을 그림자 컷 수 */
   cuts: Record<string, CutCount>;
+  /** D22 타일 id → 화면·보고서에 표시할 계절 */
+  roseSeasons: Record<string, RoseSeason>;
   /** 빼 둔 타일(더할 수 있는 타일). index는 빼기 전 위치 */
   removed: { id: string; index: number }[];
   undoStack: UndoEntry[];
@@ -74,7 +76,8 @@ export type BoardAction =
   | { type: "sheet"; tiles: string[]; grid: SheetGrid }
   | { type: "unsheet"; id: string }
   | { type: "camera"; id: string; camera: CameraPreset }
-  | { type: "cuts"; id: string; cuts: CutCount };
+  | { type: "cuts"; id: string; cuts: CutCount }
+  | { type: "roseSeason"; id: string; season: RoseSeason };
 
 /** 카드의 현재 면 (편집 중에는 화면이 항상 요약면을 쓴다) */
 export const viewOf = (s: Pick<BoardState, "view" | "viewAll">, id: string): CardFace => s.view[id] ?? s.viewAll;
@@ -97,6 +100,7 @@ export function initBoard(results: TileResult[]): BoardState {
     sheets: {},
     cameras: {},
     cuts: {},
+    roseSeasons: {},
     removed: [],
     undoStack: [],
   };
@@ -292,6 +296,8 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
     case "cuts":
       if (a.cuts !== 1 && a.cuts !== 3) return s;
       return { ...s, cuts: { ...s.cuts, [a.id]: a.cuts } };
+    case "roseSeason":
+      return { ...s, roseSeasons: { ...s.roseSeasons, [a.id]: a.season } };
   }
 }
 
@@ -310,6 +316,7 @@ export type BoardStateSnapshot = {
   sheets: Record<string, SheetSpec>;
   cameras: Record<string, CameraPreset>;
   cuts: Record<string, CutCount>;
+  roseSeasons?: Record<string, RoseSeason>;
   removed: { id: string; index: number }[];
 };
 
@@ -335,6 +342,7 @@ export function serializeBoardState(s: BoardState): BoardStateSnapshot {
     sheets: Object.fromEntries(Object.entries(s.sheets).map(([id, spec]) => [id, { tiles: [...spec.tiles], grid: spec.grid }])),
     cameras: Object.fromEntries(Object.entries(s.cameras).map(([id, camera]) => [id, { ...camera }])),
     cuts: { ...s.cuts },
+    roseSeasons: { ...s.roseSeasons },
     removed: s.removed.map((item) => ({ ...item })),
   };
 }
@@ -419,6 +427,11 @@ export function restoreBoardState(results: TileResult[], raw: unknown): BoardSta
   for (const [id, value] of Object.entries(recordOf(saved.cameras))) if (validIds.has(id) && isRecord(value) && isCameraPreset(value as CameraPreset)) cameras[id] = { azimuthDeg: value.azimuthDeg as number, elevationDeg: value.elevationDeg as number };
   const cuts: Record<string, CutCount> = {};
   for (const [id, value] of Object.entries(recordOf(saved.cuts))) if (validIds.has(id) && (value === 1 || value === 3)) cuts[id] = value;
+  const roseSeasons: Record<string, RoseSeason> = {};
+  for (const [id, value] of Object.entries(recordOf(saved.roseSeasons))) {
+    if (!validIds.has(id)) continue;
+    if (value === "annual" || value === "spring" || value === "summer" || value === "autumn" || value === "winter") roseSeasons[id] = value;
+  }
   const removed: { id: string; index: number }[] = [];
   const removedIds = new Set<string>();
   if (Array.isArray(saved.removed)) {
@@ -444,6 +457,7 @@ export function restoreBoardState(results: TileResult[], raw: unknown): BoardSta
     sheets: savedSheets,
     cameras,
     cuts,
+    roseSeasons,
     removed,
     undoStack: [],
   };

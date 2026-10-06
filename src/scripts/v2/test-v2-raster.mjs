@@ -229,7 +229,8 @@ const winterCardSvg = renderToStaticMarkup(createElement(MapFigure, {
   rasterHref: () => "data:image/png;base64,AAAA",
 }));
 assert.match(winterCardSvg, /data-raster-legend-rail="true"/);
-assert.match(winterCardSvg, /data-raster-legend-title="true"[^>]*>동지 평균 일조시간/); // 카드 알약은 축척 막대 앞에서 제목을 말줄임한다(전체는 <title>)
+assert.match(winterCardSvg, /data-raster-legend-title="true"[^>]*>동지 일조시간</); // 카드 알약은 짧은 표시명, SVG title에는 전체 제목
+assert.match(winterCardSvg, /<title>동지 평균 일조시간 \(시간\)<\/title>/, "전체 범례 제목은 접근성 이름으로 보존");
 assert.equal((winterCardSvg.match(/data-raster-legend-entry=/g) ?? []).length, 13, "D21 카드 rail은 모든 stepped cell을 유지");
 
 const buildingModel = {

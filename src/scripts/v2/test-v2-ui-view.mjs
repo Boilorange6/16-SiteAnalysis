@@ -3,11 +3,13 @@
  * 화면 문자열은 전부 toTileView에서 나온다 — 여기서 금지 표현·배지 매핑을 고정한다.
  */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { TILE_CODES } = await import("../../lib/v2/ui/tile-catalog.ts");
 const { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } = await import("../../lib/v2/ui/fixtures/godeok.ts");
-const { toTileView, toSummaryView, faceLabel } = await import("../../lib/v2/ui/tile-view.ts");
+const { HEADLINE_POLICY, toTileView, toSummaryView, faceLabel } = await import("../../lib/v2/ui/tile-view.ts");
+const { buildSummary } = await import("../../lib/v2/engine/summary.ts");
 
 // ── fixture 계약 ──
 for (const r of [...GODEOK_RESULTS, ...Object.values(RECOVERED)]) parseTileResult(r);
@@ -60,6 +62,7 @@ const withStatus = (status) => {
 const STATUS_TEXT = { partial: "일부 자료만 집계", failed: "계산 실패", cancelled: "취소됨", no_data: "자료 없음", not_provided: "다음 단계에서 제공" };
 for (const [k, t] of Object.entries(STATUS_TEXT)) assert.ok(withStatus(k).badges.some((b) => b.text === t), `status ${k}`);
 assert.ok(!withStatus("complete").badges.some((b) => Object.values(STATUS_TEXT).includes(b.text)));
+assert.equal(withStatus("cancelled").retryable, true, "취소된 타일은 다시 계산 가능");
 
 // 규칙 5: limitation kind
 const LIM_TEXT = { estimated: "추정", incomplete: "지역 자료 불완전", partial: "일부 자료만 집계", unknown: "미확인", suppressed: "비공개", not_provided: "자료 미확보" };
@@ -76,7 +79,7 @@ for (const [k, t] of Object.entries(LIM_TEXT)) {
 const rowOf = (v, label) => v.rows.find((r) => r.label === label);
 assert.equal(rowOf(byCode.A01, "경유 버스 노선").value, "미확인");
 assert.equal(rowOf(byCode.A07, "소형 면적대 중앙값").value, "비공개");
-assert.equal(rowOf(byCode.A05, "30년 이상 건물 비중").value, "38%");
+assert.equal(rowOf(byCode.A05, "30년 이상 건물 비중").value, "38.0%");
 assert.equal(rowOf(byCode.A05, "30년 이상 건물 비중").tag, "추정");
 assert.equal(rowOf(byCode.A09, "철거 착수 사업").value, "0곳");
 {
@@ -113,6 +116,18 @@ assert.deepEqual([faceLabel("front"), faceLabel("back"), faceLabel("both")], ["�
 // 실패 타일은 다시 계산 가능, 값 없는 타일은 headline 없음
 assert.ok(byCode.S03.retryable && !byCode.A01.retryable);
 assert.equal(byCode.S02.headline, null);
+const dialogSource = readFileSync(new URL("../../components/v2/tile-dialog.tsx", import.meta.url), "utf8");
+assert.match(dialogSource, /StatusPlate view=\{view\} phase=\{null\} onRetry=\{onRetry\}/, "펼침 상태판도 재계산 콜백을 받아야 한다");
+const pageSource = readFileSync(new URL("../../app/v2/page.tsx", import.meta.url), "utf8");
+assert.match(pageSource, /method: "DELETE"/, "진행 중 분석 취소는 DELETE API를 사용해야 한다");
+assert.match(pageSource, /계산 취소/, "진행 표시 영역에 계산 취소 버튼이 있어야 한다");
+assert.match(pageSource, /<details className=\{styles\.notProvidedGroup\}/, "미제공 타일은 보드 끝의 접힌 묶음으로 모아야 한다");
+const notProvidedSource = readFileSync(new URL("../../lib/v2/engine/tiles/not-provided.ts", import.meta.url), "utf8");
+assert.doesNotMatch(notProvidedSource, /P4 적재|구현 후 제공/, "미제공 기본 카피에서 내부 작업 용어를 제거한다");
+const tileCardSource = readFileSync(new URL("../../components/v2/tile-card.tsx", import.meta.url), "utf8");
+assert.match(tileCardSource, /aria-expanded=\{open\}/, "배지 설명은 키보드·터치 버튼으로 열어야 한다");
+assert.match(tileCardSource, /<BadgeHint text=\{`\+\$\{more\}`\}/, "+N 배지도 설명 팝오버를 가져야 한다");
+assert.doesNotMatch(tileCardSource, /title=\{b\.note\}/, "배지 설명을 title 툴팁에만 의존하지 않는다");
 
 // 대지 요약
 const sv = toSummaryView(GODEOK_SUMMARY, GODEOK_RESULTS);
@@ -122,7 +137,30 @@ assert.equal(sv.facts.length, 3);
 assert.equal(sv.asOfLine, "자료 기준일 2026-01-01 ~ 2026-09-20");
 assert.equal(sv.incomplete, true);
 
-// ── 같은 배지 합치기, 대표값은 값이 있는 첫 지표 ──
+// R12: A12 도형 면적·지가·지목은 요약으로 승격하고, 추정/부분 안내만으로 불완전 배지를 세지 않는다.
+{
+  const results = structuredClone(GODEOK_RESULTS);
+  const a12 = results.find((r) => r.tileCode === "A12");
+  a12.metrics.push({ id: "parcel_area_m2", label: "대상 필지 도형 면적", value: 3210, unit: "㎡", formulaVersion: "test", numerator: null, denominator: null, status: "observed" });
+  a12.metrics.push({ id: "land_price", label: "대상 필지 개별공시지가", value: 2_410_000, unit: "원/㎡", formulaVersion: "test", numerator: null, denominator: null, status: "observed" });
+  const summary = buildSummary({ address: "테스트", jimok: "대" }, 800, results);
+  assert.equal(summary.areaM2, 3210, "A12 도형 면적을 대지 요약으로 승격");
+  assert.equal(summary.landPriceM2, 2_410_000, "A12 개별공시지가를 요약으로 승격");
+  assert.equal(summary.jimok, "대", "지목을 요약으로 승격");
+  const base = structuredClone(results[0]);
+  const countView = toSummaryView({ address: "테스트", areaM2: 3210, landPriceM2: 2_410_000, landPriceUnit: "원/㎡", jimok: "대", zoning: null, radiusM: 800, facts: [] }, [
+    { ...base, status: "complete", limitations: [{ kind: "estimated", note: "추정" }] },
+    { ...base, status: "partial", limitations: [{ kind: "unknown", note: "미확인" }] },
+    { ...base, status: "failed", limitations: [] },
+    { ...base, status: "not_provided", limitations: [{ kind: "not_provided", note: "미제공" }] },
+  ]);
+  assert.equal(countView.incompleteCount, 2, "실패·미제공만 일부 자료 불완전 개수에 포함");
+  assert.match(countView.areaSource, /도형 면적/);
+  assert.equal(countView.jimok, "지목: 대");
+  assert.match(countView.landPrice, /공시지가: 2,410,000원\/㎡/);
+}
+
+// ── 같은 배지 합치기, 헤드라인은 타일별 결론 정책 ──
 {
   const base = GODEOK_RESULTS.find((r) => r.tileCode === "A01");
   const r = {
@@ -141,7 +179,32 @@ assert.equal(sv.incomplete, true);
   const texts = v.badges.map((b) => b.text);
   assert.equal(new Set(texts).size, texts.length, "배지 문구 중복 없음");
   assert.equal(v.badges.find((b) => b.text === "일부 자료만 집계").note, "가 / 나");
-  assert.notEqual(v.headline.value, "미확인", "값이 있는 지표가 대표값");
+  assert.equal(v.headlineMetricId, "nearest_station_m", "A01 결론 지표 정책 유지");
+  assert.notEqual(v.headline.value, "미확인", "결론 지표 값이 대표값");
+}
+
+assert.deepEqual(new Set(Object.keys(HEADLINE_POLICY)), new Set(TILE_CODES), "45개 타일 모두 헤드라인 선정 정책 보유");
+assert.equal(byCode.D04.headlineMetricId, "share_pre2000");
+assert.equal(byCode.D04.headline.value, "67.0%", "D04는 확인율이 아니라 1990년대 이전 준공 비율");
+assert.ok(byCode.D04.badges.some((badge) => badge.text === "확인율 98.0%"), "D04 확인율은 보조 배지");
+assert.equal(HEADLINE_POLICY.D16.ids[0], "dens_max", "D16 KDE 대역폭은 헤드라인이 아님");
+assert.equal(HEADLINE_POLICY.D01.ids[0], "imagery_capture_date", "D01 최대 줌은 헤드라인이 아님");
+assert.equal(HEADLINE_POLICY.A12.ids[2], "site_zoning_count", "A12 지정 수는 보조 후보");
+assert.equal(HEADLINE_POLICY.D23.ids[0], "zone_area_in_radius_m2", "D23 단계 건수가 아닌 구역 면적");
+assert.equal(HEADLINE_POLICY.D24.ids[0], "line_length_in_radius_m", "D24 단계 건수가 아닌 계획 선형 길이");
+
+// 파라미터만 있는 헤드라인 회귀: 결론은 dens_max/항공영상 제공, 파라미터는 배지로 남긴다.
+{
+  const base = GODEOK_RESULTS[0];
+  const metric = (id, label, value, unit) => ({ ...base.metrics[0], id, label, value, unit, status: "observed" });
+  const d16 = toTileView({ ...base, tileCode: "D16", tileId: "test-D16", tileType: "diagram", metrics: [metric("kde_bandwidth_m", "KDE 대역폭", 100, "m"), metric("dens_max", "최대 건물 밀도", 23.4, "동/㎢")], limitations: [], judgment: { ...base.judgment, basisMetricIds: ["buildings_input", "dens_max"] } });
+  assert.equal(d16.headlineMetricId, "dens_max");
+   assert.equal(d16.headline.value, "23 동/㎢");
+  assert.ok(d16.badges.some((badge) => badge.text === "KDE 대역폭 100m"));
+  const d01 = toTileView({ ...base, tileCode: "D01", tileId: "test-D01", tileType: "diagram", metrics: [metric("imagery_zoom_max", "항공영상 WMTS 최대 줌", 19, "z")], limitations: [], judgment: { ...base.judgment, basisMetricIds: ["imagery_zoom_max"] } });
+  assert.equal(d01.headlineMetricId, "imagery_available");
+  assert.equal(d01.headline.value, "항공영상 제공");
+  assert.ok(d01.badges.some((badge) => badge.text === "최대 줌 19z"));
 }
 
 // R13: 원천 limitation 문구가 반복돼도 상세 창의 li key가 겹치지 않도록 화면 문구를 합친다.

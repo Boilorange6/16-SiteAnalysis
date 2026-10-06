@@ -276,7 +276,7 @@ export const GODEOK_RESULTS: TileResult[] = [
     ],
     [["park", "2026-05-31"]],
     j("a04-park-points@1", ["parks"], "공원 5곳 확인, 대표점까지 직선 320m → 입구가 아닌 대표점 기준의 거리임 → 실제 입구와 경계 확인 필요"),
-    [{ kind: "not_provided", note: "공원 경계·입구 자료 미적재 — 반경 안 면적과 입구 거리는 계산하지 못했습니다." }],
+    [{ kind: "not_provided", note: "공원 경계·입구 자료를 확인하지 못해 반경 안 면적과 입구 거리는 계산하지 못했습니다." }],
   ), [
     pin("park_nearest", 320, 320, "대표점 320m", 9200),
     dot("park", 100, 640, 61000),

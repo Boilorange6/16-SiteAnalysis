@@ -14,10 +14,10 @@ const percent = (part: number, whole: number): number => whole > 0 ? Math.round(
 
 export function d18(ctx: EngineContext): TileResult {
   const dem = terrainGridFor(ctx, 30);
-  if (!dem) return notProvided(ctx, "D18", "지형(DEM) 미적재");
+  if (!dem) return notProvided(ctx, "D18", "지형 자료를 확인하지 못했습니다.");
 
   const slope = slopeGridFor(ctx, 30);
-  if (!slope) return notProvided(ctx, "D18", "지형(DEM) 미적재");
+  if (!slope) return notProvided(ctx, "D18", "지형 경사 자료를 확인하지 못했습니다.");
   const reportedSlope = terrainClassGrid(slope);
   const stats = terrainGridStats(reportedSlope, ctx.input.radiusM);
   const values = terrainValuesInCircle(reportedSlope, ctx.input.radiusM);

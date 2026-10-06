@@ -229,7 +229,7 @@ export function cardRows(c: Complex, analysisYear: number): CardRow[] {
 }
 export const cardName = (c: Complex) => c.name ?? `이름 ${MISSING}`;
 
-/** 카드 폭에 맞춘 표시용 단지명. 원문은 title·aria-label에 계속 보존한다. */
+/** 카드 안에 들어가는 짧은 표시용 단지명. 원문은 title·aria-label에 계속 보존한다. */
 export function displayComplexName(c: Complex, siblings: readonly Complex[] = []): string {
   const full = cardName(c);
   if (c.name === null) return full;
@@ -237,13 +237,14 @@ export function displayComplexName(c: Complex, siblings: readonly Complex[] = []
   const prefix = chars.slice(0, 6).join("");
   const duplicatePrefix = siblings.filter((s) => s.name !== null && [...s.name].slice(0, 6).join("") === prefix).length > 1;
   if (chars.length <= 10) return duplicatePrefix ? `${full} · ${c.rank}번` : full;
-  return `${prefix}…${chars.slice(-4).join("")}${duplicatePrefix ? ` · ${c.rank}번` : ""}`;
+  return `${prefix}${duplicatePrefix ? ` · ${c.rank}번` : ""}`;
 }
 
 // ── 모바일(≤520px): 좌우 칸 대신 지도 아래 가로 띠 카드 (지시선 없음) ──
 export const MOBILE_MAX_W = 520;
 export const isMobileWidth = (w: number) => w <= MOBILE_MAX_W;
-export const STRIP_H = 76;
+/** 모바일 띠: 최대 3줄 단지명 + 2줄 값 + 여백을 수용하는 예약 높이(px). */
+export const STRIP_H = 92;
 export type StripCard = { id: string; rank: number; name: string; fullName: string; nameMissing: boolean; color: string; chip: string | null; lines: [string, string] };
 /** 띠 카드 모델: 순서 = 페이지 순서(번호 순), 값 4개를 두 줄로 */
 export function stripCards(items: Complex[], analysisYear: number): StripCard[] {
@@ -293,15 +294,16 @@ export function calloutReportPages(mode: CalloutMode, n: number): number {
 
 // ── 기하 ──
 export type Pt = [number, number];
-export type Metrics = { cardW: number; compactW: number; minW: number; gap: number; stub: number; rMin: number; rMax: number; head: number; row: number; pad: number; compactH: number };
+export type Metrics = { cardW: number; compactW: number; minW: number; cardFraction?: number; gap: number; stub: number; rMin: number; rMax: number; head: number; row: number; pad: number; compactH: number };
 /** 화면(px) */
-export const PX: Metrics = { cardW: 176, compactW: 136, minW: 96, gap: 8, stub: 14, rMin: 8, rMax: 15, head: 26, row: 17, pad: 6, compactH: 40 };
+export const PX: Metrics = { cardW: 176, compactW: 136, minW: 96, cardFraction: 0.27, gap: 8, stub: 14, rMin: 8, rMax: 15, head: 26, row: 17, pad: 6, compactH: 40 };
 /** 좁은 화면(모바일): 카드를 좁히고 점을 줄여 반경 원이 두 칸 사이에 들어가게 한다 */
-export const PX_NARROW: Metrics = { ...PX, cardW: 100, compactW: 100, minW: 88, gap: 6, stub: 10, rMin: 6, rMax: 11, compactH: 38 };
+export const PX_NARROW: Metrics = { ...PX, cardW: 100, compactW: 100, minW: 84, cardFraction: 0.24, gap: 6, stub: 10, rMin: 6, rMax: 11, compactH: 48 };
 /** 슬라이드(inch) */
 export const INCH: Metrics = { cardW: 2.55, compactW: 2.0, minW: 1.4, gap: 0.1, stub: 0.2, rMin: 0.12, rMax: 0.22, head: 0.28, row: 0.165, pad: 0.06, compactH: 0.5 };
 
-export const cardHeight = (m: Metrics, variant: "full" | "compact", rows: number) => (variant === "compact" ? m.compactH : m.head + rows * m.row + m.pad);
+/** compact 카드는 이름이 두 줄이 될 수 있어 줄바꿈 여유를 예약한다. */
+export const cardHeight = (m: Metrics, variant: "full" | "compact", rows: number) => (variant === "compact" ? m.compactH + m.row * 0.2 : m.head + rows * m.row + m.pad);
 
 export type Column = { x0: number; x1: number; top: number; bottom: number };
 export type CalloutFrame = {
@@ -344,7 +346,7 @@ export type FrameSpec = {
 
 export function calloutFrame(s: FrameSpec): CalloutFrame {
   const { W, H, m } = s;
-  const cardW = Math.max(m.minW, Math.min(s.variant === "compact" ? m.compactW : m.cardW, W * 0.27));
+  const cardW = Math.max(m.minW, Math.min(s.variant === "compact" ? m.compactW : m.cardW, W * (m.cardFraction ?? 0.27)));
   const cardH = cardHeight(m, s.variant, s.rows);
   const rx1 = W - (s.rightInset ?? 0) - s.edge;
   const left: Column = { x0: s.edge, x1: s.edge + cardW, top: s.top, bottom: s.leftBottom ?? s.bottom };

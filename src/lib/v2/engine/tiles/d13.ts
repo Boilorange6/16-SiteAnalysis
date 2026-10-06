@@ -26,7 +26,7 @@ function sharesTenths(lengths: readonly number[], total: number): number[] {
 
 export function d13(ctx: EngineContext): TileResult {
   const sources = ctx.sources("reference", ROAD_SOURCES);
-  if (sources.length === 0) return notProvided(ctx, "D13", "도로 원천(OSM Geofabrik SHP) 미적재 — 원천 확보 후 제공");
+  if (sources.length === 0) return notProvided(ctx, "D13", "도로 자료를 확인하지 못했습니다. 최신 도로 자료 확인 후 제공됩니다.");
 
   const roads = ctx.hits("reference", ["road"]);
   const lengths = ROAD_HIERARCHIES.map(() => 0);

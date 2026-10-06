@@ -38,7 +38,7 @@ export const RASTER_OFFSET = -50;
 const RASTER_OUT_OF_RANGE = 253;
 const RASTER_BUILDING = 254;
 const RASTER_OUTSIDE = 255;
-const WEATHER_TABLE_NOTE = "계절×시각 대표 기상 미적재 — weather 재빌드 필요";
+const WEATHER_TABLE_NOTE = "계절·시각별 대표 기상 자료를 확인하지 못했습니다.";
 const SEASON_KO: Record<Season, string> = { spring: "봄", summer: "여름", autumn: "가을", winter: "겨울" };
 
 const UTCI_CATEGORIES = [
@@ -130,7 +130,7 @@ function mergeSources(...groups: SourceRef[][]): SourceRef[] {
 function weatherState(ctx: EngineContext): WeatherState {
   const db = ctx.db("weather");
   const sources = ctx.sources("weather", ["asos"]);
-  if (!db || sources.length === 0) return { kind: "not_provided", note: "기상(ASOS) 미적재", sources };
+  if (!db || sources.length === 0) return { kind: "not_provided", note: "기상(ASOS) 자료를 확인하지 못했습니다.", sources };
   if (!hasTable(db, "weather_season_hour")) return { kind: "legacy", note: WEATHER_TABLE_NOTE, sources };
 
   const required = new Set(["station_id", "season", "hour", "n", "ta_med", "hm_med", "ws_med", "ghi_med_wm2", "cloud_med"]);
@@ -625,7 +625,7 @@ export function s04(ctx: EngineContext): TileResult {
 
   const sources = mergeSources(weather.sources, ctx.sources("buildings", BUILDING_SOURCES));
   const limitations = [...fixedLimitations(), ...buildingRetirementLimitations(ctx, Math.min(5000, ctx.input.radiusM + SVF_MAX_DIST_M + SVF_CELL_M))];
-  if (calcReady && !canopy) limitations.push({ kind: "not_provided", note: "항공사진 수관 자료 미적재 — 수관 그림자를 반영하지 않았습니다." });
+  if (calcReady && !canopy) limitations.push({ kind: "not_provided", note: "항공사진 수관 자료를 확인하지 못해 수관 그림자를 반영하지 않았습니다." });
 
   const allObstacles = shared ? sunObstaclesFor(ctx, canopy?.polygons ?? null) : [];
   const buildingMask = new Uint8Array(shared ? shared.grid.cols * shared.grid.rows : 0);

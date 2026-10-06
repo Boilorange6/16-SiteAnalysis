@@ -75,6 +75,9 @@ export const CAMERA_PRESETS = {
   elevation: [20, 35, 55],
 } as const;
 
+/** 넓은 반경의 지형 투영에 건물이 묻히지 않도록 화면 전용 높이 과장을 적용한다. */
+export const MASS_VERTICAL_EXAGGERATION_MAX = 5;
+
 // sitedia S01의 낮은 plate tilt를 유지한다. 모든 exploded 층과 face가 이
 // 동일한 presentation angle을 공유해 plate 사이 gap을 확보한다.
 const EXPLODED_PRESENTATION_ELEVATION_DEG = 15;
@@ -280,10 +283,12 @@ export function projectMass(scene: Scene, camera: MassCamera, width: number, hei
   const cosE = Math.cos(elevation);
   const sinE = Math.sin(elevation);
   const project = (point: [number, number], z: number) => projectRaw(point, z, cosA, sinA, cosE, sinE);
+  const radius = Math.max(1, finiteOr(scene.radiusM, finiteOr(camera.radiusM, 100)));
+  const verticalExaggeration = Math.max(1, Math.min(MASS_VERTICAL_EXAGGERATION_MAX, radius / 160));
+  const projectBuilding = (point: [number, number], z: number) => projectRaw(point, z * verticalExaggeration, cosA, sinA, cosE, sinE);
   const cameraDirection: [number, number] = [sinA, cosA];
   const raw: RawFace[] = [];
 
-  const radius = Math.max(1, finiteOr(scene.radiusM, finiteOr(camera.radiusM, 100)));
   if (scene.ground.kind === "dem") {
     raw.push(...groundCellFaces(scene.ground, project));
   } else {
@@ -291,7 +296,7 @@ export function projectMass(scene: Scene, camera: MassCamera, width: number, hei
     raw.push({ points: ground, shade: 0.08, layer: "ground", depth: -Number.MAX_VALUE });
   }
 
-  for (const building of scene.buildings) addBuildingFaces(raw, building, project, cameraDirection);
+  for (const building of scene.buildings) addBuildingFaces(raw, building, projectBuilding, cameraDirection);
 
   const allPoints = raw.flatMap((face) => face.points);
   if (allPoints.length === 0) return { faces: [], scale: 1 };

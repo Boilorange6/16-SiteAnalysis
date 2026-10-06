@@ -43,7 +43,10 @@ export default function SummaryCard({ view, face, onFace }: { view: SummaryView;
       <div className={styles.summaryKicker}>대지 요약</div>
       <h2 className={`${styles.display} ${styles.summaryAddr}`}>{view.address}</h2>
       <div className={styles.chips}>
-        <span className={styles.chip}>{view.area}</span>
+        <span className={styles.chip}>면적: {view.area}</span>
+        <span className={styles.chip}>{view.areaSource}</span>
+        <span className={styles.chip}>{view.landPrice}</span>
+        <span className={styles.chip}>{view.jimok}</span>
         <span className={styles.chip}>{view.zoning}</span>
         <span className={styles.chip}>{view.radius}</span>
       </div>

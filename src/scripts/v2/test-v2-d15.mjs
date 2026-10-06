@@ -169,7 +169,7 @@ const SYNTHETIC_EXPECTED = {
   });
   const tile = d15(ctx);
   assert.equal(tile.status, "not_provided");
-  assert.ok(tile.limitations[0].note.includes("도로(OSM) 미적재"));
+  assert.ok(tile.limitations[0].note.includes("도로(OSM) 자료를 확인하지 못했습니다"));
   ctx.close();
 }
 

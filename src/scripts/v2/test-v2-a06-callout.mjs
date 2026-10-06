@@ -94,6 +94,7 @@ assert.deepEqual(C.rankSupply(list.map(() => sup({})), "2026-09-30").map((c) => 
   assert.deepEqual(cards[0].lines, ["2026년 10월 · 300세대", "청약홈 · 500m"]);
   assert.equal(cards[0].color, C.TIMING_STYLE.m0_12.color);
   assert.ok(cards.every((c) => c.name.length > 0 && c.lines.every((l) => l.length > 0)));
+  assert.equal(C.displayComplexName({ ...list[0], name: "래미안힐스테이트 고덕" }, []), "래미안힐스테", "긴 단지명은 말줄임 대신 짧은 라벨");
   assert.deepEqual([C.isMobileWidth(390), C.isMobileWidth(520), C.isMobileWidth(521)], [true, true, false]);
   const f = C.stripFrame(390, 844, C.PX_NARROW, 100, 380);
   assert.deepEqual([f.cardW, f.perSide, f.left.x1 === f.left.x0, f.siteX], [0, 0, true, 0.5], "좌우 칸 없음");
@@ -110,6 +111,7 @@ assert.deepEqual(C.rankSupply(list.map(() => sup({})), "2026-09-30").map((c) => 
   const a05 = toTileView(GODEOK_RESULTS.find((r) => r.tileCode === "A05")).callout;
   assert.equal(calloutScene(a05, "detail", 390, 844, 1).strip, true, "A05도 같은 띠");
   assert.equal(calloutScene(a05, "card", 390, 300, 0).strip, false, "보드 카드는 띠 없음");
+  assert.ok(calloutScene(model, "card", 360, 300, 0).frame.diameter > 125, "모바일 보드 중앙 반경원이 카드 폭 때문에 117px로 줄지 않음");
 }
 
 // ── 등급(grades): 스키마, A01 방출, 다른 타일에는 없음 ──

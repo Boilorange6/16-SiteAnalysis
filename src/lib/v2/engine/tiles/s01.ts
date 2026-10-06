@@ -11,7 +11,7 @@ import { maxOf, minOf } from "../../extent";
 const LAYERS = ["mass_source", "mass_estimated", "mass_unknown"] as const;
 const FLAT_GROUND_LIMITATION = {
   kind: "not_provided",
-  note: "지형(DEM) 미적재 — 평탄 지반",
+  note: "지형 자료를 확인하지 못해 평탄 지반으로 표시합니다.",
 } as const;
 const pct = (part: number, whole: number): number => Math.round((part / whole) * 1000) / 10;
 

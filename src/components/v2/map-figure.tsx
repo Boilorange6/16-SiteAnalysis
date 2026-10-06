@@ -169,6 +169,16 @@ function steppedLegendTitle(ref: RasterRef, style: RasterStyle): string {
   return style.label ?? ref.label ?? ref.name;
 }
 
+/** 카드 알약은 공간이 좁으므로, 원문을 자르지 않는 짧은 표시명을 사용한다. */
+function compactSteppedLegendTitle(ref: RasterRef, style: RasterStyle): string {
+  if (ref.palette === "sun_hours") {
+    if (ref.name.includes("summer")) return "하지 일조시간";
+    if (ref.name.includes("winter")) return "동지 일조시간";
+    return "일조시간";
+  }
+  return steppedLegendTitle(ref, style);
+}
+
 /** 범주명이 있는 팔레트(UTCI)는 칸 경계마다 하한 숫자를 모두 적는다. */
 function steppedLegendTicksFor(ref: RasterRef, entries: RasterLegendEntry[], style?: RasterStyle): Array<{ label: string; position: number }> {
   if (entries.length === 0) return [];
@@ -291,10 +301,9 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   const compactBarW = 48 * u;
   const compactFixedW = 2 * 8 * u + 4 * 4 * u + compactBarW + textW(compactEnds[0], compactFs) + textW(compactEnds[1], compactFs);
   const compactTitleMax = Math.max(0, W - 8 - 112 * u - compactFixedW);
-  let compactTitle = compactFullTitle;
-  while (compactTitle.length > 4 && textW(compactTitle, compactFs) > compactTitleMax) compactTitle = compactTitle.slice(0, -1).replace(/\s+$/, "");
-  if (compactTitle !== compactFullTitle) compactTitle += "…";
+  const compactTitle = compactCfg?.style.mode === "stepped" ? compactSteppedLegendTitle(compactCfg.ref, compactCfg.style) : compactFullTitle;
   const compactTitleW = textW(compactTitle, compactFs);
+  const compactTitleFs = compactTitleW > compactTitleMax && compactTitleW > 0 ? Math.max(7.5, compactFs * compactTitleMax / compactTitleW) : compactFs;
   const rasterRailW = compactFixedW + compactTitleW;
   const rasterRailH = 22 * u;
   const steppedBarW = Math.max(64 * u, Math.min(360 * u, Math.max(64 * u, legendMaxW - 3 * pad)));
@@ -753,7 +762,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
                 return (
                   <g key={`raster-legend-${ref.name}`} data-raster-legend={ref.name} data-raster-legend-rail="true">
                     <title>{style.legendNote ? `${compactFullTitle} · ${style.legendNote}` : compactFullTitle}</title>
-                    <text data-raster-legend-title="true" x={panelX + 8 * u} y={midY} dominantBaseline="central" fontSize={compactFs} fontWeight={700} fill={INK}>
+                    <text data-raster-legend-title="true" x={panelX + 8 * u} y={midY} dominantBaseline="central" fontSize={compactTitleFs} fontWeight={700} fill={INK}>
                       {compactTitle}
                     </text>
                     <text data-raster-legend-tick={compactEnds[0]} x={barX - 4 * u} y={midY} textAnchor="end" dominantBaseline="central" fontSize={compactFs} fill="#334155">

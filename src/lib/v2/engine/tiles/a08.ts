@@ -297,7 +297,7 @@ export function a08(ctx: EngineContext): TileResult {
     { kind: "partial", note: "아파트 전월세만 다룹니다(오피스텔 제외 — 원천 자료 범위)." },
     { kind: "unknown", note: "동·호가 공개되지 않아 같은 단지·면적 조건의 계약이 하나로 합쳐졌을 수 있습니다." },
     ...(unlocated > 0 ? [{ kind: "partial" as const, note: `반경과 겹치는 시군구에 위치를 확인하지 못한 임대차 ${fmt(unlocated)}건이 있어 반경 안 여부를 알 수 없고 위 지표에서 빠집니다.` }] : []),
-    ...(absent.length > 0 ? [{ kind: "incomplete" as const, note: `시군구 ${absent.map((area) => area.name || area.code).join(", ")}의 임대차 자료가 적재되지 않았습니다.` }] : []),
+    ...(absent.length > 0 ? [{ kind: "incomplete" as const, note: `시군구 ${absent.map((area) => area.name || area.code).join(", ")}의 임대차 자료를 확인하지 못했습니다.` }] : []),
     ...(noArea > 0 ? [{ kind: "partial" as const, note: `전용면적이 없는 전세 ${fmt(noArea)}건은 건수에만 들어가고 ㎡당 보증금에서는 빠집니다.` }] : []),
     ...(paired === null ? [{ kind: "unknown" as const, note: `동일 PNU에서 전세·매매 각 ${MIN_PAIRED}건 이상인 대응 표본이 없어 전세가율을 생성하지 않았습니다.` }] : []),
     { kind: "unknown", note: "월세를 전세로 환산하지 않으며 전세가율은 대응 단지·면적 조건을 맞춘 비교 지표입니다." },

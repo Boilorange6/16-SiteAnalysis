@@ -76,11 +76,11 @@ export function a04(ctx: EngineContext): TileResult {
   const layers = ["park", "park_nearest"];
   if (lines.length > 0) layers.push("walk_route");
   const limitations: TileDraft["limitations"] = [
-    { kind: "not_provided", note: "공원 경계·입구 자료 미적재 — 반경 안 면적과 입구 거리는 계산하지 못했습니다." },
+    { kind: "not_provided", note: "공원 경계·입구 자료를 확인하지 못해 반경 안 면적과 입구 거리는 계산하지 못했습니다." },
     { kind: "unknown", note: `면적 합은 원천에 적힌 공원 면적이며 반경에 걸친 공원도 전체가 들어갑니다.${noArea > 0 ? ` 면적 미기재 ${noArea}곳은 합에서 제외했습니다.` : ""}` },
   ];
   if (roadSources.length === 0) {
-    limitations.push({ kind: "not_provided", note: "보행망 자료 미적재 — 거리·시간·경로를 계산하지 못했습니다." });
+    limitations.push({ kind: "not_provided", note: "보행망 자료를 확인하지 못해 거리·시간·경로를 계산하지 못했습니다." });
   } else {
     limitations.push({ kind: "unknown", note: "보행망 도보는 OSM 중심선·80 m/분·정점 스냅 기준이며 공원 입구·횡단·경사는 반영하지 않았습니다." });
     limitations.push(...ctx.coverage("reference", ["osm_roads"]));
