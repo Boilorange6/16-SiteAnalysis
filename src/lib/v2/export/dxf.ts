@@ -10,7 +10,24 @@ export const DXF_LAYERS = {
   RADIUS: "RADIUS",
   META: "META",
   TERRAIN: "TERRAIN",
+  ROAD: "ROAD",
+  GREEN: "GREEN",
+  WATER: "WATER",
 } as const;
+
+const DXF_LAYER_COLORS: Readonly<Record<(typeof DXF_LAYERS)[keyof typeof DXF_LAYERS], number>> = {
+  BLDG: 1,
+  BLDG_EST: 2,
+  BLDG_NOHEIGHT: 3,
+  PARCEL: 4,
+  SITE: 5,
+  RADIUS: 6,
+  META: 7,
+  TERRAIN: 8,
+  ROAD: 9,
+  GREEN: 10,
+  WATER: 11,
+};
 
 export interface DxfOptions {
   origin?: "site" | "utmk";
@@ -55,6 +72,8 @@ function addLwPolyline(
   elevation: number | undefined,
   handles: HandleAllocator,
   owner: string,
+  closed = true,
+  constantWidth: number | undefined = undefined,
 ): void {
   if (ring.length === 0) return;
   pushPairs(lines, [
@@ -65,10 +84,13 @@ function addLwPolyline(
     [8, layer],
     [100, "AcDbPolyline"],
     [90, ring.length],
-    [70, 1],
+    [70, closed ? 1 : 0],
   ]);
   if (elevation !== undefined) pushPairs(lines, [[38, numberText(elevation)]]);
   if (thickness !== undefined) pushPairs(lines, [[39, numberText(thickness)]]);
+  if (constantWidth !== undefined && Number.isFinite(constantWidth) && constantWidth > 0) {
+    pushPairs(lines, [[43, numberText(constantWidth)]]);
+  }
   for (const [x, y] of ring) pushPairs(lines, [[10, numberText(x)], [20, numberText(y)]]);
 }
 
@@ -174,7 +196,7 @@ function addLayerTable(lines: string[], handles: HandleAllocator): void {
   layers.forEach((layer, index) => {
     pushPairs(lines, [
       [0, "LAYER"], [5, handles.allocate()], [330, table], [100, "AcDbSymbolTableRecord"], [100, "AcDbLayerTableRecord"],
-      [2, layer], [70, 0], [62, index + 1], [6, "CONTINUOUS"],
+      [2, layer], [70, 0], [62, DXF_LAYER_COLORS[layer as keyof typeof DXF_LAYER_COLORS] ?? index + 1], [6, "CONTINUOUS"],
     ]);
   });
   pushPairs(lines, [[0, "ENDTAB"]]);
@@ -294,6 +316,28 @@ export function sceneToDxf(scene: Scene, opts: DxfOptions = {}): string {
   }
   if (!hasSiteParcel && scene.site !== null) {
     for (const ring of scene.site) addLwPolyline(entityLines, localOrUtmkRing(ring, offset), DXF_LAYERS.SITE, undefined, undefined, handles, blockRecords.model);
+  }
+
+  for (const road of scene.context?.roads ?? []) {
+    const points = road.points.filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
+    if (points.length < 2) continue;
+    addLwPolyline(
+      entityLines,
+      localOrUtmkRing(points, offset),
+      DXF_LAYERS.ROAD,
+      undefined,
+      undefined,
+      handles,
+      blockRecords.model,
+      false,
+      road.widthM,
+    );
+  }
+  for (const polygon of scene.context?.green ?? []) {
+    for (const ring of polygon) addLwPolyline(entityLines, localOrUtmkRing(ring, offset), DXF_LAYERS.GREEN, undefined, undefined, handles, blockRecords.model);
+  }
+  for (const polygon of scene.context?.water ?? []) {
+    for (const ring of polygon) addLwPolyline(entityLines, localOrUtmkRing(ring, offset), DXF_LAYERS.WATER, undefined, undefined, handles, blockRecords.model);
   }
 
   addCircle(entityLines, originPoint, scene.radiusM, DXF_LAYERS.RADIUS, handles, blockRecords.model);
