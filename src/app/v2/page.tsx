@@ -643,6 +643,7 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
           face={board.faces[openView.tileId]}
           onInclude={(value) => dispatch({ type: "include", id: openView.tileId, value })}
           onFace={(face) => dispatch({ type: "face", id: openView.tileId, face })}
+          onRetry={() => retry(openView.tileId, openView.code)}
           roseSeason={board.roseSeasons[openView.tileId] ?? "annual"}
           onRoseSeason={(season) => dispatch({ type: "roseSeason", id: openView.tileId, season })}
           calloutMode={board.callout[openView.tileId] ?? DEFAULT_CALLOUT_MODE}

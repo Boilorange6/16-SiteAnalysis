@@ -19,6 +19,7 @@ type Props = {
   face: OutputFace;
   onInclude: (v: boolean) => void;
   onFace: (f: OutputFace) => void;
+  onRetry?: () => void;
   roseSeason: RoseSeason;
   onRoseSeason: (season: RoseSeason) => void;
   calloutMode: CalloutMode;
@@ -168,7 +169,7 @@ function A05FilterPanel({ filter, counts, onChange, titleId }: { filter: A05Filt
 }
 
 /** 펼침: 화면 거의 전체가 지도. 오른쪽에 떠 있는 정보 판. Esc로 닫고, 닫으면 열기 전 초점으로 돌아간다. */
-export default function TileDialog({ view, included, face, onInclude, onFace, roseSeason, onRoseSeason, calloutMode, onCalloutMode, camera, onCamera, cuts, onCuts, onWindUploaded, onClose, a05Filter, a05Counts, onA05Filter }: Props) {
+export default function TileDialog({ view, included, face, onInclude, onFace, onRetry, roseSeason, onRoseSeason, calloutMode, onCalloutMode, camera, onCamera, cuts, onCuts, onWindUploaded, onClose, a05Filter, a05Counts, onA05Filter }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [back, setBack] = useState(false);
   const [more, setMore] = useState(false); // 모바일 시트 확장
@@ -201,7 +202,7 @@ export default function TileDialog({ view, included, face, onInclude, onFace, ro
           <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="detail" siteX={detailSiteX} rightInset={insetOf} legendY={OV.edge + 38 + 8} page={page} onPage={setPage} windLayerZ={windLayerZ} massExploded={massExploded} roseSeason={roseSeason} />
         </div>
 
-        {state && <StatusPlate view={view} phase={null} />}
+        {state && <StatusPlate view={view} phase={null} onRetry={onRetry} />}
         <TitleChip view={view} as="h2" headingId={titleId} />
 
         <div className={styles.dlgTop}>

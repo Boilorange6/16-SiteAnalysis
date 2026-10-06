@@ -3,6 +3,7 @@
  * 화면 문자열은 전부 toTileView에서 나온다 — 여기서 금지 표현·배지 매핑을 고정한다.
  */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { TILE_CODES } = await import("../../lib/v2/ui/tile-catalog.ts");
@@ -114,6 +115,8 @@ assert.deepEqual([faceLabel("front"), faceLabel("back"), faceLabel("both")], ["�
 // 실패 타일은 다시 계산 가능, 값 없는 타일은 headline 없음
 assert.ok(byCode.S03.retryable && !byCode.A01.retryable);
 assert.equal(byCode.S02.headline, null);
+const dialogSource = readFileSync(new URL("../../components/v2/tile-dialog.tsx", import.meta.url), "utf8");
+assert.match(dialogSource, /StatusPlate view=\{view\} phase=\{null\} onRetry=\{onRetry\}/, "펼침 상태판도 재계산 콜백을 받아야 한다");
 
 // 대지 요약
 const sv = toSummaryView(GODEOK_SUMMARY, GODEOK_RESULTS);
