@@ -309,3 +309,42 @@ export function queryFeaturesInRadius(db: Db, center: LngLat, radiusM: number, k
   hits.sort((a, b) => a.featureId - b.featureId);
   return hits;
 }
+
+/**
+ * EPSG:5179 bbox의 R*Tree 후보만 반환한다. 도형 자체의 교차는 호출자가
+ * 필요한 점·다각형 관계에 맞춰 판정한다. 넓은 반경 전체를 exact 교차하지
+ * 않고 소수의 격자 셀만 확인해야 하는 질의용이다.
+ */
+/** 여러 EPSG:5179 bbox를 한 R*Tree 질의로 합친다. 셀 후보를 묶는 hot-path용이다. */
+export function queryFeaturesInBboxes(db: Db, boundsList: readonly (readonly [number, number, number, number])[], kinds: readonly string[]): FeatureHit[] {
+  if (boundsList.length === 0 || kinds.length === 0) return [];
+  const sortedKinds = [...kinds].sort();
+  const out = new Map<number, FeatureHit>();
+  // SQLite 변수 상한과 지나치게 큰 SQL 계획을 피하면서도 왕복을 줄인다.
+  for (let offset = 0; offset < boundsList.length; offset += 2000) {
+    const chunk = boundsList.slice(offset, offset + 2000);
+    const values = chunk.map(() => "(?, ?, ?, ?)").join(", ");
+    const query = db.prepare(`WITH targets(min_x, min_y, max_x, max_y) AS (VALUES ${values})
+      SELECT f.feature_id, f.stable_id, f.kind, f.release_id, f.geom_json, f.name, f.pnu, f.legal_code, f.properties_json
+      FROM targets t CROSS JOIN feature_rtree r CROSS JOIN feature f ON f.feature_id = r.feature_id
+      WHERE r.max_x >= t.min_x AND r.min_x <= t.max_x AND r.max_y >= t.min_y AND r.min_y <= t.max_y
+        AND f.kind IN (${sortedKinds.map(() => "?").join(",")})`);
+    const rows = query.all(...chunk.flat(), ...sortedKinds) as Array<Omit<FeatureRow, "min_x" | "max_x" | "min_y" | "max_y">>;
+    for (const row of rows) {
+      if (out.has(row.feature_id)) continue;
+      out.set(row.feature_id, {
+        featureId: row.feature_id,
+        stableId: row.stable_id,
+        kind: row.kind,
+        releaseId: row.release_id,
+        name: row.name,
+        pnu: row.pnu,
+        legalCode: row.legal_code,
+        properties: JSON.parse(row.properties_json) as Record<string, unknown>,
+        geometry: JSON.parse(row.geom_json) as Geometry,
+        distanceM: null,
+      });
+    }
+  }
+  return [...out.values()];
+}

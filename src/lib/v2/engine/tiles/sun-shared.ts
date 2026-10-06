@@ -6,6 +6,7 @@ import { computeSunField, computeSunFields, fillRing, horizonValuesForGrid, type
 import { terrainHorizon, type HorizonMap } from "../../sim/horizon";
 import type { EngineContext, SourceRef } from "../context";
 import { demReader } from "./terrain-shared";
+import { BUILDING_SOURCES, buildingRows } from "./buildings-shared";
 
 export const SUN_INFLUENCE_M = 400;
 
@@ -24,13 +25,7 @@ export const SEASON_LABEL = {
   analysis: "분석일",
 } as const;
 
-const BUILDING_SOURCES = ["building", "gis_bldg"] as const;
 const FEATURE_COLUMNS = ["feature_id", "stable_id", "kind", "release_id", "geom_json", "name", "pnu", "legal_code", "properties_json"] as const;
-
-interface BuildingFactRow {
-  feature_id: number;
-  height_m: unknown;
-}
 
 function columns(db: BetterSqlite3.Database, table: string): Set<string> {
   try {
@@ -50,14 +45,6 @@ function buildingReady(ctx: EngineContext): boolean {
 
 export function sunBuildingSources(ctx: EngineContext): SourceRef[] {
   return ctx.sources("buildings", BUILDING_SOURCES);
-}
-
-function factByFeature(db: BetterSqlite3.Database, featureIds: number[]): Map<number, BuildingFactRow> {
-  if (featureIds.length === 0) return new Map();
-  const rows = db
-    .prepare("SELECT feature_id, height_m FROM building_fact WHERE feature_id IN (" + featureIds.map(() => "?").join(",") + ")")
-    .all(...featureIds) as BuildingFactRow[];
-  return new Map(rows.map((row) => [row.feature_id, row]));
 }
 
 function ringPositions(positions: readonly Position[] | undefined): XY[] {
@@ -88,15 +75,13 @@ function heightOf(value: unknown): number {
 
 function buildingObstacles(ctx: EngineContext): Obstacle[] | null {
   if (!buildingReady(ctx)) return null;
-  const db = ctx.db("buildings");
-  if (!db) return null;
   const radius = ctx.input.radiusM + SUN_INFLUENCE_M;
-  const hits = ctx.hits("buildings", ["building"], radius);
-  const facts = factByFeature(db, hits.map((hit) => hit.featureId));
+  const rows = buildingRows(ctx, radius);
+  if (rows === null) return null;
   const obstacles: Obstacle[] = [];
-  for (const hit of hits) {
-    const heightM = heightOf(facts.get(hit.featureId)?.height_m);
-    for (const ring of outerRings(hit.geometry)) obstacles.push({ ring, heightM, baseZ: null, kind: "building" });
+  for (const row of rows) {
+    const heightM = heightOf(row.heightM);
+    for (const ring of outerRings(row.hit.geometry)) obstacles.push({ ring, heightM, baseZ: null, kind: "building" });
   }
   return obstacles;
 }
@@ -431,7 +416,7 @@ export function sunSources(ctx: EngineContext): SourceRef[] {
 
 export function sunBuildingHitCount(ctx: EngineContext): number {
   if (!buildingReady(ctx)) return 0;
-  return ctx.hits("buildings", ["building"], ctx.input.radiusM + SUN_INFLUENCE_M).length;
+  return buildingRows(ctx, ctx.input.radiusM + SUN_INFLUENCE_M)?.length ?? 0;
 }
 
 export function sunBuildingReady(ctx: EngineContext): boolean {

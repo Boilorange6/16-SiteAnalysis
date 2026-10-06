@@ -22,7 +22,7 @@ import type { RasterData } from "../../raster-store";
 import type { EngineContext, SourceRef } from "../context";
 import { CANOPY_ASSUMED_HEIGHT_M, canopyFor } from "./canopy-shared";
 import { est, makeTile, missing, obs } from "./common";
-import { BUILDING_SOURCES, buildingRows } from "./buildings-shared";
+import { BUILDING_SOURCES, buildingRetirementLimitations, buildingRows } from "./buildings-shared";
 import { notProvided } from "./not-provided";
 import { SEASON_SUN_DATES, sunDateValue, sunGridFor, sunHourlyShadeFor, sunObstaclesFor } from "./sun-shared";
 import { SVF_CELL_M, SVF_MAX_DIST_M, svfFor } from "./svf-shared";
@@ -624,7 +624,7 @@ export function s04(ctx: EngineContext): TileResult {
   if (calcReady ? !shared : buildingRows(ctx, Math.min(5000, ctx.input.radiusM + SVF_MAX_DIST_M + SVF_CELL_M)) === null) return notProvided(ctx, "S04", noBuildings);
 
   const sources = mergeSources(weather.sources, ctx.sources("buildings", BUILDING_SOURCES));
-  const limitations = fixedLimitations();
+  const limitations = [...fixedLimitations(), ...buildingRetirementLimitations(ctx, Math.min(5000, ctx.input.radiusM + SVF_MAX_DIST_M + SVF_CELL_M))];
   if (calcReady && !canopy) limitations.push({ kind: "not_provided", note: "항공사진 수관 자료 미적재 — 수관 그림자를 반영하지 않았습니다." });
 
   const allObstacles = shared ? sunObstaclesFor(ctx, canopy?.polygons ?? null) : [];

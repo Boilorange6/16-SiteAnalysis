@@ -1,7 +1,7 @@
 /** D29 개방감(SVF) — 건물·DEM 기반 지면 하늘열림 도판. */
 import { parseTileResult, type TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
-import { BUILDING_SOURCES, buildingRows, type BuildingRow } from "./buildings-shared";
+import { BUILDING_SOURCES, buildingRetirementLimitations, buildingRows, type BuildingRow } from "./buildings-shared";
 import { est, makeTile, missing, polygonCandidate } from "./common";
 import { polygonArea, polygonParts } from "./geo";
 import { notProvided } from "./not-provided";
@@ -188,6 +188,7 @@ export function d29(ctx: EngineContext): TileResult {
   ];
 
   const limitations: TileResult["limitations"] = [
+    ...buildingRetirementLimitations(ctx, Math.min(5000, ctx.input.radiusM + SVF_MAX_DIST_M + SVF_CELL_M)),
     terrainLimitation,
     { kind: "estimated", note: "건물·지형 DSM과 32방위 표본으로 계산한 기하학적 지표입니다." },
     { kind: "estimated", note: "건물은 단순 매스로 표현했으며 높이·지붕 형태·차양은 단순화했습니다." },

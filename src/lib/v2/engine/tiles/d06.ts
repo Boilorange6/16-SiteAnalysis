@@ -3,7 +3,7 @@ import type { Geometry } from "geojson";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
 import { areaInCircle, polygonArea } from "./geo";
-import { BUILDING_SOURCES, buildingRows, isCounted, type BuildingRow } from "./buildings-shared";
+import { BUILDING_SOURCES, buildingRetirementLimitations, buildingRows, isCounted, type BuildingRow } from "./buildings-shared";
 import { est, makeTile, missing, obs, polygonCandidate, type TileDraft } from "./common";
 import { notProvided } from "./not-provided";
 
@@ -62,6 +62,7 @@ export function d06(ctx: EngineContext): TileResult {
   ];
 
   const limitations = [
+    ...buildingRetirementLimitations(ctx),
     ...ctx.coverage("buildings", BUILDING_SOURCES),
     { kind: "estimated" as const, note: "[추정] 높이는 층수×3m(적재기 상수), 공식 고층건축물 정의가 아님" },
     ...(geometryFailures > 0 ? [{ kind: "unknown" as const, note: `건물 ${geometryFailures}동의 도형을 지도 면으로 변환하지 못했습니다.` }] : []),

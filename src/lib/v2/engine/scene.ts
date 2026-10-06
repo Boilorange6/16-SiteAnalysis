@@ -14,7 +14,7 @@ import {
   type SceneParcel,
 } from "../scene";
 import type { EngineContext, SourceRef } from "./context";
-import { buildingRows, BUILDING_SOURCES } from "./tiles/buildings-shared";
+import { buildingRows, buildingRetirementLimitations, BUILDING_SOURCES } from "./tiles/buildings-shared";
 import { areaInCircle, clipLineToCircle, linePathLength, polygonArea, polygonParts } from "./tiles/geo";
 import { hitPoint } from "./tiles/common";
 import { demReader, demSources, DEM_LIMITATION } from "./tiles/terrain-shared";
@@ -304,6 +304,7 @@ export function buildScene(ctx: EngineContext): Scene | null {
   const siteHit = parcelHits.find((hit) => hit.pnu === ctx.input.pnu);
 
   const limitations: Scene["limitations"] = [];
+  limitations.push(...buildingRetirementLimitations(ctx));
   if (rows.length > SCENE_MAX_BUILDINGS) {
     limitations.push({ kind: "partial", note: `건물 도형은 가까운 ${SCENE_MAX_BUILDINGS.toLocaleString()}동까지 장면에 포함했습니다.` });
   }

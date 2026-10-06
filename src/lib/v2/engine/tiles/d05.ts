@@ -3,7 +3,7 @@ import type { Geometry } from "geojson";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
 import { areaInCircle, polygonArea } from "./geo";
-import { BUILDING_SOURCES, buildingRows, isCounted, type BuildingRow } from "./buildings-shared";
+import { BUILDING_SOURCES, buildingRetirementLimitations, buildingRows, isCounted, type BuildingRow } from "./buildings-shared";
 import { makeTile, missing, obs, polygonCandidate, type TileDraft } from "./common";
 import { notProvided } from "./not-provided";
 
@@ -99,6 +99,7 @@ export function d05(ctx: EngineContext): TileResult {
   ];
 
   const limitations = [
+    ...buildingRetirementLimitations(ctx),
     ...ctx.coverage("buildings", BUILDING_SOURCES),
     ...(geometryFailures > 0 ? [{ kind: "unknown" as const, note: `건물 ${geometryFailures}동의 도형을 지도 면으로 변환하지 못했습니다.` }] : []),
   ];

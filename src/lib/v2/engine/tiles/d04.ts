@@ -5,10 +5,9 @@ import type { EngineContext } from "../context";
 import { DECADE_LAYERS, decadeLayer } from "../../ui/callout-layout";
 import { candidate, makeTile, missing, obs, polygonCandidate, type PolygonCandidate, type TileDraft } from "./common";
 import { areaInCircle, polygonArea } from "./geo";
-import { isCounted } from "./buildings-shared";
+import { BUILDING_SOURCES, buildingRetirementLimitations, buildingRows, isCounted } from "./buildings-shared";
 import { notProvided } from "./not-provided";
 
-const BUILDING_SOURCES = ["building", "gis_bldg"] as const;
 const FEATURE_COLUMNS = ["feature_id", "stable_id", "kind", "release_id", "geom_json", "name", "pnu", "legal_code", "properties_json"] as const;
 
 const DECADES = [
@@ -19,11 +18,6 @@ const DECADES = [
   { id: "share_2010s", label: "2010년대", layer: "bldg_2010s" },
   { id: "share_2020s", label: "2020년 이상", layer: "bldg_2020s" },
 ] as const;
-
-interface BuildingFactRow {
-  feature_id: number;
-  approval_date: unknown;
-}
 
 function columns(db: BetterSqlite3.Database, table: string): Set<string> {
   try {
@@ -41,14 +35,6 @@ function approvalYear(value: unknown, analysisDate: string): number | null {
   return year >= 1800 && year <= Number(analysisDate.slice(0, 4)) ? year : null;
 }
 
-function factByFeature(db: BetterSqlite3.Database, featureIds: number[]): Map<number, BuildingFactRow> {
-  if (featureIds.length === 0) return new Map();
-  const rows = db
-    .prepare(`SELECT feature_id, approval_date FROM building_fact WHERE feature_id IN (${featureIds.map(() => "?").join(",")})`)
-    .all(...featureIds) as BuildingFactRow[];
-  return new Map(rows.map((row) => [row.feature_id, row]));
-}
-
 const pct = (part: number, whole: number) => Math.round((part / whole) * 1000) / 10;
 
 export function d04(ctx: EngineContext): TileResult {
@@ -59,13 +45,15 @@ export function d04(ctx: EngineContext): TileResult {
   const factColumns = columns(db, "building_fact");
   if (!FEATURE_COLUMNS.every((column) => featureColumns.has(column)) || !factColumns.has("feature_id") || !factColumns.has("approval_date")) return notProvided(ctx, "D04");
 
-  const hits = ctx.hits("buildings", ["building"]);
-  const facts = factByFeature(db, hits.map((h) => h.featureId));
-  const allYears = new Map(hits.map((h) => [h.featureId, approvalYear(facts.get(h.featureId)?.approval_date, ctx.input.analysisDate)]));
-  const years = new Map(hits.filter((h) => isCounted(ctx, { hit: h })).map((h) => [h.featureId, allYears.get(h.featureId) ?? null])); // 동수·구성비는 중심점이 반경 안인 건물만, 그림은 교차 전부
+  const rows = buildingRows(ctx);
+  if (rows === null) return notProvided(ctx, "D04");
+  const allYears = new Map(rows.map((row) => [row.hit.featureId, approvalYear(row.approvalDate, ctx.input.analysisDate)]));
+  const years = new Map(rows.filter((row) => isCounted(ctx, row)).map((row) => [row.hit.featureId, allYears.get(row.hit.featureId) ?? null])); // 동수·구성비는 중심점이 반경 안인 건물만, 그림은 교차 전부
+  const ledgerBackfilled = rows.filter((row) => isCounted(ctx, row) && row.approvalDateSource === "core_ledger_pnu").length;
   const polygons: PolygonCandidate[] = [];
   let failedGeometry = 0;
-  for (const hit of hits) {
+  for (const row of rows) {
+    const hit = row.hit;
     const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, hit.geometry);
     if (clipped === null) {
       failedGeometry += 1;
@@ -94,12 +82,15 @@ export function d04(ctx: EngineContext): TileResult {
   ];
 
   const coverage = ctx.coverage("buildings", BUILDING_SOURCES);
-  const status: TileResult["status"] = failedGeometry > 0 || coverage.some((l) => l.kind === "partial" || l.kind === "incomplete") ? "partial" : "complete";
+  const retirementLimitations = buildingRetirementLimitations(ctx);
+  const status: TileResult["status"] = failedGeometry > 0 || retirementLimitations.length > 0 || coverage.some((l) => l.kind === "partial" || l.kind === "incomplete") ? "partial" : "complete";
   const sentence = total === 0
     ? "반경 안 건물이 확인되지 않아 준공 연대를 산출하지 못함 → 건물 자료와 현장 확인 필요"
     : `반경 안 건물 ${total.toLocaleString("en-US")}동 중 사용승인일 확인 ${pct(confirmed, total)}% → 확인된 건물의 준공 연대를 집계하고 미상은 별도로 표시 → 개별 건축물대장 확인 필요`;
 
   const limitations = [
+    ...retirementLimitations,
+    ...(ledgerBackfilled > 0 ? [{ kind: "estimated" as const, note: "도로명주소 보충 건물 " + ledgerBackfilled + "동은 PNU로 core 건축물대장 표제부·집계 자료의 사용승인일을 연결했습니다. 한 PNU에 여러 동이 있으면 가장 이른 승인일을 사용합니다." }] : []),
     ...coverage,
     ...(failedGeometry > 0 ? [{ kind: "partial" as const, note: `도형 오류로 지도에 표시하지 못한 ${failedGeometry}건은 발자국에서 빠졌습니다.` }] : []),
   ];
@@ -111,7 +102,7 @@ export function d04(ctx: EngineContext): TileResult {
     judgment: { ruleId: "D04-decades@1", basisMetricIds: ["confirmed_share_pct"], sentence, level: null, criteria: null },
     sources,
     layers: [...DECADE_LAYERS],
-    map: hits.map((hit) => candidate(hit, decadeLayer(allYears.get(hit.featureId) ?? null))),
+    map: rows.map((row) => candidate(row.hit, decadeLayer(allYears.get(row.hit.featureId) ?? null))),
     polygons,
     limitations,
   });
