@@ -91,6 +91,22 @@ export const SOURCE_NAMES: Record<string, string> = {
   zoning_agri_forest: "용도지역(농림지역)",
   zoning_nature: "용도지역(자연환경보전지역)",
   zoning_other: "용도지역(기타)",
+  legal_sigungu: "법정구역",
+  legal_emd: "법정구역",
+  legal_ri: "법정구역",
+  district_area: "국토교통부 VWorld 용도지구·구역",
+  district_greenbelt: "국토교통부 VWorld 용도지구·구역",
+  district_land_development: "국토교통부 VWorld 용도지구·구역",
+  district_urban_development: "국토교통부 VWorld 용도지구·구역",
+  district_industrial: "국토교통부 VWorld 용도지구·구역",
+  facility_transport: "국토교통부 VWorld 도시계획시설",
+  facility_space: "국토교통부 VWorld 도시계획시설",
+  facility_distribution_supply: "국토교통부 VWorld 도시계획시설",
+  facility_public_culture_sports: "국토교통부 VWorld 도시계획시설",
+  facility_disaster_prevention: "국토교통부 VWorld 도시계획시설",
+  facility_health_hygiene: "국토교통부 VWorld 도시계획시설",
+  facility_environmental_basic: "국토교통부 VWorld 도시계획시설",
+  facility_other_infrastructure: "국토교통부 VWorld 도시계획시설",
 };
 export const sourceName = (id: string) => SOURCE_NAMES[id] ?? id;
 

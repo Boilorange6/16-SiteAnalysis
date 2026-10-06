@@ -1822,7 +1822,7 @@
 }
 .mfTitle {
   flex: 0 1 auto;
-  min-width: 3.5em;
+  min-width: 5em;
   margin: 0;
   font-size: 14px;
   font-weight: 700;
@@ -1831,7 +1831,7 @@
   text-overflow: ellipsis;
 }
 .mfKey {
-  flex: none;
+  flex: 0 3 auto;
   min-width: 0;
   margin-left: 6px;
   display: inline-flex;
