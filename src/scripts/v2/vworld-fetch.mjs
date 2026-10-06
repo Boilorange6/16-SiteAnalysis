@@ -6,7 +6,7 @@
 import { existsSync } from "node:fs";
 
 const { VworldSession, fetchDatasets } = await import("../../lib/v2/ingest/vworld.ts");
-const FOLDERS = { 21: "legal_dong", 23: "cadastral", 18: "gis_building", 24: "zoning", 6: "land_price" };
+const FOLDERS = { 21: "legal_dong", 23: "cadastral", 18: "gis_building", 24: "zoning", 6: "land_price", 30056: "juso" };
 // dsId 24(일별용도지역지구정보)는 레이어별 전국 파일이라 --layers로 고른다: 용도지역 5종이 기본
 const ZONING_LAYERS = ["도시지역", "관리지역", "농림지역", "자연환경보전지역", "기타용도지역"].map((n) => `국토계획/${n}`);
 

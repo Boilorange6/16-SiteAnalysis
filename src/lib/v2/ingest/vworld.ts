@@ -35,7 +35,45 @@ export class VworldError extends Error {
   }
 }
 
+/** 목록 서비스 코드. 기본 NA(국가공간정보), 행정안전부 도로명주소 건물(30056)은 MK */
+const SVC_CDE: Record<string, string> = { "30056": "MK" };
+
+/** MK 목록: `<li v-for="n in 10">` 행, 구분 "데이터", 기준일 월("2026-09"), 지역은 제목 "(도로명주소)건물_충북.zip"에서. 다운로드 ds_id는 dsId 자체, fileNo는 chkDs 값 */
+function parseMkList(html: string, dsId: string): VworldFile[] {
+  return html
+    .split('<li v-for="n in 10">')
+    .slice(1)
+    .map((item) => {
+      const pick = (re: RegExp) => (item.match(re)?.[1] ?? "").replace(/\s+/g, " ").trim();
+      const size = item.match(/용량<em>\s*([\d.,]+)\s*<\/em>\s*([KMG]B)/);
+      const title = pick(/class="tit min">([^<]*)</);
+      return {
+        dsId,
+        dsFileId: dsId,
+        fileSq: pick(/name="chkDs" value="([^"]*)"/),
+        region: title.match(/_([^_]+)\.zip$/)?.[1] ?? "",
+        title,
+        format: pick(/class="format">\s*(?:<!--[\s\S]*?-->\s*)?<span class="([^"]*)"/),
+        approxBytes: size ? Math.round(Number(size[1].replace(/,/g, "")) * UNIT_BYTES[size[2]]) : null,
+        kind: pick(/구분<em>([^<]*)</),
+        baseDate: pick(/기준일<em[^>]*>([^<]*)</),
+      };
+    })
+    .filter((f) => f.fileSq !== "" && f.region !== "");
+}
+
+/** MK 데이터셋: 시도(region)마다 가장 최근 기준일 한 건 */
+export function latestPerRegion(files: VworldFile[]): VworldFile[] {
+  const best = new Map<string, VworldFile>();
+  for (const f of files) {
+    const cur = best.get(f.region);
+    if (!cur || f.baseDate > cur.baseDate) best.set(f.region, f);
+  }
+  return [...best.values()];
+}
+
 export function parseFileList(html: string, dsId: string): VworldFile[] {
+  if (SVC_CDE[dsId] === "MK") return parseMkList(html, dsId);
   return html
     .split('<li><!--v-for="n in 10"-->')
     .slice(1)
@@ -152,7 +190,7 @@ export class VworldSession {
     const all: VworldFile[] = [];
     for (let page = 1; page <= 200; page++) {
       await this.pause();
-      const q = new URLSearchParams({ svcCde: "NA", dsId, datPageIndex: String(page), datPageSize: "100", startDate: "2000-01-01", endDate: "2099-12-31" });
+      const q = new URLSearchParams({ svcCde: SVC_CDE[dsId] ?? "NA", dsId, datPageIndex: String(page), datPageSize: "100", startDate: "2000-01-01", endDate: "2099-12-31" });
       const res = await this.request(`/dtmk/dtmk_ntads_s002.do?${q}`);
       if (!res.ok) throw new VworldError("HTTP", `list ${dsId} page ${page}: HTTP ${res.status}`);
       const items = parseFileList(await res.text(), dsId);
@@ -217,7 +255,7 @@ export async function fetchDatasets(session: VworldSession, opts: FetchDatasetsO
     let files: VworldFile[];
     try {
       const layers = opts.layers;
-      files = (layers ? latestFullPerLayer(await session.listFiles(ds, { since: layers.since })).filter((f) => layers.titles.has(f.title)) : latestFull(await session.listFiles(ds))).filter((f) => !opts.regions || opts.regions.has(f.region));
+      files = (layers ? latestFullPerLayer(await session.listFiles(ds, { since: layers.since })).filter((f) => layers.titles.has(f.title)) : SVC_CDE[ds] === "MK" ? latestPerRegion(await session.listFiles(ds)) : latestFull(await session.listFiles(ds))).filter((f) => !opts.regions || opts.regions.has(f.region));
     } catch (e) {
       out.failures.push(`${ds}: ${msg(e)}`);
       continue;
