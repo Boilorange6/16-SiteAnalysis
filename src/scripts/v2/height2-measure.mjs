@@ -16,6 +16,7 @@ const opt = (name, fallback) => {
 };
 const raw = opt("raw", "C:\\SiteAnalysisData\\v2\\raw");
 const out = opt("out");
+const gisOnly = args.includes("--gis-only");
 if (!out) throw new Error("--out scratchpad\\height2\\measure.json is required");
 
 function* walk(dir) {
@@ -42,7 +43,11 @@ const positive = (value) => {
   return Number.isFinite(n) && n > 0;
 };
 const validPnu = (value) => /^\d{19}$/.test(String(value ?? "").trim());
-const validDate = (value) => value instanceof Date ? !Number.isNaN(value.getTime()) : /^\d{8}$/.test(String(value ?? "").trim()) && !/^0{8}$/.test(String(value ?? "").trim());
+const validDate = (value) => {
+  if (value instanceof Date) return !Number.isNaN(value.getTime());
+  const s = String(value ?? "").trim();
+  return (/^\d{8}$/.test(s) || /^\d{4}-\d{2}-\d{2}$/.test(s)) && !/^0{8}$/.test(s) && !/^0{4}-0{2}-0{2}$/.test(s);
+};
 const regionOf = (p, fallback = "(미상)") => {
   for (const value of [p.A23, p.A2, p.A3, p["시군구_코드"]]) {
     const s = String(value ?? "").trim();
@@ -91,9 +96,16 @@ function addTitle(tally, p) {
   if (!positive(p["높이(m)"]) && !positive(p["지상_층_수"])) tally.unknownHeight += 1;
   if (!pnu) tally.invalidPnu += 1;
 }
-function rates(tally) {
-  return Object.fromEntries(Object.entries(tally.fields).map(([field, value]) => [field, { filled: value, total: tally.rows, fillRate: tally.rows ? value / tally.rows : null }]));
+function rates(tally, expectedFields = null) {
+  const fields = expectedFields ?? Object.keys(tally.fields);
+  return Object.fromEntries(fields.map((field) => {
+    const value = tally.fields[field] ?? 0;
+    return [field, { filled: value, total: tally.rows, fillRate: tally.rows ? value / tally.rows : null }];
+  }));
 }
+
+const GIS_FIELDS = ["A2_nonblank", "A2_valid_pnu", "A3_valid_legal_code", "A21_ledger_pk", "A8_use_code", "A24_building_name", "A12_footprint_positive", "A14_gross_positive", "A16_height_positive", "A26_floors_positive", "A13_approval_valid"];
+const TITLE_FIELDS = ["관리_건축물대장_PK", "PNU_derivable", "동_명", "주건축물", "건축_면적_positive", "연면적_positive", "높이_positive", "지상_층_수_positive", "사용승인_일_valid"];
 
 const started = Date.now();
 const gis = { files: [], total: emptyTally(), bySido: {} };
@@ -109,9 +121,16 @@ for (const [sido, value] of allGis) {
     }
     gis.files.push({ path: file, rows: fileTally.rows, bytes: statSync(file).size });
   }
-  gis.bySido[sido] = { ...tally, rates: rates(tally) };
+  gis.bySido[sido] = { ...tally, rates: rates(tally, GIS_FIELDS) };
 }
-gis.total.rates = rates(gis.total);
+gis.total.rates = rates(gis.total, GIS_FIELDS);
+
+if (gisOnly) {
+  const result = { measuredAt: new Date().toISOString(), elapsedSeconds: (Date.now() - started) / 1000, raw, gis };
+  writeFileSync(out, JSON.stringify(result, null, 2), "utf8");
+  console.log(JSON.stringify({ out, elapsedSeconds: result.elapsedSeconds, gisRows: gis.total.rows }));
+  process.exit(0);
+}
 
 const titleFile = [...walk(join(raw, "ledger_title"))].filter((file) => /^title_\d{6}\.csv$/i.test(basename(file))).sort((a, b) => basename(b).localeCompare(basename(a)))[0];
 const title = { file: titleFile, bytes: statSync(titleFile).size, encoding: null, total: emptyTally(), bySido: {} };
@@ -123,8 +142,8 @@ for await (const record of titleInput.records) {
   const tally = title.bySido[region] ?? (title.bySido[region] = emptyTally());
   addTitle(tally, record.properties);
 }
-title.total.rates = rates(title.total);
-for (const tally of Object.values(title.bySido)) tally.rates = rates(tally);
+title.total.rates = rates(title.total, TITLE_FIELDS);
+for (const tally of Object.values(title.bySido)) tally.rates = rates(tally, TITLE_FIELDS);
 
 const result = { measuredAt: new Date().toISOString(), elapsedSeconds: (Date.now() - started) / 1000, raw, gis, title };
 writeFileSync(out, JSON.stringify(result, null, 2), "utf8");
