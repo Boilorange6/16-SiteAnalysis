@@ -49,6 +49,7 @@ function SummaryCard({ view, face, onFace }: { view: SummaryView; face: CardFace
         <span className={styles.chip}>{view.jimok}</span>
         <span className={styles.chip}>{view.zoning}</span>
         <span className={styles.chip}>{view.radius}</span>
+        {view.siteMode && <span className={styles.chip}>{view.siteMode}</span>}
       </div>
       <ul className={styles.facts}>
         {view.facts.map((f) => (

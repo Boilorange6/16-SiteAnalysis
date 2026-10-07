@@ -80,5 +80,6 @@ export function projectToJson(project: SavedProject | SavedProjectSummary, dataV
     dataVersionAvailable,
   };
   if ("board" in project && project.board !== undefined) body.board = project.board;
+  if (project.site) body.site = project.site;
   return body;
 }

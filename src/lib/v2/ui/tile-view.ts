@@ -676,7 +676,7 @@ function calloutOf(r: TileResult): CalloutModel | null {
 }
 
 // ── 대지 요약 ──
-export type SiteSummary = { address: string; areaM2: number | null; areaSource?: string; parcelCount?: number | null; landPriceM2?: number | null; landPriceUnit?: string | null; jimok?: string | null; zoning: string | null; radiusM: number; facts: string[]; siteParcel?: MapPolygon[] | null };
+export type SiteSummary = { address: string; areaM2: number | null; areaSource?: string; parcelCount?: number | null; landPriceM2?: number | null; landPriceUnit?: string | null; jimok?: string | null; zoning: string | null; radiusM: number; facts: string[]; siteParcel?: MapPolygon[] | null; siteKind?: "address" | "parcels" | "polygon" };
 export type SummaryView = {
   address: string;
   area: string;
@@ -685,6 +685,7 @@ export type SummaryView = {
   jimok: string;
   zoning: string;
   radius: string;
+  siteMode: string | null;
   facts: string[];
   asOfLine: string;
   incomplete: boolean;
@@ -698,6 +699,11 @@ export function toSummaryView(s: SiteSummary, results: TileResult[]): SummaryVie
   const weakStatuses = new Set<TileResult["status"]>(["failed", "not_provided", "no_data", "cancelled"]);
   const weak = results.filter((r) => weakStatuses.has(r.status));
   const siteParcel = s.siteParcel === undefined ? siteParcelFromResults(results) : s.siteParcel;
+  const siteMode = s.siteKind === "polygon"
+    ? "직접 그린 구역 · 면적 추정"
+    : s.siteKind === "parcels" && typeof s.parcelCount === "number"
+      ? `필지 ${s.parcelCount}개`
+      : null;
   return {
     address: s.address,
     area: s.areaM2 === null ? "면적 미확인" : `${formatMetricValue(s.areaM2, "㎡")}㎡`,
@@ -706,6 +712,7 @@ export function toSummaryView(s: SiteSummary, results: TileResult[]): SummaryVie
     jimok: s.jimok ? `지목: ${s.jimok}` : "지목 미확인",
     zoning: s.zoning ?? "용도지역 미확인",
     radius: `반경 ${s.radiusM >= 1000 ? `${s.radiusM / 1000}km` : `${s.radiusM}m`}`,
+    siteMode,
     facts: s.facts.slice(0, 3),
     asOfLine: dates.length ? `자료 기준일 ${dates[0]}${dates.length > 1 && dates[0] !== dates[dates.length - 1] ? ` ~ ${dates[dates.length - 1]}` : ""}` : "자료 기준일 미확인",
     incomplete: weak.length > 0,

@@ -12,6 +12,7 @@ import { readArchivedManifest, withDataDirLock } from "./data/manifest";
 import { v2AppDbPath } from "./paths";
 import { parseScene, type Scene } from "./scene";
 import { parseTileResult, type TileResult } from "./tile-result";
+import { parseSiteInput, type SiteInput } from "./site";
 
 type Db = BetterSqlite3.Database;
 
@@ -406,6 +407,7 @@ export type SavedProject = {
   engineVersion: string;
   createdAt: string;
   updatedAt: string;
+  site?: SiteInput;
 };
 
 export type SavedProjectSummary = Omit<SavedProject, "board">;
@@ -421,29 +423,41 @@ type ProjectRow = {
   analysis_date: string;
   manifest_hash: string;
   engine_version: string;
+  parameters_json: string;
   created_at: string;
   updated_at: string;
 };
 
 function projectFromRow(row: ProjectRow, board?: unknown): SavedProject {
+  let site: SiteInput | undefined;
+  let inputAddress: string | undefined;
+  try {
+    const parameters = JSON.parse(row.parameters_json) as { siteInput?: unknown; inputAddress?: unknown };
+    const parsed = parseSiteInput(parameters.siteInput);
+    if (parsed) site = parsed;
+    if (typeof parameters.inputAddress === "string" && parameters.inputAddress.trim()) inputAddress = parameters.inputAddress.trim();
+  } catch {
+    // Legacy runs can contain no JSON siteInput. They remain openable as address runs.
+  }
   return {
     projectId: row.project_id,
     name: row.name,
     analysisId: row.analysis_id,
     board,
     userId: row.user_id,
-    address: row.address,
+    address: inputAddress ?? row.address,
     radiusM: row.radius_m,
     analysisDate: row.analysis_date,
     dataVersion: row.manifest_hash,
     engineVersion: row.engine_version,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    ...(site ? { site } : {}),
   };
 }
 
 const projectSelect = `SELECT p.project_id, p.name, p.analysis_id, p.board_json, p.user_id,
-  r.address, r.radius_m, r.analysis_date, r.manifest_hash, r.engine_version,
+  r.address, r.radius_m, r.analysis_date, r.manifest_hash, r.engine_version, r.parameters_json,
   p.created_at, p.updated_at
   FROM saved_project p JOIN analysis_run r ON r.analysis_id = p.analysis_id`;
 

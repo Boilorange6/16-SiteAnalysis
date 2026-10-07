@@ -18,12 +18,16 @@ import { exportAvailability, formatElapsedMs, jobProgress } from "@/lib/v2/ui/bo
 import { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } from "@/lib/v2/ui/fixtures/godeok";
 import { toSummaryView, toTileView, type SiteSummary } from "@/lib/v2/ui/tile-view";
 import { siteParcelFromResults } from "@/lib/v2/ui/site-parcel";
+import { toLngLat } from "@/lib/v2/crs";
+import { jibunFromPnu, type SitePickerParcel } from "@/lib/v2/ui/site-picker";
 import type { TileResult } from "@/lib/v2/tile-result";
 import type { RoseSeason } from "@/lib/v2/tile-result";
 import type { Scene } from "@/lib/v2/scene";
 import { isRoadAddress, ROAD_ADDRESS_UNSUPPORTED_MESSAGE } from "@/lib/v2/site";
 import { RADIUS_CAPTION, RADIUS_OPTIONS } from "@/lib/v2/ui/radius-options";
 import ProjectMenu, { type V2Project } from "@/components/v2/project-menu";
+import SitePicker from "@/components/v2/site-picker";
+import type { SiteInput } from "@/lib/v2/site";
 
 const UNDO_LABEL ={ order: "옮김", size: "크기 바꿈", remove: "삭제됨", add: "더함" } as const;
 const DEMO_START_LABEL = "분석 데모";
@@ -851,6 +855,21 @@ function mergeResults(existing: TileResult[], incoming: TileResult[]): TileResul
   return [...existing.map((result) => replacements.get(result.tileCode) ?? result), ...incoming.filter((result) => !existingCodes.has(result.tileCode))];
 }
 
+function pickerParcelsFromScene(scene: Scene | null, site: SiteInput | null): SitePickerParcel[] {
+  if (!scene || !site || !("pnus" in site)) return [];
+  const selected = new Set(site.pnus);
+  return scene.parcels.filter((parcel) => selected.has(parcel.pnu) && parcel.rings.length > 0).map((parcel) => ({
+    pnu: parcel.pnu,
+    label: jibunFromPnu(parcel.pnu),
+    jimok: parcel.jimok,
+    areaM2: parcel.areaM2,
+    geometry: {
+      type: "Polygon" as const,
+      coordinates: parcel.rings.map((ring) => ring.map(([x, y]) => toLngLat([scene.origin.x + x, scene.origin.y + y]) as [number, number])),
+    },
+  }));
+}
+
 /** 주소 입력 → 분석 → 실제 결과 보드. 분석 전에는 예시 보드를 그대로 보여 준다. */
 export default function V2BoardPage() {
   // React hydration can start after a user has typed into the server-rendered input.
@@ -859,6 +878,9 @@ export default function V2BoardPage() {
   const [address, setAddress] = useState(() => hydratedAddress);
   const addressDirtyRef = useRef(hydratedAddress.length > 0);
   const [radiusM, setRadiusM] = useState(1000);
+  const [siteInput, setSiteInput] = useState<SiteInput | null>(null);
+  const [sitePickerOpen, setSitePickerOpen] = useState(false);
+  const [sitePickerValid, setSitePickerValid] = useState(false);
   const [busy, setBusy] = useState(false);
   const [canceling, setCanceling] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -922,7 +944,8 @@ export default function V2BoardPage() {
       setStaleProject(null);
     }
     try {
-      const loaded = await load(await apiFetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address: address.trim(), radiusM }) }), true, true, null, restoreProject?.projectId ?? null);
+      const requestedSite = restoreProject?.site ?? siteInput;
+      const loaded = await load(await apiFetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address: address.trim(), radiusM, ...(requestedSite ? { site: requestedSite } : {}) }) }), true, true, null, restoreProject?.projectId ?? null);
       if (!loaded || !restoreProject) return;
       const rebasedBoard = rebaseSnapshotAnalysisId(restoreProject.board, restoreProject.analysisId, loaded.analysisId);
       setProjectBoard(rebasedBoard);
@@ -987,8 +1010,11 @@ export default function V2BoardPage() {
       }
       if (projectResponse.status === 409 && projectBody.project) {
         setStaleProject(projectBody.project);
+        addressDirtyRef.current = true;
         setAddress(projectBody.project.address);
         setRadiusM(projectBody.project.radiusM);
+        setSiteInput(projectBody.project.site ?? null);
+        setSitePickerValid(!!projectBody.project.site);
         setProjectBoard(projectBody.project.board ?? null);
         setProblem({ text: "데이터가 갱신되어 다시 분석이 필요합니다.", login: false });
         return;
@@ -1000,8 +1026,11 @@ export default function V2BoardPage() {
       const project = projectBody.project;
       setCurrentProject(project);
       setProjectBoard(project.board ?? null);
+      addressDirtyRef.current = true;
       setAddress(project.address);
       setRadiusM(project.radiusM);
+      setSiteInput(project.site ?? null);
+      setSitePickerValid(!!project.site);
       setStaleProject(null);
       await load(await apiFetch(`${API}/${encodeURIComponent(project.analysisId)}`), true, true, null, project.projectId);
     } catch {
@@ -1014,6 +1043,7 @@ export default function V2BoardPage() {
   function handleProjectSaved(project: V2Project) {
     setCurrentProject((current) => project.board === undefined && current ? { ...current, ...project } : project);
     if (project.board !== undefined) setProjectBoard(project.board);
+    if (project.site !== undefined) setSiteInput(project.site);
     setWantedProjectId(project.projectId);
     setWantedId(null);
     setStaleProject(null);
@@ -1118,6 +1148,8 @@ export default function V2BoardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live?.analysisId, windRefresh]);
 
+  const pickerParcels = useMemo(() => pickerParcelsFromScene(live?.scene ?? null, siteInput), [live?.scene, siteInput]);
+
   useEffect(() => {
     if (live && !addressDirtyRef.current) {
       setAddress(live.summary.address);
@@ -1137,6 +1169,8 @@ export default function V2BoardPage() {
           onChange={(e) => {
             addressDirtyRef.current = true;
             setAddress(e.target.value);
+            setSiteInput(null);
+            setSitePickerValid(false);
             if (problem && !problem.login) setProblem(null);
           }}
           placeholder="지번 주소 (예: 서울 강동구 고덕동 123)"
@@ -1152,11 +1186,28 @@ export default function V2BoardPage() {
             </option>
           ))}
         </select>
-        <button type="submit" className={`${styles.pill} ${styles.pillDark}`} disabled={busy || activeJobs} aria-busy={busy || activeJobs}>
-          {busy || activeJobs ? "분석 중…" : "분석"}
+        <button type="button" className={styles.pill} onClick={() => setSitePickerOpen((open) => !open)} disabled={busy || activeJobs} aria-expanded={sitePickerOpen} aria-controls="v2-site-picker">
+          {sitePickerOpen ? "대지 지정 닫기" : "대지 지정"}
+        </button>
+        <button type="submit" className={`${styles.pill} ${styles.pillDark}`} disabled={busy || activeJobs || (sitePickerOpen && !sitePickerValid)} aria-busy={busy || activeJobs}>
+          {busy || activeJobs ? "분석 중…" : sitePickerOpen ? "이 대지로 분석" : "분석"}
         </button>
       </form>
       <p id="v2-radius-help" className={styles.radiusCaption}>반경 해석: {RADIUS_CAPTION}</p>
+      {sitePickerOpen && (
+        <div id="v2-site-picker">
+          <SitePicker
+            address={address}
+            radiusM={radiusM}
+            initialSite={siteInput}
+            initialParcels={pickerParcels}
+            disabled={busy || activeJobs}
+            serverError={problem && !problem.login ? problem.text : null}
+            onSiteChange={(site) => setSiteInput(site)}
+            onValidityChange={setSitePickerValid}
+          />
+        </div>
+      )}
       {problem && (
         <p id="v2-address-error" className={styles.problem} role="alert">
           {problem.text}

@@ -40,7 +40,7 @@ function siteParcelAreaM2(siteParcel: SiteSummary["siteParcel"]): number | null 
   return area > 0 && Number.isFinite(area) ? Math.round(area) : null;
 }
 
-export function buildSummary(site: { address: string; jimok: string | null }, radiusM: number, results: TileResult[]): SiteSummary {
+export function buildSummary(site: { address: string; jimok: string | null; kind?: SiteSummary["siteKind"] }, radiusM: number, results: TileResult[]): SiteSummary {
   const facts: string[] = [];
   const siteParcel = siteParcelFromResults(results);
   const areaMetric = results.find((result) => result.tileCode === "A12")?.metrics.find((candidate) => candidate.id === "parcel_area_m2" && candidate.value !== null) ?? null;
@@ -61,5 +61,5 @@ export function buildSummary(site: { address: string; jimok: string | null }, ra
   if (basic !== null) facts.push(`기초 생활시설 4군 중 ${basic}군 확인`);
   // 대지 용도지역: A12가 중심점 강조점의 라벨로 남긴 값. 없으면 null(“용도지역 미확인”)
   const zoning = results.find((r) => r.tileCode === "A12")?.presentation.features?.find((f) => f.layer === "zoning_site")?.label ?? null;
-  return { address: site.address, areaM2, areaSource, parcelCount: parcelCountMetric ?? siteParcel?.length ?? null, landPriceM2: landPrice?.value ?? null, landPriceUnit: landPrice?.unit, jimok: site.jimok, zoning, radiusM, facts: facts.slice(0, 3), siteParcel };
+  return { address: site.address, areaM2, areaSource, parcelCount: parcelCountMetric ?? siteParcel?.length ?? null, landPriceM2: landPrice?.value ?? null, landPriceUnit: landPrice?.unit, jimok: site.jimok, zoning, radiusM, facts: facts.slice(0, 3), siteParcel, siteKind: site.kind };
 }
