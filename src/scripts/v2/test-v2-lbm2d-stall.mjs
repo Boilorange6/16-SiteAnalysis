@@ -17,12 +17,12 @@ assert.equal(ok.steps, 200);
 for (const stalled of [0, 1]) {
   const started = Date.now();
   assert.throws(
-    () => computeWind2D({ nx, ny, solid, steps: 200, parallelism: 2, workerStallMs: 1000, workerStallForTest: stalled }),
-    /stalled|worker/i,
+    () => computeWind2D({ nx, ny, solid, steps: 200, parallelism: 2, workerStallMs: 250, workerStallForTest: stalled }),
+    /startup timed out|worker/i,
     `worker ${stalled} stall must raise an error`,
   );
   const elapsed = Date.now() - started;
-  assert.ok(elapsed < 6000, `stall error took ${elapsed} ms (bounded wait expected < 6 s)`);
+  assert.ok(elapsed < 3000, `stall error took ${elapsed} ms (bounded startup wait expected < 3 s)`);
   console.log(`worker ${stalled} never starts -> error after ${elapsed} ms`);
 }
 console.log("lbm2d stall test passed");

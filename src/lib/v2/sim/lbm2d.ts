@@ -43,7 +43,7 @@ export interface Wind2DInput {
   parallelism?: number;
   /** 지정하면 평균 시작 이후 residual이 이 값 이하일 때 조기 종료한다. */
   convergenceResidual?: number;
-  /** 병렬 worker의 진행(스텝 배리어/완료)이 이 시간(ms) 동안 없으면 오류로 중단한다. 기본 30 s. */
+  /** 테스트 전용: worker 기동·진행 timeout을 모두 이 값(ms)으로 줄인다. 운영 기본값은 각각 30 s/120 s. */
   workerStallMs?: number;
   /** 테스트 전용: 이 worker는 시작하지 않은 것처럼 영원히 멈춘다. */
   workerStallForTest?: number;
@@ -107,6 +107,9 @@ function validateInput(input: Wind2DInput): { n: number; steps: number; u0: numb
   if (input.parallelism !== undefined) assertInteger("parallelism", input.parallelism, 1);
   if (input.convergenceResidual !== undefined && (!(input.convergenceResidual >= 0) || !Number.isFinite(input.convergenceResidual))) {
     throw new RangeError("convergenceResidual must be finite and non-negative");
+  }
+  if (input.workerStallMs !== undefined && (!(input.workerStallMs > 0) || !Number.isFinite(input.workerStallMs))) {
+    throw new RangeError("workerStallMs must be finite and positive");
   }
   return { n: input.nx * input.ny, steps, u0, nu, cs, averageFrom };
 }
@@ -178,8 +181,13 @@ function prepareGrid(nx: number, ny: number, solid: Uint8Array): PreparedGrid {
   return { fluid, fluidCount, regular, edge, east, north, west, south, northEast, northWest, southWest, southEast };
 }
 
+const CONTROL_GENERATION = 1;
+const CONTROL_DONE = 2;
+const CONTROL_ERROR = 3;
+const CONTROL_STARTED = 4;
 const WORKER_POLL_MS = 250;
-const WORKER_STALL_MS = 30_000;
+const WORKER_STARTUP_TIMEOUT_MS = 30_000;
+const WORKER_PROGRESS_TIMEOUT_MS = 120_000;
 
 function nodeBuiltin(name: string): unknown {
   if (typeof process === "undefined") return undefined;
@@ -243,8 +251,9 @@ function computeWind2DParallel(
   const prevUy = new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * n);
   const deltaParts = new SharedArrayBuffer(Float64Array.BYTES_PER_ELEMENT * workerCount);
   const speedParts = new SharedArrayBuffer(Float64Array.BYTES_PER_ELEMENT * workerCount);
-  // [push arrivals, barrier generation, finished workers, error flag]
-  const control = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 4);
+  // [push arrivals, barrier generation, finished workers, error flag, started workers]
+  const control = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 5);
+  const controlView = new Int32Array(control);
 
   const workerDataBase = {
     nx: input.nx,
@@ -282,58 +291,97 @@ function computeWind2DParallel(
   };
 
   const workers: Worker[] = [];
+  let workerFailure: string | null = null;
+  const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
+  const propagateWorkerFailure = (workerId: number, message: string) => {
+    workerFailure ??= `parallel D2Q9 worker ${workerId} ${message}`;
+    Atomics.store(controlView, CONTROL_ERROR, 1);
+    Atomics.notify(controlView, CONTROL_GENERATION, workerCount);
+    Atomics.notify(controlView, CONTROL_DONE, workerCount);
+    Atomics.notify(controlView, CONTROL_STARTED, workerCount);
+  };
   for (let workerId = 0; workerId < workerCount; workerId++) {
     const rowStart = Math.floor(workerId * input.ny / workerCount);
     const rowEnd = Math.floor((workerId + 1) * input.ny / workerCount);
     // Worker must be the static `node:worker_threads` import with an inline `new URL(...)`: webpack only turns that
     // exact shape into a worker chunk. With Worker fetched via process.getBuiltinModule it treated the URL as a static
     // asset ("/site/_next/static/media/...", no file: scheme) and Node threw "filename must be string or URL".
-    const worker = new Worker(new URL("./lbm2d-worker.mjs", import.meta.url), {
-      workerData: {
-        ...workerDataBase,
-        workerId,
-        stallForTest: input.workerStallForTest === workerId,
-        rowStart,
-        rowEnd,
-        fluidStart: firstFluidAt(grid.fluid, grid.fluidCount, rowStart * input.nx),
-        fluidEnd: firstFluidAt(grid.fluid, grid.fluidCount, rowEnd * input.nx),
-      },
-      // The caller may itself be launched with --input-type=module or tsx;
-      // the worker is plain .mjs and must not inherit those eval-only flags.
-      execArgv: [],
+    let worker: Worker;
+    try {
+      worker = new Worker(new URL("./lbm2d-worker.mjs", import.meta.url), {
+        workerData: {
+          ...workerDataBase,
+          workerId,
+          stallForTest: input.workerStallForTest === workerId,
+          rowStart,
+          rowEnd,
+          fluidStart: firstFluidAt(grid.fluid, grid.fluidCount, rowStart * input.nx),
+          fluidEnd: firstFluidAt(grid.fluid, grid.fluidCount, rowEnd * input.nx),
+        },
+        // The caller may itself be launched with --input-type=module or tsx;
+        // the worker is plain .mjs and must not inherit those eval-only flags.
+        execArgv: [],
+      });
+    } catch (error) {
+      propagateWorkerFailure(workerId, `could not start: ${errorText(error)}`);
+      break;
+    }
+    worker.once("error", (error) => propagateWorkerFailure(workerId, `error: ${errorText(error)}`));
+    worker.once("exit", (code) => {
+      if (Atomics.load(controlView, CONTROL_DONE) < workerCount) {
+        propagateWorkerFailure(workerId, `exited before completion (code ${code})`);
+      }
     });
     worker.unref();
     workers.push(worker);
   }
 
-  const controlView = new Int32Array(control);
-  // 이벤트 루프가 막혀 있어 worker의 error/exit 이벤트를 받을 수 없다. 대신 배리어 세대(1)·완료 수(2)의
-  // 진행을 짧은 간격으로 확인하고, stallMs 동안 변화가 없으면 시작 실패/종료로 보고 중단한다.
-  const stallMs = input.workerStallMs ?? WORKER_STALL_MS;
-  let lastGeneration = Atomics.load(controlView, 1);
-  let lastDone = Atomics.load(controlView, 2);
-  let lastProgressAt = Date.now();
+  // 동기 API는 main 이벤트 루프를 Atomics.wait로 막으므로 이벤트만 믿으면 안 된다.
+  // shared error flag를 함께 확인하고, 이벤트가 전달되는 비동기 경로에서는 원인 문자열도 보존한다.
+  const startupTimeoutMs = input.workerStallMs ?? WORKER_STARTUP_TIMEOUT_MS;
+  const progressTimeoutMs = input.workerStallMs ?? WORKER_PROGRESS_TIMEOUT_MS;
   let failure: string | null = null;
-  while (Atomics.load(controlView, 2) < workerCount) {
-    if (Atomics.load(controlView, 3) !== 0) { failure = "parallel D2Q9 worker failed"; break; }
-    Atomics.wait(controlView, 2, Atomics.load(controlView, 2), WORKER_POLL_MS);
-    const generation = Atomics.load(controlView, 1);
-    const done = Atomics.load(controlView, 2);
+  const startupAt = Date.now();
+  while (Atomics.load(controlView, CONTROL_STARTED) < workerCount) {
+    if (workerFailure !== null || Atomics.load(controlView, CONTROL_ERROR) !== 0) {
+      failure = workerFailure ?? "parallel D2Q9 worker failed during startup";
+      break;
+    }
+    const started = Atomics.load(controlView, CONTROL_STARTED);
+    Atomics.wait(controlView, CONTROL_STARTED, started, WORKER_POLL_MS);
+    if (Date.now() - startupAt >= startupTimeoutMs) {
+      failure = `parallel D2Q9 worker startup timed out after ${startupTimeoutMs} ms (${Atomics.load(controlView, CONTROL_STARTED)}/${workerCount} started)`;
+      break;
+    }
+  }
+  let lastGeneration = Atomics.load(controlView, CONTROL_GENERATION);
+  let lastDone = Atomics.load(controlView, CONTROL_DONE);
+  let lastProgressAt = Date.now();
+  while (failure === null && Atomics.load(controlView, CONTROL_DONE) < workerCount) {
+    if (workerFailure !== null || Atomics.load(controlView, CONTROL_ERROR) !== 0) {
+      failure = workerFailure ?? "parallel D2Q9 worker failed";
+      break;
+    }
+    Atomics.wait(controlView, CONTROL_DONE, Atomics.load(controlView, CONTROL_DONE), WORKER_POLL_MS);
+    const generation = Atomics.load(controlView, CONTROL_GENERATION);
+    const done = Atomics.load(controlView, CONTROL_DONE);
     if (generation !== lastGeneration || done !== lastDone) {
       lastGeneration = generation;
       lastDone = done;
       lastProgressAt = Date.now();
-    } else if (Date.now() - lastProgressAt > stallMs) {
-      failure = `parallel D2Q9 worker stalled: no progress for ${stallMs} ms (${done}/${workerCount} finished, step barrier ${generation}); worker did not start or died`;
+    } else if (Date.now() - lastProgressAt >= progressTimeoutMs) {
+      failure = `parallel D2Q9 worker stalled: no progress for ${progressTimeoutMs} ms (${done}/${workerCount} finished, step barrier ${generation})`;
       break;
     }
   }
-  if (failure !== null || Atomics.load(controlView, 3) !== 0) {
-    // 배리어에서 기다리는 worker를 깨우고 스레드를 정리한다. terminate()는 동기적으로 스레드 종료를 요청한다.
-    Atomics.store(controlView, 3, 1);
-    Atomics.notify(controlView, 1, workerCount);
+  if (failure !== null || Atomics.load(controlView, CONTROL_ERROR) !== 0 || workerFailure !== null) {
+    // 배리어에서 기다리는 worker를 깨우고 스레드를 정리한다. terminate()는 비동기 종료 요청이다.
+    Atomics.store(controlView, CONTROL_ERROR, 1);
+    Atomics.notify(controlView, CONTROL_GENERATION, workerCount);
+    Atomics.notify(controlView, CONTROL_DONE, workerCount);
+    Atomics.notify(controlView, CONTROL_STARTED, workerCount);
     for (const worker of workers) void worker.terminate().catch(() => undefined);
-    throw new Error(failure ?? "parallel D2Q9 worker failed");
+    throw new Error(failure ?? workerFailure ?? "parallel D2Q9 worker failed");
   }
 
   const delta = new Float64Array(deltaParts);

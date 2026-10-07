@@ -1,6 +1,11 @@
 import { workerData } from "node:worker_threads";
 
 const CS2 = 1 / 3;
+const CONTROL_ARRIVALS = 0;
+const CONTROL_GENERATION = 1;
+const CONTROL_DONE = 2;
+const CONTROL_ERROR = 3;
+const CONTROL_STARTED = 4;
 const EDGE_LEFT = 1;
 const EDGE_RIGHT = 2;
 const EDGE_BOTTOM = 4;
@@ -50,15 +55,15 @@ const W0 = 4 / 9, W1 = 1 / 9, W2 = 1 / 9, W3 = 1 / 9, W4 = 1 / 9;
 const W5 = 1 / 36, W6 = 1 / 36, W7 = 1 / 36, W8 = 1 / 36;
 
 function barrier() {
-  const generation = Atomics.load(control, 1);
-  if (Atomics.add(control, 0, 1) === workerCount - 1) {
-    Atomics.store(control, 0, 0);
-    Atomics.store(control, 1, generation + 1);
-    Atomics.notify(control, 1, workerCount - 1);
+  const generation = Atomics.load(control, CONTROL_GENERATION);
+  if (Atomics.add(control, CONTROL_ARRIVALS, 1) === workerCount - 1) {
+    Atomics.store(control, CONTROL_ARRIVALS, 0);
+    Atomics.store(control, CONTROL_GENERATION, generation + 1);
+    Atomics.notify(control, CONTROL_GENERATION, workerCount - 1);
     return;
   }
-  while (Atomics.load(control, 1) === generation && Atomics.load(control, 3) === 0) Atomics.wait(control, 1, generation);
-  if (Atomics.load(control, 3) !== 0) throw new Error("parallel D2Q9 barrier failed");
+  while (Atomics.load(control, CONTROL_GENERATION) === generation && Atomics.load(control, CONTROL_ERROR) === 0) Atomics.wait(control, CONTROL_GENERATION, generation);
+  if (Atomics.load(control, CONTROL_ERROR) !== 0) throw new Error("parallel D2Q9 barrier failed");
 }
 
 function applyXBoundaries(currentNext) {
@@ -75,10 +80,12 @@ function applyXBoundaries(currentNext) {
   }
 }
 
-// 테스트 전용: 시작하지 않는 worker를 흉내 낸다(호출자의 bounded wait가 시간 안에 오류를 내야 한다).
-if (stallForTest) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
-
 try {
+  // 테스트 전용: 시작하지 않는 worker를 흉내 낸다(호출자의 startup timeout이 오류를 내야 한다).
+  if (stallForTest) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
+  Atomics.add(control, CONTROL_STARTED, 1);
+  Atomics.notify(control, CONTROL_STARTED, workerCount);
+
   for (let step = 1; step <= steps; step++) {
     const current = step % 2 === 1 ? statesA : statesB;
     const currentNext = step % 2 === 1 ? statesB : statesA;
@@ -203,11 +210,12 @@ try {
     if (workerId === 0) applyXBoundaries(currentNext);
     barrier();
   }
-  Atomics.add(control, 2, 1);
-  Atomics.notify(control, 2, 1);
+  Atomics.add(control, CONTROL_DONE, 1);
+  Atomics.notify(control, CONTROL_DONE, 1);
 } catch {
-  Atomics.store(control, 3, 1);
-  Atomics.notify(control, 1, workerCount);
-  Atomics.add(control, 2, 1);
-  Atomics.notify(control, 2, 1);
+  Atomics.store(control, CONTROL_ERROR, 1);
+  Atomics.notify(control, CONTROL_GENERATION, workerCount);
+  Atomics.notify(control, CONTROL_STARTED, workerCount);
+  Atomics.add(control, CONTROL_DONE, 1);
+  Atomics.notify(control, CONTROL_DONE, 1);
 }
