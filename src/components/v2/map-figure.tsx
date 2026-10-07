@@ -65,6 +65,8 @@ export type MapFigureProps = {
   highlightPinnedLabel?: string | null;
   /** 요소 호버 라벨과 고정 라벨에 쓰는 현재 요소 키. */
   hoverKey?: string | null;
+  /** 상세의 고정 라벨 목록에서 가리킨 요소를 지도에서 시각적으로 강조한다. */
+  emphasisKey?: string | null;
   /** 지도에 남길 고정 라벨 키. */
   pinnedKeys?: readonly string[];
   /** 요소 포인터 호버. 터치 포인터에서는 호출하지 않는다. */
@@ -107,6 +109,9 @@ export type MapLabelEntry = {
   fid?: string;
 };
 
+/** 대표 지점·폴리곤·선이 같은 fid를 공유해도 고정 라벨 대상을 분리한다. */
+export const mapElementKey = (kind: MapLabelEntry["kind"], layer: string, fid: string | undefined, index: number): string => `${kind}|${mapFeatureKey(layer, fid, index)}`;
+
 const trimText = (value: string | null | undefined): string | null => {
   const text = value?.trim();
   return text ? text : null;
@@ -116,6 +121,20 @@ function formatLabelDistance(meters: number): string {
   if (meters < 1000) return `${Math.round(meters).toLocaleString("ko-KR")}m`;
   const km = meters / 1000;
   return `${Number.isInteger(km) ? km.toFixed(0) : km.toFixed(1)} km`;
+}
+
+const GEOMETRY_ONLY_LABELS = new Set(["점", "면", "선"]);
+
+function userText(value: string | null | undefined): string | null {
+  const text = trimText(value);
+  return text && !GEOMETRY_ONLY_LABELS.has(text) ? text : null;
+}
+
+function unnamedLabel(layer: string): string {
+  const style = layerStyle(layer);
+  const subject = trimText(style.subject);
+  if (!subject || style.label.includes(subject)) return style.label;
+  return `${style.label} ${subject}`;
 }
 
 function featureLabelValue(feature: MapFeature): string | null {
@@ -129,21 +148,27 @@ function featureLabelValue(feature: MapFeature): string | null {
   if (feature.floorsMax !== null && feature.floorsMax !== undefined) return `최고 ${Math.round(feature.floorsMax)}층`;
   if (feature.buildingCount !== null && feature.buildingCount !== undefined) return `${Math.round(feature.buildingCount)}동`;
   if (feature.parking !== null && feature.parking !== undefined) return `주차 ${Math.round(feature.parking).toLocaleString("ko-KR")}대`;
-  return trimText(feature.label) ?? trimText(feature.type);
+  return userText(feature.label);
 }
 
-function labelText(layer: string, kind: MapLabelEntry["kind"], item: MapFeature | MapPolygon | MapLine): string {
+/** 지도 요소가 사용자에게 전달할 라벨. 도형 종류(점·면·선)는 표시하지 않는다. */
+export function mapLabelText(layer: string, kind: MapLabelEntry["kind"], item: MapFeature | MapPolygon | MapLine): string {
   const styleLabel = layerStyle(layer).label;
   if (kind === "feature") {
     const feature = item as MapFeature;
     const name = trimText(feature.name);
     const value = featureLabelValue(feature);
     if (name) return value && value !== name ? `${name} · ${value}` : name;
-    return value ? `${styleLabel} · ${value}` : `${styleLabel} · 점`;
+    return value ? `${unnamedLabel(layer)} · ${value}` : unnamedLabel(layer);
   }
-  const explicit = trimText(item.label);
-  return explicit ?? `${styleLabel} · ${kind === "polygon" ? "면" : "선"}`;
+  const explicit = userText(item.label);
+  if (kind === "polygon") {
+    return explicit && explicit !== styleLabel ? `${explicit} · ${styleLabel}` : unnamedLabel(layer);
+  }
+  return explicit ?? unnamedLabel(layer);
 }
+
+const labelText = mapLabelText;
 
 /** 보드의 고정 라벨 목록과 SVG 라벨 배치가 같은 문구를 쓰도록 공유한다. */
 export function mapLabelEntries(model: MapModel): MapLabelEntry[] {
@@ -155,14 +180,14 @@ export function mapLabelEntries(model: MapModel): MapLabelEntry[] {
     ...(feature.fid ? { fid: feature.fid } : {}),
   }));
   const polygons = (model.polygons ?? []).map((polygon, index) => ({
-    key: mapFeatureKey(polygon.layer, polygon.fid, index),
+    key: mapElementKey("polygon", polygon.layer, polygon.fid, index),
     text: labelText(polygon.layer, "polygon", polygon),
     layer: polygon.layer,
     kind: "polygon" as const,
     ...(polygon.fid ? { fid: polygon.fid } : {}),
   }));
   const lines = (model.lines ?? []).map((line, index) => ({
-    key: mapFeatureKey(line.layer, line.fid, index),
+    key: mapElementKey("line", line.layer, line.fid, index),
     text: labelText(line.layer, "line", line),
     layer: line.layer,
     kind: "line" as const,
@@ -304,7 +329,7 @@ function isBuildingLayer(layer: string): boolean {
   return layer === "building" || layer === "svf_building" || layer.startsWith("bldg_") || layer.includes("building");
 }
 
-export default function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, fixed, label, legend, legendY, north: northOpt, scale = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, selectedFids = [], highlightLabel = null, highlightPinnedLabel = null, hoverKey = null, pinnedKeys = [], onFeatureClick, onFeatureHover, onFeaturePin, onLegendHover, onLegendPin, path = [], onMapClick }: MapFigureProps) {
+export default function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, fixed, label, legend, legendY, north: northOpt, scale = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, selectedFids = [], highlightLabel = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = [], onFeatureClick, onFeatureHover, onFeaturePin, onLegendHover, onLegendPin, path = [], onMapClick }: MapFigureProps) {
   const rasterModel = model as RasterPresentationModel;
   const activeLayer = model.basemap ?? layer;
   const sat = activeLayer === "Satellite";
@@ -336,8 +361,8 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   const legendMaxW = Math.max(0, W - 2 * pad - 56 * u);
   const cuts = [
     ...(model.total > model.features.length ? [`표시 ${model.features.length.toLocaleString("en-US")} / 전체 ${model.total.toLocaleString("en-US")}`] : []),
-    ...(model.polygonsTotal !== undefined && model.polygonsTotal > (model.polygons?.length ?? 0) ? [`면 표시 ${(model.polygons?.length ?? 0).toLocaleString("en-US")} / 전체 ${model.polygonsTotal.toLocaleString("en-US")}`] : []),
-    ...(model.linesTotal !== undefined && model.linesTotal > (model.lines?.length ?? 0) ? [`선 표시 ${(model.lines?.length ?? 0).toLocaleString("en-US")} / 전체 ${model.linesTotal.toLocaleString("en-US")}`] : []),
+    ...(model.polygonsTotal !== undefined && model.polygonsTotal > (model.polygons?.length ?? 0) ? [`영역 표시 ${(model.polygons?.length ?? 0).toLocaleString("en-US")} / 전체 ${model.polygonsTotal.toLocaleString("en-US")}`] : []),
+    ...(model.linesTotal !== undefined && model.linesTotal > (model.lines?.length ?? 0) ? [`경로 표시 ${(model.lines?.length ?? 0).toLocaleString("en-US")} / 전체 ${model.linesTotal.toLocaleString("en-US")}`] : []),
   ];
   const notes = [...model.notes, ...cuts];
   const legendRows: Array<Array<{ layer: string; x: number; w: number; site?: boolean }>> = [[]];
@@ -484,7 +509,11 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   const selected = new Set(selectedFids);
   const pinned = new Set(pinnedKeys);
   const highlightActive = highlightLabel !== null;
+  const emphasisActive = emphasisKey !== null;
   const isLayerHighlighted = (layerName: string) => !highlightActive || layerStyle(layerName).label === highlightLabel;
+  const isElementEmphasized = (key: string) => !emphasisActive || key === emphasisKey;
+  const isElementDimmed = (layerName: string, key: string) => (highlightActive && !isLayerHighlighted(layerName)) || (emphasisActive && !isElementEmphasized(key));
+  const isElementStrong = (layerName: string, key: string) => (highlightActive && isLayerHighlighted(layerName)) || (emphasisActive && isElementEmphasized(key));
   const isSelected = (fid: string | undefined) => !!fid && selected.has(fid);
   const feats = model.features.map((f, index) => ({ f, p: proj(f.lng, f.lat), selected: isSelected(f.fid), index }));
   const linePaths = (model.lines ?? []).map((l, index) => ({ l, points: l.points.map(([lng, lat]) => proj(lng, lat)), index }));
@@ -651,9 +680,9 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
     ...polygons
       .slice()
       .sort((a, b) => b.area - a.area || a.index - b.index)
-      .filter((d, index) => index < 5 || pinned.has(mapFeatureKey(d.polygon.layer, d.polygon.fid, d.index)))
+      .filter((d, index) => index < 5 || pinned.has(mapElementKey("polygon", d.polygon.layer, d.polygon.fid, d.index)))
       .map((d) => ({
-      key: mapFeatureKey(d.polygon.layer, d.polygon.fid, d.index),
+      key: mapElementKey("polygon", d.polygon.layer, d.polygon.fid, d.index),
       text: labelText(d.polygon.layer, "polygon", d.polygon),
       layer: d.polygon.layer,
       kind: "polygon" as const,
@@ -663,13 +692,13 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
       small: false,
       explicit: !!trimText(d.polygon.label),
       highlighted: isLayerHighlighted(d.polygon.layer) && highlightActive,
-      pick: { fid: d.polygon.fid, ...(() => { const [lng, lat] = centerOf(d.polygon.rings[0] ?? []); return { lng, lat }; })(), kind: "polygon" as const, key: mapFeatureKey(d.polygon.layer, d.polygon.fid, d.index) },
+      pick: { fid: d.polygon.fid, ...(() => { const [lng, lat] = centerOf(d.polygon.rings[0] ?? []); return { lng, lat }; })(), kind: "polygon" as const, key: mapElementKey("polygon", d.polygon.layer, d.polygon.fid, d.index) },
     })),
     ...linePaths.map((d) => {
       const center = d.points[Math.floor(d.points.length / 2)] ?? [cx, cy];
       const [lng, lat] = centerOf(d.l.points);
       return {
-        key: mapFeatureKey(d.l.layer, d.l.fid, d.index),
+        key: mapElementKey("line", d.l.layer, d.l.fid, d.index),
         text: labelText(d.l.layer, "line", d.l),
         layer: d.l.layer,
         kind: "line" as const,
@@ -679,7 +708,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
         small: true,
         explicit: !!trimText(d.l.label),
         highlighted: isLayerHighlighted(d.l.layer) && highlightActive,
-        pick: { fid: d.l.fid, lng, lat, kind: "line" as const, key: mapFeatureKey(d.l.layer, d.l.fid, d.index) },
+        pick: { fid: d.l.fid, lng, lat, kind: "line" as const, key: mapElementKey("line", d.l.layer, d.l.fid, d.index) },
       };
     }),
   ];
@@ -897,17 +926,17 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
             const polygonFid = polygon.polygon.fid;
             const polygonCenter = centerOf(polygon.polygon.rings[0] ?? []);
             const polygonSelected = isSelected(polygonFid);
-            const layerHighlighted = isLayerHighlighted(polygon.polygon.layer);
-            const polygonKey = mapFeatureKey(polygon.polygon.layer, polygonFid, polygon.index);
-            return <path key={`poly${polygon.index}`} data-poly="true" d={polygonPath(polygon.rings)} fillRule="evenodd" fill={neutralBuilding ? "#F8FAFC" : estimated ? `url(#${hatchId(polygon.index)})` : st.fill ?? st.color} fillOpacity={neutralBuilding ? 0.94 : estimated ? 1 : st.fillOpacity ?? polygonOpacity} opacity={highlightActive && !layerHighlighted ? 0.2 : undefined} stroke={highlightActive && layerHighlighted ? INK : polygonSelected ? INK : neutralBuilding ? "#475569" : st.stroke ?? st.color} strokeWidth={(highlightActive && layerHighlighted ? 1.6 : polygonSelected ? 3 : neutralBuilding ? 0.8 : st.strokeWidth ?? 1) * u} {...pickProps({ fid: polygonFid, lng: polygonCenter[0], lat: polygonCenter[1], kind: "polygon" }, polygonKey, labelText(polygon.polygon.layer, "polygon", polygon.polygon))} />;
+            const polygonKey = mapElementKey("polygon", polygon.polygon.layer, polygonFid, polygon.index);
+            const strong = isElementStrong(polygon.polygon.layer, polygonKey);
+            return <path key={`poly${polygon.index}`} data-poly="true" d={polygonPath(polygon.rings)} fillRule="evenodd" fill={neutralBuilding ? "#F8FAFC" : estimated ? `url(#${hatchId(polygon.index)})` : st.fill ?? st.color} fillOpacity={neutralBuilding ? 0.94 : estimated ? 1 : st.fillOpacity ?? polygonOpacity} opacity={isElementDimmed(polygon.polygon.layer, polygonKey) ? 0.2 : undefined} stroke={strong || polygonSelected ? INK : neutralBuilding ? "#475569" : st.stroke ?? st.color} strokeWidth={(strong ? 1.6 : polygonSelected ? 3 : neutralBuilding ? 0.8 : st.strokeWidth ?? 1) * u} {...pickProps({ fid: polygonFid, lng: polygonCenter[0], lat: polygonCenter[1], kind: "polygon" }, polygonKey, labelText(polygon.polygon.layer, "polygon", polygon.polygon))} />;
           })}
           {linePaths.map((d) => {
             const st = layerStyle(d.l.layer);
             const lineSelected = isSelected(d.l.fid);
             const center = centerOf(d.l.points);
-            const layerHighlighted = isLayerHighlighted(d.l.layer);
-            const lineKey = mapFeatureKey(d.l.layer, d.l.fid, d.index);
-            return <polyline key={`line${d.index}`} data-line="true" points={d.points.map(([x, y]) => `${x},${y}`).join(" ")} fill="none" opacity={highlightActive && !layerHighlighted ? 0.2 : undefined} stroke={highlightActive && layerHighlighted ? INK : lineSelected ? INK : st.color} strokeWidth={(highlightActive && layerHighlighted ? 1.6 : lineSelected ? 4 : 1.5) * u} strokeLinejoin="round" {...pickProps({ fid: d.l.fid, lng: center[0], lat: center[1], kind: "line" }, lineKey, labelText(d.l.layer, "line", d.l))} />;
+            const lineKey = mapElementKey("line", d.l.layer, d.l.fid, d.index);
+            const strong = isElementStrong(d.l.layer, lineKey);
+            return <polyline key={`line${d.index}`} data-line="true" points={d.points.map(([x, y]) => `${x},${y}`).join(" ")} fill="none" opacity={isElementDimmed(d.l.layer, lineKey) ? 0.2 : undefined} stroke={strong || lineSelected ? INK : st.color} strokeWidth={(strong ? 1.6 : lineSelected ? 4 : 1.5) * u} strokeLinejoin="round" {...pickProps({ fid: d.l.fid, lng: center[0], lat: center[1], kind: "line" }, lineKey, labelText(d.l.layer, "line", d.l))} />;
           })}
         </g>
         {rings.map((r, i) => (
@@ -916,10 +945,11 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
         <circle cx={cx} cy={cy} r={R} fill="none" stroke={line} strokeOpacity={sat ? 0.95 : 0.75} strokeWidth={1.6 * u} />
 
         {drawn.map((d, i) => {
-          if (d.f.highlight && d.f.layer.endsWith("_nearest")) {
-            const highlighted = isLayerHighlighted(d.f.layer);
-            return <line key={`nearest-${i}-${d.f.fid ?? d.f.layer}`} x1={cx} y1={cy} x2={d.p[0]} y2={d.p[1]} stroke={highlightActive && highlighted ? INK : line} strokeWidth={(highlightActive && highlighted ? 1.6 : 1.4) * u} strokeOpacity={highlightActive && !highlighted ? 0.2 : undefined} strokeDasharray={`${3 * u} ${3 * u}`} />;
-          }
+           if (d.f.highlight && d.f.layer.endsWith("_nearest")) {
+             const featureKey = mapFeatureKey(d.f.layer, d.f.fid, d.index);
+             const strong = isElementStrong(d.f.layer, featureKey);
+             return <line key={`nearest-${i}-${d.f.fid ?? d.f.layer}`} x1={cx} y1={cy} x2={d.p[0]} y2={d.p[1]} stroke={strong ? INK : line} strokeWidth={(strong ? 1.6 : 1.4) * u} strokeOpacity={isElementDimmed(d.f.layer, featureKey) ? 0.2 : undefined} strokeDasharray={`${3 * u} ${3 * u}`} />;
+           }
           return null;
         })}
         {drawn.map((d, i) => {
@@ -927,10 +957,10 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
            const r = radiusOf(d.f);
            const neutralBuilding = rasterImages.length > 0 && isBuildingLayer(d.f.layer);
            if (d.p[0] < -r || d.p[1] < -r || d.p[0] > W + r || d.p[1] > H + r) return null;
-          const hollow = st.sizeBy === "weight" && !d.f.weight;
-          const layerHighlighted = isLayerHighlighted(d.f.layer);
-          const featureKey = mapFeatureKey(d.f.layer, d.f.fid, d.index);
-          return (
+           const hollow = st.sizeBy === "weight" && !d.f.weight;
+           const featureKey = mapFeatureKey(d.f.layer, d.f.fid, d.index);
+           const strong = isElementStrong(d.f.layer, featureKey);
+           return (
             <circle
               key={`feature-${i}-${d.f.fid ?? d.f.layer}`}
               cx={d.p[0]}
@@ -938,9 +968,9 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
               r={r}
               fill={neutralBuilding ? "#F8FAFC" : hollow ? "#fff" : st.color}
               fillOpacity={neutralBuilding ? 0.94 : hollow ? 0.6 : st.sizeBy === "weight" ? 0.55 : d.f.highlight ? 1 : 0.85}
-              opacity={highlightActive && !layerHighlighted ? 0.2 : undefined}
-              stroke={highlightActive && layerHighlighted ? INK : d.f.highlight || d.selected ? INK : neutralBuilding ? "#475569" : sat ? "#fff" : st.sizeBy === "weight" ? st.color : "#fff"}
-              strokeWidth={(highlightActive && layerHighlighted ? 1.6 : d.f.highlight || d.selected ? 2.8 : neutralBuilding ? 0.8 : sat ? 1.5 : st.sizeBy === "weight" ? 1.4 : 0.8) * u}
+              opacity={isElementDimmed(d.f.layer, featureKey) ? 0.2 : undefined}
+              stroke={strong || d.f.highlight || d.selected ? INK : neutralBuilding ? "#475569" : sat ? "#fff" : st.sizeBy === "weight" ? st.color : "#fff"}
+              strokeWidth={(strong ? 1.6 : d.f.highlight || d.selected ? 2.8 : neutralBuilding ? 0.8 : sat ? 1.5 : st.sizeBy === "weight" ? 1.4 : 0.8) * u}
               {...pickProps({ fid: d.f.fid, lng: d.f.lng, lat: d.f.lat, kind: "feature" }, featureKey, labelText(d.f.layer, "feature", d.f))}
             />
           );

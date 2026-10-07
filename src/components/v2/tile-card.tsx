@@ -240,7 +240,7 @@ function stageViewForWind(view: TileView, layerZ: number | undefined): TileView 
   return name ? viewWithOnlyRaster(view, name, "") : view;
 }
 
-export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, page, onPage, windLayerZ, massExploded = false, roseSeason = "annual", pinnedKeys = [], onFeaturePin }: { view: TileView; state: boolean; chart: boolean; frame: "card" | "detail"; siteX?: number | ((w: number) => number); rightInset?: number | ((w: number) => number); legendY?: number; page?: number; onPage?: (p: number) => void; windLayerZ?: number; massExploded?: boolean; roseSeason?: RoseSeason; pinnedKeys?: readonly string[]; onFeaturePin?: (feature: MapFigureElementPick) => void }) {
+export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, page, onPage, windLayerZ, massExploded = false, roseSeason = "annual", pinnedKeys = [], hoverKey = null, emphasisKey = null, onFeaturePin }: { view: TileView; state: boolean; chart: boolean; frame: "card" | "detail"; siteX?: number | ((w: number) => number); rightInset?: number | ((w: number) => number); legendY?: number; page?: number; onPage?: (p: number) => void; windLayerZ?: number; massExploded?: boolean; roseSeason?: RoseSeason; pinnedKeys?: readonly string[]; hoverKey?: string | null; emphasisKey?: string | null; onFeaturePin?: (feature: MapFigureElementPick) => void }) {
   const displayView = stageViewForWind(view, windLayerZ);
   if (chart) return <FaceChart view={view} />;
   const card = frame === "card";
@@ -265,6 +265,8 @@ export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, p
       bottomInset={card ? 0 : OV.stripH}
       pad={card ? 7 : undefined}
       pinnedKeys={pinnedKeys}
+      hoverKey={hoverKey}
+      emphasisKey={emphasisKey}
       onFeaturePin={onFeaturePin}
       avoid={(w, h) => {
         const inset = typeof rightInset === "function" ? rightInset(w) : (rightInset ?? 0);

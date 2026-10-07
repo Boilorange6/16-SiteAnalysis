@@ -23,7 +23,7 @@ const { a03 } = await import("../../lib/v2/engine/tiles/a03.ts");
 const { a04 } = await import("../../lib/v2/engine/tiles/a04.ts");
 const { a05 } = await import("../../lib/v2/engine/tiles/a05.ts");
 const { a06 } = await import("../../lib/v2/engine/tiles/a06.ts");
-const { default: MapFigure, mapFeatureKey, mapLabelEntries } = await import("../../components/v2/map-figure.tsx");
+const { default: MapFigure, mapFeatureKey, mapLabelEntries, mapLabelText } = await import("../../components/v2/map-figure.tsx");
 
 const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${b}`);
 
@@ -95,6 +95,20 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   for (const k of Object.keys(LAYER_STYLES)) assert.match(layerStyle(k).color, /^#[0-9A-Fa-f]{6}$/);
   assert.equal(layerStyle("nope").label, "기타");
   assert.equal(layerStyle("bus_stop").label, "버스정류장");
+}
+
+// ── 요소 라벨 문구: 사용자 의미만 표시하고 도형 종류를 노출하지 않는다 ──
+{
+  const namedBuilding = mapLabelText("bldg_1980s", "polygon", { layer: "bldg_1980s", rings: [], label: "고덕 그라시움 104동" });
+  assert.equal(namedBuilding, "고덕 그라시움 104동 · 1980년대");
+  assert.equal(mapLabelText("bldg_unknown", "polygon", { layer: "bldg_unknown", rings: [], label: null }), "미상 건물");
+  assert.equal(mapLabelText("bldg_unknown", "polygon", { layer: "bldg_unknown", rings: [], label: "미상" }), "미상 건물");
+  assert.equal(mapLabelText("bus_stop", "feature", { layer: "bus_stop", lng: 127, lat: 37, name: null }), "버스정류장");
+  assert.equal(mapLabelText("bus_nearest", "feature", { layer: "bus_nearest", lng: 127, lat: 37, name: "고덕역 정류장", distanceM: 480 }), "고덕역 정류장 · 직선 480m");
+  assert.equal(mapLabelText("contour", "line", { layer: "contour", points: [], label: null }), "등고선");
+  for (const text of [namedBuilding, "미상 건물", "버스정류장", "고덕역 정류장 · 직선 480m", "등고선"]) {
+    assert.doesNotMatch(text, / · (점|면|선)$/);
+  }
 }
 
 // ── 엔진 타일: features 계약 ──
@@ -218,6 +232,18 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   assert.match(pinned, /data-map-feature="bus_stop\|1"/);
   const fixedXs = [...pinned.matchAll(/<rect x="([^"]+)" y="[^"]+" width="[^"]+" height="[^"]+" rx="[^"]+" fill="#fff" stroke="#111"/g)].map((match) => match[1]);
   assert.ok(fixedXs.length >= 2 && fixedXs[0] !== fixedXs[1], "겹친 고정 라벨을 다른 후보 위치에 배치");
+
+  // 대표 점과 폴리곤이 같은 fid를 받아도 목록의 고정 대상은 서로 달라야 한다.
+  const sameFidModel = {
+    ...model,
+    features: [{ layer: "bldg_1990s", fid: "same-building", lng: model.center[0], lat: model.center[1], name: null }],
+    polygons: [{ layer: "bldg_1990s", fid: "same-building", rings: [[[model.center[0], model.center[1]], [model.center[0] + 0.001, model.center[1]], [model.center[0], model.center[1] + 0.001]]] }],
+    total: 2,
+  };
+  const sameFidEntries = mapLabelEntries(sameFidModel);
+  assert.equal(new Set(sameFidEntries.map((entry) => entry.key)).size, sameFidEntries.length, "대표 점·폴리곤 키 충돌 없음");
+  assert.match(sameFidEntries[0].key, /^bldg_1990s\\|same-building$/);
+  assert.match(sameFidEntries[1].key, /^polygon\\|bldg_1990s\\|same-building$/);
 }
 
 // ── PPT: 지도 이미지 자리 ──

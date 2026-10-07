@@ -15,7 +15,7 @@ export const SetBasemapContext = createContext<(b: BasemapChoice) => void>(() =>
 
 type Box = NonNullable<MapFigureProps["avoid"]>;
 /** avoid·siteX는 실측 크기를 받아 계산하는 함수도 받는다 */
-type InteractionOpts = Pick<MapFigureProps, "pinnedKeys" | "onFeatureClick"> & {
+type InteractionOpts = Pick<MapFigureProps, "pinnedKeys" | "onFeatureClick" | "hoverKey" | "emphasisKey"> & {
   onFeaturePin?: (feature: MapFigureElementPick) => void;
 };
 type Opts = Pick<MapFigureProps, "legend" | "legendY" | "north" | "scale" | "credit" | "bottomInset" | "muted" | "rightInset" | "scaleLeft" | "fill" | "scaleX" | "siteY"> & InteractionOpts & {
@@ -201,7 +201,8 @@ export default function MapBox({ model, bare, label, avoid, siteX, rightInset, p
           {...opts}
           highlightLabel={activeHighlight}
           highlightPinnedLabel={legendPinned}
-          hoverKey={featureHover}
+          hoverKey={opts.hoverKey ?? featureHover}
+          emphasisKey={opts.emphasisKey ?? null}
           onFeatureHover={(key) => setFeatureHover(key)}
           onLegendHover={(value) => setLegendHover(value)}
           onLegendPin={(value) => setLegendPinned((current) => value === null ? null : current === value ? null : value)}

@@ -173,10 +173,16 @@ function A05FilterPanel({ filter, counts, onChange, titleId }: { filter: A05Filt
   );
 }
 
-function PinnedLabelPanel({ view, labels, onToggle, onUnpin, onSetAll }: { view: TileView; labels: PinnedLabel[]; onToggle: (key: string) => void; onUnpin: (key: string) => void; onSetAll: (on: boolean) => void }) {
+function PinnedLabelPanel({ view, labels, onToggle, onUnpin, onSetAll, onFocusLabel }: { view: TileView; labels: PinnedLabel[]; onToggle: (key: string) => void; onUnpin: (key: string) => void; onSetAll: (on: boolean) => void; onFocusLabel: (key: string | null) => void }) {
   if (view.callout || !view.map) return null;
   const entries = mapLabelEntries(view.map);
   const entryByKey = new Map(entries.map((entry) => [entry.key, entry]));
+  const textCount = new Map<string, number>();
+  for (const label of labels) {
+    const text = entryByKey.get(label.key)?.text ?? label.key;
+    textCount.set(text, (textCount.get(text) ?? 0) + 1);
+  }
+  const textSeen = new Map<string, number>();
   const onCount = labels.filter((label) => label.on && entryByKey.has(label.key)).length;
   return (
     <section className={styles.pinPanel} aria-labelledby={`pin-labels-${view.tileId}`}>
@@ -190,13 +196,29 @@ function PinnedLabelPanel({ view, labels, onToggle, onUnpin, onSetAll }: { view:
         <ul className={styles.pinList}>
           {labels.map((label) => {
             const entry = entryByKey.get(label.key);
+            const baseText = entry?.text ?? label.key;
+            const count = textCount.get(baseText) ?? 1;
+            const ordinal = (textSeen.get(baseText) ?? 0) + 1;
+            textSeen.set(baseText, ordinal);
+            const displayText = count > 1 ? `${baseText} (${ordinal})` : baseText;
             return (
-              <li key={label.key} className={styles.pinRow}>
-                <span className={styles.pinRowText} title={entry?.text ?? label.key}>{entry?.text ?? label.key}</span>
+              <li
+                key={label.key}
+                className={styles.pinRow}
+                tabIndex={0}
+                onMouseEnter={() => onFocusLabel(label.key)}
+                onMouseLeave={() => onFocusLabel(null)}
+                onFocus={() => onFocusLabel(label.key)}
+                onBlur={(event) => {
+                  const next = event.relatedTarget;
+                  if (!(next instanceof Node) || !event.currentTarget.contains(next)) onFocusLabel(null);
+                }}
+              >
+                <span className={styles.pinRowText} title={displayText}>{displayText}</span>
                 <button type="button" className={styles.pinRowButton} aria-pressed={label.on} onClick={() => onToggle(label.key)}>
                   {label.on ? "끄기" : "보이기"}
                 </button>
-                <button type="button" className={styles.pinRowDelete} onClick={() => onUnpin(label.key)} aria-label={`${entry?.text ?? label.key} 고정 삭제`}>삭제</button>
+                <button type="button" className={styles.pinRowDelete} onClick={() => onUnpin(label.key)} aria-label={`${displayText} 고정 삭제`}>삭제</button>
               </li>
             );
           })}
@@ -216,6 +238,7 @@ export default function TileDialog({ view, included, face, onInclude, onFace, on
   const [back, setBack] = useState(false);
   const [more, setMore] = useState(false); // 모바일 시트 확장
   const [page, setPage] = useState(0); // 설명선 타일: 0 = 개요
+  const [focusedLabelKey, setFocusedLabelKey] = useState<string | null>(null);
   const [windLayerZ, setWindLayerZ] = useState(6);
   const [massExploded, setMassExploded] = useState(false);
   const basemap = useContext(BasemapContext);
@@ -241,7 +264,7 @@ export default function TileDialog({ view, included, face, onInclude, onFace, on
     <div className={styles.overlay} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div ref={ref} className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <div className={styles.stage}>
-          <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="detail" siteX={detailSiteX} rightInset={insetOf} legendY={OV.edge + 38 + 8} page={page} onPage={setPage} windLayerZ={windLayerZ} massExploded={massExploded} roseSeason={roseSeason} pinnedKeys={pinnedLabels.filter((label) => label.on).map((label) => label.key)} onFeaturePin={(feature) => onToggleLabel(feature.key)} />
+          <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="detail" siteX={detailSiteX} rightInset={insetOf} legendY={OV.edge + 38 + 8} page={page} onPage={setPage} windLayerZ={windLayerZ} massExploded={massExploded} roseSeason={roseSeason} pinnedKeys={pinnedLabels.filter((label) => label.on).map((label) => label.key)} hoverKey={focusedLabelKey} emphasisKey={focusedLabelKey} onFeaturePin={(feature) => onToggleLabel(feature.key)} />
         </div>
 
         {state && <StatusPlate view={view} phase={null} onRetry={onRetry} />}
@@ -262,7 +285,7 @@ export default function TileDialog({ view, included, face, onInclude, onFace, on
 
         <aside className={`${styles.plate} ${styles.dlgPanel} ${more ? styles.dlgPanelOpen : ""}`} aria-label={`${view.title} 정보`}>
           <BadgeList badges={view.badges} />
-          <PinnedLabelPanel view={view} labels={pinnedLabels} onToggle={onToggleLabel} onUnpin={onUnpinLabel} onSetAll={onSetAllLabels} />
+          <PinnedLabelPanel view={view} labels={pinnedLabels} onToggle={onToggleLabel} onUnpin={onUnpinLabel} onSetAll={onSetAllLabels} onFocusLabel={setFocusedLabelKey} />
           {view.code === "A05" && <A05FilterPanel filter={a05Filter} counts={a05Counts} onChange={onA05Filter} titleId={`a05-${view.tileId}-reaggregate-title`} />}
           {view.code === "S03" && <WindPanel view={view} layerZ={windLayerZ} onLayerZ={setWindLayerZ} onUploaded={onWindUploaded} />}
           {view.code === "D22" && !state && <RoseSeasonSelect view={view} value={roseSeason} onChange={onRoseSeason} />}
