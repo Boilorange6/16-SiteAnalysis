@@ -16,7 +16,11 @@ export const ENGINE_VERSION = "v2-p4-ext-1";
  * the engine version in) without touching the other tiles' cached results or the global ENGINE_VERSION pinned by tests.
  * s04-r2: raster u8 scale 0.5/offset -50, 10 UTCI classes, wind clamped to 0.5–17 m/s, S03 solid-halo fix.
  */
-const TILE_CACHE_REVISION: Readonly<Record<string, string>> = { S04: "s04-r2" };
+const TILE_CACHE_REVISION: Readonly<Record<string, string>> = {
+  // site-r1 is carried by conditions.parcelSnapshotHash/cacheKeyFor. Keep the
+  // public per-tile engine version contract unchanged for existing consumers.
+  S04: "s04-r2",
+};
 export const cacheEngineVersion = (code: string, base: string = ENGINE_VERSION): string => (TILE_CACHE_REVISION[code] ? `${base}+${TILE_CACHE_REVISION[code]}` : base);
 
 type Metric = TileResult["metrics"][number];

@@ -150,15 +150,8 @@ function* positions(coords: unknown): Generator<Position> {
   for (const c of coords) yield* positions(c);
 }
 
-/** roundM: 좌표를 이 간격(미터)으로 반올림해 JSON을 줄인다. 없으면 반올림하지 않는다. */
-export function projectGeometry(geometry: Geometry, roundM?: number, alreadyUtmk = false): Geometry {
-  if (geometry.type === "GeometryCollection") throw new TypeError("GeometryCollection is not supported");
-  const snap = (v: number) => (roundM ? Math.round(v / roundM) * roundM : v);
-  const fix = (v: number) => (roundM ? Number(snap(v).toFixed(Math.max(0, Math.ceil(-Math.log10(roundM))))) : v);
-  return { type: geometry.type, coordinates: mapPositions(geometry.coordinates, (p) => { const [x, y] = alreadyUtmk ? p : toUtmk(p); return [fix(x), fix(y)] as const; }) } as Geometry;
-}
-
-function bboxOf(geometry: Geometry): [number, number, number, number] {
+/** EPSG:5179 도형의 최소 사각형. R*Tree 후보 질의와 대지 교차 조회에 공통으로 쓴다. */
+export function geometryBbox(geometry: Geometry): [number, number, number, number] {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   if (geometry.type === "GeometryCollection") throw new TypeError("GeometryCollection is not supported");
   for (const [x, y] of positions(geometry.coordinates)) {
@@ -170,6 +163,18 @@ function bboxOf(geometry: Geometry): [number, number, number, number] {
   }
   if (minX === Infinity) throw new TypeError("empty geometry");
   return [minX, minY, maxX, maxY];
+}
+
+/** roundM: 좌표를 이 간격(미터)으로 반올림해 JSON을 줄인다. 없으면 반올림하지 않는다. */
+export function projectGeometry(geometry: Geometry, roundM?: number, alreadyUtmk = false): Geometry {
+  if (geometry.type === "GeometryCollection") throw new TypeError("GeometryCollection is not supported");
+  const snap = (v: number) => (roundM ? Math.round(v / roundM) * roundM : v);
+  const fix = (v: number) => (roundM ? Number(snap(v).toFixed(Math.max(0, Math.ceil(-Math.log10(roundM))))) : v);
+  return { type: geometry.type, coordinates: mapPositions(geometry.coordinates, (p) => { const [x, y] = alreadyUtmk ? p : toUtmk(p); return [fix(x), fix(y)] as const; }) } as Geometry;
+}
+
+function bboxOf(geometry: Geometry): [number, number, number, number] {
+  return geometryBbox(geometry);
 }
 
 export function insertFeature(db: Db, input: FeatureInput): number {
@@ -347,4 +352,32 @@ export function queryFeaturesInBboxes(db: Db, boundsList: readonly (readonly [nu
     }
   }
   return [...out.values()];
+}
+
+/** PNU가 지정된 필지 도형을 읽는다. 요청 순서와 무관하게 feature_id 순으로 정렬한다. */
+export function queryFeaturesByPnus(db: Db, pnus: readonly string[], kind = "parcel"): FeatureHit[] {
+  const unique = [...new Set(pnus.map((pnu) => pnu.trim()).filter(Boolean))];
+  if (unique.length === 0) return [];
+  const out: FeatureHit[] = [];
+  for (let offset = 0; offset < unique.length; offset += 500) {
+    const batch = unique.slice(offset, offset + 500);
+    const rows = db.prepare(`SELECT f.feature_id, f.stable_id, f.kind, f.release_id, f.geom_json, f.name, f.pnu, f.legal_code, f.properties_json
+      FROM feature f WHERE f.kind = ? AND f.pnu IN (${batch.map(() => "?").join(",")})`).all(kind, ...batch) as Array<Omit<FeatureRow, "min_x" | "max_x" | "min_y" | "max_y">>;
+    for (const row of rows) {
+      out.push({
+        featureId: row.feature_id,
+        stableId: row.stable_id,
+        kind: row.kind,
+        releaseId: row.release_id,
+        name: row.name,
+        pnu: row.pnu,
+        legalCode: row.legal_code,
+        properties: JSON.parse(row.properties_json) as Record<string, unknown>,
+        geometry: JSON.parse(row.geom_json) as Geometry,
+        distanceM: null,
+      });
+    }
+  }
+  out.sort((a, b) => a.featureId - b.featureId);
+  return out;
 }

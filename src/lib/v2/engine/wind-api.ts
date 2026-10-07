@@ -14,6 +14,7 @@ import { toUtmk } from "../crs";
 import { ensureAnalysisJobTable, getAnalysisRun, openV2AppDb, saveTileResult } from "../app-db";
 import { openDataFile, readManifest } from "../data/manifest";
 import { EngineContext } from "./context";
+import { restoreSiteFromParameters } from "./site";
 import { encodeRaster, loadTileRaster, saveTileRasters } from "../raster-store";
 import { parseTileResult, type RasterRef, type TileResult } from "../tile-result";
 import {
@@ -501,6 +502,7 @@ function runFallbackInternal(db: Db, dataDir: string, analysisId: string, userId
     radiusM: run.radiusM,
     analysisDate: run.analysisDate,
     pnu: typeof run.parameters.pnu === "string" ? run.parameters.pnu : null,
+    site: restoreSiteFromParameters(run.parameters),
   }, { core });
   try {
     const built = buildWindCase(ctx);

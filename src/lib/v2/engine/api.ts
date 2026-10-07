@@ -14,14 +14,27 @@ const realDate = (d: string) => {
   return !Number.isNaN(t.getTime()) && t.toISOString().slice(0, 10) === d;
 };
 
+const siteSchema = z.object({
+  pnus: z.array(z.string().trim().regex(/^\d{19}$/, "PNU는 19자리 숫자여야 합니다")).min(1, "선택 필지는 1개 이상이어야 합니다").max(30, "선택 필지는 최대 30개까지 가능합니다").optional(),
+  polygon: z.array(z.tuple([
+    z.number().finite().min(-180).max(180),
+    z.number().finite().min(-90).max(90),
+  ])).min(4, "다각형은 닫힌 꼭짓점 4개 이상이어야 합니다").max(501, "다각형 꼭짓점은 500개까지 가능합니다").optional(),
+})
+  .refine((site) => (site.pnus !== undefined) !== (site.polygon !== undefined), { message: "필지 목록 또는 다각형 중 하나만 입력해 주세요" })
+  .refine((site) => site.pnus === undefined || new Set(site.pnus).size === site.pnus.length, { message: "선택 필지 목록에 중복 PNU가 있습니다", path: ["pnus"] })
+  .refine((site) => site.polygon === undefined || (site.polygon[0]![0] === site.polygon.at(-1)![0] && site.polygon[0]![1] === site.polygon.at(-1)![1]), { message: "다각형의 첫 점과 끝 점이 같아야 합니다", path: ["polygon"] })
+  .refine((site) => site.polygon === undefined || new Set(site.polygon.slice(0, -1).map(([lng, lat]) => `${lng},${lat}`)).size >= 3, { message: "다각형에는 서로 다른 꼭짓점이 3개 이상 필요합니다", path: ["polygon"] });
+
 const bodySchema = z
   .object({
     address: z.string().trim().min(1).max(200).optional(),
     center: z.tuple([z.number().min(124).max(132), z.number().min(33).max(39)]).optional(),
     radiusM: z.number().default(DEFAULT_RADIUS_M),
     analysisDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(realDate, "분석일이 올바른 날짜가 아닙니다").optional(),
+    site: siteSchema.optional(),
   })
-  .refine((b) => b.address !== undefined || b.center !== undefined, { message: "주소 또는 좌표가 필요합니다" })
+  .refine((b) => b.site !== undefined || b.address !== undefined || b.center !== undefined, { message: "주소 또는 좌표가 필요합니다(또는 대지 선택)" })
   .refine((b) => (RADIUS_CHOICES as readonly number[]).includes(b.radiusM), { message: `반경은 ${RADIUS_CHOICES.join(", ")}m 중 하나여야 합니다`, path: ["radiusM"] });
 
 export interface ApiReply {
@@ -92,7 +105,13 @@ export function postAnalysis(appDb: BetterSqlite3.Database, dataDir: string, raw
     if (/no published manifest/.test((e as Error).message)) return { status: 503, body: { error: "분석 데이터가 아직 게시되지 않았습니다" } };
     return { status: 500, body: { error: "분석 중 오류가 발생했습니다" } };
   }
-  if (!outcome.ok) return { status: 422, body: { error: SITE_FAILURE_MESSAGE[outcome.reason], reason: outcome.reason } };
+  if (!outcome.ok) {
+    const error = outcome.reason === "site_missing_pnu" && outcome.missingPnus?.length
+      ? `다음 PNU 필지 도형을 찾지 못했습니다: ${outcome.missingPnus.join(", ")}`
+      : SITE_FAILURE_MESSAGE[outcome.reason];
+    const status = outcome.reason === "site_data_missing" ? 503 : outcome.reason.startsWith("site_") ? 400 : 422;
+    return { status, body: { error, reason: outcome.reason, ...(outcome.missingPnus ? { missingPnus: outcome.missingPnus } : {}) } };
+  }
   const snapshot = analysisSnapshot(appDb, outcome.analysisId, getAnalysisRun(appDb, outcome.analysisId)!);
   return {
     status: 202,

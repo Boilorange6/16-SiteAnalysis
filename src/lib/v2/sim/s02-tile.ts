@@ -10,7 +10,7 @@ import { polygonCandidate } from "../engine/tiles/common";
 import { computeSunlight, type SunlightInput, type SunlightResult } from "./sunlight";
 import type { SunFieldResult, SunGrid } from "./sun-field";
 import { SEASON_LABEL, type SunDateKey } from "../engine/tiles/sun-shared";
-import type { XY } from "./shadow";
+import { siteRings, type SiteRings, type XY } from "./shadow";
 
 export const S02_LIMITATION = "건물·지형 모델에 의한 기하학적 일조 추정입니다. 구름·실제 기상·창면 조건 및 법적 일조 판정을 포함하지 않습니다.";
 export const S02_ENGINE_VERSION = "v2-sim-sun@2";
@@ -25,13 +25,14 @@ export interface S02Input extends SunlightInput {
   radiusM: number;
   manifestHash: string;
   sources: readonly { sourceId: string; releaseId: string; sourceAsOf: string | null; fetchedAt: string }[];
-  siteKind?: "parcel" | "box";
+  siteKind?: "parcel" | "polygon" | "box";
+  parcelSnapshotHash?: string | null;
 }
 
 export type S02ShadowParts = Record<"09" | "12" | "15", number[][][][]>;
 
 export interface S02Presentation {
-  site: readonly XY[];
+  site: SiteRings;
   shadows: S02ShadowParts;
 }
 
@@ -91,10 +92,10 @@ export function buildS02TileResult(input: S02Input, precomputed?: SunlightResult
     max: null,
   }));
   if (visual) {
-    const site = [...visual.site];
-    if (site.length >= 3) {
+    for (const site of siteRings(visual.site)) {
+      if (site.length < 3) continue;
       const ring = site.map(([x, y]) => [x, y] as number[]);
-      if (ring.length > 0 && (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1])) ring.push([...ring[0]]);
+      if (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1]) ring.push([...ring[0]]);
       const siteCandidate = polygonCandidate(0, "sun_face", [ring], polygonArea([ring]), "수광면");
       if (siteCandidate) polygons.push(siteCandidate.p);
     }
@@ -134,7 +135,7 @@ export function buildS02TileResult(input: S02Input, precomputed?: SunlightResult
         buildings: r.buildings,
         cells: r.counts,
       },
-      parcelSnapshotHash: null,
+      parcelSnapshotHash: input.parcelSnapshotHash ?? null,
     },
     metrics,
     judgment: { ruleId: "S02-sunlight-summary@1", basisMetricIds: ["median_sun_hours", shareId], sentence, level: null, criteria: null },
@@ -175,14 +176,15 @@ export interface S02RasterTileInput {
   radiusM: number;
   manifestHash: string;
   sources: readonly { sourceId: string; releaseId: string; sourceAsOf: string | null; fetchedAt: string }[];
-  site: readonly XY[];
-  siteKind: "parcel" | "box";
+  site: SiteRings;
+  siteKind: "parcel" | "polygon" | "box";
   grid: SunGrid;
   fields: readonly S02RasterField[];
   rasterRefs: readonly RasterRef[];
   influenceM: number;
   terrain: "glo30-horizon" | "none";
   coverage: TileResult["limitations"];
+  parcelSnapshotHash?: string | null;
 }
 
 function raster(
@@ -321,15 +323,17 @@ function fieldConditions(fields: readonly S02RasterField[]): Record<string, unkn
   ]));
 }
 
-function sitePolygon(site: readonly XY[]): NonNullable<TileResult["presentation"]["polygons"]>[number] | null {
-  if (site.length < 3) return null;
-  const ring = site.map(([x, y]) => {
-    const [lng, lat] = toLngLat([x, y]);
-    return [Math.round(lng * 1e6) / 1e6, Math.round(lat * 1e6) / 1e6];
+function sitePolygons(site: SiteRings): NonNullable<TileResult["presentation"]["polygons"]> {
+  return siteRings(site).flatMap((part) => {
+    if (part.length < 3) return [];
+    const ring = part.map(([x, y]) => {
+      const [lng, lat] = toLngLat([x, y]);
+      return [Math.round(lng * 1e6) / 1e6, Math.round(lat * 1e6) / 1e6];
+    });
+    if (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1]) ring.push([...ring[0]]);
+    const candidate = polygonCandidate(0, "sun_face", [ring], polygonArea([part.map(([x, y]) => [x, y])]), "수광면");
+    return candidate ? [candidate.p] : [];
   });
-  if (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1]) ring.push([...ring[0]]);
-  const candidate = polygonCandidate(0, "sun_face", [ring], polygonArea([site.map(([x, y]) => [x, y])]), "수광면");
-  return candidate?.p ?? null;
 }
 
 export function buildS02RasterTileResult(input: S02RasterTileInput): TileResult {
@@ -374,7 +378,7 @@ export function buildS02RasterTileResult(input: S02RasterTileInput): TileResult 
   const sentence = winter
     ? lead + ", 동지 진태양시 09~15 연속 2시간 확보 " + pct100(winterCont) + "%, 08~16 총 4시간 " + pct100(winterTotal) + "% → 건물·지형 모델의 기하학적 추정이며 창면·기상·법적 판정이 아님 → 세대 창 위치 기준 정밀 일조 검토로 확인할 것"
     : "동지 일조장을 계산하지 못함 → 건물·지형 자료를 확인할 것";
-  const polygon = sitePolygon(input.site);
+  const polygons = sitePolygons(input.site);
   return parseTileResult({
     tileId: input.analysisId + "-S02",
     analysisId: input.analysisId,
@@ -400,7 +404,7 @@ export function buildS02RasterTileResult(input: S02RasterTileInput): TileResult 
         hourlyMinAltDeg: 5,
         site: input.siteKind,
       },
-      parcelSnapshotHash: null,
+      parcelSnapshotHash: input.parcelSnapshotHash ?? null,
     },
     metrics,
     judgment: { ruleId: "S02-sunlight-summary@2", basisMetricIds: ["mean_sun_h_summer", "mean_sun_h_winter", "share_cont2h_0915_pct_winter", "share_total4h_0816_pct_winter"], sentence, level: null, criteria: null },
@@ -414,7 +418,7 @@ export function buildS02RasterTileResult(input: S02RasterTileInput): TileResult 
       camera: null,
       layers: ["sun_face"],
       outputFace: "front",
-      ...(polygon ? { polygons: [polygon], polygonsTotal: 1 } : {}),
+      ...(polygons.length > 0 ? { polygons, polygonsTotal: polygons.length } : {}),
       rasters: [...input.rasterRefs],
     },
     provenance: { manifestHash: input.manifestHash, sources: input.sources.map((source) => ({ ...source })) },

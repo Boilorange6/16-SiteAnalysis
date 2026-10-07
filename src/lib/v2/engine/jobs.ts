@@ -12,6 +12,7 @@ import { loadTileRaster, saveTileRasters } from "../raster-store";
 import { sha256Hex } from "../canonical-json";
 import { EngineContext, type RasterValues } from "./context";
 import { s03InputsHash, saveTileResultWithElapsed, TILES } from "./run";
+import { restoreSiteFromParameters, SITE_DEPENDENT_TILE_CODES, siteSnapshotHash } from "./site";
 import { d10 } from "./tiles/d10";
 import { d21 } from "./tiles/d21";
 import { d29 } from "./tiles/d29";
@@ -52,6 +53,7 @@ type JobRow = {
 type AnalysisRun = NonNullable<ReturnType<typeof getAnalysisRun>>;
 
 function conditionsForRun(run: AnalysisRun): TileConditions {
+  const site = restoreSiteFromParameters(run.parameters);
   return {
     address: run.address,
     center: [run.center[0], run.center[1]],
@@ -60,12 +62,13 @@ function conditionsForRun(run: AnalysisRun): TileConditions {
     timezone: "Asia/Seoul",
     filters: {},
     simulation: null,
-    parcelSnapshotHash: null,
+    parcelSnapshotHash: siteSnapshotHash(site),
   };
 }
 
 function cacheKeyForRun(run: AnalysisRun, code: string): string {
-  const conditions = DATE_INDEPENDENT.has(code) ? { ...conditionsForRun(run), analysisDate: "date-independent" } : conditionsForRun(run);
+  const dateConditions = DATE_INDEPENDENT.has(code) ? { ...conditionsForRun(run), analysisDate: "date-independent" } : conditionsForRun(run);
+  const conditions = SITE_DEPENDENT_TILE_CODES.has(code) ? dateConditions : { ...dateConditions, parcelSnapshotHash: null };
   return tileCacheKey({ tileCode: code, manifestHash: run.manifestHash, engineVersion: cacheEngineVersion(code, run.engineVersion), conditions });
 }
 
@@ -228,7 +231,8 @@ function failRemainingJobs(db: Db, run: AnalysisRun, error: unknown): void {
 }
 
 function keyFor(ctx: EngineContext, code: string, upstream: string | null = null): string {
-  const conditions = DATE_INDEPENDENT.has(code) ? { ...ctx.conditions, analysisDate: "date-independent" } : ctx.conditions;
+  const dateConditions = DATE_INDEPENDENT.has(code) ? { ...ctx.conditions, analysisDate: "date-independent" } : ctx.conditions;
+  const conditions = SITE_DEPENDENT_TILE_CODES.has(code) ? dateConditions : { ...dateConditions, parcelSnapshotHash: null };
   const key = tileCacheKey({ tileCode: code, manifestHash: ctx.manifestHash, engineVersion: cacheEngineVersion(code), conditions });
   return upstream ? sha256Hex(`${key}:${upstream}`) : key;
 }
@@ -273,19 +277,24 @@ export function runHeavyTiles(appDb: Db, dataDir: string, analysisId: string): v
   }
   let ctx: EngineContext | null = null;
   let core: BetterSqlite3.Database | null = null;
+  let parcels: BetterSqlite3.Database | null = null;
   try {
     // 재현성: 현재 manifest가 아니라 분석 행에 기록된 보관본만 연다.
     const manifest = readPinnedManifest(dataDir, run.manifestHash);
     core = acquireDataFile(dataDir, manifest, "core");
+    // New runs persist the resolved geometry; legacy pnu-only runs still need
+    // the parcel file so S02/D19/A12 can reconstruct the original site.
+    parcels = manifest.files.parcels ? acquireDataFile(dataDir, manifest, "parcels") : null;
     ctx = new EngineContext(
       dataDir,
       manifest,
       analysisId,
-      { address: run.address, center: run.center, radiusM: run.radiusM, analysisDate: run.analysisDate, pnu: typeof run.parameters.pnu === "string" ? run.parameters.pnu : null },
-      { core },
-      { rasterReader: rasterReader(appDb, analysisId), reuseDataFiles: true, pooledKeys: ["core"] },
+      { address: run.address, center: run.center, radiusM: run.radiusM, analysisDate: run.analysisDate, pnu: typeof run.parameters.pnu === "string" ? run.parameters.pnu : null, site: restoreSiteFromParameters(run.parameters) },
+      { core, ...(parcels ? { parcels } : {}) },
+      { rasterReader: rasterReader(appDb, analysisId), reuseDataFiles: true, pooledKeys: parcels ? ["core", "parcels"] : ["core"] },
     );
   } catch (error) {
+    if (parcels) releaseDataFile(parcels);
     if (core) releaseDataFile(core);
     failRemainingJobs(appDb, run, error);
     return;

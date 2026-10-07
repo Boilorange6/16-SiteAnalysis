@@ -3,7 +3,7 @@ import type { FeatureHit } from "../../data/features";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext, Limitation } from "../context";
 import { candidate, makeTile, obs, polygonCandidate } from "./common";
-import { areaInCircle, polygonArea } from "./geo";
+import { areaInCircle, polygonArea, polygonParts } from "./geo";
 import { notProvided } from "./not-provided";
 
 const PARCEL_SOURCES = ["parcel_polygon"] as const;
@@ -66,18 +66,20 @@ export function d19(ctx: EngineContext): TileResult {
   if (sources.length === 0) return notProvided(ctx, "D19");
 
   const hits = ctx.hits("parcels", ["parcel"]);
+  const siteHits = ctx.siteParcelHits();
+  const siteHitIds = new Set(siteHits.map((hit) => hit.featureId));
   const { byFeature, failed } = measure(hits, ctx.input.center, ctx.input.radiusM);
   const circleAreaM2 = Math.PI * ctx.input.radiusM ** 2;
   const circleAreaRounded = Math.round(circleAreaM2);
   const validAreaM2 = [...byFeature.values()].reduce((sum, value) => sum + value.areaM2, 0);
-  const siteFound = ctx.input.pnu !== null && hits.some((hit) => hit.pnu === ctx.input.pnu);
+  const siteFound = ctx.input.site.geometry !== null || (ctx.input.pnu !== null && siteHitIds.size > 0);
   const grouped = groupedJimok(hits, byFeature);
 
   const metrics: Metric[] = [
     obs("parcels", "교차 필지", hits.length, "필지", "d19-parcels@1:반경과 실제 교차하는 parcel 도형 수"),
-    ctx.input.pnu === null
+    ctx.input.site.kind === "address" && ctx.input.pnu === null && ctx.input.site.geometry === null
       ? notApplicable("site_parcel_found", "대상 필지 도형 확인", "여부", "d19-site-parcel@1:pnu 입력이 없는 좌표 분석")
-      : obs("site_parcel_found", "대상 필지 도형 확인", siteFound ? 1 : 0, "여부", "d19-site-parcel@1:입력 pnu가 반경 교차 필지의 pnu와 일치하는지", siteFound ? 1 : 0, 1),
+      : obs("site_parcel_found", "대상 필지 도형 확인", siteFound ? 1 : 0, "여부", "d19-site-parcel@1:대지 geometry 또는 선택 PNU 도형 확보 여부", siteFound ? 1 : 0, 1),
     obs("fill_geometry_pct", "확보 도형 면적률(대상 분모 미확보)", pct(validAreaM2, circleAreaM2), "%", "d19-fill-geometry@1:유효 도형 교차면적÷π·r²; 원천 지적 대상 면적 분모 미확보", Math.round(validAreaM2), circleAreaRounded),
   ];
 
@@ -89,16 +91,46 @@ export function d19(ctx: EngineContext): TileResult {
 
   const polygons = [];
   const map = [];
+  const renderedSiteIds = new Set<number>();
   for (const hit of hits) {
     const measured = byFeature.get(hit.featureId);
     if (!measured) continue;
-    const isSite = ctx.input.pnu !== null && hit.pnu === ctx.input.pnu;
+    const isSite = siteHitIds.has(hit.featureId);
     const layer = isSite ? "parcel_site" : "parcel";
     const label = isSite ? jibunOf(hit) : null;
-    if (isSite) map.push(candidate(hit, layer, { highlight: true, label }));
-    for (const rings of measured.parts) {
+    if (isSite) {
+      renderedSiteIds.add(hit.featureId);
+      map.push(candidate(hit, layer, { highlight: true, label }));
+    }
+    // A selected multi-parcel site is a deliberate map target, so preserve
+    // its full parcel outlines even when an outline extends beyond the
+    // analysis circle. Legacy address mode keeps the existing clipped view.
+    const displayParts = isSite && ctx.input.site.kind === "parcels" ? polygonParts(hit.geometry) : measured.parts;
+    for (const rings of displayParts) {
       const polygon = polygonCandidate(hit.featureId, layer, rings, polygonArea(rings), label);
       if (polygon) polygons.push(polygon);
+    }
+  }
+
+  // A selected parcel can sit wholly outside a small analysis circle. It is
+  // still part of the requested site and must remain visible in parcel_site.
+  if (ctx.input.site.kind === "parcels") {
+    for (const hit of siteHits) {
+      if (renderedSiteIds.has(hit.featureId)) continue;
+      const label = jibunOf(hit);
+      map.push(candidate(hit, "parcel_site", { highlight: true, label }));
+      for (const rings of polygonParts(hit.geometry)) {
+        const polygon = polygonCandidate(hit.featureId, "parcel_site", rings, polygonArea(rings), label);
+        if (polygon) polygons.push(polygon);
+      }
+    }
+  }
+
+  // 직접 그린 구역은 원천 필지와 무관하게 대지 도형 자체를 계약상 parcel_site로 보낸다.
+  if (ctx.input.site.kind === "polygon" && ctx.input.site.geometry) {
+    for (const rings of polygonParts(ctx.input.site.geometry)) {
+      const candidatePolygon = polygonCandidate(0, "parcel_site", rings, polygonArea(rings), "직접 그린 구역");
+      if (candidatePolygon) polygons.push(candidatePolygon);
     }
   }
 

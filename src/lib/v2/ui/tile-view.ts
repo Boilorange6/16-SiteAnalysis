@@ -676,7 +676,7 @@ function calloutOf(r: TileResult): CalloutModel | null {
 }
 
 // ── 대지 요약 ──
-export type SiteSummary = { address: string; areaM2: number | null; landPriceM2?: number | null; landPriceUnit?: string | null; jimok?: string | null; zoning: string | null; radiusM: number; facts: string[]; siteParcel?: MapPolygon[] | null };
+export type SiteSummary = { address: string; areaM2: number | null; areaSource?: string; parcelCount?: number | null; landPriceM2?: number | null; landPriceUnit?: string | null; jimok?: string | null; zoning: string | null; radiusM: number; facts: string[]; siteParcel?: MapPolygon[] | null };
 export type SummaryView = {
   address: string;
   area: string;
@@ -701,7 +701,7 @@ export function toSummaryView(s: SiteSummary, results: TileResult[]): SummaryVie
   return {
     address: s.address,
     area: s.areaM2 === null ? "면적 미확인" : `${formatMetricValue(s.areaM2, "㎡")}㎡`,
-    areaSource: s.areaM2 === null ? "대상 필지 도형 자료 미확인" : "도형 면적 · 공부면적 아님",
+    areaSource: s.areaM2 === null ? "대상 필지 도형 자료 미확인" : s.areaSource ?? "도형 면적 · 공부면적 아님",
     landPrice: typeof s.landPriceM2 === "number" && Number.isFinite(s.landPriceM2) ? `공시지가: ${formatMetricValue(s.landPriceM2, s.landPriceUnit ?? "원/㎡")}${s.landPriceUnit ?? "원/㎡"}` : "공시지가 미확인",
     jimok: s.jimok ? `지목: ${s.jimok}` : "지목 미확인",
     zoning: s.zoning ?? "용도지역 미확인",

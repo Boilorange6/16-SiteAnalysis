@@ -1,5 +1,6 @@
 import { toLngLat, toUtmk } from "../crs";
 import type { FeatureHit } from "../data/features";
+import { booleanIntersects, feature } from "@turf/turf";
 import {
   SCENE_VERSION,
   SCENE_MAX_BUILDINGS,
@@ -119,18 +120,22 @@ function makeBuilding(
   };
 }
 
-function makeParcel(hit: FeatureHit, origin: { x: number; y: number }, sitePnu: string | null): SceneParcel | null {
+function makeParcel(hit: FeatureHit, origin: { x: number; y: number }, sitePnus: ReadonlySet<string>, siteGeometry: EngineContext["input"]["site"]["geometry"]): SceneParcel | null {
   if (!hit.pnu) return null;
   const jimok = typeof hit.properties.jimok === "string" ? hit.properties.jimok : null;
   const areaM2 = typeof hit.properties.areaM2 === "number" && Number.isFinite(hit.properties.areaM2) && hit.properties.areaM2 >= 0
     ? hit.properties.areaM2
     : null;
+  let intersectsSite = sitePnus.has(hit.pnu);
+  if (!intersectsSite && siteGeometry) {
+    try { intersectsSite = booleanIntersects(feature(siteGeometry) as never, feature(hit.geometry) as never); } catch { /* malformed legacy geometry stays non-site */ }
+  }
   return {
     pnu: hit.pnu,
     rings: localRings(hit, origin),
     jimok,
     areaM2,
-    isSite: hit.pnu === sitePnu,
+    isSite: intersectsSite,
   };
 }
 
@@ -297,11 +302,14 @@ export function buildScene(ctx: EngineContext): Scene | null {
   const buildings = buildingHits.map((row) => makeBuilding(row, origin, terrain));
 
   const parcelsDb = ctx.db("parcels");
-  const parcelHits = parcelsDb ? ctx.hits("parcels", ["parcel"]) : [];
+  const parcelHits = parcelsDb
+    ? [...new Map([...ctx.hits("parcels", ["parcel"]), ...ctx.siteParcelHits()].map((hit) => [hit.featureId, hit])).values()]
+    : [];
   const parcelsByArea = [...parcelHits].sort((a, b) => parcelArea(b) - parcelArea(a) || a.featureId - b.featureId);
   const parcelHitsIncluded = parcelsByArea.slice(0, SCENE_MAX_PARCELS);
-  const parcels = parcelHitsIncluded.map((hit) => makeParcel(hit, origin, ctx.input.pnu)).filter((parcel): parcel is SceneParcel => parcel !== null);
-  const siteHit = parcelHits.find((hit) => hit.pnu === ctx.input.pnu);
+  const sitePnus = new Set(ctx.input.site.pnus);
+  const parcels = parcelHitsIncluded.map((hit) => makeParcel(hit, origin, sitePnus, ctx.input.site.geometry)).filter((parcel): parcel is SceneParcel => parcel !== null);
+  const legacySiteHit = parcelHits.find((hit) => hit.pnu === ctx.input.pnu);
 
   const limitations: Scene["limitations"] = [];
   limitations.push(...buildingRetirementLimitations(ctx));
@@ -335,7 +343,9 @@ export function buildScene(ctx: EngineContext): Scene | null {
     origin: { epsg: "EPSG:5179" as const, x: originX, y: originY, lng: ctx.input.center[0], lat: ctx.input.center[1] },
     radiusM: ctx.input.radiusM,
     ground,
-    site: siteHit ? localRings(siteHit, origin) : null,
+    site: ctx.input.site.geometry
+      ? polygonParts(ctx.input.site.geometry).flatMap((rings) => rings.map((ring) => toLocalRing(ring, origin)))
+      : legacySiteHit ? localRings(legacySiteHit, origin) : null,
     buildings,
     parcels,
     counts: {

@@ -7,6 +7,7 @@ import { parseTileResult, type RasterRef } from "../../tile-result";
 import { loadTileRaster } from "../../raster-store";
 import type { RasterValues } from "../context";
 import { EngineContext } from "../context";
+import { restoreSiteFromParameters } from "../site";
 import type { TileCode } from "../../ui/tile-catalog";
 import { catalogEntry } from "../../ui/tile-catalog";
 import { BUILDING_SPECS } from "./buildings";
@@ -288,6 +289,7 @@ function makeContext(appDb: BetterSqlite3.Database, dataDir: string, analysisId:
       radiusM: run.radiusM,
       analysisDate: run.analysisDate,
       pnu: typeof run.parameters.pnu === "string" ? run.parameters.pnu : null,
+      site: restoreSiteFromParameters(run.parameters),
     }, {}, { rasterReader: rasterReader(appDb, analysisId) }),
   };
 }

@@ -4,12 +4,14 @@
  */
 import type BetterSqlite3 from "better-sqlite3";
 import type { LngLat } from "../crs";
-import { queryFeaturesInRadius, type FeatureHit } from "../data/features";
+import { booleanIntersects, feature, featureCollection, intersect } from "@turf/turf";
+import { geometryBbox, queryFeaturesByPnus, queryFeaturesInBboxes, queryFeaturesInRadius, type FeatureHit } from "../data/features";
 import { acquireDataFile, releaseDataFile } from "../data/file-pool";
 import { legalAreasForCircle } from "../data/legal-areas";
 import { manifestHash, openDataFile, type Manifest } from "../data/manifest";
 import type { RasterRef, TileConditions, TileResult } from "../tile-result";
 import { encodeRaster, MAX_TILE_RASTER_BYTES, type RasterData } from "../raster-store";
+import { siteSnapshotHash, type EngineSite } from "./site";
 
 export type Limitation = TileResult["limitations"][number];
 export type FileKey = "core" | "buildings" | "parcels" | "reference" | "market" | "terrain" | "weather";
@@ -26,6 +28,8 @@ export interface EngineInput {
   radiusM: number;
   analysisDate: string;
   pnu: string | null;
+  /** EPSG:5179 대지 도형과 선택 방식. pnu는 옛 타일 호출자 하위 호환용 별칭이다. */
+  site: EngineSite;
 }
 
 export type InitialDataHandles = Partial<Record<FileKey, BetterSqlite3.Database>>;
@@ -60,7 +64,8 @@ export class EngineContext {
     this.rasterReader = options.rasterReader;
     this.reuseDataFiles = options.reuseDataFiles === true;
     const pooledKeys = new Set(options.pooledKeys ?? []);
-    this.input = { ...input, pnu: input.pnu ?? null };
+    const site = input.site ?? { pnus: input.pnu ? [input.pnu] : [], geometry: null, kind: "address" as const };
+    this.input = { ...input, site, pnu: input.pnu ?? site.pnus[0] ?? null };
     for (const [key, db] of Object.entries(initialHandles)) {
       if (db) {
         const fileKey = key as FileKey;
@@ -77,7 +82,7 @@ export class EngineContext {
       timezone: "Asia/Seoul",
       filters: {},
       simulation: null,
-      parcelSnapshotHash: null,
+      parcelSnapshotHash: siteSnapshotHash(site),
     };
   }
 
@@ -131,6 +136,40 @@ export class EngineContext {
     const hits = db ? queryFeaturesInRadius(db, this.input.center, radiusM, kinds) : [];
     this.hitCache.set(cacheKey, hits);
     return hits;
+  }
+
+  /** 대지 geometry와 실제 교차하는 필지. 선택 PNU가 없는 직접 그린 구역도 지원한다. */
+  siteParcelHits(): FeatureHit[] {
+    return this.memo("site:parcel-hits", () => {
+      const geometry = this.input.site.geometry;
+      const db = this.db("parcels");
+      if (!db) return [];
+      // PNU 선택은 경계가 맞닿은 이웃까지 포함하지 않고 사용자가 고른 PNU를 그대로 보존한다.
+      if (this.input.site.kind !== "polygon" && this.input.site.pnus.length > 0) {
+        return queryFeaturesByPnus(db, this.input.site.pnus);
+      }
+      if (!geometry) {
+        const pnu = this.input.pnu;
+        return pnu ? this.hits("parcels", ["parcel"]).filter((hit) => hit.pnu === pnu) : [];
+      }
+      const candidates = queryFeaturesInBboxes(db, [geometryBbox(geometry)], ["parcel"]);
+      const siteFeature = feature(geometry);
+      return candidates
+        .filter((hit) => {
+          try {
+            if (!booleanIntersects(siteFeature as never, feature(hit.geometry) as never)) return false;
+            const clipped = intersect(featureCollection([siteFeature as never, feature(hit.geometry) as never]) as never);
+            if (!clipped || (clipped.geometry.type !== "Polygon" && clipped.geometry.type !== "MultiPolygon")) return false;
+            const parts = clipped.geometry.type === "Polygon" ? [clipped.geometry.coordinates] : clipped.geometry.coordinates;
+            const ringArea = (ring: readonly number[][]) => Math.abs(ring.reduce((sum, point, index) => {
+              const next = ring[(index + 1) % ring.length];
+              return sum + point[0] * next[1] - next[0] * point[1];
+            }, 0)) / 2;
+            return parts.reduce((sum, rings) => sum + ringArea(rings[0]) - rings.slice(1).reduce((holes, ring) => holes + ringArea(ring), 0), 0) > 1e-6;
+          } catch { return false; }
+        })
+        .sort((a, b) => a.featureId - b.featureId);
+    });
   }
 
   private allRefs(key: FileKey): SourceRef[] {

@@ -1,8 +1,9 @@
 /** A12 토지·용도지역·공시지가·주변 지가. 용도지역 집계는 D08과 공유한다. */
 import type BetterSqlite3 from "better-sqlite3";
+import { feature, featureCollection, intersect } from "@turf/turf";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext, Limitation, SourceRef } from "../context";
-import { makeTile, obs, type MapCandidate, type TileDraft } from "./common";
+import { est, makeTile, obs, type MapCandidate, type TileDraft } from "./common";
 import { polygonArea, polygonParts } from "./geo";
 import { collectZoning, CLASSES, ZONING_LAYERS, type ZoningCollection } from "./zoning-shared";
 import { notProvided } from "./not-provided";
@@ -45,11 +46,27 @@ function pricesByPnu(db: BetterSqlite3.Database, pnus: readonly string[]): Map<s
   return out;
 }
 
-function fullParcelAreaM2(hit: { geometry: Parameters<typeof polygonParts>[0]; properties: Record<string, unknown> }): number | null {
+function geometryAreaM2(hit: { geometry: Parameters<typeof polygonParts>[0] }): number | null {
   const area = polygonParts(hit.geometry).reduce((sum, rings) => sum + polygonArea(rings), 0);
-  if (area > 0 && Number.isFinite(area)) return rounded(area);
-  const fallback = hit.properties.areaM2;
-  return typeof fallback === "number" && Number.isFinite(fallback) && fallback > 0 ? rounded(fallback) : null;
+  return area > 0 && Number.isFinite(area) ? area : null;
+}
+
+function ledgerAreaM2(hit: { geometry: Parameters<typeof polygonParts>[0]; properties: Record<string, unknown> }): number | null {
+  for (const key of ["studyAreaM2", "ledgerAreaM2", "officialAreaM2", "landAreaM2", "areaM2"]) {
+    const value = hit.properties[key];
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+  }
+  return geometryAreaM2(hit);
+}
+
+function intersectionAreaM2(a: Parameters<typeof polygonParts>[0], b: Parameters<typeof polygonParts>[0]): number {
+  try {
+    const clipped = intersect(featureCollection([feature(a as never), feature(b as never)]) as never);
+    if (!clipped) return 0;
+    return polygonParts(clipped.geometry).reduce((sum, rings) => sum + polygonArea(rings), 0);
+  } catch {
+    return 0;
+  }
 }
 
 interface PriceDetails {
@@ -62,6 +79,8 @@ function priceDetails(ctx: EngineContext): PriceDetails {
   const reference = ctx.db("reference");
   const landPriceTable = hasTable(reference, "land_price");
   const pnu = typeof ctx.input.pnu === "string" && ctx.input.pnu.trim() !== "" ? ctx.input.pnu.trim() : null;
+  const siteHits = ctx.siteParcelHits();
+  const polygonSite = ctx.input.site.kind === "polygon";
   const priceSources = ctx.sources("reference", ["land_price"]);
   const metrics: Metric[] = [];
   const limitations: Limitation[] = [];
@@ -70,21 +89,41 @@ function priceDetails(ctx: EngineContext): PriceDetails {
   if (!landPriceTable || !reference) {
     targetReason = "land_price 테이블 없음";
     metrics.push(unavailable("land_price", "대상 필지 개별공시지가", "원/㎡", "a12-land-price@1:land_price 테이블 없음"));
-  } else if (!pnu) {
-    targetReason = "pnu 없음";
+  } else if (siteHits.length === 0) {
+    targetReason = pnu ? "대상 PNU 도형 행 없음" : polygonSite ? "교차 필지 자료 없음" : "pnu 없음";
     metrics.push(unavailable("land_price", "대상 필지 개별공시지가", "원/㎡", "a12-land-price@1:pnu 없음"));
   } else {
-    const targetPrice = reference.prepare("SELECT pnu, base_year, price_krw_per_m2 FROM land_price WHERE pnu = ?").get(pnu) as PriceRow | undefined;
-    if (!targetPrice) {
-      targetReason = "행 없음";
+    const targetPnus = siteHits.map((hit) => hit.pnu).filter((value): value is string => typeof value === "string" && value !== "");
+    const byPnu = pricesByPnu(reference, [...new Set(targetPnus)]);
+    let weightedTotal = 0;
+    let weightTotal = 0;
+    let latestYear = 0;
+    for (const hit of siteHits) {
+      const price = hit.pnu ? byPnu.get(hit.pnu) : undefined;
+      const geometryArea = geometryAreaM2(hit) ?? 0;
+      const clippedArea = polygonSite && ctx.input.site.geometry ? intersectionAreaM2(ctx.input.site.geometry, hit.geometry) : geometryArea;
+      const fraction = geometryArea > 0 ? Math.max(0, Math.min(1, clippedArea / geometryArea)) : 0;
+      const weight = (ledgerAreaM2(hit) ?? clippedArea) * (polygonSite ? fraction : 1);
+      if (price && weight > 0) {
+        weightedTotal += price.price_krw_per_m2 * weight;
+        weightTotal += weight;
+        latestYear = Math.max(latestYear, price.base_year);
+      }
+    }
+    if (weightTotal <= 0) {
+      targetReason = "대지 필지의 공시지가 행 없음";
       metrics.push(unavailable("land_price", "대상 필지 개별공시지가", "원/㎡", "a12-land-price@1:해당 PNU 행 없음"));
     } else {
-      metrics.push(obs(
+      const average = rounded(weightedTotal / weightTotal);
+      const makePrice = polygonSite ? est : obs;
+      metrics.push(makePrice(
         "land_price",
-        "대상 필지 개별공시지가",
-        targetPrice.price_krw_per_m2,
+        polygonSite ? "대지 면적가중 공시지가(추정)" : siteHits.length > 1 ? "합필 대지 면적가중 공시지가" : "대상 필지 개별공시지가",
+        average,
         "원/㎡",
-        `a12-land-price@1:해당 PNU 개별공시지가, 기준연도 ${targetPrice.base_year}`,
+        `a12-land-price@2:${polygonSite ? "그린 구역과 교차한 필지별 면적 가중" : "대지 필지별 공부면적 가중"}, 기준연도 ${latestYear}`,
+        rounded(weightTotal),
+        rounded(weightTotal),
       ));
     }
   }
@@ -123,24 +162,33 @@ function priceDetails(ctx: EngineContext): PriceDetails {
   }
   if (nearbyReason) limitations.push({ kind: "not_provided", note: `주변 필지 공시지가 중앙값을 표시하지 않습니다(${nearbyReason}).` });
 
+  metrics.push(obs("site_parcels", "대지에 포함된 필지 수", siteHits.length, "필지", "a12-site-parcels@1:대지 geometry와 실제 교차하는 parcel 도형 수"));
   let parcelAreaReason: string | null = null;
   if (!parcelsDb) {
-    parcelAreaReason = "필지 도형 자료 없음";
-    metrics.push(unavailable("parcel_area_m2", "대상 필지 도형 면적", "㎡", "a12-parcel-area@1:필지 도형 자료 없음"));
-  } else if (!pnu) {
-    parcelAreaReason = "pnu 없음";
-    metrics.push(unavailable("parcel_area_m2", "대상 필지 도형 면적", "㎡", "a12-parcel-area@1:pnu 없음"));
+    if (polygonSite && ctx.input.site.geometry) {
+      const area = polygonParts(ctx.input.site.geometry).reduce((sum, rings) => sum + polygonArea(rings), 0);
+      metrics.push(est("parcel_area_m2", "직접 그린 구역 면적(추정)", rounded(area), "㎡", "a12-parcel-area@2:필지 자료 없이 직접 그린 구역 도형 면적"));
+    } else {
+      parcelAreaReason = "필지 도형 자료 없음";
+      metrics.push(unavailable("parcel_area_m2", "대상 필지 도형 면적", "㎡", "a12-parcel-area@1:필지 도형 자료 없음"));
+    }
   } else {
-    const targetParcel = parcelHits.find((hit) => hit.pnu === pnu);
-    const areaM2 = targetParcel ? fullParcelAreaM2(targetParcel) : null;
-    if (areaM2 === null) {
-      parcelAreaReason = targetParcel ? "대상 필지 도형 면적 없음" : "대상 PNU 도형 행 없음";
+    const areaM2 = siteHits.reduce((sum, hit) => {
+      const geometryArea = geometryAreaM2(hit) ?? 0;
+      const clippedArea = polygonSite && ctx.input.site.geometry ? intersectionAreaM2(ctx.input.site.geometry, hit.geometry) : geometryArea;
+      const fraction = geometryArea > 0 ? Math.max(0, Math.min(1, clippedArea / geometryArea)) : 0;
+      return sum + (ledgerAreaM2(hit) ?? clippedArea) * (polygonSite ? fraction : 1);
+    }, 0);
+    if (areaM2 <= 0) {
+      parcelAreaReason = siteHits.length > 0 ? "대상 필지 도형 면적 없음" : "대상 PNU 도형 행 없음";
       metrics.push(unavailable("parcel_area_m2", "대상 필지 도형 면적", "㎡", `a12-parcel-area@1:${parcelAreaReason}`));
     } else {
-      metrics.push(obs("parcel_area_m2", "대상 필지 도형 면적", areaM2, "㎡", "a12-parcel-area@1:대상 PNU 필지 전체 도형 면적"));
+      const makeArea = polygonSite ? est : obs;
+      metrics.push(makeArea("parcel_area_m2", polygonSite ? "대지 면적(교차 필지 비율 추정)" : siteHits.length > 1 ? "합필 공부면적 합계" : "대상 필지 도형 면적", rounded(areaM2), "㎡", `a12-parcel-area@2:${polygonSite ? "직접 그린 구역과 필지 교차면적 비율" : "대지 포함 필지별 공부면적 합"}`));
     }
   }
   if (parcelAreaReason) limitations.push({ kind: "not_provided", note: `대상 필지 도형 면적을 표시하지 않습니다(${parcelAreaReason}).` });
+  if (polygonSite) limitations.push({ kind: "estimated", note: "직접 그린 구역의 공시지가·면적은 경계와 교차한 필지 면적 비율로 가중한 추정치입니다." });
 
   return { metrics, limitations, sources: priceSources };
 }
