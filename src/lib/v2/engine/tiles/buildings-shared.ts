@@ -1,6 +1,7 @@
 import type BetterSqlite3 from "better-sqlite3";
 import type { Geometry, MultiPolygon, Polygon } from "geojson";
 import { normalizeBuildingName, overlapArea, planarArea, RETIRED_GIS_MAX_APPROVAL_YEAR } from "../../ingest/sources/juso-buildings";
+import { FLOOR_HEIGHT_M } from "../../ingest/sources/buildings";
 import { toUtmk } from "../../crs";
 import { queryFeaturesInBboxes, type FeatureHit } from "../../data/features";
 import type { EngineContext } from "../context";
@@ -19,16 +20,49 @@ const RETIREMENT_PARCEL_QUERY_CELL_M = 128;
 const FEATURE_COLUMNS = ["feature_id", "stable_id", "kind", "release_id", "geom_json", "name", "pnu", "legal_code", "properties_json"] as const;
 const FACT_COLUMNS = ["feature_id", "height_m", "height_method", "floors_above", "use_code", "approval_date", "gross_floor_area_m2", "footprint_area_m2"] as const;
 
+export type StoredBuildingHeightMethod = "source" | "ledger_height" | "floors_estimate" | "ledger_floors_estimate" | "user" | "unknown";
+export type BuildingHeightMethod = "source" | "ledger_height" | "floors_estimate" | "user" | "unknown" | "assumed_one_floor";
+
 export interface BuildingRow {
   hit: FeatureHit;
   heightM: number | null;
-  heightMethod: "source" | "floors_estimate" | "user" | "unknown";
+  heightMethod: BuildingHeightMethod;
   floorsAbove: number | null;
+  /** 엔진 가정 전 building_fact 원천값. 원천 사실 보존·검증용이며 계산값과 다를 수 있다. */
+  rawHeightM: number | null;
+  rawFloorsAbove: number | null;
+  rawHeightMethod: StoredBuildingHeightMethod;
   useCode: string | null;
   approvalDate: string | null;
   approvalDateSource: "building_fact" | "ledger_title" | "core_ledger_pnu" | null;
   grossFloorM2: number | null;
   footprintM2: number | null;
+}
+
+export function isConfirmedHeightMethod(method: BuildingHeightMethod): boolean {
+  return method === "source" || method === "ledger_height";
+}
+
+export function isAssumedOneFloor(row: Pick<BuildingRow, "heightMethod">): boolean {
+  return row.heightMethod === "assumed_one_floor";
+}
+
+export function assumedOneFloorCount(rows: readonly Pick<BuildingRow, "heightMethod">[]): number {
+  return rows.filter(isAssumedOneFloor).length;
+}
+
+/** 1층 가정은 다른 추정 층수와 섞이지 않도록 별도 한계 문장으로 남긴다. */
+export function assumedOneFloorLimitation(
+  rows: readonly Pick<BuildingRow, "heightMethod">[],
+  denominator = rows.length,
+): { kind: "estimated"; note: string } | null {
+  const count = assumedOneFloorCount(rows);
+  if (count === 0 || denominator <= 0) return null;
+  const share = Math.round((count / denominator) * 1000) / 10;
+  return {
+    kind: "estimated",
+    note: `높이·층수 자료가 없는 건물 ${count.toLocaleString("en-US")}동(${share}%)은 1층(${FLOOR_HEIGHT_M} m)으로 가정했습니다.`,
+  };
 }
 
 /** 발자국의 면적 가중 중심(EPSG:5179 m). 홀은 뺀다. 면적이 0이면 꼭짓점 평균. */
@@ -109,8 +143,12 @@ export function buildingsReady(ctx: EngineContext): boolean {
 }
 
 const positiveNumber = (value: unknown): number | null => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null);
-const heightMethod = (value: unknown): BuildingRow["heightMethod"] =>
-  value === "source" || value === "ledger_height" || value === "floors_estimate" || value === "user" ? value === "ledger_height" ? "source" : value : value === "ledger_floors_estimate" ? "floors_estimate" : "unknown";
+const storedHeightMethod = (value: unknown): StoredBuildingHeightMethod =>
+  value === "source" || value === "ledger_height" || value === "floors_estimate" || value === "ledger_floors_estimate" || value === "user" ? value : "unknown";
+const heightMethod = (value: unknown): BuildingHeightMethod => {
+  const stored = storedHeightMethod(value);
+  return stored === "ledger_floors_estimate" ? "floors_estimate" : stored;
+};
 
 function validApprovalDate(value: unknown, analysisDate: string): string | null {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
@@ -450,6 +488,11 @@ function buildingRowsUncached(ctx: EngineContext, radiusM: number): { rows: Buil
     const byFeature = new Map(rows.map((row) => [row.feature_id as number, row]));
     for (const hit of chunk) {
       const row = byFeature.get(hit.featureId);
+      const rawHeightM = positiveNumber(row?.height_m);
+      const rawFloorsAbove = positiveNumber(row?.floors_above);
+      const rawHeightMethod = storedHeightMethod(row?.height_method);
+      const normalizedHeightMethod = heightMethod(row?.height_method);
+      const assumed = rawHeightM === null && rawFloorsAbove === null && rawHeightMethod === "unknown";
       const factApproval = typeof row?.approval_date === "string" ? row.approval_date : null;
       const ledgerDate = hit.stableId.startsWith("juso:") && hit.pnu ? ledgerApproval.get(hit.pnu) ?? null : null;
       let factApprovalSource: "building_fact" | "ledger_title" = "building_fact";
@@ -463,9 +506,12 @@ function buildingRowsUncached(ctx: EngineContext, radiusM: number): { rows: Buil
       }
       out.push({
         hit,
-        heightM: positiveNumber(row?.height_m),
-        heightMethod: heightMethod(row?.height_method),
-        floorsAbove: positiveNumber(row?.floors_above),
+        heightM: assumed ? FLOOR_HEIGHT_M : rawHeightM,
+        heightMethod: assumed ? "assumed_one_floor" : normalizedHeightMethod,
+        floorsAbove: assumed ? 1 : rawFloorsAbove,
+        rawHeightM,
+        rawFloorsAbove,
+        rawHeightMethod,
         useCode: typeof row?.use_code === "string" ? row.use_code : null,
         approvalDate: factApproval ?? ledgerDate,
         approvalDateSource: factApproval ? factApprovalSource : ledgerDate ? "core_ledger_pnu" : null,

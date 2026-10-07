@@ -112,14 +112,17 @@ assert.equal(d04View.map.polygons.length, 6, "D04 화면도 발자국을 그린�
 assert.ok(d04View.map.notes.some((note) => note.includes("건물 발자국")));
 
 assert.equal(s02Tile.tileType, "simulation");
-assert.equal(s02Tile.status, "partial");
+assert.equal(s02Tile.status, "complete");
 assert.equal(s02Tile.conditions.simulation.model, "sun-raster@1");
 assert.equal(s02Tile.conditions.simulation.cellM, 2);
 assert.equal(s02Tile.conditions.simulation.influenceM, 400);
 assert.equal(s02Tile.conditions.simulation.dates.analysis.date, "2026-09-30");
 assert.ok(metric(s02Tile, "mean_sun_h_winter").value >= 0);
+assert.equal(metric(s02Tile, "buildings_used").value, 6);
+assert.equal(metric(s02Tile, "buildings_no_height").value, 0);
+assert.equal(metric(s02Tile, "buildings_assumed_one_floor").value, 1);
 assert.ok(s02Tile.presentation.rasters.some((ref) => ref.name === "sun_hours_winter"));
-assert.ok(s02Tile.limitations.some((l) => l.note.includes("높이 미상")));
+assert.ok(s02Tile.limitations.some((l) => l.note.includes("높이·층수 자료가 없는 건물 1동(16.7%)은 1층(3 m)으로 가정")));
 assert.ok(!s02Tile.judgment.sentence.includes("법적 일조권 충족"));
 
 

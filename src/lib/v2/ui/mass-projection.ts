@@ -194,7 +194,7 @@ function lightShade(nx: number, ny: number, nz: number): number {
 
 function layerOf(heightM: number | null, heightMethod: string): "mass_source" | "mass_estimated" | "mass_unknown" {
   if (heightM === null || !Number.isFinite(heightM) || heightM <= 0) return "mass_unknown";
-  return heightMethod === "floors_estimate" ? "mass_estimated" : "mass_source";
+  return heightMethod === "floors_estimate" || heightMethod === "assumed_one_floor" ? "mass_estimated" : "mass_source";
 }
 
 function projectRaw(point: [number, number], z: number, cosA: number, sinA: number, cosE: number, sinE: number): RawPoint {

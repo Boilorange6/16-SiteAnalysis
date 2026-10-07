@@ -76,7 +76,7 @@ function addPlanarRings(
 
 function buildingLayer(building: SceneBuilding): RhinoLayerName {
   if (building.heightM === null || building.heightMethod === "unknown") return "BLDG_NOHEIGHT";
-  return building.heightMethod === "floors_estimate" ? "BLDG_EST" : "BLDG";
+  return building.heightMethod === "floors_estimate" || building.heightMethod === "assumed_one_floor" ? "BLDG_EST" : "BLDG";
 }
 
 function addBuilding(

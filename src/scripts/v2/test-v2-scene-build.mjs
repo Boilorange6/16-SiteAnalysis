@@ -43,10 +43,10 @@ try {
     ...scene.parcels.flatMap((parcel) => parcel.rings.flat()),
   ];
   assert.ok(allPoints.every(([x, y]) => Math.abs(x) <= 901 && Math.abs(y) <= 901), "장면 좌표는 분석 반경 주변에 있어야 한다");
-  assert.equal(scene.buildings.filter((building) => building.heightM === null).length, 2);
+  assert.equal(scene.buildings.filter((building) => building.heightMethod === "assumed_one_floor" && building.heightM === 3 && building.floorsAbove === 1).length, 2);
   assert.ok(scene.sources.some((source) => source.sourceId === "building"));
   assert.ok(scene.sources.some((source) => source.sourceId === "parcel_polygon"));
-  assert.ok(scene.limitations.some((limitation) => limitation.kind === "incomplete"));
+  assert.ok(scene.limitations.some((limitation) => limitation.kind === "estimated" && limitation.note.includes("높이·층수 자료가 없는 건물 2동(33.3%)은 1층(3 m)으로 가정")));
 
   assert.equal(getScene(appDb, "missing").status, 404);
   const apiScene = getScene(appDb, outcome.analysisId);
@@ -112,10 +112,11 @@ try {
   const office = terrainScene.buildings.find((building) => building.id === "building:b_office");
   assert.ok(office);
   assert.ok(office.baseZ !== null && Math.abs(office.baseZ - 3.5) <= 0.75, `office baseZ ${office.baseZ}`);
-  const unknown = terrainScene.buildings.find((building) => building.id === "building:b_unknown");
-  assert.ok(unknown);
-  assert.equal(unknown.heightM, null);
-  assert.ok(unknown.baseZ !== null, "unknown-height building still gets terrain baseZ");
+  const assumed = terrainScene.buildings.find((building) => building.id === "building:b_unknown");
+  assert.ok(assumed);
+  assert.equal(assumed.heightM, 3);
+  assert.equal(assumed.heightMethod, "assumed_one_floor");
+  assert.ok(assumed.baseZ !== null, "assumed-height building still gets terrain baseZ");
   const hill = terrainScene.ground.kind === "dem" ? terrainScene.ground.z
     .map((value, index) => value === null ? null : [value, index] )
     .filter((value) => value !== null)

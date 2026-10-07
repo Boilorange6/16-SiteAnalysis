@@ -13,7 +13,7 @@ import type { EngineContext, SourceRef } from "./context";
 import { computeWind2D, rotateFromWindFrame } from "../sim/lbm2d";
 import { pointInRings, ringBBox, type XY } from "../sim/shadow";
 import { demReader } from "./tiles/terrain-shared";
-import { buildingRetirementLimitations, buildingRows, buildingsReady, BUILDING_SOURCES, type BuildingRow } from "./tiles/buildings-shared";
+import { assumedOneFloorCount, assumedOneFloorLimitation, buildingRetirementLimitations, buildingRows, buildingsReady, BUILDING_SOURCES, type BuildingRow } from "./tiles/buildings-shared";
 import { prevailingBySeason, type PrevailingDirection } from "./tiles/d22";
 import { est, missing, obs } from "./tiles/common";
 
@@ -46,6 +46,7 @@ export interface WindCase {
   inflow: Record<WindSeason, WindInflow | null>;
   station: { id: string; name: string; distanceM: number } | null;
   maxObstacleM: number;
+  assumedOneFloorCount: number;
   terrain: "included" | `excluded:${string}`;
   sources: SourceRef[];
   limitations: TileResult["limitations"];
@@ -252,6 +253,7 @@ export function buildWindCase(ctx: EngineContext): WindCase | null {
   const y0 = centerY - (rowsCount * cellM) / 2;
   const candidates = rows.map(candidateFor).filter((candidate): candidate is ObstacleCandidate => candidate !== null);
   const unknownCount = rows.filter((row) => !finitePositive(row.heightM)).length;
+  const assumedCount = assumedOneFloorCount(rows);
   let maxBuildingM = 0;
   for (const candidate of candidates) maxBuildingM = Math.max(maxBuildingM, candidate.heightM);
   const annualDirection = weather.inflow.annual.deg;
@@ -267,6 +269,8 @@ export function buildWindCase(ctx: EngineContext): WindCase | null {
     { kind: "unknown", note: "지형·수목 미포함(지형은 기복이 작을 때만 장애물 높이에 반영)" },
     ...buildingRetirementLimitations(ctx, Math.min(5000, ctx.input.radiusM + WIND_BUFFER_M)),
   ];
+  const assumedLimitation = assumedOneFloorLimitation(rows);
+  if (assumedLimitation) limitations.push(assumedLimitation);
   if (Object.values(weather.inflow).some((direction) => direction?.source === "annual")) {
     limitations.push({ kind: "not_provided", note: "계절 장미 미적재 — 계절 사례는 연간 최빈 풍향을 대체 입력으로 사용했습니다." });
   }
@@ -311,6 +315,7 @@ export function buildWindCase(ctx: EngineContext): WindCase | null {
     inflow: weather.inflow,
     station: weather.station,
     maxObstacleM: maxBuildingM,
+    assumedOneFloorCount: assumedCount,
     terrain: terrain.mode,
     sources,
     limitations,
@@ -331,6 +336,7 @@ export function windCaseSimulation(c: WindCase): Record<string, unknown> {
       station: c.station,
       maxObstacleM: Math.round(c.maxObstacleM * 10) / 10,
       terrain: c.terrain,
+      assumedOneFloorBuildings: c.assumedOneFloorCount,
     },
   };
 }

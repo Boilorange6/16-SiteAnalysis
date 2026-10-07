@@ -11,6 +11,7 @@ import { computeSunlight, type SunlightInput, type SunlightResult } from "./sunl
 import type { SunFieldResult, SunGrid } from "./sun-field";
 import { SEASON_LABEL, type SunDateKey } from "../engine/tiles/sun-shared";
 import { siteRings, type SiteRings, type XY } from "./shadow";
+import { FLOOR_HEIGHT_M } from "../ingest/sources/buildings";
 
 export const S02_LIMITATION = "건물·지형 모델에 의한 기하학적 일조 추정입니다. 구름·실제 기상·창면 조건 및 법적 일조 판정을 포함하지 않습니다.";
 export const S02_ENGINE_VERSION = "v2-sim-sun@2";
@@ -72,7 +73,9 @@ export function buildS02TileResult(input: S02Input, precomputed?: SunlightResult
   );
 
   const incomplete = r.buildings.excludedNoHeight;
+  const assumed = r.buildings.assumedOneFloor;
   const limitations: TileResult["limitations"] = [{ kind: "estimated", note: S02_LIMITATION }];
+  if (assumed > 0) limitations.push({ kind: "estimated", note: `높이·층수 자료가 없는 건물 ${assumed}동(${pct(assumed / Math.max(1, r.buildings.inInfluence))}%)은 1층(${FLOOR_HEIGHT_M} m)으로 가정했습니다.` });
   if (incomplete > 0) limitations.push({ kind: "incomplete", note: `영향 영역 안 건물 ${incomplete}개는 높이 정보가 없어 그림자 계산에서 제외했습니다. 불완전 장면 기준의 결과입니다.` });
   if (r.counts.uncalculated > 0) limitations.push({ kind: "partial", note: `높이를 모르는 건물이 덮은 수광면 ${r.counts.uncalculated}개 셀은 일조시간 0으로 세지 않고 미계산으로 분리했습니다.` });
   if (r.params.removeBuildingsInSite) limitations.push({ kind: "estimated", note: `대지 안 건물이 덮은 ${r.counts.removed}개 셀은 수광면에서 제외했습니다(기존 건물 철거 가정).` });
@@ -318,6 +321,7 @@ function fieldConditions(fields: readonly S02RasterField[]): Record<string, unkn
       receivers: item.field.stats.receivers,
       buildings: item.field.obstacles.buildings,
       buildingsNoHeight: item.field.obstacles.excludedNoHeight,
+      buildingsAssumedOneFloor: item.field.obstacles.assumedOneFloor,
       hourly: item.field.hourly.map((hour) => ({ kstHour: hour.kstHour, altDeg: round1(hour.altDeg), azDeg: round1(hour.azDeg) })),
     },
   ]));
@@ -341,6 +345,7 @@ export function buildS02RasterTileResult(input: S02RasterTileInput): TileResult 
   const winter = fields.find((item) => item.key === "winter") ?? fields[0];
   const receiverCount = winter?.field.stats.receivers ?? 0;
   const unknown = fields.reduce((max, item) => Math.max(max, item.field.obstacles.excludedNoHeight), 0);
+  const assumed = fields.reduce((max, item) => Math.max(max, item.field.obstacles.assumedOneFloor), 0);
   const metrics: TileResult["metrics"] = [];
   for (const item of fields) {
     const field = item.field;
@@ -356,6 +361,7 @@ export function buildS02RasterTileResult(input: S02RasterTileInput): TileResult 
   const common = winter?.field.obstacles;
   metrics.push(estimatedMetric("buildings_used", "그림자에 사용한 건물 수", "동", common ? common.buildings - common.excludedNoHeight : 0, "sun-buildings-used@1"));
   metrics.push(estimatedMetric("buildings_no_height", "높이 미상 건물 수", "동", common?.excludedNoHeight ?? 0, "sun-buildings-no-height@1"));
+  metrics.push(estimatedMetric("buildings_assumed_one_floor", "1층 가정(추정) 건물 수", "동", common?.assumedOneFloor ?? 0, "sun-buildings-assumed-one-floor@1", common?.assumedOneFloor ?? 0, common?.buildings ?? null));
   metrics.push(estimatedMetric("cell_m", "일조 격자 셀 크기", "m", input.grid.cellM, "sun-grid@1"));
   metrics.push(estimatedMetric("influence_m", "그림자 영향 반경", "m", input.influenceM, "sun-influence@1"));
 
@@ -365,6 +371,7 @@ export function buildS02RasterTileResult(input: S02RasterTileInput): TileResult 
     { kind: "estimated", note: "경사면 법선은 반영하지 않고 수평 수광면으로 계산했습니다." },
     { kind: input.terrain === "glo30-horizon" ? "estimated" : "unknown", note: input.terrain === "glo30-horizon" ? "Copernicus GLO-30(표면모델 DSM, 2011~15년·30 m·평활화) 지형 지평선을 반영했습니다. 서울에서 건물 신호는 미미합니다." : "게시된 DEM이 없어 지형 지평선을 반영하지 않았습니다." },
     ...(unknown > 0 ? [{ kind: "incomplete" as const, note: "높이 미상 " + unknown + "동은 그림자에서 제외하고 지붕 셀도 제외했습니다." }] : []),
+    ...(assumed > 0 && common ? [{ kind: "estimated" as const, note: `높이·층수 자료가 없는 건물 ${assumed}동(${pct(assumed / Math.max(1, common.buildings))}%)은 1층(${FLOOR_HEIGHT_M} m)으로 가정했습니다.` }] : []),
     ...input.coverage,
   ];
   const partial = unknown > 0 || limitations.some((limitation) => limitation.kind === "partial" || limitation.kind === "incomplete");

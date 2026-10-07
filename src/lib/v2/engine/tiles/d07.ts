@@ -3,17 +3,18 @@ import type { Geometry } from "geojson";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
 import { areaInCircle, polygonArea } from "./geo";
-import { BUILDING_SOURCES, buildingRetirementLimitations, buildingRows, isCounted, type BuildingRow } from "./buildings-shared";
+import { BUILDING_SOURCES, assumedOneFloorLimitation, buildingRetirementLimitations, buildingRows, isConfirmedHeightMethod, isCounted, type BuildingRow } from "./buildings-shared";
 import { est, makeTile, missing, obs, polygonCandidate, type TileDraft } from "./common";
 import { notProvided } from "./not-provided";
 
-const LAYERS = ["low_le12", "low_le12_est", "low_gt12", "low_unknown"] as const;
+const LAYERS = ["low_le12", "low_le12_est", "low_assumed_1f_est", "low_gt12", "low_unknown"] as const;
 const pct = (part: number, whole: number) => Math.round((part / whole) * 1000) / 10;
 
 function bucket(heightM: number | null, heightMethod: string): (typeof LAYERS)[number] {
   if (heightM === null || !Number.isFinite(heightM)) return "low_unknown";
+  if (heightMethod === "assumed_one_floor") return "low_assumed_1f_est";
   if (heightMethod === "floors_estimate") return heightM <= 12 ? "low_le12_est" : "low_gt12";
-  if (heightMethod === "source") return heightM <= 12 ? "low_le12" : "low_gt12";
+  if (isConfirmedHeightMethod(heightMethod as BuildingRow["heightMethod"])) return heightM <= 12 ? "low_le12" : "low_gt12";
   return "low_unknown";
 }
 
@@ -28,11 +29,12 @@ export function d07(ctx: EngineContext): TileResult {
   const total = rows.filter((row) => isCounted(ctx, row)).length; // 동수·구성비는 중심점이 반경 안인 건물만, 그림은 교차 전부
   const all = rows.map((row) => ({ row, layer: bucket(row.heightM, row.heightMethod), area: heightArea(ctx, row) }));
   const classified = all.filter(({ row }) => isCounted(ctx, row)); // 동수·구성비는 중심점이 반경 안인 건물만
-  const sourceKnown = classified.filter(({ row }) => row.heightMethod === "source" && row.heightM !== null).length;
+  const sourceKnown = classified.filter(({ row }) => isConfirmedHeightMethod(row.heightMethod) && row.heightM !== null).length;
   const lowSource = classified.filter(({ layer }) => layer === "low_le12").length;
   const lowEstimated = classified.filter(({ layer }) => layer === "low_le12_est").length;
   const notLow = classified.filter(({ layer }) => layer === "low_gt12").length;
   const unknown = classified.filter(({ layer }) => layer === "low_unknown").length;
+  const assumed = classified.filter(({ layer }) => layer === "low_assumed_1f_est").length;
   const lowEntries = classified.filter(({ layer }) => layer === "low_le12" || layer === "low_le12_est");
   const lowAreaKnown = lowEntries.every(({ area }) => area !== null);
   const lowAreaM2 = lowEntries.reduce((sum, { area }) => sum + (area?.areaM2 ?? 0), 0);
@@ -56,6 +58,8 @@ export function d07(ctx: EngineContext): TileResult {
     total === 0 ? missing("share_low_pct", "12m 이하 구성비", "%", "d07-share@1") : obs("share_low_pct", "12m 이하 구성비", pct(lowSource + lowEstimated, total), "%", "d07-share@1", lowSource + lowEstimated, total),
     total === 0 ? missing("share_not_low_pct", "12m 초과 구성비", "%", "d07-share@1") : obs("share_not_low_pct", "12m 초과 구성비", pct(notLow, total), "%", "d07-share@1", notLow, total),
     total === 0 ? missing("share_unknown_pct", "높이 미상 구성비", "%", "d07-share@1") : obs("share_unknown_pct", "높이 미상 구성비", pct(unknown, total), "%", "d07-share@1", unknown, total),
+    total === 0 ? missing("share_assumed_one_floor_pct", "1층 가정(추정) 구성비", "%", "d07-share@1") : est("share_assumed_one_floor_pct", "1층 가정(추정) 구성비", pct(assumed, total), "%", "d07-share@1", assumed, total),
+    total === 0 ? missing("low_buildings_assumed", "1층 가정(추정) 건물", "동", "d07-low-assumed@1") : est("low_buildings_assumed", "1층 가정(추정) 건물", assumed, "동", "d07-low-assumed@1", assumed, total),
     total === 0 || !lowAreaKnown
       ? missing("back_low_area_m2", "12m 이하 발자국 면적", "㎡", "d07-low-area@1")
       : obs("back_low_area_m2", "12m 이하 발자국 면적", Math.round(lowAreaM2), "㎡", "d07-low-area@1", Math.round(lowAreaM2), null),
@@ -65,12 +69,13 @@ export function d07(ctx: EngineContext): TileResult {
     ...buildingRetirementLimitations(ctx),
     ...ctx.coverage("buildings", BUILDING_SOURCES),
     { kind: "estimated" as const, note: "[추정] 높이는 층수×3m(적재기 상수); 12m 기준은 공식 저층건축물 정의가 아님" },
+    ...(assumedOneFloorLimitation(classified.map(({ row }) => row)) ? [assumedOneFloorLimitation(classified.map(({ row }) => row))!] : []),
     ...(geometryFailures > 0 ? [{ kind: "unknown" as const, note: `건물 ${geometryFailures}동의 도형을 지도 면으로 변환하지 못했습니다.` }] : []),
   ];
   const status: TileResult["status"] = limitations.some((limitation) => limitation.kind === "partial" || limitation.kind === "incomplete") ? "partial" : "complete";
   const sentence = total === 0
     ? "반경 안 건물이 확인되지 않아 높이 12m 기준 분류를 산출하지 못함 → 건물 자료와 현장 확인 필요"
-    : `반경 안 건물 ${total.toLocaleString("en-US")}동 중 높이 12m 이하 ${lowSource + lowEstimated}동(확인 ${lowSource}동·추정 ${lowEstimated}동) → 확인 높이와 추정 높이를 분리해 표시 → 건축물대장 높이 확인 필요`;
+    : `반경 안 건물 ${total.toLocaleString("en-US")}동 중 높이 12m 이하 ${lowSource + lowEstimated}동(확인 ${lowSource}동·추정 ${lowEstimated}동), 1층 가정 ${assumed}동 → 확인 높이·층수 추정·1층 가정을 분리해 표시 → 건축물대장 높이 확인 필요`;
 
   return makeTile(ctx, {
     code: "D07",
