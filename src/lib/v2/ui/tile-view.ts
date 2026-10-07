@@ -11,6 +11,7 @@ import type { MassModel } from "./mass-projection";
 import { catalogEntry, sourceName, TILE_CODES, type TileCode } from "./tile-catalog";
 import type { RoseModel } from "./wind-rose";
 import { isSiteParcelLayer, siteParcelFromResults } from "./site-parcel";
+import type { SourceRefLike } from "./source-details";
 
 export type OutputFace = (typeof OUTPUT_FACES)[number];
 export type Badge = { text: string; note?: string; tone: "status" | "limit" | "model" };
@@ -33,6 +34,8 @@ export type TileView = {
   caveats: string[];
   notes: string[];
   sourceLine: string;
+  /** 카드 출처 칩과 출처·기준일 패널이 사용하는 실제 원천 참조. */
+  sourceRefs: SourceRefLike[];
   chart: { label: string; value: number; unit: string }[] | null;
   hasFace: boolean;
   retryable: boolean;
@@ -602,6 +605,12 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
     caveats,
     notes: [...new Set(r.limitations.map((l) => l.note))],
     sourceLine: sourceLineOf(r.provenance.sources),
+    sourceRefs: r.provenance.sources.map((source) => ({
+      sourceId: source.sourceId,
+      releaseId: source.releaseId,
+      sourceAsOf: source.sourceAsOf,
+      ...(source.fetchedAt ? { fetchedAt: source.fetchedAt } : {}),
+    })),
     chart: (() => {
       const data = r.metrics
         .filter((m) => /^(share_|back_)/.test(m.id) && m.value !== null)

@@ -146,6 +146,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
   const [editing, setEditing] = useState(false);
   const [demoStep, setDemoStep] = useState<number | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [dialogTab, setDialogTab] = useState<"overview" | "sources">("overview");
   const dialogOpenerRef = useRef<HTMLElement | null>(null);
   const [stackSelection, setStackSelection] = useState<string[]>([]);
   const [sheetSelection, setSheetSelection] = useState<string[]>([]);
@@ -380,6 +381,11 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
         setNote(`${title} 타일을 ${action.size}칸으로 바꿈`);
         break;
       case "open":
+        setDialogTab("overview");
+        setOpenId(id);
+        break;
+      case "sources":
+        setDialogTab("sources");
         setOpenId(id);
         break;
       case "include":
@@ -451,6 +457,11 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
         onClickCapture={(event) => {
           const target = event.target;
           if (!(target instanceof HTMLElement)) return;
+          const sourceButton = target.closest<HTMLButtonElement>("[data-source-button]");
+          if (sourceButton) {
+            dialogOpenerRef.current = sourceButton;
+            return;
+          }
           const opener = target.closest<HTMLButtonElement>('button[aria-label$=" 펼치기"]');
           if (opener) {
             dialogOpenerRef.current = opener;
@@ -815,7 +826,10 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
           cuts={openView.code === "S02" ? (board.cuts[openView.tileId] ?? 1) : undefined}
           onCuts={openView.code === "S02" ? (cuts) => dispatch({ type: "cuts", id: openView.tileId, cuts }) : undefined}
           onWindUploaded={onWindUploaded}
-          onClose={() => setOpenId(null)}
+          onClose={() => {
+            setOpenId(null);
+            setDialogTab("overview");
+          }}
         />
       )}
     </main>

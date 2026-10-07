@@ -1,4 +1,5 @@
 import type { TileView } from "./tile-view";
+import type { SourceRefLike } from "./source-details";
 
 export type SheetGrid = "2x2" | "3x2" | "3x1";
 export type SheetRect = { x: number; y: number; w: number; h: number };
@@ -39,6 +40,15 @@ function sourceUnion(tiles: TileView[]): string {
   return sources.length > 0 ? sources.join(" · ") : "출처 없음";
 }
 
+function sourceRefsUnion(tiles: TileView[]): SourceRefLike[] {
+  const out = new Map<string, SourceRefLike>();
+  for (const source of tiles.flatMap((tile) => tile.sourceRefs)) {
+    const key = `${source.sourceId}:${source.releaseId}`;
+    if (!out.has(key)) out.set(key, source);
+  }
+  return [...out.values()];
+}
+
 /** 선택한 타일을 보고서 전용 조판 뷰로 만든다. 실제 셀 렌더링은 report-plan이 담당한다. */
 export function sheetView(id: string, tiles: TileView[], grid: SheetGrid): TileView {
   const first = tiles[0];
@@ -62,6 +72,7 @@ export function sheetView(id: string, tiles: TileView[], grid: SheetGrid): TileV
     caveats: unique(tiles.flatMap((tile) => tile.caveats)),
     notes: unique(tiles.map((tile) => tile.title)),
     sourceLine: sourceUnion(tiles),
+    sourceRefs: sourceRefsUnion(tiles),
     chart: null,
     hasFace: false,
     retryable: false,

@@ -310,6 +310,7 @@ type TileCardBaseProps = {
 export type TileCardAction =
   | { type: "resize"; size: TileSize }
   | { type: "open" }
+  | { type: "sources" }
   | { type: "include"; value: boolean }
   | { type: "face"; face: OutputFace }
   | { type: "roseSeason"; season: RoseSeason }
@@ -333,6 +334,7 @@ type TileCardRenderProps = TileCardBaseProps & {
   onHandleDown: (e: ReactPointerEvent<HTMLElement>) => void;
   onResize: (size: TileSize) => void;
   onOpen: () => void;
+  onSources: () => void;
   onInclude: (v: boolean) => void;
   onFace: (f: OutputFace) => void;
   onRoseSeason: (season: RoseSeason) => void;
@@ -561,7 +563,10 @@ function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, mas
         </div>
       </div>
       <footer className={styles.mfFoot} title={text}>
-        <span>{text}</span>
+        <button type="button" className={styles.sourceTrigger} data-source-button onClick={p.onSources} aria-label={`${view.title} 출처·기준일 열기`}>
+          <span className={styles.sourceText}>{text}</span>
+          <span className={styles.sourceCount} aria-label={`출처 ${view.sourceRefs.length}개`}>출처 {view.sourceRefs.length}</span>
+        </button>
       </footer>
     </div>
   );
@@ -677,9 +682,10 @@ function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardRende
           <>
             {!state && <ValueBadges badges={view.badges} />}
             <div className={styles.sfLine}>
-              <span className={styles.sfSrc} title={stripText(view.sourceLine, false)}>
-                {stripText(view.sourceLine, false)}
-              </span>
+              <button type="button" className={styles.sourceTrigger} data-source-button onClick={p.onSources} aria-label={`${view.title} 출처·기준일 열기`}>
+                <span className={styles.sfSrc} title={stripText(view.sourceLine, false)}>{stripText(view.sourceLine, false)}</span>
+                <span className={styles.sourceCount} aria-label={`출처 ${view.sourceRefs.length}개`}>출처 {view.sourceRefs.length}</span>
+              </button>
               {!state && (
                 <button type="button" className={styles.flipBtn} data-card-face-button="map" onClick={onFlip} aria-pressed={false} aria-label={`${view.title} 요약/지도 보기 전환`}>
                   지도 ↻
@@ -737,6 +743,7 @@ function TileCard(p: TileCardProps) {
   }, [id, p.onAction]);
   const onResize = useCallback((size: TileSize) => p.onAction(id, { type: "resize", size }), [id, p.onAction]);
   const onOpen = useCallback(() => p.onAction(id, { type: "open" }), [id, p.onAction]);
+  const onSources = useCallback(() => p.onAction(id, { type: "sources" }), [id, p.onAction]);
   const onInclude = useCallback((value: boolean) => p.onAction(id, { type: "include", value }), [id, p.onAction]);
   const onFace = useCallback((face: OutputFace) => p.onAction(id, { type: "face", face }), [id, p.onAction]);
   const onRoseSeason = useCallback((season: RoseSeason) => p.onAction(id, { type: "roseSeason", season }), [id, p.onAction]);
@@ -753,6 +760,7 @@ function TileCard(p: TileCardProps) {
     ...p,
     onResize,
     onOpen,
+    onSources,
     onInclude,
     onFace,
     onRoseSeason,
