@@ -24,10 +24,11 @@ const {
 } = await import("../../lib/v2/ingest/build.ts");
 const { buildParcelPoints } = await import("../../lib/v2/ingest/sources/parcels.ts");
 const { buildParcelPolygons } = await import("../../lib/v2/ingest/sources/parcel-polygons.ts");
-const { buildBuildings, FLOOR_HEIGHT_M } = await import("../../lib/v2/ingest/sources/buildings.ts");
+const { buildBuildings, finalizeLedgerMatches, FLOOR_HEIGHT_M } = await import("../../lib/v2/ingest/sources/buildings.ts");
 const { buildJusoBuildings, gisFeatureIdBound, jusoShpPerSido, shpExtent, JUSO_LICENSE_CODE, JUSO_PROVIDER, JUSO_RIGHTS, JUSO_SOURCE_ID, JUSO_SOURCE_URL, OVERLAP_MIN } = await import("../../lib/v2/ingest/sources/juso-buildings.ts");
 const { buildLegalAreas } = await import("../../lib/v2/ingest/sources/legal-areas.ts");
-const { buildLedger, ledgerFloorLookup } = await import("../../lib/v2/ingest/sources/ledger.ts");
+const { buildLedger, buildLedgerTitleIndex, dropLedgerTitleIndex, hasLedgerTitleIndex, ledgerFloorLookup, ledgerTitleLookup } = await import("../../lib/v2/ingest/sources/ledger.ts");
+const { createParcelSpatialLookup } = await import("../../lib/v2/ingest/sources/parcel-spatial.ts");
 const { buildPointSource, STORE_SPEC, BUS_STOP_SPEC, PARK_SPEC } = await import("../../lib/v2/ingest/sources/points.ts");
 const { buildSupply, readLegacyPlannedHousing } = await import("../../lib/v2/ingest/sources/supply.ts");
 const { buildOsmSubway, buildPlannedRail, legalCodeFromCore } = await import("../../lib/v2/ingest/sources/rail.ts");
@@ -44,7 +45,7 @@ const opt = (name, fallback) => {
 };
 const version = opt("version");
 if (!version || !/^[0-9A-Za-z._-]+$/.test(version)) {
-  console.error("usage: data:build -- --version <name> [--raw dir] [--dem-source glo30|hgt] [--only core,buildings,parcels,reference,market,terrain] [--with buildings,parcels] [--resume] [--log file] [--expectations file.json] [--reset-baseline parcel,parcel_building] [--dry-run]");
+  console.error("usage: data:build -- --version <name> [--raw dir] [--data-dir dir] [--dem-source glo30|hgt] [--only core,buildings,parcels,reference,market,terrain] [--with buildings,parcels] [--resume] [--log file] [--expectations file.json] [--reset-baseline parcel,parcel_building] [--dry-run]");
   process.exit(2);
 }
 // 로그: 콘솔 출력도 로그 파일(--log, 버전 폴더의 build.log)에 덧붙이고, 셸이 죽어 stdout이 닫혀도 빌드는 계속된다.
@@ -53,7 +54,9 @@ for (const m of ["log", "warn"]) console[m] = (...a) => progressLog(a.map((x) =>
 const flag = (name) => args.includes(`--${name}`);
 const resume = flag("resume");
 const raw = opt("raw", ".cache/v2/raw");
+const dataDir = opt("data-dir", v2DataDir());
 const only = new Set(String(opt("only", "core,reference,market")).split(","));
+const sidoOnly = opt("sido") ? new Set(String(opt("sido")).split(",")) : null;
 /** 기본 빌드에 넣지 않는 무거운 원천: 건물·필지 도형은 core가 아니라 별도 파일. --only 또는 --with로 선택한다. */
 for (const kind of String(opt("with", "")).split(",")) if (kind === "buildings" || kind === "parcels") only.add(kind);
 if (only.has("market")) {
@@ -152,9 +155,9 @@ async function* chain(...gens) {
 }
 
 if (waitLockMin !== null && !flag("dry-run")) {
-  reclaimStaleDataDirLock(v2DataDir());
+  reclaimStaleDataDirLock(dataDir);
   const { waitForDataDirLock } = await import("../../lib/v2/data/manifest.ts");
-  if (!(await waitForDataDirLock(v2DataDir(), { timeoutMs: waitLockMin * 60_000 }))) {
+  if (!(await waitForDataDirLock(dataDir, { timeoutMs: waitLockMin * 60_000 }))) {
     console.error(`data dir still locked after ${waitLockMin} min — giving up`);
     process.exit(3);
   }
@@ -190,6 +193,7 @@ if (flag("dry-run")) {
 
 const builders = {};
 const progress = {};
+let coreTitleIndexStaging = false;
 if (only.has("core")) {
   builders.core = async (db) => {
     const sig = newest("legal_dong", /\(SIG\)\.shp$/i);
@@ -230,18 +234,22 @@ if (only.has("core")) {
       recap: (await csvRecords(recapFile)).records,
       title: (await csvRecords(titleFile)).records,
     });
-    return [...legal, ...parcels, ...ledger];
+    const result = [...legal, ...parcels, ...ledger];
+    if (only.has("buildings")) coreTitleIndexStaging = true;
+    else dropLedgerTitleIndex(db);
+    return result;
   };
 }
 if (only.has("buildings")) {
   // 건물 도형: 받은 모든 시도의 GIS건물통합정보. 시도 하나라도 없으면 있는 시도만 적재하고 그 사실을 알린다.
   // 이 빌더는 현재 core를 건드리지 않는다(ctx.core는 읽기 전용으로 전달됨) — --only buildings는 매니페스트의 core를 그대로 재사용한다.
   // --sido 11,41: 이 시도만 적재한다(GIS건물·도로명주소 건물 모두). 검증용 — 재개할 때도 같은 값을 줘야 한다.
-  const sidoOnly = opt("sido") ? new Set(String(opt("sido")).split(",")) : null;
   const buildingAll = new Map([...latestShpPerSido([...walk(join(raw, "gis_building"))], "AL_D010")].filter(([s]) => !sidoOnly || sidoOnly.has(s)));
   if (buildingAll.size === 0) throw new Error("GIS건물(gis_building) 파일이 없습니다 — vworld:fetch로 받으세요");
   const maxYear = new Date().getUTCFullYear();
   const buildingFiles = progressFiles(flat(buildingAll));
+  const titleCandidates = [...walk(join(raw, "ledger_title"))].filter((file) => /^title_\d{6}\.csv$/i.test(basename(file))).sort((a, b) => basename(b).localeCompare(basename(a)));
+  const titleFile = titleCandidates[0] ?? newest("ledger_title", /^title_5sido\.csv$/i);
   // 행안부 도로명주소 건물(보조 원천): raw/juso가 있으면 GIS건물 단계 뒤에 시도 파일마다 한 단계씩 잇는다. --no-juso로 끈다.
   let jusoAll = new Map();
   if (!flag("no-juso") && existsSync(join(raw, "juso"))) {
@@ -255,22 +263,46 @@ if (only.has("buildings")) {
   const withJuso = jusoFiles.length > 0;
   const buildingProgress = progressSpec("building", "buildings", [...buildingFiles, ...jusoFiles], {
     sourcePattern: "gis_building/AL_D010", maxYear,
-    ledgerHeight: "core-title-floors-v1",
+    ledgerHeight: "title-dong-index-v2",
+    ledgerTitle: { file: relative(raw, titleFile).replaceAll("\\", "/"), size: statSync(titleFile).size, mtimeMs: Math.round(statSync(titleFile).mtimeMs) },
+    parcels: "same-build-or-current-manifest",
     ...(withJuso ? { juso: { sourcePattern: "juso/TL_SPBD_BULD", overlapMin: OVERLAP_MIN, floorHeightM: FLOOR_HEIGHT_M, replacementRule: "core-pnu-approval-name-v1" } } : {}),
   });
   progress.buildings = buildingProgress;
   const buildingByPath = new Map([...buildingFiles, ...jusoFiles].map((file) => [file.path, file.absPath]));
   builders.buildings = async (db, ctx) => {
     const rel = release(db, "building", oldestFile(buildingAll), "국토교통부(VWorld GIS건물통합정보)", "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=18", "CC-BY");
-    const ledger = ledgerFloorLookup(ctx.core);
+    let ledger = ledgerFloorLookup(ctx.core);
+    let titleIndexInBuildings = false;
+    if (!hasLedgerTitleIndex(ctx.core)) {
+      titleIndexInBuildings = true;
+      if (resume && hasLedgerTitleIndex(db)) {
+        ledger = ledgerTitleLookup(db);
+        console.log("buildings: reusing resumable ledger title index");
+      } else {
+        const titlePrefixes = sidoOnly ? new Set(sidoOnly) : undefined;
+        const indexed = await buildLedgerTitleIndex(db, (await csvRecords(titleFile)).records, { pnuPrefixes: titlePrefixes });
+        ledger = ledgerTitleLookup(db);
+        console.log(`buildings: streamed ledger title index ${indexed.toLocaleString()} rows from ${basename(titleFile)}`);
+      }
+    } else {
+      console.log("buildings: using same-run TEMP ledger title index from core");
+    }
+    const spatial = createParcelSpatialLookup(ctx.parcels, ctx.parcelVersion);
+    if (spatial) console.log(`buildings: parcel spatial join enabled (parcelVersion=${ctx.parcelVersion})`);
+    else console.warn("⚠ buildings: parcels.sqlite가 없어 spatial PNU 보강을 건너뜁니다");
     console.log(`buildings: 시도 ${partCounts(buildingAll)}${withJuso ? ` · 도로명주소 건물 시도 ${[...jusoAll.keys()].join(",")}` : " · 도로명주소 건물 없음(GIS건물만)"}`);
     if (!withJuso) {
       const b = await buildResumableSourceFiles(db, {
         spec: buildingProgress,
         releaseId: rel,
         fillFields: ["heightM", "floorsAbove", "useCode", "approvalDate"],
-        buildFile: (file) => buildBuildings(db, readShp(buildingByPath.get(file.path)), rel, { maxYear, ledger }),
+        buildFile: (file) => buildBuildings(db, readShp(buildingByPath.get(file.path)), rel, { maxYear, ledger, spatial, parcelVersion: ctx.parcelVersion, deferLedgerMatches: true }),
       });
+      const ledgerResult = finalizeLedgerMatches(db, b);
+      console.log(`buildings: ledger matches=${ledgerResult.matched} rejected 1:N=${ledgerResult.rejectedOneToMany}`);
+      if (titleIndexInBuildings) dropLedgerTitleIndex(db);
+      if (coreTitleIndexStaging && ctx.core) dropLedgerTitleIndex(ctx.core);
       b.expectedRegions = [...buildingAll.keys()];
       return [b];
     }
@@ -285,7 +317,7 @@ if (only.has("buildings")) {
       ...buildingFiles.map((file) => ({
         file,
         run: async () => {
-          const s = await buildBuildings(db, readShp(file.absPath), rel, { maxYear, ledger });
+          const s = await buildBuildings(db, readShp(file.absPath), rel, { maxYear, ledger, spatial, parcelVersion: ctx.parcelVersion, deferLedgerMatches: true });
           s.expectedRegions = [sidoOfFile.get(file.absPath)];
           return [s];
         },
@@ -305,12 +337,17 @@ if (only.has("buildings")) {
         },
       })),
     ];
-    return buildResumableSteps(db, buildingProgress, steps);
+    const stepStats = await buildResumableSteps(db, buildingProgress, steps);
+    const ledgerResult = finalizeLedgerMatches(db, stepStats);
+    console.log(`buildings: ledger matches=${ledgerResult.matched} rejected 1:N=${ledgerResult.rejectedOneToMany}`);
+    if (titleIndexInBuildings) dropLedgerTitleIndex(db);
+    if (coreTitleIndexStaging && ctx.core) dropLedgerTitleIndex(ctx.core);
+    return stepStats;
   };
 }
 if (only.has("parcels")) {
   // 연속지적 도형은 core의 대표점과 별도 게시한다. 시도별 최신 파트만 골라 첫 PNU를 유지한다.
-  const parcelAll = latestShpPerSido([...walk(join(raw, "cadastral"))], "AL_D002");
+  const parcelAll = new Map([...latestShpPerSido([...walk(join(raw, "cadastral"))], "AL_D002")].filter(([s]) => !sidoOnly || sidoOnly.has(s)));
   if (parcelAll.size === 0) throw new Error("연속지적도(cadastral) 파일이 없습니다 — vworld:fetch로 받으세요");
   const parcelFiles = progressFiles(flat(parcelAll));
   const parcelProgress = progressSpec("parcel_polygon", "parcels", parcelFiles, { sourcePattern: "cadastral/AL_D002" });
@@ -846,7 +883,7 @@ if (only.has("reference")) {
 }
 
 const started = Date.now();
-const out = await buildAndPublish({ dataDir: v2DataDir(), version, builders, progress, resume, expectations, resetBaseline, logFile: opt("log") });
+const out = await buildAndPublish({ dataDir, version, builders, progress, resume, expectations, resetBaseline, logFile: opt("log") });
 for (const [kind, list] of Object.entries(out.stats)) {
   for (const s of list) {
     const located = s.accepted + s.unlocated === 0 ? "-" : `${((100 * s.accepted) / (s.accepted + s.unlocated)).toFixed(1)}%`;

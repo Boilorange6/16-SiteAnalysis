@@ -104,13 +104,15 @@ const BUILDINGS_SQL = `
     ledger_pk TEXT,
     complex_id TEXT,
     height_m REAL,
-    height_method TEXT NOT NULL CHECK (height_method IN ('source','floors_estimate','ledger_floors_estimate','user','unknown')),
+    height_method TEXT NOT NULL CHECK (height_method IN ('source','ledger_height','floors_estimate','ledger_floors_estimate','user','unknown')),
     floors_above INTEGER,
     floors_below INTEGER,
     use_code TEXT,
     approval_date TEXT,
     gross_floor_area_m2 REAL,
     footprint_area_m2 REAL,
+    pnu_method TEXT NOT NULL DEFAULT 'unknown' CHECK (pnu_method IN ('source','spatial','unknown')),
+    pnu_spatial TEXT,
     field_provenance_json TEXT NOT NULL DEFAULT '{}'
   );
 `;

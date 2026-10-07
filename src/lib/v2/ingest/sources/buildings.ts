@@ -14,6 +14,7 @@ import { insertFeature } from "../../data/features";
 import { batched, SourceStats } from "../build";
 import type { ShpRecord } from "../shp";
 import type { LedgerFloorInput, LedgerFloorLookup, LedgerFloorMatch } from "./ledger";
+import type { ParcelSpatialLookup } from "./parcel-spatial";
 
 /** 높이 원천값이 없을 때 층수 추정에 쓰는 층고(m). 원천에서 높이·층수가 둘 다 있는 건물의 중앙값은 약 4.5 m/층이다(과소추정 쪽). */
 export const FLOOR_HEIGHT_M = 3.0;
@@ -40,7 +41,7 @@ export function validDate(v: unknown, maxYear: number): string | null {
 
 export interface BuildingHeight {
   heightM: number | null;
-  method: "source" | "floors_estimate" | "ledger_floors_estimate" | "unknown";
+  method: "source" | "ledger_height" | "floors_estimate" | "ledger_floors_estimate" | "unknown";
   floorsAbove: number | null;
   ledgerMatch?: LedgerFloorMatch;
 }
@@ -49,8 +50,14 @@ export function heightOf(p: Record<string, unknown>, floorHeightM = FLOOR_HEIGHT
   const floors = pos(p.A26, 0);
   const source = pos(p.A16);
   if (source !== null) return { heightM: source, method: "source", floorsAbove: floors };
+  if (ledgerMatch?.heightM !== undefined && ledgerMatch.heightM !== null && ledgerMatch.heightM > 0) return {
+    heightM: Math.round(ledgerMatch.heightM * 100) / 100,
+    method: "ledger_height",
+    floorsAbove: floors ?? ledgerMatch.floorsAbove,
+    ledgerMatch,
+  };
   if (floors !== null) return { heightM: Math.round(floors * floorHeightM * 100) / 100, method: "floors_estimate", floorsAbove: floors };
-  if (ledgerMatch) return {
+  if (ledgerMatch?.floorsAbove !== null && ledgerMatch?.floorsAbove !== undefined) return {
     heightM: Math.round(ledgerMatch.floorsAbove * floorHeightM * 100) / 100,
     method: "ledger_floors_estimate",
     floorsAbove: ledgerMatch.floorsAbove,
@@ -59,50 +66,144 @@ export function heightOf(p: Record<string, unknown>, floorHeightM = FLOOR_HEIGHT
   return { heightM: null, method: "unknown", floorsAbove: null };
 }
 
-function ledgerProvenance(match: LedgerFloorMatch, floorHeightM: number): string {
-  return JSON.stringify({
-    origin: "ledger-title",
-    height_m: {
-      source: "ledger.title.지상_층_수*floorHeightM",
-      floorHeightM,
+function ledgerProvenance(match: LedgerFloorMatch, floorHeightM: number, base: Record<string, unknown>, approvalApplied: boolean, heightApplied = true): string {
+  const output: Record<string, unknown> = {
+    ...base,
+    ledger: {
+      source: "ledger_title_dong",
       ledgerPk: match.ledgerPk,
-      ledger_pk: match.ledgerPk,
       match: match.method,
+      dongName: match.dongName ?? null,
+      heightM: match.heightM ?? null,
+      floorsAbove: match.floorsAbove ?? null,
+      approvalDate: match.approvalDate ?? null,
     },
-    floors_above: {
-      source: "ledger.title.지상_층_수",
-      ledgerPk: match.ledgerPk,
-      ledger_pk: match.ledgerPk,
-    },
-  });
+  };
+  output.height_m = !heightApplied ? base.height_m ?? {} : match.heightM !== null && match.heightM !== undefined
+    ? { source: "ledger.title.높이(m)", ledgerPk: match.ledgerPk, ledger_pk: match.ledgerPk, match: match.method }
+    : match.floorsAbove !== null && match.floorsAbove !== undefined
+      ? { source: "ledger.title.지상_층_수*floorHeightM", floorHeightM, ledgerPk: match.ledgerPk, ledger_pk: match.ledgerPk, match: match.method }
+      : base.height_m ?? {};
+  if (heightApplied && match.floorsAbove !== null && match.floorsAbove !== undefined) output.floors_above = { source: "ledger.title.지상_층_수", ledgerPk: match.ledgerPk, ledger_pk: match.ledgerPk, match: match.method };
+  if (approvalApplied && match.approvalDate) output.approval_date = { source: "ledger.title.사용승인_일", ledgerPk: match.ledgerPk, ledger_pk: match.ledgerPk, match: match.method };
+  return JSON.stringify(output);
 }
 
 const isPolygonal = (g: Geometry | null): g is Geometry => g !== null && (g.type === "Polygon" || g.type === "MultiPolygon");
+
+interface LedgerCandidateRow {
+  feature_id: number;
+  ledger_pk: string;
+  region: string;
+  base_height_m: number | null;
+  base_height_method: string;
+  base_floors_above: number | null;
+  base_approval_date: string | null;
+  base_ledger_pk: string | null;
+  base_provenance_json: string;
+  applied_height_m: number | null;
+  applied_height_method: string;
+  applied_floors_above: number | null;
+  applied_approval_date: string | null;
+  applied_provenance_json: string;
+}
+
+function ensureLedgerCandidateTable(db: BetterSqlite3.Database): void {
+  db.exec(`CREATE TABLE IF NOT EXISTS ledger_match_candidate (
+    feature_id INTEGER PRIMARY KEY,
+    ledger_pk TEXT NOT NULL,
+    region TEXT NOT NULL,
+    base_height_m REAL,
+    base_height_method TEXT NOT NULL,
+    base_floors_above INTEGER,
+    base_approval_date TEXT,
+    base_ledger_pk TEXT,
+    base_provenance_json TEXT NOT NULL,
+    applied_height_m REAL,
+    applied_height_method TEXT NOT NULL,
+    applied_floors_above INTEGER,
+    applied_approval_date TEXT,
+    applied_provenance_json TEXT NOT NULL,
+    match_method TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_ledger_match_candidate_pk ON ledger_match_candidate(ledger_pk);`);
+}
+
+function parsedProvenance(value: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
+/** 모든 GIS 파일을 본 뒤 같은 표제부 PK가 2개 건물에 붙었는지 판정한다. */
+export function finalizeLedgerMatches(db: BetterSqlite3.Database, stats: SourceStats | readonly SourceStats[], options: { drop?: boolean } = {}): { matched: number; rejectedOneToMany: number } {
+  const exists = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'ledger_match_candidate' LIMIT 1").get();
+  if (!exists) return { matched: 0, rejectedOneToMany: 0 };
+  const statList = Array.isArray(stats) ? stats : [stats];
+  // 1,700만 건을 JS 배열로 복사하지 않는다. 중복 PK의 행만 SQLite
+  // iterator로 흘려보내고, 정상 매칭 수는 집계 쿼리로 계산한다.
+  const total = Number(db.prepare("SELECT COUNT(*) FROM ledger_match_candidate").pluck().get());
+  // 중복 PK 목록은 작게 별도 staging하고, 후보 본문은 1,000행씩 읽는다.
+  // SQLite statement가 iterate 중일 때 같은 연결로 UPDATE할 수 없으므로
+  // 한 번에 전량을 .all()하지 않는다.
+  db.exec("DROP TABLE IF EXISTS ledger_match_duplicate_pk; CREATE TABLE ledger_match_duplicate_pk AS SELECT ledger_pk FROM ledger_match_candidate GROUP BY ledger_pk HAVING COUNT(*) > 1; CREATE UNIQUE INDEX idx_ledger_match_duplicate_pk ON ledger_match_duplicate_pk(ledger_pk);");
+  const rejectedCount = Number(db.prepare("SELECT COUNT(*) FROM ledger_match_candidate c JOIN ledger_match_duplicate_pk d USING (ledger_pk)").pluck().get());
+  const restore = db.prepare(`UPDATE building_fact SET ledger_pk = ?, height_m = ?, height_method = ?, floors_above = ?, approval_date = ?, field_provenance_json = ? WHERE feature_id = ?`);
+  const duplicateBatch = db.prepare(`SELECT c.* FROM ledger_match_candidate c
+    JOIN ledger_match_duplicate_pk d USING (ledger_pk)
+    WHERE c.feature_id > ? ORDER BY c.feature_id LIMIT 1000`);
+  let lastFeatureId = 0;
+  for (;;) {
+    const batch = duplicateBatch.all(lastFeatureId) as LedgerCandidateRow[];
+    if (batch.length === 0) break;
+    db.transaction(() => {
+      for (const row of batch) {
+        restore.run(row.base_ledger_pk, row.base_height_m, row.base_height_method, row.base_floors_above, row.base_approval_date, row.base_provenance_json, row.feature_id);
+        const oldProps = { heightM: row.applied_height_m, floorsAbove: row.applied_floors_above, approvalDate: row.applied_approval_date };
+        const newProps = { heightM: row.base_height_m, floorsAbove: row.base_floors_above, approvalDate: row.base_approval_date };
+        for (const sourceStats of statList) sourceStats.replaceTag(row.region, row.applied_height_method, row.base_height_method, oldProps, newProps);
+      }
+    })();
+    lastFeatureId = batch[batch.length - 1].feature_id;
+    if (batch.length < 1000) break;
+  }
+  db.exec("DROP TABLE ledger_match_duplicate_pk");
+  const matched = total - rejectedCount;
+  if (options.drop !== false) db.exec("DROP TABLE ledger_match_candidate");
+  return { matched, rejectedOneToMany: rejectedCount };
+}
 
 export async function buildBuildings(
   db: BetterSqlite3.Database,
   records: AsyncIterable<ShpRecord>,
   releaseId: string,
-  opts: { maxYear?: number; floorHeightM?: number; ledger?: LedgerFloorLookup | null } = {},
+  opts: { maxYear?: number; floorHeightM?: number; ledger?: LedgerFloorLookup | null; spatial?: ParcelSpatialLookup | null; parcelVersion?: string | null; deferLedgerMatches?: boolean } = {},
 ): Promise<SourceStats> {
   const maxYear = opts.maxYear ?? new Date().getUTCFullYear();
   const floorHeightM = opts.floorHeightM ?? FLOOR_HEIGHT_M;
   const stats = new SourceStats("building", releaseId, ["heightM", "floorsAbove", "useCode", "approvalDate"]);
-  const insertFact = db.prepare(`INSERT INTO building_fact (feature_id, ledger_pk, height_m, height_method, floors_above, floors_below, use_code, approval_date, gross_floor_area_m2, footprint_area_m2, field_provenance_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  const insertFact = db.prepare(`INSERT INTO building_fact (feature_id, ledger_pk, height_m, height_method, floors_above, floors_below, use_code, approval_date, gross_floor_area_m2, footprint_area_m2, pnu_method, pnu_spatial, field_provenance_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
   const provenance = { height_m: { source: "A16", floorHeightM }, floors_above: "A26", use_code: "A8", approval_date: "A13", areas: "A14/A12" };
   const provSource = JSON.stringify({ height_m: "A16" });
   const provEstimate = JSON.stringify({ ...provenance, height_m: { source: "A26*floorHeightM", floorHeightM } });
-  const pendingPnu = new Map<string, Array<{ featureId: number; match: LedgerFloorMatch; region: string }>>();
-  const candidateRowsByPnu = new Map<string, number>();
-  const directPnu = new Set<string>();
+  if (opts.ledger) ensureLedgerCandidateTable(db);
+  const insertCandidate = opts.ledger ? db.prepare(`INSERT OR REPLACE INTO ledger_match_candidate
+    (feature_id, ledger_pk, region, base_height_m, base_height_method, base_floors_above, base_approval_date, base_ledger_pk, base_provenance_json, applied_height_m, applied_height_method, applied_floors_above, applied_approval_date, applied_provenance_json, match_method)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`): null;
 
   await batched(db, records, (r) => {
     stats.read();
     const p = r.properties;
     const ufid = str(p.A1);
     if (!ufid || !isPolygonal(r.geometry)) return stats.reject();
-    const pnu = typeof p.A2 === "string" && /^\d{19}$/.test(p.A2) ? p.A2 : null;
+    const sourcePnu = typeof p.A2 === "string" && /^\d{19}$/.test(p.A2.trim()) ? p.A2.trim() : null;
+    const spatialMatch = sourcePnu === null ? opts.spatial?.match(r.geometry) ?? null : null;
+    const pnu = sourcePnu ?? spatialMatch?.pnu ?? null;
+    const pnuMethod = sourcePnu ? "source" : spatialMatch ? "spatial" : "unknown";
     const legal = typeof p.A3 === "string" && /^\d{10}$/.test(p.A3) ? p.A3 : null;
     const useCode = str(p.A8);
     const approvalDate = validDate(p.A13, maxYear);
@@ -110,7 +211,7 @@ export async function buildBuildings(
     const footprintAreaM2 = pos(p.A12);
     const nativeHeight = heightOf(p, floorHeightM);
     let ledgerMatch: LedgerFloorMatch | null = null;
-    if (nativeHeight.method === "unknown" && opts.ledger) {
+    if (opts.ledger) {
       const input: LedgerFloorInput = {
         pnu,
         ledgerPk: str(p.A21),
@@ -120,8 +221,18 @@ export async function buildBuildings(
       };
       ledgerMatch = opts.ledger.match(input);
     }
-    const deferredMatch = ledgerMatch?.method === "pnu_unique" && pnu !== null ? ledgerMatch : null;
-    const h = deferredMatch ? nativeHeight : heightOf(p, floorHeightM, ledgerMatch);
+    const h = heightOf(p, floorHeightM, ledgerMatch);
+    const effectiveApproval = approvalDate ?? ledgerMatch?.approvalDate ?? null;
+    const sourceLedgerPk = str(p.A21);
+    const effectiveLedgerPk = sourceLedgerPk ?? (ledgerMatch ? ledgerMatch.ledgerPk : null);
+    const baseProvenance = nativeHeight.method === "floors_estimate" ? provEstimate : nativeHeight.method === "source" ? provSource : "{}";
+    const hProvenance = ledgerMatch
+      ? ledgerProvenance(ledgerMatch, floorHeightM, parsedProvenance(baseProvenance), approvalDate === null && Boolean(ledgerMatch.approvalDate), h.method === "ledger_height" || h.method === "ledger_floors_estimate")
+      : baseProvenance;
+    const finalProvenance = JSON.stringify({
+      ...parsedProvenance(hProvenance),
+      pnu: sourcePnu ? { method: "source", source: "A2" } : spatialMatch ? { method: "spatial", parcelVersion: spatialMatch.parcelVersion, spatialMethod: spatialMatch.method, pnu: spatialMatch.pnu } : { method: "unknown" },
+    });
     let featureId: number;
     try {
       featureId = insertFeature(db, { stableId: `building:${ufid}`, kind: "building", sourceKey: ufid, releaseId, geometry: r.geometry, name: str(p.A24), pnu, legalCode: legal, roundM: 10 ** -COORD_DECIMALS });
@@ -132,38 +243,25 @@ export async function buildBuildings(
     const region = (pnu ?? legal ?? "").slice(0, 2) || "(미상)";
     insertFact.run(
       featureId,
-      str(p.A21),
+      effectiveLedgerPk,
       h.heightM,
       h.method,
       h.floorsAbove,
       count(p.A27),
       useCode,
-      approvalDate,
+      effectiveApproval,
       grossFloorAreaM2,
       footprintAreaM2,
-      h.method === "ledger_floors_estimate" && h.ledgerMatch ? ledgerProvenance(h.ledgerMatch, floorHeightM) : h.method === "floors_estimate" ? provEstimate : h.method === "source" ? provSource : "{}",
+      pnuMethod,
+      spatialMatch?.pnu ?? null,
+      finalProvenance,
     );
-    stats.accept({ heightM: h.heightM, floorsAbove: h.floorsAbove, useCode, approvalDate }, region, h.method);
-    if (pnu && opts.ledger?.hasPnu(pnu)) candidateRowsByPnu.set(pnu, (candidateRowsByPnu.get(pnu) ?? 0) + 1);
-    if (ledgerMatch?.method === "ledger_pk" && pnu) directPnu.add(pnu);
-    if (deferredMatch && pnu !== null) {
-      const rows = pendingPnu.get(pnu) ?? [];
-      rows.push({ featureId, match: deferredMatch, region });
-      pendingPnu.set(pnu, rows);
+    stats.accept({ heightM: h.heightM, floorsAbove: h.floorsAbove, useCode, approvalDate: effectiveApproval }, region, h.method);
+    const hasLedgerValue = Boolean(ledgerMatch);
+    if (insertCandidate && ledgerMatch && hasLedgerValue) {
+      insertCandidate.run(featureId, ledgerMatch.ledgerPk, region, nativeHeight.heightM, nativeHeight.method, nativeHeight.floorsAbove, approvalDate, sourceLedgerPk, JSON.stringify({ ...parsedProvenance(baseProvenance), pnu: sourcePnu ? { method: "source", source: "A2" } : spatialMatch ? { method: "spatial", parcelVersion: spatialMatch.parcelVersion, spatialMethod: spatialMatch.method, pnu: spatialMatch.pnu } : { method: "unknown" } }), h.heightM, h.method, h.floorsAbove, effectiveApproval, finalProvenance, ledgerMatch.method);
     }
   });
-
-  if (opts.ledger && pendingPnu.size > 0) {
-    const update = db.prepare("UPDATE building_fact SET height_m = ?, height_method = 'ledger_floors_estimate', floors_above = ?, field_provenance_json = ? WHERE feature_id = ? AND height_method = 'unknown'");
-    for (const [pnu, rows] of pendingPnu) {
-      // 같은 PNU의 건물 행이 둘 이상이면 표제부 동을 특정할 수 없으므로 미상으로 보존한다.
-      if (rows.length !== 1 || directPnu.has(pnu) || (candidateRowsByPnu.get(pnu) ?? 0) !== 1) continue;
-      const row = rows[0];
-      const height = heightOf({ A16: 0, A26: 0 }, floorHeightM, row.match);
-      if (height.method !== "ledger_floors_estimate" || height.ledgerMatch === undefined) continue;
-      const result = update.run(height.heightM, height.floorsAbove, ledgerProvenance(height.ledgerMatch, floorHeightM), row.featureId);
-      if (result.changes === 1) stats.retag(row.region, "unknown", "ledger_floors_estimate", { heightM: height.heightM, floorsAbove: height.floorsAbove });
-    }
-  }
+  if (opts.ledger && !opts.deferLedgerMatches) finalizeLedgerMatches(db, stats);
   return stats;
 }

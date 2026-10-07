@@ -27,6 +27,8 @@ export interface ManifestFile {
   sha256: string;
   kind: ManifestFileKind;
   schemaVersion: number;
+  /** 적재 단계에서 읽은 읽기 전용 원천 파일 버전(예: buildings → parcels). */
+  dependsOn?: Record<string, string>;
 }
 
 export interface Manifest {
