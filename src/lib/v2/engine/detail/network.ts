@@ -8,6 +8,7 @@ import { hitPoint } from "../tiles/common";
 import { monthsBefore } from "../tiles/a07";
 import { distanceToLineM, lineLengthInCircle } from "../tiles/geo";
 import { walkField, walkMinutes } from "../tiles/walk-shared";
+import { detailDisplayValue } from "../../ui/detail-labels";
 
 export const ROAD_COLUMNS: DetailColumn[] = [
   { key: "name", label: "도로명", kind: "text" },
@@ -43,6 +44,8 @@ export const TRADE_COLUMNS: DetailColumn[] = [
   { key: "price_krw", label: "거래금액(원)", kind: "number" },
   { key: "area_m2", label: "면적(㎡)", kind: "number" },
   { key: "floor", label: "층", kind: "number" },
+  { key: "property_type_raw", label: "유형(원값)", kind: "text", csvOnly: true },
+  { key: "contract_type_raw", label: "계약(원값)", kind: "text", csvOnly: true },
   { key: "pnu", label: "PNU", kind: "text", csvOnly: true },
 ];
 
@@ -240,7 +243,9 @@ function tradeRows(ctx: DetailContext): DetailRow[] {
       const [lng, lat] = location;
       const [x, y] = toUtmk(location);
       if (Math.hypot(x - cx, y - cy) > ctx.input.radiusM) return [];
-      return [{ fid: String(row.transaction_id ?? index), lng, lat, cells: { deal_date: text(row.deal_date), property_type: text(row.property_type), contract_type: text(row.contract_type), price_krw: number(row.price_krw), area_m2: number(row.area_m2), floor: number(row.floor), pnu: text(row.location_id) } }];
+      const propertyType = text(row.property_type);
+      const contractType = text(row.contract_type);
+      return [{ fid: String(row.transaction_id ?? index), lng, lat, cells: { deal_date: text(row.deal_date), property_type: propertyType, contract_type: contractType, price_krw: number(row.price_krw), area_m2: number(row.area_m2), floor: number(row.floor), property_type_raw: propertyType, contract_type_raw: contractType, pnu: text(row.location_id) } }];
     });
   } catch {
     return [];
@@ -252,7 +257,7 @@ function tradeSpec(code: "A07"): DetailSpec {
     columns: TRADE_COLUMNS,
     summary(ctx) { const rows = tradeRows(ctx); return { title: catalogEntry(code).title, subtitle: `${rows.length.toLocaleString("ko-KR")}건`, fields: [{ label: "위치 확인 거래", value: `${rows.length.toLocaleString("ko-KR")}건` }], source: sourceLine(ctx, "market", ["rtms_apt_trade"]) }; },
     rows: tradeRows,
-    at(ctx, lng, lat) { const rows = tradeRows(ctx); let best: DetailRow | null = null; let distance = Number.POSITIVE_INFINITY; for (const row of rows) { const [x, y] = toUtmk([row.lng, row.lat]); const [tx, ty] = toUtmk([lng, lat]); const d = Math.hypot(x - tx, y - ty); if (d < distance) { distance = d; best = row; } } return best ? { card: { title: "실거래", fields: Object.entries(best.cells).slice(0, 5).map(([label, value]) => ({ label, value: value === null ? null : String(value) })), source: sourceLine(ctx, "market", ["rtms_apt_trade"]) }, fid: best.fid } : null; },
+    at(ctx, lng, lat) { const rows = tradeRows(ctx); let best: DetailRow | null = null; let distance = Number.POSITIVE_INFINITY; for (const row of rows) { const [x, y] = toUtmk([row.lng, row.lat]); const [tx, ty] = toUtmk([lng, lat]); const d = Math.hypot(x - tx, y - ty); if (d < distance) { distance = d; best = row; } } return best ? { card: { title: "실거래", fields: TRADE_COLUMNS.filter((column) => !column.csvOnly).map((column) => ({ label: column.label, value: detailDisplayValue(column.key, best!.cells[column.key] ?? null) === null ? null : String(detailDisplayValue(column.key, best!.cells[column.key] ?? null)) })), source: sourceLine(ctx, "market", ["rtms_apt_trade"]) }, fid: best.fid } : null; },
   };
 }
 

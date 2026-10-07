@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 const {
   DETAIL_CODES,
   DETAIL_LIST_LIMIT,
+  detailDisplayValue,
   detailListApiUrl,
   filterDetailRows,
   formatDetailCardValue,
@@ -42,6 +43,11 @@ assert.equal(formatDetailValue(row.cells.floors_above, columns.find((column) => 
 assert.equal(formatDetailValue(22, columns.find((column) => column.key === "floors_above"), { ...row, cells: { ...row.cells, floors_below: null } }), "22/—");
 assert.equal(formatDetailValue(row.cells.approval_date, columns.find((column) => column.key === "approval_date")), "1995");
 assert.equal(formatDetailValue(row.cells.gross_floor_m2, columns.find((column) => column.key === "gross_floor_m2")), "29,306");
+assert.equal(detailDisplayValue("property_type", "apt"), "아파트");
+assert.equal(detailDisplayValue("contract_type", "trade"), "매매");
+assert.equal(detailDisplayValue("stage", "under_construction"), "공사 중");
+assert.equal(detailDisplayValue("direction", "NNE"), "북북동");
+assert.equal(detailDisplayValue("unknown_code", "keep_me"), "keep_me");
 
 const buildingColumns = [
   { key: "name", label: "이름", kind: "text" },

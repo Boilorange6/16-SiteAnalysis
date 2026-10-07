@@ -199,6 +199,16 @@ try {
   const tradeElapsed = performance.now() - tradeStarted;
   assert.equal(trades.rows.length, 29, "A07 상세는 최근 12개월 반경 내 위치 확인·미취소 아파트 매매만 표시");
   assert.ok(tradeElapsed < 1000, `trade detail must be <= 1s, got ${tradeElapsed.toFixed(1)}ms`);
+  assert.ok(trades.csvColumns.some((column) => column.key === "property_type_raw"), "A07 CSV keeps the raw property code");
+  assert.ok(trades.csvColumns.some((column) => column.key === "contract_type_raw"), "A07 CSV keeps the raw contract code");
+  const tradeCsv = detailCsv(trades);
+  assert.match(tradeCsv, /아파트/);
+  assert.match(tradeCsv, /매매/);
+  assert.match(tradeCsv, /apt/);
+  assert.match(tradeCsv, /trade/);
+  const tradeAt = detailAt(ctx, "A07", CENTER[0], CENTER[1]);
+  assert.deepEqual(tradeAt?.card.fields.slice(0, 3).map((field) => field.label), ["계약일", "유형", "계약"]);
+  assert.deepEqual(tradeAt?.card.fields.slice(1, 3).map((field) => field.value), ["아파트", "매매"]);
 
   const noWalkMemo = new Map();
   const noWalkContext = {

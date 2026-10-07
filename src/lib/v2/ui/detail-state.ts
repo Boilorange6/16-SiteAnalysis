@@ -6,6 +6,10 @@
  * 이 파일의 포맷은 화면 표에만 적용된다.
  */
 
+import { detailDisplayValue } from "./detail-labels";
+
+export { detailDisplayValue } from "./detail-labels";
+
 export const DETAIL_CODES: ReadonlySet<string> = new Set([
   "A01", "A02", "A04", "A07", "A09", "A10", "A11", "A12",
   "D02", "D03", "D04", "D05", "D10", "D11", "D12", "D13",
@@ -103,7 +107,8 @@ function fallbackCellValue(value: DetailValue, column: DetailColumn, row: Detail
 /** 화면용 셀 원값. 원자료/CSV는 손대지 않고, 누락된 건물 식별 정보만 읽을 수 있게 보강한다. */
 export function detailCellValue(value: DetailValue, column: DetailColumn, row?: DetailRow): DetailValue {
   const fallback = fallbackCellValue(value, column, row);
-  return column.key === "primary_use" ? buildingUseLabel(fallback) : fallback;
+  const labeled = column.key === "primary_use" ? buildingUseLabel(fallback) : fallback;
+  return detailDisplayValue(column.key, labeled);
 }
 
 export function hasDetail(code: string): boolean {

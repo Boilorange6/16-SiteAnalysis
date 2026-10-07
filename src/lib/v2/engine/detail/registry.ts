@@ -16,6 +16,7 @@ import { PARCEL_SPECS } from "./parcels";
 import { NETWORK_SPECS } from "./network";
 import { RASTER_SPECS } from "./raster";
 import { WEATHER_SPECS } from "./weather";
+import { detailDisplayValue } from "../../ui/detail-labels";
 
 export type DetailValue = string | number | null;
 
@@ -214,7 +215,9 @@ function csvCell(value: DetailValue): string {
 
 export function detailCsv(payload: DetailPayload): string {
   const lines = [payload.csvColumns.map((column) => csvCell(column.label)).join(",")];
-  for (const row of payload.rows) lines.push(payload.csvColumns.map((column) => csvCell(row.cells[column.key] ?? null)).join(","));
+  for (const row of payload.rows) {
+    lines.push(payload.csvColumns.map((column) => csvCell(detailDisplayValue(column.key, row.cells[column.key] ?? null))).join(","));
+  }
   return `\ufeff${lines.join("\r\n")}\r\n`;
 }
 
