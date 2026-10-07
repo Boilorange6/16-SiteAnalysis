@@ -25,9 +25,9 @@ type Db = BetterSqlite3.Database;
 export const JUSO_SOURCE_ID = "building_juso";
 export const JUSO_PROVIDER = "행정안전부(VWorld 도로명주소 건물)";
 export const JUSO_SOURCE_URL = "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=MK&dsId=30056";
-/** 이용허락 범위는 A0 표에 없다(VWorld 30056 약관 미확인) — 확인 전까지 UNKNOWN으로 기록하고 게시 전에 사람이 판정한다. */
-export const JUSO_LICENSE_CODE = "UNKNOWN";
-export const JUSO_RIGHTS = { attribution: "행정안전부 도로명주소 건물(VWorld 제공)", licenseStatus: "unverified", note: "VWorld 30056 이용조건 미확인 — 공개 서비스·내보내기 전 판정 필요" };
+/** VWorld 30056 페이지 표기: CC BY-NC-ND(저작자표시-비영리-변경금지). 2026-10-07 사용자 결정: 비영리로 사용하고 출처를 표기한다. */
+export const JUSO_LICENSE_CODE = "CC BY-NC-ND";
+export const JUSO_RIGHTS = { attribution: "행정안전부 도로명주소 건물(VWorld 제공)", licenseStatus: "verified", note: "CC BY-NC-ND — 비영리 사용, 출처 표기 필수(2026-10-07 사용자 결정)" };
 /** 겹침 판정: 겹친 면적 / 작은 쪽 면적 */
 export const OVERLAP_MIN = 0.5;
 /** 이 연도 이하의 GIS 승인일만 신축 대체 후보의 옛 건물로 본다. 근거가 없으면 GIS를 유지한다. */

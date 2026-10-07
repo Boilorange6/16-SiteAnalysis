@@ -89,7 +89,7 @@ export const SOURCE_NAMES: Record<string, string> = {
   ledger_recap: "건축물대장 총괄표제부",
   ledger_title: "건축물대장 표제부",
   building: "GIS건물통합정보",
-  building_juso: "도로명주소 건물",
+  building_juso: "행정안전부 도로명주소 건물(CC BY-NC-ND)",
   gis_bldg: "GIS건물통합정보",
   applyhome: "청약홈",
   move_in: "입주예정",
