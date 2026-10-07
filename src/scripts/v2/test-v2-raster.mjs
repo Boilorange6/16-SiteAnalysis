@@ -220,7 +220,7 @@ assert.ok(sunCardLegendY >= 150, "카드 래스터 범례는 지도 왼쪽 아�
 const winterRef = { ...sunRef, name: "sun_hours_winter", label: "동지 일조시간" };
 const winterLegend = sunLegend.slice(0, 13).map((entry, index, all) => ({ ...entry, label: index === all.length - 1 ? "일조시간 · 12시간 이상" : entry.label, max: index === all.length - 1 ? null : entry.max }));
 const winterCardSvg = renderToStaticMarkup(createElement(MapFigure, {
-  model: { ...sunModel, tileCode: "D21", polygons: [], rasters: [winterRef], rasterOptions: [winterRef], defaultRaster: winterRef.name, legend: winterLegend },
+  model: { ...sunModel, tileCode: "S02", polygons: [], rasters: [winterRef], rasterOptions: [winterRef], defaultRaster: winterRef.name, legend: winterLegend },
   width: 336,
   height: 280,
   basemap: "none",
@@ -231,7 +231,7 @@ const winterCardSvg = renderToStaticMarkup(createElement(MapFigure, {
 assert.match(winterCardSvg, /data-raster-legend-rail="true"/);
 assert.match(winterCardSvg, /data-raster-legend-title="true"[^>]*>동지 일조시간</); // 카드 알약은 짧은 표시명, SVG title에는 전체 제목
 assert.match(winterCardSvg, /<title>동지 평균 일조시간 \(시간\)<\/title>/, "전체 범례 제목은 접근성 이름으로 보존");
-assert.equal((winterCardSvg.match(/data-raster-legend-entry=/g) ?? []).length, 13, "D21 카드 rail은 모든 stepped cell을 유지");
+assert.equal((winterCardSvg.match(/data-raster-legend-entry=/g) ?? []).length, 13, "S02 카드 rail은 모든 stepped cell을 유지");
 
 const buildingModel = {
   ...svfModel,

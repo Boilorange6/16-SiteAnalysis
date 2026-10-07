@@ -4,8 +4,8 @@
  */
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
-import { candidate, makeTile, missing, nearestHit, nearestM, obs, type MapCandidate, type TileDraft } from "./common";
-import { distanceToLineM, sampleLine } from "./geo";
+import { candidate, lineCandidate, makeTile, missing, nearestHit, nearestM, obs, type LineCandidate, type MapCandidate, type TileDraft } from "./common";
+import { clipLineToCircle, distanceToLineM, linePathLength, sampleLine } from "./geo";
 import { notProvided } from "./not-provided";
 
 const STAGE_TEXT: Record<string, string> = {
@@ -65,8 +65,15 @@ export function a10(ctx: EngineContext): TileResult {
       : `${lead ? `${lead}: ` : ""}반경 안 계획·공사 사업 ${projects.size}건(${stageTxt})${nearStationM === null ? "" : `, 최근접 계획역 직선 ${nearStationM}m`} → 개통 시점은 원천에 없고 운영역 접근성과 합산하지 않음 → 확정 노선·일정은 원천 확인 필요`;
 
   const map: MapCandidate[] = [];
+  const lineCandidates: LineCandidate[] = [];
   const step = Math.max(50, radiusM / 30);
-  for (const { h } of lines) map.push(...sampleLine(ctx.input.center, h.geometry, radiusM, step, h.featureId, "planned_rail_line"));
+  for (const { h } of lines) {
+    map.push(...sampleLine(ctx.input.center, h.geometry, radiusM, step, h.featureId, "planned_rail_line"));
+    for (const path of clipLineToCircle(ctx.input.center, radiusM, h.geometry)) {
+      const line = lineCandidate(h.featureId, "planned_rail_line", path, linePathLength(path), h.properties.sourceType === "approximation" ? "[개략]" : null);
+      if (line) lineCandidates.push(line);
+    }
+  }
   for (const s of stations) map.push(s === nearStation ? candidate(s, "planned_rail_station", { highlight: true, label: `직선 ${nearStationM}m` }) : candidate(s, "planned_rail_station"));
 
   return makeTile(ctx, {
@@ -77,6 +84,7 @@ export function a10(ctx: EngineContext): TileResult {
     sources,
     layers: ["planned_rail_line", "planned_rail_station"],
     map,
+    lines: lineCandidates,
     limitations: [
       { kind: "partial", note: `공개 계획 철도 목록이 일부(${total}건)만 포함` },
       ...(approx ? [{ kind: "estimated" as const, note: "선형은 공사 선형을 보조로 삼은 개략 위치이며 확정 노선이 아닙니다." }] : []),

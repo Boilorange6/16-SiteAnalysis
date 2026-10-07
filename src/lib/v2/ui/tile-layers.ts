@@ -24,7 +24,7 @@ const optionMatches: Record<string, (layer: string) => boolean> = {
   maintenance_stage: (layer) => layer.startsWith("maint_stage:"),
   planned_detail: (layer) => layer.startsWith("planned_rail"),
   density_detail: (layer) => layer.startsWith("pop_grid_") || layer.startsWith("pop_dens_"),
-  zoning_detail: (layer) => layer.startsWith("zone"),
+  zoning_detail: (layer) => layer.startsWith("zone") || layer.startsWith("zoning"),
   height_tall: (layer) => layer.startsWith("tall_"),
   height_low: (layer) => layer.startsWith("low_"),
   parcel_size: (layer) => layer.startsWith("lot_"),

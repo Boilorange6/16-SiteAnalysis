@@ -15,7 +15,7 @@ const { runAnalysis } = await import("../../lib/v2/engine/run.ts");
 
 const expected = [
   "A01", "A02", "A03", "A04", "A05", "A06", "A07", "A08", "A09", "A10", "A11", "A12",
-  "D01", "D02", "D03", "D04", "D05", "D06", "D07", "D08", "D09", "D10", "D11", "D12", "D13", "D14", "D15", "D16", "D17", "D18", "D19", "D20", "D21", "D22", "D23", "D24", "D25", "D26", "D27", "D28", "D29",
+  "D01", "D02", "D03", "D04", "D05", "D10", "D11", "D12", "D13", "D15", "D16", "D17", "D18", "D19", "D22", "D28", "D29",
   "S01", "S02", "S03", "S04",
 ];
 assert.deepEqual(TILE_CODES, expected, "P4 catalog order");

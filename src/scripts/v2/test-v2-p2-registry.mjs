@@ -15,7 +15,7 @@ const A = await import("../../lib/v2/app-db.ts");
 const { runAnalysis } = await import("../../lib/v2/engine/run.ts");
 
 // 1) 카탈로그: P2 코드가 모두 있고 순서가 A → D(코드순) → S 이다
-const P2 = ["D01","D02","D03","D04","D05","D06","D07","D08","D09","D10","D11","D12","D13","D14","D15","D16","D17","D18","D19","D20","D21","D22","D23","D24","D25","D26","D27","D28","D29","S01","S02","S03","S04"];
+const P2 = ["D01","D02","D03","D04","D05","D10","D11","D12","D13","D15","D16","D17","D18","D19","D22","D28","D29","S01","S02","S03","S04"];
 for (const c of P2) assert.ok(TILE_CATALOG[c], `catalog ${c}`);
 assert.deepEqual(TILE_CODES.filter((c) => c.startsWith("D") || c.startsWith("S")), P2);
 for (const c of P2) assert.equal(TILE_CATALOG[c].kind, c.startsWith("D") ? "diagram" : "simulation");
@@ -28,7 +28,7 @@ const appDb = A.openV2AppDb(join(mkdtempSync(join(tmpdir(), "v2-p2-reg-app-")), 
 const run = runAnalysis(appDb, dataDir, { center: CENTER, radiusM: 800, analysisDate: "2026-09-30" });
 assert.equal(run.ok, true);
 assert.deepEqual(run.results.map((r) => r.tileCode), TILE_CODES, "결과 순서 = 카탈로그 순서");
-for (const c of ["D02", "D19", "D27", "S01"]) {
+for (const c of ["D02", "D19", "S01"]) {
   const t = run.results.find((r) => r.tileCode === c);
   assert.equal(t.status, "not_provided");
   assert.equal(t.tileType, c.startsWith("S") ? "simulation" : "diagram");
@@ -49,7 +49,8 @@ assert.equal(v.hasFace, true);
 assert.deepEqual(v.chart, [{ label: "100㎡ 미만", value: 25, unit: "%" }, { label: "필지 수", value: 3, unit: "필지" }]);
 assert.ok(v.map, "면 지물만 있어도 지도(polygons 전달은 Task 2가 검증)");
 const a = { ...base, tileId: "x-A12", tileType: "analysis", tileCode: "A12", metrics: [m("share_class_1", "구성비: 주거", 40, "%")], presentation: { legend: [], camera: null, layers: [], outputFace: "front" } };
-assert.equal(toTileView(a).hasFace, false, "분석 타일은 뒷면 없음");
+assert.equal(toTileView(a).hasFace, true, "레이어를 가진 분석 타일은 지도 면을 제공");
+assert.ok(toTileView(a).layerOptions.length >= 2, "A12 분석 타일은 레이어 선택을 제공");
 
 // 5) areaInCircle: 완전 포함은 절단 없이 전체 면적, 걸침은 교차 면적, 밖은 0
 const [cx, cy] = toUtmk(CENTER);

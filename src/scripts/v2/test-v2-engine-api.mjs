@@ -47,7 +47,7 @@ try {
   assert.ok(ok.body.jobs.some((job) => job.status === "queued"));
   assert.ok(ok.body.timingsMs.light > 0);
   assert.ok(Object.keys(ok.body.timingsMs.tiles).length > 0, "POST가 경량 타일별 시간을 공개");
-  assert.ok(ok.body.results.filter((tile) => !["S02", "D21", "D29", "D10", "S03", "S04"].includes(tile.tileCode)).every((tile) => Number.isFinite(tile.elapsedMs)), "경량 결과에 elapsedMs");
+  assert.ok(ok.body.results.filter((tile) => !["S02", "D29", "D10", "S03", "S04"].includes(tile.tileCode)).every((tile) => Number.isFinite(tile.elapsedMs)), "경량 결과에 elapsedMs");
   assert.ok(typeof ok.body.revision === "string" && ok.body.revision.length > 0);
   assert.equal(ok.body.tiles.length, ok.body.results.length);
   assert.equal(appDb.prepare("SELECT user_id FROM analysis_run WHERE analysis_id = ?").pluck().get(ok.body.analysisId), "17");
@@ -85,7 +85,7 @@ try {
   );
   assert.deepEqual(got.body.results.map((t) => t.tileCode), ok.body.results.map((t) => t.tileCode).sort());
   assert.ok(got.body.jobs.some((job) => job.status === "queued"));
-  assert.ok(got.body.results.filter((tile) => !["S02", "D21", "D29", "D10", "S03", "S04"].includes(tile.tileCode)).every((tile) => Number.isFinite(tile.elapsedMs)), "복원 결과에도 elapsedMs");
+  assert.ok(got.body.results.filter((tile) => !["S02", "D29", "D10", "S03", "S04"].includes(tile.tileCode)).every((tile) => Number.isFinite(tile.elapsedMs)), "복원 결과에도 elapsedMs");
   assert.equal(got.body.revision, ok.body.revision);
   const partial = getAnalysis(appDb, ok.body.analysisId, 17, { tileCodes: ["A01"] });
   assert.equal(partial.status, 200);

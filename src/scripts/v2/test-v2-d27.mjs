@@ -11,7 +11,8 @@ const { insertRelease } = await import("../../lib/v2/ingest/build.ts");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { circleRectOverlap } = await import("../../lib/v2/engine/tiles/a11.ts");
-const { d27 } = await import("../../lib/v2/engine/tiles/d27.ts");
+const { TILES } = await import("../../lib/v2/engine/run.ts");
+const a11WithDensity = TILES.find(([code]) => code === "A11")[1];
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 
@@ -81,7 +82,7 @@ const ctx = new EngineContext(dataDir, published, "d27-test", {
   radiusM,
   analysisDate: "2026-09-30",
 });
-const result = d27(ctx);
+const result = a11WithDensity(ctx);
 parseTileResult(result);
 const metric = (id) => result.metrics.find((m) => m.id === id);
 const pct = (part, whole) => Math.round((part / whole) * 1000) / 10;
@@ -99,8 +100,8 @@ const eastArea = rectArea(1000, 0);
 const northArea = rectArea(0, 1000);
 const circleArea = Math.PI * radiusM * radiusM;
 
-assert.equal(result.tileCode, "D27");
-assert.equal(result.tileType, "diagram");
+assert.equal(result.tileCode, "A11");
+assert.equal(result.tileType, "analysis");
 assert.equal(result.status, "partial", "비공개 셀이 있으므로 partial");
 assert.equal(metric("fill_public_pct").value, pct(centerArea + eastArea, circleArea));
 close(metric("fill_public_pct").numerator, centerArea + eastArea);
@@ -124,7 +125,8 @@ assert.equal(polygons.length, 3);
 assert.deepEqual(polygons.map((p) => p.layer).sort(), ["pop_dens_2", "pop_dens_5", "pop_grid_na"]);
 assert.ok(polygons.every((p) => p.rings[0].length >= 4));
 assert.deepEqual(result.presentation.layers, [
-  "pop_dens_0", "pop_dens_1", "pop_dens_2", "pop_dens_3", "pop_dens_4", "pop_dens_5", "pop_grid_na",
+  "pop_grid_q1", "pop_grid_q2", "pop_grid_q3", "pop_grid_q4", "pop_grid_q5", "pop_grid_na",
+  "pop_dens_0", "pop_dens_1", "pop_dens_2", "pop_dens_3", "pop_dens_4", "pop_dens_5",
 ]);
 assert.ok(result.limitations.some((l) => l.note.includes("비밀보호") && l.note.includes("면적비")));
 assert.ok(result.limitations.some((l) => l.kind === "suppressed"));
@@ -132,4 +134,4 @@ assert.deepEqual(result.provenance.sources.map((s) => s.sourceId), ["sgis_grid"]
 assert.doesNotMatch(JSON.stringify(toTileView(result)), /도보|\d\s*분|종합/);
 
 ctx.close();
-console.log("✓ v2 D27 engine tile");
+console.log("✓ v2 A11/D27 engine tile");

@@ -118,9 +118,9 @@ try {
     brokenAnalysisId = f.analysisId;
     const a04 = f.results.find((t) => t.tileCode === "A04");
     assert.deepEqual([a04.status, a04.limitations[0].note], ["failed", "계산 중 오류: boom"]);
-    // 공원을 읽는 타일(A04·D09 등)만 실패하고 나머지는 계산된다
+    // 공원을 읽는 통합 타일 A04만 실패하고 나머지는 계산된다
     failedCodes = f.results.filter((t) => t.status === "failed").map((t) => t.tileCode);
-    assert.ok(failedCodes.includes("A04") && failedCodes.includes("D09"), failedCodes.join(","));
+    assert.ok(failedCodes.includes("A04"), failedCodes.join(","));
     assert.ok(f.results.filter((t) => t.status === "failed").every((t) => t.limitations[0].note === "계산 중 오류: boom"));
   } finally {
     EngineContext.prototype.hits = origHits;

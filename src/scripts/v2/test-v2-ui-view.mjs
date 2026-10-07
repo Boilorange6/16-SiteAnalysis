@@ -14,7 +14,7 @@ const { buildSummary } = await import("../../lib/v2/engine/summary.ts");
 // ── fixture 계약 ──
 for (const r of [...GODEOK_RESULTS, ...Object.values(RECOVERED)]) parseTileResult(r);
 // A03·A04·A10과 P2/P3 새 타일은 예시 데이터에 없다(엔진 결과는 test-v2-engine-run.mjs가 카탈로그 전체와 대조한다)
-const NOT_IN_GODEOK = ["A08", "A10", "A11", "D01", "D02", "D03", "D05", "D06", "D07", "D08", "D09", "D10", "D11", "D12", "D13", "D14", "D15", "D16", "D17", "D18", "D19", "D20", "D21", "D22", "D23", "D24", "D25", "D26", "D27", "D28", "D29", "S01", "S04"];
+const NOT_IN_GODEOK = ["A08", "A10", "A11", "D01", "D02", "D03", "D05", "D10", "D11", "D12", "D13", "D15", "D16", "D17", "D18", "D19", "D22", "D28", "D29", "S01", "S04"];
 assert.deepEqual(GODEOK_RESULTS.map((r) => r.tileCode).sort(), TILE_CODES.filter((c) => !NOT_IN_GODEOK.includes(c)).sort());
 const statuses = new Set(GODEOK_RESULTS.map((r) => r.status));
 for (const s of ["complete", "partial", "failed", "not_provided"]) assert.ok(statuses.has(s), `status ${s}`);
@@ -109,7 +109,7 @@ assert.equal(byCode.S02.sourceLine, "출처 없음");
 // 규칙 7·8
 assert.ok(byCode.A12.sentence.includes("→"));
 assert.equal(byCode.D04.chart.length, 7);
-assert.ok(byCode.D04.hasFace && !byCode.A01.hasFace);
+assert.ok(byCode.D04.hasFace && byCode.A01.hasFace);
 assert.ok(byCode.D04.map.notes.every((note) => !note.includes("건물 도형은 자료 적재 뒤")), "D04 오래된 도형 안내 제거");
 assert.deepEqual([faceLabel("front"), faceLabel("back"), faceLabel("both")], ["도판", "구성비", "도판 + 구성비"]);
 
@@ -179,19 +179,19 @@ assert.equal(sv.incomplete, true);
   const texts = v.badges.map((b) => b.text);
   assert.equal(new Set(texts).size, texts.length, "배지 문구 중복 없음");
   assert.equal(v.badges.find((b) => b.text === "일부 자료만 집계").note, "가 / 나");
-  assert.equal(v.headlineMetricId, "nearest_station_m", "A01 결론 지표 정책 유지");
+  assert.equal(v.headlineMetricId, "nearest_rail_m", "A01 결론 지표 정책 유지");
   assert.notEqual(v.headline.value, "미확인", "결론 지표 값이 대표값");
 }
 
-assert.deepEqual(new Set(Object.keys(HEADLINE_POLICY)), new Set(TILE_CODES), "45개 타일 모두 헤드라인 선정 정책 보유");
+assert.deepEqual(new Set(Object.keys(HEADLINE_POLICY)), new Set(TILE_CODES), "33개 타일 모두 헤드라인 선정 정책 보유");
 assert.equal(byCode.D04.headlineMetricId, "share_pre2000");
 assert.equal(byCode.D04.headline.value, "67.0%", "D04는 확인율이 아니라 1990년대 이전 준공 비율");
 assert.ok(byCode.D04.badges.some((badge) => badge.text === "확인율 98.0%"), "D04 확인율은 보조 배지");
 assert.equal(HEADLINE_POLICY.D16.ids[0], "dens_max", "D16 KDE 대역폭은 헤드라인이 아님");
 assert.equal(HEADLINE_POLICY.D01.ids[0], "imagery_capture_date", "D01 최대 줌은 헤드라인이 아님");
 assert.equal(HEADLINE_POLICY.A12.ids[2], "site_zoning_count", "A12 지정 수는 보조 후보");
-assert.equal(HEADLINE_POLICY.D23.ids[0], "zone_area_in_radius_m2", "D23 단계 건수가 아닌 구역 면적");
-assert.equal(HEADLINE_POLICY.D24.ids[0], "line_length_in_radius_m", "D24 단계 건수가 아닌 계획 선형 길이");
+assert.equal(HEADLINE_POLICY.A09.ids[0], "projects_in_radius", "A09 단계 사업 수");
+assert.equal(HEADLINE_POLICY.A10.ids[0], "planned_projects", "A10 계획 사업 수");
 
 // 파라미터만 있는 헤드라인 회귀: 결론은 dens_max/항공영상 제공, 파라미터는 배지로 남긴다.
 {

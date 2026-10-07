@@ -4,7 +4,7 @@ import type { EngineContext } from "../context";
 import type { FeatureHit } from "../../data/features";
 import { toUtmk } from "../../crs";
 import { candidate, fmt, hitPoint, lineCandidate, makeTile, missing, nearestHit, nearestM, noDataTile, obs, type LineCandidate, type MapCandidate, type TileDraft } from "./common";
-import { sampleLine } from "./geo";
+import { clipLineToCircle, linePathLength, sampleLine } from "./geo";
 import { walkField, walkSources, type WalkField, type WalkRoute } from "./walk-shared";
 
 export const A01_CRITERIA = "버스정류장 직선 300m 이하 좋음 · 600m 이하 보통 · 초과 주의";
@@ -160,7 +160,6 @@ export function a01(ctx: EngineContext): TileResult {
   const radiusM = ctx.input.radiusM;
   const searchM = Math.max(radiusM, RAIL_SEARCH_MIN_M);
   const stations = hasRail ? railStations(ctx, searchM) : [];
-  const inRadius = stations.filter((s) => s.best.dist <= radiusM);
   // D14 흡수 후의 집계 기준: 대표점 대체 거리와 별개로 반경 내 원천 feature를 직접 센다.
   const stationHits = hasRail ? ctx.hits("reference", ["rail_station"]) : [];
   const entranceHits = hasRail ? ctx.hits("reference", ["rail_entrance"]) : [];
@@ -224,17 +223,25 @@ export function a01(ctx: EngineContext): TileResult {
   if (hasRail) {
     layers.push("rail_station", "rail_entrance", "rail_line", "rail_nearest");
     const nearHit = railBest && railM !== null && railBest.best.dist <= radiusM ? railBest.best.hit : null;
-    for (const s of inRadius) {
-      const stationIsNearest = nearHit === s.hit;
-      if (!stationIsNearest) map.push(candidate(s.hit, "rail_station"));
-      for (const e of s.entrances) {
-        if (e.distanceM! > radiusM) continue;
-        map.push(e === nearHit ? candidate(e, "rail_nearest", { highlight: true, label: `직선 ${railM}m` }) : candidate(e, "rail_entrance"));
-      }
-      if (stationIsNearest) map.push(candidate(s.hit, "rail_nearest", { highlight: true, label: `직선 ${railM}m` }));
+    const nearFeatureId = nearHit?.featureId ?? null;
+    // D14 흡수 후에도 반경 내 원천 역·출입구 전체를 지도에 남긴다.
+    // 대표점/출입구를 사용한 최근접 표시는 같은 feature의 레이어만 교체한다.
+    for (const station of stationHits) {
+      const isNearest = station.featureId === nearFeatureId;
+      map.push(candidate(station, isNearest ? "rail_nearest" : "rail_station", isNearest ? { highlight: true, label: `직선 ${railM}m` } : undefined));
+    }
+    for (const entrance of entranceHits) {
+      const isNearest = entrance.featureId === nearFeatureId;
+      map.push(candidate(entrance, isNearest ? "rail_nearest" : "rail_entrance", isNearest ? { highlight: true, label: `직선 ${railM}m` } : undefined));
     }
     const step = Math.max(50, radiusM / 30);
-    for (const l of ctx.hits("reference", ["rail_line"])) map.push(...sampleLine(ctx.input.center, l.geometry, radiusM, step, l.featureId, "rail_line"));
+    for (const l of ctx.hits("reference", ["rail_line"])) {
+      map.push(...sampleLine(ctx.input.center, l.geometry, radiusM, step, l.featureId, "rail_line"));
+      for (const path of clipLineToCircle(ctx.input.center, radiusM, l.geometry)) {
+        const line = lineCandidate(l.featureId, "rail_line", path, linePathLength(path));
+        if (line) lines.push(line);
+      }
+    }
     if (usesPoint) limitations.push({ kind: "unknown", note: "최근접 역은 출입구 자료가 없어 역 대표점 거리입니다." });
     if (railM === null) limitations.push({ kind: "unknown", note: `${searchTxt} 안에 운영역이 없어 철도 거리는 계산하지 못했습니다.` });
     else if (railM > radiusM) limitations.push({ kind: "unknown", note: `최근접 역은 분석 반경(${fmt(radiusM)}m) 밖이라 지도에는 표시하지 않았습니다.` });

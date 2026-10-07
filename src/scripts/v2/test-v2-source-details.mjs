@@ -53,12 +53,6 @@ const meta = (sourceId, extra = {}) => new Map([[sourceId, {
 }
 
 {
-  const details = sourceDetailsFor(tile("D21", "diagram", [source("building"), source("parcel_polygon")]), new Map());
-  assert.equal(details.calcMethod, catalogEntry("D21").calculation ?? catalogEntry("D21").description);
-  assert.deepEqual(details.rows.map((row) => row.role), ["입력", "입력"]);
-}
-
-{
   const details = sourceDetailsFor(tile("D19", "diagram", [source("parcel_polygon", null)]), new Map([
     ["parcel_polygon", { provider: "국토교통부", sourceUrl: "https://example.test/parcel", licenseCode: "CC-BY" }],
     ["land_price", { provider: "국토교통부", sourceUrl: "https://example.test/land-price", licenseCode: "UNRESTRICTED" }],

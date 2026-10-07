@@ -8,8 +8,8 @@ const { buildEngineFixture, CENTER, PARCEL_PNUS, PNU_DASAN_100 } = await import(
 const M = await import("../../lib/v2/data/manifest.ts");
 const { insertRelease } = await import("../../lib/v2/ingest/build.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
-const { a12 } = await import("../../lib/v2/engine/tiles/a12.ts");
-const { d08 } = await import("../../lib/v2/engine/tiles/d08.ts");
+const { TILES } = await import("../../lib/v2/engine/run.ts");
+const a12 = TILES.find(([code]) => code === "A12")[1];
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 
@@ -55,12 +55,13 @@ async function makeFixture(options, prices = false) {
   );
 }
 
-// ── D08 ──
+// ── A12 (D08 용도지역 레이어 흡수) ──
 {
   const ctx = (await makeFixture({ zoning: "overlap" }))();
-  const tile = d08(ctx);
+  const tile = a12(ctx);
   clean(tile);
-  assert.equal(tile.tileType, "diagram");
+  assert.equal(tile.tileCode, "A12");
+  assert.equal(tile.tileType, "analysis");
   assert.equal(tile.status, "partial", "fixture는 5종 중 2종 용도지역 레이어만 적재");
   assert.equal(tile.metrics.filter((m) => m.id.startsWith("share_class_")).length, 8, "8분류 고정");
   assert.ok(tile.metrics.filter((m) => m.id.startsWith("share_class_")).every((m) => m.status === "observed"), "0도 관측 0");

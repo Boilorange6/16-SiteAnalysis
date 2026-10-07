@@ -17,7 +17,8 @@ const { csvRecords } = await import("../../lib/v2/a0/measure.ts");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { a02 } = await import("../../lib/v2/engine/tiles/a02.ts");
-const { d26 } = await import("../../lib/v2/engine/tiles/d26.ts");
+const { TILES } = await import("../../lib/v2/engine/run.ts");
+const a02WithSchoolZones = TILES.find(([code]) => code === "A02")[1];
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 
@@ -67,16 +68,18 @@ const manifest = {
 assert.equal((await M.publishManifest(dataDir, manifest, () => ({ ok: true, failures: [] }))).published, true);
 const ctx = new EngineContext(dataDir, M.readManifest(dataDir), "d26-test", { address: "대구광역시 북구 칠성동2가 395-1", center: CENTER, radiusM: 800, analysisDate: "2026-10-01" });
 
-const d = parseTileResult(d26(ctx));
+const d = parseTileResult(a02WithSchoolZones(ctx));
 const metric = (id) => d.metrics.find((m) => m.id === id);
-assert.equal(d.status, "complete");
+assert.equal(d.tileCode, "A02");
+assert.equal(d.status, "partial", "A02의 직선거리·배정 한계를 포함한 통합 타일");
 assert.deepEqual([metric("back_elem_count").value, metric("back_middle_count").value, metric("back_high_count").value], [1, 1, 1]);
 assert.deepEqual([metric("site_elem_zone").value, metric("site_middle_group").value, metric("site_high_group").value], [1, 1, 1]);
 assert.equal(d.presentation.polygons.length, 4, "세 급별 반경 폴리곤 파트");
 assert.deepEqual(d.presentation.polygons.map((p) => p.layer).sort(), ["school_zone_elem_site", "school_zone_elem_site", "school_zone_high_site", "school_zone_middle_site"]);
 assert.ok(d.presentation.polygons.every((p) => p.label.includes("교육청")), "구역명·교육청 라벨");
-assert.equal(d.provenance.sources[0].sourceId, "school_zone");
-assert.equal(d.provenance.sources[0].sourceAsOf, "2026-03-20");
+const zoneSource = d.provenance.sources.find((source) => source.sourceId === "school_zone");
+assert.ok(zoneSource, "A02 통합 결과에 D26 학구도 출처 보존");
+assert.equal(zoneSource.sourceAsOf, "2026-03-20");
 assert.ok(toTileView(d).chart.some((row) => row.label === "반경 내 초등 통학구역" && row.value === 1));
 
 const a = parseTileResult(a02(ctx));

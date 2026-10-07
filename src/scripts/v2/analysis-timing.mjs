@@ -16,6 +16,7 @@ const { manifestHash, readManifest } = await import("../../lib/v2/data/manifest.
 const { closeDataFilePool } = await import("../../lib/v2/data/file-pool.ts");
 const { runAnalysis } = await import("../../lib/v2/engine/run.ts");
 const { HEAVY_TILES, runHeavyTiles } = await import("../../lib/v2/engine/jobs.ts");
+const { TILE_CODES } = await import("../../lib/v2/ui/tile-catalog.ts");
 const { listJobs } = await import("../../lib/v2/engine/jobs-store.ts");
 const { measureElapsed, sumTimings } = await import("../../lib/v2/engine/timing.ts");
 const { v2DataDir } = await import("../../lib/v2/paths.ts");
@@ -37,7 +38,7 @@ const publishedHash = manifestHash(manifest);
 const temporaryDir = mkdtempSync(join(tmpdir(), "v2-analysis-timing-"));
 const appDb = openV2AppDb(join(temporaryDir, "app.sqlite"));
 const input = { address, radiusM, analysisDate: new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }) };
-const lightCodes = ["A01", "A02", "A03", "A04", "A05", "A06", "A07", "A08", "A09", "A10", "A11", "A12", "D01", "D02", "D03", "D04", "D05", "D06", "D07", "D08", "D09", "D11", "D12", "D13", "D14", "D15", "D16", "D17", "D18", "D19", "D20", "D22", "D23", "D24", "D25", "D26", "D27", "D28", "S01"];
+const lightCodes = TILE_CODES.filter((code) => !HEAVY_TILES.includes(code));
 
 function requireOutcome(outcome, phase) {
   if (!outcome.ok) throw new Error(`${phase}: 분석 실패(${outcome.reason})`);

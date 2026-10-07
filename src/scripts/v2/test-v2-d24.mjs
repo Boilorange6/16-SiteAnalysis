@@ -6,7 +6,9 @@ import { tmpdir } from "node:os";
 const { buildEngineFixture, CENTER } = await import("./engine-fixture.mjs");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
-const { d24, PLANNED_STAGES } = await import("../../lib/v2/engine/tiles/d24.ts");
+const { PLANNED_STAGES } = await import("../../lib/v2/engine/tiles/d24.ts");
+const { TILES } = await import("../../lib/v2/engine/run.ts");
+const d24 = TILES.find(([code]) => code === "A10")[1];
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 
 const make = async (options) => {
@@ -38,6 +40,7 @@ assert.equal(PLANNED_STAGES.cancelled, "중단/변경");
   const ctx = ctxFor();
   const tile = d24(ctx);
 
+  assert.equal(tile.tileCode, "A10");
   assert.equal(tile.status, "partial");
   assert.equal(value(tile, "back_stations"), 1);
   assert.equal(metric(tile, "back_stage_3").label, "단계: 공사");
@@ -54,7 +57,7 @@ assert.equal(PLANNED_STAGES.cancelled, "중단/변경");
 
   assert.ok(tile.presentation.layers.includes("planned_rail_line"));
   assert.ok(tile.presentation.layers.includes("planned_rail_station"));
-  assert.equal(tile.presentation.features.filter((f) => f.layer === "planned_rail_line").length, 0, "계획 선형은 대표점이 아니라 선 지물이다");
+  assert.ok(tile.presentation.features.filter((f) => f.layer === "planned_rail_line").length > 0, "A10은 지도 호환 표본점도 보존한다");
   const lineFeatures = tile.presentation.lines.filter((line) => line.layer === "planned_rail_line");
   assert.ok(lineFeatures.length > 0);
   assert.ok(lineFeatures.every((line) => line.label === "[개략]"), "개략 선형은 지도에 [개략]을 표시한다");
