@@ -16,7 +16,7 @@ import { stackView } from "@/lib/v2/ui/stack";
 import { sheetView } from "@/lib/v2/ui/sheet";
 import { exportAvailability, formatElapsedMs, jobProgress } from "@/lib/v2/ui/board-status";
 import { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } from "@/lib/v2/ui/fixtures/godeok";
-import { toSummaryView, toTileView, type SiteSummary } from "@/lib/v2/ui/tile-view";
+import { toSummaryView, toTileView, viewWithLayer, type SiteSummary } from "@/lib/v2/ui/tile-view";
 import { siteParcelFromResults } from "@/lib/v2/ui/site-parcel";
 import { sourceIdsForRefs, sourceMetaMap, type SourceApiBody } from "@/lib/v2/ui/source-api";
 import type { SourceMeta } from "@/lib/v2/ui/source-details";
@@ -161,7 +161,10 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
   });
 
   const analysisSiteParcel = useMemo(() => (siteSummary.siteParcel === undefined ? siteParcelFromResults(results) : siteSummary.siteParcel), [siteSummary.siteParcel, results]);
-  const baseViews = useMemo(() => new Map(results.map((r) => [r.tileId, toTileView(r, scene, analysisSiteParcel, board.a05Filter[r.tileId] ?? null)])), [results, scene, analysisSiteParcel, board.a05Filter]);
+  const baseViews = useMemo(() => new Map(results.map((r) => {
+    const view = toTileView(r, scene, analysisSiteParcel, board.a05Filter[r.tileId] ?? null);
+    return [r.tileId, viewWithLayer(view, board.layers[r.tileId] ?? view.defaultLayer)] as const;
+  })), [results, scene, analysisSiteParcel, board.a05Filter, board.layers]);
   const views = useMemo(() => {
     const next = new Map(
       [...baseViews].map(([id, view]) => {
@@ -740,6 +743,8 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
                 <TileCard
                   key="card"
                   view={view}
+                  layer={view.defaultLayer}
+                  onLayer={(layer) => dispatch({ type: "layer", id, layer })}
                   phase={demoOn ? demoPhase(i, demoStep!) : (jobState.byCode.get(view.code)?.phase ?? null)}
                   waitingNote={demoOn ? null : (jobState.byCode.get(view.code)?.note ?? null)}
                   included={!!board.included[id]}
@@ -819,6 +824,11 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
       {openView && (
         <TileDialog
           view={openView}
+          layer={openView.defaultLayer}
+          onLayer={(layer) => {
+            dispatch({ type: "layer", id: openView.tileId, layer });
+            setNote(`${openView.title} 표현을 ${openView.layerOptions.find((option) => option.id === layer)?.label ?? layer}(으)로 변경`);
+          }}
           initialTab={dialogTab}
           included={!!board.included[openView.tileId]}
           face={board.faces[openView.tileId]}

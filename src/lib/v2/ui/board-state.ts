@@ -4,6 +4,7 @@ import { normalizeA05Filter, type A05Filter } from "../engine/a05-filter";
 import { calloutReportPages, DEFAULT_CALLOUT_MODE, type CalloutMode } from "./callout-layout";
 import { CAMERA_PRESETS } from "./mass-projection";
 import type { OutputFace } from "./tile-view";
+import { layerOptionsForResult } from "./tile-layers";
 
 export type TileSize = 1 | 2;
 export type SheetGrid = "2x2" | "3x2";
@@ -23,9 +24,36 @@ export type UndoEntry =
 export type CardFace = "summary" | "map";
 /** 대지 요약 카드의 view 키 */
 export const SUMMARY_ID = "site-summary";
-export const BOARD_STATE_VERSION = 1;
+export const BOARD_STATE_VERSION = 2;
 /** 타일 코드가 바뀌어도 저장 보드의 모든 참조를 한 번에 옮길 수 있는 자리. */
-export const TILE_CODE_RENAMES: Record<string, string> = {};
+export const TILE_CODE_RENAMES: Record<string, string> = {
+  D06: "D05",
+  D07: "D05",
+  D08: "A12",
+  D09: "A04",
+  D14: "A01",
+  D20: "D19",
+  D21: "S02",
+  D23: "A09",
+  D24: "A10",
+  D25: "A07",
+  D26: "A02",
+  D27: "A11",
+};
+const LEGACY_LAYER_RENAMES: Record<string, string> = {
+  D06: "height_tall",
+  D07: "height_low",
+  D08: "zoning_detail",
+  D09: "green_space",
+  D14: "transit",
+  D20: "parcel_size",
+  D21: "sun_hours_winter",
+  D23: "maintenance_stage",
+  D24: "planned_detail",
+  D25: "trade_location",
+  D26: "school_zone",
+  D27: "density_detail",
+};
 export const boardStorageKey = (analysisId: string): string => `site-analysis:v2:board:${analysisId}`;
 
 export type BoardState = {
@@ -56,6 +84,8 @@ export type BoardState = {
   roseSeasons: Record<string, RoseSeason>;
   /** 타일 id → 지도 요소 라벨의 고정·표시 상태 */
   labels: Record<string, PinnedLabel[]>;
+  /** 타일 id → 지도 표현/래스터 레이어. 비어 있으면 타일 기본 레이어. */
+  layers: Record<string, string>;
   /** 빼 둔 타일(더할 수 있는 타일). index는 빼기 전 위치 */
   removed: { id: string; index: number }[];
   undoStack: UndoEntry[];
@@ -86,7 +116,8 @@ export type BoardAction =
   | { type: "pinLabel"; id: string; key: string }
   | { type: "unpinLabel"; id: string; key: string }
   | { type: "toggleLabel"; id: string; key: string }
-  | { type: "setAllLabels"; id: string; on: boolean };
+  | { type: "setAllLabels"; id: string; on: boolean }
+  | { type: "layer"; id: string; layer: string };
 
 /** 카드의 현재 면 (편집 중에는 화면이 항상 요약면을 쓴다) */
 export const viewOf = (s: Pick<BoardState, "view" | "viewAll">, id: string): CardFace => s.view[id] ?? s.viewAll;
@@ -111,6 +142,7 @@ export function initBoard(results: TileResult[]): BoardState {
     cuts: {},
     roseSeasons: {},
     labels: {},
+    layers: {},
     removed: [],
     undoStack: [],
   };
@@ -339,6 +371,12 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
       if (current.length === 0) return s;
       return { ...s, labels: { ...s.labels, [a.id]: current.map((label) => ({ ...label, on: a.on })) } };
     }
+    case "layer": {
+      if (!a.layer) return s;
+      const result = s.results.find((candidate) => candidate.tileId === a.id);
+      if (result && !layerOptionsForResult(result).some((option) => option.id === a.layer)) return s;
+      return { ...s, layers: { ...s.layers, [a.id]: a.layer } };
+    }
   }
 }
 
@@ -359,6 +397,7 @@ export type BoardStateSnapshot = {
   cuts: Record<string, CutCount>;
   roseSeasons?: Record<string, RoseSeason>;
   labels?: Record<string, PinnedLabel[]>;
+  layers?: Record<string, string>;
   removed: { id: string; index: number }[];
 };
 
@@ -386,6 +425,7 @@ export function serializeBoardState(s: BoardState): BoardStateSnapshot {
     cuts: { ...s.cuts },
     roseSeasons: { ...s.roseSeasons },
     labels: Object.fromEntries(Object.entries(s.labels).map(([id, labels]) => [id, labels.map((label) => ({ ...label }))])),
+    layers: { ...s.layers },
     removed: s.removed.map((item) => ({ ...item })),
   };
 }
@@ -425,7 +465,21 @@ export function renameTileId(id: string): string {
 type IdMapper = (id: string) => string;
 
 function mapIdRecord<T>(value: unknown, mapId: IdMapper): Record<string, T> {
-  return Object.fromEntries(Object.entries(recordOf(value)).map(([id, item]) => [mapId(id), item])) as Record<string, T>;
+  const output: Record<string, T> = {};
+  for (const [id, item] of Object.entries(recordOf(value))) {
+    const mapped = mapId(id);
+    if (!(mapped in output)) output[mapped] = item as T;
+  }
+  return output;
+}
+
+function codeFromTileId(id: string): string {
+  const separator = id.lastIndexOf("-");
+  return separator < 0 ? id : id.slice(separator + 1);
+}
+
+function migratedLayer(id: string, value: string): string {
+  return LEGACY_LAYER_RENAMES[codeFromTileId(id)] ?? value;
 }
 
 /** Snapshot 안에서 id를 보관하는 모든 필드를 같은 규칙으로 다시 쓴다. */
@@ -436,6 +490,13 @@ export function rewriteSnapshotIds(snapshot: BoardStateSnapshot, mapId: IdMapper
   for (const [id, spec] of Object.entries(recordOf(snapshot.sheets))) {
     if (!isRecord(spec)) continue;
     sheets[mapId(id)] = { tiles: stringsOf(spec.tiles).map(mapId), grid: spec.grid as SheetGrid };
+  }
+  const layers: Record<string, string> = {};
+  for (const [id, value] of Object.entries(recordOf(snapshot.layers))) {
+    if (typeof value !== "string" || value.trim() === "") continue;
+    const mapped = mapId(id);
+    // D06/D07처럼 한 survivor로 충돌하는 경우 마지막 명시 선택을 유지한다.
+    layers[mapped] = migratedLayer(id, value);
   }
   return {
     ...snapshot,
@@ -453,14 +514,15 @@ export function rewriteSnapshotIds(snapshot: BoardStateSnapshot, mapId: IdMapper
     cuts: mapIdRecord<CutCount>(snapshot.cuts, mapId),
     roseSeasons: mapIdRecord<RoseSeason>(snapshot.roseSeasons, mapId),
     labels: mapIdRecord<PinnedLabel[]>(snapshot.labels, mapId),
+    layers,
     removed: Array.isArray(snapshot.removed)
       ? snapshot.removed.filter((item): item is { id: string; index: number } => !!item && typeof item.id === "string" && typeof item.index === "number").map((item) => ({ ...item, id: mapId(item.id) }))
       : [],
   };
 }
 
-function migrateV1ToV1(snapshot: BoardStateSnapshot): BoardStateSnapshot {
-  return snapshot;
+function migrateV1ToV2(snapshot: BoardStateSnapshot): BoardStateSnapshot {
+  return { ...snapshot, layers: recordOf(snapshot.layers) as Record<string, string> };
 }
 
 /** 저장본 버전을 단계별로 현재 버전까지 올린다. 미래 버전은 호출자가 기본 보드로 처리한다. */
@@ -470,7 +532,7 @@ export function migrateSnapshot(raw: unknown): BoardStateSnapshot | null {
   const version = saved.version === undefined ? 1 : typeof saved.version === "number" && Number.isInteger(saved.version) ? saved.version : null;
   if (version === null || version < 1 || version > BOARD_STATE_VERSION) return null;
   let migrated = saved as unknown as BoardStateSnapshot;
-  if (version === 1) migrated = migrateV1ToV1(migrated);
+  if (version === 1) migrated = migrateV1ToV2(migrated);
   return { ...rewriteSnapshotIds(migrated, renameTileId), version: BOARD_STATE_VERSION };
 }
 
@@ -556,6 +618,13 @@ export function restoreBoardState(results: TileResult[], raw: unknown): BoardSta
     });
     if (restored.length > 0) labels[id] = restored;
   }
+  const layers: Record<string, string> = {};
+  const resultById = new Map(base.results.map((result) => [result.tileId, result]));
+  for (const [id, value] of Object.entries(recordOf(saved.layers))) {
+    if (!baseIds.has(id) || typeof value !== "string") continue;
+    const result = resultById.get(id);
+    if (result && layerOptionsForResult(result).some((option) => option.id === value)) layers[id] = value;
+  }
   const removed: { id: string; index: number }[] = [];
   const removedIds = new Set<string>();
   if (Array.isArray(saved.removed)) {
@@ -583,6 +652,7 @@ export function restoreBoardState(results: TileResult[], raw: unknown): BoardSta
     cuts,
     roseSeasons,
     labels,
+    layers,
     removed,
     undoStack: [],
   };
