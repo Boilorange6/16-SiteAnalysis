@@ -59,6 +59,6 @@ const stackSlideNo = plan.indexOf(stackSlides[0]) + 1;
 const xml = await zip.file(`ppt/slides/slide${stackSlideNo}.xml`).async("string");
 const text = [...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((match) => match[1]).join("|");
 assert.ok(text.includes("입지·대중교통") && text.includes("준공 연대"));
-assert.ok(text.includes("rail") && text.includes("GIS건물통합정보"));
+assert.ok(text.includes("OSM 철도") && text.includes("GIS건물통합정보"));
 
 console.log("✓ v2 layer stack board and report");
