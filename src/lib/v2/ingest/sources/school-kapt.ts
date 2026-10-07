@@ -124,7 +124,13 @@ export async function buildKapt(db: Db, input: { records: AsyncIterable<MeasureR
   const stats = new SourceStats("kapt", input.releaseId, ["households", "buildingCount", "approvalDate"]);
   const seen = new Set<string>();
   const tally: Record<string, { received: number; accepted: number; unlocated: number; rejected: number }> = {};
-  const housing = db.prepare("SELECT stable_id FROM feature WHERE kind = 'housing_complex' AND pnu = ? ORDER BY stable_id").pluck();
+  // 적재 중엔 feature 보조 색인(kind·pnu)이 없어 행마다 질의하면 전체 스캔(9행/s)이 된다 — 한 번 읽어 PNU별로 묶는다.
+  const housingByPnu = new Map<string, string[]>();
+  for (const row of db.prepare("SELECT pnu, stable_id FROM feature WHERE kind = 'housing_complex' AND pnu IS NOT NULL ORDER BY stable_id").iterate() as Iterable<{ pnu: string; stable_id: string }>) {
+    const list = housingByPnu.get(row.pnu);
+    if (list) list.push(row.stable_id);
+    else housingByPnu.set(row.pnu, [row.stable_id]);
+  }
   let linked = 0;
   await batched(db, input.records, (r) => {
     stats.read();
@@ -167,7 +173,7 @@ export async function buildKapt(db: Db, input: { records: AsyncIterable<MeasureR
       name: str(p["단지명_공시가격"]) ?? str(p["단지명_건축물대장"]) ?? str(p["단지명_도로명주소"]),
       pnu, legalCode: pnu.slice(0, 10), properties: props,
     });
-    for (const h of housing.all(pnu) as string[]) if (insertLink(db, stableId, h, "same_parcel", "pnu", input.releaseId)) linked++;
+    for (const h of housingByPnu.get(pnu) ?? []) if (insertLink(db, stableId, h, "same_parcel", "pnu", input.releaseId)) linked++;
     t.accepted++;
     stats.accept(props, region, `type:${props.complexType ?? "(미상)"}`);
   });
