@@ -214,8 +214,9 @@ async function main() {
     const medianDecoded = decoded[Math.floor((decoded.length - 1) / 2)];
     assert.ok(Math.abs(medianDecoded - metricValue(normal, `utci_median${summer14}`)) <= 0.5, "raster median agrees with the reported median");
 
-    // Cache: only S04 gets a new cross-analysis cache key; the shared ENGINE_VERSION (and other tiles' keys) is untouched.
-    assert.equal(cacheEngineVersion("S03"), ENGINE_VERSION);
+    // Cache: height-assumption consumers get a new per-tile key; the shared ENGINE_VERSION stays stable.
+    assert.notEqual(cacheEngineVersion("S03"), ENGINE_VERSION);
+    assert.ok(cacheEngineVersion("S03").startsWith(ENGINE_VERSION));
     assert.notEqual(cacheEngineVersion("S04"), ENGINE_VERSION);
     assert.ok(cacheEngineVersion("S04").startsWith(ENGINE_VERSION));
 

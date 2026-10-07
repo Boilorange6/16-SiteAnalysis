@@ -168,7 +168,7 @@ function localOrUtmkRing(ring: Ring, offset: readonly [number, number]): Ring {
 
 function buildingLayer(heightM: number | null, heightMethod: Scene["buildings"][number]["heightMethod"]): string {
   if (heightM === null || !Number.isFinite(heightM) || heightM <= 0) return DXF_LAYERS.BLDG_NOHEIGHT;
-  return heightMethod === "floors_estimate" ? DXF_LAYERS.BLDG_EST : DXF_LAYERS.BLDG;
+  return heightMethod === "floors_estimate" || heightMethod === "assumed_one_floor" ? DXF_LAYERS.BLDG_EST : DXF_LAYERS.BLDG;
 }
 
 function addEmptyTable(lines: string[], name: string, handles: HandleAllocator): void {

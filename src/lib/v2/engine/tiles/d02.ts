@@ -27,7 +27,8 @@ export function d02(ctx: EngineContext): TileResult {
     }
     validGeometry++;
     footprintM2 += clipped.areaM2;
-    const label = row.heightM === null ? null : row.hit.name;
+    // D02 is a footprint tile, not a height tile: retain the raw height-missing label behavior.
+    const label = row.rawHeightM === null ? null : row.hit.name;
     for (const rings of clipped.parts) {
       const polygon = polygonCandidate(row.hit.featureId, "bldg_footprint", rings, polygonArea(rings), label);
       if (polygon) polygons.push(polygon);

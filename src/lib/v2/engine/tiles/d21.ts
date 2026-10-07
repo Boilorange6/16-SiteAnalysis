@@ -7,6 +7,7 @@ import type { EngineContext } from "../context";
 import { notProvided } from "./not-provided";
 import { SEASON_LABEL, SUN_INFLUENCE_M, horizonFor, sunBuildingReady, sunDateValue, sunFieldFor, sunGridFor, sunSources } from "./sun-shared";
 import { BUILDING_SOURCES, buildingRetirementLimitations } from "./buildings-shared";
+import { FLOOR_HEIGHT_M } from "../../ingest/sources/buildings";
 
 const round1 = (value: number) => Math.round(value * 10) / 10;
 const pct100 = (value: number) => round1(value * 100);
@@ -29,6 +30,7 @@ function winterMetrics(field: SunFieldResult, cellM: number): TileResult["metric
     metric("receivers_winter", "동지 수광 셀", "셀", receivers, "sun-receivers@1"),
     metric("buildings_used", "그림자에 사용한 건물 수", "동", field.obstacles.buildings - field.obstacles.excludedNoHeight, "sun-buildings-used@1"),
     metric("buildings_no_height", "높이 미상 건물 수", "동", field.obstacles.excludedNoHeight, "sun-buildings-no-height@1"),
+    metric("buildings_assumed_one_floor", "1층 가정(추정) 건물 수", "동", field.obstacles.assumedOneFloor, "sun-buildings-assumed-one-floor@1", field.obstacles.assumedOneFloor, field.obstacles.buildings),
     metric("cell_m", "일조 격자 셀 크기", "m", cellM, "sun-grid@1"),
     metric("influence_m", "그림자 영향 반경", "m", SUN_INFLUENCE_M, "sun-influence@1"),
   ];
@@ -61,6 +63,7 @@ export function d21(ctx: EngineContext): TileResult {
     { kind: "estimated", note: "반경 밖 400 m까지 건물 그림자를 포함했습니다." },
     { kind: "estimated", note: "경사면 법선은 반영하지 않고 수평 수광면으로 계산했습니다." },
     { kind: horizonFor(ctx) ? "estimated" : "unknown", note: horizonFor(ctx) ? "Copernicus GLO-30(표면모델 DSM, 2011~15년·30 m·평활화) 지형 지평선을 반영했습니다. 서울에서 건물 신호는 미미합니다." : "게시된 DEM이 없어 지형 지평선을 반영하지 않았습니다." },
+    ...(field.obstacles.assumedOneFloor > 0 ? [{ kind: "estimated" as const, note: `높이·층수 자료가 없는 건물 ${field.obstacles.assumedOneFloor}동(${pct100(field.obstacles.assumedOneFloor / Math.max(1, field.obstacles.buildings))}%)은 1층(${FLOOR_HEIGHT_M} m)으로 가정했습니다.` }] : []),
     ...(field.obstacles.excludedNoHeight > 0 ? [{ kind: "incomplete" as const, note: "높이 미상 " + field.obstacles.excludedNoHeight + "동은 그림자에서 제외하고 지붕 셀도 제외했습니다." }] : []),
     ...coverage,
   ];

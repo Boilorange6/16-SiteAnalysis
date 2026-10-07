@@ -244,6 +244,7 @@ function caseLike(state: WindState, built: WindCase | null = null): WindCase {
     inflow,
     station: simulationStation,
     maxObstacleM: typeof simulationCase.maxObstacleM === "number" ? simulationCase.maxObstacleM : 0,
+    assumedOneFloorCount: typeof simulationCase.assumedOneFloorBuildings === "number" ? simulationCase.assumedOneFloorBuildings : 0,
     terrain: typeof simulationCase.terrain === "string" && simulationCase.terrain === "included" ? "included" : `excluded:${String(simulationCase.terrain ?? "미상")}`,
     sources: state.tile.provenance.sources,
     limitations: state.tile.limitations,

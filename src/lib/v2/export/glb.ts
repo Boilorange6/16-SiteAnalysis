@@ -90,7 +90,7 @@ function addWalls(target: Geometry, rings: Point2[][], baseZ: number, height: nu
 function materialIndexFor(building: SceneBuilding): 0 | 1 | 2 {
   if (building.heightM === null || building.heightMethod === "unknown") return 2;
   if (!Number.isFinite(building.heightM) || building.heightM <= 0) return 2;
-  return building.heightMethod === "floors_estimate" ? 1 : 0;
+  return building.heightMethod === "floors_estimate" || building.heightMethod === "assumed_one_floor" ? 1 : 0;
 }
 
 function addBuilding(target: Geometry, building: SceneBuilding): void {

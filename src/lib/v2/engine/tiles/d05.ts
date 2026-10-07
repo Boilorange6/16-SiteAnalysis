@@ -3,8 +3,8 @@ import type { Geometry } from "geojson";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
 import { areaInCircle, polygonArea } from "./geo";
-import { BUILDING_SOURCES, buildingRetirementLimitations, buildingRows, isCounted, type BuildingRow } from "./buildings-shared";
-import { makeTile, missing, obs, polygonCandidate, type TileDraft } from "./common";
+import { BUILDING_SOURCES, assumedOneFloorLimitation, buildingRetirementLimitations, buildingRows, isConfirmedHeightMethod, isCounted, isAssumedOneFloor, type BuildingRow } from "./buildings-shared";
+import { est, makeTile, missing, obs, polygonCandidate, type TileDraft } from "./common";
 import { notProvided } from "./not-provided";
 
 const FLOOR_BUCKETS = [
@@ -14,6 +14,7 @@ const FLOOR_BUCKETS = [
   { id: "share_floors_4", label: "15~25층", layer: "floors_15_25" },
   { id: "share_floors_5", label: "26층 이상", layer: "floors_26p" },
   { id: "share_floors_6", label: "층수 미상", layer: "floors_unknown" },
+  { id: "share_floors_assumed_1f", label: "1층 가정(추정)", layer: "floors_assumed_1f_est" },
 ] as const;
 
 const HEIGHT_BUCKETS = [
@@ -36,7 +37,7 @@ function bucket(floors: number | null): (typeof FLOOR_BUCKETS)[number]["layer"] 
 }
 
 function heightBucket(row: BuildingRow): (typeof HEIGHT_BUCKETS)[number]["id"] | null {
-  if (row.heightMethod !== "source" || row.heightM === null) return null;
+  if (!isConfirmedHeightMethod(row.heightMethod) || row.heightM === null) return null;
   const found = HEIGHT_BUCKETS.find(({ min, max }) => row.heightM! >= min && row.heightM! < max);
   return found?.id ?? null;
 }
@@ -60,13 +61,15 @@ export function d05(ctx: EngineContext): TileResult {
   const polygons: NonNullable<TileDraft["polygons"]> = [];
   let floorsKnown = 0;
   let sourceHeights = 0;
+  let assumedFloors = 0;
   let geometryFailures = 0;
 
   for (const row of rows) {
-    const floorLayer = bucket(row.floorsAbove);
+    const floorLayer = isAssumedOneFloor(row) ? "floors_assumed_1f_est" : bucket(row.floorsAbove);
     const counted = isCounted(ctx, row);
     if (counted) floorCounts.set(floorLayer, (floorCounts.get(floorLayer) ?? 0) + 1);
-    if (counted && row.floorsAbove !== null) floorsKnown += 1;
+    if (counted && row.floorsAbove !== null && !isAssumedOneFloor(row)) floorsKnown += 1;
+    if (counted && isAssumedOneFloor(row)) assumedFloors += 1;
 
     const heightId = heightBucket(row);
     if (counted && heightId !== null) {
@@ -89,24 +92,31 @@ export function d05(ctx: EngineContext): TileResult {
     ...FLOOR_BUCKETS.map(({ id, label, layer }) =>
       total === 0
         ? missing(id, `층수 구성: ${label}`, "%", "d05-floors-share@1")
-        : obs(id, `층수 구성: ${label}`, pct(floorCounts.get(layer) ?? 0, total), "%", "d05-floors-share@1", floorCounts.get(layer) ?? 0, total),
+        : layer === "floors_assumed_1f_est"
+          ? est(id, `층수 구성: ${label}`, pct(floorCounts.get(layer) ?? 0, total), "%", "d05-floors-share@1", floorCounts.get(layer) ?? 0, total)
+          : obs(id, `층수 구성: ${label}`, pct(floorCounts.get(layer) ?? 0, total), "%", "d05-floors-share@1", floorCounts.get(layer) ?? 0, total),
     ),
     ...HEIGHT_BUCKETS.map(({ id, label }) =>
       sourceHeights === 0
         ? missing(id, `미터 높이 구성: ${label}`, "%", "d05-height-alt@1")
         : obs(id, `미터 높이 구성: ${label}`, pct(heightCounts.get(id) ?? 0, sourceHeights), "%", "d05-height-alt@1", heightCounts.get(id) ?? 0, sourceHeights),
     ),
+    total === 0
+      ? missing("alt_height_assumed_1f_est", "미터 높이 구성: 1층 가정(추정)", "%", "d05-height-alt@1")
+      : est("alt_height_assumed_1f_est", "미터 높이 구성: 1층 가정(추정)", pct(assumedFloors, total), "%", "d05-height-alt@1", assumedFloors, total),
   ];
 
+  const assumedLimitation = assumedOneFloorLimitation(rows.filter((row) => isCounted(ctx, row)));
   const limitations = [
     ...buildingRetirementLimitations(ctx),
     ...ctx.coverage("buildings", BUILDING_SOURCES),
+    ...(assumedLimitation ? [assumedLimitation] : []),
     ...(geometryFailures > 0 ? [{ kind: "unknown" as const, note: `건물 ${geometryFailures}동의 도형을 지도 면으로 변환하지 못했습니다.` }] : []),
   ];
   const status: TileResult["status"] = limitations.some((limitation) => limitation.kind === "partial" || limitation.kind === "incomplete") ? "partial" : "complete";
   const sentence = total === 0
     ? "반경 안 건물이 확인되지 않아 지상층수 분포를 산출하지 못함 → 건물 자료와 현장 확인 필요"
-    : `반경 안 건물 ${total.toLocaleString("en-US")}동 중 지상층수 확인 ${pct(floorsKnown, total)}% → 층수 구간별 분포와 미상 건물을 분리해 표시 → 건축물대장 층수 확인 필요`;
+    : `반경 안 건물 ${total.toLocaleString("en-US")}동 중 지상층수 확인 ${pct(floorsKnown, total)}%, 1층 가정(추정) ${assumedFloors}동 → 확인·추정·미상을 분리해 표시 → 건축물대장 층수 확인 필요`;
 
   return makeTile(ctx, {
     code: "D05",

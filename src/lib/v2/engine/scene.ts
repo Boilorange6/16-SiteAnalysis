@@ -15,7 +15,7 @@ import {
   type SceneParcel,
 } from "../scene";
 import type { EngineContext, SourceRef } from "./context";
-import { buildingRows, buildingRetirementLimitations, BUILDING_SOURCES } from "./tiles/buildings-shared";
+import { assumedOneFloorLimitation, buildingRows, buildingRetirementLimitations, BUILDING_SOURCES } from "./tiles/buildings-shared";
 import { areaInCircle, clipLineToCircle, linePathLength, polygonArea, polygonParts } from "./tiles/geo";
 import { hitPoint } from "./tiles/common";
 import { demReader, demSources, DEM_LIMITATION } from "./tiles/terrain-shared";
@@ -319,6 +319,8 @@ export function buildScene(ctx: EngineContext): Scene | null {
   if (parcelHits.length > SCENE_MAX_PARCELS) {
     limitations.push({ kind: "partial", note: `필지 도형은 면적이 큰 ${SCENE_MAX_PARCELS.toLocaleString()}필지까지 장면에 포함했습니다.` });
   }
+  const assumedLimitation = assumedOneFloorLimitation(buildings);
+  if (assumedLimitation) limitations.push(assumedLimitation);
   const unknownHeightCount = buildings.filter((building) => building.heightM === null).length;
   if (unknownHeightCount > 0) {
     limitations.push({ kind: "incomplete", note: `높이 미상 건물 ${unknownHeightCount.toLocaleString()}동은 바닥 모양만 포함했습니다.` });

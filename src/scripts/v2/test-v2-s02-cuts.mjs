@@ -32,7 +32,7 @@ try {
 
   const obstacles = sunObstaclesFor(ctx, null);
   assert.equal(obstacles.length, 6, "all buildings in radius + 400m are used");
-  assert.ok(obstacles.some((obstacle) => !Number.isFinite(obstacle.heightM)), "unknown height is retained as excluded obstacle");
+  assert.ok(obstacles.some((obstacle) => obstacle.assumedOneFloor === true && obstacle.heightM === 3), "raw unknown height becomes a 3m assumed obstacle");
 
   const winter = sunFieldFor(ctx, "winter");
   assert.ok(winter);
@@ -41,7 +41,7 @@ try {
 
   const tile = s02(ctx);
   const computeElapsedMs = Math.round(performance.now() - computeStarted);
-  assert.equal(tile.status, "partial", "unknown-height building is reported as partial");
+  assert.equal(tile.status, "partial", "fixture coverage remains partial even when assumed height is usable");
   assert.equal(tile.conditions.simulation.model, "sun-raster@1");
   assert.equal(tile.conditions.simulation.stepMin, 10);
   assert.equal(tile.conditions.simulation.cellM, 2);
@@ -98,7 +98,7 @@ try {
 
   assert.ok(tile.metrics.some((metric) => metric.id === "mean_sun_h_winter"));
   assert.ok(tile.metrics.every((metric) => metric.value === null || (metric.unit === "%" ? metric.value >= 0 && metric.value <= 100 : true)));
-  assert.ok(tile.limitations.some((limitation) => limitation.note.includes("높이 미상")));
+  assert.ok(tile.limitations.some((limitation) => limitation.note.includes("높이·층수 자료가 없는 건물") && limitation.note.includes("1층(3 m)으로 가정")));
   assert.ok(tile.limitations.some((limitation) => limitation.note.includes("400 m")));
   assert.ok(tile.judgment.sentence.includes("진태양시 09~15"));
   const summerMean = tile.metrics.find((metric) => metric.id === "mean_sun_h_summer").value;

@@ -27,7 +27,7 @@ export interface SceneBuilding {
   /** 발자국 대표점 지표고(원점 상대). flat이면 null. */
   baseZ: number | null;
   heightM: number | null;
-  heightMethod: "source" | "floors_estimate" | "user" | "unknown";
+  heightMethod: "source" | "ledger_height" | "floors_estimate" | "user" | "unknown" | "assumed_one_floor";
   floorsAbove: number | null;
   useCode: string | null;
   approvalDate: string | null;
@@ -103,7 +103,7 @@ const SceneBuildingSchema: z.ZodType<SceneBuilding> = z.object({
   rings: z.array(RingSchema),
   baseZ: z.number().finite().nullable(),
   heightM: z.number().positive().nullable(),
-  heightMethod: z.enum(["source", "floors_estimate", "user", "unknown"]),
+  heightMethod: z.enum(["source", "ledger_height", "floors_estimate", "user", "unknown", "assumed_one_floor"]),
   floorsAbove: z.number().int().nonnegative().nullable(),
   useCode: z.string().nullable(),
   approvalDate: z.string().nullable(),

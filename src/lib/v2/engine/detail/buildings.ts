@@ -143,7 +143,7 @@ function cardFor(ctx: DetailContext, detail: BuildingDetail): DetailCard {
   const approvalAge = approvalYear(approval);
   const analysisYear = Number(ctx.input.analysisDate.slice(0, 4));
   const age = approvalAge === null || !Number.isFinite(analysisYear) ? null : Math.max(0, analysisYear - approvalAge);
-  const heightSource = height === null ? null : `${height}m (${detail.row.heightMethod === "floors_estimate" ? "지상층수 추정" : detail.row.heightMethod === "source" ? "원천" : "확인"})`;
+  const heightSource = height === null ? null : `${height}m (${detail.row.heightMethod === "floors_estimate" ? "지상층수 추정" : detail.row.heightMethod === "assumed_one_floor" ? "1층 가정(추정)" : detail.row.heightMethod === "source" || detail.row.heightMethod === "ledger_height" ? "원천" : "확인"})`;
   return {
     title: addressOf(detail) ?? "이름 없는 건물",
     subtitle: propertyText(detail, "roadName", "road_name", "street") ?? detail.row.hit.name ?? undefined,

@@ -34,7 +34,8 @@ assert.deepEqual(
 );
 assert.equal(metric(tile, "height_source_pct").value, 50);
 assert.equal(metric(tile, "height_estimated_count").value, 1);
-assert.equal(metric(tile, "height_unknown_count").value, 2);
+assert.equal(metric(tile, "height_assumed_one_floor_count").value, 2);
+assert.equal(metric(tile, "height_unknown_count").value, 0);
 assert.deepEqual([metric(tile, "height_median_m").value, metric(tile, "height_median_m").status], [26, "estimated"]);
 assert.deepEqual([metric(tile, "height_max_m").value, metric(tile, "height_max_m").status], [90, "estimated"]);
 assert.deepEqual(tile.presentation.camera, { kind: "axonometric", azimuthDeg: 225, elevationDeg: 35, radiusM: 800 });
@@ -47,6 +48,7 @@ assert.deepEqual(tile.conditions.simulation, {
   ground: "flat",
 });
 assert.ok(tile.limitations.some((entry) => entry.note.includes("공개 도형과 확보 높이로 만든 매스")));
+assert.ok(tile.limitations.some((entry) => entry.note.includes("높이·층수 자료가 없는 건물 2동(33.3%)은 1층(3 m)으로 가정")));
 assert.ok(tile.limitations.some((entry) => entry.kind === "not_provided" && entry.note === "지형 자료를 확인하지 못해 평탄 지반으로 표시합니다."));
 assert.doesNotMatch(JSON.stringify(tile), /법적/);
 ctx.close();

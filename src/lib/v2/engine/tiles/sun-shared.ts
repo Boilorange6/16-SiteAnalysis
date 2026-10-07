@@ -6,7 +6,7 @@ import { computeSunField, computeSunFields, fillRing, horizonValuesForGrid, type
 import { terrainHorizon, type HorizonMap } from "../../sim/horizon";
 import type { EngineContext, SourceRef } from "../context";
 import { demReader } from "./terrain-shared";
-import { BUILDING_SOURCES, buildingRows } from "./buildings-shared";
+import { BUILDING_SOURCES, buildingRows, isAssumedOneFloor } from "./buildings-shared";
 
 export const SUN_INFLUENCE_M = 400;
 
@@ -81,7 +81,7 @@ function buildingObstacles(ctx: EngineContext): Obstacle[] | null {
   const obstacles: Obstacle[] = [];
   for (const row of rows) {
     const heightM = heightOf(row.heightM);
-    for (const ring of outerRings(row.hit.geometry)) obstacles.push({ ring, heightM, baseZ: null, kind: "building" });
+    for (const ring of outerRings(row.hit.geometry)) obstacles.push({ ring, heightM, baseZ: null, kind: "building", assumedOneFloor: isAssumedOneFloor(row) });
   }
   return obstacles;
 }

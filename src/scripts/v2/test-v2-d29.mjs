@@ -31,7 +31,7 @@ function insertBuilding(db, releaseId, id, x0, x1, y0, y1, heightM = 20) {
   });
   db.prepare(`INSERT INTO building_fact
     (feature_id, ledger_pk, height_m, height_method, floors_above, floors_below, use_code, approval_date, gross_floor_area_m2, footprint_area_m2, field_provenance_json)
-    VALUES (?, NULL, ?, 'source', NULL, NULL, NULL, NULL, NULL, ?, '{}')`).run(featureId, heightM, (x1 - x0) * (y1 - y0));
+    VALUES (?, NULL, ?, ?, NULL, NULL, NULL, NULL, NULL, ?, '{}')`).run(featureId, heightM, heightM === null ? "unknown" : "source", (x1 - x0) * (y1 - y0));
 }
 
 async function makeFixture({ buildings = null, terrain = true } = {}) {
@@ -216,6 +216,19 @@ try {
   assert.equal(tile.conditions.simulation.terrain, "flat-no-dem");
 } finally {
   flatCtx.close();
+}
+
+// A raw height/floor unknown is a 3 m obstacle in the engine, while remaining
+// separately countable from the SVF result.
+const assumedDir = await makeFixture({ buildings: [["assumed", 100, 110, 100, 110, null]] });
+const assumedCtx = makeContext(assumedDir, 80);
+try {
+  const tile = d29(assumedCtx);
+  assert.equal(metric(tile, "assumed_one_floor_buildings")?.value, 1);
+  assert.equal(tile.conditions.simulation.assumedOneFloorBuildings, 1);
+  assert.ok(tile.limitations.some((item) => item.note.includes("높이·층수 자료가 없는 건물 1동(100%)은 1층(3 m)으로 가정")));
+} finally {
+  assumedCtx.close();
 }
 
 console.log("✓ v2 D29 sky-view-factor tile");

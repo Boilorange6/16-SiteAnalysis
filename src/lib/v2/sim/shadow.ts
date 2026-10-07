@@ -16,6 +16,8 @@ export interface Building {
   ring: readonly XY[];
   /** 지붕 높이(m). null = 모름 */
   heightM: number | null;
+  /** 엔진이 원천 미상 건물에 1층 높이를 가정했는지 여부. */
+  assumedOneFloor?: boolean;
 }
 export interface BBox {
   minX: number;

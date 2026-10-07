@@ -1,7 +1,7 @@
 /** D29 개방감(SVF) — 건물·DEM 기반 지면 하늘열림 도판. */
 import { parseTileResult, type TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
-import { BUILDING_SOURCES, buildingRetirementLimitations, buildingRows, type BuildingRow } from "./buildings-shared";
+import { BUILDING_SOURCES, assumedOneFloorCount, assumedOneFloorLimitation, buildingRetirementLimitations, buildingRows, type BuildingRow } from "./buildings-shared";
 import { est, makeTile, missing, polygonCandidate } from "./common";
 import { polygonArea, polygonParts } from "./geo";
 import { notProvided } from "./not-provided";
@@ -148,6 +148,8 @@ export function d29(ctx: EngineContext): TileResult {
   const displayRows = buildingRows(ctx, ctx.input.radiusM) ?? rows;
   const buildingPolygons = buildingMaskPolygons(displayRows);
   const unknownBuildings = rows.filter((row) => row.heightM === null).length;
+  const assumedBuildings = assumedOneFloorCount(rows);
+  const assumedLimitation = assumedOneFloorLimitation(rows);
   let demMissingCells = 0;
   for (let row = 0; row < shared.grid.rows; row += 1) {
     const y = shared.grid.y0 + (row + 0.5) * shared.grid.cellM;
@@ -173,6 +175,7 @@ export function d29(ctx: EngineContext): TileResult {
     est("back_nodata_pct", "SVF 결측·건물 지붕 면적률", nodataPct, "%", "d29-back-nodata@1:유효하지 않은 원 안 셀 면적÷원 안 셀 면적", Math.max(0, totalArea - validArea), totalArea),
     est("svf_median", "하늘열림 중앙값", ratioMetric(quantile(values, 0.5) as number), "비율", "d29-svf-median@1:유효 지면 SVF 중앙값", null, validArea),
     est("svf_p10", "하늘열림 P10", ratioMetric(quantile(values, 0.1) as number), "비율", "d29-svf-p10@1:유효 지면 SVF 10백분위", null, validArea),
+    est("assumed_one_floor_buildings", "1층 가정(추정) 장애물 건물", assumedBuildings, "동", "d29-svf-assumed-one-floor@1:높이·층수 미상 건물 수", assumedBuildings, rows.length),
     ...SVF_LAYERS.map((layer, index) => est(
       `share_${layer}_pct`,
       `하늘열림 ${SVF_BAND_LABELS[index]} 면적 구성비`,
@@ -194,6 +197,7 @@ export function d29(ctx: EngineContext): TileResult {
     { kind: "estimated", note: "건물은 단순 매스로 표현했으며 높이·지붕 형태·차양은 단순화했습니다." },
     { kind: "estimated", note: "수목 제외 — 수관·차양은 반영하지 않았습니다." },
     ...(site.fallback ? [{ kind: "estimated" as const, note: "대상 필지 도형이 없어 중심 주변 100m를 대지 지표의 대체 영역으로 사용했습니다." }] : []),
+    ...(assumedLimitation ? [assumedLimitation] : []),
     ...(unknownBuildings > 0 ? [{ kind: "incomplete" as const, note: `높이 미상 건물 ${unknownBuildings}동은 지붕 높이를 알 수 없어 해당 발자국을 유효 지면에서 제외했습니다.` }] : []),
     ...(demMissingCells > 0 ? [{ kind: "partial" as const, note: `원 안 DEM 결측 ${demMissingCells.toLocaleString("en-US")}개 셀은 SVF 통계에서 제외했습니다.` }] : []),
   ];
@@ -254,6 +258,7 @@ export function d29(ctx: EngineContext): TileResult {
         canopy: "excluded",
         buildings: rows.length,
         unknownHeightBuildings: unknownBuildings,
+        assumedOneFloorBuildings: assumedBuildings,
       },
     },
     presentation: {

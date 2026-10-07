@@ -28,6 +28,7 @@ export interface Obstacle {
   heightM: number;
   baseZ: number | null;
   kind: "building" | "canopy";
+  assumedOneFloor?: boolean;
 }
 
 export interface SunGrid {
@@ -67,7 +68,7 @@ export interface SunFieldResult {
   tstOffsetMin: number;
   hourly: Array<{ kstHour: number; altDeg: number; azDeg: number; shade: Uint8Array }>;
   stats: { receivers: number; meanHours: number; shareLt1h: number; shareCont2h: number; shareTotal4h: number };
-  obstacles: { buildings: number; canopy: number; excludedNoHeight: number };
+  obstacles: { buildings: number; canopy: number; excludedNoHeight: number; assumedOneFloor: number };
 }
 
 export interface HorizonSampler {
@@ -95,6 +96,7 @@ interface PreparedObstacle {
   heightM: number;
   baseZ: number | null;
   kind: Obstacle["kind"];
+  assumedOneFloor: boolean;
   hasHeight: boolean;
   convex: boolean;
 }
@@ -592,6 +594,7 @@ export function computeSunField(input: SunFieldInput): SunFieldResult {
       heightM: obstacle.heightM,
       baseZ: obstacle.baseZ,
       kind: obstacle.kind,
+      assumedOneFloor: obstacle.assumedOneFloor === true,
       hasHeight: Number.isFinite(obstacle.heightM),
       convex: isConvexRing(ring),
     } satisfies PreparedObstacle;
@@ -681,6 +684,7 @@ export function computeSunField(input: SunFieldInput): SunFieldResult {
       buildings: buildings.length,
       canopy: canopy.length,
       excludedNoHeight: buildings.filter((obstacle) => !obstacle.hasHeight).length,
+      assumedOneFloor: buildings.filter((obstacle) => obstacle.assumedOneFloor && obstacle.hasHeight).length,
     },
   };
 }

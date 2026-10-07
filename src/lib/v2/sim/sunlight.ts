@@ -60,7 +60,7 @@ export interface SunlightResult {
   cells: SunlightCell[];
   steps: SunlightStep[];
   counts: { cells: number; calculated: number; removed: number; uncalculated: number };
-  buildings: { inInfluence: number; used: number; excludedNoHeight: number; inSiteRemoved: number };
+  buildings: { inInfluence: number; used: number; excludedNoHeight: number; assumedOneFloor: number; inSiteRemoved: number };
   /** 창 안에서 태양이 떠 있는 시간(h) = 어떤 셀도 이보다 많이 받을 수 없음 */
   sunUpHours: number;
   medianHours: number | null;
@@ -195,7 +195,7 @@ export function computeSunlight(input: SunlightInput): SunlightResult {
     cells,
     steps,
     counts: { cells: cells.length, calculated: live.length, removed, uncalculated },
-    buildings: { inInfluence: influencing.length, used: heights.length, excludedNoHeight: noHeight.length, inSiteRemoved: remove ? footprints.length : 0 },
+    buildings: { inInfluence: influencing.length, used: heights.length, excludedNoHeight: noHeight.length, assumedOneFloor: influencing.filter((building) => building.assumedOneFloor === true && building.heightM !== null).length, inSiteRemoved: remove ? footprints.length : 0 },
     sunUpHours: round(sunUpHours),
     medianHours: median === null ? null : round(median),
     shareAtLeastN: live.length === 0 ? null : Array.from(longest).filter((h) => h >= minRun - eps).length / live.length,

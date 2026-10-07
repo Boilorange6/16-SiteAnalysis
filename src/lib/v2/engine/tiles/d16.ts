@@ -2,7 +2,7 @@
 import { toUtmk } from "../../crs";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
-import { buildingRetirementLimitations, buildingRows, BUILDING_SOURCES, isCounted, isCountedWithin, type BuildingRow } from "./buildings-shared";
+import { assumedOneFloorLimitation, assumedOneFloorCount, buildingRetirementLimitations, buildingRows, BUILDING_SOURCES, isCounted, isCountedWithin, type BuildingRow } from "./buildings-shared";
 import { est, hitPoint, makeTile, missing, obs, type TileDraft } from "./common";
 import { gridQuantiles } from "./raster-grid";
 import { kdeBandPolygons, kdeGrid, KDE_BANDWIDTH_M, KDE_ZERO_THRESHOLD } from "./d16-kde";
@@ -94,9 +94,11 @@ export function d16(ctx: EngineContext): TileResult {
   const maxDensity = finiteGridValues.length > 0 ? maxOf(finiteGridValues) : 0;
   const coverage = ctx.coverage("buildings", BUILDING_SOURCES);
   const retirementLimitations = buildingRetirementLimitations(ctx, Math.min(5000, radiusM + INPUT_BUFFER_M));
+  const assumedLimitation = assumedOneFloorLimitation(rows);
   const limitations: TileDraft["limitations"] = [
     { kind: "estimated", note: "커널 밀도 추정 — 동수 기준, 연면적·용적률과 혼합 안 함 · 반경 밖 300m 건물 포함" },
     { kind: "unknown", note: "연면적은 대장 값이며 동수 KDE와 섞지 않음" },
+    ...(assumedLimitation ? [assumedLimitation] : []),
     ...retirementLimitations,
     ...coverage,
   ];
@@ -105,6 +107,7 @@ export function d16(ctx: EngineContext): TileResult {
     obs("kde_bandwidth_m", "KDE 대역폭", KDE_BANDWIDTH_M, "m", "d16-kde-config@1:가우시안 커널 대역폭"),
     obs("kde_cell_m", "KDE 격자 간격", cellM, "m", "d16-kde-config@1:cellM=max(20,ceil(2r÷80))"),
     obs("buildings_input", "KDE 입력 건물", rows.length, "동", "d16-kde-input@1:반경과 300m 버퍼 안 발자국 대표점"),
+    est("assumed_one_floor_buildings", "1층 가정(추정) KDE 입력 건물", assumedOneFloorCount(rows), "동", "d16-kde-assumed-one-floor@1:높이·층수 미상 건물 수", assumedOneFloorCount(rows), rows.length),
     ...quantiles.map((value, index) => Number.isFinite(value)
       ? est(`dens_break_${index + 1}`, `밀도 경계 ${index + 1}`, round3(value), "동/㎢", "d16-kde-quantile@1:원 안 유효 KDE 값 중 양수값의 백분위", null, null)
       : missing(`dens_break_${index + 1}`, `밀도 경계 ${index + 1}`, "동/㎢", "d16-kde-quantile@1:양수 KDE 값 없음")),
