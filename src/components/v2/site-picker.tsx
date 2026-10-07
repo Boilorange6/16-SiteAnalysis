@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import MapFigure, { siteMarkerRadius } from "./map-figure";
+import MapFigure, { siteMarkerMode, siteMarkerRadius } from "./map-figure";
 import type { MapModel } from "@/lib/v2/ui/map-layers";
 import type { MapPolygon } from "@/lib/v2/tile-result";
 import { framedViewport, makeProjector, worldPx } from "@/lib/v2/ui/map-projection";
@@ -15,6 +15,7 @@ import {
   isParcelSelectionConnected,
   isRoadParcel,
   outerBoundary,
+  pointOnSurface,
   polygonAreaM2,
   representativeJibun,
   selectedAreaM2,
@@ -123,7 +124,7 @@ export default function SitePicker({ address, radiusM, initialSite = null, initi
   const [selectedPnus, setSelectedPnus] = useState<string[]>(initialSite && "pnus" in initialSite ? [...initialSite.pnus] : []);
   const [drawPoints, setDrawPoints] = useState<LngLat[]>(initialSite && "polygon" in initialSite ? initialSite.polygon.slice(0, -1).map(([lng, lat]) => [lng, lat]) : []);
   const [drawDone, setDrawDone] = useState(initialSite && "polygon" in initialSite);
-  const [center, setCenter] = useState<LngLat | null>(initialSite && "polygon" in initialSite ? geometryCenter({ type: "Polygon", coordinates: [initialSite.polygon as LngLat[]] }) : null);
+  const [center, setCenter] = useState<LngLat | null>(initialSite && "polygon" in initialSite ? pointOnSurface({ type: "Polygon", coordinates: [initialSite.polygon as LngLat[]] }) : null);
   const [mapCenter, setMapCenter] = useState<LngLat | null>(null);
   const [zoomScale, setZoomScale] = useState(INITIAL_ZOOM_SCALE);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
@@ -267,7 +268,7 @@ export default function SitePicker({ address, radiusM, initialSite = null, initi
     ? polygonInput ? { polygon: polygonInput } : null
     : selectedPnus.length > 0 ? { pnus: [...selectedPnus] } : null;
   const selectedCenterPoint = mode === "polygon"
-    ? polygonInput ? geometryCenter({ type: "Polygon", coordinates: [polygonInput] }) : null
+    ? polygonInput ? pointOnSurface({ type: "Polygon", coordinates: [polygonInput] }) : null
     : selectedCenter(selectedParcels);
   const boundary = mode === "polygon"
     ? drawPoints.length >= 3 ? [closePolygon(drawPoints)] : []
@@ -348,6 +349,7 @@ export default function SitePicker({ address, radiusM, initialSite = null, initi
   }, [mapCenter, parcels, project, selectedPnus, size]);
   const projectedBoundary = project ? boundary.map((ring) => ring.map(([lng, lat]) => project(lng, lat))) : [];
   const selectedScreenCenter = project && selectedCenterPoint ? project(selectedCenterPoint[0], selectedCenterPoint[1]) : null;
+  const selectedMarkerMode = siteMarkerMode(projectedBoundary.flat());
   const mapCanvasStyle = { transform: "none" };
 
   const setModeAndPrepare = (nextMode: SitePickerMode) => {
@@ -587,12 +589,12 @@ export default function SitePicker({ address, radiusM, initialSite = null, initi
                          </g>
                        );
                      })}
-                     {projectedBoundary.map((ring, index) => <path key={`site-boundary-${index}`} d={polygonPath(ring)} fill="rgba(17,17,17,.04)" stroke="#fff" strokeWidth={Math.max(5, 2.4)} strokeLinejoin="round" />)}
-                     {projectedBoundary.map((ring, index) => <path key={`site-boundary-ink-${index}`} d={polygonPath(ring)} fill="none" stroke={selfCrossing ? "#b42318" : "#111"} strokeWidth={Math.max(2, 1.2)} strokeLinejoin="round" />)}
-                     {selectedScreenCenter && (() => {
-                       const markerR = Math.max(10, siteMarkerRadius(size.h));
-                       const points = projectedBoundary.flat();
-                       const markerMode = points.length >= 3 ? "parcel" : "ring";
+                      {selectedMarkerMode === "parcel" && projectedBoundary.map((ring, index) => <path key={`site-boundary-${index}`} d={polygonPath(ring)} fill="rgba(17,17,17,.04)" stroke="#fff" strokeWidth={Math.max(5, 2.4)} strokeLinejoin="round" />)}
+                      {selectedMarkerMode === "parcel" && projectedBoundary.map((ring, index) => <path key={`site-boundary-ink-${index}`} d={polygonPath(ring)} fill="none" stroke={selfCrossing ? "#b42318" : "#111"} strokeWidth={Math.max(2, 1.2)} strokeLinejoin="round" />)}
+                      {selectedScreenCenter && (() => {
+                        const markerR = Math.max(10, siteMarkerRadius(size.h));
+                        const points = projectedBoundary.flat();
+                        const markerMode = siteMarkerMode(points);
                        const [x, y] = selectedScreenCenter;
                       return (
                         <g role="img" aria-label="선택한 대지 표식">

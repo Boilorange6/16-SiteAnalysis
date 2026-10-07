@@ -219,7 +219,12 @@ function ringCentroid(ring: readonly LngLat[]): { center: LngLat; area: number }
   const points = openRing(ring);
   if (points.length < 3) return { center: points[0] ? [...points[0]] as LngLat : [0, 0], area: 0 };
   const latitude = points.reduce((sum, [, lat]) => sum + lat, 0) / points.length;
-  const projected = points.map((point) => project(point, latitude));
+  // Keep the shoelace calculation local to the ring. Multiplying absolute
+  // WGS84 coordinates by meters first loses enough low bits at Korean
+  // longitudes to move a small parcel's centroid by tens of meters.
+  const origin = points[0]!;
+  const meterLng = M_PER_DEG_LNG * Math.cos((latitude * Math.PI) / 180);
+  const projected = points.map(([lng, lat]) => [(lng - origin[0]) * meterLng, (lat - origin[1]) * M_PER_DEG_LAT] as [number, number]);
   let crossSum = 0;
   let x = 0;
   let y = 0;
@@ -233,8 +238,7 @@ function ringCentroid(ring: readonly LngLat[]): { center: LngLat; area: number }
   }
   const area = Math.abs(crossSum) / 2;
   if (area <= EPSILON) return { center: [...points[0]!] as LngLat, area: 0 };
-  const meterLng = M_PER_DEG_LNG * Math.cos((latitude * Math.PI) / 180);
-  return { center: [x / (3 * crossSum) / meterLng, y / (3 * crossSum) / M_PER_DEG_LAT] as LngLat, area };
+  return { center: [origin[0] + x / (3 * crossSum) / meterLng, origin[1] + y / (3 * crossSum) / M_PER_DEG_LAT] as LngLat, area };
 }
 
 export function geometryCenter(geometry: SitePickerGeometry | null | undefined): LngLat | null {
@@ -242,6 +246,60 @@ export function geometryCenter(geometry: SitePickerGeometry | null | undefined):
   if (parts.length === 0) return null;
   const total = parts.reduce((sum, part) => sum + part.area, 0);
   return [parts.reduce((sum, part) => sum + part.center[0] * part.area, 0) / total, parts.reduce((sum, part) => sum + part.center[1] * part.area, 0) / total];
+}
+
+function polygonRingsOf(geometry: SitePickerGeometry): LngLat[][][] {
+  return geometry.type === "Polygon"
+    ? [geometry.coordinates.map(openRing)]
+    : geometry.coordinates.map((polygon) => polygon.map(openRing));
+}
+
+function pointInRing(point: LngLat, ring: readonly LngLat[]): boolean {
+  const points = openRing(ring);
+  if (points.length < 3) return false;
+  let inside = false;
+  for (let index = 0, previous = points.length - 1; index < points.length; previous = index++) {
+    const current = points[index]!;
+    const before = points[previous]!;
+    if (pointOnSegment(point, before, current, 1e-12)) return true;
+    const crosses = (current[1] > point[1]) !== (before[1] > point[1])
+      && point[0] < ((before[0] - current[0]) * (point[1] - current[1])) / (before[1] - current[1]) + current[0];
+    if (crosses) inside = !inside;
+  }
+  return inside;
+}
+
+function pointInPolygon(point: LngLat, rings: readonly (readonly LngLat[])[]): boolean {
+  return !!rings[0] && pointInRing(point, rings[0]) && rings.slice(1).every((hole) => !pointInRing(point, hole));
+}
+
+/**
+ * 대지 표식용 표면점. 엔진의 pointOnFeature와 같은 bbox 중심 우선 규칙을
+ * 브라우저에서 계산한다. 중심이 도형 밖(오목면·구멍)이면 가장 가까운
+ * 꼭짓점으로 폴백한다.
+ */
+export function pointOnSurface(geometry: SitePickerGeometry | null | undefined): LngLat | null {
+  if (!geometry) return null;
+  const polygons = polygonRingsOf(geometry);
+  const points = polygons.flat(2);
+  if (points.length === 0) return null;
+  const bounds = points.reduce(
+    (current, [lng, lat]) => ({ minLng: Math.min(current.minLng, lng), maxLng: Math.max(current.maxLng, lng), minLat: Math.min(current.minLat, lat), maxLat: Math.max(current.maxLat, lat) }),
+    { minLng: Infinity, maxLng: -Infinity, minLat: Infinity, maxLat: -Infinity },
+  );
+  const candidate: LngLat = [(bounds.minLng + bounds.maxLng) / 2, (bounds.minLat + bounds.maxLat) / 2];
+  if (polygons.some((rings) => pointInPolygon(candidate, rings))) return candidate;
+
+  let nearest: LngLat | null = null;
+  let best = Infinity;
+  for (const point of points) {
+    const distance = (point[0] - candidate[0]) ** 2 + (point[1] - candidate[1]) ** 2;
+    if (distance < best) {
+      best = distance;
+      nearest = [...point] as LngLat;
+    }
+  }
+  return nearest;
 }
 
 export function parcelAreaM2(parcel: SitePickerParcel): number {
@@ -253,10 +311,12 @@ export function selectedAreaM2(parcels: readonly SitePickerParcel[]): number {
 }
 
 export function selectedCenter(parcels: readonly SitePickerParcel[]): LngLat | null {
-  const weighted = parcels.map((parcel) => ({ center: geometryCenter(parcel.geometry), area: parcelAreaM2(parcel) })).filter((value): value is { center: LngLat; area: number } => value.center !== null && value.area > 0);
-  if (weighted.length === 0) return null;
-  const total = weighted.reduce((sum, value) => sum + value.area, 0);
-  return [weighted.reduce((sum, value) => sum + value.center[0] * value.area, 0) / total, weighted.reduce((sum, value) => sum + value.center[1] * value.area, 0) / total];
+  const boundary = outerBoundary(parcels);
+  if (boundary.length === 0) return null;
+  const geometry: SitePickerGeometry = boundary.length === 1
+    ? { type: "Polygon", coordinates: [boundary[0]!] }
+    : { type: "MultiPolygon", coordinates: boundary.map((ring) => [ring]) };
+  return pointOnSurface(geometry);
 }
 
 export function districtFromAddress(address: string): string {
