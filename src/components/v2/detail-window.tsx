@@ -206,6 +206,8 @@ export default function DetailWindow({ view, layer, onLayer, onClose }: DetailWi
   const model = view.map ?? view.backdrop;
   const analysisId = view.map?.analysisId ?? (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("analysis") : null);
   const code = view.code;
+  const modelFeaturesRef = useRef(model.features);
+  modelFeaturesRef.current = model.features;
   const dialogRef = useRef<HTMLElement>(null);
   const mapViewportRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -300,7 +302,7 @@ export default function DetailWindow({ view, layer, onLayer, onClose }: DetailWi
       const response = await fetch(detailListApiUrl(analysisId, code, requestedControls), { credentials: "same-origin", signal: controller.signal });
       const body = await response.json().catch(() => ({})) as Partial<DetailPayload> & { error?: string };
       if (!response.ok || !body.card || !Array.isArray(body.rows) || !Array.isArray(body.columns)) throw new Error(body.error ?? "상세 자료를 불러오지 못했습니다.");
-      const nextPayload = normalizeDetailPayload(body as DetailPayload, model.features, model.radiusM);
+      const nextPayload = normalizeDetailPayload(body as DetailPayload, modelFeaturesRef.current, model.radiusM);
       const nextControls = controlsToRecord(nextPayload.controls ?? [], requestedControls);
       setControls(nextControls);
       setPayload(nextPayload);
@@ -315,7 +317,7 @@ export default function DetailWindow({ view, layer, onLayer, onClose }: DetailWi
     } finally {
       window.clearTimeout(timeout);
     }
-  }, [analysisId, code, model.features, model.radiusM]);
+  }, [analysisId, code, model.radiusM]);
 
   useEffect(() => {
     if (!mounted) return;
