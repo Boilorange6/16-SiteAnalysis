@@ -8,7 +8,6 @@ import { openDbf } from "shapefile";
 
 const { csvRecords, isFilled, normalizeEncoding } = await import("../../lib/v2/a0/measure.ts");
 const { latestShpPerSido } = await import("../../lib/v2/ingest/shp-parts.ts");
-const { cleanProps } = await import("../../lib/v2/ingest/shp.ts");
 
 const args = process.argv.slice(2);
 const opt = (name, fallback) => {
@@ -35,7 +34,7 @@ async function* readDbfProperties(shpPath) {
   const cpgPath = shpPath.replace(/\.shp$/i, ".cpg");
   const encoding = existsSync(cpgPath) ? normalizeEncoding(readFileSync(cpgPath, "utf8").trim()) : "euc-kr";
   const source = await openDbf(dbfPath, { encoding });
-  for (let row = await source.read(); !row.done; row = await source.read()) yield cleanProps((row.value ?? {}));
+  for (let row = await source.read(); !row.done; row = await source.read()) yield row.value ?? {};
 }
 
 const positive = (value) => {
@@ -43,7 +42,7 @@ const positive = (value) => {
   return Number.isFinite(n) && n > 0;
 };
 const validPnu = (value) => /^\d{19}$/.test(String(value ?? "").trim());
-const validDate = (value) => /^\d{8}$/.test(String(value ?? "").trim()) && !/^0{8}$/.test(String(value ?? "").trim());
+const validDate = (value) => value instanceof Date ? !Number.isNaN(value.getTime()) : /^\d{8}$/.test(String(value ?? "").trim()) && !/^0{8}$/.test(String(value ?? "").trim());
 const regionOf = (p, fallback = "(미상)") => {
   for (const value of [p.A23, p.A2, p.A3, p["시군구_코드"]]) {
     const s = String(value ?? "").trim();
