@@ -17,6 +17,16 @@ export type TileSlideBody =
   | { kind: "result"; face: "single" | "front" | "back" }
   | { kind: "state"; face: "single" | "front" | "back"; message: string };
 
+/** 출처 슬라이드 행. 메타가 연결되면 이용조건·원문 확인 열을 채울 수 있다. */
+export type ReportSourceRow = {
+  source: string;
+  asOf: string;
+  tiles: string;
+  provider?: string | null;
+  license?: string | null;
+  url?: string | null;
+};
+
 export type ReportSlide =
   | {
       kind: "cover";
@@ -54,7 +64,7 @@ export type ReportSlide =
       grid: SheetGrid;
       cells: Array<{ view: TileView; face: "front" | "back"; mapKey: string; pinnedKeys?: string[] }>;
     }
-  | { kind: "sources"; rows: { source: string; asOf: string; tiles: string }[]; /** 배경(흐린 대지 지도) */ map: MapModel | null };
+  | { kind: "sources"; rows: ReportSourceRow[]; /** 배경(흐린 대지 지도) */ map: MapModel | null };
 
 export type PlannedSlide = ReportSlide & { no: number; total: number; footer: string };
 
