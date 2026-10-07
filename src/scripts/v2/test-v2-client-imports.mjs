@@ -7,6 +7,12 @@ import { dirname, join, resolve } from "node:path";
 const root = resolve(import.meta.dirname, "../..");
 const entries = [join(root, "app/v2/page.tsx"), ...readdirSync(join(root, "components/v2")).map((f) => join(root, "components/v2", f))]
   .filter((f) => /\.tsx?$/.test(f) && readFileSync(f, "utf8").includes('"use client"'));
+const mass3dSource = readFileSync(join(root, "components/v2/mass-3d.tsx"), "utf8");
+const mass3dRuntimeSource = readFileSync(join(root, "lib/v2/ui/mass-3d-runtime.ts"), "utf8");
+assert.match(mass3dSource, /^"use client";/, "3D 컴포넌트는 client-only여야 한다");
+assert.doesNotMatch(mass3dSource, /from\s+["']three["']/, "three는 초기 컴포넌트 모듈에서 정적으로 가져오지 않는다");
+assert.match(mass3dSource, /import\(["']@\/lib\/v2\/ui\/mass-3d-runtime["']\)/, "3D 런타임은 동적으로 가져온다");
+assert.match(mass3dRuntimeSource, /import\(["']three["']\)/, "three 런타임은 동적 import로 분리한다");
 const IMPORT = /(?:^|\n)\s*(?:import|export)\s+(?!type\b)[^;'"]*?from\s+["']([^"']+)["']|import\(\s*["']([^"']+)["']\s*\)/g;
 const resolveLocal = (from, spec) => {
   const base = spec.startsWith("@/") ? join(root, spec.slice(2)) : resolve(dirname(from), spec);

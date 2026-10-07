@@ -247,5 +247,8 @@ assert.deepEqual(massSlide.mass?.exploded, { spreadPct: 24, scheme: "use" }, "S0
 const zip = await JSZip.loadAsync(await renderReportPptx(plan));
 const xml = await zip.file("ppt/slides/slide2.xml").async("string");
 assert.match(xml, /DXF·GLB는 내보내기에서/);
+const onePixelPng = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+const imageZip = await JSZip.loadAsync(await renderReportPptx(plan, { "t-S01:mass": onePixelPng }));
+assert.ok(Object.keys(imageZip.files).some((name) => name.startsWith("ppt/media/")), "S01 report slide embeds its PNG image");
 
 console.log("✓ v2 S01 mass projection, figure, and report integration");
