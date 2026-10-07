@@ -26,7 +26,7 @@ export interface BuildingRow {
   floorsAbove: number | null;
   useCode: string | null;
   approvalDate: string | null;
-  approvalDateSource: "building_fact" | "core_ledger_pnu" | null;
+  approvalDateSource: "building_fact" | "ledger_title" | "core_ledger_pnu" | null;
   grossFloorM2: number | null;
   footprintM2: number | null;
 }
@@ -110,7 +110,7 @@ export function buildingsReady(ctx: EngineContext): boolean {
 
 const positiveNumber = (value: unknown): number | null => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null);
 const heightMethod = (value: unknown): BuildingRow["heightMethod"] =>
-  value === "source" || value === "floors_estimate" || value === "user" ? value : value === "ledger_floors_estimate" ? "floors_estimate" : "unknown";
+  value === "source" || value === "ledger_height" || value === "floors_estimate" || value === "user" ? value === "ledger_height" ? "source" : value : value === "ledger_floors_estimate" ? "floors_estimate" : "unknown";
 
 function validApprovalDate(value: unknown, analysisDate: string): string | null {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
@@ -445,13 +445,22 @@ function buildingRowsUncached(ctx: EngineContext, radiusM: number): { rows: Buil
   for (let i = 0; i < hits.length; i += 500) {
     const chunk = hits.slice(i, i + 500);
     const rows = db
-      .prepare(`SELECT feature_id, height_m, height_method, floors_above, use_code, approval_date, gross_floor_area_m2, footprint_area_m2 FROM building_fact WHERE feature_id IN (${chunk.map(() => "?").join(",")})`)
+      .prepare(`SELECT feature_id, height_m, height_method, floors_above, use_code, approval_date, gross_floor_area_m2, footprint_area_m2, field_provenance_json FROM building_fact WHERE feature_id IN (${chunk.map(() => "?").join(",")})`)
       .all(...chunk.map((hit) => hit.featureId)) as Array<Record<string, unknown>>;
     const byFeature = new Map(rows.map((row) => [row.feature_id as number, row]));
     for (const hit of chunk) {
       const row = byFeature.get(hit.featureId);
       const factApproval = typeof row?.approval_date === "string" ? row.approval_date : null;
       const ledgerDate = hit.stableId.startsWith("juso:") && hit.pnu ? ledgerApproval.get(hit.pnu) ?? null : null;
+      let factApprovalSource: "building_fact" | "ledger_title" = "building_fact";
+      if (factApproval) {
+        try {
+          const provenance = JSON.parse(String((row as { field_provenance_json?: unknown })?.field_provenance_json ?? "{}")) as { approval_date?: { source?: unknown } };
+          if (typeof provenance.approval_date?.source === "string" && provenance.approval_date.source.startsWith("ledger.title")) factApprovalSource = "ledger_title";
+        } catch {
+          // provenance is optional evidence; the date itself remains usable.
+        }
+      }
       out.push({
         hit,
         heightM: positiveNumber(row?.height_m),
@@ -459,7 +468,7 @@ function buildingRowsUncached(ctx: EngineContext, radiusM: number): { rows: Buil
         floorsAbove: positiveNumber(row?.floors_above),
         useCode: typeof row?.use_code === "string" ? row.use_code : null,
         approvalDate: factApproval ?? ledgerDate,
-        approvalDateSource: factApproval ? "building_fact" : ledgerDate ? "core_ledger_pnu" : null,
+        approvalDateSource: factApproval ? factApprovalSource : ledgerDate ? "core_ledger_pnu" : null,
         grossFloorM2: positiveNumber(row?.gross_floor_area_m2),
         footprintM2: positiveNumber(row?.footprint_area_m2),
       });

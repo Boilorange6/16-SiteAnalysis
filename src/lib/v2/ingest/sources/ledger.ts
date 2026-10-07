@@ -45,7 +45,15 @@ export type LedgerFloorMatchMethod = "ledger_pk" | "pnu_unique" | "pnu_name" | "
 
 export interface LedgerFloorMatch {
   ledgerPk: string;
-  floorsAbove: number;
+  floorsAbove: number | null;
+  heightM?: number | null;
+  approvalDate?: string | null;
+  dongName?: string | null;
+  buildingName?: string | null;
+  footprintAreaM2?: number | null;
+  grossFloorAreaM2?: number | null;
+  useCode?: string | null;
+  isMain?: boolean;
   method: LedgerFloorMatchMethod;
 }
 
@@ -77,7 +85,11 @@ const keyString = (value: unknown): string | null => {
   return s === "" ? null : s;
 };
 
-const normalizedName = (value: string | null): string | null => value?.normalize("NFKC").toLocaleLowerCase("ko-KR").replace(/[\s()·,._\-/\\]/g, "") || null;
+/** "101동"과 "101"을 같은 동명으로 보되, 다른 접두어는 보존한다. */
+export const normalizedLedgerName = (value: string | null): string | null => {
+  const normalized = value?.normalize("NFKC").toLocaleLowerCase("ko-KR").replace(/[\s()\[\]{}·,._\-/\\]/g, "") || null;
+  return normalized?.replace(/동$/u, "") || null;
+};
 
 function propertyNumber(props: Props, keys: readonly string[]): number | null {
   for (const key of keys) {
@@ -89,7 +101,184 @@ function propertyNumber(props: Props, keys: readonly string[]): number | null {
 
 function areaMatches(a: number | null, b: number | null): boolean {
   if (a === null || b === null) return false;
-  return Math.abs(a - b) <= Math.max(1, Math.max(a, b) * 0.01);
+  return Math.abs(a - b) <= Math.max(1, Math.max(a, b) * 0.15);
+}
+
+const LEDGER_TITLE_TABLE = "ledger_title_dong";
+
+function titleTableExists(db: Db): boolean {
+  return Boolean(db.prepare("SELECT 1 FROM sqlite_temp_master WHERE type = 'table' AND name = ? UNION ALL SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1").get(LEDGER_TITLE_TABLE, LEDGER_TITLE_TABLE));
+}
+
+export function hasLedgerTitleIndex(db: Db | null | undefined): boolean {
+  return Boolean(db && titleTableExists(db));
+}
+
+function titleTableName(db: Db): string {
+  // TEMP가 일반 sqlite_master보다 먼저 해석되므로 SQL에서는 짧은 이름을
+  // 써도 된다. 존재 여부만 확인한 뒤 모든 쿼리가 같은 연결을 사용한다.
+  if (!titleTableExists(db)) throw new Error("ledger_title_dong index is not available");
+  return LEDGER_TITLE_TABLE;
+}
+
+/** 표제부 동 단위 인덱스. core 빌드에서는 TEMP, buildings 전용 빌드에서는 일반 테이블로 만든다. */
+export function createLedgerTitleIndex(db: Db, temporary = false): void {
+  db.exec(`${temporary ? "CREATE TEMP " : "CREATE "}TABLE IF NOT EXISTS ${LEDGER_TITLE_TABLE} (
+    pnu TEXT,
+    ledger_pk TEXT,
+    dong_name TEXT,
+    building_name TEXT,
+    is_main INTEGER NOT NULL,
+    floors_above INTEGER,
+    height_m REAL,
+    footprint_area_m2 REAL,
+    gross_floor_area_m2 REAL,
+    use_code TEXT,
+    approval_date TEXT
+  );
+  CREATE INDEX IF NOT EXISTS ${temporary ? "temp." : ""}idx_ledger_title_dong_pnu ON ${LEDGER_TITLE_TABLE}(pnu);
+  CREATE INDEX IF NOT EXISTS ${temporary ? "temp." : ""}idx_ledger_title_dong_pk ON ${LEDGER_TITLE_TABLE}(ledger_pk);`);
+}
+
+export function clearLedgerTitleIndex(db: Db): void {
+  if (titleTableExists(db)) db.exec(`DELETE FROM ${LEDGER_TITLE_TABLE}`);
+}
+
+export function dropLedgerTitleIndex(db: Db): void {
+  if (titleTableExists(db)) db.exec(`DROP TABLE ${LEDGER_TITLE_TABLE}`);
+}
+
+function titleIsMain(properties: Props): boolean {
+  const name = keyString(properties["주_부속_구분_코드_명"]);
+  if (name) return !name.includes("부속");
+  const code = keyString(properties["주_부속_구분_코드"]);
+  return code !== "1";
+}
+
+function titleIndexRow(properties: Props): {
+  pnu: string | null;
+  ledgerPk: string | null;
+  dongName: string | null;
+  buildingName: string | null;
+  isMain: boolean;
+  floorsAbove: number | null;
+  heightM: number | null;
+  footprintAreaM2: number | null;
+  grossFloorAreaM2: number | null;
+  useCode: string | null;
+  approvalDate: string | null;
+} {
+  return {
+    pnu: ledgerPnu(properties)?.pnu ?? null,
+    ledgerPk: keyString(properties["관리_건축물대장_PK"]),
+    dongName: keyString(properties["동_명"]),
+    buildingName: keyString(properties["건물_명"]),
+    isMain: titleIsMain(properties),
+    floorsAbove: positiveInteger(properties["지상_층_수"]),
+    heightM: positiveNumber(properties["높이(m)"]),
+    footprintAreaM2: positiveNumber(properties["건축_면적(㎡)"]),
+    grossFloorAreaM2: positiveNumber(properties["연면적(㎡)"]),
+    useCode: keyString(properties["주_용도_코드"]),
+    approvalDate: ymd(properties["사용승인_일"]),
+  };
+}
+
+const titleInsertCache = new WeakMap<Db, BetterSqlite3.Statement>();
+const titleInsert = (db: Db): BetterSqlite3.Statement => {
+  const cached = titleInsertCache.get(db);
+  if (cached) return cached;
+  const prepared = db.prepare(`INSERT INTO ${LEDGER_TITLE_TABLE}
+    (pnu, ledger_pk, dong_name, building_name, is_main, floors_above, height_m, footprint_area_m2, gross_floor_area_m2, use_code, approval_date)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  titleInsertCache.set(db, prepared);
+  return prepared;
+};
+
+export function insertLedgerTitleIndexRow(db: Db, properties: Props): void {
+  const row = titleIndexRow(properties);
+  // PK와 PNU가 모두 없는 행은 어떤 건물에도 연결할 수 없으므로 인덱스에
+  // 넣지 않는다. 그 외에는 높이/층수/승인일이 모두 비어 있어도 동 매칭에
+  // 필요한 식별 정보일 수 있다.
+  if (!row.ledgerPk && !row.pnu) return;
+  titleInsert(db).run(row.pnu, row.ledgerPk, row.dongName, row.buildingName, row.isMain ? 1 : 0, row.floorsAbove, row.heightM, row.footprintAreaM2, row.grossFloorAreaM2, row.useCode, row.approvalDate);
+}
+
+/** buildings 전용 실행에서 표제부 CSV를 스트리밍으로 임시 인덱스에 적재한다. */
+export async function buildLedgerTitleIndex(db: Db, records: AsyncIterable<MeasureRecord>, options: { temporary?: boolean; pnuPrefixes?: ReadonlySet<string> } = {}): Promise<number> {
+  createLedgerTitleIndex(db, options.temporary ?? false);
+  clearLedgerTitleIndex(db);
+  const insert = titleInsert(db);
+  let count = 0;
+  await batched(db, records, (record) => {
+    const row = titleIndexRow(record.properties);
+    if (!row.ledgerPk && !row.pnu) return;
+    if (options.pnuPrefixes && row.pnu && !options.pnuPrefixes.has(row.pnu.slice(0, 2))) return;
+    if (options.pnuPrefixes && !row.pnu) return;
+    insert.run(row.pnu, row.ledgerPk, row.dongName, row.buildingName, row.isMain ? 1 : 0, row.floorsAbove, row.heightM, row.footprintAreaM2, row.grossFloorAreaM2, row.useCode, row.approvalDate);
+    count += 1;
+  });
+  return count;
+}
+
+interface LedgerTitleRow {
+  pnu: string | null;
+  ledger_pk: string;
+  dong_name: string | null;
+  building_name: string | null;
+  is_main: number;
+  floors_above: number | null;
+  height_m: number | null;
+  footprint_area_m2: number | null;
+  gross_floor_area_m2: number | null;
+  use_code: string | null;
+  approval_date: string | null;
+}
+
+function sqlLedgerLookup(db: Db): LedgerFloorLookup {
+  const table = titleTableName(db);
+  const byPk = db.prepare(`SELECT * FROM ${table} WHERE ledger_pk = ?`);
+  const byPnu = db.prepare(`SELECT * FROM ${table} WHERE pnu = ? AND is_main = 1`);
+  const pnuExists = db.prepare(`SELECT 1 FROM ${table} WHERE pnu = ? AND is_main = 1 LIMIT 1`);
+  const candidate = (row: LedgerTitleRow, method: LedgerFloorMatchMethod): LedgerFloorCandidate => ({
+    ledgerPk: row.ledger_pk,
+    floorsAbove: row.floors_above,
+    heightM: row.height_m,
+    approvalDate: row.approval_date,
+    dongName: row.dong_name,
+    buildingName: row.building_name,
+    footprintAreaM2: row.footprint_area_m2,
+    grossFloorAreaM2: row.gross_floor_area_m2,
+    useCode: row.use_code,
+    isMain: row.is_main === 1,
+    method,
+    pnu: row.pnu,
+    name: row.dong_name ?? row.building_name,
+  });
+  const unique = (rows: LedgerTitleRow[], method: LedgerFloorMatchMethod): LedgerFloorMatch | null => rows.length === 1 ? candidate(rows[0], method) : null;
+  const rowMatchesName = (row: LedgerTitleRow, name: string | null): boolean => {
+    const source = normalizedLedgerName(name);
+    if (!source) return false;
+    return normalizedLedgerName(row.dong_name) === source || normalizedLedgerName(row.building_name) === source;
+  };
+  return {
+    hasPnu: (pnu) => Boolean(pnuExists.get(pnu)),
+    match: (input) => {
+      const direct = input.ledgerPk ? unique(byPk.all(input.ledgerPk) as LedgerTitleRow[], "ledger_pk") : null;
+      if (direct) return direct;
+      if (!input.pnu) return null;
+      const rows = byPnu.all(input.pnu) as LedgerTitleRow[];
+      if (rows.length === 1) return unique(rows, "pnu_unique");
+      const named = rows.filter((row) => rowMatchesName(row, input.name));
+      const nameMatch = unique(named, "pnu_name");
+      if (nameMatch) return nameMatch;
+      const areaMatched = rows.filter((row) => areaMatches(input.footprintAreaM2, row.footprint_area_m2));
+      return unique(areaMatched, "pnu_area");
+    },
+  };
+}
+
+export function ledgerTitleLookup(db: Db | null | undefined): LedgerFloorLookup | null {
+  return db && titleTableExists(db) ? sqlLedgerLookup(db) : null;
 }
 
 /**
@@ -101,6 +290,7 @@ function areaMatches(a: number | null, b: number | null): boolean {
  */
 export function ledgerFloorLookup(core: Db | null | undefined): LedgerFloorLookup | null {
   if (!core) return null;
+  if (titleTableExists(core)) return sqlLedgerLookup(core);
   const byPnu = new Map<string, LedgerFloorCandidate[]>();
   const byLedgerPk = new Map<string, LedgerFloorCandidate[]>();
   try {
@@ -151,8 +341,8 @@ export function ledgerFloorLookup(core: Db | null | undefined): LedgerFloorLooku
       const candidates = byPnu.get(input.pnu) ?? [];
       if (candidates.length === 1) return unique(candidates, "pnu_unique");
 
-      const sourceName = normalizedName(input.name);
-      const named = sourceName ? candidates.filter((candidate) => normalizedName(candidate.name) === sourceName) : [];
+      const sourceName = normalizedLedgerName(input.name);
+      const named = sourceName ? candidates.filter((candidate) => normalizedLedgerName(candidate.name) === sourceName) : [];
       const nameMatch = unique(named, "pnu_name");
       if (nameMatch) return nameMatch;
 
@@ -208,6 +398,13 @@ export async function buildLedger(
 
   const housingStats = new SourceStats("ledger_title_housing", input.titleReleaseId, ["units", "approvalDate"]);
   const officetelStats = new SourceStats("ledger_title_officetel", input.titleReleaseId, ["units", "floorsAbove", "approvalDate"]);
+  // core의 총괄 feature는 계속 유지하되, buildings 단계가 같은 실행에서
+  // 동별 값을 다시 찾을 수 있도록 연결 전용 staging 인덱스에 스트리밍으로
+  // 남긴다. TEMP_STORE=MEMORY 설정에서도 3.8GB CSV가 RAM으로 올라가지
+  // 않도록 SQLite 파일 테이블을 사용하고, 같은 실행의 buildings 단계가
+  // 끝나면 data-build가 삭제한다.
+  createLedgerTitleIndex(db, false);
+  clearLedgerTitleIndex(db);
   const housing = new Map<string, {
     legalCode: string;
     name: string | null;
@@ -224,6 +421,7 @@ export async function buildLedger(
 
   await batched(db, input.title, (r) => {
     const p = r.properties;
+    insertLedgerTitleIndexRow(db, p);
     const mainUse = str(p["주_용도_코드_명"]);
     const otherUse = str(p["기타_용도"]);
     if (mainUse === "공동주택") {

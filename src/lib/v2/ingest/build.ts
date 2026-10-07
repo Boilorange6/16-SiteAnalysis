@@ -352,6 +352,21 @@ export class SourceStats {
     for (const f of this.fillFields) if (isFilled(props[f])) this.filled.set(f, (this.filled.get(f) ?? 0) + 1);
   }
 
+  /** provisional ledger match를 전역 1:N 판정 뒤 원래 값으로 되돌릴 때 쓴다. */
+  replaceTag(region: string, fromType: string, toType: string, oldProps: Record<string, unknown>, newProps: Record<string, unknown>): void {
+    if (fromType !== toType) {
+      const remaining = Math.max(0, (this.byType[fromType] ?? 0) - 1);
+      if (remaining === 0) delete this.byType[fromType];
+      else this.byType[fromType] = remaining;
+      this.byType[toType] = (this.byType[toType] ?? 0) + 1;
+    }
+    void region;
+    for (const f of this.fillFields) {
+      if (isFilled(oldProps[f])) this.filled.set(f, Math.max(0, (this.filled.get(f) ?? 0) - 1));
+      if (isFilled(newProps[f])) this.filled.set(f, (this.filled.get(f) ?? 0) + 1);
+    }
+  }
+
   reject(): void {
     this.rejected++;
   }
@@ -803,7 +818,7 @@ function recordRun(db: Db, s: SourceStats, finishedAt: string, stableRunId?: str
     .run(stableRunId ?? `${s.sourceId}:${s.startedAt}:${runSeq++}`, s.sourceId, s.startedAt, finishedAt, s.totalCountReported, s.received, s.accepted, s.rejected + s.unlocated, s.releaseId, JSON.stringify({ ...s.snapshot(), unlocated: s.unlocated }));
 }
 
-export type KindBuilder = (db: Db, ctx: { core: Db | null }) => Promise<SourceStats[]>;
+export type KindBuilder = (db: Db, ctx: { core: Db | null; parcels: Db | null; parcelVersion: string | null }) => Promise<SourceStats[]>;
 
 export interface BuildPlan {
   dataDir: string;
@@ -907,8 +922,14 @@ function gate(plan: BuildPlan, previous: Manifest | null, stats: Record<string, 
   return { ok: failures.length === 0, failures };
 }
 
-// buildings·parcels는 core 다음: 같은 실행에서 core를 만들었으면 그 파일을, 아니면 매니페스트의 현재 core를 읽기 전용으로 받는다.
-const BUILD_ORDER: readonly DataFileKind[] = ["core", "buildings", "parcels", "reference", "market", "osm", "terrain", "weather"];
+// 공간 조인을 위해 parcels가 buildings보다 먼저 준비되어야 한다. 같은 실행이면 새 DB를,
+// 아니면 현재 manifest의 읽기 전용 DB를 전달한다.
+const BUILD_ORDER: readonly DataFileKind[] = ["core", "parcels", "buildings", "reference", "market", "osm", "terrain", "weather"];
+
+function manifestFileVersion(file: ManifestFile | undefined): string | null {
+  const part = file?.path.split("/")[1];
+  return part && part.length > 0 ? part : null;
+}
 
 export function buildAndPublish(plan: BuildPlan): Promise<BuildOutcome> {
   reclaimStaleDataDirLock(plan.dataDir);
@@ -942,10 +963,17 @@ export function buildAndPublish(plan: BuildPlan): Promise<BuildOutcome> {
     progressLog(`[build] version=${plan.version} resume=${Boolean(plan.resume)} kinds=${Object.keys(plan.builders).join(",")}`);
     const handles: Db[] = [];
     let core: Db | null = null;
+    let parcels: Db | null = null;
+    let parcelVersion: string | null = null;
     try {
       if (!plan.builders.core && current?.files.core) {
         core = openDataFile(plan.dataDir, current, "core");
         handles.push(core);
+      }
+      if (!plan.builders.parcels && current?.files.parcels) {
+        parcels = openDataFile(plan.dataDir, current, "parcels");
+        handles.push(parcels);
+        parcelVersion = manifestFileVersion(current.files.parcels);
       }
       for (const kind of BUILD_ORDER) {
         const builder = plan.builders[kind];
@@ -978,7 +1006,7 @@ export function buildAndPublish(plan: BuildPlan): Promise<BuildOutcome> {
             beginFeatureBulk(db);
             bulkStarted = true;
           }
-          const kindStats = await builder(db, { core });
+          const kindStats = await builder(db, { core, parcels, parcelVersion });
           if (preparedProgress) {
             assertBuildProgressComplete(db, preparedProgress);
             if (!isBuildFinalized(db)) {
@@ -1002,10 +1030,20 @@ export function buildAndPublish(plan: BuildPlan): Promise<BuildOutcome> {
             recordRun(db, s, finishedAt, stableRunPrefix === null ? undefined : `${stableRunPrefix}${index}:${s.sourceId}`);
           }
           stats[kind] = kindStats;
-          files[kind] = { path: rel, sha256: "", kind, schemaVersion: DATA_SCHEMA_VERSION };
+          files[kind] = {
+            path: rel,
+            sha256: "",
+            kind,
+            schemaVersion: DATA_SCHEMA_VERSION,
+            ...(kind === "buildings" ? { dependsOn: { parcels: parcelVersion ?? "unavailable" } } : {}),
+          };
           restorePragmas(db, originalPragmas);
           pragmasRestored = true;
           if (kind === "core") core = db;
+          if (kind === "parcels") {
+            parcels = db;
+            parcelVersion = plan.version;
+          }
         } finally {
           if (bulkStarted) abortFeatureBulk(db);
           if (!pragmasRestored) restorePragmas(db, originalPragmas);
