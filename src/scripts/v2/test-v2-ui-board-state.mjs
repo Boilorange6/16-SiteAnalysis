@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");
 const { initBoard, boardReducer, reportPages, demoPhase, demoFinished, serializeBoardState, restoreBoardState, migrateSnapshot, TILE_CODE_RENAMES } = await import("../../lib/v2/ui/board-state.ts");
+const { TILE_CODES } = await import("../../lib/v2/ui/tile-catalog.ts");
 
 const ids = GODEOK_RESULTS.map((r) => r.tileId);
 let s = initBoard(GODEOK_RESULTS);
@@ -23,13 +24,15 @@ assert.equal(s.included["t-S03"], false); // failed
     size: state.sizes[id],
     roseSeason: state.roseSeasons[id] ?? "annual",
     labels: state.labels[id] ?? [],
+    layer: state.layers[id] ?? null,
   });
   assert.deepEqual(cardState(after, "t-A02"), cardState(before, "t-A02"));
   assert.equal(after.faces, before.faces);
   assert.equal(after.view, before.view);
   assert.equal(after.sizes, before.sizes);
   assert.equal(after.roseSeasons, before.roseSeasons);
-  assert.equal(after.labels, before.labels);
+assert.equal(after.labels, before.labels);
+  assert.equal(after.layers, before.layers);
   assert.notEqual(after.included, before.included);
 }
 
@@ -184,6 +187,17 @@ assert.deepEqual(reportPages(s), { tiles: 9, pages: 12 }); // 포함·면 설정
   assert.equal(boardReducer(b, { type: "camera", id: "t-S01", camera: { azimuthDeg: 315, elevationDeg: 90 } }), b, "프리셋 밖 앙각은 무시");
 }
 
+// 흡수 타일 레이어: 허용된 모드만 즉시 저장하고 왕복한다.
+{
+  let b = initBoard(GODEOK_RESULTS);
+  b = boardReducer(b, { type: "layer", id: "t-A02", layer: "school_zone" });
+  assert.equal(b.layers["t-A02"], "school_zone");
+  assert.equal(boardReducer(b, { type: "layer", id: "t-A02", layer: "not-a-layer" }), b, "허용되지 않은 레이어는 무시");
+  const snapshot = serializeBoardState(b);
+  assert.equal(snapshot.layers["t-A02"], "school_zone");
+  assert.deepEqual(restoreBoardState(GODEOK_RESULTS, snapshot).layers, snapshot.layers, "레이어 저장→불러오기 왕복");
+}
+
 // 데모
 assert.deepEqual([0, 1, 2, 3].map((st) => demoPhase(1, st)), ["pending", "pending", "running", "done"]);
 assert.equal(demoFinished(10, 0), 0);
@@ -195,7 +209,7 @@ assert.equal(demoFinished(10, 99), 10);
   let b = initBoard(GODEOK_RESULTS);
   b = boardReducer(b, { type: "a05Filter", id: "t-A05", filter: { types: ["apt"], year: { min: 2010 } } });
   const snapshot = serializeBoardState(b);
-  assert.equal(snapshot.version, 1);
+  assert.equal(snapshot.version, 2);
   assert.deepEqual(snapshot.a05Filter["t-A05"], { types: ["apt"], year: { min: 2010, max: null } });
   const restored = restoreBoardState(GODEOK_RESULTS, JSON.stringify(snapshot));
   assert.deepEqual(restored.a05Filter, snapshot.a05Filter, "저장→불러오기 왕복으로 A05 필터 유지");
@@ -228,21 +242,98 @@ assert.equal(demoFinished(10, 99), 10);
     cuts: { [oldId]: 3 },
     roseSeasons: { [oldId]: "summer" },
     labels: { [oldId]: [{ key: "bldg_2000s|b-1", on: true }] },
+    layers: { [oldId]: "all" },
     removed: [{ id: oldId, index: 2 }],
   };
   TILE_CODE_RENAMES.OLD = "NEW";
   const migrated = migrateSnapshot(old);
-  assert.equal(migrated.version, 1, "v1 snapshot is identity-migrated");
+  assert.equal(migrated.version, 2, "v1 snapshot is migrated to current version");
   assert.deepEqual(migrated.order, [newId]);
-  for (const field of ["included", "faces", "callout", "a05Filter", "view", "sizes", "tileKinds", "cameras", "cuts", "roseSeasons", "labels"]) {
+  for (const field of ["included", "faces", "callout", "a05Filter", "view", "sizes", "tileKinds", "cameras", "cuts", "roseSeasons", "labels", "layers"]) {
     assert.ok(migrated[field][newId], `${field} id rewrite`);
   }
   assert.deepEqual(migrated.stacks["stack:1"], [newId]);
   assert.deepEqual(migrated.sheets["sheet:1"].tiles, [newId]);
   assert.deepEqual(migrated.removed, [{ id: newId, index: 2 }]);
-  assert.equal(migrateSnapshot({ ...old, version: 2 }), null, "미래 버전은 무시");
-  assert.deepEqual(restoreBoardState(GODEOK_RESULTS, { ...old, version: 2 }).order, ids, "미래 버전은 기본 보드");
+  assert.equal(migrateSnapshot({ ...old, version: 3 }), null, "미래 버전은 무시");
+  assert.deepEqual(restoreBoardState(GODEOK_RESULTS, { ...old, version: 3 }).order, ids, "미래 버전은 기본 보드");
   delete TILE_CODE_RENAMES.OLD;
+}
+
+// W3: 삭제 12개를 포함한 옛 45개 보드 스냅샷을 현재 33개와 레이어까지 이관한다.
+{
+  const deletedCodes = Object.keys(TILE_CODE_RENAMES);
+  const legacyLayerByCode = {
+    D06: "height_tall", D07: "height_low", D08: "zoning_detail", D09: "green_space",
+    D14: "transit", D20: "parcel_size", D21: "sun_hours_winter", D23: "maintenance_stage",
+    D24: "planned_detail", D25: "trade_location", D26: "school_zone", D27: "density_detail",
+  };
+  const oldCodes = [...TILE_CODES, ...deletedCodes];
+  const oldIds = oldCodes.map((code) => `t-${code}`);
+  const field = (value) => Object.fromEntries(oldIds.map((id) => [id, value]));
+  const template = GODEOK_RESULTS[0];
+  const currentResults = TILE_CODES.map((code) => {
+    const existing = GODEOK_RESULTS.find((result) => result.tileCode === code);
+    if (existing && code !== "S02") return { ...existing, tileId: `t-${code}` };
+    return {
+      ...template,
+      tileId: `t-${code}`,
+      tileCode: code,
+      status: "complete",
+      presentation: {
+        ...template.presentation,
+        rasters: code === "S02" ? [{ name: "sun_hours_winter", label: "동지 일조시간", palette: "sun_hours" }] : [],
+      },
+    };
+  });
+  const source = serializeBoardState(initBoard(currentResults));
+  const old45 = {
+    ...source,
+    version: 1,
+    order: oldIds,
+    included: field(true),
+    faces: field("front"),
+    callout: field("top10"),
+    a05Filter: field({ types: ["apt"], year: { min: 2010, max: null } }),
+    view: field("map"),
+    sizes: field(1),
+    tileKinds: field("diagram"),
+    stacks: { "stack:legacy": oldIds },
+    sheets: { "sheet:legacy": { tiles: oldIds, grid: "3x2" } },
+    cameras: field({ azimuthDeg: 315, elevationDeg: 35 }),
+    cuts: field(3),
+    roseSeasons: field("winter"),
+    labels: field([{ key: "legacy|1", on: true }]),
+    layers: Object.fromEntries(deletedCodes.map((code) => [`t-${code}`, legacyLayerByCode[code]])),
+    removed: oldIds.map((id, index) => ({ id, index })),
+  };
+  const migrated = migrateSnapshot(old45);
+  assert.equal(migrated.version, 2);
+  assert.equal(migrated.order.length, TILE_CODES.length, "45개 순서가 33개 생존 타일로 중복 없이 축약");
+  for (const oldCode of oldCodes) {
+    assert.ok(!migrated.order.includes(`t-${oldCode}`) || !deletedCodes.includes(oldCode), `${oldCode} 삭제 코드 제거`);
+  }
+  assert.deepEqual(migrated.layers, {
+    "t-D05": "height_tall",
+    "t-A12": "zoning_detail",
+    "t-A04": "green_space",
+    "t-A01": "transit",
+    "t-D19": "parcel_size",
+    "t-S02": "sun_hours_winter",
+    "t-A09": "maintenance_stage",
+    "t-A10": "planned_detail",
+    "t-A07": "trade_location",
+    "t-A02": "school_zone",
+    "t-A11": "density_detail",
+  });
+  assert.equal(migrated.stacks["stack:legacy"].length, TILE_CODES.length);
+  assert.equal(migrated.sheets["sheet:legacy"].tiles.length, TILE_CODES.length);
+  const restored = restoreBoardState(currentResults, old45);
+  assert.deepEqual(restored.order, currentResults.map((result) => result.tileId));
+  assert.equal(restored.layers["t-D05"], "height_tall");
+  assert.equal(restored.layers["t-S02"], "sun_hours_winter");
+  const lowOnly = migrateSnapshot({ ...old45, layers: { "t-D07": "legacy" } });
+  assert.equal(lowOnly.layers["t-D05"], "height_low", "D07 레이어를 D05 저층 모드로 이관");
 }
 // W2a 지도 라벨: 토글·고정·삭제·전체 표시 상태와 저장 왕복, 현재 결과에 없는 타일 정리
 {

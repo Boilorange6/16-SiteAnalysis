@@ -485,22 +485,30 @@ function migratedLayer(id: string, value: string): string {
 /** Snapshot 안에서 id를 보관하는 모든 필드를 같은 규칙으로 다시 쓴다. */
 export function rewriteSnapshotIds(snapshot: BoardStateSnapshot, mapId: IdMapper): BoardStateSnapshot {
   const stacks: Record<string, string[]> = {};
-  for (const [id, layers] of Object.entries(recordOf(snapshot.stacks))) stacks[mapId(id)] = stringsOf(layers).map(mapId);
+  for (const [id, layers] of Object.entries(recordOf(snapshot.stacks))) {
+    const mapped = mapId(id);
+    stacks[mapped] = unique([...(stacks[mapped] ?? []), ...stringsOf(layers).map(mapId)]);
+  }
   const sheets: Record<string, SheetSpec> = {};
   for (const [id, spec] of Object.entries(recordOf(snapshot.sheets))) {
     if (!isRecord(spec)) continue;
-    sheets[mapId(id)] = { tiles: stringsOf(spec.tiles).map(mapId), grid: spec.grid as SheetGrid };
+    const mapped = mapId(id);
+    const previous = sheets[mapped];
+    sheets[mapped] = {
+      tiles: unique([...(previous?.tiles ?? []), ...stringsOf(spec.tiles).map(mapId)]),
+      grid: previous?.grid ?? spec.grid as SheetGrid,
+    };
   }
   const layers: Record<string, string> = {};
   for (const [id, value] of Object.entries(recordOf(snapshot.layers))) {
     if (typeof value !== "string" || value.trim() === "") continue;
     const mapped = mapId(id);
-    // D06/D07처럼 한 survivor로 충돌하는 경우 마지막 명시 선택을 유지한다.
-    layers[mapped] = migratedLayer(id, value);
+    // D06/D07처럼 한 survivor로 충돌하는 경우 첫 명시 선택을 유지한다.
+    if (!(mapped in layers)) layers[mapped] = migratedLayer(id, value);
   }
   return {
     ...snapshot,
-    order: stringsOf(snapshot.order).map(mapId),
+    order: unique(stringsOf(snapshot.order).map(mapId)),
     included: mapIdRecord<boolean>(snapshot.included, mapId),
     faces: mapIdRecord<OutputFace>(snapshot.faces, mapId),
     callout: mapIdRecord<CalloutMode>(snapshot.callout, mapId),
@@ -516,7 +524,13 @@ export function rewriteSnapshotIds(snapshot: BoardStateSnapshot, mapId: IdMapper
     labels: mapIdRecord<PinnedLabel[]>(snapshot.labels, mapId),
     layers,
     removed: Array.isArray(snapshot.removed)
-      ? snapshot.removed.filter((item): item is { id: string; index: number } => !!item && typeof item.id === "string" && typeof item.index === "number").map((item) => ({ ...item, id: mapId(item.id) }))
+      ? (() => {
+          const seen = new Set<string>();
+          return snapshot.removed
+            .filter((item): item is { id: string; index: number } => !!item && typeof item.id === "string" && typeof item.index === "number")
+            .map((item) => ({ ...item, id: mapId(item.id) }))
+            .filter((item) => !seen.has(item.id) && (seen.add(item.id), true));
+        })()
       : [],
   };
 }
