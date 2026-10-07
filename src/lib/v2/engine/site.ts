@@ -234,8 +234,14 @@ export function resolveSiteGeometry(
       if (!connected(hits)) return { ok: false, reason: "site_disconnected" };
       let geometry: SiteGeometry | null = null;
       try {
-        const merged = union(featureCollection(hits.map((hit) => feature(hit.geometry as Polygon | MultiPolygon))) as never);
-        geometry = merged?.geometry as SiteGeometry | undefined ?? null;
+        // Turf 7의 union은 두 개 이상의 도형만 받는다. 단일 필지는
+        // 합집합 호출 없이 원래 도형을 그대로 보존한다.
+        if (hits.length === 1) {
+          geometry = hits[0].geometry as SiteGeometry;
+        } else {
+          const merged = union(featureCollection(hits.map((hit) => feature(hit.geometry as Polygon | MultiPolygon))) as never);
+          geometry = merged?.geometry as SiteGeometry | undefined ?? null;
+        }
       } catch {
         geometry = null;
       }

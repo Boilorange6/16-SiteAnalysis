@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 
 const { TILE_CODES } = await import("../../lib/v2/ui/tile-catalog.ts");
 const { HEAVY_TILE_CODES, TILES } = await import("../../lib/v2/engine/run.ts");
-const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
+const { MAX_MAP_POLYGONS, parseTileResult } = await import("../../lib/v2/tile-result.ts");
+const { mergeTileResults } = await import("../../lib/v2/engine/tiles/merge.ts");
 const { layerOptionsForResult } = await import("../../lib/v2/ui/tile-layers.ts");
 const { toTileView, viewWithLayer } = await import("../../lib/v2/ui/tile-view.ts");
 
@@ -76,5 +77,11 @@ const zoning = viewWithLayer(toTileView(a12), "zoning_detail");
 assert.deepEqual(zoning.map.features.map((item) => item.layer), ["zoning_site"]);
 assert.deepEqual(zoning.map.polygons.map((item) => item.layer), ["zone_residential"]);
 assert.deepEqual(zoning.map.lines, []);
+
+const many = (layer, prefix) => Array.from({ length: 2000 }, (_, index) => polygon(layer, `${prefix}-${index}`));
+const merged = mergeTileResults(result("D05", [], many("floors_1_4", "floor")), result("D05", [], many("height_tall", "height")));
+assert.equal(merged.presentation.polygons.length, MAX_MAP_POLYGONS, "흡수 결과도 최종 지도 면 상한을 지킨다");
+assert.equal(merged.presentation.polygonsTotal, 4000, "흡수 결과의 전체 면 개수를 보존한다");
+assert.deepEqual(new Set(merged.presentation.polygons.map((item) => item.layer)), new Set(["floors_1_4", "height_tall"]), "상한에서도 흡수 레이어별 면을 남긴다");
 
 console.log("✓ v2 W3 tile registry, merge layer options, and map filtering");
