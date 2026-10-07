@@ -136,8 +136,12 @@ export function getAnalysis(appDb: BetterSqlite3.Database, id: string, userId?: 
   const run = getAnalysisRun(appDb, id);
   if (!run || !canRead(run, userId)) return { status: 404, body: { error: "분석을 찾을 수 없습니다" } };
   const snapshot = analysisSnapshot(appDb, id, run);
-  const results = loadResults(appDb, id, options.tileCodes);
-  return { status: 200, body: { analysisId: id, status: run.status, summary: restoreSummary(run, loadResults(appDb, id)), results, jobs: snapshot.jobs, tiles: snapshot.tiles, revision: snapshot.revision } };
+  // 요약과 결과가 같은 저장 JSON을 두 번 파싱하지 않도록 한 번만 읽고,
+  // 증분 요청(?tiles=)은 이미 파싱한 전체 결과에서 골라낸다.
+  const allResults = loadResults(appDb, id);
+  const requested = options.tileCodes === undefined ? null : new Set(options.tileCodes);
+  const results = requested === null ? allResults : allResults.filter((result) => requested.has(result.tileCode));
+  return { status: 200, body: { analysisId: id, status: run.status, summary: restoreSummary(run, allResults), results, jobs: snapshot.jobs, tiles: snapshot.tiles, revision: snapshot.revision } };
 }
 
 export function getAnalysisStatus(appDb: BetterSqlite3.Database, id: string, userId?: string | number | null): ApiReply {

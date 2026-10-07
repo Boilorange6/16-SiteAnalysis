@@ -18,6 +18,9 @@ export function previewOrder(order: string[], from: number, to: number): string[
 export function useTileDrag(order: string[], gridRef: RefObject<HTMLElement | null>, onDrop: (id: string, from: number, to: number) => void) {
   const [drag, setDrag] = useState<Drag | null>(null);
   const ref = useRef<Drag | null>(null);
+  const orderRef = useRef(order);
+  orderRef.current = order;
+  const startHandlers = useRef(new Map<string, (e: ReactPointerEvent<HTMLElement>) => void>());
   const active = drag !== null;
   const drop = useRef(onDrop);
   useEffect(() => {
@@ -68,17 +71,23 @@ export function useTileDrag(order: string[], gridRef: RefObject<HTMLElement | nu
     };
   }, [active, order, gridRef, set]);
 
-  const start = (id: string) => (e: ReactPointerEvent<HTMLElement>) => {
-    if (e.button !== 0 || ref.current) return;
-    const from = order.indexOf(id);
-    const tile = (e.currentTarget.closest("[data-tile-id]") as HTMLElement | null)?.getBoundingClientRect();
-    if (from < 0 || !tile) return;
-    e.preventDefault(); // 마우스로 끌 때 글자 선택 방지
-    set({ id, from, to: from, x: tile.left, y: tile.top, w: tile.width, h: tile.height, dx: e.clientX - tile.left, dy: e.clientY - tile.top });
-  };
+  const start = useCallback((id: string) => {
+    const existing = startHandlers.current.get(id);
+    if (existing) return existing;
+    const handler = (e: ReactPointerEvent<HTMLElement>) => {
+      if (e.button !== 0 || ref.current) return;
+      const from = orderRef.current.indexOf(id);
+      const tile = (e.currentTarget.closest("[data-tile-id]") as HTMLElement | null)?.getBoundingClientRect();
+      if (from < 0 || !tile) return;
+      e.preventDefault(); // 마우스로 끌 때 글자 선택 방지
+      set({ id, from, to: from, x: tile.left, y: tile.top, w: tile.width, h: tile.height, dx: e.clientX - tile.left, dy: e.clientY - tile.top });
+    };
+    startHandlers.current.set(id, handler);
+    return handler;
+  }, [set]);
 
-  const floatStyle = (id: string): CSSProperties | undefined =>
-    drag?.id === id ? { position: "fixed", left: drag.x, top: drag.y, width: drag.w, height: drag.h, zIndex: 40, pointerEvents: "none" } : undefined;
+  const floatStyle = useCallback((id: string): CSSProperties | undefined =>
+    drag?.id === id ? { position: "fixed", left: drag.x, top: drag.y, width: drag.w, height: drag.h, zIndex: 40, pointerEvents: "none" } : undefined, [drag]);
 
   return { drag, order: drag ? previewOrder(order, drag.from, drag.to) : order, start, floatStyle };
 }

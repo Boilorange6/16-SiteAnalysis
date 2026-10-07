@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import type { CardFace } from "@/lib/v2/ui/board-state";
 import type { SummaryView } from "@/lib/v2/ui/tile-view";
 import { OV } from "@/lib/v2/ui/overlay-layout";
@@ -11,7 +11,7 @@ import styles from "./board.module.css";
  * 대지 요약. 기본은 지도 없는 요약면(주소 · 칩 · 사실 3줄 · 기준일/불완전), 뒤집으면 칸 전체가 분석 반경 지도(보드에서 가장 큰 지도).
  * 글자는 지도면에서도 같은 반투명 판 위에만 둔다.
  */
-export default function SummaryCard({ view, face, onFace }: { view: SummaryView; face: CardFace; onFace: (f: CardFace) => void }) {
+function SummaryCard({ view, face, onFace }: { view: SummaryView; face: CardFace; onFace: (f: CardFace) => void }) {
   const [seen, setSeen] = useState(false);
   const summaryRef = useRef<HTMLElement>(null);
   const focusFace = useRef<CardFace | null>(null);
@@ -106,3 +106,5 @@ export default function SummaryCard({ view, face, onFace }: { view: SummaryView;
     </section>
   );
 }
+
+export default memo(SummaryCard);

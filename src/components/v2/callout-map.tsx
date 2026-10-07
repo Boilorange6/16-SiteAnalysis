@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, memo, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { STRIP_H, calloutLegendMatches, cardName, cardRows, clusterPoints, compactCalloutLegend, displayComplexName, dotColor, dotRadius, fmtInt, inkOn, overlapChip, pageCount, pageRange, stripCards, type CalloutFrame, type Complex, type Placed, type StripCard } from "@/lib/v2/ui/callout-layout";
 import { calloutScene, type CalloutFrameKind } from "@/lib/v2/ui/callout-scene";
 import { OV } from "@/lib/v2/ui/overlay-layout";
@@ -217,7 +217,7 @@ export type CalloutMapProps = {
  * 주변 단지 설명선 지도 (A05, 이후 A06). 지도는 MapFigure(단지 없이), 점·지시선은 SVG, 표는 HTML 판.
  * 카드는 두 칸에만 놓이고 지도 원은 두 칸 사이에 들어가, 점이 카드에 가려지지 않는다.
  */
-export default function CalloutMap({ model, kind, page = 0, onPage, label }: CalloutMapProps) {
+function CalloutMap({ model, kind, page = 0, onPage, label }: CalloutMapProps) {
   const { ref, size, near } = useMeasured();
   const layer = useContext(BasemapContext);
   const [hover, setHover] = useState<string | null>(null);
@@ -398,3 +398,5 @@ export default function CalloutMap({ model, kind, page = 0, onPage, label }: Cal
     </div>
   );
 }
+
+export default memo(CalloutMap);

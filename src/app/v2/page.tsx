@@ -1,14 +1,14 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
+import { Fragment, memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import SummaryCard from "@/components/v2/summary-card";
-import TileCard from "@/components/v2/tile-card";
+import TileCard, { type TileCardAction } from "@/components/v2/tile-card";
 import TileDialog from "@/components/v2/tile-dialog";
 import { useTileDrag } from "@/components/v2/use-tile-drag";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "@/components/v2/map-box";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import styles from "@/components/v2/board.module.css";
-import { SUMMARY_ID, boardReducer, boardStorageKey, demoFinished, demoPhase, initBoard, rebaseSnapshotAnalysisId, reportPages, serializeBoardState, viewOf } from "@/lib/v2/ui/board-state";
+import { SUMMARY_ID, boardReducer, boardStorageKey, demoFinished, demoPhase, initBoard, rebaseSnapshotAnalysisId, reportPages, serializeBoardState, viewOf, type CardFace } from "@/lib/v2/ui/board-state";
 import { buildReportPlan, complexCounts, reportFileName } from "@/lib/v2/report/report-plan";
 import { downloadBytes, exportFileName, EXPORT_MIME, DAE_MIME } from "@/lib/v2/export/download";
 import { DEFAULT_CALLOUT_MODE } from "@/lib/v2/ui/callout-layout";
@@ -54,6 +54,38 @@ type BoardProps = {
   onWindUploaded: () => void;
 };
 
+type JobState = { code: string; status: "queued" | "running" | "done" | "failed"; enqueuedAt?: string | null; startedAt?: string | null; elapsedMs: number | null };
+
+/** 진행 경과 시계는 보드와 카드 트리 밖에서만 갱신한다. */
+const AnalysisProgress = memo(function AnalysisProgress({ jobs, onCancel, canceling = false }: { jobs: JobState[]; onCancel?: () => void; canceling?: boolean }) {
+  const activeJobs = jobs.some((job) => job.status === "queued" || job.status === "running");
+  const [nowMs, setNowMs] = useState(0);
+  useEffect(() => {
+    if (!activeJobs) {
+      setNowMs(0);
+      return;
+    }
+    setNowMs(Date.now());
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [activeJobs]);
+  const jobState = useMemo(() => jobProgress(jobs, nowMs || Date.now()), [jobs, nowMs]);
+  if (!activeJobs || jobs.length === 0) return null;
+  return (
+    <div className={styles.progressRow}>
+      <span className={styles.progressLabel}>분석 중</span>
+      <div className={styles.progress} role="progressbar" aria-label="분석 진행" aria-valuemin={0} aria-valuemax={jobs.length} aria-valuenow={jobState.completed}>
+        <div className={styles.progressFill} style={{ width: `${(jobState.completed / jobs.length) * 100}%` }} />
+      </div>
+      <span className={styles.progressText} aria-live="polite" aria-atomic="true">{jobState.completed} / {jobs.length} 계산 중</span>
+      <span className={styles.progressMeta}>경과 {formatElapsedMs(jobState.elapsedMs)}</span>
+      {jobState.waitingLabel && <span className={styles.progressQueue}>{jobState.waitingLabel}</span>}
+      <span className={styles.progressRetry}>{jobState.retryLabel}</span>
+      {onCancel && <button type="button" className={styles.progressCancel} onClick={onCancel} disabled={canceling} aria-busy={canceling}>{canceling ? "취소 중…" : "계산 취소"}</button>}
+    </div>
+  );
+});
+
 /** 타일 보드. 결과가 바뀌면 부모가 key를 바꿔 새로 만든다. */
 function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, controls, onRerun, onCancel, canceling = false, currentProject, initialProjectBoard, onProjectSaved, onProjectDeleted, onOpenProject, onAuthExpired, onWindUploaded }: BoardProps) {
   const [overrides, setOverrides] = useState<Record<string, TileResult>>({});
@@ -69,6 +101,18 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
   }, [initialProjectBoard]);
   const [storageReady, setStorageReady] = useState(false);
   const [serverSnapshotJson, setServerSnapshotJson] = useState<string | null>(initialSnapshotJson);
+  const pendingStorageRef = useRef<{ key: string; json: string } | null>(null);
+  const scheduledStorageRef = useRef<{ kind: "idle" | "timeout"; handle: number } | null>(null);
+  const flushStorage = useCallback(() => {
+    const pending = pendingStorageRef.current;
+    if (!pending) return;
+    pendingStorageRef.current = null;
+    try {
+      window.localStorage.setItem(pending.key, pending.json);
+    } catch {
+      // 저장소가 막힌 브라우저에서는 현재 세션의 보드 상태만 유지한다.
+    }
+  }, []);
   useEffect(() => {
     dispatch({ type: "replaceResults", results: baseResults });
   }, [baseResults]);
@@ -89,13 +133,10 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
     setServerSnapshotJson(initialSnapshotJson);
   }, [initialSnapshotJson]);
   useEffect(() => {
-    if (!storageReady) return;
-    try {
-      window.localStorage.setItem(storageKey, JSON.stringify(serializeBoardState(board)));
-    } catch {
-      // 저장소가 막힌 브라우저에서는 현재 세션의 보드 상태만 유지한다.
-    }
-  }, [board, storageKey, storageReady]);
+    window.addEventListener("pagehide", flushStorage);
+    return () => window.removeEventListener("pagehide", flushStorage);
+  }, [flushStorage]);
+  useEffect(() => () => flushStorage(), [flushStorage]);
   const results = useMemo(() => board.results.map((r) => overrides[r.tileId] ?? r), [board.results, overrides]);
   const [editing, setEditing] = useState(false);
   const [demoStep, setDemoStep] = useState<number | null>(null);
@@ -140,28 +181,47 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
   );
   const sheetableIds = useMemo(() => board.order.filter((id) => views.has(id) && views.get(id)!.code !== "SHEET"), [board.order, views]);
   const summary = useMemo(() => toSummaryView(siteSummary, results), [siteSummary, results]);
-  const { tiles } = reportPages(board, complexCounts(views));
+  const reportSummary = useMemo(() => reportPages(board, complexCounts(views)), [board, views]);
+  const { tiles, pages: reportPageCount } = reportSummary;
   const total = board.order.length;
   const notProvidedIds = shown.filter((id) => views.get(id)?.status === "not_provided");
   const visibleShown = shown.filter((id) => views.get(id)?.status !== "not_provided");
   const activeJobs = jobs.some((job) => job.status === "queued" || job.status === "running");
   const actionBusy = busy || activeJobs;
-  const [nowMs, setNowMs] = useState(0);
-  useEffect(() => {
-    if (!activeJobs) {
-      setNowMs(0);
-      return;
-    }
-    setNowMs(Date.now());
-    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [activeJobs]);
-  const progressNow = nowMs || Date.now();
-  const jobState = useMemo(() => jobProgress(jobs, progressNow), [jobs, progressNow]);
+  const jobState = useMemo(() => jobProgress(jobs), [jobs]);
   const analysisDate = results[0]?.conditions.analysisDate ?? "기준일 미확인";
-  const reportPlan = useMemo(() => buildReportPlan({ summary, views, board, analysisDate }), [summary, views, board, analysisDate]);
   const boardSnapshot = useMemo(() => serializeBoardState(board), [board]);
   const boardSnapshotJson = useMemo(() => JSON.stringify(boardSnapshot), [boardSnapshot]);
+  useEffect(() => {
+    if (!storageReady) return;
+    pendingStorageRef.current = { key: storageKey, json: boardSnapshotJson };
+    const win = window as Window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+    const previous = scheduledStorageRef.current;
+    if (previous) {
+      if (previous.kind === "idle") win.cancelIdleCallback?.(previous.handle);
+      else window.clearTimeout(previous.handle);
+      scheduledStorageRef.current = null;
+    }
+    const write = () => {
+      scheduledStorageRef.current = null;
+      flushStorage();
+    };
+    if (win.requestIdleCallback) {
+      scheduledStorageRef.current = { kind: "idle", handle: win.requestIdleCallback(write, { timeout: 500 }) };
+    } else {
+      scheduledStorageRef.current = { kind: "timeout", handle: window.setTimeout(write, 500) };
+    }
+    return () => {
+      const scheduled = scheduledStorageRef.current;
+      if (!scheduled) return;
+      if (scheduled.kind === "idle") win.cancelIdleCallback?.(scheduled.handle);
+      else window.clearTimeout(scheduled.handle);
+      scheduledStorageRef.current = null;
+    };
+  }, [boardSnapshotJson, flushStorage, storageKey, storageReady]);
   const projectDirty = !!currentProject?.projectId && serverSnapshotJson !== null && boardSnapshotJson !== serverSnapshotJson;
   const [making, setMaking] = useState(false);
   const [makingKind, setMakingKind] = useState<string | null>(null);
@@ -214,6 +274,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
     setMakingKind("PPT");
     setExportProblem(null);
     try {
+      const reportPlan = buildReportPlan({ summary, views, board, analysisDate });
       const { renderReportPptx } = await import("@/lib/v2/report/render-pptx");
       // 지도 그림은 브라우저에서 SVG → PNG로 만든다. 못 만들면 자리표시로 계속한다.
       const { buildMapImages } = await import("@/lib/v2/report/map-image");
@@ -298,13 +359,79 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
   const demoOn = demoStep !== null && demoStep <= total + 1;
   const finished = demoStep === null ? total : demoFinished(total, demoStep);
 
-  const retry = (id: string, code: string) => {
+  const retry = useCallback((id: string, code: string) => {
     if (!demo) return onRerun();
     const fixed = RECOVERED[code];
     if (!fixed) return;
     setOverrides((o) => ({ ...o, [id]: { ...fixed, tileId: id } }));
     dispatch({ type: "include", id, value: true });
-  };
+  }, [demo, onRerun]);
+
+  const onTileAction = useCallback((id: string, action: TileCardAction) => {
+    const title = views.get(id)?.title ?? "타일";
+    switch (action.type) {
+      case "resize":
+        dispatch({ type: "resize", id, size: action.size });
+        setNote(`${title} 타일을 ${action.size}칸으로 바꿈`);
+        break;
+      case "open":
+        setOpenId(id);
+        break;
+      case "include":
+        dispatch({ type: "include", id, value: action.value });
+        break;
+      case "face":
+        dispatch({ type: "face", id, face: action.face });
+        break;
+      case "roseSeason":
+        dispatch({ type: "roseSeason", id, season: action.season });
+        break;
+      case "cardFace":
+        dispatch({ type: "view", id, face: action.face });
+        setNote(`${title} ${action.face === "map" ? "지도면" : "요약면"}`);
+        break;
+      case "remove":
+        dispatch({ type: "remove", id });
+        setNote(`${title} 타일을 뺌`);
+        break;
+      case "move": {
+        const orderIndex = board.order.indexOf(id);
+        dispatch({ type: "move", id, dir: action.dir });
+        setNote(`${title} 타일을 ${orderIndex + action.dir + 1}번째로 옮김`);
+        break;
+      }
+      case "retry":
+        retry(id, views.get(id)?.code ?? "");
+        break;
+      case "toggleLabel":
+        dispatch({ type: "toggleLabel", id, key: action.key });
+        break;
+      case "setAllLabels":
+        dispatch({ type: "setAllLabels", id, on: action.on });
+        break;
+      case "stackToggle":
+        setStackSelection((current) => action.selected
+          ? current.includes(id) ? current : [...current, id]
+          : current.filter((selectedId) => selectedId !== id));
+        break;
+      case "unstack":
+        dispatch({ type: "unstack", id });
+        setStackSelection((current) => current.filter((selectedId) => selectedId !== id));
+        setNote(`${title}을 풀음`);
+        break;
+      case "sheetToggle":
+        setSheetSelection((current) => action.selected
+          ? current.includes(id) ? current : [...current, id]
+          : current.filter((selectedId) => selectedId !== id));
+        break;
+      case "unsheet":
+        dispatch({ type: "unsheet", id });
+        setSheetSelection((current) => current.filter((selectedId) => selectedId !== id));
+        setNote(`${title}을 풀음`);
+        break;
+    }
+  }, [board.order, retry, views]);
+  const onSummaryFace = useCallback((face: CardFace) => dispatch({ type: "view", id: SUMMARY_ID, face }), []);
 
   const lastUndo = board.undoStack[board.undoStack.length - 1];
   const openView = openId ? views.get(openId) : undefined;
@@ -460,7 +587,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
                     </summary>
                     <div className={styles.exportMenu} aria-label="내보내기 형식">
                       <button type="button" className={styles.pill} onClick={() => void makeReport()} disabled={!exportState.ppt.enabled} title={exportState.ppt.reason ?? exportState.ppt.pendingNote ?? undefined}>
-                        PPT · {reportPlan.length}장
+                        PPT · {reportPageCount}장
                       </button>
                       <button type="button" className={styles.pill} onClick={() => void makeDxf("site")} disabled={!exportState.dxf.enabled} title={exportState.dxf.reason ?? "대지 중심 원점"} aria-label={`DXF · 대지 중심${exportState.dxf.reason ? ` — ${exportState.dxf.reason}` : ""}`}>
                         DXF · 대지 중심
@@ -523,7 +650,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
                   ) : (
                     <div className={styles.mobileExportActions}>
                       <button type="button" className={styles.pill} onClick={() => void makeReport()} disabled={!exportState.ppt.enabled} title={exportState.ppt.reason ?? exportState.ppt.pendingNote ?? undefined}>
-                        PPT · {reportPlan.length}장
+                        PPT · {reportPageCount}장
                       </button>
                       <button type="button" className={styles.pill} onClick={() => void makeDxf("site")} disabled={!exportState.dxf.enabled} title={exportState.dxf.reason ?? "대지 중심 원점"} aria-label={`DXF · 대지 중심${exportState.dxf.reason ? ` — ${exportState.dxf.reason}` : ""}`}>
                         DXF · 대지 중심
@@ -559,24 +686,12 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
           </div>
         )}
 
-        {!demo && activeJobs && jobs.length > 0 && (
-          <div className={styles.progressRow}>
-            <span className={styles.progressLabel}>분석 중</span>
-            <div className={styles.progress} role="progressbar" aria-label="분석 진행" aria-valuemin={0} aria-valuemax={jobs.length} aria-valuenow={jobState.completed}>
-              <div className={styles.progressFill} style={{ width: `${(jobState.completed / jobs.length) * 100}%` }} />
-            </div>
-            <span className={styles.progressText} aria-live="polite" aria-atomic="true">{jobState.completed} / {jobs.length} 계산 중</span>
-            <span className={styles.progressMeta}>경과 {formatElapsedMs(jobState.elapsedMs)}</span>
-            {jobState.waitingLabel && <span className={styles.progressQueue}>{jobState.waitingLabel}</span>}
-            <span className={styles.progressRetry}>{jobState.retryLabel}</span>
-            {onCancel && <button type="button" className={styles.progressCancel} onClick={onCancel} disabled={canceling} aria-busy={canceling}>{canceling ? "취소 중…" : "계산 취소"}</button>}
-          </div>
-        )}
+        {!demo && <AnalysisProgress jobs={jobs} onCancel={onCancel} canceling={canceling} />}
 
         {controls}
 
         <div className={styles.grid} id="v2-board-grid" ref={gridRef} tabIndex={-1}>
-          <SummaryCard view={summary} face={editing ? "summary" : viewOf(board, SUMMARY_ID)} onFace={(face) => dispatch({ type: "view", id: SUMMARY_ID, face })} />
+          <SummaryCard view={summary} face={editing ? "summary" : viewOf(board, SUMMARY_ID)} onFace={onSummaryFace} />
           {visibleShown.map((id, i) => {
             const view = views.get(id)!;
             const size = board.sizes[id];
@@ -603,49 +718,15 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
                   dragging={dragged}
                   floatStyle={floatStyle(id)}
                   onHandleDown={start(id)}
-                  onResize={(s) => {
-                    dispatch({ type: "resize", id, size: s });
-                    setNote(`${view.title} 타일을 ${s}칸으로 바꿈`);
-                  }}
-                  onOpen={() => setOpenId(id)}
-                  onInclude={(value) => dispatch({ type: "include", id, value })}
-                  onFace={(face) => dispatch({ type: "face", id, face })}
+                  onAction={onTileAction}
                   roseSeason={board.roseSeasons[id] ?? "annual"}
-                  onRoseSeason={(season: RoseSeason) => dispatch({ type: "roseSeason", id, season })}
                   pinnedLabels={board.labels[id] ?? []}
-                  onToggleLabel={(key) => dispatch({ type: "toggleLabel", id, key })}
-                  onSetAllLabels={(on) => dispatch({ type: "setAllLabels", id, on })}
                   cardFace={viewOf(board, id)}
-                  onCardFace={(face) => {
-                    dispatch({ type: "view", id, face });
-                    setNote(`${view.title} ${face === "map" ? "지도면" : "요약면"}`);
-                  }}
-                  onRemove={() => {
-                    dispatch({ type: "remove", id });
-                    setNote(`${view.title} 타일을 뺌`);
-                  }}
-                  onMove={(dir) => {
-                    dispatch({ type: "move", id, dir });
-                    setNote(`${view.title} 타일을 ${oi + dir + 1}번째로 옮김`);
-                  }}
-                  onRetry={() => retry(id, view.code)}
                   onWindUploaded={onWindUploaded}
                   stackable={stackableIds.includes(id)}
                   stackSelected={stackSelection.includes(id)}
-                  onStackToggle={(selected) => setStackSelection((current) => selected ? [...new Set([...current, id])] : current.filter((selectedId) => selectedId !== id))}
-                  onUnstack={view.code === "STACK" ? () => {
-                    dispatch({ type: "unstack", id });
-                    setStackSelection((current) => current.filter((selectedId) => selectedId !== id));
-                    setNote(`${view.title}을 풀음`);
-                  } : undefined}
                   sheetable={sheetableIds.includes(id)}
                   sheetSelected={sheetSelection.includes(id)}
-                  onSheetToggle={(selected) => setSheetSelection((current) => selected ? [...new Set([...current, id])] : current.filter((selectedId) => selectedId !== id))}
-                  onUnsheet={view.code === "SHEET" ? () => {
-                    dispatch({ type: "unsheet", id });
-                    setSheetSelection((current) => current.filter((selectedId) => selectedId !== id));
-                    setNote(`${view.title}을 풀음`);
-                  } : undefined}
                 />
               </Fragment>
             );
@@ -749,7 +830,6 @@ async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
   return refreshed ? fetch(url, { ...init, credentials: "include" }) : res;
 }
 
-type JobState = { code: string; status: "queued" | "running" | "done" | "failed"; enqueuedAt?: string | null; startedAt?: string | null; elapsedMs: number | null };
 type TileState = { code: string; status: TileResult["status"]; revision: string; elapsedMs?: number | null };
 type Live = { analysisId: string; summary: SiteSummary; results: TileResult[]; jobs: JobState[]; tiles: TileState[]; revision: string; scene: Scene | null };
 type Problem = { text: string; login: boolean };
