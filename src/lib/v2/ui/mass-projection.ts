@@ -76,12 +76,24 @@ export const CAMERA_PRESETS = {
   elevation: [20, 35, 55],
 } as const;
 
+/** 카드·상세 WebGL 분해 보기의 기본 펼침 정도. PPT는 별도 출력 계약을 유지한다. */
+export const EXPLODED_WEBGL_SPREAD_PCT = 100;
+
+/** 낮은 축측 고도에서도 원판의 세로 지름을 넘도록 층을 분리하는 비율. */
+export const EXPLODED_LAYER_GAP_RATIO = 0.62;
+
 /** 넓은 반경의 지형 투영에 건물이 묻히지 않도록 화면 전용 높이 과장을 적용한다. */
 export const MASS_VERTICAL_EXAGGERATION_MAX = 5;
 
 // sitedia S01의 낮은 plate tilt를 유지한다. 모든 exploded 층과 face가 이
 // 동일한 presentation angle을 공유해 plate 사이 gap을 확보한다.
-const EXPLODED_PRESENTATION_ELEVATION_DEG = 15;
+export const EXPLODED_PRESENTATION_ELEVATION_DEG = 15;
+
+export function explodedLayerGap(scene: Pick<Scene, "radiusM"> | null, camera: MassCamera, spreadPct = 100): number {
+  const radius = Math.max(1, finiteOr(scene?.radiusM ?? Number.NaN, finiteOr(camera.radiusM, 100)));
+  const spread = Math.max(0, finiteOr(spreadPct, 100)) / 100;
+  return radius * EXPLODED_LAYER_GAP_RATIO * spread;
+}
 
 type RawPoint = { x: number; y: number; depth: number };
 type RawFace = {
@@ -631,7 +643,7 @@ export function projectExploded(
   const sinE = Math.sin(elevation);
   const radius = Math.max(1, finiteOr(scene.radiusM, finiteOr(camera.radiusM, 100)));
   const spread = Math.max(0, finiteOr(spreadPct, 100)) / 100;
-  const gap = radius * 0.18 * spread;
+  const gap = explodedLayerGap(scene, camera, spreadPct);
   // sitedia의 60% 캡처처럼 세로로 읽히되, 실제 plate 폭을 먼저 보장한 뒤
   // 남은 drawing height를 같은 간격으로 나눈다.
   const cameraDirection: [number, number] = [sinA, cosA];

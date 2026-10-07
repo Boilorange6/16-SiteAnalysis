@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { MassCamera, MassColorScheme, MassQuality } from "@/lib/v2/ui/mass-projection";
+import type { MassCamera, MassColorScheme, MassLabel, MassQuality } from "@/lib/v2/ui/mass-projection";
 import type { Scene } from "@/lib/v2/scene";
 import FallbackMassFigure from "./mass-figure";
 import styles from "./board.module.css";
@@ -47,6 +47,44 @@ function statusStyle(): React.CSSProperties {
     fontSize: 12,
     background: "#F2F2EF",
   };
+}
+
+function LiveExplodedLabels({ scene, camera, exploded, width, height }: { scene: Scene | null; camera: MassCamera; exploded?: Mass3dProps["exploded"]; width: number; height: number }) {
+  const [labels, setLabels] = useState<MassLabel[]>([]);
+  const sceneKey = `${scene?.analysisId ?? "empty"}:${scene?.manifestHash ?? ""}`;
+  const cameraKey = `${camera.azimuthDeg}:${camera.elevationDeg}:${camera.radiusM}`;
+  const explodedKey = exploded ? `${exploded.spreadPct}:${exploded.scheme ?? "use"}` : "basic";
+
+  useEffect(() => {
+    let active = true;
+    if (!scene || !exploded) {
+      setLabels([]);
+      return () => { active = false; };
+    }
+    setLabels([]);
+    void loadRuntime()
+      .then((runtime) => runtime.mass3dExplodedLabels({ scene, camera, width, height, exploded }, width, height))
+      .then((nextLabels) => {
+        if (active) setLabels(nextLabels);
+      })
+      .catch(() => {
+        if (active) setLabels([]);
+      });
+    return () => { active = false; };
+  }, [sceneKey, cameraKey, explodedKey, width, height]);
+
+  if (!exploded || labels.length === 0) return null;
+  return (
+    <div className={styles.mass3dExplodedLabels} aria-hidden="true">
+      {labels.map((label) => (
+        <div key={label.layer} data-layer-label={label.layer} className={styles.mass3dExplodedLabelGroup} style={{ left: label.x, top: label.y }}>
+          <span className={styles.mass3dExplodedLabelText}>{label.text}</span>
+          {label.note && <span className={styles.mass3dExplodedLabelNote}>{label.note}</span>}
+          <i className={styles.mass3dExplodedLabelLeader} style={{ width: Math.max(0, label.leaderX - label.x - 4) }} />
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function LiveLegend({ scene, exploded }: Pick<Mass3dProps, "scene" | "exploded">) {
@@ -106,6 +144,23 @@ function Mass3D({ mode = "image", ...props }: Mass3dProps) {
   const liveSceneKey = `${props.scene?.analysisId ?? "empty"}:${props.scene?.manifestHash ?? ""}`;
   const [image, setImage] = useState<string | null>(null);
   const [phase, setPhase] = useState<"loading" | "ready" | "fallback" | "error">("loading");
+  const [liveSize, setLiveSize] = useState({ width: props.width, height: props.height });
+
+  useEffect(() => {
+    if (mode !== "live" || !liveRef.current) return;
+    const node = liveRef.current;
+    const updateSize = () => {
+      setLiveSize({
+        width: Math.max(1, node.clientWidth || props.width),
+        height: Math.max(1, node.clientHeight || props.height),
+      });
+    };
+    updateSize();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [mode, props.width, props.height]);
 
   useEffect(() => {
     let active = true;
@@ -166,6 +221,7 @@ function Mass3D({ mode = "image", ...props }: Mass3dProps) {
     return (
       <div className={styles.mass3dRoot} style={shellStyle} aria-busy={phase === "loading"}>
         <div ref={liveRef} className={styles.mass3dCanvasHost} />
+        <LiveExplodedLabels scene={props.scene} camera={props.camera} exploded={props.exploded} width={liveSize.width} height={liveSize.height} />
         <LiveLegend scene={props.scene} exploded={props.exploded} />
         {props.scene?.ground.kind === "flat" && <span className={styles.mass3dFlatNote} aria-hidden="true">지형 미반영</span>}
         {phase === "loading" && <span style={statusStyle()} role="status">3D 매스를 불러오는 중…</span>}

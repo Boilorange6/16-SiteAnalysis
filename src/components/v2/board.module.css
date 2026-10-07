@@ -736,6 +736,41 @@
   position: absolute;
   inset: 0;
 }
+.mass3dExplodedLabels {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  pointer-events: none;
+}
+.mass3dExplodedLabelGroup {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  transform: translate(-100%, -50%);
+  color: #15171c;
+  white-space: nowrap;
+  text-shadow: 0 1px 0 rgba(242, 242, 239, 0.9);
+}
+.mass3dExplodedLabelText {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+}
+.mass3dExplodedLabelNote {
+  color: #676c76;
+  font-size: 10px;
+  line-height: 1.25;
+}
+.mass3dExplodedLabelLeader {
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 4px);
+  height: 1px;
+  border-top: 1px dashed rgba(137, 147, 160, 0.8);
+  transform: translateY(-50%);
+}
 .mass3dImage {
   display: block;
   object-fit: contain;
@@ -791,6 +826,9 @@
   color: #5b606b;
   font-size: 10px;
   pointer-events: none;
+}
+.dialog .mass3dLegend {
+  bottom: 36px;
 }
 .mass3dFallbackNote {
   position: absolute;

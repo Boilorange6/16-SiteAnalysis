@@ -17,6 +17,7 @@ import WindPanel, { mapOptions } from "./wind-panel";
 import { mapLabelEntries, type MapFigureElementPick } from "./map-figure";
 import styles from "./board.module.css";
 import { hasDetail } from "@/lib/v2/ui/detail-state";
+import { EXPLODED_WEBGL_SPREAD_PCT } from "@/lib/v2/ui/mass-projection";
 
 const BADGE_CLASS = { status: styles.badgeStatus, limit: styles.badgeLimit, model: styles.badgeModel } as const;
 const FACES: OutputFace[] = ["front", "back", "both"];
@@ -247,7 +248,7 @@ export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, p
   const label = `${view.title} 지도`;
   if (state) return <MapBox model={displayView.backdrop} muted legend={false} north={false} scale={false} credit={false} label={label} siteX={siteX} />;
   if (view.code === "S01" && view.mass) {
-    return <Mass3D scene={view.mass.scene} camera={view.mass.camera} width={960} height={540} label={label} quality={card ? "card" : "detail"} mode={card ? "image" : "live"} exploded={massExploded ? { spreadPct: 24, scheme: "use" } : undefined} />;
+    return <Mass3D scene={view.mass.scene} camera={view.mass.camera} width={960} height={540} label={label} quality={card ? "card" : "detail"} mode={card ? "image" : "live"} exploded={massExploded ? { spreadPct: EXPLODED_WEBGL_SPREAD_PCT, scheme: "use" } : undefined} />;
   }
   const seasonalRose = view.roses?.[roseSeason];
   if (seasonalRose || view.rose) {

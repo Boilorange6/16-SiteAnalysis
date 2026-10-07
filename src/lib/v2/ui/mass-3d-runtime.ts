@@ -1,5 +1,15 @@
 import { groundZAt, type Ring, type Scene } from "../scene";
-import { CAMERA_PRESETS, EXPLODED_LAYERS, MASS_USE_COLORS, type MassCamera, type MassColorScheme } from "./mass-projection";
+import {
+  CAMERA_PRESETS,
+  EXPLODED_LAYERS,
+  EXPLODED_PRESENTATION_ELEVATION_DEG,
+  MASS_USE_COLORS,
+  explodedLayerGap,
+  type ExplodedLayer,
+  type MassCamera,
+  type MassColorScheme,
+  type MassLabel,
+} from "./mass-projection";
 import {
   MASS_3D_COLORS,
   mass3dBuildingBottomZ,
@@ -114,7 +124,7 @@ function sceneRadius(scene: Scene | null, camera: MassCamera): number {
 
 function layerGap(scene: Scene | null, camera: MassCamera, exploded: Mass3dRenderInput["exploded"]): number {
   if (!exploded) return 0;
-  return sceneRadius(scene, camera) * 0.18 * Math.max(0, finiteOr(exploded.spreadPct, 100)) / 100;
+  return explodedLayerGap(scene, camera, exploded.spreadPct);
 }
 
 function layerOffset(scene: Scene | null, camera: MassCamera, exploded: Mass3dRenderInput["exploded"], index: number): number {
@@ -143,6 +153,15 @@ function useClassOf(code: string | null): string {
 const useColors = new Map<string, string>(MASS_USE_COLORS.map(({ label, color }) => [label, color]));
 const ageColors = ["#B98977", "#C6A28A", "#D5B99A", "#E2CCAC", "#EBDDBE", "#F1E8D5", "#D0D3D6"];
 const heightColors = ["#D9E6E0", "#C7DBD9", "#B2CDD2", "#A4BDD0", "#B8B9CD", "#D0D3D6"];
+const explodedPlateColors: Record<string, string> = {
+  terrain: "#F0F2F4",
+  water: "#E8F5F8",
+  green: "#EEF7EC",
+  roads: "#F0F2F5",
+  buildings: "#EEF2F7",
+  complete: "#F4F3F0",
+  empty: MASS_3D_COLORS.plate,
+};
 
 function approvalYear(value: string | null): number | null {
   if (typeof value !== "string") return null;
@@ -260,12 +279,26 @@ function addTerrain(
   scene: Scene,
   radius: number,
   zOffset: number,
+  shadowCatcher = true,
 ): void {
   const geometry = createGroundGeometry(THREE, scene, radius, zOffset);
   const mesh = new THREE.Mesh(geometry, materialFor(THREE, materials, MASS_3D_COLORS.terrain));
   mesh.name = "s01-terrain";
   mesh.receiveShadow = true;
   root.add(mesh);
+  if (shadowCatcher && scene.ground.kind === "flat") addShadowCatcher(THREE, root, radius, zOffset, "terrain");
+}
+
+function addShadowCatcher(THREE: ThreeModule, root: any, radius: number, z: number, name: string): void {
+  const shadow = new THREE.Mesh(
+    new THREE.CircleGeometry(radius, 72),
+    new THREE.ShadowMaterial({ opacity: 0.15, depthWrite: false }),
+  );
+  shadow.name = `s01-shadow-catcher-${name}`;
+  shadow.position.z = z + 0.045;
+  shadow.receiveShadow = true;
+  shadow.renderOrder = 2;
+  root.add(shadow);
 }
 
 function addPlate(
@@ -278,17 +311,13 @@ function addPlate(
 ): void {
   const plate = new THREE.Mesh(
     new THREE.CircleGeometry(radius, 72),
-    materialFor(THREE, materials, MASS_3D_COLORS.plate, { polygonOffset: true }),
+    materialFor(THREE, materials, explodedPlateColors[layer] ?? MASS_3D_COLORS.plate, { polygonOffset: true }),
   );
   plate.name = `s01-plate-${layer}`;
   plate.position.z = z - 0.08;
   plate.receiveShadow = true;
   root.add(plate);
-  const shadow = new THREE.Mesh(new THREE.CircleGeometry(radius, 72), new THREE.ShadowMaterial({ opacity: 0.1 }));
-  shadow.name = `s01-plate-shadow-${layer}`;
-  shadow.position.z = z - 0.03;
-  shadow.receiveShadow = true;
-  root.add(shadow);
+  addShadowCatcher(THREE, root, radius, z, `plate-${layer}`);
 }
 
 function addPolygonMesh(
@@ -441,7 +470,7 @@ function heightBounds(scene: Scene | null, input: Mass3dRenderInput): { min: num
   return { min, max };
 }
 
-function boundsForCamera(THREE: ThreeModule, scene: Scene | null, input: Mass3dRenderInput): { targetZ: number; viewWidth: number; viewHeight: number; distance: number } {
+function boundsForCamera(scene: Scene | null, input: Mass3dRenderInput): { targetZ: number; viewWidth: number; viewHeight: number; distance: number } {
   const radius = sceneRadius(scene, input.camera);
   const bounds = heightBounds(scene, input);
   const elevationDeg = input.exploded ? 15 : Math.max(-89, Math.min(89, finiteOr(input.camera.elevationDeg, DEFAULT_CAMERA.elevationDeg)));
@@ -472,15 +501,13 @@ function boundsForCamera(THREE: ThreeModule, scene: Scene | null, input: Mass3dR
   const viewHeight = Math.max(projectedHeight, projectedWidth / Math.max(0.1, aspect)) * 1.16;
   const viewWidth = viewHeight * Math.max(0.1, aspect);
   const distance = Math.max(radius * 4, (bounds.max - bounds.min + radius) * 6, 200);
-  // Keep THREE referenced here so tree-shaking does not accidentally elide the coordinate contract.
-  void THREE;
   return { targetZ, viewWidth, viewHeight, distance };
 }
 
 function makeCamera(THREE: ThreeModule, scene: Scene | null, input: Mass3dRenderInput, width: number, height: number): any {
-  const fit = boundsForCamera(THREE, scene, { ...input, width, height });
+  const fit = boundsForCamera(scene, { ...input, width, height });
   const camera = new THREE.OrthographicCamera(-fit.viewWidth / 2, fit.viewWidth / 2, fit.viewHeight / 2, -fit.viewHeight / 2, 0.1, fit.distance * 20 + 1000);
-  const elevation = radians(input.exploded ? 15 : Math.max(-89, Math.min(89, finiteOr(input.camera.elevationDeg, DEFAULT_CAMERA.elevationDeg))));
+  const elevation = radians(input.exploded ? EXPLODED_PRESENTATION_ELEVATION_DEG : Math.max(-89, Math.min(89, finiteOr(input.camera.elevationDeg, DEFAULT_CAMERA.elevationDeg))));
   const azimuth = radians(finiteOr(input.camera.azimuthDeg, DEFAULT_CAMERA.azimuthDeg));
   const target = new THREE.Vector3(0, 0, fit.targetZ);
   const direction = new THREE.Vector3(Math.sin(azimuth) * Math.cos(elevation), Math.cos(azimuth) * Math.cos(elevation), Math.sin(elevation));
@@ -491,6 +518,53 @@ function makeCamera(THREE: ThreeModule, scene: Scene | null, input: Mass3dRender
   return camera;
 }
 
+const EXPLODED_LABEL_TEXT: Record<ExplodedLayer, string> = {
+  terrain: "지형",
+  water: "수계",
+  green: "녹지",
+  roads: "도로",
+  buildings: "건물",
+  complete: "완성",
+};
+
+function explodedLayerPresent(scene: Scene, layer: ExplodedLayer): boolean {
+  if (layer === "terrain" || layer === "complete") return true;
+  if (layer === "buildings") return scene.buildings.length > 0;
+  if (layer === "water") return (scene.context?.water.length ?? 0) > 0;
+  if (layer === "green") return (scene.context?.green.length ?? 0) > 0;
+  return (scene.context?.roads.length ?? 0) > 0;
+}
+
+/** WebGL 층 옆 라벨을 동일한 orthographic fit에서 계산해 SVG와 정렬한다. */
+export function mass3dExplodedLabels(
+  input: Mass3dRenderInput,
+  width = input.width,
+  height = input.height,
+): MassLabel[] {
+  if (!input.exploded || !input.scene) return [];
+  const canvasWidth = cleanCanvasSize(width, 960);
+  const canvasHeight = cleanCanvasSize(height, 540);
+  const fittedInput = { ...input, width: canvasWidth, height: canvasHeight };
+  const fit = boundsForCamera(input.scene, fittedInput);
+  const radius = sceneRadius(input.scene, input.camera);
+  const scale = canvasHeight / Math.max(1, fit.viewHeight);
+  const cosE = Math.cos(radians(EXPLODED_PRESENTATION_ELEVATION_DEG));
+  const gap = layerGap(input.scene, input.camera, input.exploded);
+  const plateLeft = canvasWidth / 2 - radius * scale;
+  return EXPLODED_LAYERS.map((layer, index) => {
+    const centerY = canvasHeight / 2 - ((gap * index - fit.targetZ) * cosE) * scale;
+    const x = Math.max(8, plateLeft - 14);
+    return {
+      layer,
+      x,
+      y: centerY - 2,
+      text: EXPLODED_LABEL_TEXT[layer],
+      note: explodedLayerPresent(input.scene!, layer) ? undefined : "자료 없음",
+      leaderX: plateLeft - 2,
+    } satisfies MassLabel;
+  });
+}
+
 function createLights(
   THREE: ThreeModule,
   root: any,
@@ -498,25 +572,28 @@ function createLights(
   input: Mass3dRenderInput,
 ): void {
   const radius = sceneRadius(scene, input.camera);
-  const hemisphere = new THREE.HemisphereLight("#FFFFFF", "#B8BEC7", 1.8);
+  const completeIndex = EXPLODED_LAYERS.indexOf("complete");
+  const targetZ = input.exploded ? layerOffset(scene, input.camera, input.exploded, completeIndex) : 0;
+  const hemisphere = new THREE.HemisphereLight("#FFFFFF", "#B8BEC7", 1.2);
   hemisphere.name = "s01-hemisphere-light";
   root.add(hemisphere);
-  const sun = new THREE.DirectionalLight("#FFFFFF", 1.6);
+  const sun = new THREE.DirectionalLight("#FFFFFF", 2.15);
   sun.name = "s01-southeast-sun";
-  sun.position.set(radius * 1.2, -radius * 1.2, radius * 2.1);
+  sun.position.set(radius * 1.35, -radius * 1.35, targetZ + radius * 2.6);
   sun.castShadow = true;
-  const shadowSize = radius >= 600 ? 2048 : radius >= 250 ? 1536 : 1024;
+  const shadowSize = input.quality === "card" ? (radius >= 600 ? 2048 : 1024) : (radius >= 600 ? 4096 : radius >= 250 ? 2048 : 1024);
   sun.shadow.mapSize.width = shadowSize;
   sun.shadow.mapSize.height = shadowSize;
-  sun.shadow.camera.left = -radius * 1.5;
-  sun.shadow.camera.right = radius * 1.5;
-  sun.shadow.camera.top = radius * 1.5;
-  sun.shadow.camera.bottom = -radius * 1.5;
+  sun.shadow.camera.left = -radius * 2;
+  sun.shadow.camera.right = radius * 2;
+  sun.shadow.camera.top = radius * 2;
+  sun.shadow.camera.bottom = -radius * 2;
   sun.shadow.camera.near = 0.1;
-  sun.shadow.camera.far = radius * 6 + 500;
-  sun.shadow.bias = -0.0004;
-  sun.shadow.normalBias = 0.08;
-  sun.target.position.set(0, 0, layerGap(scene, input.camera, input.exploded) * 2.5);
+  sun.shadow.camera.far = radius * 8 + Math.max(500, Math.abs(targetZ) + 500);
+  sun.shadow.bias = -0.0006;
+  sun.shadow.normalBias = 0.035;
+  sun.shadow.radius = 2;
+  sun.target.position.set(0, 0, targetZ);
   root.add(sun);
   root.add(sun.target);
 }
@@ -533,13 +610,13 @@ function addExplodedContent(
   for (const [index, layer] of EXPLODED_LAYERS.entries()) {
     const z = layerOffset(scene, input.camera, input.exploded, index);
     addPlate(THREE, root, materials, radius, z, layer);
-    if (layer === "terrain") addTerrain(THREE, root, materials, scene, radius, z);
+    if (layer === "terrain") addTerrain(THREE, root, materials, scene, radius, z, false);
     if (layer === "water") addContextPolygons(THREE, root, materials, scene, context?.water ?? [], MASS_3D_COLORS.water, z, "s01-water");
     if (layer === "green") addContextPolygons(THREE, root, materials, scene, context?.green ?? [], MASS_3D_COLORS.green, z, "s01-green");
     if (layer === "roads") addRoads(THREE, root, materials, scene, z);
     if (layer === "buildings") addBuildingMeshes(THREE, root, materials, scene, input, z);
     if (layer === "complete") {
-      addTerrain(THREE, root, materials, scene, radius, z);
+      addTerrain(THREE, root, materials, scene, radius, z, false);
       addContextPolygons(THREE, root, materials, scene, context?.water ?? [], MASS_3D_COLORS.water, z, "s01-complete-water");
       addContextPolygons(THREE, root, materials, scene, context?.green ?? [], MASS_3D_COLORS.green, z, "s01-complete-green");
       addRoads(THREE, root, materials, scene, z);
@@ -674,29 +751,25 @@ function drawMassChrome(canvas: HTMLCanvasElement, input: Mass3dRenderInput): vo
       x += ctx.measureText(label).width + 42;
     }
   } else {
-    for (const [index, layer] of EXPLODED_LAYERS.entries()) {
-      const y = height * 0.76 - index * Math.min(44, height * 0.08);
+    for (const label of mass3dExplodedLabels(input, width, height)) {
       ctx.strokeStyle = "rgba(137,147,160,0.7)";
       ctx.setLineDash([4, 5]);
       ctx.beginPath();
-      ctx.moveTo(112, y);
-      ctx.lineTo(width * 0.29, y);
+      ctx.moveTo(label.x + 4, label.y);
+      ctx.lineTo(Math.max(label.x + 4, label.leaderX), label.y);
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.font = "700 11px 'Noto Sans KR', 'Malgun Gothic', sans-serif";
       ctx.fillStyle = "#15171C";
-      ctx.fillText(layer === "terrain" ? "지형" : layer === "complete" ? "완성" : layer === "buildings" ? "건물" : layer === "water" ? "수계" : layer === "green" ? "녹지" : "도로", 16, y + 4);
-      const present = layer === "terrain" || layer === "complete" || layer === "buildings"
-        ? Boolean(input.scene)
-        : layer === "water" ? (input.scene?.context?.water.length ?? 0) > 0
-          : layer === "green" ? (input.scene?.context?.green.length ?? 0) > 0
-            : (input.scene?.context?.roads.length ?? 0) > 0;
-      if (!present) {
+      ctx.textAlign = "right";
+      ctx.fillText(label.text, label.x, label.y + 4);
+      if (label.note) {
         ctx.font = "10px 'Noto Sans KR', 'Malgun Gothic', sans-serif";
         ctx.fillStyle = "#676C76";
-        ctx.fillText("자료 없음", 16, y + 17);
+        ctx.fillText(label.note, label.x, label.y + 17);
       }
     }
+    ctx.textAlign = "left";
   }
   if (input.scene?.ground.kind === "flat") {
     ctx.font = "10px 'Noto Sans KR', 'Malgun Gothic', sans-serif";
