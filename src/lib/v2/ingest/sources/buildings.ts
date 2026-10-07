@@ -142,7 +142,8 @@ function parsedProvenance(value: string): Record<string, unknown> {
 export function finalizeLedgerMatches(db: BetterSqlite3.Database, stats: SourceStats | readonly SourceStats[], options: { drop?: boolean } = {}): { matched: number; rejectedOneToMany: number } {
   const exists = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'ledger_match_candidate' LIMIT 1").get();
   if (!exists) return { matched: 0, rejectedOneToMany: 0 };
-  const statList = Array.isArray(stats) ? stats : [stats];
+  // 표제부 후보는 GIS 건물 행에서만 나온다 — 도로명주소 등 다른 원천 통계를 되돌리면 그 채움률이 0으로 깎인다.
+  const statList = (Array.isArray(stats) ? stats : [stats]).filter((s) => s.sourceId === "building");
   // 1,700만 건을 JS 배열로 복사하지 않는다. 중복 PK의 행만 SQLite
   // iterator로 흘려보내고, 정상 매칭 수는 집계 쿼리로 계산한다.
   const total = Number(db.prepare("SELECT COUNT(*) FROM ledger_match_candidate").pluck().get());

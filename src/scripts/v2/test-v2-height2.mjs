@@ -91,8 +91,13 @@ const fact = (db, id) => db.prepare("SELECT b.*, f.pnu, f.name FROM building_fac
     record("ONE-TO-MANY-A", square(127, 37), { A2: pnuOneToMany }),
     record("ONE-TO-MANY-B", square(127, 37), { A2: pnuOneToMany }),
   ]), buildingRel, { ledger: lookup, deferLedgerMatches: true });
-  const finalized = finalizeLedgerMatches(buildings, oneToManyStats);
+  const jusoStats = new SourceStats("building_juso", buildingRel, ["heightM", "floorsAbove"]);
+  jusoStats.read();
+  jusoStats.accept({ heightM: 9, floorsAbove: 3 }, "11", "floors_estimate");
+  const jusoBefore = JSON.stringify(jusoStats.snapshot());
+  const finalized = finalizeLedgerMatches(buildings, [oneToManyStats, jusoStats]);
   assert.equal(finalized.rejectedOneToMany, 2);
+  assert.equal(JSON.stringify(jusoStats.snapshot()), jusoBefore, "1:N 되돌림은 GIS 건물 통계만 바꾼다(도로명주소 채움률 보존)");
   assert.equal(fact(buildings, "ONE-TO-MANY-A").height_method, "unknown");
   assert.equal(fact(buildings, "ONE-TO-MANY-B").height_method, "unknown");
   buildings.close();
