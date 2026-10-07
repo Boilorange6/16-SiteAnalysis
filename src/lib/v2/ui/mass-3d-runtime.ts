@@ -580,7 +580,8 @@ function createLights(
   const sun = new THREE.DirectionalLight("#FFFFFF", 2.15);
   sun.name = "s01-southeast-sun";
   sun.position.set(radius * 1.35, -radius * 1.35, targetZ + radius * 2.6);
-  sun.castShadow = true;
+  // 분해 모드는 위 판의 건물 그림자가 아래 판(도로·녹지·수계·지형)에 떨어지므로 그림자를 끈다.
+  sun.castShadow = !input.exploded;
   const shadowSize = input.quality === "card" ? (radius >= 600 ? 2048 : 1024) : (radius >= 600 ? 4096 : radius >= 250 ? 2048 : 1024);
   sun.shadow.mapSize.width = shadowSize;
   sun.shadow.mapSize.height = shadowSize;
