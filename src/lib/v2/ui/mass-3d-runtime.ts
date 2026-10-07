@@ -38,7 +38,6 @@ const PNG_CACHE = new Map<string, string>();
 const PNG_PENDING = new Map<string, Promise<string>>();
 let threePromise: Promise<ThreeModule> | null = null;
 let offscreenRenderer: any = null;
-let liveRenderer: any = null;
 
 const finiteOr = (value: number | null | undefined, fallback: number): number => (typeof value === "number" && Number.isFinite(value) ? value : fallback);
 const radians = (degrees: number): number => (degrees * Math.PI) / 180;
@@ -796,16 +795,16 @@ export async function mountMass3d(container: HTMLElement, input: Mass3dRenderInp
   canvas.style.width = "100%";
   canvas.style.height = "100%";
   container.replaceChildren(canvas);
-  liveRenderer = makeRenderer(THREE, canvas);
+  const renderer = makeRenderer(THREE, canvas);
   let currentState: { dispose: () => void } | null = null;
   let currentInput = input;
   let disposed = false;
   const render = () => {
-    if (disposed || !liveRenderer) return;
+    if (disposed) return;
     const width = cleanCanvasSize(container.clientWidth, input.width);
     const height = cleanCanvasSize(container.clientHeight, input.height);
     currentState?.dispose();
-    currentState = renderState(THREE, liveRenderer, { ...currentInput, width, height }, width, height);
+    currentState = renderState(THREE, renderer, { ...currentInput, width, height }, width, height);
   };
   const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(render);
   resizeObserver?.observe(container);
@@ -813,9 +812,8 @@ export async function mountMass3d(container: HTMLElement, input: Mass3dRenderInp
     render();
   } catch (error) {
     resizeObserver?.disconnect();
-    liveRenderer.dispose();
-    liveRenderer.forceContextLoss();
-    liveRenderer = null;
+    renderer.dispose();
+    renderer.forceContextLoss();
     canvas.remove();
     throw error;
   }
@@ -832,9 +830,8 @@ export async function mountMass3d(container: HTMLElement, input: Mass3dRenderInp
       currentState?.dispose();
       currentState = null;
       canvas.remove();
-      liveRenderer?.dispose();
-      liveRenderer?.forceContextLoss();
-      liveRenderer = null;
+      renderer.dispose();
+      renderer.forceContextLoss();
     },
   };
 }
@@ -843,9 +840,6 @@ export function disposeMass3dRenderers(): void {
   offscreenRenderer?.dispose();
   offscreenRenderer?.forceContextLoss();
   offscreenRenderer = null;
-  liveRenderer?.dispose();
-  liveRenderer?.forceContextLoss();
-  liveRenderer = null;
 }
 
 export { CAMERA_PRESETS };

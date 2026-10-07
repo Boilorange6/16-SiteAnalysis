@@ -8,7 +8,7 @@ import { faceLabel, shortHeadlineLabel, type Badge, type OutputFace, type TileVi
 import { viewWithOnlyRaster } from "@/lib/v2/ui/tile-view";
 import { windRasterName, WIND_LAYER_HEIGHTS } from "@/lib/v2/ui/wind-upload";
 import { ROSE_SEASONS, type RoseSeason } from "@/lib/v2/ui/rose-season";
-import MassFigure from "./mass-figure";
+import Mass3D from "./mass-3d";
 import WindRoseFigure from "./wind-rose-figure";
 import CalloutMap from "./callout-map";
 import MapBox from "./map-box";
@@ -247,7 +247,7 @@ export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, p
   const label = `${view.title} 지도`;
   if (state) return <MapBox model={displayView.backdrop} muted legend={false} north={false} scale={false} credit={false} label={label} siteX={siteX} />;
   if (view.code === "S01" && view.mass) {
-    return <MassFigure scene={view.mass.scene} camera={view.mass.camera} width={960} height={540} label={label} quality={card ? "card" : "detail"} exploded={massExploded ? { spreadPct: 24, scheme: "use" } : undefined} />;
+    return <Mass3D scene={view.mass.scene} camera={view.mass.camera} width={960} height={540} label={label} quality={card ? "card" : "detail"} mode={card ? "image" : "live"} exploded={massExploded ? { spreadPct: 24, scheme: "use" } : undefined} />;
   }
   const seasonalRose = view.roses?.[roseSeason];
   if (seasonalRose || view.rose) {

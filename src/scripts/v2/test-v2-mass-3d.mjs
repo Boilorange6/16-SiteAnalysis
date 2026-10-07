@@ -65,6 +65,8 @@ const reportSource = readFileSync(resolve(import.meta.dirname, "../../lib/v2/rep
 assert.match(runtimeSource, /WebGLRenderer/);
 assert.match(runtimeSource, /PCFSoftShadowMap/);
 assert.match(runtimeSource, /disposeMassObject/);
+assert.match(runtimeSource, /compositePngChrome/);
+assert.match(runtimeSource, /const renderer = makeRenderer/);
 assert.match(reportSource, /renderMass3dPng/);
 assert.match(reportSource, /image\/png/);
 

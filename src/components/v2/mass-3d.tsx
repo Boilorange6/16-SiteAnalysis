@@ -100,14 +100,18 @@ function Fallback({ props, note }: { props: Mass3dProps; note: string }) {
 function Mass3D({ mode = "image", ...props }: Mass3dProps) {
   const key = useMemo(() => inputKey({ ...props, mode }), [props.scene, props.camera, props.width, props.height, props.exploded, props.quality, mode]);
   const liveRef = useRef<HTMLDivElement>(null);
+  const liveMountRef = useRef<{ update: (input: Mass3dProps) => void; dispose: () => void } | null>(null);
+  const latestPropsRef = useRef(props);
+  latestPropsRef.current = props;
+  const liveSceneKey = `${props.scene?.analysisId ?? "empty"}:${props.scene?.manifestHash ?? ""}`;
   const [image, setImage] = useState<string | null>(null);
   const [phase, setPhase] = useState<"loading" | "ready" | "fallback" | "error">("loading");
 
   useEffect(() => {
     let active = true;
+    if (mode !== "image") return () => { active = false; };
     setPhase("loading");
     setImage(null);
-    if (mode !== "image") return () => { active = false; };
     void loadRuntime()
       .then(async (runtime) => {
         if (!runtime.isMass3dWebGLAvailable()) throw new Error("WebGL을 사용할 수 없습니다.");
@@ -127,17 +131,16 @@ function Mass3D({ mode = "image", ...props }: Mass3dProps) {
 
   useEffect(() => {
     let active = true;
-    let mount: { dispose: () => void } | null = null;
     if (mode !== "live" || !liveRef.current) return () => { active = false; };
     setPhase("loading");
     void loadRuntime()
-      .then((runtime) => runtime.mountMass3d(liveRef.current!, { ...props, label: props.label ?? "S01 3D 매스" }))
+      .then((runtime) => runtime.mountMass3d(liveRef.current!, { ...latestPropsRef.current, label: latestPropsRef.current.label ?? "S01 3D 매스" }))
       .then((nextMount) => {
         if (!active) {
           nextMount.dispose();
           return;
         }
-        mount = nextMount;
+        liveMountRef.current = nextMount;
         setPhase("ready");
       })
       .catch(() => {
@@ -145,9 +148,14 @@ function Mass3D({ mode = "image", ...props }: Mass3dProps) {
       });
     return () => {
       active = false;
-      mount?.dispose();
-      mount = null;
+      liveMountRef.current?.dispose();
+      liveMountRef.current = null;
     };
+  }, [liveSceneKey, mode]);
+
+  useEffect(() => {
+    if (mode !== "live") return;
+    liveMountRef.current?.update({ ...props, label: props.label ?? "S01 3D 매스" });
   }, [key, mode]);
 
   const shellStyle = { width: props.fixed ? props.width : "100%", height: props.fixed ? props.height : "100%" } as const;

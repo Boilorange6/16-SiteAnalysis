@@ -14,6 +14,7 @@ import type { MassCamera, MassColorScheme, MassModel } from "../ui/mass-projecti
 import type { RoseModel } from "../ui/wind-rose";
 import type { RoseSeason } from "../tile-result";
 import type { Scene } from "../scene";
+import { renderMass3dPng } from "../ui/mass-3d-runtime";
 import { SLIDE, slideLayout, slideReserved, slideSiteX, slideLegend } from "../ui/overlay-layout";
 import { BASEMAP_STACK, framedViewport, tilesFor, tileUrl, type BasemapChoice } from "../ui/map-projection";
 import { inflateRaster, paintRaster } from "../ui/raster-image";
@@ -148,7 +149,7 @@ function svgOfRose(model: RoseModel, width: number, height: number, season: Rose
   }
 }
 
-async function toPng(svg: string): Promise<string> {
+async function toImage(svg: string, mime: "image/png" | "image/jpeg", quality?: number): Promise<string> {
   const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
   try {
     const img = new Image();
@@ -161,12 +162,15 @@ async function toPng(svg: string): Promise<string> {
     g.fillStyle = "#fff";
     g.fillRect(0, 0, OUT_W, OUT_H);
     g.drawImage(img, 0, 0, OUT_W, OUT_H);
-    // PNG는 장당 2MB 안팎이라 덱이 10MB를 넘는다. 지도(사진에 가까운 래스터)는 JPEG로 충분하다.
-    return canvas.toDataURL("image/jpeg", 0.82);
+    // 지도(사진에 가까운 래스터)는 JPEG로 충분하지만 S01 매스는 새 WebGL PNG를 보존한다.
+    return quality === undefined ? canvas.toDataURL(mime) : canvas.toDataURL(mime, quality);
   } finally {
     URL.revokeObjectURL(url);
   }
 }
+
+const toPng = (svg: string): Promise<string> => toImage(svg, "image/png");
+const toJpeg = (svg: string): Promise<string> => toImage(svg, "image/jpeg", 0.82);
 
 /** 한 장 그리기. tileCache는 같은 중심·반경의 여러 장이 타일을 다시 받지 않게 공유한다. */
 export async function rasterizeMap(
@@ -192,7 +196,7 @@ export async function rasterizeMap(
     if (d) got.set(u, d);
   }
   await loadRasters(model, rasterCache);
-  return toPng(svgOf(model, got, activeLayer, extra, rasterCache));
+  return toJpeg(svgOf(model, got, activeLayer, extra, rasterCache));
 }
 
 export function rasterizeMass(mass: MassModel, exploded?: MassExplodedOptions): Promise<string>;
@@ -211,11 +215,24 @@ export async function rasterizeMass(
         ...(sceneOrMass as MassModel),
         exploded: exploded ?? (cameraOrExploded && "spreadPct" in cameraOrExploded ? cameraOrExploded : undefined),
       };
-  return toPng(svgOfMass(mass, width, height, mass.exploded));
+  try {
+    return await renderMass3dPng({
+      scene: mass.scene,
+      camera: mass.camera,
+      width,
+      height,
+      exploded: mass.exploded,
+      quality: "detail",
+      label: "S01 3D 매스",
+    });
+  } catch {
+    // WebGL이 없는 브라우저·PPT 내보내기 환경에서도 기존 SVG 경로로 납품을 완성한다.
+    return toPng(svgOfMass(mass, width, height, mass.exploded));
+  }
 }
 
 export async function rasterizeRose(model: RoseModel, width = VIEW_W, height = VIEW_H, season: RoseSeason = "annual"): Promise<string> {
-  return toPng(svgOfRose(model, width, height, season));
+  return toJpeg(svgOfRose(model, width, height, season));
 }
 
 /** 슬라이드마다 다른 오버레이 자리를 피하게 한다 (표지·출처는 지도 가운데, 타일은 오른쪽 정보 판을 뺀 영역) */
