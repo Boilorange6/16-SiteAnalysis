@@ -13,6 +13,7 @@ import type { Geometry } from "geojson";
 import { insertFeature } from "../../data/features";
 import { batched, SourceStats } from "../build";
 import type { ShpRecord } from "../shp";
+import type { LedgerFloorInput, LedgerFloorLookup, LedgerFloorMatch } from "./ledger";
 
 /** 높이 원천값이 없을 때 층수 추정에 쓰는 층고(m). 원천에서 높이·층수가 둘 다 있는 건물의 중앙값은 약 4.5 m/층이다(과소추정 쪽). */
 export const FLOOR_HEIGHT_M = 3.0;
@@ -39,16 +40,41 @@ export function validDate(v: unknown, maxYear: number): string | null {
 
 export interface BuildingHeight {
   heightM: number | null;
-  method: "source" | "floors_estimate" | "unknown";
+  method: "source" | "floors_estimate" | "ledger_floors_estimate" | "unknown";
   floorsAbove: number | null;
+  ledgerMatch?: LedgerFloorMatch;
 }
 
-export function heightOf(p: Record<string, unknown>, floorHeightM = FLOOR_HEIGHT_M): BuildingHeight {
+export function heightOf(p: Record<string, unknown>, floorHeightM = FLOOR_HEIGHT_M, ledgerMatch: LedgerFloorMatch | null = null): BuildingHeight {
   const floors = pos(p.A26, 0);
   const source = pos(p.A16);
   if (source !== null) return { heightM: source, method: "source", floorsAbove: floors };
   if (floors !== null) return { heightM: Math.round(floors * floorHeightM * 100) / 100, method: "floors_estimate", floorsAbove: floors };
+  if (ledgerMatch) return {
+    heightM: Math.round(ledgerMatch.floorsAbove * floorHeightM * 100) / 100,
+    method: "ledger_floors_estimate",
+    floorsAbove: ledgerMatch.floorsAbove,
+    ledgerMatch,
+  };
   return { heightM: null, method: "unknown", floorsAbove: null };
+}
+
+function ledgerProvenance(match: LedgerFloorMatch, floorHeightM: number): string {
+  return JSON.stringify({
+    origin: "ledger-title",
+    height_m: {
+      source: "ledger.title.지상_층_수*floorHeightM",
+      floorHeightM,
+      ledgerPk: match.ledgerPk,
+      ledger_pk: match.ledgerPk,
+      match: match.method,
+    },
+    floors_above: {
+      source: "ledger.title.지상_층_수",
+      ledgerPk: match.ledgerPk,
+      ledger_pk: match.ledgerPk,
+    },
+  });
 }
 
 const isPolygonal = (g: Geometry | null): g is Geometry => g !== null && (g.type === "Polygon" || g.type === "MultiPolygon");
@@ -57,7 +83,7 @@ export async function buildBuildings(
   db: BetterSqlite3.Database,
   records: AsyncIterable<ShpRecord>,
   releaseId: string,
-  opts: { maxYear?: number; floorHeightM?: number } = {},
+  opts: { maxYear?: number; floorHeightM?: number; ledger?: LedgerFloorLookup | null } = {},
 ): Promise<SourceStats> {
   const maxYear = opts.maxYear ?? new Date().getUTCFullYear();
   const floorHeightM = opts.floorHeightM ?? FLOOR_HEIGHT_M;
@@ -67,6 +93,9 @@ export async function buildBuildings(
   const provenance = { height_m: { source: "A16", floorHeightM }, floors_above: "A26", use_code: "A8", approval_date: "A13", areas: "A14/A12" };
   const provSource = JSON.stringify({ height_m: "A16" });
   const provEstimate = JSON.stringify({ ...provenance, height_m: { source: "A26*floorHeightM", floorHeightM } });
+  const pendingPnu = new Map<string, Array<{ featureId: number; match: LedgerFloorMatch; region: string }>>();
+  const candidateRowsByPnu = new Map<string, number>();
+  const directPnu = new Set<string>();
 
   await batched(db, records, (r) => {
     stats.read();
@@ -75,9 +104,24 @@ export async function buildBuildings(
     if (!ufid || !isPolygonal(r.geometry)) return stats.reject();
     const pnu = typeof p.A2 === "string" && /^\d{19}$/.test(p.A2) ? p.A2 : null;
     const legal = typeof p.A3 === "string" && /^\d{10}$/.test(p.A3) ? p.A3 : null;
-    const h = heightOf(p, floorHeightM);
     const useCode = str(p.A8);
     const approvalDate = validDate(p.A13, maxYear);
+    const grossFloorAreaM2 = pos(p.A14);
+    const footprintAreaM2 = pos(p.A12);
+    const nativeHeight = heightOf(p, floorHeightM);
+    let ledgerMatch: LedgerFloorMatch | null = null;
+    if (nativeHeight.method === "unknown" && opts.ledger) {
+      const input: LedgerFloorInput = {
+        pnu,
+        ledgerPk: str(p.A21),
+        name: str(p.A24),
+        grossFloorAreaM2,
+        footprintAreaM2,
+      };
+      ledgerMatch = opts.ledger.match(input);
+    }
+    const deferredMatch = ledgerMatch?.method === "pnu_unique" && pnu !== null ? ledgerMatch : null;
+    const h = deferredMatch ? nativeHeight : heightOf(p, floorHeightM, ledgerMatch);
     let featureId: number;
     try {
       featureId = insertFeature(db, { stableId: `building:${ufid}`, kind: "building", sourceKey: ufid, releaseId, geometry: r.geometry, name: str(p.A24), pnu, legalCode: legal, roundM: 10 ** -COORD_DECIMALS });
@@ -85,8 +129,41 @@ export async function buildBuildings(
       if ((e as { code?: string }).code === "SQLITE_CONSTRAINT_UNIQUE") return stats.reject(); // 중복 UFID
       throw e;
     }
-    insertFact.run(featureId, str(p.A21), h.heightM, h.method, h.floorsAbove, count(p.A27), useCode, approvalDate, pos(p.A14), pos(p.A12), h.method === "floors_estimate" ? provEstimate : h.method === "source" ? provSource : "{}");
-    stats.accept({ heightM: h.heightM, floorsAbove: h.floorsAbove, useCode, approvalDate }, (pnu ?? legal ?? "").slice(0, 2) || "(미상)", h.method);
+    const region = (pnu ?? legal ?? "").slice(0, 2) || "(미상)";
+    insertFact.run(
+      featureId,
+      str(p.A21),
+      h.heightM,
+      h.method,
+      h.floorsAbove,
+      count(p.A27),
+      useCode,
+      approvalDate,
+      grossFloorAreaM2,
+      footprintAreaM2,
+      h.method === "ledger_floors_estimate" && h.ledgerMatch ? ledgerProvenance(h.ledgerMatch, floorHeightM) : h.method === "floors_estimate" ? provEstimate : h.method === "source" ? provSource : "{}",
+    );
+    stats.accept({ heightM: h.heightM, floorsAbove: h.floorsAbove, useCode, approvalDate }, region, h.method);
+    if (pnu && opts.ledger?.hasPnu(pnu)) candidateRowsByPnu.set(pnu, (candidateRowsByPnu.get(pnu) ?? 0) + 1);
+    if (ledgerMatch?.method === "ledger_pk" && pnu) directPnu.add(pnu);
+    if (deferredMatch && pnu !== null) {
+      const rows = pendingPnu.get(pnu) ?? [];
+      rows.push({ featureId, match: deferredMatch, region });
+      pendingPnu.set(pnu, rows);
+    }
   });
+
+  if (opts.ledger && pendingPnu.size > 0) {
+    const update = db.prepare("UPDATE building_fact SET height_m = ?, height_method = 'ledger_floors_estimate', floors_above = ?, field_provenance_json = ? WHERE feature_id = ? AND height_method = 'unknown'");
+    for (const [pnu, rows] of pendingPnu) {
+      // 같은 PNU의 건물 행이 둘 이상이면 표제부 동을 특정할 수 없으므로 미상으로 보존한다.
+      if (rows.length !== 1 || directPnu.has(pnu) || (candidateRowsByPnu.get(pnu) ?? 0) !== 1) continue;
+      const row = rows[0];
+      const height = heightOf({ A16: 0, A26: 0 }, floorHeightM, row.match);
+      if (height.method !== "ledger_floors_estimate" || height.ledgerMatch === undefined) continue;
+      const result = update.run(height.heightM, height.floorsAbove, ledgerProvenance(height.ledgerMatch, floorHeightM), row.featureId);
+      if (result.changes === 1) stats.retag(row.region, "unknown", "ledger_floors_estimate", { heightM: height.heightM, floorsAbove: height.floorsAbove });
+    }
+  }
   return stats;
 }
