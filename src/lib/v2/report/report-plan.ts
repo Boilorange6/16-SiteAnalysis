@@ -279,7 +279,7 @@ export function buildReportPlan(input: {
       usedFor: null,
     } satisfies SourceDetailRow));
     for (const row of rows) {
-      const key = `${row.sourceId}|${row.asOf}`;
+      const key = `${row.provider}|${row.name}|${row.asOf}`;
       const e = bySource.get(key) ?? { source: row.name, asOf: row.asOf, tiles: [], provider: row.provider, license: row.license, url: row.url };
       if (!e.tiles.includes(v.title)) e.tiles.push(v.title);
       if ((!e.provider || e.provider === "제공처 미기록") && row.provider) e.provider = row.provider;
