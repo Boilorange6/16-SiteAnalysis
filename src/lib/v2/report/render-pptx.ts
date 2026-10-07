@@ -521,7 +521,8 @@ function sources(pptx: PptxGenJS, p: PlannedSlide & { kind: "sources" }, images:
   titlePlate(s, "#7A7E87", "", "자료 출처와 기준일", "", SLIDE.w - 2 * E);
   // 원천이 많은 분석은 report-plan에서 여러 출처 장으로 나눈다. 한 장 안의 표는 승인 시안의 열 구조를 유지한다.
   const dense = p.rows.length >= 12;
-  const h = Math.min(L.strip.y - 1.2 - 0.46, 0.5 + (dense ? 0.29 : 0.34) * (p.rows.length + 1));
+  // 행 대부분이 제공처·자료 두 줄이라 두 줄 높이로 판 높이를 잡는다.
+  const h = Math.min(L.strip.y - 1.2 - 0.46, 0.5 + (dense ? 0.34 : 0.4) * (p.rows.length + 1));
   const r = { x: E, y: 1.2, w: SLIDE.w - 2 * E, h };
   plate(s, r, 0.16);
   const cell = (t: string, opts: { bold?: boolean; fontSize?: number; color?: string } = {}) => ({

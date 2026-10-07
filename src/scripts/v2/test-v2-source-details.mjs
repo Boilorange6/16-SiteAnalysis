@@ -88,4 +88,15 @@ const meta = (sourceId, extra = {}) => new Map([[sourceId, {
   assert.equal(citationOf(details.rows[0]), "제공처 미기록, 「자료명 미기록」(기준일 미확인), 미기록, 원문 URL 미기록");
 }
 
+{
+  const same = { provider: "국토교통부", name: "VWorld 도시계획시설", sourceUrl: "https://example.test/upis", licenseCode: "UNRESTRICTED" };
+  const details = sourceDetailsFor(tile("D29", "diagram", [source("upis_a"), source("upis_b"), source("dem")]), new Map([
+    ["upis_a", same],
+    ["upis_b", same],
+    ["dem", { provider: "Copernicus", name: "DEM", sourceUrl: "https://example.test/dem", licenseCode: "attribution" }],
+  ]));
+  assert.deepEqual(details.rows.map((row) => row.sourceId), ["upis_a", "dem"], "제공처·자료·기준일이 같은 레이어는 한 행");
+  assert.deepEqual(details.rows.map((row) => row.license), ["이용허락범위 제한 없음", "출처 표시"]);
+}
+
 console.log("✓ source details model");
