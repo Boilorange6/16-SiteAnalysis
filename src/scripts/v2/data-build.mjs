@@ -92,10 +92,26 @@ const asOfOf = (file) => {
   const m = basename(file).match(/(20\d{2})-?(\d{2})-?(\d{2})?/);
   return m ? `${m[1]}-${m[2]}${m[3] ? `-${m[3]}` : ""}` : null;
 };
-const release = (db, sourceId, file, provider, sourceUrl, licenseCode) => {
+const normalizeDataAsOf = (value) => {
+  const text = String(value ?? "").trim();
+  const m = /^(20\d{2})(?:[-./]?(\d{2})(?:[-./]?(\d{2}))?)?$/.exec(text);
+  if (!m) return null;
+  return m[2] ? `${m[1]}-${m[2]}${m[3] ? `-${m[3]}` : ""}` : m[1];
+};
+/** 표준데이터의 데이터기준일자를 release sourceAsOf로 옮긴다. 파일명/수정일은 대체하지 않는다. */
+const csvDataAsOf = async (file, field = "데이터기준일자") => {
+  const { records } = await csvRecords(file);
+  let latest = null;
+  for await (const record of records) {
+    const asOf = normalizeDataAsOf(record.properties[field]);
+    if (asOf && (!latest || asOf > latest)) latest = asOf;
+  }
+  return latest;
+};
+const release = (db, sourceId, file, provider, sourceUrl, licenseCode, sourceAsOf = undefined) => {
   const st = statSync(file);
   // ponytail: 수 GB 원천의 SHA-256 대신 크기·수정시각 — 원천 무결성 검증이 필요해지면 스트리밍 해시로 바꾼다
-  return insertRelease(db, { sourceId, provider, sourceUrl, sourceAsOf: asOfOf(file), fetchedAt: st.mtime.toISOString(), checksum: `size-mtime:${st.size}-${Math.round(st.mtimeMs)}`, licenseCode });
+  return insertRelease(db, { sourceId, provider, sourceUrl, sourceAsOf: sourceAsOf === undefined ? asOfOf(file) : sourceAsOf, fetchedAt: st.mtime.toISOString(), checksum: `size-mtime:${st.size}-${Math.round(st.mtimeMs)}`, licenseCode });
 };
 
 /** DBF header record count is available before SHP decoding and is cheap to read. */
@@ -425,7 +441,7 @@ if (builders.market) {
         integrated: (await csvRecords(integratedFile)).records,
         integratedReleaseId: release(db, "maintenance_integrated", integratedFile, provider, "https://www.data.go.kr/data/15160169/fileData.do", "UNRESTRICTED"),
         std: (await csvRecords(stdFile)).records,
-        stdReleaseId: release(db, "maintenance_std", stdFile, provider, "https://www.data.go.kr/data/15155703/standard.do", "UNRESTRICTED"),
+        stdReleaseId: release(db, "maintenance_std", stdFile, provider, "https://www.data.go.kr/data/15155703/standard.do", "UNRESTRICTED", await csvDataAsOf(stdFile)),
       })),
     ];
   };
@@ -506,7 +522,7 @@ if (only.has("reference")) {
     });
   };
   step(`school/${basename(schoolFile)}`, [schoolFile], 0, SLOT.school, async () => [
-    await buildPointSource(db_, SCHOOL_SPEC, (await csvRecords(schoolFile)).records, release(db_, "school", schoolFile, provider, "https://www.data.go.kr/data/15021148/standard.do", "UNRESTRICTED")),
+    await buildPointSource(db_, SCHOOL_SPEC, (await csvRecords(schoolFile)).records, release(db_, "school", schoolFile, provider, "https://www.data.go.kr/data/15021148/standard.do", "UNRESTRICTED", await csvDataAsOf(schoolFile))),
   ]);
   if (haveVworld) {
     step("school_zone/vworld", vworldFiles.map(({ file }) => file), 0, SLOT.zones, async () => {
@@ -526,8 +542,8 @@ if (only.has("reference")) {
     console.log("school_zone: VWorld GeoJSON 3종이 모두 없어 폴리곤 적재를 건너뜁니다");
   }
   step("school_zone/link", [linkFile, elemFile], 0, SLOT.links, async () => {
-    const linkRel = release(db_, "school_zone_link", linkFile, provider, "https://www.data.go.kr/data/15021158/standard.do", "UNRESTRICTED");
-    const elemRel = release(db_, "school_zone_elem", elemFile, provider, "https://www.data.go.kr/data/15021149/standard.do", "UNRESTRICTED");
+    const linkRel = release(db_, "school_zone_link", linkFile, provider, "https://www.data.go.kr/data/15021158/standard.do", "UNRESTRICTED", await csvDataAsOf(linkFile));
+    const elemRel = release(db_, "school_zone_elem", elemFile, provider, "https://www.data.go.kr/data/15021149/standard.do", "UNRESTRICTED", await csvDataAsOf(elemFile));
     const zoneIds = haveVworld ? new Set(db_.prepare("SELECT stable_id FROM feature WHERE kind IN ('school_zone_elem', 'school_zone_middle', 'school_zone_high')").pluck().all()) : null;
     const csvCoverage = { ...SCHOOL_ZONE_COVERAGE, polygons: zoneIds !== null, polygonSource: zoneIds !== null ? "school_zone" : null };
     for (const rel of [linkRel, elemRel]) db_.prepare("UPDATE source_release SET coverage_json = ? WHERE release_id = ?").run(JSON.stringify(csvCoverage), rel);
@@ -556,14 +572,14 @@ if (only.has("reference")) {
   });
 
   // 점 CSV 3종
-  for (const [spec, dir, re, prov, url, slot] of [
-    [STORE_SPEC, "store", /^store_.*\.csv$/i, "소상공인시장진흥공단", "https://www.data.go.kr/data/15083033/fileData.do", SLOT.store],
-    [BUS_STOP_SPEC, "bus_stop", /^bus_stop_.*\.csv$/i, "국토교통부", "https://www.data.go.kr/data/15067528/fileData.do", SLOT.bus_stop],
-    [PARK_SPEC, "park", /^park.*\.csv$/i, "지방자치단체(전국도시공원정보표준데이터)", "https://www.data.go.kr/data/15012890/standard.do", SLOT.park],
+  for (const [spec, dir, re, prov, url, slot, asOfField] of [
+    [STORE_SPEC, "store", /^store_.*\.csv$/i, "소상공인시장진흥공단", "https://www.data.go.kr/data/15083033/fileData.do", SLOT.store, null],
+    [BUS_STOP_SPEC, "bus_stop", /^bus_stop_.*\.csv$/i, "국토교통부", "https://www.data.go.kr/data/15067528/fileData.do", SLOT.bus_stop, null],
+    [PARK_SPEC, "park", /^park.*\.csv$/i, "지방자치단체(전국도시공원정보표준데이터)", "https://www.data.go.kr/data/15012890/standard.do", SLOT.park, "데이터기준일자"],
   ]) {
     const file = newest(dir, re);
     step(`${dir}/${basename(file)}`, [file], 0, slot, async () => [
-      await buildPointSource(db_, spec, (await csvRecords(file)).records, release(db_, spec.sourceId, file, prov, url, "UNRESTRICTED")),
+      await buildPointSource(db_, spec, (await csvRecords(file)).records, release(db_, spec.sourceId, file, prov, url, "UNRESTRICTED", asOfField ? await csvDataAsOf(file, asOfField) : undefined)),
     ]);
   }
 

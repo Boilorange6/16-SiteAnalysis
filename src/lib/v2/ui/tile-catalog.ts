@@ -4,6 +4,8 @@ export type TileCatalogEntry = {
   title: string;
   kind: TileKind;
   description: string;
+  /** 출처 상세의 "계산 방법" 한 줄. 없으면 계산 방법을 표시하지 않는다. */
+  calculation?: string;
   sources: readonly string[];
   color: string;
 };
@@ -53,18 +55,18 @@ export const TILE_CATALOG = {
   D15: { title: "가구", kind: "diagram", description: "OSM 자동차 도로로 묶은 가구 형태를 참고합니다.", sources: ["osm_roads"], color: "#8A6A4A" },
   D16: { title: "건물 밀도", kind: "diagram", description: "건물 동수 기반 밀도 추정 분포를 봅니다.", sources: BUILDING_SOURCES, color: "#4F8A68" },
   D17: { title: "지형·등고선", kind: "diagram", description: "DEM 표면고와 중심 상대 고도·등고선을 봅니다.", sources: ["terrain_tiles"], color: "#6B778D" },
-  D18: { title: "경사도", kind: "diagram", description: "DEM 30 m 격자 기반 경사도를 봅니다.", sources: ["terrain_tiles"], color: "#7C6CAB" },
+  D18: { title: "경사도", kind: "diagram", description: "DEM 30 m 격자 기반 경사도를 봅니다.", calculation: "DEM 30 m 격자 기반 경사도를 봅니다.", sources: ["terrain_tiles"], color: "#7C6CAB" },
   D19: { title: "지적", kind: "diagram", description: "연속지적 도형과 지목을 참조용으로 봅니다.", sources: ["parcel_polygon"], color: "#8A6A4A" },
   D20: { title: "필지 규모", kind: "diagram", description: "연속지적 도형 면적의 구간별 구성을 봅니다.", sources: ["parcel_polygon"], color: "#957B58" },
-  D21: { title: "일조시간", kind: "diagram", description: "건물·지형 장애물을 반영한 기하학적 일조시간을 봅니다.", sources: [...BUILDING_SOURCES, "parcel_polygon"], color: "#E29A2D" },
+  D21: { title: "일조시간", kind: "diagram", description: "건물·지형 장애물을 반영한 기하학적 일조시간을 봅니다.", calculation: "건물·지형 장애물을 반영한 기하학적 일조시간을 봅니다.", sources: [...BUILDING_SOURCES, "parcel_polygon"], color: "#E29A2D" },
   D22: { title: "바람장미", kind: "diagram", description: "최근접 ASOS 관측소의 연간·계절 풍향을 봅니다.", sources: ["asos"], color: "#2B9CBF" },
   D23: { title: "정비사업", kind: "diagram", description: "정비구역과 사업단계를 지도·목록으로 확인합니다.", sources: MAINTENANCE_SOURCES, color: "#86657C" },
   D24: { title: "계획 철도", kind: "diagram", description: "계획 철도 공개 목록의 선형과 개략 여부를 봅니다.", sources: ["planned_rail"], color: "#6D6790" },
   D25: { title: "실거래", kind: "diagram", description: "위치가 확인된 아파트 매매 실거래를 도판으로 봅니다.", sources: ["rtms_apt_trade"], color: "#667A9C" },
   D26: { title: "통학구역", kind: "diagram", description: "대지 주변 학구도·학교군 경계를 강조합니다.", sources: ["school_zone"], color: "#C56A2D" },
   D27: { title: "인구", kind: "diagram", description: "비밀보호 처리가 된 1 km 인구 격자를 봅니다.", sources: ["sgis_grid"], color: "#557F7C" },
-  D28: { title: "도보권", kind: "diagram", description: "OSM 보행망과 80 m/분 기준의 도달 면적을 봅니다.", sources: ["osm_roads"], color: "#7A5BA6" },
-  D29: { title: "개방감(하늘열림)", kind: "diagram", description: "건물·지형 기준 하늘열림(SVF)을 봅니다.", sources: [...BUILDING_SOURCES, "terrain_tiles"], color: "#4C8FB8" },
+  D28: { title: "도보권", kind: "diagram", description: "OSM 보행망과 80 m/분 기준의 도달 면적을 봅니다.", calculation: "OSM 보행망과 80 m/분 기준의 도달 면적을 봅니다.", sources: ["osm_roads"], color: "#7A5BA6" },
+  D29: { title: "개방감(하늘열림)", kind: "diagram", description: "건물·지형 기준 하늘열림(SVF)을 봅니다.", calculation: "건물·지형 기준 하늘열림(SVF)을 봅니다.", sources: [...BUILDING_SOURCES, "terrain_tiles"], color: "#4C8FB8" },
   S01: { title: "3D 매스", kind: "simulation", description: "공개 도형과 확보·추정 높이로 주변 매스를 확인합니다.", sources: BUILDING_SOURCES, color: "#3E6FB0" },
   S02: { title: "일조·그림자", kind: "simulation", description: "대표 날짜의 건물·지형 그림자를 상대적으로 비교합니다.", sources: [...BUILDING_SOURCES, "parcel_polygon"], color: "#F08A24" },
   S03: { title: "바람 흐름 탐색", kind: "simulation", description: "입력 풍향을 기준으로 바람 흐름을 설계 초기에 탐색합니다.", sources: ["asos", "browser_lbm", "fallback_d2q9"], color: "#2B9CBF" },
