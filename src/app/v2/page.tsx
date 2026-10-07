@@ -8,7 +8,7 @@ import { useTileDrag } from "@/components/v2/use-tile-drag";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "@/components/v2/map-box";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import styles from "@/components/v2/board.module.css";
-import { SUMMARY_ID, boardReducer, boardStorageKey, demoFinished, demoPhase, initBoard, rebaseSnapshotAnalysisId, reportPages, serializeBoardState, viewOf, type CardFace } from "@/lib/v2/ui/board-state";
+import { SUMMARY_ID, boardReducer, boardStorageKey, demoFinished, demoPhase, initBoard, rebaseSnapshotAnalysisId, reportPages, serializeBoardState, viewOf, type CardFace, type PinnedLabel } from "@/lib/v2/ui/board-state";
 import { buildReportPlan, complexCounts, reportFileName } from "@/lib/v2/report/report-plan";
 import { downloadBytes, exportFileName, EXPORT_MIME, DAE_MIME } from "@/lib/v2/export/download";
 import { DEFAULT_CALLOUT_MODE } from "@/lib/v2/ui/callout-layout";
@@ -27,6 +27,7 @@ import ProjectMenu, { type V2Project } from "@/components/v2/project-menu";
 
 const UNDO_LABEL ={ order: "옮김", size: "크기 바꿈", remove: "삭제됨", add: "더함" } as const;
 const DEMO_START_LABEL = "분석 데모";
+const EMPTY_PINNED_LABELS: PinnedLabel[] = [];
 
 type BoardProps = {
   baseResults: TileResult[];
@@ -720,7 +721,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
                   onHandleDown={start(id)}
                   onAction={onTileAction}
                   roseSeason={board.roseSeasons[id] ?? "annual"}
-                  pinnedLabels={board.labels[id] ?? []}
+                  pinnedLabels={board.labels[id] ?? EMPTY_PINNED_LABELS}
                   cardFace={viewOf(board, id)}
                   onWindUploaded={onWindUploaded}
                   stackable={stackableIds.includes(id)}
