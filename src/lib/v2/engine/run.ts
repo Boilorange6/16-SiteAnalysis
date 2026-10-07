@@ -68,7 +68,8 @@ export const DEFAULT_RADIUS_M = 800;
 export interface RunInput {
   address?: string;
   center?: LngLat;
-  site?: { pnus?: string[]; polygon?: readonly [number, number][] };
+  /** API validation guarantees exactly one branch; this wider shape keeps the engine callable from zod-parsed objects. */
+  site?: { pnus?: readonly string[]; polygon?: readonly [number, number][] };
   radiusM: number;
   analysisDate?: string;
   userId?: string | number | null;
@@ -235,7 +236,10 @@ export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, inpu
     createAnalysisRun(appDb, {
       analysisId, address: site.label, center: site.center, radiusM: input.radiusM, analysisDate,
       manifestHash: ctx.manifestHash, engineVersion: ENGINE_VERSION,
-      parameters: { pnu: site.pnu, legalCode: site.legalCode, jimok: site.jimok, jimokList: site.jimokList, site: site.site },
+      // `site` is the resolved EPSG:5179 geometry used by the engine. Keep the
+      // original WGS84/PNU input separately so projects can re-open the same
+      // selection instead of trying to serialize projected geometry as input.
+      parameters: { pnu: site.pnu, legalCode: site.legalCode, jimok: site.jimok, jimokList: site.jimokList, site: site.site, siteInput: input.site ?? null },
       userId: input.userId,
     });
     const results: TileResult[] = [];
@@ -294,7 +298,7 @@ export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, inpu
     }
     const sceneElapsedMs = Math.max(0, Math.round(performance.now() - sceneStarted));
     if (queued.length === 0) finishAnalysisRun(appDb, analysisId, "complete");
-    return { ok: true, analysisId, summary: buildSummary({ address: site.label, jimok: site.jimok }, input.radiusM, results), results, computed, reused, queued, timingsMs: { tiles: tileTimings, scene: sceneElapsedMs } };
+    return { ok: true, analysisId, summary: buildSummary({ address: site.label, jimok: site.jimok, kind: site.site.kind }, input.radiusM, results), results, computed, reused, queued, timingsMs: { tiles: tileTimings, scene: sceneElapsedMs } };
   } catch (error) {
     try {
       if (getAnalysisRun(appDb, analysisId)) finishAnalysisRun(appDb, analysisId, "failed");
@@ -310,5 +314,9 @@ export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, inpu
 /** 저장된 분석 복원(GET). 요약은 저장된 실행 조건과 결과에서 다시 만든다. */
 export function restoreSummary(run: { address: string; radiusM: number; parameters: Record<string, unknown> }, results: TileResult[]): SiteSummary {
   const jimok = typeof run.parameters.jimok === "string" ? run.parameters.jimok : null;
-  return buildSummary({ address: run.address, jimok }, run.radiusM, results);
+  const storedSite = run.parameters.site;
+  const kind = storedSite && typeof storedSite === "object" && !Array.isArray(storedSite) && "kind" in storedSite && ((storedSite as { kind?: unknown }).kind === "address" || (storedSite as { kind?: unknown }).kind === "parcels" || (storedSite as { kind?: unknown }).kind === "polygon")
+    ? (storedSite as { kind: "address" | "parcels" | "polygon" }).kind
+    : undefined;
+  return buildSummary({ address: run.address, jimok, kind }, run.radiusM, results);
 }

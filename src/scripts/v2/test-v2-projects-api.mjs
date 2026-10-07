@@ -17,7 +17,7 @@ A.createAnalysisRun(db, {
   analysisDate: "2026-10-07",
   manifestHash,
   engineVersion: "v2-p4",
-  parameters: {},
+  parameters: { siteInput: { pnus: ["1".repeat(19)] } },
   userId: 7,
 });
 
@@ -34,6 +34,7 @@ assert.equal(A.loadProject(db, "owned", 8), null, "다른 사용자의 프로젝
 assert.equal(A.renameProject(db, "owned", 8, "탈취"), null, "다른 사용자의 PATCH는 404처럼 숨긴다");
 assert.equal(A.deleteProject(db, "owned", 8), false, "다른 사용자의 DELETE는 404처럼 숨긴다");
 assert.equal(P.projectToJson(A.loadProject(db, "owned", 7), true).dataVersion, manifestHash);
+assert.deepEqual(P.projectToJson(A.loadProject(db, "owned", 7), true).site, { pnus: ["1".repeat(19)] }, "프로젝트가 분석 원본 site 입력을 보존");
 
 const valid = P.parseProjectPayload({ name: "고덕동 검토", analysisId: "owned-analysis", board: { order: [] } });
 assert.equal(valid.ok, true);

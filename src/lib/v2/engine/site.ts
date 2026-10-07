@@ -217,7 +217,7 @@ export function restoreSiteFromParameters(parameters: Record<string, unknown>): 
 export function resolveSiteGeometry(
   core: BetterSqlite3.Database,
   parcelsDb: BetterSqlite3.Database | null,
-  input: { address?: string; center?: LngLat; site?: { pnus?: string[]; polygon?: readonly [number, number][] } },
+  input: { address?: string; center?: LngLat; site?: { pnus?: readonly string[]; polygon?: readonly [number, number][] } },
 ): SiteGeometryResult {
   if (input.site !== undefined) {
     const requestedPnus = input.site.pnus;

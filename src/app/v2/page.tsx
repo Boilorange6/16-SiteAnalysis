@@ -24,6 +24,8 @@ import type { Scene } from "@/lib/v2/scene";
 import { isRoadAddress, ROAD_ADDRESS_UNSUPPORTED_MESSAGE } from "@/lib/v2/site";
 import { RADIUS_CAPTION, RADIUS_OPTIONS } from "@/lib/v2/ui/radius-options";
 import ProjectMenu, { type V2Project } from "@/components/v2/project-menu";
+import SitePicker from "@/components/v2/site-picker";
+import type { SiteInput } from "@/lib/v2/site";
 
 const UNDO_LABEL ={ order: "옮김", size: "크기 바꿈", remove: "삭제됨", add: "더함" } as const;
 const DEMO_START_LABEL = "분석 데모";
@@ -778,6 +780,9 @@ export default function V2BoardPage() {
   const [address, setAddress] = useState(() => hydratedAddress);
   const addressDirtyRef = useRef(hydratedAddress.length > 0);
   const [radiusM, setRadiusM] = useState(1000);
+  const [siteInput, setSiteInput] = useState<SiteInput | null>(null);
+  const [sitePickerOpen, setSitePickerOpen] = useState(false);
+  const [sitePickerValid, setSitePickerValid] = useState(false);
   const [busy, setBusy] = useState(false);
   const [canceling, setCanceling] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -841,7 +846,8 @@ export default function V2BoardPage() {
       setStaleProject(null);
     }
     try {
-      const loaded = await load(await apiFetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address: address.trim(), radiusM }) }), true, true, null, restoreProject?.projectId ?? null);
+      const requestedSite = restoreProject?.site ?? siteInput;
+      const loaded = await load(await apiFetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address: address.trim(), radiusM, ...(requestedSite ? { site: requestedSite } : {}) }) }), true, true, null, restoreProject?.projectId ?? null);
       if (!loaded || !restoreProject) return;
       const rebasedBoard = rebaseSnapshotAnalysisId(restoreProject.board, restoreProject.analysisId, loaded.analysisId);
       setProjectBoard(rebasedBoard);
@@ -908,6 +914,8 @@ export default function V2BoardPage() {
         setStaleProject(projectBody.project);
         setAddress(projectBody.project.address);
         setRadiusM(projectBody.project.radiusM);
+        setSiteInput(projectBody.project.site ?? null);
+        setSitePickerValid(!!projectBody.project.site);
         setProjectBoard(projectBody.project.board ?? null);
         setProblem({ text: "데이터가 갱신되어 다시 분석이 필요합니다.", login: false });
         return;
@@ -921,6 +929,8 @@ export default function V2BoardPage() {
       setProjectBoard(project.board ?? null);
       setAddress(project.address);
       setRadiusM(project.radiusM);
+      setSiteInput(project.site ?? null);
+      setSitePickerValid(!!project.site);
       setStaleProject(null);
       await load(await apiFetch(`${API}/${encodeURIComponent(project.analysisId)}`), true, true, null, project.projectId);
     } catch {
@@ -933,6 +943,7 @@ export default function V2BoardPage() {
   function handleProjectSaved(project: V2Project) {
     setCurrentProject((current) => project.board === undefined && current ? { ...current, ...project } : project);
     if (project.board !== undefined) setProjectBoard(project.board);
+    if (project.site !== undefined) setSiteInput(project.site);
     setWantedProjectId(project.projectId);
     setWantedId(null);
     setStaleProject(null);
@@ -1056,6 +1067,8 @@ export default function V2BoardPage() {
           onChange={(e) => {
             addressDirtyRef.current = true;
             setAddress(e.target.value);
+            setSiteInput(null);
+            setSitePickerValid(false);
             if (problem && !problem.login) setProblem(null);
           }}
           placeholder="지번 주소 (예: 서울 강동구 고덕동 123)"
@@ -1071,11 +1084,27 @@ export default function V2BoardPage() {
             </option>
           ))}
         </select>
-        <button type="submit" className={`${styles.pill} ${styles.pillDark}`} disabled={busy || activeJobs} aria-busy={busy || activeJobs}>
-          {busy || activeJobs ? "분석 중…" : "분석"}
+        <button type="button" className={styles.pill} onClick={() => setSitePickerOpen((open) => !open)} disabled={busy || activeJobs} aria-expanded={sitePickerOpen} aria-controls="v2-site-picker">
+          {sitePickerOpen ? "대지 지정 닫기" : "대지 지정"}
+        </button>
+        <button type="submit" className={`${styles.pill} ${styles.pillDark}`} disabled={busy || activeJobs || (sitePickerOpen && !sitePickerValid)} aria-busy={busy || activeJobs}>
+          {busy || activeJobs ? "분석 중…" : sitePickerOpen ? "이 대지로 분석" : "분석"}
         </button>
       </form>
       <p id="v2-radius-help" className={styles.radiusCaption}>반경 해석: {RADIUS_CAPTION}</p>
+      {sitePickerOpen && (
+        <div id="v2-site-picker">
+          <SitePicker
+            address={address}
+            radiusM={radiusM}
+            initialSite={siteInput}
+            disabled={busy || activeJobs}
+            serverError={problem && !problem.login ? problem.text : null}
+            onSiteChange={(site) => setSiteInput(site)}
+            onValidityChange={setSitePickerValid}
+          />
+        </div>
+      )}
       {problem && (
         <p id="v2-address-error" className={styles.problem} role="alert">
           {problem.text}

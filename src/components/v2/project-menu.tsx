@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import type { SiteInput } from "@/lib/v2/site";
 import styles from "./board.module.css";
 
 export type V2Project = {
@@ -17,6 +18,7 @@ export type V2Project = {
   createdAt: string;
   updatedAt: string;
   dataVersionAvailable?: boolean;
+  site?: SiteInput;
 };
 
 type ProjectMenuProps = {
