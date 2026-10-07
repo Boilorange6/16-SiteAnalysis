@@ -270,6 +270,14 @@ export function representativeJibun(parcels: readonly SitePickerParcel[], distri
   return parcels.length > 1 ? `${full} 외 ${parcels.length - 1}필지` : full;
 }
 
+/** PNU의 본번·부번을 화면용 지번으로 복원한다. */
+export function jibunFromPnu(pnu: string): string {
+  if (!/^\d{19}$/.test(pnu)) return pnu;
+  const main = String(Number(pnu.slice(11, 15)));
+  const sub = Number(pnu.slice(15, 19));
+  return sub > 0 ? `${main}-${sub}` : main;
+}
+
 export function toggleParcelPnu(pnus: readonly string[], pnu: string, max = MAX_SITE_PARCELS): { pnus: string[]; limited: boolean } {
   const current = [...new Set(pnus)];
   if (current.includes(pnu)) return { pnus: current.filter((value) => value !== pnu), limited: false };

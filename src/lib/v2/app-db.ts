@@ -430,10 +430,12 @@ type ProjectRow = {
 
 function projectFromRow(row: ProjectRow, board?: unknown): SavedProject {
   let site: SiteInput | undefined;
+  let inputAddress: string | undefined;
   try {
-    const parameters = JSON.parse(row.parameters_json) as { siteInput?: unknown };
+    const parameters = JSON.parse(row.parameters_json) as { siteInput?: unknown; inputAddress?: unknown };
     const parsed = parseSiteInput(parameters.siteInput);
     if (parsed) site = parsed;
+    if (typeof parameters.inputAddress === "string" && parameters.inputAddress.trim()) inputAddress = parameters.inputAddress.trim();
   } catch {
     // Legacy runs can contain no JSON siteInput. They remain openable as address runs.
   }
@@ -443,7 +445,7 @@ function projectFromRow(row: ProjectRow, board?: unknown): SavedProject {
     analysisId: row.analysis_id,
     board,
     userId: row.user_id,
-    address: row.address,
+    address: inputAddress ?? row.address,
     radiusM: row.radius_m,
     analysisDate: row.analysis_date,
     dataVersion: row.manifest_hash,

@@ -239,7 +239,7 @@ export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, inpu
       // `site` is the resolved EPSG:5179 geometry used by the engine. Keep the
       // original WGS84/PNU input separately so projects can re-open the same
       // selection instead of trying to serialize projected geometry as input.
-      parameters: { pnu: site.pnu, legalCode: site.legalCode, jimok: site.jimok, jimokList: site.jimokList, site: site.site, siteInput: input.site ?? null },
+      parameters: { pnu: site.pnu, legalCode: site.legalCode, jimok: site.jimok, jimokList: site.jimokList, site: site.site, siteInput: input.site ?? null, inputAddress: input.address?.trim() || null },
       userId: input.userId,
     });
     const results: TileResult[] = [];

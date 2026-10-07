@@ -18,6 +18,8 @@ import { exportAvailability, formatElapsedMs, jobProgress } from "@/lib/v2/ui/bo
 import { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } from "@/lib/v2/ui/fixtures/godeok";
 import { toSummaryView, toTileView, type SiteSummary } from "@/lib/v2/ui/tile-view";
 import { siteParcelFromResults } from "@/lib/v2/ui/site-parcel";
+import { toLngLat } from "@/lib/v2/crs";
+import { jibunFromPnu, type SitePickerParcel } from "@/lib/v2/ui/site-picker";
 import type { TileResult } from "@/lib/v2/tile-result";
 import type { RoseSeason } from "@/lib/v2/tile-result";
 import type { Scene } from "@/lib/v2/scene";
@@ -772,6 +774,21 @@ function mergeResults(existing: TileResult[], incoming: TileResult[]): TileResul
   return [...existing.map((result) => replacements.get(result.tileCode) ?? result), ...incoming.filter((result) => !existingCodes.has(result.tileCode))];
 }
 
+function pickerParcelsFromScene(scene: Scene | null, site: SiteInput | null): SitePickerParcel[] {
+  if (!scene || !site || !("pnus" in site)) return [];
+  const selected = new Set(site.pnus);
+  return scene.parcels.filter((parcel) => selected.has(parcel.pnu) && parcel.rings.length > 0).map((parcel) => ({
+    pnu: parcel.pnu,
+    label: jibunFromPnu(parcel.pnu),
+    jimok: parcel.jimok,
+    areaM2: parcel.areaM2,
+    geometry: {
+      type: "Polygon" as const,
+      coordinates: parcel.rings.map((ring) => ring.map(([x, y]) => toLngLat([scene.origin.x + x, scene.origin.y + y]) as [number, number])),
+    },
+  }));
+}
+
 /** 주소 입력 → 분석 → 실제 결과 보드. 분석 전에는 예시 보드를 그대로 보여 준다. */
 export default function V2BoardPage() {
   // React hydration can start after a user has typed into the server-rendered input.
@@ -912,6 +929,7 @@ export default function V2BoardPage() {
       }
       if (projectResponse.status === 409 && projectBody.project) {
         setStaleProject(projectBody.project);
+        addressDirtyRef.current = true;
         setAddress(projectBody.project.address);
         setRadiusM(projectBody.project.radiusM);
         setSiteInput(projectBody.project.site ?? null);
@@ -927,6 +945,7 @@ export default function V2BoardPage() {
       const project = projectBody.project;
       setCurrentProject(project);
       setProjectBoard(project.board ?? null);
+      addressDirtyRef.current = true;
       setAddress(project.address);
       setRadiusM(project.radiusM);
       setSiteInput(project.site ?? null);
@@ -1048,6 +1067,8 @@ export default function V2BoardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live?.analysisId, windRefresh]);
 
+  const pickerParcels = useMemo(() => pickerParcelsFromScene(live?.scene ?? null, siteInput), [live?.scene, siteInput]);
+
   useEffect(() => {
     if (live && !addressDirtyRef.current) {
       setAddress(live.summary.address);
@@ -1098,6 +1119,7 @@ export default function V2BoardPage() {
             address={address}
             radiusM={radiusM}
             initialSite={siteInput}
+            initialParcels={pickerParcels}
             disabled={busy || activeJobs}
             serverError={problem && !problem.login ? problem.text : null}
             onSiteChange={(site) => setSiteInput(site)}

@@ -5,6 +5,7 @@ const {
   closePolygon,
   hasSelfIntersection,
   isParcelSelectionConnected,
+  jibunFromPnu,
   outerBoundary,
   parcelAdjacencyGroups,
   polygonAreaM2,
@@ -32,6 +33,7 @@ assert.ok(polygonAreaM2([[127, 37], [127.001, 37], [127.001, 37.001], [127, 37.0
 assert.equal(hasSelfIntersection(closePolygon([[0, 0], [1, 1], [1, 0], [0, 1]])), true);
 assert.equal(hasSelfIntersection(closePolygon([[0, 0], [1, 0], [1, 1], [0, 1]])), false);
 assert.equal(representativeJibun([first, second, far], "고덕동"), "고덕동 248-2 외 2필지");
+assert.equal(jibunFromPnu("1174010200102480002"), "248-2");
 
 const full = Array.from({ length: MAX_SITE_PARCELS }, (_, index) => String(index).padStart(19, "0"));
 assert.equal(toggleParcelPnu(full, "9".repeat(19)).limited, true, "30 parcel cap");

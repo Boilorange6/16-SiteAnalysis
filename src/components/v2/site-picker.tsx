@@ -31,6 +31,7 @@ type SitePickerProps = {
   address: string;
   radiusM: number;
   initialSite?: SiteInput | null;
+  initialParcels?: readonly SitePickerParcel[];
   disabled?: boolean;
   serverError?: string | null;
   onSiteChange: (site: SiteInput | null) => void;
@@ -111,12 +112,12 @@ async function responseJson<T>(response: Response): Promise<T & { error?: string
   return (await response.json().catch(() => ({}))) as T & { error?: string };
 }
 
-export default function SitePicker({ address, radiusM, initialSite = null, disabled = false, serverError = null, onSiteChange, onValidityChange }: SitePickerProps) {
+export default function SitePicker({ address, radiusM, initialSite = null, initialParcels = [], disabled = false, serverError = null, onSiteChange, onValidityChange }: SitePickerProps) {
   const initialSignature = siteSignature(initialSite);
   const initialMode = modeFromSite(initialSite);
   const [mode, setMode] = useState<SitePickerMode>(initialMode);
   const [addressParcel, setAddressParcel] = useState<SitePickerParcel | null>(null);
-  const [parcels, setParcels] = useState<SitePickerParcel[]>([]);
+  const [parcels, setParcels] = useState<SitePickerParcel[]>(() => [...initialParcels]);
   const [selectedPnus, setSelectedPnus] = useState<string[]>(initialSite && "pnus" in initialSite ? [...initialSite.pnus] : []);
   const [drawPoints, setDrawPoints] = useState<LngLat[]>(initialSite && "polygon" in initialSite ? initialSite.polygon.slice(0, -1).map(([lng, lat]) => [lng, lat]) : []);
   const [drawDone, setDrawDone] = useState(initialSite && "polygon" in initialSite);
@@ -160,6 +161,11 @@ export default function SitePicker({ address, radiusM, initialSite = null, disab
     setMapCenter(null);
     setZoomScale(1);
   }, [address]); // address changes are the boundary for a new site selection
+
+  useEffect(() => {
+    if (initialParcels.length === 0) return;
+    setParcels((current) => [...new Map([...current, ...initialParcels].map((parcel) => [parcel.pnu, parcel])).values()]);
+  }, [initialParcels]);
 
   useEffect(() => {
     if (initialSignature === ownedSiteSignatureRef.current) return;
