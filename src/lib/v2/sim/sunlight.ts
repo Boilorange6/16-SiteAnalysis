@@ -3,12 +3,12 @@
  * 각 간격은 그 간격 중앙 시각의 태양 위치로 계산한다(09:00~15:00, 10분이면 09:05, 09:15, … 36개 = 6시간).
  * 미계산 셀(높이를 모르는 건물이 덮은 셀)은 0시간으로 세지 않고 분모에서 뺀 뒤 미계산 면적률로 따로 낸다.
  */
-import { buildingShadow, pointInRings, ringBBox, shadowBBox, shadowVector, pointInShadow, type BBox, type Building, type Shadow, type XY } from "./shadow";
+import { buildingShadow, pointInRings, pointInSite, ringBBox, siteBBox, siteRings, shadowBBox, shadowVector, pointInShadow, type BBox, type Building, type SiteRings, type Shadow, type XY } from "./shadow";
 import { sunPosition, kst } from "./sun";
 
 export interface SunlightInput {
   /** 대지 외곽 링 (미터 좌표) */
-  site: readonly XY[];
+  site: SiteRings;
   buildings: readonly Building[];
   /** 태양 위치 계산용 대지 중심 위경도 */
   latDeg: number;
@@ -77,17 +77,18 @@ function distToSegment(p: XY, a: XY, b: XY): number {
   return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
 }
 
-function withinDistance(ring: readonly XY[], site: readonly XY[], r: number): boolean {
-  if (ring.some((p) => pointInRings(p[0], p[1], [site]) )) return true;
-  if (site.some((p) => pointInRings(p[0], p[1], [ring]))) return true;
-  for (const p of ring) for (let i = 0; i < site.length; i++) if (distToSegment(p, site[i], site[(i + 1) % site.length]) <= r) return true;
+function withinDistance(ring: readonly XY[], site: SiteRings, r: number): boolean {
+  const parts = siteRings(site);
+  if (parts.some((part) => ring.some((p) => pointInRings(p[0], p[1], [part])))) return true;
+  if (parts.some((part) => part.some((p) => pointInRings(p[0], p[1], [ring])))) return true;
+  for (const p of ring) for (const part of parts) for (let i = 0; i < part.length; i++) if (distToSegment(p, part[i], part[(i + 1) % part.length]) <= r) return true;
   return false;
 }
 
 /** 철거 가정이면 대지와 겹치는 발자국은 수광면과 그림자 원천 모두에서 뺀다. */
-export function shadowSourcesFor(buildings: readonly Building[], site: readonly XY[], removeBuildingsInSite: boolean): readonly Building[] {
+export function shadowSourcesFor(buildings: readonly Building[], site: SiteRings, removeBuildingsInSite: boolean): readonly Building[] {
   if (!removeBuildingsInSite) return buildings;
-  const siteBox = ringBBox(site);
+  const siteBox = siteBBox(site);
   return buildings.filter((building) => !bboxOverlap(ringBBox(building.ring), siteBox));
 }
 
@@ -101,7 +102,7 @@ export function computeSunlight(input: SunlightInput): SunlightResult {
   const minRun = input.minContinuousHours ?? 2;
   const { year, month, day } = input.date;
   const site = input.site;
-  const sb = ringBBox(site);
+  const sb = siteBBox(site);
 
   // 1) 영향 영역 안 건물
   const influencing = input.buildings.filter((b) => withinDistance(b.ring, site, influenceM));
@@ -114,7 +115,7 @@ export function computeSunlight(input: SunlightInput): SunlightResult {
   const cells: SunlightCell[] = [];
   for (let y = sb.minY + g / 2; y < sb.maxY; y += g) {
     for (let x = sb.minX + g / 2; x < sb.maxX; x += g) {
-      if (!pointInRings(x, y, [site])) continue;
+      if (!pointInSite(x, y, site)) continue;
       let state: CellState = "calculated";
       for (const { b, box } of footprints) {
         if (x < box.minX || x > box.maxX || y < box.minY || y > box.maxY || !pointInRings(x, y, [b.ring])) continue;

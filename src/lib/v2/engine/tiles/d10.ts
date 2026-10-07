@@ -47,12 +47,10 @@ function pointInParts(point: [number, number], parts: number[][][][]): boolean {
 }
 
 function siteCanopyPct(ctx: EngineContext, canopy: ReturnType<typeof canopyFor>): ReturnType<typeof est> | ReturnType<typeof missing> {
-  const sources = ctx.sources("parcels", ["parcel_polygon"]);
-  const site = ctx.input.pnu && sources.length > 0
-    ? ctx.hits("parcels", ["parcel"]).find((hit) => hit.pnu === ctx.input.pnu)
-    : undefined;
-  if (!site || !canopy) return missing("canopy_site_pct", "대지 수관 면적률", "%", "d10-canopy-site@1:대상 필지와 유효 항공영상이 없어 계산하지 않음");
-  const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, site.geometry);
+  const siteHit = ctx.siteParcelHits()[0];
+  const geometry = ctx.input.site.geometry ?? siteHit?.geometry;
+  if (!geometry || !canopy) return missing("canopy_site_pct", "대지 수관 면적률", "%", "d10-canopy-site@2:대상 대지와 유효 항공영상이 없어 계산하지 않음");
+  const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, geometry);
   if (!clipped || clipped.areaM2 <= 0) return missing("canopy_site_pct", "대지 수관 면적률", "%", "d10-canopy-site@1:대상 필지 도형 교차면적을 계산하지 못함");
   let canopyCells = 0;
   for (let row = 0; row < canopy.grid.rows; row++) {
@@ -65,7 +63,7 @@ function siteCanopyPct(ctx: EngineContext, canopy: ReturnType<typeof canopyFor>)
       if (pointInParts([x, y], clipped.parts)) canopyCells += 1;
     }
   }
-  return est("canopy_site_pct", "대지 수관 면적률", percent(canopyCells * canopy.grid.cellM ** 2, clipped.areaM2), "%", "d10-canopy-site@1:대상 필지 안 수관 셀 면적÷대상 필지 반경 교차면적", Math.round(canopyCells * canopy.grid.cellM ** 2), Math.round(clipped.areaM2));
+  return est("canopy_site_pct", "대지 수관 면적률", percent(canopyCells * canopy.grid.cellM ** 2, clipped.areaM2), "%", `d10-canopy-site@2:${ctx.input.site.kind === "polygon" ? "직접 그린 구역" : "대지"} 안 수관 셀 면적÷대지 반경 교차면적`, Math.round(canopyCells * canopy.grid.cellM ** 2), Math.round(clipped.areaM2));
 }
 
 export function d10(ctx: EngineContext, options: CanopyForOptions = {}): TileResult {

@@ -8,6 +8,8 @@ import type { Feature, MultiPolygon, Polygon } from "geojson";
 import type { SunPosition } from "./sun";
 
 export type XY = readonly [number, number];
+/** 한 고리(기존 계약) 또는 합필/멀티폴리곤의 바깥 고리 목록. */
+export type SiteRings = readonly XY[] | readonly (readonly XY[])[];
 export interface Building {
   id: string;
   /** 외곽 링 (닫혀 있어도 열려 있어도 됨) */
@@ -36,6 +38,25 @@ export function ringBBox(ring: readonly XY[]): BBox {
     if (y > maxY) maxY = y;
   }
   return { minX, minY, maxX, maxY };
+}
+
+export function siteRings(site: SiteRings): readonly (readonly XY[])[] {
+  const first = site[0] as XY | readonly XY[] | undefined;
+  return first && typeof first[0] === "number" ? [site as readonly XY[]] : site as readonly (readonly XY[])[];
+}
+
+export function siteBBox(site: SiteRings): BBox {
+  const boxes = siteRings(site).map(ringBBox);
+  return {
+    minX: Math.min(...boxes.map((box) => box.minX)),
+    minY: Math.min(...boxes.map((box) => box.minY)),
+    maxX: Math.max(...boxes.map((box) => box.maxX)),
+    maxY: Math.max(...boxes.map((box) => box.maxY)),
+  };
+}
+
+export function pointInSite(x: number, y: number, site: SiteRings): boolean {
+  return siteRings(site).some((ring) => pointInRings(x, y, [ring]));
 }
 
 const closed = (ring: readonly XY[]): XY[] => {

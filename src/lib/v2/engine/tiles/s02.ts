@@ -3,7 +3,7 @@ import type { Geometry, Position } from "geojson";
 import { toUtmk, type LngLat } from "../../crs";
 import { parseTileResult, type TileResult } from "../../tile-result";
 import { buildS02RasterTileResult, s02RasterData, type S02RasterField } from "../../sim/s02-tile";
-import type { XY } from "../../sim/shadow";
+import type { SiteRings, XY } from "../../sim/shadow";
 import type { EngineContext, SourceRef } from "../context";
 import {
   SUN_INFLUENCE_M,
@@ -50,9 +50,13 @@ function siteAround(center: LngLat): XY[] {
   return [[cx - half, cy - half], [cx + half, cy - half], [cx + half, cy + half], [cx - half, cy + half]];
 }
 
-function parcelSite(ctx: EngineContext): { site: XY[]; siteKind: "parcel" | "box"; sources: SourceRef[] } {
+function parcelSite(ctx: EngineContext): { site: SiteRings; siteKind: "parcel" | "polygon" | "box"; sources: SourceRef[] } {
   const db = ctx.db("parcels");
   const sources = db ? ctx.sources("parcels", PARCEL_SOURCES) : [];
+  if (ctx.input.site.geometry) {
+    const rings = outerRings(ctx.input.site.geometry);
+    return { site: rings, siteKind: ctx.input.site.kind === "polygon" ? "polygon" : "parcel", sources };
+  }
   if (!db || !ctx.input.pnu || sources.length === 0) return { site: siteAround(ctx.input.center), siteKind: "box", sources: [] };
   const hit = ctx.hits("parcels", ["parcel"]).find((candidate) => candidate.pnu === ctx.input.pnu);
   if (!hit) return { site: siteAround(ctx.input.center), siteKind: "box", sources: [] };
@@ -61,7 +65,7 @@ function parcelSite(ctx: EngineContext): { site: XY[]; siteKind: "parcel" | "box
   return site ? { site, siteKind: "parcel", sources } : { site: siteAround(ctx.input.center), siteKind: "box", sources: [] };
 }
 
-function coverageFor(ctx: EngineContext, siteKind: "parcel" | "box"): TileResult["limitations"] {
+function coverageFor(ctx: EngineContext, siteKind: "parcel" | "polygon" | "box"): TileResult["limitations"] {
   return [
     ...buildingRetirementLimitations(ctx, Math.min(5000, ctx.input.radiusM + SUN_INFLUENCE_M)),
     ...ctx.coverage("buildings", BUILDING_SOURCES),
@@ -72,8 +76,8 @@ function coverageFor(ctx: EngineContext, siteKind: "parcel" | "box"): TileResult
 export interface S02Shared {
   grid: NonNullable<ReturnType<typeof sunGridFor>>;
   fields: S02RasterField[];
-  site: XY[];
-  siteKind: "parcel" | "box";
+  site: SiteRings;
+  siteKind: "parcel" | "polygon" | "box";
   sources: SourceRef[];
   coverage: TileResult["limitations"];
 }
@@ -121,5 +125,6 @@ export function s02(ctx: EngineContext): TileResult {
     influenceM: SUN_INFLUENCE_M,
     terrain: horizonFor(ctx) ? "glo30-horizon" : "none",
     coverage: shared.coverage,
+    parcelSnapshotHash: ctx.conditions.parcelSnapshotHash,
   }));
 }

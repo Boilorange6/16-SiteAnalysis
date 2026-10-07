@@ -34,6 +34,8 @@ export const PARCEL_PNUS = [
   "4136011800101000008",
   "4136011800101000009",
 ];
+/** 합필·선택 API 테스트용으로만 추가하는 경계 공유 2필지. 기본 fixture의 건수·회귀값은 바꾸지 않는다. */
+export const SITE_PNUS = ["4136011800101010000", "4136011800101010001"];
 /** 실거래 위치 필지(중심에서 동쪽 거리). A: 100m · B: 300m · C: 600m(송파 쪽) · FAR: 2000m(반경 밖) */
 export const TRADE_PNU = { A: "4136011800100010000", B: "4136011800100020000", C: "1171010100100030000", FAR: "4136011800100040000" };
 const TRADE_PNU_DX = { [TRADE_PNU.A]: 100, [TRADE_PNU.B]: 300, [TRADE_PNU.C]: 600, [TRADE_PNU.FAR]: 2000 };
@@ -71,6 +73,10 @@ export async function buildEngineFixture(dataDir, version, options = {}) {
   la.run("41360131", "emd", "별내동", "41360", legal); // 동명 → 모호
   la.run("11710", "sigungu", "서울특별시 송파구", null, legal);
   db.prepare("INSERT INTO parcel_point VALUES (?, ?, ?, ?, ?)").run(PNU_DASAN_100, CENTER[0], CENTER[1], "대", parcel);
+  if (options.siteSelection) {
+    db.prepare("INSERT INTO parcel_point VALUES (?, ?, ?, ?, ?)").run(SITE_PNUS[0], ...at(230, 0), "대", parcel);
+    db.prepare("INSERT INTO parcel_point VALUES (?, ?, ?, ?, ?)").run(SITE_PNUS[1], ...at(250, 0), "대", parcel);
+  }
   if (options.trades || options.rents) {
     const pp = db.prepare("INSERT INTO parcel_point VALUES (?, ?, ?, ?, ?)");
     for (const [pnu, dx] of Object.entries(TRADE_PNU_DX)) pp.run(pnu, ...at(dx, 0), "대", parcel);
@@ -171,7 +177,13 @@ export async function buildEngineFixture(dataDir, version, options = {}) {
     parcel(PARCEL_PNUS[6], "산100-7임", "임", rect(200, 400, -400, -200), 40000, true);
     parcel(PARCEL_PNUS[7], "100-8대", "대", rect(700, 900, -50, 50), 20000);
     parcel(PARCEL_PNUS[8], "100-9대", "대", rect(2000, 2100, 0, 100), 10000);
-    run(db, "parcel_polygon", parcelRelease, { byRegion: { 41: 9 }, byType: { 대: 6, 도: 1, 천: 1, 임: 1 }, fillRates: {}, unlocated: 0 }, 0, 9);
+    if (options.siteSelection) {
+      parcel(SITE_PNUS[0], "101-1대", "대", rect(220, 245, -20, 20), 1000);
+      parcel(SITE_PNUS[1], "101-2전", "전", rect(245, 260, -20, 20), 600);
+    }
+    const count = options.siteSelection ? 11 : 9;
+    const byType = options.siteSelection ? { 대: 7, 도: 1, 천: 1, 임: 1, 전: 1 } : { 대: 6, 도: 1, 천: 1, 임: 1 };
+    run(db, "parcel_polygon", parcelRelease, { byRegion: { 41: count }, byType, fillRates: {}, unlocated: 0 }, 0, count);
     db.close();
     files.parcels = "parcels";
   }

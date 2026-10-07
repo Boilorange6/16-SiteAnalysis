@@ -17,7 +17,7 @@ import type { SiteSummary } from "../ui/tile-view";
 import { catalogEntry } from "../ui/tile-catalog";
 import { EngineContext } from "./context";
 import { buildScene } from "./scene";
-import { resolveSite, type SiteFailure, type SiteResult } from "./site";
+import { resolveSiteGeometry, SITE_DEPENDENT_TILE_CODES, type SiteFailure, type SiteGeometryResult } from "./site";
 import { buildSummary } from "./summary";
 import { a01 } from "./tiles/a01";
 import { a02 } from "./tiles/a02";
@@ -68,6 +68,7 @@ export const DEFAULT_RADIUS_M = 800;
 export interface RunInput {
   address?: string;
   center?: LngLat;
+  site?: { pnus?: string[]; polygon?: readonly [number, number][] };
   radiusM: number;
   analysisDate?: string;
   userId?: string | number | null;
@@ -75,7 +76,7 @@ export interface RunInput {
 
 export type RunOutcome =
   | { ok: true; analysisId: string; summary: SiteSummary; results: TileResult[]; computed: string[]; reused: string[]; queued: string[]; timingsMs: { tiles: Record<string, number>; scene: number } }
-  | { ok: false; reason: SiteFailure };
+  | { ok: false; reason: SiteFailure; missingPnus?: string[] };
 
 /** TileResult 계약을 건드리지 않고 API/저장 JSON에 계산 소요를 함께 노출하는 T3 부가 필드. */
 export type TimedTileResult = TileResult & { elapsedMs: number };
@@ -140,12 +141,11 @@ export const TILES: Array<[code: string, compute: (ctx: EngineContext) => TileRe
 
 export const todayKst = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
 
-function cacheKeyFor(ctx: EngineContext, code: string, upstream: string | null = null): string {
-  const conditions = DATE_INDEPENDENT_CODES.has(code) ? { ...ctx.conditions, analysisDate: "date-independent" } : ctx.conditions;
+export function cacheKeyFor(ctx: EngineContext, code: string, upstream: string | null = null): string {
+  const dateConditions = DATE_INDEPENDENT_CODES.has(code) ? { ...ctx.conditions, analysisDate: "date-independent" } : ctx.conditions;
+  const conditions = SITE_DEPENDENT_TILE_CODES.has(code) ? dateConditions : { ...dateConditions, parcelSnapshotHash: null };
   const key = tileCacheKey({ tileCode: code, manifestHash: ctx.manifestHash, engineVersion: cacheEngineVersion(code), conditions });
-  const sitePnu = code === "D19" ? `site-pnu:${ctx.input.pnu ?? "none"}` : null;
-  const suffix = sitePnu ?? upstream;
-  return suffix ? sha256Hex(`${key}:${suffix}`) : key;
+  return upstream ? sha256Hex(`${key}:${upstream}`) : key;
 }
 
 /** S04 reads S03's stored wind/obstacle rasters, and S03's own cache key does not change when a 2D/3D/uploaded wind
@@ -206,16 +206,19 @@ export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, inpu
   const manifest = readManifest(dataDir);
   if (!manifest) throw new Error("no published manifest — run a data build first");
   const core = acquireDataFile(dataDir, manifest, "core");
-  let site: SiteResult;
+  const parcels = manifest.files.parcels ? acquireDataFile(dataDir, manifest, "parcels") : null;
+  let site: SiteGeometryResult;
   try {
-    site = resolveSite(core, input);
+    site = resolveSiteGeometry(core, parcels, input);
   } catch (error) {
+    if (parcels) releaseDataFile(parcels);
     releaseDataFile(core);
     throw error;
   }
   if (!site.ok) {
+    if (parcels) releaseDataFile(parcels);
     releaseDataFile(core);
-    return { ok: false, reason: site.reason };
+    return { ok: false, reason: site.reason, ...(site.missingPnus ? { missingPnus: site.missingPnus } : {}) };
   }
 
   const analysisId = randomUUID();
@@ -224,15 +227,15 @@ export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, inpu
     dataDir,
     manifest,
     analysisId,
-    { address: site.label, center: site.center, radiusM: input.radiusM, analysisDate, pnu: site.pnu },
-    { core },
-    { reuseDataFiles: true, pooledKeys: ["core"] },
+    { address: site.label, center: site.center, radiusM: input.radiusM, analysisDate, pnu: site.pnu, site: site.site },
+    { core, ...(parcels ? { parcels } : {}) },
+    { reuseDataFiles: true, pooledKeys: parcels ? ["core", "parcels"] : ["core"] },
   );
   try {
     createAnalysisRun(appDb, {
       analysisId, address: site.label, center: site.center, radiusM: input.radiusM, analysisDate,
       manifestHash: ctx.manifestHash, engineVersion: ENGINE_VERSION,
-      parameters: { pnu: site.pnu, legalCode: site.legalCode, jimok: site.jimok },
+      parameters: { pnu: site.pnu, legalCode: site.legalCode, jimok: site.jimok, jimokList: site.jimokList, site: site.site },
       userId: input.userId,
     });
     const results: TileResult[] = [];
