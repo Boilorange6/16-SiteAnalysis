@@ -191,7 +191,7 @@ export default function SitePicker({ address, radiusM, initialSite = null, initi
     if (!address.trim()) return;
     const controller = new AbortController();
     setLoading(true);
-    void fetch(`/site/api/geocode?query=${encodeURIComponent(address.trim())}`, { credentials: "include", signal: controller.signal })
+    void fetch(`/site/api/v2/site/resolve?address=${encodeURIComponent(address.trim())}`, { credentials: "include", signal: controller.signal })
       .then(async (response) => {
         const body = await responseJson<GeocodeReply>(response);
         if (!response.ok || typeof body.lng !== "number" || typeof body.lat !== "number") throw new Error(body.error ?? "주소 위치를 찾지 못했습니다");
