@@ -331,7 +331,7 @@ function calloutPage(s: Slide, p: PlannedSlide & { kind: "tile" }) {
     const [x, y] = at.get(c.id)!;
     s.addShape("ellipse", { x: x - 0.045, y: y - 0.045, w: 0.09, h: 0.09, fill: { color: hex(dotColor(c)), transparency: 40 }, line: { color: "FFFFFF", width: 0.5 } });
   });
-  const { placed } = layoutCallouts(f, items.map((c) => ({ id: c.id, x: at.get(c.id)![0], y: at.get(c.id)![1] })));
+  const { placed } = layoutCallouts(f, items.map((c) => ({ id: c.id, rank: c.rank, x: at.get(c.id)![0], y: at.get(c.id)![1] })));
   const byId = new Map(items.map((c) => [c.id, c]));
   for (const pl of placed) {
     const c = byId.get(pl.id)!;

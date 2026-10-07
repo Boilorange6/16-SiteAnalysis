@@ -114,6 +114,32 @@ assert.deepEqual(C.rankSupply(list.map(() => sup({})), "2026-09-30").map((c) => 
   assert.ok(calloutScene(model, "card", 360, 300, 0).frame.diameter > 125, "모바일 보드 중앙 반경원이 카드 폭 때문에 117px로 줄지 않음");
 }
 
+// ── 보드 compact 카드: 번호·카드 1:1, 실제 수용량 밖에서는 낮은 순위만 제외 ──
+{
+  const a05Model = toTileView(GODEOK_RESULTS.find((r) => r.tileCode === "A05")).callout;
+  assert.ok(a05Model && a05Model.kind === "stock");
+  for (const [W, H] of [[600, 195], [420, 195], [800, 195]]) {
+    const scene = calloutScene(a05Model, "card", W, H, 0);
+    const cardIds = new Set(scene.placed.map((p) => p.id));
+    const lowestNumberedRank = Math.max(...scene.numbered.map((c) => c.rank));
+    assert.ok(
+      scene.overflow.length === 0 || scene.overflow.every((id) => id === `c${lowestNumberedRank}`),
+      `${W}x${H}: overflow는 최하위 순위만 가능 (${scene.overflow.join(",")})`,
+    );
+    assert.equal(scene.numbered.length, scene.placed.length, `${W}x${H}: 번호 점과 그려진 카드 수가 같다`);
+    assert.ok(a05Model.complexes.slice(0, 3).every((c) => cardIds.has(c.id)), `${W}x${H}: 상위 3순위 카드가 모두 있다`);
+  }
+
+  // 직접 layoutCallouts를 호출해도 y 위치가 아니라 순위가 낮은 c5를 먼저 버린다.
+  const f = C.calloutFrame({ W: 600, H: 195, m: C.PX, edge: 12, top: 12, bottom: 187, perSide: 2, rows: 4, variant: "compact" });
+  const over = C.layoutCallouts(
+    f,
+    Array.from({ length: 5 }, (_, i) => ({ id: `c${i + 1}`, rank: i + 1, x: f.centerX - 120, y: 80 + i * 7 })),
+  );
+  assert.deepEqual(over.overflow, ["c5"], "초과 시 화면 아래 점이 아니라 낮은 순위부터 버린다");
+  assert.deepEqual(new Set(over.placed.map((p) => p.id)), new Set(["c1", "c2", "c3", "c4"]));
+}
+
 // ── 등급(grades): 스키마, A01 방출, 다른 타일에는 없음 ──
 {
   assert.deepEqual([gradeRail(500), gradeRail(501), gradeRail(1000), gradeRail(1001)], ["good", "fair", "fair", "caution"], "철도 500/1,000m");

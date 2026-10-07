@@ -240,6 +240,20 @@ export function displayComplexName(c: Complex, siblings: readonly Complex[] = []
   return `${prefix}${duplicatePrefix ? ` · ${c.rank}번` : ""}`;
 }
 
+/**
+ * compact 카드에서 이름이 실제로 두 줄이 될 만큼 긴지 화면 토큰으로 추정한다.
+ * 브라우저에서 줄바꿈을 막지 않고, 프레임만 두 줄 이름에 맞춰 예약한다.
+ */
+export function compactNameNeedsExtraHeight(c: Complex, siblings: readonly Complex[], cardW: number): boolean {
+  // data-narrow 카드의 헤더는 이름이 한 줄이어도 값 줄과 겹치지 않게 여유를 둔다.
+  if (cardW < 112) return true;
+  const label = displayComplexName(c, siblings);
+  const textW = [...label].reduce((sum, ch) => sum + (ch === " " ? 4 : /[\u0000-\u007f]/.test(ch) ? 7 : 12), 0);
+  const chipW = c.supply?.overlap ? 42 : 0;
+  // compact .cHead: 좌우 padding 16 + 번호 18 + gap 6 + optional chip.
+  return textW > cardW - 40 - chipW + 0.5;
+}
+
 // ── 모바일(≤520px): 좌우 칸 대신 지도 아래 가로 띠 카드 (지시선 없음) ──
 export const MOBILE_MAX_W = 520;
 export const isMobileWidth = (w: number) => w <= MOBILE_MAX_W;
@@ -302,8 +316,12 @@ export const PX_NARROW: Metrics = { ...PX, cardW: 100, compactW: 100, minW: 84, 
 /** 슬라이드(inch) */
 export const INCH: Metrics = { cardW: 2.55, compactW: 2.0, minW: 1.4, gap: 0.1, stub: 0.2, rMin: 0.12, rMax: 0.22, head: 0.28, row: 0.165, pad: 0.06, compactH: 0.5 };
 
-/** compact 카드는 이름이 두 줄이 될 수 있어 줄바꿈 여유를 예약한다. */
-export const cardHeight = (m: Metrics, variant: "full" | "compact", rows: number) => (variant === "compact" ? m.compactH + m.row * 0.2 : m.head + rows * m.row + m.pad);
+/** compact 카드는 실제 두 줄 이름(또는 좁은 카드)일 때만 줄바꿈 여유를 예약한다. */
+export const cardHeight = (m: Metrics, variant: "full" | "compact", rows: number, compactNameWrap = false) =>
+  variant === "compact" ? m.compactH + (compactNameWrap ? m.row * 0.2 : 0) : m.head + rows * m.row + m.pad;
+
+export const cardWidth = (m: Metrics, variant: "full" | "compact", W: number) =>
+  Math.max(m.minW, Math.min(variant === "compact" ? m.compactW : m.cardW, W * (m.cardFraction ?? 0.27)));
 
 export type Column = { x0: number; x1: number; top: number; bottom: number };
 export type CalloutFrame = {
@@ -340,14 +358,16 @@ export type FrameSpec = {
   perSide: number;
   rows: number;
   variant: "full" | "compact";
+  /** compact 카드의 이름이 실제로 두 줄이 될 때만 추가 높이를 예약한다. */
+  compactNameWrap?: boolean;
   /** 반경 원 지름 / 높이의 상한 (기본 0.8) */
   maxFill?: number;
 };
 
 export function calloutFrame(s: FrameSpec): CalloutFrame {
   const { W, H, m } = s;
-  const cardW = Math.max(m.minW, Math.min(s.variant === "compact" ? m.compactW : m.cardW, W * (m.cardFraction ?? 0.27)));
-  const cardH = cardHeight(m, s.variant, s.rows);
+  const cardW = cardWidth(m, s.variant, W);
+  const cardH = cardHeight(m, s.variant, s.rows, s.compactNameWrap === true);
   const rx1 = W - (s.rightInset ?? 0) - s.edge;
   const left: Column = { x0: s.edge, x1: s.edge + cardW, top: s.top, bottom: s.leftBottom ?? s.bottom };
   const right: Column = { x0: rx1 - cardW, x1: rx1, top: s.top, bottom: s.bottom };
@@ -372,7 +392,7 @@ export function slideCalloutFrame(rows: number): CalloutFrame {
 /** 개요 장의 반경 원 크기 (왼쪽 아래 범례 판 위에서 끝난다) */
 export const SLIDE_OVERVIEW_FILL = 0.72;
 
-export type LayoutPoint ={ id: string; x: number; y: number };
+export type LayoutPoint = { id: string; x: number; y: number; rank?: number };
 export type Placed = {
   id: string;
   side: "L" | "R";
@@ -516,8 +536,32 @@ export function layoutCallouts(f: CalloutFrame, points: LayoutPoint[]): { placed
   const overflow: string[] = [];
   const fit = (arr: LayoutPoint[], cap: number) => {
     arr.sort(byY);
-    // 남는 점은 중심에서 가장 먼 순서가 아니라 가장 아래부터 버린다 (결정적)
-    while (arr.length > cap) overflow.push(arr.pop()!.id);
+    // 화면 y가 아니라 순위가 낮은(숫자가 큰) 단지부터 버린다. cN이 아닌
+    // 호출자는 rank를 주고, 예전 호출자의 문자열 id는 결정적인 역순으로 처리한다.
+    const rankOf = (p: LayoutPoint): number | null => {
+      if (typeof p.rank === "number" && Number.isFinite(p.rank)) return p.rank;
+      const match = /^c(\d+)$/.exec(p.id);
+      return match ? Number(match[1]) : null;
+    };
+    const lowerPriorityFirst = (a: LayoutPoint, b: LayoutPoint) => {
+      const ar = rankOf(a), br = rankOf(b);
+      if (ar !== null || br !== null) {
+        if (ar === null) return 1;
+        if (br === null) return -1;
+        if (ar !== br) return br - ar;
+      }
+      return b.id.localeCompare(a.id, "en");
+    };
+    while (arr.length > cap) {
+      let k = 0;
+      for (let i = 1; i < arr.length; i++) if (lowerPriorityFirst(arr[i], arr[k]) < 0) k = i;
+      const candidate = arr.splice(k, 1)[0];
+      // fit에서 탈락한 점도 반대 칸에 아직 자리가 있으면 한 번 더 살린다.
+      const other = arr === L ? R : L;
+      const otherCap = arr === L ? capR : capL;
+      if (other.length < otherCap) other.push(candidate);
+      else overflow.push(candidate.id);
+    }
   };
   fit(L, capL);
   fit(R, capR);
