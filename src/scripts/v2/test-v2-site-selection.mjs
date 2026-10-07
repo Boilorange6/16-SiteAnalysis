@@ -45,7 +45,7 @@ try {
   assert.equal(merged.ok, true);
   assert.equal(merged.site.kind, "parcels");
   assert.deepEqual(merged.site.pnus, SITE_PNUS);
-  assert.equal(merged.label, "101-1 외 1필지");
+  assert.equal(merged.label, "경기도 남양주시 다산동 101-1 외 1필지", "지번 앞에 시군구·읍면동 이름");
   const centerPoint = toUtmk(merged.center);
   assert.equal(booleanPointInPolygon(point(centerPoint), feature(merged.site.geometry)), true, "합필 중심은 합집합 안");
   assert.equal(merged.jimok, "대", "대표 필지는 가장 큰 필지(동률은 feature_id 순)");
@@ -65,7 +65,7 @@ try {
     analysisDate: "2026-09-30",
   }, "site-user");
   assert.equal(apiReply.status, 202, "site가 주소·좌표보다 우선");
-  assert.match(apiReply.body.summary.address, /^101-1 외 1필지$/);
+  assert.match(apiReply.body.summary.address, /^경기도 남양주시 다산동 101-1 외 1필지$/);
   apiDb.close();
 
   const bowTie = [at(-30, -30), at(30, 30), at(30, -30), at(-30, 30), at(-30, -30)];

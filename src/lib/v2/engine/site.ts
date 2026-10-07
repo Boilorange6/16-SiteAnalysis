@@ -244,7 +244,12 @@ export function resolveSiteGeometry(
       const center = centerOfGeometry(geometry);
       if (!center) return { ok: false, reason: "site_geometry_invalid" };
       const jimokList = [...new Set(hits.map(jimokOf).filter((value): value is string => value !== null))];
-      const baseLabel = jibunOf(representative) ?? representative.pnu ?? "선택 필지";
+      const jibun = jibunOf(representative) ?? representative.pnu ?? "선택 필지";
+      // 지번만으로는 어느 동인지 알 수 없으므로 시군구·읍면동 이름을 붙인다("서울특별시 강동구 고덕동 249").
+      const areaName = (code: string) => core.prepare("SELECT name FROM legal_area WHERE code = ?").pluck().get(code) as string | undefined;
+      const repPnu = representative.pnu ?? "";
+      const place = /^\d{19}$/.test(repPnu) ? [areaName(repPnu.slice(0, 5)), areaName(repPnu.slice(0, 8)), repPnu.slice(8, 10) !== "00" ? areaName(repPnu.slice(0, 10)) : undefined].filter(Boolean).join(" ") : "";
+      const baseLabel = place && /^\d|^산/.test(jibun) ? `${place} ${jibun}` : jibun;
       return {
         ok: true,
         center,
