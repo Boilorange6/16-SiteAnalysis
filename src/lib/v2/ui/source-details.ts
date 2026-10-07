@@ -86,6 +86,8 @@ function metaFor(meta: ReadonlyMap<string, SourceMeta>, source: SourceRefLike): 
 function licenseOf(meta: SourceMeta | undefined): string {
   const raw = nonEmpty(meta?.licenseCode) ?? nonEmpty(meta?.license);
   if (!raw || /^(?:UNKNOWN|UNRECORDED|미기록)$/i.test(raw)) return "미기록";
+  if (/^UNRESTRICTED$/i.test(raw)) return "이용허락범위 제한 없음";
+  if (/^attribution$/i.test(raw)) return "출처 표시";
   return raw;
 }
 
@@ -126,7 +128,13 @@ export function sourceDetailsFor(tile: SourceDetailTile, meta: ReadonlyMap<strin
     };
   });
 
-  return { calcMethod, rows };
+  // 레이어별 sourceId가 달라도 화면에 보이는 원천(제공처·자료·기준일)이 같으면 한 행으로 합친다.
+  const seen = new Set<string>();
+  const unique = rows.filter((row) => {
+    const key = `${row.provider}|${row.name}|${row.asOf}`;
+    return !seen.has(key) && seen.add(key);
+  });
+  return { calcMethod, rows: unique };
 }
 
 /** 디자인 문서 §9-2의 한 줄 인용 형식. 분석일·게시일·fetchedAt은 포함하지 않는다. */

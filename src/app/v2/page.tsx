@@ -9,7 +9,7 @@ import { BASEMAPS, BasemapContext, SetBasemapContext } from "@/components/v2/map
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import styles from "@/components/v2/board.module.css";
 import { SUMMARY_ID, boardReducer, boardStorageKey, demoFinished, demoPhase, initBoard, rebaseSnapshotAnalysisId, reportPages, serializeBoardState, viewOf, type CardFace, type PinnedLabel } from "@/lib/v2/ui/board-state";
-import { buildReportPlan, complexCounts, reportFileName } from "@/lib/v2/report/report-plan";
+import { buildReportPlan, complexCounts, reportFileName, sourcePageCount } from "@/lib/v2/report/report-plan";
 import { downloadBytes, exportFileName, EXPORT_MIME, DAE_MIME } from "@/lib/v2/export/download";
 import { DEFAULT_CALLOUT_MODE } from "@/lib/v2/ui/callout-layout";
 import { stackView } from "@/lib/v2/ui/stack";
@@ -18,6 +18,8 @@ import { exportAvailability, formatElapsedMs, jobProgress } from "@/lib/v2/ui/bo
 import { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } from "@/lib/v2/ui/fixtures/godeok";
 import { toSummaryView, toTileView, type SiteSummary } from "@/lib/v2/ui/tile-view";
 import { siteParcelFromResults } from "@/lib/v2/ui/site-parcel";
+import { sourceIdsForRefs, sourceMetaMap, type SourceApiBody } from "@/lib/v2/ui/source-api";
+import type { SourceMeta } from "@/lib/v2/ui/source-details";
 import { toLngLat } from "@/lib/v2/crs";
 import { jibunFromPnu, type SitePickerParcel } from "@/lib/v2/ui/site-picker";
 import type { TileResult } from "@/lib/v2/tile-result";
@@ -146,6 +148,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
   const [editing, setEditing] = useState(false);
   const [demoStep, setDemoStep] = useState<number | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [dialogTab, setDialogTab] = useState<"overview" | "sources">("overview");
   const dialogOpenerRef = useRef<HTMLElement | null>(null);
   const [stackSelection, setStackSelection] = useState<string[]>([]);
   const [sheetSelection, setSheetSelection] = useState<string[]>([]);
@@ -186,7 +189,11 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
   );
   const sheetableIds = useMemo(() => board.order.filter((id) => views.has(id) && views.get(id)!.code !== "SHEET"), [board.order, views]);
   const summary = useMemo(() => toSummaryView(siteSummary, results), [siteSummary, results]);
-  const reportSummary = useMemo(() => reportPages(board, complexCounts(views)), [board, views]);
+  const reportSummary = useMemo(() => {
+    const sourceKeys = new Set<string>();
+    for (const view of views.values()) for (const source of view.sourceRefs) sourceKeys.add(`${source.sourceId}|${source.releaseId}`);
+    return reportPages(board, complexCounts(views), sourcePageCount(sourceKeys.size));
+  }, [board, views]);
   const { tiles, pages: reportPageCount } = reportSummary;
   const total = board.order.length;
   const notProvidedIds = shown.filter((id) => views.get(id)?.status === "not_provided");
@@ -279,7 +286,18 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
     setMakingKind("PPT");
     setExportProblem(null);
     try {
-      const reportPlan = buildReportPlan({ summary, views, board, analysisDate });
+      const sourceIds = sourceIdsForRefs([...views.values()].flatMap((view) => view.sourceRefs));
+      let sourceMeta = new Map<string, SourceMeta>();
+      if (sourceIds.length > 0) {
+        const query = new URLSearchParams();
+        for (const id of sourceIds) query.append("ids", id);
+        const sourceResponse = await apiFetch(`/site/api/v2/sources?${query.toString()}`);
+        if (sourceResponse.ok) {
+          const body = (await sourceResponse.json()) as Partial<SourceApiBody>;
+          sourceMeta = sourceMetaMap(Array.isArray(body.sources) ? body.sources : []);
+        }
+      }
+      const reportPlan = buildReportPlan({ summary, views, board, analysisDate, sourceMeta });
       const { renderReportPptx } = await import("@/lib/v2/report/render-pptx");
       // 지도 그림은 브라우저에서 SVG → PNG로 만든다. 못 만들면 자리표시로 계속한다.
       const { buildMapImages } = await import("@/lib/v2/report/map-image");
@@ -380,6 +398,11 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
         setNote(`${title} 타일을 ${action.size}칸으로 바꿈`);
         break;
       case "open":
+        setDialogTab("overview");
+        setOpenId(id);
+        break;
+      case "sources":
+        setDialogTab("sources");
         setOpenId(id);
         break;
       case "include":
@@ -451,6 +474,11 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
         onClickCapture={(event) => {
           const target = event.target;
           if (!(target instanceof HTMLElement)) return;
+          const sourceButton = target.closest<HTMLButtonElement>("[data-source-button]");
+          if (sourceButton) {
+            dialogOpenerRef.current = sourceButton;
+            return;
+          }
           const opener = target.closest<HTMLButtonElement>('button[aria-label$=" 펼치기"]');
           if (opener) {
             dialogOpenerRef.current = opener;
@@ -791,6 +819,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
       {openView && (
         <TileDialog
           view={openView}
+          initialTab={dialogTab}
           included={!!board.included[openView.tileId]}
           face={board.faces[openView.tileId]}
           onInclude={(value) => dispatch({ type: "include", id: openView.tileId, value })}
@@ -815,7 +844,10 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
           cuts={openView.code === "S02" ? (board.cuts[openView.tileId] ?? 1) : undefined}
           onCuts={openView.code === "S02" ? (cuts) => dispatch({ type: "cuts", id: openView.tileId, cuts }) : undefined}
           onWindUploaded={onWindUploaded}
-          onClose={() => setOpenId(null)}
+          onClose={() => {
+            setOpenId(null);
+            setDialogTab("overview");
+          }}
         />
       )}
     </main>

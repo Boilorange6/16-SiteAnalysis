@@ -1,5 +1,6 @@
 import type { MapModel } from "./map-layers";
 import type { Badge, TileView } from "./tile-view";
+import type { SourceRefLike } from "./source-details";
 
 const unique = <T>(items: T[]): T[] => [...new Set(items)];
 
@@ -10,6 +11,15 @@ function sourceUnion(layers: TileView[]): string {
       .filter((source) => source && source !== "출처 없음"),
   );
   return sources.length > 0 ? sources.join(" · ") : "출처 없음";
+}
+
+function sourceRefsUnion(layers: TileView[]): SourceRefLike[] {
+  const out = new Map<string, SourceRefLike>();
+  for (const source of layers.flatMap((layer) => layer.sourceRefs)) {
+    const key = `${source.sourceId}:${source.releaseId}`;
+    if (!out.has(key)) out.set(key, source);
+  }
+  return [...out.values()];
 }
 
 function badgeUnion(layers: TileView[]): Badge[] {
@@ -58,6 +68,7 @@ export function stackView(id: string, layers: TileView[]): TileView {
   return {
     tileId: id,
     code: "STACK",
+    tileType: "stack",
     title: "레이어 스택",
     color: first?.color ?? "#7A7E87",
     status: statusOf(layers),
@@ -71,6 +82,7 @@ export function stackView(id: string, layers: TileView[]): TileView {
     caveats: unique(layers.flatMap((layer) => layer.caveats)),
     notes: unique(titles),
     sourceLine: sourceUnion(layers),
+    sourceRefs: sourceRefsUnion(layers),
     chart: null,
     hasFace: false,
     retryable: false,

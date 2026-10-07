@@ -1,6 +1,6 @@
 /**
  * 보드 → 보고서 슬라이드 계획. 순수 함수 (pptx 라이브러리 의존 없음).
- * 슬라이드 수는 board-state의 reportPages(board).pages(표지+타일+출처)와 항상 같다.
+ * 슬라이드 수는 board-state의 reportPages(board).pages(표지+타일+출처 장)와 항상 같다.
  */
 import type { BoardState } from "../ui/board-state";
 import { calloutReportPages, DEFAULT_CALLOUT_MODE, pageCount } from "../ui/callout-layout";
@@ -12,6 +12,7 @@ import { FACE_TEXT } from "../ui/tile-view";
 import type { RoseModel } from "../ui/wind-rose";
 import type { RoseSeason } from "../tile-result";
 import { exportFileName } from "../export/download";
+import { sourceDetailsFor, UNKNOWN_AS_OF, type SourceDetailRow, type SourceMeta } from "../ui/source-details";
 
 export type TileSlideBody =
   | { kind: "result"; face: "single" | "front" | "back" }
@@ -62,9 +63,9 @@ export type ReportSlide =
       kind: "sheet";
       view: TileView;
       grid: SheetGrid;
-      cells: Array<{ view: TileView; face: "front" | "back"; mapKey: string; pinnedKeys?: string[] }>;
+      cells: Array<{ view: TileView; face: "front" | "back"; mapKey: string; sourceLine?: string; pinnedKeys?: string[] }>;
     }
-  | { kind: "sources"; rows: ReportSourceRow[]; /** 배경(흐린 대지 지도) */ map: MapModel | null };
+  | { kind: "sources"; rows: ReportSourceRow[]; analysisDate: string; /** 배경(흐린 대지 지도) */ map: MapModel | null };
 
 export type PlannedSlide = ReportSlide & { no: number; total: number; footer: string };
 
@@ -91,6 +92,10 @@ const STATE_MESSAGE: Record<string, string> = {
 /** 설명선 타일의 단지 수 (board-state.reportPages에 넘겨 장수를 계획과 맞춘다) */
 export const complexCounts = (views: Map<string, TileView>): Record<string, number> =>
   Object.fromEntries([...views].filter(([, v]) => v.callout).map(([id, v]) => [id, v.callout!.complexes.length]));
+
+/** 한 출처 장에 담을 수 있는 원천 행 수. 긴 사용 타일 셀도 PPT 출처 띠를 침범하지 않게 한다. */
+export const REPORT_SOURCE_ROWS_PER_SLIDE = 14;
+export const sourcePageCount = (sourceRows: number): number => Math.max(1, Math.ceil(Math.max(0, sourceRows) / REPORT_SOURCE_ROWS_PER_SLIDE));
 
 const hasResult = (v: TileView) => v.status === "complete" || v.status === "partial";
 const pinnedKeysFor = (board: BoardState, tileId: string): string[] => (board.labels[tileId] ?? []).filter((label) => label.on).map((label) => label.key);
@@ -133,11 +138,34 @@ export function buildReportPlan(input: {
   views: Map<string, TileView>;
   board: BoardState;
   analysisDate?: string;
+  sourceMeta?: ReadonlyMap<string, SourceMeta>;
 }): PlannedSlide[] {
   const { summary, views, board } = input;
   const date = input.analysisDate ?? "미확인";
+  const sourceMeta = input.sourceMeta ?? new Map<string, SourceMeta>();
   const tiles = board.order.filter((id) => board.included[id] && views.has(id)).map((id) => views.get(id)!);
   const raw: (ReportSlide & { footer: string })[] = [];
+
+  const detailsFor = (view: TileView) => view.sourceRefs.length > 0
+    ? sourceDetailsFor({ code: view.code, tileType: view.tileType, provenance: { sources: view.sourceRefs } }, sourceMeta)
+    : null;
+  const reportRowsFor = (view: TileView): SourceDetailRow[] | null => {
+    const details = detailsFor(view);
+    if (!details) return null;
+    const legacyAsOf = new Map(parseSources(view.sourceLine).map(([name, asOf]) => [name, asOf]));
+    return details.rows.map((row) => row.asOf === UNKNOWN_AS_OF && legacyAsOf.has(row.name)
+      ? { ...row, asOf: legacyAsOf.get(row.name)! }
+      : row);
+  };
+  const sourceLineFor = (view: TileView): string => {
+    const rows = reportRowsFor(view);
+    if (!rows || rows.length === 0) return view.sourceLine;
+    return rows.map((row) => `${row.provider} · ${row.name} · ${row.asOf}`).join(" · ");
+  };
+  const sourceFooterFor = (view: TileView): string => {
+    const line = sourceLineFor(view);
+    return line === "출처 없음" ? "출처 없음 · 기준일 해당 없음" : `출처 ${line}`;
+  };
 
   raw.push({
     kind: "cover",
@@ -164,6 +192,7 @@ export function buildReportPlan(input: {
           view: cell,
           face: cell.hasFace && board.faces[cell.tileId] === "back" ? "back" as const : "front" as const,
           mapKey: `${cell.tileId}:cell`,
+          sourceLine: sourceLineFor(cell),
           pinnedKeys: pinnedKeysFor(board, cell.tileId),
         }));
       raw.push({
@@ -171,7 +200,7 @@ export function buildReportPlan(input: {
         view: v,
         grid: v.sheetGrid,
         cells,
-        footer: v.sourceLine === "출처 없음" ? "출처 없음 · 기준일 해당 없음" : `출처 ${v.sourceLine}`,
+        footer: sourceFooterFor(v),
       });
       continue;
     }
@@ -180,6 +209,7 @@ export function buildReportPlan(input: {
         view: viewWithOnlyLayer(v, layer, note),
         face: "front" as const,
         mapKey: `${v.tileId}:${key}`,
+        sourceLine: sourceLineFor(v),
         pinnedKeys: pinnedKeysFor(board, v.tileId),
       }));
       raw.push({
@@ -187,7 +217,7 @@ export function buildReportPlan(input: {
         view: v,
         grid: "3x1",
         cells,
-        footer: v.sourceLine === "출처 없음" ? "출처 없음 · 기준일 해당 없음" : `출처 ${v.sourceLine}`,
+        footer: sourceFooterFor(v),
       });
       continue;
     }
@@ -195,7 +225,7 @@ export function buildReportPlan(input: {
       // 설명선 타일: 개요 1장 + 설명표 장 (설정: 개요만 / 상위 10 / 전체). 장수는 board-state.reportPages와 같은 함수
       const cm = v.callout;
       const count = calloutReportPages(board.callout[v.tileId] ?? DEFAULT_CALLOUT_MODE, cm.complexes.length);
-      const sourceFooter = v.sourceLine === "출처 없음" ? "출처 없음 · 기준일 해당 없음" : `출처 ${v.sourceLine}`;
+      const sourceFooter = sourceFooterFor(v);
       for (let page = 0; page < count; page++) {
         raw.push({
           kind: "tile",
@@ -230,26 +260,45 @@ export function buildReportPlan(input: {
         pinnedKeys: pinnedKeysFor(board, v.tileId),
         ...(mass ? { mass } : {}),
         ...(rose ? { rose, roseSeason } : {}),
-        footer: v.sourceLine === "출처 없음" ? "출처 없음 · 기준일 해당 없음" : `출처 ${v.sourceLine}`,
+        footer: sourceFooterFor(v),
       });
     }
   }
 
-  const bySource = new Map<string, { asOf: string; tiles: string[] }>();
+  type ReportSourceAccum = Omit<ReportSourceRow, "tiles"> & { tiles: string[] };
+  const bySource = new Map<string, ReportSourceAccum>();
   for (const v of tiles) {
-    for (const [id, asOf] of parseSources(v.sourceLine)) {
-      const key = `${id}|${asOf}`;
-      const e = bySource.get(key) ?? { asOf, tiles: [] };
+    const rows = reportRowsFor(v) ?? parseSources(v.sourceLine).map(([source, asOf]) => ({
+      sourceId: source,
+      provider: "",
+      name: source,
+      role: "주 원천" as const,
+      asOf: asOf || "기준일 미확인",
+      license: "미기록",
+      url: "",
+      usedFor: null,
+    } satisfies SourceDetailRow));
+    for (const row of rows) {
+      const key = `${row.provider}|${row.name}|${row.asOf}`;
+      const e = bySource.get(key) ?? { source: row.name, asOf: row.asOf, tiles: [], provider: row.provider, license: row.license, url: row.url };
       if (!e.tiles.includes(v.title)) e.tiles.push(v.title);
+      if ((!e.provider || e.provider === "제공처 미기록") && row.provider) e.provider = row.provider;
+      if ((!e.license || e.license === "미기록") && row.license) e.license = row.license;
+      if (!e.url && row.url) e.url = row.url;
       bySource.set(key, e);
     }
   }
-  raw.push({
-    kind: "sources",
-    rows: [...bySource].map(([k, e]) => ({ source: k.split("|")[0], asOf: e.asOf, tiles: e.tiles.join(", ") })),
-    map: summary.map,
-    footer: `${summary.asOfLine} · 출처 ${bySource.size}건`,
-  });
+  const sourceRows = [...bySource.values()].map((row) => ({ ...row, tiles: row.tiles.join(", ") }));
+  const sourcePages = sourcePageCount(sourceRows.length);
+  for (let page = 0; page < sourcePages; page++) {
+    raw.push({
+      kind: "sources",
+      rows: sourceRows.slice(page * REPORT_SOURCE_ROWS_PER_SLIDE, (page + 1) * REPORT_SOURCE_ROWS_PER_SLIDE),
+      analysisDate: date,
+      map: summary.map,
+      footer: `${summary.asOfLine} · 출처 ${bySource.size}건${sourcePages > 1 ? ` · 출처 ${page + 1}/${sourcePages}` : ""}`,
+    });
+  }
 
   return raw.map((s, i) => ({ ...s, no: i + 1, total: raw.length }));
 }

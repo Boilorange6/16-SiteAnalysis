@@ -1,3 +1,5 @@
+import type { SourceMeta } from "./source-details";
+
 export const MAX_SOURCE_IDS = 100;
 
 export type SourceApiSource = {
@@ -23,6 +25,38 @@ export type SourceApiBody = {
   manifestCreatedAt: string | null;
   sources: SourceApiSource[];
 };
+
+/** 화면의 provenance 참조를 API가 이해하는 sourceId:releaseId 요청으로 만든다. */
+export function sourceIdsForRefs(refs: readonly { sourceId: string; releaseId: string }[]): string[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const ref of refs) {
+    const id = `${ref.sourceId}:${ref.releaseId}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+    if (ids.length >= MAX_SOURCE_IDS) break;
+  }
+  return ids;
+}
+
+/** API 응답을 source-details가 읽는 키(sourceId:releaseId/sourceId)로 정규화한다. */
+export function sourceMetaMap(rows: readonly SourceApiSource[]): Map<string, SourceMeta> {
+  const meta = new Map<string, SourceMeta>();
+  for (const row of rows) {
+    const value = {
+      sourceId: row.sourceId,
+      releaseId: row.releaseId,
+      provider: row.provider,
+      sourceUrl: row.sourceUrl,
+      sourceAsOf: row.sourceAsOf,
+      licenseCode: row.licenseCode,
+    } satisfies SourceMeta;
+    meta.set(`${row.sourceId}:${row.releaseId}`, value);
+    if (!meta.has(row.sourceId)) meta.set(row.sourceId, value);
+  }
+  return meta;
+}
 
 /** ids=a,b 형식과 ids=a&ids=b 형식을 모두 받으며 순서와 중복 제거를 보존한다. */
 export function parseSourceIds(values: readonly string[]): string[] {
