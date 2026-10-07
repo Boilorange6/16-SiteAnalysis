@@ -163,7 +163,9 @@ export function mapLabelText(layer: string, kind: MapLabelEntry["kind"], item: M
   }
   const explicit = userText(item.label);
   if (kind === "polygon") {
-    return explicit && explicit !== styleLabel ? `${explicit} · ${styleLabel}` : unnamedLabel(layer);
+    // '미상' 범주는 값이 아니므로 이름 뒤에 붙이지 않는다.
+    if (explicit && explicit !== styleLabel) return styleLabel === "미상" ? explicit : `${explicit} · ${styleLabel}`;
+    return unnamedLabel(layer);
   }
   return explicit ?? unnamedLabel(layer);
 }
@@ -656,6 +658,8 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   if (!muted) boxes.push(siteBounds);
 
   type ScreenLabel = MapLabelEntry & {
+    /** 자동 라벨은 이전처럼 원천 이름만 쓴다. `text`(이름 · 값)는 호버·고정 라벨용. */
+    autoText: string;
     p: [number, number];
     radius: number;
     small: boolean;
@@ -667,6 +671,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
     ...drawn.map((d) => ({
       key: mapFeatureKey(d.f.layer, d.f.fid, d.index),
       text: labelText(d.f.layer, "feature", d.f),
+      autoText: trimText(d.f.label) || trimText(d.f.name) || labelText(d.f.layer, "feature", d.f),
       layer: d.f.layer,
       kind: "feature" as const,
       ...(d.f.fid ? { fid: d.f.fid } : {}),
@@ -684,6 +689,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
       .map((d) => ({
       key: mapElementKey("polygon", d.polygon.layer, d.polygon.fid, d.index),
       text: labelText(d.polygon.layer, "polygon", d.polygon),
+      autoText: trimText(d.polygon.label) || labelText(d.polygon.layer, "polygon", d.polygon),
       layer: d.polygon.layer,
       kind: "polygon" as const,
       ...(d.polygon.fid ? { fid: d.polygon.fid } : {}),
@@ -700,6 +706,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
       return {
         key: mapElementKey("line", d.l.layer, d.l.fid, d.index),
         text: labelText(d.l.layer, "line", d.l),
+        autoText: trimText(d.l.label) || labelText(d.l.layer, "line", d.l),
         layer: d.l.layer,
         kind: "line" as const,
         ...(d.l.fid ? { fid: d.l.fid } : {}),
@@ -714,7 +721,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   ];
   const labelByKey = new Map(screenLabels.map((entry) => [entry.key, entry]));
   const labelBox = (d: ScreenLabel, labelFs: number, decorated = false): { width: number; height: number } => ({
-    width: textW(d.text, labelFs) + (decorated ? 12 : d.small ? 5 : 7) * u,
+    width: textW(decorated ? d.text : d.autoText, labelFs) + (decorated ? 12 : d.small ? 5 : 7) * u,
     height: labelFs * 1.45,
   });
   const closestPoint = (box: Box, p: readonly [number, number]): [number, number] => [
@@ -729,7 +736,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
     if (variant === "auto") {
       return (
         <text key={`label-${d.key}`} x={box.x0 + 2 * u} y={box.y0 + labelFs * 0.95} fontSize={labelFs} fontWeight={d.small ? 500 : 700} fill={INK} fillOpacity={highlightActive ? (d.highlighted ? 1 : 0.2) : 1} stroke="#fff" strokeWidth={3 * u} strokeLinejoin="round" paintOrder="stroke" pointerEvents="none">
-          {d.text}
+          {d.autoText}
         </text>
       );
     }
