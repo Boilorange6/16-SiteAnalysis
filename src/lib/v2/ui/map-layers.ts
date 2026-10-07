@@ -182,6 +182,8 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   "facility:환경기초": S("도시계획시설 · 환경기초", "#5C9A3C"),
   "facility:기타": S("도시계획시설 기타", "#B9BDC6"),
   parcel: S("필지", "#B07D4F"),
+  /** 대지 지정 화면의 기본 필지. 분석 결과용 parcel 색을 재사용하지 않는다. */
+  parcel_picker: { label: "필지", color: "#9aa0a8", fill: "#f7f7f3", stroke: "#a9adb5", fillOpacity: 0.24, strokeWidth: 0.8 },
   parcel_site: S("대상 필지", "#D1495B"),
   lot_lt100: S("100㎡ 미만", "#D9A441"),
   lot_100_300: S("100~300㎡", "#C47F3A"),

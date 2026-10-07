@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import MapFigure, { siteMarkerMode, siteMarkerRadius } from "./map-figure";
+import MapFigure, { siteMarkerRadius } from "./map-figure";
 import type { MapModel } from "@/lib/v2/ui/map-layers";
 import type { MapPolygon } from "@/lib/v2/tile-result";
-import { framedViewport, makeProjector, metersPerPixel, worldPx } from "@/lib/v2/ui/map-projection";
+import { framedViewport, makeProjector, worldPx } from "@/lib/v2/ui/map-projection";
 import type { SiteInput } from "@/lib/v2/site";
 import {
   closePolygon,
@@ -41,9 +41,11 @@ type SitePickerProps = {
 type GeocodeReply = { lat?: number; lng?: number; address?: string; error?: string };
 type BboxReply = { parcels?: SitePickerParcel[]; truncated?: boolean; error?: string };
 
-const MODE_LABELS: Record<SitePickerMode, string> = { address: "주소 필지", parcels: "필지 합치기", polygon: "구역 그리기" };
+const MODE_TAB_LABELS: Record<SitePickerMode, string> = { address: "주소 필지", parcels: "필지 합치기", polygon: "구역 그리기" };
+const MODE_LABELS: Record<SitePickerMode, string> = { address: "주소 필지", parcels: "합친 대지", polygon: "직접 그린 구역" };
+const INITIAL_ZOOM_SCALE = 3.2;
 const MIN_ZOOM_SCALE = 0.72;
-const MAX_ZOOM_SCALE = 3.2;
+const MAX_ZOOM_SCALE = 8;
 
 function siteSignature(site: SiteInput | null | undefined): string {
   return site ? JSON.stringify(site) : "";
@@ -61,7 +63,7 @@ function geometryFromRecord(record: SitePickerParcel): SitePickerGeometry {
 function mapPolygonForParcel(parcel: SitePickerParcel): MapPolygon {
   const rings = parcel.geometry.type === "Polygon" ? parcel.geometry.coordinates : parcel.geometry.coordinates.flat();
   return {
-    layer: "parcel",
+    layer: "parcel_picker",
     fid: parcel.pnu,
     label: parcel.label,
     rings: rings.map((ring) => closePolygon(ring)),
@@ -123,7 +125,7 @@ export default function SitePicker({ address, radiusM, initialSite = null, initi
   const [drawDone, setDrawDone] = useState(initialSite && "polygon" in initialSite);
   const [center, setCenter] = useState<LngLat | null>(initialSite && "polygon" in initialSite ? geometryCenter({ type: "Polygon", coordinates: [initialSite.polygon as LngLat[]] }) : null);
   const [mapCenter, setMapCenter] = useState<LngLat | null>(null);
-  const [zoomScale, setZoomScale] = useState(1);
+  const [zoomScale, setZoomScale] = useState(INITIAL_ZOOM_SCALE);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [truncated, setTruncated] = useState(false);
@@ -159,7 +161,7 @@ export default function SitePicker({ address, radiusM, initialSite = null, initi
     setParcels([]);
     setCenter(null);
     setMapCenter(null);
-    setZoomScale(1);
+    setZoomScale(INITIAL_ZOOM_SCALE);
   }, [address]); // address changes are the boundary for a new site selection
 
   useEffect(() => {
@@ -315,25 +317,38 @@ export default function SitePicker({ address, radiusM, initialSite = null, initi
   const mapModel: MapModel | null = useMemo(() => {
     if (!mapCenter || !size) return null;
     const polygons = parcels.map(mapPolygonForParcel);
-    return { center: mapCenter, radiusM, features: [], polygons, polygonsTotal: polygons.length, siteParcel: null, total: polygons.length, notes: [], basemap: "Base" };
-  }, [mapCenter, radiusM, size, parcels]);
+    return { center: mapCenter, radiusM: visibleRadius, features: [], polygons, polygonsTotal: polygons.length, siteParcel: null, total: polygons.length, notes: [], basemap: "Base" };
+  }, [mapCenter, parcels, size, visibleRadius]);
+  const viewport = mapCenter && size ? framedViewport(mapCenter, visibleRadius, size.w, size.h, 0.5, 0.8, 0.5) : null;
+  const project = viewport ? makeProjector(viewport) : null;
   const labelParcels = useMemo(() => {
-    if (!mapCenter) return parcels.slice(0, 120);
+    if (!mapCenter || !size || !project) return [];
     const selected = new Set(selectedPnus);
+    const fontSize = 9;
+    const occupied: Array<{ x0: number; y0: number; x1: number; y1: number }> = [];
     const distance = (parcel: SitePickerParcel) => {
       const point = geometryCenter(parcel.geometry);
       return point ? (point[0] - mapCenter[0]) ** 2 + (point[1] - mapCenter[1]) ** 2 : Number.POSITIVE_INFINITY;
     };
-    return parcels
+    const overlaps = (a: { x0: number; y0: number; x1: number; y1: number }, b: { x0: number; y0: number; x1: number; y1: number }) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+    const labels: SitePickerParcel[] = [];
+    for (const parcel of parcels
       .slice()
-      .sort((a, b) => Number(selected.has(b.pnu)) - Number(selected.has(a.pnu)) || distance(a) - distance(b))
-      .slice(0, 120);
-  }, [mapCenter, parcels, selectedPnus]);
-  const viewport = mapCenter && size ? framedViewport(mapCenter, radiusM, size.w, size.h, 0.5, 0.8, 0.5) : null;
-  const project = viewport ? makeProjector(viewport) : null;
+      .sort((a, b) => Number(selected.has(b.pnu)) - Number(selected.has(a.pnu)) || distance(a) - distance(b))) {
+      const point = geometryCenter(parcel.geometry);
+      if (!point) continue;
+      const [x, y] = project(point[0], point[1]);
+      const width = Math.max(fontSize * 1.6, [...parcel.label].length * fontSize * 0.92);
+      const box = { x0: x - width / 2 - 2, y0: y - fontSize * 0.75, x1: x + width / 2 + 2, y1: y + fontSize * 0.75 };
+      if (box.x1 < -8 || box.x0 > size.w + 8 || box.y1 < -8 || box.y0 > size.h + 8 || occupied.some((other) => overlaps(box, other))) continue;
+      occupied.push(box);
+      labels.push(parcel);
+    }
+    return labels;
+  }, [mapCenter, parcels, project, selectedPnus, size]);
   const projectedBoundary = project ? boundary.map((ring) => ring.map(([lng, lat]) => project(lng, lat))) : [];
   const selectedScreenCenter = project && selectedCenterPoint ? project(selectedCenterPoint[0], selectedCenterPoint[1]) : null;
-  const mapCanvasStyle = { transform: `scale(${zoomScale})` };
+  const mapCanvasStyle = { transform: "none" };
 
   const setModeAndPrepare = (nextMode: SitePickerMode) => {
     if (disabled) return;
@@ -388,7 +403,7 @@ export default function SitePicker({ address, radiusM, initialSite = null, initi
     // The map pane captures the pointer for panning, so a click may bubble with
     // the pane itself as target even when the pointer started on the SVG.
     if (target.closest("[data-site-picker-control]")) return;
-    const point = screenPointFromClient(event.clientX, event.clientY, canvasRef.current, mapCenter, radiusM, size, zoomScale);
+    const point = screenPointFromClient(event.clientX, event.clientY, canvasRef.current, mapCenter, visibleRadius, size, 1);
     if (!point) return;
     setDrawDone(false);
     setDrawPoints((points) => [...points, point]);
@@ -423,7 +438,7 @@ export default function SitePicker({ address, radiusM, initialSite = null, initi
       const distance = Math.hypot(points[0]!.x - points[1]!.x, points[0]!.y - points[1]!.y);
       const centroid = { x: (points[0]!.x + points[1]!.x) / 2, y: (points[0]!.y + points[1]!.y) / 2 };
       setZoomScale(clamp(pinchRef.current.scale * distance / pinchRef.current.distance, MIN_ZOOM_SCALE, MAX_ZOOM_SCALE));
-      setMapCenter(mapCenterAfterPixels(pinchRef.current.center, centroid.x - pinchRef.current.centroid.x, centroid.y - pinchRef.current.centroid.y, zoomScale, radiusM, size));
+      setMapCenter(mapCenterAfterPixels(pinchRef.current.center, centroid.x - pinchRef.current.centroid.x, centroid.y - pinchRef.current.centroid.y, 1, radiusM / pinchRef.current.scale, size));
       return;
     }
     const start = panStartRef.current;
@@ -432,7 +447,7 @@ export default function SitePicker({ address, radiusM, initialSite = null, initi
     const dy = event.clientY - start.y;
     if (Math.hypot(dx, dy) < 3) return;
     start.moved = true;
-    setMapCenter(mapCenterAfterPixels(start.center, dx, dy, zoomScale, radiusM, size));
+    setMapCenter(mapCenterAfterPixels(start.center, dx, dy, 1, visibleRadius, size));
   };
 
   const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -460,7 +475,7 @@ export default function SitePicker({ address, radiusM, initialSite = null, initi
   const handleVertexMove = (event: ReactPointerEvent<SVGCircleElement>) => {
     const drag = dragVertexRef.current;
     if (!drag || drag.pointerId !== event.pointerId || !canvasRef.current || !mapCenter || !size) return;
-    const next = screenPointFromClient(event.clientX, event.clientY, canvasRef.current, mapCenter, radiusM, size, zoomScale);
+    const next = screenPointFromClient(event.clientX, event.clientY, canvasRef.current, mapCenter, visibleRadius, size, 1);
     if (!next) return;
     setDrawDone(false);
     setDrawPoints((points) => points.map((point, pointIndex) => pointIndex === drag.index ? next : point));
@@ -488,6 +503,7 @@ export default function SitePicker({ address, radiusM, initialSite = null, initi
 
   const selectionArea = mode === "polygon" ? polygonAreaM2(drawPoints) : selectedAreaM2(selectedParcels);
   const representative = mode === "polygon" ? "직접 그린 구역" : representativeJibun(selectedParcels, districtFromAddress(address));
+  const roadWarning = roadsIncluded ? "도로(지목 '도') 필지가 섞여 있습니다. 의도한 것이 아니면 빼 주세요." : null;
   let statusText = serverError || localStatus;
   let statusTone: "status" | "good" | "warning" | "error" = serverError || localStatus ? "error" : "status";
   if (!statusText && mode === "parcels" && selectedParcels.length > 0 && !connected) {
@@ -496,9 +512,6 @@ export default function SitePicker({ address, radiusM, initialSite = null, initi
   } else if (!statusText && mode === "polygon" && selfCrossing) {
     statusText = "구역 선이 서로 교차합니다. 점을 끌어 교차를 없애 주세요.";
     statusTone = "error";
-  } else if (!statusText && roadsIncluded) {
-    statusText = "도로(지목 '도')가 포함되어 있습니다. 분석은 가능하지만 도로 포함 여부를 확인해 주세요.";
-    statusTone = "warning";
   } else if (!statusText && truncated) {
     statusText = "필지가 많아 일부만 표시됩니다. 확대하면 필지가 보입니다.";
     statusTone = "warning";
@@ -526,7 +539,7 @@ export default function SitePicker({ address, radiusM, initialSite = null, initi
             onClick={() => setModeAndPrepare(candidate)}
             disabled={disabled}
           >
-            {MODE_LABELS[candidate]}
+            {MODE_TAB_LABELS[candidate]}
           </button>
         ))}
       </div>
@@ -552,34 +565,35 @@ export default function SitePicker({ address, radiusM, initialSite = null, initi
                     fixed
                     basemap="tiles"
                     layer="Base"
+                    showRadius={false}
+                    showSiteMarker={false}
                     bare
                     legend={false}
                     north={false}
                     scale={false}
                     credit={false}
-                    selectedFids={selectedPnus}
                     onFeatureClick={mode === "polygon" ? undefined : handleFeatureClick}
                   />
                   <svg className={styles.overlay} viewBox={`0 0 ${size.w} ${size.h}`} aria-label="대지 선택 지도">
-                    {labelParcels.map((parcel) => {
-                      const rings = parcel.geometry.type === "Polygon" ? parcel.geometry.coordinates : parcel.geometry.coordinates.flat();
-                      const points = rings[0]?.map(([lng, lat]) => project(lng, lat)) ?? [];
-                      const labelPoint = geometryCenter(geometryFromRecord(parcel));
-                      const labelScreen = labelPoint ? project(labelPoint[0], labelPoint[1]) : null;
-                      return (
-                        <g key={`label-${parcel.pnu}`}>
-                          {labelScreen && <text x={labelScreen[0]} y={labelScreen[1]} textAnchor="middle" dominantBaseline="central" fontSize={10} fontWeight={selectedPnus.includes(parcel.pnu) ? 800 : 500} fill={selectedPnus.includes(parcel.pnu) ? "#15171c" : "#676c76"}>{parcel.label}</text>}
-                          {points.length > 2 && <path d={polygonPath(points)} fill="transparent" stroke="transparent" strokeWidth={8} />}
-                        </g>
-                      );
-                    })}
-                    {projectedBoundary.map((ring, index) => <path key={`site-boundary-${index}`} d={polygonPath(ring)} fill={mode === "polygon" ? "rgba(192,86,33,.12)" : "rgba(255,255,255,.2)"} stroke="#fff" strokeWidth={4.5} strokeLinejoin="round" />)}
-                    {projectedBoundary.map((ring, index) => <path key={`site-boundary-ink-${index}`} d={polygonPath(ring)} fill="none" stroke={selfCrossing ? "#b42318" : "#111"} strokeWidth={2} strokeLinejoin="round" />)}
-                    {selectedScreenCenter && (() => {
-                      const markerR = siteMarkerRadius(size.h);
-                      const points = projectedBoundary.flat();
-                      const markerMode = siteMarkerMode(points);
-                      const [x, y] = selectedScreenCenter;
+                     {labelParcels.map((parcel) => {
+                       const rings = parcel.geometry.type === "Polygon" ? parcel.geometry.coordinates : parcel.geometry.coordinates.flat();
+                       const points = rings[0]?.map(([lng, lat]) => project(lng, lat)) ?? [];
+                       const labelPoint = geometryCenter(geometryFromRecord(parcel));
+                       const labelScreen = labelPoint ? project(labelPoint[0], labelPoint[1]) : null;
+                       return (
+                         <g key={`label-${parcel.pnu}`}>
+                           {labelScreen && <text x={labelScreen[0]} y={labelScreen[1]} textAnchor="middle" dominantBaseline="central" fontSize={9} fontWeight={selectedPnus.includes(parcel.pnu) ? 700 : 500} fill={selectedPnus.includes(parcel.pnu) ? "#15171c" : "#676c76"}>{parcel.label}</text>}
+                           {points.length > 2 && <path d={polygonPath(points)} fill="transparent" stroke="transparent" strokeWidth={8} />}
+                         </g>
+                       );
+                     })}
+                     {projectedBoundary.map((ring, index) => <path key={`site-boundary-${index}`} d={polygonPath(ring)} fill="rgba(17,17,17,.04)" stroke="#fff" strokeWidth={Math.max(5, 2.4)} strokeLinejoin="round" />)}
+                     {projectedBoundary.map((ring, index) => <path key={`site-boundary-ink-${index}`} d={polygonPath(ring)} fill="none" stroke={selfCrossing ? "#b42318" : "#111"} strokeWidth={Math.max(2, 1.2)} strokeLinejoin="round" />)}
+                     {selectedScreenCenter && (() => {
+                       const markerR = Math.max(10, siteMarkerRadius(size.h));
+                       const points = projectedBoundary.flat();
+                       const markerMode = points.length >= 3 ? "parcel" : "ring";
+                       const [x, y] = selectedScreenCenter;
                       return (
                         <g role="img" aria-label="선택한 대지 표식">
                           {markerMode === "parcel" ? (
@@ -591,7 +605,7 @@ export default function SitePicker({ address, radiusM, initialSite = null, initi
                             <>
                               <circle cx={x} cy={y} r={1.25 * markerR} fill="none" stroke="#fff" strokeWidth={0.55 * markerR} />
                               <circle cx={x} cy={y} r={1.25 * markerR} fill="none" stroke="#111" strokeWidth={0.22 * markerR} />
-                              <path d={`M${x} ${y - 2 * markerR}V${y - 0.6 * markerR}M${x} ${y + 0.6 * markerR}V${y + 2 * markerR}M${x - 2 * markerR} ${y}H${x - 0.6 * markerR}M${x + 0.6 * markerR} ${y}H${x + 2 * markerR}`} fill="none" stroke="#111" strokeWidth={0.8 * markerR} />
+                              <path d={`M${x} ${y - 2 * markerR}V${y - 0.6 * markerR}M${x} ${y + 0.6 * markerR}V${y + 2 * markerR}M${x - 2 * markerR} ${y}H${x - 0.6 * markerR}M${x + 0.6 * markerR} ${y}H${x + 2 * markerR}`} fill="none" stroke="#111" strokeWidth={0.2 * markerR} />
                               <circle cx={x} cy={y} r={0.28 * markerR} fill="#111" stroke="#fff" strokeWidth={0.12 * markerR} />
                             </>
                           )}
@@ -600,8 +614,10 @@ export default function SitePicker({ address, radiusM, initialSite = null, initi
                     })()}
                     {mode === "polygon" && drawPoints.map((point, index) => {
                       const screen = project(point[0], point[1]);
-                      return <circle key={`vertex-${index}`} className={styles.vertex} data-site-picker-control tabIndex={0} role="button" aria-label={`구역 점 ${index + 1}`} cx={screen[0]} cy={screen[1]} r={Math.max(7, siteMarkerRadius(size.h))} onClick={index === 0 ? closeByFirstPoint : undefined} onPointerDown={(event) => handleVertexPointerDown(event, index)} onPointerMove={handleVertexMove} onPointerUp={handleVertexUp} onPointerCancel={handleVertexUp} />;
-                    })}
+                       const vertexRadius = Math.max(7, siteMarkerRadius(size.h));
+                       const firstRadius = Math.max(11, siteMarkerRadius(size.h) + 2);
+                       return <circle key={`vertex-${index}`} className={`${styles.vertex} ${index === 0 && !drawDone ? styles.vertexFirst : ""}`} data-site-picker-control tabIndex={0} role="button" aria-label={`구역 점 ${index + 1}`} cx={screen[0]} cy={screen[1]} r={index === 0 && !drawDone ? firstRadius : vertexRadius} onClick={index === 0 ? closeByFirstPoint : undefined} onPointerDown={(event) => handleVertexPointerDown(event, index)} onPointerMove={handleVertexMove} onPointerUp={handleVertexUp} onPointerCancel={handleVertexUp} />;
+                     })}
                   </svg>
                 </div>
               ) : (
@@ -609,20 +625,45 @@ export default function SitePicker({ address, radiusM, initialSite = null, initi
               )}
             </div>
           </div>
-          <div className={styles.radiusPreview} aria-label={`분석 반경 ${formatRadius(radiusM)}`}><span className={styles.radiusDot} aria-hidden />반경 {formatRadius(radiusM)}</div>
-          {(zoomScale < 0.84 || truncated) && <div className={styles.mapNotice}>{zoomScale < 0.84 ? "필지 윤곽을 보려면 지도를 확대해 주세요." : "필지가 많습니다. 확대하면 필지가 보입니다."}</div>}
-          <div className={styles.instruction}>{mode === "address" ? "주소 위치의 필지가 선택됩니다 · 지도를 끌어 이동하고 휠로 확대" : mode === "parcels" ? "필지를 누르면 추가, 다시 누르면 빼기 · Alt+클릭은 새로 시작" : "지도를 눌러 점 추가 · 첫 점을 누르거나 ‘그리기 끝’으로 닫기 · 점을 끌어 수정"}</div>
-        </div>
-        <aside className={styles.panel} aria-label="대지 패널">
-          <div className={styles.panelHeader}><h2 className={styles.panelTitle}>대지 패널</h2><span className={styles.panelMode}>{MODE_LABELS[mode]}</span></div>
-          <div className={styles.stats}>
-            <div className={styles.stat}><span className={styles.statLabel}>{mode === "polygon" ? "구역" : "필지 수"}</span><strong className={styles.statValue}>{mode === "polygon" ? (polygonInput ? "1" : "미완료") : `${selectedParcels.length}개`}</strong></div>
-            <div className={styles.stat}><span className={styles.statLabel}>{mode === "polygon" ? "면적 추정" : "면적 합"}</span><strong className={styles.statValue}>{formatAreaM2(selectionArea)}</strong></div>
-            <div className={styles.stat}><span className={styles.statLabel}>지목</span><strong className={styles.statValue}>{mode === "polygon" ? "직접 지정" : uniqueJimok(selectedParcels)}</strong></div>
-            <div className={styles.stat}><span className={styles.statLabel}>반경</span><strong className={styles.statValue}>{formatRadius(radiusM)}</strong></div>
-          </div>
-          <p className={styles.representative}><span className={styles.representativeLabel}>대표 지번</span>{representative}</p>
-          {mode !== "polygon" ? (
+           <div className={styles.radiusInset} aria-label={`반경 미리보기: 분석 반경 ${formatRadius(radiusM)}`}>
+             <svg viewBox="0 0 120 120" aria-hidden="true">
+               <rect width="120" height="120" fill="#f7f7f5" />
+               <path d="M-4 77L124 70" stroke="#fff" strokeWidth="10" />
+               <path d="M-4 77L124 70" stroke="#d4d6da" strokeWidth="1" />
+               <path d="M28 -4L36 124" stroke="#fff" strokeWidth="8" />
+               <path d="M28 -4L36 124" stroke="#d4d6da" strokeWidth="1" />
+               <circle cx="60" cy="60" r="46" fill="none" stroke="#15171c" strokeWidth="1" />
+               {selectedCenterPoint && mapCenter && (() => {
+                 const latitude = mapCenter[1];
+                 const dx = (selectedCenterPoint[0] - mapCenter[0]) * 111_320 * Math.cos((latitude * Math.PI) / 180);
+                 const dy = (mapCenter[1] - selectedCenterPoint[1]) * 110_574;
+                 const x = 60 + clamp((dx / radiusM) * 46, -40, 40);
+                 const y = 60 + clamp((dy / radiusM) * 46, -40, 40);
+                 return <g transform={`translate(${x} ${y})`}><path d="M0 -5L5 0L0 5L-5 0Z" fill="#fff" stroke="#111" strokeWidth="1.2" /><circle r="1.3" fill="#111" /></g>;
+               })()}
+             </svg>
+             <span>반경 {formatRadius(radiusM)}</span>
+           </div>
+           <div className={styles.instruction}>{mode === "address" ? "주소 위치의 필지가 선택됩니다 · 지도를 끌어 이동하고 휠로 확대" : mode === "parcels" ? "필지를 누르면 추가, 다시 누르면 빼기 · Alt+클릭은 새로 시작" : "지도를 눌러 점 추가 · 첫 점을 누르거나 ‘그리기 끝’으로 닫기 · 점을 끌어 수정"}</div>
+         </div>
+         <aside className={styles.panel} aria-label={`${MODE_LABELS[mode]} 패널`}>
+           <div className={styles.panelHeader}><h2 className={styles.panelTitle}>{MODE_LABELS[mode]}</h2></div>
+           {mode === "polygon" ? (
+             <dl className={styles.facts}>
+               <div><dt>면적</dt><dd>{formatAreaM2(selectionArea)} <span className={styles.factTag}>추정</span></dd></div>
+               <div><dt>꼭짓점</dt><dd>{drawPoints.length}개</dd></div>
+               <div><dt>지목</dt><dd>직접 지정</dd></div>
+               <div><dt>대표 지번</dt><dd>{representative}</dd></div>
+             </dl>
+           ) : (
+             <dl className={styles.facts}>
+               <div><dt>필지</dt><dd>{selectedParcels.length}필지</dd></div>
+               <div><dt>면적 합</dt><dd>{formatAreaM2(selectionArea)}</dd></div>
+               <div><dt>지목</dt><dd>{uniqueJimok(selectedParcels)}</dd></div>
+               <div><dt>대표 지번</dt><dd>{representative}</dd></div>
+             </dl>
+           )}
+           {mode !== "polygon" ? (
             <>
               <p className={styles.selectedTitle}><span>고른 필지</span><span>{selectedParcels.length}/{mode === "parcels" ? 30 : 1}</span></p>
               <ul className={styles.selectedList} aria-label="고른 필지 목록">
@@ -642,7 +683,8 @@ export default function SitePicker({ address, radiusM, initialSite = null, initi
               </div>
             </>
           )}
-          {statusText && <p className={`${styles.status} ${statusTone === "good" ? styles.statusGood : statusTone === "warning" ? styles.statusWarning : statusTone === "error" ? styles.statusError : ""}`} role={statusTone === "error" ? "alert" : "status"}>{statusText}</p>}
+           {roadWarning && <p className={`${styles.status} ${styles.statusWarning}`} role="status">{roadWarning}</p>}
+           {statusText && <p className={`${styles.status} ${statusTone === "good" ? styles.statusGood : statusTone === "warning" ? styles.statusWarning : statusTone === "error" ? styles.statusError : ""}`} role={statusTone === "error" ? "alert" : "status"}>{statusText}</p>}
           <p className={styles.helpText}>{mode === "polygon" ? "Ctrl+Z·⌫: 마지막 점 되돌리기 · Esc: 그리기 취소 · 점 목록의 화살표로 키보드 수정" : "지도 이동: 한 손가락/마우스 드래그 · 확대: 휠 또는 두 손가락 · 필지 선택: 탭 또는 Enter"}</p>
         </aside>
       </div>

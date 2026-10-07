@@ -37,6 +37,10 @@ export type MapFigureProps = {
   north?: number | false;
   /** 축척 막대 (기본 그림) */
   scale?: boolean;
+  /** 대지 지정 화면처럼 큰 반경 원·바깥 dim을 숨긴다. */
+  showRadius?: boolean;
+  /** 호출부가 별도의 대지 표식을 그릴 때 기본 표식을 숨긴다. */
+  showSiteMarker?: boolean;
   /** 그림 안 저작권 글자. 출처 띠가 대신하면 false */
   credit?: boolean;
   /** 맨 아래 출처 띠가 덮는 높이(px). 축척 막대가 그 위에 놓인다 */
@@ -331,7 +335,7 @@ function isBuildingLayer(layer: string): boolean {
   return layer === "building" || layer === "svf_building" || layer.startsWith("bldg_") || layer.includes("building");
 }
 
-export default function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, fixed, label, legend, legendY, north: northOpt, scale = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, selectedFids = [], highlightLabel = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = [], onFeatureClick, onFeatureHover, onFeaturePin, onLegendHover, onLegendPin, path = [], onMapClick }: MapFigureProps) {
+export default function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, fixed, label, legend, legendY, north: northOpt, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, selectedFids = [], highlightLabel = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = [], onFeatureClick, onFeatureHover, onFeaturePin, onLegendHover, onLegendPin, path = [], onMapClick }: MapFigureProps) {
   const rasterModel = model as RasterPresentationModel;
   const activeLayer = model.basemap ?? layer;
   const sat = activeLayer === "Satellite";
@@ -506,7 +510,9 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
 
   // 500m 간격 보조 원 (반경 안쪽만)
   const rings: number[] = [];
-  for (let m = 500; m < model.radiusM - 1; m += 500) rings.push(m / mpp);
+  if (showRadius) {
+    for (let m = 500; m < model.radiusM - 1; m += 500) rings.push(m / mpp);
+  }
 
   const selected = new Set(selectedFids);
   const pinned = new Set(pinnedKeys);
@@ -923,8 +929,8 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
           />
         ))}
 
-        <path d={dim} fillRule="evenodd" fill="#14161c" fillOpacity={0.09} />
-        <g clipPath={`url(#r${uid})`} data-radius-clip="true">
+        {showRadius && <path d={dim} fillRule="evenodd" fill="#14161c" fillOpacity={0.09} />}
+        <g clipPath={showRadius ? `url(#r${uid})` : undefined} data-radius-clip={showRadius ? "true" : undefined}>
           {polygons.map((polygon) => {
             if (isSiteParcelLayer(polygon.polygon.layer)) return null;
             const st = layerStyle(polygon.polygon.layer);
@@ -946,10 +952,10 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
             return <polyline key={`line${d.index}`} data-line="true" points={d.points.map(([x, y]) => `${x},${y}`).join(" ")} fill="none" opacity={isElementDimmed(d.l.layer, lineKey) ? 0.2 : undefined} stroke={strong || lineSelected ? INK : st.color} strokeWidth={(strong ? 1.6 : lineSelected ? 4 : 1.5) * u} strokeLinejoin="round" {...pickProps({ fid: d.l.fid, lng: center[0], lat: center[1], kind: "line" }, lineKey, labelText(d.l.layer, "line", d.l))} />;
           })}
         </g>
-        {rings.map((r, i) => (
+        {showRadius && rings.map((r, i) => (
           <circle key={`ring-${i}-${r}`} cx={cx} cy={cy} r={r} fill="none" stroke={line} strokeOpacity={sat ? 0.7 : 0.35} strokeWidth={1 * u} strokeDasharray={`${4 * u} ${4 * u}`} />
         ))}
-        <circle cx={cx} cy={cy} r={R} fill="none" stroke={line} strokeOpacity={sat ? 0.95 : 0.75} strokeWidth={1.6 * u} />
+        {showRadius && <circle cx={cx} cy={cy} r={R} fill="none" stroke={line} strokeOpacity={sat ? 0.95 : 0.75} strokeWidth={1.6 * u} />}
 
         {drawn.map((d, i) => {
            if (d.f.highlight && d.f.layer.endsWith("_nearest")) {
@@ -991,7 +997,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
           </>
         )}
         {/* 대지 표시 */}
-        {!muted && (
+        {!muted && showSiteMarker && (
           <g role="img" aria-label="분석 대지">
             {siteMode === "parcel" && sitePath ? (
               <>
