@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import styles from "./board.module.css";
 
 export type V2Project = {
@@ -44,14 +44,28 @@ async function projectFetch(url: string, init?: RequestInit): Promise<Response> 
   return refreshed ? fetch(url, { ...init, credentials: "include" }) : res;
 }
 
-function formatUpdatedAt(value: string): string {
+function formatAppDateTime(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("ko-KR", { dateStyle: "short", timeStyle: "short" }).format(date);
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date).map(({ type, value: part }) => [type, part]));
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
 }
 
 function formatRadius(radiusM: number): string {
   return radiusM >= 1000 ? `${radiusM / 1000}km` : `${radiusM}m`;
+}
+
+function formatDataVersion(value: string, analysisDate: string): string {
+  const version = value.trim();
+  return /^[0-9a-f]{8,}$/i.test(version) ? `데이터 기준일 ${analysisDate || "미확인"}` : `데이터 ${version || "미확인"}`;
 }
 
 export default function ProjectMenu({ analysisId, currentProjectId, currentProjectName, defaultName, board, canSave, dirty, onSaved, onDeleted, onOpenProject, onAuthExpired }: ProjectMenuProps) {
@@ -63,6 +77,8 @@ export default function ProjectMenu({ analysisId, currentProjectId, currentProje
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [saveMenuOpen, setSaveMenuOpen] = useState(false);
+  const saveMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (mode === null) return;
@@ -73,7 +89,25 @@ export default function ProjectMenu({ analysisId, currentProjectId, currentProje
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [mode]);
 
+  useEffect(() => {
+    if (!saveMenuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && saveMenuRef.current?.contains(event.target)) return;
+      setSaveMenuOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSaveMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [saveMenuOpen]);
+
   const openList = async () => {
+    setSaveMenuOpen(false);
     setMode("list");
     setLoading(true);
     setError(null);
@@ -97,6 +131,7 @@ export default function ProjectMenu({ analysisId, currentProjectId, currentProje
   };
 
   const openSave = (asNew: boolean) => {
+    setSaveMenuOpen(false);
     setMode("save");
     setSaveAsNew(asNew || !currentProjectId);
     setRenameId(null);
@@ -222,15 +257,15 @@ export default function ProjectMenu({ analysisId, currentProjectId, currentProje
     <>
       {loading && <p className={styles.projectStatus} role="status">목록을 불러오는 중…</p>}
       {error && <p className={styles.projectError} role="alert">{error} <a href="/site/login?next=%2Fsite%2Fv2">다시 로그인</a></p>}
-      {!loading && !error && projects.length === 0 && <p className={styles.projectEmpty}>저장된 프로젝트가 없습니다.</p>}
+      {!loading && !error && projects.length === 0 && <p className={styles.projectEmpty}>저장한 프로젝트가 없습니다. 분석 후 '저장'을 누르세요.</p>}
       <div className={styles.projectList}>
         {projects.map((project) => (
           <article key={project.projectId} className={styles.projectRow}>
             <div className={styles.projectMeta}>
               <h3>{project.name}</h3>
               <p>{project.address} · 반경 {formatRadius(project.radiusM)}</p>
-              <p>분석일 {project.analysisDate} · 데이터 {project.dataVersion.slice(0, 8)} · 수정 {formatUpdatedAt(project.updatedAt)}</p>
-              {!project.dataVersionAvailable && <strong className={styles.projectStale}>데이터 갱신 필요</strong>}
+              <p>분석일 {project.analysisDate} · {formatDataVersion(project.dataVersion, project.analysisDate)} · 수정 {formatAppDateTime(project.updatedAt)}</p>
+              {project.dataVersionAvailable === false && <strong className={styles.projectStale}>데이터 갱신됨 — 다시 분석 필요</strong>}
             </div>
             <div className={styles.projectActions}>
               <button type="button" className={styles.projectAction} onClick={() => { setMode(null); onOpenProject(project.projectId); }}>열기</button>
@@ -240,9 +275,6 @@ export default function ProjectMenu({ analysisId, currentProjectId, currentProje
           </article>
         ))}
       </div>
-      <div className={styles.projectFormActions}>
-        <button type="button" className={styles.pill} onClick={() => setMode(null)}>닫기</button>
-      </div>
     </>
   );
 
@@ -251,8 +283,29 @@ export default function ProjectMenu({ analysisId, currentProjectId, currentProje
       <div className={styles.projectControls}>
         <button type="button" className={styles.pill} onClick={() => void openList()}>내 프로젝트</button>
         {dirty && <span className={styles.saveDirty} role="status">저장 안 된 변경</span>}
-        <button type="button" className={`${styles.pill} ${styles.pillDark}`} onClick={() => openSave(false)} disabled={!canSave}>저장</button>
-        {currentProjectId && <button type="button" className={styles.projectSecondary} onClick={() => openSave(true)} disabled={!canSave}>다른 이름으로 저장</button>}
+        <div className={styles.saveSplit} ref={saveMenuRef}>
+          <button type="button" className={`${styles.pill} ${styles.pillDark} ${currentProjectId ? styles.saveSplitPrimary : ""}`} onClick={() => openSave(false)} disabled={!canSave}>저장</button>
+          {currentProjectId && (
+            <>
+              <button
+                type="button"
+                className={`${styles.pill} ${styles.pillDark} ${styles.saveSplitTrigger}`}
+                onClick={() => setSaveMenuOpen((open) => !open)}
+                disabled={!canSave}
+                aria-label="저장 메뉴"
+                aria-expanded={saveMenuOpen}
+                aria-haspopup="menu"
+              >
+                ▾
+              </button>
+              {saveMenuOpen && (
+                <div className={styles.saveMenu} role="menu" aria-label="저장 메뉴">
+                  <button type="button" className={styles.saveMenuItem} role="menuitem" onClick={() => openSave(true)}>다른 이름으로 저장</button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
       {notice && <span className={styles.projectNotice} role="status">{notice}</span>}
       {mode !== null && (

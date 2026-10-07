@@ -399,7 +399,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
               )}
             </>
           ) : (
-            <span className={styles.topTitle}>
+            <span className={styles.topTitle} title={`${siteSummary.address} · ${summary.radius}`}>
               {siteSummary.address} · {summary.radius}
             </span>
           )}
