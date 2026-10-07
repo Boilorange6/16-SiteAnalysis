@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { CardFace, DemoPhase, PinnedLabel, TileSize } from "@/lib/v2/ui/board-state";
 import { STRIP_COLORS } from "@/lib/v2/ui/map-layers";
 import { OV, badgesToShow, cardReserved, stripText } from "@/lib/v2/ui/overlay-layout";
@@ -247,7 +247,7 @@ export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, p
   const label = `${view.title} 지도`;
   if (state) return <MapBox model={displayView.backdrop} muted legend={false} north={false} scale={false} credit={false} label={label} siteX={siteX} />;
   if (view.code === "S01" && view.mass) {
-    return <MassFigure scene={view.mass.scene} camera={view.mass.camera} width={960} height={540} label={label} exploded={massExploded ? { spreadPct: 24, scheme: "use" } : undefined} />;
+    return <MassFigure scene={view.mass.scene} camera={view.mass.camera} width={960} height={540} label={label} quality={card ? "card" : "detail"} exploded={massExploded ? { spreadPct: 24, scheme: "use" } : undefined} />;
   }
   const seasonalRose = view.roses?.[roseSeason];
   if (seasonalRose || view.rose) {
@@ -283,7 +283,7 @@ export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, p
   );
 }
 
-export type TileCardProps = {
+type TileCardBaseProps = {
   view: TileView;
   phase: DemoPhase | null;
   included: boolean;
@@ -294,31 +294,56 @@ export type TileCardProps = {
   size: TileSize;
   dragging: boolean;
   floatStyle?: CSSProperties;
+  /** queued/running 타일에 표시할 대기 위치·경과 시간 안내 */
+  waitingNote?: string | null;
+  roseSeason: RoseSeason;
+  /** 화면 면 (요약면/지도면). 보고서 출력 면(face)과 무관 */
+  cardFace: CardFace;
+  onWindUploaded?: () => void;
+  stackable?: boolean;
+  stackSelected?: boolean;
+  sheetable?: boolean;
+  sheetSelected?: boolean;
+  pinnedLabels: PinnedLabel[];
+};
+
+export type TileCardAction =
+  | { type: "resize"; size: TileSize }
+  | { type: "open" }
+  | { type: "include"; value: boolean }
+  | { type: "face"; face: OutputFace }
+  | { type: "roseSeason"; season: RoseSeason }
+  | { type: "cardFace"; face: CardFace }
+  | { type: "remove" }
+  | { type: "move"; dir: -1 | 1 }
+  | { type: "retry" }
+  | { type: "toggleLabel"; key: string }
+  | { type: "setAllLabels"; on: boolean }
+  | { type: "stackToggle"; selected: boolean }
+  | { type: "unstack" }
+  | { type: "sheetToggle"; selected: boolean }
+  | { type: "unsheet" };
+
+export type TileCardProps = TileCardBaseProps & {
+  onHandleDown: (e: ReactPointerEvent<HTMLElement>) => void;
+  onAction: (id: string, action: TileCardAction) => void;
+};
+
+type TileCardRenderProps = TileCardBaseProps & {
   onHandleDown: (e: ReactPointerEvent<HTMLElement>) => void;
   onResize: (size: TileSize) => void;
   onOpen: () => void;
-  /** queued/running 타일에 표시할 대기 위치·경과 시간 안내 */
-  waitingNote?: string | null;
   onInclude: (v: boolean) => void;
   onFace: (f: OutputFace) => void;
-  roseSeason: RoseSeason;
   onRoseSeason: (season: RoseSeason) => void;
-  /** 화면 면 (요약면/지도면). 보고서 출력 면(face)과 무관 */
-  cardFace: CardFace;
   onCardFace: (f: CardFace) => void;
-  onWindUploaded?: () => void;
   onRemove: () => void;
   onMove: (dir: -1 | 1) => void;
   onRetry: () => void;
-  stackable?: boolean;
-  stackSelected?: boolean;
   onStackToggle?: (selected: boolean) => void;
   onUnstack?: () => void;
-  sheetable?: boolean;
-  sheetSelected?: boolean;
   onSheetToggle?: (selected: boolean) => void;
   onUnsheet?: () => void;
-  pinnedLabels: PinnedLabel[];
   onToggleLabel: (key: string) => void;
   onSetAllLabels: (on: boolean) => void;
 };
@@ -453,7 +478,7 @@ function WindStrip({ view, layerZ, onLayerZ, onOpen }: { view: TileView; layerZ:
 }
 
 /** 지도 면: 헤더 40px(지도 밖) · 지도(남은 높이 전부) · 출처 24px(지도 밖). 지도 위에는 북쪽·축척·한 줄 범례만 둔다. */
-function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, massExploded, onMassExploded, onFlip, onDetail }: { p: TileCardProps; active: boolean; state: boolean; back: boolean; onBack: (v: boolean) => void; windLayerZ: number; onWindLayerZ: (z: number) => void; massExploded: boolean; onMassExploded: (value: boolean) => void; onFlip: () => void; onDetail?: () => void }) {
+function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, massExploded, onMassExploded, onFlip, onDetail, mapReady }: { p: TileCardRenderProps; active: boolean; state: boolean; back: boolean; onBack: (v: boolean) => void; windLayerZ: number; onWindLayerZ: (z: number) => void; massExploded: boolean; onMassExploded: (value: boolean) => void; onFlip: () => void; onDetail?: () => void; mapReady: boolean }) {
   const { view } = p;
   const h = view.headline;
   const shortAux = h?.aux && h.aux.length <= 4 ? h.aux : "";
@@ -463,6 +488,7 @@ function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, mas
   const labelEntries = view.map ? mapLabelEntries(view.map) : [];
   const pinnedCount = p.pinnedLabels.filter((label) => label.on && labelEntries.some((entry) => entry.key === label.key)).length;
   const pinnedKeys = p.pinnedLabels.filter((label) => label.on && labelEntries.some((entry) => entry.key === label.key)).map((label) => label.key);
+  const onFeaturePin = useCallback((feature: MapFigureElementPick) => p.onToggleLabel(feature.key), [p.onToggleLabel]);
   // 제목과 핵심 숫자가 함께 들어가지 않으면 숫자를 통째로 숨긴다(잘린 숫자는 오독되고, 숫자는 요약 면에 있다).
   const headRef = useRef<HTMLElement>(null);
   const [keyHidden, setKeyHidden] = useState(false);
@@ -530,8 +556,8 @@ function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, mas
       {view.code === "S03" && !state && <WindStrip view={view} layerZ={windLayerZ} onLayerZ={onWindLayerZ} onOpen={p.onOpen} />}
       {view.code === "D22" && !state && <RoseSeasonSelect view={view} value={p.roseSeason} onChange={p.onRoseSeason} />}
       <div className={styles.mfMap}>
-        <div className={styles.stage}>
-          <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="card" windLayerZ={windLayerZ} massExploded={massExploded} roseSeason={p.roseSeason} pinnedKeys={pinnedKeys} onFeaturePin={(feature) => p.onToggleLabel(feature.key)} />
+        <div className={styles.stage} aria-hidden={!mapReady || undefined}>
+          {mapReady && <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="card" windLayerZ={windLayerZ} massExploded={massExploded} roseSeason={p.roseSeason} pinnedKeys={pinnedKeys} onFeaturePin={onFeaturePin} />}
         </div>
       </div>
       <footer className={styles.mfFoot} title={text}>
@@ -542,7 +568,7 @@ function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, mas
 }
 
 /** 요약면: 지도 없는 흰 카드. 제목 줄 · 큰 숫자 + 한 줄 라벨 · 사실 3줄 · 상태 배지(최대 2개) · 출처 한 줄 · "지도 ↻" */
-function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardProps; state: boolean; waiting: boolean; onFlip: () => void; onDetail?: () => void }) {
+function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardRenderProps; state: boolean; waiting: boolean; onFlip: () => void; onDetail?: () => void }) {
   const { view, phase } = p;
   const facts = view.rows.filter((r) => r.label !== view.headline?.label).slice(0, 3);
   const head = waiting ? (phase === "running" ? "계산 중" : "대기") : (view.badges.find((b) => b.tone === "status")?.text ?? "표시할 결과가 없습니다");
@@ -667,8 +693,9 @@ function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardProps
   );
 }
 
-export default function TileCard(p: TileCardProps) {
+function TileCard(p: TileCardProps) {
   const { view, phase } = p;
+  const id = view.tileId;
   const [back, setBack] = useState(false);
   const [windLayerZ, setWindLayerZ] = useState(6);
   const [massExploded, setMassExploded] = useState(false);
@@ -683,16 +710,62 @@ export default function TileCard(p: TileCardProps) {
   useEffect(() => {
     if (shown === "map") setSeen(true);
   }, [shown]);
-  const mountMap = shown === "map" || seen; // 지도는 처음 뒤집을 때 만들고 그 뒤에는 유지한다
+  const [nearViewport, setNearViewport] = useState(false);
+  useEffect(() => {
+    const card = cardRef.current;
+    if (!card) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setNearViewport(true);
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) setNearViewport(true);
+    }, { rootMargin: "600px" });
+    observer.observe(card);
+    return () => observer.disconnect();
+  }, []);
+  const mapReady = nearViewport;
   useEffect(() => {
     if (focusFace.current !== shown) return;
     const buttonFace = shown === "map" ? "summary" : "map";
     cardRef.current?.querySelector<HTMLButtonElement>(`[data-on="true"] [data-card-face-button="${buttonFace}"]`)?.focus();
     focusFace.current = null;
   }, [shown]);
-  const onCardFace = (face: CardFace) => {
+  const onCardFace = useCallback((face: CardFace) => {
     focusFace.current = face;
-    p.onCardFace(face);
+    p.onAction(id, { type: "cardFace", face });
+  }, [id, p.onAction]);
+  const onResize = useCallback((size: TileSize) => p.onAction(id, { type: "resize", size }), [id, p.onAction]);
+  const onOpen = useCallback(() => p.onAction(id, { type: "open" }), [id, p.onAction]);
+  const onInclude = useCallback((value: boolean) => p.onAction(id, { type: "include", value }), [id, p.onAction]);
+  const onFace = useCallback((face: OutputFace) => p.onAction(id, { type: "face", face }), [id, p.onAction]);
+  const onRoseSeason = useCallback((season: RoseSeason) => p.onAction(id, { type: "roseSeason", season }), [id, p.onAction]);
+  const onRemove = useCallback(() => p.onAction(id, { type: "remove" }), [id, p.onAction]);
+  const onMove = useCallback((dir: -1 | 1) => p.onAction(id, { type: "move", dir }), [id, p.onAction]);
+  const onRetry = useCallback(() => p.onAction(id, { type: "retry" }), [id, p.onAction]);
+  const onToggleLabel = useCallback((key: string) => p.onAction(id, { type: "toggleLabel", key }), [id, p.onAction]);
+  const onSetAllLabels = useCallback((on: boolean) => p.onAction(id, { type: "setAllLabels", on }), [id, p.onAction]);
+  const onStackToggle = useCallback((selected: boolean) => p.onAction(id, { type: "stackToggle", selected }), [id, p.onAction]);
+  const onUnstack = useCallback(() => p.onAction(id, { type: "unstack" }), [id, p.onAction]);
+  const onSheetToggle = useCallback((selected: boolean) => p.onAction(id, { type: "sheetToggle", selected }), [id, p.onAction]);
+  const onUnsheet = useCallback(() => p.onAction(id, { type: "unsheet" }), [id, p.onAction]);
+  const renderProps: TileCardRenderProps = {
+    ...p,
+    onResize,
+    onOpen,
+    onInclude,
+    onFace,
+    onRoseSeason,
+    onCardFace,
+    onRemove,
+    onMove,
+    onRetry,
+    onStackToggle,
+    onUnstack,
+    onSheetToggle,
+    onUnsheet,
+    onToggleLabel,
+    onSetAllLabels,
   };
   const cls = [styles.tile, p.size === 2 && styles.span2, p.editing && styles.tileEdit, p.dragging && styles.tileDrag, state && styles.tileState, !waiting && view.status === "failed" && styles.tileFail]
     .filter(Boolean)
@@ -704,12 +777,12 @@ export default function TileCard(p: TileCardProps) {
   const detailable = openable && hasDetail(view.code) && hasAnalysisContext;
   const [detailOpen, setDetailOpen] = useState(false);
   const onClick = (e: MouseEvent<HTMLElement>) => {
-    if (openable && !(e.target as HTMLElement).closest(INTERACTIVE)) p.onOpen();
+    if (openable && !(e.target as HTMLElement).closest(INTERACTIVE)) onOpen();
   };
   const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
     if (openable && e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
       e.preventDefault();
-      p.onOpen();
+      onOpen();
     }
   };
 
@@ -727,11 +800,11 @@ export default function TileCard(p: TileCardProps) {
     >
       <div className={styles.flipInner} data-face={shown}>
         <div className={`${styles.face} ${styles.faceSummary}`} data-on={shown === "summary"} inert={shown !== "summary"} aria-hidden={shown !== "summary"}>
-          <SummaryFace p={p} state={state} waiting={waiting} onFlip={() => onCardFace("map")} onDetail={detailable ? () => setDetailOpen(true) : undefined} />
+          <SummaryFace p={renderProps} state={state} waiting={waiting} onFlip={() => onCardFace("map")} onDetail={detailable ? () => setDetailOpen(true) : undefined} />
         </div>
       <div className={`${styles.face} ${styles.faceMap}`} data-on={shown === "map"} inert={shown !== "map"} aria-hidden={shown !== "map"}>
-          {mountMap && (
-            <MapFace p={p} active={shown === "map"} state={state} back={back} onBack={setBack} windLayerZ={windLayerZ} onWindLayerZ={setWindLayerZ} massExploded={massExploded} onMassExploded={setMassExploded} onFlip={() => onCardFace("summary")} onDetail={detailable ? () => setDetailOpen(true) : undefined} />
+          {(shown === "map" || seen) && (
+            <MapFace p={renderProps} active={shown === "map"} state={state} back={back} onBack={setBack} windLayerZ={windLayerZ} onWindLayerZ={setWindLayerZ} massExploded={massExploded} onMassExploded={setMassExploded} onFlip={() => onCardFace("summary")} onDetail={detailable ? () => setDetailOpen(true) : undefined} mapReady={mapReady} />
           )}
         </div>
       </div>
@@ -739,3 +812,5 @@ export default function TileCard(p: TileCardProps) {
     </article>
   );
 }
+
+export default memo(TileCard);

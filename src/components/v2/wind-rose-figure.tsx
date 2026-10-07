@@ -1,4 +1,4 @@
-import React from "react";
+import React, { memo } from "react";
 import { DIR16_NAMES, roseWedges, SPEED_BIN_LABELS, type RoseModel } from "@/lib/v2/ui/wind-rose";
 import type { RoseSeason } from "@/lib/v2/tile-result";
 
@@ -165,5 +165,6 @@ function WindRoseFigure({ model, width, height, fixed = false, label = "D22 ë°”ë
   );
 }
 
-export { WindRoseFigure };
-export default WindRoseFigure;
+const MemoWindRoseFigure = memo(WindRoseFigure);
+export { MemoWindRoseFigure as WindRoseFigure };
+export default MemoWindRoseFigure;

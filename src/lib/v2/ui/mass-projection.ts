@@ -6,6 +6,7 @@ export type ExplodedLayer = (typeof EXPLODED_LAYERS)[number];
 export type MassLayer = "mass_source" | "mass_estimated" | "mass_unknown" | "ground" | ExplodedLayer;
 export type MassColorScheme = "use" | "age" | "height" | "single";
 export type MassFaceKind = "roof" | "wall" | "footprint";
+export type MassQuality = "card" | "detail";
 
 export type MassCamera = {
   azimuthDeg: number;
@@ -132,6 +133,40 @@ function pathOfFace(face: RawFace, scale: number, tx: number, ty: number, screen
 
 function rawPointsOf(face: RawFace): RawPoint[] {
   return (face.paths ?? [face.points]).flat();
+}
+
+/** 카드의 실제 표시 크기에서 1px 안팎이 되지 않는 면은 카드 전용 LOD에서 생략한다. */
+function screenAreaOf(face: RawFace, scale: number): number {
+  return (face.paths ?? [face.points]).reduce((total, ring) => {
+    if (ring.length < 3) return total;
+    let area = 0;
+    for (let index = 0; index < ring.length; index += 1) {
+      const a = ring[index]!;
+      const b = ring[(index + 1) % ring.length]!;
+      area += (a.x * b.y - b.x * a.y) * scale * scale;
+    }
+    return total + Math.abs(area) / 2;
+  }, 0);
+}
+
+const CARD_FACE_MIN_AREA = 8;
+const CARD_MAX_BUILDING_FACES = 3200;
+const isBuildingFace = (face: RawFace): boolean => face.layer === "mass_source" || face.layer === "mass_estimated" || face.layer === "mass_unknown";
+
+function simplifyCardFaces(raw: RawFace[], scale: number): RawFace[] {
+  const areas = new Map<RawFace, number>();
+  const visible = raw.filter((face) => {
+    if (face.layer === "ground") return true;
+    const area = screenAreaOf(face, scale);
+    areas.set(face, area);
+    return area >= CARD_FACE_MIN_AREA;
+  });
+  const buildings = visible.filter(isBuildingFace);
+  if (buildings.length <= CARD_MAX_BUILDING_FACES) return visible;
+  const keep = new Set(buildings
+    .sort((a, b) => (areas.get(b) ?? 0) - (areas.get(a) ?? 0))
+    .slice(0, CARD_MAX_BUILDING_FACES));
+  return visible.filter((face) => !isBuildingFace(face) || keep.has(face));
 }
 
 function toMassFace(face: RawFace, scale: number, tx: number, ty: number, screenStep = 0): MassFace {
@@ -275,7 +310,7 @@ function addBuildingFaces(
  * Scene의 로컬 미터 좌표를 고정 축측 카메라용 SVG path로 투영한다.
  * x'·y'·depth 규약은 DXF/GLB와 독립적으로 화면과 PPT가 공유한다.
  */
-export function projectMass(scene: Scene, camera: MassCamera, width: number, height: number): MassProjection {
+export function projectMass(scene: Scene, camera: MassCamera, width: number, height: number, quality: MassQuality = "detail"): MassProjection {
   const azimuth = radians(finiteOr(camera.azimuthDeg, 225));
   const elevation = radians(Math.max(-89, Math.min(89, finiteOr(camera.elevationDeg, 35))));
   const cosA = Math.cos(azimuth);
@@ -319,7 +354,8 @@ export function projectMass(scene: Scene, camera: MassCamera, width: number, hei
   const ty = height * 0.54 - ((minY + maxY) / 2) * scale;
 
   // 평탄 원판은 depth가 -MAX라 뒤에 남고, DEM 셀은 건물과 같은 깊이 정렬에 참여한다.
-  const ordered = [...raw].sort((a, b) => a.depth - b.depth);
+  const sourceFaces = quality === "card" ? simplifyCardFaces(raw, scale) : raw;
+  const ordered = [...sourceFaces].sort((a, b) => a.depth - b.depth);
   return {
     faces: ordered.map((face) => toMassFace(face, scale, tx, ty)),
     scale,

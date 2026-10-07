@@ -1,5 +1,6 @@
 import React from "react";
-import { EXPLODED_LAYERS, MASS_USE_COLORS, type MassCamera, type MassColorScheme, projectExploded, projectMass, type MassLayer } from "@/lib/v2/ui/mass-projection";
+import { memo } from "react";
+import { EXPLODED_LAYERS, MASS_USE_COLORS, type MassCamera, type MassColorScheme, projectExploded, projectMass, type MassLayer, type MassQuality } from "@/lib/v2/ui/mass-projection";
 import type { Scene } from "@/lib/v2/scene";
 
 export type MassFigureProps = {
@@ -10,6 +11,7 @@ export type MassFigureProps = {
   fixed?: boolean;
   label?: string;
   exploded?: { spreadPct: number; scheme?: MassColorScheme };
+  quality?: MassQuality;
 };
 
 const INK = "#15171c";
@@ -62,11 +64,11 @@ function northVector(camera: MassCamera): { dx: number; dy: number } {
   return { dx: (dx / length) * 28, dy: (dy / length) * 28 };
 }
 
-function MassFigure({ scene, camera, width, height, fixed = false, label = "S01 3D 매스", exploded }: MassFigureProps) {
+function MassFigure({ scene, camera, width, height, fixed = false, label = "S01 3D 매스", exploded, quality = "detail" }: MassFigureProps) {
   const projection = scene
     ? exploded
       ? projectExploded(scene, camera, width, height, exploded.spreadPct, exploded.scheme ?? "use")
-      : projectMass(scene, camera, width, height)
+      : projectMass(scene, camera, width, height, quality)
     : null;
   const isExploded = Boolean(exploded);
   const faces = projection?.faces ?? [{ path: emptyGroundPath(width, height), shade: 0.08, layer: "ground" as const, depth: 0 }];
@@ -223,5 +225,6 @@ function MassFigure({ scene, camera, width, height, fixed = false, label = "S01 
   );
 }
 
-export { MassFigure };
-export default MassFigure;
+const MemoMassFigure = memo(MassFigure);
+export { MemoMassFigure as MassFigure };
+export default MemoMassFigure;

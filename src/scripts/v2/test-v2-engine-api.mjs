@@ -73,12 +73,23 @@ try {
   const got = getAnalysis(appDb, ok.body.analysisId, 17);
   assert.equal(got.status, 200);
   assert.deepEqual(got.body.summary, ok.body.summary);
+  assert.deepEqual(
+    got.body.results.map((tile) => tile.tileCode).sort(),
+    ok.body.results.map((tile) => tile.tileCode).sort(),
+    "GET restores the same result set as POST",
+  );
+  assert.deepEqual(
+    got.body.results.map((tile) => JSON.stringify(tile)).sort(),
+    ok.body.results.map((tile) => JSON.stringify(tile)).sort(),
+    "GET result payload is unchanged after the single parse pass",
+  );
   assert.deepEqual(got.body.results.map((t) => t.tileCode), ok.body.results.map((t) => t.tileCode).sort());
   assert.ok(got.body.jobs.some((job) => job.status === "queued"));
   assert.ok(got.body.results.filter((tile) => !["S02", "D21", "D29", "D10", "S03", "S04"].includes(tile.tileCode)).every((tile) => Number.isFinite(tile.elapsedMs)), "복원 결과에도 elapsedMs");
   assert.equal(got.body.revision, ok.body.revision);
   const partial = getAnalysis(appDb, ok.body.analysisId, 17, { tileCodes: ["A01"] });
   assert.equal(partial.status, 200);
+  assert.deepEqual(partial.body.summary, got.body.summary, "partial tile response keeps the full summary");
   assert.deepEqual(partial.body.results.map((tile) => tile.tileCode), ["A01"]);
   const status = getAnalysisStatus(appDb, ok.body.analysisId, 17);
   assert.equal(status.status, 200);

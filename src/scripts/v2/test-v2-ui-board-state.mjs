@@ -12,6 +12,27 @@ assert.equal(s.included["t-A01"], true);
 assert.equal(s.included["t-S02"], false); // not_provided
 assert.equal(s.included["t-S03"], false); // failed
 
+// 보드의 한 카드 포함 상태만 바뀌면 다른 카드에 전달되는 값과 참조는 그대로다.
+{
+  const before = initBoard(GODEOK_RESULTS);
+  const after = boardReducer(before, { type: "include", id: "t-A01", value: false });
+  const cardState = (state, id) => ({
+    included: state.included[id],
+    face: state.faces[id],
+    cardFace: state.view[id] ?? state.viewAll,
+    size: state.sizes[id],
+    roseSeason: state.roseSeasons[id] ?? "annual",
+    labels: state.labels[id] ?? [],
+  });
+  assert.deepEqual(cardState(after, "t-A02"), cardState(before, "t-A02"));
+  assert.equal(after.faces, before.faces);
+  assert.equal(after.view, before.view);
+  assert.equal(after.sizes, before.sizes);
+  assert.equal(after.roseSeasons, before.roseSeasons);
+  assert.equal(after.labels, before.labels);
+  assert.notEqual(after.included, before.included);
+}
+
 // 백그라운드 폴링 결과 교체는 편집 상태를 건드리지 않는다.
 {
   let edited = boardReducer(s, { type: "move", id: "t-A02", dir: 1 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { createContext, memo, useContext, useEffect, useRef, useState } from "react";
 import { compactLegendItems, RASTER_STYLES, type MapModel } from "@/lib/v2/ui/map-layers";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { framedViewport, metersPerPixel, scaleBar, tileUrl, tilesFor } from "@/lib/v2/ui/map-projection";
@@ -67,7 +67,7 @@ export function useMeasured() {
   return { ref, size, near };
 }
 
-export default function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, ...optsIn }: { model: MapModel; bare?: boolean; label?: string } & Opts2) {
+function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, ...optsIn }: { model: MapModel; bare?: boolean; label?: string } & Opts2) {
   const { ref, size, near } = useMeasured();
   const opts = { ...optsIn, fill: pad && size ? Math.max(0.3, (size.h - 2 * pad) / size.h) : optsIn.fill };
   const layer = useContext(BasemapContext);
@@ -253,3 +253,5 @@ export default function MapBox({ model, bare, label, avoid, siteX, rightInset, p
     </div>
   );
 }
+
+export default memo(MapBox);
