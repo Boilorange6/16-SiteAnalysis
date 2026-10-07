@@ -206,13 +206,14 @@ assert.equal(demoFinished(10, 99), 10);
     cameras: { [oldId]: { azimuthDeg: 315, elevationDeg: 35 } },
     cuts: { [oldId]: 3 },
     roseSeasons: { [oldId]: "summer" },
+    labels: { [oldId]: [{ key: "bldg_2000s|b-1", on: true }] },
     removed: [{ id: oldId, index: 2 }],
   };
   TILE_CODE_RENAMES.OLD = "NEW";
   const migrated = migrateSnapshot(old);
   assert.equal(migrated.version, 1, "v1 snapshot is identity-migrated");
   assert.deepEqual(migrated.order, [newId]);
-  for (const field of ["included", "faces", "callout", "a05Filter", "view", "sizes", "tileKinds", "cameras", "cuts", "roseSeasons"]) {
+  for (const field of ["included", "faces", "callout", "a05Filter", "view", "sizes", "tileKinds", "cameras", "cuts", "roseSeasons", "labels"]) {
     assert.ok(migrated[field][newId], `${field} id rewrite`);
   }
   assert.deepEqual(migrated.stacks["stack:1"], [newId]);
@@ -221,6 +222,25 @@ assert.equal(demoFinished(10, 99), 10);
   assert.equal(migrateSnapshot({ ...old, version: 2 }), null, "미래 버전은 무시");
   assert.deepEqual(restoreBoardState(GODEOK_RESULTS, { ...old, version: 2 }).order, ids, "미래 버전은 기본 보드");
   delete TILE_CODE_RENAMES.OLD;
+}
+// W2a 지도 라벨: 토글·고정·삭제·전체 표시 상태와 저장 왕복, 현재 결과에 없는 타일 정리
+{
+  let b = initBoard(GODEOK_RESULTS);
+  b = boardReducer(b, { type: "pinLabel", id: "t-D04", key: "bldg_2000s|b-1" });
+  b = boardReducer(b, { type: "toggleLabel", id: "t-D04", key: "bldg_2000s|b-2" });
+  b = boardReducer(b, { type: "toggleLabel", id: "t-D04", key: "bldg_2000s|b-1" });
+  assert.deepEqual(b.labels["t-D04"], [{ key: "bldg_2000s|b-1", on: false }, { key: "bldg_2000s|b-2", on: true }]);
+  b = boardReducer(b, { type: "setAllLabels", id: "t-D04", on: false });
+  assert.ok(b.labels["t-D04"].every((label) => !label.on));
+  b = boardReducer(b, { type: "setAllLabels", id: "t-D04", on: true });
+  assert.ok(b.labels["t-D04"].every((label) => label.on));
+  b = boardReducer(b, { type: "unpinLabel", id: "t-D04", key: "bldg_2000s|b-1" });
+  assert.deepEqual(b.labels["t-D04"], [{ key: "bldg_2000s|b-2", on: true }]);
+  const snapshot = serializeBoardState(b);
+  const restored = restoreBoardState(GODEOK_RESULTS, { ...snapshot, labels: { ...snapshot.labels, "deleted-tile": [{ key: "x|0", on: true }], "t-D04": [...snapshot.labels["t-D04"], { key: "bldg_2000s|b-2", on: false }] } });
+  assert.deepEqual(restored.labels["t-D04"], [{ key: "bldg_2000s|b-2", on: true }], "라벨 중복 제거 및 저장 왕복");
+  assert.equal(restored.labels["deleted-tile"], undefined, "현재 결과에 없는 타일 라벨 정리");
+  assert.deepEqual(restoreBoardState(GODEOK_RESULTS, JSON.stringify(snapshot)).labels, snapshot.labels, "labels 저장→불러오기 왕복");
 }
 
 console.log("v2 ui board-state tests passed");

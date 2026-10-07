@@ -225,9 +225,16 @@ export default function DetailWindow({ view, onClose }: DetailWindowProps) {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [fullscreen, setFullscreen] = useState(false);
+  const [legendHover, setLegendHover] = useState<string | null>(null);
+  const [legendPinned, setLegendPinned] = useState<string | null>(null);
+  const legendActiveRef = useRef(false);
   const dragRef = useRef<{ x: number; y: number; panX: number; panY: number; moved: boolean } | null>(null);
   const suppressMapClickRef = useRef(false);
   const [rasterHrefs, setRasterHrefs] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    legendActiveRef.current = !!legendHover || !!legendPinned;
+  }, [legendHover, legendPinned]);
 
   useEffect(() => setMounted(true), []);
 
@@ -245,6 +252,11 @@ export default function DetailWindow({ view, onClose }: DetailWindowProps) {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
+        if (legendActiveRef.current) {
+          setLegendHover(null);
+          setLegendPinned(null);
+          return;
+        }
         onCloseRef.current();
         return;
       }
@@ -401,7 +413,7 @@ export default function DetailWindow({ view, onClose }: DetailWindowProps) {
     setPan((current) => clampPan(current.x, current.y, nextZoom));
   };
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || (event.target as Element).closest("[data-map-feature]")) return;
+    if (event.button !== 0 || (event.target as Element).closest("[data-map-feature], [data-map-legend]")) return;
     dragRef.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y, moved: false };
     event.currentTarget.setPointerCapture(event.pointerId);
   };
@@ -458,6 +470,10 @@ export default function DetailWindow({ view, onClose }: DetailWindowProps) {
                     tileHref={activeLayer === "Satellite" ? (url) => url.includes("/Hybrid/") ? undefined : url : undefined}
                     rasterHref={(raster) => rasterHrefs[raster.name] ?? null}
                     legend
+                    highlightLabel={legendHover ?? legendPinned}
+                    highlightPinnedLabel={legendPinned}
+                    onLegendHover={setLegendHover}
+                    onLegendPin={(value) => setLegendPinned((current) => value === null ? null : current === value ? null : value)}
                     selectedFids={selectedFids}
                     path={path}
                     onFeatureClick={selectFeature}

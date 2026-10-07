@@ -183,6 +183,7 @@ export const STOCK_LEGEND: CalloutLegendSpec = {
 };
 /** 점·번호 원 색: A06은 입주 시기 버킷, A05는 준공 연대 */
 export const dotColor = (c: Complex) => (c.supply ? TIMING_STYLE[c.supply.timing].color : decadeColor(c.approvalYear));
+export const calloutLegendMatches = (c: Complex, color: string | null): boolean => color === null || dotColor(c) === color;
 
 /** 좁은 지도에서 가장 많이 등장하는 세 가지 범주만 남기는 설명선 범례. */
 export function compactCalloutLegend(spec: CalloutLegendSpec, complexes: Complex[], limit = 3): CalloutLegendItem[] {

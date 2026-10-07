@@ -6,6 +6,7 @@ import JSZip from "jszip";
 const { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } = await import("../../lib/v2/ui/fixtures/godeok.ts");
 const { initBoard, boardReducer, reportPages } = await import("../../lib/v2/ui/board-state.ts");
 const { toSummaryView, toTileView } = await import("../../lib/v2/ui/tile-view.ts");
+const { sheetView } = await import("../../lib/v2/ui/sheet.ts");
 const { buildReportPlan, reportFileName } = await import("../../lib/v2/report/report-plan.ts");
 const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
 const { SOURCE_NAMES } = await import("../../lib/v2/ui/tile-catalog.ts");
@@ -52,6 +53,26 @@ const src = p2.at(-1).rows;
 assert.ok(src.some((r) => r.source === SOURCE_NAMES.kapt && r.asOf === "기준일 미확인"));
 assert.ok(!src.some((r) => r.source === SOURCE_NAMES.land_price)); // A12 제외됨
 assert.equal(reportFileName("서울특별시 강동구 고덕동 123 외 2필지", "2026-09-30"), "사이트분석_서울특별시_강동구_고덕동_123_외_2필지_20260930.pptx");
+
+// W2a: 보드에서 켜 둔 라벨만 일반 타일 슬라이드·조판 셀로 전달하고, A05/A06 설명선에는 고정 라벨을 넣지 않는다.
+{
+  let labelBoard = initBoard(GODEOK_RESULTS);
+  labelBoard = boardReducer(labelBoard, { type: "toggleLabel", id: "t-D04", key: "bldg_2000s|4" });
+  labelBoard = boardReducer(labelBoard, { type: "toggleLabel", id: "t-D04", key: "bldg_2010s|8" });
+  labelBoard = boardReducer(labelBoard, { type: "toggleLabel", id: "t-A05", key: "apt|0" });
+  const labelPlan = build(GODEOK_RESULTS, labelBoard);
+  const d04Slides = labelPlan.filter((slide) => slide.kind === "tile" && slide.view.tileId === "t-D04");
+  assert.ok(d04Slides.length > 0 && d04Slides.every((slide) => slide.pinnedKeys?.join(",") === "bldg_2000s|4,bldg_2010s|8"));
+  assert.ok(labelPlan.filter((slide) => slide.kind === "tile" && slide.callout).every((slide) => !slide.pinnedKeys), "A05/A06 PPT 설명선에는 고정 라벨 없음");
+  labelBoard = boardReducer(labelBoard, { type: "sheet", tiles: ["t-A01", "t-A03"], grid: "2x2" });
+  labelBoard = boardReducer(labelBoard, { type: "toggleLabel", id: "t-A03", key: "bus_stop|0" });
+  const sheetBaseViews = new Map(GODEOK_RESULTS.map((result) => [result.tileId, toTileView(result)]));
+  const sheetSpec = labelBoard.sheets["sheet:1"];
+  sheetBaseViews.set("sheet:1", sheetView("sheet:1", [sheetBaseViews.get("t-A01"), sheetBaseViews.get("t-A03")].filter(Boolean), sheetSpec.grid));
+  const sheetPlan = buildReportPlan({ summary: toSummaryView(GODEOK_SUMMARY, GODEOK_RESULTS), views: sheetBaseViews, board: labelBoard, analysisDate: "2026-09-30" });
+  const sheet = sheetPlan.find((slide) => slide.kind === "sheet" && slide.view.code === "SHEET");
+  assert.ok(sheet?.cells.some((cell) => cell.view.tileId === "t-A03" && cell.pinnedKeys?.includes("bus_stop|0")), "조판 셀에도 켜 둔 라벨 전달");
+}
 
 // S01 카메라는 Board가 만든 뷰에 들어온 값을 보고서 계획과 동일하게 보존한다.
 {

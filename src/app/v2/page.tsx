@@ -612,6 +612,9 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
                   onFace={(face) => dispatch({ type: "face", id, face })}
                   roseSeason={board.roseSeasons[id] ?? "annual"}
                   onRoseSeason={(season: RoseSeason) => dispatch({ type: "roseSeason", id, season })}
+                  pinnedLabels={board.labels[id] ?? []}
+                  onToggleLabel={(key) => dispatch({ type: "toggleLabel", id, key })}
+                  onSetAllLabels={(on) => dispatch({ type: "setAllLabels", id, on })}
                   cardFace={viewOf(board, id)}
                   onCardFace={(face) => {
                     dispatch({ type: "view", id, face });
@@ -717,6 +720,10 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
             dispatch({ type: "a05Filter", id: openView.tileId, filter });
             setNote(filter ? `${openView.title} 필터 적용` : `${openView.title} 필터 초기화`);
           }}
+          pinnedLabels={board.labels[openView.tileId] ?? []}
+          onToggleLabel={(key) => dispatch({ type: "toggleLabel", id: openView.tileId, key })}
+          onUnpinLabel={(key) => dispatch({ type: "unpinLabel", id: openView.tileId, key })}
+          onSetAllLabels={(on) => dispatch({ type: "setAllLabels", id: openView.tileId, on })}
           camera={openView.mass?.camera}
           onCamera={(camera) => dispatch({ type: "camera", id: openView.tileId, camera })}
           cuts={openView.code === "S02" ? (board.cuts[openView.tileId] ?? 1) : undefined}

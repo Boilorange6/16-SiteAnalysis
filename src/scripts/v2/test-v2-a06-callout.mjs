@@ -76,6 +76,9 @@ assert.deepEqual(C.rankSupply(list.map(() => sup({})), "2026-09-30").map((c) => 
 {
   assert.equal(C.dotColor(list[0]), C.TIMING_STYLE.m0_12.color);
   assert.equal(C.dotColor(list[4]), C.TIMING_STYLE.past.color);
+  assert.equal(C.calloutLegendMatches(list[0], C.TIMING_STYLE.m0_12.color), true, "선택한 A06 범례 색 점·카드 유지");
+  assert.equal(C.calloutLegendMatches(list[4], C.TIMING_STYLE.m0_12.color), false, "선택하지 않은 A06 범례 색은 흐림 대상");
+  assert.equal(C.calloutLegendMatches(list[0], null), true, "범례 강조 전에는 모든 색 표시");
   assert.equal(C.dotRadius(250, 1000, 8, 16), 12, "√세대수");
   const many = C.rankSupply(Array.from({ length: 25 }, (_, i) => sup({ name: `p${i}`, plannedMonth: `2027-${String((i % 12) + 1).padStart(2, "0")}`, lng: 127 + i * 1e-4 })), "2026-09-30");
   assert.deepEqual([1, 2, 3].map((p) => C.pageItems(many, p).length), [10, 10, 5]);

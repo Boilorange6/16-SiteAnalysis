@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import type { CardFace, DemoPhase, TileSize } from "@/lib/v2/ui/board-state";
+import type { CardFace, DemoPhase, PinnedLabel, TileSize } from "@/lib/v2/ui/board-state";
 import { STRIP_COLORS } from "@/lib/v2/ui/map-layers";
 import { OV, badgesToShow, cardReserved, stripText } from "@/lib/v2/ui/overlay-layout";
 import { faceLabel, shortHeadlineLabel, type Badge, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
@@ -14,6 +14,7 @@ import CalloutMap from "./callout-map";
 import MapBox from "./map-box";
 import DetailWindow from "./detail-window";
 import WindPanel, { mapOptions } from "./wind-panel";
+import { mapLabelEntries, type MapFigureElementPick } from "./map-figure";
 import styles from "./board.module.css";
 import { hasDetail } from "@/lib/v2/ui/detail-state";
 
@@ -239,7 +240,7 @@ function stageViewForWind(view: TileView, layerZ: number | undefined): TileView 
   return name ? viewWithOnlyRaster(view, name, "") : view;
 }
 
-export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, page, onPage, windLayerZ, massExploded = false, roseSeason = "annual" }: { view: TileView; state: boolean; chart: boolean; frame: "card" | "detail"; siteX?: number | ((w: number) => number); rightInset?: number | ((w: number) => number); legendY?: number; page?: number; onPage?: (p: number) => void; windLayerZ?: number; massExploded?: boolean; roseSeason?: RoseSeason }) {
+export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, page, onPage, windLayerZ, massExploded = false, roseSeason = "annual", pinnedKeys = [], hoverKey = null, emphasisKey = null, onFeaturePin }: { view: TileView; state: boolean; chart: boolean; frame: "card" | "detail"; siteX?: number | ((w: number) => number); rightInset?: number | ((w: number) => number); legendY?: number; page?: number; onPage?: (p: number) => void; windLayerZ?: number; massExploded?: boolean; roseSeason?: RoseSeason; pinnedKeys?: readonly string[]; hoverKey?: string | null; emphasisKey?: string | null; onFeaturePin?: (feature: MapFigureElementPick) => void }) {
   const displayView = stageViewForWind(view, windLayerZ);
   if (chart) return <FaceChart view={view} />;
   const card = frame === "card";
@@ -263,6 +264,10 @@ export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, p
       credit={false}
       bottomInset={card ? 0 : OV.stripH}
       pad={card ? 7 : undefined}
+      pinnedKeys={pinnedKeys}
+      hoverKey={hoverKey}
+      emphasisKey={emphasisKey}
+      onFeaturePin={onFeaturePin}
       avoid={(w, h) => {
         const inset = typeof rightInset === "function" ? rightInset(w) : (rightInset ?? 0);
         // 카드: 지도 위에는 북쪽(오른쪽 위)·범례 알약(왼쪽 아래)·축척(오른쪽 아래)만 있다
@@ -313,9 +318,12 @@ export type TileCardProps = {
   sheetSelected?: boolean;
   onSheetToggle?: (selected: boolean) => void;
   onUnsheet?: () => void;
+  pinnedLabels: PinnedLabel[];
+  onToggleLabel: (key: string) => void;
+  onSetAllLabels: (on: boolean) => void;
 };
 
-const INTERACTIVE = "button,input,label,a,select,[data-handle],[role=menu]";
+const INTERACTIVE = "button,input,label,a,select,[data-handle],[role=menu],[data-map-feature],[data-map-legend]";
 
 const Svg = ({ children, size = 16, fill }: { children: ReactNode; size?: number; fill?: boolean }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill={fill ? "currentColor" : "none"} stroke={fill ? "none" : "currentColor"} strokeWidth={2.3} strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
@@ -324,7 +332,7 @@ const Svg = ({ children, size = 16, fill }: { children: ReactNode; size?: number
 );
 
 /** ⋯ 더 보기: 상세 보기 · 지도에 보기(도판/구성비) · 보고서에 넣을 그림(도판/구성비/둘 다). Esc·바깥 누름·Tab으로 닫히고 닫힐 때 ⋯ 버튼으로 포커스가 돌아온다. */
-function MoreMenu({ view, active, back, onBack, face, onFace, onDetail }: { view: TileView; active: boolean; back: boolean; onBack: (v: boolean) => void; face: OutputFace; onFace: (f: OutputFace) => void; onDetail?: () => void }) {
+function MoreMenu({ view, active, back, onBack, face, onFace, onDetail, pinnedCount, onSetAllLabels }: { view: TileView; active: boolean; back: boolean; onBack: (v: boolean) => void; face: OutputFace; onFace: (f: OutputFace) => void; onDetail?: () => void; pinnedCount: number; onSetAllLabels?: (on: boolean) => void }) {
   const [open, setOpen] = useState(false);
   const trigRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -342,7 +350,7 @@ function MoreMenu({ view, active, back, onBack, face, onFace, onDetail }: { view
   useEffect(() => {
     if (!active) setOpen(false); // 카드가 뒤집히면 메뉴도 닫는다
   }, [active]);
-  if (!onDetail && !view.hasFace) return null;
+  if (!onDetail && !view.hasFace && !onSetAllLabels) return null;
   const close = (refocus: boolean) => {
     setOpen(false);
     if (refocus) trigRef.current?.focus();
@@ -369,12 +377,13 @@ function MoreMenu({ view, active, back, onBack, face, onFace, onDetail }: { view
   );
   return (
     <>
-      <button ref={trigRef} type="button" className={`${styles.mfBtn} ${open ? styles.mfBtnOn : ""}`} data-more-button aria-haspopup="menu" aria-expanded={open} aria-label={`${view.title} 더 보기`} title="더 보기" onClick={() => setOpen((v) => !v)}>
+      <button ref={trigRef} type="button" className={`${styles.mfBtn} ${open ? styles.mfBtnOn : ""}`} data-more-button aria-haspopup="menu" aria-expanded={open} aria-label={`${view.title} 더 보기${pinnedCount > 0 ? ` · 고정 라벨 ${pinnedCount}개` : ""}`} title="더 보기" onClick={() => setOpen((v) => !v)}>
         <Svg fill>
           <circle cx="5" cy="12" r="2" />
           <circle cx="12" cy="12" r="2" />
           <circle cx="19" cy="12" r="2" />
         </Svg>
+        {pinnedCount > 0 && <span className={styles.mfPinBadge} aria-hidden>{pinnedCount}</span>}
       </button>
       {open && (
         <div ref={menuRef} role="menu" aria-label={`${view.title} 더 보기`} className={styles.mfMenu} onKeyDown={onKeyDown}>
@@ -389,6 +398,11 @@ function MoreMenu({ view, active, back, onBack, face, onFace, onDetail }: { view
               }}
             >
               상세 보기<span>표·출처 전체</span>
+            </button>
+          )}
+          {onSetAllLabels && pinnedCount > 0 && (
+            <button type="button" role="menuitem" className={styles.mfMenuItem} onClick={() => { onSetAllLabels(false); close(true); }}>
+              고정 라벨 모두 끄기 ({pinnedCount})
             </button>
           )}
           {view.hasFace && (
@@ -446,6 +460,9 @@ function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, mas
   const headlineLabel = h ? shortHeadlineLabel(h.label) : "";
   const extra = view.stackLayers ? view.stackLayers.join(" + ") : view.sheetGrid;
   const text = stripText(view.sourceLine);
+  const labelEntries = view.map ? mapLabelEntries(view.map) : [];
+  const pinnedCount = p.pinnedLabels.filter((label) => label.on && labelEntries.some((entry) => entry.key === label.key)).length;
+  const pinnedKeys = p.pinnedLabels.filter((label) => label.on && labelEntries.some((entry) => entry.key === label.key)).map((label) => label.key);
   // 제목과 핵심 숫자가 함께 들어가지 않으면 숫자를 통째로 숨긴다(잘린 숫자는 오독되고, 숫자는 요약 면에 있다).
   const headRef = useRef<HTMLElement>(null);
   const [keyHidden, setKeyHidden] = useState(false);
@@ -494,7 +511,7 @@ function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, mas
             {massExploded ? "기본 매스" : "분해"}
           </button>
         )}
-        <MoreMenu view={view} active={active} back={back} onBack={onBack} face={p.face} onFace={p.onFace} onDetail={onDetail} />
+        <MoreMenu view={view} active={active} back={back} onBack={onBack} face={p.face} onFace={p.onFace} onDetail={onDetail} pinnedCount={pinnedCount} onSetAllLabels={labelEntries.length > 0 ? p.onSetAllLabels : undefined} />
         <button type="button" className={styles.mfBtn} data-card-face-button="summary" onClick={onFlip} aria-pressed aria-label={`${view.title} 요약/지도 보기 전환`} title="요약 보기">
           <Svg size={15}>
             <path d="M3 12a9 9 0 1 0 3-6.7" />
@@ -514,7 +531,7 @@ function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, mas
       {view.code === "D22" && !state && <RoseSeasonSelect view={view} value={p.roseSeason} onChange={p.onRoseSeason} />}
       <div className={styles.mfMap}>
         <div className={styles.stage}>
-          <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="card" windLayerZ={windLayerZ} massExploded={massExploded} roseSeason={p.roseSeason} />
+          <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="card" windLayerZ={windLayerZ} massExploded={massExploded} roseSeason={p.roseSeason} pinnedKeys={pinnedKeys} onFeaturePin={(feature) => p.onToggleLabel(feature.key)} />
         </div>
       </div>
       <footer className={styles.mfFoot} title={text}>

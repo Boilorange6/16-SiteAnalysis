@@ -1583,6 +1583,110 @@ button.badge:focus-visible {
 .dlgPanel > * {
   flex: none;
 }
+.pinPanel {
+  display: grid;
+  gap: 8px;
+  padding: 10px 11px;
+  border: 1px solid #d9dce2;
+  border-radius: 12px;
+  background: rgba(247, 248, 249, 0.86);
+}
+.pinPanelHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pinPanelHead h3 {
+  margin: 0;
+  font-size: 13px;
+}
+.pinPanelHead span,
+.pinPanelEmpty {
+  color: var(--muted);
+  font-size: 11px;
+}
+.pinPanelEmpty {
+  margin: 0;
+}
+.pinList {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pinRow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 34px;
+  padding: 3px 4px 3px 7px;
+  border-radius: 8px;
+  background: #fff;
+}
+.pinRow:focus-visible {
+  outline: 2px solid #2f6fdb;
+  outline-offset: 2px;
+}
+.pinRowText {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pinRowButton,
+.pinRowDelete,
+.pinPanelActions button {
+  flex: none;
+  min-height: 28px;
+  padding: 2px 7px;
+  border: 1px solid #cfd3da;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 700;
+}
+.pinRowButton[aria-pressed="true"] {
+  border-color: var(--black);
+  background: var(--black);
+  color: #fff;
+}
+.pinRowDelete {
+  border-color: #e1c6c2;
+  color: #8b2f27;
+}
+.pinPanelActions {
+  display: flex;
+  gap: 6px;
+}
+.pinPanelActions button {
+  flex: 1;
+}
+.pinRowButton:focus-visible,
+.pinRowDelete:focus-visible,
+.pinPanelActions button:focus-visible {
+  outline: 2px solid #2f6fdb;
+  outline-offset: 2px;
+}
+.pinRowButton:disabled,
+.pinRowDelete:disabled,
+.pinPanelActions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+@media (pointer: coarse) {
+  .pinRowButton,
+  .pinRowDelete,
+  .pinPanelActions button {
+    min-height: 40px;
+  }
+}
 .dlgSentence {
   margin: 0;
   font-size: 13.5px;
@@ -2367,6 +2471,27 @@ button.badge:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  min-height: 24px;
+  padding: 3px 4px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  white-space: nowrap;
+}
+.cLegendI[data-active] {
+  border-color: var(--black);
+  background: #fff;
+}
+.cLegendI:focus-visible {
+  outline: 2px solid #2f6fdb;
+  outline-offset: 2px;
+}
+.cLegendI:not(:disabled) {
+  cursor: pointer;
 }
 .cLegendI i {
   width: 10px;
@@ -2593,6 +2718,63 @@ button.badge:focus-visible {
 .mfBtn:focus-visible::before {
   outline: 2px solid #2f6fdb;
   outline-offset: 2px;
+}
+.mfPinBadge {
+  position: absolute;
+  z-index: 1;
+  top: 2px;
+  right: 1px;
+  display: grid;
+  min-width: 16px;
+  height: 16px;
+  place-items: center;
+  padding: 0 3px;
+  border: 1px solid #fff;
+  border-radius: 999px;
+  background: #16181d;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.mapLegendButton,
+.mapLegendMore {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 28px;
+  padding: 2px 5px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.mapLegendStatic {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 28px;
+  padding: 2px 5px;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+}
+.mapLegendButton:focus-visible,
+.mapLegendMore:focus-visible {
+  outline: 2px solid #2f6fdb;
+  outline-offset: 2px;
+}
+.mapLegendMore {
+  padding-inline: 6px;
+  border: 0;
+  color: #454a55;
+  background: transparent;
+}
+.mapLegendMore[aria-expanded="true"] {
+  background: #eef0f3;
 }
 .mfMap {
   position: relative;

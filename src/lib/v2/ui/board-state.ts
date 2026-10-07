@@ -10,6 +10,7 @@ export type SheetGrid = "2x2" | "3x2";
 export type SheetSpec = { tiles: string[]; grid: SheetGrid };
 export type CameraPreset = { azimuthDeg: number; elevationDeg: number };
 export type CutCount = 1 | 3;
+export type PinnedLabel = { key: string; on: boolean };
 
 /** 되돌리기 한 단계. 모든 편집(순서·크기·제거·더하기)이 여기 쌓인다. */
 export type UndoEntry =
@@ -53,6 +54,8 @@ export type BoardState = {
   cuts: Record<string, CutCount>;
   /** D22 타일 id → 화면·보고서에 표시할 계절 */
   roseSeasons: Record<string, RoseSeason>;
+  /** 타일 id → 지도 요소 라벨의 고정·표시 상태 */
+  labels: Record<string, PinnedLabel[]>;
   /** 빼 둔 타일(더할 수 있는 타일). index는 빼기 전 위치 */
   removed: { id: string; index: number }[];
   undoStack: UndoEntry[];
@@ -79,7 +82,11 @@ export type BoardAction =
   | { type: "unsheet"; id: string }
   | { type: "camera"; id: string; camera: CameraPreset }
   | { type: "cuts"; id: string; cuts: CutCount }
-  | { type: "roseSeason"; id: string; season: RoseSeason };
+  | { type: "roseSeason"; id: string; season: RoseSeason }
+  | { type: "pinLabel"; id: string; key: string }
+  | { type: "unpinLabel"; id: string; key: string }
+  | { type: "toggleLabel"; id: string; key: string }
+  | { type: "setAllLabels"; id: string; on: boolean };
 
 /** 카드의 현재 면 (편집 중에는 화면이 항상 요약면을 쓴다) */
 export const viewOf = (s: Pick<BoardState, "view" | "viewAll">, id: string): CardFace => s.view[id] ?? s.viewAll;
@@ -103,6 +110,7 @@ export function initBoard(results: TileResult[]): BoardState {
     cameras: {},
     cuts: {},
     roseSeasons: {},
+    labels: {},
     removed: [],
     undoStack: [],
   };
@@ -300,6 +308,37 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
       return { ...s, cuts: { ...s.cuts, [a.id]: a.cuts } };
     case "roseSeason":
       return { ...s, roseSeasons: { ...s.roseSeasons, [a.id]: a.season } };
+    case "pinLabel": {
+      if (!a.key) return s;
+      const current = s.labels[a.id] ?? [];
+      const labels = current.some((label) => label.key === a.key)
+        ? current.map((label) => label.key === a.key ? { ...label, on: true } : label)
+        : [...current, { key: a.key, on: true }];
+      return { ...s, labels: { ...s.labels, [a.id]: labels } };
+    }
+    case "unpinLabel": {
+      const current = s.labels[a.id] ?? [];
+      const labels = current.filter((label) => label.key !== a.key);
+      if (labels.length === current.length) return s;
+      const next = { ...s.labels };
+      if (labels.length > 0) next[a.id] = labels;
+      else delete next[a.id];
+      return { ...s, labels: next };
+    }
+    case "toggleLabel": {
+      if (!a.key) return s;
+      const current = s.labels[a.id] ?? [];
+      const found = current.some((label) => label.key === a.key);
+      const labels = found
+        ? current.map((label) => label.key === a.key ? { ...label, on: !label.on } : label)
+        : [...current, { key: a.key, on: true }];
+      return { ...s, labels: { ...s.labels, [a.id]: labels } };
+    }
+    case "setAllLabels": {
+      const current = s.labels[a.id] ?? [];
+      if (current.length === 0) return s;
+      return { ...s, labels: { ...s.labels, [a.id]: current.map((label) => ({ ...label, on: a.on })) } };
+    }
   }
 }
 
@@ -319,6 +358,7 @@ export type BoardStateSnapshot = {
   cameras: Record<string, CameraPreset>;
   cuts: Record<string, CutCount>;
   roseSeasons?: Record<string, RoseSeason>;
+  labels?: Record<string, PinnedLabel[]>;
   removed: { id: string; index: number }[];
 };
 
@@ -345,6 +385,7 @@ export function serializeBoardState(s: BoardState): BoardStateSnapshot {
     cameras: Object.fromEntries(Object.entries(s.cameras).map(([id, camera]) => [id, { ...camera }])),
     cuts: { ...s.cuts },
     roseSeasons: { ...s.roseSeasons },
+    labels: Object.fromEntries(Object.entries(s.labels).map(([id, labels]) => [id, labels.map((label) => ({ ...label }))])),
     removed: s.removed.map((item) => ({ ...item })),
   };
 }
@@ -411,6 +452,7 @@ export function rewriteSnapshotIds(snapshot: BoardStateSnapshot, mapId: IdMapper
     cameras: mapIdRecord<CameraPreset>(snapshot.cameras, mapId),
     cuts: mapIdRecord<CutCount>(snapshot.cuts, mapId),
     roseSeasons: mapIdRecord<RoseSeason>(snapshot.roseSeasons, mapId),
+    labels: mapIdRecord<PinnedLabel[]>(snapshot.labels, mapId),
     removed: Array.isArray(snapshot.removed)
       ? snapshot.removed.filter((item): item is { id: string; index: number } => !!item && typeof item.id === "string" && typeof item.index === "number").map((item) => ({ ...item, id: mapId(item.id) }))
       : [],
@@ -503,6 +545,17 @@ export function restoreBoardState(results: TileResult[], raw: unknown): BoardSta
     if (!validIds.has(id)) continue;
     if (value === "annual" || value === "spring" || value === "summer" || value === "autumn" || value === "winter") roseSeasons[id] = value;
   }
+  const labels: Record<string, PinnedLabel[]> = {};
+  for (const [id, value] of Object.entries(recordOf(saved.labels))) {
+    if (!baseIds.has(id) || !Array.isArray(value)) continue;
+    const seen = new Set<string>();
+    const restored = value.flatMap((item) => {
+      if (!isRecord(item) || typeof item.key !== "string" || !item.key || typeof item.on !== "boolean" || seen.has(item.key)) return [];
+      seen.add(item.key);
+      return [{ key: item.key, on: item.on }];
+    });
+    if (restored.length > 0) labels[id] = restored;
+  }
   const removed: { id: string; index: number }[] = [];
   const removedIds = new Set<string>();
   if (Array.isArray(saved.removed)) {
@@ -529,6 +582,7 @@ export function restoreBoardState(results: TileResult[], raw: unknown): BoardSta
     cameras,
     cuts,
     roseSeasons,
+    labels,
     removed,
     undoStack: [],
   };
