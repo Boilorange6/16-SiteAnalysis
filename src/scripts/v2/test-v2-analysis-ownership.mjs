@@ -38,7 +38,7 @@ const migratedDb = A.openV2AppDb(oldDbPath);
 const migratedUserColumn = migratedDb.prepare("PRAGMA table_info(analysis_run)").all().find((column) => column.name === "user_id");
 assert.ok(migratedUserColumn, "existing app DB receives analysis_run.user_id");
 assert.equal(migratedUserColumn.notnull, 0);
-assert.equal(migratedDb.prepare("SELECT value FROM schema_meta WHERE key = 'schema_version'").pluck().get(), "2");
+assert.equal(migratedDb.prepare("SELECT value FROM schema_meta WHERE key = 'schema_version'").pluck().get(), "3");
 migratedDb.close();
 
 const owner = U.createUser("owner", "password");
