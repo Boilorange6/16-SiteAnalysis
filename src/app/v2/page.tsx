@@ -8,7 +8,7 @@ import { useTileDrag } from "@/components/v2/use-tile-drag";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "@/components/v2/map-box";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import styles from "@/components/v2/board.module.css";
-import { SUMMARY_ID, boardReducer, boardStorageKey, demoFinished, demoPhase, initBoard, reportPages, serializeBoardState, viewOf } from "@/lib/v2/ui/board-state";
+import { SUMMARY_ID, boardReducer, boardStorageKey, demoFinished, demoPhase, initBoard, rebaseSnapshotAnalysisId, reportPages, serializeBoardState, viewOf } from "@/lib/v2/ui/board-state";
 import { buildReportPlan, complexCounts, reportFileName } from "@/lib/v2/report/report-plan";
 import { downloadBytes, exportFileName, EXPORT_MIME, DAE_MIME } from "@/lib/v2/export/download";
 import { DEFAULT_CALLOUT_MODE } from "@/lib/v2/ui/callout-layout";
@@ -23,6 +23,7 @@ import type { RoseSeason } from "@/lib/v2/tile-result";
 import type { Scene } from "@/lib/v2/scene";
 import { isRoadAddress, ROAD_ADDRESS_UNSUPPORTED_MESSAGE } from "@/lib/v2/site";
 import { RADIUS_CAPTION, RADIUS_OPTIONS } from "@/lib/v2/ui/radius-options";
+import ProjectMenu, { type V2Project } from "@/components/v2/project-menu";
 
 const UNDO_LABEL ={ order: "옮김", size: "크기 바꿈", remove: "삭제됨", add: "더함" } as const;
 const DEMO_START_LABEL = "분석 데모";
@@ -30,6 +31,7 @@ const DEMO_START_LABEL = "분석 데모";
 type BoardProps = {
   baseResults: TileResult[];
   siteSummary: SiteSummary;
+  analysisId: string | null;
   scene: Scene | null;
   jobs: JobState[];
   /** true면 예시 데이터(실제 분석 전) */
@@ -42,29 +44,50 @@ type BoardProps = {
   /** 진행 중인 실제 분석을 취소한다. */
   onCancel?: () => void;
   canceling?: boolean;
+  currentProject: V2Project | null;
+  initialProjectBoard: unknown | null;
+  onProjectSaved: (project: V2Project) => void;
+  onProjectDeleted: (projectId: string) => void;
+  onOpenProject: (projectId: string) => void;
+  onAuthExpired: () => void;
   /** 브라우저 S03 업로드·대체 요청 뒤 결과와 작업 폴링을 다시 연다. */
   onWindUploaded: () => void;
 };
 
 /** 타일 보드. 결과가 바뀌면 부모가 key를 바꿔 새로 만든다. */
-function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, onRerun, onCancel, canceling = false, onWindUploaded }: BoardProps) {
+function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, controls, onRerun, onCancel, canceling = false, currentProject, initialProjectBoard, onProjectSaved, onProjectDeleted, onOpenProject, onAuthExpired, onWindUploaded }: BoardProps) {
   const [overrides, setOverrides] = useState<Record<string, TileResult>>({});
   const [board, dispatch] = useReducer(boardReducer, baseResults, initBoard);
   const storageKey = boardStorageKey(baseResults[0]?.analysisId ?? "demo");
+  const initialSnapshotJson = useMemo(() => {
+    if (initialProjectBoard === null) return null;
+    try {
+      return JSON.stringify(initialProjectBoard);
+    } catch {
+      return null;
+    }
+  }, [initialProjectBoard]);
   const [storageReady, setStorageReady] = useState(false);
+  const [serverSnapshotJson, setServerSnapshotJson] = useState<string | null>(initialSnapshotJson);
   useEffect(() => {
     dispatch({ type: "replaceResults", results: baseResults });
   }, [baseResults]);
   useEffect(() => {
-    let snapshot: string | null = null;
-    try {
-      snapshot = window.localStorage.getItem(storageKey);
-    } catch {
-      snapshot = null;
+    setStorageReady(false);
+    let snapshot = initialSnapshotJson;
+    if (snapshot === null) {
+      try {
+        snapshot = window.localStorage.getItem(storageKey);
+      } catch {
+        snapshot = null;
+      }
     }
     dispatch({ type: "restore", snapshot });
     setStorageReady(true);
-  }, [storageKey]);
+  }, [initialSnapshotJson, storageKey]);
+  useEffect(() => {
+    setServerSnapshotJson(initialSnapshotJson);
+  }, [initialSnapshotJson]);
   useEffect(() => {
     if (!storageReady) return;
     try {
@@ -137,6 +160,9 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
   const jobState = useMemo(() => jobProgress(jobs, progressNow), [jobs, progressNow]);
   const analysisDate = results[0]?.conditions.analysisDate ?? "기준일 미확인";
   const reportPlan = useMemo(() => buildReportPlan({ summary, views, board, analysisDate }), [summary, views, board, analysisDate]);
+  const boardSnapshot = useMemo(() => serializeBoardState(board), [board]);
+  const boardSnapshotJson = useMemo(() => JSON.stringify(boardSnapshot), [boardSnapshot]);
+  const projectDirty = !!currentProject?.projectId && serverSnapshotJson !== null && boardSnapshotJson !== serverSnapshotJson;
   const [making, setMaking] = useState(false);
   const [makingKind, setMakingKind] = useState<string | null>(null);
   const [exportProblem, setExportProblem] = useState<string | null>(null);
@@ -308,6 +334,25 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
         <header className={styles.topbar}>
           <span className={`${styles.display} ${styles.brand}`}>{editing ? "보드 편집" : "사이트 분석"}</span>
           <a className={styles.pill} href="/site/v2/guide">가이드</a>
+          <ProjectMenu
+            analysisId={analysisId}
+            currentProjectId={currentProject?.projectId ?? null}
+            currentProjectName={currentProject?.name ?? null}
+            defaultName={`${siteSummary.address} · ${summary.radius}`}
+            board={demo ? null : boardSnapshot}
+            canSave={!demo && !!analysisId && !actionBusy}
+            dirty={projectDirty}
+            onSaved={(project) => {
+              if (project.board !== undefined) setServerSnapshotJson(JSON.stringify(project.board));
+              onProjectSaved(project);
+            }}
+            onDeleted={(projectId) => {
+              setServerSnapshotJson(null);
+              onProjectDeleted(projectId);
+            }}
+            onOpenProject={onOpenProject}
+            onAuthExpired={onAuthExpired}
+          />
           {editing ? (
             <>
               <span className={styles.editHint}>순서를 바꾸거나 빼세요. 순서는 보고서 순서가 됩니다.</span>
@@ -354,7 +399,7 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
               )}
             </>
           ) : (
-            <span className={styles.topTitle}>
+            <span className={styles.topTitle} title={`${siteSummary.address} · ${summary.radius}`}>
               {siteSummary.address} · {summary.radius}
             </span>
           )}
@@ -687,6 +732,7 @@ function Board({ baseResults, siteSummary, scene, jobs, demo, busy, controls, on
 }
 
 const API = "/site/api/v2/analyses";
+const PROJECTS_API = "/site/api/v2/projects";
 
 /** 401이면 refresh 쿠키로 한 번 갱신하고 같은 요청을 다시 보낸다. */
 async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
@@ -732,8 +778,12 @@ export default function V2BoardPage() {
   const activeJobs = live?.jobs.some((job) => job.status === "queued" || job.status === "running") ?? false;
   const [windRefresh, setWindRefresh] = useState(0);
   const [wantedId, setWantedId] = useState<string | null>(null);
+  const [wantedProjectId, setWantedProjectId] = useState<string | null>(null);
+  const [currentProject, setCurrentProject] = useState<V2Project | null>(null);
+  const [projectBoard, setProjectBoard] = useState<unknown | null>(null);
+  const [staleProject, setStaleProject] = useState<V2Project | null>(null);
 
-  async function load(res: Response, refreshScene = true, update = true, base: Live | null = live): Promise<Live | undefined> {
+  async function load(res: Response, refreshScene = true, update = true, base: Live | null = live, preserveProjectId: string | null = null): Promise<Live | undefined> {
     const body = (await res.json().catch(() => ({}))) as Partial<Live> & { error?: string };
     if (res.status === 401) {
       setProblem({ text: "로그인이 필요합니다.", login: true });
@@ -765,20 +815,46 @@ export default function V2BoardPage() {
     };
     if (update) {
       setLive(next);
-      history.replaceState(null, "", `?analysis=${body.analysisId}`);
+      history.replaceState(null, "", preserveProjectId ? `?project=${encodeURIComponent(preserveProjectId)}` : `?analysis=${body.analysisId}`);
     }
     return next;
   }
 
-  async function analyze(e?: { preventDefault(): void }) {
+  async function analyze(e?: { preventDefault(): void }, restoreProject: V2Project | null = null) {
     e?.preventDefault();
     if (busy || activeJobs) return;
     if (!address.trim()) return setProblem({ text: "지번 주소로 입력해 주세요. 예: 서울 강동구 고덕동 123", login: false });
     if (isRoadAddress(address)) return setProblem({ text: ROAD_ADDRESS_UNSUPPORTED_MESSAGE, login: false });
     setBusy(true);
     setProblem(null);
+    if (!restoreProject) {
+      setCurrentProject(null);
+      setProjectBoard(null);
+      setWantedProjectId(null);
+      setStaleProject(null);
+    }
     try {
-      await load(await apiFetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address: address.trim(), radiusM }) }));
+      const loaded = await load(await apiFetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address: address.trim(), radiusM }) }), true, true, null, restoreProject?.projectId ?? null);
+      if (!loaded || !restoreProject) return;
+      const rebasedBoard = rebaseSnapshotAnalysisId(restoreProject.board, restoreProject.analysisId, loaded.analysisId);
+      setProjectBoard(rebasedBoard);
+      const saveResponse = await apiFetch(PROJECTS_API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: restoreProject.projectId, name: restoreProject.name, analysisId: loaded.analysisId, board: rebasedBoard ?? {} }),
+      });
+      const saveBody = await saveResponse.json().catch(() => ({})) as { project?: V2Project; error?: string };
+      if (saveResponse.status === 401) {
+        setProblem({ text: "로그인이 만료되었습니다.", login: true });
+      } else if (!saveResponse.ok || !saveBody.project) {
+        setProblem({ text: saveBody.error ?? "새 분석은 완료됐지만 프로젝트를 갱신하지 못했습니다.", login: false });
+      } else {
+        setCurrentProject(saveBody.project);
+        setProjectBoard(saveBody.project.board ?? rebasedBoard);
+        setWantedProjectId(saveBody.project.projectId);
+        setStaleProject(null);
+        history.replaceState(null, "", `?project=${encodeURIComponent(saveBody.project.projectId)}`);
+      }
     } catch {
       setProblem({ text: "서버에 연결하지 못했습니다.", login: false });
     } finally {
@@ -804,10 +880,76 @@ export default function V2BoardPage() {
     }
   }
 
+  async function openProject(projectId: string) {
+    setWantedProjectId(projectId);
+    setWantedId(null);
+    setLive(null);
+    setCurrentProject(null);
+    setProjectBoard(null);
+    setStaleProject(null);
+    setProblem(null);
+    setBusy(true);
+    history.pushState(null, "", `?project=${encodeURIComponent(projectId)}`);
+    try {
+      const projectResponse = await apiFetch(`${PROJECTS_API}/${encodeURIComponent(projectId)}`);
+      const projectBody = await projectResponse.json().catch(() => ({})) as { project?: V2Project; error?: string; code?: string };
+      if (projectResponse.status === 401) {
+        setProblem({ text: "로그인이 만료되었습니다.", login: true });
+        return;
+      }
+      if (projectResponse.status === 409 && projectBody.project) {
+        setStaleProject(projectBody.project);
+        setAddress(projectBody.project.address);
+        setRadiusM(projectBody.project.radiusM);
+        setProjectBoard(projectBody.project.board ?? null);
+        setProblem({ text: "데이터가 갱신되어 다시 분석이 필요합니다.", login: false });
+        return;
+      }
+      if (!projectResponse.ok || !projectBody.project) {
+        setProblem({ text: projectBody.error ?? "프로젝트를 불러오지 못했습니다.", login: false });
+        return;
+      }
+      const project = projectBody.project;
+      setCurrentProject(project);
+      setProjectBoard(project.board ?? null);
+      setAddress(project.address);
+      setRadiusM(project.radiusM);
+      setStaleProject(null);
+      await load(await apiFetch(`${API}/${encodeURIComponent(project.analysisId)}`), true, true, null, project.projectId);
+    } catch {
+      setProblem({ text: "서버에 연결하지 못했습니다.", login: false });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleProjectSaved(project: V2Project) {
+    setCurrentProject((current) => project.board === undefined && current ? { ...current, ...project } : project);
+    if (project.board !== undefined) setProjectBoard(project.board);
+    setWantedProjectId(project.projectId);
+    setWantedId(null);
+    setStaleProject(null);
+    history.replaceState(null, "", `?project=${encodeURIComponent(project.projectId)}`);
+    setProblem(null);
+  }
+
+  function handleProjectDeleted(projectId: string) {
+    if (currentProject?.projectId !== projectId) return;
+    setCurrentProject(null);
+    setProjectBoard(null);
+    setWantedProjectId(null);
+    history.replaceState(null, "", live ? `?analysis=${encodeURIComponent(live.analysisId)}` : "/site/v2");
+  }
+
   // 주소창의 ?analysis=<id>로 저장된 분석을 다시 연다
   useEffect(() => {
     const queryAddress = new URLSearchParams(window.location.search).get("address");
     if (queryAddress && !addressDirtyRef.current) setAddress(queryAddress);
+    const projectId = new URLSearchParams(window.location.search).get("project");
+    if (projectId) {
+      void openProject(projectId);
+      return;
+    }
     const id = new URLSearchParams(window.location.search).get("analysis");
     if (!id) return;
     setWantedId(id);
@@ -941,9 +1083,10 @@ export default function V2BoardPage() {
     </div>
   );
 
-  // ?analysis= 주소는 불러오기 전·실패 시에도 예시 보드를 보여 주지 않는다(예시 숫자를 내 결과로 오해하는 것을 막는다).
-  if (wantedId && !live) {
-    const loginHref = `/site/login?next=${encodeURIComponent(`/site/v2?analysis=${wantedId}`)}`;
+  // ?analysis=·?project= 주소는 불러오기 전·실패 시에도 예시 보드를 보여 주지 않는다.
+  if ((wantedId || wantedProjectId) && !live) {
+    const query = wantedProjectId ? `project=${wantedProjectId}` : `analysis=${wantedId}`;
+    const loginHref = `/site/login?next=${encodeURIComponent(`/site/v2?${query}`)}`;
     return (
       <main style={{ maxWidth: 480, margin: "15vh auto", padding: "0 16px", textAlign: "center" }}>
         {busy || !problem ? (
@@ -955,6 +1098,14 @@ export default function V2BoardPage() {
             <a href={loginHref} style={{ display: "inline-block", minHeight: 44, lineHeight: "44px", padding: "0 20px", background: "#1b1b1b", color: "#fff", borderRadius: 8 }}>
               다시 로그인
             </a>
+          </>
+        ) : staleProject ? (
+          <>
+            <h1 style={{ fontSize: 20 }}>{staleProject.name}</h1>
+            <p role="alert">데이터가 갱신되어 다시 분석이 필요합니다</p>
+            <button type="button" onClick={() => void analyze(undefined, staleProject)} disabled={busy} style={{ minHeight: 44, padding: "0 20px", border: 0, borderRadius: 8, background: "#1b1b1b", color: "#fff", fontWeight: 700 }}>
+              같은 조건으로 다시 분석
+            </button>
           </>
         ) : (
           <>
@@ -972,6 +1123,7 @@ export default function V2BoardPage() {
       key={live?.analysisId ?? "demo"}
       baseResults={live?.results ?? GODEOK_RESULTS}
       siteSummary={live?.summary ?? GODEOK_SUMMARY}
+      analysisId={live?.analysisId ?? null}
       scene={live?.scene ?? null}
       demo={!live}
       jobs={live?.jobs ?? []}
@@ -980,6 +1132,12 @@ export default function V2BoardPage() {
       onRerun={() => void analyze()}
       onCancel={() => void cancelCurrentAnalysis()}
       canceling={canceling}
+      currentProject={currentProject}
+      initialProjectBoard={projectBoard}
+      onProjectSaved={handleProjectSaved}
+      onProjectDeleted={handleProjectDeleted}
+      onOpenProject={(projectId) => void openProject(projectId)}
+      onAuthExpired={() => setProblem({ text: "로그인이 만료되었습니다.", login: true })}
       onWindUploaded={() => setWindRefresh((value) => value + 1)}
     />
   );

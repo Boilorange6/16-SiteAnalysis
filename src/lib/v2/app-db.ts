@@ -1,7 +1,7 @@
 /**
  * v2 앱 DB — 분석 실행·타일 결과·저장 프로젝트 (spec §3.2, §5.2).
  * 기존 .cache/site-analysis.db와 다른 파일이다. 교체 대상이 아니다.
- * ponytail: 사용자 계정은 P1에서 기존 로그인과 연결할 때 붙인다. P0는 로컬 단일 사용자.
+ * saved_project.user_id는 기존 로그인 User.id를 TEXT로 보존해 분석·프로젝트 소유권을 함께 검사한다.
  */
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
@@ -15,7 +15,7 @@ import { parseTileResult, type TileResult } from "./tile-result";
 
 type Db = BetterSqlite3.Database;
 
-export const V2_APP_SCHEMA_VERSION = 2;
+export const V2_APP_SCHEMA_VERSION = 3;
 
 export type AnalysisJobStatus = "queued" | "running" | "done" | "failed" | "cancelled";
 export type AnalysisJob = {
@@ -98,6 +98,7 @@ export function initV2AppSchema(db: Db): void {
       name TEXT NOT NULL,
       analysis_id TEXT NOT NULL REFERENCES analysis_run(analysis_id),
       board_json TEXT NOT NULL,
+      user_id TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -109,6 +110,16 @@ export function initV2AppSchema(db: Db): void {
   if (!analysisColumns.some((column) => column.name === "cancelled_at")) {
     db.exec("ALTER TABLE analysis_run ADD COLUMN cancelled_at TEXT");
   }
+  const savedProjectColumns = db.prepare("PRAGMA table_info(saved_project)").all() as Array<{ name: string }>;
+  if (!savedProjectColumns.some((column) => column.name === "user_id")) {
+    db.exec("ALTER TABLE saved_project ADD COLUMN user_id TEXT");
+  }
+  // v2의 소유자 없는 저장본은 참조 중인 분석의 소유자를 그대로 상속한다.
+  // 분석도 익명인 오래된 P0 저장본은 null로 남겨 새 사용자에게 노출하지 않는다.
+  db.exec(`UPDATE saved_project
+    SET user_id = (SELECT user_id FROM analysis_run WHERE analysis_run.analysis_id = saved_project.analysis_id)
+    WHERE user_id IS NULL`);
+  db.exec("CREATE INDEX IF NOT EXISTS idx_saved_project_owner_updated ON saved_project (user_id, updated_at DESC)");
   db.prepare("INSERT INTO schema_meta (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     .run(String(V2_APP_SCHEMA_VERSION));
   ensureAnalysisJobTable(db);
@@ -336,10 +347,38 @@ export function loadScene(db: Db, analysisId: string): Scene | null {
  * 잠금 안에서 저장한다: 실행이 쓴 데이터 버전이 이미 수집됐으면 DATA_VERSION_GONE.
  * (그대로 저장하면 이후 모든 GC가 MISSING_PINNED_MANIFEST로 멈춘다.)
  */
-export async function saveProject(db: Db, dataDir: string, p: { projectId: string; name: string; analysisId: string; board: unknown }): Promise<void> {
+type ProjectUserId = string | number | null | undefined;
+type ProjectInput = { projectId: string; name: string; analysisId: string; board: unknown; userId?: ProjectUserId };
+
+function ownerId(userId: ProjectUserId): string | null {
+  return userId == null ? null : String(userId);
+}
+
+function ownedBy(value: string | null | undefined, userId: ProjectUserId): boolean {
+  return value != null && userId != null && value === String(userId);
+}
+
+function assertAnalysisOwner(run: { userId?: string | number | null }, userId: ProjectUserId): void {
+  // Keep the old local-only test/fixture contract for anonymous P0 analyses.
+  if (run.userId == null && userId == null) return;
+  if (!ownedBy(run.userId == null ? null : String(run.userId), userId)) {
+    throw new Error("PROJECT_NOT_FOUND: analysis is not owned by this user");
+  }
+}
+
+function assertProjectOwner(db: Db, projectId: string, userId: ProjectUserId): void {
+  const existing = db.prepare("SELECT user_id FROM saved_project WHERE project_id = ?").get(projectId) as { user_id: string | null } | undefined;
+  if (!existing) return;
+  if (existing.user_id == null && userId == null) return;
+  if (!ownedBy(existing.user_id, userId)) throw new Error("PROJECT_NOT_FOUND: project is not owned by this user");
+}
+
+export async function saveProject(db: Db, dataDir: string, p: ProjectInput): Promise<void> {
   await withDataDirLock(dataDir, () => {
     const run = getAnalysisRun(db, p.analysisId);
     if (!run) throw new Error(`unknown analysis ${p.analysisId}`);
+    assertAnalysisOwner(run, p.userId);
+    assertProjectOwner(db, p.projectId, p.userId);
     if (!readArchivedManifest(dataDir, run.manifestHash)) {
       throw new Error(`DATA_VERSION_GONE: data version ${run.manifestHash} of analysis ${p.analysisId} was already collected`);
     }
@@ -347,11 +386,11 @@ export async function saveProject(db: Db, dataDir: string, p: { projectId: strin
   });
 }
 
-function insertProject(db: Db, p: { projectId: string; name: string; analysisId: string; board: unknown }): void {
+function insertProject(db: Db, p: ProjectInput): void {
   const t = now();
-  db.prepare(`INSERT INTO saved_project (project_id, name, analysis_id, board_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+  db.prepare(`INSERT INTO saved_project (project_id, name, analysis_id, board_json, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(project_id) DO UPDATE SET name = excluded.name, analysis_id = excluded.analysis_id, board_json = excluded.board_json, updated_at = excluded.updated_at`)
-    .run(p.projectId, p.name, p.analysisId, JSON.stringify(p.board), t, t);
+    .run(p.projectId, p.name, p.analysisId, JSON.stringify(p.board), ownerId(p.userId), t, t);
 }
 
 export type SavedProject = {
@@ -359,26 +398,84 @@ export type SavedProject = {
   name: string;
   analysisId: string;
   board: unknown;
+  userId: string | null;
+  address: string;
+  radiusM: number;
+  analysisDate: string;
+  dataVersion: string;
+  engineVersion: string;
   createdAt: string;
   updatedAt: string;
 };
 
-/** 저장된 보드 설정을 복원한다. board_json에 없는 새 필드는 호출자가 기본값으로 보완한다. */
-export function loadProject(db: Db, projectId: string): SavedProject | null {
-  const row = db
-    .prepare("SELECT project_id, name, analysis_id, board_json, created_at, updated_at FROM saved_project WHERE project_id = ?")
-    .get(projectId) as
-    | { project_id: string; name: string; analysis_id: string; board_json: string; created_at: string; updated_at: string }
-    | undefined;
-  if (!row) return null;
+export type SavedProjectSummary = Omit<SavedProject, "board">;
+
+type ProjectRow = {
+  project_id: string;
+  name: string;
+  analysis_id: string;
+  board_json?: string;
+  user_id: string | null;
+  address: string;
+  radius_m: number;
+  analysis_date: string;
+  manifest_hash: string;
+  engine_version: string;
+  created_at: string;
+  updated_at: string;
+};
+
+function projectFromRow(row: ProjectRow, board?: unknown): SavedProject {
   return {
     projectId: row.project_id,
     name: row.name,
     analysisId: row.analysis_id,
-    board: JSON.parse(row.board_json) as unknown,
+    board,
+    userId: row.user_id,
+    address: row.address,
+    radiusM: row.radius_m,
+    analysisDate: row.analysis_date,
+    dataVersion: row.manifest_hash,
+    engineVersion: row.engine_version,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+const projectSelect = `SELECT p.project_id, p.name, p.analysis_id, p.board_json, p.user_id,
+  r.address, r.radius_m, r.analysis_date, r.manifest_hash, r.engine_version,
+  p.created_at, p.updated_at
+  FROM saved_project p JOIN analysis_run r ON r.analysis_id = p.analysis_id`;
+
+/** 저장된 보드 설정을 복원한다. board_json에 없는 새 필드는 호출자가 기본값으로 보완한다. */
+export function loadProject(db: Db, projectId: string, userId?: ProjectUserId): SavedProject | null {
+  const row = db.prepare(`${projectSelect} WHERE p.project_id = ?`).get(projectId) as ProjectRow | undefined;
+  if (!row || (userId !== undefined && !ownedBy(row.user_id, userId))) return null;
+  return projectFromRow(row, JSON.parse(row.board_json ?? "null") as unknown);
+}
+
+export function listProjects(db: Db, userId: string | number): SavedProjectSummary[] {
+  const rows = db.prepare(`${projectSelect} WHERE p.user_id = ? ORDER BY p.updated_at DESC, p.project_id DESC`).all(String(userId)) as ProjectRow[];
+  return rows.map((row) => {
+    const project = projectFromRow(row);
+    const { board: _board, ...summary } = project;
+    return summary;
+  });
+}
+
+export function renameProject(db: Db, projectId: string, userId: string | number, name: string): SavedProjectSummary | null {
+  const result = db.prepare("UPDATE saved_project SET name = ?, updated_at = ? WHERE project_id = ? AND user_id = ?")
+    .run(name, now(), projectId, String(userId));
+  if (result.changes === 0) return null;
+  const row = db.prepare(`${projectSelect} WHERE p.project_id = ? AND p.user_id = ?`).get(projectId, String(userId)) as ProjectRow | undefined;
+  if (!row) return null;
+  const project = projectFromRow(row);
+  const { board: _board, ...summary } = project;
+  return summary;
+}
+
+export function deleteProject(db: Db, projectId: string, userId: string | number): boolean {
+  return db.prepare("DELETE FROM saved_project WHERE project_id = ? AND user_id = ?").run(projectId, String(userId)).changes > 0;
 }
 
 export function pinnedManifestHashes(db: Db): Set<string> {

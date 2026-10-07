@@ -23,6 +23,8 @@ export type CardFace = "summary" | "map";
 /** 대지 요약 카드의 view 키 */
 export const SUMMARY_ID = "site-summary";
 export const BOARD_STATE_VERSION = 1;
+/** 타일 코드가 바뀌어도 저장 보드의 모든 참조를 한 번에 옮길 수 있는 자리. */
+export const TILE_CODE_RENAMES: Record<string, string> = {};
 export const boardStorageKey = (analysisId: string): string => `site-analysis:v2:board:${analysisId}`;
 
 export type BoardState = {
@@ -369,10 +371,79 @@ function rawSnapshot(raw: unknown): Record<string, unknown> | null {
   return isRecord(raw) ? raw : null;
 }
 
+export function renameTileId(id: string): string {
+  const direct = TILE_CODE_RENAMES[id];
+  if (direct) return direct;
+  const separator = id.lastIndexOf("-");
+  if (separator < 0) return id;
+  const code = id.slice(separator + 1);
+  const renamed = TILE_CODE_RENAMES[code];
+  return renamed ? `${id.slice(0, separator + 1)}${renamed}` : id;
+}
+
+type IdMapper = (id: string) => string;
+
+function mapIdRecord<T>(value: unknown, mapId: IdMapper): Record<string, T> {
+  return Object.fromEntries(Object.entries(recordOf(value)).map(([id, item]) => [mapId(id), item])) as Record<string, T>;
+}
+
+/** Snapshot 안에서 id를 보관하는 모든 필드를 같은 규칙으로 다시 쓴다. */
+export function rewriteSnapshotIds(snapshot: BoardStateSnapshot, mapId: IdMapper): BoardStateSnapshot {
+  const stacks: Record<string, string[]> = {};
+  for (const [id, layers] of Object.entries(recordOf(snapshot.stacks))) stacks[mapId(id)] = stringsOf(layers).map(mapId);
+  const sheets: Record<string, SheetSpec> = {};
+  for (const [id, spec] of Object.entries(recordOf(snapshot.sheets))) {
+    if (!isRecord(spec)) continue;
+    sheets[mapId(id)] = { tiles: stringsOf(spec.tiles).map(mapId), grid: spec.grid as SheetGrid };
+  }
+  return {
+    ...snapshot,
+    order: stringsOf(snapshot.order).map(mapId),
+    included: mapIdRecord<boolean>(snapshot.included, mapId),
+    faces: mapIdRecord<OutputFace>(snapshot.faces, mapId),
+    callout: mapIdRecord<CalloutMode>(snapshot.callout, mapId),
+    a05Filter: mapIdRecord<A05Filter>(snapshot.a05Filter, mapId),
+    view: mapIdRecord<CardFace>(snapshot.view, mapId),
+    sizes: mapIdRecord<TileSize>(snapshot.sizes, mapId),
+    tileKinds: mapIdRecord<TileResult["tileType"]>(snapshot.tileKinds, mapId),
+    stacks,
+    sheets,
+    cameras: mapIdRecord<CameraPreset>(snapshot.cameras, mapId),
+    cuts: mapIdRecord<CutCount>(snapshot.cuts, mapId),
+    roseSeasons: mapIdRecord<RoseSeason>(snapshot.roseSeasons, mapId),
+    removed: Array.isArray(snapshot.removed)
+      ? snapshot.removed.filter((item): item is { id: string; index: number } => !!item && typeof item.id === "string" && typeof item.index === "number").map((item) => ({ ...item, id: mapId(item.id) }))
+      : [],
+  };
+}
+
+function migrateV1ToV1(snapshot: BoardStateSnapshot): BoardStateSnapshot {
+  return snapshot;
+}
+
+/** 저장본 버전을 단계별로 현재 버전까지 올린다. 미래 버전은 호출자가 기본 보드로 처리한다. */
+export function migrateSnapshot(raw: unknown): BoardStateSnapshot | null {
+  const saved = rawSnapshot(raw);
+  if (!saved) return null;
+  const version = saved.version === undefined ? 1 : typeof saved.version === "number" && Number.isInteger(saved.version) ? saved.version : null;
+  if (version === null || version < 1 || version > BOARD_STATE_VERSION) return null;
+  let migrated = saved as unknown as BoardStateSnapshot;
+  if (version === 1) migrated = migrateV1ToV1(migrated);
+  return { ...rewriteSnapshotIds(migrated, renameTileId), version: BOARD_STATE_VERSION };
+}
+
+/** 재분석으로 analysisId가 바뀐 프로젝트의 보드 배치를 새 타일 id에 연결한다. */
+export function rebaseSnapshotAnalysisId(raw: unknown, fromAnalysisId: string, toAnalysisId: string): BoardStateSnapshot | null {
+  const migrated = migrateSnapshot(raw);
+  if (!migrated || !fromAnalysisId || !toAnalysisId || fromAnalysisId === toAnalysisId) return migrated;
+  const prefix = `${fromAnalysisId}-`;
+  return rewriteSnapshotIds(migrated, (id) => id.startsWith(prefix) ? `${toAnalysisId}-${id.slice(prefix.length)}` : id);
+}
+
 /** 옛 저장본(버전/필터 필드 없음 포함)을 현재 분석 결과에 안전하게 붙인다. */
 export function restoreBoardState(results: TileResult[], raw: unknown): BoardState {
   const base = initBoard(results);
-  const saved = rawSnapshot(raw);
+  const saved = migrateSnapshot(raw);
   if (!saved) return base;
 
   const baseIds = new Set(base.order);

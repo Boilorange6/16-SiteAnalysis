@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 
 const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");
-const { initBoard, boardReducer, reportPages, demoPhase, demoFinished, serializeBoardState, restoreBoardState } = await import("../../lib/v2/ui/board-state.ts");
+const { initBoard, boardReducer, reportPages, demoPhase, demoFinished, serializeBoardState, restoreBoardState, migrateSnapshot, TILE_CODE_RENAMES } = await import("../../lib/v2/ui/board-state.ts");
 
 const ids = GODEOK_RESULTS.map((r) => r.tileId);
 let s = initBoard(GODEOK_RESULTS);
@@ -183,6 +183,44 @@ assert.equal(demoFinished(10, 99), 10);
   assert.deepEqual(restoreBoardState(GODEOK_RESULTS, old).a05Filter, {}, "a05Filter 없는 옛 저장본 호환");
   const refreshed = boardReducer(b, { type: "replaceResults", results: GODEOK_RESULTS.map((result) => ({ ...result })) });
   assert.deepEqual(refreshed.a05Filter, b.a05Filter, "재분석 결과 교체에도 필터 유지");
+}
+
+// 스냅샷 이관: v1 항등, 미래 버전은 안전하게 무시하고, 코드 변경은 모든 id 필드에 적용한다.
+{
+  const oldId = "analysis-OLD";
+  const newId = "analysis-NEW";
+  const source = serializeBoardState(initBoard(GODEOK_RESULTS));
+  const old = {
+    ...source,
+    version: 1,
+    order: [oldId],
+    included: { [oldId]: true },
+    faces: { [oldId]: "both" },
+    callout: { [oldId]: "all" },
+    a05Filter: { [oldId]: { types: ["apt"], year: { min: 2010, max: null } } },
+    view: { [oldId]: "map" },
+    sizes: { [oldId]: 2 },
+    tileKinds: { [oldId]: "analysis" },
+    stacks: { "stack:1": [oldId] },
+    sheets: { "sheet:1": { tiles: [oldId], grid: "2x2" } },
+    cameras: { [oldId]: { azimuthDeg: 315, elevationDeg: 35 } },
+    cuts: { [oldId]: 3 },
+    roseSeasons: { [oldId]: "summer" },
+    removed: [{ id: oldId, index: 2 }],
+  };
+  TILE_CODE_RENAMES.OLD = "NEW";
+  const migrated = migrateSnapshot(old);
+  assert.equal(migrated.version, 1, "v1 snapshot is identity-migrated");
+  assert.deepEqual(migrated.order, [newId]);
+  for (const field of ["included", "faces", "callout", "a05Filter", "view", "sizes", "tileKinds", "cameras", "cuts", "roseSeasons"]) {
+    assert.ok(migrated[field][newId], `${field} id rewrite`);
+  }
+  assert.deepEqual(migrated.stacks["stack:1"], [newId]);
+  assert.deepEqual(migrated.sheets["sheet:1"].tiles, [newId]);
+  assert.deepEqual(migrated.removed, [{ id: newId, index: 2 }]);
+  assert.equal(migrateSnapshot({ ...old, version: 2 }), null, "미래 버전은 무시");
+  assert.deepEqual(restoreBoardState(GODEOK_RESULTS, { ...old, version: 2 }).order, ids, "미래 버전은 기본 보드");
+  delete TILE_CODE_RENAMES.OLD;
 }
 
 console.log("v2 ui board-state tests passed");
