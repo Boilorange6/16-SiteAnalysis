@@ -110,7 +110,7 @@ export function buildingsReady(ctx: EngineContext): boolean {
 
 const positiveNumber = (value: unknown): number | null => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null);
 const heightMethod = (value: unknown): BuildingRow["heightMethod"] =>
-  value === "source" || value === "floors_estimate" || value === "user" ? value : "unknown";
+  value === "source" || value === "floors_estimate" || value === "user" ? value : value === "ledger_floors_estimate" ? "floors_estimate" : "unknown";
 
 function validApprovalDate(value: unknown, analysisDate: string): string | null {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;

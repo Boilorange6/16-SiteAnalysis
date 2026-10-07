@@ -11,8 +11,9 @@ import proj4 from "proj4";
 const { initDataFileSchema } = await import("../../lib/v2/data/schema.ts");
 const { insertRelease } = await import("../../lib/v2/ingest/build.ts");
 const { readShp } = await import("../../lib/v2/ingest/shp.ts");
-const { queryFeaturesInRadius } = await import("../../lib/v2/data/features.ts");
+const { insertFeature, queryFeaturesInRadius } = await import("../../lib/v2/data/features.ts");
 const { buildBuildings, heightOf, validDate, FLOOR_HEIGHT_M } = await import("../../lib/v2/ingest/sources/buildings.ts");
+const { ledgerFloorLookup } = await import("../../lib/v2/ingest/sources/ledger.ts");
 
 // ─── 순수 함수 ─────────────────────────────────────────────────────────────
 assert.deepEqual(heightOf({ A16: 12.345, A26: 4 }), { heightM: 12.35, method: "source", floorsAbove: 4 });
@@ -20,6 +21,12 @@ assert.deepEqual(heightOf({ A16: 0, A26: 5 }), { heightM: 5 * FLOOR_HEIGHT_M, me
 assert.deepEqual(heightOf({ A16: 0, A26: 0 }), { heightM: null, method: "unknown", floorsAbove: null });
 assert.deepEqual(heightOf({ A16: null, A26: null }), { heightM: null, method: "unknown", floorsAbove: null });
 assert.equal(heightOf({ A16: 0, A26: 2 }, 3.5).heightM, 7);
+assert.deepEqual(heightOf({ A16: 0, A26: 0 }, 3, { ledgerPk: "TITLE-1", floorsAbove: 7, method: "ledger_pk" }), {
+  heightM: 21,
+  method: "ledger_floors_estimate",
+  floorsAbove: 7,
+  ledgerMatch: { ledgerPk: "TITLE-1", floorsAbove: 7, method: "ledger_pk" },
+});
 assert.equal(validDate("1978-02-02", 2026), "1978-02-02");
 for (const bad of ["1978-02-30", "0991-04-12", "7982-01-01", "1978-13-01", "19780202", "", null]) assert.equal(validDate(bad, 2026), null, String(bad));
 
@@ -129,6 +136,73 @@ assert.deepEqual([n.height_m, n.height_method, n.floors_above, n.use_code, n.app
 assert.equal(fact("U-BADDATE").approval_date, null);
 assert.equal(fact("U-NOPNU").pnu, null);
 assert.equal(db.prepare("SELECT COUNT(*) FROM building_fact").pluck().get(), 5);
+
+// ─── 표제부 층수 보강: 단일 동·다동 이름 매칭·비매칭 ─────────────────────────
+{
+  const core = new Database(":memory:");
+  initDataFileSchema(core, "core");
+  const coreRel = insertRelease(core, { sourceId: "ledger_title", provider: "t", sourceUrl: "https://x.invalid", sourceAsOf: "2026-09-09", fetchedAt: "2026-09-30T00:00:00Z", checksum: "core", licenseCode: "TEST" });
+  const pnuOne = "4113510300100010000";
+  const pnuMany = "4113510300100020000";
+  const pnuUnique = "4113510300100030000";
+  const pnuAmbiguous = "4113510300100040000";
+  const title = (id, pnuValue, name, ledgerPk, floors, footprint) => insertFeature(core, {
+    stableId: `title:${id}`,
+    kind: "officetel",
+    sourceKey: ledgerPk,
+    releaseId: coreRel,
+    geometry: { type: "Point", coordinates: [127.1, 37.5] },
+    name,
+    pnu: pnuValue,
+    properties: { ledgerPk, floorsAbove: floors, footprintAreaM2: footprint },
+  });
+  title("one", pnuOne, "1동", "TITLE-1", 6, 100);
+  title("many-a", pnuMany, "A동", "TITLE-A", 4, 100);
+  title("many-b", pnuMany, "B동", "TITLE-B", 7, 200);
+  title("unique", pnuUnique, "단일동", "TITLE-U", 5, 150);
+  title("ambiguous", pnuAmbiguous, "한동", "TITLE-D", 9, 300);
+  const lookup = ledgerFloorLookup(core);
+  assert.ok(lookup);
+  const square = (x) => ({ type: "Polygon", coordinates: [[[127 + x, 37], [127.0001 + x, 37], [127.0001 + x, 37.0001], [127 + x, 37.0001], [127 + x, 37]]] });
+  const row = (id, pnuValue, extra = {}, x = 0) => ({
+    properties: { A1: id, A2: pnuValue, A3: "4113510300", A16: 0, A26: 0, ...extra },
+    geometry: square(x),
+  });
+  async function* supplementRows() {
+    yield row("LEDGER-DIRECT", pnuOne, { A21: "TITLE-1", A24: "1동" }, 0);
+    yield row("LEDGER-NAME", pnuMany, { A21: "NOT-TITLE", A24: "B동", A12: 200 }, 0.001);
+    yield row("LEDGER-AREA", pnuMany, { A21: "NOT-TITLE-AREA", A24: "없는동", A12: 100 }, 0.002);
+    yield row("LEDGER-NO-NAME", pnuMany, { A21: "NOT-TITLE-2", A24: "없는동" }, 0.003);
+    yield row("LEDGER-UNIQUE", pnuUnique, { A24: "단일동" }, 0.004);
+    yield row("LEDGER-DUP-A", pnuAmbiguous, { A24: "알수없음" }, 0.005);
+    yield row("LEDGER-DUP-B", pnuAmbiguous, { A24: "알수없음" }, 0.006);
+  }
+  const buildings = new Database(":memory:");
+  initDataFileSchema(buildings, "buildings");
+  const buildingRel = insertRelease(buildings, { sourceId: "building", provider: "t", sourceUrl: "https://x.invalid", sourceAsOf: "2026-09-09", fetchedAt: "2026-09-30T00:00:00Z", checksum: "buildings", licenseCode: "TEST" });
+  const supplementStats = await buildBuildings(buildings, supplementRows(), buildingRel, { maxYear: 2026, ledger: lookup });
+  assert.deepEqual(supplementStats.byType, { ledger_floors_estimate: 4, unknown: 3 });
+  assert.equal(supplementStats.snapshot().fillRates.heightM, 4 / 7);
+  const supplementFact = (id) => buildings.prepare("SELECT b.height_m, b.height_method, b.floors_above, b.field_provenance_json FROM building_fact b JOIN feature f USING (feature_id) WHERE f.stable_id = ?").get(`building:${id}`);
+  const direct = supplementFact("LEDGER-DIRECT");
+  assert.deepEqual([direct.height_m, direct.height_method, direct.floors_above], [18, "ledger_floors_estimate", 6]);
+  assert.equal(JSON.parse(direct.field_provenance_json).height_m.ledger_pk, "TITLE-1");
+  assert.equal(JSON.parse(direct.field_provenance_json).height_m.match, "ledger_pk");
+  const named = supplementFact("LEDGER-NAME");
+  assert.deepEqual([named.height_m, named.height_method, named.floors_above], [21, "ledger_floors_estimate", 7]);
+  assert.equal(JSON.parse(named.field_provenance_json).height_m.match, "pnu_name");
+  const area = supplementFact("LEDGER-AREA");
+  assert.deepEqual([area.height_m, area.height_method, area.floors_above], [12, "ledger_floors_estimate", 4]);
+  assert.equal(JSON.parse(area.field_provenance_json).height_m.match, "pnu_area");
+  const unique = supplementFact("LEDGER-UNIQUE");
+  assert.deepEqual([unique.height_m, unique.height_method, unique.floors_above], [15, "ledger_floors_estimate", 5]);
+  assert.equal(JSON.parse(unique.field_provenance_json).height_m.match, "pnu_unique");
+  assert.equal(supplementFact("LEDGER-NO-NAME").height_method, "unknown", "다동에서 동을 특정하지 못하면 미상 유지");
+  assert.equal(supplementFact("LEDGER-DUP-A").height_method, "unknown", "한 PNU 복수 건물은 유일 PNU 추정을 금지");
+  assert.equal(supplementFact("LEDGER-DUP-B").height_method, "unknown", "한 PNU 복수 건물은 유일 PNU 추정을 금지");
+  buildings.close();
+  core.close();
+}
 
 // 도형: EPSG:5179 미터, 반경 조회로 다시 나오고 좌표는 1 cm 단위다
 const hits = queryFeaturesInRadius(db, proj4("EPSG:5186", "EPSG:4326").forward([208300, 542010]), 2000, ["building"]);

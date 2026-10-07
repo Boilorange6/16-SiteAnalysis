@@ -120,7 +120,12 @@ export async function buildEngineFixture(dataDir, version, options = {}) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     const building = (id, dx, dy, size, details, pnu = null) => {
       const featureId = insertFeature(db, { stableId: `building:${id}`, kind: "building", sourceKey: id, releaseId: buildingRelease, geometry: rect(dx - size / 2, dx + size / 2, dy - size / 2, dy + size / 2), name: id, pnu, legalCode: pnu ? "4136011800" : null });
-      fact.run(featureId, null, details.heightM, details.method, details.floors, null, details.useCode, details.approval, null, size * size, details.method === "floors_estimate" ? JSON.stringify({ height_m: "A26*floorHeightM", floorHeightM: 3 }) : "{}");
+      const provenance = details.method === "floors_estimate"
+        ? JSON.stringify({ height_m: "A26*floorHeightM", floorHeightM: 3 })
+        : details.method === "ledger_floors_estimate"
+          ? JSON.stringify({ origin: "ledger-title", height_m: { source: "ledger.title.지상_층_수*floorHeightM", floorHeightM: 3, ledger_pk: details.ledgerPk, match: "ledger_pk" } })
+          : "{}";
+      fact.run(featureId, details.ledgerPk ?? null, details.heightM, details.method, details.floors, null, details.useCode, details.approval, null, size * size, provenance);
     };
     building("b_apt", 0, 0, 10, { heightM: 12, method: "source", floors: 4, useCode: "02000", approval: "1979-05-01" }, PNU_DASAN_100);
     building("b_office", 70, 0, 20, { heightM: 40, method: "source", floors: 12, useCode: "14000", approval: "1985-01-01" });
@@ -128,8 +133,15 @@ export async function buildEngineFixture(dataDir, version, options = {}) {
     building("b_unknown", 0, 70, 10, { heightM: null, method: "unknown", floors: null, useCode: null, approval: "2005-01-01" });
     building("b_shop", 0, -70, 12, { heightM: 8, method: "source", floors: 2, useCode: "03000", approval: "2015-01-01" });
     building("b_noledger", 120, 0, 10, { heightM: null, method: "unknown", floors: null, useCode: null, approval: null });
+    if (options.ledgerEstimate) building("b_ledger_est", 140, 0, 10, { heightM: 21, method: "ledger_floors_estimate", floors: 7, useCode: "02000", approval: "2018-01-01", ledgerPk: "TITLE-FIXTURE" });
     building("b_far", 3000, 0, 10, { heightM: 20, method: "source", floors: 6, useCode: "02000", approval: "2000-01-01" });
-    run(db, "building", buildingRelease, { byRegion: { 41: 7 }, byType: { source: 4, floors_estimate: 1, unknown: 2 }, fillRates: {}, unlocated: 0 }, 0, 7);
+    const buildingCount = options.ledgerEstimate ? 8 : 7;
+    run(db, "building", buildingRelease, {
+      byRegion: { 41: buildingCount },
+      byType: options.ledgerEstimate ? { source: 4, floors_estimate: 1, ledger_floors_estimate: 1, unknown: 2 } : { source: 4, floors_estimate: 1, unknown: 2 },
+      fillRates: {},
+      unlocated: 0,
+    }, 0, buildingCount);
     db.close();
     files.buildings = "buildings";
   }

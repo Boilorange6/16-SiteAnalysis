@@ -104,7 +104,7 @@ const BUILDINGS_SQL = `
     ledger_pk TEXT,
     complex_id TEXT,
     height_m REAL,
-    height_method TEXT NOT NULL CHECK (height_method IN ('source','floors_estimate','user','unknown')),
+    height_method TEXT NOT NULL CHECK (height_method IN ('source','floors_estimate','ledger_floors_estimate','user','unknown')),
     floors_above INTEGER,
     floors_below INTEGER,
     use_code TEXT,

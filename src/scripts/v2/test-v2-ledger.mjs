@@ -48,6 +48,7 @@ const stats = await buildLedger(db, {
     { 관리_건축물대장_PK: "T6", 대장_종류_코드_명: "표제부", 건물_명: "점없는단지", 동_명: "101동", ...addr("41360", "10100", "0", "8000", "0000"), 주_용도_코드_명: "공동주택", "세대_수(세대)": "50" }, // recap 단지는 위치 미확인 → 표제부로 다시 세지 않는다
     { 관리_건축물대장_PK: "T7", 대장_종류_코드_명: "표제부", 건물_명: "세대미상", ...addr("11680", "10100", "0", "0010", "0000"), 주_용도_코드_명: "공동주택", "세대_수(세대)": "0" },
     { 관리_건축물대장_PK: "T8", 대장_종류_코드_명: "표제부", 건물_명: "점없는빌라", ...addr("41360", "10100", "0", "9000", "0000"), 주_용도_코드_명: "공동주택", "세대_수(세대)": "5" },
+    { 관리_건축물대장_PK: "T9", 대장_종류_코드_명: "표제부", 건물_명: "단일빌라", 동_명: "1동", ...addr("11680", "10100", "0", "0020", "0000"), 주_용도_코드_명: "공동주택", 기타_용도: "다세대주택", "세대_수(세대)": "3", 지상_층_수: "4", 연면적: "300", 건축면적: "100" },
     { 관리_건축물대장_PK: "T5", 대장_종류_코드_명: "표제부", 건물_명: "사무동", ...addr("11680", "10100", "0", "0020", "0000"), 주_용도_코드_명: "업무시설", 기타_용도: "사무소" },
   ]),
 });
@@ -56,13 +57,14 @@ const byId = Object.fromEntries(stats.map((s) => [s.sourceId, s]));
 const counts = (s) => [s.received, s.accepted, s.unlocated, s.rejected];
 for (const s of stats) assert.equal(s.received, s.accepted + s.unlocated + s.rejected, `${s.sourceId}: received = accepted + unlocated + rejected`);
 assert.deepEqual(counts(byId.ledger_recap_housing), [4, 1, 3, 0], "창고는 대상 아님(세지 않음), 블록·대표점없음·점없는단지는 위치 미확인");
-assert.deepEqual(counts(byId.ledger_title_housing), [4, 2, 1, 1], "T2+T3 → 2행 accept·feature 1개, T8 점 없음, T7 세대 미상 reject, T1·T6은 recap PNU라 대상 아님");
+assert.deepEqual(counts(byId.ledger_title_housing), [5, 3, 1, 1], "T2+T3·T9 → 3행 accept·feature 2개, T8 점 없음, T7 세대 미상 reject, T1·T6은 recap PNU라 대상 아님");
 assert.deepEqual(counts(byId.ledger_title_officetel), [1, 1, 0, 0]);
-assert.equal(db.prepare("SELECT count(*) FROM feature WHERE kind = 'housing_complex' AND stable_id LIKE 'title-housing:%'").pluck().get(), 1, "위치 미확인 recap 단지의 동은 title-housing이 되지 않는다");
+assert.equal(db.prepare("SELECT count(*) FROM feature WHERE kind = 'housing_complex' AND stable_id LIKE 'title-housing:%'").pluck().get(), 2, "위치 미확인 recap 단지의 동은 title-housing이 되지 않는다");
 
 const props = (id) => JSON.parse(db.prepare("SELECT properties_json FROM feature WHERE stable_id = ?").pluck().get(id));
 assert.deepEqual(props("recap:108215000068706"), { source: "recap", ledgerPk: "108215000068706", mainUse: "공동주택", otherUse: "아파트", units: 1010, households: null, parking: null, approvalDate: "2012-03-30", buildingCount: 12 }, "0은 미상(null)");
 assert.deepEqual(props("title-housing:1168010100100100000"), { source: "title", ledgerPk: null, mainUse: "공동주택", otherUse: "다세대주택", units: 14, households: null, parking: null, approvalDate: "2003-11-01", buildingCount: 2 });
+assert.deepEqual(props("title-housing:1168010100100200000"), { source: "title", ledgerPk: "T9", mainUse: "공동주택", otherUse: "다세대주택", units: 3, households: null, parking: null, approvalDate: null, buildingCount: 1, floorsAbove: 4, grossFloorAreaM2: 300, footprintAreaM2: 100 });
 assert.deepEqual(props("title:T4"), { ledgerPk: "T4", units: null, floorsAbove: 15, heightM: 45.2, approvalDate: "2019-05-10", otherUse: "오피스텔,근린생활시설" });
 assert.equal(db.prepare("SELECT pnu FROM feature WHERE stable_id = 'recap:108215000068706'").pluck().get(), "3611011100106400000");
 assert.equal(db.prepare("SELECT count(*) FROM feature WHERE stable_id LIKE 'recap:P%'").pluck().get(), 0, "위치 미확인은 feature를 만들지 않는다");

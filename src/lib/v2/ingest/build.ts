@@ -336,6 +336,22 @@ export class SourceStats {
     for (const f of this.fillFields) if (isFilled(props[f])) this.filled.set(f, (this.filled.get(f) ?? 0) + 1);
   }
 
+  /**
+   * A streaming source may need to defer a classification until it has seen
+   * the other rows on the same parcel. Keep the accepted-row totals intact
+   * while moving one row from a provisional type to its final type.
+   */
+  retag(region: string, fromType: string, toType: string, props: Record<string, unknown>): void {
+    if (fromType !== toType) {
+      const remaining = Math.max(0, (this.byType[fromType] ?? 0) - 1);
+      if (remaining === 0) delete this.byType[fromType];
+      else this.byType[fromType] = remaining;
+      this.byType[toType] = (this.byType[toType] ?? 0) + 1;
+    }
+    void region;
+    for (const f of this.fillFields) if (isFilled(props[f])) this.filled.set(f, (this.filled.get(f) ?? 0) + 1);
+  }
+
   reject(): void {
     this.rejected++;
   }

@@ -27,7 +27,7 @@ const { buildParcelPolygons } = await import("../../lib/v2/ingest/sources/parcel
 const { buildBuildings, FLOOR_HEIGHT_M } = await import("../../lib/v2/ingest/sources/buildings.ts");
 const { buildJusoBuildings, gisFeatureIdBound, jusoShpPerSido, shpExtent, JUSO_LICENSE_CODE, JUSO_PROVIDER, JUSO_RIGHTS, JUSO_SOURCE_ID, JUSO_SOURCE_URL, OVERLAP_MIN } = await import("../../lib/v2/ingest/sources/juso-buildings.ts");
 const { buildLegalAreas } = await import("../../lib/v2/ingest/sources/legal-areas.ts");
-const { buildLedger } = await import("../../lib/v2/ingest/sources/ledger.ts");
+const { buildLedger, ledgerFloorLookup } = await import("../../lib/v2/ingest/sources/ledger.ts");
 const { buildPointSource, STORE_SPEC, BUS_STOP_SPEC, PARK_SPEC } = await import("../../lib/v2/ingest/sources/points.ts");
 const { buildSupply, readLegacyPlannedHousing } = await import("../../lib/v2/ingest/sources/supply.ts");
 const { buildOsmSubway, buildPlannedRail, legalCodeFromCore } = await import("../../lib/v2/ingest/sources/rail.ts");
@@ -239,19 +239,21 @@ if (only.has("buildings")) {
   const withJuso = jusoFiles.length > 0;
   const buildingProgress = progressSpec("building", "buildings", [...buildingFiles, ...jusoFiles], {
     sourcePattern: "gis_building/AL_D010", maxYear,
+    ledgerHeight: "core-title-floors-v1",
     ...(withJuso ? { juso: { sourcePattern: "juso/TL_SPBD_BULD", overlapMin: OVERLAP_MIN, floorHeightM: FLOOR_HEIGHT_M, replacementRule: "core-pnu-approval-name-v1" } } : {}),
   });
   progress.buildings = buildingProgress;
   const buildingByPath = new Map([...buildingFiles, ...jusoFiles].map((file) => [file.path, file.absPath]));
   builders.buildings = async (db, ctx) => {
     const rel = release(db, "building", oldestFile(buildingAll), "국토교통부(VWorld GIS건물통합정보)", "https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=NA&dsId=18", "CC-BY");
+    const ledger = ledgerFloorLookup(ctx.core);
     console.log(`buildings: 시도 ${partCounts(buildingAll)}${withJuso ? ` · 도로명주소 건물 시도 ${[...jusoAll.keys()].join(",")}` : " · 도로명주소 건물 없음(GIS건물만)"}`);
     if (!withJuso) {
       const b = await buildResumableSourceFiles(db, {
         spec: buildingProgress,
         releaseId: rel,
         fillFields: ["heightM", "floorsAbove", "useCode", "approvalDate"],
-        buildFile: (file) => buildBuildings(db, readShp(buildingByPath.get(file.path)), rel, { maxYear }),
+        buildFile: (file) => buildBuildings(db, readShp(buildingByPath.get(file.path)), rel, { maxYear, ledger }),
       });
       b.expectedRegions = [...buildingAll.keys()];
       return [b];
@@ -267,7 +269,7 @@ if (only.has("buildings")) {
       ...buildingFiles.map((file) => ({
         file,
         run: async () => {
-          const s = await buildBuildings(db, readShp(file.absPath), rel, { maxYear });
+          const s = await buildBuildings(db, readShp(file.absPath), rel, { maxYear, ledger });
           s.expectedRegions = [sidoOfFile.get(file.absPath)];
           return [s];
         },
