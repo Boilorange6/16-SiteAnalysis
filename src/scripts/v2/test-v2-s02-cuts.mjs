@@ -101,8 +101,9 @@ try {
   assert.ok(tile.limitations.some((limitation) => limitation.note.includes("높이·층수 자료가 없는 건물") && limitation.note.includes("1층(3 m)으로 가정")));
   assert.ok(tile.limitations.some((limitation) => limitation.note.includes("400 m")));
   assert.ok(tile.judgment.sentence.includes("진태양시 09~15"));
+  const winterMean = tile.metrics.find((metric) => metric.id === "mean_sun_h_winter").value;
   const summerMean = tile.metrics.find((metric) => metric.id === "mean_sun_h_summer").value;
-  assert.ok(tile.judgment.sentence.startsWith(`하지 반경 안 지면의 평균 일조 ${summerMean}시간, 동지 `), "문장은 헤드라인과 같은 하지로 시작");
+  assert.ok(tile.judgment.sentence.startsWith(`동지 반경 안 지면의 평균 일조 ${winterMean}시간, 하지 ${summerMean}시간, 동지 `), "문장은 헤드라인과 같은 동지로 시작");
   assert.ok(!tile.judgment.sentence.includes("법적 일조권 충족"));
   assert.ok(Buffer.byteLength(JSON.stringify(tile), "utf8") < 200_000, "raster bytes stay outside result JSON");
   console.log(`✓ v2 S02 full-radius seasonal raster contract (${computeElapsedMs}ms; perf ${samples.join("/")}ms, median ${medianComputeMs}ms; ${rasterBytes} compressed bytes)`);

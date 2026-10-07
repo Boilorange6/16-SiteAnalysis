@@ -4,7 +4,7 @@ import type { EngineContext } from "../context";
 import type { FeatureHit } from "../../data/features";
 import { toUtmk } from "../../crs";
 import { candidate, fmt, hitPoint, lineCandidate, makeTile, missing, nearestHit, nearestM, noDataTile, obs, type LineCandidate, type MapCandidate, type TileDraft } from "./common";
-import { sampleLine } from "./geo";
+import { clipLineToCircle, linePathLength, sampleLine } from "./geo";
 import { walkField, walkSources, type WalkField, type WalkRoute } from "./walk-shared";
 
 export const A01_CRITERIA = "버스정류장 직선 300m 이하 좋음 · 600m 이하 보통 · 초과 주의";
@@ -36,6 +36,7 @@ export function a01Grades(railM: number | null, busM: number | null): { grades: 
 }
 const PHRASE = { good: "버스 접근은 가까운 편", fair: "버스 접근은 보통 수준", caution: "버스 접근은 먼 편" } as const;
 const RAIL_PHRASE = { good: "철도 접근은 가까운 편", fair: "철도 접근은 보통 수준", caution: "철도 접근은 먼 편" } as const;
+const pct = (part: number, whole: number) => Math.round((part / whole) * 1000) / 10;
 
 interface RailPoint {
   hit: FeatureHit;
@@ -122,6 +123,30 @@ function railStations(ctx: EngineContext, searchM: number): RailStation[] {
     });
 }
 
+function text(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
+function stationName(hit: FeatureHit): string | null {
+  return text(hit.name);
+}
+
+function entranceStationName(hit: FeatureHit): string | null {
+  return text(hit.properties.stationName);
+}
+
+function lineKey(hit: FeatureHit): string {
+  return text(hit.properties.lineRef) ?? hit.stableId;
+}
+
+function countStationsWithEntrances(stations: FeatureHit[], entrances: FeatureHit[]): number {
+  const stationNames = new Set(stations.map(stationName).filter((name): name is string => name !== null));
+  const entranceNames = new Set(entrances.map(entranceStationName).filter((name): name is string => name !== null && stationNames.has(name)));
+  return stations.reduce((count, station) => count + (stationName(station) !== null && entranceNames.has(stationName(station)!) ? 1 : 0), 0);
+}
+
 export function a01(ctx: EngineContext): TileResult {
   const sources = ctx.sources("reference", ["bus_stop"]);
   if (sources.length === 0) return noDataTile(ctx, "A01", ["bus_stop"]);
@@ -135,7 +160,12 @@ export function a01(ctx: EngineContext): TileResult {
   const radiusM = ctx.input.radiusM;
   const searchM = Math.max(radiusM, RAIL_SEARCH_MIN_M);
   const stations = hasRail ? railStations(ctx, searchM) : [];
-  const inRadius = stations.filter((s) => s.best.dist <= radiusM);
+  // D14 흡수 후의 집계 기준: 대표점 대체 거리와 별개로 반경 내 원천 feature를 직접 센다.
+  const stationHits = hasRail ? ctx.hits("reference", ["rail_station"]) : [];
+  const entranceHits = hasRail ? ctx.hits("reference", ["rail_entrance"]) : [];
+  const railLineHits = hasRail ? ctx.hits("reference", ["rail_line"]) : [];
+  const stationsWithEntrances = hasRail ? countStationsWithEntrances(stationHits, entranceHits) : 0;
+  const railLineCount = new Set(railLineHits.map(lineKey)).size;
   const railBest = stations.reduce<RailStation | null>((b, s) => (b === null || s.best.dist < b.best.dist || (s.best.dist === b.best.dist && s.hit.featureId < b.hit.featureId) ? s : b), null);
   const walk = walkField(ctx);
   const walkRailTargets = stations.flatMap((s) => (s.entrances.length > 0 ? s.entrances : [s.hit]));
@@ -143,7 +173,6 @@ export function a01(ctx: EngineContext): TileResult {
   const walkBus = nearestWalkTarget(walk, hits);
   const railM = railBest ? Math.round(railBest.best.dist) : null;
   const usesPoint = railBest?.best.isStationPoint ?? false;
-  const lineRefs = [...new Set(inRadius.flatMap((s) => (Array.isArray(s.hit.properties.lineRefs) ? (s.hit.properties.lineRefs as unknown[]) : []).filter((r): r is string => typeof r === "string")))].sort();
   const searchTxt = `탐색 ${fmt(searchM)}m`;
 
   const busMetric = nearest === null ? missing("nearest_bus_m", "최근접 버스정류장", "m", "a01-bus-nearest@1") : obs("nearest_bus_m", "최근접 버스정류장", nearest, "m", "a01-bus-nearest@1");
@@ -151,8 +180,12 @@ export function a01(ctx: EngineContext): TileResult {
   const railFormula = `a01-rail-nearest@1:직선, ${searchTxt}`;
   const metrics: TileDraft["metrics"] = [
     !hasRail || railM === null ? missing("nearest_rail_m", "최근접 철도역 출입구", "m", hasRail ? railFormula : "a01-rail@0") : obs("nearest_rail_m", railLabel, railM, "m", railFormula),
-    hasRail ? obs("rail_stations", "반경 내 운영역", inRadius.length, "개", "a01-rail-stations@1:출입구·노선 중복 제거") : missing("rail_stations", "반경 내 운영역", "개", "a01-rail@0"),
-    ...(hasRail ? [obs("rail_lines", "반경 내 운영역의 노선", lineRefs.length, "개", "a01-rail-lines@1:역 속성의 노선 기호")] : []),
+    hasRail ? obs("rail_stations", "반경 내 운영역", stationHits.length, "개", "a01-rail-stations@2:반경 내 rail_station 원천 feature") : missing("rail_stations", "반경 내 운영역", "개", "a01-rail@0"),
+    hasRail ? obs("rail_entrances", "철도역 출입구", entranceHits.length, "곳", "a01-rail-entrances@2:반경 내 rail_entrance 원천 feature") : missing("rail_entrances", "철도역 출입구", "곳", "a01-rail@0"),
+    hasRail && stationHits.length > 0
+      ? obs("fill_entrance_pct", "출입구 확인 역", pct(stationsWithEntrances, stationHits.length), "%", "a01-entrance-fill@2:역명 연결 출입구가 있는 반경 내 운영역÷반경 내 운영역", stationsWithEntrances, stationHits.length)
+      : missing("fill_entrance_pct", "출입구 확인 역", "%", hasRail ? "a01-entrance-fill@2:역 0곳으로 분모 없음" : "a01-rail@0"),
+    hasRail ? obs("rail_lines", "반경 내 철도 노선", railLineCount, "개", "a01-rail-lines@2:반경과 교차한 고유 rail_line 개수") : missing("rail_lines", "반경 내 철도 노선", "개", "a01-rail@0"),
     busMetric,
     obs("bus_stops", "버스 정류장", hits.length, "개", "a01-bus-count@1"),
     missing("bus_routes", "경유 버스 노선", "개", "a01-bus-routes@0"),
@@ -190,17 +223,25 @@ export function a01(ctx: EngineContext): TileResult {
   if (hasRail) {
     layers.push("rail_station", "rail_entrance", "rail_line", "rail_nearest");
     const nearHit = railBest && railM !== null && railBest.best.dist <= radiusM ? railBest.best.hit : null;
-    for (const s of inRadius) {
-      const stationIsNearest = nearHit === s.hit;
-      if (!stationIsNearest) map.push(candidate(s.hit, "rail_station"));
-      for (const e of s.entrances) {
-        if (e.distanceM! > radiusM) continue;
-        map.push(e === nearHit ? candidate(e, "rail_nearest", { highlight: true, label: `직선 ${railM}m` }) : candidate(e, "rail_entrance"));
-      }
-      if (stationIsNearest) map.push(candidate(s.hit, "rail_nearest", { highlight: true, label: `직선 ${railM}m` }));
+    const nearFeatureId = nearHit?.featureId ?? null;
+    // D14 흡수 후에도 반경 내 원천 역·출입구 전체를 지도에 남긴다.
+    // 대표점/출입구를 사용한 최근접 표시는 같은 feature의 레이어만 교체한다.
+    for (const station of stationHits) {
+      const isNearest = station.featureId === nearFeatureId;
+      map.push(candidate(station, isNearest ? "rail_nearest" : "rail_station", isNearest ? { highlight: true, label: `직선 ${railM}m` } : undefined));
+    }
+    for (const entrance of entranceHits) {
+      const isNearest = entrance.featureId === nearFeatureId;
+      map.push(candidate(entrance, isNearest ? "rail_nearest" : "rail_entrance", isNearest ? { highlight: true, label: `직선 ${railM}m` } : undefined));
     }
     const step = Math.max(50, radiusM / 30);
-    for (const l of ctx.hits("reference", ["rail_line"])) map.push(...sampleLine(ctx.input.center, l.geometry, radiusM, step, l.featureId, "rail_line"));
+    for (const l of ctx.hits("reference", ["rail_line"])) {
+      map.push(...sampleLine(ctx.input.center, l.geometry, radiusM, step, l.featureId, "rail_line"));
+      for (const path of clipLineToCircle(ctx.input.center, radiusM, l.geometry)) {
+        const line = lineCandidate(l.featureId, "rail_line", path, linePathLength(path));
+        if (line) lines.push(line);
+      }
+    }
     if (usesPoint) limitations.push({ kind: "unknown", note: "최근접 역은 출입구 자료가 없어 역 대표점 거리입니다." });
     if (railM === null) limitations.push({ kind: "unknown", note: `${searchTxt} 안에 운영역이 없어 철도 거리는 계산하지 못했습니다.` });
     else if (railM > radiusM) limitations.push({ kind: "unknown", note: `최근접 역은 분석 반경(${fmt(radiusM)}m) 밖이라 지도에는 표시하지 않았습니다.` });

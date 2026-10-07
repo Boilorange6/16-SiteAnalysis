@@ -323,19 +323,19 @@ function svfBandRows(rows: readonly DetailRow[]): DetailRow[] {
   });
 }
 
-function rasterSpec(code: "D21" | "D29", names: readonly string[], label: string): DetailSpec {
+function rasterSpec(code: "S02" | "D29", names: readonly string[], label: string): DetailSpec {
   const rowsFor = (ctx: DetailContext): DetailRow[] => {
-    const rows = rasterRows(ctx, code, code === "D21" ? names.map((name) => `${name}_winter`) : names, label);
+    const rows = rasterRows(ctx, code, code === "S02" ? names.map((name) => `${name}_winter`) : names, label);
     return code === "D29" ? svfBandRows(rows) : rows;
   };
   const rawRowsFor = (ctx: DetailContext): DetailRow[] => {
-    return rasterRows(ctx, code, code === "D21" ? names.map((name) => `${name}_winter`) : names, label);
+    return rasterRows(ctx, code, code === "S02" ? names.map((name) => `${name}_winter`) : names, label);
   };
   return {
     columns: GRID_COLUMNS,
     controls: undefined,
     summary(ctx) {
-      const selected = code === "D21" ? "동지" : "연중";
+      const selected = code === "S02" ? "동지" : "연중";
       const rows = rowsFor(ctx);
       const rawRows = rawRowsFor(ctx);
       const values = rawRows.map((row) => number(row.cells.value)).filter((value): value is number => value !== null);
@@ -344,7 +344,7 @@ function rasterSpec(code: "D21" | "D29", names: readonly string[], label: string
       const median = sorted.length === 0 ? null : sorted[Math.floor((sorted.length - 1) / 2)];
       const closedArea = code === "D29" ? rawRows.filter((row) => (number(row.cells.value) ?? 1) < 0.5).reduce((sum, row) => sum + (number(row.cells.area_m2) ?? 0), 0) : 0;
       const allArea = rawRows.reduce((sum, row) => sum + (number(row.cells.area_m2) ?? 0), 0);
-      return { title: catalogEntry(code).title, subtitle: `${selected} · ${rows.length.toLocaleString("ko-KR")}개 구간`, fields: [{ label: "평균", value: average === null ? null : String(Math.round(average * 100) / 100) }, ...(code === "D29" ? [{ label: "절반 미만", value: allArea > 0 ? `${Math.round((closedArea / allArea) * 1000) / 10}%` : null }, { label: "중앙값", value: median === null ? null : `${Math.round(median * 100)}%` }] : [])], source: code === "D21" ? sourceText(ctx, "reference", ["sunlight_result"]) : sourceText(ctx, "reference", ["svf"]), ...(rows.length === 0 ? { missing: ["래스터 결과"] } : {}) };
+      return { title: catalogEntry(code).title, subtitle: `${selected} · ${rows.length.toLocaleString("ko-KR")}개 구간`, fields: [{ label: "평균", value: average === null ? null : String(Math.round(average * 100) / 100) }, ...(code === "D29" ? [{ label: "절반 미만", value: allArea > 0 ? `${Math.round((closedArea / allArea) * 1000) / 10}%` : null }, { label: "중앙값", value: median === null ? null : `${Math.round(median * 100)}%` }] : [])], source: code === "S02" ? sourceText(ctx, "reference", ["sunlight_result"]) : sourceText(ctx, "reference", ["svf"]), ...(rows.length === 0 ? { missing: ["래스터 결과"] } : {}) };
     },
     rows: rowsFor,
     at(ctx, lng, lat) {
@@ -352,7 +352,7 @@ function rasterSpec(code: "D21" | "D29", names: readonly string[], label: string
       const [x, y] = toUtmk([lng, lat]);
       let best: { row: DetailRow; distance: number } | null = null;
       for (const row of rows) { const [rx, ry] = toUtmk([row.lng, row.lat]); const distance = Math.hypot(rx - x, ry - y); if (!best || distance < best.distance) best = { row, distance }; }
-      return best && best.distance <= 100 ? { card: { title: catalogEntry(code).title, fields: [{ label, value: best.row.cells.value === null ? null : String(best.row.cells.value) }], source: code === "D21" ? sourceText(ctx, "reference", ["sunlight_result"]) : sourceText(ctx, "reference", ["svf"]) }, fid: best.row.fid } : null;
+      return best && best.distance <= 100 ? { card: { title: catalogEntry(code).title, fields: [{ label, value: best.row.cells.value === null ? null : String(best.row.cells.value) }], source: code === "S02" ? sourceText(ctx, "reference", ["sunlight_result"]) : sourceText(ctx, "reference", ["svf"]) }, fid: best.row.fid } : null;
     },
   };
 }
@@ -361,7 +361,7 @@ function environmentalHits(ctx: DetailContext): FeatureHit[] {
   return [...ctx.hits("reference", ["park"]), ...ctx.hits("reference", ["landuse"]), ...ctx.hits("reference", ["water"])].sort((a, b) => a.featureId - b.featureId);
 }
 
-function environmentalRows(ctx: DetailContext, code: "D09" | "D10"): DetailRow[] {
+function environmentalRows(ctx: DetailContext, code: "A04" | "D10"): DetailRow[] {
   const circleArea = Math.PI * ctx.input.radiusM ** 2;
   const vectorRows = environmentalHits(ctx).map((hit) => {
     const area = areaInCircle(ctx.input.center, ctx.input.radiusM, hit.geometry)?.areaM2 ?? number(hit.properties.areaM2) ?? 0;
@@ -413,7 +413,7 @@ function containsPoint(hit: FeatureHit, lng: number, lat: number): boolean {
   return false;
 }
 
-function environmentalSpec(code: "D09" | "D10"): DetailSpec {
+function environmentalSpec(code: "A04" | "D10"): DetailSpec {
   return {
     columns: ENV_COLUMNS,
     summary(ctx) { const rows = environmentalRows(ctx, code); return { title: catalogEntry(code).title, subtitle: `${rows.length.toLocaleString("ko-KR")}개 지물`, fields: [{ label: "면적 합계", value: rows.length === 0 ? null : `${Math.round(rows.reduce((sum, row) => sum + (number(row.cells.area_m2) ?? 0), 0))}㎡` }], source: sourceLineOf([...ctx.sources("reference", ["park"]), ...ctx.sources("reference", ["osm_landuse", "osm_water"])]), ...(rows.length === 0 ? { missing: ["녹지·수계 자료"] } : {}) }; },
@@ -422,12 +422,12 @@ function environmentalSpec(code: "D09" | "D10"): DetailSpec {
   };
 }
 
-export const RASTER_SPECS: Partial<Record<"D09" | "D10" | "D16" | "D17" | "D18" | "D21" | "D29", DetailSpec>> = {
-  D09: environmentalSpec("D09"),
+export const RASTER_SPECS: Partial<Record<"A04" | "D10" | "D16" | "D17" | "D18" | "S02" | "D29", DetailSpec>> = {
+  A04: environmentalSpec("A04"),
   D10: environmentalSpec("D10"),
   D16: densitySpec(),
   D17: terrainSpec("D17", "elevation"),
   D18: terrainSpec("D18", "slope"),
-  D21: rasterSpec("D21", ["sun_hours", "sunlight_hours"], "일조시간"),
+  S02: rasterSpec("S02", ["sun_hours", "sunlight_hours"], "일조시간"),
   D29: rasterSpec("D29", ["svf"], "개방감"),
 };

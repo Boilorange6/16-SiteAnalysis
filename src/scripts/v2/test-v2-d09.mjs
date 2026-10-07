@@ -6,7 +6,8 @@ import { tmpdir } from "node:os";
 const { buildEngineFixture, CENTER } = await import("./engine-fixture.mjs");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
-const { d09 } = await import("../../lib/v2/engine/tiles/d09.ts");
+const { TILES } = await import("../../lib/v2/engine/run.ts");
+const d09 = TILES.find(([code]) => code === "A04")[1];
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 
 const metric = (tile, id) => tile.metrics.find((m) => m.id === id);
@@ -25,13 +26,13 @@ const makeContext = async (options, radiusM = 800) => {
   });
 };
 
-// 세 원천이 모두 있으면 공원 점·지목 도형·녹지지역 도형을 각각 계산한다.
+// A04가 흡수한 D09: 공원 점·지목 도형·녹지지역 도형을 각각 계산한다.
 {
   const ctx = await makeContext({ parcels: true, zoning: "overlap" });
   try {
     const tile = d09(ctx);
     parseTileResult(tile);
-    assert.equal(tile.tileCode, "D09");
+    assert.equal(tile.tileCode, "A04");
     assert.equal(tile.status, "partial");
     assert.equal(value(tile, "parks"), 3, "기존 park 점 p1~p3");
     assert.equal(metric(tile, "parks").unit, "곳");

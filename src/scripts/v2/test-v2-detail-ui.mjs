@@ -61,9 +61,9 @@ assert.equal(listUrl.searchParams.get("metric"), "gfa");
 assert.equal(listUrl.searchParams.get("limit"), String(DETAIL_LIST_LIMIT));
 assert.ok(Number(listUrl.searchParams.get("limit")) >= 1068, "the detail request must be able to return every summary row");
 
-const d09 = normalizeDetailPayload({
+const a04 = normalizeDetailPayload({
   analysisId: "analysis/id",
-  code: "D09",
+  code: "A04",
   title: "공원·녹지·하천",
   columns: [{ key: "name", label: "이름", kind: "text" }, { key: "area_m2", label: "면적(㎡)", kind: "number" }],
   csvColumns: [],
@@ -73,9 +73,9 @@ const d09 = normalizeDetailPayload({
   total: 1,
   exportFileName: "detail.csv",
 }, [{ fid: "park-1", weight: 1234 }], 800);
-assert.equal(d09.rows.length, d09.total, "the displayed detail rows must match the summary count");
-assert.equal(d09.rows[0].cells.area_m2, 1234);
-assert.equal(d09.card.fields[0].value, "1,234㎡");
+assert.equal(a04.rows.length, a04.total, "the displayed detail rows must match the summary count");
+assert.equal(a04.rows[0].cells.area_m2, 1234);
+assert.equal(a04.card.fields[0].value, "1,234㎡");
 
 const rawTemplate = "출처 · 원자료 직선거리 ${number(item.straight)}m";
 const renderedCardText = sanitizeDetailText(rawTemplate);

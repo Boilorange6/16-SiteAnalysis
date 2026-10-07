@@ -51,6 +51,12 @@ try {
   assert.equal(merged.jimok, "대", "대표 필지는 가장 큰 필지(동률은 feature_id 순)");
   assert.deepEqual(merged.jimokList, ["대", "전"]);
 
+  const single = resolveSiteGeometry(core, parcels, { site: { pnus: [SITE_PNUS[0]] } });
+  assert.equal(single.ok, true, "단일 필지도 union 없이 대지로 확정");
+  assert.equal(single.site.kind, "parcels");
+  assert.deepEqual(single.site.pnus, [SITE_PNUS[0]]);
+  assert.equal(single.site.geometry?.type, "Polygon");
+
   const disconnected = resolveSiteGeometry(core, parcels, { site: { pnus: [PARCEL_PNUS[0], PARCEL_PNUS[1]] } });
   assert.deepEqual([disconnected.ok, disconnected.reason], [false, "site_disconnected"]);
   const missing = resolveSiteGeometry(core, parcels, { site: { pnus: ["4136011800101999999"] } });

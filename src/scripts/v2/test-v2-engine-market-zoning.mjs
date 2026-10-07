@@ -204,7 +204,8 @@ const halfArea = (d, r) => (r * r * Math.acos(-d / r) + d * Math.sqrt(r * r - d 
   near(val(t, "share_class_1"), left, 0.6, "주거 구성비");
   assert.equal(metric(t, "share_class_1").label, "구성비: 주거");
   near(val(t, "share_class_2"), 100 - left, 0.6, "상업 구성비");
-  assert.equal(metric(t, "share_class_3"), undefined, "우산(기타)은 구성비에 없음");
+  assert.equal(val(t, "share_class_3"), 0, "고정 분류 번호의 공업 슬롯은 0%로 유지");
+  assert.equal(metric(t, "share_class_3").label, "구성비: 공업");
   assert.equal(metric(t, "share_raw_1").label, "세분: 제2종일반주거지역");
   near(val(t, "share_sum"), 100, 0.8, "합계");
   assert.equal(metric(t, "land_price").status, "missing");
@@ -242,7 +243,9 @@ const halfArea = (d, r) => (r * r * Math.acos(-d / r) + d * Math.sqrt(r * r - d 
   const t = a12(ctx);
   clean(t);
   assert.equal(val(t, "site_zoning_count"), 0);
-  assert.equal(t.metrics.filter((m) => m.id.startsWith("share_class")).length, 0);
+  const classMetrics = t.metrics.filter((m) => m.id.startsWith("share_class"));
+  assert.equal(classMetrics.length, 8, "고정 분류 슬롯은 자료가 없어도 유지");
+  assert.ok(classMetrics.every((m) => m.value === 0), "우산 도형만 있으면 고정 분류 슬롯은 0%로 표시");
   assert.equal(t.presentation.features.find((f) => f.layer === "zoning_site").label, "도시지역(세분 미확인)");
   ctx.close();
 }

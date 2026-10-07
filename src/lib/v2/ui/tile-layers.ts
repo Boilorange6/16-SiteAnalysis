@@ -1,0 +1,85 @@
+import type { RasterRef, TileResult } from "../tile-result";
+import type { MapModel } from "./map-layers";
+
+export type TileLayerOption = { id: string; label: string };
+
+const STATIC_OPTIONS: Record<string, TileLayerOption[]> = {
+  A01: [{ id: "all", label: "기본 교통" }, { id: "transit", label: "철도·출입구" }],
+  A02: [{ id: "all", label: "기본 학교" }, { id: "school_zone", label: "학구·학교군" }],
+  A04: [{ id: "all", label: "기본 공원" }, { id: "green_space", label: "녹지·수면" }],
+  A07: [{ id: "all", label: "기본 거래" }, { id: "trade_location", label: "가격 구간" }],
+  A09: [{ id: "all", label: "기본 정비" }, { id: "maintenance_stage", label: "사업 단계" }],
+  A10: [{ id: "all", label: "기본 계획" }, { id: "planned_detail", label: "노선·계획역" }],
+  A11: [{ id: "all", label: "기본 인구" }, { id: "density_detail", label: "밀도 구간" }],
+  A12: [{ id: "all", label: "기본 토지" }, { id: "zoning_detail", label: "용도지역" }],
+  D05: [{ id: "all", label: "층수 기본" }, { id: "height_tall", label: "35m 이상" }, { id: "height_low", label: "12m 이하" }],
+  D19: [{ id: "all", label: "지목 기본" }, { id: "parcel_size", label: "필지 규모" }],
+};
+
+const optionMatches: Record<string, (layer: string) => boolean> = {
+  transit: (layer) => /^(rail_|bus_|walk_)/.test(layer),
+  school_zone: (layer) => layer.startsWith("school_zone"),
+  green_space: (layer) => ["green_zone", "green_parcel", "water_parcel"].includes(layer),
+  trade_location: (layer) => layer.startsWith("trade_q"),
+  maintenance_stage: (layer) => layer.startsWith("maint_stage:"),
+  planned_detail: (layer) => layer.startsWith("planned_rail"),
+  density_detail: (layer) => layer.startsWith("pop_grid_") || layer.startsWith("pop_dens_"),
+  zoning_detail: (layer) => layer.startsWith("zone") || layer.startsWith("zoning"),
+  height_tall: (layer) => layer.startsWith("tall_"),
+  height_low: (layer) => layer.startsWith("low_"),
+  parcel_size: (layer) => layer.startsWith("lot_"),
+};
+
+function rasterOptions(result: TileResult): TileLayerOption[] {
+  if (result.tileCode !== "S02") return [];
+  const refs = result.presentation.rasters ?? [];
+  const labels: Record<string, string> = {
+    winter: "동지 기본",
+    spring: "춘분",
+    summer: "하지",
+    autumn: "추분",
+    analysis: "분석일",
+  };
+  return refs
+    .map((ref) => {
+      const match = /^sun_hours_(spring|summer|autumn|winter|analysis)$/.exec(ref.name);
+      return match ? { id: ref.name, label: labels[match[1]!] ?? ref.label ?? ref.name } : null;
+    })
+    .filter((option): option is TileLayerOption => option !== null)
+    .sort((a, b) => (a.id === "sun_hours_winter" ? -1 : b.id === "sun_hours_winter" ? 1 : a.label.localeCompare(b.label, "ko")));
+}
+
+export function layerOptionsForResult(result: TileResult): TileLayerOption[] {
+  return rasterOptions(result).length > 0 ? rasterOptions(result) : (STATIC_OPTIONS[result.tileCode] ?? []);
+}
+
+export function defaultLayerId(result: TileResult): string {
+  return layerOptionsForResult(result)[0]?.id ?? "all";
+}
+
+type LayeredMapModel = MapModel & {
+  legend?: TileResult["presentation"]["legend"];
+  defaultRaster?: string;
+  rasterOptions?: RasterRef[];
+};
+
+export function filterMapForLayer(model: MapModel | null, _code: string, layerId: string): LayeredMapModel | null {
+  if (!model || layerId === "all") return model;
+  const layered = model as LayeredMapModel;
+  if (layerId.startsWith("sun_hours_")) {
+    const ref = (layered.rasterOptions ?? layered.rasters ?? []).find((candidate) => candidate.name === layerId);
+    return ref ? { ...layered, rasters: [ref], defaultRaster: ref.name } : model;
+  }
+  const matches = optionMatches[layerId];
+  if (!matches) return model;
+  const features = model.features.filter((feature) => matches(feature.layer));
+  const polygons = (model.polygons ?? []).filter((polygon) => matches(polygon.layer));
+  const lines = (model.lines ?? []).filter((line) => matches(line.layer));
+  return {
+    ...layered,
+    features,
+    total: features.length,
+    ...(model.polygons ? { polygons, polygonsTotal: polygons.length } : {}),
+    ...(model.lines ? { lines, linesTotal: lines.length } : {}),
+  };
+}

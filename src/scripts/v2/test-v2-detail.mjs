@@ -10,7 +10,8 @@ const { toUtmk } = await import("../../lib/v2/crs.ts");
 const { readManifest } = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { DETAIL_SPECS, collectDetail, detailAt, detailCsv, getDetailList } = await import("../../lib/v2/engine/detail/registry.ts");
-const { d08 } = await import("../../lib/v2/engine/tiles/d08.ts");
+const { TILES } = await import("../../lib/v2/engine/run.ts");
+const a12WithZoning = TILES.find(([code]) => code === "A12")[1];
 const { createAnalysisRun, openV2AppDb } = await import("../../lib/v2/app-db.ts");
 
 const dataDir = mkdtempSync(join(tmpdir(), "v2-detail-data-"));
@@ -23,6 +24,7 @@ try {
     buildings: true,
     parcels: true,
     roads: true,
+    trades: true,
     weather: true,
     zoning: true,
   });
@@ -37,8 +39,8 @@ try {
   });
 
   const expectedCodes = [
-    "D02", "D03", "D04", "D05", "D06", "D07", "D08", "D09", "D10", "D11", "D12", "D13", "D14",
-    "D16", "D17", "D18", "D19", "D20", "D21", "D22", "D23", "D24", "D25", "D26", "D27", "D28", "D29",
+    "A01", "A02", "A04", "A07", "A09", "A10", "A11", "A12",
+    "D02", "D03", "D04", "D05", "D10", "D11", "D12", "D13", "D16", "D17", "D18", "D19", "D22", "D28", "D29", "S02",
   ];
   for (const code of expectedCodes) assert.ok(DETAIL_SPECS[code], `${code} detail spec`);
   assert.equal(DETAIL_SPECS.D15, undefined, "가구 도판은 sitedia 상세 대상이 아님");
@@ -125,12 +127,12 @@ try {
   assert.ok(buildingAt?.fid, "building point lookup returns fid");
   assert.ok(buildingAt?.card.fields.some((field) => field.label === "지상 / 지하"));
 
-  const zones = collectDetail(ctx, "D08");
+  const zones = collectDetail(ctx, "A12");
   assert.equal(zones.rows.length, 3);
   assert.ok(zones.rows.every((row) => row.fid && Array.isArray(row.fids) && row.fids.length >= 1 && typeof row.cells.area_m2 === "number"));
-  const zoningTile = d08(ctx);
+  const zoningTile = a12WithZoning(ctx);
   assert.ok(zoningTile.presentation.polygons?.every((polygon) => polygon.fid), "zoning polygons keep detail fids");
-  const zoneAt = detailAt(ctx, "D08", CENTER[0], CENTER[1]);
+  const zoneAt = detailAt(ctx, "A12", CENTER[0], CENTER[1]);
   assert.ok(zoneAt?.fid, "zone point lookup returns fid");
   assert.ok(zoneAt?.fids?.includes(zoneAt.fid), "zone point lookup returns every aggregate fid");
 
@@ -156,7 +158,7 @@ try {
     sources() { return []; },
     hits() { return [sameZone(1, -200), sameZone(2, 0)]; },
   };
-  const aggregateRows = DETAIL_SPECS.D08.rows(zoneFixtureContext);
+  const aggregateRows = DETAIL_SPECS.A12.rows(zoneFixtureContext);
   assert.equal(aggregateRows.length, 1, "same name and source aggregate into one row");
   assert.deepEqual(aggregateRows[0].fids, ["1", "2"]);
   assert.equal(aggregateRows[0].cells.pieces, 2);
@@ -186,11 +188,17 @@ try {
   assert.equal(walkAt?.card.fields.some((field) => field.label.includes("걸어서")), true);
   assert.ok(walkElapsed < 300, `walking detail must be <= 300ms, got ${walkElapsed.toFixed(1)}ms`);
 
-  const transit = collectDetail(ctx, "D14");
+  const transit = collectDetail(ctx, "A01");
   assert.ok(transit.rows.every((row) => typeof row.cells.walk_min === "number" || row.cells.walk_min === null));
   assert.match(transit.card.subtitle, /걸어서 10분 안/);
-  const transitAt = detailAt(ctx, "D14", CENTER[0], CENTER[1]);
+  const transitAt = detailAt(ctx, "A01", CENTER[0], CENTER[1]);
   assert.ok(transitAt?.card.fields.some((field) => field.label === "걸어서"));
+
+  const tradeStarted = performance.now();
+  const trades = collectDetail(ctx, "A07");
+  const tradeElapsed = performance.now() - tradeStarted;
+  assert.equal(trades.rows.length, 29, "A07 상세는 최근 12개월 반경 내 위치 확인·미취소 아파트 매매만 표시");
+  assert.ok(tradeElapsed < 1000, `trade detail must be <= 1s, got ${tradeElapsed.toFixed(1)}ms`);
 
   const noWalkMemo = new Map();
   const noWalkContext = {
@@ -205,7 +213,7 @@ try {
       return [];
     },
   };
-  assert.match(DETAIL_SPECS.D14.summary(noWalkContext).subtitle, /보행망 없음/);
+  assert.match(DETAIL_SPECS.A01.summary(noWalkContext).subtitle, /보행망 없음/);
 
   const densityNarrow = collectDetail(ctx, "D16", { bandwidth: "57", metric: "buildings" });
   const densityWide = collectDetail(ctx, "D16", { bandwidth: "160", metric: "buildings" });
@@ -235,13 +243,13 @@ try {
   assert.equal(getDetailList(appDb, dataDir, "owned-detail", "D03", "other-user").status, 404);
   assert.equal(getDetailList(appDb, dataDir, "owned-detail", "D03", "owner-1").status, 200);
   assert.equal(getDetailList(appDb, dataDir, "owned-detail", "not-a-tile", "owner-1").status, 404);
-  const within10 = getDetailList(appDb, dataDir, "owned-detail", "D14", "owner-1", { within10: true });
+  const within10 = getDetailList(appDb, dataDir, "owned-detail", "A01", "owner-1", { within10: true });
   assert.equal(within10.status, 200);
   assert.ok(within10.body.rows.every((row) => row.cells.within_10_min === "예"));
 
   ctx.close();
   ctx = null;
-  console.log(`✓ v2 detail (building ${elapsed.toFixed(1)}ms, D16/parcel/walk ${densityElapsed.toFixed(1)}/${parcelElapsed.toFixed(1)}/${walkElapsed.toFixed(1)}ms, rows ${buildings.rows.length}/${zones.rows.length}/${parcels.rows.length}/${walk.rows.length})`);
+  console.log(`✓ v2 detail (building ${elapsed.toFixed(1)}ms, D16/parcel/walk/trade ${densityElapsed.toFixed(1)}/${parcelElapsed.toFixed(1)}/${walkElapsed.toFixed(1)}/${tradeElapsed.toFixed(1)}ms, rows ${buildings.rows.length}/${zones.rows.length}/${parcels.rows.length}/${walk.rows.length}/${trades.rows.length})`);
 } finally {
   ctx?.close();
   appDb.close();

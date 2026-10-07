@@ -7,7 +7,8 @@ const { buildEngineFixture, CENTER } = await import("./engine-fixture.mjs");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { a07, collectTrades } = await import("../../lib/v2/engine/tiles/a07.ts");
-const { d25 } = await import("../../lib/v2/engine/tiles/d25.ts");
+const { TILES } = await import("../../lib/v2/engine/run.ts");
+const d25 = TILES.find(([code]) => code === "A07")[1];
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 
@@ -47,6 +48,7 @@ const clean = (tile) => {
 
   const t = d25(ctx);
   clean(t);
+  assert.equal(t.tileCode, "A07");
   assert.equal(t.status, "partial");
   assert.equal(value(t, "fill_location_pct"), 93.5, "29/(29+2)");
   assert.equal(metric(t, "fill_location_pct").numerator, 29);

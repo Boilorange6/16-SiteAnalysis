@@ -88,11 +88,11 @@ export function d20(ctx: EngineContext): TileResult {
   for (let i = 0; i < LOT_CLASSES.length; i++) {
     const item = LOT_CLASSES[i];
     if (hits.length === 0) {
-      metrics.push(missing(`share_count_${i + 1}`, `${item.label} (필지 수)`, "%", "d20-share-count@1:필지 수÷교차 필지 수"));
-      metrics.push(missing(`share_area_${i + 1}`, `${item.label} (면적)`, "%", "d20-share-area@1:반경 교차면적÷π·r²"));
+      metrics.push(missing(`share_size_count_${i + 1}`, `${item.label} (필지 수)`, "%", "d20-share-count@1:필지 수÷교차 필지 수"));
+      metrics.push(missing(`share_size_area_${i + 1}`, `${item.label} (면적)`, "%", "d20-share-area@1:반경 교차면적÷π·r²"));
     } else {
-      metrics.push(obs(`share_count_${i + 1}`, `${item.label} (필지 수)`, pct(counts[i], hits.length), "%", "d20-share-count@1:필지 수÷교차 필지 수", counts[i], hits.length));
-      metrics.push(obs(`share_area_${i + 1}`, `${item.label} (면적)`, pct(crossAreas[i], circleAreaM2), "%", "d20-share-area@1:반경 교차면적÷π·r²", Math.round(crossAreas[i]), circleAreaRounded));
+      metrics.push(obs(`share_size_count_${i + 1}`, `${item.label} (필지 수)`, pct(counts[i], hits.length), "%", "d20-share-count@1:필지 수÷교차 필지 수", counts[i], hits.length));
+      metrics.push(obs(`share_size_area_${i + 1}`, `${item.label} (면적)`, pct(crossAreas[i], circleAreaM2), "%", "d20-share-area@1:반경 교차면적÷π·r²", Math.round(crossAreas[i]), circleAreaRounded));
     }
   }
   const medianM2 = median(originalAreas);

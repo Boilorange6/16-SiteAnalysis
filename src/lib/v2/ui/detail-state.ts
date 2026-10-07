@@ -7,10 +7,9 @@
  */
 
 export const DETAIL_CODES: ReadonlySet<string> = new Set([
-  "D02", "D03", "D04", "D05", "D06", "D07",
-  "D08", "D09", "D10", "D11", "D12", "D13", "D14",
-  "D16", "D17", "D18", "D19", "D20", "D21", "D22", "D23",
-  "D24", "D25", "D26", "D27", "D28", "D29",
+  "A01", "A02", "A04", "A07", "A09", "A10", "A11", "A12",
+  "D02", "D03", "D04", "D05", "D10", "D11", "D12", "D13",
+  "D16", "D17", "D18", "D19", "D22", "D28", "D29", "S02",
 ]);
 
 export type DetailValue = string | number | null;
@@ -175,7 +174,7 @@ export function tableColumns(payload: Pick<DetailPayload, "columns" | "csvColumn
     label: column.key === "floors_above" ? "층" : column.label,
     csvOnly: false as const,
   }));
-  if (["D02", "D03", "D04", "D05", "D06", "D07"].includes(payload.code) && payload.csvColumns.some((column) => column.key === "approval_date") && !columns.some((column) => column.key === "approval_date")) {
+  if (["D02", "D03", "D04", "D05"].includes(payload.code) && payload.csvColumns.some((column) => column.key === "approval_date") && !columns.some((column) => column.key === "approval_date")) {
     columns.push({ key: "approval_date", label: "승인", kind: "date", csvOnly: false });
   }
   return columns;
@@ -229,9 +228,9 @@ export function detailListApiUrl(analysisId: string, code: string, controls: Rea
 
 export type DetailFeatureWeight = { fid?: string | null; weight?: number | null };
 
-/** D09 대표점의 원천 면적(weight)을 목록의 0㎡ fallback으로 사용한다. */
+/** A04 대표점의 원천 면적(weight)을 목록의 0㎡ fallback으로 사용한다. */
 export function normalizeDetailPayload(payload: DetailPayload, features: readonly DetailFeatureWeight[] = [], radiusM = 0): DetailPayload {
-  if (payload.code !== "D09") return payload;
+  if (payload.code !== "A04") return payload;
   const weights = new Map(features.filter((feature) => feature.fid).map((feature) => [feature.fid!, feature.weight]));
   const circleArea = radiusM > 0 ? Math.PI * radiusM ** 2 : 0;
   const rows = payload.rows.map((row) => {

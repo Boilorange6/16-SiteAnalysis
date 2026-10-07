@@ -7,7 +7,7 @@ const { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } = await import("../../lib/v2
 const { initBoard, boardReducer, reportPages } = await import("../../lib/v2/ui/board-state.ts");
 const { toSummaryView, toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 const { sheetView } = await import("../../lib/v2/ui/sheet.ts");
-const { buildReportPlan, reportFileName } = await import("../../lib/v2/report/report-plan.ts");
+const { buildReportPlan, reportFileName, sourcePageCountForViews } = await import("../../lib/v2/report/report-plan.ts");
 const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
 const { SOURCE_NAMES } = await import("../../lib/v2/ui/tile-catalog.ts");
 
@@ -24,6 +24,8 @@ const build = (results, board) =>
   });
 
 let board = initBoard(GODEOK_RESULTS);
+const allViews = new Map(GODEOK_RESULTS.map((r) => [r.tileId, toTileView(r)]));
+assert.equal(sourcePageCountForViews([...allViews.values()]), 1, "fixture source rows fit one source slide");
 const boards = [board];
 board = boardReducer(board, { type: "include", id: "t-A01", value: false });
 board = boardReducer(board, { type: "face", id: "t-D04", face: "both" });

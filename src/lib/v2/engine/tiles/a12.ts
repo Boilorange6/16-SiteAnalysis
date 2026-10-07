@@ -214,7 +214,8 @@ export function a12(ctx: EngineContext): TileResult {
 
   const { byClass, byRaw, circleArea, total, siteLabel, siteNames, fine, polys, points } = zoning;
   const pct = (areaM2: number) => r1((areaM2 / circleArea) * 100);
-  const classes = CLASSES.filter((name) => byClass.has(name)).map((name) => [name, byClass.get(name)!] as const);
+  // D08 흡수 후에도 클래스 번호가 자료가 없는 분류 때문에 밀리지 않도록 고정한다.
+  const classes = CLASSES.map((name) => [name, byClass.get(name) ?? 0] as const);
   const raws = [...byRaw].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, RAW_TOP);
   const prices = priceDetails(ctx);
   const sources = [...zoning.sources, ...prices.sources];

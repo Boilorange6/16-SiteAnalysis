@@ -8,6 +8,7 @@ import { detailSiteX, OV } from "@/lib/v2/ui/overlay-layout";
 import type { CameraPreset, CutCount, PinnedLabel } from "@/lib/v2/ui/board-state";
 import { faceLabel, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
 import { BadgeList, FaceSelect, Headline, RoseSeasonSelect, RowList, SourceStrip, Stage, StatusPlate, TitleChip } from "./tile-card";
+import { LayerSelect, SegmentedControl } from "./layer-select";
 import type { RoseSeason } from "@/lib/v2/tile-result";
 import WindPanel from "./wind-panel";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "./map-box";
@@ -17,6 +18,8 @@ import styles from "./board.module.css";
 
 type Props = {
   view: TileView;
+  layer: string;
+  onLayer: (layer: string) => void;
   included: boolean;
   face: OutputFace;
   onInclude: (v: boolean) => void;
@@ -235,7 +238,7 @@ function PinnedLabelPanel({ view, labels, onToggle, onUnpin, onSetAll, onFocusLa
 }
 
 /** 펼침: 화면 거의 전체가 지도. 오른쪽에 떠 있는 정보 판. Esc로 닫고, 닫으면 열기 전 초점으로 돌아간다. */
-export default function TileDialog({ view, included, face, onInclude, onFace, onRetry, roseSeason, onRoseSeason, calloutMode, onCalloutMode, camera, onCamera, cuts, onCuts, onWindUploaded, onClose, a05Filter, a05Counts, onA05Filter, pinnedLabels, onToggleLabel, onUnpinLabel, onSetAllLabels, initialTab = "overview" }: Props) {
+export default function TileDialog({ view, layer, onLayer, included, face, onInclude, onFace, onRetry, roseSeason, onRoseSeason, calloutMode, onCalloutMode, camera, onCamera, cuts, onCuts, onWindUploaded, onClose, a05Filter, a05Counts, onA05Filter, pinnedLabels, onToggleLabel, onUnpinLabel, onSetAllLabels, initialTab = "overview" }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [back, setBack] = useState(false);
   const [more, setMore] = useState(false); // 모바일 시트 확장
@@ -297,6 +300,7 @@ export default function TileDialog({ view, included, face, onInclude, onFace, on
           </div>
           {panelTab === "sources" ? <SourcePanel view={view} /> : <>
             <BadgeList badges={view.badges} />
+            <LayerSelect view={view} value={layer} onChange={onLayer} />
             <PinnedLabelPanel view={view} labels={pinnedLabels} onToggle={onToggleLabel} onUnpin={onUnpinLabel} onSetAll={onSetAllLabels} onFocusLabel={setFocusedLabelKey} />
             {view.code === "A05" && <A05FilterPanel filter={a05Filter} counts={a05Counts} onChange={onA05Filter} titleId={`a05-${view.tileId}-reaggregate-title`} />}
             {view.code === "S03" && <WindPanel view={view} layerZ={windLayerZ} onLayerZ={setWindLayerZ} onUploaded={onWindUploaded} />}
@@ -380,15 +384,13 @@ export default function TileDialog({ view, included, face, onInclude, onFace, on
             </div>
             )}
             {view.code === "S01" && view.mass && (
-            <div className={styles.seg} role="group" aria-label="S01 매스 보기">
-              <span>표현</span>
-              <button type="button" aria-pressed={!massExploded} onClick={() => setMassExploded(false)}>
-                기본 매스
-              </button>
-              <button type="button" aria-pressed={massExploded} onClick={() => setMassExploded(true)}>
-                분해
-              </button>
-            </div>
+            <SegmentedControl
+              label={<span>표현</span>}
+              ariaLabel="S01 매스 보기"
+              options={[{ id: "base", label: "기본 매스" }, { id: "exploded", label: "분해" }]}
+              value={massExploded ? "exploded" : "base"}
+              onChange={(value) => setMassExploded(value === "exploded")}
+            />
             )}
             {view.rows.length > 0 && <RowList rows={view.rows} className={styles.list} />}
             {view.notes.length > 0 && (

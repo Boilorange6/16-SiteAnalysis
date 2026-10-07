@@ -31,7 +31,7 @@ const now = Date.parse("2026-10-01T00:13:05.000Z");
 const progress = jobProgress(
   [
     { code: "S02", status: "running", enqueuedAt: "2026-10-01T00:00:00.000Z", startedAt: "2026-10-01T00:01:00.000Z", elapsedMs: null },
-    { code: "D21", status: "queued", enqueuedAt: "2026-10-01T00:00:00.000Z", startedAt: null, elapsedMs: null },
+    { code: "S03", status: "queued", enqueuedAt: "2026-10-01T00:00:00.000Z", startedAt: null, elapsedMs: null },
     { code: "D29", status: "queued", enqueuedAt: "2026-10-01T00:00:00.000Z", startedAt: null, elapsedMs: null },
     { code: "D10", status: "done", enqueuedAt: "2026-10-01T00:00:00.000Z", startedAt: "2026-09-30T23:59:00.000Z", elapsedMs: 1200 },
   ],
@@ -41,7 +41,7 @@ assert.equal(progress.queued, 2);
 assert.equal(progress.running, 1);
 assert.equal(progress.completed, 1);
 assert.equal(progress.waitingLabel, "대기 중 — 앞선 작업 2개");
-assert.equal(progress.byCode.get("D21")?.note, "대기 중 — 앞선 작업 1개 · 경과 13분 5초 · 오래 걸리면 다시 시도");
+assert.equal(progress.byCode.get("S03")?.note, "대기 중 — 앞선 작업 1개 · 경과 13분 5초 · 오래 걸리면 다시 시도");
 assert.equal(progress.byCode.get("S02")?.note, "계산 중 · 경과 12분 5초 · 오래 걸리면 다시 시도");
 assert.equal(formatElapsedMs(null), "시간 미확인");
 

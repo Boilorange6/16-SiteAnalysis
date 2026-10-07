@@ -160,9 +160,9 @@ assert.deepEqual(C.rankSupply(list.map(() => sup({})), "2026-09-30").map((c) => 
   delete noGrades.judgment.grades;
   assert.equal(parseTileResult(noGrades).judgment.grades, undefined);
   const bad = structuredClone(a01);
-  bad.metrics.find((m) => m.id === "nearest_station_m").status = "missing";
-  bad.metrics.find((m) => m.id === "nearest_station_m").value = null;
-  assert.throws(() => parseTileResult(bad), /cannot grade on nearest_station_m/, "근거 지표가 관측되지 않으면 등급 불가");
+  bad.metrics.find((m) => m.id === "nearest_rail_m").status = "missing";
+  bad.metrics.find((m) => m.id === "nearest_rail_m").value = null;
+  assert.throws(() => parseTileResult(bad), /cannot grade on nearest_rail_m/, "근거 지표가 관측되지 않으면 등급 불가");
   const unknown = structuredClone(a01);
   unknown.judgment.grades[0].metricId = "nope";
   assert.throws(() => parseTileResult(unknown), /cannot grade on nope/);

@@ -13,6 +13,7 @@ import WindRoseFigure from "./wind-rose-figure";
 import CalloutMap from "./callout-map";
 import MapBox from "./map-box";
 import DetailWindow from "./detail-window";
+import { LayerSelect } from "./layer-select";
 import WindPanel, { mapOptions } from "./wind-panel";
 import { mapLabelEntries, type MapFigureElementPick } from "./map-figure";
 import styles from "./board.module.css";
@@ -286,6 +287,8 @@ export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, p
 
 type TileCardBaseProps = {
   view: TileView;
+  layer: string;
+  onLayer: (layer: string) => void;
   phase: DemoPhase | null;
   included: boolean;
   face: OutputFace;
@@ -556,6 +559,7 @@ function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, mas
           {h.tag && <span className={styles.tag}>{h.tag}</span>}
         </div>
       )}
+      <LayerSelect view={view} value={p.layer} onChange={p.onLayer} />
       {view.code === "S03" && !state && <WindStrip view={view} layerZ={windLayerZ} onLayerZ={onWindLayerZ} onOpen={p.onOpen} />}
       {view.code === "D22" && !state && <RoseSeasonSelect view={view} value={p.roseSeason} onChange={p.onRoseSeason} />}
       <div className={styles.mfMap}>
@@ -644,6 +648,7 @@ function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardRende
         </div>
       ) : (
         <div className={styles.sfMain}>
+          <LayerSelect view={view} value={p.layer} onChange={p.onLayer} />
           <Headline view={view} />
           {facts.length > 0 && <RowList rows={facts} className={styles.sfRows} />}
         </div>
@@ -817,7 +822,7 @@ function TileCard(p: TileCardProps) {
           )}
         </div>
       </div>
-      {detailOpen && detailable && <DetailWindow view={view} onClose={() => setDetailOpen(false)} />}
+      {detailOpen && detailable && <DetailWindow view={view} layer={p.layer} onLayer={p.onLayer} onClose={() => setDetailOpen(false)} />}
     </article>
   );
 }

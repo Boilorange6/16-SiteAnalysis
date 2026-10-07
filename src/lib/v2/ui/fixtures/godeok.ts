@@ -208,17 +208,17 @@ export const GODEOK_RESULTS: TileResult[] = [
     "analysis",
     "complete",
     [
-      m("nearest_station_m", "최근접 역 출입구", 480, "m"),
-      m("stations_in_radius", "반경 내 운영역", 3, "개"),
+      m("nearest_rail_m", "최근접 역 출입구", 480, "m"),
+      m("rail_stations", "반경 내 운영역", 3, "개"),
       m("nearest_bus_m", "최근접 버스정류장", 340, "m"),
       m("bus_stops", "버스 정류장", 41, "개"),
       m("bus_routes", "경유 버스 노선", null, "개", "missing"),
     ],
     [["rail", "2026-09-01"], ["bus_stops", "2026-08-15"]],
     {
-      ...j("A01-rail-distance@1", ["nearest_station_m", "nearest_bus_m"], "최근접 역 출입구까지 직선 480m, 정류장 340m → 철도 접근은 가까운 편, 버스는 보통 수준 → 실제 보행 경로 확인 필요", "fair", "철도 직선거리 500m 이하 좋음 · 1,000m 이하 보통 · 초과 주의"),
+      ...j("A01-rail-distance@1", ["nearest_rail_m", "nearest_bus_m"], "최근접 역 출입구까지 직선 480m, 정류장 340m → 철도 접근은 가까운 편, 버스는 보통 수준 → 실제 보행 경로 확인 필요", "fair", "철도 직선거리 500m 이하 좋음 · 1,000m 이하 보통 · 초과 주의"),
       grades: [
-        { metricId: "nearest_station_m", level: "good", criteria: "철도역 출입구 직선 500m 이하 좋음 · 1,000m 이하 보통 · 초과 주의" },
+        { metricId: "nearest_rail_m", level: "good", criteria: "철도역 출입구 직선 500m 이하 좋음 · 1,000m 이하 보통 · 초과 주의" },
         { metricId: "nearest_bus_m", level: "fair", criteria: "버스정류장 직선 300m 이하 좋음 · 600m 이하 보통 · 초과 주의" },
       ],
     },

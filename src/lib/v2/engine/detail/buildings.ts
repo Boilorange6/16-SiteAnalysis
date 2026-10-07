@@ -7,7 +7,7 @@ import { hitPoint } from "../tiles/common";
 import { useClassOf } from "../tiles/d03";
 import type { DetailCard, DetailColumn, DetailRow, DetailSpec, DetailContext } from "./registry";
 
-const BUILDING_CODES = ["D02", "D03", "D04", "D05", "D06", "D07"] as const;
+const BUILDING_CODES = ["D02", "D03", "D04", "D05"] as const;
 const USE_COLORS: Record<string, string> = {
   주거: "#2563EB",
   근린생활: "#0F766E",

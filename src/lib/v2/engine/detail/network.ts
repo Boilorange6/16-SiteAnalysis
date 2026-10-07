@@ -3,7 +3,9 @@ import type { FeatureHit } from "../../data/features";
 import { toLngLat, toUtmk } from "../../crs";
 import { sourceLineOf } from "../../ui/tile-view";
 import { catalogEntry } from "../../ui/tile-catalog";
+import { lookupParcelPoints } from "../../data/parcels";
 import { hitPoint } from "../tiles/common";
+import { monthsBefore } from "../tiles/a07";
 import { distanceToLineM, lineLengthInCircle } from "../tiles/geo";
 import { walkField, walkMinutes } from "../tiles/walk-shared";
 
@@ -134,7 +136,7 @@ function transitCard(ctx: DetailContext, hit: FeatureHit, withWalk: boolean): De
   ], source: transitSource(ctx) };
 }
 
-function transitSpec(code: "D14" | "D28"): DetailSpec {
+function transitSpec(code: "A01" | "D28"): DetailSpec {
   const withWalk = true;
   return {
     columns: WALK_COLUMNS,
@@ -209,10 +211,10 @@ function plannedRows(ctx: DetailContext, hits: readonly FeatureHit[]): DetailRow
   });
 }
 
-function plannedSpec(): DetailSpec {
+function plannedSpec(code: "A10"): DetailSpec {
   return {
     columns: PLANNED_COLUMNS,
-    summary(ctx) { const rows = plannedRows(ctx, plannedHits(ctx)); return { title: catalogEntry("D24").title, subtitle: `${rows.length.toLocaleString("ko-KR")}개`, fields: [{ label: "계획 지물", value: `${rows.length.toLocaleString("ko-KR")}개` }], source: sourceLine(ctx, "reference", ["planned_rail"]) }; },
+    summary(ctx) { const rows = plannedRows(ctx, plannedHits(ctx)); return { title: catalogEntry(code).title, subtitle: `${rows.length.toLocaleString("ko-KR")}개`, fields: [{ label: "계획 지물", value: `${rows.length.toLocaleString("ko-KR")}개` }], source: sourceLine(ctx, "reference", ["planned_rail"]) }; },
     rows(ctx) { return plannedRows(ctx, plannedHits(ctx)); },
     at(ctx, lng, lat) { const [x, y] = toUtmk([lng, lat]); let best: { hit: FeatureHit; distance: number } | null = null; for (const hit of plannedHits(ctx)) { const [hx, hy] = toUtmk(hitPoint(hit)); const distance = Math.hypot(hx - x, hy - y); if (!best || distance < best.distance) best = { hit, distance }; } return best ? { card: { title: best.hit.name ?? "계획 철도", fields: [{ label: "단계", value: text(best.hit.properties.lifecycleStatus) ?? "미확인" }], source: sourceLine(ctx, "reference", ["planned_rail"]) }, fid: String(best.hit.featureId) } : null; },
   };
@@ -223,36 +225,41 @@ function tradeRows(ctx: DetailContext): DetailRow[] {
   const core = ctx.db("core");
   if (!db || !core) return [];
   try {
+    const codes = ctx.sigungu().map((area) => area.code);
+    if (codes.length === 0) return [];
+    const from = monthsBefore(ctx.input.analysisDate, 12);
     const rows = db.prepare(`SELECT transaction_id, deal_date, property_type, contract_type, price_krw, area_m2, floor, location_id FROM property_transaction
-      WHERE location_id IS NOT NULL AND deal_date > date(?) AND deal_date <= date(?) AND cancelled_at IS NULL ORDER BY deal_date DESC, transaction_id`).all(`${Number(ctx.input.analysisDate.slice(0, 4)) - 1}-${ctx.input.analysisDate.slice(5)}`, ctx.input.analysisDate) as Array<Record<string, unknown>>;
-    const pointRows = core.prepare("SELECT pnu, lng, lat FROM parcel_point").all() as Array<{ pnu: string; lng: number; lat: number }>;
-    const points = new Map(pointRows.map((row) => [row.pnu, row]));
+      WHERE property_type = 'apt' AND contract_type = 'trade' AND match_status = 'located' AND location_id IS NOT NULL
+        AND lawd_cd IN (${codes.map(() => "?").join(",")}) AND deal_date > date(?) AND deal_date <= date(?) AND cancelled_at IS NULL
+      ORDER BY deal_date DESC, transaction_id`).all(...codes, from, ctx.input.analysisDate) as Array<Record<string, unknown>>;
+    const points = lookupParcelPoints(core, rows.flatMap((row) => typeof row.location_id === "string" ? [row.location_id] : []));
+    const [cx, cy] = toUtmk(ctx.input.center);
     return rows.flatMap((row, index) => {
       const location = typeof row.location_id === "string" ? points.get(row.location_id) : undefined;
       if (!location) return [];
-      const [x, y] = toUtmk([location.lng, location.lat]);
-      const [cx, cy] = toUtmk(ctx.input.center);
+      const [lng, lat] = location;
+      const [x, y] = toUtmk(location);
       if (Math.hypot(x - cx, y - cy) > ctx.input.radiusM) return [];
-      return [{ fid: String(row.transaction_id ?? index), lng: location.lng, lat: location.lat, cells: { deal_date: text(row.deal_date), property_type: text(row.property_type), contract_type: text(row.contract_type), price_krw: number(row.price_krw), area_m2: number(row.area_m2), floor: number(row.floor), pnu: text(row.location_id) } }];
+      return [{ fid: String(row.transaction_id ?? index), lng, lat, cells: { deal_date: text(row.deal_date), property_type: text(row.property_type), contract_type: text(row.contract_type), price_krw: number(row.price_krw), area_m2: number(row.area_m2), floor: number(row.floor), pnu: text(row.location_id) } }];
     });
   } catch {
     return [];
   }
 }
 
-function tradeSpec(): DetailSpec {
+function tradeSpec(code: "A07"): DetailSpec {
   return {
     columns: TRADE_COLUMNS,
-    summary(ctx) { const rows = tradeRows(ctx); return { title: catalogEntry("D25").title, subtitle: `${rows.length.toLocaleString("ko-KR")}건`, fields: [{ label: "위치 확인 거래", value: `${rows.length.toLocaleString("ko-KR")}건` }], source: sourceLine(ctx, "market", ["rtms_apt_trade"]) }; },
+    summary(ctx) { const rows = tradeRows(ctx); return { title: catalogEntry(code).title, subtitle: `${rows.length.toLocaleString("ko-KR")}건`, fields: [{ label: "위치 확인 거래", value: `${rows.length.toLocaleString("ko-KR")}건` }], source: sourceLine(ctx, "market", ["rtms_apt_trade"]) }; },
     rows: tradeRows,
     at(ctx, lng, lat) { const rows = tradeRows(ctx); let best: DetailRow | null = null; let distance = Number.POSITIVE_INFINITY; for (const row of rows) { const [x, y] = toUtmk([row.lng, row.lat]); const [tx, ty] = toUtmk([lng, lat]); const d = Math.hypot(x - tx, y - ty); if (d < distance) { distance = d; best = row; } } return best ? { card: { title: "실거래", fields: Object.entries(best.cells).slice(0, 5).map(([label, value]) => ({ label, value: value === null ? null : String(value) })), source: sourceLine(ctx, "market", ["rtms_apt_trade"]) }, fid: best.fid } : null; },
   };
 }
 
-export const NETWORK_SPECS: Partial<Record<"D13" | "D14" | "D24" | "D25" | "D28", DetailSpec>> = {
+export const NETWORK_SPECS: Partial<Record<"A01" | "A07" | "A10" | "D13" | "D28", DetailSpec>> = {
   D13: roadSpec(),
-  D14: transitSpec("D14"),
-  D24: plannedSpec(),
-  D25: tradeSpec(),
+  A01: transitSpec("A01"),
+  A10: plannedSpec("A10"),
+  A07: tradeSpec("A07"),
   D28: transitSpec("D28"),
 };

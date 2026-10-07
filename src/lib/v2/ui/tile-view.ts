@@ -12,6 +12,7 @@ import { catalogEntry, sourceName, TILE_CODES, type TileCode } from "./tile-cata
 import type { RoseModel } from "./wind-rose";
 import { isSiteParcelLayer, siteParcelFromResults } from "./site-parcel";
 import type { SourceRefLike } from "./source-details";
+import { defaultLayerId, filterMapForLayer, layerOptionsForResult, type TileLayerOption } from "./tile-layers";
 
 export type OutputFace = (typeof OUTPUT_FACES)[number];
 export type Badge = { text: string; note?: string; tone: "status" | "limit" | "model" };
@@ -67,6 +68,9 @@ export type TileView = {
   /** SHEET 카드가 참조하는 하위 타일과 격자. 일반 타일은 null. */
   sheetTiles: string[] | null;
   sheetGrid: "2x2" | "3x2" | "3x1" | null;
+  /** 흡수된 타일의 지도 표현 선택지. 보드에는 id만 저장한다. */
+  layerOptions: TileLayerOption[];
+  defaultLayer: string;
 };
 
 export type HeadlinePolicy = {
@@ -81,7 +85,7 @@ export type HeadlinePolicy = {
  * 화면 첫 값은 타일의 결론을 설명하는 값으로 고정한다.
  */
 export const HEADLINE_POLICY: Record<TileCode, HeadlinePolicy> = {
-  A01: { ids: ["nearest_station_m", "nearest_bus_m"] },
+  A01: { ids: ["nearest_rail_m", "nearest_bus_m"] },
   A02: { ids: ["in_school_zone", "nearest_elem_m"] },
   A03: { ids: ["basic_groups"] },
   A04: { ids: ["parks", "nearest_park_point_m"] },
@@ -98,32 +102,20 @@ export const HEADLINE_POLICY: Record<TileCode, HeadlinePolicy> = {
   D03: { maxPrefix: "share_use_" },
   D04: { ids: ["share_pre2000", "share_pre1980", "share_1990s"] },
   D05: { maxPrefix: "share_floors_" },
-  D06: { ids: ["share_tall_pct"] },
-  D07: { ids: ["share_low_pct"] },
-  D08: { maxPrefix: "share_class_" },
-  D09: { maxPrefix: "share_" },
   D10: { ids: ["canopy_pct", "osm_green_pct"] },
   D11: { maxPrefix: "back_area_" },
   D12: { maxPrefix: "back_count_" },
   D13: { ids: ["road_length_in_radius_m", "nearest_arterial_or_higher_m"] },
-  D14: { ids: ["back_stations", "back_bus_stops"] },
   D15: { ids: ["median_block_ha", "blocks"] },
   D16: { ids: ["dens_max", "gfa_per_ha"] },
   D17: { ids: ["relief_median_m", "center_elevation_m"] },
   D18: { ids: ["slope_median_deg", "slope_max_deg"] },
-  D19: { ids: ["parcels", "site_parcel_found"] },
-  D20: { ids: ["median_parcel_m2", "parcels"] },
-  D21: { ids: ["mean_sun_h_winter", "share_cont2h_0915_pct_winter"] },
+  D19: { ids: ["median_parcel_m2", "parcels"] },
   D22: { ids: ["prevailing_dir_deg", "station_distance_m"] },
-  D23: { ids: ["zone_area_in_radius_m2", "planned_households"] },
-  D24: { ids: ["line_length_in_radius_m", "back_stations"] },
-  D25: { maxPrefix: "back_q" },
-  D26: { ids: ["site_elem_zone", "back_elem_count"] },
-  D27: { maxPrefix: "share_dens_" },
   D28: { ids: ["area_10min_km2", "reach_ratio_10min_pct"] },
   D29: { ids: ["svf_median", "share_svf_lt03_pct"] },
   S01: { ids: ["height_median_m", "height_known_pct", "buildings"] },
-  S02: { ids: ["mean_sun_h_summer"] },
+  S02: { ids: ["mean_sun_h_winter"] },
   S03: { ids: ["rel_wind_median", "rel_wind_high_share"] },
   S04: { ids: ["utci_median_summer_h14", "shade_pct_summer_h14"] },
 };
@@ -158,21 +150,14 @@ const MAP_NOTES: Record<string, string> = {
   D04: "건물 발자국 · 준공 연대별 색",
   D13: "도로 중심선 · 실제 폭·공식 도로대장 아님 · © OpenStreetMap contributors",
   D02: "발자국 · 높이 미상은 테두리만",
-  D05: "지상층수 기준",
-  D06: "높이 35m 기준 · [추정]은 층수×3m",
-  D07: "높이 12m 기준 · [추정]은 층수×3m",
-  D14: "운영 시설만 · 계획 철도 제외",
-  D19: "연속지적 · 참조용",
-  D20: "도형 면적 기준(공부면적 아님)",
+  D05: "지상층수 기본 · 35m·12m 기준 레이어 · [추정]은 층수×3m",
+  D19: "연속지적 · 지목·필지 규모 레이어 · 참조용",
   D15: "OSM 도로로 폐합된 블록 · 반경 밖 500m까지 읽음",
   D16: "건물 수 KDE · 대역폭 100m · 20백분위 구간",
   D17: "Copernicus GLO-30 표면모델(DSM, 30 m) · EGM2008 · 중심 상대고",
   D18: "Copernicus DEM GLO-30 30m 격자 경사 · EGM2008 · 옹벽·미세 지형 미반영",
-  D21: "기하학적 일조 · 09~15시 10분 간격",
-  S02: "하지 평균 일조시간 · 건물·지형 그림자 반영",
-  D27: "1km 격자 · 비밀보호 노이즈",
-  D26: "VWorld 학구도·학교군 · 대상 구역 강조 · 기준일은 출처 띠",
-  A04: "대표점 · 원천 면적 비례 (경계 아님)",
+  S02: "동지 기본 일조시간 · 계절 레이어 · 건물·지형 그림자 반영",
+  A04: "대표점·원천 면적·녹지·수면 레이어 (경계 아님)",
   A05: "원 크기 = 세대수 · 속 빈 원 = 세대수 미확인",
   A06: "원천별 표시 · 중복 가능",
   D01: "VWorld 항공영상 · 촬영시기 미확인",
@@ -298,8 +283,8 @@ function rasterDefaultName(tileCode: string, refs: RasterRef[], presentation: Ex
   if (declared && refs.some((ref) => ref.name === declared)) return declared;
   const primary = refs.find((ref) => (ref as PrimaryRasterRef).primary === true);
   if (primary) return primary.name;
-  // 현재 S02 결과는 날짜 순서가 춘분부터지만, 카드·상세의 대표 장면은 하지로 고정한다.
-  if (tileCode === "S02" && refs.some((ref) => ref.name === "sun_hours_summer")) return "sun_hours_summer";
+  // 법정 기준과 헤드라인을 맞춰 S02의 대표 장면은 동지로 고정한다.
+  if (tileCode === "S02" && refs.some((ref) => ref.name === "sun_hours_winter")) return "sun_hours_winter";
   // S04의 대표 컷은 문장·헤드라인과 같은 여름 14시다. 나머지 11컷은 rasterOptions로 남는다.
   if (tileCode === "S04" && refs.some((ref) => ref.name === "utci_summer_h14")) return "utci_summer_h14";
   return refs[0]?.name ?? null;
@@ -511,6 +496,8 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
     };
   }
   const cat = catalogEntry(r.tileCode);
+  const layerOptions = layerOptionsForResult(r);
+  const defaultLayer = defaultLayerId(r);
   const badges: Badge[] = [];
   const statusText = STATUS_TEXT[r.status];
   if (statusText) badges.push({ text: statusText, tone: "status" });
@@ -619,7 +606,7 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
         .map((m) => ({ label: m.label, value: m.value as number, unit: m.unit }));
       return data.length > 0 ? data : null;
     })(),
-    hasFace: r.tileType === "diagram",
+    hasFace: r.tileType === "diagram" || layerOptions.length > 0,
     retryable: r.status === "failed" || r.status === "cancelled",
     map: mapOf(r, analysisSiteParcel),
     backdrop: { center: r.conditions.center, radiusM: r.conditions.radiusM, features: [], total: 0, notes: [], siteParcel: analysisSiteParcel === undefined ? siteParcelFromResults([r]) : analysisSiteParcel ? [...analysisSiteParcel] : null },
@@ -635,7 +622,15 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
     stackLayers: null,
     sheetTiles: null,
     sheetGrid: null,
+    layerOptions,
+    defaultLayer,
   };
+}
+
+/** 카드·펼침 창·보고서가 같은 레이어 선택 결과를 사용하도록 지도 입력만 파생한다. */
+export function viewWithLayer(view: TileView, layerId: string): TileView {
+  if (!view.layerOptions.some((option) => option.id === layerId)) return view;
+  return { ...view, map: filterMapForLayer(view.map, view.code, layerId), defaultLayer: layerId };
 }
 
 const HOUSING_LAYERS = new Set(["apt", "officetel"]); // 번호·카드·쪽은 아파트·오피스텔만

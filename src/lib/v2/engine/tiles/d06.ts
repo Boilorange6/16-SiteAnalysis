@@ -55,7 +55,7 @@ export function d06(ctx: EngineContext): TileResult {
     total === 0 ? missing("tall_buildings", "35m 이상 건물(확인)", "동", "d06-tall-count@1") : obs("tall_buildings", "35m 이상 건물(확인)", tallSource, "동", "d06-tall-count@1", tallSource, total),
     total === 0 ? missing("tall_buildings_est", "35m 이상 건물([추정])", "동", "d06-tall-count@1") : est("tall_buildings_est", "35m 이상 건물([추정])", tallEstimated, "동", "d06-tall-count@1", tallEstimated, total),
     total === 0 ? missing("fill_height_m_pct", "미터 높이 확인률", "%", "d06-fill-height@1") : obs("fill_height_m_pct", "미터 높이 확인률", pct(sourceKnown, total), "%", "d06-fill-height@1", sourceKnown, total),
-    total === 0 ? missing("share_tall_pct", "35m 이상 구성비", "%", "d06-share@1") : obs("share_tall_pct", "35m 이상 구성비", pct(tallSource + tallEstimated, total), "%", "d06-share@1", tallSource + tallEstimated, total),
+    total === 0 ? missing("share_tall_pct", "35m 이상 구성비", "%", "d06-share@1") : est("share_tall_pct", "35m 이상 구성비(확인+추정)", pct(tallSource + tallEstimated, total), "%", "d06-share@1", tallSource + tallEstimated, total),
     total === 0 ? missing("share_not_tall_pct", "35m 미만 구성비", "%", "d06-share@1") : obs("share_not_tall_pct", "35m 미만 구성비", pct(notTall, total), "%", "d06-share@1", notTall, total),
     total === 0 ? missing("share_unknown_pct", "높이 미상 구성비", "%", "d06-share@1") : obs("share_unknown_pct", "높이 미상 구성비", pct(unknown, total), "%", "d06-share@1", unknown, total),
     total === 0 ? missing("share_assumed_one_floor_pct", "1층 가정(추정) 구성비", "%", "d06-share@1") : est("share_assumed_one_floor_pct", "1층 가정(추정) 구성비", pct(assumed, total), "%", "d06-share@1", assumed, total),

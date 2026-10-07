@@ -41,7 +41,7 @@ assert.deepEqual([500, 501, 1000, 1001].map(gradeRail), ["good", "fair", "fair",
   assert.match(metric(t, "nearest_rail_m").label, /역 대표점/);
   assert.match(metric(t, "nearest_rail_m").formulaVersion, /탐색 1,500m/);
   assert.equal(val(t, "rail_stations"), 2, "반경 800 안: 나래·다온 (가온은 1100m라 밖)");
-  assert.equal(val(t, "rail_lines"), 2);
+  assert.equal(val(t, "rail_lines"), 1, "반경과 교차한 고유 rail_line 원천 feature");
   assert.equal(t.judgment.level, null, "철도·버스 등급을 합치지 않는다");
   assert.match(t.judgment.sentence, /최근접 역 대표점 직선 600m, 최근접 정류장 직선 250m → 철도 접근은 보통 수준, 버스 접근은 가까운 편 → 실제 보행 경로는 확인 필요/);
   assert.match(t.judgment.criteria, /500m 이하 좋음 · 1,000m 이하 보통/);
@@ -62,7 +62,7 @@ assert.deepEqual([500, 501, 1000, 1001].map(gradeRail), ["good", "fair", "fair",
   const c5 = ctxFor(500);
   const t5 = a01(c5);
   assert.equal(val(t5, "nearest_rail_m"), 600);
-  assert.equal(val(t5, "rail_stations"), 0);
+  assert.equal(val(t5, "rail_stations"), 1, "반경 경계의 다온역 원천 feature를 포함");
   assert.equal(layers(t5, "rail_nearest").length, 0);
   assert.ok(t5.limitations.some((l) => l.note.includes("반경(500m) 밖")));
   c5.close();
@@ -88,7 +88,7 @@ assert.deepEqual([500, 501, 1000, 1001].map(gradeRail), ["good", "fair", "fair",
   assert.ok(t.limitations.some((l) => l.kind === "not_provided" && l.note.includes("철도 자료를 확인하지 못해")));
   assert.equal(metric(t, "nearest_rail_m").status, "missing");
   assert.equal(t.judgment.level, "good");
-  assert.ok(!metric(t, "rail_lines"));
+  assert.equal(metric(t, "rail_lines").status, "missing", "철도 원천이 없어도 A01 집계 슬롯은 유지");
   assert.ok(!t.presentation.layers.includes("rail_line"));
   ctx.close();
 }
