@@ -605,12 +605,12 @@ function stackable(s: BoardState, id: string): boolean {
 }
 
 /**
- * 표지 1장 + 포함된 타일 + 출처 1장. 출력 면 both는 2장.
+ * 표지 1장 + 포함된 타일 + 출처 장. 출력 면 both는 2장.
  * 설명선 타일은 단지 수(complexCounts[tileId])와 설명표 설정에 따라 개요 + 설명표 장 수만큼 (report-plan과 같은 계산).
  */
-export function reportPages(s: BoardState, complexCounts: Record<string, number> = {}): { tiles: number; pages: number } {
+export function reportPages(s: BoardState, complexCounts: Record<string, number> = {}, sourcePages = 1): { tiles: number; pages: number } {
   let tiles = 0;
-  let pages = 2; // 표지 + 출처
+  let pages = 1 + Math.max(1, Math.floor(sourcePages)); // 표지 + 출처 장
   for (const id of s.order) {
     if (!s.included[id]) continue;
     tiles += 1;

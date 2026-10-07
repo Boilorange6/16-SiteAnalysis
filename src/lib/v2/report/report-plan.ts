@@ -1,6 +1,6 @@
 /**
  * 보드 → 보고서 슬라이드 계획. 순수 함수 (pptx 라이브러리 의존 없음).
- * 슬라이드 수는 board-state의 reportPages(board).pages(표지+타일+출처)와 항상 같다.
+ * 슬라이드 수는 board-state의 reportPages(board).pages(표지+타일+출처 장)와 항상 같다.
  */
 import type { BoardState } from "../ui/board-state";
 import { calloutReportPages, DEFAULT_CALLOUT_MODE, pageCount } from "../ui/callout-layout";
@@ -12,7 +12,7 @@ import { FACE_TEXT } from "../ui/tile-view";
 import type { RoseModel } from "../ui/wind-rose";
 import type { RoseSeason } from "../tile-result";
 import { exportFileName } from "../export/download";
-import { sourceDetailsFor, type SourceDetailRow, type SourceMeta } from "../ui/source-details";
+import { sourceDetailsFor, UNKNOWN_AS_OF, type SourceDetailRow, type SourceMeta } from "../ui/source-details";
 
 export type TileSlideBody =
   | { kind: "result"; face: "single" | "front" | "back" }
@@ -93,6 +93,10 @@ const STATE_MESSAGE: Record<string, string> = {
 export const complexCounts = (views: Map<string, TileView>): Record<string, number> =>
   Object.fromEntries([...views].filter(([, v]) => v.callout).map(([id, v]) => [id, v.callout!.complexes.length]));
 
+/** 한 출처 장에 담을 수 있는 원천 행 수. 긴 사용 타일 셀도 PPT 출처 띠를 침범하지 않게 한다. */
+export const REPORT_SOURCE_ROWS_PER_SLIDE = 14;
+export const sourcePageCount = (sourceRows: number): number => Math.max(1, Math.ceil(Math.max(0, sourceRows) / REPORT_SOURCE_ROWS_PER_SLIDE));
+
 const hasResult = (v: TileView) => v.status === "complete" || v.status === "partial";
 const pinnedKeysFor = (board: BoardState, tileId: string): string[] => (board.labels[tileId] ?? []).filter((label) => label.on).map((label) => label.key);
 
@@ -145,10 +149,18 @@ export function buildReportPlan(input: {
   const detailsFor = (view: TileView) => view.sourceRefs.length > 0
     ? sourceDetailsFor({ code: view.code, tileType: view.tileType, provenance: { sources: view.sourceRefs } }, sourceMeta)
     : null;
-  const sourceLineFor = (view: TileView): string => {
+  const reportRowsFor = (view: TileView): SourceDetailRow[] | null => {
     const details = detailsFor(view);
-    if (!details || details.rows.length === 0) return view.sourceLine;
-    return details.rows.map((row) => `${row.provider} · ${row.name} · ${row.asOf}`).join(" · ");
+    if (!details) return null;
+    const legacyAsOf = new Map(parseSources(view.sourceLine).map(([name, asOf]) => [name, asOf]));
+    return details.rows.map((row) => row.asOf === UNKNOWN_AS_OF && legacyAsOf.has(row.name)
+      ? { ...row, asOf: legacyAsOf.get(row.name)! }
+      : row);
+  };
+  const sourceLineFor = (view: TileView): string => {
+    const rows = reportRowsFor(view);
+    if (!rows || rows.length === 0) return view.sourceLine;
+    return rows.map((row) => `${row.provider} · ${row.name} · ${row.asOf}`).join(" · ");
   };
   const sourceFooterFor = (view: TileView): string => {
     const line = sourceLineFor(view);
@@ -253,10 +265,10 @@ export function buildReportPlan(input: {
     }
   }
 
-  const bySource = new Map<string, ReportSourceRow>();
+  type ReportSourceAccum = Omit<ReportSourceRow, "tiles"> & { tiles: string[] };
+  const bySource = new Map<string, ReportSourceAccum>();
   for (const v of tiles) {
-    const details = detailsFor(v);
-    const rows = details?.rows ?? parseSources(v.sourceLine).map(([source, asOf]) => ({
+    const rows = reportRowsFor(v) ?? parseSources(v.sourceLine).map(([source, asOf]) => ({
       sourceId: source,
       provider: "",
       name: source,
@@ -276,13 +288,17 @@ export function buildReportPlan(input: {
       bySource.set(key, e);
     }
   }
-  raw.push({
-    kind: "sources",
-    rows: [...bySource.values()].map((row) => ({ ...row, tiles: row.tiles.join(", ") })),
-    analysisDate: date,
-    map: summary.map,
-    footer: `${summary.asOfLine} · 출처 ${bySource.size}건`,
-  });
+  const sourceRows = [...bySource.values()].map((row) => ({ ...row, tiles: row.tiles.join(", ") }));
+  const sourcePages = sourcePageCount(sourceRows.length);
+  for (let page = 0; page < sourcePages; page++) {
+    raw.push({
+      kind: "sources",
+      rows: sourceRows.slice(page * REPORT_SOURCE_ROWS_PER_SLIDE, (page + 1) * REPORT_SOURCE_ROWS_PER_SLIDE),
+      analysisDate: date,
+      map: summary.map,
+      footer: `${summary.asOfLine} · 출처 ${bySource.size}건${sourcePages > 1 ? ` · 출처 ${page + 1}/${sourcePages}` : ""}`,
+    });
+  }
 
   return raw.map((s, i) => ({ ...s, no: i + 1, total: raw.length }));
 }

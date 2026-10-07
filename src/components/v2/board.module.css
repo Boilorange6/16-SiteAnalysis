@@ -1589,8 +1589,8 @@ button.badge:focus-visible {
   padding-bottom: 4px;
   border-bottom: 1px solid #e3e5e9;
 }
-.dlgTab,
-.dlgTabActive {
+.root .dlgTab,
+.root .dlgTabActive {
   flex: 1 1 0;
   min-width: 0;
   min-height: 44px;
@@ -1602,13 +1602,13 @@ button.badge:focus-visible {
   font-size: 12px;
   font-weight: 700;
 }
-.dlgTabActive {
+.root .dlgTabActive {
   border-color: var(--black);
   background: var(--black);
   color: #fff;
 }
-.dlgTab:focus-visible,
-.dlgTabActive:focus-visible {
+.root .dlgTab:focus-visible,
+.root .dlgTabActive:focus-visible {
   outline: 2px solid #2f6fdb;
   outline-offset: 2px;
 }

@@ -519,24 +519,29 @@ function sources(pptx: PptxGenJS, p: PlannedSlide & { kind: "sources" }, images:
   // 지도를 흐리게: 흰 막
   s.addShape("rect", { x: 0, y: 0, w: SLIDE.w, h: SLIDE.h, fill: { color: "FFFFFF", transparency: 25 }, line: { color: "FFFFFF", width: 0, transparency: 100 } });
   titlePlate(s, "#7A7E87", "", "자료 출처와 기준일", "", SLIDE.w - 2 * E);
-  const h = Math.min(L.strip.y - 1.2 - 0.46, 0.5 + 0.34 * (p.rows.length + 1));
+  // 원천이 많은 분석은 report-plan에서 여러 출처 장으로 나눈다. 한 장 안의 표는 승인 시안의 열 구조를 유지한다.
+  const dense = p.rows.length >= 12;
+  const h = Math.min(L.strip.y - 1.2 - 0.46, 0.5 + (dense ? 0.29 : 0.34) * (p.rows.length + 1));
   const r = { x: E, y: 1.2, w: SLIDE.w - 2 * E, h };
   plate(s, r, 0.16);
-  const hd = (t: string) => ({ text: t, options: { fontFace: FONT, fontSize: 11, bold: true, color: MUTED, border: underline(1) } });
-  const c = (t: string, bold = false) => ({ text: t, options: { fontFace: FONT, fontSize: 11, bold, color: INK, border: underline(0.75) } });
+  const cell = (t: string, opts: { bold?: boolean; fontSize?: number; color?: string } = {}) => ({
+    text: t,
+    options: { fontFace: FONT, fontSize: opts.fontSize ?? (dense ? 9 : 11), bold: opts.bold ?? false, color: opts.color ?? INK, border: underline(opts.bold ? 1 : 0.75), margin: (dense ? [0, 0.03, 0, 0.03] : [0, 0.05, 0, 0.05]) as [number, number, number, number], fit: (dense ? "shrink" : "none") as "shrink" | "none" },
+  });
+  const header = (t: string) => cell(t, { bold: true, fontSize: dense ? 9 : 11, color: MUTED });
   const rows = [
-    [hd("제공처·자료"), hd("기준일"), hd("이용조건"), hd("원문 확인"), hd("사용한 타일")],
+    [header("제공처·자료"), header("기준일"), header("이용조건"), header("원문 확인"), header("사용한 타일")],
     ...p.rows.map((row) => [
-      c(`${row.provider || "제공처 미기록"}\n${row.source}`, true),
-      c(row.asOf),
-      c(row.license || "미기록"),
-      c(row.url || "원문 링크 미기록"),
-      c(row.tiles),
+      cell(`${row.provider || "제공처 미기록"}\n${row.source}`, { bold: true }),
+      cell(row.asOf),
+      cell(row.license || "미기록"),
+      row.url ? { text: "원문 확인", options: { ...cell("원문 확인", { color: "235DB5" }).options, hyperlink: { url: row.url } } } : cell("원문 링크 미기록"),
+      cell(row.tiles),
     ]),
   ];
   const W = r.w - 0.6;
-  s.addTable(rows, { x: r.x + 0.3, y: r.y + 0.2, w: W, colW: [W * 0.24, W * 0.14, W * 0.16, W * 0.25, W * 0.21], rowH: 0.32, margin: [0, 0.05, 0, 0.05] });
-  s.addText(`분석 생성일 ${p.analysisDate} · 기준일은 원천 자료 날짜`, { x: r.x + 0.3, y: r.y + r.h + 0.08, w: W, h: 0.24, fontFace: FONT, fontSize: 9, color: MUTED, margin: 0, fit: "shrink" });
+  s.addTable(rows, { x: r.x + 0.3, y: r.y + 0.2, w: W, colW: [W * 0.24, W * 0.14, W * 0.16, W * 0.25, W * 0.21], rowH: dense ? 0.28 : 0.32, margin: 0 });
+  s.addText(`분석 생성일 ${p.analysisDate} · 기준일은 원천 자료 날짜${p.rows.length > 12 ? ` · 원천 ${p.rows.length}건` : ""}`, { x: r.x + 0.3, y: r.y + r.h + 0.08, w: W, h: 0.24, fontFace: FONT, fontSize: 9, color: MUTED, margin: 0, fit: "shrink" });
   strip(s, p, !!p.map);
 }
 

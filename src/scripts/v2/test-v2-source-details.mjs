@@ -48,13 +48,13 @@ const meta = (sourceId, extra = {}) => new Map([[sourceId, {
     ["building", { provider: "건물", sourceUrl: "https://example.test/building", licenseCode: "TEST" }],
     ["parcel_polygon", { provider: "지적", sourceUrl: "https://example.test/parcel", licenseCode: "TEST" }],
   ]));
-  assert.equal(details.calcMethod, catalogEntry("S02").description);
+  assert.equal(details.calcMethod, catalogEntry("S02").calculation ?? catalogEntry("S02").description);
   assert.deepEqual(details.rows.map((row) => row.role), ["입력", "입력"]);
 }
 
 {
   const details = sourceDetailsFor(tile("D21", "diagram", [source("building"), source("parcel_polygon")]), new Map());
-  assert.equal(details.calcMethod, catalogEntry("D21").description);
+  assert.equal(details.calcMethod, catalogEntry("D21").calculation ?? catalogEntry("D21").description);
   assert.deepEqual(details.rows.map((row) => row.role), ["입력", "입력"]);
 }
 
