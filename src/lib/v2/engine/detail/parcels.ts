@@ -126,8 +126,8 @@ function cardFor(ctx: DetailContext, hit: FeatureHit): DetailCard {
   };
 }
 
-export const PARCEL_SPECS: Partial<Record<"D19" | "D20", DetailSpec>> = {};
-for (const code of ["D19", "D20"] as const) {
+export const PARCEL_SPECS: Partial<Record<"D19", DetailSpec>> = {};
+for (const code of ["D19"] as const) {
   PARCEL_SPECS[code] = {
     columns: PARCEL_COLUMNS,
     summary(ctx) {

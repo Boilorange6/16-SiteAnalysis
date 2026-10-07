@@ -314,7 +314,7 @@ function zoneCard(ctx: DetailContext, hit: FeatureHit, columns: DetailColumn[] =
 }
 
 function featureSpec(
-  code: "D08" | "D11" | "D23",
+  code: "A09" | "A12" | "D11",
   hitsFor: (ctx: DetailContext) => FeatureHit[],
   sourcesFor: (ctx: DetailContext) => ReturnType<DetailContext["sources"]>,
 ): DetailSpec {
@@ -409,7 +409,7 @@ function schoolRows(ctx: DetailContext, hits: readonly FeatureHit[]): DetailRow[
 function schoolSpec(): DetailSpec {
   return {
     columns: SCHOOL_COLUMNS,
-    summary(ctx) { const rows = schoolRows(ctx, schoolHits(ctx)); return { title: catalogEntry("D26").title, subtitle: `${rows.length.toLocaleString("ko-KR")}곳`, fields: [{ label: "학구·학교군", value: `${rows.length.toLocaleString("ko-KR")}곳` }], source: sourceLineOf(schoolZoneSources(ctx)) }; },
+    summary(ctx) { const rows = schoolRows(ctx, schoolHits(ctx)); return { title: catalogEntry("A02").title, subtitle: `${rows.length.toLocaleString("ko-KR")}곳`, fields: [{ label: "학구·학교군", value: `${rows.length.toLocaleString("ko-KR")}곳` }], source: sourceLineOf(schoolZoneSources(ctx)) }; },
     rows(ctx) { return schoolRows(ctx, schoolHits(ctx)); },
     at(ctx, lng, lat) { const hit = schoolHits(ctx).find((candidate) => pointInGeometry(lng, lat, candidate.geometry)); return hit ? { card: zoneCard(ctx, hit), fid: String(hit.featureId) } : null; },
   };
@@ -446,16 +446,16 @@ function populationRows(ctx: DetailContext, hits: readonly FeatureHit[]): Detail
 function populationSpec(): DetailSpec {
   return {
     columns: POPULATION_COLUMNS,
-    summary(ctx) { const rows = populationRows(ctx, populationHits(ctx)); const total = rows.reduce((sum, row) => sum + (number(row.cells.population) ?? 0), 0); return { title: catalogEntry("D27").title, subtitle: `${rows.length.toLocaleString("ko-KR")}개 격자`, fields: [{ label: "공개 인구 합계", value: total > 0 ? `${Math.round(total)}명` : null }], source: sourceLine(ctx, "reference", ["sgis_grid"]) }; },
+    summary(ctx) { const rows = populationRows(ctx, populationHits(ctx)); const total = rows.reduce((sum, row) => sum + (number(row.cells.population) ?? 0), 0); return { title: catalogEntry("A11").title, subtitle: `${rows.length.toLocaleString("ko-KR")}개 격자`, fields: [{ label: "공개 인구 합계", value: total > 0 ? `${Math.round(total)}명` : null }], source: sourceLine(ctx, "reference", ["sgis_grid"]) }; },
     rows(ctx) { return populationRows(ctx, populationHits(ctx)); },
     at(ctx, lng, lat) { const hit = populationHits(ctx).find((candidate) => pointInGeometry(lng, lat, candidate.geometry)); return hit ? { card: { title: "인구 격자", fields: [], source: sourceLine(ctx, "reference", ["sgis_grid"]) }, fid: String(hit.featureId) } : null; },
   };
 }
 
 export const ZONE_SPECS: Partial<Record<string, DetailSpec>> = {
-  D08: featureSpec("D08", zoningHits, (ctx) => ctx.sources("reference", ZONING_SOURCES)),
+  A12: featureSpec("A12", zoningHits, (ctx) => ctx.sources("reference", ZONING_SOURCES)),
   D11: featureSpec("D11", districtHits, (ctx) => ctx.sources("reference", sourceIdsWithPrefix(ctx, "reference", "district_"))),
-  D23: featureSpec("D23", maintenanceHits, (ctx) => [
+  A09: featureSpec("A09", maintenanceHits, (ctx) => [
     ...ctx.sources("reference", ["maintenance_zone"]),
     ...ctx.sources("reference", ["maintenance_integrated", "maintenance_std"]),
     ...ctx.sources("reference", sourceIdsWithPrefix(ctx, "reference", "mzone_")),
@@ -464,6 +464,6 @@ export const ZONE_SPECS: Partial<Record<string, DetailSpec>> = {
     ...ctx.sources("market", sourceIdsWithPrefix(ctx, "market", "mzone_")),
   ]),
   D12: facilitySpec(),
-  D26: schoolSpec(),
-  D27: populationSpec(),
+  A02: schoolSpec(),
+  A11: populationSpec(),
 };

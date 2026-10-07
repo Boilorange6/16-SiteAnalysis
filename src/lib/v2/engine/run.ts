@@ -44,7 +44,6 @@ import { d09 } from "./tiles/d09";
 import { d11 } from "./tiles/d11";
 import { d12 } from "./tiles/d12";
 import { d13 } from "./tiles/d13";
-import { d14 } from "./tiles/d14";
 import { d15 } from "./tiles/d15";
 import { d16 } from "./tiles/d16";
 import { d17 } from "./tiles/d17";
@@ -58,7 +57,7 @@ import { d25 } from "./tiles/d25";
 import { d26 } from "./tiles/d26";
 import { d27 } from "./tiles/d27";
 import { d28 } from "./tiles/d28";
-import { notProvided } from "./tiles/not-provided";
+import { mergeTileResults, retargetTile, type MergeOptions } from "./tiles/merge";
 import { s01 } from "./tiles/s01";
 import { s04 } from "./tiles/s04";
 
@@ -82,7 +81,7 @@ export type RunOutcome =
 /** TileResult 계약을 건드리지 않고 API/저장 JSON에 계산 소요를 함께 노출하는 T3 부가 필드. */
 export type TimedTileResult = TileResult & { elapsedMs: number };
 
-export const HEAVY_TILE_CODES = ["S02", "D21", "D29", "D10", "S03", "S04"] as const;
+export const HEAVY_TILE_CODES = ["S02", "D29", "D10", "S03", "S04"] as const;
 const HEAVY_TILE_SET = new Set<string>(HEAVY_TILE_CODES);
 export const DATE_INDEPENDENT_CODES = new Set(["S03", "D10", "D29", "D01", "D28"]);
 
@@ -91,47 +90,53 @@ const deferredHeavyTile = (): TileResult => {
   throw new Error("heavy tile compute is only available in the analysis worker");
 };
 
+type TileCompute = (ctx: EngineContext) => TileResult;
+
+function mergedTile(ctx: EngineContext, code: string, primary: TileCompute, extras: readonly TileCompute[], options: MergeOptions = {}): TileResult {
+  let result = retargetTile(primary(ctx), ctx, code);
+  for (const extra of extras) result = mergeTileResults(result, retargetTile(extra(ctx), ctx, code), options);
+  return result;
+}
+
+const a02WithSchoolZones: TileCompute = (ctx) => mergedTile(ctx, "A02", a02, [d26]);
+const a04WithGreenSpace: TileCompute = (ctx) => mergedTile(ctx, "A04", a04, [d09]);
+const a07WithLocationBreakdown: TileCompute = (ctx) => mergedTile(ctx, "A07", a07, [d25]);
+const a09WithMaintenanceDetail: TileCompute = (ctx) => mergedTile(ctx, "A09", a09, [d23]);
+const a10WithPlannedDetail: TileCompute = (ctx) => mergedTile(ctx, "A10", a10, [d24]);
+const a11WithDensityDetail: TileCompute = (ctx) => mergedTile(ctx, "A11", a11, [d27]);
+const a12WithZoningDetail: TileCompute = (ctx) => mergedTile(ctx, "A12", a12, [d08]);
+const d05WithHeightModes: TileCompute = (ctx) => mergedTile(ctx, "D05", d05, [d06, d07]);
+const d19WithParcelSize: TileCompute = (ctx) => mergedTile(ctx, "D19", d19, [d20]);
+
 /** 화면 순서(카탈로그 순). 계산하는 타일 다음에 아직 제공하지 않는 타일이 코드 순서에 끼어든다. */
 export const TILES: Array<[code: string, compute: (ctx: EngineContext) => TileResult]> = [
   ["A01", a01],
-  ["A02", a02],
+  ["A02", a02WithSchoolZones],
   ["A03", a03],
-  ["A04", a04],
+  ["A04", a04WithGreenSpace],
   ["A05", a05],
   ["A06", a06],
-  ["A07", a07],
+  ["A07", a07WithLocationBreakdown],
   ["A08", a08],
-  ["A09", a09],
-  ["A10", a10],
-  ["A11", a11],
-  ["A12", a12],
+  ["A09", a09WithMaintenanceDetail],
+  ["A10", a10WithPlannedDetail],
+  ["A11", a11WithDensityDetail],
+  ["A12", a12WithZoningDetail],
   ["D01", d01],
   ["D02", d02],
   ["D03", d03],
   ["D04", d04],
-  ["D05", d05],
-  ["D06", d06],
-  ["D07", d07],
-  ["D08", d08],
-  ["D09", d09],
+  ["D05", d05WithHeightModes],
   ["D10", deferredHeavyTile],
   ["D11", d11],
   ["D12", d12],
   ["D13", d13],
-  ["D14", d14],
   ["D15", d15],
   ["D16", d16],
   ["D17", d17],
   ["D18", d18],
-  ["D19", d19],
-  ["D20", d20],
-  ["D21", deferredHeavyTile],
+  ["D19", d19WithParcelSize],
   ["D22", d22],
-  ["D23", d23],
-  ["D24", d24],
-  ["D25", d25],
-  ["D26", d26],
-  ["D27", d27],
   ["D28", d28],
   ["D29", deferredHeavyTile],
   ["S01", s01],

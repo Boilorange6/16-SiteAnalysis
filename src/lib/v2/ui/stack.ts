@@ -94,5 +94,7 @@ export function stackView(id: string, layers: TileView[]): TileView {
     stackLayers: unique(titles),
     sheetTiles: null,
     sheetGrid: null,
+    layerOptions: [],
+    defaultLayer: "all",
   };
 }

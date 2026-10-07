@@ -8,6 +8,7 @@ import { DEFAULT_RADIUS_M, RADIUS_CHOICES, restoreSummary, runAnalysis } from ".
 import { listJobs, type JobInfo } from "./jobs-store";
 import { SITE_FAILURE_MESSAGE } from "./site";
 import { parseTileResult, type TileResult } from "../tile-result";
+import { TILE_CODES } from "../ui/tile-catalog";
 
 const realDate = (d: string) => {
   const t = new Date(`${d}T00:00:00Z`);
@@ -86,11 +87,15 @@ function analysisSnapshot(db: BetterSqlite3.Database, analysisId: string, run: {
 }
 
 function loadResults(db: BetterSqlite3.Database, analysisId: string, tileCodes?: readonly string[]): TileResult[] {
-  return readTileRows(db, analysisId, tileCodes).map((row) => {
+  const catalogCodes = new Set<string>(TILE_CODES);
+  return readTileRows(db, analysisId, tileCodes).flatMap((row) => {
     const raw = JSON.parse(row.result_json);
     const result = parseTileResult(raw);
+    // W1a 이전 저장 결과에는 현재 카탈로그에서 삭제된 코드가 남을 수 있다.
+    // 상태 행·작업 스냅샷은 보존하되 화면 결과에서는 카탈로그 밖 타일을 숨긴다.
+    if (!catalogCodes.has(result.tileCode)) return [];
     const elapsedMs = storedElapsed(raw);
-    return elapsedMs === null ? result : Object.assign(result, { elapsedMs });
+    return [elapsedMs === null ? result : Object.assign(result, { elapsedMs })];
   });
 }
 

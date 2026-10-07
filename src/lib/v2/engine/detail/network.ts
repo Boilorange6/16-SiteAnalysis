@@ -134,7 +134,7 @@ function transitCard(ctx: DetailContext, hit: FeatureHit, withWalk: boolean): De
   ], source: transitSource(ctx) };
 }
 
-function transitSpec(code: "D14" | "D28"): DetailSpec {
+function transitSpec(code: "A01" | "D28"): DetailSpec {
   const withWalk = true;
   return {
     columns: WALK_COLUMNS,
@@ -209,10 +209,10 @@ function plannedRows(ctx: DetailContext, hits: readonly FeatureHit[]): DetailRow
   });
 }
 
-function plannedSpec(): DetailSpec {
+function plannedSpec(code: "A10"): DetailSpec {
   return {
     columns: PLANNED_COLUMNS,
-    summary(ctx) { const rows = plannedRows(ctx, plannedHits(ctx)); return { title: catalogEntry("D24").title, subtitle: `${rows.length.toLocaleString("ko-KR")}개`, fields: [{ label: "계획 지물", value: `${rows.length.toLocaleString("ko-KR")}개` }], source: sourceLine(ctx, "reference", ["planned_rail"]) }; },
+    summary(ctx) { const rows = plannedRows(ctx, plannedHits(ctx)); return { title: catalogEntry(code).title, subtitle: `${rows.length.toLocaleString("ko-KR")}개`, fields: [{ label: "계획 지물", value: `${rows.length.toLocaleString("ko-KR")}개` }], source: sourceLine(ctx, "reference", ["planned_rail"]) }; },
     rows(ctx) { return plannedRows(ctx, plannedHits(ctx)); },
     at(ctx, lng, lat) { const [x, y] = toUtmk([lng, lat]); let best: { hit: FeatureHit; distance: number } | null = null; for (const hit of plannedHits(ctx)) { const [hx, hy] = toUtmk(hitPoint(hit)); const distance = Math.hypot(hx - x, hy - y); if (!best || distance < best.distance) best = { hit, distance }; } return best ? { card: { title: best.hit.name ?? "계획 철도", fields: [{ label: "단계", value: text(best.hit.properties.lifecycleStatus) ?? "미확인" }], source: sourceLine(ctx, "reference", ["planned_rail"]) }, fid: String(best.hit.featureId) } : null; },
   };
@@ -240,19 +240,19 @@ function tradeRows(ctx: DetailContext): DetailRow[] {
   }
 }
 
-function tradeSpec(): DetailSpec {
+function tradeSpec(code: "A07"): DetailSpec {
   return {
     columns: TRADE_COLUMNS,
-    summary(ctx) { const rows = tradeRows(ctx); return { title: catalogEntry("D25").title, subtitle: `${rows.length.toLocaleString("ko-KR")}건`, fields: [{ label: "위치 확인 거래", value: `${rows.length.toLocaleString("ko-KR")}건` }], source: sourceLine(ctx, "market", ["rtms_apt_trade"]) }; },
+    summary(ctx) { const rows = tradeRows(ctx); return { title: catalogEntry(code).title, subtitle: `${rows.length.toLocaleString("ko-KR")}건`, fields: [{ label: "위치 확인 거래", value: `${rows.length.toLocaleString("ko-KR")}건` }], source: sourceLine(ctx, "market", ["rtms_apt_trade"]) }; },
     rows: tradeRows,
     at(ctx, lng, lat) { const rows = tradeRows(ctx); let best: DetailRow | null = null; let distance = Number.POSITIVE_INFINITY; for (const row of rows) { const [x, y] = toUtmk([row.lng, row.lat]); const [tx, ty] = toUtmk([lng, lat]); const d = Math.hypot(x - tx, y - ty); if (d < distance) { distance = d; best = row; } } return best ? { card: { title: "실거래", fields: Object.entries(best.cells).slice(0, 5).map(([label, value]) => ({ label, value: value === null ? null : String(value) })), source: sourceLine(ctx, "market", ["rtms_apt_trade"]) }, fid: best.fid } : null; },
   };
 }
 
-export const NETWORK_SPECS: Partial<Record<"D13" | "D14" | "D24" | "D25" | "D28", DetailSpec>> = {
+export const NETWORK_SPECS: Partial<Record<"A01" | "A07" | "A10" | "D13" | "D28", DetailSpec>> = {
   D13: roadSpec(),
-  D14: transitSpec("D14"),
-  D24: plannedSpec(),
-  D25: tradeSpec(),
+  A01: transitSpec("A01"),
+  A10: plannedSpec("A10"),
+  A07: tradeSpec("A07"),
   D28: transitSpec("D28"),
 };

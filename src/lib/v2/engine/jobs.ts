@@ -14,7 +14,6 @@ import { EngineContext, type RasterValues } from "./context";
 import { s03InputsHash, saveTileResultWithElapsed, TILES } from "./run";
 import { restoreSiteFromParameters, SITE_DEPENDENT_TILE_CODES, siteSnapshotHash } from "./site";
 import { d10 } from "./tiles/d10";
-import { d21 } from "./tiles/d21";
 import { d29 } from "./tiles/d29";
 import { s02 } from "./tiles/s02";
 import { s03 } from "./tiles/s03";
@@ -25,7 +24,7 @@ import { listJobs, type JobInfo } from "./jobs-store";
 
 type Db = BetterSqlite3.Database;
 
-export const HEAVY_TILES = ["S02", "D21", "D29", "D10", "S03", "S04"] as const;
+export const HEAVY_TILES = ["S02", "D29", "D10", "S03", "S04"] as const;
 export const DATE_INDEPENDENT = new Set(["S03", "D10", "D29", "D01", "D28"]);
 export const DATA_VERSION_CHANGED_REASON = "데이터 버전이 바뀌어 다시 계산해야 합니다";
 const JOB_FAILURE_REASON = "계산에 실패했습니다. 다시 계산해 주세요";
@@ -147,7 +146,6 @@ export type { JobInfo } from "./jobs-store";
 
 const HEAVY_TILE_COMPUTES: Record<(typeof HEAVY_TILES)[number], (ctx: EngineContext) => TileResult> = {
   S02: s02,
-  D21: d21,
   D29: d29,
   D10: d10,
   S03: s03,

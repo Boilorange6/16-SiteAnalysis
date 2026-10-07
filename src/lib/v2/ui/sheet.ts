@@ -85,5 +85,7 @@ export function sheetView(id: string, tiles: TileView[], grid: SheetGrid): TileV
     stackLayers: null,
     sheetTiles: tiles.map((tile) => tile.tileId),
     sheetGrid: grid,
+    layerOptions: [],
+    defaultLayer: "all",
   };
 }
