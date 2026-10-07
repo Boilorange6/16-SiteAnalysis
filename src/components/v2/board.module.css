@@ -1633,7 +1633,8 @@ button.badge:focus-visible {
   cursor: pointer;
 }
 .seg button[aria-pressed="true"] {
-  background: var(--black);
+  /* 상세 창은 body 포털이라 .root의 --black 상속 범위 밖에서도 같은 선택 대비를 유지한다. */
+  background: var(--black, #16181d);
   color: #fff;
 }
 
@@ -2438,6 +2439,21 @@ button.badge:focus-visible {
   justify-content: flex-start;
   gap: 10px;
   padding-top: 6px;
+  overflow: hidden;
+}
+.sfMain > .seg {
+  flex: none;
+  min-width: 0;
+  gap: 3px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.sfMain > .seg button {
+  min-width: 0;
+  min-height: 24px;
+  padding: 3px 8px;
+  font-size: 10px;
+  line-height: 1.1;
 }
 .sfRows {
   list-style: none;
@@ -2446,20 +2462,39 @@ button.badge:focus-visible {
   display: grid;
   gap: 3px;
   font-size: 12.5px;
+  min-height: 0;
+  overflow: hidden;
 }
 .sfRows li {
   display: flex;
   justify-content: space-between;
   gap: 10px;
+  min-width: 0;
   padding: 3px 0;
   border-bottom: 1px solid #eef0f3;
+  white-space: nowrap;
+  overflow: hidden;
 }
 .sfRows li > span:first-child {
+  min-width: 0;
   color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .sfRows li > span:last-child {
+  min-width: 0;
   font-weight: 700;
   text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 1×1 카드와 모바일 카드에는 핵심 지표만 남기고 전체 행은 펼침에서 제공한다. */
+@container (max-width: 519px) {
+  .sfRows li:nth-child(n + 3) {
+    display: none;
+  }
 }
 @container (min-width: 520px) {
   .sfMain {
@@ -2483,6 +2518,7 @@ button.badge:focus-visible {
   gap: 8px;
 }
 .sfFoot {
+  flex: none;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -2634,6 +2670,12 @@ button.badge:focus-visible {
   }
   .root .skipLink {
     min-height: 44px;
+  }
+  .root .sfMain > .seg button {
+    min-height: 44px;
+  }
+  .root .sfRows li:nth-child(n + 2) {
+    display: none;
   }
 }
 

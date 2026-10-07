@@ -24,6 +24,7 @@ try {
     buildings: true,
     parcels: true,
     roads: true,
+    trades: true,
     weather: true,
     zoning: true,
   });
@@ -193,6 +194,12 @@ try {
   const transitAt = detailAt(ctx, "A01", CENTER[0], CENTER[1]);
   assert.ok(transitAt?.card.fields.some((field) => field.label === "걸어서"));
 
+  const tradeStarted = performance.now();
+  const trades = collectDetail(ctx, "A07");
+  const tradeElapsed = performance.now() - tradeStarted;
+  assert.equal(trades.rows.length, 29, "A07 상세는 최근 12개월 반경 내 위치 확인·미취소 아파트 매매만 표시");
+  assert.ok(tradeElapsed < 1000, `trade detail must be <= 1s, got ${tradeElapsed.toFixed(1)}ms`);
+
   const noWalkMemo = new Map();
   const noWalkContext = {
     analysisId: "no-walk-graph",
@@ -242,7 +249,7 @@ try {
 
   ctx.close();
   ctx = null;
-  console.log(`✓ v2 detail (building ${elapsed.toFixed(1)}ms, D16/parcel/walk ${densityElapsed.toFixed(1)}/${parcelElapsed.toFixed(1)}/${walkElapsed.toFixed(1)}ms, rows ${buildings.rows.length}/${zones.rows.length}/${parcels.rows.length}/${walk.rows.length})`);
+  console.log(`✓ v2 detail (building ${elapsed.toFixed(1)}ms, D16/parcel/walk/trade ${densityElapsed.toFixed(1)}/${parcelElapsed.toFixed(1)}/${walkElapsed.toFixed(1)}/${tradeElapsed.toFixed(1)}ms, rows ${buildings.rows.length}/${zones.rows.length}/${parcels.rows.length}/${walk.rows.length}/${trades.rows.length})`);
 } finally {
   ctx?.close();
   appDb.close();
