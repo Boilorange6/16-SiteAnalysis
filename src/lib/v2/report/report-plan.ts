@@ -133,6 +133,39 @@ function parseSources(line: string): [string, string][] {
   });
 }
 
+function fallbackSourceRows(view: TileView): SourceDetailRow[] {
+  return parseSources(view.sourceLine).map(([source, asOf]) => ({
+    sourceId: source,
+    provider: "",
+    name: source,
+    role: "주 원천" as const,
+    asOf: asOf || UNKNOWN_AS_OF,
+    license: "미기록",
+    url: "",
+    usedFor: null,
+  } satisfies SourceDetailRow));
+}
+
+/**
+ * 보드의 출처 장 수와 실제 보고서 계획이 같은 정규화 기준을 쓰도록 원천 행을 센다.
+ * 같은 자료명·기준일을 여러 원천 ID가 공유하는 경우(예: 시설·구역)는 한 행이다.
+ * 화면의 장수 추정 시점에는 서버 출처 메타데이터를 아직 받지 않았으므로 카탈로그 이름을 쓴다.
+ */
+export function sourceRowCountForViews(views: Iterable<TileView>): number {
+  const keys = new Set<string>();
+  const emptyMeta = new Map<string, SourceMeta>();
+  for (const view of views) {
+    const details = view.sourceRefs.length > 0
+      ? sourceDetailsFor({ code: view.code, tileType: view.tileType, provenance: { sources: view.sourceRefs } }, emptyMeta)
+      : null;
+    const rows = details?.rows ?? fallbackSourceRows(view);
+    for (const row of rows) keys.add(`${row.provider}|${row.name}|${row.asOf}`);
+  }
+  return keys.size;
+}
+
+export const sourcePageCountForViews = (views: Iterable<TileView>): number => sourcePageCount(sourceRowCountForViews(views));
+
 export function buildReportPlan(input: {
   summary: SummaryView;
   views: Map<string, TileView>;
@@ -268,16 +301,7 @@ export function buildReportPlan(input: {
   type ReportSourceAccum = Omit<ReportSourceRow, "tiles"> & { tiles: string[] };
   const bySource = new Map<string, ReportSourceAccum>();
   for (const v of tiles) {
-    const rows = reportRowsFor(v) ?? parseSources(v.sourceLine).map(([source, asOf]) => ({
-      sourceId: source,
-      provider: "",
-      name: source,
-      role: "주 원천" as const,
-      asOf: asOf || "기준일 미확인",
-      license: "미기록",
-      url: "",
-      usedFor: null,
-    } satisfies SourceDetailRow));
+    const rows = reportRowsFor(v) ?? fallbackSourceRows(v);
     for (const row of rows) {
       const key = `${row.provider}|${row.name}|${row.asOf}`;
       const e = bySource.get(key) ?? { source: row.name, asOf: row.asOf, tiles: [], provider: row.provider, license: row.license, url: row.url };

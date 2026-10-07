@@ -9,7 +9,7 @@ import { BASEMAPS, BasemapContext, SetBasemapContext } from "@/components/v2/map
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import styles from "@/components/v2/board.module.css";
 import { SUMMARY_ID, boardReducer, boardStorageKey, demoFinished, demoPhase, initBoard, rebaseSnapshotAnalysisId, reportPages, serializeBoardState, viewOf, type CardFace, type PinnedLabel } from "@/lib/v2/ui/board-state";
-import { buildReportPlan, complexCounts, reportFileName, sourcePageCount } from "@/lib/v2/report/report-plan";
+import { buildReportPlan, complexCounts, reportFileName, sourcePageCountForViews } from "@/lib/v2/report/report-plan";
 import { downloadBytes, exportFileName, EXPORT_MIME, DAE_MIME } from "@/lib/v2/export/download";
 import { DEFAULT_CALLOUT_MODE } from "@/lib/v2/ui/callout-layout";
 import { stackView } from "@/lib/v2/ui/stack";
@@ -193,9 +193,11 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
   const sheetableIds = useMemo(() => board.order.filter((id) => views.has(id) && views.get(id)!.code !== "SHEET"), [board.order, views]);
   const summary = useMemo(() => toSummaryView(siteSummary, results), [siteSummary, results]);
   const reportSummary = useMemo(() => {
-    const sourceKeys = new Set<string>();
-    for (const view of views.values()) for (const source of view.sourceRefs) sourceKeys.add(`${source.sourceId}|${source.releaseId}`);
-    return reportPages(board, complexCounts(views), sourcePageCount(sourceKeys.size));
+    const reportViews = board.order
+      .filter((id) => board.included[id])
+      .map((id) => views.get(id))
+      .filter((view): view is NonNullable<typeof view> => !!view);
+    return reportPages(board, complexCounts(views), sourcePageCountForViews(reportViews));
   }, [board, views]);
   const { tiles, pages: reportPageCount } = reportSummary;
   const total = board.order.length;
