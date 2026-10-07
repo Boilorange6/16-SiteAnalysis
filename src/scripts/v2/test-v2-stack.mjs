@@ -20,7 +20,7 @@ assert.equal(stacked.headline.label, "입지·대중교통 + 준공 연대");
 assert.equal(stacked.map.features.length, a01.map.features.length + d04.map.features.length);
 assert.equal(stacked.map.total, a01.map.total + d04.map.total);
 assert.ok(stacked.notes.includes("입지·대중교통") && stacked.notes.includes("준공 연대"));
-assert.ok(stacked.sourceLine.includes("rail") && stacked.sourceLine.includes("GIS건물통합정보"));
+assert.ok(stacked.sourceLine.includes("OSM 철도") && stacked.sourceLine.includes("GIS건물통합정보"));
 assert.equal(stacked.hasFace, false);
 assert.equal(stacked.chart, null);
 assert.doesNotMatch(JSON.stringify(stacked), /종합|도보/);
