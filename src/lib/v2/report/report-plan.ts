@@ -12,6 +12,7 @@ import { FACE_TEXT } from "../ui/tile-view";
 import type { RoseModel } from "../ui/wind-rose";
 import type { RoseSeason } from "../tile-result";
 import { exportFileName } from "../export/download";
+import { sourceDetailsFor, type SourceDetailRow, type SourceMeta } from "../ui/source-details";
 
 export type TileSlideBody =
   | { kind: "result"; face: "single" | "front" | "back" }
@@ -62,9 +63,9 @@ export type ReportSlide =
       kind: "sheet";
       view: TileView;
       grid: SheetGrid;
-      cells: Array<{ view: TileView; face: "front" | "back"; mapKey: string; pinnedKeys?: string[] }>;
+      cells: Array<{ view: TileView; face: "front" | "back"; mapKey: string; sourceLine?: string; pinnedKeys?: string[] }>;
     }
-  | { kind: "sources"; rows: ReportSourceRow[]; /** 배경(흐린 대지 지도) */ map: MapModel | null };
+  | { kind: "sources"; rows: ReportSourceRow[]; analysisDate: string; /** 배경(흐린 대지 지도) */ map: MapModel | null };
 
 export type PlannedSlide = ReportSlide & { no: number; total: number; footer: string };
 
@@ -133,11 +134,26 @@ export function buildReportPlan(input: {
   views: Map<string, TileView>;
   board: BoardState;
   analysisDate?: string;
+  sourceMeta?: ReadonlyMap<string, SourceMeta>;
 }): PlannedSlide[] {
   const { summary, views, board } = input;
   const date = input.analysisDate ?? "미확인";
+  const sourceMeta = input.sourceMeta ?? new Map<string, SourceMeta>();
   const tiles = board.order.filter((id) => board.included[id] && views.has(id)).map((id) => views.get(id)!);
   const raw: (ReportSlide & { footer: string })[] = [];
+
+  const detailsFor = (view: TileView) => view.sourceRefs.length > 0
+    ? sourceDetailsFor({ code: view.code, tileType: view.tileType, provenance: { sources: view.sourceRefs } }, sourceMeta)
+    : null;
+  const sourceLineFor = (view: TileView): string => {
+    const details = detailsFor(view);
+    if (!details || details.rows.length === 0) return view.sourceLine;
+    return details.rows.map((row) => `${row.provider} · ${row.name} · ${row.asOf}`).join(" · ");
+  };
+  const sourceFooterFor = (view: TileView): string => {
+    const line = sourceLineFor(view);
+    return line === "출처 없음" ? "출처 없음 · 기준일 해당 없음" : `출처 ${line}`;
+  };
 
   raw.push({
     kind: "cover",
@@ -164,6 +180,7 @@ export function buildReportPlan(input: {
           view: cell,
           face: cell.hasFace && board.faces[cell.tileId] === "back" ? "back" as const : "front" as const,
           mapKey: `${cell.tileId}:cell`,
+          sourceLine: sourceLineFor(cell),
           pinnedKeys: pinnedKeysFor(board, cell.tileId),
         }));
       raw.push({
@@ -171,7 +188,7 @@ export function buildReportPlan(input: {
         view: v,
         grid: v.sheetGrid,
         cells,
-        footer: v.sourceLine === "출처 없음" ? "출처 없음 · 기준일 해당 없음" : `출처 ${v.sourceLine}`,
+        footer: sourceFooterFor(v),
       });
       continue;
     }
@@ -180,6 +197,7 @@ export function buildReportPlan(input: {
         view: viewWithOnlyLayer(v, layer, note),
         face: "front" as const,
         mapKey: `${v.tileId}:${key}`,
+        sourceLine: sourceLineFor(v),
         pinnedKeys: pinnedKeysFor(board, v.tileId),
       }));
       raw.push({
@@ -187,7 +205,7 @@ export function buildReportPlan(input: {
         view: v,
         grid: "3x1",
         cells,
-        footer: v.sourceLine === "출처 없음" ? "출처 없음 · 기준일 해당 없음" : `출처 ${v.sourceLine}`,
+        footer: sourceFooterFor(v),
       });
       continue;
     }
@@ -195,7 +213,7 @@ export function buildReportPlan(input: {
       // 설명선 타일: 개요 1장 + 설명표 장 (설정: 개요만 / 상위 10 / 전체). 장수는 board-state.reportPages와 같은 함수
       const cm = v.callout;
       const count = calloutReportPages(board.callout[v.tileId] ?? DEFAULT_CALLOUT_MODE, cm.complexes.length);
-      const sourceFooter = v.sourceLine === "출처 없음" ? "출처 없음 · 기준일 해당 없음" : `출처 ${v.sourceLine}`;
+      const sourceFooter = sourceFooterFor(v);
       for (let page = 0; page < count; page++) {
         raw.push({
           kind: "tile",
@@ -230,23 +248,38 @@ export function buildReportPlan(input: {
         pinnedKeys: pinnedKeysFor(board, v.tileId),
         ...(mass ? { mass } : {}),
         ...(rose ? { rose, roseSeason } : {}),
-        footer: v.sourceLine === "출처 없음" ? "출처 없음 · 기준일 해당 없음" : `출처 ${v.sourceLine}`,
+        footer: sourceFooterFor(v),
       });
     }
   }
 
-  const bySource = new Map<string, { asOf: string; tiles: string[] }>();
+  const bySource = new Map<string, ReportSourceRow>();
   for (const v of tiles) {
-    for (const [id, asOf] of parseSources(v.sourceLine)) {
-      const key = `${id}|${asOf}`;
-      const e = bySource.get(key) ?? { asOf, tiles: [] };
+    const details = detailsFor(v);
+    const rows = details?.rows ?? parseSources(v.sourceLine).map(([source, asOf]) => ({
+      sourceId: source,
+      provider: "",
+      name: source,
+      role: "주 원천" as const,
+      asOf: asOf || "기준일 미확인",
+      license: "미기록",
+      url: "",
+      usedFor: null,
+    } satisfies SourceDetailRow));
+    for (const row of rows) {
+      const key = `${row.sourceId}|${row.asOf}`;
+      const e = bySource.get(key) ?? { source: row.name, asOf: row.asOf, tiles: [], provider: row.provider, license: row.license, url: row.url };
       if (!e.tiles.includes(v.title)) e.tiles.push(v.title);
+      if ((!e.provider || e.provider === "제공처 미기록") && row.provider) e.provider = row.provider;
+      if ((!e.license || e.license === "미기록") && row.license) e.license = row.license;
+      if (!e.url && row.url) e.url = row.url;
       bySource.set(key, e);
     }
   }
   raw.push({
     kind: "sources",
-    rows: [...bySource].map(([k, e]) => ({ source: k.split("|")[0], asOf: e.asOf, tiles: e.tiles.join(", ") })),
+    rows: [...bySource.values()].map((row) => ({ ...row, tiles: row.tiles.join(", ") })),
+    analysisDate: date,
     map: summary.map,
     footer: `${summary.asOfLine} · 출처 ${bySource.size}건`,
   });

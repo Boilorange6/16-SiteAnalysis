@@ -18,6 +18,8 @@ import { exportAvailability, formatElapsedMs, jobProgress } from "@/lib/v2/ui/bo
 import { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } from "@/lib/v2/ui/fixtures/godeok";
 import { toSummaryView, toTileView, type SiteSummary } from "@/lib/v2/ui/tile-view";
 import { siteParcelFromResults } from "@/lib/v2/ui/site-parcel";
+import { sourceIdsForRefs, sourceMetaMap, type SourceApiBody } from "@/lib/v2/ui/source-api";
+import type { SourceMeta } from "@/lib/v2/ui/source-details";
 import { toLngLat } from "@/lib/v2/crs";
 import { jibunFromPnu, type SitePickerParcel } from "@/lib/v2/ui/site-picker";
 import type { TileResult } from "@/lib/v2/tile-result";
@@ -280,7 +282,18 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
     setMakingKind("PPT");
     setExportProblem(null);
     try {
-      const reportPlan = buildReportPlan({ summary, views, board, analysisDate });
+      const sourceIds = sourceIdsForRefs([...views.values()].flatMap((view) => view.sourceRefs));
+      let sourceMeta = new Map<string, SourceMeta>();
+      if (sourceIds.length > 0) {
+        const query = new URLSearchParams();
+        for (const id of sourceIds) query.append("ids", id);
+        const sourceResponse = await apiFetch(`/site/api/v2/sources?${query.toString()}`);
+        if (sourceResponse.ok) {
+          const body = (await sourceResponse.json()) as Partial<SourceApiBody>;
+          sourceMeta = sourceMetaMap(Array.isArray(body.sources) ? body.sources : []);
+        }
+      }
+      const reportPlan = buildReportPlan({ summary, views, board, analysisDate, sourceMeta });
       const { renderReportPptx } = await import("@/lib/v2/report/render-pptx");
       // 지도 그림은 브라우저에서 SVG → PNG로 만든다. 못 만들면 자리표시로 계속한다.
       const { buildMapImages } = await import("@/lib/v2/report/map-image");

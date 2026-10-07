@@ -508,7 +508,7 @@ function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: Map
     const chipText = `${cell.view.code} · ${cell.view.title} · ${faceText}${time ? ` · ${time}` : ""}`;
     s.addShape("roundRect", { x: r.x + 0.1, y: r.y + 0.1, w: Math.min(r.w - 0.2, 2.9), h: 0.3, rectRadius: 0.12, fill: { color: "FFFFFF", transparency: 10 }, line: { color: INK, transparency: 88, width: 0.5 } });
     s.addText(chipText, { x: r.x + 0.2, y: r.y + 0.1, w: Math.min(r.w - 0.4, 2.7), h: 0.3, valign: "middle", fontFace: FONT, fontSize: fitPt(chipText, 8.5, Math.min(r.w - 0.4, 2.7), 1, 6), bold: true, color: INK, margin: 0, fit: "shrink" });
-    s.addText(`출처 ${cell.view.sourceLine}`, { x: r.x + 0.12, y: r.y + r.h - 0.29, w: r.w - 0.24, h: 0.18, fontFace: FONT, fontSize: 7.5, color: MUTED, margin: 0, fit: "shrink" });
+    s.addText(`출처 ${cell.sourceLine ?? cell.view.sourceLine}`, { x: r.x + 0.12, y: r.y + r.h - 0.29, w: r.w - 0.24, h: 0.18, fontFace: FONT, fontSize: 7.5, color: MUTED, margin: 0, fit: "shrink" });
   }
   strip(s, p, false);
 }
@@ -519,14 +519,24 @@ function sources(pptx: PptxGenJS, p: PlannedSlide & { kind: "sources" }, images:
   // 지도를 흐리게: 흰 막
   s.addShape("rect", { x: 0, y: 0, w: SLIDE.w, h: SLIDE.h, fill: { color: "FFFFFF", transparency: 25 }, line: { color: "FFFFFF", width: 0, transparency: 100 } });
   titlePlate(s, "#7A7E87", "", "자료 출처와 기준일", "", SLIDE.w - 2 * E);
-  const h = Math.min(L.strip.y - 1.4 - 0.3, 0.5 + 0.34 * (p.rows.length + 1));
+  const h = Math.min(L.strip.y - 1.2 - 0.46, 0.5 + 0.34 * (p.rows.length + 1));
   const r = { x: E, y: 1.2, w: SLIDE.w - 2 * E, h };
   plate(s, r, 0.16);
   const hd = (t: string) => ({ text: t, options: { fontFace: FONT, fontSize: 11, bold: true, color: MUTED, border: underline(1) } });
   const c = (t: string, bold = false) => ({ text: t, options: { fontFace: FONT, fontSize: 11, bold, color: INK, border: underline(0.75) } });
-  const rows = [[hd("출처"), hd("기준일"), hd("사용한 타일")], ...p.rows.map((row) => [c(row.source, true), c(row.asOf), c(row.tiles)])];
+  const rows = [
+    [hd("제공처·자료"), hd("기준일"), hd("이용조건"), hd("원문 확인"), hd("사용한 타일")],
+    ...p.rows.map((row) => [
+      c(`${row.provider || "제공처 미기록"}\n${row.source}`, true),
+      c(row.asOf),
+      c(row.license || "미기록"),
+      c(row.url || "원문 링크 미기록"),
+      c(row.tiles),
+    ]),
+  ];
   const W = r.w - 0.6;
-  s.addTable(rows, { x: r.x + 0.3, y: r.y + 0.2, w: W, colW: [W * 0.25, W * 0.2, W * 0.55], rowH: 0.32, margin: [0, 0.05, 0, 0.05] });
+  s.addTable(rows, { x: r.x + 0.3, y: r.y + 0.2, w: W, colW: [W * 0.24, W * 0.14, W * 0.16, W * 0.25, W * 0.21], rowH: 0.32, margin: [0, 0.05, 0, 0.05] });
+  s.addText(`분석 생성일 ${p.analysisDate} · 기준일은 원천 자료 날짜`, { x: r.x + 0.3, y: r.y + r.h + 0.08, w: W, h: 0.24, fontFace: FONT, fontSize: 9, color: MUTED, margin: 0, fit: "shrink" });
   strip(s, p, !!p.map);
 }
 
