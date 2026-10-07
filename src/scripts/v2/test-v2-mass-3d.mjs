@@ -67,6 +67,8 @@ assert.match(runtimeSource, /PCFSoftShadowMap/);
 assert.match(runtimeSource, /disposeMassObject/);
 assert.match(runtimeSource, /compositePngChrome/);
 assert.match(runtimeSource, /const renderer = makeRenderer/);
+assert.match(runtimeSource, /s01-road-centerline/);
+assert.match(runtimeSource, /drawNoDataBadge/);
 assert.match(reportSource, /renderMass3dPng/);
 assert.match(reportSource, /image\/png/);
 

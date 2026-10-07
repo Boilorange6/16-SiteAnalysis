@@ -152,6 +152,12 @@ function MassFigure({ scene, camera, width, height, fixed = false, label = "S01 
                 {faces.filter((face) => face.stackIndex === plate.index).map(renderFace)}
               </g>
               <path d={plate.path} fill="none" stroke="#AAB3BF" strokeWidth="1.1" strokeOpacity="0.95" />
+              {!plate.present && (
+                <g data-plate-note={plate.layer}>
+                  <rect x={plate.centerX - 34} y={plate.centerY - 13} width="68" height="26" rx="13" fill="#FFFFFF" fillOpacity="0.94" stroke="#5B606B" strokeOpacity="0.55" />
+                  <text x={plate.centerX} y={plate.centerY + 4} textAnchor="middle" fontSize="11" fontWeight="700" fill="#4F5967">자료 없음</text>
+                </g>
+              )}
             </g>
           ))}
         </>

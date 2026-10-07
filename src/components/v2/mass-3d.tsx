@@ -83,6 +83,11 @@ function LiveExplodedLabels({ scene, camera, exploded, width, height }: { scene:
           <i className={styles.mass3dExplodedLabelLeader} style={{ width: Math.max(0, label.leaderX - label.x - 4) }} />
         </div>
       ))}
+      {labels.filter((label) => label.note && label.badgeX !== undefined && label.badgeY !== undefined).map((label) => (
+        <span key={`${label.layer}-empty`} className={styles.mass3dNoDataBadge} style={{ left: label.badgeX, top: label.badgeY }}>
+          자료 없음
+        </span>
+      ))}
     </div>
   );
 }
@@ -91,20 +96,21 @@ function LiveLegend({ scene, exploded }: Pick<Mass3dProps, "scene" | "exploded">
   if (exploded) {
     return (
       <div className={styles.mass3dExplodedLegend} aria-hidden="true">
-        {[
+          {[
           ["지형", "#E8ECEF"],
           ["수계", "#C4E6EB"],
           ["녹지", "#CFE4C8"],
           ["도로", "#D9DDE2"],
           ["건물", "#E8EDF2"],
           ["완성", "#F5F6F7"],
-        ].map(([label, color]) => (
+          ].map(([label, color]) => (
           <span key={label} className={styles.mass3dLegendItem}>
             <i style={{ background: color }} />
             {label}
           </span>
-        ))}
-      </div>
+          ))}
+          <span className={styles.mass3dLegendItem}><i className={styles.mass3dNoDataSwatch} />자료 없음 = 빈 원판</span>
+        </div>
     );
   }
   return (

@@ -362,6 +362,7 @@ function addRoads(
   scene: Scene,
   zOffset: number,
 ): void {
+  const lineMaterial = new THREE.LineBasicMaterial({ color: "#536171", transparent: true, opacity: 0.96 });
   for (const [roadIndex, road] of (scene.context?.roads ?? []).entries()) {
     const points = road.points.filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
     const width = finiteOr(road.widthM, 0);
@@ -381,6 +382,11 @@ function addRoads(
       };
       addPolygonMesh(THREE, root, materials, polygon, MASS_3D_COLORS.roads, zOffset + averageGroundZ(scene, polygon.outer), `s01-road-${roadIndex}-${index}`);
     }
+    const centerline = points.map(([x, y]) => new THREE.Vector3(x, y, (groundZAt(scene.ground, x, y) ?? 0) + zOffset + 0.14));
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(centerline), lineMaterial);
+    line.name = `s01-road-centerline-${roadIndex}`;
+    line.renderOrder = 6;
+    root.add(line);
   }
 }
 
@@ -561,6 +567,8 @@ export function mass3dExplodedLabels(
       text: EXPLODED_LABEL_TEXT[layer],
       note: explodedLayerPresent(input.scene!, layer) ? undefined : "자료 없음",
       leaderX: plateLeft - 2,
+      badgeX: explodedLayerPresent(input.scene!, layer) ? undefined : canvasWidth / 2,
+      badgeY: explodedLayerPresent(input.scene!, layer) ? undefined : centerY,
     } satisfies MassLabel;
   });
 }
@@ -698,6 +706,22 @@ function drawChip(ctx: CanvasRenderingContext2D, x: number, y: number, text: str
   ctx.fillText(text, x + 23, y + 16);
 }
 
+function drawNoDataBadge(ctx: CanvasRenderingContext2D, x: number, y: number): void {
+  ctx.font = "700 11px 'Noto Sans KR', 'Malgun Gothic', sans-serif";
+  const text = "자료 없음";
+  const width = ctx.measureText(text).width + 24;
+  roundedRect(ctx, x - width / 2, y - 13, width, 26, 13);
+  ctx.fillStyle = "rgba(255,255,255,0.94)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(91,96,107,0.55)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = "#4F5967";
+  ctx.textAlign = "center";
+  ctx.fillText(text, x, y + 4);
+  ctx.textAlign = "left";
+}
+
 function drawNorth(ctx: CanvasRenderingContext2D, width: number, height: number, camera: MassCamera): void {
   const x = width - 42;
   const y = 42;
@@ -768,6 +792,7 @@ function drawMassChrome(canvas: HTMLCanvasElement, input: Mass3dRenderInput): vo
         ctx.font = "10px 'Noto Sans KR', 'Malgun Gothic', sans-serif";
         ctx.fillStyle = "#676C76";
         ctx.fillText(label.note, label.x, label.y + 17);
+        if (label.badgeX !== undefined && label.badgeY !== undefined) drawNoDataBadge(ctx, label.badgeX, label.badgeY);
       }
     }
     ctx.textAlign = "left";

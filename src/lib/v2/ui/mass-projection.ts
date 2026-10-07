@@ -46,7 +46,7 @@ export type MassFace = {
   faceKind?: MassFaceKind;
 };
 
-export type MassLabel = { layer: ExplodedLayer; x: number; y: number; text: string; note?: string; leaderX: number };
+export type MassLabel = { layer: ExplodedLayer; x: number; y: number; text: string; note?: string; leaderX: number; badgeX?: number; badgeY?: number };
 export type MassPlate = {
   layer: ExplodedLayer;
   index: number;
@@ -765,6 +765,8 @@ export function projectExploded(
     text: EXPLODED_LABEL_TEXT[plate.layer],
     note: plate.present ? undefined : "자료 없음",
     leaderX: plate.leftX - 2,
+    badgeX: plate.present ? undefined : plate.centerX,
+    badgeY: plate.present ? undefined : plate.centerY,
   }));
   const ordered = [...raw].sort((a, b) => a.depth - b.depth);
   return {

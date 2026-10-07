@@ -184,6 +184,7 @@ assert.match(emptyMarkup, />자료 없음</);
 assert.match(emptyMarkup, /published reference 재구축 전/);
 assert.match(emptyMarkup, /data-context-note="reference-not-rebuilt"/);
 assert.match(emptyMarkup, /data-plate-state="empty"/);
+assert.equal((emptyMarkup.match(/data-plate-note=/g) ?? []).length, 3, "자료 없는 수계·녹지·도로 원판 위에 배지를 표시한다");
 assert.equal((emptyMarkup.match(/data-plate-layer=/g) ?? []).length, EXPLODED_LAYERS.length, "빈 맥락층도 빈 원판을 유지한다");
 
 const demScene = {
