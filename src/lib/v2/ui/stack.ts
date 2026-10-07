@@ -68,6 +68,7 @@ export function stackView(id: string, layers: TileView[]): TileView {
   return {
     tileId: id,
     code: "STACK",
+    tileType: "stack",
     title: "레이어 스택",
     color: first?.color ?? "#7A7E87",
     status: statusOf(layers),

@@ -56,6 +56,7 @@ export function sheetView(id: string, tiles: TileView[], grid: SheetGrid): TileV
   return {
     tileId: id,
     code: "SHEET",
+    tileType: "stack",
     title: "조판",
     color: first?.color ?? "#7A7E87",
     status,

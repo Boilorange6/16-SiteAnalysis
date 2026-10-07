@@ -802,6 +802,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
       {openView && (
         <TileDialog
           view={openView}
+          initialTab={dialogTab}
           included={!!board.included[openView.tileId]}
           face={board.faces[openView.tileId]}
           onInclude={(value) => dispatch({ type: "include", id: openView.tileId, value })}

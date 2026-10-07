@@ -12,6 +12,7 @@ import type { RoseSeason } from "@/lib/v2/tile-result";
 import WindPanel from "./wind-panel";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "./map-box";
 import { mapLabelEntries } from "./map-figure";
+import SourcePanel from "./source-panel";
 import styles from "./board.module.css";
 
 type Props = {
@@ -38,6 +39,7 @@ type Props = {
   onToggleLabel: (key: string) => void;
   onUnpinLabel: (key: string) => void;
   onSetAllLabels: (on: boolean) => void;
+  initialTab?: "overview" | "sources";
 };
 
 const PANEL_W = 360;
@@ -233,7 +235,7 @@ function PinnedLabelPanel({ view, labels, onToggle, onUnpin, onSetAll, onFocusLa
 }
 
 /** 펼침: 화면 거의 전체가 지도. 오른쪽에 떠 있는 정보 판. Esc로 닫고, 닫으면 열기 전 초점으로 돌아간다. */
-export default function TileDialog({ view, included, face, onInclude, onFace, onRetry, roseSeason, onRoseSeason, calloutMode, onCalloutMode, camera, onCamera, cuts, onCuts, onWindUploaded, onClose, a05Filter, a05Counts, onA05Filter, pinnedLabels, onToggleLabel, onUnpinLabel, onSetAllLabels }: Props) {
+export default function TileDialog({ view, included, face, onInclude, onFace, onRetry, roseSeason, onRoseSeason, calloutMode, onCalloutMode, camera, onCamera, cuts, onCuts, onWindUploaded, onClose, a05Filter, a05Counts, onA05Filter, pinnedLabels, onToggleLabel, onUnpinLabel, onSetAllLabels, initialTab = "overview" }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [back, setBack] = useState(false);
   const [more, setMore] = useState(false); // 모바일 시트 확장
@@ -241,8 +243,13 @@ export default function TileDialog({ view, included, face, onInclude, onFace, on
   const [focusedLabelKey, setFocusedLabelKey] = useState<string | null>(null);
   const [windLayerZ, setWindLayerZ] = useState(6);
   const [massExploded, setMassExploded] = useState(false);
+  const [panelTab, setPanelTab] = useState<"overview" | "sources">(initialTab);
   const basemap = useContext(BasemapContext);
   const setBasemap = useContext(SetBasemapContext);
+
+  useEffect(() => {
+    setPanelTab(initialTab);
+  }, [initialTab, view.tileId]);
 
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
@@ -284,18 +291,23 @@ export default function TileDialog({ view, included, face, onInclude, onFace, on
         </div>
 
         <aside className={`${styles.plate} ${styles.dlgPanel} ${more ? styles.dlgPanelOpen : ""}`} aria-label={`${view.title} 정보`}>
-          <BadgeList badges={view.badges} />
-          <PinnedLabelPanel view={view} labels={pinnedLabels} onToggle={onToggleLabel} onUnpin={onUnpinLabel} onSetAll={onSetAllLabels} onFocusLabel={setFocusedLabelKey} />
-          {view.code === "A05" && <A05FilterPanel filter={a05Filter} counts={a05Counts} onChange={onA05Filter} titleId={`a05-${view.tileId}-reaggregate-title`} />}
-          {view.code === "S03" && <WindPanel view={view} layerZ={windLayerZ} onLayerZ={setWindLayerZ} onUploaded={onWindUploaded} />}
-          {view.code === "D22" && !state && <RoseSeasonSelect view={view} value={roseSeason} onChange={onRoseSeason} />}
-          {view.headline && (
-            <div className={styles.stat}>
-              <Headline view={view} />
-            </div>
-          )}
-          {view.sentence && <p className={styles.dlgSentence}>{view.sentence}</p>}
-          {view.grades.length > 0 ? (
+          <div className={styles.dlgTabs} role="tablist" aria-label="타일 상세 구역">
+            <button type="button" role="tab" aria-selected={panelTab === "overview"} className={panelTab === "overview" ? styles.dlgTabActive : styles.dlgTab} onClick={() => setPanelTab("overview")}>개요</button>
+            <button type="button" role="tab" aria-selected={panelTab === "sources"} className={panelTab === "sources" ? styles.dlgTabActive : styles.dlgTab} onClick={() => setPanelTab("sources")}>출처·기준일 <span aria-hidden>{view.sourceRefs.length}</span></button>
+          </div>
+          {panelTab === "sources" ? <SourcePanel view={view} /> : <>
+            <BadgeList badges={view.badges} />
+            <PinnedLabelPanel view={view} labels={pinnedLabels} onToggle={onToggleLabel} onUnpin={onUnpinLabel} onSetAll={onSetAllLabels} onFocusLabel={setFocusedLabelKey} />
+            {view.code === "A05" && <A05FilterPanel filter={a05Filter} counts={a05Counts} onChange={onA05Filter} titleId={`a05-${view.tileId}-reaggregate-title`} />}
+            {view.code === "S03" && <WindPanel view={view} layerZ={windLayerZ} onLayerZ={setWindLayerZ} onUploaded={onWindUploaded} />}
+            {view.code === "D22" && !state && <RoseSeasonSelect view={view} value={roseSeason} onChange={onRoseSeason} />}
+            {view.headline && (
+              <div className={styles.stat}>
+                <Headline view={view} />
+              </div>
+            )}
+            {view.sentence && <p className={styles.dlgSentence}>{view.sentence}</p>}
+            {view.grades.length > 0 ? (
             <div className={styles.gradeList}>
               <div className={styles.gradeChips}>
                 {view.grades.map((g) => (
@@ -310,20 +322,20 @@ export default function TileDialog({ view, included, face, onInclude, onFace, on
                 </div>
               ))}
             </div>
-          ) : (
+            ) : (
             view.grade && (
               <div className={styles.grade}>
                 <b>{view.grade.label}</b>
                 {view.grade.criteria}
               </div>
             )
-          )}
-          {view.caveats.map((c) => (
+            )}
+            {view.caveats.map((c) => (
             <p key={c} className={styles.caveat}>
               {c}
             </p>
-          ))}
-          {view.hasFace && (
+            ))}
+            {view.hasFace && (
             <div className={styles.seg} role="group" aria-label="보기">
               보기
               <button type="button" aria-pressed={!back} onClick={() => setBack(false)}>
@@ -333,8 +345,8 @@ export default function TileDialog({ view, included, face, onInclude, onFace, on
                 구성비
               </button>
             </div>
-          )}
-          {view.code === "S01" && camera && onCamera && (
+            )}
+            {view.code === "S01" && camera && onCamera && (
             <div className={styles.seg} role="group" aria-label="카메라">
               <span>카메라</span>
               <label>
@@ -366,8 +378,8 @@ export default function TileDialog({ view, included, face, onInclude, onFace, on
                 </select>
               </label>
             </div>
-          )}
-          {view.code === "S01" && view.mass && (
+            )}
+            {view.code === "S01" && view.mass && (
             <div className={styles.seg} role="group" aria-label="S01 매스 보기">
               <span>표현</span>
               <button type="button" aria-pressed={!massExploded} onClick={() => setMassExploded(false)}>
@@ -377,17 +389,17 @@ export default function TileDialog({ view, included, face, onInclude, onFace, on
                 분해
               </button>
             </div>
-          )}
-          {view.rows.length > 0 && <RowList rows={view.rows} className={styles.list} />}
-          {view.notes.length > 0 && (
+            )}
+            {view.rows.length > 0 && <RowList rows={view.rows} className={styles.list} />}
+            {view.notes.length > 0 && (
             <ul className={styles.notes}>
               {view.notes.map((n) => (
                 <li key={n}>{n}</li>
               ))}
             </ul>
-          )}
-          <div className={styles.source}>출처 · {view.sourceLine}</div>
-          <div className={styles.dlgReport}>
+            )}
+            <div className={styles.source}>출처 · {view.sourceLine}</div>
+            <div className={styles.dlgReport}>
             <strong>보고서 {view.title}</strong>
             {view.hasFace && <div className={styles.sub}>출력 면: {faceLabel(face)}</div>}
             {view.hasFace && <FaceSelect view={view} value={face} onChange={onFace} />}
@@ -415,10 +427,11 @@ export default function TileDialog({ view, included, face, onInclude, onFace, on
               <input type="checkbox" checked={included} onChange={(e) => onInclude(e.target.checked)} aria-label={`${view.title} 보고서 포함`} />
               포함
             </label>
-          </div>
-          <button type="button" className={styles.moreBtn} onClick={() => setMore((m) => !m)} aria-expanded={more}>
-            {more ? "접기" : "더 보기"}
-          </button>
+            </div>
+            <button type="button" className={styles.moreBtn} onClick={() => setMore((m) => !m)} aria-expanded={more}>
+              {more ? "접기" : "더 보기"}
+            </button>
+          </>}
         </aside>
 
         <SourceStrip view={view} />

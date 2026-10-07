@@ -19,6 +19,7 @@ export type Row = { label: string; value: string; aux?: string; tag?: string };
 export type TileView = {
   tileId: string;
   code: string;
+  tileType: string;
   title: string;
   color: string;
   status: TileResult["status"];
@@ -592,6 +593,7 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
   return {
     tileId: r.tileId,
     code: r.tileCode,
+    tileType: r.tileType,
     title: cat.title,
     color: cat.color,
     status: r.status,
