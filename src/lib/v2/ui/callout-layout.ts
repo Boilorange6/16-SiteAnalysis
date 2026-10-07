@@ -230,15 +230,13 @@ export function cardRows(c: Complex, analysisYear: number): CardRow[] {
 }
 export const cardName = (c: Complex) => c.name ?? `이름 ${MISSING}`;
 
-/** 카드 안에 들어가는 짧은 표시용 단지명. 원문은 title·aria-label에 계속 보존한다. */
+/** 카드 안 단지명. 원문을 유지하고 CSS가 최대 두 줄로 자연스럽게 감싼다. */
 export function displayComplexName(c: Complex, siblings: readonly Complex[] = []): string {
   const full = cardName(c);
   if (c.name === null) return full;
-  const chars = [...full];
-  const prefix = chars.slice(0, 6).join("");
+  const prefix = [...full].slice(0, 6).join("");
   const duplicatePrefix = siblings.filter((s) => s.name !== null && [...s.name].slice(0, 6).join("") === prefix).length > 1;
-  if (chars.length <= 10) return duplicatePrefix ? `${full} · ${c.rank}번` : full;
-  return `${prefix}${duplicatePrefix ? ` · ${c.rank}번` : ""}`;
+  return duplicatePrefix ? `${full} · ${c.rank}번` : full;
 }
 
 /**
@@ -313,13 +311,13 @@ export type Metrics = { cardW: number; compactW: number; minW: number; cardFract
 /** 화면(px) */
 export const PX: Metrics = { cardW: 176, compactW: 136, minW: 96, cardFraction: 0.27, gap: 8, stub: 14, rMin: 8, rMax: 15, head: 26, row: 17, pad: 6, compactH: 40 };
 /** 좁은 화면(모바일): 카드를 좁히고 점을 줄여 반경 원이 두 칸 사이에 들어가게 한다 */
-export const PX_NARROW: Metrics = { ...PX, cardW: 100, compactW: 100, minW: 84, cardFraction: 0.24, gap: 6, stub: 10, rMin: 6, rMax: 11, compactH: 48 };
+export const PX_NARROW: Metrics = { ...PX, cardW: 100, compactW: 100, minW: 84, cardFraction: 0.21, gap: 6, stub: 10, rMin: 6, rMax: 11, compactH: 48 };
 /** 슬라이드(inch) */
 export const INCH: Metrics = { cardW: 2.55, compactW: 2.0, minW: 1.4, gap: 0.1, stub: 0.2, rMin: 0.12, rMax: 0.22, head: 0.28, row: 0.165, pad: 0.06, compactH: 0.5 };
 
 /** compact 카드는 실제 두 줄 이름(또는 좁은 카드)일 때만 줄바꿈 여유를 예약한다. */
 export const cardHeight = (m: Metrics, variant: "full" | "compact", rows: number, compactNameWrap = false) =>
-  variant === "compact" ? m.compactH + (compactNameWrap ? m.row * 0.2 : 0) : m.head + rows * m.row + m.pad;
+  variant === "compact" ? m.compactH + (compactNameWrap ? m.row : 0) : m.head + rows * m.row + m.pad + (compactNameWrap ? m.row * 0.25 : 0);
 
 export const cardWidth = (m: Metrics, variant: "full" | "compact", W: number) =>
   Math.max(m.minW, Math.min(variant === "compact" ? m.compactW : m.cardW, W * (m.cardFraction ?? 0.27)));
@@ -361,6 +359,8 @@ export type FrameSpec = {
   variant: "full" | "compact";
   /** compact 카드의 이름이 실제로 두 줄이 될 때만 추가 높이를 예약한다. */
   compactNameWrap?: boolean;
+  /** 좁은 보드에서 카드 폭과 무관하게 확보할 중앙 원의 최소 지름. */
+  minDiameter?: number;
   /** 반경 원 지름 / 높이의 상한 (기본 0.8) */
   maxFill?: number;
 };
@@ -375,7 +375,7 @@ export function calloutFrame(s: FrameSpec): CalloutFrame {
   const pad = m.stub * 0.6;
   const lo = left.x1 + m.stub + pad;
   const hi = right.x0 - m.stub - pad;
-  const diameter = Math.max(m.rMax * 4, Math.min((s.maxFill ?? 0.8) * H, hi - lo));
+  const diameter = Math.max(m.rMax * 4, s.minDiameter ?? 0, Math.min((s.maxFill ?? 0.8) * H, hi - lo));
   const centerX = (left.x1 + right.x0) / 2;
   return { W, H, left, right, cardW, cardH, variant: s.variant, rows: s.rows, perSide: s.perSide, m, centerX, siteX: centerX / W, diameter, fill: diameter / H };
 }

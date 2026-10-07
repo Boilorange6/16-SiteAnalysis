@@ -2730,6 +2730,13 @@ button.badge:focus-visible {
   padding-bottom: 2px;
   align-items: flex-start;
 }
+.cHead[data-name-wrap] {
+  height: auto;
+  min-height: 22px;
+  align-items: flex-start;
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
 .cNum {
   flex: none;
   width: 18px;
@@ -2743,12 +2750,15 @@ button.badge:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 .cName {
+  display: block;
   min-width: 0;
   overflow: visible;
   white-space: normal;
   text-overflow: clip;
   line-height: 1.1;
   overflow-wrap: anywhere;
+  max-height: 2.2em;
+  overflow: hidden;
 }
 .cCard[data-narrow] .cHead {
   gap: 4px;

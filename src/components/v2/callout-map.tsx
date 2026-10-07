@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, memo, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { STRIP_H, calloutLegendMatches, cardName, cardRows, clusterPoints, compactCalloutLegend, displayComplexName, dotColor, dotRadius, fmtInt, inkOn, overlapChip, pageCount, pageRange, stripCards, type CalloutFrame, type Complex, type Placed, type StripCard } from "@/lib/v2/ui/callout-layout";
+import { STRIP_H, calloutLegendMatches, cardName, cardRows, clusterPoints, compactCalloutLegend, compactNameNeedsExtraHeight, displayComplexName, dotColor, dotRadius, fmtInt, inkOn, overlapChip, pageCount, pageRange, stripCards, type CalloutFrame, type Complex, type Placed, type StripCard } from "@/lib/v2/ui/callout-layout";
 import { calloutScene, type CalloutFrameKind } from "@/lib/v2/ui/callout-scene";
 import { OV } from "@/lib/v2/ui/overlay-layout";
 import { framedViewport, metersPerPixel, scaleBar } from "@/lib/v2/ui/map-projection";
@@ -17,6 +17,7 @@ function Card({ c, siblings, p, frame, year, hover, dim, onHover, onPick }: { c:
   const rows = cardRows(c, year);
   const full = frame.variant === "full";
   const chip = overlapChip(c);
+  const nameWrap = compactNameNeedsExtraHeight(c, siblings, frame.cardW);
   return (
     <div
       className={`${styles.plate} ${styles.cCard} ${hover ? styles.cCardOn : ""}`}
@@ -28,7 +29,7 @@ function Card({ c, siblings, p, frame, year, hover, dim, onHover, onPick }: { c:
       onMouseLeave={() => onHover(null)}
       onClick={() => onPick(c.id)}
     >
-      <div className={styles.cHead} data-compact={!full || undefined}>
+      <div className={styles.cHead} data-compact={!full || undefined} data-name-wrap={nameWrap ? "true" : undefined}>
         <span className={styles.cNum} style={{ background: color, color: inkOn(color) }}>
           {c.rank}
         </span>

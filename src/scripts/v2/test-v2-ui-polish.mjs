@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const calloutLayoutSource = readFileSync(new URL("../../lib/v2/ui/callout-layout.ts", import.meta.url), "utf8");
-assert.match(calloutLayoutSource, /return `\$\{prefix\}\$\{duplicatePrefix/, "단지명 짧은 라벨은 말줄임표 없이 보존");
+assert.match(calloutLayoutSource, /return duplicatePrefix \? `\$\{full\}/, "단지명 원문은 두 줄까지 보존");
 assert.doesNotMatch(calloutLayoutSource, /return `\$\{prefix\}…/, "단지명 표시 함수가 말줄임표를 넣지 않음");
-assert.match(calloutLayoutSource, /cardFraction: 0\.24/, "모바일 설명선 카드 폭을 줄여 중앙 반경원 확보");
+assert.match(calloutLayoutSource, /cardFraction: 0\.21/, "모바일 설명선 카드 폭을 줄여 중앙 반경원 확보");
 
 const calloutSource = readFileSync(new URL("../../components/v2/callout-map.tsx", import.meta.url), "utf8");
 const calloutStart = calloutSource.indexOf("export function CalloutLegend");
@@ -20,6 +20,7 @@ const boardCss = readFileSync(new URL("../../components/v2/board.module.css", im
 const cNameRule = boardCss.match(/\.cName\s*\{([^}]*)\}/)?.[1] ?? "";
 assert.match(cNameRule, /white-space:\s*normal/, "단지명은 두 줄 표시 가능");
 assert.match(cNameRule, /text-overflow:\s*clip/, "단지명은 CSS 말줄임을 쓰지 않음");
+assert.match(cNameRule, /max-height:\s*2\.2em/, "단지명은 최대 두 줄 높이를 예약");
 assert.match(boardCss, /\.cHead\[data-compact\]\s*\{[^}]*height:\s*auto/, "짧은 카드 헤더도 두 줄 높이를 수용");
 const summaryBodyBlocks = [...boardCss.matchAll(/\.sumBody\s*\{([^}]*)\}/g)].map((match) => match[1]);
 assert.ok(summaryBodyBlocks.length >= 2, "summary body must have base and mobile rules");
