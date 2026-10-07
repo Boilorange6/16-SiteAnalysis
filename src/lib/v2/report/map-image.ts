@@ -28,7 +28,7 @@ const VIEW_H = 540;
 const OUT_W = 1920;
 const OUT_H = 1080;
 const PX_PER_INCH = VIEW_W / SLIDE.w;
-type Extra = Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "scale" | "legend" | "bare">;
+type Extra = Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "scale" | "legend" | "bare" | "pinnedKeys">;
 type MassExplodedOptions = { spreadPct: number; scheme?: MassColorScheme };
 const TILE_TIMEOUT_MS = 8000;
 
@@ -221,13 +221,14 @@ export async function rasterizeRose(model: RoseModel, width = VIEW_W, height = V
 /** 슬라이드마다 다른 오버레이 자리를 피하게 한다 (표지·출처는 지도 가운데, 타일은 오른쪽 정보 판을 뺀 영역) */
 function extraFor(p: PlannedSlide, model: MapModel): Extra {
   if (p.kind !== "tile") return { avoid: slideReserved(PX_PER_INCH, { info: false }) };
+  const pinned = p.pinnedKeys && p.pinnedKeys.length > 0 ? { pinnedKeys: p.pinnedKeys } : {};
   // 설명표 장: 두 칸 사이에 반경 원을 넣는 프레임 (렌더러가 점·표를 같은 프레임으로 놓는다)
   if (p.callout && p.callout.page > 0) {
     const f = slideCalloutFrame(4);
-    return { siteX: f.siteX, fill: f.fill, avoid: [], scale: false };
+    return { siteX: f.siteX, fill: f.fill, avoid: [], scale: false, ...pinned };
   }
-  if (p.callout) return { siteX: slideSiteX(), fill: SLIDE_OVERVIEW_FILL, avoid: slideReserved(PX_PER_INCH, { legend: slideLegend(model).rect }) };
-  return { muted: p.muted, siteX: slideSiteX(), avoid: slideReserved(PX_PER_INCH, { legend: slideLegend(model, !p.muted).rect }) };
+  if (p.callout) return { siteX: slideSiteX(), fill: SLIDE_OVERVIEW_FILL, avoid: slideReserved(PX_PER_INCH, { legend: slideLegend(model).rect }), ...pinned };
+  return { muted: p.muted, siteX: slideSiteX(), avoid: slideReserved(PX_PER_INCH, { legend: slideLegend(model, !p.muted).rect }), ...pinned };
 }
 
 /** 계획의 모든 지도 자리에 대한 PNG. 실패한 장은 빠진다(렌더러가 자리표시를 넣는다). */
@@ -240,7 +241,7 @@ export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice 
       for (const cell of p.cells) {
         if (!cell.view.map || out[cell.mapKey]) continue;
         try {
-          out[cell.mapKey] = await rasterizeMap(cell.view.map, cache, effectiveLayer(cell.view.map, layer), { siteX: 0.5, avoid: [], legend: true, bare: false }, rasterCache);
+          out[cell.mapKey] = await rasterizeMap(cell.view.map, cache, effectiveLayer(cell.view.map, layer), { siteX: 0.5, avoid: [], legend: true, bare: false, pinnedKeys: cell.pinnedKeys }, rasterCache);
         } catch (e) {
           console.warn(`조판 셀 이미지 생성 실패 (${cell.mapKey})`, e);
         }

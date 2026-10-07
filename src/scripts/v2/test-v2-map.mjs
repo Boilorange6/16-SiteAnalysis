@@ -23,7 +23,7 @@ const { a03 } = await import("../../lib/v2/engine/tiles/a03.ts");
 const { a04 } = await import("../../lib/v2/engine/tiles/a04.ts");
 const { a05 } = await import("../../lib/v2/engine/tiles/a05.ts");
 const { a06 } = await import("../../lib/v2/engine/tiles/a06.ts");
-const { default: MapFigure } = await import("../../components/v2/map-figure.tsx");
+const { default: MapFigure, mapFeatureKey, mapLabelEntries } = await import("../../components/v2/map-figure.tsx");
 
 const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${b}`);
 
@@ -187,6 +187,37 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   assert.ok(!inlined.includes("/api/v2/tiles/") && inlined.includes("data:image/png"));
   const bare = renderToStaticMarkup(createElement(MapFigure, { model: toSummaryView(GODEOK_SUMMARY, GODEOK_RESULTS).map, width: 640, height: 360, bare: true }));
   assert.ok(!bare.includes("버스정류장"));
+
+  // W2a: 범례 라벨 기준 강조는 같은 라벨의 여러 레이어를 함께 남기고, 나머지를 20%로 흐린다.
+  const highlightModel = {
+    ...model,
+    features: [
+      { layer: "maint_zone", lng: model.center[0], lat: model.center[1], name: "정비구역 A" },
+      { layer: "maint_zone_center", lng: model.center[0] + 0.002, lat: model.center[1], name: "정비구역 B" },
+      { layer: "bus_stop", lng: model.center[0] - 0.002, lat: model.center[1], name: "버스정류장" },
+    ],
+    total: 3,
+  };
+  const highlighted = renderToStaticMarkup(createElement(MapFigure, { model: highlightModel, width: 640, height: 360, basemap: "none", highlightLabel: "정비구역" }));
+  assert.equal((highlighted.match(/stroke="#16181d"/g) ?? []).length >= 2, true, "같은 범례 라벨의 두 레이어 강조");
+  assert.ok((highlighted.match(/opacity="0\.2"/g) ?? []).length >= 1, "나머지 요소 20% 흐림");
+
+  // W2a: fid 없는 요소는 원본 배열 index 키를 쓰고, 고정 라벨은 겹침 검사 뒤 자리를 바꾼다.
+  const collisionModel = {
+    ...model,
+    features: [
+      { layer: "bus_stop", lng: model.center[0], lat: model.center[1], name: "정류장 A" },
+      { layer: "bus_stop", lng: model.center[0], lat: model.center[1], name: "정류장 B" },
+    ],
+    total: 2,
+  };
+  const entries = mapLabelEntries(collisionModel);
+  assert.deepEqual(entries.slice(0, 2).map((entry) => entry.key), [mapFeatureKey("bus_stop", undefined, 0), mapFeatureKey("bus_stop", undefined, 1)]);
+  const pinned = renderToStaticMarkup(createElement(MapFigure, { model: collisionModel, width: 640, height: 360, basemap: "none", pinnedKeys: entries.slice(0, 2).map((entry) => entry.key), onFeaturePin: () => {} }));
+  assert.match(pinned, /data-map-feature="bus_stop\|0"/);
+  assert.match(pinned, /data-map-feature="bus_stop\|1"/);
+  const fixedXs = [...pinned.matchAll(/<rect x="([^"]+)" y="[^"]+" width="[^"]+" height="[^"]+" rx="[^"]+" fill="#fff" stroke="#111"/g)].map((match) => match[1]);
+  assert.ok(fixedXs.length >= 2 && fixedXs[0] !== fixedXs[1], "겹친 고정 라벨을 다른 후보 위치에 배치");
 }
 
 // ── PPT: 지도 이미지 자리 ──

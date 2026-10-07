@@ -45,12 +45,14 @@ export type ReportSlide =
       roseSeason?: RoseSeason;
       /** 주변 단지 설명선 장: page 0 = 개요, 1.. = 설명표 (지도 이미지는 단지 없이, 점·지시선·표는 pptx 도형) */
       callout?: { model: CalloutModel; page: number; pages: number; filterLine?: string | null };
+      /** 보드에서 켜 둔 지도 요소 라벨만 보고서 이미지에 그린다. */
+      pinnedKeys?: string[];
     }
   | {
       kind: "sheet";
       view: TileView;
       grid: SheetGrid;
-      cells: Array<{ view: TileView; face: "front" | "back"; mapKey: string }>;
+      cells: Array<{ view: TileView; face: "front" | "back"; mapKey: string; pinnedKeys?: string[] }>;
     }
   | { kind: "sources"; rows: { source: string; asOf: string; tiles: string }[]; /** 배경(흐린 대지 지도) */ map: MapModel | null };
 
@@ -81,6 +83,7 @@ export const complexCounts = (views: Map<string, TileView>): Record<string, numb
   Object.fromEntries([...views].filter(([, v]) => v.callout).map(([id, v]) => [id, v.callout!.complexes.length]));
 
 const hasResult = (v: TileView) => v.status === "complete" || v.status === "partial";
+const pinnedKeysFor = (board: BoardState, tileId: string): string[] => (board.labels[tileId] ?? []).filter((label) => label.on).map((label) => label.key);
 
 const S02_CUTS = [
   { layer: "shadow_09", note: "09:00", key: "cut09" },
@@ -151,6 +154,7 @@ export function buildReportPlan(input: {
           view: cell,
           face: cell.hasFace && board.faces[cell.tileId] === "back" ? "back" as const : "front" as const,
           mapKey: `${cell.tileId}:cell`,
+          pinnedKeys: pinnedKeysFor(board, cell.tileId),
         }));
       raw.push({
         kind: "sheet",
@@ -166,6 +170,7 @@ export function buildReportPlan(input: {
         view: viewWithOnlyLayer(v, layer, note),
         face: "front" as const,
         mapKey: `${v.tileId}:${key}`,
+        pinnedKeys: pinnedKeysFor(board, v.tileId),
       }));
       raw.push({
         kind: "sheet",
@@ -212,6 +217,7 @@ export function buildReportPlan(input: {
         // 모든 장은 지도(또는 주 시각물)가 전면: 지도 없는 결과는 지물 없는 대지 지도, 상태 장은 흐린 대지 지도
         map: mass || rose ? null : !result ? v.backdrop : v.hasFace && face === "back" ? null : (v.map ?? v.backdrop),
         muted: !result,
+        pinnedKeys: pinnedKeysFor(board, v.tileId),
         ...(mass ? { mass } : {}),
         ...(rose ? { rose, roseSeason } : {}),
         footer: v.sourceLine === "출처 없음" ? "출처 없음 · 기준일 해당 없음" : `출처 ${v.sourceLine}`,

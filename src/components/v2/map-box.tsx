@@ -5,7 +5,8 @@ import { compactLegendItems, RASTER_STYLES, type MapModel } from "@/lib/v2/ui/ma
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { framedViewport, metersPerPixel, scaleBar, tileUrl, tilesFor } from "@/lib/v2/ui/map-projection";
 import { inflateRaster, paintRaster } from "@/lib/v2/ui/raster-image";
-import MapFigure, { type MapFigureProps } from "./map-figure";
+import MapFigure, { type MapFigureElementPick, type MapFigureProps } from "./map-figure";
+import styles from "./board.module.css";
 
 /** 보드가 고른 배경지도 종류. 카드·상세·요약의 모든 지도가 같이 따른다. */
 export const BasemapContext = createContext<BasemapChoice>("white");
@@ -14,7 +15,10 @@ export const SetBasemapContext = createContext<(b: BasemapChoice) => void>(() =>
 
 type Box = NonNullable<MapFigureProps["avoid"]>;
 /** avoid·siteX는 실측 크기를 받아 계산하는 함수도 받는다 */
-type Opts = Pick<MapFigureProps, "legend" | "legendY" | "north" | "scale" | "credit" | "bottomInset" | "muted" | "rightInset" | "scaleLeft" | "fill" | "scaleX" | "siteY"> & {
+type InteractionOpts = Pick<MapFigureProps, "pinnedKeys" | "onFeatureClick"> & {
+  onFeaturePin?: (feature: MapFigureElementPick) => void;
+};
+type Opts = Pick<MapFigureProps, "legend" | "legendY" | "north" | "scale" | "credit" | "bottomInset" | "muted" | "rightInset" | "scaleLeft" | "fill" | "scaleX" | "siteY"> & InteractionOpts & {
   avoid?: Box | ((w: number, h: number) => Box);
   siteX?: number | ((w: number) => number);
   /** 반경 원 위아래 여백(px): 지도 높이에서 fill을 정한다(카드). fill보다 우선 */
@@ -70,6 +74,44 @@ export default function MapBox({ model, bare, label, avoid, siteX, rightInset, p
   const requestedLayer = model.basemap ?? layer;
   const [fallbackLayer, setFallbackLayer] = useState<BasemapChoice | null>(null);
   const [rasterHrefs, setRasterHrefs] = useState<Record<string, string>>({});
+  const [legendHover, setLegendHover] = useState<string | null>(null);
+  const [legendPinned, setLegendPinned] = useState<string | null>(null);
+  const [featureHover, setFeatureHover] = useState<string | null>(null);
+  const [legendMoreOpen, setLegendMoreOpen] = useState(false);
+  const legendPointerType = useRef<string | null>(null);
+  const legendMoreRef = useRef<HTMLButtonElement>(null);
+  const legendWrapRef = useRef<HTMLDivElement>(null);
+  const activeHighlight = legendHover ?? legendPinned;
+  const toggleLegend = (label: string) => {
+    setLegendHover(null);
+    setLegendPinned((current) => current === label ? null : label);
+  };
+  const clearInteraction = () => {
+    setLegendHover(null);
+    setLegendPinned(null);
+    setFeatureHover(null);
+    setLegendMoreOpen(false);
+  };
+  useEffect(() => {
+    if (!legendMoreOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!legendWrapRef.current?.contains(event.target as Node)) setLegendMoreOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [legendMoreOpen]);
+  useEffect(() => {
+    if (!activeHighlight && !featureHover && !legendMoreOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      clearInteraction();
+      legendMoreRef.current?.focus();
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, [activeHighlight, featureHover, legendMoreOpen]);
   useEffect(() => {
     let alive = true;
     setFallbackLayer(null);
@@ -157,24 +199,44 @@ export default function MapBox({ model, bare, label, avoid, siteX, rightInset, p
           siteX={typeof siteX === "function" ? siteX(size.w) : siteX}
           rightInset={typeof rightInset === "function" ? rightInset(size.w) : rightInset}
           {...opts}
+          highlightLabel={activeHighlight}
+          highlightPinnedLabel={legendPinned}
+          hoverKey={featureHover}
+          onFeatureHover={(key) => setFeatureHover(key)}
+          onLegendHover={(value) => setLegendHover(value)}
+          onLegendPin={(value) => setLegendPinned((current) => value === null ? null : current === value ? null : value)}
         />
       )}
       {size && near && mapHasCompactLegend && (
-        <div role="group" aria-label="범례" style={{ position: "absolute", zIndex: 3, bottom: legendBottom, left: 8, maxWidth: "calc(100% - 128px)", display: "flex", alignItems: "center", gap: 8, padding: "3px 9px", borderRadius: 999, background: "rgba(255,255,255,.92)", color: "#16181d", fontSize: 11, lineHeight: 1.3, whiteSpace: "nowrap", overflow: "hidden", boxShadow: "0 1px 3px rgba(21,23,28,.12)" }}>
-          {compactItems.map((item) => (
-            <span key={item.layer} style={{ display: "inline-flex", alignItems: "center", gap: 3, whiteSpace: "nowrap" }}>
-              {item.site ? (
-                <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden focusable="false">
-                  <rect x="1.8" y="1.8" width="6.4" height="6.4" fill="#fff" stroke="#111" strokeWidth="1" transform="rotate(45 5 5)" />
-                  <circle cx="5" cy="5" r="1.2" fill="#111" />
-                </svg>
-              ) : (
-                <i aria-hidden style={{ width: 8, height: 8, borderRadius: "50%", background: item.color, border: "1px solid rgba(21,23,28,.35)" }} />
-              )}
+        <div ref={legendWrapRef} role="group" aria-label="범례" style={{ position: "absolute", zIndex: 4, bottom: legendBottom, left: 8, maxWidth: "calc(100% - 128px)", display: "flex", alignItems: "center", gap: 5, padding: "2px 5px", borderRadius: 999, background: "rgba(255,255,255,.94)", color: "#16181d", fontSize: 11, lineHeight: 1.3, whiteSpace: "nowrap", boxShadow: "0 1px 3px rgba(21,23,28,.12)" }}>
+          {compactItems.map((item) => item.site ? (
+            <span className={styles.mapLegendStatic} key={item.layer} aria-hidden>
+              <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden focusable="false">
+                <rect x="1.8" y="1.8" width="6.4" height="6.4" fill="#fff" stroke="#111" strokeWidth="1" transform="rotate(45 5 5)" />
+                <circle cx="5" cy="5" r="1.2" fill="#111" />
+              </svg>
               {item.label}
             </span>
+          ) : (
+            <button data-map-legend={item.label} className={styles.mapLegendButton} key={item.layer} type="button" aria-label={`${item.label} 범례 강조`} aria-pressed={legendPinned === item.label} onClick={() => toggleLegend(item.label)} onPointerDown={(event) => { legendPointerType.current = event.pointerType; }} onPointerEnter={(event) => { legendPointerType.current = event.pointerType; if (event.pointerType !== "touch") setLegendHover(item.label); }} onPointerLeave={() => { legendPointerType.current = null; setLegendHover(null); }} onFocus={() => { if (legendPointerType.current !== "touch") setLegendHover(item.label); }} onBlur={() => { legendPointerType.current = null; setLegendHover(null); }} style={{ borderColor: activeHighlight === item.label ? "#111" : "transparent", background: activeHighlight === item.label ? "#eef0f3" : "transparent" }}>
+              <i aria-hidden style={{ width: 8, height: 8, borderRadius: "50%", background: item.color, border: "1px solid rgba(21,23,28,.35)" }} />
+              {item.label}
+            </button>
           ))}
-          {legendMore > 0 && <span style={{ color: "#454a55" }} title={allLegend.slice(compactItems.length).map((i) => i.label).join(" · ")}>+{legendMore}</span>}
+          {legendMore > 0 && <button className={styles.mapLegendMore} ref={legendMoreRef} type="button" aria-label={`전체 범례 ${legendMore}개 더 보기`} aria-expanded={legendMoreOpen} onClick={() => setLegendMoreOpen((open) => !open)}>+{legendMore}</button>}
+          {legendMoreOpen && <div role="dialog" aria-label="전체 범례" style={{ position: "absolute", left: 0, bottom: 34, minWidth: 180, maxWidth: "min(280px, calc(100vw - 24px))", display: "grid", gap: 2, padding: 6, border: "1px solid #c9ccd2", borderRadius: 10, background: "#fff", boxShadow: "0 6px 20px rgba(0,0,0,.14)" }}>
+            {allLegend.map((item) => item.site ? (
+              <span className={styles.mapLegendStatic} key={`all-${item.layer}`} aria-hidden>
+                <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden focusable="false"><rect x="2.2" y="2.2" width="7.6" height="7.6" fill="#fff" stroke="#111" strokeWidth="1" transform="rotate(45 6 6)" /><circle cx="6" cy="6" r="1.3" fill="#111" /></svg>
+                <span>{item.label}</span><span style={{ marginLeft: "auto", color: "#676c76", fontVariantNumeric: "tabular-nums" }}>{item.count}</span>
+              </span>
+            ) : (
+              <button data-map-legend={item.label} className={styles.mapLegendButton} key={`all-${item.layer}`} type="button" aria-label={`${item.label} 범례 강조`} aria-pressed={legendPinned === item.label} onClick={() => toggleLegend(item.label)} onPointerDown={(event) => { legendPointerType.current = event.pointerType; }} onPointerEnter={(event) => { legendPointerType.current = event.pointerType; if (event.pointerType !== "touch") setLegendHover(item.label); }} onPointerLeave={() => { legendPointerType.current = null; setLegendHover(null); }} onFocus={() => { if (legendPointerType.current !== "touch") setLegendHover(item.label); }} onBlur={() => { legendPointerType.current = null; setLegendHover(null); }} style={{ display: "flex", width: "100%", minHeight: 36, padding: "4px 8px", border: 0, borderRadius: 6, background: activeHighlight === item.label ? "#eef0f3" : "transparent", color: "#15171c", textAlign: "left" }}>
+                <i aria-hidden style={{ width: 10, height: 10, borderRadius: "50%", background: item.color, border: "1px solid rgba(21,23,28,.35)" }} />
+                <span>{item.label}</span><span style={{ marginLeft: "auto", color: "#676c76", fontVariantNumeric: "tabular-nums" }}>{item.count}</span>
+              </button>
+            ))}
+          </div>}
         </div>
       )}
       {size && near && scale && scale.meters >= 1000 && opts.legend !== false && (

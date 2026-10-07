@@ -5,12 +5,13 @@ import { CALLOUT_MODES, calloutReportPages, type CalloutMode } from "@/lib/v2/ui
 import { A05_TYPE_LABEL, A05_TYPES, normalizeA05Filter, type A05Counts, type A05Filter, type A05Type } from "@/lib/v2/engine/a05-filter";
 import { CAMERA_PRESETS } from "@/lib/v2/ui/mass-projection";
 import { detailSiteX, OV } from "@/lib/v2/ui/overlay-layout";
-import type { CameraPreset, CutCount } from "@/lib/v2/ui/board-state";
+import type { CameraPreset, CutCount, PinnedLabel } from "@/lib/v2/ui/board-state";
 import { faceLabel, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
 import { BadgeList, FaceSelect, Headline, RoseSeasonSelect, RowList, SourceStrip, Stage, StatusPlate, TitleChip } from "./tile-card";
 import type { RoseSeason } from "@/lib/v2/tile-result";
 import WindPanel from "./wind-panel";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "./map-box";
+import { mapLabelEntries } from "./map-figure";
 import styles from "./board.module.css";
 
 type Props = {
@@ -33,6 +34,10 @@ type Props = {
   a05Filter?: A05Filter | null;
   a05Counts?: A05Counts | null;
   onA05Filter?: (filter: A05Filter | null) => void;
+  pinnedLabels: PinnedLabel[];
+  onToggleLabel: (key: string) => void;
+  onUnpinLabel: (key: string) => void;
+  onSetAllLabels: (on: boolean) => void;
 };
 
 const PANEL_W = 360;
@@ -168,8 +173,45 @@ function A05FilterPanel({ filter, counts, onChange, titleId }: { filter: A05Filt
   );
 }
 
+function PinnedLabelPanel({ view, labels, onToggle, onUnpin, onSetAll }: { view: TileView; labels: PinnedLabel[]; onToggle: (key: string) => void; onUnpin: (key: string) => void; onSetAll: (on: boolean) => void }) {
+  if (view.callout || !view.map) return null;
+  const entries = mapLabelEntries(view.map);
+  const entryByKey = new Map(entries.map((entry) => [entry.key, entry]));
+  const onCount = labels.filter((label) => label.on && entryByKey.has(label.key)).length;
+  return (
+    <section className={styles.pinPanel} aria-labelledby={`pin-labels-${view.tileId}`}>
+      <div className={styles.pinPanelHead}>
+        <h3 id={`pin-labels-${view.tileId}`}>고정 라벨</h3>
+        <span>{onCount}개 표시</span>
+      </div>
+      {labels.length === 0 ? (
+        <p className={styles.pinPanelEmpty}>지도 요소를 눌러 라벨을 고정하세요.</p>
+      ) : (
+        <ul className={styles.pinList}>
+          {labels.map((label) => {
+            const entry = entryByKey.get(label.key);
+            return (
+              <li key={label.key} className={styles.pinRow}>
+                <span className={styles.pinRowText} title={entry?.text ?? label.key}>{entry?.text ?? label.key}</span>
+                <button type="button" className={styles.pinRowButton} aria-pressed={label.on} onClick={() => onToggle(label.key)}>
+                  {label.on ? "끄기" : "보이기"}
+                </button>
+                <button type="button" className={styles.pinRowDelete} onClick={() => onUnpin(label.key)} aria-label={`${entry?.text ?? label.key} 고정 삭제`}>삭제</button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <div className={styles.pinPanelActions}>
+        <button type="button" onClick={() => onSetAll(false)} disabled={onCount === 0}>모두 끄기</button>
+        <button type="button" onClick={() => onSetAll(true)} disabled={labels.length === 0}>모두 보이기</button>
+      </div>
+    </section>
+  );
+}
+
 /** 펼침: 화면 거의 전체가 지도. 오른쪽에 떠 있는 정보 판. Esc로 닫고, 닫으면 열기 전 초점으로 돌아간다. */
-export default function TileDialog({ view, included, face, onInclude, onFace, onRetry, roseSeason, onRoseSeason, calloutMode, onCalloutMode, camera, onCamera, cuts, onCuts, onWindUploaded, onClose, a05Filter, a05Counts, onA05Filter }: Props) {
+export default function TileDialog({ view, included, face, onInclude, onFace, onRetry, roseSeason, onRoseSeason, calloutMode, onCalloutMode, camera, onCamera, cuts, onCuts, onWindUploaded, onClose, a05Filter, a05Counts, onA05Filter, pinnedLabels, onToggleLabel, onUnpinLabel, onSetAllLabels }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [back, setBack] = useState(false);
   const [more, setMore] = useState(false); // 모바일 시트 확장
@@ -199,7 +241,7 @@ export default function TileDialog({ view, included, face, onInclude, onFace, on
     <div className={styles.overlay} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div ref={ref} className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <div className={styles.stage}>
-          <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="detail" siteX={detailSiteX} rightInset={insetOf} legendY={OV.edge + 38 + 8} page={page} onPage={setPage} windLayerZ={windLayerZ} massExploded={massExploded} roseSeason={roseSeason} />
+          <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="detail" siteX={detailSiteX} rightInset={insetOf} legendY={OV.edge + 38 + 8} page={page} onPage={setPage} windLayerZ={windLayerZ} massExploded={massExploded} roseSeason={roseSeason} pinnedKeys={pinnedLabels.filter((label) => label.on).map((label) => label.key)} onFeaturePin={(feature) => onToggleLabel(feature.key)} />
         </div>
 
         {state && <StatusPlate view={view} phase={null} onRetry={onRetry} />}
@@ -220,6 +262,7 @@ export default function TileDialog({ view, included, face, onInclude, onFace, on
 
         <aside className={`${styles.plate} ${styles.dlgPanel} ${more ? styles.dlgPanelOpen : ""}`} aria-label={`${view.title} 정보`}>
           <BadgeList badges={view.badges} />
+          <PinnedLabelPanel view={view} labels={pinnedLabels} onToggle={onToggleLabel} onUnpin={onUnpinLabel} onSetAll={onSetAllLabels} />
           {view.code === "A05" && <A05FilterPanel filter={a05Filter} counts={a05Counts} onChange={onA05Filter} titleId={`a05-${view.tileId}-reaggregate-title`} />}
           {view.code === "S03" && <WindPanel view={view} layerZ={windLayerZ} onLayerZ={setWindLayerZ} onUploaded={onWindUploaded} />}
           {view.code === "D22" && !state && <RoseSeasonSelect view={view} value={roseSeason} onChange={onRoseSeason} />}

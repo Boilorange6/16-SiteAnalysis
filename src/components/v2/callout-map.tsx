@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { STRIP_H, cardName, cardRows, clusterPoints, compactCalloutLegend, displayComplexName, dotColor, dotRadius, fmtInt, inkOn, overlapChip, pageCount, pageRange, stripCards, type CalloutFrame, type Complex, type Placed, type StripCard } from "@/lib/v2/ui/callout-layout";
+import { STRIP_H, calloutLegendMatches, cardName, cardRows, clusterPoints, compactCalloutLegend, displayComplexName, dotColor, dotRadius, fmtInt, inkOn, overlapChip, pageCount, pageRange, stripCards, type CalloutFrame, type Complex, type Placed, type StripCard } from "@/lib/v2/ui/callout-layout";
 import { calloutScene, type CalloutFrameKind } from "@/lib/v2/ui/callout-scene";
 import { OV } from "@/lib/v2/ui/overlay-layout";
 import { framedViewport, metersPerPixel, scaleBar } from "@/lib/v2/ui/map-projection";
@@ -12,7 +12,7 @@ import styles from "./board.module.css";
 
 const INK = "#16181d";
 
-function Card({ c, siblings, p, frame, year, hover, onHover, onPick }: { c: Complex; siblings: readonly Complex[]; p: Placed; frame: CalloutFrame; year: number; hover: boolean; onHover: (id: string | null) => void; onPick: (id: string) => void }) {
+function Card({ c, siblings, p, frame, year, hover, dim, onHover, onPick }: { c: Complex; siblings: readonly Complex[]; p: Placed; frame: CalloutFrame; year: number; hover: boolean; dim?: boolean; onHover: (id: string | null) => void; onPick: (id: string) => void }) {
   const color = dotColor(c);
   const rows = cardRows(c, year);
   const full = frame.variant === "full";
@@ -23,7 +23,7 @@ function Card({ c, siblings, p, frame, year, hover, onHover, onPick }: { c: Comp
       role="group"
       aria-label={`${c.rank}번 ${cardName(c)}`}
       data-narrow={frame.cardW < 112 ? "true" : undefined}
-      style={{ left: p.x, top: p.y, width: frame.cardW, height: frame.cardH }}
+      style={{ left: p.x, top: p.y, width: frame.cardW, height: frame.cardH, opacity: dim ? 0.2 : 1 }}
       onMouseEnter={() => onHover(c.id)}
       onMouseLeave={() => onHover(null)}
       onClick={() => onPick(c.id)}
@@ -70,17 +70,43 @@ function Card({ c, siblings, p, frame, year, hover, onHover, onPick }: { c: Comp
 }
 
 /** 범례: A05 준공 연대 / A06 입주 시기 색 + 크기 = 세대수 */
-export function CalloutLegend({ model, compact = false, style }: { model: CalloutModel; compact?: boolean; style?: React.CSSProperties }) {
+export function CalloutLegend({ model, compact = false, style, activeLabel = null, pinnedLabel = null, onHover, onPin }: { model: CalloutModel; compact?: boolean; style?: React.CSSProperties; activeLabel?: string | null; pinnedLabel?: string | null; onHover?: (label: string | null) => void; onPin?: (label: string | null) => void }) {
   const items = compact ? compactCalloutLegend(model.legend, model.complexes, 3) : model.legend.items;
+  const legendPointerType = useRef<string | null>(null);
   return (
     <div className={`${styles.plate} ${styles.cLegend}`} style={style} role="group" aria-label={compact ? `범례 ${items.length}색` : "범례"}>
       {!compact && <span className={styles.cLegendT}>{model.legend.title}</span>}
-      {items.map((it) => (
-        <span key={it.label} className={styles.cLegendI}>
-          <i style={{ background: it.hollow ? "transparent" : it.color, borderColor: it.color }} />
-          {it.label}
-        </span>
-      ))}
+      {items.map((it) => {
+        const active = activeLabel === it.label;
+        const content = <><i style={{ background: it.hollow ? "transparent" : it.color, borderColor: it.color }} />{it.label}</>;
+        if (!onHover && !onPin) return <span key={it.label} className={styles.cLegendI}>{content}</span>;
+        return (
+          <button
+            key={it.label}
+            type="button"
+            className={styles.cLegendI}
+            data-active={active || undefined}
+            aria-label={`${it.label} 범례 강조`}
+            aria-pressed={pinnedLabel === it.label}
+            onClick={() => { onHover?.(null); onPin?.(it.label); }}
+            onPointerDown={(event) => { legendPointerType.current = event.pointerType; }}
+            onPointerEnter={(event) => { legendPointerType.current = event.pointerType; if (event.pointerType !== "touch") onHover?.(it.label); }}
+            onPointerLeave={() => { legendPointerType.current = null; onHover?.(null); }}
+            onFocus={() => { if (legendPointerType.current !== "touch") onHover?.(it.label); }}
+            onBlur={() => { legendPointerType.current = null; onHover?.(null); }}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                onHover?.(null);
+                onPin?.(null);
+              }
+            }}
+          >
+            {content}
+          </button>
+        );
+      })}
       {!compact && <span className={styles.cLegendT}>{model.legend.sizeLabel}</span>}
     </div>
   );
@@ -196,10 +222,27 @@ export default function CalloutMap({ model, kind, page = 0, onPage, label }: Cal
   const layer = useContext(BasemapContext);
   const [hover, setHover] = useState<string | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
+  const [legendHover, setLegendHover] = useState<string | null>(null);
+  const [legendPinned, setLegendPinned] = useState<string | null>(null);
   const detail = kind === "detail";
   const pages = pageCount(model.complexes.length);
 
-  useEffect(() => setPicked(null), [page]);
+  useEffect(() => {
+    setPicked(null);
+    setLegendHover(null);
+    setLegendPinned(null);
+  }, [page]);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || (!legendHover && !legendPinned)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setLegendHover(null);
+      setLegendPinned(null);
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [legendHover, legendPinned]);
   useEffect(() => {
     if (!detail || !onPage) return;
     const onKey = (e: KeyboardEvent) => {
@@ -223,6 +266,8 @@ export default function CalloutMap({ model, kind, page = 0, onPage, label }: Cal
   const displayPosition = (id: string): [number, number] => clusters?.positions.get(id) ?? scene?.pos.get(id) ?? [0, 0];
   const displayedPlaced = scene?.placed.map((p) => ({ ...p, dot: displayPosition(p.id) })) ?? [];
   const active = hover ?? picked;
+  const activeLegend = legendHover ?? legendPinned;
+  const activeLegendColor = model.legend.items.find((item) => item.label === activeLegend)?.color ?? null;
   const empty = model.complexes.length === 0;
   const sat = layer === "Satellite";
   // 아래 줄: [왼쪽 아래 값 카드(개요)] [범례] ... [축척]. 모바일 카드에서는 값 판과
@@ -274,7 +319,7 @@ export default function CalloutMap({ model, kind, page = 0, onPage, label }: Cal
             ))}
             {/* 연립·다세대 등 기타 공동주택: 번호·라벨 없는 작은 회색 점 */}
             {scene.otherPts.map(([x, y], i) => (
-              <circle key={`o${i}`} cx={x} cy={y} r={2} fill="#9AA0AA" fillOpacity={0.7} />
+              <circle key={`o${i}`} cx={x} cy={y} r={2} fill="#9AA0AA" fillOpacity={activeLegendColor ? 0.2 : 0.7} />
             ))}
             {/* 카드 없는 단지: 점만 (앞뒤 페이지·보드 카드의 나머지) */}
             {model.complexes
@@ -296,11 +341,13 @@ export default function CalloutMap({ model, kind, page = 0, onPage, label }: Cal
               const [x, y] = displayPosition(c.id);
               const r = dotRadius(c.households, scene.hMax, scene.frame.m.rMin, scene.frame.m.rMax);
               const color = dotColor(c);
-              const on = active === c.id;
+              const legendMatch = calloutLegendMatches(c, activeLegendColor);
+              const on = activeLegendColor ? legendMatch : active === c.id;
               return (
                 <g
                   key={c.id}
                   style={{ pointerEvents: "all", cursor: detail ? "pointer" : undefined }}
+                  opacity={activeLegendColor && !legendMatch ? 0.2 : 1}
                   onMouseEnter={() => setHover(c.id)}
                   onMouseLeave={() => setHover(null)}
                   onClick={() => (page === 0 && detail && onPage ? onPage(Math.ceil(c.rank / 10)) : setPicked((v) => (v === c.id ? null : c.id)))}
@@ -315,15 +362,21 @@ export default function CalloutMap({ model, kind, page = 0, onPage, label }: Cal
               );
             })}
           </svg>
-          {displayedPlaced.map((p) => (
-            <Card key={p.id} c={model.complexes.find((c) => c.id === p.id)!} siblings={model.complexes} p={p} frame={scene.frame} year={model.analysisYear} hover={active === p.id} onHover={setHover} onPick={(id) => setPicked((v) => (v === id ? null : id))} />
-          ))}
+          {displayedPlaced.map((p) => {
+            const complex = model.complexes.find((c) => c.id === p.id)!;
+            const legendMatch = calloutLegendMatches(complex, activeLegendColor);
+            return <Card key={p.id} c={complex} siblings={model.complexes} p={p} frame={scene.frame} year={model.analysisYear} hover={activeLegendColor ? legendMatch : active === p.id} dim={!!activeLegendColor && !legendMatch} onHover={setHover} onPick={(id) => setPicked((v) => (v === id ? null : id))} />;
+          })}
           {detail && <Pager model={model} page={page} onPage={(p) => onPage?.(Math.max(0, Math.min(pages, p)))} />}
           {scene.strip && page > 0 && <Strip cards={stripCards(scene.withCards, model.analysisYear)} active={active} onPick={(id) => setPicked((v) => (v === id ? null : id))} top={scene.stripTop} />}
           {!empty && ((detail && size.w > 560) || (!detail && size.w >= 240)) && (
             <CalloutLegend
               model={model}
               compact={!detail}
+              activeLabel={activeLegend}
+              pinnedLabel={legendPinned}
+              onHover={setLegendHover}
+              onPin={(labelValue) => setLegendPinned((current) => labelValue === null || current === labelValue ? null : labelValue)}
               style={detail ? { left: legendX, maxWidth: Math.max(160, scaleX - 12 - legendX), bottom: OV.stripH + 12 } : { left: 8, bottom: 8, maxWidth: "calc(100% - 128px)", display: "flex", flexWrap: "nowrap", whiteSpace: "nowrap", overflow: "hidden", padding: "3px 9px", gap: 8, borderRadius: 999, fontSize: 11 }}
             />
           )}

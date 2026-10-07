@@ -1,8 +1,8 @@
-import { useId, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { useId, useRef, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { layerStyle, legendItems, RASTER_STYLES, type MapModel, type RasterStyle } from "@/lib/v2/ui/map-layers";
 import { BASEMAP_ATTRIBUTION, BASEMAP_STACK, framedViewport, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, worldPx, type BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { rasterAffine, rasterLegendColor, resolveRasterStyle } from "@/lib/v2/ui/raster-image";
-import type { RasterRef } from "@/lib/v2/tile-result";
+import type { MapFeature, MapLine, MapPolygon, RasterRef } from "@/lib/v2/tile-result";
 import { maxOf, minOf } from "@/lib/v2/extent";
 import { isSiteParcelLayer } from "@/lib/v2/ui/site-parcel";
 
@@ -59,6 +59,22 @@ export type MapFigureProps = {
   siteY?: number;
   /** 상세 창에서 행/지도 선택을 같은 fid로 강조한다. */
   selectedFids?: readonly string[];
+  /** 범례 라벨 기준 화면 강조. 같은 라벨의 여러 레이어를 함께 강조한다. */
+  highlightLabel?: string | null;
+  /** 키보드/클릭으로 고정된 범례 라벨(aria-pressed에 사용). */
+  highlightPinnedLabel?: string | null;
+  /** 요소 호버 라벨과 고정 라벨에 쓰는 현재 요소 키. */
+  hoverKey?: string | null;
+  /** 지도에 남길 고정 라벨 키. */
+  pinnedKeys?: readonly string[];
+  /** 요소 포인터 호버. 터치 포인터에서는 호출하지 않는다. */
+  onFeatureHover?: (key: string | null) => void;
+  /** 요소 클릭/키보드 선택에 따른 라벨 고정 토글. */
+  onFeaturePin?: (feature: MapFigureElementPick) => void;
+  /** SVG 범례 호버. */
+  onLegendHover?: (label: string | null) => void;
+  /** SVG 범례 클릭/키보드 고정 토글. null은 강조 해제다. */
+  onLegendPin?: (label: string | null) => void;
   /** 상세 창의 보행 경로 등 WGS84 경로선. */
   path?: Array<[number, number]>;
   /** 점·면·선 지물을 클릭하거나 Enter/Space로 선택했을 때의 좌표. */
@@ -67,7 +83,11 @@ export type MapFigureProps = {
   onMapClick?: (coordinate: { lng: number; lat: number }) => void;
 };
 
-export type MapFigurePick = NonNullable<MapFigureProps["onFeatureClick"]> extends (feature: infer T) => void ? T : never;
+export type MapFigurePick = { fid?: string; lng: number; lat: number; kind: "feature" | "polygon" | "line" };
+export type MapFigureElementPick = MapFigurePick & { key: string };
+
+/** MapFigure 요소의 저장·호버 키. tileId는 호출부의 보드 상태 범위로 분리한다. */
+export const mapFeatureKey = (layer: string, fid: string | undefined, index: number): string => `${layer}|${fid ?? index}`;
 
 const FONT = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif';
 const INK = "#16181d";
@@ -78,6 +98,78 @@ const hit = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y
 type ScreenPoint = readonly [number, number];
 
 export type SiteMarkerMode = "parcel" | "ring";
+
+export type MapLabelEntry = {
+  key: string;
+  text: string;
+  layer: string;
+  kind: "feature" | "polygon" | "line";
+  fid?: string;
+};
+
+const trimText = (value: string | null | undefined): string | null => {
+  const text = value?.trim();
+  return text ? text : null;
+};
+
+function formatLabelDistance(meters: number): string {
+  if (meters < 1000) return `${Math.round(meters).toLocaleString("ko-KR")}m`;
+  const km = meters / 1000;
+  return `${Number.isInteger(km) ? km.toFixed(0) : km.toFixed(1)} km`;
+}
+
+function featureLabelValue(feature: MapFeature): string | null {
+  if (feature.approvalYear !== null && feature.approvalYear !== undefined) return String(feature.approvalYear);
+  if (feature.plannedMonth) {
+    const match = /^(\d{4})-(\d{2})$/.exec(feature.plannedMonth);
+    if (match) return `${match[1]}년 ${Number(match[2])}월`;
+  }
+  if (feature.distanceM !== null && feature.distanceM !== undefined) return `직선 ${formatLabelDistance(feature.distanceM)}`;
+  if (feature.households !== null && feature.households !== undefined) return `${Math.round(feature.households).toLocaleString("ko-KR")}세대`;
+  if (feature.floorsMax !== null && feature.floorsMax !== undefined) return `최고 ${Math.round(feature.floorsMax)}층`;
+  if (feature.buildingCount !== null && feature.buildingCount !== undefined) return `${Math.round(feature.buildingCount)}동`;
+  if (feature.parking !== null && feature.parking !== undefined) return `주차 ${Math.round(feature.parking).toLocaleString("ko-KR")}대`;
+  return trimText(feature.label) ?? trimText(feature.type);
+}
+
+function labelText(layer: string, kind: MapLabelEntry["kind"], item: MapFeature | MapPolygon | MapLine): string {
+  const styleLabel = layerStyle(layer).label;
+  if (kind === "feature") {
+    const feature = item as MapFeature;
+    const name = trimText(feature.name);
+    const value = featureLabelValue(feature);
+    if (name) return value && value !== name ? `${name} · ${value}` : name;
+    return value ? `${styleLabel} · ${value}` : `${styleLabel} · 점`;
+  }
+  const explicit = trimText(item.label);
+  return explicit ?? `${styleLabel} · ${kind === "polygon" ? "면" : "선"}`;
+}
+
+/** 보드의 고정 라벨 목록과 SVG 라벨 배치가 같은 문구를 쓰도록 공유한다. */
+export function mapLabelEntries(model: MapModel): MapLabelEntry[] {
+  const features = model.features.map((feature, index) => ({
+    key: mapFeatureKey(feature.layer, feature.fid, index),
+    text: labelText(feature.layer, "feature", feature),
+    layer: feature.layer,
+    kind: "feature" as const,
+    ...(feature.fid ? { fid: feature.fid } : {}),
+  }));
+  const polygons = (model.polygons ?? []).map((polygon, index) => ({
+    key: mapFeatureKey(polygon.layer, polygon.fid, index),
+    text: labelText(polygon.layer, "polygon", polygon),
+    layer: polygon.layer,
+    kind: "polygon" as const,
+    ...(polygon.fid ? { fid: polygon.fid } : {}),
+  }));
+  const lines = (model.lines ?? []).map((line, index) => ({
+    key: mapFeatureKey(line.layer, line.fid, index),
+    text: labelText(line.layer, "line", line),
+    layer: line.layer,
+    kind: "line" as const,
+    ...(line.fid ? { fid: line.fid } : {}),
+  }));
+  return [...features, ...polygons, ...lines];
+}
 
 const SITE_MARKER_EDGE_PX = 10;
 /** 작은 필지는 윤곽이 점처럼 뭉개지므로 후보 1 링으로 바꾼다. 크기는 필지 외곽 상자의 짧은 변으로 본다
@@ -212,13 +304,15 @@ function isBuildingLayer(layer: string): boolean {
   return layer === "building" || layer === "svf_building" || layer.startsWith("bldg_") || layer.includes("building");
 }
 
-export default function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, fixed, label, legend, legendY, north: northOpt, scale = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, selectedFids = [], path = [], onFeatureClick, onMapClick }: MapFigureProps) {
+export default function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, fixed, label, legend, legendY, north: northOpt, scale = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, selectedFids = [], highlightLabel = null, highlightPinnedLabel = null, hoverKey = null, pinnedKeys = [], onFeatureClick, onFeatureHover, onFeaturePin, onLegendHover, onLegendPin, path = [], onMapClick }: MapFigureProps) {
   const rasterModel = model as RasterPresentationModel;
   const activeLayer = model.basemap ?? layer;
   const sat = activeLayer === "Satellite";
   // 항공 사진 위에서는 어두운 선·점 테두리가 묻히므로 흰색으로 바꾼다
   const line = sat ? "#fff" : INK;
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
+  const lastPointerType = useRef<string | null>(null);
+  const lastLegendPointerType = useRef<string | null>(null);
   const u = Math.min(1.5, Math.max(1, H / 360));
   const activeRaster = selectedRaster(rasterModel, rasterName);
 
@@ -388,8 +482,11 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   for (let m = 500; m < model.radiusM - 1; m += 500) rings.push(m / mpp);
 
   const selected = new Set(selectedFids);
+  const pinned = new Set(pinnedKeys);
+  const highlightActive = highlightLabel !== null;
+  const isLayerHighlighted = (layerName: string) => !highlightActive || layerStyle(layerName).label === highlightLabel;
   const isSelected = (fid: string | undefined) => !!fid && selected.has(fid);
-  const feats = model.features.map((f) => ({ f, p: proj(f.lng, f.lat), selected: isSelected(f.fid) }));
+  const feats = model.features.map((f, index) => ({ f, p: proj(f.lng, f.lat), selected: isSelected(f.fid), index }));
   const linePaths = (model.lines ?? []).map((l, index) => ({ l, points: l.points.map(([lng, lat]) => proj(lng, lat)), index }));
   const wmax = Math.max(0, maxOf(model.features.map((f) => f.weight ?? 0)));
   const radiusOf = (f: MapFigureProps["model"]["features"][number]) => {
@@ -452,20 +549,39 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
     return [total[0] / points.length, total[1] / points.length];
   };
   const pickProps = (pick: MapFigurePick, key: string, labelText: string) => {
-    if (!onFeatureClick) return {};
-    const choose = () => onFeatureClick(pick);
+    if (!onFeatureClick && !onFeatureHover && !onFeaturePin) return {};
+    const choose = () => onFeatureClick?.(pick);
+    const pin = () => onFeaturePin?.({ ...pick, key });
     const onKeyDown = (event: ReactKeyboardEvent<SVGElement>) => {
+      if (event.key === "Escape") {
+        onFeatureHover?.(null);
+        return;
+      }
       if (event.key !== "Enter" && event.key !== " ") return;
       event.preventDefault();
       choose();
+      pin();
     };
     return {
       "data-map-feature": key,
+      className: "map-figure-interactive",
       role: "button" as const,
       tabIndex: 0,
       "aria-label": labelText,
-      onClick: choose,
+      "aria-pressed": onFeaturePin ? pinned.has(key) : undefined,
+      onClick: () => {
+        choose();
+        pin();
+      },
       onKeyDown,
+      onPointerDown: (event: ReactPointerEvent<SVGElement>) => { lastPointerType.current = event.pointerType; },
+      onPointerEnter: (event: ReactPointerEvent<SVGElement>) => {
+        lastPointerType.current = event.pointerType;
+        if (event.pointerType !== "touch") onFeatureHover?.(key);
+      },
+      onPointerLeave: () => { lastPointerType.current = null; onFeatureHover?.(null); },
+      onFocus: () => { if (lastPointerType.current !== "touch") onFeatureHover?.(key); },
+      onBlur: () => { lastPointerType.current = null; onFeatureHover?.(null); },
       style: { cursor: "pointer" },
     };
   };
@@ -474,7 +590,7 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
   const mapClick = (event: ReactMouseEvent<SVGSVGElement>) => {
     if (!onMapClick) return;
     const target = event.target as Element;
-    if (target.closest("[data-map-feature]")) return;
+    if (target.closest("[data-map-feature], [data-map-legend]")) return;
     const rect = event.currentTarget.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
     const x = (event.clientX - rect.left) * (W / rect.width);
@@ -510,43 +626,176 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
     : { x0: cx - 2.25 * siteR, y0: cy - 2.25 * siteR, x1: cx + 2.25 * siteR, y1: cy + 2.25 * siteR };
   if (!muted) boxes.push(siteBounds);
 
-  // 라벨은 강조 지물과 면적이 큰 면 지물(최대 5개)만, 겹치면 생략
+  type ScreenLabel = MapLabelEntry & {
+    p: [number, number];
+    radius: number;
+    small: boolean;
+    explicit: boolean;
+    highlighted: boolean;
+    pick: MapFigureElementPick;
+  };
+  const screenLabels: ScreenLabel[] = [
+    ...drawn.map((d) => ({
+      key: mapFeatureKey(d.f.layer, d.f.fid, d.index),
+      text: labelText(d.f.layer, "feature", d.f),
+      layer: d.f.layer,
+      kind: "feature" as const,
+      ...(d.f.fid ? { fid: d.f.fid } : {}),
+      p: d.p,
+      radius: radiusOf(d.f),
+      small: false,
+      explicit: !!trimText(d.f.label) || !!trimText(d.f.name),
+      highlighted: isLayerHighlighted(d.f.layer) && (!!d.f.highlight || d.selected),
+      pick: { fid: d.f.fid, lng: d.f.lng, lat: d.f.lat, kind: "feature" as const, key: mapFeatureKey(d.f.layer, d.f.fid, d.index) },
+    })),
+    ...polygons
+      .slice()
+      .sort((a, b) => b.area - a.area || a.index - b.index)
+      .filter((d, index) => index < 5 || pinned.has(mapFeatureKey(d.polygon.layer, d.polygon.fid, d.index)))
+      .map((d) => ({
+      key: mapFeatureKey(d.polygon.layer, d.polygon.fid, d.index),
+      text: labelText(d.polygon.layer, "polygon", d.polygon),
+      layer: d.polygon.layer,
+      kind: "polygon" as const,
+      ...(d.polygon.fid ? { fid: d.polygon.fid } : {}),
+      p: d.center,
+      radius: 0,
+      small: false,
+      explicit: !!trimText(d.polygon.label),
+      highlighted: isLayerHighlighted(d.polygon.layer) && highlightActive,
+      pick: { fid: d.polygon.fid, ...(() => { const [lng, lat] = centerOf(d.polygon.rings[0] ?? []); return { lng, lat }; })(), kind: "polygon" as const, key: mapFeatureKey(d.polygon.layer, d.polygon.fid, d.index) },
+    })),
+    ...linePaths.map((d) => {
+      const center = d.points[Math.floor(d.points.length / 2)] ?? [cx, cy];
+      const [lng, lat] = centerOf(d.l.points);
+      return {
+        key: mapFeatureKey(d.l.layer, d.l.fid, d.index),
+        text: labelText(d.l.layer, "line", d.l),
+        layer: d.l.layer,
+        kind: "line" as const,
+        ...(d.l.fid ? { fid: d.l.fid } : {}),
+        p: center as [number, number],
+        radius: 0,
+        small: true,
+        explicit: !!trimText(d.l.label),
+        highlighted: isLayerHighlighted(d.l.layer) && highlightActive,
+        pick: { fid: d.l.fid, lng, lat, kind: "line" as const, key: mapFeatureKey(d.l.layer, d.l.fid, d.index) },
+      };
+    }),
+  ];
+  const labelByKey = new Map(screenLabels.map((entry) => [entry.key, entry]));
+  const labelBox = (d: ScreenLabel, labelFs: number, decorated = false): { width: number; height: number } => ({
+    width: textW(d.text, labelFs) + (decorated ? 12 : d.small ? 5 : 7) * u,
+    height: labelFs * 1.45,
+  });
+  const closestPoint = (box: Box, p: readonly [number, number]): [number, number] => [
+    Math.max(box.x0, Math.min(box.x1, p[0])),
+    Math.max(box.y0, Math.min(box.y1, p[1])),
+  ];
+  const labelNode = (d: ScreenLabel, box: Box, variant: "auto" | "fixed" | "hover", fallback = false): ReactNode => {
+    const fixedLabel = variant === "fixed";
+    const hoverLabel = variant === "hover";
+    const labelFs = fixedLabel || hoverLabel ? Math.max(11, fs) : d.small ? fs * 0.85 : fs;
+    const edge = closestPoint(box, d.p);
+    if (variant === "auto") {
+      return (
+        <text key={`label-${d.key}`} x={box.x0 + 2 * u} y={box.y0 + labelFs * 0.95} fontSize={labelFs} fontWeight={d.small ? 500 : 700} fill={INK} fillOpacity={highlightActive ? (d.highlighted ? 1 : 0.2) : 1} stroke="#fff" strokeWidth={3 * u} strokeLinejoin="round" paintOrder="stroke" pointerEvents="none">
+          {d.text}
+        </text>
+      );
+    }
+    const pinPick = () => onFeaturePin?.(d.pick);
+    const onKeyDown = (event: ReactKeyboardEvent<SVGGElement>) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        pinPick();
+      }
+    };
+    if (hoverLabel) {
+      return (
+        <g key={`hover-label-${d.key}`} pointerEvents="none">
+          <line x1={d.p[0]} y1={d.p[1]} x2={edge[0]} y2={edge[1]} stroke="#111" strokeWidth={1.2 * u} />
+          <rect x={box.x0} y={box.y0} width={box.x1 - box.x0} height={box.y1 - box.y0} rx={3 * u} fill="#111" />
+          <text x={box.x0 + 4 * u} y={box.y0 + labelFs * 0.98} fontSize={labelFs} fontWeight={500} fill="#fff">
+            {d.text}
+          </text>
+        </g>
+      );
+    }
+    return (
+      <g
+        key={`pinned-label-${d.key}`}
+        data-map-label-key={d.key}
+        {...(onFeaturePin ? { "data-map-feature": d.key, className: "map-figure-interactive", role: "button" as const, tabIndex: 0, "aria-label": `${d.text} 고정 라벨`, "aria-pressed": true, onClick: pinPick, onKeyDown } : { "aria-hidden": true })}
+        style={onFeaturePin ? { cursor: "pointer" } : undefined}
+        pointerEvents={onFeaturePin ? "all" : "none"}
+      >
+        <line x1={d.p[0]} y1={d.p[1]} x2={edge[0]} y2={edge[1]} stroke="#111" strokeWidth={1.2 * u} />
+        <rect x={box.x0} y={box.y0} width={box.x1 - box.x0} height={box.y1 - box.y0} rx={3 * u} fill="#fff" stroke="#111" strokeWidth={1.2 * u} />
+        <circle cx={box.x0 + 4 * u} cy={(box.y0 + box.y1) / 2} r={Math.max(1.8 * u, labelFs * 0.2)} fill="#111" />
+        <text x={box.x0 + 8 * u} y={box.y0 + labelFs * 0.98} fontSize={labelFs} fontWeight={500} fill="#111">
+          {d.text}
+        </text>
+        {fallback && <circle cx={d.p[0]} cy={d.p[1]} r={2.1 * u} fill="#111" />}
+      </g>
+    );
+  };
+  const placeLabel = (d: ScreenLabel, fixedLabel: boolean): { box: Box; fallback: boolean } | null => {
+    const labelFs = fixedLabel ? Math.max(11, fs) : d.small ? fs * 0.85 : fs;
+    const dimensions = labelBox(d, labelFs, fixedLabel);
+    const gap = d.radius + 3 * u;
+    const spotsFor = (distance: number) => [
+      { x: d.p[0] + distance, y: d.p[1] - dimensions.height / 2 },
+      { x: d.p[0] - distance - dimensions.width, y: d.p[1] - dimensions.height / 2 },
+      { x: d.p[0] - dimensions.width / 2, y: d.p[1] - distance - dimensions.height - 2 * u },
+      { x: d.p[0] - dimensions.width / 2, y: d.p[1] + distance },
+    ];
+    const fits = (spots: Array<{ x: number; y: number }>) => spots
+      .map((spot) => ({ x0: spot.x, y0: spot.y, x1: spot.x + dimensions.width, y1: spot.y + dimensions.height }))
+      .find((box) => box.x0 >= 2 && box.x1 <= W - 2 && box.y0 >= 2 && box.y1 <= H - 2 && !boxes.some((other) => hit(other, box)));
+    const fit = fits(spotsFor(gap));
+    if (fit) return { box: fit, fallback: false };
+    if (!fixedLabel) return null;
+    // 대지 표식·먼저 고정된 라벨이 네 후보를 모두 차지하면 더 멀리
+    // 벌어진 후보를 먼저 찾는다. 그래도 못 놓을 때만 화면 안으로 clamp한다.
+    const farGap = gap + Math.max(24 * u, dimensions.height * 1.5);
+    const extended = fits(spotsFor(farGap));
+    if (extended) return { box: extended, fallback: true };
+    const preferred = spotsFor(gap)[0]!;
+    const clamped: Box = {
+      x0: Math.max(2, Math.min(W - dimensions.width - 2, preferred.x)),
+      y0: Math.max(2, Math.min(H - dimensions.height - 2, preferred.y)),
+      x1: 0,
+      y1: 0,
+    };
+    clamped.x1 = clamped.x0 + dimensions.width;
+    clamped.y1 = clamped.y0 + dimensions.height;
+    return { box: clamped, fallback: true };
+  };
   const labels: ReactNode[] = [];
   if (!bare) {
-    const candidates = [
-      ...drawn.filter((d) => d.f.label).map((d, i) => ({ text: d.f.label!, p: d.p, radius: radiusOf(d.f), highlight: !!d.f.highlight || d.selected, key: `f${i}-${d.f.layer}`, small: false })),
-      ...polygons
-        .filter((d) => d.polygon.label)
-        .sort((a, b) => b.area - a.area || a.index - b.index)
-        .slice(0, 5)
-        .map((d) => ({ text: d.polygon.label!, p: d.center, radius: 0, highlight: false, key: `p${d.index}`, small: false })),
-      ...linePaths
-        .filter((d) => d.l.label)
-        .map((d) => ({ text: d.l.label!, p: d.points[Math.floor(d.points.length / 2)]!, radius: 0, highlight: false, key: `l${d.index}`, small: true })),
-    ].sort((a, b) => Number(b.highlight) - Number(a.highlight));
-    candidates.forEach((d) => {
-        const w = textW(d.text, fs) + 4 * u;
-        // 지물 오른쪽 → 왼쪽 → 위 → 아래 순으로 겹치지 않는 자리를 찾는다. 없으면 생략.
-        const g = d.radius + 3 * u;
-        const spots = [
-          { x: d.p[0] + g, y: d.p[1] - fs / 2 },
-          { x: d.p[0] - g - w, y: d.p[1] - fs / 2 },
-          { x: d.p[0] - w / 2, y: d.p[1] - g - fs - 2 },
-          { x: d.p[0] - w / 2, y: d.p[1] + g },
-        ];
-        const fit = spots
-          .map((a) => ({ a, b: { x0: a.x, y0: a.y - 1, x1: a.x + w, y1: a.y + fs + 2 } }))
-          .find(({ b }) => b.x0 >= 2 && b.x1 <= W - 2 && b.y0 >= 2 && b.y1 <= H - 2 && !boxes.some((o) => hit(o, b)));
-        if (!fit) return;
-        const { a: anchor, b } = fit;
-        boxes.push(b);
-        labels.push(
-          <text key={`label-${d.key}`} x={anchor.x + 2 * u} y={anchor.y + fs * 0.85} fontSize={d.small ? fs * 0.85 : fs} fontWeight={d.small ? 500 : 700} fill={INK} stroke="#fff" strokeWidth={3 * u} strokeLinejoin="round" paintOrder="stroke">
-            {d.text}
-          </text>,
-        );
-      });
+    const pinnedLabels = pinnedKeys.map((key) => labelByKey.get(key)).filter((entry): entry is ScreenLabel => !!entry);
+    const pinnedSet = new Set(pinnedLabels.map((entry) => entry.key));
+    for (const entry of pinnedLabels) {
+      const placed = placeLabel(entry, true);
+      if (!placed) continue;
+      boxes.push(placed.box);
+      labels.push(labelNode(entry, placed.box, "fixed", placed.fallback));
+    }
+    const automatic = screenLabels
+      .filter((entry) => entry.explicit || entry.highlighted)
+      .filter((entry) => !pinnedSet.has(entry.key))
+      .sort((a, b) => Number(b.highlighted) - Number(a.highlighted) || Number(b.explicit) - Number(a.explicit) || a.key.localeCompare(b.key));
+    for (const entry of automatic) {
+      const placed = placeLabel(entry, false);
+      if (!placed) continue;
+      boxes.push(placed.box);
+      labels.push(labelNode(entry, placed.box, "auto"));
+    }
   }
+  const hoverLabel = !bare && hoverKey && !pinned.has(hoverKey) ? labelByKey.get(hoverKey) : undefined;
+  const hoverLabelPlacement = hoverLabel ? placeLabel(hoverLabel, true) : null;
+  const hoverLabelNode = hoverLabel && hoverLabelPlacement ? labelNode(hoverLabel, hoverLabelPlacement.box, "hover") : null;
 
   const north = { x: W - rightInset - 20 * u, y: (northOpt || 22 * u) };
   const dim = `M0 0H${W}V${H}H0Z M${cx - R} ${cy}a${R} ${R} 0 1 0 ${2 * R} 0a${R} ${R} 0 1 0 ${-2 * R} 0Z`;
@@ -648,13 +897,17 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
             const polygonFid = polygon.polygon.fid;
             const polygonCenter = centerOf(polygon.polygon.rings[0] ?? []);
             const polygonSelected = isSelected(polygonFid);
-            return <path key={`poly${polygon.index}`} data-poly="true" d={polygonPath(polygon.rings)} fillRule="evenodd" fill={neutralBuilding ? "#F8FAFC" : estimated ? `url(#${hatchId(polygon.index)})` : st.fill ?? st.color} fillOpacity={neutralBuilding ? 0.94 : estimated ? 1 : st.fillOpacity ?? polygonOpacity} stroke={polygonSelected ? INK : neutralBuilding ? "#475569" : st.stroke ?? st.color} strokeWidth={(polygonSelected ? 3 : neutralBuilding ? 0.8 : st.strokeWidth ?? 1) * u} {...pickProps({ fid: polygonFid, lng: polygonCenter[0], lat: polygonCenter[1], kind: "polygon" }, polygonFid ?? `polygon-${polygon.index}`, `${layerStyle(polygon.polygon.layer).label} 면${polygonFid ? ` ${polygonFid}` : ""}`)} />;
+            const layerHighlighted = isLayerHighlighted(polygon.polygon.layer);
+            const polygonKey = mapFeatureKey(polygon.polygon.layer, polygonFid, polygon.index);
+            return <path key={`poly${polygon.index}`} data-poly="true" d={polygonPath(polygon.rings)} fillRule="evenodd" fill={neutralBuilding ? "#F8FAFC" : estimated ? `url(#${hatchId(polygon.index)})` : st.fill ?? st.color} fillOpacity={neutralBuilding ? 0.94 : estimated ? 1 : st.fillOpacity ?? polygonOpacity} opacity={highlightActive && !layerHighlighted ? 0.2 : undefined} stroke={highlightActive && layerHighlighted ? INK : polygonSelected ? INK : neutralBuilding ? "#475569" : st.stroke ?? st.color} strokeWidth={(highlightActive && layerHighlighted ? 1.6 : polygonSelected ? 3 : neutralBuilding ? 0.8 : st.strokeWidth ?? 1) * u} {...pickProps({ fid: polygonFid, lng: polygonCenter[0], lat: polygonCenter[1], kind: "polygon" }, polygonKey, labelText(polygon.polygon.layer, "polygon", polygon.polygon))} />;
           })}
           {linePaths.map((d) => {
             const st = layerStyle(d.l.layer);
             const lineSelected = isSelected(d.l.fid);
             const center = centerOf(d.l.points);
-            return <polyline key={`line${d.index}`} data-line="true" points={d.points.map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke={lineSelected ? INK : st.color} strokeWidth={(lineSelected ? 4 : 1.5) * u} strokeLinejoin="round" {...pickProps({ fid: d.l.fid, lng: center[0], lat: center[1], kind: "line" }, d.l.fid ?? `line-${d.index}`, `${layerStyle(d.l.layer).label} 선${d.l.fid ? ` ${d.l.fid}` : ""}`)} />;
+            const layerHighlighted = isLayerHighlighted(d.l.layer);
+            const lineKey = mapFeatureKey(d.l.layer, d.l.fid, d.index);
+            return <polyline key={`line${d.index}`} data-line="true" points={d.points.map(([x, y]) => `${x},${y}`).join(" ")} fill="none" opacity={highlightActive && !layerHighlighted ? 0.2 : undefined} stroke={highlightActive && layerHighlighted ? INK : lineSelected ? INK : st.color} strokeWidth={(highlightActive && layerHighlighted ? 1.6 : lineSelected ? 4 : 1.5) * u} strokeLinejoin="round" {...pickProps({ fid: d.l.fid, lng: center[0], lat: center[1], kind: "line" }, lineKey, labelText(d.l.layer, "line", d.l))} />;
           })}
         </g>
         {rings.map((r, i) => (
@@ -663,8 +916,10 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
         <circle cx={cx} cy={cy} r={R} fill="none" stroke={line} strokeOpacity={sat ? 0.95 : 0.75} strokeWidth={1.6 * u} />
 
         {drawn.map((d, i) => {
-          if (d.f.highlight && d.f.layer.endsWith("_nearest"))
-            return <line key={`nearest-${i}-${d.f.fid ?? d.f.layer}`} x1={cx} y1={cy} x2={d.p[0]} y2={d.p[1]} stroke={line} strokeWidth={1.4 * u} strokeDasharray={`${3 * u} ${3 * u}`} />;
+          if (d.f.highlight && d.f.layer.endsWith("_nearest")) {
+            const highlighted = isLayerHighlighted(d.f.layer);
+            return <line key={`nearest-${i}-${d.f.fid ?? d.f.layer}`} x1={cx} y1={cy} x2={d.p[0]} y2={d.p[1]} stroke={highlightActive && highlighted ? INK : line} strokeWidth={(highlightActive && highlighted ? 1.6 : 1.4) * u} strokeOpacity={highlightActive && !highlighted ? 0.2 : undefined} strokeDasharray={`${3 * u} ${3 * u}`} />;
+          }
           return null;
         })}
         {drawn.map((d, i) => {
@@ -673,19 +928,22 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
            const neutralBuilding = rasterImages.length > 0 && isBuildingLayer(d.f.layer);
            if (d.p[0] < -r || d.p[1] < -r || d.p[0] > W + r || d.p[1] > H + r) return null;
           const hollow = st.sizeBy === "weight" && !d.f.weight;
+          const layerHighlighted = isLayerHighlighted(d.f.layer);
+          const featureKey = mapFeatureKey(d.f.layer, d.f.fid, d.index);
           return (
             <circle
               key={`feature-${i}-${d.f.fid ?? d.f.layer}`}
               cx={d.p[0]}
               cy={d.p[1]}
               r={r}
-               fill={neutralBuilding ? "#F8FAFC" : hollow ? "#fff" : st.color}
-               fillOpacity={neutralBuilding ? 0.94 : hollow ? 0.6 : st.sizeBy === "weight" ? 0.55 : d.f.highlight ? 1 : 0.85}
-               stroke={d.f.highlight || d.selected ? INK : neutralBuilding ? "#475569" : sat ? "#fff" : st.sizeBy === "weight" ? st.color : "#fff"}
-               strokeWidth={(d.f.highlight || d.selected ? 2.8 : neutralBuilding ? 0.8 : sat ? 1.5 : st.sizeBy === "weight" ? 1.4 : 0.8) * u}
-               {...pickProps({ fid: d.f.fid, lng: d.f.lng, lat: d.f.lat, kind: "feature" }, d.f.fid ?? `feature-${i}`, `${st.label}${d.f.label ? ` ${d.f.label}` : ""}`)}
-             />
-           );
+              fill={neutralBuilding ? "#F8FAFC" : hollow ? "#fff" : st.color}
+              fillOpacity={neutralBuilding ? 0.94 : hollow ? 0.6 : st.sizeBy === "weight" ? 0.55 : d.f.highlight ? 1 : 0.85}
+              opacity={highlightActive && !layerHighlighted ? 0.2 : undefined}
+              stroke={highlightActive && layerHighlighted ? INK : d.f.highlight || d.selected ? INK : neutralBuilding ? "#475569" : sat ? "#fff" : st.sizeBy === "weight" ? st.color : "#fff"}
+              strokeWidth={(highlightActive && layerHighlighted ? 1.6 : d.f.highlight || d.selected ? 2.8 : neutralBuilding ? 0.8 : sat ? 1.5 : st.sizeBy === "weight" ? 1.4 : 0.8) * u}
+              {...pickProps({ fid: d.f.fid, lng: d.f.lng, lat: d.f.lat, kind: "feature" }, featureKey, labelText(d.f.layer, "feature", d.f))}
+            />
+          );
          })}
         {routePoints.length >= 2 && (
           <>
@@ -695,8 +953,6 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
             <circle cx={routePoints.at(-1)![0]} cy={routePoints.at(-1)![1]} r={6.5 * u} fill="#D97706" stroke="#fff" strokeWidth={2.5 * u} />
           </>
         )}
-        {labels}
-
         {/* 대지 표시 */}
         {!muted && (
           <g role="img" aria-label="분석 대지">
@@ -728,12 +984,44 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
         {/* 범례·문구 */}
         {showLegend && (
           <g>
-            <rect data-map-legend-panel="true" x={panelX} y={panelY} width={panelW} height={panelH} rx={cardRailRasterLegend ? 11 * u : 6 * u} fill="#fff" fillOpacity={0.94} />
+            <rect data-map-legend="panel" data-map-legend-panel="true" x={panelX} y={panelY} width={panelW} height={panelH} rx={cardRailRasterLegend ? 11 * u : 6 * u} fill="#fff" fillOpacity={0.94} />
             {vectorLegendVisible && (
               <>
-                {legendRows.map((row, ri) =>
-                  row.map((it, ii) => (
-                    <g key={`legend-${ri}-${ii}-${it.layer}`}>
+                {legendRows.map((row, ri) => row.map((it, ii) => {
+                  const legendLabel = it.site ? "대지" : layerStyle(it.layer).label;
+                  const interactive = !it.site && !!(onLegendHover || onLegendPin);
+                  const onKeyDown = (event: ReactKeyboardEvent<SVGGElement>) => {
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onLegendHover?.(null);
+                      onLegendPin?.(null);
+                    } else if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onLegendPin?.(legendLabel);
+                    }
+                  };
+                  return (
+                    <g
+                      key={`legend-${ri}-${ii}-${it.layer}`}
+                      data-map-legend={interactive ? legendLabel : "decorative"}
+                      {...(interactive ? {
+                        role: "button" as const,
+                        className: "map-figure-interactive",
+                        tabIndex: 0,
+                        "aria-label": `${legendLabel} 범례 강조`,
+                        "aria-pressed": highlightPinnedLabel === legendLabel,
+                        onClick: () => onLegendPin?.(legendLabel),
+                        onKeyDown,
+                        onPointerDown: (event: ReactPointerEvent<SVGGElement>) => { lastLegendPointerType.current = event.pointerType; },
+                        onPointerEnter: (event: ReactPointerEvent<SVGGElement>) => { lastLegendPointerType.current = event.pointerType; if (event.pointerType !== "touch") onLegendHover?.(legendLabel); },
+                        onPointerLeave: () => { lastLegendPointerType.current = null; onLegendHover?.(null); },
+                        onFocus: () => { if (lastLegendPointerType.current !== "touch") onLegendHover?.(legendLabel); },
+                        onBlur: () => { lastLegendPointerType.current = null; onLegendHover?.(null); },
+                        style: { cursor: "pointer" },
+                      } : { "aria-hidden": true })}
+                    >
+                      {interactive && <rect x={panelX + pad + it.x} y={ly + ri * rowH} width={it.w} height={rowH} rx={2 * u} fill={highlightLabel === legendLabel ? "#eef0f3" : "transparent"} stroke={highlightLabel === legendLabel ? INK : "transparent"} strokeWidth={highlightLabel === legendLabel ? 1.1 * u : 0} />}
                       {it.site ? (
                         <g transform={`translate(${panelX + pad * 1.8 + it.x + 4 * u} ${ly + pad * 0.7 + ri * rowH + rowH / 2})`} aria-hidden="true">
                           <rect x={-3.2 * u} y={-3.2 * u} width={6.4 * u} height={6.4 * u} fill="#fff" stroke="#111" strokeWidth={0.9 * u} transform="rotate(45)" />
@@ -743,11 +1031,11 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
                         <circle cx={panelX + pad * 1.8 + it.x + 4 * u} cy={ly + pad * 0.7 + ri * rowH + rowH / 2} r={4 * u} fill={layerStyle(it.layer).color} fillOpacity={0.85} />
                       )}
                       <text x={panelX + pad * 1.8 + it.x + 11 * u} y={ly + pad * 0.7 + ri * rowH + rowH * 0.72} fontSize={fs} fill={INK}>
-                        {it.site ? "대지" : layerStyle(it.layer).label}
+                        {legendLabel}
                       </text>
                     </g>
-                  )),
-                )}
+                  );
+                }))}
                 {notes.map((n, i) => (
                   <text key={`note-${i}-${n}`} x={panelX + pad + pad * 0.8} y={ly + pad * 0.7 + legendRowsN * rowH + i * rowH * 0.95 + rowH * 0.72} fontSize={fs * 0.95} fill="#555a64">
                     {n}
@@ -884,6 +1172,9 @@ export default function MapFigure({ model, width: W, height: H, basemap = "tiles
             </text>
           )}
         </g>
+        {labels}
+        {/* 호버 라벨은 모든 지도 장식 위에 놓고 포인터 이벤트를 받지 않는다. */}
+        {hoverLabelNode}
       </g>
     </svg>
   );
