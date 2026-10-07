@@ -684,7 +684,13 @@ export function reportPages(s: BoardState, complexCounts: Record<string, number>
   for (const id of s.order) {
     if (!s.included[id]) continue;
     tiles += 1;
-    pages += id in complexCounts ? calloutReportPages(s.callout[id] ?? DEFAULT_CALLOUT_MODE, complexCounts[id]) : s.faces[id] === "both" ? 2 : 1;
+    const result = s.results.find((candidate) => candidate.tileId === id);
+    const isS02Cuts = result?.tileCode === "S02" && (result.status === "complete" || result.status === "partial") && s.cuts[id] === 3;
+    pages += id in complexCounts
+      ? calloutReportPages(s.callout[id] ?? DEFAULT_CALLOUT_MODE, complexCounts[id])
+      : isS02Cuts
+        ? 1
+        : s.faces[id] === "both" ? 2 : 1;
   }
   return { tiles, pages };
 }
