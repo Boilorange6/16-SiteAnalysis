@@ -853,6 +853,8 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
           camera={openView.mass?.camera}
           onCamera={(camera) => dispatch({ type: "camera", id: openView.tileId, camera })}
           onWindUploaded={onWindUploaded}
+          address={siteSummary.address}
+          analysisDate={analysisDate}
           onClose={() => {
             setOpenId(null);
             setDialogTab("overview");

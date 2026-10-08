@@ -29,7 +29,7 @@ const VIEW_H = 540;
 const OUT_W = 1920;
 const OUT_H = 1080;
 const PX_PER_INCH = VIEW_W / SLIDE.w;
-type Extra = Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "scale" | "legend" | "bare" | "pinnedKeys">;
+type Extra = Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "scale" | "legend" | "bare" | "pinnedKeys" | "north" | "credit" | "label" | "rightInset">;
 type MassExplodedOptions = { spreadPct: number; scheme?: MassColorScheme };
 const TILE_TIMEOUT_MS = 8000;
 
@@ -46,7 +46,7 @@ const blobToDataUrl = (b: Blob) =>
     r.readAsDataURL(b);
   });
 
-async function fetchTile(url: string): Promise<string | null> {
+export async function fetchTile(url: string): Promise<string | null> {
   try {
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), TILE_TIMEOUT_MS);
@@ -61,7 +61,7 @@ async function fetchTile(url: string): Promise<string | null> {
   }
 }
 
-function svgOf(model: MapModel, tiles: Map<string, string>, layer: BasemapChoice, extra: Extra, rasterCache: Map<string, string>): string {
+export function svgOf(model: MapModel, tiles: Map<string, string>, layer: BasemapChoice, extra: Extra, rasterCache: Map<string, string>, width = VIEW_W, height = VIEW_H): string {
   const host = document.createElement("div");
   const root = createRoot(host);
   try {
@@ -71,20 +71,20 @@ function svgOf(model: MapModel, tiles: Map<string, string>, layer: BasemapChoice
       root.render(
         createElement(MapFigure, {
           model,
-          width: VIEW_W,
-          height: VIEW_H,
+          width,
+          height,
           fixed: true,
           basemap: usable ? "tiles" : "none",
           layer: activeLayer,
           tileHref: (u: string) => tiles.get(u),
           rasterHref: (ref) => (model.analysisId && model.tileCode ? rasterCache.get(rasterKey(model.analysisId, model.tileCode, ref.name)) ?? null : null),
-          label: "분석 반경 지도",
+          label: extra.label ?? "분석 반경 지도",
           // 범례·북쪽·저작권은 슬라이드의 판/출처 띠가 대신한다 (축척만 그림 안, 출처 띠 위)
           legend: extra.legend ?? false,
           bare: extra.bare,
-          north: false,
-          credit: false,
-          bottomInset: slideLayout().strip.h * PX_PER_INCH,
+          north: extra.north ?? false,
+          credit: extra.credit ?? false,
+          bottomInset: slideLayout().strip.h * (width / SLIDE.w),
           ...extra,
         }),
       ),
@@ -95,7 +95,7 @@ function svgOf(model: MapModel, tiles: Map<string, string>, layer: BasemapChoice
   }
 }
 
-async function loadRasters(model: MapModel, rasterCache: Map<string, string>): Promise<void> {
+export async function loadRasters(model: MapModel, rasterCache: Map<string, string>): Promise<void> {
   if (!model.analysisId || !model.tileCode || !model.rasters?.length) return;
   await Promise.all(
     model.rasters.map(async (ref) => {
@@ -127,7 +127,7 @@ export async function prefetchRasters(plan: PlannedSlide[], analysisId: string):
   return cache;
 }
 
-function svgOfMass(mass: MassModel, width: number, height: number, exploded?: MassExplodedOptions): string {
+export function svgOfMass(mass: MassModel, width: number, height: number, exploded?: MassExplodedOptions): string {
   const host = document.createElement("div");
   const root = createRoot(host);
   try {
@@ -138,7 +138,7 @@ function svgOfMass(mass: MassModel, width: number, height: number, exploded?: Ma
   }
 }
 
-function svgOfRose(model: RoseModel, width: number, height: number, season: RoseSeason): string {
+export function svgOfRose(model: RoseModel, width: number, height: number, season: RoseSeason): string {
   const host = document.createElement("div");
   const root = createRoot(host);
   try {
@@ -149,19 +149,19 @@ function svgOfRose(model: RoseModel, width: number, height: number, season: Rose
   }
 }
 
-async function toImage(svg: string, mime: "image/png" | "image/jpeg", quality?: number): Promise<string> {
+async function toImage(svg: string, mime: "image/png" | "image/jpeg", quality?: number, width = OUT_W, height = OUT_H): Promise<string> {
   const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
   try {
     const img = new Image();
     img.src = url;
     await img.decode();
     const canvas = document.createElement("canvas");
-    canvas.width = OUT_W;
-    canvas.height = OUT_H;
+    canvas.width = width;
+    canvas.height = height;
     const g = canvas.getContext("2d")!;
     g.fillStyle = "#fff";
-    g.fillRect(0, 0, OUT_W, OUT_H);
-    g.drawImage(img, 0, 0, OUT_W, OUT_H);
+    g.fillRect(0, 0, width, height);
+    g.drawImage(img, 0, 0, width, height);
     // 지도(사진에 가까운 래스터)는 JPEG로 충분하지만 S01 매스는 새 WebGL PNG를 보존한다.
     return quality === undefined ? canvas.toDataURL(mime) : canvas.toDataURL(mime, quality);
   } finally {
@@ -169,8 +169,12 @@ async function toImage(svg: string, mime: "image/png" | "image/jpeg", quality?: 
   }
 }
 
-const toPng = (svg: string): Promise<string> => toImage(svg, "image/png");
+/** true PNG path; JPEG quality 0.82 belongs only to toJpeg below. */
+export const toPng = (svg: string, width = OUT_W, height = OUT_H): Promise<string> => toImage(svg, "image/png", undefined, width, height);
 const toJpeg = (svg: string): Promise<string> => toImage(svg, "image/jpeg", 0.82);
+
+/** 타일 저장용 SVG → PNG. scale=2이면 1600×1200 SVG가 3200×2400 PNG가 된다. */
+export const svgToPng = (svg: string, width: number, height: number, scale = 2): Promise<string> => toPng(svg, Math.round(width * scale), Math.round(height * scale));
 
 /** 한 장 그리기. tileCache는 같은 중심·반경의 여러 장이 타일을 다시 받지 않게 공유한다. */
 export async function rasterizeMap(

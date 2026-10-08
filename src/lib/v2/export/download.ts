@@ -3,6 +3,8 @@ export const EXPORT_MIME = {
   dxf: "application/dxf",
   glb: "model/gltf-binary",
   "3dm": "application/octet-stream",
+  png: "image/png",
+  svg: "image/svg+xml",
 } as const;
 
 /** Collada is kept separate so existing callers that enumerate EXPORT_MIME remain stable. */
@@ -10,7 +12,7 @@ export const DAE_MIME = "model/vnd.collada+xml";
 
 export type ExportFormat = keyof typeof EXPORT_MIME | "dae";
 
-function safeFilePart(value: string): string {
+export function safeFilePart(value: string): string {
   const safe = value
     .trim()
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_")
@@ -21,7 +23,7 @@ function safeFilePart(value: string): string {
   return safe || "미상";
 }
 
-function compactDate(value: string): string {
+export function compactDate(value: string): string {
   const match = value.trim().match(/^(\d{4})[-/]?(\d{2})[-/]?(\d{2})/);
   if (!match) throw new TypeError(`analysisDate must start with YYYYMMDD or YYYY-MM-DD, got ${value}`);
   return `${match[1]}${match[2]}${match[3]}`;
