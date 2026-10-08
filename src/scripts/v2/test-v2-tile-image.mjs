@@ -65,7 +65,14 @@ assert.match(svg, /한계 · 법적 일조 판정 아님/);
 assert.match(svg, /하지 13:00/);
 assert.match(svg, /href="data:image\/png/);
 assert.doesNotMatch(svg, /(?:href|xlink:href)="https?:\/\//);
-assert.equal(tileFileName("S02", "일조·그림자", "서울특별시 강동구/고덕동 250", "2026-10-08", "png"), "사이트분석_S02_일조·그림자_서울특별시_강동구_고덕동_250_20261008.png");
+// D22는 지도와 바람장미를 둘 다 가진다 — 저장 파일에 바람장미가 그려져야 한다(지도만 나오던 회귀)
+{
+  const dirs = Array.from({ length: 16 }, (_, dir) => (dir === 14 ? [0, 40, 0, 0, 0] : [1, 0, 0, 0, 0]));
+  const rose = { station: "near", dirs, calmHours: 10, missingHours: 5, totalHours: 100 };
+  const roseSvg = tileSvg({ ...view, code: "D22", title: "바람장미", rose }, { width: 1600, height: 1200, withFrame: true, tileHref: () => tilePng });
+  assert.match(roseSvg, /data-rose-dir=/, "D22 저장 SVG에 바람장미 쐐기가 있어야 한다");
+}
+assert.equal(tileFileName("S02","일조·그림자", "서울특별시 강동구/고덕동 250", "2026-10-08", "png"), "사이트분석_S02_일조·그림자_서울특별시_강동구_고덕동_250_20261008.png");
 assert.equal(tileFileName("D22", "바람장미", "서울특별시 강동구 고덕동 250", "20261008", "svg"), "사이트분석_D22_바람장미_서울특별시_강동구_고덕동_250_20261008.svg");
 
 const plate = tileSvg(view, { width: 1600, height: 1200, withFrame: false, tileHref: () => tilePng });

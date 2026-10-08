@@ -170,7 +170,7 @@ function visualFor(view: TileView, layout: TileLayout, options: ResolvedOptions)
   if (options.visualHref && isEmbeddedHref(options.visualHref)) {
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${layout.visualWidth} ${layout.visualHeight}" width="${layout.visualWidth}" height="${layout.visualHeight}"><image href="${escapeXml(options.visualHref)}" x="0" y="0" width="${layout.visualWidth}" height="${layout.visualHeight}" preserveAspectRatio="xMidYMid meet" /></svg>`;
   }
-  if (view.map) return mapVisual(view.map, layout, options);
+  // 카드(tile-card FigureFor)와 같은 우선순위: 3D 매스 → 바람장미 → 지도. D22는 지도와 바람장미를 둘 다 가진다.
   if (view.mass) {
     if (typeof document !== "undefined") {
       try {
@@ -193,6 +193,7 @@ function visualFor(view: TileView, layout: TileLayout, options: ResolvedOptions)
     }
     return staticRose(rose, layout, view.roses?.[season] ? season : "annual");
   }
+  if (view.map) return mapVisual(view.map, layout, options);
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${layout.visualWidth} ${layout.visualHeight}" width="${layout.visualWidth}" height="${layout.visualHeight}"><rect width="100%" height="100%" fill="#F2F2EF" /><text x="50%" y="50%" text-anchor="middle" font-family="Noto Sans KR, sans-serif" font-size="24" fill="#5B606B">자료 없음</text></svg>`;
 }
 
