@@ -143,17 +143,22 @@ function FitRows({ rows }: { rows: TileView["rows"] }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const ul = ref.current?.querySelector("ul");
-    const main = ul?.parentElement;
-    if (!ul || !main) return;
+    // 기준은 높이가 고정된 요약면(.sf, container-type: size) — ul·sfMain은 flex로 줄어들어 기준이 되면 행이 모두 숨는다
+    const face = ul?.closest<HTMLElement>(`.${styles.sf}`);
+    const foot = face?.querySelector<HTMLElement>(`:scope > .${styles.sfFoot}`);
+    if (!ul || !face) return;
     const fit = () => {
       const items = Array.from(ul.children) as HTMLElement[];
       for (const li of items) li.style.display = "";
-      const limit = Math.min(ul.getBoundingClientRect().bottom, main.getBoundingClientRect().bottom) + 0.5;
+      const cs = getComputedStyle(face);
+      const gap = parseFloat(cs.rowGap) || 0;
+      const limit = face.getBoundingClientRect().bottom - parseFloat(cs.paddingBottom) - (foot ? foot.getBoundingClientRect().height + gap : 0) + 0.5;
       for (const li of items) if (li.getBoundingClientRect().bottom > limit) li.style.display = "none";
     };
     fit();
     const ro = new ResizeObserver(fit);
-    ro.observe(main);
+    ro.observe(face);
+    if (foot) ro.observe(foot);
     return () => ro.disconnect();
   }, [rows]);
   return (

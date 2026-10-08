@@ -2626,6 +2626,8 @@ button.badge:focus-visible {
   margin: 0;
   padding: 0;
   display: grid;
+  grid-auto-rows: max-content; /* 행이 눌려 글자가 잘리지 않게 — 넘치는 행은 FitRows가 통째로 숨긴다 */
+  flex: none;
   gap: 3px;
   font-size: 12.5px;
   min-height: 0;
