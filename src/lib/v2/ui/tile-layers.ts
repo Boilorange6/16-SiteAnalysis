@@ -63,14 +63,21 @@ type LayeredMapModel = MapModel & {
   rasterOptions?: RasterRef[];
 };
 
-export function filterMapForLayer(model: MapModel | null, _code: string, layerId: string): LayeredMapModel | null {
-  if (!model || layerId === "all") return model;
+/** 기본 보기에서 빼는 전환 레이어 — 흡수한 타일(D06·D07)의 레이어가 층수 기본 보기에 겹쳐 그려지지 않게 */
+const BASE_EXCLUDES: Record<string, string[]> = { D05: ["height_tall", "height_low"] };
+
+export function filterMapForLayer(model: MapModel | null, code: string, layerId: string): LayeredMapModel | null {
+  if (!model) return model;
   const layered = model as LayeredMapModel;
-  if (layerId.startsWith("sun_hours_")) {
+  let matches: ((layer: string) => boolean) | undefined;
+  if (layerId === "all") {
+    const excluded = (BASE_EXCLUDES[code] ?? []).map((id) => optionMatches[id]!);
+    if (excluded.length === 0) return model;
+    matches = (layer) => !excluded.some((match) => match(layer));
+  } else if (layerId.startsWith("sun_hours_")) {
     const ref = (layered.rasterOptions ?? layered.rasters ?? []).find((candidate) => candidate.name === layerId);
     return ref ? { ...layered, rasters: [ref], defaultRaster: ref.name } : model;
-  }
-  const matches = optionMatches[layerId];
+  } else matches = optionMatches[layerId];
   if (!matches) return model;
   const features = model.features.filter((feature) => matches(feature.layer));
   const polygons = (model.polygons ?? []).filter((polygon) => matches(polygon.layer));

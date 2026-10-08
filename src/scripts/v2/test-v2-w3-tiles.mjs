@@ -71,6 +71,8 @@ const d05 = result("D05", [feature("floors_1_4", "floor"), feature("tall_ge35", 
 assert.deepEqual(layerOptionsForResult(d05).map((option) => option.id), ["all", "height_tall", "height_low"]);
 const tall = viewWithLayer(toTileView(d05), "height_tall");
 assert.deepEqual(tall.map.features.map((item) => item.layer), ["tall_ge35"]);
+const d05Base = viewWithLayer(toTileView(d05), "all");
+assert.deepEqual(d05Base.map.features.map((item) => item.layer), ["floors_1_4"], "층수 기본 보기에 35m·12m 레이어를 겹치지 않는다");
 
 const a12 = result("A12", [feature("zoning_site", "zone"), feature("store", "other")], [polygon("zone_residential", "zone-poly")], [line("road", "road")]);
 const zoning = viewWithLayer(toTileView(a12), "zoning_detail");
