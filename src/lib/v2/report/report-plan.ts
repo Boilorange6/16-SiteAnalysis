@@ -14,6 +14,7 @@ import type { RoseSeason } from "../tile-result";
 import { exportFileName } from "../export/download";
 import { sourceDetailsFor, UNKNOWN_AS_OF, type SourceDetailRow, type SourceMeta } from "../ui/source-details";
 import { CUT_DATE_LABEL, CUT_SEASONS, CUT_SEASON_LABEL, cutNote, cutReady, viewForCut } from "../ui/cut-selection";
+import { CUT_CODES } from "../tile/client";
 
 export type TileSlideBody =
   | { kind: "result"; face: "single" | "front" | "back" }
@@ -110,7 +111,6 @@ export const sourcePageCount = (sourceRows: number): number => Math.max(1, Math.
 const hasResult = (v: TileView) => v.status === "complete" || v.status === "partial";
 const pinnedKeysFor = (board: BoardState, tileId: string): string[] => (board.labels[tileId] ?? []).filter((label) => label.on).map((label) => label.key);
 
-const CUT_CODES = new Set(["S01", "S02", "S03", "S04", "D22"]);
 const RASTER_NAMES = (view: TileView): string[] => {
   const map = view.map as (NonNullable<TileView["map"]> & { rasterOptions?: { name: string }[] }) | null;
   return (map?.rasterOptions ?? map?.rasters ?? []).map((ref) => ref.name);

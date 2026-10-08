@@ -6,6 +6,7 @@ import { CAMERA_PRESETS } from "./mass-projection";
 import type { OutputFace } from "./tile-view";
 import { layerOptionsForResult } from "./tile-layers";
 import { DEFAULT_PRESET_ID, isPresetId, TILE_PRESETS, type PresetId } from "./tile-catalog";
+import { CUT_CODES } from "../tile/client";
 
 export type TileSize = 1 | 2 | 4;
 export type GridColumns = 2 | 3 | 4 | 5 | 6;
@@ -876,7 +877,7 @@ export function reportPages(s: BoardState, complexCounts: Record<string, number>
     const cutPages = result && cut ? cutPagesForResult(result, cut) : 1;
     pages += id in complexCounts
       ? calloutReportPages(s.callout[id] ?? DEFAULT_CALLOUT_MODE, complexCounts[id])
-      : cut && result && ["S01", "S02", "S03", "S04", "D22"].includes(result.tileCode)
+      : cut && result && CUT_CODES.has(result.tileCode)
         ? cutPages
         : s.faces[id] === "both" ? 2 : 1;
   }

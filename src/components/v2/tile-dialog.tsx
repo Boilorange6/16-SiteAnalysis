@@ -10,6 +10,7 @@ import { faceLabel, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view
 import { BadgeList, CutSelect, FaceSelect, Headline, RowList, SourceStrip, Stage, StatusPlate, TitleChip } from "./tile-card";
 import { LayerSelect } from "./layer-select";
 import { cutOwnsRaster, normalizedCut, viewForCut } from "@/lib/v2/ui/cut-selection";
+import { CUT_CODES } from "@/lib/v2/tile/client";
 import { downloadBytes, EXPORT_MIME } from "@/lib/v2/export/download";
 import WindPanel from "./wind-panel";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "./map-box";
@@ -48,8 +49,6 @@ type Props = {
 
 const PANEL_W = 360;
 const insetOf = (w: number) => (w <= 720 ? 0 : PANEL_W + 2 * OV.edge);
-const CUT_UI_CODES = new Set(["S01", "S02", "S03", "S04", "D22"]);
-
 const A05_RANGE_FIELDS = [
   { key: "year", label: "준공연도", unit: "년" },
   { key: "households", label: "세대수", unit: "세대" },
@@ -333,7 +332,7 @@ export default function TileDialog({ view, layer, onLayer, included, face, onInc
             <PinnedLabelPanel view={view} labels={pinnedLabels} onToggle={onToggleLabel} onUnpin={onUnpinLabel} onSetAll={onSetAllLabels} onFocusLabel={setFocusedLabelKey} />
             {view.code === "A05" && <A05FilterPanel filter={a05Filter} counts={a05Counts} onChange={onA05Filter} titleId={`a05-${view.tileId}-reaggregate-title`} />}
             {view.code === "S03" && <WindPanel view={view} layerZ={selectedCut?.tile === "S03" ? selectedCut.layerZ : 6} onLayerZ={(layerZ) => onCut?.({ tile: "S03", mode: selectedCut?.tile === "S03" ? selectedCut.mode : "single", layerZ, season: selectedCut?.tile === "S03" ? selectedCut.season : "annual" })} onUploaded={onWindUploaded} />}
-            {onCut && CUT_UI_CODES.has(view.code) && <CutSelect view={view} value={selectedCut} onChange={onCut} />}
+            {onCut && CUT_CODES.has(view.code) && <CutSelect view={view} value={selectedCut} onChange={onCut} />}
             {view.headline && (
               <div className={styles.stat}>
                 <Headline view={displayView} />

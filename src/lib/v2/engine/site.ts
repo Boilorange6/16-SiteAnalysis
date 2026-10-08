@@ -13,6 +13,9 @@ import { resolveJibunDetailed } from "../data/jibun";
 import { lookupParcelPoint } from "../data/parcels";
 import { isRoadAddress, ROAD_ADDRESS_UNSUPPORTED_MESSAGE } from "../site";
 import { canonicalJson } from "../canonical-json";
+import { SITE_DEPENDENT_TILE_CODES } from "../tile/server";
+
+export { SITE_DEPENDENT_TILE_CODES };
 
 export type SiteKind = "address" | "parcels" | "polygon";
 export type SiteGeometry = Polygon | MultiPolygon;
@@ -46,9 +49,6 @@ export type SiteGeometryResult =
 const MIN_POLYGON_AREA_M2 = 100;
 const MAX_POLYGON_AREA_M2 = 2_000_000;
 const ADJACENCY_TOLERANCE_M = 0.5;
-
-/** 대지 경계·대상 필지에 결과가 의존하는 타일. scene은 D19/S02/A12 결과를 읽으므로 해당 타일도 함께 분리한다. */
-export const SITE_DEPENDENT_TILE_CODES = new Set(["D19", "S02", "A12", "D10", "S01", "S03", "S04"]);
 
 function polygonParts(geometry: Geometry): number[][][][] {
   if (geometry.type === "Polygon") return [geometry.coordinates];
