@@ -1,7 +1,9 @@
 import type { RasterRef, TileResult } from "../tile-result";
+import { tileClientModuleFor } from "../tile/client";
+import type { TileLayerOption } from "../tile/types";
 import type { MapModel } from "./map-layers";
 
-export type TileLayerOption = { id: string; label: string };
+export type { TileLayerOption } from "../tile/types";
 
 const STATIC_OPTIONS: Record<string, TileLayerOption[]> = {
   A01: [{ id: "all", label: "기본 교통" }, { id: "transit", label: "철도·출입구" }],
@@ -12,7 +14,6 @@ const STATIC_OPTIONS: Record<string, TileLayerOption[]> = {
   A10: [{ id: "all", label: "기본 계획" }, { id: "planned_detail", label: "노선·계획역" }],
   A11: [{ id: "all", label: "기본 인구" }, { id: "density_detail", label: "밀도 구간" }],
   A12: [{ id: "all", label: "기본 토지" }, { id: "zoning_detail", label: "용도지역" }],
-  D05: [{ id: "all", label: "층수 기본" }, { id: "height_tall", label: "35m 이상" }, { id: "height_low", label: "12m 이하" }],
   D19: [{ id: "all", label: "지목 기본" }, { id: "parcel_size", label: "필지 규모" }],
 };
 
@@ -50,7 +51,10 @@ function rasterOptions(result: TileResult): TileLayerOption[] {
 }
 
 export function layerOptionsForResult(result: TileResult): TileLayerOption[] {
-  return rasterOptions(result).length > 0 ? rasterOptions(result) : (STATIC_OPTIONS[result.tileCode] ?? []);
+  const raster = rasterOptions(result);
+  if (raster.length > 0) return raster;
+  const moduleOptions = tileClientModuleFor(result.tileCode)?.layers?.options;
+  return moduleOptions ? [...moduleOptions] : (STATIC_OPTIONS[result.tileCode] ?? []);
 }
 
 export function defaultLayerId(result: TileResult): string {
@@ -63,15 +67,18 @@ type LayeredMapModel = MapModel & {
   rasterOptions?: RasterRef[];
 };
 
-/** 기본 보기에서 빼는 전환 레이어 — 흡수한 타일(D06·D07)의 레이어가 층수 기본 보기에 겹쳐 그려지지 않게 */
-const BASE_EXCLUDES: Record<string, string[]> = { D05: ["height_tall", "height_low"] };
+const BASE_EXCLUDES: Record<string, string[]> = {};
+
+function baseExcludesFor(code: string): readonly string[] {
+  return tileClientModuleFor(code)?.layers?.baseExcludes ?? BASE_EXCLUDES[code] ?? [];
+}
 
 export function filterMapForLayer(model: MapModel | null, code: string, layerId: string): LayeredMapModel | null {
   if (!model) return model;
   const layered = model as LayeredMapModel;
   let matches: ((layer: string) => boolean) | undefined;
   if (layerId === "all") {
-    const excluded = (BASE_EXCLUDES[code] ?? []).map((id) => optionMatches[id]!);
+    const excluded = baseExcludesFor(code).map((id) => optionMatches[id]!);
     if (excluded.length === 0) return model;
     matches = (layer) => !excluded.some((match) => match(layer));
   } else if (layerId.startsWith("sun_hours_")) {

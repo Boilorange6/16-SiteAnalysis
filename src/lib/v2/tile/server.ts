@@ -15,9 +15,6 @@ import { d01 } from "../engine/tiles/d01";
 import { d02 } from "../engine/tiles/d02";
 import { d03 } from "../engine/tiles/d03";
 import { d04 } from "../engine/tiles/d04";
-import { d05 } from "./d05/engine";
-import { d06 } from "./d06/engine";
-import { d07 } from "./d07/engine";
 import { d08 } from "../engine/tiles/d08";
 import { d09 } from "../engine/tiles/d09";
 import { d11 } from "../engine/tiles/d11";
@@ -39,6 +36,7 @@ import { d28 } from "../engine/tiles/d28";
 import { mergeTileResults, retargetTile, type MergeOptions } from "../engine/tiles/merge";
 import { s01 } from "../engine/tiles/s01";
 import { s04 } from "../engine/tiles/s04";
+import { d05ServerModule } from "./d05/server";
 import type { TileCompute, TileServerModule } from "./types";
 
 /** 무거운 타일은 POST의 경량 계산 경로에서 호출되지 않는다. 작업자는 jobs.ts에서 로드한다. */
@@ -89,7 +87,7 @@ export const TILE_SERVER_MODULES: TileServerModule[] = [
   directModule("D02", d02),
   directModule("D03", d03),
   directModule("D04", d04),
-  mergedModule("D05", d05, ["D06", "D07"], [d06, d07]),
+  d05ServerModule,
   directModule("D10", deferredHeavyTile),
   directModule("D11", d11),
   directModule("D12", d12),

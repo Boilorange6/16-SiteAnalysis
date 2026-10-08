@@ -11,6 +11,21 @@ export interface TileServerModule {
   mergeOptions?: MergeOptions;
 }
 
+export type TileHeadlinePolicy = {
+  ids?: readonly string[];
+  maxPrefix?: string;
+};
+
+export type TileLayerOption = { id: string; label: string };
+
+export type TileClientLayers = {
+  options: readonly TileLayerOption[];
+  baseExcludes?: readonly string[];
+};
+
 export interface TileClientModule {
   code: string;
+  headline?: TileHeadlinePolicy;
+  mapNote?: string;
+  layers?: TileClientLayers;
 }
