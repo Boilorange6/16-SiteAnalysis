@@ -664,7 +664,7 @@ function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardRende
               아래로
             </button>
             <span className={styles.seg} role="group" aria-label={`${view.title} 크기`}>
-              {([1, 2] as const).map((n) => (
+              {([1, 2, 4] as const).map((n) => (
                 <button key={n} type="button" aria-pressed={p.size === n} onClick={() => p.onResize(n)} aria-label={`${view.title} ${n}칸`}>
                   {n}칸
                 </button>
@@ -781,7 +781,7 @@ function TileCard(p: TileCardProps) {
     onToggleLabel,
     onSetAllLabels,
   };
-  const cls = [styles.tile, p.size === 2 && styles.span2, p.editing && styles.tileEdit, p.dragging && styles.tileDrag, state && styles.tileState, !waiting && view.status === "failed" && styles.tileFail]
+  const cls = [styles.tile, p.size === 2 && styles.span2, p.size === 4 && styles.span4, p.editing && styles.tileEdit, p.dragging && styles.tileDrag, state && styles.tileState, !waiting && view.status === "failed" && styles.tileFail]
     .filter(Boolean)
     .join(" ");
   const openable = !p.editing && !waiting;
