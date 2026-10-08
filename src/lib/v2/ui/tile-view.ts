@@ -111,7 +111,6 @@ const BASE_HEADLINE_POLICY: Partial<Record<TileCode, HeadlinePolicy>> = {
   D28: { ids: ["area_10min_km2", "reach_ratio_10min_pct"] },
   D29: { ids: ["svf_median", "share_svf_lt03_pct"] },
   S01: { ids: ["height_median_m", "height_known_pct", "buildings"] },
-  S02: { ids: ["mean_sun_h_winter"] },
   S03: { ids: ["rel_wind_median", "rel_wind_high_share"] },
   S04: { ids: ["utci_median_summer_h14", "shade_pct_summer_h14"] },
 };
@@ -162,7 +161,6 @@ const BASE_MAP_NOTES: Record<string, string> = {
   D16: "건물 수 KDE · 대역폭 100m · 20백분위 구간",
   D17: "Copernicus GLO-30 표면모델(DSM, 30 m) · EGM2008 · 중심 상대고",
   D18: "Copernicus DEM GLO-30 30m 격자 경사 · EGM2008 · 옹벽·미세 지형 미반영",
-  S02: "동지 기본 일조시간 · 계절 레이어 · 건물·지형 그림자 반영",
   A04: "대표점·원천 면적·녹지·수면 레이어 (경계 아님)",
   A05: "원 크기 = 세대수 · 속 빈 원 = 세대수 미확인",
   A06: "원천별 표시 · 중복 가능",
@@ -216,7 +214,7 @@ function mapOf(r: TileResult, analysisSiteParcel?: readonly MapPolygon[] | null)
     linesTotal: r.presentation.linesTotal ?? lines.length,
     total: r.presentation.featuresTotal ?? features.length,
     notes,
-    ...(r.presentation.legend.length > 0 ? { legend: r.tileCode === "S02" ? extendSunHoursLegend(r.presentation.legend) : r.presentation.legend } : {}),
+    ...(r.presentation.legend.length > 0 ? { legend: r.presentation.legend } : {}),
     ...(rasterOptions.length > 0 ? { rasterOptions } : {}),
     ...(defaultRaster ? { defaultRaster, rasters } : {}),
   };
@@ -229,52 +227,17 @@ export function viewWithOnlyRaster(view: TileView, rasterName: string, note: str
   const options = model.rasterOptions ?? model.rasters ?? [];
   const selected = options.find((ref) => ref.name === rasterName);
   if (!selected) return view;
-  const s02Date = view.code === "S02" ? s02RasterDate(rasterName) : null;
-  const s02Label = s02Date ? S02_DATE_LABEL[s02Date] : null;
-  const s02Metric = s02Label ? view.rows.find((row) => row.label === `${s02Label} 평균 일조시간`) : undefined;
-  const s02MapNote = s02Label
-    ? `${s02Label}${selected.palette === "shade_flow" ? " 그림자 흐름" : " 일조시간"} · 계절 레이어 · 건물·지형 그림자 반영`
-    : null;
   const nextMap: RasterMapModel = {
     ...model,
     rasters: [selected],
     defaultRaster: selected.name,
-    ...(s02MapNote
-      ? { notes: model.notes.map((existing) => existing.startsWith("동지 기본 일조시간 ·") ? s02MapNote : existing) }
-      : note && !model.notes.includes(note) ? { notes: [...model.notes, note] } : {}),
+    ...(note && !model.notes.includes(note) ? { notes: [...model.notes, note] } : {}),
   };
-  return {
+  const next = tileClientModuleFor(view.code)?.view?.({
     ...view,
-    ...(s02Label && s02Metric
-      ? {
-          headline: { value: s02Metric.value, label: s02Metric.label, aux: s02Metric.aux, tag: s02Metric.tag },
-          headlineMetricId: `mean_sun_h_${s02Date}`,
-          // 판단 문장은 동지 기준 숫자를 담고 있어 계절명만 바꾸면 틀린 문장이 된다 — 그대로 둔다
-        }
-      : {}),
-    notes: note
-      ? [
-          note,
-          ...(s02MapNote ? [s02MapNote] : []),
-          ...view.notes.filter((existing) => existing !== note && (!s02MapNote || !existing.startsWith("동지 기본 일조시간 ·"))),
-        ]
-      : view.notes,
     map: nextMap,
-  };
-}
-
-const S02_DATE_LABEL = {
-  spring: "춘분",
-  summer: "하지",
-  autumn: "추분",
-  winter: "동지",
-  analysis: "분석일",
-} as const;
-type S02RasterDate = keyof typeof S02_DATE_LABEL;
-
-function s02RasterDate(name: string): S02RasterDate | null {
-  const match = /^(?:sun_hours|shade)_(spring|summer|autumn|winter|analysis)(?:_|$)/.exec(name);
-  return match?.[1] && match[1] in S02_DATE_LABEL ? match[1] as S02RasterDate : null;
+  }, undefined) ?? { ...view, map: nextMap };
+  return note ? { ...next, notes: [note, ...next.notes.filter((existing) => existing !== note)] } : next;
 }
 
 const STATUS_TEXT: Partial<Record<TileResult["status"], string>> = {
@@ -304,11 +267,10 @@ function gradeChip(r: TileResult, g: NonNullable<NonNullable<TileResult["judgmen
 }
 const CAVEATS: Record<string, string> = {
   A02: "배정은 교육청 확인",
-  S02: "건물·지형 모델에 의한 기하학적 일조 추정입니다. 구름·실제 기상·창면 조건 및 법적 일조 판정을 포함하지 않습니다.",
   S03: "브라우저 탐색용 바람 모형입니다. 보행 안전·구조설계·인허가·검증된 CFD 결과로 사용할 수 없습니다.",
   S04: "UTCI 근사 · 계절×시각 대표 기상 · 자리끼리 비교",
 };
-const MODEL_BADGE: Record<string, string> = { S02: "그림자 추정 · 법적 판정 아님", S03: "탐색용 · 검증 CFD 아님", S04: "근사 · 건강 위험 예측 아님" };
+const MODEL_BADGE: Record<string, string> = { S03: "탐색용 · 검증 CFD 아님", S04: "근사 · 건강 위험 예측 아님" };
 
 type ExtendedPresentation = TileResult["presentation"] & {
   /** T31이 저장 결과 계약에 추가할 수 있는 명시적 기본 래스터. */
@@ -330,24 +292,9 @@ function rasterDefaultName(tileCode: string, refs: RasterRef[], presentation: Ex
   if (declared && refs.some((ref) => ref.name === declared)) return declared;
   const primary = refs.find((ref) => (ref as PrimaryRasterRef).primary === true);
   if (primary) return primary.name;
-  // 법정 기준과 헤드라인을 맞춰 S02의 대표 장면은 동지로 고정한다.
-  if (tileCode === "S02" && refs.some((ref) => ref.name === "sun_hours_winter")) return "sun_hours_winter";
   // S04의 대표 컷은 문장·헤드라인과 같은 여름 14시다. 나머지 11컷은 rasterOptions로 남는다.
   if (tileCode === "S04" && refs.some((ref) => ref.name === "utci_summer_h14")) return "utci_summer_h14";
   return refs[0]?.name ?? null;
-}
-
-/** 화면용 일조 범례는 하지 낮 길이까지 읽히도록 0~15시간과 15+를 보여 준다. */
-function extendSunHoursLegend(legend: TileResult["presentation"]["legend"]): TileResult["presentation"]["legend"] {
-  const sunEntries = legend.filter((entry) => entry.label.includes("일조시간") && (entry.min !== null || entry.max !== null));
-  if (sunEntries.length === 0) return legend;
-  const prefix = sunEntries[0]!.label.split(" · ")[0] ?? "일조시간";
-  const hourly = Array.from({ length: 16 }, (_, index) => ({
-    label: index === 15 ? `${prefix} · 15시간 이상` : `${prefix} · ${index}시간`,
-    min: index,
-    max: index === 15 ? null : index + 1,
-  }));
-  return [...legend.filter((entry) => !entry.label.includes("일조시간")), ...hourly];
 }
 
 export const FACE_TEXT: Record<OutputFace, string> = { front: "도판", back: "구성비", both: "도판 + 구성비" };
@@ -570,7 +517,9 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
     if (r.tileCode === "A06" && l.note.includes("중복")) badges.push({ text: "중복 가능 · 합계 보류", note: l.note, tone: "limit" });
   }
   badges.push(...parameterBadges(r));
-  if (MODEL_BADGE[r.tileCode]) badges.push({ text: MODEL_BADGE[r.tileCode], tone: "model" });
+  const module = tileClientModuleFor(r.tileCode);
+  const modelBadge = module?.modelBadge ?? MODEL_BADGE[r.tileCode];
+  if (modelBadge) badges.push({ text: modelBadge, tone: "model" });
   // 같은 문구의 배지는 하나로 합치고 note는 이어 붙인다.
   const merged = new Map<string, Badge>();
   for (const b of badges) {
@@ -592,7 +541,8 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
     ];
   }
   const rows = metrics.map((m) => metricRow(m, isS04));
-  const caveats = CAVEATS[r.tileCode] ? [CAVEATS[r.tileCode]] : [];
+  const caveat = module?.caveat ?? CAVEATS[r.tileCode];
+  const caveats = caveat ? [caveat] : [];
 
   let headline: TileView["headline"] = null;
   let headlineMetricId: string | null = null;
@@ -641,7 +591,7 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
   const windDirections = windDirectionsOf(r);
   const callout = calloutOf(r);
   if (callout && filterLine) callout.filterLine = filterLine;
-  return {
+  const baseView: TileView = {
     tileId: r.tileId,
     code: r.tileCode,
     tileType: r.tileType,
@@ -689,6 +639,7 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
     layerOptions,
     defaultLayer,
   };
+  return module?.view?.(baseView, r) ?? baseView;
 }
 
 /** 카드·펼침 창·보고서가 같은 레이어 선택 결과를 사용하도록 지도 입력만 파생한다. */

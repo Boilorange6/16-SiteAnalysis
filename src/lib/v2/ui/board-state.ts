@@ -6,7 +6,8 @@ import { CAMERA_PRESETS } from "./mass-projection";
 import type { OutputFace } from "./tile-view";
 import { layerOptionsForResult } from "./tile-layers";
 import { DEFAULT_PRESET_ID, isPresetId, TILE_PRESETS, type PresetId } from "./tile-catalog";
-import { CUT_CODES } from "../tile/client";
+import { CUT_CODES, tileClientModuleFor } from "../tile/client";
+import type { S02Cut, S02DateKey } from "../tile/s02/cut";
 
 export type TileSize = 1 | 2 | 4;
 export type GridColumns = 2 | 3 | 4 | 5 | 6;
@@ -14,13 +15,13 @@ export type SheetGrid = "2x2" | "3x2";
 export type SheetSpec = { tiles: string[]; grid: SheetGrid };
 export type CameraPreset = { azimuthDeg: number; elevationDeg: number };
 export type CutCount = 1 | 3;
-export type SunDateKey = "spring" | "summer" | "autumn" | "winter" | "analysis";
+export type SunDateKey = S02DateKey;
 export type Season = Exclude<SunDateKey, "analysis">;
 export type WindSeason = "annual" | Season;
 /** 화면·보고서·내보내기가 공유하는 타일별 컷 선택. */
 export type CutSpec =
   | { tile: "S01"; mode: "mass" | "exploded" }
-  | { tile: "S02"; mode: "single" | "hours3" | "seasons4" | "flow"; date?: SunDateKey }
+  | S02Cut
   | { tile: "S03"; mode: "single" | "seasons4"; layerZ: number; season?: WindSeason }
   | { tile: "S04"; mode: "single" | "seasons4" | "hours3"; season?: Season; hour?: 10 | 14 | 18 }
   | { tile: "D22"; mode: "annual" | "seasons4" };
@@ -646,9 +647,10 @@ function codeFromTileIdForCut(id: string): string {
 }
 
 export function defaultCutForCode(code: string): CutSpec | null {
+  const moduleDefault = tileClientModuleFor(code)?.cut?.default?.();
+  if (moduleDefault && isRecord(moduleDefault)) return moduleDefault as CutSpec;
   switch (code) {
     case "S01": return { tile: "S01", mode: "mass" };
-    case "S02": return { tile: "S02", mode: "single", date: "winter" };
     case "S03": return { tile: "S03", mode: "single", layerZ: 6, season: "annual" };
     case "S04": return { tile: "S04", mode: "single", season: "summer", hour: 14 };
     case "D22": return { tile: "D22", mode: "annual" };
@@ -657,21 +659,19 @@ export function defaultCutForCode(code: string): CutSpec | null {
 }
 
 function legacyCutForId(id: string, value: CutCount): CutSpec | null {
-  return codeFromTileIdForCut(id) === "S02"
-    ? { tile: "S02", mode: value === 3 ? "hours3" : "single", date: "winter" }
-    : null;
+  return tileClientModuleFor(codeFromTileIdForCut(id))?.cut?.legacyForCount?.(value) as CutSpec | null ?? null;
 }
 
 const isSeason = (value: unknown): value is Season => value === "spring" || value === "summer" || value === "autumn" || value === "winter";
-const isSunDateKey = (value: unknown): value is SunDateKey => isSeason(value) || value === "analysis";
 const isWindSeason = (value: unknown): value is WindSeason => value === "annual" || isSeason(value);
 const isHour = (value: unknown): value is 10 | 14 | 18 => value === 10 || value === 14 || value === 18;
 
 export function isCutSpec(value: unknown): value is CutSpec {
   if (!isRecord(value) || typeof value.tile !== "string" || typeof value.mode !== "string") return false;
+  const moduleValidator = tileClientModuleFor(value.tile)?.cut?.isValid;
+  if (moduleValidator) return moduleValidator(value);
   switch (value.tile) {
     case "S01": return value.mode === "mass" || value.mode === "exploded";
-    case "S02": return (value.mode === "single" || value.mode === "hours3" || value.mode === "seasons4" || value.mode === "flow") && (value.date === undefined || isSunDateKey(value.date));
     case "S03": return (value.mode === "single" || value.mode === "seasons4") && typeof value.layerZ === "number" && Number.isFinite(value.layerZ) && value.layerZ >= 0 && (value.season === undefined || isWindSeason(value.season));
     case "S04": return (value.mode === "single" || value.mode === "seasons4" || value.mode === "hours3") && (value.season === undefined || isSeason(value.season)) && (value.hour === undefined || isHour(value.hour));
     case "D22": return value.mode === "annual" || value.mode === "seasons4";
@@ -855,11 +855,7 @@ function stackable(s: BoardState, id: string): boolean {
 function cutPagesForResult(result: TileResult, cut: CutSpec): number {
   if (result.status !== "complete" && result.status !== "partial") return 1;
   if (cut.tile !== result.tileCode) return 1;
-  if (cut.tile !== "S02" || cut.mode !== "flow") return 1;
-  const date = cut.date ?? "winter";
-  const hourly = (result.presentation.rasters ?? []).filter((ref) => new RegExp(`^shade_${date}_h\\d{2}$`).test(ref.name)).length;
-  // 정시 그림자는 3×2 조판으로 묶고, 마지막에 합성(flow) 한 장을 추가한다.
-  return 1 + (hourly > 0 ? Math.ceil(hourly / 6) : 0);
+  return tileClientModuleFor(cut.tile)?.cut?.pages?.(result, cut) ?? 1;
 }
 
 /**

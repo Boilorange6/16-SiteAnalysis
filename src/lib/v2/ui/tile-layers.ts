@@ -31,30 +31,11 @@ const optionMatches: Record<string, (layer: string) => boolean> = {
   parcel_size: (layer) => layer.startsWith("lot_"),
 };
 
-function rasterOptions(result: TileResult): TileLayerOption[] {
-  if (result.tileCode !== "S02") return [];
-  const refs = result.presentation.rasters ?? [];
-  const labels: Record<string, string> = {
-    winter: "동지 기본",
-    spring: "춘분",
-    summer: "하지",
-    autumn: "추분",
-    analysis: "분석일",
-  };
-  return refs
-    .map((ref) => {
-      const match = /^sun_hours_(spring|summer|autumn|winter|analysis)$/.exec(ref.name);
-      return match ? { id: ref.name, label: labels[match[1]!] ?? ref.label ?? ref.name } : null;
-    })
-    .filter((option): option is TileLayerOption => option !== null)
-    .sort((a, b) => (a.id === "sun_hours_winter" ? -1 : b.id === "sun_hours_winter" ? 1 : a.label.localeCompare(b.label, "ko")));
-}
-
 export function layerOptionsForResult(result: TileResult): TileLayerOption[] {
-  const raster = rasterOptions(result);
-  if (raster.length > 0) return raster;
   const moduleOptions = tileClientModuleFor(result.tileCode)?.layers?.options;
-  return moduleOptions ? [...moduleOptions] : (STATIC_OPTIONS[result.tileCode] ?? []);
+  if (typeof moduleOptions === "function") return [...moduleOptions(result)];
+  if (moduleOptions) return [...moduleOptions];
+  return STATIC_OPTIONS[result.tileCode] ?? [];
 }
 
 export function defaultLayerId(result: TileResult): string {
@@ -75,14 +56,14 @@ function baseExcludesFor(code: string): readonly string[] {
 export function filterMapForLayer(model: MapModel | null, code: string, layerId: string): LayeredMapModel | null {
   if (!model) return model;
   const layered = model as LayeredMapModel;
+  const moduleFilter = tileClientModuleFor(code)?.layers?.filter;
+  const moduleResult = moduleFilter?.(model, layerId);
+  if (moduleResult !== undefined) return moduleResult as LayeredMapModel | null;
   let matches: ((layer: string) => boolean) | undefined;
   if (layerId === "all") {
     const excluded = baseExcludesFor(code).map((id) => optionMatches[id]!);
     if (excluded.length === 0) return model;
     matches = (layer) => !excluded.some((match) => match(layer));
-  } else if (layerId.startsWith("sun_hours_")) {
-    const ref = (layered.rasterOptions ?? layered.rasters ?? []).find((candidate) => candidate.name === layerId);
-    return ref ? { ...layered, rasters: [ref], defaultRaster: ref.name } : model;
   } else matches = optionMatches[layerId];
   if (!matches) return model;
   const features = model.features.filter((feature) => matches(feature.layer));
