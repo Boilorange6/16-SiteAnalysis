@@ -2463,13 +2463,6 @@ button.badge:focus-visible {
   padding-top: 6px;
   overflow: hidden;
 }
-.sfMain > .seg {
-  flex: none;
-  min-width: 0;
-  gap: 3px;
-  font-size: 10px;
-  white-space: nowrap;
-}
 .sfRows {
   list-style: none;
   margin: 0;
@@ -2504,12 +2497,6 @@ button.badge:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-/* 1×1 카드와 모바일 카드에는 핵심 지표만 남기고 전체 행은 펼침에서 제공한다. */
-@container (max-width: 519px) {
-  .sfRows li:nth-child(n + 3) {
-    display: none;
-  }
 }
 @container (min-width: 520px) {
   .sfMain {
@@ -2706,12 +2693,6 @@ button.badge:focus-visible {
     content: "";
     position: absolute;
     inset: -9px 0;
-  }
-  .root .sfMain > .seg button {
-    min-height: 44px;
-  }
-  .root .sfRows li:nth-child(n + 2) {
-    display: none;
   }
 }
 
