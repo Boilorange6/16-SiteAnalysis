@@ -1,11 +1,11 @@
 /** D05 건축물 높이 — 지상층수 기본, 미터 높이는 펼침용 보조 집계. */
 import type { Geometry } from "geojson";
 import type { TileResult } from "../../tile-result";
-import type { EngineContext } from "../context";
-import { areaInCircle, polygonArea } from "./geo";
-import { BUILDING_SOURCES, assumedOneFloorLimitation, buildingRetirementLimitations, buildingRows, isConfirmedHeightMethod, isCounted, isAssumedOneFloor, type BuildingRow } from "./buildings-shared";
-import { est, makeTile, missing, obs, polygonCandidate, type TileDraft } from "./common";
-import { notProvided } from "./not-provided";
+import type { EngineContext } from "../../engine/context";
+import { areaInCircle, polygonArea } from "../../engine/tiles/geo";
+import { BUILDING_SOURCES, assumedOneFloorLimitation, buildingRetirementLimitations, buildingRows, isConfirmedHeightMethod, isCounted, isAssumedOneFloor, type BuildingRow } from "../../engine/tiles/buildings-shared";
+import { est, makeTile, missing, obs, polygonCandidate, type TileDraft } from "../../engine/tiles/common";
+import { notProvided } from "../../engine/tiles/not-provided";
 
 const FLOOR_BUCKETS = [
   { id: "share_floors_1", label: "1~4층", layer: "floors_1_4" },
