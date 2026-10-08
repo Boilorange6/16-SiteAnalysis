@@ -7,7 +7,11 @@ import type { OutputFace } from "./tile-view";
 import { layerOptionsForResult } from "./tile-layers";
 import { DEFAULT_PRESET_ID, isPresetId, TILE_PRESETS, type PresetId } from "./tile-catalog";
 import { CUT_CODES, tileClientModuleFor } from "../tile/client";
+import type { D22Cut } from "../tile/d22/cut";
+import type { S01Cut } from "../tile/s01/cut";
 import type { S02Cut, S02DateKey } from "../tile/s02/cut";
+import type { S03Cut } from "../tile/s03/cut";
+import type { S04Cut } from "../tile/s04/cut";
 
 export type TileSize = 1 | 2 | 4;
 export type GridColumns = 2 | 3 | 4 | 5 | 6;
@@ -20,11 +24,11 @@ export type Season = Exclude<SunDateKey, "analysis">;
 export type WindSeason = "annual" | Season;
 /** 화면·보고서·내보내기가 공유하는 타일별 컷 선택. */
 export type CutSpec =
-  | { tile: "S01"; mode: "mass" | "exploded" }
+  | S01Cut
   | S02Cut
-  | { tile: "S03"; mode: "single" | "seasons4"; layerZ: number; season?: WindSeason }
-  | { tile: "S04"; mode: "single" | "seasons4" | "hours3"; season?: Season; hour?: 10 | 14 | 18 }
-  | { tile: "D22"; mode: "annual" | "seasons4" };
+  | S03Cut
+  | S04Cut
+  | D22Cut;
 export type LegacyCutSpec = CutSpec | CutCount;
 export type PinnedLabel = { key: string; on: boolean };
 
@@ -437,7 +441,8 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
     }
     case "roseSeason":
       if (a.season !== "annual" && a.season !== "spring" && a.season !== "summer" && a.season !== "autumn" && a.season !== "winter") return s;
-      return { ...s, cuts: { ...s.cuts, [a.id]: { tile: "D22", mode: a.season === "annual" ? "annual" : "seasons4" } } };
+      const cut = legacyCutForSeason(a.id, a.season);
+      return cut ? { ...s, cuts: { ...s.cuts, [a.id]: cut } } : s;
     case "pinLabel": {
       if (!a.key) return s;
       const current = s.labels[a.id] ?? [];
@@ -651,34 +656,23 @@ function codeFromTileIdForCut(id: string): string {
 export function defaultCutForCode(code: string): CutSpec | null {
   const moduleDefault = tileClientModuleFor(code)?.cut?.default?.();
   if (moduleDefault && isRecord(moduleDefault)) return moduleDefault as CutSpec;
-  switch (code) {
-    case "S01": return { tile: "S01", mode: "mass" };
-    case "S03": return { tile: "S03", mode: "single", layerZ: 6, season: "annual" };
-    case "S04": return { tile: "S04", mode: "single", season: "summer", hour: 14 };
-    case "D22": return { tile: "D22", mode: "annual" };
-    default: return null;
-  }
+  return null;
 }
 
 function legacyCutForId(id: string, value: CutCount): CutSpec | null {
   return tileClientModuleFor(codeFromTileIdForCut(id))?.cut?.legacyForCount?.(value) as CutSpec | null ?? null;
 }
 
+function legacyCutForSeason(id: string, value: RoseSeason): CutSpec | null {
+  return tileClientModuleFor(codeFromTileIdForCut(id))?.cut?.legacyForSeason?.(value) as CutSpec | null ?? null;
+}
+
 const isSeason = (value: unknown): value is Season => value === "spring" || value === "summer" || value === "autumn" || value === "winter";
-const isWindSeason = (value: unknown): value is WindSeason => value === "annual" || isSeason(value);
-const isHour = (value: unknown): value is 10 | 14 | 18 => value === 10 || value === 14 || value === 18;
 
 export function isCutSpec(value: unknown): value is CutSpec {
   if (!isRecord(value) || typeof value.tile !== "string" || typeof value.mode !== "string") return false;
   const moduleValidator = tileClientModuleFor(value.tile)?.cut?.isValid;
-  if (moduleValidator) return moduleValidator(value);
-  switch (value.tile) {
-    case "S01": return value.mode === "mass" || value.mode === "exploded";
-    case "S03": return (value.mode === "single" || value.mode === "seasons4") && typeof value.layerZ === "number" && Number.isFinite(value.layerZ) && value.layerZ >= 0 && (value.season === undefined || isWindSeason(value.season));
-    case "S04": return (value.mode === "single" || value.mode === "seasons4" || value.mode === "hours3") && (value.season === undefined || isSeason(value.season)) && (value.hour === undefined || isHour(value.hour));
-    case "D22": return value.mode === "annual" || value.mode === "seasons4";
-    default: return false;
-  }
+  return moduleValidator ? moduleValidator(value) : false;
 }
 
 function migrateV2ToV3(snapshot: BoardStateSnapshot): BoardStateSnapshot {
@@ -693,8 +687,9 @@ function migrateV2ToV3(snapshot: BoardStateSnapshot): BoardStateSnapshot {
     }
   }
   for (const [id, value] of Object.entries(recordOf(snapshot.roseSeasons))) {
-    if (codeFromTileIdForCut(id) !== "D22" || (!isSeason(value) && value !== "annual") || id in cuts) continue;
-    cuts[id] = { tile: "D22", mode: value === "annual" ? "annual" : "seasons4" };
+    if ((!isSeason(value) && value !== "annual") || id in cuts) continue;
+    const legacy = legacyCutForSeason(id, value);
+    if (legacy) cuts[id] = legacy;
   }
   const migrated = { ...snapshot, cuts, version: BOARD_STATE_VERSION } as BoardStateSnapshot;
   delete migrated.roseSeasons;

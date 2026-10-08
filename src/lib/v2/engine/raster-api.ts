@@ -18,9 +18,11 @@ export function getTileRaster(db: Db, analysisId: string, code: string, name: st
   const row = db.prepare("SELECT cache_key, status, result_json FROM tile_result WHERE analysis_id = ? AND tile_code = ?").get(analysisId, code) as
     | { cache_key: string; status: string; result_json: string }
     | undefined;
-  // S03 stays "pending" until the browser uploads wind; the upload client still needs its obstacle_height raster.
-  if (!row || (row.status !== "complete" && row.status !== "partial" && !(code === "S03" && row.status === "pending"))) return { status: 404 };
+  if (!row) return { status: 404 };
   const result = parseTileResult(JSON.parse(row.result_json));
+  // A pending result may still expose input rasters needed by a browser-side calculation.
+  const pendingWithRaster = row.status === "pending" && (result.presentation.rasters?.length ?? 0) > 0;
+  if (row.status !== "complete" && row.status !== "partial" && !pendingWithRaster) return { status: 404 };
   const ref = result.presentation.rasters?.find((candidate) => candidate.name === name);
   if (!ref) return { status: 404 };
   const stored = loadTileRaster(db, row.cache_key, name);

@@ -157,7 +157,7 @@ function plan(view: TileView, value: unknown): TileCutPlan {
     : { sheets: [], single: { view: viewForCut(view, value), mapKey: `${view.tileId}:cut-${date}` } };
 }
 
-const s02CutModule: TileCutModule = {
+export const s02CutModule: TileCutModule = {
   default: () => ({ ...S02_DEFAULT }),
   isValid: isS02Cut,
   legacyForCount: (value) => ({ tile: "S02", mode: value === 3 ? "hours3" : "single", date: "winter" }),

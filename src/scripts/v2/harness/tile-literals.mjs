@@ -111,6 +111,41 @@ const WHITELIST = [
     reason: "shared client registry cut-code list stays central",
   },
   {
+    file: "src/components/v2/mass-3d.tsx",
+    pattern: /\bS01\b/,
+    reason: "S01 mass renderer remains an owner file because the guard hard-codes its runtime label",
+  },
+  {
+    file: "src/components/v2/mass-figure.tsx",
+    pattern: /\bS01\b/,
+    reason: "S01 fallback mass renderer remains an owner file",
+  },
+  {
+    file: "src/lib/v2/ui/mass-3d-runtime.ts",
+    pattern: /\bS01\b/,
+    reason: "S01 runtime renderer remains an owner file",
+  },
+  {
+    file: "src/components/v2/wind-panel.tsx",
+    pattern: /\bS03\b/,
+    reason: "S03 wind calculation panel remains an owner file",
+  },
+  {
+    file: "src/lib/v2/ui/wind-upload.ts",
+    pattern: /\bS03\b/,
+    reason: "S03 browser upload and raster naming remain an owner file",
+  },
+  {
+    file: "src/components/v2/wind-rose-figure.tsx",
+    pattern: /\bD22\b/,
+    reason: "D22 wind-rose figure remains an owner file",
+  },
+  {
+    file: "src/lib/v2/engine/wind-api.ts",
+    pattern: /\b(?:S03|S04)\b/,
+    reason: "S03 wind upload and its S04 follow-on API remain owner logic",
+  },
+  {
     file: "src/lib/v2/engine/jobs.ts",
     pattern: /HEAVY_TILE_COMPUTES|^(?:S02|D29|D10|S03|S04):|code === "S04"/,
     reason: "heavy calculation enters the tile module only through the worker dispatch",

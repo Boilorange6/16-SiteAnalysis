@@ -123,9 +123,9 @@ function mapNotesFor(r: TileResult): string[] {
 }
 
 function mapOf(r: TileResult, analysisSiteParcel?: readonly MapPolygon[] | null): RasterMapModel | null {
-  // S03 is "pending" until the browser uploads a wind field, but the panel needs map.analysisId to run.
-  const windAwaitingUpload = r.tileCode === "S03" && r.status === "pending";
-  if (r.status !== "complete" && r.status !== "partial" && !windAwaitingUpload) return null;
+  // 일부 브라우저 계산은 pending이어도 지도 입력 래스터를 먼저 보유할 수 있다.
+  const pendingWithRaster = r.status === "pending" && (r.presentation.rasters?.length ?? 0) > 0;
+  if (r.status !== "complete" && r.status !== "partial" && !pendingWithRaster) return null;
   const features = r.presentation.features ?? [];
   const allPolygons = r.presentation.polygons ?? [];
   const ownSiteParcel = allPolygons.filter((polygon) => isSiteParcelLayer(polygon.layer));
@@ -134,7 +134,7 @@ function mapOf(r: TileResult, analysisSiteParcel?: readonly MapPolygon[] | null)
   const lines = r.presentation.lines ?? [];
   const presentation = r.presentation as ExtendedPresentation;
   const rasterOptions = presentation.rasters ?? [];
-  const defaultRaster = rasterDefaultName(r.tileCode, rasterOptions, presentation);
+  const defaultRaster = rasterDefaultName(rasterOptions, presentation);
   const rasters = defaultRaster ? rasterOptions.filter((ref) => ref.name === defaultRaster) : [];
   const basemap = presentation.basemap;
   const polygonsTotal = Math.max(0, (r.presentation.polygonsTotal ?? allPolygons.length) - ownSiteParcel.length);
@@ -162,26 +162,6 @@ function mapOf(r: TileResult, analysisSiteParcel?: readonly MapPolygon[] | null)
     ...(rasterOptions.length > 0 ? { rasterOptions } : {}),
     ...(defaultRaster ? { defaultRaster, rasters } : {}),
   };
-}
-
-/** T31의 컷 선택이 카드·상세·PPT 공통 경로를 재사용하도록 래스터 하나만 남긴다. */
-export function viewWithOnlyRaster(view: TileView, rasterName: string, note: string): TileView {
-  if (!view.map) return view;
-  const model = view.map as RasterMapModel;
-  const options = model.rasterOptions ?? model.rasters ?? [];
-  const selected = options.find((ref) => ref.name === rasterName);
-  if (!selected) return view;
-  const nextMap: RasterMapModel = {
-    ...model,
-    rasters: [selected],
-    defaultRaster: selected.name,
-    ...(note && !model.notes.includes(note) ? { notes: [...model.notes, note] } : {}),
-  };
-  const next = tileClientModuleFor(view.code)?.view?.({
-    ...view,
-    map: nextMap,
-  }, undefined) ?? { ...view, map: nextMap };
-  return note ? { ...next, notes: [note, ...next.notes.filter((existing) => existing !== note)] } : next;
 }
 
 const STATUS_TEXT: Partial<Record<TileResult["status"], string>> = {
@@ -224,32 +204,16 @@ type RasterMapModel = MapModel & {
 
 type PrimaryRasterRef = RasterRef & { primary?: boolean };
 
-function rasterDefaultName(tileCode: string, refs: RasterRef[], presentation: ExtendedPresentation): string | null {
+function rasterDefaultName(refs: RasterRef[], presentation: ExtendedPresentation): string | null {
   const declared = presentation.defaultRaster;
   if (declared && refs.some((ref) => ref.name === declared)) return declared;
   const primary = refs.find((ref) => (ref as PrimaryRasterRef).primary === true);
   if (primary) return primary.name;
-  // S04의 대표 컷은 문장·헤드라인과 같은 여름 14시다. 나머지 11컷은 rasterOptions로 남는다.
-  if (tileCode === "S04" && refs.some((ref) => ref.name === "utci_summer_h14")) return "utci_summer_h14";
   return refs[0]?.name ?? null;
 }
 
 export const FACE_TEXT: Record<OutputFace, string> = { front: "도판", back: "구성비", both: "도판 + 구성비" };
 export const faceLabel = (f: OutputFace) => FACE_TEXT[f];
-
-function massOf(r: TileResult, scene: Scene | null | undefined): MassModel | null {
-  if (r.tileCode !== "S01" || !r.presentation.camera) return null;
-  const camera = r.presentation.camera;
-  if (typeof camera.azimuthDeg !== "number" || typeof camera.elevationDeg !== "number") return null;
-  return {
-    scene: scene ?? null,
-    camera: {
-      azimuthDeg: camera.azimuthDeg,
-      elevationDeg: camera.elevationDeg,
-      radiusM: typeof camera.radiusM === "number" ? camera.radiusM : r.conditions.radiusM,
-    },
-  };
-}
 
 const INTEGER_METRIC_UNITS = new Set([
   "동",
@@ -374,24 +338,6 @@ function parameterBadges(r: TileResult): Badge[] {
   return out;
 }
 
-function windDirectionsOf(r: TileResult): Record<string, number> | undefined {
-  if (r.tileCode !== "S03" || !r.conditions.simulation) return undefined;
-  const simulation = r.conditions.simulation;
-  const simulationCase = simulation.case;
-  if (!simulationCase || typeof simulationCase !== "object") return undefined;
-  const inflow = (simulationCase as Record<string, unknown>).inflow;
-  if (!inflow || typeof inflow !== "object") return undefined;
-  const directions: Record<string, number> = {};
-  for (const season of ["annual", "spring", "summer", "autumn", "winter"]) {
-    const candidate = (inflow as Record<string, unknown>)[season];
-    if (!candidate || typeof candidate !== "object") continue;
-    const degrees = (candidate as Record<string, unknown>).deg;
-    if (typeof degrees !== "number" || !Number.isFinite(degrees)) continue;
-    directions[season] = ((degrees % 360) + 360) % 360;
-  }
-  return Object.keys(directions).length > 0 ? directions : undefined;
-}
-
 export function sourceLineOf(sources: TileResult["provenance"]["sources"]): string {
   if (sources.length === 0) return "출처 없음";
   const lines = sources
@@ -431,18 +377,8 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
     else if (b.note && prev.note !== b.note) prev.note = prev.note ? `${prev.note} / ${b.note}` : b.note;
   }
 
-  const isS04 = r.tileCode === "S04";
-  let metrics = r.metrics.filter((m) => module?.metricFilter?.(m) ?? true);
-  if (isS04) {
-    // 대표 컷(여름 14시) 지표를 맨 앞에 두고, 같은 값의 접미사 없는 별칭 지표는 행에서 뺀다.
-    const cutSuffix = /_(spring|summer|autumn|winter)_h\d+$/;
-    const representative = (id: string) => id.endsWith("_summer_h14");
-    metrics = [
-      ...metrics.filter((m) => representative(m.id)),
-      ...metrics.filter((m) => cutSuffix.test(m.id) && !representative(m.id)),
-    ];
-  }
-  const rows = metrics.map((m) => metricRow(m, isS04));
+  const metrics = r.metrics.filter((m) => module?.metricFilter?.(m) ?? true);
+  const rows = metrics.map((m) => metricRow(m));
   const caveat = module?.caveat;
   const caveats = caveat ? [caveat] : [];
 
@@ -460,7 +396,7 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
     } else {
       const selected = policyMetric(r, metrics);
       if (selected) {
-        const row = metricRow(selected, isS04);
+        const row = metricRow(selected);
         headline = { value: row.value, label: row.label, aux: row.aux, tag: row.tag };
         headlineMetricId = selected.id;
       }
@@ -470,7 +406,6 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
   const allRows = rowsExclude.size > 0 ? metrics.filter((metric) => !rowsExclude.has(metric.id)).map((metric) => metricRow(metric)) : rows;
 
   const gradedMetricOk = r.judgment?.level != null && GRADED_CODES.has(r.tileCode) && r.judgment.criteria;
-  const windDirections = windDirectionsOf(r);
   const sourceLine = sourceLineOf(r.provenance.sources);
   const callout = module?.callout?.(r, sourceLine, filterLine) ?? null;
   const baseView: TileView = {
@@ -511,10 +446,9 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
     filterLine,
     a05Counts: prepared.a05Counts ?? null,
     callout,
-    mass: massOf(r, scene),
+    mass: module?.mass?.(r, scene) ?? null,
     rose: r.presentation.rose ?? null,
     roses: r.presentation.roses ?? null,
-    ...(windDirections ? { windDirections } : {}),
     stackLayers: null,
     sheetTiles: null,
     sheetGrid: null,

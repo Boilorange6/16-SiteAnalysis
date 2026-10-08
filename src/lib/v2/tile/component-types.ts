@@ -1,0 +1,49 @@
+import type { A05Counts, A05Filter } from "../engine/a05-filter";
+import type { DemoPhase, CameraPreset, CutSpec } from "../ui/board-state";
+import type { MapFigureElementPick } from "../../../components/v2/map-figure";
+import type { RoseSeason } from "../tile-result";
+import type { TileView } from "../ui/tile-view";
+
+export type TileStageProps = {
+  view: TileView;
+  displayView: TileView;
+  state: boolean;
+  chart: boolean;
+  frame: "card" | "detail";
+  label: string;
+  page?: number;
+  onPage?: (page: number) => void;
+  cut?: CutSpec | null;
+  roseSeason?: RoseSeason;
+  siteX?: number | ((width: number) => number);
+  rightInset?: number | ((width: number) => number);
+  legendY?: number;
+  pinnedKeys?: readonly string[];
+  hoverKey?: string | null;
+  emphasisKey?: string | null;
+  onFeaturePin?: (feature: MapFigureElementPick) => void;
+};
+
+export type TileFaceExtraProps = {
+  view: TileView;
+  cut: CutSpec | null;
+  state: boolean;
+  placement: "header" | "controls" | "summary";
+  onCut: (cut: CutSpec) => void;
+  onOpen: () => void;
+  phase?: DemoPhase | null;
+  onWindUploaded?: () => void;
+};
+
+export type TileDialogPanelProps = {
+  view: TileView;
+  filter?: A05Filter | null;
+  counts?: A05Counts | null;
+  onChange?: (next: A05Filter | null) => void;
+  titleId: string;
+  cut?: CutSpec | null;
+  onCut?: (cut: CutSpec) => void;
+  camera?: CameraPreset | null;
+  onCamera?: (camera: CameraPreset) => void;
+  onWindUploaded?: () => void;
+};
