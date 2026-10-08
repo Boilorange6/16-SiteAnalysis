@@ -718,6 +718,15 @@
   min-width: 0;
   perspective: 1400px;
 }
+/* 대지 요약은 내용 높이만 쓰고, 지도면으로 뒤집을 때만 2×2 예약을 되찾는다. */
+.summary:has(.sumFront[data-on="true"]) {
+  align-self: start;
+  height: 360px;
+}
+.summary:has(.faceMap[data-on="true"]) {
+  align-self: stretch;
+  height: auto;
+}
 
 /* ── 몰입형 오버레이 문법: 카드·펼침·요약이 같은 자리·같은 판을 쓴다 ──
    왼쪽 위 제목 칩 · 오른쪽 위 보고서 칩 · 왼쪽 아래 핵심 값 · 맨 아래 출처 띠 · 지도 전면(stage) */
