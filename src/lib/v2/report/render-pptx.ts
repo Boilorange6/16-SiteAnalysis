@@ -241,7 +241,7 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   const notes = [
     ...v.caveats,
     ...v.notes,
-    ...(v.code === "S01" ? ["DXF·GLB는 내보내기에서"] : []),
+    ...(p.mass ? ["DXF·GLB는 내보내기에서"] : []),
     ...(p.rose ? [roseSummary(p.rose), `바람장미 선택 계절 · ${ROSE_SEASON_LABEL[p.roseSeason ?? "annual"]}`] : []),
   ];
   const items: Item[] = [];

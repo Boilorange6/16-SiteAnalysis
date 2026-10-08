@@ -28,7 +28,6 @@ import { d22ClientModule } from "./d22/view";
 import { d28ClientModule } from "./d28/view";
 import { d29ClientModule } from "./d29/view";
 import { s02ClientModule } from "./s02/view";
-import { s02ClientCutModule } from "./s02/cut";
 import { s01ClientModule } from "./s01/view";
 import { s03ClientModule } from "./s03/view";
 import { s04ClientModule } from "./s04/view";
@@ -67,7 +66,7 @@ export const TILE_CLIENT_MODULES: readonly TileClientModule[] = [
   d28ClientModule,
   d29ClientModule,
   s01ClientModule,
-  { ...s02ClientModule, cut: s02ClientCutModule.cut },
+  s02ClientModule,
   s03ClientModule,
   s04ClientModule,
 ];

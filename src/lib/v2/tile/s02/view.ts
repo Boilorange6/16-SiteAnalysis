@@ -2,6 +2,7 @@ import type { RasterRef, TileResult } from "../../tile-result";
 import type { MapModel } from "../../ui/map-layers";
 import type { TileView } from "../../ui/tile-view";
 import type { TileClientModule, TileLayerOption } from "../types";
+import { s02CutModule } from "./cut";
 
 const S02_DATE_LABEL = {
   spring: "춘분",
@@ -128,4 +129,5 @@ export const s02ClientModule = {
     options: rasterOptionsForResult,
     filter: filterS02Layer,
   },
+  cut: s02CutModule,
 } satisfies TileClientModule;

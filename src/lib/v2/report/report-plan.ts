@@ -2,10 +2,10 @@
  * 보드 → 보고서 슬라이드 계획. 순수 함수 (pptx 라이브러리 의존 없음).
  * 슬라이드 수는 board-state의 reportPages(board).pages(표지+타일+출처 장)와 항상 같다.
  */
-import { defaultCutForCode, isCutSpec, type BoardState, type CutSpec, type Season } from "../ui/board-state";
+import { defaultCutForCode, isCutSpec, type BoardState, type CutSpec } from "../ui/board-state";
 import { calloutReportPages, DEFAULT_CALLOUT_MODE, pageCount } from "../ui/callout-layout";
 import type { MapModel } from "../ui/map-layers";
-import { viewWithOnlyRaster, type CalloutModel, type SummaryView, type TileView } from "../ui/tile-view";
+import { type CalloutModel, type SummaryView, type TileView } from "../ui/tile-view";
 import type { MassModel } from "../ui/mass-projection";
 import type { SheetGrid } from "../ui/sheet";
 import { FACE_TEXT } from "../ui/tile-view";
@@ -13,7 +13,6 @@ import type { RoseModel } from "../ui/wind-rose";
 import type { RoseSeason } from "../tile-result";
 import { exportFileName } from "../export/download";
 import { sourceDetailsFor, UNKNOWN_AS_OF, type SourceDetailRow, type SourceMeta } from "../ui/source-details";
-import { CUT_SEASONS, CUT_SEASON_LABEL, cutNote, cutReady, viewForCut } from "../ui/cut-selection";
 import { CUT_CODES, tileClientModuleFor } from "../tile/client";
 import type { TileCutCell, TileCutPlan } from "../tile/types";
 
@@ -120,61 +119,8 @@ const RASTER_NAMES = (view: TileView): string[] => {
 type CutCell = TileCutCell;
 type CutPlan = TileCutPlan;
 
-function rasterCell(view: TileView, name: string, note: string, key: string): CutCell {
-  const next = viewWithOnlyRaster(view, name, note);
-  return { view: next, mapKey: `${view.tileId}:${key}`, rasterName: name };
-}
-
-function roseCell(view: TileView, season: RoseSeason, key: string): CutCell {
-  const model = season === "annual" ? view.rose : view.roses?.[season];
-  const next = model
-    ? { ...view, rose: model, notes: [CUT_SEASON_LABEL[season], ...view.notes.filter((note) => note !== CUT_SEASON_LABEL[season])] }
-    : view;
-  return { view: next, mapKey: `${view.tileId}:rose-${season}`, rose: model ?? undefined, roseSeason: season };
-}
-
 function cutPlanFor(view: TileView, cut: CutSpec): CutPlan {
-  const modulePlan = tileClientModuleFor(cut.tile)?.cut?.plan?.(view, cut);
-  if (modulePlan) return modulePlan;
-  switch (cut.tile) {
-    case "S01": {
-      const mass = view.mass
-        ? { ...view.mass, exploded: cut.mode === "exploded" ? { spreadPct: 24, scheme: "use" as const } : undefined }
-        : undefined;
-      return { sheets: [], single: { view: viewForCut(view, cut), mapKey: `${view.tileId}:mass`, mass } };
-    }
-    case "S03": {
-      const layer = String(Math.round(cut.layerZ)).padStart(2, "0");
-      if (cut.mode === "seasons4" && cutReady(view, cut)) {
-        const cells = CUT_SEASONS.map((season) => `wind_${season}_z${layer}`).map((name) => rasterCell(view, name, `${CUT_SEASON_LABEL[name.split("_")[1] as Season]} ${cut.layerZ}m`, name));
-        return { sheets: [{ grid: "2x2", cells }] };
-      }
-      return { sheets: [], single: { view: viewForCut(view, cut), mapKey: `${view.tileId}:wind-${cut.season ?? "annual"}-${layer}` } };
-    }
-    case "S04": {
-      const season = cut.season ?? "summer";
-      if (cut.mode === "seasons4" && cutReady(view, cut)) {
-        const cells = CUT_SEASONS.map((candidate) => `utci_${candidate}_h14`).map((name) => rasterCell(view, name, `${CUT_SEASON_LABEL[name.split("_")[1] as Season]} 14시`, name));
-        return { sheets: [{ grid: "2x2", cells }] };
-      }
-      if (cut.mode === "hours3" && cutReady(view, cut)) {
-        const cells = [10, 14, 18].map((hour) => {
-          const name = `utci_${season}_h${hour}`;
-          return rasterCell(view, name, `${CUT_SEASON_LABEL[season]} ${hour}시`, name);
-        });
-        return { sheets: [{ grid: "3x1", cells }] };
-      }
-      const name = `utci_${season}_h${cut.hour ?? 14}`;
-      return { sheets: [], single: { view: viewForCut(view, cut), mapKey: `${view.tileId}:${name}`, rasterName: name } };
-    }
-    case "D22": {
-      if (cut.mode === "seasons4" && cutReady(view, cut)) {
-        return { sheets: [{ grid: "2x2", cells: CUT_SEASONS.map((season) => roseCell(view, season, season)) }] };
-      }
-      return { sheets: [], single: { ...roseCell(view, "annual", "annual"), view: viewForCut(view, cut), mapKey: `${view.tileId}:rose` } };
-    }
-  }
-  return { sheets: [] };
+  return tileClientModuleFor(cut.tile)?.cut?.plan?.(view, cut) ?? { sheets: [] };
 }
 
 function cutCellWithMeta(cell: CutCell, sourceLine: string, pinnedKeys: string[]) {

@@ -4,6 +4,7 @@ import type { A05Counts } from "../engine/a05-filter";
 import type { CalloutMode } from "../ui/callout-layout";
 import type { MapModel } from "../ui/map-layers";
 import type { MassModel } from "../ui/mass-projection";
+import type { Scene } from "../scene";
 import type { Badge, CalloutModel, TileView } from "../ui/tile-view";
 import type { RoseModel } from "../ui/wind-rose";
 import type { RasterRef, RoseSeason, TileResult } from "../tile-result";
@@ -75,6 +76,8 @@ export type TileCutModule = {
   isValid?: (value: unknown) => boolean;
   /** 구버전 숫자 컷을 현재 타일 컷으로 승격하며, 없으면 null이다. */
   legacyForCount?: (value: 1 | 3) => unknown | null;
+  /** 구버전 계절 필드를 현재 타일 컷으로 승격하며, 없으면 null이다. */
+  legacyForSeason?: (value: RoseSeason) => unknown | null;
   /** 계산 결과에 컷을 그릴 수 있는지 판정한다. */
   ready?: (view: TileView, cut: unknown) => boolean;
   /** 보드의 컷 선택지 후보를 만든다. */
@@ -119,6 +122,8 @@ export interface TileClientModule {
   board?: TileBoardModule;
   /** 타일의 저장 컷·후보·보고서 조판 동작이다. */
   cut?: TileCutModule;
+  /** 결과의 카메라·장면을 타일 고유 3D 매스 입력으로 투영한다. */
+  mass?: (result: TileResult, scene: Scene | null | undefined) => MassModel | null;
 }
 
 /** 보고서 전용 레지스트리(tile/report.ts) 항목 — pptxgenjs가 클라이언트 그래프에 들어가지 않게 TileClientModule과 분리한다. */

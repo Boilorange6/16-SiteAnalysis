@@ -12,6 +12,7 @@ import WindRoseFigure from "@/components/v2/wind-rose-figure";
 import type { MapModel } from "../ui/map-layers";
 import type { MassCamera, MassColorScheme, MassModel } from "../ui/mass-projection";
 import type { RoseModel } from "../ui/wind-rose";
+import { S01_MASS_LABEL } from "../tile/s01/cut";
 import type { RoseSeason } from "../tile-result";
 import type { Scene } from "../scene";
 import { renderMass3dPng } from "../ui/mass-3d-runtime";
@@ -227,7 +228,7 @@ export async function rasterizeMass(
       height,
       exploded: mass.exploded,
       quality: "detail",
-      label: "S01 3D 매스",
+      label: S01_MASS_LABEL,
     });
   } catch {
     // WebGL이 없는 브라우저·PPT 내보내기 환경에서도 기존 SVG 경로로 납품을 완성한다.
