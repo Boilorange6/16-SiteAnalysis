@@ -14,14 +14,15 @@ assert.ok(calloutStart >= 0 && calloutEnd > calloutStart, "CalloutLegend source 
 const calloutLegend = calloutSource.slice(calloutStart, calloutEnd);
 assert.match(calloutLegend, /aria-label=\{compact \? `범례 \$\{items\.length\}색` : "범례"\}/, "compact legend keeps its accessible name");
 assert.doesNotMatch(calloutLegend, /<span className=\{styles\.cLegendT\}>\{compact \? `범례/, "compact legend must not render an N-color heading");
-assert.match(calloutLegend, /\{!compact && <span className=\{styles\.cLegendT\}>/, "full legend keeps its visible title");
+assert.match(calloutLegend, /\{!compact && <span className=\{tileStyles\.cLegendT\}>/, "full legend keeps its visible title");
 
 const boardCss = readFileSync(new URL("../../components/v2/board.module.css", import.meta.url), "utf8");
-const cNameRule = boardCss.match(/\.cName\s*\{([^}]*)\}/)?.[1] ?? "";
+const calloutCss = readFileSync(new URL("../../lib/v2/tile/a05/tile.module.css", import.meta.url), "utf8");
+const cNameRule = calloutCss.match(/\.cName\s*\{([^}]*)\}/)?.[1] ?? "";
 assert.match(cNameRule, /white-space:\s*normal/, "단지명은 두 줄 표시 가능");
 assert.match(cNameRule, /text-overflow:\s*clip/, "단지명은 CSS 말줄임을 쓰지 않음");
 assert.match(cNameRule, /max-height:\s*2\.2em/, "단지명은 최대 두 줄 높이를 예약");
-assert.match(boardCss, /\.cHead\[data-compact\]\s*\{[^}]*height:\s*auto/, "짧은 카드 헤더도 두 줄 높이를 수용");
+assert.match(calloutCss, /\.cHead\[data-compact\]\s*\{[^}]*height:\s*auto/, "짧은 카드 헤더도 두 줄 높이를 수용");
 const summaryBodyBlocks = [...boardCss.matchAll(/\.sumBody\s*\{([^}]*)\}/g)].map((match) => match[1]);
 assert.ok(summaryBodyBlocks.length >= 2, "summary body must have base and mobile rules");
 assert.ok(summaryBodyBlocks.every((block) => /justify-content:\s*flex-start/.test(block)), "summary content must start at the top at every breakpoint");

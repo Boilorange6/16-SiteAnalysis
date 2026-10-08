@@ -1,9 +1,9 @@
 /** A05 기존 주거 공급 — 건축물대장 총괄표제부(단지)·표제부(단일동·오피스텔) 대표점. 등급 없음. */
 import type { TileResult } from "../../tile-result";
-import type { EngineContext } from "../context";
+import type { EngineContext } from "../../engine/context";
 import type { FeatureHit } from "../../data/features";
 import { unitTypesFromUnknown } from "../../unit-types";
-import { candidate, est, fmt, makeTile, missing, noDataTile, obs, type TileDraft } from "./common";
+import { candidate, est, fmt, makeTile, missing, noDataTile, obs, type TileDraft } from "../../engine/tiles/common";
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null);
 const year = (v: unknown): number | null => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? Number(v.slice(0, 4)) : null);

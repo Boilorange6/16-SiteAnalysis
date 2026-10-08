@@ -6,8 +6,8 @@ import type { MapPolygon, OUTPUT_FACES, RasterRef, RoseSeason, TileResult } from
 import type { Scene } from "../scene";
 import { tileClientModuleFor } from "../tile/client";
 import type { TileHeadlinePolicy } from "../tile/types";
-import { describeA05Filter, reaggregateA05, type A05Counts, type A05Filter } from "../engine/a05-filter";
-import { fmtInt, rankComplexes, rankSupply, STOCK_LEGEND, SUPPLY_LAYERS, SUPPLY_LEGEND, summarize, supplyStats, type CalloutLegendSpec, type Complex, type Stat } from "./callout-layout";
+import type { A05Counts, A05Filter } from "../engine/a05-filter";
+import type { CalloutLegendSpec, Complex, Stat } from "./callout-layout";
 import type { MapModel } from "./map-layers";
 import type { MassModel } from "./mass-projection";
 import { catalogEntry, sourceName, TILE_CODES, type TileCode } from "./tile-catalog";
@@ -86,8 +86,6 @@ const BASE_HEADLINE_POLICY: Partial<Record<TileCode, HeadlinePolicy>> = {
   A02: { ids: ["in_school_zone", "nearest_elem_m"] },
   A03: { ids: ["basic_groups"] },
   A04: { ids: ["parks", "nearest_park_point_m"] },
-  A05: { ids: ["households", "apartment_complexes"] },
-  A06: { ids: ["applyhome_units", "move_in_units", "projects"] },
   A07: { ids: ["median_price_per_m2", "valid_trades"] },
   A08: { ids: ["jeonse_to_trade_ratio_pct", "jeonse_deposit_per_m2", "monthly_rent_median", "jeonse_count", "monthly_count"] },
   A09: { ids: ["projects_in_radius", "zones_in_radius", "roster_projects"] },
@@ -146,7 +144,7 @@ export type CalloutModel = {
   analysisYear: number;
   /** 빈 상태 판·개요의 기준 문구 (출처 + 기준일) */
   sourceLine: string;
-  summary: ReturnType<typeof summarize>;
+  summary: { count: number; apartments: number; households: number; householdsKnown: number; medianYear: number | null };
   /** A05 필터가 적용된 보고서 한 줄 */
   filterLine?: string | null;
 };
@@ -162,8 +160,6 @@ const BASE_MAP_NOTES: Record<string, string> = {
   D17: "Copernicus GLO-30 표면모델(DSM, 30 m) · EGM2008 · 중심 상대고",
   D18: "Copernicus DEM GLO-30 30m 격자 경사 · EGM2008 · 옹벽·미세 지형 미반영",
   A04: "대표점·원천 면적·녹지·수면 레이어 (경계 아님)",
-  A05: "원 크기 = 세대수 · 속 빈 원 = 세대수 미확인",
-  A06: "원천별 표시 · 중복 가능",
   D01: "VWorld 항공영상 · 촬영시기 미확인",
   D10: "항공사진 색 기반 수관 검출 · 재현율 미검증 · OSM 녹지 보조",
   D28: "OSM 보행망 · 80 m/분 · 내부 제안 기준",
@@ -494,18 +490,11 @@ export function sourceLineOf(sources: TileResult["provenance"]["sources"]): stri
 }
 
 export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParcel?: readonly MapPolygon[] | null, a05Filter?: A05Filter | null): TileView {
-  const a05Aggregation = r.tileCode === "A05" ? reaggregateA05(r, a05Filter) : null;
-  const filterDescription = a05Aggregation?.filter ? describeA05Filter(a05Aggregation.filter) : null;
-  const filterChip = filterDescription ? `필터 · ${filterDescription}` : null;
-  const filterLine = filterDescription ? `적용 필터: ${filterDescription} · 정보 없음 포함 ${a05Aggregation!.counts.unknownKept}건` : null;
-  // 재집계는 현재 화면용 파생 결과만 바꾼다. 원본 TileResult와 그 features 배열은 그대로 둔다.
-  if (a05Aggregation?.filter) {
-    r = {
-      ...r,
-      metrics: a05Aggregation.metrics,
-      presentation: { ...r.presentation, features: a05Aggregation.features, featuresTotal: a05Aggregation.features.length },
-    };
-  }
+  const module = tileClientModuleFor(r.tileCode);
+  const prepared = module?.prepare?.(r, { filter: a05Filter }) ?? { result: r };
+  r = prepared.result;
+  const filterChip = prepared.filterChip ?? null;
+  const filterLine = prepared.filterLine ?? null;
   const cat = catalogEntry(r.tileCode);
   const layerOptions = layerOptionsForResult(r);
   const defaultLayer = defaultLayerId(r);
@@ -514,10 +503,9 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
   if (statusText) badges.push({ text: statusText, tone: "status" });
   for (const l of r.limitations) {
     badges.push({ text: LIMIT_TEXT[l.kind], note: l.note, tone: "limit" });
-    if (r.tileCode === "A06" && l.note.includes("중복")) badges.push({ text: "중복 가능 · 합계 보류", note: l.note, tone: "limit" });
+    badges.push(...(module?.limitationBadges?.(l) ?? []));
   }
   badges.push(...parameterBadges(r));
-  const module = tileClientModuleFor(r.tileCode);
   const modelBadge = module?.modelBadge ?? MODEL_BADGE[r.tileCode];
   if (modelBadge) badges.push({ text: modelBadge, tone: "model" });
   // 같은 문구의 배지는 하나로 합치고 note는 이어 붙인다.
@@ -528,9 +516,8 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
     else if (b.note && prev.note !== b.note) prev.note = prev.note ? `${prev.note} / ${b.note}` : b.note;
   }
 
-  const overlap = r.tileCode === "A06";
   const isS04 = r.tileCode === "S04";
-  let metrics = r.metrics.filter((m) => !(overlap && /total|sum/.test(m.id)));
+  let metrics = r.metrics.filter((m) => module?.metricFilter?.(m) ?? true);
   if (isS04) {
     // 대표 컷(여름 14시) 지표를 맨 앞에 두고, 같은 값의 접미사 없는 별칭 지표는 행에서 뺀다.
     const cutSuffix = /_(spring|summer|autumn|winter)_h\d+$/;
@@ -589,8 +576,8 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
 
   const gradedMetricOk = r.judgment?.level != null && GRADED_CODES.has(r.tileCode) && r.judgment.criteria;
   const windDirections = windDirectionsOf(r);
-  const callout = calloutOf(r);
-  if (callout && filterLine) callout.filterLine = filterLine;
+  const sourceLine = sourceLineOf(r.provenance.sources);
+  const callout = module?.callout?.(r, sourceLine, filterLine) ?? null;
   const baseView: TileView = {
     tileId: r.tileId,
     code: r.tileCode,
@@ -607,7 +594,7 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
     grades: GRADED_CODES.has(r.tileCode) ? (r.judgment?.grades ?? []).map((g) => gradeChip(r, g)) : [],
     caveats,
     notes: [...new Set(r.limitations.map((l) => l.note))],
-    sourceLine: sourceLineOf(r.provenance.sources),
+    sourceLine,
     sourceRefs: r.provenance.sources.map((source) => ({
       sourceId: source.sourceId,
       releaseId: source.releaseId,
@@ -627,7 +614,7 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
     kindLabel: KIND_LABEL[cat.kind],
     filterChip,
     filterLine,
-    a05Counts: a05Aggregation?.counts ?? null,
+    a05Counts: prepared.a05Counts ?? null,
     callout,
     mass: massOf(r, scene),
     rose: r.presentation.rose ?? null,
@@ -646,54 +633,6 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
 export function viewWithLayer(view: TileView, layerId: string): TileView {
   if (!view.layerOptions.some((option) => option.id === layerId)) return view;
   return { ...view, map: filterMapForLayer(view.map, view.code, layerId), defaultLayer: layerId };
-}
-
-const HOUSING_LAYERS = new Set(["apt", "officetel"]); // 번호·카드·쪽은 아파트·오피스텔만
-function calloutOf(r: TileResult): CalloutModel | null {
-  if ((r.tileCode !== "A05" && r.tileCode !== "A06") || (r.status !== "complete" && r.status !== "partial")) return null;
-  const features = r.presentation.features ?? [];
-  const base = {
-    center: r.conditions.center,
-    radiusM: r.conditions.radiusM,
-    analysisYear: Number(r.conditions.analysisDate.slice(0, 4)),
-    sourceLine: sourceLineOf(r.provenance.sources),
-  };
-  if (r.tileCode === "A06") {
-    const complexes = rankSupply(features.filter((f) => SUPPLY_LAYERS.has(f.layer)), r.conditions.analysisDate);
-    const sup = supplyStats(complexes);
-    const soon = complexes.filter((c) => c.supply?.timing === "m0_12").length;
-    return {
-      ...base,
-      kind: "supply",
-      unit: "곳",
-      legend: SUPPLY_LEGEND,
-      stats: sup.stats,
-      statNote: sup.note,
-      pill: [{ value: fmtInt(complexes.length), unit: "곳" }, { value: fmtInt(soon), unit: "곳 12개월 내 입주" }],
-      others: [],
-      complexes,
-      summary: summarize(complexes),
-    };
-  }
-  const complexes = rankComplexes(features.filter((f) => HOUSING_LAYERS.has(f.layer)));
-  const summary = summarize(complexes);
-  const unknown = summary.apartments - summary.householdsKnown;
-  return {
-    ...base,
-    kind: "stock",
-    unit: "단지",
-    legend: STOCK_LEGEND,
-    stats: [
-      { value: fmtInt(summary.count), unit: "단지", label: "반경 안 단지 수" },
-      { value: fmtInt(summary.households), unit: "세대", label: "확인 세대(아파트)" },
-      { value: summary.medianYear === null ? "확인필요" : String(summary.medianYear), unit: summary.medianYear === null ? "" : "년", label: "준공 중앙값" },
-    ],
-    statNote: unknown > 0 ? `세대수 미확인 ${unknown}곳은 합계에서 제외` : null,
-    pill: [{ value: fmtInt(summary.count), unit: "단지" }, { value: fmtInt(summary.households), unit: "세대(아파트)" }],
-    others: features.filter((f) => f.layer === "other_housing").map((f) => ({ lng: f.lng, lat: f.lat })),
-    complexes,
-    summary,
-  };
 }
 
 // ── 대지 요약 ──

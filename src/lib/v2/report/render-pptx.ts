@@ -4,31 +4,20 @@
  * 판의 자리·여백은 화면 카드/펼침과 같은 문법(ui/overlay-layout)을 쓴다.
  */
 import PptxGenJS from "pptxgenjs";
-import { PPT_FONT_MAIN as FONT } from "../../ppt-design-config";
-import { GROUP_TAG_PREFIX, groupTaggedShapes } from "../../pptx-shape-group";
-import { INCH, SLIDE_OVERVIEW_FILL, cardName, cardRows, dotColor, dotRadius, fmtInt, inkOn, layoutCallouts, overlapChip, pageItems, pageRange, rowsFor, slideCalloutFrame, type CalloutFrame, type Complex, type Placed, type Pt } from "../ui/callout-layout";
+import { groupTaggedShapes } from "../../pptx-shape-group";
+import { fmtInt, pageRange } from "../ui/callout-layout";
 import { STRIP_COLORS } from "../ui/map-layers";
-import { framedViewport, makeProjector } from "../ui/map-projection";
-import { OV, SLIDE, slideLayout, slideLegend, slideSiteX, stripText, type Rect } from "../ui/overlay-layout";
-import type { Badge, CalloutModel, TileView } from "../ui/tile-view";
+import { SLIDE, slideLegend, stripText } from "../ui/overlay-layout";
+import type { Badge, TileView } from "../ui/tile-view";
 import type { RoseModel } from "../ui/wind-rose";
 import { sheetCells, type SheetGrid } from "../ui/sheet";
-import { unitTypeSummaryParts } from "../unit-types";
 import { COVER_MAP_KEY, mapKeyOf, type PlannedSlide } from "./report-plan";
+import { E, FONT, INK, IW, IX, L, LINE, MUTED, PLATE_ALPHA, fitPt, hex, linesOf, plate, textIn, type Border, type ReportItem, type Slide } from "./pptx-kit";
+import { tileReportModuleFor } from "../tile/report";
 
 /** 지도 이미지(PNG/JPEG data URL) — 키는 report-plan의 mapKeyOf */
 export type MapImages = Record<string, string>;
 
-type Slide = ReturnType<PptxGenJS["addSlide"]>;
-
-const INK = "15171C";
-const MUTED = "5B606B";
-const LINE = "D9DCE2";
-const PLATE_ALPHA = Math.round((1 - OV.plateAlpha) * 100); // 흰색 86% = 투명도 14
-const L = slideLayout();
-const E = SLIDE.edge;
-const hex = (c: string) => c.replace("#", "");
-type Border = PptxGenJS.BorderProps;
 const underline = (pt: number): [Border, Border, Border, Border] => [{ type: "none" }, { type: "none" }, { type: "solid", pt, color: LINE }, { type: "none" }];
 
 const CHIP: Record<Badge["tone"], { fill: string; color: string }> = {
@@ -36,22 +25,6 @@ const CHIP: Record<Badge["tone"], { fill: string; color: string }> = {
   limit: { fill: "F0E8DC", color: "5B4A2F" },
   model: { fill: "E6E1F7", color: "3D2E8C" },
 };
-
-// ── 글자 크기 추정 (pptx는 자동 줄임이 열 때 적용되지 않으므로 미리 재서 정한다) ──
-const chW = (ch: string) => (ch.charCodeAt(0) > 0x2e80 ? 1 : 0.56);
-const textIn = (s: string, pt: number) => ([...s].reduce((w, ch) => w + chW(ch), 0) * pt) / 72;
-const linesOf = (s: string, pt: number, w: number) => Math.max(1, Math.ceil((textIn(s, pt) / w) * 1.1));
-/** maxLines 안에 들어가는 가장 큰 글자 크기 */
-function fitPt(s: string, maxPt: number, w: number, maxLines: number, minPt = 8): number {
-  let pt = maxPt;
-  while (pt > minPt && linesOf(s, pt, w) > maxLines) pt -= 0.5;
-  return pt;
-}
-
-// ── 공통 도형 ──
-function plate(s: Slide, r: Rect, radius = 0.12) {
-  s.addShape("roundRect", { x: r.x, y: r.y, w: r.w, h: r.h, fill: { color: "FFFFFF", transparency: PLATE_ALPHA }, line: { color: INK, width: 0.5, transparency: 92 }, rectRadius: radius });
-}
 
 function background(s: Slide, image: string | undefined, tint?: string) {
   if (image) s.addImage({ data: image, x: 0, y: 0, w: SLIDE.w, h: SLIDE.h });
@@ -108,7 +81,7 @@ function chipRows(s: Slide, items: { text: string; tone: Badge["tone"] }[], x: n
   return items.length ? cy - y + 0.3 : 0;
 }
 
-type Item = { h: number; draw: (y: number) => void };
+type Item = ReportItem;
 
 /** 오른쪽 정보 판: 항목을 쌓아 높이를 정한 뒤 판을 먼저 그리고 항목을 얹는다 */
 function infoPanel(s: Slide, items: Item[]) {
@@ -123,9 +96,6 @@ function infoPanel(s: Slide, items: Item[]) {
     y += it.h + gap;
   }
 }
-
-const IX = L.info.x + 0.25;
-const IW = L.info.w - 0.5;
 
 const badgeItem = (s: Slide, badges: Badge[]): Item | null => {
   const items = badges.map((b) => ({ text: b.text, tone: b.tone }));
@@ -199,181 +169,6 @@ function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }) {
   });
 }
 
-// ── 주변 단지 설명선 장: 지도는 단지 없는 전면 이미지, 점·지시선·표·범례는 편집 가능한 도형 (단지별 PPT 그룹 callout-<id>) ──
-const AMBER = "9A5B00";
-const K = SLIDE.w / 960; // 지도 이미지(960×540) 픽셀 → inch
-const cTag = (c: Complex, part: string) => `${GROUP_TAG_PREFIX}callout-${c.id}|${`콜아웃 ${c.rank} ${cardName(c)}`.replace(/\|/g, "/")}|${part}`;
-
-function projector(model: CalloutModel, siteX: number, fill: number): (c: Complex) => Pt {
-  const pr = makeProjector(framedViewport(model.center, model.radiusM, 960, 540, siteX, fill));
-  return (c) => {
-    const [x, y] = pr(c.lng, c.lat);
-    return [x * K, y * K];
-  };
-}
-
-function seg(s: Slide, a: Pt, b: Pt, color: string, width: number, transparency: number, objectName: string) {
-  s.addShape("line", {
-    x: Math.min(a[0], b[0]),
-    y: Math.min(a[1], b[1]),
-    w: Math.max(Math.abs(b[0] - a[0]), 0.005),
-    h: Math.max(Math.abs(b[1] - a[1]), 0.005),
-    line: { color, width, transparency },
-    flipV: b[0] >= a[0] !== b[1] >= a[1],
-    objectName,
-  });
-}
-
-function numberDot(s: Slide, c: Complex, at: Pt, r: number) {
-  const color = dotColor(c);
-  s.addShape("ellipse", { x: at[0] - r - 0.025, y: at[1] - r - 0.025, w: 2 * r + 0.05, h: 2 * r + 0.05, fill: { color: "FFFFFF", transparency: 8 }, line: { color: "FFFFFF", width: 0, transparency: 100 }, objectName: cTag(c, "dot-halo") });
-  s.addShape("ellipse", { x: at[0] - r, y: at[1] - r, w: 2 * r, h: 2 * r, fill: { color: hex(color) }, line: { color: INK, width: 0.5, transparency: 50 }, objectName: cTag(c, "dot") });
-  s.addText(String(c.rank), { x: at[0] - r, y: at[1] - r, w: 2 * r, h: 2 * r, align: "center", valign: "middle", fontFace: FONT, fontSize: r >= 0.17 ? 9 : 8, bold: true, color: hex(inkOn(color)), margin: 0, objectName: cTag(c, "dot-no") });
-}
-
-function unitTypeLines(value: string, fontSize: number, width: number): string[] {
-  const lines: string[] = [];
-  let current = "";
-  for (const part of unitTypeSummaryParts(value)) {
-    const candidate = current ? `${current} · ${part}` : part;
-    if (current && textIn(candidate, fontSize) > width) {
-      lines.push(current);
-      current = part;
-    } else {
-      current = candidate;
-    }
-  }
-  if (current) lines.push(current);
-  return lines.length > 0 ? lines : [value];
-}
-
-function fitUnitTypeValue(value: string, maxPt: number, width: number): { fontSize: number; lines: string[] } {
-  for (let fontSize = maxPt; fontSize >= 6; fontSize -= 0.5) {
-    const lines = unitTypeLines(value, fontSize, width);
-    if (lines.length <= 2) return { fontSize, lines };
-  }
-  return { fontSize: 6, lines: unitTypeLines(value, 6, width) };
-}
-
-function calloutCard(s: Slide, c: Complex, p: Placed, f: CalloutFrame, year: number) {
-  const { m } = f;
-  const color = dotColor(c);
-  const chip = overlapChip(c);
-  s.addShape("roundRect", { x: p.x, y: p.y, w: f.cardW, h: f.cardH, fill: { color: "FFFFFF", transparency: 8 }, line: { color: INK, width: 0.5, transparency: 88 }, rectRadius: 0.08, objectName: cTag(c, "card") });
-  s.addShape("ellipse", { x: p.x + 0.09, y: p.y + m.head / 2 - 0.09, w: 0.18, h: 0.18, fill: { color: hex(color) }, line: { color: INK, width: 0.5, transparency: 55 }, objectName: cTag(c, "card-no-bg") });
-  s.addText(String(c.rank), { x: p.x + 0.09, y: p.y + m.head / 2 - 0.09, w: 0.18, h: 0.18, align: "center", valign: "middle", fontFace: FONT, fontSize: 8, bold: true, color: hex(inkOn(color)), margin: 0, objectName: cTag(c, "card-no") });
-  const name = cardName(c);
-  const chipW = chip ? 0.62 : 0;
-  s.addText(name, { x: p.x + 0.34, y: p.y, w: f.cardW - 0.42 - chipW, h: m.head, valign: "middle", fontFace: FONT, fontSize: fitPt(name, 9.5, f.cardW - 0.42 - chipW, 1, 7), bold: true, color: c.name ? INK : AMBER, margin: 0, objectName: cTag(c, "name") });
-  if (chip) {
-    s.addShape("roundRect", { x: p.x + f.cardW - 0.68, y: p.y + m.head / 2 - 0.09, w: 0.6, h: 0.18, fill: { color: "FDF1D3" }, line: { color: "FDF1D3", width: 0 }, rectRadius: 0.09, objectName: cTag(c, "chip-bg") });
-    s.addText(chip, { x: p.x + f.cardW - 0.68, y: p.y + m.head / 2 - 0.09, w: 0.6, h: 0.18, align: "center", valign: "middle", fontFace: FONT, fontSize: 7.5, bold: true, color: "7A5200", margin: 0, objectName: cTag(c, "chip") });
-  }
-  seg(s, [p.x, p.y + m.head], [p.x + f.cardW, p.y + m.head], INK, 0.5, 90, cTag(c, "head-sep"));
-  const fs = Math.min(8.5, Math.floor(m.row * 72 * 0.68 * 2) / 2);
-  let y = p.y + m.head + 0.03;
-  cardRows(c, year).forEach((r, i) => {
-    const lw = r.label === "입주(예정) 시기" ? 1.0 : 0.55;
-    const valueW = f.cardW - 0.2 - lw;
-    const fitted = r.unitType ? fitUnitTypeValue(r.value, fs, valueW) : { fontSize: fitPt(r.value, fs, valueW, 1, 6), lines: [r.value] };
-    const rowH = r.unitType ? m.row * 2 : m.row;
-    s.addText(r.label, { x: p.x + 0.1, y, w: lw, h: rowH, valign: "middle", fontFace: FONT, fontSize: fs, color: MUTED, margin: 0, objectName: cTag(c, `row-${i}-label`) });
-    s.addText(fitted.lines.join("\n"), { x: p.x + 0.1 + lw, y, w: valueW, h: rowH, align: "right", valign: "middle", fontFace: FONT, fontSize: fitted.fontSize, bold: true, color: r.missing ? AMBER : INK, margin: 0, objectName: cTag(c, `row-${i}-value`) });
-    y += rowH;
-  });
-}
-
-/** 준공 연대 색 + 크기 = 세대수 범례 판. 아래 가장자리(bottom)에 붙고, 폭(maxW)을 넘으면 줄을 바꾼다 */
-function calloutLegend(s: Slide, model: CalloutModel, x: number, bottom: number, maxW: number) {
-  const entries = [{ text: model.legend.title, color: null as string | null }, ...model.legend.items.map((it) => ({ text: it.label, color: it.color })), { text: model.legend.sizeLabel, color: null }];
-  const rows: Array<Array<{ text: string; color: string | null; x: number; w: number }>> = [[]];
-  let cx = 0;
-  for (const e of entries) {
-    const w = (e.color ? 0.22 : 0.04) + textIn(e.text, 9) + 0.1;
-    if (cx > 0 && cx + w > maxW - 0.3) {
-      rows.push([]);
-      cx = 0;
-    }
-    rows.at(-1)!.push({ ...e, x: cx, w });
-    cx += w;
-  }
-  const w = Math.min(maxW, Math.max(...rows.map((r) => r.reduce((a, i) => a + i.w, 0))) + 0.3);
-  const h = 0.14 + rows.length * 0.24;
-  const r = { x, y: bottom - h, w, h };
-  plate(s, r);
-  rows.forEach((row, ri) =>
-    row.forEach((e) => {
-      const y = r.y + 0.07 + ri * 0.24;
-      if (e.color) s.addShape("ellipse", { x: r.x + 0.15 + e.x, y: y + 0.06, w: 0.12, h: 0.12, fill: { color: hex(e.color) }, line: { color: INK, width: 0.5, transparency: 55 } });
-      s.addText(e.text, { x: r.x + 0.15 + e.x + (e.color ? 0.16 : 0), y, w: e.w, h: 0.24, valign: "middle", fontFace: FONT, fontSize: 9, bold: !e.color, color: e.color ? INK : MUTED, margin: 0 });
-    }),
-  );
-}
-
-/** 개요 장: 번호 점 전체 + 왼쪽 아래 핵심 값 카드 + 범례 (오른쪽 정보 판은 tile()이 그린다) */
-function calloutOverview(s: Slide, p: PlannedSlide & { kind: "tile" }) {
-  const cm = p.callout!.model;
-  const proj = projector(cm, slideSiteX(), SLIDE_OVERVIEW_FILL);
-  const hMax = Math.max(0, ...cm.complexes.map((c) => c.households ?? 0));
-  cm.complexes.forEach((c) => numberDot(s, c, proj(c), dotRadius(c.households, hMax, INCH.rMin, INCH.rMax)));
-  if (cm.complexes.length === 0) {
-    const w = 4.6;
-    const h = 1.2;
-    // 대지 표시를 가리지 않게 원 아래쪽에 둔다
-    const r = { x: slideSiteX() * SLIDE.w - w / 2, y: SLIDE.h / 2 + 0.9, w, h };
-    plate(s, r, 0.16);
-    s.addText(`반경 안 확인된 ${cm.unit === "곳" ? "사업" : "단지"} 0`, { x: r.x + 0.3, y: r.y + 0.2, w: w - 0.6, h: 0.45, fontFace: FONT, fontSize: 20, bold: true, color: INK, margin: 0 });
-    s.addText(`기준 ${cm.sourceLine}`, { x: r.x + 0.3, y: r.y + 0.7, w: w - 0.6, h: 0.35, valign: "top", fontFace: FONT, fontSize: 10.5, color: MUTED, margin: 0, fit: "shrink" });
-    return;
-  }
-  if (cm.complexes.length > 0) calloutLegend(s, cm, E, L.legendBottom, L.info.x - 2 * E);
-}
-
-/** 개요 장 오른쪽 정보 판의 핵심 값: 단지 수 · 확인 세대(아파트) · 준공 중앙값 (기본 headline 대신) */
-function calloutStatItem(s: Slide, cm: CalloutModel): Item {
-  const stats = cm.stats.map((t): [string, string, string] => [t.value, t.unit, t.label]);
-  const note = cm.statNote;
-  const cw = IW / 3;
-  return {
-    h: 0.86 + (note ? 0.24 : 0),
-    draw: (y) => {
-      stats.forEach(([v, u, label], i) => {
-        const x = IX + i * cw;
-        s.addText([{ text: v, options: { fontSize: v.length > 5 ? 15 : 24, bold: true, color: INK } }, { text: u ? ` ${u}` : "", options: { fontSize: 10, color: MUTED } }], { x, y, w: cw - 0.05, h: 0.6, valign: "middle", fontFace: FONT, margin: 0 });
-        s.addText(label, { x, y: y + 0.6, w: cw - 0.05, h: 0.24, valign: "middle", fontFace: FONT, fontSize: 9, color: MUTED, margin: 0 });
-      });
-      if (note) s.addText(note, { x: IX, y: y + 0.86, w: IW, h: 0.22, valign: "middle", fontFace: FONT, fontSize: 9, color: MUTED, margin: 0, fit: "shrink" });
-    },
-  };
-}
-
-/** 설명표 장: 번호 점 + 무교차 지시선 + 좌우 표 */
-function calloutPage(s: Slide, p: PlannedSlide & { kind: "tile" }) {
-  const { model: cm, page } = p.callout!;
-  const items = pageItems(cm.complexes, page);
-  const f = slideCalloutFrame(rowsFor(items));
-  const proj = projector(cm, f.siteX, f.fill);
-  const hMax = Math.max(0, ...cm.complexes.map((c) => c.households ?? 0));
-  const at = new Map(cm.complexes.map((c) => [c.id, proj(c)]));
-  // 다른 장의 단지는 작은 점만 (같은 지도 범위)
-  cm.complexes.filter((c) => !items.includes(c)).forEach((c) => {
-    const [x, y] = at.get(c.id)!;
-    s.addShape("ellipse", { x: x - 0.045, y: y - 0.045, w: 0.09, h: 0.09, fill: { color: hex(dotColor(c)), transparency: 40 }, line: { color: "FFFFFF", width: 0.5 } });
-  });
-  const { placed } = layoutCallouts(f, items.map((c) => ({ id: c.id, rank: c.rank, x: at.get(c.id)![0], y: at.get(c.id)![1] })));
-  const byId = new Map(items.map((c) => [c.id, c]));
-  for (const pl of placed) {
-    const c = byId.get(pl.id)!;
-    seg(s, pl.dot, pl.knee, "FFFFFF", 3.4, 8, cTag(c, "leader-halo-1"));
-    seg(s, pl.knee, pl.edge, "FFFFFF", 3.4, 8, cTag(c, "leader-halo-2"));
-    seg(s, pl.dot, pl.knee, INK, 1, 0, cTag(c, "leader-1"));
-    seg(s, pl.knee, pl.edge, INK, 1, 0, cTag(c, "leader-2"));
-  }
-  for (const pl of placed) numberDot(s, byId.get(pl.id)!, pl.dot, dotRadius(byId.get(pl.id)!.households, hMax, INCH.rMin, INCH.rMax));
-  for (const pl of placed) calloutCard(s, byId.get(pl.id)!, pl, f, cm.analysisYear);
-  calloutLegend(s, cm, f.left.x1 + 0.35, L.legendBottom, f.right.x0 - f.left.x1 - 0.7);
-}
-
 function cover(pptx: PptxGenJS, p: PlannedSlide & { kind: "cover" }, images: MapImages) {
   const s = pptx.addSlide();
   background(s, images[COVER_MAP_KEY]);
@@ -433,11 +228,12 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
     return [16, 8, 0].map((sh) => ch(sh).toString(16).padStart(2, "0")).join("").toUpperCase();
   };
   const co = p.callout;
+  const calloutReport = tileReportModuleFor(v.code)?.report;
   background(s, chart ? undefined : images[mapKeyOf(p) ?? v.tileId], chart ? mix(v.color, 0.07) : undefined);
   const coTail = co ? (co.page === 0 ? `개요 · 전체 ${fmtInt(co.model.complexes.length)}${co.model.unit}` : pageRange(co.page, co.model.complexes.length, undefined, co.model.kind === "supply")) : null;
   titlePlate(s, v.color, v.code, v.title, [v.kindLabel, p.faceLabel, coTail].filter((t, i, a) => t && a.indexOf(t) === i).join(" · "), co && co.page > 0 ? SLIDE.w - 2 * E : L.info.x - 2 * E);
   if (co && co.page > 0) {
-    calloutPage(s, p);
+    calloutReport?.render({ slide: s, planned: p, part: "page" });
     strip(s, p, true);
     return;
   }
@@ -468,7 +264,10 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
     return;
   }
 
-  if (co && co.model.complexes.length > 0) items.push(calloutStatItem(s, co.model));
+  if (co && co.model.complexes.length > 0) {
+    const stat = calloutReport?.render({ slide: s, planned: p, part: "stat" });
+    if (stat) items.push(stat);
+  }
   else if (v.headline) items.push(...headlineItems(s, v.headline));
   if (v.sentence) items.push(textItem(s, v.sentence, 12.5, INK, true, 5));
   if (v.filterLine) items.push(textItem(s, v.filterLine, 10, MUTED, true, 2));
@@ -496,7 +295,7 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
       s.addShape("rect", { x: x0 + labW, y: y + rh * 0.2, w: Math.max(0.04, (trackW * c.value) / max), h: rh * 0.6, fill: { color: hex(STRIP_COLORS[i % STRIP_COLORS.length]) }, line: { color: hex(STRIP_COLORS[i % STRIP_COLORS.length]), width: 0 } });
       s.addText(`${c.value}${c.unit === "%" ? "%" : ` ${c.unit}`}`, { x: x0 + labW + trackW + 0.1, y, w: 0.8, h: rh, align: "right", valign: "middle", fontFace: FONT, fontSize: 14, bold: true, color: INK, margin: 0 });
     });
-  } else if (co) calloutOverview(s, p);
+  } else if (co) calloutReport?.render({ slide: s, planned: p, part: "overview" });
   else legendPlate(s, p);
 
   infoPanel(s, items);

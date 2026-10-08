@@ -10,6 +10,7 @@ import { UNIT_TYPE_BASIS } from "@/lib/v2/unit-types";
 import MapFigure from "./map-figure";
 import { BasemapContext, satelliteTileHref, useMeasured } from "./map-box";
 import styles from "./board.module.css";
+import tileStyles from "@/lib/v2/tile/a05/tile.module.css";
 import UnitTypeSummary from "./unit-type-summary";
 
 const INK = "#16181d";
@@ -23,7 +24,7 @@ function Card({ c, siblings, p, frame, year, hover, dim, onHover, onPick }: { c:
   const typeRow = c.supply ? rows[2] : rows[1];
   return (
     <div
-      className={`${styles.plate} ${styles.cCard} ${hover ? styles.cCardOn : ""}`}
+      className={`${styles.plate} ${tileStyles.cCard} ${hover ? tileStyles.cCardOn : ""}`}
       role="group"
       aria-label={`${c.rank}번 ${cardName(c)}`}
       data-narrow={frame.cardW < 112 ? "true" : undefined}
@@ -32,25 +33,25 @@ function Card({ c, siblings, p, frame, year, hover, dim, onHover, onPick }: { c:
       onMouseLeave={() => onHover(null)}
       onClick={() => onPick(c.id)}
     >
-      <div className={styles.cHead} data-compact={!full || undefined} data-name-wrap={nameWrap ? "true" : undefined}>
-        <span className={styles.cNum} style={{ background: color, color: inkOn(color) }}>
+      <div className={tileStyles.cHead} data-compact={!full || undefined} data-name-wrap={nameWrap ? "true" : undefined}>
+        <span className={tileStyles.cNum} style={{ background: color, color: inkOn(color) }}>
           {c.rank}
         </span>
-        <span className={`${styles.cName} ${c.name ? "" : styles.cMissing}`} title={cardName(c)}>
+        <span className={`${tileStyles.cName} ${c.name ? "" : tileStyles.cMissing}`} title={cardName(c)}>
           {displayComplexName(c, siblings)}
         </span>
         {chip && (
-          <span className={styles.cChip} title={chip}>
+          <span className={tileStyles.cChip} title={chip}>
             {full ? chip : "중복"}
           </span>
         )}
       </div>
       {full ? (
-        <ul className={styles.cRows}>
+        <ul className={tileStyles.cRows}>
           {rows.map((r) => (
             <li key={r.label} data-unit-type={r.unitType || undefined}>
               <span>{r.label}</span>
-              <b className={r.missing ? styles.cMissing : undefined} title={r.value}>
+              <b className={r.missing ? tileStyles.cMissing : undefined} title={r.value}>
                 {r.unitType ? <UnitTypeSummary value={r.value} pairClassName={styles.cTypePair} /> : r.value}
               </b>
             </li>
@@ -58,22 +59,22 @@ function Card({ c, siblings, p, frame, year, hover, dim, onHover, onPick }: { c:
         </ul>
       ) : (
         <>
-          <div className={styles.cSub} style={c.supply ? { paddingLeft: 10 } : undefined}>
+          <div className={tileStyles.cSub} style={c.supply ? { paddingLeft: 10 } : undefined}>
             {c.supply ? (
               <>
-                <span className={c.supply.plannedMonth === null ? styles.cMissing : undefined}>{c.supply.plannedMonth ? c.supply.plannedMonth.replace("-", ".") : "일정 확인필요"}</span>
-                <span className={rows[1].missing ? styles.cMissing : styles.cYear}>{rows[1].value}</span>
+                <span className={c.supply.plannedMonth === null ? tileStyles.cMissing : undefined}>{c.supply.plannedMonth ? c.supply.plannedMonth.replace("-", ".") : "일정 확인필요"}</span>
+                <span className={rows[1].missing ? tileStyles.cMissing : tileStyles.cYear}>{rows[1].value}</span>
               </>
             ) : (
               <>
-                <span className={rows[0].missing ? styles.cMissing : undefined}>{rows[0].value}</span>
-                {c.approvalYear !== null && frame.cardW >= 112 && <span className={styles.cYear}>{c.approvalYear}</span>}
+                <span className={rows[0].missing ? tileStyles.cMissing : undefined}>{rows[0].value}</span>
+                {c.approvalYear !== null && frame.cardW >= 112 && <span className={tileStyles.cYear}>{c.approvalYear}</span>}
               </>
             )}
           </div>
-          <div className={styles.cTypeLine} title={`${typeRow.value} · ${UNIT_TYPE_BASIS}`}>
+          <div className={tileStyles.cTypeLine} title={`${typeRow.value} · ${UNIT_TYPE_BASIS}`}>
             <span>타입</span>
-            <b className={typeRow.missing ? styles.cMissing : undefined}>{typeRow.value}</b>
+            <b className={typeRow.missing ? tileStyles.cMissing : undefined}>{typeRow.value}</b>
           </div>
         </>
       )}
@@ -86,17 +87,17 @@ export function CalloutLegend({ model, compact = false, style, activeLabel = nul
   const items = compact ? compactCalloutLegend(model.legend, model.complexes, 3) : model.legend.items;
   const legendPointerType = useRef<string | null>(null);
   return (
-    <div className={`${styles.plate} ${styles.cLegend}`} style={style} role="group" aria-label={compact ? `범례 ${items.length}색` : "범례"}>
-      {!compact && <span className={styles.cLegendT}>{model.legend.title}</span>}
+    <div className={`${styles.plate} ${tileStyles.cLegend}`} style={style} role="group" aria-label={compact ? `범례 ${items.length}색` : "범례"}>
+      {!compact && <span className={tileStyles.cLegendT}>{model.legend.title}</span>}
       {items.map((it) => {
         const active = activeLabel === it.label;
         const content = <><i style={{ background: it.hollow ? "transparent" : it.color, borderColor: it.color }} />{it.label}</>;
-        if (!onHover && !onPin) return <span key={it.label} className={styles.cLegendI}>{content}</span>;
+        if (!onHover && !onPin) return <span key={it.label} className={tileStyles.cLegendI}>{content}</span>;
         return (
           <button
             key={it.label}
             type="button"
-            className={styles.cLegendI}
+            className={tileStyles.cLegendI}
             data-active={active || undefined}
             aria-label={`${it.label} 범례 강조`}
             aria-pressed={pinnedLabel === it.label}
@@ -119,7 +120,7 @@ export function CalloutLegend({ model, compact = false, style, activeLabel = nul
           </button>
         );
       })}
-      {!compact && <span className={styles.cLegendT}>{model.legend.sizeLabel}</span>}
+      {!compact && <span className={tileStyles.cLegendT}>{model.legend.sizeLabel}</span>}
     </div>
   );
 }
@@ -136,8 +137,8 @@ export function CalloutValueCard({ model }: { model: CalloutModel }) {
     </div>
   );
   return (
-    <div className={`${styles.plate} ${styles.valueCard} ${styles.cValue}`}>
-      <div className={styles.cValueRow}>
+    <div className={`${styles.plate} ${styles.valueCard} ${tileStyles.cValue}`}>
+      <div className={tileStyles.cValueRow}>
         {model.stats.map((s) => (
           <Fragment key={s.label}>{stat(s.value, s.unit, s.label)}</Fragment>
         ))}
@@ -150,10 +151,10 @@ export function CalloutValueCard({ model }: { model: CalloutModel }) {
 /** 보드 카드 왼쪽 아래 한 줄 값 판 */
 export function CalloutPill({ model }: { model: CalloutModel }) {
   return (
-    <div className={`${styles.plate} ${styles.cPill}`}>
+    <div className={`${styles.plate} ${tileStyles.cPill}`}>
       {model.pill.map((p) => (
         <Fragment key={p.unit}>
-          <span className={`${styles.display} ${styles.cPillN}`}>{p.value}</span>
+          <span className={`${styles.display} ${tileStyles.cPillN}`}>{p.value}</span>
           <span className={styles.aux}>{p.unit}</span>
         </Fragment>
       ))}
@@ -171,17 +172,17 @@ function Strip({ cards, active, onPick, top }: { cards: StripCard[]; active: str
     if (el && ref.current) ref.current.scrollTo({ left: el.offsetLeft - 8, behavior: "smooth" });
   }, [active]);
   return (
-    <div ref={ref} className={styles.cStrip} style={{ top, height: STRIP_H }} role="list" aria-label="단지 설명 카드">
+    <div ref={ref} className={tileStyles.cStrip} style={{ top, height: STRIP_H }} role="list" aria-label="단지 설명 카드">
       {cards.map((c) => (
-        <button key={c.id} type="button" role="listitem" data-card={c.id} className={`${styles.plate} ${styles.cStripCard} ${active === c.id ? styles.cCardOn : ""}`} onClick={() => onPick(c.id)} aria-pressed={active === c.id}>
-          <span className={styles.cStripHead}>
-            <span className={styles.cNum} style={{ background: c.color, color: inkOn(c.color) }}>
+        <button key={c.id} type="button" role="listitem" data-card={c.id} className={`${styles.plate} ${tileStyles.cStripCard} ${active === c.id ? tileStyles.cCardOn : ""}`} onClick={() => onPick(c.id)} aria-pressed={active === c.id}>
+          <span className={tileStyles.cStripHead}>
+            <span className={tileStyles.cNum} style={{ background: c.color, color: inkOn(c.color) }}>
               {c.rank}
             </span>
-            <span className={`${styles.cName} ${c.nameMissing ? styles.cMissing : ""}`} title={c.fullName}>{c.name}</span>
-            {c.chip && <span className={styles.cChip}>{c.chip}</span>}
+            <span className={`${tileStyles.cName} ${c.nameMissing ? tileStyles.cMissing : ""}`} title={c.fullName}>{c.name}</span>
+            {c.chip && <span className={tileStyles.cChip}>{c.chip}</span>}
           </span>
-          {c.lines.map((line, i) => <span key={i} className={`${styles.cStripLine} ${i === 1 ? styles.cStripType : ""}`}>{line}</span>)}
+          {c.lines.map((line, i) => <span key={i} className={`${tileStyles.cStripLine} ${i === 1 ? tileStyles.cStripType : ""}`}>{line}</span>)}
         </button>
       ))}
     </div>
@@ -200,8 +201,8 @@ function Pager({ model, page, onPage }: { model: CalloutModel; page: number; onP
         : `전체 ${fmtInt(model.summary.count)}단지 (아파트 ${fmtInt(model.summary.apartments)} · 오피스텔 ${fmtInt(model.summary.count - model.summary.apartments)}) · 세대수 순`
       : pageRange(page, model.complexes.length, undefined, supply);
   return (
-    <div className={styles.cPagerWrap}>
-      <div className={`${styles.plate} ${styles.cPager}`} role="group" aria-label="설명표 페이지">
+    <div className={tileStyles.cPagerWrap}>
+      <div className={`${styles.plate} ${tileStyles.cPager}`} role="group" aria-label="설명표 페이지">
         <button type="button" onClick={() => onPage(page - 1)} disabled={page <= 0} aria-label="이전 페이지">
           ‹
         </button>
@@ -209,7 +210,7 @@ function Pager({ model, page, onPage }: { model: CalloutModel; page: number; onP
         <button type="button" onClick={() => onPage(page + 1)} disabled={page >= pages} aria-label="다음 페이지">
           ›
         </button>
-        <span className={styles.cPagerRange}>{range}</span>
+        <span className={tileStyles.cPagerRange}>{range}</span>
       </div>
     </div>
   );
