@@ -11,8 +11,9 @@ import { parseTileResult, tileCacheKey, type RasterRef, type TileConditions, typ
 import { loadTileRaster, saveTileRasters } from "../raster-store";
 import { sha256Hex } from "../canonical-json";
 import { EngineContext, type RasterValues } from "./context";
-import { s03InputsHash, saveTileResultWithElapsed, TILES } from "./run";
+import { s03InputsHash, saveTileResultWithElapsed } from "./run";
 import { restoreSiteFromParameters, SITE_DEPENDENT_TILE_CODES, siteSnapshotHash } from "./site";
+import { DATE_INDEPENDENT, HEAVY_TILES, TILES } from "../tile/server";
 import { d10 } from "./tiles/d10";
 import { d29 } from "./tiles/d29";
 import { s02 } from "./tiles/s02";
@@ -24,8 +25,7 @@ import { listJobs, type JobInfo } from "./jobs-store";
 
 type Db = BetterSqlite3.Database;
 
-export const HEAVY_TILES = ["S02", "D29", "D10", "S03", "S04"] as const;
-export const DATE_INDEPENDENT = new Set(["S03", "D10", "D29", "D01", "D28"]);
+export { DATE_INDEPENDENT, HEAVY_TILES };
 export const DATA_VERSION_CHANGED_REASON = "데이터 버전이 바뀌어 다시 계산해야 합니다";
 const JOB_FAILURE_REASON = "계산에 실패했습니다. 다시 계산해 주세요";
 

@@ -19,47 +19,10 @@ import { EngineContext } from "./context";
 import { buildScene } from "./scene";
 import { resolveSiteGeometry, SITE_DEPENDENT_TILE_CODES, type SiteFailure, type SiteGeometryResult } from "./site";
 import { buildSummary } from "./summary";
-import { a01 } from "./tiles/a01";
-import { a02 } from "./tiles/a02";
-import { a03 } from "./tiles/a03";
-import { a04 } from "./tiles/a04";
-import { a05 } from "./tiles/a05";
-import { a06 } from "./tiles/a06";
-import { a07 } from "./tiles/a07";
-import { a08 } from "./tiles/a08";
-import { a09 } from "./tiles/a09";
-import { a10 } from "./tiles/a10";
-import { a11 } from "./tiles/a11";
-import { a12 } from "./tiles/a12";
 import { cacheEngineVersion, ENGINE_VERSION, makeTile } from "./tiles/common";
-import { d01 } from "./tiles/d01";
-import { d02 } from "./tiles/d02";
-import { d03 } from "./tiles/d03";
-import { d04 } from "./tiles/d04";
-import { d05 } from "./tiles/d05";
-import { d06 } from "./tiles/d06";
-import { d07 } from "./tiles/d07";
-import { d08 } from "./tiles/d08";
-import { d09 } from "./tiles/d09";
-import { d11 } from "./tiles/d11";
-import { d12 } from "./tiles/d12";
-import { d13 } from "./tiles/d13";
-import { d15 } from "./tiles/d15";
-import { d16 } from "./tiles/d16";
-import { d17 } from "./tiles/d17";
-import { d18 } from "./tiles/d18";
-import { d19 } from "./tiles/d19";
-import { d20 } from "./tiles/d20";
-import { d22 } from "./tiles/d22";
-import { d23 } from "./tiles/d23";
-import { d24 } from "./tiles/d24";
-import { d25 } from "./tiles/d25";
-import { d26 } from "./tiles/d26";
-import { d27 } from "./tiles/d27";
-import { d28 } from "./tiles/d28";
-import { mergeTileResults, retargetTile, type MergeOptions } from "./tiles/merge";
-import { s01 } from "./tiles/s01";
-import { s04 } from "./tiles/s04";
+import { DATE_INDEPENDENT_CODES, HEAVY_TILE_CODES, TILES } from "../tile/server";
+
+export { DATE_INDEPENDENT_CODES, HEAVY_TILE_CODES, TILES } from "../tile/server";
 
 export const RADIUS_CHOICES = [500, 800, 1000, 2000, 3000] as const;
 export const DEFAULT_RADIUS_M = 800;
@@ -81,69 +44,7 @@ export type RunOutcome =
 /** TileResult 계약을 건드리지 않고 API/저장 JSON에 계산 소요를 함께 노출하는 T3 부가 필드. */
 export type TimedTileResult = TileResult & { elapsedMs: number };
 
-export const HEAVY_TILE_CODES = ["S02", "D29", "D10", "S03", "S04"] as const;
 const HEAVY_TILE_SET = new Set<string>(HEAVY_TILE_CODES);
-export const DATE_INDEPENDENT_CODES = new Set(["S03", "D10", "D29", "D01", "D28"]);
-
-/** 무거운 타일은 POST의 경량 계산 경로에서 호출되지 않는다. 작업자는 jobs.ts에서 로드한다. */
-const deferredHeavyTile = (): TileResult => {
-  throw new Error("heavy tile compute is only available in the analysis worker");
-};
-
-type TileCompute = (ctx: EngineContext) => TileResult;
-
-function mergedTile(ctx: EngineContext, code: string, primary: TileCompute, extras: readonly TileCompute[], options: MergeOptions = {}): TileResult {
-  let result = retargetTile(primary(ctx), ctx, code);
-  for (const extra of extras) result = mergeTileResults(result, retargetTile(extra(ctx), ctx, code), options);
-  return result;
-}
-
-const a02WithSchoolZones: TileCompute = (ctx) => mergedTile(ctx, "A02", a02, [d26]);
-const a04WithGreenSpace: TileCompute = (ctx) => mergedTile(ctx, "A04", a04, [d09]);
-const a07WithLocationBreakdown: TileCompute = (ctx) => mergedTile(ctx, "A07", a07, [d25]);
-const a09WithMaintenanceDetail: TileCompute = (ctx) => mergedTile(ctx, "A09", a09, [d23]);
-const a10WithPlannedDetail: TileCompute = (ctx) => mergedTile(ctx, "A10", a10, [d24]);
-const a11WithDensityDetail: TileCompute = (ctx) => mergedTile(ctx, "A11", a11, [d27]);
-const a12WithZoningDetail: TileCompute = (ctx) => mergedTile(ctx, "A12", a12, [d08]);
-const d05WithHeightModes: TileCompute = (ctx) => mergedTile(ctx, "D05", d05, [d06, d07]);
-const d19WithParcelSize: TileCompute = (ctx) => mergedTile(ctx, "D19", d19, [d20]);
-
-/** 화면 순서(카탈로그 순). 계산하는 타일 다음에 아직 제공하지 않는 타일이 코드 순서에 끼어든다. */
-export const TILES: Array<[code: string, compute: (ctx: EngineContext) => TileResult]> = [
-  ["A01", a01],
-  ["A02", a02WithSchoolZones],
-  ["A03", a03],
-  ["A04", a04WithGreenSpace],
-  ["A05", a05],
-  ["A06", a06],
-  ["A07", a07WithLocationBreakdown],
-  ["A08", a08],
-  ["A09", a09WithMaintenanceDetail],
-  ["A10", a10WithPlannedDetail],
-  ["A11", a11WithDensityDetail],
-  ["A12", a12WithZoningDetail],
-  ["D01", d01],
-  ["D02", d02],
-  ["D03", d03],
-  ["D04", d04],
-  ["D05", d05WithHeightModes],
-  ["D10", deferredHeavyTile],
-  ["D11", d11],
-  ["D12", d12],
-  ["D13", d13],
-  ["D15", d15],
-  ["D16", d16],
-  ["D17", d17],
-  ["D18", d18],
-  ["D19", d19WithParcelSize],
-  ["D22", d22],
-  ["D28", d28],
-  ["D29", deferredHeavyTile],
-  ["S01", s01],
-  ["S02", deferredHeavyTile],
-  ["S03", deferredHeavyTile],
-  ["S04", s04],
-];
 
 export const todayKst = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
 
