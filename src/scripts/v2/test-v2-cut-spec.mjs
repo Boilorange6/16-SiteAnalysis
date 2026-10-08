@@ -82,7 +82,8 @@ assert.equal(s02SpringView.map?.defaultRaster, "sun_hours_spring");
 assert.equal(s02SpringView.headline?.label, "춘분 평균 일조시간");
 assert.equal(s02SpringView.headline?.value, "7.2시간");
 assert.match(s02SpringView.notes[1] ?? "", /^춘분 일조시간 · 계절 레이어/);
-assert.match(s02SpringView.sentence ?? "", /^춘분 반경 안/);
+// 판단 문장은 동지 기준 숫자(4.7 시간)를 담고 있으므로 계절명만 바꾸지 않는다
+assert.equal(s02SpringView.sentence, s02View.sentence);
 const s02Hours = planFor(s02, { tile: "S02", mode: "hours3", date: "summer" });
 const s02Sheet = s02Hours.plan.find((slide) => slide.kind === "sheet");
 assert.equal(s02Sheet?.grid, "3x1");

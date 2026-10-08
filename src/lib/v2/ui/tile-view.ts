@@ -238,7 +238,7 @@ export function viewWithOnlyRaster(view: TileView, rasterName: string, note: str
       ? {
           headline: { value: s02Metric.value, label: s02Metric.label, aux: s02Metric.aux, tag: s02Metric.tag },
           headlineMetricId: `mean_sun_h_${s02Date}`,
-          sentence: view.sentence?.replace(/^동지 /, `${s02Label} `),
+          // 판단 문장은 동지 기준 숫자를 담고 있어 계절명만 바꾸면 틀린 문장이 된다 — 그대로 둔다
         }
       : {}),
     notes: note
