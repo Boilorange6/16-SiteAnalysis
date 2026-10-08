@@ -564,7 +564,8 @@
   --grid-row-height: 280px;
   display: grid;
   grid-template-columns: repeat(var(--grid-cols), minmax(0, 1fr));
-  grid-auto-rows: minmax(240px, var(--grid-row-height));
+  /* 행 높이 하한은 보드가 계산한 값(≥280px). 내용이 더 필요한 줄(대지 요약)만 늘어난다. */
+  grid-auto-rows: minmax(var(--grid-row-height), auto);
   gap: 16px;
 }
 @media (max-width: 900px) {
@@ -587,17 +588,29 @@
   .desktopTools {
     display: none;
   }
+  /* §5-1: 1줄 = 로고 + 주소, 2줄 = 가이드·내 프로젝트·저장·더 보기(한 줄) */
+  .brand {
+    order: 1;
+  }
+  .topbar > .pill {
+    order: 3;
+    padding-inline: 12px;
+  }
   .projectControls {
-    flex: 0 0 100%;
-    margin-left: auto;
+    order: 4;
+    flex: 0 1 auto;
+    flex-wrap: nowrap;
     gap: 4px;
-    justify-content: flex-end;
+  }
+  .mobileTools {
+    order: 5;
+    margin-left: auto;
   }
   .projectControls .projectSecondary {
     display: inline-flex;
     align-items: center;
     min-height: 44px;
-    max-width: 150px;
+    max-width: 110px;
     padding-inline: 10px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -619,19 +632,13 @@
   .mobileTools {
     display: block;
   }
-  .topTitle {
-    order: 10;
-    flex-basis: 100%;
-    border-left: 0;
-    padding-left: 0;
-  }
   .progressRow {
     margin-top: 0;
     padding-inline: 10px;
   }
   .grid {
     grid-template-columns: minmax(0, 1fr);
-    grid-auto-rows: minmax(240px, var(--grid-row-height));
+    grid-auto-rows: minmax(var(--grid-row-height), auto);
   }
   .grid .span2 {
     grid-column: auto; /* 2칸도 한 줄 폭으로 */
@@ -642,7 +649,6 @@
   }
   .summary {
     grid-column: auto !important;
-    grid-row: span 2 !important;
   }
   .summaryAddr {
     font-size: 26px;
@@ -720,24 +726,47 @@
     display: none;
   }
 }
+@media (max-width: 520px) {
+  .topTitle {
+    order: 2;
+    flex: 1 1 calc(100% - 108px); /* 로고 옆 한 줄(긴 주소는 말줄임), 나머지 컨트롤은 다음 줄 */
+  }
+}
 
 /* ── 대지 요약 ── */
 .summary {
   grid-column: span 2;
-  grid-row: span 2;
+  grid-row: span 1;
   position: relative;
   border-radius: 18px;
   min-width: 0;
   perspective: 1400px;
+  container-type: inline-size;
 }
-/* 대지 요약은 내용 높이만 쓰고, 지도면으로 뒤집을 때만 2×2 예약을 되찾는다. */
-.summary:has(.sumFront[data-on="true"]) {
-  align-self: start;
-  height: 360px;
-}
+/* 요약 앞면은 가로 2칸 × 세로 1행(좁은 보드·390은 1칸 폭). 지도면으로 뒤집을 때만 2×2 자리를 쓴다. */
 .summary:has(.faceMap[data-on="true"]) {
-  align-self: stretch;
-  height: auto;
+  grid-row: span 2;
+}
+.grid[data-grid-cols="2"] .summary:has(.sumFront[data-on="true"]) {
+  grid-column: span 1;
+}
+.grid[data-grid-cols="1"] .summary {
+  grid-column: auto;
+}
+/* 앞면은 문서 흐름에 둬서 행 높이를 내용에 맞추고, 뒤에 있을 때만 겹쳐 둔다. */
+.summary > .flipInner {
+  position: relative;
+  inset: auto;
+  height: 100%;
+}
+.summary > .flipInner > .sumFront {
+  position: relative;
+  inset: auto;
+  min-height: 100%;
+}
+.summary > .flipInner > .sumFront[data-on="false"] {
+  position: absolute;
+  inset: 0;
 }
 
 /* ── 몰입형 오버레이 문법: 카드·펼침·요약이 같은 자리·같은 판을 쓴다 ──
@@ -1043,6 +1072,33 @@
   font-size: 12px;
   color: #454a55;
   line-height: 1.35;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+/* S03 대기 카드: 계산 패널(44px 컨트롤 3줄)은 카드 높이가 넉넉할 때만, 낮은 카드는 ‘계산·설정’으로 펼침에서 연다. */
+.windOpenBtn {
+  display: none;
+  align-self: flex-start;
+  min-height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--black);
+  color: #fff !important;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+@container (max-height: 479px) {
+  .windCompact {
+    display: none;
+  }
+  .windOpenBtn {
+    display: inline-flex;
+    align-items: center;
+  }
 }
 .progressMeta,
 .progressQueue,
@@ -2463,7 +2519,7 @@ button.badge:focus-visible {
   flex-direction: column;
   gap: 8px;
   padding: 14px 16px 12px;
-  container-type: inline-size;
+  container-type: size; /* 가로·세로 모두 쿼리(요약면 높이는 face가 정한다) */
 }
 .sfTop {
   display: flex;
@@ -2471,11 +2527,26 @@ button.badge:focus-visible {
   gap: 8px;
   min-height: 24px;
 }
+.sfTop {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
 .sfTop .title {
-  flex: 1 1 6em;
-  min-width: 6em;
+  flex: 1 1 auto;
+  min-width: 0;
   line-height: 1.2;
   word-break: keep-all;
+  white-space: nowrap; /* 제목은 한 줄 — 공간이 모자라면 덜 중요한 것부터 접는다(아래 @container) */
+}
+.sfTop .sfMore {
+  display: none;
+  width: 28px;
+  height: 28px;
+  margin: -2px 0;
+}
+.sfTop .sfMore::before {
+  width: 26px;
+  height: 26px;
 }
 .sfTop .check {
   margin-left: 0;
@@ -2490,14 +2561,54 @@ button.badge:focus-visible {
 .sfTop .open {
   padding: 3px 9px;
 }
-@container (max-width: 320px) {
-  .sfTop {
-    flex-wrap: wrap;
-    row-gap: 4px;
+/* 접는 순서(카드 안쪽 폭 기준): 종류 배지 → 표현 칩 → ‘보고서’ 글자(체크박스만) → 보고서·펼치기·상세를 ⋯ 메뉴로 */
+@container (max-width: 399px) {
+  .sfTop .kindTag {
+    display: none;
   }
+}
+@container (max-width: 339px) {
+  .sfTop .filterChip {
+    display: none;
+  }
+  .sfTop .checkText {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+@container (max-width: 259px) {
+  .tile:not(.tileEdit) .sfCollapse {
+    display: none;
+  }
+  .sfTop .sfMore {
+    display: grid;
+  }
+  .sfTop .check:first-of-type {
+    margin-left: 0;
+  }
+  .sfTop .sfMore {
+    margin-left: auto;
+  }
+}
+@container (max-width: 167px) {
   .sfTop .title {
-    flex: 1 1 0;
-    min-width: 0;
+    white-space: normal;
+  }
+}
+.mfMenu .mfMenuCompact {
+  display: none;
+}
+@container (max-width: 259px) {
+  .sf .mfMenu .mfMenuCompact {
+    display: flex;
+  }
+}
+@container (max-width: 309px) {
+  .mfHead .mfMenu .mfMenuCompact {
+    display: flex;
   }
 }
 .sfMain {
@@ -2685,6 +2796,30 @@ button.badge:focus-visible {
   /* The fixed 2x2 summary card is its own layout reservation; do not center content into a blank map slot. */
   justify-content: flex-start;
   gap: 12px;
+}
+/* 가로가 넉넉하면 왼쪽(주소·칩) · 오른쪽(사실 3줄)로 나눠 한 행 높이에 들어가게 한다. */
+@container (min-width: 520px) {
+  .sumBody {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    column-gap: 28px;
+    row-gap: 8px;
+    align-content: start;
+    justify-content: flex-start;
+  }
+  .sumBody > * {
+    grid-column: 1;
+  }
+  .sumBody > .chips {
+    align-content: flex-start;
+  }
+  .sumBody > .facts {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+    align-self: center;
+    margin: 0;
+  }
 }
 .sumFront .chip {
   background: #eef0f3;
@@ -3157,6 +3292,30 @@ button.badge:focus-visible {
   min-height: 44px;
   padding: 0 3px 0 6px;
   color: #3a3d44;
+}
+/* 지도 면 머리도 같은 순서로 접는다: 종류 배지 → ‘보고서’ 글자 → 보고서·펼치기를 ⋯ 메뉴로 → 버튼 폭 축소. 제목은 한 줄. */
+.mfTitle {
+  white-space: nowrap;
+}
+@container (max-width: 339px) {
+  .mfHead .kindTag {
+    display: none;
+  }
+}
+@container (max-width: 309px) {
+  .mfHead .mfCollapse {
+    display: none;
+  }
+}
+@container (max-width: 239px) {
+  .mfHead .mfBtn {
+    width: 36px;
+  }
+}
+@container (max-width: 183px) {
+  .mfTitle {
+    white-space: normal;
+  }
 }
 /* 아이콘 버튼: 눈에 보이는 원은 32px, 눌리는 자리는 44×44 */
 .mfBtn {

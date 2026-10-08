@@ -164,10 +164,10 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
       const width = grid.clientWidth;
       if (width <= 0) return;
       const gap = 16;
-      const capacity = Math.max(1, Math.floor((width + gap) / (260 + gap)));
+      const capacity = Math.max(1, Math.floor((width + gap) / (200 + gap)));
       const columns = Math.max(1, Math.min(board.columns, capacity));
       const cellWidth = (width - (columns - 1) * gap) / columns;
-      const rowHeight = Math.max(240, Math.round(cellWidth * (5 / 6)));
+      const rowHeight = Math.max(280, Math.round(cellWidth * (5 / 6)));
       setGridLayout((current) => current.columns === columns && current.rowHeight === rowHeight ? current : { columns, rowHeight });
     };
     update();
