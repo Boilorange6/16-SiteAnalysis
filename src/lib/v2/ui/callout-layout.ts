@@ -7,6 +7,7 @@
  * 좌표 단위는 호출자가 정한다(화면 px, 슬라이드 inch). 점은 두 칸 사이의 지도 영역 안에 있어야 한다(calloutFrame이 보장).
  */
 import type { MapFeature } from "../tile-result";
+import { unitTypeSummary, unitTypesFromUnknown, UNIT_TYPE_BASIS, type UnitType } from "../unit-types";
 import { layerStyle } from "./map-layers";
 import { SLIDE } from "./overlay-layout";
 
@@ -23,6 +24,7 @@ export type Complex = {
   buildingCount: number | null;
   distanceM: number | null;
   parking: number | null;
+  unitTypes: UnitType[];
   lng: number;
   lat: number;
   /** A06(분양·입주예정) 사업이면 채운다. 없으면 A05 단지 */
@@ -52,6 +54,7 @@ export function rankComplexes(features: MapFeature[]): Complex[] {
     buildingCount: n0(f.buildingCount),
     distanceM: n0(f.distanceM),
     parking: n0(f.parking),
+    unitTypes: unitTypesFromUnknown(f.unitTypes),
     lng: f.lng,
     lat: f.lat,
   }));
@@ -107,6 +110,7 @@ export function rankSupply(features: MapFeature[], analysisDate: string): Comple
         buildingCount: null,
         distanceM: n0(f.distanceM),
         parking: null,
+        unitTypes: unitTypesFromUnknown(f.unitTypes),
         lng: f.lng,
         lat: f.lat,
         supply: { plannedMonth, source: f.layer, overlap: f.overlap === true, timing: timingBucket(plannedMonth, analysisDate) } satisfies SupplyInfo,
@@ -137,6 +141,7 @@ export function supplyRows(c: Complex): CardRow[] {
   return [
     { label: "입주(예정) 시기", value: s.plannedMonth ? fmtMonth(s.plannedMonth) : "일정 확인필요", missing: s.plannedMonth === null },
     { label: "세대수", value: c.households === null ? MISSING : `${fmtInt(c.households)}${unit}`, missing: c.households === null },
+    { label: `타입 · ${UNIT_TYPE_BASIS}`, value: unitTypeSummary(c.unitTypes), missing: c.unitTypes.length === 0 },
     { label: "원천", value: src, missing: false },
     { label: "직선거리", value: c.distanceM === null ? MISSING : `${fmtInt(c.distanceM)}m`, missing: c.distanceM === null },
   ];
@@ -212,6 +217,10 @@ export function inkOn(hex: string): "#ffffff" | "#16181d" {
 // ── 카드 행 ──
 export type CardRow = { label: string; value: string; missing: boolean };
 
+function unitTypeRow(c: Complex): CardRow {
+  return { label: `타입 · ${UNIT_TYPE_BASIS}`, value: unitTypeSummary(c.unitTypes), missing: c.unitTypes.length === 0 };
+}
+
 export function cardRows(c: Complex, analysisYear: number): CardRow[] {
   if (c.supply) return supplyRows(c);
   const row = (label: string, v: string | null): CardRow => ({ label, value: v ?? MISSING, missing: v === null });
@@ -220,6 +229,7 @@ export function cardRows(c: Complex, analysisYear: number): CardRow[] {
   const rows = [
     // 오피스텔은 세대가 아니라 호실
     row(c.layer === "officetel" ? "호실" : "세대수", c.households === null ? null : `${fmtInt(c.households)}${c.layer === "officetel" ? "호" : "세대"}`),
+    unitTypeRow(c),
     row("준공", c.approvalYear === null ? null : `${c.approvalYear}년 · ${Math.max(0, analysisYear - c.approvalYear)}년차`),
     row("직선거리", c.distanceM === null ? null : `${fmtInt(c.distanceM)}m`),
     { label: "층·동", value: floors && bldg ? `${floors} · ${bldg}` : floors ? `${floors} · 동 ${MISSING}` : bldg ? `층 ${MISSING} · ${bldg}` : MISSING, missing: !floors && !bldg },
@@ -258,12 +268,13 @@ export const MOBILE_MAX_W = 520;
 export const isMobileWidth = (w: number) => w <= MOBILE_MAX_W;
 /** 모바일 띠: 최대 3줄 단지명 + 2줄 값 + 여백을 수용하는 예약 높이(px). */
 export const STRIP_H = 92;
-export type StripCard = { id: string; rank: number; name: string; fullName: string; nameMissing: boolean; color: string; chip: string | null; lines: [string, string] };
-/** 띠 카드 모델: 순서 = 페이지 순서(번호 순), 값 4개를 두 줄로 */
+export type StripCard = { id: string; rank: number; name: string; fullName: string; nameMissing: boolean; color: string; chip: string | null; lines: string[] };
+/** 띠 카드 모델: 순서 = 페이지 순서(번호 순), 카드 값과 타입을 세 줄로 */
 export function stripCards(items: Complex[], analysisYear: number): StripCard[] {
   return items.map((c) => {
     const v = cardRows(c, analysisYear).map((r) => r.value);
-    return { id: c.id, rank: c.rank, name: displayComplexName(c, items), fullName: cardName(c), nameMissing: c.name === null, color: dotColor(c), chip: overlapChip(c), lines: [`${v[0]} · ${v[1]}`, `${v[2]} · ${v[3]}`] };
+    const lines = c.supply ? [`${v[0]} · ${v[1]}`, v[2], `${v[3]} · ${v[4]}`] : [v[0], v[1], `${v[2]} · ${v[3]}`];
+    return { id: c.id, rank: c.rank, name: displayComplexName(c, items), fullName: cardName(c), nameMissing: c.name === null, color: dotColor(c), chip: overlapChip(c), lines };
   });
 }
 /** 띠 모양 프레임: 두 칸이 없으므로 반경 원이 가로를 거의 다 쓴다 */
@@ -272,8 +283,8 @@ export function stripFrame(W: number, H: number, m: Metrics, top: number, bottom
   const diameter = Math.max(m.rMax * 4, Math.min(W - 2 * edge - 2 * m.rMax, 0.94 * (bottom - top)));
   return { W, H, left: { x0: edge, x1: edge, top, bottom }, right: { x0: W - edge, x1: W - edge, top, bottom }, cardW: 0, cardH: 0, variant: "compact", rows: 0, perSide: 0, m, centerX: W / 2, siteX: 0.5, diameter, fill: diameter / H };
 }
-/** 카드 행 수: 페이지 안에 주차 값이 하나라도 있으면 5, 아니면 4 */
-export const rowsFor = (items: Complex[]) => (items.some((c) => c.parking !== null) ? 5 : 4);
+/** 카드 행 수: 타입 행은 항상 확보하고, A05 주차 행은 값이 있을 때만 붙인다. */
+export const rowsFor = (items: Complex[]) => (items.some((c) => c.supply) ? 5 : items.some((c) => c.parking !== null) ? 6 : 5);
 
 // ── 요약 (개요 페이지 핵심 값 카드) ──
 export function summarize(all: Complex[]): { count: number; apartments: number; households: number; householdsKnown: number; medianYear: number | null } {
@@ -309,9 +320,9 @@ export function calloutReportPages(mode: CalloutMode, n: number): number {
 export type Pt = [number, number];
 export type Metrics = { cardW: number; compactW: number; minW: number; cardFraction?: number; gap: number; stub: number; rMin: number; rMax: number; head: number; row: number; pad: number; compactH: number };
 /** 화면(px) */
-export const PX: Metrics = { cardW: 176, compactW: 136, minW: 96, cardFraction: 0.27, gap: 8, stub: 14, rMin: 8, rMax: 15, head: 26, row: 17, pad: 6, compactH: 40 };
+export const PX: Metrics = { cardW: 176, compactW: 136, minW: 96, cardFraction: 0.27, gap: 8, stub: 14, rMin: 8, rMax: 15, head: 26, row: 17, pad: 6, compactH: 56 };
 /** 좁은 화면(모바일): 카드를 좁히고 점을 줄여 반경 원이 두 칸 사이에 들어가게 한다 */
-export const PX_NARROW: Metrics = { ...PX, cardW: 100, compactW: 100, minW: 84, cardFraction: 0.21, gap: 6, stub: 10, rMin: 6, rMax: 11, compactH: 48 };
+export const PX_NARROW: Metrics = { ...PX, cardW: 100, compactW: 100, minW: 84, cardFraction: 0.21, gap: 6, stub: 10, rMin: 6, rMax: 11, compactH: 60 };
 /** 슬라이드(inch) */
 export const INCH: Metrics = { cardW: 2.55, compactW: 2.0, minW: 1.4, gap: 0.1, stub: 0.2, rMin: 0.12, rMax: 0.22, head: 0.28, row: 0.165, pad: 0.06, compactH: 0.5 };
 

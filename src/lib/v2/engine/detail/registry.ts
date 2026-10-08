@@ -16,6 +16,7 @@ import { PARCEL_SPECS } from "./parcels";
 import { NETWORK_SPECS } from "./network";
 import { RASTER_SPECS } from "./raster";
 import { WEATHER_SPECS } from "./weather";
+import { HOUSING_SPECS } from "./housing";
 import { detailDisplayValue } from "../../ui/detail-labels";
 
 export type DetailValue = string | number | null;
@@ -110,6 +111,7 @@ const ALL_SPECS: Array<Partial<Record<TileCode, DetailSpec>>> = [
   NETWORK_SPECS,
   RASTER_SPECS,
   WEATHER_SPECS,
+  HOUSING_SPECS,
 ];
 
 export const DETAIL_SPECS: Partial<Record<TileCode, DetailSpec>> = Object.assign({}, ...ALL_SPECS);

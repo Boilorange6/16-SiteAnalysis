@@ -95,4 +95,28 @@ const d3 = mkDb();
 const s3 = await buildSupply(d3, { core, legacy: legacyRows, legacyReleaseId: relOf(d3, "applyhome"), moveInReleaseId: relOf(d3, "move_in"), moveIn: from([]) });
 assert.deepEqual([s3[0].accepted, s3[0].unlocated], [1, 1], "숫자 문자열 좌표는 located");
 
+// 청약홈 주택관리번호 연결, A/B형 합산, 입주예정의 보수적 이름+지번 연결
+const d4 = mkDb();
+const typeRelease = relOf(d4, "applyhome_types");
+const typeRows = [
+  { HOUSE_MANAGE_NO: "2026000123", HOUSE_TY: "084.9700A", SUPLY_HSHLDCO: "10", SPSPLY_HSHLDCO: "2" },
+  { HOUSE_MANAGE_NO: "2026000123", HOUSE_TY: "084.9700B", SUPLY_HSHLDCO: "5", SPSPLY_HSHLDCO: "3" },
+  { HOUSE_MANAGE_NO: "2026000123", HOUSE_TY: "059.5000A", SUPLY_HSHLDCO: "4", SPSPLY_HSHLDCO: "0" },
+  { HOUSE_MANAGE_NO: "", HOUSE_TY: "084.9700A", SUPLY_HSHLDCO: "1", SPSPLY_HSHLDCO: "0" },
+];
+const typedStats = await buildSupply(d4, {
+  core,
+  legacy: [{ id: "2026000123:2026000123", name: "강릉 모아미래도 오션리버", address: "강원특별자치도 강릉시 견소동 219-0", area_name: "강원", kind: "apartment", units: 561, sale_date: "", move_in_month: "202612", homepage_url: "", notice_url: "", lat: 37.77, lng: 128.93 }],
+  legacyReleaseId: relOf(d4, "applyhome"),
+  applyhomeTypesReleaseId: typeRelease,
+  applyhomeTypes: from(typeRows),
+  moveInReleaseId: relOf(d4, "move_in"),
+  moveIn: from([{ 입주예정월: "2026-12", 지역: "강원", 사업유형: "분양", 주소: "강원특별자치도 강릉시 견소동 219-0", 아파트명: "강릉 모아미래도 오션리버", 세대수: "561" }]),
+});
+assert.ok(typedStats.some((s) => s.sourceId === "applyhome_types"));
+const typedFeature = d4.prepare("SELECT properties_json FROM feature WHERE source_key = '2026000123:2026000123'").get();
+assert.deepEqual(JSON.parse(typedFeature.properties_json).unitTypes, [{ typeM2: 59, units: 4 }, { typeM2: 84, units: 20 }]);
+const typedMoveIn = d4.prepare("SELECT properties_json FROM feature WHERE json_extract(properties_json, '$.source') = 'move_in'").get();
+assert.deepEqual(JSON.parse(typedMoveIn.properties_json).unitTypes, [{ typeM2: 59, units: 4 }, { typeM2: 84, units: 20 }]);
+
 console.log("✓ v2 supply");

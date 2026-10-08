@@ -18,6 +18,7 @@ function Card({ c, siblings, p, frame, year, hover, dim, onHover, onPick }: { c:
   const full = frame.variant === "full";
   const chip = overlapChip(c);
   const nameWrap = compactNameNeedsExtraHeight(c, siblings, frame.cardW);
+  const typeRow = c.supply ? rows[2] : rows[1];
   return (
     <div
       className={`${styles.plate} ${styles.cCard} ${hover ? styles.cCardOn : ""}`}
@@ -47,24 +48,30 @@ function Card({ c, siblings, p, frame, year, hover, dim, onHover, onPick }: { c:
           {rows.map((r) => (
             <li key={r.label}>
               <span>{r.label}</span>
-              <b className={r.missing ? styles.cMissing : undefined}>{r.value}</b>
+              <b className={r.missing ? styles.cMissing : undefined} title={r.value}>{r.value}</b>
             </li>
           ))}
         </ul>
       ) : (
-        <div className={styles.cSub} style={c.supply ? { paddingLeft: 10 } : undefined}>
-          {c.supply ? (
-            <>
-              <span className={c.supply.plannedMonth === null ? styles.cMissing : undefined}>{c.supply.plannedMonth ? c.supply.plannedMonth.replace("-", ".") : "일정 확인필요"}</span>
-              <span className={rows[1].missing ? styles.cMissing : styles.cYear}>{rows[1].value}</span>
-            </>
-          ) : (
-            <>
-              <span className={rows[0].missing ? styles.cMissing : undefined}>{rows[0].value}</span>
-              {c.approvalYear !== null && frame.cardW >= 112 && <span className={styles.cYear}>{c.approvalYear}</span>}
-            </>
-          )}
-        </div>
+        <>
+          <div className={styles.cSub} style={c.supply ? { paddingLeft: 10 } : undefined}>
+            {c.supply ? (
+              <>
+                <span className={c.supply.plannedMonth === null ? styles.cMissing : undefined}>{c.supply.plannedMonth ? c.supply.plannedMonth.replace("-", ".") : "일정 확인필요"}</span>
+                <span className={rows[1].missing ? styles.cMissing : styles.cYear}>{rows[1].value}</span>
+              </>
+            ) : (
+              <>
+                <span className={rows[0].missing ? styles.cMissing : undefined}>{rows[0].value}</span>
+                {c.approvalYear !== null && frame.cardW >= 112 && <span className={styles.cYear}>{c.approvalYear}</span>}
+              </>
+            )}
+          </div>
+          <div className={styles.cTypeLine} title={`${typeRow.value} · 전용면적 기준`}>
+            <span>타입 · 전용면적 기준</span>
+            <b className={typeRow.missing ? styles.cMissing : undefined}>{typeRow.value}</b>
+          </div>
+        </>
       )}
     </div>
   );
@@ -170,8 +177,7 @@ function Strip({ cards, active, onPick, top }: { cards: StripCard[]; active: str
             <span className={`${styles.cName} ${c.nameMissing ? styles.cMissing : ""}`} title={c.fullName}>{c.name}</span>
             {c.chip && <span className={styles.cChip}>{c.chip}</span>}
           </span>
-          <span className={styles.cStripLine}>{c.lines[0]}</span>
-          <span className={styles.cStripLine}>{c.lines[1]}</span>
+          {c.lines.map((line, i) => <span key={i} className={`${styles.cStripLine} ${i === 1 ? styles.cStripType : ""}`}>{line}</span>)}
         </button>
       ))}
     </div>

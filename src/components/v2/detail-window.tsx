@@ -209,6 +209,7 @@ export default function DetailWindow({ view, layer, onLayer, onClose }: DetailWi
   const modelFeaturesRef = useRef(model.features);
   modelFeaturesRef.current = model.features;
   const dialogRef = useRef<HTMLElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
   const mapViewportRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
@@ -242,6 +243,13 @@ export default function DetailWindow({ view, layer, onLayer, onClose }: DetailWi
   }, [legendHover, legendPinned]);
 
   useEffect(() => setMounted(true), []);
+
+  // 모바일 상세 카드에서 행을 누르면 브라우저가 포커스한 행을 보이게 하려고
+  // 패널을 아래로 자동 스크롤한다. 선택 카드(타입 요약)가 위로 밀리지 않게
+  // 선택 직후 패널을 카드 시작점으로 되돌린다.
+  useEffect(() => {
+    if (selectedFids.length > 0) panelRef.current?.scrollTo({ top: 0, behavior: "auto" });
+  }, [selectedFids.length]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -496,7 +504,7 @@ export default function DetailWindow({ view, layer, onLayer, onClose }: DetailWi
               </div>
             </section>
 
-            <aside className="detail-panel" aria-label={`${view.title} 선택 정보와 목록`}>
+            <aside ref={panelRef} className="detail-panel" aria-label={`${view.title} 선택 정보와 목록`}>
               <LayerSelect view={view} value={layer} onChange={onLayer} />
               {loadState === "loading" && !payload && <LoadingCard code={code} />}
               {loadState === "error" && !payload && (

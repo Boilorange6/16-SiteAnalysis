@@ -6,6 +6,7 @@ import type BetterSqlite3 from "better-sqlite3";
 import type { MeasureRecord } from "../../a0/measure";
 import { insertFeature } from "../../data/features";
 import { lookupParcelPoint, makePnu } from "../../data/parcels";
+import { mergeUnitType, sortedUnitTypes, unitTypeM2, unitTypeUnits, type UnitType } from "../../unit-types";
 import { batched, SourceStats } from "../build";
 
 type Db = BetterSqlite3.Database;
@@ -361,7 +362,7 @@ function pointGeometry(lngLat: readonly [number, number]) {
 
 export async function buildLedger(
   db: Db,
-  input: { recap: AsyncIterable<MeasureRecord>; title: AsyncIterable<MeasureRecord>; recapReleaseId: string; titleReleaseId: string },
+  input: { recap: AsyncIterable<MeasureRecord>; title: AsyncIterable<MeasureRecord>; recapReleaseId: string; titleReleaseId: string; exclusive?: AsyncIterable<MeasureRecord>; exclusiveReleaseId?: string },
 ): Promise<SourceStats[]> {
   const recapStats = new SourceStats("ledger_recap_housing", input.recapReleaseId, ["units", "parking", "approvalDate"]);
   const recapPnus = new Set<string>();
@@ -485,5 +486,130 @@ export async function buildLedger(
     for (let i = 0; i < h.buildingCount; i++) housingStats.accept(props, h.legalCode.slice(0, 2), "공동주택"); // 행 단위 집계
   });
 
-  return [recapStats, housingStats, officetelStats];
+  const unitTypeStats = input.exclusive && input.exclusiveReleaseId ? await buildLedgerUnitTypes(db, input.exclusive, input.exclusiveReleaseId) : null;
+  return unitTypeStats ? [recapStats, housingStats, officetelStats, unitTypeStats] : [recapStats, housingStats, officetelStats];
+}
+
+type UnitTypeTarget = { featureId: number; stableId: string; kind: string; pnu: string | null; ledgerPk: string | null; properties: Props };
+
+function exclusiveRowIsEligible(p: Props): "housing" | "officetel" | null {
+  const exclusive = str(p["전유_공용_구분_코드_명"]);
+  const exclusiveCode = str(p["전유_공용_구분_코드"]);
+  if (exclusive !== "전유" && exclusiveCode !== "1") return null;
+  const mainUseCode = str(p["주_용도_코드"]);
+  const mainUse = str(p["주_용도_코드_명"]);
+  // 전유부 월간 파일은 총괄·표제부의 "공동주택"과 달리 세부 용도명을
+  // 기록한다: 02001 아파트, 02002 연립주택, 02003 다세대주택.
+  if (mainUseCode === "02001" || mainUseCode === "02002" || mainUseCode === "02003" || mainUse === "아파트" || mainUse === "연립주택" || mainUse === "다세대주택" || mainUse === "공동주택") return "housing";
+  // 14202 행은 주 용도명이 "오피스텔"로 들어오는 월간 파일도 있어
+  // 기존 업무시설·기타용도 판정과 함께 허용한다.
+  if (mainUseCode === "14202" || mainUse === "오피스텔" || (mainUse === "업무시설" && str(p["기타_용도"])?.includes("오피스텔"))) return "officetel";
+  return null;
+}
+
+function targetForRow(p: Props, byPk: Map<string, UnitTypeTarget[]>, byPnu: Map<string, UnitTypeTarget[]>, kind: "housing" | "officetel"): UnitTypeTarget | null {
+  const pk = str(p["관리_건축물대장_PK"]);
+  const direct = pk ? (byPk.get(pk) ?? []).filter((target) => kind === "officetel" ? target.kind === "officetel" : target.kind === "housing_complex") : [];
+  if (direct.length === 1) return direct[0];
+  const pnu = ledgerPnu(p)?.pnu;
+  if (!pnu) return null;
+  const parcel = (byPnu.get(pnu) ?? []).filter((target) => kind === "officetel" ? target.kind === "officetel" : target.kind === "housing_complex");
+  return parcel.length === 1 ? parcel[0] : null;
+}
+
+/** 전유부의 여러 행을 호 단위로 합산한 뒤 타입별 세대수를 기존 core feature에 보강한다. */
+export async function buildLedgerUnitTypes(db: Db, records: AsyncIterable<MeasureRecord>, releaseId: string): Promise<SourceStats> {
+  const stats = new SourceStats("ledger_exclusive_area", releaseId, ["typeM2", "units", "exclusiveAreaM2"]);
+  const rows = db.prepare("SELECT feature_id, stable_id, kind, pnu, properties_json FROM feature WHERE kind IN ('housing_complex', 'officetel')").all() as Array<{ feature_id: number; stable_id: string; kind: string; pnu: string | null; properties_json: string }>;
+  const clear = db.prepare("UPDATE feature SET properties_json = ? WHERE feature_id = ?");
+  db.transaction(() => {
+    for (const row of rows) {
+      let properties: Props;
+      try { properties = JSON.parse(row.properties_json) as Props; } catch { continue; }
+      if (!("unitTypes" in properties) && !("unitTypesSource" in properties) && !("unitTypeBasis" in properties)) continue;
+      delete properties.unitTypes;
+      delete properties.unitTypesSource;
+      delete properties.unitTypeBasis;
+      clear.run(JSON.stringify(properties), row.feature_id);
+    }
+  })();
+  const byPk = new Map<string, UnitTypeTarget[]>();
+  const byPnu = new Map<string, UnitTypeTarget[]>();
+  for (const row of rows) {
+    let properties: Props;
+    try { properties = JSON.parse(row.properties_json) as Props; } catch { properties = {}; }
+    const target: UnitTypeTarget = { featureId: row.feature_id, stableId: row.stable_id, kind: row.kind, pnu: row.pnu, ledgerPk: str(properties.ledgerPk), properties };
+    if (target.ledgerPk) {
+      const list = byPk.get(target.ledgerPk) ?? [];
+      list.push(target);
+      byPk.set(target.ledgerPk, list);
+    }
+    if (target.pnu) {
+      const list = byPnu.get(target.pnu) ?? [];
+      list.push(target);
+      byPnu.set(target.pnu, list);
+    }
+  }
+
+  const totals = new Map<string, Map<number, number>>();
+  let current: { key: string; target: UnitTypeTarget; area: number; kind: "housing" | "officetel"; region: string } | null = null;
+  const flush = () => {
+    if (!current) return;
+    const typeM2 = unitTypeM2(current.area);
+    const units = unitTypeUnits(1);
+    if (typeM2 === null || units === null) {
+      stats.reject();
+    } else {
+      const counts = totals.get(current.target.stableId) ?? new Map<number, number>();
+      mergeUnitType(counts, typeM2, units);
+      totals.set(current.target.stableId, counts);
+      stats.accept({ typeM2, units, exclusiveAreaM2: current.area }, current.region, current.kind);
+    }
+    current = null;
+  };
+
+  await batched(db, records, (record) => {
+    stats.read();
+    const p = record.properties;
+    const kind = exclusiveRowIsEligible(p);
+    if (!kind) { stats.reject(); return; }
+    const area = Number(String(p["면적(㎡)"] ?? "").replace(/,/g, "").trim());
+    const pk = str(p["관리_건축물대장_PK"]);
+    const parcelPnu = ledgerPnu(p)?.pnu;
+    const dong = str(p["동_명"]) ?? "(동 미상)";
+    const floor = str(p["층_번호"]) ?? "(층 미상)";
+    const ho = str(p["호_명"]);
+    const target = targetForRow(p, byPk, byPnu, kind);
+    if (!Number.isFinite(area) || area <= 0 || (!pk && !parcelPnu) || !ho || !target) {
+      stats.reject();
+      flush();
+      return;
+    }
+    const key = `${pk ?? parcelPnu}|${dong}|${floor}|${ho}`;
+    if (!current || current.key !== key || current.target.stableId !== target.stableId) {
+      flush();
+      current = { key, target, area, kind, region: String(p["시군구_코드"] ?? "").slice(0, 2) || "(미상)" };
+    } else {
+      current.area += area;
+    }
+  });
+  flush();
+
+  const update = db.prepare("UPDATE feature SET properties_json = ? WHERE feature_id = ?");
+  const updates = rows.map((row) => {
+    const counts = totals.get(row.stable_id);
+    if (!counts) return null;
+    let properties: Props;
+    try { properties = JSON.parse(row.properties_json) as Props; } catch { properties = {}; }
+    return { row, properties, unitTypes: sortedUnitTypes(counts) };
+  }).filter((value): value is { row: (typeof rows)[number]; properties: Props; unitTypes: UnitType[] } => value !== null);
+  db.transaction(() => {
+    for (const target of updates) {
+      target.properties.unitTypes = target.unitTypes;
+      target.properties.unitTypesSource = "ledger_exclusive_area";
+      target.properties.unitTypeBasis = "전용면적 기준";
+      update.run(JSON.stringify(target.properties), target.row.feature_id);
+    }
+  })();
+  return stats;
 }
