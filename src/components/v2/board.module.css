@@ -1105,7 +1105,9 @@
   font-size: 34px;
   line-height: 1.15;
   margin: 0;
-  overflow-wrap: anywhere;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  text-wrap: balance;
 }
 .chips {
   display: flex;
@@ -1281,7 +1283,9 @@
   margin: 0;
   flex: 1 1 auto;
   min-width: 0;
-  overflow-wrap: anywhere;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  text-wrap: balance;
 }
 .check {
   position: relative;
@@ -1359,7 +1363,9 @@
 .big {
   font-size: 38px;
   line-height: 1.05;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
 }
 .bigSmall {
   font-size: 26px;
@@ -1394,7 +1400,9 @@
   color: var(--muted);
   font-size: 12px;
   line-height: 1.35;
-  overflow-wrap: anywhere;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  text-wrap: balance;
 }
 .badgeWrap {
   position: relative;
@@ -2453,6 +2461,16 @@ button.badge:focus-visible {
 .sfTop .open {
   padding: 3px 9px;
 }
+@container (max-width: 320px) {
+  .sfTop {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+  .sfTop .title {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+}
 .sfMain {
   flex: 1 1 auto;
   min-height: 0;
@@ -3038,14 +3056,15 @@ button.badge:focus-visible {
   margin-right: 4px;
 }
 .mfTitle {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-width: 0;
   margin: 0;
   font-size: 14px;
   font-weight: 700;
   line-height: 1.15;
   word-break: keep-all;
-  overflow-wrap: break-word;
+  overflow-wrap: normal;
+  text-wrap: balance;
 }
 /* 제목은 말줄임 금지: 키값 숨김 → 보고서 아이콘만 → 13px → 마지막에 두 줄 */
 .mfCheckText {
