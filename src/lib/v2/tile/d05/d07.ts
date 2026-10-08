@@ -1,11 +1,11 @@
 /** D07 저층 건물 — 12m 이하 기준, 추정 높이는 별도 범주로 표시한다. */
 import type { Geometry } from "geojson";
 import type { TileResult } from "../../tile-result";
-import type { EngineContext } from "../context";
-import { areaInCircle, polygonArea } from "./geo";
-import { BUILDING_SOURCES, assumedOneFloorLimitation, buildingRetirementLimitations, buildingRows, isConfirmedHeightMethod, isCounted, type BuildingRow } from "./buildings-shared";
-import { est, makeTile, missing, obs, polygonCandidate, type TileDraft } from "./common";
-import { notProvided } from "./not-provided";
+import type { EngineContext } from "../../engine/context";
+import { areaInCircle, polygonArea } from "../../engine/tiles/geo";
+import { BUILDING_SOURCES, assumedOneFloorLimitation, buildingRetirementLimitations, buildingRows, isConfirmedHeightMethod, isCounted, type BuildingRow } from "../../engine/tiles/buildings-shared";
+import { est, makeTile, missing, obs, polygonCandidate, type TileDraft } from "../../engine/tiles/common";
+import { notProvided } from "../../engine/tiles/not-provided";
 
 const LAYERS = ["low_le12", "low_le12_est", "low_assumed_1f_est", "low_gt12", "low_unknown"] as const;
 const pct = (part: number, whole: number) => Math.round((part / whole) * 1000) / 10;

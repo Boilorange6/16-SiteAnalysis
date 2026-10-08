@@ -8,9 +8,9 @@ const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { buildingRows } = await import("../../lib/v2/engine/tiles/buildings-shared.ts");
 const { s01 } = await import("../../lib/v2/engine/tiles/s01.ts");
-const { d05 } = await import("../../lib/v2/engine/tiles/d05.ts");
-const { d06 } = await import("../../lib/v2/engine/tiles/d06.ts");
-const { d07 } = await import("../../lib/v2/engine/tiles/d07.ts");
+const { d05 } = await import("../../lib/v2/tile/d05/engine.ts");
+const { d06 } = await import("../../lib/v2/tile/d05/d06.ts");
+const { d07 } = await import("../../lib/v2/tile/d05/d07.ts");
 
 const dataDir = mkdtempSync(join(tmpdir(), "v2-height-engine-"));
 await buildEngineFixture(dataDir, "v1", { buildings: true, ledgerEstimate: true });

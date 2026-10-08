@@ -4,6 +4,8 @@
  */
 import type { MapPolygon, OUTPUT_FACES, RasterRef, RoseSeason, TileResult } from "../tile-result";
 import type { Scene } from "../scene";
+import { tileClientModuleFor } from "../tile/client";
+import type { TileHeadlinePolicy } from "../tile/types";
 import { describeA05Filter, reaggregateA05, type A05Counts, type A05Filter } from "../engine/a05-filter";
 import { fmtInt, rankComplexes, rankSupply, STOCK_LEGEND, SUPPLY_LAYERS, SUPPLY_LEGEND, summarize, supplyStats, type CalloutLegendSpec, type Complex, type Stat } from "./callout-layout";
 import type { MapModel } from "./map-layers";
@@ -73,18 +75,13 @@ export type TileView = {
   defaultLayer: string;
 };
 
-export type HeadlinePolicy = {
-  /** 앞에서부터 값이 있는 결론 지표를 선택한다. */
-  ids?: readonly string[];
-  /** 접두사가 붙은 분류 지표 중 가장 큰 값을 선택한다. */
-  maxPrefix?: string;
-};
+export type HeadlinePolicy = TileHeadlinePolicy;
 
 /**
  * 타일별 핵심값 정책. 확인율·설정값·자료 채움률은 배지/행으로 남기고,
  * 화면 첫 값은 타일의 결론을 설명하는 값으로 고정한다.
  */
-export const HEADLINE_POLICY: Record<TileCode, HeadlinePolicy> = {
+const BASE_HEADLINE_POLICY: Partial<Record<TileCode, HeadlinePolicy>> = {
   A01: { ids: ["nearest_rail_m", "nearest_bus_m"] },
   A02: { ids: ["in_school_zone", "nearest_elem_m"] },
   A03: { ids: ["basic_groups"] },
@@ -101,7 +98,6 @@ export const HEADLINE_POLICY: Record<TileCode, HeadlinePolicy> = {
   D02: { ids: ["share_footprint_pct", "buildings"] },
   D03: { maxPrefix: "share_use_" },
   D04: { ids: ["share_pre2000", "share_pre1980", "share_1990s"] },
-  D05: { maxPrefix: "share_floors_" },
   D10: { ids: ["canopy_pct", "osm_green_pct"] },
   D11: { maxPrefix: "back_area_" },
   D12: { maxPrefix: "back_count_" },
@@ -119,6 +115,17 @@ export const HEADLINE_POLICY: Record<TileCode, HeadlinePolicy> = {
   S03: { ids: ["rel_wind_median", "rel_wind_high_share"] },
   S04: { ids: ["utci_median_summer_h14", "shade_pct_summer_h14"] },
 };
+
+function buildHeadlinePolicy(): Record<TileCode, HeadlinePolicy> {
+  const policies: Partial<Record<TileCode, HeadlinePolicy>> = { ...BASE_HEADLINE_POLICY };
+  for (const code of TILE_CODES) {
+    const modulePolicy = tileClientModuleFor(code)?.headline;
+    if (modulePolicy) policies[code] = modulePolicy;
+  }
+  return policies as Record<TileCode, HeadlinePolicy>;
+}
+
+export const HEADLINE_POLICY = buildHeadlinePolicy();
 
 /** 설명선 타일의 입력: 세대수 순위로 정렬된 단지 목록과 요약 (A06도 같은 모양으로 채운다) */
 export type CalloutModel = {
@@ -146,11 +153,10 @@ export type CalloutModel = {
 };
 
 const KIND_LABEL = { analysis: "분석", diagram: "도판", simulation: "시뮬레이션" } as const;
-const MAP_NOTES: Record<string, string> = {
+const BASE_MAP_NOTES: Record<string, string> = {
   D04: "건물 발자국 · 준공 연대별 색",
   D13: "도로 중심선 · 실제 폭·공식 도로대장 아님 · © OpenStreetMap contributors",
   D02: "발자국 · 높이 미상은 테두리만",
-  D05: "지상층수 기본 · 35m·12m 기준 레이어 · [추정]은 층수×3m",
   D19: "연속지적 · 지목·필지 규모 레이어 · 참조용",
   D15: "OSM 도로로 폐합된 블록 · 반경 밖 500m까지 읽음",
   D16: "건물 수 KDE · 대역폭 100m · 20백분위 구간",
@@ -167,6 +173,10 @@ const MAP_NOTES: Record<string, string> = {
   D22: "ASOS 최근접 관측소 · 연간·계절 16방위 바람장미",
   S03: "조기설계 참고용 · 풍동 검증 없음 · 주풍향 1방향",
 };
+
+function mapNoteFor(code: string): string | undefined {
+  return tileClientModuleFor(code)?.mapNote ?? BASE_MAP_NOTES[code];
+}
 
 function mapOf(r: TileResult, analysisSiteParcel?: readonly MapPolygon[] | null): RasterMapModel | null {
   // S03 is "pending" until the browser uploads a wind field, but the panel needs map.analysisId to run.
@@ -185,7 +195,8 @@ function mapOf(r: TileResult, analysisSiteParcel?: readonly MapPolygon[] | null)
   const basemap = presentation.basemap;
   const polygonsTotal = Math.max(0, (r.presentation.polygonsTotal ?? allPolygons.length) - ownSiteParcel.length);
   if (features.length === 0 && polygons.length === 0 && lines.length === 0 && rasterOptions.length === 0 && !basemap && !siteParcel?.length) return null;
-  const notes = MAP_NOTES[r.tileCode] ? [MAP_NOTES[r.tileCode]] : [];
+  const mapNote = mapNoteFor(r.tileCode);
+  const notes = mapNote ? [mapNote] : [];
   if (r.tileCode === "A01" && r.metrics.some((m) => m.id === "nearest_rail_m" && m.status === "missing")) notes.push("철도 자료를 확인하지 못해 버스정류장만 표시");
   // 래스터가 그려지는 타일은 건물·그림자를 래스터 셀이 담당하므로 "지물 없음"이 아니다.
   if (features.length === 0 && polygons.length === 0 && lines.length === 0 && rasterOptions.length === 0) notes.push("반경 안 표시할 지물 없음");
