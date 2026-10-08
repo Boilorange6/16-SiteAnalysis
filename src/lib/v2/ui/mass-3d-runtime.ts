@@ -2,6 +2,7 @@ import { groundZAt, type Ring, type Scene } from "../scene";
 import {
   CAMERA_PRESETS,
   EXPLODED_LAYERS,
+  EXPLODED_LABEL_CHIP_WIDTH,
   EXPLODED_PRESENTATION_ELEVATION_DEG,
   MASS_USE_COLORS,
   explodedLayerGap,
@@ -157,7 +158,7 @@ const explodedPlateColors: Record<string, string> = {
   terrain: "#F0F2F4",
   water: "#E8F5F8",
   green: "#EEF7EC",
-  roads: "#F0F2F5",
+  roads: "#E4E8EC",
   buildings: "#EEF2F7",
   complete: "#F4F3F0",
   empty: MASS_3D_COLORS.plate,
@@ -362,7 +363,7 @@ function addRoads(
   scene: Scene,
   zOffset: number,
 ): void {
-  const lineMaterial = new THREE.LineBasicMaterial({ color: "#536171", transparent: true, opacity: 0.96 });
+  const lineMaterial = new THREE.LineBasicMaterial({ color: "#3F4D5C", transparent: true, opacity: 0.98 });
   for (const [roadIndex, road] of (scene.context?.roads ?? []).entries()) {
     const points = road.points.filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
     const width = finiteOr(road.widthM, 0);
@@ -559,7 +560,7 @@ export function mass3dExplodedLabels(
   const plateLeft = canvasWidth / 2 - radius * scale;
   return EXPLODED_LAYERS.map((layer, index) => {
     const centerY = canvasHeight / 2 - ((gap * index - fit.targetZ) * cosE) * scale;
-    const x = Math.max(8, plateLeft - 14);
+    const x = Math.max(EXPLODED_LABEL_CHIP_WIDTH + 8, plateLeft - 14);
     return {
       layer,
       x,
@@ -777,6 +778,15 @@ function drawMassChrome(canvas: HTMLCanvasElement, input: Mass3dRenderInput): vo
     }
   } else {
     for (const label of mass3dExplodedLabels(input, width, height)) {
+      ctx.font = "700 11px 'Noto Sans KR', 'Malgun Gothic', sans-serif";
+      const labelWidth = Math.max(EXPLODED_LABEL_CHIP_WIDTH, ctx.measureText(label.text).width + 14, label.note ? ctx.measureText(label.note).width + 14 : 0);
+      const labelHeight = label.note ? 30 : 24;
+      roundedRect(ctx, label.x - labelWidth, label.y - labelHeight / 2, labelWidth + 4, labelHeight, 7);
+      ctx.fillStyle = "rgba(255,255,255,0.96)";
+      ctx.fill();
+      ctx.strokeStyle = "rgba(174,183,195,0.95)";
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
       ctx.strokeStyle = "rgba(137,147,160,0.7)";
       ctx.setLineDash([4, 5]);
       ctx.beginPath();
@@ -784,7 +794,6 @@ function drawMassChrome(canvas: HTMLCanvasElement, input: Mass3dRenderInput): vo
       ctx.lineTo(Math.max(label.x + 4, label.leaderX), label.y);
       ctx.stroke();
       ctx.setLineDash([]);
-      ctx.font = "700 11px 'Noto Sans KR', 'Malgun Gothic', sans-serif";
       ctx.fillStyle = "#15171C";
       ctx.textAlign = "right";
       ctx.fillText(label.text, label.x, label.y + 4);

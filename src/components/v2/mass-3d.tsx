@@ -100,7 +100,7 @@ function LiveLegend({ scene, exploded }: Pick<Mass3dProps, "scene" | "exploded">
           ["지형", "#E8ECEF"],
           ["수계", "#C4E6EB"],
           ["녹지", "#CFE4C8"],
-          ["도로", "#D9DDE2"],
+          ["도로", "#6D7A89"],
           ["건물", "#E8EDF2"],
           ["완성", "#F5F6F7"],
           ].map(([label, color]) => (
