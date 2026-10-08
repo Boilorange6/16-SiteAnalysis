@@ -3,10 +3,10 @@ import { parseTileResult, type RasterRef, type TileResult } from "../../tile-res
 import type { RasterData } from "../../raster-store";
 import { S02_LIMITATION, s02RasterData, sunHoursLegend } from "../../sim/s02-tile";
 import type { SunFieldResult } from "../../sim/sun-field";
-import type { EngineContext } from "../context";
-import { notProvided } from "./not-provided";
-import { SEASON_LABEL, SUN_INFLUENCE_M, horizonFor, sunBuildingReady, sunDateValue, sunFieldFor, sunGridFor, sunSources } from "./sun-shared";
-import { BUILDING_SOURCES, buildingRetirementLimitations } from "./buildings-shared";
+import type { EngineContext } from "../../engine/context";
+import { notProvided } from "../../engine/tiles/not-provided";
+import { SEASON_LABEL, SUN_INFLUENCE_M, horizonFor, sunBuildingReady, sunDateValue, sunFieldFor, sunGridFor, sunSources } from "../../engine/tiles/sun-shared";
+import { BUILDING_SOURCES, buildingRetirementLimitations } from "../../engine/tiles/buildings-shared";
 import { FLOOR_HEIGHT_M } from "../../ingest/sources/buildings";
 
 const round1 = (value: number) => Math.round(value * 10) / 10;

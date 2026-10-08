@@ -42,17 +42,17 @@ const sourceFiles = [
 const WHITELIST = [
   {
     file: "src/lib/v2/ui/board-state.ts",
-    pattern: /\bD0[567]\b/,
+    pattern: /\bD0[567]\b|\bD21\b|\bS02\b/,
     reason: "saved-board code/layer migration table stays central",
   },
   {
     file: "src/lib/v2/ui/tile-catalog.ts",
-    pattern: /\bD0[567]\b/,
+    pattern: /\bD0[567]\b|\bS02\b/,
     reason: "catalog and user-facing presets stay central",
   },
   {
     file: "src/lib/v2/ui/detail-state.ts",
-    pattern: /\bD0[567]\b/,
+    pattern: /\bD0[567]\b|\bS02\b/,
     reason: "detail-state code list stays central",
   },
   {
@@ -62,13 +62,38 @@ const WHITELIST = [
   },
   {
     file: "src/lib/v2/engine/tiles/common.ts",
-    pattern: /TILE_CACHE_REVISION|\bD0[567]\b/,
+    pattern: /TILE_CACHE_REVISION|\bD0[567]\b|\bS02\b/,
     reason: "per-tile cache engine revision is a shared immutable contract",
   },
   {
     file: "src/lib/v2/engine/tiles/not-provided.ts",
-    pattern: /NOT_PROVIDED_CODES|\bD0[567]\b/,
+    pattern: /NOT_PROVIDED_CODES|\bD0[567]\b|\bS02\b/,
     reason: "global not-provided status list stays central",
+  },
+  {
+    file: "src/lib/v2/tile/server.ts",
+    pattern: /\bS02\b/,
+    reason: "shared server registry order and heavy/site flags stay central",
+  },
+  {
+    file: "src/lib/v2/tile/client.ts",
+    pattern: /\bS02\b/,
+    reason: "shared client registry cut-code list stays central",
+  },
+  {
+    file: "src/lib/v2/engine/jobs.ts",
+    pattern: /\bS02\b/,
+    reason: "heavy calculation enters the tile module only through the worker dispatch",
+  },
+  {
+    file: "src/lib/v2/engine/detail/raster.ts",
+    pattern: /\bS02\b|rasterSpec|RASTER_SPECS/,
+    reason: "S02 and D29 share the central raster detail-spec family",
+  },
+  {
+    file: "src/lib/v2/ui/fixtures/godeok.ts",
+    pattern: /\bS02\b/,
+    reason: "shared Godeok fixture keeps the result-code contract central",
   },
 ];
 

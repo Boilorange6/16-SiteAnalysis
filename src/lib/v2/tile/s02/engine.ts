@@ -4,7 +4,7 @@ import { toUtmk, type LngLat } from "../../crs";
 import { parseTileResult, type TileResult } from "../../tile-result";
 import { buildS02RasterTileResult, s02RasterData, type S02RasterField } from "../../sim/s02-tile";
 import type { SiteRings, XY } from "../../sim/shadow";
-import type { EngineContext, SourceRef } from "../context";
+import type { EngineContext, SourceRef } from "../../engine/context";
 import {
   SUN_INFLUENCE_M,
   sunBuildingReady,
@@ -14,10 +14,10 @@ import {
   sunSources,
   horizonFor,
   type SunDateKey,
-} from "./sun-shared";
-import { polygonArea } from "./geo";
-import { notProvided } from "./not-provided";
-import { BUILDING_SOURCES, buildingRetirementLimitations } from "./buildings-shared";
+} from "../../engine/tiles/sun-shared";
+import { polygonArea } from "../../engine/tiles/geo";
+import { notProvided } from "../../engine/tiles/not-provided";
+import { BUILDING_SOURCES, buildingRetirementLimitations } from "../../engine/tiles/buildings-shared";
 
 export const S02_INFLUENCE_M = SUN_INFLUENCE_M;
 export const S02_SITE_HALF_M = 30;

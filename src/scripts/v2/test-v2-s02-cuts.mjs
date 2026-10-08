@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 const { buildEngineFixture, CENTER, PNU_DASAN_100 } = await import("./engine-fixture.mjs");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
-const { s02 } = await import("../../lib/v2/engine/tiles/s02.ts");
+const { s02 } = await import("../../lib/v2/tile/s02/engine.ts");
 const { sunFieldFor, sunGridFor, sunObstaclesFor } = await import("../../lib/v2/engine/tiles/sun-shared.ts");
 
 const dataDir = mkdtempSync(join(tmpdir(), "v2-s02-raster-"));

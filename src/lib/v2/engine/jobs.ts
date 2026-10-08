@@ -16,7 +16,7 @@ import { restoreSiteFromParameters, SITE_DEPENDENT_TILE_CODES, siteSnapshotHash 
 import { DATE_INDEPENDENT, HEAVY_TILES, TILES } from "../tile/server";
 import { d10 } from "./tiles/d10";
 import { d29 } from "./tiles/d29";
-import { s02 } from "./tiles/s02";
+import { s02 } from "../tile/s02/engine";
 import { s03 } from "./tiles/s03";
 import { s04 } from "./tiles/s04";
 import { cacheEngineVersion, makeTile } from "./tiles/common";

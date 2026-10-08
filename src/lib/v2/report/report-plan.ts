@@ -13,8 +13,9 @@ import type { RoseModel } from "../ui/wind-rose";
 import type { RoseSeason } from "../tile-result";
 import { exportFileName } from "../export/download";
 import { sourceDetailsFor, UNKNOWN_AS_OF, type SourceDetailRow, type SourceMeta } from "../ui/source-details";
-import { CUT_DATE_LABEL, CUT_SEASONS, CUT_SEASON_LABEL, cutNote, cutReady, viewForCut } from "../ui/cut-selection";
-import { CUT_CODES } from "../tile/client";
+import { CUT_SEASONS, CUT_SEASON_LABEL, cutNote, cutReady, viewForCut } from "../ui/cut-selection";
+import { CUT_CODES, tileClientModuleFor } from "../tile/client";
+import type { TileCutCell, TileCutPlan } from "../tile/types";
 
 export type TileSlideBody =
   | { kind: "result"; face: "single" | "front" | "back" }
@@ -116,29 +117,11 @@ const RASTER_NAMES = (view: TileView): string[] => {
   return (map?.rasterOptions ?? map?.rasters ?? []).map((ref) => ref.name);
 };
 
-const hoursFor = (view: TileView, date: string): string[] => RASTER_NAMES(view)
-  .filter((name) => name.startsWith(`shade_${date}_h`))
-  .sort((a, b) => Number(a.slice(-2)) - Number(b.slice(-2)));
-
-const legacyShadowHours = (view: TileView): string[] => ["09", "12", "15"].filter((hour) =>
-  (view.map?.polygons ?? []).some((polygon) => polygon.layer === `shadow_${hour}`),
-).map((hour) => `shadow_${hour}`);
-
-type CutCell = {
-  view: TileView;
-  mapKey: string;
-  rasterName?: string;
-  rose?: RoseModel;
-  roseSeason?: RoseSeason;
-};
-
-type CutPlan = {
-  sheets: Array<{ grid: SheetGrid; cells: CutCell[] }>;
-  single?: CutCell & { mass?: MassModel };
-};
+type CutCell = TileCutCell;
+type CutPlan = TileCutPlan;
 
 function rasterCell(view: TileView, name: string, note: string, key: string): CutCell {
-  const next = name.startsWith("shadow_") ? viewWithOnlyLayer(view, name, note) : viewWithOnlyRaster(view, name, note);
+  const next = viewWithOnlyRaster(view, name, note);
   return { view: next, mapKey: `${view.tileId}:${key}`, rasterName: name };
 }
 
@@ -151,40 +134,14 @@ function roseCell(view: TileView, season: RoseSeason, key: string): CutCell {
 }
 
 function cutPlanFor(view: TileView, cut: CutSpec): CutPlan {
+  const modulePlan = tileClientModuleFor(cut.tile)?.cut?.plan?.(view, cut);
+  if (modulePlan) return modulePlan;
   switch (cut.tile) {
     case "S01": {
       const mass = view.mass
         ? { ...view.mass, exploded: cut.mode === "exploded" ? { spreadPct: 24, scheme: "use" as const } : undefined }
         : undefined;
       return { sheets: [], single: { view: viewForCut(view, cut), mapKey: `${view.tileId}:mass`, mass } };
-    }
-    case "S02": {
-      const date = cut.date ?? "winter";
-      if (cut.mode === "single") return { sheets: [], single: { view: viewForCut(view, cut), mapKey: `${view.tileId}:cut-${date}` } };
-      if (cut.mode === "seasons4") {
-        const cells = CUT_SEASONS.map((season) => `sun_hours_${season}`)
-          .filter((name) => RASTER_NAMES(view).includes(name))
-          .map((name) => rasterCell(view, name, CUT_DATE_LABEL[name.slice("sun_hours_".length) as keyof typeof CUT_DATE_LABEL], name.slice("sun_hours_".length)));
-        return cells.length === 4 ? { sheets: [{ grid: "2x2", cells }] } : { sheets: [], single: { view: viewForCut(view, cut), mapKey: `${view.tileId}:cut-${date}` } };
-      }
-      const hourly = hoursFor(view, date);
-      const legacy = hourly.length === 0 ? legacyShadowHours(view) : [];
-      const names = hourly.length >= 3 ? [hourly[0]!, hourly[Math.floor(hourly.length / 2)]!, hourly[hourly.length - 1]!] : legacy;
-      if (cut.mode === "hours3") {
-        const cells = names.slice(0, 3).map((name) => rasterCell(view, name, name.startsWith("shadow_") ? `${CUT_DATE_LABEL[date]} ${name.slice(-2)}:00` : cutNote(cut, name), `cut${name.slice(-2)}`));
-        return cells.length === 3 ? { sheets: [{ grid: "3x1", cells }] } : { sheets: [], single: { view: viewForCut(view, cut), mapKey: `${view.tileId}:cut-${date}` } };
-      }
-      const flow = `shade_${date}_flow`;
-      const groups = hourly.reduce<CutCell[][]>((all, name, index) => {
-        const group = Math.floor(index / 6);
-        (all[group] ??= []).push(rasterCell(view, name, cutNote({ tile: "S02", mode: "flow", date }, name), `flow-${name.slice(-2)}`));
-        return all;
-      }, []);
-      const sheets = groups.filter((group) => group.length > 0).map((cells) => ({ grid: "3x2" as const, cells }));
-      const single = RASTER_NAMES(view).includes(flow)
-        ? { view: viewWithOnlyRaster(view, flow, `${CUT_DATE_LABEL[date]} 그림자 흐름`), mapKey: `${view.tileId}:flow`, rasterName: flow }
-        : undefined;
-      return sheets.length > 0 || single ? { sheets, single } : { sheets: [], single: { view: viewForCut(view, cut), mapKey: `${view.tileId}:cut-${date}` } };
     }
     case "S03": {
       const layer = String(Math.round(cut.layerZ)).padStart(2, "0");
@@ -217,20 +174,11 @@ function cutPlanFor(view: TileView, cut: CutSpec): CutPlan {
       return { sheets: [], single: { ...roseCell(view, "annual", "annual"), view: viewForCut(view, cut), mapKey: `${view.tileId}:rose` } };
     }
   }
+  return { sheets: [] };
 }
 
 function cutCellWithMeta(cell: CutCell, sourceLine: string, pinnedKeys: string[]) {
   return { ...cell, face: "front" as const, sourceLine, pinnedKeys };
-}
-
-/** S02 3컷 조판용으로 그림자 시각 하나와 수광면만 남긴다. 원본 뷰는 변경하지 않는다. */
-export function viewWithOnlyLayer(view: TileView, layer: string, note: string): TileView {
-  const polygons = (view.map?.polygons ?? []).filter((polygon) => polygon.layer === layer || polygon.layer === "sun_face");
-  return {
-    ...view,
-    notes: [note, ...view.notes.filter((existing) => existing !== note)],
-    map: view.map ? { ...view.map, polygons, polygonsTotal: polygons.length } : null,
-  };
 }
 
 function oneLine(v: TileView): string {
