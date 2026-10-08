@@ -1,6 +1,7 @@
 "use client";
 
-import { A05_TYPE_LABEL, A05_TYPES, normalizeA05Filter, type A05Counts, type A05Filter, type A05Type } from "@/lib/v2/engine/a05-filter";
+import { A05_TYPE_LABEL, A05_TYPES, normalizeA05Filter, type A05Filter, type A05Type } from "@/lib/v2/engine/a05-filter";
+import type { TileDialogPanelProps } from "../component-types";
 import styles from "./tile.module.css";
 
 const A05_RANGE_FIELDS = [
@@ -14,12 +15,7 @@ type A05Bound = "min" | "max";
 const safeA05Count = (value: number | null | undefined) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
 const a05CountText = (value: number | null | undefined) => safeA05Count(value).toLocaleString("ko-KR");
 
-export type A05DialogPanelProps = {
-  filter: A05Filter | null | undefined;
-  counts: A05Counts | null | undefined;
-  onChange?: (next: A05Filter | null) => void;
-  titleId: string;
-};
+export type A05DialogPanelProps = TileDialogPanelProps;
 
 export function A05FilterPanel({ filter, counts, onChange, titleId }: A05DialogPanelProps) {
   const selectedTypeSet = new Set(filter?.types ?? []);

@@ -5,20 +5,15 @@ import type { CardFace, CutSpec, DemoPhase, PinnedLabel, TileSize } from "@/lib/
 import { STRIP_COLORS } from "@/lib/v2/ui/map-layers";
 import { OV, badgesToShow, cardReserved, stripText } from "@/lib/v2/ui/overlay-layout";
 import { faceLabel, shortHeadlineLabel, type Badge, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
-import { viewWithOnlyRaster } from "@/lib/v2/ui/tile-view";
 import { cutCandidates, cutKey, cutOwnsRaster, normalizedCut, viewForCut } from "@/lib/v2/ui/cut-selection";
-import { windRasterName, WIND_LAYER_HEIGHTS } from "@/lib/v2/ui/wind-upload";
-import Mass3D from "./mass-3d";
-import WindRoseFigure from "./wind-rose-figure";
-import { stageFor } from "@/lib/v2/tile/components";
+import { faceExtraFor, stageFor } from "@/lib/v2/tile/components";
 import MapBox from "./map-box";
 import DetailWindow from "./detail-window";
 import { LayerSelect } from "./layer-select";
-import WindPanel, { mapOptions } from "./wind-panel";
 import { mapLabelEntries, type MapFigureElementPick } from "./map-figure";
 import styles from "./board.module.css";
 import { hasDetail } from "@/lib/v2/ui/detail-state";
-import { EXPLODED_WEBGL_SPREAD_PCT } from "@/lib/v2/ui/mass-projection";
+import type { TileStageProps } from "@/lib/v2/tile/component-types";
 
 const BADGE_CLASS = { status: styles.badgeStatus, limit: styles.badgeLimit, model: styles.badgeModel } as const;
 const FACES: OutputFace[] = ["front", "back", "both"];
@@ -268,31 +263,18 @@ export function StatusPlate({ view, phase, onRetry, waitingNote }: { view: TileV
   );
 }
 
-/** 전면 시각물: 지도(또는 흐린 대지 지도, 또는 D04 구성비 차트) */
-function stageViewForWind(view: TileView, layerZ: number | undefined): TileView {
-  if (view.code !== "S03" || layerZ === undefined) return view;
-  const name = windRasterName(view, layerZ);
-  return name ? viewWithOnlyRaster(view, name, "") : view;
-}
+/** 전면 시각물: 타일 소유 stage 또는 지도(또는 흐린 대지 지도, 또는 D04 구성비 차트). */
+type StageProps = Omit<TileStageProps, "displayView" | "label">;
 
-export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, page, onPage, cut, windLayerZ, massExploded = false, roseSeason = "annual", pinnedKeys = [], hoverKey = null, emphasisKey = null, onFeaturePin }: { view: TileView; state: boolean; chart: boolean; frame: "card" | "detail"; siteX?: number | ((w: number) => number); rightInset?: number | ((w: number) => number); legendY?: number; page?: number; onPage?: (p: number) => void; cut?: CutSpec | null; windLayerZ?: number; massExploded?: boolean; roseSeason?: "annual" | "spring" | "summer" | "autumn" | "winter"; pinnedKeys?: readonly string[]; hoverKey?: string | null; emphasisKey?: string | null; onFeaturePin?: (feature: MapFigureElementPick) => void }) {
+export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, page, onPage, cut, roseSeason = "annual", pinnedKeys = [], hoverKey = null, emphasisKey = null, onFeaturePin }: StageProps) {
   const selectedCut = normalizedCut(view, cut);
-  const displayView = selectedCut ? viewForCut(view, selectedCut) : stageViewForWind(view, windLayerZ);
-  const exploded = selectedCut?.tile === "S01" ? selectedCut.mode === "exploded" : massExploded;
-  const displayRoseSeason = selectedCut?.tile === "D22" && selectedCut.mode === "annual" ? "annual" : roseSeason;
+  const displayView = selectedCut ? viewForCut(view, selectedCut) : view;
   if (chart) return <FaceChart view={view} />;
   const card = frame === "card";
   const label = `${view.title} 지도`;
   if (state) return <MapBox model={displayView.backdrop} muted legend={false} north={false} scale={false} credit={false} label={label} siteX={siteX} />;
-  if (view.code === "S01" && view.mass) {
-    return <Mass3D scene={view.mass.scene} camera={view.mass.camera} width={960} height={540} label={label} quality={card ? "card" : "detail"} mode={card ? "image" : "live"} exploded={exploded ? { spreadPct: EXPLODED_WEBGL_SPREAD_PCT, scheme: "use" } : undefined} />;
-  }
-  const seasonalRose = view.roses?.[displayRoseSeason];
-  if (seasonalRose || view.rose) {
-    return <WindRoseFigure model={seasonalRose ?? view.rose!} width={960} height={540} label={label} season={seasonalRose ? displayRoseSeason : "annual"} />;
-  }
-  const CalloutStage = stageFor(view.code);
-  if (view.callout && CalloutStage) return <CalloutStage model={view.callout} kind={frame} page={page} onPage={onPage} label={label} />;
+  const TileStage = stageFor(view.code, displayView);
+  if (TileStage) return <TileStage view={view} displayView={displayView} state={state} chart={chart} frame={frame} label={label} page={page} onPage={onPage} cut={selectedCut} roseSeason={roseSeason} siteX={siteX} rightInset={rightInset} legendY={legendY} pinnedKeys={pinnedKeys} hoverKey={hoverKey} emphasisKey={emphasisKey} onFeaturePin={onFeaturePin} />;
   return (
     <MapBox
       model={displayView.map ?? displayView.backdrop}
@@ -503,42 +485,13 @@ function MoreMenu({ view, active, back, onBack, face, onFace, onDetail, pinnedCo
   );
 }
 
-/** S03: 바람장 표시 높이만 카드에서 바로 고른다. 계산·업로드 같은 큰 패널은 펼침에 있다. */
-function WindStrip({ view, layerZ, onLayerZ, onOpen }: { view: TileView; layerZ: number; onLayerZ: (z: number) => void; onOpen: () => void }) {
-  const options = mapOptions(view);
-  const z = options.find((o) => o.z === layerZ)?.z ?? options[0]?.z ?? layerZ;
-  return (
-    <div className={styles.mfWind} data-wind-strip>
-      <label className={styles.mfWindLabel}>
-        <span>높이</span>
-        <input
-          type="range"
-          min={0}
-          max={WIND_LAYER_HEIGHTS.length - 1}
-          step={1}
-          value={Math.max(0, WIND_LAYER_HEIGHTS.indexOf(z as (typeof WIND_LAYER_HEIGHTS)[number]))}
-          onChange={(e) => onLayerZ(WIND_LAYER_HEIGHTS[Number(e.target.value)] ?? z)}
-          disabled={options.length === 0}
-          aria-label="바람장 표시 높이"
-          aria-valuetext={`${z} m`}
-        />
-        <output data-wind-height>{z} m</output>
-      </label>
-      <button type="button" className={styles.mfWindBtn} onClick={onOpen} title="바람 계산·업로드는 펼침에서">
-        계산·설정 ↗
-      </button>
-    </div>
-  );
-}
-
 /** 지도 면: 헤더 40px(지도 밖) · 지도(남은 높이 전부) · 출처 24px(지도 밖). 지도 위에는 북쪽·축척·한 줄 범례만 둔다. */
 function MapFace({ p, active, state, back, onBack, onFlip, onDetail, mapReady }: { p: TileCardRenderProps; active: boolean; state: boolean; back: boolean; onBack: (v: boolean) => void; onFlip: () => void; onDetail?: () => void; mapReady: boolean }) {
   const { view } = p;
   const cut = normalizedCut(view, p.cut);
   const cutOwnsS02 = cutOwnsRaster(view, cut);
   const displayView = cutOwnsS02 ? viewForCut(view, cut!) : view;
-  const windLayerZ = cut?.tile === "S03" ? cut.layerZ : 6;
-  const massExploded = cut?.tile === "S01" && cut.mode === "exploded";
+  const FaceExtra = faceExtraFor(view.code);
   const h = displayView.headline;
   const shortAux = h?.aux && h.aux.length <= 4 ? h.aux : "";
   const headlineLabel = h ? shortHeadlineLabel(h.label) : "";
@@ -591,11 +544,7 @@ function MapFace({ p, active, state, back, onBack, onFlip, onDetail, mapReady }:
             <path d="M8 7h9v9" />
           </Svg>
         </button>
-        {view.code === "S01" && !state && view.mass && (
-          <button type="button" className={`${styles.mfWindBtn} ${massExploded ? styles.mfBtnOn : ""}`} aria-pressed={massExploded} onClick={() => p.onCut({ tile: "S01", mode: massExploded ? "mass" : "exploded" })}>
-            {massExploded ? "기본 매스" : "분해"}
-          </button>
-        )}
+        {FaceExtra && <FaceExtra view={view} cut={cut} state={state} placement="header" onCut={p.onCut} onOpen={p.onOpen} />}
         <MoreMenu view={view} active={active} back={back} onBack={onBack} face={p.face} onFace={p.onFace} onDetail={onDetail} pinnedCount={pinnedCount} onSetAllLabels={labelEntries.length > 0 ? p.onSetAllLabels : undefined} compact={{ included: p.included, onInclude: p.onInclude, onOpen: p.onOpen }} />
         <button type="button" className={styles.mfBtn} data-card-face-button="summary" onClick={onFlip} aria-pressed aria-label={`${view.title} 요약/지도 보기 전환`} title="요약 보기">
           <Svg size={15}>
@@ -613,11 +562,11 @@ function MapFace({ p, active, state, back, onBack, onFlip, onDetail, mapReady }:
         </div>
       )}
       {!cutOwnsS02 && <LayerSelect view={view} value={p.layer} onChange={p.onLayer} />}
-      {view.code === "S03" && !state && <WindStrip view={view} layerZ={windLayerZ} onLayerZ={(z) => p.onCut({ tile: "S03", mode: cut?.tile === "S03" ? cut.mode : "single", layerZ: z, season: cut?.tile === "S03" ? cut.season : "annual" })} onOpen={p.onOpen} />}
+      {FaceExtra && <FaceExtra view={view} cut={cut} state={state} placement="controls" onCut={p.onCut} onOpen={p.onOpen} />}
       {!state && <CutSelect view={view} value={cut} onChange={p.onCut} compact />}
       <div className={styles.mfMap}>
         <div className={styles.stage} aria-hidden={!mapReady || undefined}>
-          {mapReady && <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="card" cut={cut} windLayerZ={windLayerZ} massExploded={massExploded} pinnedKeys={pinnedKeys} onFeaturePin={onFeaturePin} />}
+          {mapReady && <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="card" cut={cut} pinnedKeys={pinnedKeys} onFeaturePin={onFeaturePin} />}
         </div>
       </div>
       <footer className={styles.mfFoot} title={text}>
@@ -636,6 +585,7 @@ function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardRende
   const cut = normalizedCut(view, p.cut);
   const cutOwnsS02 = cutOwnsRaster(view, cut);
   const displayView = cutOwnsS02 ? viewForCut(view, cut!) : view;
+  const FaceExtra = faceExtraFor(view.code);
   const facts = displayView.rows.filter((r) => r.label !== displayView.headline?.label).slice(0, 3);
   const head = waiting ? (phase === "running" ? "계산 중" : "대기") : (view.badges.find((b) => b.tone === "status")?.text ?? "표시할 결과가 없습니다");
   const rest = view.badges.filter((b) => b.tone !== "status");
@@ -701,16 +651,7 @@ function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardRende
               {retryText}
             </button>
           )}
-          {view.code === "S03" && (view.status === "pending" || view.status === "running") && (
-            <>
-              <div className={styles.windCompact}>
-                <WindPanel view={view} compact phase={phase} onUploaded={p.onWindUploaded} />
-              </div>
-              <button type="button" className={styles.windOpenBtn} onClick={p.onOpen} title="바람 계산·업로드는 펼침에서">
-                계산·설정 ↗
-              </button>
-            </>
-          )}
+          {FaceExtra && <FaceExtra view={view} cut={cut} state={state} placement="summary" onCut={p.onCut} onOpen={p.onOpen} phase={phase} onWindUploaded={p.onWindUploaded} />}
         </div>
       ) : (
         <div className={styles.sfMain}>

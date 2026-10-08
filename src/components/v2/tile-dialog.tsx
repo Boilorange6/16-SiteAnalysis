@@ -3,7 +3,6 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import { CALLOUT_MODES, calloutReportPages, type CalloutMode } from "@/lib/v2/ui/callout-layout";
 import type { A05Counts, A05Filter } from "@/lib/v2/engine/a05-filter";
-import { CAMERA_PRESETS, EXPLODED_WEBGL_SPREAD_PCT } from "@/lib/v2/ui/mass-projection";
 import { detailSiteX, OV } from "@/lib/v2/ui/overlay-layout";
 import type { CameraPreset, CutSpec, PinnedLabel } from "@/lib/v2/ui/board-state";
 import { faceLabel, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
@@ -12,7 +11,6 @@ import { LayerSelect } from "./layer-select";
 import { cutOwnsRaster, normalizedCut, viewForCut } from "@/lib/v2/ui/cut-selection";
 import { CUT_CODES } from "@/lib/v2/tile/client";
 import { downloadBytes, EXPORT_MIME } from "@/lib/v2/export/download";
-import WindPanel from "./wind-panel";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "./map-box";
 import { mapLabelEntries } from "./map-figure";
 import SourcePanel from "./source-panel";
@@ -153,9 +151,7 @@ export default function TileDialog({ view, layer, onLayer, included, face, onInc
     try {
       const { tileFileName, tilePng, tileSvgForView } = await import("@/lib/v2/export/tile-image");
       const cutView = selectedCut ? viewForCut(view, selectedCut) : view;
-      const exportView = selectedCut?.tile === "S01" && selectedCut.mode === "exploded" && cutView.mass
-        ? { ...cutView, mass: { ...cutView.mass, exploded: { spreadPct: EXPLODED_WEBGL_SPREAD_PCT, scheme: "use" as const } } }
-        : cutView;
+      const exportView = cutView;
       const withFrame = kind !== "plate";
       if (kind === "svg") {
         const svg = await tileSvgForView(exportView, { width: 1600, height: 1200, withFrame: true, layer: basemap });
@@ -202,8 +198,7 @@ export default function TileDialog({ view, layer, onLayer, included, face, onInc
             <BadgeList badges={view.badges} />
             {!cutOwnsS02 && <LayerSelect view={view} value={layer} onChange={onLayer} />}
             <PinnedLabelPanel view={view} labels={pinnedLabels} onToggle={onToggleLabel} onUnpin={onUnpinLabel} onSetAll={onSetAllLabels} onFocusLabel={setFocusedLabelKey} />
-            {DialogPanel && <DialogPanel filter={a05Filter} counts={a05Counts} onChange={onA05Filter} titleId={`a05-${view.tileId}-reaggregate-title`} />}
-            {view.code === "S03" && <WindPanel view={view} layerZ={selectedCut?.tile === "S03" ? selectedCut.layerZ : 6} onLayerZ={(layerZ) => onCut?.({ tile: "S03", mode: selectedCut?.tile === "S03" ? selectedCut.mode : "single", layerZ, season: selectedCut?.tile === "S03" ? selectedCut.season : "annual" })} onUploaded={onWindUploaded} />}
+            {DialogPanel && <DialogPanel view={view} filter={a05Filter} counts={a05Counts} onChange={onA05Filter} titleId={`a05-${view.tileId}-reaggregate-title`} cut={selectedCut} onCut={onCut} camera={camera} onCamera={onCamera} onWindUploaded={onWindUploaded} />}
             {onCut && CUT_CODES.has(view.code) && <CutSelect view={view} value={selectedCut} onChange={onCut} />}
             {view.headline && (
               <div className={styles.stat}>
@@ -248,39 +243,6 @@ export default function TileDialog({ view, layer, onLayer, included, face, onInc
               <button type="button" aria-pressed={back} onClick={() => setBack(true)}>
                 구성비
               </button>
-            </div>
-            )}
-            {view.code === "S01" && camera && onCamera && (
-            <div className={styles.seg} role="group" aria-label="카메라">
-              <span>카메라</span>
-              <label>
-                방위
-                <select
-                  aria-label="카메라 방위"
-                  value={camera.azimuthDeg}
-                  onChange={(e) => onCamera({ azimuthDeg: Number(e.target.value), elevationDeg: camera.elevationDeg })}
-                >
-                  {CAMERA_PRESETS.azimuth.map((azimuthDeg, index) => (
-                    <option key={azimuthDeg} value={azimuthDeg}>
-                      {["북동 상공", "남동 상공", "남서 상공", "북서 상공"][index]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                앙각
-                <select
-                  aria-label="카메라 앙각"
-                  value={camera.elevationDeg}
-                  onChange={(e) => onCamera({ azimuthDeg: camera.azimuthDeg, elevationDeg: Number(e.target.value) })}
-                >
-                  {CAMERA_PRESETS.elevation.map((elevationDeg) => (
-                    <option key={elevationDeg} value={elevationDeg}>
-                      {elevationDeg}°
-                    </option>
-                  ))}
-                </select>
-              </label>
             </div>
             )}
             {displayView.rows.length > 0 && <RowList rows={displayView.rows} className={styles.list} />}
