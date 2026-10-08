@@ -3220,6 +3220,23 @@ button.badge:focus-visible {
   min-height: 0;
   background: #e9e9ec;
 }
+/* 지도 표현 선택은 지도 밖의 별도 행이 아니라 지도 위의 작은 조작으로 둔다. */
+.mf > .seg {
+  position: absolute;
+  z-index: 4;
+  top: 64px;
+  right: 8px;
+  padding: 4px;
+  border: 1px solid rgba(21, 23, 28, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 2px 8px rgba(20, 20, 30, 0.12);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.mf > .seg:has(+ .mfWind) {
+  top: 100px;
+}
 .mfFoot {
   flex: none;
   height: 24px;
