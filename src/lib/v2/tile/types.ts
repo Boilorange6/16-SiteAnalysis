@@ -7,6 +7,7 @@ import type { MassModel } from "../ui/mass-projection";
 import type { Badge, CalloutModel, TileView } from "../ui/tile-view";
 import type { RoseModel } from "../ui/wind-rose";
 import type { RasterRef, RoseSeason, TileResult } from "../tile-result";
+import type { TileReportHook } from "../report/types";
 
 export type TileCompute = (ctx: EngineContext) => TileResult;
 
@@ -118,4 +119,6 @@ export interface TileClientModule {
   board?: TileBoardModule;
   /** 타일의 저장 컷·후보·보고서 조판 동작이다. */
   cut?: TileCutModule;
+  /** 서버 전용 보고서 레지스트리에서 연결하는 타일 조판 훅이다. */
+  report?: TileReportHook;
 }
