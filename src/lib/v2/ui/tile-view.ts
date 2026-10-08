@@ -5,7 +5,7 @@
 import type { MapPolygon, OUTPUT_FACES, RasterRef, RoseSeason, TileResult } from "../tile-result";
 import type { Scene } from "../scene";
 import { tileClientModuleFor } from "../tile/client";
-import type { TileHeadlinePolicy } from "../tile/types";
+import type { Metric, TileHeadlinePolicy } from "../tile/types";
 import type { A05Counts, A05Filter } from "../engine/a05-filter";
 import type { CalloutLegendSpec, Complex, Stat } from "./callout-layout";
 import type { MapModel } from "./map-layers";
@@ -114,8 +114,12 @@ export type CalloutModel = {
 };
 
 const KIND_LABEL = { analysis: "분석", diagram: "도판", simulation: "시뮬레이션" } as const;
-function mapNoteFor(code: string): string | undefined {
-  return tileClientModuleFor(code)?.mapNote;
+function mapNotesFor(r: TileResult): string[] {
+  const module = tileClientModuleFor(r.tileCode);
+  return [
+    ...(module?.mapNote ? [module.mapNote] : []),
+    ...(module?.mapNotesFor?.(r) ?? []),
+  ];
 }
 
 function mapOf(r: TileResult, analysisSiteParcel?: readonly MapPolygon[] | null): RasterMapModel | null {
@@ -135,9 +139,7 @@ function mapOf(r: TileResult, analysisSiteParcel?: readonly MapPolygon[] | null)
   const basemap = presentation.basemap;
   const polygonsTotal = Math.max(0, (r.presentation.polygonsTotal ?? allPolygons.length) - ownSiteParcel.length);
   if (features.length === 0 && polygons.length === 0 && lines.length === 0 && rasterOptions.length === 0 && !basemap && !siteParcel?.length) return null;
-  const mapNote = mapNoteFor(r.tileCode);
-  const notes = mapNote ? [mapNote] : [];
-  if (r.tileCode === "A01" && r.metrics.some((m) => m.id === "nearest_rail_m" && m.status === "missing")) notes.push("철도 자료를 확인하지 못해 버스정류장만 표시");
+  const notes = mapNotesFor(r);
   // 래스터가 그려지는 타일은 건물·그림자를 래스터 셀이 담당하므로 "지물 없음"이 아니다.
   if (features.length === 0 && polygons.length === 0 && lines.length === 0 && rasterOptions.length === 0) notes.push("반경 안 표시할 지물 없음");
   if (rasters.some((ref) => ref.palette === "utci")) notes.push("흰색 = 건물 · 회색 = 바람 입력 없음");
@@ -340,36 +342,14 @@ function metricRow(m: TileResult["metrics"][number], _round = false): Row {
 /** 캐시된 결과의 옛 문장도 카드·상세의 실제 면적 표기와 맞춘다. */
 function displaySentence(r: TileResult, rows: Row[], filterLine: string | null): string | null {
   let sentence = r.judgment?.sentence ?? null;
-  if (sentence && r.tileCode === "D28") {
-    const area = rows.find((row) => row.label === "도보 10분 도달 면적")?.value;
-    if (area) sentence = sentence.replace(/(도보 10분(?:\([^)]*\))? 도달 면적 )[^ (]+(?:\s*(?:㎢|km²))?/, `$1${area}`);
-  }
+  if (sentence) sentence = tileClientModuleFor(r.tileCode)?.sentenceFor?.(r, sentence, rows) ?? sentence;
   if (sentence) return `${sentence}${filterLine ? " · 필터 적용" : ""}`;
   return filterLine ? "필터 적용" : null;
 }
 
-type HeadlineMetric = TileResult["metrics"][number];
-
-function d04HeadlineMetric(metrics: TileResult["metrics"]): HeadlineMetric | null {
-  const parts = ["share_pre1980", "share_1980s", "share_1990s"].map((id) => metrics.find((metric) => metric.id === id));
-  if (parts.every((metric) => metric?.value === null || metric === undefined)) return null;
-  const value = parts.reduce((sum, metric) => sum + (typeof metric?.value === "number" ? metric.value : 0), 0);
-  const status = parts.some((metric) => metric?.status === "estimated") ? "estimated" : "observed";
-  return {
-    id: "share_pre2000",
-    label: "1990년대 이전 준공",
-    value,
-    unit: "%",
-    formulaVersion: "ui-headline@1:1979년 이하+1980년대+1990년대",
-    numerator: null,
-    denominator: null,
-    status,
-  };
-}
-
-function policyMetric(r: TileResult, metrics: TileResult["metrics"]): HeadlineMetric | null {
+function policyMetric(r: TileResult, metrics: TileResult["metrics"]): Metric | null {
   const policy = HEADLINE_POLICY[r.tileCode as TileCode];
-  const exact = policy?.ids?.map((id) => metrics.find((metric) => metric.id === id)).filter((metric): metric is HeadlineMetric => metric !== undefined) ?? [];
+  const exact = policy?.ids?.map((id) => metrics.find((metric) => metric.id === id)).filter((metric): metric is Metric => metric !== undefined) ?? [];
   const maxPrefix = policy?.maxPrefix;
   if (maxPrefix) {
     const prefixed = metrics.filter((metric) => metric.id.startsWith(maxPrefix));
@@ -379,22 +359,18 @@ function policyMetric(r: TileResult, metrics: TileResult["metrics"]): HeadlineMe
   }
   if (exact.length > 0) return exact[0]!;
   const basis = r.judgment?.basisMetricIds ?? [];
-  return basis.map((id) => metrics.find((metric) => metric.id === id)).find((metric): metric is HeadlineMetric => metric !== undefined) ?? null;
+  return basis.map((id) => metrics.find((metric) => metric.id === id)).find((metric): metric is Metric => metric !== undefined) ?? null;
 }
 
 function parameterBadges(r: TileResult): Badge[] {
-  const find = (id: string) => r.metrics.find((metric) => metric.id === id);
   const out: Badge[] = [];
-  const add = (id: string, prefix: string, note: string) => {
-    const metric = find(id);
-    if (!metric) return;
+  const module = tileClientModuleFor(r.tileCode);
+  for (const parameter of module?.parameterBadges ?? []) {
+    const metric = r.metrics.find((candidate) => candidate.id === parameter.metricId);
+    if (!metric) continue;
     const row = metricRow(metric);
-    out.push({ text: `${prefix} ${row.value}`, note, tone: "limit" });
-  };
-  if (r.tileCode === "D04") add("confirmed_share_pct", "확인율", "사용승인일이 확인된 건물의 비율입니다. 준공 연대 분포 자체와는 다른 보조 지표입니다.");
-  if (r.tileCode === "D16") add("kde_bandwidth_m", "KDE 대역폭", "건물 밀도 추정에 사용한 계산 설정값입니다. 지역 결론 수치가 아닙니다.");
-  if (r.tileCode === "D01") add("imagery_zoom_max", "최대 줌", "항공영상 배경의 표시 수준입니다. 촬영시기는 별도로 확인되지 않았습니다.");
-  if (r.tileCode === "A12") add("site_zoning_count", "중심점 지정", "대지 중심점이 들어간 용도지역 도형 수입니다. 지정의 적합성 판정이 아닙니다.");
+    out.push({ text: `${parameter.prefix} ${row.value}`, note: parameter.note, tone: "limit" });
+  }
   return out;
 }
 
@@ -474,33 +450,13 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
   let headlineMetricId: string | null = null;
   const hasResult = r.status === "complete" || r.status === "partial";
   if (hasResult && metrics.length > 0) {
-    if (r.tileCode === "A02") {
-      const zone = metrics.find((m) => m.id === "in_school_zone");
-      const asOf = r.provenance.sources.find((s) => s.sourceId === "school_zone")?.sourceAsOf;
-      const inside = zone?.status === "observed" ? (zone.value === 1 ? "통학구역 안" : "통학구역 밖") : "통학구역 미확인";
-      headline = { value: inside, label: "대지 기준", aux: `학구도 기준일 ${asOf ?? "미확인"}` };
-      headlineMetricId = "in_school_zone";
-    } else if (r.tileCode === "A12") {
-      const zoning = r.presentation.features?.find((feature) => feature.layer === "zoning_site")?.label;
-      const selected = zoning ? null : policyMetric(r, metrics);
-      if (zoning) {
-        headline = { value: zoning, label: "대지 중심점 용도지역" };
-        headlineMetricId = "site_zoning_label";
-      } else if (selected) {
-        const row = metricRow(selected);
-        headline = { value: row.value, label: row.label, aux: row.aux, tag: row.tag };
-        headlineMetricId = selected.id;
-      }
-    } else if (r.tileCode === "D01") {
-      headline = { value: "항공영상 제공", label: "배경 결론", aux: "촬영시기 미확인" };
-      headlineMetricId = "imagery_available";
-    } else if (r.tileCode === "D04") {
-      const selected = d04HeadlineMetric(metrics) ?? policyMetric(r, metrics);
-      if (selected) {
-        const row = metricRow(selected);
-        headline = { value: row.value, label: row.label, aux: row.aux, tag: row.tag };
-        headlineMetricId = selected.id;
-      }
+    const headlineOverride = module?.headlineFor?.(r, {
+      policyMetric: () => policyMetric(r, metrics),
+      metricRow,
+    }) ?? null;
+    if (headlineOverride) {
+      headline = headlineOverride.headline;
+      headlineMetricId = headlineOverride.metricId;
     } else {
       const selected = policyMetric(r, metrics);
       if (selected) {
@@ -510,8 +466,8 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
       }
     }
   }
-  // A02의 통학구역 지표는 headline이 대신 보여 준다.
-  const allRows = r.tileCode === "A02" ? metrics.filter((m) => m.id !== "in_school_zone").map((m) => metricRow(m)) : rows;
+  const rowsExclude = new Set(module?.rowsExclude ?? []);
+  const allRows = rowsExclude.size > 0 ? metrics.filter((metric) => !rowsExclude.has(metric.id)).map((metric) => metricRow(metric)) : rows;
 
   const gradedMetricOk = r.judgment?.level != null && GRADED_CODES.has(r.tileCode) && r.judgment.criteria;
   const windDirections = windDirectionsOf(r);
