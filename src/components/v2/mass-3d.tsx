@@ -5,6 +5,7 @@ import type { MassCamera, MassColorScheme, MassLabel, MassQuality } from "@/lib/
 import type { Scene } from "@/lib/v2/scene";
 import FallbackMassFigure from "./mass-figure";
 import styles from "./board.module.css";
+import tileStyles from "@/lib/v2/tile/s01/tile.module.css";
 
 type RenderMode = "image" | "live";
 
@@ -75,16 +76,16 @@ function LiveExplodedLabels({ scene, camera, exploded, width, height }: { scene:
 
   if (!exploded || labels.length === 0) return null;
   return (
-    <div className={styles.mass3dExplodedLabels} aria-hidden="true">
+    <div className={tileStyles.mass3dExplodedLabels} aria-hidden="true">
       {labels.map((label) => (
-        <div key={label.layer} data-layer-label={label.layer} className={styles.mass3dExplodedLabelGroup} style={{ left: label.x, top: label.y }}>
-          <span className={styles.mass3dExplodedLabelText}>{label.text}</span>
-          {label.note && <span className={styles.mass3dExplodedLabelNote}>{label.note}</span>}
-          <i className={styles.mass3dExplodedLabelLeader} style={{ width: Math.max(0, label.leaderX - label.x - 4) }} />
+        <div key={label.layer} data-layer-label={label.layer} className={tileStyles.mass3dExplodedLabelGroup} style={{ left: label.x, top: label.y }}>
+          <span className={tileStyles.mass3dExplodedLabelText}>{label.text}</span>
+          {label.note && <span className={tileStyles.mass3dExplodedLabelNote}>{label.note}</span>}
+          <i className={tileStyles.mass3dExplodedLabelLeader} style={{ width: Math.max(0, label.leaderX - label.x - 4) }} />
         </div>
       ))}
       {labels.filter((label) => label.note && label.badgeX !== undefined && label.badgeY !== undefined).map((label) => (
-        <span key={`${label.layer}-empty`} className={styles.mass3dNoDataBadge} style={{ left: label.badgeX, top: label.badgeY }}>
+        <span key={`${label.layer}-empty`} className={tileStyles.mass3dNoDataBadge} style={{ left: label.badgeX, top: label.badgeY }}>
           자료 없음
         </span>
       ))}
@@ -104,28 +105,28 @@ function LiveLegend({ scene, exploded }: Pick<Mass3dProps, "scene" | "exploded">
           ["건물", "#E8EDF2"],
           ["완성", "#F5F6F7"],
           ].map(([label, color]) => (
-          <span key={label} className={styles.mass3dLegendItem}>
+          <span key={label} className={tileStyles.mass3dLegendItem}>
             <i style={{ background: color }} />
             {label}
           </span>
           ))}
-          <span className={styles.mass3dLegendItem}><i className={styles.mass3dNoDataSwatch} />자료 없음 = 빈 원판</span>
+          <span className={tileStyles.mass3dLegendItem}><i className={tileStyles.mass3dNoDataSwatch} />자료 없음 = 빈 원판</span>
         </div>
     );
   }
   return (
     <div className={styles.mass3dLegend} aria-hidden="true">
-      <span className={styles.mass3dLegendItem}><i style={{ background: "#E8EDF2" }} />확정 높이</span>
-      <span className={styles.mass3dLegendItem}><i className={styles.mass3dEstimatedSwatch} />추정 높이</span>
-      <span className={styles.mass3dLegendItem}><i style={{ background: "#C8CDD4" }} />높이 미상</span>
-      {scene?.ground.kind === "dem" && <span className={styles.mass3dLegendItem}><i style={{ background: "#E8ECEF" }} />지형</span>}
+      <span className={tileStyles.mass3dLegendItem}><i style={{ background: "#E8EDF2" }} />확정 높이</span>
+      <span className={tileStyles.mass3dLegendItem}><i className={tileStyles.mass3dEstimatedSwatch} />추정 높이</span>
+      <span className={tileStyles.mass3dLegendItem}><i style={{ background: "#C8CDD4" }} />높이 미상</span>
+      {scene?.ground.kind === "dem" && <span className={tileStyles.mass3dLegendItem}><i style={{ background: "#E8ECEF" }} />지형</span>}
     </div>
   );
 }
 
 function Fallback({ props, note }: { props: Mass3dProps; note: string }) {
   return (
-    <div className={styles.mass3dFallback} style={{ width: props.fixed ? props.width : "100%", height: props.fixed ? props.height : "100%" }}>
+    <div className={tileStyles.mass3dFallback} style={{ width: props.fixed ? props.width : "100%", height: props.fixed ? props.height : "100%" }}>
       <FallbackMassFigure
         scene={props.scene}
         camera={props.camera}
@@ -136,7 +137,7 @@ function Fallback({ props, note }: { props: Mass3dProps; note: string }) {
         exploded={props.exploded}
         quality={props.quality}
       />
-      <span className={styles.mass3dFallbackNote} role="status">{note}</span>
+      <span className={tileStyles.mass3dFallbackNote} role="status">{note}</span>
     </div>
   );
 }
@@ -242,7 +243,7 @@ function Mass3D({ mode = "image", ...props }: Mass3dProps) {
   const shellStyle = { width: props.fixed ? props.width : "100%", height: props.fixed ? props.height : "100%" } as const;
   if (mode === "image") {
     return (
-      <div ref={imageRef} className={styles.mass3dRoot} style={shellStyle} aria-busy={phase === "loading"}>
+      <div ref={imageRef} className={tileStyles.mass3dRoot} style={shellStyle} aria-busy={phase === "loading"}>
         {phase === "fallback" || phase === "error" ? (
           <Fallback props={{ ...renderProps, mode }} note="WebGL을 사용할 수 없어 2D 대체 그림을 표시합니다." />
         ) : image ? (
@@ -251,7 +252,7 @@ function Mass3D({ mode = "image", ...props }: Mass3dProps) {
             alt={props.label ?? "S01 3D 매스"}
             width={props.fixed ? props.width : undefined}
             height={props.fixed ? props.height : undefined}
-            className={styles.mass3dImage}
+            className={tileStyles.mass3dImage}
             style={{ width: "100%", height: "100%", display: "block" }}
             decoding="async"
           />
@@ -266,17 +267,17 @@ function Mass3D({ mode = "image", ...props }: Mass3dProps) {
   }
   if (mode === "live") {
     return (
-      <div className={styles.mass3dRoot} style={shellStyle} aria-busy={phase === "loading"}>
-        <div ref={liveRef} className={styles.mass3dCanvasHost} />
+      <div className={tileStyles.mass3dRoot} style={shellStyle} aria-busy={phase === "loading"}>
+        <div ref={liveRef} className={tileStyles.mass3dCanvasHost} />
         <LiveExplodedLabels scene={props.scene} camera={props.camera} exploded={props.exploded} width={liveSize.width} height={liveSize.height} />
         <LiveLegend scene={props.scene} exploded={props.exploded} />
-        {props.scene?.ground.kind === "flat" && <span className={styles.mass3dFlatNote} aria-hidden="true">지형 미반영</span>}
+        {props.scene?.ground.kind === "flat" && <span className={tileStyles.mass3dFlatNote} aria-hidden="true">지형 미반영</span>}
         {phase === "loading" && <span style={statusStyle()} role="status">3D 매스를 불러오는 중…</span>}
       </div>
     );
   }
   return (
-    <div className={styles.mass3dRoot} style={shellStyle} aria-busy role="img" aria-label={props.label ?? "S01 3D 매스"}>
+    <div className={tileStyles.mass3dRoot} style={shellStyle} aria-busy role="img" aria-label={props.label ?? "S01 3D 매스"}>
       <span style={statusStyle()} role="status">3D 매스를 불러오는 중…</span>
     </div>
   );

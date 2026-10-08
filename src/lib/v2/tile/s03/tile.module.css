@@ -1,0 +1,25 @@
+/* S03 wind-card controls belong to the S03 tile ownership unit. */
+
+/* S03 대기 카드: 계산 패널(44px 컨트롤 3줄)은 카드 높이가 넉넉할 때만, 낮은 카드는 ‘계산·설정’으로 펼침에서 연다. */
+.windOpenBtn {
+  display: none;
+  align-self: flex-start;
+  min-height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--black);
+  color: #fff !important;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+@container (max-height: 479px) {
+  .windCompact {
+    display: none;
+  }
+  .windOpenBtn {
+    display: inline-flex;
+    align-items: center;
+  }
+}

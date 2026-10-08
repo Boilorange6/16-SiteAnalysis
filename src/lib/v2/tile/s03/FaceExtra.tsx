@@ -4,6 +4,7 @@ import WindPanel, { mapOptions } from "@/components/v2/wind-panel";
 import { WIND_LAYER_HEIGHTS } from "@/lib/v2/ui/wind-upload";
 import type { TileFaceExtraProps } from "../component-types";
 import styles from "@/components/v2/board.module.css";
+import tileStyles from "./tile.module.css";
 
 function nextCut(cut: TileFaceExtraProps["cut"], layerZ: number) {
   return {
@@ -49,10 +50,10 @@ export function WindFaceExtra({ view, cut, state, placement, onCut, onOpen, phas
   if (placement === "summary" && state && (view.status === "pending" || view.status === "running")) {
     return (
       <>
-        <div className={styles.windCompact}>
+        <div className={tileStyles.windCompact}>
           <WindPanel view={view} compact phase={phase} onUploaded={onWindUploaded} />
         </div>
-        <button type="button" className={styles.windOpenBtn} onClick={onOpen} title="바람 계산·업로드는 펼침에서">
+        <button type="button" className={tileStyles.windOpenBtn} onClick={onOpen} title="바람 계산·업로드는 펼침에서">
           계산·설정 ↗
         </button>
       </>
