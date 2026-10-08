@@ -24,6 +24,13 @@ export type TileHeadlinePolicy = {
   maxPrefix?: string;
 };
 
+export type Metric = TileResult["metrics"][number];
+
+export type TileHeadlineHelpers = {
+  policyMetric: () => Metric | null;
+  metricRow: (metric: Metric) => { value: string; label: string; aux?: string; tag?: string };
+};
+
 export type TileLayerOption = { id: string; label: string };
 
 export type TileLayerOptions = readonly TileLayerOption[] | ((result: TileResult) => readonly TileLayerOption[]);
@@ -102,6 +109,16 @@ export interface TileClientModule {
   headline?: TileHeadlinePolicy;
   /** 지도 아래에 표시할 타일 고유 설명이다. */
   mapNote?: string;
+  /** 결과 지표 조건에 따라 지도 메모 뒤에 덧붙일 문장들(예: 자료 누락 안내). */
+  mapNotesFor?: (result: TileResult) => readonly string[];
+  /** 설정값·보조 지표를 배지로 보여 줄 지표 목록(값은 공용 metricRow 서식). */
+  parameterBadges?: readonly { metricId: string; prefix: string; note: string }[];
+  /** 공용 정책 대신 헤드라인을 직접 정한다. null이면 공용 정책(headline 필드)으로 넘어간다. */
+  headlineFor?: (result: TileResult, helpers: TileHeadlineHelpers) => { headline: NonNullable<TileView["headline"]>; metricId: string } | null;
+  /** 헤드라인이 대신 보여 주므로 행 목록에서 뺄 지표 id. */
+  rowsExclude?: readonly string[];
+  /** 캐시된 옛 판단 문장을 현재 표기와 맞춘다(필터 꼬리표 붙이기 전). */
+  sentenceFor?: (result: TileResult, sentence: string, rows: readonly { label: string; value: string }[]) => string;
   /** 카드에 표시할 모델·법적 사용 한계 문구다. */
   caveat?: string;
   /** 카드 배지에 표시할 계산 모델 요약이다. */
