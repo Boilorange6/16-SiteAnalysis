@@ -12,7 +12,7 @@ const { insertRelease } = await import("../../lib/v2/ingest/build.ts");
 const { buildPopGrid, sgisRows, sgisDataYear, locateSigunguFromCore } = await import("../../lib/v2/ingest/sources/sgis-grid.ts");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
-const { a11 } = await import("../../lib/v2/engine/tiles/a11.ts");
+const { a11 } = await import("../../lib/v2/tile/a11/engine.ts");
 const { REVIEW_SITES } = await import("../../lib/v2/a0/review-sites.ts");
 const { v2DataDir } = await import("../../lib/v2/paths.ts");
 

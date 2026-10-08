@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 const { buildEngineFixture, CENTER } = await import("./engine-fixture.mjs");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
-const { a08, collectRents, MIN_PAIRED } = await import("../../lib/v2/engine/tiles/a08.ts");
+const { a08, collectRents, MIN_PAIRED } = await import("../../lib/v2/tile/a08/engine.ts");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 

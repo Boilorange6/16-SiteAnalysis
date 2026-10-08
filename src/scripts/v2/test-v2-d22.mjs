@@ -8,7 +8,7 @@ import Database from "better-sqlite3";
 const { buildEngineFixture, CENTER, at } = await import("./engine-fixture.mjs");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
-const { DIR16_DEGREES, DIR16_NAMES, d22, prevailingBySeason } = await import("../../lib/v2/engine/tiles/d22.ts");
+const { DIR16_DEGREES, DIR16_NAMES, d22, prevailingBySeason } = await import("../../lib/v2/tile/d22/engine.ts");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 
 const dataDir = mkdtempSync(join(tmpdir(), "v2-d22-"));

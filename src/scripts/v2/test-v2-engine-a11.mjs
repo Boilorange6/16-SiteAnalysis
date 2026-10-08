@@ -9,7 +9,7 @@ const { insertRelease } = await import("../../lib/v2/ingest/build.ts");
 const { buildPopGrid, AGE_ITEMS } = await import("../../lib/v2/ingest/sources/sgis-grid.ts");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
-const { a11, circleRectOverlap } = await import("../../lib/v2/engine/tiles/a11.ts");
+const { a11, circleRectOverlap } = await import("../../lib/v2/tile/a11/engine.ts");
 const { toLngLat } = await import("../../lib/v2/crs.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 

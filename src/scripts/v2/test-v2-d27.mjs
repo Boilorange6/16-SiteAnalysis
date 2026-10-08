@@ -10,7 +10,7 @@ const { insertFeature } = await import("../../lib/v2/data/features.ts");
 const { insertRelease } = await import("../../lib/v2/ingest/build.ts");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
-const { circleRectOverlap } = await import("../../lib/v2/engine/tiles/a11.ts");
+const { circleRectOverlap } = await import("../../lib/v2/tile/a11/engine.ts");
 const { TILES } = await import("../../lib/v2/engine/run.ts");
 const a11WithDensity = TILES.find(([code]) => code === "A11")[1];
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");

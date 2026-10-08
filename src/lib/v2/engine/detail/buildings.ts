@@ -4,7 +4,7 @@ import { sourceLineOf } from "../../ui/tile-view";
 import { catalogEntry } from "../../ui/tile-catalog";
 import { buildingRows, BUILDING_SOURCES, isCounted, type BuildingRow } from "../tiles/buildings-shared";
 import { hitPoint } from "../tiles/common";
-import { useClassOf } from "../tiles/d03";
+import { useClassOf } from "../../tile/d03/engine";
 import type { DetailCard, DetailColumn, DetailRow, DetailSpec, DetailContext } from "./registry";
 
 const BUILDING_CODES = ["D02", "D03", "D04", "D05"] as const;

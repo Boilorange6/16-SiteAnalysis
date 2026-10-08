@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 const C = await import("../../lib/v2/ui/callout-layout.ts");
 const { markOverlaps, bucketOf } = await import("../../lib/v2/tile/a06/engine.ts");
-const { a01Grades, gradeRail } = await import("../../lib/v2/engine/tiles/a01.ts");
+const { a01Grades, gradeRail } = await import("../../lib/v2/tile/a01/engine.ts");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");

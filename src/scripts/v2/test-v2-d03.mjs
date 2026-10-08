@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 const { buildEngineFixture, CENTER } = await import("./engine-fixture.mjs");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
-const { d03, USE_CLASSES, useClassOf } = await import("../../lib/v2/engine/tiles/d03.ts");
+const { d03, USE_CLASSES, useClassOf } = await import("../../lib/v2/tile/d03/engine.ts");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 
 const metric = (tile, id) => {

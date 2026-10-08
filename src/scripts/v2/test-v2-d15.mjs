@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 const { buildEngineFixture } = await import("./engine-fixture.mjs");
 const { readManifest } = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
-const { d15, BLOCK_ROAD_FILTER } = await import("../../lib/v2/engine/tiles/d15.ts");
+const { d15, BLOCK_ROAD_FILTER } = await import("../../lib/v2/tile/d15/engine.ts");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { toUtmk } = await import("../../lib/v2/crs.ts");
 

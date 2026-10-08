@@ -6,8 +6,8 @@ const { initDataFileSchema } = await import("../../lib/v2/data/schema.ts");
 const { insertRelease, SourceStats } = await import("../../lib/v2/ingest/build.ts");
 const { buildDistricts, DISTRICT_LAYERS, DISTRICT_RIGHTS, districtLayerFiles } = await import("../../lib/v2/ingest/sources/districts.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
-const { d11 } = await import("../../lib/v2/engine/tiles/d11.ts");
-const { d12 } = await import("../../lib/v2/engine/tiles/d12.ts");
+const { d11 } = await import("../../lib/v2/tile/d11/engine.ts");
+const { d12 } = await import("../../lib/v2/tile/d12/engine.ts");
 
 assert.deepEqual(DISTRICT_LAYERS.map(({ key, sourceId, title, kind, cls, fileTag }) => ({ key, sourceId, title, kind, cls, fileTag })), [
   { key: "area", sourceId: "district_area", title: "국토계획/구역", kind: "district_area", cls: "구역", fileTag: "AL_D140" },

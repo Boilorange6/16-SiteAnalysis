@@ -5,7 +5,7 @@ import { dirname } from "node:path";
 import { performance } from "node:perf_hooks";
 
 const { toUtmk } = await import("../../lib/v2/crs.ts");
-const { d28 } = await import("../../lib/v2/engine/tiles/d28.ts");
+const { d28 } = await import("../../lib/v2/tile/d28/engine.ts");
 const { isochroneGrid, walkField } = await import("../../lib/v2/engine/tiles/walk-shared.ts");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 

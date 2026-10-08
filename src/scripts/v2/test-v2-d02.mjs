@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 const { buildEngineFixture, CENTER, PNU_DASAN_100 } = await import("./engine-fixture.mjs");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
-const { d02 } = await import("../../lib/v2/engine/tiles/d02.ts");
+const { d02 } = await import("../../lib/v2/tile/d02/engine.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 
 const metric = (tile, id) => {

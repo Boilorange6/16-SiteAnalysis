@@ -11,7 +11,7 @@ const { DEM_NODATA, insertDemTile } = await import("../../lib/v2/data/terrain.ts
 const { insertRelease } = await import("../../lib/v2/ingest/build.ts");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
-const { d29 } = await import("../../lib/v2/engine/tiles/d29.ts");
+const { d29 } = await import("../../lib/v2/tile/d29/engine.ts");
 const { svfFor, SVF_CELL_M } = await import("../../lib/v2/engine/tiles/svf-shared.ts");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 
