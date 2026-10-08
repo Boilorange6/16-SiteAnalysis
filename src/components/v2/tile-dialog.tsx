@@ -5,11 +5,11 @@ import { CALLOUT_MODES, calloutReportPages, type CalloutMode } from "@/lib/v2/ui
 import { A05_TYPE_LABEL, A05_TYPES, normalizeA05Filter, type A05Counts, type A05Filter, type A05Type } from "@/lib/v2/engine/a05-filter";
 import { CAMERA_PRESETS } from "@/lib/v2/ui/mass-projection";
 import { detailSiteX, OV } from "@/lib/v2/ui/overlay-layout";
-import type { CameraPreset, CutCount, PinnedLabel } from "@/lib/v2/ui/board-state";
+import type { CameraPreset, CutSpec, PinnedLabel } from "@/lib/v2/ui/board-state";
 import { faceLabel, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
-import { BadgeList, FaceSelect, Headline, RoseSeasonSelect, RowList, SourceStrip, Stage, StatusPlate, TitleChip } from "./tile-card";
-import { LayerSelect, SegmentedControl } from "./layer-select";
-import type { RoseSeason } from "@/lib/v2/tile-result";
+import { BadgeList, CutSelect, FaceSelect, Headline, RowList, SourceStrip, Stage, StatusPlate, TitleChip } from "./tile-card";
+import { LayerSelect } from "./layer-select";
+import { normalizedCut } from "@/lib/v2/ui/cut-selection";
 import WindPanel from "./wind-panel";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "./map-box";
 import { mapLabelEntries } from "./map-figure";
@@ -25,14 +25,12 @@ type Props = {
   onInclude: (v: boolean) => void;
   onFace: (f: OutputFace) => void;
   onRetry?: () => void;
-  roseSeason: RoseSeason;
-  onRoseSeason: (season: RoseSeason) => void;
+  cut?: CutSpec | null;
+  onCut?: (cut: CutSpec) => void;
   calloutMode: CalloutMode;
   onCalloutMode: (m: CalloutMode) => void;
   camera?: CameraPreset | null;
   onCamera?: (camera: CameraPreset) => void;
-  cuts?: CutCount;
-  onCuts?: (cuts: CutCount) => void;
   onWindUploaded?: () => void;
   onClose: () => void;
   a05Filter?: A05Filter | null;
@@ -238,14 +236,12 @@ function PinnedLabelPanel({ view, labels, onToggle, onUnpin, onSetAll, onFocusLa
 }
 
 /** 펼침: 화면 거의 전체가 지도. 오른쪽에 떠 있는 정보 판. Esc로 닫고, 닫으면 열기 전 초점으로 돌아간다. */
-export default function TileDialog({ view, layer, onLayer, included, face, onInclude, onFace, onRetry, roseSeason, onRoseSeason, calloutMode, onCalloutMode, camera, onCamera, cuts, onCuts, onWindUploaded, onClose, a05Filter, a05Counts, onA05Filter, pinnedLabels, onToggleLabel, onUnpinLabel, onSetAllLabels, initialTab = "overview" }: Props) {
+export default function TileDialog({ view, layer, onLayer, included, face, onInclude, onFace, onRetry, cut, onCut, calloutMode, onCalloutMode, camera, onCamera, onWindUploaded, onClose, a05Filter, a05Counts, onA05Filter, pinnedLabels, onToggleLabel, onUnpinLabel, onSetAllLabels, initialTab = "overview" }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [back, setBack] = useState(false);
   const [more, setMore] = useState(false); // 모바일 시트 확장
   const [page, setPage] = useState(0); // 설명선 타일: 0 = 개요
   const [focusedLabelKey, setFocusedLabelKey] = useState<string | null>(null);
-  const [windLayerZ, setWindLayerZ] = useState(6);
-  const [massExploded, setMassExploded] = useState(false);
   const [panelTab, setPanelTab] = useState<"overview" | "sources">(initialTab);
   const basemap = useContext(BasemapContext);
   const setBasemap = useContext(SetBasemapContext);
@@ -269,12 +265,13 @@ export default function TileDialog({ view, layer, onLayer, included, face, onInc
   }, []);
 
   const state = view.headline === null;
+  const selectedCut = normalizedCut(view, cut);
   const titleId = `dlg-${view.tileId}`;
   return (
     <div className={styles.overlay} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div ref={ref} className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <div className={styles.stage}>
-          <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="detail" siteX={detailSiteX} rightInset={insetOf} legendY={OV.edge + 38 + 8} page={page} onPage={setPage} windLayerZ={windLayerZ} massExploded={massExploded} roseSeason={roseSeason} pinnedKeys={pinnedLabels.filter((label) => label.on).map((label) => label.key)} hoverKey={focusedLabelKey} emphasisKey={focusedLabelKey} onFeaturePin={(feature) => onToggleLabel(feature.key)} />
+          <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="detail" siteX={detailSiteX} rightInset={insetOf} legendY={OV.edge + 38 + 8} page={page} onPage={setPage} cut={selectedCut} pinnedKeys={pinnedLabels.filter((label) => label.on).map((label) => label.key)} hoverKey={focusedLabelKey} emphasisKey={focusedLabelKey} onFeaturePin={(feature) => onToggleLabel(feature.key)} />
         </div>
 
         {state && <StatusPlate view={view} phase={null} onRetry={onRetry} />}
@@ -303,8 +300,8 @@ export default function TileDialog({ view, layer, onLayer, included, face, onInc
             <LayerSelect view={view} value={layer} onChange={onLayer} />
             <PinnedLabelPanel view={view} labels={pinnedLabels} onToggle={onToggleLabel} onUnpin={onUnpinLabel} onSetAll={onSetAllLabels} onFocusLabel={setFocusedLabelKey} />
             {view.code === "A05" && <A05FilterPanel filter={a05Filter} counts={a05Counts} onChange={onA05Filter} titleId={`a05-${view.tileId}-reaggregate-title`} />}
-            {view.code === "S03" && <WindPanel view={view} layerZ={windLayerZ} onLayerZ={setWindLayerZ} onUploaded={onWindUploaded} />}
-            {view.code === "D22" && !state && <RoseSeasonSelect view={view} value={roseSeason} onChange={onRoseSeason} />}
+            {view.code === "S03" && <WindPanel view={view} layerZ={selectedCut?.tile === "S03" ? selectedCut.layerZ : 6} onLayerZ={(layerZ) => onCut?.({ tile: "S03", mode: selectedCut?.tile === "S03" ? selectedCut.mode : "single", layerZ, season: selectedCut?.tile === "S03" ? selectedCut.season : "annual" })} onUploaded={onWindUploaded} />}
+            {!state && onCut && <CutSelect view={view} value={selectedCut} onChange={onCut} />}
             {view.headline && (
               <div className={styles.stat}>
                 <Headline view={view} />
@@ -383,15 +380,6 @@ export default function TileDialog({ view, layer, onLayer, included, face, onInc
               </label>
             </div>
             )}
-            {view.code === "S01" && view.mass && (
-            <SegmentedControl
-              label={<span>표현</span>}
-              ariaLabel="S01 매스 보기"
-              options={[{ id: "base", label: "기본 매스" }, { id: "exploded", label: "분해" }]}
-              value={massExploded ? "exploded" : "base"}
-              onChange={(value) => setMassExploded(value === "exploded")}
-            />
-            )}
             {view.rows.length > 0 && <RowList rows={view.rows} className={styles.list} />}
             {view.notes.length > 0 && (
             <ul className={styles.notes}>
@@ -416,15 +404,6 @@ export default function TileDialog({ view, layer, onLayer, included, face, onInc
               </div>
             )}
             {view.callout && <div className={styles.sub}>보고서 {calloutReportPages(calloutMode, view.callout.complexes.length)}장 (개요 포함)</div>}
-            {view.code === "S02" && cuts !== undefined && onCuts && (
-              <label className={styles.seg}>
-                슬라이드 컷
-                <select aria-label="슬라이드 컷" value={cuts} onChange={(e) => onCuts(Number(e.target.value) === 3 ? 3 : 1)}>
-                  <option value={1}>1컷</option>
-                  <option value={3}>09·12·15 3컷</option>
-                </select>
-              </label>
-            )}
             <label className={styles.check}>
               <input type="checkbox" checked={included} onChange={(e) => onInclude(e.target.checked)} aria-label={`${view.title} 보고서 포함`} />
               포함

@@ -11,6 +11,17 @@ export type SheetGrid = "2x2" | "3x2";
 export type SheetSpec = { tiles: string[]; grid: SheetGrid };
 export type CameraPreset = { azimuthDeg: number; elevationDeg: number };
 export type CutCount = 1 | 3;
+export type SunDateKey = "spring" | "summer" | "autumn" | "winter" | "analysis";
+export type Season = Exclude<SunDateKey, "analysis">;
+export type WindSeason = "annual" | Season;
+/** 화면·보고서·내보내기가 공유하는 타일별 컷 선택. */
+export type CutSpec =
+  | { tile: "S01"; mode: "mass" | "exploded" }
+  | { tile: "S02"; mode: "single" | "hours3" | "seasons4" | "flow"; date?: SunDateKey }
+  | { tile: "S03"; mode: "single" | "seasons4"; layerZ: number; season?: WindSeason }
+  | { tile: "S04"; mode: "single" | "seasons4" | "hours3"; season?: Season; hour?: 10 | 14 | 18 }
+  | { tile: "D22"; mode: "annual" | "seasons4" };
+export type LegacyCutSpec = CutSpec | CutCount;
 export type PinnedLabel = { key: string; on: boolean };
 
 /** 되돌리기 한 단계. 모든 편집(순서·크기·제거·더하기)이 여기 쌓인다. */
@@ -24,7 +35,7 @@ export type UndoEntry =
 export type CardFace = "summary" | "map";
 /** 대지 요약 카드의 view 키 */
 export const SUMMARY_ID = "site-summary";
-export const BOARD_STATE_VERSION = 2;
+export const BOARD_STATE_VERSION = 3;
 /** 타일 코드가 바뀌어도 저장 보드의 모든 참조를 한 번에 옮길 수 있는 자리. */
 export const TILE_CODE_RENAMES: Record<string, string> = {
   D06: "D05",
@@ -78,10 +89,8 @@ export type BoardState = {
   sheets: Record<string, SheetSpec>;
   /** S01 타일 id → 저장된 카메라 프리셋 */
   cameras: Record<string, CameraPreset>;
-  /** S02 타일 id → 보고서에 넣을 그림자 컷 수 */
-  cuts: Record<string, CutCount>;
-  /** D22 타일 id → 화면·보고서에 표시할 계절 */
-  roseSeasons: Record<string, RoseSeason>;
+  /** 시뮬레이션·바람장·바람장미 타일 id → 화면·보고서 컷 */
+  cuts: Record<string, CutSpec>;
   /** 타일 id → 지도 요소 라벨의 고정·표시 상태 */
   labels: Record<string, PinnedLabel[]>;
   /** 타일 id → 지도 표현/래스터 레이어. 비어 있으면 타일 기본 레이어. */
@@ -111,7 +120,10 @@ export type BoardAction =
   | { type: "sheet"; tiles: string[]; grid: SheetGrid }
   | { type: "unsheet"; id: string }
   | { type: "camera"; id: string; camera: CameraPreset }
-  | { type: "cuts"; id: string; cuts: CutCount }
+  | { type: "cut"; id: string; cut: CutSpec }
+  /** W1 저장/컴포넌트 호환용 입력. reducer 안에서 CutSpec으로 즉시 승격한다. */
+  | { type: "cuts"; id: string; cuts: LegacyCutSpec }
+  /** W1 화면 입력 호환용. 새 상태에는 D22 seasons4/annual로만 저장한다. */
   | { type: "roseSeason"; id: string; season: RoseSeason }
   | { type: "pinLabel"; id: string; key: string }
   | { type: "unpinLabel"; id: string; key: string }
@@ -140,7 +152,6 @@ export function initBoard(results: TileResult[]): BoardState {
     sheets: {},
     cameras: {},
     cuts: {},
-    roseSeasons: {},
     labels: {},
     layers: {},
     removed: [],
@@ -335,11 +346,18 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
     case "camera":
       if (!isCameraPreset(a.camera)) return s;
       return { ...s, cameras: { ...s.cameras, [a.id]: { ...a.camera } } };
-    case "cuts":
-      if (a.cuts !== 1 && a.cuts !== 3) return s;
-      return { ...s, cuts: { ...s.cuts, [a.id]: a.cuts } };
+    case "cut":
+      if (!isCutSpec(a.cut)) return s;
+      return { ...s, cuts: { ...s.cuts, [a.id]: a.cut } };
+    case "cuts": {
+      if (typeof a.cuts === "number" && a.cuts !== 1 && a.cuts !== 3) return s;
+      const cut = typeof a.cuts === "number" ? legacyCutForId(a.id, a.cuts) : a.cuts;
+      if (!cut || !isCutSpec(cut)) return s;
+      return { ...s, cuts: { ...s.cuts, [a.id]: cut } };
+    }
     case "roseSeason":
-      return { ...s, roseSeasons: { ...s.roseSeasons, [a.id]: a.season } };
+      if (a.season !== "annual" && a.season !== "spring" && a.season !== "summer" && a.season !== "autumn" && a.season !== "winter") return s;
+      return { ...s, cuts: { ...s.cuts, [a.id]: { tile: "D22", mode: a.season === "annual" ? "annual" : "seasons4" } } };
     case "pinLabel": {
       if (!a.key) return s;
       const current = s.labels[a.id] ?? [];
@@ -394,7 +412,8 @@ export type BoardStateSnapshot = {
   stacks: Record<string, string[]>;
   sheets: Record<string, SheetSpec>;
   cameras: Record<string, CameraPreset>;
-  cuts: Record<string, CutCount>;
+  cuts: Record<string, LegacyCutSpec>;
+  /** W1에서만 존재한 D22 필드. v3에서는 cuts로 이관하고 다시 저장하지 않는다. */
   roseSeasons?: Record<string, RoseSeason>;
   labels?: Record<string, PinnedLabel[]>;
   layers?: Record<string, string>;
@@ -423,7 +442,6 @@ export function serializeBoardState(s: BoardState): BoardStateSnapshot {
     sheets: Object.fromEntries(Object.entries(s.sheets).map(([id, spec]) => [id, { tiles: [...spec.tiles], grid: spec.grid }])),
     cameras: Object.fromEntries(Object.entries(s.cameras).map(([id, camera]) => [id, { ...camera }])),
     cuts: { ...s.cuts },
-    roseSeasons: { ...s.roseSeasons },
     labels: Object.fromEntries(Object.entries(s.labels).map(([id, labels]) => [id, labels.map((label) => ({ ...label }))])),
     layers: { ...s.layers },
     removed: s.removed.map((item) => ({ ...item })),
@@ -519,7 +537,7 @@ export function rewriteSnapshotIds(snapshot: BoardStateSnapshot, mapId: IdMapper
     stacks,
     sheets,
     cameras: mapIdRecord<CameraPreset>(snapshot.cameras, mapId),
-    cuts: mapIdRecord<CutCount>(snapshot.cuts, mapId),
+    cuts: mapIdRecord<LegacyCutSpec>(snapshot.cuts, mapId),
     roseSeasons: mapIdRecord<RoseSeason>(snapshot.roseSeasons, mapId),
     labels: mapIdRecord<PinnedLabel[]>(snapshot.labels, mapId),
     layers,
@@ -539,6 +557,65 @@ function migrateV1ToV2(snapshot: BoardStateSnapshot): BoardStateSnapshot {
   return { ...snapshot, layers: recordOf(snapshot.layers) as Record<string, string> };
 }
 
+function codeFromTileIdForCut(id: string): string {
+  const separator = id.lastIndexOf("-");
+  return separator < 0 ? id : id.slice(separator + 1);
+}
+
+export function defaultCutForCode(code: string): CutSpec | null {
+  switch (code) {
+    case "S01": return { tile: "S01", mode: "mass" };
+    case "S02": return { tile: "S02", mode: "single", date: "winter" };
+    case "S03": return { tile: "S03", mode: "single", layerZ: 6, season: "annual" };
+    case "S04": return { tile: "S04", mode: "single", season: "summer", hour: 14 };
+    case "D22": return { tile: "D22", mode: "annual" };
+    default: return null;
+  }
+}
+
+function legacyCutForId(id: string, value: CutCount): CutSpec | null {
+  return codeFromTileIdForCut(id) === "S02"
+    ? { tile: "S02", mode: value === 3 ? "hours3" : "single", date: "winter" }
+    : null;
+}
+
+const isSeason = (value: unknown): value is Season => value === "spring" || value === "summer" || value === "autumn" || value === "winter";
+const isSunDateKey = (value: unknown): value is SunDateKey => isSeason(value) || value === "analysis";
+const isWindSeason = (value: unknown): value is WindSeason => value === "annual" || isSeason(value);
+const isHour = (value: unknown): value is 10 | 14 | 18 => value === 10 || value === 14 || value === 18;
+
+export function isCutSpec(value: unknown): value is CutSpec {
+  if (!isRecord(value) || typeof value.tile !== "string" || typeof value.mode !== "string") return false;
+  switch (value.tile) {
+    case "S01": return value.mode === "mass" || value.mode === "exploded";
+    case "S02": return (value.mode === "single" || value.mode === "hours3" || value.mode === "seasons4" || value.mode === "flow") && (value.date === undefined || isSunDateKey(value.date));
+    case "S03": return (value.mode === "single" || value.mode === "seasons4") && typeof value.layerZ === "number" && Number.isFinite(value.layerZ) && value.layerZ >= 0 && (value.season === undefined || isWindSeason(value.season));
+    case "S04": return (value.mode === "single" || value.mode === "seasons4" || value.mode === "hours3") && (value.season === undefined || isSeason(value.season)) && (value.hour === undefined || isHour(value.hour));
+    case "D22": return value.mode === "annual" || value.mode === "seasons4";
+    default: return false;
+  }
+}
+
+function migrateV2ToV3(snapshot: BoardStateSnapshot): BoardStateSnapshot {
+  const cuts: Record<string, CutSpec> = {};
+  for (const [id, value] of Object.entries(recordOf(snapshot.cuts))) {
+    const code = codeFromTileIdForCut(id);
+    if (typeof value === "number" && (value === 1 || value === 3)) {
+      const legacy = legacyCutForId(id, value);
+      if (legacy) cuts[id] = legacy;
+    } else if (isCutSpec(value) && value.tile === code) {
+      cuts[id] = value;
+    }
+  }
+  for (const [id, value] of Object.entries(recordOf(snapshot.roseSeasons))) {
+    if (codeFromTileIdForCut(id) !== "D22" || (!isSeason(value) && value !== "annual") || id in cuts) continue;
+    cuts[id] = { tile: "D22", mode: value === "annual" ? "annual" : "seasons4" };
+  }
+  const migrated = { ...snapshot, cuts, version: BOARD_STATE_VERSION } as BoardStateSnapshot;
+  delete migrated.roseSeasons;
+  return migrated;
+}
+
 /** 저장본 버전을 단계별로 현재 버전까지 올린다. 미래 버전은 호출자가 기본 보드로 처리한다. */
 export function migrateSnapshot(raw: unknown): BoardStateSnapshot | null {
   const saved = rawSnapshot(raw);
@@ -547,7 +624,9 @@ export function migrateSnapshot(raw: unknown): BoardStateSnapshot | null {
   if (version === null || version < 1 || version > BOARD_STATE_VERSION) return null;
   let migrated = saved as unknown as BoardStateSnapshot;
   if (version === 1) migrated = migrateV1ToV2(migrated);
-  return { ...rewriteSnapshotIds(migrated, renameTileId), version: BOARD_STATE_VERSION };
+  migrated = rewriteSnapshotIds(migrated, renameTileId);
+  if (version <= 2) migrated = migrateV2ToV3(migrated);
+  return { ...migrated, version: BOARD_STATE_VERSION };
 }
 
 /** 재분석으로 analysisId가 바뀐 프로젝트의 보드 배치를 새 타일 id에 연결한다. */
@@ -614,13 +693,8 @@ export function restoreBoardState(results: TileResult[], raw: unknown): BoardSta
   }
   const cameras: Record<string, CameraPreset> = {};
   for (const [id, value] of Object.entries(recordOf(saved.cameras))) if (validIds.has(id) && isRecord(value) && isCameraPreset(value as CameraPreset)) cameras[id] = { azimuthDeg: value.azimuthDeg as number, elevationDeg: value.elevationDeg as number };
-  const cuts: Record<string, CutCount> = {};
-  for (const [id, value] of Object.entries(recordOf(saved.cuts))) if (validIds.has(id) && (value === 1 || value === 3)) cuts[id] = value;
-  const roseSeasons: Record<string, RoseSeason> = {};
-  for (const [id, value] of Object.entries(recordOf(saved.roseSeasons))) {
-    if (!validIds.has(id)) continue;
-    if (value === "annual" || value === "spring" || value === "summer" || value === "autumn" || value === "winter") roseSeasons[id] = value;
-  }
+  const cuts: Record<string, CutSpec> = {};
+  for (const [id, value] of Object.entries(recordOf(saved.cuts))) if (validIds.has(id) && isCutSpec(value)) cuts[id] = value;
   const labels: Record<string, PinnedLabel[]> = {};
   for (const [id, value] of Object.entries(recordOf(saved.labels))) {
     if (!baseIds.has(id) || !Array.isArray(value)) continue;
@@ -664,7 +738,6 @@ export function restoreBoardState(results: TileResult[], raw: unknown): BoardSta
     sheets: savedSheets,
     cameras,
     cuts,
-    roseSeasons,
     labels,
     layers,
     removed,
@@ -688,6 +761,16 @@ function stackable(s: BoardState, id: string): boolean {
   return !/(?:^|-)S\d{2}$/.test(id) && !id.startsWith("stack:");
 }
 
+function cutPagesForResult(result: TileResult, cut: CutSpec): number {
+  if (result.status !== "complete" && result.status !== "partial") return 1;
+  if (cut.tile !== result.tileCode) return 1;
+  if (cut.tile !== "S02" || cut.mode !== "flow") return 1;
+  const date = cut.date ?? "winter";
+  const hourly = (result.presentation.rasters ?? []).filter((ref) => new RegExp(`^shade_${date}_h\\d{2}$`).test(ref.name)).length;
+  // 정시 그림자는 3×2 조판으로 묶고, 마지막에 합성(flow) 한 장을 추가한다.
+  return 1 + (hourly > 0 ? Math.ceil(hourly / 6) : 0);
+}
+
 /**
  * 표지 1장 + 포함된 타일 + 출처 장. 출력 면 both는 2장.
  * 설명선 타일은 단지 수(complexCounts[tileId])와 설명표 설정에 따라 개요 + 설명표 장 수만큼 (report-plan과 같은 계산).
@@ -699,11 +782,12 @@ export function reportPages(s: BoardState, complexCounts: Record<string, number>
     if (!s.included[id]) continue;
     tiles += 1;
     const result = s.results.find((candidate) => candidate.tileId === id);
-    const isS02Cuts = result?.tileCode === "S02" && (result.status === "complete" || result.status === "partial") && s.cuts[id] === 3;
+    const cut = result ? (isCutSpec(s.cuts[id]) && s.cuts[id].tile === result.tileCode ? s.cuts[id] : defaultCutForCode(result.tileCode)) : null;
+    const cutPages = result && cut ? cutPagesForResult(result, cut) : 1;
     pages += id in complexCounts
       ? calloutReportPages(s.callout[id] ?? DEFAULT_CALLOUT_MODE, complexCounts[id])
-      : isS02Cuts
-        ? 1
+      : cut && result && ["S01", "S02", "S03", "S04", "D22"].includes(result.tileCode)
+        ? cutPages
         : s.faces[id] === "both" ? 2 : 1;
   }
   return { tiles, pages };

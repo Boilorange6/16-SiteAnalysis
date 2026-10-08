@@ -77,13 +77,19 @@ const view = toTileView(d22Result);
 assert.deepEqual(view.rose, model);
 assert.deepEqual(view.roses.summer, model);
 const board = initBoard([d22Result]);
-const selectedBoard = boardReducer(board, { type: "roseSeason", id: d22Result.tileId, season: "summer" });
-const plan = buildReportPlan({ summary: toSummaryView(GODEOK_SUMMARY, [d22Result]), views: new Map([[d22Result.tileId, view]]), board: selectedBoard, analysisDate: "2026-09-30" });
+const plan = buildReportPlan({ summary: toSummaryView(GODEOK_SUMMARY, [d22Result]), views: new Map([[d22Result.tileId, view]]), board, analysisDate: "2026-09-30" });
 const d22Slide = plan.find((p) => p.kind === "tile" && p.view.code === "D22");
 assert.ok(d22Slide?.rose);
-assert.equal(d22Slide.roseSeason, "summer");
+assert.equal(d22Slide.roseSeason, "annual");
 assert.equal(d22Slide.map, null);
 assert.deepEqual(mapKeysOf(d22Slide), ["t-D22:rose"]);
+
+const selectedBoard = boardReducer(board, { type: "cut", id: d22Result.tileId, cut: { tile: "D22", mode: "seasons4" } });
+const seasonalPlan = buildReportPlan({ summary: toSummaryView(GODEOK_SUMMARY, [d22Result]), views: new Map([[d22Result.tileId, view]]), board: selectedBoard, analysisDate: "2026-09-30" });
+const d22Sheet = seasonalPlan.find((p) => p.kind === "sheet" && p.view.code === "D22");
+assert.equal(d22Sheet?.grid, "2x2");
+assert.deepEqual(d22Sheet?.cells.map((cell) => cell.roseSeason), ["spring", "summer", "autumn", "winter"]);
+assert.deepEqual(mapKeysOf(d22Sheet), ["t-D22:rose-spring", "t-D22:rose-summer", "t-D22:rose-autumn", "t-D22:rose-winter"]);
 
 const zip = await JSZip.loadAsync(await renderReportPptx(plan));
 const slide = await zip.file("ppt/slides/slide2.xml").async("string");

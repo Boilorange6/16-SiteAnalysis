@@ -1,13 +1,13 @@
 "use client";
 
 import { memo, useCallback, useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import type { CardFace, DemoPhase, PinnedLabel, TileSize } from "@/lib/v2/ui/board-state";
+import type { CardFace, CutSpec, DemoPhase, PinnedLabel, TileSize } from "@/lib/v2/ui/board-state";
 import { STRIP_COLORS } from "@/lib/v2/ui/map-layers";
 import { OV, badgesToShow, cardReserved, stripText } from "@/lib/v2/ui/overlay-layout";
 import { faceLabel, shortHeadlineLabel, type Badge, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
 import { viewWithOnlyRaster } from "@/lib/v2/ui/tile-view";
+import { cutCandidates, cutKey, normalizedCut, viewForCut } from "@/lib/v2/ui/cut-selection";
 import { windRasterName, WIND_LAYER_HEIGHTS } from "@/lib/v2/ui/wind-upload";
-import { ROSE_SEASONS, type RoseSeason } from "@/lib/v2/ui/rose-season";
 import Mass3D from "./mass-3d";
 import WindRoseFigure from "./wind-rose-figure";
 import CalloutMap from "./callout-map";
@@ -22,7 +22,6 @@ import { EXPLODED_WEBGL_SPREAD_PCT } from "@/lib/v2/ui/mass-projection";
 
 const BADGE_CLASS = { status: styles.badgeStatus, limit: styles.badgeLimit, model: styles.badgeModel } as const;
 const FACES: OutputFace[] = ["front", "back", "both"];
-const ROSE_SEASON_LABEL: Record<RoseSeason, string> = { annual: "연간", spring: "봄", summer: "여름", autumn: "가을", winter: "겨울" };
 
 function BadgeHint({ text, note, tone }: { text: string; note?: string; tone?: Badge["tone"] }) {
   const [open, setOpen] = useState(false);
@@ -58,16 +57,20 @@ function BadgeHint({ text, note, tone }: { text: string; note?: string; tone?: B
   );
 }
 
-export function RoseSeasonSelect({ view, value, onChange }: { view: TileView; value: RoseSeason; onChange: (season: RoseSeason) => void }) {
-  if (view.code !== "D22" || !view.rose) return null;
-  const options = ROSE_SEASONS.filter((season) => season === "annual" ? !!view.rose : !!view.roses?.[season]);
-  const selected = options.includes(value) ? value : "annual";
+export function CutSelect({ view, value, onChange, compact = false }: { view: TileView; value?: CutSpec | null; onChange: (cut: CutSpec) => void; compact?: boolean }) {
+  const candidates = cutCandidates(view, value);
+  if (candidates.length === 0) return null;
+  const selected = normalizedCut(view, value);
+  const selectedKey = selected ? cutKey(selected) : cutKey(candidates[0]!.cut);
   return (
-    <div className={styles.mfWind} data-wind-season>
+    <div className={`${styles.mfWind} ${compact ? styles.mfCutCompact : ""}`} data-cut-selector>
       <label className={styles.mfWindLabel}>
-        <span>계절</span>
-        <select value={selected} onChange={(event) => onChange(event.currentTarget.value as RoseSeason)} aria-label={`${view.title} 계절`}>
-          {options.map((season) => <option key={season} value={season}>{ROSE_SEASON_LABEL[season]}</option>)}
+        <span>컷</span>
+        <select value={selectedKey} onChange={(event) => {
+          const picked = candidates.find((candidate) => cutKey(candidate.cut) === event.currentTarget.value);
+          if (picked && !picked.disabled) onChange(picked.cut);
+        }} aria-label={`${view.title} 컷 선택`}>
+          {candidates.map((candidate) => <option key={cutKey(candidate.cut)} value={cutKey(candidate.cut)} disabled={candidate.disabled}>{candidate.label}{candidate.disabled ? " · 계산 대기" : ""}</option>)}
         </select>
       </label>
     </div>
@@ -242,18 +245,21 @@ function stageViewForWind(view: TileView, layerZ: number | undefined): TileView 
   return name ? viewWithOnlyRaster(view, name, "") : view;
 }
 
-export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, page, onPage, windLayerZ, massExploded = false, roseSeason = "annual", pinnedKeys = [], hoverKey = null, emphasisKey = null, onFeaturePin }: { view: TileView; state: boolean; chart: boolean; frame: "card" | "detail"; siteX?: number | ((w: number) => number); rightInset?: number | ((w: number) => number); legendY?: number; page?: number; onPage?: (p: number) => void; windLayerZ?: number; massExploded?: boolean; roseSeason?: RoseSeason; pinnedKeys?: readonly string[]; hoverKey?: string | null; emphasisKey?: string | null; onFeaturePin?: (feature: MapFigureElementPick) => void }) {
-  const displayView = stageViewForWind(view, windLayerZ);
+export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, page, onPage, cut, windLayerZ, massExploded = false, roseSeason = "annual", pinnedKeys = [], hoverKey = null, emphasisKey = null, onFeaturePin }: { view: TileView; state: boolean; chart: boolean; frame: "card" | "detail"; siteX?: number | ((w: number) => number); rightInset?: number | ((w: number) => number); legendY?: number; page?: number; onPage?: (p: number) => void; cut?: CutSpec | null; windLayerZ?: number; massExploded?: boolean; roseSeason?: "annual" | "spring" | "summer" | "autumn" | "winter"; pinnedKeys?: readonly string[]; hoverKey?: string | null; emphasisKey?: string | null; onFeaturePin?: (feature: MapFigureElementPick) => void }) {
+  const selectedCut = normalizedCut(view, cut);
+  const displayView = selectedCut ? viewForCut(view, selectedCut) : stageViewForWind(view, windLayerZ);
+  const exploded = selectedCut?.tile === "S01" ? selectedCut.mode === "exploded" : massExploded;
+  const displayRoseSeason = selectedCut?.tile === "D22" && selectedCut.mode === "annual" ? "annual" : roseSeason;
   if (chart) return <FaceChart view={view} />;
   const card = frame === "card";
   const label = `${view.title} 지도`;
   if (state) return <MapBox model={displayView.backdrop} muted legend={false} north={false} scale={false} credit={false} label={label} siteX={siteX} />;
   if (view.code === "S01" && view.mass) {
-    return <Mass3D scene={view.mass.scene} camera={view.mass.camera} width={960} height={540} label={label} quality={card ? "card" : "detail"} mode={card ? "image" : "live"} exploded={massExploded ? { spreadPct: EXPLODED_WEBGL_SPREAD_PCT, scheme: "use" } : undefined} />;
+    return <Mass3D scene={view.mass.scene} camera={view.mass.camera} width={960} height={540} label={label} quality={card ? "card" : "detail"} mode={card ? "image" : "live"} exploded={exploded ? { spreadPct: EXPLODED_WEBGL_SPREAD_PCT, scheme: "use" } : undefined} />;
   }
-  const seasonalRose = view.roses?.[roseSeason];
+  const seasonalRose = view.roses?.[displayRoseSeason];
   if (seasonalRose || view.rose) {
-    return <WindRoseFigure model={seasonalRose ?? view.rose!} width={960} height={540} label={label} season={seasonalRose ? roseSeason : "annual"} />;
+    return <WindRoseFigure model={seasonalRose ?? view.rose!} width={960} height={540} label={label} season={seasonalRose ? displayRoseSeason : "annual"} />;
   }
   if (view.callout) return <CalloutMap model={view.callout} kind={frame} page={page} onPage={onPage} label={label} />;
   return (
@@ -300,7 +306,7 @@ type TileCardBaseProps = {
   floatStyle?: CSSProperties;
   /** queued/running 타일에 표시할 대기 위치·경과 시간 안내 */
   waitingNote?: string | null;
-  roseSeason: RoseSeason;
+  cut: CutSpec | null;
   /** 화면 면 (요약면/지도면). 보고서 출력 면(face)과 무관 */
   cardFace: CardFace;
   onWindUploaded?: () => void;
@@ -317,7 +323,7 @@ export type TileCardAction =
   | { type: "sources" }
   | { type: "include"; value: boolean }
   | { type: "face"; face: OutputFace }
-  | { type: "roseSeason"; season: RoseSeason }
+  | { type: "cut"; cut: CutSpec }
   | { type: "cardFace"; face: CardFace }
   | { type: "remove" }
   | { type: "move"; dir: -1 | 1 }
@@ -341,7 +347,7 @@ type TileCardRenderProps = TileCardBaseProps & {
   onSources: () => void;
   onInclude: (v: boolean) => void;
   onFace: (f: OutputFace) => void;
-  onRoseSeason: (season: RoseSeason) => void;
+  onCut: (cut: CutSpec) => void;
   onCardFace: (f: CardFace) => void;
   onRemove: () => void;
   onMove: (dir: -1 | 1) => void;
@@ -484,8 +490,11 @@ function WindStrip({ view, layerZ, onLayerZ, onOpen }: { view: TileView; layerZ:
 }
 
 /** 지도 면: 헤더 40px(지도 밖) · 지도(남은 높이 전부) · 출처 24px(지도 밖). 지도 위에는 북쪽·축척·한 줄 범례만 둔다. */
-function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, massExploded, onMassExploded, onFlip, onDetail, mapReady }: { p: TileCardRenderProps; active: boolean; state: boolean; back: boolean; onBack: (v: boolean) => void; windLayerZ: number; onWindLayerZ: (z: number) => void; massExploded: boolean; onMassExploded: (value: boolean) => void; onFlip: () => void; onDetail?: () => void; mapReady: boolean }) {
+function MapFace({ p, active, state, back, onBack, onFlip, onDetail, mapReady }: { p: TileCardRenderProps; active: boolean; state: boolean; back: boolean; onBack: (v: boolean) => void; onFlip: () => void; onDetail?: () => void; mapReady: boolean }) {
   const { view } = p;
+  const cut = normalizedCut(view, p.cut);
+  const windLayerZ = cut?.tile === "S03" ? cut.layerZ : 6;
+  const massExploded = cut?.tile === "S01" && cut.mode === "exploded";
   const h = view.headline;
   const shortAux = h?.aux && h.aux.length <= 4 ? h.aux : "";
   const headlineLabel = h ? shortHeadlineLabel(h.label) : "";
@@ -539,7 +548,7 @@ function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, mas
           </Svg>
         </button>
         {view.code === "S01" && !state && view.mass && (
-          <button type="button" className={`${styles.mfWindBtn} ${massExploded ? styles.mfBtnOn : ""}`} aria-pressed={massExploded} onClick={() => onMassExploded(!massExploded)}>
+          <button type="button" className={`${styles.mfWindBtn} ${massExploded ? styles.mfBtnOn : ""}`} aria-pressed={massExploded} onClick={() => p.onCut({ tile: "S01", mode: massExploded ? "mass" : "exploded" })}>
             {massExploded ? "기본 매스" : "분해"}
           </button>
         )}
@@ -560,11 +569,11 @@ function MapFace({ p, active, state, back, onBack, windLayerZ, onWindLayerZ, mas
         </div>
       )}
       <LayerSelect view={view} value={p.layer} onChange={p.onLayer} />
-      {view.code === "S03" && !state && <WindStrip view={view} layerZ={windLayerZ} onLayerZ={onWindLayerZ} onOpen={p.onOpen} />}
-      {view.code === "D22" && !state && <RoseSeasonSelect view={view} value={p.roseSeason} onChange={p.onRoseSeason} />}
+      {view.code === "S03" && !state && <WindStrip view={view} layerZ={windLayerZ} onLayerZ={(z) => p.onCut({ tile: "S03", mode: cut?.tile === "S03" ? cut.mode : "single", layerZ: z, season: cut?.tile === "S03" ? cut.season : "annual" })} onOpen={p.onOpen} />}
+      {!state && <CutSelect view={view} value={cut} onChange={p.onCut} compact />}
       <div className={styles.mfMap}>
         <div className={styles.stage} aria-hidden={!mapReady || undefined}>
-          {mapReady && <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="card" windLayerZ={windLayerZ} massExploded={massExploded} roseSeason={p.roseSeason} pinnedKeys={pinnedKeys} onFeaturePin={onFeaturePin} />}
+          {mapReady && <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="card" cut={cut} windLayerZ={windLayerZ} massExploded={massExploded} pinnedKeys={pinnedKeys} onFeaturePin={onFeaturePin} />}
         </div>
       </div>
       <footer className={styles.mfFoot} title={text}>
@@ -709,8 +718,6 @@ function TileCard(p: TileCardProps) {
   const { view, phase } = p;
   const id = view.tileId;
   const [back, setBack] = useState(false);
-  const [windLayerZ, setWindLayerZ] = useState(6);
-  const [massExploded, setMassExploded] = useState(false);
   const cardRef = useRef<HTMLElement>(null);
   const focusFace = useRef<CardFace | null>(null);
   const waiting = phase === "pending" || phase === "running";
@@ -752,7 +759,7 @@ function TileCard(p: TileCardProps) {
   const onSources = useCallback(() => p.onAction(id, { type: "sources" }), [id, p.onAction]);
   const onInclude = useCallback((value: boolean) => p.onAction(id, { type: "include", value }), [id, p.onAction]);
   const onFace = useCallback((face: OutputFace) => p.onAction(id, { type: "face", face }), [id, p.onAction]);
-  const onRoseSeason = useCallback((season: RoseSeason) => p.onAction(id, { type: "roseSeason", season }), [id, p.onAction]);
+  const onCut = useCallback((cut: CutSpec) => p.onAction(id, { type: "cut", cut }), [id, p.onAction]);
   const onRemove = useCallback(() => p.onAction(id, { type: "remove" }), [id, p.onAction]);
   const onMove = useCallback((dir: -1 | 1) => p.onAction(id, { type: "move", dir }), [id, p.onAction]);
   const onRetry = useCallback(() => p.onAction(id, { type: "retry" }), [id, p.onAction]);
@@ -769,7 +776,7 @@ function TileCard(p: TileCardProps) {
     onSources,
     onInclude,
     onFace,
-    onRoseSeason,
+    onCut,
     onCardFace,
     onRemove,
     onMove,
@@ -818,7 +825,7 @@ function TileCard(p: TileCardProps) {
         </div>
       <div className={`${styles.face} ${styles.faceMap}`} data-on={shown === "map"} inert={shown !== "map"} aria-hidden={shown !== "map"}>
           {(shown === "map" || seen) && (
-            <MapFace p={renderProps} active={shown === "map"} state={state} back={back} onBack={setBack} windLayerZ={windLayerZ} onWindLayerZ={setWindLayerZ} massExploded={massExploded} onMassExploded={setMassExploded} onFlip={() => onCardFace("summary")} onDetail={detailable ? () => setDetailOpen(true) : undefined} mapReady={mapReady} />
+            <MapFace p={renderProps} active={shown === "map"} state={state} back={back} onBack={setBack} onFlip={() => onCardFace("summary")} onDetail={detailable ? () => setDetailOpen(true) : undefined} mapReady={mapReady} />
           )}
         </div>
       </div>

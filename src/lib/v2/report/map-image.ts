@@ -256,9 +256,11 @@ export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice 
   for (const p of plan) {
     if (p.kind === "sheet") {
       for (const cell of p.cells) {
-        if (!cell.view.map || out[cell.mapKey]) continue;
+        if (out[cell.mapKey]) continue;
         try {
-          out[cell.mapKey] = await rasterizeMap(cell.view.map, cache, effectiveLayer(cell.view.map, layer), { siteX: 0.5, avoid: [], legend: true, bare: false, pinnedKeys: cell.pinnedKeys }, rasterCache);
+          if (cell.mass) out[cell.mapKey] = await rasterizeMass(cell.mass, cell.mass.exploded);
+          else if (cell.rose) out[cell.mapKey] = await rasterizeRose(cell.rose, VIEW_W, VIEW_H, cell.roseSeason ?? "annual");
+          else if (cell.view.map) out[cell.mapKey] = await rasterizeMap(cell.view.map, cache, effectiveLayer(cell.view.map, layer), { siteX: 0.5, avoid: [], legend: true, bare: false, pinnedKeys: cell.pinnedKeys }, rasterCache);
         } catch (e) {
           console.warn(`조판 셀 이미지 생성 실패 (${cell.mapKey})`, e);
         }

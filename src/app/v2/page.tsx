@@ -8,7 +8,7 @@ import { useTileDrag } from "@/components/v2/use-tile-drag";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "@/components/v2/map-box";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import styles from "@/components/v2/board.module.css";
-import { SUMMARY_ID, boardReducer, boardStorageKey, demoFinished, demoPhase, initBoard, rebaseSnapshotAnalysisId, reportPages, serializeBoardState, viewOf, type CardFace, type PinnedLabel } from "@/lib/v2/ui/board-state";
+import { SUMMARY_ID, boardReducer, boardStorageKey, demoFinished, demoPhase, initBoard, rebaseSnapshotAnalysisId, reportPages, serializeBoardState, viewOf, type CardFace, type CutSpec, type PinnedLabel } from "@/lib/v2/ui/board-state";
 import { buildReportPlan, complexCounts, reportFileName, sourcePageCountForViews } from "@/lib/v2/report/report-plan";
 import { downloadBytes, exportFileName, EXPORT_MIME, DAE_MIME } from "@/lib/v2/export/download";
 import { DEFAULT_CALLOUT_MODE } from "@/lib/v2/ui/callout-layout";
@@ -23,7 +23,6 @@ import type { SourceMeta } from "@/lib/v2/ui/source-details";
 import { toLngLat } from "@/lib/v2/crs";
 import { jibunFromPnu, type SitePickerParcel } from "@/lib/v2/ui/site-picker";
 import type { TileResult } from "@/lib/v2/tile-result";
-import type { RoseSeason } from "@/lib/v2/tile-result";
 import type { Scene } from "@/lib/v2/scene";
 import { isRoadAddress, ROAD_ADDRESS_UNSUPPORTED_MESSAGE } from "@/lib/v2/site";
 import { RADIUS_CAPTION, RADIUS_OPTIONS } from "@/lib/v2/ui/radius-options";
@@ -416,8 +415,8 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
       case "face":
         dispatch({ type: "face", id, face: action.face });
         break;
-      case "roseSeason":
-        dispatch({ type: "roseSeason", id, season: action.season });
+      case "cut":
+        dispatch({ type: "cut", id, cut: action.cut });
         break;
       case "cardFace":
         dispatch({ type: "view", id, face: action.face });
@@ -759,7 +758,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
                   floatStyle={floatStyle(id)}
                   onHandleDown={start(id)}
                   onAction={onTileAction}
-                  roseSeason={board.roseSeasons[id] ?? "annual"}
+                  cut={board.cuts[id] ?? null}
                   pinnedLabels={board.labels[id] ?? EMPTY_PINNED_LABELS}
                   cardFace={viewOf(board, id)}
                   onWindUploaded={onWindUploaded}
@@ -837,8 +836,8 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
           onInclude={(value) => dispatch({ type: "include", id: openView.tileId, value })}
           onFace={(face) => dispatch({ type: "face", id: openView.tileId, face })}
           onRetry={() => retry(openView.tileId, openView.code)}
-          roseSeason={board.roseSeasons[openView.tileId] ?? "annual"}
-          onRoseSeason={(season) => dispatch({ type: "roseSeason", id: openView.tileId, season })}
+          cut={board.cuts[openView.tileId] ?? null}
+          onCut={(cut) => dispatch({ type: "cut", id: openView.tileId, cut })}
           calloutMode={board.callout[openView.tileId] ?? DEFAULT_CALLOUT_MODE}
           onCalloutMode={(mode) => dispatch({ type: "callout", id: openView.tileId, mode })}
           a05Filter={board.a05Filter[openView.tileId] ?? null}
@@ -853,8 +852,6 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
           onSetAllLabels={(on) => dispatch({ type: "setAllLabels", id: openView.tileId, on })}
           camera={openView.mass?.camera}
           onCamera={(camera) => dispatch({ type: "camera", id: openView.tileId, camera })}
-          cuts={openView.code === "S02" ? (board.cuts[openView.tileId] ?? 1) : undefined}
-          onCuts={openView.code === "S02" ? (cuts) => dispatch({ type: "cuts", id: openView.tileId, cuts }) : undefined}
           onWindUploaded={onWindUploaded}
           onClose={() => {
             setOpenId(null);

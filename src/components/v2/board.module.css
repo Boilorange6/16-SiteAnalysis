@@ -3297,6 +3297,25 @@ button.badge:focus-visible {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
+.mfCutCompact {
+  height: 34px;
+}
+.mfCutCompact .mfWindLabel {
+  gap: 6px;
+}
+.mfCutCompact select {
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 auto;
+  height: 28px;
+  padding: 0 22px 0 7px;
+  border: 1px solid #d8dbe1;
+  border-radius: 7px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 11px;
+}
 .mfWindBtn {
   flex: none;
   min-height: 28px;
