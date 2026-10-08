@@ -41,3 +41,10 @@ npx tsx src/scripts/v2/harness/equivalence.mjs --check <기준 폴더>
 ```
 
 `equivalence --check <기준 폴더>`는 엔진 결과의 presentation과 컷 화면을 비교한다. golden/equivalence/shots/PPTX 차이가 있으면 숨기지 말고, 의도한 동작 변경인지와 변경 이유를 보고한다. 동작을 바꾸지 않은 리팩터라면 차이 0을 확인한다.
+
+## 실데이터 캡처 주의
+
+- 임시 QA 스크립트는 저장소 밖(scratch)에 둔다. `src/scripts/v2/test-v2-*.mjs` 이름이면 `npm run test:v2`가 집어 간다.
+- 보드 편집 중에는 타일이 요약 면으로 고정된다. 열 수를 바꾼 뒤 `완료` → 지도 면 전환 → 측정 순서로 찍는다.
+- 로그인 429는 서버 메모리의 rate limit이다. 서버를 재시작하고 같은 계정으로 다시 시도한다. 자격 증명은 보고서에 적지 않는다.
+- 겹침을 고칠 때는 고친 두 요소만 보지 말고, 그 수정으로 줄어든 요소끼리(예: 방향 글자끼리)도 겹치지 않는지 캡처로 확인한다.
