@@ -5,6 +5,7 @@ import { calloutReportPages, DEFAULT_CALLOUT_MODE, type CalloutMode } from "./ca
 import { CAMERA_PRESETS } from "./mass-projection";
 import type { OutputFace } from "./tile-view";
 import { layerOptionsForResult } from "./tile-layers";
+import { DEFAULT_PRESET_ID, isPresetId, TILE_PRESETS, type PresetId } from "./tile-catalog";
 
 export type TileSize = 1 | 2 | 4;
 export type GridColumns = 2 | 3 | 4 | 5 | 6;
@@ -31,7 +32,8 @@ export type UndoEntry =
   | { kind: "size"; id: string; size: TileSize }
   | { kind: "columns"; columns: GridColumns }
   | { kind: "remove"; id: string; index: number }
-  | { kind: "add"; id: string; trayIndex: number };
+  | { kind: "add"; id: string; trayIndex: number }
+  | { kind: "preset"; preset: PresetId; order: string[]; included: Record<string, boolean>; removed: { id: string; index: number }[] };
 
 /** 보드 카드의 화면 면: 요약면(기본, 지도 없음) / 지도면(지도 몰입형). 보고서 출력 면(OutputFace)과 무관하다 */
 export type CardFace = "summary" | "map";
@@ -72,6 +74,8 @@ export const boardStorageKey = (analysisId: string): string => `site-analysis:v2
 export type BoardState = {
   /** 폴링으로 갱신되는 최신 결과. 편집 상태와 분리해 replaceResults가 이것만 바꾼다. */
   results: TileResult[];
+  /** 보드에 적용한 과제 프리셋. 계산 결과와 분리해 저장한다. */
+  preset: PresetId;
   order: string[];
   included: Record<string, boolean>;
   faces: Record<string, OutputFace>;
@@ -106,7 +110,8 @@ export type BoardState = {
 
 export type BoardAction =
   | { type: "replaceResults"; results: TileResult[] }
-  | { type: "restore"; snapshot: unknown }
+  | { type: "restore"; snapshot: unknown; fallbackPreset?: PresetId }
+  | { type: "preset"; preset: PresetId }
   | { type: "remove"; id: string }
   | { type: "undo" }
   | { type: "move"; id: string; dir: -1 | 1 }
@@ -139,9 +144,10 @@ export type BoardAction =
 /** 카드의 현재 면 (편집 중에는 화면이 항상 요약면을 쓴다) */
 export const viewOf = (s: Pick<BoardState, "view" | "viewAll">, id: string): CardFace => s.view[id] ?? s.viewAll;
 
-export function initBoard(results: TileResult[]): BoardState {
-  return {
+export function initBoard(results: TileResult[], preset: PresetId = DEFAULT_PRESET_ID): BoardState {
+  const base: BoardState = {
     results: [...results],
+    preset: DEFAULT_PRESET_ID,
     order: results.map((r) => r.tileId),
     // 결과가 있는 타일만 기본 포함
     included: Object.fromEntries(results.map((r) => [r.tileId, r.status === "complete" || r.status === "partial"])),
@@ -163,6 +169,38 @@ export function initBoard(results: TileResult[]): BoardState {
     removed: [],
     undoStack: [],
   };
+  return applyPresetState(base, preset);
+}
+
+function applyPresetState(s: BoardState, requestedPreset: PresetId): BoardState {
+  const preset = isPresetId(requestedPreset) ? requestedPreset : DEFAULT_PRESET_ID;
+  const resultIds = new Set(s.results.map((result) => result.tileId));
+  const resultByCode = new Map(s.results.map((result) => [result.tileCode, result]));
+  const selectedIds = preset === DEFAULT_PRESET_ID
+    ? s.results.map((result) => result.tileId)
+    : TILE_PRESETS[preset].codes.flatMap((code) => {
+        const result = resultByCode.get(code);
+        return result ? [result.tileId] : [];
+      });
+  const selected = new Set(selectedIds);
+  // 스택·조판처럼 결과 배열에 없는 사용자 구성은 프리셋 변경 뒤에도 끝에 남긴다.
+  const customIds = s.order.filter((id) => !resultIds.has(id));
+  const order = [...selectedIds, ...customIds.filter((id, index) => customIds.indexOf(id) === index)];
+  const ordered = new Set(order);
+  const included = { ...s.included };
+  for (const result of s.results) {
+    included[result.tileId] = selected.has(result.tileId) && (result.status === "complete" || result.status === "partial");
+  }
+  const existingIndex = new Map(s.order.map((id, index) => [id, index]));
+  const allIds = [...new Set([
+    ...s.results.map((result) => result.tileId),
+    ...s.order,
+    ...s.removed.map((item) => item.id),
+  ])];
+  const removed = allIds
+    .filter((id) => !ordered.has(id))
+    .map((id, index) => ({ id, index: existingIndex.get(id) ?? index }));
+  return { ...s, preset, order, included, removed };
 }
 
 /** order 배열에서 from 위치 타일을 to 위치로 옮긴다. 범위 밖·제자리면 null. */
@@ -178,7 +216,25 @@ function reordered(order: string[], from: number, to: number): string[] | null {
 export function boardReducer(s: BoardState, a: BoardAction): BoardState {
   switch (a.type) {
     case "restore":
-      return restoreBoardState(s.results, a.snapshot);
+      return restoreBoardState(s.results, a.snapshot, a.fallbackPreset ?? s.preset);
+    case "preset": {
+      const preset = isPresetId(a.preset) ? a.preset : DEFAULT_PRESET_ID;
+      if (preset === s.preset) return s;
+      const next = applyPresetState(s, preset);
+      return {
+        ...next,
+        undoStack: [
+          ...s.undoStack,
+          {
+            kind: "preset",
+            preset: s.preset,
+            order: [...s.order],
+            included: { ...s.included },
+            removed: s.removed.map((item) => ({ ...item })),
+          },
+        ],
+      };
+    }
     case "replaceResults":
       {
         const replacements = new Map(a.results.map((result) => [result.tileCode, result]));
@@ -254,6 +310,15 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
           }
           return { ...s, ...rest, order: s.order.filter((x) => x !== u.id), removed };
         }
+        case "preset":
+          return {
+            ...s,
+            ...rest,
+            preset: u.preset,
+            order: [...u.order],
+            included: { ...u.included },
+            removed: u.removed.map((item) => ({ ...item })),
+          };
       }
       return s;
     }
@@ -411,6 +476,8 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
 
 export type BoardStateSnapshot = {
   version: number;
+  /** v2 이전 저장본에는 없으며, 없으면 전체로 이관한다. */
+  preset?: PresetId;
   order: string[];
   included: Record<string, boolean>;
   faces: Record<string, OutputFace>;
@@ -441,6 +508,7 @@ export function serializeBoardState(s: BoardState): BoardStateSnapshot {
   }
   return {
     version: BOARD_STATE_VERSION,
+    preset: s.preset,
     order: [...s.order],
     included: { ...s.included },
     faces: { ...s.faces },
@@ -640,8 +708,13 @@ export function migrateSnapshot(raw: unknown): BoardStateSnapshot | null {
   if (version === 1) migrated = migrateV1ToV2(migrated);
   migrated = rewriteSnapshotIds(migrated, renameTileId);
   if (version <= 2) migrated = migrateV2ToV3(migrated);
-  // 열 수는 컷 이관과 같은 v3에서 생겼다 — 컷만 가진 v3 저장본도 기본 4열로 읽는다
-  return { ...migrated, columns: isGridColumns(migrated.columns) ? migrated.columns : 4, version: BOARD_STATE_VERSION };
+  // 열 수는 컷 이관과 같은 v3에서 생겼다 — 컷만 가진 v3 저장본도 기본 4열로 읽는다. 프리셋이 없으면 '전체'.
+  return {
+    ...migrated,
+    columns: isGridColumns(migrated.columns) ? migrated.columns : 4,
+    preset: isPresetId(migrated.preset) ? migrated.preset : DEFAULT_PRESET_ID,
+    version: BOARD_STATE_VERSION,
+  };
 }
 
 /** 재분석으로 analysisId가 바뀐 프로젝트의 보드 배치를 새 타일 id에 연결한다. */
@@ -653,8 +726,8 @@ export function rebaseSnapshotAnalysisId(raw: unknown, fromAnalysisId: string, t
 }
 
 /** 옛 저장본(버전/필터 필드 없음 포함)을 현재 분석 결과에 안전하게 붙인다. */
-export function restoreBoardState(results: TileResult[], raw: unknown): BoardState {
-  const base = initBoard(results);
+export function restoreBoardState(results: TileResult[], raw: unknown, fallbackPreset: PresetId = DEFAULT_PRESET_ID): BoardState {
+  const base = initBoard(results, fallbackPreset);
   const saved = migrateSnapshot(raw);
   if (!saved) return base;
 
@@ -740,6 +813,7 @@ export function restoreBoardState(results: TileResult[], raw: unknown): BoardSta
 
   return {
     ...base,
+    preset: saved.preset ?? DEFAULT_PRESET_ID,
     order,
     included,
     faces,
