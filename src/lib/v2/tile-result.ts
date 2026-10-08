@@ -65,6 +65,8 @@ const MapFeatureSchema = z.object({
   buildingCount: z.number().finite().nullable().optional(),
   distanceM: z.number().finite().nullable().optional(),
   parking: z.number().finite().nullable().optional(),
+  // A05·A06 단지/사업 주택형: 전용면적(㎡) 소수점 버림, A/B/C형은 합산
+  unitTypes: z.array(z.object({ typeM2: z.number().int().positive(), units: z.number().int().positive() })).optional(),
   // A06: 입주(예정) 월("YYYY-MM", 일자는 만들지 않는다)과 다른 원천과 같은 사업일 수 있음
   plannedMonth: z.string().regex(/^\d{4}-\d{2}$/).nullable().optional(),
   overlap: z.boolean().optional(),

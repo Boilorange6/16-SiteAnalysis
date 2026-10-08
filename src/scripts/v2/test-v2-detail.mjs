@@ -81,6 +81,26 @@ try {
       hits(key) { return key === hitKey ? hits : []; },
     };
   };
+
+  const housingHit = {
+    featureId: 901,
+    stableId: "housing:901",
+    kind: "housing_complex",
+    releaseId: "fixture",
+    name: "타입 회귀 단지",
+    pnu: "PNU-901",
+    legalCode: null,
+    properties: { mainUse: "공동주택", otherUse: "아파트", households: null, units: 4932, unitTypes: [{ typeM2: 59, units: 1964 }] },
+    geometry: { type: "Point", coordinates: [cx, cy] },
+    distanceM: 10,
+  };
+  const housingRows = DETAIL_SPECS.A05.rows(makeFakeContext("core", [housingHit], syntheticBuildingDb));
+  assert.equal(housingRows[0].cells.households, 4932, "null households falls back to units instead of becoming zero");
+  assert.equal(housingRows[0].cells.unit_types, "59㎡ 1,964", "A05 detail keeps the exclusive-area type summary");
+  const housingAt = DETAIL_SPECS.A05.at(makeFakeContext("core", [housingHit], syntheticBuildingDb), CENTER[0], CENTER[1]);
+  assert.deepEqual(housingAt?.card.fields.map((field) => field.label), ["구분", "세대·호실", "타입"], "선택 카드의 타입 라벨은 짧게 유지한다");
+  assert.equal(housingAt?.card.fields.at(-1)?.value, "59㎡ 1,964");
+
   const densityStarted = performance.now();
   const densityRows = DETAIL_SPECS.D16.rows(makeFakeContext("buildings", syntheticBuildingHits, syntheticBuildingDb, { metric: "buildings", bandwidth: "100" }));
   const densityElapsed = performance.now() - densityStarted;

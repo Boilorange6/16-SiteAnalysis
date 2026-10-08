@@ -7,7 +7,7 @@ import Database from "better-sqlite3";
 
 const { initDataFileSchema } = await import("../../lib/v2/data/schema.ts");
 const { insertRelease } = await import("../../lib/v2/ingest/build.ts");
-const { ledgerPnu, buildLedger } = await import("../../lib/v2/ingest/sources/ledger.ts");
+const { ledgerPnu, buildLedger, buildLedgerUnitTypes } = await import("../../lib/v2/ingest/sources/ledger.ts");
 
 const db = new Database(":memory:");
 initDataFileSchema(db, "core");
@@ -68,6 +68,26 @@ assert.deepEqual(props("title-housing:1168010100100200000"), { source: "title", 
 assert.deepEqual(props("title:T4"), { ledgerPk: "T4", units: null, floorsAbove: 15, heightM: 45.2, approvalDate: "2019-05-10", otherUse: "오피스텔,근린생활시설" });
 assert.equal(db.prepare("SELECT pnu FROM feature WHERE stable_id = 'recap:108215000068706'").pluck().get(), "3611011100106400000");
 assert.equal(db.prepare("SELECT count(*) FROM feature WHERE stable_id LIKE 'recap:P%'").pluck().get(), 0, "위치 미확인은 feature를 만들지 않는다");
+
+// ─── 2-1. 전유부: 같은 호의 전유 행 합산, 공용 제외, PK 직접 연결 ───────────
+{
+  const exclusiveRel = rel("ledger_exclusive_area");
+  const ex = (p) => ({
+    "관리_건축물대장_PK": "108215000068706", "시군구_코드": "36110", "법정동_코드": "11100", "대지_구분_코드": "0", 번: "0640", 지: "0000",
+    동_명: "101동", 층_번호: "2", 호_명: "201", "전유_공용_구분_코드": "1", "전유_공용_구분_코드_명": "전유", "주_용도_코드_명": "공동주택", "기타_용도": "아파트", "면적(㎡)": "42.1", ...p,
+  });
+  const exOffi = { ...ex({ "관리_건축물대장_PK": "T4", "시군구_코드": "11680", "법정동_코드": "10100", 번: "0020", 동_명: "", 층_번호: "3", 호_명: "301", "주_용도_코드_명": "업무시설", "기타_용도": "오피스텔", "면적(㎡)": "17.8" }) };
+  const unitStats = await buildLedgerUnitTypes(db, from([
+    ex(),
+    ex({ "면적(㎡)": "42.9" }),
+    ex({ 호_명: "202", "면적(㎡)": "59.5" }),
+    ex({ "전유_공용_구분_코드": "2", "전유_공용_구분_코드_명": "공용", "면적(㎡)": "100" }),
+    exOffi,
+  ]), exclusiveRel);
+  assert.deepEqual([unitStats.received, unitStats.accepted, unitStats.rejected], [5, 3, 1]);
+  assert.deepEqual(props("recap:108215000068706").unitTypes, [{ typeM2: 59, units: 1 }, { typeM2: 85, units: 1 }]);
+  assert.deepEqual(props("title:T4").unitTypes, [{ typeM2: 17, units: 1 }]);
+}
 
 // ─── 3. 같은 PK가 두 번 → 첫 행만 feature, 뒤는 reject (PK 오류로 적재가 죽지 않는다) ──
 {

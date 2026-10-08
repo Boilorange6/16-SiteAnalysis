@@ -2,7 +2,7 @@
  * v2 데이터 파일 빌드·게시.
  *   npm run data:build -- --version 2026-09-30a [--raw .cache/v2/raw] [--dem-source glo30|hgt] [--only core,buildings,parcels,reference,market,terrain] [--expectations exp.json] [--with buildings,parcels] [--wait-lock [분]]
  *   buildings 전용: [--sido 11,41] 이 시도만 · [--no-juso] 도로명주소 건물 보조 원천 제외
- * 원천 zip은 먼저 풀고(이미 풀린 것은 건너뜀), 원천 파일은 폴더마다 가장 새 파일을 쓴다.
+ * 도형 원천 zip은 풀되, 전유부 전국 zip은 수십 GB라 엔트리 스트림으로만 읽는다.
  */
 import { readdirSync, statSync, existsSync, readFileSync, openSync, readSync, closeSync } from "node:fs";
 import { basename, join, relative } from "node:path";
@@ -28,6 +28,7 @@ const { buildBuildings, finalizeLedgerMatches, FLOOR_HEIGHT_M } = await import("
 const { buildJusoBuildings, gisFeatureIdBound, jusoShpPerSido, shpExtent, JUSO_LICENSE_CODE, JUSO_PROVIDER, JUSO_RIGHTS, JUSO_SOURCE_ID, JUSO_SOURCE_URL, OVERLAP_MIN } = await import("../../lib/v2/ingest/sources/juso-buildings.ts");
 const { buildLegalAreas } = await import("../../lib/v2/ingest/sources/legal-areas.ts");
 const { buildLedger, buildLedgerTitleIndex, dropLedgerTitleIndex, hasLedgerTitleIndex, ledgerFloorLookup, ledgerTitleLookup } = await import("../../lib/v2/ingest/sources/ledger.ts");
+const { ledgerExclusiveRecordsFromZip } = await import("../../lib/v2/ingest/sources/ledger-exclusive.ts");
 const { createParcelSpatialLookup } = await import("../../lib/v2/ingest/sources/parcel-spatial.ts");
 const { buildPointSource, STORE_SPEC, BUS_STOP_SPEC, PARK_SPEC } = await import("../../lib/v2/ingest/sources/points.ts");
 const { buildSupply, readLegacyPlannedHousing } = await import("../../lib/v2/ingest/sources/supply.ts");
@@ -227,12 +228,19 @@ if (only.has("core")) {
       parcels.push(pb);
     }
     const recapFile = newest("ledger_recap", /^recap_.*\.csv$/i);
+    const exclusiveFiles = [...walk(join(raw, "ledger_exclusive"))].filter((file) => /^exclusive_.*\.zip$/i.test(basename(file))).sort((a, b) => nameDate(b).localeCompare(nameDate(a)) || statSync(b).mtimeMs - statSync(a).mtimeMs);
+    const exclusiveFile = exclusiveFiles[0] ?? null;
+    if (!exclusiveFile) console.warn("⚠ 전유공용면적 전국 ZIP이 없어 A05 타입을 적재하지 않습니다");
     if (!hasNationalTitle) console.warn("⚠ 전국 표제부(title_YYYYMM.csv)가 없어 5개 시도 표제부로 적재합니다 — 오피스텔·단일동 커버리지 일부");
     const ledger = await buildLedger(db, {
       recapReleaseId: release(db, "ledger_recap", recapFile, "국토교통부 건축HUB", "https://www.hub.go.kr/portal/opn/lps/idx-lgcpt-pvsn-srvc-list.do", "UNRESTRICTED"),
       titleReleaseId: release(db, "ledger_title", titleFile, "국토교통부 건축HUB", "https://www.hub.go.kr/portal/opn/lps/idx-lgcpt-pvsn-srvc-list.do", "UNRESTRICTED"),
       recap: (await csvRecords(recapFile)).records,
       title: (await csvRecords(titleFile)).records,
+      ...(exclusiveFile ? {
+        exclusiveReleaseId: release(db, "ledger_exclusive_area", exclusiveFile, "국토교통부 건축HUB", "https://www.hub.go.kr/portal/opn/lps/idx-lgcpt-pvsn-srvc-list.do", "UNRESTRICTED"),
+        exclusive: ledgerExclusiveRecordsFromZip(exclusiveFile),
+      } : {}),
     });
     const result = [...legal, ...parcels, ...ledger];
     if (only.has("buildings")) coreTitleIndexStaging = true;
@@ -453,6 +461,9 @@ if (only.has("market")) {
   builders.market = async (db, ctx) => {
     if (!ctx.core) throw new Error("market needs core (build core first or publish a core file)");
     const moveInFile = newest("move_in", /^move_in_.*\.csv$/i);
+    const applyhomeTypeFiles = [...walk(join(raw, "applyhome"))].filter((file) => /^applyhome_types_.*\.csv$/i.test(basename(file))).sort((a, b) => nameDate(b).localeCompare(nameDate(a)) || statSync(b).mtimeMs - statSync(a).mtimeMs);
+    const applyhomeTypesFile = applyhomeTypeFiles[0] ?? null;
+    if (!applyhomeTypesFile) console.warn("⚠ 청약홈 주택형 API 원천이 없어 A06 타입을 적재하지 않습니다");
     const legacyPath = legacyDbPath();
     return buildSupply(db, {
       core: ctx.core,
@@ -460,6 +471,10 @@ if (only.has("market")) {
       legacyReleaseId: release(db, "applyhome", legacyPath, "한국부동산원 청약홈(기존 앱 적재본)", "https://www.data.go.kr/data/15101046/fileData.do", "UNRESTRICTED"),
       moveIn: (await csvRecords(moveInFile)).records,
       moveInReleaseId: release(db, "move_in", moveInFile, "한국부동산원", "https://www.data.go.kr/data/15111714/fileData.do", "UNRESTRICTED"),
+      ...(applyhomeTypesFile ? {
+        applyhomeTypes: (await csvRecords(applyhomeTypesFile)).records,
+        applyhomeTypesReleaseId: release(db, "applyhome_types", applyhomeTypesFile, "한국부동산원 청약홈", "https://www.data.go.kr/data/15098547/openapi.do", "UNRESTRICTED"),
+      } : {}),
     });
   };
 }

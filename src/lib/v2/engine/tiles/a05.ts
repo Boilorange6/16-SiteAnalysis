@@ -2,6 +2,7 @@
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
 import type { FeatureHit } from "../../data/features";
+import { unitTypesFromUnknown } from "../../unit-types";
 import { candidate, est, fmt, makeTile, missing, noDataTile, obs, type TileDraft } from "./common";
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null);
@@ -57,6 +58,7 @@ function callout(h: FeatureHit, type: string, households: number | null) {
     buildingCount: num(h.properties.buildingCount),
     distanceM: h.distanceM === null ? null : Math.round(h.distanceM),
     parking: num(h.properties.parking),
+    unitTypes: unitTypesFromUnknown(h.properties.unitTypes),
   };
 }
 
@@ -81,6 +83,7 @@ export function isApartment(p: Record<string, unknown>): boolean {
 export function a05(ctx: EngineContext): TileResult {
   const sources = ctx.sources("core", ["ledger_recap", "ledger_title"]);
   if (sources.length === 0) return noDataTile(ctx, "A05", ["ledger_recap", "ledger_title"]);
+  const unitTypeSources = ctx.sources("core", ["ledger_exclusive_area"]);
   const kaptSources = ctx.sources("core", ["kapt"]);
   const hasKapt = kaptSources.length > 0;
   const hits = ctx.hits("core", ["housing_complex", "officetel"]);
@@ -89,6 +92,7 @@ export function a05(ctx: EngineContext): TileResult {
   const others = complexes.filter((h) => !apts.includes(h));
   const officetels = hits.filter((h) => h.kind === "officetel");
   const targets: FeatureHit[] = [...apts, ...officetels]; // 연식·비중은 아파트·오피스텔 기준 (기타 공동주택은 별도 지표)
+  const unitTypeKnown = targets.filter((h) => unitTypesFromUnknown(h.properties.unitTypes).length > 0).length;
   const kapt = hasKapt ? kaptHouseholds(ctx, apts) : new Map<string, number>();
   const kaptOnlyApts = hasKapt ? kaptOnly(ctx) : [];
   /** 가구 수(대장) → K-APT 세대수 → 세대 수(대장) */
@@ -139,6 +143,7 @@ export function a05(ctx: EngineContext): TileResult {
     ...(hasKapt ? [obs("households_from_kapt", "K-APT 세대수로 대신한 단지", fromKapt, "개", basis)] : []),
     obs("households_from_units", "세대 수로 대신한 단지", fromUnits, "개", basis),
     obs("households_unknown_complexes", "세대 수를 알 수 없는 단지", hhUnknown, "개", basis),
+    obs("unit_type_complexes", "전용면적 타입 확인 단지", unitTypeKnown, "개", "a05-unit-types@1", unitTypeKnown, targets.length),
     officetelUnits.length === 0 && officetels.length > 0
       ? missing("officetel_units", "오피스텔 호실", "호", "a05-officetel-units@1")
       : obs("officetel_units", "오피스텔 호실", officetelUnits.reduce((s, n) => s + n, 0), "호", "a05-officetel-units@1", officetelUnits.length, officetels.length),
@@ -156,7 +161,7 @@ export function a05(ctx: EngineContext): TileResult {
   if (hasKapt && kaptOnlyApts.length > 0) limitations.push({ kind: "partial", note: `K-APT에만 있는 아파트 단지 ${kaptOnlyApts.length}곳은 아파트 단지 수·세대 합계에 넣지 않았습니다(단지종류 코드 1을 아파트로 간주).` });
   if (hhUnknown > 0) limitations.push({ kind: "incomplete", note: `세대 수를 알 수 없는 단지 ${hhUnknown}곳은 세대 합계에서 제외했습니다.` });
   if (dated.length > 0) limitations.push({ kind: "estimated", note: "30년 이상 비중은 분석일 대비 사용승인일 경과연수로 추정한 값입니다." });
-  const coverage = ctx.coverage("core", ["ledger_recap", "ledger_title"]);
+  const coverage = ctx.coverage("core", ["ledger_recap", "ledger_title", "ledger_exclusive_area"]);
   limitations.push(...coverage);
 
   const sentence =
@@ -169,7 +174,7 @@ export function a05(ctx: EngineContext): TileResult {
     status: partial ? "partial" : "complete",
     metrics,
     judgment: { ruleId: "a05-stock@1", basisMetricIds: ["apartment_complexes", "households"], sentence, level: null, criteria: null },
-    sources: [...sources, ...kaptSources],
+    sources: [...sources, ...unitTypeSources, ...kaptSources],
     layers: ["apt", "other_housing", "officetel"],
     map: [
       ...apts.map((h) => candidate(h, "apt", callout(h, "아파트", hhOf(h)))),

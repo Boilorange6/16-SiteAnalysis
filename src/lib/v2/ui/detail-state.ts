@@ -11,7 +11,7 @@ import { detailDisplayValue } from "./detail-labels";
 export { detailDisplayValue } from "./detail-labels";
 
 export const DETAIL_CODES: ReadonlySet<string> = new Set([
-  "A01", "A02", "A04", "A07", "A09", "A10", "A11", "A12",
+  "A01", "A02", "A04", "A05", "A06", "A07", "A09", "A10", "A11", "A12",
   "D02", "D03", "D04", "D05", "D10", "D11", "D12", "D13",
   "D16", "D17", "D18", "D19", "D22", "D28", "D29", "S02",
 ]);

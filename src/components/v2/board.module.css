@@ -3085,6 +3085,15 @@ button.badge:focus-visible {
   padding-left: 20px;
   font-size: 9px;
 }
+.cCard[data-narrow] .cTypeLine {
+  gap: 2px;
+  padding-left: 20px;
+  padding-right: 5px;
+  font-size: 7.5px;
+}
+.cCard[data-narrow] .cTypeLine > b {
+  font-size: 7.5px;
+}
 .cMissing {
   color: #9a5b00;
   font-weight: 700;
@@ -3117,6 +3126,25 @@ button.badge:focus-visible {
   text-overflow: ellipsis;
   text-align: right;
 }
+.cRows li[data-unit-type] {
+  height: auto;
+  min-height: 17px;
+  align-items: flex-start;
+}
+.cRows li[data-unit-type] > b {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0 3px;
+  overflow: visible;
+  line-height: 1.15;
+  white-space: normal;
+  text-overflow: clip;
+}
+.cRows li[data-unit-type] > b > span {
+  flex: none;
+}
 .cSub {
   display: flex;
   justify-content: space-between;
@@ -3127,6 +3155,29 @@ button.badge:focus-visible {
   line-height: 1;
   margin-top: 0;
   white-space: nowrap;
+}
+.cTypeLine {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  height: 17px;
+  padding: 0 8px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1;
+  white-space: nowrap;
+}
+.cTypeLine > span {
+  flex: none;
+}
+.cTypeLine > b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+  font-size: 9px;
 }
 .cYear {
   color: var(--muted);
@@ -3199,6 +3250,10 @@ button.badge:focus-visible {
 }
 .cStripLine + .cStripLine {
   color: var(--muted);
+}
+.cStripType {
+  color: var(--ink) !important;
+  font-weight: 700;
 }
 .cLegend {
   position: absolute;

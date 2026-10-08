@@ -9,6 +9,7 @@ import { sha256Hex } from "../../canonical-json";
 import { insertFeature } from "../../data/features";
 import { resolveJibunAddress } from "../../data/jibun";
 import { lookupParcelPoint } from "../../data/parcels";
+import { mergeUnitType, sortedUnitTypes, unitTypeM2, unitTypeUnits, type UnitType } from "../../unit-types";
 import { batched, SourceStats } from "../build";
 
 type Db = BetterSqlite3.Database;
@@ -45,7 +46,32 @@ const positive = (v: unknown): number | null => {
   const n = Number(String(v ?? "").replace(/,/g, "").trim());
   return Number.isFinite(n) && n > 0 ? n : null;
 };
+const nonnegative = (v: unknown): number => {
+  const n = Number(String(v ?? "").replace(/,/g, "").trim());
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+};
 const inKorea = (lng: number, lat: number): boolean => lng >= 124 && lng <= 132 && lat >= 33 && lat <= 39;
+
+function houseManageNo(value: unknown): string | null {
+  const match = /(?:^|:)\s*(\d{7,})/.exec(String(value ?? "").trim()) ?? /houseManageNo=(\d+)/i.exec(String(value ?? ""));
+  return match?.[1] ?? null;
+}
+
+function normalizedName(value: unknown): string {
+  return typeof value === "string" ? value.replace(/\([^)]*\)/g, "").replace(/[^0-9A-Za-z가-힣]/g, "").replace(/아파트$/u, "") : "";
+}
+
+function normalizedAddress(value: unknown): string {
+  const match = typeof value === "string" ? /([가-힣]+\d*[동가리])\s*(\d+)(?:-(\d+))?/.exec(value) : null;
+  return match ? `${match[1]}${match[2]}-${Number(match[3] ?? 0)}` : "";
+}
+
+/** 입주예정 행에는 관리번호가 없으므로 이름+지번이 모두 같은 경우에만 청약홈 타입을 이식한다. */
+function identityKey(name: unknown, address: unknown): string | null {
+  const n = normalizedName(name);
+  const a = normalizedAddress(address);
+  return n && a ? `${n}|${a}` : null;
+}
 
 function insertEvent(db: Db, e: { eventId: string; eventType: string; stage: string; effectiveDate: string | null; plannedMonth: string | null; units: number | null; geometryId: string | null; evidenceUrl: string; releaseId: string }): void {
   db.prepare(`INSERT INTO development_event (event_id, project_id, event_type, stage, effective_date, planned_date, planned_date_precision, units, geometry_id, evidence_url, release_id)
@@ -55,8 +81,45 @@ function insertEvent(db: Db, e: { eventId: string; eventType: string; stage: str
 
 export async function buildSupply(
   db: Db,
-  input: { legacy: LegacyPlannedRow[]; legacyReleaseId: string; moveIn: AsyncIterable<MeasureRecord>; moveInReleaseId: string; core: Db },
+  input: {
+    legacy: LegacyPlannedRow[];
+    legacyReleaseId: string;
+    moveIn: AsyncIterable<MeasureRecord>;
+    moveInReleaseId: string;
+    core: Db;
+    applyhomeTypes?: AsyncIterable<MeasureRecord>;
+    applyhomeTypesReleaseId?: string;
+  },
 ): Promise<SourceStats[]> {
+  const typeStats = input.applyhomeTypes && input.applyhomeTypesReleaseId ? new SourceStats("applyhome_types", input.applyhomeTypesReleaseId, ["typeM2", "units"]) : null;
+  const typesByManage = new Map<string, Map<number, number>>();
+  if (input.applyhomeTypes && typeStats) {
+    await batched(db, input.applyhomeTypes, (rec) => {
+      typeStats.read();
+      const p = rec.properties;
+      const manageNo = str(p.HOUSE_MANAGE_NO);
+      const typeM2 = unitTypeM2(p.HOUSE_TY);
+      const units = nonnegative(p.SUPLY_HSHLDCO) + nonnegative(p.SPSPLY_HSHLDCO);
+      if (!manageNo || typeM2 === null || units <= 0) {
+        typeStats.reject();
+        return;
+      }
+      const counts = typesByManage.get(manageNo) ?? new Map<number, number>();
+      mergeUnitType(counts, typeM2, unitTypeUnits(units));
+      typesByManage.set(manageNo, counts);
+      typeStats.accept({ typeM2, units }, "(전국)", "주택형");
+    });
+  }
+  const typeByIdentity = new Map<string, UnitType[] | null>();
+  for (const r of input.legacy) {
+    const key = identityKey(r.name, r.address);
+    const types = houseManageNo(r.id) ? sortedUnitTypes(typesByManage.get(houseManageNo(r.id)!) ?? []) : [];
+    if (!key || types.length === 0) continue;
+    const previous = typeByIdentity.get(key);
+    if (previous === undefined) typeByIdentity.set(key, types);
+    else if (JSON.stringify(previous) !== JSON.stringify(types)) typeByIdentity.set(key, null);
+  }
+
   const applyhome = new SourceStats("applyhome", input.legacyReleaseId, ["units", "plannedMonth"]);
   await batched(db, input.legacy, (r) => {
     applyhome.read();
@@ -67,8 +130,18 @@ export async function buildSupply(
     const lng = r.lng == null || String(r.lng).trim() === "" ? NaN : Number(r.lng);
     const lat = r.lat == null || String(r.lat).trim() === "" ? NaN : Number(r.lat);
     const located = inKorea(lng, lat);
+    const manageNo = houseManageNo(r.id);
+    const unitTypes = manageNo ? sortedUnitTypes(typesByManage.get(manageNo) ?? []) : [];
     if (located) {
-      insertFeature(db, { stableId: id, kind: "planned_supply", sourceKey: r.id, releaseId: input.legacyReleaseId, geometry: { type: "Point", coordinates: [lng, lat] }, name: str(r.name), properties: { source: "applyhome", kind: str(r.kind), units, plannedMonth, address: str(r.address) } });
+      insertFeature(db, {
+        stableId: id,
+        kind: "planned_supply",
+        sourceKey: r.id,
+        releaseId: input.legacyReleaseId,
+        geometry: { type: "Point", coordinates: [lng, lat] },
+        name: str(r.name),
+        properties: { source: "applyhome", kind: str(r.kind), units, plannedMonth, address: str(r.address), houseManageNo: manageNo, unitTypes },
+      });
     }
     insertEvent(db, {
       eventId: id, eventType: "sale_notice", stage: "announced",
@@ -94,13 +167,14 @@ export async function buildSupply(
     const units = positive(p["세대수"]);
     const loc = resolveJibunAddress(input.core, address);
     const point = loc ? lookupParcelPoint(input.core, loc.pnu) : null;
+    const unitTypes = typeByIdentity.get(identityKey(name, address) ?? "") ?? [];
     if (loc && point) {
-      insertFeature(db, { stableId: id, kind: "planned_supply", sourceKey: id, releaseId: input.moveInReleaseId, geometry: { type: "Point", coordinates: [point[0], point[1]] }, name, pnu: loc.pnu, legalCode: loc.legalCode, properties: { source: "move_in", kind: str(p["사업유형"]), units, plannedMonth, address } });
+      insertFeature(db, { stableId: id, kind: "planned_supply", sourceKey: id, releaseId: input.moveInReleaseId, geometry: { type: "Point", coordinates: [point[0], point[1]] }, name, pnu: loc.pnu, legalCode: loc.legalCode, properties: { source: "move_in", kind: str(p["사업유형"]), units, plannedMonth, address, unitTypes } });
     }
     insertEvent(db, { eventId: id, eventType: "move_in", stage: "scheduled", effectiveDate: null, plannedMonth, units, geometryId: loc && point ? id : null, evidenceUrl: "https://www.data.go.kr/data/15111714/fileData.do", releaseId: input.moveInReleaseId });
     if (loc && point) moveIn.accept({ units, plannedMonth }, str(p["지역"]) ?? "(미상)", str(p["사업유형"]) ?? "(미상)");
     else moveIn.unlocate();
   });
 
-  return [applyhome, moveIn];
+  return typeStats ? [applyhome, moveIn, typeStats] : [applyhome, moveIn];
 }

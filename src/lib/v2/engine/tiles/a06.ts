@@ -4,6 +4,7 @@
  */
 import type { TileResult } from "../../tile-result";
 import { timingBucket, type Timing } from "../../ui/callout-layout";
+import { unitTypesFromUnknown } from "../../unit-types";
 import type { EngineContext } from "../context";
 import { candidate, fmt, makeTile, noDataTile, obs, type TileDraft } from "./common";
 
@@ -45,8 +46,8 @@ export function markOverlaps(items: Array<{ source: string; name: string | null;
 const TYPE_TEXT: Record<string, string> = { apartment: "아파트", officetel: "오피스텔", residential: "주거" };
 
 export function a06(ctx: EngineContext): TileResult {
-  const sources = ctx.sources("market", ["applyhome", "move_in"]);
-  if (sources.length === 0) return noDataTile(ctx, "A06", ["applyhome", "move_in"]);
+  const sources = ctx.sources("market", ["applyhome", "applyhome_types", "move_in"]);
+  if (sources.length === 0) return noDataTile(ctx, "A06", ["applyhome", "applyhome_types", "move_in"]);
   const hits = ctx.hits("market", ["planned_supply"]);
 
   // development_event와 연결되는 사업 수(중복 제거는 다음 단계, 이번엔 연결 가능 여부만 기록)
@@ -67,6 +68,7 @@ export function a06(ctx: EngineContext): TileResult {
     metrics.push(
       obs(`${s.key}_units`, `${s.label} 공급 세대`, units, "세대", "a06-units@1", withUnits.length, mine.length),
       obs(`${s.key}_projects`, `${s.label} 사업`, mine.length, "곳", `a06-projects@1;${link}`),
+      obs(`${s.key}_unit_type_projects`, `${s.label} 전용면적 타입 확인 사업`, mine.filter((h) => unitTypesFromUnknown(h.properties.unitTypes).length > 0).length, "곳", "a06-unit-types@1", mine.filter((h) => unitTypesFromUnknown(h.properties.unitTypes).length > 0).length, mine.length),
     );
     for (const b of BUCKETS) {
       const inBucket = withUnits.filter((h) => bucketOf(h.properties.plannedMonth, ctx.input.analysisDate) === b.id);
@@ -98,11 +100,12 @@ export function a06(ctx: EngineContext): TileResult {
         plannedMonth: month,
         distanceM: h.distanceM === null ? null : Math.round(h.distanceM),
         overlap: overlaps[i],
+        unitTypes: unitTypesFromUnknown(h.properties.unitTypes),
       });
     }),
     limitations: [
       { kind: "partial", note: "청약홈·입주예정에 같은 사업이 중복 등장할 수 있어 합계를 보류했습니다. 이름·주소가 같은 쌍은 \"중복 가능\"으로 표시하지만 합치지는 않습니다." },
-      ...ctx.coverage("market", ["applyhome", "move_in"]),
+      ...ctx.coverage("market", ["applyhome", "applyhome_types", "move_in"]),
     ],
   });
 }

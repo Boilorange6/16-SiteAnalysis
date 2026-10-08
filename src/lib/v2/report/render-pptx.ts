@@ -13,6 +13,7 @@ import { OV, SLIDE, slideLayout, slideLegend, slideSiteX, stripText, type Rect }
 import type { Badge, CalloutModel, TileView } from "../ui/tile-view";
 import type { RoseModel } from "../ui/wind-rose";
 import { sheetCells, type SheetGrid } from "../ui/sheet";
+import { unitTypeSummaryParts } from "../unit-types";
 import { COVER_MAP_KEY, mapKeyOf, type PlannedSlide } from "./report-plan";
 
 /** 지도 이미지(PNG/JPEG data URL) — 키는 report-plan의 mapKeyOf */
@@ -230,6 +231,30 @@ function numberDot(s: Slide, c: Complex, at: Pt, r: number) {
   s.addText(String(c.rank), { x: at[0] - r, y: at[1] - r, w: 2 * r, h: 2 * r, align: "center", valign: "middle", fontFace: FONT, fontSize: r >= 0.17 ? 9 : 8, bold: true, color: hex(inkOn(color)), margin: 0, objectName: cTag(c, "dot-no") });
 }
 
+function unitTypeLines(value: string, fontSize: number, width: number): string[] {
+  const lines: string[] = [];
+  let current = "";
+  for (const part of unitTypeSummaryParts(value)) {
+    const candidate = current ? `${current} · ${part}` : part;
+    if (current && textIn(candidate, fontSize) > width) {
+      lines.push(current);
+      current = part;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current) lines.push(current);
+  return lines.length > 0 ? lines : [value];
+}
+
+function fitUnitTypeValue(value: string, maxPt: number, width: number): { fontSize: number; lines: string[] } {
+  for (let fontSize = maxPt; fontSize >= 6; fontSize -= 0.5) {
+    const lines = unitTypeLines(value, fontSize, width);
+    if (lines.length <= 2) return { fontSize, lines };
+  }
+  return { fontSize: 6, lines: unitTypeLines(value, 6, width) };
+}
+
 function calloutCard(s: Slide, c: Complex, p: Placed, f: CalloutFrame, year: number) {
   const { m } = f;
   const color = dotColor(c);
@@ -246,11 +271,15 @@ function calloutCard(s: Slide, c: Complex, p: Placed, f: CalloutFrame, year: num
   }
   seg(s, [p.x, p.y + m.head], [p.x + f.cardW, p.y + m.head], INK, 0.5, 90, cTag(c, "head-sep"));
   const fs = Math.min(8.5, Math.floor(m.row * 72 * 0.68 * 2) / 2);
-  const lw = c.supply ? 1.0 : 0.7; // "입주(예정) 시기"가 한 줄에 들어가게
+  let y = p.y + m.head + 0.03;
   cardRows(c, year).forEach((r, i) => {
-    const y = p.y + m.head + 0.03 + i * m.row;
-    s.addText(r.label, { x: p.x + 0.1, y, w: lw, h: m.row, valign: "middle", fontFace: FONT, fontSize: fs, color: MUTED, margin: 0, objectName: cTag(c, `row-${i}-label`) });
-    s.addText(r.value, { x: p.x + 0.1 + lw, y, w: f.cardW - 0.2 - lw, h: m.row, align: "right", valign: "middle", fontFace: FONT, fontSize: fitPt(r.value, fs, f.cardW - 0.2 - lw, 1, 6), bold: true, color: r.missing ? AMBER : INK, margin: 0, objectName: cTag(c, `row-${i}-value`) });
+    const lw = r.label === "입주(예정) 시기" ? 1.0 : 0.55;
+    const valueW = f.cardW - 0.2 - lw;
+    const fitted = r.unitType ? fitUnitTypeValue(r.value, fs, valueW) : { fontSize: fitPt(r.value, fs, valueW, 1, 6), lines: [r.value] };
+    const rowH = r.unitType ? m.row * 2 : m.row;
+    s.addText(r.label, { x: p.x + 0.1, y, w: lw, h: rowH, valign: "middle", fontFace: FONT, fontSize: fs, color: MUTED, margin: 0, objectName: cTag(c, `row-${i}-label`) });
+    s.addText(fitted.lines.join("\n"), { x: p.x + 0.1 + lw, y, w: valueW, h: rowH, align: "right", valign: "middle", fontFace: FONT, fontSize: fitted.fontSize, bold: true, color: r.missing ? AMBER : INK, margin: 0, objectName: cTag(c, `row-${i}-value`) });
+    y += rowH;
   });
 }
 
