@@ -226,6 +226,7 @@ export function viewWithOnlyRaster(view: TileView, rasterName: string, note: str
   };
   return {
     ...view,
+    notes: note ? [note, ...view.notes.filter((existing) => existing !== note)] : view.notes,
     map: nextMap,
   };
 }

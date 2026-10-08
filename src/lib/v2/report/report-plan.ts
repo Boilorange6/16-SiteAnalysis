@@ -2,10 +2,10 @@
  * 보드 → 보고서 슬라이드 계획. 순수 함수 (pptx 라이브러리 의존 없음).
  * 슬라이드 수는 board-state의 reportPages(board).pages(표지+타일+출처 장)와 항상 같다.
  */
-import type { BoardState } from "../ui/board-state";
+import { defaultCutForCode, isCutSpec, type BoardState, type CutSpec, type Season } from "../ui/board-state";
 import { calloutReportPages, DEFAULT_CALLOUT_MODE, pageCount } from "../ui/callout-layout";
 import type { MapModel } from "../ui/map-layers";
-import type { CalloutModel, SummaryView, TileView } from "../ui/tile-view";
+import { viewWithOnlyRaster, type CalloutModel, type SummaryView, type TileView } from "../ui/tile-view";
 import type { MassModel } from "../ui/mass-projection";
 import type { SheetGrid } from "../ui/sheet";
 import { FACE_TEXT } from "../ui/tile-view";
@@ -13,6 +13,7 @@ import type { RoseModel } from "../ui/wind-rose";
 import type { RoseSeason } from "../tile-result";
 import { exportFileName } from "../export/download";
 import { sourceDetailsFor, UNKNOWN_AS_OF, type SourceDetailRow, type SourceMeta } from "../ui/source-details";
+import { CUT_DATE_LABEL, CUT_SEASONS, CUT_SEASON_LABEL, cutNote, cutReady, viewForCut } from "../ui/cut-selection";
 
 export type TileSlideBody =
   | { kind: "result"; face: "single" | "front" | "back" }
@@ -63,7 +64,16 @@ export type ReportSlide =
       kind: "sheet";
       view: TileView;
       grid: SheetGrid;
-      cells: Array<{ view: TileView; face: "front" | "back"; mapKey: string; sourceLine?: string; pinnedKeys?: string[] }>;
+      cells: Array<{
+        view: TileView;
+        face: "front" | "back";
+        mapKey: string;
+        sourceLine?: string;
+        pinnedKeys?: string[];
+        mass?: MassModel;
+        rose?: RoseModel;
+        roseSeason?: RoseSeason;
+      }>;
     }
   | { kind: "sources"; rows: ReportSourceRow[]; analysisDate: string; /** 배경(흐린 대지 지도) */ map: MapModel | null };
 
@@ -100,11 +110,118 @@ export const sourcePageCount = (sourceRows: number): number => Math.max(1, Math.
 const hasResult = (v: TileView) => v.status === "complete" || v.status === "partial";
 const pinnedKeysFor = (board: BoardState, tileId: string): string[] => (board.labels[tileId] ?? []).filter((label) => label.on).map((label) => label.key);
 
-const S02_CUTS = [
-  { layer: "shadow_09", note: "09:00", key: "cut09" },
-  { layer: "shadow_12", note: "12:00", key: "cut12" },
-  { layer: "shadow_15", note: "15:00", key: "cut15" },
-] as const;
+const CUT_CODES = new Set(["S01", "S02", "S03", "S04", "D22"]);
+const RASTER_NAMES = (view: TileView): string[] => {
+  const map = view.map as (NonNullable<TileView["map"]> & { rasterOptions?: { name: string }[] }) | null;
+  return (map?.rasterOptions ?? map?.rasters ?? []).map((ref) => ref.name);
+};
+
+const hoursFor = (view: TileView, date: string): string[] => RASTER_NAMES(view)
+  .filter((name) => name.startsWith(`shade_${date}_h`))
+  .sort((a, b) => Number(a.slice(-2)) - Number(b.slice(-2)));
+
+const legacyShadowHours = (view: TileView): string[] => ["09", "12", "15"].filter((hour) =>
+  (view.map?.polygons ?? []).some((polygon) => polygon.layer === `shadow_${hour}`),
+).map((hour) => `shadow_${hour}`);
+
+type CutCell = {
+  view: TileView;
+  mapKey: string;
+  rasterName?: string;
+  rose?: RoseModel;
+  roseSeason?: RoseSeason;
+};
+
+type CutPlan = {
+  sheets: Array<{ grid: SheetGrid; cells: CutCell[] }>;
+  single?: CutCell & { mass?: MassModel };
+};
+
+function rasterCell(view: TileView, name: string, note: string, key: string): CutCell {
+  const next = name.startsWith("shadow_") ? viewWithOnlyLayer(view, name, note) : viewWithOnlyRaster(view, name, note);
+  return { view: next, mapKey: `${view.tileId}:${key}`, rasterName: name };
+}
+
+function roseCell(view: TileView, season: RoseSeason, key: string): CutCell {
+  const model = season === "annual" ? view.rose : view.roses?.[season];
+  const next = model
+    ? { ...view, rose: model, notes: [CUT_SEASON_LABEL[season], ...view.notes.filter((note) => note !== CUT_SEASON_LABEL[season])] }
+    : view;
+  return { view: next, mapKey: `${view.tileId}:rose-${season}`, rose: model ?? undefined, roseSeason: season };
+}
+
+function cutPlanFor(view: TileView, cut: CutSpec): CutPlan {
+  switch (cut.tile) {
+    case "S01": {
+      const mass = view.mass
+        ? { ...view.mass, exploded: cut.mode === "exploded" ? { spreadPct: 24, scheme: "use" as const } : undefined }
+        : undefined;
+      return { sheets: [], single: { view: viewForCut(view, cut), mapKey: `${view.tileId}:mass`, mass } };
+    }
+    case "S02": {
+      const date = cut.date ?? "winter";
+      if (cut.mode === "single") return { sheets: [], single: { view: viewForCut(view, cut), mapKey: `${view.tileId}:cut-${date}` } };
+      if (cut.mode === "seasons4") {
+        const cells = CUT_SEASONS.map((season) => `sun_hours_${season}`)
+          .filter((name) => RASTER_NAMES(view).includes(name))
+          .map((name) => rasterCell(view, name, CUT_DATE_LABEL[name.slice("sun_hours_".length) as keyof typeof CUT_DATE_LABEL], name.slice("sun_hours_".length)));
+        return cells.length === 4 ? { sheets: [{ grid: "2x2", cells }] } : { sheets: [], single: { view: viewForCut(view, cut), mapKey: `${view.tileId}:cut-${date}` } };
+      }
+      const hourly = hoursFor(view, date);
+      const legacy = hourly.length === 0 ? legacyShadowHours(view) : [];
+      const names = hourly.length >= 3 ? [hourly[0]!, hourly[Math.floor(hourly.length / 2)]!, hourly[hourly.length - 1]!] : legacy;
+      if (cut.mode === "hours3") {
+        const cells = names.slice(0, 3).map((name) => rasterCell(view, name, name.startsWith("shadow_") ? `${CUT_DATE_LABEL[date]} ${name.slice(-2)}:00` : cutNote(cut, name), `cut${name.slice(-2)}`));
+        return cells.length === 3 ? { sheets: [{ grid: "3x1", cells }] } : { sheets: [], single: { view: viewForCut(view, cut), mapKey: `${view.tileId}:cut-${date}` } };
+      }
+      const flow = `shade_${date}_flow`;
+      const groups = hourly.reduce<CutCell[][]>((all, name, index) => {
+        const group = Math.floor(index / 6);
+        (all[group] ??= []).push(rasterCell(view, name, cutNote({ tile: "S02", mode: "flow", date }, name), `flow-${name.slice(-2)}`));
+        return all;
+      }, []);
+      const sheets = groups.filter((group) => group.length > 0).map((cells) => ({ grid: "3x2" as const, cells }));
+      const single = RASTER_NAMES(view).includes(flow)
+        ? { view: viewWithOnlyRaster(view, flow, `${CUT_DATE_LABEL[date]} 그림자 흐름`), mapKey: `${view.tileId}:flow`, rasterName: flow }
+        : undefined;
+      return sheets.length > 0 || single ? { sheets, single } : { sheets: [], single: { view: viewForCut(view, cut), mapKey: `${view.tileId}:cut-${date}` } };
+    }
+    case "S03": {
+      const layer = String(Math.round(cut.layerZ)).padStart(2, "0");
+      if (cut.mode === "seasons4" && cutReady(view, cut)) {
+        const cells = CUT_SEASONS.map((season) => `wind_${season}_z${layer}`).map((name) => rasterCell(view, name, `${CUT_SEASON_LABEL[name.split("_")[1] as Season]} ${cut.layerZ}m`, name));
+        return { sheets: [{ grid: "2x2", cells }] };
+      }
+      return { sheets: [], single: { view: viewForCut(view, cut), mapKey: `${view.tileId}:wind-${cut.season ?? "annual"}-${layer}` } };
+    }
+    case "S04": {
+      const season = cut.season ?? "summer";
+      if (cut.mode === "seasons4" && cutReady(view, cut)) {
+        const cells = CUT_SEASONS.map((candidate) => `utci_${candidate}_h14`).map((name) => rasterCell(view, name, `${CUT_SEASON_LABEL[name.split("_")[1] as Season]} 14시`, name));
+        return { sheets: [{ grid: "2x2", cells }] };
+      }
+      if (cut.mode === "hours3" && cutReady(view, cut)) {
+        const cells = [10, 14, 18].map((hour) => {
+          const name = `utci_${season}_h${hour}`;
+          return rasterCell(view, name, `${CUT_SEASON_LABEL[season]} ${hour}시`, name);
+        });
+        return { sheets: [{ grid: "3x1", cells }] };
+      }
+      const name = `utci_${season}_h${cut.hour ?? 14}`;
+      return { sheets: [], single: { view: viewForCut(view, cut), mapKey: `${view.tileId}:${name}`, rasterName: name } };
+    }
+    case "D22": {
+      if (cut.mode === "seasons4" && cutReady(view, cut)) {
+        return { sheets: [{ grid: "2x2", cells: CUT_SEASONS.map((season) => roseCell(view, season, season)) }] };
+      }
+      return { sheets: [], single: { ...roseCell(view, "annual", "annual"), view: viewForCut(view, cut), mapKey: `${view.tileId}:rose` } };
+    }
+  }
+}
+
+function cutCellWithMeta(cell: CutCell, sourceLine: string, pinnedKeys: string[]) {
+  return { ...cell, face: "front" as const, sourceLine, pinnedKeys };
+}
 
 /** S02 3컷 조판용으로 그림자 시각 하나와 수광면만 남긴다. 원본 뷰는 변경하지 않는다. */
 export function viewWithOnlyLayer(view: TileView, layer: string, note: string): TileView {
@@ -237,21 +354,35 @@ export function buildReportPlan(input: {
       });
       continue;
     }
-    if (v.code === "S02" && board.cuts[v.tileId] === 3 && hasResult(v)) {
-      const cells = S02_CUTS.map(({ layer, note, key }) => ({
-        view: viewWithOnlyLayer(v, layer, note),
-        face: "front" as const,
-        mapKey: `${v.tileId}:${key}`,
-        sourceLine: sourceLineFor(v),
-        pinnedKeys: pinnedKeysFor(board, v.tileId),
-      }));
-      raw.push({
-        kind: "sheet",
-        view: v,
-        grid: "3x1",
-        cells,
-        footer: sourceFooterFor(v),
-      });
+    const selectedCut = isCutSpec(board.cuts[v.tileId]) && board.cuts[v.tileId].tile === v.code
+      ? board.cuts[v.tileId]
+      : defaultCutForCode(v.code);
+    if (selectedCut && CUT_CODES.has(v.code) && hasResult(v)) {
+      const cutPlan = cutPlanFor(v, selectedCut);
+      for (const sheetPlan of cutPlan.sheets) {
+        raw.push({
+          kind: "sheet",
+          view: v,
+          grid: sheetPlan.grid,
+          cells: sheetPlan.cells.map((cell) => cutCellWithMeta(cell, sourceLineFor(v), pinnedKeysFor(board, v.tileId))),
+          footer: sourceFooterFor(v),
+        });
+      }
+      if (cutPlan.single) {
+        const cell = cutPlan.single;
+        raw.push({
+          kind: "tile",
+          view: cell.view,
+          body: { kind: "result", face: "single" },
+          faceLabel: cell.view.hasFace ? "도판" : null,
+          map: cell.mass || cell.rose ? null : cell.view.map ?? cell.view.backdrop,
+          muted: false,
+          ...(cell.mass ? { mass: cell.mass } : {}),
+          ...(cell.rose ? { rose: cell.rose, roseSeason: cell.roseSeason ?? "annual" } : {}),
+          pinnedKeys: pinnedKeysFor(board, v.tileId),
+          footer: sourceFooterFor(v),
+        });
+      }
       continue;
     }
     if (v.callout && hasResult(v)) {
@@ -277,11 +408,8 @@ export function buildReportPlan(input: {
     for (const face of faces) {
       const message = STATE_MESSAGE[v.status];
       const result = hasResult(v);
-      // S01 보고서는 화면 토글과 독립적으로 분해 면을 기본 포함한다. 화면·PPT가 같은 MassFigure 경로를 쓴다.
-      const mass = v.mass ? { ...v.mass, exploded: v.mass.exploded ?? { spreadPct: 24, scheme: "use" as const } } : undefined;
-      // D22의 뒷면은 사용자가 구성비를 선택할 수 있으므로 장미 그림은 도판 면에만 둔다.
-      const rose = face === "back" ? undefined : v.rose ?? undefined;
-      const roseSeason = board.roseSeasons[v.tileId] ?? "annual";
+      const mass = result && v.mass ? { ...v.mass } : undefined;
+      const rose = result && face !== "back" ? v.rose ?? undefined : undefined;
       raw.push({
         kind: "tile",
         view: v,
@@ -292,7 +420,7 @@ export function buildReportPlan(input: {
         muted: !result,
         pinnedKeys: pinnedKeysFor(board, v.tileId),
         ...(mass ? { mass } : {}),
-        ...(rose ? { rose, roseSeason } : {}),
+        ...(rose ? { rose, roseSeason: "annual" as const } : {}),
         footer: sourceFooterFor(v),
       });
     }

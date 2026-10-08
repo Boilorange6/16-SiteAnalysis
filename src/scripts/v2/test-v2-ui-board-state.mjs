@@ -22,7 +22,7 @@ assert.equal(s.included["t-S03"], false); // failed
     face: state.faces[id],
     cardFace: state.view[id] ?? state.viewAll,
     size: state.sizes[id],
-    roseSeason: state.roseSeasons[id] ?? "annual",
+    cut: state.cuts[id] ?? null,
     labels: state.labels[id] ?? [],
     layer: state.layers[id] ?? null,
   });
@@ -30,7 +30,7 @@ assert.equal(s.included["t-S03"], false); // failed
   assert.equal(after.faces, before.faces);
   assert.equal(after.view, before.view);
   assert.equal(after.sizes, before.sizes);
-  assert.equal(after.roseSeasons, before.roseSeasons);
+  assert.equal(after.cuts, before.cuts);
 assert.equal(after.labels, before.labels);
   assert.equal(after.layers, before.layers);
   assert.notEqual(after.included, before.included);
@@ -209,7 +209,7 @@ assert.equal(demoFinished(10, 99), 10);
   let b = initBoard(GODEOK_RESULTS);
   b = boardReducer(b, { type: "a05Filter", id: "t-A05", filter: { types: ["apt"], year: { min: 2010 } } });
   const snapshot = serializeBoardState(b);
-  assert.equal(snapshot.version, 2);
+  assert.equal(snapshot.version, 3);
   assert.deepEqual(snapshot.a05Filter["t-A05"], { types: ["apt"], year: { min: 2010, max: null } });
   const restored = restoreBoardState(GODEOK_RESULTS, JSON.stringify(snapshot));
   assert.deepEqual(restored.a05Filter, snapshot.a05Filter, "저장→불러오기 왕복으로 A05 필터 유지");
@@ -239,7 +239,7 @@ assert.equal(demoFinished(10, 99), 10);
     stacks: { "stack:1": [oldId] },
     sheets: { "sheet:1": { tiles: [oldId], grid: "2x2" } },
     cameras: { [oldId]: { azimuthDeg: 315, elevationDeg: 35 } },
-    cuts: { [oldId]: 3 },
+    cuts: { [oldId]: 3, "analysis-S02": 3 },
     roseSeasons: { [oldId]: "summer" },
     labels: { [oldId]: [{ key: "bldg_2000s|b-1", on: true }] },
     layers: { [oldId]: "all" },
@@ -247,17 +247,31 @@ assert.equal(demoFinished(10, 99), 10);
   };
   TILE_CODE_RENAMES.OLD = "NEW";
   const migrated = migrateSnapshot(old);
-  assert.equal(migrated.version, 2, "v1 snapshot is migrated to current version");
+  assert.equal(migrated.version, 3, "v1 snapshot is migrated to current version");
   assert.deepEqual(migrated.order, [newId]);
-  for (const field of ["included", "faces", "callout", "a05Filter", "view", "sizes", "tileKinds", "cameras", "cuts", "roseSeasons", "labels", "layers"]) {
+  for (const field of ["included", "faces", "callout", "a05Filter", "view", "sizes", "tileKinds", "cameras", "labels", "layers"]) {
     assert.ok(migrated[field][newId], `${field} id rewrite`);
   }
+  assert.deepEqual(migrated.cuts["analysis-S02"], { tile: "S02", mode: "hours3", date: "winter" }, "옛 숫자 3컷을 S02 정시 3컷으로 이관");
+  assert.equal(migrated.roseSeasons, undefined, "옛 roseSeasons는 새 저장본에 남기지 않음");
   assert.deepEqual(migrated.stacks["stack:1"], [newId]);
   assert.deepEqual(migrated.sheets["sheet:1"].tiles, [newId]);
   assert.deepEqual(migrated.removed, [{ id: newId, index: 2 }]);
-  assert.equal(migrateSnapshot({ ...old, version: 3 }), null, "미래 버전은 무시");
-  assert.deepEqual(restoreBoardState(GODEOK_RESULTS, { ...old, version: 3 }).order, ids, "미래 버전은 기본 보드");
+  assert.equal(migrateSnapshot({ ...old, version: 4 }), null, "미래 버전은 무시");
+  assert.deepEqual(restoreBoardState(GODEOK_RESULTS, { ...old, version: 4 }).order, ids, "미래 버전은 기본 보드");
   delete TILE_CODE_RENAMES.OLD;
+}
+
+// W4: 분리된 옛 D22 계절 필드도 새 D22 계절 4컷으로 이관한다.
+{
+  const source = serializeBoardState(initBoard(GODEOK_RESULTS));
+  const legacy = { ...source, version: 2, roseSeasons: { "analysis-D22": "summer" }, cuts: {} };
+  const migrated = migrateSnapshot(legacy);
+  assert.deepEqual(migrated.cuts["analysis-D22"], { tile: "D22", mode: "seasons4" });
+  assert.equal(migrated.roseSeasons, undefined);
+  const d22 = { ...GODEOK_RESULTS[0], tileId: "t-D22", tileCode: "D22" };
+  const restored = restoreBoardState([d22], { ...legacy, order: ["t-D22"], roseSeasons: { "t-D22": "summer" } });
+  assert.deepEqual(restored.cuts["t-D22"], { tile: "D22", mode: "seasons4" });
 }
 
 // W3: 삭제 12개를 포함한 옛 45개 보드 스냅샷을 현재 33개와 레이어까지 이관한다.
@@ -308,7 +322,7 @@ assert.equal(demoFinished(10, 99), 10);
     removed: oldIds.map((id, index) => ({ id, index })),
   };
   const migrated = migrateSnapshot(old45);
-  assert.equal(migrated.version, 2);
+  assert.equal(migrated.version, 3);
   assert.equal(migrated.order.length, TILE_CODES.length, "45개 순서가 33개 생존 타일로 중복 없이 축약");
   for (const oldCode of oldCodes) {
     assert.ok(!migrated.order.includes(`t-${oldCode}`) || !deletedCodes.includes(oldCode), `${oldCode} 삭제 코드 제거`);

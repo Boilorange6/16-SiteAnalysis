@@ -32,10 +32,10 @@ const summary = toSummaryView(GODEOK_SUMMARY, [s02Result]);
 
 let board = initBoard([s02Result]);
 assert.deepEqual(board.cuts, {});
-board = boardReducer(board, { type: "cuts", id: "t-S02", cuts: 3 });
-assert.equal(board.cuts["t-S02"], 3);
+board = boardReducer(board, { type: "cut", id: "t-S02", cut: { tile: "S02", mode: "hours3", date: "winter" } });
+assert.deepEqual(board.cuts["t-S02"], { tile: "S02", mode: "hours3", date: "winter" });
 assert.equal(board.undoStack.length, 0);
-assert.equal(boardReducer(board, { type: "cuts", id: "t-S02", cuts: 2 }), board, "1 또는 3 이외의 컷 수는 무시");
+assert.equal(boardReducer(board, { type: "cuts", id: "t-S02", cuts: 2 }), board, "옛 숫자 컷도 1 또는 3 이외는 무시");
 
 const views = new Map([[s02Result.tileId, view]]);
 const plan3 = buildReportPlan({ summary, views, board, analysisDate: "2026-09-30" });
@@ -44,13 +44,13 @@ assert.ok(sheet);
 assert.equal(sheet.grid, "3x1");
 assert.equal(sheet.cells.length, 3);
 assert.deepEqual(sheet.cells.map((cell) => cell.mapKey), ["t-S02:cut09", "t-S02:cut12", "t-S02:cut15"]);
-assert.deepEqual(sheet.cells.map((cell) => cell.view.notes[0]), ["09:00", "12:00", "15:00"]);
+assert.deepEqual(sheet.cells.map((cell) => cell.view.notes[0]), ["동지 09:00", "동지 12:00", "동지 15:00"]);
 for (const [index, cell] of sheet.cells.entries()) {
   assert.deepEqual(new Set(cell.view.map.polygons.map((polygon) => polygon.layer)), new Set([`shadow_${["09", "12", "15"][index]}`, "sun_face"]));
 }
 assert.equal(reportPages(board).pages, 3, "3컷도 한 장으로 센다");
 
-const oneBoard = boardReducer(board, { type: "cuts", id: "t-S02", cuts: 1 });
+const oneBoard = boardReducer(board, { type: "cut", id: "t-S02", cut: { tile: "S02", mode: "single", date: "winter" } });
 const plan1 = buildReportPlan({ summary, views, board: oneBoard, analysisDate: "2026-09-30" });
 assert.equal(plan1.filter((p) => p.kind === "sheet").length, 0);
 assert.equal(plan1.filter((p) => p.kind === "tile" && p.view.code === "S02").length, 1);

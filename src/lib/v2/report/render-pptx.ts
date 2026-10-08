@@ -504,8 +504,8 @@ function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: Map
       s.addText("그림을 만들지 못했습니다", { x: r.x + 0.15, y: r.y + r.h / 2 - 0.12, w: r.w - 0.3, h: 0.25, align: "center", fontFace: FONT, fontSize: 9, color: MUTED, margin: 0 });
     }
     const faceText = cell.face === "back" ? "구성비" : "도판";
-    const time = /^\d{2}:\d{2}$/.test(cell.view.notes[0] ?? "") ? cell.view.notes[0] : null;
-    const chipText = `${cell.view.code} · ${cell.view.title} · ${faceText}${time ? ` · ${time}` : ""}`;
+    const cutNote = cell.view.notes[0] ?? null;
+    const chipText = `${cell.view.code} · ${cell.view.title} · ${faceText}${cutNote ? ` · ${cutNote}` : ""}`;
     s.addShape("roundRect", { x: r.x + 0.1, y: r.y + 0.1, w: Math.min(r.w - 0.2, 2.9), h: 0.3, rectRadius: 0.12, fill: { color: "FFFFFF", transparency: 10 }, line: { color: INK, transparency: 88, width: 0.5 } });
     s.addText(chipText, { x: r.x + 0.2, y: r.y + 0.1, w: Math.min(r.w - 0.4, 2.7), h: 0.3, valign: "middle", fontFace: FONT, fontSize: fitPt(chipText, 8.5, Math.min(r.w - 0.4, 2.7), 1, 6), bold: true, color: INK, margin: 0, fit: "shrink" });
     s.addText(`출처 ${cell.sourceLine ?? cell.view.sourceLine}`, { x: r.x + 0.12, y: r.y + r.h - 0.29, w: r.w - 0.24, h: 0.18, fontFace: FONT, fontSize: 7.5, color: MUTED, margin: 0, fit: "shrink" });
