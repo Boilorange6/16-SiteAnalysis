@@ -10,7 +10,7 @@ import { cutCandidates, cutKey, cutOwnsRaster, normalizedCut, viewForCut } from 
 import { windRasterName, WIND_LAYER_HEIGHTS } from "@/lib/v2/ui/wind-upload";
 import Mass3D from "./mass-3d";
 import WindRoseFigure from "./wind-rose-figure";
-import CalloutMap from "./callout-map";
+import { stageFor } from "@/lib/v2/tile/components";
 import MapBox from "./map-box";
 import DetailWindow from "./detail-window";
 import { LayerSelect } from "./layer-select";
@@ -291,7 +291,8 @@ export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, p
   if (seasonalRose || view.rose) {
     return <WindRoseFigure model={seasonalRose ?? view.rose!} width={960} height={540} label={label} season={seasonalRose ? displayRoseSeason : "annual"} />;
   }
-  if (view.callout) return <CalloutMap model={view.callout} kind={frame} page={page} onPage={onPage} label={label} />;
+  const CalloutStage = stageFor(view.code);
+  if (view.callout && CalloutStage) return <CalloutStage model={view.callout} kind={frame} page={page} onPage={onPage} label={label} />;
   return (
     <MapBox
       model={displayView.map ?? displayView.backdrop}
