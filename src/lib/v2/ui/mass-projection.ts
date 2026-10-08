@@ -79,6 +79,9 @@ export const CAMERA_PRESETS = {
 /** 카드·상세 WebGL 분해 보기의 기본 펼침 정도. PPT는 별도 출력 계약을 유지한다. */
 export const EXPLODED_WEBGL_SPREAD_PCT = 100;
 
+/** 판 왼쪽 라벨 칩이 화면 밖으로 잘리지 않도록 투영·렌더러가 공유한다. */
+export const EXPLODED_LABEL_CHIP_WIDTH = 64;
+
 /** 낮은 축측 고도에서도 원판의 세로 지름을 넘도록 층을 분리하는 비율. */
 export const EXPLODED_LAYER_GAP_RATIO = 0.62;
 
@@ -475,7 +478,7 @@ const EXPLODED_FILL = {
   terrain: "#EEF1F4",
   water: "#61AFC7",
   green: "#8ACB78",
-  roads: "#727B88",
+  roads: "#5F6B79",
 } as const;
 
 const EXPLODED_PLATE_FILL: Record<ExplodedLayer, string> = {
@@ -760,7 +763,7 @@ export function projectExploded(
   });
   const labels = plates.map((plate) => ({
     layer: plate.layer,
-    x: Math.max(8, plate.leftX - 14),
+    x: Math.max(EXPLODED_LABEL_CHIP_WIDTH + 8, plate.leftX - 14),
     y: plate.centerY - 2,
     text: EXPLODED_LABEL_TEXT[plate.layer],
     note: plate.present ? undefined : "자료 없음",

@@ -13,7 +13,7 @@ export const MASS_3D_COLORS = {
   terrain: "#E8ECEF",
   water: "#C4E6EB",
   green: "#CFE4C8",
-  roads: "#D9DDE2",
+  roads: "#6D7A89",
   plate: "#F5F6F7",
   ink: "#111111",
 } as const;

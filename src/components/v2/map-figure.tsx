@@ -285,20 +285,24 @@ function derivedSteppedLegend(ref: RasterRef, style: RasterStyle): RasterLegendE
 
 function steppedLegendTitle(ref: RasterRef, style: RasterStyle): string {
   if (ref.palette === "sun_hours") {
-    if (ref.name.includes("summer")) return "하지 평균 일조시간 (시간)";
-    if (ref.name.includes("winter")) return "동지 평균 일조시간 (시간)";
+    const date = /^(?:sun_hours|shade)_(spring|summer|autumn|winter|analysis)(?:_|$)/.exec(ref.name)?.[1];
+    const label = date === "spring" ? "춘분" : date === "summer" ? "하지" : date === "autumn" ? "추분" : date === "winter" ? "동지" : date === "analysis" ? "분석일" : null;
+    if (label) return `${label} 평균 일조시간 (시간)`;
     return "일조시간 (시간)";
   }
+  if (ref.palette === "shade_flow" && ref.label) return ref.label;
   return style.label ?? ref.label ?? ref.name;
 }
 
 /** 카드 알약은 공간이 좁으므로, 원문을 자르지 않는 짧은 표시명을 사용한다. */
 function compactSteppedLegendTitle(ref: RasterRef, style: RasterStyle): string {
   if (ref.palette === "sun_hours") {
-    if (ref.name.includes("summer")) return "하지 일조시간";
-    if (ref.name.includes("winter")) return "동지 일조시간";
+    const date = /^(?:sun_hours|shade)_(spring|summer|autumn|winter|analysis)(?:_|$)/.exec(ref.name)?.[1];
+    const label = date === "spring" ? "춘분" : date === "summer" ? "하지" : date === "autumn" ? "추분" : date === "winter" ? "동지" : date === "analysis" ? "분석일" : null;
+    if (label) return `${label} 일조시간`;
     return "일조시간";
   }
+  if (ref.palette === "shade_flow" && ref.label) return ref.label;
   return steppedLegendTitle(ref, style);
 }
 

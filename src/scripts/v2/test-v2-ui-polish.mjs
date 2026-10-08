@@ -36,7 +36,7 @@ assert.match(mobileDemoRule, /white-space:\s*nowrap/, "mobile demo button stays 
 
 const mapFigureSource = readFileSync(new URL("../../components/v2/map-figure.tsx", import.meta.url), "utf8");
 assert.match(mapFigureSource, /function compactSteppedLegendTitle/, "카드 래스터 범례에 짧은 표시명 경로가 있음");
-assert.match(mapFigureSource, /return "하지 일조시간"/, "S02 카드 범례는 짧은 제목을 사용");
+assert.match(mapFigureSource, /if \(label\) return `\$\{label\} 일조시간`;/, "S02 카드 범례는 실제 래스터 계절명을 따르는 짧은 제목을 사용");
 assert.doesNotMatch(mapFigureSource, /compactTitle \+= "…"/, "S02 카드 범례 제목을 잘라 말줄임하지 않음");
 
 console.log("v2 UI polish contracts ok");

@@ -62,6 +62,8 @@ assert.notEqual(mass3dCacheKey(input), mass3dCacheKey({ ...input, camera: { ...i
 
 const runtimeSource = readFileSync(resolve(import.meta.dirname, "../../lib/v2/ui/mass-3d-runtime.ts"), "utf8");
 const reportSource = readFileSync(resolve(import.meta.dirname, "../../lib/v2/report/map-image.ts"), "utf8");
+const projectionSource = readFileSync(resolve(import.meta.dirname, "../../lib/v2/ui/mass-projection.ts"), "utf8");
+const figureSource = readFileSync(resolve(import.meta.dirname, "../../components/v2/mass-figure.tsx"), "utf8");
 assert.match(runtimeSource, /WebGLRenderer/);
 assert.match(runtimeSource, /PCFSoftShadowMap/);
 assert.match(runtimeSource, /disposeMassObject/);
@@ -69,6 +71,11 @@ assert.match(runtimeSource, /compositePngChrome/);
 assert.match(runtimeSource, /const renderer = makeRenderer/);
 assert.match(runtimeSource, /s01-road-centerline/);
 assert.match(runtimeSource, /drawNoDataBadge/);
+assert.match(runtimeSource, /EXPLODED_LABEL_CHIP_WIDTH/);
+assert.match(projectionSource, /EXPLODED_LABEL_CHIP_WIDTH/);
+assert.match(projectionSource, /roads: "#5F6B79"/);
+assert.match(figureSource, /data-label-leader/);
+assert.match(figureSource, /EXPLODED_LABEL_CHIP_WIDTH/);
 assert.match(reportSource, /renderMass3dPng/);
 assert.match(reportSource, /image\/png/);
 

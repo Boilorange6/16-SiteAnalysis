@@ -6,7 +6,7 @@ import { STRIP_COLORS } from "@/lib/v2/ui/map-layers";
 import { OV, badgesToShow, cardReserved, stripText } from "@/lib/v2/ui/overlay-layout";
 import { faceLabel, shortHeadlineLabel, type Badge, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
 import { viewWithOnlyRaster } from "@/lib/v2/ui/tile-view";
-import { cutCandidates, cutKey, normalizedCut, viewForCut } from "@/lib/v2/ui/cut-selection";
+import { cutCandidates, cutKey, cutOwnsRaster, normalizedCut, viewForCut } from "@/lib/v2/ui/cut-selection";
 import { windRasterName, WIND_LAYER_HEIGHTS } from "@/lib/v2/ui/wind-upload";
 import Mass3D from "./mass-3d";
 import WindRoseFigure from "./wind-rose-figure";
@@ -127,8 +127,8 @@ export function Headline({ view, small }: { view: TileView; small?: boolean }) {
 export function RowList({ rows, className }: { rows: TileView["rows"]; className?: string }) {
   return (
     <ul className={className ?? styles.rows}>
-      {rows.map((r) => (
-        <li key={r.label}>
+      {rows.map((r, index) => (
+        <li key={`${r.label}-${index}`}>
           <span>{r.label}</span>
           <span>
             {r.value}
@@ -192,7 +192,7 @@ export function FaceChart({ view }: { view: TileView }) {
   return (
     <div className={styles.faceChart} style={{ background: `${view.color}10` }} role="img" aria-label={`${view.title} 구성비: ${chart.map((c) => `${c.label} ${valueText(c)}`).join(", ")}`}>
       {chart.map((c, i) => (
-        <div key={c.label} className={styles.fcRow}>
+        <div key={`${c.label}-${i}`} className={styles.fcRow}>
           <span className={styles.fcLabel}>{c.label}</span>
           <span className={styles.fcTrack}>
             <i style={{ width: `${(c.value / max) * 100}%`, background: STRIP_COLORS[i % STRIP_COLORS.length] }} />
@@ -534,9 +534,11 @@ function WindStrip({ view, layerZ, onLayerZ, onOpen }: { view: TileView; layerZ:
 function MapFace({ p, active, state, back, onBack, onFlip, onDetail, mapReady }: { p: TileCardRenderProps; active: boolean; state: boolean; back: boolean; onBack: (v: boolean) => void; onFlip: () => void; onDetail?: () => void; mapReady: boolean }) {
   const { view } = p;
   const cut = normalizedCut(view, p.cut);
+  const cutOwnsS02 = cutOwnsRaster(view, cut);
+  const displayView = cutOwnsS02 ? viewForCut(view, cut!) : view;
   const windLayerZ = cut?.tile === "S03" ? cut.layerZ : 6;
   const massExploded = cut?.tile === "S01" && cut.mode === "exploded";
-  const h = view.headline;
+  const h = displayView.headline;
   const shortAux = h?.aux && h.aux.length <= 4 ? h.aux : "";
   const headlineLabel = h ? shortHeadlineLabel(h.label) : "";
   const extra = view.stackLayers ? view.stackLayers.join(" + ") : view.sheetGrid;
@@ -609,7 +611,7 @@ function MapFace({ p, active, state, back, onBack, onFlip, onDetail, mapReady }:
           {h.tag && <span className={styles.tag}>{h.tag}</span>}
         </div>
       )}
-      <LayerSelect view={view} value={p.layer} onChange={p.onLayer} />
+      {!cutOwnsS02 && <LayerSelect view={view} value={p.layer} onChange={p.onLayer} />}
       {view.code === "S03" && !state && <WindStrip view={view} layerZ={windLayerZ} onLayerZ={(z) => p.onCut({ tile: "S03", mode: cut?.tile === "S03" ? cut.mode : "single", layerZ: z, season: cut?.tile === "S03" ? cut.season : "annual" })} onOpen={p.onOpen} />}
       {!state && <CutSelect view={view} value={cut} onChange={p.onCut} compact />}
       <div className={styles.mfMap}>
@@ -630,7 +632,10 @@ function MapFace({ p, active, state, back, onBack, onFlip, onDetail, mapReady }:
 /** 요약면: 지도 없는 흰 카드. 제목 줄 · 큰 숫자 + 한 줄 라벨 · 사실 3줄 · 상태 배지(최대 2개) · 출처 한 줄 · "지도 ↻" */
 function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardRenderProps; state: boolean; waiting: boolean; onFlip: () => void; onDetail?: () => void }) {
   const { view, phase } = p;
-  const facts = view.rows.filter((r) => r.label !== view.headline?.label).slice(0, 3);
+  const cut = normalizedCut(view, p.cut);
+  const cutOwnsS02 = cutOwnsRaster(view, cut);
+  const displayView = cutOwnsS02 ? viewForCut(view, cut!) : view;
+  const facts = displayView.rows.filter((r) => r.label !== displayView.headline?.label).slice(0, 3);
   const head = waiting ? (phase === "running" ? "계산 중" : "대기") : (view.badges.find((b) => b.tone === "status")?.text ?? "표시할 결과가 없습니다");
   const rest = view.badges.filter((b) => b.tone !== "status");
   const retryText = view.status === "cancelled" ? "다시 계산" : "이 타일 다시 계산";
@@ -708,8 +713,8 @@ function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardRende
         </div>
       ) : (
         <div className={styles.sfMain}>
-          <LayerSelect view={view} value={p.layer} onChange={p.onLayer} />
-          <Headline view={view} />
+          {!cutOwnsS02 && <LayerSelect view={view} value={p.layer} onChange={p.onLayer} />}
+          <Headline view={displayView} />
           {facts.length > 0 && <FitRows rows={facts} />}
         </div>
       )}

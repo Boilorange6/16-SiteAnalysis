@@ -218,17 +218,52 @@ export function viewWithOnlyRaster(view: TileView, rasterName: string, note: str
   const options = model.rasterOptions ?? model.rasters ?? [];
   const selected = options.find((ref) => ref.name === rasterName);
   if (!selected) return view;
+  const s02Date = view.code === "S02" ? s02RasterDate(rasterName) : null;
+  const s02Label = s02Date ? S02_DATE_LABEL[s02Date] : null;
+  const s02Metric = s02Label ? view.rows.find((row) => row.label === `${s02Label} 평균 일조시간`) : undefined;
+  const s02MapNote = s02Label
+    ? `${s02Label}${selected.palette === "shade_flow" ? " 그림자 흐름" : " 일조시간"} · 계절 레이어 · 건물·지형 그림자 반영`
+    : null;
   const nextMap: RasterMapModel = {
     ...model,
     rasters: [selected],
     defaultRaster: selected.name,
-    ...(note && !model.notes.includes(note) ? { notes: [...model.notes, note] } : {}),
+    ...(s02MapNote
+      ? { notes: model.notes.map((existing) => existing.startsWith("동지 기본 일조시간 ·") ? s02MapNote : existing) }
+      : note && !model.notes.includes(note) ? { notes: [...model.notes, note] } : {}),
   };
   return {
     ...view,
-    notes: note ? [note, ...view.notes.filter((existing) => existing !== note)] : view.notes,
+    ...(s02Label && s02Metric
+      ? {
+          headline: { value: s02Metric.value, label: s02Metric.label, aux: s02Metric.aux, tag: s02Metric.tag },
+          headlineMetricId: `mean_sun_h_${s02Date}`,
+          // 판단 문장은 동지 기준 숫자를 담고 있어 계절명만 바꾸면 틀린 문장이 된다 — 그대로 둔다
+        }
+      : {}),
+    notes: note
+      ? [
+          note,
+          ...(s02MapNote ? [s02MapNote] : []),
+          ...view.notes.filter((existing) => existing !== note && (!s02MapNote || !existing.startsWith("동지 기본 일조시간 ·"))),
+        ]
+      : view.notes,
     map: nextMap,
   };
+}
+
+const S02_DATE_LABEL = {
+  spring: "춘분",
+  summer: "하지",
+  autumn: "추분",
+  winter: "동지",
+  analysis: "분석일",
+} as const;
+type S02RasterDate = keyof typeof S02_DATE_LABEL;
+
+function s02RasterDate(name: string): S02RasterDate | null {
+  const match = /^(?:sun_hours|shade)_(spring|summer|autumn|winter|analysis)(?:_|$)/.exec(name);
+  return match?.[1] && match[1] in S02_DATE_LABEL ? match[1] as S02RasterDate : null;
 }
 
 const STATUS_TEXT: Partial<Record<TileResult["status"], string>> = {
@@ -380,6 +415,11 @@ export function formatDistanceM(distanceM: number): string {
 }
 const withUnit = (n: number, unit: string) => {
   if (unit === "m") return formatDistanceM(n);
+  // 설계 숫자 규칙은 면적을 정수로 표시하되, 1 km² 미만을 0 km²로
+  // 뭉개지 않는다. 작은 면적은 같은 정수 규칙의 ㎡로 전환한다.
+  if ((unit === "km²" || unit === "㎢") && Math.abs(n) < 1) {
+    return `${formatMetricValue(n * 1_000_000, "㎡")}㎡`;
+  }
   const v = formatMetricValue(n, unit);
   return unit === "" ? v : unit.length > 2 && !unit.startsWith("/") ? `${v} ${unit}` : `${v}${unit}`;
 };
@@ -402,6 +442,17 @@ function metricRow(m: TileResult["metrics"][number], _round = false): Row {
         ...(m.status === "estimated" ? { tag: "추정" } : {}),
       };
   }
+}
+
+/** 캐시된 결과의 옛 문장도 카드·상세의 실제 면적 표기와 맞춘다. */
+function displaySentence(r: TileResult, rows: Row[], filterLine: string | null): string | null {
+  let sentence = r.judgment?.sentence ?? null;
+  if (sentence && r.tileCode === "D28") {
+    const area = rows.find((row) => row.label === "도보 10분 도달 면적")?.value;
+    if (area) sentence = sentence.replace(/(도보 10분(?:\([^)]*\))? 도달 면적 )[^ (]+(?:\s*(?:㎢|km²))?/, `$1${area}`);
+  }
+  if (sentence) return `${sentence}${filterLine ? " · 필터 적용" : ""}`;
+  return filterLine ? "필터 적용" : null;
 }
 
 type HeadlineMetric = TileResult["metrics"][number];
@@ -590,7 +641,7 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
     headline,
     headlineMetricId,
     rows: allRows,
-    sentence: r.judgment?.sentence ? `${r.judgment.sentence}${filterLine ? " · 필터 적용" : ""}` : filterLine ? "필터 적용" : null,
+    sentence: displaySentence(r, allRows, filterLine),
     grade: gradedMetricOk ? { label: GRADE_TEXT[r.judgment!.level!], criteria: `내부 제안 기준: ${r.judgment!.criteria}` } : null,
     grades: GRADED_CODES.has(r.tileCode) ? (r.judgment?.grades ?? []).map((g) => gradeChip(r, g)) : [],
     caveats,

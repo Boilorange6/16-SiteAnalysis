@@ -1,6 +1,6 @@
 import React from "react";
 import { memo } from "react";
-import { EXPLODED_LAYERS, MASS_USE_COLORS, type MassCamera, type MassColorScheme, projectExploded, projectMass, type MassLayer, type MassQuality } from "@/lib/v2/ui/mass-projection";
+import { EXPLODED_LABEL_CHIP_WIDTH, EXPLODED_LAYERS, MASS_USE_COLORS, type MassCamera, type MassColorScheme, projectExploded, projectMass, type MassLayer, type MassQuality } from "@/lib/v2/ui/mass-projection";
 import type { Scene } from "@/lib/v2/scene";
 
 export type MassFigureProps = {
@@ -23,7 +23,7 @@ const COLORS: Record<MassLayer, string> = {
   terrain: "#D8DDE4",
   water: "#61AFC7",
   green: "#8ACB78",
-  roads: "#727B88",
+  roads: "#5F6B79",
   buildings: "#5E83B3",
   complete: "#D8DDE4",
 };
@@ -98,9 +98,9 @@ function MassFigure({ scene, camera, width, height, fixed = false, label = "S01 
       )}
       fillRule={face.fillRule}
       fillOpacity={face.layer === "ground" ? 0.9 : 0.96}
-      stroke={face.layer === "ground" ? "#AEB4BD" : isExploded && face.faceKind ? "#3F5265" : "#FFFFFF"}
-      strokeOpacity={face.layer === "ground" ? 0.7 : isExploded && face.faceKind ? 0.42 : 0.85}
-      strokeWidth={face.layer === "ground" ? 1 : isExploded && face.faceKind ? 0.55 : 0.8}
+      stroke={face.layer === "ground" ? "#AEB4BD" : face.layer === "roads" || face.fill === COLORS.roads ? "#3F4D5C" : isExploded && face.faceKind ? "#3F5265" : "#FFFFFF"}
+      strokeOpacity={face.layer === "ground" ? 0.7 : face.layer === "roads" || face.fill === COLORS.roads ? 0.9 : isExploded && face.faceKind ? 0.42 : 0.85}
+      strokeWidth={face.layer === "ground" ? 1 : face.layer === "roads" || face.fill === COLORS.roads ? 1.1 : isExploded && face.faceKind ? 0.55 : 0.8}
       strokeLinejoin="round"
     />
   );
@@ -169,6 +169,7 @@ function MassFigure({ scene, camera, width, height, fixed = false, label = "S01 
         <g aria-label="분해 층 라벨">
           {projection.labels.map((item) => (
             <g key={item.layer} data-layer-label={item.layer} aria-label={item.note ? `${item.text} · ${item.note}` : item.text}>
+              <rect x={item.x - EXPLODED_LABEL_CHIP_WIDTH} y={item.y - (item.note ? 15 : 12)} width={EXPLODED_LABEL_CHIP_WIDTH + 4} height={item.note ? 30 : 24} rx="7" fill="#FFFFFF" fillOpacity="0.96" stroke="#AEB7C3" strokeWidth="0.8" />
               <line data-label-leader={item.layer} x1={item.x + 4} y1={item.y} x2={item.leaderX} y2={item.y} stroke="#8993A0" strokeWidth="0.8" />
               <text x={item.x} y={item.y + 2} textAnchor="end" fontSize="9" fontWeight="700" letterSpacing="0.08em" fill={INK}>
                 {item.text}

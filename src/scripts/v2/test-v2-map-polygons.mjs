@@ -48,6 +48,19 @@ const zoningLegend = legendItems(zoningModel);
 assert.equal(zoningLegend.filter((item) => item.label === "주거지역").length, 1, "주거지역 범례 중복 제거");
 assert.equal(zoningLegend.filter((item) => item.label === "상업지역").length, 1, "상업지역 범례 중복 제거");
 assert.equal(compactLegendItems(zoningModel).find((item) => item.label === "주거지역")?.count, 2, "주거지역 alias 개수 합산");
+const assumedLayerModel = {
+  center: model.center,
+  radiusM: model.radiusM,
+  features: [
+    { layer: "floors_assumed_1f_est", lng: model.center[0], lat: model.center[1] },
+    { layer: "tall_assumed_1f_est", lng: model.center[0], lat: model.center[1] },
+    { layer: "low_assumed_1f_est", lng: model.center[0], lat: model.center[1] },
+    { layer: "bldg_assumed_1f", lng: model.center[0], lat: model.center[1] },
+  ],
+  total: 4,
+  notes: [],
+};
+assert.equal(legendItems(assumedLayerModel).filter((item) => item.label === "1층 가정(추정)").length, 1, "같은 1층 가정 범례 문구는 한 항목으로 합친다");
 
 const many = Array.from({ length: 3200 }, (_, i) => polygonCandidate(i, "parcel", [[[0, 0], [10, 0], [10, 10 + i], [0, 0]]], 50 + i)).filter(Boolean);
 assert.equal(capPolygons(many).polygons.length, 3000);
