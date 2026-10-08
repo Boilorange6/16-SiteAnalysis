@@ -23,6 +23,10 @@ export type WindRoseLayout = {
   labelRadius: number;
   titleReserved: WindRoseBox | null;
   legend: WindRoseBox;
+  legendX: number;
+  legendY: number;
+  legendScale: number;
+  legendWidth: number;
   footerReserved: WindRoseBox | null;
   labels: WindRoseBox[];
 };
@@ -30,6 +34,10 @@ export type WindRoseLayout = {
 const INK = "#15171c";
 const MUTED = "#5B606B";
 const FONT = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif';
+const LABEL_RADIUS_OFFSET = 8;
+const LEGEND_EDGE_GAP = 8;
+const LEGEND_CONTENT_WIDTH = 96;
+const LEGEND_HEIGHT = 157;
 /** 인쇄에서도 순서가 유지되는 따뜻한 회색 단일 명도 램프(약한 풍속 → 강한 풍속). */
 const SPEED_BIN_RENDER_COLORS = ["#D8CDBE", "#B9AA9A", "#9B8979", "#76695D", "#453B33"] as const;
 
@@ -44,6 +52,19 @@ const SEASON_LABEL: Record<RoseSeason, string> = { annual: "연간", spring: "�
 
 const box = (x0: number, y0: number, x1: number, y1: number): WindRoseBox => ({ x0, y0, x1, y1 });
 
+const directionLabels = (cx: number, cy: number, rMax: number, frame: boolean): WindRoseBox[] => {
+  const labelRadius = frame ? rMax + LABEL_RADIUS_OFFSET : rMax + 24;
+  return DIR16_NAMES.map((name, dir) => {
+    const angle = (dir * Math.PI) / 8;
+    const x = cx + Math.sin(angle) * labelRadius;
+    const y = cy - Math.cos(angle) * labelRadius;
+    const halfWidth = Math.max(8, name.length * 4.4);
+    return box(x - halfWidth, y - 10, x + halfWidth, y + 10);
+  });
+};
+
+const overlaps = (a: WindRoseBox, b: WindRoseBox): boolean => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+
 /** 낮은 카드(1칸 지도 면)에서는 범례를 줄이고 위로 올려 아래로 잘리지 않게 한다. 슬라이드·단독 도판은 그대로. */
 function fitLegend(height: number, chrome: WindRoseChrome, y0: number) {
   if (chrome !== "tile") return { scale: 1, y: y0 };
@@ -54,30 +75,59 @@ function fitLegend(height: number, chrome: WindRoseChrome, y0: number) {
 /** WindRoseFigure의 실제 장식 위치와 외부 오버레이 예약 자리를 함께 계산한다. */
 export function windRoseLayout(width: number, height: number, chrome: WindRoseChrome = "tile"): WindRoseLayout {
   const frame = chrome !== "standalone";
-  const cx = width * 0.39;
+  let cx = width * 0.39;
   const cy = frame ? height * 0.53 : height * 0.47;
-  const rMax = frame ? Math.min(width * 0.33, height * 0.389) : Math.min(width * 0.33, height * 0.4);
-  const labelRadius = frame ? rMax + 8 : rMax + 24;
-  const legendX = frame && chrome === "slide" ? 16 : frame ? width * 0.66 : width * 0.7;
+  let rMax = frame ? Math.min(width * 0.33, height * 0.389) : Math.min(width * 0.33, height * 0.4);
+  const legendX0 = frame && chrome === "slide" ? 16 : frame ? width * 0.66 : width * 0.7;
   const legendFit = fitLegend(height, chrome, frame && chrome === "slide" ? height - 185 : frame ? height * 0.22 : height * 0.23);
   const legendY = legendFit.y;
   const legendScale = legendFit.scale;
   const legendWidth = frame && chrome === "slide" ? 110 : width * 0.28;
-  const legendHeight = 157;
-  const labels = DIR16_NAMES.map((name, dir) => {
-    const angle = (dir * Math.PI) / 8;
-    const x = cx + Math.sin(angle) * labelRadius;
-    const y = cy - Math.cos(angle) * labelRadius;
-    const halfWidth = Math.max(8, name.length * 4.4);
-    return box(x - halfWidth, y - 10, x + halfWidth, y + 10);
-  });
+  const legendVisualWidth = (chrome === "tile" ? Math.max(legendWidth + 14, LEGEND_CONTENT_WIDTH) : legendWidth + 14) * legendScale;
+  const legendBox = (x: number): WindRoseBox => box(x - 10 * legendScale, legendY - 12 * legendScale, x - 10 * legendScale + legendVisualWidth, legendY + LEGEND_HEIGHT * legendScale);
+  let legendX = legendX0;
+  let labels = directionLabels(cx, cy, rMax, frame);
+  let legend = legendBox(legendX);
+
+  const compactTile = chrome === "tile" && height < LEGEND_HEIGHT * 4;
+  if (compactTile && (labels.some((label) => overlaps(label, legend)) || overlaps(legend, box(cx - rMax, cy - rMax, cx + rMax, cy + rMax)))) {
+    const rightLegendX = width - LEGEND_EDGE_GAP - legendVisualWidth + 10 * legendScale;
+    legendX = rightLegendX;
+    legend = legendBox(legendX);
+    labels = directionLabels(cx, cy, rMax, frame);
+
+    if (labels.some((label) => overlaps(label, legend)) || overlaps(legend, box(cx - rMax, cy - rMax, cx + rMax, cy + rMax))) {
+      const roseLeft = LEGEND_EDGE_GAP;
+      const roseRight = legend.x0 - LEGEND_EDGE_GAP;
+      const roseCenter = (roseLeft + roseRight) / 2;
+      const radialLimits = DIR16_NAMES.map((name, dir) => {
+        const sin = Math.abs(Math.sin((dir * Math.PI) / 8));
+        if (sin < 0.001) return Number.POSITIVE_INFINITY;
+        const halfWidth = Math.max(8, name.length * 4.4);
+        const side = dir < 8 ? roseRight - roseCenter : roseCenter - roseLeft;
+        return (side - halfWidth) / sin - LABEL_RADIUS_OFFSET;
+      });
+      const fittedRMax = Math.min(...radialLimits);
+      if (Number.isFinite(fittedRMax) && fittedRMax > 0) {
+        cx = roseCenter;
+        rMax = Math.min(rMax, fittedRMax);
+        labels = directionLabels(cx, cy, rMax, frame);
+      }
+    }
+  }
+
+  const labelRadius = frame ? rMax + LABEL_RADIUS_OFFSET : rMax + 24;
   return {
     cx,
     cy,
     rMax,
     labelRadius,
     titleReserved: frame ? box(0, 0, Math.min(width * 0.375, 360), Math.min(height * 0.133, 72)) : null,
-    legend: box(legendX - 10 * legendScale, legendY - 12 * legendScale, legendX + (legendWidth + 4) * legendScale, legendY + legendHeight * legendScale),
+    legend,
+    legendX,
+    legendY,
+    legendScale,
+    legendWidth,
     footerReserved: frame ? box(0, Math.max(0, height - 24), width, height) : null,
     labels,
   };
@@ -85,7 +135,7 @@ export function windRoseLayout(width: number, height: number, chrome: WindRoseCh
 
 function WindRoseSvg({ model, width, height, fixed = false, label = "D22 바람장미", season = "annual", chrome = "tile" }: WindRoseFigureProps) {
   const layout = windRoseLayout(width, height, chrome);
-  const { cx, cy, rMax, labelRadius } = layout;
+  const { cx, cy, rMax, labelRadius, legendX, legendY, legendScale, legendWidth } = layout;
   const frame = chrome !== "standalone";
   const observedHours = hoursOf(model);
   const directionPcts = model.dirs.map((bins) => (bins.reduce((sum, value) => sum + (Number.isFinite(value) && value > 0 ? value : 0), 0) / Math.max(1, observedHours)) * 100);
@@ -94,12 +144,6 @@ function WindRoseSvg({ model, width, height, fixed = false, label = "D22 바람�
   const ticks = [0.25, 0.5, 0.75, 1];
   const tickBearing = (3 * Math.PI) / 16;
   const accessibleLabel = season === "annual" ? label : `${label} · ${SEASON_LABEL[season]}`;
-  const legendX = frame && chrome === "slide" ? 16 : frame ? width * 0.66 : width * 0.7;
-  const legendFit = fitLegend(height, chrome, frame && chrome === "slide" ? height - 185 : frame ? height * 0.22 : height * 0.23);
-  const legendY = legendFit.y;
-  const legendScale = legendFit.scale;
-  const legendWidth = frame && chrome === "slide" ? 110 : width * 0.28;
-
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
