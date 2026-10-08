@@ -48,6 +48,7 @@ type Props = {
 
 const PANEL_W = 360;
 const insetOf = (w: number) => (w <= 720 ? 0 : PANEL_W + 2 * OV.edge);
+const CUT_UI_CODES = new Set(["S01", "S02", "S03", "S04", "D22"]);
 
 const A05_RANGE_FIELDS = [
   { key: "year", label: "준공연도", unit: "년" },
@@ -330,7 +331,7 @@ export default function TileDialog({ view, layer, onLayer, included, face, onInc
             <PinnedLabelPanel view={view} labels={pinnedLabels} onToggle={onToggleLabel} onUnpin={onUnpinLabel} onSetAll={onSetAllLabels} onFocusLabel={setFocusedLabelKey} />
             {view.code === "A05" && <A05FilterPanel filter={a05Filter} counts={a05Counts} onChange={onA05Filter} titleId={`a05-${view.tileId}-reaggregate-title`} />}
             {view.code === "S03" && <WindPanel view={view} layerZ={selectedCut?.tile === "S03" ? selectedCut.layerZ : 6} onLayerZ={(layerZ) => onCut?.({ tile: "S03", mode: selectedCut?.tile === "S03" ? selectedCut.mode : "single", layerZ, season: selectedCut?.tile === "S03" ? selectedCut.season : "annual" })} onUploaded={onWindUploaded} />}
-            {!state && onCut && <CutSelect view={view} value={selectedCut} onChange={onCut} />}
+            {onCut && CUT_UI_CODES.has(view.code) && <CutSelect view={view} value={selectedCut} onChange={onCut} />}
             {view.headline && (
               <div className={styles.stat}>
                 <Headline view={view} />
