@@ -12,7 +12,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 globalThis.React = React;
 
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
-const { d01, VWORLD_WMTS_SOURCE } = await import("../../lib/v2/engine/tiles/d01.ts");
+const { d01, VWORLD_WMTS_SOURCE } = await import("../../lib/v2/tile/d01/engine.ts");
 const { MAX_Z } = await import("../../lib/v2/tiles.ts");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { toTileView, sourceLineOf } = await import("../../lib/v2/ui/tile-view.ts");

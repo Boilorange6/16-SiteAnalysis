@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 const { buildEngineFixture, CENTER } = await import("./engine-fixture.mjs");
 const { readManifest, openDataFile } = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
-const { s03 } = await import("../../lib/v2/engine/tiles/s03.ts");
+const { s03 } = await import("../../lib/v2/tile/s03/engine.ts");
 
 function contextFor(dataDir, manifest, analysisId = "s03-test") {
   const core = openDataFile(dataDir, manifest, "core");

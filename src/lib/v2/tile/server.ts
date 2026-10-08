@@ -1,41 +1,40 @@
 import type { TileResult } from "../tile-result";
-import { a01 } from "../engine/tiles/a01";
-import { a02 } from "../engine/tiles/a02";
-import { a03 } from "../engine/tiles/a03";
-import { a04 } from "../engine/tiles/a04";
+import { a01 } from "./a01/engine";
+import { a02 } from "./a02/engine";
+import { a03 } from "./a03/engine";
+import { a04 } from "./a04/engine";
 import { a05 } from "./a05/engine";
 import { a06 } from "./a06/engine";
-import { a07 } from "../engine/tiles/a07";
-import { a08 } from "../engine/tiles/a08";
-import { a09 } from "../engine/tiles/a09";
-import { a10 } from "../engine/tiles/a10";
-import { a11 } from "../engine/tiles/a11";
-import { a12 } from "../engine/tiles/a12";
-import { d01 } from "../engine/tiles/d01";
-import { d02 } from "../engine/tiles/d02";
-import { d03 } from "../engine/tiles/d03";
-import { d04 } from "../engine/tiles/d04";
-import { d08 } from "../engine/tiles/d08";
-import { d09 } from "../engine/tiles/d09";
-import { d11 } from "../engine/tiles/d11";
-import { d12 } from "../engine/tiles/d12";
-import { d13 } from "../engine/tiles/d13";
-import { d15 } from "../engine/tiles/d15";
-import { d16 } from "../engine/tiles/d16";
-import { d17 } from "../engine/tiles/d17";
-import { d18 } from "../engine/tiles/d18";
-import { d19 } from "../engine/tiles/d19";
-import { d20 } from "../engine/tiles/d20";
-import { d22 } from "../engine/tiles/d22";
-import { d23 } from "../engine/tiles/d23";
-import { d24 } from "../engine/tiles/d24";
-import { d25 } from "../engine/tiles/d25";
-import { d26 } from "../engine/tiles/d26";
-import { d27 } from "../engine/tiles/d27";
-import { d28 } from "../engine/tiles/d28";
+import { a07 } from "./a07/engine";
+import { a08 } from "./a08/engine";
+import { a09 } from "./a09/engine";
+import { a10 } from "./a10/engine";
+import { a11 } from "./a11/engine";
+import { a12 } from "./a12/engine";
+import { d01 } from "./d01/engine";
+import { d02 } from "./d02/engine";
+import { d03 } from "./d03/engine";
+import { d04 } from "./d04/engine";
+import { d08 } from "./a12/d08";
+import { d09 } from "./a04/d09";
+import { d11 } from "./d11/engine";
+import { d12 } from "./d12/engine";
+import { d13 } from "./d13/engine";
+import { d15 } from "./d15/engine";
+import { d16 } from "./d16/engine";
+import { d17 } from "./d17/engine";
+import { d18 } from "./d18/engine";
+import { d19 } from "./d19/engine";
+import { d20 } from "./d19/d20";
+import { d22 } from "./d22/engine";
+import { d23 } from "./a09/d23";
+import { d24 } from "./a10/d24";
+import { d25 } from "./a07/d25";
+import { d26 } from "./a02/d26";
+import { d27 } from "./a11/d27";
+import { d28 } from "./d28/engine";
 import { mergeTileResults, retargetTile, type MergeOptions } from "../engine/tiles/merge";
-import { s01 } from "../engine/tiles/s01";
-import { s04 } from "../engine/tiles/s04";
+import { s01 } from "./s01/engine";
 import { d05ServerModule } from "./d05/server";
 import type { TileCompute, TileServerModule } from "./types";
 
@@ -103,7 +102,7 @@ export const TILE_SERVER_MODULES: TileServerModule[] = [
   directModule("S01", s01),
   directModule("S02", deferredHeavyTile),
   directModule("S03", deferredHeavyTile),
-  directModule("S04", s04),
+  directModule("S04", deferredHeavyTile),
 ];
 
 export const TILES: Array<[code: string, compute: TileCompute]> = TILE_SERVER_MODULES.map(({ code, compute }) => [code, compute]);

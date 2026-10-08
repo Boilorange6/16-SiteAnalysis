@@ -12,8 +12,8 @@ const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { buildingRows } = await import("../../lib/v2/engine/tiles/buildings-shared.ts");
 const { hitPoint } = await import("../../lib/v2/engine/tiles/common.ts");
 const { localGrid, gridQuantiles, bandPolygons } = await import("../../lib/v2/engine/tiles/raster-grid.ts");
-const { kdeBandPolygons, kdeGrid } = await import("../../lib/v2/engine/tiles/d16-kde.ts");
-const { d16, gfaMetrics } = await import("../../lib/v2/engine/tiles/d16.ts");
+const { kdeBandPolygons, kdeGrid } = await import("../../lib/v2/tile/d16/kde.ts");
+const { d16, gfaMetrics } = await import("../../lib/v2/tile/d16/engine.ts");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 

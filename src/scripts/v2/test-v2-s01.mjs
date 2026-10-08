@@ -8,7 +8,7 @@ const { buildEngineFixture, CENTER } = await import("./engine-fixture.mjs");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { SCENE_VERSION } = await import("../../lib/v2/scene.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
-const { s01 } = await import("../../lib/v2/engine/tiles/s01.ts");
+const { s01 } = await import("../../lib/v2/tile/s01/engine.ts");
 
 const metric = (tile, id) => tile.metrics.find((entry) => entry.id === id);
 

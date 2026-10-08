@@ -16,7 +16,7 @@ const { buildSchoolZones, readSchoolZoneGeoJson, SCHOOL_ZONE_RIGHTS } = await im
 const { csvRecords } = await import("../../lib/v2/a0/measure.ts");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
-const { a02 } = await import("../../lib/v2/engine/tiles/a02.ts");
+const { a02 } = await import("../../lib/v2/tile/a02/engine.ts");
 const { TILES } = await import("../../lib/v2/engine/run.ts");
 const a02WithSchoolZones = TILES.find(([code]) => code === "A02")[1];
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");

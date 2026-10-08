@@ -14,7 +14,7 @@ import { computeWind2D, rotateFromWindFrame } from "../sim/lbm2d";
 import { pointInRings, ringBBox, type XY } from "../sim/shadow";
 import { demReader } from "./tiles/terrain-shared";
 import { assumedOneFloorCount, assumedOneFloorLimitation, buildingRetirementLimitations, buildingRows, buildingsReady, BUILDING_SOURCES, type BuildingRow } from "./tiles/buildings-shared";
-import { prevailingBySeason, type PrevailingDirection } from "./tiles/d22";
+import { prevailingBySeason, type PrevailingDirection } from "../tile/d22/engine";
 import { est, missing, obs } from "./tiles/common";
 
 export const WIND_SEASONS = ["annual", "spring", "summer", "autumn", "winter"] as const;

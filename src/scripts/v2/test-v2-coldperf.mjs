@@ -9,7 +9,7 @@ const { readManifest } = await import("../../lib/v2/data/manifest.ts");
 const { acquireDataFile, closeDataFilePool, releaseDataFile } = await import("../../lib/v2/data/file-pool.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { buildingRows } = await import("../../lib/v2/engine/tiles/buildings-shared.ts");
-const { d16 } = await import("../../lib/v2/engine/tiles/d16.ts");
+const { d16 } = await import("../../lib/v2/tile/d16/engine.ts");
 
 const dataDir = mkdtempSync(join(tmpdir(), "v2-coldperf-"));
 try {

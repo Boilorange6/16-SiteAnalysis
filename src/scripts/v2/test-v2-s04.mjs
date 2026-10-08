@@ -7,7 +7,7 @@ import { inflateRawSync } from "node:zlib";
 
 import { buildEngineFixture, CENTER } from "./engine-fixture.mjs";
 import { EngineContext } from "../../lib/v2/engine/context.ts";
-import { RASTER_OFFSET, RASTER_SCALE, rawUtci, s04, UTCI_HOURS } from "../../lib/v2/engine/tiles/s04.ts";
+import { RASTER_OFFSET, RASTER_SCALE, rawUtci, s04, UTCI_HOURS } from "../../lib/v2/tile/s04/engine.ts";
 import { cacheEngineVersion, ENGINE_VERSION } from "../../lib/v2/engine/tiles/common.ts";
 import { toTileView } from "../../lib/v2/ui/tile-view.ts";
 import { encodeRaster } from "../../lib/v2/raster-store.ts";

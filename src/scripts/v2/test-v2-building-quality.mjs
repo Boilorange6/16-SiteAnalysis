@@ -12,8 +12,8 @@ const { insertRelease } = await import("../../lib/v2/ingest/build.ts");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { buildScene } = await import("../../lib/v2/engine/scene.ts");
-const { d04 } = await import("../../lib/v2/engine/tiles/d04.ts");
-const { s01 } = await import("../../lib/v2/engine/tiles/s01.ts");
+const { d04 } = await import("../../lib/v2/tile/d04/engine.ts");
+const { s01 } = await import("../../lib/v2/tile/s01/engine.ts");
 const {
   BUILDING_SOURCES,
   buildingRetirementLimitations,

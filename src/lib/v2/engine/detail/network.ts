@@ -5,7 +5,7 @@ import { sourceLineOf } from "../../ui/tile-view";
 import { catalogEntry } from "../../ui/tile-catalog";
 import { lookupParcelPoints } from "../../data/parcels";
 import { hitPoint } from "../tiles/common";
-import { monthsBefore } from "../tiles/a07";
+import { monthsBefore } from "../../tile/a07/engine";
 import { distanceToLineM, lineLengthInCircle } from "../tiles/geo";
 import { walkField, walkMinutes } from "../tiles/walk-shared";
 import { detailDisplayValue } from "../../ui/detail-labels";

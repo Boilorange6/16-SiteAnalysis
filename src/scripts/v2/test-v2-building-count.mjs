@@ -9,7 +9,7 @@ const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { toUtmk } = await import("../../lib/v2/crs.ts");
 const { buildingRows, geometryCentroid, isCounted } = await import("../../lib/v2/engine/tiles/buildings-shared.ts");
-const { d02 } = await import("../../lib/v2/engine/tiles/d02.ts");
+const { d02 } = await import("../../lib/v2/tile/d02/engine.ts");
 
 // 순수 함수: 정사각형 중심, 홀이 있으면 홀 반대쪽으로 치우친다.
 assert.deepEqual(geometryCentroid({ type: "Polygon", coordinates: [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]] }), [5, 5]);
