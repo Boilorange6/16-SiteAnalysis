@@ -1,7 +1,7 @@
 import type { TileResult } from "../../tile-result";
 import { mergeTileResults, retargetTile, type MergeOptions } from "../../engine/tiles/merge";
-import { d06 } from "../d06/engine";
-import { d07 } from "../d07/engine";
+import { d06 } from "./d06";
+import { d07 } from "./d07";
 import { d05 } from "./engine";
 import type { TileCompute, TileServerModule } from "../types";
 

@@ -67,10 +67,9 @@ type LayeredMapModel = MapModel & {
   rasterOptions?: RasterRef[];
 };
 
-const BASE_EXCLUDES: Record<string, string[]> = {};
-
+/** 기본 보기에서 빼는 전환 레이어 — 흡수한 타일의 레이어가 기본 보기에 겹쳐 그려지지 않게 (타일 모듈 layers.baseExcludes) */
 function baseExcludesFor(code: string): readonly string[] {
-  return tileClientModuleFor(code)?.layers?.baseExcludes ?? BASE_EXCLUDES[code] ?? [];
+  return tileClientModuleFor(code)?.layers?.baseExcludes ?? [];
 }
 
 export function filterMapForLayer(model: MapModel | null, code: string, layerId: string): LayeredMapModel | null {

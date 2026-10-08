@@ -486,7 +486,7 @@ function d04HeadlineMetric(metrics: TileResult["metrics"]): HeadlineMetric | nul
 }
 
 function policyMetric(r: TileResult, metrics: TileResult["metrics"]): HeadlineMetric | null {
-  const policy = tileClientModuleFor(r.tileCode)?.headline ?? BASE_HEADLINE_POLICY[r.tileCode as TileCode] ?? HEADLINE_POLICY[r.tileCode as TileCode];
+  const policy = HEADLINE_POLICY[r.tileCode as TileCode];
   const exact = policy?.ids?.map((id) => metrics.find((metric) => metric.id === id)).filter((metric): metric is HeadlineMetric => metric !== undefined) ?? [];
   const maxPrefix = policy?.maxPrefix;
   if (maxPrefix) {
