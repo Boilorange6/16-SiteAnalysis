@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
+import { Fragment, memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import SummaryCard from "@/components/v2/summary-card";
 import TileCard, { type TileCardAction } from "@/components/v2/tile-card";
 import TileDialog from "@/components/v2/tile-dialog";
@@ -8,7 +8,7 @@ import { useTileDrag } from "@/components/v2/use-tile-drag";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "@/components/v2/map-box";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import styles from "@/components/v2/board.module.css";
-import { SUMMARY_ID, boardReducer, boardStorageKey, demoFinished, demoPhase, initBoard, rebaseSnapshotAnalysisId, reportPages, serializeBoardState, viewOf, type CardFace, type PinnedLabel } from "@/lib/v2/ui/board-state";
+import { SUMMARY_ID, boardReducer, boardStorageKey, demoFinished, demoPhase, initBoard, rebaseSnapshotAnalysisId, reportPages, serializeBoardState, viewOf, type CardFace, type GridColumns, type PinnedLabel } from "@/lib/v2/ui/board-state";
 import { buildReportPlan, complexCounts, reportFileName, sourcePageCountForViews } from "@/lib/v2/report/report-plan";
 import { downloadBytes, exportFileName, EXPORT_MIME, DAE_MIME } from "@/lib/v2/export/download";
 import { DEFAULT_CALLOUT_MODE } from "@/lib/v2/ui/callout-layout";
@@ -32,6 +32,7 @@ import SitePicker from "@/components/v2/site-picker";
 import type { SiteInput } from "@/lib/v2/site";
 
 const UNDO_LABEL ={ order: "옮김", size: "크기 바꿈", columns: "열 수 바꿈", remove: "삭제됨", add: "더함" } as const;
+const GRID_COLUMN_OPTIONS: GridColumns[] = [2, 3, 4, 5, 6];
 const DEMO_START_LABEL = "분석 데모";
 const EMPTY_PINNED_LABELS: PinnedLabel[] = [];
 
@@ -155,6 +156,29 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
   const [note, setNote] = useState(""); // 스크린리더 안내(aria-live)
   const [basemap, setBasemap] = useState<BasemapChoice>("white"); // 보드 상태(서버에 저장하지 않음). 화면과 PPT가 같이 따른다
   const gridRef = useRef<HTMLDivElement>(null);
+  const [gridLayout, setGridLayout] = useState({ columns: 4, rowHeight: 280 });
+  useEffect(() => {
+    const grid = gridRef.current;
+    if (!grid) return;
+    const update = () => {
+      const width = grid.clientWidth;
+      if (width <= 0) return;
+      const gap = 16;
+      const capacity = Math.max(1, Math.floor((width + gap) / (260 + gap)));
+      const columns = Math.max(1, Math.min(board.columns, capacity));
+      const cellWidth = (width - (columns - 1) * gap) / columns;
+      const rowHeight = Math.max(240, Math.round(cellWidth * (5 / 6)));
+      setGridLayout((current) => current.columns === columns && current.rowHeight === rowHeight ? current : { columns, rowHeight });
+    };
+    update();
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(update);
+      observer.observe(grid);
+      return () => observer.disconnect();
+    }
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [board.columns]);
   const { drag, order: shown, start, floatStyle } = useTileDrag(board.order, gridRef, (id, from, to) => {
     dispatch({ type: "reorder", from, to });
     setNote(`${views.get(id)?.title} 타일을 ${to + 1}번째로 옮김`);
@@ -521,6 +545,16 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
           {editing ? (
             <>
               <span className={styles.editHint}>순서를 바꾸거나 빼세요. 순서는 보고서 순서가 됩니다.</span>
+              <span className={styles.gridControls}>
+                <span className={styles.segLabel}>열</span>
+                <span className={styles.seg} role="group" aria-label="보드 열 수">
+                  {GRID_COLUMN_OPTIONS.map((columns) => (
+                    <button key={columns} type="button" aria-pressed={board.columns === columns} onClick={() => dispatch({ type: "columns", columns })}>
+                      {columns}
+                    </button>
+                  ))}
+                </span>
+              </span>
               {stackSelection.length >= 2 && (
                 <button
                   type="button"
@@ -728,7 +762,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
 
         {controls}
 
-        <div className={styles.grid} id="v2-board-grid" ref={gridRef} tabIndex={-1}>
+        <div className={styles.grid} id="v2-board-grid" ref={gridRef} tabIndex={-1} data-grid-cols={gridLayout.columns} style={{ "--grid-cols": gridLayout.columns, "--grid-row-height": `${gridLayout.rowHeight}px` } as CSSProperties}>
           <SummaryCard view={summary} face={editing ? "summary" : viewOf(board, SUMMARY_ID)} onFace={onSummaryFace} />
           {visibleShown.map((id, i) => {
             const view = views.get(id)!;
@@ -738,7 +772,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
             return (
               <Fragment key={id}>
                 {dragged && (
-                  <div key="ph" className={`${styles.placeholder} ${size === 2 ? styles.span2 : ""}`} data-placeholder>
+                  <div key="ph" className={`${styles.placeholder} ${size === 2 ? styles.span2 : size === 4 ? styles.span4 : ""}`} data-placeholder>
                     여기에 놓기
                   </div>
                 )}
