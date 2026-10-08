@@ -1,4 +1,4 @@
-import React, { memo } from "react";
+import React, { memo, useEffect, useRef, useState } from "react";
 import { DIR16_NAMES, roseWedges, SPEED_BIN_LABELS, type RoseModel } from "@/lib/v2/ui/wind-rose";
 import type { RoseSeason } from "@/lib/v2/tile-result";
 
@@ -74,7 +74,7 @@ export function windRoseLayout(width: number, height: number, chrome: WindRoseCh
   };
 }
 
-function WindRoseFigure({ model, width, height, fixed = false, label = "D22 바람장미", season = "annual", chrome = "tile" }: WindRoseFigureProps) {
+function WindRoseSvg({ model, width, height, fixed = false, label = "D22 바람장미", season = "annual", chrome = "tile" }: WindRoseFigureProps) {
   const layout = windRoseLayout(width, height, chrome);
   const { cx, cy, rMax, labelRadius } = layout;
   const frame = chrome !== "standalone";
@@ -163,6 +163,34 @@ function WindRoseFigure({ model, width, height, fixed = false, label = "D22 바�
       )}
     </svg>
   );
+}
+
+function ResponsiveWindRoseFigure(props: WindRoseFigureProps) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ width: props.width, height: props.height });
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const read = () => {
+      const width = Math.max(1, Math.round(host.clientWidth || props.width));
+      const height = Math.max(1, Math.round(host.clientHeight || props.height));
+      setSize((current) => current.width === width && current.height === height ? current : { width, height });
+    };
+    read();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(read);
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, [props.width, props.height]);
+  return (
+    <div ref={hostRef} style={{ width: "100%", height: "100%" }}>
+      <WindRoseSvg {...props} width={size.width} height={size.height} fixed={false} />
+    </div>
+  );
+}
+
+function WindRoseFigure(props: WindRoseFigureProps) {
+  return props.fixed ? <WindRoseSvg {...props} /> : <ResponsiveWindRoseFigure {...props} />;
 }
 
 const MemoWindRoseFigure = memo(WindRoseFigure);

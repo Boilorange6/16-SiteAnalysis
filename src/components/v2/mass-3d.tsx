@@ -142,7 +142,7 @@ function Fallback({ props, note }: { props: Mass3dProps; note: string }) {
 }
 
 function Mass3D({ mode = "image", ...props }: Mass3dProps) {
-  const key = useMemo(() => inputKey({ ...props, mode }), [props.scene, props.camera, props.width, props.height, props.exploded, props.quality, mode]);
+  const imageRef = useRef<HTMLDivElement>(null);
   const liveRef = useRef<HTMLDivElement>(null);
   const liveMountRef = useRef<{ update: (input: Mass3dProps) => void; dispose: () => void } | null>(null);
   const latestPropsRef = useRef(props);
@@ -150,7 +150,27 @@ function Mass3D({ mode = "image", ...props }: Mass3dProps) {
   const liveSceneKey = `${props.scene?.analysisId ?? "empty"}:${props.scene?.manifestHash ?? ""}`;
   const [image, setImage] = useState<string | null>(null);
   const [phase, setPhase] = useState<"loading" | "ready" | "fallback" | "error">("loading");
+  const [imageSize, setImageSize] = useState({ width: props.width, height: props.height });
   const [liveSize, setLiveSize] = useState({ width: props.width, height: props.height });
+
+  const renderProps = mode === "image" ? { ...props, width: imageSize.width, height: imageSize.height } : props;
+  const key = useMemo(() => inputKey({ ...renderProps, mode }), [renderProps.scene, renderProps.camera, renderProps.width, renderProps.height, renderProps.exploded, renderProps.quality, mode]);
+
+  useEffect(() => {
+    if (mode !== "image" || !imageRef.current) return;
+    const node = imageRef.current;
+    const updateSize = () => {
+      setImageSize({
+        width: Math.max(1, node.clientWidth || props.width),
+        height: Math.max(1, node.clientHeight || props.height),
+      });
+    };
+    updateSize();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [mode, props.width, props.height]);
 
   useEffect(() => {
     if (mode !== "live" || !liveRef.current) return;
@@ -176,7 +196,7 @@ function Mass3D({ mode = "image", ...props }: Mass3dProps) {
     void loadRuntime()
       .then(async (runtime) => {
         if (!runtime.isMass3dWebGLAvailable()) throw new Error("WebGL을 사용할 수 없습니다.");
-        return runtime.renderMass3dPng({ ...props, label: props.label ?? "S01 3D 매스" });
+        return runtime.renderMass3dPng({ ...renderProps, label: renderProps.label ?? "S01 3D 매스" });
       })
       .then((dataUrl) => {
         if (!active) return;
@@ -220,6 +240,27 @@ function Mass3D({ mode = "image", ...props }: Mass3dProps) {
   }, [key, mode]);
 
   const shellStyle = { width: props.fixed ? props.width : "100%", height: props.fixed ? props.height : "100%" } as const;
+  if (mode === "image") {
+    return (
+      <div ref={imageRef} className={styles.mass3dRoot} style={shellStyle} aria-busy={phase === "loading"}>
+        {phase === "fallback" || phase === "error" ? (
+          <Fallback props={{ ...renderProps, mode }} note="WebGL을 사용할 수 없어 2D 대체 그림을 표시합니다." />
+        ) : image ? (
+          <img
+            src={image}
+            alt={props.label ?? "S01 3D 매스"}
+            width={props.fixed ? props.width : undefined}
+            height={props.fixed ? props.height : undefined}
+            className={styles.mass3dImage}
+            style={{ width: "100%", height: "100%", display: "block" }}
+            decoding="async"
+          />
+        ) : (
+          <span style={statusStyle()} role="status">3D 매스를 불러오는 중…</span>
+        )}
+      </div>
+    );
+  }
   if (phase === "fallback" || phase === "error") {
     return <Fallback props={{ ...props, mode }} note="WebGL을 사용할 수 없어 2D 대체 그림을 표시합니다." />;
   }
@@ -232,19 +273,6 @@ function Mass3D({ mode = "image", ...props }: Mass3dProps) {
         {props.scene?.ground.kind === "flat" && <span className={styles.mass3dFlatNote} aria-hidden="true">지형 미반영</span>}
         {phase === "loading" && <span style={statusStyle()} role="status">3D 매스를 불러오는 중…</span>}
       </div>
-    );
-  }
-  if (image) {
-    return (
-      <img
-        src={image}
-        alt={props.label ?? "S01 3D 매스"}
-        width={props.fixed ? props.width : undefined}
-        height={props.fixed ? props.height : undefined}
-        className={styles.mass3dImage}
-        style={shellStyle}
-        decoding="async"
-      />
     );
   }
   return (

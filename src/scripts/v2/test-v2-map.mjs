@@ -44,6 +44,9 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   const [ex] = P.makeProjector(vp)(127.1546 + dLng, 37.5556);
   near(ex - 400, 1000 / P.metersPerPixel(37.5556, vp.zoom), 0.5);
   assert.ok(P.zoomForRadius(37.5, 500, 500) > P.zoomForRadius(37.5, 3000, 500), "반경이 작을수록 더 확대");
+  const oneCell = P.viewportFor([127.1, 37.55], 800, 336, 196);
+  const fourCell = P.viewportFor([127.1, 37.55], 800, 672, 492);
+  assert.ok(fourCell.zoom > oneCell.zoom, "4칸 지도는 실측 높이에 맞춰 더 확대");
 }
 
 // ── 타일 목록: 그림을 빈틈없이 덮고 개수가 작다 ──
