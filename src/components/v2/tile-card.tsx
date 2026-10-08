@@ -127,8 +127,8 @@ export function Headline({ view, small }: { view: TileView; small?: boolean }) {
 export function RowList({ rows, className }: { rows: TileView["rows"]; className?: string }) {
   return (
     <ul className={className ?? styles.rows}>
-      {rows.map((r) => (
-        <li key={r.label}>
+      {rows.map((r, index) => (
+        <li key={`${r.label}-${index}`}>
           <span>{r.label}</span>
           <span>
             {r.value}
@@ -192,7 +192,7 @@ export function FaceChart({ view }: { view: TileView }) {
   return (
     <div className={styles.faceChart} style={{ background: `${view.color}10` }} role="img" aria-label={`${view.title} 구성비: ${chart.map((c) => `${c.label} ${valueText(c)}`).join(", ")}`}>
       {chart.map((c, i) => (
-        <div key={c.label} className={styles.fcRow}>
+        <div key={`${c.label}-${i}`} className={styles.fcRow}>
           <span className={styles.fcLabel}>{c.label}</span>
           <span className={styles.fcTrack}>
             <i style={{ width: `${(c.value / max) * 100}%`, background: STRIP_COLORS[i % STRIP_COLORS.length] }} />

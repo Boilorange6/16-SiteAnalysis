@@ -91,6 +91,8 @@ try {
 
   for (const view of [d05Tile].map(toTileView)) {
     assert.ok(!/도보|\d\s*분|종합/.test(JSON.stringify(view)));
+    assert.equal(new Set(view.rows.map((row, index) => `${row.label}-${index}`)).size, view.rows.length, "D05 행 key는 반복 라벨이어도 렌더 순번으로 고유");
+    assert.equal(new Set((view.chart ?? []).map((item, index) => `${item.label}-${index}`)).size, view.chart.length, "D05 구성비 행 key는 반복 라벨이어도 렌더 순번으로 고유");
   }
 } finally {
   ctx.close();
