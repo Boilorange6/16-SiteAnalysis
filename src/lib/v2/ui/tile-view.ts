@@ -218,17 +218,52 @@ export function viewWithOnlyRaster(view: TileView, rasterName: string, note: str
   const options = model.rasterOptions ?? model.rasters ?? [];
   const selected = options.find((ref) => ref.name === rasterName);
   if (!selected) return view;
+  const s02Date = view.code === "S02" ? s02RasterDate(rasterName) : null;
+  const s02Label = s02Date ? S02_DATE_LABEL[s02Date] : null;
+  const s02Metric = s02Label ? view.rows.find((row) => row.label === `${s02Label} 평균 일조시간`) : undefined;
+  const s02MapNote = s02Label
+    ? `${s02Label}${selected.palette === "shade_flow" ? " 그림자 흐름" : " 일조시간"} · 계절 레이어 · 건물·지형 그림자 반영`
+    : null;
   const nextMap: RasterMapModel = {
     ...model,
     rasters: [selected],
     defaultRaster: selected.name,
-    ...(note && !model.notes.includes(note) ? { notes: [...model.notes, note] } : {}),
+    ...(s02MapNote
+      ? { notes: model.notes.map((existing) => existing.startsWith("동지 기본 일조시간 ·") ? s02MapNote : existing) }
+      : note && !model.notes.includes(note) ? { notes: [...model.notes, note] } : {}),
   };
   return {
     ...view,
-    notes: note ? [note, ...view.notes.filter((existing) => existing !== note)] : view.notes,
+    ...(s02Label && s02Metric
+      ? {
+          headline: { value: s02Metric.value, label: s02Metric.label, aux: s02Metric.aux, tag: s02Metric.tag },
+          headlineMetricId: `mean_sun_h_${s02Date}`,
+          sentence: view.sentence?.replace(/^동지 /, `${s02Label} `),
+        }
+      : {}),
+    notes: note
+      ? [
+          note,
+          ...(s02MapNote ? [s02MapNote] : []),
+          ...view.notes.filter((existing) => existing !== note && (!s02MapNote || !existing.startsWith("동지 기본 일조시간 ·"))),
+        ]
+      : view.notes,
     map: nextMap,
   };
+}
+
+const S02_DATE_LABEL = {
+  spring: "춘분",
+  summer: "하지",
+  autumn: "추분",
+  winter: "동지",
+  analysis: "분석일",
+} as const;
+type S02RasterDate = keyof typeof S02_DATE_LABEL;
+
+function s02RasterDate(name: string): S02RasterDate | null {
+  const match = /^(?:sun_hours|shade)_(spring|summer|autumn|winter|analysis)(?:_|$)/.exec(name);
+  return match?.[1] && match[1] in S02_DATE_LABEL ? match[1] as S02RasterDate : null;
 }
 
 const STATUS_TEXT: Partial<Record<TileResult["status"], string>> = {

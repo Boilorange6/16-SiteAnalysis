@@ -5,7 +5,7 @@ import JSZip from "jszip";
 const { GODEOK_RESULTS, GODEOK_SUMMARY } = await import("../../lib/v2/ui/fixtures/godeok.ts");
 const { boardReducer, defaultCutForCode, initBoard, reportPages } = await import("../../lib/v2/ui/board-state.ts");
 const { toSummaryView, toTileView } = await import("../../lib/v2/ui/tile-view.ts");
-const { cutCandidates } = await import("../../lib/v2/ui/cut-selection.ts");
+const { cutCandidates, viewForCut } = await import("../../lib/v2/ui/cut-selection.ts");
 const { buildReportPlan } = await import("../../lib/v2/report/report-plan.ts");
 const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
 
@@ -66,6 +66,23 @@ const s02Rasters = [
   ["09", "13", "15"].map((hour) => raster(`shade_summer_h${hour}`)),
 );
 const s02 = result("S02", s02Rasters);
+const s02Metric = (id, label, value, unit) => ({ ...s02.metrics[0], id, label, value, unit, status: "estimated" });
+s02.metrics = [
+  s02Metric("mean_sun_h_winter", "동지 평균 일조시간", 4.7, "시간"),
+  s02Metric("mean_sun_h_spring", "춘분 평균 일조시간", 7.2, "시간"),
+  s02Metric("mean_sun_h_summer", "하지 평균 일조시간", 8.1, "시간"),
+  s02Metric("mean_sun_h_autumn", "추분 평균 일조시간", 6.8, "시간"),
+  s02Metric("share_cont2h_0915_pct_spring", "춘분 진태양시 09~15 연속 2시간 확보", 91.2, "%"),
+  s02Metric("share_total4h_0816_pct_spring", "춘분 진태양시 08~16 총 4시간 확보", 88.4, "%"),
+];
+s02.judgment = { ...s02.judgment, sentence: "동지 반경 안 지면의 평균 일조 4.7 시간 → 추정" };
+const s02View = toTileView(s02);
+const s02SpringView = viewForCut(s02View, { tile: "S02", mode: "single", date: "spring" });
+assert.equal(s02SpringView.map?.defaultRaster, "sun_hours_spring");
+assert.equal(s02SpringView.headline?.label, "춘분 평균 일조시간");
+assert.equal(s02SpringView.headline?.value, "7.2시간");
+assert.match(s02SpringView.notes[1] ?? "", /^춘분 일조시간 · 계절 레이어/);
+assert.match(s02SpringView.sentence ?? "", /^춘분 반경 안/);
 const s02Hours = planFor(s02, { tile: "S02", mode: "hours3", date: "summer" });
 const s02Sheet = s02Hours.plan.find((slide) => slide.kind === "sheet");
 assert.equal(s02Sheet?.grid, "3x1");

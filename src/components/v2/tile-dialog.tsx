@@ -9,7 +9,7 @@ import type { CameraPreset, CutSpec, PinnedLabel } from "@/lib/v2/ui/board-state
 import { faceLabel, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
 import { BadgeList, CutSelect, FaceSelect, Headline, RowList, SourceStrip, Stage, StatusPlate, TitleChip } from "./tile-card";
 import { LayerSelect } from "./layer-select";
-import { normalizedCut, viewForCut } from "@/lib/v2/ui/cut-selection";
+import { cutOwnsRaster, normalizedCut, viewForCut } from "@/lib/v2/ui/cut-selection";
 import { downloadBytes, EXPORT_MIME } from "@/lib/v2/export/download";
 import WindPanel from "./wind-panel";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "./map-box";
@@ -272,6 +272,8 @@ export default function TileDialog({ view, layer, onLayer, included, face, onInc
 
   const state = view.headline === null;
   const selectedCut = normalizedCut(view, cut);
+  const cutOwnsS02 = cutOwnsRaster(view, selectedCut);
+  const displayView = cutOwnsS02 ? viewForCut(view, selectedCut!) : view;
   const titleId = `dlg-${view.tileId}`;
   const saveTile = async (kind: "png" | "svg" | "plate") => {
     if (!address || !analysisDate || state || (!view.map && !view.mass && !view.rose)) return;
@@ -327,17 +329,17 @@ export default function TileDialog({ view, layer, onLayer, included, face, onInc
           </div>
           {panelTab === "sources" ? <SourcePanel view={view} /> : <>
             <BadgeList badges={view.badges} />
-            <LayerSelect view={view} value={layer} onChange={onLayer} />
+            {!cutOwnsS02 && <LayerSelect view={view} value={layer} onChange={onLayer} />}
             <PinnedLabelPanel view={view} labels={pinnedLabels} onToggle={onToggleLabel} onUnpin={onUnpinLabel} onSetAll={onSetAllLabels} onFocusLabel={setFocusedLabelKey} />
             {view.code === "A05" && <A05FilterPanel filter={a05Filter} counts={a05Counts} onChange={onA05Filter} titleId={`a05-${view.tileId}-reaggregate-title`} />}
             {view.code === "S03" && <WindPanel view={view} layerZ={selectedCut?.tile === "S03" ? selectedCut.layerZ : 6} onLayerZ={(layerZ) => onCut?.({ tile: "S03", mode: selectedCut?.tile === "S03" ? selectedCut.mode : "single", layerZ, season: selectedCut?.tile === "S03" ? selectedCut.season : "annual" })} onUploaded={onWindUploaded} />}
             {onCut && CUT_UI_CODES.has(view.code) && <CutSelect view={view} value={selectedCut} onChange={onCut} />}
             {view.headline && (
               <div className={styles.stat}>
-                <Headline view={view} />
+                <Headline view={displayView} />
               </div>
             )}
-            {view.sentence && <p className={styles.dlgSentence}>{view.sentence}</p>}
+            {displayView.sentence && <p className={styles.dlgSentence}>{displayView.sentence}</p>}
             {view.grades.length > 0 ? (
             <div className={styles.gradeList}>
               <div className={styles.gradeChips}>
@@ -410,10 +412,10 @@ export default function TileDialog({ view, layer, onLayer, included, face, onInc
               </label>
             </div>
             )}
-            {view.rows.length > 0 && <RowList rows={view.rows} className={styles.list} />}
-            {view.notes.length > 0 && (
+            {displayView.rows.length > 0 && <RowList rows={displayView.rows} className={styles.list} />}
+            {displayView.notes.length > 0 && (
             <ul className={styles.notes}>
-              {view.notes.map((n) => (
+              {displayView.notes.map((n) => (
                 <li key={n}>{n}</li>
               ))}
             </ul>

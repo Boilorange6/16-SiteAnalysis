@@ -80,6 +80,11 @@ export function cutReady(view: TileView, cut: CutSpec): boolean {
   }
 }
 
+/** 준비된 S02 컷은 지도 래스터와 표현 상태를 함께 소유한다. */
+export function cutOwnsRaster(view: TileView, cut: CutSpec | null): boolean {
+  return !!cut && cut.tile === "S02" && cutReady(view, cut);
+}
+
 const dateCandidates = (mode: "single" | "hours3" | "flow"): CutCandidate[] => (["spring", "summer", "autumn", "winter", "analysis"] as SunDateKey[]).map((date) => ({
   cut: { tile: "S02", mode, date },
   label: `${mode === "single" ? "단일" : mode === "hours3" ? "정시 3컷" : "그림자 흐름"} · ${CUT_DATE_LABEL[date]}`,
