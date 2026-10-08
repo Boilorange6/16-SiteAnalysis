@@ -77,44 +77,8 @@ export type TileView = {
 
 export type HeadlinePolicy = TileHeadlinePolicy;
 
-/**
- * 타일별 핵심값 정책. 확인율·설정값·자료 채움률은 배지/행으로 남기고,
- * 화면 첫 값은 타일의 결론을 설명하는 값으로 고정한다.
- */
-const BASE_HEADLINE_POLICY: Partial<Record<TileCode, HeadlinePolicy>> = {
-  A01: { ids: ["nearest_rail_m", "nearest_bus_m"] },
-  A02: { ids: ["in_school_zone", "nearest_elem_m"] },
-  A03: { ids: ["basic_groups"] },
-  A04: { ids: ["parks", "nearest_park_point_m"] },
-  A07: { ids: ["median_price_per_m2", "valid_trades"] },
-  A08: { ids: ["jeonse_to_trade_ratio_pct", "jeonse_deposit_per_m2", "monthly_rent_median", "jeonse_count", "monthly_count"] },
-  A09: { ids: ["projects_in_radius", "zones_in_radius", "roster_projects"] },
-  A10: { ids: ["planned_projects"] },
-  A11: { ids: ["density_per_km2", "pop_est", "hh_est"] },
-  A12: { ids: ["share_class_1", "mixed_zone_share_pct", "site_zoning_count"] },
-  D01: { ids: ["imagery_capture_date", "imagery_zoom_max"] },
-  D02: { ids: ["share_footprint_pct", "buildings"] },
-  D03: { maxPrefix: "share_use_" },
-  D04: { ids: ["share_pre2000", "share_pre1980", "share_1990s"] },
-  D10: { ids: ["canopy_pct", "osm_green_pct"] },
-  D11: { maxPrefix: "back_area_" },
-  D12: { maxPrefix: "back_count_" },
-  D13: { ids: ["road_length_in_radius_m", "nearest_arterial_or_higher_m"] },
-  D15: { ids: ["median_block_ha", "blocks"] },
-  D16: { ids: ["dens_max", "gfa_per_ha"] },
-  D17: { ids: ["relief_median_m", "center_elevation_m"] },
-  D18: { ids: ["slope_median_deg", "slope_max_deg"] },
-  D19: { ids: ["median_parcel_m2", "parcels"] },
-  D22: { ids: ["prevailing_dir_deg", "station_distance_m"] },
-  D28: { ids: ["area_10min_km2", "reach_ratio_10min_pct"] },
-  D29: { ids: ["svf_median", "share_svf_lt03_pct"] },
-  S01: { ids: ["height_median_m", "height_known_pct", "buildings"] },
-  S03: { ids: ["rel_wind_median", "rel_wind_high_share"] },
-  S04: { ids: ["utci_median_summer_h14", "shade_pct_summer_h14"] },
-};
-
 function buildHeadlinePolicy(): Record<TileCode, HeadlinePolicy> {
-  const policies: Partial<Record<TileCode, HeadlinePolicy>> = { ...BASE_HEADLINE_POLICY };
+  const policies: Partial<Record<TileCode, HeadlinePolicy>> = {};
   for (const code of TILE_CODES) {
     const modulePolicy = tileClientModuleFor(code)?.headline;
     if (modulePolicy) policies[code] = modulePolicy;
@@ -150,26 +114,8 @@ export type CalloutModel = {
 };
 
 const KIND_LABEL = { analysis: "분석", diagram: "도판", simulation: "시뮬레이션" } as const;
-const BASE_MAP_NOTES: Record<string, string> = {
-  D04: "건물 발자국 · 준공 연대별 색",
-  D13: "도로 중심선 · 실제 폭·공식 도로대장 아님 · © OpenStreetMap contributors",
-  D02: "발자국 · 높이 미상은 테두리만",
-  D19: "연속지적 · 지목·필지 규모 레이어 · 참조용",
-  D15: "OSM 도로로 폐합된 블록 · 반경 밖 500m까지 읽음",
-  D16: "건물 수 KDE · 대역폭 100m · 20백분위 구간",
-  D17: "Copernicus GLO-30 표면모델(DSM, 30 m) · EGM2008 · 중심 상대고",
-  D18: "Copernicus DEM GLO-30 30m 격자 경사 · EGM2008 · 옹벽·미세 지형 미반영",
-  A04: "대표점·원천 면적·녹지·수면 레이어 (경계 아님)",
-  D01: "VWorld 항공영상 · 촬영시기 미확인",
-  D10: "항공사진 색 기반 수관 검출 · 재현율 미검증 · OSM 녹지 보조",
-  D28: "OSM 보행망 · 80 m/분 · 내부 제안 기준",
-  D29: "건물·지형 기준 하늘열림(SVF) · 수목 제외",
-  D22: "ASOS 최근접 관측소 · 연간·계절 16방위 바람장미",
-  S03: "조기설계 참고용 · 풍동 검증 없음 · 주풍향 1방향",
-};
-
 function mapNoteFor(code: string): string | undefined {
-  return tileClientModuleFor(code)?.mapNote ?? BASE_MAP_NOTES[code];
+  return tileClientModuleFor(code)?.mapNote;
 }
 
 function mapOf(r: TileResult, analysisSiteParcel?: readonly MapPolygon[] | null): RasterMapModel | null {
@@ -261,13 +207,6 @@ function gradeChip(r: TileResult, g: NonNullable<NonNullable<TileResult["judgmen
   const target = GRADE_TARGET[g.metricId] ?? r.metrics.find((m) => m.id === g.metricId)?.label ?? g.metricId;
   return { target, label: `${target} ${GRADE_TEXT[g.level]}`, level: g.level, criteria: `내부 제안 기준: ${g.criteria}` };
 }
-const CAVEATS: Record<string, string> = {
-  A02: "배정은 교육청 확인",
-  S03: "브라우저 탐색용 바람 모형입니다. 보행 안전·구조설계·인허가·검증된 CFD 결과로 사용할 수 없습니다.",
-  S04: "UTCI 근사 · 계절×시각 대표 기상 · 자리끼리 비교",
-};
-const MODEL_BADGE: Record<string, string> = { S03: "탐색용 · 검증 CFD 아님", S04: "근사 · 건강 위험 예측 아님" };
-
 type ExtendedPresentation = TileResult["presentation"] & {
   /** T31이 저장 결과 계약에 추가할 수 있는 명시적 기본 래스터. */
   defaultRaster?: string;
@@ -506,7 +445,7 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
     badges.push(...(module?.limitationBadges?.(l) ?? []));
   }
   badges.push(...parameterBadges(r));
-  const modelBadge = module?.modelBadge ?? MODEL_BADGE[r.tileCode];
+  const modelBadge = module?.modelBadge;
   if (modelBadge) badges.push({ text: modelBadge, tone: "model" });
   // 같은 문구의 배지는 하나로 합치고 note는 이어 붙인다.
   const merged = new Map<string, Badge>();
@@ -528,7 +467,7 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
     ];
   }
   const rows = metrics.map((m) => metricRow(m, isS04));
-  const caveat = module?.caveat ?? CAVEATS[r.tileCode];
+  const caveat = module?.caveat;
   const caveats = caveat ? [caveat] : [];
 
   let headline: TileView["headline"] = null;

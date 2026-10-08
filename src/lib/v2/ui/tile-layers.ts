@@ -5,18 +5,6 @@ import type { MapModel } from "./map-layers";
 
 export type { TileLayerOption } from "../tile/types";
 
-const STATIC_OPTIONS: Record<string, TileLayerOption[]> = {
-  A01: [{ id: "all", label: "기본 교통" }, { id: "transit", label: "철도·출입구" }],
-  A02: [{ id: "all", label: "기본 학교" }, { id: "school_zone", label: "학구·학교군" }],
-  A04: [{ id: "all", label: "기본 공원" }, { id: "green_space", label: "녹지·수면" }],
-  A07: [{ id: "all", label: "기본 거래" }, { id: "trade_location", label: "가격 구간" }],
-  A09: [{ id: "all", label: "기본 정비" }, { id: "maintenance_stage", label: "사업 단계" }],
-  A10: [{ id: "all", label: "기본 계획" }, { id: "planned_detail", label: "노선·계획역" }],
-  A11: [{ id: "all", label: "기본 인구" }, { id: "density_detail", label: "밀도 구간" }],
-  A12: [{ id: "all", label: "기본 토지" }, { id: "zoning_detail", label: "용도지역" }],
-  D19: [{ id: "all", label: "지목 기본" }, { id: "parcel_size", label: "필지 규모" }],
-};
-
 const optionMatches: Record<string, (layer: string) => boolean> = {
   transit: (layer) => /^(rail_|bus_|walk_)/.test(layer),
   school_zone: (layer) => layer.startsWith("school_zone"),
@@ -35,7 +23,7 @@ export function layerOptionsForResult(result: TileResult): TileLayerOption[] {
   const moduleOptions = tileClientModuleFor(result.tileCode)?.layers?.options;
   if (typeof moduleOptions === "function") return [...moduleOptions(result)];
   if (moduleOptions) return [...moduleOptions];
-  return STATIC_OPTIONS[result.tileCode] ?? [];
+  return [];
 }
 
 export function defaultLayerId(result: TileResult): string {
