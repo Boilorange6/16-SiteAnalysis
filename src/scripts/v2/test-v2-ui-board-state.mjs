@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");
 const { initBoard, boardReducer, reportPages, demoPhase, demoFinished, serializeBoardState, restoreBoardState, migrateSnapshot, TILE_CODE_RENAMES } = await import("../../lib/v2/ui/board-state.ts");
-const { TILE_CODES } = await import("../../lib/v2/ui/tile-catalog.ts");
+const { TILE_CODES, TILE_PRESETS, PRESET_IDS, DEFAULT_PRESET_ID } = await import("../../lib/v2/ui/tile-catalog.ts");
 
 const ids = GODEOK_RESULTS.map((r) => r.tileId);
 let s = initBoard(GODEOK_RESULTS);
@@ -12,6 +12,77 @@ assert.deepEqual(s.results, GODEOK_RESULTS);
 assert.equal(s.included["t-A01"], true);
 assert.equal(s.included["t-S02"], false); // not_provided
 assert.equal(s.included["t-S03"], false); // failed
+
+// 과제 프리셋은 현재 카탈로그 코드만, 중복 없이 선언하고 계산 결과가 있는 타일만 보드에 넣는다.
+{
+  const resultByCode = new Map(GODEOK_RESULTS.map((result) => [result.tileCode, result]));
+  assert.equal(TILE_CODES.length, 33, "현재 카탈로그는 33개 타일 코드");
+  assert.deepEqual(TILE_PRESETS[DEFAULT_PRESET_ID].codes, TILE_CODES, "전체는 현재 카탈로그 순서를 그대로 쓴다");
+  for (const presetId of PRESET_IDS) {
+    const codes = TILE_PRESETS[presetId].codes;
+    assert.equal(new Set(codes).size, codes.length, `${presetId} 프리셋 타일 코드 중복 없음`);
+    for (const code of codes) assert.ok(TILE_CODES.includes(code), `${presetId} 프리셋 코드 ${code}는 카탈로그에 존재`);
+  }
+  const station = initBoard(GODEOK_RESULTS, "station-area");
+  const stationCodes = TILE_PRESETS["station-area"].codes.filter((code) => resultByCode.has(code));
+  assert.equal(station.preset, "station-area");
+  assert.deepEqual(station.order, stationCodes.map((code) => resultByCode.get(code).tileId), "역세권 initBoard는 프리셋 순서·포함 타일로 시작");
+  assert.equal(station.included["t-A01"], true);
+  assert.equal(station.included["t-A09"], false);
+}
+
+// 프리셋 저장·복원과 옛 snapshot(preset 필드 없음)은 전체로 읽힌다.
+{
+  let b = initBoard(GODEOK_RESULTS, "station-area");
+  b = boardReducer(b, { type: "face", id: "t-A01", face: "both" });
+  b = boardReducer(b, { type: "cuts", id: "t-S02", cuts: 3 });
+  b = boardReducer(b, { type: "roseSeason", id: "t-A01", season: "summer" });
+  b = boardReducer(b, { type: "pinLabel", id: "t-D04", key: "bldg_2000s|b-1" });
+  const snapshot = serializeBoardState(b);
+  assert.equal(snapshot.preset, "station-area");
+  const restored = restoreBoardState(GODEOK_RESULTS, snapshot);
+  assert.equal(restored.preset, "station-area");
+  assert.deepEqual(restored.order, b.order);
+  assert.deepEqual(restored.faces, b.faces);
+  assert.deepEqual(restored.cuts, b.cuts);
+  assert.deepEqual(restored.roseSeasons, b.roseSeasons);
+  const old = { ...snapshot };
+  delete old.preset;
+  assert.equal(restoreBoardState(GODEOK_RESULTS, old).preset, DEFAULT_PRESET_ID, "옛 snapshot은 전체 프리셋으로 이관");
+}
+
+// 프리셋 변경은 보드 포함·순서와 편집 트레이만 재설정하고 카드별 설정은 보존하며, 한 번에 되돌린다.
+{
+  let before = initBoard(GODEOK_RESULTS, "station-area");
+  before = boardReducer(before, { type: "face", id: "t-A01", face: "both" });
+  before = boardReducer(before, { type: "cuts", id: "t-S02", cuts: 3 });
+  before = boardReducer(before, { type: "roseSeason", id: "t-A01", season: "summer" });
+  before = boardReducer(before, { type: "pinLabel", id: "t-D04", key: "bldg_2000s|b-1" });
+  const next = boardReducer(before, { type: "preset", preset: "residential" });
+  const residentialCodes = TILE_PRESETS.residential.codes.filter((code) => GODEOK_RESULTS.some((result) => result.tileCode === code));
+  const resultByCode = new Map(GODEOK_RESULTS.map((result) => [result.tileCode, result]));
+  assert.equal(next.preset, "residential");
+  assert.deepEqual(next.order, residentialCodes.map((code) => resultByCode.get(code).tileId));
+  assert.deepEqual(next.faces, before.faces, "프리셋 변경은 출력 면을 보존");
+  assert.deepEqual(next.cuts, before.cuts, "프리셋 변경은 컷을 보존");
+  assert.deepEqual(next.roseSeasons, before.roseSeasons, "프리셋 변경은 계절을 보존");
+  assert.deepEqual(next.labels, before.labels, "프리셋 변경은 라벨을 보존");
+  const undone = boardReducer(next, { type: "undo" });
+  assert.equal(undone.preset, before.preset);
+  assert.deepEqual(undone.order, before.order, "프리셋 변경 되돌리기는 이전 순서를 복원");
+  assert.deepEqual(undone.included, before.included, "프리셋 변경 되돌리기는 이전 포함을 복원");
+  assert.deepEqual(undone.removed, before.removed, "프리셋 변경 되돌리기는 편집 트레이를 복원");
+  assert.deepEqual(undone.labels, before.labels);
+  assert.equal(undone.undoStack.length, before.undoStack.length);
+}
+
+// 보고서 장수 추정은 프리셋으로 실제 포함된 타일 수를 그대로 따른다.
+{
+  const complete = GODEOK_RESULTS.map((result) => ({ ...result, status: "complete" }));
+  const station = initBoard(complete, "station-area");
+  const expectedTiles = TILE_PRESETS["station-area"].codes.filter((code) => complete.some((result) => result.tileCode === code)).length;
+  assert.deepEqual(reportPages(station), { tiles: expectedTiles, pages: expectedTiles + 2 }, "프리셋 포함 타일 수가 PPT 쪽수 추정에 반영");
+}
 
 // 보드의 한 카드 포함 상태만 바뀌면 다른 카드에 전달되는 값과 참조는 그대로다.
 {

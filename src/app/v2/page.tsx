@@ -30,8 +30,9 @@ import { RADIUS_CAPTION, RADIUS_OPTIONS } from "@/lib/v2/ui/radius-options";
 import ProjectMenu, { type V2Project } from "@/components/v2/project-menu";
 import SitePicker from "@/components/v2/site-picker";
 import type { SiteInput } from "@/lib/v2/site";
+import { DEFAULT_PRESET_ID, PRESET_IDS, TILE_PRESETS, type PresetId } from "@/lib/v2/ui/tile-catalog";
 
-const UNDO_LABEL ={ order: "옮김", size: "크기 바꿈", remove: "삭제됨", add: "더함" } as const;
+const UNDO_LABEL = { order: "옮김", size: "크기 바꿈", remove: "삭제됨", add: "더함", preset: "프리셋 적용" } as const;
 const DEMO_START_LABEL = "분석 데모";
 const EMPTY_PINNED_LABELS: PinnedLabel[] = [];
 
@@ -59,6 +60,10 @@ type BoardProps = {
   onAuthExpired: () => void;
   /** 브라우저 S03 업로드·대체 요청 뒤 결과와 작업 폴링을 다시 연다. */
   onWindUploaded: () => void;
+  /** 주소 입력부에서 고른 초기 프리셋과 보드 편집부의 현재 프리셋을 맞춘다. */
+  requestedPreset: PresetId;
+  initialPreset: PresetId;
+  onPresetChange: (preset: PresetId) => void;
 };
 
 type JobState = { code: string; status: "queued" | "running" | "done" | "failed"; enqueuedAt?: string | null; startedAt?: string | null; elapsedMs: number | null };
@@ -94,9 +99,10 @@ const AnalysisProgress = memo(function AnalysisProgress({ jobs, onCancel, cancel
 });
 
 /** 타일 보드. 결과가 바뀌면 부모가 key를 바꿔 새로 만든다. */
-function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, controls, onRerun, onCancel, canceling = false, currentProject, initialProjectBoard, onProjectSaved, onProjectDeleted, onOpenProject, onAuthExpired, onWindUploaded }: BoardProps) {
+function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, controls, onRerun, onCancel, canceling = false, currentProject, initialProjectBoard, onProjectSaved, onProjectDeleted, onOpenProject, onAuthExpired, onWindUploaded, requestedPreset, initialPreset, onPresetChange }: BoardProps) {
   const [overrides, setOverrides] = useState<Record<string, TileResult>>({});
-  const [board, dispatch] = useReducer(boardReducer, baseResults, initBoard);
+  const [board, dispatch] = useReducer(boardReducer, baseResults, (results) => initBoard(results, initialPreset));
+  const requestedPresetRef = useRef(requestedPreset);
   const storageKey = boardStorageKey(baseResults[0]?.analysisId ?? "demo");
   const initialSnapshotJson = useMemo(() => {
     if (initialProjectBoard === null) return null;
@@ -133,7 +139,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
         snapshot = null;
       }
     }
-    dispatch({ type: "restore", snapshot });
+    dispatch({ type: "restore", snapshot, fallbackPreset: initialPreset });
     setStorageReady(true);
   }, [initialSnapshotJson, storageKey]);
   useEffect(() => {
@@ -240,6 +246,23 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
     };
   }, [boardSnapshotJson, flushStorage, storageKey, storageReady]);
   const projectDirty = !!currentProject?.projectId && serverSnapshotJson !== null && boardSnapshotJson !== serverSnapshotJson;
+  const changePreset = useCallback((preset: PresetId) => {
+    if (preset === board.preset) return;
+    dispatch({ type: "preset", preset });
+    onPresetChange(preset);
+    setNote(`과제 프리셋을 ${TILE_PRESETS[preset].label}(으)로 바꿨습니다. 수동 포함·순서를 덮어썼습니다. 되돌리기로 복원할 수 있습니다.`);
+  }, [board.preset, onPresetChange]);
+  useEffect(() => {
+    if (requestedPresetRef.current === requestedPreset) return;
+    requestedPresetRef.current = requestedPreset;
+    // 저장 프로젝트를 여는 동안에는 부모의 초기값(전체)이 snapshot 복원을 덮어쓰지 않는다.
+    // 저장본이 없는 새 분석·데모에서만 주소 입력부의 선택을 보드에 적용한다.
+    if (initialProjectBoard !== null) return;
+    if (requestedPreset !== board.preset) changePreset(requestedPreset);
+  }, [board.preset, changePreset, initialProjectBoard, requestedPreset]);
+  useEffect(() => {
+    onPresetChange(board.preset);
+  }, [board.preset, onPresetChange]);
   const [making, setMaking] = useState(false);
   const [makingKind, setMakingKind] = useState<string | null>(null);
   const [exportProblem, setExportProblem] = useState<string | null>(null);
@@ -521,6 +544,19 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
           {editing ? (
             <>
               <span className={styles.editHint}>순서를 바꾸거나 빼세요. 순서는 보고서 순서가 됩니다.</span>
+              <label className={styles.presetEditor} htmlFor="v2-board-preset">
+                <span>과제 프리셋</span>
+                <select
+                  id="v2-board-preset"
+                  value={board.preset}
+                  onChange={(event) => changePreset(event.currentTarget.value as PresetId)}
+                  disabled={actionBusy}
+                  aria-describedby="v2-board-preset-help"
+                >
+                  {PRESET_IDS.map((id) => <option key={id} value={id}>{TILE_PRESETS[id].label}</option>)}
+                </select>
+                <small id="v2-board-preset-help">수동 포함·순서를 이 프리셋으로 바꿉니다.</small>
+              </label>
               {stackSelection.length >= 2 && (
                 <button
                   type="button"
@@ -816,7 +852,9 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
 
       {editing && lastUndo && (
         <div className={styles.toast} role="status" style={{ bottom: 76 }}>
-          {UNDO_LABEL[lastUndo.kind]} · {views.get(lastUndo.id)?.title}
+          {lastUndo.kind === "preset"
+            ? `${UNDO_LABEL.preset} · ${TILE_PRESETS[board.preset].label}`
+            : `${UNDO_LABEL[lastUndo.kind]} · ${views.get(lastUndo.id)?.title}`}
           <button type="button" onClick={() => dispatch({ type: "undo" })}>
             되돌리기
           </button>
@@ -922,6 +960,7 @@ export default function V2BoardPage() {
   const [address, setAddress] = useState(() => hydratedAddress);
   const addressDirtyRef = useRef(hydratedAddress.length > 0);
   const [radiusM, setRadiusM] = useState(1000);
+  const [preset, setPreset] = useState<PresetId>(DEFAULT_PRESET_ID);
   const [siteInput, setSiteInput] = useState<SiteInput | null>(null);
   const [sitePickerOpen, setSitePickerOpen] = useState(false);
   const [sitePickerValid, setSitePickerValid] = useState(false);
@@ -1230,6 +1269,20 @@ export default function V2BoardPage() {
             </option>
           ))}
         </select>
+        <label className={styles.presetField} htmlFor="v2-analysis-preset">
+          <span className={styles.presetLabel}>과제</span>
+          <select
+            id="v2-analysis-preset"
+            className={styles.presetSelect}
+            value={preset}
+            onChange={(event) => setPreset(event.currentTarget.value as PresetId)}
+            aria-label="과제 프리셋"
+            aria-describedby="v2-preset-help"
+            disabled={busy || activeJobs || !!live}
+          >
+            {PRESET_IDS.map((id) => <option key={id} value={id}>{TILE_PRESETS[id].label}</option>)}
+          </select>
+        </label>
         <button type="button" className={styles.pill} onClick={() => setSitePickerOpen((open) => !open)} disabled={busy || activeJobs} aria-expanded={sitePickerOpen} aria-controls="v2-site-picker">
           {sitePickerOpen ? "대지 지정 닫기" : "대지 지정"}
         </button>
@@ -1238,6 +1291,7 @@ export default function V2BoardPage() {
         </button>
       </form>
       <p id="v2-radius-help" className={styles.radiusCaption}>반경 해석: {RADIUS_CAPTION}</p>
+      <p id="v2-preset-help" className={styles.radiusCaption}>분석은 모든 타일을 계산하고, 보드는 {TILE_PRESETS[preset].label} 구성으로 시작합니다. 분석 후에는 보드 편집에서 바꿀 수 있습니다.</p>
       {sitePickerOpen && (
         <div id="v2-site-picker">
           <SitePicker
@@ -1317,6 +1371,9 @@ export default function V2BoardPage() {
       canceling={canceling}
       currentProject={currentProject}
       initialProjectBoard={projectBoard}
+      requestedPreset={preset}
+      initialPreset={preset}
+      onPresetChange={setPreset}
       onProjectSaved={handleProjectSaved}
       onProjectDeleted={handleProjectDeleted}
       onOpenProject={(projectId) => void openProject(projectId)}

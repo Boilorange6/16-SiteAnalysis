@@ -64,6 +64,43 @@ export const TILE_CATALOG = {
 export type TileCode = keyof typeof TILE_CATALOG;
 export const TILE_CODES = Object.keys(TILE_CATALOG) as TileCode[];
 
+export const TILE_PRESETS = {
+  all: {
+    label: "전체",
+    description: "계산된 전체 타일을 기존 순서로 보드에 담습니다.",
+    codes: TILE_CODES,
+  },
+  "urban-redevelopment": {
+    label: "도심재개발",
+    description: "용도지역·정비·공급과 주변 도시 형태를 먼저 봅니다.",
+    codes: [
+      "A12", "A09", "A01", "A10", "A05", "A06", "A07", "A04",
+      "D01", "D02", "D03", "D05", "D11", "D12", "D13", "D16", "D19", "D28", "S01", "S02",
+    ],
+  },
+  "station-area": {
+    label: "역세권",
+    description: "역 접근·보행·생활편의와 계획철도 주변의 형태를 먼저 봅니다.",
+    codes: [
+      "A01", "D28", "A03", "A04", "A10", "A11", "A12",
+      "D01", "D02", "D03", "D10", "D12", "D13", "D16", "D29", "S01", "S03", "S04",
+    ],
+  },
+  residential: {
+    label: "주거",
+    description: "학교·생활편의와 주거 재고·공급·거래, 주거환경을 먼저 봅니다.",
+    codes: [
+      "A01", "A02", "A03", "A04", "A05", "A06", "A07", "A08", "A11", "A12",
+      "D01", "D02", "D03", "D04", "D05", "D16", "D17", "D28", "D29", "S01", "S02", "S04",
+    ],
+  },
+} as const satisfies Record<string, { label: string; description: string; codes: readonly TileCode[] }>;
+
+export type PresetId = keyof typeof TILE_PRESETS;
+export const DEFAULT_PRESET_ID: PresetId = "all";
+export const PRESET_IDS = Object.keys(TILE_PRESETS) as PresetId[];
+export const isPresetId = (value: unknown): value is PresetId => typeof value === "string" && Object.prototype.hasOwnProperty.call(TILE_PRESETS, value);
+
 /** 원천 id → 화면용 이름. 목록에 없는 id는 그대로 보인다. */
 export const SOURCE_NAMES: Record<string, string> = {
   store: "소상공인 상가정보",
