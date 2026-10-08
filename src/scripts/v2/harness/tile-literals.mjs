@@ -47,13 +47,18 @@ const WHITELIST = [
   },
   {
     file: "src/lib/v2/ui/tile-catalog.ts",
-    pattern: /\bD0[567]\b|\bS02\b/,
+    pattern: /\bA0[56]\b|\bD0[567]\b|\bS02\b/,
     reason: "catalog and user-facing presets stay central",
   },
   {
     file: "src/lib/v2/ui/detail-state.ts",
-    pattern: /\bD0[567]\b|\bS02\b/,
+    pattern: /\bA0[56]\b|\bD0[567]\b|\bS02\b/,
     reason: "detail-state code list stays central",
+  },
+  {
+    file: "src/lib/v2/engine/detail/housing.ts",
+    pattern: /HOUSING_SPECS|\bA0[56]\b/,
+    reason: "A05 and A06 share the central housing detail-spec family",
   },
   {
     file: "src/lib/v2/engine/detail/buildings.ts",
@@ -72,7 +77,7 @@ const WHITELIST = [
   },
   {
     file: "src/lib/v2/tile/server.ts",
-    pattern: /\bS02\b/,
+    pattern: /\bA0[56]\b|\bS02\b/,
     reason: "shared server registry order and heavy/site flags stay central",
   },
   {
@@ -92,8 +97,13 @@ const WHITELIST = [
   },
   {
     file: "src/lib/v2/ui/fixtures/godeok.ts",
-    pattern: /\bS02\b/,
+    pattern: /\bA0[56]\b|\bS02\b/,
     reason: "shared Godeok fixture keeps the result-code contract central",
+  },
+  {
+    file: "src/lib/v2/engine/summary.ts",
+    pattern: /\bA0[56]\b/,
+    reason: "common site summary keeps the central housing headline facts",
   },
 ];
 
