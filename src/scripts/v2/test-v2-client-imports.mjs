@@ -7,6 +7,21 @@ import { dirname, join, resolve } from "node:path";
 const root = resolve(import.meta.dirname, "../..");
 const entries = [join(root, "app/v2/page.tsx"), ...readdirSync(join(root, "components/v2")).map((f) => join(root, "components/v2", f))]
   .filter((f) => /\.tsx?$/.test(f) && readFileSync(f, "utf8").includes('"use client"'));
+// Client entries may consume tile view/component modules, but never server-side computation.
+// Keep absorbed engine paths explicit: these are the host-owned files listed by the refactor plan.
+const ABSORBED_ENGINE_FILES = new Set([
+  "lib/v2/tile/a02/d26.ts",
+  "lib/v2/tile/a04/d09.ts",
+  "lib/v2/tile/a07/d25.ts",
+  "lib/v2/tile/a09/d23.ts",
+  "lib/v2/tile/a10/d24.ts",
+  "lib/v2/tile/a11/d27.ts",
+  "lib/v2/tile/a12/d08.ts",
+  "lib/v2/tile/d05/d06.ts",
+  "lib/v2/tile/d05/d07.ts",
+  "lib/v2/tile/d19/d20.ts",
+  "lib/v2/tile/s02/d21.ts",
+]);
 const mass3dSource = readFileSync(join(root, "components/v2/mass-3d.tsx"), "utf8");
 const mass3dRuntimeSource = readFileSync(join(root, "lib/v2/ui/mass-3d-runtime.ts"), "utf8");
 assert.match(mass3dSource, /^"use client";/, "3D 컴포넌트는 client-only여야 한다");
@@ -22,10 +37,24 @@ const resolveLocal = (from, spec) => {
 const seen = new Map(); // file -> importer chain
 const queue = entries.map((f) => [f, [f]]);
 const leaks = [];
+// Pure modules under engine/ that the client legitimately shares (type-only imports, no node:, no data access).
+// a05-filter: A05-owned filter/re-aggregation used by both the engine and the board UI (plan ownership table keeps it in place).
+const CLIENT_SAFE_ENGINE_FILES = new Set(["lib/v2/engine/a05-filter.ts"]);
+const serverModules = [];
+const relativeToRoot = (file) => file.slice(root.length + 1).replaceAll("\\", "/");
+const serverReason = (file) => {
+  const relative = relativeToRoot(file);
+  if (relative.startsWith("lib/v2/engine/") && !CLIENT_SAFE_ENGINE_FILES.has(relative)) return "shared engine module";
+  if (/^lib\/v2\/tile\/[^/]+\/engine\.ts$/.test(relative)) return "tile engine module";
+  if (ABSORBED_ENGINE_FILES.has(relative)) return "absorbed tile engine module";
+  return null;
+};
 while (queue.length) {
   const [file, chain] = queue.shift();
   if (seen.has(file)) continue;
   seen.set(file, chain);
+  const reason = serverReason(file);
+  if (reason) serverModules.push(`${reason}: ${relativeToRoot(file)} ← ${chain.map(relativeToRoot).join(" ← ")}`);
   for (const m of readFileSync(file, "utf8").matchAll(IMPORT)) {
     const spec = m[1] ?? m[2];
     if (spec.startsWith("node:")) leaks.push(`${spec} ← ${chain.map((p) => p.slice(root.length + 1)).join(" ← ")}`);
@@ -36,5 +65,6 @@ while (queue.length) {
   }
 }
 assert.ok(entries.length >= 5, `client entries found: ${entries.length}`);
+assert.deepEqual(serverModules, [], `client bundle reaches server-side v2 engine modules:\n${serverModules.join("\n")}`);
 assert.deepEqual(leaks, [], `client bundle reaches node: builtins:\n${leaks.join("\n")}`);
-console.log(`✓ v2 client imports (${entries.length} entries, ${seen.size} modules, no node: builtins)`);
+console.log(`✓ v2 client imports (${entries.length} entries, ${seen.size} modules, no node: builtins or server engines)`);

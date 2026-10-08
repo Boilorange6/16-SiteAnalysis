@@ -520,7 +520,7 @@ export function toLocalRing(ring: number[][], origin: { x: number; y: number }):
 
 ### Task 5: D02 건물
 
-**Files:** Modify `src/lib/v2/engine/tiles/d02.ts`; Test `src/scripts/v2/test-v2-d02.mjs`
+**Files:** Modify `src/lib/v2/engine/tiles/d02.ts`; Test `src/scripts/v2/test-v2-tile-d02-buildings.mjs`
 **Interfaces:** 지표 `buildings`(교차 동수, 동), `fill_geometry_pct`(유효 도형 동수÷히트 동수 — 항상 100이지만 spec대로 표기), `share_footprint_pct`(Σ교차 발자국 면적÷π·r², 분자 ㎡·분모 ㎡), `share_non_building_pct`(100−위), `back_buildings`(동수). 면 `bldg_footprint`(높이 미상은 `label` 없음, `properties`로 구분 불가하므로 레이어 하나), 점 `bldg_point`(면을 못 그리는 화면용 대표점). 한계: `estimated` "발자국 겹침을 제거하지 않은 합계(겹침은 드묾)", coverage.
 
 - [ ] **Step 1 테스트**(핵심 assert): 픽스처(buildings)에서 `buildings.value === 6`(반경 밖 1 제외), `share_footprint_pct`의 numerator ≈ 100+400+225+100+144+100 = 1069 ±2, denominator = round(π·800²), `presentation.polygons.length === 6`, `featuresTotal === 6`, 파일 없으면 `not_provided`.
@@ -528,7 +528,7 @@ export function toLocalRing(ring: number[][], origin: { x: number; y: number }):
 
 ### Task 6: D03 건축물 용도
 
-**Files:** Modify `tiles/d03.ts`; Test `test-v2-d03.mjs`
+**Files:** Modify `tiles/d03.ts`; Test `test-v2-tile-d03-buildings.mjs`
 **Interfaces:** 주용도코드 앞 2자리 → 10분류(코드에 표로 두고 export `USE_CLASSES`, `useClassOf(code)`):
 `01·02→주거`, `03·04→근린생활`, `05·06·13·27→문화집회`, `07→판매`, `08·20·21·23·26·28·29→기타`, `09·10·11·12→교육복지`, `14·24→업무`, `15·16→숙박`, `17·18·19·22·25→공업`, 없음/미등록→`미상`(open Q5). 지표 `fill_use_pct`(주용도 확인 동수÷동수), `share_use_<i>`(동수 비율, 분자 동수·분모 동수, 10개 순서 고정 — 0도 `observed 0`), `share_area_<i>`(보조: 발자국 면적 비율, `footprintM2` 있는 동만) — 뒷면에는 동수 기준만 보이도록 면적 지표 id는 `area_share_<i>`(share_ 접두 아님). 면 레이어 `use:<분류>`.
 - [ ] 테스트: 픽스처 6동 → 주거 2(b_apt·b_tower), 업무 1, 근린생활 1, 미상 2; `fill_use_pct.value === 66.7`; `useClassOf("02000")==="주거"`, `useClassOf(null)==="미상"`, `useClassOf("99000")==="미상"`.
@@ -536,7 +536,7 @@ export function toLocalRing(ring: number[][], origin: { x: number; y: number }):
 
 ### Task 7: D05 높이 · D06 고층 · D07 저층
 
-**Files:** Modify `tiles/d05.ts`, `tiles/d06.ts`, `tiles/d07.ts`; Test `test-v2-d05-d07.mjs`
+**Files:** Modify `tiles/d05.ts`, `tiles/d06.ts`, `tiles/d07.ts`; Test `test-v2-tile-d05-height.mjs`
 **Interfaces:**
 - D05: 층수 구간 `[1,5) [5,9) [9,15) [15,26) [26,∞)` + 미상. 지표 `fill_floors_pct`, `fill_height_m_pct`(미터 높이 `source`만), `share_floors_<i>`(동수), 제목 보조 지표 `title_note`는 만들지 않고 `MAP_NOTES`가 "지상층수 기준"을 표시. 면 `floors_*`. 미터 모드(0~12/12~24/24~45/45~75/75+)는 `back_`이 아닌 `alt_height_<i>`(뒷면 미표시, 펼침 rows에는 보임).
 - D06: 기준 35m. `source` 높이 ≥35 → `tall_ge35`, `floors_estimate` 높이 ≥35 → `tall_ge35_est`, <35(source 또는 estimate) → `tall_lt35`, 미상 → `tall_unknown`. 지표 `tall_buildings`(source만), `tall_buildings_est`(추정, status `estimated`), `fill_height_m_pct`, `share_tall_pct/share_not_tall_pct/share_unknown_pct`(동수), `back_tall_area_m2`(발자국 ㎡). 한계: `estimated` "[추정] 높이는 층수×3m(적재기 상수), 공식 고층건축물 정의가 아님".
@@ -546,7 +546,7 @@ export function toLocalRing(ring: number[][], origin: { x: number; y: number }):
 
 ### Task 8: D08 용도지역 + A12 공시지가·주변 지가
 
-**Files:** Modify `tiles/d08.ts`, `tiles/a12.ts`; Create `tiles/zoning-shared.ts`; Test `test-v2-d08-a12-price.mjs`
+**Files:** Modify `tiles/d08.ts`, `tiles/a12.ts`; Create `tiles/zoning-shared.ts`; Test `test-v2-tile-a12-price.mjs`
 **Interfaces:**
 - `zoning-shared.ts`: `collectZoning(ctx): { sources, hits, byClass: Map<string, number>, byRaw, polys: PolygonCandidate[], points, total, circleArea, umbrellas, clipFailed, siteLabel, siteNames, fine } | null` — 현재 `a12.ts` 본문을 옮긴 것(동작 동일). `a12`는 이를 호출한다.
 - D08: `collectZoning` 결과로 면 `zone:<cls>` + 지표 `fill_zoning_pct`(유효 지정 면적÷π·r², 중복 제거 없이 min(100)), `share_class_<i>`(8분류 고정 순서, 0도 observed), `back_overlap_pct`(합−100, 0 이상), 세분 상위 6은 `raw_<i>`(뒷면 미표시). 한계 문구는 A12와 같다.
@@ -556,7 +556,7 @@ export function toLocalRing(ring: number[][], origin: { x: number; y: number }):
 
 ### Task 9: D19 지적 · D20 필지 규모
 
-**Files:** Modify `tiles/d19.ts`, `tiles/d20.ts`; Test `test-v2-d19-d20.mjs`
+**Files:** Modify `tiles/d19.ts`, `tiles/d20.ts`; Test `test-v2-tile-d19-parcels.mjs`
 **Interfaces:**
 - D19: parcels 파일 없으면 `notProvided`. 지표 `parcels`(교차 필지 수), `site_parcel_found`(0/1, `ctx.input.pnu`가 히트에 있으면 1; pnu 없으면 `not_applicable`), `fill_geometry_pct`(유효 도형 면적÷π·r² — 원천 지적 대상 면적을 모르므로 label "확보 도형 면적률(대상 분모 미확보)"), `share_jimok_<i>`(지목별 **필지 수** 비율 상위 8 + 기타), `back_area_jimok_<i>`… → 뒷면은 필지 수·면적 둘 다 spec이 요구하므로 `share_count_<i>`와 `share_area_<i>`(교차 면적 비율) 둘 다 `share_` 접두 사용, label에 "(필지 수)"/"(면적)". 면 `parcel`(3000 상한, 큰 면적 우선), 대상 필지 `parcel_site`(highlight, label 지번).
 - D20: 필지 **전체** 면적(`properties.areaM2`, 절단 전)으로 `[0,100) [100,300) [300,1000) [1000,3000) [3000,∞)` 분류, 지목 도·천·구·유·철·제·구거 등 도로·하천계열(`도`,`천`,`구`,`유`,`제`,`철`)은 `lot_road_water` 별도. 지표 `fill_area_pct`(areaM2 있는 필지÷필지 수, 도형 면적이라 100), `share_count_<i>`(필지 수 비율), `share_area_<i>`(반경 교차면적 비율), `median_parcel_m2`. 한계 `unknown` "공부면적이 아닌 도형 계산 면적"(open Q6).
@@ -565,49 +565,49 @@ export function toLocalRing(ring: number[][], origin: { x: number; y: number }):
 
 ### Task 10: D09 공원·녹지·하천
 
-**Files:** Modify `tiles/d09.ts`; Test `test-v2-d09.mjs`
+**Files:** Modify `tiles/d09.ts`; Test `test-v2-tile-a04-green-space.mjs`
 **Interfaces:** 원천 셋을 각각 다룬다 — (a) `park` 점(운영 공원 수, `areaM2` 합 = 원천 면적, 반경 교차 아님을 label에 명시), (b) reference `zoning_area` 중 `zoningClass==="녹지"` 면 → `green_zone`, (c) parcels 지목 `천·구·유` → `water_parcel`, `임·공` → `green_parcel`. 지표: `parks`, `park_area_source_m2`, `share_water_pct`(지목 교차면적÷π·r²), `share_green_parcel_pct`, `share_green_zone_pct`, `back_other_pct`(100 − 수면 − 지목 녹지, 녹지지역은 겹치므로 빼지 않음). 어느 원천이 없으면 해당 지표 `missing`, 셋 다 없으면 `notProvided`. 한계: "하천·수면은 지적 지목 기준(OSM 수계 미적재)", "계획 공원(도시계획시설)은 D12", "녹지지역은 지목과 겹칠 수 있어 합계 100% 아님".
 - [ ] 테스트: 픽스처 `parcels:true, zoning:"overlap"` → `share_water_pct` numerator ≈ 20000(…0006 하천, 완전 포함), `share_green_parcel_pct` numerator ≈ 40000(임야), `parks.value===3`(기존 park 점 p1~p3), zoning 없는 픽스처에선 `share_green_zone_pct.status==="missing"`.
 - [ ] 구현 → 통과 → 커밋 `feat(v2-engine): D09 공원·녹지·하천 도판(지목·녹지지역·공원 점)`
 
 ### Task 11: D14 지하철·버스
 
-**Files:** Modify `tiles/d14.ts`; Test `test-v2-d14.mjs`
+**Files:** Modify `tiles/d14.ts`; Test `test-v2-tile-a01-transit.mjs`
 **Interfaces:** reference `rail_station`, `rail_entrance`, `rail_line`(선은 `sampleLine`으로 점열, A10 방식 — ponytail: 선 지물 계약이 없음, `MapLine`이 생기면 교체), `bus_stop`. 지표 `back_stations`, `back_entrances`, `back_bus_stops`(각자 개수 — 한 차트에 섞지 말라는 spec은 "원형 합계 금지"이므로 가로 막대 개수 표시는 허용, 단위 `역/곳/곳`), `fill_entrance_pct`(출입구가 있는 역÷역, F연결), `rail_lines`(반경과 교차 노선 수). 철도 미적재면 버스만(A01과 같은 `missing` 처리). 한계 "운영 시설만, 계획 철도는 D24".
 - [ ] 테스트: 픽스처 `rail:true` → 역 3(가온역은 1200m라 제외 → 나래·다온 = 2), 출입구 1(다온1 650m), 정류장 2, `fill_entrance_pct` = 1/2 = 50; `rail_line` 표본점이 `features`에 있음(layer `rail_line`).
 - [ ] 구현 → 통과 → 커밋 `feat(v2-engine): D14 지하철·버스 도판`
 
 ### Task 12: D23 정비사업
 
-**Files:** Modify `tiles/d23.ts`, `tiles/a09.ts`(내부를 `collectMaintenance(ctx)`로 export — 동작 동일); Test `test-v2-d23.mjs`
+**Files:** Modify `tiles/d23.ts`, `tiles/a09.ts`(내부를 `collectMaintenance(ctx)`로 export — 동작 동일); Test `test-v2-tile-a09-maintenance.mjs`
 **Interfaces:** `a09.ts`에 `export function collectMaintenance(ctx): { zones, projects: Map<string, Project>, zoneProject: Map<number,string>, sources, linked, key } | null`(경계 없으면 null). D23: 면 `maint_stage:<stage>`(구역마다 사업 단계 색), 지표 `back_stage_<i>`(8단계 고유 사업 수, 0 포함 observed), `fill_boundary_pct`(경계가 있는 사업÷명부 사업 — 명부는 시군구 단위이므로 label에 "반경 걸친 시군구 명부 대비"), `fill_stage_pct`(단계 확인 사업÷사업), `zone_area_in_radius_m2`(교차 면적 합, 겹침 미제거 note), `planned_households`는 A09와 같은 값. 경계 없고 명부만 있으면 `notProvided`가 아니라 지표만 있고 지도 없음(`partial`, note "경계 미확보").
 - [ ] 테스트: 픽스처 `maint:"zones"` → 구역 2(za·zb, zfar 제외), `back_stage_2`(조합: za→maint:a 조합) = 1, `back_stage_0`(구역지정: zb) = 1, polygons 레이어가 `maint_stage:조합`·`maint_stage:구역지정`; A09 기존 테스트 통과.
 - [ ] 구현 → 통과 → 커밋 `feat(v2-engine): D23 정비사업 도판(단계별 면), A09 수집 로직 공유`
 
 ### Task 13: D24 계획 철도
 
-**Files:** Modify `tiles/d24.ts`; Test `test-v2-d24.mjs`
+**Files:** Modify `tiles/d24.ts`; Test `test-v2-tile-a10-planned-rail.mjs`
 **Interfaces:** A10과 같은 히트(`planned_rail_line`, `planned_rail_station`)에서 단계별(`lifecycleStatus` 원천값 → 구상·공식 계획·승인·공사·중단/변경·미확인 매핑표 export `PLANNED_STAGES`) 고유 사업 수 `back_stage_<i>`, `back_stations`, `line_length_in_radius_m`(반경 안 선형 길이 합, `sampleLine` 대신 선분을 원에서 잘라 길이 계산 — 간단히 표본점 간격×개수는 금지, 선분–원 교차 길이 직접 계산), `fill_geometry_pct`(도형 있는 사업÷사업), `fill_schedule_pct`(항상 0, 원천에 일정 없음 → `observed 0` + note). 지도는 A10과 같은 레이어. 선종(정확도)은 `approximation`이면 label `[개략]`.
 - [ ] 테스트: 픽스처 `planned:true` → 사업 1, `under_construction`→공사 1, `line_length_in_radius_m` ≈ 2·√(800²−300²) = 1483 ±5, `fill_schedule_pct.value === 0`.
 - [ ] 구현 → 통과 → 커밋 `feat(v2-engine): D24 계획 철도 도판`
 
 ### Task 14: D25 실거래
 
-**Files:** Modify `tiles/d25.ts`, `tiles/a07.ts`(내부를 `collectTrades(ctx)`로 export — 동작 동일); Test `test-v2-d25.mjs`
+**Files:** Modify `tiles/d25.ts`, `tiles/a07.ts`(내부를 `collectTrades(ctx)`로 export — 동작 동일); Test `test-v2-tile-a07-trades.mjs`
 **Interfaces:** `collectTrades(ctx): { sources, valid, priced, points(단지별 중앙 단가·건수·위치), unlocated, absent, cancelled, from, mid } | null`. D25: 앞면 = A07과 같은 5분위 점(`trade_q*`, weight=건수), 뒷면 `back_q<i>`(5분위별 **거래 건수** — 원거래 집합 기준, 단지 중앙값의 중앙값 금지), `fill_location_pct`(위치 확인 거래÷(확인+미확인), F연결), `unlocated_trades`. 필터 문구 "아파트 매매 · 최근 12개월"을 판단 문장에.
 - [ ] 테스트: 픽스처 `trades:true`(A07 테스트와 같은 기대치: 유효 29건, 위치 미확인 2건, 단가 있는 거래 28건) → `fill_location_pct.value === 93.5`(29÷31, numerator 29·denominator 31), `back_q1..q5` 값의 합 === 28, `features`의 레이어가 모두 `trade_q1~5`, A07 기존 테스트(`test-v2-engine-market-zoning.mjs`) 통과.
 - [ ] 구현 → 통과 → 커밋 `feat(v2-engine): D25 실거래 도판, A07 수집 로직 공유`
 
 ### Task 15: D27 인구
 
-**Files:** Modify `tiles/d27.ts`; Test `test-v2-d27.mjs`
+**Files:** Modify `tiles/d27.ts`; Test `test-v2-tile-a11-density.mjs`
 **Interfaces:** `pop_grid` 점 + `cellSizeM`로 격자 사각형(EPSG:5179 축 정렬)을 만들어 `areaInCircle`로 절단 → 면 `pop_dens_<0..5>`(밀도 = 총인구÷격자 면적 ㎢, 구간 0 / (0,1000) / [1000,5000) / [5000,10000) / [10000,20000) / ≥20000), 비공개는 `pop_grid_na`. 지표 `fill_public_pct`(공개 격자 교차면적÷원 면적), `share_dens_<i>`(구간별 교차면적 비율, 분모 π·r²), `back_na_pct`. 한계는 A11과 같은 문구(비밀보호·면적비). `circleRectOverlap`은 `a11.ts`에서 import.
 - [ ] 테스트: 테스트가 reference에 `pop_grid` 3셀(중심 (0,0) 1,000명, (1000,0) 30,000명, (0,1000) N/A) 삽입 → 구간 `pop_dens_2`(1,000/㎢)·`pop_dens_5`(30,000)·`na` 각 1면, `share_dens_*` 분자 = `circleRectOverlap` 값과 일치.
 - [ ] 구현 → 통과 → 커밋 `feat(v2-engine): D27 인구 밀도 도판`
 
 ### Task 17: S01 3D 매스 — 엔진 타일
 
-**Files:** Modify `tiles/s01.ts`; Test `test-v2-s01.mjs`
+**Files:** Modify `tiles/s01.ts`; Test `test-v2-tile-s01-engine.mjs`
 **Interfaces:** `buildingRows(ctx)`로 반경 안 건물. `tileType: "simulation"`, 지표 `buildings`, `height_known_pct`(source+estimate ÷ 전체, 분자·분모), `height_source_pct`, `height_estimated_count`, `height_unknown_count`, `height_median_m`(알려진 높이만, estimated 포함 시 status `estimated`), `height_max_m`. `presentation.camera = { kind: "axonometric", azimuthDeg: 225, elevationDeg: 35, radiusM }`, `layers: ["mass_source","mass_estimated","mass_unknown"]`, `conditions.simulation = { scene: SCENE_VERSION, buildingsIncluded, buildingsTotal, cap: SCENE_MAX_BUILDINGS, ground: "flat" }`. 한계: "공개 도형과 확보 높이로 만든 매스. 높이 미상 건물은 바닥 모양만", "지반 평탄(DEM은 P3)". 3D 파일은 부록 링크(PPT에 넣지 않음 — spec §5.1).
 - [ ] 테스트: 픽스처 buildings → `buildings 6`, `height_known_pct` = 4/6 = 66.7, `height_estimated_count 1`, `height_unknown_count 2`, `height_median_m` = median(12,40,90,8)=26 (status estimated), `height_max_m 90`(estimated), 문장에 "법적" 없음; buildings 없으면 `not_provided`.
 - [ ] 구현 → 통과 → 커밋 `feat(v2-engine): S01 3D 매스 타일(지표·카메라·장면 조건)`
@@ -672,7 +672,7 @@ export function glbFileName(address: string, analysisDate: string): string;
 **Interfaces:**
 - `mass-projection.ts`: `projectMass(scene: Scene, camera: {azimuthDeg, elevationDeg}, W, H): { faces: Array<{ path: string; shade: number; layer: "mass_source"|"mass_estimated"|"mass_unknown"|"ground"; depth: number }>; scale: number }` — 축측 투영: `x' = x·cosA − y·sinA`, `y' = x·sinA + y·cosA`, `sx = x'`, `sy = −(y'·sinE + z·cosE)`, depth = `y'·cosE − z·sinE`(작을수록 멀다 → 먼 것부터 그림, 건물 단위로 정렬 뒤 면은 지붕 마지막). 반경 원이 그림 높이 80%에 맞게 `scale`. 벽 음영은 법선과 광원(북서 상단) 내적.
 - `MassFigure({ scene, camera, width, height, fixed })` SVG. 범례: 확보 높이/추정 높이/높이 미상. 북쪽 화살표는 투영된 +y 방향.
-- [ ] 테스트 `test-v2-mass.mjs`: 정육면체 1동 → `faces` 중 지붕 1 + 보이는 벽 2(뒷면 컬링: 법선·시선 내적 ≤ 0 제외), 미상 건물은 `mass_unknown` 바닥면 1개, `renderToStaticMarkup(MassFigure)`에 `<path` 3개 이상, 먼 건물 path가 가까운 건물보다 먼저.
+- [ ] 테스트 `test-v2-tile-s01-mass.mjs`: 정육면체 1동 → `faces` 중 지붕 1 + 보이는 벽 2(뒷면 컬링: 법선·시선 내적 ≤ 0 제외), 미상 건물은 `mass_unknown` 바닥면 1개, `renderToStaticMarkup(MassFigure)`에 `<path` 3개 이상, 먼 건물 path가 가까운 건물보다 먼저.
 - [ ] 구현 → 통과 → `npm run lint` → 커밋 `feat(v2-ui): S01 축측 매스 그림과 슬라이드 1컷`
 
 ### Task 21: 내보내기 화면(DXF·GLB)
