@@ -1,22 +1,19 @@
-import type { TileResult } from "../tile-result";
 import { a01 } from "./a01/engine";
-import { a02 } from "./a02/engine";
+import { a02ServerModule } from "./a02/server";
 import { a03 } from "./a03/engine";
-import { a04 } from "./a04/engine";
+import { a04ServerModule } from "./a04/server";
 import { a05 } from "./a05/engine";
 import { a06 } from "./a06/engine";
-import { a07 } from "./a07/engine";
+import { a07ServerModule } from "./a07/server";
 import { a08 } from "./a08/engine";
-import { a09 } from "./a09/engine";
-import { a10 } from "./a10/engine";
-import { a11 } from "./a11/engine";
-import { a12 } from "./a12/engine";
+import { a09ServerModule } from "./a09/server";
+import { a10ServerModule } from "./a10/server";
+import { a11ServerModule } from "./a11/server";
+import { a12ServerModule } from "./a12/server";
 import { d01 } from "./d01/engine";
 import { d02 } from "./d02/engine";
 import { d03 } from "./d03/engine";
 import { d04 } from "./d04/engine";
-import { d08 } from "./a12/d08";
-import { d09 } from "./a04/d09";
 import { d11 } from "./d11/engine";
 import { d12 } from "./d12/engine";
 import { d13 } from "./d13/engine";
@@ -24,16 +21,9 @@ import { d15 } from "./d15/engine";
 import { d16 } from "./d16/engine";
 import { d17 } from "./d17/engine";
 import { d18 } from "./d18/engine";
-import { d19 } from "./d19/engine";
-import { d20 } from "./d19/d20";
+import { d19ServerModule } from "./d19/server";
 import { d22 } from "./d22/engine";
-import { d23 } from "./a09/d23";
-import { d24 } from "./a10/d24";
-import { d25 } from "./a07/d25";
-import { d26 } from "./a02/d26";
-import { d27 } from "./a11/d27";
 import { d28 } from "./d28/engine";
-import { mergeTileResults, retargetTile, type MergeOptions } from "../engine/tiles/merge";
 import { s01 } from "./s01/engine";
 import { d05ServerModule } from "./d05/server";
 import type { TileCompute, TileServerModule } from "./types";
@@ -43,27 +33,6 @@ const deferredHeavyTile: TileCompute = () => {
   throw new Error("heavy tile compute is only available in the analysis worker");
 };
 
-function mergedTile(ctx: Parameters<TileCompute>[0], code: string, primary: TileCompute, extras: readonly TileCompute[], options: MergeOptions = {}): TileResult {
-  let result = retargetTile(primary(ctx), ctx, code);
-  for (const extra of extras) result = mergeTileResults(result, retargetTile(extra(ctx), ctx, code), options);
-  return result;
-}
-
-function mergedModule(
-  code: string,
-  primary: TileCompute,
-  absorbs: readonly string[],
-  extras: readonly TileCompute[],
-  mergeOptions: MergeOptions = {},
-): TileServerModule {
-  return {
-    code,
-    absorbs,
-    mergeOptions,
-    compute: (ctx) => mergedTile(ctx, code, primary, extras, mergeOptions),
-  };
-}
-
 function directModule(code: string, compute: TileCompute): TileServerModule {
   return { code, compute };
 }
@@ -71,17 +40,17 @@ function directModule(code: string, compute: TileCompute): TileServerModule {
 /** 화면 순서(카탈로그 순). heavy 타일의 구현은 이 경량 레지스트리에 import하지 않는다. */
 export const TILE_SERVER_MODULES: TileServerModule[] = [
   directModule("A01", a01),
-  mergedModule("A02", a02, ["D26"], [d26]),
+  a02ServerModule,
   directModule("A03", a03),
-  mergedModule("A04", a04, ["D09"], [d09]),
+  a04ServerModule,
   directModule("A05", a05),
   directModule("A06", a06),
-  mergedModule("A07", a07, ["D25"], [d25]),
+  a07ServerModule,
   directModule("A08", a08),
-  mergedModule("A09", a09, ["D23"], [d23]),
-  mergedModule("A10", a10, ["D24"], [d24]),
-  mergedModule("A11", a11, ["D27"], [d27]),
-  mergedModule("A12", a12, ["D08"], [d08]),
+  a09ServerModule,
+  a10ServerModule,
+  a11ServerModule,
+  a12ServerModule,
   directModule("D01", d01),
   directModule("D02", d02),
   directModule("D03", d03),
@@ -95,7 +64,7 @@ export const TILE_SERVER_MODULES: TileServerModule[] = [
   directModule("D16", d16),
   directModule("D17", d17),
   directModule("D18", d18),
-  mergedModule("D19", d19, ["D20"], [d20]),
+  d19ServerModule,
   directModule("D22", d22),
   directModule("D28", d28),
   directModule("D29", deferredHeavyTile),
