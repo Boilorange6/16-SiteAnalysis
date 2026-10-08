@@ -41,6 +41,14 @@ assert.doesNotMatch(slideMarkup, /<text[^>]*>연간 바람장미<\/text>/);
 assert.doesNotMatch(slideMarkup, /결측 5% · 지점 near/);
 
 const overlaps = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+const edgeGap = (a, b) => {
+  const overlapX = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+  const overlapY = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+  if (overlapX > 0 && overlapY > 0) return -Math.min(overlapX, overlapY);
+  const dx = Math.max(a.x0 - b.x1, b.x0 - a.x1, 0);
+  const dy = Math.max(a.y0 - b.y1, b.y0 - a.y1, 0);
+  return Math.hypot(dx, dy);
+};
 for (const chrome of ["tile", "slide"]) {
   const layout = windRoseLayout(960, 540, chrome);
   const titleCard = layout.titleReserved;
@@ -55,6 +63,14 @@ for (const chrome of ["tile", "slide"]) {
     const infoPanel = { x0: 631, y0: 22, x1: 960, y1: 516 };
     assert.ok(!overlaps(layout.legend, infoPanel), "slide: legend under info panel");
   }
+}
+for (const [columns, width, height] of [[2, 688, 455], [3, 453.33, 260], [4, 336, 162], [5, 265.59, 162], [6, 218.66, 162]]) {
+  const layout = windRoseLayout(width, height, "tile");
+  const rose = { x0: layout.cx - layout.rMax, y0: layout.cy - layout.rMax, x1: layout.cx + layout.rMax, y1: layout.cy + layout.rMax };
+  const minGap = Math.min(...layout.labels.map((label) => edgeGap(label, layout.legend)));
+  assert.ok(minGap >= 4, `${columns}열: 범례와 방향 글자 최소 간격 ${minGap.toFixed(2)}px`);
+  assert.ok(!overlaps(layout.legend, rose), `${columns}열: 범례와 장미 겹침`);
+  assert.ok(layout.labels.every((label, i) => !overlaps(label, layout.labels[(i + 1) % layout.labels.length])), `${columns}열: 방향 글자끼리 겹침`);
 }
 assert.ok(windRoseLayout(672, 492, "tile").rMax > windRoseLayout(336, 196, "tile").rMax, "4칸 바람장미도 실측 박스에 맞춰 커짐");
 
