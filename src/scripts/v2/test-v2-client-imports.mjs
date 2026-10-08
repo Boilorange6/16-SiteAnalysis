@@ -37,11 +37,14 @@ const resolveLocal = (from, spec) => {
 const seen = new Map(); // file -> importer chain
 const queue = entries.map((f) => [f, [f]]);
 const leaks = [];
+// Pure modules under engine/ that the client legitimately shares (type-only imports, no node:, no data access).
+// a05-filter: A05-owned filter/re-aggregation used by both the engine and the board UI (plan ownership table keeps it in place).
+const CLIENT_SAFE_ENGINE_FILES = new Set(["lib/v2/engine/a05-filter.ts"]);
 const serverModules = [];
 const relativeToRoot = (file) => file.slice(root.length + 1).replaceAll("\\", "/");
 const serverReason = (file) => {
   const relative = relativeToRoot(file);
-  if (relative.startsWith("lib/v2/engine/")) return "shared engine module";
+  if (relative.startsWith("lib/v2/engine/") && !CLIENT_SAFE_ENGINE_FILES.has(relative)) return "shared engine module";
   if (/^lib\/v2\/tile\/[^/]+\/engine\.ts$/.test(relative)) return "tile engine module";
   if (ABSORBED_ENGINE_FILES.has(relative)) return "absorbed tile engine module";
   return null;
