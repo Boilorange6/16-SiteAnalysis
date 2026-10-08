@@ -9,6 +9,7 @@ const ids = GODEOK_RESULTS.map((r) => r.tileId);
 let s = initBoard(GODEOK_RESULTS);
 assert.deepEqual(s.order, ids);
 assert.deepEqual(s.results, GODEOK_RESULTS);
+assert.equal(s.columns, 4);
 assert.equal(s.included["t-A01"], true);
 assert.equal(s.included["t-S02"], false); // not_provided
 assert.equal(s.included["t-S03"], false); // failed
@@ -110,6 +111,17 @@ assert.deepEqual(reportPages(s), { tiles: 9, pages: 12 }); // 포함·면 설정
   assert.equal(b.sizes["t-A01"], 2);
   b = boardReducer(b, { type: "undo" });
   assert.equal(b.sizes["t-A01"], 1);
+  b = boardReducer(b, { type: "resize", id: "t-A01", size: 4 });
+  assert.equal(b.sizes["t-A01"], 4);
+  b = boardReducer(b, { type: "undo" });
+  assert.equal(b.sizes["t-A01"], 1);
+
+  // 열 수: 기본 4, 저장값 변경은 undo에 쌓이고 같은 값은 무시한다.
+  assert.equal(boardReducer(b, { type: "columns", columns: 4 }), b);
+  b = boardReducer(b, { type: "columns", columns: 6 });
+  assert.equal(b.columns, 6);
+  b = boardReducer(b, { type: "undo" });
+  assert.equal(b.columns, 4);
 
   // 더하기: 끝에 붙고, 없는 것·이미 있는 것 무시, undo하면 다시 트레이로
   b = boardReducer(b, { type: "remove", id: "t-A05" });
@@ -210,12 +222,16 @@ assert.equal(demoFinished(10, 99), 10);
   b = boardReducer(b, { type: "a05Filter", id: "t-A05", filter: { types: ["apt"], year: { min: 2010 } } });
   const snapshot = serializeBoardState(b);
   assert.equal(snapshot.version, 3);
+  assert.equal(snapshot.columns, 4);
   assert.deepEqual(snapshot.a05Filter["t-A05"], { types: ["apt"], year: { min: 2010, max: null } });
   const restored = restoreBoardState(GODEOK_RESULTS, JSON.stringify(snapshot));
   assert.deepEqual(restored.a05Filter, snapshot.a05Filter, "저장→불러오기 왕복으로 A05 필터 유지");
   const old = { ...snapshot };
   delete old.a05Filter;
+  delete old.columns;
   assert.deepEqual(restoreBoardState(GODEOK_RESULTS, old).a05Filter, {}, "a05Filter 없는 옛 저장본 호환");
+  assert.equal(migrateSnapshot(old).columns, 4, "열 수가 없던 옛 저장본은 기본 4열로 이관");
+  assert.equal(restoreBoardState(GODEOK_RESULTS, old).columns, 4, "열 수가 없던 옛 저장본을 기본 4열로 복원");
   const refreshed = boardReducer(b, { type: "replaceResults", results: GODEOK_RESULTS.map((result) => ({ ...result })) });
   assert.deepEqual(refreshed.a05Filter, b.a05Filter, "재분석 결과 교체에도 필터 유지");
 }
@@ -248,6 +264,7 @@ assert.equal(demoFinished(10, 99), 10);
   TILE_CODE_RENAMES.OLD = "NEW";
   const migrated = migrateSnapshot(old);
   assert.equal(migrated.version, 3, "v1 snapshot is migrated to current version");
+  assert.equal(migrated.columns, 4, "열 수가 없는 v1 snapshot은 4열로 이관");
   assert.deepEqual(migrated.order, [newId]);
   for (const field of ["included", "faces", "callout", "a05Filter", "view", "sizes", "tileKinds", "cameras", "labels", "layers"]) {
     assert.ok(migrated[field][newId], `${field} id rewrite`);

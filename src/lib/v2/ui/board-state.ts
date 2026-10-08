@@ -6,7 +6,8 @@ import { CAMERA_PRESETS } from "./mass-projection";
 import type { OutputFace } from "./tile-view";
 import { layerOptionsForResult } from "./tile-layers";
 
-export type TileSize = 1 | 2;
+export type TileSize = 1 | 2 | 4;
+export type GridColumns = 2 | 3 | 4 | 5 | 6;
 export type SheetGrid = "2x2" | "3x2";
 export type SheetSpec = { tiles: string[]; grid: SheetGrid };
 export type CameraPreset = { azimuthDeg: number; elevationDeg: number };
@@ -28,6 +29,7 @@ export type PinnedLabel = { key: string; on: boolean };
 export type UndoEntry =
   | { kind: "order"; id: string; order: string[] }
   | { kind: "size"; id: string; size: TileSize }
+  | { kind: "columns"; columns: GridColumns }
   | { kind: "remove"; id: string; index: number }
   | { kind: "add"; id: string; trayIndex: number };
 
@@ -80,6 +82,8 @@ export type BoardState = {
   /** 카드별 화면 면. 전체 전환 뒤 카드별로 뒤집으면 그 카드만 다음 전체 전환까지 따로 간다. 보고서·되돌리기에 들어가지 않는다 */
   view: Record<string, CardFace>;
   viewAll: CardFace;
+  /** 사용자가 저장한 보드 열 수. 좁은 화면의 실제 열 수는 CSS/측정으로 줄어들 수 있다. */
+  columns: GridColumns;
   sizes: Record<string, TileSize>;
   /** 원본 타일의 종류. 스택 reducer가 simulation/다른 스택을 걸러낼 때 사용한다. */
   tileKinds: Record<string, TileResult["tileType"]>;
@@ -108,6 +112,7 @@ export type BoardAction =
   | { type: "move"; id: string; dir: -1 | 1 }
   | { type: "reorder"; from: number; to: number }
   | { type: "resize"; id: string; size: TileSize }
+  | { type: "columns"; columns: GridColumns }
   | { type: "add"; id: string }
   | { type: "include"; id: string; value: boolean }
   | { type: "face"; id: string; face: OutputFace }
@@ -145,6 +150,7 @@ export function initBoard(results: TileResult[]): BoardState {
     a05Filter: {},
     view: {},
     viewAll: "summary",
+    columns: 4,
     // 주변 단지 설명선(A05)은 좌우 칸이 필요해 기본 2칸
     sizes: Object.fromEntries(results.map((r) => [r.tileId, (r.tileCode === "A05" || r.tileCode === "A06" ? 2 : 1) as TileSize])),
     tileKinds: Object.fromEntries(results.map((r) => [r.tileId, r.tileType])),
@@ -220,6 +226,8 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
           return { ...s, ...rest, order: u.order };
         case "size":
           return { ...s, ...rest, sizes: { ...s.sizes, [u.id]: u.size } };
+        case "columns":
+          return { ...s, ...rest, columns: u.columns };
         case "remove": {
           const order = [...s.order];
           order.splice(Math.min(u.index, order.length), 0, u.id);
@@ -263,6 +271,9 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
       if (prev === undefined || prev === a.size) return s;
       return { ...s, sizes: { ...s.sizes, [a.id]: a.size }, undoStack: [...s.undoStack, { kind: "size", id: a.id, size: prev }] };
     }
+    case "columns":
+      if (s.columns === a.columns) return s;
+      return { ...s, columns: a.columns, undoStack: [...s.undoStack, { kind: "columns", columns: s.columns }] };
     case "include":
       return { ...s, included: { ...s.included, [a.id]: a.value } };
     case "face":
@@ -407,6 +418,7 @@ export type BoardStateSnapshot = {
   a05Filter: Record<string, A05Filter>;
   view: Record<string, CardFace>;
   viewAll: CardFace;
+  columns: GridColumns;
   sizes: Record<string, TileSize>;
   tileKinds: Record<string, TileResult["tileType"]>;
   stacks: Record<string, string[]>;
@@ -436,6 +448,7 @@ export function serializeBoardState(s: BoardState): BoardStateSnapshot {
     a05Filter,
     view: { ...s.view },
     viewAll: s.viewAll,
+    columns: s.columns,
     sizes: { ...s.sizes },
     tileKinds: { ...s.tileKinds },
     stacks: Object.fromEntries(Object.entries(s.stacks).map(([id, layers]) => [id, [...layers]])),
@@ -455,7 +468,8 @@ const unique = (values: readonly string[]) => [...new Set(values)];
 const isOutputFace = (value: unknown): value is OutputFace => value === "front" || value === "back" || value === "both";
 const isCalloutMode = (value: unknown): value is CalloutMode => value === "overview" || value === "top10" || value === "all";
 const isCardFace = (value: unknown): value is CardFace => value === "summary" || value === "map";
-const isTileSize = (value: unknown): value is TileSize => value === 1 || value === 2;
+const isTileSize = (value: unknown): value is TileSize => value === 1 || value === 2 || value === 4;
+const isGridColumns = (value: unknown): value is GridColumns => value === 2 || value === 3 || value === 4 || value === 5 || value === 6;
 const isTileKind = (value: unknown): value is TileResult["tileType"] => value === "analysis" || value === "diagram" || value === "simulation" || value === "stack";
 
 function rawSnapshot(raw: unknown): Record<string, unknown> | null {
@@ -626,7 +640,8 @@ export function migrateSnapshot(raw: unknown): BoardStateSnapshot | null {
   if (version === 1) migrated = migrateV1ToV2(migrated);
   migrated = rewriteSnapshotIds(migrated, renameTileId);
   if (version <= 2) migrated = migrateV2ToV3(migrated);
-  return { ...migrated, version: BOARD_STATE_VERSION };
+  // 열 수는 컷 이관과 같은 v3에서 생겼다 — 컷만 가진 v3 저장본도 기본 4열로 읽는다
+  return { ...migrated, columns: isGridColumns(migrated.columns) ? migrated.columns : 4, version: BOARD_STATE_VERSION };
 }
 
 /** 재분석으로 analysisId가 바뀐 프로젝트의 보드 배치를 새 타일 id에 연결한다. */
@@ -732,6 +747,7 @@ export function restoreBoardState(results: TileResult[], raw: unknown): BoardSta
     a05Filter,
     view,
     viewAll: isCardFace(saved.viewAll) ? saved.viewAll : base.viewAll,
+    columns: isGridColumns(saved.columns) ? saved.columns : base.columns,
     sizes,
     tileKinds,
     stacks: savedStacks,

@@ -56,6 +56,7 @@ for (const chrome of ["tile", "slide"]) {
     assert.ok(!overlaps(layout.legend, infoPanel), "slide: legend under info panel");
   }
 }
+assert.ok(windRoseLayout(672, 492, "tile").rMax > windRoseLayout(336, 196, "tile").rMax, "4칸 바람장미도 실측 박스에 맞춰 커짐");
 
 assert.equal(formatDistanceM(16_819), "16.8 km");
 assert.equal(formatDistanceM(999), "999m");

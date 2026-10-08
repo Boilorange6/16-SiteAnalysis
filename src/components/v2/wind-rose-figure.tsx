@@ -1,4 +1,4 @@
-import React, { memo } from "react";
+import React, { memo, useEffect, useRef, useState } from "react";
 import { DIR16_NAMES, roseWedges, SPEED_BIN_LABELS, type RoseModel } from "@/lib/v2/ui/wind-rose";
 import type { RoseSeason } from "@/lib/v2/tile-result";
 
@@ -44,6 +44,13 @@ const SEASON_LABEL: Record<RoseSeason, string> = { annual: "연간", spring: "�
 
 const box = (x0: number, y0: number, x1: number, y1: number): WindRoseBox => ({ x0, y0, x1, y1 });
 
+/** 낮은 카드(1칸 지도 면)에서는 범례를 줄이고 위로 올려 아래로 잘리지 않게 한다. 슬라이드·단독 도판은 그대로. */
+function fitLegend(height: number, chrome: WindRoseChrome, y0: number) {
+  if (chrome !== "tile") return { scale: 1, y: y0 };
+  const scale = Math.max(0.6, Math.min(1, (height - 28 - y0) / 145));
+  return { scale, y: Math.max(12 * scale + 4, Math.min(y0, height - 28 - 145 * scale)) };
+}
+
 /** WindRoseFigure의 실제 장식 위치와 외부 오버레이 예약 자리를 함께 계산한다. */
 export function windRoseLayout(width: number, height: number, chrome: WindRoseChrome = "tile"): WindRoseLayout {
   const frame = chrome !== "standalone";
@@ -52,7 +59,9 @@ export function windRoseLayout(width: number, height: number, chrome: WindRoseCh
   const rMax = frame ? Math.min(width * 0.33, height * 0.389) : Math.min(width * 0.33, height * 0.4);
   const labelRadius = frame ? rMax + 8 : rMax + 24;
   const legendX = frame && chrome === "slide" ? 16 : frame ? width * 0.66 : width * 0.7;
-  const legendY = frame && chrome === "slide" ? height - 185 : frame ? height * 0.22 : height * 0.23;
+  const legendFit = fitLegend(height, chrome, frame && chrome === "slide" ? height - 185 : frame ? height * 0.22 : height * 0.23);
+  const legendY = legendFit.y;
+  const legendScale = legendFit.scale;
   const legendWidth = frame && chrome === "slide" ? 110 : width * 0.28;
   const legendHeight = 157;
   const labels = DIR16_NAMES.map((name, dir) => {
@@ -68,13 +77,13 @@ export function windRoseLayout(width: number, height: number, chrome: WindRoseCh
     rMax,
     labelRadius,
     titleReserved: frame ? box(0, 0, Math.min(width * 0.375, 360), Math.min(height * 0.133, 72)) : null,
-    legend: box(legendX - 10, legendY - 12, legendX + legendWidth + 4, legendY + legendHeight),
+    legend: box(legendX - 10 * legendScale, legendY - 12 * legendScale, legendX + (legendWidth + 4) * legendScale, legendY + legendHeight * legendScale),
     footerReserved: frame ? box(0, Math.max(0, height - 24), width, height) : null,
     labels,
   };
 }
 
-function WindRoseFigure({ model, width, height, fixed = false, label = "D22 바람장미", season = "annual", chrome = "tile" }: WindRoseFigureProps) {
+function WindRoseSvg({ model, width, height, fixed = false, label = "D22 바람장미", season = "annual", chrome = "tile" }: WindRoseFigureProps) {
   const layout = windRoseLayout(width, height, chrome);
   const { cx, cy, rMax, labelRadius } = layout;
   const frame = chrome !== "standalone";
@@ -86,7 +95,9 @@ function WindRoseFigure({ model, width, height, fixed = false, label = "D22 바�
   const tickBearing = (3 * Math.PI) / 16;
   const accessibleLabel = season === "annual" ? label : `${label} · ${SEASON_LABEL[season]}`;
   const legendX = frame && chrome === "slide" ? 16 : frame ? width * 0.66 : width * 0.7;
-  const legendY = frame && chrome === "slide" ? height - 185 : frame ? height * 0.22 : height * 0.23;
+  const legendFit = fitLegend(height, chrome, frame && chrome === "slide" ? height - 185 : frame ? height * 0.22 : height * 0.23);
+  const legendY = legendFit.y;
+  const legendScale = legendFit.scale;
   const legendWidth = frame && chrome === "slide" ? 110 : width * 0.28;
 
   return (
@@ -142,7 +153,7 @@ function WindRoseFigure({ model, width, height, fixed = false, label = "D22 바�
           정온 {pctOf(model.calmHours, model.totalHours)}%
         </text>
       </g>
-      <g aria-label="풍속 구간" data-wind-rose-legend="true" transform={`translate(${legendX} ${legendY})`}>
+      <g aria-label="풍속 구간" data-wind-rose-legend="true" transform={`translate(${legendX} ${legendY}) scale(${legendScale})`}>
         {frame && <rect x="-10" y="-12" width={legendWidth + 14} height="157" rx="8" fill="#FFFFFF" fillOpacity="0.88" stroke="#D9DCE2" strokeWidth="0.8" />}
         <text x="0" y="0" fontSize="14" fontWeight="700" fill={INK}>
           풍속
@@ -163,6 +174,34 @@ function WindRoseFigure({ model, width, height, fixed = false, label = "D22 바�
       )}
     </svg>
   );
+}
+
+function ResponsiveWindRoseFigure(props: WindRoseFigureProps) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ width: props.width, height: props.height });
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const read = () => {
+      const width = Math.max(1, Math.round(host.clientWidth || props.width));
+      const height = Math.max(1, Math.round(host.clientHeight || props.height));
+      setSize((current) => current.width === width && current.height === height ? current : { width, height });
+    };
+    read();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(read);
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, [props.width, props.height]);
+  return (
+    <div ref={hostRef} style={{ width: "100%", height: "100%" }}>
+      <WindRoseSvg {...props} width={size.width} height={size.height} fixed={false} />
+    </div>
+  );
+}
+
+function WindRoseFigure(props: WindRoseFigureProps) {
+  return props.fixed ? <WindRoseSvg {...props} /> : <ResponsiveWindRoseFigure {...props} />;
 }
 
 const MemoWindRoseFigure = memo(WindRoseFigure);
