@@ -744,6 +744,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
                 <TileCard
                   key="card"
                   view={view}
+                  analysisId={analysisId}
                   layer={view.defaultLayer}
                   onLayer={(layer) => dispatch({ type: "layer", id, layer })}
                   phase={demoOn ? demoPhase(i, demoStep!) : (jobState.byCode.get(view.code)?.phase ?? null)}
