@@ -544,19 +544,6 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
           {editing ? (
             <>
               <span className={styles.editHint}>순서를 바꾸거나 빼세요. 순서는 보고서 순서가 됩니다.</span>
-              <label className={styles.presetEditor} htmlFor="v2-board-preset">
-                <span>과제 프리셋</span>
-                <select
-                  id="v2-board-preset"
-                  value={board.preset}
-                  onChange={(event) => changePreset(event.currentTarget.value as PresetId)}
-                  disabled={actionBusy}
-                  aria-describedby="v2-board-preset-help"
-                >
-                  {PRESET_IDS.map((id) => <option key={id} value={id}>{TILE_PRESETS[id].label}</option>)}
-                </select>
-                <small id="v2-board-preset-help">수동 포함·순서를 이 프리셋으로 바꿉니다.</small>
-              </label>
               {stackSelection.length >= 2 && (
                 <button
                   type="button"

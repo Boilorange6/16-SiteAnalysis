@@ -197,42 +197,9 @@
   color: var(--muted);
   font-size: 13px;
 }
-.presetEditor {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 5px 7px;
-  min-width: 0;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
-}
-.presetEditor > span {
-  white-space: nowrap;
-}
-.presetEditor select {
-  min-width: 128px;
-  min-height: 38px;
-  max-width: 190px;
-  padding: 0 28px 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: #fff;
-  color: var(--ink);
-  font: inherit;
-  font-size: 12px;
-}
-.presetEditor select:focus-visible,
 .presetSelect:focus-visible {
   outline: 2px solid #2f6fdb;
   outline-offset: 2px;
-}
-.presetEditor small {
-  color: #8a5b00;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.35;
-  white-space: nowrap;
 }
 .desktopTools {
   display: inline-flex;
@@ -2789,18 +2756,6 @@ button.badge:focus-visible {
   .analyzeBar > .pill {
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-  .presetEditor {
-    flex: 1 1 100%;
-    align-items: flex-start;
-  }
-  .presetEditor select {
-    flex: 1 1 150px;
-    max-width: none;
-  }
-  .presetEditor small {
-    flex-basis: 100%;
-    white-space: normal;
   }
 }
 
