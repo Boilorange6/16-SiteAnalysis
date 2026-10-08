@@ -119,6 +119,11 @@ export interface TileClientModule {
   board?: TileBoardModule;
   /** 타일의 저장 컷·후보·보고서 조판 동작이다. */
   cut?: TileCutModule;
-  /** 서버 전용 보고서 레지스트리에서 연결하는 타일 조판 훅이다. */
-  report?: TileReportHook;
+}
+
+/** 보고서 전용 레지스트리(tile/report.ts) 항목 — pptxgenjs가 클라이언트 그래프에 들어가지 않게 TileClientModule과 분리한다. */
+export interface TileReportModule {
+  code: string;
+  /** 타일 고유 PPT 장 조판 훅이다. */
+  report: TileReportHook;
 }

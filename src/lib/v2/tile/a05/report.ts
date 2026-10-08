@@ -7,7 +7,7 @@ import { unitTypeSummaryParts } from "../../unit-types";
 import { E, FONT, INK, IW, IX, L, MUTED, SLIDE, fitPt, hex, plate, seg, textIn, type ReportItem, type Slide } from "../../report/pptx-kit";
 import type { PlannedSlide } from "../../report/report-plan";
 import type { TileReportRenderContext } from "../../report/types";
-import type { TileClientModule } from "../types";
+import type { TileReportModule } from "../types";
 
 // The A05 and A06 callout pages are one ownership unit, matching their shared screen Stage.
 const AMBER = "9A5B00";
@@ -185,5 +185,5 @@ function renderCallout({ slide, planned, part }: TileReportRenderContext): Repor
 
 const report = { render: renderCallout };
 
-export const a05ReportModule = { code: "A05", report } satisfies Pick<TileClientModule, "code" | "report">;
-export const a06ReportModule = { code: "A06", report } satisfies Pick<TileClientModule, "code" | "report">;
+export const a05ReportModule = { code: "A05", report } satisfies TileReportModule;
+export const a06ReportModule = { code: "A06", report } satisfies TileReportModule;
