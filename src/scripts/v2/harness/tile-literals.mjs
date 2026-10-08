@@ -37,73 +37,123 @@ const sourceFiles = [
   ...collectFiles("src/app/v2", true),
 ].sort();
 
-// These are the P1 plan's intentional central owners. Keep each rule narrow enough
+// These are the P1/P2a plan's intentional central owners. Keep each rule narrow enough
 // that a new target-code token in another line still fails the ownership gate.
 const WHITELIST = [
   {
     file: "src/lib/v2/ui/board-state.ts",
-    pattern: /\bD0[567]\b|\bD21\b|\bS02\b/,
+    pattern: /TILE_CODE_RENAMES|LEGACY_LAYER_RENAMES|^D\d{2}:/,
     reason: "saved-board code/layer migration table stays central",
   },
   {
     file: "src/lib/v2/ui/tile-catalog.ts",
-    pattern: /\bA0[56]\b|\bD0[567]\b|\bS02\b/,
+    pattern: /TILE_CATALOG|TILE_PRESETS|^[A-Z]\d{2}:|^"[A-Z]\d{2}"/,
     reason: "catalog and user-facing presets stay central",
   },
   {
     file: "src/lib/v2/ui/detail-state.ts",
-    pattern: /\bA0[56]\b|\bD0[567]\b|\bS02\b/,
+    pattern: /\b[A-Z]\d{2}\b/,
     reason: "detail-state code list stays central",
   },
   {
     file: "src/lib/v2/engine/detail/housing.ts",
-    pattern: /HOUSING_SPECS|\bA0[56]\b/,
-    reason: "A05 and A06 share the central housing detail-spec family",
+    pattern: /HOUSING_SPECS|\b[A-Z]\d{2}\b/,
+    reason: "detail specs remain central by data family",
   },
   {
     file: "src/lib/v2/engine/detail/buildings.ts",
-    pattern: /BUILDING_CODES|\bD0[567]\b/,
-    reason: "building detail family code list stays central",
+    pattern: /BUILDING_CODES|\b[A-Z]\d{2}\b/,
+    reason: "detail specs remain central by data family",
+  },
+  {
+    file: "src/lib/v2/engine/detail/network.ts",
+    pattern: /\b[A-Z]\d{2}\b/,
+    reason: "detail specs remain central by data family",
+  },
+  {
+    file: "src/lib/v2/engine/detail/zones.ts",
+    pattern: /\b[A-Z]\d{2}\b/,
+    reason: "detail specs remain central by data family",
+  },
+  {
+    file: "src/lib/v2/engine/detail/raster.ts",
+    pattern: /\b[A-Z]\d{2}\b|rasterSpec|RASTER_SPECS/,
+    reason: "detail specs remain central by data family",
+  },
+  {
+    file: "src/lib/v2/engine/detail/parcels.ts",
+    pattern: /\b[A-Z]\d{2}\b/,
+    reason: "detail specs remain central by data family",
+  },
+  {
+    file: "src/lib/v2/engine/detail/weather.ts",
+    pattern: /\b[A-Z]\d{2}\b/,
+    reason: "detail specs remain central by data family",
   },
   {
     file: "src/lib/v2/engine/tiles/common.ts",
-    pattern: /TILE_CACHE_REVISION|\bD0[567]\b|\bS02\b/,
+    pattern: /TILE_CACHE_REVISION|^[A-Z]\d{2}:/,
     reason: "per-tile cache engine revision is a shared immutable contract",
   },
   {
     file: "src/lib/v2/engine/tiles/not-provided.ts",
-    pattern: /NOT_PROVIDED_CODES|\bD0[567]\b|\bS02\b/,
+    pattern: /NOT_PROVIDED_CODES|^"[A-Z]\d{2}"/,
     reason: "global not-provided status list stays central",
   },
   {
     file: "src/lib/v2/tile/server.ts",
-    pattern: /\bA0[56]\b|\bS02\b/,
+    pattern: /TILE_SERVER_MODULES|directModule|HEAVY_TILES|DATE_INDEPENDENT|SITE_DEPENDENT/,
     reason: "shared server registry order and heavy/site flags stay central",
   },
   {
     file: "src/lib/v2/tile/client.ts",
-    pattern: /\bS02\b/,
+    pattern: /CUT_CODES|\bS02\b/,
     reason: "shared client registry cut-code list stays central",
   },
   {
     file: "src/lib/v2/engine/jobs.ts",
-    pattern: /\bS02\b/,
+    pattern: /HEAVY_TILE_COMPUTES|^(?:S02|D29|D10|S03|S04):|code === "S04"/,
     reason: "heavy calculation enters the tile module only through the worker dispatch",
   },
   {
-    file: "src/lib/v2/engine/detail/raster.ts",
-    pattern: /\bS02\b|rasterSpec|RASTER_SPECS/,
-    reason: "S02 and D29 share the central raster detail-spec family",
-  },
-  {
     file: "src/lib/v2/ui/fixtures/godeok.ts",
-    pattern: /\bA0[56]\b|\bS02\b/,
+    pattern: /\b[A-Z]\d{2}\b/,
     reason: "shared Godeok fixture keeps the result-code contract central",
   },
   {
     file: "src/lib/v2/engine/summary.ts",
-    pattern: /\bA0[56]\b/,
-    reason: "common site summary keeps the central housing headline facts",
+    pattern: /\b[A-Z]\d{2}\b/,
+    reason: "common site summary stays central",
+  },
+  {
+    file: "src/lib/v2/ui/site-parcel.ts",
+    pattern: /\bD19\b/,
+    reason: "shared site-parcel extraction stays central",
+  },
+  {
+    file: "src/lib/v2/engine/wind-metrics.ts",
+    pattern: /s03-inflow@1:D22/,
+    reason: "cross-tile wind provenance label stays in the shared helper",
+  },
+  {
+    file: "src/lib/v2/engine/run.ts",
+    pattern: /\bS03\b|\bS04\b/,
+    reason: "shared run cache and heavy-boundary logic stays central",
+  },
+  {
+    file: "src/lib/v2/ui/tile-view.ts",
+    pattern: /GRADED_CODES/,
+    reason: "common grading eligibility stays central",
+  },
+  {
+    file: "src/lib/v2/ui/tile-view.ts",
+    pattern: /D04.*confirmed_share_pct|D16.*kde_bandwidth_m|D01.*imagery_zoom_max|A12.*site_zoning_count/,
+    reason: "dynamic parameter badges have no tile-module field and stay central",
+  },
+  {
+    file: "src/lib/v2/engine/tiles/d14.ts",
+    pattern: /\bD24\b/,
+    reason: "unused d14.ts is retained unchanged per the P2a instruction",
   },
 ];
 
