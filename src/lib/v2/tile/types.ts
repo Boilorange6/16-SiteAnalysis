@@ -1,8 +1,10 @@
 import type { EngineContext } from "../engine/context";
 import type { MergeOptions } from "../engine/tiles/merge";
+import type { A05Counts } from "../engine/a05-filter";
+import type { CalloutMode } from "../ui/callout-layout";
 import type { MapModel } from "../ui/map-layers";
 import type { MassModel } from "../ui/mass-projection";
-import type { TileView } from "../ui/tile-view";
+import type { Badge, CalloutModel, TileView } from "../ui/tile-view";
 import type { RoseModel } from "../ui/wind-rose";
 import type { RasterRef, RoseSeason, TileResult } from "../tile-result";
 
@@ -23,6 +25,23 @@ export type TileHeadlinePolicy = {
 export type TileLayerOption = { id: string; label: string };
 
 export type TileLayerOptions = readonly TileLayerOption[] | ((result: TileResult) => readonly TileLayerOption[]);
+
+/** 타일 결과를 화면용 파생 결과로 바꾸는 타일 소유 전처리 계약이다. */
+export type TileViewPreparation = {
+  result: TileResult;
+  filterChip?: string | null;
+  filterLine?: string | null;
+  /** 현재는 A05 재집계 패널의 필드별 건수이며, 저장 결과에는 포함되지 않는다. */
+  a05Counts?: A05Counts | null;
+};
+
+export type TileClientViewContext = { filter?: unknown };
+
+/** 타일 고유 보드 기본값. 저장본의 필드·직렬화 형식은 board-state가 계속 소유한다. */
+export type TileBoardModule = {
+  size?: (result: TileResult) => 1 | 2 | 4;
+  callout?: (result: TileResult) => CalloutMode;
+};
 
 export type TileClientLayers = {
   /** 타일이 보드 레이어 선택지(정적 또는 결과 기반)를 제공한다. */
@@ -83,10 +102,20 @@ export interface TileClientModule {
   caveat?: string;
   /** 카드 배지에 표시할 계산 모델 요약이다. */
   modelBadge?: string;
+  /** 결과를 화면에 투영하기 전에 타일 고유 필터·파생 결과를 만든다. */
+  prepare?: (result: TileResult, context: TileClientViewContext) => TileViewPreparation;
+  /** 공용 행·헤드라인 계산 전에 남길 지표를 고른다. */
+  metricFilter?: (metric: TileResult["metrics"][number]) => boolean;
+  /** 제한사항을 읽어 타일 고유 배지를 추가한다. */
+  limitationBadges?: (limitation: TileResult["limitations"][number]) => readonly Badge[];
+  /** 타일 고유 설명선 모델을 만든다. */
+  callout?: (result: TileResult, sourceLine: string, filterLine?: string | null) => CalloutModel | null;
   /** 공용 TileView를 타일 고유 표시 규칙으로 보정한다. */
   view?: (base: TileView, result?: TileResult) => TileView;
   /** 타일이 소유한 보드 레이어 선택지와 레이어 필터다. */
   layers?: TileClientLayers;
+  /** 저장하지 않는 보드 초기 기본값을 제공한다. */
+  board?: TileBoardModule;
   /** 타일의 저장 컷·후보·보고서 조판 동작이다. */
   cut?: TileCutModule;
 }

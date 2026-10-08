@@ -154,13 +154,15 @@ export function initBoard(results: TileResult[], preset: PresetId = DEFAULT_PRES
     // 결과가 있는 타일만 기본 포함
     included: Object.fromEntries(results.map((r) => [r.tileId, r.status === "complete" || r.status === "partial"])),
     faces: Object.fromEntries(results.map((r) => [r.tileId, r.presentation.outputFace])),
-    callout: Object.fromEntries(results.filter((r) => r.tileCode === "A05" || r.tileCode === "A06").map((r) => [r.tileId, DEFAULT_CALLOUT_MODE])),
+    callout: Object.fromEntries(results.flatMap((result) => {
+      const mode = tileClientModuleFor(result.tileCode)?.board?.callout?.(result);
+      return mode ? [[result.tileId, mode] as const] : [];
+    })),
     a05Filter: {},
     view: {},
     viewAll: "summary",
     columns: 4,
-    // 주변 단지 설명선(A05)은 좌우 칸이 필요해 기본 2칸
-    sizes: Object.fromEntries(results.map((r) => [r.tileId, (r.tileCode === "A05" || r.tileCode === "A06" ? 2 : 1) as TileSize])),
+    sizes: Object.fromEntries(results.map((result) => [result.tileId, tileClientModuleFor(result.tileCode)?.board?.size?.(result) ?? 1] as const)),
     tileKinds: Object.fromEntries(results.map((r) => [r.tileId, r.tileType])),
     stacks: {},
     sheets: {},
