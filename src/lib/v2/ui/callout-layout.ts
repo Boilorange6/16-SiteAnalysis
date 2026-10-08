@@ -7,7 +7,7 @@
  * 좌표 단위는 호출자가 정한다(화면 px, 슬라이드 inch). 점은 두 칸 사이의 지도 영역 안에 있어야 한다(calloutFrame이 보장).
  */
 import type { MapFeature } from "../tile-result";
-import { unitTypeSummary, unitTypesFromUnknown, UNIT_TYPE_BASIS, type UnitType } from "../unit-types";
+import { unitTypeSummary, unitTypesFromUnknown, type UnitType } from "../unit-types";
 import { layerStyle } from "./map-layers";
 import { SLIDE } from "./overlay-layout";
 
@@ -141,7 +141,7 @@ export function supplyRows(c: Complex): CardRow[] {
   return [
     { label: "입주(예정) 시기", value: s.plannedMonth ? fmtMonth(s.plannedMonth) : "일정 확인필요", missing: s.plannedMonth === null },
     { label: "세대수", value: c.households === null ? MISSING : `${fmtInt(c.households)}${unit}`, missing: c.households === null },
-    { label: `타입 · ${UNIT_TYPE_BASIS}`, value: unitTypeSummary(c.unitTypes), missing: c.unitTypes.length === 0 },
+    { label: "타입", value: unitTypeSummary(c.unitTypes), missing: c.unitTypes.length === 0, unitType: true },
     { label: "원천", value: src, missing: false },
     { label: "직선거리", value: c.distanceM === null ? MISSING : `${fmtInt(c.distanceM)}m`, missing: c.distanceM === null },
   ];
@@ -215,10 +215,10 @@ export function inkOn(hex: string): "#ffffff" | "#16181d" {
 }
 
 // ── 카드 행 ──
-export type CardRow = { label: string; value: string; missing: boolean };
+export type CardRow = { label: string; value: string; missing: boolean; unitType?: boolean };
 
 function unitTypeRow(c: Complex): CardRow {
-  return { label: `타입 · ${UNIT_TYPE_BASIS}`, value: unitTypeSummary(c.unitTypes), missing: c.unitTypes.length === 0 };
+  return { label: "타입", value: unitTypeSummary(c.unitTypes), missing: c.unitTypes.length === 0, unitType: true };
 }
 
 export function cardRows(c: Complex, analysisYear: number): CardRow[] {
@@ -328,7 +328,7 @@ export const INCH: Metrics = { cardW: 2.55, compactW: 2.0, minW: 1.4, gap: 0.1, 
 
 /** compact 카드는 실제 두 줄 이름(또는 좁은 카드)일 때만 줄바꿈 여유를 예약한다. */
 export const cardHeight = (m: Metrics, variant: "full" | "compact", rows: number, compactNameWrap = false) =>
-  variant === "compact" ? m.compactH + (compactNameWrap ? m.row : 0) : m.head + rows * m.row + m.pad + (compactNameWrap ? m.row * 0.25 : 0);
+  variant === "compact" ? m.compactH + (compactNameWrap ? m.row : 0) : m.head + (rows + 1) * m.row + m.pad + (compactNameWrap ? m.row * 0.25 : 0);
 
 export const cardWidth = (m: Metrics, variant: "full" | "compact", W: number) =>
   Math.max(m.minW, Math.min(variant === "compact" ? m.compactW : m.cardW, W * (m.cardFraction ?? 0.27)));
@@ -396,7 +396,8 @@ export function slideCalloutFrame(rows: number): CalloutFrame {
   const bottom = SLIDE.h - SLIDE.stripH - 0.14;
   const top = SLIDE.edge + 0.66 + 0.14;
   const avail = (bottom - top - 4 * INCH.gap) / 5;
-  const m: Metrics = { ...INCH, row: Math.min(INCH.row, (avail - INCH.head - INCH.pad) / rows) };
+  // 타입 요약은 짝 단위로 최대 두 줄을 쓰므로 한 행 높이를 추가로 예약한다.
+  const m: Metrics = { ...INCH, row: Math.min(INCH.row, (avail - INCH.head - INCH.pad) / (rows + 1)) };
   // 원이 아래 범례 판 위에서 끝나도록 살짝 줄인다
   return calloutFrame({ W: SLIDE.w, H: SLIDE.h, m, edge: SLIDE.edge, top, bottom, perSide: 5, rows, variant: "full", maxFill: 0.76 });
 }

@@ -14,8 +14,11 @@ assert.equal(U.mergeUnitType(merged, U.unitTypeM2("084.9700B"), U.unitTypeUnits(
 assert.equal(U.mergeUnitType(merged, U.unitTypeM2("059.5000"), U.unitTypeUnits("0")), false);
 assert.deepEqual(U.sortedUnitTypes(merged), [{ typeM2: 84, units: 17 }], "같은 숫자의 A/B/C형은 합친다");
 
-assert.equal(U.unitTypeSummary([{ typeM2: 84, units: 2840 }, { typeM2: 59, units: 1210 }, { typeM2: 114, units: 520 }, { typeM2: 49, units: 10 }, { typeM2: 74, units: 200 }]), "59 1,210 · 84 2,840 · 114 520 외 2타입");
+const summary = U.unitTypeSummary([{ typeM2: 84, units: 2840 }, { typeM2: 59, units: 1210 }, { typeM2: 114, units: 520 }, { typeM2: 49, units: 10 }, { typeM2: 74, units: 200 }]);
+assert.equal(summary, "59㎡ 1,210 · 84㎡ 2,840 · 114㎡ 520 외 2타입");
+assert.deepEqual(U.unitTypeSummaryParts(summary), ["59㎡ 1,210", "84㎡ 2,840", "114㎡ 520 외 2타입"], "짝 내부와 짝 사이 경계를 보존한다");
 assert.equal(U.unitTypeSummary([]), "타입 미확인");
+assert.deepEqual(U.unitTypeSummaryParts("타입 미확인"), ["타입 미확인"]);
 assert.equal(U.UNIT_TYPE_BASIS, "전용면적 기준");
 
 console.log("v2 unit type tests passed");

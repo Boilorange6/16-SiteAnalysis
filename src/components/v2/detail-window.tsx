@@ -9,6 +9,7 @@ import { detailApiUrl, detailListApiUrl, filterDetailRows, formatDetailCardValue
 import MapFigure, { type MapFigurePick } from "./map-figure";
 import DetailTable from "./detail-table";
 import { LayerSelect } from "./layer-select";
+import UnitTypeSummary from "./unit-type-summary";
 
 type LoadState = "loading" | "ready" | "error";
 
@@ -34,7 +35,7 @@ const DETAIL_WINDOW_CSS = `
 .detail-header-spacer { flex: 1 1 auto; min-width: 8px; }
 .detail-close { flex: none; min-width: 44px; min-height: 44px; border: 1px solid #d5d9e1; border-radius: 10px; background: #fff; font-size: 14px; font-weight: 700; }
 .detail-close:hover { background: #f0f2f5; }
-.detail-body { display: grid; grid-template-columns: minmax(0, 1.28fr) minmax(430px, .72fr); min-height: 0; }
+.detail-body { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(560px, .88fr); min-height: 0; }
 .detail-map-panel { position: relative; min-width: 0; min-height: 0; padding: 16px; background: #f2f3f4; }
 .detail-map-viewport { position: relative; width: 100%; height: 100%; min-height: 320px; overflow: hidden; border: 1px solid #d5dae1; border-radius: 12px; background: #f2f2ef; touch-action: none; }
 .detail-map-viewport:fullscreen { border: 0; border-radius: 0; }
@@ -57,6 +58,7 @@ const DETAIL_WINDOW_CSS = `
 .detail-field { min-width: 0; }
 .detail-field dt { margin-bottom: 2px; color: #737c89; font-size: 12px; }
 .detail-field dd { margin: 0; overflow-wrap: anywhere; color: #20242c; font-size: 15px; font-variant-numeric: tabular-nums; font-weight: 700; }
+.detail-field dd.detail-type-value { display: flex; flex-wrap: wrap; gap: 2px 4px; overflow-wrap: normal; }
 .detail-missing { margin: 13px 0 0; padding: 9px 10px; border-left: 3px solid #d99820; background: #fff8e7; color: #634b1b; font-size: 12px; }
 .detail-source { margin: 13px 0 0; color: #6c7480; font-size: 11.5px; line-height: 1.4; }
 .detail-control-list { display: flex; flex-wrap: wrap; gap: 8px 10px; margin: 12px 0 0; }
@@ -77,10 +79,16 @@ const DETAIL_WINDOW_CSS = `
 .detail-csv:hover { background: #f2f4f6; }
 .detail-table-root { position: relative; }
 .detail-table-desktop { max-height: 49vh; overflow: auto; border-top: 1px solid #e0e3e8; border-bottom: 1px solid #e0e3e8; }
-.detail-table { width: 100%; border-collapse: collapse; table-layout: auto; color: #2a2e37; font-size: 12px; font-variant-numeric: tabular-nums; }
+.detail-table { width: 100%; border-collapse: collapse; table-layout: fixed; color: #2a2e37; font-size: 12px; font-variant-numeric: tabular-nums; }
+.detail-table col.detail-column-name { width: 24%; }
+.detail-table col.detail-column-unit_types { width: 35%; }
 .detail-table thead { position: sticky; z-index: 2; top: 0; background: #fff; }
 .detail-table th { height: 44px; padding: 0 8px; border-bottom: 1px solid #dfe3e8; color: #596474; font-size: 11px; font-weight: 800; text-align: left; white-space: nowrap; }
+.detail-table th.detail-column-unit_types { white-space: normal; line-height: 1.2; }
+.detail-table th.detail-column-unit_types .detail-sort { width: 100%; white-space: normal; line-height: 1.2; }
 .detail-table td { height: 32px; max-width: 220px; padding: 0 8px; overflow: hidden; border-bottom: 1px solid #edf0f3; text-overflow: ellipsis; white-space: nowrap; }
+.detail-table td.detail-column-unit_types { height: auto; max-width: none; overflow: visible; padding-top: 6px; padding-bottom: 6px; text-overflow: clip; white-space: normal; line-height: 1.25; }
+.detail-type-pair { display: inline-block; white-space: nowrap; }
 .detail-table .detail-virtual-spacer td { height: 0; padding: 0; border: 0; }
 .detail-table .detail-cell-number { text-align: right; }
 .detail-sort { display: inline-flex; align-items: center; gap: 3px; min-height: 44px; border: 0; background: transparent; color: inherit; font-size: inherit; font-weight: inherit; white-space: nowrap; }
@@ -102,6 +110,7 @@ const DETAIL_WINDOW_CSS = `
 @keyframes detail-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 .detail-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { .detail-skeleton { animation: none; } }
+@media (max-width: 1100px) { .detail-body { grid-template-columns: minmax(0, 1.05fr) minmax(500px, .95fr); } }
 @media (max-width: 900px) { .detail-body { grid-template-columns: minmax(0, 1.05fr) minmax(360px, .95fr); } .detail-fields { gap: 8px 12px; } }
 @media (max-width: 720px) {
   .detail-backdrop { padding: 0; place-items: stretch; }
@@ -184,7 +193,9 @@ function CardView({ card, code, selected, busy }: { card: DetailCard; code: stri
         {card.fields.map((field) => (
           <div className="detail-field" key={field.label}>
             <dt>{sanitizeDetailText(field.label)}</dt>
-            <dd>{formatDetailCardValue(field.value)}</dd>
+            <dd className={field.label === "타입" ? "detail-type-value" : undefined}>
+              {field.label === "타입" ? <UnitTypeSummary value={formatDetailCardValue(field.value)} pairClassName="detail-type-pair" /> : formatDetailCardValue(field.value)}
+            </dd>
           </div>
         ))}
       </dl>

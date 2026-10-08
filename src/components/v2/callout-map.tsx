@@ -6,9 +6,11 @@ import { calloutScene, type CalloutFrameKind } from "@/lib/v2/ui/callout-scene";
 import { OV } from "@/lib/v2/ui/overlay-layout";
 import { framedViewport, metersPerPixel, scaleBar } from "@/lib/v2/ui/map-projection";
 import type { CalloutModel } from "@/lib/v2/ui/tile-view";
+import { UNIT_TYPE_BASIS } from "@/lib/v2/unit-types";
 import MapFigure from "./map-figure";
 import { BasemapContext, satelliteTileHref, useMeasured } from "./map-box";
 import styles from "./board.module.css";
+import UnitTypeSummary from "./unit-type-summary";
 
 const INK = "#16181d";
 
@@ -46,9 +48,11 @@ function Card({ c, siblings, p, frame, year, hover, dim, onHover, onPick }: { c:
       {full ? (
         <ul className={styles.cRows}>
           {rows.map((r) => (
-            <li key={r.label}>
+            <li key={r.label} data-unit-type={r.unitType || undefined}>
               <span>{r.label}</span>
-              <b className={r.missing ? styles.cMissing : undefined} title={r.value}>{r.value}</b>
+              <b className={r.missing ? styles.cMissing : undefined} title={r.value}>
+                {r.unitType ? <UnitTypeSummary value={r.value} pairClassName={styles.cTypePair} /> : r.value}
+              </b>
             </li>
           ))}
         </ul>
@@ -67,8 +71,8 @@ function Card({ c, siblings, p, frame, year, hover, dim, onHover, onPick }: { c:
               </>
             )}
           </div>
-          <div className={styles.cTypeLine} title={`${typeRow.value} · 전용면적 기준`}>
-            <span>타입 · 전용면적 기준</span>
+          <div className={styles.cTypeLine} title={`${typeRow.value} · ${UNIT_TYPE_BASIS}`}>
+            <span>타입</span>
             <b className={typeRow.missing ? styles.cMissing : undefined}>{typeRow.value}</b>
           </div>
         </>

@@ -49,9 +49,14 @@ export function unitTypeSummary(value: Iterable<UnitType> | Map<number, number>)
   const types = sortedUnitTypes(value);
   if (types.length === 0) return "타입 미확인";
   const top = [...types].sort((a, b) => b.units - a.units || a.typeM2 - b.typeM2).slice(0, 3).sort((a, b) => a.typeM2 - b.typeM2);
-  const text = top.map((item) => `${item.typeM2} ${item.units.toLocaleString("en-US")}`).join(" · ");
+  const text = top.map((item) => `${item.typeM2}㎡ ${item.units.toLocaleString("en-US")}`).join(" · ");
   const rest = types.length - top.length;
   return rest > 0 ? `${text} 외 ${rest}타입` : text;
+}
+
+/** 화면/PPT에서 타입·세대수 짝을 원자 단위로 줄바꿈하기 위한 요약 조각. */
+export function unitTypeSummaryParts(summary: string): string[] {
+  return summary.split(" · ");
 }
 
 export const UNIT_TYPE_BASIS = "전용면적 기준";

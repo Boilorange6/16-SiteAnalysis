@@ -2,6 +2,7 @@
 
 import { useMemo, useState, type KeyboardEvent } from "react";
 import { formatDetailValue, rowTitle, sanitizeDetailText, tableColumns, type DetailPayload, type DetailRow } from "@/lib/v2/ui/detail-state";
+import UnitTypeSummary from "./unit-type-summary";
 
 export type DetailTableProps = {
   payload: DetailPayload;
@@ -20,6 +21,8 @@ function rowFids(row: DetailRow): string[] {
 function isSelected(row: DetailRow, selectedFids: readonly string[]): boolean {
   return rowFids(row).some((fid) => selectedFids.includes(fid));
 }
+
+const columnClass = (key: string) => `detail-column-${key}`;
 
 function rowAddress(row: DetailRow, columns: ReturnType<typeof tableColumns>): string | null {
   const column = columns.find((candidate) => candidate.key === "address");
@@ -50,11 +53,15 @@ function renderRow(row: DetailRow, columns: ReturnType<typeof tableColumns>, sel
       onClick={() => onSelectRow(row)}
       onKeyDown={(event) => selectWithKeyboard(event, row, onSelectRow)}
     >
-      {columns.map((column) => (
-        <td key={column.key} className={column.kind === "number" ? "detail-cell-number" : undefined} title={formatDetailValue(row.cells[column.key] ?? null, column, row)}>
-          {formatDetailValue(row.cells[column.key] ?? null, column, row)}
+      {columns.map((column) => {
+        const value = formatDetailValue(row.cells[column.key] ?? null, column, row);
+        const unitType = column.key === "unit_types";
+        return (
+        <td key={column.key} className={[columnClass(column.key), column.kind === "number" ? "detail-cell-number" : ""].filter(Boolean).join(" ")} title={value}>
+          {unitType ? <UnitTypeSummary value={value} pairClassName="detail-type-pair" /> : value}
         </td>
-      ))}
+        );
+      })}
     </tr>
   );
 }
@@ -81,12 +88,13 @@ export default function DetailTable({ payload, rows, selectedFids, onSelectRow, 
       <div className="detail-table-desktop" role="region" aria-label={`${payload.title} 상세 표`} tabIndex={0} onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}>
         <table className="detail-table" aria-rowcount={rows.length + 1}>
           <caption className="detail-sr-only">{rowCountText}개 상세 목록. 행을 Enter로 선택할 수 있습니다.</caption>
+          <colgroup>{columns.map((column) => <col key={column.key} className={columnClass(column.key)} />)}</colgroup>
           <thead>
             <tr>
               {columns.map((column) => {
                 const active = sortKey === column.key;
                 return (
-                  <th key={column.key} scope="col" aria-sort={active ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>
+                  <th key={column.key} className={columnClass(column.key)} scope="col" aria-sort={active ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>
                     <button type="button" className="detail-sort" onClick={() => onSort(column.key)} aria-label={`${column.label} 기준 ${active && sortDirection === "asc" ? "내림차순" : "오름차순"} 정렬`}>
                       <span>{column.label}</span>
                       <span className="detail-sort-icon" aria-hidden="true">{active ? (sortDirection === "asc" ? "↑" : "↓") : "↕"}</span>

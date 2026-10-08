@@ -34,8 +34,9 @@ const feat = (o) => ({ layer: "apt", lng: 127, lat: 37, ...o });
 {
   const [c] = C.rankComplexes([feat({ name: "A", households: 1234, approvalYear: 1998, distanceM: 420, floorsMax: 25, buildingCount: 8 })]);
   const rows = C.cardRows(c, 2026);
-  assert.deepEqual(rows.map((r) => r.label), ["세대수", "타입 · 전용면적 기준", "준공", "직선거리", "층·동"]);
+  assert.deepEqual(rows.map((r) => r.label), ["세대수", "타입", "준공", "직선거리", "층·동"]);
   assert.deepEqual(rows.map((r) => r.value), ["1,234세대", "타입 미확인", "1998년 · 28년차", "420m", "최고 25층 · 8동"]);
+  assert.equal(rows[1].unitType, true);
   assert.equal(rows.filter((r) => r.missing).length, 1);
   const [e] = C.rankComplexes([feat({})]);
   const er = C.cardRows(e, 2026);
@@ -53,6 +54,8 @@ const feat = (o) => ({ layer: "apt", lng: 127, lat: 37, ...o });
   const s = C.summarize(C.rankComplexes([feat({ households: 100, approvalYear: 1990 }), feat({ households: 200, approvalYear: 2000 }), feat({ approvalYear: 2010 }), feat({}), feat({ layer: "officetel", households: 500 })]));
   assert.deepEqual(s, { count: 5, apartments: 4, households: 300, householdsKnown: 2, medianYear: 2000 }, "오피스텔 호실은 세대 합계에 넣지 않는다");
   assert.equal(C.cardRows(C.rankComplexes([feat({ layer: "officetel", households: 500 })])[0], 2026)[0].value, "500호");
+  const [typed] = C.rankComplexes([feat({ unitTypes: [{ typeM2: 84, units: 2840 }, { typeM2: 59, units: 1210 }, { typeM2: 114, units: 520 }, { typeM2: 49, units: 10 }, { typeM2: 74, units: 200 }] })]);
+  assert.equal(C.cardRows(typed, 2026)[1].value, "59㎡ 1,210 · 84㎡ 2,840 · 114㎡ 520 외 2타입");
   assert.equal(C.summarize([]).medianYear, null);
 }
 

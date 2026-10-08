@@ -62,7 +62,7 @@ assert.deepEqual(C.rankSupply(list.map(() => sup({})), "2026-09-30").map((c) => 
     "2026-09-30",
   );
   const [a, none, both, noHh] = ["가", "n", "b", "h"].map((n) => four.find((c) => c.name === n));
-  assert.deepEqual(C.cardRows(a, 2026).map((r) => r.label), ["입주(예정) 시기", "세대수", "타입 · 전용면적 기준", "원천", "직선거리"]);
+  assert.deepEqual(C.cardRows(a, 2026).map((r) => r.label), ["입주(예정) 시기", "세대수", "타입", "원천", "직선거리"]);
   assert.deepEqual(C.cardRows(a, 2026).map((r) => r.value), ["2027년 3월", "1,305세대", "타입 미확인", "청약홈", "500m"]);
   assert.deepEqual([C.cardRows(none, 2026)[0].value, C.cardRows(none, 2026)[0].missing, C.cardRows(none, 2026)[3].value], ["일정 확인필요", true, "입주예정"]);
   assert.equal(C.cardRows(both, 2026)[3].value, "청약홈 · 입주예정", "중복 가능이면 두 원천");
@@ -72,7 +72,8 @@ assert.deepEqual(C.rankSupply(list.map(() => sup({})), "2026-09-30").map((c) => 
   assert.equal(C.fmtMonth("2027-10"), "2027년 10월");
 
   const typed = C.rankSupply([sup({ unitTypes: [{ typeM2: 84, units: 2840 }, { typeM2: 59, units: 1210 }, { typeM2: 114, units: 520 }, { typeM2: 74, units: 200 }, { typeM2: 49, units: 10 }] })], "2026-09-30")[0];
-  assert.equal(C.cardRows(typed, 2026)[2].value, "59 1,210 · 84 2,840 · 114 520 외 2타입");
+  assert.equal(C.cardRows(typed, 2026)[2].value, "59㎡ 1,210 · 84㎡ 2,840 · 114㎡ 520 외 2타입");
+  assert.equal(C.cardRows(typed, 2026)[2].unitType, true);
 }
 
 // ── 점 색·크기, 페이지 10건, 장수, 값 카드(원천별, 합계 없음) ──

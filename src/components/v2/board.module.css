@@ -3126,6 +3126,25 @@ button.badge:focus-visible {
   text-overflow: ellipsis;
   text-align: right;
 }
+.cRows li[data-unit-type] {
+  height: auto;
+  min-height: 17px;
+  align-items: flex-start;
+}
+.cRows li[data-unit-type] > b {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0 3px;
+  overflow: visible;
+  line-height: 1.15;
+  white-space: normal;
+  text-overflow: clip;
+}
+.cRows li[data-unit-type] > b > span {
+  flex: none;
+}
 .cSub {
   display: flex;
   justify-content: space-between;

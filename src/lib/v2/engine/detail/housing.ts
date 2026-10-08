@@ -109,7 +109,7 @@ function stockSpec(code: "A05"): DetailSpec {
       if (!selected || distanceTo(selected, lng, lat) > 0.001) return null;
       const row = stockRow(selected);
       const types = unitTypesFromUnknown(selected.properties.unitTypes);
-      return { card: { title: selected.name ?? "이름 확인필요", fields: [{ label: "구분", value: selected.kind === "officetel" ? "오피스텔" : "아파트" }, { label: "세대·호실", value: row.cells.households === null ? null : `${row.cells.households}` }, { label: `타입 · ${UNIT_TYPE_BASIS}`, value: unitTypeSummary(types) }], source: stockSource(ctx) }, fid: row.fid };
+      return { card: { title: selected.name ?? "이름 확인필요", fields: [{ label: "구분", value: selected.kind === "officetel" ? "오피스텔" : "아파트" }, { label: "세대·호실", value: row.cells.households === null ? null : `${row.cells.households}` }, { label: "타입", value: unitTypeSummary(types) }], source: stockSource(ctx) }, fid: row.fid };
     },
   };
 }
@@ -127,7 +127,7 @@ function supplySpec(code: "A06"): DetailSpec {
       const selected = supplyHits(ctx).sort((a, b) => distanceTo(a, lng, lat) - distanceTo(b, lng, lat))[0];
       if (!selected || distanceTo(selected, lng, lat) > 0.001) return null;
       const row = supplyRow(selected);
-      return { card: { title: selected.name ?? "이름 확인필요", fields: [{ label: "원천", value: row.cells.source as string | null }, { label: "세대수", value: row.cells.units === null ? null : `${row.cells.units}` }, { label: `타입 · ${UNIT_TYPE_BASIS}`, value: row.cells.unit_types as string }], source: supplySource(ctx) }, fid: row.fid };
+      return { card: { title: selected.name ?? "이름 확인필요", fields: [{ label: "원천", value: row.cells.source as string | null }, { label: "세대수", value: row.cells.units === null ? null : `${row.cells.units}` }, { label: "타입", value: row.cells.unit_types as string }], source: supplySource(ctx) }, fid: row.fid };
     },
   };
 }
