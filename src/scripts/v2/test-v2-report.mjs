@@ -1,7 +1,8 @@
 /** 보드 → PPT 보고서 테스트: 슬라이드 계획(장수·순서·표지/출처)과 실제 pptx XML(출처·기준일 줄, 금지어, 고정 문구). */
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import JSZip from "jszip";
 
 const { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } = await import("../../lib/v2/ui/fixtures/godeok.ts");
@@ -96,7 +97,8 @@ assert.equal(reportFileName("서울특별시 강동구 고덕동 123 외 2필지
 const deckBoard = boardReducer(boardReducer(boardReducer(initBoard(GODEOK_RESULTS), { type: "include", id: "t-S02", value: true }), { type: "include", id: "t-S03", value: true }), { type: "face", id: "t-D04", face: "both" });
 const plan = build(GODEOK_RESULTS, deckBoard);
 const bytes = await renderReportPptx(plan);
-const reportSamplePath = process.env.V2_REPORT_SAMPLE_PATH ?? "docs/design/p1c0/report-sample.pptx";
+// 기본은 임시 폴더. 추적되는 견본(docs/design/p1c0/report-sample.pptx)은 V2_REPORT_SAMPLE_PATH로 지정할 때만 갱신한다.
+const reportSamplePath = process.env.V2_REPORT_SAMPLE_PATH ?? join(tmpdir(), "v2-report-sample.pptx");
 mkdirSync(dirname(reportSamplePath), { recursive: true });
 writeFileSync(reportSamplePath, bytes);
 
