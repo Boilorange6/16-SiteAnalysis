@@ -396,7 +396,8 @@ function metricRow(m: TileResult["metrics"][number], _round = false): Row {
       return {
         ...base,
         value: withUnit(m.value as number, m.unit),
-        ...(m.unit === "m" ? { aux: "직선" } : {}),
+        // 직선거리 지표만 — 높이·표고·보행망 거리·길이도 단위가 m다
+        ...(m.unit === "m" && /^nearest_|_distance_m$/.test(m.id) ? { aux: "직선" } : {}),
         ...(m.status === "estimated" ? { tag: "추정" } : {}),
       };
   }

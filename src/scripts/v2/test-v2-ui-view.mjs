@@ -33,6 +33,16 @@ for (const s of allStrings) {
 }
 assert.equal(byCode.A01.headline.value, "480m");
 assert.equal(byCode.A01.headline.aux, "직선");
+// 높이·보행망 거리처럼 단위만 m인 지표에는 "직선"을 붙이지 않는다
+{
+  const metric = (id, label) => ({ id, label, value: 9, unit: "m", status: "observed", formula: "f" });
+  const base = GODEOK_RESULTS.find((r) => r.tileCode === "A01");
+  const rows = toTileView({ ...base, metrics: [metric("height_median_m", "확보 높이 중앙값"), metric("walk_nearest_bus_m", "보행망 최근접 정류장 거리"), metric("nearest_bus_m", "최근접 버스정류장")] }).rows;
+  const aux = Object.fromEntries(rows.map((r) => [r.label, r.aux]));
+  assert.equal(aux["확보 높이 중앙값"], undefined);
+  assert.equal(aux["보행망 최근접 정류장 거리"], undefined);
+  assert.equal(aux["최근접 버스정류장"], "직선");
+}
 
 // 규칙 3
 const a02 = JSON.stringify(byCode.A02);
