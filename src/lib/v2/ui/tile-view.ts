@@ -444,6 +444,17 @@ function metricRow(m: TileResult["metrics"][number], _round = false): Row {
   }
 }
 
+/** 캐시된 결과의 옛 문장도 카드·상세의 실제 면적 표기와 맞춘다. */
+function displaySentence(r: TileResult, rows: Row[], filterLine: string | null): string | null {
+  let sentence = r.judgment?.sentence ?? null;
+  if (sentence && r.tileCode === "D28") {
+    const area = rows.find((row) => row.label === "도보 10분 도달 면적")?.value;
+    if (area) sentence = sentence.replace(/(도보 10분(?:\([^)]*\))? 도달 면적 )[^ (]+(?:\s*(?:㎢|km²))?/, `$1${area}`);
+  }
+  if (sentence) return `${sentence}${filterLine ? " · 필터 적용" : ""}`;
+  return filterLine ? "필터 적용" : null;
+}
+
 type HeadlineMetric = TileResult["metrics"][number];
 
 function d04HeadlineMetric(metrics: TileResult["metrics"]): HeadlineMetric | null {
@@ -630,7 +641,7 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
     headline,
     headlineMetricId,
     rows: allRows,
-    sentence: r.judgment?.sentence ? `${r.judgment.sentence}${filterLine ? " · 필터 적용" : ""}` : filterLine ? "필터 적용" : null,
+    sentence: displaySentence(r, allRows, filterLine),
     grade: gradedMetricOk ? { label: GRADE_TEXT[r.judgment!.level!], criteria: `내부 제안 기준: ${r.judgment!.criteria}` } : null,
     grades: GRADED_CODES.has(r.tileCode) ? (r.judgment?.grades ?? []).map((g) => gradeChip(r, g)) : [],
     caveats,
