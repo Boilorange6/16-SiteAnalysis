@@ -1640,14 +1640,18 @@ button.badge:focus-visible {
   color: var(--muted);
 }
 .seg button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 0;
   background: #eef0f3;
   border-radius: 999px;
-  padding: 8px 9px;
+  padding: 3px 9px;
   font-size: 11px;
   font-weight: 700;
   min-width: 24px;
-  min-height: 44px;
+  min-height: 24px;
+  line-height: 1.2;
   cursor: pointer;
 }
 .seg button[aria-pressed="true"] {
@@ -2466,13 +2470,6 @@ button.badge:focus-visible {
   font-size: 10px;
   white-space: nowrap;
 }
-.sfMain > .seg button {
-  min-width: 0;
-  min-height: 24px;
-  padding: 3px 8px;
-  font-size: 10px;
-  line-height: 1.1;
-}
 .sfRows {
   list-style: none;
   margin: 0;
@@ -2675,6 +2672,15 @@ button.badge:focus-visible {
   }
   .root .seg {
     gap: 8px;
+  }
+  .root .seg button {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 9px;
+    background: radial-gradient(ellipse 100% 12px at center, #eef0f3 0 100%, transparent 101%);
+  }
+  .root .seg button[aria-pressed="true"] {
+    background: radial-gradient(ellipse 100% 12px at center, var(--black, #16181d) 0 100%, transparent 101%);
   }
   .root .editRow {
     gap: 8px;
