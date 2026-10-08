@@ -31,7 +31,7 @@ import ProjectMenu, { type V2Project } from "@/components/v2/project-menu";
 import SitePicker from "@/components/v2/site-picker";
 import type { SiteInput } from "@/lib/v2/site";
 
-const UNDO_LABEL ={ order: "옮김", size: "크기 바꿈", remove: "삭제됨", add: "더함" } as const;
+const UNDO_LABEL ={ order: "옮김", size: "크기 바꿈", columns: "열 수 바꿈", remove: "삭제됨", add: "더함" } as const;
 const DEMO_START_LABEL = "분석 데모";
 const EMPTY_PINNED_LABELS: PinnedLabel[] = [];
 
@@ -816,7 +816,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
 
       {editing && lastUndo && (
         <div className={styles.toast} role="status" style={{ bottom: 76 }}>
-          {UNDO_LABEL[lastUndo.kind]} · {views.get(lastUndo.id)?.title}
+          {lastUndo.kind === "columns" ? `${UNDO_LABEL.columns} · ${lastUndo.columns}열` : `${UNDO_LABEL[lastUndo.kind]} · ${views.get(lastUndo.id)?.title}`}
           <button type="button" onClick={() => dispatch({ type: "undo" })}>
             되돌리기
           </button>
