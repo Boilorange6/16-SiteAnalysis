@@ -70,6 +70,7 @@ for (const [columns, width, height] of [[2, 688, 455], [3, 453.33, 260], [4, 336
   const minGap = Math.min(...layout.labels.map((label) => edgeGap(label, layout.legend)));
   assert.ok(minGap >= 4, `${columns}열: 범례와 방향 글자 최소 간격 ${minGap.toFixed(2)}px`);
   assert.ok(!overlaps(layout.legend, rose), `${columns}열: 범례와 장미 겹침`);
+  assert.ok(layout.labels.every((label, i) => !overlaps(label, layout.labels[(i + 1) % layout.labels.length])), `${columns}열: 방향 글자끼리 겹침`);
 }
 assert.ok(windRoseLayout(672, 492, "tile").rMax > windRoseLayout(336, 196, "tile").rMax, "4칸 바람장미도 실측 박스에 맞춰 커짐");
 

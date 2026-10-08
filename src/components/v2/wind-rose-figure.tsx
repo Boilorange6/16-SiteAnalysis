@@ -28,6 +28,8 @@ export type WindRoseLayout = {
   legendScale: number;
   legendWidth: number;
   footerReserved: WindRoseBox | null;
+  /** 1 = 16방위 글자, 2 = 8방위만 */
+  labelStep: number;
   labels: WindRoseBox[];
 };
 
@@ -116,6 +118,8 @@ export function windRoseLayout(width: number, height: number, chrome: WindRoseCh
     }
   }
 
+  // 좁은 카드에서 16방위 글자끼리 겹치면 8방위만 적는다(쐐기는 16개 그대로).
+  const labelStep = compactTile && labels.some((label, dir) => overlaps(label, labels[(dir + 1) % labels.length])) ? 2 : 1;
   const labelRadius = frame ? rMax + LABEL_RADIUS_OFFSET : rMax + 24;
   return {
     cx,
@@ -129,7 +133,8 @@ export function windRoseLayout(width: number, height: number, chrome: WindRoseCh
     legendScale,
     legendWidth,
     footerReserved: frame ? box(0, Math.max(0, height - 24), width, height) : null,
-    labels,
+    labelStep,
+    labels: labels.filter((_, dir) => dir % labelStep === 0),
   };
 }
 
@@ -184,6 +189,7 @@ function WindRoseSvg({ model, width, height, fixed = false, label = "D22 바람�
           );
         })}
         {DIR16_NAMES.map((name, dir) => {
+          if (dir % layout.labelStep !== 0) return null;
           const angle = (dir * Math.PI) / 8;
           const [x, y] = [cx + Math.sin(angle) * labelRadius, cy - Math.cos(angle) * labelRadius];
           return (
