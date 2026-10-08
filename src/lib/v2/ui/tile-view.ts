@@ -415,6 +415,11 @@ export function formatDistanceM(distanceM: number): string {
 }
 const withUnit = (n: number, unit: string) => {
   if (unit === "m") return formatDistanceM(n);
+  // 설계 숫자 규칙은 면적을 정수로 표시하되, 1 km² 미만을 0 km²로
+  // 뭉개지 않는다. 작은 면적은 같은 정수 규칙의 ㎡로 전환한다.
+  if ((unit === "km²" || unit === "㎢") && Math.abs(n) < 1) {
+    return `${formatMetricValue(n * 1_000_000, "㎡")}㎡`;
+  }
   const v = formatMetricValue(n, unit);
   return unit === "" ? v : unit.length > 2 && !unit.startsWith("/") ? `${v} ${unit}` : `${v}${unit}`;
 };

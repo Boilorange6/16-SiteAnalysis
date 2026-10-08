@@ -33,6 +33,27 @@ for (const s of allStrings) {
 }
 assert.equal(byCode.A01.headline.value, "480m");
 assert.equal(byCode.A01.headline.aux, "직선");
+
+// D28 면적은 1 km² 미만에서 0 km²가 되지 않고, 같은 km² 지표에 같은 전환 규칙을 쓴다.
+{
+  const base = GODEOK_RESULTS[0];
+  const metric = (id, label, value) => ({ ...base.metrics[0], id, label, value, unit: "km²", status: "estimated" });
+  const d28 = toTileView({
+    ...base,
+    tileCode: "D28",
+    tileId: "test-D28-area-format",
+    tileType: "diagram",
+    metrics: [
+      metric("area_5min_km2", "도보 5분 도달 면적", 0.24),
+      metric("area_10min_km2", "도보 10분 도달 면적", 1),
+      metric("area_15min_km2", "도보 15분 도달 면적", 0.82),
+    ],
+    judgment: { ...base.judgment, sentence: "보행망 도보 10분(800 m) 도달 면적 1 km²" },
+  });
+  assert.equal(d28.rows.find((row) => row.label === "도보 5분 도달 면적")?.value, "240,000㎡");
+  assert.equal(d28.headline?.value, "1 km²");
+  assert.equal(d28.rows.find((row) => row.label === "도보 15분 도달 면적")?.value, "820,000㎡");
+}
 // 높이·보행망 거리처럼 단위만 m인 지표에는 "직선"을 붙이지 않는다
 {
   const metric = (id, label) => ({ id, label, value: 9, unit: "m", status: "observed", formula: "f" });

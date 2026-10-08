@@ -263,6 +263,9 @@ function walkBandPolygons(field: WalkField, center: LngLat, radiusM: number): { 
 const round1 = (value: number) => Math.round(value * 10) / 10;
 const round3 = (value: number) => Math.round(value * 1000) / 1000;
 const areaKm2 = (areaM2: number) => round3(areaM2 / 1_000_000);
+const areaDisplay = (areaM2: number) => areaM2 < 1_000_000
+  ? `${Math.round(areaM2).toLocaleString("en-US")}㎡`
+  : `${Math.round(areaM2 / 1_000_000).toLocaleString("en-US")} km²`;
 
 export function d28(ctx: EngineContext): TileResult {
   const sources = walkSources(ctx);
@@ -282,7 +285,7 @@ export function d28(ctx: EngineContext): TileResult {
   const status: TileResult["status"] = coverage.some((limitation) => limitation.kind === "partial" || limitation.kind === "incomplete")
     ? "partial"
     : "complete";
-  const sentence = `보행망 도보 10분(800 m) 도달 면적 ${areaKm2(cumulativeAreasM2[1])}㎢(직선 반경 ${fmt(ctx.input.radiusM)} m 원의 ${reachRatio10}%) → OSM 보행망·80 m/분 기준이며 횡단보도 대기·경사 미반영 → 현장 동선으로 확인할 것`;
+  const sentence = `보행망 도보 10분(800 m) 도달 면적 ${areaDisplay(cumulativeAreasM2[1])}(직선 반경 ${fmt(ctx.input.radiusM)} m 원의 ${reachRatio10}%) → OSM 보행망·80 m/분 기준이며 횡단보도 대기·경사 미반영 → 현장 동선으로 확인할 것`;
   const limitations: TileDraft["limitations"] = [
     { kind: "unknown", note: "OSM 보행망의 완전성은 측정하지 않았습니다." },
     { kind: "estimated", note: "보행 시간은 80 m/분 내부 제안 기준이며 횡단보도 대기시간을 반영하지 않았습니다." },
