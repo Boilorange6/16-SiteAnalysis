@@ -10,7 +10,7 @@ const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { insertFeature } = await import("../../lib/v2/data/features.ts");
 const { a01, gradeRail } = await import("../../lib/v2/engine/tiles/a01.ts");
 const { a02 } = await import("../../lib/v2/engine/tiles/a02.ts");
-const { a05 } = await import("../../lib/v2/engine/tiles/a05.ts");
+const { a05 } = await import("../../lib/v2/tile/a05/engine.ts");
 const { a10 } = await import("../../lib/v2/engine/tiles/a10.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 

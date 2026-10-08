@@ -1,5 +1,5 @@
 import { hitPoint } from "../tiles/common";
-import { isApartment } from "../tiles/a05";
+import { isApartment } from "../../tile/a05/engine";
 import { sourceLineOf } from "../../ui/tile-view";
 import { SUPPLY_SOURCE } from "../../ui/callout-layout";
 import { unitTypeSummary, unitTypesFromUnknown, UNIT_TYPE_BASIS } from "../../unit-types";

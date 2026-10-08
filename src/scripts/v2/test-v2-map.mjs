@@ -21,8 +21,8 @@ const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { a01 } = await import("../../lib/v2/engine/tiles/a01.ts");
 const { a03 } = await import("../../lib/v2/engine/tiles/a03.ts");
 const { a04 } = await import("../../lib/v2/engine/tiles/a04.ts");
-const { a05 } = await import("../../lib/v2/engine/tiles/a05.ts");
-const { a06 } = await import("../../lib/v2/engine/tiles/a06.ts");
+const { a05 } = await import("../../lib/v2/tile/a05/engine.ts");
+const { a06 } = await import("../../lib/v2/tile/a06/engine.ts");
 const { default: MapFigure, mapFeatureKey, mapLabelEntries, mapLabelText } = await import("../../components/v2/map-figure.tsx");
 
 const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${b}`);

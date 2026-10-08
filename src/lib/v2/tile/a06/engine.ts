@@ -5,8 +5,8 @@
 import type { TileResult } from "../../tile-result";
 import { timingBucket, type Timing } from "../../ui/callout-layout";
 import { unitTypesFromUnknown } from "../../unit-types";
-import type { EngineContext } from "../context";
-import { candidate, fmt, makeTile, noDataTile, obs, type TileDraft } from "./common";
+import type { EngineContext } from "../../engine/context";
+import { candidate, fmt, makeTile, noDataTile, obs, type TileDraft } from "../../engine/tiles/common";
 
 const SOURCES = [
   { key: "applyhome", label: "청약홈" },
