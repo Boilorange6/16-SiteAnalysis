@@ -164,26 +164,6 @@ function mapOf(r: TileResult, analysisSiteParcel?: readonly MapPolygon[] | null)
   };
 }
 
-/** T31의 컷 선택이 카드·상세·PPT 공통 경로를 재사용하도록 래스터 하나만 남긴다. */
-export function viewWithOnlyRaster(view: TileView, rasterName: string, note: string): TileView {
-  if (!view.map) return view;
-  const model = view.map as RasterMapModel;
-  const options = model.rasterOptions ?? model.rasters ?? [];
-  const selected = options.find((ref) => ref.name === rasterName);
-  if (!selected) return view;
-  const nextMap: RasterMapModel = {
-    ...model,
-    rasters: [selected],
-    defaultRaster: selected.name,
-    ...(note && !model.notes.includes(note) ? { notes: [...model.notes, note] } : {}),
-  };
-  const next = tileClientModuleFor(view.code)?.view?.({
-    ...view,
-    map: nextMap,
-  }, undefined) ?? { ...view, map: nextMap };
-  return note ? { ...next, notes: [note, ...next.notes.filter((existing) => existing !== note)] } : next;
-}
-
 const STATUS_TEXT: Partial<Record<TileResult["status"], string>> = {
   partial: "일부 자료만 집계",
   failed: "계산 실패",

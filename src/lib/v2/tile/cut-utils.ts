@@ -16,7 +16,12 @@ export function viewWithOnlyRaster(view: TileView, rasterName: string, note: str
   const model = view.map as RasterMap;
   const selected = rasterRefs(view).find((ref) => ref.name === rasterName);
   if (!selected) return view;
-  const nextMap: RasterMap = { ...model, rasters: [selected], defaultRaster: selected.name };
+  const nextMap: RasterMap = {
+    ...model,
+    rasters: [selected],
+    defaultRaster: selected.name,
+    ...(note && !model.notes.includes(note) ? { notes: [...model.notes, note] } : {}),
+  };
   return note
     ? { ...view, notes: [note, ...view.notes.filter((existing) => existing !== note)], map: nextMap }
     : { ...view, map: nextMap };
