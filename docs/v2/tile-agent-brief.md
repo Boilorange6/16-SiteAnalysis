@@ -2,7 +2,7 @@
 
 상위 목표: 대지 분석 v2 앱 — 타일마다 다른 에이전트가 동시에 고칠 수 있는 구조 > `<CODE>` 타일 작업
 
-기준: `refactor-base` (다른 기준은 명령의 `--base <ref>`로 명시)
+기준: 작업 브랜치를 만든 시점의 `v2-int` 커밋(이하 `<BASE>`). `refactor-base`는 리팩터 전체 비교용이라 타일 작업 기준으로 쓰면 리팩터 변경이 전부 범위 밖으로 잡힌다.
 
 ## 소유권
 
@@ -25,13 +25,13 @@
 ## 완료 게이트
 
 ```powershell
-node src/scripts/v2/harness/tile-scope.mjs <CODE> --base refactor-base
+node src/scripts/v2/harness/tile-scope.mjs <CODE> --base <BASE>
 node src/scripts/v2/harness/tile-literals.mjs <CODE>
 npm run test:v2
 npm run lint
 ```
 
-동작을 바꾼 작업이면 기준 산출물과 후보를 비교한다.
+비교 게이트는 항상 돌린다. 기준 산출물은 작업 시작 전에 `<BASE>`에서 만든다(`golden-engine.mjs --write`, `shots.mjs --out`, `V2_REPORT_SAMPLE_PATH=<기준 .pptx> npx tsx src/scripts/v2/test-v2-report.mjs`, `equivalence.mjs --write <기준 폴더>`). 리팩터면 차이 0, 기능 변경이면 의도한 타일·필드만 달라야 한다.
 
 ```powershell
 npx tsx src/scripts/v2/harness/golden-engine.mjs --check <기준 golden JSON>
