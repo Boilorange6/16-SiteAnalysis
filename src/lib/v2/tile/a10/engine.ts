@@ -64,19 +64,22 @@ export function a10(ctx: EngineContext): TileResult {
     path,
     lengthM: linePathLength(path),
   })));
-  const longestByProject = new Map<string, number>();
+  const longestByProject = new Map<string, { lengthM: number; fid: string }>();
   for (const part of lineParts) {
     const projectId = projectIdOf(part.h.properties, part.h.stableId);
-    longestByProject.set(projectId, Math.max(longestByProject.get(projectId) ?? 0, part.lengthM));
+    const fid = `${part.h.featureId}:${part.index}`;
+    const current = longestByProject.get(projectId);
+    if (!current || part.lengthM > current.lengthM || (part.lengthM === current.lengthM && fid < current.fid)) longestByProject.set(projectId, { lengthM: part.lengthM, fid });
   }
   for (const part of lineParts) {
     const projectId = projectIdOf(part.h.properties, part.h.stableId);
     const name = text(part.h.name);
+    const fid = `${part.h.featureId}:${part.index}`;
     const line = lineCandidate(part.h.featureId, "planned_rail_line", part.path, part.lengthM, null, {
-      fid: `${part.h.featureId}:${part.index}`,
+      fid,
       name,
       sublabel: plannedSublabel(part.h.properties),
-      labelPriority: name && part.lengthM === longestByProject.get(projectId) ? 1 : 0,
+      labelPriority: name && longestByProject.get(projectId)?.fid === fid ? 1 : 0,
       emphasis: "major",
     });
     if (line) lineCandidates.push(line);
