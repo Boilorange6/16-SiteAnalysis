@@ -14,6 +14,7 @@ import { mapLabelEntries, type MapFigureElementPick } from "./map-figure";
 import styles from "./board.module.css";
 import { hasDetail } from "@/lib/v2/ui/detail-state";
 import type { TileStageProps } from "@/lib/v2/tile/component-types";
+import { useCardRoving } from "./use-card-roving";
 
 const BADGE_CLASS = { status: styles.badgeStatus, limit: styles.badgeLimit, model: styles.badgeModel } as const;
 const FACES: OutputFace[] = ["front", "back", "both"];
@@ -329,6 +330,9 @@ type TileCardBaseProps = {
   sheetable?: boolean;
   sheetSelected?: boolean;
   pinnedLabels: PinnedLabel[];
+  rovingTabIndex: number;
+  onRovingFocus: (id: string) => void;
+  onRovingMove: (id: string, key: string, event: KeyboardEvent<HTMLElement>) => void;
 };
 
 export type TileCardAction =
@@ -717,6 +721,7 @@ function TileCard(p: TileCardProps) {
   const id = view.tileId;
   const [back, setBack] = useState(false);
   const cardRef = useRef<HTMLElement>(null);
+  const roving = useCardRoving(cardRef);
   const focusFace = useRef<CardFace | null>(null);
   const waiting = phase === "pending" || phase === "running";
   const noResult = !waiting && view.headline === null;
@@ -799,7 +804,17 @@ function TileCard(p: TileCardProps) {
     if (openable && !(e.target as HTMLElement).closest(INTERACTIVE)) onOpen();
   };
   const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
-    if (openable && e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+    if (e.target !== e.currentTarget) return;
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(e.key)) {
+      p.onRovingMove(id, e.key, e);
+      return;
+    }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (!roving.enterControls() && openable) onOpen();
+      return;
+    }
+    if (openable && e.key === " ") {
       e.preventDefault();
       onOpen();
     }
@@ -812,8 +827,15 @@ function TileCard(p: TileCardProps) {
       aria-label={view.title}
       data-tile={view.code}
       data-tile-id={view.tileId}
+      data-v2-roving-id={id}
+      data-v2-roving-card
       style={p.floatStyle}
-      tabIndex={openable ? 0 : undefined}
+      tabIndex={roving.controlsEntered ? -1 : p.rovingTabIndex}
+      onFocus={(event) => {
+        if (event.target === event.currentTarget) p.onRovingFocus(id);
+      }}
+      onBlur={roving.onBlur}
+      onKeyDownCapture={roving.onKeyDownCapture}
       onClick={onClick}
       onKeyDown={onKeyDown}
     >

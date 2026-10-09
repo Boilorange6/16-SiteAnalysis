@@ -16,6 +16,7 @@ import { mapLabelEntries } from "./map-figure";
 import SourcePanel from "./source-panel";
 import styles from "./board.module.css";
 import { dialogPanelFor } from "@/lib/v2/tile/components";
+import { useFocusTrap } from "./use-focus-trap";
 
 type Props = {
   view: TileView;
@@ -120,23 +121,11 @@ export default function TileDialog({ view, layer, onLayer, included, face, onInc
   const basemap = useContext(BasemapContext);
   const setBasemap = useContext(SetBasemapContext);
 
+  useFocusTrap({ ref, onClose });
+
   useEffect(() => {
     setPanelTab(initialTab);
   }, [initialTab, view.tileId]);
-
-  useEffect(() => {
-    const prev = document.activeElement as HTMLElement | null;
-    ref.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      prev?.focus?.();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const state = view.headline === null;
   const selectedCut = normalizedCut(view, cut);

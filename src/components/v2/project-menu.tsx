@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { SiteInput } from "@/lib/v2/site";
 import styles from "./board.module.css";
+import { useFocusTrap } from "./use-focus-trap";
 
 export type V2Project = {
   projectId: string;
@@ -81,15 +82,11 @@ export default function ProjectMenu({ analysisId, currentProjectId, currentProje
   const [notice, setNotice] = useState<string | null>(null);
   const [saveMenuOpen, setSaveMenuOpen] = useState(false);
   const saveMenuRef = useRef<HTMLDivElement>(null);
+  const saveMenuTriggerRef = useRef<HTMLButtonElement>(null);
+  const restoreFocusRef = useRef<HTMLElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
 
-  useEffect(() => {
-    if (mode === null) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMode(null);
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [mode]);
+  useFocusTrap({ ref: dialogRef, active: mode !== null, onClose: () => setMode(null), restoreFocusRef });
 
   useEffect(() => {
     if (!saveMenuOpen) return;
@@ -132,8 +129,9 @@ export default function ProjectMenu({ analysisId, currentProjectId, currentProje
     }
   };
 
-  const openSave = (asNew: boolean) => {
+  const openSave = (asNew: boolean, opener?: HTMLElement | null) => {
     setSaveMenuOpen(false);
+    restoreFocusRef.current = opener ?? saveMenuTriggerRef.current;
     setMode("save");
     setSaveAsNew(asNew || !currentProjectId);
     setRenameId(null);
@@ -283,14 +281,15 @@ export default function ProjectMenu({ analysisId, currentProjectId, currentProje
   return (
     <>
       <div className={styles.projectControls}>
-        <button type="button" className={styles.pill} onClick={() => void openList()}>내 프로젝트</button>
+        <button type="button" className={styles.pill} onClick={(event) => { restoreFocusRef.current = event.currentTarget; void openList(); }}>내 프로젝트</button>
         {dirty && <span className={styles.saveDirty} role="status">저장 안 된 변경</span>}
         <div className={styles.saveSplit} ref={saveMenuRef}>
-          <button type="button" className={`${styles.pill} ${styles.pillDark} ${currentProjectId ? styles.saveSplitPrimary : ""}`} onClick={() => openSave(false)} disabled={!canSave}>저장</button>
+          <button type="button" className={`${styles.pill} ${styles.pillDark} ${currentProjectId ? styles.saveSplitPrimary : ""}`} onClick={(event) => openSave(false, event.currentTarget)} disabled={!canSave}>저장</button>
           {currentProjectId && (
             <>
               <button
                 type="button"
+                ref={saveMenuTriggerRef}
                 className={`${styles.pill} ${styles.pillDark} ${styles.saveSplitTrigger}`}
                 onClick={() => setSaveMenuOpen((open) => !open)}
                 disabled={!canSave}
@@ -302,7 +301,7 @@ export default function ProjectMenu({ analysisId, currentProjectId, currentProje
               </button>
               {saveMenuOpen && (
                 <div className={styles.saveMenu} role="menu" aria-label="저장 메뉴">
-                  <button type="button" className={styles.saveMenuItem} role="menuitem" onClick={() => openSave(true)}>다른 이름으로 저장</button>
+                  <button type="button" className={styles.saveMenuItem} role="menuitem" onClick={() => openSave(true, saveMenuTriggerRef.current)}>다른 이름으로 저장</button>
                 </div>
               )}
             </>
@@ -312,7 +311,7 @@ export default function ProjectMenu({ analysisId, currentProjectId, currentProje
       {notice && <span className={styles.projectNotice} role="status">{notice}</span>}
       {mode !== null && (
         <div className={styles.projectOverlay} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setMode(null); }}>
-          <section className={styles.projectDialog} role="dialog" aria-modal="true" aria-labelledby="v2-project-dialog-title">
+          <section ref={dialogRef} className={styles.projectDialog} role="dialog" aria-modal="true" aria-labelledby="v2-project-dialog-title" tabIndex={-1}>
             <div className={styles.projectDialogHead}>
               <div>
                 <p className={styles.projectKicker}>사이트 분석</p>
