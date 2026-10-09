@@ -10,6 +10,7 @@ import MapFigure, { type MapFigurePick } from "./map-figure";
 import DetailTable from "./detail-table";
 import { LayerSelect } from "./layer-select";
 import UnitTypeSummary from "./unit-type-summary";
+import { useFocusTrap } from "./use-focus-trap";
 
 type LoadState = "loading" | "ready" | "error";
 
@@ -222,9 +223,6 @@ export default function DetailWindow({ view, layer, onLayer, onClose }: DetailWi
   const dialogRef = useRef<HTMLElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const mapViewportRef = useRef<HTMLDivElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
   const [mounted, setMounted] = useState(false);
   const mapSize = useMeasuredMap(mapViewportRef, mounted);
   const [loadState, setLoadState] = useState<LoadState>("loading");
@@ -262,48 +260,28 @@ export default function DetailWindow({ view, layer, onLayer, onClose }: DetailWi
     if (selectedFids.length > 0) panelRef.current?.scrollTo({ top: 0, behavior: "auto" });
   }, [selectedFids.length]);
 
+  useFocusTrap({
+    ref: dialogRef,
+    active: mounted,
+    onClose,
+    onEscape: () => {
+      if (!legendActiveRef.current) return false;
+      setLegendHover(null);
+      setLegendPinned(null);
+      return true;
+    },
+  });
+
   useEffect(() => {
     if (!mounted) return;
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    previousFocusRef.current = previous;
-    const page = document.querySelector<HTMLElement>(".page");
+    const page = document.querySelector<HTMLElement>("[data-v2-page]");
     const pageWasInert = page?.hasAttribute("inert") ?? false;
     page?.setAttribute("inert", "");
     const bodyOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    dialogRef.current?.focus();
-    const focusables = () => Array.from(dialogRef.current?.querySelectorAll<HTMLElement>("button, input, a[href], [tabindex]:not([tabindex='-1'])") ?? []).filter((element) => !element.hasAttribute("disabled"));
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        if (legendActiveRef.current) {
-          setLegendHover(null);
-          setLegendPinned(null);
-          return;
-        }
-        onCloseRef.current();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const items = focusables();
-      if (items.length === 0) return;
-      const first = items[0]!;
-      const last = items[items.length - 1]!;
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
     return () => {
-      document.removeEventListener("keydown", onKeyDown);
       if (!pageWasInert) page?.removeAttribute("inert");
       document.body.style.overflow = bodyOverflow;
-      const opener = previousFocusRef.current;
-      if (opener?.isConnected) requestAnimationFrame(() => opener.focus());
     };
   }, [mounted]);
 

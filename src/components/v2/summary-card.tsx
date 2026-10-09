@@ -1,20 +1,22 @@
 "use client";
 
-import { memo, useEffect, useRef, useState } from "react";
-import type { CardFace } from "@/lib/v2/ui/board-state";
+import { memo, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { SUMMARY_ID, type CardFace } from "@/lib/v2/ui/board-state";
 import type { SummaryView } from "@/lib/v2/ui/tile-view";
 import { OV } from "@/lib/v2/ui/overlay-layout";
 import MapBox from "./map-box";
 import styles from "./board.module.css";
+import { useCardRoving } from "./use-card-roving";
 
 /**
  * 대지 요약. 기본은 지도 없는 요약면(주소 · 칩 · 사실 3줄 · 기준일/불완전), 뒤집으면 칸 전체가 분석 반경 지도(보드에서 가장 큰 지도).
  * 글자는 지도면에서도 같은 반투명 판 위에만 둔다.
  */
-function SummaryCard({ view, face, onFace }: { view: SummaryView; face: CardFace; onFace: (f: CardFace) => void }) {
+function SummaryCard({ view, face, onFace, rovingTabIndex, onRovingFocus, onRovingMove }: { view: SummaryView; face: CardFace; onFace: (f: CardFace) => void; rovingTabIndex: number; onRovingFocus: (id: string) => void; onRovingMove: (id: string, key: string, event: KeyboardEvent<HTMLElement>) => void }) {
   const [seen, setSeen] = useState(false);
   const summaryRef = useRef<HTMLElement>(null);
   const focusFace = useRef<CardFace | null>(null);
+  const roving = useCardRoving(summaryRef);
   useEffect(() => {
     if (face === "map") setSeen(true);
   }, [face]);
@@ -27,6 +29,15 @@ function SummaryCard({ view, face, onFace }: { view: SummaryView; face: CardFace
   const changeFace = (next: CardFace) => {
     focusFace.current = next;
     onFace(next);
+  };
+  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.target !== event.currentTarget) return;
+    if (event.key === "Enter") {
+      event.preventDefault();
+      roving.enterControls();
+      return;
+    }
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) onRovingMove(SUMMARY_ID, event.key, event);
   };
   const asOf = (
     <>
@@ -59,7 +70,21 @@ function SummaryCard({ view, face, onFace }: { view: SummaryView; face: CardFace
     </>
   );
   return (
-    <section ref={summaryRef} className={styles.summary} aria-label="대지 요약" data-tile="summary">
+    <section
+      ref={summaryRef}
+      className={styles.summary}
+      aria-label="대지 요약"
+      data-tile="summary"
+      data-v2-roving-id={SUMMARY_ID}
+      data-v2-roving-card
+      tabIndex={roving.controlsEntered ? -1 : rovingTabIndex}
+      onFocus={(event) => {
+        if (event.target === event.currentTarget) onRovingFocus(SUMMARY_ID);
+      }}
+      onBlur={roving.onBlur}
+      onKeyDownCapture={roving.onKeyDownCapture}
+      onKeyDown={onKeyDown}
+    >
       <div className={styles.flipInner} data-face={face}>
         <div className={`${styles.face} ${styles.faceSummary} ${styles.sumFront}`} data-on={face === "summary"} inert={face !== "summary"}>
           <div className={styles.sumBody}>{body}</div>

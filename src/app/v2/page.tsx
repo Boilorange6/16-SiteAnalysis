@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import SummaryCard from "@/components/v2/summary-card";
 import TileCard, { type TileCardAction } from "@/components/v2/tile-card";
 import TileDialog from "@/components/v2/tile-dialog";
@@ -30,6 +30,7 @@ import ProjectMenu, { type V2Project } from "@/components/v2/project-menu";
 import SitePicker from "@/components/v2/site-picker";
 import type { SiteInput } from "@/lib/v2/site";
 import { DEFAULT_PRESET_ID, PRESET_IDS, TILE_PRESETS, type PresetId } from "@/lib/v2/ui/tile-catalog";
+import { getRovingTargetIndex, type RovingGridItem } from "@/lib/v2/ui/roving-grid";
 
 const UNDO_LABEL = { order: "옮김", size: "크기 바꿈", columns: "열 수 바꿈", remove: "삭제됨", add: "더함", preset: "프리셋 적용" } as const;
 const GRID_COLUMN_OPTIONS: GridColumns[] = [2, 3, 4, 5, 6];
@@ -155,7 +156,6 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
   const [demoStep, setDemoStep] = useState<number | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [dialogTab, setDialogTab] = useState<"overview" | "sources">("overview");
-  const dialogOpenerRef = useRef<HTMLElement | null>(null);
   const [stackSelection, setStackSelection] = useState<string[]>([]);
   const [sheetSelection, setSheetSelection] = useState<string[]>([]);
   const [note, setNote] = useState(""); // 스크린리더 안내(aria-live)
@@ -232,6 +232,27 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
   const total = board.order.length;
   const notProvidedIds = shown.filter((id) => views.get(id)?.status === "not_provided");
   const visibleShown = shown.filter((id) => views.get(id)?.status !== "not_provided");
+  const rovingItems = useMemo<RovingGridItem[]>(() => [{ id: SUMMARY_ID }, ...visibleShown.map((id) => ({ id }))], [visibleShown]);
+  const [rovingId, setRovingId] = useState<string>(SUMMARY_ID);
+  const activeRovingId = rovingItems.some((item) => item.id === rovingId) ? rovingId : (rovingItems[0]?.id ?? SUMMARY_ID);
+  useEffect(() => {
+    if (rovingId !== activeRovingId) setRovingId(activeRovingId);
+  }, [activeRovingId, rovingId]);
+  const focusRovingCard = useCallback((id: string) => {
+    setRovingId(id);
+    window.requestAnimationFrame(() => {
+      const card = Array.from(gridRef.current?.querySelectorAll<HTMLElement>("[data-v2-roving-card]") ?? []).find((element) => (element.dataset.v2RovingId ?? element.dataset.tileId) === id);
+      card?.focus();
+    });
+  }, []);
+  const onRovingFocus = useCallback((id: string) => setRovingId(id), []);
+  const onRovingMove = useCallback((currentId: string, key: string, event: ReactKeyboardEvent<HTMLElement>) => {
+    event.preventDefault();
+    const index = getRovingTargetIndex(rovingItems, currentId, key, gridLayout.columns);
+    const target = index < 0 ? undefined : rovingItems.filter((item) => item.navigable !== false)[index];
+    if (!target || target.id === currentId) return;
+    focusRovingCard(target.id);
+  }, [focusRovingCard, gridLayout.columns, rovingItems]);
   const activeJobs = jobs.some((job) => job.status === "queued" || job.status === "running");
   const actionBusy = busy || activeJobs;
   const jobState = useMemo(() => jobProgress(jobs), [jobs]);
@@ -292,46 +313,6 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
   const [exportOpen, setExportOpen] = useState(false);
   const exportState = exportAvailability({ activeJobs, making, requesting: busy, sceneReady: !!scene });
 
-  useEffect(() => {
-    if (openId !== null) return;
-    const opener = dialogOpenerRef.current;
-    if (!opener) return;
-    const frame = window.requestAnimationFrame(() => {
-      // TileDialog의 unmount cleanup은 page가 아직 inert일 때 실행될 수 있다.
-      // inert 제거 뒤 한 프레임에 다시 잡아야 Esc/닫기 후 BODY로 빠지지 않는다.
-      if (opener.isConnected && !opener.closest("[inert]")) opener.focus();
-      dialogOpenerRef.current = null;
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [openId]);
-
-  useEffect(() => {
-    if (openId === null) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Tab") return;
-      const dialog = document.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]');
-      if (!dialog) return;
-      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
-        'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
-      )).filter((element) => element.getClientRects().length > 0);
-      if (focusable.length === 0) {
-        event.preventDefault();
-        dialog.focus();
-        return;
-      }
-      const current = document.activeElement;
-      const index = current instanceof HTMLElement ? focusable.indexOf(current) : -1;
-      if (event.shiftKey && (index <= 0 || !dialog.contains(current))) {
-        event.preventDefault();
-        focusable[focusable.length - 1].focus();
-      } else if (!event.shiftKey && (index === focusable.length - 1 || !dialog.contains(current))) {
-        event.preventDefault();
-        focusable[0].focus();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [openId]);
   const makeReport = async () => {
     setMaking(true);
     setMakingKind("PPT");
@@ -521,22 +502,14 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
     <main className={styles.root}>
       <div
         className={styles.page}
+        data-v2-page
         inert={openView ? true : undefined}
         onClickCapture={(event) => {
           const target = event.target;
-          if (!(target instanceof HTMLElement)) return;
-          const sourceButton = target.closest<HTMLButtonElement>("[data-source-button]");
-          if (sourceButton) {
-            dialogOpenerRef.current = sourceButton;
-            return;
-          }
-          const opener = target.closest<HTMLButtonElement>('button[aria-label$=" 펼치기"]');
-          if (opener) {
-            dialogOpenerRef.current = opener;
-            return;
-          }
-          const card = target.closest<HTMLElement>("[data-tile-id]");
-          if (card && card.tabIndex >= 0) dialogOpenerRef.current = card;
+          if (!(target instanceof Element)) return;
+          const card = target.closest<HTMLElement>("[data-v2-roving-id], [data-tile-id]");
+          const id = card?.dataset.v2RovingId ?? card?.dataset.tileId;
+          if (id) setRovingId(id);
         }}
       >
         <a className={styles.skipLink} href="#v2-board-grid">
@@ -785,7 +758,14 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
         {controls}
 
         <div className={styles.grid} id="v2-board-grid" ref={gridRef} tabIndex={-1} data-grid-cols={gridLayout.columns} style={{ "--grid-cols": gridLayout.columns, "--grid-row-height": `${gridLayout.rowHeight}px` } as CSSProperties}>
-          <SummaryCard view={summary} face={editing ? "summary" : viewOf(board, SUMMARY_ID)} onFace={onSummaryFace} />
+          <SummaryCard
+            view={summary}
+            face={editing ? "summary" : viewOf(board, SUMMARY_ID)}
+            onFace={onSummaryFace}
+            rovingTabIndex={activeRovingId === SUMMARY_ID ? 0 : -1}
+            onRovingFocus={onRovingFocus}
+            onRovingMove={onRovingMove}
+          />
           {visibleShown.map((id, i) => {
             const view = views.get(id)!;
             const size = board.sizes[id];
@@ -824,6 +804,9 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
                   stackSelected={stackSelection.includes(id)}
                   sheetable={sheetableIds.includes(id)}
                   sheetSelected={sheetSelection.includes(id)}
+                  rovingTabIndex={activeRovingId === id ? 0 : -1}
+                  onRovingFocus={onRovingFocus}
+                  onRovingMove={onRovingMove}
                 />
               </Fragment>
             );

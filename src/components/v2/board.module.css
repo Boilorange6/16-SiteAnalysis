@@ -747,6 +747,10 @@
   perspective: 1400px;
   container-type: inline-size;
 }
+.summary:focus-visible {
+  outline: 2px solid #2f6fdb;
+  outline-offset: 2px;
+}
 /* 요약 앞면은 가로 2칸 × 세로 1행(좁은 보드·390은 1칸 폭). 지도면으로 뒤집을 때만 2×2 자리를 쓴다. */
 .summary:has(.faceMap[data-on="true"]) {
   grid-row: span 2;
