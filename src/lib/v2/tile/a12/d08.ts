@@ -4,6 +4,7 @@ import type { EngineContext } from "../../engine/context";
 import { makeTile, obs, type MapCandidate, type TileDraft } from "../../engine/tiles/common";
 import { notProvided } from "../../engine/tiles/not-provided";
 import { collectZoning, CLASSES, ZONING_LAYERS } from "../../engine/tiles/zoning-shared";
+import { zoningPolygons, zoningSiteCandidate } from "./labels";
 
 const RAW_TOP = 6;
 const r1 = (n: number) => Math.round(n * 10) / 10;
@@ -13,7 +14,7 @@ export function d08(ctx: EngineContext): TileResult {
   const zoning = collectZoning(ctx);
   if (!zoning) return notProvided(ctx, "D08");
 
-  const { byRaw, circleArea, total, siteLabel, fine, polys, points } = zoning;
+  const { byRaw, circleArea, total, siteLabel, fine } = zoning;
   const pct = (areaM2: number) => r1((areaM2 / circleArea) * 100);
   const raws = [...byRaw].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, RAW_TOP);
   const cappedTotal = Math.min(circleArea, total);
@@ -25,8 +26,9 @@ export function d08(ctx: EngineContext): TileResult {
     ...raws.map(([name, areaM2], index) => obs(`raw_${index + 1}`, `원천 세분: ${name}`, pct(areaM2), "%", "d08-raw@1:원천 세분 교차면적÷반경 원 면적", rounded(areaM2), rounded(circleArea))),
   ];
 
-  const map: MapCandidate[] = points.filter((point) => !point.f.layer.startsWith("zone_center:"));
-  if (siteLabel) map.push({ id: 0, f: { layer: "zoning_site", lng: ctx.input.center[0], lat: ctx.input.center[1], highlight: true, label: siteLabel } });
+  const map: MapCandidate[] = [];
+  const site = zoningSiteCandidate(zoning, ctx.input.center[0], ctx.input.center[1]);
+  if (site) map.push(site);
   const missingLayers = ZONING_LAYERS.filter((layer) => !zoning.sources.some((source) => source.sourceId === layer));
   const coverage = ctx.coverage("reference", ZONING_LAYERS);
   const limitations: TileDraft["limitations"] = [
@@ -48,7 +50,7 @@ export function d08(ctx: EngineContext): TileResult {
     sources: zoning.sources,
     layers: ["zoning_site", ...CLASSES.map((name) => `zone:${name}`)],
     map,
-    polygons: polys,
+    polygons: zoningPolygons(zoning),
     limitations,
   });
 }
