@@ -1,6 +1,6 @@
 import React, { memo, useEffect, useRef, useState } from "react";
 import { DIR16_NAMES, roseWedges, SPEED_BIN_LABELS, type RoseModel } from "@/lib/v2/ui/wind-rose";
-import type { RoseSeason } from "@/lib/v2/tile-result";
+import { ROSE_SEASON_LABELS, type RoseSeason } from "@/lib/v2/ui/rose-season";
 
 export type WindRoseFigureProps = {
   model: RoseModel;
@@ -16,6 +16,7 @@ export type WindRoseFigureProps = {
 
 export type WindRoseChrome = "standalone" | "tile" | "slide";
 export type WindRoseBox = { x0: number; y0: number; x1: number; y1: number };
+export type WindRoseTick = { value: number; ratio: number; label: string; box: WindRoseBox };
 export type WindRoseLayout = {
   cx: number;
   cy: number;
@@ -31,6 +32,11 @@ export type WindRoseLayout = {
   /** 1 = 16방위 글자, 2 = 8방위만 */
   labelStep: number;
   labels: WindRoseBox[];
+  /** 최대 풍향 빈도에 맞춘 나이스 % 눈금. 낮은 카드에서는 2개만 표시한다. */
+  ticks: WindRoseTick[];
+  tickBoxes: WindRoseBox[];
+  tickBearing: number;
+  scaleMaxPct: number;
 };
 
 const INK = "#15171c";
@@ -50,8 +56,6 @@ const pctOf = (value: number, total: number): string => {
   return Number.isInteger(pct) ? String(pct) : pct.toFixed(1);
 };
 
-const SEASON_LABEL: Record<RoseSeason, string> = { annual: "연간", spring: "봄", summer: "여름", autumn: "가을", winter: "겨울" };
-
 const box = (x0: number, y0: number, x1: number, y1: number): WindRoseBox => ({ x0, y0, x1, y1 });
 
 const directionLabels = (cx: number, cy: number, rMax: number, frame: boolean): WindRoseBox[] => {
@@ -67,6 +71,74 @@ const directionLabels = (cx: number, cy: number, rMax: number, frame: boolean): 
 
 const overlaps = (a: WindRoseBox, b: WindRoseBox): boolean => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
 
+const niceStep = (maxPct: number, targetCount: number): number => {
+  const raw = maxPct / Math.max(1, targetCount);
+  if (!(raw > 0) || !Number.isFinite(raw)) return 1;
+  const magnitude = 10 ** Math.floor(Math.log10(raw));
+  const normalized = raw / magnitude;
+  const factor = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+  return factor * magnitude;
+};
+
+const formatTickPct = (value: number): string => {
+  const rounded = Math.round(value * 10) / 10;
+  return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}%`;
+};
+
+function tickPlan(maxDirectionPct: number, compact: boolean): { scaleMaxPct: number; ticks: Array<{ value: number; ratio: number; label: string }> } {
+  if (!(maxDirectionPct > 0) || !Number.isFinite(maxDirectionPct)) return { scaleMaxPct: 1, ticks: [] };
+  const step = niceStep(maxDirectionPct, compact ? 2 : 4);
+  const scaleMaxPct = Math.max(step, Math.ceil((maxDirectionPct / step) - 1e-9) * step);
+  const ticks = Array.from({ length: Math.ceil(scaleMaxPct / step) }, (_, index) => (index + 1) * step).map((value) => ({
+    value,
+    ratio: value / scaleMaxPct,
+    label: formatTickPct(value),
+  }));
+  return { scaleMaxPct, ticks };
+}
+
+const tickBoxAt = (cx: number, cy: number, rMax: number, tick: { ratio: number; label: string }, bearing: number): WindRoseBox => {
+  const radius = rMax * tick.ratio;
+  const x = cx + Math.sin(bearing) * radius;
+  const y = cy - Math.cos(bearing) * radius;
+  const width = Math.max(16, tick.label.length * 5.2);
+  return box(x - width / 2 - 2, y - 8, x + width / 2 + 2, y + 8);
+};
+
+function chooseTickLayout(
+  cx: number,
+  cy: number,
+  rMax: number,
+  labels: WindRoseBox[],
+  legend: WindRoseBox,
+  titleReserved: WindRoseBox | null,
+  footerReserved: WindRoseBox | null,
+  plan: { scaleMaxPct: number; ticks: Array<{ value: number; ratio: number; label: string }> },
+  compact: boolean,
+): { ticks: WindRoseTick[]; tickBoxes: WindRoseBox[]; tickBearing: number; labelStep: number } {
+  const adjacentOverlap = labels.some((label, index) => overlaps(label, labels[(index + 1) % labels.length]!));
+  if (plan.ticks.length === 0) return { ticks: [], tickBoxes: [], tickBearing: compact ? Math.PI / 8 : Math.PI / 16, labelStep: compact && adjacentOverlap ? 2 : 1 };
+  const bearings = Array.from({ length: 8 }, (_, index) => (2 * index + 1) * (compact ? Math.PI / 8 : Math.PI / 16));
+  let best: { score: number; bearing: number; boxes: WindRoseBox[]; labelStep: number } | null = null;
+  for (const bearing of bearings) {
+    const boxes = plan.ticks.map((tick) => tickBoxAt(cx, cy, rMax, tick, bearing));
+    const labelStep = compact && (adjacentOverlap || boxes.some((tickBox) => labels.some((label) => overlaps(tickBox, label)))) ? 2 : 1;
+    const visibleLabels = labels.filter((_, index) => index % labelStep === 0);
+    let score = 0;
+    for (let index = 0; index < boxes.length; index += 1) {
+      for (let other = index + 1; other < boxes.length; other += 1) if (overlaps(boxes[index]!, boxes[other]!)) score += 100_000;
+      if (overlaps(boxes[index]!, legend)) score += 10_000;
+      if (titleReserved && overlaps(boxes[index]!, titleReserved)) score += 1_000;
+      if (footerReserved && overlaps(boxes[index]!, footerReserved)) score += 1_000;
+      for (const label of visibleLabels) if (overlaps(boxes[index]!, label)) score += 100;
+    }
+    if (best === null || score < best.score) best = { score, bearing, boxes, labelStep };
+  }
+  const chosen = best!;
+  const ticks = plan.ticks.map((tick, index) => ({ ...tick, box: chosen.boxes[index]! }));
+  return { ticks, tickBoxes: chosen.boxes, tickBearing: chosen.bearing, labelStep: chosen.labelStep };
+}
+
 /** 낮은 카드(1칸 지도 면)에서는 범례를 줄이고 위로 올려 아래로 잘리지 않게 한다. 슬라이드·단독 도판은 그대로. */
 function fitLegend(height: number, chrome: WindRoseChrome, y0: number) {
   if (chrome !== "tile") return { scale: 1, y: y0 };
@@ -75,7 +147,7 @@ function fitLegend(height: number, chrome: WindRoseChrome, y0: number) {
 }
 
 /** WindRoseFigure의 실제 장식 위치와 외부 오버레이 예약 자리를 함께 계산한다. */
-export function windRoseLayout(width: number, height: number, chrome: WindRoseChrome = "tile"): WindRoseLayout {
+export function windRoseLayout(width: number, height: number, chrome: WindRoseChrome = "tile", maxDirectionPct = 0): WindRoseLayout {
   const frame = chrome !== "standalone";
   let cx = width * 0.39;
   const cy = frame ? height * 0.53 : height * 0.47;
@@ -118,37 +190,44 @@ export function windRoseLayout(width: number, height: number, chrome: WindRoseCh
     }
   }
 
-  // 좁은 카드에서 16방위 글자끼리 겹치면 8방위만 적는다(쐐기는 16개 그대로).
-  const labelStep = compactTile && labels.some((label, dir) => overlaps(label, labels[(dir + 1) % labels.length])) ? 2 : 1;
+  const titleReserved = frame ? box(0, 0, Math.min(width * 0.375, 360), Math.min(height * 0.133, 72)) : null;
+  const footerReserved = frame ? box(0, Math.max(0, height - 24), width, height) : null;
+  const axis = tickPlan(maxDirectionPct, compactTile);
+  const tickLayout = chooseTickLayout(cx, cy, rMax, labels, legend, titleReserved, footerReserved, axis, compactTile);
+  // 좁은 카드에서 16방위 글자끼리 겹치거나 눈금과 충돌하면 8방위만 적는다(쐐기는 16개 그대로).
   const labelRadius = frame ? rMax + LABEL_RADIUS_OFFSET : rMax + 24;
   return {
     cx,
     cy,
     rMax,
     labelRadius,
-    titleReserved: frame ? box(0, 0, Math.min(width * 0.375, 360), Math.min(height * 0.133, 72)) : null,
+    titleReserved,
     legend,
     legendX,
     legendY,
     legendScale,
     legendWidth,
-    footerReserved: frame ? box(0, Math.max(0, height - 24), width, height) : null,
-    labelStep,
-    labels: labels.filter((_, dir) => dir % labelStep === 0),
+    footerReserved,
+    labelStep: tickLayout.labelStep,
+    labels: labels.filter((_, dir) => dir % tickLayout.labelStep === 0),
+    ticks: tickLayout.ticks,
+    tickBoxes: tickLayout.tickBoxes,
+    tickBearing: tickLayout.tickBearing,
+    scaleMaxPct: axis.scaleMaxPct,
   };
 }
 
 function WindRoseSvg({ model, width, height, fixed = false, label = "D22 바람장미", season = "annual", chrome = "tile" }: WindRoseFigureProps) {
-  const layout = windRoseLayout(width, height, chrome);
-  const { cx, cy, rMax, labelRadius, legendX, legendY, legendScale, legendWidth } = layout;
-  const frame = chrome !== "standalone";
   const observedHours = hoursOf(model);
   const directionPcts = model.dirs.map((bins) => (bins.reduce((sum, value) => sum + (Number.isFinite(value) && value > 0 ? value : 0), 0) / Math.max(1, observedHours)) * 100);
   const maxDirectionPct = Math.max(0, ...directionPcts);
-  const wedges = roseWedges(model, cx, cy, rMax);
-  const ticks = [0.25, 0.5, 0.75, 1];
-  const tickBearing = (3 * Math.PI) / 16;
-  const accessibleLabel = season === "annual" ? label : `${label} · ${SEASON_LABEL[season]}`;
+  const layout = windRoseLayout(width, height, chrome, maxDirectionPct);
+  const { cx, cy, rMax, labelRadius, legendX, legendY, legendScale, legendWidth } = layout;
+  const frame = chrome !== "standalone";
+  const wedges = roseWedges(model, cx, cy, rMax, layout.scaleMaxPct);
+  const accessibleLabel = season === "annual" ? label : `${label} · ${ROSE_SEASON_LABELS[season]}`;
+  const calmRadius = Math.min(22, Math.max(16, rMax * 0.3));
+  const calmFontSize = rMax < 70 ? 10 : 12;
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -162,29 +241,29 @@ function WindRoseSvg({ model, width, height, fixed = false, label = "D22 바람�
       style={{ display: "block" }}
     >
       <rect width={width} height={height} fill="#F2F2EF" />
-      <title>{`${SEASON_LABEL[season]} 바람장미`}</title>
+      <title>{`${ROSE_SEASON_LABELS[season]} 바람장미`}</title>
       {!frame && (
         <text x={16} y={26} fontSize="18" fontWeight="700" fill={INK}>
-          {SEASON_LABEL[season]} 바람장미
+          {ROSE_SEASON_LABELS[season]} 바람장미
         </text>
       )}
       <g aria-label="풍향 빈도">
-        {ticks.map((ratio) => {
-          const radius = rMax * ratio;
-          return <circle key={ratio} cx={cx} cy={cy} r={radius} fill="none" stroke="#C8CDD4" strokeWidth="1" />;
+        {layout.ticks.map((tick) => {
+          const radius = rMax * tick.ratio;
+          return <circle key={`ring-${tick.value}`} cx={cx} cy={cy} r={radius} fill="none" stroke="#C8CDD4" strokeWidth="1" />;
         })}
+        {layout.ticks.length === 0 && <circle cx={cx} cy={cy} r={rMax} fill="none" stroke="#C8CDD4" strokeWidth="1" />}
         <line data-north-tick="true" x1={cx} y1={cy - rMax - 2} x2={cx} y2={cy - rMax - 11} stroke={INK} strokeWidth="1.5" />
         {wedges.map((wedge) => (
           <path key={`${wedge.dir}-${wedge.bin}`} d={wedge.path} fill={SPEED_BIN_RENDER_COLORS[wedge.bin]} fillOpacity="0.9" stroke="#FFFFFF" strokeWidth="1.1" strokeLinejoin="round" data-rose-dir={wedge.dir} data-rose-bin={wedge.bin} data-pct={wedge.pct} />
         ))}
-        {ticks.map((ratio) => {
-          const value = maxDirectionPct * ratio;
-          const radius = rMax * ratio;
-          const x = cx + Math.sin(tickBearing) * (radius + 8);
-          const y = cy - Math.cos(tickBearing) * (radius + 8);
+        {layout.ticks.map((tick) => {
+          const radius = rMax * tick.ratio;
+          const x = cx + Math.sin(layout.tickBearing) * radius;
+          const y = cy - Math.cos(layout.tickBearing) * radius;
           return (
-            <text key={`tick-${ratio}`} x={x} y={y} dominantBaseline="middle" textAnchor="start" fontSize="10" fontWeight="600" fill={MUTED} stroke="#F2F2EF" strokeWidth="4" paintOrder="stroke" strokeLinejoin="round">
-              {value.toFixed(value >= 10 ? 0 : 1)}%
+            <text key={`tick-${tick.value}`} data-wind-rose-tick="true" data-tick-value={tick.value} x={x} y={y} dominantBaseline="middle" textAnchor="middle" fontSize="10" fontWeight="600" fill={MUTED} stroke="#F2F2EF" strokeWidth="4" paintOrder="stroke" strokeLinejoin="round">
+              {tick.label}
             </text>
           );
         })}
@@ -198,8 +277,8 @@ function WindRoseSvg({ model, width, height, fixed = false, label = "D22 바람�
             </text>
           );
         })}
-        <circle cx={cx} cy={cy} r="30" fill="#F2F2EF" stroke="#FFFFFF" strokeWidth="1" />
-        <text x={cx} y={cy + 5} textAnchor="middle" fontSize="14" fontWeight="700" fill={INK}>
+        <circle data-calm-circle="true" cx={cx} cy={cy} r={calmRadius} fill="#F2F2EF" stroke="#FFFFFF" strokeWidth="1" />
+        <text x={cx} y={cy + calmFontSize * 0.36} textAnchor="middle" fontSize={calmFontSize} fontWeight="700" fill={INK}>
           정온 {pctOf(model.calmHours, model.totalHours)}%
         </text>
       </g>
