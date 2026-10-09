@@ -2,7 +2,7 @@
 import type { FeatureHit } from "../../data/features";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext, Limitation } from "../../engine/context";
-import { makeTile, missing, obs, polygonCandidate } from "../../engine/tiles/common";
+import { fmt, makeTile, missing, obs, polygonCandidate } from "../../engine/tiles/common";
 import { polygonArea } from "../../engine/tiles/geo";
 import { notProvided } from "../../engine/tiles/not-provided";
 import { measureParcels, parcelAreaM2 } from "./parcel-measure";
@@ -26,6 +26,44 @@ function jimokOf(hit: FeatureHit): string {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : "";
 }
 
+const JIMOK_READABLE: Readonly<Record<string, string>> = {
+  대: "대지",
+  대지: "대지",
+  도: "도로",
+  도로: "도로",
+  철: "철도",
+  철도: "철도",
+  철도용지: "철도",
+  전: "전",
+  답: "답",
+  전답: "전·답",
+  임: "임야",
+  임야: "임야",
+  천: "하천",
+  하천: "하천",
+  구: "구거",
+  구거: "구거",
+  유: "유지",
+  유지: "유지",
+  제: "제방",
+  제방: "제방",
+};
+
+function readableJimokOf(hit: FeatureHit): string | null {
+  const value = hit.properties.jimok;
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const trimmed = value.trim();
+  return JIMOK_READABLE[trimmed] ?? trimmed;
+}
+
+function jibunOf(hit: FeatureHit): string | null {
+  const value = hit.properties.jibun;
+  if (typeof value === "string" && value.trim() !== "") return value.trim();
+  return hit.name ?? null;
+}
+
+const sizeText = (areaM2: number | null): string | null => areaM2 === null ? null : `${fmt(Math.round(areaM2))}㎡`;
+
 function classIndex(hit: FeatureHit, areaM2: number | null): number | null {
   if (ROAD_WATER_JIMOK.has(jimokOf(hit))) return LOT_CLASSES.length - 1;
   if (areaM2 === null) return null;
@@ -45,6 +83,7 @@ export function d20(ctx: EngineContext): TileResult {
   if (sources.length === 0) return notProvided(ctx, "D20");
 
   const hits = ctx.hits("parcels", ["parcel"]);
+  const siteHitIds = new Set(ctx.siteParcelHits().map((hit) => hit.featureId));
   const { byFeature: measured, failed } = measureParcels(ctx, hits);
 
   const counts = LOT_CLASSES.map(() => 0);
@@ -93,8 +132,15 @@ export function d20(ctx: EngineContext): TileResult {
     const layer = LOT_CLASSES[index].layer;
     const result = measured.get(hit.featureId);
     if (!result) continue;
+    const isSite = siteHitIds.has(hit.featureId);
+    const jibun = jibunOf(hit);
+    const name = jibun === null ? null : isSite ? `대지 ${jibun}` : jibun;
     for (const rings of result.parts) {
-      const polygon = polygonCandidate(hit.featureId, layer, rings, polygonArea(rings), null);
+      const polygon = polygonCandidate(hit.featureId, layer, rings, polygonArea(rings), jibun, {
+        name,
+        sublabel: sizeText(originalArea),
+        labelPriority: isSite ? 2 : 0,
+      });
       if (polygon) polygons.push(polygon);
     }
   }

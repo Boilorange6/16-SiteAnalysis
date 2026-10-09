@@ -55,6 +55,15 @@ assert.ok(d19.presentation.polygons.some((p) => p.layer === "jimok:road"), "sing
 assert.ok(d19.presentation.polygons.some((p) => p.layer === "jimok:water"), "single-character 천 is a water group");
 assert.ok(d19.presentation.polygons.some((p) => p.layer === "parcel_site"));
 assert.ok(d19.presentation.polygons.some((p) => p.label === "100"));
+assert.equal(d19.presentation.features, undefined, "D19 polygons do not get duplicate representative points");
+const d19SitePolygon = d19.presentation.polygons.find((polygon) => polygon.layer === "parcel_site");
+assert.equal(d19SitePolygon?.name, "대지 100", "D19 target parcel name is prefixed with 대지");
+assert.equal(d19SitePolygon?.sublabel, "대지", "D19 target parcel sublabel is the readable jimok");
+assert.equal(d19SitePolygon?.labelPriority, 2, "D19 target parcel has highest label priority");
+const d19RoadPolygon = d19.presentation.polygons.find((polygon) => polygon.layer === "jimok:road");
+assert.equal(d19RoadPolygon?.name, "100-5", "D19 non-target polygon name is its jibun");
+assert.equal(d19RoadPolygon?.sublabel, "도로", "D19 base polygon sublabel is the readable jimok");
+assert.equal(d19RoadPolygon?.labelPriority, 0, "D19 non-target parcels stay out of automatic labels");
 assert.ok(metric(d19, "fill_geometry_pct").value > 0);
 assert.equal(metric(d19, "share_area_1").denominator, Math.round(Math.PI * 800 ** 2));
 
@@ -87,6 +96,10 @@ const d20Tile = d20(ctx);
 assert.equal(d20Tile.metrics.some((m) => m.id === "parcels"), false, "absorbed D20 must not duplicate D19 parcels metric");
 assert.ok(!d20Tile.presentation.layers.includes("parcel"), "absorbed D20 must not re-add the base parcel layer");
 assert.ok(!d20Tile.presentation.polygons.some((p) => p.layer === "parcel"), "absorbed D20 must not re-add base parcel polygons");
+const d20SitePolygon = d20Tile.presentation.polygons.find((polygon) => polygon.name === "대지 100");
+assert.equal(d20SitePolygon?.sublabel, "1,600㎡", "D20 target parcel sublabel is the formatted size");
+assert.equal(d20SitePolygon?.labelPriority, 2, "D20 target parcel has highest label priority");
+assert.equal(d20Tile.presentation.features, undefined, "D20 has no point duplicate for polygon parcels");
 noForbidden(d19);
 ctx.close();
 
