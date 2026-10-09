@@ -39,6 +39,15 @@ export function d18(ctx: EngineContext): TileResult {
   const middle = Math.floor(ordered.length / 2);
   const slopeMedian = ordered.length % 2 === 0 ? (ordered[middle - 1] + ordered[middle]) / 2 : ordered[middle];
   const bands = terrainBandPolygons(ctx.input.center, ctx.input.radiusM, reportedSlope, SLOPE_BREAKS, SLOPE_LAYERS, "slope_nodata");
+  const polygons = bands.polygons.map((polygon) => ({
+    ...polygon,
+    p: {
+      ...polygon.p,
+      name: null,
+      sublabel: null,
+      labelPriority: 0,
+    },
+  }));
   const slopeMax = maxOf(values);
   const steepPct = percent((bands.areaM2[3] ?? 0) + (bands.areaM2[4] ?? 0), circleAreaM2);
   const nodataArea = bands.areaM2.at(-1) ?? 0;
@@ -78,7 +87,7 @@ export function d18(ctx: EngineContext): TileResult {
     },
     sources: demSources(ctx),
     layers: [...SLOPE_LAYERS, "slope_nodata"],
-    polygons: bands.polygons,
+    polygons,
     limitations,
   });
 }
