@@ -1,10 +1,8 @@
 /** D12 도시계획시설 — VWorld dsId 24 시설 면·선·점 도형. */
-import type { Geometry } from "geojson";
-import { toUtmk } from "../../crs";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext, SourceRef } from "../../engine/context";
-import { candidate, fmt, makeTile, obs, polygonCandidate, type MapCandidate, type PolygonCandidate } from "../../engine/tiles/common";
-import { clipToCircle, polygonArea, sampleLine } from "../../engine/tiles/geo";
+import { candidate, fmt, lineCandidate, makeTile, obs, polygonCandidate, type LineCandidate, type MapCandidate, type PolygonCandidate } from "../../engine/tiles/common";
+import { clipLineToCircle, clipToCircle, linePathLength, polygonArea } from "../../engine/tiles/geo";
 
 const SOURCE_PREFIX = "facility_";
 const FEATURE_KIND = "plan_facility";
@@ -12,6 +10,17 @@ const MISSING_NOTE = "도시계획시설 자료를 확인할 수 없습니다. �
 
 type FacilityHit = ReturnType<EngineContext["hits"]>[number];
 type FacilityShape = "polygon" | "line" | "point";
+
+/** 문장용 면적: 작은 면은 ㎡, 만㎡ 이상은 한 자리 ha로 줄여 수치를 빠르게 읽게 한다. */
+function formatAreaM2(areaM2: number): string {
+  const rounded = Math.max(0, Math.round(areaM2));
+  if (rounded >= 10_000) return `${fmt(Math.round((rounded / 10_000) * 10) / 10)}ha`;
+  return `${fmt(rounded)}㎡`;
+}
+
+function formatLengthM(lengthM: number): string {
+  return `${fmt(Math.round(lengthM * 10) / 10)}m`;
+}
 
 function sourceRefs(ctx: EngineContext): SourceRef[] {
   const db = ctx.db("reference");
@@ -56,48 +65,6 @@ function missingTile(ctx: EngineContext): TileResult {
   });
 }
 
-function lineParts(g: Geometry): number[][][] {
-  if (g.type === "LineString") return [g.coordinates as number[][]];
-  if (g.type === "MultiLineString") return g.coordinates as number[][][];
-  return [];
-}
-
-/** EPSG:5179 선분 중 반경 원 안에 들어온 길이. 선분이 원을 가로지르는 경우도 분할한다. */
-function lineLengthInCircle(center: readonly [number, number], radiusM: number, g: Geometry): number {
-  const [cx, cy] = toUtmk(center);
-  let total = 0;
-  for (const part of lineParts(g)) {
-    for (let i = 1; i < part.length; i++) {
-      const ax = part[i - 1][0] - cx;
-      const ay = part[i - 1][1] - cy;
-      const dx = part[i][0] - part[i - 1][0];
-      const dy = part[i][1] - part[i - 1][1];
-      const len = Math.hypot(dx, dy);
-      if (len === 0) continue;
-      const a = dx * dx + dy * dy;
-      const b = 2 * (ax * dx + ay * dy);
-      const c = ax * ax + ay * ay - radiusM * radiusM;
-      const disc = b * b - 4 * a * c;
-      const ts = [0, 1];
-      if (disc > 0) {
-        const root = Math.sqrt(disc);
-        ts.push((-b - root) / (2 * a), (-b + root) / (2 * a));
-      }
-      ts.sort((x, y) => x - y);
-      for (let j = 1; j < ts.length; j++) {
-        const lo = Math.max(0, ts[j - 1]);
-        const hi = Math.min(1, ts[j]);
-        if (hi <= lo) continue;
-        const t = (lo + hi) / 2;
-        const x = ax + t * dx;
-        const y = ay + t * dy;
-        if (x * x + y * y <= radiusM * radiusM + 1e-7) total += (hi - lo) * len;
-      }
-    }
-  }
-  return total;
-}
-
 export function d12(ctx: EngineContext): TileResult {
   const sources = sourceRefs(ctx);
   if (sources.length === 0) return missingTile(ctx);
@@ -107,6 +74,7 @@ export function d12(ctx: EngineContext): TileResult {
   const lengths = new Map<string, number>();
   const counts = new Map<string, number>();
   const polygons: PolygonCandidate[] = [];
+  const lines: LineCandidate[] = [];
   const map: MapCandidate[] = [];
   let failed = 0;
   for (const h of hits) {
@@ -127,13 +95,16 @@ export function d12(ctx: EngineContext): TileResult {
         const poly = polygonCandidate(h.featureId, layer, rings, polygonArea(rings), label);
         if (poly) polygons.push(poly);
       }
-      const clipped = { ...h, geometry: { type: "MultiPolygon", coordinates: parts } } as FacilityHit;
-      map.push(candidate(clipped, layer, { label }));
     } else if (shape === "line") {
-      const length = lineLengthInCircle(ctx.input.center, ctx.input.radiusM, h.geometry);
+      let length = 0;
+      for (const path of clipLineToCircle(ctx.input.center, ctx.input.radiusM, h.geometry)) {
+        const line = lineCandidate(h.featureId, layer, path, linePathLength(path));
+        if (!line) continue;
+        length += line.lengthM;
+        lines.push(line);
+      }
       if (length <= 0) continue;
       lengths.set(cls, (lengths.get(cls) ?? 0) + length);
-      map.push(...sampleLine(ctx.input.center, h.geometry, ctx.input.radiusM, Math.max(20, Math.min(100, ctx.input.radiusM / 20)), h.featureId, layer));
     } else {
       counts.set(cls, (counts.get(cls) ?? 0) + 1);
       map.push(candidate(h, layer, { label }));
@@ -155,9 +126,9 @@ export function d12(ctx: EngineContext): TileResult {
     ...countClasses.map((cls) => obs(`back_count_${cls}`, `반경 안 점 시설: ${cls}`, counts.get(cls)!, "개", "d12-count@1:반경 안 도시계획시설 점 개수", counts.get(cls)!, null)),
   ];
   const summary = [
-    ...areaClasses.map((cls) => `${cls} ${Math.round(areas.get(cls)!)}㎡`),
-    ...lengthClasses.map((cls) => `${cls} ${Math.round(lengths.get(cls)! * 10) / 10}m`),
-    ...countClasses.map((cls) => `${cls} ${counts.get(cls)}개`),
+    ...areaClasses.map((cls) => `${cls} ${formatAreaM2(areas.get(cls)!)}`),
+    ...lengthClasses.map((cls) => `${cls} ${formatLengthM(lengths.get(cls)!)}`),
+    ...countClasses.map((cls) => `${cls} ${fmt(counts.get(cls)!)}개`),
   ].join("·");
   const sentence = hits.length === 0
     ? "반경과 교차하는 도시계획시설 도형이 확인되지 않음 → 자료 범위가 없거나 아직 확인되지 않을 수 있음 → 도시계획시설 결정·고시와 현장 운영 상태 확인 필요"
@@ -178,6 +149,7 @@ export function d12(ctx: EngineContext): TileResult {
     layers: [...new Set([...areaClasses, ...lengthClasses, ...countClasses].map((cls) => `facility:${cls}`))],
     map,
     polygons,
+    lines,
     limitations,
   });
 }
