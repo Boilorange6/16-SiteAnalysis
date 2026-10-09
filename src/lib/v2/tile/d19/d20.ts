@@ -3,8 +3,9 @@ import type { FeatureHit } from "../../data/features";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext, Limitation } from "../../engine/context";
 import { makeTile, missing, obs, polygonCandidate } from "../../engine/tiles/common";
-import { areaInCircle, polygonArea } from "../../engine/tiles/geo";
+import { polygonArea } from "../../engine/tiles/geo";
 import { notProvided } from "../../engine/tiles/not-provided";
+import { measureParcels, parcelAreaM2 } from "./parcel-measure";
 
 const PARCEL_SOURCES = ["parcel_polygon"] as const;
 const ROAD_WATER_JIMOK = new Set(["도", "천", "구", "유", "제", "철", "구거", "철도", "제방"]);
@@ -18,17 +19,11 @@ const LOT_CLASSES = [
 ] as const;
 
 type Metric = TileResult["metrics"][number];
-type MeasuredParcel = { areaM2: number; parts: number[][][][] };
 const pct = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0);
 
 function jimokOf(hit: FeatureHit): string {
   const value = hit.properties.jimok;
   return typeof value === "string" && value.trim() !== "" ? value.trim() : "";
-}
-
-function areaOf(hit: FeatureHit): number | null {
-  const value = hit.properties.areaM2;
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
 }
 
 function classIndex(hit: FeatureHit, areaM2: number | null): number | null {
@@ -50,23 +45,14 @@ export function d20(ctx: EngineContext): TileResult {
   if (sources.length === 0) return notProvided(ctx, "D20");
 
   const hits = ctx.hits("parcels", ["parcel"]);
-  const measured = new Map<number, MeasuredParcel>();
-  let failed = 0;
-  for (const hit of hits) {
-    const result = areaInCircle(ctx.input.center, ctx.input.radiusM, hit.geometry);
-    if (result === null) {
-      failed++;
-      continue;
-    }
-    measured.set(hit.featureId, { areaM2: result.areaM2, parts: result.parts });
-  }
+  const { byFeature: measured, failed } = measureParcels(ctx, hits);
 
   const counts = LOT_CLASSES.map(() => 0);
   const crossAreas = LOT_CLASSES.map(() => 0);
   const originalAreas: number[] = [];
   let areaKnown = 0;
   for (const hit of hits) {
-    const originalArea = areaOf(hit);
+    const originalArea = parcelAreaM2(hit);
     if (originalArea !== null) {
       areaKnown++;
       originalAreas.push(originalArea);
@@ -80,7 +66,6 @@ export function d20(ctx: EngineContext): TileResult {
   const circleAreaM2 = Math.PI * ctx.input.radiusM ** 2;
   const circleAreaRounded = Math.round(circleAreaM2);
   const metrics: Metric[] = [
-    obs("parcels", "교차 필지", hits.length, "필지", "d20-parcels@1:반경과 실제 교차하는 parcel 도형 수"),
     hits.length === 0
       ? missing("fill_area_pct", "필지 도형 면적 확인률", "%", "d20-fill-area@1:areaM2가 있는 필지÷교차 필지")
       : obs("fill_area_pct", "필지 도형 면적 확인률", pct(areaKnown, hits.length), "%", "d20-fill-area@1:areaM2가 있는 필지÷교차 필지; 공부면적 아님", areaKnown, hits.length),
@@ -102,9 +87,10 @@ export function d20(ctx: EngineContext): TileResult {
 
   const polygons = [];
   for (const hit of hits) {
-    const originalArea = areaOf(hit);
+    const originalArea = parcelAreaM2(hit);
     const index = classIndex(hit, originalArea);
-    const layer = index === null ? "parcel" : LOT_CLASSES[index].layer;
+    if (index === null) continue;
+    const layer = LOT_CLASSES[index].layer;
     const result = measured.get(hit.featureId);
     if (!result) continue;
     for (const rings of result.parts) {
@@ -131,9 +117,9 @@ export function d20(ctx: EngineContext): TileResult {
     type: "diagram",
     status,
     metrics,
-    judgment: { ruleId: "D20-lot-size@1", basisMetricIds: ["parcels"], sentence, level: null, criteria: null },
+    judgment: { ruleId: "D20-lot-size@1", basisMetricIds: ["median_parcel_m2"], sentence, level: null, criteria: null },
     sources,
-    layers: [...LOT_CLASSES.map((item) => item.layer), "parcel"],
+    layers: LOT_CLASSES.map((item) => item.layer),
     polygons,
     limitations,
   });
