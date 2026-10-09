@@ -34,9 +34,10 @@ const OSM_CLASS_LABELS: Readonly<Record<string, string>> = {
   wetland: "습지",
 };
 
-function osmLabel(hit: { name: string | null; properties: Record<string, unknown> }, kind: "landuse" | "water"): string {
+function osmLabel(hit: { name: string | null; properties: Record<string, unknown> }, _kind: "landuse" | "water"): string | null {
   const cls = typeof hit.properties.cls === "string" ? hit.properties.cls.trim().toLowerCase() : "";
-  return hit.name ?? OSM_CLASS_LABELS[cls] ?? (kind === "water" ? "수역" : "녹지");
+  const name = typeof hit.name === "string" ? hit.name.trim() : "";
+  return name || OSM_CLASS_LABELS[cls] || null;
 }
 
 function osmPolygons(ctx: EngineContext, sourceId: "osm_landuse" | "osm_water", kind: "landuse" | "water", layer: OsmLayer): { polygons: PolygonCandidate[]; areaM2: number; hits: number } {
@@ -51,7 +52,11 @@ function osmPolygons(ctx: EngineContext, sourceId: "osm_landuse" | "osm_water", 
     areaM2 += clipped.areaM2;
     for (const rings of clipped.parts) {
       const area = polygonArea(rings);
-      const candidate = polygonCandidate(hit.featureId, layer, rings, area, osmLabel(hit, kind));
+      const candidate = polygonCandidate(hit.featureId, layer, rings, area, null, {
+        name: osmLabel(hit, kind),
+        sublabel: null,
+        labelPriority: 0,
+      });
       if (candidate) polygons.push(candidate);
     }
   }

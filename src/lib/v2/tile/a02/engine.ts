@@ -5,6 +5,7 @@ import type { FeatureHit } from "../../data/features";
 import { candidate, fmt, makeTile, missing, nearestHit, nearestM, obs, type TileDraft } from "../../engine/tiles/common";
 import { notProvided } from "../../engine/tiles/not-provided";
 import { assignedSchools, schoolZoneSources, siteZones, zoneName, zoneOffice } from "../../engine/tiles/school-zone-shared";
+import { formatDistanceM } from "../../ui/tile-view";
 
 export const SCHOOL_SEARCH_MIN_M = 1500;
 export const SCHOOL_ZONE_NOTE = "통학구역 도형 미확보 — 배정은 교육청 확인";
@@ -26,7 +27,7 @@ export function a02(ctx: EngineContext): TileResult {
   const hasZones = zoneSources.length > 0;
   const radiusM = ctx.input.radiusM;
   const searchM = Math.max(radiusM, SCHOOL_SEARCH_MIN_M);
-  const searchTxt = `탐색 ${fmt(searchM)}m`;
+  const searchTxt = `탐색 ${formatDistanceM(searchM)}`;
   // 같은 학교ID는 한 번만(본교·분교 행 중복 방지)
   const seen = new Set<string>();
   const all = ctx.hits("reference", ["school"], searchM).filter(isOperating).filter((h) => {
@@ -49,7 +50,17 @@ export function a02(ctx: EngineContext): TileResult {
       nm === null ? missing(`nearest_${L.key}_m`, `최근접 ${L.name}`, "m", `a02-nearest@1:직선, ${searchTxt}`) : obs(`nearest_${L.key}_m`, `최근접 ${L.name}(학교 대표점)`, nm, "m", `a02-nearest@1:직선, ${searchTxt}`),
       obs(`${L.key}_schools`, `반경 내 ${L.name}`, inR.length, "개교", "a02-count@1:운영 학교, 고유 학교ID"),
     );
-    for (const h of inR) map.push(h === near && L.key === "elem" ? candidate(h, "school_nearest", { highlight: true, label: `직선 ${nm}m` }) : candidate(h, L.layer));
+    for (const h of inR) {
+      const isNearest = h === near && h.distanceM !== null;
+      const layer = isNearest && L.key === "elem" ? "school_nearest" : L.layer;
+      const sublabel = isNearest && h.distanceM !== null ? formatDistanceM(h.distanceM) : null;
+      map.push(candidate(h, layer, {
+        distanceM: h.distanceM,
+        sublabel,
+        labelPriority: isNearest ? 2 : 0,
+        ...(isNearest && h.distanceM !== null ? { highlight: true, ...(L.key === "elem" ? { label: `직선 ${formatDistanceM(h.distanceM)}` } : {}) } : {}),
+      }));
+    }
   }
   const site: ReadonlyMap<string, FeatureHit[]> = hasZones ? siteZones(ctx) : new Map();
   const elemZones = site.get("school_zone_elem") ?? [];
@@ -72,12 +83,12 @@ export function a02(ctx: EngineContext): TileResult {
   const sentence = !hasZones
     ? elem === null
       ? `${searchTxt} 안 운영 초등학교 없음, 통학구역은 미확인 → 통학구역 도형이 없어 배정은 판단하지 않음 → 배정은 교육청 확인 필요`
-      : `최근접 초등학교 직선 ${fmt(elem)}m 확인, 통학구역은 미확인 → 통학구역 도형이 없어 가까운 학교가 배정학교라고 볼 수 없음 → 배정은 교육청 확인 필요`
+      : `최근접 초등학교 직선 ${formatDistanceM(elem)} 확인, 통학구역은 미확인 → 통학구역 도형이 없어 가까운 학교가 배정학교라고 볼 수 없음 → 배정은 교육청 확인 필요`
     : (() => {
         const elemText = assignedElem.length > 0 ? assignedElem.map((school) => school.name).join("·") : elemZones.length > 0 ? "연계 학교 미확인" : "초등 통학구역 미포함";
         const middleText = middleZones.length > 0 ? middleZones.map((zone) => `${zoneName(zone)}(${zoneOffice(zone)})`).join("·") : "중학교 학교군 미포함";
         const highText = highZones.length > 0 ? highZones.map((zone) => `${zoneName(zone)}(${zoneOffice(zone)})`).join("·") : "고등학교 학교군 미포함";
-        const nearest = elem === null ? "탐색 반경 안 운영 초등학교 없음" : `최근접 초등학교 직선 ${fmt(elem)}m`;
+        const nearest = elem === null ? "탐색 반경 안 운영 초등학교 없음" : `최근접 초등학교 직선 ${formatDistanceM(elem)}`;
         return `${nearest} → 배정 초등학교 ${elemText}, 중학교 학교군 ${middleText}, 고등학교 학교군 ${highText} → VWorld 경계와 CSV 연계 기준이며 실제 배정은 교육청 확인 필요`;
       })();
   const coverageSources = [...schoolSources.map((source) => source.sourceId), ...zoneSources.map((source) => source.sourceId), ...linkSources.map((source) => source.sourceId)];
