@@ -165,7 +165,9 @@ assert.ok(tile.presentation.lines.some((line) => line.layer === "road:간선"));
 assert.ok(tile.presentation.lines.some((line) => line.layer === "road:보행·자전거"));
 assert.ok(tile.presentation.lines.some((line) => line.layer === "road:기타"));
 assert.ok(tile.presentation.lines.every((line) => line.points.length >= 2));
-assert.match(toTileView(tile).sourceLine, /OSM 도로\(Geofabrik\)/);
+  assert.match(toTileView(tile).sourceLine, /OSM 도로\(Geofabrik\)/);
+  assert.match(tile.judgment.sentence, /구성비 상위 2:/, "D13 요약은 상위 두 위계를 보여 준다");
+  assert.match(tile.judgment.sentence, /도로-primary .*300m/, "D13 요약은 최근접 간선 이름과 거리를 보여 준다");
 ctx.close();
 
 const absent = new EngineContext("", { version: "v1", createdAt: "2026-10-01T00:00:00Z", files: {} }, "d13-missing", {
