@@ -12,15 +12,50 @@ export function resolveRasterStyle(_ref: Pick<RasterRef, "palette">, style: Rast
   return style;
 }
 
+export type RasterLegendEntry = { label: string; min: number | null; max: number | null };
+
+/** 래스터 제목은 팔레트 계약을 우선하고, 컷 전용 메타데이터는 그다음에 사용한다. */
+export function rasterLegendTitle(ref: Pick<RasterRef, "palette" | "label" | "name">, style: RasterStyle): string {
+  return style.label ?? ref.label ?? ref.name;
+}
+
+/** 엔진 범례를 팔레트 색 칸으로 연결한다. S02도 이 공용 경로에서 16칸을 그대로 소비한다. */
+export function rasterLegendEntries(
+  ref: Pick<RasterRef, "palette" | "label" | "name">,
+  style: RasterStyle,
+  legend: readonly RasterLegendEntry[],
+): RasterLegendEntry[] {
+  const numeric = legend.filter((entry) => entry.min !== null || entry.max !== null);
+  const matched = legend.filter((entry) =>
+    legend.length === 1
+    || (!!style.label && entry.label.includes(style.label))
+    || (!!ref.label && entry.label.includes(ref.label)),
+  );
+  if (matched.length > 0) return [...matched];
+  if (numeric.length > 0) return legend.some((entry) => entry.min === null && entry.max === null) ? [...legend] : [...numeric];
+  if (style.mode !== "stepped" || style.colors.length === 0) return [...legend];
+  const label = rasterLegendTitle(ref, style);
+  const breaks = style.breaks ?? [];
+  return style.colors.map((_, index) => ({
+    label: `${label} · ${index === style.colors.length - 1 ? `${breaks.at(-1) ?? index} 이상` : String(index)}`,
+    min: index,
+    max: index === style.colors.length - 1 ? null : index + 1,
+  }));
+}
+
 /** 범례의 stepped 항목에 대응하는 색. 연속형은 gradient를 그리므로 null을 돌려준다. */
 export function rasterLegendColor(
   ref: Pick<RasterRef, "palette">,
   style: RasterStyle,
-  entry: { min: number | null; max: number | null },
+  entry: RasterLegendEntry,
 ): string | null {
   const resolved = resolveRasterStyle(ref, style);
   if (resolved.mode === "continuous") return null;
   if (resolved.mode === "mask") return resolved.colors[0] ?? "#43566B";
+  if (entry.min === null && entry.max === null) {
+    if (entry.label.includes("바람 입력 없음")) return "#C4CAD3";
+    if (entry.label === "건물") return "#475569";
+  }
   const value = entry.min ?? entry.max ?? 0;
   const index = Math.min(resolved.colors.length - 1, (resolved.breaks ?? []).filter((breakValue) => value >= breakValue).length);
   return resolved.colors[index] ?? null;

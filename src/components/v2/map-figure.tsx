@@ -2,7 +2,7 @@ import { memo, useId, useRef, type KeyboardEvent as ReactKeyboardEvent, type Mou
 import { layerStyle, legendItems, RASTER_STYLES, type MapModel, type RasterStyle } from "@/lib/v2/ui/map-layers";
 import { automaticLabelText, badgeTextColor, legacyLabelPriority, mapLabelText as formatMapLabelText, selectAutomaticLabels, type MapLabelKind } from "@/lib/v2/ui/map-labels";
 import { BASEMAP_ATTRIBUTION, BASEMAP_STACK, framedViewport, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, worldPx, type BasemapChoice } from "@/lib/v2/ui/map-projection";
-import { rasterAffine, rasterLegendColor, resolveRasterStyle } from "@/lib/v2/ui/raster-image";
+import { rasterAffine, rasterLegendColor, rasterLegendEntries, resolveRasterStyle } from "@/lib/v2/ui/raster-image";
 import type { MapFeature, MapLine, MapPolygon, RasterRef } from "@/lib/v2/tile-result";
 import { maxOf, minOf } from "@/lib/v2/extent";
 import { isSiteParcelLayer } from "@/lib/v2/ui/site-parcel";
@@ -217,37 +217,12 @@ function selectedRaster(model: RasterPresentationModel, requestedName?: string):
   return primary ?? refs[0] ?? null;
 }
 
-function relevantRasterLegend(ref: RasterRef, styleLabel: string | undefined, legend: RasterLegendEntry[]): RasterLegendEntry[] {
-  const numeric = legend.filter((entry) => entry.min !== null || entry.max !== null);
-  const matched = legend.filter((entry) => {
-    if (ref.palette === "sun_hours") return entry.label.includes("일조시간");
-    if (ref.palette === "shade_flow") return entry.label.includes("그림자 흐름");
-    if (ref.palette === "shade_mask") return entry.label.includes("그림자") && !entry.label.includes("흐름");
-    return legend.length === 1 || (!!styleLabel && entry.label.includes(styleLabel)) || (!!ref.label && entry.label.includes(ref.label));
-  });
-  if (matched.length > 0) return matched;
-  if (numeric.length > 0) return legend.some((entry) => entry.min === null && entry.max === null) ? legend : numeric;
-  return legend;
-}
-
-function derivedSteppedLegend(ref: RasterRef, style: RasterStyle): RasterLegendEntry[] {
-  const label = style.label ?? ref.label ?? ref.name;
-  const breaks = style.breaks ?? [];
-  return style.colors.map((_, index) => ({
-    label: `${label} · ${index === style.colors.length - 1 ? `${breaks.at(-1) ?? index} 이상` : String(index)}`,
-    min: index,
-    max: index === style.colors.length - 1 ? null : index + 1,
-  }));
-}
-
 function steppedLegendTitle(ref: RasterRef, style: RasterStyle): string {
-  if (ref.palette === "shade_flow" && ref.label) return ref.label;
   return style.label ?? ref.label ?? ref.name;
 }
 
 /** 카드 알약은 공간이 좁으므로, 원문을 자르지 않는 짧은 표시명을 사용한다. */
 function compactSteppedLegendTitle(ref: RasterRef, style: RasterStyle): string {
-  if (ref.palette === "shade_flow" && ref.label) return ref.label;
   return steppedLegendTitle(ref, style);
 }
 
@@ -302,11 +277,8 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
   const rasterPresentation = rasterModel.legend ?? [];
   const rasterStyle = activeRaster ? RASTER_STYLES[activeRaster.palette] : undefined;
   const resolvedRasterStyle = activeRaster && rasterStyle ? resolveRasterStyle(activeRaster, rasterStyle) : undefined;
-  const matchedRasterEntries = activeRaster && resolvedRasterStyle ? relevantRasterLegend(activeRaster, resolvedRasterStyle.label, rasterPresentation) : [];
   const rasterEntries = activeRaster && resolvedRasterStyle?.mode === "stepped"
-    ? (matchedRasterEntries.length > 0
-      ? matchedRasterEntries
-      : derivedSteppedLegend(activeRaster, resolvedRasterStyle))
+    ? rasterLegendEntries(activeRaster, resolvedRasterStyle, rasterPresentation)
     : [];
   const rasterLegends: RasterLegendConfig[] = activeRaster && resolvedRasterStyle && resolvedRasterStyle.mode !== "mask"
     ? [{ ref: activeRaster, style: resolvedRasterStyle, entries: rasterEntries }]
@@ -907,8 +879,9 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
             const width = lineSelected ? 4 : (strong ? (st.strokeWidth ?? 1.5) * 1.35 : st.strokeWidth ?? 1.5) * (d.l.emphasis === "major" ? 1.2 : d.l.emphasis === "minor" ? 0.85 : 1);
             const points = d.points.map(([x, y]) => `${x},${y}`).join(" ");
             const stroke = strong || lineSelected ? INK : d.l.color ?? st.color;
+            const opacity = d.l.opacity ?? st.opacity;
             return (
-              <g key={`line${d.index}`} opacity={isElementDimmed(d.l.layer, lineKey) ? 0.2 : undefined}>
+              <g key={`line${d.index}`} opacity={isElementDimmed(d.l.layer, lineKey) ? 0.2 : opacity}>
                 {st.casing && <polyline points={points} fill="none" stroke={st.casing} strokeWidth={(width + 2.4) * u} strokeDasharray={st.dash} strokeLinejoin="round" pointerEvents="none" />}
                 <polyline data-line="true" points={points} fill="none" stroke={stroke} strokeWidth={width * u} strokeDasharray={st.dash} strokeLinejoin="round" markerEnd={st.arrow ? `url(#arrow-${uid}-${d.index})` : undefined} {...pickProps({ fid: d.l.fid, lng: center[0], lat: center[1], kind: "line" }, lineKey, labelText(d.l.layer, "line", d.l))} />
               </g>

@@ -8,11 +8,16 @@ export type LegendSwatchKind = "point" | "line" | "polygon" | "site";
 
 export type MapLegendItem = {
   layer: string;
+  /** 엔진 범례가 같은 레이어에 여러 값 구간을 낼 때 쓰는 표시 항목 키. */
+  id?: string;
   label: string;
   color: string;
   count?: number;
   site?: boolean;
   swatch?: LegendSwatchKind;
+  hollow?: boolean;
+  /** 화면에 표시하는 값 범례와 지도 요소 강조에 쓰는 공용 레이어명을 분리한다. */
+  highlightLabel?: string;
 };
 
 function LegendSwatch({ item }: { item: MapLegendItem }) {
@@ -30,7 +35,7 @@ function LegendSwatch({ item }: { item: MapLegendItem }) {
       className={styles.mapLegendSwatch}
       data-kind={kind}
       aria-hidden="true"
-      style={{ "--map-legend-color": item.color } as CSSProperties}
+      style={{ "--map-legend-color": item.color, background: item.hollow ? "transparent" : undefined } as CSSProperties}
     />
   );
 }
@@ -62,6 +67,7 @@ function LegendEntry({
     </>
   );
   if (item.site) return <span className={styles.mapLegendStatic}>{content}</span>;
+  const interactionLabel = item.highlightLabel ?? item.label;
   return (
     <button
       ref={buttonRef}
@@ -71,11 +77,11 @@ function LegendEntry({
       className={styles.mapLegendButton}
       aria-label={`${item.label} 범례 강조`}
       aria-pressed={pinned}
-      onClick={() => onToggle(item.label)}
+      onClick={() => onToggle(interactionLabel)}
       onPointerDown={(event: ReactPointerEvent<HTMLButtonElement>) => { pointerTypeRef.current = event.pointerType; }}
-      onPointerEnter={(event: ReactPointerEvent<HTMLButtonElement>) => { pointerTypeRef.current = event.pointerType; if (event.pointerType !== "touch") onHover(item.label); }}
+      onPointerEnter={(event: ReactPointerEvent<HTMLButtonElement>) => { pointerTypeRef.current = event.pointerType; if (event.pointerType !== "touch") onHover(interactionLabel); }}
       onPointerLeave={() => { pointerTypeRef.current = null; onHover(null); }}
-      onFocus={() => { focusAndReveal(); if (pointerTypeRef.current !== "touch") onHover(item.label); }}
+      onFocus={() => { focusAndReveal(); if (pointerTypeRef.current !== "touch") onHover(interactionLabel); }}
       onBlur={() => { pointerTypeRef.current = null; onHover(null); }}
     >
       {content}
@@ -89,12 +95,18 @@ export function MapLegendStrip({
   pinnedLabel,
   onHover,
   onToggle,
+  leadingLabel,
+  trailingLabel,
+  ariaLabel = "지도 범례",
 }: {
   items: readonly MapLegendItem[];
   hoverLabel: string | null;
   pinnedLabel: string | null;
   onHover: (label: string | null) => void;
   onToggle: (label: string) => void;
+  leadingLabel?: string | null;
+  trailingLabel?: string | null;
+  ariaLabel?: string;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pointerTypeRef = useRef<string | null>(null);
@@ -143,23 +155,25 @@ export function MapLegendStrip({
     <div
       className={styles.mapLegendStrip}
       role="group"
-      aria-label="지도 범례"
+      aria-label={ariaLabel}
       data-scroll-start={!scrollState.atStart ? "true" : undefined}
       data-scroll-end={!scrollState.atEnd ? "true" : undefined}
       data-scroll-overflow={scrollState.overflowing ? "true" : undefined}
     >
       <div ref={scrollRef} className={styles.mapLegendScroll}>
+        {leadingLabel && <span className={styles.mapLegendMeta}>{leadingLabel}</span>}
         {items.map((item) => (
           <LegendEntry
-            key={item.layer}
+            key={item.id ?? item.layer}
             item={item}
-            active={activeLabel === item.label}
-            pinned={pinnedLabel === item.label}
+            active={activeLabel === (item.highlightLabel ?? item.label)}
+            pinned={pinnedLabel === (item.highlightLabel ?? item.label)}
             pointerTypeRef={pointerTypeRef}
             onToggle={onToggle}
             onHover={onHover}
           />
         ))}
+        {trailingLabel && <span className={styles.mapLegendMeta}>{trailingLabel}</span>}
       </div>
     </div>
   );

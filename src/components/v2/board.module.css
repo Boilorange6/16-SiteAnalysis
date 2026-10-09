@@ -2995,6 +2995,15 @@ button.badge:focus-visible {
   font: inherit;
   white-space: nowrap;
 }
+.mapLegendMeta {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 2px 5px;
+  color: #334155;
+  font-weight: 700;
+  white-space: nowrap;
+}
 .mapLegendButton:focus-visible {
   outline: 2px solid #2f6fdb;
   outline-offset: 2px;

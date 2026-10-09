@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, memo, useContext, useEffect, useRef, useState } from "react";
-import { compactLegendItems, RASTER_STYLES, type MapModel } from "@/lib/v2/ui/map-layers";
+import { legendItemsForModel, RASTER_STYLES, type MapModel } from "@/lib/v2/ui/map-layers";
 import { activeLegendLabel, toggleLegendPin } from "@/lib/v2/ui/map-legend";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { framedViewport, metersPerPixel, scaleBar, tileUrl, tilesFor } from "@/lib/v2/ui/map-projection";
@@ -149,7 +149,7 @@ function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, ...optsIn }
   const legendItems: MapLegendItem[] = !bare && opts.legend === false
     ? [
         ...(!opts.muted ? [{ layer: "__site_marker", label: "대지", color: "#111", count: 1, site: true as const, swatch: "site" as const }] : []),
-        ...compactLegendItems(model, 99)
+        ...legendItemsForModel(model, 99)
           .filter((item) => item.layer !== "parcel_site" && item.layer !== "pnu")
           .map((item) => ({ ...item, site: false as const, swatch: swatchKind(item.layer) })),
       ]

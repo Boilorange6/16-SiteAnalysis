@@ -1,4 +1,4 @@
-import type { MapFeature, MapLine, MapPolygon, RasterRef } from "../tile-result";
+import type { MapFeature, MapLine, MapPolygon, RasterRef, TileResult } from "../tile-result";
 import type { BasemapChoice } from "./map-projection";
 
 /** MapFigure가 그리는 입력. 카드·상세·PPT가 같은 것을 쓴다. */
@@ -13,6 +13,8 @@ export type MapModel = {
   basemap?: BasemapChoice;
   /** 지도에 겹칠 압축 래스터 참조. */
   rasters?: RasterRef[];
+  /** 엔진이 계산한 범례 경계. 있으면 정적 레이어명보다 우선해 표시한다. */
+  legend?: TileResult["presentation"]["legend"];
   /** 면 지물(WGS84). T2의 MapFigure가 점보다 먼저 그린다. */
   polygons?: MapPolygon[];
   /** 분석 단위로 한 번 전달하는 대상 필지(멀티파트·홀 포함). 일반 면 지물과 분리해 그린다. */
@@ -42,6 +44,8 @@ export type LayerStyle = {
   stroke?: string;
   fillOpacity?: number;
   strokeWidth?: number;
+  /** 선의 기본 불투명도. 색만 바꾸지 않고 선 위계의 시각적 무게를 조정한다. */
+  opacity?: number;
   /** SVG stroke-dasharray, e.g. "6 4". */
   dash?: string;
   /** 선 아래에 까는 외곽선 색. 색약 환경에서 선을 분리한다. */
@@ -272,7 +276,7 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   walk_5: S("도보 5분", "#4D9D7E"),
   walk_10: S("도보 10분", "#8FC9B3"),
   walk_15: S("도보 15분", "#CDE8DC"),
-  walk_net: { label: "보행망", color: "#5AA88E", strokeWidth: 0.75 },
+  walk_net: { label: "보행망", color: "#5AA88E", strokeWidth: 0.75, opacity: 0.55 },
   wind_inflow: { label: "유입 방향", color: "#2B9CBF", strokeWidth: 2, arrow: true, casing: "#FFFFFF" },
 };
 
@@ -333,6 +337,49 @@ export const legendItems = (model: MapModel) => {
     return [{ layer, label: style.label, color: style.color, highlight: highlightedLabels.has(style.label) }];
   });
 };
+
+const formatLegendNumber = (value: number): string => {
+  const rounded = Math.round(value * 10) / 10;
+  return rounded.toLocaleString("ko-KR", { maximumFractionDigits: 1 });
+};
+
+/** A07처럼 엔진 라벨이 분위만 말하는 범례에 실제 단가 경계를 덧붙인다. */
+export function presentationLegendLabel(entry: TileResult["presentation"]["legend"][number]): string {
+  const label = entry.label.trim();
+  if (!label.includes("㎡당") || label.includes("만원/㎡")) return label;
+  const min = entry.min === null ? null : formatLegendNumber(entry.min);
+  const max = entry.max === null ? null : formatLegendNumber(entry.max);
+  const range = min === null && max !== null
+    ? `~${max}만원/㎡`
+    : min !== null && max === null
+      ? `${min}만원/㎡ 이상`
+      : min !== null && max !== null
+        ? `${min}~${max}만원/㎡`
+        : null;
+  return range ? `${label} · ${range}` : label;
+}
+
+/** 엔진 범례와 화면 레이어를 같은 순서로 연결한 하단 띠용 항목. */
+export function legendItemsForModel(model: MapModel, limit = 99) {
+  const staticItems = legendItems(model);
+  const engineLegend = model.legend ?? [];
+  // 래스터 범례는 MapFigure의 공용 팔레트가 직접 그린다. 벡터 띠에는 기존 지물명을 남긴다.
+  if (engineLegend.length === 0 || model.rasters?.length || staticItems.length === 0) {
+    return compactLegendItems(model, limit);
+  }
+  const staticByLabel = new Map(staticItems.map((item) => [item.label, item]));
+  return engineLegend
+    .map((entry, index) => {
+      // A07 엔진 라벨은 정적 분위 라벨과 일치한다. 그 밖의 경계 범례는
+      // 엔진 배열 순서를 공용 레이어 순서와 맞추되, 표시 라벨과 강조 키를 분리한다.
+      const item = staticByLabel.get(entry.label) ?? staticItems[index];
+      return item
+        ? { ...item, id: `${item.layer}:legend-${index}`, label: presentationLegendLabel(entry), highlightLabel: item.label }
+        : null;
+    })
+    .filter((item): item is (typeof staticItems)[number] & { id: string; highlightLabel: string } => item !== null)
+    .slice(0, Math.max(0, limit));
+}
 
 /** 카드 지도처럼 공간이 좁을 때, 실제로 가장 많이 그린 레이어만 남긴 미니 범례. */
 export function compactLegendItems(model: MapModel, limit = 3) {

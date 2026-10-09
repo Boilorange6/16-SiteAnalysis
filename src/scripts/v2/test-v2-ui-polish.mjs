@@ -40,5 +40,9 @@ assert.match(mapFigureSource, /function compactSteppedLegendTitle/, "카드 래�
 assert.doesNotMatch(mapFigureSource, /if \(label\) return `\$\{label\} 일조시간`;/, "S02 카드 범례에 일조시간 하드코딩 특례가 없음");
 assert.match(mapFigureSource, /return style\.label \?\? ref\.label \?\? ref\.name;/, "래스터 범례 제목은 공용 스타일·래스터 메타데이터를 사용");
 assert.doesNotMatch(mapFigureSource, /compactTitle \+= "…"/, "S02 카드 범례 제목을 잘라 말줄임하지 않음");
+assert.match(calloutSource, /<MapLegendStrip/, "A05/A06 설명선 범례는 공용 하단 띠를 사용");
+assert.match(calloutSource, /data-callout-map-root/, "설명선 지도와 하단 범례는 별도 레이아웃 영역");
+assert.doesNotMatch(calloutSource, /<CalloutLegend[\s\S]*style=\{detail \?/, "설명선 범례를 지도 위 절대 위치로 렌더링하지 않음");
+assert.match(calloutSource, /paddingBottom: detail \? OV\.stripH : 0/, "상세 설명선 범례가 출처 띠를 침범하지 않음");
 
 console.log("v2 UI polish contracts ok");

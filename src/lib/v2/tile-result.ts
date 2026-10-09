@@ -94,6 +94,8 @@ const MapLineSchema = z.object({
   sublabel: z.string().nullable().optional(),
   labelPriority: z.number().int().min(0).max(2).optional(),
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  /** 선별 지물의 개별 불투명도. 없으면 공용 LayerStyle을 따른다. */
+  opacity: z.number().finite().min(0).max(1).optional(),
   emphasis: z.enum(["major", "minor"]).optional(),
 });
 const MapPolygonSchema = z.object({
