@@ -6,6 +6,8 @@ import { tmpdir } from "node:os";
 const { buildEngineFixture } = await import("./engine-fixture.mjs");
 const { openV2AppDb } = await import("../../lib/v2/app-db.ts");
 const { runAnalysis } = await import("../../lib/v2/engine/run.ts");
+const { automaticLabelText } = await import("../../lib/v2/ui/map-labels.ts");
+const { layerStyle } = await import("../../lib/v2/ui/map-layers.ts");
 
 const input = { address: "경기도 남양주시 다산동 100", radiusM: 800, analysisDate: "2026-10-01" };
 const dataDir = mkdtempSync(join(tmpdir(), "v2-d18-"));
@@ -30,6 +32,10 @@ try {
     .map((id) => metric.get(id).value);
   assert.ok(Math.abs(shares.reduce((sum, value) => sum + value, 0) - 100) <= 1, `shares ${shares}`);
   assert.ok(view.presentation.polygons.some((polygon) => polygon.layer === "slope_0_5"));
+  assert.ok(view.presentation.polygons.every((polygon) => polygon.name === null && polygon.sublabel === null && polygon.labelPriority === 0), "D18 경사 면은 의미 없는 자동 라벨을 만들지 않는다");
+  assert.ok(view.presentation.polygons.every((polygon) => automaticLabelText(polygon.layer, "polygon", polygon) === null), "D18 경사 면에는 자동 라벨 후보가 없다");
+  assert.equal(layerStyle("slope_0_5").label, "경사 0~5°", "D18 첫 범례는 값 중심 형식이다");
+  assert.ok(["slope_0_5", "slope_5_10", "slope_10_15", "slope_15_20", "slope_ge20"].every((layer) => layerStyle(layer).label.startsWith("경사 ")));
   assert.ok(view.limitations.some((limitation) => limitation.note.includes("30m 표본 간격")));
   assert.match(view.judgment.sentence, /15° 이상 \d+(?:\.\d+)?%/);
   assert.ok(!/도보|\d\s*분|종합|법적 적합|개발 가능/.test(view.judgment.sentence));

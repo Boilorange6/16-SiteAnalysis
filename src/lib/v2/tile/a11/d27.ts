@@ -7,6 +7,7 @@ import { populationCells, SGIS_GRID_LIMITATION } from "./engine";
 import { est, makeTile, missing, polygonCandidate, type PolygonCandidate, type TileDraft } from "../../engine/tiles/common";
 import { areaInCircle, polygonArea } from "../../engine/tiles/geo";
 import { notProvided } from "../../engine/tiles/not-provided";
+import { formatMetricValue } from "../../ui/tile-view";
 
 const DENSITY_LAYERS = ["pop_dens_0", "pop_dens_1", "pop_dens_2", "pop_dens_3", "pop_dens_4", "pop_dens_5"] as const;
 const LAYERS = [...DENSITY_LAYERS, "pop_grid_na"] as const;
@@ -82,7 +83,13 @@ export function d27(ctx: EngineContext): TileResult {
     }
     for (const rings of clipped.parts) {
       const areaM2 = polygonArea(rings);
-      const polygon = areaM2 > 0 ? polygonCandidate(hit.featureId, layer, rings, areaM2) : null;
+      const polygon = areaM2 > 0
+        ? polygonCandidate(hit.featureId, layer, rings, areaM2, null, {
+            name: null,
+            sublabel: population === null ? null : `${formatMetricValue(population, "명")}명`,
+            labelPriority: 0,
+          })
+        : null;
       if (polygon) polygons.push(polygon);
     }
   }

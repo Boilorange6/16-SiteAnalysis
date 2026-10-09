@@ -21,11 +21,16 @@ function median(values: number[]): number | null {
   return ordered.length % 2 === 0 ? (ordered[middle - 1] + ordered[middle]) / 2 : ordered[middle];
 }
 
-function contourLabel(label: string | null | undefined): string | null {
+function contourInfo(label: string | null | undefined): { name: string | null; labelPriority: 0 | 1; emphasis: "major" | "minor" } {
   const elevation = Number.parseFloat((label ?? "").replace(/m$/, ""));
-  if (!Number.isFinite(elevation) || Math.abs(elevation / 25 - Math.round(elevation / 25)) > 1e-6) return null;
+  if (!Number.isFinite(elevation)) return { name: null, labelPriority: 0, emphasis: "minor" };
   const rounded = Math.abs(elevation) < 1e-9 ? 0 : Math.round(elevation * 100) / 100;
-  return `표고 ${rounded}m`;
+  const major = Math.abs(elevation / 25 - Math.round(elevation / 25)) <= 1e-6;
+  return {
+    name: major ? `표고 ${rounded}m` : null,
+    labelPriority: major ? 1 : 0,
+    emphasis: major ? "major" : "minor",
+  };
 }
 
 export function d17(ctx: EngineContext): TileResult {
@@ -58,8 +63,30 @@ export function d17(ctx: EngineContext): TileResult {
   const reliefMedian = median(relativeValues) as number;
   const circleAreaM2 = Math.PI * ctx.input.radiusM ** 2;
   const bands = terrainBandPolygons(ctx.input.center, ctx.input.radiusM, relative, RELIEF_BREAKS, RELIEF_LAYERS, "dem_nodata");
+  const polygons = bands.polygons.map((polygon) => ({
+    ...polygon,
+    p: {
+      ...polygon.p,
+      name: null,
+      sublabel: null,
+      labelPriority: 0,
+    },
+  }));
   const lines = terrainContourLines(ctx.input.center, ctx.input.radiusM, grid, CONTOUR_INTERVAL_M, "contour")
-    .map((line) => ({ ...line, l: { ...line.l, label: contourLabel(line.l.label) } }));
+    .map((line) => {
+      const contour = contourInfo(line.l.label);
+      return {
+        ...line,
+        l: {
+          ...line.l,
+          label: null,
+          name: contour.name,
+          sublabel: null,
+          labelPriority: contour.labelPriority,
+          emphasis: contour.emphasis,
+        },
+      };
+    });
   const nodataArea = bands.areaM2.at(-1) ?? 0;
   const centerStatus = readerCenter === null ? "estimated" : "observed";
 
@@ -105,7 +132,7 @@ export function d17(ctx: EngineContext): TileResult {
     },
     sources: demSources(ctx),
     layers: [...RELIEF_LAYERS, "dem_nodata", "contour"],
-    polygons: bands.polygons,
+    polygons,
     lines,
     limitations,
   });

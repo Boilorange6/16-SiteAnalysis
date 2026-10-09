@@ -16,7 +16,7 @@ const { d01, VWORLD_WMTS_SOURCE } = await import("../../lib/v2/tile/d01/engine.t
 const { MAX_Z } = await import("../../lib/v2/tiles.ts");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { toTileView, sourceLineOf } = await import("../../lib/v2/ui/tile-view.ts");
-const { default: MapFigure } = await import("../../components/v2/map-figure.tsx");
+const { default: MapFigure, mapLabelEntries } = await import("../../components/v2/map-figure.tsx");
 
 const manifest = { version: "v1", createdAt: "2026-10-01T00:00:00Z", files: {} };
 const ctx = new EngineContext(".", manifest, "d01-test", {
@@ -37,6 +37,9 @@ try {
   assert.equal(tile.tileType, "diagram");
   assert.equal(tile.status, "complete");
   assert.equal(tile.presentation.basemap, "Satellite", "D01은 보드 배경 선택과 관계없이 항공사진을 고정");
+  assert.equal(tile.presentation.features, undefined, "D01은 지물 점을 만들지 않는다");
+  assert.equal(tile.presentation.polygons, undefined, "D01은 지물 면을 만들지 않는다");
+  assert.equal(tile.presentation.lines, undefined, "D01은 지물 선을 만들지 않는다");
 
   const zoom = tile.metrics.find((metric) => metric.id === "imagery_zoom_max");
   assert.ok(zoom, "최대 WMTS 줌 지표");
@@ -56,6 +59,10 @@ try {
   const view = toTileView(tile);
   assert.ok(view.map, "고정 배경만 있는 D01도 지도 모델을 만든다");
   assert.equal(view.map.basemap, "Satellite");
+  assert.deepEqual(view.map.features, [], "D01 지도 모델에는 지물 점이 없다");
+  assert.deepEqual(view.map.polygons, [], "D01 지도 모델에는 지물 면이 없다");
+  assert.deepEqual(view.map.lines, [], "D01 지도 모델에는 지물 선이 없다");
+  assert.deepEqual(mapLabelEntries(view.map), [], "D01에는 라벨 후보가 없다");
   assert.match(sourceLineOf(tile.provenance.sources), /VWorld 항공영상\(WMTS\).*기준일 미확인/);
 
   const svg = renderToStaticMarkup(createElement(MapFigure, {
