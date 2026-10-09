@@ -4,7 +4,7 @@ import type { EngineContext } from "../../engine/context";
 import type { FeatureHit } from "../../data/features";
 import { toUtmk } from "../../crs";
 import { candidate, fmt, hitPoint, lineCandidate, makeTile, missing, nearestHit, nearestM, noDataTile, obs, type LineCandidate, type MapCandidate, type TileDraft } from "../../engine/tiles/common";
-import { clipLineToCircle, linePathLength, sampleLine } from "../../engine/tiles/geo";
+import { clipLineToCircle, linePathLength } from "../../engine/tiles/geo";
 import { walkField, walkSources, type WalkField, type WalkRoute } from "../../engine/tiles/walk-shared";
 
 export const A01_CRITERIA = "버스정류장 직선 300m 이하 좋음 · 600m 이하 보통 · 초과 주의";
@@ -141,6 +141,25 @@ function lineKey(hit: FeatureHit): string {
   return text(hit.properties.lineRef) ?? hit.stableId;
 }
 
+function railLineNames(hit: FeatureHit): string[] {
+  const raw = Array.isArray(hit.properties.lineNames)
+    ? hit.properties.lineNames
+    : Array.isArray(hit.properties.lineRefs)
+      ? hit.properties.lineRefs
+      : [];
+  return raw
+    .map(text)
+    .filter((name): name is string => name !== null)
+    .map((name) => /^\d+$/.test(name) ? `${name}호선` : name);
+}
+
+function railSummary(station: RailStation, usesPoint: boolean, distanceM: number): string {
+  const name = stationName(station.hit) ?? "철도역";
+  const lines = railLineNames(station.hit);
+  const lineText = lines.length > 0 ? `(${lines.join("·")})` : "";
+  return `최근접 ${name}${lineText} ${usesPoint ? "역 대표점" : "역 출입구"} 직선 ${fmt(distanceM)}m`;
+}
+
 function countStationsWithEntrances(stations: FeatureHit[], entrances: FeatureHit[]): number {
   const stationNames = new Set(stations.map(stationName).filter((name): name is string => name !== null));
   const entranceNames = new Set(entrances.map(entranceStationName).filter((name): name is string => name !== null && stationNames.has(name)));
@@ -192,7 +211,7 @@ export function a01(ctx: EngineContext): TileResult {
     ...walkMetrics("walk_nearest_rail", "보행망 최근접 철도역", hasRail ? walkRail : null),
     ...walkMetrics("walk_nearest_bus", "보행망 최근접 버스정류장", walkBus),
   ];
-  const busTxt = nearest === null ? "반경 안 정류장 없음" : `최근접 정류장 직선 ${nearest}m`;
+  const busTxt = nearest === null ? "반경 안 정류장 없음" : `최근접 정류장 직선 ${fmt(nearest)}m`;
   const busPhrase = nearest === null ? "버스 접근은 확인되지 않음" : PHRASE[gradeBus(nearest)];
   let judgment: TileResult["judgment"];
   if (!hasRail) {
@@ -201,7 +220,7 @@ export function a01(ctx: EngineContext): TileResult {
         ? { ruleId: "a01-bus-distance@1", basisMetricIds: ["bus_stops"], sentence: `반경 안 버스 정류장 없음 → 버스 접근은 확인되지 않음 → ${walkSentence(false, null, walkBus)}`, level: null, criteria: null }
         : { ruleId: "a01-bus-distance@1", basisMetricIds: ["nearest_bus_m"], sentence: `${busTxt} → ${busPhrase} → ${walkSentence(false, null, walkBus)}`, level: gradeBus(nearest), criteria: A01_CRITERIA, grades: a01Grades(null, nearest).grades };
   } else {
-    const railTxt = railM === null ? `${searchTxt} 안 운영역 없음` : `최근접 ${usesPoint ? "역 대표점" : "역 출입구"} 직선 ${fmt(railM)}m`;
+    const railTxt = railM === null ? `${searchTxt} 안 운영역 없음` : railSummary(railBest!, usesPoint, railM);
     const railPhrase = railM === null ? RAIL_PHRASE.caution : RAIL_PHRASE[gradeRail(railM)];
     // 철도와 버스는 각자의 기준으로 말하고 하나의 등급으로 합치지 않는다(level 없음).
     judgment = {
@@ -234,9 +253,7 @@ export function a01(ctx: EngineContext): TileResult {
       const isNearest = entrance.featureId === nearFeatureId;
       map.push(candidate(entrance, isNearest ? "rail_nearest" : "rail_entrance", isNearest ? { highlight: true, label: `직선 ${railM}m` } : undefined));
     }
-    const step = Math.max(50, radiusM / 30);
     for (const l of ctx.hits("reference", ["rail_line"])) {
-      map.push(...sampleLine(ctx.input.center, l.geometry, radiusM, step, l.featureId, "rail_line"));
       for (const path of clipLineToCircle(ctx.input.center, radiusM, l.geometry)) {
         const line = lineCandidate(l.featureId, "rail_line", path, linePathLength(path));
         if (line) lines.push(line);
