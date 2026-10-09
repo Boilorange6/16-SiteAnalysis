@@ -291,9 +291,9 @@ export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, p
       onFeaturePin={onFeaturePin}
       avoid={(w, h) => {
         const inset = typeof rightInset === "function" ? rightInset(w) : (rightInset ?? 0);
-        // 카드: 지도 위에는 북쪽(오른쪽 위)·범례 알약(왼쪽 아래)·축척(오른쪽 아래)만 있다
+        // 카드: 지도 위에는 북쪽(오른쪽 위)·레이어 칩(왼쪽 위)·축척(오른쪽 아래), 아래에는 범례 띠가 있다.
         const reserved = card
-          ? [{ x0: w - 44, y0: 0, x1: w, y1: 44 }, { x0: 0, y0: h - 34, x1: w, y1: h }]
+          ? [{ x0: w - 44, y0: 0, x1: w, y1: 44 }, { x0: 0, y0: 0, x1: Math.max(0, w - 56), y1: 48 }, { x0: 0, y0: h - 34, x1: w, y1: h }]
           : cardReserved(w, h, { valueH: 0, right: 0 });
         return [...reserved, ...(inset ? [{ x0: w - inset, y0: 0, x1: w, y1: h }] : [])];
       }}
@@ -561,10 +561,14 @@ function MapFace({ p, active, state, back, onBack, onFlip, onDetail, mapReady }:
           {h.tag && <span className={styles.tag}>{h.tag}</span>}
         </div>
       )}
-      {!cutOwnsS02 && <LayerSelect view={view} value={p.layer} onChange={p.onLayer} />}
       {FaceExtra && <FaceExtra view={view} cut={cut} state={state} placement="controls" onCut={p.onCut} onOpen={p.onOpen} />}
       {!state && <CutSelect view={view} value={cut} onChange={p.onCut} compact />}
       <div className={styles.mfMap}>
+        {!cutOwnsS02 && (
+          <div className={styles.mfLayerSelect} data-map-layer-select="true">
+            <LayerSelect view={view} value={p.layer} onChange={p.onLayer} />
+          </div>
+        )}
         <div className={styles.stage} aria-hidden={!mapReady || undefined}>
           {mapReady && <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="card" cut={cut} pinnedKeys={pinnedKeys} onFeaturePin={onFeaturePin} />}
         </div>

@@ -2899,43 +2899,135 @@ button.badge:focus-visible {
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
-.mapLegendButton,
-.mapLegendMore {
+.mapLegendStrip {
+  position: relative;
+  z-index: 4;
+  flex: 0 0 30px;
+  width: 100%;
+  height: 30px;
+  min-height: 30px;
+  box-sizing: border-box;
+  border-top: 1px solid #d9dce2;
+  background: #eef0f3;
+  color: #16181d;
+  font-size: 11px;
+  line-height: 1.3;
+}
+.mapLegendStrip::before,
+.mapLegendStrip::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  width: 18px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.mapLegendStrip::before {
+  left: 0;
+  background: linear-gradient(90deg, #eef0f3 18%, rgba(238, 240, 243, 0) 100%);
+}
+.mapLegendStrip::after {
+  right: 0;
+  background: linear-gradient(270deg, #eef0f3 18%, rgba(238, 240, 243, 0) 100%);
+}
+.mapLegendStrip[data-scroll-start="true"]::before,
+.mapLegendStrip[data-scroll-end="true"]::after {
+  opacity: 1;
+}
+.mapLegendScroll {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 30px;
+  box-sizing: border-box;
+  padding: 0 18px 0 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+}
+.mapLegendScroll > * {
+  flex: 0 0 auto;
+}
+.mapLegendScroll::-webkit-scrollbar {
+  height: 5px;
+}
+.mapLegendScroll::-webkit-scrollbar-thumb {
+  background: #aeb4bf;
+  border-radius: 999px;
+}
+.mapLegendButton {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   min-height: 28px;
+  min-width: 0;
   padding: 2px 5px;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: 6px;
+  background: transparent;
   color: inherit;
   font: inherit;
   white-space: nowrap;
   cursor: pointer;
 }
+.mapLegendButton[data-active="true"] {
+  border-color: #111;
+  background: #f7f8f9;
+}
 .mapLegendStatic {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   min-height: 28px;
+  min-width: 0;
   padding: 2px 5px;
   color: inherit;
   font: inherit;
   white-space: nowrap;
 }
-.mapLegendButton:focus-visible,
-.mapLegendMore:focus-visible {
+.mapLegendButton:focus-visible {
   outline: 2px solid #2f6fdb;
   outline-offset: 2px;
 }
-.mapLegendMore {
-  padding-inline: 6px;
-  border: 0;
-  color: #454a55;
-  background: transparent;
+.mapLegendSwatch {
+  display: inline-block;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  border: 1px solid rgba(21, 23, 28, 0.42);
+  background: var(--map-legend-color);
 }
-.mapLegendMore[aria-expanded="true"] {
-  background: #eef0f3;
+.mapLegendSwatch[data-kind="point"] {
+  border-radius: 50%;
+}
+.mapLegendSwatch[data-kind="polygon"] {
+  border-radius: 2px;
+}
+.mapLegendSwatch[data-kind="line"] {
+  width: 16px;
+  height: 3px;
+  border: 0;
+  border-radius: 999px;
+}
+.mapLegendSwatchSvg {
+  display: block;
+  flex: none;
+}
+.mapLegendLabel {
+  min-width: 0;
+  white-space: nowrap;
+}
+.mapLegendCount {
+  margin-left: 2px;
+  color: #4e5561;
+  font-variant-numeric: tabular-nums;
 }
 .mfMap {
   position: relative;
@@ -2943,12 +3035,18 @@ button.badge:focus-visible {
   min-height: 0;
   background: #e9e9ec;
 }
-/* 지도 표현 선택은 지도 밖의 별도 행이 아니라 지도 위의 작은 조작으로 둔다. */
-.mf > .seg {
+/* 지도 표현 선택은 지도 밖의 별도 행이 아니라 지도 왼쪽 위의 작은 조작으로 둔다. */
+.mfLayerSelect {
   position: absolute;
   z-index: 4;
-  top: 64px;
-  right: 8px;
+  top: 8px;
+  left: 8px;
+  max-width: calc(100% - 56px);
+  box-sizing: border-box;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  overscroll-behavior-x: contain;
   padding: 4px;
   border: 1px solid rgba(21, 23, 28, 0.1);
   border-radius: 999px;
@@ -2957,8 +3055,13 @@ button.badge:focus-visible {
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
 }
-.mf > .seg:has(+ .mfWind) {
-  top: 100px;
+.mfLayerSelect .seg {
+  width: max-content;
+  max-width: none;
+  flex-wrap: nowrap;
+}
+.mfLayerSelect .seg button {
+  flex: 0 0 auto;
 }
 .mfFoot {
   flex: none;
@@ -3135,11 +3238,29 @@ button.badge:focus-visible {
   color: #fff;
 }
 @media (pointer: coarse) {
+  .root .mapLegendStrip {
+    flex-basis: 40px;
+    height: 40px;
+    min-height: 40px;
+  }
+  .root .mapLegendScroll {
+    height: 40px;
+  }
+  .root .mapLegendButton,
+  .root .mapLegendStatic {
+    min-height: 36px;
+  }
   .mfSegBtn,
   .mfMenuItem {
     min-height: 44px;
   }
   .mfWind {
     height: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mapLegendStrip::before,
+  .mapLegendStrip::after {
+    transition: none;
   }
 }
