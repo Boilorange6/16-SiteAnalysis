@@ -3015,7 +3015,8 @@ button.badge:focus-visible {
   height: 10px;
   box-sizing: border-box;
   border: 1px solid rgba(21, 23, 28, 0.42);
-  background: var(--map-legend-gradient, var(--map-legend-color));
+  background-color: var(--map-legend-color);
+  background-image: var(--map-legend-gradient, none);
 }
 .mapLegendSwatch[data-kind="point"] {
   border-radius: 50%;

@@ -756,7 +756,48 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
   const hoverLabel = !bare && hoverKey && !pinned.has(hoverKey) ? labelByKey.get(hoverKey) : undefined;
   const hoverLabelPlacement = hoverLabel ? placeLabel(hoverLabel, true) : null;
   const hoverLabelNode = hoverLabel && hoverLabelPlacement ? labelNode(hoverLabel, hoverLabelPlacement.box, "hover") : null;
-  const featureBadges = drawn.flatMap((d) => (d.f.badges ?? []).slice(0, 4).map((badge, badgeIndex, badges) => ({ d, badge, badgeIndex, badgeCount: badges.length })));
+  const featureBadges = drawn.flatMap((d) => (d.f.badges ?? []).slice(0, 4).map((badge, badgeIndex) => ({ d, badge, badgeIndex })));
+  const badgePositions = new Map<string, { x: number; y: number; width: number; height: number }>();
+  const badgeBoxes: Box[] = [];
+  const badgeDirections: ReadonlyArray<readonly [number, number]> = [
+    [1, 0], [-1, 0], [0, -1], [0, 1],
+    [0.707, -0.707], [-0.707, -0.707], [0.707, 0.707], [-0.707, 0.707],
+  ];
+  const badgeBox = (d: (typeof drawn)[number], width: number, height: number, dx: number, dy: number, distance: number): Box => {
+    const centerX = d.p[0] + dx * distance;
+    const centerY = d.p[1] + dy * distance;
+    const x0 = centerX - (dx > 0.2 ? 0 : dx < -0.2 ? width : width / 2);
+    const y0 = centerY - (dy > 0.2 ? 0 : dy < -0.2 ? height : height / 2);
+    return { x0, y0, x1: x0 + width, y1: y0 + height };
+  };
+  const boxOverlapArea = (a: Box, b: Box): number => Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
+  for (const { d, badge, badgeIndex } of featureBadges) {
+    const badgeFs = Math.max(8, fs * 0.72);
+    const badgeH = Math.max(12 * u, badgeFs * 1.35);
+    const badgeW = textW(badge.text, badgeFs) + 8 * u;
+    const candidates = badgeDirections.flatMap(([dx, dy]) => [
+      badgeBox(d, badgeW, badgeH, dx, dy, radiusOf(d.f) + 3 * u),
+      badgeBox(d, badgeW, badgeH, dx, dy, radiusOf(d.f) + 15 * u),
+      badgeBox(d, badgeW, badgeH, dx, dy, radiusOf(d.f) + 29 * u),
+      badgeBox(d, badgeW, badgeH, dx, dy, radiusOf(d.f) + 45 * u),
+    ]);
+    const occupied = [...boxes, ...(hoverLabelPlacement ? [hoverLabelPlacement.box] : []), ...badgeBoxes];
+    const fit = candidates.find((candidate) => candidate.x0 >= 2 && candidate.x1 <= W - 2 && candidate.y0 >= 2 && candidate.y1 <= H - 2 && !occupied.some((other) => labelBoxesOverlap(other, candidate, labelCollisionGap)));
+    const chosen = fit ?? [...candidates]
+      .filter((candidate) => candidate.x1 >= 2 && candidate.x0 <= W - 2 && candidate.y1 >= 2 && candidate.y0 <= H - 2)
+      .sort((a, b) => occupied.reduce((sum, other) => sum + boxOverlapArea(a, other), 0) - occupied.reduce((sum, other) => sum + boxOverlapArea(b, other), 0))[0]
+      ?? candidates[0]!;
+    const clamped: Box = {
+      x0: Math.max(2, Math.min(W - badgeW - 2, chosen.x0)),
+      y0: Math.max(2, Math.min(H - badgeH - 2, chosen.y0)),
+      x1: 0,
+      y1: 0,
+    };
+    clamped.x1 = clamped.x0 + badgeW;
+    clamped.y1 = clamped.y0 + badgeH;
+    badgeBoxes.push(clamped);
+    badgePositions.set(`${d.index}:${badgeIndex}`, { x: clamped.x0, y: clamped.y0, width: badgeW, height: badgeH });
+  }
 
   const north = { x: W - rightInset - 20 * u, y: (northOpt || 22 * u) };
   const dim = `M0 0H${W}V${H}H0Z M${cx - R} ${cy}a${R} ${R} 0 1 0 ${2 * R} 0a${R} ${R} 0 1 0 ${-2 * R} 0Z`;
@@ -925,16 +966,13 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
             />
           );
          })}
-         {featureBadges.map(({ d, badge, badgeIndex, badgeCount }) => {
+         {featureBadges.map(({ d, badge, badgeIndex }) => {
            const badgeFs = Math.max(8, fs * 0.72);
-           const badgeH = Math.max(12 * u, badgeFs * 1.35);
-           const badgeW = textW(badge.text, badgeFs) + 8 * u;
-           const x = d.p[0] + radiusOf(d.f) + 3 * u;
-           const y = d.p[1] - (badgeCount * badgeH) / 2 + badgeIndex * badgeH;
+           const placement = badgePositions.get(`${d.index}:${badgeIndex}`)!;
            return (
              <g key={`badge-${d.index}-${badgeIndex}-${badge.text}`} data-map-badge={badge.text} aria-label={badge.text} pointerEvents="none">
-               <rect x={x} y={y} width={badgeW} height={badgeH} rx={3 * u} fill={badge.color} stroke="#fff" strokeWidth={0.8 * u} />
-               <text x={x + badgeW / 2} y={y + badgeH * 0.72} textAnchor="middle" fontSize={badgeFs} fontWeight={700} fill={badgeTextColor(badge.color)}>{badge.text}</text>
+               <rect x={placement.x} y={placement.y} width={placement.width} height={placement.height} rx={3 * u} fill={badge.color} stroke="#fff" strokeWidth={0.8 * u} />
+               <text x={placement.x + placement.width / 2} y={placement.y + placement.height * 0.72} textAnchor="middle" fontSize={badgeFs} fontWeight={700} fill={badgeTextColor(badge.color)}>{badge.text}</text>
              </g>
            );
          })}

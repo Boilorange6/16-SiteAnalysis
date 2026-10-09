@@ -271,6 +271,27 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   assert.equal(labelBoxesOverlap(labelA, labelB, 3), true, "가까운 자동 라벨은 외곽선 여유를 포함해 충돌");
   assert.equal(labelBoxesOverlap(labelA, labelB, 1), false, "충분히 떨어진 라벨은 충돌하지 않음");
 
+  // 출구 번호처럼 밀집한 짧은 배지도 공용 후보 배치로 서로 겹치지 않는다.
+  const badgeModel = {
+    ...model,
+    features: [
+      { layer: "rail_entrance", lng: model.center[0], lat: model.center[1], name: null, badges: [{ text: "1", color: "#FFFFFF" }] },
+      { layer: "rail_entrance", lng: model.center[0] + 0.00004, lat: model.center[1] + 0.00001, name: null, badges: [{ text: "2", color: "#FFFFFF" }] },
+      { layer: "rail_entrance", lng: model.center[0] - 0.00003, lat: model.center[1] - 0.00002, name: null, badges: [{ text: "3", color: "#FFFFFF" }] },
+    ],
+    polygons: [],
+    lines: [],
+    siteParcel: [],
+    total: 3,
+    notes: [],
+  };
+  const badgeSvg = renderToStaticMarkup(createElement(MapFigure, { model: badgeModel, width: 300, height: 180, basemap: "none", legend: false, scale: false, north: false }));
+  const badgeBoxes = [...badgeSvg.matchAll(/<g data-map-badge="[^"]+"[^>]*><rect x="([\d.-]+)" y="([\d.-]+)" width="([\d.-]+)" height="([\d.-]+)"/g)].map((match) => ({ x0: Number(match[1]), y0: Number(match[2]), x1: Number(match[1]) + Number(match[3]), y1: Number(match[2]) + Number(match[4]) }));
+  assert.equal(badgeBoxes.length, 3, "출구 배지 3개 렌더");
+  for (let i = 0; i < badgeBoxes.length; i += 1) for (let j = i + 1; j < badgeBoxes.length; j += 1) {
+    assert.equal(labelBoxesOverlap(badgeBoxes[i], badgeBoxes[j], 3), false, "밀집 출구 배지는 여유를 두고 분리");
+  }
+
   // W2a: 범례 라벨 기준 강조는 같은 라벨의 여러 레이어를 함께 남기고, 나머지를 20%로 흐린다.
   const highlightModel = {
     ...model,
