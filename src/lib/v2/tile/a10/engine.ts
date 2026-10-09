@@ -7,10 +7,21 @@ import type { EngineContext } from "../../engine/context";
 import { candidate, lineCandidate, makeTile, missing, nearestHit, nearestM, obs, type LineCandidate, type MapCandidate, type TileDraft } from "../../engine/tiles/common";
 import { clipLineToCircle, distanceToLineM, linePathLength } from "../../engine/tiles/geo";
 import { notProvided } from "../../engine/tiles/not-provided";
+import { formatDistanceM } from "../../ui/tile-view";
+import { plannedSublabel } from "./d24";
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const iso = (v: unknown): string | null => (typeof v === "string" && ISO.test(v) ? v : null);
 const daysBetween = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+const text = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
+};
+const projectIdOf = (properties: Record<string, unknown>, stableId: string): string => {
+  const projectId = properties.projectId;
+  return typeof projectId === "string" && projectId.trim() !== "" ? projectId : stableId;
+};
 
 export function a10(ctx: EngineContext): TileResult {
   const sources = ctx.sources("reference", ["planned_rail"]);
@@ -47,13 +58,37 @@ export function a10(ctx: EngineContext): TileResult {
 
   const map: MapCandidate[] = [];
   const lineCandidates: LineCandidate[] = [];
-  for (const { h } of lines) {
-    for (const path of clipLineToCircle(ctx.input.center, radiusM, h.geometry)) {
-      const line = lineCandidate(h.featureId, "planned_rail_line", path, linePathLength(path), h.properties.sourceType === "approximation" ? "[개략]" : null);
-      if (line) lineCandidates.push(line);
-    }
+  const lineParts = lines.flatMap(({ h }) => clipLineToCircle(ctx.input.center, radiusM, h.geometry).map((path, index) => ({
+    h,
+    index,
+    path,
+    lengthM: linePathLength(path),
+  })));
+  const longestByProject = new Map<string, number>();
+  for (const part of lineParts) {
+    const projectId = projectIdOf(part.h.properties, part.h.stableId);
+    longestByProject.set(projectId, Math.max(longestByProject.get(projectId) ?? 0, part.lengthM));
   }
-  for (const s of stations) map.push(s === nearStation ? candidate(s, "planned_rail_station", { highlight: true, label: `직선 ${nearStationM}m` }) : candidate(s, "planned_rail_station"));
+  for (const part of lineParts) {
+    const projectId = projectIdOf(part.h.properties, part.h.stableId);
+    const name = text(part.h.name);
+    const line = lineCandidate(part.h.featureId, "planned_rail_line", part.path, part.lengthM, null, {
+      fid: `${part.h.featureId}:${part.index}`,
+      name,
+      sublabel: plannedSublabel(part.h.properties),
+      labelPriority: name && part.lengthM === longestByProject.get(projectId) ? 1 : 0,
+      emphasis: "major",
+    });
+    if (line) lineCandidates.push(line);
+  }
+  for (const s of stations) {
+    const isNearest = s === nearStation;
+    map.push(candidate(s, "planned_rail_station", {
+      highlight: isNearest,
+      sublabel: isNearest && s.distanceM !== null ? `직선 ${formatDistanceM(s.distanceM)}` : null,
+      labelPriority: isNearest ? 2 : s.name ? 1 : 0,
+    }));
+  }
 
   return makeTile(ctx, {
     code: "A10",

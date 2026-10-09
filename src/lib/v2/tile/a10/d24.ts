@@ -4,6 +4,7 @@ import type { EngineContext } from "../../engine/context";
 import { candidate, lineCandidate, makeTile, missing, nearestHit, obs, type LineCandidate, type MapCandidate, type TileDraft } from "../../engine/tiles/common";
 import { clipLineToCircle, lineLengthInCircle, linePathLength } from "../../engine/tiles/geo";
 import { notProvided } from "../../engine/tiles/not-provided";
+import { formatDistanceM } from "../../ui/tile-view";
 
 const STAGE_LABELS = ["구상", "공식 계획", "승인", "공사", "중단/변경", "미확인"] as const;
 type StageLabel = (typeof STAGE_LABELS)[number];
@@ -33,7 +34,7 @@ export const PLANNED_STAGES: Readonly<Record<string, StageLabel>> = {
   opening_confirmed: "공식 계획",
 };
 
-const stageOf = (value: unknown): StageLabel => {
+export const stageOf = (value: unknown): StageLabel => {
   const raw = typeof value === "string" ? value.trim() : "";
   return raw === "" ? "미확인" : PLANNED_STAGES[raw] ?? "미확인";
 };
@@ -48,6 +49,18 @@ const projectIdOf = (properties: Record<string, unknown>, stableId: string) => {
   const projectId = properties.projectId;
   return typeof projectId === "string" && projectId.trim() !== "" ? projectId : stableId;
 };
+
+const text = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
+};
+
+export function plannedSublabel(properties: Record<string, unknown>): string | null {
+  const stage = stageOf(properties.lifecycleStatus);
+  const parts = [stage === "미확인" ? null : stage, properties.sourceType === "approximation" ? "개략" : null].filter((value): value is string => value !== null);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
 
 const pct = (part: number, whole: number) => Math.round((part / whole) * 1000) / 10;
 
@@ -110,16 +123,37 @@ export function d24(ctx: EngineContext): TileResult {
 
   const map: MapCandidate[] = [];
   const lineCandidates: LineCandidate[] = [];
-  for (const line of lines) {
-    const label = line.properties.sourceType === "approximation" ? "[개략]" : null;
-    for (const path of clipLineToCircle(ctx.input.center, radiusM, line.geometry)) {
-      const clipped = lineCandidate(line.featureId, "planned_rail_line", path, linePathLength(path), label);
-      if (clipped) lineCandidates.push(clipped);
-    }
+  const lineParts = lines.flatMap((line) => clipLineToCircle(ctx.input.center, radiusM, line.geometry).map((path, index) => ({
+    line,
+    index,
+    path,
+    lengthM: linePathLength(path),
+  })));
+  const longestByProject = new Map<string, number>();
+  for (const part of lineParts) {
+    const projectId = projectIdOf(part.line.properties, part.line.stableId);
+    longestByProject.set(projectId, Math.max(longestByProject.get(projectId) ?? 0, part.lengthM));
+  }
+  for (const part of lineParts) {
+    const projectId = projectIdOf(part.line.properties, part.line.stableId);
+    const name = text(part.line.name);
+    const clipped = lineCandidate(part.line.featureId, "planned_rail_line", part.path, part.lengthM, null, {
+      fid: `${part.line.featureId}:${part.index}`,
+      name,
+      sublabel: plannedSublabel(part.line.properties),
+      labelPriority: name && part.lengthM === longestByProject.get(projectId) ? 1 : 0,
+      emphasis: "major",
+    });
+    if (clipped) lineCandidates.push(clipped);
   }
   const nearestStation = nearestHit(stations);
   for (const station of stations) {
-    map.push(candidate(station, "planned_rail_station", station === nearestStation ? { highlight: true, label: `직선 ${Math.round(station.distanceM ?? 0)}m` } : {}));
+    const isNearest = station === nearestStation;
+    map.push(candidate(station, "planned_rail_station", {
+      highlight: isNearest,
+      sublabel: isNearest && station.distanceM !== null ? `직선 ${formatDistanceM(station.distanceM)}` : null,
+      labelPriority: isNearest ? 2 : station.name ? 1 : 0,
+    }));
   }
 
   const sentence = projects.size === 0
