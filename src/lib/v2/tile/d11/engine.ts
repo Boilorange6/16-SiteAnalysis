@@ -1,7 +1,7 @@
 /** D11 구역·지구 — VWorld dsId 24 지구·구역 면 도형. */
 import type { TileResult } from "../../tile-result";
 import type { EngineContext, SourceRef } from "../../engine/context";
-import { candidate, fmt, makeTile, obs, polygonCandidate, type MapCandidate, type PolygonCandidate } from "../../engine/tiles/common";
+import { fmt, makeTile, missing, obs, polygonCandidate, type PolygonCandidate } from "../../engine/tiles/common";
 import { clipToCircle, polygonArea } from "../../engine/tiles/geo";
 
 const SOURCE_PREFIX = "district_";
@@ -9,6 +9,13 @@ const FEATURE_KIND = "district_area";
 const MISSING_NOTE = "구역·지구 자료를 확인할 수 없습니다. 최신 자료 확인이 필요합니다.";
 
 type DistrictHit = ReturnType<EngineContext["hits"]>[number];
+
+/** 문장용 면적: 작은 면은 ㎡, 만㎡ 이상은 한 자리 ha로 줄여 지도 카드에서 읽기 쉽게 한다. */
+function formatAreaM2(areaM2: number): string {
+  const rounded = Math.max(0, Math.round(areaM2));
+  if (rounded >= 10_000) return `${fmt(Math.round((rounded / 10_000) * 10) / 10)}ha`;
+  return `${fmt(rounded)}㎡`;
+}
 
 function sourceRefs(ctx: EngineContext): SourceRef[] {
   const db = ctx.db("reference");
@@ -51,13 +58,11 @@ function missingTile(ctx: EngineContext): TileResult {
 function clippedDistricts(ctx: EngineContext, hits: DistrictHit[]): {
   areas: Map<string, number>;
   polygons: PolygonCandidate[];
-  points: MapCandidate[];
   validCode: number;
   failed: number;
 } {
   const areas = new Map<string, number>();
   const polygons: PolygonCandidate[] = [];
-  const points: MapCandidate[] = [];
   let validCode = 0;
   let failed = 0;
   for (const h of hits) {
@@ -76,11 +81,8 @@ function clippedDistricts(ctx: EngineContext, hits: DistrictHit[]): {
       const poly = polygonCandidate(h.featureId, `district:${cls}`, rings, polygonArea(rings), label);
       if (poly) polygons.push(poly);
     }
-    // 면을 그릴 수 없는 화면에서도 같은 도형을 확인할 수 있게 대표점을 함께 보낸다.
-    const clipped: DistrictHit = { ...h, geometry: { type: "MultiPolygon", coordinates: parts } };
-    points.push(candidate(clipped, `district:${cls}`, { label }));
   }
-  return { areas, polygons, points, validCode, failed };
+  return { areas, polygons, validCode, failed };
 }
 
 export function d11(ctx: EngineContext): TileResult {
@@ -91,14 +93,17 @@ export function d11(ctx: EngineContext): TileResult {
   const clipped = clippedDistricts(ctx, hits);
   const fillPct = hits.length === 0 ? 0 : Math.round((clipped.validCode / hits.length) * 1000) / 10;
   const classes = [...clipped.areas.keys()].sort((a, b) => a.localeCompare(b));
+  const fillCodeMetric = hits.length === 0
+    ? missing("fill_code_pct", "유효 구역·지구 코드 채움률", "%", "d11-fill-code@1:유효 typeCode가 있는 반경 교차 객체÷반경 교차 객체")
+    : obs("fill_code_pct", "유효 구역·지구 코드 채움률", fillPct, "%", "d11-fill-code@1:유효 typeCode가 있는 반경 교차 객체÷반경 교차 객체", clipped.validCode, hits.length);
   const metrics = [
     ...classes.map((cls) => {
       const area = Math.round(clipped.areas.get(cls)!);
       return obs(`back_area_${cls}`, `반경 교차면적: ${cls}`, area, "㎡", "d11-area@1:반경과 구역·지구 도형의 교차면적", area, null);
     }),
-    obs("fill_code_pct", "유효 구역·지구 코드 채움률", fillPct, "%", "d11-fill-code@1:유효 typeCode가 있는 반경 교차 객체÷반경 교차 객체", clipped.validCode, hits.length),
+    fillCodeMetric,
   ];
-  const areaText = classes.length === 0 ? "분류별 면적을 산출하지 못함" : classes.map((cls) => `${cls} ${Math.round(clipped.areas.get(cls)!)}㎡`).join("·");
+  const areaText = classes.length === 0 ? "분류별 면적을 산출하지 못함" : classes.map((cls) => `${cls} ${formatAreaM2(clipped.areas.get(cls)!)}`).join("·");
   const sentence = hits.length === 0
     ? "반경과 교차하는 구역·지구 도형이 확인되지 않음 → 자료 범위가 없거나 아직 확인되지 않을 수 있음 → VWorld 최신 자료와 고시 원문 확인 필요"
     : `반경과 교차하는 구역·지구 ${fmt(hits.length)}건(${areaText}) → 확인된 도형의 교차면적이며 규제 적용 여부나 운영 상태를 뜻하지 않음 → 지정 내용과 행위 제한은 토지이용계획확인서·고시 원문 확인 필요`;
@@ -117,7 +122,6 @@ export function d11(ctx: EngineContext): TileResult {
     judgment: { ruleId: "d11-district-area@1", basisMetricIds: ["fill_code_pct"], sentence, level: null, criteria: null },
     sources,
     layers: classes.map((cls) => `district:${cls}`),
-    map: clipped.points,
     polygons: clipped.polygons,
     limitations,
   });

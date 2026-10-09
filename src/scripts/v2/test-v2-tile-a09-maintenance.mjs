@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import Database from "better-sqlite3";
 
 const { buildEngineFixture, CENTER } = await import("./engine-fixture.mjs");
 const M = await import("../../lib/v2/data/manifest.ts");
+const { insertRelease } = await import("../../lib/v2/ingest/build.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
-const { collectMaintenance } = await import("../../lib/v2/tile/a09/engine.ts");
+const { a09, collectMaintenance } = await import("../../lib/v2/tile/a09/engine.ts");
 const { TILES } = await import("../../lib/v2/engine/run.ts");
 const d23 = TILES.find(([code]) => code === "A09")[1];
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
@@ -14,6 +16,20 @@ const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const make = async (options) => {
   const dir = mkdtempSync(join(tmpdir(), "v2-d23-"));
   await buildEngineFixture(dir, "v1", options);
+  if (options.mzoneSource) {
+    const manifest = M.readManifest(dir);
+    const db = new Database(M.resolveDataPath(dir, manifest.files.reference.path));
+    insertRelease(db, {
+      sourceId: "mzone_zone",
+      provider: "테스트 정비구역",
+      sourceUrl: "https://example.invalid/mzone-zone",
+      sourceAsOf: "2026-09-09",
+      fetchedAt: "2026-09-30T00:00:00Z",
+      checksum: "mzone-zone-test",
+      licenseCode: "TEST",
+    });
+    db.close();
+  }
   const manifest = M.readManifest(dir);
   return new EngineContext(dir, manifest, "an-d23", {
     address: "경기도 남양주시 다산동 100",
@@ -29,11 +45,17 @@ const value = (tile, id) => metric(tile, id)?.value;
 const forbidden = /도보|\d\s*분|종합/;
 
 {
-  const ctx = await make({ maint: "zones" });
+  const ctx = await make({ maint: "zones", mzoneSource: true });
   const collected = collectMaintenance(ctx);
   assert.ok(collected, "정비구역 수집 결과");
   assert.equal(collected.zones.length, 2, "반경과 교차하는 구역만 수집");
   assert.equal(collected.projects.size, 2, "연결된 사업은 구역 단위로 한 번만 집계");
+
+  const base = a09(ctx);
+  parseTileResult(base);
+  assert.equal(base.presentation.features, undefined, "A09 기본 엔진은 D23에 중복 점을 내지 않음");
+  assert.equal(base.presentation.polygons, undefined, "A09 기본 엔진은 D23에 중복 면을 내지 않음");
+  assert.ok(base.provenance.sources.some((source) => source.sourceId === "mzone_zone"), "실제 mzone_* 원천 provenance");
 
   const tile = d23(ctx);
   parseTileResult(tile);
@@ -48,12 +70,14 @@ const forbidden = /도보|\d\s*분|종합/;
   assert.equal(value(tile, "zone_area_in_radius_m2"), 80000, "교차 정비구역 면적 합");
   assert.equal(value(tile, "planned_households"), 1300, "A09와 동일한 예정 세대 합");
   assert.ok(tile.presentation.polygons.length >= 2);
-  assert.ok(tile.presentation.polygons.some((p) => p.layer === "maint_zone"));
+  assert.ok(tile.presentation.polygons.every((p) => p.layer.startsWith("maint_stage:")), "기본 도형은 D23 반경 절단 단계 면");
+  assert.ok(!tile.presentation.polygons.some((p) => p.layer === "maint_zone"), "A09 원본 면 중복 없음");
   assert.ok(tile.presentation.polygons.some((p) => p.layer === "maint_stage:조합"));
-  assert.ok(tile.presentation.features.some((f) => f.layer === "maint_zone_center"));
+  assert.ok(!tile.presentation.features.some((f) => f.layer === "maint_zone_center"), "A09 원본 대표점 중복 없음");
   assert.ok(tile.presentation.features.some((f) => f.layer === "maint_stage:조합"));
   assert.ok(tile.presentation.layers.includes("maint_stage:조합"));
   assert.ok(tile.presentation.layers.includes("maint_stage:구역지정"));
+  assert.ok(tile.provenance.sources.some((source) => source.sourceId === "mzone_zone"), "흡수된 A09 결과에도 mzone_* provenance");
   assert.match(tile.judgment.sentence, / → .+ → /);
   assert.equal(tile.judgment.level, null);
   assert.doesNotMatch(JSON.stringify(tile), forbidden);

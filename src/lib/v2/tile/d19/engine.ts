@@ -3,13 +3,29 @@ import type { FeatureHit } from "../../data/features";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext, Limitation } from "../../engine/context";
 import { candidate, makeTile, obs, polygonCandidate } from "../../engine/tiles/common";
-import { areaInCircle, polygonArea, polygonParts } from "../../engine/tiles/geo";
+import { polygonArea, polygonParts } from "../../engine/tiles/geo";
 import { notProvided } from "../../engine/tiles/not-provided";
+import { measureParcels } from "./parcel-measure";
 
 const PARCEL_SOURCES = ["parcel_polygon"] as const;
-const TOP_JIMOKS = 8;
 type Metric = TileResult["metrics"][number];
-type MeasuredParcel = { areaM2: number; parts: number[][][][] };
+
+type JimokGroup = { id: string; label: string };
+
+const ROAD_JIMOK = new Set(["도", "도로", "철", "철도", "철도용지", "제", "제방"]);
+const WATER_JIMOK = new Set(["천", "하천", "구", "구거", "유", "유지"]);
+// 원천 지목은 도·천·구·유·제·철처럼 한 글자로 들어오는 경우가 많다.
+// 그룹 판정은 이 목록을 먼저 확인해 도로와 하천·구거를 섞지 않는다.
+const ROAD_WATER_JIMOK = new Set([...ROAD_JIMOK, ...WATER_JIMOK]);
+const JIMOK_GROUPS: readonly JimokGroup[] = [
+  { id: "jimok:site", label: "대지" },
+  { id: "jimok:road", label: "도로" },
+  { id: "jimok:field", label: "전답" },
+  { id: "jimok:forest", label: "임야" },
+  { id: "jimok:water", label: "하천·구거" },
+  { id: "jimok:other", label: "기타" },
+];
+const JIMOK_LAYERS = JIMOK_GROUPS.map((group) => group.id);
 
 const pct = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0);
 
@@ -28,37 +44,23 @@ function jibunOf(hit: FeatureHit): string | null {
   return hit.name ?? null;
 }
 
-function measure(hits: FeatureHit[], center: EngineContext["input"]["center"], radiusM: number): { byFeature: Map<number, MeasuredParcel>; failed: number } {
-  const byFeature = new Map<number, MeasuredParcel>();
-  let failed = 0;
-  for (const hit of hits) {
-    const result = areaInCircle(center, radiusM, hit.geometry);
-    if (result === null) {
-      failed++;
-      continue;
-    }
-    byFeature.set(hit.featureId, { areaM2: result.areaM2, parts: result.parts });
-  }
-  return { byFeature, failed };
+function jimokGroupIndex(value: string): number {
+  if (value === "대" || value === "대지") return 0;
+  if (ROAD_WATER_JIMOK.has(value) && ROAD_JIMOK.has(value)) return 1;
+  if (value === "전" || value === "답" || value === "전답") return 2;
+  if (value === "임" || value === "임야") return 3;
+  if (ROAD_WATER_JIMOK.has(value) && WATER_JIMOK.has(value)) return 4;
+  return 5;
 }
 
-function groupedJimok(hits: FeatureHit[], byFeature: Map<number, MeasuredParcel>): Array<[string, { count: number; areaM2: number }]> {
-  const grouped = new Map<string, { count: number; areaM2: number }>();
+function groupedJimok(hits: FeatureHit[], byFeature: Map<number, { areaM2: number; parts: number[][][][] }>): Array<{ group: JimokGroup; count: number; areaM2: number }> {
+  const grouped = JIMOK_GROUPS.map((group) => ({ group, count: 0, areaM2: 0 }));
   for (const hit of hits) {
-    const key = jimokOf(hit);
-    const current = grouped.get(key) ?? { count: 0, areaM2: 0 };
+    const current = grouped[jimokGroupIndex(jimokOf(hit))];
     current.count++;
     current.areaM2 += byFeature.get(hit.featureId)?.areaM2 ?? 0;
-    grouped.set(key, current);
   }
-  const ordered = [...grouped.entries()].sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0], "ko"));
-  const top = ordered.slice(0, TOP_JIMOKS);
-  const rest = ordered.slice(TOP_JIMOKS);
-  if (rest.length > 0) {
-    const other = rest.reduce((sum, [, value]) => ({ count: sum.count + value.count, areaM2: sum.areaM2 + value.areaM2 }), { count: 0, areaM2: 0 });
-    top.push(["기타", other]);
-  }
-  return top;
+  return grouped;
 }
 
 export function d19(ctx: EngineContext): TileResult {
@@ -68,7 +70,7 @@ export function d19(ctx: EngineContext): TileResult {
   const hits = ctx.hits("parcels", ["parcel"]);
   const siteHits = ctx.siteParcelHits();
   const siteHitIds = new Set(siteHits.map((hit) => hit.featureId));
-  const { byFeature, failed } = measure(hits, ctx.input.center, ctx.input.radiusM);
+  const { byFeature, failed } = measureParcels(ctx, hits);
   const circleAreaM2 = Math.PI * ctx.input.radiusM ** 2;
   const circleAreaRounded = Math.round(circleAreaM2);
   const validAreaM2 = [...byFeature.values()].reduce((sum, value) => sum + value.areaM2, 0);
@@ -83,10 +85,9 @@ export function d19(ctx: EngineContext): TileResult {
     obs("fill_geometry_pct", "확보 도형 면적률(대상 분모 미확보)", pct(validAreaM2, circleAreaM2), "%", "d19-fill-geometry@1:유효 도형 교차면적÷π·r²; 원천 지적 대상 면적 분모 미확보", Math.round(validAreaM2), circleAreaRounded),
   ];
 
-  for (const [i, [jimok, values]] of grouped.entries()) {
-    metrics.push(obs(`share_jimok_${i + 1}`, `지목: ${jimok}`, pct(values.count, hits.length), "%", "d19-jimok-share@1:지목별 교차 필지 수÷교차 필지 수", values.count, hits.length));
-    metrics.push(obs(`share_count_${i + 1}`, `${jimok} (필지 수)`, pct(values.count, hits.length), "%", "d19-share-count@1:지목별 교차 필지 수÷교차 필지 수", values.count, hits.length));
-    metrics.push(obs(`share_area_${i + 1}`, `${jimok} (면적)`, pct(values.areaM2, circleAreaM2), "%", "d19-share-area@1:지목별 유효 도형 교차면적÷π·r²", Math.round(values.areaM2), circleAreaRounded));
+  for (const [i, values] of grouped.entries()) {
+    metrics.push(obs(`share_jimok_${i + 1}`, `지목: ${values.group.label}`, pct(values.count, hits.length), "%", "d19-jimok-share@2:고정 6개 지목 그룹별 교차 필지 수÷교차 필지 수", values.count, hits.length));
+    metrics.push(obs(`share_area_${i + 1}`, `${values.group.label} (면적)`, pct(values.areaM2, circleAreaM2), "%", "d19-share-area@2:고정 6개 지목 그룹별 유효 도형 교차면적÷π·r²", Math.round(values.areaM2), circleAreaRounded));
   }
 
   const polygons = [];
@@ -96,7 +97,7 @@ export function d19(ctx: EngineContext): TileResult {
     const measured = byFeature.get(hit.featureId);
     if (!measured) continue;
     const isSite = siteHitIds.has(hit.featureId);
-    const layer = isSite ? "parcel_site" : "parcel";
+    const layer = isSite ? "parcel_site" : JIMOK_GROUPS[jimokGroupIndex(jimokOf(hit))].id;
     const label = isSite ? jibunOf(hit) : null;
     if (isSite) {
       renderedSiteIds.add(hit.featureId);
@@ -142,9 +143,11 @@ export function d19(ctx: EngineContext): TileResult {
     ...coverage,
   ];
   const status: TileResult["status"] = limitations.some((item) => item.kind === "partial" || item.kind === "incomplete") ? "partial" : "complete";
+  const topJimok = [...grouped].sort((a, b) => b.count - a.count || JIMOK_GROUPS.indexOf(a.group) - JIMOK_GROUPS.indexOf(b.group))[0];
+  const topJimokText = topJimok && topJimok.count > 0 ? `상위 지목 ${topJimok.group.label} ${topJimok.count}개(${pct(topJimok.count, hits.length)}%)` : "지목별 필지 0개";
   const sentence = hits.length === 0
-    ? `반경 ${ctx.input.radiusM.toLocaleString("en-US")}m 안에서 연속지적 필지가 확인되지 않음 → 지적 도형 공백과 무필지를 구분할 수 없음 → 지적도와 토지대장 확인 필요`
-    : `반경 ${ctx.input.radiusM.toLocaleString("en-US")}m 안 연속지적 필지 ${hits.length}개를 확인 → 지목별 필지 수와 교차 도형 면적을 참조용으로 표시 → 대상 필지와 경계는 지적도·토지대장 확인 필요`;
+    ? `반경 ${ctx.input.radiusM.toLocaleString("en-US")}m 안 연속지적 필지 0개, ${topJimokText} → 지적 도형 공백과 무필지를 구분할 수 없음 → 지적도와 토지대장 확인 필요`
+    : `반경 ${ctx.input.radiusM.toLocaleString("en-US")}m 안 연속지적 필지 ${hits.length}개, ${topJimokText} → 지목별 필지 수와 교차 도형 면적을 참조용으로 표시 → 대상 필지와 경계는 지적도·토지대장 확인 필요`;
 
   return makeTile(ctx, {
     code: "D19",
@@ -153,7 +156,7 @@ export function d19(ctx: EngineContext): TileResult {
     metrics,
     judgment: { ruleId: "D19-parcels@1", basisMetricIds: ["parcels"], sentence, level: null, criteria: null },
     sources,
-    layers: ["parcel", "parcel_site"],
+    layers: ["parcel_site", ...JIMOK_LAYERS],
     map,
     polygons,
     limitations,

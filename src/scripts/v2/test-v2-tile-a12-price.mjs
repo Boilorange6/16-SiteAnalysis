@@ -10,8 +10,10 @@ const { insertRelease } = await import("../../lib/v2/ingest/build.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { TILES } = await import("../../lib/v2/engine/run.ts");
 const a12 = TILES.find(([code]) => code === "A12")[1];
+const { d08 } = await import("../../lib/v2/tile/a12/d08.ts");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
+const { a12ClientModule } = await import("../../lib/v2/tile/a12/view.ts");
 
 const metric = (tile, id) => tile.metrics.find((m) => m.id === id);
 const forbidden = /도보|\d\s*분|종합/;
@@ -65,10 +67,27 @@ async function makeFixture(options, prices = false) {
   assert.equal(tile.status, "partial", "fixture는 5종 중 2종 용도지역 레이어만 적재");
   assert.equal(tile.metrics.filter((m) => m.id.startsWith("share_class_")).length, 8, "8분류 고정");
   assert.ok(tile.metrics.filter((m) => m.id.startsWith("share_class_")).every((m) => m.status === "observed"), "0도 관측 0");
+  assert.doesNotMatch(tile.judgment.sentence, /(?:공업|농림|자연환경보전|기타)\s+0(?:\.0)?%/, "0% 분류는 용도지역 문장에 넣지 않음");
+  assert.match(tile.judgment.sentence, /주거|상업|녹지|관리/, "실제 존재하는 분류는 문장에 유지");
   assert.ok(metric(tile, "fill_zoning_pct").value <= 100, "채움률 상한");
   assert.ok(metric(tile, "back_overlap_pct").value > 0, "중첩 초과분");
   assert.ok(tile.metrics.some((m) => m.id.startsWith("raw_")), "원천 세분 지표");
   assert.ok(tile.presentation.polygons.length >= 3, "용도지역 면");
+  assert.ok(tile.presentation.features.some((feature) => feature.layer === "zoning_site"), "대지 zoning_site 대표점 유지");
+  assert.ok(!tile.presentation.features.some((feature) => feature.layer.startsWith("zone_center:")), "zone_center 대표점 제거");
+  assert.ok(!tile.presentation.layers.some((layer) => layer.startsWith("zone_center:")), "zone_center 레이어 id 제거");
+  const absorbed = d08(ctx);
+  assert.equal(absorbed.judgment, null, "흡수 D08 judgment는 내보내지 않음");
+  assert.equal(absorbed.metrics.filter((metric) => metric.id.startsWith("share_class_")).length, 0, "D08 share_class 중복 지표 제거");
+  assert.ok(absorbed.presentation.features.some((feature) => feature.layer === "zoning_site"), "D08도 zoning_site 대표점 유지");
+  assert.ok(!absorbed.presentation.features.some((feature) => feature.layer.startsWith("zone_center:")), "D08 zone_center 대표점 제거");
+  const view = toTileView(tile);
+  assert.deepEqual(view.layerOptions, [{ id: "all", label: "기본 토지" }], "동일 내용 용도지역 레이어 선택 제거");
+  assert.ok(!a12ClientModule.headline.ids.includes("mixed_zone_share_pct"), "죽은 headline id 제거");
+  assert.notEqual(view.headlineMetricId, "mixed_zone_share_pct", "죽은 headline 지표는 선택하지 않음");
+  assert.equal(tile.judgment.ruleId, "a12-zoning@1", "흡수 D08 judgment는 A12 judgment만 유지");
+  assert.doesNotMatch(tile.judgment.sentence, /\s·\s/, "흡수 D08 judgment 문장 중복 제거");
+  assert.equal(new Set(tile.metrics.map((m) => m.id)).size, tile.metrics.length, "흡수 지표 id 중복 없음");
   ctx.close();
 }
 

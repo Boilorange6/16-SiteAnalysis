@@ -216,6 +216,7 @@ export function a12(ctx: EngineContext): TileResult {
   const pct = (areaM2: number) => r1((areaM2 / circleArea) * 100);
   // D08 흡수 후에도 클래스 번호가 자료가 없는 분류 때문에 밀리지 않도록 고정한다.
   const classes = CLASSES.map((name) => [name, byClass.get(name) ?? 0] as const);
+  const presentClasses = classes.filter(([, areaM2]) => areaM2 > 0);
   const raws = [...byRaw].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, RAW_TOP);
   const prices = priceDetails(ctx);
   const sources = [...zoning.sources, ...prices.sources];
@@ -228,12 +229,12 @@ export function a12(ctx: EngineContext): TileResult {
     ...prices.metrics,
   ];
 
-  const top = classes.length ? [...classes].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name, areaM2]) => `${name} ${pct(areaM2)}%`).join("·") : null;
+  const top = presentClasses.length ? [...presentClasses].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name, areaM2]) => `${name} ${pct(areaM2)}%`).join("·") : null;
   const sentence = siteLabel === null
     ? `대지 중심점의 용도지역 지정을 도면에서 확인하지 못함${top ? `, 반경 안 구성은 ${top}` : ""} → 도면 밖이거나 미지정일 수 있음 → 토지이용계획확인서와 공시지가 자료로 확인 필요`
     : `대지 중심점은 ${siteLabel}${siteNames.length > 1 ? "(복수 지정)" : ""}${top ? `, 반경 안 구성은 ${top}` : ""} → 지정 현황이며 지구·건축 허용 여부나 지가 수준은 아님 → 공시지가와 개별 규제를 토지이용계획확인서로 확인 필요`;
 
-  const map: MapCandidate[] = [...points];
+  const map: MapCandidate[] = points.filter((point) => !point.f.layer.startsWith("zone_center:"));
   if (siteLabel) map.push({ id: 0, f: { layer: "zoning_site", lng: ctx.input.center[0], lat: ctx.input.center[1], highlight: true, label: siteLabel } });
   const limitations = zoningLimitations(ctx, zoning, prices.limitations);
   const status: TileResult["status"] = prices.metrics.some((metric) => metric.status === "missing") || limitations.some((limitation) => limitation.kind === "partial" || limitation.kind === "incomplete") ? "partial" : "complete";
@@ -244,7 +245,7 @@ export function a12(ctx: EngineContext): TileResult {
     metrics,
     judgment: { ruleId: "a12-zoning@1", basisMetricIds: ["site_zoning_count"], sentence, level: null, criteria: null },
     sources,
-    layers: ["zoning_site", ...CLASSES.flatMap((name) => [`zone:${name}`, `zone_center:${name}`])],
+    layers: ["zoning_site", ...CLASSES.map((name) => `zone:${name}`)],
     map,
     polygons: polys,
     limitations,
