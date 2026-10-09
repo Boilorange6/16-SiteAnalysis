@@ -40,7 +40,9 @@ try {
   assert.equal(result.metrics.find((m) => m.id === "buildings").value, counted);
   assert.ok(counted < rows.length);
   assert.ok(result.presentation.polygons.some((p) => p.fid === String(edge.row.hit.featureId) || p.id === edge.row.hit.featureId || true), "그림에는 교차 건물이 모두 그려진다");
-  assert.equal(result.presentation.featuresTotal, rows.length, "대표점·면은 교차 전부");
+  assert.equal(result.presentation.polygonsTotal, rows.length, "그림에는 교차 건물 면이 모두 그려진다");
+  assert.equal(result.presentation.featuresTotal, 0, "면이 있는 정상 도형에는 대표점이 없다");
+  assert.equal(result.presentation.features.length, 0);
 } finally {
   ctx.close();
 }

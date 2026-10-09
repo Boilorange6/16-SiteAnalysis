@@ -5,8 +5,11 @@ import { tmpdir } from "node:os";
 
 const { buildEngineFixture, CENTER, PNU_DASAN_100 } = await import("./engine-fixture.mjs");
 const M = await import("../../lib/v2/data/manifest.ts");
+const Database = (await import("better-sqlite3")).default;
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
+const { toUtmk } = await import("../../lib/v2/crs.ts");
 const { d02 } = await import("../../lib/v2/tile/d02/engine.ts");
+const { d02ClientModule } = await import("../../lib/v2/tile/d02/view.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 
 const metric = (tile, id) => {
@@ -46,10 +49,11 @@ try {
 
   assert.equal(result.presentation.polygons.length, 6);
   assert.equal(result.presentation.polygonsTotal, 6);
-  assert.equal(result.presentation.featuresTotal, 6);
+  assert.equal(result.presentation.featuresTotal, 0, "면이 있는 정상 도형에는 대표점이 없다");
+  assert.equal(result.presentation.features.length, 0, "정상 도형 건물은 대표점 fallback을 만들지 않는다");
   assert.ok(result.presentation.polygons.every((p) => p.layer === "bldg_footprint"));
-  assert.ok(result.presentation.features.every((f) => f.layer === "bldg_point"));
-  assert.ok(result.presentation.polygons.some((p) => p.label === null), "높이 미상 건물은 면 라벨 없음");
+  assert.ok(result.presentation.polygons.every((p) => p.label !== null), "모든 건물 면은 높이와 무관하게 이름을 보존한다");
+  assert.ok(result.presentation.polygons.some((p) => p.label === "b_unknown"), "높이 미상 건물도 이름을 보존한다");
   assert.ok(result.limitations.some((l) => l.kind === "estimated" && l.note.includes("발자국 겹침")));
   assert.ok(result.limitations.some((l) => l.note.includes("완전성")));
 
@@ -60,6 +64,38 @@ try {
 } finally {
   ctx.close();
 }
+
+// 도형 계산에 실패한 건물만 대표점 fallback으로 남긴다.
+const fallbackDataDir = mkdtempSync(join(tmpdir(), "v2-d02-fallback-"));
+await buildEngineFixture(fallbackDataDir, "v1", { buildings: true });
+const fallbackDb = new Database(join(fallbackDataDir, "versions", "v1", "buildings.sqlite"));
+let unknownId;
+try {
+  const [cx, cy] = toUtmk(CENTER);
+  const invalidFootprint = {
+    type: "Polygon",
+    coordinates: [[[cx - 10, cy - 10], [cx + 10, cy - 10], [cx, cy + 10]]],
+  };
+  unknownId = fallbackDb.prepare("SELECT feature_id FROM feature WHERE stable_id = ?").get("building:b_unknown").feature_id;
+  fallbackDb.prepare("UPDATE feature SET geom_json = ? WHERE stable_id = ?").run(JSON.stringify(invalidFootprint), "building:b_unknown");
+} finally {
+  fallbackDb.close();
+}
+const fallbackCtx = context(fallbackDataDir, M.readManifest(fallbackDataDir), "d02-fallback");
+try {
+  const fallback = d02(fallbackCtx);
+  const fallbackGeometry = metric(fallback, "fill_geometry_pct");
+  assert.equal(fallbackGeometry.numerator, 5, "실패한 도형은 유효 도형 수에서 빠진다");
+  assert.equal(fallbackGeometry.denominator, 6);
+  assert.equal(fallback.presentation.polygons.length, 5);
+  assert.equal(fallback.presentation.featuresTotal, 1, "실패한 도형만 대표점 fallback으로 남긴다");
+  assert.equal(fallback.presentation.features[0].fid, String(unknownId));
+  assert.equal(fallback.presentation.features[0].layer, "bldg_point");
+} finally {
+  fallbackCtx.close();
+}
+
+assert.equal(d02ClientModule.mapNote, undefined, "높이 미상 테두리-only mapNote를 제거한다");
 
 // buildings 파일이 게시되지 않으면 SQL 예외가 아니라 not_provided 결과를 낸다.
 const absentDir = mkdtempSync(join(tmpdir(), "v2-d02-absent-"));
