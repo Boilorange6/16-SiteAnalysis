@@ -75,10 +75,8 @@ const d05Base = viewWithLayer(toTileView(d05), "all");
 assert.deepEqual(d05Base.map.features.map((item) => item.layer), ["floors_1_4"], "층수 기본 보기에 35m·12m 레이어를 겹치지 않는다");
 
 const a12 = result("A12", [feature("zoning_site", "zone"), feature("store", "other")], [polygon("zone_residential", "zone-poly")], [line("road", "road")]);
-const zoning = viewWithLayer(toTileView(a12), "zoning_detail");
-assert.deepEqual(zoning.map.features.map((item) => item.layer), ["zoning_site"]);
-assert.deepEqual(zoning.map.polygons.map((item) => item.layer), ["zone_residential"]);
-assert.deepEqual(zoning.map.lines, []);
+// A12는 바꿔도 화면이 같은 레이어 선택을 두지 않는다(계획 1-2) — 단일 보기
+assert.deepEqual(layerOptionsForResult(a12).map((option) => option.id), ["all"]);
 
 const many = (layer, prefix) => Array.from({ length: 2000 }, (_, index) => polygon(layer, `${prefix}-${index}`));
 const merged = mergeTileResults(result("D05", [], many("floors_1_4", "floor")), result("D05", [], many("height_tall", "height")));
