@@ -9,6 +9,7 @@ globalThis.React = React;
 const { mapLabelText, automaticLabelText, selectAutomaticLabels, badgeTextColor } = await import("../../lib/v2/ui/map-labels.ts");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { candidate, polygonCandidate, lineCandidate } = await import("../../lib/v2/engine/tiles/common.ts");
+const { compactLegendItems, layerStyle, legendItems } = await import("../../lib/v2/ui/map-layers.ts");
 const { default: MapFigure } = await import("../../components/v2/map-figure.tsx");
 
 const center = [127.15, 37.62];
@@ -66,6 +67,21 @@ assert.equal(parsed.presentation.features[0].sublabel, "2호선");
 assert.equal(parsed.presentation.features[0].badges[0].text, "환승");
 assert.equal(parsed.presentation.lines[0].emphasis, "major");
 
+const legendModel = {
+  center,
+  radiusM: 500,
+  features: [{ layer: "bus_stop", lng: center[0], lat: center[1] }, { layer: "bus_nearest", lng: center[0], lat: center[1], highlight: true, distanceM: 100 }, { layer: "rail_station", lng: center[0], lat: center[1], highlight: true }],
+  polygons: [],
+  lines: [],
+  total: 3,
+  notes: [],
+};
+assert.ok(!legendItems(legendModel).some((item) => item.layer.endsWith("_nearest")), "최근접 레이어는 범례에서 제외");
+assert.equal(compactLegendItems(legendModel, 1)[0]?.layer, "rail_station", "강조 레이어를 미니 범례 앞에 둔다");
+assert.equal(layerStyle("planned_rail_line").dash, "7 5");
+assert.equal(layerStyle("wind_inflow").arrow, true);
+assert.equal(layerStyle("road:집산").strokeWidth, 1.5);
+
 const styledSvg = renderToStaticMarkup(createElement(MapFigure, {
   model: {
     center,
@@ -85,5 +101,7 @@ const styledSvg = renderToStaticMarkup(createElement(MapFigure, {
 assert.match(styledSvg, /data-map-badge="환승"/);
 assert.match(styledSvg, /stroke="#6D28D9"/);
 assert.match(styledSvg, /stroke-dasharray="3 3"/, "최근접 점선은 _nearest 레이어명이 아닌 highlight+distanceM으로 결정");
+assert.match(styledSvg, /stroke-dasharray="7 5"/);
+assert.match(styledSvg, /marker-end="url\(#arrow-/);
 
 console.log("✓ v2 map contract");

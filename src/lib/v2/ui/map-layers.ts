@@ -93,7 +93,7 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   "store:other": S("기타 업소", "#B9BDC6"),
   rail_station: S("철도역", "#1F5FA8", undefined, "철도역"),
   rail_entrance: S("역 출입구", "#4F8FD8", undefined, "역 출입구"),
-  rail_line: S("철도 노선", "#1F5FA8", undefined, "철도 노선"),
+  rail_line: { label: "철도 노선", color: "#1F5FA8", subject: "철도 노선", strokeWidth: 3.6, casing: "#FFFFFF" },
   rail_nearest: S("최근접 역", "#1F5FA8", undefined, "철도역"),
   school_elem: S("초등학교", "#E5A11C", undefined, "학교"),
   school_middle: S("중학교", "#D9822B", undefined, "학교"),
@@ -105,15 +105,15 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   school_zone_middle_site: S("대상 중학교 학교군", "#A84C1A"),
   school_zone_high: S("고등학교 학교군", "#C77A3A"),
   school_zone_high_site: S("대상 고등학교 학교군", "#7D3615"),
-  planned_rail_line: S("계획 철도 선형(개략)", "#8A5BC7"),
+  planned_rail_line: { label: "계획 철도 선형", color: "#8A5BC7", strokeWidth: 2, dash: "7 5", casing: "#FFFFFF" },
   planned_rail_station: S("계획역", "#8A5BC7"),
-  "road:고속도로": S("고속도로", "#8D3B2F"),
-  "road:간선": S("간선", "#C45A36"),
-  "road:보조간선": S("보조간선", "#D88B38"),
-  "road:집산": S("집산", "#5F8F6A"),
-  "road:국지": S("국지", "#7BA68A"),
-  "road:보행·자전거": S("보행·자전거", "#4F8A9E"),
-  "road:기타": S("도로 기타", "#9AA0AA"),
+  "road:고속도로": { label: "간선 이상", color: "#8D3B2F", strokeWidth: 3, casing: "#FFFFFF" },
+  "road:간선": { label: "간선 이상", color: "#C45A36", strokeWidth: 3, casing: "#FFFFFF" },
+  "road:보조간선": { label: "보조간선·집산", color: "#D88B38", strokeWidth: 2, casing: "#FFFFFF" },
+  "road:집산": { label: "보조간선·집산", color: "#5F8F6A", strokeWidth: 1.5, casing: "#FFFFFF" },
+  "road:국지": { label: "국지", color: "#7BA68A", strokeWidth: 1 },
+  "road:보행·자전거": { label: "보행·자전거", color: "#4F8A9E", strokeWidth: 0.75, dash: "3 3" },
+  "road:기타": { label: "도로 기타", color: "#9AA0AA", strokeWidth: 1 },
   pop_grid_q1: S("인구밀도 하위 20% 격자", "#CFE8E6", "weight"),
   pop_grid_q2: S("인구밀도 20~40% 격자", "#9CCFCB", "weight"),
   pop_grid_q3: S("인구밀도 40~60% 격자", "#63B0AB", "weight"),
@@ -135,21 +135,27 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   maint_zone: S("정비구역", "#D6478A"),
   maint_zone_center: S("정비구역", "#D6478A"),
   zoning_site: S("대지 용도지역", "#C9A227"),
+  "jimok:대": S("지목 · 대지", "#C9A227"),
+  "jimok:도로": S("지목 · 도로", "#8D8D8D"),
+  "jimok:전답": S("지목 · 전·답", "#D9A441"),
+  "jimok:임야": S("지목 · 임야", "#5C9A3C"),
+  "jimok:하천·구거": S("지목 · 하천·구거", "#4F9DA6"),
+  "jimok:기타": S("지목 · 기타", "#B9BDC6"),
   ...Object.fromEntries(
     (
       [["주거", "#F2C94C"], ["상업", "#E05A47"], ["공업", "#8E7CC3"], ["녹지", "#5FAE5B"], ["관리", "#A8C66C"], ["농림", "#7FB77E"], ["자연환경보전", "#2F7A4E"], ["기타", "#B9BDC6"]] as const
     ).flatMap(([c, color]) => [[`zone:${c}`, S(`${c}지역`, color)], [`zone_center:${c}`, S(`${c}지역`, color)]]),
   ),
-  bldg_pre1980: S("1979년 이하", STRIP_COLORS[0], undefined, "건물"),
+  bldg_pre1980: S("1970년대 이전", STRIP_COLORS[0], undefined, "건물"),
   bldg_1980s: S("1980년대", STRIP_COLORS[1], undefined, "건물"),
   bldg_1990s: S("1990년대", STRIP_COLORS[2], undefined, "건물"),
   bldg_2000s: S("2000년대", STRIP_COLORS[3], undefined, "건물"),
   bldg_2010s: S("2010년대", STRIP_COLORS[4], undefined, "건물"),
-  bldg_2020s: S("2020년 이상", STRIP_COLORS[5], undefined, "건물"),
+  bldg_2020s: S("2020년 이후", STRIP_COLORS[5], undefined, "건물"),
   bldg_unknown: S("미상", STRIP_COLORS[6], undefined, "건물"),
   bldg_footprint: S("건물 발자국", "#8B5A3C", undefined, "건물"),
   bldg_point: S("건물(대표점)", "#A0522D", undefined, "건물"),
-  svf_building: { label: "건물 마스크", subject: "건물", color: "#64748B", fill: "#CBD5E1", stroke: "#64748B", fillOpacity: 0.86, strokeWidth: 0.75 },
+  svf_building: { label: "건물(계산 제외)", subject: "건물", color: "#64748B", fill: "#CBD5E1", stroke: "#64748B", fillOpacity: 0.86, strokeWidth: 0.75 },
   "use:주거": S("주거", "#D69E2E"),
   "use:근린생활": S("근린생활", "#E07A5F"),
   "use:업무": S("업무", "#6C8EBF"),
@@ -159,7 +165,7 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   "use:교육복지": S("교육복지", "#4C956C"),
   "use:공업": S("공업", "#718096"),
   "use:기타": S("기타", "#A0AEC0"),
-  "use:미상": S("용도 미상", "#CBD5E0"),
+  "use:미상": { label: "용도 미상", color: "#CBD5E0", fill: "#F8FAFC", stroke: "#64748B", fillOpacity: 0.2, strokeWidth: 1, hatch: true },
   floors_1_4: S("1~4층", "#B8D8BA", undefined, "건물"),
   floors_5_8: S("5~8층", "#86BBD8", undefined, "건물"),
   floors_9_14: S("9~14층", "#5C80BC", undefined, "건물"),
@@ -170,7 +176,7 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   tall_ge35: S("35m 이상", "#AA4465", undefined, "건물"),
   tall_ge35_est: S("[추정] 35m 이상", "#AA4465", undefined, "건물"),
   tall_assumed_1f_est: S("1층 가정(추정)", "#B9BDC6", undefined, "건물"),
-  tall_lt35: S("35m 미만", "#6C8EBF", undefined, "건물"),
+  tall_lt35: S("35m 미만", "#CBD5E1", undefined, "건물"),
   tall_unknown: S("높이 미상", "#B9BDC6", undefined, "건물"),
   low_le12: S("12m 이하", "#4C956C", undefined, "건물"),
   low_le12_est: S("[추정] 12m 이하", "#4C956C", undefined, "건물"),
@@ -193,6 +199,7 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   "facility:공공문화체육": S("도시계획시설 · 공공문화체육", "#D6478A"),
   "facility:보건위생": S("도시계획시설 · 보건위생", "#2B9CBF"),
   "facility:환경기초": S("도시계획시설 · 환경기초", "#5C9A3C"),
+  "facility:방재": S("도시계획시설 · 방재", "#C05640"),
   "facility:기타": S("도시계획시설 기타", "#B9BDC6"),
   parcel: S("필지", "#B07D4F"),
   /** 대지 지정 화면의 기본 필지. 분석 결과용 parcel 색을 재사용하지 않는다. */
@@ -223,25 +230,25 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   block_1_2: S("1~2ha", "#D9822B"),
   block_2_5: S("2~5ha", "#C45A36"),
   block_ge5: S("5ha 이상", "#8D3B2F"),
-  block_open: S("미폐합", "#9AA0AA"),
-  dens_0: S("0", "#F0F4F8", "weight"),
+  block_open: { label: "미폐합", color: "#9AA0AA", fill: "#FFFFFF", stroke: "#9AA0AA", fillOpacity: 0.04, strokeWidth: 0.8 },
+  dens_0: { label: "0", color: "#F0F4F8", fill: "#FFFFFF", stroke: "#CBD5E1", fillOpacity: 0.04, strokeWidth: 0.6 },
   dens_q1: S("하위 20%", "#CFE8E6", "weight"),
   dens_q2: S("20~40%", "#9CCFCB", "weight"),
   dens_q3: S("40~60%", "#63B0AB", "weight"),
   dens_q4: S("60~80%", "#2B8C88", "weight"),
   dens_q5: S("상위 20%", "#125C5A", "weight"),
-  relief_lt_m20: S("−20m 미만", "#6B4F3A"),
+  relief_lt_m20: S("중심 대비 −20m 미만", "#6B4F3A"),
   relief_m20_m5: S("−20~−5m", "#9A6B46"),
   relief_m5_5: S("−5~5m", "#C7A66A"),
   relief_5_20: S("5~20m", "#8AA56F"),
   relief_ge20: S("20m 이상", "#4F7D58"),
   dem_nodata: S("지형 결측", "#B9BDC6"),
-  contour: S("등고선", "#4B5563"),
-  slope_0_5: S("0~5°", "#E6E2F4"),
-  slope_5_10: S("5~10°", "#C4B9E4"),
-  slope_10_15: S("10~15°", "#9D8BC8"),
-  slope_15_20: S("15~20°", "#765EA8"),
-  slope_ge20: S("20° 이상", "#4A3575"),
+  contour: { label: "등고선", color: "#4B5563", strokeWidth: 1 },
+  slope_0_5: S("경사 0~5°", "#E6E2F4"),
+  slope_5_10: S("경사 5~10°", "#C4B9E4"),
+  slope_10_15: S("경사 10~15°", "#9D8BC8"),
+  slope_15_20: S("경사 15~20°", "#765EA8"),
+  slope_ge20: S("경사 20° 이상", "#4A3575"),
   slope_nodata: S("경사 결측", "#B9BDC6"),
   sun_0: S("0시간", "#F0F4F8"),
   sun_0_2: S("0 초과~2시간", "#F9D976"),
@@ -250,7 +257,7 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   sun_6_8: S("6~8시간", "#D85B2A"),
   sun_ge8: S("8시간 이상", "#A93D27"),
   sun_uncalc: S("미계산", "#B9BDC6"),
-  sun_face: S("수광면", "#F08A24"),
+  sun_face: { label: "대지 일조", color: "#F08A24", fill: "#F08A24", stroke: "#B45309", fillOpacity: 0.35, strokeWidth: 1 },
   shadow_09: S("09:00 그림자", "#6D7580"),
   shadow_12: S("12:00 그림자", "#535A65"),
   shadow_15: S("15:00 그림자", "#383E48"),
@@ -263,8 +270,8 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   walk_5: S("도보 5분", "#4D9D7E"),
   walk_10: S("도보 10분", "#8FC9B3"),
   walk_15: S("도보 15분", "#CDE8DC"),
-  walk_net: S("보행망", "#5AA88E"),
-  wind_inflow: S("유입 방향", "#2B9CBF"),
+  walk_net: { label: "보행망", color: "#5AA88E", strokeWidth: 0.75 },
+  wind_inflow: { label: "유입 방향", color: "#2B9CBF", strokeWidth: 2, arrow: true, casing: "#FFFFFF" },
 };
 
 /** 래스터의 값→색 규칙. 실제 픽셀화는 ui/raster-image.ts가 담당한다. */
@@ -308,17 +315,20 @@ const FALLBACK: LayerStyle = S("기타", "#7A7E87");
 /** 지물이 있는 레이어의 범례 항목 (정의된 순서) */
 export const legendItems = (model: MapModel) => {
   const present = new Set([
-    ...model.features.map((feature) => feature.layer),
-    ...(model.polygons ?? []).map((polygon) => polygon.layer),
-    ...(model.lines ?? []).map((line) => line.layer),
+    ...model.features.map((feature) => feature.layer).filter((layer) => !layer.endsWith("_nearest")),
+    ...(model.polygons ?? []).map((polygon) => polygon.layer).filter((layer) => !layer.endsWith("_nearest")),
+    ...(model.lines ?? []).map((line) => line.layer).filter((layer) => !layer.endsWith("_nearest")),
   ]);
+  const highlightedLabels = new Set(
+    model.features.filter((feature) => feature.highlight && !feature.layer.endsWith("_nearest")).map((feature) => layerStyle(feature.layer).label),
+  );
   const seenLabels = new Set<string>();
   return Object.keys(LAYER_STYLES).flatMap((layer) => {
     if (!present.has(layer)) return [];
     const style = LAYER_STYLES[layer];
     if (seenLabels.has(style.label)) return [];
     seenLabels.add(style.label);
-    return [{ layer, label: style.label, color: style.color }];
+    return [{ layer, label: style.label, color: style.color, highlight: highlightedLabels.has(style.label) }];
   });
 };
 
@@ -326,6 +336,7 @@ export const legendItems = (model: MapModel) => {
 export function compactLegendItems(model: MapModel, limit = 3) {
   const counts = new Map<string, number>();
   const add = (layer: string) => {
+    if (layer.endsWith("_nearest")) return;
     const label = LAYER_STYLES[layer]?.label;
     if (label) counts.set(label, (counts.get(label) ?? 0) + 1);
   };
@@ -334,7 +345,7 @@ export function compactLegendItems(model: MapModel, limit = 3) {
   for (const l of model.lines ?? []) add(l.layer);
   return legendItems(model)
     .map((item, order) => ({ ...item, count: counts.get(item.label) ?? 0, order }))
-    .sort((a, b) => b.count - a.count || a.order - b.order)
+    .sort((a, b) => Number(b.highlight) - Number(a.highlight) || b.count - a.count || a.order - b.order)
     .slice(0, Math.max(0, limit));
 }
 
