@@ -51,11 +51,11 @@ const EXPECTED_CACHE_VERSIONS = {
   D19: "v2-p4-ext-1+w3-merge-r1+w2b-r1",
   D22: "v2-p4-ext-1",
   D28: "v2-p4-ext-1+w2b-r1",
-  D29: "v2-p4-ext-1+height3-r1",
+  D29: "v2-p4-ext-1+height3-r1+w2b-r1",
   S01: "v2-p4-ext-1+height3-r1",
   S02: "v2-p4-ext-1+height3-r1+w3-merge-r1",
-  S03: "v2-p4-ext-1+height3-r1",
-  S04: "v2-p4-ext-1+s04-r2+height3-r1",
+  S03: "v2-p4-ext-1+height3-r1+w2b-r1",
+  S04: "v2-p4-ext-1+s04-r2+height3-r1+w2b-r1",
 };
 const EXPECTED_ABSORBS = {
   A02: ["D26"],

@@ -43,6 +43,12 @@ const WIND_SEASON_LABEL: Record<WindSeason, string> = {
 };
 const WIND_DIRECTION_CODES = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"] as const;
 const WIND_DIRECTION_KO = ["북", "북북동", "북동", "동북동", "동", "동남동", "남동", "남남동", "남", "남남서", "남서", "서남서", "서", "서북서", "북서", "북북서"] as const;
+const WIND_LEGEND = [
+  { label: "U/U유입 · 0~0.5", min: 0, max: 0.5 },
+  { label: "U/U유입 · 0.5~0.8", min: 0.5, max: 0.8 },
+  { label: "U/U유입 · 0.8~1.2", min: 0.8, max: 1.2 },
+  { label: "U/U유입 · 1.2 이상", min: 1.2, max: null },
+] as const;
 
 function windDirectionText(value: unknown): string {
   const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
@@ -363,7 +369,7 @@ function mergeWindTile(
       ...state.tile.presentation,
       rasters,
       layers: [...new Set([...(state.tile.presentation.layers ?? []), "wind_inflow", "wind_ratio"])],
-      legend: [{ label: "U/U유입", min: 0, max: 1.2 }],
+      legend: [...WIND_LEGEND],
     },
     provenance: { ...state.tile.provenance, sources: mergeSourceList(state.tile, source) },
     limitations,

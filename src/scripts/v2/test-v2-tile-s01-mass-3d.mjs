@@ -78,6 +78,8 @@ assert.match(projectionSource, /roads: "#5F6B79"/);
 assert.match(figureSource, /data-label-leader/);
 assert.match(figureSource, /EXPLODED_LABEL_CHIP_WIDTH/);
 assert.match(mass3dSource, /if \(mode === "live"\) \{\s*return \(\s*<div[^>]*className=\{tileStyles\.mass3dRoot\}[^>]*role="img"[^>]*aria-label=\{props\.label \?\? "S01 3D 매스"\}/s);
+assert.match(mass3dSource, /<div ref=\{imageRef\}[^>]*className=\{tileStyles\.mass3dRoot\}[^>]*role="img"[^>]*aria-label=\{props\.label \?\? "S01 3D 매스"\}/s);
+assert.match(mass3dSource, /className=\{tileStyles\.mass3dFallback\}[^>]*role="img"[^>]*aria-label=\{props\.label \?\? "S01 3D 매스"\}/s);
 assert.match(reportSource, /renderMass3dPng/);
 assert.match(reportSource, /image\/png/);
 

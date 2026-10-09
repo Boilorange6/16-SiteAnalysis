@@ -126,7 +126,7 @@ function LiveLegend({ scene, exploded }: Pick<Mass3dProps, "scene" | "exploded">
 
 function Fallback({ props, note }: { props: Mass3dProps; note: string }) {
   return (
-    <div className={tileStyles.mass3dFallback} style={{ width: props.fixed ? props.width : "100%", height: props.fixed ? props.height : "100%" }}>
+    <div className={tileStyles.mass3dFallback} role="img" aria-label={props.label ?? "S01 3D 매스"} style={{ width: props.fixed ? props.width : "100%", height: props.fixed ? props.height : "100%" }}>
       <FallbackMassFigure
         scene={props.scene}
         camera={props.camera}
@@ -243,7 +243,7 @@ function Mass3D({ mode = "image", ...props }: Mass3dProps) {
   const shellStyle = { width: props.fixed ? props.width : "100%", height: props.fixed ? props.height : "100%" } as const;
   if (mode === "image") {
     return (
-      <div ref={imageRef} className={tileStyles.mass3dRoot} style={shellStyle} aria-busy={phase === "loading"}>
+      <div ref={imageRef} className={tileStyles.mass3dRoot} role="img" aria-label={props.label ?? "S01 3D 매스"} style={shellStyle} aria-busy={phase === "loading"}>
         {phase === "fallback" || phase === "error" ? (
           <Fallback props={{ ...renderProps, mode }} note="WebGL을 사용할 수 없어 2D 대체 그림을 표시합니다." />
         ) : image ? (
