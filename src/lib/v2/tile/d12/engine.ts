@@ -50,8 +50,15 @@ function shapeOf(h: FacilityHit): FacilityShape {
   return "point";
 }
 
-function labelOf(h: FacilityHit, cls: string): string {
-  return h.name?.trim() || (typeof h.properties.typeLabel === "string" && h.properties.typeLabel.trim() !== "" ? h.properties.typeLabel.trim() : cls);
+function textValue(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed === "" || trimmed === "-" ? null : trimmed;
+}
+
+/** D12 name은 시설 종류명(A6/typeLabel) 원천값이다. 분류(cls)는 이름 대체값으로 쓰지 않는다. */
+function nameOf(h: FacilityHit): string | null {
+  return textValue(h.properties.typeLabel) ?? textValue(h.name);
 }
 
 function missingTile(ctx: EngineContext): TileResult {
@@ -76,11 +83,17 @@ export function d12(ctx: EngineContext): TileResult {
   const polygons: PolygonCandidate[] = [];
   const lines: LineCandidate[] = [];
   const map: MapCandidate[] = [];
+  const shapeByFeature = new Map<number, FacilityShape>();
   let failed = 0;
   for (const h of hits) {
     const cls = classOf(h);
-    const label = labelOf(h, cls);
+    const name = nameOf(h);
+    // 기존 소비자에는 짧은 원천 이름만 남기고, 값은 새 sublabel 계약으로 보낸다.
+    const legacyLabel = textValue(h.name) ?? name;
     const shape = shapeOf(h);
+    const previousShape = shapeByFeature.get(h.featureId);
+    if (previousShape && previousShape !== shape) continue;
+    shapeByFeature.set(h.featureId, shape);
     const layer = `facility:${cls}`;
     if (shape === "polygon") {
       const parts = clipToCircle(ctx.input.center, ctx.input.radiusM, h.geometry);
@@ -92,13 +105,22 @@ export function d12(ctx: EngineContext): TileResult {
       if (area <= 0) continue;
       areas.set(cls, (areas.get(cls) ?? 0) + area);
       for (const rings of parts) {
-        const poly = polygonCandidate(h.featureId, layer, rings, polygonArea(rings), label);
+        const poly = polygonCandidate(h.featureId, layer, rings, polygonArea(rings), legacyLabel, {
+          name,
+          sublabel: formatAreaM2(polygonArea(rings)),
+          labelPriority: name === null ? 0 : 1,
+        });
         if (poly) polygons.push(poly);
       }
     } else if (shape === "line") {
       let length = 0;
       for (const path of clipLineToCircle(ctx.input.center, ctx.input.radiusM, h.geometry)) {
-        const line = lineCandidate(h.featureId, layer, path, linePathLength(path));
+        const lengthM = linePathLength(path);
+        const line = lineCandidate(h.featureId, layer, path, lengthM, legacyLabel, {
+          name,
+          sublabel: formatLengthM(lengthM),
+          labelPriority: name === null ? 0 : 1,
+        });
         if (!line) continue;
         length += line.lengthM;
         lines.push(line);
@@ -107,7 +129,12 @@ export function d12(ctx: EngineContext): TileResult {
       lengths.set(cls, (lengths.get(cls) ?? 0) + length);
     } else {
       counts.set(cls, (counts.get(cls) ?? 0) + 1);
-      map.push(candidate(h, layer, { label }));
+      map.push(candidate(h, layer, {
+        label: legacyLabel,
+        name,
+        sublabel: null,
+        labelPriority: name === null ? 0 : 1,
+      }));
     }
   }
 
