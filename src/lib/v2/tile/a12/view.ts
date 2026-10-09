@@ -7,7 +7,8 @@ export const a12ClientModule = {
     { metricId: "site_zoning_count", prefix: "중심점 지정", note: "대지 중심점이 들어간 용도지역 도형 수입니다. 지정의 적합성 판정이 아닙니다." },
   ],
   headlineFor: (result, helpers) => {
-    const zoning = result.presentation.features?.find((feature) => feature.layer === "zoning_site")?.label;
+    const site = result.presentation.features?.find((feature) => feature.layer === "zoning_site");
+    const zoning = site?.name ?? site?.label;
     const selected = zoning ? null : helpers.policyMetric();
     if (zoning) return { headline: { value: zoning, label: "대지 중심점 용도지역" }, metricId: "site_zoning_label" };
     if (!selected) return null;

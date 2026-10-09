@@ -210,7 +210,7 @@ const halfArea = (d, r) => (r * r * Math.acos(-d / r) + d * Math.sqrt(r * r - d 
   assert.ok(t.limitations.some((l) => l.kind === "incomplete" && l.note.includes("zoning_management")), "미적재 레이어 표시");
   assert.match(t.judgment.sentence, /^대지 중심점은 제2종일반주거지역, 반경 안 구성은 주거 \d+(\.\d)?%·상업/);
   const site = t.presentation.features.find((f) => f.layer === "zoning_site");
-  assert.deepEqual([site.label, site.highlight], ["제2종일반주거지역", true]);
+  assert.deepEqual([site.name, site.highlight, site.labelPriority], ["제2종일반주거지역", true, 2]);
   assert.deepEqual(t.presentation.polygons.map((p) => p.layer).sort(), ["zone:상업", "zone:주거"]);
   assert.equal(t.presentation.features.filter((f) => f.layer.startsWith("zone_center:")).length, 0, "면이 있으면 대표점을 내지 않는다");
   // 대지 요약이 A12의 대지 용도지역을 쓴다
@@ -250,7 +250,7 @@ const halfArea = (d, r) => (r * r * Math.acos(-d / r) + d * Math.sqrt(r * r - d 
   const classMetrics = t.metrics.filter((m) => m.id.startsWith("share_class"));
   assert.equal(classMetrics.length, 8, "고정 분류 슬롯은 자료가 없어도 유지");
   assert.ok(classMetrics.every((m) => m.value === 0), "우산 도형만 있으면 고정 분류 슬롯은 0%로 표시");
-  assert.equal(t.presentation.features.find((f) => f.layer === "zoning_site").label, "도시지역(세분 미확인)");
+  assert.equal(t.presentation.features.find((f) => f.layer === "zoning_site").name, "도시지역(세분 미확인)");
   ctx.close();
 }
 {

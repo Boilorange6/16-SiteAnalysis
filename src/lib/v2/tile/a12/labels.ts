@@ -73,7 +73,7 @@ export function zoningSiteCandidate(zoning: ZoningCollection, lng: number, lat: 
       lat,
       highlight: true,
       label: null,
-      name: zoningSiteName(zoning),
+      name: zoningSiteName(zoning) ?? zoning.siteLabel,
       sublabel: null,
       labelPriority: 2,
     },
