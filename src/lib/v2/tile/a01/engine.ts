@@ -6,6 +6,7 @@ import { toUtmk } from "../../crs";
 import { candidate, fmt, hitPoint, lineCandidate, makeTile, missing, nearestHit, nearestM, noDataTile, obs, type LineCandidate, type MapCandidate, type TileDraft } from "../../engine/tiles/common";
 import { clipLineToCircle, linePathLength } from "../../engine/tiles/geo";
 import { walkField, walkSources, type WalkField, type WalkRoute } from "../../engine/tiles/walk-shared";
+import { formatDistanceM } from "../../ui/tile-view";
 
 export const A01_CRITERIA = "버스정류장 직선 300m 이하 좋음 · 600m 이하 보통 · 초과 주의";
 export const RAIL_CRITERIA = "철도역 직선 500m 이하 좋음 · 1,000m 이하 보통 · 초과 주의";
@@ -100,7 +101,13 @@ function addWalkLine(lines: LineCandidate[], target: WalkTarget | null, label: s
     "walk_route",
     target.route.path,
     target.route.distanceM,
-    `${label} 도보 ${fmt(Math.round(target.route.distanceM))}m · ${target.route.minutes}분`,
+    null,
+    {
+      name: null,
+      sublabel: `${label} 도보 ${formatDistanceM(target.route.distanceM)} · ${target.route.minutes}분`,
+      labelPriority: 0,
+      emphasis: "minor",
+    },
   );
   if (line) lines.push(line);
 }
@@ -151,6 +158,48 @@ function railLineNames(hit: FeatureHit): string[] {
     .map(text)
     .filter((name): name is string => name !== null)
     .map((name) => /^\d+$/.test(name) ? `${name}호선` : name);
+}
+
+const DEFAULT_RAIL_COLOR = "#1F5FA8";
+
+function hexColor(value: unknown): string | null {
+  return typeof value === "string" && /^#[0-9A-Fa-f]{6}$/.test(value.trim()) ? value.trim() : null;
+}
+
+function railBadgeText(name: string): string {
+  const number = name.match(/(\d+)호선/);
+  return number ? number[1] : name.replace(/선$/u, "").slice(0, 4);
+}
+
+function stationBadges(hit: FeatureHit): Array<{ text: string; color: string }> {
+  const names = railLineNames(hit);
+  const colors = Array.isArray(hit.properties.lineColors) ? hit.properties.lineColors : [];
+  return names
+    .map((name, index) => ({ text: railBadgeText(name), color: hexColor(colors[index]) ?? DEFAULT_RAIL_COLOR }))
+    .filter((badge) => badge.text.length > 0)
+    .slice(0, 4);
+}
+
+function distanceSublabel(distanceM: number | null): string | null {
+  return distanceM === null ? null : `직선 ${formatDistanceM(distanceM)}`;
+}
+
+function entranceNumber(hit: FeatureHit): string | null {
+  const raw = text(hit.properties.entranceRef) ?? text(hit.name);
+  return raw?.match(/(\d+)/)?.[1] ?? null;
+}
+
+function entranceDisplayName(hit: FeatureHit): string | null {
+  const station = entranceStationName(hit);
+  const number = entranceNumber(hit);
+  const sourceName = text(hit.name);
+  if (station && number) return `${station} ${number}번 출구`;
+  return station && sourceName ? `${station} ${sourceName}` : station ?? sourceName;
+}
+
+function entranceBadges(hit: FeatureHit): Array<{ text: string; color: string }> {
+  const number = entranceNumber(hit);
+  return number ? [{ text: number.slice(0, 4), color: "#FFFFFF" }] : [];
 }
 
 function railSummaryDetail(station: RailStation): string | null {
@@ -237,7 +286,13 @@ export function a01(ctx: EngineContext): TileResult {
     };
   }
 
-  const map: MapCandidate[] = hits.map((h) => (h === near ? candidate(h, "bus_nearest", { highlight: true, label: `직선 ${nearest}m` }) : candidate(h, "bus_stop")));
+  const map: MapCandidate[] = hits.map((h) =>
+    candidate(h, h === near ? "bus_nearest" : "bus_stop", {
+      highlight: h === near,
+      sublabel: h === near ? distanceSublabel(h.distanceM) : null,
+      labelPriority: h === near ? 2 : 0,
+    }),
+  );
   const layers = ["bus_stop", "bus_nearest"];
   const lines: LineCandidate[] = [];
   addWalkLine(lines, walkRail, "철도");
@@ -246,23 +301,49 @@ export function a01(ctx: EngineContext): TileResult {
   const limitations: TileDraft["limitations"] = [];
   if (hasRail) {
     layers.push("rail_station", "rail_entrance", "rail_line", "rail_nearest");
-    const nearHit = railBest && railM !== null && railBest.best.dist <= radiusM ? railBest.best.hit : null;
-    const nearFeatureId = nearHit?.featureId ?? null;
+    const nearestStation = nearestHit(stationHits);
+    const nearestEntrance = nearestHit(entranceHits);
     // D14 흡수 후에도 반경 내 원천 역·출입구 전체를 지도에 남긴다.
-    // 대표점/출입구를 사용한 최근접 표시는 같은 feature의 레이어만 교체한다.
+    // 최근접 역과 최근접 출입구는 각각 원천 지물에 우선순위·강조를 부여한다.
     for (const station of stationHits) {
-      const isNearest = station.featureId === nearFeatureId;
-      map.push(candidate(station, isNearest ? "rail_nearest" : "rail_station", isNearest ? { highlight: true, label: `직선 ${railM}m` } : undefined));
+      const isNearest = station.featureId === nearestStation?.featureId;
+      const lineNames = railLineNames(station);
+      map.push(candidate(station, isNearest ? "rail_nearest" : "rail_station", {
+        highlight: isNearest,
+        sublabel: isNearest ? distanceSublabel(station.distanceM) : lineNames.length > 0 ? lineNames.join("·") : null,
+        labelPriority: isNearest ? 2 : stationName(station) ? 1 : 0,
+        badges: stationBadges(station),
+      }));
     }
     for (const entrance of entranceHits) {
-      const isNearest = entrance.featureId === nearFeatureId;
-      map.push(candidate(entrance, isNearest ? "rail_nearest" : "rail_entrance", isNearest ? { highlight: true, label: `직선 ${railM}m` } : undefined));
+      const isNearest = entrance.featureId === nearestEntrance?.featureId;
+      map.push(candidate(entrance, "rail_entrance", {
+        name: entranceDisplayName(entrance),
+        highlight: isNearest,
+        sublabel: isNearest ? distanceSublabel(entrance.distanceM) : null,
+        labelPriority: isNearest ? 2 : 0,
+        badges: entranceBadges(entrance),
+      }));
     }
-    for (const l of ctx.hits("reference", ["rail_line"])) {
-      for (const path of clipLineToCircle(ctx.input.center, radiusM, l.geometry)) {
-        const line = lineCandidate(l.featureId, "rail_line", path, linePathLength(path));
-        if (line) lines.push(line);
-      }
+    const railLineParts = railLineHits.flatMap((l) => clipLineToCircle(ctx.input.center, radiusM, l.geometry).map((path, index) => ({
+      hit: l,
+      index,
+      path,
+      lengthM: linePathLength(path),
+    })));
+    const longestByLine = new Map<string, number>();
+    for (const part of railLineParts) longestByLine.set(lineKey(part.hit), Math.max(longestByLine.get(lineKey(part.hit)) ?? 0, part.lengthM));
+    for (const part of railLineParts) {
+      const name = text(part.hit.name);
+      const line = lineCandidate(part.hit.featureId, "rail_line", part.path, part.lengthM, null, {
+        fid: `${part.hit.featureId}:${part.index}`,
+        name,
+        sublabel: null,
+        labelPriority: name && part.lengthM === longestByLine.get(lineKey(part.hit)) ? 1 : 0,
+        color: hexColor(part.hit.properties.color) ?? DEFAULT_RAIL_COLOR,
+        emphasis: "major",
+      });
+      if (line) lines.push(line);
     }
     if (usesPoint) limitations.push({ kind: "unknown", note: "최근접 역은 출입구 자료가 없어 역 대표점 거리입니다." });
     if (railM === null) limitations.push({ kind: "unknown", note: `${searchTxt} 안에 운영역이 없어 철도 거리는 계산하지 못했습니다.` });
