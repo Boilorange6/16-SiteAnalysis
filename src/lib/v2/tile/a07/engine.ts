@@ -7,6 +7,7 @@ import { toUtmk, type LngLat } from "../../crs";
 import { lookupParcelPoints } from "../../data/parcels";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext, Limitation, SourceRef } from "../../engine/context";
+import { lookupComplexNames } from "./complex-name";
 import { fmt, makeTile, missing, obs, type MapCandidate, type TileDraft } from "../../engine/tiles/common";
 import { notProvided } from "../../engine/tiles/not-provided";
 
@@ -69,6 +70,19 @@ const r1 = (n: number) => Math.round(n * 10) / 10;
 const sortedNums = (xs: number[]) => [...xs].sort((a, b) => a - b);
 const median = (xs: number[]) => quantile(sortedNums(xs), 0.5);
 const daysBetween = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+
+function tradeLegend(values: number[]): TileResult["presentation"]["legend"] {
+  const sorted = sortedNums(values);
+  if (sorted.length === 0) return [];
+  const cuts = [0.2, 0.4, 0.6, 0.8].map((p) => quantile(sorted, p) as number);
+  return [
+    { label: "㎡당 하위 20%", min: null, max: cuts[0] },
+    { label: "㎡당 20~40%", min: cuts[0], max: cuts[1] },
+    { label: "㎡당 40~60%", min: cuts[1], max: cuts[2] },
+    { label: "㎡당 60~80%", min: cuts[2], max: cuts[3] },
+    { label: "㎡당 상위 20%", min: cuts[3], max: null },
+  ];
+}
 
 /** 단가(만원/㎡) 오름차순 분위 경계로 1~5 구간. 같은 값은 같은 구간. */
 export function quintileOf(v: number, values: number[]): 1 | 2 | 3 | 4 | 5 {
@@ -185,6 +199,7 @@ export function a07(ctx: EngineContext): TileResult {
   // 지도: 필지(단지) 대표점 단위로 묶는다. 색은 이번 결과 안의 점별 중앙 단가 5분위.
   const top3 = new Set([...points].sort((a, b) => b.n - a.n || a.i - b.i).slice(0, 3).map((p) => p.pnu));
   const all = points.map((p) => p.m);
+  const names = lookupComplexNames(ctx.db("core"), points.map((p) => p.pnu));
   const map: MapCandidate[] = points.map((p) => ({
     id: p.i,
     f: {
@@ -192,7 +207,9 @@ export function a07(ctx: EngineContext): TileResult {
       lng: Math.round(p.at[0] * 1e6) / 1e6,
       lat: Math.round(p.at[1] * 1e6) / 1e6,
       weight: p.n,
-      ...(top3.has(p.pnu) ? { label: `${p.n}건 ${fmt(Math.round(p.m))}만원/㎡` } : {}),
+      name: names.get(p.pnu) ?? null,
+      sublabel: `${fmt(Math.round(p.m))}만원/㎡ · ${fmt(p.n)}건`,
+      labelPriority: top3.has(p.pnu) && names.has(p.pnu) ? 1 : 0,
     },
   }));
 
@@ -214,6 +231,7 @@ export function a07(ctx: EngineContext): TileResult {
     sources,
     layers: ["trade_q1", "trade_q2", "trade_q3", "trade_q4", "trade_q5"],
     map,
+    legend: tradeLegend(all),
     limitations,
   });
 }

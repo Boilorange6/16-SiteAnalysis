@@ -25,6 +25,17 @@ export const bucketOf = timingBucket;
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null);
 
+const plannedMonthText = (month: string | null): string | null => {
+  if (!month) return null;
+  const monthNumber = Number(month.slice(5));
+  return monthNumber >= 1 && monthNumber <= 12 ? `${Number(month.slice(0, 4))}년 ${monthNumber}월 입주` : null;
+};
+
+const supplySublabel = (month: string | null, units: number | null): string | null => {
+  const parts = [plannedMonthText(month), units === null ? null : `${fmt(units)}세대`].filter((part): part is string => part !== null);
+  return parts.length > 0 ? parts.join(" · ") : null;
+};
+
 const normName = (s: unknown) => (typeof s === "string" ? s.replace(/\([^)]*\)/g, "").replace(/[^0-9A-Za-z가-힣]/g, "").replace(/아파트$/, "") : "");
 /** "…상일동 43번지 일원" / "…상일동 43-0" → "상일동43-0" (동·본번·부번만) */
 const normAddr = (s: unknown) => {
@@ -99,6 +110,8 @@ export function a06(ctx: EngineContext): TileResult {
         weight: num(h.properties.units),
         households: num(h.properties.units),
         name: h.name,
+        sublabel: supplySublabel(month, num(h.properties.units)),
+        labelPriority: h.name ? 1 : 0,
         type: kind === null ? null : (TYPE_TEXT[kind] ?? kind),
         plannedMonth: month,
         distanceM: h.distanceM === null ? null : Math.round(h.distanceM),

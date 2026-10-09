@@ -45,7 +45,9 @@ interface RentPoint {
   n: number;
   jeonseN: number;
   monthlyN: number;
-  medianUnit: number | null;
+  medianJeonseUnit: number | null;
+  medianMonthlyRent: number | null;
+  medianMonthlyDeposit: number | null;
   at: LngLat;
   name: string | null;
 }
@@ -114,7 +116,14 @@ function pointGroups(rows: RentRow[], parcelPoints: Map<string, LngLat>, unit: (
       n: group.length,
       jeonseN: kind === "jeonse" ? group.length : 0,
       monthlyN: kind === "monthly" ? group.length : 0,
-      medianUnit: median(group.map(unit).filter((value): value is number => value !== null)),
+      medianJeonseUnit: kind === "jeonse" ? median(group.map(unit).filter((value): value is number => value !== null)) : null,
+      medianMonthlyRent: kind === "monthly" ? median(group.map(unit).filter((value): value is number => value !== null)) : null,
+      medianMonthlyDeposit: kind === "monthly"
+        ? median(group.map((row) => {
+            const deposit = nonNegative(row.deposit_krw);
+            return deposit === null ? null : deposit / 10_000;
+          }).filter((value): value is number => value !== null))
+        : null,
       at: parcelPoints.get(pnu)!,
       name: names.get(pnu) ?? null,
     }));
@@ -132,7 +141,9 @@ function mergeRentPoints(jeonse: RentPoint[], monthly: RentPoint[]): RentPoint[]
         n: (j?.n ?? 0) + (m?.n ?? 0),
         jeonseN: j?.n ?? 0,
         monthlyN: m?.n ?? 0,
-        medianUnit: j?.medianUnit ?? null,
+        medianJeonseUnit: j?.medianJeonseUnit ?? null,
+        medianMonthlyRent: m?.medianMonthlyRent ?? null,
+        medianMonthlyDeposit: m?.medianMonthlyDeposit ?? null,
         at: primary.at,
         name: j?.name ?? m?.name ?? null,
       };
@@ -141,22 +152,34 @@ function mergeRentPoints(jeonse: RentPoint[], monthly: RentPoint[]): RentPoint[]
 }
 
 function rentFeatures(points: RentPoint[]): MapCandidate[] {
-  const topJeonse = new Set(
+  const top3 = new Set(
     points
-      .filter((point) => point.jeonseN > 0)
-      .sort((a, b) => b.jeonseN - a.jeonseN || a.pnu.localeCompare(b.pnu))
+      .sort((a, b) => b.n - a.n || a.pnu.localeCompare(b.pnu))
       .slice(0, 3)
       .map((point) => point.pnu),
   );
   return points.map((point, index) => ({
     id: index,
     f: {
-      // 한 PNU당 한 점은 W2a에서 보장한다. 혼합 PNU의 전세/월세 2색 표식은 W2b 공용 표현 계약에서 적용한다.
+      // 한 PNU당 한 점은 W2a에서 보장한다. 혼합 PNU는 전세 우선 점과 두 계약군 배지로 구분한다.
       layer: point.jeonseN > 0 ? "rent_jeonse" : "rent_monthly",
       lng: Math.round(point.at[0] * 1e6) / 1e6,
       lat: Math.round(point.at[1] * 1e6) / 1e6,
       weight: point.n,
-      ...(topJeonse.has(point.pnu) && point.medianUnit !== null ? { label: `${point.jeonseN}건 전세 ${fmt(Math.round(point.medianUnit))}만원/㎡` } : {}),
+      name: point.name,
+      sublabel: point.jeonseN > 0
+        ? [point.medianJeonseUnit === null ? "전세" : `전세 ${fmt(Math.round(point.medianJeonseUnit))}만원/㎡`, `${fmt(point.jeonseN)}건`].join(" · ")
+        : [
+            point.medianMonthlyRent === null ? "월세" : `월세 ${fmt(Math.round(point.medianMonthlyRent))}만원${point.medianMonthlyDeposit === null ? "" : `(보증금 ${fmt(Math.round(point.medianMonthlyDeposit))}만원)`}`,
+            `${fmt(point.monthlyN)}건`,
+          ].join(" · "),
+      labelPriority: top3.has(point.pnu) && point.name !== null ? 1 : 0,
+      ...(point.jeonseN > 0 && point.monthlyN > 0 ? {
+        badges: [
+          { text: "전세", color: "#2B6CB0" },
+          { text: "월세", color: "#63B3ED" },
+        ],
+      } : {}),
     },
   }));
 }
