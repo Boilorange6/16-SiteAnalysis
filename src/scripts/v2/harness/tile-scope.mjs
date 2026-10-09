@@ -49,18 +49,27 @@ const ABSORBED_TO_HOST = Object.freeze({
   D27: "A11",
 });
 
-const normalizePath = (file) => file.replaceAll("\\", "/").replace(/^\.\//, "");
+export const normalizePath = (file) => file.replaceAll("\\", "/").replace(/^\.\//, "");
 const hostCode = (code) => ABSORBED_TO_HOST[code] ?? code;
 const ownershipCodes = (code) => (code === "A05" || code === "A06" ? ["A05", "A06"] : [hostCode(code)]);
 
 function usage() {
-  console.error("usage: node src/scripts/v2/harness/tile-scope.mjs <code...> [--base <ref>] | --self-test");
+  console.error("usage: node src/scripts/v2/harness/tile-scope.mjs <code...> [--base <ref>] [--allow <path> ...] | --self-test");
 }
 
-function parseArgs(argv) {
+function normalizeAllowPath(file) {
+  const normalized = normalizePath(file);
+  if (!normalized || normalized.startsWith("/") || /^[A-Za-z]:\//.test(normalized) || normalized.split("/").includes("..")) {
+    throw new Error("--allow requires a repository-relative path");
+  }
+  return normalized;
+}
+
+export function parseArgs(argv) {
   const codes = [];
   let base = DEFAULT_BASE;
   let selfTest = false;
+  const allowPaths = [];
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--self-test") {
@@ -73,9 +82,16 @@ function parseArgs(argv) {
       if (!base) throw new Error("--base requires a git ref");
       continue;
     }
+    if (arg === "--allow") {
+      const allowPath = argv[i + 1];
+      if (!allowPath || allowPath.startsWith("--")) throw new Error("--allow requires a repository-relative path");
+      allowPaths.push(normalizeAllowPath(allowPath));
+      i += 1;
+      continue;
+    }
     codes.push(arg);
   }
-  return { codes, base, selfTest };
+  return { codes, base, selfTest, allowPaths: [...new Set(allowPaths)] };
 }
 
 function assertValidCodes(codes) {
@@ -85,7 +101,7 @@ function assertValidCodes(codes) {
   }
 }
 
-function allowedPathForCode(file, code) {
+export function allowedPathForCode(file, code) {
   const normalized = normalizePath(file);
   const testCodes = ownershipCodes(code);
   if (testCodes.some((testCode) => normalized.startsWith(`src/lib/v2/tile/${hostCode(testCode).toLowerCase()}/`))) return true;
@@ -95,8 +111,15 @@ function allowedPathForCode(file, code) {
   return OWNER_RULES[ownerCode]?.some((rule) => rule.test(normalized)) ?? false;
 }
 
-function allowedReason(file, codes) {
+export function isAllowedPath(file, codes, allowPaths = []) {
   const normalized = normalizePath(file);
+  const normalizedAllows = allowPaths.map(normalizePath);
+  return normalizedAllows.includes(normalized) || codes.some((code) => allowedPathForCode(normalized, code));
+}
+
+export function allowedReason(file, codes, allowPaths = []) {
+  const normalized = normalizePath(file);
+  if (allowPaths.map(normalizePath).includes(normalized)) return "explicit --allow";
   for (const code of codes) {
     for (const testCode of ownershipCodes(code)) {
       const host = hostCode(testCode);
@@ -109,7 +132,7 @@ function allowedReason(file, codes) {
   return null;
 }
 
-function runSelfTest() {
+export function runSelfTest() {
   assert.equal(hostCode("D06"), "D05");
   assert.equal(hostCode("D14"), "A01");
   assert.equal(allowedPathForCode("src/lib/v2/tile/a06/view.ts", "A05"), true, "A05 permits the shared A06 tile folder");
@@ -120,6 +143,9 @@ function runSelfTest() {
   assert.equal(allowedPathForCode("src/scripts/v2/test-v2-tile-d05-height.mjs", "D06"), true, "absorbed test uses the D05 host prefix");
   assert.equal(allowedPathForCode("src/lib/v2/ui/mass-projection.ts", "S01"), true);
   assert.equal(allowedPathForCode("src/lib/v2/engine/run.ts", "S01"), false);
+  assert.deepEqual(parseArgs(["A01", "--allow", ".\\src\\lib\\v2\\ui\\map-layers.ts", "--allow", "src/lib/v2/ui/map-layers.ts"]).allowPaths, ["src/lib/v2/ui/map-layers.ts"]);
+  assert.equal(isAllowedPath("src/lib/v2/ui/map-layers.ts", ["A01"], ["src/lib/v2/ui/map-layers.ts"]), true);
+  assert.equal(allowedReason("src/lib/v2/ui/map-layers.ts", ["A01"], ["src/lib/v2/ui/map-layers.ts"]), "explicit --allow");
   console.log("tile-scope: PASS (--self-test)");
 }
 
@@ -130,24 +156,35 @@ function changedFiles(base) {
   return result.stdout.split(/\r?\n/).map(normalizePath).filter(Boolean);
 }
 
-const parsed = parseArgs(process.argv.slice(2));
-if (parsed.selfTest) {
-  if (parsed.codes.length > 0) {
-    usage();
-    process.exit(2);
+export function main(argv = process.argv.slice(2)) {
+  const parsed = parseArgs(argv);
+  if (parsed.selfTest) {
+    if (parsed.codes.length > 0 || parsed.allowPaths.length > 0) {
+      usage();
+      process.exit(2);
+    }
+    runSelfTest();
+    return;
   }
-  runSelfTest();
-} else {
+
   assertValidCodes(parsed.codes);
   const codes = [...new Set(parsed.codes)];
   const files = changedFiles(parsed.base);
-  const violations = files.filter((file) => !codes.some((code) => allowedPathForCode(file, code)));
-  console.log(`tile-scope: ${files.length} changed path(s), codes=${codes.join(",")}, base=${parsed.base}`);
+  const violations = files.filter((file) => !isAllowedPath(file, codes, parsed.allowPaths));
+  const allowSummary = parsed.allowPaths.length > 0 ? `, allow=${parsed.allowPaths.join(",")}` : "";
+  console.log(`tile-scope: ${files.length} changed path(s), codes=${codes.join(",")}, base=${parsed.base}${allowSummary}`);
   if (violations.length > 0) {
+    if (parsed.allowPaths.length > 0) {
+      for (const file of files.filter((candidate) => !violations.includes(candidate))) {
+        console.log(`  ALLOWED ${file} (${allowedReason(file, codes, parsed.allowPaths)})`);
+      }
+    }
     console.error(`tile-scope: FAIL (${violations.length} path(s) outside ownership)`);
     for (const file of violations) console.error(`  OUTSIDE ${file}`);
     process.exit(1);
   }
-  for (const file of files) console.log(`  ALLOWED ${file} (${allowedReason(file, codes)})`);
+  for (const file of files) console.log(`  ALLOWED ${file} (${allowedReason(file, codes, parsed.allowPaths)})`);
   console.log(`tile-scope: PASS (${files.length} path(s))`);
 }
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
