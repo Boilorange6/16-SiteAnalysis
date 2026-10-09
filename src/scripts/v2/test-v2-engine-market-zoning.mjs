@@ -175,13 +175,9 @@ assert.ok(sigunguMatches("경기도 수원시 팔달구", "수원시") && sigung
   assert.equal(val(t, "planned_households"), 1300, "연결 이벤트 1000 + 구역 속성 300");
   assert.equal(metric(t, "type_1").label, "유형: 재개발");
   assert.match(t.judgment.sentence, /정비구역 2곳\(사업 2건: 구역지정 1건, 조합 1건\)/);
-  assert.equal(t.presentation.polygons.length, 2);
-  assert.ok(t.presentation.polygons.every((p) => p.layer === "maint_zone" && p.rings[0].length === 5 && p.label));
-  assert.equal(t.presentation.polygonsTotal, 2);
-  const pts = t.presentation.features.filter((x) => x.layer === "maint_zone_center");
-  assert.equal(pts.length, 2, "면을 못 그리는 화면을 위한 대표점");
-  assert.ok(pts.every((p) => /조합|구역지정/.test(p.label)));
-  assert.deepEqual(t.presentation.legend.map((l) => l.label), ["정비구역"], "면·대표점 범례는 하나");
+  // 지도는 흡수된 D23의 반경으로 자른 단계 면 하나만(사용자 결정 11) — A09 엔진은 면·대표점을 내지 않는다
+  assert.equal((t.presentation.polygons ?? []).length, 0);
+  assert.equal((t.presentation.features ?? []).filter((x) => x.layer.startsWith("maint_zone")).length, 0);
   assert.ok(t.limitations.some((l) => l.note.includes("경계가 확보된 사업만")));
   ctx.close();
 }
@@ -216,7 +212,7 @@ const halfArea = (d, r) => (r * r * Math.acos(-d / r) + d * Math.sqrt(r * r - d 
   const site = t.presentation.features.find((f) => f.layer === "zoning_site");
   assert.deepEqual([site.label, site.highlight], ["제2종일반주거지역", true]);
   assert.deepEqual(t.presentation.polygons.map((p) => p.layer).sort(), ["zone:상업", "zone:주거"]);
-  assert.deepEqual(t.presentation.features.filter((f) => f.layer.startsWith("zone_center:")).map((f) => f.layer).sort(), ["zone_center:상업", "zone_center:주거"]);
+  assert.equal(t.presentation.features.filter((f) => f.layer.startsWith("zone_center:")).length, 0, "면이 있으면 대표점을 내지 않는다");
   // 대지 요약이 A12의 대지 용도지역을 쓴다
   const s = buildSummary({ address: "x", jimok: null }, 800, [t]);
   assert.equal(s.zoning, "제2종일반주거지역");

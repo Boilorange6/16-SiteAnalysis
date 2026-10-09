@@ -50,7 +50,7 @@ assert.deepEqual(v.chart, [{ label: "100㎡ 미만", value: 25, unit: "%" }, { l
 assert.ok(v.map, "면 지물만 있어도 지도(polygons 전달은 Task 2가 검증)");
 const a = { ...base, tileId: "x-A12", tileType: "analysis", tileCode: "A12", metrics: [m("share_class_1", "구성비: 주거", 40, "%")], presentation: { legend: [], camera: null, layers: [], outputFace: "front" } };
 assert.equal(toTileView(a).hasFace, true, "레이어를 가진 분석 타일은 지도 면을 제공");
-assert.ok(toTileView(a).layerOptions.length >= 2, "A12 분석 타일은 레이어 선택을 제공");
+assert.equal(toTileView(a).layerOptions.length, 1, "A12는 바꿔도 화면이 같은 레이어 선택을 두지 않는다(계획 1-2)");
 
 // 5) areaInCircle: 완전 포함은 절단 없이 전체 면적, 걸침은 교차 면적, 밖은 0
 const [cx, cy] = toUtmk(CENTER);

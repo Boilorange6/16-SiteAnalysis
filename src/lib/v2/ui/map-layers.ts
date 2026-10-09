@@ -196,6 +196,13 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   lot_1000_3000: S("1,000~3,000㎡", "#814C5A"),
   lot_ge3000: S("3,000㎡ 이상", "#5B3A70"),
   lot_road_water: S("도로·하천 지목", "#4F9DA6"),
+  // D19 지목 6그룹(사용자 결정 7). 녹지 계열 둘은 명도로 갈라 색각 이상에서도 구분된다.
+  "jimok:site": S("지목 · 대지", "#E3B65C"),
+  "jimok:road": S("지목 · 도로", "#8C939E"),
+  "jimok:field": S("지목 · 전답", "#B5CF6B"),
+  "jimok:forest": S("지목 · 임야", "#3F7D4E"),
+  "jimok:water": S("지목 · 하천·구거", "#4F8FC9"),
+  "jimok:other": S("지목 · 기타", "#C9C0D6"),
   "maint_stage:구역지정": S("정비사업 · 구역지정", "#D6478A"),
   "maint_stage:추진위": S("정비사업 · 추진위", "#C05A8A"),
   "maint_stage:조합": S("정비사업 · 조합", "#A84C7B"),
