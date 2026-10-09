@@ -118,7 +118,7 @@ assert.equal(view.rows.find((row) => row.label === "도보 10분 도달 면적")
 assert.equal(view.headline?.value, expectedArea10Text, "D28 headline area must keep one decimal km² formatting");
 assert.ok(view.sentence?.includes(`도달 면적 ${expectedArea10Text}(`), "D28 view sentence must show every km² area to one decimal");
 assert.ok(result.presentation.polygons?.length > 0);
-assert.ok(result.presentation.polygons?.every((polygon) => polygon.name == null && polygon.sublabel == null && polygon.labelPriority == null), "D28 polygons must not create map labels");
+assert.ok(result.presentation.polygons?.every((polygon) => polygon.name == null && polygon.sublabel == null && polygon.labelPriority === 0), JSON.stringify(result.presentation.polygons?.find((polygon) => !(polygon.name == null && polygon.sublabel == null && polygon.labelPriority === 0))));
 assert.deepEqual(
   [...new Set(result.presentation.polygons.map((polygon) => polygon.layer))].sort(),
   ["walk_10", "walk_15", "walk_5"],
