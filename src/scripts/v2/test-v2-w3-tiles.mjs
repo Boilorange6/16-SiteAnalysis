@@ -4,7 +4,7 @@ const { TILE_CODES } = await import("../../lib/v2/ui/tile-catalog.ts");
 const { HEAVY_TILE_CODES, TILES } = await import("../../lib/v2/engine/run.ts");
 const { MAX_MAP_POLYGONS, parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { mergeTileResults } = await import("../../lib/v2/engine/tiles/merge.ts");
-const { layerOptionsForResult } = await import("../../lib/v2/ui/tile-layers.ts");
+const { filterMapForLayer, layerOptionsForResult } = await import("../../lib/v2/ui/tile-layers.ts");
 const { toTileView, viewWithLayer } = await import("../../lib/v2/ui/tile-view.ts");
 
 const expected = [
@@ -66,6 +66,47 @@ const a01Transit = viewWithLayer(toTileView(a01), "transit");
 assert.deepEqual(a01Transit.map.features.map((item) => item.layer).sort(), ["rail_station"], "철도 칩(id transit)은 철도만");
 assert.deepEqual(a01Transit.map.lines.map((item) => item.layer), ["rail_line"]);
 assert.equal(a01Transit.defaultLayer, "transit");
+
+const currentLayerOptions = {
+  A02: ["all", "school_zone"],
+  A04: ["all", "green_space"],
+  A07: ["all"],
+  A09: ["all", "maintenance_stage"],
+  A10: ["all"],
+  A11: [],
+  A12: ["all"],
+  D19: ["all", "parcel_size"],
+};
+for (const [code, ids] of Object.entries(currentLayerOptions)) {
+  assert.deepEqual(layerOptionsForResult(result(code, [])).map((option) => option.id), ids, `${code} 현재 레이어 옵션`);
+}
+
+const a07 = result("A07", [feature("trade_q1", "cheap"), feature("trade_q5", "expensive")]);
+const a07View = toTileView(a07);
+assert.deepEqual(a07View.layerOptions, [{ id: "all", label: "기본 거래" }], "A07 옛 trade_location 칩은 현재 기본 보기로 투영");
+assert.equal(a07View.defaultLayer, "all", "A07 옛 저장 레이어의 기본값은 all");
+const a07LegacyView = viewWithLayer(a07View, "trade_location");
+assert.equal(a07LegacyView.defaultLayer, "all", "A07 옛 trade_location 선택은 view에서 all로 fallback");
+assert.deepEqual(a07LegacyView.map.features.map((item) => item.layer).sort(), ["trade_q1", "trade_q5"]);
+assert.deepEqual(
+  filterMapForLayer(a07View.map, "A07", "trade_location")?.features.map((item) => item.layer).sort(),
+  ["trade_q1", "trade_q5"],
+  "A07 옛 trade_location 매처는 지도를 잘못 잘라내지 않는다",
+);
+
+for (const [code, legacyLayer, staleFeatureLayer] of [
+  ["A10", "planned_detail", "planned_rail_line"],
+  ["A11", "density_detail", "pop_dens_5"],
+  ["A12", "zoning_detail", "zone_residential"],
+]) {
+  const stale = toTileView(result(code, [feature(staleFeatureLayer, "stale"), feature("other", "other")]));
+  assert.deepEqual(
+    filterMapForLayer(stale.map, code, legacyLayer)?.features.map((item) => item.layer).sort(),
+    ["other", staleFeatureLayer].sort(),
+    `${code} 삭제된 ${legacyLayer} 선택은 전체 지도를 유지`,
+  );
+  assert.equal(viewWithLayer(stale, legacyLayer).defaultLayer, "all", `${code} 삭제된 ${legacyLayer} 선택 fallback`);
+}
 
 const d05 = result("D05", [feature("floors_1_4", "floor"), feature("tall_ge35", "tall"), feature("low_le12", "low")]);
 assert.deepEqual(layerOptionsForResult(d05).map((option) => option.id), ["all", "height_tall", "height_low"]);

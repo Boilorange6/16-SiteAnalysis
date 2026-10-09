@@ -9,20 +9,30 @@ const optionMatches: Record<string, (layer: string) => boolean> = {
   transit: (layer) => /^(rail_|bus_|walk_)/.test(layer),
   school_zone: (layer) => layer.startsWith("school_zone"),
   green_space: (layer) => ["green_zone", "green_parcel", "water_parcel"].includes(layer),
-  trade_location: (layer) => layer.startsWith("trade_q"),
   maintenance_stage: (layer) => layer.startsWith("maint_stage:"),
-  planned_detail: (layer) => layer.startsWith("planned_rail"),
-  density_detail: (layer) => layer.startsWith("pop_grid_") || layer.startsWith("pop_dens_"),
-  zoning_detail: (layer) => layer.startsWith("zone") || layer.startsWith("zoning"),
   height_tall: (layer) => layer.startsWith("tall_"),
   height_low: (layer) => layer.startsWith("low_"),
   parcel_size: (layer) => layer.startsWith("lot_"),
 };
 
+const LEGACY_LAYER_FALLBACKS: Record<string, string> = {
+  trade_location: "all",
+};
+
+function currentLayerOptions(options: readonly TileLayerOption[]): TileLayerOption[] {
+  const seen = new Set<string>();
+  return options.flatMap((option) => {
+    const id = LEGACY_LAYER_FALLBACKS[option.id] ?? option.id;
+    if (seen.has(id)) return [];
+    seen.add(id);
+    return [{ ...option, id }];
+  });
+}
+
 export function layerOptionsForResult(result: TileResult): TileLayerOption[] {
   const moduleOptions = tileClientModuleFor(result.tileCode)?.layers?.options;
-  if (typeof moduleOptions === "function") return [...moduleOptions(result)];
-  if (moduleOptions) return [...moduleOptions];
+  if (typeof moduleOptions === "function") return currentLayerOptions(moduleOptions(result));
+  if (moduleOptions) return currentLayerOptions(moduleOptions);
   return [];
 }
 
