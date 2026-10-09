@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import Database from "better-sqlite3";
 
 const { buildEngineFixture, CENTER } = await import("./engine-fixture.mjs");
+const { insertFeature } = await import("../../lib/v2/data/features.ts");
+const { insertRelease } = await import("../../lib/v2/ingest/build.ts");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { a08, collectRents, MIN_PAIRED } = await import("../../lib/v2/tile/a08/engine.ts");
@@ -17,6 +20,19 @@ const near = (actual, expected, tolerance, message) => assert.ok(Math.abs(actual
 const make = async (options, radiusM = 500, analysisDate = "2026-09-30") => {
   const dataDir = mkdtempSync(join(tmpdir(), "v2-a08-"));
   await buildEngineFixture(dataDir, "v1", options);
+  const core = new Database(join(dataDir, "versions", "v1", "core.sqlite"));
+  const nameRelease = insertRelease(core, {
+    sourceId: "housing_name_test",
+    provider: "테스트",
+    sourceUrl: "https://example.invalid",
+    sourceAsOf: "2026-09-30",
+    fetchedAt: "2026-09-30T00:00:00Z",
+    checksum: "x",
+    licenseCode: "TEST",
+  });
+  insertFeature(core, { stableId: "housing:rent-a", kind: "housing_complex", sourceKey: "rent-a", releaseId: nameRelease, geometry: { type: "Point", coordinates: CENTER }, pnu: "4136011800100010000", name: "다산 센트럴" });
+  insertFeature(core, { stableId: "housing:rent-b", kind: "housing_complex", sourceKey: "rent-b", releaseId: nameRelease, geometry: { type: "Point", coordinates: CENTER }, pnu: "4136011800100020000", name: "다산 리버" });
+  core.close();
   const manifest = M.readManifest(dataDir);
   return new EngineContext(dataDir, manifest, "a08-test", {
     address: "경기도 남양주시 다산동 100",
@@ -68,9 +84,14 @@ assert.equal(MIN_PAIRED, 3);
 
   const features = tile.presentation.features;
   assert.equal(features.length, 2, "같은 PNU의 전세·월세를 한 점으로 합친다");
-  assert.deepEqual([...new Set(features.map((feature) => feature.layer))], ["rent_jeonse"], "혼합 점은 W2b 2색 표식 전까지 전세 레이어로 표시");
+  assert.deepEqual([...new Set(features.map((feature) => feature.layer))], ["rent_jeonse"], "혼합 점은 전세 우선 레이어로 한 번만 표시");
   assert.deepEqual(features.map((feature) => feature.weight).sort((a, b) => a - b), [6, 6], "점 크기는 PNU 전체 계약 건수");
-  assert.ok(features.filter((feature) => feature.layer === "rent_jeonse").every((feature) => /^\d+건 전세 [\d,]+만원\/㎡$/.test(feature.label)));
+  const named = features.find((feature) => feature.name === "다산 센트럴");
+  const mixed = features.find((feature) => feature.name === "다산 리버");
+  assert.deepEqual([named?.name, named?.sublabel, named?.labelPriority], ["다산 센트럴", "전세 560만원/㎡ · 6건", 1], "A08 전세 점은 단지명·전세 단가·건수를 낸다");
+  assert.deepEqual([mixed?.name, mixed?.sublabel, mixed?.labelPriority], ["다산 리버", "전세 131만원/㎡ · 2건", 1], "A08 혼합 PNU도 한 점의 주 계약군 값을 보존한다");
+  assert.deepEqual(mixed?.badges, [{ text: "전세", color: "#2B6CB0" }, { text: "월세", color: "#63B3ED" }], "A08 혼합 PNU의 두 계약군은 문자·색 배지로도 구분한다");
+  assert.ok(features.every((feature) => !Object.hasOwn(feature, "label")), "A08는 옛 label을 내지 않는다");
   assert.ok(tile.presentation.layers.includes("rent_jeonse") && tile.presentation.layers.includes("rent_monthly"));
   assert.deepEqual(tile.provenance.sources.map((source) => source.sourceId).sort(), ["rtms_apt_rent", "rtms_apt_trade"]);
   assert.ok(elapsedMs < 1500, `A08 합성 타일 성능 ${elapsedMs.toFixed(1)}ms`);
