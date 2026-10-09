@@ -280,7 +280,8 @@ export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, p
     <MapBox
       model={displayView.map ?? displayView.backdrop}
       label={label}
-      legend={!card}
+      // 카드와 펼침 모두 지도 밖 공용 범례 띠를 쓴다. 상세는 아래 출처 띠 위에 띠를 둔다.
+      legend={false}
       legendY={legendY}
       north={22}
       credit={false}

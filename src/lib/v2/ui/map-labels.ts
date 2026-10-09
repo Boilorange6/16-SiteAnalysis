@@ -95,6 +95,20 @@ export type AutomaticLabelCandidate = {
   [key: string]: unknown;
 };
 
+export type MapLabelBox = { x0: number; y0: number; x1: number; y1: number };
+
+/**
+ * SVG text의 흰 외곽선과 읽기 여유까지 포함한 라벨 충돌 판정.
+ * gap보다 작은 상자 사이의 틈도 충돌로 본다.
+ */
+export function labelBoxesOverlap(a: MapLabelBox, b: MapLabelBox, gap = 0): boolean {
+  const clearance = Math.max(0, gap);
+  return a.x0 < b.x1 + clearance
+    && b.x0 < a.x1 + clearance
+    && a.y0 < b.y1 + clearance
+    && b.y0 < a.y1 + clearance;
+}
+
 /** 밀집 지도용 순수 선정기: priority 2→1, 엔진 순서, 같은 문구 하나. */
 export function selectAutomaticLabels<T extends AutomaticLabelCandidate>(entries: readonly T[]): T[] {
   const seen = new Set<string>();

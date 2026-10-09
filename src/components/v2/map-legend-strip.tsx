@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as R
 import { activeLegendLabel, legendScrollState, legendWheelScrollTarget } from "@/lib/v2/ui/map-legend";
 import styles from "./board.module.css";
 
-export type LegendSwatchKind = "point" | "line" | "polygon" | "site";
+export type LegendSwatchKind = "point" | "line" | "polygon" | "site" | "raster";
 
 export type MapLegendItem = {
   layer: string;
@@ -12,8 +12,12 @@ export type MapLegendItem = {
   id?: string;
   label: string;
   color: string;
+  /** 여러 원천 색을 쓰는 선(예: 철도 노선)·연속 래스터의 띠 견본. */
+  colors?: readonly string[];
   count?: number;
   site?: boolean;
+  /** 지도에서 강조할 수 없는 설명용 래스터/메타 항목. */
+  static?: boolean;
   swatch?: LegendSwatchKind;
   hollow?: boolean;
   /** 화면에 표시하는 값 범례와 지도 요소 강조에 쓰는 공용 레이어명을 분리한다. */
@@ -30,12 +34,24 @@ function LegendSwatch({ item }: { item: MapLegendItem }) {
       </svg>
     );
   }
+  const colors = item.colors?.filter((color) => /^#[0-9A-Fa-f]{6}$/.test(color)) ?? [];
+  const gradient = colors.length > 1
+    ? `linear-gradient(90deg, ${colors.flatMap((color, index) => {
+        const start = (index * 100) / colors.length;
+        const end = ((index + 1) * 100) / colors.length;
+        return [`${color} ${start}%`, `${color} ${end}%`];
+      }).join(", ")})`
+    : undefined;
   return (
     <span
       className={styles.mapLegendSwatch}
       data-kind={kind}
       aria-hidden="true"
-      style={{ "--map-legend-color": item.color, background: item.hollow ? "transparent" : undefined } as CSSProperties}
+      style={{
+        "--map-legend-color": item.color,
+        "--map-legend-gradient": gradient,
+        background: item.hollow ? "transparent" : undefined,
+      } as CSSProperties}
     />
   );
 }
@@ -66,7 +82,7 @@ function LegendEntry({
       {typeof item.count === "number" && <span className={styles.mapLegendCount}>{item.count}</span>}
     </>
   );
-  if (item.site) return <span className={styles.mapLegendStatic}>{content}</span>;
+  if (item.site || item.static) return <span className={styles.mapLegendStatic}>{content}</span>;
   const interactionLabel = item.highlightLabel ?? item.label;
   return (
     <button

@@ -11,8 +11,15 @@ assert.deepEqual(s.order, ids);
 assert.deepEqual(s.results, GODEOK_RESULTS);
 assert.equal(s.columns, 4);
 assert.equal(s.included["t-A01"], true);
+assert.equal(s.sizes["t-A01"], 2, "A01 기본 보드 크기는 2칸");
 assert.equal(s.included["t-S02"], false); // not_provided
 assert.equal(s.included["t-S03"], false); // failed
+
+{
+  const saved = boardReducer(s, { type: "resize", id: "t-A01", size: 1 });
+  const restored = restoreBoardState(GODEOK_RESULTS, serializeBoardState(saved));
+  assert.equal(restored.sizes["t-A01"], 1, "저장된 A01 사용자 크기는 새 기본값으로 덮어쓰지 않음");
+}
 
 // 과제 프리셋은 현재 카탈로그 코드만, 중복 없이 선언하고 계산 결과가 있는 타일만 보드에 넣는다.
 {
@@ -174,18 +181,18 @@ assert.deepEqual(reportPages(s), { tiles: 9, pages: 12 }); // 포함·면 설정
   }
   assert.equal(b.undoStack.length, 0);
 
-  // 크기: 기본 1, 같은 값·없는 타일 무시, undo
-  assert.equal(b.sizes["t-A01"], 1);
-  assert.equal(boardReducer(b, { type: "resize", id: "t-A01", size: 1 }), b);
-  assert.equal(boardReducer(b, { type: "resize", id: "nope", size: 2 }), b);
-  b = boardReducer(b, { type: "resize", id: "t-A01", size: 2 });
+  // 크기: A01 기본 2칸, 같은 값·없는 타일 무시, undo
   assert.equal(b.sizes["t-A01"], 2);
-  b = boardReducer(b, { type: "undo" });
+  assert.equal(boardReducer(b, { type: "resize", id: "t-A01", size: 2 }), b);
+  assert.equal(boardReducer(b, { type: "resize", id: "nope", size: 2 }), b);
+  b = boardReducer(b, { type: "resize", id: "t-A01", size: 1 });
   assert.equal(b.sizes["t-A01"], 1);
+  b = boardReducer(b, { type: "undo" });
+  assert.equal(b.sizes["t-A01"], 2);
   b = boardReducer(b, { type: "resize", id: "t-A01", size: 4 });
   assert.equal(b.sizes["t-A01"], 4);
   b = boardReducer(b, { type: "undo" });
-  assert.equal(b.sizes["t-A01"], 1);
+  assert.equal(b.sizes["t-A01"], 2);
 
   // 열 수: 기본 4, 저장값 변경은 undo에 쌓이고 같은 값은 무시한다.
   assert.equal(boardReducer(b, { type: "columns", columns: 4 }), b);

@@ -1,6 +1,6 @@
 import { memo, useId, useRef, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { layerStyle, legendItems, RASTER_STYLES, type MapModel, type RasterStyle } from "@/lib/v2/ui/map-layers";
-import { automaticLabelText, badgeTextColor, legacyLabelPriority, mapLabelText as formatMapLabelText, selectAutomaticLabels, type MapLabelKind } from "@/lib/v2/ui/map-labels";
+import { automaticLabelText, badgeTextColor, labelBoxesOverlap, legacyLabelPriority, mapLabelText as formatMapLabelText, selectAutomaticLabels, type MapLabelKind } from "@/lib/v2/ui/map-labels";
 import { BASEMAP_ATTRIBUTION, BASEMAP_STACK, framedViewport, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, worldPx, type BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { rasterAffine, rasterLegendColor, rasterLegendEntries, resolveRasterStyle } from "@/lib/v2/ui/raster-image";
 import type { MapFeature, MapLine, MapPolygon, RasterRef } from "@/lib/v2/tile-result";
@@ -30,7 +30,7 @@ export type MapFigureProps = {
   /** 직렬화용: width/height 속성을 붙인다. 아니면 부모를 채운다 */
   fixed?: boolean;
   label?: string;
-  /** 몰입형: 벡터 범례를 그리지 않는다 (래스터 숫자 범례는 카드·PPT 의미 보존을 위해 유지) */
+  /** false면 SVG 안의 벡터·래스터 범례를 모두 그리지 않는다. */
   legend?: boolean;
   /** 범례 위쪽 위치(px). 제목 칩 아래에 놓을 때 */
   legendY?: number;
@@ -101,7 +101,6 @@ const INK = "#16181d";
 
 const textW = (s: string, fs: number) => [...s].reduce((w, ch) => w + (ch.charCodeAt(0) > 0x2e80 ? fs : fs * 0.58), 0);
 type Box = { x0: number; y0: number; x1: number; y1: number };
-const hit = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
 type ScreenPoint = readonly [number, number];
 
 export type SiteMarkerMode = "parcel" | "ring";
@@ -270,17 +269,18 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
   const lastLegendPointerType = useRef<string | null>(null);
   const u = Math.min(1.5, Math.max(1, H / 360));
   const activeRaster = selectedRaster(rasterModel, rasterName);
+  const internalLegendVisible = !bare && legend !== false;
 
   // 범례 (지물이 있는 레이어 + 선택된 래스터의 숫자 범례). 이 레이아웃은
   // 뷰포트를 만들기 전에 계산해, 래스터 범례가 반경 원을 가리지 않도록 위쪽을 예약한다.
-  const present = legendItems(model).map((item) => item.layer).filter((layer) => !isSiteParcelLayer(layer));
+  const present = legendItems(model).filter((item) => !isSiteParcelLayer(item.layer));
   const rasterPresentation = rasterModel.legend ?? [];
   const rasterStyle = activeRaster ? RASTER_STYLES[activeRaster.palette] : undefined;
   const resolvedRasterStyle = activeRaster && rasterStyle ? resolveRasterStyle(activeRaster, rasterStyle) : undefined;
   const rasterEntries = activeRaster && resolvedRasterStyle?.mode === "stepped"
     ? rasterLegendEntries(activeRaster, resolvedRasterStyle, rasterPresentation)
     : [];
-  const rasterLegends: RasterLegendConfig[] = activeRaster && resolvedRasterStyle && resolvedRasterStyle.mode !== "mask"
+  const rasterLegends: RasterLegendConfig[] = internalLegendVisible && activeRaster && resolvedRasterStyle && resolvedRasterStyle.mode !== "mask"
     ? [{ ref: activeRaster, style: resolvedRasterStyle, entries: rasterEntries }]
     : [];
   const fs = 10.5 * u;
@@ -292,15 +292,15 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     ...(model.linesTotal !== undefined && model.linesTotal > (model.lines?.length ?? 0) ? [`경로 표시 ${(model.lines?.length ?? 0).toLocaleString("en-US")} / 전체 ${model.linesTotal.toLocaleString("en-US")}`] : []),
   ];
   const notes = [...model.notes, ...cuts];
-  const legendRows: Array<Array<{ layer: string; x: number; w: number; site?: boolean }>> = [[]];
+  const legendRows: Array<Array<{ layer: string; label: string; color: string; x: number; w: number; site?: boolean }>> = [[]];
   let lx = 0;
-  for (const layer of present) {
-    const w = 12 * u + textW(layerStyle(layer).label, fs) + 8 * u;
+  for (const item of present) {
+    const w = 12 * u + textW(item.label, fs) + 8 * u;
     if (lx + w > legendMaxW && legendRows.at(-1)!.length) {
       legendRows.push([]);
       lx = 0;
     }
-    legendRows.at(-1)!.push({ layer, x: lx, w });
+    legendRows.at(-1)!.push({ layer: item.layer, label: item.label, color: item.color, x: lx, w });
     lx += w;
   }
   if (!bare && !muted) {
@@ -309,7 +309,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
       legendRows.push([]);
       lx = 0;
     }
-    legendRows.at(-1)!.push({ layer: "__site_marker", x: lx, w, site: true });
+    legendRows.at(-1)!.push({ layer: "__site_marker", label: "대지", color: "#111111", x: lx, w, site: true });
   }
   const rowH = fs * 1.5;
   const legendRowsN = legendRows.some((row) => row.length) ? legendRows.length : 0;
@@ -318,10 +318,10 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
   const rasterBarW = Math.max(80 * u, Math.min(240 * u, Math.max(1, legendMaxW - 3 * pad)));
   const steppedConfig = rasterLegends.find(({ style }) => style.mode === "stepped");
   const steppedRasterLegend = !!steppedConfig;
-  // 카드의 D21/D29처럼 아래 왼쪽 face-control이 있는 작은 지도는 가로
-  // 범례를 그 자리에 두면 컨트롤이 색 바를 덮는다. 오른쪽 rail로 접어
-  // 같은 색·숫자 정보를 보존한다. 상세·PPT는 기존 가로 레이아웃이다.
-  const cardRailRasterLegend = legend === false
+  // SVG 내부 범례를 유지하는 작은 직접 렌더링은 아래 왼쪽 face-control과
+  // 겹치지 않도록 오른쪽 rail로 접는다. 카드·상세의 legend=false 경로는
+  // 이 계산에 들어오지 않고 바깥 공용 띠가 범례를 맡는다.
+  const cardRailRasterLegend = internalLegendVisible
     && H < 360
     && rasterLegends.length > 0;
   const steppedTitle = steppedConfig ? steppedLegendTitle(steppedConfig.ref, steppedConfig.style) : "";
@@ -380,9 +380,8 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     : rasterLegends.some(({ style }) => style.mode === "continuous")
       ? (rasterLegends.length > 0 ? 3 * rowH + pad * 1.2 : 0)
       : 0;
-  const vectorLegendVisible = (legend ?? !bare) && vectorLegendH > 0;
-  // 카드/PPT는 벡터 범례를 바깥 UI가 맡지만, 래스터 숫자 범례는 지도 자체에 남겨야 한다.
-  const rasterLegendVisible = !bare && rasterLegendH > 0;
+  const vectorLegendVisible = internalLegendVisible && vectorLegendH > 0;
+  const rasterLegendVisible = internalLegendVisible && rasterLegendH > 0;
   // 카드 지도는 제목·보고서 칩과 MapBox의 compact vector legend가 위쪽을
   // 차지한다. 그 아래에서 시작해야 색 바가 카드 chrome에 가려지지 않는다.
   const requestedLy = Math.max(pad, legendY ?? (legend === false ? 68 * u : pad));
@@ -651,6 +650,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     width: textW(decorated ? d.text : d.autoText ?? "", labelFs) + (decorated ? 12 : d.small ? 5 : 7) * u,
     height: labelFs * 1.45,
   });
+  const labelCollisionGap = 3 * u;
   const closestPoint = (box: Box, p: readonly [number, number]): [number, number] => [
     Math.max(box.x0, Math.min(box.x1, p[0])),
     Math.max(box.y0, Math.min(box.y1, p[1])),
@@ -715,7 +715,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     ];
     const fits = (spots: Array<{ x: number; y: number }>) => spots
       .map((spot) => ({ x0: spot.x, y0: spot.y, x1: spot.x + dimensions.width, y1: spot.y + dimensions.height }))
-      .find((box) => box.x0 >= 2 && box.x1 <= W - 2 && box.y0 >= 2 && box.y1 <= H - 2 && !boxes.some((other) => hit(other, box)));
+      .find((box) => box.x0 >= 2 && box.x1 <= W - 2 && box.y0 >= 2 && box.y1 <= H - 2 && !boxes.some((other) => labelBoxesOverlap(other, box, labelCollisionGap)));
     const fit = fits(spotsFor(gap));
     if (fit) return { box: fit, fallback: false };
     if (!fixedLabel) return null;
@@ -878,11 +878,12 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
             const strong = isElementStrong(d.l.layer, lineKey);
             const width = lineSelected ? 4 : (strong ? (st.strokeWidth ?? 1.5) * 1.35 : st.strokeWidth ?? 1.5) * (d.l.emphasis === "major" ? 1.2 : d.l.emphasis === "minor" ? 0.85 : 1);
             const points = d.points.map(([x, y]) => `${x},${y}`).join(" ");
-            const stroke = strong || lineSelected ? INK : d.l.color ?? st.color;
+            const stroke = d.l.color ?? st.color;
+            const casing = strong || lineSelected ? INK : st.casing;
             const opacity = d.l.opacity ?? st.opacity;
             return (
               <g key={`line${d.index}`} opacity={isElementDimmed(d.l.layer, lineKey) ? 0.2 : opacity}>
-                {st.casing && <polyline points={points} fill="none" stroke={st.casing} strokeWidth={(width + 2.4) * u} strokeDasharray={st.dash} strokeLinejoin="round" pointerEvents="none" />}
+                {casing && <polyline points={points} fill="none" stroke={casing} strokeWidth={(width + 2.4) * u} strokeDasharray={st.dash} strokeLinejoin="round" pointerEvents="none" />}
                 <polyline data-line="true" points={points} fill="none" stroke={stroke} strokeWidth={width * u} strokeDasharray={st.dash} strokeLinejoin="round" markerEnd={st.arrow ? `url(#arrow-${uid}-${d.index})` : undefined} {...pickProps({ fid: d.l.fid, lng: center[0], lat: center[1], kind: "line" }, lineKey, labelText(d.l.layer, "line", d.l))} />
               </g>
             );
@@ -980,7 +981,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
             {vectorLegendVisible && (
               <>
                 {legendRows.map((row, ri) => row.map((it, ii) => {
-                  const legendLabel = it.site ? "대지" : layerStyle(it.layer).label;
+                  const legendLabel = it.label;
                   const interactive = !it.site && !!(onLegendHover || onLegendPin);
                   const onKeyDown = (event: ReactKeyboardEvent<SVGGElement>) => {
                     if (event.key === "Escape") {
@@ -1020,7 +1021,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
                           <circle r={0.9 * u} fill="#111" />
                         </g>
                       ) : (
-                        <circle cx={panelX + pad * 1.8 + it.x + 4 * u} cy={ly + pad * 0.7 + ri * rowH + rowH / 2} r={4 * u} fill={layerStyle(it.layer).color} fillOpacity={0.85} />
+                        <circle cx={panelX + pad * 1.8 + it.x + 4 * u} cy={ly + pad * 0.7 + ri * rowH + rowH / 2} r={4 * u} fill={it.color} fillOpacity={0.85} />
                       )}
                       <text x={panelX + pad * 1.8 + it.x + 11 * u} y={ly + pad * 0.7 + ri * rowH + rowH * 0.72} fontSize={fs} fill={INK}>
                         {legendLabel}

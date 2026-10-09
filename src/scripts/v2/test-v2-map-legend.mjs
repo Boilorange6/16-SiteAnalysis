@@ -61,6 +61,28 @@ assert.equal(legendItemsForModel(d16)[2].label, "12~25동/㎢");
 const fallback = legendItemsForModel({ ...base, features: [{ layer: "trade_q1", lng: 127.15, lat: 37.62 }] });
 assert.equal(fallback[0].label, "㎡당 하위 20%");
 
+const rail = legendItemsForModel({
+  ...base,
+  lines: [
+    { layer: "rail_line", points: [[127.14, 37.61], [127.16, 37.63]], color: "#794698" },
+    { layer: "rail_line", points: [[127.14, 37.62], [127.16, 37.64]], color: "#D1495B" },
+  ],
+});
+assert.deepEqual(rail[0].colors, ["#794698", "#D1495B"], "철도 범례는 원천 노선색을 모두 보존");
+assert.equal(rail[0].color, "#794698", "복수 노선색의 대표 견본은 첫 원천색");
+
+const mixedRaster = legendItemsForModel({
+  ...base,
+  lines: [{ layer: "wind_inflow", points: [[127.14, 37.61], [127.16, 37.63]] }],
+  rasters: [{ name: "wind_ratio", palette: "wind_ratio" }],
+  legend: [
+    { label: "U/U유입 · 0~0.5", min: 0, max: 0.5 },
+    { label: "U/U유입 · 0.5~0.8", min: 0.5, max: 0.8 },
+  ],
+});
+assert.equal(mixedRaster.length, 1, "래스터 구간을 벡터 범례 항목으로 잘못 매핑하지 않음");
+assert.equal(mixedRaster[0].label, "유입 방향", "래스터와 섞인 엔진 범례에서도 벡터 항목 유지");
+
 const utciRef = { palette: "utci", label: "UTCI" };
 const utciEntries = [
   { label: "UTCI 극한한랭 (< −40°C)", min: -50, max: -40 },

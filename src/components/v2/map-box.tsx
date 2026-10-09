@@ -5,7 +5,7 @@ import { legendItemsForModel, RASTER_STYLES, type MapModel } from "@/lib/v2/ui/m
 import { activeLegendLabel, toggleLegendPin } from "@/lib/v2/ui/map-legend";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { framedViewport, metersPerPixel, scaleBar, tileUrl, tilesFor } from "@/lib/v2/ui/map-projection";
-import { inflateRaster, paintRaster } from "@/lib/v2/ui/raster-image";
+import { inflateRaster, paintRaster, rasterLegendColor, rasterLegendEntries, rasterLegendTitle, resolveRasterStyle } from "@/lib/v2/ui/raster-image";
 import MapFigure, { type MapFigureElementPick, type MapFigureProps } from "./map-figure";
 import { MapLegendStrip, type LegendSwatchKind, type MapLegendItem } from "./map-legend-strip";
 
@@ -66,6 +66,53 @@ export function useMeasured() {
     };
   }, []);
   return { ref, size, near };
+}
+
+function rasterBoundary(value: number, palette: string): string {
+  if (palette === "svf") return `${Math.round(value * 100)}%`;
+  return Number.isInteger(value) ? String(value) : String(Math.round(value * 100) / 100);
+}
+
+/** MapFigure와 같은 선택 래스터를 지도 아래 범례 띠로 옮긴다. */
+function rasterLegendItemsForModel(model: MapModel): MapLegendItem[] {
+  const raster = model.rasters?.[0];
+  const baseStyle = raster ? RASTER_STYLES[raster.palette] : undefined;
+  if (!raster || !baseStyle) return [];
+  const style = resolveRasterStyle(raster, baseStyle);
+  const title = rasterLegendTitle(raster, style);
+  if (style.mode === "continuous") {
+    const range = style.min !== undefined && style.max !== undefined
+      ? ` · ${rasterBoundary(style.min, raster.palette)}~${rasterBoundary(style.max, raster.palette)}`
+      : "";
+    return [{
+      layer: `raster:${raster.name}`,
+      id: `raster:${raster.name}:continuous`,
+      label: `${title}${range}`,
+      color: style.colors[0] ?? "#43566B",
+      colors: style.colors,
+      swatch: "raster",
+      static: true,
+    }];
+  }
+  if (style.mode === "mask") {
+    return [{
+      layer: `raster:${raster.name}`,
+      id: `raster:${raster.name}:mask`,
+      label: title,
+      color: style.colors[0] ?? "#43566B",
+      swatch: "raster",
+      static: true,
+    }];
+  }
+  const entries = rasterLegendEntries(raster, style, model.legend ?? []);
+  return entries.map((entry, index) => ({
+    layer: `raster:${raster.name}`,
+    id: `raster:${raster.name}:step-${index}`,
+    label: entry.label,
+    color: rasterLegendColor(raster, style, entry) ?? style.colors[index] ?? "#43566B",
+    swatch: "raster" as const,
+    static: true,
+  }));
 }
 
 function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, ...optsIn }: { model: MapModel; bare?: boolean; label?: string } & Opts2) {
@@ -149,12 +196,16 @@ function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, ...optsIn }
   const legendItems: MapLegendItem[] = !bare && opts.legend === false
     ? [
         ...(!opts.muted ? [{ layer: "__site_marker", label: "대지", color: "#111", count: 1, site: true as const, swatch: "site" as const }] : []),
-        ...legendItemsForModel(model, 99)
+        ...legendItemsForModel(model)
           .filter((item) => item.layer !== "parcel_site" && item.layer !== "pnu")
           .map((item) => ({ ...item, site: false as const, swatch: swatchKind(item.layer) })),
+        ...rasterLegendItemsForModel(model),
       ]
     : [];
   const useLegendStrip = !bare && opts.legend === false && !opts.muted && legendItems.length > 0;
+  // 상세 창의 출처 띠는 MapBox 바깥에 겹쳐 있으므로, 범례가 그 위에서 끝나게 한다.
+  // 범례를 띠로 옮긴 뒤에는 MapFigure에 같은 inset을 다시 예약하지 않는다.
+  const mapBottomInset = useLegendStrip ? (opts.bottomInset ?? 0) : 0;
   const scale = size
     ? (() => {
         const resolvedSiteX = typeof siteX === "function" ? siteX(size.w) : (siteX ?? 0.5);
@@ -186,6 +237,7 @@ function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, ...optsIn }
           onFeatureHover={(key) => setFeatureHover(key)}
           onLegendHover={(value) => setLegendHover(value)}
           onLegendPin={(value) => setLegendPinned((current) => value === null ? null : toggleLegendPin(current, value))}
+          bottomInset={useLegendStrip ? 0 : opts.bottomInset}
         />
       )}
       {size && near && scale && scale.meters >= 1000 && opts.legend !== false && (
@@ -202,7 +254,7 @@ function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, ...optsIn }
   );
   if (useLegendStrip) {
     return (
-      <div data-map-box-root="true" style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <div data-map-box-root="true" style={{ position: "absolute", top: 0, right: 0, bottom: mapBottomInset, left: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
         <div ref={ref} data-map-viewport="true" style={{ position: "relative", flex: "1 1 auto", minHeight: 0, width: "100%" }}>
           {mapSurfaceContent}
         </div>
