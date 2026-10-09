@@ -50,10 +50,10 @@ assert.equal(byCode.A01.headline.aux, "직선");
     ],
     judgment: { ...base.judgment, sentence: "보행망 도보 10분(800 m) 도달 면적 1 km²" },
   });
-  assert.equal(d28.rows.find((row) => row.label === "도보 5분 도달 면적")?.value, "240,000㎡");
-  assert.equal(d28.headline?.value, "1 km²");
-  assert.equal(d28.rows.find((row) => row.label === "도보 15분 도달 면적")?.value, "820,000㎡");
-  assert.equal(d28.sentence, "보행망 도보 10분(800 m) 도달 면적 1 km²");
+  assert.equal(d28.rows.find((row) => row.label === "도보 5분 도달 면적")?.value, "0.2 km²", "사용자 결정 9: km² 소수 1자리");
+  assert.equal(d28.headline?.value, "1.0 km²");
+  assert.equal(d28.rows.find((row) => row.label === "도보 15분 도달 면적")?.value, "0.8 km²");
+  assert.equal(d28.sentence, "보행망 도보 10분(800 m) 도달 면적 1.0 km²");
   const smallSentence = toTileView({
     ...base,
     tileCode: "D28",
@@ -62,7 +62,7 @@ assert.equal(byCode.A01.headline.aux, "직선");
     metrics: [metric("area_10min_km2", "도보 10분 도달 면적", 0.777)],
     judgment: { ...base.judgment, sentence: "보행망 도보 10분(800 m) 도달 면적 0.777㎢" },
   });
-  assert.equal(smallSentence.sentence, "보행망 도보 10분(800 m) 도달 면적 777,000㎡");
+  assert.equal(smallSentence.sentence, "보행망 도보 10분(800 m) 도달 면적 0.8 km²");
 }
 // 높이·보행망 거리처럼 단위만 m인 지표에는 "직선"을 붙이지 않는다
 {

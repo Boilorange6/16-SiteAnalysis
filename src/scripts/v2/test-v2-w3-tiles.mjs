@@ -61,9 +61,9 @@ const polygon = (layer, fid) => ({ layer, fid, rings: [[[127.149, 37.619], [127.
 const line = (layer, fid) => ({ layer, fid, points: [[127.149, 37.62], [127.151, 37.62]] });
 
 const a01 = result("A01", [feature("bus_stop", "bus"), feature("rail_station", "rail"), feature("store", "other")], [], [line("rail_line", "line")]);
-assert.deepEqual(layerOptionsForResult(a01).map((option) => option.id), ["all", "transit"]);
+assert.deepEqual(layerOptionsForResult(a01).map((option) => option.id), ["all", "transit", "bus"]);
 const a01Transit = viewWithLayer(toTileView(a01), "transit");
-assert.deepEqual(a01Transit.map.features.map((item) => item.layer).sort(), ["bus_stop", "rail_station"]);
+assert.deepEqual(a01Transit.map.features.map((item) => item.layer).sort(), ["rail_station"], "철도 칩(id transit)은 철도만");
 assert.deepEqual(a01Transit.map.lines.map((item) => item.layer), ["rail_line"]);
 assert.equal(a01Transit.defaultLayer, "transit");
 
