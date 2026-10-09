@@ -3,7 +3,7 @@
  * 이 폴더의 A05/A06 화면·보고서 계약을 함께 변경한다.
  */
 import { describeA05Filter, reaggregateA05, type A05Filter } from "../../engine/a05-filter";
-import { DEFAULT_CALLOUT_MODE, fmtInt, rankComplexes, STOCK_LEGEND, summarize } from "../../ui/callout-layout";
+import { DEFAULT_CALLOUT_MODE, fmtInt, OTHER_HOUSING_COLOR, OTHER_HOUSING_LABEL, rankComplexes, STOCK_LEGEND, summarize } from "../../ui/callout-layout";
 import type { TileResult } from "../../tile-result";
 import type { CalloutModel } from "../../ui/tile-view";
 import type { TileClientModule, TileViewPreparation } from "../types";
@@ -33,18 +33,22 @@ export function calloutForA05(result: TileResult, sourceLine: string, filterLine
   const features = result.presentation.features ?? [];
   const complexes = rankComplexes(features.filter((feature) => HOUSING_LAYERS.has(feature.layer)));
   const summary = summarize(complexes);
+  const officetels = complexes.filter((complex) => complex.layer === "officetel").length;
+  const hasOtherHousing = features.some((feature) => feature.layer === "other_housing");
   const unknown = summary.apartments - summary.householdsKnown;
   return {
     kind: "stock",
     unit: "단지",
-    legend: STOCK_LEGEND,
+    legend: hasOtherHousing
+      ? { ...STOCK_LEGEND, items: [...STOCK_LEGEND.items, { label: OTHER_HOUSING_LABEL, color: OTHER_HOUSING_COLOR }] }
+      : STOCK_LEGEND,
     stats: [
-      { value: fmtInt(summary.count), unit: "단지", label: "반경 안 단지 수" },
+      { value: fmtInt(summary.apartments), unit: "단지", label: "반경 안 아파트" },
+      { value: fmtInt(officetels), unit: "단지", label: "반경 안 오피스텔" },
       { value: fmtInt(summary.households), unit: "세대", label: "확인 세대(아파트)" },
-      { value: summary.medianYear === null ? "확인필요" : String(summary.medianYear), unit: summary.medianYear === null ? "" : "년", label: "준공 중앙값" },
     ],
     statNote: unknown > 0 ? `세대수 미확인 ${unknown}곳은 합계에서 제외` : null,
-    pill: [{ value: fmtInt(summary.count), unit: "단지" }, { value: fmtInt(summary.households), unit: "세대(아파트)" }],
+    pill: [{ value: fmtInt(summary.apartments), unit: "아파트" }, { value: fmtInt(officetels), unit: "오피스텔" }, { value: fmtInt(summary.households), unit: "확인 세대" }],
     center: result.conditions.center,
     radiusM: result.conditions.radiusM,
     complexes,
@@ -59,7 +63,7 @@ export function calloutForA05(result: TileResult, sourceLine: string, filterLine
 export const a05ClientModule = {
   code: "A05",
   headline: { ids: ["households", "apartment_complexes"] },
-  mapNote: "원 크기 = 세대수 · 속 빈 원 = 세대수 미확인",
+  mapNote: "원 크기 = 확인 세대·호실 · 색 = 준공 연대 · 속 빈 원 = 준공 연대 미상",
   prepare: (result, context) => prepareA05(result, context.filter),
   callout: calloutForA05,
   board: {
