@@ -22,10 +22,36 @@
 
 `SHARED-REQUEST: <파일> — <필요한 훅/필드> — <타일 코드와 이유> — <cache revision bump 필요 여부>`
 
+## 공용 예외와 `tile-scope`
+
+- 웨이브에서 승인된 공용 파일은 타일 소유 범위 밖이므로 `tile-scope`에 **정확한 저장소 상대 경로**를 반복해서 넘긴다. glob, 디렉터리 prefix, 절대 경로는 허용하지 않는다.
+
+```powershell
+node src/scripts/v2/harness/tile-scope.mjs <CODE> --base <BASE> --allow <path> --allow <path>
+```
+
+- `--allow`는 변경된 그 파일만 예외로 삼는다. 출력에는 `explicit --allow`로 남으므로, 보고서에는 각 예외가 어느 웨이브의 어떤 승인인지와 해당 파일 안에서 바꾼 행/단언을 함께 적는다. 허용 경로와 실제 타일 소유 경로가 섞이면 허용되지 않은 경로는 계속 `OUTSIDE`로 실패해야 한다.
+- `--allow`가 없는 실행은 기존과 같은 소유권 판정을 한다. `--self-test`에는 코드나 `--allow`를 붙이지 않는다. 여러 번 같은 경로를 넘겨도 한 번만 판정한다.
+
+## 라벨·표식 계약
+
+- 결과의 feature·polygon·line은 필요한 경우 `name`, `sublabel`, `labelPriority`를 낸다. `name`은 원천 지물명, `sublabel`은 타일이 단위·거리·쉼표까지 서식한 값, `labelPriority`는 `0/1/2`다. 값이 없으면 `null`을 명시하고 레이어명·`미상`을 대체 값으로 만들지 않는다.
+- 자동 라벨은 `labelPriority >= 1`이며 `name`이 있는 요소만 `name`으로 낸다. 호버·고정 라벨은 `name · sublabel`이고, 이름이 없을 때만 범례 표시 이름을 사용한다. `sublabel`이 비어 있거나 `미상`이면 생략한다. 같은 문구는 하나만, 같은 priority에서는 엔진 출력 순서를 유지한다.
+- 최근접 라벨·점선·강조는 **그 지표의 값을 정한 바로 그 지물**에만 붙인다. 임의로 더 가까워 보이는 지물을 선택하지 말고, 거리/시간/접근성 metric의 원천 feature와 이름·값·highlight를 함께 전달한다.
+- 면이 정상적으로 있으면 같은 지물의 대표점을 만들지 않는다. 대표점은 도형 생성 실패분의 폴백으로만 허용한다. 선은 `MapLine`으로 그리고 선 위 샘플 점·점 사슬을 만들지 않는다. 같은 좌표의 전세·월세처럼 의미가 다른 점은 텍스트 배지로 한 점에 합친다.
+- 추정·미상은 색만으로 전달하지 않는다. 빗금·테두리·빈 모양·문구 중 하나 이상을 함께 사용한다. 원천 철도 노선색은 `rail_line`에 한해 허용하되 이름·흰 케이싱·선 모양을 함께 제공한다.
+
+## 캐시 revision과 공용 단언 정합
+
+- 타일의 결과 JSON(특히 `presentation`, feature/polygon/line의 라벨·표식·범례·스타일)이 바뀌면 `src/lib/v2/engine/tiles/common.ts`의 해당 `TILE_CACHE_REVISION` 행 끝에 `+w3-r1`을 붙인다. 기존 suffix를 덮어쓰거나 다른 타일 행을 함께 바꾸지 않는다.
+- 같은 타일의 기대값은 `src/scripts/v2/test-v2-tile-registry.mjs` 기대표에도 같은 suffix를 반영한다. 두 파일은 해당 타일 행만 수정한다. 결과 JSON이 바뀌지 않는 문서·하네스·순수 UI 변경은 bump하지 말고 보고서에 `cache revision: 불필요`라고 적는다.
+- RED 단계에서 새 계약 단언을 먼저 추가한다. GREEN에서는 `name`·`sublabel`·`labelPriority`의 null/priority/형식, 대표점·선 샘플 점의 부재, 최근접 지물 동일성, 실제 범례 경계값을 확인한다. 옛 `label`이나 레이어명을 새 계약의 성공 증거로 되살리지 않는다.
+- 공용 assertion을 바꿔야 하면 소유 타일 테스트와 같은 기대를 사용하고 `SHARED-REQUEST`를 남긴다. cache bump와 registry 기대표는 서로 다른 값을 가질 수 없다.
+
 ## 완료 게이트
 
 ```powershell
-node src/scripts/v2/harness/tile-scope.mjs <CODE> --base <BASE>
+node src/scripts/v2/harness/tile-scope.mjs <CODE> --base <BASE> [--allow <approved-path> ...]
 node src/scripts/v2/harness/tile-literals.mjs <CODE>
 npm run test:v2
 npm run lint
@@ -45,6 +71,9 @@ npx tsx src/scripts/v2/harness/equivalence.mjs --check <기준 폴더>
 ## 실데이터 캡처 주의
 
 - 임시 QA 스크립트는 저장소 밖(scratch)에 둔다. `src/scripts/v2/test-v2-*.mjs` 이름이면 `npm run test:v2`가 집어 간다.
+- 캡처기는 요청된 원본을 scratch의 `capture-w3.mjs`로 복사해 수정한다. 원본 `capture-w2b.mjs`와 `prompt.md`는 고치지 않는다.
+- 캐시 revision을 먼저 반영하고 지정 DB를 그대로 읽는지 확인한다. 오래된 `app.sqlite` 결과를 새 코드의 증거로 쓰지 않으며, 필요하면 보조 임시 DB에서 새 결과를 확인한다. 원본 데이터와 지정 DB는 삭제·덮어쓰지 않는다.
+- 분석 타일이 `pending`이면 지도/호버를 찍지 말고 완료 상태가 될 때까지 기다린다. 캡처 경로, 타일별 상태, console/page error와 캐시 사용 여부를 보고한다.
 - 보드 편집 중에는 타일이 요약 면으로 고정된다. 열 수를 바꾼 뒤 `완료` → 지도 면 전환 → 측정 순서로 찍는다.
 - 로그인 429는 서버 메모리의 rate limit이다. 서버를 재시작하고 같은 계정으로 다시 시도한다. 자격 증명은 보고서에 적지 않는다.
 - 겹침을 고칠 때는 고친 두 요소만 보지 말고, 그 수정으로 줄어든 요소끼리(예: 방향 글자끼리)도 겹치지 않는지 캡처로 확인한다.
