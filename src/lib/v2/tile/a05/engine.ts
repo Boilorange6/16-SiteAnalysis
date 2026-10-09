@@ -169,6 +169,11 @@ export function a05(ctx: EngineContext): TileResult {
       ? "반경 안 대장 자료의 주거 건물이 확인되지 않음 → 기존 공급이 없거나 대장 위치 미확인 → 현장과 대장 확인 필요"
       : `아파트 ${apts.length}개 단지 ${fmt(hh)}세대(연립·다세대 등 ${others.length}곳 별도)${years.length ? `, 준공연도 중앙값 ${years[Math.floor((years.length - 1) / 2)]}년` : ""} → 대장에 잡힌 기존 재고의 규모와 연식 → ${hhUnknown > 0 ? "세대수 미상 단지 확인 필요" : "위치 미확인 건물은 반경에 포함되지 않아 확인 필요"}`;
   const partial = limitations.some((l) => l.kind === "incomplete");
+  const stockSublabel = (h: FeatureHit, unit: "세대" | "호"): string | null => {
+    const value = unit === "호" ? num(h.properties.units) : hhOf(h);
+    return value === null ? null : `${fmt(value)}${unit}`;
+  };
+  const labelPriority = (h: FeatureHit): 0 | 1 => (h.name ? 1 : 0);
   return makeTile(ctx, {
     code: "A05",
     status: partial ? "partial" : "complete",
@@ -177,9 +182,9 @@ export function a05(ctx: EngineContext): TileResult {
     sources: [...sources, ...unitTypeSources, ...kaptSources],
     layers: ["apt", "other_housing", "officetel"],
     map: [
-      ...apts.map((h) => candidate(h, "apt", callout(h, "아파트", hhOf(h)))),
-      ...others.map((h) => candidate(h, "other_housing", callout(h, "기타 공동주택", hhOf(h)))),
-      ...officetels.map((h) => candidate(h, "officetel", callout(h, "오피스텔", num(h.properties.units)))),
+      ...apts.map((h) => candidate(h, "apt", { ...callout(h, "아파트", hhOf(h)), sublabel: stockSublabel(h, "세대"), labelPriority: labelPriority(h) })),
+      ...others.map((h) => candidate(h, "other_housing", { ...callout(h, "기타 공동주택", hhOf(h)), sublabel: stockSublabel(h, "세대"), labelPriority: labelPriority(h) })),
+      ...officetels.map((h) => candidate(h, "officetel", { ...callout(h, "오피스텔", num(h.properties.units)), sublabel: stockSublabel(h, "호"), labelPriority: labelPriority(h) })),
     ],
     limitations,
   });

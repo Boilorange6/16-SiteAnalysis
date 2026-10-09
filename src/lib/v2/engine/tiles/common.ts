@@ -23,6 +23,8 @@ const TILE_CACHE_REVISION: Readonly<Record<string, string>> = {
   A02: "w3-merge-r1+w2b-r1",
   A03: "w2b-r1",
   A04: "w3-merge-r1+w2b-r1",
+  A05: "w2b-r1",
+  A06: "w2b-r1",
   A07: "w3-merge-r1",
   A09: "w3-merge-r1+w2b-r1",
   A10: "w3-merge-r1+w2b-r1",
