@@ -153,11 +153,15 @@ function railLineNames(hit: FeatureHit): string[] {
     .map((name) => /^\d+$/.test(name) ? `${name}호선` : name);
 }
 
-function railSummary(station: RailStation, usesPoint: boolean, distanceM: number): string {
-  const name = stationName(station.hit) ?? "철도역";
+function railSummaryDetail(station: RailStation): string | null {
+  const name = stationName(station.hit);
   const lines = railLineNames(station.hit);
-  const lineText = lines.length > 0 ? `(${lines.join("·")})` : "";
-  return `최근접 ${name}${lineText} ${usesPoint ? "역 대표점" : "역 출입구"} 직선 ${fmt(distanceM)}m`;
+  const detail = [name, ...lines].filter((value): value is string => value !== null).join("·");
+  return detail || null;
+}
+
+function railSummary(usesPoint: boolean, distanceM: number): string {
+  return `최근접 ${usesPoint ? "역 대표점" : "역 출입구"} 직선 ${fmt(distanceM)}m`;
 }
 
 function countStationsWithEntrances(stations: FeatureHit[], entrances: FeatureHit[]): number {
@@ -220,13 +224,14 @@ export function a01(ctx: EngineContext): TileResult {
         ? { ruleId: "a01-bus-distance@1", basisMetricIds: ["bus_stops"], sentence: `반경 안 버스 정류장 없음 → 버스 접근은 확인되지 않음 → ${walkSentence(false, null, walkBus)}`, level: null, criteria: null }
         : { ruleId: "a01-bus-distance@1", basisMetricIds: ["nearest_bus_m"], sentence: `${busTxt} → ${busPhrase} → ${walkSentence(false, null, walkBus)}`, level: gradeBus(nearest), criteria: A01_CRITERIA, grades: a01Grades(null, nearest).grades };
   } else {
-    const railTxt = railM === null ? `${searchTxt} 안 운영역 없음` : railSummary(railBest!, usesPoint, railM);
+    const railTxt = railM === null ? `${searchTxt} 안 운영역 없음` : railSummary(usesPoint, railM);
+    const railDetail = railM === null ? null : railSummaryDetail(railBest!);
     const railPhrase = railM === null ? RAIL_PHRASE.caution : RAIL_PHRASE[gradeRail(railM)];
     // 철도와 버스는 각자의 기준으로 말하고 하나의 등급으로 합치지 않는다(level 없음).
     judgment = {
       ruleId: "a01-rail-bus-distance@1",
       basisMetricIds: [...(railM === null ? [] : ["nearest_rail_m"]), ...(nearest === null ? ["bus_stops"] : ["nearest_bus_m"])],
-      sentence: `${railTxt}, ${busTxt} → ${railPhrase}, ${busPhrase} → ${walkSentence(true, walkRail, walkBus)}`,
+      sentence: `${railTxt}, ${busTxt} → ${railPhrase}, ${busPhrase} → ${walkSentence(true, walkRail, walkBus)}${railDetail ? ` (${railDetail})` : ""}`,
       level: null,
       criteria: `${RAIL_CRITERIA} / ${A01_CRITERIA}`,
     };
