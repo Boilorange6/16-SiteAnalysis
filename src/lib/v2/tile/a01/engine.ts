@@ -301,26 +301,25 @@ export function a01(ctx: EngineContext): TileResult {
   const limitations: TileDraft["limitations"] = [];
   if (hasRail) {
     layers.push("rail_station", "rail_entrance", "rail_line", "rail_nearest");
-    const nearestStation = nearestHit(stationHits);
-    const nearestEntrance = nearestHit(entranceHits);
+    // 최근접 표시는 nearest_rail_m을 정한 지물(출입구 있는 역은 출입구, 없으면 역 대표점) 하나에만 준다.
+    const nearFeatureId = railBest && railM !== null && railBest.best.dist <= radiusM ? railBest.best.hit.featureId : null;
     // D14 흡수 후에도 반경 내 원천 역·출입구 전체를 지도에 남긴다.
-    // 최근접 역과 최근접 출입구는 각각 원천 지물에 우선순위·강조를 부여한다.
     for (const station of stationHits) {
-      const isNearest = station.featureId === nearestStation?.featureId;
+      const isNearest = station.featureId === nearFeatureId;
       const lineNames = railLineNames(station);
       map.push(candidate(station, isNearest ? "rail_nearest" : "rail_station", {
         highlight: isNearest,
-        sublabel: isNearest ? distanceSublabel(station.distanceM) : lineNames.length > 0 ? lineNames.join("·") : null,
+        sublabel: isNearest ? distanceSublabel(railM) : lineNames.length > 0 ? lineNames.join("·") : null,
         labelPriority: isNearest ? 2 : stationName(station) ? 1 : 0,
         badges: stationBadges(station),
       }));
     }
     for (const entrance of entranceHits) {
-      const isNearest = entrance.featureId === nearestEntrance?.featureId;
+      const isNearest = entrance.featureId === nearFeatureId;
       map.push(candidate(entrance, "rail_entrance", {
         name: entranceDisplayName(entrance),
         highlight: isNearest,
-        sublabel: isNearest ? distanceSublabel(entrance.distanceM) : null,
+        sublabel: isNearest ? distanceSublabel(railM) : null,
         labelPriority: isNearest ? 2 : 0,
         badges: entranceBadges(entrance),
       }));

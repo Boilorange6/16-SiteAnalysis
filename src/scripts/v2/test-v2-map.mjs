@@ -145,7 +145,7 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   const nb = t01.presentation.features.filter((f) => f.layer === "bus_nearest");
   assert.equal(nb.length, 1);
   assert.equal(nb[0].highlight, true);
-  assert.equal(nb[0].label, `직선 ${t01.metrics.find((m) => m.id === "nearest_bus_m").value}m`);
+  assert.equal(nb[0].sublabel, `직선 ${t01.metrics.find((m) => m.id === "nearest_bus_m").value}m`);
   assert.equal(t01.presentation.features.filter((f) => f.layer === "bus_stop").length, t01.metrics.find((m) => m.id === "bus_stops").value - 1);
   assert.ok(toTileView(t01).map.notes.some((n) => n.includes("철도")));
   const t03 = a03(ctx);
