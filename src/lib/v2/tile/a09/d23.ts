@@ -125,15 +125,17 @@ export function d23(ctx: EngineContext): TileResult {
   let zoneArea = 0;
   let invalidArea = false;
   const order = [...zones].sort((a, b) => a.featureId - b.featureId);
-  const labelled = new Set(order.slice(0, 5).map((zone) => zone.featureId));
 
   for (const zone of order) {
     const project = projectMap.get(zoneProject.get(zone.featureId) ?? "");
     const stage = project?.stage ?? "미확인";
     const layer = `maint_stage:${stage}`;
-    const label = `${project?.name ?? zone.name ?? "이름 없음"} ${stage}`;
+    const zoneName = [zone.name, zone.properties.zoneName]
+      .map((value) => typeof value === "string" ? value.trim() : "")
+      .find((value) => value !== "") ?? null;
+    const name = project?.name ?? zoneName;
+    const labelPriority = name === null ? 0 : 1;
     if (!layers.includes(layer)) layers.push(layer);
-    points.push(candidate(zone, layer, labelled.has(zone.featureId) ? { label } : {}));
 
     const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, zone.geometry);
     if (!clipped) {
@@ -141,11 +143,24 @@ export function d23(ctx: EngineContext): TileResult {
       continue;
     }
     zoneArea += clipped.areaM2;
+    let polygonCount = 0;
     for (const rings of clipped.parts) {
-      const polygon = polygonCandidate(zone.featureId, layer, rings, polygonArea(rings), label);
-      if (polygon) polygons.push(polygon);
+      const polygon = polygonCandidate(zone.featureId, layer, rings, polygonArea(rings), null, {
+        name,
+        sublabel: stage,
+        labelPriority,
+      });
+      if (polygon) {
+        polygons.push(polygon);
+        polygonCount++;
+      }
     }
+    // 면을 그릴 수 있는 지물은 같은 fid의 대표점을 만들지 않는다. 도형 변환에 실패한 경우만 점을 fallback으로 둔다.
+    if (polygonCount === 0) points.push(candidate(zone, layer, { label: null, name, sublabel: stage, labelPriority }));
   }
+
+  // makeTile도 상한 처리에서 면적순을 보장하지만, 타일 엔진의 후보 배열 자체도 교차 면적순으로 고정한다.
+  polygons.sort((a, b) => b.areaM2 - a.areaM2 || a.id - b.id);
 
   const limitations: TileDraft["limitations"] = [
     { kind: "partial", note: "경계가 확보된 사업만 반경 안 여부와 면적을 판단합니다. 경계가 없는 명부 사업은 면적에 포함하지 않았습니다." },
@@ -167,8 +182,8 @@ export function d23(ctx: EngineContext): TileResult {
     judgment: { ruleId: "D23-maintenance@1", basisMetricIds: ["fill_boundary_pct", "fill_stage_pct", "zone_area_in_radius_m2"], sentence, level: null, criteria: null },
     sources,
     layers,
-    map: points,
-    polygons,
+    ...(points.length > 0 ? { map: points } : {}),
+    ...(polygons.length > 0 ? { polygons } : {}),
     limitations,
   });
 }

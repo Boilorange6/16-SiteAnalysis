@@ -7,6 +7,7 @@ import { est, makeTile, obs, type MapCandidate, type TileDraft } from "../../eng
 import { polygonArea, polygonParts } from "../../engine/tiles/geo";
 import { collectZoning, CLASSES, ZONING_LAYERS, type ZoningCollection } from "../../engine/tiles/zoning-shared";
 import { notProvided } from "../../engine/tiles/not-provided";
+import { zoningPolygons, zoningSiteCandidate } from "./labels";
 
 export { CLASSES } from "../../engine/tiles/zoning-shared";
 
@@ -212,7 +213,7 @@ export function a12(ctx: EngineContext): TileResult {
   const zoning = collectZoning(ctx);
   if (!zoning) return notProvided(ctx, "A12");
 
-  const { byClass, byRaw, circleArea, total, siteLabel, siteNames, fine, polys, points } = zoning;
+  const { byClass, byRaw, circleArea, total, siteLabel, siteNames, fine } = zoning;
   const pct = (areaM2: number) => r1((areaM2 / circleArea) * 100);
   // D08 흡수 후에도 클래스 번호가 자료가 없는 분류 때문에 밀리지 않도록 고정한다.
   const classes = CLASSES.map((name) => [name, byClass.get(name) ?? 0] as const);
@@ -234,8 +235,9 @@ export function a12(ctx: EngineContext): TileResult {
     ? `대지 중심점의 용도지역 지정을 도면에서 확인하지 못함${top ? `, 반경 안 구성은 ${top}` : ""} → 도면 밖이거나 미지정일 수 있음 → 토지이용계획확인서와 공시지가 자료로 확인 필요`
     : `대지 중심점은 ${siteLabel}${siteNames.length > 1 ? "(복수 지정)" : ""}${top ? `, 반경 안 구성은 ${top}` : ""} → 지정 현황이며 지구·건축 허용 여부나 지가 수준은 아님 → 공시지가와 개별 규제를 토지이용계획확인서로 확인 필요`;
 
-  const map: MapCandidate[] = points.filter((point) => !point.f.layer.startsWith("zone_center:"));
-  if (siteLabel) map.push({ id: 0, f: { layer: "zoning_site", lng: ctx.input.center[0], lat: ctx.input.center[1], highlight: true, label: siteLabel } });
+  const map: MapCandidate[] = [];
+  const site = zoningSiteCandidate(zoning, ctx.input.center[0], ctx.input.center[1]);
+  if (site) map.push(site);
   const limitations = zoningLimitations(ctx, zoning, prices.limitations);
   const status: TileResult["status"] = prices.metrics.some((metric) => metric.status === "missing") || limitations.some((limitation) => limitation.kind === "partial" || limitation.kind === "incomplete") ? "partial" : "complete";
 
@@ -247,7 +249,7 @@ export function a12(ctx: EngineContext): TileResult {
     sources,
     layers: ["zoning_site", ...CLASSES.map((name) => `zone:${name}`)],
     map,
-    polygons: polys,
+    polygons: zoningPolygons(zoning),
     limitations,
   });
 }

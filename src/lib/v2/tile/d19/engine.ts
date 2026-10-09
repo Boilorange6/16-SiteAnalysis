@@ -2,7 +2,7 @@
 import type { FeatureHit } from "../../data/features";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext, Limitation } from "../../engine/context";
-import { candidate, makeTile, obs, polygonCandidate } from "../../engine/tiles/common";
+import { makeTile, obs, polygonCandidate } from "../../engine/tiles/common";
 import { polygonArea, polygonParts } from "../../engine/tiles/geo";
 import { notProvided } from "../../engine/tiles/not-provided";
 import { measureParcels } from "./parcel-measure";
@@ -36,6 +36,36 @@ function notApplicable(id: string, label: string, unit: string, formulaVersion: 
 function jimokOf(hit: FeatureHit): string {
   const value = hit.properties.jimok;
   return typeof value === "string" && value.trim() !== "" ? value.trim() : "미상";
+}
+
+const JIMOK_READABLE: Readonly<Record<string, string>> = {
+  대: "대지",
+  대지: "대지",
+  도: "도로",
+  도로: "도로",
+  철: "철도",
+  철도: "철도",
+  철도용지: "철도",
+  전: "전",
+  답: "답",
+  전답: "전·답",
+  임: "임야",
+  임야: "임야",
+  천: "하천",
+  하천: "하천",
+  구: "구거",
+  구거: "구거",
+  유: "유지",
+  유지: "유지",
+  제: "제방",
+  제방: "제방",
+};
+
+function readableJimokOf(hit: FeatureHit): string | null {
+  const value = hit.properties.jimok;
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const trimmed = value.trim();
+  return JIMOK_READABLE[trimmed] ?? trimmed;
 }
 
 function jibunOf(hit: FeatureHit): string | null {
@@ -91,24 +121,28 @@ export function d19(ctx: EngineContext): TileResult {
   }
 
   const polygons = [];
-  const map = [];
   const renderedSiteIds = new Set<number>();
   for (const hit of hits) {
     const measured = byFeature.get(hit.featureId);
     if (!measured) continue;
     const isSite = siteHitIds.has(hit.featureId);
     const layer = isSite ? "parcel_site" : JIMOK_GROUPS[jimokGroupIndex(jimokOf(hit))].id;
-    const label = isSite ? jibunOf(hit) : null;
+    const jibun = jibunOf(hit);
+    const name = jibun === null ? null : isSite ? `대지 ${jibun}` : jibun;
+    const legacyLabel = jibun;
     if (isSite) {
       renderedSiteIds.add(hit.featureId);
-      map.push(candidate(hit, layer, { highlight: true, label }));
     }
     // A selected multi-parcel site is a deliberate map target, so preserve
     // its full parcel outlines even when an outline extends beyond the
     // analysis circle. Legacy address mode keeps the existing clipped view.
     const displayParts = isSite && ctx.input.site.kind === "parcels" ? polygonParts(hit.geometry) : measured.parts;
     for (const rings of displayParts) {
-      const polygon = polygonCandidate(hit.featureId, layer, rings, polygonArea(rings), label);
+      const polygon = polygonCandidate(hit.featureId, layer, rings, polygonArea(rings), legacyLabel, {
+        name,
+        sublabel: readableJimokOf(hit),
+        labelPriority: isSite ? 2 : 0,
+      });
       if (polygon) polygons.push(polygon);
     }
   }
@@ -118,10 +152,14 @@ export function d19(ctx: EngineContext): TileResult {
   if (ctx.input.site.kind === "parcels") {
     for (const hit of siteHits) {
       if (renderedSiteIds.has(hit.featureId)) continue;
-      const label = jibunOf(hit);
-      map.push(candidate(hit, "parcel_site", { highlight: true, label }));
+      const jibun = jibunOf(hit);
+      const name = jibun === null ? null : `대지 ${jibun}`;
       for (const rings of polygonParts(hit.geometry)) {
-        const polygon = polygonCandidate(hit.featureId, "parcel_site", rings, polygonArea(rings), label);
+        const polygon = polygonCandidate(hit.featureId, "parcel_site", rings, polygonArea(rings), jibun, {
+          name,
+          sublabel: readableJimokOf(hit),
+          labelPriority: 2,
+        });
         if (polygon) polygons.push(polygon);
       }
     }
@@ -130,7 +168,11 @@ export function d19(ctx: EngineContext): TileResult {
   // 직접 그린 구역은 원천 필지와 무관하게 대지 도형 자체를 계약상 parcel_site로 보낸다.
   if (ctx.input.site.kind === "polygon" && ctx.input.site.geometry) {
     for (const rings of polygonParts(ctx.input.site.geometry)) {
-      const candidatePolygon = polygonCandidate(0, "parcel_site", rings, polygonArea(rings), "직접 그린 구역");
+      const candidatePolygon = polygonCandidate(0, "parcel_site", rings, polygonArea(rings), null, {
+        name: null,
+        sublabel: null,
+        labelPriority: 0,
+      });
       if (candidatePolygon) polygons.push(candidatePolygon);
     }
   }
@@ -157,7 +199,6 @@ export function d19(ctx: EngineContext): TileResult {
     judgment: { ruleId: "D19-parcels@1", basisMetricIds: ["parcels"], sentence, level: null, criteria: null },
     sources,
     layers: ["parcel_site", ...JIMOK_LAYERS],
-    map,
     polygons,
     limitations,
   });

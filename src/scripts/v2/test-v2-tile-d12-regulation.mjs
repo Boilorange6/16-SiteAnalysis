@@ -104,6 +104,20 @@ assert.equal(facility.presentation.features?.length, 1, "only actual point facil
 assert.equal(facility.presentation.features?.some((feature) => feature.fid === "1"), false, "line facilities do not produce a sampled feature chain");
 assert.equal(facility.presentation.features?.some((feature) => feature.fid === "3"), false, "polygon facilities do not produce representative-point features");
 assert.equal(facility.presentation.features?.some((feature) => feature.fid === "4"), true, "the real point facility remains in features");
+const polygonFacility = facility.presentation.polygons?.find((polygon) => polygon.fid === "3");
+assert.equal(polygonFacility?.name, "공간", "D12 polygon name is the source facility type");
+assert.equal(polygonFacility?.sublabel, "4ha", "D12 polygon sublabel is the formatted area");
+assert.equal(polygonFacility?.labelPriority, 1, "D12 named polygons are automatic-label candidates");
+const lineFacility = facility.presentation.lines?.find((candidate) => candidate.fid === "1");
+assert.equal(lineFacility?.name, "교통", "D12 line name is the source facility type");
+assert.equal(lineFacility?.sublabel, "1,600m", "D12 line sublabel is the formatted length");
+assert.equal(lineFacility?.labelPriority, 1, "D12 named lines are automatic-label candidates");
+const pointFacility = facility.presentation.features?.find((feature) => feature.fid === "4");
+assert.equal(pointFacility?.name, "교통", "D12 point name is the source facility type");
+assert.equal(pointFacility?.sublabel, null, "D12 point has no value sublabel");
+assert.equal(pointFacility?.labelPriority, 1, "D12 named points are automatic-label candidates");
+assert.equal(new Set(facility.presentation.polygons?.map((polygon) => polygon.fid) ?? []).has("1"), false, "D12 line fid is not duplicated as a polygon");
+assert.equal(new Set(facility.presentation.features?.map((feature) => feature.fid) ?? []).has("3"), false, "D12 polygon fid is not duplicated as a point");
 for (const [lng, lat] of facility.presentation.lines?.[0]?.points ?? []) {
   const [x, y] = toUtmk([lng, lat]);
   assert.ok(Math.hypot(x - cx, y - cy) <= 801, "MapLine endpoints stay within the analysis radius");

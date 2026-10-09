@@ -40,8 +40,30 @@ function classOf(h: DistrictHit): string {
   } as Record<string, string>)[configured] ?? configured;
 }
 
-function labelOf(h: DistrictHit, cls: string): string {
-  return h.name?.trim() || (typeof h.properties.typeLabel === "string" && h.properties.typeLabel.trim() !== "" ? h.properties.typeLabel.trim() : cls);
+function textValue(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed === "" || trimmed === "-" ? null : trimmed;
+}
+
+/** D11 이름은 A8/A9 remark에 들어온 구역명만 쓴다. A6 typeLabel/class는 분류이지 이름이 아니다. */
+function nameOf(h: DistrictHit): string | null {
+  const p = h.properties;
+  const remarks = [
+    ...(Array.isArray(p.remark) ? p.remark : []),
+    p.remarkA8,
+    p.remarkA9,
+  ];
+  return remarks.map(textValue).find((value): value is string => value !== null) ?? null;
+}
+
+function announcementSublabel(h: DistrictHit): string | null {
+  const p = h.properties;
+  for (const value of [p.announcedDate, p.announcedRaw]) {
+    const year = typeof value === "string" ? /^(\d{4})/.exec(value.trim())?.[1] : undefined;
+    if (year) return `${year} 고시`;
+  }
+  return null;
 }
 
 function missingTile(ctx: EngineContext): TileResult {
@@ -67,7 +89,10 @@ function clippedDistricts(ctx: EngineContext, hits: DistrictHit[]): {
   let failed = 0;
   for (const h of hits) {
     const cls = classOf(h);
-    const label = labelOf(h, cls);
+    const name = nameOf(h);
+    const sublabel = announcementSublabel(h);
+    // legacy label은 기존 상세 소비자용 원천 이름만 유지하고 새 계약의 name을 우회하지 않는다.
+    const legacyLabel = textValue(h.name);
     if (typeof h.properties.typeCode === "string" && h.properties.typeCode.trim() !== "") validCode++;
     const parts = clipToCircle(ctx.input.center, ctx.input.radiusM, h.geometry);
     if (parts === null) {
@@ -78,7 +103,11 @@ function clippedDistricts(ctx: EngineContext, hits: DistrictHit[]): {
     if (area <= 0) continue;
     areas.set(cls, (areas.get(cls) ?? 0) + area);
     for (const rings of parts) {
-      const poly = polygonCandidate(h.featureId, `district:${cls}`, rings, polygonArea(rings), label);
+      const poly = polygonCandidate(h.featureId, `district:${cls}`, rings, polygonArea(rings), legacyLabel, {
+        name,
+        sublabel,
+        labelPriority: name === null ? 0 : 1,
+      });
       if (poly) polygons.push(poly);
     }
   }
