@@ -8,6 +8,7 @@ import { toUtmk, type LngLat } from "../../crs";
 import { lookupParcelPoints } from "../../data/parcels";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext, Limitation, SourceRef } from "../../engine/context";
+import { lookupComplexNames } from "../a07/complex-name";
 import { collectTrades, monthsBefore, type TradeCollection } from "../a07/engine";
 import { est, fmt, makeTile, missing, obs, type MapCandidate, type TileDraft } from "../../engine/tiles/common";
 import { notProvided } from "../../engine/tiles/not-provided";
@@ -42,8 +43,11 @@ export interface RentCollection {
 interface RentPoint {
   pnu: string;
   n: number;
+  jeonseN: number;
+  monthlyN: number;
   medianUnit: number | null;
   at: LngLat;
+  name: string | null;
 }
 
 const positive = (value: number | null): number | null => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null);
@@ -97,7 +101,7 @@ function pairedRatio(jeonse: RentRow[], trades: TradeCollection | null): { value
   return value === null ? null : { value: round1(value), count: ratios.length };
 }
 
-function pointGroups(rows: RentRow[], parcelPoints: Map<string, LngLat>, unit: (row: RentRow) => number | null): RentPoint[] {
+function pointGroups(rows: RentRow[], parcelPoints: Map<string, LngLat>, unit: (row: RentRow) => number | null, kind: RentContract, names: Map<string, string>): RentPoint[] {
   const groups = new Map<string, RentRow[]>();
   for (const row of rows) {
     if (!row.location_id || !parcelPoints.has(row.location_id)) continue;
@@ -108,43 +112,53 @@ function pointGroups(rows: RentRow[], parcelPoints: Map<string, LngLat>, unit: (
     .map(([pnu, group]) => ({
       pnu,
       n: group.length,
+      jeonseN: kind === "jeonse" ? group.length : 0,
+      monthlyN: kind === "monthly" ? group.length : 0,
       medianUnit: median(group.map(unit).filter((value): value is number => value !== null)),
       at: parcelPoints.get(pnu)!,
+      name: names.get(pnu) ?? null,
     }));
 }
 
-function rentFeatures(jeonse: RentPoint[], monthly: RentPoint[]): MapCandidate[] {
+function mergeRentPoints(jeonse: RentPoint[], monthly: RentPoint[]): RentPoint[] {
+  const byPnu = new Map<string, { jeonse?: RentPoint; monthly?: RentPoint }>();
+  for (const point of jeonse) byPnu.set(point.pnu, { ...byPnu.get(point.pnu), jeonse: point });
+  for (const point of monthly) byPnu.set(point.pnu, { ...byPnu.get(point.pnu), monthly: point });
+  return [...byPnu.values()]
+    .map(({ jeonse: j, monthly: m }) => {
+      const primary = j ?? m!;
+      return {
+        pnu: primary.pnu,
+        n: (j?.n ?? 0) + (m?.n ?? 0),
+        jeonseN: j?.n ?? 0,
+        monthlyN: m?.n ?? 0,
+        medianUnit: j?.medianUnit ?? null,
+        at: primary.at,
+        name: j?.name ?? m?.name ?? null,
+      };
+    })
+    .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "", "ko") || a.pnu.localeCompare(b.pnu));
+}
+
+function rentFeatures(points: RentPoint[]): MapCandidate[] {
   const topJeonse = new Set(
-    [...jeonse]
-      .sort((a, b) => b.n - a.n || a.pnu.localeCompare(b.pnu))
+    points
+      .filter((point) => point.jeonseN > 0)
+      .sort((a, b) => b.jeonseN - a.jeonseN || a.pnu.localeCompare(b.pnu))
       .slice(0, 3)
       .map((point) => point.pnu),
   );
-  const features: MapCandidate[] = [];
-  jeonse.forEach((point, index) => {
-    features.push({
-      id: index,
-      f: {
-        layer: "rent_jeonse",
-        lng: Math.round(point.at[0] * 1e6) / 1e6,
-        lat: Math.round(point.at[1] * 1e6) / 1e6,
-        weight: point.n,
-        ...(topJeonse.has(point.pnu) && point.medianUnit !== null ? { label: `${point.n}건 전세 ${fmt(Math.round(point.medianUnit))}만원/㎡` } : {}),
-      },
-    });
-  });
-  monthly.forEach((point, index) => {
-    features.push({
-      id: 100_000 + index,
-      f: {
-        layer: "rent_monthly",
-        lng: Math.round(point.at[0] * 1e6) / 1e6,
-        lat: Math.round(point.at[1] * 1e6) / 1e6,
-        weight: point.n,
-      },
-    });
-  });
-  return features;
+  return points.map((point, index) => ({
+    id: index,
+    f: {
+      // 한 PNU당 한 점은 W2a에서 보장한다. 혼합 PNU의 전세/월세 2색 표식은 W2b 공용 표현 계약에서 적용한다.
+      layer: point.jeonseN > 0 ? "rent_jeonse" : "rent_monthly",
+      lng: Math.round(point.at[0] * 1e6) / 1e6,
+      lat: Math.round(point.at[1] * 1e6) / 1e6,
+      weight: point.n,
+      ...(topJeonse.has(point.pnu) && point.medianUnit !== null ? { label: `${point.jeonseN}건 전세 ${fmt(Math.round(point.medianUnit))}만원/㎡` } : {}),
+    },
+  }));
 }
 
 function collectRentsUncached(ctx: EngineContext): RentCollection | null {
@@ -258,8 +272,8 @@ export function a08(ctx: EngineContext): TileResult {
       ? missing("jeonse_q1_per_m2", "전세 보증금 단가 하위 25% 경계", "만원/㎡", "a08-jeonse-iqr@1:선형 보간 백분위")
       : obs("jeonse_q1_per_m2", "전세 보증금 단가 하위 25% 경계", round1(jeonseQ1), "만원/㎡", "a08-jeonse-iqr@1:선형 보간 백분위"),
     jeonseQ3 === null
-      ? missing("jeonse_q3_per_m2", "전세 보증금 단가 상위 75% 경계", "만원/㎡", "a08-jeonse-iqr@1:선형 보간 백분위")
-      : obs("jeonse_q3_per_m2", "전세 보증금 단가 상위 75% 경계", round1(jeonseQ3), "만원/㎡", "a08-jeonse-iqr@1:선형 보간 백분위"),
+      ? missing("jeonse_q3_per_m2", "전세 보증금 단가 상위 25% 경계", "만원/㎡", "a08-jeonse-iqr@1:선형 보간 백분위")
+      : obs("jeonse_q3_per_m2", "전세 보증금 단가 상위 25% 경계", round1(jeonseQ3), "만원/㎡", "a08-jeonse-iqr@1:선형 보간 백분위"),
     monthlyRentMedian === null
       ? missing("monthly_rent_median", "월세 중앙값", "만원/월", "a08-monthly@1:월세 금액 중앙값")
       : obs("monthly_rent_median", "월세 중앙값", round1(monthlyRentMedian), "만원/월", "a08-monthly@1:월세 금액 중앙값", monthlyRents.length, monthly.length),
@@ -279,20 +293,24 @@ export function a08(ctx: EngineContext): TileResult {
   const jeonseText = jeonseMedian === null ? "미확인" : fmt(Math.round(jeonseMedian));
   const monthlyDepositText = monthlyDepositMedian === null ? "미확인" : fmt(Math.round(monthlyDepositMedian));
   const monthlyRentText = monthlyRentMedian === null ? "미확인" : fmt(Math.round(monthlyRentMedian));
-  const sentence =
-    `최근 12개월 반경 안 전세 ${fmt(jeonse.length)}건(㎡당 보증금 중앙값 ${jeonseText}만원)·월세 ${fmt(monthly.length)}건(보증금 중앙값 ${monthlyDepositText}만원·월세 중앙값 ${monthlyRentText}만원), ${ratioText}`
-    + " → 신규·갱신을 구분하고 전세가율은 대응 표본을 비교하는 지표로만 해석해야 함 → 단지·면적별 개별 계약 확인 필요";
+  const renewalText = hasRenewal ? "신규·갱신 구분 가능" : "신규·갱신 구분 자료 없음";
+  const sentence = jeonse.length === 0 && monthly.length === 0
+    ? `최근 12개월 반경 안에 위치가 확인된 전월세 계약 없음(${renewalText}) → 계약이 없었다는 뜻은 아니며 위치 미확인 자료는 반경 판정에서 빠짐 → 시군구 자료와 개별 계약 확인 필요`
+    : `최근 12개월 반경 안 전세 ${fmt(jeonse.length)}건(㎡당 보증금 중앙값 ${jeonseText}만원)·월세 ${fmt(monthly.length)}건(보증금 중앙값 ${monthlyDepositText}만원·월세 중앙값 ${monthlyRentText}만원), ${ratioText}`
+      + ` → ${hasRenewal ? "신규·갱신을 구분하고" : "신규·갱신 구분 자료가 없어 구분하지 못하고"} 전세가율은 대응 표본을 비교하는 지표로만 해석해야 함 → 단지·면적별 개별 계약 확인 필요`;
 
   const core = ctx.db("core");
   const allRows = [...jeonse, ...monthly];
   const parcelPoints = core
     ? lookupParcelPoints(core, allRows.flatMap((row) => (row.location_id ? [row.location_id] : [])))
     : new Map<string, LngLat>();
-  const jeonsePoints = pointGroups(jeonse, parcelPoints, unitPerM2);
+  const names = core ? lookupComplexNames(core, allRows.flatMap((row) => (row.location_id ? [row.location_id] : []))) : new Map<string, string>();
+  const jeonsePoints = pointGroups(jeonse, parcelPoints, unitPerM2, "jeonse", names);
   const monthlyPoints = pointGroups(monthly, parcelPoints, (row) => {
     const rent = positive(row.rent_krw);
     return rent === null ? null : rent / 10_000;
-  });
+  }, "monthly", names);
+  const rentPoints = mergeRentPoints(jeonsePoints, monthlyPoints);
   const limitations: Limitation[] = [
     { kind: "partial", note: "아파트 전월세만 다룹니다(오피스텔 제외 — 원천 자료 범위)." },
     { kind: "unknown", note: "동·호가 공개되지 않아 같은 단지·면적 조건의 계약이 하나로 합쳐졌을 수 있습니다." },
@@ -316,7 +334,7 @@ export function a08(ctx: EngineContext): TileResult {
     judgment: { ruleId: "a08-rent@1", basisMetricIds, sentence, level: null, criteria: null },
     sources: [...sourceMap.values()],
     layers: ["rent_jeonse", "rent_monthly"],
-    map: rentFeatures(jeonsePoints, monthlyPoints),
+    map: rentFeatures(rentPoints),
     limitations,
   });
 }

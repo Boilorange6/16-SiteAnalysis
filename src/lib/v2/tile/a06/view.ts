@@ -30,8 +30,9 @@ export function calloutForA06(result: TileResult, sourceLine: string): CalloutMo
 
 export const a06ClientModule = {
   code: "A06",
-  headline: { ids: ["applyhome_units", "move_in_units", "projects"] },
-  mapNote: "원천별 표시 · 중복 가능",
+  headline: { ids: ["applyhome_units", "move_in_units"] },
+  mapNote: "색 = 원천(청약홈·입주예정) · 원 크기 = 공급 세대 · 같은 사업 중복 가능",
+  // 현재 공용 UI fixture에는 합계 행이 있어, 계획서의 "죽은 필터" 판정과 달리 실제로 행을 제거한다.
   metricFilter: (metric) => !/total|sum/.test(metric.id),
   limitationBadges: (limitation) => limitation.note.includes("중복") ? [{ text: "중복 가능 · 합계 보류", note: limitation.note, tone: "limit" as const }] : [],
   callout: calloutForA06,

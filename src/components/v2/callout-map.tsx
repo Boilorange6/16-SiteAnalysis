@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, memo, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { STRIP_H, calloutLegendMatches, cardName, cardRows, clusterPoints, compactCalloutLegend, compactNameNeedsExtraHeight, displayComplexName, dotColor, dotRadius, fmtInt, inkOn, overlapChip, pageCount, pageRange, stripCards, type CalloutFrame, type Complex, type Placed, type StripCard } from "@/lib/v2/ui/callout-layout";
+import { OTHER_HOUSING_COLOR, OTHER_HOUSING_LABEL, STRIP_H, calloutLegendMatches, cardName, cardRows, clusterPoints, compactCalloutLegend, compactNameNeedsExtraHeight, displayComplexName, dotColor, dotRadius, fmtInt, inkOn, isHollowComplexMarker, overlapChip, pageCount, pageRange, stripCards, type CalloutFrame, type Complex, type Placed, type StripCard } from "@/lib/v2/ui/callout-layout";
 import { calloutScene, type CalloutFrameKind } from "@/lib/v2/ui/callout-scene";
 import { OV } from "@/lib/v2/ui/overlay-layout";
 import { framedViewport, metersPerPixel, scaleBar } from "@/lib/v2/ui/map-projection";
@@ -34,7 +34,7 @@ function Card({ c, siblings, p, frame, year, hover, dim, onHover, onPick }: { c:
       onClick={() => onPick(c.id)}
     >
       <div className={tileStyles.cHead} data-compact={!full || undefined} data-name-wrap={nameWrap ? "true" : undefined}>
-        <span className={tileStyles.cNum} style={{ background: color, color: inkOn(color) }}>
+        <span className={tileStyles.cNum} style={{ background: isHollowComplexMarker(c) ? "transparent" : color, color: isHollowComplexMarker(c) ? color : inkOn(color), borderColor: color }}>
           {c.rank}
         </span>
         <span className={`${tileStyles.cName} ${c.name ? "" : tileStyles.cMissing}`} title={cardName(c)}>
@@ -82,7 +82,7 @@ function Card({ c, siblings, p, frame, year, hover, dim, onHover, onPick }: { c:
   );
 }
 
-/** 범례: A05 준공 연대 / A06 입주 시기 색 + 크기 = 세대수 */
+/** 범례: A05 준공 연대 / A06 입주 시기 색 + 크기 = 세대·호실 */
 export function CalloutLegend({ model, compact = false, style, activeLabel = null, pinnedLabel = null, onHover, onPin }: { model: CalloutModel; compact?: boolean; style?: React.CSSProperties; activeLabel?: string | null; pinnedLabel?: string | null; onHover?: (label: string | null) => void; onPin?: (label: string | null) => void }) {
   const items = compact ? compactCalloutLegend(model.legend, model.complexes, 3) : model.legend.items;
   const legendPointerType = useRef<string | null>(null);
@@ -176,7 +176,7 @@ function Strip({ cards, active, onPick, top }: { cards: StripCard[]; active: str
       {cards.map((c) => (
         <button key={c.id} type="button" role="listitem" data-card={c.id} className={`${styles.plate} ${tileStyles.cStripCard} ${active === c.id ? tileStyles.cCardOn : ""}`} onClick={() => onPick(c.id)} aria-pressed={active === c.id}>
           <span className={tileStyles.cStripHead}>
-            <span className={tileStyles.cNum} style={{ background: c.color, color: inkOn(c.color) }}>
+            <span className={tileStyles.cNum} style={{ background: c.hollow ? "transparent" : c.color, color: c.hollow ? c.color : inkOn(c.color), borderColor: c.color }}>
               {c.rank}
             </span>
             <span className={`${tileStyles.cName} ${c.nameMissing ? tileStyles.cMissing : ""}`} title={c.fullName}>{c.name}</span>
@@ -331,7 +331,7 @@ function CalloutMap({ model, kind, page = 0, onPage, label }: CalloutMapProps) {
             ))}
             {/* 연립·다세대 등 기타 공동주택: 번호·라벨 없는 작은 회색 점 */}
             {scene.otherPts.map(([x, y], i) => (
-              <circle key={`o${i}`} cx={x} cy={y} r={2} fill="#9AA0AA" fillOpacity={activeLegendColor ? 0.2 : 0.7} />
+              <circle key={`o${i}`} cx={x} cy={y} r={2} fill={OTHER_HOUSING_COLOR} fillOpacity={activeLegend === OTHER_HOUSING_LABEL ? 0.7 : activeLegendColor ? 0.2 : 0.7} />
             ))}
             {/* 카드 없는 단지: 점만 (앞뒤 페이지·보드 카드의 나머지) */}
             {model.complexes
@@ -353,6 +353,7 @@ function CalloutMap({ model, kind, page = 0, onPage, label }: CalloutMapProps) {
               const [x, y] = displayPosition(c.id);
               const r = dotRadius(c.households, scene.hMax, scene.frame.m.rMin, scene.frame.m.rMax);
               const color = dotColor(c);
+              const hollow = isHollowComplexMarker(c);
               const legendMatch = calloutLegendMatches(c, activeLegendColor);
               const on = activeLegendColor ? legendMatch : active === c.id;
               return (
@@ -366,8 +367,8 @@ function CalloutMap({ model, kind, page = 0, onPage, label }: CalloutMapProps) {
                 >
                   {on && <circle cx={x} cy={y} r={r + 5} fill="none" stroke={sat ? "#fff" : INK} strokeWidth={2} />}
                   <circle cx={x} cy={y} r={r + 1.4} fill={sat ? INK : "#fff"} fillOpacity={sat ? 0.45 : 0.95} />
-                  <circle cx={x} cy={y} r={r} fill={color} stroke={sat ? "#fff" : INK} strokeOpacity={sat ? 0.9 : 0.5} strokeWidth={0.8} />
-                  <text x={x} y={y} textAnchor="middle" dominantBaseline="central" fontSize={Math.min(12, Math.max(8.5, r * 1.05))} fontWeight={700} fill={inkOn(color)}>
+                  <circle cx={x} cy={y} r={r} fill={hollow ? "transparent" : color} stroke={sat ? "#fff" : color} strokeOpacity={sat ? 0.9 : 0.8} strokeWidth={0.8} />
+                  <text x={x} y={y} textAnchor="middle" dominantBaseline="central" fontSize={Math.min(12, Math.max(8.5, r * 1.05))} fontWeight={700} fill={hollow ? (sat ? "#fff" : color) : inkOn(color)}>
                     {c.rank}
                   </text>
                 </g>

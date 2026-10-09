@@ -184,10 +184,14 @@ export const decadeColor = (year: number | null) => layerStyle(decadeLayer(year)
 export const STOCK_LEGEND: CalloutLegendSpec = {
   title: "준공 연대",
   items: DECADE_LAYERS.map((k, i) => ({ label: ["~79", "80년대", "90년대", "00년대", "10년대", "20년~", "미상"][i], color: layerStyle(k).color, hollow: k === "bldg_unknown" })),
-  sizeLabel: "크기 = 세대수",
+  sizeLabel: "크기 = 세대·호실",
 };
+export const OTHER_HOUSING_LABEL = "기타 공동주택";
+export const OTHER_HOUSING_COLOR = "#9AA0AA";
 /** 점·번호 원 색: A06은 입주 시기 버킷, A05는 준공 연대 */
 export const dotColor = (c: Complex) => (c.supply ? TIMING_STYLE[c.supply.timing].color : decadeColor(c.approvalYear));
+/** A05 준공 연도 미상만 hollow로 그린다. A06 일정 미상은 채운 원이다. */
+export const isHollowComplexMarker = (c: Pick<Complex, "approvalYear" | "supply"> | null | undefined): boolean => Boolean(c && !c.supply && c.approvalYear === null);
 export const calloutLegendMatches = (c: Complex, color: string | null): boolean => color === null || dotColor(c) === color;
 
 /** 좁은 지도에서 가장 많이 등장하는 세 가지 범주만 남기는 설명선 범례. */
@@ -268,13 +272,13 @@ export const MOBILE_MAX_W = 520;
 export const isMobileWidth = (w: number) => w <= MOBILE_MAX_W;
 /** 모바일 띠: 최대 3줄 단지명 + 2줄 값 + 여백을 수용하는 예약 높이(px). */
 export const STRIP_H = 92;
-export type StripCard = { id: string; rank: number; name: string; fullName: string; nameMissing: boolean; color: string; chip: string | null; lines: string[] };
+export type StripCard = { id: string; rank: number; name: string; fullName: string; nameMissing: boolean; color: string; hollow: boolean; chip: string | null; lines: string[] };
 /** 띠 카드 모델: 순서 = 페이지 순서(번호 순), 카드 값과 타입을 세 줄로 */
 export function stripCards(items: Complex[], analysisYear: number): StripCard[] {
   return items.map((c) => {
     const v = cardRows(c, analysisYear).map((r) => r.value);
     const lines = c.supply ? [`${v[0]} · ${v[1]}`, v[2], `${v[3]} · ${v[4]}`] : [v[0], v[1], `${v[2]} · ${v[3]}`];
-    return { id: c.id, rank: c.rank, name: displayComplexName(c, items), fullName: cardName(c), nameMissing: c.name === null, color: dotColor(c), chip: overlapChip(c), lines };
+    return { id: c.id, rank: c.rank, name: displayComplexName(c, items), fullName: cardName(c), nameMissing: c.name === null, color: dotColor(c), hollow: isHollowComplexMarker(c), chip: overlapChip(c), lines };
   });
 }
 /** 띠 모양 프레임: 두 칸이 없으므로 반경 원이 가로를 거의 다 쓴다 */

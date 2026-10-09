@@ -57,6 +57,7 @@ assert.equal(MIN_PAIRED, 3);
   near(value(tile, "jeonse_deposit_per_m2"), 535.7, 0.1, "전세 보증금 단가 중앙값");
   near(value(tile, "jeonse_q1_per_m2"), 410.7, 0.2, "전세 보증금 단가 25% 경계");
   near(value(tile, "jeonse_q3_per_m2"), 574.4, 0.2, "전세 보증금 단가 75% 경계");
+  assert.equal(metric(tile, "jeonse_q3_per_m2").label, "전세 보증금 단가 상위 25% 경계");
   assert.equal(value(tile, "monthly_rent_median"), 95, "월세 중앙값");
   assert.equal(value(tile, "monthly_deposit_median"), 10000, "월세 보증금 중앙값");
   near(value(tile, "jeonse_to_trade_ratio_pct"), 55.7, 0.1, "A 단지 대응 전세가율");
@@ -66,10 +67,9 @@ assert.equal(MIN_PAIRED, 3);
   assert.equal(tile.metrics.some((item) => /환산|pyeong|conversion/i.test(item.id)), false, "월세 환산 지표 없음");
 
   const features = tile.presentation.features;
-  assert.equal(features.length, 3, "전세 2개 필지 + 월세 1개 필지");
-  assert.deepEqual([...new Set(features.map((feature) => feature.layer))].sort(), ["rent_jeonse", "rent_monthly"]);
-  assert.deepEqual(features.filter((feature) => feature.layer === "rent_jeonse").map((feature) => feature.weight).sort((a, b) => a - b), [2, 6]);
-  assert.equal(features.filter((feature) => feature.layer === "rent_monthly")[0].weight, 4);
+  assert.equal(features.length, 2, "같은 PNU의 전세·월세를 한 점으로 합친다");
+  assert.deepEqual([...new Set(features.map((feature) => feature.layer))], ["rent_jeonse"], "혼합 점은 W2b 2색 표식 전까지 전세 레이어로 표시");
+  assert.deepEqual(features.map((feature) => feature.weight).sort((a, b) => a - b), [6, 6], "점 크기는 PNU 전체 계약 건수");
   assert.ok(features.filter((feature) => feature.layer === "rent_jeonse").every((feature) => /^\d+건 전세 [\d,]+만원\/㎡$/.test(feature.label)));
   assert.ok(tile.presentation.layers.includes("rent_jeonse") && tile.presentation.layers.includes("rent_monthly"));
   assert.deepEqual(tile.provenance.sources.map((source) => source.sourceId).sort(), ["rtms_apt_rent", "rtms_apt_trade"]);
@@ -88,7 +88,18 @@ assert.equal(MIN_PAIRED, 3);
   assert.equal(metric(tile, "renewal_count").status, "missing");
   assert.equal(value(tile, "jeonse_count"), 8);
   assert.equal(value(tile, "monthly_count"), 4);
+  assert.match(tile.judgment.sentence, /신규·갱신 구분 자료가 없어/);
   assert.equal(tile.provenance.sources.length, 1);
+  ctx.close();
+}
+
+// 원천은 있지만 반경 안 계약이 없는 경우도 빈 결과를 사실대로 설명한다.
+{
+  const ctx = await make({ rents: true }, 50);
+  const tile = a08(ctx);
+  clean(tile);
+  assert.match(tile.judgment.sentence, /반경 안에 위치가 확인된 전월세 계약 없음/);
+  assert.match(tile.judgment.sentence, /신규·갱신 구분 가능/);
   ctx.close();
 }
 

@@ -50,12 +50,16 @@ export function a06(ctx: EngineContext): TileResult {
   if (sources.length === 0) return noDataTile(ctx, "A06", ["applyhome", "applyhome_types", "move_in"]);
   const hits = ctx.hits("market", ["planned_supply"]);
 
-  // development_event와 연결되는 사업 수(중복 제거는 다음 단계, 이번엔 연결 가능 여부만 기록)
+  // development_event 연결 근거는 남기되 SQLite 변수 상한을 넘지 않도록 500개씩 조회한다.
   const market = ctx.db("market")!;
   const ids = hits.map((h) => h.stableId);
-  const linked = ids.length
-    ? (market.prepare(`SELECT count(*) FROM development_event WHERE geometry_id IN (${ids.map(() => "?").join(",")})`).pluck().get(...ids) as number)
-    : 0;
+  let linked = 0;
+  for (let offset = 0; offset < ids.length; offset += 500) {
+    const chunk = ids.slice(offset, offset + 500);
+    linked += chunk.length
+      ? (market.prepare(`SELECT count(*) FROM development_event WHERE geometry_id IN (${chunk.map(() => "?").join(",")})`).pluck().get(...chunk) as number)
+      : 0;
+  }
   const link = `event-link=${linked}/${hits.length}`;
 
   const metrics: TileDraft["metrics"] = [];
@@ -93,7 +97,6 @@ export function a06(ctx: EngineContext): TileResult {
       const kind = typeof h.properties.kind === "string" ? h.properties.kind : null;
       return candidate(h, h.properties.source as string, {
         weight: num(h.properties.units),
-        label: month,
         households: num(h.properties.units),
         name: h.name,
         type: kind === null ? null : (TYPE_TEXT[kind] ?? kind),
