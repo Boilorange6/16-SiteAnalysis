@@ -122,6 +122,9 @@ try {
   assert.equal(metric(tile, "kde_bandwidth_m").value, 100);
   assert.equal(metric(tile, "kde_cell_m").value, 20);
   assert.equal(metric(tile, "buildings_input").value, 6, "반경 밖 300m 버퍼 안의 6동만 입력");
+  assert.equal(tile.metrics.some((item) => item.id === "assumed_one_floor_buildings"), false, "층수 미상 1층 가정은 D16에서 제거");
+  assert.match(tile.judgment.sentence, /대역폭 100m/);
+  assert.match(tile.judgment.sentence, /최대 [\d,.]+동\/㎢/, "문장에 KDE 결과 수치를 포함");
   assert.ok(metric(tile, "dens_break_1").value < metric(tile, "dens_break_4").value);
   assert.ok(metric(tile, "dens_max").value > metric(tile, "dens_break_4").value);
 
@@ -155,6 +158,19 @@ try {
   assert.match(tile.limitations.find((item) => item.kind === "estimated")?.note ?? "", /커널 밀도 추정/);
   assert.match(tile.limitations.map((item) => item.note).join(" "), /연면적은 대장 값이며 동수 KDE와 섞지 않음/);
   assert.doesNotMatch(JSON.stringify(toTileView(tile)), /도보|\d\s*분|종합|법적 적합|개발 가능/);
+
+  const invalidPointCtx = makeContext(dataDir, "d16-invalid-point");
+  const originalHits = invalidPointCtx.hits.bind(invalidPointCtx);
+  invalidPointCtx.hits = (key, kinds, radiusM) => originalHits(key, kinds, radiusM).map((hit) => hit.stableId === "building:b_unknown"
+    ? { ...hit, geometry: { type: "LineString", coordinates: [] } }
+    : hit);
+  invalidPointCtx.coverage = () => [];
+  try {
+    const invalidPoint = d16(invalidPointCtx);
+    assert.equal(metric(invalidPoint, "buildings_input").value, 5, "유효 대표점만 KDE 입력으로 센다");
+  } finally {
+    invalidPointCtx.close();
+  }
 } finally {
   ctx.close();
 }

@@ -1,5 +1,4 @@
 /** D04 준공 연대 — 별도 buildings 파일의 건물별 사용승인일 분포. */
-import type BetterSqlite3 from "better-sqlite3";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../../engine/context";
 import { DECADE_LAYERS, decadeLayer } from "../../ui/callout-layout";
@@ -7,8 +6,6 @@ import { candidate, makeTile, missing, obs, polygonCandidate, type PolygonCandid
 import { areaInCircle, polygonArea } from "../../engine/tiles/geo";
 import { BUILDING_SOURCES, buildingRetirementLimitations, buildingRows, isCounted } from "../../engine/tiles/buildings-shared";
 import { notProvided } from "../../engine/tiles/not-provided";
-
-const FEATURE_COLUMNS = ["feature_id", "stable_id", "kind", "release_id", "geom_json", "name", "pnu", "legal_code", "properties_json"] as const;
 
 const DECADES = [
   { id: "share_pre1980", label: "1979년 이하", layer: "bldg_pre1980" },
@@ -19,14 +16,6 @@ const DECADES = [
   { id: "share_2020s", label: "2020년 이상", layer: "bldg_2020s" },
 ] as const;
 
-function columns(db: BetterSqlite3.Database, table: string): Set<string> {
-  try {
-    return new Set((db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((c) => c.name));
-  } catch {
-    return new Set();
-  }
-}
-
 function approvalYear(value: unknown, analysisDate: string): number | null {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const date = new Date(`${value}T00:00:00Z`);
@@ -36,20 +25,24 @@ function approvalYear(value: unknown, analysisDate: string): number | null {
 }
 
 const pct = (part: number, whole: number) => Math.round((part / whole) * 1000) / 10;
+const fallbackPoint = (hit: Parameters<typeof candidate>[0], layer: string) => {
+  try {
+    return candidate(hit, layer);
+  } catch {
+    return null;
+  }
+};
 
 export function d04(ctx: EngineContext): TileResult {
   const sources = ctx.sources("buildings", BUILDING_SOURCES);
-  const db = ctx.db("buildings");
-  if (sources.length === 0 || !db) return notProvided(ctx, "D04");
-  const featureColumns = columns(db, "feature");
-  const factColumns = columns(db, "building_fact");
-  if (!FEATURE_COLUMNS.every((column) => featureColumns.has(column)) || !factColumns.has("feature_id") || !factColumns.has("approval_date")) return notProvided(ctx, "D04");
+  if (sources.length === 0 || !ctx.db("buildings")) return notProvided(ctx, "D04");
 
   const rows = buildingRows(ctx);
   if (rows === null) return notProvided(ctx, "D04");
   const allYears = new Map(rows.map((row) => [row.hit.featureId, approvalYear(row.approvalDate, ctx.input.analysisDate)]));
   const years = new Map(rows.filter((row) => isCounted(ctx, row)).map((row) => [row.hit.featureId, allYears.get(row.hit.featureId) ?? null])); // 동수·구성비는 중심점이 반경 안인 건물만, 그림은 교차 전부
   const ledgerBackfilled = rows.filter((row) => isCounted(ctx, row) && row.approvalDateSource === "core_ledger_pnu").length;
+  const points: Array<ReturnType<typeof candidate>> = [];
   const polygons: PolygonCandidate[] = [];
   let failedGeometry = 0;
   for (const row of rows) {
@@ -57,11 +50,22 @@ export function d04(ctx: EngineContext): TileResult {
     const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, hit.geometry);
     if (clipped === null) {
       failedGeometry += 1;
+      const point = fallbackPoint(hit, decadeLayer(allYears.get(hit.featureId) ?? null));
+      if (point) points.push(point);
       continue;
     }
+    let hasPolygon = false;
     for (const rings of clipped.parts) {
       const polygon = polygonCandidate(hit.featureId, decadeLayer(allYears.get(hit.featureId) ?? null), rings, polygonArea(rings), hit.name);
-      if (polygon) polygons.push(polygon);
+      if (polygon) {
+        polygons.push(polygon);
+        hasPolygon = true;
+      }
+    }
+    if (!hasPolygon) {
+      failedGeometry += 1;
+      const point = fallbackPoint(hit, decadeLayer(allYears.get(hit.featureId) ?? null));
+      if (point) points.push(point);
     }
   }
   const total = years.size;
@@ -102,7 +106,7 @@ export function d04(ctx: EngineContext): TileResult {
     judgment: { ruleId: "D04-decades@1", basisMetricIds: ["confirmed_share_pct"], sentence, level: null, criteria: null },
     sources,
     layers: [...DECADE_LAYERS],
-    map: rows.map((row) => candidate(row.hit, decadeLayer(allYears.get(row.hit.featureId) ?? null))),
+    map: points,
     polygons,
     limitations,
   });

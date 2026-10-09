@@ -2,7 +2,7 @@
 import { toUtmk } from "../../crs";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../../engine/context";
-import { assumedOneFloorLimitation, assumedOneFloorCount, buildingRetirementLimitations, buildingRows, BUILDING_SOURCES, isCounted, isCountedWithin, type BuildingRow } from "../../engine/tiles/buildings-shared";
+import { buildingRetirementLimitations, buildingRows, BUILDING_SOURCES, isCounted, isCountedWithin, type BuildingRow } from "../../engine/tiles/buildings-shared";
 import { est, hitPoint, makeTile, missing, obs, type TileDraft } from "../../engine/tiles/common";
 import { gridQuantiles } from "../../engine/tiles/raster-grid";
 import { kdeBandPolygons, kdeGrid, KDE_BANDWIDTH_M, KDE_ZERO_THRESHOLD } from "./kde";
@@ -73,8 +73,14 @@ export function d16(ctx: EngineContext): TileResult {
   const cellM = Math.max(20, Math.ceil((2 * radiusM) / 80));
   const points = rows
     .filter((row) => isCountedWithin(ctx, row, radiusM + INPUT_BUFFER_M))
-    .map((row) => toUtmk(hitPoint(row.hit)))
-    .filter((point): point is [number, number] => point.every(Number.isFinite));
+    .flatMap((row) => {
+      try {
+        const point = toUtmk(hitPoint(row.hit));
+        return point.every(Number.isFinite) ? [[point[0], point[1]] as [number, number]] : [];
+      } catch {
+        return [];
+      }
+    });
   const grid = kdeGrid(ctx.input.center, radiusM, cellM, points);
   const positiveGrid = {
     ...grid,
@@ -92,13 +98,12 @@ export function d16(ctx: EngineContext): TileResult {
   }));
   const finiteGridValues = Array.from(grid.values).filter(Number.isFinite);
   const maxDensity = finiteGridValues.length > 0 ? maxOf(finiteGridValues) : 0;
+  const inputCount = points.length;
   const coverage = ctx.coverage("buildings", BUILDING_SOURCES);
   const retirementLimitations = buildingRetirementLimitations(ctx, Math.min(5000, radiusM + INPUT_BUFFER_M));
-  const assumedLimitation = assumedOneFloorLimitation(rows);
   const limitations: TileDraft["limitations"] = [
     { kind: "estimated", note: "커널 밀도 추정 — 동수 기준, 연면적·용적률과 혼합 안 함 · 반경 밖 300m 건물 포함" },
     { kind: "unknown", note: "연면적은 대장 값이며 동수 KDE와 섞지 않음" },
-    ...(assumedLimitation ? [assumedLimitation] : []),
     ...retirementLimitations,
     ...coverage,
   ];
@@ -106,8 +111,7 @@ export function d16(ctx: EngineContext): TileResult {
   const metrics: TileDraft["metrics"] = [
     obs("kde_bandwidth_m", "KDE 대역폭", KDE_BANDWIDTH_M, "m", "d16-kde-config@1:가우시안 커널 대역폭"),
     obs("kde_cell_m", "KDE 격자 간격", cellM, "m", "d16-kde-config@1:cellM=max(20,ceil(2r÷80))"),
-    obs("buildings_input", "KDE 입력 건물", rows.length, "동", "d16-kde-input@1:반경과 300m 버퍼 안 발자국 대표점"),
-    est("assumed_one_floor_buildings", "1층 가정(추정) KDE 입력 건물", assumedOneFloorCount(rows), "동", "d16-kde-assumed-one-floor@1:높이·층수 미상 건물 수", assumedOneFloorCount(rows), rows.length),
+    obs("buildings_input", "KDE 입력 건물", inputCount, "동", "d16-kde-input@2:반경과 300m 버퍼 안 유효 대표점"),
     ...quantiles.map((value, index) => Number.isFinite(value)
       ? est(`dens_break_${index + 1}`, `밀도 경계 ${index + 1}`, round3(value), "동/㎢", "d16-kde-quantile@1:원 안 유효 KDE 값 중 양수값의 백분위", null, null)
       : missing(`dens_break_${index + 1}`, `밀도 경계 ${index + 1}`, "동/㎢", "d16-kde-quantile@1:양수 KDE 값 없음")),
@@ -123,11 +127,12 @@ export function d16(ctx: EngineContext): TileResult {
       ? missing("gfa_per_ha", "연면적 밀도(㎡/ha) — 용적률 아님", "㎡/ha", "d16-gfa-density@1:연면적 합÷(π·r²/10⁴); 용적률 아님")
       : est("gfa_per_ha", "연면적 밀도(㎡/ha) — 용적률 아님", round1(gfa.perHa), "㎡/ha", "d16-gfa-density@1:연면적 합÷(π·r²/10⁴); 용적률 아님", Math.round(gfa.totalM2!), (Math.PI * radiusM ** 2) / 10000),
   ];
-  const sentence = rows.length === 0
-    ? `반경 ${radiusM.toLocaleString("en-US")}m와 바깥 300m를 합친 KDE 입력 건물 0동 → 관측된 건물 대표점이 없어 밀도 면은 모두 0으로 표시 → 최신 건물 도형과 현장 확인 필요`
+  const maxDensityText = round3(maxDensity).toLocaleString("en-US");
+  const sentence = inputCount === 0
+    ? `반경 ${radiusM.toLocaleString("en-US")}m와 바깥 ${INPUT_BUFFER_M}m를 합친 KDE 입력 건물 0동 → 유효 건물 대표점이 없어 밀도 면은 모두 0으로 표시 → 최신 건물 도형과 현장 확인 필요`
     : gfa.totalM2 === null
-      ? `반경 ${radiusM.toLocaleString("en-US")}m와 바깥 300m를 합친 ${rows.length.toLocaleString("en-US")}동의 대표점으로 대역폭 100m KDE를 계산함 → 동수 기반 밀도 구간을 표시하고 연면적 대장값은 확인되지 않음 → 최신 건물 도형·대장 확인 필요`
-      : `반경 ${radiusM.toLocaleString("en-US")}m와 바깥 300m를 합친 ${rows.length.toLocaleString("en-US")}동의 대표점으로 대역폭 100m KDE를 계산함 → 동수 기반 밀도 구간과 확인 연면적 보조 지표를 함께 표시(용적률 아님) → 최신 건물 도형·대장 확인 필요`;
+      ? `반경 ${radiusM.toLocaleString("en-US")}m와 바깥 ${INPUT_BUFFER_M}m를 합친 유효 대표점 ${inputCount.toLocaleString("en-US")}동으로 대역폭 ${KDE_BANDWIDTH_M}m KDE를 계산함 → 최대 ${maxDensityText}동/㎢, 동수 기반 밀도 구간을 표시하고 연면적 대장값은 확인되지 않음 → 최신 건물 도형·대장 확인 필요`
+      : `반경 ${radiusM.toLocaleString("en-US")}m와 바깥 ${INPUT_BUFFER_M}m를 합친 유효 대표점 ${inputCount.toLocaleString("en-US")}동으로 대역폭 ${KDE_BANDWIDTH_M}m KDE를 계산함 → 최대 ${maxDensityText}동/㎢, 동수 기반 밀도 구간과 확인 연면적 보조 지표를 함께 표시(용적률 아님) → 최신 건물 도형·대장 확인 필요`;
 
   return makeTile(ctx, {
     code: "D16",

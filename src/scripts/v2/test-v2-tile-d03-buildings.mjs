@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import Database from "better-sqlite3";
 
 const { buildEngineFixture, CENTER } = await import("./engine-fixture.mjs");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { d03, USE_CLASSES, useClassOf } = await import("../../lib/v2/tile/d03/engine.ts");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
+const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 
 const metric = (tile, id) => {
   const found = tile.metrics.find((item) => item.id === id);
@@ -52,10 +54,57 @@ assert.deepEqual(tile.presentation.layers, USE_CLASSES.map((useClass) => `use:${
 assert.equal(tile.presentation.polygons.length, 6);
 assert.equal(tile.presentation.polygonsTotal, 6);
 assert.equal(tile.judgment.level, null);
+assert.match(tile.judgment.sentence, /확인된 주용도 중 최다는 주거/, "판정 문장에 확인된 최다 용도를 포함");
 assert.doesNotMatch(JSON.stringify(tile), /도보|\d\s*분|종합/);
 ctx.close();
 
-// 2) 건물 파일이 게시되지 않으면 D03만 안전하게 미제공.
+// 2) 미상이 확인된 용도보다 많아도 헤더 후보에서는 제외하되 수치·도형은 보존.
+const unknownDominantDir = mkdtempSync(join(tmpdir(), "v2-d03-unknown-dominant-"));
+await buildEngineFixture(unknownDominantDir, "v1", { buildings: true });
+const unknownDominantDb = new Database(join(unknownDominantDir, "versions", "v1", "buildings.sqlite"));
+unknownDominantDb.prepare(`UPDATE building_fact SET use_code = NULL WHERE feature_id IN (
+  SELECT feature_id FROM feature WHERE stable_id IN ('building:b_apt', 'building:b_tower')
+)`).run();
+unknownDominantDb.close();
+const unknownDominantCtx = context(unknownDominantDir, "d03-unknown-dominant");
+const unknownDominant = d03(unknownDominantCtx);
+parseTileResult(unknownDominant);
+const unknownDominantView = toTileView(unknownDominant);
+assert.equal(metric(unknownDominant, "share_use_10").value, 66.7);
+assert.notEqual(unknownDominantView.headlineMetricId, "share_use_10", "미상 구성비는 헤더 후보에서 제외");
+assert.notEqual(unknownDominantView.headline?.label, "구성비: 미상", "미상 용도는 헤더 최우선으로 표시하지 않음");
+assert.equal(unknownDominant.presentation.polygons.length, 6, "헤더 정책 변경이 도형을 제거하지 않음");
+unknownDominantCtx.close();
+
+// 3) 적재 단계 retired 제외가 coverage 없이도 타일 상태를 partial로 만든다.
+const retirementDir = mkdtempSync(join(tmpdir(), "v2-d03-retirement-"));
+await buildEngineFixture(retirementDir, "v1", { buildings: true });
+const retirementDb = new Database(join(retirementDir, "versions", "v1", "buildings.sqlite"));
+retirementDb.prepare("UPDATE feature SET properties_json = ? WHERE stable_id = ?").run(JSON.stringify({ retired: true }), "building:b_unknown");
+retirementDb.close();
+const retirementCtx = context(retirementDir, "d03-retirement");
+retirementCtx.coverage = () => [];
+const retired = d03(retirementCtx);
+parseTileResult(retired);
+assert.equal(retired.status, "partial", "retired 건물 제외는 타일 상태에 반영");
+assert.ok(retired.limitations.some((limitation) => /retired/.test(limitation.note)), "retired 제외 근거를 limitation에 보존");
+retirementCtx.close();
+
+// 4) 반경 절단이 불가능한 도형도 타일 상태를 partial로 만든다.
+const invalidGeometryCtx = context(dataDir, "d03-invalid-geometry");
+const originalHits = invalidGeometryCtx.hits.bind(invalidGeometryCtx);
+invalidGeometryCtx.hits = (key, kinds, radiusM) => originalHits(key, kinds, radiusM).map((hit) => hit.stableId === "building:b_unknown"
+  ? { ...hit, geometry: { type: "GeometryCollection", geometries: [] } }
+  : hit);
+invalidGeometryCtx.coverage = () => [];
+const invalidGeometry = d03(invalidGeometryCtx);
+parseTileResult(invalidGeometry);
+assert.equal(invalidGeometry.status, "partial", "invalid geometry는 타일 상태에 반영");
+assert.ok(invalidGeometry.limitations.some((limitation) => /도형 오류/.test(limitation.note)), "invalid geometry 근거를 limitation에 보존");
+assert.equal(invalidGeometry.presentation.polygons.length, 5, "invalid geometry만 도형에서 제외");
+invalidGeometryCtx.close();
+
+// 5) 건물 파일이 게시되지 않으면 D03만 안전하게 미제공.
 const absentDir = mkdtempSync(join(tmpdir(), "v2-d03-absent-"));
 await buildEngineFixture(absentDir, "v1", { buildings: false });
 const absentCtx = context(absentDir, "d03-absent");

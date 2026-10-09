@@ -7,13 +7,20 @@ import { areaInCircle, polygonArea } from "../../engine/tiles/geo";
 import { notProvided } from "../../engine/tiles/not-provided";
 
 const round1 = (value: number) => Math.round(value * 10) / 10;
+const fallbackPoint = (hit: Parameters<typeof candidate>[0]) => {
+  try {
+    return candidate(hit, "bldg_point");
+  } catch {
+    return null;
+  }
+};
 
 export function d02(ctx: EngineContext): TileResult {
   const rows = buildingRows(ctx);
   if (rows === null) return notProvided(ctx, "D02");
 
   const counted = rows.filter((row) => isCounted(ctx, row)).length; // 동수는 중심점 기준, 그림은 교차 전부
-  const points = rows.map((row) => candidate(row.hit, "bldg_point"));
+  const points: Array<ReturnType<typeof candidate>> = [];
   const polygons: PolygonCandidate[] = [];
   let validGeometry = 0;
   let footprintM2 = 0;
@@ -23,15 +30,25 @@ export function d02(ctx: EngineContext): TileResult {
     const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, row.hit.geometry);
     if (clipped === null) {
       failedGeometry++;
+      const point = fallbackPoint(row.hit);
+      if (point) points.push(point);
       continue;
     }
-    validGeometry++;
     footprintM2 += clipped.areaM2;
-    // D02 is a footprint tile, not a height tile: retain the raw height-missing label behavior.
-    const label = row.rawHeightM === null ? null : row.hit.name;
+    let hasPolygon = false;
     for (const rings of clipped.parts) {
-      const polygon = polygonCandidate(row.hit.featureId, "bldg_footprint", rings, polygonArea(rings), label);
-      if (polygon) polygons.push(polygon);
+      const polygon = polygonCandidate(row.hit.featureId, "bldg_footprint", rings, polygonArea(rings), row.hit.name);
+      if (polygon) {
+        polygons.push(polygon);
+        hasPolygon = true;
+      }
+    }
+    if (hasPolygon) {
+      validGeometry++;
+    } else {
+      failedGeometry++;
+      const point = fallbackPoint(row.hit);
+      if (point) points.push(point);
     }
   }
 
