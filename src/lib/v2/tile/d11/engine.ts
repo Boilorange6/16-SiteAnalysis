@@ -106,7 +106,7 @@ function clippedDistricts(ctx: EngineContext, hits: DistrictHit[]): {
       const poly = polygonCandidate(h.featureId, `district:${cls}`, rings, polygonArea(rings), legacyLabel, {
         name,
         sublabel,
-        labelPriority: 0,
+        labelPriority: name === null ? 0 : 1,
       });
       if (poly) polygons.push(poly);
     }
