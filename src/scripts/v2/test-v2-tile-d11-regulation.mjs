@@ -62,7 +62,14 @@ const hits = Array.from({ length: 1234 }, (_, index) => ({
   name: null,
   pnu: null,
   legalCode: null,
-  properties: { cls: "구역", typeLabel: "지구단위계획구역", typeCode: "UQQ300" },
+  properties: {
+    cls: "구역",
+    typeLabel: "지구단위계획구역",
+    typeCode: "UQQ300",
+    remarkA8: "고덕지구단위계획구역",
+    announcedDate: "2024-01-15",
+    announcedRaw: "20240115",
+  },
   distanceM: null,
 }));
 
@@ -82,6 +89,9 @@ assert.equal(metric(formatted, "fill_code_pct").status, "observed");
 assert.equal(metric(formatted, "fill_code_pct").value, 100);
 assert.equal(formatted.presentation.polygons?.length, 1234, "polygon output remains while representative-point features are removed");
 assert.equal(formatted.presentation.features, undefined, "W0 removes polygon representative-point fallback features");
+assert.ok(formatted.presentation.polygons.every((polygon) => polygon.name === "고덕지구단위계획구역"), "D11 polygon name comes from remark");
+assert.ok(formatted.presentation.polygons.every((polygon) => polygon.sublabel === "2024 고시"), "D11 sublabel contains only the announcement year");
+assert.ok(formatted.presentation.polygons.every((polygon) => polygon.labelPriority === 0), "D11 named polygons stay out of automatic labels");
 
 const emptyContext = contextFor([]);
 const empty = d11(emptyContext);
