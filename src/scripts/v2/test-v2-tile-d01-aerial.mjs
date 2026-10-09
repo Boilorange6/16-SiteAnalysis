@@ -49,6 +49,8 @@ try {
   assert.deepEqual(tile.provenance.sources, [VWORLD_WMTS_SOURCE]);
   assert.match(tile.limitations.map((item) => item.note).join(" "), /촬영시기 미확인/);
   assert.match(tile.judgment?.sentence ?? "", /VWorld/);
+  assert.doesNotMatch(tile.judgment?.sentence ?? "", /최대 줌/);
+  assert.doesNotMatch(tile.judgment?.sentence ?? "", /지물 없음/);
   assert.doesNotMatch(JSON.stringify(tile), /종합|법적 적합|개발 가능|건강 위험 예측/);
 
   const view = toTileView(tile);

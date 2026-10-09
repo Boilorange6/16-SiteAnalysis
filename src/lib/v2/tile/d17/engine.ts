@@ -9,6 +9,7 @@ import { maxOf, minOf } from "../../extent";
 
 const RELIEF_BREAKS = [-20, -5, 5, 20];
 const RELIEF_LAYERS = ["relief_lt_m20", "relief_m20_m5", "relief_m5_5", "relief_5_20", "relief_ge20"];
+const RELIEF_LABELS = ["중심 대비 −20m 미만", "중심 대비 −20~−5m", "중심 대비 −5~5m", "중심 대비 5~20m", "중심 대비 20m 이상"] as const;
 const CONTOUR_INTERVAL_M = 5;
 
 const percent = (part: number, whole: number): number => whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0;
@@ -18,6 +19,13 @@ function median(values: number[]): number | null {
   const ordered = [...values].sort((a, b) => a - b);
   const middle = Math.floor(ordered.length / 2);
   return ordered.length % 2 === 0 ? (ordered[middle - 1] + ordered[middle]) / 2 : ordered[middle];
+}
+
+function contourLabel(label: string | null | undefined): string | null {
+  const elevation = Number.parseFloat((label ?? "").replace(/m$/, ""));
+  if (!Number.isFinite(elevation) || Math.abs(elevation / 25 - Math.round(elevation / 25)) > 1e-6) return null;
+  const rounded = Math.abs(elevation) < 1e-9 ? 0 : Math.round(elevation * 100) / 100;
+  return `표고 ${rounded}m`;
 }
 
 export function d17(ctx: EngineContext): TileResult {
@@ -50,7 +58,8 @@ export function d17(ctx: EngineContext): TileResult {
   const reliefMedian = median(relativeValues) as number;
   const circleAreaM2 = Math.PI * ctx.input.radiusM ** 2;
   const bands = terrainBandPolygons(ctx.input.center, ctx.input.radiusM, relative, RELIEF_BREAKS, RELIEF_LAYERS, "dem_nodata");
-  const lines = terrainContourLines(ctx.input.center, ctx.input.radiusM, grid, CONTOUR_INTERVAL_M, "contour");
+  const lines = terrainContourLines(ctx.input.center, ctx.input.radiusM, grid, CONTOUR_INTERVAL_M, "contour")
+    .map((line) => ({ ...line, l: { ...line.l, label: contourLabel(line.l.label) } }));
   const nodataArea = bands.areaM2.at(-1) ?? 0;
   const centerStatus = readerCenter === null ? "estimated" : "observed";
 
@@ -64,7 +73,7 @@ export function d17(ctx: EngineContext): TileResult {
     est("relief_median_m", "중심 대비 고저차 중앙값", reliefMedian, "m", "d17-relief-median@1:원 안 유효 셀의 표고−중심 표고 중앙값"),
     ...RELIEF_LAYERS.map((layer, index) => est(
       `share_${layer}`,
-      `${layer} 면적 구성비`,
+      `${RELIEF_LABELS[index]} 면적 구성비`,
       percent(bands.areaM2[index] ?? 0, circleAreaM2),
       "%",
       `d17-relief-share@1:${layer} 밴드의 원 교차면적÷π·r²`,
@@ -90,7 +99,7 @@ export function d17(ctx: EngineContext): TileResult {
     judgment: {
       ruleId: "D17-relief@1",
       basisMetricIds: ["fill_dem_pct", "relief_min_m", "relief_max_m"],
-      sentence: `반경 안 DEM 유효 셀 ${stats.valid.toLocaleString("en-US")}개에서 중심 대비 고저차 ${reliefMin.toFixed(1)}~${reliefMax.toFixed(1)}m를 확인 → 상대고 밴드와 5m 절대고 등고선으로 지형 기복을 표시 → 측량과 최신 지형 자료로 확인할 것`,
+      sentence: `중심 표고 ${originZ.toFixed(1)}m · 반경 안 DEM 유효 셀 ${stats.valid.toLocaleString("en-US")}개(채움률 ${percent(stats.valid, stats.cells)}%)에서 중심 대비 고저차 ${reliefMin.toFixed(1)}~${reliefMax.toFixed(1)}m, 중앙값 ${reliefMedian.toFixed(1)}m를 확인 → 상대고 밴드와 25m 배수 표고 라벨을 포함한 절대고 등고선으로 지형 기복을 표시 → 측량과 최신 지형 자료로 확인할 것`,
       level: null,
       criteria: null,
     },

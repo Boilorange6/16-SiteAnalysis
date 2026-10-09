@@ -124,10 +124,14 @@ const polygons = result.presentation.polygons ?? [];
 assert.equal(polygons.length, 3);
 assert.deepEqual(polygons.map((p) => p.layer).sort(), ["pop_dens_2", "pop_dens_5", "pop_grid_na"]);
 assert.ok(polygons.every((p) => p.rings[0].length >= 4));
+assert.equal(result.presentation.features?.length ?? 0, 0, "A11/D27 결과는 격자 점 없이 면만 낸다");
 assert.deepEqual(result.presentation.layers, [
-  "pop_grid_q1", "pop_grid_q2", "pop_grid_q3", "pop_grid_q4", "pop_grid_q5", "pop_grid_na",
   "pop_dens_0", "pop_dens_1", "pop_dens_2", "pop_dens_3", "pop_dens_4", "pop_dens_5",
+  "pop_grid_na",
 ]);
+assert.doesNotMatch(result.judgment.sentence, /공개 격자 면적 채움률/, "흡수 D27 판단 문장을 A11에 중복하지 않는다");
+const view = toTileView(result);
+assert.equal(view.rows.some((row) => row.label.startsWith("인구밀도 ") && row.value === "0.0%"), false, "0% 밀도 구간은 카드에서 숨긴다");
 assert.ok(result.limitations.some((l) => l.note.includes("비밀보호") && l.note.includes("면적비")));
 assert.ok(result.limitations.some((l) => l.kind === "suppressed"));
 assert.deepEqual(result.provenance.sources.map((s) => s.sourceId), ["sgis_grid"]);

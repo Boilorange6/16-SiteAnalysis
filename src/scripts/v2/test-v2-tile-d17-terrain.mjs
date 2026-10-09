@@ -39,7 +39,13 @@ try {
   assert.ok(view.presentation.polygons.some((polygon) => polygon.layer === "relief_ge20"));
   assert.ok(view.presentation.lines.length >= 10);
   assert.ok(view.presentation.lines.every((line) => line.layer === "contour"));
-  assert.ok(view.presentation.lines.every((line) => Number(line.label.replace("m", "")) % 5 === 0));
+  const contourLabels = view.presentation.lines.map((line) => line.label).filter((label) => label !== null);
+  assert.ok(contourLabels.length > 0, "계곡선에는 표고 라벨이 있다");
+  assert.ok(contourLabels.every((label) => /^표고 -?\d+(?:\.\d+)?m$/.test(label)));
+  assert.ok(contourLabels.every((label) => Number.parseFloat(label.replace(/^표고 |m$/g, "")) % 25 === 0), "25m 배수만 라벨한다");
+  assert.ok(view.presentation.lines.some((line) => line.label === null), "간곡선 라벨은 생략한다");
+  assert.ok([...metric.values()].filter((item) => item.id.startsWith("share_relief_")).every((item) => !item.label.includes("relief_")), "지표 라벨에 내부 레이어 id가 없다");
+  assert.match(view.judgment.sentence, /중심 표고 .*채움률 .*중앙값/);
   assert.ok(view.limitations.some((limitation) => limitation.note.includes("등고선은 30m 격자 보간선")));
   assert.ok(!/도보|\d\s*분|종합|법적 적합|개발 가능/.test(JSON.stringify(view)));
 

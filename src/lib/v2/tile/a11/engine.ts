@@ -9,7 +9,7 @@ import { toUtmk } from "../../crs";
 import type { FeatureHit } from "../../data/features";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../../engine/context";
-import { candidate, est, fmt, makeTile, missing, noDataTile, obs, type MapCandidate, type TileDraft } from "../../engine/tiles/common";
+import { est, fmt, makeTile, missing, noDataTile, obs, type TileDraft } from "../../engine/tiles/common";
 
 type Value = { v: number | null; s: string; unlisted?: number };
 interface CellProps {
@@ -22,6 +22,11 @@ interface CellProps {
 type Metric = TileResult["metrics"][number];
 
 const num = (x: Value | undefined): number | null => (x && x.s === "observed" && typeof x.v === "number" ? x.v : null);
+
+export const SGIS_GRID_LIMITATION = {
+  kind: "estimated" as const,
+  note: "SGIS 격자 통계는 비밀보호로 5 미만 값을 0 또는 5로 확률 대체하고 그 이상 값에도 최대 ±7의 노이즈를 더합니다. 격자 인구·밀도는 원과 격자의 면적비로 계산한 추정이며, 격자 안에 고르게 퍼져 있다고 가정하므로 실측 분포와 다를 수 있습니다.",
+};
 
 // ── 원 ∩ 축정렬 사각형 넓이 (해석해) ──
 /** 원(중심 0,0 반지름 r)과 [0,a]×[0,b] (a,b ≥ 0)의 겹침 넓이 */
@@ -41,6 +46,34 @@ export function circleRectOverlap(cx: number, cy: number, r: number, x0: number,
   return Math.max(0, signed(ax1, ay1, r) - signed(ax0, ay1, r) - signed(ax1, ay0, r) + signed(ax0, ay0, r));
 }
 
+export interface PopulationCell {
+  hit: FeatureHit;
+  sizeM: number;
+  overlapM2: number;
+  population: number | null;
+}
+
+/** A11/D27이 공유하는 원∩SGIS 인구 격자 수집기. */
+export function populationCells(ctx: EngineContext): PopulationCell[] {
+  return ctx.memo("sgis:population-cells", () => {
+    const radiusM = ctx.input.radiusM;
+    const [cx, cy] = toUtmk(ctx.input.center);
+    const cells: PopulationCell[] = [];
+    for (const hit of ctx.hits("reference", ["pop_grid"], Math.min(5000, radiusM + 708))) {
+      if (hit.geometry.type !== "Point") continue;
+      const props = hit.properties as CellProps;
+      const sizeM = typeof props.cellSizeM === "number" && Number.isFinite(props.cellSizeM) && props.cellSizeM > 0 ? props.cellSizeM : 1000;
+      const [px, py] = hit.geometry.coordinates;
+      if (!Number.isFinite(px) || !Number.isFinite(py)) continue;
+      const overlapM2 = circleRectOverlap(cx, cy, radiusM, px - sizeM / 2, py - sizeM / 2, px + sizeM / 2, py + sizeM / 2);
+      if (overlapM2 <= 1e-6) continue;
+      cells.push({ hit, sizeM, overlapM2, population: num(props.population?.total) });
+    }
+    cells.sort((a, b) => a.hit.featureId - b.hit.featureId);
+    return cells;
+  });
+}
+
 const suppressed = (id: string, label: string, unit: string, formula: string): Metric => ({ id, label, value: null, unit, formulaVersion: formula, numerator: null, denominator: null, status: "suppressed" });
 const pct = (part: number, whole: number) => Math.round((1000 * part) / whole) / 10;
 
@@ -58,28 +91,20 @@ export function a11(ctx: EngineContext): TileResult {
   const sources = ctx.sources("reference", ["sgis_grid"]);
   if (sources.length === 0) return noDataTile(ctx, "A11", ["sgis_grid"]);
   const r = ctx.input.radiusM;
-  const [cx, cy] = toUtmk(ctx.input.center);
   const circleM2 = Math.PI * r * r;
 
-  // 격자 중심이 r + 반대각선/2(≈708 m) 안이면 원과 겹칠 수 있다
-  const cells: Cell[] = [];
-  for (const hit of ctx.hits("reference", ["pop_grid"], r + 708)) {
+  const cells: Cell[] = populationCells(ctx).map(({ hit, sizeM, overlapM2, population }) => {
     const p = hit.properties as CellProps;
-    const size = p.cellSizeM ?? 1000;
-    const [px, py] = (hit.geometry as { coordinates: number[] }).coordinates;
-    const overlapM2 = circleRectOverlap(cx, cy, r, px - size / 2, py - size / 2, px + size / 2, py + size / 2);
-    if (overlapM2 <= 1e-6) continue;
-    cells.push({
+    return {
       hit,
-      f: overlapM2 / (size * size),
+      f: overlapM2 / (sizeM * sizeM),
       overlapM2,
-      pop: num(p.population?.total),
+      pop: population,
       hh: num(p.households?.total),
       single: num(p.households?.single),
       groups: { under15: num(p.ageGroups?.under15), age15to64: num(p.ageGroups?.age15to64), age65plus: num(p.ageGroups?.age65plus) },
-    });
-  }
-  cells.sort((a, b) => a.hit.featureId - b.hit.featureId);
+    };
+  });
 
   const sum = (cs: Cell[], fn: (c: Cell) => number) => cs.reduce((s, c) => s + fn(c) * c.f, 0);
   const popCells = cells.filter((c) => c.pop !== null);
@@ -87,6 +112,7 @@ export function a11(ctx: EngineContext): TileResult {
   const supM2 = popSup.reduce((s, c) => s + c.overlapM2, 0);
   const coveredM2 = cells.reduce((s, c) => s + c.overlapM2, 0);
   const year = (cells[0]?.hit.properties as CellProps | undefined)?.dataYear ?? sources[0].sourceAsOf ?? "";
+  const yearText = year ? (/년$/.test(year) ? year : `${year}년`) : "해당 연도";
 
   const F_POP = "a11-pop@1:Σ(격자 인구×원∩격자 면적/격자 면적), 인구 공개 격자만";
   const F_HH = "a11-households@1:Σ(격자 가구×원∩격자 면적/격자 면적), 가구 공개 격자만";
@@ -139,21 +165,11 @@ export function a11(ctx: EngineContext): TileResult {
       ? `반경 ${rTxt}m 안에 SGIS 격자 자료 셀 없음 → 무인 지역이거나 자료가 없는 곳이라 인구 0으로 볼 수 없음 → 실제 거주 여부는 주민등록 통계 확인 필요`
       : popEst === null
         ? `반경 ${rTxt}m 안 격자 ${cells.length}개의 인구가 모두 비공개 → 비밀보호로 값이 빠진 것이라 0명이 아님 → 인구는 다른 통계로 확인 필요`
-        : `${year}년 격자 기준 반경 ${rTxt}m 안 추정 인구 약 ${round10(popEst)}명${hhEst === null ? "" : `·약 ${round10(hhEst)}가구`}${elder ? `, 65세 이상 ${elder.share}%` : ""} → 1km 격자를 면적비로 나눈 추정이고 비밀보호 노이즈가 섞여 실측 인구가 아니며 증감은 단년 자료라 비교 불가 → 경계 부근 실제 분포와 최신 주민등록 인구는 별도 확인 필요`;
-
-  // 지도: 격자 중심점. 인구밀도(명/㎢) 5분위 레이어, 비공개는 회색.
-  const map: MapCandidate[] = [];
-  const dens = (c: Cell) => c.pop! / (((c.hit.properties as CellProps).cellSizeM ?? 1000) ** 2 / 1e6);
-  const ranked = [...popCells].sort((a, b) => dens(a) - dens(b) || a.hit.featureId - b.hit.featureId);
-  ranked.forEach((c, k) => {
-    const q = Math.floor((k * 5) / ranked.length) + 1;
-    map.push(candidate(c.hit, `pop_grid_q${q}`, { weight: c.pop, label: `${fmt(c.pop!)}명` }));
-  });
-  for (const c of popSup) map.push(candidate(c.hit, "pop_grid_na", { weight: null, label: "비공개" }));
+        : `${yearText} 격자 기준 반경 ${rTxt}m 안 추정 인구 약 ${round10(popEst)}명${hhEst === null ? "" : `·약 ${round10(hhEst)}가구`}${elder ? `, 65세 이상 ${elder.share}%` : ""} → 1km 격자를 면적비로 나눈 추정이고 비밀보호 노이즈가 섞여 실측 인구가 아니며 증감은 단년 자료라 비교 불가 → 경계 부근 실제 분포와 최신 주민등록 인구는 별도 확인 필요`;
 
   const limitations: TileDraft["limitations"] = [
-    { kind: "estimated", note: "SGIS 격자 통계는 비밀보호로 5 미만 값을 0 또는 5로 확률 대체하고 그 이상 값에도 최대 ±7의 노이즈를 더합니다. 면적비 배분은 격자 안 인구가 고르게 퍼져 있다는 가정이라 실측 인구가 아니며 격자 경계와 실제 주거지가 다르면 어긋납니다." },
-    { kind: "not_provided", note: "2024년 한 해 자료라 같은 경계·해상도의 전기 자료가 없어 인구 증감률은 계산하지 않았습니다." },
+    SGIS_GRID_LIMITATION,
+    { kind: "not_provided", note: `${yearText} 자료라 같은 경계·해상도의 전기 자료가 없어 인구 증감률은 계산하지 않았습니다.` },
   ];
   if (popSup.length > 0) {
     limitations.push({ kind: "suppressed", note: `원과 겹친 격자 ${cells.length}개 중 ${popSup.length}개는 인구가 비공개(N/A)라 인구 합계에서 제외했습니다(원 면적의 ${pct(supM2, circleM2)}%). 0명이 아니므로 추정 인구가 실제보다 적게 나올 수 있습니다.` });
@@ -176,8 +192,7 @@ export function a11(ctx: EngineContext): TileResult {
     metrics,
     judgment: { ruleId: "a11-pop-grid@1", basisMetricIds: popEst === null ? [] : ["pop_est"], sentence, level: null, criteria: null },
     sources,
-    layers: ["pop_grid_q1", "pop_grid_q2", "pop_grid_q3", "pop_grid_q4", "pop_grid_q5", "pop_grid_na"],
-    map,
+    layers: [],
     limitations,
   });
 }

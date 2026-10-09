@@ -88,9 +88,9 @@ const val = (t, id) => metric(t, id)?.value;
   assert.equal(t.status, "complete");
   assert.ok(t.limitations.some((l) => l.kind === "estimated" && l.note.includes("±7")));
   assert.ok(!t.limitations.some((l) => l.kind === "suppressed"));
-  assert.equal(t.presentation.features.length, 1);
-  assert.equal(t.presentation.features[0].weight, 1200);
-  assert.match(t.presentation.features[0].layer, /^pop_grid_q\d$/);
+  assert.equal(t.presentation.features?.length ?? 0, 0, "상대 5분위 격자 점은 내지 않는다");
+  assert.deepEqual(t.presentation.layers, [], "A11 자체는 격자 점 레이어를 내지 않는다");
+  assert.doesNotMatch(JSON.stringify(t), /pop_grid_q/, "A11 엔진 결과에 상대 분위 레이어가 없다");
   assert.deepEqual(t.provenance.sources.map((s) => s.sourceId), ["sgis_grid"]);
   assert.doesNotThrow(() => toTileView(t));
   ctx.close();
@@ -111,11 +111,7 @@ const val = (t, id) => metric(t, id)?.value;
   assert.ok(sup.some((l) => l.note.includes("가구 수가 비공개인 격자 2개")));
   assert.ok(t.limitations.some((l) => l.kind === "estimated" && l.note.includes("행이 없는 5세 구간을 0으로")), "5452는 구간 행이 전혀 없다");
   assert.equal(val(t, "elder_pct"), 38.1, "5452(인구 0)는 분모에 0을 더할 뿐");
-  const layers = t.presentation.features.map((f) => f.layer).sort();
-  assert.deepEqual(layers.filter((l) => l === "pop_grid_na").length, 2);
-  assert.equal(t.presentation.features.find((f) => f.layer === "pop_grid_na").weight, null);
-  // 5분위: 공개 셀 2개(밀도 0, 1200) → q1, q3 (등간격 순위)
-  assert.deepEqual(layers.filter((l) => l !== "pop_grid_na"), ["pop_grid_q1", "pop_grid_q3"]);
+  assert.equal(t.presentation.features?.length ?? 0, 0, "비공개 격자도 대표점으로 중복 표시하지 않는다");
   ctx.close();
 }
 
