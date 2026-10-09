@@ -87,21 +87,24 @@ export function d13(ctx: EngineContext): TileResult {
     ? null
     : text(nearestCandidate.hit.name) ?? text(nearestCandidate.hit.properties.name);
   const nearestText = nearest === null ? "확인되지 않음" : `${nearestName ? `${nearestName} ` : ""}${formatDistanceM(nearest)}`;
-  const longestByName = new Map<string, number>();
+  const longestByName = new Map<string, { lengthM: number; fid: string }>();
   for (const part of lineParts) {
     const name = text(part.road.name);
     if (!name) continue;
     const key = `${part.hierarchy}|${name}`;
-    longestByName.set(key, Math.max(longestByName.get(key) ?? 0, part.lengthM));
+    const fid = `${part.road.featureId}:${part.index}`;
+    const current = longestByName.get(key);
+    if (!current || part.lengthM > current.lengthM || (part.lengthM === current.lengthM && fid < current.fid)) longestByName.set(key, { lengthM: part.lengthM, fid });
   }
   const lines: LineCandidate[] = [];
   for (const part of lineParts) {
     const name = text(part.road.name);
     const key = name ? `${part.hierarchy}|${name}` : null;
     const isNearest = nearestCandidate?.hit.featureId === part.road.featureId;
-    const isLongest = key !== null && part.lengthM === longestByName.get(key);
+    const fid = `${part.road.featureId}:${part.index}`;
+    const isLongest = key !== null && longestByName.get(key)?.fid === fid;
     const line = lineCandidate(part.road.featureId, `road:${part.hierarchy}`, part.path, part.lengthM, null, {
-      fid: `${part.road.featureId}:${part.index}`,
+      fid,
       name,
       sublabel: isNearest && nearest !== null ? `직선 ${formatDistanceM(nearest)}` : null,
       labelPriority: isNearest ? 2 : isLongest && NAMED_ROADS.has(part.hierarchy) ? 1 : 0,
