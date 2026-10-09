@@ -25,6 +25,13 @@ function approvalYear(value: unknown, analysisDate: string): number | null {
 }
 
 const pct = (part: number, whole: number) => Math.round((part / whole) * 1000) / 10;
+const fallbackPoint = (hit: Parameters<typeof candidate>[0], layer: string) => {
+  try {
+    return candidate(hit, layer);
+  } catch {
+    return null;
+  }
+};
 
 export function d04(ctx: EngineContext): TileResult {
   const sources = ctx.sources("buildings", BUILDING_SOURCES);
@@ -43,7 +50,8 @@ export function d04(ctx: EngineContext): TileResult {
     const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, hit.geometry);
     if (clipped === null) {
       failedGeometry += 1;
-      points.push(candidate(hit, decadeLayer(allYears.get(hit.featureId) ?? null)));
+      const point = fallbackPoint(hit, decadeLayer(allYears.get(hit.featureId) ?? null));
+      if (point) points.push(point);
       continue;
     }
     let hasPolygon = false;
@@ -56,7 +64,8 @@ export function d04(ctx: EngineContext): TileResult {
     }
     if (!hasPolygon) {
       failedGeometry += 1;
-      points.push(candidate(hit, decadeLayer(allYears.get(hit.featureId) ?? null)));
+      const point = fallbackPoint(hit, decadeLayer(allYears.get(hit.featureId) ?? null));
+      if (point) points.push(point);
     }
   }
   const total = years.size;
