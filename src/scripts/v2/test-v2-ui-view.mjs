@@ -230,7 +230,7 @@ assert.equal(byCode.D04.headline.value, "67.0%", "D04는 확인율이 아니라 
 assert.ok(byCode.D04.badges.some((badge) => badge.text === "확인율 98.0%"), "D04 확인율은 보조 배지");
 assert.equal(HEADLINE_POLICY.D16.ids[0], "dens_max", "D16 KDE 대역폭은 헤드라인이 아님");
 assert.equal(HEADLINE_POLICY.D01.ids[0], "imagery_capture_date", "D01 최대 줌은 헤드라인이 아님");
-assert.equal(HEADLINE_POLICY.A12.ids[2], "site_zoning_count", "A12 지정 수는 보조 후보");
+assert.deepEqual(HEADLINE_POLICY.A12.ids, ["share_class_1", "site_zoning_count"], "A12 지정 수는 보조 후보(죽은 헤드라인 id 제거 후)");
 assert.equal(HEADLINE_POLICY.A09.ids[0], "projects_in_radius", "A09 단계 사업 수");
 assert.equal(HEADLINE_POLICY.A10.ids[0], "planned_projects", "A10 계획 사업 수");
 
