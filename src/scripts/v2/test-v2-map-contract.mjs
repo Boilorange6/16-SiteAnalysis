@@ -31,6 +31,11 @@ const base = {
 // 자동 라벨은 name만, priority>=1만 사용하고 같은 문구는 엔진 순서상 한 번만 남긴다.
 assert.equal(automaticLabelText("rail_station", "feature", { layer: "rail_station", name: "강남역", labelPriority: 0 }), null);
 assert.equal(automaticLabelText("rail_station", "feature", { layer: "rail_station", name: "강남역", labelPriority: 1 }), "강남역");
+// 계약 필드가 없는 결과(W2b 전·저장된 분석)는 이전 규칙: 명시 label/name이 있거나 강조된 요소만 자동 라벨
+assert.equal(automaticLabelText("rail_station", "feature", { layer: "rail_station", name: "강남역" }), "강남역");
+assert.equal(automaticLabelText("zone", "polygon", { layer: "zone", rings: [], label: "상계5구역" }), "상계5구역");
+assert.equal(automaticLabelText("rail_nearest", "feature", { layer: "rail_nearest", distanceM: 600 }), null);
+assert.match(automaticLabelText("rail_nearest", "feature", { layer: "rail_nearest", distanceM: 600 }, true), /직선 600m/);
 assert.deepEqual(
   selectAutomaticLabels([
     { key: "low", autoText: "같은 역", labelPriority: 1, order: 0 },

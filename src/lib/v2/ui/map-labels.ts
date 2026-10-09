@@ -70,9 +70,21 @@ export function mapLabelText(layer: string, kind: MapLabelKind, item: MapLabelIt
   return legacy ?? legendName;
 }
 
-/** 자동 노출 후보. labelPriority가 있는 새 결과는 name만 허용한다. */
-export function automaticLabelText(_layer: string, _kind: MapLabelKind, item: MapLabelItem): string | null {
-  return item.labelPriority !== undefined && item.labelPriority >= 1 ? userText(item.name) : null;
+/**
+ * 자동 노출 후보. labelPriority가 있는 새 결과는 name만 허용한다.
+ * 계약 필드가 없는 결과(W2b 전 타일·이미 저장된 분석)는 이전 규칙 그대로: 명시 label(점은 name도)이 있거나 강조된 요소.
+ */
+export function automaticLabelText(layer: string, kind: MapLabelKind, item: MapLabelItem, highlighted = false): string | null {
+  if (hasLabelContract(item)) return item.labelPriority !== undefined && item.labelPriority >= 1 ? userText(item.name) : null;
+  const explicit = trimLabel(item.label) ?? (kind === "feature" ? trimLabel(item.name) : null);
+  return explicit ?? (highlighted ? mapLabelText(layer, kind, item) : null);
+}
+
+/** 계약 필드가 없는 결과의 자동 라벨 순서: 강조 → 명시 라벨(이전 정렬과 같음). */
+export function legacyLabelPriority(kind: MapLabelKind, item: MapLabelItem, highlighted: boolean): number | undefined {
+  if (hasLabelContract(item)) return item.labelPriority;
+  if (highlighted) return 2;
+  return trimLabel(item.label) ?? (kind === "feature" ? trimLabel(item.name) : null) ? 1 : 0;
 }
 
 export type AutomaticLabelCandidate = {

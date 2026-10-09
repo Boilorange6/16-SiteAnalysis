@@ -1,6 +1,6 @@
 import { memo, useId, useRef, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { layerStyle, legendItems, RASTER_STYLES, type MapModel, type RasterStyle } from "@/lib/v2/ui/map-layers";
-import { automaticLabelText, badgeTextColor, mapLabelText as formatMapLabelText, selectAutomaticLabels, type MapLabelKind } from "@/lib/v2/ui/map-labels";
+import { automaticLabelText, badgeTextColor, legacyLabelPriority, mapLabelText as formatMapLabelText, selectAutomaticLabels, type MapLabelKind } from "@/lib/v2/ui/map-labels";
 import { BASEMAP_ATTRIBUTION, BASEMAP_STACK, framedViewport, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, worldPx, type BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { rasterAffine, rasterLegendColor, resolveRasterStyle } from "@/lib/v2/ui/raster-image";
 import type { MapFeature, MapLine, MapPolygon, RasterRef } from "@/lib/v2/tile-result";
@@ -624,8 +624,8 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     ...drawn.map((d) => ({
       key: mapFeatureKey(d.f.layer, d.f.fid, d.index),
       text: labelText(d.f.layer, "feature", d.f),
-      autoText: automaticLabelText(d.f.layer, "feature", d.f),
-      labelPriority: d.f.labelPriority ?? 0,
+      autoText: automaticLabelText(d.f.layer, "feature", d.f, isLayerHighlighted(d.f.layer) && (!!d.f.highlight || d.selected)),
+      labelPriority: legacyLabelPriority("feature", d.f, isLayerHighlighted(d.f.layer) && (!!d.f.highlight || d.selected)) ?? 0,
       order: d.index,
       layer: d.f.layer,
       kind: "feature" as const,
@@ -640,8 +640,8 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     ...polygons.map((d) => ({
       key: mapElementKey("polygon", d.polygon.layer, d.polygon.fid, d.index),
       text: labelText(d.polygon.layer, "polygon", d.polygon),
-      autoText: automaticLabelText(d.polygon.layer, "polygon", d.polygon),
-      labelPriority: d.polygon.labelPriority ?? 0,
+      autoText: automaticLabelText(d.polygon.layer, "polygon", d.polygon, isLayerHighlighted(d.polygon.layer) && highlightActive),
+      labelPriority: legacyLabelPriority("polygon", d.polygon, isLayerHighlighted(d.polygon.layer) && highlightActive) ?? 0,
       order: model.features.length + d.index,
       layer: d.polygon.layer,
       kind: "polygon" as const,
@@ -659,8 +659,8 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
       return {
         key: mapElementKey("line", d.l.layer, d.l.fid, d.index),
         text: labelText(d.l.layer, "line", d.l),
-        autoText: automaticLabelText(d.l.layer, "line", d.l),
-        labelPriority: d.l.labelPriority ?? 0,
+        autoText: automaticLabelText(d.l.layer, "line", d.l, isLayerHighlighted(d.l.layer) && highlightActive),
+        labelPriority: legacyLabelPriority("line", d.l, isLayerHighlighted(d.l.layer) && highlightActive) ?? 0,
         order: model.features.length + (model.polygons ?? []).length + d.index,
         layer: d.l.layer,
         kind: "line" as const,
