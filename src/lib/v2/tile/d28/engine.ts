@@ -256,7 +256,11 @@ function walkBandPolygons(field: WalkField, center: LngLat, radiusM: number): { 
     const geometry = bands[index];
     if (!geometry) continue;
     for (const rings of polygonParts(geometry)) {
-      const candidate = polygonCandidate(id++, WALK_LAYERS[index], rings, Math.max(0, polygonArea(rings)));
+      const candidate = polygonCandidate(id++, WALK_LAYERS[index], rings, Math.max(0, polygonArea(rings)), null, {
+        name: null,
+        sublabel: null,
+        labelPriority: 0,
+      });
       if (candidate) polygons.push(candidate);
     }
   }
