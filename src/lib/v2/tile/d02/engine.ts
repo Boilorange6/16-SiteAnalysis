@@ -7,6 +7,13 @@ import { areaInCircle, polygonArea } from "../../engine/tiles/geo";
 import { notProvided } from "../../engine/tiles/not-provided";
 
 const round1 = (value: number) => Math.round(value * 10) / 10;
+const fallbackPoint = (hit: Parameters<typeof candidate>[0]) => {
+  try {
+    return candidate(hit, "bldg_point");
+  } catch {
+    return null;
+  }
+};
 
 export function d02(ctx: EngineContext): TileResult {
   const rows = buildingRows(ctx);
@@ -23,7 +30,8 @@ export function d02(ctx: EngineContext): TileResult {
     const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, row.hit.geometry);
     if (clipped === null) {
       failedGeometry++;
-      points.push(candidate(row.hit, "bldg_point"));
+      const point = fallbackPoint(row.hit);
+      if (point) points.push(point);
       continue;
     }
     footprintM2 += clipped.areaM2;
@@ -39,7 +47,8 @@ export function d02(ctx: EngineContext): TileResult {
       validGeometry++;
     } else {
       failedGeometry++;
-      points.push(candidate(row.hit, "bldg_point"));
+      const point = fallbackPoint(row.hit);
+      if (point) points.push(point);
     }
   }
 

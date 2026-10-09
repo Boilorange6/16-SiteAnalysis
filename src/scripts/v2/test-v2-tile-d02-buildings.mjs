@@ -95,6 +95,20 @@ try {
   fallbackCtx.close();
 }
 
+// 대표 좌표조차 없는 malformed 도형은 점 fallback을 생략하되 타일은 계속 산출한다.
+const malformedCtx = context(dataDir, M.readManifest(dataDir), "d02-malformed");
+const originalMalformedHits = malformedCtx.hits.bind(malformedCtx);
+malformedCtx.hits = (key, kinds, radiusM) => originalMalformedHits(key, kinds, radiusM).map((hit) => hit.stableId === "building:b_unknown"
+  ? { ...hit, geometry: { type: "GeometryCollection", geometries: [] } }
+  : hit);
+try {
+  const malformed = d02(malformedCtx);
+  assert.equal(malformed.presentation.polygons.length, 5);
+  assert.equal(malformed.presentation.featuresTotal, 0, "대표 좌표가 없으면 점 fallback을 생략한다");
+} finally {
+  malformedCtx.close();
+}
+
 assert.equal(d02ClientModule.mapNote, undefined, "높이 미상 테두리-only mapNote를 제거한다");
 
 // buildings 파일이 게시되지 않으면 SQL 예외가 아니라 not_provided 결과를 낸다.
