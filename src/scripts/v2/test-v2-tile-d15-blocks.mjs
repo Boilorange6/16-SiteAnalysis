@@ -127,6 +127,14 @@ const SYNTHETIC_EXPECTED = {
   assert.ok(tile.presentation.polygons.some((polygon) => polygon.layer === "block_2_5"));
   assert.ok(tile.presentation.polygons.some((polygon) => polygon.layer === "block_open"));
   assert.ok(tile.limitations.some((limitation) => limitation.note.includes("보행로 제외")));
+  assert.deepEqual(
+    tile.metrics.filter((item) => item.id.startsWith("share_count_")).map((item) => item.label),
+    ["0.5ha 미만 (블록 수)", "0.5~1ha (블록 수)", "1~2ha (블록 수)", "2~5ha (블록 수)", "5ha 이상 (블록 수)"],
+  );
+  assert.ok(!tile.metrics.some((item) => item.label.startsWith("0~0.5ha")));
+  assert.match(tile.judgment.sentence, /폐합 블록 4개/);
+  assert.match(tile.judgment.sentence, /폐합 블록 면적 채움률 \d+(?:\.\d+)?%/);
+  assert.match(tile.judgment.sentence, /미폐합·읽기 경계 잔여 면적 \d+(?:\.\d+)?%/);
   assert.ok(!/도보|\d\s*분|종합|법적 적합|개발 가능/.test(JSON.stringify(tile)));
   ctx.close();
 }
@@ -173,7 +181,31 @@ const SYNTHETIC_EXPECTED = {
   ctx.close();
 }
 
-// ─── 4. 60m 합성 격자: 기존 결과를 보존하면서 r=2,000m은 15초 안에 끝난다 ─
+// ─── 4. 도로 자료는 있지만 폐합 블록이 없을 때도 문장은 수치화한다 ─────────
+{
+  const dataDir = mkdtempSync(join(tmpdir(), "v2-d15-empty-"));
+  await buildEngineFixture(dataDir, "v1", { roads: true });
+  const ctx = new EngineContext(dataDir, readManifest(dataDir), "d15-empty", {
+    address: "빈 블록 테스트",
+    center: [127.1506, 37.6245],
+    radiusM: 800,
+    analysisDate: "2026-09-30",
+    pnu: null,
+  });
+  ctx.hits = () => [];
+  const tile = d15(ctx);
+  assert.equal(tile.status, "partial");
+  assert.equal(metric(tile, "blocks").value, 0);
+  assert.equal(metric(tile, "fill_closed_pct").value, 0);
+  assert.equal(metric(tile, "share_open_pct").value, 100);
+  assert.equal(metric(tile, "share_count_lt05").status, "missing");
+  assert.match(tile.judgment.sentence, /폐합 블록 0개/);
+  assert.match(tile.judgment.sentence, /폐합 블록 면적 채움률 0%/);
+  assert.match(tile.judgment.sentence, /미폐합·읽기 경계 잔여 면적 100%/);
+  ctx.close();
+}
+
+// ─── 5. 60m 합성 격자: 기존 결과를 보존하면서 r=2,000m은 15초 안에 끝난다 ─
 {
   const center = [127.1506, 37.6245];
   for (const radiusM of [800, 2000]) {

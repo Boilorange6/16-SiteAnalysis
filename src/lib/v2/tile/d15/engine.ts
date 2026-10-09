@@ -19,7 +19,7 @@ export const BLOCK_ROAD_FILTER: { includePedestrian: boolean; bufferM: number } 
 };
 
 const BLOCK_CLASSES = [
-  { suffix: "lt05", layer: "block_lt05", label: "0~0.5ha", matches: (ha: number) => ha < 0.5 },
+  { suffix: "lt05", layer: "block_lt05", label: "0.5ha 미만", matches: (ha: number) => ha < 0.5 },
   { suffix: "05_1", layer: "block_05_1", label: "0.5~1ha", matches: (ha: number) => ha >= 0.5 && ha < 1 },
   { suffix: "1_2", layer: "block_1_2", label: "1~2ha", matches: (ha: number) => ha >= 1 && ha < 2 },
   { suffix: "2_5", layer: "block_2_5", label: "2~5ha", matches: (ha: number) => ha >= 2 && ha < 5 },
@@ -668,6 +668,8 @@ function median(values: number[]): number | null {
 }
 
 const pct = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0);
+const percentText = (value: number) => `${value.toLocaleString("en-US", { maximumFractionDigits: 1 })}%`;
+const areaHaText = (value: number | null) => value === null ? "미상" : `${value.toLocaleString("en-US", { maximumFractionDigits: 2 })}ha`;
 
 function framePolygon(bounds: Bbox) {
   const [minX, minY, maxX, maxY] = bounds;
@@ -765,14 +767,18 @@ export function d15(ctx: EngineContext): TileResult {
     ...(failed > 0 ? [{ kind: "partial" as const, note: `도형 오류로 반경 교차 면적을 계산하지 못한 ${failed}개 블록은 면적 구성에서 제외했습니다.` }] : []),
     ...coverage,
   ];
+  const closedPct = pct(closedAreaM2, circleAreaM2);
+  const openPct = pct(openAreaM2, circleAreaM2);
+  const measuredSummary = `반경 ${ctx.input.radiusM.toLocaleString("en-US")}m 안 폐합 블록 ${blocks.length}개, 폐합 블록 면적 채움률 ${percentText(closedPct)}, 미폐합·읽기 경계 잔여 면적 ${percentText(openPct)}, 원래 면적 중앙값 ${areaHaText(median(originalAreasHa))}`;
   const sentence = blocks.length === 0
-    ? `반경 ${ctx.input.radiusM.toLocaleString("en-US")}m 안 폐합 블록이 확인되지 않음 → 도로망 공백 또는 미폐합 면을 구분할 수 없음 → 최신 OSM 도로망과 현장·공식 도면 확인 필요`
-    : `반경 ${ctx.input.radiusM.toLocaleString("en-US")}m 안 폐합 블록 ${blocks.length}개와 원래 면적 구간을 확인 → 도로 중심선으로 만든 가구 분포와 폐합 면적을 표시 → 도로 연결·사유 통로·실제 필지 경계는 최신 OSM과 공식 도면 확인 필요`;
+    ? `${measuredSummary} → 폐합 블록이 없어 도로망 공백과 미폐합 면을 구분할 수 없음 → 최신 OSM 도로망과 현장·공식 도면 확인 필요`
+    : `${measuredSummary} → 도로 중심선으로 만든 가구 분포와 폐합 면적을 표시 → 도로 연결·사유 통로·실제 필지 경계는 최신 OSM과 공식 도면 확인 필요`;
 
   return makeTile(ctx, {
     code: "D15",
     type: "diagram",
-    status: limitations.some((limitation) => limitation.kind === "partial" || limitation.kind === "incomplete") ? "partial" : "complete",
+    // OSM 중심선으로 폐합을 추정하는 타일은 자료가 있어도 항상 부분 결과다.
+    status: "partial",
     metrics,
     judgment: { ruleId: "D15-block@1", basisMetricIds: ["blocks", "fill_closed_pct"], sentence, level: null, criteria: null },
     sources,
