@@ -7,8 +7,7 @@
 import type { FeatureHit } from "../../data/features";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext, FileKey, Limitation } from "../../engine/context";
-import { candidate, fmt, makeTile, missing, obs, polygonCandidate, type MapCandidate, type PolygonCandidate, type TileDraft } from "../../engine/tiles/common";
-import { polygonArea, polygonParts } from "../../engine/tiles/geo";
+import { fmt, makeTile, missing, obs, type TileDraft } from "../../engine/tiles/common";
 import { notProvided } from "../../engine/tiles/not-provided";
 
 /** D23 단계 순서 (ingest/sources/maintenance.ts의 MAINT_STAGES와 같다 — 엔진이 적재 코드를 끌어오지 않도록 복사) */
@@ -17,6 +16,17 @@ type Stage = (typeof STAGES)[number];
 const stageOf = (v: unknown): Stage => (STAGES as readonly string[]).includes(String(v)) ? (v as Stage) : "미확인";
 const SOURCES = ["maintenance_zone", "maintenance_integrated", "maintenance_std"];
 const KEYS: FileKey[] = ["market", "reference"];
+
+function sourceIdsWithPrefix(ctx: EngineContext, key: FileKey, prefix: string): string[] {
+  const db = ctx.db(key);
+  if (!db) return [];
+  return (db.prepare("SELECT source_id FROM source_release WHERE source_id GLOB ? ORDER BY source_id").all(`${prefix}*`) as Array<{ source_id: string }>).map((row) => row.source_id);
+}
+
+/** 정비구역의 실제 적재 원천(mzone_*)도 타일 provenance·coverage에 포함한다. */
+export function maintenanceSourceIds(ctx: EngineContext, key: FileKey): string[] {
+  return [...new Set([...SOURCES, ...sourceIdsWithPrefix(ctx, key, "mzone_")])];
+}
 
 export interface Project {
   key: string;
@@ -46,7 +56,7 @@ export function sigunguMatches(areaName: string, rosterName: string): boolean {
 }
 
 export function maintenanceSources(ctx: EngineContext): ReturnType<EngineContext["sources"]> {
-  return KEYS.flatMap((k) => ctx.sources(k, SOURCES));
+  return KEYS.flatMap((k) => ctx.sources(k, maintenanceSourceIds(ctx, k)));
 }
 
 function summarize(projects: Project[]) {
@@ -130,25 +140,11 @@ function withZones(ctx: EngineContext, collection: MaintenanceCollection): TileR
       ? "반경과 교차하는 확인된 정비구역 없음 → 경계가 확보된 사업 기준이며 없다는 단정은 아님 → 최신 고시는 지자체 확인 필요"
       : `반경과 교차하는 정비구역 ${zones.length}곳(사업 ${list.length}건: ${stageText(list)}), ${hhText(list)} → 사업 수만으로 좋고 나쁨을 판단하지 않으며 단계는 원천 기준일 시점 → 단계·구역 경계는 고시 원문 확인 필요`;
 
-  const points: MapCandidate[] = [];
-  const polys: PolygonCandidate[] = [];
-  const order = [...zones].sort((a, b) => a.featureId - b.featureId);
-  const nearest = new Set(order.slice(0, 5).map((z) => z.featureId)); // 라벨은 5곳까지(면은 거리값이 없어 적재 순)
-  for (const z of order) {
-    const pr = projects.get(zoneProject.get(z.featureId)!)!;
-    const label = `${pr.name} ${pr.stage}`;
-    points.push(candidate(z, "maint_zone_center", nearest.has(z.featureId) ? { label } : {}));
-    for (const rings of polygonParts(z.geometry)) {
-      const c = polygonCandidate(z.featureId, "maint_zone", rings, polygonArea(rings), label);
-      if (c) polys.push(c);
-    }
-  }
-
   const limitations: Limitation[] = [
     { kind: "partial", note: "경계가 확보된 사업만 반경 안 여부를 판단합니다. 경계가 없는 사업은 세지 않았습니다." },
     { kind: "unknown", note: "예정 세대는 사업 전체 값이며 반경 안 배분값이 아닙니다." },
     ...(zones.length > 0 && linked < zones.length ? [{ kind: "unknown" as const, note: `사업 연결(zone_of_project)이 없는 구역 ${zones.length - linked}곳은 구역 속성만으로 단계·유형을 표시합니다.` }] : []),
-    ...KEYS.filter((k) => ctx.sources(k, SOURCES).length > 0).flatMap((k) => ctx.coverage(k, SOURCES)).filter((l, i, a) => a.findIndex((x) => x.note === l.note) === i),
+    ...KEYS.filter((k) => ctx.sources(k, maintenanceSourceIds(ctx, k)).length > 0).flatMap((k) => ctx.coverage(k, maintenanceSourceIds(ctx, k))).filter((l, i, a) => a.findIndex((x) => x.note === l.note) === i),
   ];
   return makeTile(ctx, {
     code: "A09",
@@ -156,9 +152,8 @@ function withZones(ctx: EngineContext, collection: MaintenanceCollection): TileR
     metrics,
     judgment: { ruleId: "a09-maintenance@1", basisMetricIds: ["zones_in_radius", "projects_in_radius"], sentence, level: null, criteria: null },
     sources,
-    layers: ["maint_zone", "maint_zone_center"],
-    map: points,
-    polygons: polys,
+    // D23가 반경 절단·단계 레이어를 이미 제공하므로 A09의 원본 점·면은 중복하지 않는다.
+    layers: [],
     limitations,
   });
 }
@@ -211,7 +206,7 @@ function rosterOnly(ctx: EngineContext, sources: ReturnType<EngineContext["sourc
     limitations: [
       { kind: "not_provided", note: "경계 없음 — 반경 내 여부 미확인, 시군구 단위 목록" },
       { kind: "unknown", note: "예정 세대는 사업 전체 값이며 반경 안 배분값이 아닙니다. 세대수가 없는 사업은 합산에서 빠집니다." },
-      ...ctx.coverage("market", ["maintenance_integrated", "maintenance_std"]),
+      ...ctx.coverage("market", maintenanceSourceIds(ctx, "market")),
     ],
   });
 }

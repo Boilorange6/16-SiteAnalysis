@@ -13,11 +13,10 @@ import {
   type PolygonCandidate,
   type TileDraft,
 } from "../../engine/tiles/common";
-import { collectMaintenance, collectMaintenanceRoster, maintenanceSources, STAGES, type Project } from "./engine";
+import { collectMaintenance, collectMaintenanceRoster, maintenanceSourceIds, maintenanceSources, STAGES, type Project } from "./engine";
 import { notProvided } from "../../engine/tiles/not-provided";
 
 const SOURCE_KEYS = ["market", "reference"] as const;
-const MAINTENANCE_SOURCE_IDS = ["maintenance_zone", "maintenance_integrated", "maintenance_std"] as const;
 
 const pct = (part: number, whole: number) => Math.round((part / whole) * 1000) / 10;
 
@@ -67,8 +66,8 @@ function fillMetric(
 
 function coverageLimitations(ctx: EngineContext): TileDraft["limitations"] {
   return SOURCE_KEYS
-    .filter((key) => ctx.sources(key, MAINTENANCE_SOURCE_IDS).length > 0)
-    .flatMap((key) => ctx.coverage(key, MAINTENANCE_SOURCE_IDS))
+    .filter((key) => ctx.sources(key, maintenanceSourceIds(ctx, key)).length > 0)
+    .flatMap((key) => ctx.coverage(key, maintenanceSourceIds(ctx, key)))
     .filter((limitation, i, all) => all.findIndex((other) => other.note === limitation.note) === i);
 }
 
