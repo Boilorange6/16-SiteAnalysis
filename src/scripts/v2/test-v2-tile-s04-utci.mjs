@@ -189,6 +189,7 @@ async function main() {
     assert.equal(normal.conditions.simulation.hours.join(","), UTCI_HOURS.join(","));
     assert.equal(normal.conditions.simulation.treeHeightM, 8);
     assert.match(normal.limitations.map((item) => item.note).join(" "), /대표 기상|수목 높이/);
+    assert.match(normal.judgment.sentence, /대표 범주 .*그늘/);
     assert.doesNotMatch(normal.judgment.sentence, /건강|위험|안전/);
 
     const summer14 = "_summer_h14";
@@ -259,7 +260,7 @@ async function main() {
       assert.equal(partial.status, "partial");
       assert.deepEqual(partial.conditions.simulation.seasons, ["summer"]);
       assert.equal(partial.presentation.rasters.length, 3);
-      assert.match(partial.limitations.map((item) => item.note).join(" "), /spring|autumn|winter/);
+      assert.match(partial.limitations.map((item) => item.note).join(" "), /봄|가을|겨울/);
     } finally {
       rmSync(partialDir, { recursive: true, force: true });
     }

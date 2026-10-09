@@ -663,7 +663,7 @@ export function s04(ctx: EngineContext): TileResult {
   const withAliases = representative ? representativeAliases(metrics, representative) : metrics;
   const allOutOfRange = calculated.some((result) => result.consideredCells > 0 && result.outOfRangeCells === result.consideredCells);
   const status: TileResult["status"] = calculated.length === 0 ? "pending" : missingSeasons.length > 0 || allOutOfRange ? "partial" : "complete";
-  if (missingSeasons.length > 0) limitations.push({ kind: "partial", note: `다음 계절은 S03 바람장 또는 계절×시각 대표 기상이 없어 계산 대기입니다: ${missingSeasons.join(", ")}` });
+  if (missingSeasons.length > 0) limitations.push({ kind: "partial", note: `다음 계절은 S03 바람장 또는 계절×시각 대표 기상이 없어 계산 대기입니다: ${missingSeasons.map((season) => SEASON_KO[season]).join(", ")}` });
   if (allOutOfRange) limitations.push({ kind: "partial", note: "S03 바람 값이 없는 셀은 UTCI를 계산하지 않고 통계에서 제외했습니다." });
   if (calculated.length > 0 && windSourceFor(ctx).includes("d2q9")) {
     limitations.push({ kind: "estimated", note: "S03가 2D 대체 계산(건물 위로 넘는 흐름 없음)이라 건물 사이·안뜰의 바람이 실제보다 약하게 나와 0.5 m/s 하한 적용 면적이 커질 수 있습니다." });
@@ -677,8 +677,9 @@ export function s04(ctx: EngineContext): TileResult {
     if (high > 0) limitations.push({ kind: "estimated", note: `바람 ${UTCI_WIND_RANGE[1]} m/s 초과 ${high}%는 ${UTCI_WIND_RANGE[1]} m/s로 계산했습니다(${when}).` });
   }
 
+  const representativeCategory = representative ? categorySummary(representative) : null;
   const sentence = representative
-    ? `여름 14시 UTCI 중앙값 ${metricValueFor(withAliases, "utci_median_summer_h14")}°C, 양지·그늘 차이 ${metricValueFor(withAliases, "sun_shade_diff_c_summer_h14")}°C → 계절·시각 자리끼리 비교하고 현장 조건을 확인하세요`
+    ? `여름 14시 UTCI 중앙값 ${metricValueFor(withAliases, "utci_median_summer_h14")}°C, 대표 범주 ${representativeCategory}, 그늘 ${metricValueFor(withAliases, "shade_pct_summer_h14")}%, 양지·그늘 차이 ${metricValueFor(withAliases, "sun_shade_diff_c_summer_h14")}°C → 계절·시각 자리끼리 비교하고 현장 조건을 확인하세요`
     : "계절·시각 대표 기상과 S03 바람장이 준비된 경우에만 UTCI를 계산합니다 → 계절·시각 자리끼리 비교하고 현장 조건을 확인하세요";
   const basis = representative ? ["utci_median_summer_h14", "shade_pct_summer_h14"] : [];
   const tile = makeTile(ctx, {
@@ -708,4 +709,18 @@ export function s04(ctx: EngineContext): TileResult {
 function metricValueFor(metrics: TileResult["metrics"], id: string): string {
   const value = metrics.find((metric) => metric.id === id)?.value;
   return typeof value === "number" && Number.isFinite(value) ? value.toFixed(1) : "자료 없음";
+}
+
+function categorySummary(result: SeasonHourResult): string {
+  let bestIndex = -1;
+  let bestCount = 0;
+  for (let index = 0; index < UTCI_CATEGORIES.length; index += 1) {
+    const count = result.categoryCounts[index] ?? 0;
+    if (count > bestCount) {
+      bestIndex = index;
+      bestCount = count;
+    }
+  }
+  if (bestIndex < 0 || result.consideredCells <= 0) return "자료 없음";
+  return `${UTCI_CATEGORIES[bestIndex].label} ${percentage(bestCount, result.consideredCells)}%`;
 }

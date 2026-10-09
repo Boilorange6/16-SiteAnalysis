@@ -1,9 +1,8 @@
-import type { RasterRef, TileResult } from "../../tile-result";
+import type { TileResult } from "../../tile-result";
 import type { TileView } from "../../ui/tile-view";
+import type { RasterMap } from "../cut-utils";
 import type { TileClientModule } from "../types";
 import { s04CutModule } from "./cut";
-
-type RasterMap = NonNullable<TileView["map"]> & { defaultRaster?: string; rasterOptions?: RasterRef[] };
 
 function applyS04View(base: TileView, result?: TileResult): TileView {
   if (!result) return base;
