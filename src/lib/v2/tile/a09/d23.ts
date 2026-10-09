@@ -130,7 +130,10 @@ export function d23(ctx: EngineContext): TileResult {
     const project = projectMap.get(zoneProject.get(zone.featureId) ?? "");
     const stage = project?.stage ?? "미확인";
     const layer = `maint_stage:${stage}`;
-    const name = project?.name ?? null;
+    const zoneName = [zone.name, zone.properties.zoneName]
+      .map((value) => typeof value === "string" ? value.trim() : "")
+      .find((value) => value !== "") ?? null;
+    const name = project?.name ?? zoneName;
     const labelPriority = name === null ? 0 : 1;
     if (!layers.includes(layer)) layers.push(layer);
 
