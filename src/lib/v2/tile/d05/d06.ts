@@ -6,28 +6,22 @@ import { areaInCircle, polygonArea } from "../../engine/tiles/geo";
 import { BUILDING_SOURCES, assumedOneFloorLimitation, buildingRetirementLimitations, buildingRows, isConfirmedHeightMethod, isCounted, type BuildingRow } from "../../engine/tiles/buildings-shared";
 import { est, makeTile, missing, obs, polygonCandidate, type TileDraft } from "../../engine/tiles/common";
 import { notProvided } from "../../engine/tiles/not-provided";
+import { buildingMapExtra, heightLayer, sortBuildingRows } from "./presentation";
 
 const LAYERS = ["tall_ge35", "tall_ge35_est", "tall_assumed_1f_est", "tall_lt35", "tall_unknown"] as const;
 const pct = (part: number, whole: number) => Math.round((part / whole) * 1000) / 10;
-
-function bucket(heightM: number | null, heightMethod: string): (typeof LAYERS)[number] {
-  if (heightM === null || !Number.isFinite(heightM)) return "tall_unknown";
-  if (heightMethod === "assumed_one_floor") return "tall_assumed_1f_est";
-  if (heightMethod === "floors_estimate") return heightM >= 35 ? "tall_ge35_est" : "tall_lt35";
-  if (isConfirmedHeightMethod(heightMethod as BuildingRow["heightMethod"])) return heightM >= 35 ? "tall_ge35" : "tall_lt35";
-  return "tall_unknown";
-}
 
 function heightArea(ctx: EngineContext, row: BuildingRow) {
   return areaInCircle(ctx.input.center, ctx.input.radiusM, row.hit.geometry as Geometry);
 }
 
 export function d06(ctx: EngineContext): TileResult {
-  const rows = buildingRows(ctx);
-  if (rows === null) return notProvided(ctx, "D06");
+  const sourceRows = buildingRows(ctx);
+  if (sourceRows === null) return notProvided(ctx, "D06");
+  const rows = sortBuildingRows(sourceRows);
 
   const total = rows.filter((row) => isCounted(ctx, row)).length; // 동수·구성비는 중심점이 반경 안인 건물만, 그림은 교차 전부
-  const all = rows.map((row) => ({ row, layer: bucket(row.heightM, row.heightMethod), area: heightArea(ctx, row) }));
+  const all = rows.map((row) => ({ row, layer: heightLayer(row, "tall") as (typeof LAYERS)[number], area: heightArea(ctx, row) }));
   const classified = all.filter(({ row }) => isCounted(ctx, row)); // 동수·구성비는 중심점이 반경 안인 건물만
   const sourceKnown = classified.filter(({ row }) => isConfirmedHeightMethod(row.heightMethod) && row.heightM !== null).length;
   const tallSource = classified.filter(({ layer }) => layer === "tall_ge35").length;
@@ -43,7 +37,7 @@ export function d06(ctx: EngineContext): TileResult {
   for (const { row, layer, area } of all) { // 그림은 교차 전부
     const rowPolygons = area
       ? area.parts.flatMap((rings, index) => {
-        const polygon = polygonCandidate(row.hit.featureId * 1000 + index, layer, rings, polygonArea(rings), row.hit.name);
+        const polygon = polygonCandidate(row.hit.featureId * 1000 + index, layer, rings, polygonArea(rings), null, buildingMapExtra(row, layer));
         return polygon ? [polygon] : [];
       })
       : [];

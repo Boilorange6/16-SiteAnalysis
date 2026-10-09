@@ -22,10 +22,48 @@ const CODE_TO_CLASS: Readonly<Record<string, UseClass>> = {
   "17": "공업", "18": "공업", "19": "공업", "22": "공업", "25": "공업",
 };
 
+const CODE_TO_LABEL: Readonly<Record<string, string>> = {
+  "01": "단독주택",
+  "02": "공동주택",
+  "03": "제1종근린생활시설",
+  "04": "제2종근린생활시설",
+  "05": "문화및집회시설",
+  "06": "종교시설",
+  "07": "판매시설",
+  "08": "운수시설",
+  "09": "의료시설",
+  "10": "교육연구시설",
+  "11": "노유자시설",
+  "12": "수련시설",
+  "13": "운동시설",
+  "14": "업무시설",
+  "15": "숙박시설",
+  "16": "위락시설",
+  "17": "공장",
+  "18": "창고시설",
+  "19": "위험물저장및처리시설",
+  "20": "자동차관련시설",
+  "21": "동물및식물관련시설",
+  "22": "자원순환관련시설",
+  "23": "교정및군사시설",
+  "24": "방송통신시설",
+  "25": "발전시설",
+  "26": "묘지관련시설",
+  "27": "관광휴게시설",
+  "28": "장례시설",
+  "29": "야영장시설",
+};
+
 /** 5자리 주용도코드의 앞 2자리를 10분류로 바꾼다. */
 export function useClassOf(code: string | null | undefined): UseClass {
   if (typeof code !== "string") return "미상";
   return CODE_TO_CLASS[code.trim().slice(0, 2)] ?? "미상";
+}
+
+/** 범례 분류명을 반복하지 않는, 원천 주용도 값이다. 미상은 sublabel로 내보내지 않는다. */
+export function useLabelOf(code: string | null | undefined): string | null {
+  if (typeof code !== "string") return null;
+  return CODE_TO_LABEL[code.trim().slice(0, 2)] ?? null;
 }
 
 const pct = (part: number, whole: number) => Math.round((part / whole) * 1000) / 10;
@@ -63,7 +101,12 @@ export function d03(ctx: EngineContext): TileResult {
     }
 
     for (const rings of clipped.parts) {
-      const polygon = polygonCandidate(row.hit.featureId, `use:${useClass}`, rings, polygonArea(rings), row.hit.name);
+      const name = row.hit.name ?? null;
+      const polygon = polygonCandidate(row.hit.featureId, `use:${useClass}`, rings, polygonArea(rings), null, {
+        name,
+        sublabel: useLabelOf(row.useCode),
+        labelPriority: name === null ? 0 : 1,
+      });
       if (polygon) polygons.push(polygon);
     }
 

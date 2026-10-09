@@ -15,6 +15,21 @@ const DENSITY_LAYERS = ["dens_0", "dens_q1", "dens_q2", "dens_q3", "dens_q4", "d
 const round3 = (value: number) => Math.round(value * 1000) / 1000;
 const round1 = (value: number) => Math.round(value * 10) / 10;
 const pct = (part: number, whole: number) => Math.round((part / whole) * 1000) / 10;
+const densityLabel = (value: number) => {
+  const rounded = round1(value);
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+};
+
+function densityLegend(breaks: readonly number[]): NonNullable<TileDraft["legend"]> {
+  return [
+    { label: "건물 없음", min: 0, max: 0 },
+    { label: `${densityLabel(breaks[0]!)}~${densityLabel(breaks[1]!)}동/㎢`, min: breaks[0]!, max: breaks[1]! },
+    { label: `${densityLabel(breaks[1]!)}~${densityLabel(breaks[2]!)}동/㎢`, min: breaks[1]!, max: breaks[2]! },
+    { label: `${densityLabel(breaks[2]!)}~${densityLabel(breaks[3]!)}동/㎢`, min: breaks[2]!, max: breaks[3]! },
+    { label: `${densityLabel(breaks[3]!)}~${densityLabel(breaks[4]!)}동/㎢`, min: breaks[3]!, max: breaks[4]! },
+    { label: `${densityLabel(breaks[4]!)}동/㎢ 이상`, min: breaks[4]!, max: null },
+  ];
+}
 
 export interface GfaMetrics {
   totalM2: number | null;
@@ -143,6 +158,7 @@ export function d16(ctx: EngineContext): TileResult {
     sources: ctx.sources("buildings", BUILDING_SOURCES),
     layers: [...DENSITY_LAYERS],
     polygons: bands.polygons,
+    legend: densityLegend(breaks),
     limitations,
   });
 }

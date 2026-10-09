@@ -52,8 +52,11 @@ try {
   assert.equal(result.presentation.featuresTotal, 0, "면이 있는 정상 도형에는 대표점이 없다");
   assert.equal(result.presentation.features.length, 0, "정상 도형 건물은 대표점 fallback을 만들지 않는다");
   assert.ok(result.presentation.polygons.every((p) => p.layer === "bldg_footprint"));
-  assert.ok(result.presentation.polygons.every((p) => p.label !== null), "모든 건물 면은 높이와 무관하게 이름을 보존한다");
-  assert.ok(result.presentation.polygons.some((p) => p.label === "b_unknown"), "높이 미상 건물도 이름을 보존한다");
+  assert.ok(result.presentation.polygons.every((p) => p.label === null), "레거시 label에 이름을 복사하지 않는다");
+  assert.ok(result.presentation.polygons.every((p) => p.name !== null), "모든 건물 면은 원천 이름을 보존한다");
+  assert.ok(result.presentation.polygons.every((p) => p.sublabel === null), "D02 면에는 높이값 sublabel을 붙이지 않는다");
+  assert.ok(result.presentation.polygons.every((p) => p.labelPriority === 1), "이름 있는 건물 면은 자동 라벨 우선순위 1이다");
+  assert.ok(result.presentation.polygons.some((p) => p.name === "b_unknown"), "높이 미상 건물도 이름을 보존한다");
   assert.ok(result.limitations.some((l) => l.kind === "estimated" && l.note.includes("발자국 겹침")));
   assert.ok(result.limitations.some((l) => l.note.includes("완전성")));
 
@@ -63,6 +66,23 @@ try {
   assert.ok(!/도보|\d\s*분|종합/.test(JSON.stringify(view)));
 } finally {
   ctx.close();
+}
+
+// 원천 이름이 없으면 null을 유지하고 대체 문구나 자동 라벨 우선순위를 만들지 않는다.
+const unnamedCtx = context(dataDir, M.readManifest(dataDir), "d02-unnamed");
+const originalUnnamedHits = unnamedCtx.hits.bind(unnamedCtx);
+unnamedCtx.hits = (key, kinds, radiusM) => originalUnnamedHits(key, kinds, radiusM).map((hit) => hit.stableId === "building:b_noledger"
+  ? { ...hit, name: null }
+  : hit);
+try {
+  const unnamed = d02(unnamedCtx);
+  const polygon = unnamed.presentation.polygons.find((item) => item.layer === "bldg_footprint" && item.name === null);
+  assert.ok(polygon, "이름 없는 건물 면도 결과에 남는다");
+  assert.equal(polygon.label, null);
+  assert.equal(polygon.sublabel, null);
+  assert.equal(polygon.labelPriority, 0);
+} finally {
+  unnamedCtx.close();
 }
 
 // 도형 계산에 실패한 건물만 대표점 fallback으로 남긴다.
@@ -91,6 +111,9 @@ try {
   assert.equal(fallback.presentation.featuresTotal, 1, "실패한 도형만 대표점 fallback으로 남긴다");
   assert.equal(fallback.presentation.features[0].fid, String(unknownId));
   assert.equal(fallback.presentation.features[0].layer, "bldg_point");
+  assert.equal(fallback.presentation.features[0].name, "b_unknown");
+  assert.equal(fallback.presentation.features[0].sublabel, null);
+  assert.equal(fallback.presentation.features[0].labelPriority, 1);
 } finally {
   fallbackCtx.close();
 }
@@ -109,7 +132,7 @@ try {
   malformedCtx.close();
 }
 
-assert.equal(d02ClientModule.mapNote, undefined, "높이 미상 테두리-only mapNote를 제거한다");
+assert.equal(d02ClientModule.mapNote, "건물 발자국 · 도형 변환 실패 건물만 점 표시", "D02 mapNote가 도형 실패 점만 설명한다");
 
 // buildings 파일이 게시되지 않으면 SQL 예외가 아니라 not_provided 결과를 낸다.
 const absentDir = mkdtempSync(join(tmpdir(), "v2-d02-absent-"));

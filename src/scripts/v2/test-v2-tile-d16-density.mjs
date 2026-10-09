@@ -16,6 +16,7 @@ const { kdeBandPolygons, kdeGrid } = await import("../../lib/v2/tile/d16/kde.ts"
 const { d16, gfaMetrics } = await import("../../lib/v2/tile/d16/engine.ts");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
+const { layerStyle } = await import("../../lib/v2/ui/map-layers.ts");
 
 const metric = (tile, id) => {
   const found = tile.metrics.find((item) => item.id === id);
@@ -140,6 +141,22 @@ try {
   assert.match(metric(tile, "gfa_per_ha").label, /연면적 밀도\(㎡\/ha\) — 용적률 아님/);
   assert.equal(metric(tile, "gfa_per_ha").value, Math.round((3600 / (Math.PI * 800 ** 2 / 10000)) * 10) / 10);
   assert.deepEqual(tile.presentation.layers, DENSITY_LAYERS);
+  assert.deepEqual(
+    { label: layerStyle("dens_0").label, fill: layerStyle("dens_0").fill, fillOpacity: layerStyle("dens_0").fillOpacity },
+    { label: "건물 없음", fill: "none", fillOpacity: 0 },
+    "dens_0은 채움 없이 건물 없음으로 표시",
+  );
+  assert.ok(tile.presentation.polygons.length > 0);
+  assert.ok(tile.presentation.polygons.every((polygon) => polygon.name === null), "D16 익명 격자 면에는 이름을 만들지 않는다");
+  assert.ok(tile.presentation.polygons.every((polygon) => polygon.sublabel === null), "D16 익명 격자 면에는 sublabel을 만들지 않는다");
+  assert.ok(tile.presentation.polygons.every((polygon) => polygon.labelPriority === 0), "D16 익명 격자 면은 자동 라벨 우선순위가 없다");
+  assert.equal(tile.presentation.legend.length, 6, "D16 범례는 0 포함 6개 구간이다");
+  assert.deepEqual(tile.presentation.legend[0], { label: "건물 없음", min: 0, max: 0 });
+  assert.ok(tile.presentation.legend.slice(1).every((entry) => /동\/㎢/.test(entry.label)), "D16 범례에 실제 동/㎢ 단위가 표시된다");
+  for (let index = 1; index < tile.presentation.legend.length; index += 1) {
+    const entry = tile.presentation.legend[index];
+    assert.equal(entry.min, index === 1 ? 0.5 : tile.presentation.legend[index - 1].max, `D16 범례 ${index} 하한`);
+  }
   optimizedQuantiles.forEach((value, index) => assert.equal(metric(tile, `dens_break_${index + 1}`).value, Math.round(value * 1000) / 1000));
   const legacyMax = Math.max(...Array.from(legacyGrid.values));
   assert.equal(metric(tile, "dens_max").value, Math.round(legacyMax * 1000) / 1000);

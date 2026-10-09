@@ -6,6 +6,7 @@ import { areaInCircle, polygonArea } from "../../engine/tiles/geo";
 import { BUILDING_SOURCES, assumedOneFloorLimitation, buildingRetirementLimitations, buildingRows, isConfirmedHeightMethod, isCounted, isAssumedOneFloor, type BuildingRow } from "../../engine/tiles/buildings-shared";
 import { est, makeTile, missing, obs, polygonCandidate, type TileDraft } from "../../engine/tiles/common";
 import { notProvided } from "../../engine/tiles/not-provided";
+import { buildingMapExtra, sortBuildingRows } from "./presentation";
 
 const FLOOR_BUCKETS = [
   { id: "share_floors_1", label: "1~4층", layer: "floors_1_4" },
@@ -46,14 +47,15 @@ function polygonsFor(ctx: EngineContext, row: BuildingRow, layer: string) {
   const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, row.hit.geometry as Geometry);
   if (!clipped) return [];
   return clipped.parts.flatMap((rings, index) => {
-    const polygon = polygonCandidate(row.hit.featureId * 1000 + index, layer, rings, polygonArea(rings), row.hit.name);
+    const polygon = polygonCandidate(row.hit.featureId * 1000 + index, layer, rings, polygonArea(rings), null, buildingMapExtra(row, layer));
     return polygon ? [polygon] : [];
   });
 }
 
 export function d05(ctx: EngineContext): TileResult {
-  const rows = buildingRows(ctx);
-  if (rows === null) return notProvided(ctx, "D05");
+  const sourceRows = buildingRows(ctx);
+  if (sourceRows === null) return notProvided(ctx, "D05");
+  const rows = sortBuildingRows(sourceRows);
 
   const total = rows.filter((row) => isCounted(ctx, row)).length; // 동수·구성비는 중심점이 반경 안인 건물만, 그림은 교차 전부
   const floorCounts = new Map<string, number>(FLOOR_BUCKETS.map(({ layer }) => [layer, 0]));

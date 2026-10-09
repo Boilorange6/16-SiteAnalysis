@@ -11,6 +11,8 @@ export interface MergeOptions {
   dropMetricIds?: readonly string[];
   /** 판정을 기본 타일 그대로 둘지, 두 문장을 이어 붙일지. 기본값은 base. */
   judgment?: "base" | "concat";
+  /** D05가 D06·D07을 흡수할 때만 건물 단위로 지도 cap을 적용한다. */
+  d05BuildingPolygons?: boolean;
 }
 
 function dedupe<T>(items: T[], key: (item: T) => string): T[] {
@@ -37,6 +39,62 @@ function polygonKey(polygon: MapPolygon): string {
 
 function lineKey(line: MapLine): string {
   return `${line.fid ?? ""}|${line.layer}|${line.points[0]?.join(",") ?? ""}|${line.points.at(-1)?.join(",") ?? ""}`;
+}
+
+function d05BuildingKey(polygon: MapPolygon): string {
+  const fid = polygon.fid?.trim() ?? "";
+  if (/^-?\d+$/.test(fid)) return `feature:${Math.floor(Number(fid) / 1000)}`;
+  return `fid:${fid || polygon.rings[0]?.[0]?.join(",") || polygonKey(polygon)}`;
+}
+
+function d05LayerRank(layer: string): number {
+  if (layer.startsWith("floors_")) return 0;
+  if (layer.startsWith("tall_")) return 1;
+  if (layer.startsWith("low_")) return 2;
+  return 3;
+}
+
+function d05LabelValue(polygon: MapPolygon): { kind: number; value: number } {
+  const text = polygon.sublabel ?? "";
+  const floor = text.match(/^(\d+(?:\.\d+)?)층$/);
+  if (floor) return { kind: 2, value: Number(floor[1]) };
+  const height = text.match(/^(\d+(?:\.\d+)?)m$/);
+  if (height) return { kind: 1, value: Number(height[1]) };
+  return { kind: 0, value: -1 };
+}
+
+/**
+ * D05는 한 건물을 기본·고층·저층 보기에서 각각 한 면으로만 보존한다.
+ * 같은 건물의 multipart/중복 조각은 보기(layer)별 첫 면으로 정리하고,
+ * cap은 건물 그룹 단위로 적용해 세 번째 저층 보기가 먼저 잘리지 않게 한다.
+ */
+function capD05BuildingPolygons(items: MapPolygon[]): MapPolygon[] {
+  const byExactKey = new Map<string, MapPolygon>();
+  for (const item of items) {
+    const key = `${d05BuildingKey(item)}|${item.layer}`;
+    if (!byExactKey.has(key)) byExactKey.set(key, item);
+  }
+
+  const groups = new Map<string, { items: MapPolygon[]; first: number }>();
+  [...byExactKey.values()].forEach((item, index) => {
+    const key = d05BuildingKey(item);
+    const group = groups.get(key);
+    if (group) group.items.push(item);
+    else groups.set(key, { items: [item], first: index });
+  });
+  const orderedGroups = [...groups.values()].sort((a, b) => {
+    const aValue = a.items.map(d05LabelValue).sort((x, y) => y.kind - x.kind || y.value - x.value)[0]!;
+    const bValue = b.items.map(d05LabelValue).sort((x, y) => y.kind - x.kind || y.value - x.value)[0]!;
+    return bValue.kind - aValue.kind || bValue.value - aValue.value || a.first - b.first;
+  });
+
+  const output: MapPolygon[] = [];
+  for (const group of orderedGroups) {
+    const variants = [...group.items].sort((a, b) => d05LayerRank(a.layer) - d05LayerRank(b.layer));
+    if (output.length + variants.length > MAX_MAP_POLYGONS) break;
+    output.push(...variants);
+  }
+  return output;
 }
 
 function sourceKey(source: TileResult["provenance"]["sources"][number]): string {
@@ -152,7 +210,9 @@ export function mergeTileResults(base: TileResult, extra: TileResult, options: M
     ...baseLines.map((item) => item.layer),
   ])];
   const features = capMergedFeatures(dedupe([...baseFeatures, ...extraFeatures], featureKey), preferredLayers);
-  const polygons = capByLayer(dedupe([...basePolygons, ...extraPolygons], polygonKey), MAX_MAP_POLYGONS, preferredLayers);
+  const polygons = options.d05BuildingPolygons
+    ? capD05BuildingPolygons(dedupe([...basePolygons, ...extraPolygons], polygonKey))
+    : capByLayer(dedupe([...basePolygons, ...extraPolygons], polygonKey), MAX_MAP_POLYGONS, preferredLayers);
   const lines = capByLayer(dedupe([...baseLines, ...extraLines], lineKey), MAX_MAP_LINES, preferredLayers);
   const rasterRefs = dedupe([...(base.presentation.rasters ?? []), ...(extra.presentation.rasters ?? [])], (ref) => ref.name);
   const sourceRefs = dedupe([...base.provenance.sources, ...extra.provenance.sources], sourceKey);

@@ -32,6 +32,15 @@ try {
   assert.equal(tile.presentation.polygons.length, 6);
   assert.equal(tile.presentation.featuresTotal, 0, "정상 도형에는 중복 대표점이 없다");
   assert.equal(tile.presentation.features.length, 0);
+  assert.ok(tile.presentation.polygons.every((polygon) => polygon.label === null), "레거시 label에 이름을 복사하지 않는다");
+  const datedBuilding = tile.presentation.polygons.find((polygon) => polygon.name === "b_apt");
+  assert.ok(datedBuilding, "D04 polygon은 원천 건물 이름을 사용한다");
+  assert.equal(datedBuilding.sublabel, "1979년");
+  assert.equal(datedBuilding.labelPriority, 1);
+  const unknownYearBuilding = tile.presentation.polygons.find((polygon) => polygon.name === "b_noledger");
+  assert.ok(unknownYearBuilding);
+  assert.equal(unknownYearBuilding.sublabel, null, "승인연도 미상 건물에는 sublabel을 붙이지 않는다");
+  assert.equal(unknownYearBuilding.labelPriority, 1);
 
   // UI 헤더는 반올림된 퍼센트 합이 아니라 세부 metric의 count 합으로 다시 계산한다.
   const rounded = structuredClone(tile);
@@ -70,6 +79,9 @@ try {
   assert.equal(fallback.presentation.featuresTotal, 1);
   assert.equal(fallback.presentation.features[0].fid, String(unknownId));
   assert.equal(fallback.presentation.features[0].layer, "bldg_2000s");
+  assert.equal(fallback.presentation.features[0].name, "b_unknown");
+  assert.equal(fallback.presentation.features[0].sublabel, "2005년");
+  assert.equal(fallback.presentation.features[0].labelPriority, 1);
 } finally {
   fallbackCtx.close();
 }
