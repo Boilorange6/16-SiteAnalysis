@@ -7,39 +7,9 @@ import { lic } from "./lic";
 
 type RasterValues = Uint8Array | Uint16Array | Int16Array;
 
-/**
- * S02의 일조시간은 동지 기본 컷을 유지하면서 하지 레이어의 낮 길이(약 15시간)도 읽혀야 한다.
- *
- * `map-layers.ts`의 공용 팔레트는 다른 작업자가 소유하므로, 여기서는
- * 래스터를 실제로 칠하는 경로에서만 화면용 팔레트를 확장한다. 낮은 값은
- * 채도가 낮은 청회색으로 시작하고 높은 값으로 갈수록 차분한 황금색·주황색으로
- * 이동한다. 숫자 구간은 0~1, ..., 14~15, 15+이다.
- */
-export const SUN_HOURS_COLORS = [
-  "#43566B",
-  "#4E6478",
-  "#5A7184",
-  "#678095",
-  "#748EA2",
-  "#829CAF",
-  "#91A9B7",
-  "#A1B5B8",
-  "#B1BDA9",
-  "#C2BE93",
-  "#D1B77B",
-  "#DDA963",
-  "#E19A4F",
-  "#E28A43",
-  "#DF793B",
-  "#D76835",
-] as const;
-
-export const SUN_HOURS_BREAKS = Array.from({ length: SUN_HOURS_COLORS.length - 1 }, (_, index) => index + 1);
-
-/** 화면과 PPT가 같은 래스터 팔레트를 사용하도록 스타일을 해석한다. */
-export function resolveRasterStyle(ref: Pick<RasterRef, "palette">, style: RasterStyle): RasterStyle {
-  if (ref.palette !== "sun_hours" || style.mode !== "stepped") return style;
-  return { ...style, colors: [...SUN_HOURS_COLORS], breaks: [...SUN_HOURS_BREAKS] };
+/** 화면과 PPT가 같은 래스터 팔레트를 사용하도록 공용 map-layers 스타일을 그대로 쓴다. */
+export function resolveRasterStyle(_ref: Pick<RasterRef, "palette">, style: RasterStyle): RasterStyle {
+  return style;
 }
 
 /** 범례의 stepped 항목에 대응하는 색. 연속형은 gradient를 그리므로 null을 돌려준다. */

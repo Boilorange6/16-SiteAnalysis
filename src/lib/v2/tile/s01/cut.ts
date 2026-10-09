@@ -1,14 +1,11 @@
 import type { TileView } from "../../ui/tile-view";
 import type { TileCutCandidate, TileCutModule, TileCutPlan } from "../types";
+import { isRecord } from "../cut-utils";
 
 export const S01_MASS_LABEL = "S01 3D 매스";
 export type S01Cut = { tile: "S01"; mode: "mass" | "exploded" };
 
 const S01_DEFAULT: S01Cut = { tile: "S01", mode: "mass" };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object";
-}
 
 export function isS01Cut(value: unknown): value is S01Cut {
   return isRecord(value) && value.tile === "S01" && (value.mode === "mass" || value.mode === "exploded");

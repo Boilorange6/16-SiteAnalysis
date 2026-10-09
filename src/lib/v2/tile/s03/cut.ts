@@ -1,13 +1,9 @@
 import type { TileView } from "../../ui/tile-view";
 import type { TileCutCandidate, TileCutModule, TileCutPlan } from "../types";
 import { CUT_SEASON_LABEL, CUT_SEASONS, CUT_WIND_SEASONS } from "../cut-common";
-import { rasterCell, rasterNames, rasterRefs, viewWithOnlyRaster } from "../cut-utils";
+import { isRecord, rasterCell, rasterNames, rasterRefs, viewWithOnlyRaster } from "../cut-utils";
 
 export type S03Cut = { tile: "S03"; mode: "single" | "seasons4"; layerZ: number; season?: (typeof CUT_WIND_SEASONS)[number] };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object";
-}
 
 export function isS03Cut(value: unknown): value is S03Cut {
   return isRecord(value)

@@ -278,13 +278,13 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
 export const RASTER_STYLES: Record<string, RasterStyle> = {
   sun_hours: {
     mode: "stepped",
-    colors: ["#18234C", "#243B70", "#31568D", "#4377A0", "#5E96A7", "#82B39C", "#B5C57C", "#D9C65E", "#F0B545", "#F39A31", "#F47A26", "#F05A21", "#E83D1D"],
-    breaks: Array.from({ length: 12 }, (_, i) => i + 1),
+    colors: ["#43566B", "#4E6478", "#5A7184", "#678095", "#748EA2", "#829CAF", "#91A9B7", "#A1B5B8", "#B1BDA9", "#C2BE93", "#D1B77B", "#DDA963", "#E19A4F", "#E28A43", "#DF793B", "#D76835"],
+    breaks: Array.from({ length: 15 }, (_, i) => i + 1),
     label: "일조시간",
   },
   shade_mask: { mode: "mask", colors: ["#3D4A63"], opacity: 0.55, label: "그림자" },
   shade_flow: { mode: "continuous", colors: ["#22304C", "#586B89", "#B7C4D7"], min: 0, max: 1, label: "그림자 흐름" },
-  wind_ratio: { mode: "continuous", colors: ["#440154", "#31688E", "#35B779", "#FDE725"], min: 0, max: 1.2, label: "U/U유입" },
+  wind_ratio: { mode: "stepped", colors: ["#440154", "#31688E", "#35B779", "#FDE725"], breaks: [0.5, 0.8, 1.2], min: 0, max: 1.5, legendTicks: [0, 0.5, 0.8, 1.2, 1.5], legendLabels: ["0~0.5", "0.5~0.8", "0.8~1.2", "1.2 이상"], label: "U/U유입" },
   // UTCI 표준 10개 열스트레스 범주(-40·-27·-13·0·9·26·32·38·46). 한랭은 청색, 쾌적은 녹색, 열 쪽은
   // 노랑→주황→빨강→암적색으로 색상·명도가 함께 달라진다. 열 범주(26 이상)는 범주 안을 2~3 °C 단위로 나눠
   // 같은 색 계열의 진하기를 단계적으로 바꿨다: 같은 범주 안의 양지(≈35)와 그늘(≈33)도 지도에서 구분된다.

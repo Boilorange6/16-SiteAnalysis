@@ -141,7 +141,7 @@ function mapOf(r: TileResult, analysisSiteParcel?: readonly MapPolygon[] | null)
   if (features.length === 0 && polygons.length === 0 && lines.length === 0 && rasterOptions.length === 0 && !basemap && !siteParcel?.length) return null;
   const notes = mapNotesFor(r);
   // 래스터가 그려지는 타일은 건물·그림자를 래스터 셀이 담당하므로 "지물 없음"이 아니다.
-  if (features.length === 0 && polygons.length === 0 && lines.length === 0 && rasterOptions.length === 0) notes.push("반경 안 표시할 지물 없음");
+  if (features.length === 0 && polygons.length === 0 && lines.length === 0 && rasterOptions.length === 0 && !basemap) notes.push("반경 안 표시할 지물 없음");
   if (rasters.some((ref) => ref.palette === "utci")) notes.push("흰색 = 건물 · 회색 = 바람 입력 없음");
   return {
     center: r.conditions.center,

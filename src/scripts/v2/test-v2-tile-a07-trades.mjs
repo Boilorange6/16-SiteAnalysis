@@ -65,7 +65,7 @@ const clean = (tile) => {
     a.presentation.features.map(({ layer, weight, lng, lat }) => ({ layer, weight, lng, lat })),
     "앞면 점은 A07과 동일",
   );
-  assert.match(t.judgment.sentence, /아파트 매매 · 최근 12개월/);
+    assert.match(t.judgment.sentence, /최근 12개월 반경 안 아파트 매매/);
   ctx.close();
 }
 
