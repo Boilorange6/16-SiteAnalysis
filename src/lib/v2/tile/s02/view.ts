@@ -3,16 +3,9 @@ import type { MapModel } from "../../ui/map-layers";
 import type { TileView } from "../../ui/tile-view";
 import type { TileClientModule, TileLayerOption } from "../types";
 import { s02CutModule } from "./cut";
+import { S02_DATE_LABEL, type S02DateKey } from "./dates";
 
-const S02_DATE_LABEL = {
-  spring: "춘분",
-  summer: "하지",
-  autumn: "추분",
-  winter: "동지",
-  analysis: "분석일",
-} as const;
-
-type S02RasterDate = keyof typeof S02_DATE_LABEL;
+type S02RasterDate = S02DateKey;
 
 type RasterMapModel = MapModel & {
   legend?: TileResult["presentation"]["legend"];

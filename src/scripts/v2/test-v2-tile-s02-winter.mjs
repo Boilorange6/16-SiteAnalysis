@@ -8,6 +8,7 @@ const { buildEngineFixture, CENTER, PNU_DASAN_100 } = await import("./engine-fix
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { s02 } = await import("../../lib/v2/tile/s02/engine.ts");
+const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 
 const dataDir = mkdtempSync(join(tmpdir(), "v2-s02-raster-"));
 await buildEngineFixture(dataDir, "v1", { buildings: true, parcels: true });
@@ -34,6 +35,9 @@ try {
   const hourLegend = tile.presentation.legend.filter((item) => item.label.startsWith("일조시간 · "));
   assert.equal(hourLegend.length, 13, "S02 keeps the complete 0..12+ sun-hour legend");
   assert.deepEqual(hourLegend.at(-1), { label: "일조시간 · 12시간 이상", min: 12, max: null });
+  const viewHourLegend = toTileView(tile).map.legend.filter((item) => item.label.startsWith("일조시간 · "));
+  assert.equal(viewHourLegend.length, 16, "S02 card expands the sun-hour legend to 16 display bins");
+  assert.deepEqual(viewHourLegend.at(-1), { label: "일조시간 · 15시간 이상", min: 15, max: null });
   assert.ok(tile.metrics.some((metric) => metric.id === "mean_sun_h_winter"));
   assert.ok(tile.metrics.some((metric) => metric.id === "share_cont2h_0915_pct_winter"));
   assert.ok(!tile.limitations.some((limitation) => limitation.note.includes("09:00–15:00") && limitation.note.includes("최대 6시간")));

@@ -267,7 +267,7 @@ function Mass3D({ mode = "image", ...props }: Mass3dProps) {
   }
   if (mode === "live") {
     return (
-      <div className={tileStyles.mass3dRoot} style={shellStyle} aria-busy={phase === "loading"}>
+      <div className={tileStyles.mass3dRoot} style={shellStyle} aria-busy={phase === "loading"} role="img" aria-label={props.label ?? "S01 3D 매스"}>
         <div ref={liveRef} className={tileStyles.mass3dCanvasHost} />
         <LiveExplodedLabels scene={props.scene} camera={props.camera} exploded={props.exploded} width={liveSize.width} height={liveSize.height} />
         <LiveLegend scene={props.scene} exploded={props.exploded} />

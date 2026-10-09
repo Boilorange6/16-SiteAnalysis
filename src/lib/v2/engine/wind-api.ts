@@ -34,6 +34,41 @@ import {
 
 type Db = BetterSqlite3.Database;
 
+const WIND_SEASON_LABEL: Record<WindSeason, string> = {
+  annual: "연간",
+  spring: "봄",
+  summer: "여름",
+  autumn: "가을",
+  winter: "겨울",
+};
+const WIND_DIRECTION_CODES = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"] as const;
+const WIND_DIRECTION_KO = ["북", "북북동", "북동", "동북동", "동", "동남동", "남동", "남남동", "남", "남남서", "남서", "서남서", "서", "서북서", "북서", "북북서"] as const;
+
+function windDirectionText(value: unknown): string {
+  const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const rawName = typeof record.name === "string" ? record.name.trim().toUpperCase() : "";
+  const namedIndex = WIND_DIRECTION_CODES.indexOf(rawName as (typeof WIND_DIRECTION_CODES)[number]);
+  const degrees = typeof record.deg === "number" && Number.isFinite(record.deg) ? ((record.deg % 360) + 360) % 360 : null;
+  const index = namedIndex >= 0 ? namedIndex : degrees === null ? -1 : Math.round(degrees / 22.5) % WIND_DIRECTION_CODES.length;
+  if (index < 0) return "유입 방향 미상";
+  const code = WIND_DIRECTION_CODES[index];
+  return `${WIND_DIRECTION_KO[index]}(${code})`;
+}
+
+function windValueText(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? String(value) : "미상";
+}
+
+export function formatWindJudgmentSentence(
+  season: WindSeason,
+  inflow: unknown,
+  median: number | null | undefined,
+  highShare: number | null | undefined,
+  calmShare: number | null | undefined,
+): string {
+  return `${WIND_SEASON_LABEL[season]} 주풍향 ${windDirectionText(inflow)} 유입 시 보행층 상대풍속 중앙값 ${windValueText(median)} U/U유입, 1.5 이상 ${windValueText(highShare)}%, 0.2 미만 정체 ${windValueText(calmShare)}% → 주풍향 1방향의 조기설계 참고 모형으로 자리끼리 비교 → 풍환경 검토 단계에서 검증된 CFD·풍동으로 확인할 것`;
+}
+
 export interface ApiReply {
   status: number;
   body: Record<string, unknown>;
@@ -309,11 +344,10 @@ function mergeWindTile(
   const inflow = (oldCase as Record<string, unknown>).inflow && typeof (oldCase as Record<string, unknown>).inflow === "object"
     ? ((oldCase as Record<string, unknown>).inflow as Record<string, unknown>)[season]
     : null;
-  const inflowText = inflow && typeof inflow === "object" && typeof (inflow as Record<string, unknown>).name === "string" ? (inflow as Record<string, unknown>).name : "유입 방향 미상";
   const judgment = {
     ruleId: "S03-relative-wind@1",
     basisMetricIds: median === null || median === undefined ? [] : [`urel_median_${season}`],
-    sentence: `${season} 주풍향 ${inflowText} 유입 시 보행층 상대풍속 중앙값 ${median ?? "미상"}, 1.2 이상 ${highShare ?? "미상"}%, 0.2 미만 정체 ${calmShare ?? "미상"}% → 주풍향 1방향의 조기설계 참고 모형으로 자리끼리 비교 → 풍환경 검토 단계에서 검증된 CFD·풍동으로 확인할 것`,
+    sentence: formatWindJudgmentSentence(season, inflow, median, highShare, calmShare),
     level: null,
     criteria: null,
   } satisfies TileResult["judgment"];

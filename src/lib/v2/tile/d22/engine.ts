@@ -8,6 +8,7 @@ import { fmt, makeTile, missing, obs, roundM, type TileDraft } from "../../engin
 import { notProvided } from "../../engine/tiles/not-provided";
 
 export const DIR16_NAMES = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"] as const;
+export const DIR16_KO_NAMES = ["북", "북북동", "북동", "동북동", "동", "동남동", "남동", "남남동", "남", "남남서", "남서", "서남서", "서", "서북서", "북서", "북북서"] as const;
 export const DIR16_DEGREES = DIR16_NAMES.map((_, index) => index * 22.5) as readonly number[];
 
 interface StationRow {
@@ -61,6 +62,7 @@ export interface PrevailingBySeason {
 
 const round1 = (value: number) => Math.round(value * 10) / 10;
 const percentage = (part: number, whole: number) => (whole > 0 ? round1((part / whole) * 100) : null);
+const SEASON_LABELS: Record<Season, string> = { spring: "봄", summer: "여름", autumn: "가을", winter: "겨울" };
 
 function periodYears(start: string, end: string): number | null {
   const from = Date.parse(`${start}T00:00:00Z`);
@@ -76,9 +78,12 @@ function hasTable(db: BetterSqlite3.Database, table: string): boolean {
   return db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table) !== undefined;
 }
 
-function nearestStation(ctx: EngineContext, db: BetterSqlite3.Database): NearestStation | null {
-  const stations = db.prepare(`SELECT station_id, name, lng, lat, elevation_m, period_start, period_end,
+function stationRows(db: BetterSqlite3.Database): StationRow[] {
+  return db.prepare(`SELECT station_id, name, lng, lat, elevation_m, period_start, period_end,
       total_hours, calm_hours, missing_hours FROM weather_station ORDER BY station_id`).all() as StationRow[];
+}
+
+function nearestStation(ctx: EngineContext, stations: StationRow[]): NearestStation | null {
   const eligibleStations = stations.filter((row) => nonNegativeInt(row.total_hours) - nonNegativeInt(row.missing_hours) >= 8_760);
   if (eligibleStations.length === 0) return null;
   const [cx, cy] = toUtmk(ctx.input.center);
@@ -154,7 +159,7 @@ function withRoses(tile: TileResult, annual: Rose, roses?: Record<RoseSeason, Ro
 export function prevailingBySeason(ctx: EngineContext): PrevailingBySeason | null {
   const db = ctx.db("weather");
   if (!db || ctx.sources("weather", ["asos"]).length === 0) return null;
-  const nearest = nearestStation(ctx, db);
+  const nearest = nearestStation(ctx, stationRows(db));
   if (!nearest) return null;
   const annual = annualRose(db, nearest.row);
   const seasonal = hasTable(db, "wind_rose_season")
@@ -172,14 +177,13 @@ export function d22(ctx: EngineContext): TileResult {
   if (!db) return notProvided(ctx, "D22", "기상(ASOS) 자료를 확인하지 못했습니다.");
 
   const sources = ctx.sources("weather", ["asos"]);
-  const stations = db.prepare(`SELECT station_id, name, lng, lat, elevation_m, period_start, period_end,
-      total_hours, calm_hours, missing_hours FROM weather_station ORDER BY station_id`).all() as StationRow[];
+  const stations = stationRows(db);
   if (stations.length === 0 || sources.length === 0) return notProvided(ctx, "D22", "기상(ASOS) 관측소 자료가 없습니다");
   const eligibleStations = stations.filter((row) => nonNegativeInt(row.total_hours) - nonNegativeInt(row.missing_hours) >= 8_760);
   const excludedStationCount = stations.length - eligibleStations.length;
   if (eligibleStations.length === 0) return notProvided(ctx, "D22", `관측시간 8,760시간 이상인 ASOS 관측소가 없습니다(${excludedStationCount}개 제외)`);
 
-  const nearest = nearestStation(ctx, db);
+  const nearest = nearestStation(ctx, stations);
   if (nearest === null) return notProvided(ctx, "D22", "기상(ASOS) 관측소 좌표가 없습니다");
 
   const row = nearest.row;
@@ -228,18 +232,18 @@ export function d22(ctx: EngineContext): TileResult {
           const rose = seasonal[season];
           const prevailing = directionOf(rose);
           const directionMetric = prevailing
-            ? obs(`prevailing_dir_deg_${season}`, `${season} 최빈 풍향 중심각(${prevailing.name})`, prevailing.deg, "도", `d22-prevailing-${season}@1:계절 방위별 관측 시간 최댓값의 16방위 중심각`, rose!.dirs[DIR16_NAMES.indexOf(prevailing.name)].reduce((sum, hours) => sum + hours, 0), rose!.directionalHours)
-            : missing(`prevailing_dir_deg_${season}`, `${season} 최빈 풍향 중심각(미상)`, "도", `d22-prevailing-${season}@1:계절 유효 풍향 관측 없음`);
+            ? obs(`prevailing_dir_deg_${season}`, `${SEASON_LABELS[season]} 최빈 풍향 중심각(${prevailing.name})`, prevailing.deg, "도", `d22-prevailing-${season}@1:계절 방위별 관측 시간 최댓값의 16방위 중심각`, rose!.dirs[DIR16_NAMES.indexOf(prevailing.name)].reduce((sum, hours) => sum + hours, 0), rose!.directionalHours)
+            : missing(`prevailing_dir_deg_${season}`, `${SEASON_LABELS[season]} 최빈 풍향 중심각(미상)`, "도", `d22-prevailing-${season}@1:계절 유효 풍향 관측 없음`);
           const calm = percentage(rose?.calmHours ?? 0, rose?.totalHours ?? 0);
           const calmMetric = calm === null
-            ? missing(`calm_pct_${season}`, `${season} 정온 비율`, "%", `d22-calm-${season}@1:계절 정온 시간÷계절 전체 시간`)
-            : obs(`calm_pct_${season}`, `${season} 정온 비율`, calm, "%", `d22-calm-${season}@1:계절 정온 시간÷계절 전체 시간`, rose!.calmHours, rose!.totalHours);
+            ? missing(`calm_pct_${season}`, `${SEASON_LABELS[season]} 정온 비율`, "%", `d22-calm-${season}@1:계절 정온 시간÷계절 전체 시간`)
+            : obs(`calm_pct_${season}`, `${SEASON_LABELS[season]} 정온 비율`, calm, "%", `d22-calm-${season}@1:계절 정온 시간÷계절 전체 시간`, rose!.calmHours, rose!.totalHours);
           return [directionMetric, calmMetric];
         })
       : []),
   ];
 
-  const prevailingText = prevailingIndex === null || prevailingPct === null ? "최빈 풍향을 산출할 유효 풍향 관측 없음" : `최빈 풍향 ${DIR16_NAMES[prevailingIndex]} ${prevailingPct}%`;
+  const prevailingText = prevailingIndex === null || prevailingPct === null ? "최빈 풍향을 산출할 유효 풍향 관측 없음" : `최빈 풍향 ${DIR16_KO_NAMES[prevailingIndex]}(${DIR16_NAMES[prevailingIndex]}) ${prevailingPct}%`;
   const elevationText = row.elevation_m === null || !Number.isFinite(row.elevation_m) ? "해발고도 미상" : `해발 ${fmt(row.elevation_m)}m`;
   const sentence = `최근접 관측소 ${row.name}(거리 ${round1(nearest.distanceM / 1000)}km, ${elevationText}) 기준 ${prevailingText} → 관측소 지형과 대지 국지풍은 다를 수 있음 → 현장 풍환경·S03 탐색으로 확인할 것`;
   const tile = makeTile(ctx, {
@@ -254,7 +258,7 @@ export function d22(ctx: EngineContext): TileResult {
       { kind: "unknown", note: `관측소 ${row.name} ASOS(${row.period_start}~${row.period_end}) 장기 빈도이며 대지 국지 흐름이 아님 · 관측소·기간 차이로 참고값과 최빈 풍향이 다를 수 있음` },
       ...(excludedStationCount > 0 ? [{ kind: "partial" as const, note: `관측시간 8,760시간 미만인 ASOS 관측소 ${excludedStationCount}개를 제외했습니다.` }] : []),
       ...(!seasonTable ? [{ kind: "not_provided" as const, note: "계절별 바람장미 자료를 확인하지 못했습니다." }] : []),
-      ...(missingSeasons.length > 0 ? [{ kind: "partial" as const, note: `계절별 바람장미 자료 일부를 확인하지 못했습니다: ${missingSeasons.join(", ")}` }] : []),
+      ...(missingSeasons.length > 0 ? [{ kind: "partial" as const, note: `계절별 바람장미 자료 일부를 확인하지 못했습니다: ${missingSeasons.map((season) => SEASON_LABELS[season]).join(", ")}` }] : []),
     ],
   });
   const annualModel = asRose(row.name, annual);

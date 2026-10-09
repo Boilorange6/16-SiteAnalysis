@@ -8,9 +8,8 @@ export type RoseModel = {
 };
 
 export const DIR16_NAMES = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"] as const;
+export const DIR16_KO_NAMES = ["북", "북북동", "북동", "동북동", "동", "동남동", "남동", "남남동", "남", "남남서", "남서", "서남서", "서", "서북서", "북서", "북북서"] as const;
 export const SPEED_BIN_LABELS = ["0.5~2", "2~4", "4~6", "6~8", "8m/s 이상"] as const;
-/** 매스 그림과 같은 차분한 파랑·황토·회색 계열의 풍속 구간 색. */
-export const SPEED_BIN_COLORS = ["#5E83B3", "#7C9BC2", "#9EA5AF", "#C58B2B", "#8C5A3C"] as const;
 
 const finiteHours = (value: number | undefined): number => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0);
 
@@ -30,12 +29,13 @@ function sectorPath(cx: number, cy: number, inner: number, outer: number, start:
 }
 
 /** 16방위 × 5구간 누적 쐐기 path. 모든 pct의 합은 정온·결측을 제외한 100이다. */
-export function roseWedges(m: RoseModel, cx: number, cy: number, rMax: number): Array<{ dir: number; bin: number; path: string; pct: number }> {
+export function roseWedges(m: RoseModel, cx: number, cy: number, rMax: number, scaleMaxPct?: number): Array<{ dir: number; bin: number; path: string; pct: number }> {
   const hours = DIR16_NAMES.map((_, dir) => Array.from({ length: 5 }, (_, bin) => finiteHours(m.dirs?.[dir]?.[bin])));
   const directionHours = hours.map((bins) => bins.reduce((sum, value) => sum + value, 0));
   const observedHours = directionHours.reduce((sum, value) => sum + value, 0);
   const directionPct = directionHours.map((value) => (observedHours > 0 ? (value / observedHours) * 100 : 0));
   const maxDirectionPct = Math.max(0, ...directionPct);
+  const scalePct = Number.isFinite(scaleMaxPct) && (scaleMaxPct ?? 0) > 0 ? Math.max(maxDirectionPct, scaleMaxPct!) : maxDirectionPct;
   const radius = Number.isFinite(rMax) && rMax > 0 ? rMax : 0;
   const halfSector = Math.PI / 16;
 
@@ -45,8 +45,8 @@ export function roseWedges(m: RoseModel, cx: number, cy: number, rMax: number): 
     return bins.map((value, bin) => {
       const pct = observedHours > 0 ? (value / observedHours) * 100 : 0;
       const outerPct = previousPct + pct;
-      const innerRadius = maxDirectionPct > 0 ? (radius * previousPct) / maxDirectionPct : 0;
-      const outerRadius = maxDirectionPct > 0 ? (radius * outerPct) / maxDirectionPct : 0;
+      const innerRadius = scalePct > 0 ? (radius * previousPct) / scalePct : 0;
+      const outerRadius = scalePct > 0 ? (radius * outerPct) / scalePct : 0;
       previousPct = outerPct;
       return {
         dir,

@@ -49,6 +49,19 @@ const edgeGap = (a, b) => {
   const dy = Math.max(a.y0 - b.y1, b.y0 - a.y1, 0);
   return Math.hypot(dx, dy);
 };
+
+const spaciousLayout = windRoseLayout(960, 540, "standalone", 14);
+assert.deepEqual(spaciousLayout.ticks.map((tick) => tick.value), [5, 10, 15]);
+const compactLayout = windRoseLayout(218.66, 162, "tile", 14);
+assert.deepEqual(compactLayout.ticks.map((tick) => tick.value), [10, 20]);
+assert.ok(compactLayout.tickBoxes.every((box, index) => compactLayout.tickBoxes.every((other, otherIndex) => index === otherIndex || !overlaps(box, other))), "compact: percentage ticks overlap");
+assert.ok(compactLayout.tickBoxes.every((box) => compactLayout.labels.every((label) => !overlaps(box, label))), "compact: percentage tick overlaps direction label");
+const compactMarkup = renderToStaticMarkup(React.createElement(WindRoseFigure, { model, width: 218.66, height: 162, fixed: true, chrome: "tile" }));
+assert.equal((compactMarkup.match(/data-wind-rose-tick="true"/g) ?? []).length, 2);
+const calmCircle = compactMarkup.match(/<circle[^>]*data-calm-circle="true"[^>]*>/)?.[0] ?? "";
+assert.ok(calmCircle, "compact: calm circle marker");
+assert.ok(Number(calmCircle.match(/r="([\d.]+)"/)?.[1]) < 30, "compact: calm circle remains oversized");
+
 for (const chrome of ["tile", "slide"]) {
   const layout = windRoseLayout(960, 540, chrome);
   const titleCard = layout.titleReserved;
@@ -81,6 +94,28 @@ assert.match(sourceLineOf([{ sourceId: "asos", releaseId: "real@2025-12-31", sou
 const d22Result = structuredClone(GODEOK_RESULTS.find((r) => r.tileCode === "D04"));
 d22Result.tileId = "t-D22";
 d22Result.tileCode = "D22";
+d22Result.metrics = [
+  {
+    id: "prevailing_dir_deg",
+    label: "최빈 풍향 중심각(NNE)",
+    value: 22.5,
+    unit: "도",
+    formulaVersion: "prevailing_dir_deg@1",
+    numerator: 14,
+    denominator: 100,
+    status: "observed",
+  },
+  {
+    id: "station_distance_m",
+    label: "최근접 관측소 거리",
+    value: 3000,
+    unit: "m",
+    formulaVersion: "station_distance_m@1",
+    numerator: null,
+    denominator: null,
+    status: "observed",
+  },
+];
 d22Result.presentation = {
   ...d22Result.presentation,
   features: [],
@@ -91,6 +126,7 @@ d22Result.presentation = {
   roses: { annual: model, spring: model, summer: model, autumn: model, winter: model },
 };
 const view = toTileView(d22Result);
+assert.equal(view.headline?.value, "최빈 풍향 북북동(NNE) 14%");
 assert.deepEqual(view.rose, model);
 assert.deepEqual(view.roses.summer, model);
 const board = initBoard([d22Result]);
