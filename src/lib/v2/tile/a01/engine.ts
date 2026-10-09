@@ -7,6 +7,14 @@ import { candidate, fmt, hitPoint, lineCandidate, makeTile, missing, nearestHit,
 import { clipLineToCircle, linePathLength } from "../../engine/tiles/geo";
 import { walkField, walkSources, type WalkField, type WalkRoute } from "../../engine/tiles/walk-shared";
 import { formatDistanceM } from "../../ui/tile-view";
+import {
+  isPublicSubwayLineRef,
+  representativeSubwayLineCandidates,
+  subwayLineColor,
+  subwayLineGroupKey,
+  subwayLineLabelText,
+  subwayStationDisplayName,
+} from "../../../osm-subway-overlay";
 
 export const A01_CRITERIA = "버스정류장 직선 300m 이하 좋음 · 600m 이하 보통 · 초과 주의";
 export const RAIL_CRITERIA = "철도역 직선 500m 이하 좋음 · 1,000m 이하 보통 · 초과 주의";
@@ -144,20 +152,33 @@ function entranceStationName(hit: FeatureHit): string | null {
   return text(hit.properties.stationName);
 }
 
-function lineKey(hit: FeatureHit): string {
-  return text(hit.properties.lineRef) ?? hit.stableId;
+function publicRailLine(ref: string | null, lineName: string | null): boolean {
+  const label = subwayLineLabelText(ref ?? undefined, lineName ?? undefined);
+  const numberRef = label.match(/^([1-9])호선$/u)?.[1];
+  return isPublicSubwayLineRef(ref ?? undefined) || isPublicSubwayLineRef(numberRef) || isPublicSubwayLineRef(label);
+}
+
+function railLineMemberships(hit: FeatureHit): Array<{ label: string; color: string }> {
+  const refs = Array.isArray(hit.properties.lineRefs) ? hit.properties.lineRefs : [];
+  const names = Array.isArray(hit.properties.lineNames) ? hit.properties.lineNames : [];
+  const colors = Array.isArray(hit.properties.lineColors) ? hit.properties.lineColors : [];
+  const memberships: Array<{ label: string; color: string }> = [];
+  const seen = new Set<string>();
+  for (let index = 0; index < Math.max(refs.length, names.length); index += 1) {
+    const ref = text(refs[index]) ?? text(names[index]);
+    const lineName = text(names[index]);
+    if (!publicRailLine(ref, lineName)) continue;
+    const label = subwayLineLabelText(ref ?? undefined, lineName ?? undefined);
+    if (!label || seen.has(label)) continue;
+    seen.add(label);
+    const color = hexColor(colors[index]);
+    memberships.push({ label, color: color ? subwayLineColor(color) : DEFAULT_RAIL_COLOR });
+  }
+  return memberships;
 }
 
 function railLineNames(hit: FeatureHit): string[] {
-  const raw = Array.isArray(hit.properties.lineNames)
-    ? hit.properties.lineNames
-    : Array.isArray(hit.properties.lineRefs)
-      ? hit.properties.lineRefs
-      : [];
-  return raw
-    .map(text)
-    .filter((name): name is string => name !== null)
-    .map((name) => /^\d+$/.test(name) ? `${name}호선` : name);
+  return railLineMemberships(hit).map((membership) => membership.label);
 }
 
 const DEFAULT_RAIL_COLOR = "#1F5FA8";
@@ -172,10 +193,8 @@ function railBadgeText(name: string): string {
 }
 
 function stationBadges(hit: FeatureHit): Array<{ text: string; color: string }> {
-  const names = railLineNames(hit);
-  const colors = Array.isArray(hit.properties.lineColors) ? hit.properties.lineColors : [];
-  return names
-    .map((name, index) => ({ text: railBadgeText(name), color: hexColor(colors[index]) ?? DEFAULT_RAIL_COLOR }))
+  return railLineMemberships(hit)
+    .map(({ label, color }) => ({ text: railBadgeText(label), color }))
     .filter((badge) => badge.text.length > 0)
     .slice(0, 4);
 }
@@ -193,8 +212,9 @@ function entranceDisplayName(hit: FeatureHit): string | null {
   const station = entranceStationName(hit);
   const number = entranceNumber(hit);
   const sourceName = text(hit.name);
-  if (station && number) return `${station} ${number}번 출구`;
-  return station && sourceName ? `${station} ${sourceName}` : station ?? sourceName;
+  const displayStation = station ? subwayStationDisplayName(station) : null;
+  if (displayStation && number) return `${displayStation} ${number}번 출구`;
+  return displayStation && sourceName ? `${displayStation} ${sourceName}` : displayStation ?? sourceName;
 }
 
 function entranceBadges(hit: FeatureHit): Array<{ text: string; color: string }> {
@@ -205,7 +225,7 @@ function entranceBadges(hit: FeatureHit): Array<{ text: string; color: string }>
 function railSummaryDetail(station: RailStation): string | null {
   const name = stationName(station.hit);
   const lines = railLineNames(station.hit);
-  const detail = [name, ...lines].filter((value): value is string => value !== null).join("·");
+  const detail = [name ? subwayStationDisplayName(name) : null, ...lines].filter((value): value is string => value !== null).join("·");
   return detail || null;
 }
 
@@ -237,7 +257,28 @@ export function a01(ctx: EngineContext): TileResult {
   const entranceHits = hasRail ? ctx.hits("reference", ["rail_entrance"]) : [];
   const railLineHits = hasRail ? ctx.hits("reference", ["rail_line"]) : [];
   const stationsWithEntrances = hasRail ? countStationsWithEntrances(stationHits, entranceHits) : 0;
-  const railLineCount = new Set(railLineHits.map(lineKey)).size;
+  const railLineSources = railLineHits
+    .filter((hit) => publicRailLine(text(hit.properties.lineRef), text(hit.name)))
+    .map((hit) => {
+      const parts = clipLineToCircle(ctx.input.center, radiusM, hit.geometry).map((path, index) => ({
+        hit,
+        index,
+        path,
+        lengthM: linePathLength(path),
+      }));
+      return {
+        hit,
+        parts,
+        line_ref: text(hit.properties.lineRef) ?? undefined,
+        line_name: text(hit.name) ?? undefined,
+        length_m: Math.max(...parts.map((part) => part.lengthM), Number.NEGATIVE_INFINITY),
+        stable_id: hit.stableId,
+        group: subwayLineGroupKey(text(hit.properties.lineRef) ?? undefined, text(hit.name) ?? undefined),
+      };
+    })
+    .filter((source) => source.parts.length > 0 && source.group.length > 0);
+  const representativeRailLineSources = representativeSubwayLineCandidates(railLineSources);
+  const railLineCount = representativeRailLineSources.length;
   const railBest = stations.reduce<RailStation | null>((b, s) => (b === null || s.best.dist < b.best.dist || (s.best.dist === b.best.dist && s.hit.featureId < b.hit.featureId) ? s : b), null);
   const walk = walkField(ctx);
   const walkRailTargets = stations.flatMap((s) => (s.entrances.length > 0 ? s.entrances : [s.hit]));
@@ -307,10 +348,13 @@ export function a01(ctx: EngineContext): TileResult {
     for (const station of stationHits) {
       const isNearest = station.featureId === nearFeatureId;
       const lineNames = railLineNames(station);
+      const sourceName = stationName(station);
       map.push(candidate(station, isNearest ? "rail_nearest" : "rail_station", {
+        name: sourceName ? subwayStationDisplayName(sourceName) : null,
         highlight: isNearest,
-        sublabel: isNearest ? distanceSublabel(railM) : lineNames.length > 0 ? lineNames.join("·") : null,
-        labelPriority: isNearest ? 2 : stationName(station) ? 1 : 0,
+        sublabel: lineNames.length > 0 ? lineNames.join("·") : null,
+        labelPriority: isNearest ? 2 : sourceName ? 1 : 0,
+        distanceM: isNearest ? railM : null,
         badges: stationBadges(station),
       }));
     }
@@ -324,31 +368,24 @@ export function a01(ctx: EngineContext): TileResult {
         badges: entranceBadges(entrance),
       }));
     }
-    const railLineParts = railLineHits.flatMap((l) => clipLineToCircle(ctx.input.center, radiusM, l.geometry).map((path, index) => ({
-      hit: l,
-      index,
-      path,
-      lengthM: linePathLength(path),
-    })));
-    const longestByLine = new Map<string, { lengthM: number; fid: string }>();
-    for (const part of railLineParts) {
-      const fid = `${part.hit.featureId}:${part.index}`;
-      const key = lineKey(part.hit);
-      const current = longestByLine.get(key);
-      if (!current || part.lengthM > current.lengthM || (part.lengthM === current.lengthM && fid < current.fid)) longestByLine.set(key, { lengthM: part.lengthM, fid });
-    }
-    for (const part of railLineParts) {
-      const name = text(part.hit.name);
-      const fid = `${part.hit.featureId}:${part.index}`;
-      const line = lineCandidate(part.hit.featureId, "rail_line", part.path, part.lengthM, null, {
-        fid,
-        name,
-        sublabel: null,
-        labelPriority: name && longestByLine.get(lineKey(part.hit))?.fid === fid ? 1 : 0,
-        color: hexColor(part.hit.properties.color) ?? DEFAULT_RAIL_COLOR,
-        emphasis: "major",
-      });
-      if (line) lines.push(line);
+    for (const source of representativeRailLineSources) {
+      const longestPart = source.parts.reduce((best, part) => (
+        best === null || part.lengthM > best.lengthM || (part.lengthM === best.lengthM && part.index < best.index) ? part : best
+      ), null as (typeof source.parts)[number] | null);
+      const colorValue = hexColor(source.hit.properties.color);
+      const color = colorValue ? subwayLineColor(colorValue) : DEFAULT_RAIL_COLOR;
+      for (const part of source.parts) {
+        const fid = `${part.hit.featureId}:${part.index}`;
+        const line = lineCandidate(part.hit.featureId, "rail_line", part.path, part.lengthM, null, {
+          fid,
+          name: source.group,
+          sublabel: null,
+          labelPriority: longestPart?.index === part.index ? 1 : 0,
+          color,
+          emphasis: "major",
+        });
+        if (line) lines.push(line);
+      }
     }
     if (usesPoint) limitations.push({ kind: "unknown", note: "최근접 역은 출입구 자료가 없어 역 대표점 거리입니다." });
     if (railM === null) limitations.push({ kind: "unknown", note: `${searchTxt} 안에 운영역이 없어 철도 거리는 계산하지 못했습니다.` });

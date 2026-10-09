@@ -23,7 +23,7 @@ const EXPECTED_DETAIL_KEYS = [
   "D02", "D03", "D04", "D05", "D10", "D11", "D12", "D13", "D16", "D17", "D18", "D19", "D22", "D28", "D29", "S02",
 ];
 const EXPECTED_CACHE_VERSIONS = {
-  A01: "v2-p4-ext-1+w3-merge-r1+w2b-r1",
+  A01: "v2-p4-ext-1+w3-merge-r1+w2b-r1+w3-r1",
   A02: "v2-p4-ext-1+w3-merge-r1+w2b-r1",
   A03: "v2-p4-ext-1+w2b-r1",
   A04: "v2-p4-ext-1+w3-merge-r1+w2b-r1",

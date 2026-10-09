@@ -52,7 +52,7 @@ assert.deepEqual([500, 501, 1000, 1001].map(gradeRail), ["good", "fair", "fair",
   assert.deepEqual(t.provenance.sources.map((s) => s.sourceId), ["bus_stop", "osm_subway"]);
   // 지도: 노선은 반경 안 선(점열 없음), 최근접은 강조 + 라벨
   const nearest = layers(t, "rail_nearest");
-  assert.deepEqual([nearest.length, nearest[0].highlight, nearest[0].sublabel, nearest[0].labelPriority], [1, true, "직선 600m", 2]);
+  assert.deepEqual([nearest.length, nearest[0].name, nearest[0].highlight, nearest[0].sublabel, nearest[0].labelPriority], [1, "나래역", true, "5호선", 2]);
   assert.equal(layers(t, "rail_entrance").length, 1, "반경 안 출입구는 다온1뿐");
   assert.equal(layers(t, "rail_line").length, 0, "노선 위 샘플 점은 그리지 않는다");
   assert.ok(t.presentation.lines.some((line) => line.layer === "rail_line"));
