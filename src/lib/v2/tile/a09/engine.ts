@@ -30,7 +30,8 @@ export function maintenanceSourceIds(ctx: EngineContext, key: FileKey): string[]
 
 export interface Project {
   key: string;
-  name: string;
+  /** 원천 구역명·사업명. 표시용 fallback은 여기서 만들지 않는다. */
+  name: string | null;
   stage: Stage;
   type: string;
   households: number | null;
@@ -47,6 +48,14 @@ export interface MaintenanceCollection {
 
 const posInt = (v: unknown): number | null => (typeof v === "number" && Number.isInteger(v) && v > 0 ? v : null);
 const compact = (s: string) => s.replace(/\s+/g, "");
+const sourceName = (...values: unknown[]): string | null => {
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const text = value.trim();
+    if (text !== "") return text;
+  }
+  return null;
+};
 
 /** 명부의 시군구명("수원시", "강동구")이 법정구역명("경기도 수원시 팔달구")에 걸리는지. 같은 시도 안에서만 비교한다. */
 export function sigunguMatches(areaName: string, rosterName: string): boolean {
@@ -120,8 +129,11 @@ export function collectMaintenance(ctx: EngineContext): MaintenanceCollection | 
     const k = to ?? z.stableId;
     zoneProject.set(z.featureId, k);
     const prev = projects.get(k);
-    // 한 사업의 구역이 여럿이면 이름·단계는 처음 것, 세대수는 한 번만 센다
-    projects.set(k, prev ?? { key: k, name: z.name ?? String(p.zoneName ?? "이름 없음"), stage, type: typeOf(p), households });
+    const name = sourceName(z.name, p.zoneName);
+    // 한 사업의 구역이 여럿이면 단계·세대수는 처음 것을 유지하고, 이름은 원천값이 있는 쪽을 우선한다.
+    projects.set(k, prev
+      ? prev.name === null && name !== null ? { ...prev, name } : prev
+      : { key: k, name, stage, type: typeOf(p), households });
   }
   return { zones, projects, zoneProject, sources, linked, key };
 }
@@ -165,7 +177,7 @@ function typeOf(p: FeatureHit["properties"]): string {
 }
 
 // ── 2) 명부만 있는 경우 ──
-interface RosterRow { id: string; sido: string; sigungu: string; name: string; type: string; stage: string; households: number | null }
+interface RosterRow { id: string; sido: string; sigungu: string; name: string | null; type: string; stage: string; households: number | null }
 
 export function collectMaintenanceRoster(ctx: EngineContext): Project[] {
   const market = ctx.db("market");
@@ -179,7 +191,7 @@ export function collectMaintenanceRoster(ctx: EngineContext): Project[] {
   for (const r of rows) {
     if (seen.has(r.id) || !areas.some((a) => a.code.startsWith(r.sido) && sigunguMatches(a.name, r.sigungu))) continue;
     seen.add(r.id);
-    list.push({ key: r.id, name: r.name, stage: stageOf(r.stage), type: r.type || "미상", households: posInt(r.households) });
+    list.push({ key: r.id, name: sourceName(r.name), stage: stageOf(r.stage), type: r.type || "미상", households: posInt(r.households) });
   }
   return list;
 }
