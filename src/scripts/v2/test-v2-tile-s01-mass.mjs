@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 const { CAMERA_PRESETS, EXPLODED_LAYERS, MASS_USE_COLORS, projectExploded, projectExplodedPoint, projectMass } = await import("../../lib/v2/ui/mass-projection.ts");
 const { default: MassFigure } = await import("../../components/v2/mass-figure.tsx");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
+const { s01CutModule } = await import("../../lib/v2/tile/s01/cut.ts");
 const { boardReducer, initBoard } = await import("../../lib/v2/ui/board-state.ts");
 const { toSummaryView, toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 const { buildReportPlan, mapKeyOf } = await import("../../lib/v2/report/report-plan.ts");
@@ -239,6 +240,7 @@ const tile = parseTileResult({
 });
 const view = toTileView(tile, scene);
 assert.equal(view.mass?.scene?.analysisId, "mass-test");
+assert.deepEqual(s01CutModule.view(view, { tile: "S01", mode: "exploded" }).mass?.exploded, { spreadPct: 100, scheme: "use" }, "S01 화면 분해 매스는 100% spread를 쓴다");
 const board = initBoard([tile]);
 const plan = buildReportPlan({ summary: toSummaryView({ address: "테스트", areaM2: null, zoning: null, radiusM: 100, facts: [] }, [tile]), views: new Map([[tile.tileId, view]]), board, analysisDate: "2026-09-30" });
 const massSlide = plan.find((p) => p.kind === "tile");

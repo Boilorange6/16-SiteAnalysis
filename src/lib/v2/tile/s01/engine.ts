@@ -41,9 +41,9 @@ function median(values: number[]): number | null {
   return ordered.length % 2 === 0 ? (ordered[middle - 1] + ordered[middle]) / 2 : ordered[middle];
 }
 
-function sentence(total: number, known: number, knownPct: number | null, estimated: number, assumed: number, unknown: number): string {
+function sentence(total: number, source: number, estimated: number, assumed: number, unknown: number): string {
   if (total === 0) return "반경 안 건물이 0동으로 확인됨 → 3D 매스 대상이 없어 높이 분포를 산출하지 못함 → 건물 도형 원천과 현장 확인 필요";
-  return `반경 안 건물 ${total.toLocaleString("en-US")}동 중 높이 확인 ${knownPct}%(${known}동, 층수 추정 ${estimated}동, 1층 가정 ${assumed}동) → 공개 도형과 확보·가정 높이로 매스를 구성하고 높이 미상 ${unknown}동은 바닥 모양만 표시 → 높이와 지반 조건을 확인할 것`;
+  return `반경 안 건물 ${total.toLocaleString("en-US")}동 중 높이 확보 ${pct(source, total)}%(${source}동), 층수 추정 ${pct(estimated, total)}%(${estimated}동), 1층 가정 ${pct(assumed, total)}%(${assumed}동) → 공개 도형과 확보·가정 높이로 매스를 구성하고 높이 미상 ${unknown}동은 바닥 모양만 표시 → 높이와 지반 조건을 확인할 것`;
 }
 
 export function s01(ctx: EngineContext): TileResult {
@@ -125,7 +125,7 @@ export function s01(ctx: EngineContext): TileResult {
     judgment: {
       ruleId: "S01-mass-summary@1",
       basisMetricIds: ["buildings", "height_known_pct"],
-      sentence: sentence(total, known.length, knownPct, estimated.length, assumed.length, unknown),
+      sentence: sentence(total, source.length, estimated.length, assumed.length, unknown),
       level: null,
       criteria: null,
     },

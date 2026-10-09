@@ -36,6 +36,8 @@ assert.equal(metric(tile, "height_source_pct").value, 50);
 assert.equal(metric(tile, "height_estimated_count").value, 1);
 assert.equal(metric(tile, "height_assumed_one_floor_count").value, 2);
 assert.equal(metric(tile, "height_unknown_count").value, 0);
+assert.match(tile.judgment.sentence, /높이 확보 50%\(3동\).*층수 추정 16\.7%\(1동\).*1층 가정 33\.3%\(2동\)/);
+assert.doesNotMatch(tile.judgment.sentence, /높이 확인 66\.7%/);
 assert.deepEqual([metric(tile, "height_median_m").value, metric(tile, "height_median_m").status], [26, "estimated"]);
 assert.deepEqual([metric(tile, "height_max_m").value, metric(tile, "height_max_m").status], [90, "estimated"]);
 assert.deepEqual(tile.presentation.camera, { kind: "axonometric", azimuthDeg: 225, elevationDeg: 35, radiusM: 800 });
