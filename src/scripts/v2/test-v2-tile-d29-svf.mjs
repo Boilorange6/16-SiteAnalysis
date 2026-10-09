@@ -175,6 +175,7 @@ try {
   assert.ok(tile.presentation.legend.some((item) => item.label.includes("하늘열림") && item.min === 0 && item.max === 1));
   assert.ok(tile.limitations.some((item) => item.note.includes("수목 제외")));
   assert.match(tile.judgment.sentence, /하늘열림 중앙값/);
+  assert.match(tile.judgment.sentence, /대지 하늘열림 중앙값 .*반경 800m 하늘열림 중앙값/);
   assert.doesNotMatch(JSON.stringify(tile), /종합|법적 적합|개발 가능|건강 위험 예측/);
 } finally {
   ctx.close();
@@ -213,6 +214,7 @@ try {
   assert.equal(tile.status, "partial");
   assert.ok(tile.presentation.rasters?.some((item) => item.name === "svf"));
   assert.ok(tile.limitations.some((item) => item.note.includes("평탄면(0°)")));
+  assert.ok(tile.limitations.some((item) => item.note.includes("중심 주변 50m")));
   assert.equal(tile.conditions.simulation.terrain, "flat-no-dem");
 } finally {
   flatCtx.close();
