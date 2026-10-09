@@ -8,6 +8,7 @@ import { framedViewport, metersPerPixel, scaleBar } from "@/lib/v2/ui/map-projec
 import type { CalloutModel } from "@/lib/v2/ui/tile-view";
 import { UNIT_TYPE_BASIS } from "@/lib/v2/unit-types";
 import MapFigure from "./map-figure";
+import { MapLegendStrip, type MapLegendItem } from "./map-legend-strip";
 import { BasemapContext, satelliteTileHref, useMeasured } from "./map-box";
 import styles from "./board.module.css";
 import tileStyles from "@/lib/v2/tile/a05/tile.module.css";
@@ -225,6 +226,17 @@ export type CalloutMapProps = {
   label: string;
 };
 
+function calloutLegendStripItems(model: CalloutModel, compact: boolean): MapLegendItem[] {
+  const items = compact ? compactCalloutLegend(model.legend, model.complexes, 3) : model.legend.items;
+  return items.map((item, index) => ({
+    layer: `callout:${model.kind}:${index}:${item.label}`,
+    label: item.label,
+    color: item.color,
+    hollow: item.hollow,
+    swatch: "point" as const,
+  }));
+}
+
 /**
  * 주변 단지 설명선 지도 (A05, 이후 A06). 지도는 MapFigure(단지 없이), 점·지시선은 SVG, 표는 HTML 판.
  * 카드는 두 칸에만 놓이고 지도 원은 두 칸 사이에 들어가, 점이 카드에 가려지지 않는다.
@@ -265,7 +277,8 @@ function CalloutMap({ model, kind, page = 0, onPage, label }: CalloutMapProps) {
     return () => document.removeEventListener("keydown", onKey);
   }, [detail, onPage, page, pages]);
 
-  const scene = useMemo(() => (size ? calloutScene(model, kind, size.w, size.h, page) : null), [model, kind, size, page]);
+  // 상세 화면의 출처 띠는 부모가 지도 위에 고정하므로, 측정된 지도 영역에서는 이미 빠졌다.
+  const scene = useMemo(() => (size ? calloutScene(model, kind, size.w, size.h, page, 0) : null), [model, kind, size, page]);
   const clusters = useMemo(() => {
     if (!scene) return null;
     return clusterPoints(
@@ -282,14 +295,12 @@ function CalloutMap({ model, kind, page = 0, onPage, label }: CalloutMapProps) {
   const activeLegendColor = model.legend.items.find((item) => item.label === activeLegend)?.color ?? null;
   const empty = model.complexes.length === 0;
   const sat = layer === "Satellite";
-  // 아래 줄: [왼쪽 아래 값 카드(개요)] [범례] ... [축척]. 모바일 카드에서는 값 판과
-  // 축척이 같은 가로 영역을 쓰지 않도록 축척을 오른쪽 끝으로 보낸다.
+  // 축척은 지도 안 오른쪽 아래에 두고, 값 카드와 범례는 지도와 분리한다.
   const scaleX = scene
     ? kind === "card" && size && size.w <= 520
       ? Math.max(12, size.w - 100)
       : scene.frame.right.x0 - 18 - 92
     : 0;
-  const legendX = scene ? (page === 0 ? 356 : scene.frame.left.x1 + 18) : 0;
   const backdrop = useMemo(() => ({ center: model.center, radiusM: model.radiusM, features: [], total: 0, notes: [] }), [model]);
   const scale = scene && size
     ? (() => {
@@ -300,8 +311,9 @@ function CalloutMap({ model, kind, page = 0, onPage, label }: CalloutMapProps) {
     : null;
 
   return (
-    <div ref={ref} style={{ position: "absolute", inset: 0 }}>
-      {size && near && scene && (
+    <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", minHeight: 0, paddingBottom: detail ? OV.stripH : 0 }} data-callout-map-root="true">
+      <div ref={ref} style={{ position: "relative", flex: "1 1 auto", minHeight: 0, width: "100%" }}>
+        {size && near && scene && (
         <>
           <MapFigure
             model={backdrop}
@@ -312,7 +324,7 @@ function CalloutMap({ model, kind, page = 0, onPage, label }: CalloutMapProps) {
             legend={false}
             north={22}
             credit={false}
-            bottomInset={detail ? OV.stripH : 0}
+            bottomInset={0}
             tileHref={sat ? satelliteTileHref : undefined}
             siteX={scene.frame.siteX}
             fill={scene.frame.fill}
@@ -382,17 +394,6 @@ function CalloutMap({ model, kind, page = 0, onPage, label }: CalloutMapProps) {
           })}
           {detail && <Pager model={model} page={page} onPage={(p) => onPage?.(Math.max(0, Math.min(pages, p)))} />}
           {scene.strip && page > 0 && <Strip cards={stripCards(scene.withCards, model.analysisYear)} active={active} onPick={(id) => setPicked((v) => (v === id ? null : id))} top={scene.stripTop} />}
-          {!empty && ((detail && size.w > 560) || (!detail && size.w >= 240)) && (
-            <CalloutLegend
-              model={model}
-              compact={!detail}
-              activeLabel={activeLegend}
-              pinnedLabel={legendPinned}
-              onHover={setLegendHover}
-              onPin={(labelValue) => setLegendPinned((current) => labelValue === null || current === labelValue ? null : labelValue)}
-              style={detail ? { left: legendX, maxWidth: Math.max(160, scaleX - 12 - legendX), bottom: OV.stripH + 12 } : { left: 8, bottom: 8, maxWidth: "calc(100% - 128px)", display: "flex", flexWrap: "nowrap", whiteSpace: "nowrap", overflow: "hidden", padding: "3px 9px", gap: 8, borderRadius: 999, fontSize: 11 }}
-            />
-          )}
           {detail && page === 0 && !empty && (
             <div className={styles.ovBL}>
               <CalloutValueCard model={model} />
@@ -407,6 +408,22 @@ function CalloutMap({ model, kind, page = 0, onPage, label }: CalloutMapProps) {
             </div>
           )}
         </>
+        )}
+      </div>
+      {size && near && scene && !empty && ((detail && size.w > 560) || (!detail && size.w >= 240)) && (
+        <MapLegendStrip
+          items={calloutLegendStripItems(model, !detail)}
+          hoverLabel={legendHover}
+          pinnedLabel={legendPinned}
+          onHover={setLegendHover}
+          onToggle={(labelValue) => {
+            setLegendHover(null);
+            setLegendPinned((current) => current === labelValue ? null : labelValue);
+          }}
+          leadingLabel={detail ? model.legend.title : null}
+          trailingLabel={detail ? model.legend.sizeLabel : null}
+          ariaLabel={`${model.legend.title} 지도 범례`}
+        />
       )}
     </div>
   );
