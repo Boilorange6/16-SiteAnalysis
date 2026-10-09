@@ -7,7 +7,7 @@
  */
 import type { TileResult } from "../../tile-result";
 import type { EngineContext, Limitation } from "../../engine/context";
-import { candidate, makeTile, missing, obs, polygonCandidate, type MapCandidate, type PolygonCandidate, type TileDraft } from "../../engine/tiles/common";
+import { makeTile, missing, obs, polygonCandidate, type PolygonCandidate, type TileDraft } from "../../engine/tiles/common";
 import { areaInCircle, polygonArea } from "../../engine/tiles/geo";
 import { notProvided } from "../../engine/tiles/not-provided";
 
@@ -22,14 +22,12 @@ interface AreaSummary {
   areaM2: number;
   failed: number;
   polygons: PolygonCandidate[];
-  map: MapCandidate[];
 }
 
 function clippedAreas(ctx: EngineContext, hits: ReturnType<EngineContext["hits"]>, layer: string): AreaSummary {
   let areaM2 = 0;
   let failed = 0;
   const polygons: PolygonCandidate[] = [];
-  const map: MapCandidate[] = [];
 
   for (const hit of hits) {
     const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, hit.geometry);
@@ -39,15 +37,13 @@ function clippedAreas(ctx: EngineContext, hits: ReturnType<EngineContext["hits"]
     }
     if (clipped.areaM2 <= 0) continue;
     areaM2 += clipped.areaM2;
-    const label = hit.name ?? null;
-    map.push(candidate(hit, layer, { label, weight: rounded(clipped.areaM2) }));
     for (const rings of clipped.parts) {
       const partArea = polygonArea(rings);
-      const polygon = polygonCandidate(hit.featureId, layer, rings, partArea, label);
+      const polygon = polygonCandidate(hit.featureId, layer, rings, partArea, null, { name: hit.name ?? null, sublabel: null, labelPriority: 0 });
       if (polygon && polygon.areaM2 > 0) polygons.push(polygon);
     }
   }
-  return { areaM2, failed, polygons, map };
+  return { areaM2, failed, polygons };
 }
 
 function sourceArea(value: unknown): number | null {
@@ -104,9 +100,7 @@ export function d09(ctx: EngineContext): TileResult {
   const greenZoneFact = zoningSources.length > 0 ? `녹지지역 ${pct(greenZone.areaM2, circleAreaM2)}%` : "녹지지역 자료 미확인";
   const sentence = `${parkFact}, ${waterFact}, ${greenParcelFact}, ${greenZoneFact} → 공원 수·지목 도형·용도지역 도형을 서로 다른 원천으로 본 현황이며 녹지지역은 지목 녹지와 겹칠 수 있음 → 계획 공원·실제 하천 경계·토지이용계획은 원문과 현장 확인 필요`;
 
-  const map: MapCandidate[] = [];
   const polygons: PolygonCandidate[] = [...water.polygons, ...greenParcel.polygons, ...greenZone.polygons];
-  map.push(...water.map, ...greenParcel.map, ...greenZone.map);
 
   const limitations: Limitation[] = [
     { kind: "not_provided", note: "하천·수면은 지적 지목 기준이며 OSM 수계 자료는 확인하지 못했습니다." },
@@ -131,7 +125,6 @@ export function d09(ctx: EngineContext): TileResult {
     judgment: { ruleId: "d09-green-space@1", basisMetricIds: observedMetricIds, sentence, level: null, criteria: null },
     sources: [...parkSources, ...zoningSources, ...parcelSources],
     layers: ["green_zone", "green_parcel", "water_parcel"],
-    map,
     polygons,
     limitations: dedupeLimitations(limitations),
   });

@@ -3,7 +3,9 @@ import type { TileResult } from "../../tile-result";
 import type { FeatureHit } from "../../data/features";
 import type { EngineContext } from "../../engine/context";
 import { toUtmk } from "../../crs";
-import { candidate, hitPoint, lineCandidate, makeTile, missing, nearestHit, nearestM, noDataTile, obs, type LineCandidate, type TileDraft } from "../../engine/tiles/common";
+import { areaInCircle, polygonArea } from "../../engine/tiles/geo";
+import { candidate, hitPoint, lineCandidate, makeTile, missing, nearestHit, nearestM, noDataTile, obs, polygonCandidate, type LineCandidate, type PolygonCandidate, type TileDraft } from "../../engine/tiles/common";
+import { formatDistanceM } from "../../ui/tile-view";
 import { walkField, walkSources, type WalkField, type WalkRoute } from "../../engine/tiles/walk-shared";
 
 interface WalkTarget {
@@ -60,8 +62,8 @@ export function a04(ctx: EngineContext): TileResult {
     nearest === null
       ? "반경 안 공원 대표점이 확인되지 않음 → 공원 경계·입구 자료가 없어 접근성은 판단하지 않음 → 실제 입구와 경계 확인 필요"
       : walkPark
-        ? `공원 ${hits.length}곳 확인, 대표점까지 직선 ${nearest}m → 입구가 아닌 대표점 기준의 거리와 보행망 도보(OSM, 80 m/분, 내부 제안 기준) ${Math.round(walkPark.route.distanceM)}m·${walkPark.route.minutes}분을 함께 표시 → 실제 입구와 경계 확인 필요`
-        : `공원 ${hits.length}곳 확인, 대표점까지 직선 ${nearest}m → 입구가 아닌 대표점 기준의 거리임 → 실제 입구와 경계 확인 필요`;
+        ? `공원 ${hits.length}곳 확인, 대표점까지 직선 ${formatDistanceM(nearest)} → 입구가 아닌 대표점 기준의 거리와 보행망 도보(OSM, 80 m/분, 내부 제안 기준) ${formatDistanceM(walkPark.route.distanceM)}·${walkPark.route.minutes}분을 함께 표시 → 실제 입구와 경계 확인 필요`
+        : `공원 ${hits.length}곳 확인, 대표점까지 직선 ${formatDistanceM(nearest)} → 입구가 아닌 대표점 기준의 거리임 → 실제 입구와 경계 확인 필요`;
   const lines: LineCandidate[] = [];
   if (walkPark) {
     const line = lineCandidate(
@@ -69,16 +71,55 @@ export function a04(ctx: EngineContext): TileResult {
       "walk_route",
       walkPark.route.path,
       walkPark.route.distanceM,
-      `공원 도보 ${Math.round(walkPark.route.distanceM)}m · ${walkPark.route.minutes}분`,
+      `공원 도보 ${formatDistanceM(walkPark.route.distanceM)} · ${walkPark.route.minutes}분`,
+      {
+        name: walkPark.hit.name ?? null,
+        sublabel: `도보 ${formatDistanceM(walkPark.route.distanceM)} · ${walkPark.route.minutes}분`,
+        labelPriority: 2,
+      },
     );
     if (line) lines.push(line);
   }
   const layers = ["park", "park_nearest"];
   if (lines.length > 0) layers.push("walk_route");
+  const polygons: PolygonCandidate[] = [];
+  const map: TileDraft["map"] = [];
+  let parkGeometryFailures = 0;
+  for (const h of hits) {
+    const isNearest = h === near && h.distanceM !== null;
+    const layer = isNearest ? "park_nearest" : "park";
+    const sublabel = isNearest && h.distanceM !== null ? formatDistanceM(h.distanceM) : null;
+    const pointExtra = {
+      distanceM: h.distanceM,
+      name: h.name ?? null,
+      sublabel,
+      labelPriority: isNearest ? 2 : 0,
+      ...(isNearest ? { highlight: true } : {}),
+    };
+    const polygonExtra = {
+      name: h.name ?? null,
+      sublabel,
+      labelPriority: isNearest ? 2 : 0,
+    };
+    if (h.geometry.type === "Polygon" || h.geometry.type === "MultiPolygon") {
+      const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, h.geometry);
+      if (clipped === null) {
+        parkGeometryFailures++;
+        continue;
+      }
+      for (const [partIndex, rings] of clipped.parts.entries()) {
+        const polygon = polygonCandidate(h.featureId * 1000 + partIndex, layer, rings, polygonArea(rings), null, polygonExtra);
+        if (polygon && polygon.areaM2 > 0) polygons.push(polygon);
+      }
+      continue;
+    }
+    map.push(candidate(h, layer, { weight: typeof h.properties.areaM2 === "number" && h.properties.areaM2 > 0 ? h.properties.areaM2 : null, ...pointExtra }));
+  }
   const limitations: TileDraft["limitations"] = [
     { kind: "not_provided", note: "공원 경계·입구 자료를 확인하지 못해 반경 안 면적과 입구 거리는 계산하지 못했습니다." },
     { kind: "unknown", note: `면적 합은 원천에 적힌 공원 면적이며 반경에 걸친 공원도 전체가 들어갑니다.${noArea > 0 ? ` 면적 미기재 ${noArea}곳은 합에서 제외했습니다.` : ""}` },
   ];
+  if (parkGeometryFailures > 0) limitations.push({ kind: "partial", note: `도형 오류로 공원 ${parkGeometryFailures}건은 지도에서 제외했습니다.` });
   if (roadSources.length === 0) {
     limitations.push({ kind: "not_provided", note: "보행망 자료를 확인하지 못해 거리·시간·경로를 계산하지 못했습니다." });
   } else {
@@ -93,10 +134,8 @@ export function a04(ctx: EngineContext): TileResult {
     judgment: { ruleId: "a04-park-points@1", basisMetricIds: ["parks"], sentence, level: null, criteria: null },
     sources: [...sources, ...roadSources],
     layers,
-    map: hits.map((h) => {
-      const weight = typeof h.properties.areaM2 === "number" && h.properties.areaM2 > 0 ? h.properties.areaM2 : null;
-      return h === near ? candidate(h, "park_nearest", { weight, highlight: true, label: `대표점 ${nearest}m` }) : candidate(h, "park", { weight });
-    }),
+    map,
+    polygons,
     lines,
     limitations,
   });

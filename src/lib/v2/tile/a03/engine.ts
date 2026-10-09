@@ -2,6 +2,7 @@
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../../engine/context";
 import { candidate, fmt, makeTile, missing, noDataTile, obs } from "../../engine/tiles/common";
+import { formatDistanceM } from "../../ui/tile-view";
 
 export const STORE_GROUPS = [
   { id: "grocery", label: "식료품", basic: true },
@@ -37,7 +38,7 @@ export function a03(ctx: EngineContext): TileResult {
   for (const h of hits) {
     const g = storeGroup(h.properties);
     count[g] += 1;
-    if (g === "other" || h.distanceM === null) continue;
+    if (h.distanceM === null) continue;
     const previous = nearestOf[g];
     if (previous === undefined || h.distanceM < previous.distanceM! || (h.distanceM === previous.distanceM && h.featureId < previous.featureId)) nearestOf[g] = h;
   }
@@ -66,8 +67,14 @@ export function a03(ctx: EngineContext): TileResult {
     layers: STORE_GROUPS.map((g) => `store:${g.id}`),
     map: hits.map((h) => {
       const g = storeGroup(h.properties);
-      const label = STORE_GROUPS.find((x) => x.id === g)!.label;
-      return h === nearestOf[g] ? candidate(h, `store:${g}`, { highlight: true, label: `${label} ${Math.round(h.distanceM!)}m` }) : candidate(h, `store:${g}`);
+      const isNearest = h === nearestOf[g] && h.distanceM !== null;
+      const sublabel = isNearest && h.distanceM !== null ? formatDistanceM(h.distanceM) : null;
+      return candidate(h, `store:${g}`, {
+        distanceM: h.distanceM,
+        sublabel,
+        labelPriority: isNearest ? 2 : 0,
+        ...(isNearest ? { highlight: true } : {}),
+      });
     }),
     limitations: ctx.coverage("reference", ["store"]),
   });

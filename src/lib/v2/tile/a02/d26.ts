@@ -1,9 +1,11 @@
 /** D26 통학구역 도판 — VWorld 학교 학구도·학교군 폴리곤과 대지 포함 구역. */
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../../engine/context";
+import type { FeatureHit } from "../../data/features";
 import { areaInCircle, polygonArea } from "../../engine/tiles/geo";
 import { fmt, makeTile, obs, polygonCandidate, type PolygonCandidate, type TileDraft } from "../../engine/tiles/common";
-import { SCHOOL_ZONE_KINDS, schoolZoneSources, siteZones, zoneBaseDate, zoneLabel, zoneName, zoneOffice } from "../../engine/tiles/school-zone-shared";
+import { formatDistanceM } from "../../ui/tile-view";
+import { SCHOOL_ZONE_KINDS, schoolZoneSources, siteZones, zoneBaseDate, zoneName, zoneOffice } from "../../engine/tiles/school-zone-shared";
 import { notProvided } from "../../engine/tiles/not-provided";
 
 const KIND_TO_LAYERS = {
@@ -13,6 +15,13 @@ const KIND_TO_LAYERS = {
 } as const;
 
 const siteText = (hits: readonly ReturnType<EngineContext["hits"]>[number][], empty: string) => hits.length > 0 ? hits.map((hit) => `${zoneName(hit)}(${zoneOffice(hit)})`).join("·") : empty;
+
+function rawZoneName(hit: FeatureHit): string | null {
+  for (const value of [hit.properties.hakgudoName, hit.properties.hakgudo_nm, hit.name]) {
+    if (typeof value === "string" && value.trim() !== "") return value.trim();
+  }
+  return null;
+}
 
 export function d26(ctx: EngineContext): TileResult {
   const sources = schoolZoneSources(ctx);
@@ -34,10 +43,15 @@ export function d26(ctx: EngineContext): TileResult {
       continue;
     }
     const layer = highlighted ? KIND_TO_LAYERS[kind].site : KIND_TO_LAYERS[kind].normal;
-    const label = zoneLabel(hit);
     for (const [partIndex, rings] of clipped.parts.entries()) {
       const areaM2 = polygonArea(rings);
-      const polygon = areaM2 > 0 ? polygonCandidate(hit.featureId * 1000 + partIndex, layer, rings, areaM2, label) : null;
+      const polygon = areaM2 > 0
+        ? polygonCandidate(hit.featureId * 1000 + partIndex, layer, rings, areaM2, null, {
+            name: highlighted ? rawZoneName(hit) : null,
+            sublabel: null,
+            labelPriority: highlighted ? 2 : 0,
+          })
+        : null;
       if (polygon) polygons.push(polygon);
     }
   }
@@ -56,7 +70,7 @@ export function d26(ctx: EngineContext): TileResult {
   ];
   const coverage = ctx.coverage("reference", ["school_zone"]);
   const status: TileResult["status"] = clipFailed > 0 || coverage.some((limitation) => limitation.kind === "partial" || limitation.kind === "incomplete") ? "partial" : "complete";
-  const sentence = `VWorld 학구도 기준일 ${baseDate}, 반경 ${fmt(radiusM)}m 안 초등 통학구역 ${fmt(counts.get("school_zone_elem") ?? 0)}곳·중학교 학교군 ${fmt(counts.get("school_zone_middle") ?? 0)}곳·고등학교 학교군 ${fmt(counts.get("school_zone_high") ?? 0)}곳 → 대지 초등 ${siteText(elem, "미포함")}, 중학교 ${siteText(middle, "미포함")}, 고등학교 ${siteText(high, "미포함")} → 실제 배정은 교육청 확인 필요`;
+  const sentence = `VWorld 학구도 기준일 ${baseDate}, 반경 ${formatDistanceM(radiusM)} 안 초등 통학구역 ${fmt(counts.get("school_zone_elem") ?? 0)}곳·중학교 학교군 ${fmt(counts.get("school_zone_middle") ?? 0)}곳·고등학교 학교군 ${fmt(counts.get("school_zone_high") ?? 0)}곳 → 대지 초등 ${siteText(elem, "미포함")}, 중학교 ${siteText(middle, "미포함")}, 고등학교 ${siteText(high, "미포함")} → 실제 배정은 교육청 확인 필요`;
   const limitations: TileDraft["limitations"] = [
     { kind: "unknown", note: "VWorld 학구도·학교군 경계의 대지 포함 여부를 표시한 참조 도판입니다. 학구도에 연결된 학교와 실제 전입·배정 결과는 교육청 확인이 필요합니다." },
     ...(clipFailed > 0 ? [{ kind: "partial" as const, note: `도형 오류로 반경 교차를 계산하지 못한 학구도 ${clipFailed}건은 지도에서 제외했습니다.` }] : []),

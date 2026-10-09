@@ -11,6 +11,7 @@ const { insertFeature } = await import("../../lib/v2/data/features.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { d10 } = await import("../../lib/v2/tile/d10/engine.ts");
 const { d10ClientModule } = await import("../../lib/v2/tile/d10/view.ts");
+const { layerStyle } = await import("../../lib/v2/ui/map-layers.ts");
 
 const CENTER_Z = 18;
 const TILE_SIZE = 256;
@@ -95,7 +96,18 @@ try {
   assert.equal(siteMetric?.denominator, 1600, "다필지 대지 면적을 모두 분모에 합산");
   assert.match(siteMetric?.formulaVersion ?? "", /^d10-canopy-site@2:/);
   const unnamed = parcelTile.presentation.polygons.find((polygon) => polygon.label === "산림");
-  assert.ok(unnamed, "OSM 이름 없는 면은 cls의 한글 라벨을 사용");
+  assert.equal(unnamed, undefined, "OSM cls fallback은 legacy label이 아님");
+  const unnamedByName = parcelTile.presentation.polygons.find((polygon) => polygon.name === "산림");
+  assert.ok(unnamedByName, "OSM 이름 없는 면은 cls의 한글 name을 사용");
+  assert.equal(unnamedByName.label, null);
+  assert.equal(unnamedByName.sublabel, null);
+  assert.equal(unnamedByName.labelPriority, 0);
+  const osmPolygons = parcelTile.presentation.polygons.filter((polygon) => polygon.layer === "osm_green" || polygon.layer === "osm_water");
+  assert.ok(osmPolygons.every((polygon) => polygon.label === null && typeof polygon.name === "string" && polygon.sublabel === null && polygon.labelPriority === 0), "OSM polygon은 name·sublabel·priority 계약을 지킴");
+  const pointFeatures = parcelTile.presentation.features ?? [];
+  assert.ok(osmPolygons.every((polygon) => !pointFeatures.some((feature) => feature.fid === polygon.fid)), "OSM polygon은 같은 fid 대표점이 없음");
+  assert.equal(layerStyle("osm_green").label, "OSM 녹지");
+  assert.equal(layerStyle("osm_water").label, "OSM 수계");
   parcelCtx.close();
 
   const farGeometry = rectangle(5000, 5050, 5000, 5050);
