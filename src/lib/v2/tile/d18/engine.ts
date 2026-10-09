@@ -3,12 +3,13 @@ import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../../engine/context";
 import { slopeGridFor, terrainBandPolygons, terrainClassGrid, terrainGridFor, terrainGridStats, terrainValuesInCircle } from "../../engine/tiles/terrain-grid";
 import { DEM_LIMITATION, demSources } from "../../engine/tiles/terrain-shared";
-import { est, makeTile } from "../../engine/tiles/common";
+import { est, makeTile, obs } from "../../engine/tiles/common";
 import { notProvided } from "../../engine/tiles/not-provided";
-import { maxOf, minOf } from "../../extent";
+import { maxOf } from "../../extent";
 
 const SLOPE_BREAKS = [5, 10, 15, 20];
 const SLOPE_LAYERS = ["slope_0_5", "slope_5_10", "slope_10_15", "slope_15_20", "slope_ge20"];
+const SLOPE_LABELS = ["경사 0~5°", "경사 5~10°", "경사 10~15°", "경사 15~20°", "경사 20° 이상"] as const;
 
 const percent = (part: number, whole: number): number => whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0;
 
@@ -39,14 +40,15 @@ export function d18(ctx: EngineContext): TileResult {
   const slopeMedian = ordered.length % 2 === 0 ? (ordered[middle - 1] + ordered[middle]) / 2 : ordered[middle];
   const bands = terrainBandPolygons(ctx.input.center, ctx.input.radiusM, reportedSlope, SLOPE_BREAKS, SLOPE_LAYERS, "slope_nodata");
   const slopeMax = maxOf(values);
+  const steepPct = percent((bands.areaM2[3] ?? 0) + (bands.areaM2[4] ?? 0), circleAreaM2);
   const nodataArea = bands.areaM2.at(-1) ?? 0;
   const metrics: TileResult["metrics"] = [
-    est("fill_slope_pct", "경사 계산 가능 셀 채움률", percent(stats.valid, stats.cells), "%", "d18-fill-slope@1:원 안 셀 중심 중 중앙차분 경사 계산 가능 셀÷원 안 셀", stats.valid, stats.cells),
+    obs("fill_slope_pct", "경사 계산 가능 셀 채움률", percent(stats.valid, stats.cells), "%", "d18-fill-slope@1:원 안 셀 중심 중 중앙차분 경사 계산 가능 셀÷원 안 셀", stats.valid, stats.cells),
     est("slope_median_deg", "경사도 중앙값", slopeMedian, "°", "d18-slope-summary@1:원 안 경사 계산 가능 셀 중앙값"),
     est("slope_max_deg", "경사도 최댓값", slopeMax, "°", "d18-slope-summary@1:원 안 경사 계산 가능 셀 최댓값"),
     ...SLOPE_LAYERS.map((layer, index) => est(
       `share_${layer}`,
-      `${layer} 면적 구성비`,
+      `${SLOPE_LABELS[index]} 면적 구성비`,
       percent(bands.areaM2[index] ?? 0, circleAreaM2),
       "%",
       `d18-slope-share@1:${layer} 밴드의 원 교차면적÷π·r²`,
@@ -58,7 +60,7 @@ export function d18(ctx: EngineContext): TileResult {
 
   const limitations: TileResult["limitations"] = [
     DEM_LIMITATION,
-    { kind: "estimated", note: "개발 여부(가능·불가능)를 판정하지 않음 · 평활 거리 30m" },
+    { kind: "estimated", note: "개발 여부(가능·불가능)를 판정하지 않으며 30m 표본 간격으로 계산했습니다." },
   ];
   if (stats.valid < stats.cells) limitations.push({ kind: "partial", note: `원 안 경사 결측 셀 ${stats.cells - stats.valid}개는 slope_nodata로 별도 표시했습니다.` });
 
@@ -70,7 +72,7 @@ export function d18(ctx: EngineContext): TileResult {
     judgment: {
       ruleId: "D18-slope@1",
       basisMetricIds: ["fill_slope_pct", "slope_median_deg", "slope_max_deg"],
-      sentence: `반경 안 경사 계산 가능 셀 ${stats.valid.toLocaleString("en-US")}개에서 경사도 중앙값 ${slopeMedian.toFixed(1)}°, 최댓값 ${slopeMax.toFixed(1)}°를 확인 → 30m 평활 거리의 경사 분포를 표시 → 현장 측량과 배수·지반 조건을 별도로 확인할 것`,
+      sentence: `반경 안 경사 계산 가능 셀 ${stats.valid.toLocaleString("en-US")}개에서 경사도 중앙값 ${slopeMedian.toFixed(1)}°, 최댓값 ${slopeMax.toFixed(1)}°, 15° 이상 ${steepPct}%를 확인 → 30m 표본 간격의 경사 분포를 표시 → 현장 측량과 배수·지반 조건을 별도로 확인할 것`,
       level: null,
       criteria: null,
     },
