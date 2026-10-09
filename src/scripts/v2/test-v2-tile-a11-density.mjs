@@ -15,6 +15,7 @@ const { TILES } = await import("../../lib/v2/engine/run.ts");
 const a11WithDensity = TILES.find(([code]) => code === "A11")[1];
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
+const { automaticLabelText } = await import("../../lib/v2/ui/map-labels.ts");
 
 const CENTER = [127.1506, 37.6245];
 const [cx, cy] = toUtmk(CENTER);
@@ -124,6 +125,13 @@ const polygons = result.presentation.polygons ?? [];
 assert.equal(polygons.length, 3);
 assert.deepEqual(polygons.map((p) => p.layer).sort(), ["pop_dens_2", "pop_dens_5", "pop_grid_na"]);
 assert.ok(polygons.every((p) => p.rings[0].length >= 4));
+assert.ok(polygons.every((p) => p.label === null && p.name === null && p.labelPriority === 0), "A11/D27 밀도 면은 source-derived name 없이 priority 0");
+assert.ok(polygons.every((p) => automaticLabelText(p.layer, "polygon", p) === null), "A11/D27 면에는 자동 라벨 후보가 없다");
+assert.deepEqual(Object.fromEntries(polygons.map((p) => [p.layer, p.sublabel])), {
+  pop_dens_2: "1,000명",
+  pop_dens_5: "30,000명",
+  pop_grid_na: null,
+}, "관측 인구만 서식된 sublabel을 갖고 비공개 셀은 비워 둔다");
 assert.equal(result.presentation.features?.length ?? 0, 0, "A11/D27 결과는 격자 점 없이 면만 낸다");
 assert.deepEqual(result.presentation.layers, [
   "pop_dens_0", "pop_dens_1", "pop_dens_2", "pop_dens_3", "pop_dens_4", "pop_dens_5",
