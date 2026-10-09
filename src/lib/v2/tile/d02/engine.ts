@@ -7,9 +7,14 @@ import { areaInCircle, polygonArea } from "../../engine/tiles/geo";
 import { notProvided } from "../../engine/tiles/not-provided";
 
 const round1 = (value: number) => Math.round(value * 10) / 10;
+const buildingMapExtra = (name: string | null) => ({
+  name,
+  sublabel: null,
+  labelPriority: name === null ? 0 : 1,
+});
 const fallbackPoint = (hit: Parameters<typeof candidate>[0]) => {
   try {
-    return candidate(hit, "bldg_point");
+    return candidate(hit, "bldg_point", buildingMapExtra(hit.name ?? null));
   } catch {
     return null;
   }
@@ -37,7 +42,7 @@ export function d02(ctx: EngineContext): TileResult {
     footprintM2 += clipped.areaM2;
     let hasPolygon = false;
     for (const rings of clipped.parts) {
-      const polygon = polygonCandidate(row.hit.featureId, "bldg_footprint", rings, polygonArea(rings), row.hit.name);
+      const polygon = polygonCandidate(row.hit.featureId, "bldg_footprint", rings, polygonArea(rings), null, buildingMapExtra(row.hit.name ?? null));
       if (polygon) {
         polygons.push(polygon);
         hasPolygon = true;

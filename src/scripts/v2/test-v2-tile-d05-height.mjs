@@ -9,6 +9,7 @@ const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { TILES } = await import("../../lib/v2/engine/run.ts");
 const d05 = TILES.find(([code]) => code === "D05")[1];
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
+const { buildingMapExtra, buildingSublabel } = await import("../../lib/v2/tile/d05/presentation.ts");
 
 function metric(tile, id) {
   const found = tile.metrics.find((item) => item.id === id);
@@ -50,6 +51,28 @@ try {
   assert.equal(metric(d05Tile, "share_floors_6").value, 0);
   assert.equal(d05Tile.presentation.polygons.length, 18, "D05 기본·고층·저층 지도를 함께 보존");
   assert.equal(d05Tile.presentation.polygonsTotal, 18);
+  assert.ok(d05Tile.presentation.polygons.every((polygon) => polygon.label === null), "D05는 legacy label 대신 새 계약 필드를 쓴다");
+  const towerBase = d05Tile.presentation.polygons.find((polygon) => polygon.layer === "floors_26p" && polygon.name === "b_tower");
+  assert.ok(towerBase);
+  assert.equal(towerBase.sublabel, "30층");
+  assert.equal(towerBase.labelPriority, 1);
+  const towerTall = d05Tile.presentation.polygons.find((polygon) => polygon.layer === "tall_ge35_est" && polygon.name === "b_tower");
+  assert.ok(towerTall);
+  assert.equal(towerTall.sublabel, "30층");
+  assert.equal(towerTall.labelPriority, 2, "고층 보기의 주요 건물은 priority 2");
+  const missingHeight = d05Tile.presentation.polygons.find((polygon) => polygon.name === "b_unknown");
+  assert.ok(missingHeight);
+  assert.equal(missingHeight.sublabel, null, "1층 가정은 실제 층수 라벨로 오인하지 않는다");
+  assert.equal(buildingSublabel({ floorsAbove: null, heightM: 48, heightMethod: "source" }), "48m", "층수 없고 확인 높이만 있으면 미터를 쓴다");
+  assert.deepEqual(
+    buildingMapExtra({ hit: { name: null }, floorsAbove: 18, heightM: 54, heightMethod: "source" }, "tall_ge35"),
+    { name: null, sublabel: "18층", labelPriority: 0 },
+    "이름이 없으면 name=null을 보존하고 값 라벨만 낸다",
+  );
+  const floorLabels = d05Tile.presentation.polygons
+    .filter((polygon) => polygon.layer.startsWith("floors_") && polygon.sublabel?.endsWith("층"))
+    .map((polygon) => Number.parseInt(polygon.sublabel, 10));
+  assert.deepEqual(floorLabels, [...floorLabels].sort((a, b) => b - a), "D05 층수 라벨은 내림차순으로 낸다");
   assert.deepEqual([...layerCounts(d05Tile).entries()].sort(), [
     ["floors_1_4", 2],
     ["floors_9_14", 1],

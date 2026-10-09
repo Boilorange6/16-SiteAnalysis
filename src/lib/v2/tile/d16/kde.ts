@@ -116,7 +116,7 @@ function appendBandGeometry(
   for (const rings of clipped.parts) {
     const area = polygonArea(rings);
     if (area <= 0) continue;
-    const candidate = polygonCandidate(id++, layer, rings, area);
+    const candidate = polygonCandidate(id++, layer, rings, area, null, { name: null, sublabel: null, labelPriority: 0 });
     if (candidate) polygons.push(candidate);
   }
   return id;
@@ -165,7 +165,7 @@ function appendPolygonParts(layer: string, id: number, parts: number[][][][], po
   for (const rings of parts) {
     const area = polygonArea(rings);
     if (area <= 0) continue;
-    const candidate = polygonCandidate(id++, layer, rings, area);
+    const candidate = polygonCandidate(id++, layer, rings, area, null, { name: null, sublabel: null, labelPriority: 0 });
     if (candidate) polygons.push(candidate);
   }
   return id;

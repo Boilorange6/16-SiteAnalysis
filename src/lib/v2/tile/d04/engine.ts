@@ -25,9 +25,14 @@ function approvalYear(value: unknown, analysisDate: string): number | null {
 }
 
 const pct = (part: number, whole: number) => Math.round((part / whole) * 1000) / 10;
-const fallbackPoint = (hit: Parameters<typeof candidate>[0], layer: string) => {
+const buildingMapExtra = (name: string | null, year: number | null) => ({
+  name,
+  sublabel: year === null ? null : `${year}년`,
+  labelPriority: name === null ? 0 : 1,
+});
+const fallbackPoint = (hit: Parameters<typeof candidate>[0], layer: string, year: number | null) => {
   try {
-    return candidate(hit, layer);
+    return candidate(hit, layer, buildingMapExtra(hit.name ?? null, year));
   } catch {
     return null;
   }
@@ -47,16 +52,17 @@ export function d04(ctx: EngineContext): TileResult {
   let failedGeometry = 0;
   for (const row of rows) {
     const hit = row.hit;
+    const year = allYears.get(hit.featureId) ?? null;
     const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, hit.geometry);
     if (clipped === null) {
       failedGeometry += 1;
-      const point = fallbackPoint(hit, decadeLayer(allYears.get(hit.featureId) ?? null));
+      const point = fallbackPoint(hit, decadeLayer(year), year);
       if (point) points.push(point);
       continue;
     }
     let hasPolygon = false;
     for (const rings of clipped.parts) {
-      const polygon = polygonCandidate(hit.featureId, decadeLayer(allYears.get(hit.featureId) ?? null), rings, polygonArea(rings), hit.name);
+      const polygon = polygonCandidate(hit.featureId, decadeLayer(year), rings, polygonArea(rings), null, buildingMapExtra(hit.name ?? null, year));
       if (polygon) {
         polygons.push(polygon);
         hasPolygon = true;
@@ -64,7 +70,7 @@ export function d04(ctx: EngineContext): TileResult {
     }
     if (!hasPolygon) {
       failedGeometry += 1;
-      const point = fallbackPoint(hit, decadeLayer(allYears.get(hit.featureId) ?? null));
+      const point = fallbackPoint(hit, decadeLayer(year), year);
       if (point) points.push(point);
     }
   }

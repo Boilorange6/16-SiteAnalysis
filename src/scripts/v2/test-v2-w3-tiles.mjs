@@ -84,4 +84,22 @@ assert.equal(merged.presentation.polygons.length, MAX_MAP_POLYGONS, "흡수 결�
 assert.equal(merged.presentation.polygonsTotal, 3000, "표시 상한을 반영한 전체 면 개수 공식");
 assert.deepEqual(new Set(merged.presentation.polygons.map((item) => item.layer)), new Set(["floors_1_4", "height_tall"]), "상한에서도 흡수 레이어별 면을 남긴다");
 
+// D05 흡수 경로만 같은 건물의 보기별 면을 한 그룹으로 cap한다. 일반 merge는 위와 동일하게 유지한다.
+const buildingPolygon = (layer, index) => ({
+  layer,
+  fid: `building-${index}`,
+  name: `건물-${index}`,
+  sublabel: `${2000 - index}층`,
+  labelPriority: 1,
+  rings: [[[127.149 + index * 1e-7, 37.619], [127.151 + index * 1e-7, 37.619], [127.151 + index * 1e-7, 37.621], [127.149 + index * 1e-7, 37.619]]],
+});
+const d05BuildingCapped = mergeTileResults(
+  result("D05", [], Array.from({ length: 2000 }, (_, index) => buildingPolygon("floors_1_4", index))),
+  result("D05", [], Array.from({ length: 2000 }, (_, index) => buildingPolygon("tall_ge35", index))),
+  { d05BuildingPolygons: true },
+);
+assert.equal(d05BuildingCapped.presentation.polygons.length, MAX_MAP_POLYGONS, "D05 건물 그룹 cap도 최종 상한을 지킨다");
+assert.equal(new Set(d05BuildingCapped.presentation.polygons.map((item) => item.fid)).size, 1500, "D05는 cap에서 건물 단위를 유지한다");
+assert.deepEqual(new Set(d05BuildingCapped.presentation.polygons.map((item) => item.layer)), new Set(["floors_1_4", "tall_ge35"]), "D05 건물 단위 cap에서도 높이 보기 면을 남긴다");
+
 console.log("✓ v2 W3 tile registry, merge layer options, and map filtering");

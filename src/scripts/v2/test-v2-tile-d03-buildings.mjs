@@ -55,6 +55,16 @@ assert.equal(tile.presentation.polygons.length, 6);
 assert.equal(tile.presentation.polygonsTotal, 6);
 assert.equal(tile.judgment.level, null);
 assert.match(tile.judgment.sentence, /확인된 주용도 중 최다는 주거/, "판정 문장에 확인된 최다 용도를 포함");
+assert.ok(tile.presentation.polygons.every((polygon) => polygon.label === null), "레거시 label에 이름을 복사하지 않는다");
+const namedResidential = tile.presentation.polygons.find((polygon) => polygon.name === "b_apt");
+assert.ok(namedResidential, "D03 polygon은 원천 건물 이름을 사용한다");
+assert.equal(namedResidential.sublabel, "공동주택");
+assert.equal(namedResidential.labelPriority, 1);
+const unknownUse = tile.presentation.polygons.find((polygon) => polygon.layer === "use:미상");
+assert.ok(unknownUse);
+assert.equal(unknownUse.name, "b_unknown");
+assert.equal(unknownUse.sublabel, null, "미상 용도는 sublabel을 만들지 않는다");
+assert.equal(unknownUse.labelPriority, 1);
 assert.doesNotMatch(JSON.stringify(tile), /도보|\d\s*분|종합/);
 ctx.close();
 
