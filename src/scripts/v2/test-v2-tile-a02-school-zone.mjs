@@ -21,6 +21,8 @@ const { TILES } = await import("../../lib/v2/engine/run.ts");
 const a02WithSchoolZones = TILES.find(([code]) => code === "A02")[1];
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
+const { a02ClientModule } = await import("../../lib/v2/tile/a02/view.ts");
+const { filterMapForLayer } = await import("../../lib/v2/ui/tile-layers.ts");
 
 const fx = (name) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
 const CENTER = [128.5978756, 35.8808955];
@@ -81,6 +83,10 @@ const zoneSource = d.provenance.sources.find((source) => source.sourceId === "sc
 assert.ok(zoneSource, "A02 통합 결과에 D26 학구도 출처 보존");
 assert.equal(zoneSource.sourceAsOf, "2026-03-20");
 assert.ok(toTileView(d).chart.some((row) => row.label === "반경 내 초등 통학구역" && row.value === 1));
+assert.deepEqual(a02ClientModule.layers.baseExcludes, ["school_zone"], "A02 기본 보기에서 흡수 학구 레이어 제외");
+const a02BaseMap = filterMapForLayer(d.presentation, "A02", "all");
+assert.ok(a02BaseMap);
+assert.equal(a02BaseMap.polygons?.some((polygon) => polygon.layer.startsWith("school_zone")), false, "A02 기본 보기에는 학구 면을 중복 표시하지 않음");
 
 const a = parseTileResult(a02(ctx));
 const am = (id) => a.metrics.find((m) => m.id === id);

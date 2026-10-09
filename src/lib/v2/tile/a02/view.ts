@@ -13,5 +13,6 @@ export const a02ClientModule = {
   caveat: "배정은 교육청 확인",
   layers: {
     options: [{ id: "all", label: "기본 학교" }, { id: "school_zone", label: "학구·학교군" }],
+    baseExcludes: ["school_zone"],
   },
 } satisfies TileClientModule;

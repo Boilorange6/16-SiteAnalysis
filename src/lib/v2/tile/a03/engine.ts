@@ -1,7 +1,7 @@
 /** A03 생활편의·상가 — 소상공인 상가정보를 업종군으로 묶어 센다. 등급 없음. */
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../../engine/context";
-import { candidate, fmt, makeTile, missing, nearestHit, nearestM, noDataTile, obs } from "../../engine/tiles/common";
+import { candidate, fmt, makeTile, missing, noDataTile, obs } from "../../engine/tiles/common";
 
 export const STORE_GROUPS = [
   { id: "grocery", label: "식료품", basic: true },
@@ -33,15 +33,14 @@ export function a03(ctx: EngineContext): TileResult {
   if (sources.length === 0) return noDataTile(ctx, "A03", ["store"]);
   const hits = ctx.hits("reference", ["store"]);
   const count = Object.fromEntries(STORE_GROUPS.map((g) => [g.id, 0])) as Record<StoreGroup, number>;
-  const nearest = Object.fromEntries(STORE_GROUPS.map((g) => [g.id, null as number | null])) as Record<StoreGroup, number | null>;
+  const nearestOf: Partial<Record<StoreGroup, (typeof hits)[number]>> = {};
   for (const h of hits) {
     const g = storeGroup(h.properties);
     count[g] += 1;
-    if (h.distanceM !== null && (nearest[g] === null || h.distanceM < nearest[g]!)) nearest[g] = h.distanceM;
+    if (g === "other" || h.distanceM === null) continue;
+    const previous = nearestOf[g];
+    if (previous === undefined || h.distanceM < previous.distanceM! || (h.distanceM === previous.distanceM && h.featureId < previous.featureId)) nearestOf[g] = h;
   }
-  const nearestOf = Object.fromEntries(
-    STORE_GROUPS.filter((g) => g.id !== "other").map((g) => [g.id, nearestHit(hits.filter((h) => storeGroup(h.properties) === g.id))]),
-  ) as Partial<Record<StoreGroup, (typeof hits)[number] | null>>;
   const basicFound = STORE_GROUPS.filter((g) => g.basic && count[g.id] > 0);
   const basicMissing = STORE_GROUPS.filter((g) => g.basic && count[g.id] === 0);
   const areaKm2 = (Math.PI * ctx.input.radiusM * ctx.input.radiusM) / 1e6;
@@ -49,9 +48,9 @@ export function a03(ctx: EngineContext): TileResult {
     obs("basic_groups", "기초 생활시설 확인 군(4군 중)", basicFound.length, "군", "a03-basic-groups@1", basicFound.length, 4),
     obs("stores", "반경 내 상가 전체", hits.length, "개", "a03-count@1"),
     ...STORE_GROUPS.map((g) => obs(`count_${g.id}`, `${g.label} 업소`, count[g.id], "개", "a03-group-count@1")),
-    ...STORE_GROUPS.filter((g) => g.id !== "other").map((g) => {
-      const n = nearestM([nearest[g.id]]);
-      return n === null ? missing(`nearest_${g.id}_m`, `최근접 ${g.label}`, "m", "a03-group-nearest@1") : obs(`nearest_${g.id}_m`, `최근접 ${g.label}`, n, "m", "a03-group-nearest@1");
+    ...STORE_GROUPS.filter((g) => g.basic).map((g) => {
+      const n = nearestOf[g.id]?.distanceM;
+      return n === undefined || n === null ? missing(`nearest_${g.id}_m`, `최근접 ${g.label}`, "m", "a03-group-nearest@1") : obs(`nearest_${g.id}_m`, `최근접 ${g.label}`, Math.round(n), "m", "a03-group-nearest@1");
     }),
     obs("store_density", "상가 밀도", Math.round((hits.length / areaKm2) * 10) / 10, "개/㎢", "a03-density@1", hits.length, Math.round(areaKm2 * 1000) / 1000),
   ];

@@ -9,6 +9,8 @@ const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { TILES } = await import("../../lib/v2/engine/run.ts");
 const d09 = TILES.find(([code]) => code === "A04")[1];
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
+const { a04ClientModule } = await import("../../lib/v2/tile/a04/view.ts");
+const { filterMapForLayer } = await import("../../lib/v2/ui/tile-layers.ts");
 
 const metric = (tile, id) => tile.metrics.find((m) => m.id === id);
 const value = (tile, id) => metric(tile, id)?.value;
@@ -36,9 +38,15 @@ const makeContext = async (options, radiusM = 800) => {
     assert.equal(tile.status, "partial");
     assert.equal(value(tile, "parks"), 3, "기존 park 점 p1~p3");
     assert.equal(metric(tile, "parks").unit, "곳");
-    assert.equal(metric(tile, "park_area_source_m2").label.includes("반경 교차 아님"), true);
-    assert.equal(value(tile, "park_area_source_m2"), 15000);
-    assert.deepEqual([metric(tile, "park_area_source_m2").numerator, metric(tile, "park_area_source_m2").denominator], [2, 3]);
+    assert.equal(metric(tile, "park_area_source_m2"), undefined, "흡수 D09의 공원 원천 면적 중복 지표 제거");
+    assert.equal(tile.presentation.features.filter((feature) => feature.layer === "park").length, 2, "D09가 A04 공원 대표점을 다시 내지 않음");
+    assert.equal(tile.presentation.features.filter((feature) => feature.layer === "park_nearest").length, 1, "A04 최근접 공원 대표점은 유지");
+    assert.doesNotMatch(tile.judgment.sentence, /운영 공원/);
+
+    assert.deepEqual(a04ClientModule.layers.baseExcludes, ["green_space"], "A04 기본 보기에서 녹지·수면 레이어 제외");
+    const a04BaseMap = filterMapForLayer(tile.presentation, "A04", "all");
+    assert.ok(a04BaseMap);
+    assert.equal(a04BaseMap.polygons?.some((polygon) => ["green_zone", "green_parcel", "water_parcel"].includes(polygon.layer)), false, "A04 기본 보기에는 녹지·수면 면을 중복 표시하지 않음");
 
     const water = metric(tile, "share_water_pct");
     const greenParcel = metric(tile, "share_green_parcel_pct");

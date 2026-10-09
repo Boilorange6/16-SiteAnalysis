@@ -12,6 +12,33 @@ const percent = (part: number, whole: number) => whole > 0 ? Math.round((part / 
 
 type OsmLayer = "osm_green" | "osm_water";
 
+const OSM_CLASS_LABELS: Readonly<Record<string, string>> = {
+  forest: "산림",
+  wood: "산림",
+  park: "공원",
+  nature_reserve: "공원",
+  recreation_ground: "공원",
+  garden: "공원",
+  grass: "초지",
+  meadow: "초지",
+  heath: "초지",
+  scrub: "초지",
+  orchard: "과수원",
+  vineyard: "과수원",
+  allotments: "과수원",
+  water: "수역",
+  reservoir: "수역",
+  river: "수역",
+  riverbank: "수역",
+  basin: "수역",
+  wetland: "습지",
+};
+
+function osmLabel(hit: { name: string | null; properties: Record<string, unknown> }, kind: "landuse" | "water"): string {
+  const cls = typeof hit.properties.cls === "string" ? hit.properties.cls.trim().toLowerCase() : "";
+  return hit.name ?? OSM_CLASS_LABELS[cls] ?? (kind === "water" ? "수역" : "녹지");
+}
+
 function osmPolygons(ctx: EngineContext, sourceId: "osm_landuse" | "osm_water", kind: "landuse" | "water", layer: OsmLayer): { polygons: PolygonCandidate[]; areaM2: number; hits: number } {
   const sources = ctx.sources("reference", [sourceId]);
   if (sources.length === 0) return { polygons: [], areaM2: 0, hits: 0 };
@@ -24,7 +51,7 @@ function osmPolygons(ctx: EngineContext, sourceId: "osm_landuse" | "osm_water", 
     areaM2 += clipped.areaM2;
     for (const rings of clipped.parts) {
       const area = polygonArea(rings);
-      const candidate = polygonCandidate(hit.featureId, layer, rings, area, hit.name);
+      const candidate = polygonCandidate(hit.featureId, layer, rings, area, osmLabel(hit, kind));
       if (candidate) polygons.push(candidate);
     }
   }
@@ -47,11 +74,15 @@ function pointInParts(point: [number, number], parts: number[][][][]): boolean {
 }
 
 function siteCanopyPct(ctx: EngineContext, canopy: ReturnType<typeof canopyFor>): ReturnType<typeof est> | ReturnType<typeof missing> {
-  const siteHit = ctx.siteParcelHits()[0];
-  const geometry = ctx.input.site.geometry ?? siteHit?.geometry;
-  if (!geometry || !canopy) return missing("canopy_site_pct", "대지 수관 면적률", "%", "d10-canopy-site@2:대상 대지와 유효 항공영상이 없어 계산하지 않음");
-  const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, geometry);
-  if (!clipped || clipped.areaM2 <= 0) return missing("canopy_site_pct", "대지 수관 면적률", "%", "d10-canopy-site@1:대상 필지 도형 교차면적을 계산하지 못함");
+  if (!canopy) return missing("canopy_site_pct", "대지 수관 면적률", "%", "d10-canopy-site@2:대상 대지와 유효 항공영상이 없어 계산하지 않음");
+  const geometries = ctx.input.site.geometry ? [ctx.input.site.geometry] : ctx.siteParcelHits().map((hit) => hit.geometry);
+  const clips: Array<NonNullable<ReturnType<typeof areaInCircle>>> = [];
+  for (const geometry of geometries) {
+    const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, geometry);
+    if (clipped && clipped.areaM2 > 0) clips.push(clipped);
+  }
+  const siteAreaM2 = clips.reduce((sum, clip) => sum + clip.areaM2, 0);
+  if (clips.length === 0 || siteAreaM2 <= 0) return missing("canopy_site_pct", "대지 수관 면적률", "%", "d10-canopy-site@2:대상 필지 도형 교차면적을 계산하지 못함");
   let canopyCells = 0;
   for (let row = 0; row < canopy.grid.rows; row++) {
     for (let col = 0; col < canopy.grid.cols; col++) {
@@ -60,10 +91,10 @@ function siteCanopyPct(ctx: EngineContext, canopy: ReturnType<typeof canopyFor>)
       const x = canopy.grid.x0 + col * canopy.grid.cellM;
       const y = canopy.grid.y0 + row * canopy.grid.cellM;
       if (Math.hypot(x - canopy.grid.cx, y - canopy.grid.cy) > ctx.input.radiusM) continue;
-      if (pointInParts([x, y], clipped.parts)) canopyCells += 1;
+      if (clips.some((clip) => pointInParts([x, y], clip.parts))) canopyCells += 1;
     }
   }
-  return est("canopy_site_pct", "대지 수관 면적률", percent(canopyCells * canopy.grid.cellM ** 2, clipped.areaM2), "%", `d10-canopy-site@2:${ctx.input.site.kind === "polygon" ? "직접 그린 구역" : "대지"} 안 수관 셀 면적÷대지 반경 교차면적`, Math.round(canopyCells * canopy.grid.cellM ** 2), Math.round(clipped.areaM2));
+  return est("canopy_site_pct", "대지 수관 면적률", percent(canopyCells * canopy.grid.cellM ** 2, siteAreaM2), "%", "d10-canopy-site@2:대지 안 수관 셀 면적÷대지 반경 교차면적", Math.round(canopyCells * canopy.grid.cellM ** 2), Math.round(siteAreaM2));
 }
 
 export function d10(ctx: EngineContext, options: CanopyForOptions = {}): TileResult {
@@ -76,21 +107,20 @@ export function d10(ctx: EngineContext, options: CanopyForOptions = {}): TileRes
   if (!canopy && !hasOsm) return notProvided(ctx, "D10", "VWorld 항공영상과 OSM 녹지·수계 보조 자료를 확인하지 못했습니다.");
 
   const imagerySources = canopy ? [VWORLD_WMTS_SOURCE] : [];
-  const validAreaM2 = canopy ? canopyCellStats(canopy.grid, ctx.input.radiusM).valid * canopy.grid.cellM ** 2 : 0;
-  const canopyAreaM2 = canopy ? canopyCellStats(canopy.grid, ctx.input.radiusM).canopy * canopy.grid.cellM ** 2 : 0;
-  const imageryFill = canopy && canopy.totalTiles > 0 ? percent(canopy.totalTiles - canopy.missingTiles, canopy.totalTiles) : null;
+  const canopyStats = canopy ? canopyCellStats(canopy.grid, ctx.input.radiusM) : null;
+  const validAreaM2 = canopyStats ? canopyStats.valid * canopy!.grid.cellM ** 2 : 0;
+  const canopyAreaM2 = canopyStats ? canopyStats.canopy * canopy!.grid.cellM ** 2 : 0;
   const canopyMetric = canopy
     ? est("canopy_pct", "반경 수관 면적률", percent(canopyAreaM2, validAreaM2), "%", "d10-canopy-share@1:유효 항공영상 수관 셀 면적÷유효 반경 셀 면적", Math.round(canopyAreaM2), Math.round(validAreaM2))
     : missing("canopy_pct", "반경 수관 면적률", "%", "d10-canopy-share@1:유효 항공영상 없음");
   const siteMetric = siteCanopyPct(ctx, canopy);
+  const imageryFillMetric = canopy && canopy.totalTiles > 0
+    ? obs("fill_imagery_pct", "항공영상 타일 채움률", percent(canopy.totalTiles - canopy.missingTiles, canopy.totalTiles), "%", "d10-imagery-fill@1:성공 타일÷요청 타일", canopy.totalTiles - canopy.missingTiles, canopy.totalTiles)
+    : missing("fill_imagery_pct", "항공영상 타일 채움률", "%", "d10-imagery-fill@1:VWorld WMTS 타일을 받지 못함");
   const metrics: TileResult["metrics"] = [
     canopyMetric,
     siteMetric,
-    imageryFill === null
-      ? missing("fill_imagery_pct", "항공영상 타일 채움률", "%", "d10-imagery-fill@1:VWorld WMTS 타일을 받지 못함")
-      : canopy && imageryFill !== null
-        ? obs("fill_imagery_pct", "항공영상 타일 채움률", imageryFill, "%", "d10-imagery-fill@1:성공 타일÷요청 타일", canopy.totalTiles - canopy.missingTiles, canopy.totalTiles)
-        : missing("fill_imagery_pct", "항공영상 타일 채움률", "%", "d10-imagery-fill@1:VWorld WMTS 타일을 받지 못함"),
+    imageryFillMetric,
     greenSources.length > 0
       ? obs("osm_green_pct", "OSM 녹지 면적률", Math.min(100, percent(green.areaM2, circleArea(ctx.input.radiusM))), "%", "d10-osm-green@1:OSM landuse 반경 교차면적÷π·r²", Math.round(green.areaM2), Math.round(circleArea(ctx.input.radiusM)))
       : missing("osm_green_pct", "OSM 녹지 면적률", "%", "d10-osm-green@1:OSM 토지이용 자료 확인 불가"),
