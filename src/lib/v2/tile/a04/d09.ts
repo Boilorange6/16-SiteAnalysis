@@ -76,7 +76,6 @@ export function d09(ctx: EngineContext): TileResult {
   const parcelHits = parcelSources.length > 0 ? ctx.hits("parcels", ["parcel"]) : [];
 
   const parkAreas = parkHits.map((hit) => sourceArea(hit.properties.areaM2)).filter((area): area is number => area !== null);
-  const parkAreaSum = parkAreas.reduce((sum, area) => sum + area, 0);
   const waterHits = parcelHits.filter((hit) => WATER_JIMOK.has(String(hit.properties.jimok ?? "")));
   const greenParcelHits = parcelHits.filter((hit) => GREEN_JIMOK.has(String(hit.properties.jimok ?? "")));
   const water = clippedAreas(ctx, waterHits, "water_parcel");
@@ -84,12 +83,6 @@ export function d09(ctx: EngineContext): TileResult {
   const greenZone = clippedAreas(ctx, zoningHits, "green_zone");
 
   const metrics: TileDraft["metrics"] = [
-    parkSources.length > 0
-      ? obs("parks", "반경 내 운영 공원(대표점)", parkHits.length, "곳", "d09-parks@1:park 점이 반경 안에 있는 개수")
-      : missing("parks", "반경 내 운영 공원(대표점)", "곳", "d09-parks@1:공원 자료 확인 불가"),
-    parkSources.length > 0
-      ? obs("park_area_source_m2", "공원 원천 면적 합(반경 교차 아님)", rounded(parkAreaSum), "㎡", "d09-park-area-source@1:반경 안 park 점의 areaM2 합, 경계 교차면적 아님", parkAreas.length, parkHits.length)
-      : missing("park_area_source_m2", "공원 원천 면적 합(반경 교차 아님)", "㎡", "d09-park-area-source@1:공원 자료 확인 불가"),
     parcelSources.length > 0
       ? obs("share_water_pct", "수면·하천 지목 구성비", pct(water.areaM2, circleAreaM2), "%", "d09-water-share@1:지목 천·구·유 도형의 반경 교차면적÷π·r²", rounded(water.areaM2), circleAreaRounded)
       : missing("share_water_pct", "수면·하천 지목 구성비", "%", "d09-water-share@1:필지 도형 자료 확인 불가"),
@@ -105,16 +98,13 @@ export function d09(ctx: EngineContext): TileResult {
   ];
 
   const observedMetricIds = metrics.filter((metric) => metric.status === "observed").map((metric) => metric.id);
-  const parkFact = parkSources.length > 0 ? `운영 공원 ${parkHits.length}곳` : "운영 공원 자료 미확인";
+  const parkFact = parkSources.length > 0 ? `공원 ${parkHits.length}곳` : "공원 자료 미확인";
   const waterFact = parcelSources.length > 0 ? `수면·하천 지목 ${pct(water.areaM2, circleAreaM2)}%` : "수면·하천 지목 자료 미확인";
   const greenParcelFact = parcelSources.length > 0 ? `공원·임야 지목 ${pct(greenParcel.areaM2, circleAreaM2)}%` : "공원·임야 지목 자료 미확인";
   const greenZoneFact = zoningSources.length > 0 ? `녹지지역 ${pct(greenZone.areaM2, circleAreaM2)}%` : "녹지지역 자료 미확인";
-  const sentence = `${parkFact}, ${waterFact}, ${greenParcelFact}, ${greenZoneFact} → 운영 공원 점·지목 도형·용도지역 도형을 서로 다른 원천으로 본 현황이며 녹지지역은 지목 녹지와 겹칠 수 있음 → 계획 공원·실제 하천 경계·토지이용계획은 원문과 현장 확인 필요`;
+  const sentence = `${parkFact}, ${waterFact}, ${greenParcelFact}, ${greenZoneFact} → 공원 수·지목 도형·용도지역 도형을 서로 다른 원천으로 본 현황이며 녹지지역은 지목 녹지와 겹칠 수 있음 → 계획 공원·실제 하천 경계·토지이용계획은 원문과 현장 확인 필요`;
 
-  const map: MapCandidate[] = parkHits.map((hit) => {
-    const area = sourceArea(hit.properties.areaM2);
-    return candidate(hit, "park", { label: hit.name, weight: area === null ? null : rounded(area) });
-  });
+  const map: MapCandidate[] = [];
   const polygons: PolygonCandidate[] = [...water.polygons, ...greenParcel.polygons, ...greenZone.polygons];
   map.push(...water.map, ...greenParcel.map, ...greenZone.map);
 
@@ -140,7 +130,7 @@ export function d09(ctx: EngineContext): TileResult {
     metrics,
     judgment: { ruleId: "d09-green-space@1", basisMetricIds: observedMetricIds, sentence, level: null, criteria: null },
     sources: [...parkSources, ...zoningSources, ...parcelSources],
-    layers: ["park", "green_zone", "green_parcel", "water_parcel"],
+    layers: ["green_zone", "green_parcel", "water_parcel"],
     map,
     polygons,
     limitations: dedupeLimitations(limitations),
