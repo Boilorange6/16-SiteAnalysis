@@ -80,7 +80,8 @@ export function d03(ctx: EngineContext): TileResult {
   }
 
   const coverage = ctx.coverage("buildings", BUILDING_SOURCES);
-  const status: TileResult["status"] = coverage.some((limitation) => limitation.kind === "partial" || limitation.kind === "incomplete") ? "partial" : "complete";
+  const retirementLimitations = buildingRetirementLimitations(ctx);
+  const status: TileResult["status"] = invalidGeometry > 0 || retirementLimitations.length > 0 || coverage.some((limitation) => limitation.kind === "partial" || limitation.kind === "incomplete") ? "partial" : "complete";
   const areaFormula = "d03-area-share@1:반경 교차 발자국 면적÷유효 발자국 면적(footprintM2 확인 동)";
   const metrics: TileDraft["metrics"] = [
     total === 0
@@ -100,7 +101,7 @@ export function d03(ctx: EngineContext): TileResult {
     }),
   ];
 
-  const limitations = [...buildingRetirementLimitations(ctx), ...coverage];
+  const limitations = [...retirementLimitations, ...coverage];
   if (areaDenominator <= 0 && total > 0) {
     limitations.push({ kind: "unknown", note: "footprintM2가 확인된 건물이 없어 발자국 면적 구성비를 산출하지 못했습니다." });
   } else if (areaDenominator > 0 && rows.some((row) => row.footprintM2 === null)) {
@@ -110,9 +111,17 @@ export function d03(ctx: EngineContext): TileResult {
     limitations.push({ kind: "partial", note: `도형 오류로 반경 절단·지도 표시가 안 된 ${invalidGeometry}건은 면적 구성비에서도 빠졌습니다.` });
   }
 
+  const leadingUse = USE_CLASSES.reduce<{ useClass: UseClass; count: number } | null>((best, useClass) => {
+    if (useClass === "미상") return best;
+    const count = counts.get(useClass) ?? 0;
+    return count > (best?.count ?? 0) ? { useClass, count } : best;
+  }, null);
+  const leadingUseSentence = leadingUse
+    ? `확인된 주용도 중 최다는 ${leadingUse.useClass} ${leadingUse.count.toLocaleString("en-US")}동`
+    : "확인된 주용도 분류 없음";
   const sentence = total === 0
     ? "반경 안 건물이 확인되지 않아 건축물 용도를 산출하지 못함 → 용도 자료와 현장 확인 필요"
-    : `반경 안 건물 ${total.toLocaleString("en-US")}동 중 주용도 확인 ${pct(confirmed, total)}% → 확인된 주용도별 건물 동수 분포를 표시하고 미상은 별도로 구분 → 건축물대장 주용도와 실제 이용 현황 확인 필요`;
+    : `반경 안 건물 ${total.toLocaleString("en-US")}동 중 주용도 확인 ${pct(confirmed, total)}% → ${leadingUseSentence} → 확인된 주용도별 건물 동수 분포를 표시하고 미상은 별도로 구분 → 건축물대장 주용도와 실제 이용 현황 확인 필요`;
 
   return makeTile(ctx, {
     code: "D03",
