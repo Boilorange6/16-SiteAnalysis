@@ -57,11 +57,17 @@ assert.equal(PLANNED_STAGES.cancelled, "중단/변경");
 
   assert.ok(tile.presentation.layers.includes("planned_rail_line"));
   assert.ok(tile.presentation.layers.includes("planned_rail_station"));
-  assert.ok(tile.presentation.features.filter((f) => f.layer === "planned_rail_line").length > 0, "A10은 지도 호환 표본점도 보존한다");
+  assert.equal(tile.presentation.features.filter((f) => f.layer === "planned_rail_line").length, 0, "A10은 노선 위 샘플 점을 만들지 않는다");
   const lineFeatures = tile.presentation.lines.filter((line) => line.layer === "planned_rail_line");
   assert.ok(lineFeatures.length > 0);
   assert.ok(lineFeatures.every((line) => line.label === "[개략]"), "개략 선형은 지도에 [개략]을 표시한다");
   assert.ok(lineFeatures.every((line) => line.points.length >= 2));
+  assert.equal(tile.metrics.filter((item) => item.id.startsWith("stage_")).length, 0, "A10은 구형 단계 지표를 중복하지 않는다");
+  assert.equal(tile.metrics.filter((item) => item.id.startsWith("back_stage_")).length, 6, "A10은 D24 고정 6단계만 사용한다");
+  assert.doesNotMatch(tile.judgment.sentence, / · /, "A10 판단 문장은 흡수 타일 문장 하나만 표시한다");
+  const view = toTileView(tile);
+  assert.deepEqual(view.layerOptions, [{ id: "all", label: "기본 계획" }], "A10은 같은 내용을 바꾸는 칩을 제공하지 않는다");
+  assert.equal(view.hasFace, true, "A10 지도/도판 면은 칩을 숨겨도 유지한다");
   noForbidden(tile);
   ctx.close();
 }
