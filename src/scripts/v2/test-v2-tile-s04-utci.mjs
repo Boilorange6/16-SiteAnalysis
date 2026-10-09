@@ -191,6 +191,11 @@ async function main() {
     assert.match(normal.limitations.map((item) => item.note).join(" "), /대표 기상|수목 높이/);
     assert.match(normal.judgment.sentence, /대표 범주 .*그늘/);
     assert.doesNotMatch(normal.judgment.sentence, /건강|위험|안전/);
+    const legendLabels = normal.presentation.legend.map((item) => item.label);
+    assert.ok(legendLabels.includes("바람 입력 없음"), "S04 legend names missing wind input swatch");
+    assert.ok(legendLabels.includes("건물"), "S04 legend names building swatch");
+    assert.ok(legendLabels.includes("UTCI 극한한랭 (< −40°C)"), "S04 uses the shared compact UTCI vocabulary");
+    assert.ok(!legendLabels.some((label) => /극한 한랭|열적 쾌적/.test(label)), "S04 does not mix spaced UTCI category vocabulary");
 
     const summer14 = "_summer_h14";
     assert.ok(metricValue(normal, `utci_median${summer14}`) !== null);

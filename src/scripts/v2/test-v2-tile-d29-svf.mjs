@@ -12,6 +12,7 @@ const { insertRelease } = await import("../../lib/v2/ingest/build.ts");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { d29 } = await import("../../lib/v2/tile/d29/engine.ts");
+const { LAYER_STYLES } = await import("../../lib/v2/ui/map-layers.ts");
 const { svfFor, SVF_CELL_M } = await import("../../lib/v2/engine/tiles/svf-shared.ts");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 
@@ -20,7 +21,7 @@ const [CX, CY] = toUtmk(CENTER);
 const at = (x, y) => toLngLat([CX + x, CY + y]);
 const rectangle = (x0, x1, y0, y1) => [[at(x0, y0), at(x1, y0), at(x1, y1), at(x0, y1), at(x0, y0)]];
 
-function insertBuilding(db, releaseId, id, x0, x1, y0, y1, heightM = 20) {
+function insertBuilding(db, releaseId, id, x0, x1, y0, y1, heightM = 20, floorsAbove = null) {
   const featureId = insertFeature(db, {
     stableId: `building:${id}`,
     kind: "building",
@@ -31,7 +32,7 @@ function insertBuilding(db, releaseId, id, x0, x1, y0, y1, heightM = 20) {
   });
   db.prepare(`INSERT INTO building_fact
     (feature_id, ledger_pk, height_m, height_method, floors_above, floors_below, use_code, approval_date, gross_floor_area_m2, footprint_area_m2, field_provenance_json)
-    VALUES (?, NULL, ?, ?, NULL, NULL, NULL, NULL, NULL, ?, '{}')`).run(featureId, heightM, heightM === null ? "unknown" : "source", (x1 - x0) * (y1 - y0));
+    VALUES (?, NULL, ?, ?, ?, NULL, NULL, NULL, NULL, ?, '{}')`).run(featureId, heightM, heightM === null ? "unknown" : "source", floorsAbove, (x1 - x0) * (y1 - y0));
 }
 
 async function makeFixture({ buildings = null, terrain = true } = {}) {
@@ -129,7 +130,7 @@ function indexAt(grid, x, y) {
 // Two 20 m walls leave a narrow alley at the center. The outer part of the
 // same 800 m domain remains open, so both visual extremes are deterministic.
 const walls = [
-  ["west", -11, -9, -500, 500, 20],
+  ["west", -11, -9, -500, 500, 20, 6],
   ["east", 9, 11, -500, 500, 20],
 ];
 const dataDir = await makeFixture({ buildings: walls });
@@ -173,6 +174,12 @@ try {
   assert.match(raster.sha256, /^[0-9a-f]{64}$/);
   assert.ok((ctx.takeRasters("D29").find((item) => item.ref.name === "svf")?.blob.length ?? 0) > 0);
   assert.ok(tile.presentation.legend.some((item) => item.label.includes("하늘열림") && item.min === 0 && item.max === 1));
+  const westMask = tile.presentation.polygons?.find((polygon) => polygon.name === "west");
+  assert.ok(westMask);
+  assert.equal(westMask.sublabel, "6층");
+  assert.equal(westMask.labelPriority, 0);
+  assert.equal(westMask.label, null);
+  assert.equal(tile.presentation.legend.find((item) => item.min === null && item.max === null)?.label, LAYER_STYLES.svf_building.label);
   assert.ok(tile.limitations.some((item) => item.note.includes("수목 제외")));
   assert.match(tile.judgment.sentence, /하늘열림 중앙값/);
   assert.match(tile.judgment.sentence, /대지 하늘열림 중앙값 .*반경 800m 하늘열림 중앙값/);

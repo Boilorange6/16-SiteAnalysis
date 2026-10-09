@@ -6,6 +6,7 @@ import { est, makeTile, missing, polygonCandidate } from "../../engine/tiles/com
 import { polygonArea, polygonParts } from "../../engine/tiles/geo";
 import { notProvided } from "../../engine/tiles/not-provided";
 import { DEM_LIMITATION, demSources } from "../../engine/tiles/terrain-shared";
+import { layerStyle } from "../../ui/map-layers";
 import {
   pointInParts,
   SVF_CELL_M,
@@ -117,7 +118,12 @@ function rasterValues(grid: { cols: number; rows: number }, svf: Float32Array): 
 function buildingMaskPolygons(rows: BuildingRow[]) {
   return rows.flatMap((row) => polygonParts(row.hit.geometry).flatMap((rings, partIndex) => {
     const areaM2 = Math.max(0, polygonArea(rings) || row.footprintM2 || 0);
-    const candidate = polygonCandidate(row.hit.featureId * 1000 + partIndex, "svf_building", rings, areaM2);
+    const sublabel = row.floorsAbove === null ? null : `${Math.round(row.floorsAbove)}층`;
+    const candidate = polygonCandidate(row.hit.featureId * 1000 + partIndex, "svf_building", rings, areaM2, null, {
+      name: row.hit.name ?? null,
+      sublabel,
+      labelPriority: 0,
+    });
     return candidate ? [candidate] : [];
   }));
 }
@@ -263,7 +269,7 @@ export function d29(ctx: EngineContext): TileResult {
     },
     presentation: {
       ...tile.presentation,
-      legend: [{ label: "하늘열림(SVF)", min: 0, max: 1 }, { label: "건물 마스크", min: null, max: null }],
+      legend: [{ label: "하늘열림(SVF)", min: 0, max: 1 }, { label: layerStyle("svf_building").label, min: null, max: null }],
       rasters: [raster],
     },
   });

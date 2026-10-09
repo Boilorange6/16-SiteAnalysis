@@ -42,16 +42,16 @@ const WEATHER_TABLE_NOTE = "계절·시각별 대표 기상 자료를 확인하�
 const SEASON_KO: Record<Season, string> = { spring: "봄", summer: "여름", autumn: "가을", winter: "겨울" };
 
 const UTCI_CATEGORIES = [
-  { key: "extreme_cold", label: "극한 한랭", test: (value: number) => value < -40 },
-  { key: "very_strong_cold", label: "매우 강한 한랭", test: (value: number) => value >= -40 && value < -27 },
-  { key: "strong_cold", label: "강한 한랭", test: (value: number) => value >= -27 && value < -13 },
-  { key: "moderate_cold", label: "중간 한랭", test: (value: number) => value >= -13 && value < 0 },
-  { key: "slight_cold", label: "약한 한랭", test: (value: number) => value >= 0 && value < UTCI_BREAKS[0] },
-  { key: "no_thermal_stress", label: "열적 쾌적", test: (value: number) => value >= UTCI_BREAKS[0] && value < UTCI_BREAKS[1] },
-  { key: "moderate_heat", label: "중간 열스트레스", test: (value: number) => value >= UTCI_BREAKS[1] && value < UTCI_BREAKS[2] },
-  { key: "strong_heat", label: "강한 열스트레스", test: (value: number) => value >= UTCI_BREAKS[2] && value < UTCI_BREAKS[3] },
-  { key: "very_strong_heat", label: "매우 강한 열스트레스", test: (value: number) => value >= UTCI_BREAKS[3] && value < UTCI_BREAKS[4] },
-  { key: "extreme_heat", label: "극한 열스트레스", test: (value: number) => value >= UTCI_BREAKS[4] },
+  { key: "extreme_cold", label: "극한한랭", test: (value: number) => value < -40 },
+  { key: "very_strong_cold", label: "매우한랭", test: (value: number) => value >= -40 && value < -27 },
+  { key: "strong_cold", label: "강한한랭", test: (value: number) => value >= -27 && value < -13 },
+  { key: "moderate_cold", label: "중간한랭", test: (value: number) => value >= -13 && value < 0 },
+  { key: "slight_cold", label: "약한한랭", test: (value: number) => value >= 0 && value < UTCI_BREAKS[0] },
+  { key: "no_thermal_stress", label: "열적쾌적", test: (value: number) => value >= UTCI_BREAKS[0] && value < UTCI_BREAKS[1] },
+  { key: "moderate_heat", label: "중간열", test: (value: number) => value >= UTCI_BREAKS[1] && value < UTCI_BREAKS[2] },
+  { key: "strong_heat", label: "강한열", test: (value: number) => value >= UTCI_BREAKS[2] && value < UTCI_BREAKS[3] },
+  { key: "very_strong_heat", label: "매우열", test: (value: number) => value >= UTCI_BREAKS[3] && value < UTCI_BREAKS[4] },
+  { key: "extreme_heat", label: "극한열", test: (value: number) => value >= UTCI_BREAKS[4] },
 ] as const;
 
 type WeatherRow = {
@@ -389,16 +389,16 @@ function optionalMetric(
 
 function categoryLegend(): Array<{ label: string; min: number | null; max: number | null }> {
   return [
-    { label: "UTCI 극한 한랭 (< −40°C)", min: -50, max: -40 },
-    { label: "UTCI 매우 강한 한랭 (−40~−27°C)", min: -40, max: -27 },
-    { label: "UTCI 강한 한랭 (−27~−13°C)", min: -27, max: -13 },
-    { label: "UTCI 중간 한랭 (−13~0°C)", min: -13, max: 0 },
-    { label: "UTCI 약한 한랭 (0~9°C)", min: 0, max: 9 },
-    { label: "UTCI 열적 쾌적 (9~26°C)", min: 9, max: 26 },
-    { label: "UTCI 중간 열스트레스 (26~32°C)", min: 26, max: 32 },
-    { label: "UTCI 강한 열스트레스 (32~38°C)", min: 32, max: 38 },
-    { label: "UTCI 매우 강한 열스트레스 (38~46°C)", min: 38, max: 46 },
-    { label: "UTCI 극한 열스트레스 (≥46°C)", min: 46, max: null },
+    { label: "UTCI 극한한랭 (< −40°C)", min: -50, max: -40 },
+    { label: "UTCI 매우한랭 (−40~−27°C)", min: -40, max: -27 },
+    { label: "UTCI 강한한랭 (−27~−13°C)", min: -27, max: -13 },
+    { label: "UTCI 중간한랭 (−13~0°C)", min: -13, max: 0 },
+    { label: "UTCI 약한한랭 (0~9°C)", min: 0, max: 9 },
+    { label: "UTCI 열적쾌적 (9~26°C)", min: 9, max: 26 },
+    { label: "UTCI 중간열 (26~32°C)", min: 26, max: 32 },
+    { label: "UTCI 강한열 (32~38°C)", min: 32, max: 38 },
+    { label: "UTCI 매우열 (38~46°C)", min: 38, max: 46 },
+    { label: "UTCI 극한열 (≥46°C)", min: 46, max: null },
     { label: "바람 입력 없음", min: null, max: null },
     { label: "건물", min: null, max: null },
     { label: "반경 밖", min: null, max: null },

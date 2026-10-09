@@ -259,7 +259,7 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   sun_6_8: S("6~8시간", "#D85B2A"),
   sun_ge8: S("8시간 이상", "#A93D27"),
   sun_uncalc: S("미계산", "#B9BDC6"),
-  sun_face: { label: "대지 일조", color: "#F08A24", fill: "#F08A24", stroke: "#B45309", fillOpacity: 0.35, strokeWidth: 1 },
+  sun_face: { label: "대지 일조", subject: "대지", color: "#F08A24", fill: "#F08A24", stroke: "#B45309", fillOpacity: 0.35, strokeWidth: 1 },
   shadow_09: S("09:00 그림자", "#6D7580"),
   shadow_12: S("12:00 그림자", "#535A65"),
   shadow_15: S("15:00 그림자", "#383E48"),
