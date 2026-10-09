@@ -1,8 +1,8 @@
 /** D25 실거래 — 최근 12개월 아파트 매매의 단가 분위별 거래 건수와 위치 채움률. */
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../../engine/context";
-import { collectTrades, quintileOf, type TradePoint } from "./engine";
-import { fmt, makeTile, missing, obs, type MapCandidate, type TileDraft } from "../../engine/tiles/common";
+import { collectTrades, quintileOf } from "./engine";
+import { fmt, makeTile, missing, obs, type TileDraft } from "../../engine/tiles/common";
 import { notProvided } from "../../engine/tiles/not-provided";
 
 const SOURCE = "rtms_apt_trade";
@@ -16,26 +16,11 @@ const QUINTILE_LABELS = [
 ] as const;
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
-function tradeMap(points: TradePoint[]): MapCandidate[] {
-  const top3 = new Set([...points].sort((a, b) => b.n - a.n || a.i - b.i).slice(0, 3).map((p) => p.pnu));
-  const all = points.map((p) => p.m);
-  return points.map((p) => ({
-    id: p.i,
-    f: {
-      layer: `trade_q${quintileOf(p.m, all)}`,
-      lng: Math.round(p.at[0] * 1e6) / 1e6,
-      lat: Math.round(p.at[1] * 1e6) / 1e6,
-      weight: p.n,
-      ...(top3.has(p.pnu) ? { label: `${p.n}건 ${fmt(Math.round(p.m))}만원/㎡` } : {}),
-    },
-  }));
-}
-
 export function d25(ctx: EngineContext): TileResult {
   const trades = collectTrades(ctx);
   if (!trades) return notProvided(ctx, "D25");
 
-  const { sources, valid, priced, points, unlocated, absent, cancelled } = trades;
+  const { sources, valid, priced, unlocated, absent, cancelled } = trades;
   const locationTotal = valid.length + unlocated;
   const locationPct = locationTotal > 0 ? round1((valid.length / locationTotal) * 100) : null;
   const units = priced.map((trade) => trade.unit);
@@ -83,7 +68,8 @@ export function d25(ctx: EngineContext): TileResult {
     judgment: { ruleId: "D25-trade@1", basisMetricIds: ["fill_location_pct", "unlocated_trades"], sentence, level: null, criteria: null },
     sources,
     layers: ["trade_q1", "trade_q2", "trade_q3", "trade_q4", "trade_q5"],
-    map: tradeMap(points),
+    // D25는 A07의 흡수 타일이다. 같은 실거래 점을 다시 방출하면 보드 병합 전에 중복된다.
+    map: [],
     limitations,
   });
 }
