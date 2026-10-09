@@ -39,7 +39,7 @@ export const TILE_CATALOG = {
   A11: { title: "인구·가구", kind: "analysis", description: "SGIS 1 km 격자 인구·가구와 밀도 구간을 레이어별로 읽습니다.", sources: ["sgis_grid"], color: "#2B7A78" },
   A12: { title: "토지·용도지역", kind: "analysis", description: "용도지역 고정 분류·원천 세분·개별공시지가를 함께 보며, 고정 분류 번호가 자료 유무에 따라 밀리지 않습니다.", calculation: "고정된 용도지역 분류 순서로 원천 도형의 교차면적을 집계하고 지목·공시지가를 별도 레이어로 표시", sources: [...ZONING_SOURCES, "land_price"], color: "#C9A227" },
   D01: { title: "항공사진", kind: "diagram", description: "항공영상 배경에서 대지와 주변 형태를 확인합니다.", sources: ["vworld_wmts"], color: "#5A6B7B" },
-  D02: { title: "건물", kind: "diagram", description: "건물 발자국과 높이 확보 여부를 평면으로 봅니다.", sources: BUILDING_SOURCES, color: "#A0522D" },
+  D02: { title: "건물", kind: "diagram", description: "건물 발자국을 평면으로 봅니다.", sources: BUILDING_SOURCES, color: "#A0522D" },
   D03: { title: "건축물 용도", kind: "diagram", description: "건축물 용도를 건물 단위 구성으로 봅니다.", sources: BUILDING_SOURCES, color: "#B05A3C" },
   D04: { title: "준공 연대", kind: "diagram", description: "사용승인 연대별 건물 분포를 봅니다.", sources: BUILDING_SOURCES, color: "#A0522D" },
   D05: { title: "건축물 높이", kind: "diagram", description: "층수 기본 보기에서 35 m·12 m 기준과 확인·추정·미상을 레이어로 전환합니다.", calculation: "층수 분포를 기본으로 35 m 이상·12 m 이하 높이 모드를 별도 레이어로 계산하며 층수×3 m 추정은 [추정]으로 분리", sources: BUILDING_SOURCES, color: "#A5673F" },
