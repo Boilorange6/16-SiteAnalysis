@@ -94,6 +94,7 @@ const metric = (id) => result.metrics.find((item) => item.id === id);
 const area5 = metric("area_5min_km2");
 const area10 = metric("area_10min_km2");
 const area15 = metric("area_15min_km2");
+const formatAreaText = (value) => `${value.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km²`;
 assert.equal(result.tileCode, "D28");
 assert.equal(result.tileType, "diagram");
 assert.equal(result.status, "complete");
@@ -106,12 +107,18 @@ assert.ok(area5.value > 0);
 assert.ok(area5.value <= area10.value && area10.value <= area15.value, "cumulative reach area must be monotonic");
 assert.ok(metric("reach_ratio_10min_pct").value < 100, "network barriers must keep the 10-minute reach below the straight-line circle");
 assert.equal(metric("network_nodes").value, field.nodes);
-assert.match(result.judgment.sentence, /보행망 도보 10분\(800 m\) 도달 면적/);
+const expectedArea10Text = formatAreaText(area10.value);
+assert.ok(result.judgment.sentence.includes(`도달 면적 ${expectedArea10Text}(`), `D28 sentence must show every km² area to one decimal: expected ${expectedArea10Text}, got ${result.judgment.sentence}`);
 assert.match(result.judgment.sentence, /OSM 보행망·80 m\/분 기준/);
 assert.match(result.judgment.sentence, /현장 동선으로 확인할 것/);
-const view = (await import("../../lib/v2/ui/tile-view.ts")).toTileView(result);
+const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
+const view = toTileView(result);
 assert.equal((view.sentence.match(/도달 면적/g) ?? []).length, 1, "D28 화면 문장에는 도달 면적을 한 번만 표시한다");
+assert.equal(view.rows.find((row) => row.label === "도보 10분 도달 면적")?.value, expectedArea10Text, "D28 area rows must keep one decimal km² formatting");
+assert.equal(view.headline?.value, expectedArea10Text, "D28 headline area must keep one decimal km² formatting");
+assert.ok(view.sentence?.includes(`도달 면적 ${expectedArea10Text}(`), "D28 view sentence must show every km² area to one decimal");
 assert.ok(result.presentation.polygons?.length > 0);
+assert.ok(result.presentation.polygons?.every((polygon) => polygon.name == null && polygon.sublabel == null && polygon.labelPriority == null), "D28 polygons must not create map labels");
 assert.deepEqual(
   [...new Set(result.presentation.polygons.map((polygon) => polygon.layer))].sort(),
   ["walk_10", "walk_15", "walk_5"],
@@ -126,6 +133,7 @@ const diagonalEdges = smoothRing.reduce((count, point, index) => {
 assert.ok(diagonalEdges > 0, "marching-squares smoothing must remove cell-only right-angle edges");
 assert.ok(result.presentation.lines?.length > 0);
 assert.ok(result.presentation.lines.every((line) => line.layer === "walk_net" && line.points.length >= 2));
+assert.ok(result.presentation.lines.every((line) => line.name === null && line.sublabel === null && line.labelPriority === 0), "walk_net must explicitly opt out of labels");
 assert.ok(result.presentation.lines.every((line) => line.points.every((point) => {
   const [x, y] = toUtmk(point);
   return Math.hypot(x - cx, y - cy) <= 802;
@@ -154,7 +162,14 @@ const perfElapsedMs = performance.now() - perfStarted;
 assert.ok(perfElapsedMs <= 1500, `D28 50,451-node benchmark exceeded the 1.5 s budget: ${Math.round(perfElapsedMs)} ms`);
 assert.equal(metric("network_nodes").value, field.nodes);
 assert.equal(perfResult.metrics.find((item) => item.id === "network_nodes").value, 50451);
-assert.ok(perfResult.metrics.find((item) => item.id === "area_10min_km2").value > 0);
+const perfArea10 = perfResult.metrics.find((item) => item.id === "area_10min_km2");
+assert.ok(perfArea10.value > 1, "the connected benchmark must exercise the km² one-decimal branch");
+const perfArea10Text = formatAreaText(perfArea10.value);
+assert.ok(perfResult.judgment.sentence.includes(`도달 면적 ${perfArea10Text}(`), "D28 benchmark sentence must show km² areas to one decimal");
+const perfView = toTileView(perfResult);
+assert.equal(perfView.rows.find((row) => row.label === "도보 10분 도달 면적")?.value, perfArea10Text);
+assert.equal(perfView.headline?.value, perfArea10Text);
+assert.ok(perfView.sentence?.includes(`도달 면적 ${perfArea10Text}(`));
 
 const notProvided = parseTileResult(d28(fakeContext([], [source])));
 assert.equal(notProvided.status, "not_provided");
