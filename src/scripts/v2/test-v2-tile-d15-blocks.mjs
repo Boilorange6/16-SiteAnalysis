@@ -126,6 +126,10 @@ const SYNTHETIC_EXPECTED = {
   assert.equal(metric(tile, "median_block_ha").value, 4);
   assert.ok(tile.presentation.polygons.some((polygon) => polygon.layer === "block_2_5"));
   assert.ok(tile.presentation.polygons.some((polygon) => polygon.layer === "block_open"));
+  assert.ok(tile.presentation.polygons.every((polygon) => polygon.name === null), "D15 polygons have no fallback names");
+  assert.ok(tile.presentation.polygons.every((polygon) => polygon.labelPriority === 0), "D15 polygons stay out of automatic labels");
+  assert.equal(tile.presentation.polygons.find((polygon) => polygon.layer === "block_2_5")?.sublabel, "4ha", "D15 block sublabel uses original area in ha");
+  assert.ok(tile.presentation.polygons.filter((polygon) => polygon.layer === "block_open").every((polygon) => /ha$/.test(polygon.sublabel ?? "")), "D15 open-area sublabels use ha");
   assert.ok(tile.limitations.some((limitation) => limitation.note.includes("보행로 제외")));
   assert.deepEqual(
     tile.metrics.filter((item) => item.id.startsWith("share_count_")).map((item) => item.label),

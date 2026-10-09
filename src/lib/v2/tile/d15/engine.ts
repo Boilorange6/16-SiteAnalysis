@@ -670,6 +670,7 @@ function median(values: number[]): number | null {
 const pct = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0);
 const percentText = (value: number) => `${value.toLocaleString("en-US", { maximumFractionDigits: 1 })}%`;
 const areaHaText = (value: number | null) => value === null ? "미상" : `${value.toLocaleString("en-US", { maximumFractionDigits: 2 })}ha`;
+const mapAreaHaText = (areaM2: number) => `${(areaM2 / 10_000).toLocaleString("en-US", { maximumFractionDigits: 2 })}ha`;
 
 function framePolygon(bounds: Bbox) {
   const [minX, minY, maxX, maxY] = bounds;
@@ -696,7 +697,11 @@ function openCandidates(ctx: EngineContext, bounds: Bbox, blocks: Block[]): Poly
   const measured = areaInCircle(ctx.input.center, ctx.input.radiusM, openGeometry(bounds, blocks));
   if (!measured || measured.areaM2 <= 1e-4) return [];
   return measured.parts.flatMap((rings, index) => {
-    const candidate = polygonCandidate(-index - 1, "block_open", rings, polygonArea(rings));
+    const candidate = polygonCandidate(-index - 1, "block_open", rings, polygonArea(rings), null, {
+      name: null,
+      sublabel: mapAreaHaText(polygonArea(rings)),
+      labelPriority: 0,
+    });
     return candidate ? [candidate] : [];
   });
 }
@@ -788,7 +793,11 @@ export function d15(ctx: EngineContext): TileResult {
         const classIndex = BLOCK_CLASSES.findIndex((item) => item.matches(block.areaM2 / 10000));
         const layer = classIndex >= 0 ? BLOCK_CLASSES[classIndex].layer : "block_open";
         return block.clipped.flatMap((rings) => {
-          const candidate = polygonCandidate(block.id, layer, rings, polygonArea(rings));
+          const candidate = polygonCandidate(block.id, layer, rings, polygonArea(rings), null, {
+            name: null,
+            sublabel: mapAreaHaText(block.areaM2),
+            labelPriority: 0,
+          });
           return candidate ? [candidate] : [];
         });
       }),
