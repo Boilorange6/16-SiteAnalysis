@@ -483,6 +483,12 @@ export type SummaryView = {
   map: MapModel | null;
 };
 
+/** 요약 칩은 지도 범례 문구가 아니라 엔진이 전달한 명시 용도지역을 표시한다. */
+export function formatSiteZoning(zoning: string | null | undefined): string {
+  const value = zoning?.trim();
+  return value || "용도지역 미확인";
+}
+
 export function toSummaryView(s: SiteSummary, results: TileResult[]): SummaryView {
   const dates = results.flatMap((r) => r.provenance.sources.map((x) => x.sourceAsOf)).filter((d): d is string => !!d).sort();
   const weakStatuses = new Set<TileResult["status"]>(["failed", "not_provided", "no_data", "cancelled"]);
@@ -499,7 +505,7 @@ export function toSummaryView(s: SiteSummary, results: TileResult[]): SummaryVie
     areaSource: s.areaM2 === null ? "대상 필지 도형 자료 미확인" : s.areaSource ?? "도형 면적 · 공부면적 아님",
     landPrice: typeof s.landPriceM2 === "number" && Number.isFinite(s.landPriceM2) ? `공시지가: ${formatMetricValue(s.landPriceM2, s.landPriceUnit ?? "원/㎡")}${s.landPriceUnit ?? "원/㎡"}` : "공시지가 미확인",
     jimok: s.jimok ? `지목: ${s.jimok}` : "지목 미확인",
-    zoning: s.zoning ?? "용도지역 미확인",
+    zoning: formatSiteZoning(s.zoning),
     radius: `반경 ${s.radiusM >= 1000 ? `${s.radiusM / 1000}km` : `${s.radiusM}m`}`,
     siteMode,
     facts: s.facts.slice(0, 3),
