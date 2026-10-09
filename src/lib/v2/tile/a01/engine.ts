@@ -331,15 +331,21 @@ export function a01(ctx: EngineContext): TileResult {
       path,
       lengthM: linePathLength(path),
     })));
-    const longestByLine = new Map<string, number>();
-    for (const part of railLineParts) longestByLine.set(lineKey(part.hit), Math.max(longestByLine.get(lineKey(part.hit)) ?? 0, part.lengthM));
+    const longestByLine = new Map<string, { lengthM: number; fid: string }>();
+    for (const part of railLineParts) {
+      const fid = `${part.hit.featureId}:${part.index}`;
+      const key = lineKey(part.hit);
+      const current = longestByLine.get(key);
+      if (!current || part.lengthM > current.lengthM || (part.lengthM === current.lengthM && fid < current.fid)) longestByLine.set(key, { lengthM: part.lengthM, fid });
+    }
     for (const part of railLineParts) {
       const name = text(part.hit.name);
+      const fid = `${part.hit.featureId}:${part.index}`;
       const line = lineCandidate(part.hit.featureId, "rail_line", part.path, part.lengthM, null, {
-        fid: `${part.hit.featureId}:${part.index}`,
+        fid,
         name,
         sublabel: null,
-        labelPriority: name && part.lengthM === longestByLine.get(lineKey(part.hit)) ? 1 : 0,
+        labelPriority: name && longestByLine.get(lineKey(part.hit))?.fid === fid ? 1 : 0,
         color: hexColor(part.hit.properties.color) ?? DEFAULT_RAIL_COLOR,
         emphasis: "major",
       });
