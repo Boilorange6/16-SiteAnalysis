@@ -23,6 +23,12 @@ export type SceneGround =
 
 export interface SceneBuilding {
   id: string;
+  /** 건물 도형 원천에서 보존한 이름. 없는 원천은 null이다. */
+  name: string | null;
+  /** 화면 표시에 쓰는 층수·높이 보조 문구. 1층 가정은 의도적으로 null이다. */
+  sublabel: string | null;
+  /** 자동 라벨 우선순위: 이름 있는 주요 건물만 1, 이름 없는 건물은 0이다. */
+  labelPriority: number;
   rings: Ring[];
   /** 발자국 대표점 지표고(원점 상대). flat이면 null. */
   baseZ: number | null;
@@ -100,6 +106,9 @@ const SceneGroundSchema: z.ZodType<SceneGround> = z.discriminatedUnion("kind", [
 
 const SceneBuildingSchema: z.ZodType<SceneBuilding> = z.object({
   id: z.string().min(1),
+  name: z.string().nullable().default(null),
+  sublabel: z.string().nullable().default(null),
+  labelPriority: z.number().int().min(0).max(2).default(0),
   rings: z.array(RingSchema),
   baseZ: z.number().finite().nullable(),
   heightM: z.number().positive().nullable(),
@@ -108,6 +117,20 @@ const SceneBuildingSchema: z.ZodType<SceneBuilding> = z.object({
   useCode: z.string().nullable(),
   approvalDate: z.string().nullable(),
 });
+
+/** 건물명 뒤에 붙일 표시용 높이 문구를 만든다. 1층 가정은 별도 한계 문구로만 알린다. */
+export function sceneBuildingSublabel(
+  building: Pick<SceneBuilding, "floorsAbove" | "heightM" | "heightMethod">,
+): string | null {
+  if (building.heightMethod !== "assumed_one_floor" && building.floorsAbove !== null && Number.isFinite(building.floorsAbove) && building.floorsAbove > 0) {
+    return `${Math.round(building.floorsAbove)}층`;
+  }
+  if (building.heightMethod !== "assumed_one_floor" && building.heightM !== null && Number.isFinite(building.heightM) && building.heightM > 0) {
+    const value = Math.round(building.heightM * 10) / 10;
+    return `${Number.isInteger(value) ? value : value.toFixed(1)}m`;
+  }
+  return null;
+}
 
 const SceneParcelSchema: z.ZodType<SceneParcel> = z.object({
   pnu: z.string().min(1),
