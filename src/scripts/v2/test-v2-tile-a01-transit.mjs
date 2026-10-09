@@ -54,9 +54,11 @@ const noForbidden = (tile) => {
   assert.equal(tile.presentation.features.filter((feature) => feature.layer === "rail_nearest").length, 1);
   assert.equal(tile.presentation.features.filter((feature) => feature.layer === "rail_entrance").length, 1);
   assert.equal(tile.presentation.features.filter((feature) => ["rail_station", "rail_nearest", "rail_entrance"].includes(feature.layer)).length, 3);
-  assert.ok(tile.presentation.features.filter((feature) => feature.layer === "rail_line").length > 0, "A01은 선 레이어의 지도 호환 표본점도 보존한다");
+  assert.equal(tile.presentation.features.filter((feature) => feature.layer === "rail_line").length, 0, "A01은 노선 위 샘플 점을 만들지 않는다");
   assert.ok(tile.presentation.lines.filter((line) => line.layer === "rail_line").length > 0, "철도 노선 선 표시");
   assert.ok(tile.presentation.lines.filter((line) => line.layer === "rail_line").every((line) => line.points.length >= 2));
+  assert.match(tile.judgment.sentence, /나래역/);
+  assert.match(tile.judgment.sentence, /5호선/);
   assert.ok(tile.limitations.some((limitation) => limitation.note.includes("철도는 OSM 스냅샷")));
   assert.equal(tile.judgment.level, null);
   noForbidden(tile);

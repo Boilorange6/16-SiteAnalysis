@@ -5,7 +5,6 @@ import { ROAD_HIERARCHIES, type RoadHierarchy } from "../../ingest/sources/osm-r
 import { clipLineToCircle, distanceToLineM, lineLengthInCircle, linePathLength } from "../../engine/tiles/geo";
 import { lineCandidate, makeTile, missing, obs, type LineCandidate, type TileDraft } from "../../engine/tiles/common";
 import { notProvided } from "../../engine/tiles/not-provided";
-import { maxOf, minOf } from "../../extent";
 
 const ROAD_SOURCES = ["osm_roads"] as const;
 const ROAD_LAYERS = ROAD_HIERARCHIES.map((hierarchy) => `road:${hierarchy}`);
@@ -22,6 +21,12 @@ function sharesTenths(lengths: readonly number[], total: number): number[] {
   const adjust = lengths.reduce((best, length, index) => length > lengths[best] ? index : best, 0);
   units[adjust] += 1000 - units.reduce((sum, value) => sum + value, 0);
   return units.map((value) => value / 10);
+}
+
+function text(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
 }
 
 export function d13(ctx: EngineContext): TileResult {
@@ -59,18 +64,31 @@ export function d13(ctx: EngineContext): TileResult {
 
   const nearestSearchM = Math.min(5000, Math.max(ctx.input.radiusM, 1500));
   const nearestCandidates = ctx.hits("reference", ["road"], nearestSearchM).filter((hit) => ARTERIAL.has(hierarchyOf(hit.properties.hierarchy)));
-  const nearestDistances = nearestCandidates
-    .map((hit) => distanceToLineM(ctx.input.center, hit.geometry))
-    .filter((distance): distance is number => distance !== null);
-  const nearest = nearestDistances.length ? Math.round(minOf(nearestDistances)) : null;
+  const nearestCandidatesWithDistance = nearestCandidates
+    .map((hit) => ({ hit, distance: distanceToLineM(ctx.input.center, hit.geometry) }))
+    .filter((item): item is { hit: (typeof nearestCandidates)[number]; distance: number } => item.distance !== null)
+    .sort((a, b) => a.distance - b.distance || a.hit.featureId - b.hit.featureId);
+  const nearestCandidate = nearestCandidatesWithDistance[0] ?? null;
+  const nearest = nearestCandidate === null ? null : Math.round(nearestCandidate.distance);
   const nearestMetric = nearest === null
     ? missing("nearest_arterial_or_higher_m", "최근접 간선 이상 도로 중심선", "m", "d13-nearest@1:검색 반경 안 간선·고속도로 중심선까지의 최단 거리")
     : obs("nearest_arterial_or_higher_m", "최근접 간선 이상 도로 중심선", nearest, "m", "d13-nearest@1:검색 반경 안 간선·고속도로 중심선까지의 최단 거리", nearest, null);
 
   const coverage = ctx.coverage("reference", ROAD_SOURCES);
+  const topShares = ROAD_HIERARCHIES
+    .map((hierarchy, index) => ({ hierarchy, index, value: shareValues[index] }))
+    .filter(({ value }) => value > 0)
+    .sort((a, b) => b.value - a.value || a.index - b.index)
+    .slice(0, 2)
+    .map(({ hierarchy, value }) => `${hierarchy} ${value.toFixed(1)}%`)
+    .join(" · ");
+  const nearestName = nearestCandidate === null
+    ? null
+    : text(nearestCandidate.hit.name) ?? text(nearestCandidate.hit.properties.name);
+  const nearestText = nearest === null ? "확인되지 않음" : `${nearestName ? `${nearestName} ` : ""}${nearest}m`;
   const sentence = total <= 0
     ? `반경 ${ctx.input.radiusM.toLocaleString("en-US")}m 안 OSM 도로 중심선이 확인되지 않음 → 도로 공백과 원천 미확보를 구분할 수 없음 → 최신 OSM과 공식 도로대장 확인 필요`
-    : `반경 ${ctx.input.radiusM.toLocaleString("en-US")}m 안 OSM 도로 중심선 ${totalRounded.toLocaleString("en-US")}m, 최근접 간선 이상 도로 ${nearest === null ? "확인되지 않음" : `${nearest}m`} → 위계별 중심선 길이 구성비로 표시하고 선폭·공식 등급은 판단하지 않음 → 최신 OSM과 공식 도로대장 확인 필요`;
+    : `반경 ${ctx.input.radiusM.toLocaleString("en-US")}m 안 OSM 도로 중심선 ${totalRounded.toLocaleString("en-US")}m, 구성비 상위 2: ${topShares || "확인되지 않음"}, 최근접 간선 이상 도로 ${nearestText} → 위계별 중심선 길이 구성비로 표시하고 선폭·공식 등급은 판단하지 않음 → 최신 OSM과 공식 도로대장 확인 필요`;
 
   return makeTile(ctx, {
     code: "D13",

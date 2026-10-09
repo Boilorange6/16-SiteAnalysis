@@ -12,6 +12,7 @@ const { a01, gradeRail } = await import("../../lib/v2/tile/a01/engine.ts");
 const { a02 } = await import("../../lib/v2/tile/a02/engine.ts");
 const { a05 } = await import("../../lib/v2/tile/a05/engine.ts");
 const { a10 } = await import("../../lib/v2/tile/a10/engine.ts");
+const { d24 } = await import("../../lib/v2/tile/a10/d24.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 
 const make = async (options) => {
@@ -49,11 +50,12 @@ assert.deepEqual([500, 501, 1000, 1001].map(gradeRail), ["good", "fair", "fair",
   assert.ok(!t.limitations.some((l) => l.note.includes("철도 자료 미적재")));
   assert.ok(t.limitations.some((l) => l.note.includes("역 대표점")));
   assert.deepEqual(t.provenance.sources.map((s) => s.sourceId), ["bus_stop", "osm_subway"]);
-  // 지도: 노선 점열은 반경 안만, 최근접은 강조 + 라벨
+  // 지도: 노선은 반경 안 선(점열 없음), 최근접은 강조 + 라벨
   const nearest = layers(t, "rail_nearest");
   assert.deepEqual([nearest.length, nearest[0].highlight, nearest[0].label], [1, true, "직선 600m"]);
   assert.equal(layers(t, "rail_entrance").length, 1, "반경 안 출입구는 다온1뿐");
-  assert.ok(layers(t, "rail_line").length > 10);
+  assert.equal(layers(t, "rail_line").length, 0, "노선 위 샘플 점은 그리지 않는다");
+  assert.ok(t.presentation.lines.some((line) => line.layer === "rail_line"));
   assert.ok(t.presentation.layers.includes("rail_line"));
   noForbidden(t);
   ctx.close();
@@ -187,21 +189,23 @@ assert.deepEqual([500, 501, 1000, 1001].map(gradeRail), ["good", "fair", "fair",
   const t = a10(ctx);
   assert.equal(t.status, "partial");
   assert.deepEqual([val(t, "planned_projects"), val(t, "nearest_planned_station_m"), val(t, "nearest_planned_line_m")], [1, 361, 300]);
-  assert.equal(metric(t, "stage_1").label, "단계: 공사 중");
+  // 단계 분류는 흡수된 D24(back_stage_*)가 단일 권위 — test-v2-tile-a10*에서 병합 결과로 검증
+  assert.ok(!t.metrics.some((m) => m.id.startsWith("stage_")));
   assert.equal(metric(t, "opening_schedule").status, "missing");
   assert.equal(val(t, "review_age_days"), 75, "2026-07-17 → 2026-09-30");
   assert.ok(t.limitations.some((l) => l.kind === "partial" && l.note === "공개 계획 철도 목록이 일부(1건)만 포함"));
-  assert.match(t.judgment.sentence, /^위치는 개략 선형: 반경 안 계획·공사 사업 1건\(공사 중 1건\), 최근접 계획역 직선 361m/);
-  assert.equal(t.judgment.level, null);
+  assert.equal(t.judgment, null, "판단 문장은 흡수된 D24 하나만 — test-v2-tile-a10*");
   assert.equal(layers(t, "planned_rail_station")[0].highlight, true);
-  assert.ok(layers(t, "planned_rail_line").length > 10);
+  assert.equal(layers(t, "planned_rail_line").length, 0, "계획 노선 위 샘플 점은 그리지 않는다");
+  assert.ok(t.presentation.lines.some((line) => line.layer === "planned_rail_line"));
   noForbidden(t);
   ctx.close();
 
   // 반경 250: 선형(300m)도 계획역(361m)도 밖 → 0건이지만 “없다”고 단정하지 않는다
-  const empty = a10((await make({ planned: true }))(250));
+  const emptyCtx = (await make({ planned: true }))(250);
+  const empty = a10(emptyCtx);
   assert.equal(val(empty, "planned_projects"), 0);
   assert.equal(metric(empty, "nearest_planned_station_m").status, "missing");
-  assert.match(empty.judgment.sentence, /목록이 일부 사업만 담고 있어 계획이 없다는 뜻은 아님/);
+  assert.match(d24(emptyCtx).judgment.sentence, /계획이 없다는 뜻은 아님/);
 }
 console.log("engine rail/school/kapt/planned ok");

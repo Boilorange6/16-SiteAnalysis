@@ -109,6 +109,8 @@ assert.equal(metric("network_nodes").value, field.nodes);
 assert.match(result.judgment.sentence, /보행망 도보 10분\(800 m\) 도달 면적/);
 assert.match(result.judgment.sentence, /OSM 보행망·80 m\/분 기준/);
 assert.match(result.judgment.sentence, /현장 동선으로 확인할 것/);
+const view = (await import("../../lib/v2/ui/tile-view.ts")).toTileView(result);
+assert.equal((view.sentence.match(/도달 면적/g) ?? []).length, 1, "D28 화면 문장에는 도달 면적을 한 번만 표시한다");
 assert.ok(result.presentation.polygons?.length > 0);
 assert.deepEqual(
   [...new Set(result.presentation.polygons.map((polygon) => polygon.layer))].sort(),
