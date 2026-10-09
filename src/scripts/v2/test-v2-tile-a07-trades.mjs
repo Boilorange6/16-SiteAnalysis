@@ -21,6 +21,19 @@ const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 const make = async (options) => {
   const dir = mkdtempSync(join(tmpdir(), "v2-eng-d25-"));
   await buildEngineFixture(dir, "v1", options);
+  const core = new Database(join(dir, "versions", "v1", "core.sqlite"));
+  const nameRelease = insertRelease(core, {
+    sourceId: "housing_name_test",
+    provider: "테스트",
+    sourceUrl: "https://example.invalid",
+    sourceAsOf: "2026-09-30",
+    fetchedAt: "2026-09-30T00:00:00Z",
+    checksum: "x",
+    licenseCode: "TEST",
+  });
+  insertFeature(core, { stableId: "housing:trade-a", kind: "housing_complex", sourceKey: "trade-a", releaseId: nameRelease, geometry: { type: "Point", coordinates: CENTER }, pnu: "4136011800100010000", name: "다산 센트럴" });
+  insertFeature(core, { stableId: "housing:trade-b", kind: "housing_complex", sourceKey: "trade-b", releaseId: nameRelease, geometry: { type: "Point", coordinates: CENTER }, pnu: "4136011800100020000", name: "다산 리버" });
+  core.close();
   const manifest = M.readManifest(dir);
   return (radiusM = 800, analysisDate = "2026-09-30") =>
     new EngineContext(dir, manifest, "an-d25", {
@@ -99,6 +112,35 @@ const clean = (tile) => {
   const aCtx = (await make({ trades: true }))();
   const a = a07(aCtx);
   aCtx.close();
+  const named = a.presentation.features.find((feature) => feature.name === "다산 센트럴");
+  const unnamed = a.presentation.features.find((feature) => feature.name === null);
+  const pointA = trades.points.find((point) => point.pnu === "4136011800100010000");
+  const pointC = trades.points.find((point) => point.pnu === "1171010100100030000");
+  assert.deepEqual(
+    [named?.name, named?.sublabel, named?.labelPriority],
+    ["다산 센트럴", `${Math.round(pointA.m).toLocaleString("en-US")}만원/㎡ · ${pointA.n}건`, 1],
+    "A07은 lookupComplexNames 이름과 해당 PNU 단가·건수를 사용한다",
+  );
+  assert.deepEqual(
+    [unnamed?.name, unnamed?.sublabel, unnamed?.labelPriority],
+    [null, `${Math.round(pointC.m).toLocaleString("en-US")}만원/㎡ · ${pointC.n}건`, 0],
+    "A07 이름이 없으면 대체 문구 없이 priority 0이다",
+  );
+  assert.ok(a.presentation.features.every((feature) => !Object.hasOwn(feature, "label")), "A07는 옛 label을 내지 않는다");
+  const cuts = [0.2, 0.4, 0.6, 0.8].map((p) => {
+    const values = trades.points.map((point) => point.m).sort((x, y) => x - y);
+    const position = (values.length - 1) * p;
+    const lower = Math.floor(position);
+    const upper = Math.ceil(position);
+    return values[lower] + (values[upper] - values[lower]) * (position - lower);
+  });
+  assert.deepEqual(a.presentation.legend.map(({ label, min, max }) => ({ label, min, max })), [
+    { label: "㎡당 하위 20%", min: null, max: cuts[0] },
+    { label: "㎡당 20~40%", min: cuts[0], max: cuts[1] },
+    { label: "㎡당 40~60%", min: cuts[1], max: cuts[2] },
+    { label: "㎡당 60~80%", min: cuts[2], max: cuts[3] },
+    { label: "㎡당 상위 20%", min: cuts[3], max: null },
+  ], "A07 범례는 실제 점별 단가 분위 경계값을 보존한다");
   assert.deepEqual(
     t.presentation.features.map(({ layer, weight, lng, lat }) => ({ layer, weight, lng, lat })),
     a.presentation.features.map(({ layer, weight, lng, lat }) => ({ layer, weight, lng, lat })),
