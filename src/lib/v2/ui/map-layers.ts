@@ -97,7 +97,7 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   "store:other": S("기타 업소", "#B9BDC6"),
   rail_station: S("철도역", "#1F5FA8", undefined, "철도역"),
   rail_entrance: S("역 출입구", "#4F8FD8", undefined, "역 출입구"),
-  rail_line: { label: "철도 노선", color: "#1F5FA8", subject: "철도 노선", strokeWidth: 3.6, casing: "#FFFFFF" },
+  rail_line: { label: "철도 노선", color: "#1F5FA8", subject: "철도 노선", strokeWidth: 4.2, casing: "#FFFFFF" },
   rail_nearest: S("최근접 역", "#1F5FA8", undefined, "철도역"),
   school_elem: S("초등학교", "#E5A11C", undefined, "학교"),
   school_middle: S("중학교", "#D9822B", undefined, "학교"),

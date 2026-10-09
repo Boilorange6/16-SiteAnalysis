@@ -19,7 +19,7 @@ export const ENGINE_VERSION = "v2-p4-ext-1";
 const TILE_CACHE_REVISION: Readonly<Record<string, string>> = {
   // site-r1 is carried by conditions.parcelSnapshotHash/cacheKeyFor. Keep the
   // public per-tile engine version contract unchanged for existing consumers.
-  A01: "w3-merge-r1+w2b-r1",
+  A01: "w3-merge-r1+w2b-r1+w3-r1",
   A02: "w3-merge-r1+w2b-r1",
   A03: "w2b-r1",
   A04: "w3-merge-r1+w2b-r1",
