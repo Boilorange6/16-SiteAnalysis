@@ -24,7 +24,7 @@ export function d01(ctx: EngineContext): TileResult {
     judgment: {
       ruleId: "D01-aerial-imagery@1",
       basisMetricIds: ["imagery_zoom_max"],
-      sentence: `VWorld WMTS 항공영상 최대 줌 ${MAX_Z}로 항공 배경을 제공하고 촬영시기는 미확인 → 주변 지물의 배치와 현재 색·형태를 항공사진으로 확인할 수 있음 → 촬영일과 현장 현재 상태는 원본·현장에서 확인할 것`,
+      sentence: "VWorld WMTS 항공영상 제공 → 주변 지물의 배치·색·형태를 확인할 수 있음 → 촬영일과 현장 현재 상태는 원본·현장에서 확인할 것",
       level: null,
       criteria: null,
     },
