@@ -83,7 +83,7 @@ assert.deepEqual(zoning.map.lines, []);
 const many = (layer, prefix) => Array.from({ length: 2000 }, (_, index) => polygon(layer, `${prefix}-${index}`));
 const merged = mergeTileResults(result("D05", [], many("floors_1_4", "floor")), result("D05", [], many("height_tall", "height")));
 assert.equal(merged.presentation.polygons.length, MAX_MAP_POLYGONS, "흡수 결과도 최종 지도 면 상한을 지킨다");
-assert.equal(merged.presentation.polygonsTotal, 4000, "흡수 결과의 전체 면 개수를 보존한다");
+assert.equal(merged.presentation.polygonsTotal, 3000, "표시 상한을 반영한 전체 면 개수 공식");
 assert.deepEqual(new Set(merged.presentation.polygons.map((item) => item.layer)), new Set(["floors_1_4", "height_tall"]), "상한에서도 흡수 레이어별 면을 남긴다");
 
 console.log("✓ v2 W3 tile registry, merge layer options, and map filtering");

@@ -216,6 +216,14 @@ const halfArea = (d, r) => (r * r * Math.acos(-d / r) + d * Math.sqrt(r * r - d 
   // 대지 요약이 A12의 대지 용도지역을 쓴다
   const s = buildSummary({ address: "x", jimok: null }, 800, [t]);
   assert.equal(s.zoning, "제2종일반주거지역");
+  const explicitSiteName = {
+    ...t,
+    presentation: {
+      ...t.presentation,
+      features: t.presentation.features.map((f) => f.layer === "zoning_site" ? { ...f, name: "명시 용도지역", label: "옛 지도 라벨" } : f),
+    },
+  };
+  assert.equal(buildSummary({ address: "x", jimok: null }, 800, [explicitSiteName]).zoning, "명시 용도지역", "요약은 지도 label보다 명시 name을 우선");
   ctx.close();
 }
 {

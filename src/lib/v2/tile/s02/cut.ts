@@ -1,6 +1,7 @@
 import type { RasterRef, TileResult } from "../../tile-result";
 import type { TileView } from "../../ui/tile-view";
 import type { TileClientModule, TileCutCandidate, TileCutCell, TileCutModule, TileCutPlan } from "../types";
+import { isRecord, rasterNames, rasterRefs } from "../cut-utils";
 import { viewWithOnlyRasterForS02 } from "./view";
 
 export const S02_DATE_KEYS = ["spring", "summer", "autumn", "winter", "analysis"] as const;
@@ -17,24 +18,11 @@ const S02_DATE_LABEL: Record<S02DateKey, string> = {
 const S02_SEASONS = ["spring", "summer", "autumn", "winter"] as const;
 const S02_DEFAULT: S02Cut = { tile: "S02", mode: "single", date: "winter" };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object";
-}
-
 export function isS02Cut(value: unknown): value is S02Cut {
   if (!isRecord(value) || value.tile !== "S02") return false;
   if (value.mode !== "single" && value.mode !== "hours3" && value.mode !== "seasons4" && value.mode !== "flow") return false;
   return value.date === undefined || S02_DATE_KEYS.includes(value.date as S02DateKey);
 }
-
-type RasterMap = NonNullable<TileView["map"]> & { rasterOptions?: RasterRef[] };
-
-const rasterRefs = (view: TileView): RasterRef[] => {
-  const map = view.map as RasterMap | null;
-  return map?.rasterOptions ?? map?.rasters ?? [];
-};
-
-const rasterNames = (view: TileView): Set<string> => new Set(rasterRefs(view).map((ref) => ref.name));
 
 const hoursFor = (view: TileView, date: S02DateKey): string[] => rasterRefs(view)
   .map((ref) => ref.name)

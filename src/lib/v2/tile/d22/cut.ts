@@ -2,13 +2,9 @@ import type { RoseSeason } from "../../tile-result";
 import type { TileView } from "../../ui/tile-view";
 import type { TileCutCandidate, TileCutModule, TileCutPlan } from "../types";
 import { CUT_SEASON_LABEL, CUT_SEASONS } from "../cut-common";
-import { rasterCell, roseCell } from "../cut-utils";
+import { isRecord, rasterCell, roseCell } from "../cut-utils";
 
 export type D22Cut = { tile: "D22"; mode: "annual" | "seasons4" };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object";
-}
 
 export function isD22Cut(value: unknown): value is D22Cut {
   return isRecord(value) && value.tile === "D22" && (value.mode === "annual" || value.mode === "seasons4");

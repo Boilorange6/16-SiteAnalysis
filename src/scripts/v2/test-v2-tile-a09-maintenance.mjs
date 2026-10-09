@@ -95,7 +95,7 @@ const forbidden = /도보|\d\s*분|종합/;
   assert.equal(tile.presentation.features, undefined, "경계 없는 명부는 지도에 그리지 않음");
   assert.equal(tile.presentation.polygons, undefined, "경계 없는 명부는 면을 그리지 않음");
   assert.match(tile.limitations.map((l) => l.note).join("\n"), /경계 (없음|미확보)/);
-  assert.match(tile.judgment.sentence, /경계 미확보/);
+    assert.match(tile.judgment.sentence, /경계가 없어 반경 안에 있는지는 확인되지 않은/);
   assert.doesNotMatch(JSON.stringify(tile), forbidden);
   ctx.close();
 }

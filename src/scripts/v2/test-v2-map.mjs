@@ -103,13 +103,13 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
 // ── 요소 라벨 문구: 사용자 의미만 표시하고 도형 종류를 노출하지 않는다 ──
 {
   const namedBuilding = mapLabelText("bldg_1980s", "polygon", { layer: "bldg_1980s", rings: [], label: "고덕 그라시움 104동" });
-  assert.equal(namedBuilding, "고덕 그라시움 104동 · 1980년대");
-  assert.equal(mapLabelText("bldg_unknown", "polygon", { layer: "bldg_unknown", rings: [], label: null }), "미상 건물");
-  assert.equal(mapLabelText("bldg_unknown", "polygon", { layer: "bldg_unknown", rings: [], label: "미상" }), "미상 건물");
+   assert.equal(namedBuilding, "고덕 그라시움 104동");
+   assert.equal(mapLabelText("bldg_unknown", "polygon", { layer: "bldg_unknown", rings: [], label: null }), "미상");
+   assert.equal(mapLabelText("bldg_unknown", "polygon", { layer: "bldg_unknown", rings: [], label: "미상" }), "미상");
   assert.equal(mapLabelText("bus_stop", "feature", { layer: "bus_stop", lng: 127, lat: 37, name: null }), "버스정류장");
   assert.equal(mapLabelText("bus_nearest", "feature", { layer: "bus_nearest", lng: 127, lat: 37, name: "고덕역 정류장", distanceM: 480 }), "고덕역 정류장 · 직선 480m");
   assert.equal(mapLabelText("contour", "line", { layer: "contour", points: [], label: null }), "등고선");
-  for (const text of [namedBuilding, "미상 건물", "버스정류장", "고덕역 정류장 · 직선 480m", "등고선"]) {
+   for (const text of [namedBuilding, "미상", "버스정류장", "고덕역 정류장 · 직선 480m", "등고선"]) {
     assert.doesNotMatch(text, / · (점|면|선)$/);
   }
 }
@@ -185,8 +185,11 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
 // ── SVG 렌더: 배경 타일·반경 원·대지·범례·축척·북쪽·저작권 ──
 {
   const r = GODEOK_RESULTS.find((x) => x.tileCode === "A01");
-  const model = toTileView(r).map;
-  const html = renderToStaticMarkup(createElement(MapFigure, { model, width: 640, height: 360, fixed: true }));
+  const model = {
+    ...toTileView(r).map,
+    features: [...toTileView(r).map.features, { layer: "bus_nearest", lng: toTileView(r).map.center[0] + 0.003, lat: toTileView(r).map.center[1] + 0.002, name: "최근접 정류장", sublabel: "직선 340m", labelPriority: 2, highlight: true, distanceM: 340 }],
+  };
+  const html = renderToStaticMarkup(createElement(MapFigure, { model, width: 640, height: 360, fixed: true, pinnedKeys: [mapFeatureKey("bus_nearest", undefined, model.features.length - 1)], onFeaturePin: () => {} }));
   assert.match(html, /^<svg /);
   assert.ok((html.match(/<image /g) ?? []).length >= 4, "배경 타일");
   assert.match(html, /\/site\/api\/v2\/tiles\/white\//);

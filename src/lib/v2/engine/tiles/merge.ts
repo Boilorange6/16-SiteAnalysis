@@ -7,6 +7,10 @@ type Metric = TileResult["metrics"][number];
 export interface MergeOptions {
   /** 양쪽 결과에 같은 지표 id가 있으면 추가 결과를 우선한다. */
   replaceMetricIds?: readonly string[];
+  /** 병합 결과에서 양쪽 모두 제거할 지표 id. */
+  dropMetricIds?: readonly string[];
+  /** 판정을 기본 타일 그대로 둘지, 두 문장을 이어 붙일지. 기본값은 base. */
+  judgment?: "base" | "concat";
 }
 
 function dedupe<T>(items: T[], key: (item: T) => string): T[] {
@@ -44,15 +48,18 @@ function limitationKey(limitation: TileResult["limitations"][number]): string {
 }
 
 /** 이미 각 결과에서 상한 처리된 배열을 합칠 때도 최종 계약 상한을 지킨다. */
-function capByLayer<T extends { layer: string }>(items: T[], max: number): T[] {
+export function capByLayer<T extends { layer: string }>(items: T[], max: number, preferredLayers: readonly string[] = []): T[] {
   if (items.length <= max) return items;
   const groups = new Map<string, T[]>();
   for (const item of items) groups.set(item.layer, [...(groups.get(item.layer) ?? []), item]);
+  const preferred = new Map(preferredLayers.map((layer, index) => [layer, index]));
   const layers = [...groups.keys()].sort((a, b) => {
+    if (preferred.has(a) || preferred.has(b)) return (preferred.get(a) ?? Number.MAX_SAFE_INTEGER) - (preferred.get(b) ?? Number.MAX_SAFE_INTEGER) || a.localeCompare(b);
     if (a === "parcel_site") return -1;
     if (b === "parcel_site") return 1;
     return a.localeCompare(b);
   });
+  if (preferredLayers.length > 0) return layers.flatMap((layer) => groups.get(layer) ?? []).slice(0, max);
   const capped: T[] = [];
   for (let index = 0; capped.length < max; index++) {
     for (const layer of layers) {
@@ -64,12 +71,12 @@ function capByLayer<T extends { layer: string }>(items: T[], max: number): T[] {
   return capped;
 }
 
-function capMergedFeatures(items: MapFeature[]): MapFeature[] {
+function capMergedFeatures(items: MapFeature[], preferredLayers: readonly string[] = []): MapFeature[] {
   if (items.length <= MAX_MAP_FEATURES) return items;
   const highlighted = items.filter((item) => item.highlight);
   const normal = items.filter((item) => !item.highlight);
   if (highlighted.length >= MAX_MAP_FEATURES) return highlighted.slice(0, MAX_MAP_FEATURES);
-  return [...capByLayer(normal, MAX_MAP_FEATURES - highlighted.length), ...highlighted];
+  return [...capByLayer(normal, MAX_MAP_FEATURES - highlighted.length, preferredLayers), ...highlighted];
 }
 
 function mergedStatus(base: TileResult["status"], extra: TileResult["status"]): TileResult["status"] {
@@ -82,20 +89,43 @@ function mergedStatus(base: TileResult["status"], extra: TileResult["status"]): 
   return "complete";
 }
 
-function mergeJudgment(base: TileResult, extra: TileResult, metrics: Metric[]): TileResult["judgment"] {
-  if (!base.judgment) return extra.judgment;
-  if (!extra.judgment) return base.judgment;
+function sanitizeJudgment(judgment: TileResult["judgment"], metrics: Metric[]): TileResult["judgment"] {
+  if (!judgment) return null;
   const ids = new Set(metrics.map((metric) => metric.id));
-  const basisMetricIds = [...new Set([...base.judgment.basisMetricIds, ...extra.judgment.basisMetricIds])].filter((id) => ids.has(id));
-  const sentence = base.judgment.sentence === extra.judgment.sentence
-    ? base.judgment.sentence
-    : `${base.judgment.sentence} · ${extra.judgment.sentence}`;
+  const basisMetricIds = judgment.basisMetricIds.filter((id) => ids.has(id));
+  const grades = judgment.grades?.filter((grade) => ids.has(grade.metricId));
+  const validGrades = judgment.level !== null && basisMetricIds.length > 0 ? grades : undefined;
   return {
-    ...base.judgment,
+    ...judgment,
+    basisMetricIds,
+    level: basisMetricIds.length > 0 ? judgment.level : null,
+    criteria: basisMetricIds.length > 0 ? judgment.criteria : null,
+    ...(validGrades && validGrades.length > 0 ? { grades: validGrades } : {}),
+  };
+}
+
+function mergeJudgment(base: TileResult, extra: TileResult, metrics: Metric[], mode: "base" | "concat"): TileResult["judgment"] {
+  if (mode === "base") return sanitizeJudgment(base.judgment ?? extra.judgment, metrics);
+  if (!base.judgment) return sanitizeJudgment(extra.judgment, metrics);
+  if (!extra.judgment) return sanitizeJudgment(base.judgment, metrics);
+  const baseJudgment = sanitizeJudgment(base.judgment, metrics)!;
+  const extraJudgment = sanitizeJudgment(extra.judgment, metrics)!;
+  const basisMetricIds = [...new Set([...baseJudgment.basisMetricIds, ...extraJudgment.basisMetricIds])];
+  const sentence = baseJudgment.sentence === extraJudgment.sentence
+    ? baseJudgment.sentence
+    : `${baseJudgment.sentence} · ${extraJudgment.sentence}`;
+  return {
+    ...baseJudgment,
     basisMetricIds,
     sentence,
-    ...(base.judgment.grades ? { grades: base.judgment.grades } : extra.judgment.grades ? { grades: extra.judgment.grades } : {}),
+    ...(baseJudgment.grades ? { grades: baseJudgment.grades } : extraJudgment.grades ? { grades: extraJudgment.grades } : {}),
   };
+}
+
+function mergedTotal(baseTotal: number | undefined, baseDisplayed: number, extraTotal: number | undefined, extraDisplayed: number, mergedDisplayed: number): number {
+  const baseHidden = Math.max(0, (baseTotal ?? baseDisplayed) - baseDisplayed);
+  const extraHidden = Math.max(0, (extraTotal ?? extraDisplayed) - extraDisplayed);
+  return baseHidden + extraHidden + mergedDisplayed;
 }
 
 /** 계산 모듈이 아직 옛 tileCode를 반환해도 저장·화면에는 흡수 대상의 코드로 기록한다. */
@@ -105,11 +135,25 @@ export function retargetTile(tile: TileResult, ctx: EngineContext, code: string)
 
 export function mergeTileResults(base: TileResult, extra: TileResult, options: MergeOptions = {}): TileResult {
   const replace = new Set(options.replaceMetricIds ?? []);
-  const baseMetrics = base.metrics.filter((metric) => !replace.has(metric.id));
-  const metrics = dedupe([...baseMetrics, ...extra.metrics], metricKey);
-  const features = capMergedFeatures(dedupe([...(base.presentation.features ?? []), ...(extra.presentation.features ?? [])], featureKey));
-  const polygons = capByLayer(dedupe([...(base.presentation.polygons ?? []), ...(extra.presentation.polygons ?? [])], polygonKey), MAX_MAP_POLYGONS);
-  const lines = capByLayer(dedupe([...(base.presentation.lines ?? []), ...(extra.presentation.lines ?? [])], lineKey), MAX_MAP_LINES);
+  const drop = new Set(options.dropMetricIds ?? []);
+  const baseMetrics = base.metrics.filter((metric) => !replace.has(metric.id) && !drop.has(metric.id));
+  const extraMetrics = extra.metrics.filter((metric) => !drop.has(metric.id));
+  const metrics = dedupe([...baseMetrics, ...extraMetrics], metricKey);
+  const baseFeatures = base.presentation.features ?? [];
+  const extraFeatures = extra.presentation.features ?? [];
+  const basePolygons = base.presentation.polygons ?? [];
+  const extraPolygons = extra.presentation.polygons ?? [];
+  const baseLines = base.presentation.lines ?? [];
+  const extraLines = extra.presentation.lines ?? [];
+  const preferredLayers = [...new Set([
+    ...base.presentation.layers,
+    ...baseFeatures.map((item) => item.layer),
+    ...basePolygons.map((item) => item.layer),
+    ...baseLines.map((item) => item.layer),
+  ])];
+  const features = capMergedFeatures(dedupe([...baseFeatures, ...extraFeatures], featureKey), preferredLayers);
+  const polygons = capByLayer(dedupe([...basePolygons, ...extraPolygons], polygonKey), MAX_MAP_POLYGONS, preferredLayers);
+  const lines = capByLayer(dedupe([...baseLines, ...extraLines], lineKey), MAX_MAP_LINES, preferredLayers);
   const rasterRefs = dedupe([...(base.presentation.rasters ?? []), ...(extra.presentation.rasters ?? [])], (ref) => ref.name);
   const sourceRefs = dedupe([...base.provenance.sources, ...extra.provenance.sources], sourceKey);
   const limitations = dedupe([...base.limitations, ...extra.limitations], limitationKey);
@@ -118,16 +162,16 @@ export function mergeTileResults(base: TileResult, extra: TileResult, options: M
     ...base.presentation,
     legend,
     layers: [...new Set([...base.presentation.layers, ...extra.presentation.layers])],
-    ...(features.length > 0 ? { features, featuresTotal: (base.presentation.featuresTotal ?? base.presentation.features?.length ?? 0) + (extra.presentation.featuresTotal ?? extra.presentation.features?.length ?? 0) } : {}),
-    ...(polygons.length > 0 ? { polygons, polygonsTotal: (base.presentation.polygonsTotal ?? base.presentation.polygons?.length ?? 0) + (extra.presentation.polygonsTotal ?? extra.presentation.polygons?.length ?? 0) } : {}),
-    ...(lines.length > 0 ? { lines, linesTotal: (base.presentation.linesTotal ?? base.presentation.lines?.length ?? 0) + (extra.presentation.linesTotal ?? extra.presentation.lines?.length ?? 0) } : {}),
+    ...(features.length > 0 ? { features, featuresTotal: mergedTotal(base.presentation.featuresTotal, baseFeatures.length, extra.presentation.featuresTotal, extraFeatures.length, features.length) } : {}),
+    ...(polygons.length > 0 ? { polygons, polygonsTotal: mergedTotal(base.presentation.polygonsTotal, basePolygons.length, extra.presentation.polygonsTotal, extraPolygons.length, polygons.length) } : {}),
+    ...(lines.length > 0 ? { lines, linesTotal: mergedTotal(base.presentation.linesTotal, baseLines.length, extra.presentation.linesTotal, extraLines.length, lines.length) } : {}),
     ...(rasterRefs.length > 0 ? { rasters: rasterRefs } : {}),
   };
   return parseTileResult({
     ...base,
     status: mergedStatus(base.status, extra.status),
     metrics,
-    judgment: mergeJudgment(base, extra, metrics),
+    judgment: mergeJudgment(base, extra, metrics, options.judgment ?? "base"),
     presentation,
     provenance: { ...base.provenance, sources: sourceRefs },
     limitations,

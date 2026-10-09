@@ -59,7 +59,8 @@ export function buildSummary(site: { address: string; jimok: string | null; kind
   if (apts !== null) facts.push(`아파트 ${apts}개 단지, 확인 세대 ${(hh ?? 0).toLocaleString("en-US")}세대`);
   const basic = metric(results, "A03", "basic_groups");
   if (basic !== null) facts.push(`기초 생활시설 4군 중 ${basic}군 확인`);
-  // 대지 용도지역: A12가 중심점 강조점의 라벨로 남긴 값. 없으면 null(“용도지역 미확인”)
-  const zoning = results.find((r) => r.tileCode === "A12")?.presentation.features?.find((f) => f.layer === "zoning_site")?.label ?? null;
+  // 대지 용도지역: 요약은 지도 표현용 label보다 명시 계약 필드(name)를 우선한다.
+  const zoningFeature = results.find((r) => r.tileCode === "A12")?.presentation.features?.find((f) => f.layer === "zoning_site");
+  const zoning = zoningFeature?.name?.trim() || zoningFeature?.label?.trim() || null;
   return { address: site.address, areaM2, areaSource, parcelCount: parcelCountMetric ?? siteParcel?.length ?? null, landPriceM2: landPrice?.value ?? null, landPriceUnit: landPrice?.unit, jimok: site.jimok, zoning, radiusM, facts: facts.slice(0, 3), siteParcel, siteKind: site.kind };
 }

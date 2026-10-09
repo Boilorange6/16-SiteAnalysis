@@ -4,9 +4,14 @@ import type { TileCutCell } from "./types";
 
 export type RasterMap = NonNullable<TileView["map"]> & { defaultRaster?: string; rasterOptions?: RasterRef[] };
 
+/** 컷 입력의 선택적 매개변수를 읽을 때 쓰는 공용 JSON 객체 판정. */
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
 export const rasterRefs = (view: TileView): RasterRef[] => {
   const map = view.map as RasterMap | null;
-  return map?.rasterOptions ?? map?.rasters ?? [];
+  return [...new Map((map?.rasterOptions ?? map?.rasters ?? []).map((ref) => [ref.name, ref])).values()];
 };
 
 export const rasterNames = (view: TileView): Set<string> => new Set(rasterRefs(view).map((ref) => ref.name));

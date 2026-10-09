@@ -1,5 +1,6 @@
 import { memo, useId, useRef, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { layerStyle, legendItems, RASTER_STYLES, type MapModel, type RasterStyle } from "@/lib/v2/ui/map-layers";
+import { automaticLabelText, badgeTextColor, legacyLabelPriority, mapLabelText as formatMapLabelText, selectAutomaticLabels, type MapLabelKind } from "@/lib/v2/ui/map-labels";
 import { BASEMAP_ATTRIBUTION, BASEMAP_STACK, framedViewport, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, worldPx, type BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { rasterAffine, rasterLegendColor, resolveRasterStyle } from "@/lib/v2/ui/raster-image";
 import type { MapFeature, MapLine, MapPolygon, RasterRef } from "@/lib/v2/tile-result";
@@ -108,79 +109,29 @@ export type SiteMarkerMode = "parcel" | "ring";
 export type MapLabelEntry = {
   key: string;
   text: string;
+  autoText: string | null;
+  labelPriority: number;
+  order: number;
   layer: string;
-  kind: "feature" | "polygon" | "line";
+  kind: MapLabelKind;
   fid?: string;
 };
 
 /** 대표 지점·폴리곤·선이 같은 fid를 공유해도 고정 라벨 대상을 분리한다. */
 export const mapElementKey = (kind: MapLabelEntry["kind"], layer: string, fid: string | undefined, index: number): string => `${kind}|${mapFeatureKey(layer, fid, index)}`;
 
-const trimText = (value: string | null | undefined): string | null => {
-  const text = value?.trim();
-  return text ? text : null;
-};
-
-function formatLabelDistance(meters: number): string {
-  if (meters < 1000) return `${Math.round(meters).toLocaleString("ko-KR")}m`;
-  const km = meters / 1000;
-  return `${Number.isInteger(km) ? km.toFixed(0) : km.toFixed(1)} km`;
-}
-
-const GEOMETRY_ONLY_LABELS = new Set(["점", "면", "선"]);
-
-function userText(value: string | null | undefined): string | null {
-  const text = trimText(value);
-  return text && !GEOMETRY_ONLY_LABELS.has(text) ? text : null;
-}
-
-function unnamedLabel(layer: string): string {
-  const style = layerStyle(layer);
-  const subject = trimText(style.subject);
-  if (!subject || style.label.includes(subject)) return style.label;
-  return `${style.label} ${subject}`;
-}
-
-function featureLabelValue(feature: MapFeature): string | null {
-  if (feature.approvalYear !== null && feature.approvalYear !== undefined) return String(feature.approvalYear);
-  if (feature.plannedMonth) {
-    const match = /^(\d{4})-(\d{2})$/.exec(feature.plannedMonth);
-    if (match) return `${match[1]}년 ${Number(match[2])}월`;
-  }
-  if (feature.distanceM !== null && feature.distanceM !== undefined) return `직선 ${formatLabelDistance(feature.distanceM)}`;
-  if (feature.households !== null && feature.households !== undefined) return `${Math.round(feature.households).toLocaleString("ko-KR")}세대`;
-  if (feature.floorsMax !== null && feature.floorsMax !== undefined) return `최고 ${Math.round(feature.floorsMax)}층`;
-  if (feature.buildingCount !== null && feature.buildingCount !== undefined) return `${Math.round(feature.buildingCount)}동`;
-  if (feature.parking !== null && feature.parking !== undefined) return `주차 ${Math.round(feature.parking).toLocaleString("ko-KR")}대`;
-  return userText(feature.label);
-}
-
 /** 지도 요소가 사용자에게 전달할 라벨. 도형 종류(점·면·선)는 표시하지 않는다. */
-export function mapLabelText(layer: string, kind: MapLabelEntry["kind"], item: MapFeature | MapPolygon | MapLine): string {
-  const styleLabel = layerStyle(layer).label;
-  if (kind === "feature") {
-    const feature = item as MapFeature;
-    const name = trimText(feature.name);
-    const value = featureLabelValue(feature);
-    if (name) return value && value !== name ? `${name} · ${value}` : name;
-    return value ? `${unnamedLabel(layer)} · ${value}` : unnamedLabel(layer);
-  }
-  const explicit = userText(item.label);
-  if (kind === "polygon") {
-    // '미상' 범주는 값이 아니므로 이름 뒤에 붙이지 않는다.
-    if (explicit && explicit !== styleLabel) return styleLabel === "미상" ? explicit : `${explicit} · ${styleLabel}`;
-    return unnamedLabel(layer);
-  }
-  return explicit ?? unnamedLabel(layer);
-}
-
-const labelText = mapLabelText;
+export const mapLabelText = formatMapLabelText;
+const labelText = formatMapLabelText;
 
 /** 보드의 고정 라벨 목록과 SVG 라벨 배치가 같은 문구를 쓰도록 공유한다. */
 export function mapLabelEntries(model: MapModel): MapLabelEntry[] {
   const features = model.features.map((feature, index) => ({
     key: mapFeatureKey(feature.layer, feature.fid, index),
     text: labelText(feature.layer, "feature", feature),
+    autoText: automaticLabelText(feature.layer, "feature", feature),
+    labelPriority: feature.labelPriority ?? 0,
+    order: index,
     layer: feature.layer,
     kind: "feature" as const,
     ...(feature.fid ? { fid: feature.fid } : {}),
@@ -188,6 +139,9 @@ export function mapLabelEntries(model: MapModel): MapLabelEntry[] {
   const polygons = (model.polygons ?? []).map((polygon, index) => ({
     key: mapElementKey("polygon", polygon.layer, polygon.fid, index),
     text: labelText(polygon.layer, "polygon", polygon),
+    autoText: automaticLabelText(polygon.layer, "polygon", polygon),
+    labelPriority: polygon.labelPriority ?? 0,
+    order: model.features.length + index,
     layer: polygon.layer,
     kind: "polygon" as const,
     ...(polygon.fid ? { fid: polygon.fid } : {}),
@@ -195,6 +149,9 @@ export function mapLabelEntries(model: MapModel): MapLabelEntry[] {
   const lines = (model.lines ?? []).map((line, index) => ({
     key: mapElementKey("line", line.layer, line.fid, index),
     text: labelText(line.layer, "line", line),
+    autoText: automaticLabelText(line.layer, "line", line),
+    labelPriority: line.labelPriority ?? 0,
+    order: model.features.length + (model.polygons ?? []).length + index,
     layer: line.layer,
     kind: "line" as const,
     ...(line.fid ? { fid: line.fid } : {}),
@@ -269,7 +226,7 @@ function relevantRasterLegend(ref: RasterRef, styleLabel: string | undefined, le
     return legend.length === 1 || (!!styleLabel && entry.label.includes(styleLabel)) || (!!ref.label && entry.label.includes(ref.label));
   });
   if (matched.length > 0) return matched;
-  if (numeric.length > 0) return numeric;
+  if (numeric.length > 0) return legend.some((entry) => entry.min === null && entry.max === null) ? legend : numeric;
   return legend;
 }
 
@@ -284,24 +241,12 @@ function derivedSteppedLegend(ref: RasterRef, style: RasterStyle): RasterLegendE
 }
 
 function steppedLegendTitle(ref: RasterRef, style: RasterStyle): string {
-  if (ref.palette === "sun_hours") {
-    const date = /^(?:sun_hours|shade)_(spring|summer|autumn|winter|analysis)(?:_|$)/.exec(ref.name)?.[1];
-    const label = date === "spring" ? "춘분" : date === "summer" ? "하지" : date === "autumn" ? "추분" : date === "winter" ? "동지" : date === "analysis" ? "분석일" : null;
-    if (label) return `${label} 평균 일조시간 (시간)`;
-    return "일조시간 (시간)";
-  }
   if (ref.palette === "shade_flow" && ref.label) return ref.label;
   return style.label ?? ref.label ?? ref.name;
 }
 
 /** 카드 알약은 공간이 좁으므로, 원문을 자르지 않는 짧은 표시명을 사용한다. */
 function compactSteppedLegendTitle(ref: RasterRef, style: RasterStyle): string {
-  if (ref.palette === "sun_hours") {
-    const date = /^(?:sun_hours|shade)_(spring|summer|autumn|winter|analysis)(?:_|$)/.exec(ref.name)?.[1];
-    const label = date === "spring" ? "춘분" : date === "summer" ? "하지" : date === "autumn" ? "추분" : date === "winter" ? "동지" : date === "analysis" ? "분석일" : null;
-    if (label) return `${label} 일조시간`;
-    return "일조시간";
-  }
   if (ref.palette === "shade_flow" && ref.label) return ref.label;
   return steppedLegendTitle(ref, style);
 }
@@ -581,7 +526,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     };
   });
   const polygonOpacity = sat ? 0.45 : 0.35;
-  const isEstimated = (polygon: ScreenPolygon) => polygon.polygon.layer.endsWith("_est") || layerStyle(polygon.polygon.layer).label.startsWith("[추정]");
+  const isEstimated = (polygon: ScreenPolygon) => polygon.polygon.layer.endsWith("_est") || layerStyle(polygon.polygon.layer).label.startsWith("[추정]") || layerStyle(polygon.polygon.layer).hatch === true;
   const hatchId = (index: number) => `hatch${uid}-${index}`;
   const polygonPath = (rings: Array<Array<[number, number]>>) => rings.map((ring) => `${ring.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x} ${y}`).join("")}Z`).join(" ");
   const centerOf = (points: Array<[number, number]>): [number, number] => {
@@ -668,8 +613,6 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
   if (!muted) boxes.push(siteBounds);
 
   type ScreenLabel = MapLabelEntry & {
-    /** 자동 라벨은 이전처럼 원천 이름만 쓴다. `text`(이름 · 값)는 호버·고정 라벨용. */
-    autoText: string;
     p: [number, number];
     radius: number;
     small: boolean;
@@ -681,32 +624,32 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     ...drawn.map((d) => ({
       key: mapFeatureKey(d.f.layer, d.f.fid, d.index),
       text: labelText(d.f.layer, "feature", d.f),
-      autoText: trimText(d.f.label) || trimText(d.f.name) || labelText(d.f.layer, "feature", d.f),
+      autoText: automaticLabelText(d.f.layer, "feature", d.f, isLayerHighlighted(d.f.layer) && (!!d.f.highlight || d.selected)),
+      labelPriority: legacyLabelPriority("feature", d.f, isLayerHighlighted(d.f.layer) && (!!d.f.highlight || d.selected)) ?? 0,
+      order: d.index,
       layer: d.f.layer,
       kind: "feature" as const,
       ...(d.f.fid ? { fid: d.f.fid } : {}),
       p: d.p,
       radius: radiusOf(d.f),
       small: false,
-      explicit: !!trimText(d.f.label) || !!trimText(d.f.name),
+      explicit: !!automaticLabelText(d.f.layer, "feature", d.f),
       highlighted: isLayerHighlighted(d.f.layer) && (!!d.f.highlight || d.selected),
       pick: { fid: d.f.fid, lng: d.f.lng, lat: d.f.lat, kind: "feature" as const, key: mapFeatureKey(d.f.layer, d.f.fid, d.index) },
     })),
-    ...polygons
-      .slice()
-      .sort((a, b) => b.area - a.area || a.index - b.index)
-      .filter((d, index) => index < 5 || pinned.has(mapElementKey("polygon", d.polygon.layer, d.polygon.fid, d.index)))
-      .map((d) => ({
+    ...polygons.map((d) => ({
       key: mapElementKey("polygon", d.polygon.layer, d.polygon.fid, d.index),
       text: labelText(d.polygon.layer, "polygon", d.polygon),
-      autoText: trimText(d.polygon.label) || labelText(d.polygon.layer, "polygon", d.polygon),
+      autoText: automaticLabelText(d.polygon.layer, "polygon", d.polygon, isLayerHighlighted(d.polygon.layer) && highlightActive),
+      labelPriority: legacyLabelPriority("polygon", d.polygon, isLayerHighlighted(d.polygon.layer) && highlightActive) ?? 0,
+      order: model.features.length + d.index,
       layer: d.polygon.layer,
       kind: "polygon" as const,
       ...(d.polygon.fid ? { fid: d.polygon.fid } : {}),
       p: d.center,
       radius: 0,
       small: false,
-      explicit: !!trimText(d.polygon.label),
+      explicit: !!automaticLabelText(d.polygon.layer, "polygon", d.polygon),
       highlighted: isLayerHighlighted(d.polygon.layer) && highlightActive,
       pick: { fid: d.polygon.fid, ...(() => { const [lng, lat] = centerOf(d.polygon.rings[0] ?? []); return { lng, lat }; })(), kind: "polygon" as const, key: mapElementKey("polygon", d.polygon.layer, d.polygon.fid, d.index) },
     })),
@@ -716,14 +659,16 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
       return {
         key: mapElementKey("line", d.l.layer, d.l.fid, d.index),
         text: labelText(d.l.layer, "line", d.l),
-        autoText: trimText(d.l.label) || labelText(d.l.layer, "line", d.l),
+        autoText: automaticLabelText(d.l.layer, "line", d.l, isLayerHighlighted(d.l.layer) && highlightActive),
+        labelPriority: legacyLabelPriority("line", d.l, isLayerHighlighted(d.l.layer) && highlightActive) ?? 0,
+        order: model.features.length + (model.polygons ?? []).length + d.index,
         layer: d.l.layer,
         kind: "line" as const,
         ...(d.l.fid ? { fid: d.l.fid } : {}),
         p: center as [number, number],
         radius: 0,
         small: true,
-        explicit: !!trimText(d.l.label),
+        explicit: !!automaticLabelText(d.l.layer, "line", d.l),
         highlighted: isLayerHighlighted(d.l.layer) && highlightActive,
         pick: { fid: d.l.fid, lng, lat, kind: "line" as const, key: mapElementKey("line", d.l.layer, d.l.fid, d.index) },
       };
@@ -731,7 +676,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
   ];
   const labelByKey = new Map(screenLabels.map((entry) => [entry.key, entry]));
   const labelBox = (d: ScreenLabel, labelFs: number, decorated = false): { width: number; height: number } => ({
-    width: textW(decorated ? d.text : d.autoText, labelFs) + (decorated ? 12 : d.small ? 5 : 7) * u,
+    width: textW(decorated ? d.text : d.autoText ?? "", labelFs) + (decorated ? 12 : d.small ? 5 : 7) * u,
     height: labelFs * 1.45,
   });
   const closestPoint = (box: Box, p: readonly [number, number]): [number, number] => [
@@ -828,10 +773,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
       boxes.push(placed.box);
       labels.push(labelNode(entry, placed.box, "fixed", placed.fallback));
     }
-    const automatic = screenLabels
-      .filter((entry) => entry.explicit || entry.highlighted)
-      .filter((entry) => !pinnedSet.has(entry.key))
-      .sort((a, b) => Number(b.highlighted) - Number(a.highlighted) || Number(b.explicit) - Number(a.explicit) || a.key.localeCompare(b.key));
+    const automatic = selectAutomaticLabels(screenLabels).filter((entry) => !pinnedSet.has(entry.key));
     for (const entry of automatic) {
       const placed = placeLabel(entry, false);
       if (!placed) continue;
@@ -842,6 +784,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
   const hoverLabel = !bare && hoverKey && !pinned.has(hoverKey) ? labelByKey.get(hoverKey) : undefined;
   const hoverLabelPlacement = hoverLabel ? placeLabel(hoverLabel, true) : null;
   const hoverLabelNode = hoverLabel && hoverLabelPlacement ? labelNode(hoverLabel, hoverLabelPlacement.box, "hover") : null;
+  const featureBadges = drawn.flatMap((d) => (d.f.badges ?? []).slice(0, 4).map((badge, badgeIndex, badges) => ({ d, badge, badgeIndex, badgeCount: badges.length })));
 
   const north = { x: W - rightInset - 20 * u, y: (northOpt || 22 * u) };
   const dim = `M0 0H${W}V${H}H0Z M${cx - R} ${cy}a${R} ${R} 0 1 0 ${2 * R} 0a${R} ${R} 0 1 0 ${-2 * R} 0Z`;
@@ -886,6 +829,14 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
               <rect width={10 * u} height={10 * u} fill={st.fill ?? st.color} fillOpacity={st.fillOpacity ?? polygonOpacity} />
               <path d={`M0 0V${10 * u}`} stroke={st.color} strokeWidth={1.2 * u} strokeOpacity={0.75} />
             </pattern>
+            );
+        })}
+        {linePaths.filter((d) => layerStyle(d.l.layer).arrow).map((d) => {
+          const st = layerStyle(d.l.layer);
+          return (
+            <marker key={`arrow-${d.index}`} id={`arrow-${uid}-${d.index}`} markerWidth={4 * u} markerHeight={4 * u} refX={8} refY={5} viewBox="0 0 10 10" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill={d.l.color ?? st.color} />
+            </marker>
           );
         })}
       </defs>
@@ -953,7 +904,15 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
             const center = centerOf(d.l.points);
             const lineKey = mapElementKey("line", d.l.layer, d.l.fid, d.index);
             const strong = isElementStrong(d.l.layer, lineKey);
-            return <polyline key={`line${d.index}`} data-line="true" points={d.points.map(([x, y]) => `${x},${y}`).join(" ")} fill="none" opacity={isElementDimmed(d.l.layer, lineKey) ? 0.2 : undefined} stroke={strong || lineSelected ? INK : st.color} strokeWidth={(strong ? 1.6 : lineSelected ? 4 : 1.5) * u} strokeLinejoin="round" {...pickProps({ fid: d.l.fid, lng: center[0], lat: center[1], kind: "line" }, lineKey, labelText(d.l.layer, "line", d.l))} />;
+            const width = lineSelected ? 4 : (strong ? (st.strokeWidth ?? 1.5) * 1.35 : st.strokeWidth ?? 1.5) * (d.l.emphasis === "major" ? 1.2 : d.l.emphasis === "minor" ? 0.85 : 1);
+            const points = d.points.map(([x, y]) => `${x},${y}`).join(" ");
+            const stroke = strong || lineSelected ? INK : d.l.color ?? st.color;
+            return (
+              <g key={`line${d.index}`} opacity={isElementDimmed(d.l.layer, lineKey) ? 0.2 : undefined}>
+                {st.casing && <polyline points={points} fill="none" stroke={st.casing} strokeWidth={(width + 2.4) * u} strokeDasharray={st.dash} strokeLinejoin="round" pointerEvents="none" />}
+                <polyline data-line="true" points={points} fill="none" stroke={stroke} strokeWidth={width * u} strokeDasharray={st.dash} strokeLinejoin="round" markerEnd={st.arrow ? `url(#arrow-${uid}-${d.index})` : undefined} {...pickProps({ fid: d.l.fid, lng: center[0], lat: center[1], kind: "line" }, lineKey, labelText(d.l.layer, "line", d.l))} />
+              </g>
+            );
           })}
         </g>
         {showRadius && rings.map((r, i) => (
@@ -961,8 +920,8 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
         ))}
         {showRadius && <circle cx={cx} cy={cy} r={R} fill="none" stroke={line} strokeOpacity={sat ? 0.95 : 0.75} strokeWidth={1.6 * u} />}
 
-        {drawn.map((d, i) => {
-           if (d.f.highlight && d.f.layer.endsWith("_nearest")) {
+         {drawn.map((d, i) => {
+            if (d.f.highlight && d.f.distanceM != null) {
              const featureKey = mapFeatureKey(d.f.layer, d.f.fid, d.index);
              const strong = isElementStrong(d.f.layer, featureKey);
              return <line key={`nearest-${i}-${d.f.fid ?? d.f.layer}`} x1={cx} y1={cy} x2={d.p[0]} y2={d.p[1]} stroke={strong ? INK : line} strokeWidth={(strong ? 1.6 : 1.4) * u} strokeOpacity={isElementDimmed(d.f.layer, featureKey) ? 0.2 : undefined} strokeDasharray={`${3 * u} ${3 * u}`} />;
@@ -991,6 +950,19 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
               {...pickProps({ fid: d.f.fid, lng: d.f.lng, lat: d.f.lat, kind: "feature" }, featureKey, labelText(d.f.layer, "feature", d.f))}
             />
           );
+         })}
+         {featureBadges.map(({ d, badge, badgeIndex, badgeCount }) => {
+           const badgeFs = Math.max(8, fs * 0.72);
+           const badgeH = Math.max(12 * u, badgeFs * 1.35);
+           const badgeW = textW(badge.text, badgeFs) + 8 * u;
+           const x = d.p[0] + radiusOf(d.f) + 3 * u;
+           const y = d.p[1] - (badgeCount * badgeH) / 2 + badgeIndex * badgeH;
+           return (
+             <g key={`badge-${d.index}-${badgeIndex}-${badge.text}`} data-map-badge={badge.text} aria-label={badge.text} pointerEvents="none">
+               <rect x={x} y={y} width={badgeW} height={badgeH} rx={3 * u} fill={badge.color} stroke="#fff" strokeWidth={0.8 * u} />
+               <text x={x + badgeW / 2} y={y + badgeH * 0.72} textAnchor="middle" fontSize={badgeFs} fontWeight={700} fill={badgeTextColor(badge.color)}>{badge.text}</text>
+             </g>
+           );
          })}
         {routePoints.length >= 2 && (
           <>

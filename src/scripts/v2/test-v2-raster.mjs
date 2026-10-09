@@ -104,6 +104,7 @@ assert.equal(getTileRaster(db, "raster-b", "D02", "sun_hours", 17).status, 404);
 const view = toTileView(parseTileResult(makeResult("raster-a")));
 assert.ok(view.map, "래스터만 있는 결과도 지도 모델");
 assert.equal(view.map.basemap, "Satellite");
+assert.ok(!view.map.notes.includes("반경 안 표시할 지물 없음"), "basemap-only 지도에는 지물 없음 노트를 붙이지 않는다");
 assert.equal(effectiveLayer(view.map, "white"), "Satellite");
 assert.throws(() => parseTileResult({ ...makeResult("raster-a"), presentation: { ...makeResult("raster-a").presentation, basemap: "Base" } }));
 
@@ -134,6 +135,11 @@ const roofRgba = paintRgba(roofRef, new Uint8Array(9).fill(254), RASTER_STYLES.s
 assert.ok(roofRgba[0] < 120 && roofRgba[1] < 140 && roofRgba[2] < 160, "건물 표식 외곽선은 어두운 중립색");
 const roofCenter = (1 * 3 + 1) * 4;
 assert.ok(roofRgba[roofCenter] > 240 && roofRgba[roofCenter + 1] > 240 && roofRgba[roofCenter + 2] > 240, "건물 표식 내부는 밝은 중립색");
+assert.equal(RASTER_STYLES.sun_hours.colors.length, 16, "sun_hours 공용 팔레트는 16색이어야 한다");
+assert.deepEqual(RASTER_STYLES.sun_hours.breaks, Array.from({ length: 15 }, (_, index) => index + 1), "sun_hours 경계는 1~15시간이어야 한다");
+assert.equal(RASTER_STYLES.wind_ratio.mode, "stepped", "wind_ratio는 계단형 범례여야 한다");
+assert.deepEqual(RASTER_STYLES.wind_ratio.legendTicks, [0, 0.5, 0.8, 1.2, 1.5], "wind_ratio 범례 눈금");
+assert.deepEqual(RASTER_STYLES.wind_ratio.legendLabels, ["0~0.5", "0.5~0.8", "0.8~1.2", "1.2 이상"], "wind_ratio 범주 어휘");
 
 const svfStyle = RASTER_STYLES.svf;
 assert.deepEqual(svfStyle.stops, [0, 0.25, 0.5, 0.65, 0.75, 0.85, 0.92, 1], "SVF는 상위 구간을 세분한 stop을 쓴다");
@@ -198,7 +204,7 @@ const sunSvg = renderToStaticMarkup(createElement(MapFigure, {
   fixed: true,
   rasterHref: () => "data:image/png;base64,AAAA",
 }));
-assert.match(sunSvg, /data-raster-legend-title="true"[^>]*>하지 평균 일조시간 \(시간\)</);
+assert.match(sunSvg, /data-raster-legend-title="true"[^>]*>일조시간</);
 assert.equal((sunSvg.match(/data-raster-legend-entry=/g) ?? []).length, 16, "S02 범례는 16칸 단일 바");
 for (const tick of ["0", "3", "6", "9", "12", "15+"]) {
   assert.match(sunSvg, new RegExp(`data-raster-legend-tick="${tick.replace("+", "\\+")}"`), `S02 범례 ${tick}`);
@@ -229,8 +235,8 @@ const winterCardSvg = renderToStaticMarkup(createElement(MapFigure, {
   rasterHref: () => "data:image/png;base64,AAAA",
 }));
 assert.match(winterCardSvg, /data-raster-legend-rail="true"/);
-assert.match(winterCardSvg, /data-raster-legend-title="true"[^>]*>동지 일조시간</); // 카드 알약은 짧은 표시명, SVG title에는 전체 제목
-assert.match(winterCardSvg, /<title>동지 평균 일조시간 \(시간\)<\/title>/, "전체 범례 제목은 접근성 이름으로 보존");
+assert.match(winterCardSvg, /data-raster-legend-title="true"[^>]*>일조시간</);
+assert.match(winterCardSvg, /<title>일조시간<\/title>/, "공용 래스터 범례 제목은 접근성 이름으로 보존");
 assert.equal((winterCardSvg.match(/data-raster-legend-entry=/g) ?? []).length, 13, "S02 카드 rail은 모든 stepped cell을 유지");
 
 const buildingModel = {

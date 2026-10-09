@@ -16,6 +16,8 @@ const center = [127.1505, 37.6205];
 const mapLine = (label, dx = 0) => ({
   layer: "contour",
   points: [[127.149 + dx, 37.6215], [127.1505 + dx, 37.6215], [127.152 + dx, 37.6215]],
+  name: label,
+  labelPriority: label ? 1 : 0,
   label,
 });
 const model = {
