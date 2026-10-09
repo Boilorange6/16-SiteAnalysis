@@ -42,6 +42,14 @@ export type LayerStyle = {
   stroke?: string;
   fillOpacity?: number;
   strokeWidth?: number;
+  /** SVG stroke-dasharray, e.g. "6 4". */
+  dash?: string;
+  /** 선 아래에 까는 외곽선 색. 색약 환경에서 선을 분리한다. */
+  casing?: string;
+  /** 방향성이 있는 선에 화살표 끝을 붙인다. */
+  arrow?: boolean;
+  /** 미상 범주를 채움 대신 빗금으로 표시한다. */
+  hatch?: boolean;
 };
 
 export type RasterStyle = {

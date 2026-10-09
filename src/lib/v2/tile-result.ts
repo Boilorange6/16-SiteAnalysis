@@ -56,8 +56,14 @@ const MapFeatureSchema = z.object({
   weight: z.number().finite().nullable().optional(),
   label: z.string().nullable().optional(),
   highlight: z.boolean().optional(),
-  // 단지 설명선(A05·A06)용: 엔진이 아는 값만, 모르면 null(화면에는 "확인필요")
+  /** 지도 라벨 이름. 자동 라벨은 labelPriority가 함께 있을 때만 사용한다. */
   name: z.string().nullable().optional(),
+  /** 타일이 서식까지 끝낸 호버·고정 라벨의 보조 문구. */
+  sublabel: z.string().nullable().optional(),
+  /** 자동 라벨 노출 등급: 0은 자동 숨김, 1·2는 우선순위. */
+  labelPriority: z.number().int().min(0).max(2).optional(),
+  /** 짧은 표식. 색만으로 뜻을 구분하지 않도록 텍스트를 함께 그린다. */
+  badges: z.array(z.object({ text: z.string().min(1).max(4), color: z.string().regex(/^#[0-9A-Fa-f]{6}$/) })).max(4).optional(),
   type: z.string().nullable().optional(),
   households: z.number().finite().nullable().optional(),
   approvalYear: z.number().int().nullable().optional(),
@@ -84,6 +90,11 @@ const MapLineSchema = z.object({
   layer: z.string().min(1),
   points: z.array(LngLatSchema).min(2).max(MAX_LINE_VERTICES),
   label: z.string().nullable().optional(),
+  name: z.string().nullable().optional(),
+  sublabel: z.string().nullable().optional(),
+  labelPriority: z.number().int().min(0).max(2).optional(),
+  color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  emphasis: z.enum(["major", "minor"]).optional(),
 });
 const MapPolygonSchema = z.object({
   /** 상세 창에서 면 지물과 목록을 연결하는 안정적인 지물 키. */
@@ -92,6 +103,9 @@ const MapPolygonSchema = z.object({
   /** 첫 고리는 바깥, 나머지는 구멍. WGS84 [lng, lat]. 첫점=끝점으로 닫는다. */
   rings: z.array(z.array(LngLatSchema).min(4).max(MAX_POLYGON_VERTICES + 1)).min(1),
   label: z.string().nullable().optional(),
+  name: z.string().nullable().optional(),
+  sublabel: z.string().nullable().optional(),
+  labelPriority: z.number().int().min(0).max(2).optional(),
 });
 export const ROSE_SEASONS = ["annual", "spring", "summer", "autumn", "winter"] as const;
 export type RoseSeason = (typeof ROSE_SEASONS)[number];

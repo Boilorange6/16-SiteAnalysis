@@ -82,7 +82,7 @@ export function hitPoint(h: FeatureHit): [number, number] {
 
 export function candidate(h: FeatureHit, layer: string, extra: Partial<Omit<MapFeature, "layer" | "lng" | "lat">> = {}): MapCandidate {
   const [lng, lat] = hitPoint(h);
-  return { id: h.featureId, f: { layer, lng, lat, ...extra } };
+  return { id: h.featureId, f: { layer, lng, lat, name: h.name ?? null, ...extra } };
 }
 
 /** 거리 최소인 히트(같으면 featureId 작은 쪽). 거리 없는 히트는 제외. */
@@ -121,12 +121,12 @@ function projectedRing(ring: number[][]): Array<[number, number]> {
 }
 
 /** EPSG:5179 미터 폴리곤([바깥, 구멍…]) → 지도용 후보. 고리마다 200점 이하로 줄이고 WGS84로 바꾼다. */
-export function polygonCandidate(id: number, layer: string, rings: number[][][], areaM2: number, label: string | null = null): PolygonCandidate | null {
+export function polygonCandidate(id: number, layer: string, rings: number[][][], areaM2: number, label: string | null = null, extra: Partial<Omit<MapPolygon, "layer" | "rings">> = {}): PolygonCandidate | null {
   const out = rings
     .map((r) => projectedRing(r))
     .filter((r) => r.length >= 4)
     .map((r) => r);
-  return out.length === 0 || rings[0].length < 4 ? null : { id, areaM2, p: { layer, rings: out, label } };
+  return out.length === 0 || rings[0].length < 4 ? null : { id, areaM2, p: { layer, rings: out, label, ...extra } };
 }
 
 /** 상한을 넘으면 면적이 큰 것부터 남긴다. 결정적. */
@@ -189,13 +189,13 @@ function simplifyOpenLine(points: number[][], maxVertices: number): number[][] {
 }
 
 /** EPSG:5179 열린 선형 → 지도용 선. 200점을 넘으면 끝점을 보존해 단순화한다. */
-export function lineCandidate(id: number, layer: string, pathM: number[][], lengthM: number, label?: string | null): LineCandidate | null {
+export function lineCandidate(id: number, layer: string, pathM: number[][], lengthM: number, label?: string | null, extra: Partial<Omit<MapLine, "layer" | "points">> = {}): LineCandidate | null {
   if (pathM.length < 2 || pathM.some((point) => point.length < 2 || !Number.isFinite(point[0]) || !Number.isFinite(point[1]))) return null;
   const points = simplifyOpenLine(pathM, MAX_LINE_VERTICES).map((point) => {
     const [lng, lat] = toLngLat([point[0], point[1]]);
     return [Math.round(lng * 1e6) / 1e6, Math.round(lat * 1e6) / 1e6] as [number, number];
   });
-  return { id, lengthM, l: { layer, points, label: label ?? null } };
+  return { id, lengthM, l: { layer, points, label: label ?? null, ...extra } };
 }
 
 /** 상한을 넘으면 긴 선부터 남긴다. 결정적. */
@@ -219,6 +219,14 @@ export interface TileDraft {
   polygons?: PolygonCandidate[];
   /** 지도에 그릴 선 후보(선택). 상한 처리·범례는 makeTile이 한다. */
   lines?: LineCandidate[];
+  /** 타일이 값·범주까지 완성한 범례. 없으면 현재 레이어의 기본 범례를 만든다. */
+  legend?: TileResult["presentation"]["legend"];
+}
+
+function warnOverlappingFeatureGeometry(code: string, features: MapFeature[], polygons: MapPolygon[]): void {
+  const pointFids = new Set(features.map((feature) => feature.fid).filter((fid): fid is string => !!fid));
+  const overlaps = [...new Set(polygons.map((polygon) => polygon.fid).filter((fid): fid is string => !!fid && pointFids.has(fid)))];
+  if (overlaps.length > 0) console.warn(`[v2 map] ${code}: 같은 fid의 점+면이 함께 들어왔습니다: ${overlaps.join(", ")}`);
 }
 
 export function makeTile(ctx: EngineContext, d: TileDraft): TileResult {
@@ -230,7 +238,8 @@ export function makeTile(ctx: EngineContext, d: TileDraft): TileResult {
     ...(cappedPoly?.polygons.map((p) => p.layer) ?? []),
     ...(cappedLine?.lines.map((l) => l.layer) ?? []),
   ];
-  const legend = [...new Set(legendLayers.map((l) => layerStyle(l).label))].map((label) => ({ label, min: null, max: null }));
+  warnOverlappingFeatureGeometry(d.code, capped?.features ?? [], cappedPoly?.polygons ?? []);
+  const legend = d.legend ?? [...new Set(legendLayers.map((l) => layerStyle(l).label))].map((label) => ({ label, min: null, max: null }));
   return parseTileResult({
     tileId: `${ctx.analysisId}-${d.code}`,
     analysisId: ctx.analysisId,
