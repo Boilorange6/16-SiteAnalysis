@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 const { lic } = await import("../../lib/v2/ui/lic.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 const { windDirectionFromView, windDirectionLabel } = await import("../../lib/v2/ui/wind-upload.ts");
+const { s03ClientModule } = await import("../../lib/v2/tile/s03/view.ts");
 const { RECOVERED } = await import("../../lib/v2/ui/fixtures/godeok.ts");
 
 function correlation(values, width, height, dx, dy) {
@@ -60,5 +61,6 @@ assert.equal(windDirectionFromView(s03View, "annual"), 45);
 assert.equal(windDirectionFromView(s03View, "winter"), 225);
 assert.equal(windDirectionLabel(windDirectionFromView(s03View, "annual")), "북동(NE)");
 assert.equal(windDirectionFromView(toTileView(RECOVERED.S03), "annual"), null, "missing S03 direction must not default to south");
+assert.deepEqual(s03ClientModule.headline.ids, ["urel_median_annual", "share_wind_3_annual"]);
 
 console.log(`✓ v2 LIC deterministic directional texture (${alongStream.toFixed(4)} > ${acrossStream.toFixed(4)})`);
