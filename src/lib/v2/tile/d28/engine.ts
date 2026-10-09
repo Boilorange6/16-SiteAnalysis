@@ -78,7 +78,11 @@ function walkLineCandidates(field: WalkField, cx: number, cy: number, radiusM: n
   return raw
     .sort((a, b) => b.lengthM - a.lengthM || a.id - b.id)
     .slice(0, MAX_MAP_LINES)
-    .map((item) => lineCandidate(item.id, "walk_net", [item.path[0], item.path[1]], item.lengthM))
+    .map((item) => lineCandidate(item.id, "walk_net", [item.path[0], item.path[1]], item.lengthM, null, {
+      name: null,
+      sublabel: null,
+      labelPriority: 0,
+    }))
     .filter((item): item is LineCandidate => item !== null);
 }
 
@@ -252,7 +256,11 @@ function walkBandPolygons(field: WalkField, center: LngLat, radiusM: number): { 
     const geometry = bands[index];
     if (!geometry) continue;
     for (const rings of polygonParts(geometry)) {
-      const candidate = polygonCandidate(id++, WALK_LAYERS[index], rings, Math.max(0, polygonArea(rings)));
+      const candidate = polygonCandidate(id++, WALK_LAYERS[index], rings, Math.max(0, polygonArea(rings)), null, {
+        name: null,
+        sublabel: null,
+        labelPriority: 0,
+      });
       if (candidate) polygons.push(candidate);
     }
   }
@@ -262,9 +270,7 @@ function walkBandPolygons(field: WalkField, center: LngLat, radiusM: number): { 
 const round1 = (value: number) => Math.round(value * 10) / 10;
 const round3 = (value: number) => Math.round(value * 1000) / 1000;
 const areaKm2 = (areaM2: number) => round3(areaM2 / 1_000_000);
-const areaDisplay = (areaM2: number) => areaM2 < 1_000_000
-  ? `${Math.round(areaM2).toLocaleString("en-US")}㎡`
-  : `${Math.round(areaM2 / 1_000_000).toLocaleString("en-US")} km²`;
+const areaDisplay = (areaM2: number) => `${(areaM2 / 1_000_000).toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km²`;
 
 export function d28(ctx: EngineContext): TileResult {
   const sources = walkSources(ctx);

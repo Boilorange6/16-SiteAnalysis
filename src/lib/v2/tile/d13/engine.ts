@@ -5,10 +5,12 @@ import { ROAD_HIERARCHIES, type RoadHierarchy } from "../../ingest/sources/osm-r
 import { clipLineToCircle, distanceToLineM, lineLengthInCircle, linePathLength } from "../../engine/tiles/geo";
 import { lineCandidate, makeTile, missing, obs, type LineCandidate, type TileDraft } from "../../engine/tiles/common";
 import { notProvided } from "../../engine/tiles/not-provided";
+import { formatDistanceM } from "../../ui/tile-view";
 
 const ROAD_SOURCES = ["osm_roads"] as const;
 const ROAD_LAYERS = ROAD_HIERARCHIES.map((hierarchy) => `road:${hierarchy}`);
 const ARTERIAL = new Set<RoadHierarchy>(["고속도로", "간선"]);
+const NAMED_ROADS = new Set<RoadHierarchy>(["고속도로", "간선", "보조간선"]);
 
 function hierarchyOf(value: unknown): RoadHierarchy {
   return typeof value === "string" && (ROAD_HIERARCHIES as readonly string[]).includes(value) ? value as RoadHierarchy : "기타";
@@ -35,15 +37,14 @@ export function d13(ctx: EngineContext): TileResult {
 
   const roads = ctx.hits("reference", ["road"]);
   const lengths = ROAD_HIERARCHIES.map(() => 0);
-  const lines: LineCandidate[] = [];
+  const lineParts: Array<{ road: (typeof roads)[number]; index: number; path: number[][]; lengthM: number; hierarchy: RoadHierarchy }> = [];
   for (const road of roads) {
     const hierarchy = hierarchyOf(road.properties.hierarchy);
     const index = ROAD_HIERARCHIES.indexOf(hierarchy);
     const length = lineLengthInCircle(ctx.input.center, ctx.input.radiusM, road.geometry);
     lengths[index] += length;
-    for (const path of clipLineToCircle(ctx.input.center, ctx.input.radiusM, road.geometry)) {
-      const line = lineCandidate(road.featureId, `road:${hierarchy}`, path, linePathLength(path));
-      if (line) lines.push(line);
+    for (const [pathIndex, path] of clipLineToCircle(ctx.input.center, ctx.input.radiusM, road.geometry).entries()) {
+      lineParts.push({ road, index: pathIndex, path, lengthM: linePathLength(path), hierarchy });
     }
   }
 
@@ -85,7 +86,32 @@ export function d13(ctx: EngineContext): TileResult {
   const nearestName = nearestCandidate === null
     ? null
     : text(nearestCandidate.hit.name) ?? text(nearestCandidate.hit.properties.name);
-  const nearestText = nearest === null ? "확인되지 않음" : `${nearestName ? `${nearestName} ` : ""}${nearest}m`;
+  const nearestText = nearest === null ? "확인되지 않음" : `${nearestName ? `${nearestName} ` : ""}${formatDistanceM(nearest)}`;
+  const longestByName = new Map<string, { lengthM: number; fid: string }>();
+  for (const part of lineParts) {
+    const name = text(part.road.name);
+    if (!name) continue;
+    const key = `${part.hierarchy}|${name}`;
+    const fid = `${part.road.featureId}:${part.index}`;
+    const current = longestByName.get(key);
+    if (!current || part.lengthM > current.lengthM || (part.lengthM === current.lengthM && fid < current.fid)) longestByName.set(key, { lengthM: part.lengthM, fid });
+  }
+  const lines: LineCandidate[] = [];
+  for (const part of lineParts) {
+    const name = text(part.road.name);
+    const key = name ? `${part.hierarchy}|${name}` : null;
+    const isNearest = nearestCandidate?.hit.featureId === part.road.featureId;
+    const fid = `${part.road.featureId}:${part.index}`;
+    const isLongest = key !== null && longestByName.get(key)?.fid === fid;
+    const line = lineCandidate(part.road.featureId, `road:${part.hierarchy}`, part.path, part.lengthM, null, {
+      fid,
+      name,
+      sublabel: isNearest && nearest !== null ? `직선 ${formatDistanceM(nearest)}` : null,
+      labelPriority: isNearest ? 2 : isLongest && NAMED_ROADS.has(part.hierarchy) ? 1 : 0,
+      emphasis: NAMED_ROADS.has(part.hierarchy) ? "major" : "minor",
+    });
+    if (line) lines.push(line);
+  }
   const sentence = total <= 0
     ? `반경 ${ctx.input.radiusM.toLocaleString("en-US")}m 안 OSM 도로 중심선이 확인되지 않음 → 도로 공백과 원천 미확보를 구분할 수 없음 → 최신 OSM과 공식 도로대장 확인 필요`
     : `반경 ${ctx.input.radiusM.toLocaleString("en-US")}m 안 OSM 도로 중심선 ${totalRounded.toLocaleString("en-US")}m, 구성비 상위 2: ${topShares || "확인되지 않음"}, 최근접 간선 이상 도로 ${nearestText} → 위계별 중심선 길이 구성비로 표시하고 선폭·공식 등급은 판단하지 않음 → 최신 OSM과 공식 도로대장 확인 필요`;
