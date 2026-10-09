@@ -133,7 +133,18 @@ const noonWin = { ...base, windowStartMin: 12 * 60 + 20, windowEndMin: 12 * 60 +
   assert.equal(full.conditions.simulation.influenceRadiusM, 300);
   assert.equal(full.conditions.simulation.removeBuildingsInSite, false);
   assert.ok(full.metrics.find((m) => m.id === "shaded_ratio_h12").denominator > 0);
+  assert.ok(full.metrics.find((m) => m.id === "secured_ground_pct" && m.unit === "%"));
   assert.ok(full.metrics.every((m) => m.status === "estimated"));
+
+  const visual = buildS02TileResult(
+    { ...ctx, ...base, buildings: [box(1010, 1980, 40, 10, 30, "s")] },
+    undefined,
+    { site, shadows: { "09": [], "12": [], "15": [] } },
+  );
+  const visualSunFace = visual.presentation.polygons?.find((polygon) => polygon.layer === "sun_face");
+  assert.ok(visualSunFace && visualSunFace.name === null && /^동지 일조 \d+(?:\.\d)?시간$/.test(visualSunFace.sublabel ?? "") && visualSunFace.labelPriority === 2, "legacy S02 sun_face carries site label contract");
+  assert.equal(visual.presentation.legend.filter((item) => item.label.startsWith("동지 일조시간(시간) · ")).length, 16);
+  assert.ok(!visual.presentation.legend.some((item) => item.label === "수광면"));
 
   const partial = buildS02TileResult({ ...ctx, ...base, buildings: [box(1010, 1980, 40, 10, null, "a"), box(1010, 2100, 40, 10, null, "b")] });
   assert.equal(partial.status, "partial");

@@ -51,10 +51,13 @@ try {
   assert.equal(tile.conditions.simulation.hourlyMinAltDeg, 5);
   assert.equal(Object.keys(tile.conditions.simulation.dates).length, 5);
   assert.equal(tile.conditions.simulation.dates.winter.date, "2026-12-22");
-  const hourLegend = tile.presentation.legend.filter((item) => item.label.startsWith("일조시간 · "));
-  assert.equal(hourLegend.length, 13, "sun-hour legend has 0..12+ hourly bins");
-  assert.deepEqual(hourLegend[0], { label: "일조시간 · 0시간", min: 0, max: 1 });
-  assert.deepEqual(hourLegend.at(-1), { label: "일조시간 · 12시간 이상", min: 12, max: null });
+  const hourLegend = tile.presentation.legend.filter((item) => item.label.startsWith("동지 일조시간(시간) · "));
+  assert.equal(hourLegend.length, 16, "sun-hour legend has one 0..15+ hourly set");
+  assert.deepEqual(hourLegend[0], { label: "동지 일조시간(시간) · 0시간", min: 0, max: 1 });
+  assert.deepEqual(hourLegend.at(-1), { label: "동지 일조시간(시간) · 15시간 이상", min: 15, max: null });
+  assert.ok(!tile.presentation.legend.some((item) => item.label === "수광면"), "legacy 수광면 legend is absent");
+  const sunFace = tile.presentation.polygons?.find((polygon) => polygon.layer === "sun_face");
+  assert.ok(sunFace && sunFace.name === null && /^동지 일조 \d+(?:\.\d)?시간$/.test(sunFace.sublabel ?? "") && sunFace.labelPriority === 2, "sun_face carries site label contract");
   assert.ok(tile.presentation.rasters?.some((ref) => ref.name === "sun_hours_winter"));
   assert.ok(tile.presentation.rasters?.some((ref) => ref.name === "shade_winter_flow"));
   assert.ok(tile.presentation.polygons?.some((polygon) => polygon.layer === "sun_face"));
@@ -97,6 +100,7 @@ try {
   assert.ok(sunRaw.includes(255), "outside-radius cells are nodata 255");
 
   assert.ok(tile.metrics.some((metric) => metric.id === "mean_sun_h_winter"));
+  assert.ok(tile.metrics.some((metric) => metric.id === "secured_ground_pct_winter" && metric.unit === "%"));
   assert.ok(tile.metrics.every((metric) => metric.value === null || (metric.unit === "%" ? metric.value >= 0 && metric.value <= 100 : true)));
   assert.ok(tile.limitations.some((limitation) => limitation.note.includes("높이·층수 자료가 없는 건물") && limitation.note.includes("1층(3 m)으로 가정")));
   assert.ok(tile.limitations.some((limitation) => limitation.note.includes("400 m")));

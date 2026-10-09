@@ -40,6 +40,7 @@ export interface S02Presentation {
 type Metric = TileResult["metrics"][number];
 const hhmm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(Math.round(min % 60)).padStart(2, "0")}`;
 const pct = (x: number) => Math.round(x * 1000) / 10;
+const sunFaceSublabel = (hours: number | null): string | null => hours !== null && Number.isFinite(hours) ? `동지 일조 ${Math.round(hours * 10) / 10}시간` : null;
 
 function metric(id: string, label: string, unit: string, value: number | null, numerator: number | null, denominator: number | null, formulaVersion: string): Metric {
   return { id, label, value, unit, formulaVersion, numerator, denominator, status: value === null ? "missing" : "estimated" };
@@ -69,6 +70,9 @@ export function buildS02TileResult(input: S02Input, precomputed?: SunlightResult
     metric(shareId, `연속 ${N}시간 이상 일조 면적률`, "%", r.shareAtLeastN === null ? null : pct(r.shareAtLeastN), r.shareAtLeastN === null ? null : Math.round(r.shareAtLeastN * calc), calc || null, "s02-share-continuous@1"),
   );
   metrics.push(
+    metric("secured_ground_pct", "확보 지면", "%", r.shareAtLeastN === null ? null : pct(r.shareAtLeastN), r.shareAtLeastN === null ? null : Math.round(r.shareAtLeastN * calc), calc || null, "s02-secured-ground@1"),
+  );
+  metrics.push(
     metric("uncalculated_ratio", "미계산 면적률", "%", r.uncalculatedRatio === null ? null : pct(r.uncalculatedRatio), r.counts.uncalculated, calc + r.counts.uncalculated || null, "s02-uncalculated@1"),
   );
 
@@ -89,17 +93,24 @@ export function buildS02TileResult(input: S02Input, precomputed?: SunlightResult
 
   const polygons: NonNullable<TileResult["presentation"]["polygons"]> = [];
   const layers = ["shadow_09", "shadow_12", "shadow_15", "sun_face"];
-  const legend = ["shadow_09", "shadow_12", "shadow_15", "sun_face"].map((layer) => ({
-    label: ({ shadow_09: "09:00 그림자", shadow_12: "12:00 그림자", shadow_15: "15:00 그림자", sun_face: "수광면" } as Record<string, string>)[layer],
-    min: null,
-    max: null,
-  }));
+  const legend: TileResult["presentation"]["legend"] = [
+    ...["shadow_09", "shadow_12", "shadow_15"].map((layer) => ({
+      label: ({ shadow_09: "09:00 그림자", shadow_12: "12:00 그림자", shadow_15: "15:00 그림자" } as Record<string, string>)[layer],
+      min: null,
+      max: null,
+    })),
+    ...sunHoursLegend(),
+  ];
   if (visual) {
     for (const site of siteRings(visual.site)) {
       if (site.length < 3) continue;
       const ring = site.map(([x, y]) => [x, y] as number[]);
       if (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1]) ring.push([...ring[0]]);
-      const siteCandidate = polygonCandidate(0, "sun_face", [ring], polygonArea([ring]), "수광면");
+      const siteCandidate = polygonCandidate(0, "sun_face", [ring], polygonArea([ring]), null, {
+        name: null,
+        sublabel: sunFaceSublabel(r.medianHours),
+        labelPriority: 2,
+      });
       if (siteCandidate) polygons.push(siteCandidate.p);
     }
     let id = 1;
@@ -157,12 +168,12 @@ export function buildS02TileResult(input: S02Input, precomputed?: SunlightResult
 export const S02_RASTER_ENGINE_VERSION = "v2-sun-raster@1";
 export const S02_DATE_KEYS = ["spring", "summer", "autumn", "winter", "analysis"] as const;
 
-/** Map/report consumers need explicit one-hour bins; a single 0..13 range loses the 12+ cut. */
-export function sunHoursLegend(prefix = "일조시간"): TileResult["presentation"]["legend"] {
-  return Array.from({ length: 13 }, (_, index) => ({
-    label: index === 12 ? `${prefix} · 12시간 이상` : `${prefix} · ${index}시간`,
+/** Map/report consumers need explicit one-hour bins through the 15-hour cut. */
+export function sunHoursLegend(prefix = "동지 일조시간(시간)"): TileResult["presentation"]["legend"] {
+  return Array.from({ length: 16 }, (_, index) => ({
+    label: index === 15 ? `${prefix} · 15시간 이상` : `${prefix} · ${index}시간`,
     min: index,
-    max: index === 12 ? null : index + 1,
+    max: index === 15 ? null : index + 1,
   }));
 }
 
@@ -327,7 +338,7 @@ function fieldConditions(fields: readonly S02RasterField[]): Record<string, unkn
   ]));
 }
 
-function sitePolygons(site: SiteRings): NonNullable<TileResult["presentation"]["polygons"]> {
+function sitePolygons(site: SiteRings, sublabel: string | null): NonNullable<TileResult["presentation"]["polygons"]> {
   return siteRings(site).flatMap((part) => {
     if (part.length < 3) return [];
     const ring = part.map(([x, y]) => {
@@ -335,7 +346,11 @@ function sitePolygons(site: SiteRings): NonNullable<TileResult["presentation"]["
       return [Math.round(lng * 1e6) / 1e6, Math.round(lat * 1e6) / 1e6];
     });
     if (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1]) ring.push([...ring[0]]);
-    const candidate = polygonCandidate(0, "sun_face", [ring], polygonArea([part.map(([x, y]) => [x, y])]), "수광면");
+    const candidate = polygonCandidate(0, "sun_face", [ring], polygonArea([part.map(([x, y]) => [x, y])]), null, {
+      name: null,
+      sublabel,
+      labelPriority: 2,
+    });
     return candidate ? [candidate.p] : [];
   });
 }
@@ -354,6 +369,7 @@ export function buildS02RasterTileResult(input: S02RasterTileInput): TileResult 
     metrics.push(estimatedMetric("mean_sun_h" + suffix, SEASON_LABEL[item.key] + " 평균 일조시간", "시간", round1(field.stats.meanHours), "sun-mean-hours@1", field.stats.receivers ? field.stats.meanHours * field.stats.receivers : null, field.stats.receivers || null));
     metrics.push(estimatedMetric("share_lt1h_pct" + suffix, SEASON_LABEL[item.key] + " 1시간 미만 일조 면적률", "%", pct100(field.stats.shareLt1h), "sun-share-lt1h@1", field.stats.receivers * field.stats.shareLt1h, field.stats.receivers));
     metrics.push(estimatedMetric("share_cont2h_0915_pct" + suffix, SEASON_LABEL[item.key] + " 진태양시 09~15 연속 2시간 확보", "%", pct100(field.stats.shareCont2h), "sun-share-cont2h@1", field.stats.receivers * field.stats.shareCont2h, field.stats.receivers));
+    metrics.push(estimatedMetric("secured_ground_pct" + suffix, SEASON_LABEL[item.key] + " 확보 지면", "%", pct100(field.stats.shareCont2h), "sun-secured-ground@1", field.stats.receivers * field.stats.shareCont2h, field.stats.receivers));
     metrics.push(estimatedMetric("share_total4h_0816_pct" + suffix, SEASON_LABEL[item.key] + " 진태양시 08~16 총 4시간 확보", "%", pct100(field.stats.shareTotal4h), "sun-share-total4h@1", field.stats.receivers * field.stats.shareTotal4h, field.stats.receivers));
     metrics.push(estimatedMetric("tst_0915_kst" + suffix, "진태양시 09~15 = KST 09:" + String(Math.round(field.tstOffsetMin)).padStart(2, "0") + "~15:" + String(Math.round(field.tstOffsetMin)).padStart(2, "0"), "분", round1(field.tstOffsetMin), "sun-tst-offset@1"));
     metrics.push(estimatedMetric("receivers" + suffix, SEASON_LABEL[item.key] + " 수광 셀", "셀", field.stats.receivers, "sun-receivers@1"));
@@ -387,7 +403,7 @@ export function buildS02RasterTileResult(input: S02RasterTileInput): TileResult 
   const sentence = winter
     ? lead + ", 동지 진태양시 09~15 연속 2시간 확보 " + pct100(winterCont) + "%, 08~16 총 4시간 " + pct100(winterTotal) + "% → 건물·지형 모델의 기하학적 추정이며 창면·기상·법적 판정이 아님 → 세대 창 위치 기준 정밀 일조 검토로 확인할 것"
     : "동지 일조장을 계산하지 못함 → 건물·지형 자료를 확인할 것";
-  const polygons = sitePolygons(input.site);
+  const polygons = sitePolygons(input.site, sunFaceSublabel(winterMean));
   return parseTileResult({
     tileId: input.analysisId + "-S02",
     analysisId: input.analysisId,
@@ -419,7 +435,6 @@ export function buildS02RasterTileResult(input: S02RasterTileInput): TileResult 
     judgment: { ruleId: "S02-sunlight-summary@3", basisMetricIds: ["mean_sun_h_winter", "share_cont2h_0915_pct_winter", "share_total4h_0816_pct_winter", ...(summer ? ["mean_sun_h_summer"] : [])], sentence, level: null, criteria: null },
     presentation: {
       legend: [
-        { label: "수광면", min: null, max: null },
         ...sunHoursLegend(),
         { label: "그림자", min: null, max: null },
         { label: "그림자 흐름", min: 0, max: 1 },

@@ -7,6 +7,7 @@ import {
   SCENE_MAX_PARCELS,
   SCENE_GRID_MAX,
   parseScene,
+  sceneBuildingSublabel,
   toLocalRing,
   type Ring,
   type Scene,
@@ -108,8 +109,12 @@ function makeBuilding(
   terrain: TerrainForScene | null,
 ): SceneBuilding {
   const elevation = terrain?.reader.elevation(...hitPoint(row.hit)) ?? null;
+  const name = typeof row.hit.name === "string" && row.hit.name.trim() ? row.hit.name.trim() : null;
   return {
     id: row.hit.stableId,
+    name,
+    sublabel: sceneBuildingSublabel(row),
+    labelPriority: name ? 1 : 0,
     rings: localRings(row.hit, origin),
     baseZ: elevation === null || terrain === null ? null : roundCentimeter(elevation - terrain.originZ),
     heightM: row.heightM,

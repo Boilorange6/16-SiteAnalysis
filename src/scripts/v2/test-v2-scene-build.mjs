@@ -44,6 +44,17 @@ try {
   ];
   assert.ok(allPoints.every(([x, y]) => Math.abs(x) <= 901 && Math.abs(y) <= 901), "장면 좌표는 분석 반경 주변에 있어야 한다");
   assert.equal(scene.buildings.filter((building) => building.heightMethod === "assumed_one_floor" && building.heightM === 3 && building.floorsAbove === 1).length, 2);
+  const apt = scene.buildings.find((building) => building.id === "building:b_apt");
+  assert.ok(apt);
+  assert.equal(apt.name, "b_apt", "장면은 원천 건물 이름을 보존한다");
+  assert.equal(apt.labelPriority, 1, "이름 있는 장면 건물은 자동 라벨 우선순위 1이다");
+  assert.equal(apt.sublabel, "4층", "장면은 층수 표시 sublabel을 넣는다");
+  const tower = scene.buildings.find((building) => building.id === "building:b_tower");
+  assert.ok(tower);
+  assert.equal(tower.sublabel, "30층", "층수와 높이가 모두 있으면 층수 sublabel을 쓴다");
+  const assumedSceneBuilding = scene.buildings.find((building) => building.id === "building:b_unknown");
+  assert.ok(assumedSceneBuilding);
+  assert.equal(assumedSceneBuilding.sublabel, null, "1층 가정 건물은 sublabel을 숨긴다");
   assert.ok(scene.sources.some((source) => source.sourceId === "building"));
   assert.ok(scene.sources.some((source) => source.sourceId === "parcel_polygon"));
   assert.ok(scene.limitations.some((limitation) => limitation.kind === "estimated" && limitation.note.includes("높이·층수 자료가 없는 건물 2동(33.3%)은 1층(3 m)으로 가정")));
