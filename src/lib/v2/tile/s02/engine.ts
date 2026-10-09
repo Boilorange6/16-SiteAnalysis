@@ -18,12 +18,11 @@ import {
 import { polygonArea } from "../../engine/tiles/geo";
 import { notProvided } from "../../engine/tiles/not-provided";
 import { BUILDING_SOURCES, buildingRetirementLimitations } from "../../engine/tiles/buildings-shared";
+import { S02_DATE_KEYS } from "./dates";
 
 export const S02_INFLUENCE_M = SUN_INFLUENCE_M;
 export const S02_SITE_HALF_M = 30;
 const PARCEL_SOURCES = ["parcel_polygon"] as const;
-const S02_DATE_KEYS = ["spring", "summer", "autumn", "winter", "analysis"] as const;
-
 function ringPositions(positions: readonly Position[] | undefined): XY[] {
   if (!positions) return [];
   const ring = positions

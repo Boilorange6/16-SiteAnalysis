@@ -2,18 +2,11 @@ import type { RasterRef, TileResult } from "../../tile-result";
 import type { TileView } from "../../ui/tile-view";
 import type { TileClientModule, TileCutCandidate, TileCutCell, TileCutModule, TileCutPlan } from "../types";
 import { viewWithOnlyRasterForS02 } from "./view";
+import { S02_DATE_KEYS, S02_DATE_LABEL, type S02DateKey } from "./dates";
 
-export const S02_DATE_KEYS = ["spring", "summer", "autumn", "winter", "analysis"] as const;
-export type S02DateKey = (typeof S02_DATE_KEYS)[number];
+export { S02_DATE_KEYS, S02_DATE_LABEL } from "./dates";
+export type { S02DateKey } from "./dates";
 export type S02Cut = { tile: "S02"; mode: "single" | "hours3" | "seasons4" | "flow"; date?: S02DateKey };
-
-const S02_DATE_LABEL: Record<S02DateKey, string> = {
-  spring: "춘분",
-  summer: "하지",
-  autumn: "추분",
-  winter: "동지",
-  analysis: "분석일",
-};
 const S02_SEASONS = ["spring", "summer", "autumn", "winter"] as const;
 const S02_DEFAULT: S02Cut = { tile: "S02", mode: "single", date: "winter" };
 
