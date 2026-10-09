@@ -236,7 +236,7 @@ function geometryFromParts(parts: number[][][][]): Geometry | null {
  * 도달 간선의 마지막 부분은 T7 isochroneGrid가 reachableIntervals로 잘라
  * seed한 값이므로, 셀 계단 대신 보간된 벡터 경계로 표시된다.
  */
-function walkBandPolygons(field: WalkField, center: LngLat, radiusM: number): { polygons: PolygonCandidate[]; areaM2: number[] } {
+function walkBandPolygons(field: WalkField, center: LngLat, radiusM: number): { polygons: PolygonCandidate[]; cumulativeAreaM2: number[] } {
   const grid = isochroneGrid(field, center, WALK_MINUTES, { cellM: ISOCHRONE_CELL_M, bufferM: ISOCHRONE_BUFFER_M });
   const cumulative = WALK_MINUTES.map((minutes) => contourGeometry(grid, minutes));
   const clippedCumulative = cumulative.map((geometry) => {
@@ -244,9 +244,8 @@ function walkBandPolygons(field: WalkField, center: LngLat, radiusM: number): { 
     const clipped = areaInCircle(center, radiusM, geometry);
     return clipped ? { geometry: geometryFromParts(clipped.parts), areaM2: clipped.areaM2 } : { geometry: null, areaM2: 0 };
   });
-  const cumulativeArea = clippedCumulative.map((item) => item.areaM2);
   const bands = [clippedCumulative[0].geometry, subtract(clippedCumulative[1].geometry, clippedCumulative[0].geometry), subtract(clippedCumulative[2].geometry, clippedCumulative[1].geometry)];
-  const areaM2 = [cumulativeArea[0], Math.max(0, cumulativeArea[1] - cumulativeArea[0]), Math.max(0, cumulativeArea[2] - cumulativeArea[1])];
+  const cumulativeAreaM2 = clippedCumulative.map((item) => item.areaM2);
   const polygons: PolygonCandidate[] = [];
   let id = 1;
   for (let index = 0; index < bands.length; index++) {
@@ -257,7 +256,7 @@ function walkBandPolygons(field: WalkField, center: LngLat, radiusM: number): { 
       if (candidate) polygons.push(candidate);
     }
   }
-  return { polygons, areaM2 };
+  return { polygons, cumulativeAreaM2 };
 }
 
 const round1 = (value: number) => Math.round(value * 10) / 10;
@@ -277,8 +276,7 @@ export function d28(ctx: EngineContext): TileResult {
   const bands = walkBandPolygons(field, ctx.input.center, ctx.input.radiusM);
   const [centerX, centerY] = toUtmk(ctx.input.center);
   const lines = walkLineCandidates(field, centerX, centerY, ctx.input.radiusM);
-  const bandAreasM2 = WALK_LAYERS.map((_, index) => bands.areaM2[index] ?? 0);
-  const cumulativeAreasM2 = bandAreasM2.map((_, index) => bandAreasM2.slice(0, index + 1).reduce((sum, area) => sum + area, 0));
+  const cumulativeAreasM2 = bands.cumulativeAreaM2;
   const circleM2 = Math.PI * ctx.input.radiusM ** 2;
   const reachRatio10 = round1((cumulativeAreasM2[1] / circleM2) * 100);
   const coverage = ctx.coverage("reference", ["osm_roads"]);
