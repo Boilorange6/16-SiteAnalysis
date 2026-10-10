@@ -23,6 +23,7 @@ const { a03 } = await import("../../lib/v2/tile/a03/engine.ts");
 const { a04 } = await import("../../lib/v2/tile/a04/engine.ts");
 const { a05 } = await import("../../lib/v2/tile/a05/engine.ts");
 const { a06 } = await import("../../lib/v2/tile/a06/engine.ts");
+const { labelBoxesOverlap } = await import("../../lib/v2/ui/map-labels.ts");
 const { default: MapFigure, mapFeatureKey, mapLabelEntries, mapLabelText } = await import("../../components/v2/map-figure.tsx");
 
 const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${b}`);
@@ -207,6 +208,89 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   assert.ok(!inlined.includes("/api/v2/tiles/") && inlined.includes("data:image/png"));
   const bare = renderToStaticMarkup(createElement(MapFigure, { model: toSummaryView(GODEOK_SUMMARY, GODEOK_RESULTS).map, width: 640, height: 360, bare: true }));
   assert.ok(!bare.includes("버스정류장"));
+
+  // legend=false는 벡터·stepped·continuous SVG 범례를 모두 외부 띠에 위임한다.
+  const hiddenLegendRaster = {
+    name: "hidden_step",
+    kind: "scalar",
+    crs: "EPSG:5179",
+    x0: 930000,
+    y0: 1810000,
+    cellM: 10,
+    cols: 1,
+    rows: 1,
+    dtype: "u8",
+    bands: 1,
+    scale: 1,
+    offset: 0,
+    nodata: 255,
+    palette: "utci",
+    label: "숨김 계단",
+  };
+  const hiddenStepSvg = renderToStaticMarkup(createElement(MapFigure, {
+    model: { ...model, rasters: [hiddenLegendRaster], rasterOptions: [hiddenLegendRaster], defaultRaster: hiddenLegendRaster.name, legend: [{ label: "값", min: 0, max: 1 }] },
+    width: 640,
+    height: 360,
+    basemap: "none",
+    legend: false,
+    rasterHref: () => "data:image/png;base64,AAAA",
+  }));
+  const hiddenContinuousRaster = { ...hiddenLegendRaster, name: "hidden_continuous", palette: "shade_flow", label: "숨김 연속" };
+  const hiddenContinuousSvg = renderToStaticMarkup(createElement(MapFigure, {
+    model: { ...model, rasters: [hiddenContinuousRaster], rasterOptions: [hiddenContinuousRaster], defaultRaster: hiddenContinuousRaster.name, legend: [{ label: "값", min: 0, max: 1 }] },
+    width: 640,
+    height: 360,
+    basemap: "none",
+    legend: false,
+    rasterHref: () => "data:image/png;base64,AAAA",
+  }));
+  for (const svg of [hiddenStepSvg, hiddenContinuousSvg]) {
+    assert.doesNotMatch(svg, /data-map-legend/);
+    assert.doesNotMatch(svg, /data-raster-legend/);
+    assert.doesNotMatch(svg, /raster-gradient/);
+  }
+
+  // 실제 MapLine 색은 레이어 기본색보다 우선하고, 강조 외곽선 안에서도 보존한다.
+  const coloredRailModel = {
+    ...model,
+    features: [],
+    polygons: [],
+    lines: [{ layer: "rail_line", points: [[model.center[0] - 0.002, model.center[1]], [model.center[0] + 0.002, model.center[1]]], name: "5호선", labelPriority: 1, color: "#794698" }],
+    total: 0,
+    notes: [],
+  };
+  const coloredRailSvg = renderToStaticMarkup(createElement(MapFigure, { model: coloredRailModel, width: 640, height: 360, basemap: "none", legend: false, highlightLabel: "철도 노선" }));
+  assert.match(coloredRailSvg, /<polyline data-line="true"[^>]*stroke="#794698"/);
+  assert.match(coloredRailSvg, /<polyline[^>]*stroke="#16181d"/);
+  const coloredRailLegendSvg = renderToStaticMarkup(createElement(MapFigure, { model: coloredRailModel, width: 640, height: 360, basemap: "none", legend: true }));
+  assert.match(coloredRailLegendSvg, /<circle[^>]*fill="#794698"/);
+
+  // 자동/고정 라벨 사이에 실제 텍스트 외곽선 여유를 두는 공용 충돌 규칙.
+  const labelA = { x0: 10, y0: 10, x1: 60, y1: 24 };
+  const labelB = { x0: 62, y0: 10, x1: 112, y1: 24 };
+  assert.equal(labelBoxesOverlap(labelA, labelB, 3), true, "가까운 자동 라벨은 외곽선 여유를 포함해 충돌");
+  assert.equal(labelBoxesOverlap(labelA, labelB, 1), false, "충분히 떨어진 라벨은 충돌하지 않음");
+
+  // 출구 번호처럼 밀집한 짧은 배지도 공용 후보 배치로 서로 겹치지 않는다.
+  const badgeModel = {
+    ...model,
+    features: [
+      { layer: "rail_entrance", lng: model.center[0], lat: model.center[1], name: null, badges: [{ text: "1", color: "#FFFFFF" }] },
+      { layer: "rail_entrance", lng: model.center[0] + 0.00004, lat: model.center[1] + 0.00001, name: null, badges: [{ text: "2", color: "#FFFFFF" }] },
+      { layer: "rail_entrance", lng: model.center[0] - 0.00003, lat: model.center[1] - 0.00002, name: null, badges: [{ text: "3", color: "#FFFFFF" }] },
+    ],
+    polygons: [],
+    lines: [],
+    siteParcel: [],
+    total: 3,
+    notes: [],
+  };
+  const badgeSvg = renderToStaticMarkup(createElement(MapFigure, { model: badgeModel, width: 300, height: 180, basemap: "none", legend: false, scale: false, north: false }));
+  const badgeBoxes = [...badgeSvg.matchAll(/<g data-map-badge="[^"]+"[^>]*><rect x="([\d.-]+)" y="([\d.-]+)" width="([\d.-]+)" height="([\d.-]+)"/g)].map((match) => ({ x0: Number(match[1]), y0: Number(match[2]), x1: Number(match[1]) + Number(match[3]), y1: Number(match[2]) + Number(match[4]) }));
+  assert.equal(badgeBoxes.length, 3, "출구 배지 3개 렌더");
+  for (let i = 0; i < badgeBoxes.length; i += 1) for (let j = i + 1; j < badgeBoxes.length; j += 1) {
+    assert.equal(labelBoxesOverlap(badgeBoxes[i], badgeBoxes[j], 3), false, "밀집 출구 배지는 여유를 두고 분리");
+  }
 
   // W2a: 범례 라벨 기준 강조는 같은 라벨의 여러 레이어를 함께 남기고, 나머지를 20%로 흐린다.
   const highlightModel = {

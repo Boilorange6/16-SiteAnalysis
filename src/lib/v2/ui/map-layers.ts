@@ -328,13 +328,28 @@ export const legendItems = (model: MapModel) => {
   const highlightedLabels = new Set(
     model.features.filter((feature) => feature.highlight && !feature.layer.endsWith("_nearest")).map((feature) => layerStyle(feature.layer).label),
   );
+  const lineColorsByLabel = new Map<string, string[]>();
+  for (const line of model.lines ?? []) {
+    if (!line.color || !/^#[0-9A-Fa-f]{6}$/.test(line.color)) continue;
+    const label = layerStyle(line.layer).label;
+    const colors = lineColorsByLabel.get(label) ?? [];
+    if (!colors.includes(line.color)) colors.push(line.color);
+    lineColorsByLabel.set(label, colors);
+  }
   const seenLabels = new Set<string>();
   return Object.keys(LAYER_STYLES).flatMap((layer) => {
     if (!present.has(layer)) return [];
     const style = LAYER_STYLES[layer];
     if (seenLabels.has(style.label)) return [];
     seenLabels.add(style.label);
-    return [{ layer, label: style.label, color: style.color, highlight: highlightedLabels.has(style.label) }];
+    const colors = lineColorsByLabel.get(style.label) ?? [];
+    return [{
+      layer,
+      label: style.label,
+      color: colors[0] ?? style.color,
+      ...(colors.length > 0 ? { colors } : {}),
+      highlight: highlightedLabels.has(style.label),
+    }];
   });
 };
 
@@ -360,25 +375,28 @@ export function presentationLegendLabel(entry: TileResult["presentation"]["legen
 }
 
 /** 엔진 범례와 화면 레이어를 같은 순서로 연결한 하단 띠용 항목. */
-export function legendItemsForModel(model: MapModel, limit = 99) {
+type MapLegendLayerItem = ReturnType<typeof legendItems>[number];
+type PresentedLegendLayerItem = MapLegendLayerItem & { id: string; highlightLabel: string };
+
+export function legendItemsForModel(model: MapModel, limit = Number.POSITIVE_INFINITY): MapLegendLayerItem[] {
   const staticItems = legendItems(model);
   const engineLegend = model.legend ?? [];
-  // 래스터 범례는 MapFigure의 공용 팔레트가 직접 그린다. 벡터 띠에는 기존 지물명을 남긴다.
-  if (engineLegend.length === 0 || model.rasters?.length || staticItems.length === 0) {
-    return compactLegendItems(model, limit);
-  }
+  const orderedStatic = compactLegendItems(model, Number.POSITIVE_INFINITY).map(({ count: _count, order: _order, ...item }) => item);
+  if (engineLegend.length === 0 || staticItems.length === 0) return orderedStatic.slice(0, Math.max(0, limit));
   const staticByLabel = new Map(staticItems.map((item) => [item.label, item]));
-  return engineLegend
-    .map((entry, index) => {
+  // D16처럼 순수 벡터 엔진이 단위를 덧붙인 경우에는 정의된 순서가
+  // 유일한 연결 근거다. 래스터 경계가 함께 있을 때는 이 휴리스틱을 끈다.
+  const allowIndexFallback = !model.rasters?.length && engineLegend.length === staticItems.length;
+  const mapped: PresentedLegendLayerItem[] = engineLegend.flatMap((entry, index) => {
       // A07 엔진 라벨은 정적 분위 라벨과 일치한다. 그 밖의 경계 범례는
       // 엔진 배열 순서를 공용 레이어 순서와 맞추되, 표시 라벨과 강조 키를 분리한다.
-      const item = staticByLabel.get(entry.label) ?? staticItems[index];
-      return item
-        ? { ...item, id: `${item.layer}:legend-${index}`, label: presentationLegendLabel(entry), highlightLabel: item.label }
-        : null;
-    })
-    .filter((item): item is (typeof staticItems)[number] & { id: string; highlightLabel: string } => item !== null)
-    .slice(0, Math.max(0, limit));
+      const item = staticByLabel.get(entry.label.trim()) ?? (allowIndexFallback ? staticItems[index] : undefined);
+      return item ? [{ ...item, id: `${item.layer}:legend-${index}`, label: presentationLegendLabel(entry), highlightLabel: item.label }] : [];
+    });
+  // 래스터 경계가 섞인 엔진 범례에서는 벡터 레이어를 배열 위치로 추측하지 않는다.
+  // 매칭되지 않은 벡터 항목(예: S03의 유입 방향)은 뒤에 한 번만 남긴다.
+  const remainder = orderedStatic.filter((item) => !mapped.some((mappedItem) => mappedItem.highlightLabel === item.label));
+  return [...mapped, ...remainder].slice(0, Math.max(0, limit));
 }
 
 /** 카드 지도처럼 공간이 좁을 때, 실제로 가장 많이 그린 레이어만 남긴 미니 범례. */
@@ -392,9 +410,21 @@ export function compactLegendItems(model: MapModel, limit = 3) {
   for (const f of model.features) add(f.layer);
   for (const p of model.polygons ?? []) add(p.layer);
   for (const l of model.lines ?? []) add(l.layer);
-  return legendItems(model)
-    .map((item, order) => ({ ...item, count: counts.get(item.label) ?? 0, order }))
-    .sort((a, b) => Number(b.highlight) - Number(a.highlight) || b.count - a.count || a.order - b.order)
+  // 분위 레이어(dens_q1~q5, trade_q1~q4)는 한 묶음으로 움직이고 묶음 안에서는 정의(낮음→높음) 순서를 지킨다.
+  const family = (layer: string) => layer.replace(/_q\d+$/, "");
+  const items = legendItems(model).map((item, order) => ({ ...item, count: counts.get(item.label) ?? 0, order }));
+  const familyCount = new Map<string, number>();
+  const familyOrder = new Map<string, number>();
+  for (const item of items) {
+    const f = family(item.layer);
+    familyCount.set(f, Math.max(familyCount.get(f) ?? 0, item.count));
+    if (!familyOrder.has(f)) familyOrder.set(f, item.order);
+  }
+  return items
+    .sort((a, b) => Number(b.highlight) - Number(a.highlight)
+      || familyCount.get(family(b.layer))! - familyCount.get(family(a.layer))!
+      || familyOrder.get(family(a.layer))! - familyOrder.get(family(b.layer))!
+      || a.order - b.order)
     .slice(0, Math.max(0, limit));
 }
 
