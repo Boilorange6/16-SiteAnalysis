@@ -46,3 +46,15 @@ export function toggleLegendPin(current: string | null, label: string): string |
 export function activeLegendLabel(hover: string | null, pinned: string | null): string | null {
   return hover ?? pinned;
 }
+
+/** 벡터·래스터처럼 서로 다른 표현 경로가 같은 표시명을 낼 때 한 항목으로 합친다. */
+export function appendUniqueLegendItems<T extends { label: string }>(base: readonly T[], additions: readonly T[]): T[] {
+  const labels = new Set(base.map((item) => item.label));
+  const out = [...base];
+  for (const item of additions) {
+    if (labels.has(item.label)) continue;
+    labels.add(item.label);
+    out.push(item);
+  }
+  return out;
+}
