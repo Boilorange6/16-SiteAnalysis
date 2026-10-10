@@ -12,6 +12,7 @@ const { beginFeatureBulk, insertFeature } = await import("../../lib/v2/data/feat
 const { buildAndPublish, buildResumableSteps, insertRelease, SourceStats, ensureBuildProgressSchema } = await import("../../lib/v2/ingest/build.ts");
 const { readShp } = await import("../../lib/v2/ingest/shp.ts");
 const { FLOOR_HEIGHT_M } = await import("../../lib/v2/ingest/sources/buildings.ts");
+const { isMeaningfulBuildingName } = await import("../../lib/v2/ingest/sources/building-names.ts");
 const { buildJusoBuildings, gisFeatureIdBound, jusoShpPerSido, shpExtent, overlapArea, planarArea, JUSO_SOURCE_ID, normalizeBuildingName, composeBuildingName } = await import("../../lib/v2/ingest/sources/juso-buildings.ts");
 const { toUtmk } = await import("../../lib/v2/crs.ts");
 
@@ -26,8 +27,14 @@ assert.equal(composeBuildingName("고덕", "고덕"), "고덕", "같은 건물�
 assert.equal(composeBuildingName("고덕-아파트", "고덕 아파트"), "고덕-아파트", "normalize가 같은 값은 표시용 첫 값을 유지");
 assert.equal(composeBuildingName("고덕", "고덕아파트"), "고덕아파트", "상세명이 더 길면 더 정보가 많은 쪽만 표시");
 assert.equal(composeBuildingName("고덕아파트", "고덕"), "고덕아파트", "건물명이 더 길면 더 정보가 많은 쪽만 표시");
-assert.equal(composeBuildingName(".", null), null, "점만 있는 값은 후보에서 제거");
-assert.equal(composeBuildingName(null, "-"), null, "하이픈만 있는 값은 후보에서 제거");
+for (const invalid of [".", "-", "---", ")", "`", "ㄱ"]) {
+  assert.equal(composeBuildingName(invalid, null), null, `${invalid}은 표시명에서 제거`);
+  assert.equal(isMeaningfulBuildingName(invalid), false, `${invalid}은 무의미값`);
+}
+for (const valid of ["고덕아파트", "j2빌딩", "T-HAUS 4", "101", "1동"]) {
+  assert.equal(isMeaningfulBuildingName(valid), true, `${valid}은 유효한 이름`);
+}
+assert.equal(isMeaningfulBuildingName("ＡＢＣ１２３"), true, "전각 문자도 의미성 판정은 유효");
 assert.equal(composeBuildingName(null, "ㄱ"), null, "호환 자모만 있는 상세명은 후보에서 제거");
 assert.equal(composeBuildingName("고덕", "   "), "고덕", "공백만 있는 상세명은 후보에서 제거");
 assert.equal(composeBuildingName("!!!", "101동"), "101동", "문자·숫자 없는 구두점 값은 후보에서 제거");
