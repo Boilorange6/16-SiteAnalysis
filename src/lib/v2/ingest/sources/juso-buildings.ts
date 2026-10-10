@@ -11,6 +11,7 @@
  */
 import { closeSync, openSync, readSync } from "node:fs";
 import { basename } from "node:path";
+import { performance } from "node:perf_hooks";
 import type BetterSqlite3 from "better-sqlite3";
 import type { Geometry, MultiPolygon, Polygon, Position } from "geojson";
 import { feature, featureCollection, intersect } from "@turf/turf";
@@ -35,6 +36,7 @@ export const RETIRED_GIS_MAX_APPROVAL_YEAR = 2010;
 const CELL_M = 64;
 const GEOM_CACHE_MAX = 100_000;
 const PAD_M = 10;
+const JUSO_PERF_ENABLED = process.env.SITE_ANALYSIS_JUSO_PERF !== "0";
 
 const SHP_RE = /^TL_SPBD_BULD_(\d{2})_(\d{6})\.shp$/i;
 
@@ -71,6 +73,33 @@ const str = (v: unknown): string | null => {
 export function normalizeBuildingName(value: string | null): string | null {
   const name = value?.trim();
   return name ? name.normalize("NFKC").toLocaleLowerCase("ko-KR").replace(/[\s()·,._\-/\\]/g, "") : null;
+}
+
+/**
+ * 도로명주소 원천의 표시용 건물명과 동/상세명을 하나의 라벨로 조립한다.
+ * 비교용 정규화(normalizeBuildingName)와 달리 표시 문자열의 공백·구두점은 보존한다.
+ * 단, 문자·숫자가 하나도 없는 값은 원천의 자리 채움 기호로 보고 버린다.
+ */
+export function composeBuildingName(value: string | null, detail: string | null): string | null {
+  const cleanPart = (candidate: string | null): string | null => {
+    const part = candidate?.normalize("NFKC").trim() ?? "";
+    const onlyJamo = part.length > 0 && [...part].every((character) => {
+      const codePoint = character.codePointAt(0) ?? 0;
+      return (codePoint >= 0x1100 && codePoint <= 0x11ff) || (codePoint >= 0xa960 && codePoint <= 0xa97f) || (codePoint >= 0xd7b0 && codePoint <= 0xd7ff);
+    });
+    return part && /[\p{L}\p{N}]/u.test(part) && !onlyJamo ? part : null;
+  };
+  const name = cleanPart(value);
+  const extra = cleanPart(detail);
+  if (!name) return extra;
+  if (!extra) return name;
+
+  const normalizedName = normalizeBuildingName(name);
+  const normalizedExtra = normalizeBuildingName(extra);
+  if (!normalizedName || !normalizedExtra) return name;
+  if (normalizedName === normalizedExtra || normalizedName.includes(normalizedExtra)) return name;
+  if (normalizedExtra.includes(normalizedName)) return extra;
+  return `${name} ${extra}`;
 }
 
 function validCoreApprovalDate(value: unknown, maxDate: string): string | null {
@@ -217,7 +246,7 @@ export function triangulate(ring: Position[]): Position[][] | null {
 }
 
 /** 두 도형의 겹친 면적(㎡). 위상 오류로 교차를 못 구하면 0(=겹침 없음)으로 보고 errors를 올린다. */
-export function overlapArea(a: Polygon | MultiPolygon, b: Polygon | MultiPolygon, onError?: () => void, onSlow?: () => void): number {
+export function overlapArea(a: Polygon | MultiPolygon, b: Polygon | MultiPolygon, onError?: () => void, onSlow?: () => void, onTriangulate?: () => void): number {
   const ra = solidRing(a), rb = solidRing(b);
   if (ra && rb) {
     const cb = convexCcw(rb);
@@ -225,6 +254,7 @@ export function overlapArea(a: Polygon | MultiPolygon, b: Polygon | MultiPolygon
     const ca = convexCcw(ra);
     if (ca) return clipArea(rb, ca);
     // 둘 다 오목: 삼각형으로 나눠 삼각형 쌍마다 볼록 자르기
+    onTriangulate?.();
     const ta = triangulate(ra), tb = triangulate(rb);
     if (ta && tb) {
       let s = 0;
@@ -304,6 +334,35 @@ export interface JusoCounts {
   polyclipFallbacks: number;
 }
 
+interface JusoPerf {
+  gridCandidates: number;
+  uniqueGridCandidates: number;
+  bboxPasses: number;
+  areaPrefilterRejects: number;
+  exactOverlapCalls: number;
+  triangulateCalls: number;
+  polyclipFallbacks: number;
+  gisGeomCacheHits: number;
+  gisGeomCacheMisses: number;
+  jsonParseMs: number;
+  gisIndexMs: number;
+  candidateMs: number;
+  exactOverlapMs: number;
+  writeMs: number;
+  attachMs: number;
+  getProvCalls: number;
+  getProvMs: number;
+  setHeightCalls: number;
+  setHeightMs: number;
+  setNameCalls: number;
+  setNameMs: number;
+  setProvCalls: number;
+  setProvMs: number;
+  totalMs: number;
+}
+
+const roundedMs = (value: number): number => Number(value.toFixed(1));
+
 export async function buildJusoBuildings(
   db: Db,
   /** geometry는 EPSG:5179 미터(readShp의 native 모드) */
@@ -314,17 +373,51 @@ export async function buildJusoBuildings(
   const floorHeightM = opts.floorHeightM ?? FLOOR_HEIGHT_M;
   const stats = new SourceStats(JUSO_SOURCE_ID, releaseId, ["heightM", "floorsAbove"]);
   const counts: JusoCounts = { added: 0, deduped: 0, retired: 0, attachedHeight: 0, attachedName: 0, intersectErrors: 0, polyclipFallbacks: 0 };
+  const totalStarted = JUSO_PERF_ENABLED ? performance.now() : 0;
+  const perf: JusoPerf | null = JUSO_PERF_ENABLED ? {
+    gridCandidates: 0,
+    uniqueGridCandidates: 0,
+    bboxPasses: 0,
+    areaPrefilterRejects: 0,
+    exactOverlapCalls: 0,
+    triangulateCalls: 0,
+    polyclipFallbacks: 0,
+    gisGeomCacheHits: 0,
+    gisGeomCacheMisses: 0,
+    jsonParseMs: 0,
+    gisIndexMs: 0,
+    candidateMs: 0,
+    exactOverlapMs: 0,
+    writeMs: 0,
+    attachMs: 0,
+    getProvCalls: 0,
+    getProvMs: 0,
+    setHeightCalls: 0,
+    setHeightMs: 0,
+    setNameCalls: 0,
+    setNameMs: 0,
+    setProvCalls: 0,
+    setProvMs: 0,
+    totalMs: 0,
+  } : null;
+  const indexStarted = perf ? performance.now() : 0;
   const gis = loadGisIndex(db, opts.extent, opts.gisMaxFeatureId);
+  if (perf) perf.gisIndexMs = performance.now() - indexStarted;
   const coreApprovalBySido = new Map<string, Map<string, string>>();
   const geomOf = db.prepare("SELECT geom_json FROM feature WHERE feature_id = ?").pluck();
   const geomCache = new Map<number, { g: Polygon | MultiPolygon; area: number }>();
   const gisGeom = (id: number) => {
     let c = geomCache.get(id);
-    if (!c) {
-      if (geomCache.size >= GEOM_CACHE_MAX) geomCache.clear();
-      const g = JSON.parse(geomOf.get(id) as string) as Polygon | MultiPolygon;
-      geomCache.set(id, (c = { g, area: planarArea(g) }));
+    if (c) {
+      if (perf) perf.gisGeomCacheHits++;
+      return c;
     }
+    if (perf) perf.gisGeomCacheMisses++;
+    if (geomCache.size >= GEOM_CACHE_MAX) geomCache.clear();
+    const parseStarted = perf ? performance.now() : 0;
+    const g = JSON.parse(geomOf.get(id) as string) as Polygon | MultiPolygon;
+    if (perf) perf.jsonParseMs += performance.now() - parseStarted;
+    geomCache.set(id, (c = { g, area: planarArea(g) }));
     return c;
   };
   const insertFact = db.prepare(`INSERT INTO building_fact (feature_id, ledger_pk, height_m, height_method, floors_above, floors_below, use_code, approval_date, gross_floor_area_m2, footprint_area_m2, field_provenance_json)
@@ -381,32 +474,48 @@ export async function buildJusoBuildings(
     if (!(area > 0)) return stats.reject();
     const h = heightOf({ A26: p.GRO_FLO_CO }, floorHeightM);
     const nm = str(p.BULD_NM);
-    const name = nm && str(p.BULD_NM_DC) ? `${nm} ${str(p.BULD_NM_DC)}` : nm ?? str(p.BULD_NM_DC);
+    const name = composeBuildingName(nm, str(p.BULD_NM_DC));
     const legal = `${str(p.SIG_CD) ?? ""}${str(p.EMD_CD) ?? ""}${str(p.LI_CD) ?? ""}`;
     const legalCode = /^\d{10}$/.test(legal) ? legal : null;
     const pnu = legalCode ? makePnu(legalCode, str(p.MNTN_YN) === "1", p.LNBR_MNNM as number, p.LNBR_SLNO as number) : null;
     const coreApprovalDate = coreApprovalFor(pnu, legalCode);
 
     // 겹치는 GIS 건물 찾기: 격자 → bbox → (겹친 bbox 면적이 작은 쪽 면적의 50% 미만이면 탈락) → 정확한 교차 면적
+    const candidateStarted = perf ? performance.now() : 0;
     const [x0, y0, x1, y1] = bboxOf(g);
     const seen = new Set<number>();
     let best: { i: number; inter: number } | null = null;
     for (let ix = Math.floor(x0 / CELL_M); ix <= Math.floor(x1 / CELL_M); ix++) {
       for (let iy = Math.floor(y0 / CELL_M); iy <= Math.floor(y1 / CELL_M); iy++) {
         for (const i of gis.cells.get(ix * 65536 + iy) ?? []) {
+          if (perf) perf.gridCandidates++;
           if (seen.has(i)) continue;
           seen.add(i);
+          if (perf) perf.uniqueGridCandidates++;
           const b = gis.bbox;
           const w = Math.min(x1, b[4 * i + 2]) - Math.max(x0, b[4 * i]);
           const hh = Math.min(y1, b[4 * i + 3]) - Math.max(y0, b[4 * i + 1]);
           if (w <= 0 || hh <= 0) continue;
+          if (perf) perf.bboxPasses++;
           const c = gisGeom(gis.ids[i]);
-          if (w * hh < OVERLAP_MIN * Math.min(area, c.area)) continue;
-          const inter = overlapArea(g, c.g, () => counts.intersectErrors++, () => counts.polyclipFallbacks++);
+          if (w * hh < OVERLAP_MIN * Math.min(area, c.area)) {
+            if (perf) perf.areaPrefilterRejects++;
+            continue;
+          }
+          if (perf) perf.exactOverlapCalls++;
+          const overlapStarted = perf ? performance.now() : 0;
+          const inter = overlapArea(g, c.g, () => counts.intersectErrors++, () => {
+            counts.polyclipFallbacks++;
+            if (perf) perf.polyclipFallbacks++;
+          }, () => {
+            if (perf) perf.triangulateCalls++;
+          });
+          if (perf) perf.exactOverlapMs += performance.now() - overlapStarted;
           if (inter >= OVERLAP_MIN * Math.min(area, c.area) && (!best || inter > best.inter)) best = { i, inter };
         }
       }
     }
+    if (perf) perf.candidateMs += performance.now() - candidateStarted;
     const oldApprovalDate = best ? gis.approvalDates[best.i] : null;
     const oldName = best ? normalizeBuildingName(gis.names[best.i]) : null;
     const currentName = normalizeBuildingName(name);
@@ -435,13 +544,17 @@ export async function buildJusoBuildings(
     }
 
     let featureId: number;
+    const writeStarted = perf ? performance.now() : 0;
     try {
       featureId = insertFeature(db, {
         stableId: `juso:${id}`, kind: "building", sourceKey: id, releaseId, geometry: g, geometryIsUtmk: true, name, pnu, legalCode, roundM: 10 ** -COORD_DECIMALS,
         properties: { source: "juso", bdtypCd: str(p.BDTYP_CD), nameDetail: str(p.BULD_NM_DC), floorsAbove: h.floorsAbove },
       });
     } catch (e) {
-      if ((e as { code?: string }).code === "SQLITE_CONSTRAINT_UNIQUE") return stats.reject();
+      if ((e as { code?: string }).code === "SQLITE_CONSTRAINT_UNIQUE") {
+        if (perf) perf.writeMs += performance.now() - writeStarted;
+        return stats.reject();
+      }
       throw e;
     }
     const und = typeof p.UND_FLO_CO === "number" && Number.isInteger(p.UND_FLO_CO) && p.UND_FLO_CO >= 0 ? p.UND_FLO_CO : null;
@@ -450,34 +563,97 @@ export async function buildJusoBuildings(
     if (replacement && markRetired(replacement.featureId, replacement.stableId, replacement.replacementId)) counts.retired++;
     counts.added++;
     stats.accept({ heightM: h.heightM, floorsAbove: h.floorsAbove }, str(p.SIG_CD)?.slice(0, 2) ?? "(미상)", h.method);
+    if (perf) perf.writeMs += performance.now() - writeStarted;
   });
 
   // 겹친 GIS 건물에 보탤 속성: 파일을 다 읽은 뒤 건물마다 한 번만 쓴다
+  const attachStarted = perf ? performance.now() : 0;
   const getProv = db.prepare("SELECT field_provenance_json FROM building_fact WHERE feature_id = ?").pluck();
   const setHeight = db.prepare("UPDATE building_fact SET height_m = ?, height_method = 'floors_estimate', floors_above = ?, field_provenance_json = ? WHERE feature_id = ? AND height_method = 'unknown'");
   const setProv = db.prepare("UPDATE building_fact SET field_provenance_json = ? WHERE feature_id = ?");
   const setName = db.prepare("UPDATE feature SET name = ? WHERE feature_id = ? AND name IS NULL");
   for (const [featureId, a] of attach) {
-    const prov = JSON.parse(getProv.get(featureId) as string) as Record<string, unknown>;
+    const getProvStarted = perf ? performance.now() : 0;
+    const provValue = getProv.get(featureId);
+    if (perf) {
+      perf.getProvCalls++;
+      perf.getProvMs += performance.now() - getProvStarted;
+    }
+    const prov = JSON.parse(provValue as string) as Record<string, unknown>;
     let changed = false;
-    if (a.heightM !== null && setHeight.run(a.heightM, a.floors, JSON.stringify({ ...prov, height_m: provHeight(a.id), floors_above: "juso:GRO_FLO_CO" }), featureId).changes > 0) {
-      counts.attachedHeight++;
-      prov.height_m = provHeight(a.id);
-      prov.floors_above = "juso:GRO_FLO_CO";
-      changed = true;
+    if (a.heightM !== null) {
+      const setHeightStarted = perf ? performance.now() : 0;
+      if (perf) perf.setHeightCalls++;
+      const result = setHeight.run(a.heightM, a.floors, JSON.stringify({ ...prov, height_m: provHeight(a.id), floors_above: "juso:GRO_FLO_CO" }), featureId);
+      if (perf) perf.setHeightMs += performance.now() - setHeightStarted;
+      if (result.changes > 0) {
+        counts.attachedHeight++;
+        prov.height_m = provHeight(a.id);
+        prov.floors_above = "juso:GRO_FLO_CO";
+        changed = true;
+      }
     }
-    if (a.name !== null && setName.run(a.name, featureId).changes > 0) {
-      counts.attachedName++;
-      prov.name = { source: "juso:BULD_NM", jusoBuildingMgtSn: a.id };
-      changed = true;
+    if (a.name !== null) {
+      const setNameStarted = perf ? performance.now() : 0;
+      if (perf) perf.setNameCalls++;
+      const result = setName.run(a.name, featureId);
+      if (perf) perf.setNameMs += performance.now() - setNameStarted;
+      if (result.changes > 0) {
+        counts.attachedName++;
+        prov.name = { source: "juso:BULD_NM", jusoBuildingMgtSn: a.id };
+        changed = true;
+      }
     }
-    if (changed) setProv.run(JSON.stringify(prov), featureId);
+    if (changed) {
+      const setProvStarted = perf ? performance.now() : 0;
+      if (perf) perf.setProvCalls++;
+      setProv.run(JSON.stringify(prov), featureId);
+      if (perf) perf.setProvMs += performance.now() - setProvStarted;
+    }
   }
+  if (perf) perf.attachMs = performance.now() - attachStarted;
 
   // 단계별 집계를 릴리스에 누적한다(재개해도 단계는 한 번만 실행되므로 중복 합산이 없다)
   const rel = db.prepare("SELECT coverage_json FROM source_release WHERE release_id = ?").pluck().get(releaseId) as string | undefined;
   const sum = { ...(rel ? (JSON.parse(rel) as Partial<JusoCounts>) : {}) } as Record<string, number>;
   for (const [k, v] of Object.entries(counts)) sum[k] = (sum[k] ?? 0) + v;
   db.prepare("UPDATE source_release SET coverage_json = ? WHERE release_id = ?").run(JSON.stringify(sum), releaseId);
+  if (perf) {
+    perf.totalMs = performance.now() - totalStarted;
+    console.log(`[juso-perf] ${JSON.stringify({
+      source: JUSO_SOURCE_ID,
+      release: releaseId,
+      rows: stats.received,
+      accepted: stats.accepted,
+      rejected: stats.rejected,
+      added: counts.added,
+      deduped: counts.deduped,
+      retired: counts.retired,
+      gridCandidates: perf.gridCandidates,
+      uniqueGridCandidates: perf.uniqueGridCandidates,
+      bboxPasses: perf.bboxPasses,
+      areaPrefilterRejects: perf.areaPrefilterRejects,
+      exactOverlapCalls: perf.exactOverlapCalls,
+      triangulateCalls: perf.triangulateCalls,
+      polyclipFallbacks: perf.polyclipFallbacks,
+      gisGeomCacheHits: perf.gisGeomCacheHits,
+      gisGeomCacheMisses: perf.gisGeomCacheMisses,
+      jsonParseMs: roundedMs(perf.jsonParseMs),
+      stageMs: {
+        gisIndex: roundedMs(perf.gisIndexMs),
+        candidate: roundedMs(perf.candidateMs),
+        exactOverlap: roundedMs(perf.exactOverlapMs),
+        write: roundedMs(perf.writeMs),
+        attach: roundedMs(perf.attachMs),
+        total: roundedMs(perf.totalMs),
+      },
+      attachOps: {
+        getProv: { calls: perf.getProvCalls, ms: roundedMs(perf.getProvMs) },
+        setHeight: { calls: perf.setHeightCalls, ms: roundedMs(perf.setHeightMs) },
+        setName: { calls: perf.setNameCalls, ms: roundedMs(perf.setNameMs) },
+        setProv: { calls: perf.setProvCalls, ms: roundedMs(perf.setProvMs) },
+      },
+    })}`);
+  }
   return stats;
 }

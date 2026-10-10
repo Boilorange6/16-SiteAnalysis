@@ -12,7 +12,7 @@ const { beginFeatureBulk, insertFeature } = await import("../../lib/v2/data/feat
 const { buildAndPublish, buildResumableSteps, insertRelease, SourceStats, ensureBuildProgressSchema } = await import("../../lib/v2/ingest/build.ts");
 const { readShp } = await import("../../lib/v2/ingest/shp.ts");
 const { FLOOR_HEIGHT_M } = await import("../../lib/v2/ingest/sources/buildings.ts");
-const { buildJusoBuildings, gisFeatureIdBound, jusoShpPerSido, shpExtent, overlapArea, planarArea, JUSO_SOURCE_ID } = await import("../../lib/v2/ingest/sources/juso-buildings.ts");
+const { buildJusoBuildings, gisFeatureIdBound, jusoShpPerSido, shpExtent, overlapArea, planarArea, JUSO_SOURCE_ID, normalizeBuildingName, composeBuildingName } = await import("../../lib/v2/ingest/sources/juso-buildings.ts");
 const { toUtmk } = await import("../../lib/v2/crs.ts");
 
 // ─── 순수 함수 ─────────────────────────────────────────────────────────────
@@ -21,6 +21,20 @@ assert.equal(planarArea(sq(0, 0)), 400);
 assert.equal(planarArea({ type: "Polygon", coordinates: [sq(0, 0).coordinates[0], sq(5, 5, 10).coordinates[0]] }), 300, "구멍은 뺀다");
 assert.equal(Math.round(overlapArea(sq(0, 0), sq(12, 0))), 160);
 assert.equal(overlapArea(sq(0, 0), sq(100, 0)), 0);
+// ─── 건물명 조립: 비교용 normalize와 표시용 compose를 분리한다 ────────────────
+assert.equal(composeBuildingName("고덕", "고덕"), "고덕", "같은 건물명은 한 번만 표시");
+assert.equal(composeBuildingName("고덕-아파트", "고덕 아파트"), "고덕-아파트", "normalize가 같은 값은 표시용 첫 값을 유지");
+assert.equal(composeBuildingName("고덕", "고덕아파트"), "고덕아파트", "상세명이 더 길면 더 정보가 많은 쪽만 표시");
+assert.equal(composeBuildingName("고덕아파트", "고덕"), "고덕아파트", "건물명이 더 길면 더 정보가 많은 쪽만 표시");
+assert.equal(composeBuildingName(".", null), null, "점만 있는 값은 후보에서 제거");
+assert.equal(composeBuildingName(null, "-"), null, "하이픈만 있는 값은 후보에서 제거");
+assert.equal(composeBuildingName(null, "ㄱ"), null, "호환 자모만 있는 상세명은 후보에서 제거");
+assert.equal(composeBuildingName("고덕", "   "), "고덕", "공백만 있는 상세명은 후보에서 제거");
+assert.equal(composeBuildingName("!!!", "101동"), "101동", "문자·숫자 없는 구두점 값은 후보에서 제거");
+assert.equal(composeBuildingName("고덕", null), "고덕", "건물명만 있으면 그대로 표시");
+assert.equal(composeBuildingName(null, "101동"), "101동", "상세명만 있으면 그대로 표시");
+assert.equal(composeBuildingName("고덕 아파트", "101동"), "고덕 아파트 101동", "서로 다른 값은 표시 문자열 사이를 공백으로 잇는다");
+assert.equal(normalizeBuildingName("고덕-아파트"), normalizeBuildingName("고덕 아파트"), "normalize는 비교용으로 구두점·공백을 무시한다");
 {
   // 볼록 빠른 경로(Sutherland–Hodgman)가 polyclip(turf)과 같은 면적을 낸다: 회전한 사각형·삼각형·오목 L자
   const { intersect, featureCollection, feature } = await import("@turf/turf");
