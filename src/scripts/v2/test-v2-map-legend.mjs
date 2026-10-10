@@ -208,6 +208,11 @@ const d19WithoutHighlight = normalizeLegendStripLabels([
   { layer: "jimok:road", label: "지목 · 도로", color: "#8C939E" },
 ]);
 assert.deepEqual(d19WithoutHighlight.items.map((item) => item.highlightLabel), ["지목 · 대지", "지목 · 도로"], "접두 분리 시 누락된 강조 키도 실제 라벨로 보강");
+const tightDots = normalizeLegendStripLabels([
+  { layer: "a", label: "임야·공원 지목", color: "#000000" },
+  { layer: "b", label: "임야·하천 지목", color: "#000000" },
+]);
+assert.equal(tightDots.leadingLabel, null, "공백 없는 가운뎃점은 이름의 일부라 접두로 자르지 않음");
 
 const s02Legend = normalizeLegendStripLabels(s02Entries.map((entry, index) => ({
   layer: `sun_${index}`,

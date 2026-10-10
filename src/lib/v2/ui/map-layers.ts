@@ -472,11 +472,12 @@ export type LegendStripLabelResult<T extends LegendStripLabelItem> = {
 };
 
 function splitLegendStripLabel(label: string): { prefix: string; value: string } | null {
+  // 라벨 계약은 `이름 · 값`(공백 포함)이다. `임야·공원`처럼 붙은 가운뎃점은 이름의 일부다.
   const trimmed = label.trim();
-  const separator = trimmed.indexOf("·");
-  if (separator <= 0 || separator >= trimmed.length - 1) return null;
+  const separator = trimmed.indexOf(" · ");
+  if (separator <= 0) return null;
   const prefix = trimmed.slice(0, separator).trim();
-  const value = trimmed.slice(separator + 1).trim();
+  const value = trimmed.slice(separator + 3).trim();
   return prefix && value ? { prefix, value } : null;
 }
 
