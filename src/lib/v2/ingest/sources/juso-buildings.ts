@@ -323,6 +323,14 @@ interface JusoPerf {
   exactOverlapMs: number;
   writeMs: number;
   attachMs: number;
+  getProvCalls: number;
+  getProvMs: number;
+  setHeightCalls: number;
+  setHeightMs: number;
+  setNameCalls: number;
+  setNameMs: number;
+  setProvCalls: number;
+  setProvMs: number;
   totalMs: number;
 }
 
@@ -355,6 +363,14 @@ export async function buildJusoBuildings(
     exactOverlapMs: 0,
     writeMs: 0,
     attachMs: 0,
+    getProvCalls: 0,
+    getProvMs: 0,
+    setHeightCalls: 0,
+    setHeightMs: 0,
+    setNameCalls: 0,
+    setNameMs: 0,
+    setProvCalls: 0,
+    setProvMs: 0,
     totalMs: 0,
   } : null;
   const indexStarted = perf ? performance.now() : 0;
@@ -530,20 +546,43 @@ export async function buildJusoBuildings(
   const setProv = db.prepare("UPDATE building_fact SET field_provenance_json = ? WHERE feature_id = ?");
   const setName = db.prepare("UPDATE feature SET name = ? WHERE feature_id = ? AND name IS NULL");
   for (const [featureId, a] of attach) {
-    const prov = JSON.parse(getProv.get(featureId) as string) as Record<string, unknown>;
+    const getProvStarted = perf ? performance.now() : 0;
+    const provValue = getProv.get(featureId);
+    if (perf) {
+      perf.getProvCalls++;
+      perf.getProvMs += performance.now() - getProvStarted;
+    }
+    const prov = JSON.parse(provValue as string) as Record<string, unknown>;
     let changed = false;
-    if (a.heightM !== null && setHeight.run(a.heightM, a.floors, JSON.stringify({ ...prov, height_m: provHeight(a.id), floors_above: "juso:GRO_FLO_CO" }), featureId).changes > 0) {
-      counts.attachedHeight++;
-      prov.height_m = provHeight(a.id);
-      prov.floors_above = "juso:GRO_FLO_CO";
-      changed = true;
+    if (a.heightM !== null) {
+      const setHeightStarted = perf ? performance.now() : 0;
+      if (perf) perf.setHeightCalls++;
+      const result = setHeight.run(a.heightM, a.floors, JSON.stringify({ ...prov, height_m: provHeight(a.id), floors_above: "juso:GRO_FLO_CO" }), featureId);
+      if (perf) perf.setHeightMs += performance.now() - setHeightStarted;
+      if (result.changes > 0) {
+        counts.attachedHeight++;
+        prov.height_m = provHeight(a.id);
+        prov.floors_above = "juso:GRO_FLO_CO";
+        changed = true;
+      }
     }
-    if (a.name !== null && setName.run(a.name, featureId).changes > 0) {
-      counts.attachedName++;
-      prov.name = { source: "juso:BULD_NM", jusoBuildingMgtSn: a.id };
-      changed = true;
+    if (a.name !== null) {
+      const setNameStarted = perf ? performance.now() : 0;
+      if (perf) perf.setNameCalls++;
+      const result = setName.run(a.name, featureId);
+      if (perf) perf.setNameMs += performance.now() - setNameStarted;
+      if (result.changes > 0) {
+        counts.attachedName++;
+        prov.name = { source: "juso:BULD_NM", jusoBuildingMgtSn: a.id };
+        changed = true;
+      }
     }
-    if (changed) setProv.run(JSON.stringify(prov), featureId);
+    if (changed) {
+      const setProvStarted = perf ? performance.now() : 0;
+      if (perf) perf.setProvCalls++;
+      setProv.run(JSON.stringify(prov), featureId);
+      if (perf) perf.setProvMs += performance.now() - setProvStarted;
+    }
   }
   if (perf) perf.attachMs = performance.now() - attachStarted;
 
@@ -580,6 +619,12 @@ export async function buildJusoBuildings(
         write: roundedMs(perf.writeMs),
         attach: roundedMs(perf.attachMs),
         total: roundedMs(perf.totalMs),
+      },
+      attachOps: {
+        getProv: { calls: perf.getProvCalls, ms: roundedMs(perf.getProvMs) },
+        setHeight: { calls: perf.setHeightCalls, ms: roundedMs(perf.setHeightMs) },
+        setName: { calls: perf.setNameCalls, ms: roundedMs(perf.setNameMs) },
+        setProv: { calls: perf.setProvCalls, ms: roundedMs(perf.setProvMs) },
       },
     })}`);
   }
