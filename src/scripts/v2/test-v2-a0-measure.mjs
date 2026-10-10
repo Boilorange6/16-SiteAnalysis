@@ -120,8 +120,9 @@ const { REVIEW_SITES } = await import("../../lib/v2/a0/review-sites.ts");
 
 // ─── 8. 인코딩 라벨 정규화 ─────────────────────────────────────────────────
 {
-  for (const l of ["cp949", "CP949", "ms949", "x-windows-949", "ks_c_5601-1987", "EUC-KR", " euc-kr "]) assert.equal(normalizeEncoding(l), "euc-kr", l);
+  for (const l of ["949", "windows-949", "cp949", "CP949", "ms949", "x-windows-949", "ks_c_5601-1987", "EUC-KR", " euc-kr "]) assert.equal(normalizeEncoding(l), "euc-kr", l);
   assert.equal(normalizeEncoding("UTF8"), "utf-8");
+  assert.equal(normalizeEncoding("65001"), "utf-8");
   assert.equal(normalizeEncoding("utf-8"), "utf-8");
 }
 

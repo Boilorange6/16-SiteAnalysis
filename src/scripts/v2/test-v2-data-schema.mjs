@@ -18,7 +18,7 @@ function seedRelease(db) {
 
 // ─── 1. 종류별 테이블 ──────────────────────────────────────────────────────
 {
-  assert.deepEqual([...DATA_FILE_KINDS], ["core", "reference", "market", "osm"]);
+  assert.deepEqual([...DATA_FILE_KINDS], ["core", "buildings", "parcels", "reference", "market", "osm", "terrain", "weather"]);
   for (const kind of DATA_FILE_KINDS) {
     const db = new Database(":memory:");
     initDataFileSchema(db, kind);
@@ -27,9 +27,14 @@ function seedRelease(db) {
       assert.ok(t.has(common), `${kind}: ${common}`);
     }
     assert.ok(t.has("feature_rtree"), `${kind}: R*Tree`);
-    assert.equal(t.has("building_fact"), kind === "core", `${kind}: building_fact`);
+    assert.equal(t.has("building_fact"), kind === "buildings", `${kind}: building_fact`);
+    assert.equal(t.has("parcel_point"), kind === "core", `${kind}: parcel_point`);
     assert.equal(t.has("property_transaction"), kind === "market", `${kind}: property_transaction`);
     assert.equal(t.has("development_event"), kind === "market", `${kind}: development_event`);
+    assert.equal(t.has("dem_tile"), kind === "terrain", `${kind}: dem_tile`);
+    assert.equal(t.has("dem_row"), kind === "terrain", `${kind}: dem_row`);
+    assert.equal(t.has("weather_station"), kind === "weather", `${kind}: weather_station`);
+    assert.equal(t.has("wind_rose"), kind === "weather", `${kind}: wind_rose`);
     assert.deepEqual(readDataFileMeta(db), { kind, schemaVersion: DATA_SCHEMA_VERSION });
     initDataFileSchema(db, kind); // 두 번 불러도 안전
   }
@@ -45,7 +50,7 @@ function seedRelease(db) {
 // ─── 3. PNU는 문자열 그대로, 높이 미상은 NULL ───────────────────────────────
 {
   const db = new Database(":memory:");
-  initDataFileSchema(db, "core");
+  initDataFileSchema(db, "buildings");
   seedRelease(db);
   db.prepare(`INSERT INTO feature (stable_id, kind, source_key, release_id, geom_json, pnu) VALUES ('b1','building','k1','r1','{}','1168010100100010000')`).run();
   const row = db.prepare("SELECT pnu, typeof(pnu) AS t FROM feature WHERE stable_id='b1'").get();
@@ -78,6 +83,40 @@ function seedRelease(db) {
     () => db.prepare("INSERT INTO ingest_run (run_id, source_id, started_at, status) VALUES ('x','rtms','2026-09-29T00:00:00+09:00','ok')").run(),
     /CHECK/,
   );
+}
+
+// ─── 6. 스키마 v2: 필지 대표점·법정구역 이름표·적재 스냅샷 ───────────────────
+{
+  assert.equal(DATA_SCHEMA_VERSION, 2);
+  for (const kind of DATA_FILE_KINDS) {
+    const db = new Database(":memory:");
+    initDataFileSchema(db, kind);
+    const t = tables(db);
+    assert.equal(t.has("parcel_point"), kind === "core", `${kind}: parcel_point`);
+    assert.equal(t.has("legal_area"), kind === "core", `${kind}: legal_area`);
+    const indexes = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").pluck().all());
+    assert.equal(indexes.has("idx_legal_area_level_code_name"), kind === "core", `${kind}: legal_area lookup index`);
+    if (kind === "core") {
+      const plan = db.prepare("EXPLAIN QUERY PLAN SELECT code, name FROM legal_area WHERE level = 'sigungu' ORDER BY code").all();
+      assert.ok(plan.some((r) => String(r.detail).includes("idx_legal_area_level_code_name")), "sigungu lookup uses covering index");
+    }
+    const cols = db.prepare("PRAGMA table_info(ingest_run)").all().map((c) => c.name);
+    assert.ok(cols.includes("snapshot_json"), `${kind}: ingest_run.snapshot_json`);
+  }
+  const db = new Database(":memory:");
+  initDataFileSchema(db, "core");
+  seedRelease(db);
+  db.prepare("INSERT INTO parcel_point (pnu, lng, lat, jimok, release_id) VALUES ('1168010100100010000', 127.05, 37.48, '대', 'r1')").run();
+  assert.equal(db.prepare("SELECT typeof(pnu) t FROM parcel_point").get().t, "text");
+  assert.throws(() => db.prepare("INSERT INTO legal_area (code, level, name, parent_code, release_id) VALUES ('11680','dong','x',null,'r1')").run(), /CHECK/);
+}
+
+// ─── 7. 버전이 다른 파일은 초기화하지 않고 거부 ─────────────────────────────
+{
+  const db = new Database(":memory:");
+  initDataFileSchema(db, "core");
+  db.prepare("UPDATE data_file_meta SET value = '1' WHERE key = 'schema_version'").run();
+  assert.throws(() => initDataFileSchema(db, "core"), /schema version 1 != 2/);
 }
 
 console.log("✓ v2 data schema");

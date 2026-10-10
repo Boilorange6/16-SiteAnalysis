@@ -35,7 +35,10 @@ export type GateFailureCode =
   | "TYPE_MISSING"
   | "FILL_RATE_DROP"
   | "INCOMPLETE_FETCH"
-  | "EXPECTATION_BELOW";
+  | "EXPECTATION_BELOW"
+  | "SQLITE_INTEGRITY"
+  | "FOREIGN_KEY"
+  | "RTREE_INTEGRITY";
 
 export interface GateFailure {
   code: GateFailureCode;

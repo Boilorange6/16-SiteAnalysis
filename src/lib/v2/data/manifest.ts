@@ -27,6 +27,8 @@ export interface ManifestFile {
   sha256: string;
   kind: ManifestFileKind;
   schemaVersion: number;
+  /** 적재 단계에서 읽은 읽기 전용 원천 파일 버전(예: buildings → parcels). */
+  dependsOn?: Record<string, string>;
 }
 
 export interface Manifest {
@@ -113,6 +115,37 @@ export async function withDataDirLock<T>(dataDir: string, fn: () => T | Promise<
   }
 }
 
+export interface WaitLockOptions {
+  timeoutMs: number;
+  pollMs?: number;
+  logEveryMs?: number;
+  log?: (msg: string) => void;
+  /** 테스트 주입용 */
+  sleep?: (ms: number) => Promise<void>;
+  now?: () => number;
+}
+
+/**
+ * 다른 빌드가 쥔 잠금이 풀릴 때까지 기다린다(기본 30초 간격, 5분마다 한 번 로그).
+ * true면 잠금이 비었다(직후 withDataDirLock이 잡는다 — 그 사이 경쟁은 LOCKED 오류로 드러난다), false면 시간 초과.
+ */
+export async function waitForDataDirLock(dataDir: string, opts: WaitLockOptions): Promise<boolean> {
+  const { timeoutMs, pollMs = 30_000, logEveryMs = 300_000, log = console.log, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), now = Date.now } = opts;
+  const lockPath = join(dataDir, LOCK_FILE);
+  const start = now();
+  let lastLog = -Infinity;
+  while (existsSync(lockPath)) {
+    const waited = now() - start;
+    if (waited >= timeoutMs) return false;
+    if (waited - lastLog >= logEveryMs) {
+      lastLog = waited;
+      log(`data dir locked (${lockPath}); waiting ${Math.round(waited / 60000)} min of ${Math.round(timeoutMs / 60000)}…`);
+    }
+    await sleep(Math.min(pollMs, timeoutMs - waited));
+  }
+  return true;
+}
+
 function readJson(path: string): Manifest | null {
   return existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as Manifest) : null;
 }
@@ -183,13 +216,14 @@ export async function publishManifestLocked(dataDir: string, candidate: Manifest
   const oldCurrent = existsSync(current) ? readFileSync(current) : null;
   const oldPrev = existsSync(prevPath) ? readFileSync(prevPath) : null;
   let currentHash: string | null = null;
+  let currentUnreadable = false;
   try {
     const cur = readManifest(dataDir);
     currentHash = cur ? manifestHash(cur) : null;
   } catch {
-    // 깨진 현재본은 다른 것으로 취급해 이전본 자리로 보낸다
+    currentUnreadable = true; // 깨진 현재본은 롤백 대상이 될 수 없다 — prev를 덮지 않는다
   }
-  if (oldCurrent && currentHash !== hash) {
+  if (oldCurrent && !currentUnreadable && currentHash !== hash) {
     const prevTmp = `${prevPath}.tmp`;
     writeFileSync(prevTmp, oldCurrent);
     renameSync(prevTmp, prevPath);
@@ -250,8 +284,11 @@ export interface GcResult {
   skipped: string[];
 }
 
-export function collectGarbage(dataDir: string, pinnedHashes: ReadonlySet<string>): Promise<GcResult> {
-  return withDataDirLock(dataDir, () => collectGarbageLocked(dataDir, pinnedHashes));
+export type PinSource = ReadonlySet<string> | (() => ReadonlySet<string>);
+
+export function collectGarbage(dataDir: string, pins: PinSource): Promise<GcResult> {
+  // 핀은 잠금을 쥔 뒤에 계산한다 — 저장(saveProject)과 GC가 서로 다른 프로세스여도 경합이 없다.
+  return withDataDirLock(dataDir, () => collectGarbageLocked(dataDir, typeof pins === "function" ? pins() : pins));
 }
 
 /** 호출자가 withDataDirLock을 쥐고 있어야 한다. */
@@ -259,6 +296,7 @@ export function collectGarbageLocked(dataDir: string, pinnedHashes: ReadonlySet<
   const keepFiles = new Set<string>();
   const keepManifests = new Set<string>();
   const keep = (m: Manifest) => {
+    for (const f of Object.values(m.files)) resolveDataPath(dataDir, f.path); // 비정규 경로면 PATH_ESCAPE로 중단
     keepManifests.add(manifestHash(m));
     for (const f of Object.values(m.files)) keepFiles.add(f.path);
   };
@@ -301,5 +339,13 @@ export function collectGarbageLocked(dataDir: string, pinnedHashes: ReadonlySet<
 export function openDataFile(dataDir: string, m: Manifest, key: string): BetterSqlite3.Database {
   const file = m.files[key];
   if (!file) throw new ManifestError("UNKNOWN_FILE_KEY", `manifest has no file "${key}"`);
-  return new Database(resolveDataPath(dataDir, file.path), { readonly: true, fileMustExist: true });
+  const db = new Database(resolveDataPath(dataDir, file.path), { readonly: true, fileMustExist: true });
+  // Published files are immutable and read-only. Keep spatial/index pages in
+  // the process and keep SQLite's small temporary sort tables off the disk;
+  // the request path must not compete with the data build for synchronous I/O.
+  db.pragma("query_only = ON");
+  db.pragma("mmap_size = 268435456");
+  db.pragma("cache_size = -65536");
+  db.pragma("temp_store = MEMORY");
+  return db;
 }

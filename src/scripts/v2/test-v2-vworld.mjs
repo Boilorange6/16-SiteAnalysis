@@ -1,0 +1,150 @@
+/**
+ * VWorld 클라이언트 테스트 — 로컬 가짜 서버만 쓴다(네트워크 없음).
+ * 세션이 끊기면 서버는 파일 대신 로그인 HTML을 준다. 그걸 zip으로 저장하면 안 된다.
+ */
+import assert from "node:assert/strict";
+import http from "node:http";
+import { mkdtempSync, existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+
+const { parseFileList, latestFull, latestPerRegion, VworldSession, VworldError, fetchDatasets } = await import("../../lib/v2/ingest/vworld.ts");
+
+const row = (sq, region, size, unit, kind, base) => `<li><!--v-for="n in 10"-->
+<div class="item row"><input type="hidden" name="dsFileSq" value="${sq}"><input type="hidden" name="dsFileId" value="20171128DS00002">
+<div class="format"><span class="shp">SHP</span></div><div class="less"><div class="path bg min"><span class="sigunguNm1">
+${region}</span></div><div class="tit min">연속지적도형정보</div></div>
+<div class="txt"><span>용량<em>
+${size}</em>
+${unit}</span><span>구분<em>${kind}</em></span><span>기준일<em class="xxs">${base}</em></span></div></div></li>`;
+
+// ─── 1. 목록 파싱 ──────────────────────────────────────────────────────────
+{
+  const html = row("4729", "세종특별자치시", "37", "MB", "전체데이터", "2026-09-08") + row("4733", "경상북도", "1,203", "MB", "전체데이터", "2026-09-08") + row("4800", "세종특별자치시", "12", "KB", "변동데이터", "2026-09-28") + row("4600", "세종특별자치시", "36", "MB", "전체데이터", "2026-08-08");
+  const files = parseFileList(html, "23");
+  assert.equal(files.length, 4);
+  assert.deepEqual(files[0], { dsId: "23", dsFileId: "20171128DS00002", fileSq: "4729", region: "세종특별자치시", title: "연속지적도형정보", format: "shp", approxBytes: 37 * 1024 ** 2, kind: "전체데이터", baseDate: "2026-09-08" });
+  assert.equal(files[1].approxBytes, 1203 * 1024 ** 2, "천 단위 쉼표");
+  assert.equal(files[2].approxBytes, 12 * 1024);
+  assert.deepEqual(latestFull(files).map((f) => f.fileSq), ["4729", "4733"], "전체데이터 중 최신 기준일만");
+}
+
+// ─── 1b. MK(도로명주소 건물, dsId 30056) 목록 파싱 ─────────────────────────
+{
+  const html = readFileSync(new URL("./fixtures/vworld-mk-30056-list.html", import.meta.url), "utf8");
+  const files = parseFileList(html, "30056");
+  assert.equal(files.length, 3);
+  assert.deepEqual(files[0], { dsId: "30056", dsFileId: "30056", fileSq: "66", region: "충북", title: "(도로명주소)건물_충북.zip", format: "shp", approxBytes: 69 * 1024 ** 2, kind: "데이터", baseDate: "2026-09" });
+  assert.deepEqual(files.map((f) => f.region), ["충북", "충남", "제주"]);
+  const older = { ...files[0], fileSq: "1", baseDate: "2026-08" };
+  assert.deepEqual(latestPerRegion([older, ...files]).map((f) => f.fileSq), ["66", "70", "60"], "시도마다 최신 기준일");
+}
+
+// ─── 가짜 VWorld 서버 ──────────────────────────────────────────────────────
+const state = { loggedIn: new Set(), expired: false, listPages: 0 };
+const b64 = (s) => Buffer.from(s, "utf8").toString("base64");
+const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url, "http://x");
+  const sid = (req.headers.cookie ?? "").match(/SID=(\w+)/)?.[1];
+  if (url.pathname === "/v4po_usrlogin_a001.do") {
+    res.setHeader("set-cookie", [`SID=s${Date.now()}${Math.random().toString(36).slice(2, 6)}; Path=/`]);
+    return res.end("<html>login</html>");
+  }
+  if (url.pathname === "/v4po_usrlogin_a004.do") {
+    let body = "";
+    for await (const c of req) body += c;
+    const p = new URLSearchParams(body);
+    res.setHeader("content-type", "application/json");
+    if (!req.headers.referer || !req.headers.origin) return res.end(JSON.stringify({ resultMap: { result: "failed", msg: "잘못된 접근입니다." } }));
+    if (p.get("usrIdeE") === b64("user") && p.get("usrPwdE") === b64("pass")) {
+      state.loggedIn.add(sid);
+      return res.end(JSON.stringify({ resultMap: { result: "expirePw", msg: "비밀번호 사용기간(6개월)이 초과하였습니다.", url: "/v4po_usrinf_i003.do" } }));
+    }
+    return res.end(JSON.stringify({ resultMap: { result: "error", msg: "아이디 또는 비밀번호가 일치하지 않습니다." } }));
+  }
+  if (url.pathname === "/dtmk/dtmk_ntads_s002.do") {
+    if (url.searchParams.get("dsId") === "99") {
+      return res.end(["A시", "B시", "C시"].map((r, i) => row(String(9001 + i), r, "1", "MB", "전체데이터", "2026-09-08")).join(""));
+    }
+    state.listPages++;
+    const page = Number(url.searchParams.get("datPageIndex"));
+    const n = page === 1 ? 100 : 3;
+    return res.end(Array.from({ length: n }, (_, i) => row(String(page * 1000 + i), "세종특별자치시", "1", "MB", "전체데이터", "2026-09-08")).join(""));
+  }
+  if (url.pathname === "/dtmk/downloadResourceFile.do") {
+    if (!state.loggedIn.has(sid) || state.expired || url.searchParams.get("fileNo") === "9002") {
+      res.setHeader("content-type", "text/html;charset=UTF-8");
+      return res.end("<html>로그인 후 이용해주세요</html>");
+    }
+    const payload = Buffer.from(`PK-fake-zip-${url.searchParams.get("fileNo")}`);
+    res.setHeader("content-type", "application/download; UTF-8");
+    res.setHeader("content-length", String(payload.length));
+    return res.end(payload);
+  }
+  res.statusCode = 404;
+  res.end();
+});
+await new Promise((r) => server.listen(0, "127.0.0.1", r));
+const base = `http://127.0.0.1:${server.address().port}`;
+let sleeps = 0;
+const opts = { base, delayMs: 5, sleep: async () => { sleeps++; } };
+
+try {
+  // ─── 2. 로그인 ───────────────────────────────────────────────────────────
+  await assert.rejects(new VworldSession(opts).login("user", "wrong"), (e) => e instanceof VworldError && e.code === "LOGIN_FAILED" && !/wrong/.test(e.message));
+  const s = new VworldSession(opts);
+  const beforeLogin = sleeps;
+  assert.equal(await s.login("user", "pass"), "expirePw", "비밀번호 기간 초과도 로그인 성공");
+  assert.equal(sleeps - beforeLogin, 1, "로그인 GET과 POST 사이에 한 번 쉰다");
+
+  // ─── 3. 목록: 페이지 넘김과 간격 ──────────────────────────────────────────
+  const before = sleeps;
+  const all = await s.listFiles("23");
+  assert.equal(all.length, 103);
+  assert.equal(state.listPages, 2);
+  assert.equal(sleeps - before, 2, "모든 페이지 요청 전에 쉰다(1쪽 포함)");
+
+  // ─── 4. 다운로드, 다시 받으면 건너뜀 ──────────────────────────────────────
+  const dir = mkdtempSync(join(tmpdir(), "v2-vworld-"));
+  const file = { dsId: "23", dsFileId: "20171128DS00002", fileSq: "4729", region: "세종특별자치시", title: "연속지적도형정보", format: "shp", approxBytes: null, kind: "전체데이터", baseDate: "2026-09-08" };
+  const out = join(dir, "cadastral", "2026-09-08", "세종특별자치시.zip");
+  const r1 = await s.download(file, out);
+  assert.deepEqual(r1, { bytes: 16, skipped: false });
+  assert.equal(readFileSync(out, "utf8"), "PK-fake-zip-4729");
+  assert.equal(JSON.parse(readFileSync(`${out}.done.json`, "utf8")).fileSq, "4729");
+  assert.deepEqual(await s.download(file, out), { bytes: 16, skipped: true });
+
+  // ─── 5. 세션 만료 → HTML을 저장하지 않는다 ───────────────────────────────
+  state.expired = true;
+  const out2 = join(dir, "cadastral", "2026-09-08", "경상북도.zip");
+  await assert.rejects(s.download({ ...file, fileSq: "4733", region: "경상북도" }, out2), (e) => e.code === "NOT_A_FILE");
+  assert.equal(existsSync(out2), false);
+  assert.deepEqual(readdirSync(join(dir, "cadastral", "2026-09-08")).filter((f) => f.endsWith(".part")), [], ".part 없음");
+
+  // ─── 6. fetchDatasets: 한 파일이 실패해도 나머지는 받고 실패를 모은다 ─────
+  state.expired = false;
+  const dir2 = mkdtempSync(join(tmpdir(), "v2-vworld-"));
+  const fo = { dsIds: ["99"], regions: null, outDir: dir2, folders: { 99: "fake" } };
+  const r = await fetchDatasets(s, fo);
+  assert.equal(r.downloaded, 2);
+  assert.equal(r.skipped, 0);
+  assert.equal(r.failures.length, 1);
+  assert.match(r.failures[0], /B시/);
+  assert.ok(existsSync(join(dir2, "fake", "2026-09-08", "A시.zip")) && existsSync(join(dir2, "fake", "2026-09-08", "C시.zip")));
+  assert.equal(existsSync(join(dir2, "fake", "2026-09-08", "B시.zip")), false);
+
+  // 지역 필터가 아무것도 못 찾으면 실패 한 건
+  const none = await fetchDatasets(s, { ...fo, regions: new Set(["없는시"]) });
+  assert.deepEqual(none, { downloaded: 0, skipped: 0, failures: ["99: no files for 없는시"] });
+
+  // 손상된 .done.json은 미완료 → 다시 받고 유효하게 고친다
+  const a = join(dir2, "fake", "2026-09-08", "A시.zip");
+  writeFileSync(`${a}.done.json`, "{not json");
+  const again = await fetchDatasets(s, { ...fo, regions: new Set(["A시"]) });
+  assert.deepEqual(again, { downloaded: 1, skipped: 0, failures: [] });
+  assert.equal(JSON.parse(readFileSync(`${a}.done.json`, "utf8")).fileSq, "9001");
+} finally {
+  server.close();
+}
+
+console.log("✓ v2 vworld");

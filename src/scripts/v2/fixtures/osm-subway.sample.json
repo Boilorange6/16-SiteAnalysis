@@ -1,0 +1,136 @@
+{
+ "source": "OpenStreetMap Overpass API",
+ "license": "ODbL-1.0; © OpenStreetMap contributors",
+ "generated_at": "2026-05-26T06:55:13+00:00",
+ "stations": [
+  {
+   "osm_id": "node/287600947",
+   "station_name": "한성대입구",
+   "lat": 37.5885141,
+   "lng": 127.0059624
+  },
+  {
+   "osm_id": "node/289245376",
+   "station_name": "동래",
+   "lat": 35.2056761,
+   "lng": 129.0784845
+  }
+ ],
+ "entrances": [
+  {
+   "osm_id": "node/1772360709",
+   "station_name": "동래",
+   "entrance_name": "동래역 1번출구",
+   "entrance_ref": "1",
+   "lat": 35.2050932,
+   "lng": 129.0783697
+  },
+  {
+   "osm_id": "node/8273165610",
+   "station_name": "동래",
+   "entrance_name": "수안역 1번출구",
+   "entrance_ref": "1",
+   "lat": 35.2020959,
+   "lng": 129.0833025
+  },
+  {
+   "osm_id": "node/8276853232",
+   "station_name": "동래",
+   "entrance_name": "동래역 1번출구",
+   "entrance_ref": "1",
+   "lat": 35.1974376,
+   "lng": 129.0913028
+  }
+ ],
+ "lines": [
+  {
+   "osm_id": "relation/10092719",
+   "line_ref": "김포골드",
+   "line_name": "김포 골드라인: 김포공항 → 양촌",
+   "color": "#957326",
+   "lat": 37.6210756,
+   "lng": 126.7136082,
+   "geometry": {
+    "type": "MultiLineString",
+    "coordinates": [
+     [
+      [
+       126.801897,
+       37.5623114
+      ],
+      [
+       126.8028709,
+       37.5622308
+      ],
+      [
+       126.804027,
+       37.5621412
+      ]
+     ]
+    ]
+   }
+  }
+ ],
+ "station_axes": [
+  {
+   "station_osm_id": "node/289245376",
+   "station_name": "동래",
+   "line_ref": "부산1",
+   "line_name": "부산 도시철도 1호선: 다대포해수욕장 → 노포",
+   "color": "#F06A00",
+   "lat": 35.2056762,
+   "lng": 129.0784968,
+   "distance_m": 1.1,
+   "endpoints": [
+    [
+     129.0785073,
+     35.2049397
+    ],
+    [
+     129.0784863,
+     35.2064128
+    ]
+   ]
+  },
+  {
+   "station_osm_id": "node/289245376",
+   "station_name": "동래",
+   "line_ref": "부산4",
+   "line_name": "부산 도시철도 4호선",
+   "color": "#217DCB",
+   "lat": 35.2045279,
+   "lng": 129.0777562,
+   "distance_m": 144,
+   "endpoints": [
+    [
+     129.0769558,
+     35.2048669
+    ],
+    [
+     129.0785567,
+     35.204189
+    ]
+   ]
+  },
+  {
+   "station_osm_id": "node/287600947",
+   "station_name": "한성대입구",
+   "line_ref": "4",
+   "line_name": "수도권 전철 4호선: 불암산 → 오이도",
+   "color": "#009BCE",
+   "lat": 37.5884939,
+   "lng": 127.0059767,
+   "distance_m": 2.6,
+   "endpoints": [
+    [
+     127.0067881,
+     37.5888533
+    ],
+    [
+     127.0051653,
+     37.5881344
+    ]
+   ]
+  }
+ ]
+}

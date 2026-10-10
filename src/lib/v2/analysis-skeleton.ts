@@ -4,7 +4,8 @@
  */
 import { randomUUID } from "node:crypto";
 import type BetterSqlite3 from "better-sqlite3";
-import type { LngLat } from "./crs";
+import { toUtmk, type LngLat } from "./crs";
+import { geometryCentroid } from "./engine/tiles/buildings-shared";
 import { queryFeaturesInRadius } from "./data/features";
 import { manifestHash, openDataFile, readManifest } from "./data/manifest";
 import { createAnalysisRun, finishAnalysisRun, getAnalysisRun, saveTileResult } from "./app-db";
@@ -35,7 +36,8 @@ export function runSkeletonAnalysis(
   if (!manifest) throw new Error("no published manifest — run a data build first");
   const hash = manifestHash(manifest);
   // 데이터 파일을 먼저 연다 — 열기에 실패하면 'running'으로 남는 분석 실행을 만들지 않는다.
-  const core = openDataFile(dataDir, manifest, "core");
+  // 건물은 buildings 파일에 있다. 옛 매니페스트(buildings 없음)는 core에서 읽는다.
+  const core = openDataFile(dataDir, manifest, manifest.files.buildings ? "buildings" : "core");
   const analysisId = randomUUID();
   try {
     createAnalysisRun(appDb, {
@@ -43,6 +45,11 @@ export function runSkeletonAnalysis(
       analysisDate: input.analysisDate, manifestHash: hash, engineVersion: SKELETON_ENGINE_VERSION, parameters: {},
     });
     const hits = queryFeaturesInRadius(core, input.center, input.radiusM, ["building"]);
+    const [cx, cy] = toUtmk(input.center);
+    const counted = hits.filter((hit) => {
+      const center = geometryCentroid(hit.geometry);
+      return !center || Math.hypot(center[0] - cx, center[1] - cy) <= input.radiusM;
+    }).length;
     // 반경 안 건물이 0동이어도 건물 원천이 적재돼 있으면 "0동 관측"이다. 원천 자체가 없으면 "자료 없음"이다.
     const releases = core
       .prepare(`SELECT release_id, source_id, source_as_of, fetched_at FROM source_release
@@ -69,8 +76,8 @@ export function runSkeletonAnalysis(
       engineVersion: SKELETON_ENGINE_VERSION,
       conditions,
       metrics: [{
-        id: "building_count", label: "반경 내 건물", value: hasSource ? hits.length : null, unit: "동",
-        formulaVersion: "d02-count@1", numerator: null, denominator: null, status: hasSource ? "observed" : "missing",
+        id: "building_count", label: "반경 내 건물(중심점 기준)", value: hasSource ? counted : null, unit: "동",
+        formulaVersion: "d02-count@2", numerator: counted, denominator: hits.length, status: hasSource ? "observed" : "missing",
       }],
       judgment: null,
       presentation: { legend: [], camera: null, layers: ["building"], outputFace: "front" },
@@ -79,7 +86,7 @@ export function runSkeletonAnalysis(
         // 의도: 반경 안 적중 여부와 무관하게 조회한 건물 원천(파일 내 모든 building release)을 모두 나열한다.
         sources: releases.map((r) => ({ sourceId: r.source_id, releaseId: r.release_id, sourceAsOf: r.source_as_of, fetchedAt: r.fetched_at })),
       },
-      limitations: hasSource ? [] : [{ kind: "not_provided", note: "건물 원천이 적재되지 않았습니다" }],
+      limitations: hasSource ? [] : [{ kind: "not_provided", note: "건물 자료를 확인하지 못했습니다." }],
     });
     saveTileResult(appDb, tile, tileCacheKey({ tileCode: "D02", manifestHash: hash, engineVersion: SKELETON_ENGINE_VERSION, conditions }));
     finishAnalysisRun(appDb, analysisId, "complete");

@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>분석 · 도판 · 시뮬레이션 타일</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&amp;family=Noto+Sans+KR:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0;font-family:"Noto Sans KR","Malgun Gothic",sans-serif;color:#15171C;background:#EEF0F3}
+a{color:#15171C}a:hover{color:#3A3F4A}
+button{font-family:inherit}
+.dh{font-family:"Do Hyeon","Noto Sans KR",sans-serif;font-weight:400}
+.tile{background:#FFFFFF;border-radius:18px;box-sizing:border-box;padding:14px 16px;display:flex;flex-direction:column;gap:8px;min-width:0;position:relative;overflow:hidden}
+.th{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700}
+.th .d{width:10px;height:10px;border-radius:5px;flex-shrink:0}
+.tag{font-size:10px;font-weight:700;padding:2px 6px;border-radius:5px;background:#EEF0F3;color:#676C76}
+.tag.dg{background:#EFEAFB;color:#4A3A9E}
+.tag.sim{background:#FDF1D8;color:#8A5A00}
+.th .ck{margin-left:auto;display:flex;align-items:center;gap:5px;font-size:11px;font-weight:500;color:#676C76}
+.th .ck input{margin:0;accent-color:#15171C}
+.bd{display:flex;gap:12px;align-items:center;flex-grow:1;min-height:0}
+.big{font-family:"Do Hyeon",sans-serif;font-size:34px;line-height:1}
+.big small{font-family:"Noto Sans KR",sans-serif;font-size:12px;color:#676C76;margin-left:3px}
+.ln{font-size:12px;color:#4A4F59;line-height:1.45}
+.pill{border:0;background:#FFFFFF;color:#4A4F59;border-radius:16px;padding:7px 12px;font-size:12px;font-weight:700}
+.pill.on{background:#15171C;color:#FFFFFF}
+.pill b{font-weight:400;opacity:.7;margin-left:3px}
+.bar{display:flex;height:14px;border-radius:4px;overflow:hidden}
+.bar i{display:block;height:100%}
+.mini{border:0;background:#EEF0F3;border-radius:14px;height:28px;padding:0 10px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:6px}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; flex-direction: column; background: #EEF0F3; overflow: hidden">
+<header style="height: 68px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 18px; padding: 0 24px">
+<a href="A4-Main.dc.html" class="dh" style="font-size: 24px; text-decoration: none">사이트 분석</a>
+<span style="display: flex; align-items: center; gap: 10px"><span style="width: 14px; height: 14px; background: #15171C; border: 2px solid #FFFFFF; box-shadow: 0 0 0 1px #15171C"></span><b style="font-size: 16px">고덕동 123 외 2필지</b></span>
+<span style="font-size: 13px; color: #676C76">반경 1km</span>
+<span style="margin-left: auto; font-size: 11px; font-weight: 700; color: #8A5A00; background: #FDF1D8; padding: 3px 8px; border-radius: 6px">예시 데이터</span>
+<a href="A4-Edit.dc.html" style="display: inline-flex; align-items: center; height: 42px; padding: 0 16px; border-radius: 21px; background: #FFFFFF; font-size: 14px; font-weight: 700; text-decoration: none">보드 편집</a>
+<a href="A4-Sheet.dc.html" style="display: inline-flex; align-items: center; height: 42px; padding: 0 16px; border-radius: 21px; background: #FFFFFF; font-size: 14px; font-weight: 700; text-decoration: none">한 판으로 인쇄</a>
+<a href="A4-Report.dc.html" style="display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 18px; border-radius: 21px; background: #15171C; color: #FFFFFF; font-size: 14px; font-weight: 700; text-decoration: none">보고서 만들기 <span class="dh" style="font-size: 16px">16장</span></a>
+</header>
+<div role="group" aria-label="타일 종류" style="flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 24px 14px">
+<button class="pill on">전체<b>41</b></button><button class="pill">분석<b>9</b></button><button class="pill">도판<b>27</b></button><button class="pill">시뮬레이션<b>5</b></button>
+<span style="margin-left: 12px; font-size: 12px; color: #676C76">모든 타일은 보고서에 넣을 수 있습니다 · 도판은 뒤집으면 구성비 · 시뮬레이션은 지금 장면이 슬라이드로</span>
+</div>
+
+<main style="flex-grow: 1; min-height: 0; box-sizing: border-box; padding: 0 24px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: 222px; gap: 16px; overflow: hidden">
+
+<section class="tile" style="grid-column: span 2; grid-row: span 2; padding: 0; background: #F4F5F2">
+<svg width="100%" height="100%" viewBox="0 0 688 460" preserveAspectRatio="xMidYMid slice" role="img" aria-label="대지와 반경 1km 종합 지도" style="display: block">
+<rect width="688" height="460" fill="#F4F5F2"></rect>
+<g stroke="#FFFFFF" stroke-linecap="round"><path d="M0 190 L688 160" stroke-width="14"></path><path d="M430 0 L430 460" stroke-width="14"></path><path d="M0 380 L688 330 M200 0 L200 460" stroke-width="6"></path></g>
+<path d="M470 210 L640 210 L640 300 L470 300 Z" fill="#D0447E" fill-opacity=".14" stroke="#D0447E" stroke-width="2" stroke-dasharray="6 4"></path>
+<circle cx="340" cy="240" r="215" fill="none" stroke="#15171C" stroke-opacity=".3" stroke-dasharray="5 6"></circle>
+<path d="M0 280 C160 270 320 210 430 180 L688 120" fill="none" stroke="#6B4CD6" stroke-width="6"></path>
+<path d="M220 460 L300 340 L360 280 L430 180" fill="none" stroke="#4AA3D9" stroke-width="5" stroke-dasharray="10 7"></path>
+<rect x="318" y="224" width="40" height="34" fill="#15171C" stroke="#FFFFFF" stroke-width="3"></rect>
+<circle cx="430" cy="180" r="9" fill="#FFFFFF" stroke="#6B4CD6" stroke-width="4"></circle>
+</svg>
+<div style="position: absolute; left: 20px; top: 16px; display: flex; flex-direction: column; gap: 4px"><span class="dh" style="font-size: 56px; line-height: 1">78</span><span style="font-size: 13px; font-weight: 700">종합 · 역세권 재건축 밀집지</span></div>
+<div style="position: absolute; left: 20px; bottom: 16px; right: 20px; display: flex; gap: 8px; flex-wrap: wrap">
+<span style="background: #FFFFFF; border-radius: 12px; padding: 6px 10px; font-size: 12px"><b style="color: #1E7A4E">강점</b> 역 도보 6분 · 예정역 400m</span>
+<span style="background: #FFFFFF; border-radius: 12px; padding: 6px 10px; font-size: 12px"><b style="color: #B4541F">주의</b> 2028년 입주 3,200세대</span>
+</div>
+</section>
+
+<section class="tile"><div class="th"><span class="d" style="background: #6B4CD6"></span>교통<span class="tag">분석</span><label class="ck"><input type="checkbox" checked>보고서</label></div>
+<div class="bd"><svg width="84" height="84" viewBox="0 0 92 92" aria-hidden="true"><circle cx="46" cy="46" r="44" fill="#F1EEFB"></circle><path d="M4 56 C30 52 50 40 88 30" stroke="#6B4CD6" stroke-width="5" fill="none"></path><circle cx="58" cy="37" r="5" fill="#FFFFFF" stroke="#6B4CD6" stroke-width="3"></circle><rect x="40" y="46" width="10" height="9" fill="#15171C"></rect></svg>
+<div><div class="big">6<small>분</small></div><div class="ln">고덕역 도보</div></div></div>
+<div class="ln">역 3 · 정류장 41 · 예정역 5분</div></section>
+
+<section class="tile"><div class="th"><span class="d" style="background: #A0522D"></span>준공 연대<span class="tag dg">도판</span><label class="ck"><input type="checkbox" checked>보고서</label></div>
+<div class="bd"><svg width="96" height="96" viewBox="0 0 120 120" aria-hidden="true" style="border-radius: 10px; flex-shrink: 0"><rect width="120" height="120" fill="#F7F7F5"></rect><path d="M0 28H120M0 72H120M46 0V120M74 0V120" stroke="#FFFFFF" stroke-width="4"></path><g fill="#7A3E1D"><rect x="8" y="34" width="16" height="14"></rect><rect x="28" y="36" width="12" height="12"></rect><rect x="8" y="52" width="14" height="14"></rect><rect x="28" y="54" width="12" height="12"></rect><rect x="8" y="78" width="16" height="14"></rect><rect x="28" y="80" width="14" height="12"></rect></g><g fill="#A0522D"><rect x="8" y="8" width="14" height="14"></rect><rect x="26" y="6" width="14" height="16"></rect><rect x="50" y="80" width="20" height="14"></rect></g><g fill="#C98B5E"><rect x="50" y="8" width="20" height="14"></rect><rect x="78" y="78" width="14" height="16"></rect></g><g fill="#E3BFA0"><rect x="78" y="6" width="12" height="16"></rect><rect x="80" y="34" width="12" height="18"></rect><rect x="96" y="80" width="16" height="14"></rect></g><g fill="#F2E3D5"><rect x="94" y="10" width="18" height="12"></rect><rect x="96" y="34" width="16" height="12"></rect><rect x="96" y="52" width="16" height="14"></rect></g><rect x="50" y="98" width="20" height="14" fill="#D5D8DC"></rect><rect x="52" y="40" width="16" height="24" fill="none" stroke="#15171C" stroke-width="3"></rect></svg>
+<div><div class="big">54<small>%</small></div><div class="ln">30년 넘은 건물</div></div></div>
+<div class="ln" style="display: flex; align-items: center; gap: 8px">서쪽 블록에 노후 밀집 · 미상 11%<button class="mini" style="margin-left: auto" aria-label="뒤집어서 구성비 보기">↺ 구성비</button></div></section>
+
+<section class="tile"><div class="th"><span class="d" style="background: #F2A541"></span>일조 · 그림자<span class="tag sim">시뮬레이션</span><label class="ck"><input type="checkbox" checked>보고서</label></div>
+<div class="bd" style="gap: 10px"><svg width="150" height="100" viewBox="30 110 760 470" aria-hidden="true" style="flex-shrink: 0"><path d="M400.0 120.0 L774.1 336.0 L400.0 552.0 L25.9 336.0Z" fill="#EEF0EC"></path><path d="M400.0 148.8 L424.3 139.8 L468.0 165.0 L424.3 190.2 L400.0 199.2 L356.4 174.0Z" fill="#3D4A6B" fill-opacity=".28"></path><path d="M530.9 224.4 L564.6 215.0 L627.0 251.0 L598.3 267.6 L549.6 285.6 L487.3 249.6Z" fill="#3D4A6B" fill-opacity=".28"></path><path d="M543.4 325.2 L682.1 282.9 L719.6 304.5 L707.1 311.7 L524.7 379.2 L487.3 357.6Z" fill="#3D4A6B" fill-opacity=".28"></path><path d="M593.3 354.0 L732.0 311.7 L774.1 336.0 L774.1 336.0 L605.8 404.4 L555.9 375.6Z" fill="#3D4A6B" fill-opacity=".28"></path><path d="M537.2 386.4 L719.6 318.9 L761.6 343.2 L718.0 368.4 L543.4 440.4 L493.5 411.6Z" fill="#3D4A6B" fill-opacity=".28"></path><path d="M437.4 285.6 L487.3 314.4 L412.5 357.6 L362.6 328.8Z" fill="#E0402A" fill-opacity=".35" stroke="#E0402A" stroke-width="4"></path><path d="M574.6 300.0 L612.0 321.6 L612.0 249.6 L574.6 228.0Z" fill="#C9CDD4"></path><path d="M661.9 292.8 L612.0 321.6 L612.0 249.6 L661.9 220.8Z" fill="#E3E6EA"></path><path d="M624.5 199.2 L661.9 220.8 L612.0 249.6 L574.6 228.0Z" fill="#FFFFFF"></path><path d="M624.5 328.8 L680.6 361.2 L680.6 253.2 L624.5 220.8Z" fill="#C9CDD4"></path><path d="M718.0 339.6 L680.6 361.2 L680.6 253.2 L718.0 231.6Z" fill="#E3E6EA"></path><path d="M661.9 199.2 L718.0 231.6 L680.6 253.2 L624.5 220.8Z" fill="#FFFFFF"></path><path d="M487.3 357.6 L524.7 379.2 L524.7 271.2 L487.3 249.6Z" fill="#C9CDD4"></path><path d="M580.8 346.8 L524.7 379.2 L524.7 271.2 L580.8 238.8Z" fill="#E3E6EA"></path><path d="M543.4 217.2 L580.8 238.8 L524.7 271.2 L487.3 249.6Z" fill="#FFFFFF"></path><path d="M555.9 375.6 L605.8 404.4 L605.8 296.4 L555.9 267.6Z" fill="#C9CDD4"></path><path d="M643.2 382.8 L605.8 404.4 L605.8 296.4 L643.2 274.8Z" fill="#E3E6EA"></path><path d="M593.3 246.0 L643.2 274.8 L605.8 296.4 L555.9 267.6Z" fill="#FFFFFF"></path><path d="M493.5 411.6 L543.4 440.4 L543.4 332.4 L493.5 303.6Z" fill="#C9CDD4"></path><path d="M587.1 415.2 L543.4 440.4 L543.4 332.4 L587.1 307.2Z" fill="#E3E6EA"></path><path d="M537.2 278.4 L587.1 307.2 L543.4 332.4 L493.5 303.6Z" fill="#FFFFFF"></path><path d="M281.5 289.2 L318.9 310.8 L318.9 296.4 L281.5 274.8Z" fill="#C9CDD4"></path><path d="M318.9 253.2 L356.4 274.8 L318.9 296.4 L281.5 274.8Z" fill="#FFFFFF"></path><path d="M406.2 462.0 L456.1 490.8 L456.1 418.8 L406.2 390.0Z" fill="#C9CDD4"></path><path d="M499.8 465.6 L456.1 490.8 L456.1 418.8 L499.8 393.6Z" fill="#E3E6EA"></path><path d="M449.9 364.8 L499.8 393.6 L456.1 418.8 L406.2 390.0Z" fill="#FFFFFF"></path><circle cx="180" cy="180" r="22" fill="#F2A541"></circle></svg>
+<div><div class="big">84<small>%</small></div><div class="ln">동지 연속 2시간</div></div></div>
+<div style="display: flex; align-items: center; gap: 8px"><span class="mini" style="background: #F2A541">▶ 12:00</span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #EEF0F3; position: relative"><i style="position: absolute; left: 0; top: 0; bottom: 0; width: 50%; background: #F2A541; border-radius: 2px; display: block"></i></span><a href="A4-Sim.dc.html" class="ln" style="font-size: 11px; font-weight: 700">펼치기 ↗</a></div></section>
+
+<section class="tile"><div class="th"><span class="d" style="background: #E39B1B"></span>학군<span class="tag">분석</span><label class="ck"><input type="checkbox" checked>보고서</label></div>
+<div class="bd"><svg width="84" height="84" viewBox="0 0 92 92" aria-hidden="true"><circle cx="46" cy="46" r="44" fill="#FDF3E1"></circle><path d="M20 30 L60 22 L70 60 L28 70 Z" fill="#E39B1B" fill-opacity=".25" stroke="#E39B1B" stroke-width="2"></path><rect x="40" y="42" width="10" height="9" fill="#15171C"></rect></svg>
+<div><div class="big">7<small>분</small></div><div class="ln">배정 ○○초</div></div></div>
+<div class="ln">통학구역 안 · 학원 48</div></section>
+
+<section class="tile"><div class="th"><span class="d" style="background: #C9A227"></span>용도지역<span class="tag dg">도판</span><label class="ck"><input type="checkbox" checked>보고서</label></div>
+<div class="bd"><svg width="96" height="96" viewBox="0 0 120 120" aria-hidden="true" style="border-radius: 10px; flex-shrink: 0"><rect width="120" height="120" fill="#F9EDC2"></rect><path d="M0 0H74V28H0Z" fill="#F6E3A1"></path><path d="M74 0H120V72H74Z" fill="#FBD6C7"></path><path d="M74 72H120V120H86Z" fill="#CFE6C4"></path><path d="M0 28H120M0 72H120M46 0V120M74 0V120" stroke="#FFFFFF" stroke-width="3"></path><rect x="52" y="40" width="16" height="24" fill="none" stroke="#15171C" stroke-width="3"></rect></svg>
+<div><div class="big" style="font-size: 24px">2종일반</div><div class="ln">대지 용도지역</div></div></div>
+<div class="ln">3종 · 상업과 맞닿음 → 종상향 여지</div></section>
+
+<section class="tile" style="background: #FBFBFC; box-shadow: inset 0 0 0 2px #E3E6EA"><div class="th"><span class="d" style="background: #E9B949"></span>건축물 용도 · 뒷면<span class="tag dg">도판</span><label class="ck"><input type="checkbox" checked>보고서</label></div>
+<div style="display: flex; flex-direction: column; gap: 10px; flex-grow: 1; justify-content: center">
+<div class="bar"><i style="width: 52%; background: #E9B949"></i><i style="width: 18%; background: #E07A5F"></i><i style="width: 8%; background: #5B7DB1"></i><i style="width: 5%; background: #81B29A"></i><i style="width: 17%; background: #D5D8DC"></i></div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 10px; font-size: 12px"><span>주거 <b>52%</b></span><span>근생 <b>18%</b></span><span>업무 <b>8%</b></span><span>교육 <b>5%</b></span><span style="color: #676C76">미상 <b>17%</b></span><span style="color: #676C76">1,284동</span></div>
+</div>
+<div class="ln" style="display: flex; align-items: center; gap: 8px">주거 중심 · 근생은 간선도로변에 모임<button class="mini" style="margin-left: auto" aria-label="앞면으로 뒤집기">↺ 도판</button></div></section>
+
+<section class="tile"><div class="th"><span class="d" style="background: #D0447E"></span>정비사업<span class="tag">분석</span><label class="ck"><input type="checkbox" checked>보고서</label></div>
+<div class="bd"><svg width="84" height="84" viewBox="0 0 92 92" aria-hidden="true"><circle cx="46" cy="46" r="44" fill="#FBEAF1"></circle><rect x="52" y="22" width="26" height="22" fill="#D0447E" fill-opacity=".2" stroke="#D0447E" stroke-width="2" stroke-dasharray="4 3"></rect><rect x="16" y="54" width="30" height="20" fill="#D0447E" fill-opacity=".2" stroke="#D0447E" stroke-width="2"></rect><rect x="40" y="42" width="10" height="9" fill="#15171C"></rect></svg>
+<div><div class="big">4<small>곳</small></div><div class="ln">반경 1km</div></div></div>
+<div class="ln">조합설립 1 · 구역지정 2 · 추진위 1</div></section>
+
+<section class="tile"><div class="th"><span class="d" style="background: #2F8FB0"></span>겨울 바람<span class="tag sim">시뮬레이션</span><label class="ck"><input type="checkbox" checked>보고서</label></div>
+<div class="bd"><svg width="84" height="84" viewBox="0 0 120 120" aria-hidden="true"><g fill="none" stroke="#E3E6EA"><circle cx="60" cy="60" r="24"></circle><circle cx="60" cy="60" r="52"></circle></g><g fill="#2F8FB0" fill-opacity=".75"><path d="M60 60 L54 12 L66 12Z"></path><path d="M60 60 L96 30 L102 40Z"></path><path d="M60 60 L90 56 L90 66Z"></path><path d="M60 60 L62 84 L56 84Z"></path><path d="M60 60 L14 62 L14 52Z"></path><path d="M60 60 L22 26 L30 20Z"></path></g></svg>
+<div><div class="big" style="font-size: 26px">북서풍</div><div class="ln">빌딩풍 구역 2곳</div></div></div>
+<div style="display: flex; align-items: center; gap: 8px"><span class="mini">▶ 흐름 계산 · 약 30초</span><span class="ln" style="font-size: 11px; margin-left: auto">열쾌적 · 3D 매스도 같은 방식</span></div></section>
+
+<section class="tile" style="opacity: .9"><div class="th"><span class="d" style="background: #2F8FB0"></span>경사도<span class="tag dg">도판</span></div></section>
+<section class="tile" style="opacity: .9"><div class="th"><span class="d" style="background: #4C9A3A"></span>공원 · 녹지 · 하천<span class="tag dg">도판</span></div></section>
+<section class="tile" style="opacity: .9"><div class="th"><span class="d" style="background: #D0447E"></span>실거래 시세<span class="tag">분석</span></div></section>
+<section class="tile" style="opacity: .9"><div class="th"><span class="d" style="background: #6B4CD6"></span>레이어 스택<span class="tag dg">스택 3장</span></div></section>
+</main>
+<div style="height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #676C76; background: linear-gradient(180deg, rgba(238,240,243,0) 0%, #EEF0F3 60%); margin-top: -44px; position: relative">아래로 29개 더 · 스크롤</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

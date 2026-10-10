@@ -1,0 +1,738 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#eef0f3">
+  <title>v2 도판 상세 창 시안</title>
+  <style>
+    :root {
+      --bg: #eef0f3;
+      --ink: #15171c;
+      --muted: #676c76;
+      --line: #d9dce2;
+      --black: #16181d;
+      --surface: #ffffff;
+      --surface-soft: #f7f8fa;
+      --focus: #2f6fdb;
+      --blue: #477fc4;
+      --blue-dark: #21599b;
+      --orange: #d97706;
+      --orange-soft: #fff2dd;
+      --green: #5ca06d;
+      --green-soft: #e9f4eb;
+      --yellow: #e7c950;
+      --pink: #d779a7;
+      --teal: #44a99b;
+      --purple: #8171bd;
+      --danger: #b42318;
+      --danger-soft: #fff0ee;
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 20px;
+      --space-6: 24px;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --font-body: "Noto Sans KR", "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+      --font-display: "Do Hyeon", "Noto Sans KR", "Malgun Gothic", sans-serif;
+      font-family: var(--font-body);
+      color: var(--ink);
+      background: var(--bg);
+      font-synthesis: none;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; min-width: 320px; min-height: 100%; }
+    body { min-height: 100vh; overflow: hidden; background: var(--bg); font-size: 14px; line-height: 1.45; }
+    button, input, select { font: inherit; }
+    button, select { cursor: pointer; }
+    button { border: 0; }
+    button:disabled { cursor: not-allowed; opacity: .5; }
+    :focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+
+    .prototype-shell { min-height: 100vh; padding: 24px; background: var(--bg); }
+    .demo-bar { max-width: 1440px; margin: 0 auto 18px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+    .demo-kicker { color: var(--muted); font: 11px/1.1 var(--font-display); letter-spacing: .1em; text-transform: uppercase; }
+    .demo-title { margin: 4px 0 0; font: 28px/1 var(--font-display); }
+    .ghost-board { max-width: 1440px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; opacity: .72; }
+    .ghost-card { min-height: 220px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: #f7f8fa; }
+    .ghost-card:nth-child(2) { background: #f5f1df; }
+    .ghost-card:nth-child(3) { background: #e6f0e8; }
+    .ghost-card:nth-child(4) { background: #ece7f4; }
+    .ghost-card h2 { margin: 0 0 12px; font-size: 14px; }
+    .ghost-map { height: 120px; border-radius: 10px; background: repeating-linear-gradient(45deg, #dfe2e7 0 2px, transparent 2px 14px), #f9fafb; }
+    .ghost-line { width: 70%; height: 8px; margin-top: 16px; border-radius: 999px; background: #d5d8de; }
+    .scrim { position: fixed; z-index: 5; inset: 0; background: rgba(20, 24, 32, .45); }
+    .scrim.is-hidden { display: none; }
+
+    .detail-modal { position: fixed; z-index: 10; inset: 5vh 5vw; display: flex; flex-direction: column; overflow: hidden; border: 1px solid rgba(255,255,255,.72); border-radius: 18px; background: var(--surface); box-shadow: 0 24px 70px rgba(20,24,32,.24); }
+    .detail-modal.is-closed { display: none; }
+    .modal-header { flex: 0 0 66px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 18px 12px 22px; border-bottom: 1px solid var(--line); background: #fbfcfd; }
+    .modal-title { display: flex; min-width: 0; align-items: baseline; gap: 12px; }
+    .modal-code { flex: 0 0 auto; color: var(--muted); font: 14px/1 var(--font-display); letter-spacing: .04em; }
+    .modal-title h1 { min-width: 0; margin: 0; font: 23px/1.1 var(--font-display); white-space: nowrap; }
+    .modal-address { min-width: 0; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+    .modal-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
+    .state-control { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .state-control select { min-height: 38px; max-width: 174px; padding: 6px 28px 6px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--surface); }
+    .sample-badge { padding: 7px 10px; border-radius: 999px; color: #5b4a15; background: #fff4cf; font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .icon-btn { display: inline-grid; width: 40px; height: 40px; place-items: center; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--surface); transition: background .18s ease, border-color .18s ease, transform .18s ease; }
+    .icon-btn:hover { border-color: var(--ink); background: #f2f3f5; }
+    .icon-btn:active { transform: scale(.97); }
+    .icon-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+
+    .modal-body { display: grid; min-height: 0; flex: 1 1 auto; grid-template-columns: minmax(0, 1.45fr) minmax(390px, .8fr); gap: 16px; padding: 16px; background: #f2f4f6; }
+    .map-panel, .detail-pane { min-width: 0; min-height: 0; }
+    .map-panel { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+    .map-wrap { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; background: #f7f8f8; }
+    .map-wrap svg { display: block; width: 100%; height: 100%; }
+    .map-toolbar { position: absolute; z-index: 2; top: 14px; right: 14px; display: grid; gap: 8px; }
+    .map-toolbar .icon-btn { width: 42px; height: 42px; box-shadow: 0 4px 14px rgba(20,24,32,.08); }
+    .map-toolbar .icon-btn svg { width: 20px; height: 20px; }
+    .map-legend { position: absolute; z-index: 2; right: 14px; bottom: 14px; left: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 7px 14px; padding: 9px 12px; border: 1px solid rgba(217,220,226,.92); border-radius: 9px; background: rgba(255,255,255,.93); box-shadow: 0 4px 14px rgba(20,24,32,.06); }
+    .legend-item { display: inline-flex; align-items: center; gap: 6px; color: #414650; font-size: 11px; white-space: nowrap; }
+    .legend-mark { width: 10px; height: 10px; border: 1px solid rgba(21,23,28,.2); border-radius: 3px; }
+    .legend-mark.line { width: 17px; height: 3px; border: 0; border-radius: 999px; }
+    .map-hint { position: absolute; z-index: 2; top: 14px; left: 14px; max-width: 250px; padding: 7px 10px; border-radius: 8px; color: #4d535e; background: rgba(255,255,255,.9); font-size: 11px; }
+    .map-feature { cursor: pointer; outline: none; }
+    .map-feature:focus-visible { filter: drop-shadow(0 0 0.8px var(--focus)) drop-shadow(0 0 2px var(--focus)); }
+    .feature-building { fill: var(--yellow); fill-opacity: .88; stroke: #fff; stroke-width: 1.4; }
+    .feature-building.education { fill: var(--green); }
+    .feature-building.commerce { fill: #ee9c64; }
+    .feature-building.selected { stroke: var(--ink); stroke-width: 3.6; fill-opacity: 1; }
+    .feature-zone { fill: var(--yellow); fill-opacity: .56; stroke: #fff; stroke-width: 2; }
+    .feature-zone.green { fill: #a9d49c; }
+    .feature-zone.pink { fill: #e99abb; }
+    .feature-zone.selected { stroke: var(--ink); stroke-width: 5; fill-opacity: .78; }
+    .feature-parcel { fill: #dba995; fill-opacity: .33; stroke: #fff; stroke-width: 1.2; }
+    .feature-parcel.selected { stroke: var(--ink); stroke-width: 4; fill-opacity: .62; }
+    .route-line { fill: none; stroke: var(--orange); stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 1px 1px rgba(0,0,0,.15)); }
+    .route-line-under { fill: none; stroke: #fff; stroke-width: 11; stroke-linecap: round; stroke-linejoin: round; }
+    .point-marker { fill: var(--orange); stroke: #fff; stroke-width: 3; }
+    .site-marker { fill: var(--black); stroke: #fff; stroke-width: 3; }
+    .heat-ring { fill: none; stroke: #477fc4; stroke-opacity: .35; stroke-width: 2; }
+    .wind-sector { fill: #b2ab9a; stroke: #fff; stroke-width: 2; fill-opacity: .95; }
+
+    .detail-pane { display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
+    .selection-card, .table-card { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: 0 3px 12px rgba(20,24,32,.04); }
+    .selection-card { flex: 0 0 auto; max-height: 49%; overflow: auto; padding: 16px; }
+    .selection-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .card-kicker { color: var(--muted); font-size: 12px; font-weight: 700; }
+    .selection-card h2 { margin: 3px 0 0; font: 25px/1.15 var(--font-display); letter-spacing: -.01em; }
+    .selection-subtitle { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
+    .text-btn { min-height: 38px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; color: #343841; background: var(--surface); font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .text-btn:hover { border-color: var(--ink); background: #f5f6f8; }
+    .metric-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-top: 14px; padding: 10px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .metric-label { color: var(--muted); font-size: 12px; }
+    .metric-value { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; margin-top: 4px; }
+    .field { min-width: 0; display: flex; justify-content: space-between; gap: 8px; padding: 7px 0; border-bottom: 1px solid #eef0f3; }
+    .field dt { color: var(--muted); font-size: 12px; }
+    .field dd { min-width: 0; margin: 0; overflow-wrap: anywhere; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .chip { display: inline-flex; align-items: center; min-height: 24px; padding: 2px 8px; border-radius: 999px; color: #5b4a15; background: #f8e9a1; font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .chip.blue { color: #173f70; background: #dbeafa; }
+    .chip.green { color: #245a30; background: #dceedd; }
+    .chip.orange { color: #7a4200; background: #ffe4ba; }
+    .missing-note { display: flex; gap: 8px; margin-top: 12px; padding: 9px 10px; border-radius: 9px; color: #754611; background: #fff7e7; font-size: 12px; }
+    .missing-note svg { flex: 0 0 18px; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
+    .missing-note strong { color: #55320f; }
+    .source-line { margin: 12px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+    .composition { margin-top: 12px; }
+    .composition-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 6px; color: var(--muted); font-size: 12px; font-weight: 700; }
+    .composition-bar { display: flex; height: 12px; overflow: hidden; border-radius: 999px; background: #edf0f2; }
+    .composition-bar span { min-width: 2px; }
+    .composition-legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 12px; margin-top: 8px; }
+    .composition-legend span { display: flex; align-items: center; gap: 5px; color: #4d535e; font-size: 11px; }
+    .composition-legend i { width: 8px; height: 8px; border-radius: 2px; }
+    .control-block { margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--line); }
+    .control-label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 12px; font-weight: 700; }
+    .segmented { display: flex; flex-wrap: wrap; gap: 6px; }
+    .segmented button { min-height: 40px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; color: #4d535e; background: var(--surface); font-size: 12px; font-weight: 700; }
+    .segmented button[aria-pressed="true"] { border-color: var(--black); color: #fff; background: var(--black); }
+
+    .table-card { min-height: 0; display: flex; flex: 1 1 auto; flex-direction: column; overflow: hidden; }
+    .table-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 12px 10px; border-bottom: 1px solid var(--line); }
+    .table-count { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .table-actions { display: flex; min-width: 0; flex: 1 1 auto; justify-content: flex-end; gap: 6px; }
+    .search-wrap { position: relative; min-width: 0; flex: 1 1 170px; max-width: 244px; }
+    .search-wrap svg { position: absolute; top: 50%; left: 10px; width: 16px; height: 16px; transform: translateY(-50%); fill: none; stroke: var(--muted); stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; pointer-events: none; }
+    .search-input { width: 100%; min-height: 40px; padding: 7px 9px 7px 32px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--surface); }
+    .search-input::placeholder { color: #8a9099; }
+    .csv-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; color: #30343b; background: var(--surface); font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .csv-btn:hover { border-color: var(--ink); background: #f5f6f8; }
+    .csv-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
+    .table-scroll { min-height: 0; flex: 1 1 auto; overflow: auto; overscroll-behavior: contain; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { position: sticky; z-index: 1; top: 0; padding: 0; border-bottom: 1px solid var(--line); color: var(--muted); background: #fbfcfd; text-align: left; white-space: nowrap; }
+    th.numeric, td.numeric { text-align: right; }
+    .sort-button { display: flex; width: 100%; min-height: 38px; align-items: center; justify-content: flex-start; gap: 3px; padding: 7px 9px; border-radius: 0; color: inherit; background: transparent; font-size: 11px; font-weight: 700; text-align: left; }
+    th.numeric .sort-button { justify-content: flex-end; }
+    .sort-button:hover { background: #f0f2f5; color: var(--ink); }
+    .sort-glyph { color: #9da3ad; font-size: 11px; }
+    tr[data-row-id] { cursor: pointer; }
+    td { padding: 9px; border-bottom: 1px solid #edf0f3; vertical-align: middle; }
+    tbody tr:hover td, tbody tr:focus-visible td { background: #f4f7fb; }
+    tbody tr.is-selected td { background: #edf4ff; }
+    .cell-primary { display: block; color: var(--ink); font-weight: 700; }
+    .cell-secondary { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
+    .table-footer { padding: 8px 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+    .table-message { display: grid; min-height: 170px; place-items: center; padding: 24px; color: var(--muted); text-align: center; }
+    .empty-icon { display: grid; width: 42px; height: 42px; margin: 0 auto 10px; place-items: center; border: 1px solid var(--line); border-radius: 50%; color: var(--muted); background: #f8f9fa; }
+    .empty-icon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.6; }
+    .message-title { color: var(--ink); font-weight: 700; }
+    .message-body { margin: 5px 0 13px; }
+    .skeleton { height: 11px; border-radius: 999px; background: linear-gradient(90deg, #eceff2 25%, #f7f8f9 50%, #eceff2 75%); background-size: 200% 100%; animation: shimmer 1.2s linear infinite; }
+    .skeleton.large { width: 52%; height: 26px; margin-top: 9px; }
+    .skeleton.medium { width: 75%; margin-top: 11px; }
+    .skeleton.short { width: 36%; margin-top: 9px; }
+    .selection-card:has(.error-card) { border-color: #efc5bf; }
+    .error-card { padding: 2px 0; }
+    .error-title { display: flex; align-items: center; gap: 8px; color: var(--danger); font-weight: 800; }
+    .error-title svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2; }
+    .error-body { margin: 8px 0 12px; color: #5a3430; }
+    .error-action { min-height: 40px; padding: 7px 12px; border-radius: 8px; color: #fff; background: var(--danger); font-size: 12px; font-weight: 700; }
+    .status-live { position: fixed; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .reopen-btn { position: fixed; z-index: 4; right: 24px; bottom: 24px; display: none; min-height: 44px; padding: 8px 14px; border-radius: 999px; color: #fff; background: var(--black); font-weight: 700; }
+    body.modal-closed .reopen-btn { display: block; }
+
+    @keyframes shimmer { to { background-position: -200% 0; } }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+    }
+    @media (max-width: 1020px) {
+      .detail-modal { inset: 3vh 2vw; }
+      .modal-body { grid-template-columns: minmax(0, 1.15fr) minmax(350px, .85fr); }
+      .modal-address { max-width: 30vw; }
+      .ghost-board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 700px) {
+      body { font-size: 14px; }
+      .prototype-shell { padding: 12px; }
+      .demo-bar { margin-bottom: 10px; }
+      .demo-title { font-size: 23px; }
+      .ghost-board { grid-template-columns: 1fr 1fr; gap: 8px; }
+      .ghost-card { min-height: 160px; padding: 10px; }
+      .detail-modal { inset: 0; border: 0; border-radius: 0; }
+      .modal-header { flex-basis: 58px; padding: 8px 10px 8px 14px; gap: 8px; }
+      .modal-title { gap: 7px; }
+      .modal-code { font-size: 12px; }
+      .modal-title h1 { font-size: 18px; }
+      .modal-address { display: none; }
+      .modal-actions { gap: 5px; }
+      .state-control { font-size: 0; }
+      .state-control select { width: 108px; min-height: 40px; padding-right: 4px; font-size: 12px; }
+      .sample-badge { display: none; }
+      .icon-btn { width: 40px; height: 40px; }
+      .modal-body { display: flex; flex-direction: column; gap: 0; padding: 0; }
+      .map-panel { flex: 0 0 43%; min-height: 240px; border: 0; border-radius: 0; }
+      .map-toolbar { top: 10px; right: 10px; gap: 6px; }
+      .map-toolbar .icon-btn { width: 42px; height: 42px; }
+      .map-hint { top: 10px; left: 10px; max-width: 190px; font-size: 10px; }
+      .map-legend { right: 10px; bottom: 10px; left: 10px; gap: 4px 10px; padding: 7px 9px; }
+      .legend-item { font-size: 10px; }
+      .detail-pane { flex: 1 1 57%; gap: 0; overflow: hidden; border-top: 1px solid var(--line); border-radius: 16px 16px 0 0; background: #f2f4f6; }
+      .selection-card { max-height: 52%; margin: 8px 10px 8px; padding: 13px; border-radius: 14px; box-shadow: 0 2px 8px rgba(20,24,32,.04); }
+      .selection-card h2 { font-size: 21px; }
+      .selection-subtitle { font-size: 12px; }
+      .field-grid { gap: 0 10px; }
+      .field { padding: 5px 0; }
+      .field dt, .field dd { font-size: 11px; }
+      .metric-row { margin-top: 10px; padding: 8px 0; }
+      .metric-value { font-size: 16px; }
+      .composition-legend { gap: 4px 8px; }
+      .source-line { margin-top: 8px; font-size: 10px; }
+      .control-block { margin-top: 9px; padding-top: 9px; }
+      .segmented { gap: 4px; }
+      .segmented button { min-height: 38px; padding: 6px 8px; font-size: 11px; }
+      .table-card { flex: 1 1 57%; margin: 0 10px 10px; border-radius: 14px; }
+      .table-head { align-items: stretch; flex-direction: column; gap: 8px; padding: 10px; }
+      .table-actions { justify-content: stretch; }
+      .search-wrap { max-width: none; }
+      .search-input, .csv-btn { min-height: 44px; }
+      td { padding: 8px 7px; }
+      .sort-button { min-height: 40px; padding: 7px; }
+      .table-footer { padding: 7px 10px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="prototype-shell" aria-hidden="true">
+    <div class="demo-bar">
+      <div>
+        <div class="demo-kicker">V2 DESIGN PROTOTYPE</div>
+        <h1 class="demo-title">분석 보드</h1>
+      </div>
+      <div class="ghost-line" style="width:180px;margin:0"></div>
+    </div>
+    <div class="ghost-board">
+      <article class="ghost-card"><h2>03 건축물 용도</h2><div class="ghost-map"></div><div class="ghost-line"></div></article>
+      <article class="ghost-card"><h2>08 용도지역</h2><div class="ghost-map"></div><div class="ghost-line"></div></article>
+      <article class="ghost-card"><h2>15 도보권</h2><div class="ghost-map"></div><div class="ghost-line"></div></article>
+      <article class="ghost-card"><h2>23 개방감</h2><div class="ghost-map"></div><div class="ghost-line"></div></article>
+    </div>
+  </div>
+  <div class="scrim" id="scrim"></div>
+  <main class="detail-modal" id="detailModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <header class="modal-header">
+      <div class="modal-title">
+        <span class="modal-code" id="modalCode">D03</span>
+        <h1 id="modalTitle">건축물 용도</h1>
+        <span class="modal-address">서울특별시 강동구 아리수로 250 · 반경 800 m</span>
+      </div>
+      <div class="modal-actions">
+        <label class="state-control">시안 상태
+          <select id="statePicker" aria-label="시안 상태 선택">
+            <option value="d03-summary">D03 · 요약</option>
+            <option value="d03-building">D03 · 건물 선택</option>
+            <option value="d08-zone">D08 · 구역 선택</option>
+            <option value="d28-walk">D28 · 보행 경로</option>
+            <option value="d16-density">D16 · 밀도 컨트롤</option>
+            <option value="d29-point">D29 · 지점 값</option>
+            <option value="d20-parcel">D20 · 필지 선택</option>
+            <option value="d24-wind">D24 · 바람장미</option>
+            <option value="empty">상태 · 빈 결과</option>
+            <option value="loading">상태 · 불러오는 중</option>
+            <option value="error">상태 · 오류</option>
+          </select>
+        </label>
+        <span class="sample-badge">샘플 · 800 m</span>
+        <button class="icon-btn" id="closeButton" type="button" aria-label="상세 창 닫기" title="닫기">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"></path></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="modal-body">
+      <section class="map-panel" aria-label="확대 지도">
+        <div class="map-toolbar" aria-label="지도 도구">
+          <button class="icon-btn" type="button" data-map-action="zoom-in" aria-label="지도 확대" title="확대"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+          <button class="icon-btn" type="button" data-map-action="zoom-out" aria-label="지도 축소" title="축소"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"></path></svg></button>
+          <button class="icon-btn" type="button" data-map-action="fit" aria-label="지도 전체 보기" title="전체 보기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M21 16v5h-5"></path></svg></button>
+        </div>
+        <div class="map-hint" id="mapHint">지도 지물을 선택하면 카드가 갱신됩니다</div>
+        <div class="map-wrap" id="mapWrap"></div>
+        <div class="map-legend" id="mapLegend" aria-label="지도 범례"></div>
+      </section>
+
+      <section class="detail-pane" id="detailPane" aria-label="선택 정보와 목록">
+        <article class="selection-card" id="selectionCard" aria-live="polite"></article>
+        <section class="table-card" id="tableCard" aria-label="상세 목록"></section>
+      </section>
+    </div>
+  </main>
+  <button class="reopen-btn" id="reopenButton" type="button">상세 창 다시 열기</button>
+  <div class="status-live" id="liveRegion" role="status" aria-live="polite"></div>
+
+  <script>
+    "use strict";
+
+    const ICONS = {
+      search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6"></circle><path d="m16 16 5 5"></path></svg>',
+      download: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 20h14"></path></svg>',
+      info: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 10v6M12 7h.01"></path></svg>',
+      alert: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 21 20H3L12 3Z"></path><path d="M12 9v5M12 17h.01"></path></svg>',
+      empty: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5zM8 9h8M8 13h5"></path></svg>'
+    };
+
+    const DATA = {
+      buildings: [
+        { id: "b-001", name: "현대아파트", address: "강동구 고덕동 312", usage: "주거", primary: "공동주택", floors: "22 / B3", height: "값 없음", area: 29306.46, approved: "1995-11-30", tone: "residential" },
+        { id: "b-002", name: "현대아파트", address: "강동구 고덕동 312", usage: "주거", primary: "공동주택", floors: "22 / B3", height: "값 없음", area: 23317.67, approved: "1995-11-30", tone: "residential" },
+        { id: "b-003", name: "고덕 아이파크", address: "강동구 고덕동 499", usage: "주거", primary: "공동주택", floors: "20 / -", height: "56.9 m", area: 15419.41, approved: "2011-12-28", tone: "residential" },
+        { id: "b-004", name: "고덕 아이파크", address: "강동구 고덕동 499", usage: "주거", primary: "공동주택", floors: "20 / -", height: "56.9 m", area: 15419.41, approved: "2011-12-28", tone: "residential" },
+        { id: "b-005", name: "고덕동 295", address: "강동구 고덕동 295", usage: "교육복지", primary: "교육연구시설", floors: "5 / B1", height: "18 m", area: 15232.58, approved: "1987-01-27", tone: "education" },
+        { id: "b-006", name: "현강여자정보고등학교", address: "강동구 고덕동 295-1", usage: "교육복지", primary: "교육연구시설", floors: "6 / B1", height: "28.9 m", area: 14813.15, approved: "2009-02-06", tone: "education" },
+        { id: "b-007", name: "고덕 아이파크", address: "강동구 고덕동 499", usage: "주거", primary: "공동주택", floors: "20 / -", height: "58.3 m", area: 13956.58, approved: "2011-12-28", tone: "residential" },
+        { id: "b-008", name: "고덕 아이파크", address: "강동구 고덕동 499", usage: "주거", primary: "공동주택", floors: "20 / -", height: "58.3 m", area: 13956.58, approved: "2011-12-28", tone: "residential" },
+        { id: "b-009", name: "서울강덕초등학교", address: "강동구 고덕동 222", usage: "교육복지", primary: "교육연구시설", floors: "4 / B1", height: "22.25 m", area: 13925.27, approved: "1987-01-10", tone: "education" },
+        { id: "b-010", name: "고덕중학교", address: "강동구 고덕동 223", usage: "교육복지", primary: "교육연구시설", floors: "5 / B1", height: "18.25 m", area: 13674.84, approved: "1984-12-20", tone: "education" },
+        { id: "b-011", name: "원케어메디컬타운", address: "강동구 고덕동 297-1", usage: "교육복지", primary: "의료시설", floors: "6 / B3", height: "25.5 m", area: 13451.06, approved: "2020-10-27", tone: "commerce" }
+      ],
+      zones: [
+        { id: "z-001", name: "자연녹지지역", category: "녹지지역", area: 977300.5, share: 48.61, buildings: 86, tone: "green" },
+        { id: "z-002", name: "제2종일반주거지역", category: "주거지역", area: 596867.5, share: 29.69, buildings: 840, tone: "yellow" },
+        { id: "z-003", name: "준주거지역", category: "주거지역", area: 210376.4, share: 10.46, buildings: 1, tone: "yellow" },
+        { id: "z-004", name: "제1종일반주거지역", category: "주거지역", area: 174875.9, share: 8.7, buildings: 68, tone: "yellow" },
+        { id: "z-005", name: "근린상업지역", category: "상업지역", area: 39345.7, share: 1.96, buildings: 2, tone: "pink" },
+        { id: "z-006", name: "제3종일반주거지역", category: "주거지역", area: 12148.4, share: .6, buildings: 7, tone: "yellow" },
+        { id: "z-007", name: "일반상업지역", category: "상업지역", area: 70, share: 0, buildings: 0, tone: "pink" }
+      ],
+      walks: [
+        { id: "w-001", name: "샘터근린공원", kind: "버스 정류장", straight: 170, walk: 2.7 },
+        { id: "w-002", name: "샘터근린공원교차로", kind: "버스 정류장", straight: 183, walk: 3.2 },
+        { id: "w-003", name: "광문고·서울컨벤션고", kind: "버스 정류장", straight: 231, walk: 3.5 },
+        { id: "w-004", name: "샘터배드민턴장", kind: "버스 정류장", straight: 116, walk: 3.6 },
+        { id: "w-005", name: "샘터근린공원교차로", kind: "버스 정류장", straight: 180, walk: 3.7 },
+        { id: "w-006", name: "샘터근린공원", kind: "버스 정류장", straight: 173, walk: 3.8 },
+        { id: "w-007", name: "광문고·컨벤션고", kind: "버스 정류장", straight: 306, walk: 4.7 },
+        { id: "w-008", name: "고덕아이파크아파트", kind: "버스 정류장", straight: 351, walk: 5.5 },
+        { id: "w-009", name: "고덕역", kind: "도시철도역", straight: 247, walk: 4, route: 298 },
+        { id: "w-010", name: "강동아이파크더리버", kind: "버스 정류장", straight: 416, walk: 6.1 }
+      ],
+      parcels: [
+        { id: "p-001", address: "강동구 고덕동 296", lot: "296", type: "공원", area: 87429, price: 655100, month: "2026.01" },
+        { id: "p-002", address: "강동구 고덕동 690", lot: "690", type: "대", area: 80518.4, price: 10890000, month: "2026.01" },
+        { id: "p-003", address: "강동구 고덕동 499", lot: "499", type: "대", area: 61336.3, price: 10890000, month: "2026.01" },
+        { id: "p-004", address: "강동구 고덕동 287", lot: "287", type: "공원", area: 59726.5, price: 655100, month: "2026.01" },
+        { id: "p-005", address: "강동구 고덕동 307", lot: "307", type: "대", area: 57694.9, price: 10890000, month: "2026.01" },
+        { id: "p-006", address: "강동구 고덕동 229", lot: "229", type: "공원", area: 33347.8, price: 655100, month: "2026.01" },
+        { id: "p-007", address: "강동구 고덕동 722", lot: "722", type: "대", area: 32447.9, price: null, month: "2026.01" },
+        { id: "p-008", address: "강동구 고덕동 302", lot: "302", type: "도로", area: 31456.4, price: 3593000, month: "2026.01" },
+        { id: "p-009", address: "강동구 고덕동 691", lot: "691", type: "대", area: 28278.4, price: 10890000, month: "2026.01" },
+        { id: "p-010", address: "강동구 고덕동 산83-2", lot: "산83-2", type: "임야", area: 26706.9, price: 178300, month: "2026.01" }
+      ],
+      svf: [
+        { id: "s-001", band: "25% 미만", area: 27504, share: 1.7, tone: "#263653" },
+        { id: "s-002", band: "25~50%", area: 118176, share: 7.2, tone: "#45628c" },
+        { id: "s-003", band: "50~75%", area: 248656, share: 15.1, tone: "#7ca4cb" },
+        { id: "s-004", band: "75% 이상", area: 1255312, share: 76.1, tone: "#dbeaf2" }
+      ],
+      wind: [
+        ["북", 5.3, "0.5–2", .3], ["북북동", 3.3, "0.5–2", .2], ["북동", 2.6, "0.5–2", .3], ["동북동", 2.2, "0.5–2", .2],
+        ["동", 3.3, "0.5–2", .1], ["동남동", 2.4, "0.5–2", .1], ["남동", 2.4, "0.5–2", .2], ["남남동", 5.4, "0.5–2", .4],
+        ["남", 15.8, "0.5–2", 1.2], ["남남서", 10.5, "0.5–2", 1.3], ["남서", 8.3, "0.5–2", 1.3], ["서남서", 6.9, "0.5–2", 1.3],
+        ["서", 9.2, "2–4", 1.1], ["서북서", 8.2, "2–4", 1.3], ["북서", 7.2, "2–4", .8], ["북북서", 4.1, "0.5–2", .2]
+      ]
+    };
+
+    const STATE_META = {
+      "d03-summary": { code: "D03", title: "건축물 용도", table: "building", hint: "지물을 선택하면 상세 카드와 지도가 함께 갱신됩니다" },
+      "d03-building": { code: "D03", title: "건축물 용도", table: "building", hint: "건물을 선택했습니다 · 행을 Enter로 다시 선택할 수 있습니다" },
+      "d08-zone": { code: "D08", title: "용도지역", table: "zone", hint: "선택 구역은 굵은 외곽선으로 표시됩니다" },
+      "d28-walk": { code: "D28", title: "도보권", table: "walk", hint: "정류장·역을 선택하면 대지에서 이어지는 경로를 표시합니다" },
+      "d16-density": { code: "D16", title: "밀도", table: "density", hint: "지도에는 선택한 지표와 퍼짐 반경을 반영한 밀도를 표시합니다" },
+      "d29-point": { code: "D29", title: "개방감", table: "svf", hint: "지도 위 지점을 선택하면 해당 셀의 개방감 값을 읽습니다" },
+      "d20-parcel": { code: "D20", title: "지적", table: "parcel", hint: "필지를 선택하면 도형 계산 면적과 공시지가를 확인합니다" },
+      "d24-wind": { code: "D24", title: "바람장미", table: "wind", hint: "16방위 빈도와 주 풍속 구간을 함께 확인합니다" },
+      empty: { code: "D03", title: "건축물 용도", table: "empty", hint: "검색 결과가 없을 때도 다음 행동을 바로 안내합니다" },
+      loading: { code: "D03", title: "건축물 용도", table: "loading", hint: "목록과 카드를 같은 자리에서 준비하고 있습니다" },
+      error: { code: "D03", title: "건축물 용도", table: "error", hint: "오류 원인과 재시도 경로를 함께 표시합니다" }
+    };
+
+    const density = {
+      metric: "area",
+      radius: 100,
+      values: {
+        area: {
+          57: { sum: "612,480㎡", buildings: "1,004동", ratio: "평균 용적률 168%", focus: "서남서 · 86 m" },
+          100: { sum: "751,633㎡", buildings: "1,143동", ratio: "평균 용적률 184%", focus: "서남서 · 100 m" },
+          160: { sum: "1,186,820㎡", buildings: "1,648동", ratio: "평균 용적률 173%", focus: "서남서 · 142 m" }
+        },
+        count: {
+          57: { sum: "동수 1,004동", buildings: "1,004동", ratio: "평균 층수 7.1층", focus: "서남서 · 86 m" },
+          100: { sum: "동수 1,143동", buildings: "1,143동", ratio: "평균 층수 6.8층", focus: "서남서 · 100 m" },
+          160: { sum: "동수 1,648동", buildings: "1,648동", ratio: "평균 층수 6.2층", focus: "서남서 · 142 m" }
+        }
+      }
+    };
+
+    let state = new URLSearchParams(window.location.search).get("state") || "d03-summary";
+    if (!STATE_META[state]) state = "d03-summary";
+    let selected = { building: "b-001", zone: "z-002", walk: "w-009", parcel: "p-002", svf: "s-004" };
+    let searchTerm = "";
+    let sortState = { building: { key: "area", dir: "desc" }, zone: { key: "area", dir: "desc" }, walk: { key: "walk", dir: "asc" }, parcel: { key: "area", dir: "desc" }, svf: { key: "share", dir: "desc" }, wind: { key: "frequency", dir: "desc" } };
+    let isOpen = true;
+    const modal = document.getElementById("detailModal");
+    const scrim = document.getElementById("scrim");
+    const statePicker = document.getElementById("statePicker");
+    const closeButton = document.getElementById("closeButton");
+    const reopenButton = document.getElementById("reopenButton");
+    const liveRegion = document.getElementById("liveRegion");
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+    }
+    function number(value, digits = 0) {
+      if (value === null || value === undefined || value === "") return "값 없음";
+      return new Intl.NumberFormat("ko-KR", { maximumFractionDigits: digits }).format(Number(value));
+    }
+    function signed(value) { return value === null || value === undefined ? "값 없음" : number(value); }
+    function currentMeta() { return STATE_META[state]; }
+    function selectedItem(kind) {
+      const id = selected[kind];
+      const list = kind === "building" ? DATA.buildings : kind === "zone" ? DATA.zones : kind === "walk" ? DATA.walks : DATA.parcels;
+      return list.find((item) => item.id === id) || list[0];
+    }
+    function setState(next) {
+      state = STATE_META[next] ? next : "d03-summary";
+      searchTerm = "";
+      const url = new URL(window.location.href);
+      url.searchParams.set("state", state);
+      window.history.replaceState({}, "", url);
+      render();
+    }
+    function field(label, value) {
+      return `<div class="field"><dt>${escapeHtml(label)}</dt><dd>${value}</dd></div>`;
+    }
+    function selectBadge(label, tone = "") { return `<span class="chip ${tone}">${escapeHtml(label)}</span>`; }
+    function source(text) { return `<p class="source-line">출처 · ${escapeHtml(text)}</p>`; }
+    function closeSelection(kind) {
+      selected[kind] = null;
+      render();
+    }
+
+    function summaryCard() {
+      return `<div class="selection-head"><div><div class="card-kicker">건축물 용도 · 선택 없음</div><h2>건물 1,143동</h2><p class="selection-subtitle">이름이 있는 건물 185동 · 최근 지은 건물 보강 138동</p></div></div>
+        <div class="metric-row"><span class="metric-label">연면적 합계</span><strong class="metric-value">751,633㎡</strong></div>
+        <div class="composition"><div class="composition-head"><span>구성비</span><span>1,143동</span></div><div class="composition-bar"><span style="flex:72;background:var(--yellow)"></span><span style="flex:8;background:#efa36b"></span><span style="flex:.3;background:var(--blue)"></span><span style="flex:2.5;background:var(--green)"></span><span style="flex:16.3;background:#d8dadd"></span><span style="flex:0.7;background:var(--teal)"></span><span style="flex:.3;background:var(--purple)"></span></div><div class="composition-legend"><span><i style="background:var(--yellow)"></i>주거 823동 · 72.0%</span><span><i style="background:#efa36b"></i>근린생활 91동 · 8.0%</span><span><i style="background:var(--blue)"></i>업무 3동 · 0.3%</span><span><i style="background:var(--green)"></i>교육복지 29동 · 2.5%</span><span><i style="background:#d8dadd"></i>미상 186동 · 16.3%</span><span><i style="background:var(--teal)"></i>문화집회 8동 · 0.7%</span></div></div>
+        <p class="selection-subtitle" style="margin-top:12px">도판에서 건물을 선택하면 이 자리에 속성 카드가 열립니다.</p>${source("건축물대장정보(국토교통부) · 반경 800 m")}`;
+    }
+    function buildingCard() {
+      const item = selectedItem("building");
+      return `<div class="selection-head"><div><div class="card-kicker">건축물 · 선택됨</div><h2>${escapeHtml(item.name)}</h2><p class="selection-subtitle">${escapeHtml(item.address)} · ${escapeHtml(item.primary)}</p></div><button class="text-btn" type="button" data-clear="building">선택 해제</button></div>
+        <div class="field-grid">${field("용도", selectBadge(item.usage))}${field("지상 / 지하", item.floors)}${field("연면적", `${number(item.area, 2)}㎡`)}${field("높이", item.height)}${field("사용승인", item.approved)}${field("용도지역", "제3종일반주거지역")}${field("구조", "철근콘크리트구조")}${field("건축면적", "값 없음")}</div>
+        <div class="missing-note">${ICONS.info}<span><strong>값 없음</strong> · 높이·대지면적·건폐율·용적률은 원자료에 없어 비워 두었습니다.</span></div>${source("건축물대장정보(국토교통부) · 원자료 null은 임의 보정하지 않음")}`;
+    }
+    function zoneCard() {
+      const item = selectedItem("zone");
+      return `<div class="selection-head"><div><div class="card-kicker">용도지역 · 굵은 외곽선</div><h2>${escapeHtml(item.name)}</h2><p class="selection-subtitle">${selectBadge(item.category, item.tone === "green" ? "green" : "")}</p></div><button class="text-btn" type="button" data-clear="zone">선택 해제</button></div>
+        <div class="field-grid">${field("틀 안 면적", `${number(item.area, 1)}㎡`)}${field("비율", `${number(item.share, 2)}%`)}${field("건물 수", `${number(item.buildings)}동`)}${field("조각 수", "12개")}</div>${source("VWorld(국토교통부) 용도지역 · 분석 반경 800 m")}`;
+    }
+    function walkCard() {
+      const item = selectedItem("walk");
+      const distance = item.route || 298;
+      return `<div class="selection-head"><div><div class="card-kicker">도보권 · 지점 선택</div><h2>걸어서 4분 · ${number(distance)}m</h2><p class="selection-subtitle">${escapeHtml(item.name)} · ${escapeHtml(item.kind)}</p></div><button class="text-btn" type="button" data-clear="walk">선택 해제</button></div>
+        <div class="metric-row"><span class="metric-label">대지에서 보행망 따라</span><strong class="metric-value">${number(distance)}m</strong></div><p class="selection-subtitle">분당 80 m 기준 · 지도에 대지에서 이어지는 주황색 경로를 표시했습니다.</p>${source("보행망 최단경로 · T7 경로 계산 · 원자료 직선 ${number(item.straight)}m")}`;
+    }
+    function densityCard() {
+      const values = density.values[density.metric][density.radius];
+      const metricLabel = density.metric === "area" ? "연면적" : "동수";
+      return `<div class="selection-head"><div><div class="card-kicker">밀도 · 지점 선택 없음</div><h2>${escapeHtml(values.sum)}</h2><p class="selection-subtitle">반경 ${density.radius} m · ${escapeHtml(values.ratio)}</p></div></div>
+        <div class="control-block"><span class="control-label">지표</span><div class="segmented" role="group" aria-label="밀도 지표">${[["area","연면적"],["count","동수"]].map(([v,l]) => `<button type="button" aria-pressed="${density.metric === v}" data-density-key="metric" data-density-value="${v}">${l}</button>`).join("")}</div><span class="control-label" style="margin-top:10px">퍼짐 반경</span><div class="segmented" role="group" aria-label="밀도 퍼짐 반경">${[57,100,160].map((v) => `<button type="button" aria-pressed="${density.radius === v}" data-density-key="radius" data-density-value="${v}">${v} m</button>`).join("")}</div></div>
+        <div class="field-grid">${field("분석 지표", metricLabel)}${field("평균 용적률", density.metric === "area" ? (density.radius === 100 ? "184%" : "168%") : "184%")}${field("분석 동수", values.buildings)}${field("가장 짙은 곳", values.focus)}${field("평균 층수", density.metric === "area" ? "6.8층" : values.ratio.replace("평균 층수 ", ""))}${field("층수 없는 동", "186동 제외")}</div>${source("건축물대장정보 기반 KDE · 반경 변경 시 250 ms 이내 재계산 목표")}`;
+    }
+    function svfCard() {
+      return `<div class="selection-head"><div><div class="card-kicker">개방감 · 이 지점</div><h2>100%</h2><p class="selection-subtitle">땅에서 올려다볼 때 하늘이 보이는 비율</p></div><button class="text-btn" type="button" data-clear="svf">선택 해제</button></div>
+        <div class="metric-row"><span class="metric-label">지점 셀</span><strong class="metric-value">4 m × 4 m</strong></div><div class="field-grid">${field("평균", "85%")}${field("중앙값", "95%")}${field("절반 미만", "8.8%")}${field("계산 조건", "16방위 · 300 m")}</div>${source("개방감 래스터 · 건물만 반영 · 셀 중심에서 표본")}`;
+    }
+    function parcelCard() {
+      const item = selectedItem("parcel");
+      return `<div class="selection-head"><div><div class="card-kicker">지적 · 필지 선택</div><h2>${escapeHtml(item.lot)}</h2><p class="selection-subtitle">${escapeHtml(item.address)} · ${escapeHtml(item.type)}</p></div><button class="text-btn" type="button" data-clear="parcel">선택 해제</button></div><div class="field-grid">${field("지목", item.type)}${field("도형 면적", `${number(item.area, 1)}㎡`)}${field("개별공시지가", item.price === null ? "값 없음" : `${number(item.price)}원/㎡`)}${field("기준 연월", item.month)}${field("PNU", "117401020010" + item.lot.replace(/[^0-9]/g, "") + "0000")}${field("주소", item.address)}</div>${source("연속지적도 · 개별공시지가(VWorld) · 면적은 도형 계산 값")}`;
+    }
+    function windCard() {
+      return `<div class="selection-head"><div><div class="card-kicker">바람장미</div><h2>주풍향 남 16%</h2><p class="selection-subtitle">Seoul–Seongnam AP KG KOR · 13.5 km · 2011–2025 관측 · 연간</p></div></div><div class="metric-row"><span class="metric-label">무풍</span><strong class="metric-value">3.0%</strong></div>${source("기상 관측 파일 · 16방위 빈도 · 주 풍속 구간")}`;
+    }
+    function loadingCard() {
+      return `<div aria-busy="true"><div class="card-kicker">건축물 용도 · 불러오는 중</div><div class="skeleton large"></div><div class="skeleton medium"></div><div class="field-grid" style="margin-top:18px"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div><p class="source-line">반경 800 m의 상세 속성을 준비하고 있습니다.</p></div>`;
+    }
+    function emptyCard() {
+      return `<div class="empty-icon">${ICONS.empty}</div><div class="message-title" style="text-align:center">선택된 지물이 없습니다</div><p class="message-body" style="text-align:center">지도에서 건물을 누르거나 목록의 행을 선택하면 속성이 이곳에 표시됩니다.</p><button class="text-btn" type="button" data-empty-action style="display:block;margin:0 auto">전체 목록 보기</button>`;
+    }
+    function errorCard() {
+      return `<div class="error-card" role="alert"><div class="error-title">${ICONS.alert}<span>상세 속성을 불러오지 못했습니다</span></div><p class="error-body">건축물 원자료 응답이 10초를 넘어 중단되었습니다. 같은 분석 범위로 다시 시도할 수 있습니다.</p><button class="error-action" type="button" data-retry>다시 시도</button>${source("원자료 요청 · 일시적 네트워크 오류 · 분석 결과는 유지됨")}</div>`;
+    }
+    function renderSelection() {
+      const card = document.getElementById("selectionCard");
+      if (state === "d03-summary") card.innerHTML = summaryCard();
+      else if (state === "d03-building") card.innerHTML = buildingCard();
+      else if (state === "d08-zone") card.innerHTML = zoneCard();
+      else if (state === "d28-walk") card.innerHTML = walkCard();
+      else if (state === "d16-density") card.innerHTML = densityCard();
+      else if (state === "d29-point") card.innerHTML = svfCard();
+      else if (state === "d20-parcel") card.innerHTML = parcelCard();
+      else if (state === "d24-wind") card.innerHTML = windCard();
+      else if (state === "loading") card.innerHTML = loadingCard();
+      else if (state === "error") card.innerHTML = errorCard();
+      else card.innerHTML = emptyCard();
+    }
+
+    function rowsFor(kind) {
+      const config = {
+        building: DATA.buildings.map((x) => ({ id: x.id, primary: x.name, secondary: x.address, cells: [selectBadge(x.usage), x.floors, x.height, `${number(x.area, 0)}㎡`, x.approved], sort: { area: x.area, name: x.name, approved: x.approved } })),
+        zone: DATA.zones.map((x) => ({ id: x.id, primary: x.name, secondary: x.category, cells: [selectBadge(x.category, x.tone === "green" ? "green" : ""), `${number(x.area, 0)}㎡`, `${number(x.share, 2)}%`, `${number(x.buildings)}동`], sort: { area: x.area, share: x.share, buildings: x.buildings, name: x.name } })),
+        walk: DATA.walks.map((x) => ({ id: x.id, primary: x.name, secondary: x.kind, cells: [selectBadge("도보권", "blue"), `${number(x.straight)}m`, `${number(x.walk, 1)}분`], sort: { walk: x.walk, straight: x.straight, name: x.name } })),
+        parcel: DATA.parcels.map((x) => ({ id: x.id, primary: x.lot, secondary: x.address, cells: [x.type, `${number(x.area, 1)}㎡`, x.price === null ? "값 없음" : `${number(x.price)}원/㎡`], sort: { area: x.area, price: x.price ?? -1, lot: x.lot } })),
+        svf: DATA.svf.map((x) => ({ id: x.id, primary: x.band, secondary: "개방감 구간", cells: [x.tone, `${number(x.area)}㎡`, `${number(x.share, 1)}%`], sort: { share: x.share, area: x.area, band: x.band } })),
+        density: [57, 100, 160].map((radius) => ({ id: `density-${radius}`, primary: `${radius} m 반경`, secondary: density.metric === "area" ? "연면적 지표" : "동수 지표", cells: [density.metric === "area" ? "연면적" : "동수", density.values[density.metric][radius].buildings, density.values[density.metric][radius].ratio, density.values[density.metric][radius].focus], sort: { radius, value: radius } })),
+        wind: DATA.wind.map((x, i) => ({ id: `wind-${i}`, primary: x[0], secondary: "연간", cells: [`${number(x[1], 1)}%`, x[2], `${number(x[3], 1)}%`], sort: { frequency: x[1], direction: x[0] } }))
+      };
+      const list = (config[kind] || []).filter((row) => `${row.primary} ${row.secondary} ${row.cells.join(" ")}`.toLowerCase().includes(searchTerm.toLowerCase()));
+      const order = sortState[kind] || { key: "name", dir: "asc" };
+      return list.sort((a, b) => {
+        const av = a.sort[order.key]; const bv = b.sort[order.key];
+        if (typeof av === "number" && typeof bv === "number") return (av - bv) * (order.dir === "asc" ? 1 : -1);
+        return String(av ?? "").localeCompare(String(bv ?? ""), "ko") * (order.dir === "asc" ? 1 : -1);
+      });
+    }
+    function tableSpec(kind) {
+      return {
+        building: { count: "1,143동", headers: [["name", "이름 · 주소", ""], ["usage", "용도", ""], ["floors", "층", ""], ["height", "높이", "numeric"], ["area", "연면적", "numeric"], ["approved", "승인", "numeric"]], sortKeys: { area: "area", name: "name", approved: "approved" } },
+        zone: { count: "7개", headers: [["name", "이름", ""], ["category", "분류", ""], ["area", "면적(㎡)", "numeric"], ["share", "비율", "numeric"], ["buildings", "건물", "numeric"]], sortKeys: { area: "area", share: "share", buildings: "buildings", name: "name" } },
+        walk: { count: "29개", headers: [["name", "이름", ""], ["kind", "구분", ""], ["straight", "직선(m)", "numeric"], ["walk", "걸어서(분)", "numeric"]], sortKeys: { walk: "walk", straight: "straight", name: "name" } },
+        parcel: { count: "2,127필지", headers: [["lot", "지번 · 주소", ""], ["type", "지목", ""], ["area", "면적(㎡)", "numeric"], ["price", "공시지가", "numeric"]], sortKeys: { area: "area", price: "price", lot: "lot" } },
+        svf: { count: "4구간", headers: [["band", "구간", ""], ["area", "면적(㎡)", "numeric"], ["share", "비율", "numeric"]], sortKeys: { share: "share", area: "area", band: "band" } },
+        density: { count: "3개 반경", headers: [["radius", "퍼짐 반경", ""], ["metric", "분석 지표", ""], ["value", "분석 동수", "numeric"], ["ratio", "요약", ""], ["focus", "가장 짙은 곳", ""]], sortKeys: { radius: "radius", value: "value" } },
+        wind: { count: "16방위", headers: [["direction", "방위", ""], ["frequency", "빈도", "numeric"], ["speed", "주 풍속(m/s)", ""], ["high", "4m/s+", "numeric"]], sortKeys: { frequency: "frequency", direction: "direction" } }
+      }[kind];
+    }
+    function tableHeader(kind, spec) {
+      const order = sortState[kind] || {};
+      return spec.headers.map(([key, label, className]) => {
+        const sortKey = spec.sortKeys[key];
+        if (!sortKey) return `<th scope="col" class="${className}">${label}</th>`;
+        const active = order.key === sortKey;
+        const aria = active ? (order.dir === "asc" ? "ascending" : "descending") : "none";
+        return `<th scope="col" class="${className}" aria-sort="${aria}"><button type="button" class="sort-button" data-sort="${sortKey}">${label}<span class="sort-glyph" aria-hidden="true">${active ? (order.dir === "asc" ? "↑" : "↓") : "↕"}</span></button></th>`;
+      }).join("");
+    }
+    function tableRow(kind, row) {
+      const selectedId = kind === "building" ? selected.building : kind === "zone" ? selected.zone : kind === "walk" ? selected.walk : kind === "parcel" ? selected.parcel : kind === "svf" ? selected.svf : null;
+      const cells = row.cells.map((cell, index) => {
+        if (kind === "svf" && index === 0) return `<td><span class="legend-mark" style="display:inline-block;background:${cell}" aria-hidden="true"></span><span style="margin-left:6px">${escapeHtml(row.primary)}</span></td>`;
+        if (kind === "building" && index === 0) return `<td>${cell}</td>`;
+        if (kind === "zone" && index === 0) return `<td>${cell}</td>`;
+        return `<td class="${(kind === "building" && index >= 2) || (kind === "zone" && index >= 1) || (kind === "walk" && index >= 1) || (kind === "parcel" && index >= 1) || (kind === "svf" && index >= 1) || (kind === "density" && index >= 1) || (kind === "wind" && index >= 0) ? "numeric" : ""}">${cell}</td>`;
+      }).join("");
+      const firstCell = kind === "svf" ? "" : `<td><span class="cell-primary">${escapeHtml(row.primary)}</span><span class="cell-secondary">${escapeHtml(row.secondary)}</span></td>`;
+      const actualCells = kind === "svf" ? cells : firstCell + cells;
+      return `<tr tabindex="0" data-row-id="${row.id}" class="${selectedId === row.id ? "is-selected" : ""}">${actualCells}</tr>`;
+    }
+    function renderTable() {
+      const tableCard = document.getElementById("tableCard");
+      const kind = currentMeta().table;
+      if (kind === "loading") { tableCard.innerHTML = `<div class="table-head"><span class="table-count">목록 준비 중</span></div><div class="table-message" aria-busy="true"><div><div class="skeleton" style="width:170px"></div><div class="skeleton" style="width:250px;margin-top:12px"></div><div class="skeleton" style="width:210px;margin-top:12px"></div><div class="skeleton" style="width:270px;margin-top:12px"></div></div></div><div class="table-footer">원자료를 읽는 동안 다른 컨트롤은 사용할 수 있습니다.</div>`; return; }
+      if (kind === "error") { tableCard.innerHTML = `<div class="table-head"><span class="table-count">목록 불러오기 실패</span></div><div class="table-message" role="alert"><div><div class="empty-icon">${ICONS.alert}</div><div class="message-title">잠시 후 다시 시도해 주세요</div><p class="message-body">서버가 상세 행을 반환하지 않았습니다.</p><button class="error-action" type="button" data-retry>다시 시도</button></div></div><div class="table-footer">분석 범위와 결과 요약은 유지됩니다.</div>`; return; }
+      if (kind === "empty") { tableCard.innerHTML = `<div class="table-head"><span class="table-count">0건</span><div class="table-actions"><div class="search-wrap">${ICONS.search}<input class="search-input" id="searchInput" type="search" value="${escapeHtml(searchTerm)}" placeholder="이름·주소 찾기" aria-label="이름·주소 찾기"></div><button class="csv-btn" type="button" disabled>${ICONS.download}CSV</button></div></div><div class="table-message"><div><div class="empty-icon">${ICONS.empty}</div><div class="message-title">검색 조건에 맞는 지물이 없습니다</div><p class="message-body">검색어를 지우거나 지도 범위를 넓혀 보세요.</p><button class="text-btn" type="button" data-empty-action>검색어 지우기</button></div></div><div class="table-footer">검색 결과가 비어 있어 CSV를 만들 수 없습니다.</div>`; return; }
+      const spec = tableSpec(kind);
+      const rows = rowsFor(kind);
+      const countLabel = searchTerm ? `${rows.length}건 / ${spec.count}` : spec.count;
+      const head = `<div class="table-head"><span class="table-count">${countLabel}</span><div class="table-actions"><div class="search-wrap">${ICONS.search}<input class="search-input" id="searchInput" type="search" value="${escapeHtml(searchTerm)}" placeholder="이름·주소 찾기" aria-label="이름·주소 찾기"></div><button class="csv-btn" type="button" data-csv="${kind}">${ICONS.download}CSV</button></div></div>`;
+      if (rows.length === 0) { tableCard.innerHTML = head + `<div class="table-message"><div><div class="empty-icon">${ICONS.empty}</div><div class="message-title">검색 조건에 맞는 지물이 없습니다</div><p class="message-body">검색어를 지우면 전체 표본 행을 다시 볼 수 있습니다.</p><button class="text-btn" type="button" data-empty-action>검색어 지우기</button></div></div><div class="table-footer">전체 결과는 ${spec.count} · 행을 선택하면 지도와 카드가 갱신됩니다.</div>`; return; }
+      const titleRow = `<tr>${tableHeader(kind, spec)}</tr>`;
+      tableCard.innerHTML = head + `<div class="table-scroll"><table><caption class="status-live">${spec.count} 상세 목록</caption><thead>${titleRow}</thead><tbody>${rows.map((row) => tableRow(kind, row)).join("")}</tbody></table></div><div class="table-footer">${kind === "building" ? "연면적 내림차순 · " : ""}상위 표본 ${rows.length}행 표시 · 전체 ${spec.count} · 행을 Enter로 선택</div>`;
+    }
+
+    function baseMap() {
+      return `<svg viewBox="0 0 760 620" role="img" aria-label="서울 강동구 아리수로 250 반경 800 m 상세 지도" preserveAspectRatio="xMidYMid meet"><defs><clipPath id="mapCircle"><circle cx="360" cy="300" r="274"></circle></clipPath><radialGradient id="densityHeat"><stop offset="0" stop-color="#d779a7" stop-opacity=".75"></stop><stop offset=".45" stop-color="#e8c951" stop-opacity=".48"></stop><stop offset="1" stop-color="#e8c951" stop-opacity="0"></stop></radialGradient><linearGradient id="svfHeat" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#e3f2f7"></stop><stop offset=".55" stop-color="#9fc3df"></stop><stop offset="1" stop-color="#344e7a"></stop></linearGradient></defs><g clip-path="url(#mapCircle)"><rect x="70" y="10" width="580" height="580" fill="#f4f5f4"></rect><path d="M54 390 C164 348 206 384 318 344 S510 318 680 352" fill="none" stroke="#d0d4d8" stroke-width="34"></path><path d="M54 390 C164 348 206 384 318 344 S510 318 680 352" fill="none" stroke="#fff" stroke-width="22"></path><path d="M365 18 C348 136 385 201 360 298 S356 470 374 602" fill="none" stroke="#c8cdd1" stroke-width="25"></path><path d="M365 18 C348 136 385 201 360 298 S356 470 374 602" fill="none" stroke="#fff" stroke-width="15"></path><path d="M96 220 625 425M106 502 614 148M176 70 520 558" fill="none" stroke="#dfe2e4" stroke-width="2"></path><path d="M138 272 C228 218 280 231 333 204 S447 216 563 173M110 445 C218 414 284 469 410 430 S533 395 620 448" fill="none" stroke="#cbd1d3" stroke-width="3"></path><path d="M89 282h542M102 326h520M140 185h432M130 484h456" stroke="#e4e6e7" stroke-width="1"></path>`;
+    }
+    function finishMap() { return `<circle cx="360" cy="300" r="274" fill="none" stroke="#bfc4c9" stroke-width="2"></circle><circle class="site-marker" cx="360" cy="300" r="7"></circle><path d="M360 286v-20" stroke="#16181d" stroke-width="2"></path><text x="372" y="276" fill="#16181d" font-size="13" font-weight="700">대상지</text></g></svg>`; }
+    function featureRect(item, index, selectedId) {
+      const x = 145 + (index % 6) * 54 + Math.floor(index / 6) * 14;
+      const y = 215 + Math.floor(index / 6) * 28 + (index % 2) * 5;
+      const tone = item.tone === "education" ? "education" : item.tone === "commerce" ? "commerce" : "";
+      return `<rect class="map-feature feature-building ${tone} ${item.id === selectedId ? "selected" : ""}" x="${x}" y="${y}" width="${26 + (index % 3) * 7}" height="${12 + (index % 2) * 6}" rx="2" tabindex="0" role="button" data-feature-kind="building" data-feature-id="${item.id}" aria-label="${escapeHtml(item.name)} ${number(item.area, 0)} 제곱미터"></rect>`;
+    }
+    function zoneFeatures() {
+      const selectedId = selected.zone;
+      return `<path class="map-feature feature-zone green ${selectedId === "z-001" ? "selected" : ""}" d="M75 60H340L360 154 286 218 164 208 75 246Z" tabindex="0" role="button" data-feature-kind="zone" data-feature-id="z-001" aria-label="자연녹지지역"></path><path class="map-feature feature-zone ${selectedId === "z-002" ? "selected" : ""}" d="M74 246 286 218 360 302 336 504 82 564Z" tabindex="0" role="button" data-feature-kind="zone" data-feature-id="z-002" aria-label="제2종일반주거지역"></path><path class="map-feature feature-zone ${selectedId === "z-003" ? "selected" : ""}" d="M286 218 360 154 530 114 584 260 450 314 360 302Z" tabindex="0" role="button" data-feature-kind="zone" data-feature-id="z-003" aria-label="준주거지역"></path><path class="map-feature feature-zone pink ${selectedId === "z-005" ? "selected" : ""}" d="M450 314 584 260 666 358 562 458 412 416Z" tabindex="0" role="button" data-feature-kind="zone" data-feature-id="z-005" aria-label="근린상업지역"></path><path class="map-feature feature-zone green" d="M530 114 650 74 666 358 584 260Z"></path>`;
+    }
+    function parcelFeatures() {
+      return Array.from({ length: 26 }, (_, i) => { const x = 110 + (i % 7) * 78; const y = 86 + Math.floor(i / 7) * 88; const id = `p-${String((i % 10) + 1).padStart(3, "0")}`; return `<path class="map-feature feature-parcel ${selected.parcel === id ? "selected" : ""}" d="M${x} ${y}h${56 + (i % 3) * 9}v${52 + (i % 2) * 16}h-${42 + (i % 3) * 8}Z" tabindex="0" role="button" data-feature-kind="parcel" data-feature-id="${id}" aria-label="지번 ${id}"></path>`; }).join("");
+    }
+    function walkFeatures() {
+      return `<path d="M104 218 C164 248 196 254 242 292 S316 340 360 300 S420 248 508 274 586 336 622 396" fill="none" stroke="#c9e5dc" stroke-width="50" stroke-linecap="round" stroke-linejoin="round"></path><path d="M104 218 C164 248 196 254 242 292 S316 340 360 300 S420 248 508 274 586 336 622 396" fill="none" stroke="#63b49b" stroke-width="2"></path><path class="route-line-under" d="M360 300 C392 300 414 280 435 267 S479 260 505 274"></path><path class="route-line" d="M360 300 C392 300 414 280 435 267 S479 260 505 274"></path><circle class="point-marker" cx="505" cy="274" r="8" tabindex="0" role="button" data-feature-kind="walk" data-feature-id="w-009" aria-label="고덕역 걸어서 4분 298미터"></circle><text x="516" y="267" fill="#8b4b00" font-size="12" font-weight="700">고덕역 · 4분</text>`;
+    }
+    function densityFeatures() {
+      const scale = density.radius === 57 ? .78 : density.radius === 160 ? 1.24 : 1;
+      return `<circle cx="360" cy="300" r="${154 * scale}" fill="url(#densityHeat)"></circle><circle class="heat-ring" cx="360" cy="300" r="${80 * scale}"></circle><circle class="heat-ring" cx="360" cy="300" r="${120 * scale}"></circle><circle class="heat-ring" cx="360" cy="300" r="${160 * scale}"></circle><g fill="#477fc4" fill-opacity=".6">${Array.from({ length: 30 }, (_, i) => `<circle cx="${150 + (i * 47) % 400}" cy="${150 + (i * 83) % 300}" r="${2 + (i % 4)}"></circle>`).join("")}</g>`;
+    }
+    function svfFeatures() {
+      return `<rect x="84" y="24" width="552" height="552" fill="url(#svfHeat)" opacity=".68"></rect><g fill="#f2eee5" fill-opacity=".8" stroke="#42648c" stroke-opacity=".7" stroke-width="2"><rect x="146" y="360" width="54" height="25" rx="3"></rect><rect x="216" y="330" width="42" height="30" rx="3"></rect><rect x="278" y="382" width="65" height="22" rx="3"></rect><rect x="420" y="174" width="72" height="42" rx="3"></rect><rect x="502" y="208" width="52" height="32" rx="3"></rect><rect x="468" y="420" width="60" height="28" rx="3"></rect></g><circle class="point-marker" cx="360" cy="300" r="8" tabindex="0" role="button" data-feature-kind="svf" data-feature-id="s-004" aria-label="개방감 100퍼센트"></circle>`;
+    }
+    function windFeatures() {
+      const center = [360, 300]; const sectors = DATA.wind.map((item, i) => { const theta = (i / 16) * Math.PI * 2 - Math.PI / 2; const next = theta + Math.PI / 8; const length = 70 + item[1] * 7; const x1 = center[0] + Math.cos(theta - .08) * length; const y1 = center[1] + Math.sin(theta - .08) * length; const x2 = center[0] + Math.cos(next + .08) * length; const y2 = center[1] + Math.sin(next + .08) * length; return `<path class="wind-sector" d="M${center[0]} ${center[1]}L${x1.toFixed(1)} ${y1.toFixed(1)}A${length} ${length} 0 0 1 ${x2.toFixed(1)} ${y2.toFixed(1)}Z"></path>`; }).join(""); return `<circle cx="360" cy="300" r="180" fill="#f3f4f3"></circle><circle cx="360" cy="300" r="130" fill="none" stroke="#d9d5cc" stroke-dasharray="2 4"></circle><circle cx="360" cy="300" r="75" fill="none" stroke="#d9d5cc" stroke-dasharray="2 4"></circle>${sectors}<circle cx="360" cy="300" r="33" fill="#f8f7f2" stroke="#d9d5cc"></circle>`; }
+    function renderMap() {
+      let svg = baseMap();
+      if (state === "d03-summary" || state === "d03-building" || state === "loading" || state === "error" || state === "empty") svg += DATA.buildings.map((item, i) => featureRect(item, i, state === "d03-building" ? selected.building : null)).join("");
+      if (state === "d08-zone") svg += zoneFeatures();
+      if (state === "d28-walk") svg += walkFeatures();
+      if (state === "d16-density") svg += densityFeatures();
+      if (state === "d29-point") svg += svfFeatures();
+      if (state === "d20-parcel") svg += parcelFeatures();
+      if (state === "d24-wind") svg += windFeatures();
+      svg += finishMap();
+      document.getElementById("mapWrap").innerHTML = svg;
+      document.querySelectorAll("[data-feature-kind]").forEach((node) => {
+        node.addEventListener("click", () => selectFeature(node.dataset.featureKind, node.dataset.featureId));
+        node.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectFeature(node.dataset.featureKind, node.dataset.featureId); } });
+      });
+    }
+    function selectFeature(kind, id) {
+      if (kind === "svf") selected.svf = id;
+      else selected[kind] = id;
+      if (kind === "building" && state === "d03-summary") state = "d03-building";
+      render();
+      liveRegion.textContent = `${kind === "building" ? "건물" : kind === "zone" ? "구역" : kind === "walk" ? "도보권 지점" : "지점"}을 선택했습니다.`;
+    }
+    function renderLegend() {
+      const legend = document.getElementById("mapLegend");
+      const items = {
+        "d03-summary": [["var(--yellow)", "주거"], ["var(--green)", "교육복지"], ["#ee9c64", "근린생활"], ["#d8dadd", "미상"]],
+        "d03-building": [["var(--yellow)", "주거"], ["var(--green)", "교육복지"], ["#ee9c64", "근린생활"], ["#16181d", "선택 건물"]],
+        "d08-zone": [["#a9d49c", "녹지지역"], ["var(--yellow)", "주거지역"], ["var(--pink)", "상업지역"], ["#16181d", "선택 외곽선"]],
+        "d28-walk": [["#63b49b", "5분 안"], ["#c9e5dc", "10분 안"], ["var(--orange)", "선택 경로"]],
+        "d16-density": [["#d779a7", "높은 밀도"], ["#e8c951", "주변 밀도"], ["#477fc4", "건물 중심"]],
+        "d29-point": [["#263653", "0%"], ["#7ca4cb", "50%"], ["#dbeaf2", "100%"], ["#16181d", "선택 지점"]],
+        "d20-parcel": [["#dba995", "필지"], ["#16181d", "선택 필지"]],
+        "d24-wind": [["#b2ab9a", "방위별 빈도"], ["#d9d5cc", "등치선"]],
+        empty: [["#d8dadd", "데이터 없음"]], loading: [["#d8dadd", "불러오는 중"]], error: [["#b42318", "오류"]]
+      }[state];
+      legend.innerHTML = items.map(([color, label]) => `<span class="legend-item"><i class="legend-mark ${label === "선택 경로" ? "line" : ""}" style="background:${color}"></i>${escapeHtml(label)}</span>`).join("");
+    }
+
+    function render() {
+      const meta = currentMeta();
+      document.body.dataset.state = state;
+      document.getElementById("modalCode").textContent = meta.code;
+      document.getElementById("modalTitle").textContent = meta.title;
+      document.getElementById("mapHint").textContent = meta.hint;
+      statePicker.value = state;
+      renderMap();
+      renderLegend();
+      renderSelection();
+      renderTable();
+    }
+
+    document.addEventListener("click", (event) => {
+      const target = event.target.closest("button, [data-row-id]");
+      if (!target) return;
+      if (target.matches("[data-density-key]")) { density[target.dataset.densityKey] = target.dataset.densityKey === "radius" ? Number(target.dataset.densityValue) : target.dataset.densityValue; render(); return; }
+      if (target.matches("[data-clear]")) { closeSelection(target.dataset.clear); return; }
+      if (target.matches("[data-empty-action]")) { searchTerm = ""; state = "d03-summary"; render(); return; }
+      if (target.matches("[data-retry]")) { state = "d03-summary"; render(); liveRegion.textContent = "다시 시도했습니다. 요약 목록을 표시합니다."; return; }
+      if (target.matches("[data-sort]")) {
+        const kind = currentMeta().table; const key = target.dataset.sort; const order = sortState[kind] || { key, dir: "asc" }; sortState[kind] = { key, dir: order.key === key && order.dir === "asc" ? "desc" : "asc" }; renderTable(); return;
+      }
+      if (target.matches("[data-row-id]")) {
+        const kind = currentMeta().table; const id = target.dataset.rowId;
+        if (kind === "building") { selected.building = id; state = "d03-building"; }
+        if (kind === "zone") selected.zone = id;
+        if (kind === "walk") selected.walk = id;
+        if (kind === "parcel") selected.parcel = id;
+        if (kind === "svf") selected.svf = id;
+        render();
+        liveRegion.textContent = "행을 선택했습니다. 지도의 강조 표시가 갱신되었습니다.";
+      }
+      if (target.dataset.mapAction) liveRegion.textContent = target.dataset.mapAction === "fit" ? "지도 전체 범위로 돌아왔습니다." : `지도를 ${target.dataset.mapAction === "zoom-in" ? "확대" : "축소"}했습니다.`;
+      if (target.matches("[data-csv]")) {
+        const kind = target.dataset.csv; const spec = tableSpec(kind); const rows = rowsFor(kind); const csv = "\uFEFF" + [spec.headers.map((x) => x[1]).join(","), ...rows.map((row) => [row.primary, row.secondary, ...row.cells.map((cell) => String(cell).replace(/<[^>]+>/g, ""))].map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))].join("\n"); const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); const link = document.createElement("a"); link.href = url; link.download = `서울_강동구_아리수로250_${currentMeta().title}_800m.csv`; link.click(); URL.revokeObjectURL(url); liveRegion.textContent = "UTF-8 BOM CSV를 준비했습니다.";
+      }
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.target.matches("[data-row-id]") && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); event.target.click(); }
+      if (event.key !== "Tab" || !isOpen) return;
+      const focusable = [...modal.querySelectorAll("button:not([disabled]), input, select, [tabindex]:not([tabindex='-1'])")].filter((node) => node.offsetParent !== null);
+      if (!focusable.length) return;
+      const first = focusable[0]; const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    });
+    document.addEventListener("input", (event) => {
+      if (!event.target.matches("#searchInput")) return;
+      searchTerm = event.target.value;
+      const value = searchTerm;
+      renderTable();
+      const input = document.getElementById("searchInput");
+      if (input) { input.focus(); input.setSelectionRange(value.length, value.length); }
+    });
+    statePicker.addEventListener("change", (event) => setState(event.target.value));
+    closeButton.addEventListener("click", () => { isOpen = false; modal.classList.add("is-closed"); scrim.classList.add("is-hidden"); document.body.classList.add("modal-closed"); reopenButton.focus(); });
+    reopenButton.addEventListener("click", () => { isOpen = true; modal.classList.remove("is-closed"); scrim.classList.remove("is-hidden"); document.body.classList.remove("modal-closed"); closeButton.focus(); });
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape" && isOpen) { event.preventDefault(); closeButton.click(); } });
+    render();
+  </script>
+</body>
+</html>

@@ -10,6 +10,25 @@ const reactDevConnectOrigin = reactInspectionEnabled ? " https://www.react-grab.
 const reactDevWorkerSource = reactInspectionEnabled ? "worker-src 'self' blob:" : "worker-src 'self'";
 
 const nextConfig: NextConfig = {
+  // Webpack emits worker child chunks beside the server chunks. Keep them in
+  // standalone output because nft cannot infer a dynamic worker URL, and use
+  // the runtime chunk directory as the base instead of /site/_next/.
+  outputFileTracingIncludes: {
+    "/api/v2/analyses": ["./.next/server/chunks/**/*.js"],
+    "/api/v2/analyses/[id]": ["./.next/server/chunks/**/*.js"],
+  },
+  webpack(config, { isServer }) {
+    if (isServer && config.output?.path) {
+      // Node worker_threads needs the emitted chunk on disk. Next's default
+      // publicPath includes basePath (/site/_next/), which resolves to a
+      // non-existent filesystem location when passed to new Worker(). A
+      // relative worker path lets webpack's Node runtime resolve the emitted
+      // chunk relative to its actual server chunks directory in both dev and
+      // standalone output.
+      config.output.workerPublicPath = "./";
+    }
+    return config;
+  },
   async rewrites() {
     return [{ source: "/favicon.ico", destination: "/icon.svg" }];
   },
@@ -18,7 +37,7 @@ const nextConfig: NextConfig = {
   // standalone 산출물이 .next/standalone/<상대경로>/ 로 중첩된다(2026-08-01 운영 장애).
   outputFileTracingRoot: __dirname,
   basePath: "/site",
-  serverExternalPackages: ["better-sqlite3"],
+  serverExternalPackages: ["better-sqlite3", "rhino3dm"],
   async headers() {
     return [
       {

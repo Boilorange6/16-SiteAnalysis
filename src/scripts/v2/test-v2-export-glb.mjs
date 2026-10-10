@@ -1,0 +1,194 @@
+import assert from "node:assert/strict";
+
+const { glbFileName, sceneToGlb } = await import("../../lib/v2/export/glb.ts");
+
+const scene = {
+  version: "v2-scene@2",
+  analysisId: "analysis-glb",
+  manifestHash: "manifest-hash-123",
+  origin: { epsg: "EPSG:5179", x: 1000000, y: 2000000, lng: 127.1, lat: 37.5 },
+  radiusM: 800,
+  ground: { kind: "flat" },
+  site: [[[0, 0], [20, 0], [20, 20], [0, 20]]],
+  buildings: [
+    {
+      id: "source-square",
+      rings: [[[0, 0], [0, 10], [10, 10], [10, 0]]],
+      baseZ: null,
+      heightM: 10,
+      heightMethod: "source",
+      floorsAbove: 3,
+      useCode: "02000",
+      approvalDate: "2020-01-02",
+    },
+    {
+      id: "estimated-hole",
+      rings: [
+        [[-10, -10], [10, -10], [10, 10], [-10, 10]],
+        [[-2, -2], [-2, 2], [2, 2], [2, -2]],
+      ],
+      baseZ: null,
+      heightM: 6,
+      heightMethod: "floors_estimate",
+      floorsAbove: 2,
+      useCode: null,
+      approvalDate: null,
+    },
+    {
+      id: "unknown-square",
+      rings: [[[20, 0], [24, 0], [24, 4], [20, 4]]],
+      baseZ: null,
+      heightM: null,
+      heightMethod: "unknown",
+      floorsAbove: null,
+      useCode: null,
+      approvalDate: null,
+    },
+  ],
+  parcels: [],
+  counts: { buildingsTotal: 3, buildingsIncluded: 3, parcelsTotal: 0, parcelsIncluded: 0 },
+  sources: [],
+  limitations: [],
+};
+
+function readGlb(bytes) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  assert.equal(new TextDecoder().decode(bytes.subarray(0, 4)), "glTF", "GLB magic");
+  assert.equal(view.getUint32(4, true), 2, "glTF version");
+  assert.equal(view.getUint32(8, true), bytes.byteLength, "GLB total length");
+
+  const jsonLength = view.getUint32(12, true);
+  assert.equal(view.getUint32(16, true), 0x4e4f534a, "JSON chunk");
+  const jsonStart = 20;
+  const json = JSON.parse(new TextDecoder().decode(bytes.subarray(jsonStart, jsonStart + jsonLength)).trim());
+  const binHeader = jsonStart + jsonLength;
+  const binLength = view.getUint32(binHeader, true);
+  assert.equal(view.getUint32(binHeader + 4, true), 0x004e4942, "BIN chunk");
+  const binStart = binHeader + 8;
+  assert.equal(binStart + binLength, bytes.byteLength, "BIN reaches GLB end");
+  return { json, bin: bytes.subarray(binStart, binStart + binLength) };
+}
+
+function accessorPositions(gltf, bin, accessorIndex) {
+  const accessor = gltf.accessors[accessorIndex];
+  const bufferView = gltf.bufferViews[accessor.bufferView];
+  const start = (bufferView.byteOffset ?? 0) + (accessor.byteOffset ?? 0);
+  const values = new Float32Array(bin.buffer, bin.byteOffset + start, accessor.count * 3);
+  return [...values];
+}
+
+function accessorIndices(gltf, bin, accessorIndex) {
+  const accessor = gltf.accessors[accessorIndex];
+  const bufferView = gltf.bufferViews[accessor.bufferView];
+  const start = (bufferView.byteOffset ?? 0) + (accessor.byteOffset ?? 0);
+  const Ctor = accessor.componentType === 5125 ? Uint32Array : Uint16Array;
+  return [...new Ctor(bin.buffer, bin.byteOffset + start, accessor.count)];
+}
+
+function cross(a, b, c) {
+  const ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+  const ac = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+  return [
+    ab[1] * ac[2] - ab[2] * ac[1],
+    ab[2] * ac[0] - ab[0] * ac[2],
+    ab[0] * ac[1] - ab[1] * ac[0],
+  ];
+}
+
+const bytes = sceneToGlb(scene);
+assert.ok(bytes instanceof Uint8Array, "sceneToGlb returns Uint8Array");
+const { json, bin } = readGlb(bytes);
+assert.equal(json.asset.generator, "site-analysis v2");
+assert.deepEqual(json.asset.extras, {
+  origin: { epsg: "EPSG:5179", x: 1000000, y: 2000000, lng: 127.1, lat: 37.5 },
+  units: "m",
+  up: "+Y",
+  north: "-Z",
+  manifestHash: "manifest-hash-123",
+  analysisId: "analysis-glb",
+  sceneVersion: "v2-scene@2",
+  ground: { kind: "flat" },
+  buildings: [
+    { id: "source-square", heightMethod: "source", floorsAbove: 3, baseZ: null },
+    { id: "estimated-hole", heightMethod: "floors_estimate", floorsAbove: 2, baseZ: null },
+    { id: "unknown-square", heightMethod: "unknown", floorsAbove: null, baseZ: null },
+  ],
+});
+assert.equal(json.meshes[0].primitives.length, 4, "source/estimated/unknown/ground primitives");
+assert.equal(json.materials.length, 4);
+assert.equal(bin.byteLength % 4, 0, "BIN chunk is aligned");
+
+const sourcePrimitive = json.meshes[0].primitives[0];
+const sourcePositions = accessorPositions(json, bin, sourcePrimitive.attributes.POSITION);
+assert.equal(Math.max(...sourcePositions.filter((_, i) => i % 3 === 1)), 10, "source building height");
+assert.ok(sourcePositions.some((value, i) => i % 3 === 0 && value === 10), "east is +X");
+assert.ok(sourcePositions.some((value, i) => i % 3 === 2 && value === -10), "north is -Z");
+const sourceIndices = accessorIndices(json, bin, sourcePrimitive.indices);
+assert.equal(sourceIndices.length, 30, "source square has one roof and four two-triangle walls");
+for (let i = 6; i < sourceIndices.length; i += 3) {
+  const points = [0, 1, 2].map((offset) => {
+    const index = sourceIndices[i + offset] * 3;
+    return sourcePositions.slice(index, index + 3);
+  });
+  const normal = cross(points[0], points[1], points[2]);
+  const center = points.reduce((sum, point) => [sum[0] + point[0] / 3, sum[1] + point[1] / 3, sum[2] + point[2] / 3], [0, 0, 0]);
+  const outward = [center[0] - 5, 0, center[2] + 5];
+  assert.ok(normal[0] * outward[0] + normal[2] * outward[2] > 0, `wall triangle ${i / 3} must face outward`);
+}
+
+const estimatedPrimitive = json.meshes[0].primitives[1];
+const estimatedIndices = json.accessors[estimatedPrimitive.indices].count;
+assert.equal(estimatedIndices, 72, "hole roof uses earcut triangles and all ring edges have walls");
+
+const unknownPrimitive = json.meshes[0].primitives[2];
+const unknownPositions = accessorPositions(json, bin, unknownPrimitive.attributes.POSITION);
+assert.ok(unknownPositions.length > 0);
+assert.ok(unknownPositions.every((value, i) => i % 3 !== 1 || value === 0), "unknown height stays at ground");
+
+const groundPrimitive = json.meshes[0].primitives[3];
+assert.equal(json.accessors[groundPrimitive.indices].count, 64 * 3, "64-sided ground disk");
+
+const demScene = {
+  ...scene,
+  analysisId: "analysis-glb-dem",
+  ground: {
+    kind: "dem",
+    cellM: 10,
+    cols: 3,
+    rows: 3,
+    originZ: 100,
+    z: [0, 1, 2, 3, 4, 5, 6, 7, 8],
+    resolutionM: 30,
+    vertical: "EGM96",
+    sourceId: "terrain:fixture",
+  },
+  buildings: [
+    { ...scene.buildings[0], baseZ: 5 },
+    { ...scene.buildings[1], baseZ: 2 },
+    { ...scene.buildings[2], baseZ: 3 },
+  ],
+};
+const demBytes = sceneToGlb(demScene);
+const { json: demJson, bin: demBin } = readGlb(demBytes);
+assert.equal(demJson.meshes[0].primitives.length, 5, "DEM은 terrain primitive을 추가한다");
+assert.equal(demJson.materials.length, 5, "DEM terrain 재질");
+assert.deepEqual(demJson.asset.extras.ground, {
+  kind: "dem",
+  cellM: 10,
+  originZ: 100,
+  resolutionM: 30,
+  vertical: "EGM96",
+});
+assert.equal(demJson.asset.extras.buildings.length, 3);
+const terrainPrimitive = demJson.meshes[0].primitives[4];
+const terrainPositions = accessorPositions(demJson, demBin, terrainPrimitive.attributes.POSITION);
+assert.equal(terrainPositions.length / 3, 9, "유효한 3x3 격자점 9개");
+const demSourcePositions = accessorPositions(demJson, demBin, demJson.meshes[0].primitives[0].attributes.POSITION);
+assert.equal(Math.max(...demSourcePositions.filter((_, i) => i % 3 === 1)), 15, "건물 높이는 baseZ 위에 더한다");
+const demUnknownPositions = accessorPositions(demJson, demBin, demJson.meshes[0].primitives[2].attributes.POSITION);
+assert.ok(demUnknownPositions.length > 0);
+assert.ok(demUnknownPositions.every((value, i) => i % 3 !== 1 || value === 3), "미상 건물은 baseZ 바닥만 출력");
+
+assert.equal(glbFileName("서울특별시 강동구/고덕동 123", "2026-09-30"), "사이트분석_서울특별시_강동구_고덕동_123_20260930.glb");
+
+console.log("✓ v2 GLB export");

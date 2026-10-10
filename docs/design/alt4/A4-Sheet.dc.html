@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>보드를 한 판으로</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&amp;family=Noto+Sans+KR:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0;font-family:"Noto Sans KR","Malgun Gothic",sans-serif;color:#15171C;background:#EEF0F3}
+a{color:#15171C}
+button{font-family:inherit}
+.dh{font-family:"Do Hyeon","Noto Sans KR",sans-serif;font-weight:400}
+.seg{border:0;background:transparent;border-radius:10px;padding:7px 12px;font-size:12px;font-weight:700;color:#676C76}
+.seg.on{background:#15171C;color:#FFFFFF}
+.pt{background:#F4F5F7;border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:5px;min-width:0}
+.pt .h{display:flex;align-items:center;gap:5px;font-size:9px;font-weight:700}
+.pt .h i{display:block;width:6px;height:6px;border-radius:3px}
+.pt .h em{margin-left:auto;font-style:normal;color:#9AA0AA}
+.pt svg{display:block;width:100%;height:auto;border-radius:6px}
+.pt b{font-family:"Do Hyeon",sans-serif;font-weight:400;font-size:18px;line-height:1}
+.pt span.l{font-size:8px;color:#676C76}
+.row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #EEF0F3;font-size:13px}
+.row .hd{color:#B0B5BE;letter-spacing:-2px}
+.row i{display:block;width:8px;height:8px;border-radius:4px}
+.row input{margin:0 0 0 auto;accent-color:#15171C}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; flex-direction: column; background: #EEF0F3">
+<header style="height: 68px; flex-shrink: 0; display: flex; align-items: center; gap: 14px; padding: 0 24px">
+<a href="A4-Diagrams.dc.html" class="dh" style="font-size: 24px; text-decoration: none">사이트 분석</a>
+<span class="dh" style="font-size: 20px">보드를 한 판으로</span>
+<span style="font-size: 12px; color: #676C76">보드 순서와 타일 모양 그대로 인쇄합니다</span>
+<div role="group" aria-label="용지" style="margin-left: auto; display: flex; gap: 2px; background: #FFFFFF; border-radius: 12px; padding: 3px"><button class="seg">A4</button><button class="seg on">A3</button><button class="seg">A1</button><button class="seg">16:9</button></div>
+<div role="group" aria-label="열 수" style="display: flex; gap: 2px; background: #FFFFFF; border-radius: 12px; padding: 3px"><button class="seg">2열</button><button class="seg on">3열</button><button class="seg">4열</button></div>
+<span style="font-size: 11px; font-weight: 700; color: #8A5A00; background: #FDF1D8; padding: 3px 8px; border-radius: 6px">예시</span>
+<button style="height: 40px; padding: 0 16px; border: 0; border-radius: 20px; background: #15171C; color: #FFFFFF; font-size: 13px; font-weight: 700">PDF · SVG 300dpi</button>
+</header>
+<div style="flex-grow: 1; min-height: 0; display: flex; gap: 20px; padding: 0 24px 24px; box-sizing: border-box">
+
+<figure aria-label="A3 가로 인쇄 미리보기" style="margin: 0; flex-grow: 1; min-width: 0; display: flex; align-items: center; justify-content: center; background: #DDE0E5; border-radius: 22px">
+<div style="width: 820px; height: 580px; background: #FFFFFF; box-shadow: 0 10px 30px rgba(21,23,28,.16); box-sizing: border-box; padding: 24px 28px 18px; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; align-items: flex-end; gap: 16px">
+<span class="dh" style="font-size: 44px; line-height: .9">78</span>
+<div style="display: flex; flex-direction: column; gap: 2px"><span class="dh" style="font-size: 24px">고덕동 123 일대</span><span style="font-size: 9px; color: #676C76">대지 현황 보드 · 반경 1km · 2026. 9. 29 · 개발사업팀</span></div>
+<span style="margin-left: auto; font-size: 9px; color: #676C76; text-align: right">1 / 2<br>N ↑ · 축척 1:10,000</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; flex-grow: 1">
+<div class="pt"><div class="h"><i style="background: #6B4CD6"></i>교통<em>분석</em></div><b>6분</b><span class="l">고덕역 도보 · 예정역 5분 · 정류장 41</span></div>
+<div class="pt"><div class="h"><i style="background: #A0522D"></i>준공 연대<em>도판</em></div><svg viewBox="0 0 120 64" aria-hidden="true"><rect width="120" height="64" fill="#F7F7F5"></rect><g fill="#7A3E1D"><rect x="8" y="22" width="16" height="10"></rect><rect x="28" y="24" width="12" height="9"></rect><rect x="8" y="44" width="16" height="10"></rect></g><g fill="#A0522D"><rect x="8" y="4" width="14" height="10"></rect><rect x="26" y="4" width="14" height="11"></rect></g><g fill="#E3BFA0"><rect x="78" y="4" width="12" height="11"></rect><rect x="80" y="22" width="12" height="14"></rect></g><g fill="#F2E3D5" stroke="#E3BFA0"><rect x="94" y="6" width="18" height="10"></rect><rect x="96" y="22" width="16" height="10"></rect></g><rect x="52" y="22" width="16" height="18" fill="none" stroke="#15171C" stroke-width="2"></rect></svg><span class="l">30년 넘은 건물 54% · 미상 11%</span></div>
+<div class="pt"><div class="h"><i style="background: #F2A541"></i>일조 · 동지<em>시뮬레이션</em></div><b>84%</b><span class="l">09~15시 연속 2시간 · 12:00 장면</span></div>
+<div class="pt"><div class="h"><i style="background: #E39B1B"></i>학군<em>분석</em></div><b>7분</b><span class="l">배정 ○○초 · 통학구역 안</span></div>
+<div class="pt"><div class="h"><i style="background: #C9A227"></i>용도지역<em>도판</em></div><svg viewBox="0 0 120 64" aria-hidden="true"><rect width="120" height="64" fill="#F9EDC2"></rect><path d="M0 0H74V16H0Z" fill="#F6E3A1"></path><path d="M74 0H120V40H74Z" fill="#FBD6C7"></path><path d="M74 40H120V64H86Z" fill="#CFE6C4"></path><rect x="52" y="22" width="16" height="18" fill="none" stroke="#15171C" stroke-width="2"></rect></svg><span class="l">2종일반 · 3종 · 상업 맞닿음</span></div>
+<div class="pt"><div class="h"><i style="background: #D0447E"></i>정비사업<em>분석</em></div><b>4곳</b><span class="l">조합설립 1 · 구역지정 2 · 추진위 1</span></div>
+</div>
+<div style="font-size: 8px; color: #676C76; border-top: 1px solid #15171C; padding-top: 6px">출처: GIS건물통합정보(2026-08) · VWorld 용도지역(2026-09) · 철도 OSM · 학구도(2026-03) · 일조: 건축법 시행령 제86조 기준 계산</div>
+</div>
+</figure>
+
+<div style="width: 360px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px">
+<section aria-label="이 판의 타일" style="background: #FFFFFF; border-radius: 22px; padding: 18px 20px; display: flex; flex-direction: column">
+<div style="display: flex; align-items: baseline; margin-bottom: 4px"><h2 class="dh" style="margin: 0; font-size: 20px">이 판의 타일</h2><span style="margin-left: auto; font-size: 12px; color: #676C76">6 / 16 · 끌어서 순서</span></div>
+<label class="row"><span class="hd">⋮⋮</span><i style="background: #6B4CD6"></i>교통<input type="checkbox" checked></label>
+<label class="row"><span class="hd">⋮⋮</span><i style="background: #A0522D"></i>준공 연대<input type="checkbox" checked></label>
+<label class="row"><span class="hd">⋮⋮</span><i style="background: #F2A541"></i>일조 · 동지<input type="checkbox" checked></label>
+<label class="row"><span class="hd">⋮⋮</span><i style="background: #E39B1B"></i>학군<input type="checkbox" checked></label>
+<label class="row"><span class="hd">⋮⋮</span><i style="background: #C9A227"></i>용도지역<input type="checkbox" checked></label>
+<label class="row" style="border-bottom: 0"><span class="hd">⋮⋮</span><i style="background: #D0447E"></i>정비사업<input type="checkbox" checked></label>
+</section>
+<section aria-label="스택 타일" style="background: #FFFFFF; border-radius: 22px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; flex-grow: 1">
+<div style="display: flex; align-items: center"><h2 class="dh" style="margin: 0; font-size: 20px">스택 타일 만들기</h2><span style="margin-left: auto; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 5px; background: #EFEAFB; color: #4A3A9E">도판 3장</span></div>
+<svg width="320" height="170" viewBox="0 0 344 184" role="img" aria-label="도판 타일 세 장을 겹쳐 쌓은 그림">
+<path d="M172 120 L312 150 L172 180 L32 150Z" fill="#F9EDC2" stroke="#C9A227"></path>
+<path d="M172 70 L312 100 L172 130 L32 100Z" fill="#FFFFFF" fill-opacity=".92" stroke="#4A4F59"></path>
+<path d="M120 96 L150 90 L164 98 L134 104Z M190 86 L220 82 L234 88 L204 94Z M210 106 L240 100 L254 108 L224 114Z" fill="#7A3E1D"></path>
+<path d="M172 20 L312 50 L172 80 L32 50Z" fill="#F2A541" fill-opacity=".35" stroke="#F2A541"></path>
+<path d="M160 44 L180 42 L186 52 L166 54Z" fill="none" stroke="#E0402A" stroke-width="2"></path>
+<g font-size="10" font-weight="700" fill="#4A4F59" font-family="Noto Sans KR, sans-serif"><text x="250" y="30">일조</text><text x="262" y="82">준공 연대</text><text x="262" y="132">용도지역</text></g>
+</svg>
+<p style="margin: 0; font-size: 12px; color: #4A4F59; line-height: 1.6">보드에서 도판 타일을 여러 개 고르고 "겹치기"를 누르면 이런 스택 타일이 보드에 하나 생깁니다. 표지나 요약 슬라이드에 씁니다.</p>
+</section>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

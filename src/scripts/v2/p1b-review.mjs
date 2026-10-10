@@ -1,0 +1,78 @@
+/**
+ * 검수 8곳을 게시된 실제 데이터로 분석해 타일별 핵심 지표·상태·소요 시간을 표로 낸다.
+ *   V2_DATA_DIR=<데이터 디렉터리> npm run v2:review -- [--out docs/superpowers/a0/파일.md] [--radius 1000]
+ * 앱 DB는 임시 파일이라 캐시가 겹치지 않는다. 데이터 디렉터리에는 쓰지 않는다.
+ */
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+
+const { REVIEW_SITES } = await import("../../lib/v2/a0/review-sites.ts");
+const { openV2AppDb } = await import("../../lib/v2/app-db.ts");
+const { readManifest } = await import("../../lib/v2/data/manifest.ts");
+const { runAnalysis } = await import("../../lib/v2/engine/run.ts");
+const { v2DataDir } = await import("../../lib/v2/paths.ts");
+
+const args = process.argv.slice(2);
+const opt = (name, fallback) => (args.includes(`--${name}`) ? args[args.indexOf(`--${name}`) + 1] : fallback);
+const radiusM = Number(opt("radius", 1000));
+const out = opt("out", null);
+const dataDir = v2DataDir();
+const manifest = readManifest(dataDir);
+if (!manifest) throw new Error(`no published manifest in ${dataDir}`);
+
+const appDb = openV2AppDb(join(mkdtempSync(join(tmpdir(), "v2-review-")), "app.sqlite"));
+const KEY = {
+  A01: ["nearest_rail_m", "rail_stations", "rail_lines", "nearest_bus_m", "bus_stops"],
+  A02: ["nearest_elem_m", "elem_schools", "middle_schools", "high_schools", "in_school_zone"],
+  A03: ["basic_groups", "stores"],
+  A04: ["parks", "nearest_park_point_m"],
+  A05: ["apartment_complexes", "households", "households_from_kapt", "kapt_only_apartments", "officetels"],
+  A06: ["applyhome_units", "move_in_units"],
+  A07: ["median_price_per_m2", "valid_trades", "median_change_pct", "cancelled_trades"],
+  A08: ["jeonse_count", "monthly_count"],
+  A09: ["zones_in_radius", "projects_in_radius", "roster_projects", "planned_households"],
+  A10: ["planned_projects", "nearest_planned_station_m", "nearest_planned_line_m"],
+  A12: ["site_zoning_count", "share_sum"],
+  D01: ["imagery_zoom_max"],
+  D10: ["canopy_pct", "fill_imagery_pct"],
+  D28: ["area_10min_km2"],
+  D29: ["svf_median"],
+  S02: ["mean_sun_h_winter", "share_cont2h_0915_pct_winter"],
+  S03: ["urel_median_annual"],
+  S04: ["utci_median_summer_h14", "share_out_of_range_pct"],
+};
+const show = (m) => (!m ? "-" : m.value === null ? "미확인" : `${m.value}`); // "-" = 지표 없음(원천 미적재)
+
+const lines = [`# P1b-1 검수 8곳 — 반경 ${radiusM}m`, "", `데이터 버전 ${manifest.version} · 분석일 ${new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" })}`, ""];
+const rows = [];
+for (const site of REVIEW_SITES) {
+  const t0 = performance.now();
+  const r = runAnalysis(appDb, dataDir, { address: site.name, center: site.center, radiusM });
+  const ms = Math.round(performance.now() - t0);
+  if (!r.ok) throw new Error(`${site.name}: ${r.reason}`);
+  const failed = r.results.filter((t) => t.status === "failed");
+  const cells = Object.entries(KEY).map(([code, ids]) => {
+    const t = r.results.find((x) => x.tileCode === code);
+    const parts = ids.map((id) => `${id}=${show(t?.metrics?.find((m) => m.id === id))}`);
+    // A12: 대지 용도지역 이름(강조점 라벨)과 가장 큰 구성 분류
+    if (code === "A12" && t) {
+      const site = t.presentation.features?.find((f) => f.layer === "zoning_site")?.label ?? "미확인";
+      const top = t.metrics.filter((m) => m.id.startsWith("share_class_")).sort((a, b) => b.value - a.value)[0];
+      parts.unshift(`site=${site}`, `top=${top ? `${top.label.replace("구성비: ", "")} ${top.value}%` : "-"}`);
+    }
+    return `${t?.status ?? "-"}: ${parts.join(", ")}`;
+  });
+  rows.push({ site, ms, cells, failed: failed.length, results: r.results });
+  console.log(`${site.name.padEnd(10)} ${String(ms).padStart(6)}ms  failed=${failed.length}  ${cells.join(" | ")}`);
+}
+lines.push("| 지점 | 소요(ms) | " + Object.keys(KEY).join(" | ") + " |", "|---|---:|" + Object.keys(KEY).map(() => "---").join("|") + "|");
+for (const r of rows) lines.push(`| ${r.site.name} | ${r.ms} | ${r.cells.join(" | ")} |`);
+// 도판(D)·장면(S) 타일: 상태/면 지물 수
+const dCodes = [...new Set(rows.flatMap((r) => r.results.map((t) => t.tileCode)).filter((c) => /^[DS]/.test(c)))].sort();
+lines.push("", "| 지점 | " + dCodes.join(" | ") + " |", "|---|" + dCodes.map(() => "---").join("|") + "|");
+for (const r of rows) lines.push(`| ${r.site.name} | ` + dCodes.map((c) => { const t = r.results.find((x) => x.tileCode === c); return t ? `${t.status}/${t.presentation.features?.length ?? 0}` : "-"; }).join(" | ") + " |");
+lines.push("", "도판 셀은 `상태/지물 수`.");
+lines.push("", "지표는 `id=값` (미확인 = 값 없음, - = 지표 자체가 없음). 실패 타일 수: " + rows.map((r) => `${r.site.name} ${r.failed}`).join(", "));
+if (out) writeFileSync(out, lines.join("\n") + "\n");
+appDb.close();

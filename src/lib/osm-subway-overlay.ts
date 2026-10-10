@@ -148,7 +148,7 @@ function subwayStationBadgeTextColor(color: string | undefined): string {
   return luminance > 0.62 ? "#111827" : "#ffffff";
 }
 
-function subwayStationDisplayName(name: string): string {
+export function subwayStationDisplayName(name: string): string {
   const trimmed = name.trim();
   return trimmed.endsWith("역") ? trimmed : `${trimmed}역`;
 }
@@ -203,6 +203,47 @@ export function isPublicSubwayLineRef(value: string | undefined): boolean {
     "하남선",
     "별내선",
   ]).has(ref);
+}
+
+/** 원천 관계명·way명이 달라도 화면에서 같은 운영 노선으로 묶는 표시 그룹 키. */
+export function subwayLineGroupKey(lineRef: string | undefined, lineName?: string | undefined): string {
+  return subwayLineLabelText(lineRef, lineName) || lineRef?.trim() || lineName?.trim() || "";
+}
+
+export function isSubwayRouteLineName(lineName: string | undefined): boolean {
+  const name = lineName?.trim() ?? "";
+  return name.includes("→") || name.includes(":");
+}
+
+export type SubwayLineRepresentativeCandidate = {
+  readonly line_ref?: string;
+  readonly line_name?: string;
+  readonly length_m: number;
+  readonly stable_id: string;
+};
+
+/**
+ * Leaflet bounds가 필요한 representativeSubwayLines의 분석 엔진용 순수 선택 원칙.
+ * 한 표시 그룹에서 경로 관계를 우선하고, 같은 종류라면 가장 긴 반경 내 조각을 하나만 고른다.
+ */
+export function representativeSubwayLineCandidates<T extends SubwayLineRepresentativeCandidate>(lines: readonly T[]): T[] {
+  const selected = new Map<string, { line: T; routeLike: boolean; lengthM: number }>();
+  for (const line of lines) {
+    const group = subwayLineGroupKey(line.line_ref, line.line_name);
+    if (!group) continue;
+    const routeLike = isSubwayRouteLineName(line.line_name);
+    const lengthM = Number.isFinite(line.length_m) ? line.length_m : Number.NEGATIVE_INFINITY;
+    const current = selected.get(group);
+    if (
+      !current ||
+      (routeLike && !current.routeLike) ||
+      (routeLike === current.routeLike && lengthM > current.lengthM) ||
+      (routeLike === current.routeLike && lengthM === current.lengthM && line.stable_id < current.line.stable_id)
+    ) {
+      selected.set(group, { line, routeLike, lengthM });
+    }
+  }
+  return Array.from(selected.values(), ({ line }) => line);
 }
 
 export function isPublicSubwayAxis(axis: SubwayStationAxis): boolean {

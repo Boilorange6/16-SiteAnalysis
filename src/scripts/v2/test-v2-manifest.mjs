@@ -289,4 +289,43 @@ async function buildVersion(dataDir, version, { wal = false } = {}) {
   assert.deepEqual(JSON.parse(readFileSync(join(dir, M.PREVIOUS_MANIFEST_FILE), "utf8")), v1);
 }
 
+// ─── 11. P0 이월: 핀은 잠금 안에서 계산, 손으로 고친 경로 거부, 깨진 현재본 ──
+{
+  // (a) 핀 함수는 잠금을 쥔 상태에서 불린다 → 저장과 GC 사이 경합이 없다
+  const dir = makeDataDir();
+  await M.publishManifest(dir, await buildVersion(dir, "v1"), OK);
+  let lockSeen = null;
+  await M.collectGarbage(dir, () => {
+    lockSeen = existsSync(join(dir, ".lock"));
+    return new Set();
+  });
+  assert.equal(lockSeen, true, "핀 함수는 잠금 안에서 평가된다");
+  assert.equal(existsSync(join(dir, ".lock")), false);
+}
+{
+  // (b) 손으로 고친 manifest.json의 비정규 경로 → GC는 아무것도 지우지 않고 거부
+  const dir = makeDataDir();
+  const v1 = await buildVersion(dir, "v1");
+  await M.publishManifest(dir, v1, OK);
+  const edited = { ...v1, files: { core: { ...v1.files.core, path: "versions/v1/./core.sqlite" } } };
+  writeFileSync(join(dir, M.MANIFEST_FILE), JSON.stringify(edited));
+  await assert.rejects(M.collectGarbage(dir, new Set()), (e) => e.code === "PATH_ESCAPE");
+  assert.ok(existsSync(join(dir, "versions/v1/core.sqlite")), "살아 있는 파일을 지우지 않는다");
+}
+{
+  // (c) 현재 manifest.json이 깨져 있으면 prev를 덮지 않는다(유일한 롤백 대상 보존)
+  const dir = makeDataDir();
+  const v1 = await buildVersion(dir, "v1");
+  const v2 = await buildVersion(dir, "v2");
+  await M.publishManifest(dir, v1, OK);
+  await M.publishManifest(dir, v2, OK); // prev = v1
+  const prevBefore = readFileSync(join(dir, M.PREVIOUS_MANIFEST_FILE), "utf8");
+  writeFileSync(join(dir, M.MANIFEST_FILE), "{ broken");
+  const v3 = await buildVersion(dir, "v3");
+  const r = await M.publishManifest(dir, v3, OK);
+  assert.equal(r.published, true);
+  assert.equal(readFileSync(join(dir, M.PREVIOUS_MANIFEST_FILE), "utf8"), prevBefore, "prev는 v1 그대로");
+  assert.deepEqual(M.readManifest(dir), v3);
+}
+
 console.log("✓ v2 manifest");

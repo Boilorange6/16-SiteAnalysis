@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>타일 보드 대지 지정</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&amp;family=Noto+Sans+KR:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0;font-family:"Noto Sans KR","Malgun Gothic",sans-serif;color:#15171C;background:#EEF0F3}
+a{color:#15171C}
+button{font-family:inherit}
+.dh{font-family:"Do Hyeon","Noto Sans KR",sans-serif;font-weight:400}
+.way{flex:1 1 0;min-width:0;border:2px solid transparent;background:#FFFFFF;border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:12px;text-align:left;cursor:pointer}
+.way.on{border-color:#15171C}
+.way b{font-size:15px}
+.way small{font-size:12px;color:#676C76;line-height:1.5}
+.rec{background:#FFFFFF;border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:8px;text-decoration:none;color:#15171C;min-width:0}
+.rec .big{font-family:"Do Hyeon",sans-serif;font-size:30px}
+.rec small{font-size:12px;color:#676C76}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; flex-direction: column; background: #EEF0F3">
+<header style="height: 72px; flex-shrink: 0; display: flex; align-items: center; padding: 0 24px">
+<span class="dh" style="font-size: 24px">사이트 분석</span>
+<span style="margin-left: auto; font-size: 11px; font-weight: 700; color: #8A5A00; background: #FDF1D8; padding: 3px 8px; border-radius: 6px">예시 데이터</span>
+</header>
+<div style="flex-grow: 1; min-height: 0; display: flex; gap: 24px; padding: 0 24px 24px; box-sizing: border-box">
+
+<section style="width: 640px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px">
+<div style="background: #FFFFFF; border-radius: 22px; padding: 28px; display: flex; flex-direction: column; gap: 16px">
+<label for="a4q" class="dh" style="font-size: 36px; line-height: 1.2">어느 땅을 볼까요?</label>
+<div style="display: flex; align-items: center; gap: 10px; height: 56px; box-sizing: border-box; padding: 0 18px; background: #EEF0F3; border-radius: 16px">
+<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="#15171C" stroke-width="1.8"><circle cx="7" cy="7" r="5"></circle><path d="M11 11l3.5 3.5"></path></svg>
+<input id="a4q" value="서울 강동구 고덕동 123" style="border: 0; background: transparent; font: inherit; font-size: 18px; font-weight: 500; flex-grow: 1; outline: none; color: #15171C">
+</div>
+</div>
+<div role="group" aria-label="지정 방식" style="display: flex; gap: 12px">
+<button class="way"><svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="19" fill="#EEF0F3"></circle><circle cx="20" cy="18" r="6" fill="#15171C"></circle></svg><b>주소 한 점</b><small>빠르게 둘러볼 때</small></button>
+<button class="way on"><svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true"><rect x="1" y="1" width="38" height="38" rx="10" fill="#EEF0F3"></rect><path d="M10 12h10v8h10v10H10z" fill="#15171C"></path></svg><b>필지 선택</b><small>사업 부지 단위로 · 여러 필지 합치기</small></button>
+<button class="way"><svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true"><rect x="1" y="1" width="38" height="38" rx="10" fill="#EEF0F3"></rect><path d="M10 28 L14 10 L30 14 L28 30 Z" fill="none" stroke="#15171C" stroke-width="2.5" stroke-dasharray="4 3"></path></svg><b>구역 그리기</b><small>계획 부지를 직접 그릴 때</small></button>
+</div>
+<h2 style="margin: 8px 0 0; font-size: 13px; color: #676C76">최근 분석</h2>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+<a href="A4-Main.dc.html" class="rec"><span class="big">81</span><b style="font-size: 14px">둔촌동 ○○ 일대</b><small>2km · 9월 24일</small></a>
+<a href="A4-Main.dc.html" class="rec"><span class="big">72</span><b style="font-size: 14px">다산동 ○○○</b><small>1km · 9월 18일</small></a>
+<a href="A4-Main.dc.html" class="rec"><span class="big">85</span><b style="font-size: 14px">목동 2단지</b><small>3km · 9월 11일</small></a>
+</div>
+</section>
+
+<section aria-label="필지 선택" style="flex-grow: 1; min-width: 0; background: #FFFFFF; border-radius: 22px; overflow: hidden; position: relative">
+<svg width="100%" height="100%" viewBox="0 0 712 804" preserveAspectRatio="xMidYMid slice" role="img" aria-label="필지 세 개를 고른 지도">
+<rect width="712" height="804" fill="#F4F5F2"></rect>
+<g stroke="#FFFFFF" stroke-linecap="round"><path d="M0 220 L712 220" stroke-width="16"></path><path d="M480 0 L480 804" stroke-width="16"></path><path d="M0 600 L712 600 M160 0 L160 804" stroke-width="7"></path></g>
+<g fill="none" stroke="#D5D9DF" stroke-width="1.2">
+<path d="M180 240 L460 240 L460 580 L180 580 Z M240 240 L240 580 M310 240 L310 580 M390 240 L390 580 M180 320 L460 320 M180 410 L460 410 M180 500 L460 500"></path>
+<path d="M500 240 L690 240 L690 580 L500 580 Z M580 240 L580 580 M500 360 L690 360 M500 470 L690 470"></path>
+</g>
+<path d="M240 320 L390 320 L390 500 L310 500 L310 410 L240 410 Z" fill="#15171C" fill-opacity=".85"></path>
+<g font-family="Noto Sans KR, sans-serif" font-size="12" font-weight="700" fill="#FFFFFF"><text x="262" y="370">123</text><text x="336" y="370">124</text><text x="334" y="460">125-1</text></g>
+</svg>
+<div style="position: absolute; left: 20px; right: 20px; bottom: 20px; background: #FFFFFF; border-radius: 18px; box-shadow: 0 6px 20px rgba(20,23,28,.12); padding: 14px 14px 14px 20px; display: flex; align-items: center; gap: 16px">
+<span class="dh" style="font-size: 26px">2,146㎡</span>
+<span style="font-size: 13px; color: #676C76">3필지 · 제2종일반주거 · 지목 대</span>
+<a href="A4-Main.dc.html" style="margin-left: auto; display: inline-flex; align-items: center; height: 48px; padding: 0 22px; border-radius: 24px; background: #15171C; color: #FFFFFF; font-size: 15px; font-weight: 700; text-decoration: none">타일 보드 열기</a>
+</div>
+</section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

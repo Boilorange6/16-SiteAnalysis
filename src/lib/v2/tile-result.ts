@@ -7,7 +7,7 @@ import { canonicalJson, sha256Hex } from "./canonical-json";
 import { VALUE_STATUSES } from "./data/schema";
 
 export const TILE_TYPES = ["analysis", "diagram", "simulation", "stack"] as const;
-export const TILE_STATUSES = ["complete", "partial", "failed", "cancelled", "no_data", "not_provided"] as const;
+export const TILE_STATUSES = ["complete", "partial", "failed", "cancelled", "no_data", "not_provided", "pending", "running"] as const;
 export const OUTPUT_FACES = ["front", "back", "both"] as const;
 export const JUDGMENT_LEVELS = ["good", "fair", "caution"] as const;
 export const LIMITATION_KINDS = ["unknown", "estimated", "suppressed", "partial", "incomplete", "not_provided"] as const;
@@ -46,12 +46,116 @@ const ConditionsSchema = z.object({
   parcelSnapshotHash: z.string().regex(/^[0-9a-f]{64}$/).nullable(),
 });
 
+export const MAX_MAP_FEATURES = 3000;
+const MapFeatureSchema = z.object({
+  /** 상세 창의 목록 줄과 지도 대표점을 연결하는 안정적인 지물 키. */
+  fid: z.string().min(1).optional(),
+  layer: z.string().min(1),
+  lng: z.number().finite(),
+  lat: z.number().finite(),
+  weight: z.number().finite().nullable().optional(),
+  label: z.string().nullable().optional(),
+  highlight: z.boolean().optional(),
+  /** 지도 라벨 이름. 자동 라벨은 labelPriority가 함께 있을 때만 사용한다. */
+  name: z.string().nullable().optional(),
+  /** 타일이 서식까지 끝낸 호버·고정 라벨의 보조 문구. */
+  sublabel: z.string().nullable().optional(),
+  /** 자동 라벨 노출 등급: 0은 자동 숨김, 1·2는 우선순위. */
+  labelPriority: z.number().int().min(0).max(2).optional(),
+  /** 짧은 표식. 색만으로 뜻을 구분하지 않도록 텍스트를 함께 그린다. */
+  badges: z.array(z.object({ text: z.string().min(1).max(4), color: z.string().regex(/^#[0-9A-Fa-f]{6}$/) })).max(4).optional(),
+  type: z.string().nullable().optional(),
+  households: z.number().finite().nullable().optional(),
+  approvalYear: z.number().int().nullable().optional(),
+  floorsMax: z.number().finite().nullable().optional(),
+  buildingCount: z.number().finite().nullable().optional(),
+  distanceM: z.number().finite().nullable().optional(),
+  parking: z.number().finite().nullable().optional(),
+  // A05·A06 단지/사업 주택형: 전용면적(㎡) 소수점 버림, A/B/C형은 합산
+  unitTypes: z.array(z.object({ typeM2: z.number().int().positive(), units: z.number().int().positive() })).optional(),
+  // A06: 입주(예정) 월("YYYY-MM", 일자는 만들지 않는다)과 다른 원천과 같은 사업일 수 있음
+  plannedMonth: z.string().regex(/^\d{4}-\d{2}$/).nullable().optional(),
+  overlap: z.boolean().optional(),
+});
+
+/** 면(폴리곤) 지물 상한: 개수, 고리 하나의 꼭짓점 수. 상한은 엔진이 지키고 스키마가 다시 막는다. */
+export const MAX_MAP_POLYGONS = 3000;
+export const MAX_POLYGON_VERTICES = 200;
+const LngLatSchema = z.tuple([z.number().finite(), z.number().finite()]);
+export const MAX_MAP_LINES = 2000;
+export const MAX_LINE_VERTICES = 200;
+const MapLineSchema = z.object({
+  /** 상세 창에서 선 지물과 목록을 연결할 때만 사용한다. */
+  fid: z.string().min(1).optional(),
+  layer: z.string().min(1),
+  points: z.array(LngLatSchema).min(2).max(MAX_LINE_VERTICES),
+  label: z.string().nullable().optional(),
+  name: z.string().nullable().optional(),
+  sublabel: z.string().nullable().optional(),
+  labelPriority: z.number().int().min(0).max(2).optional(),
+  color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  /** 선별 지물의 개별 불투명도. 없으면 공용 LayerStyle을 따른다. */
+  opacity: z.number().finite().min(0).max(1).optional(),
+  emphasis: z.enum(["major", "minor"]).optional(),
+});
+const MapPolygonSchema = z.object({
+  /** 상세 창에서 면 지물과 목록을 연결하는 안정적인 지물 키. */
+  fid: z.string().min(1).optional(),
+  layer: z.string().min(1),
+  /** 첫 고리는 바깥, 나머지는 구멍. WGS84 [lng, lat]. 첫점=끝점으로 닫는다. */
+  rings: z.array(z.array(LngLatSchema).min(4).max(MAX_POLYGON_VERTICES + 1)).min(1),
+  label: z.string().nullable().optional(),
+  name: z.string().nullable().optional(),
+  sublabel: z.string().nullable().optional(),
+  labelPriority: z.number().int().min(0).max(2).optional(),
+});
+export const ROSE_SEASONS = ["annual", "spring", "summer", "autumn", "winter"] as const;
+export type RoseSeason = (typeof ROSE_SEASONS)[number];
+
+export const RoseSchema = z.object({
+  station: z.string().min(1),
+  dirs: z.array(z.array(z.number().finite().nonnegative()).length(5)).length(16),
+  calmHours: z.number().finite().nonnegative(),
+  missingHours: z.number().finite().nonnegative(),
+  totalHours: z.number().finite().nonnegative(),
+});
+export type Rose = z.infer<typeof RoseSchema>;
+export const RoseSetSchema = z.object({
+  annual: RoseSchema,
+  spring: RoseSchema,
+  summer: RoseSchema,
+  autumn: RoseSchema,
+  winter: RoseSchema,
+});
+export type RoseSet = z.infer<typeof RoseSetSchema>;
+
+/** 격자 남서 모서리·셀 크기를 포함한 압축 래스터 참조. 바이너리는 앱 DB에 둔다. */
+export const RasterRefSchema = z.object({
+  name: z.string().regex(/^[a-z0-9_]{1,48}$/),
+  kind: z.enum(["scalar", "classes", "mask", "vector2"]),
+  crs: z.literal("EPSG:5179"),
+  x0: z.number().finite(),
+  y0: z.number().finite(),
+  cellM: z.number().positive(),
+  cols: z.number().int().min(1).max(4096),
+  rows: z.number().int().min(1).max(4096),
+  dtype: z.enum(["u8", "u16", "i16", "bits"]),
+  bands: z.union([z.literal(1), z.literal(2)]),
+  scale: z.number().finite(),
+  offset: z.number().finite(),
+  nodata: z.number().int().nullable(),
+  palette: z.string().min(1),
+  label: z.string().nullable().optional(),
+  bytes: z.number().int().positive(),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/),
+});
+
 export const TileResultSchema = z
   .object({
     tileId: z.string().min(1),
     analysisId: z.string().min(1),
     tileType: z.enum(TILE_TYPES),
-    tileCode: z.string().regex(/^[ADS]\d{2}$|^STACK$|^SUMMARY$/),
+    tileCode: z.string().regex(/^[ADS]\d{2}$|^STACK$|^SHEET$|^SUMMARY$/),
     status: z.enum(TILE_STATUSES),
     engineVersion: z.string().min(1),
     conditions: ConditionsSchema,
@@ -63,6 +167,10 @@ export const TileResultSchema = z
         sentence: z.string().min(1),
         level: z.enum(JUDGMENT_LEVELS).nullable(),
         criteria: z.string().min(1).nullable(),
+        /** 근거 지표가 둘 이상인 타일(A01 철도·버스)의 등급별 판정. level은 그중 가장 나쁜 등급 */
+        grades: z
+          .array(z.object({ metricId: z.string().min(1), level: z.enum(JUDGMENT_LEVELS), criteria: z.string().min(1) }))
+          .optional(),
       })
       .nullable(),
     presentation: z.object({
@@ -70,6 +178,24 @@ export const TileResultSchema = z
       camera: z.record(z.string(), z.unknown()).nullable(),
       layers: z.array(z.string()),
       outputFace: z.enum(OUTPUT_FACES),
+      /** 지도 표시용 지물(WGS84). 없으면 지도에 지물을 그리지 않는다. 상한 MAX_MAP_FEATURES. */
+      features: z.array(MapFeatureSchema).optional(),
+      /** 상한으로 잘리기 전 전체 개수 */
+      featuresTotal: z.number().int().nonnegative().optional(),
+      /** 면 지물(선택). 없거나 그릴 수 없으면 같은 정보의 대표점 features로 대신한다. 상한 MAX_MAP_POLYGONS. */
+      polygons: z.array(MapPolygonSchema).max(MAX_MAP_POLYGONS).optional(),
+      polygonsTotal: z.number().int().nonnegative().optional(),
+      /** 선 지물(WGS84). 상한 MAX_MAP_LINES. */
+      lines: z.array(MapLineSchema).max(MAX_MAP_LINES).optional(),
+      linesTotal: z.number().int().nonnegative().optional(),
+      /** D22 바람장미: 북쪽부터 시계방향 16방위 × 풍속 5구간 시간수. */
+      rose: RoseSchema.optional(),
+      /** D22 계절·연간 바람장미. 옛 weather 파일에서는 연간 rose만 유지한다. */
+      roses: RoseSetSchema.optional(),
+      /** 지도 위에 겹칠 압축 격자 결과. 바이너리는 tile_raster에 저장한다. */
+      rasters: z.array(RasterRefSchema).max(96).optional(),
+      /** D01처럼 타일 자체가 고정하는 항공영상 배경. */
+      basemap: z.enum(["Satellite"]).optional(),
     }),
     provenance: z.object({
       manifestHash: z.string().regex(/^[0-9a-f]{64}$/),
@@ -101,6 +227,17 @@ export const TileResultSchema = z
         ctx.addIssue({ code: "custom", path: ["judgment", "criteria"], message: "a graded judgment needs its criteria" });
       }
     }
+    if (t.judgment?.grades?.length) {
+      const graded = new Map(t.metrics.map((m) => [m.id, m]));
+      t.judgment.grades.forEach((g, i) => {
+        const metric = graded.get(g.metricId);
+        if (!metric || !HAS_VALUE.has(metric.status)) {
+          ctx.addIssue({ code: "custom", path: ["judgment", "grades", i, "metricId"], message: `cannot grade on ${g.metricId}: metric missing or not observed` });
+        }
+      });
+      if (t.judgment.level === null) ctx.addIssue({ code: "custom", path: ["judgment", "level"], message: "grades need a judgment level" });
+      if (t.tileCode !== "A01" && t.tileCode !== "A02") ctx.addIssue({ code: "custom", path: ["judgment", "grades"], message: "only A01/A02 may carry grades" });
+    }
     if (t.judgment) {
       const byId = new Map(t.metrics.map((m) => [m.id, m]));
       for (const id of t.judgment.basisMetricIds) {
@@ -116,6 +253,13 @@ export const TileResultSchema = z
 
 export type TileResult = z.infer<typeof TileResultSchema>;
 export type TileConditions = TileResult["conditions"];
+export type MapFeature = z.infer<typeof MapFeatureSchema>;
+export type MapPolygon = z.infer<typeof MapPolygonSchema>;
+export type MapLine = z.infer<typeof MapLineSchema>;
+export type RasterRef = z.infer<typeof RasterRefSchema>;
+export type RasterKind = RasterRef["kind"];
+export type RasterDType = RasterRef["dtype"];
+export type BasemapChoice = NonNullable<TileResult["presentation"]["basemap"]>;
 
 export function parseTileResult(value: unknown): TileResult {
   return TileResultSchema.parse(value);

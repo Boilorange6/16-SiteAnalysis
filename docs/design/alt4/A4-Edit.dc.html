@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>보드 편집</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&amp;family=Noto+Sans+KR:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0;font-family:"Noto Sans KR","Malgun Gothic",sans-serif;color:#15171C;background:#EEF0F3}
+a{color:#15171C}
+button{font-family:inherit}
+.dh{font-family:"Do Hyeon","Noto Sans KR",sans-serif;font-weight:400}
+.tile{background:#FFFFFF;border-radius:18px;box-sizing:border-box;padding:14px 16px;display:flex;flex-direction:column;gap:8px;min-width:0;outline:2px dashed #C9CDD4;outline-offset:-2px;position:relative}
+.th{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700}
+.th .d{width:10px;height:10px;border-radius:5px}
+.hd{color:#B0B5BE;font-size:14px;letter-spacing:-2px}
+.x{margin-left:auto;width:26px;height:26px;border:0;border-radius:13px;background:#EEF0F3;color:#4A4F59;font-size:14px}
+.sz{display:flex;gap:4px}
+.sz button{border:0;background:#EEF0F3;border-radius:8px;padding:4px 8px;font-size:11px;font-weight:700;color:#676C76}
+.sz button.on{background:#15171C;color:#FFFFFF}
+.big{font-family:"Do Hyeon",sans-serif;font-size:32px;line-height:1}
+.add{display:flex;align-items:center;gap:8px;background:#FFFFFF;border-radius:14px;padding:10px 14px;font-size:13px;font-weight:700;border:0}
+.add i{width:8px;height:8px;border-radius:4px;display:block}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; flex-direction: column; background: #EEF0F3">
+<header style="height: 72px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 24px">
+<span class="dh" style="font-size: 24px">보드 편집</span>
+<span style="font-size: 13px; color: #676C76">끌어서 옮기고, 크기를 바꾸고, 빼거나 더하세요. 순서는 보고서 순서가 됩니다.</span>
+<div style="margin-left: auto; display: flex; gap: 10px">
+<button style="height: 44px; padding: 0 18px; border: 0; border-radius: 22px; background: #FFFFFF; font-size: 14px; font-weight: 700">이 구성을 기본으로</button>
+<a href="A4-Main.dc.html" style="display: inline-flex; align-items: center; height: 44px; padding: 0 20px; border-radius: 22px; background: #15171C; color: #FFFFFF; font-size: 14px; font-weight: 700; text-decoration: none">완료</a>
+</div>
+</header>
+<main style="flex-grow: 1; min-height: 0; box-sizing: border-box; padding: 0 24px 16px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); gap: 16px">
+<section class="tile" style="grid-column: span 2; grid-row: span 2; background: #F4F5F2"><div class="th"><span class="hd">⋮⋮</span>종합 지도<span style="font-size: 11px; color: #676C76; font-weight: 500">고정</span></div><div style="flex-grow: 1; border-radius: 12px; background: #E9ECE7; display: flex; align-items: center; justify-content: center"><span class="dh" style="font-size: 48px; color: #9AA0AA">78</span></div></section>
+<section class="tile"><div class="th"><span class="hd">⋮⋮</span><span class="d" style="background: #6B4CD6"></span>교통<button class="x" aria-label="교통 빼기">×</button></div><span class="big">6분</span><div class="sz"><button class="on">1칸</button><button>2칸</button></div></section>
+<section class="tile" style="outline: 2px solid #15171C; box-shadow: 0 18px 36px rgba(21,23,28,.22); transform: rotate(-2deg) translateY(-6px)"><div class="th"><span class="hd">⋮⋮</span><span class="d" style="background: #D0447E"></span>정비사업<button class="x" aria-label="정비사업 빼기">×</button></div><span class="big">4곳</span><span style="font-size: 12px; color: #676C76">옮기는 중 · 2번째 자리로</span></section>
+<section class="tile" style="grid-column: span 2"><div class="th"><span class="hd">⋮⋮</span><span class="d" style="background: #2F6FD8"></span>실거래 시세<button class="x" aria-label="실거래 시세 빼기">×</button></div>
+<svg width="100%" height="70" viewBox="0 0 600 70" preserveAspectRatio="none" aria-hidden="true"><path d="M0 60 L60 56 L120 58 L180 50 L240 46 L300 44 L360 36 L420 32 L480 26 L540 20 L600 14" fill="none" stroke="#2F6FD8" stroke-width="3"></path></svg>
+<div class="sz"><button>1칸</button><button class="on">2칸</button></div></section>
+<section class="tile"><div class="th"><span class="hd">⋮⋮</span><span class="d" style="background: #E39B1B"></span>학군<button class="x" aria-label="학군 빼기">×</button></div><span class="big">7분</span><div class="sz"><button class="on">1칸</button><button>2칸</button></div></section>
+<section class="tile"><div class="th"><span class="hd">⋮⋮</span><span class="d" style="background: #C9A227"></span>용도지역<button class="x" aria-label="용도지역 빼기">×</button></div><span class="big" style="font-size: 24px">2종일반</span><div class="sz"><button class="on">1칸</button><button>2칸</button></div></section>
+<section class="tile"><div class="th"><span class="hd">⋮⋮</span><span class="d" style="background: #A0522D"></span>건물 노후도<button class="x" aria-label="건물 노후도 빼기">×</button></div><span class="big">62%</span><div class="sz"><button class="on">1칸</button><button>2칸</button></div></section>
+<section class="tile" style="background: transparent; outline-color: #9AA0AA; align-items: center; justify-content: center"><span style="font-size: 13px; color: #676C76; font-weight: 700">여기에 놓기</span></section>
+</main>
+<footer aria-label="더할 수 있는 타일" style="flex-shrink: 0; box-sizing: border-box; padding: 14px 24px 22px; display: flex; align-items: center; gap: 10px; border-top: 1px solid #DDE0E5">
+<span style="font-size: 12px; color: #676C76; font-weight: 700; margin-right: 6px">더할 수 있는 타일</span>
+<button class="add"><i style="background: #1E9E8A"></i>생활편의 +</button>
+<button class="add"><i style="background: #4C9A3A"></i>공원 · 녹지 +</button>
+<button class="add"><i style="background: #7A7F8C"></i>인구 · 가구 +</button>
+<button class="add"><i style="background: #7A7F8C"></i>공급 · 입주예정 +</button>
+<button class="add"><i style="background: #6B4CD6"></i>버스 노선 +</button>
+<button class="add"><i style="background: #2F6FD8"></i>가격 지수 +</button>
+<button class="add"><i style="background: #C9A227"></i>지구단위계획 +</button>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

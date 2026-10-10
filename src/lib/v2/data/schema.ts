@@ -1,7 +1,7 @@
 /**
  * v2 데이터 파일 스키마 (spec §3.2~3.3).
  *
- * 데이터 파일은 로컬 PC에서 만들어 읽기 전용으로 게시한다. 파일 하나가 한 종류(core/reference/market/osm)다.
+ * 데이터 파일은 로컬 PC에서 만들어 읽기 전용으로 게시한다. 파일 하나가 한 종류(core/buildings/parcels/reference/market/osm/terrain/weather)다.
  * geom_json은 EPSG:5179 미터 좌표의 GeoJSON geometry다.
  * ponytail: WKB 대신 GeoJSON 텍스트 — 파일 크기가 커진다. A0 실측에서 core가 디스크 예산을 넘으면 WKB로 바꾼다.
  */
@@ -9,9 +9,9 @@ import type BetterSqlite3 from "better-sqlite3";
 
 type Db = BetterSqlite3.Database;
 
-export type DataFileKind = "core" | "reference" | "market" | "osm";
-export const DATA_FILE_KINDS: readonly DataFileKind[] = ["core", "reference", "market", "osm"];
-export const DATA_SCHEMA_VERSION = 1;
+export type DataFileKind = "core" | "buildings" | "parcels" | "reference" | "market" | "osm" | "terrain" | "weather";
+export const DATA_FILE_KINDS: readonly DataFileKind[] = ["core", "buildings", "parcels", "reference", "market", "osm", "terrain", "weather"];
+export const DATA_SCHEMA_VERSION = 2;
 export const VALUE_STATUSES = ["observed", "estimated", "suppressed", "missing", "not_applicable"] as const;
 
 const statusList = VALUE_STATUSES.map((s) => `'${s}'`).join(",");
@@ -49,7 +49,8 @@ const COMMON_SQL = `
     accepted_count INTEGER NOT NULL DEFAULT 0,
     rejected_count INTEGER NOT NULL DEFAULT 0,
     error_code TEXT,
-    release_id TEXT REFERENCES source_release(release_id)
+    release_id TEXT REFERENCES source_release(release_id),
+    snapshot_json TEXT
   );
 
   CREATE TABLE IF NOT EXISTS feature (
@@ -80,6 +81,7 @@ const COMMON_SQL = `
     valid_to TEXT,
     PRIMARY KEY (from_stable_id, to_stable_id, relation_type)
   );
+  CREATE INDEX IF NOT EXISTS idx_feature_link_to_relation ON feature_link (to_stable_id, relation_type, from_stable_id);
 
   CREATE TABLE IF NOT EXISTS observation (
     subject_id TEXT NOT NULL,
@@ -95,21 +97,59 @@ const COMMON_SQL = `
   );
 `;
 
-const CORE_SQL = `
+/** 건물 도형(약 1,500만 동)은 core를 키우므로 별도 파일에 둔다. building_fact는 이 파일에만 만든다(옛 core 파일에는 남아 있을 수 있다). */
+const BUILDINGS_SQL = `
   CREATE TABLE IF NOT EXISTS building_fact (
     feature_id INTEGER PRIMARY KEY REFERENCES feature(feature_id),
     ledger_pk TEXT,
     complex_id TEXT,
     height_m REAL,
-    height_method TEXT NOT NULL CHECK (height_method IN ('source','floors_estimate','user','unknown')),
+    height_method TEXT NOT NULL CHECK (height_method IN ('source','ledger_height','floors_estimate','ledger_floors_estimate','user','unknown')),
     floors_above INTEGER,
     floors_below INTEGER,
     use_code TEXT,
     approval_date TEXT,
     gross_floor_area_m2 REAL,
     footprint_area_m2 REAL,
+    pnu_method TEXT NOT NULL DEFAULT 'unknown' CHECK (pnu_method IN ('source','spatial','unknown')),
+    pnu_spatial TEXT,
     field_provenance_json TEXT NOT NULL DEFAULT '{}'
   );
+`;
+
+const CORE_SQL = `
+  CREATE TABLE IF NOT EXISTS parcel_point (
+    pnu TEXT PRIMARY KEY,
+    lng REAL NOT NULL,
+    lat REAL NOT NULL,
+    jimok TEXT,
+    release_id TEXT NOT NULL REFERENCES source_release(release_id)
+  ) WITHOUT ROWID;
+
+  CREATE TABLE IF NOT EXISTS legal_area (
+    code TEXT PRIMARY KEY,
+    level TEXT NOT NULL CHECK (level IN ('sigungu','emd','ri')),
+    name TEXT NOT NULL,
+    parent_code TEXT,
+    release_id TEXT NOT NULL REFERENCES source_release(release_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_legal_area_parent ON legal_area (parent_code, level);
+  CREATE INDEX IF NOT EXISTS idx_legal_area_level_code_name ON legal_area (level, code, name);
+`;
+
+/**
+ * 개별공시지가: 필지(PNU)당 가장 새 기준연도 한 행. 약 3,900만 행이라 release_id를 행마다 두지 않는다
+ * (원천 릴리스가 하나 — source_release의 land_price@기준일). 테이블 추가뿐이라 스키마 버전은 올리지 않는다:
+ * 새 파일은 IF NOT EXISTS로 만들어지고, 옛 reference 파일은 이 테이블 없이도 그대로 읽힌다.
+ */
+const REFERENCE_SQL = `
+  CREATE TABLE IF NOT EXISTS land_price (
+    pnu TEXT PRIMARY KEY,
+    base_year INTEGER NOT NULL,
+    base_month INTEGER,
+    price_krw_per_m2 INTEGER NOT NULL,
+    is_standard INTEGER NOT NULL DEFAULT 0
+  ) WITHOUT ROWID;
 `;
 
 const MARKET_SQL = `
@@ -120,6 +160,7 @@ const MARKET_SQL = `
     deal_date TEXT NOT NULL,
     property_type TEXT NOT NULL,
     contract_type TEXT NOT NULL,
+    renewal TEXT,
     price_krw INTEGER,
     deposit_krw INTEGER,
     rent_krw INTEGER,
@@ -148,6 +189,75 @@ const MARKET_SQL = `
   CREATE INDEX IF NOT EXISTS idx_devevent_project ON development_event (project_id);
 `;
 
+const TERRAIN_SQL = `
+  CREATE TABLE IF NOT EXISTS dem_tile (
+    tile TEXT PRIMARY KEY,
+    lat0 REAL NOT NULL,
+    lon0 REAL NOT NULL,
+    rows INTEGER NOT NULL,
+    cols INTEGER NOT NULL,
+    cell_deg REAL NOT NULL,
+    cell_lon_deg REAL,
+    cell_lat_deg REAL,
+    nodata INTEGER NOT NULL,
+    vertical TEXT NOT NULL,
+    sample_format TEXT NOT NULL DEFAULT 'int16be',
+    grid_model TEXT NOT NULL DEFAULT 'point',
+    resolution_m REAL NOT NULL,
+    release_id TEXT NOT NULL REFERENCES source_release(release_id)
+  );
+  CREATE TABLE IF NOT EXISTS dem_row (
+    tile TEXT NOT NULL,
+    row INTEGER NOT NULL,
+    data BLOB NOT NULL,
+    PRIMARY KEY (tile, row)
+  ) WITHOUT ROWID;
+`;
+
+const WEATHER_SQL = `
+  CREATE TABLE IF NOT EXISTS weather_station (
+    station_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    lng REAL NOT NULL,
+    lat REAL NOT NULL,
+    elevation_m REAL,
+    period_start TEXT NOT NULL,
+    period_end TEXT NOT NULL,
+    total_hours INTEGER NOT NULL,
+    calm_hours INTEGER NOT NULL,
+    missing_hours INTEGER NOT NULL,
+    release_id TEXT NOT NULL REFERENCES source_release(release_id)
+  );
+  CREATE TABLE IF NOT EXISTS wind_rose (
+    station_id TEXT NOT NULL,
+    dir16 INTEGER NOT NULL,
+    speed_bin INTEGER NOT NULL,
+    hours INTEGER NOT NULL,
+    PRIMARY KEY (station_id, dir16, speed_bin)
+  ) WITHOUT ROWID;
+  CREATE TABLE IF NOT EXISTS wind_rose_season (
+    station_id TEXT NOT NULL,
+    season TEXT NOT NULL,
+    dir16 INTEGER NOT NULL,
+    speed_bin INTEGER NOT NULL,
+    hours INTEGER NOT NULL,
+    calm_hours INTEGER NOT NULL,
+    PRIMARY KEY (station_id, season, dir16, speed_bin)
+  ) WITHOUT ROWID;
+  CREATE TABLE IF NOT EXISTS weather_season_hour (
+    station_id TEXT NOT NULL,
+    season TEXT NOT NULL,
+    hour INTEGER NOT NULL,
+    n INTEGER NOT NULL,
+    ta_med REAL,
+    hm_med REAL,
+    ws_med REAL,
+    ghi_med_wm2 REAL,
+    cloud_med REAL,
+    PRIMARY KEY (station_id, season, hour)
+  ) WITHOUT ROWID;
+`;
+
 export function initDataFileSchema(db: Db, kind: DataFileKind): void {
   const hasMeta = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='data_file_meta'").get() !== undefined;
   const existing = hasMeta
@@ -156,9 +266,28 @@ export function initDataFileSchema(db: Db, kind: DataFileKind): void {
   if (existing !== undefined && existing !== kind) {
     throw new Error(`data file already initialized as ${existing}`);
   }
+  if (existing !== undefined) {
+    const stored = db.prepare("SELECT value FROM data_file_meta WHERE key='schema_version'").pluck().get() as string | undefined;
+    if (stored !== undefined && Number(stored) !== DATA_SCHEMA_VERSION) {
+      throw new Error(`data file schema version ${stored} != ${DATA_SCHEMA_VERSION}; rebuild the data file`);
+    }
+  }
   db.exec(COMMON_SQL);
   if (kind === "core") db.exec(CORE_SQL);
+  if (kind === "buildings") db.exec(BUILDINGS_SQL);
+  if (kind === "reference") db.exec(REFERENCE_SQL);
   if (kind === "market") db.exec(MARKET_SQL);
+  if (kind === "terrain") {
+    db.exec(TERRAIN_SQL);
+    // Existing published terrain files predate the GLO-30 sample metadata.
+    // Keep them readable while making newly built files explicit.
+    const columns = new Set((db.prepare("PRAGMA table_info(dem_tile)").all() as Array<{ name: string }>).map((column) => column.name));
+    if (!columns.has("cell_lon_deg")) db.exec("ALTER TABLE dem_tile ADD COLUMN cell_lon_deg REAL");
+    if (!columns.has("cell_lat_deg")) db.exec("ALTER TABLE dem_tile ADD COLUMN cell_lat_deg REAL");
+    if (!columns.has("sample_format")) db.exec("ALTER TABLE dem_tile ADD COLUMN sample_format TEXT NOT NULL DEFAULT 'int16be'");
+    if (!columns.has("grid_model")) db.exec("ALTER TABLE dem_tile ADD COLUMN grid_model TEXT NOT NULL DEFAULT 'point'");
+  }
+  if (kind === "weather") db.exec(WEATHER_SQL);
   const upsert = db.prepare("INSERT INTO data_file_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
   upsert.run("kind", kind);
   upsert.run("schema_version", String(DATA_SCHEMA_VERSION));
