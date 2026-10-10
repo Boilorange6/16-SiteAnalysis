@@ -13,8 +13,10 @@ const { buildAndPublish, buildResumableSteps, insertRelease, SourceStats, ensure
 const { readShp } = await import("../../lib/v2/ingest/shp.ts");
 const { FLOOR_HEIGHT_M } = await import("../../lib/v2/ingest/sources/buildings.ts");
 const { isMeaningfulBuildingName } = await import("../../lib/v2/ingest/sources/building-names.ts");
-const { buildJusoBuildings, gisFeatureIdBound, jusoShpPerSido, shpExtent, overlapArea, planarArea, JUSO_SOURCE_ID, normalizeBuildingName, composeBuildingName } = await import("../../lib/v2/ingest/sources/juso-buildings.ts");
+const { buildJusoBuildings, gisFeatureIdBound, jusoShpPerSido, shpExtent, overlapArea, planarArea, JUSO_SOURCE_ID, OVERLAP_MIN, shouldSkipOverlapByBound, normalizeBuildingName, composeBuildingName } = await import("../../lib/v2/ingest/sources/juso-buildings.ts");
 const { toUtmk } = await import("../../lib/v2/crs.ts");
+
+const EXPECT_JUSO_PERF = process.env.SITE_ANALYSIS_JUSO_PERF !== "0";
 
 // ─── 순수 함수 ─────────────────────────────────────────────────────────────
 const sq = (x, y, d = 20) => ({ type: "Polygon", coordinates: [[[x, y], [x, y + d], [x + d, y + d], [x + d, y], [x, y]]] });
@@ -337,4 +339,133 @@ const extent = [X0 - 100, Y0 - 100, X0 + 1000, Y0 + 100];
   assert.deepEqual(resumedCalls, ["juso/41.shp"], "끝난 단계는 건너뛴다");
   assert.deepEqual(snapshot(killed, "v"), expected, "재개 결과가 중단 없는 빌드와 같다");
 }
+
+// ─── exact overlap 상한 생략: 기존 순회에서 best가 변하지 않는지 고정 ─────────────
+const rect = (x, y, w, h) => ({ type: "Polygon", coordinates: [[[x, y], [x, y + h], [x + w, y + h], [x + w, y], [x, y]]] });
+const lShape = (x, y, size = 10) => ({ type: "Polygon", coordinates: [[[x, y], [x, y + size], [x + size / 2, y + size], [x + size / 2, y + size / 2], [x + size, y + size / 2], [x + size, y], [x, y]]] });
+const holedSquare = (x, y, size = 10, hole = 4) => ({
+  type: "Polygon",
+  coordinates: [
+    rect(x, y, size, size).coordinates[0],
+    [[x + 3, y + 3], [x + 3, y + 3 + hole], [x + 3 + hole, y + 3 + hole], [x + 3 + hole, y + 3], [x + 3, y + 3]],
+  ],
+});
+const smallMulti = (x, y) => ({ type: "MultiPolygon", coordinates: [rect(x, y, 5, 5).coordinates, rect(x + 5, y + 5, 5, 5).coordinates] });
+const nanPolygon = { type: "Polygon", coordinates: [[[Number.NaN, 0], [Number.NaN, 1], [1, 1], [Number.NaN, 0]]] };
+
+assert.equal(Math.round(overlapArea(lShape(0, 0, 20), sq(0, 0))), 300, "오목 도형 exact overlap");
+assert.equal(Math.round(overlapArea(holedSquare(0, 0, 20, 10), sq(0, 0))), 300, "구멍 도형 exact overlap");
+assert.equal(Math.round(overlapArea({ type: "MultiPolygon", coordinates: [sq(0, 0, 10).coordinates, sq(10, 10, 10).coordinates] }, sq(0, 0, 20))), 200, "MultiPolygon exact overlap");
+assert.equal(overlapArea(sq(100, 100), sq(200, 200)), 0, "0 overlap은 best가 되지 않는다");
+assert.ok(Number.isNaN(overlapArea(sq(0, 0), nanPolygon)), "NaN overlap은 NaN으로 남는다");
+assert.equal(shouldSkipOverlapByBound(Number.NaN, 10, 1), false, "bbox 상한이 비유한이면 exact를 생략하지 않는다");
+assert.equal(shouldSkipOverlapByBound(10, Number.NaN, 1), false, "best.inter가 비유한이면 exact를 생략하지 않는다");
+assert.equal(shouldSkipOverlapByBound(10, 20, Number.POSITIVE_INFINITY), false, "safeUpper가 비유한이면 exact를 생략하지 않는다");
+assert.equal(shouldSkipOverlapByBound(10, 20, 1), true, "유한한 엄격한 상한만 exact를 생략한다");
+
+function bestWithoutBoundSkip(subject, candidates) {
+  const area = planarArea(subject);
+  let best = null;
+  candidates.forEach((candidate, index) => {
+    const inter = overlapArea(subject, candidate.geometry);
+    if (inter >= OVERLAP_MIN * Math.min(area, planarArea(candidate.geometry)) && (!best || inter > best.inter)) best = { index, inter };
+  });
+  return best;
+}
+
+assert.deepEqual(
+  bestWithoutBoundSkip(sq(0, 0), [
+    { geometry: sq(100, 100) },
+    { geometry: nanPolygon },
+    { geometry: sq(0, 0) },
+  ]),
+  { index: 2, inter: 400 },
+  "0/NaN exact 결과는 best를 만들지 않고 뒤의 합격 후보를 유지한다",
+);
+
+async function runOverlapFixture(label, subject, gisRows) {
+  const db = new Database(":memory:");
+  initDataFileSchema(db, "buildings");
+  ensureBuildProgressSchema(db);
+  beginFeatureBulk(db);
+  const gis = gisRel(db);
+  for (const row of gisRows) addGis(db, gis, row.id, row.geometry);
+  const bound = gisFeatureIdBound(db);
+  const juso = jusoRel(db);
+  const logs = [];
+  const previousLog = console.log;
+  console.log = (...args) => logs.push(args.map(String).join(" "));
+  let stats;
+  try {
+    stats = await buildJusoBuildings(db, iter([jrec(`${label}-juso`, subject, 3, `${label}-winner`)]), juso, { extent, gisMaxFeatureId: bound });
+  } finally {
+    console.log = previousLog;
+  }
+  const line = logs.find((entry) => entry.startsWith("[juso-perf] "));
+  const perf = line ? JSON.parse(line.slice("[juso-perf] ".length)) : null;
+  assert.equal(Boolean(perf), EXPECT_JUSO_PERF, `${label}: 기본 JUSO_PERF_ENABLED ON에서 perf 분포를 기록한다`);
+  const features = db.prepare("SELECT stable_id, name FROM feature ORDER BY feature_id").all();
+  db.close();
+  return { stats, perf, features };
+}
+
+{
+  const subject = sq(X0 + 10, Y0 + 10, 20);
+  const candidates = [
+    { id: "bound-first", geometry: subject },
+    { id: "bound-inner", geometry: sq(X0 + 15, Y0 + 15, 10) },
+    { id: "bound-concave", geometry: lShape(X0 + 15, Y0 + 15) },
+    { id: "bound-hole", geometry: holedSquare(X0 + 15, Y0 + 15) },
+    { id: "bound-multi", geometry: smallMulti(X0 + 15, Y0 + 15) },
+  ];
+  const expected = bestWithoutBoundSkip(subject, candidates);
+  assert.deepEqual(expected, { index: 0, inter: 400 }, "생략 전 기준 best는 첫 최대 교차");
+  const result = await runOverlapFixture("bound", subject, candidates);
+  assert.equal(result.stats.accepted, 0);
+  assert.equal(result.features.find((row) => row.name === "bound-winner")?.stable_id, "building:bound-first", "exact 생략 후에도 best가 같다");
+  if (result.perf) {
+    assert.equal(result.perf.boundSkips, 4, "best 뒤의 더 작은 bbox 후보 4개만 exact를 생략");
+    assert.deepEqual(result.perf.filterPasses, { zero: 0, one: 0, twoPlus: 1 }, "분모는 행별 기존 area prefilter 통과 후보 수");
+    assert.equal(result.perf.exactOverlapCalls, 1, "첫 best만 exact를 호출");
+  }
+}
+
+{
+  const subject = sq(X0 + 100, Y0 + 10, 20);
+  const candidates = [
+    { id: "tie-first", geometry: subject },
+    { id: "tie-second", geometry: subject },
+  ];
+  const expected = bestWithoutBoundSkip(subject, candidates);
+  assert.deepEqual(expected, { index: 0, inter: 400 }, "inter 동률은 먼저 본 후보를 유지");
+  const result = await runOverlapFixture("tie", subject, candidates);
+  assert.equal(result.features.find((row) => row.name === "tie-winner")?.stable_id, "building:tie-first", "동률에서 strict > 갱신 의미 보존");
+  if (result.perf) assert.equal(result.perf.boundSkips, 0, "동률 후보는 안전 상한이 best보다 작지 않아 exact를 생략하지 않는다");
+}
+
+{
+  const subject = sq(X0 + 200, Y0 + 10, 20);
+  const belowThreshold = {
+    id: "below-threshold",
+    geometry: {
+      type: "MultiPolygon",
+      coordinates: [rect(X0 + 200, Y0 + 10, 9, 10).coordinates, rect(X0 + 220, Y0 + 20, 10, 10).coordinates],
+    },
+  };
+  const candidates = [belowThreshold, { id: "after-threshold", geometry: subject }];
+  const expected = bestWithoutBoundSkip(subject, candidates);
+  assert.deepEqual(expected, { index: 1, inter: 400 }, "첫 최대 후보가 문턱 미달이면 뒤 후보를 계속 exact 계산");
+  const result = await runOverlapFixture("threshold", subject, candidates);
+  assert.equal(result.features.find((row) => row.name === "threshold-winner")?.stable_id, "building:after-threshold", "문턱 미달 best가 생략을 막는다");
+  if (result.perf) assert.equal(result.perf.boundSkips, 0, "합격 best가 없던 첫 후보는 생략하지 않는다");
+}
+
+{
+  const subject = sq(X0 + 300, Y0 + 10, 20);
+  const boundary = { id: "half-boundary", geometry: sq(X0 + 310, Y0 + 10, 20) };
+  assert.equal(overlapArea(subject, boundary.geometry), 200, "정확히 50% 겹침");
+  const result = await runOverlapFixture("boundary", subject, [boundary]);
+  assert.equal(result.features.find((row) => row.name === "boundary-winner")?.stable_id, "building:half-boundary", "정확히 50% 경계를 통과");
+}
+
 console.log("juso buildings ok");
