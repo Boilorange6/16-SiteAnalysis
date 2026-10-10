@@ -36,7 +36,16 @@ export const RETIRED_GIS_MAX_APPROVAL_YEAR = 2010;
 const CELL_M = 64;
 const GEOM_CACHE_MAX = 100_000;
 const PAD_M = 10;
+// EPSG:5179의 10^6m급 좌표를 좌표곱으로 계산하는 overlapArea가 기하학적 bbox 상한을 반올림으로 조금 넘을 수 있어 128 ulp·좌표크기²를 여유로 둔다.
+const BBOX_AREA_ROUNDING_ULPS = 128;
 const JUSO_PERF_ENABLED = process.env.SITE_ANALYSIS_JUSO_PERF !== "0";
+
+/** 유한한 bbox 상한이 유한한 best보다 엄격히 작을 때만 exact overlap을 생략한다. */
+export function shouldSkipOverlapByBound(bboxArea: number, bestInter: number, coordinateScale: number): boolean {
+  if (!Number.isFinite(bboxArea) || !Number.isFinite(bestInter)) return false;
+  const safeUpper = bboxArea + Number.EPSILON * BBOX_AREA_ROUNDING_ULPS * coordinateScale * coordinateScale;
+  return Number.isFinite(safeUpper) && safeUpper < bestInter;
+}
 
 const SHP_RE = /^TL_SPBD_BULD_(\d{2})_(\d{6})\.shp$/i;
 
@@ -339,6 +348,10 @@ interface JusoPerf {
   uniqueGridCandidates: number;
   bboxPasses: number;
   areaPrefilterRejects: number;
+  /** 행별 unique 후보 중 기존 bbox+면적 사전 필터를 통과한 수의 0/1/2+ 분포(상한 생략 전). */
+  filterPasses: { zero: number; one: number; twoPlus: number };
+  /** 안전 상한이 이미 합격 best보다 엄격히 작아 exact overlapArea를 생략한 후보 수. */
+  boundSkips: number;
   exactOverlapCalls: number;
   triangulateCalls: number;
   polyclipFallbacks: number;
@@ -379,6 +392,8 @@ export async function buildJusoBuildings(
     uniqueGridCandidates: 0,
     bboxPasses: 0,
     areaPrefilterRejects: 0,
+    filterPasses: { zero: 0, one: 0, twoPlus: 0 },
+    boundSkips: 0,
     exactOverlapCalls: 0,
     triangulateCalls: 0,
     polyclipFallbacks: 0,
@@ -485,6 +500,7 @@ export async function buildJusoBuildings(
     const [x0, y0, x1, y1] = bboxOf(g);
     const seen = new Set<number>();
     let best: { i: number; inter: number } | null = null;
+    let filterPasses = 0;
     for (let ix = Math.floor(x0 / CELL_M); ix <= Math.floor(x1 / CELL_M); ix++) {
       for (let iy = Math.floor(y0 / CELL_M); iy <= Math.floor(y1 / CELL_M); iy++) {
         for (const i of gis.cells.get(ix * 65536 + iy) ?? []) {
@@ -498,9 +514,23 @@ export async function buildJusoBuildings(
           if (w <= 0 || hh <= 0) continue;
           if (perf) perf.bboxPasses++;
           const c = gisGeom(gis.ids[i]);
-          if (w * hh < OVERLAP_MIN * Math.min(area, c.area)) {
+          const bboxArea = w * hh;
+          if (bboxArea < OVERLAP_MIN * Math.min(area, c.area)) {
             if (perf) perf.areaPrefilterRejects++;
             continue;
+          }
+          if (perf) filterPasses++;
+          if (best && Number.isFinite(bboxArea) && Number.isFinite(best.inter)) {
+            const coordinateScale = Math.max(
+              1,
+              Math.abs(x0), Math.abs(y0), Math.abs(x1), Math.abs(y1),
+              Math.abs(b[4 * i]), Math.abs(b[4 * i + 1]), Math.abs(b[4 * i + 2]), Math.abs(b[4 * i + 3]),
+            );
+            // safeUpper < best.inter인 뒤 후보는 동률도 될 수 없고, 기존 strict `inter > best.inter` 갱신도 best를 바꾸지 않는다.
+            if (shouldSkipOverlapByBound(bboxArea, best.inter, coordinateScale)) {
+              if (perf) perf.boundSkips++;
+              continue;
+            }
           }
           if (perf) perf.exactOverlapCalls++;
           const overlapStarted = perf ? performance.now() : 0;
@@ -515,7 +545,10 @@ export async function buildJusoBuildings(
         }
       }
     }
-    if (perf) perf.candidateMs += performance.now() - candidateStarted;
+    if (perf) {
+      perf.filterPasses[filterPasses === 0 ? "zero" : filterPasses === 1 ? "one" : "twoPlus"]++;
+      perf.candidateMs += performance.now() - candidateStarted;
+    }
     const oldApprovalDate = best ? gis.approvalDates[best.i] : null;
     const oldName = best ? normalizeBuildingName(gis.names[best.i]) : null;
     const currentName = normalizeBuildingName(name);
@@ -633,6 +666,8 @@ export async function buildJusoBuildings(
       uniqueGridCandidates: perf.uniqueGridCandidates,
       bboxPasses: perf.bboxPasses,
       areaPrefilterRejects: perf.areaPrefilterRejects,
+      filterPasses: perf.filterPasses,
+      boundSkips: perf.boundSkips,
       exactOverlapCalls: perf.exactOverlapCalls,
       triangulateCalls: perf.triangulateCalls,
       polyclipFallbacks: perf.polyclipFallbacks,
