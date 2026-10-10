@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, memo, useContext, useEffect, useRef, useState } from "react";
-import { layerStyle, legendItemsForModel, normalizeLegendStripLabels, RASTER_STYLES, type MapModel } from "@/lib/v2/ui/map-layers";
+import { buildingStyleForRaster, legendItemsForModel, normalizeLegendStripLabels, RASTER_STYLES, type MapModel } from "@/lib/v2/ui/map-layers";
 import { activeLegendLabel, appendUniqueLegendItems, toggleLegendPin } from "@/lib/v2/ui/map-legend";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { framedViewport, metersPerPixel, scaleBar, tileUrl, tilesFor } from "@/lib/v2/ui/map-projection";
@@ -115,10 +115,6 @@ function rasterLegendItemsForModel(model: MapModel): MapLegendItem[] {
   }));
 }
 
-function isBuildingLegendLayer(layer: string): boolean {
-  return layer === "building" || layer === "svf_building" || layer.startsWith("bldg_") || layer.includes("building");
-}
-
 function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, ...optsIn }: { model: MapModel; bare?: boolean; label?: string } & Opts2) {
   const { ref, size, near } = useMeasured();
   const opts = { ...optsIn, fill: pad && size ? Math.max(0.3, (size.h - 2 * pad) / size.h) : optsIn.fill };
@@ -192,6 +188,8 @@ function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, ...optsIn }
   }, [model.analysisId, model.tileCode, model.rasters, near]);
   const renderLayer = fallbackLayer ?? requestedLayer;
   const renderModel = fallbackLayer ? { ...model, basemap: fallbackLayer } : model;
+  const activeRasterName = model.rasters?.[0]?.name;
+  const hasDecodedActiveRaster = !!activeRasterName && !!rasterHrefs[activeRasterName];
   const swatchKind = (layerName: string): LegendSwatchKind => {
     if (model.lines?.some((line) => line.layer === layerName)) return "line";
     if (model.polygons?.some((polygon) => polygon.layer === layerName)) return "polygon";
@@ -204,17 +202,16 @@ function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, ...optsIn }
           ...legendItemsForModel(model)
             .filter((item) => item.layer !== "parcel_site" && item.layer !== "pnu")
             .map((item) => {
-              const style = layerStyle(item.layer);
-              const neutralBuilding = Boolean(model.rasters?.length && isBuildingLegendLayer(item.layer));
+              const swatchStyle = buildingStyleForRaster(item.layer, hasDecodedActiveRaster);
               return {
                 ...item,
                 site: false as const,
                 swatch: swatchKind(item.layer),
-                ...(style.fill || neutralBuilding ? { fill: neutralBuilding ? "#F8FAFC" : style.fill } : {}),
-                ...(style.stroke || neutralBuilding ? { stroke: neutralBuilding ? "#475569" : style.stroke } : {}),
-                ...(style.fillOpacity !== undefined || neutralBuilding ? { fillOpacity: neutralBuilding ? 0.94 : style.fillOpacity } : {}),
-                ...(style.strokeWidth !== undefined || neutralBuilding ? { strokeWidth: neutralBuilding ? 0.8 : style.strokeWidth } : {}),
-                ...(style.hatch ? { hatch: true } : {}),
+                ...(swatchStyle.fill ? { fill: swatchStyle.fill } : {}),
+                ...(swatchStyle.stroke ? { stroke: swatchStyle.stroke } : {}),
+                ...(swatchStyle.fillOpacity !== undefined ? { fillOpacity: swatchStyle.fillOpacity } : {}),
+                ...(swatchStyle.strokeWidth !== undefined ? { strokeWidth: swatchStyle.strokeWidth } : {}),
+                ...(swatchStyle.hatch ? { hatch: true } : {}),
               };
             }),
         ],

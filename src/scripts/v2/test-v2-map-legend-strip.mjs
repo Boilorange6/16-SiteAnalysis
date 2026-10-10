@@ -8,7 +8,7 @@ const {
   toggleLegendPin,
   appendUniqueLegendItems,
 } = await import("../../lib/v2/ui/map-legend.ts");
-const { normalizeLegendStripLabels } = await import("../../lib/v2/ui/map-layers.ts");
+const { buildingStyleForRaster, layerStyle, NEUTRAL_BUILDING_STYLE, normalizeLegendStripLabels } = await import("../../lib/v2/ui/map-layers.ts");
 
 // 세로 휠은 넘치는 띠 안에서만 가로 스크롤로 바뀌고, 끝에서는 페이지 스크롤을 돌려준다.
 assert.equal(legendWheelScrollTarget({ scrollLeft: 0, clientWidth: 300, scrollWidth: 900, deltaX: 0, deltaY: 120 }), 120);
@@ -59,5 +59,12 @@ const prefixResult = normalizeLegendStripLabels([
 assert.equal(prefixResult.leadingLabel, "지목", "공통 범례 접두는 띠 제목으로 한 번만 표시");
 assert.deepEqual(prefixResult.items.map((item) => item.label), ["대지", "도로", "100㎡ 미만"]);
 assert.equal(prefixResult.items[0].highlightLabel, "지목 · 대지", "표시값을 줄여도 지도 강조 키는 원문 유지");
+
+assert.deepEqual(buildingStyleForRaster("svf_building", false), layerStyle("svf_building"), "래스터가 실제로 그려지지 않으면 지도 건물 원래 스타일 유지");
+assert.deepEqual(
+  buildingStyleForRaster("svf_building", true),
+  { ...layerStyle("svf_building"), ...NEUTRAL_BUILDING_STYLE },
+  "래스터가 실제로 그려지면 지도와 견본이 공통 중립 스타일을 사용",
+);
 
 console.log("v2 map legend strip contracts GREEN");

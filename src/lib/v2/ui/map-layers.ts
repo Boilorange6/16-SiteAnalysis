@@ -60,6 +60,14 @@ export type LayerStyle = {
   hatch?: boolean;
 };
 
+/** 래스터가 실제로 그려졌을 때 건물 마스크에 쓰는 중립 스타일. */
+export const NEUTRAL_BUILDING_STYLE = {
+  fill: "#F8FAFC",
+  stroke: "#475569",
+  fillOpacity: 0.94,
+  strokeWidth: 0.8,
+} as const;
+
 export type RasterStyle = {
   mode: "stepped" | "continuous" | "mask";
   colors: string[];
@@ -415,6 +423,31 @@ export function presentationLegendLabel(entry: TileResult["presentation"]["legen
 type MapLegendLayerItem = ReturnType<typeof legendItems>[number];
 type PresentedLegendLayerItem = MapLegendLayerItem & { id: string; highlightLabel: string };
 
+function reorderMappedLegendGroups(items: PresentedLegendLayerItem[]): PresentedLegendLayerItem[] {
+  const indicesByGroup = new Map<string, number[]>();
+  for (const [index, item] of items.entries()) {
+    const group = LAYER_STYLES[item.layer]?.legendGroup;
+    if (!group) continue;
+    const indices = indicesByGroup.get(group) ?? [];
+    indices.push(index);
+    indicesByGroup.set(group, indices);
+  }
+
+  const reordered = [...items];
+  for (const indices of indicesByGroup.values()) {
+    const sorted = indices
+      .map((index) => ({ index, item: items[index]! }))
+      .sort((a, b) => (LAYER_STYLES[a.item.layer]?.legendOrder ?? Number.POSITIVE_INFINITY)
+        - (LAYER_STYLES[b.item.layer]?.legendOrder ?? Number.POSITIVE_INFINITY)
+        || a.index - b.index)
+      .map(({ item }) => item);
+    indices.forEach((index, position) => {
+      reordered[index] = sorted[position]!;
+    });
+  }
+  return reordered;
+}
+
 export function legendItemsForModel(model: MapModel, limit = Number.POSITIVE_INFINITY): MapLegendLayerItem[] {
   // 같은 표시명을 가진 벡터 면과 래스터(특히 D10 canopy)는 띠에서 한 칸으로 합친다.
   // 래스터 항목은 MapBox가 별도로 추가하므로 여기서는 정적 벡터 항목을 제외한다.
@@ -457,10 +490,11 @@ export function legendItemsForModel(model: MapModel, limit = Number.POSITIVE_INF
         ?? (allowIndexFallback ? staticItems[index] : undefined);
       return item ? [{ ...item, id: `${item.layer}:legend-${index}`, label: displayLabel, highlightLabel: item.label }] : [];
     });
+  const orderedMapped = reorderMappedLegendGroups(mapped);
   // 래스터 경계가 섞인 엔진 범례에서는 벡터 레이어를 배열 위치로 추측하지 않는다.
   // 매칭되지 않은 벡터 항목(예: S03의 유입 방향)은 뒤에 한 번만 남긴다.
-  const remainder = orderedStatic.filter((item) => !mapped.some((mappedItem) => mappedItem.highlightLabel === item.label));
-  return [...mapped, ...remainder].slice(0, Math.max(0, limit));
+  const remainder = orderedStatic.filter((item) => !orderedMapped.some((mappedItem) => mappedItem.highlightLabel === item.label));
+  return [...orderedMapped, ...remainder].slice(0, Math.max(0, limit));
 }
 
 type LegendStripLabelItem = { label: string; highlightLabel?: string };
@@ -536,3 +570,11 @@ export function compactLegendItems(model: MapModel, limit = 3) {
 }
 
 export const layerStyle =(layer: string): LayerStyle => LAYER_STYLES[layer] ?? FALLBACK;
+
+export const isBuildingLayer = (layer: string): boolean => layer === "building" || layer === "svf_building" || layer.startsWith("bldg_") || layer.includes("building");
+
+/** 지도와 범례 견본이 같은 래스터 준비 조건·건물 중립 스타일을 공유한다. */
+export function buildingStyleForRaster(layer: string, rasterDecoded: boolean): LayerStyle {
+  const style = layerStyle(layer);
+  return rasterDecoded && isBuildingLayer(layer) ? { ...style, ...NEUTRAL_BUILDING_STYLE } : style;
+}

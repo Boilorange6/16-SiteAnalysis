@@ -144,6 +144,55 @@ assert.deepEqual(compactLegendItems(d05Order, 99).map((item) => item.layer), [
   "floors_1_4", "floors_5_8", "floors_9_14", "floors_26p",
 ], "D05 층수 범례 정의 순서 유지");
 
+// Regression fixtures (RED before implementation): 엔진 presentation.legend가 도형 첫 등장 순서로 섞여도, 같은 묶음만 정의 순서로 정렬해야 한다.
+const d04MappedLegend = {
+  ...base,
+  features: [
+    { layer: "bus_stop", lng: 127.15, lat: 37.62 },
+    { layer: "park", lng: 127.151, lat: 37.621 },
+  ],
+  polygons: [
+    ...polygons("bldg_1990s", 1),
+    ...polygons("bldg_unknown", 1),
+    ...polygons("bldg_2000s", 1),
+    ...polygons("bldg_1980s", 1),
+    ...polygons("bldg_2010s", 1),
+  ],
+  legend: [
+    { label: "1990년대", min: null, max: null },
+    { label: "버스정류장", min: null, max: null },
+    { label: "미상", min: null, max: null },
+    { label: "공원", min: null, max: null },
+    { label: "2000년대", min: null, max: null },
+    { label: "1980년대", min: null, max: null },
+    { label: "2010년대", min: null, max: null },
+  ],
+};
+assert.deepEqual(legendItemsForModel(d04MappedLegend).map((item) => item.layer), [
+  "bldg_1980s", "bus_stop", "bldg_1990s", "park", "bldg_2000s", "bldg_2010s", "bldg_unknown",
+], "D04 엔진 범례는 같은 묶음만 정의 순서로 재정렬하고 묶음 밖 상대 순서를 유지");
+
+const d05MappedLegend = {
+  ...base,
+  polygons: [
+    ...polygons("floors_9_14", 1),
+    ...polygons("floors_unknown", 1),
+    ...polygons("floors_26p", 1),
+    ...polygons("floors_1_4", 1),
+    ...polygons("floors_5_8", 1),
+  ],
+  legend: [
+    { label: "9~14층", min: null, max: null },
+    { label: "층수 미상", min: null, max: null },
+    { label: "26층 이상", min: null, max: null },
+    { label: "1~4층", min: null, max: null },
+    { label: "5~8층", min: null, max: null },
+  ],
+};
+assert.deepEqual(legendItemsForModel(d05MappedLegend).map((item) => item.layer), [
+  "floors_1_4", "floors_5_8", "floors_9_14", "floors_26p", "floors_unknown",
+], "D05 엔진 범례는 같은 묶음 내부의 정의 순서를 유지");
+
 // D16은 dens_0 도형이 없어도 엔진의 6개 경계를 전체 표시하고 실제 경계값을 보존한다.
 const d16MissingDens0 = {
   ...base,

@@ -1,5 +1,5 @@
 import { memo, useId, useRef, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { layerStyle, legendItems, RASTER_STYLES, type MapModel, type RasterStyle } from "@/lib/v2/ui/map-layers";
+import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, RASTER_STYLES, type MapModel, type RasterStyle } from "@/lib/v2/ui/map-layers";
 import { automaticLabelText, badgeTextColor, labelBoxesOverlap, legacyLabelPriority, mapLabelText as formatMapLabelText, selectAutomaticLabels, type MapLabelKind } from "@/lib/v2/ui/map-labels";
 import { BASEMAP_ATTRIBUTION, BASEMAP_STACK, framedViewport, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, worldPx, type BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { rasterAffine, rasterLegendColor, rasterLegendEntries, resolveRasterStyle } from "@/lib/v2/ui/raster-image";
@@ -252,10 +252,6 @@ function steppedLegendTicksFor(ref: RasterRef, entries: RasterLegendEntry[], sty
 /** 칸 가운데에 놓는 범주명 (stepped + legendLabels). */
 function steppedLegendNames(style: RasterStyle, count: number): Array<{ label: string; position: number }> {
   return (style.legendLabels ?? []).slice(0, count).map((label, index) => ({ label, position: (index + 0.5) / count }));
-}
-
-function isBuildingLayer(layer: string): boolean {
-  return layer === "building" || layer === "svf_building" || layer.startsWith("bldg_") || layer.includes("building");
 }
 
 function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, fixed, label, legend, legendY, north: northOpt, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, selectedFids = [], highlightLabel = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = [], onFeatureClick, onFeatureHover, onFeaturePin, onLegendHover, onLegendPin, path = [], onMapClick }: MapFigureProps) {
@@ -904,12 +900,13 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
             const st = layerStyle(polygon.polygon.layer);
             const estimated = isEstimated(polygon);
             const neutralBuilding = rasterImages.length > 0 && isBuildingLayer(polygon.polygon.layer);
+            const buildingStyle = buildingStyleForRaster(polygon.polygon.layer, rasterImages.length > 0);
             const polygonFid = polygon.polygon.fid;
             const polygonCenter = centerOf(polygon.polygon.rings[0] ?? []);
             const polygonSelected = isSelected(polygonFid);
             const polygonKey = mapElementKey("polygon", polygon.polygon.layer, polygonFid, polygon.index);
             const strong = isElementStrong(polygon.polygon.layer, polygonKey);
-            return <path key={`poly${polygon.index}`} data-poly="true" d={polygonPath(polygon.rings)} fillRule="evenodd" fill={neutralBuilding ? "#F8FAFC" : estimated ? `url(#${hatchId(polygon.index)})` : st.fill ?? st.color} fillOpacity={neutralBuilding ? 0.94 : estimated ? 1 : st.fillOpacity ?? polygonOpacity} opacity={isElementDimmed(polygon.polygon.layer, polygonKey) ? 0.2 : undefined} stroke={strong || polygonSelected ? INK : neutralBuilding ? "#475569" : st.stroke ?? st.color} strokeWidth={(strong ? 1.6 : polygonSelected ? 3 : neutralBuilding ? 0.8 : st.strokeWidth ?? 1) * u} {...pickProps({ fid: polygonFid, lng: polygonCenter[0], lat: polygonCenter[1], kind: "polygon" }, polygonKey, labelText(polygon.polygon.layer, "polygon", polygon.polygon))} />;
+            return <path key={`poly${polygon.index}`} data-poly="true" d={polygonPath(polygon.rings)} fillRule="evenodd" fill={neutralBuilding ? buildingStyle.fill : estimated ? `url(#${hatchId(polygon.index)})` : st.fill ?? st.color} fillOpacity={neutralBuilding ? buildingStyle.fillOpacity : estimated ? 1 : st.fillOpacity ?? polygonOpacity} opacity={isElementDimmed(polygon.polygon.layer, polygonKey) ? 0.2 : undefined} stroke={strong || polygonSelected ? INK : neutralBuilding ? buildingStyle.stroke : st.stroke ?? st.color} strokeWidth={(strong ? 1.6 : polygonSelected ? 3 : neutralBuilding ? buildingStyle.strokeWidth ?? 0.8 : st.strokeWidth ?? 1) * u} {...pickProps({ fid: polygonFid, lng: polygonCenter[0], lat: polygonCenter[1], kind: "polygon" }, polygonKey, labelText(polygon.polygon.layer, "polygon", polygon.polygon))} />;
           })}
           {linePaths.map((d) => {
             const st = layerStyle(d.l.layer);
@@ -944,9 +941,10 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
           return null;
         })}
         {drawn.map((d, i) => {
-           const st = layerStyle(d.f.layer);
-           const r = radiusOf(d.f);
-           const neutralBuilding = rasterImages.length > 0 && isBuildingLayer(d.f.layer);
+            const st = layerStyle(d.f.layer);
+            const r = radiusOf(d.f);
+            const neutralBuilding = rasterImages.length > 0 && isBuildingLayer(d.f.layer);
+            const buildingStyle = buildingStyleForRaster(d.f.layer, rasterImages.length > 0);
            if (d.p[0] < -r || d.p[1] < -r || d.p[0] > W + r || d.p[1] > H + r) return null;
            const hollow = st.sizeBy === "weight" && !d.f.weight;
            const featureKey = mapFeatureKey(d.f.layer, d.f.fid, d.index);
@@ -957,11 +955,11 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
               cx={d.p[0]}
               cy={d.p[1]}
               r={r}
-              fill={neutralBuilding ? "#F8FAFC" : hollow ? "#fff" : st.color}
-              fillOpacity={neutralBuilding ? 0.94 : hollow ? 0.6 : st.sizeBy === "weight" ? 0.55 : d.f.highlight ? 1 : 0.85}
+              fill={neutralBuilding ? buildingStyle.fill : hollow ? "#fff" : st.color}
+              fillOpacity={neutralBuilding ? buildingStyle.fillOpacity : hollow ? 0.6 : st.sizeBy === "weight" ? 0.55 : d.f.highlight ? 1 : 0.85}
               opacity={isElementDimmed(d.f.layer, featureKey) ? 0.2 : undefined}
-              stroke={strong || d.f.highlight || d.selected ? INK : neutralBuilding ? "#475569" : sat ? "#fff" : st.sizeBy === "weight" ? st.color : "#fff"}
-              strokeWidth={(strong ? 1.6 : d.f.highlight || d.selected ? 2.8 : neutralBuilding ? 0.8 : sat ? 1.5 : st.sizeBy === "weight" ? 1.4 : 0.8) * u}
+              stroke={strong || d.f.highlight || d.selected ? INK : neutralBuilding ? buildingStyle.stroke : sat ? "#fff" : st.sizeBy === "weight" ? st.color : "#fff"}
+              strokeWidth={(strong ? 1.6 : d.f.highlight || d.selected ? 2.8 : neutralBuilding ? buildingStyle.strokeWidth ?? 0.8 : sat ? 1.5 : st.sizeBy === "weight" ? 1.4 : 0.8) * u}
               {...pickProps({ fid: d.f.fid, lng: d.f.lng, lat: d.f.lat, kind: "feature" }, featureKey, labelText(d.f.layer, "feature", d.f))}
             />
           );
