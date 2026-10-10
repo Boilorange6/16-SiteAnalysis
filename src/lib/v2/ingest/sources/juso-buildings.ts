@@ -19,7 +19,10 @@ import { insertFeature } from "../../data/features";
 import { makePnu } from "../../data/parcels";
 import { batched, SourceStats } from "../build";
 import type { ShpRecord } from "../shp";
+import { composeBuildingName, normalizeBuildingName } from "./building-names";
 import { COORD_DECIMALS, FLOOR_HEIGHT_M, heightOf } from "./buildings";
+
+export { composeBuildingName, normalizeBuildingName } from "./building-names";
 
 type Db = BetterSqlite3.Database;
 
@@ -68,39 +71,6 @@ const str = (v: unknown): string | null => {
   const s = typeof v === "string" ? v.trim() : "";
   return s === "" ? null : s;
 };
-
-/** 단지·동 이름의 표기 차이(공백·괄호·구두점)만 제거한다. 모르는 접두어는 보수적으로 남긴다. */
-export function normalizeBuildingName(value: string | null): string | null {
-  const name = value?.trim();
-  return name ? name.normalize("NFKC").toLocaleLowerCase("ko-KR").replace(/[\s()·,._\-/\\]/g, "") : null;
-}
-
-/**
- * 도로명주소 원천의 표시용 건물명과 동/상세명을 하나의 라벨로 조립한다.
- * 비교용 정규화(normalizeBuildingName)와 달리 표시 문자열의 공백·구두점은 보존한다.
- * 단, 문자·숫자가 하나도 없는 값은 원천의 자리 채움 기호로 보고 버린다.
- */
-export function composeBuildingName(value: string | null, detail: string | null): string | null {
-  const cleanPart = (candidate: string | null): string | null => {
-    const part = candidate?.normalize("NFKC").trim() ?? "";
-    const onlyJamo = part.length > 0 && [...part].every((character) => {
-      const codePoint = character.codePointAt(0) ?? 0;
-      return (codePoint >= 0x1100 && codePoint <= 0x11ff) || (codePoint >= 0xa960 && codePoint <= 0xa97f) || (codePoint >= 0xd7b0 && codePoint <= 0xd7ff);
-    });
-    return part && /[\p{L}\p{N}]/u.test(part) && !onlyJamo ? part : null;
-  };
-  const name = cleanPart(value);
-  const extra = cleanPart(detail);
-  if (!name) return extra;
-  if (!extra) return name;
-
-  const normalizedName = normalizeBuildingName(name);
-  const normalizedExtra = normalizeBuildingName(extra);
-  if (!normalizedName || !normalizedExtra) return name;
-  if (normalizedName === normalizedExtra || normalizedName.includes(normalizedExtra)) return name;
-  if (normalizedExtra.includes(normalizedName)) return extra;
-  return `${name} ${extra}`;
-}
 
 function validCoreApprovalDate(value: unknown, maxDate: string): string | null {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value) || value > maxDate) return null;

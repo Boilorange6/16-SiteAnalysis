@@ -85,6 +85,7 @@ const fact = (db, id) => db.prepare("SELECT b.*, f.pnu, f.name FROM building_fac
   ]), buildingRel, { ledger: lookup });
   assert.deepEqual([fact(buildings, "TITLE-HEIGHT").height_m, fact(buildings, "TITLE-HEIGHT").height_method, fact(buildings, "TITLE-HEIGHT").floors_above, fact(buildings, "TITLE-HEIGHT").approval_date], [24.5, "ledger_height", 8, "2010-03-04"]);
   assert.equal(fact(buildings, "TITLE-NAME").height_method, "ledger_height");
+  assert.equal(fact(buildings, "TITLE-NAME").name, "101", "번호형 A24 이름도 보존하고 PNU+이름 매칭을 유지");
   assert.equal(fact(buildings, "TITLE-FLOORS").height_method, "ledger_floors_estimate");
 
   const oneToManyStats = await buildBuildings(buildings, rows([

@@ -137,6 +137,27 @@ assert.equal(fact("U-BADDATE").approval_date, null);
 assert.equal(fact("U-NOPNU").pnu, null);
 assert.equal(db.prepare("SELECT COUNT(*) FROM building_fact").pluck().get(), 5);
 
+// ─── A24 이름: W4 유효성만 적용하고 trim된 원문은 그대로 저장·매칭한다 ─────
+{
+  const nameDb = new Database(":memory:");
+  initDataFileSchema(nameDb, "buildings");
+  const nameRel = insertRelease(nameDb, { sourceId: "building", provider: "t", sourceUrl: "https://x.invalid", sourceAsOf: "2026-09-09", fetchedAt: "2026-09-30T00:00:00Z", checksum: "names", licenseCode: "TEST" });
+  const nameGeometry = { type: "Polygon", coordinates: [[[127, 37], [127.0001, 37], [127.0001, 37.0001], [127, 37.0001], [127, 37]]] };
+  const nameRecord = (id, value) => ({ geometry: nameGeometry, properties: { A1: id, A3: "4113510300", A16: 0, A26: 0, A27: 0, A24: value } });
+  async function* nameRows() {
+    yield nameRecord("NAME-NORMAL", "  고덕아파트  ");
+    yield nameRecord("NAME-FULLWIDTH", "  ＡＢＣ１２３  ");
+    yield nameRecord("NAME-PLACEHOLDER", "---");
+  }
+  const ledgerInputs = [];
+  const nameStats = await buildBuildings(nameDb, nameRows(), nameRel, { ledger: { match: (input) => { ledgerInputs.push(input); return null; } } });
+  assert.equal(nameStats.accepted, 3);
+  const storedName = (id) => nameDb.prepare("SELECT name FROM feature WHERE stable_id = ?").pluck().get(`building:${id}`);
+  assert.deepEqual([storedName("NAME-NORMAL"), storedName("NAME-FULLWIDTH"), storedName("NAME-PLACEHOLDER")], ["고덕아파트", "ＡＢＣ１２３", null]);
+  assert.deepEqual(ledgerInputs.map((input) => input.name), ["고덕아파트", "ＡＢＣ１２３", null], "ledger match와 feature 적재가 같은 정리 값을 사용");
+  nameDb.close();
+}
+
 // ─── 표제부 층수 보강: 단일 동·다동 이름 매칭·비매칭 ─────────────────────────
 {
   const core = new Database(":memory:");

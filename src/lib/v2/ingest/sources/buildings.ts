@@ -13,6 +13,7 @@ import type { Geometry } from "geojson";
 import { insertFeature } from "../../data/features";
 import { batched, SourceStats } from "../build";
 import type { ShpRecord } from "../shp";
+import { isMeaningfulBuildingName } from "./building-names";
 import type { LedgerFloorInput, LedgerFloorLookup, LedgerFloorMatch } from "./ledger";
 import type { ParcelSpatialLookup } from "./parcel-spatial";
 
@@ -211,12 +212,14 @@ export async function buildBuildings(
     const grossFloorAreaM2 = pos(p.A14);
     const footprintAreaM2 = pos(p.A12);
     const nativeHeight = heightOf(p, floorHeightM);
+    const rawName = str(p.A24);
+    const name = rawName && isMeaningfulBuildingName(rawName) ? rawName : null;
     let ledgerMatch: LedgerFloorMatch | null = null;
     if (opts.ledger) {
       const input: LedgerFloorInput = {
         pnu,
         ledgerPk: str(p.A21),
-        name: str(p.A24),
+        name,
         grossFloorAreaM2,
         footprintAreaM2,
       };
@@ -236,7 +239,7 @@ export async function buildBuildings(
     });
     let featureId: number;
     try {
-      featureId = insertFeature(db, { stableId: `building:${ufid}`, kind: "building", sourceKey: ufid, releaseId, geometry: r.geometry, name: str(p.A24), pnu, legalCode: legal, roundM: 10 ** -COORD_DECIMALS });
+      featureId = insertFeature(db, { stableId: `building:${ufid}`, kind: "building", sourceKey: ufid, releaseId, geometry: r.geometry, name, pnu, legalCode: legal, roundM: 10 ** -COORD_DECIMALS });
     } catch (e) {
       if ((e as { code?: string }).code === "SQLITE_CONSTRAINT_UNIQUE") return stats.reject(); // 중복 UFID
       throw e;
