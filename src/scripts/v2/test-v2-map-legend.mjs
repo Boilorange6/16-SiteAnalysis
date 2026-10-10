@@ -105,3 +105,13 @@ assert.equal(rasterLegendColor(s02Ref, RASTER_STYLES.sun_hours, s02Entries[15]),
 assert.equal(layerStyle("walk_net").opacity, 0.55);
 
 console.log("✓ v2 map legend, raster swatch, and line opacity contracts");
+
+// 분위 레이어는 개수가 달라도 낮음→높음 순서를 지킨다(D16 실데이터에서 60~80%가 맨 앞에 오던 문제).
+const d16Order = {
+  ...base,
+  polygons: [
+    ...[1, 2, 2, 2, 3].map((q) => ({ layer: `dens_q${q}`, rings: [[[127.15, 37.62], [127.151, 37.62], [127.151, 37.621]]] })),
+    ...Array.from({ length: 4 }, () => ({ layer: "dens_q4", rings: [[[127.15, 37.62], [127.151, 37.62], [127.151, 37.621]]] })),
+  ],
+};
+assert.deepEqual(legendItemsForModel(d16Order).map((item) => item.layer), ["dens_q1", "dens_q2", "dens_q3", "dens_q4"], "분위 범례 정의 순서 유지");

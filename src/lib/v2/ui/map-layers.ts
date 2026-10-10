@@ -410,9 +410,21 @@ export function compactLegendItems(model: MapModel, limit = 3) {
   for (const f of model.features) add(f.layer);
   for (const p of model.polygons ?? []) add(p.layer);
   for (const l of model.lines ?? []) add(l.layer);
-  return legendItems(model)
-    .map((item, order) => ({ ...item, count: counts.get(item.label) ?? 0, order }))
-    .sort((a, b) => Number(b.highlight) - Number(a.highlight) || b.count - a.count || a.order - b.order)
+  // 분위 레이어(dens_q1~q5, trade_q1~q4)는 한 묶음으로 움직이고 묶음 안에서는 정의(낮음→높음) 순서를 지킨다.
+  const family = (layer: string) => layer.replace(/_q\d+$/, "");
+  const items = legendItems(model).map((item, order) => ({ ...item, count: counts.get(item.label) ?? 0, order }));
+  const familyCount = new Map<string, number>();
+  const familyOrder = new Map<string, number>();
+  for (const item of items) {
+    const f = family(item.layer);
+    familyCount.set(f, Math.max(familyCount.get(f) ?? 0, item.count));
+    if (!familyOrder.has(f)) familyOrder.set(f, item.order);
+  }
+  return items
+    .sort((a, b) => Number(b.highlight) - Number(a.highlight)
+      || familyCount.get(family(b.layer))! - familyCount.get(family(a.layer))!
+      || familyOrder.get(family(a.layer))! - familyOrder.get(family(b.layer))!
+      || a.order - b.order)
     .slice(0, Math.max(0, limit));
 }
 
