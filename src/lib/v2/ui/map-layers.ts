@@ -37,6 +37,10 @@ export type LayerStyle = {
   /** 이름이 없는 지도 요소를 설명할 때 덧붙이는 사용자 대상 명사. */
   subject?: string;
   color: string;
+  /** 범례에서 함께 이동하는 순서형 레이어 묶음. */
+  legendGroup?: string;
+  /** 묶음 안에서의 정의 순서(낮음→높음). */
+  legendOrder?: number;
   /** weight로 원 크기(√비례)를 정한다. 아니면 작은 점 */
   sizeBy?: "weight";
   /** 면 지물의 채움·테두리. 없으면 color를 둘 다 쓴다. */
@@ -84,7 +88,29 @@ export type RasterStyle = {
  */
 export const STRIP_COLORS = ["#440154", "#414487", "#2A788E", "#22A884", "#7AD151", "#FDE725", "#94A3B8"];
 
-const S = (label: string, color: string, sizeBy?: "weight", subject?: string): LayerStyle => ({ label, color, sizeBy, subject });
+const LEGEND_GROUPS = {
+  tradeQuantiles: "trade:quantiles",
+  d04CompletionYear: "d04:completion-year",
+  d05Floors: "d05:floors",
+  d16Density: "d16:density",
+  d19Jimok: "d19:jimok",
+} as const;
+
+const S = (
+  label: string,
+  color: string,
+  sizeBy?: "weight",
+  subject?: string,
+  legendGroup?: string,
+  legendOrder?: number,
+): LayerStyle => ({
+  label,
+  color,
+  sizeBy,
+  subject,
+  ...(legendGroup === undefined ? {} : { legendGroup }),
+  ...(legendOrder === undefined ? {} : { legendOrder }),
+});
 
 export const LAYER_STYLES: Record<string, LayerStyle> = {
   bus_stop: S("버스정류장", "#6A50D3", undefined, "버스정류장"),
@@ -126,32 +152,32 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   officetel: S("오피스텔", "#2B9CBF", "weight"),
   applyhome: S("청약홈", "#D6478A", "weight"),
   move_in: S("입주예정", "#2F6FDB", "weight"),
-  trade_q1: S("㎡당 하위 20%", "#BFD7F5", "weight"),
-  trade_q2: S("㎡당 20~40%", "#8FB8EC", "weight"),
-  trade_q3: S("㎡당 40~60%", "#5C97E0", "weight"),
-  trade_q4: S("㎡당 60~80%", "#2F6FDB", "weight"),
-  trade_q5: S("㎡당 상위 20%", "#1B3F8F", "weight"),
+  trade_q1: S("㎡당 하위 20%", "#BFD7F5", "weight", undefined, LEGEND_GROUPS.tradeQuantiles, 0),
+  trade_q2: S("㎡당 20~40%", "#8FB8EC", "weight", undefined, LEGEND_GROUPS.tradeQuantiles, 1),
+  trade_q3: S("㎡당 40~60%", "#5C97E0", "weight", undefined, LEGEND_GROUPS.tradeQuantiles, 2),
+  trade_q4: S("㎡당 60~80%", "#2F6FDB", "weight", undefined, LEGEND_GROUPS.tradeQuantiles, 3),
+  trade_q5: S("㎡당 상위 20%", "#1B3F8F", "weight", undefined, LEGEND_GROUPS.tradeQuantiles, 4),
   maint_zone: S("정비구역", "#D6478A"),
   maint_zone_center: S("정비구역", "#D6478A"),
   zoning_site: S("대지 용도지역", "#C9A227"),
-  "jimok:대": S("지목 · 대지", "#C9A227"),
-  "jimok:도로": S("지목 · 도로", "#8D8D8D"),
-  "jimok:전답": S("지목 · 전·답", "#D9A441"),
-  "jimok:임야": S("지목 · 임야", "#5C9A3C"),
-  "jimok:하천·구거": S("지목 · 하천·구거", "#4F9DA6"),
-  "jimok:기타": S("지목 · 기타", "#B9BDC6"),
+  "jimok:대": S("지목 · 대지", "#C9A227", undefined, undefined, LEGEND_GROUPS.d19Jimok, 0),
+  "jimok:도로": S("지목 · 도로", "#8D8D8D", undefined, undefined, LEGEND_GROUPS.d19Jimok, 1),
+  "jimok:전답": S("지목 · 전·답", "#D9A441", undefined, undefined, LEGEND_GROUPS.d19Jimok, 2),
+  "jimok:임야": S("지목 · 임야", "#5C9A3C", undefined, undefined, LEGEND_GROUPS.d19Jimok, 3),
+  "jimok:하천·구거": S("지목 · 하천·구거", "#4F9DA6", undefined, undefined, LEGEND_GROUPS.d19Jimok, 4),
+  "jimok:기타": S("지목 · 기타", "#B9BDC6", undefined, undefined, LEGEND_GROUPS.d19Jimok, 5),
   ...Object.fromEntries(
     (
       [["주거", "#F2C94C"], ["상업", "#E05A47"], ["공업", "#8E7CC3"], ["녹지", "#5FAE5B"], ["관리", "#A8C66C"], ["농림", "#7FB77E"], ["자연환경보전", "#2F7A4E"], ["기타", "#B9BDC6"]] as const
     ).flatMap(([c, color]) => [[`zone:${c}`, S(`${c}지역`, color)], [`zone_center:${c}`, S(`${c}지역`, color)]]),
   ),
-  bldg_pre1980: S("1970년대 이전", STRIP_COLORS[0], undefined, "건물"),
-  bldg_1980s: S("1980년대", STRIP_COLORS[1], undefined, "건물"),
-  bldg_1990s: S("1990년대", STRIP_COLORS[2], undefined, "건물"),
-  bldg_2000s: S("2000년대", STRIP_COLORS[3], undefined, "건물"),
-  bldg_2010s: S("2010년대", STRIP_COLORS[4], undefined, "건물"),
-  bldg_2020s: S("2020년 이후", STRIP_COLORS[5], undefined, "건물"),
-  bldg_unknown: S("미상", STRIP_COLORS[6], undefined, "건물"),
+  bldg_pre1980: S("1970년대 이전", STRIP_COLORS[0], undefined, "건물", LEGEND_GROUPS.d04CompletionYear, 0),
+  bldg_1980s: S("1980년대", STRIP_COLORS[1], undefined, "건물", LEGEND_GROUPS.d04CompletionYear, 1),
+  bldg_1990s: S("1990년대", STRIP_COLORS[2], undefined, "건물", LEGEND_GROUPS.d04CompletionYear, 2),
+  bldg_2000s: S("2000년대", STRIP_COLORS[3], undefined, "건물", LEGEND_GROUPS.d04CompletionYear, 3),
+  bldg_2010s: S("2010년대", STRIP_COLORS[4], undefined, "건물", LEGEND_GROUPS.d04CompletionYear, 4),
+  bldg_2020s: S("2020년 이후", STRIP_COLORS[5], undefined, "건물", LEGEND_GROUPS.d04CompletionYear, 5),
+  bldg_unknown: S("미상", STRIP_COLORS[6], undefined, "건물", LEGEND_GROUPS.d04CompletionYear, 6),
   bldg_footprint: S("건물 발자국", "#8B5A3C", undefined, "건물"),
   bldg_point: S("건물 도형 오류", "#A0522D", undefined, "건물"),
   svf_building: { label: "건물(계산 제외)", subject: "건물", color: "#64748B", fill: "#CBD5E1", stroke: "#64748B", fillOpacity: 0.86, strokeWidth: 0.75 },
@@ -165,13 +191,13 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   "use:공업": S("공업", "#718096"),
   "use:기타": S("기타", "#A0AEC0"),
   "use:미상": { label: "용도 미상", color: "#CBD5E0", fill: "#F8FAFC", stroke: "#64748B", fillOpacity: 0.2, strokeWidth: 1, hatch: true },
-  floors_1_4: S("1~4층", "#B8D8BA", undefined, "건물"),
-  floors_5_8: S("5~8층", "#86BBD8", undefined, "건물"),
-  floors_9_14: S("9~14층", "#5C80BC", undefined, "건물"),
-  floors_15_25: S("15~25층", "#775DA6", undefined, "건물"),
-  floors_26p: S("26층 이상", "#4A2545", undefined, "건물"),
-  floors_unknown: S("층수 미상", "#B9BDC6", undefined, "건물"),
-  floors_assumed_1f_est: S("1층 가정(추정)", "#B9BDC6", undefined, "건물"),
+  floors_1_4: S("1~4층", "#B8D8BA", undefined, "건물", LEGEND_GROUPS.d05Floors, 0),
+  floors_5_8: S("5~8층", "#86BBD8", undefined, "건물", LEGEND_GROUPS.d05Floors, 1),
+  floors_9_14: S("9~14층", "#5C80BC", undefined, "건물", LEGEND_GROUPS.d05Floors, 2),
+  floors_15_25: S("15~25층", "#775DA6", undefined, "건물", LEGEND_GROUPS.d05Floors, 3),
+  floors_26p: S("26층 이상", "#4A2545", undefined, "건물", LEGEND_GROUPS.d05Floors, 4),
+  floors_unknown: S("층수 미상", "#B9BDC6", undefined, "건물", LEGEND_GROUPS.d05Floors, 5),
+  floors_assumed_1f_est: S("1층 가정(추정)", "#B9BDC6", undefined, "건물", LEGEND_GROUPS.d05Floors, 6),
   tall_ge35: S("35m 이상", "#AA4465", undefined, "건물"),
   tall_ge35_est: S("[추정] 35m 이상", "#AA4465", undefined, "건물"),
   tall_assumed_1f_est: S("1층 가정(추정)", "#B9BDC6", undefined, "건물"),
@@ -211,12 +237,12 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   lot_ge3000: S("3,000㎡ 이상", "#5B3A70"),
   lot_road_water: S("도로·하천 지목", "#4F9DA6"),
   // D19 지목 6그룹(사용자 결정 7). 녹지 계열 둘은 명도로 갈라 색각 이상에서도 구분된다.
-  "jimok:site": S("지목 · 대지", "#E3B65C"),
-  "jimok:road": S("지목 · 도로", "#8C939E"),
-  "jimok:field": S("지목 · 전답", "#B5CF6B"),
-  "jimok:forest": S("지목 · 임야", "#3F7D4E"),
-  "jimok:water": S("지목 · 하천·구거", "#4F8FC9"),
-  "jimok:other": S("지목 · 기타", "#C9C0D6"),
+  "jimok:site": S("지목 · 대지", "#E3B65C", undefined, undefined, LEGEND_GROUPS.d19Jimok, 0),
+  "jimok:road": S("지목 · 도로", "#8C939E", undefined, undefined, LEGEND_GROUPS.d19Jimok, 1),
+  "jimok:field": S("지목 · 전답", "#B5CF6B", undefined, undefined, LEGEND_GROUPS.d19Jimok, 2),
+  "jimok:forest": S("지목 · 임야", "#3F7D4E", undefined, undefined, LEGEND_GROUPS.d19Jimok, 3),
+  "jimok:water": S("지목 · 하천·구거", "#4F8FC9", undefined, undefined, LEGEND_GROUPS.d19Jimok, 4),
+  "jimok:other": S("지목 · 기타", "#C9C0D6", undefined, undefined, LEGEND_GROUPS.d19Jimok, 5),
   "maint_stage:구역지정": S("정비사업 · 구역지정", "#D6478A"),
   "maint_stage:추진위": S("정비사업 · 추진위", "#C05A8A"),
   "maint_stage:조합": S("정비사업 · 조합", "#A84C7B"),
@@ -237,12 +263,12 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   block_2_5: S("2~5ha", "#C45A36"),
   block_ge5: S("5ha 이상", "#8D3B2F"),
   block_open: { label: "미폐합", color: "#9AA0AA", fill: "#FFFFFF", stroke: "#9AA0AA", fillOpacity: 0.04, strokeWidth: 0.8 },
-  dens_0: { label: "건물 없음", color: "#64748B", fill: "none", stroke: "#64748B", fillOpacity: 0, strokeWidth: 0.8 },
-  dens_q1: S("하위 20%", "#CFE8E6", "weight"),
-  dens_q2: S("20~40%", "#9CCFCB", "weight"),
-  dens_q3: S("40~60%", "#63B0AB", "weight"),
-  dens_q4: S("60~80%", "#2B8C88", "weight"),
-  dens_q5: S("상위 20%", "#125C5A", "weight"),
+  dens_0: { ...S("건물 없음", "#64748B", "weight", undefined, LEGEND_GROUPS.d16Density, 0), fill: "none", stroke: "#64748B", fillOpacity: 0, strokeWidth: 0.8 },
+  dens_q1: S("하위 20%", "#CFE8E6", "weight", undefined, LEGEND_GROUPS.d16Density, 1),
+  dens_q2: S("20~40%", "#9CCFCB", "weight", undefined, LEGEND_GROUPS.d16Density, 2),
+  dens_q3: S("40~60%", "#63B0AB", "weight", undefined, LEGEND_GROUPS.d16Density, 3),
+  dens_q4: S("60~80%", "#2B8C88", "weight", undefined, LEGEND_GROUPS.d16Density, 4),
+  dens_q5: S("상위 20%", "#125C5A", "weight", undefined, LEGEND_GROUPS.d16Density, 5),
   relief_lt_m20: S("중심 대비 −20m 미만", "#6B4F3A"),
   relief_m20_m5: S("−20~−5m", "#9A6B46"),
   relief_m5_5: S("−5~5m", "#C7A66A"),
@@ -318,6 +344,17 @@ export const RASTER_STYLES: Record<string, RasterStyle> = {
 };
 const FALLBACK: LayerStyle = S("기타", "#7A7E87");
 
+const LEGEND_GROUP_STYLES = new Map<string, Array<{ layer: string; style: LayerStyle }>>();
+for (const [layer, style] of Object.entries(LAYER_STYLES)) {
+  if (!style.legendGroup) continue;
+  const entries = LEGEND_GROUP_STYLES.get(style.legendGroup) ?? [];
+  entries.push({ layer, style });
+  LEGEND_GROUP_STYLES.set(style.legendGroup, entries);
+}
+for (const entries of LEGEND_GROUP_STYLES.values()) {
+  entries.sort((a, b) => (a.style.legendOrder ?? Number.POSITIVE_INFINITY) - (b.style.legendOrder ?? Number.POSITIVE_INFINITY));
+}
+
 /** 지물이 있는 레이어의 범례 항목 (정의된 순서) */
 export const legendItems = (model: MapModel) => {
   const present = new Set([
@@ -379,24 +416,94 @@ type MapLegendLayerItem = ReturnType<typeof legendItems>[number];
 type PresentedLegendLayerItem = MapLegendLayerItem & { id: string; highlightLabel: string };
 
 export function legendItemsForModel(model: MapModel, limit = Number.POSITIVE_INFINITY): MapLegendLayerItem[] {
-  const staticItems = legendItems(model);
+  // 같은 표시명을 가진 벡터 면과 래스터(특히 D10 canopy)는 띠에서 한 칸으로 합친다.
+  // 래스터 항목은 MapBox가 별도로 추가하므로 여기서는 정적 벡터 항목을 제외한다.
+  const rasterLabels = new Set(
+    (model.rasters ?? [])
+      .map((raster) => RASTER_STYLES[raster.palette]?.label)
+      .filter((label): label is string => typeof label === "string" && label.length > 0),
+  );
+  const staticItems = legendItems(model).filter((item) => !rasterLabels.has(item.label));
   const engineLegend = model.legend ?? [];
-  const orderedStatic = compactLegendItems(model, Number.POSITIVE_INFINITY).map(({ count: _count, order: _order, ...item }) => item);
+  const orderedStatic = compactLegendItems(model, Number.POSITIVE_INFINITY)
+    .filter((item) => !rasterLabels.has(item.label))
+    .map(({ count: _count, order: _order, ...item }) => item);
   if (engineLegend.length === 0 || staticItems.length === 0) return orderedStatic.slice(0, Math.max(0, limit));
   const staticByLabel = new Map(staticItems.map((item) => [item.label, item]));
   // D16처럼 순수 벡터 엔진이 단위를 덧붙인 경우에는 정의된 순서가
-  // 유일한 연결 근거다. 래스터 경계가 함께 있을 때는 이 휴리스틱을 끈다.
+  // 유일한 연결 근거다. 정적 항목이 빠진 순서형 묶음도 LayerStyle 메타데이터로 복원한다.
   const allowIndexFallback = !model.rasters?.length && engineLegend.length === staticItems.length;
+  const groupFallbacks = !model.rasters?.length
+    ? [...LEGEND_GROUP_STYLES.values()].filter((entries) => entries.length === engineLegend.length
+      && entries.some(({ layer }) => staticItems.some((item) => item.layer === layer))
+      && staticItems.every((item) => LAYER_STYLES[item.layer]?.legendGroup === entries[0]?.style.legendGroup))
+    : [];
+  const orderedGroup = groupFallbacks.length === 1 ? groupFallbacks[0] : undefined;
+  const itemForLayer = (layer: string): MapLegendLayerItem | undefined => {
+    const existing = staticItems.find((item) => item.layer === layer);
+    if (existing) return existing;
+    const style = LAYER_STYLES[layer];
+    return style ? { layer, label: style.label, color: style.color, highlight: false } : undefined;
+  };
+  const seenDisplayLabels = new Set<string>();
   const mapped: PresentedLegendLayerItem[] = engineLegend.flatMap((entry, index) => {
       // A07 엔진 라벨은 정적 분위 라벨과 일치한다. 그 밖의 경계 범례는
       // 엔진 배열 순서를 공용 레이어 순서와 맞추되, 표시 라벨과 강조 키를 분리한다.
-      const item = staticByLabel.get(entry.label.trim()) ?? (allowIndexFallback ? staticItems[index] : undefined);
-      return item ? [{ ...item, id: `${item.layer}:legend-${index}`, label: presentationLegendLabel(entry), highlightLabel: item.label }] : [];
+      const displayLabel = presentationLegendLabel(entry);
+      if (seenDisplayLabels.has(displayLabel)) return [];
+      seenDisplayLabels.add(displayLabel);
+      const item = staticByLabel.get(entry.label.trim())
+        ?? (orderedGroup ? itemForLayer(orderedGroup[index]?.layer ?? "") : undefined)
+        ?? (allowIndexFallback ? staticItems[index] : undefined);
+      return item ? [{ ...item, id: `${item.layer}:legend-${index}`, label: displayLabel, highlightLabel: item.label }] : [];
     });
   // 래스터 경계가 섞인 엔진 범례에서는 벡터 레이어를 배열 위치로 추측하지 않는다.
   // 매칭되지 않은 벡터 항목(예: S03의 유입 방향)은 뒤에 한 번만 남긴다.
   const remainder = orderedStatic.filter((item) => !mapped.some((mappedItem) => mappedItem.highlightLabel === item.label));
   return [...mapped, ...remainder].slice(0, Math.max(0, limit));
+}
+
+type LegendStripLabelItem = { label: string; highlightLabel?: string };
+export type LegendStripLabelResult<T extends LegendStripLabelItem> = {
+  /** MapLegendStrip.leadingLabel에 전달할 공통 접두. 없으면 null이다. */
+  leadingLabel: string | null;
+  /** 입력 항목을 복사해 접두를 제거한 값 라벨을 담는다. */
+  items: T[];
+};
+
+function splitLegendStripLabel(label: string): { prefix: string; value: string } | null {
+  const trimmed = label.trim();
+  const separator = trimmed.indexOf("·");
+  if (separator <= 0 || separator >= trimmed.length - 1) return null;
+  const prefix = trimmed.slice(0, separator).trim();
+  const value = trimmed.slice(separator + 1).trim();
+  return prefix && value ? { prefix, value } : null;
+}
+
+/** 범례 항목 일부에 반복되는 `접두 · 값`을 띠 제목과 값 라벨로 분리한다. */
+export function normalizeLegendStripLabels<T extends LegendStripLabelItem>(items: readonly T[]): LegendStripLabelResult<T> {
+  if (items.length < 2) return { leadingLabel: null, items: [...items] };
+  const parts = items.map((item) => splitLegendStripLabel(item.label));
+  const counts = new Map<string, { count: number; first: number }>();
+  parts.forEach((part, index) => {
+    if (!part) return;
+    const current = counts.get(part.prefix);
+    counts.set(part.prefix, { count: (current?.count ?? 0) + 1, first: current?.first ?? index });
+  });
+  const prefix = [...counts.entries()]
+    .filter(([, value]) => value.count >= 2)
+    .sort((a, b) => b[1].count - a[1].count || a[1].first - b[1].first)[0]?.[0];
+  if (!prefix) return { leadingLabel: null, items: [...items] };
+  return {
+    leadingLabel: prefix,
+    items: items.map((item, index) => ({
+      ...item,
+      ...(parts[index]?.prefix === prefix ? {
+        label: parts[index]!.value,
+        ...(item.highlightLabel === undefined ? { highlightLabel: item.label } : {}),
+      } : {}),
+    })),
+  };
 }
 
 /** 카드 지도처럼 공간이 좁을 때, 실제로 가장 많이 그린 레이어만 남긴 미니 범례. */
@@ -410,21 +517,20 @@ export function compactLegendItems(model: MapModel, limit = 3) {
   for (const f of model.features) add(f.layer);
   for (const p of model.polygons ?? []) add(p.layer);
   for (const l of model.lines ?? []) add(l.layer);
-  // 분위 레이어(dens_q1~q5, trade_q1~q4)는 한 묶음으로 움직이고 묶음 안에서는 정의(낮음→높음) 순서를 지킨다.
-  const family = (layer: string) => layer.replace(/_q\d+$/, "");
   const items = legendItems(model).map((item, order) => ({ ...item, count: counts.get(item.label) ?? 0, order }));
-  const familyCount = new Map<string, number>();
-  const familyOrder = new Map<string, number>();
+  const groupCount = new Map<string, number>();
+  const groupOrder = new Map<string, number>();
   for (const item of items) {
-    const f = family(item.layer);
-    familyCount.set(f, Math.max(familyCount.get(f) ?? 0, item.count));
-    if (!familyOrder.has(f)) familyOrder.set(f, item.order);
+    const group = LAYER_STYLES[item.layer]?.legendGroup ?? `layer:${item.layer}`;
+    groupCount.set(group, Math.max(groupCount.get(group) ?? 0, item.count));
+    const definedOrder = LAYER_STYLES[item.layer]?.legendOrder ?? item.order;
+    groupOrder.set(group, Math.min(groupOrder.get(group) ?? Number.POSITIVE_INFINITY, definedOrder));
   }
   return items
     .sort((a, b) => Number(b.highlight) - Number(a.highlight)
-      || familyCount.get(family(b.layer))! - familyCount.get(family(a.layer))!
-      || familyOrder.get(family(a.layer))! - familyOrder.get(family(b.layer))!
-      || a.order - b.order)
+      || groupCount.get(LAYER_STYLES[b.layer]?.legendGroup ?? `layer:${b.layer}`)! - groupCount.get(LAYER_STYLES[a.layer]?.legendGroup ?? `layer:${a.layer}`)!
+      || groupOrder.get(LAYER_STYLES[a.layer]?.legendGroup ?? `layer:${a.layer}`)! - groupOrder.get(LAYER_STYLES[b.layer]?.legendGroup ?? `layer:${b.layer}`)!
+      || (LAYER_STYLES[a.layer]?.legendOrder ?? a.order) - (LAYER_STYLES[b.layer]?.legendOrder ?? b.order))
     .slice(0, Math.max(0, limit));
 }
 

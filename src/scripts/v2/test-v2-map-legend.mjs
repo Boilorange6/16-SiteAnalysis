@@ -1,7 +1,7 @@
 /** W3 공용 지도 범례·래스터 견본·선 불투명도 계약. */
 import assert from "node:assert/strict";
 
-const { legendItemsForModel, layerStyle, RASTER_STYLES } = await import("../../lib/v2/ui/map-layers.ts");
+const { compactLegendItems, legendItemsForModel, layerStyle, normalizeLegendStripLabels, RASTER_STYLES } = await import("../../lib/v2/ui/map-layers.ts");
 const { rasterLegendColor, rasterLegendEntries, rasterLegendTitle } = await import("../../lib/v2/ui/raster-image.ts");
 
 const base = {
@@ -104,8 +104,6 @@ assert.equal(rasterLegendColor(s02Ref, RASTER_STYLES.sun_hours, s02Entries[15]),
 
 assert.equal(layerStyle("walk_net").opacity, 0.55);
 
-console.log("✓ v2 map legend, raster swatch, and line opacity contracts");
-
 // 분위 레이어는 개수가 달라도 낮음→높음 순서를 지킨다(D16 실데이터에서 60~80%가 맨 앞에 오던 문제).
 const d16Order = {
   ...base,
@@ -115,3 +113,112 @@ const d16Order = {
   ],
 };
 assert.deepEqual(legendItemsForModel(d16Order).map((item) => item.layer), ["dens_q1", "dens_q2", "dens_q3", "dens_q4"], "분위 범례 정의 순서 유지");
+
+const ring = [[[127.15, 37.62], [127.151, 37.62], [127.151, 37.621]]];
+const polygons = (layer, count) => Array.from({ length: count }, () => ({ layer, rings: ring }));
+
+// D04/D05 순서형 묶음은 개별 도형 수가 달라도 정의된 낮음→높음 순서를 유지한다.
+const d04Order = {
+  ...base,
+  polygons: [
+    ...polygons("bldg_2020s", 4),
+    ...polygons("bldg_pre1980", 1),
+    ...polygons("bldg_1990s", 3),
+    ...polygons("bldg_1980s", 2),
+  ],
+};
+assert.deepEqual(compactLegendItems(d04Order, 99).map((item) => item.layer), [
+  "bldg_pre1980", "bldg_1980s", "bldg_1990s", "bldg_2020s",
+], "D04 준공연대 범례 정의 순서 유지");
+
+const d05Order = {
+  ...base,
+  polygons: [
+    ...polygons("floors_26p", 4),
+    ...polygons("floors_1_4", 1),
+    ...polygons("floors_9_14", 3),
+    ...polygons("floors_5_8", 2),
+  ],
+};
+assert.deepEqual(compactLegendItems(d05Order, 99).map((item) => item.layer), [
+  "floors_1_4", "floors_5_8", "floors_9_14", "floors_26p",
+], "D05 층수 범례 정의 순서 유지");
+
+// D16은 dens_0 도형이 없어도 엔진의 6개 경계를 전체 표시하고 실제 경계값을 보존한다.
+const d16MissingDens0 = {
+  ...base,
+  polygons: [
+    ...polygons("dens_q1", 1),
+    ...polygons("dens_q2", 2),
+    ...polygons("dens_q3", 3),
+    ...polygons("dens_q4", 4),
+    ...polygons("dens_q5", 5),
+  ],
+  legend: [
+    { label: "건물 없음", min: 0, max: 0 },
+    { label: "0.5~12동/㎢", min: 0.5, max: 12 },
+    { label: "12~25동/㎢", min: 12, max: 25 },
+    { label: "25~40동/㎢", min: 25, max: 40 },
+    { label: "40~60동/㎢", min: 40, max: 60 },
+    { label: "60동/㎢ 이상", min: 60, max: null },
+  ],
+};
+const d16MissingLegend = legendItemsForModel(d16MissingDens0);
+assert.deepEqual(d16MissingLegend.map((item) => item.layer), ["dens_0", "dens_q1", "dens_q2", "dens_q3", "dens_q4", "dens_q5"], "D16 dens_0 누락 시에도 엔진 순서로 레이어 연결");
+assert.deepEqual(d16MissingLegend.map((item) => item.label), ["건물 없음", "0.5~12동/㎢", "12~25동/㎢", "25~40동/㎢", "40~60동/㎢", "60동/㎢ 이상"], "D16 실제 경계값을 범례에 유지");
+assert.deepEqual(d16MissingLegend.map((item) => item.highlightLabel), ["건물 없음", "하위 20%", "20~40%", "40~60%", "60~80%", "상위 20%"], "D16 강조 라벨은 실제 지도 레이어 라벨 유지");
+
+// D10의 수관은 벡터 면과 canopy 래스터가 같은 표시 라벨을 공유하므로 표시 범례는 한 칸이어야 한다.
+const d10Raster = {
+  ...base,
+  polygons: polygons("canopy", 1),
+  rasters: [{ name: "canopy", palette: "canopy", label: "수관 · 1m 격자" }],
+};
+assert.equal(legendItemsForModel(d10Raster).filter((item) => item.label === "수관").length, 0, "D10 canopy 래스터가 있으면 중복 벡터 범례를 만들지 않음");
+const d10DuplicateEngine = {
+  ...base,
+  polygons: polygons("canopy", 1),
+  legend: [
+    { label: "수관", min: null, max: null },
+    { label: "수관", min: null, max: null },
+  ],
+};
+assert.equal(legendItemsForModel(d10DuplicateEngine).filter((item) => item.label === "수관").length, 1, "D10 동일 엔진 라벨을 한 번만 표시");
+
+// 공통 접두는 범례 띠의 leadingLabel로 한 번만 올리고 값 라벨은 순수하게 분리한다.
+const d19 = {
+  ...base,
+  polygons: [
+    ...polygons("jimok:site", 1),
+    ...polygons("jimok:road", 2),
+    ...polygons("jimok:field", 3),
+  ],
+  legend: [
+    { label: "지목 · 대지", min: null, max: null },
+    { label: "지목 · 도로", min: null, max: null },
+    { label: "지목 · 전답", min: null, max: null },
+  ],
+};
+const d19Legend = normalizeLegendStripLabels(legendItemsForModel(d19));
+assert.equal(d19Legend.leadingLabel, "지목", "D19 공통 접두는 범례 띠 제목으로 이동");
+assert.deepEqual(d19Legend.items.map((item) => item.label), ["대지", "도로", "전답"], "D19 항목 라벨은 값만 표시");
+assert.deepEqual(d19Legend.items.map((item) => item.highlightLabel), ["지목 · 대지", "지목 · 도로", "지목 · 전답"], "D19 highlightLabel은 실제 지도 레이어 라벨 유지");
+const d19WithoutHighlight = normalizeLegendStripLabels([
+  { layer: "jimok:site", label: "지목 · 대지", color: "#E3B65C" },
+  { layer: "jimok:road", label: "지목 · 도로", color: "#8C939E" },
+]);
+assert.deepEqual(d19WithoutHighlight.items.map((item) => item.highlightLabel), ["지목 · 대지", "지목 · 도로"], "접두 분리 시 누락된 강조 키도 실제 라벨로 보강");
+
+const s02Legend = normalizeLegendStripLabels(s02Entries.map((entry, index) => ({
+  layer: `sun_${index}`,
+  color: "#43566B",
+  highlightLabel: `sun_${index}`,
+  ...entry,
+  label: entry.label.replace(/^일조시간/, "동지 일조시간(시간)"),
+})));
+assert.equal(s02Legend.leadingLabel, "동지 일조시간(시간)", "S02 raster style 접두는 범례 띠 제목으로 이동");
+assert.equal(s02Legend.items[0].label, "0시간");
+assert.equal(s02Legend.items.at(-1).label, "15시간 이상");
+assert.equal(s02Legend.items[0].highlightLabel, "sun_0", "S02 값 라벨 정리 시 지도 레이어 강조 키를 보존");
+
+console.log("✓ v2 map legend, raster swatch, and line opacity contracts");
