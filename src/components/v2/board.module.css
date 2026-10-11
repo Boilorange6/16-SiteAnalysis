@@ -3144,6 +3144,7 @@ button.badge:focus-visible {
   font-weight: 700;
   white-space: nowrap;
 }
+.mapControlResetButton::before { width: calc(100% - 4px); }
 .mapControlResetButton > span {
   display: inline-flex;
   align-items: center;
