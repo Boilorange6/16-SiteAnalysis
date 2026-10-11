@@ -10,6 +10,52 @@
   position: absolute;
   inset: 0;
 }
+.mass3dLiveControls {
+  position: absolute;
+  z-index: 4;
+  /* 상세 창 오른쪽은 정보 패널이 덮으므로 왼쪽 아래에 둔다. */
+  bottom: 62px;
+  left: 10px;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-start;
+  gap: 4px;
+  pointer-events: none;
+}
+.mass3dResetButton {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid rgba(21, 23, 28, 0.2);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #15171c;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  pointer-events: auto;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(21, 23, 28, 0.12);
+}
+.mass3dResetButton:hover {
+  background: #ffffff;
+}
+.mass3dResetButton:focus-visible {
+  outline: 2px solid #2f6fdb;
+  outline-offset: 2px;
+}
+.mass3dInteractionHint {
+  max-width: min(320px, calc(100vw - 32px));
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.86);
+  color: #3f4652;
+  font-size: 10px;
+  line-height: 1.3;
+  text-align: left;
+  pointer-events: none;
+}
 .mass3dExplodedLabels {
   position: absolute;
   z-index: 2;
@@ -117,4 +163,13 @@
   color: #676c76;
   font-size: 10px;
   pointer-events: none;
+}
+
+@media (max-width: 520px) {
+  .mass3dLiveControls {
+    right: 10px;
+    bottom: calc(40% + 36px);
+    left: auto;
+    align-items: flex-end;
+  }
 }

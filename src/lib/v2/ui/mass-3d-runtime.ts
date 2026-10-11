@@ -34,7 +34,14 @@ export type Mass3dRenderInput = {
 
 export type Mass3dMount = {
   update: (input: Mass3dRenderInput) => void;
+  resetCamera: () => void;
   dispose: () => void;
+};
+
+export type Mass3dCameraState = "preset" | "user";
+
+export type Mass3dMountOptions = {
+  onCameraStateChange?: (state: Mass3dCameraState) => void;
 };
 
 type ThreeModule = any;
@@ -43,6 +50,12 @@ type ThreeMaterial = any;
 type ThreeGeometry = any;
 
 const DEFAULT_CAMERA: MassCamera = { azimuthDeg: 225, elevationDeg: 35, radiusM: 100 };
+export const MASS_3D_ORBIT_LIMITS = {
+  minPolarAngleDeg: 5,
+  maxPolarAngleDeg: 88,
+  minZoom: 0.55,
+  maxZoom: 4,
+} as const;
 const EPSILON = 1e-6;
 const IMAGE_CACHE_LIMIT = 24;
 const PNG_CACHE = new Map<string, string>();
@@ -52,6 +65,16 @@ let offscreenRenderer: any = null;
 
 const finiteOr = (value: number | null | undefined, fallback: number): number => (typeof value === "number" && Number.isFinite(value) ? value : fallback);
 const radians = (degrees: number): number => (degrees * Math.PI) / 180;
+
+/** 패널 프리셋과 live 초기화가 공유하는 유한한 카메라 값. */
+export function mass3dCameraResetPreset(camera: MassCamera | null | undefined): MassCamera {
+  const source = camera ?? DEFAULT_CAMERA;
+  return {
+    azimuthDeg: finiteOr(source.azimuthDeg, DEFAULT_CAMERA.azimuthDeg),
+    elevationDeg: Math.max(-89, Math.min(89, finiteOr(source.elevationDeg, DEFAULT_CAMERA.elevationDeg))),
+    radiusM: Math.max(1, finiteOr(source.radiusM, DEFAULT_CAMERA.radiusM)),
+  };
+}
 
 export function mass3dCacheKey(input: Pick<Mass3dRenderInput, "scene" | "camera" | "width" | "height" | "exploded" | "quality">): string {
   const sceneKey = input.scene ? `${input.scene.analysisId}:${input.scene.manifestHash}` : "empty";
@@ -511,18 +534,19 @@ function boundsForCamera(scene: Scene | null, input: Mass3dRenderInput): { targe
   return { targetZ, viewWidth, viewHeight, distance };
 }
 
-function makeCamera(THREE: ThreeModule, scene: Scene | null, input: Mass3dRenderInput, width: number, height: number): any {
+function makeCamera(THREE: ThreeModule, scene: Scene | null, input: Mass3dRenderInput, width: number, height: number): { camera: any; target: any } {
   const fit = boundsForCamera(scene, { ...input, width, height });
   const camera = new THREE.OrthographicCamera(-fit.viewWidth / 2, fit.viewWidth / 2, fit.viewHeight / 2, -fit.viewHeight / 2, 0.1, fit.distance * 20 + 1000);
-  const elevation = radians(input.exploded ? EXPLODED_PRESENTATION_ELEVATION_DEG : Math.max(-89, Math.min(89, finiteOr(input.camera.elevationDeg, DEFAULT_CAMERA.elevationDeg))));
-  const azimuth = radians(finiteOr(input.camera.azimuthDeg, DEFAULT_CAMERA.azimuthDeg));
+  const preset = mass3dCameraResetPreset(input.camera);
+  const elevation = radians(input.exploded ? EXPLODED_PRESENTATION_ELEVATION_DEG : preset.elevationDeg);
+  const azimuth = radians(preset.azimuthDeg);
   const target = new THREE.Vector3(0, 0, fit.targetZ);
   const direction = new THREE.Vector3(Math.sin(azimuth) * Math.cos(elevation), Math.cos(azimuth) * Math.cos(elevation), Math.sin(elevation));
   camera.position.copy(target).addScaledVector(direction, fit.distance);
   camera.up.set(0, 0, 1);
   camera.lookAt(target);
   camera.updateProjectionMatrix();
-  return camera;
+  return { camera, target };
 }
 
 const EXPLODED_LABEL_TEXT: Record<ExplodedLayer, string> = {
@@ -636,12 +660,21 @@ function addExplodedContent(
   }
 }
 
+type Mass3dSceneState = {
+  scene: any;
+  camera: any;
+  target: any;
+  initialPosition: any;
+  initialZoom: number;
+  dispose: () => void;
+};
+
 function buildMassScene(
   THREE: ThreeModule,
   input: Mass3dRenderInput,
   width: number,
   height: number,
-): { scene: any; camera: any; dispose: () => void } {
+): Mass3dSceneState {
   const scene3d = new THREE.Scene();
   const root = new THREE.Group();
   root.name = "s01-mass-root";
@@ -660,13 +693,20 @@ function buildMassScene(
     addPlate(THREE, root, materials, radius, 0, "empty");
   }
   createLights(THREE, root, scene, input);
-  const camera = makeCamera(THREE, scene, input, width, height);
+  const { camera, target } = makeCamera(THREE, scene, input, width, height);
   const dispose = () => {
     disposeMassObject(root);
     for (const material of materials.values()) material.dispose();
     scene3d.clear();
   };
-  return { scene: scene3d, camera, dispose };
+  return {
+    scene: scene3d,
+    camera,
+    target,
+    initialPosition: camera.position.clone(),
+    initialZoom: camera.zoom,
+    dispose,
+  };
 }
 
 export function disposeMassObject(object: ThreeObject): void {
@@ -893,33 +933,181 @@ export function clearMass3dPngCache(): void {
   PNG_PENDING.clear();
 }
 
-export async function mountMass3d(container: HTMLElement, input: Mass3dRenderInput): Promise<Mass3dMount> {
+function resizeOrthographicCamera(camera: any, width: number, height: number): void {
+  const viewHeight = Math.max(EPSILON, camera.top - camera.bottom);
+  const aspect = cleanCanvasSize(width, 960) / cleanCanvasSize(height, 540);
+  const centerX = (camera.left + camera.right) / 2;
+  const centerY = (camera.top + camera.bottom) / 2;
+  const halfHeight = viewHeight / 2;
+  const halfWidth = halfHeight * Math.max(0.1, aspect);
+  camera.left = centerX - halfWidth;
+  camera.right = centerX + halfWidth;
+  camera.top = centerY + halfHeight;
+  camera.bottom = centerY - halfHeight;
+  camera.updateProjectionMatrix();
+}
+
+export async function mountMass3d(container: HTMLElement, input: Mass3dRenderInput, options: Mass3dMountOptions = {}): Promise<Mass3dMount> {
   const THREE = await loadThree();
+  // OrbitControls is a live-only addon. Keep this import inside the browser mount
+  // path so PNG rendering never loads controls and the client import audit can
+  // distinguish it from server/shared modules.
+  const { OrbitControls } = await import("three/examples/jsm/controls/OrbitControls.js");
   if (!isMass3dWebGLAvailable()) throw new Error("WebGL을 사용할 수 없습니다.");
   const canvas = document.createElement("canvas");
   canvas.setAttribute("role", "img");
   canvas.setAttribute("aria-label", input.label ?? "S01 3D 매스");
+  canvas.tabIndex = 0;
   canvas.style.display = "block";
   canvas.style.width = "100%";
   canvas.style.height = "100%";
+  canvas.style.touchAction = "none";
+  canvas.style.userSelect = "none";
+  canvas.style.cursor = "grab";
   container.replaceChildren(canvas);
   const renderer = makeRenderer(THREE, canvas);
-  let currentState: { dispose: () => void } | null = null;
+  let currentState: Mass3dSceneState | null = null;
+  let controls: any = null;
   let currentInput = input;
+  let currentWidth = cleanCanvasSize(container.clientWidth, input.width);
+  let currentHeight = cleanCanvasSize(container.clientHeight, input.height);
+  let cameraAtPreset = true;
   let disposed = false;
-  const render = () => {
+
+  const sceneKey = (value: Mass3dRenderInput): string => [
+    value.scene?.analysisId ?? "empty",
+    value.scene?.manifestHash ?? "",
+    value.exploded ? `${value.exploded.spreadPct}:${value.exploded.scheme ?? "use"}` : "basic",
+    value.quality ?? "detail",
+  ].join("|");
+  const cameraKey = (value: Mass3dRenderInput): string => [
+    value.camera.azimuthDeg,
+    value.camera.elevationDeg,
+    value.camera.radiusM,
+  ].join("|");
+  const renderFrame = () => {
     if (disposed) return;
-    const width = cleanCanvasSize(container.clientWidth, input.width);
-    const height = cleanCanvasSize(container.clientHeight, input.height);
-    currentState?.dispose();
-    currentState = renderState(THREE, renderer, { ...currentInput, width, height }, width, height);
+    if (currentState) renderer.render(currentState.scene, currentState.camera);
   };
-  const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(render);
-  resizeObserver?.observe(container);
+  const handleControlChange = () => {
+    if (disposed) return;
+    cameraAtPreset = false;
+    options.onCameraStateChange?.("user");
+    renderFrame();
+  };
+  const handleControlStart = () => {
+    if (disposed) return;
+    cameraAtPreset = false;
+    canvas.style.cursor = "grabbing";
+    options.onCameraStateChange?.("user");
+  };
+  const handleControlEnd = () => {
+    if (!disposed) canvas.style.cursor = "grab";
+  };
+  const disposeControls = () => {
+    if (!controls) return;
+    controls.removeEventListener("change", handleControlChange);
+    controls.removeEventListener("start", handleControlStart);
+    controls.removeEventListener("end", handleControlEnd);
+    controls.dispose();
+    controls = null;
+  };
+  const attachControls = (state: Mass3dSceneState) => {
+    const nextControls = new OrbitControls(state.camera, canvas);
+    // OrbitControls currently sets this itself, but keep the interaction boundary
+    // explicit when a preset rebuilds the controls on the same canvas.
+    canvas.style.touchAction = "none";
+    canvas.style.userSelect = "none";
+    nextControls.enableDamping = false;
+    nextControls.enableRotate = true;
+    nextControls.enableZoom = true;
+    nextControls.enablePan = true;
+    nextControls.zoomSpeed = 1;
+    nextControls.panSpeed = 1;
+    nextControls.screenSpacePanning = false;
+    nextControls.minPolarAngle = radians(MASS_3D_ORBIT_LIMITS.minPolarAngleDeg);
+    nextControls.maxPolarAngle = radians(MASS_3D_ORBIT_LIMITS.maxPolarAngleDeg);
+    nextControls.minZoom = MASS_3D_ORBIT_LIMITS.minZoom;
+    nextControls.maxZoom = MASS_3D_ORBIT_LIMITS.maxZoom;
+    nextControls.mouseButtons = {
+      LEFT: THREE.MOUSE.ROTATE,
+      MIDDLE: THREE.MOUSE.DOLLY,
+      RIGHT: THREE.MOUSE.PAN,
+    };
+    nextControls.touches = {
+      ONE: THREE.TOUCH.ROTATE,
+      TWO: THREE.TOUCH.DOLLY_PAN,
+    };
+    nextControls.target.copy(state.target);
+    nextControls.update();
+    nextControls.saveState();
+    nextControls.addEventListener("change", handleControlChange);
+    nextControls.addEventListener("start", handleControlStart);
+    nextControls.addEventListener("end", handleControlEnd);
+    return nextControls;
+  };
+  const rebuild = (nextInput: Mass3dRenderInput, width: number, height: number) => {
+    const nextState = buildMassScene(THREE, { ...nextInput, width, height }, width, height);
+    let nextControls: any;
+    try {
+      nextControls = attachControls(nextState);
+    } catch (error) {
+      nextState.dispose();
+      throw error;
+    }
+    const previousState = currentState;
+    const previousControls = controls;
+    currentInput = nextInput;
+    currentWidth = width;
+    currentHeight = height;
+    currentState = nextState;
+    controls = nextControls;
+    cameraAtPreset = true;
+    previousControls?.removeEventListener("change", handleControlChange);
+    previousControls?.removeEventListener("start", handleControlStart);
+    previousControls?.removeEventListener("end", handleControlEnd);
+    previousControls?.dispose();
+    // dispose() restores OrbitControls' previous touch-action value. The next
+    // controls share this canvas, so restore the live interaction boundary after
+    // retiring the old instance as well.
+    canvas.style.touchAction = "none";
+    canvas.style.userSelect = "none";
+    previousState?.dispose();
+    renderer.setSize(width, height, false);
+    renderFrame();
+    options.onCameraStateChange?.("preset");
+  };
+  const resize = () => {
+    if (disposed || !currentState) return;
+    const width = cleanCanvasSize(container.clientWidth, currentInput.width);
+    const height = cleanCanvasSize(container.clientHeight, currentInput.height);
+    if (width === currentWidth && height === currentHeight) return;
+    currentWidth = width;
+    currentHeight = height;
+    if (cameraAtPreset) {
+      const fit = boundsForCamera(currentInput.scene, { ...currentInput, width, height });
+      currentState.camera.left = -fit.viewWidth / 2;
+      currentState.camera.right = fit.viewWidth / 2;
+      currentState.camera.top = fit.viewHeight / 2;
+      currentState.camera.bottom = -fit.viewHeight / 2;
+      currentState.camera.updateProjectionMatrix();
+    } else {
+      resizeOrthographicCamera(currentState.camera, width, height);
+    }
+    renderer.setSize(width, height, false);
+    renderFrame();
+  };
+  let resizeObserver: ResizeObserver | null = null;
   try {
-    render();
+    rebuild(input, currentWidth, currentHeight);
+    resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(resize);
+    resizeObserver?.observe(container);
   } catch (error) {
     resizeObserver?.disconnect();
+    disposeControls();
+    const failedState = currentState as Mass3dSceneState | null;
+    failedState?.dispose();
+    currentState = null;
     renderer.dispose();
     renderer.forceContextLoss();
     canvas.remove();
@@ -927,14 +1115,36 @@ export async function mountMass3d(container: HTMLElement, input: Mass3dRenderInp
   }
   return {
     update(nextInput) {
+      if (disposed) return;
+      const previousInput = currentInput;
       currentInput = nextInput;
       canvas.setAttribute("aria-label", nextInput.label ?? "S01 3D 매스");
-      render();
+      const width = cleanCanvasSize(container.clientWidth, nextInput.width);
+      const height = cleanCanvasSize(container.clientHeight, nextInput.height);
+      if (sceneKey(previousInput) !== sceneKey(nextInput) || cameraKey(previousInput) !== cameraKey(nextInput)) {
+        rebuild(nextInput, width, height);
+      } else if (width !== currentWidth || height !== currentHeight) {
+        resize();
+      }
+    },
+    resetCamera() {
+      if (disposed || !currentState || !controls) return;
+      currentState.camera.position.copy(currentState.initialPosition);
+      currentState.camera.zoom = currentState.initialZoom;
+      currentState.camera.up.set(0, 0, 1);
+      controls.target.copy(currentState.target);
+      controls.update();
+      currentState.camera.updateProjectionMatrix();
+      cameraAtPreset = true;
+      canvas.style.cursor = "grab";
+      options.onCameraStateChange?.("preset");
+      renderFrame();
     },
     dispose() {
       if (disposed) return;
       disposed = true;
       resizeObserver?.disconnect();
+      disposeControls();
       currentState?.dispose();
       currentState = null;
       canvas.remove();
