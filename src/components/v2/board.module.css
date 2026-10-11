@@ -628,11 +628,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .demoToggle {
-    margin-left: auto;
-    flex: 0 0 auto;
-    white-space: nowrap;
-  }
   .mobileTools {
     display: block;
   }

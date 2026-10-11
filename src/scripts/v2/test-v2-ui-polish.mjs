@@ -28,12 +28,6 @@ assert.ok(summaryBodyBlocks.length >= 2, "summary body must have base and mobile
 assert.ok(summaryBodyBlocks.every((block) => /justify-content:\s*flex-start/.test(block)), "summary content must start at the top at every breakpoint");
 assert.doesNotMatch(boardCss, /\.sumBody\s*\{[^}]*justify-content:\s*center/, "summary must not reserve a centered blank area");
 
-const pageSource = readFileSync(new URL("../../app/v2/page.tsx", import.meta.url), "utf8");
-assert.match(pageSource, /const DEMO_START_LABEL = "분석 데모";/, "demo start copy has one shared, concise label");
-assert.match(pageSource, /\{demoOn \? "데모 끄기" : DEMO_START_LABEL\}/, "desktop and mobile use the same demo copy");
-const mobileDemoRule = boardCss.match(/\.demoToggle\s*\{([^}]*)\}/)?.[1] ?? "";
-assert.match(mobileDemoRule, /flex:\s*0\s+0\s+auto/, "mobile demo button keeps its intrinsic width");
-assert.match(mobileDemoRule, /white-space:\s*nowrap/, "mobile demo button stays on one line");
 
 const mapFigureSource = readFileSync(new URL("../../components/v2/map-figure.tsx", import.meta.url), "utf8");
 assert.match(mapFigureSource, /function compactSteppedLegendTitle/, "카드 래스터 범례에 짧은 표시명 경로가 있음");

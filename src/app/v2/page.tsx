@@ -8,7 +8,7 @@ import { useTileDrag } from "@/components/v2/use-tile-drag";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "@/components/v2/map-box";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import styles from "@/components/v2/board.module.css";
-import { SUMMARY_ID, boardReducer, boardStorageKey, demoFinished, demoPhase, initBoard, rebaseSnapshotAnalysisId, reportPages, serializeBoardState, viewOf, type CardFace, type CutSpec, type GridColumns, type PinnedLabel } from "@/lib/v2/ui/board-state";
+import { SUMMARY_ID, boardReducer, boardStorageKey, initBoard, rebaseSnapshotAnalysisId, reportPages, serializeBoardState, viewOf, type CardFace, type CutSpec, type GridColumns, type PinnedLabel } from "@/lib/v2/ui/board-state";
 import { buildReportPlan, complexCounts, reportFileName, sourcePageCountForViews } from "@/lib/v2/report/report-plan";
 import { downloadBytes, exportFileName, EXPORT_MIME, DAE_MIME } from "@/lib/v2/export/download";
 import { DEFAULT_CALLOUT_MODE } from "@/lib/v2/ui/callout-layout";
@@ -34,7 +34,6 @@ import { getRovingTargetIndex, type RovingGridItem } from "@/lib/v2/ui/roving-gr
 
 const UNDO_LABEL = { order: "옮김", size: "크기 바꿈", columns: "열 수 바꿈", remove: "삭제됨", add: "더함", preset: "프리셋 적용" } as const;
 const GRID_COLUMN_OPTIONS: GridColumns[] = [2, 3, 4, 5, 6];
-const DEMO_START_LABEL = "분석 데모";
 const EMPTY_PINNED_LABELS: PinnedLabel[] = [];
 
 type BoardProps = {
@@ -153,7 +152,6 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
   useEffect(() => () => flushStorage(), [flushStorage]);
   const results = useMemo(() => board.results.map((r) => overrides[r.tileId] ?? r), [board.results, overrides]);
   const [editing, setEditing] = useState(false);
-  const [demoStep, setDemoStep] = useState<number | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [dialogTab, setDialogTab] = useState<"overview" | "sources">("overview");
   const [stackSelection, setStackSelection] = useState<string[]>([]);
@@ -406,14 +404,6 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
     }
   };
 
-  useEffect(() => {
-    if (demoStep === null || demoStep > total + 1) return;
-    const t = setTimeout(() => setDemoStep(demoStep + 1), 300);
-    return () => clearTimeout(t);
-  }, [demoStep, total]);
-  const demoOn = demoStep !== null && demoStep <= total + 1;
-  const finished = demoStep === null ? total : demoFinished(total, demoStep);
-
   const retry = useCallback((id: string, code: string) => {
     if (!demo) return onRerun();
     const fixed = RECOVERED[code];
@@ -605,11 +595,6 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
             </button>
           ) : (
             <>
-              {demo && (
-                <button type="button" className={`${styles.pill} ${styles.demoToggle}`} onClick={() => (demoOn ? setDemoStep(null) : setDemoStep(0))} aria-pressed={demoOn}>
-                  {demoOn ? "데모 끄기" : DEMO_START_LABEL}
-                </button>
-              )}
               <div className={styles.desktopTools}>
                 <span className={styles.segGroup}>
                   <span className={styles.segLabel}>카드</span>
@@ -631,7 +616,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
                     ))}
                   </span>
                 </span>
-                <button type="button" className={styles.pill} onClick={() => setEditing(true)} disabled={demoOn || actionBusy}>
+                <button type="button" className={styles.pill} onClick={() => setEditing(true)} disabled={actionBusy}>
                   보드 편집
                 </button>
                 <span className={styles.reportHint}>표지 1 + 타일 {tiles}</span>
@@ -706,7 +691,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
                       ))}
                     </span>
                   </span>
-                  <button type="button" className={styles.pill} onClick={() => setEditing(true)} disabled={demoOn || actionBusy}>
+                  <button type="button" className={styles.pill} onClick={() => setEditing(true)} disabled={actionBusy}>
                     보드 편집
                   </button>
                   <span className={styles.reportHint}>표지 1 + 타일 {tiles}</span>
@@ -743,16 +728,6 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
           )}
         </header>
 
-        {demoOn && (
-          <div className={styles.progressRow}>
-            <span className={styles.progressLabel}>분석 중</span>
-            <div className={styles.progress} role="progressbar" aria-label="분석 진행" aria-valuemin={0} aria-valuemax={total} aria-valuenow={finished}>
-              <div className={styles.progressFill} style={{ width: `${(finished / total) * 100}%` }} />
-            </div>
-            <span className={styles.progressText} aria-live="polite">{finished} / {total}</span>
-          </div>
-        )}
-
         {!demo && <AnalysisProgress jobs={jobs} onCancel={onCancel} canceling={canceling} />}
 
         {controls}
@@ -784,8 +759,8 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
                   analysisId={analysisId}
                   layer={view.defaultLayer}
                   onLayer={(layer) => dispatch({ type: "layer", id, layer })}
-                  phase={demoOn ? demoPhase(i, demoStep!) : (jobState.byCode.get(view.code)?.phase ?? null)}
-                  waitingNote={demoOn ? null : (jobState.byCode.get(view.code)?.note ?? null)}
+                  phase={jobState.byCode.get(view.code)?.phase ?? null}
+                  waitingNote={jobState.byCode.get(view.code)?.note ?? null}
                   included={!!board.included[id]}
                   face={board.faces[id]}
                   editing={editing}
