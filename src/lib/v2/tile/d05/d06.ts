@@ -1,10 +1,10 @@
 /** D06 고층 건물 — 35m 기준, 추정 높이는 별도 범주로 표시한다. */
 import type { Geometry } from "geojson";
-import type { TileResult } from "../../tile-result";
+import { MAX_MAP_POLYGONS, type TileResult } from "../../tile-result";
 import type { EngineContext } from "../../engine/context";
 import { areaInCircle, polygonArea } from "../../engine/tiles/geo";
 import { BUILDING_SOURCES, assumedOneFloorLimitation, buildingRetirementLimitations, buildingRows, isConfirmedHeightMethod, isCounted, type BuildingRow } from "../../engine/tiles/buildings-shared";
-import { est, makeTile, missing, obs, polygonCandidate, type TileDraft } from "../../engine/tiles/common";
+import { capD05BuildingCandidates, est, makeTile, missing, obs, polygonCandidate, type TileDraft } from "../../engine/tiles/common";
 import { notProvided } from "../../engine/tiles/not-provided";
 import { buildingMapExtra, heightLayer, sortBuildingRows } from "./presentation";
 
@@ -79,7 +79,9 @@ export function d06(ctx: EngineContext): TileResult {
     judgment: { ruleId: "D06-height@1", basisMetricIds: ["share_tall_pct", "fill_height_m_pct"], sentence, level: null, criteria: null },
     sources: ctx.sources("buildings", BUILDING_SOURCES),
     layers: [...LAYERS],
-    polygons,
+    polygons: capD05BuildingCandidates(polygons, ctx.input.center),
+    polygonTotal: polygons.length,
+    polygonCap: MAX_MAP_POLYGONS,
     limitations,
   });
 }

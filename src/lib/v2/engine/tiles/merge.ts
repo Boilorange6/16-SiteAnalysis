@@ -1,6 +1,7 @@
 /** 흡수된 타일의 계산 결과를 남는 타일로 합친다. 원천·지도·지표를 버리지 않고 중복 id만 정리한다. */
-import { MAX_MAP_FEATURES, MAX_MAP_LINES, MAX_MAP_POLYGONS, parseTileResult, type MapFeature, type MapLine, type MapPolygon, type TileResult } from "../../tile-result";
+import { MAX_D05_BUILDING_POLYGONS, MAX_MAP_FEATURES, MAX_MAP_LINES, MAX_MAP_POLYGONS, parseTileResult, type MapFeature, type MapLine, type MapPolygon, type TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
+import { d05RepresentativeDistanceM } from "./common";
 
 type Metric = TileResult["metrics"][number];
 
@@ -66,23 +67,31 @@ function d05LabelValue(polygon: MapPolygon): { kind: number; value: number } {
 /**
  * D05는 한 건물을 기본·고층·저층 보기에서 각각 한 면으로만 보존한다.
  * 같은 건물의 multipart/중복 조각은 보기(layer)별 첫 면으로 정리하고,
- * cap은 건물 그룹 단위로 적용해 세 번째 저층 보기가 먼저 잘리지 않게 한다.
+ * 먼저 분석 중심에서 가까운 건물 3,000동을 선택하고, 선택된 건물만 기존 층수 우선
+ * 출력 순서로 정렬한다. 대표점은 WGS84 외곽 고리의 꼭짓점 평균이며, 같은 건물의
+ * 기본·고층·저층 도형은 같은 footprint를 공유하므로 선택 기준으로 충분하다.
  */
-function capD05BuildingPolygons(items: MapPolygon[]): MapPolygon[] {
+function capD05BuildingPolygons(items: MapPolygon[], center: readonly [number, number]): MapPolygon[] {
   const byExactKey = new Map<string, MapPolygon>();
   for (const item of items) {
     const key = `${d05BuildingKey(item)}|${item.layer}`;
     if (!byExactKey.has(key)) byExactKey.set(key, item);
   }
 
-  const groups = new Map<string, { items: MapPolygon[]; first: number }>();
+  const groups = new Map<string, { items: MapPolygon[]; first: number; distanceM: number }>();
   [...byExactKey.values()].forEach((item, index) => {
     const key = d05BuildingKey(item);
     const group = groups.get(key);
-    if (group) group.items.push(item);
-    else groups.set(key, { items: [item], first: index });
+    const distanceM = d05RepresentativeDistanceM(center, item);
+    if (group) {
+      group.items.push(item);
+      group.distanceM = Math.min(group.distanceM, distanceM);
+    } else groups.set(key, { items: [item], first: index, distanceM });
   });
-  const orderedGroups = [...groups.values()].sort((a, b) => {
+  const nearestGroups = [...groups.values()].sort((a, b) => {
+    return a.distanceM - b.distanceM || a.first - b.first;
+  }).slice(0, MAX_MAP_POLYGONS);
+  const orderedGroups = nearestGroups.sort((a, b) => {
     const aValue = a.items.map(d05LabelValue).sort((x, y) => y.kind - x.kind || y.value - x.value)[0]!;
     const bValue = b.items.map(d05LabelValue).sort((x, y) => y.kind - x.kind || y.value - x.value)[0]!;
     return bValue.kind - aValue.kind || bValue.value - aValue.value || a.first - b.first;
@@ -91,7 +100,7 @@ function capD05BuildingPolygons(items: MapPolygon[]): MapPolygon[] {
   const output: MapPolygon[] = [];
   for (const group of orderedGroups) {
     const variants = [...group.items].sort((a, b) => d05LayerRank(a.layer) - d05LayerRank(b.layer));
-    if (output.length + variants.length > MAX_MAP_POLYGONS) break;
+    if (output.length + variants.length > MAX_D05_BUILDING_POLYGONS) break;
     output.push(...variants);
   }
   return output;
@@ -211,7 +220,7 @@ export function mergeTileResults(base: TileResult, extra: TileResult, options: M
   ])];
   const features = capMergedFeatures(dedupe([...baseFeatures, ...extraFeatures], featureKey), preferredLayers);
   const polygons = options.d05BuildingPolygons
-    ? capD05BuildingPolygons(dedupe([...basePolygons, ...extraPolygons], polygonKey))
+    ? capD05BuildingPolygons(dedupe([...basePolygons, ...extraPolygons], polygonKey), base.conditions.center)
     : capByLayer(dedupe([...basePolygons, ...extraPolygons], polygonKey), MAX_MAP_POLYGONS, preferredLayers);
   const lines = capByLayer(dedupe([...baseLines, ...extraLines], lineKey), MAX_MAP_LINES, preferredLayers);
   const rasterRefs = dedupe([...(base.presentation.rasters ?? []), ...(extra.presentation.rasters ?? [])], (ref) => ref.name);

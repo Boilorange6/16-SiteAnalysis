@@ -1,10 +1,10 @@
 /** D05 건축물 높이 — 지상층수 기본, 미터 높이는 펼침용 보조 집계. */
 import type { Geometry } from "geojson";
-import type { TileResult } from "../../tile-result";
+import { MAX_MAP_POLYGONS, type TileResult } from "../../tile-result";
 import type { EngineContext } from "../../engine/context";
 import { areaInCircle, polygonArea } from "../../engine/tiles/geo";
 import { BUILDING_SOURCES, assumedOneFloorLimitation, buildingRetirementLimitations, buildingRows, isConfirmedHeightMethod, isCounted, isAssumedOneFloor, type BuildingRow } from "../../engine/tiles/buildings-shared";
-import { est, makeTile, missing, obs, polygonCandidate, type TileDraft } from "../../engine/tiles/common";
+import { capD05BuildingCandidates, est, makeTile, missing, obs, polygonCandidate, type TileDraft } from "../../engine/tiles/common";
 import { notProvided } from "../../engine/tiles/not-provided";
 import { buildingMapExtra, sortBuildingRows } from "./presentation";
 
@@ -128,7 +128,9 @@ export function d05(ctx: EngineContext): TileResult {
     judgment: { ruleId: "D05-floors@1", basisMetricIds: ["fill_floors_pct"], sentence, level: null, criteria: null },
     sources: ctx.sources("buildings", BUILDING_SOURCES),
     layers: FLOOR_BUCKETS.map(({ layer }) => layer),
-    polygons,
+    polygons: capD05BuildingCandidates(polygons, ctx.input.center),
+    polygonTotal: polygons.length,
+    polygonCap: MAX_MAP_POLYGONS,
     limitations,
   });
 }

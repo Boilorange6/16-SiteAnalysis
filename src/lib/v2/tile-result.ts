@@ -78,8 +78,10 @@ const MapFeatureSchema = z.object({
   overlap: z.boolean().optional(),
 });
 
-/** 면(폴리곤) 지물 상한: 개수, 고리 하나의 꼭짓점 수. 상한은 엔진이 지키고 스키마가 다시 막는다. */
+/** 면(폴리곤) 지물 상한: 일반 타일은 개수, 고리 하나의 꼭짓점 수. 상한은 엔진이 지키고 스키마가 다시 막는다. */
 export const MAX_MAP_POLYGONS = 3000;
+/** D05는 한 건물을 기본·고층·저층 보기로 합쳐 저장하므로 결과 envelope만 3배까지 허용한다. */
+export const MAX_D05_BUILDING_POLYGONS = MAX_MAP_POLYGONS * 3;
 export const MAX_POLYGON_VERTICES = 200;
 const LngLatSchema = z.tuple([z.number().finite(), z.number().finite()]);
 export const MAX_MAP_LINES = 2000;
@@ -182,8 +184,8 @@ export const TileResultSchema = z
       features: z.array(MapFeatureSchema).optional(),
       /** 상한으로 잘리기 전 전체 개수 */
       featuresTotal: z.number().int().nonnegative().optional(),
-      /** 면 지물(선택). 없거나 그릴 수 없으면 같은 정보의 대표점 features로 대신한다. 상한 MAX_MAP_POLYGONS. */
-      polygons: z.array(MapPolygonSchema).max(MAX_MAP_POLYGONS).optional(),
+      /** 면 지물(선택). D05만 세 보기 합산으로 MAX_D05_BUILDING_POLYGONS까지 허용하고, 실제 화면은 한 보기만 그린다. */
+      polygons: z.array(MapPolygonSchema).max(MAX_D05_BUILDING_POLYGONS).optional(),
       polygonsTotal: z.number().int().nonnegative().optional(),
       /** 선 지물(WGS84). 상한 MAX_MAP_LINES. */
       lines: z.array(MapLineSchema).max(MAX_MAP_LINES).optional(),

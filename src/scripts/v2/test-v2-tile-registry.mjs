@@ -39,7 +39,7 @@ const EXPECTED_CACHE_VERSIONS = {
   D02: "v2-p4-ext-1+w2b-r1+w4-names-r1",
   D03: "v2-p4-ext-1+w2b-r1+w4-names-r1",
   D04: "v2-p4-ext-1+w2b-r1+w4-names-r1",
-  D05: "v2-p4-ext-1+height3-r1+w3-merge-r1+w2b-r1+w4-names-r1",
+  D05: "v2-p4-ext-1+height3-r1+w3-merge-r1+w2b-r1+w4-names-r1+d05-nearest-cap-r1",
   D10: "v2-p4-ext-1+w2b-r1",
   D11: "v2-p4-ext-1+w2b-r1",
   D12: "v2-p4-ext-1+w2b-r1",
