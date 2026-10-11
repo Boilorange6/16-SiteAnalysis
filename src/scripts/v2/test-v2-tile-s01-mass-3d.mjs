@@ -11,7 +11,7 @@ const {
   mass3dExtrusionVertices,
   polygonizeMassRings,
 } = await import("../../lib/v2/ui/mass-3d-model.ts");
-const { mass3dCacheKey } = await import("../../lib/v2/ui/mass-3d-runtime.ts");
+const { MASS_3D_ORBIT_LIMITS, mass3dCacheKey, mass3dCameraResetPreset } = await import("../../lib/v2/ui/mass-3d-runtime.ts");
 
 const ring = (x, y, size) => [[x - size, y - size], [x + size, y - size], [x + size, y + size], [x - size, y + size], [x - size, y - size]];
 const ground = {
@@ -59,6 +59,10 @@ assert.notEqual(MASS_3D_COLORS.estimated, MASS_3D_COLORS.unknown);
 const input = { scene: { analysisId: "a", manifestHash: "m" }, camera: { azimuthDeg: 225, elevationDeg: 35, radiusM: 100 }, width: 960, height: 540 };
 assert.notEqual(mass3dCacheKey(input), mass3dCacheKey({ ...input, exploded: { spreadPct: 24, scheme: "use" } }), "분해 키는 기본 매스와 분리한다");
 assert.notEqual(mass3dCacheKey(input), mass3dCacheKey({ ...input, camera: { ...input.camera, azimuthDeg: 315 } }), "카메라 키를 캐시 키에 포함한다");
+assert.deepEqual(mass3dCameraResetPreset({ azimuthDeg: Number.NaN, elevationDeg: 100, radiusM: 0 }), { azimuthDeg: 225, elevationDeg: 89, radiusM: 1 }, "시점 초기화 프리셋은 유한값과 안전한 반경으로 정규화한다");
+assert.ok(MASS_3D_ORBIT_LIMITS.maxPolarAngleDeg < 90, "오빗은 지면 아래로 뒤집히지 않는다");
+assert.ok(MASS_3D_ORBIT_LIMITS.minPolarAngleDeg >= 0 && MASS_3D_ORBIT_LIMITS.minPolarAngleDeg < MASS_3D_ORBIT_LIMITS.maxPolarAngleDeg, "오빗 극각 제한 순서가 유효하다");
+assert.ok(MASS_3D_ORBIT_LIMITS.minZoom > 0 && MASS_3D_ORBIT_LIMITS.minZoom < MASS_3D_ORBIT_LIMITS.maxZoom, "직교 카메라 줌 제한 순서가 유효하다");
 
 const runtimeSource = readFileSync(resolve(import.meta.dirname, "../../lib/v2/ui/mass-3d-runtime.ts"), "utf8");
 const reportSource = readFileSync(resolve(import.meta.dirname, "../../lib/v2/report/map-image.ts"), "utf8");
@@ -73,6 +77,13 @@ assert.match(runtimeSource, /const renderer = makeRenderer/);
 assert.match(runtimeSource, /s01-road-centerline/);
 assert.match(runtimeSource, /drawNoDataBadge/);
 assert.match(runtimeSource, /EXPLODED_LABEL_CHIP_WIDTH/);
+assert.match(runtimeSource, /OrbitControls/);
+assert.match(runtimeSource, /enableDamping = false/);
+assert.match(runtimeSource, /touchAction = "none"/);
+assert.match(runtimeSource, /controls\.dispose\(\)/);
+assert.match(runtimeSource, /resetCamera\(\)/);
+assert.match(runtimeSource, /resizeObserver/);
+assert.doesNotMatch(runtimeSource, /requestAnimationFrame/, "live 조작은 상시 rAF 루프를 만들지 않는다");
 assert.match(projectionSource, /EXPLODED_LABEL_CHIP_WIDTH/);
 assert.match(projectionSource, /roads: "#5F6B79"/);
 assert.match(figureSource, /data-label-leader/);
@@ -81,6 +92,9 @@ assert.match(mass3dSource, /function formatMass3dAccessibilityLabel/);
 assert.match(mass3dSource, /title=\{accessibilityLabel\}/);
 assert.match(mass3dSource, /alt=\{accessibilityLabel\}/);
 assert.match(mass3dSource, /label: accessibilityLabel/);
+assert.match(mass3dSource, /aria-label="3D 시점 초기화"/);
+assert.match(mass3dSource, /mass3dInteractionHint/);
+assert.match(mass3dSource, /liveCameraAtPreset/);
 assert.match(mass3dSource, /className=\{tileStyles\.mass3dFallback\}[^>]*role="img"[^>]*aria-label=\{accessibilityLabel\}[^>]*title=\{accessibilityLabel\}/s);
 assert.match(reportSource, /renderMass3dPng/);
 assert.match(reportSource, /image\/png/);

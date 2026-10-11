@@ -28,6 +28,10 @@ assert.match(mass3dSource, /^"use client";/, "3D 컴포넌트는 client-only여�
 assert.doesNotMatch(mass3dSource, /from\s+["']three["']/, "three는 초기 컴포넌트 모듈에서 정적으로 가져오지 않는다");
 assert.match(mass3dSource, /import\(["']@\/lib\/v2\/ui\/mass-3d-runtime["']\)/, "3D 런타임은 동적으로 가져온다");
 assert.match(mass3dRuntimeSource, /import\(["']three["']\)/, "three 런타임은 동적 import로 분리한다");
+const orbitMountIndex = mass3dRuntimeSource.indexOf("export async function mountMass3d");
+assert.ok(orbitMountIndex >= 0, "live 3D 마운트 진입점이 있어야 한다");
+assert.match(mass3dRuntimeSource.slice(orbitMountIndex), /import\(["']three\/examples\/jsm\/controls\/OrbitControls\.js["']\)/, "OrbitControls는 live 마운트에서만 동적으로 가져온다");
+assert.doesNotMatch(mass3dRuntimeSource.slice(0, orbitMountIndex), /OrbitControls/, "OrbitControls가 PNG/shared 초기 경로에 섞이지 않는다");
 const IMPORT = /(?:^|\n)\s*(?:import|export)\s+(?!type\b)[^;'"]*?from\s+["']([^"']+)["']|import\(\s*["']([^"']+)["']\s*\)/g;
 const resolveLocal = (from, spec) => {
   const base = spec.startsWith("@/") ? join(root, spec.slice(2)) : resolve(dirname(from), spec);

@@ -171,7 +171,7 @@ function Mass3D({ mode = "image", ...props }: Mass3dProps) {
   const accessibilityLabel = formatMass3dAccessibilityLabel(props);
   const imageRef = useRef<HTMLDivElement>(null);
   const liveRef = useRef<HTMLDivElement>(null);
-  const liveMountRef = useRef<{ update: (input: Mass3dProps) => void; dispose: () => void } | null>(null);
+  const liveMountRef = useRef<{ update: (input: Mass3dProps) => void; resetCamera: () => void; dispose: () => void } | null>(null);
   const latestPropsRef = useRef({ ...props, label: accessibilityLabel });
   latestPropsRef.current = { ...props, label: accessibilityLabel };
   const liveSceneKey = `${props.scene?.analysisId ?? "empty"}:${props.scene?.manifestHash ?? ""}`;
@@ -179,6 +179,7 @@ function Mass3D({ mode = "image", ...props }: Mass3dProps) {
   const [phase, setPhase] = useState<"loading" | "ready" | "fallback" | "error">("loading");
   const [imageSize, setImageSize] = useState({ width: props.width, height: props.height });
   const [liveSize, setLiveSize] = useState({ width: props.width, height: props.height });
+  const [liveCameraAtPreset, setLiveCameraAtPreset] = useState(true);
 
   const renderProps = mode === "image"
     ? { ...props, label: accessibilityLabel, width: imageSize.width, height: imageSize.height }
@@ -243,8 +244,13 @@ function Mass3D({ mode = "image", ...props }: Mass3dProps) {
     let active = true;
     if (mode !== "live" || !liveRef.current) return () => { active = false; };
     setPhase("loading");
+    setLiveCameraAtPreset(true);
     void loadRuntime()
-      .then((runtime) => runtime.mountMass3d(liveRef.current!, { ...latestPropsRef.current, label: accessibilityLabel }))
+      .then((runtime) => runtime.mountMass3d(
+        liveRef.current!,
+        { ...latestPropsRef.current, label: accessibilityLabel },
+        { onCameraStateChange: (state) => { if (active) setLiveCameraAtPreset(state === "preset"); } },
+      ))
       .then((nextMount) => {
         if (!active) {
           nextMount.dispose();
@@ -296,11 +302,25 @@ function Mass3D({ mode = "image", ...props }: Mass3dProps) {
   }
   if (mode === "live") {
     return (
-      <div className={tileStyles.mass3dRoot} style={shellStyle} aria-busy={phase === "loading"} role="img" aria-label={accessibilityLabel} title={accessibilityLabel}>
+      <div className={tileStyles.mass3dRoot} style={shellStyle} aria-busy={phase === "loading"} role="group" aria-label={accessibilityLabel} title={accessibilityLabel}>
         <div ref={liveRef} className={tileStyles.mass3dCanvasHost} />
-        <LiveExplodedLabels scene={props.scene} camera={props.camera} exploded={props.exploded} width={liveSize.width} height={liveSize.height} />
+        {liveCameraAtPreset && <LiveExplodedLabels scene={props.scene} camera={props.camera} exploded={props.exploded} width={liveSize.width} height={liveSize.height} />}
         <LiveLegend scene={props.scene} exploded={props.exploded} />
         {props.scene?.ground.kind === "flat" && <span className={tileStyles.mass3dFlatNote} aria-hidden="true">지형 미반영</span>}
+        {phase === "ready" && (
+          <div className={tileStyles.mass3dLiveControls}>
+            <button
+              type="button"
+              className={tileStyles.mass3dResetButton}
+              aria-label="3D 시점 초기화"
+              title="3D 시점 초기화"
+              onClick={() => liveMountRef.current?.resetCamera()}
+            >
+              시점 초기화
+            </button>
+            <span className={tileStyles.mass3dInteractionHint}>드래그 회전 · 휠/핀치 확대 · 우클릭/Shift+드래그 이동</span>
+          </div>
+        )}
         {phase === "loading" && <span style={statusStyle()} role="status">3D 매스를 불러오는 중…</span>}
       </div>
     );
