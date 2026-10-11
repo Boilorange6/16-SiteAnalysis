@@ -200,7 +200,7 @@ export function useMapView({ baseViewport, radiusM, maxZoom, enabled = true, whe
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY, pointerType: event.pointerType });
     try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* older WebKit */ }
     const pointers = [...pointersRef.current.values()];
-    if (pointers.length >= 2 && touchPan === "two") {
+    if (pointers.length >= 2) {
       const [a, b] = pointers;
       const [midX, midY] = midpoint(a!, b!);
       gestureRef.current = { startView: gestureViewRef.current ?? viewRef.current, startX: midX, startY: midY, startDistance: Math.max(1, distance(a!, b!)), startMidX: midX, startMidY: midY, moved: false };
@@ -218,7 +218,7 @@ export function useMapView({ baseViewport, radiusM, maxZoom, enabled = true, whe
     const gesture = gestureRef.current;
     if (!gesture) return;
     const pointers = [...pointersRef.current.values()];
-    if (pointers.length >= 2 && touchPan === "two") {
+    if (pointers.length >= 2) {
       const [a, b] = pointers;
       const [midX, midY] = midpoint(a!, b!);
       const zoomDelta = gesture.startView.zoomDelta + Math.log2(Math.max(1, distance(a!, b!)) / gesture.startDistance);
