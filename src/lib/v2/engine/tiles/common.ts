@@ -34,7 +34,7 @@ const TILE_CACHE_REVISION: Readonly<Record<string, string>> = {
   D02: "w2b-r1+w4-names-r1",
   D03: "w2b-r1+w4-names-r1",
   D04: "w2b-r1+w4-names-r1",
-  D05: "height3-r1+w3-merge-r1+w2b-r1+w4-names-r1",
+  D05: "height3-r1+w3-merge-r1+w2b-r1+w4-names-r1+d05-nearest-cap-r1",
   D10: "w2b-r1",
   D11: "w2b-r1",
   D12: "w2b-r1",
@@ -144,10 +144,48 @@ export function polygonCandidate(id: number, layer: string, rings: number[][][],
   return out.length === 0 || rings[0].length < 4 ? null : { id, areaM2, p: { layer, rings: out, label, ...extra } };
 }
 
-/** 상한을 넘으면 면적이 큰 것부터 남긴다. 결정적. */
-export function capPolygons(items: PolygonCandidate[]): { polygons: MapPolygon[]; total: number } {
+function d05CandidateBuildingKey(candidate: PolygonCandidate): string {
+  const fid = candidate.p.fid?.trim() ?? "";
+  if (/^-?\d+$/.test(fid)) return `feature:${Math.floor(Number(fid) / 1000)}`;
+  if (Number.isFinite(candidate.id)) return `feature:${Math.floor(candidate.id / 1000)}`;
+  return `fid:${fid || candidate.p.rings[0]?.[0]?.join(",") || candidate.id}`;
+}
+
+/** WGS84 외곽 고리 꼭짓점 평균을 쓰는 D05용 대표점 거리(m). */
+export function d05RepresentativeDistanceM(center: readonly [number, number], polygon: MapPolygon): number {
+  const ring = polygon.rings[0] ?? [];
+  const points = ring.length > 1 && ring[0]?.[0] === ring.at(-1)?.[0] && ring[0]?.[1] === ring.at(-1)?.[1] ? ring.slice(0, -1) : ring;
+  if (points.length === 0) return Number.POSITIVE_INFINITY;
+  const [lng, lat] = points.reduce(([lngSum, latSum], [pointLng, pointLat]) => [lngSum + pointLng, latSum + pointLat], [0, 0]).map((value) => value / points.length) as [number, number];
+  const latScaleM = 110_540;
+  const lngScaleM = 111_320 * Math.cos((center[1] * Math.PI) / 180);
+  return Math.hypot((lng - center[0]) * lngScaleM, (lat - center[1]) * latScaleM);
+}
+
+/** D05 원본 타일도 병합 전 면적순 삭제가 아니라 가까운 건물 단위로만 줄인다. */
+export function capD05BuildingCandidates(items: PolygonCandidate[], center: readonly [number, number], max = MAX_MAP_POLYGONS): PolygonCandidate[] {
+  const groups = new Map<string, { candidate: PolygonCandidate; first: number; distanceM: number }>();
+  items.forEach((candidate, index) => {
+    const key = d05CandidateBuildingKey(candidate);
+    if (groups.has(key)) return;
+    groups.set(key, { candidate, first: index, distanceM: d05RepresentativeDistanceM(center, candidate.p) });
+  });
+  const selected = [...groups.entries()]
+    .sort(([, a], [, b]) => a.distanceM - b.distanceM || a.first - b.first)
+    .slice(0, max)
+    .map(([key]) => key);
+  const selectedKeys = new Set(selected);
+  return items.filter((candidate, index) => {
+    const key = d05CandidateBuildingKey(candidate);
+    const group = groups.get(key);
+    return selectedKeys.has(key) && group?.first === index;
+  });
+}
+
+/** 상한을 넘으면 면적이 큰 것부터 남긴다. 결정적. 일반 타일 기본값은 3,000이다. */
+export function capPolygons(items: PolygonCandidate[], max = MAX_MAP_POLYGONS): { polygons: MapPolygon[]; total: number } {
   const sorted = [...items].sort((a, b) => Number(isSiteParcelLayer(b.p.layer)) - Number(isSiteParcelLayer(a.p.layer)) || b.areaM2 - a.areaM2 || a.id - b.id);
-  return { polygons: sorted.slice(0, MAX_MAP_POLYGONS).map((c) => ({ ...c.p, fid: c.p.fid ?? String(c.id) })), total: items.length };
+  return { polygons: sorted.slice(0, max).map((c) => ({ ...c.p, fid: c.p.fid ?? String(c.id) })), total: items.length };
 }
 
 // ── 선 지물 ──
@@ -232,6 +270,10 @@ export interface TileDraft {
   map?: MapCandidate[];
   /** 지도에 그릴 면 후보(선택). 같은 정보의 대표점은 map에 함께 넣어 면을 못 그리는 화면이 대신 쓴다. */
   polygons?: PolygonCandidate[];
+  /** 면 후보의 타일 전용 상한. 생략하면 일반 타일 상한 3,000을 쓴다. */
+  polygonCap?: number;
+  /** 원본 후보를 D05 최근접 사전 선택으로 줄였을 때의 선택 전 개수. */
+  polygonTotal?: number;
   /** 지도에 그릴 선 후보(선택). 상한 처리·범례는 makeTile이 한다. */
   lines?: LineCandidate[];
   /** 타일이 값·범주까지 완성한 범례. 없으면 현재 레이어의 기본 범례를 만든다. */
@@ -246,7 +288,7 @@ function warnOverlappingFeatureGeometry(code: string, features: MapFeature[], po
 
 export function makeTile(ctx: EngineContext, d: TileDraft): TileResult {
   const capped = d.map ? capFeatures(d.map) : null;
-  const cappedPoly = d.polygons ? capPolygons(d.polygons) : null;
+  const cappedPoly = d.polygons ? capPolygons(d.polygons, d.polygonCap) : null;
   const cappedLine = d.lines ? capLines(d.lines) : null;
   const legendLayers = [
     ...(capped?.features.map((f) => f.layer) ?? []),
@@ -271,7 +313,7 @@ export function makeTile(ctx: EngineContext, d: TileDraft): TileResult {
       layers: d.layers ?? [],
       outputFace: "front",
       ...(capped ? { features: capped.features, featuresTotal: capped.total } : {}),
-      ...(cappedPoly && cappedPoly.total > 0 ? { polygons: cappedPoly.polygons, polygonsTotal: cappedPoly.total } : {}),
+      ...(cappedPoly && cappedPoly.total > 0 ? { polygons: cappedPoly.polygons, polygonsTotal: d.polygonTotal ?? cappedPoly.total } : {}),
       ...(cappedLine && cappedLine.total > 0 ? { lines: cappedLine.lines, linesTotal: cappedLine.total } : {}),
     },
     provenance: { manifestHash: ctx.manifestHash, sources: d.sources },

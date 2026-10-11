@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 
 const { TILE_CODES } = await import("../../lib/v2/ui/tile-catalog.ts");
 const { HEAVY_TILE_CODES, TILES } = await import("../../lib/v2/engine/run.ts");
-const { MAX_MAP_POLYGONS, parseTileResult } = await import("../../lib/v2/tile-result.ts");
+const { MAX_D05_BUILDING_POLYGONS, MAX_MAP_POLYGONS, parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { mergeTileResults } = await import("../../lib/v2/engine/tiles/merge.ts");
+const { capD05BuildingCandidates, makeTile } = await import("../../lib/v2/engine/tiles/common.ts");
 const { filterMapForLayer, layerOptionsForResult } = await import("../../lib/v2/ui/tile-layers.ts");
 const { toTileView, viewWithLayer } = await import("../../lib/v2/ui/tile-view.ts");
 
@@ -38,8 +39,8 @@ const base = {
   limitations: [],
 };
 
-function result(code, features, polygons = [], lines = []) {
-  return parseTileResult({
+function rawResult(code, features, polygons = [], lines = []) {
+  return {
     ...base,
     tileId: `${base.analysisId}-${code}`,
     tileType: code.startsWith("D") ? "diagram" : "analysis",
@@ -53,7 +54,11 @@ function result(code, features, polygons = [], lines = []) {
       ...(polygons.length > 0 ? { polygons, polygonsTotal: polygons.length } : {}),
       ...(lines.length > 0 ? { lines, linesTotal: lines.length } : {}),
     },
-  });
+  };
+}
+
+function result(code, features, polygons = [], lines = []) {
+  return parseTileResult(rawResult(code, features, polygons, lines));
 }
 
 const feature = (layer, fid) => ({ layer, fid, lng: 127.15, lat: 37.62 });
@@ -125,22 +130,94 @@ assert.equal(merged.presentation.polygons.length, MAX_MAP_POLYGONS, "흡수 결�
 assert.equal(merged.presentation.polygonsTotal, 3000, "표시 상한을 반영한 전체 면 개수 공식");
 assert.deepEqual(new Set(merged.presentation.polygons.map((item) => item.layer)), new Set(["floors_1_4", "height_tall"]), "상한에서도 흡수 레이어별 면을 남긴다");
 
-// D05 흡수 경로만 같은 건물의 보기별 면을 한 그룹으로 cap한다. 일반 merge는 위와 동일하게 유지한다.
+const otherTileMerged = mergeTileResults(result("D19", [], many("parcel", "parcel-a")), result("D19", [], many("lot_ge3000", "parcel-b")));
+assert.equal(otherTileMerged.presentation.polygons.length, MAX_MAP_POLYGONS, "일반 타일 merge 상한은 3,000면을 유지한다");
+
+// D05 흡수 경로는 선택(거리)과 출력(기존 층수 우선)을 분리한다.
 const buildingPolygon = (layer, index) => ({
   layer,
   fid: `building-${index}`,
   name: `건물-${index}`,
-  sublabel: `${2000 - index}층`,
+  sublabel: `${3100 - index}층`,
   labelPriority: 1,
-  rings: [[[127.149 + index * 1e-7, 37.619], [127.151 + index * 1e-7, 37.619], [127.151 + index * 1e-7, 37.621], [127.149 + index * 1e-7, 37.619]]],
+  rings: [[
+    [127.1501 + index * 1e-5, 37.61999],
+    [127.1503 + index * 1e-5, 37.61999],
+    [127.1503 + index * 1e-5, 37.62001],
+    [127.1501 + index * 1e-5, 37.61999],
+  ]],
 });
-const d05BuildingCapped = mergeTileResults(
-  result("D05", [], Array.from({ length: 2000 }, (_, index) => buildingPolygon("floors_1_4", index))),
-  result("D05", [], Array.from({ length: 2000 }, (_, index) => buildingPolygon("tall_ge35", index))),
+
+const d05AllViews = mergeTileResults(
+  mergeTileResults(
+    result("D05", [], Array.from({ length: 1200 }, (_, index) => buildingPolygon("floors_1_4", index))),
+    result("D05", [], Array.from({ length: 1200 }, (_, index) => buildingPolygon("tall_ge35", index))),
+    { d05BuildingPolygons: true },
+  ),
+  result("D05", [], Array.from({ length: 1200 }, (_, index) => buildingPolygon("low_le12", index))),
   { d05BuildingPolygons: true },
 );
-assert.equal(d05BuildingCapped.presentation.polygons.length, MAX_MAP_POLYGONS, "D05 건물 그룹 cap도 최종 상한을 지킨다");
-assert.equal(new Set(d05BuildingCapped.presentation.polygons.map((item) => item.fid)).size, 1500, "D05는 cap에서 건물 단위를 유지한다");
-assert.deepEqual(new Set(d05BuildingCapped.presentation.polygons.map((item) => item.layer)), new Set(["floors_1_4", "tall_ge35"]), "D05 건물 단위 cap에서도 높이 보기 면을 남긴다");
+assert.equal(d05AllViews.presentation.polygons.length, 3600, "1,200동×3보기는 전부 유지한다");
+assert.equal(new Set(d05AllViews.presentation.polygons.map((item) => item.fid)).size, 1200, "D05는 보기별 면을 같은 건물 그룹으로 묶는다");
+assert.deepEqual(new Set(d05AllViews.presentation.polygons.map((item) => item.layer)), new Set(["floors_1_4", "tall_ge35", "low_le12"]), "D05 세 보기 면을 모두 보존한다");
+
+const d05Nearest = mergeTileResults(
+  mergeTileResults(
+    rawResult("D05", [], Array.from({ length: 3100 }, (_, index) => buildingPolygon("floors_1_4", index))),
+    rawResult("D05", [], Array.from({ length: 3100 }, (_, index) => buildingPolygon("tall_ge35", index))),
+    { d05BuildingPolygons: true },
+  ),
+  rawResult("D05", [], Array.from({ length: 3100 }, (_, index) => buildingPolygon("low_le12", index))),
+  { d05BuildingPolygons: true },
+);
+assert.equal(d05Nearest.presentation.polygons.length, MAX_D05_BUILDING_POLYGONS, "3,100동이면 가까운 3,000동×3보기만 남긴다");
+assert.equal(new Set(d05Nearest.presentation.polygons.map((item) => item.fid)).size, 3000, "D05 건물 cap은 3,000동 단위다");
+assert.ok(d05Nearest.presentation.polygons.some((item) => item.fid === "building-0" && item.layer === "floors_1_4"), "가까운 저층 건물은 남긴다");
+assert.ok(!d05Nearest.presentation.polygons.some((item) => item.fid === "building-3000"), "가장 먼 100동 중 첫 건물은 빠진다");
+assert.ok(!d05Nearest.presentation.polygons.some((item) => item.fid === "building-3099"), "가장 먼 100동 중 마지막 건물은 빠진다");
+const outputFloorLabels = d05Nearest.presentation.polygons.map((item) => Number.parseInt(item.sublabel ?? "", 10));
+assert.deepEqual(outputFloorLabels, [...outputFloorLabels].sort((a, b) => b - a), "선택 후 출력은 기존 층수 내림차순 우선순위를 유지한다");
+const d05NearestView = toTileView(d05Nearest);
+assert.equal(viewWithLayer(d05NearestView, "all").map.polygons.length, 3000, "D05 기본 지도는 한 보기 3,000면이다");
+assert.equal(viewWithLayer(d05NearestView, "height_tall").map.polygons.length, 3000, "D05 고층 지도는 한 보기 3,000면이다");
+assert.equal(viewWithLayer(d05NearestView, "height_low").map.polygons.length, 3000, "D05 저층 지도는 한 보기 3,000면이다");
+
+const fakeContext = { analysisId: "d05-cap-source", manifestHash: "a".repeat(64), conditions: base.conditions };
+const sourcePolygons = Array.from({ length: 3100 }, (_, index) => ({ id: index, areaM2: 1, p: buildingPolygon("floors_1_4", index) }));
+const oversizedSourcePolygons = Array.from({ length: 10000 }, (_, index) => ({
+  id: index * 1000,
+  areaM2: index === 9999 ? 1000000 : 1,
+  p: buildingPolygon("floors_1_4", index),
+}));
+const nearestSourceCandidates = capD05BuildingCandidates(oversizedSourcePolygons, base.conditions.center);
+assert.equal(nearestSourceCandidates.length, MAX_MAP_POLYGONS, "D05 원본이 9,000면을 넘어도 가까운 3,000동 후보만 남긴다");
+assert.ok(nearestSourceCandidates.some(({ p }) => p.fid === "building-0"), "원본 사전 cap에서도 가까운 건물을 남긴다");
+assert.ok(!nearestSourceCandidates.some(({ p }) => p.fid === "building-9999"), "원본 사전 cap에서도 먼 건물을 버린다");
+const tieCandidates = [
+  { id: 1000, areaM2: 1, p: { ...buildingPolygon("floors_1_4", 0), fid: "tie-first" } },
+  { id: 2000, areaM2: 1, p: { ...buildingPolygon("floors_1_4", 0), fid: "tie-second" } },
+];
+assert.equal(capD05BuildingCandidates(tieCandidates, base.conditions.center, 1)[0]?.p.fid, "tie-first", "D05 거리 동률은 기존 첫 등장 순으로 결정한다");
+const d05Source = makeTile(fakeContext, {
+  code: "D05",
+  status: "complete",
+  metrics: [],
+  sources: [{ sourceId: "test", releaseId: "test@1", sourceAsOf: "2026-10-01", fetchedAt: "2026-10-01T00:00:00Z" }],
+  limitations: [],
+  polygons: nearestSourceCandidates,
+  polygonTotal: oversizedSourcePolygons.length,
+  polygonCap: MAX_MAP_POLYGONS,
+});
+assert.equal(d05Source.presentation.polygons.length, MAX_MAP_POLYGONS, "D05 원본 사전 후보는 일반 화면 한 보기 상한만큼 보존한다");
+assert.equal(d05Source.presentation.polygonsTotal, oversizedSourcePolygons.length, "D05 원본은 사전 선택 전 면 수를 전체 개수로 유지한다");
+const ordinarySource = makeTile(fakeContext, {
+  code: "D19",
+  status: "complete",
+  metrics: [],
+  sources: [{ sourceId: "test", releaseId: "test@1", sourceAsOf: "2026-10-01", fetchedAt: "2026-10-01T00:00:00Z" }],
+  limitations: [],
+  polygons: sourcePolygons,
+});
+assert.equal(ordinarySource.presentation.polygons.length, MAX_MAP_POLYGONS, "일반 타일 조립기의 기본 cap은 3,000면이다");
 
 console.log("✓ v2 W3 tile registry, merge layer options, and map filtering");
