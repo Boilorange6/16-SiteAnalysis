@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { activeLegendLabel, legendScrollState, legendWheelScrollTarget } from "@/lib/v2/ui/map-legend";
 import styles from "./board.module.css";
 
@@ -20,17 +20,52 @@ export type MapLegendItem = {
   static?: boolean;
   swatch?: LegendSwatchKind;
   hollow?: boolean;
+  /** 면 레이어의 실제 채움·테두리·빗금 표현. 지도와 같은 원천 스타일을 범례 견본에도 쓴다. */
+  fill?: string;
+  stroke?: string;
+  fillOpacity?: number;
+  strokeWidth?: number;
+  hatch?: boolean;
   /** 화면에 표시하는 값 범례와 지도 요소 강조에 쓰는 공용 레이어명을 분리한다. */
   highlightLabel?: string;
 };
 
 function LegendSwatch({ item }: { item: MapLegendItem }) {
+  const swatchId = useId().replace(/:/g, "");
   const kind = item.site ? "site" : (item.swatch ?? "point");
   if (kind === "site") {
     return (
       <svg className={styles.mapLegendSwatchSvg} width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
         <rect x="2.2" y="2.2" width="7.6" height="7.6" fill="#fff" stroke="#111" strokeWidth="1" transform="rotate(45 6 6)" />
         <circle cx="6" cy="6" r="1.3" fill="#111" />
+      </svg>
+    );
+  }
+  if (kind === "polygon" && (item.fill || item.stroke || item.hatch)) {
+    const fill = item.hollow ? "transparent" : item.fill ?? item.color;
+    const stroke = item.stroke ?? item.color;
+    const patternId = `map-legend-hatch-${swatchId}`;
+    return (
+      <svg className={styles.mapLegendSwatchSvg} data-kind={kind} width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" focusable="false">
+        {item.hatch && (
+          <defs>
+            <pattern id={patternId} patternUnits="userSpaceOnUse" width="10" height="10" patternTransform="rotate(45)">
+              <rect width="10" height="10" fill={fill} fillOpacity={item.fillOpacity ?? 1} />
+              <path d="M0 0V10" stroke={item.color} strokeWidth="1.2" strokeOpacity="0.75" />
+            </pattern>
+          </defs>
+        )}
+        <rect
+          x="0.5"
+          y="0.5"
+          width="9"
+          height="9"
+          rx="1.5"
+          fill={item.hatch ? `url(#${patternId})` : fill}
+          fillOpacity={item.hatch ? 1 : item.fillOpacity ?? 1}
+          stroke={stroke}
+          strokeWidth={item.strokeWidth ?? 1}
+        />
       </svg>
     );
   }

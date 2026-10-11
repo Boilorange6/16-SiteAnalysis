@@ -28,6 +28,15 @@ const feat = (o) => ({ layer: "apt", lng: 127, lat: 37, ...o });
   assert.equal(C.dotRadius(null, 1000, 8, 15), 8);
   assert.equal(C.inkOn("#5b2a12"), "#ffffff");
   assert.equal(C.inkOn("#f7d76a"), "#16181d");
+  assert.deepEqual(C.STOCK_LEGEND.items.map((item) => item.label), [
+    "1970년대 이전",
+    "1980년대",
+    "1990년대",
+    "2000년대",
+    "2010년대",
+    "2020년 이후",
+    "미상",
+  ], "준공 연대 범례는 의미가 끊기지 않는 실제 연대 문구를 사용");
 }
 
 // ── 카드 행: 타입 행을 포함하고, 값 없으면 확인필요, 주차는 있을 때만 추가 ──

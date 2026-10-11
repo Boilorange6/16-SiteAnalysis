@@ -1,8 +1,8 @@
 "use client";
 
 import { createContext, memo, useContext, useEffect, useRef, useState } from "react";
-import { legendItemsForModel, RASTER_STYLES, type MapModel } from "@/lib/v2/ui/map-layers";
-import { activeLegendLabel, toggleLegendPin } from "@/lib/v2/ui/map-legend";
+import { buildingStyleForRaster, legendItemsForModel, normalizeLegendStripLabels, RASTER_STYLES, type MapModel } from "@/lib/v2/ui/map-layers";
+import { activeLegendLabel, appendUniqueLegendItems, toggleLegendPin } from "@/lib/v2/ui/map-legend";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { framedViewport, metersPerPixel, scaleBar, tileUrl, tilesFor } from "@/lib/v2/ui/map-projection";
 import { inflateRaster, paintRaster, rasterLegendColor, rasterLegendEntries, rasterLegendTitle, resolveRasterStyle } from "@/lib/v2/ui/raster-image";
@@ -188,20 +188,38 @@ function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, ...optsIn }
   }, [model.analysisId, model.tileCode, model.rasters, near]);
   const renderLayer = fallbackLayer ?? requestedLayer;
   const renderModel = fallbackLayer ? { ...model, basemap: fallbackLayer } : model;
+  const activeRasterName = model.rasters?.[0]?.name;
+  const hasDecodedActiveRaster = !!activeRasterName && !!rasterHrefs[activeRasterName];
   const swatchKind = (layerName: string): LegendSwatchKind => {
     if (model.lines?.some((line) => line.layer === layerName)) return "line";
     if (model.polygons?.some((polygon) => polygon.layer === layerName)) return "polygon";
     return "point";
   };
-  const legendItems: MapLegendItem[] = !bare && opts.legend === false
-    ? [
-        ...(!opts.muted ? [{ layer: "__site_marker", label: "대지", color: "#111", count: 1, site: true as const, swatch: "site" as const }] : []),
-        ...legendItemsForModel(model)
-          .filter((item) => item.layer !== "parcel_site" && item.layer !== "pnu")
-          .map((item) => ({ ...item, site: false as const, swatch: swatchKind(item.layer) })),
-        ...rasterLegendItemsForModel(model),
-      ]
+  const rawLegendItems: MapLegendItem[] = !bare && opts.legend === false
+    ? appendUniqueLegendItems<MapLegendItem>(
+        [
+          ...(!opts.muted ? [{ layer: "__site_marker", label: "대지", color: "#111", count: 1, site: true as const, swatch: "site" as const }] : []),
+          ...legendItemsForModel(model)
+            .filter((item) => item.layer !== "parcel_site" && item.layer !== "pnu")
+            .map((item) => {
+              const swatchStyle = buildingStyleForRaster(item.layer, hasDecodedActiveRaster);
+              return {
+                ...item,
+                site: false as const,
+                swatch: swatchKind(item.layer),
+                ...(swatchStyle.fill ? { fill: swatchStyle.fill } : {}),
+                ...(swatchStyle.stroke ? { stroke: swatchStyle.stroke } : {}),
+                ...(swatchStyle.fillOpacity !== undefined ? { fillOpacity: swatchStyle.fillOpacity } : {}),
+                ...(swatchStyle.strokeWidth !== undefined ? { strokeWidth: swatchStyle.strokeWidth } : {}),
+                ...(swatchStyle.hatch ? { hatch: true } : {}),
+              };
+            }),
+        ],
+        rasterLegendItemsForModel(model),
+      )
     : [];
+  const legendPresentation = normalizeLegendStripLabels(rawLegendItems);
+  const legendItems = legendPresentation.items;
   const useLegendStrip = !bare && opts.legend === false && !opts.muted && legendItems.length > 0;
   // 상세 창의 출처 띠는 MapBox 바깥에 겹쳐 있으므로, 범례가 그 위에서 끝나게 한다.
   // 범례를 띠로 옮긴 뒤에는 MapFigure에 같은 inset을 다시 예약하지 않는다.
@@ -258,7 +276,7 @@ function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, ...optsIn }
         <div ref={ref} data-map-viewport="true" style={{ position: "relative", flex: "1 1 auto", minHeight: 0, width: "100%" }}>
           {mapSurfaceContent}
         </div>
-        {size && near && <MapLegendStrip items={legendItems} hoverLabel={legendHover} pinnedLabel={legendPinned} onHover={setLegendHover} onToggle={toggleLegend} />}
+        {size && near && <MapLegendStrip items={legendItems} hoverLabel={legendHover} pinnedLabel={legendPinned} onHover={setLegendHover} onToggle={toggleLegend} leadingLabel={legendPresentation.leadingLabel} />}
       </div>
     );
   }

@@ -183,7 +183,7 @@ export function decadeLayer(year: number | null): (typeof DECADE_LAYERS)[number]
 export const decadeColor = (year: number | null) => layerStyle(decadeLayer(year)).color;
 export const STOCK_LEGEND: CalloutLegendSpec = {
   title: "준공 연대",
-  items: DECADE_LAYERS.map((k, i) => ({ label: ["~79", "80년대", "90년대", "00년대", "10년대", "20년~", "미상"][i], color: layerStyle(k).color, hollow: k === "bldg_unknown" })),
+  items: DECADE_LAYERS.map((k) => ({ label: layerStyle(k).label, color: layerStyle(k).color, hollow: k === "bldg_unknown" })),
   sizeLabel: "크기 = 세대·호실",
 };
 export const OTHER_HOUSING_LABEL = "기타 공동주택";
