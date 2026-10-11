@@ -3049,6 +3049,53 @@ button.badge:focus-visible {
   min-height: 0;
   background: #e9e9ec;
 }
+.mapPreview {
+  position: absolute;
+  inset: 0;
+}
+.mapControls {
+  position: absolute;
+  z-index: 8;
+  right: 8px;
+  bottom: 8px;
+  display: grid;
+  gap: 4px;
+}
+.mapControlButton {
+  position: relative;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  padding: 6px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #16181d;
+  font: inherit;
+  font-size: 21px;
+  line-height: 1;
+  cursor: pointer;
+}
+.mapControlButton::before {
+  content: "";
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #d5d9e1;
+  border-radius: 8px;
+  background: rgba(255,255,255,.94);
+  box-shadow: 0 2px 8px rgba(30,36,46,.1);
+  pointer-events: none;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+.mapControlButton { isolation: isolate; }
+.mapControlButton::before { z-index: 0; }
+.mapControlButton > span { position: relative; z-index: 1; }
+.mapControlButton:hover::before { background: #fff; }
+.mapControlButton:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 1px; }
 /* 지도 표현 선택은 지도 밖의 별도 행이 아니라 지도 왼쪽 위의 작은 조작으로 둔다. */
 .mfLayerSelect {
   position: absolute;

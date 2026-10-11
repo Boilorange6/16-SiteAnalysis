@@ -1,7 +1,7 @@
-import { memo, useId, useRef, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, RASTER_STYLES, type MapModel, type RasterStyle } from "@/lib/v2/ui/map-layers";
 import { automaticLabelText, badgeTextColor, labelBoxesOverlap, legacyLabelPriority, mapLabelText as formatMapLabelText, selectAutomaticLabels, type MapLabelKind } from "@/lib/v2/ui/map-labels";
-import { BASEMAP_ATTRIBUTION, BASEMAP_STACK, framedViewport, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, worldPx, type BasemapChoice } from "@/lib/v2/ui/map-projection";
+import { applyView, BASEMAP_ATTRIBUTION, BASEMAP_STACK, framedViewport, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, worldPx, type BasemapChoice, type MapView, type Viewport } from "@/lib/v2/ui/map-projection";
 import { rasterAffine, rasterLegendColor, rasterLegendEntries, resolveRasterStyle } from "@/lib/v2/ui/raster-image";
 import type { MapFeature, MapLine, MapPolygon, RasterRef } from "@/lib/v2/tile-result";
 import { maxOf, minOf } from "@/lib/v2/extent";
@@ -88,6 +88,10 @@ export type MapFigureProps = {
   onFeatureClick?: (feature: { fid?: string; lng: number; lat: number; kind: "feature" | "polygon" | "line" }) => void;
   /** 래스터 지점처럼 별도 벡터 지물이 없는 곳을 클릭했을 때의 WGS84 좌표. */
   onMapClick?: (coordinate: { lng: number; lat: number }) => void;
+  /** 화면 탐색용 확정 뷰. 생략하면 보고서·기존 렌더와 같은 반경 전체 뷰다. */
+  view?: MapView;
+  /** 드래그 중에는 hover 라벨을 갱신하지 않는다. */
+  dragging?: boolean;
 };
 
 export type MapFigurePick = { fid?: string; lng: number; lat: number; kind: "feature" | "polygon" | "line" };
@@ -254,7 +258,19 @@ function steppedLegendNames(style: RasterStyle, count: number): Array<{ label: s
   return (style.legendLabels ?? []).slice(0, count).map((label, index) => ({ label, position: (index + 0.5) / count }));
 }
 
-function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, fixed, label, legend, legendY, north: northOpt, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, selectedFids = [], highlightLabel = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = [], onFeatureClick, onFeatureHover, onFeaturePin, onLegendHover, onLegendPin, path = [], onMapClick }: MapFigureProps) {
+type BackgroundImage = { key: string; href: string; tile: ReturnType<typeof tilesFor>[number] };
+type BackgroundFrame = { key: string; vp: Viewport; images: readonly BackgroundImage[] };
+
+function backgroundTransform(from: Viewport, to: Viewport, width: number, height: number): string {
+  const scale = 2 ** (to.zoom - from.zoom);
+  const [fromX, fromY] = worldPx(from.center[0], from.center[1], from.zoom);
+  const [toX, toY] = worldPx(to.center[0], to.center[1], to.zoom);
+  const e = width / 2 + scale * fromX - toX - scale * width / 2;
+  const f = height / 2 + scale * fromY - toY - scale * height / 2;
+  return `matrix(${scale},0,0,${scale},${e},${f})`;
+}
+
+function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, fixed, label, legend, legendY, north: northOpt, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, selectedFids = [], highlightLabel = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = [], onFeatureClick, onFeatureHover, onFeaturePin, onLegendHover, onLegendPin, path = [], onMapClick, view, dragging = false }: MapFigureProps) {
   const rasterModel = model as RasterPresentationModel;
   const activeLayer = model.basemap ?? layer;
   const sat = activeLayer === "Satellite";
@@ -411,7 +427,8 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
       : Math.min(H - bottomInset - legendMargin - mapRadius, Math.max(preferredCenterY, panelY + panelH + legendMargin + mapRadius))
     : preferredCenterY;
   const mapSiteY = H > 0 ? mapCenterY / H : siteY;
-  const vp = framedViewport(model.center, model.radiusM, W, H, mapSiteX, mapFill, mapSiteY);
+  const baseVp = framedViewport(model.center, model.radiusM, W, H, mapSiteX, mapFill, mapSiteY);
+  const vp = applyView(baseVp, model.center[1], view);
   const proj = makeProjector(vp);
   const mpp = metersPerPixel(model.center[1], vp.zoom);
   const [cx, cy] = proj(model.center[0], model.center[1]);
@@ -419,6 +436,29 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
 
   const tiles = basemap === "tiles" ? tilesFor(vp) : [];
   const stack = BASEMAP_STACK[activeLayer];
+  const backgroundImages: BackgroundImage[] = stack.flatMap((ly) => tiles.flatMap((tile) => {
+    const url = tileUrl(ly, tile.z, tile.x, tile.y);
+    const href = tileHref ? tileHref(url) : url;
+    return href ? [{ key: `${ly}/${tile.z}/${tile.x}/${tile.y}`, href, tile }] : [];
+  }));
+  const backgroundKey = `${vp.center[0]}:${vp.center[1]}:${vp.zoom}:${W}:${H}:${backgroundImages.map((image) => image.key).join("|")}`;
+  const desiredBackground: BackgroundFrame = { key: backgroundKey, vp, images: backgroundImages };
+  const loadedBackgroundRef = useRef<{ key: string; tiles: Set<string> }>({ key: backgroundKey, tiles: new Set() });
+  if (loadedBackgroundRef.current.key !== backgroundKey) loadedBackgroundRef.current = { key: backgroundKey, tiles: new Set() };
+  const [backgroundRevision, setBackgroundRevision] = useState(0);
+  const ready = backgroundRevision >= 0 && backgroundImages.every((image) => loadedBackgroundRef.current.tiles.has(image.key));
+  const [readyBackground, setReadyBackground] = useState<BackgroundFrame | null>(null);
+  useEffect(() => {
+    if (!ready) return;
+    setReadyBackground((current) => current?.key === backgroundKey ? current : desiredBackground);
+  }, [backgroundKey, desiredBackground, ready]);
+  const markBackgroundTileReady = useCallback((frameKey: string, tileKey: string) => {
+    const current = loadedBackgroundRef.current;
+    if (frameKey !== current.key || current.tiles.has(tileKey)) return;
+    current.tiles.add(tileKey);
+    setBackgroundRevision((revision) => revision + 1);
+  }, []);
+  const previousBackground = readyBackground?.key !== backgroundKey ? readyBackground : null;
   const rasterImages = (activeRaster ? [activeRaster] : [])
     .map((ref) => ({ ref, href: rasterHref?.(ref) ?? null, matrix: rasterAffine(ref, vp) }))
     .filter((item): item is typeof item & { href: string } => !!item.href);
@@ -503,11 +543,12 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
   };
   const pickProps = (pick: MapFigurePick, key: string, labelText: string) => {
     if (!onFeatureClick && !onFeatureHover && !onFeaturePin) return {};
+    const hover = (value: string | null) => { if (!dragging) onFeatureHover?.(value); };
     const choose = () => onFeatureClick?.(pick);
     const pin = () => onFeaturePin?.({ ...pick, key });
     const onKeyDown = (event: ReactKeyboardEvent<SVGElement>) => {
       if (event.key === "Escape") {
-        onFeatureHover?.(null);
+        hover(null);
         return;
       }
       if (event.key !== "Enter" && event.key !== " ") return;
@@ -530,11 +571,11 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
       onPointerDown: (event: ReactPointerEvent<SVGElement>) => { lastPointerType.current = event.pointerType; },
       onPointerEnter: (event: ReactPointerEvent<SVGElement>) => {
         lastPointerType.current = event.pointerType;
-        if (event.pointerType !== "touch") onFeatureHover?.(key);
+        if (event.pointerType !== "touch") hover(key);
       },
-      onPointerLeave: () => { lastPointerType.current = null; onFeatureHover?.(null); },
-      onFocus: () => { if (lastPointerType.current !== "touch") onFeatureHover?.(key); },
-      onBlur: () => { lastPointerType.current = null; onFeatureHover?.(null); },
+      onPointerLeave: () => { lastPointerType.current = null; hover(null); },
+      onFocus: () => { if (lastPointerType.current !== "touch") hover(key); },
+      onBlur: () => { lastPointerType.current = null; hover(null); },
       style: { cursor: "pointer" },
     };
   };
@@ -579,6 +620,32 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     : { x0: cx - 2.25 * siteR, y0: cy - 2.25 * siteR, x1: cx + 2.25 * siteR, y1: cy + 2.25 * siteR };
   if (!muted) boxes.push(siteBounds);
 
+  const inFrame = (point: readonly [number, number]): boolean => point[0] >= 0 && point[0] <= W && point[1] >= 0 && point[1] <= H;
+  const segmentAnchor = (a: readonly [number, number], b: readonly [number, number]): [number, number] | null => {
+    const ts = [0, 1];
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    if (dx !== 0) { ts.push((0 - a[0]) / dx, (W - a[0]) / dx); }
+    if (dy !== 0) { ts.push((0 - a[1]) / dy, (H - a[1]) / dy); }
+    const visible = ts.filter((t) => t >= 0 && t <= 1).map((t) => [a[0] + dx * t, a[1] + dy * t] as [number, number]).filter(inFrame);
+    if (visible.length === 0) return null;
+    const first = visible[0]!;
+    const last = visible.at(-1)!;
+    return [(first[0] + last[0]) / 2, (first[1] + last[1]) / 2];
+  };
+  const visibleAnchor = (points: readonly (readonly [number, number])[], fallback: readonly [number, number]): [number, number] | null => {
+    const visible = points.filter(inFrame);
+    if (visible.length > 0) return visible[Math.floor(visible.length / 2)] as [number, number];
+    for (let index = 1; index < points.length; index += 1) {
+      const anchor = segmentAnchor(points[index - 1]!, points[index]!);
+      if (anchor) return anchor;
+    }
+    // A polygon can contain the viewport center even when none of its vertices
+    // is visible. Its center is still the most useful label anchor.
+    if (inFrame(fallback)) return fallback as [number, number];
+    return null;
+  };
+
   type ScreenLabel = MapLabelEntry & {
     p: [number, number];
     radius: number;
@@ -588,7 +655,9 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     pick: MapFigureElementPick;
   };
   const screenLabels: ScreenLabel[] = [
-    ...drawn.map((d) => ({
+    ...drawn.flatMap((d) => {
+      if (!inFrame(d.p)) return [];
+      return [{
       key: mapFeatureKey(d.f.layer, d.f.fid, d.index),
       text: labelText(d.f.layer, "feature", d.f),
       autoText: automaticLabelText(d.f.layer, "feature", d.f, isLayerHighlighted(d.f.layer) && (!!d.f.highlight || d.selected)),
@@ -603,8 +672,12 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
       explicit: !!automaticLabelText(d.f.layer, "feature", d.f),
       highlighted: isLayerHighlighted(d.f.layer) && (!!d.f.highlight || d.selected),
       pick: { fid: d.f.fid, lng: d.f.lng, lat: d.f.lat, kind: "feature" as const, key: mapFeatureKey(d.f.layer, d.f.fid, d.index) },
-    })),
-    ...polygons.map((d) => ({
+      }];
+    }),
+    ...polygons.flatMap((d) => {
+      const anchor = visibleAnchor(d.rings.flat(), d.center);
+      if (!anchor) return [];
+      return [{
       key: mapElementKey("polygon", d.polygon.layer, d.polygon.fid, d.index),
       text: labelText(d.polygon.layer, "polygon", d.polygon),
       autoText: automaticLabelText(d.polygon.layer, "polygon", d.polygon, isLayerHighlighted(d.polygon.layer) && highlightActive),
@@ -613,17 +686,19 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
       layer: d.polygon.layer,
       kind: "polygon" as const,
       ...(d.polygon.fid ? { fid: d.polygon.fid } : {}),
-      p: d.center,
+      p: anchor,
       radius: 0,
       small: false,
       explicit: !!automaticLabelText(d.polygon.layer, "polygon", d.polygon),
       highlighted: isLayerHighlighted(d.polygon.layer) && highlightActive,
       pick: { fid: d.polygon.fid, ...(() => { const [lng, lat] = centerOf(d.polygon.rings[0] ?? []); return { lng, lat }; })(), kind: "polygon" as const, key: mapElementKey("polygon", d.polygon.layer, d.polygon.fid, d.index) },
-    })),
-    ...linePaths.map((d) => {
-      const center = d.points[Math.floor(d.points.length / 2)] ?? [cx, cy];
+      }];
+    }),
+    ...linePaths.flatMap((d): ScreenLabel[] => {
+      const center = visibleAnchor(d.points, d.points[Math.floor(d.points.length / 2)] ?? [cx, cy]);
+      if (!center) return [];
       const [lng, lat] = centerOf(d.l.points);
-      return {
+      return [{
         key: mapElementKey("line", d.l.layer, d.l.fid, d.index),
         text: labelText(d.l.layer, "line", d.l),
         autoText: automaticLabelText(d.l.layer, "line", d.l, isLayerHighlighted(d.l.layer) && highlightActive),
@@ -638,7 +713,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
         explicit: !!automaticLabelText(d.l.layer, "line", d.l),
         highlighted: isLayerHighlighted(d.l.layer) && highlightActive,
         pick: { fid: d.l.fid, lng, lat, kind: "line" as const, key: mapElementKey("line", d.l.layer, d.l.fid, d.index) },
-      };
+      }];
     }),
   ];
   const labelByKey = new Map(screenLabels.map((entry) => [entry.key, entry]));
@@ -863,13 +938,20 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
         )}
         {/* 표준 지도는 색이 진해 점이 묻히므로 채도를 낮추고 흰 막을 덮는다 */}
         <g filter={muted ? `url(#m${uid})` : sat ? undefined : `url(#s${uid})`}>
-          {stack.map((ly) =>
-            tiles.map((t) => {
-              const url = tileUrl(ly, t.z, t.x, t.y);
+          {view === undefined
+            ? stack.map((ly) => tiles.map((tile) => {
+              const url = tileUrl(ly, tile.z, tile.x, tile.y);
               const href = tileHref ? tileHref(url) : url;
-              return href ? <image key={`tile-${ly}/${t.z}/${t.x}/${t.y}`} href={href} x={t.left} y={t.top} width={t.size + 0.6} height={t.size + 0.6} preserveAspectRatio="none" /> : null;
-            }),
-          )}
+              return href ? <image key={`tile-${ly}/${tile.z}/${tile.x}/${tile.y}`} href={href} x={tile.left} y={tile.top} width={tile.size + 0.6} height={tile.size + 0.6} preserveAspectRatio="none" /> : null;
+            }))
+            : <>
+              {previousBackground && <g data-map-background="previous" transform={backgroundTransform(previousBackground.vp, vp, W, H)}>
+                {previousBackground.images.map((image) => <image key={`previous-tile-${image.key}`} href={image.href} x={image.tile.left} y={image.tile.top} width={image.tile.size + 0.6} height={image.tile.size + 0.6} preserveAspectRatio="none" />)}
+              </g>}
+              <g data-map-background="current">
+                {desiredBackground.images.map((image) => <image key={`current-tile-${image.key}`} href={image.href} x={image.tile.left} y={image.tile.top} width={image.tile.size + 0.6} height={image.tile.size + 0.6} preserveAspectRatio="none" onLoad={() => markBackgroundTileReady(backgroundKey, image.key)} onError={() => markBackgroundTileReady(backgroundKey, image.key)} />)}
+              </g>
+            </>}
         </g>
         {tiles.length > 0 && (!sat || muted) && <rect width={W} height={H} fill="#fff" fillOpacity={muted ? 0.5 : activeLayer === "Base" ? 0.35 : 0.15} />}
         {tiles.length > 0 && sat && !muted && <rect width={W} height={H} fill="#000" fillOpacity={0.12} />}
@@ -886,9 +968,9 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
             height={ref.rows}
             preserveAspectRatio="none"
             transform={`matrix(${matrix.join(",")})`}
-            // Continuous SVF is resampled smoothly at presentation scale;
-            // class/mask rasters retain cell boundaries for categorical maps.
-            style={{ imageRendering: ref.kind === "scalar" ? "auto" : "pixelated" }}
+            // Continuous rasters are resampled smoothly; stepped, class and
+            // mask palettes retain their cell boundaries when zoomed.
+            style={{ imageRendering: resolvedRasterStyle?.mode === "continuous" ? "auto" : "pixelated" }}
             opacity={1}
           />
         ))}

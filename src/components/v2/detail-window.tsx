@@ -1,9 +1,11 @@
 "use client";
 
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type WheelEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TileView } from "@/lib/v2/ui/tile-view";
 import { RASTER_STYLES } from "@/lib/v2/ui/map-layers";
+import { catalogEntry } from "@/lib/v2/ui/tile-catalog";
+import { framedViewport, maxZoomFor } from "@/lib/v2/ui/map-projection";
 import { inflateRaster, paintRaster } from "@/lib/v2/ui/raster-image";
 import { detailApiUrl, detailListApiUrl, filterDetailRows, formatDetailCardValue, normalizeDetailPayload, sanitizeDetailText, sortDetailRows, tableColumns, type DetailAt, type DetailCard, type DetailControl, type DetailPayload, type DetailRow } from "@/lib/v2/ui/detail-state";
 import MapFigure, { type MapFigurePick } from "./map-figure";
@@ -11,6 +13,8 @@ import DetailTable from "./detail-table";
 import { LayerSelect } from "./layer-select";
 import UnitTypeSummary from "./unit-type-summary";
 import { useFocusTrap } from "./use-focus-trap";
+import { MapControls } from "./map-controls";
+import { useMapView } from "./use-map-view";
 
 type LoadState = "loading" | "ready" | "error";
 
@@ -43,10 +47,13 @@ const DETAIL_WINDOW_CSS = `
 .detail-map-canvas { position: absolute; inset: 0; transform-origin: 50% 50%; will-change: transform; }
 .detail-map-canvas svg { width: 100%; height: 100%; }
 .detail-map-hint { position: absolute; z-index: 4; bottom: 14px; left: 14px; max-width: min(280px, calc(100% - 110px)); padding: 8px 10px; border: 1px solid rgba(214,218,224,.82); border-radius: 8px; background: rgba(255,255,255,.9); color: #454a55; font-size: 12px; line-height: 1.35; pointer-events: none; }
-.detail-map-controls { position: absolute; z-index: 5; top: 14px; right: 14px; display: grid; gap: 8px; }
-.detail-map-controls button { display: grid; width: 44px; height: 44px; place-items: center; border: 1px solid #d5d9e1; border-radius: 9px; background: rgba(255,255,255,.94); box-shadow: 0 2px 8px rgba(30,36,46,.1); font-size: 22px; line-height: 1; }
-.detail-map-controls button:hover { background: #fff; }
-.detail-map-status { position: absolute; z-index: 5; right: 14px; bottom: 14px; max-width: calc(100% - 28px); padding: 6px 9px; border-radius: 999px; background: rgba(255,255,255,.94); color: #5b6472; font-size: 11px; }
+.detail-map-controls { right: 14px; bottom: 14px; }
+.detail-map-controls button { border: 0; background: transparent; box-shadow: none; font-size: 22px; line-height: 1; }
+.detail-map-controls button:hover { background: transparent; }
+.detail-fullscreen-control { position: relative; display: grid; width: 44px; height: 44px; place-items: center; padding: 6px; border-radius: 9px; }
+.detail-fullscreen-control::before { content: ""; position: absolute; left: 50%; top: 50%; width: 32px; height: 32px; transform: translate(-50%, -50%); border: 1px solid #d5d9e1; border-radius: 8px; background: rgba(255,255,255,.94); box-shadow: 0 2px 8px rgba(30,36,46,.1); pointer-events: none; }
+.detail-fullscreen-control > span { position: relative; z-index: 1; }
+.detail-map-status { position: absolute; z-index: 5; left: 14px; bottom: 70px; max-width: calc(100% - 28px); padding: 6px 9px; border-radius: 999px; background: rgba(255,255,255,.94); color: #5b6472; font-size: 11px; }
 .detail-panel { min-width: 0; min-height: 0; overflow: auto; padding: 16px; border-left: 1px solid #e0e3e8; background: #f7f8f9; }
 .detail-card { flex: none; padding: 17px 18px 15px; border: 1px solid #d8dce3; border-radius: 14px; background: #fff; box-shadow: 0 2px 7px rgba(24,29,39,.04); }
 .detail-card-kicker { display: flex; align-items: center; gap: 7px; min-width: 0; margin-bottom: 3px; color: #596474; font-size: 12px; font-weight: 700; }
@@ -123,8 +130,7 @@ const DETAIL_WINDOW_CSS = `
   .detail-map-panel { padding: 8px 8px 6px; }
   .detail-map-viewport { min-height: 0; border-radius: 10px; }
   .detail-map-hint { top: auto; bottom: 10px; left: 10px; max-width: 190px; padding: 6px 8px; font-size: 11px; }
-  .detail-map-controls { top: 10px; right: 10px; gap: 6px; }
-  .detail-map-controls button { width: 42px; height: 42px; }
+  .detail-map-controls { right: 10px; bottom: 10px; gap: 6px; }
   .detail-panel { padding: 8px; border-top: 1px solid #dfe2e7; border-left: 0; }
   .detail-card { padding: 14px 14px 13px; border-radius: 12px; }
   .detail-card h3 { font-size: 21px; }
@@ -225,6 +231,14 @@ export default function DetailWindow({ view, layer, onLayer, onClose }: DetailWi
   const mapViewportRef = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
   const mapSize = useMeasuredMap(mapViewportRef, mounted);
+  const baseViewport = useMemo(() => framedViewport(model.center, model.radiusM, mapSize.width, mapSize.height, 0.5, 0.8, 0.5), [mapSize.height, mapSize.width, model.center, model.radiusM]);
+  const mapInteractive = code !== "S01" && code !== "D22";
+  const maxZoom = maxZoomFor(baseViewport, catalogEntry(code).mapZoom, model.rasters?.[0]?.cellM);
+  const mapController = useMapView({ baseViewport, radiusM: model.radiusM, maxZoom, resetKey: view.tileId, enabled: mounted && mapInteractive, wheel: "plain", touchPan: "one" });
+  const setMapViewportRef = useCallback((element: HTMLDivElement | null) => {
+    mapViewportRef.current = element;
+    mapController.bind.ref(element);
+  }, [mapController.bind]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [error, setError] = useState<string | null>(null);
   const [payload, setPayload] = useState<DetailPayload | null>(null);
@@ -237,14 +251,10 @@ export default function DetailWindow({ view, layer, onLayer, onClose }: DetailWi
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
   const [fullscreen, setFullscreen] = useState(false);
   const [legendHover, setLegendHover] = useState<string | null>(null);
   const [legendPinned, setLegendPinned] = useState<string | null>(null);
   const legendActiveRef = useRef(false);
-  const dragRef = useRef<{ x: number; y: number; panX: number; panY: number; moved: boolean } | null>(null);
-  const suppressMapClickRef = useRef(false);
   const [rasterHrefs, setRasterHrefs] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -252,6 +262,11 @@ export default function DetailWindow({ view, layer, onLayer, onClose }: DetailWi
   }, [legendHover, legendPinned]);
 
   useEffect(() => setMounted(true), []);
+
+  // 상세 창은 새 타일을 열 때마다 기본 시점에서 시작한다.
+  useEffect(() => {
+    mapController.reset();
+  }, [mapController.reset, view.tileId]);
 
   // 모바일 상세 카드에서 행을 누르면 브라우저가 포커스한 행을 보이게 하려고
   // 패널을 아래로 자동 스크롤한다. 선택 카드(타입 요약)가 위로 밀리지 않게
@@ -392,46 +407,7 @@ export default function DetailWindow({ view, layer, onLayer, onClose }: DetailWi
   const selectRow = (row: DetailRow) => void detailAt(row.lng, row.lat, row.fids?.length ? row.fids : [row.fid]);
   const selectFeature = (feature: MapFigurePick) => void detailAt(feature.lng, feature.lat, feature.fid ? [feature.fid] : []);
   const selectMapPoint = (coordinate: { lng: number; lat: number }) => {
-    if (suppressMapClickRef.current) {
-      suppressMapClickRef.current = false;
-      return;
-    }
     void detailAt(coordinate.lng, coordinate.lat);
-  };
-
-  const resetMap = () => {
-    setZoom(1);
-    setPan({ x: 0, y: 0 });
-  };
-  const clampPan = (x: number, y: number, nextZoom = zoom) => {
-    const maxX = Math.max(0, ((nextZoom - 1) * mapSize.width) / 2 + 72);
-    const maxY = Math.max(0, ((nextZoom - 1) * mapSize.height) / 2 + 72);
-    return { x: Math.max(-maxX, Math.min(maxX, x)), y: Math.max(-maxY, Math.min(maxY, y)) };
-  };
-  const onWheel = (event: WheelEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const nextZoom = Math.max(1, Math.min(3, zoom + (event.deltaY < 0 ? 0.15 : -0.15)));
-    setZoom(nextZoom);
-    setPan((current) => clampPan(current.x, current.y, nextZoom));
-  };
-  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || (event.target as Element).closest("[data-map-feature], [data-map-legend]")) return;
-    dragRef.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y, moved: false };
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
-  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current;
-    if (!drag) return;
-    const dx = event.clientX - drag.x;
-    const dy = event.clientY - drag.y;
-    if (Math.hypot(dx, dy) > 4) drag.moved = true;
-    setPan(clampPan(drag.panX + dx, drag.panY + dy));
-  };
-  const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current;
-    if (drag?.moved) suppressMapClickRef.current = true;
-    dragRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
   const toggleFullscreen = async () => {
     if (!document.fullscreenElement) await mapViewportRef.current?.requestFullscreen?.();
@@ -446,7 +422,6 @@ export default function DetailWindow({ view, layer, onLayer, onClose }: DetailWi
 
   if (!mounted) return null;
   const activeLayer = model.basemap ?? "white";
-  const mapTransform: CSSProperties = { transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` };
   const content = (
     <>
       <style>{DETAIL_WINDOW_CSS}</style>
@@ -461,8 +436,8 @@ export default function DetailWindow({ view, layer, onLayer, onClose }: DetailWi
           </header>
           <div className="detail-body">
             <section className="detail-map-panel" aria-label={`${view.title} 상세 지도`}>
-              <div ref={mapViewportRef} className="detail-map-viewport" onWheel={onWheel} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
-                <div className="detail-map-canvas" style={mapTransform}>
+              <div {...mapController.bind} ref={setMapViewportRef} className="detail-map-viewport" style={mapController.bind.style}>
+                <div className="detail-map-canvas" style={mapController.previewTransform}>
                   <MapFigure
                     model={model}
                     width={mapSize.width}
@@ -478,17 +453,16 @@ export default function DetailWindow({ view, layer, onLayer, onClose }: DetailWi
                     onLegendPin={(value) => setLegendPinned((current) => value === null ? null : current === value ? null : value)}
                     selectedFids={selectedFids}
                     path={path}
+                    view={mapController.view}
+                    dragging={mapController.dragging}
                     onFeatureClick={selectFeature}
                     onMapClick={selectMapPoint}
                   />
                 </div>
                 <p className="detail-map-hint">지물을 선택하면 선택 카드와 지도가 함께 갱신됩니다.<br />휠 확대 · 드래그 이동</p>
-                <div className="detail-map-controls" aria-label="지도 조작">
-                  <button type="button" onClick={() => { const nextZoom = Math.min(3, zoom + .2); setZoom(nextZoom); setPan((current) => clampPan(current.x, current.y, nextZoom)); }} aria-label="지도 확대">＋</button>
-                  <button type="button" onClick={() => { const nextZoom = Math.max(1, zoom - .2); setZoom(nextZoom); setPan((current) => clampPan(current.x, current.y, nextZoom)); }} aria-label="지도 축소">−</button>
-                  <button type="button" onClick={resetMap} aria-label="지도 전체 보기">⌗</button>
-                  <button type="button" onClick={() => void toggleFullscreen()} aria-label={fullscreen ? "전체화면 닫기" : "지도 전체화면"}>{fullscreen ? "↙" : "↗"}</button>
-                </div>
+                <MapControls controller={mapController} disabled={!mapInteractive} className="detail-map-controls">
+                  <button type="button" className="detail-fullscreen-control" onClick={() => void toggleFullscreen()} aria-label={fullscreen ? "전체화면 닫기" : "지도 전체화면"} title={fullscreen ? "전체화면 닫기" : "지도 전체화면"}><span aria-hidden="true">{fullscreen ? "↙" : "↗"}</span></button>
+                </MapControls>
                 {path.length >= 2 && <span className="detail-map-status" role="status">선택 경로 · 보행망 결과</span>}
               </div>
             </section>

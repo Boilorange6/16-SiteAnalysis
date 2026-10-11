@@ -1,6 +1,6 @@
 /** 설명선 배치를 만드는 순수 계산 (CalloutMap이 쓰고 테스트가 직접 부른다): 프레임 종류·크기·페이지 → 점·카드 자리 */
 import { BOARD_TOP, PX, PX_NARROW, STRIP_H, calloutFrame, cardHeight, cardWidth, capacityOf, compactNameNeedsExtraHeight, isMobileWidth, layoutCallouts, pageItems, rowsFor, stripFrame, type CalloutFrame, type Placed } from "./callout-layout";
-import { framedViewport, makeProjector } from "./map-projection";
+import { applyView, framedViewport, makeProjector, type MapView } from "./map-projection";
 import { OV } from "./overlay-layout";
 import type { CalloutModel } from "./tile-view";
 
@@ -10,7 +10,7 @@ const PILL_H = 32;
 
 export type CalloutFrameKind = "card" | "detail";
 
-export function calloutScene(model: CalloutModel, kind: CalloutFrameKind, W: number, H: number, page: number, sourceInset: number = OV.stripH) {
+export function calloutScene(model: CalloutModel, kind: CalloutFrameKind, W: number, H: number, page: number, sourceInset: number = OV.stripH, view?: MapView) {
   const detail = kind === "detail";
   const mobile = isMobileWidth(W);
   // 모바일 펼침: 좌우 칸 대신 지도 아래(시트 위)에 가로 띠 카드. 모든 페이지에서 같은 자리를 비워 두어 지도 범위가 변하지 않는다
@@ -43,16 +43,25 @@ export function calloutScene(model: CalloutModel, kind: CalloutFrameKind, W: num
   const boardCapacity = !detail && !strip ? Math.min(BOARD_TOP, capacityOf(frame.left, frame) + capacityOf(frame.right, frame)) : BOARD_TOP;
   const numbered = detail ? candidates : candidates.slice(0, boardCapacity);
   const withCards = page !== 0 || !detail ? numbered : [];
-  const vp = framedViewport(model.center, model.radiusM, W, H, frame.siteX, frame.fill, siteY);
+  const baseVp = framedViewport(model.center, model.radiusM, W, H, frame.siteX, frame.fill, siteY);
+  const vp = applyView(baseVp, model.center[1], view);
   const proj = makeProjector(vp);
   const hMax = Math.max(0, ...model.complexes.map((c) => c.households ?? 0));
   const pos = new Map(model.complexes.map((c) => [c.id, proj(c.lng, c.lat)]));
+  const visible = (items: readonly typeof model.complexes[number][]) => view
+    ? items.filter((complex) => {
+        const point = pos.get(complex.id);
+        return point && point[0] >= 0 && point[0] <= W && point[1] >= 0 && point[1] <= H;
+      })
+    : [...items];
+  const visibleNumbered = visible(numbered);
+  const visibleWithCards = visible(withCards);
   const otherPts = model.others.map((o) => proj(o.lng, o.lat));
   const { placed, overflow } = strip
       ? { placed: [] as Placed[], overflow: [] as string[] } // 띠 모드: 지시선 없음
       : layoutCallouts(
           frame,
-          withCards.map((c) => ({ id: c.id, rank: c.rank, x: pos.get(c.id)![0], y: pos.get(c.id)![1] })),
+          visibleWithCards.map((c) => ({ id: c.id, rank: c.rank, x: pos.get(c.id)![0], y: pos.get(c.id)![1] })),
         );
-  return { frame, pos, otherPts, hMax, placed, overflow, numbered, withCards, panel, siteY, strip, stripTop };
+  return { frame, pos, otherPts, hMax, placed, overflow, numbered: visibleNumbered, withCards: visibleWithCards, panel, siteY, strip, stripTop };
 }
