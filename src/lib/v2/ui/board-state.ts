@@ -879,7 +879,3 @@ export function reportPages(s: BoardState, complexCounts: Record<string, number>
 
 // ── 분석 중 데모: 0.3초마다 step이 1씩 늘고, 타일은 대기 → 계산 중 → 끝 순서로 바뀐다 ──
 export type DemoPhase = "pending" | "running" | "done";
-export function demoPhase(index: number, step: number): DemoPhase {
-  return step <= index ? "pending" : step === index + 1 ? "running" : "done";
-}
-export const demoFinished = (total: number, step: number) => Math.max(0, Math.min(total, step - 1));

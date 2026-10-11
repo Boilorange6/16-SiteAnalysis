@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 
 const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");
-const { initBoard, boardReducer, reportPages, demoPhase, demoFinished, serializeBoardState, restoreBoardState, migrateSnapshot, TILE_CODE_RENAMES } = await import("../../lib/v2/ui/board-state.ts");
+const { initBoard, boardReducer, reportPages, serializeBoardState, restoreBoardState, migrateSnapshot, TILE_CODE_RENAMES } = await import("../../lib/v2/ui/board-state.ts");
 const { TILE_CODES, TILE_PRESETS, PRESET_IDS, DEFAULT_PRESET_ID } = await import("../../lib/v2/ui/tile-catalog.ts");
 
 const ids = GODEOK_RESULTS.map((r) => r.tileId);
@@ -287,12 +287,6 @@ assert.deepEqual(reportPages(s), { tiles: 9, pages: 12 }); // 포함·면 설정
   assert.equal(snapshot.layers["t-A02"], "school_zone");
   assert.deepEqual(restoreBoardState(GODEOK_RESULTS, snapshot).layers, snapshot.layers, "레이어 저장→불러오기 왕복");
 }
-
-// 데모
-assert.deepEqual([0, 1, 2, 3].map((st) => demoPhase(1, st)), ["pending", "pending", "running", "done"]);
-assert.equal(demoFinished(10, 0), 0);
-assert.equal(demoFinished(10, 8), 7);
-assert.equal(demoFinished(10, 99), 10);
 
 // A05 필터는 결과와 분리된 보드 설정으로 저장·복원되고, 필드가 없던 옛 저장본도 연다.
 {

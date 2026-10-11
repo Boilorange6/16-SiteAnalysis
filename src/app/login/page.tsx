@@ -19,7 +19,9 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(username, password);
-      router.push("/");
+      // 같은 앱 내부 경로만 허용 (외부 주소로 튕기는 open redirect 방지)
+      const next = new URLSearchParams(window.location.search).get("next");
+      router.push(next && /^\/(?![/\\])/.test(next) ? next : "/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "로그인 실패");
     } finally {
