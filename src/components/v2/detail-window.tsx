@@ -47,7 +47,8 @@ const DETAIL_WINDOW_CSS = `
 .detail-map-canvas { position: absolute; inset: 0; transform-origin: 50% 50%; will-change: transform; }
 .detail-map-canvas svg { width: 100%; height: 100%; }
 .detail-map-hint { position: absolute; z-index: 4; bottom: 14px; left: 14px; max-width: min(280px, calc(100% - 110px)); padding: 8px 10px; border: 1px solid rgba(214,218,224,.82); border-radius: 8px; background: rgba(255,255,255,.9); color: #454a55; font-size: 12px; line-height: 1.35; pointer-events: none; }
-.detail-map-controls { right: 14px; bottom: 14px; }
+.detail-map-controls { right: 20px; top: 58px; bottom: auto; }
+.detail-map-controls button[data-map-control="reset"] { font-size: 12px; }
 .detail-map-controls button { border: 0; background: transparent; box-shadow: none; font-size: 22px; line-height: 1; }
 .detail-map-controls button:hover { background: transparent; }
 .detail-fullscreen-control { position: relative; display: grid; width: 44px; height: 44px; place-items: center; padding: 6px; border-radius: 9px; }
@@ -130,7 +131,7 @@ const DETAIL_WINDOW_CSS = `
   .detail-map-panel { padding: 8px 8px 6px; }
   .detail-map-viewport { min-height: 0; border-radius: 10px; }
   .detail-map-hint { top: auto; bottom: 10px; left: 10px; max-width: 190px; padding: 6px 8px; font-size: 11px; }
-  .detail-map-controls { right: 10px; bottom: 10px; gap: 6px; }
+  .detail-map-controls { right: 38px; top: 58px; bottom: auto; gap: 6px; }
   .detail-panel { padding: 8px; border-top: 1px solid #dfe2e7; border-left: 0; }
   .detail-card { padding: 14px 14px 13px; border-radius: 12px; }
   .detail-card h3 { font-size: 21px; }
@@ -460,7 +461,7 @@ export default function DetailWindow({ view, layer, onLayer, onClose }: DetailWi
                   />
                 </div>
                 <p className="detail-map-hint">지물을 선택하면 선택 카드와 지도가 함께 갱신됩니다.<br />휠 확대 · 드래그 이동</p>
-                <MapControls controller={mapController} disabled={!mapInteractive} className="detail-map-controls">
+                <MapControls controller={mapController} disabled={!mapInteractive} className="detail-map-controls" resetVariant="label">
                   <button type="button" className="detail-fullscreen-control" onClick={() => void toggleFullscreen()} aria-label={fullscreen ? "전체화면 닫기" : "지도 전체화면"} title={fullscreen ? "전체화면 닫기" : "지도 전체화면"}><span aria-hidden="true">{fullscreen ? "↙" : "↗"}</span></button>
                 </MapControls>
                 {path.length >= 2 && <span className="detail-map-status" role="status">선택 경로 · 보행망 결과</span>}

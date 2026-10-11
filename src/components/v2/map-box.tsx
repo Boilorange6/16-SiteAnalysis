@@ -263,6 +263,7 @@ function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, mapInteract
             siteX={typeof siteX === "function" ? siteX(size.w) : siteX}
             rightInset={typeof rightInset === "function" ? rightInset(size.w) : rightInset}
             {...opts}
+            scaleLeft={pad !== undefined || !!opts.scaleLeft}
             view={controller.view}
             dragging={controller.dragging}
             highlightLabel={activeHighlight}
@@ -276,7 +277,7 @@ function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, mapInteract
           />
         </div>
       )}
-      {size && near && <MapControls controller={controller} disabled={!mapInteractive || !!opts.muted} />}
+      {size && near && <MapControls controller={controller} disabled={!mapInteractive || !!opts.muted} className={pad !== undefined ? styles.mapControlsCard : styles.mapControlsExpanded} resetVariant={pad !== undefined ? "icon" : "label"} />}
       {size && near && scale && scale.meters >= 1000 && opts.legend !== false && (
         <span aria-label={`지도 축척 ${scale.label}`} style={{ position: "absolute", zIndex: 3, top: 44, right: 8, padding: "4px 7px", borderRadius: 999, background: "rgba(255,255,255,.92)", color: "#16181d", fontSize: 10, lineHeight: 1.2, fontWeight: 700, boxShadow: "0 1px 3px rgba(21,23,28,.12)" }}>
           축척 {scale.label}
