@@ -387,7 +387,9 @@ type TileCardRenderProps = TileCardBaseProps & {
   onSetAllLabels: (on: boolean) => void;
 };
 
-const INTERACTIVE = "button,input,label,a,select,[data-handle],[role=menu],[data-map-feature],[data-map-legend]";
+// 지도 컨트롤이 시점 초기화로 즉시 사라질 때 클릭 대상이 뷰포트로
+// 재조정되어도 카드 펼침으로 전파되지 않게 한다.
+const INTERACTIVE = "button,input,label,a,select,[data-handle],[role=menu],[data-map-feature],[data-map-legend],[data-map-viewport]";
 
 const Svg = ({ children, size = 16, fill }: { children: ReactNode; size?: number; fill?: boolean }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill={fill ? "currentColor" : "none"} stroke={fill ? "none" : "currentColor"} strokeWidth={2.3} strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
