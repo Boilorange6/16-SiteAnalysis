@@ -62,6 +62,8 @@ const MapFeatureSchema = z.object({
   sublabel: z.string().nullable().optional(),
   /** 자동 라벨 노출 등급: 0은 자동 숨김, 1·2는 우선순위. */
   labelPriority: z.number().int().min(0).max(2).optional(),
+  /** 역 출입구처럼 지물별로 원천 색을 덧씌울 때 쓰는 선택 색. */
+  color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   /** 짧은 표식. 색만으로 뜻을 구분하지 않도록 텍스트를 함께 그린다. */
   badges: z.array(z.object({ text: z.string().min(1).max(4), color: z.string().regex(/^#[0-9A-Fa-f]{6}$/) })).max(4).optional(),
   type: z.string().nullable().optional(),

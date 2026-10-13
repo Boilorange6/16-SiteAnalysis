@@ -7,12 +7,11 @@ import { candidate, fmt, hitPoint, lineCandidate, makeTile, missing, nearestHit,
 import { clipLineToCircle, linePathLength } from "../../engine/tiles/geo";
 import { walkField, walkSources, type WalkField, type WalkRoute } from "../../engine/tiles/walk-shared";
 import { formatDistanceM } from "../../ui/tile-view";
+import { DEFAULT_RAIL_COLOR, hexColor, publicRailLine, railEntranceColor, railLineMemberships } from "../rail-presentation";
 import {
-  isPublicSubwayLineRef,
   representativeSubwayLineCandidates,
   subwayLineColor,
   subwayLineGroupKey,
-  subwayLineLabelText,
   subwayStationDisplayName,
 } from "../../../osm-subway-overlay";
 
@@ -152,39 +151,8 @@ function entranceStationName(hit: FeatureHit): string | null {
   return text(hit.properties.stationName);
 }
 
-function publicRailLine(ref: string | null, lineName: string | null): boolean {
-  const label = subwayLineLabelText(ref ?? undefined, lineName ?? undefined);
-  const numberRef = label.match(/^([1-9])호선$/u)?.[1];
-  return isPublicSubwayLineRef(ref ?? undefined) || isPublicSubwayLineRef(numberRef) || isPublicSubwayLineRef(label);
-}
-
-function railLineMemberships(hit: FeatureHit): Array<{ label: string; color: string }> {
-  const refs = Array.isArray(hit.properties.lineRefs) ? hit.properties.lineRefs : [];
-  const names = Array.isArray(hit.properties.lineNames) ? hit.properties.lineNames : [];
-  const colors = Array.isArray(hit.properties.lineColors) ? hit.properties.lineColors : [];
-  const memberships: Array<{ label: string; color: string }> = [];
-  const seen = new Set<string>();
-  for (let index = 0; index < Math.max(refs.length, names.length); index += 1) {
-    const ref = text(refs[index]) ?? text(names[index]);
-    const lineName = text(names[index]);
-    if (!publicRailLine(ref, lineName)) continue;
-    const label = subwayLineLabelText(ref ?? undefined, lineName ?? undefined);
-    if (!label || seen.has(label)) continue;
-    seen.add(label);
-    const color = hexColor(colors[index]);
-    memberships.push({ label, color: color ? subwayLineColor(color) : DEFAULT_RAIL_COLOR });
-  }
-  return memberships;
-}
-
 function railLineNames(hit: FeatureHit): string[] {
   return railLineMemberships(hit).map((membership) => membership.label);
-}
-
-const DEFAULT_RAIL_COLOR = "#1F5FA8";
-
-function hexColor(value: unknown): string | null {
-  return typeof value === "string" && /^#[0-9A-Fa-f]{6}$/.test(value.trim()) ? value.trim() : null;
 }
 
 function railBadgeText(name: string): string {
@@ -215,11 +183,6 @@ function entranceDisplayName(hit: FeatureHit): string | null {
   const displayStation = station ? subwayStationDisplayName(station) : null;
   if (displayStation && number) return `${displayStation} ${number}번 출구`;
   return displayStation && sourceName ? `${displayStation} ${sourceName}` : displayStation ?? sourceName;
-}
-
-function entranceBadges(hit: FeatureHit): Array<{ text: string; color: string }> {
-  const number = entranceNumber(hit);
-  return number ? [{ text: number.slice(0, 4), color: "#FFFFFF" }] : [];
 }
 
 function railSummaryDetail(station: RailStation): string | null {
@@ -360,12 +323,13 @@ export function a01(ctx: EngineContext): TileResult {
     }
     for (const entrance of entranceHits) {
       const isNearest = entrance.featureId === nearFeatureId;
+      const color = railEntranceColor(entrance, stationHits);
       map.push(candidate(entrance, "rail_entrance", {
         name: entranceDisplayName(entrance),
         highlight: isNearest,
         sublabel: isNearest ? distanceSublabel(railM) : null,
         labelPriority: isNearest ? 2 : 0,
-        badges: entranceBadges(entrance),
+        ...(color ? { color } : {}),
       }));
     }
     for (const source of representativeRailLineSources) {
