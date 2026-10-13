@@ -270,11 +270,12 @@ export function StatusPlate({ view, phase, onRetry, waitingNote }: { view: TileV
 /** 전면 시각물: 타일 소유 stage 또는 지도(또는 흐린 대지 지도, 또는 D04 구성비 차트). */
 type StageProps = Omit<TileStageProps, "displayView" | "label">;
 
-export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, page, onPage, cut, roseSeason = "annual", pinnedKeys = [], hoverKey = null, emphasisKey = null, onFeaturePin, showLegendStrip = true }: StageProps) {
+export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, page, onPage, cut, roseSeason = "annual", pinnedKeys = [], hoverKey = null, emphasisKey = null, onFeaturePin, showMapLabels }: StageProps) {
   const selectedCut = normalizedCut(view, cut);
   const displayView = selectedCut ? viewForCut(view, selectedCut) : view;
   if (chart) return <FaceChart view={view} />;
   const card = frame === "card";
+  const showLabels = showMapLabels ?? !card;
   const label = `${view.title} 지도`;
   const mapZoom = catalogEntry(view.code).mapZoom;
   const mapInteractive = !state && view.code !== "S01" && view.code !== "D22" && (frame !== "card" || mapZoom?.card !== false);
@@ -282,14 +283,14 @@ export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, p
   const mapTouchPan = card ? "two" as const : "one" as const;
   if (state) return <MapBox model={displayView.backdrop} muted legend={false} north={false} scale={false} credit={false} label={label} siteX={siteX} mapInteractive={false} />;
   const TileStage = stageFor(view.code, displayView);
-  if (TileStage) return <TileStage view={view} displayView={displayView} state={state} chart={chart} frame={frame} label={label} page={page} onPage={onPage} cut={selectedCut} roseSeason={roseSeason} siteX={siteX} rightInset={rightInset} legendY={legendY} pinnedKeys={pinnedKeys} hoverKey={hoverKey} emphasisKey={emphasisKey} onFeaturePin={onFeaturePin} mapInteractive={mapInteractive} mapWheel={mapWheel} mapTouchPan={mapTouchPan} mapResetKey={view.tileId} showLegendStrip={showLegendStrip} />;
+  if (TileStage) return <TileStage view={view} displayView={displayView} state={state} chart={chart} frame={frame} label={label} page={page} onPage={onPage} cut={selectedCut} roseSeason={roseSeason} siteX={siteX} rightInset={rightInset} legendY={legendY} pinnedKeys={pinnedKeys} hoverKey={hoverKey} emphasisKey={emphasisKey} onFeaturePin={onFeaturePin} mapInteractive={mapInteractive} mapWheel={mapWheel} mapTouchPan={mapTouchPan} mapResetKey={view.tileId} showMapLabels={showLabels} />;
   return (
     <MapBox
       model={displayView.map ?? displayView.backdrop}
       label={label}
-      // 펼침·상세·발표는 지도 밖 공용 범례 띠를 쓴다. 카드는 메뉴 토글로 선택한다.
+      // 모든 지도 면은 지도 밖 공용 범례 띠를 쓴다.
       legend={false}
-      showLegendStrip={showLegendStrip}
+      showAutomaticLabels={showLabels}
       legendY={legendY}
       north={22}
       credit={false}
@@ -306,7 +307,7 @@ export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, p
         const inset = typeof rightInset === "function" ? rightInset(w) : (rightInset ?? 0);
         // 카드: 지도 위에는 북쪽(오른쪽 위)·레이어 칩(왼쪽 위)·축척(오른쪽 아래).
         const reserved = card
-          ? [{ x0: w - 44, y0: 0, x1: w, y1: 44 }, { x0: 0, y0: 0, x1: Math.max(0, w - 56), y1: 48 }, ...(showLegendStrip ? [{ x0: 0, y0: h - 34, x1: w, y1: h }] : [])]
+          ? [{ x0: w - 44, y0: 0, x1: w, y1: 44 }, { x0: 0, y0: 0, x1: Math.max(0, w - 56), y1: 48 }, { x0: 0, y0: h - 34, x1: w, y1: h }]
           : cardReserved(w, h, { valueH: 0, right: 0 });
         return [...reserved, ...(inset ? [{ x0: w - inset, y0: 0, x1: w, y1: h }] : [])];
       }}
@@ -342,8 +343,8 @@ type TileCardBaseProps = {
   sheetable?: boolean;
   sheetSelected?: boolean;
   pinnedLabels: PinnedLabel[];
-  /** 카드 지도 범례 띠 표시 상태. 누락된 옛 저장본은 false로 읽는다. */
-  showMapLegend: boolean;
+  /** 카드 지도 자동 라벨 표시 상태. 누락된 옛 저장본은 false로 읽는다. */
+  showMapLabels: boolean;
   rovingTabIndex: number;
   onRovingFocus: (id: string) => void;
   onRovingMove: (id: string, key: string, event: KeyboardEvent<HTMLElement>) => void;
@@ -363,7 +364,7 @@ export type TileCardAction =
   | { type: "retry" }
   | { type: "toggleLabel"; key: string }
   | { type: "setAllLabels"; on: boolean }
-  | { type: "mapLegend"; show: boolean }
+  | { type: "mapLabels"; show: boolean }
   | { type: "stackToggle"; selected: boolean }
   | { type: "unstack" }
   | { type: "sheetToggle"; selected: boolean }
@@ -393,7 +394,7 @@ type TileCardRenderProps = TileCardBaseProps & {
   onUnsheet?: () => void;
   onToggleLabel: (key: string) => void;
   onSetAllLabels: (on: boolean) => void;
-  onMapLegend: (show: boolean) => void;
+  onMapLabels: (show: boolean) => void;
 };
 
 // 지도 컨트롤이 시점 초기화로 즉시 사라질 때 클릭 대상이 뷰포트로
@@ -407,7 +408,7 @@ const Svg = ({ children, size = 16, fill }: { children: ReactNode; size?: number
 );
 
 /** ⋯ 더 보기: 상세 보기 · 지도에 보기(도판/구성비) · 보고서에 넣을 그림(도판/구성비/둘 다). Esc·바깥 누름·Tab으로 닫히고 닫힐 때 ⋯ 버튼으로 포커스가 돌아온다. */
-function MoreMenu({ view, active, back, onBack, face, onFace, onDetail, onDuplicate, pinnedCount, onSetAllLabels, compact, detailOnly, triggerClass }: { view: TileView; active: boolean; back: boolean; onBack: (v: boolean) => void; face: OutputFace; onFace: (f: OutputFace) => void; onDetail?: () => void; onDuplicate?: () => void; pinnedCount: number; onSetAllLabels?: (on: boolean) => void; compact?: { included: boolean; onInclude: (v: boolean) => void; onOpen: () => void; showLegend: boolean; onShowLegend: (show: boolean) => void }; detailOnly?: boolean; triggerClass?: string }) {
+function MoreMenu({ view, active, back, onBack, face, onFace, onDetail, onDuplicate, pinnedCount, onSetAllLabels, compact, detailOnly, triggerClass }: { view: TileView; active: boolean; back: boolean; onBack: (v: boolean) => void; face: OutputFace; onFace: (f: OutputFace) => void; onDetail?: () => void; onDuplicate?: () => void; pinnedCount: number; onSetAllLabels?: (on: boolean) => void; compact?: { included: boolean; onInclude: (v: boolean) => void; onOpen: () => void; showLabels: boolean; onShowLabels: (show: boolean) => void }; detailOnly?: boolean; triggerClass?: string }) {
   const [open, setOpen] = useState(false);
   const trigRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -505,8 +506,8 @@ function MoreMenu({ view, active, back, onBack, face, onFace, onDetail, onDuplic
         >
           {compact && (
             <>
-              <button type="button" role="menuitemcheckbox" aria-checked={compact.showLegend} className={`${styles.mfMenuItem} ${styles.mfMenuLegend}`} onClick={() => compact.onShowLegend(!compact.showLegend)}>
-                범례 보기<span>{compact.showLegend ? "표시" : "숨김"}</span>
+              <button type="button" role="menuitemcheckbox" aria-checked={compact.showLabels} className={`${styles.mfMenuItem} ${styles.mfMenuLegend}`} onClick={() => compact.onShowLabels(!compact.showLabels)}>
+                라벨 보기<span>{compact.showLabels ? "표시" : "숨김"}</span>
               </button>
               <button type="button" role="menuitemcheckbox" aria-checked={compact.included} className={`${styles.mfMenuItem} ${styles.mfMenuCompact}`} onClick={() => compact.onInclude(!compact.included)}>
                 보고서에 포함<span>{compact.included ? "포함" : "제외"}</span>
@@ -619,7 +620,7 @@ function MapFace({ p, active, state, back, onBack, onFlip, onDetail, mapReady }:
           </Svg>
         </button>
         {FaceExtra && <FaceExtra view={view} cut={cut} state={state} placement="header" onCut={p.onCut} onOpen={p.onOpen} />}
-        <MoreMenu view={view} active={active} back={back} onBack={onBack} face={p.face} onFace={p.onFace} onDetail={onDetail} onDuplicate={p.onDuplicate} pinnedCount={pinnedCount} onSetAllLabels={labelEntries.length > 0 ? p.onSetAllLabels : undefined} compact={{ included: p.included, onInclude: p.onInclude, onOpen: p.onOpen, showLegend: p.showMapLegend, onShowLegend: p.onMapLegend }} />
+        <MoreMenu view={view} active={active} back={back} onBack={onBack} face={p.face} onFace={p.onFace} onDetail={onDetail} onDuplicate={p.onDuplicate} pinnedCount={pinnedCount} onSetAllLabels={labelEntries.length > 0 ? p.onSetAllLabels : undefined} compact={{ included: p.included, onInclude: p.onInclude, onOpen: p.onOpen, showLabels: p.showMapLabels, onShowLabels: p.onMapLabels }} />
         <button type="button" className={styles.mfBtn} data-card-face-button="summary" onClick={onFlip} aria-pressed aria-label={`${view.title} 요약/지도 보기 전환`} title="요약 보기">
           <Svg size={15}>
             <path d="M3 12a9 9 0 1 0 3-6.7" />
@@ -644,7 +645,7 @@ function MapFace({ p, active, state, back, onBack, onFlip, onDetail, mapReady }:
           </div>
         )}
         <div className={styles.stage} aria-hidden={!mapReady || undefined}>
-          {mapReady && <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="card" cut={cut} pinnedKeys={pinnedKeys} onFeaturePin={onFeaturePin} showLegendStrip={p.showMapLegend} />}
+          {mapReady && <Stage view={view} state={state} chart={view.hasFace && back && !state} frame="card" cut={cut} pinnedKeys={pinnedKeys} onFeaturePin={onFeaturePin} showMapLabels={p.showMapLabels} />}
         </div>
       </div>
       <footer className={styles.mfFoot} title={text}>
@@ -711,7 +712,7 @@ function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardRende
               </button>
             )}
             {!p.editing && (
-              <MoreMenu view={view} active back={false} onBack={() => {}} face={p.face} onFace={p.onFace} onDetail={onDetail} onDuplicate={p.onDuplicate} pinnedCount={0} detailOnly triggerClass={styles.sfMore} compact={{ included: p.included, onInclude: p.onInclude, onOpen: p.onOpen, showLegend: p.showMapLegend, onShowLegend: p.onMapLegend }} />
+              <MoreMenu view={view} active back={false} onBack={() => {}} face={p.face} onFace={p.onFace} onDetail={onDetail} onDuplicate={p.onDuplicate} pinnedCount={0} detailOnly triggerClass={styles.sfMore} compact={{ included: p.included, onInclude: p.onInclude, onOpen: p.onOpen, showLabels: p.showMapLabels, onShowLabels: p.onMapLabels }} />
             )}
           </>
         )}
@@ -843,7 +844,7 @@ function TileCard(p: TileCardProps) {
   const onRetry = useCallback(() => p.onAction(id, { type: "retry" }), [id, p.onAction]);
   const onToggleLabel = useCallback((key: string) => p.onAction(id, { type: "toggleLabel", key }), [id, p.onAction]);
   const onSetAllLabels = useCallback((on: boolean) => p.onAction(id, { type: "setAllLabels", on }), [id, p.onAction]);
-  const onMapLegend = useCallback((show: boolean) => p.onAction(id, { type: "mapLegend", show }), [id, p.onAction]);
+  const onMapLabels = useCallback((show: boolean) => p.onAction(id, { type: "mapLabels", show }), [id, p.onAction]);
   const onStackToggle = useCallback((selected: boolean) => p.onAction(id, { type: "stackToggle", selected }), [id, p.onAction]);
   const onUnstack = useCallback(() => p.onAction(id, { type: "unstack" }), [id, p.onAction]);
   const onSheetToggle = useCallback((selected: boolean) => p.onAction(id, { type: "sheetToggle", selected }), [id, p.onAction]);
@@ -867,7 +868,7 @@ function TileCard(p: TileCardProps) {
     onUnsheet,
     onToggleLabel,
     onSetAllLabels,
-    onMapLegend,
+    onMapLabels,
   };
   const cls = [styles.tile, p.size === 2 && styles.span2, p.size === 4 && styles.span4, p.editing && styles.tileEdit, p.dragging && styles.tileDrag, state && styles.tileState, !waiting && view.status === "failed" && styles.tileFail]
     .filter(Boolean)

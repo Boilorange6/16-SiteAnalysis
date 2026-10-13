@@ -23,6 +23,7 @@ const { a03 } = await import("../../lib/v2/tile/a03/engine.ts");
 const { a04 } = await import("../../lib/v2/tile/a04/engine.ts");
 const { a05 } = await import("../../lib/v2/tile/a05/engine.ts");
 const { a06 } = await import("../../lib/v2/tile/a06/engine.ts");
+const { calloutScene } = await import("../../lib/v2/ui/callout-scene.ts");
 const { labelBoxesOverlap } = await import("../../lib/v2/ui/map-labels.ts");
 const { default: MapFigure, mapFeatureKey, mapLabelEntries, mapLabelText, mapCalloutTextLayout } = await import("../../components/v2/map-figure.tsx");
 
@@ -196,6 +197,34 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   assert.match(html, /\/site\/api\/v2\/tiles\/white\//);
   assert.ok(!/openstreetmap|api\.vworld\.kr/.test(html), "바깥 주소 없음");
   assert.match(html, /© VWorld\(국토교통부\)/);
+  assert.match(html, /data-map-label-variant="auto"/, "상세/PPT 기본 지도는 자동 라벨을 표시");
+  const labelModel = {
+    ...model,
+    tileCode: undefined,
+    features: [
+      { layer: "bus_stop", lng: model.center[0], lat: model.center[1], name: "자동 정류장", labelPriority: 1 },
+      { layer: "bus_stop", lng: model.center[0] + 0.001, lat: model.center[1] + 0.001, name: "고정 정류장", labelPriority: 1 },
+    ],
+    polygons: [],
+    lines: [],
+    total: 2,
+  };
+  const labelEntries = mapLabelEntries(labelModel);
+  const hiddenCard = renderToStaticMarkup(createElement(MapFigure, {
+    model: labelModel,
+    width: 320,
+    height: 200,
+    basemap: "none",
+    showAutomaticLabels: false,
+    pinnedKeys: [labelEntries[1].key],
+    hoverKey: labelEntries[0].key,
+    onFeaturePin: () => {},
+  }));
+  assert.doesNotMatch(hiddenCard, /data-map-label-variant="auto"/, "축소 카드 기본 상태는 자동 라벨을 숨김");
+  assert.match(hiddenCard, /data-map-label-variant="fixed"/, "축소 카드에서도 고정 라벨은 표시");
+  assert.match(hiddenCard, /data-map-label-variant="hover"/, "축소 카드에서도 호버 라벨은 표시");
+  const shownCard = renderToStaticMarkup(createElement(MapFigure, { model: labelModel, width: 320, height: 200, basemap: "none", showAutomaticLabels: true }));
+  assert.match(shownCard, /data-map-label-variant="auto"/, "라벨 토글을 켜면 자동 라벨을 표시");
   const sat = renderToStaticMarkup(createElement(MapFigure, { model, width: 640, height: 360, layer: "Satellite" }));
   assert.ok(/tiles\/Satellite\//.test(sat) && /tiles\/Hybrid\//.test(sat), "항공 = 위성 + 글자");
   assert.match(html, /직선 340m/);
@@ -371,6 +400,21 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   assert.equal(new Set(sameFidEntries.map((entry) => entry.key)).size, sameFidEntries.length, "대표 점·폴리곤 키 충돌 없음");
   assert.match(sameFidEntries[0].key, /^bldg_1990s\\|same-building$/);
   assert.match(sameFidEntries[1].key, /^polygon\\|bldg_1990s\\|same-building$/);
+}
+
+// ── A05/A06 축소 카드: 자동 말풍선·지시선 없이 점을 넓은 지도에 남긴다 ──
+{
+  for (const code of ["A05", "A06"]) {
+    const view = toTileView(GODEOK_RESULTS.find((result) => result.tileCode === code));
+    assert.ok(view.callout, `${code} 설명선 모델`);
+    const labeled = calloutScene(view.callout, "card", 420, 220, 0, 0, undefined, true);
+    const hidden = calloutScene(view.callout, "card", 420, 220, 0, 0, undefined, false);
+    assert.equal(hidden.frame.left.x0, hidden.frame.left.x1, `${code} 라벨 숨김은 좌측 말풍선 칸을 제거`);
+    assert.equal(hidden.frame.right.x0, hidden.frame.right.x1, `${code} 라벨 숨김은 우측 말풍선 칸을 제거`);
+    assert.equal(hidden.frame.siteX, 0.5, `${code} 라벨 숨김 지도는 중앙 정렬`);
+    assert.ok(hidden.frame.diameter >= labeled.frame.diameter, `${code} 라벨 숨김 지도 영역을 회복`);
+    assert.ok(hidden.numbered.length > 0, `${code} 라벨 숨김에도 점 마커 유지`);
+  }
 }
 
 // ── PPT: 지도 이미지 자리 ──

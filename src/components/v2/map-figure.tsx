@@ -76,6 +76,8 @@ export type MapFigureProps = {
   emphasisKey?: string | null;
   /** 지도에 남길 고정 라벨 키. */
   pinnedKeys?: readonly string[];
+  /** 자동 라벨·말풍선·지시선을 표시한다. 생략하면 상세/PPT 호환을 위해 표시한다. */
+  showAutomaticLabels?: boolean;
   /** 요소 포인터 호버. 터치 포인터에서는 호출하지 않는다. */
   onFeatureHover?: (key: string | null) => void;
   /** 요소 클릭/키보드 선택에 따른 라벨 고정 토글. */
@@ -334,7 +336,7 @@ function backgroundTransform(from: Viewport, to: Viewport, width: number, height
   return `matrix(${scale},0,0,${scale},${e},${f})`;
 }
 
-function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, fixed, label, legend, legendY, north: northOpt, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, selectedFids = [], highlightLabel = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = [], onFeatureClick, onFeatureHover, onFeaturePin, onLegendHover, onLegendPin, path = [], onMapClick, view, dragging = false }: MapFigureProps) {
+function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, fixed, label, legend, legendY, north: northOpt, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, selectedFids = [], highlightLabel = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = [], showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeaturePin, onLegendHover, onLegendPin, path = [], onMapClick, view, dragging = false }: MapFigureProps) {
   const rasterModel = model as RasterPresentationModel;
   const activeLayer = model.basemap ?? layer;
   const sat = activeLayer === "Satellite";
@@ -890,7 +892,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     const pinnedLabels = pinnedKeys.map((key) => labelByKey.get(key)).filter((entry): entry is ScreenLabel => !!entry);
     const pinnedSet = new Set(pinnedLabels.map((entry) => entry.key));
     const hoverLabel = hoverKey && !pinned.has(hoverKey) ? labelByKey.get(hoverKey) : undefined;
-    const automatic = (model.tileCode ? tileClientModuleFor(model.tileCode)?.autoLabels !== false : true)
+    const automatic = showAutomaticLabels && (model.tileCode ? tileClientModuleFor(model.tileCode)?.autoLabels !== false : true)
       ? selectAutomaticLabels(screenLabels).filter((entry) => !pinnedSet.has(entry.key) && entry.key !== hoverLabel?.key)
       : [];
     const candidates = [

@@ -10,7 +10,7 @@ const PILL_H = 32;
 
 export type CalloutFrameKind = "card" | "detail";
 
-export function calloutScene(model: CalloutModel, kind: CalloutFrameKind, W: number, H: number, page: number, sourceInset: number = OV.stripH, view?: MapView) {
+export function calloutScene(model: CalloutModel, kind: CalloutFrameKind, W: number, H: number, page: number, sourceInset: number = OV.stripH, view?: MapView, showMapLabels = true) {
   const detail = kind === "detail";
   const mobile = isMobileWidth(W);
   // 모바일 펼침: 좌우 칸 대신 지도 아래(시트 위)에 가로 띠 카드. 모든 페이지에서 같은 자리를 비워 두어 지도 범위가 변하지 않는다
@@ -35,12 +35,22 @@ export function calloutScene(model: CalloutModel, kind: CalloutFrameKind, W: num
   const fullFits = detail && !mobile && (bottom - top + m.gap) >= perSide * (cardHeight(m, "full", rows, fullNameWrap) + m.gap) - 1e-6;
   const variant = fullFits ? "full" : "compact";
   const compactNameWrap = !strip && variant === "compact" && candidateCards.some((c) => compactNameNeedsExtraHeight(c, model.complexes, cardWidth(m, variant, W)));
-  const frame: CalloutFrame = strip
+  const labeledFrame: CalloutFrame = strip
     ? stripFrame(W, H, m, top, bottom)
     : calloutFrame({ ...spec, variant, compactNameWrap });
+  // 카드에서 자동 말풍선을 끄면 좌우 라벨 칸 없이 지도 프레임을 다시 잡는다.
+  const fullMapFrame = stripFrame(W, H, m, top, bottom);
+  const frame: CalloutFrame = showMapLabels
+    ? labeledFrame
+    : {
+        ...fullMapFrame,
+        // 라벨 칸을 제거할 때 기존 중앙 원보다 작아지지 않도록 한다.
+        diameter: Math.max(fullMapFrame.diameter, labeledFrame.diameter),
+        fill: Math.max(fullMapFrame.fill, labeledFrame.fill),
+      };
   // 보드의 번호 점은 실제로 카드가 놓일 수 있는 수까지만 만든다. 그래야
   // 번호가 있는데 카드가 없는 점(특히 195px 높이 compact 프레임)이 남지 않는다.
-  const boardCapacity = !detail && !strip ? Math.min(BOARD_TOP, capacityOf(frame.left, frame) + capacityOf(frame.right, frame)) : BOARD_TOP;
+  const boardCapacity = !detail && !strip && showMapLabels ? Math.min(BOARD_TOP, capacityOf(frame.left, frame) + capacityOf(frame.right, frame)) : BOARD_TOP;
   const numbered = detail ? candidates : candidates.slice(0, boardCapacity);
   const withCards = page !== 0 || !detail ? numbered : [];
   const baseVp = framedViewport(model.center, model.radiusM, W, H, frame.siteX, frame.fill, siteY);
@@ -60,8 +70,8 @@ export function calloutScene(model: CalloutModel, kind: CalloutFrameKind, W: num
   const { placed, overflow } = strip
       ? { placed: [] as Placed[], overflow: [] as string[] } // 띠 모드: 지시선 없음
       : layoutCallouts(
-          frame,
+          labeledFrame,
           visibleWithCards.map((c) => ({ id: c.id, rank: c.rank, x: pos.get(c.id)![0], y: pos.get(c.id)![1] })),
         );
-  return { frame, pos, otherPts, hMax, placed, overflow, numbered: visibleNumbered, withCards: visibleWithCards, panel, siteY, strip, stripTop };
+  return { frame, labelFrame: labeledFrame, pos, otherPts, hMax, placed, overflow, numbered: visibleNumbered, withCards: visibleWithCards, panel, siteY, strip, stripTop };
 }

@@ -15,7 +15,7 @@ assert.match(tileCardSource, /document\.body/, "⋯ 메뉴 portal 대상은 body
 assert.match(tileCardSource, /floatingMenuPosition\(/, "⋯ 메뉴는 순수 viewport 위치 계산을 사용");
 assert.match(tileCardSource, /document\.addEventListener\("scroll", update, true\)/, "⋯ 메뉴는 스크롤 뒤 위치를 갱신");
 assert.match(tileCardSource, /window\.addEventListener\("resize", update\)/, "⋯ 메뉴는 리사이즈 뒤 위치를 갱신");
-for (const label of ["범례 보기", "보고서에 포함", "펼치기", "복제", "상세 보기"]) {
+for (const label of ["라벨 보기", "보고서에 포함", "펼치기", "복제", "상세 보기"]) {
   assert.match(tileCardSource, new RegExp(label), `⋯ 메뉴 항목 유지: ${label}`);
 }
 

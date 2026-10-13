@@ -265,20 +265,24 @@ assert.deepEqual(reportPages(s), { tiles: 9, pages: 12 }); // 포함·면 설정
   assert.equal(reportPages(boardReducer(b, { type: "callout", id: "t-A05", mode: "all" }), { "t-A05": 25 }).pages, reportPages(b).pages + 3);
 }
 
-// 카드 지도 범례 띠: 기본 숨김, 타일별 토글, 저장·복원 및 옛 저장본 호환.
+// 축소 카드 지도 라벨: 기본 숨김, 타일별 토글, 저장·복원·복제 및 옛 mapLegend 무시.
 {
   let b = initBoard(GODEOK_RESULTS);
-  assert.deepEqual(b.mapLegend, {}, "카드 범례는 기본 숨김");
-  b = boardReducer(b, { type: "mapLegend", id: "t-A01", show: true });
-  assert.equal(b.mapLegend["t-A01"], true);
+  assert.deepEqual(b.mapLabels, {}, "축소 카드 자동 라벨은 기본 숨김");
+  b = boardReducer(b, { type: "mapLabels", id: "t-A01", show: true });
+  assert.equal(b.mapLabels["t-A01"], true);
   const snapshot = serializeBoardState(b);
-  assert.equal(snapshot.mapLegend["t-A01"], true, "범례 토글은 스냅샷에 저장");
-  assert.deepEqual(restoreBoardState(GODEOK_RESULTS, snapshot).mapLegend, snapshot.mapLegend, "범례 토글 저장→복원 왕복");
-  const old = { ...snapshot };
-  delete old.mapLegend;
-  assert.deepEqual(restoreBoardState(GODEOK_RESULTS, old).mapLegend, {}, "범례 필드가 없는 옛 저장본은 숨김 기본값");
+  assert.equal(snapshot.mapLabels["t-A01"], true, "라벨 토글은 스냅샷에 저장");
+  assert.deepEqual(restoreBoardState(GODEOK_RESULTS, snapshot).mapLabels, snapshot.mapLabels, "라벨 토글 저장→복원 왕복");
+  const old = { ...snapshot, mapLegend: { "t-A01": true } };
+  delete old.mapLabels;
+  assert.deepEqual(restoreBoardState(GODEOK_RESULTS, old).mapLabels, {}, "옛 mapLegend 필드는 무시하고 라벨을 기본 숨김");
   b = boardReducer(b, { type: "duplicate", id: "t-A01" });
-  assert.equal(b.mapLegend["copy:1"], true, "타일 복제에도 범례 상태 유지");
+  assert.equal(b.mapLabels["copy:1"], true, "타일 복제에도 라벨 상태 유지");
+  b = boardReducer(b, { type: "remove", id: "copy:1" });
+  assert.equal(b.mapLabels["copy:1"], undefined, "타일 제거 시 라벨 상태도 제거");
+  b = boardReducer(b, { type: "undo" });
+  assert.equal(b.mapLabels["copy:1"], true, "타일 제거 되돌리기에서 라벨 상태 복원");
 }
 
 // S01 카메라 프리셋: 보드에 저장하지만 출력 면처럼 되돌리기에는 넣지 않고, 프리셋 밖 값은 무시한다.
@@ -347,6 +351,7 @@ assert.deepEqual(reportPages(s), { tiles: 9, pages: 12 }); // 포함·면 설정
     roseSeasons: { [oldId]: "summer" },
     labels: { [oldId]: [{ key: "bldg_2000s|b-1", on: true }] },
     layers: { [oldId]: "all" },
+    mapLabels: { [oldId]: true },
     mapLegend: { [oldId]: true },
     removed: [{ id: oldId, index: 2 }],
   };
@@ -355,7 +360,7 @@ assert.deepEqual(reportPages(s), { tiles: 9, pages: 12 }); // 포함·면 설정
   assert.equal(migrated.version, 3, "v1 snapshot is migrated to current version");
   assert.equal(migrated.columns, 4, "열 수가 없는 v1 snapshot은 4열로 이관");
   assert.deepEqual(migrated.order, [newId]);
-  for (const field of ["included", "faces", "callout", "a05Filter", "view", "sizes", "tileKinds", "cameras", "labels", "layers", "mapLegend"]) {
+  for (const field of ["included", "faces", "callout", "a05Filter", "view", "sizes", "tileKinds", "cameras", "labels", "layers", "mapLabels"]) {
     assert.ok(migrated[field][newId], `${field} id rewrite`);
   }
   assert.deepEqual(migrated.cuts["analysis-S02"], { tile: "S02", mode: "hours3", date: "winter" }, "옛 숫자 3컷을 S02 정시 3컷으로 이관");

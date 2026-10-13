@@ -11,7 +11,7 @@ const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");
 
 assert.match(calloutSource, /const controller = useMapView\(/, "CalloutMap은 공용 useMapView를 사용");
 assert.match(calloutSource, /<div \{\.\.\.controller\.bind\} ref=\{setViewportRef\}/, "CalloutMap 카드 지도에 입력 바인딩을 연결");
-assert.match(calloutSource, /calloutScene\(model, kind, size\.w, size\.h, page, 0, controller\.view\)/, "줌·팬 뷰로 설명선 장면을 재계산");
+assert.match(calloutSource, /calloutScene\(model, kind, size\.w, size\.h, page, 0, controller\.view, showMapLabels\)/, "줌·팬 뷰와 카드 라벨 상태로 설명선 장면을 재계산");
 assert.match(calloutSource, /!controller\.dragging && <polyline/, "제스처 중 설명선을 숨김");
 assert.match(tileCardSource, /const mapInteractive = !state && view\.code !== "S01" && view\.code !== "D22" && \(frame !== "card" \|\| mapZoom\?\.card !== false\)/, "카드 지도 상호작용은 타일 정책으로만 끔");
 
