@@ -52,18 +52,28 @@ const isLine = (g: unknown): g is Geometry => {
 
 /** 운영 역·출입구·노선. 역의 노선은 station_axes(역-노선 연결)에서 온다. */
 export async function buildOsmSubway(db: Db, snapshot: Json, releaseId: string, legalCodeOf: LegalCodeOf): Promise<SourceStats[]> {
-  const stationStats = new SourceStats("rail_station", releaseId, ["lineNames"]);
+  const stationStats = new SourceStats("rail_station", releaseId, ["lineNames", "stationAxes"]);
   const entranceStats = new SourceStats("rail_entrance", releaseId, []);
   const lineStats = new SourceStats("rail_line", releaseId, ["color"]);
 
   const linesByStation = new Map<string, Map<string, { ref: string; name: string; color: string | null }>>();
+  const axesByStation = new Map<string, Json[]>();
   for (const a of list(snapshot.station_axes)) {
     const id = str(a.station_osm_id);
     const ref = str(a.line_ref);
     if (!id || !ref) continue;
     const m = linesByStation.get(id) ?? new Map();
-    m.set(`${ref}|${str(a.line_name)}`, { ref, name: str(a.line_name) ?? ref, color: str(a.color) });
+    m.set(`${ref}|${str(a.line_name)}`, { ref, name: str(a.line_name) ?? ref, color: str(a.color) ?? str(a.colour) });
     linesByStation.set(id, m);
+    const endpoints = Array.isArray(a.endpoints) && a.endpoints.length === 2
+      && a.endpoints.every((point) => Array.isArray(point) && point.length >= 2 && inKorea(point[0], point[1]))
+      ? a.endpoints.map((point) => [point[0], point[1]])
+      : null;
+    if (endpoints) {
+      const axes = axesByStation.get(id) ?? [];
+      axes.push({ lineRef: ref, lineName: str(a.line_name), color: str(a.color), endpoints });
+      axesByStation.set(id, axes);
+    }
   }
 
   const seen = new Set<string>();
@@ -82,10 +92,12 @@ export async function buildOsmSubway(db: Db, snapshot: Json, releaseId: string, 
   await batched(db, list(snapshot.stations), (s) => {
     const id = str(s.osm_id);
     const lines = [...(id ? linesByStation.get(id)?.values() ?? [] : [])].sort((a, b) => (a.ref < b.ref ? -1 : a.ref > b.ref ? 1 : 0));
+    const stationAxes = id ? axesByStation.get(id) ?? [] : [];
     place(stationStats, "rail_station", id, s.lng, s.lat, point(s), str(s.station_name), {
       lineRefs: lines.map((l) => l.ref),
       lineNames: lines.map((l) => l.name),
       lineColors: lines.map((l) => l.color),
+      ...(stationAxes.length > 0 ? { stationAxes } : {}),
       operator: str(s.operator), // 스냅샷에 없으면 null
     }, "station");
   });
@@ -95,7 +107,7 @@ export async function buildOsmSubway(db: Db, snapshot: Json, releaseId: string, 
     place(entranceStats, "rail_entrance", key, e.lng, e.lat, point(e), str(e.entrance_name), { stationName: str(e.station_name), entranceRef: str(e.entrance_ref) }, "entrance");
   });
   await batched(db, list(snapshot.lines), (l) => {
-    place(lineStats, "rail_line", str(l.osm_id), null, null, isLine(l.geometry) ? l.geometry : null, str(l.line_name), { lineRef: str(l.line_ref), color: str(l.color) }, "line");
+    place(lineStats, "rail_line", str(l.osm_id), null, null, isLine(l.geometry) ? l.geometry : null, str(l.line_name), { lineRef: str(l.line_ref), color: str(l.color) ?? str(l.colour) }, "line");
   });
   return [stationStats, entranceStats, lineStats];
 }

@@ -19,7 +19,7 @@ export const ENGINE_VERSION = "v2-p4-ext-1";
 const TILE_CACHE_REVISION: Readonly<Record<string, string>> = {
   // site-r1 is carried by conditions.parcelSnapshotHash/cacheKeyFor. Keep the
   // public per-tile engine version contract unchanged for existing consumers.
-  A01: "w3-merge-r1+w2b-r1+w3-r1+entrance-color-r1",
+  A01: "w3-merge-r1+w2b-r1+w3-r1+entrance-color-r1+transit-presentation-r1",
   A02: "w3-merge-r1+w2b-r1+clip-r1",
   A03: "w2b-r1+composition-r1",
   A04: "w3-merge-r1+w2b-r1+clip-r1",
@@ -253,7 +253,7 @@ export function lineCandidate(id: number, layer: string, pathM: number[][], leng
 
 /** 상한을 넘으면 긴 선부터 남긴다. 결정적. */
 export function capLines(items: LineCandidate[]): { lines: MapLine[]; total: number } {
-  const sorted = [...items].sort((a, b) => b.lengthM - a.lengthM || a.id - b.id);
+  const sorted = [...items].sort((a, b) => (b.l.capPriority ?? 0) - (a.l.capPriority ?? 0) || b.lengthM - a.lengthM || a.id - b.id);
   return { lines: sorted.slice(0, MAX_MAP_LINES).map((candidate) => ({ ...candidate.l, fid: candidate.l.fid ?? String(candidate.id) })), total: items.length };
 }
 
@@ -290,13 +290,13 @@ export function makeTile(ctx: EngineContext, d: TileDraft): TileResult {
   const capped = d.map ? capFeatures(d.map) : null;
   const cappedPoly = d.polygons ? capPolygons(d.polygons, d.polygonCap) : null;
   const cappedLine = d.lines ? capLines(d.lines) : null;
-  const legendLayers = [
-    ...(capped?.features.map((f) => f.layer) ?? []),
-    ...(cappedPoly?.polygons.map((p) => p.layer) ?? []),
-    ...(cappedLine?.lines.map((l) => l.layer) ?? []),
-  ];
   warnOverlappingFeatureGeometry(d.code, capped?.features ?? [], cappedPoly?.polygons ?? []);
-  const legend = d.legend ?? [...new Set(legendLayers.map((l) => layerStyle(l).label))].map((label) => ({ label, min: null, max: null }));
+  const legendLabels = [
+    ...(capped?.features.map((feature) => layerStyle(feature.layer).label) ?? []),
+    ...(cappedPoly?.polygons.map((polygon) => layerStyle(polygon.layer).label) ?? []),
+    ...(cappedLine?.lines.flatMap((line) => line.legendLabel ? [line.legendLabel] : [layerStyle(line.layer).label]) ?? []),
+  ];
+  const legend = d.legend ?? [...new Set(legendLabels)].map((label) => ({ label, min: null, max: null }));
   return parseTileResult({
     tileId: `${ctx.analysisId}-${d.code}`,
     analysisId: ctx.analysisId,

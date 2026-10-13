@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { activeLegendLabel, legendScrollState, legendWheelScrollTarget } from "@/lib/v2/ui/map-legend";
+import { badgeTextColor } from "@/lib/v2/ui/map-labels";
 import styles from "./board.module.css";
 
 export type LegendSwatchKind = "point" | "line" | "polygon" | "site" | "raster";
@@ -12,6 +13,8 @@ export type MapLegendItem = {
   id?: string;
   label: string;
   color: string;
+  /** 철도처럼 짧은 호선 배지를 함께 보여주는 항목. */
+  badge?: string;
   /** 여러 원천 색을 쓰는 선(예: 철도 노선)·연속 래스터의 띠 견본. */
   colors?: readonly string[];
   count?: number;
@@ -38,6 +41,14 @@ function LegendSwatch({ item }: { item: MapLegendItem }) {
       <svg className={styles.mapLegendSwatchSvg} width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
         <rect x="2.2" y="2.2" width="7.6" height="7.6" fill="#fff" stroke="#111" strokeWidth="1" transform="rotate(45 6 6)" />
         <circle cx="6" cy="6" r="1.3" fill="#111" />
+      </svg>
+    );
+  }
+  if (item.badge) {
+    return (
+      <svg className={styles.mapLegendSwatchSvg} data-kind={kind} width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        <circle cx="8" cy="8" r="7" fill={item.color} stroke="#fff" strokeWidth="1" />
+        <text x="8" y="11" textAnchor="middle" fontSize="8" fontWeight="700" fill={badgeTextColor(item.color)}>{item.badge}</text>
       </svg>
     );
   }

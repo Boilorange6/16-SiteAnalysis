@@ -46,6 +46,8 @@ const legalCodeOf = legalCodeFromCore(core);
   assert.equal(row.legal_code, "1129000000");
   const sp = JSON.parse(row.properties_json);
   assert.ok(sp.lineNames.length > 0 && sp.lineRefs.length === sp.lineNames.length && sp.operator === null);
+  assert.equal(sp.stationAxes.length, 1, "역축 끝점은 역사 막대 런타임 표현을 위해 역 feature에 보존한다");
+  assert.deepEqual(sp.stationAxes[0].endpoints, [[127.0067881, 37.5888533], [127.0051653, 37.5881344]]);
   assert.ok(db.prepare("SELECT 1 FROM feature WHERE stable_id LIKE 'rail_entrance:키없는역|2|%'").get());
   // 결정적: 두 번 적재하면 id 목록이 같다
   const ids = (d) => d.prepare("SELECT stable_id FROM feature ORDER BY stable_id").pluck().all();
