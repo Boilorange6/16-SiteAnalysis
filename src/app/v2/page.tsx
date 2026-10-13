@@ -159,7 +159,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
   const [note, setNote] = useState(""); // 스크린리더 안내(aria-live)
   const [basemap, setBasemap] = useState<BasemapChoice>("white"); // 보드 상태(서버에 저장하지 않음). 화면과 PPT가 같이 따른다
   const gridRef = useRef<HTMLDivElement>(null);
-  const [gridLayout, setGridLayout] = useState({ columns: 4, rowHeight: 420 });
+  const [gridLayout, setGridLayout] = useState({ columns: 4, rowHeight: 377 });
   useEffect(() => {
     const grid = gridRef.current;
     if (!grid) return;
@@ -170,7 +170,8 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
       const capacity = Math.max(1, Math.floor((width + gap) / (200 + gap)));
       const columns = Math.max(1, Math.min(board.columns, capacity));
       const cellWidth = (width - (columns - 1) * gap) / columns;
-      const rowHeight = Math.max(420, Math.round(cellWidth * (5 / 6) * 1.5));
+      // 지도 영역(행 높이 − 카드 머리·지표줄·바닥 약 86px)만 1.5배: 1.5·row − 0.5·86
+      const rowHeight = Math.round(Math.max(280, cellWidth * (5 / 6)) * 1.5 - 43);
       setGridLayout((current) => current.columns === columns && current.rowHeight === rowHeight ? current : { columns, rowHeight });
     };
     update();
