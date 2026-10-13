@@ -14,7 +14,7 @@ import { catalogEntry, sourceName, TILE_CODES, type TileCode } from "./tile-cata
 import type { RoseModel } from "./wind-rose";
 import { isSiteParcelLayer, siteParcelFromResults } from "./site-parcel";
 import type { SourceRefLike } from "./source-details";
-import { defaultLayerId, filterMapForLayer, layerOptionsForResult, type TileLayerOption } from "./tile-layers";
+import { defaultLayerId, filterMapForLayer, layerOptionsForResult, normalizeLayerId, type TileLayerOption } from "./tile-layers";
 
 export type OutputFace = (typeof OUTPUT_FACES)[number];
 export type Badge = { text: string; note?: string; tone: "status" | "limit" | "model" };
@@ -460,8 +460,9 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
 
 /** 카드·펼침 창·보고서가 같은 레이어 선택 결과를 사용하도록 지도 입력만 파생한다. */
 export function viewWithLayer(view: TileView, layerId: string): TileView {
-  if (!view.layerOptions.some((option) => option.id === layerId)) return view;
-  return { ...view, map: filterMapForLayer(view.map, view.code, layerId), defaultLayer: layerId };
+  const normalizedLayerId = normalizeLayerId(view.code, layerId);
+  if (!view.layerOptions.some((option) => option.id === normalizedLayerId)) return view;
+  return { ...view, map: filterMapForLayer(view.map, view.code, normalizedLayerId), defaultLayer: normalizedLayerId };
 }
 
 // ── 대지 요약 ──

@@ -4,7 +4,7 @@ import { normalizeA05Filter, type A05Filter } from "../engine/a05-filter";
 import { calloutReportPages, DEFAULT_CALLOUT_MODE, type CalloutMode } from "./callout-layout";
 import { CAMERA_PRESETS } from "./mass-projection";
 import type { OutputFace } from "./tile-view";
-import { layerOptionsForResult } from "./tile-layers";
+import { layerOptionsForResult, normalizeLayerId } from "./tile-layers";
 import { DEFAULT_PRESET_ID, isPresetId, TILE_PRESETS, type PresetId } from "./tile-catalog";
 import { CUT_CODES, tileClientModuleFor } from "../tile/client";
 import type { D22Cut } from "../tile/d22/cut";
@@ -633,8 +633,9 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
     case "layer": {
       if (!a.layer) return s;
       const result = s.results.find((candidate) => candidate.tileId === sourceTileId(s, a.id));
-      if (result && !layerOptionsForResult(result).some((option) => option.id === a.layer)) return s;
-      return { ...s, layers: { ...s.layers, [a.id]: a.layer } };
+      const normalizedLayerId = result ? normalizeLayerId(result.tileCode, a.layer) : a.layer;
+      if (result && !layerOptionsForResult(result).some((option) => option.id === normalizedLayerId)) return s;
+      return { ...s, layers: { ...s.layers, [a.id]: normalizedLayerId } };
     }
   }
 }
@@ -971,7 +972,8 @@ export function restoreBoardState(results: TileResult[], raw: unknown, fallbackP
   for (const [id, value] of Object.entries(recordOf(saved.layers))) {
     if (!validTileIds.has(id) || typeof value !== "string") continue;
     const result = resultById.get(sourceTileIdFromInstances(savedInstances, id));
-    if (result && layerOptionsForResult(result).some((option) => option.id === value)) layers[id] = value;
+    const normalizedLayerId = result ? normalizeLayerId(result.tileCode, value) : value;
+    if (result && layerOptionsForResult(result).some((option) => option.id === normalizedLayerId)) layers[id] = normalizedLayerId;
   }
   const removed: { id: string; index: number }[] = [];
   const removedIds = new Set<string>();

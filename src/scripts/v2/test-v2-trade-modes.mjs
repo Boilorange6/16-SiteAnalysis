@@ -12,6 +12,8 @@ const { a07, collectTrades } = await import("../../lib/v2/tile/a07/engine.ts");
 const { a08, collectRents } = await import("../../lib/v2/tile/a08/engine.ts");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { toTileView, viewWithLayer } = await import("../../lib/v2/ui/tile-view.ts");
+const { restoreBoardState } = await import("../../lib/v2/ui/board-state.ts");
+const { filterMapForLayer } = await import("../../lib/v2/ui/tile-layers.ts");
 const { layerStyle } = await import("../../lib/v2/ui/map-layers.ts");
 const { formatKoreanWon } = await import("../../lib/v2/tile/a07/district.ts");
 
@@ -153,12 +155,47 @@ function near(actual, expected, tolerance, message) {
   assert.match(point?.layer ?? "", /^rent_jeonse_q[1-5]$/, "A08 전세 점은 ㎡당 보증금 분위 레이어");
   assert.match(point?.sublabel ?? "", /최근 전세 5억원 · 전용 84㎡ · 4층 · 2026년 6월/);
   assert.equal((point?.sublabel?.match(/2026년/g) ?? []).length, 3, "A08 건물 모드 최근 계약은 최대 3건");
+  const monthlyPoint = tile.presentation.features?.find((feature) => feature.layer.startsWith("rent_monthly_"));
+  assert.match(monthlyPoint?.sublabel ?? "", /^월세 중앙값 95만원 · 최근 보증금 .* · 월세 /, "A08 월세 점 최근 3건은 월세만 포함");
+  assert.equal((monthlyPoint?.sublabel?.match(/2026년/g) ?? []).length, 3, "A08 월세 점 최근 계약은 최대 3건");
+  assert.doesNotMatch(point?.sublabel ?? "", /월세/, "A08 전세 점 최근 3건은 전세만 포함");
+  assert.ok(tile.presentation.features?.every((feature) => !Object.hasOwn(feature, "badges")), "A08 건물 점에는 배지가 없다");
+  assert.ok((point?.weight ?? 0) > (monthlyPoint?.weight ?? 0), "A08 가격이 높은 점의 weight가 더 크다");
 
   const view = toTileView(tile);
-  assert.deepEqual(view.layerOptions.map((option) => option.id), ["all", "district_jeonse", "district_monthly"]);
-  assert.equal(viewWithLayer(view, "all").map.polygons?.length, 0, "A08 건물 모드에서 행정구역 면을 숨긴다");
-  assert.ok(viewWithLayer(view, "district_jeonse").map.polygons?.every((polygon_) => polygon_.layer.startsWith("rent_district_jeonse_")));
-  assert.ok(viewWithLayer(view, "district_monthly").map.polygons?.every((polygon_) => polygon_.layer.startsWith("rent_district_monthly_")));
+  assert.deepEqual(view.layerOptions, [
+    { id: "building_jeonse", label: "건물-전세" },
+    { id: "building_monthly", label: "건물-월세" },
+    { id: "district_jeonse", label: "행정구역-전세" },
+    { id: "district_monthly", label: "행정구역-월세" },
+  ]);
+  assert.equal(view.defaultLayer, "building_jeonse", "A08 기본 모드는 건물-전세");
+  assert.equal(viewWithLayer(view, "all").defaultLayer, "building_jeonse", "A08 legacy all은 건물-전세로 매핑");
+  assert.ok(viewWithLayer(view, "building_jeonse").map.features.every((feature) => feature.layer.startsWith("rent_jeonse_")));
+  assert.equal(viewWithLayer(view, "building_jeonse").map.polygons?.length, 0, "A08 건물-전세 모드에서 행정구역 면을 숨긴다");
+  assert.ok(viewWithLayer(view, "building_jeonse").map.legend?.every((entry) => entry.label.startsWith("전세")), "A08 건물-전세 범례는 전세 구간만 보인다");
+  const monthlyView = viewWithLayer(view, "building_monthly");
+  assert.ok(monthlyView.map.features.every((feature) => feature.layer.startsWith("rent_monthly_")));
+  assert.equal(monthlyView.map.polygons?.length, 0, "A08 건물-월세 모드에서 행정구역 면을 숨긴다");
+  assert.ok(monthlyView.map.legend?.every((entry) => entry.label.startsWith("월세")), "A08 건물-월세 범례는 월세 구간만 보인다");
+  const districtJeonseView = viewWithLayer(view, "district_jeonse");
+  assert.equal(districtJeonseView.map.features.length, 0, "A08 행정구역-전세 모드에서 건물 점을 숨긴다");
+  assert.ok(districtJeonseView.map.polygons?.every((polygon_) => polygon_.layer.startsWith("rent_district_jeonse_")));
+  assert.ok(districtJeonseView.map.legend?.every((entry) => entry.label.startsWith("전세 법정동")), "A08 행정구역-전세 범례는 전세 면 구간만 보인다");
+  const districtMonthlyView = viewWithLayer(view, "district_monthly");
+  assert.equal(districtMonthlyView.map.features.length, 0, "A08 행정구역-월세 모드에서 건물 점을 숨긴다");
+  assert.ok(districtMonthlyView.map.polygons?.every((polygon_) => polygon_.layer.startsWith("rent_district_monthly_")));
+  assert.ok(districtMonthlyView.map.legend?.every((entry) => entry.label.startsWith("월세 법정동")), "A08 행정구역-월세 범례는 월세 면 구간만 보인다");
+  const legacyAll = filterMapForLayer(tile.presentation, "A08", "all");
+  assert.ok(legacyAll?.features.every((feature) => feature.layer.startsWith("rent_jeonse_")), "A08 legacy all은 건물-전세로 정규화");
+  assert.equal(legacyAll?.polygons?.length, 0, "A08 legacy all은 행정구역 면을 숨긴다");
+  assert.ok(legacyAll?.legend?.every((entry) => entry.label.startsWith("전세")), "A08 legacy all 범례도 전세만 보인다");
+  const restored = restoreBoardState([tile], {
+    version: 3,
+    order: [tile.tileId],
+    layers: { [tile.tileId]: "all" },
+  });
+  assert.equal(restored.layers[tile.tileId], "building_jeonse", "저장된 A08 all은 건물-전세로 복원");
   assert.equal(layerStyle("rent_district_jeonse_missing").hatch, true);
   ctx.close();
 }
