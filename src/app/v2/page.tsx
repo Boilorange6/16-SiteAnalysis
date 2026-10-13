@@ -329,31 +329,33 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
   const [exportOpen, setExportOpen] = useState(false);
   const exportState = exportAvailability({ activeJobs, making, requesting: busy, sceneReady: !!scene });
   const [presentationPlan, setPresentationPlan] = useState<PlannedSlide[] | null>(null);
-  const openPresentation = useCallback(() => {
+  // PPT와 발표가 같은 출처 메타데이터로 같은 계획(같은 장수)을 만든다.
+  const metadataPlan = async (): Promise<PlannedSlide[]> => {
+    const sourceIds = sourceIdsForRefs([...views.values()].flatMap((view) => view.sourceRefs));
+    let sourceMeta = new Map<string, SourceMeta>();
+    if (sourceIds.length > 0) {
+      const query = new URLSearchParams();
+      for (const id of sourceIds) query.append("ids", id);
+      const sourceResponse = await apiFetch(`/site/api/v2/sources?${query.toString()}`);
+      if (sourceResponse.ok) {
+        const body = (await sourceResponse.json()) as Partial<SourceApiBody>;
+        sourceMeta = sourceMetaMap(Array.isArray(body.sources) ? body.sources : []);
+      }
+    }
+    return buildReportPlan({ summary, views, board, analysisDate, sourceMeta });
+  };
+  const openPresentation = async () => {
     if (demo || actionBusy || !exportState.ppt.enabled) return;
     setExportOpen(false);
-    setPresentationPlan(reportPlan);
-  }, [actionBusy, demo, exportState.ppt.enabled, reportPlan]);
+    setPresentationPlan(await metadataPlan().catch(() => reportPlan));
+  };
 
   const makeReport = async () => {
     setMaking(true);
     setMakingKind("PPT");
     setExportProblem(null);
     try {
-      const sourceIds = sourceIdsForRefs([...views.values()].flatMap((view) => view.sourceRefs));
-      let sourceMeta = new Map<string, SourceMeta>();
-      if (sourceIds.length > 0) {
-        const query = new URLSearchParams();
-        for (const id of sourceIds) query.append("ids", id);
-        const sourceResponse = await apiFetch(`/site/api/v2/sources?${query.toString()}`);
-        if (sourceResponse.ok) {
-          const body = (await sourceResponse.json()) as Partial<SourceApiBody>;
-          sourceMeta = sourceMetaMap(Array.isArray(body.sources) ? body.sources : []);
-        }
-      }
-      const metadataPlan = buildReportPlan({ summary, views, board, analysisDate, sourceMeta });
-      // 출처 API가 원천 행을 더 잘게 나눠도 버튼·발표 모드의 기준 plan.length와 PPT 장수를 유지한다.
-      const exportPlan = metadataPlan.length === reportPlan.length ? metadataPlan : reportPlan;
+      const exportPlan = await metadataPlan();
       const { renderReportPptx } = await import("@/lib/v2/report/render-pptx");
       // 지도 그림은 브라우저에서 SVG → PNG로 만든다. 못 만들면 자리표시로 계속한다.
       const { buildMapImages } = await import("@/lib/v2/report/map-image");
