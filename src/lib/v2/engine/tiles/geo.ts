@@ -270,10 +270,25 @@ function toUtmGeometry(g: Geometry): Geometry {
   return { ...g, coordinates: project(g.coordinates) } as Geometry;
 }
 
+function validRing(ring: number[][] | undefined): ring is number[][] {
+  return ring !== undefined && ring.length >= 4 && ring.every((point) =>
+    point.length >= 2 && Number.isFinite(point[0]) && Number.isFinite(point[1])
+  );
+}
+
+/** Turf bboxClip은 MultiPolygon의 빈 조각을 보존할 수 있으므로, 연산 전 유효한 면만 남긴다. */
+function cleanPolygonParts(parts: number[][][][]): number[][][][] {
+  const cleaned: number[][][][] = [];
+  for (const rings of parts) {
+    const [outer, ...holes] = rings;
+    if (!validRing(outer)) continue;
+    cleaned.push([outer, ...holes.filter(validRing)]);
+  }
+  return cleaned;
+}
+
 function validParts(parts: number[][][][]): boolean {
-  return parts.every((polygonParts_) => polygonParts_.length > 0 && polygonParts_.every((ring) =>
-    ring.length >= 4 && ring.every((point) => point.length >= 2 && Number.isFinite(point[0]) && Number.isFinite(point[1]))
-  ));
+  return parts.length > 0 && parts.every((polygonParts_) => polygonParts_.length > 0 && polygonParts_.every(validRing));
 }
 
 /** 반경과 도형이 겹친 면적. 완전 포함이면 절단을 생략해 원본 면적을 보존한다. */
@@ -320,14 +335,16 @@ export function clipToCircle(center: LngLat, radiusM: number, g: Geometry): numb
   const n = 96;
   const r = radiusM * Math.sqrt((2 * Math.PI) / (n * Math.sin((2 * Math.PI) / n)));
   const ring = Array.from({ length: n + 1 }, (_, i) => [cx + r * Math.cos((2 * Math.PI * (i % n)) / n), cy + r * Math.sin((2 * Math.PI * (i % n)) / n)]);
-  const parts = polygonParts(g);
+  const parts = cleanPolygonParts(polygonParts(g));
   if (parts.length === 0) return [];
   try {
     const feat = (parts.length === 1 ? polygon(parts[0]) : multiPolygon(parts)) as Feature<Polygon | MultiPolygon>;
     const box = bboxClip(feat as Feature<Polygon>, [cx - radiusM, cy - radiusM, cx + radiusM, cy + radiusM]) as Feature<Polygon | MultiPolygon>;
-    if (polygonParts(box.geometry).every((p) => p.length === 0 || p[0].length < 4)) return [];
-    const res = intersect(featureCollection<Polygon | MultiPolygon>([box, polygon([ring])]));
-    return res ? polygonParts(res.geometry) : [];
+    const boxParts = cleanPolygonParts(polygonParts(box.geometry));
+    if (boxParts.length === 0) return [];
+    const clipped = (boxParts.length === 1 ? polygon(boxParts[0]) : multiPolygon(boxParts)) as Feature<Polygon | MultiPolygon>;
+    const res = intersect(featureCollection<Polygon | MultiPolygon>([clipped, polygon([ring])]));
+    return res ? cleanPolygonParts(polygonParts(res.geometry)) : [];
   } catch {
     return null;
   }
