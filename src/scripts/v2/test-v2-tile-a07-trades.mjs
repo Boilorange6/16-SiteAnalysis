@@ -116,16 +116,13 @@ const clean = (tile) => {
   const unnamed = a.presentation.features.find((feature) => feature.name === null);
   const pointA = trades.points.find((point) => point.pnu === "4136011800100010000");
   const pointC = trades.points.find((point) => point.pnu === "1171010100100030000");
-  assert.deepEqual(
-    [named?.name, named?.sublabel, named?.labelPriority],
-    ["다산 센트럴", `${Math.round(pointA.m).toLocaleString("en-US")}만원/㎡ · ${pointA.n}건`, 1],
-    "A07은 lookupComplexNames 이름과 해당 PNU 단가·건수를 사용한다",
-  );
-  assert.deepEqual(
-    [unnamed?.name, unnamed?.sublabel, unnamed?.labelPriority],
-    [null, `${Math.round(pointC.m).toLocaleString("en-US")}만원/㎡ · ${pointC.n}건`, 0],
-    "A07 이름이 없으면 대체 문구 없이 priority 0이다",
-  );
+  assert.equal(named?.name, "다산 센트럴");
+  assert.equal(named?.labelPriority, 1);
+  assert.match(named?.sublabel ?? "", new RegExp(`^㎡당 중앙값 ${Math.round(pointA.m).toLocaleString("en-US")}만원 · 최근 `), "A07은 lookupComplexNames 이름과 단가를 사용한다");
+  assert.match(named?.sublabel ?? "", /억|만원/);
+  assert.equal(unnamed?.name, null);
+  assert.match(unnamed?.sublabel ?? "", new RegExp(`^㎡당 중앙값 ${Math.round(pointC.m).toLocaleString("en-US")}만원 · 최근 `));
+  assert.equal(unnamed?.labelPriority, 0, "A07 이름이 없으면 대체 문구 없이 priority 0이다");
   assert.ok(a.presentation.features.every((feature) => !Object.hasOwn(feature, "label")), "A07는 옛 label을 내지 않는다");
   const cuts = [0.2, 0.4, 0.6, 0.8].map((p) => {
     const values = trades.points.map((point) => point.m).sort((x, y) => x - y);
@@ -151,8 +148,7 @@ const clean = (tile) => {
   ctx.close();
 }
 
-assert.equal(a07ClientModule.layers.options.length, 1, "A07 가격 구간 칩은 삭제하고 호환 id만 남긴다");
-assert.deepEqual(a07ClientModule.layers.options[0], { id: "trade_location", label: "기본 거래" });
+assert.deepEqual(a07ClientModule.layers.options({ presentation: { polygons: [] } }), [{ id: "all", label: "기본 거래" }], "법정동 자료가 없으면 옛 기본 보기만 보존");
 
 {
   const ctx = (await make({}))();

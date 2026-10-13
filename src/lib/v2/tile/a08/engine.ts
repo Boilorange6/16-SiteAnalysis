@@ -10,6 +10,7 @@ import type { TileResult } from "../../tile-result";
 import type { EngineContext, Limitation, SourceRef } from "../../engine/context";
 import { lookupComplexNames } from "../a07/complex-name";
 import { collectTrades, monthsBefore, type TradeCollection } from "../a07/engine";
+import { districtPolygons, formatRentRecent, legalEmdAreas, legalEmdCode, mean, type DistrictArea, type DistrictMetric } from "../a07/district";
 import { est, fmt, makeTile, missing, obs, type MapCandidate, type TileDraft } from "../../engine/tiles/common";
 import { notProvided } from "../../engine/tiles/not-provided";
 
@@ -25,6 +26,7 @@ export interface RentRow {
   deposit_krw: number | null;
   rent_krw: number | null;
   area_m2: number | null;
+  floor: number | null;
   cancelled_at: string | null;
   location_id: string | null;
   renewal: Renewal | null;
@@ -38,6 +40,9 @@ export interface RentCollection {
   unlocated: number;
   absent: Array<{ code: string; name: string }>;
   cancelled: number;
+  districtAreas: DistrictArea[];
+  districtJeonseMetrics: Map<string, DistrictMetric>;
+  districtMonthlyMetrics: Map<string, DistrictMetric>;
 }
 
 interface RentPoint {
@@ -50,6 +55,8 @@ interface RentPoint {
   medianMonthlyDeposit: number | null;
   at: LngLat;
   name: string | null;
+  metricValue: number | null;
+  recent: RentRow[];
 }
 
 const positive = (value: number | null): number | null => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null);
@@ -68,6 +75,24 @@ export function quantile(sortedValues: number[], p: number): number | null {
 const median = (values: number[]) => quantile(sorted(values), 0.5);
 const round1 = (value: number) => Math.round(value * 10) / 10;
 const daysBetween = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+
+function rentQuintileOf(value: number, values: readonly number[]): 1 | 2 | 3 | 4 | 5 {
+  const cuts = [0.2, 0.4, 0.6, 0.8].map((p) => quantile(sorted([...values]), p) as number);
+  return (1 + cuts.filter((cut) => value > cut).length) as 1 | 2 | 3 | 4 | 5;
+}
+
+function rentLegend(values: readonly number[], labelPrefix: string): TileResult["presentation"]["legend"] {
+  const sortedValues = sorted([...values]);
+  if (sortedValues.length === 0) return [];
+  const cuts = [0.2, 0.4, 0.6, 0.8].map((p) => quantile(sortedValues, p) as number);
+  return [
+    { label: `${labelPrefix} 하위 20%`, min: null, max: cuts[0] },
+    { label: `${labelPrefix} 20~40%`, min: cuts[0], max: cuts[1] },
+    { label: `${labelPrefix} 40~60%`, min: cuts[1], max: cuts[2] },
+    { label: `${labelPrefix} 60~80%`, min: cuts[2], max: cuts[3] },
+    { label: `${labelPrefix} 상위 20%`, min: cuts[3], max: null },
+  ];
+}
 
 function unitPerM2(row: RentRow): number | null {
   const deposit = positive(row.deposit_krw);
@@ -111,22 +136,28 @@ function pointGroups(rows: RentRow[], parcelPoints: Map<string, LngLat>, unit: (
   }
   return [...groups]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([pnu, group]) => ({
-      pnu,
-      n: group.length,
-      jeonseN: kind === "jeonse" ? group.length : 0,
-      monthlyN: kind === "monthly" ? group.length : 0,
-      medianJeonseUnit: kind === "jeonse" ? median(group.map(unit).filter((value): value is number => value !== null)) : null,
-      medianMonthlyRent: kind === "monthly" ? median(group.map(unit).filter((value): value is number => value !== null)) : null,
-      medianMonthlyDeposit: kind === "monthly"
-        ? median(group.map((row) => {
-            const deposit = nonNegative(row.deposit_krw);
-            return deposit === null ? null : deposit / 10_000;
-          }).filter((value): value is number => value !== null))
-        : null,
-      at: parcelPoints.get(pnu)!,
-      name: names.get(pnu) ?? null,
-    }));
+    .map(([pnu, group]) => {
+      const metricValues = group.map(unit).filter((value): value is number => value !== null);
+      const metricValue = median(metricValues);
+      return {
+        pnu,
+        n: group.length,
+        jeonseN: kind === "jeonse" ? group.length : 0,
+        monthlyN: kind === "monthly" ? group.length : 0,
+        medianJeonseUnit: kind === "jeonse" ? metricValue : null,
+        medianMonthlyRent: kind === "monthly" ? metricValue : null,
+        medianMonthlyDeposit: kind === "monthly"
+          ? median(group.map((row) => {
+              const deposit = nonNegative(row.deposit_krw);
+              return deposit === null ? null : deposit / 10_000;
+            }).filter((value): value is number => value !== null))
+          : null,
+        at: parcelPoints.get(pnu)!,
+        name: names.get(pnu) ?? null,
+        metricValue,
+        recent: [...group].sort((a, b) => b.deal_date.localeCompare(a.deal_date)).slice(0, 3),
+      };
+    });
 }
 
 function mergeRentPoints(jeonse: RentPoint[], monthly: RentPoint[]): RentPoint[] {
@@ -146,12 +177,14 @@ function mergeRentPoints(jeonse: RentPoint[], monthly: RentPoint[]): RentPoint[]
         medianMonthlyDeposit: m?.medianMonthlyDeposit ?? null,
         at: primary.at,
         name: j?.name ?? m?.name ?? null,
+        metricValue: j !== undefined ? j.metricValue : m?.metricValue ?? null,
+        recent: [...(j?.recent ?? []), ...(m?.recent ?? [])].sort((a, b) => b.deal_date.localeCompare(a.deal_date)).slice(0, 3),
       };
     })
     .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "", "ko") || a.pnu.localeCompare(b.pnu));
 }
 
-function rentFeatures(points: RentPoint[]): MapCandidate[] {
+function rentFeatures(points: RentPoint[], jeonseValues: readonly number[], monthlyValues: readonly number[]): MapCandidate[] {
   const top3 = new Set(
     points
       .sort((a, b) => b.n - a.n || a.pnu.localeCompare(b.pnu))
@@ -161,17 +194,22 @@ function rentFeatures(points: RentPoint[]): MapCandidate[] {
   return points.map((point, index) => ({
     id: index,
     f: {
-      // 한 PNU당 한 점은 W2a에서 보장한다. 혼합 PNU는 전세 우선 점과 두 계약군 배지로 구분한다.
-      layer: point.jeonseN > 0 ? "rent_jeonse" : "rent_monthly",
+      // 한 PNU당 한 점은 W2a에서 보장한다. 색은 계약군별 단가 분위, 혼합 PNU는 전세 우선 점과 두 계약군 배지로 구분한다.
+      layer: point.jeonseN > 0
+        ? point.metricValue === null ? "rent_jeonse_missing" : `rent_jeonse_q${rentQuintileOf(point.metricValue, jeonseValues)}`
+        : point.metricValue === null ? "rent_monthly_missing" : `rent_monthly_q${rentQuintileOf(point.metricValue, monthlyValues)}`,
       lng: Math.round(point.at[0] * 1e6) / 1e6,
       lat: Math.round(point.at[1] * 1e6) / 1e6,
       weight: point.n,
       name: point.name,
       sublabel: point.jeonseN > 0
-        ? [point.medianJeonseUnit === null ? "전세" : `전세 ${fmt(Math.round(point.medianJeonseUnit))}만원/㎡`, `${fmt(point.jeonseN)}건`].join(" · ")
+        ? [
+            point.medianJeonseUnit === null ? "전세" : `전세 ㎡당 중앙값 ${fmt(Math.round(point.medianJeonseUnit))}만원`,
+            `최근 ${point.recent.map(formatRentRecent).join(" / ")}`,
+          ].join(" · ")
         : [
-            point.medianMonthlyRent === null ? "월세" : `월세 ${fmt(Math.round(point.medianMonthlyRent))}만원${point.medianMonthlyDeposit === null ? "" : `(보증금 ${fmt(Math.round(point.medianMonthlyDeposit))}만원)`}`,
-            `${fmt(point.monthlyN)}건`,
+            point.medianMonthlyRent === null ? "월세" : `월세 중앙값 ${fmt(Math.round(point.medianMonthlyRent))}만원`,
+            `최근 ${point.recent.map(formatRentRecent).join(" / ")}`,
           ].join(" · "),
       labelPriority: top3.has(point.pnu) && point.name !== null ? 1 : 0,
       ...(point.jeonseN > 0 && point.monthlyN > 0 ? {
@@ -194,6 +232,7 @@ function collectRentsUncached(ctx: EngineContext): RentCollection | null {
   const from = monthsBefore(analysisDate, 12);
   const sigungu = ctx.sigungu();
   const codes = sigungu.map((area) => area.code);
+  const districtAreas = legalEmdAreas(ctx.hits("core", ["legal_emd"]));
   const columns = market.prepare("PRAGMA table_info(property_transaction)").all() as Array<{ name: string }>;
   const hasRenewal = columns.some((column) => column.name === "renewal");
   const renewalSelect = hasRenewal ? "renewal" : "NULL AS renewal";
@@ -201,7 +240,7 @@ function collectRentsUncached(ctx: EngineContext): RentCollection | null {
 
   const rows = codes.length
     ? (market
-        .prepare(`SELECT deal_date, contract_type, deposit_krw, rent_krw, area_m2, cancelled_at, location_id, ${renewalSelect}
+        .prepare(`SELECT deal_date, contract_type, deposit_krw, rent_krw, area_m2, floor, cancelled_at, location_id, ${renewalSelect}
           FROM property_transaction
           WHERE property_type = 'apt' AND contract_type IN (?, ?) AND match_status = 'located'
             AND lawd_cd IN (${codes.map(() => "?").join(",")}) AND deal_date > ? AND deal_date <= ?`)
@@ -235,13 +274,32 @@ function collectRentsUncached(ctx: EngineContext): RentCollection | null {
     const point = parcelPoints.get(pnu);
     return point !== undefined && Math.hypot(toUtmk(point)[0] - cx, toUtmk(point)[1] - cy) <= radiusM;
   };
-  const local = rows.filter((row) => inRadius(row.location_id));
-  const cancelled = local.filter((row) => row.cancelled_at !== null).length;
-  const valid = local.filter((row) => row.cancelled_at === null && (
+  const isValid = (row: RentRow) => row.cancelled_at === null && (
     row.contract_type === "jeonse"
       ? positive(row.deposit_krw) !== null
       : positive(row.rent_krw) !== null && (row.deposit_krw === null || nonNegative(row.deposit_krw) !== null)
-  ));
+  );
+  const allValid = rows.filter(isValid);
+  const local = rows.filter((row) => inRadius(row.location_id));
+  const cancelled = local.filter((row) => row.cancelled_at !== null).length;
+  const valid = local.filter(isValid);
+  const districtJeonseValues = new Map<string, number[]>();
+  const districtMonthlyValues = new Map<string, number[]>();
+  for (const row of allValid) {
+    const code = legalEmdCode(row.location_id);
+    if (!code) continue;
+    if (row.contract_type === "jeonse") {
+      const unit = unitPerM2(row);
+      if (unit !== null) districtJeonseValues.set(code, [...(districtJeonseValues.get(code) ?? []), unit]);
+    } else {
+      const rent = positive(row.rent_krw);
+      if (rent !== null) districtMonthlyValues.set(code, [...(districtMonthlyValues.get(code) ?? []), rent / 10_000]);
+    }
+  }
+  const districtJeonseMetrics = new Map<string, DistrictMetric>(districtAreas.map((area) => [area.code, { value: null, count: 0 }]));
+  const districtMonthlyMetrics = new Map<string, DistrictMetric>(districtAreas.map((area) => [area.code, { value: null, count: 0 }]));
+  for (const [code, values] of districtJeonseValues) districtJeonseMetrics.set(code, { value: mean(values), count: values.length });
+  for (const [code, values] of districtMonthlyValues) districtMonthlyMetrics.set(code, { value: mean(values), count: values.length });
 
   return {
     sources,
@@ -251,6 +309,9 @@ function collectRentsUncached(ctx: EngineContext): RentCollection | null {
     unlocated,
     absent,
     cancelled,
+    districtAreas,
+    districtJeonseMetrics,
+    districtMonthlyMetrics,
   };
 }
 
@@ -263,7 +324,7 @@ export function a08(ctx: EngineContext): TileResult {
   const rents = collectRents(ctx);
   if (!rents) return notProvided(ctx, "A08");
 
-  const { jeonse, monthly, absent, unlocated, cancelled, hasRenewal } = rents;
+  const { jeonse, monthly, absent, unlocated, cancelled, hasRenewal, districtAreas, districtJeonseMetrics, districtMonthlyMetrics } = rents;
   const jeonseUnits = jeonse.map(unitPerM2).filter((value): value is number => value !== null);
   const monthlyRents = monthly.map((row) => positive(row.rent_krw)).filter((value): value is number => value !== null).map((value) => value / 10_000);
   const monthlyDeposits = monthly.map((row) => nonNegative(row.deposit_krw)).filter((value): value is number => value !== null).map((value) => value / 10_000);
@@ -334,6 +395,30 @@ export function a08(ctx: EngineContext): TileResult {
     return rent === null ? null : rent / 10_000;
   }, "monthly", names);
   const rentPoints = mergeRentPoints(jeonsePoints, monthlyPoints);
+  const jeonsePointValues = jeonsePoints.map((point) => point.metricValue).filter((value): value is number => value !== null);
+  const monthlyPointValues = monthlyPoints.map((point) => point.metricValue).filter((value): value is number => value !== null);
+  const districtJeonse = districtPolygons(
+    districtAreas,
+    districtJeonseMetrics,
+    ctx.input.center,
+    ctx.input.radiusM,
+    "rent_district_jeonse_q",
+    "rent_district_jeonse_missing",
+    "전세 법정동 평균 ㎡당",
+    (value) => `${round1(value)}만원/㎡`,
+  );
+  const districtMonthly = districtPolygons(
+    districtAreas,
+    districtMonthlyMetrics,
+    ctx.input.center,
+    ctx.input.radiusM,
+    "rent_district_monthly_q",
+    "rent_district_monthly_missing",
+    "월세 법정동 평균",
+    (value) => `${round1(value)}만원/월`,
+  );
+  const hasJeonseMissing = districtJeonse.polygons.some((polygon) => polygon.p.layer === "rent_district_jeonse_missing");
+  const hasMonthlyMissing = districtMonthly.polygons.some((polygon) => polygon.p.layer === "rent_district_monthly_missing");
   const limitations: Limitation[] = [
     { kind: "partial", note: "아파트 전월세만 다룹니다(오피스텔 제외 — 원천 자료 범위)." },
     { kind: "unknown", note: "동·호가 공개되지 않아 같은 단지·면적 조건의 계약이 하나로 합쳐졌을 수 있습니다." },
@@ -356,8 +441,25 @@ export function a08(ctx: EngineContext): TileResult {
     metrics,
     judgment: { ruleId: "a08-rent@1", basisMetricIds, sentence, level: null, criteria: null },
     sources: [...sourceMap.values()],
-    layers: ["rent_jeonse", "rent_monthly"],
-    map: rentFeatures(rentPoints),
+    layers: [
+      "rent_jeonse_q1", "rent_jeonse_q2", "rent_jeonse_q3", "rent_jeonse_q4", "rent_jeonse_q5", "rent_jeonse_missing",
+      "rent_monthly_q1", "rent_monthly_q2", "rent_monthly_q3", "rent_monthly_q4", "rent_monthly_q5", "rent_monthly_missing",
+      "rent_district_jeonse_q1", "rent_district_jeonse_q2", "rent_district_jeonse_q3", "rent_district_jeonse_q4", "rent_district_jeonse_q5", "rent_district_jeonse_missing",
+      "rent_district_monthly_q1", "rent_district_monthly_q2", "rent_district_monthly_q3", "rent_district_monthly_q4", "rent_district_monthly_q5", "rent_district_monthly_missing",
+    ],
+    map: rentFeatures(rentPoints, jeonsePointValues, monthlyPointValues),
+    polygons: [...districtJeonse.polygons, ...districtMonthly.polygons],
+    polygonCap: 3000,
+    legend: [
+      ...rentLegend(jeonsePointValues, "전세 ㎡당"),
+      ...rentLegend(monthlyPointValues, "월세"),
+      ...(rentPoints.some((point) => point.jeonseN > 0 && point.metricValue === null) ? [{ label: "전세 자료 부족", min: null, max: null }] : []),
+      ...(rentPoints.some((point) => point.jeonseN === 0 && point.metricValue === null) ? [{ label: "월세 자료 부족", min: null, max: null }] : []),
+      ...districtJeonse.legend,
+      ...(hasJeonseMissing ? [{ label: "전세 법정동 자료 부족", min: null, max: null }] : []),
+      ...districtMonthly.legend,
+      ...(hasMonthlyMissing ? [{ label: "월세 법정동 자료 부족", min: null, max: null }] : []),
+    ],
     limitations,
   });
 }

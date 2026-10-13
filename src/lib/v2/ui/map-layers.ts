@@ -100,6 +100,11 @@ export const STRIP_COLORS = ["#440154", "#414487", "#2A788E", "#22A884", "#7AD15
 
 const LEGEND_GROUPS = {
   tradeQuantiles: "trade:quantiles",
+  tradeDistrict: "trade:district",
+  rentJeonseQuantiles: "rent:quantiles:jeonse",
+  rentMonthlyQuantiles: "rent:quantiles:monthly",
+  rentJeonseDistrict: "rent:district:jeonse",
+  rentMonthlyDistrict: "rent:district:monthly",
   d04CompletionYear: "d04:completion-year",
   d05Floors: "d05:floors",
   d16Density: "d16:density",
@@ -136,6 +141,19 @@ const flatPolygon = (
   stroke: color,
   fillOpacity: 1,
   strokeWidth: 0,
+});
+
+const districtPolygon = (label: string, color: string, legendGroup: string, legendOrder: number): LayerStyle => ({
+  ...S(label, color, undefined, undefined, legendGroup, legendOrder),
+  fill: color,
+  stroke: "#475569",
+  fillOpacity: 0.72,
+  strokeWidth: 1,
+});
+
+const districtMissingPolygon = (label: string, legendGroup: string, legendOrder: number): LayerStyle => ({
+  ...districtPolygon(label, "#CBD5E1", legendGroup, legendOrder),
+  hatch: true,
 });
 
 export const LAYER_STYLES: Record<string, LayerStyle> = {
@@ -182,6 +200,12 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   trade_q3: S("㎡당 40~60%", "#5C97E0", "weight", undefined, LEGEND_GROUPS.tradeQuantiles, 2),
   trade_q4: S("㎡당 60~80%", "#2F6FDB", "weight", undefined, LEGEND_GROUPS.tradeQuantiles, 3),
   trade_q5: S("㎡당 상위 20%", "#1B3F8F", "weight", undefined, LEGEND_GROUPS.tradeQuantiles, 4),
+  trade_district_q1: districtPolygon("법정동 평균 ㎡당 1단계", "#BFD7F5", LEGEND_GROUPS.tradeDistrict, 0),
+  trade_district_q2: districtPolygon("법정동 평균 ㎡당 2단계", "#8FB8EC", LEGEND_GROUPS.tradeDistrict, 1),
+  trade_district_q3: districtPolygon("법정동 평균 ㎡당 3단계", "#5C97E0", LEGEND_GROUPS.tradeDistrict, 2),
+  trade_district_q4: districtPolygon("법정동 평균 ㎡당 4단계", "#2F6FDB", LEGEND_GROUPS.tradeDistrict, 3),
+  trade_district_q5: districtPolygon("법정동 평균 ㎡당 5단계", "#1B3F8F", LEGEND_GROUPS.tradeDistrict, 4),
+  trade_district_missing: districtMissingPolygon("법정동 자료 부족", LEGEND_GROUPS.tradeDistrict, 5),
   maint_zone: S("정비구역", "#D6478A"),
   maint_zone_center: S("정비구역", "#D6478A"),
   zoning_site: S("대지 용도지역", "#C9A227"),
@@ -326,6 +350,30 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   shadow_15: S("15:00 그림자", "#383E48"),
   rent_jeonse: S("전세 거래 지점", "#2B6CB0", "weight"),
   rent_monthly: S("월세 거래 지점", "#63B3ED", "weight"),
+  rent_jeonse_q1: S("전세 ㎡당 하위 20%", "#BFD7F5", "weight", undefined, LEGEND_GROUPS.rentJeonseQuantiles, 0),
+  rent_jeonse_q2: S("전세 ㎡당 20~40%", "#8FB8EC", "weight", undefined, LEGEND_GROUPS.rentJeonseQuantiles, 1),
+  rent_jeonse_q3: S("전세 ㎡당 40~60%", "#5C97E0", "weight", undefined, LEGEND_GROUPS.rentJeonseQuantiles, 2),
+  rent_jeonse_q4: S("전세 ㎡당 60~80%", "#2F6FDB", "weight", undefined, LEGEND_GROUPS.rentJeonseQuantiles, 3),
+  rent_jeonse_q5: S("전세 ㎡당 상위 20%", "#1B3F8F", "weight", undefined, LEGEND_GROUPS.rentJeonseQuantiles, 4),
+  rent_jeonse_missing: S("전세 자료 부족", "#94A3B8", "weight", undefined, LEGEND_GROUPS.rentJeonseQuantiles, 5),
+  rent_monthly_q1: S("월세 하위 20%", "#BFD7F5", "weight", undefined, LEGEND_GROUPS.rentMonthlyQuantiles, 0),
+  rent_monthly_q2: S("월세 20~40%", "#8FB8EC", "weight", undefined, LEGEND_GROUPS.rentMonthlyQuantiles, 1),
+  rent_monthly_q3: S("월세 40~60%", "#5C97E0", "weight", undefined, LEGEND_GROUPS.rentMonthlyQuantiles, 2),
+  rent_monthly_q4: S("월세 60~80%", "#2F6FDB", "weight", undefined, LEGEND_GROUPS.rentMonthlyQuantiles, 3),
+  rent_monthly_q5: S("월세 상위 20%", "#1B3F8F", "weight", undefined, LEGEND_GROUPS.rentMonthlyQuantiles, 4),
+  rent_monthly_missing: S("월세 자료 부족", "#94A3B8", "weight", undefined, LEGEND_GROUPS.rentMonthlyQuantiles, 5),
+  rent_district_jeonse_q1: districtPolygon("전세 법정동 평균 ㎡당 1단계", "#BFD7F5", LEGEND_GROUPS.rentJeonseDistrict, 0),
+  rent_district_jeonse_q2: districtPolygon("전세 법정동 평균 ㎡당 2단계", "#8FB8EC", LEGEND_GROUPS.rentJeonseDistrict, 1),
+  rent_district_jeonse_q3: districtPolygon("전세 법정동 평균 ㎡당 3단계", "#5C97E0", LEGEND_GROUPS.rentJeonseDistrict, 2),
+  rent_district_jeonse_q4: districtPolygon("전세 법정동 평균 ㎡당 4단계", "#2F6FDB", LEGEND_GROUPS.rentJeonseDistrict, 3),
+  rent_district_jeonse_q5: districtPolygon("전세 법정동 평균 ㎡당 5단계", "#1B3F8F", LEGEND_GROUPS.rentJeonseDistrict, 4),
+  rent_district_jeonse_missing: districtMissingPolygon("전세 법정동 자료 부족", LEGEND_GROUPS.rentJeonseDistrict, 5),
+  rent_district_monthly_q1: districtPolygon("월세 법정동 평균 1단계", "#BFD7F5", LEGEND_GROUPS.rentMonthlyDistrict, 0),
+  rent_district_monthly_q2: districtPolygon("월세 법정동 평균 2단계", "#8FB8EC", LEGEND_GROUPS.rentMonthlyDistrict, 1),
+  rent_district_monthly_q3: districtPolygon("월세 법정동 평균 3단계", "#5C97E0", LEGEND_GROUPS.rentMonthlyDistrict, 2),
+  rent_district_monthly_q4: districtPolygon("월세 법정동 평균 4단계", "#2F6FDB", LEGEND_GROUPS.rentMonthlyDistrict, 3),
+  rent_district_monthly_q5: districtPolygon("월세 법정동 평균 5단계", "#1B3F8F", LEGEND_GROUPS.rentMonthlyDistrict, 4),
+  rent_district_monthly_missing: districtMissingPolygon("월세 법정동 자료 부족", LEGEND_GROUPS.rentMonthlyDistrict, 5),
   walk_route: S("보행 경로", "#7A5BA6", undefined, undefined, LEGEND_GROUPS.a04GreenSpace, 4),
   canopy: S("수관", "#2E7D32"),
   osm_green: S("OSM 녹지", "#5FAE5B"),
@@ -429,9 +477,19 @@ const formatLegendNumber = (value: number): string => {
 /** A07처럼 엔진 라벨이 분위만 말하는 범례에 실제 단가 경계를 덧붙인다. */
 export function presentationLegendLabel(entry: TileResult["presentation"]["legend"][number]): string {
   const label = entry.label.trim();
-  if (!label.includes("㎡당") || label.includes("만원/㎡")) return label;
   const min = entry.min === null ? null : formatLegendNumber(entry.min);
   const max = entry.max === null ? null : formatLegendNumber(entry.max);
+  if (label.startsWith("월세 ") && !label.includes("만원/월")) {
+    const range = min === null && max !== null
+      ? `~${max}만원/월`
+      : min !== null && max === null
+        ? `${min}만원/월 이상`
+        : min !== null && max !== null
+          ? `${min}~${max}만원/월`
+          : null;
+    return range ? `${label} · ${range}` : label;
+  }
+  if (!label.includes("㎡당") || label.includes("만원/㎡")) return label;
   const range = min === null && max !== null
     ? `~${max}만원/㎡`
     : min !== null && max === null
