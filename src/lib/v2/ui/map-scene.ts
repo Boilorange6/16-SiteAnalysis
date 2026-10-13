@@ -191,6 +191,9 @@ export type MapSceneOptions = {
   view?: MapView;
   legendBox?: MapSceneBox | null;
   avoid?: MapSceneBox[];
+  /** 슬라이드처럼 지도 밖 판이 있을 때 말풍선 칸 위 끝·왼쪽 칸 아래 끝(px). */
+  calloutTop?: number;
+  calloutLeftBottom?: number;
   path?: Array<[number, number]>;
   north?: number | false;
   dragging?: boolean;
@@ -317,6 +320,8 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     bare = false,
     legendBox = null,
     avoid = [],
+    calloutTop: calloutTopOpt,
+    calloutLeftBottom,
     path = [],
     north: northOpt,
     dragging = false,
@@ -446,9 +451,9 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   const calloutMetrics = { ...baseCalloutMetrics, cardW: baseCalloutMetrics.cardW * u, compactW: baseCalloutMetrics.compactW * u, minW: baseCalloutMetrics.minW * u, gap: baseCalloutMetrics.gap * u, stub: baseCalloutMetrics.stub * u, rMin: baseCalloutMetrics.rMin * u, rMax: baseCalloutMetrics.rMax * u, head: baseCalloutMetrics.head * u, row: baseCalloutMetrics.row * u, pad: baseCalloutMetrics.pad * u, compactH: calloutPadY * 2 + calloutLineHeight };
   const legendY = legendBox?.y0 ?? 0;
   const legendH = legendBox ? legendBox.y1 - legendBox.y0 : 0;
-  const calloutTop = legendBox && legendY <= H / 2 ? legendY + legendH + 6 * u : 4 * u;
+  const calloutTop = calloutTopOpt ?? (legendBox && legendY <= H / 2 ? legendY + legendH + 6 * u : 4 * u);
   const calloutBottom = legendBox && legendY > H / 2 ? legendY - 6 * u : H - bottomInset - 4 * u;
-  const calloutFrameModel = { ...calloutFrame({ W, H, m: calloutMetrics, edge: 4 * u, top: calloutTop, bottom: Math.max(calloutTop, calloutBottom), rightInset, perSide: 100, rows: 3, variant: "compact", maxFill: 0.8 }), centerX: W / 2 };
+  const calloutFrameModel = { ...calloutFrame({ W, H, m: calloutMetrics, edge: 4 * u, top: calloutTop, bottom: Math.max(calloutTop, calloutBottom), ...(calloutLeftBottom !== undefined ? { leftBottom: Math.max(calloutTop, calloutLeftBottom) } : {}), rightInset, perSide: 100, rows: 3, variant: "compact", maxFill: 0.8 }), centerX: W / 2 };
   const placementFor = (placed: Placed, entry: MapSceneLabel, text: MapCalloutTextLayout): MapSceneLabelPlacement => {
     const box: MapSceneBox = { x0: placed.x, y0: placed.y, x1: placed.x + placed.width, y1: placed.y + placed.height };
     const points = [entry.p, placed.knee, placed.edge];
@@ -491,9 +496,10 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   for (const feature of drawn) {
     for (const [badgeIndex, badge] of (feature.feature.badges ?? []).slice(0, 4).entries()) {
       const station = feature.feature.layer === "rail_station" || feature.feature.layer === "rail_nearest";
-      const fontSize = station ? Math.max(6, badge.text.length > 2 ? 10.5 * u * 0.52 : 10.5 * u * 0.72) : Math.max(8, 10.5 * u * 0.72);
+      const fontSize = station ? Math.max(7, 10.5 * u * 0.72) : Math.max(8, 10.5 * u * 0.72);
       const height = station ? Math.max(15 * u, fontSize * 1.55) : Math.max(12 * u, fontSize * 1.35);
-      const width = station ? height : mapTextWidth(badge.text, fontSize) + 8 * u;
+      // 숫자 호선은 원, 이름 호선(수인분당 등)은 글자 폭 알약 — MapFigure와 같은 규칙.
+      const width = station ? Math.max(height, mapTextWidth(badge.text, fontSize) + 8 * u) : mapTextWidth(badge.text, fontSize) + 8 * u;
       const candidates = badgeDirections.flatMap(([dx, dy]) => [3, 15, 29, 45].map((distance) => badgeBox(feature, width, height, dx, dy, feature.radius + distance * u)));
       const occupied = [...occupiedBoxes, ...badgeBoxes];
       const fit = candidates.find((candidate) => candidate.x0 >= 2 && candidate.x1 <= W - 2 && candidate.y0 >= 2 && candidate.y1 <= H - 2 && !occupied.some((other) => labelBoxesOverlap(other, candidate, labelCollisionGap)));

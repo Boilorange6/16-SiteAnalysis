@@ -1,7 +1,7 @@
 import PptxGenJS from "pptxgenjs";
 import { buildingStyleForRaster, isBuildingLayer, layerStyle, type MapModel } from "../ui/map-layers";
 import { isSiteParcelLayer } from "../ui/site-parcel";
-import { SLIDE, slideLegend, slideReserved, slideSiteX } from "../ui/overlay-layout";
+import { SLIDE, slideLayout, slideLegend, slideReserved, slideSiteX } from "../ui/overlay-layout";
 import { SLIDE_OVERVIEW_FILL } from "../ui/callout-layout";
 import { buildMapScene, type MapScene, type MapSceneBox } from "../ui/map-scene";
 import { badgeTextColor } from "../ui/map-labels";
@@ -135,7 +135,13 @@ function sceneFor(plan: PlannedSlide & { kind: "tile" }, model: MapModel): MapSc
   const legend = slideLegend(model, !plan.muted).rect;
   const avoid = slideReserved(PX_PER_INCH, { legend });
   const calloutOverview = !!plan.callout && plan.callout.page === 0;
+  // 지도 위 판(제목·정보·범례)을 피한다: 방위표·축척·오른쪽 말풍선은 정보 판 왼쪽, 말풍선은 제목 판 아래·범례 판 위.
+  const layout = slideLayout();
+  const gap = SLIDE.edge * PX_PER_INCH * 0.5;
   return buildMapScene({
+    rightInset: VIEW_W - layout.info.x * PX_PER_INCH + gap,
+    calloutTop: (layout.title.y + layout.title.h) * PX_PER_INCH + gap,
+    ...(legend ? { calloutLeftBottom: legend.y * PX_PER_INCH - gap } : {}),
     model,
     width: VIEW_W,
     height: VIEW_H,
@@ -320,7 +326,10 @@ function addBadges(slide: Slide, code: string, scene: MapScene): void {
   for (const badge of scene.badges) {
     const key = `badge-${badge.featureIndex}-${badge.badgeIndex}`;
     const display = `배지 · ${badge.text}`;
-    if (badge.station) {
+    if (badge.station && badge.width > badge.height) {
+      // 이름 호선 알약: rectRadius = 높이 절반(인치)이면 양 끝이 반원.
+      slide.addShape("roundRect", { x: pxX(badge.x), y: pxY(badge.y), w: pxX(badge.width), h: pxY(badge.height), rectRadius: pxY(badge.height) / 2, fill: { color: color(badge.color) }, line: { color: "FFFFFF", width: pxPt(0.8 * scene.unit) }, objectName: tag(code, key, display, "rect") });
+    } else if (badge.station) {
       slide.addShape("ellipse", { x: pxX(badge.x), y: pxY(badge.y), w: pxX(badge.width), h: pxY(badge.height), fill: { color: color(badge.color) }, line: { color: "FFFFFF", width: pxPt(0.8 * scene.unit) }, objectName: tag(code, key, display, "circle") });
     } else {
       slide.addShape("roundRect", { x: pxX(badge.x), y: pxY(badge.y), w: pxX(badge.width), h: pxY(badge.height), rectRadius: 0.04, fill: { color: color(badge.color) }, line: { color: "FFFFFF", width: pxPt(0.8 * scene.unit) }, objectName: tag(code, key, display, "rect") });
