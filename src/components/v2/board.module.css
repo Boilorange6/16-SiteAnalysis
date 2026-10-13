@@ -2237,6 +2237,81 @@ button.badge:focus-visible {
   font-size: 14px;
   font-family: inherit;
 }
+.addressSuggest {
+  position: relative;
+  flex: 1 1 280px;
+  min-width: 0;
+}
+.addressSuggestInput {
+  width: 100%;
+  min-height: 44px;
+}
+.addressSuggestList {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  overflow: hidden;
+  padding: 4px 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgb(15 23 42 / 16%);
+}
+.addressSuggestOption {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 0;
+  border-bottom: 1px solid #e6eaf0;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.addressSuggestOption:last-child {
+  border-bottom: 0;
+}
+.addressSuggestOption:hover,
+.addressSuggestOptionActive {
+  background: #eef5ff;
+}
+.addressSuggestOption:active {
+  background: #e0edff;
+}
+.addressSuggestOption:focus-visible {
+  outline: 2px solid #2f6fdb;
+  outline-offset: -2px;
+}
+.addressSuggestName,
+.addressSuggestDetail {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.addressSuggestName {
+  color: #171a20;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+.addressSuggestDetail {
+  margin-top: 2px;
+  color: #4f5d6b;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.addressSuggestStatus {
+  min-height: 44px;
+  padding: 12px 14px;
+  color: #4f5d6b;
+  font-size: 12px;
+  line-height: 1.45;
+}
 .radiusSelect {
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -2721,7 +2796,7 @@ button.badge:focus-visible {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .analyzeBar .addrInput {
+  .analyzeBar .addressSuggest {
     grid-column: 1 / -1;
     width: 100%;
   }

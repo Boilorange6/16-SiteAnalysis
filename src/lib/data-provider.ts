@@ -176,6 +176,7 @@ export interface AddressSearchResult {
   readonly id: string;
   readonly name: string;
   readonly address: string;
+  readonly jibunAddress?: string;
   readonly lat: number;
   readonly lng: number;
 }

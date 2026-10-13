@@ -28,6 +28,7 @@ import { isRoadAddress, ROAD_ADDRESS_UNSUPPORTED_MESSAGE } from "@/lib/v2/site";
 import { RADIUS_CAPTION, RADIUS_OPTIONS } from "@/lib/v2/ui/radius-options";
 import ProjectMenu, { type V2Project } from "@/components/v2/project-menu";
 import SitePicker from "@/components/v2/site-picker";
+import AddressSuggest from "@/components/v2/address-suggest";
 import type { SiteInput } from "@/lib/v2/site";
 import { DEFAULT_PRESET_ID, PRESET_IDS, TILE_PRESETS, type PresetId } from "@/lib/v2/ui/tile-catalog";
 import { getRovingTargetIndex, type RovingGridItem } from "@/lib/v2/ui/roving-grid";
@@ -1215,6 +1216,14 @@ export default function V2BoardPage() {
 
   const pickerParcels = useMemo(() => pickerParcelsFromScene(live?.scene ?? null, siteInput), [live?.scene, siteInput]);
 
+  function handleAddressChange(value: string) {
+    addressDirtyRef.current = true;
+    setAddress(value);
+    setSiteInput(null);
+    setSitePickerValid(false);
+    if (problem && !problem.login) setProblem(null);
+  }
+
   useEffect(() => {
     if (live && !addressDirtyRef.current) {
       setAddress(live.summary.address);
@@ -1227,21 +1236,13 @@ export default function V2BoardPage() {
       {!live && <p className={styles.demoContext}>예시: 고덕동 123 · 반경 1km — 주소를 넣으면 실제 분석</p>}
       <form className={styles.analyzeBar} onSubmit={analyze}>
         <label className={styles.srOnly} htmlFor={ADDRESS_INPUT_ID}>지번 주소</label>
-        <input
+        <AddressSuggest
           id={ADDRESS_INPUT_ID}
-          className={styles.addrInput}
+          inputClassName={styles.addrInput}
           value={address}
-          onChange={(e) => {
-            addressDirtyRef.current = true;
-            setAddress(e.target.value);
-            setSiteInput(null);
-            setSitePickerValid(false);
-            if (problem && !problem.login) setProblem(null);
-          }}
-          placeholder="지번 주소 (예: 서울 강동구 고덕동 123)"
-          aria-label="지번 주소"
-          aria-invalid={problem && !problem.login ? true : undefined}
-          aria-describedby={problem && !problem.login ? "v2-address-error" : undefined}
+          onChange={handleAddressChange}
+          ariaInvalid={problem && !problem.login ? true : undefined}
+          ariaDescribedBy={problem && !problem.login ? "v2-address-error" : undefined}
           disabled={busy || activeJobs}
         />
         <select className={styles.radiusSelect} value={radiusM} onChange={(e) => setRadiusM(Number(e.target.value))} aria-label="분석 반경" aria-describedby="v2-radius-help" disabled={busy || activeJobs}>
