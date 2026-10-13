@@ -23,6 +23,7 @@ import { RASTER_STYLES } from "../ui/map-layers";
 import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
 import { mapKeyOf, type PlannedSlide } from "./report-plan";
 import type { MapImages } from "./render-pptx";
+import { isEditableMap } from "./map-pptx";
 
 // 슬라이드 비율(16:9)로 그린다: 지도가 슬라이드 전체이고 오버레이는 pptx 도형이 얹는다
 const VIEW_W = 960;
@@ -30,7 +31,7 @@ const VIEW_H = 540;
 const OUT_W = 1920;
 const OUT_H = 1080;
 const PX_PER_INCH = VIEW_W / SLIDE.w;
-type Extra = Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "scale" | "legend" | "bare" | "pinnedKeys" | "north" | "credit" | "label" | "rightInset">;
+type Extra = Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "scale" | "legend" | "bare" | "pinnedKeys" | "north" | "credit" | "label" | "rightInset" | "backgroundOnly">;
 type MassExplodedOptions = { spreadPct: number; scheme?: MassColorScheme };
 const TILE_TIMEOUT_MS = 8000;
 
@@ -83,8 +84,9 @@ export function svgOf(model: MapModel, tiles: Map<string, string>, layer: Basema
           // 범례·북쪽·저작권은 슬라이드의 판/출처 띠가 대신한다 (축척만 그림 안, 출처 띠 위)
           legend: extra.legend ?? false,
           bare: extra.bare,
-          north: extra.north ?? false,
-          credit: extra.credit ?? false,
+           north: extra.north ?? false,
+           credit: extra.credit ?? false,
+           backgroundOnly: extra.backgroundOnly ?? false,
           bottomInset: slideLayout().strip.h * (width / SLIDE.w),
           ...extra,
         }),
@@ -293,7 +295,9 @@ export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice 
     const model = p.map;
     if (!model) continue;
     try {
-      out[key] = await rasterizeMap(model, cache, effectiveLayer(model, layer), extraFor(p, model), rasterCache);
+      const extra = extraFor(p, model);
+      const nativeBackground = p.kind === "tile" && !(p.callout && p.callout.page > 0) && isEditableMap(model);
+      out[key] = await rasterizeMap(model, cache, effectiveLayer(model, layer), { ...extra, backgroundOnly: nativeBackground }, rasterCache);
     } catch (e) {
       console.warn(`지도 이미지 생성 실패 (${key})`, e);
     }
