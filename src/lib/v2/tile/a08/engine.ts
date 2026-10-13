@@ -48,8 +48,7 @@ export interface RentCollection {
 interface RentPoint {
   pnu: string;
   n: number;
-  jeonseN: number;
-  monthlyN: number;
+  contractType: RentContract;
   medianJeonseUnit: number | null;
   medianMonthlyRent: number | null;
   medianMonthlyDeposit: number | null;
@@ -142,8 +141,7 @@ function pointGroups(rows: RentRow[], parcelPoints: Map<string, LngLat>, unit: (
       return {
         pnu,
         n: group.length,
-        jeonseN: kind === "jeonse" ? group.length : 0,
-        monthlyN: kind === "monthly" ? group.length : 0,
+        contractType: kind,
         medianJeonseUnit: kind === "jeonse" ? metricValue : null,
         medianMonthlyRent: kind === "monthly" ? metricValue : null,
         medianMonthlyDeposit: kind === "monthly"
@@ -160,31 +158,7 @@ function pointGroups(rows: RentRow[], parcelPoints: Map<string, LngLat>, unit: (
     });
 }
 
-function mergeRentPoints(jeonse: RentPoint[], monthly: RentPoint[]): RentPoint[] {
-  const byPnu = new Map<string, { jeonse?: RentPoint; monthly?: RentPoint }>();
-  for (const point of jeonse) byPnu.set(point.pnu, { ...byPnu.get(point.pnu), jeonse: point });
-  for (const point of monthly) byPnu.set(point.pnu, { ...byPnu.get(point.pnu), monthly: point });
-  return [...byPnu.values()]
-    .map(({ jeonse: j, monthly: m }) => {
-      const primary = j ?? m!;
-      return {
-        pnu: primary.pnu,
-        n: (j?.n ?? 0) + (m?.n ?? 0),
-        jeonseN: j?.n ?? 0,
-        monthlyN: m?.n ?? 0,
-        medianJeonseUnit: j?.medianJeonseUnit ?? null,
-        medianMonthlyRent: m?.medianMonthlyRent ?? null,
-        medianMonthlyDeposit: m?.medianMonthlyDeposit ?? null,
-        at: primary.at,
-        name: j?.name ?? m?.name ?? null,
-        metricValue: j !== undefined ? j.metricValue : m?.metricValue ?? null,
-        recent: [...(j?.recent ?? []), ...(m?.recent ?? [])].sort((a, b) => b.deal_date.localeCompare(a.deal_date)).slice(0, 3),
-      };
-    })
-    .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "", "ko") || a.pnu.localeCompare(b.pnu));
-}
-
-function rentFeatures(points: RentPoint[], jeonseValues: readonly number[], monthlyValues: readonly number[]): MapCandidate[] {
+function rentFeatures(points: RentPoint[], values: readonly number[], startId: number): MapCandidate[] {
   const top3 = new Set(
     points
       .sort((a, b) => b.n - a.n || a.pnu.localeCompare(b.pnu))
@@ -192,17 +166,17 @@ function rentFeatures(points: RentPoint[], jeonseValues: readonly number[], mont
       .map((point) => point.pnu),
   );
   return points.map((point, index) => ({
-    id: index,
+    id: startId + index,
     f: {
-      // 한 PNU당 한 점은 W2a에서 보장한다. 색은 계약군별 단가 분위, 혼합 PNU는 전세 우선 점과 두 계약군 배지로 구분한다.
-      layer: point.jeonseN > 0
-        ? point.metricValue === null ? "rent_jeonse_missing" : `rent_jeonse_q${rentQuintileOf(point.metricValue, jeonseValues)}`
-        : point.metricValue === null ? "rent_monthly_missing" : `rent_monthly_q${rentQuintileOf(point.metricValue, monthlyValues)}`,
+      // 전세·월세는 같은 PNU라도 계약군별로 별도 점을 낸다. 색과 크기는 같은 계약군의 가격 metric을 쓴다.
+      layer: point.metricValue === null
+        ? `rent_${point.contractType}_missing`
+        : `rent_${point.contractType}_q${rentQuintileOf(point.metricValue, values)}`,
       lng: Math.round(point.at[0] * 1e6) / 1e6,
       lat: Math.round(point.at[1] * 1e6) / 1e6,
-      weight: point.n,
+      weight: point.metricValue,
       name: point.name,
-      sublabel: point.jeonseN > 0
+      sublabel: point.contractType === "jeonse"
         ? [
             point.medianJeonseUnit === null ? "전세" : `전세 ㎡당 중앙값 ${fmt(Math.round(point.medianJeonseUnit))}만원`,
             `최근 ${point.recent.map(formatRentRecent).join(" / ")}`,
@@ -212,12 +186,6 @@ function rentFeatures(points: RentPoint[], jeonseValues: readonly number[], mont
             `최근 ${point.recent.map(formatRentRecent).join(" / ")}`,
           ].join(" · "),
       labelPriority: top3.has(point.pnu) && point.name !== null ? 1 : 0,
-      ...(point.jeonseN > 0 && point.monthlyN > 0 ? {
-        badges: [
-          { text: "전세", color: "#2B6CB0" },
-          { text: "월세", color: "#63B3ED" },
-        ],
-      } : {}),
     },
   }));
 }
@@ -394,7 +362,7 @@ export function a08(ctx: EngineContext): TileResult {
     const rent = positive(row.rent_krw);
     return rent === null ? null : rent / 10_000;
   }, "monthly", names);
-  const rentPoints = mergeRentPoints(jeonsePoints, monthlyPoints);
+  const rentPoints = [...jeonsePoints, ...monthlyPoints];
   const jeonsePointValues = jeonsePoints.map((point) => point.metricValue).filter((value): value is number => value !== null);
   const monthlyPointValues = monthlyPoints.map((point) => point.metricValue).filter((value): value is number => value !== null);
   const districtJeonse = districtPolygons(
@@ -447,14 +415,17 @@ export function a08(ctx: EngineContext): TileResult {
       "rent_district_jeonse_q1", "rent_district_jeonse_q2", "rent_district_jeonse_q3", "rent_district_jeonse_q4", "rent_district_jeonse_q5", "rent_district_jeonse_missing",
       "rent_district_monthly_q1", "rent_district_monthly_q2", "rent_district_monthly_q3", "rent_district_monthly_q4", "rent_district_monthly_q5", "rent_district_monthly_missing",
     ],
-    map: rentFeatures(rentPoints, jeonsePointValues, monthlyPointValues),
+    map: [
+      ...rentFeatures(jeonsePoints, jeonsePointValues, 0),
+      ...rentFeatures(monthlyPoints, monthlyPointValues, jeonsePoints.length),
+    ],
     polygons: [...districtJeonse.polygons, ...districtMonthly.polygons],
     polygonCap: 3000,
     legend: [
       ...rentLegend(jeonsePointValues, "전세 ㎡당"),
       ...rentLegend(monthlyPointValues, "월세"),
-      ...(rentPoints.some((point) => point.jeonseN > 0 && point.metricValue === null) ? [{ label: "전세 자료 부족", min: null, max: null }] : []),
-      ...(rentPoints.some((point) => point.jeonseN === 0 && point.metricValue === null) ? [{ label: "월세 자료 부족", min: null, max: null }] : []),
+      ...(rentPoints.some((point) => point.contractType === "jeonse" && point.metricValue === null) ? [{ label: "전세 자료 부족", min: null, max: null }] : []),
+      ...(rentPoints.some((point) => point.contractType === "monthly" && point.metricValue === null) ? [{ label: "월세 자료 부족", min: null, max: null }] : []),
       ...districtJeonse.legend,
       ...(hasJeonseMissing ? [{ label: "전세 법정동 자료 부족", min: null, max: null }] : []),
       ...districtMonthly.legend,
