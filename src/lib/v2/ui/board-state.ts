@@ -32,12 +32,28 @@ export type CutSpec =
 export type LegacyCutSpec = CutSpec | CutCount;
 export type PinnedLabel = { key: string; on: boolean };
 
+type TileSettingsSnapshot = {
+  included?: boolean;
+  faces?: OutputFace;
+  callout?: CalloutMode;
+  a05Filter?: A05Filter;
+  view?: CardFace;
+  size?: TileSize;
+  tileKind?: TileResult["tileType"];
+  camera?: CameraPreset;
+  cut?: CutSpec;
+  labels?: PinnedLabel[];
+  layer?: string;
+};
+
 /** 되돌리기 한 단계. 모든 편집(순서·크기·제거·더하기)이 여기 쌓인다. */
 export type UndoEntry =
   | { kind: "order"; id: string; order: string[] }
   | { kind: "size"; id: string; size: TileSize }
   | { kind: "columns"; columns: GridColumns }
   | { kind: "remove"; id: string; index: number }
+  | { kind: "removeCopy"; id: string; sourceId: string; index: number; settings: TileSettingsSnapshot }
+  | { kind: "duplicate"; id: string; index: number }
   | { kind: "add"; id: string; trayIndex: number }
   | { kind: "preset"; preset: PresetId; order: string[]; included: Record<string, boolean>; removed: { id: string; index: number }[] };
 
@@ -109,6 +125,8 @@ export type BoardState = {
   labels: Record<string, PinnedLabel[]>;
   /** 타일 id → 지도 표현/래스터 레이어. 비어 있으면 타일 기본 레이어. */
   layers: Record<string, string>;
+  /** copy:N → 원본 결과 타일 id. 복제본은 결과 배열을 늘리지 않고 보드 설정만 가진다. */
+  instances: Record<string, string>;
   /** 빼 둔 타일(더할 수 있는 타일). index는 빼기 전 위치 */
   removed: { id: string; index: number }[];
   undoStack: UndoEntry[];
@@ -119,6 +137,7 @@ export type BoardAction =
   | { type: "restore"; snapshot: unknown; fallbackPreset?: PresetId }
   | { type: "preset"; preset: PresetId }
   | { type: "remove"; id: string }
+  | { type: "duplicate"; id: string }
   | { type: "undo" }
   | { type: "move"; id: string; dir: -1 | 1 }
   | { type: "reorder"; from: number; to: number }
@@ -174,6 +193,7 @@ export function initBoard(results: TileResult[], preset: PresetId = DEFAULT_PRES
     cuts: {},
     labels: {},
     layers: {},
+    instances: {},
     removed: [],
     undoStack: [],
   };
@@ -221,6 +241,114 @@ function reordered(order: string[], from: number, to: number): string[] | null {
   return next;
 }
 
+const COPY_ID = /^copy:\d+$/;
+
+function sourceTileIdFromInstances(instances: Readonly<Record<string, string>>, id: string): string {
+  let current = id;
+  const seen = new Set<string>();
+  while (instances[current] && !seen.has(current)) {
+    seen.add(current);
+    current = instances[current]!;
+  }
+  return current;
+}
+
+/** 복제본이 가리키는 실제 결과 타일 id. copy:N은 결과 배열에 들어가지 않는다. */
+export function sourceTileId(s: Pick<BoardState, "instances">, id: string): string {
+  return sourceTileIdFromInstances(s.instances, id);
+}
+
+function copyA05Filter(filter: A05Filter | undefined): A05Filter | undefined {
+  if (!filter) return undefined;
+  return {
+    ...filter,
+    ...(filter.types ? { types: [...filter.types] } : {}),
+    ...Object.fromEntries((['year', 'households', 'floors', 'buildings', 'distance'] as const)
+      .filter((key) => filter[key])
+      .map((key) => [key, { ...filter[key] }])) as Partial<A05Filter>,
+  };
+}
+
+function copyTileSettings(s: BoardState, id: string): TileSettingsSnapshot {
+  return {
+    included: s.included[id],
+    faces: s.faces[id],
+    callout: s.callout[id],
+    a05Filter: copyA05Filter(s.a05Filter[id]),
+    view: s.view[id],
+    size: s.sizes[id],
+    tileKind: s.tileKinds[id],
+    camera: s.cameras[id] ? { ...s.cameras[id] } : undefined,
+    cut: s.cuts[id] ? { ...s.cuts[id] } : undefined,
+    labels: s.labels[id]?.map((label) => ({ ...label })),
+    layer: s.layers[id],
+  };
+}
+
+function withRecordValue<T>(record: Record<string, T>, id: string, value: T | undefined): Record<string, T> {
+  return value === undefined ? record : { ...record, [id]: value };
+}
+
+function withoutRecordValue<T>(record: Record<string, T>, id: string): Record<string, T> {
+  if (!(id in record)) return record;
+  const next = { ...record };
+  delete next[id];
+  return next;
+}
+
+function restoreTileSettings(s: BoardState, id: string, settings: TileSettingsSnapshot): BoardState {
+  return {
+    ...s,
+    included: withRecordValue(s.included, id, settings.included),
+    faces: withRecordValue(s.faces, id, settings.faces),
+    callout: withRecordValue(s.callout, id, settings.callout),
+    a05Filter: withRecordValue(s.a05Filter, id, copyA05Filter(settings.a05Filter)),
+    view: withRecordValue(s.view, id, settings.view),
+    sizes: withRecordValue(s.sizes, id, settings.size),
+    tileKinds: withRecordValue(s.tileKinds, id, settings.tileKind),
+    cameras: withRecordValue(s.cameras, id, settings.camera ? { ...settings.camera } : undefined),
+    cuts: withRecordValue(s.cuts, id, settings.cut ? { ...settings.cut } : undefined),
+    labels: withRecordValue(s.labels, id, settings.labels?.map((label) => ({ ...label }))),
+    layers: withRecordValue(s.layers, id, settings.layer),
+  };
+}
+
+function removeInstance(s: BoardState, id: string): BoardState {
+  return {
+    ...s,
+    order: s.order.filter((candidate) => candidate !== id),
+    instances: withoutRecordValue(s.instances, id),
+    included: withoutRecordValue(s.included, id),
+    faces: withoutRecordValue(s.faces, id),
+    callout: withoutRecordValue(s.callout, id),
+    a05Filter: withoutRecordValue(s.a05Filter, id),
+    view: withoutRecordValue(s.view, id),
+    sizes: withoutRecordValue(s.sizes, id),
+    tileKinds: withoutRecordValue(s.tileKinds, id),
+    cameras: withoutRecordValue(s.cameras, id),
+    cuts: withoutRecordValue(s.cuts, id),
+    labels: withoutRecordValue(s.labels, id),
+    layers: withoutRecordValue(s.layers, id),
+  };
+}
+
+function nextCopyId(s: BoardState): string {
+  let number = 1;
+  while (s.order.includes(`copy:${number}`) || s.instances[`copy:${number}`] || s.removed.some((item) => item.id === `copy:${number}`)) number += 1;
+  return `copy:${number}`;
+}
+
+function duplicateTileSettings(s: BoardState, settingsId: string, sourceId: string, copyId: string): BoardState {
+  const settings = copyTileSettings(s, settingsId);
+  return restoreTileSettings({ ...s, instances: { ...s.instances, [copyId]: sourceId } }, copyId, {
+    ...settings,
+    included: settings.included ?? false,
+    faces: settings.faces ?? "front",
+    size: settings.size ?? 1,
+    tileKind: settings.tileKind ?? "analysis",
+  });
+}
+
 export function boardReducer(s: BoardState, a: BoardAction): BoardState {
   switch (a.type) {
     case "restore":
@@ -258,6 +386,14 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
     case "remove": {
       const index = s.order.indexOf(a.id);
       if (index < 0) return s;
+      const sourceId = s.instances[a.id];
+      if (sourceId) {
+        const next = removeInstance(s, a.id);
+        return {
+          ...next,
+          undoStack: [...s.undoStack, { kind: "removeCopy", id: a.id, sourceId, index, settings: copyTileSettings(s, a.id) }],
+        };
+      }
       const stacks = { ...s.stacks };
       delete stacks[a.id];
       const sheets = { ...s.sheets };
@@ -270,6 +406,17 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
         removed: [...s.removed, { id: a.id, index }],
         undoStack: [...s.undoStack, { kind: "remove", id: a.id, index }],
       };
+    }
+    case "duplicate": {
+      const index = s.order.indexOf(a.id);
+      const sourceId = sourceTileId(s, a.id);
+      // stack/sheet는 결과 타일이 아니므로 복제 대상에서 제외한다.
+      if (index < 0 || sourceId in s.stacks || sourceId in s.sheets || !s.results.some((result) => result.tileId === sourceId)) return s;
+      const copyId = nextCopyId(s);
+      const order = [...s.order];
+      order.splice(index + 1, 0, copyId);
+      const next = duplicateTileSettings(s, a.id, sourceId, copyId);
+      return { ...next, order, undoStack: [...s.undoStack, { kind: "duplicate", id: copyId, index: index + 1 }] };
     }
     case "add": {
       const trayIndex = s.removed.findIndex((r) => r.id === a.id);
@@ -297,6 +444,15 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
           order.splice(Math.min(u.index, order.length), 0, u.id);
           return { ...s, ...rest, order, removed: s.removed.filter((r) => r.id !== u.id) };
         }
+        case "removeCopy": {
+          if (s.order.includes(u.id)) return { ...s, ...rest };
+          const order = [...s.order];
+          order.splice(Math.min(u.index, order.length), 0, u.id);
+          const restored = restoreTileSettings({ ...s, order, instances: { ...s.instances, [u.id]: u.sourceId } }, u.id, u.settings);
+          return { ...restored, undoStack: rest.undoStack };
+        }
+        case "duplicate":
+          return { ...removeInstance(s, u.id), ...rest };
         case "add": {
           const removed = [...s.removed];
           const isComposite = u.trayIndex < 0 && (u.id in s.stacks || u.id in s.sheets);
@@ -435,13 +591,13 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
       return { ...s, cuts: { ...s.cuts, [a.id]: a.cut } };
     case "cuts": {
       if (typeof a.cuts === "number" && a.cuts !== 1 && a.cuts !== 3) return s;
-      const cut = typeof a.cuts === "number" ? legacyCutForId(a.id, a.cuts) : a.cuts;
+      const cut = typeof a.cuts === "number" ? legacyCutForId(a.id, a.cuts, s.instances) : a.cuts;
       if (!cut || !isCutSpec(cut)) return s;
       return { ...s, cuts: { ...s.cuts, [a.id]: cut } };
     }
     case "roseSeason":
       if (a.season !== "annual" && a.season !== "spring" && a.season !== "summer" && a.season !== "autumn" && a.season !== "winter") return s;
-      const cut = legacyCutForSeason(a.id, a.season);
+      const cut = legacyCutForSeason(a.id, a.season, s.instances);
       return cut ? { ...s, cuts: { ...s.cuts, [a.id]: cut } } : s;
     case "pinLabel": {
       if (!a.key) return s;
@@ -476,7 +632,7 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
     }
     case "layer": {
       if (!a.layer) return s;
-      const result = s.results.find((candidate) => candidate.tileId === a.id);
+      const result = s.results.find((candidate) => candidate.tileId === sourceTileId(s, a.id));
       if (result && !layerOptionsForResult(result).some((option) => option.id === a.layer)) return s;
       return { ...s, layers: { ...s.layers, [a.id]: a.layer } };
     }
@@ -505,6 +661,8 @@ export type BoardStateSnapshot = {
   roseSeasons?: Record<string, RoseSeason>;
   labels?: Record<string, PinnedLabel[]>;
   layers?: Record<string, string>;
+  /** copy:N → 원본 결과 타일 id. 이전 저장본에는 없다. */
+  instances?: Record<string, string>;
   removed: { id: string; index: number }[];
 };
 
@@ -534,6 +692,7 @@ export function serializeBoardState(s: BoardState): BoardStateSnapshot {
     cuts: { ...s.cuts },
     labels: Object.fromEntries(Object.entries(s.labels).map(([id, labels]) => [id, labels.map((label) => ({ ...label }))])),
     layers: { ...s.layers },
+    instances: { ...s.instances },
     removed: s.removed.map((item) => ({ ...item })),
   };
 }
@@ -582,13 +741,14 @@ function mapIdRecord<T>(value: unknown, mapId: IdMapper): Record<string, T> {
   return output;
 }
 
-function codeFromTileId(id: string): string {
-  const separator = id.lastIndexOf("-");
-  return separator < 0 ? id : id.slice(separator + 1);
+function codeFromTileId(id: string, instances: Readonly<Record<string, string>> = {}): string {
+  const sourceId = sourceTileIdFromInstances(instances, id);
+  const separator = sourceId.lastIndexOf("-");
+  return separator < 0 ? sourceId : sourceId.slice(separator + 1);
 }
 
-function migratedLayer(id: string, value: string): string {
-  return LEGACY_LAYER_RENAMES[codeFromTileId(id)] ?? value;
+function migratedLayer(id: string, value: string, instances: Readonly<Record<string, string>> = {}): string {
+  return LEGACY_LAYER_RENAMES[codeFromTileId(id, instances)] ?? value;
 }
 
 /** Snapshot 안에서 id를 보관하는 모든 필드를 같은 규칙으로 다시 쓴다. */
@@ -613,7 +773,13 @@ export function rewriteSnapshotIds(snapshot: BoardStateSnapshot, mapId: IdMapper
     if (typeof value !== "string" || value.trim() === "") continue;
     const mapped = mapId(id);
     // D06/D07처럼 한 survivor로 충돌하는 경우 첫 명시 선택을 유지한다.
-    if (!(mapped in layers)) layers[mapped] = migratedLayer(id, value);
+    if (!(mapped in layers)) layers[mapped] = migratedLayer(id, value, snapshot.instances);
+  }
+  const instances: Record<string, string> = {};
+  for (const [id, sourceId] of Object.entries(recordOf(snapshot.instances))) {
+    if (!COPY_ID.test(id) || typeof sourceId !== "string") continue;
+    const mapped = mapId(id);
+    if (!(mapped in instances)) instances[mapped] = mapId(sourceId);
   }
   return {
     ...snapshot,
@@ -632,6 +798,7 @@ export function rewriteSnapshotIds(snapshot: BoardStateSnapshot, mapId: IdMapper
     roseSeasons: mapIdRecord<RoseSeason>(snapshot.roseSeasons, mapId),
     labels: mapIdRecord<PinnedLabel[]>(snapshot.labels, mapId),
     layers,
+    instances,
     removed: Array.isArray(snapshot.removed)
       ? (() => {
           const seen = new Set<string>();
@@ -648,9 +815,8 @@ function migrateV1ToV2(snapshot: BoardStateSnapshot): BoardStateSnapshot {
   return { ...snapshot, layers: recordOf(snapshot.layers) as Record<string, string> };
 }
 
-function codeFromTileIdForCut(id: string): string {
-  const separator = id.lastIndexOf("-");
-  return separator < 0 ? id : id.slice(separator + 1);
+function codeFromTileIdForCut(id: string, instances: Readonly<Record<string, string>> = {}): string {
+  return codeFromTileId(id, instances);
 }
 
 export function defaultCutForCode(code: string): CutSpec | null {
@@ -659,12 +825,12 @@ export function defaultCutForCode(code: string): CutSpec | null {
   return null;
 }
 
-function legacyCutForId(id: string, value: CutCount): CutSpec | null {
-  return tileClientModuleFor(codeFromTileIdForCut(id))?.cut?.legacyForCount?.(value) as CutSpec | null ?? null;
+function legacyCutForId(id: string, value: CutCount, instances: Readonly<Record<string, string>> = {}): CutSpec | null {
+  return tileClientModuleFor(codeFromTileIdForCut(id, instances))?.cut?.legacyForCount?.(value) as CutSpec | null ?? null;
 }
 
-function legacyCutForSeason(id: string, value: RoseSeason): CutSpec | null {
-  return tileClientModuleFor(codeFromTileIdForCut(id))?.cut?.legacyForSeason?.(value) as CutSpec | null ?? null;
+function legacyCutForSeason(id: string, value: RoseSeason, instances: Readonly<Record<string, string>> = {}): CutSpec | null {
+  return tileClientModuleFor(codeFromTileIdForCut(id, instances))?.cut?.legacyForSeason?.(value) as CutSpec | null ?? null;
 }
 
 const isSeason = (value: unknown): value is Season => value === "spring" || value === "summer" || value === "autumn" || value === "winter";
@@ -678,9 +844,9 @@ export function isCutSpec(value: unknown): value is CutSpec {
 function migrateV2ToV3(snapshot: BoardStateSnapshot): BoardStateSnapshot {
   const cuts: Record<string, CutSpec> = {};
   for (const [id, value] of Object.entries(recordOf(snapshot.cuts))) {
-    const code = codeFromTileIdForCut(id);
+    const code = codeFromTileIdForCut(id, snapshot.instances);
     if (typeof value === "number" && (value === 1 || value === 3)) {
-      const legacy = legacyCutForId(id, value);
+      const legacy = legacyCutForId(id, value, snapshot.instances);
       if (legacy) cuts[id] = legacy;
     } else if (isCutSpec(value) && value.tile === code) {
       cuts[id] = value;
@@ -688,7 +854,7 @@ function migrateV2ToV3(snapshot: BoardStateSnapshot): BoardStateSnapshot {
   }
   for (const [id, value] of Object.entries(recordOf(snapshot.roseSeasons))) {
     if ((!isSeason(value) && value !== "annual") || id in cuts) continue;
-    const legacy = legacyCutForSeason(id, value);
+    const legacy = legacyCutForSeason(id, value, snapshot.instances);
     if (legacy) cuts[id] = legacy;
   }
   const migrated = { ...snapshot, cuts, version: BOARD_STATE_VERSION } as BoardStateSnapshot;
@@ -730,20 +896,28 @@ export function restoreBoardState(results: TileResult[], raw: unknown, fallbackP
   if (!saved) return base;
 
   const baseIds = new Set(base.order);
+  const savedInstances: Record<string, string> = {};
+  const rawInstances = Object.fromEntries(Object.entries(recordOf(saved.instances)).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
+  for (const [id, sourceId] of Object.entries(rawInstances)) {
+    if (!COPY_ID.test(id) || typeof sourceId !== "string" || baseIds.has(id)) continue;
+    const source = sourceTileIdFromInstances(rawInstances, sourceId);
+    if (baseIds.has(source)) savedInstances[id] = source;
+  }
+  const validTileIds = new Set([...baseIds, ...Object.keys(savedInstances)]);
   const savedStacks: Record<string, string[]> = {};
   for (const [id, layers] of Object.entries(recordOf(saved.stacks))) {
-    const valid = unique(stringsOf(layers)).filter((layer) => baseIds.has(layer));
+    const valid = unique(stringsOf(layers)).filter((layer) => validTileIds.has(layer));
     if (valid.length >= 2) savedStacks[id] = valid;
   }
   const savedSheets: Record<string, SheetSpec> = {};
   for (const [id, spec] of Object.entries(recordOf(saved.sheets))) {
     if (!isRecord(spec)) continue;
-    const tiles = unique(stringsOf(spec.tiles)).filter((tile) => baseIds.has(tile));
+    const tiles = unique(stringsOf(spec.tiles)).filter((tile) => validTileIds.has(tile));
     const grid = spec.grid === "2x2" || spec.grid === "3x2" ? spec.grid : null;
     if (tiles.length >= 2 && grid) savedSheets[id] = { tiles, grid };
   }
   const compositeIds = new Set([...Object.keys(savedStacks), ...Object.keys(savedSheets)]);
-  const validIds = new Set([...baseIds, ...compositeIds]);
+  const validIds = new Set([...validTileIds, ...compositeIds]);
   const savedOrder = unique(stringsOf(saved.order)).filter((id) => validIds.has(id));
   const order = savedOrder.length > 0 ? savedOrder : base.order;
 
@@ -783,7 +957,7 @@ export function restoreBoardState(results: TileResult[], raw: unknown, fallbackP
   for (const [id, value] of Object.entries(recordOf(saved.cuts))) if (validIds.has(id) && isCutSpec(value)) cuts[id] = value;
   const labels: Record<string, PinnedLabel[]> = {};
   for (const [id, value] of Object.entries(recordOf(saved.labels))) {
-    if (!baseIds.has(id) || !Array.isArray(value)) continue;
+    if (!validTileIds.has(id) || !Array.isArray(value)) continue;
     const seen = new Set<string>();
     const restored = value.flatMap((item) => {
       if (!isRecord(item) || typeof item.key !== "string" || !item.key || typeof item.on !== "boolean" || seen.has(item.key)) return [];
@@ -795,8 +969,8 @@ export function restoreBoardState(results: TileResult[], raw: unknown, fallbackP
   const layers: Record<string, string> = {};
   const resultById = new Map(base.results.map((result) => [result.tileId, result]));
   for (const [id, value] of Object.entries(recordOf(saved.layers))) {
-    if (!baseIds.has(id) || typeof value !== "string") continue;
-    const result = resultById.get(id);
+    if (!validTileIds.has(id) || typeof value !== "string") continue;
+    const result = resultById.get(sourceTileIdFromInstances(savedInstances, id));
     if (result && layerOptionsForResult(result).some((option) => option.id === value)) layers[id] = value;
   }
   const removed: { id: string; index: number }[] = [];
@@ -828,6 +1002,7 @@ export function restoreBoardState(results: TileResult[], raw: unknown, fallbackP
     cuts,
     labels,
     layers,
+    instances: savedInstances,
     removed,
     undoStack: [],
   };
@@ -844,9 +1019,10 @@ function isCameraPreset(camera: CameraPreset): boolean {
 }
 
 function stackable(s: BoardState, id: string): boolean {
-  const kind = s.tileKinds[id];
+  const kind = s.tileKinds[id] ?? s.tileKinds[sourceTileId(s, id)];
   if (kind) return kind === "analysis" || kind === "diagram";
-  return !/(?:^|-)S\d{2}$/.test(id) && !id.startsWith("stack:");
+  const sourceId = sourceTileId(s, id);
+  return !/(?:^|-)S\d{2}$/.test(sourceId) && !sourceId.startsWith("stack:");
 }
 
 function cutPagesForResult(result: TileResult, cut: CutSpec): number {
@@ -865,7 +1041,7 @@ export function reportPages(s: BoardState, complexCounts: Record<string, number>
   for (const id of s.order) {
     if (!s.included[id]) continue;
     tiles += 1;
-    const result = s.results.find((candidate) => candidate.tileId === id);
+    const result = s.results.find((candidate) => candidate.tileId === sourceTileId(s, id));
     const cut = result ? (isCutSpec(s.cuts[id]) && s.cuts[id].tile === result.tileCode ? s.cuts[id] : defaultCutForCode(result.tileCode)) : null;
     const cutPages = result && cut ? cutPagesForResult(result, cut) : 1;
     pages += id in complexCounts

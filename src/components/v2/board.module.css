@@ -3457,3 +3457,338 @@ button.badge:focus-visible {
     transition: none;
   }
 }
+
+/* ── 발표 모드: 보고서 계획과 같은 16:9 판을 읽기 전용으로 크게 보여 준다. ── */
+.presentation {
+  --presentation-bg: #101318;
+  position: fixed;
+  z-index: 200;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+  padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  overflow: hidden;
+  background: var(--presentation-bg);
+  color: #fff;
+}
+.presentation:focus {
+  outline: 0;
+}
+.presentationTopbar,
+.presentationControls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+}
+.presentationTopbar h1 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.2;
+}
+.presentationDeckTitle {
+  color: #bfc5d0;
+  font-size: 12px;
+}
+.presentationClose {
+  min-width: 88px;
+  min-height: 44px;
+  margin-left: auto;
+  padding: 0 14px;
+  border: 1px solid #59616e;
+  border-radius: 999px;
+  background: transparent;
+  color: #fff;
+  font-weight: 700;
+}
+.presentationClose:hover {
+  background: #252b34;
+}
+.presentationClose:focus-visible,
+.presentationControls button:focus-visible {
+  outline: 2px solid #7eb0ff;
+  outline-offset: 2px;
+}
+.presentationViewport {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.presentationSlide {
+  position: relative;
+  width: min(100%, 1440px);
+  height: min(100%, 810px);
+  aspect-ratio: 16 / 9;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #eef0f3;
+  color: #15171c;
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.35);
+}
+.presentationTextSlide {
+  overflow: auto;
+  padding: clamp(28px, 5vw, 76px);
+}
+.presentationKicker {
+  margin: 0 0 12px;
+  color: #5d6570;
+  font-size: clamp(12px, 1.4vw, 18px);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+.presentationTextSlide h2 {
+  max-width: 80%;
+  margin: 0 0 32px;
+  font-size: clamp(28px, 4.5vw, 66px);
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+.presentationMetrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0 0 30px;
+}
+.presentationMetrics div {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #d3d7de;
+  border-radius: 10px;
+  background: #fff;
+}
+.presentationMetrics dt {
+  margin-bottom: 6px;
+  color: #5d6570;
+  font-size: 12px;
+  font-weight: 700;
+}
+.presentationMetrics dd {
+  margin: 0;
+  font-size: clamp(16px, 1.8vw, 24px);
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+.presentationLineList {
+  display: grid;
+  gap: 8px;
+  max-width: 900px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.presentationLineList li {
+  display: grid;
+  grid-template-columns: 10px minmax(120px, 0.6fr) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  padding: 7px 0;
+  border-bottom: 1px solid #dfe2e8;
+}
+.presentationLineList li > span:first-of-type {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.presentationLineList li > span:last-child {
+  color: #4f5662;
+  overflow-wrap: anywhere;
+}
+.presentationAsOf {
+  margin: 28px 0 0;
+  color: #5d6570;
+  font-size: 12px;
+}
+.presentationVisualSlide {
+  background: #e9e9ec;
+}
+.presentationStage {
+  position: absolute;
+  inset: 0;
+}
+.presentationVisualHead {
+  position: absolute;
+  z-index: 4;
+  top: 14px;
+  left: 14px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: calc(100% - 28px);
+  padding: 8px 12px;
+  border: 1px solid rgba(21, 23, 28, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 8px rgba(20, 22, 28, 0.12);
+}
+.presentationVisualHead h2 {
+  max-width: min(70vw, 700px);
+  margin: 0;
+  font-size: clamp(15px, 1.7vw, 24px);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.presentationVisualHead span {
+  color: #5d6570;
+  font-size: 12px;
+  font-weight: 700;
+}
+.presentationState {
+  position: absolute;
+  z-index: 4;
+  top: 50%;
+  left: 50%;
+  max-width: min(70%, 520px);
+  margin: 0;
+  padding: 16px 20px;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(21, 23, 28, 0.16);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #15171c;
+  text-align: center;
+  font-weight: 800;
+}
+.presentationSheetGrid {
+  position: absolute;
+  inset: 64px 24px 24px;
+  display: grid;
+  grid-template-columns: repeat(var(--presentation-sheet-cols), minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  align-content: center;
+  gap: 12px;
+}
+.presentationSheetCell {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid #d3d7de;
+  border-radius: 10px;
+  background: #e9e9ec;
+}
+.presentationSheetCell > .presentationSheetLabel {
+  position: absolute;
+  z-index: 4;
+  right: 8px;
+  bottom: 8px;
+  max-width: calc(100% - 16px);
+  padding: 4px 7px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #15171c;
+  font-size: 11px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.presentationSourcesWrap {
+  max-height: calc(100% - 170px);
+  overflow: auto;
+  border: 1px solid #d3d7de;
+  border-radius: 10px;
+  background: #fff;
+}
+.presentationSources {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.presentationSources th,
+.presentationSources td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #e1e4e9;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.presentationSources th {
+  position: sticky;
+  top: 0;
+  background: #f4f5f7;
+  font-weight: 800;
+}
+.presentationControls {
+  justify-content: center;
+}
+.presentationControls button {
+  min-width: 96px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid #59616e;
+  border-radius: 999px;
+  background: #171b22;
+  color: #fff;
+  font-weight: 700;
+}
+.presentationControls button:hover:not(:disabled) {
+  background: #252b34;
+}
+.presentationControls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.presentationControls span {
+  min-width: 72px;
+  color: #d8dce4;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+@media (max-width: 700px) {
+  .presentation {
+    gap: 8px;
+    padding-inline: 8px;
+  }
+  .presentationTopbar h1 {
+    font-size: 16px;
+  }
+  .presentationDeckTitle {
+    display: none;
+  }
+  .presentationSlide {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    border-radius: 10px;
+  }
+  .presentationTextSlide {
+    aspect-ratio: auto;
+    height: 100%;
+    padding: 24px;
+  }
+  .presentationTextSlide h2 {
+    max-width: 100%;
+    margin-bottom: 20px;
+    font-size: 28px;
+  }
+  .presentationMetrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-bottom: 20px;
+  }
+  .presentationLineList li {
+    grid-template-columns: 10px minmax(0, 0.8fr) minmax(0, 1fr);
+    font-size: 11px;
+  }
+  .presentationSheetGrid {
+    inset-inline: 10px;
+    gap: 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .presentation,
+  .presentation * {
+    scroll-behavior: auto !important;
+    transition: none !important;
+    animation: none !important;
+  }
+}
