@@ -320,8 +320,33 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   const pinned = renderToStaticMarkup(createElement(MapFigure, { model: collisionModel, width: 640, height: 360, basemap: "none", pinnedKeys: entries.slice(0, 2).map((entry) => entry.key), onFeaturePin: () => {} }));
   assert.match(pinned, /data-map-feature="bus_stop\|0"/);
   assert.match(pinned, /data-map-feature="bus_stop\|1"/);
-  const fixedXs = [...pinned.matchAll(/<rect x="([^"]+)" y="[^"]+" width="[^"]+" height="[^"]+" rx="[^"]+" fill="#fff" stroke="#111"/g)].map((match) => match[1]);
-  assert.ok(fixedXs.length >= 2 && fixedXs[0] !== fixedXs[1], "겹친 고정 라벨을 다른 후보 위치에 배치");
+  const fixedBoxes = [...pinned.matchAll(/<rect data-map-label-box="[^"]+" x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)" rx="[^"]+" fill="#fff" stroke="#16181d"/g)].map((match) => ({ x0: Number(match[1]), y0: Number(match[2]), x1: Number(match[1]) + Number(match[3]), y1: Number(match[2]) + Number(match[4]) }));
+  assert.ok(fixedBoxes.length >= 2, "고정 말풍선 2개 렌더");
+  assert.ok(fixedBoxes[0].x0 !== fixedBoxes[1].x0 || fixedBoxes[0].y0 !== fixedBoxes[1].y0, "겹친 고정 라벨을 다른 후보 위치에 배치");
+  assert.equal(labelBoxesOverlap(fixedBoxes[0], fixedBoxes[1], 0), false, "고정 말풍선은 서로 겹치지 않음");
+
+  // W4: 작은 지도에서는 좌우 칸의 높이만큼 우선순위 상위 자동 말풍선만 남기고, 카드가 겹치지 않는다.
+  const crowdedModel = {
+    ...model,
+    features: Array.from({ length: 10 }, (_, index) => ({
+      layer: "rail_station",
+      lng: model.center[0] + (index % 2 === 0 ? -0.001 : 0.001),
+      lat: model.center[1] + (index - 5) * 0.00004,
+      name: `역 ${index + 1}`,
+      sublabel: index === 0 ? "2호선 · 환승" : null,
+      labelPriority: index < 2 ? 2 : 1,
+    })),
+    total: 10,
+  };
+  const crowded = renderToStaticMarkup(createElement(MapFigure, { model: crowdedModel, width: 300, height: 180, basemap: "none", legend: false, scale: false, north: false }));
+  const autoLabelGroups = [...crowded.matchAll(/<g[^>]*data-map-label-variant="auto"[^>]*>[\s\S]*?<\/g>/g)].map((match) => match[0]);
+  assert.ok(autoLabelGroups.length <= 4, "작은 지도는 좌우 칸 수만큼 자동 말풍선을 제한");
+  assert.match(crowded, /역 1/, "자동 우선순위 2 라벨 유지");
+  assert.match(crowded, /역 2/, "자동 우선순위 2 라벨 유지");
+  const crowdedBoxes = [...crowded.matchAll(/<rect data-map-label-box="[^"]+" x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)" rx=/g)].map((match) => ({ x0: Number(match[1]), y0: Number(match[2]), x1: Number(match[1]) + Number(match[3]), y1: Number(match[2]) + Number(match[4]) }));
+  for (let i = 0; i < crowdedBoxes.length; i += 1) for (let j = i + 1; j < crowdedBoxes.length; j += 1) {
+    assert.equal(labelBoxesOverlap(crowdedBoxes[i], crowdedBoxes[j], 0), false, "작은 지도 말풍선은 서로 겹치지 않음");
+  }
 
   // 대표 점과 폴리곤이 같은 fid를 받아도 목록의 고정 대상은 서로 달라야 한다.
   const sameFidModel = {

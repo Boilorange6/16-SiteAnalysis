@@ -1,11 +1,13 @@
 import { memo, useCallback, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, RASTER_STYLES, type MapModel, type RasterStyle } from "@/lib/v2/ui/map-layers";
-import { automaticLabelText, badgeTextColor, labelBoxesOverlap, legacyLabelPriority, mapLabelText as formatMapLabelText, selectAutomaticLabels, type MapLabelKind } from "@/lib/v2/ui/map-labels";
+import { automaticLabelText, badgeTextColor, labelBoxesOverlap, legacyLabelPriority, mapLabelContent, mapLabelText as formatMapLabelText, selectAutomaticLabels, type MapLabelKind } from "@/lib/v2/ui/map-labels";
 import { applyView, BASEMAP_ATTRIBUTION, BASEMAP_STACK, framedViewport, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, worldPx, type BasemapChoice, type MapView, type Viewport } from "@/lib/v2/ui/map-projection";
 import { rasterAffine, rasterLegendColor, rasterLegendEntries, resolveRasterStyle } from "@/lib/v2/ui/raster-image";
 import type { MapFeature, MapLine, MapPolygon, RasterRef } from "@/lib/v2/tile-result";
 import { maxOf, minOf } from "@/lib/v2/extent";
 import { isSiteParcelLayer } from "@/lib/v2/ui/site-parcel";
+import { calloutFrame, layoutCallouts, PX, PX_NARROW, type Placed } from "@/lib/v2/ui/callout-layout";
+import { tileClientModuleFor } from "@/lib/v2/tile/client";
 
 /**
  * 지도 그림 하나(SVG). 카드·상세·PPT가 같은 입력으로 같은 그림을 그린다.
@@ -119,6 +121,9 @@ export type SiteMarkerMode = "parcel" | "ring";
 export type MapLabelEntry = {
   key: string;
   text: string;
+  title: string;
+  detailLines: string[];
+  lines: string[];
   autoText: string | null;
   labelPriority: number;
   order: number;
@@ -137,6 +142,7 @@ const labelText = formatMapLabelText;
 /** 보드의 고정 라벨 목록과 SVG 라벨 배치가 같은 문구를 쓰도록 공유한다. */
 export function mapLabelEntries(model: MapModel): MapLabelEntry[] {
   const features = model.features.map((feature, index) => ({
+    ...mapLabelContent(feature.layer, "feature", feature),
     key: mapFeatureKey(feature.layer, feature.fid, index),
     text: labelText(feature.layer, "feature", feature),
     autoText: automaticLabelText(feature.layer, "feature", feature),
@@ -147,6 +153,7 @@ export function mapLabelEntries(model: MapModel): MapLabelEntry[] {
     ...(feature.fid ? { fid: feature.fid } : {}),
   }));
   const polygons = (model.polygons ?? []).map((polygon, index) => ({
+    ...mapLabelContent(polygon.layer, "polygon", polygon),
     key: mapElementKey("polygon", polygon.layer, polygon.fid, index),
     text: labelText(polygon.layer, "polygon", polygon),
     autoText: automaticLabelText(polygon.layer, "polygon", polygon),
@@ -157,6 +164,7 @@ export function mapLabelEntries(model: MapModel): MapLabelEntry[] {
     ...(polygon.fid ? { fid: polygon.fid } : {}),
   }));
   const lines = (model.lines ?? []).map((line, index) => ({
+    ...mapLabelContent(line.layer, "line", line),
     key: mapElementKey("line", line.layer, line.fid, index),
     text: labelText(line.layer, "line", line),
     autoText: automaticLabelText(line.layer, "line", line),
@@ -664,90 +672,129 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     highlighted: boolean;
     pick: MapFigureElementPick;
   };
+  const labelEntriesByKey = new Map(mapLabelEntries(model).map((entry) => [entry.key, entry]));
   const screenLabels: ScreenLabel[] = [
     ...drawn.flatMap((d) => {
       if (!inFrame(d.p)) return [];
+      const key = mapFeatureKey(d.f.layer, d.f.fid, d.index);
+      const base = labelEntriesByKey.get(key);
+      if (!base) return [];
       return [{
-      key: mapFeatureKey(d.f.layer, d.f.fid, d.index),
-      text: labelText(d.f.layer, "feature", d.f),
+      ...base,
       autoText: automaticLabelText(d.f.layer, "feature", d.f, isLayerHighlighted(d.f.layer) && (!!d.f.highlight || d.selected)),
       labelPriority: legacyLabelPriority("feature", d.f, isLayerHighlighted(d.f.layer) && (!!d.f.highlight || d.selected)) ?? 0,
       order: d.index,
-      layer: d.f.layer,
-      kind: "feature" as const,
-      ...(d.f.fid ? { fid: d.f.fid } : {}),
       p: d.p,
       radius: radiusOf(d.f),
       small: false,
       explicit: !!automaticLabelText(d.f.layer, "feature", d.f),
       highlighted: isLayerHighlighted(d.f.layer) && (!!d.f.highlight || d.selected),
-      pick: { fid: d.f.fid, lng: d.f.lng, lat: d.f.lat, kind: "feature" as const, key: mapFeatureKey(d.f.layer, d.f.fid, d.index) },
+      pick: { fid: d.f.fid, lng: d.f.lng, lat: d.f.lat, kind: "feature" as const, key },
       }];
     }),
     ...polygons.flatMap((d) => {
       const anchor = visibleAnchor(d.rings.flat(), d.center);
       if (!anchor) return [];
+      const key = mapElementKey("polygon", d.polygon.layer, d.polygon.fid, d.index);
+      const base = labelEntriesByKey.get(key);
+      if (!base) return [];
       return [{
-      key: mapElementKey("polygon", d.polygon.layer, d.polygon.fid, d.index),
-      text: labelText(d.polygon.layer, "polygon", d.polygon),
+      ...base,
       autoText: automaticLabelText(d.polygon.layer, "polygon", d.polygon, isLayerHighlighted(d.polygon.layer) && highlightActive),
       labelPriority: legacyLabelPriority("polygon", d.polygon, isLayerHighlighted(d.polygon.layer) && highlightActive) ?? 0,
       order: model.features.length + d.index,
-      layer: d.polygon.layer,
-      kind: "polygon" as const,
-      ...(d.polygon.fid ? { fid: d.polygon.fid } : {}),
       p: anchor,
       radius: 0,
       small: false,
       explicit: !!automaticLabelText(d.polygon.layer, "polygon", d.polygon),
       highlighted: isLayerHighlighted(d.polygon.layer) && highlightActive,
-      pick: { fid: d.polygon.fid, ...(() => { const [lng, lat] = centerOf(d.polygon.rings[0] ?? []); return { lng, lat }; })(), kind: "polygon" as const, key: mapElementKey("polygon", d.polygon.layer, d.polygon.fid, d.index) },
+      pick: { fid: d.polygon.fid, ...(() => { const [lng, lat] = centerOf(d.polygon.rings[0] ?? []); return { lng, lat }; })(), kind: "polygon" as const, key },
       }];
     }),
     ...linePaths.flatMap((d): ScreenLabel[] => {
       const center = visibleAnchor(d.points, d.points[Math.floor(d.points.length / 2)] ?? [cx, cy]);
       if (!center) return [];
       const [lng, lat] = centerOf(d.l.points);
+      const key = mapElementKey("line", d.l.layer, d.l.fid, d.index);
+      const base = labelEntriesByKey.get(key);
+      if (!base) return [];
       return [{
-        key: mapElementKey("line", d.l.layer, d.l.fid, d.index),
-        text: labelText(d.l.layer, "line", d.l),
+        ...base,
         autoText: automaticLabelText(d.l.layer, "line", d.l, isLayerHighlighted(d.l.layer) && highlightActive),
         labelPriority: legacyLabelPriority("line", d.l, isLayerHighlighted(d.l.layer) && highlightActive) ?? 0,
         order: model.features.length + (model.polygons ?? []).length + d.index,
-        layer: d.l.layer,
-        kind: "line" as const,
-        ...(d.l.fid ? { fid: d.l.fid } : {}),
         p: center as [number, number],
         radius: 0,
         small: true,
         explicit: !!automaticLabelText(d.l.layer, "line", d.l),
         highlighted: isLayerHighlighted(d.l.layer) && highlightActive,
-        pick: { fid: d.l.fid, lng, lat, kind: "line" as const, key: mapElementKey("line", d.l.layer, d.l.fid, d.index) },
+        pick: { fid: d.l.fid, lng, lat, kind: "line" as const, key },
       }];
     }),
   ];
   const labelByKey = new Map(screenLabels.map((entry) => [entry.key, entry]));
-  const labelBox = (d: ScreenLabel, labelFs: number, decorated = false): { width: number; height: number } => ({
-    width: textW(decorated ? d.text : d.autoText ?? "", labelFs) + (decorated ? 12 : d.small ? 5 : 7) * u,
-    height: labelFs * 1.45,
-  });
   const labelCollisionGap = 3 * u;
-  const closestPoint = (box: Box, p: readonly [number, number]): [number, number] => [
-    Math.max(box.x0, Math.min(box.x1, p[0])),
-    Math.max(box.y0, Math.min(box.y1, p[1])),
-  ];
-  const labelNode = (d: ScreenLabel, box: Box, variant: "auto" | "fixed" | "hover", fallback = false): ReactNode => {
+  const calloutLabelFs = Math.max(11, fs);
+  const calloutPad = 6 * u;
+  const calloutLineHeight = calloutLabelFs * 1.24;
+  const calloutCardH = calloutPad * 2 + calloutLineHeight * 4;
+  const baseCalloutMetrics = W <= 420 ? PX_NARROW : PX;
+  const calloutMetrics = {
+    ...baseCalloutMetrics,
+    cardW: baseCalloutMetrics.cardW * u,
+    compactW: baseCalloutMetrics.compactW * u,
+    minW: baseCalloutMetrics.minW * u,
+    gap: baseCalloutMetrics.gap * u,
+    stub: baseCalloutMetrics.stub * u,
+    rMin: baseCalloutMetrics.rMin * u,
+    rMax: baseCalloutMetrics.rMax * u,
+    head: baseCalloutMetrics.head * u,
+    row: baseCalloutMetrics.row * u,
+    pad: baseCalloutMetrics.pad * u,
+    compactH: calloutCardH,
+  };
+  const calloutTop = showLegend && panelY <= H / 2 ? panelY + panelH + 6 * u : 4 * u;
+  const calloutBottom = showLegend && panelY > H / 2 ? panelY - 6 * u : H - bottomInset - 4 * u;
+  const calloutFrameModel = {
+    ...calloutFrame({
+      W,
+      H,
+      m: calloutMetrics,
+      edge: 4 * u,
+      top: calloutTop,
+      bottom: Math.max(calloutTop, calloutBottom),
+      rightInset,
+      perSide: 100,
+      rows: 3,
+      variant: "compact",
+      maxFill: 0.8,
+    }),
+    // A label belongs to the left/right side of the map, not to the shifted
+    // center left by a detail-panel inset.
+    centerX: W / 2,
+  };
+  type MapCalloutPlacement = { placed: Placed; box: Box; leader: Box };
+  const calloutPlacement = (placed: Placed, point: ScreenLabel): MapCalloutPlacement => {
+    const box: Box = { x0: placed.x, y0: placed.y, x1: placed.x + calloutFrameModel.cardW, y1: placed.y + calloutFrameModel.cardH };
+    const points = [point.p, placed.knee, placed.edge];
+    const leader: Box = {
+      x0: Math.max(0, Math.min(...points.map(([x]) => x)) - 2 * u),
+      y0: Math.max(0, Math.min(...points.map(([, y]) => y)) - 2 * u),
+      x1: Math.min(W, Math.max(...points.map(([x]) => x)) + 2 * u),
+      y1: Math.min(H, Math.max(...points.map(([, y]) => y)) + 2 * u),
+    };
+    return { placed, box, leader };
+  };
+  const labelNode = (d: ScreenLabel, placement: MapCalloutPlacement, variant: "auto" | "fixed" | "hover"): ReactNode => {
     const fixedLabel = variant === "fixed";
     const hoverLabel = variant === "hover";
-    const labelFs = fixedLabel || hoverLabel ? Math.max(11, fs) : d.small ? fs * 0.85 : fs;
-    const edge = closestPoint(box, d.p);
-    if (variant === "auto") {
-      return (
-        <text key={`label-${d.key}`} x={box.x0 + 2 * u} y={box.y0 + labelFs * 0.95} fontSize={labelFs} fontWeight={d.small ? 500 : 700} fill={INK} fillOpacity={highlightActive ? (d.highlighted ? 1 : 0.2) : 1} stroke="#fff" strokeWidth={3 * u} strokeLinejoin="round" paintOrder="stroke" pointerEvents="none">
-          {d.autoText}
-        </text>
-      );
-    }
+    const labelFs = fixedLabel || hoverLabel ? calloutLabelFs : Math.max(9, d.small ? fs * 0.9 : fs);
+    const innerW = Math.max(8, placement.box.x1 - placement.box.x0 - 14 * u);
+    const textFs = Math.max(7, Math.min(labelFs, ...d.lines.map((line) => labelFs * innerW / Math.max(1, textW(line, labelFs)))));
+    const lineHeight = Math.min(calloutLineHeight, (placement.box.y1 - placement.box.y0 - 2 * calloutPad) / Math.max(1, d.lines.length));
+    const textX = placement.box.x0 + 8 * u;
+    const textY = placement.box.y0 + calloutPad + textFs * 0.9;
+    const dimmed = variant === "auto" && highlightActive && !d.highlighted;
     const pinPick = () => onFeaturePin?.(d.pick);
     const onKeyDown = (event: ReactKeyboardEvent<SVGGElement>) => {
       if (event.key === "Enter" || event.key === " ") {
@@ -755,88 +802,59 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
         pinPick();
       }
     };
-    if (hoverLabel) {
-      return (
-        <g key={`hover-label-${d.key}`} pointerEvents="none">
-          <line x1={d.p[0]} y1={d.p[1]} x2={edge[0]} y2={edge[1]} stroke="#111" strokeWidth={1.2 * u} />
-          <rect x={box.x0} y={box.y0} width={box.x1 - box.x0} height={box.y1 - box.y0} rx={3 * u} fill="#111" />
-          <text x={box.x0 + 4 * u} y={box.y0 + labelFs * 0.98} fontSize={labelFs} fontWeight={500} fill="#fff">
-            {d.text}
-          </text>
-        </g>
-      );
-    }
     return (
       <g
-        key={`pinned-label-${d.key}`}
+        key={`${variant}-label-${d.key}`}
         data-map-label-key={d.key}
-        {...(onFeaturePin ? { "data-map-feature": d.key, className: "map-figure-interactive", role: "button" as const, tabIndex: 0, "aria-label": `${d.text} 고정 라벨`, "aria-pressed": true, onClick: pinPick, onKeyDown } : { "aria-hidden": true })}
-        style={onFeaturePin ? { cursor: "pointer" } : undefined}
-        pointerEvents={onFeaturePin ? "all" : "none"}
+        data-map-label-variant={variant}
+        {...(fixedLabel && onFeaturePin ? { "data-map-feature": d.key, className: "map-figure-interactive", role: "button" as const, tabIndex: 0, "aria-label": `${d.text} 고정 라벨`, "aria-pressed": true, onClick: pinPick, onKeyDown } : { "aria-hidden": true })}
+        style={fixedLabel && onFeaturePin ? { cursor: "pointer" } : undefined}
+        pointerEvents={fixedLabel && onFeaturePin ? "all" : "none"}
+        opacity={dimmed ? 0.2 : 1}
       >
-        <line x1={d.p[0]} y1={d.p[1]} x2={edge[0]} y2={edge[1]} stroke="#111" strokeWidth={1.2 * u} />
-        <rect x={box.x0} y={box.y0} width={box.x1 - box.x0} height={box.y1 - box.y0} rx={3 * u} fill="#fff" stroke="#111" strokeWidth={1.2 * u} />
-        <circle cx={box.x0 + 4 * u} cy={(box.y0 + box.y1) / 2} r={Math.max(1.8 * u, labelFs * 0.2)} fill="#111" />
-        <text x={box.x0 + 8 * u} y={box.y0 + labelFs * 0.98} fontSize={labelFs} fontWeight={500} fill="#111">
-          {d.text}
+        {!dragging && <>
+          <polyline data-map-label-leader={d.key} points={[d.p, placement.placed.knee, placement.placed.edge].map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke="#fff" strokeWidth={3.6 * u} strokeLinecap="round" strokeLinejoin="round" />
+          <polyline data-map-label-leader={d.key} points={[d.p, placement.placed.knee, placement.placed.edge].map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke={INK} strokeWidth={1.2 * u} strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx={d.p[0]} cy={d.p[1]} r={Math.max(1.8 * u, labelFs * 0.2)} fill={INK} />
+        </>}
+        <rect data-map-label-box={d.key} x={placement.box.x0} y={placement.box.y0} width={placement.box.x1 - placement.box.x0} height={placement.box.y1 - placement.box.y0} rx={3 * u} fill="#fff" stroke={INK} strokeWidth={1.2 * u} />
+        <circle cx={placement.box.x0 + 4 * u} cy={(placement.box.y0 + placement.box.y1) / 2} r={Math.max(1.8 * u, labelFs * 0.2)} fill={INK} />
+        <text x={textX} y={textY} fontSize={textFs} fill={INK}>
+          {d.lines.map((line, index) => <tspan key={`${d.key}-line-${index}`} x={textX} dy={index === 0 ? 0 : lineHeight} fontWeight={index === 0 ? 700 : 500}>{line}</tspan>)}
         </text>
-        {fallback && <circle cx={d.p[0]} cy={d.p[1]} r={2.1 * u} fill="#111" />}
       </g>
     );
   };
-  const placeLabel = (d: ScreenLabel, fixedLabel: boolean): { box: Box; fallback: boolean } | null => {
-    const labelFs = fixedLabel ? Math.max(11, fs) : d.small ? fs * 0.85 : fs;
-    const dimensions = labelBox(d, labelFs, fixedLabel);
-    const gap = d.radius + 3 * u;
-    const spotsFor = (distance: number) => [
-      { x: d.p[0] + distance, y: d.p[1] - dimensions.height / 2 },
-      { x: d.p[0] - distance - dimensions.width, y: d.p[1] - dimensions.height / 2 },
-      { x: d.p[0] - dimensions.width / 2, y: d.p[1] - distance - dimensions.height - 2 * u },
-      { x: d.p[0] - dimensions.width / 2, y: d.p[1] + distance },
-    ];
-    const fits = (spots: Array<{ x: number; y: number }>) => spots
-      .map((spot) => ({ x0: spot.x, y0: spot.y, x1: spot.x + dimensions.width, y1: spot.y + dimensions.height }))
-      .find((box) => box.x0 >= 2 && box.x1 <= W - 2 && box.y0 >= 2 && box.y1 <= H - 2 && !boxes.some((other) => labelBoxesOverlap(other, box, labelCollisionGap)));
-    const fit = fits(spotsFor(gap));
-    if (fit) return { box: fit, fallback: false };
-    if (!fixedLabel) return null;
-    // 대지 표식·먼저 고정된 라벨이 네 후보를 모두 차지하면 더 멀리
-    // 벌어진 후보를 먼저 찾는다. 그래도 못 놓을 때만 화면 안으로 clamp한다.
-    const farGap = gap + Math.max(24 * u, dimensions.height * 1.5);
-    const extended = fits(spotsFor(farGap));
-    if (extended) return { box: extended, fallback: true };
-    const preferred = spotsFor(gap)[0]!;
-    const clamped: Box = {
-      x0: Math.max(2, Math.min(W - dimensions.width - 2, preferred.x)),
-      y0: Math.max(2, Math.min(H - dimensions.height - 2, preferred.y)),
-      x1: 0,
-      y1: 0,
-    };
-    clamped.x1 = clamped.x0 + dimensions.width;
-    clamped.y1 = clamped.y0 + dimensions.height;
-    return { box: clamped, fallback: true };
-  };
   const labels: ReactNode[] = [];
+  let hoverLabelPlacement: MapCalloutPlacement | null = null;
+  let hoverLabelNode: ReactNode = null;
   if (!bare) {
     const pinnedLabels = pinnedKeys.map((key) => labelByKey.get(key)).filter((entry): entry is ScreenLabel => !!entry);
     const pinnedSet = new Set(pinnedLabels.map((entry) => entry.key));
-    for (const entry of pinnedLabels) {
-      const placed = placeLabel(entry, true);
+    const hoverLabel = hoverKey && !pinned.has(hoverKey) ? labelByKey.get(hoverKey) : undefined;
+    const automatic = (model.tileCode ? tileClientModuleFor(model.tileCode)?.autoLabels !== false : true)
+      ? selectAutomaticLabels(screenLabels).filter((entry) => !pinnedSet.has(entry.key) && entry.key !== hoverLabel?.key)
+      : [];
+    const candidates = [
+      ...pinnedLabels.map((entry) => ({ entry, variant: "fixed" as const, rank: -2 })),
+      ...(hoverLabel ? [{ entry: hoverLabel, variant: "hover" as const, rank: -1 }] : []),
+      ...automatic.map((entry) => ({ entry, variant: "auto" as const, rank: 2 - (entry.labelPriority ?? 0) })),
+    ];
+    const layout = layoutCallouts(calloutFrameModel, candidates.map(({ entry, rank }) => ({ id: entry.key, x: entry.p[0], y: entry.p[1], rank })));
+    const placedByKey = new Map(layout.placed.map((placed) => [placed.id, placed]));
+    for (const { entry, variant } of candidates) {
+      const placed = placedByKey.get(entry.key);
       if (!placed) continue;
-      boxes.push(placed.box);
-      labels.push(labelNode(entry, placed.box, "fixed", placed.fallback));
-    }
-    const automatic = selectAutomaticLabels(screenLabels).filter((entry) => !pinnedSet.has(entry.key));
-    for (const entry of automatic) {
-      const placed = placeLabel(entry, false);
-      if (!placed) continue;
-      boxes.push(placed.box);
-      labels.push(labelNode(entry, placed.box, "auto"));
+      const placement = calloutPlacement(placed, entry);
+      boxes.push(placement.box, placement.leader);
+      if (variant === "hover") {
+        hoverLabelPlacement = placement;
+        hoverLabelNode = labelNode(entry, placement, variant);
+      } else {
+        labels.push(labelNode(entry, placement, variant));
+      }
     }
   }
-  const hoverLabel = !bare && hoverKey && !pinned.has(hoverKey) ? labelByKey.get(hoverKey) : undefined;
-  const hoverLabelPlacement = hoverLabel ? placeLabel(hoverLabel, true) : null;
-  const hoverLabelNode = hoverLabel && hoverLabelPlacement ? labelNode(hoverLabel, hoverLabelPlacement.box, "hover") : null;
   const featureBadges = drawn.flatMap((d) => (d.f.badges ?? []).slice(0, 4).map((badge, badgeIndex) => ({ d, badge, badgeIndex })));
   const badgePositions = new Map<string, { x: number; y: number; width: number; height: number }>();
   const badgeBoxes: Box[] = [];

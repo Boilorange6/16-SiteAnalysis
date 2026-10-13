@@ -2,6 +2,7 @@ import type { TileClientModule } from "../types";
 
 export const d03ClientModule = {
   code: "D03",
+  autoLabels: false,
   headline: { ids: ["share_use_1", "share_use_2", "share_use_3", "share_use_4", "share_use_5", "share_use_6", "share_use_7", "share_use_8", "share_use_9"] },
   headlineFor: (result, helpers) => {
     const candidates = result.metrics.filter((metric) => metric.id.startsWith("share_use_") && metric.id !== "share_use_10");

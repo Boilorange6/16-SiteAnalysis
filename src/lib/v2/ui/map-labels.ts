@@ -20,6 +20,15 @@ function joinLabel(name: string, sublabel: string | null): string {
   return sublabel ? `${name} · ${sublabel}` : name;
 }
 
+function splitSublabel(value: string | null): string[] {
+  if (!value) return [];
+  return value
+    .split(/\r?\n|\s*·\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
 function formatLabelDistance(meters: number): string {
   if (meters < 1000) return `${Math.round(meters).toLocaleString("ko-KR")}m`;
   const km = meters / 1000;
@@ -45,29 +54,45 @@ function hasLabelContract(item: MapLabelItem): boolean {
   return item.labelPriority !== undefined || Object.prototype.hasOwnProperty.call(item, "sublabel");
 }
 
+type RawLabelParts = { title: string; sublabel: string | null };
+
+function rawLabelParts(layer: string, kind: MapLabelKind, item: MapLabelItem): RawLabelParts {
+  const legendName = layerStyle(layer).label;
+  const name = userText(item.name);
+  const sublabel = userText(item.sublabel);
+  if (name) {
+    if (hasLabelContract(item)) return { title: name, sublabel };
+    if (kind === "feature") {
+      const legacyValue = legacyFeatureValue(item as MapFeature);
+      return { title: name, sublabel: legacyValue && legacyValue !== name ? legacyValue : null };
+    }
+    return { title: name, sublabel: null };
+  }
+  if (hasLabelContract(item)) return { title: legendName, sublabel };
+  if (kind === "feature") return { title: legendName, sublabel: legacyFeatureValue(item as MapFeature) };
+  return { title: userText(item.label) ?? legendName, sublabel: null };
+}
+
+export type MapLabelContent = {
+  title: string;
+  detailLines: string[];
+  lines: string[];
+};
+
+/** 말풍선의 굵은 이름 + 보조 문구 줄. 상자 높이는 지도 쪽에서 공통으로 예약한다. */
+export function mapLabelContent(layer: string, kind: MapLabelKind, item: MapLabelItem): MapLabelContent {
+  const parts = rawLabelParts(layer, kind, item);
+  const detailLines = splitSublabel(parts.sublabel);
+  return { title: parts.title, detailLines, lines: [parts.title, ...detailLines].slice(0, 4) };
+}
+
 /**
  * 자동 라벨과 호버/고정 라벨이 공유하는 사람이 읽는 문구.
  * 새 계약에서는 name 또는 범례명에 타일이 서식한 sublabel만 붙인다.
  */
 export function mapLabelText(layer: string, kind: MapLabelKind, item: MapLabelItem): string {
-  const legendName = layerStyle(layer).label;
-  const name = userText(item.name);
-  const sublabel = userText(item.sublabel);
-  if (name) {
-    if (hasLabelContract(item)) return joinLabel(name, sublabel);
-    if (kind === "feature") {
-      const legacyValue = legacyFeatureValue(item as MapFeature);
-      return legacyValue && legacyValue !== name ? joinLabel(name, legacyValue) : name;
-    }
-    return name;
-  }
-  if (hasLabelContract(item)) return joinLabel(legendName, sublabel);
-  if (kind === "feature") {
-    const legacyValue = legacyFeatureValue(item as MapFeature);
-    return legacyValue ? joinLabel(legendName, legacyValue) : legendName;
-  }
-  const legacy = userText(item.label);
-  return legacy ?? legendName;
+  const parts = rawLabelParts(layer, kind, item);
+  return joinLabel(parts.title, parts.sublabel);
 }
 
 /**

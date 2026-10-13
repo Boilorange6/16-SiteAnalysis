@@ -6,11 +6,13 @@ import { createElement } from "react";
 
 globalThis.React = React;
 
-const { mapLabelText, automaticLabelText, selectAutomaticLabels, badgeTextColor } = await import("../../lib/v2/ui/map-labels.ts");
+const { mapLabelText, mapLabelContent, automaticLabelText, selectAutomaticLabels, badgeTextColor } = await import("../../lib/v2/ui/map-labels.ts");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { candidate, polygonCandidate, lineCandidate } = await import("../../lib/v2/engine/tiles/common.ts");
 const { compactLegendItems, layerStyle, legendItems } = await import("../../lib/v2/ui/map-layers.ts");
 const { default: MapFigure } = await import("../../components/v2/map-figure.tsx");
+const { tileClientModuleFor } = await import("../../lib/v2/tile/client.ts");
+const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 
 const center = [127.15, 37.62];
 const base = {
@@ -49,6 +51,11 @@ assert.deepEqual(
 assert.equal(mapLabelText("rail_station", "feature", { layer: "rail_station", name: "강남역", sublabel: "2호선", labelPriority: 2 }), "강남역 · 2호선");
 assert.equal(mapLabelText("rail_station", "feature", { layer: "rail_station", name: null, sublabel: "2호선", labelPriority: 1 }), "철도역 · 2호선");
 assert.equal(mapLabelText("rail_station", "feature", { layer: "rail_station", name: "강남역", sublabel: "미상", labelPriority: 2 }), "강남역");
+assert.deepEqual(
+  mapLabelContent("rail_station", "feature", { layer: "rail_station", name: "강남역", sublabel: "2호선\n환승 · 5분 · 추가 줄", labelPriority: 2 }),
+  { title: "강남역", detailLines: ["2호선", "환승", "5분"], lines: ["강남역", "2호선", "환승", "5분"] },
+  "말풍선 내용은 이름 굵은 줄과 보조 문구 최대 3줄로 정규화",
+);
 
 assert.equal(badgeTextColor("#111111"), "#FFFFFF");
 assert.equal(badgeTextColor("#FDE725"), "#111111");
@@ -108,5 +115,43 @@ assert.match(styledSvg, /stroke="#6D28D9"/);
 assert.match(styledSvg, /stroke-dasharray="3 3"/, "최근접 점선은 _nearest 레이어명이 아닌 highlight+distanceM으로 결정");
 assert.match(styledSvg, /stroke-dasharray="7 5"/);
 assert.match(styledSvg, /marker-end="url\(#arrow-/);
+assert.match(styledSvg, /data-map-label-variant="auto"/, "자동 라벨도 말풍선 변형을 사용");
+assert.match(styledSvg, /data-map-label-box="[^"]+"/, "자동 말풍선 상자 렌더");
+assert.match(styledSvg, /data-map-label-leader="[^"]+"/, "자동 말풍선 꺾인 지시선 렌더");
+
+// D03/D04/D05/D12는 초기 자동 라벨을 숨기되, 사용자가 고정한 요소는 남긴다.
+for (const code of ["D03", "D04", "D05", "D12"]) assert.equal(tileClientModuleFor(code)?.autoLabels, false, `${code} 자동 라벨 정책`);
+const d04Key = "rail_station|0";
+const d04Model = {
+  center,
+  radiusM: 500,
+  tileCode: "D04",
+  features: [{ layer: "rail_station", lng: center[0], lat: center[1], name: "준공역", sublabel: "1990년대", labelPriority: 2 }],
+  polygons: [],
+  lines: [],
+  total: 1,
+  notes: [],
+};
+const d04AutoOff = renderToStaticMarkup(createElement(MapFigure, { model: d04Model, width: 420, height: 280, basemap: "none", legend: false }));
+assert.doesNotMatch(d04AutoOff, /data-map-label-variant="auto"/, "D04 초기 자동 라벨 없음");
+const d04Pinned = renderToStaticMarkup(createElement(MapFigure, { model: d04Model, width: 420, height: 280, basemap: "none", legend: false, pinnedKeys: [d04Key], onFeaturePin: () => {} }));
+assert.match(d04Pinned, /data-map-label-variant="fixed"/, "D04 고정 라벨은 말풍선으로 표시");
+assert.doesNotMatch(d04Pinned, /data-map-label-variant="auto"/, "D04 고정 시에도 자동 라벨은 생성하지 않음");
+const d04Hover = renderToStaticMarkup(createElement(MapFigure, { model: d04Model, width: 420, height: 280, basemap: "none", legend: false, hoverKey: d04Key }));
+assert.match(d04Hover, /data-map-label-variant="hover"/, "D04 호버 라벨은 말풍선으로 표시");
+assert.match(d04Hover, /data-map-label-box="rail_station\|0"[^>]*fill="#fff"/, "호버 말풍선도 흰 상자 사용");
+const d04Dragging = renderToStaticMarkup(createElement(MapFigure, { model: d04Model, width: 420, height: 280, basemap: "none", legend: false, pinnedKeys: [d04Key], onFeaturePin: () => {}, dragging: true }));
+assert.doesNotMatch(d04Dragging, /data-map-label-leader=/, "드래그 중 지시선 숨김");
+
+// PPT map-image가 넘기는 TileView.map도 tileCode를 유지하므로 동일한 MapFigure 정책을 사용한다.
+const d04Result = parseTileResult({
+  ...base,
+  tileCode: "D04",
+  presentation: { ...base.presentation, features: d04Model.features },
+});
+const d04TileView = toTileView(d04Result);
+assert.equal(d04TileView.map?.tileCode, "D04", "PPT 지도 모델이 타일 코드를 유지");
+const d04ReportMap = renderToStaticMarkup(createElement(MapFigure, { model: d04TileView.map, width: 960, height: 540, basemap: "none", legend: false, fixed: true }));
+assert.doesNotMatch(d04ReportMap, /data-map-label-variant="auto"/, "PPT에 전달되는 지도 모델도 D04 자동 라벨 없음");
 
 console.log("✓ v2 map contract");
