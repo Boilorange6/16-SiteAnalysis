@@ -61,6 +61,11 @@ try {
   assert.equal(nonNearest?.labelPriority, 0, "비최근접 priority 0");
   assert.equal(nonNearest?.sublabel, null, "비최근접 sublabel 없음");
   assert.equal(layerStyle("store:grocery").label, "식료품");
+  const shares = tile.metrics.filter((metric) => metric.id.startsWith("share_"));
+  assert.deepEqual(shares.map((metric) => metric.id), ["share_grocery", "share_clinic", "share_eatery", "share_life_service", "share_other"], "A03 구성비 순서는 실제 업종 범례와 같다");
+  assert.deepEqual(shares.map((metric) => metric.label), tile.presentation.legend.map((entry) => `구성비: ${entry.label}`));
+  assert.ok(Math.abs(Math.round(shares.reduce((sum, metric) => sum + metric.value, 0) * 10) / 10 - 100) <= 0.1, "A03 업종 수 구성비 합계");
+  assert.ok(shares.every((metric) => metric.unit === "%" && metric.formulaVersion.startsWith("a03-share-count@1:")));
   ctx.close();
   ctx = null;
 

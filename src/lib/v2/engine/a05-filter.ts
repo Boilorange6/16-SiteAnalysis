@@ -11,6 +11,29 @@ export const A05_TYPES = ["apt", "other_housing", "officetel"] as const;
 export type A05Type = (typeof A05_TYPES)[number];
 export const A05_TYPE_LABEL: Record<A05Type, string> = { apt: "아파트", other_housing: "연립·다세대 등", officetel: "오피스텔" };
 
+/** A05 카드에 실제로 보이는 준공연대·기타 공동주택 범례의 고정 순서. */
+export const A05_STOCK_SHARE_ITEMS = [
+  { id: "share_pre1980", label: "1970년대 이전", layer: "bldg_pre1980" },
+  { id: "share_1980s", label: "1980년대", layer: "bldg_1980s" },
+  { id: "share_1990s", label: "1990년대", layer: "bldg_1990s" },
+  { id: "share_2000s", label: "2000년대", layer: "bldg_2000s" },
+  { id: "share_2010s", label: "2010년대", layer: "bldg_2010s" },
+  { id: "share_2020s", label: "2020년 이후", layer: "bldg_2020s" },
+  { id: "share_unknown", label: "미상", layer: "bldg_unknown" },
+  { id: "share_other_housing", label: "기타 공동주택", layer: "other_housing" },
+] as const;
+
+export type A05StockShareLayer = (typeof A05_STOCK_SHARE_ITEMS)[number]["layer"];
+export function a05StockDecadeLayer(year: number | null): Exclude<A05StockShareLayer, "other_housing"> {
+  if (year === null) return "bldg_unknown";
+  if (year <= 1979) return "bldg_pre1980";
+  if (year < 1990) return "bldg_1980s";
+  if (year < 2000) return "bldg_1990s";
+  if (year < 2010) return "bldg_2000s";
+  if (year < 2020) return "bldg_2010s";
+  return "bldg_2020s";
+}
+
 export type A05Range = { min?: number | null; max?: number | null };
 export type A05Filter = {
   /** 비었거나 없으면 전체 유형 */
@@ -92,6 +115,8 @@ export type A05Reaggregation = {
 const m = (id: string, label: string, value: number | null, unit: string, formulaVersion: string, status: Metric["status"], numerator: number | null = null, denominator: number | null = null): Metric =>
   ({ id, label, value, unit, formulaVersion, numerator, denominator, status: value === null ? "missing" : status });
 
+const sharePct = (part: number, whole: number): number => whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0;
+
 const lowerMedian = (xs: number[]): number | null => (xs.length === 0 ? null : [...xs].sort((a, b) => a - b)[Math.floor((xs.length - 1) / 2)]);
 
 /** 지물 한 건이 필터를 통과하는지. unknownFields는 값이 없어서 통과한 필드 */
@@ -153,6 +178,14 @@ export function reaggregateA05(result: TileResult, filter: A05Filter | null | un
       parkHh += a.households;
     }
   }
+  const stockShareMetrics = A05_STOCK_SHARE_ITEMS
+    .filter((item) => item.layer !== "other_housing" || others.length > 0)
+    .map((item) => {
+      const count = item.layer === "other_housing"
+        ? others.length
+        : kept.filter((f) => (f.layer === "apt" || f.layer === "officetel") && a05StockDecadeLayer(typeof f.approvalYear === "number" ? f.approvalYear : null) === item.layer).length;
+      return m(item.id, `구성비: ${item.label}`, sharePct(count, kept.length), "%", "a05-share-stock@1:준공연대별 아파트·오피스텔·기타 공동주택 단지 수÷필터 후 반경 내 주거 단지 수", "observed", count, kept.length);
+    });
   const FV = "a05-filter@1";
   const recomputed: Metric[] = [
     m("apartment_complexes", "아파트 단지", apts.length, "개", FV, "observed"),
@@ -166,6 +199,7 @@ export function reaggregateA05(result: TileResult, filter: A05Filter | null | un
     m("aged_share_pct", "30년 이상 건물 비중", years.length === 0 ? null : Math.round((aged / years.length) * 1000) / 10, "%", FV, "estimated", aged, years.length),
     m("parking_per_household", "세대당 주차대수", parkHh === 0 ? null : Math.round((parkN / parkHh) * 100) / 100, "대", FV, "observed", parkN, parkHh),
     m("filter_unknown_kept", "정보 없음이라 포함한 건물·단지", unknownKept, "건", FV, "observed"),
+    ...stockShareMetrics,
   ];
   const recomputedIds = new Set(recomputed.map((x) => x.id));
   // 복원할 수 없는 지표(대체 출처 개수, K-APT 전용 단지)는 원본 그대로: 필터 영향 밖

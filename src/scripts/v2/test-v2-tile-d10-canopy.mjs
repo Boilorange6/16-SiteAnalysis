@@ -415,6 +415,11 @@ try {
   const canopyPct = parsed.metrics.find((metric) => metric.id === "canopy_pct");
   assert.ok(canopyPct && canopyPct.status === "estimated" && canopyPct.value !== null);
   assert.ok(Math.abs(canopyPct.value - 7.8) < 2, `canopy_pct ${canopyPct.value}`);
+  const layerShares = parsed.metrics.filter((metric) => metric.id.startsWith("share_"));
+  assert.deepEqual(layerShares.map((metric) => metric.id), ["share_canopy_pct", "share_osm_green_pct", "share_osm_water_pct"], "D10 구성비 순서는 레이어 범례와 같다");
+  assert.deepEqual(layerShares.map((metric) => metric.label), ["구성비: 수관", "구성비: OSM 녹지", "구성비: OSM 수계"]);
+  assert.ok(layerShares.every((metric) => metric.unit === "%" && metric.numerator !== null && metric.denominator !== null));
+  assert.ok(parsed.limitations.some((limitation) => limitation.note.includes("구성비 합이 100%가 아닐 수")));
   const fill = parsed.metrics.find((metric) => metric.id === "fill_imagery_pct");
   assert.deepEqual({ value: fill?.value, status: fill?.status }, { value: 100, status: "observed" });
   assert.ok(firstElapsedMs <= 22_000, `D10 fixture first execution ${firstElapsedMs.toFixed(1)} ms > 22000 ms`);

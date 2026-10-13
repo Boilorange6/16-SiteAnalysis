@@ -3,10 +3,12 @@ import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../../engine/context";
 import type { FeatureHit } from "../../data/features";
 import { unitTypesFromUnknown } from "../../unit-types";
+import { A05_STOCK_SHARE_ITEMS, a05StockDecadeLayer } from "../../engine/a05-filter";
 import { candidate, est, fmt, makeTile, missing, noDataTile, obs, type TileDraft } from "../../engine/tiles/common";
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null);
 const year = (v: unknown): number | null => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? Number(v.slice(0, 4)) : null);
+const pct = (part: number, whole: number) => whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0;
 
 /** 사용승인일로부터 분석일까지 30년 이상(승인 30주년 당일 포함) */
 export function isAged(approvalDate: string, analysisDate: string): boolean {
@@ -121,6 +123,14 @@ export function a05(ctx: EngineContext): TileResult {
   const years = targets.map((t) => year(t.properties.approvalDate)).filter((y): y is number => y !== null).sort((a, b) => a - b);
   const dated = targets.filter((t) => year(t.properties.approvalDate) !== null);
   const aged = dated.filter((t) => isAged(t.properties.approvalDate as string, ctx.input.analysisDate)).length;
+  const stockShareMetrics = A05_STOCK_SHARE_ITEMS
+    .filter((item) => item.layer !== "other_housing" || others.length > 0)
+    .map((item) => {
+      const count = item.layer === "other_housing"
+        ? others.length
+        : targets.filter((h) => a05StockDecadeLayer(year(h.properties.approvalDate)) === item.layer).length;
+      return obs(item.id, `구성비: ${item.label}`, pct(count, hits.length), "%", "a05-share-stock@1:준공연대별 아파트·오피스텔·기타 공동주택 단지 수÷반경 내 주거 건물·단지 수", count, hits.length);
+    });
 
   let parkN = 0;
   let parkHh = 0;
@@ -143,6 +153,7 @@ export function a05(ctx: EngineContext): TileResult {
     ...(hasKapt ? [obs("households_from_kapt", "K-APT 세대수로 대신한 단지", fromKapt, "개", basis)] : []),
     obs("households_from_units", "세대 수로 대신한 단지", fromUnits, "개", basis),
     obs("households_unknown_complexes", "세대 수를 알 수 없는 단지", hhUnknown, "개", basis),
+    ...stockShareMetrics,
     obs("unit_type_complexes", "전용면적 타입 확인 단지", unitTypeKnown, "개", "a05-unit-types@1", unitTypeKnown, targets.length),
     officetelUnits.length === 0 && officetels.length > 0
       ? missing("officetel_units", "오피스텔 호실", "호", "a05-officetel-units@1")

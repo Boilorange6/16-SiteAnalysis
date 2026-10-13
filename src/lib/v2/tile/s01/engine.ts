@@ -12,6 +12,11 @@ import { maxOf, minOf } from "../../extent";
 // and SceneBuilding.heightMethod keep 1층 가정 distinct without inventing a
 // screen layer the existing mass projection cannot render.
 const LAYERS = ["mass_source", "mass_estimated", "mass_unknown"] as const;
+const MASS_SHARE_ITEMS = [
+  { id: "share_mass_source", label: "확보 높이", layer: "mass_source" },
+  { id: "share_mass_estimated", label: "추정 높이", layer: "mass_estimated" },
+  { id: "share_mass_unknown", label: "높이 미상", layer: "mass_unknown" },
+] as const;
 const FLAT_GROUND_LIMITATION = {
   kind: "not_provided",
   note: "지형 자료를 확인하지 못해 평탄 지반으로 표시합니다.",
@@ -102,6 +107,12 @@ export function s01(ctx: EngineContext): TileResult {
       : (estimated.length > 0
         ? est("height_max_m", "확보 높이 최댓값", maxHeight, "m", "s01-height-max@1:source+floors_estimate 높이 최댓값")
         : obs("height_max_m", "확보 높이 최댓값", maxHeight, "m", "s01-height-max@1:source+floors_estimate 높이 최댓값")),
+    ...MASS_SHARE_ITEMS.map((item) => {
+      if (total === 0) return missing(item.id, `구성비: ${item.label}`, "%", "s01-share-height@1:매스 렌더러 범주별 건물 수÷반경 안 건물 수");
+      const count = item.layer === "mass_source" ? source.length : item.layer === "mass_estimated" ? estimated.length + assumed.length : unknown;
+      const make = item.layer === "mass_estimated" ? est : obs;
+      return make(item.id, `구성비: ${item.label}`, pct(count, total), "%", "s01-share-height@1:매스 렌더러 범주별 건물 수÷반경 안 건물 수", count, total);
+    }),
   ];
 
   return parseTileResult({

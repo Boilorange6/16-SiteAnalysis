@@ -8,6 +8,7 @@ const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { a05 } = await import("../../lib/v2/tile/a05/engine.ts");
 const { a06 } = await import("../../lib/v2/tile/a06/engine.ts");
+const { reaggregateA05 } = await import("../../lib/v2/engine/a05-filter.ts");
 const { calloutForA05, a05ClientModule } = await import("../../lib/v2/tile/a05/view.ts");
 const { a06ClientModule } = await import("../../lib/v2/tile/a06/view.ts");
 const { isHollowComplexMarker } = await import("../../lib/v2/ui/callout-layout.ts");
@@ -15,6 +16,7 @@ const { isHollowComplexMarker } = await import("../../lib/v2/ui/callout-layout.t
 const a05Result = {
   status: "complete",
   conditions: { center: [127, 37], radiusM: 800, analysisDate: "2026-09-30" },
+  metrics: [],
   presentation: {
     features: [
       { layer: "apt", lng: 127, lat: 37, name: "확인 단지", households: 300, approvalYear: 2010 },
@@ -27,6 +29,10 @@ const a05Result = {
 
 const model = calloutForA05(a05Result, "출처");
 assert.ok(model);
+const filteredA05 = reaggregateA05(a05Result, { types: ["apt", "officetel"] });
+const filteredShares = filteredA05.metrics.filter((metric) => metric.id.startsWith("share_"));
+assert.deepEqual(filteredShares.map((metric) => metric.id), ["share_pre1980", "share_1980s", "share_1990s", "share_2000s", "share_2010s", "share_2020s", "share_unknown"]);
+assert.ok(Math.abs(Math.round(filteredShares.reduce((sum, metric) => sum + metric.value, 0) * 10) / 10 - 100) <= 0.1, "A05 필터 후 준공연대 구성비 합계");
 assert.deepEqual(model.stats.map(({ value, unit, label }) => ({ value, unit, label })), [
   { value: "2", unit: "단지", label: "반경 안 아파트" },
   { value: "1", unit: "단지", label: "반경 안 오피스텔" },
@@ -53,6 +59,9 @@ assert.equal(a06ClientModule.mapNote, "색 = 원천(청약홈·입주예정) · 
     analysisDate: "2026-09-30",
   });
   const tile = a05(ctx);
+  const stockShares = tile.metrics.filter((metric) => metric.id.startsWith("share_"));
+  assert.deepEqual(stockShares.map((metric) => metric.id), ["share_pre1980", "share_1980s", "share_1990s", "share_2000s", "share_2010s", "share_2020s", "share_unknown", "share_other_housing"]);
+  assert.equal(stockShares.reduce((sum, metric) => sum + metric.value, 0), 100, "A05 준공연대·기타 공동주택 구성비 합계");
   const feature = (name) => tile.presentation.features.find((item) => item.name === name);
   assert.deepEqual(
     [feature("recap:apt1")?.name, feature("recap:apt1")?.sublabel, feature("recap:apt1")?.labelPriority],
@@ -83,6 +92,9 @@ assert.equal(a06ClientModule.mapNote, "색 = 원천(청약홈·입주예정) · 
     analysisDate: "2026-09-30",
   });
   const tile = a06(ctx);
+  const timingShares = tile.metrics.filter((metric) => metric.id.startsWith("share_timing_"));
+  assert.deepEqual(timingShares.map((metric) => metric.id), ["share_timing_past", "share_timing_m0_12", "share_timing_m13_24", "share_timing_later", "share_timing_unscheduled"]);
+  assert.ok(Math.abs(Math.round(timingShares.reduce((sum, metric) => sum + metric.value, 0) * 10) / 10 - 100) <= 0.1, "A06 입주 시기 구성비 합계");
   const feature = (name) => tile.presentation.features.find((item) => item.name === name);
   assert.deepEqual(
     [feature("applyhome:1")?.name, feature("applyhome:1")?.sublabel, feature("applyhome:1")?.labelPriority],

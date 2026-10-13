@@ -118,6 +118,7 @@ export function d10(ctx: EngineContext, options: CanopyForOptions = {}): TileRes
   const canopyMetric = canopy
     ? est("canopy_pct", "반경 수관 면적률", percent(canopyAreaM2, validAreaM2), "%", "d10-canopy-share@1:유효 항공영상 수관 셀 면적÷유효 반경 셀 면적", Math.round(canopyAreaM2), Math.round(validAreaM2))
     : missing("canopy_pct", "반경 수관 면적률", "%", "d10-canopy-share@1:유효 항공영상 없음");
+  const circleAreaM2 = circleArea(ctx.input.radiusM);
   const siteMetric = siteCanopyPct(ctx, canopy);
   const imageryFillMetric = canopy && canopy.totalTiles > 0
     ? obs("fill_imagery_pct", "항공영상 타일 채움률", percent(canopy.totalTiles - canopy.missingTiles, canopy.totalTiles), "%", "d10-imagery-fill@1:성공 타일÷요청 타일", canopy.totalTiles - canopy.missingTiles, canopy.totalTiles)
@@ -132,6 +133,15 @@ export function d10(ctx: EngineContext, options: CanopyForOptions = {}): TileRes
     waterSources.length > 0
       ? obs("osm_water_pct", "OSM 수계 면적률", Math.min(100, percent(water.areaM2, circleArea(ctx.input.radiusM))), "%", "d10-osm-water@1:OSM water 반경 교차면적÷π·r²", Math.round(water.areaM2), Math.round(circleArea(ctx.input.radiusM)))
       : missing("osm_water_pct", "OSM 수계 면적률", "%", "d10-osm-water@1:OSM 수계 자료 확인 불가"),
+    canopy
+      ? est("share_canopy_pct", "구성비: 수관", percent(canopyAreaM2, circleAreaM2), "%", "d10-share-layer@1:유효 항공영상 수관 셀의 반경 교차면적÷π·r²", Math.round(canopyAreaM2), Math.round(circleAreaM2))
+      : missing("share_canopy_pct", "구성비: 수관", "%", "d10-share-layer@1:유효 항공영상 없음"),
+    greenSources.length > 0
+      ? obs("share_osm_green_pct", "구성비: OSM 녹지", percent(green.areaM2, circleAreaM2), "%", "d10-share-layer@1:OSM landuse 반경 교차면적÷π·r²", Math.round(green.areaM2), Math.round(circleAreaM2))
+      : missing("share_osm_green_pct", "구성비: OSM 녹지", "%", "d10-share-layer@1:OSM 녹지 자료 확인 불가"),
+    waterSources.length > 0
+      ? obs("share_osm_water_pct", "구성비: OSM 수계", percent(water.areaM2, circleAreaM2), "%", "d10-share-layer@1:OSM water 반경 교차면적÷π·r²", Math.round(water.areaM2), Math.round(circleAreaM2))
+      : missing("share_osm_water_pct", "구성비: OSM 수계", "%", "d10-share-layer@1:OSM 수계 자료 확인 불가"),
     canopy
       ? est("exg_threshold", "ExG 검출 임계값", Math.round(canopy.threshold * 1000) / 1000, "ExG", "d10-exg-threshold@1:유효 항공영상 ExG Otsu 임계값(0.04~0.20)")
       : missing("exg_threshold", "ExG 검출 임계값", "ExG", "d10-exg-threshold@1:유효 항공영상 없음"),
@@ -150,6 +160,7 @@ export function d10(ctx: EngineContext, options: CanopyForOptions = {}): TileRes
   if (canopy && canopy.missingTiles > 0) limitations.push({ kind: "partial", note: `VWorld 항공영상 ${canopy.missingTiles}/${canopy.totalTiles}개 타일을 받지 못해 유효 영역만 표시했습니다.` });
   if (greenSources.length === 0) limitations.push({ kind: "not_provided", note: "OSM 녹지 면 자료를 확인하지 못해 항공사진 수관과 별도인 보조층을 표시하지 않았습니다." });
   if (waterSources.length === 0) limitations.push({ kind: "not_provided", note: "OSM 수계 면 자료를 확인하지 못해 항공사진 수관과 별도인 보조층을 표시하지 않았습니다." });
+  limitations.push({ kind: "unknown", note: "수관·OSM 녹지·OSM 수계는 독립 레이어라 서로 겹칠 수 있어 구성비 합이 100%가 아닐 수 있습니다. 수관 구성비의 분모는 π·반경²이며 항공영상 결측 영역은 분자에서 제외합니다." });
 
   const polygonCandidates: PolygonCandidate[] = [];
   if (canopy) {
@@ -159,7 +170,7 @@ export function d10(ctx: EngineContext, options: CanopyForOptions = {}): TileRes
     }
   }
   polygonCandidates.push(...green.polygons, ...water.polygons);
-  const basisMetricIds = metrics.filter((metric) => metric.status === "estimated" || metric.status === "observed").map((metric) => metric.id);
+  const basisMetricIds = metrics.filter((metric) => (metric.status === "estimated" || metric.status === "observed") && !metric.id.startsWith("share_")).map((metric) => metric.id);
   const canopyText = canopy ? `항공사진 검출 수관 ${canopyMetric.value?.toFixed(1)}%` : "항공사진 수관 자료 미확인";
   const greenText = greenSources.length > 0 ? `OSM 녹지 ${metrics.find((metric) => metric.id === "osm_green_pct")?.value?.toFixed(1)}%` : "OSM 녹지 자료 미확인";
   const sentence = `${canopyText}, ${greenText} → 항공사진 색 기반 수관과 OSM 녹지·수계를 분리해 표시한 현황 → 촬영시기·현장 수관과 녹지 경계는 원본과 현장에서 확인할 것`;
