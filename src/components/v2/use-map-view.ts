@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { applyView, clampView, metersPerPixel, worldPx, type MapView, type Viewport } from "@/lib/v2/ui/map-projection";
+import { clampView, metersPerPixel, zoomViewAt, type MapView, type Viewport } from "@/lib/v2/ui/map-projection";
 
 export type MapWheelMode = "plain" | "modifier" | "off";
 export type MapTouchPan = "one" | "two";
@@ -72,7 +72,6 @@ export function useMapView({ baseViewport, radiusM, maxZoom, enabled = true, whe
   const [view, setView] = useState<MapView>(ZERO_VIEW);
   const [gestureView, setGestureView] = useState<MapView | null>(null);
   const [dragging, setDragging] = useState(false);
-  const [previewOrigin, setPreviewOrigin] = useState<[number, number] | null>(null);
   const elementRef = useRef<HTMLElement | null>(null);
   const viewRef = useRef(view);
   const gestureRef = useRef<Gesture | null>(null);
@@ -105,7 +104,6 @@ export function useMapView({ baseViewport, radiusM, maxZoom, enabled = true, whe
     viewRef.current = next;
     gestureViewRef.current = null;
     setGestureView(null);
-    setPreviewOrigin(null);
     setDragging(false);
   }, [clearCommitTimer, clamp]);
 
@@ -124,7 +122,6 @@ export function useMapView({ baseViewport, radiusM, maxZoom, enabled = true, whe
     viewRef.current = ZERO_VIEW;
     setView(ZERO_VIEW);
     setGestureView(null);
-    setPreviewOrigin(null);
     setDragging(false);
   }, [clearCommitTimer, resetKey]);
 
@@ -136,56 +133,32 @@ export function useMapView({ baseViewport, radiusM, maxZoom, enabled = true, whe
     }
   }, [clamp]);
 
-  const updateGesture = useCallback((candidate: MapView, origin?: [number, number] | null, moved = true) => {
+  const updateGesture = useCallback((candidate: MapView, moved = true) => {
     const next = clamp(candidate);
     gestureViewRef.current = next;
     setGestureView(next);
-    if (origin !== undefined) setPreviewOrigin(origin);
     if (moved) setDragging(true);
     scheduleCommit(next);
   }, [clamp, scheduleCommit]);
 
-  const currentBase = useCallback((): Viewport | null => {
-    if (baseViewport) return baseViewport;
-    const element = elementRef.current;
-    if (!element) return null;
-    return {
-      center: [0, 0],
-      zoom: 0,
-      width: element.clientWidth,
-      height: element.clientHeight,
-    };
-  }, [baseViewport]);
-
-  const viewAtZoomPoint = useCallback((delta: number, clientX?: number, clientY?: number): MapView => {
-    const base = currentBase();
-    const current = gestureViewRef.current ?? viewRef.current;
-    if (!base || !elementRef.current || !baseViewport) return clamp({ ...current, zoomDelta: current.zoomDelta + delta });
+  const viewAtZoomPoint = useCallback((delta: number, clientX?: number, clientY?: number, fromView?: MapView): MapView => {
+    const base = baseViewport;
+    const current = fromView ?? gestureViewRef.current ?? viewRef.current;
+    if (!base || !elementRef.current) return clamp({ ...current, zoomDelta: current.zoomDelta + delta });
     const rect = elementRef.current.getBoundingClientRect();
-    const px = clientX === undefined ? rect.width / 2 : clientX - rect.left;
-    const py = clientY === undefined ? rect.height / 2 : clientY - rect.top;
+    const cssWidth = rect.width > 0 ? rect.width : base.width;
+    const cssHeight = rect.height > 0 ? rect.height : base.height;
+    const cssX = clientX === undefined ? cssWidth / 2 : clientX - rect.left;
+    const cssY = clientY === undefined ? cssHeight / 2 : clientY - rect.top;
+    const px = cssX * (base.width / cssWidth);
+    const py = cssY * (base.height / cssHeight);
     const maxDelta = Math.max(0, maxZoom - base.zoom);
-    const nextZoomDelta = Math.max(0, Math.min(maxDelta, current.zoomDelta + delta));
-    const currentViewport = applyView(base, base.center[1], current);
-    const nextZoom = base.zoom + nextZoomDelta;
-    const [currentWorldX, currentWorldY] = worldPx(currentViewport.center[0], currentViewport.center[1], currentViewport.zoom);
-    const nextMpp = metersPerPixel(base.center[1], nextZoom);
-    const worldAtPointer = [currentWorldX + px - rect.width / 2, currentWorldY + py - rect.height / 2] as const;
-    const nextWorldX = worldAtPointer[0] - px + rect.width / 2;
-    const nextWorldY = worldAtPointer[1] - py + rect.height / 2;
-    const [baseWorldX, baseWorldY] = worldPx(base.center[0], base.center[1], nextZoom);
-    const eastM = (nextWorldX - baseWorldX) * nextMpp;
-    const northM = (baseWorldY - nextWorldY) * nextMpp;
-    return { zoomDelta: nextZoomDelta, offsetM: [eastM, northM] };
-  }, [baseViewport, clamp, currentBase, maxZoom]);
+    return zoomViewAt(base, current, delta, px, py, maxDelta);
+  }, [baseViewport, clamp, maxZoom]);
 
   const zoomAt = useCallback((delta: number, clientX?: number, clientY?: number) => {
     if (!enabled) return;
-    const rect = elementRef.current?.getBoundingClientRect();
-    const origin: [number, number] = rect
-      ? [clientX === undefined ? rect.width / 2 : clientX - rect.left, clientY === undefined ? rect.height / 2 : clientY - rect.top]
-      : [0, 0];
-    updateGesture(viewAtZoomPoint(delta, clientX, clientY), origin, false);
+    updateGesture(viewAtZoomPoint(delta, clientX, clientY), false);
   }, [enabled, updateGesture, viewAtZoomPoint]);
 
   const zoomBy = useCallback((delta: number) => zoomAt(delta), [zoomAt]);
@@ -221,12 +194,13 @@ export function useMapView({ baseViewport, radiusM, maxZoom, enabled = true, whe
     if (pointers.length >= 2) {
       const [a, b] = pointers;
       const [midX, midY] = midpoint(a!, b!);
-      const zoomDelta = gesture.startView.zoomDelta + Math.log2(Math.max(1, distance(a!, b!)) / gesture.startDistance);
-      const zoom = baseViewport ? baseViewport.zoom + zoomDelta : 0;
+      const zoomDelta = Math.log2(Math.max(1, distance(a!, b!)) / gesture.startDistance);
+      const zoomed = viewAtZoomPoint(zoomDelta, gesture.startMidX, gesture.startMidY, gesture.startView);
+      const zoom = baseViewport ? baseViewport.zoom + zoomed.zoomDelta : 0;
       const mpp = baseViewport ? metersPerPixel(baseViewport.center[1], zoom) : 1;
-      const next: MapView = { zoomDelta, offsetM: [gesture.startView.offsetM[0] - (midX - gesture.startMidX) * mpp, gesture.startView.offsetM[1] + (midY - gesture.startMidY) * mpp] };
-      if (Math.hypot(midX - gesture.startMidX, midY - gesture.startMidY) > DRAG_THRESHOLD || Math.abs(zoomDelta - gesture.startView.zoomDelta) > 0.01) gesture.moved = true;
-      updateGesture(next, [midX - (elementRef.current?.getBoundingClientRect().left ?? 0), midY - (elementRef.current?.getBoundingClientRect().top ?? 0)], gesture.moved);
+      const next: MapView = { zoomDelta: zoomed.zoomDelta, offsetM: [zoomed.offsetM[0] - (midX - gesture.startMidX) * mpp, zoomed.offsetM[1] + (midY - gesture.startMidY) * mpp] };
+      if (Math.hypot(midX - gesture.startMidX, midY - gesture.startMidY) > DRAG_THRESHOLD || Math.abs(zoomed.zoomDelta - gesture.startView.zoomDelta) > 0.01) gesture.moved = true;
+      updateGesture(next, gesture.moved);
       return;
     }
     const dx = event.clientX - gesture.startX;
@@ -235,8 +209,8 @@ export function useMapView({ baseViewport, radiusM, maxZoom, enabled = true, whe
     gesture.moved = true;
     const zoom = baseViewport ? baseViewport.zoom + gesture.startView.zoomDelta : 0;
     const mpp = baseViewport ? metersPerPixel(baseViewport.center[1], zoom) : 1;
-    updateGesture({ zoomDelta: gesture.startView.zoomDelta, offsetM: [gesture.startView.offsetM[0] - dx * mpp, gesture.startView.offsetM[1] + dy * mpp] }, null, true);
-  }, [baseViewport, touchPan, updateGesture]);
+    updateGesture({ zoomDelta: gesture.startView.zoomDelta, offsetM: [gesture.startView.offsetM[0] - dx * mpp, gesture.startView.offsetM[1] + dy * mpp] }, true);
+  }, [baseViewport, touchPan, updateGesture, viewAtZoomPoint]);
 
   const onPointerUp = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     const gesture = gestureRef.current;
@@ -283,14 +257,14 @@ export function useMapView({ baseViewport, radiusM, maxZoom, enabled = true, whe
     if (!active || !baseViewport || sameView(active, view)) return undefined;
     const scale = 2 ** (active.zoomDelta - view.zoomDelta);
     const baseMpp = metersPerPixel(baseViewport.center[1], baseViewport.zoom + view.zoomDelta);
-    const dx = -(active.offsetM[0] - view.offsetM[0]) / baseMpp;
-    const dy = (active.offsetM[1] - view.offsetM[1]) / baseMpp;
+    const dx = -scale * (active.offsetM[0] - view.offsetM[0]) / baseMpp;
+    const dy = scale * (active.offsetM[1] - view.offsetM[1]) / baseMpp;
     return {
       transform: `translate(${dx}px, ${dy}px) scale(${scale})`,
-      transformOrigin: previewOrigin ? `${previewOrigin[0]}px ${previewOrigin[1]}px` : "50% 50%",
+      transformOrigin: "50% 50%",
       willChange: "transform",
     };
-  }, [baseViewport, gestureView, previewOrigin, view]);
+  }, [baseViewport, gestureView, view]);
 
   const bind = useMemo<MapViewBinding>(() => ({
     ref,
