@@ -6,9 +6,9 @@ import type { TileStageProps as SharedTileStageProps } from "../component-types"
 /** A05 and A06 share one callout ownership unit; the existing callout files remain there. */
 export type TileStageProps = SharedTileStageProps;
 
-export function CalloutStage({ view, frame, page, onPage, label, mapInteractive, mapWheel, mapTouchPan, mapResetKey, showLegendStrip }: TileStageProps) {
+export function CalloutStage({ view, frame, page, onPage, label, mapInteractive, mapWheel, mapTouchPan, mapResetKey, showMapLabels }: TileStageProps) {
   if (!view.callout) return null;
-  const props: CalloutMapProps = { model: view.callout, kind: frame, page, onPage, label, mapInteractive, mapWheel, mapTouchPan, resetKey: mapResetKey, showLegendStrip };
+  const props: CalloutMapProps = { model: view.callout, kind: frame, page, onPage, label, mapInteractive, mapWheel, mapTouchPan, resetKey: mapResetKey, showMapLabels: showMapLabels ?? frame !== "card" };
   return <CalloutMap {...props} />;
 }
 

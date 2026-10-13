@@ -47,9 +47,9 @@ export function activeLegendLabel(hover: string | null, pinned: string | null): 
   return hover ?? pinned;
 }
 
-/** 카드·상세가 같은 범례 자료를 쓰되, 카드 토글이 띠 자체를 제거하는지 판정한다. */
-export function mapLegendStripVisible({ bare, legend, muted, itemCount, showLegendStrip = true }: { bare?: boolean; legend?: boolean; muted?: boolean; itemCount: number; showLegendStrip?: boolean }): boolean {
-  return showLegendStrip && !bare && legend === false && !muted && itemCount > 0;
+/** 카드·상세가 같은 범례 자료를 쓰되, 지도 밖 범례 띠가 필요한지 판정한다. */
+export function mapLegendStripVisible({ bare, legend, muted, itemCount }: { bare?: boolean; legend?: boolean; muted?: boolean; itemCount: number }): boolean {
+  return !bare && legend === false && !muted && itemCount > 0;
 }
 
 /** 벡터·래스터처럼 서로 다른 표현 경로가 같은 표시명을 낼 때 한 항목으로 합친다. */

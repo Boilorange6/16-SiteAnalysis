@@ -24,6 +24,7 @@ type InteractionOpts = Pick<MapFigureProps, "pinnedKeys" | "onFeatureClick" | "h
   onFeaturePin?: (feature: MapFigureElementPick) => void;
 };
 type Opts = Pick<MapFigureProps, "legend" | "legendY" | "north" | "scale" | "credit" | "bottomInset" | "muted" | "rightInset" | "scaleLeft" | "fill" | "scaleX" | "siteY"> & InteractionOpts & {
+  showAutomaticLabels?: MapFigureProps["showAutomaticLabels"];
   avoid?: Box | ((w: number, h: number) => Box);
   siteX?: number | ((w: number) => number);
   /** 반경 원 위아래 여백(px): 지도 높이에서 fill을 정한다(카드). fill보다 우선 */
@@ -31,8 +32,6 @@ type Opts = Pick<MapFigureProps, "legend" | "legendY" | "north" | "scale" | "cre
   mapInteractive?: boolean;
   mapWheel?: MapWheelMode;
   mapTouchPan?: MapTouchPan;
-  /** 카드 타일은 기본 false, 상세·발표는 생략하면 true */
-  showLegendStrip?: boolean;
 };
 type Opts2 = Omit<Opts, "rightInset"> & { rightInset?: number | ((w: number) => number) };
 
@@ -124,7 +123,7 @@ function rasterLegendItemsForModel(model: MapModel): MapLegendItem[] {
   }));
 }
 
-function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, mapInteractive = true, mapWheel = "plain", mapTouchPan = "one", showLegendStrip = true, ...optsIn }: { model: MapModel; bare?: boolean; label?: string } & Opts2) {
+function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, mapInteractive = true, mapWheel = "plain", mapTouchPan = "one", ...optsIn }: { model: MapModel; bare?: boolean; label?: string } & Opts2) {
   const { ref, size, near } = useMeasured();
   const opts = { ...optsIn, fill: pad && size ? Math.max(0.3, (size.h - 2 * pad) / size.h) : optsIn.fill };
   const layer = useContext(BasemapContext);
@@ -237,7 +236,7 @@ function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, mapInteract
     : [];
   const legendPresentation = normalizeLegendStripLabels(rawLegendItems);
   const legendItems = legendPresentation.items;
-  const useLegendStrip = mapLegendStripVisible({ bare, legend: opts.legend, muted: opts.muted, itemCount: legendItems.length, showLegendStrip });
+  const useLegendStrip = mapLegendStripVisible({ bare, legend: opts.legend, muted: opts.muted, itemCount: legendItems.length });
   // 상세 창의 출처 띠는 MapBox 바깥에 겹쳐 있으므로, 범례가 그 위에서 끝나게 한다.
   // 범례를 띠로 옮긴 뒤에는 MapFigure에 같은 inset을 다시 예약하지 않는다.
   const mapBottomInset = useLegendStrip ? (opts.bottomInset ?? 0) : 0;

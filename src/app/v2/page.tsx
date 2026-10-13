@@ -491,8 +491,8 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
       case "setAllLabels":
         dispatch({ type: "setAllLabels", id, on: action.on });
         break;
-      case "mapLegend":
-        dispatch({ type: "mapLegend", id, show: action.show });
+      case "mapLabels":
+        dispatch({ type: "mapLabels", id, show: action.show });
         break;
       case "stackToggle":
         setStackSelection((current) => action.selected
@@ -814,7 +814,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
                   onAction={onTileAction}
                   cut={board.cuts[id] ?? null}
                   pinnedLabels={board.labels[id] ?? EMPTY_PINNED_LABELS}
-                  showMapLegend={!!board.mapLegend[id]}
+                  showMapLabels={!!board.mapLabels[id]}
                   cardFace={viewOf(board, id)}
                   onWindUploaded={onWindUploaded}
                   stackable={stackableIds.includes(id)}
