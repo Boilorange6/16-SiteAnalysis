@@ -311,12 +311,8 @@ function CalloutMap({ model, kind, page = 0, onPage, label, mapInteractive = tru
   const activeLegendColor = model.legend.items.find((item) => item.label === activeLegend)?.color ?? null;
   const empty = model.complexes.length === 0;
   const sat = layer === "Satellite";
-  // 축척은 지도 안 오른쪽 아래에 두고, 값 카드와 범례는 지도와 분리한다.
-  const scaleX = scene
-    ? kind === "card" && size && size.w <= 520
-      ? Math.max(12, size.w - 100)
-      : scene.frame.right.x0 - 18 - 92
-    : 0;
+  // 카드 축척은 우측 하단 줌 버튼과 겹치지 않게 왼쪽 아래, 상세는 오른쪽 설명선 칸 앞에 둔다.
+  const scaleX = scene && kind !== "card" ? scene.frame.right.x0 - 18 - 92 : undefined;
   const backdrop = useMemo(() => ({ center: model.center, radiusM: model.radiusM, features: [], total: 0, notes: [] }), [model]);
   const scale = scene && size
     ? (() => {
@@ -348,6 +344,7 @@ function CalloutMap({ model, kind, page = 0, onPage, label, mapInteractive = tru
               siteY={scene.siteY}
               rightInset={scene.panel}
               scaleX={scaleX}
+              scaleLeft={kind === "card"}
               view={controller.view}
               dragging={controller.dragging}
           />
