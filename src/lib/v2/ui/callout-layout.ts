@@ -409,13 +409,23 @@ export function slideCalloutFrame(rows: number): CalloutFrame {
 /** 개요 장의 반경 원 크기 (왼쪽 아래 범례 판 위에서 끝난다) */
 export const SLIDE_OVERVIEW_FILL = 0.72;
 
-export type LayoutPoint = { id: string; x: number; y: number; rank?: number };
+export type LayoutPoint = {
+  id: string;
+  x: number;
+  y: number;
+  rank?: number;
+  /** Optional per-point card dimensions. Omitted points keep the fixed legacy frame contract. */
+  width?: number;
+  height?: number;
+};
 export type Placed = {
   id: string;
   side: "L" | "R";
   /** 카드 왼쪽 위 */
   x: number;
   y: number;
+  width: number;
+  height: number;
   dot: Pt;
   knee: Pt;
   edge: Pt;
@@ -478,12 +488,38 @@ export function clusterPoints(points: ClusterPoint[], gap = 3): ClusterResult {
   return { positions, groups: clusters };
 }
 
-export const capacityOf = (col: Column, f: Pick<CalloutFrame, "cardH" | "perSide" | "m">) =>
-  Math.max(0, Math.min(f.perSide, Math.floor((col.bottom - col.top + f.m.gap) / (f.cardH + f.m.gap) + 1e-6)));
+export const capacityOf = (col: Column, f: Pick<CalloutFrame, "cardH" | "perSide" | "m">, cardHeights?: readonly number[]) => {
+  if (!cardHeights) return Math.max(0, Math.min(f.perSide, Math.floor((col.bottom - col.top + f.m.gap) / (f.cardH + f.m.gap) + 1e-6)));
+  let used = 0;
+  let count = 0;
+  for (const height of cardHeights) {
+    const next = Math.max(0, height) + (count > 0 ? f.m.gap : 0);
+    if (used + next > col.bottom - col.top + 1e-6 || count >= f.perSide) break;
+    used += next;
+    count += 1;
+  }
+  return count;
+};
 
 /** 위→아래 카드 자리(왼쪽 위 y). 바람직한 자리에서 겹치면 무리 지어 평균 위치로 옮기고(최소 간격 유지), 칸 밖은 안으로 민다 */
-export function stackTops(centers: number[], cardH: number, gap: number, top: number, bottom: number): number[] {
+export function stackTops(centers: number[], cardH: number | readonly number[], gap: number, top: number, bottom: number): number[] {
   const n = centers.length;
+  if (typeof cardH !== "number") {
+    const heights = centers.map((_, index) => Math.max(0, cardH[index] ?? 0));
+    if (n === 0) return [];
+    const tops = centers.map((center, index) => center - heights[index]! / 2);
+    for (let i = 1; i < n; i++) tops[i] = Math.max(tops[i]!, tops[i - 1]! + heights[i - 1]! + gap);
+    const lastBottom = tops[n - 1]! + heights[n - 1]!;
+    if (lastBottom > bottom) {
+      const shift = lastBottom - bottom;
+      for (let i = 0; i < n; i++) tops[i] -= shift;
+    }
+    if (tops[0]! < top) {
+      const shift = top - tops[0]!;
+      for (let i = 0; i < n; i++) tops[i] += shift;
+    }
+    return tops;
+  }
   const step = cardH + gap;
   type Block = { first: number; n: number; sum: number };
   const blocks: Block[] = [];
@@ -534,6 +570,8 @@ export function countCrossings(placed: Placed[]): number {
  * 점 → 카드 배치. 두 칸에 다 못 넣는 점은 overflow로 돌려준다(호출자가 페이지 크기를 칸 용량 이하로 정한다).
  */
 export function layoutCallouts(f: CalloutFrame, points: LayoutPoint[]): { placed: Placed[]; overflow: string[] } {
+  const hasDimensions = points.some((point) => point.width !== undefined || point.height !== undefined);
+  if (hasDimensions) return layoutVariableCallouts(f, points);
   const capL = capacityOf(f.left, f);
   const capR = capacityOf(f.right, f);
   const byY = (a: LayoutPoint, b: LayoutPoint) => a.y - b.y || a.x - b.x || (a.id < b.id ? -1 : 1);
@@ -602,7 +640,141 @@ export function layoutCallouts(f: CalloutFrame, points: LayoutPoint[]): { placed
     }
     arr.forEach((p, i) => {
       const k = slot[i];
-      placed.push({ id: p.id, side, x: col.x0, y: tops[k], dot: [p.x, p.y], knee: knee(k), edge: [edgeX, tops[k] + f.cardH / 2] });
+      placed.push({ id: p.id, side, x: col.x0, y: tops[k], width: f.cardW, height: f.cardH, dot: [p.x, p.y], knee: knee(k), edge: [edgeX, tops[k] + f.cardH / 2] });
+    });
+  };
+  build(L, f.left, "L");
+  build(R, f.right, "R");
+  return { placed, overflow };
+}
+
+type PointDimensions = { width: number; height: number };
+
+function dimensionsOf(point: LayoutPoint, f: CalloutFrame): PointDimensions {
+  return {
+    width: Number.isFinite(point.width) && point.width! > 0 ? point.width! : f.cardW,
+    height: Number.isFinite(point.height) && point.height! > 0 ? point.height! : f.cardH,
+  };
+}
+
+function stackHeight(points: readonly LayoutPoint[], f: CalloutFrame): number {
+  return points.reduce((height, point, index) => height + dimensionsOf(point, f).height + (index > 0 ? f.m.gap : 0), 0);
+}
+
+function fitsColumn(points: readonly LayoutPoint[], column: Column, f: CalloutFrame): boolean {
+  return points.length <= f.perSide && stackHeight(points, f) <= column.bottom - column.top + 1e-6;
+}
+
+function rankOfPoint(point: LayoutPoint): number | null {
+  if (typeof point.rank === "number" && Number.isFinite(point.rank)) return point.rank;
+  const match = /^c(\d+)$/.exec(point.id);
+  return match ? Number(match[1]) : null;
+}
+
+function lowerPriorityFirst(a: LayoutPoint, b: LayoutPoint): number {
+  const ar = rankOfPoint(a);
+  const br = rankOfPoint(b);
+  if (ar !== null || br !== null) {
+    if (ar === null) return 1;
+    if (br === null) return -1;
+    if (ar !== br) return br - ar;
+  }
+  return b.id.localeCompare(a.id, "en");
+}
+
+/** Same placement rules as the legacy layout, with optional real card dimensions per point. */
+function layoutVariableCallouts(f: CalloutFrame, points: LayoutPoint[]): { placed: Placed[]; overflow: string[] } {
+  const byY = (a: LayoutPoint, b: LayoutPoint) => a.y - b.y || a.x - b.x || (a.id < b.id ? -1 : 1);
+  const L = points.filter((point) => point.x < f.centerX).sort(byY);
+  const R = points.filter((point) => point.x >= f.centerX).sort(byY);
+  const overflow: string[] = [];
+  const distance = (point: LayoutPoint) => Math.abs(point.x - f.centerX);
+
+  // Keep the old center-first spill behavior where the opposite column has room.
+  const moveClosestIfFits = (from: LayoutPoint[], to: LayoutPoint[], toColumn: Column): boolean => {
+    let candidate = -1;
+    for (let index = 0; index < from.length; index++) {
+      if (candidate < 0 || distance(from[index]!) < distance(from[candidate]!)) candidate = index;
+    }
+    if (candidate < 0) return false;
+    const next = [...to, from[candidate]!];
+    if (!fitsColumn(next, toColumn, f)) return false;
+    to.push(from.splice(candidate, 1)[0]!);
+    return true;
+  };
+
+  const columnOf = (side: "L" | "R") => side === "L" ? f.left : f.right;
+  while (!fitsColumn(L, f.left, f) || !fitsColumn(R, f.right, f)) {
+    const lExcess = Math.max(0, L.length - f.perSide) + Math.max(0, stackHeight(L, f) - (f.left.bottom - f.left.top));
+    const rExcess = Math.max(0, R.length - f.perSide) + Math.max(0, stackHeight(R, f) - (f.right.bottom - f.right.top));
+    const side: "L" | "R" = lExcess >= rExcess ? "L" : "R";
+    const from = side === "L" ? L : R;
+    const to = side === "L" ? R : L;
+    const toColumn = columnOf(side === "L" ? "R" : "L");
+    if (moveClosestIfFits(from, to, toColumn)) continue;
+    if (from.length === 0) break;
+    let remove = 0;
+    for (let index = 1; index < from.length; index++) if (lowerPriorityFirst(from[index]!, from[remove]!) < 0) remove = index;
+    overflow.push(from.splice(remove, 1)[0]!.id);
+  }
+
+  const placed: Placed[] = [];
+  const build = (arr: LayoutPoint[], column: Column, side: "L" | "R") => {
+    if (arr.length === 0) return;
+    const initial = [...arr].sort(byY);
+    const geometry = (order: readonly LayoutPoint[]) => {
+      const dimensions = order.map((point) => dimensionsOf(point, f));
+      const tops = stackTops(order.map((point) => point.y), dimensions.map((dimension) => dimension.height), f.m.gap, column.top, column.bottom);
+      const paths = order.map((point, index) => {
+        const dimension = dimensions[index]!;
+        const x = side === "L" ? column.x0 : column.x1 - dimension.width;
+        const edgeX = side === "L" ? x + dimension.width : x;
+        const kneeX = side === "L" ? edgeX + f.m.stub : edgeX - f.m.stub;
+        const centerY = tops[index]! + dimension.height / 2;
+        return { point, dimension, top: tops[index]!, edgeX, kneeX, centerY, segment: [[point.x, point.y] as Pt, [kneeX, centerY] as Pt] as const };
+      });
+      return { tops, paths };
+    };
+    const crossings = (order: readonly LayoutPoint[]) => {
+      const paths = geometry(order).paths;
+      let count = 0;
+      for (let i = 0; i < paths.length; i++) {
+        for (let j = i + 1; j < paths.length; j++) {
+          if (segCross(paths[i]!.segment[0], paths[i]!.segment[1], paths[j]!.segment[0], paths[j]!.segment[1])) count += 1;
+        }
+      }
+      return count;
+    };
+    // Recompute the variable-height stack after each improving exchange so a
+    // card's edge, knee, and height always describe the same rendered card.
+    const order = [...initial];
+    for (let guard = 0; guard < order.length * order.length; guard++) {
+      const currentScore = crossings(order);
+      let best: { i: number; j: number; score: number } | null = null;
+      for (let i = 0; i < order.length; i++) {
+        for (let j = i + 1; j < order.length; j++) {
+          const candidate = [...order];
+          [candidate[i], candidate[j]] = [candidate[j]!, candidate[i]!];
+          const score = crossings(candidate);
+          if (score < (best?.score ?? currentScore)) best = { i, j, score };
+        }
+      }
+      if (!best) break;
+      [order[best.i], order[best.j]] = [order[best.j]!, order[best.i]!];
+    }
+    const { paths } = geometry(order);
+    paths.forEach(({ point, dimension, top, edgeX, kneeX, centerY }) => {
+      placed.push({
+        id: point.id,
+        side,
+        x: side === "L" ? column.x0 : column.x1 - dimension.width,
+        y: top,
+        width: dimension.width,
+        height: dimension.height,
+        dot: [point.x, point.y],
+        knee: [kneeX, centerY],
+        edge: [edgeX, centerY],
+      });
     });
   };
   build(L, f.left, "L");

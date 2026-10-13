@@ -265,6 +265,22 @@ assert.deepEqual(reportPages(s), { tiles: 9, pages: 12 }); // 포함·면 설정
   assert.equal(reportPages(boardReducer(b, { type: "callout", id: "t-A05", mode: "all" }), { "t-A05": 25 }).pages, reportPages(b).pages + 3);
 }
 
+// 카드 지도 범례 띠: 기본 숨김, 타일별 토글, 저장·복원 및 옛 저장본 호환.
+{
+  let b = initBoard(GODEOK_RESULTS);
+  assert.deepEqual(b.mapLegend, {}, "카드 범례는 기본 숨김");
+  b = boardReducer(b, { type: "mapLegend", id: "t-A01", show: true });
+  assert.equal(b.mapLegend["t-A01"], true);
+  const snapshot = serializeBoardState(b);
+  assert.equal(snapshot.mapLegend["t-A01"], true, "범례 토글은 스냅샷에 저장");
+  assert.deepEqual(restoreBoardState(GODEOK_RESULTS, snapshot).mapLegend, snapshot.mapLegend, "범례 토글 저장→복원 왕복");
+  const old = { ...snapshot };
+  delete old.mapLegend;
+  assert.deepEqual(restoreBoardState(GODEOK_RESULTS, old).mapLegend, {}, "범례 필드가 없는 옛 저장본은 숨김 기본값");
+  b = boardReducer(b, { type: "duplicate", id: "t-A01" });
+  assert.equal(b.mapLegend["copy:1"], true, "타일 복제에도 범례 상태 유지");
+}
+
 // S01 카메라 프리셋: 보드에 저장하지만 출력 면처럼 되돌리기에는 넣지 않고, 프리셋 밖 값은 무시한다.
 {
   let b = initBoard(GODEOK_RESULTS);
@@ -331,6 +347,7 @@ assert.deepEqual(reportPages(s), { tiles: 9, pages: 12 }); // 포함·면 설정
     roseSeasons: { [oldId]: "summer" },
     labels: { [oldId]: [{ key: "bldg_2000s|b-1", on: true }] },
     layers: { [oldId]: "all" },
+    mapLegend: { [oldId]: true },
     removed: [{ id: oldId, index: 2 }],
   };
   TILE_CODE_RENAMES.OLD = "NEW";
@@ -338,7 +355,7 @@ assert.deepEqual(reportPages(s), { tiles: 9, pages: 12 }); // 포함·면 설정
   assert.equal(migrated.version, 3, "v1 snapshot is migrated to current version");
   assert.equal(migrated.columns, 4, "열 수가 없는 v1 snapshot은 4열로 이관");
   assert.deepEqual(migrated.order, [newId]);
-  for (const field of ["included", "faces", "callout", "a05Filter", "view", "sizes", "tileKinds", "cameras", "labels", "layers"]) {
+  for (const field of ["included", "faces", "callout", "a05Filter", "view", "sizes", "tileKinds", "cameras", "labels", "layers", "mapLegend"]) {
     assert.ok(migrated[field][newId], `${field} id rewrite`);
   }
   assert.deepEqual(migrated.cuts["analysis-S02"], { tile: "S02", mode: "hours3", date: "winter" }, "옛 숫자 3컷을 S02 정시 3컷으로 이관");

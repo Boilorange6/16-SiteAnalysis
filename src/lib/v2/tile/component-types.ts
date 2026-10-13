@@ -26,6 +26,8 @@ export type TileStageProps = {
   mapWheel?: "plain" | "modifier" | "off";
   mapTouchPan?: "one" | "two";
   mapResetKey?: string;
+  /** 카드에서는 범례 띠를 기본 숨기고, 상세·발표는 생략하면 표시한다. */
+  showLegendStrip?: boolean;
 };
 
 export type TileFaceExtraProps = {

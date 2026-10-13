@@ -24,7 +24,7 @@ const { a04 } = await import("../../lib/v2/tile/a04/engine.ts");
 const { a05 } = await import("../../lib/v2/tile/a05/engine.ts");
 const { a06 } = await import("../../lib/v2/tile/a06/engine.ts");
 const { labelBoxesOverlap } = await import("../../lib/v2/ui/map-labels.ts");
-const { default: MapFigure, mapFeatureKey, mapLabelEntries, mapLabelText } = await import("../../components/v2/map-figure.tsx");
+const { default: MapFigure, mapFeatureKey, mapLabelEntries, mapLabelText, mapCalloutTextLayout } = await import("../../components/v2/map-figure.tsx");
 
 const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${b}`);
 
@@ -325,6 +325,17 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   assert.ok(fixedBoxes[0].x0 !== fixedBoxes[1].x0 || fixedBoxes[0].y0 !== fixedBoxes[1].y0, "겹친 고정 라벨을 다른 후보 위치에 배치");
   assert.equal(labelBoxesOverlap(fixedBoxes[0], fixedBoxes[1], 0), false, "고정 말풍선은 서로 겹치지 않음");
 
+  // W5: 내용에 맞는 1줄 높이·폭과, 폭을 넘는 이름의 말줄임을 고정한다.
+  const shortEntry = mapLabelEntries({ ...collisionModel, features: [{ layer: "bus_stop", name: "짧은", lng: model.center[0], lat: model.center[1] }], total: 1 })[0];
+  const shortLayout = mapCalloutTextLayout(shortEntry, 11, 100, 8, 4, 3);
+  assert.equal(shortLayout.lines.length, 1, "짧은 라벨은 1줄");
+  assert.equal(shortLayout.height, 11 * 1.24 + 3 * 2, "1줄 말풍선 높이는 줄높이와 최소 상하 패딩의 합");
+  const longName = "매우긴역이름으로말풍선폭을넘는상세한이름";
+  const longModel = { ...collisionModel, features: [{ layer: "bus_stop", name: longName, lng: model.center[0], lat: model.center[1] }], total: 1 };
+  const longSvg = renderToStaticMarkup(createElement(MapFigure, { model: longModel, width: 300, height: 180, basemap: "none", legend: false, scale: false, north: false, pinnedKeys: [mapLabelEntries(longModel)[0].key], onFeaturePin: () => {} }));
+  assert.match(longSvg, /매우긴역이…/, "긴 라벨은 줄바꿈 대신 말줄임");
+  assert.match(longSvg, new RegExp(`<title>${longName}</title>`), "말줄임 전 원문은 SVG title로 보존");
+
   // W4: 작은 지도에서는 좌우 칸의 높이만큼 우선순위 상위 자동 말풍선만 남기고, 카드가 겹치지 않는다.
   const crowdedModel = {
     ...model,
@@ -340,13 +351,14 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   };
   const crowded = renderToStaticMarkup(createElement(MapFigure, { model: crowdedModel, width: 300, height: 180, basemap: "none", legend: false, scale: false, north: false }));
   const autoLabelGroups = [...crowded.matchAll(/<g[^>]*data-map-label-variant="auto"[^>]*>[\s\S]*?<\/g>/g)].map((match) => match[0]);
-  assert.ok(autoLabelGroups.length <= 4, "작은 지도는 좌우 칸 수만큼 자동 말풍선을 제한");
+  assert.equal(autoLabelGroups.length, 10, "작은 지도는 실제 말풍선 높이로 좌우 칸을 계산");
   assert.match(crowded, /역 1/, "자동 우선순위 2 라벨 유지");
   assert.match(crowded, /역 2/, "자동 우선순위 2 라벨 유지");
   const crowdedBoxes = [...crowded.matchAll(/<rect data-map-label-box="[^"]+" x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)" rx=/g)].map((match) => ({ x0: Number(match[1]), y0: Number(match[2]), x1: Number(match[1]) + Number(match[3]), y1: Number(match[2]) + Number(match[4]) }));
   for (let i = 0; i < crowdedBoxes.length; i += 1) for (let j = i + 1; j < crowdedBoxes.length; j += 1) {
     assert.equal(labelBoxesOverlap(crowdedBoxes[i], crowdedBoxes[j], 0), false, "작은 지도 말풍선은 서로 겹치지 않음");
   }
+  assert.ok(new Set(crowdedBoxes.map((box) => box.y1 - box.y0)).size > 1, "가변 줄 수 말풍선은 높이가 실제 줄 수를 따른다");
 
   // 대표 점과 폴리곤이 같은 fid를 받아도 목록의 고정 대상은 서로 달라야 한다.
   const sameFidModel = {

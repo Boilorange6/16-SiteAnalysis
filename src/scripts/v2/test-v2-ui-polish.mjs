@@ -30,11 +30,24 @@ assert.doesNotMatch(boardCss, /\.sumBody\s*\{[^}]*justify-content:\s*center/, "s
 
 
 const mapFigureSource = readFileSync(new URL("../../components/v2/map-figure.tsx", import.meta.url), "utf8");
+const mapBoxSource = readFileSync(new URL("../../components/v2/map-box.tsx", import.meta.url), "utf8");
+const tileCardSource = readFileSync(new URL("../../components/v2/tile-card.tsx", import.meta.url), "utf8");
+const { mapLegendStripVisible } = await import("../../lib/v2/ui/map-legend.ts");
 assert.match(mapFigureSource, /function compactSteppedLegendTitle/, "카드 래스터 범례에 짧은 표시명 경로가 있음");
 assert.doesNotMatch(mapFigureSource, /if \(label\) return `\$\{label\} 일조시간`;/, "S02 카드 범례에 일조시간 하드코딩 특례가 없음");
 assert.match(mapFigureSource, /return style\.label \?\? ref\.label \?\? ref\.name;/, "래스터 범례 제목은 공용 스타일·래스터 메타데이터를 사용");
 assert.doesNotMatch(mapFigureSource, /compactTitle \+= "…"/, "S02 카드 범례 제목을 잘라 말줄임하지 않음");
+assert.match(mapFigureSource, /mapCalloutTextLayout/, "지도 말풍선은 내용 기반 텍스트 레이아웃을 사용");
+assert.match(mapFigureSource, /whiteSpace: "nowrap"/, "지도 말풍선 텍스트는 자동 줄바꿈하지 않음");
+assert.match(mapFigureSource, /<title>\{d\.text\}<\/title>/, "말줄임 전 라벨 원문을 SVG title로 보존");
+assert.match(mapBoxSource, /mapLegendStripVisible\(\{ bare, legend: opts\.legend, muted: opts\.muted, itemCount: legendItems\.length, showLegendStrip \}\)/, "카드 범례 띠는 명시적 표시 상태가 켜진 경우에만 렌더");
+assert.equal(mapLegendStripVisible({ legend: false, itemCount: 2, showLegendStrip: false }), false, "카드 기본 상태에서는 범례 띠를 숨김");
+assert.equal(mapLegendStripVisible({ legend: false, itemCount: 2, showLegendStrip: true }), true, "카드 토글 시 범례 띠를 표시");
+assert.match(mapBoxSource, /style=\{\{ \.\.\.controller\.bind\.style, position: "absolute", inset: 0 \}\}/, "범례 숨김 시 지도 뷰포트가 전체 영역을 사용");
+assert.match(tileCardSource, /범례 보기/, "카드 더 보기 메뉴에 범례 토글 제공");
+assert.match(tileCardSource, /showLegendStrip=\{p\.showMapLegend\}/, "카드 범례 토글이 지도 렌더에 연결");
 assert.match(calloutSource, /<MapLegendStrip/, "A05/A06 설명선 범례는 공용 하단 띠를 사용");
+assert.match(calloutSource, /showLegendStrip && size && near/, "A05/A06 카드도 범례 띠를 실제로 제거");
 assert.match(calloutSource, /data-callout-map-root/, "설명선 지도와 하단 범례는 별도 레이아웃 영역");
 assert.doesNotMatch(calloutSource, /<CalloutLegend[\s\S]*style=\{detail \?/, "설명선 범례를 지도 위 절대 위치로 렌더링하지 않음");
 assert.match(calloutSource, /paddingBottom: detail \? OV\.stripH : 0/, "상세 설명선 범례가 출처 띠를 침범하지 않음");

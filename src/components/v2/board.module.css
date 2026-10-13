@@ -3400,6 +3400,9 @@ button.badge:focus-visible {
   font-size: 12px;
   color: #5c5f66;
 }
+.mfMenuLegend {
+  min-height: 44px;
+}
 .mfMenuHead {
   padding: 8px 10px 2px;
   font-size: 11px;

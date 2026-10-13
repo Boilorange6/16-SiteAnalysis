@@ -230,6 +230,8 @@ export type CalloutMapProps = {
   mapWheel?: MapWheelMode;
   mapTouchPan?: MapTouchPan;
   resetKey?: string;
+  /** 보드 카드에서만 범례 띠를 접을 수 있다. 기본값은 상세/PPT 호환을 위해 표시. */
+  showLegendStrip?: boolean;
 };
 
 function calloutLegendStripItems(model: CalloutModel, compact: boolean): MapLegendItem[] {
@@ -247,7 +249,7 @@ function calloutLegendStripItems(model: CalloutModel, compact: boolean): MapLege
  * 주변 단지 설명선 지도 (A05, 이후 A06). 지도는 MapFigure(단지 없이), 점·지시선은 SVG, 표는 HTML 판.
  * 카드는 두 칸에만 놓이고 지도 원은 두 칸 사이에 들어가, 점이 카드에 가려지지 않는다.
  */
-function CalloutMap({ model, kind, page = 0, onPage, label, mapInteractive = true, mapWheel = "plain", mapTouchPan = "one", resetKey = "" }: CalloutMapProps) {
+function CalloutMap({ model, kind, page = 0, onPage, label, mapInteractive = true, mapWheel = "plain", mapTouchPan = "one", resetKey = "", showLegendStrip = true }: CalloutMapProps) {
   const { ref, size, near } = useMeasured();
   const layer = useContext(BasemapContext);
   const [hover, setHover] = useState<string | null>(null);
@@ -435,7 +437,7 @@ function CalloutMap({ model, kind, page = 0, onPage, label, mapInteractive = tru
         </>
         )}
       </div>
-      {size && near && scene && !empty && ((detail && size.w > 560) || (!detail && size.w >= 240)) && (
+      {showLegendStrip && size && near && scene && !empty && ((detail && size.w > 560) || (!detail && size.w >= 240)) && (
         <MapLegendStrip
           items={calloutLegendStripItems(model, !detail)}
           hoverLabel={legendHover}
