@@ -31,6 +31,8 @@ export type MapFigureProps = {
   bare?: boolean;
   /** 직렬화용: width/height 속성을 붙인다. 아니면 부모를 채운다 */
   fixed?: boolean;
+  /** 카드처럼 작은 프레임에서 출구 번호를 최근접 출구 하나로 줄인다. */
+  compact?: boolean;
   label?: string;
   /** false면 SVG 안의 벡터·래스터 범례를 모두 그리지 않는다. */
   legend?: boolean;
@@ -336,7 +338,7 @@ function backgroundTransform(from: Viewport, to: Viewport, width: number, height
   return `matrix(${scale},0,0,${scale},${e},${f})`;
 }
 
-function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, fixed, label, legend, legendY, north: northOpt, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, selectedFids = [], highlightLabel = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = [], showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeaturePin, onLegendHover, onLegendPin, path = [], onMapClick, view, dragging = false }: MapFigureProps) {
+function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, fixed, compact = false, label, legend, legendY, north: northOpt, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, selectedFids = [], highlightLabel = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = [], showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeaturePin, onLegendHover, onLegendPin, path = [], onMapClick, view, dragging = false }: MapFigureProps) {
   const rasterModel = model as RasterPresentationModel;
   const activeLayer = model.basemap ?? layer;
   const sat = activeLayer === "Satellite";
@@ -370,7 +372,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     ...(model.linesTotal !== undefined && model.linesTotal > (model.lines?.length ?? 0) ? [`경로 표시 ${(model.lines?.length ?? 0).toLocaleString("en-US")} / 전체 ${model.linesTotal.toLocaleString("en-US")}`] : []),
   ];
   const notes = [...model.notes, ...cuts];
-  const legendRows: Array<Array<{ layer: string; label: string; color: string; x: number; w: number; site?: boolean }>> = [[]];
+  const legendRows: Array<Array<{ layer: string; label: string; color: string; x: number; w: number; site?: boolean; badge?: string }>> = [[]];
   let lx = 0;
   for (const item of present) {
     const w = 12 * u + textW(item.label, fs) + 8 * u;
@@ -378,7 +380,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
       legendRows.push([]);
       lx = 0;
     }
-    legendRows.at(-1)!.push({ layer: item.layer, label: item.label, color: item.color, x: lx, w });
+    legendRows.at(-1)!.push({ layer: item.layer, label: item.label, color: item.color, badge: item.badge, x: lx, w });
     lx += w;
   }
   if (!bare && !muted) {
@@ -936,9 +938,10 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
   };
   const boxOverlapArea = (a: Box, b: Box): number => Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
   for (const { d, badge, badgeIndex } of featureBadges) {
-    const badgeFs = Math.max(8, fs * 0.72);
-    const badgeH = Math.max(12 * u, badgeFs * 1.35);
-    const badgeW = textW(badge.text, badgeFs) + 8 * u;
+    const stationBadge = d.f.layer === "rail_station" || d.f.layer === "rail_nearest";
+    const badgeFs = stationBadge ? Math.max(6, badge.text.length > 2 ? fs * 0.52 : fs * 0.72) : Math.max(8, fs * 0.72);
+    const badgeH = stationBadge ? Math.max(15 * u, badgeFs * 1.55) : Math.max(12 * u, badgeFs * 1.35);
+    const badgeW = stationBadge ? badgeH : textW(badge.text, badgeFs) + 8 * u;
     const candidates = badgeDirections.flatMap(([dx, dy]) => [
       badgeBox(d, badgeW, badgeH, dx, dy, radiusOf(d.f) + 3 * u),
       badgeBox(d, badgeW, badgeH, dx, dy, radiusOf(d.f) + 15 * u),
@@ -1089,14 +1092,16 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
             const center = centerOf(d.l.points);
             const lineKey = mapElementKey("line", d.l.layer, d.l.fid, d.index);
             const strong = isElementStrong(d.l.layer, lineKey);
-            const width = lineSelected ? 4 : (strong ? (st.strokeWidth ?? 1.5) * 1.35 : st.strokeWidth ?? 1.5) * (d.l.emphasis === "major" ? 1.2 : d.l.emphasis === "minor" ? 0.85 : 1);
+            const baseWidth = d.l.strokeWidth ?? st.strokeWidth ?? 1.5;
+            const width = lineSelected ? Math.max(4, baseWidth) : (strong ? baseWidth * 1.35 : baseWidth) * (d.l.emphasis === "major" ? 1.2 : d.l.emphasis === "minor" ? 0.85 : 1);
             const points = d.points.map(([x, y]) => `${x},${y}`).join(" ");
             const stroke = d.l.color ?? st.color;
-            const casing = strong || lineSelected ? INK : st.casing;
+            const casing = strong || lineSelected ? INK : d.l.casing ?? st.casing;
+            const casingWidth = d.l.casingWidth ?? width + 2.4;
             const opacity = d.l.opacity ?? st.opacity;
             return (
               <g key={`line${d.index}`} opacity={isElementDimmed(d.l.layer, lineKey) ? 0.2 : opacity}>
-                {casing && <polyline points={points} fill="none" stroke={casing} strokeWidth={(width + 2.4) * u} strokeDasharray={st.dash} strokeLinejoin="round" pointerEvents="none" />}
+                {casing && <polyline points={points} fill="none" stroke={casing} strokeWidth={casingWidth * u} strokeDasharray={st.dash} strokeLinejoin="round" pointerEvents="none" />}
                 <polyline data-line="true" points={points} fill="none" stroke={stroke} strokeWidth={width * u} strokeDasharray={st.dash} strokeLinejoin="round" markerEnd={st.arrow ? `url(#arrow-${uid}-${d.index})` : undefined} {...pickProps({ fid: d.l.fid, lng: center[0], lat: center[1], kind: "line" }, lineKey, labelText(d.l.layer, "line", d.l))} />
               </g>
             );
@@ -1124,6 +1129,28 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
            const hollow = st.sizeBy === "weight" && !d.f.weight;
            const featureKey = mapFeatureKey(d.f.layer, d.f.fid, d.index);
            const strong = isElementStrong(d.f.layer, featureKey);
+           const isRailEntrance = d.f.layer === "rail_entrance";
+           const entranceLabel = d.f.label?.trim() || null;
+           if (isRailEntrance) {
+             return (
+               <g key={`feature-${i}-${d.f.fid ?? d.f.layer}`} opacity={isElementDimmed(d.f.layer, featureKey) ? 0.2 : undefined}>
+                 <circle
+                   cx={d.p[0]}
+                   cy={d.p[1]}
+                   r={Math.max(3.5 * u, r * 0.85)}
+                   fill="#FFFFFF"
+                   stroke={strong || d.f.highlight || d.selected ? INK : "#334155"}
+                   strokeWidth={(strong || d.f.highlight || d.selected ? 1.6 : 1.1) * u}
+                   {...pickProps({ fid: d.f.fid, lng: d.f.lng, lat: d.f.lat, kind: "feature" }, featureKey, labelText(d.f.layer, "feature", d.f))}
+                 />
+                 {entranceLabel && (!compact || d.f.highlight) && (
+                   <text x={d.p[0]} y={d.p[1] + Math.max(2.5, r * 0.3) * u} textAnchor="middle" fontSize={Math.max(7, fs * 0.72)} fontWeight={700} fill={INK} pointerEvents="none">
+                     {entranceLabel}
+                   </text>
+                 )}
+               </g>
+             );
+           }
            return (
             <circle
               key={`feature-${i}-${d.f.fid ?? d.f.layer}`}
@@ -1140,12 +1167,22 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
           );
          })}
          {featureBadges.map(({ d, badge, badgeIndex }) => {
-           const badgeFs = Math.max(8, fs * 0.72);
+           const stationBadge = d.f.layer === "rail_station" || d.f.layer === "rail_nearest";
+           const badgeFs = stationBadge ? Math.max(6, badge.text.length > 2 ? fs * 0.52 : fs * 0.72) : Math.max(8, fs * 0.72);
            const placement = badgePositions.get(`${d.index}:${badgeIndex}`)!;
            return (
              <g key={`badge-${d.index}-${badgeIndex}-${badge.text}`} data-map-badge={badge.text} aria-label={badge.text} pointerEvents="none">
-               <rect x={placement.x} y={placement.y} width={placement.width} height={placement.height} rx={3 * u} fill={badge.color} stroke="#fff" strokeWidth={0.8 * u} />
-               <text x={placement.x + placement.width / 2} y={placement.y + placement.height * 0.72} textAnchor="middle" fontSize={badgeFs} fontWeight={700} fill={badgeTextColor(badge.color)}>{badge.text}</text>
+               {stationBadge ? (
+                 <>
+                   <circle cx={placement.x + placement.width / 2} cy={placement.y + placement.height / 2} r={Math.min(placement.width, placement.height) / 2} fill={badge.color} stroke="#fff" strokeWidth={0.8 * u} />
+                   <text x={placement.x + placement.width / 2} y={placement.y + placement.height * 0.72} textAnchor="middle" fontSize={badgeFs} fontWeight={700} fill={badgeTextColor(badge.color)}>{badge.text}</text>
+                 </>
+               ) : (
+                 <>
+                   <rect x={placement.x} y={placement.y} width={placement.width} height={placement.height} rx={3 * u} fill={badge.color} stroke="#fff" strokeWidth={0.8 * u} />
+                   <text x={placement.x + placement.width / 2} y={placement.y + placement.height * 0.72} textAnchor="middle" fontSize={badgeFs} fontWeight={700} fill={badgeTextColor(badge.color)}>{badge.text}</text>
+                 </>
+               )}
              </g>
            );
          })}
@@ -1231,6 +1268,11 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
                           <rect x={-3.2 * u} y={-3.2 * u} width={6.4 * u} height={6.4 * u} fill="#fff" stroke="#111" strokeWidth={0.9 * u} transform="rotate(45)" />
                           <circle r={0.9 * u} fill="#111" />
                         </g>
+                      ) : it.badge ? (
+                        <>
+                          <circle cx={panelX + pad * 1.8 + it.x + 4 * u} cy={ly + pad * 0.7 + ri * rowH + rowH / 2} r={5 * u} fill={it.color} fillOpacity={0.95} stroke="#fff" strokeWidth={0.8 * u} />
+                          <text x={panelX + pad * 1.8 + it.x + 4 * u} y={ly + pad * 0.7 + ri * rowH + rowH / 2 + 2.5 * u} textAnchor="middle" fontSize={Math.max(7, fs * 0.62)} fontWeight={700} fill={badgeTextColor(it.color)}>{it.badge}</text>
+                        </>
                       ) : (
                         <circle cx={panelX + pad * 1.8 + it.x + 4 * u} cy={ly + pad * 0.7 + ri * rowH + rowH / 2} r={4 * u} fill={it.color} fillOpacity={0.85} />
                       )}

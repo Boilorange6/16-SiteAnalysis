@@ -258,6 +258,7 @@ function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, mapInteract
             bare={bare}
             label={label}
             layer={renderLayer}
+            compact={pad !== undefined}
             tileHref={renderLayer === "Satellite" ? satelliteTileHref : undefined}
             rasterHref={(raster) => rasterHrefs[raster.name] ?? null}
             avoid={typeof avoid === "function" ? avoid(size.w, size.h) : avoid}

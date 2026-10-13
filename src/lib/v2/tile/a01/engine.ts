@@ -2,15 +2,15 @@
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../../engine/context";
 import type { FeatureHit } from "../../data/features";
+import type { Geometry } from "geojson";
 import { toUtmk } from "../../crs";
 import { candidate, fmt, hitPoint, lineCandidate, makeTile, missing, nearestHit, nearestM, noDataTile, obs, type LineCandidate, type MapCandidate, type TileDraft } from "../../engine/tiles/common";
 import { clipLineToCircle, linePathLength } from "../../engine/tiles/geo";
 import { walkField, walkSources, type WalkField, type WalkRoute } from "../../engine/tiles/walk-shared";
 import { formatDistanceM } from "../../ui/tile-view";
-import { DEFAULT_RAIL_COLOR, hexColor, publicRailLine, railEntranceColor, railLineMemberships } from "../rail-presentation";
+import { canonicalRailLineLabel, publicRailLine, railEntranceColor, railLineBadgeText, railLineCasing, railLineColor, railLineEmphasis, railLineMemberships, railStationMatchKey } from "../rail-presentation";
 import {
   representativeSubwayLineCandidates,
-  subwayLineColor,
   subwayLineGroupKey,
   subwayStationDisplayName,
 } from "../../../osm-subway-overlay";
@@ -125,12 +125,15 @@ function railStations(ctx: EngineContext, searchM: number): RailStation[] {
   const byName = new Map<string, FeatureHit[]>();
   for (const e of hits.filter((h) => h.kind === "rail_entrance")) {
     const n = e.properties.stationName;
-    if (typeof n === "string") byName.set(n, [...(byName.get(n) ?? []), e]);
+    if (typeof n === "string") {
+      const key = railStationMatchKey(n);
+      byName.set(key, [...(byName.get(key) ?? []), e]);
+    }
   }
   return hits
     .filter((h) => h.kind === "rail_station")
     .map((s) => {
-      const entrances = (s.name ? byName.get(s.name) : undefined) ?? [];
+      const entrances = (s.name ? byName.get(railStationMatchKey(s.name)) : undefined) ?? [];
       const e = nearestHit(entrances);
       const best: RailPoint = e ? { hit: e, isStationPoint: false, dist: e.distanceM! } : { hit: s, isStationPoint: true, dist: s.distanceM! };
       return { hit: s, best, entrances };
@@ -155,14 +158,9 @@ function railLineNames(hit: FeatureHit): string[] {
   return railLineMemberships(hit).map((membership) => membership.label);
 }
 
-function railBadgeText(name: string): string {
-  const number = name.match(/(\d+)호선/);
-  return number ? number[1] : name.replace(/선$/u, "").slice(0, 4);
-}
-
 function stationBadges(hit: FeatureHit): Array<{ text: string; color: string }> {
   return railLineMemberships(hit)
-    .map(({ label, color }) => ({ text: railBadgeText(label), color }))
+    .map(({ label, color }) => ({ text: railLineBadgeText(label), color }))
     .filter((badge) => badge.text.length > 0)
     .slice(0, 4);
 }
@@ -172,8 +170,11 @@ function distanceSublabel(distanceM: number | null): string | null {
 }
 
 function entranceNumber(hit: FeatureHit): string | null {
-  const raw = text(hit.properties.entranceRef) ?? text(hit.name);
-  return raw?.match(/(\d+)/)?.[1] ?? null;
+  for (const raw of [text(hit.properties.entranceRef), text(hit.name)]) {
+    const number = raw?.match(/\d+(?:-\d+)?/u)?.[0];
+    if (number) return number;
+  }
+  return null;
 }
 
 function entranceDisplayName(hit: FeatureHit): string | null {
@@ -197,9 +198,129 @@ function railSummary(usesPoint: boolean, distanceM: number): string {
 }
 
 function countStationsWithEntrances(stations: FeatureHit[], entrances: FeatureHit[]): number {
-  const stationNames = new Set(stations.map(stationName).filter((name): name is string => name !== null));
-  const entranceNames = new Set(entrances.map(entranceStationName).filter((name): name is string => name !== null && stationNames.has(name)));
-  return stations.reduce((count, station) => count + (stationName(station) !== null && entranceNames.has(stationName(station)!) ? 1 : 0), 0);
+  const stationNames = new Set(stations.map(stationName).filter((name): name is string => name !== null).map(railStationMatchKey));
+  const entranceNames = new Set(entrances.map(entranceStationName).filter((name): name is string => name !== null).map(railStationMatchKey));
+  return stations.reduce((count, station) => {
+    const name = stationName(station);
+    return count + (name !== null && entranceNames.has(railStationMatchKey(name)) && stationNames.has(railStationMatchKey(name)) ? 1 : 0);
+  }, 0);
+}
+
+type AxisEndpoints = [[number, number], [number, number]];
+type RailLineSource = {
+  hit: FeatureHit;
+  parts: Array<{ hit: FeatureHit; index: number; path: number[][]; lengthM: number }>;
+  line_ref?: string;
+  line_name?: string;
+  length_m: number;
+  stable_id: string;
+  group: string;
+  label: string;
+  color: string;
+  casing: string;
+  emphasis: "major" | "minor";
+};
+
+function axisPoint(value: unknown): [number, number] | null {
+  return Array.isArray(value)
+    && value.length >= 2
+    && typeof value[0] === "number"
+    && typeof value[1] === "number"
+    && Number.isFinite(value[0])
+    && Number.isFinite(value[1])
+    ? [value[0], value[1]]
+    : null;
+}
+
+function axisEndpoints(value: unknown): AxisEndpoints | null {
+  if (!Array.isArray(value) || value.length !== 2) return null;
+  const first = axisPoint(value[0]);
+  const second = axisPoint(value[1]);
+  return first && second ? [first, second] : null;
+}
+
+function storedStationAxes(station: FeatureHit): Array<{ ref: string | null; name: string | null; label: string; endpoints: AxisEndpoints }> {
+  if (!Array.isArray(station.properties.stationAxes)) return [];
+  return station.properties.stationAxes.flatMap((value) => {
+    if (!value || typeof value !== "object") return [];
+    const entry = value as Record<string, unknown>;
+    const ref = text(entry.lineRef);
+    const name = text(entry.lineName);
+    const endpoints = axisEndpoints(entry.endpoints);
+    if (!endpoints || !publicRailLine(ref, name)) return [];
+    return [{ ref, name, label: canonicalRailLineLabel(ref, name), endpoints }];
+  });
+}
+
+function linePaths(geometry: Geometry): number[][][] {
+  if (geometry.type === "LineString") return [geometry.coordinates as number[][]];
+  if (geometry.type === "MultiLineString") return geometry.coordinates as number[][][];
+  return [];
+}
+
+/** 저장된 station_axes가 없는 구 데이터에서도 역사 막대를 선형에 스냅해 복원한다. */
+function fallbackAxisPath(stationM: readonly [number, number], sources: readonly RailLineSource[]): number[][] | null {
+  let best: { distance: number; x: number; y: number; dx: number; dy: number } | null = null;
+  for (const source of sources) {
+    for (const path of linePaths(source.hit.geometry)) {
+      for (let index = 1; index < path.length; index += 1) {
+        const a = path[index - 1];
+        const b = path[index];
+        if (!a || !b || a.length < 2 || b.length < 2) continue;
+        const dx = b[0] - a[0];
+        const dy = b[1] - a[1];
+        const lengthSquared = dx * dx + dy * dy;
+        if (lengthSquared <= 0) continue;
+        const t = Math.max(0, Math.min(1, ((stationM[0] - a[0]) * dx + (stationM[1] - a[1]) * dy) / lengthSquared));
+        const x = a[0] + t * dx;
+        const y = a[1] + t * dy;
+        const distance = Math.hypot(stationM[0] - x, stationM[1] - y);
+        if (!best || distance < best.distance) best = { distance, x, y, dx, dy };
+      }
+    }
+  }
+  if (!best || best.distance > 450) return null;
+  const length = Math.hypot(best.dx, best.dy);
+  const half = 92;
+  return [
+    [best.x - (best.dx / length) * half, best.y - (best.dy / length) * half],
+    [best.x + (best.dx / length) * half, best.y + (best.dy / length) * half],
+  ];
+}
+
+function stationAxisLines(station: FeatureHit, sources: readonly RailLineSource[], idBase: number): LineCandidate[] {
+  const axes = storedStationAxes(station);
+  const memberships = railLineMemberships(station);
+  const output: LineCandidate[] = [];
+  const seen = new Set<string>();
+  for (const membership of memberships) {
+    if (seen.has(membership.label)) continue;
+    seen.add(membership.label);
+    const stored = axes.find((axis) => axis.label === membership.label);
+    const path: number[][] | null = stored
+      ? stored.endpoints.map(([lng, lat]) => {
+          const [x, y] = toUtmk([lng, lat]);
+          return [x, y];
+        })
+      : fallbackAxisPath(toUtmk(hitPoint(station)), sources.filter((source) => source.label === membership.label));
+    if (!path) continue;
+    const emphasis = railLineEmphasis(membership.label);
+    const strokeWidth = emphasis === "minor" ? 7 : 9;
+    const line = lineCandidate(idBase + output.length, "rail_station_axis", path, linePathLength(path), null, {
+      fid: `station-axis:${station.featureId}:${membership.label}`,
+      name: null,
+      legendLabel: membership.label,
+      labelPriority: 0,
+      color: membership.color,
+      casing: railLineCasing(membership.color),
+      strokeWidth,
+      casingWidth: strokeWidth + 4.5,
+      capPriority: 2,
+      emphasis,
+    });
+    if (line) output.push(line);
+  }
+  return output;
 }
 
 export function a01(ctx: EngineContext): TileResult {
@@ -220,9 +341,13 @@ export function a01(ctx: EngineContext): TileResult {
   const entranceHits = hasRail ? ctx.hits("reference", ["rail_entrance"]) : [];
   const railLineHits = hasRail ? ctx.hits("reference", ["rail_line"]) : [];
   const stationsWithEntrances = hasRail ? countStationsWithEntrances(stationHits, entranceHits) : 0;
-  const railLineSources = railLineHits
+  const railLineSources: RailLineSource[] = railLineHits
     .filter((hit) => publicRailLine(text(hit.properties.lineRef), text(hit.name)))
     .map((hit) => {
+      const lineRef = text(hit.properties.lineRef) ?? undefined;
+      const lineName = text(hit.name) ?? undefined;
+      const label = canonicalRailLineLabel(lineRef, lineName);
+      const color = railLineColor(lineRef, lineName);
       const parts = clipLineToCircle(ctx.input.center, radiusM, hit.geometry).map((path, index) => ({
         hit,
         index,
@@ -232,15 +357,26 @@ export function a01(ctx: EngineContext): TileResult {
       return {
         hit,
         parts,
-        line_ref: text(hit.properties.lineRef) ?? undefined,
-        line_name: text(hit.name) ?? undefined,
+        line_ref: lineRef,
+        line_name: lineName,
         length_m: Math.max(...parts.map((part) => part.lengthM), Number.NEGATIVE_INFINITY),
         stable_id: hit.stableId,
-        group: subwayLineGroupKey(text(hit.properties.lineRef) ?? undefined, text(hit.name) ?? undefined),
+        group: subwayLineGroupKey(lineRef, lineName),
+        label,
+        color,
+        casing: railLineCasing(color),
+        emphasis: railLineEmphasis(label),
       };
     })
     .filter((source) => source.parts.length > 0 && source.group.length > 0);
-  const representativeRailLineSources = representativeSubwayLineCandidates(railLineSources);
+  const representativeByLabel = new Map<string, RailLineSource>();
+  for (const source of representativeSubwayLineCandidates(railLineSources)) {
+    const current = representativeByLabel.get(source.label);
+    if (!current || source.length_m > current.length_m || (source.length_m === current.length_m && source.stable_id < current.stable_id)) {
+      representativeByLabel.set(source.label, source);
+    }
+  }
+  const representativeRailLineSources = [...representativeByLabel.values()];
   const railLineCount = representativeRailLineSources.length;
   const railBest = stations.reduce<RailStation | null>((b, s) => (b === null || s.best.dist < b.best.dist || (s.best.dist === b.best.dist && s.hit.featureId < b.hit.featureId) ? s : b), null);
   const walk = walkField(ctx);
@@ -304,10 +440,11 @@ export function a01(ctx: EngineContext): TileResult {
   if (lines.length > 0) layers.push("walk_route");
   const limitations: TileDraft["limitations"] = [];
   if (hasRail) {
-    layers.push("rail_station", "rail_entrance", "rail_line", "rail_nearest");
+    layers.push("rail_station", "rail_entrance", "rail_line", "rail_station_axis", "rail_nearest");
     // 최근접 표시는 nearest_rail_m을 정한 지물(출입구 있는 역은 출입구, 없으면 역 대표점) 하나에만 준다.
     const nearFeatureId = railBest && railM !== null && railBest.best.dist <= radiusM ? railBest.best.hit.featureId : null;
     // D14 흡수 후에도 반경 내 원천 역·출입구 전체를 지도에 남긴다.
+    let axisSequence = 0;
     for (const station of stationHits) {
       const isNearest = station.featureId === nearFeatureId;
       const lineNames = railLineNames(station);
@@ -320,12 +457,16 @@ export function a01(ctx: EngineContext): TileResult {
         distanceM: isNearest ? railM : null,
         badges: stationBadges(station),
       }));
+      const axes = stationAxisLines(station, railLineSources, 2_000_000 + axisSequence);
+      lines.push(...axes);
+      axisSequence += axes.length;
     }
     for (const entrance of entranceHits) {
       const isNearest = entrance.featureId === nearFeatureId;
       const color = railEntranceColor(entrance, stationHits);
       map.push(candidate(entrance, "rail_entrance", {
         name: entranceDisplayName(entrance),
+        label: entranceNumber(entrance),
         highlight: isNearest,
         sublabel: isNearest ? distanceSublabel(railM) : null,
         labelPriority: isNearest ? 2 : 0,
@@ -336,8 +477,6 @@ export function a01(ctx: EngineContext): TileResult {
       const longestPart = source.parts.reduce((best, part) => (
         best === null || part.lengthM > best.lengthM || (part.lengthM === best.lengthM && part.index < best.index) ? part : best
       ), null as (typeof source.parts)[number] | null);
-      const colorValue = hexColor(source.hit.properties.color);
-      const color = colorValue ? subwayLineColor(colorValue) : DEFAULT_RAIL_COLOR;
       for (const part of source.parts) {
         const fid = `${part.hit.featureId}:${part.index}`;
         const line = lineCandidate(part.hit.featureId, "rail_line", part.path, part.lengthM, null, {
@@ -345,8 +484,10 @@ export function a01(ctx: EngineContext): TileResult {
           name: source.group,
           sublabel: null,
           labelPriority: longestPart?.index === part.index ? 1 : 0,
-          color,
-          emphasis: "major",
+          legendLabel: source.label,
+          color: source.color,
+          casing: source.casing,
+          emphasis: source.emphasis,
         });
         if (line) lines.push(line);
       }

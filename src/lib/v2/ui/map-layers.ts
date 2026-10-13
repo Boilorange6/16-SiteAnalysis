@@ -1,4 +1,5 @@
 import type { MapFeature, MapLine, MapPolygon, RasterRef, TileResult } from "../tile-result";
+import { railLineBadgeText } from "../tile/rail-presentation";
 import type { BasemapChoice } from "./map-projection";
 
 /** MapFigure가 그리는 입력. 카드·상세·PPT가 같은 것을 쓴다. */
@@ -168,6 +169,7 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   rail_station: S("철도역", "#1F5FA8", undefined, "철도역"),
   rail_entrance: S("역 출입구", "#4F8FD8", undefined, "역 출입구"),
   rail_line: { label: "철도 노선", color: "#1F5FA8", subject: "철도 노선", strokeWidth: 4.2, casing: "#FFFFFF" },
+  rail_station_axis: { label: "철도 노선", color: "#1F5FA8", subject: "철도 노선", strokeWidth: 9, casing: "#FFFFFF" },
   rail_nearest: S("최근접 역", "#1F5FA8", undefined, "철도역"),
   school_elem: S("초등학교", "#E5A11C", undefined, "학교"),
   school_middle: S("중학교", "#D9822B", undefined, "학교"),
@@ -435,7 +437,16 @@ for (const entries of LEGEND_GROUP_STYLES.values()) {
 }
 
 /** 지물이 있는 레이어의 범례 항목 (정의된 순서) */
-export const legendItems = (model: MapModel) => {
+export type MapLegendLayerItem = {
+  layer: string;
+  label: string;
+  color: string;
+  colors?: string[];
+  badge?: string;
+  highlight: boolean;
+};
+
+export const legendItems = (model: MapModel): MapLegendLayerItem[] => {
   const present = new Set([
     ...model.features.map((feature) => feature.layer).filter((layer) => !layer.endsWith("_nearest") || LAYER_STYLES[layer]?.showInLegend === true),
     ...(model.polygons ?? []).map((polygon) => polygon.layer).filter((layer) => !layer.endsWith("_nearest") || LAYER_STYLES[layer]?.showInLegend === true),
@@ -445,15 +456,27 @@ export const legendItems = (model: MapModel) => {
     model.features.filter((feature) => feature.highlight && !feature.layer.endsWith("_nearest")).map((feature) => layerStyle(feature.layer).label),
   );
   const lineColorsByLabel = new Map<string, string[]>();
+  const dynamicRailItems: Array<{ layer: string; label: string; color: string; badge?: string; highlight: boolean; colors?: string[] }> = [];
+  const dynamicRailLabels = new Set<string>();
   for (const line of model.lines ?? []) {
     if (!line.color || !/^#[0-9A-Fa-f]{6}$/.test(line.color)) continue;
+    if (line.legendLabel && (line.layer === "rail_line" || line.layer === "rail_station_axis") && !dynamicRailLabels.has(line.legendLabel)) {
+      dynamicRailLabels.add(line.legendLabel);
+      dynamicRailItems.push({ layer: line.layer, label: line.legendLabel, color: line.color, badge: railLineBadgeText(line.legendLabel), highlight: false });
+    }
     const label = layerStyle(line.layer).label;
     const colors = lineColorsByLabel.get(label) ?? [];
     if (!colors.includes(line.color)) colors.push(line.color);
     lineColorsByLabel.set(label, colors);
   }
   const seenLabels = new Set<string>();
+  let dynamicRailInserted = false;
   return Object.keys(LAYER_STYLES).flatMap((layer) => {
+    if (layer === "rail_line" && dynamicRailItems.length > 0) {
+      dynamicRailInserted = true;
+      return dynamicRailItems;
+    }
+    if (layer === "rail_station_axis" && dynamicRailInserted) return [];
     if (!present.has(layer)) return [];
     const style = LAYER_STYLES[layer];
     if (seenLabels.has(style.label)) return [];
@@ -464,6 +487,7 @@ export const legendItems = (model: MapModel) => {
       label: style.label,
       color: colors[0] ?? style.color,
       ...(colors.length > 0 ? { colors } : {}),
+      badge: undefined,
       highlight: highlightedLabels.has(style.label),
     }];
   });
@@ -501,7 +525,6 @@ export function presentationLegendLabel(entry: TileResult["presentation"]["legen
 }
 
 /** 엔진 범례와 화면 레이어를 같은 순서로 연결한 하단 띠용 항목. */
-type MapLegendLayerItem = ReturnType<typeof legendItems>[number];
 type PresentedLegendLayerItem = MapLegendLayerItem & { id: string; highlightLabel: string };
 
 function reorderMappedLegendGroups(items: PresentedLegendLayerItem[]): PresentedLegendLayerItem[] {

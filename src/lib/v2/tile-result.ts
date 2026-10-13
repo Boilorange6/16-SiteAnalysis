@@ -96,12 +96,23 @@ const MapLineSchema = z.object({
   label: z.string().nullable().optional(),
   name: z.string().nullable().optional(),
   sublabel: z.string().nullable().optional(),
+  /** 선의 실제 범례 호선명. 레이어 공통명(철도 노선)과 분리한다. */
+  legendLabel: z.string().min(1).optional(),
   labelPriority: z.number().int().min(0).max(2).optional(),
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  /** 밝은 호선의 선별 케이싱과 역사 막대 두께를 계산 결과에 보존한다. */
+  casing: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  strokeWidth: z.number().finite().positive().max(40).optional(),
+  casingWidth: z.number().finite().positive().max(48).optional(),
+  /** 지도 선 상한에서 역사 막대처럼 우선 보존할 선. */
+  capPriority: z.number().int().min(0).max(3).optional(),
   /** 선별 지물의 개별 불투명도. 없으면 공용 LayerStyle을 따른다. */
   opacity: z.number().finite().min(0).max(1).optional(),
   emphasis: z.enum(["major", "minor"]).optional(),
-});
+}).refine(
+  ({ strokeWidth, casingWidth }) => casingWidth === undefined || strokeWidth === undefined || casingWidth >= strokeWidth,
+  { path: ["casingWidth"], message: "casingWidth must be at least strokeWidth" },
+);
 const MapPolygonSchema = z.object({
   /** 상세 창에서 면 지물과 목록을 연결하는 안정적인 지물 키. */
   fid: z.string().min(1).optional(),
