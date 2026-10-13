@@ -8,6 +8,7 @@ import { lookupParcelPoints } from "../../data/parcels";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext, Limitation, SourceRef } from "../../engine/context";
 import { lookupComplexNames } from "./complex-name";
+import { districtPolygons, formatTradeRecent, legalEmdAreas, legalEmdCode, mean, type DistrictArea, type DistrictMetric } from "./district";
 import { fmt, makeTile, missing, obs, type MapCandidate, type TileDraft } from "../../engine/tiles/common";
 import { notProvided } from "../../engine/tiles/not-provided";
 
@@ -20,6 +21,7 @@ export interface TradeRow {
   deal_date: string;
   price_krw: number | null;
   area_m2: number | null;
+  floor: number | null;
   cancelled_at: string | null;
   location_id: string | null;
 }
@@ -34,6 +36,7 @@ export interface TradePoint {
   n: number;
   m: number;
   at: LngLat;
+  recent: TradeRow[];
 }
 
 export interface TradeCollection {
@@ -46,6 +49,8 @@ export interface TradeCollection {
   cancelled: number;
   from: string;
   mid: string;
+  districtAreas: DistrictArea[];
+  districtMetrics: Map<string, DistrictMetric>;
 }
 
 /** ISO 날짜에서 n개월 전(말일 보정) */
@@ -102,10 +107,11 @@ function collectTradesUncached(ctx: EngineContext): TradeCollection | null {
   const mid = monthsBefore(analysisDate, 6);
   const sigungu = ctx.sigungu();
   const codes = sigungu.map((s) => s.code);
+  const districtAreas = legalEmdAreas(ctx.hits("core", ["legal_emd"]));
 
   const rows = codes.length
     ? (market
-        .prepare(`SELECT deal_date, price_krw, area_m2, cancelled_at, location_id FROM property_transaction
+        .prepare(`SELECT deal_date, price_krw, area_m2, floor, cancelled_at, location_id FROM property_transaction
           WHERE property_type = 'apt' AND contract_type = 'trade' AND match_status = 'located'
             AND lawd_cd IN (${codes.map(() => "?").join(",")}) AND deal_date > ? AND deal_date <= ?`)
         .all(...codes, from, analysisDate) as TradeRow[])
@@ -143,13 +149,34 @@ function collectTradesUncached(ctx: EngineContext): TradeCollection | null {
   const cancelled = local.filter((r) => r.cancelled_at !== null).length;
   const valid = local.filter((r) => r.cancelled_at === null && r.price_krw !== null && r.price_krw > 0);
   const priced = valid.filter((r) => r.area_m2 !== null && r.area_m2 > 0).map((r) => ({ ...r, unit: r.price_krw! / 10_000 / r.area_m2! }));
+  const districtValues = new Map<string, number[]>();
+  for (const row of rows) {
+    if (row.cancelled_at !== null || row.price_krw === null || row.price_krw <= 0 || row.area_m2 === null || row.area_m2 <= 0) continue;
+    const code = legalEmdCode(row.location_id);
+    if (!code) continue;
+    districtValues.set(code, [...(districtValues.get(code) ?? []), row.price_krw / 10_000 / row.area_m2]);
+  }
+  const districtMetrics = new Map<string, DistrictMetric>(districtAreas.map((area) => [area.code, { value: null, count: 0 }]));
+  for (const [code, values] of districtValues) districtMetrics.set(code, { value: mean(values), count: values.length });
+
   const byPnu = new Map<string, number[]>();
   for (const r of priced) byPnu.set(r.location_id!, [...(byPnu.get(r.location_id!) ?? []), r.unit]);
+  const recentByPnu = new Map<string, TradeRow[]>();
+  for (const row of valid) {
+    if (row.location_id && byPnu.has(row.location_id)) recentByPnu.set(row.location_id, [...(recentByPnu.get(row.location_id) ?? []), row]);
+  }
   const points = [...byPnu]
     .sort(([a], [b]) => (a < b ? -1 : 1))
-    .map(([pnu, us], i) => ({ pnu, i, n: us.length, m: median(us) as number, at: parcelPoints.get(pnu)! }));
+    .map(([pnu, us], i) => ({
+      pnu,
+      i,
+      n: us.length,
+      m: median(us) as number,
+      at: parcelPoints.get(pnu)!,
+      recent: [...(recentByPnu.get(pnu) ?? [])].sort((a, b) => b.deal_date.localeCompare(a.deal_date)).slice(0, 3),
+    }));
 
-  return { sources, valid, priced, points, unlocated, absent, cancelled, from, mid };
+  return { sources, valid, priced, points, unlocated, absent, cancelled, from, mid, districtAreas, districtMetrics };
 }
 
 export function collectTrades(ctx: EngineContext): TradeCollection | null {
@@ -159,7 +186,7 @@ export function collectTrades(ctx: EngineContext): TradeCollection | null {
 export function a07(ctx: EngineContext): TileResult {
   const trades = collectTrades(ctx);
   if (!trades) return notProvided(ctx, "A07");
-  const { sources, valid, priced, points, unlocated, absent, cancelled, mid } = trades;
+  const { sources, valid, priced, points, unlocated, absent, cancelled, mid, districtAreas, districtMetrics } = trades;
   const { analysisDate } = ctx.input;
   const noArea = valid.length - priced.length;
 
@@ -200,6 +227,16 @@ export function a07(ctx: EngineContext): TileResult {
   const top3 = new Set([...points].sort((a, b) => b.n - a.n || a.i - b.i).slice(0, 3).map((p) => p.pnu));
   const all = points.map((p) => p.m);
   const names = lookupComplexNames(ctx.db("core"), points.map((p) => p.pnu));
+  const district = districtPolygons(
+    districtAreas,
+    districtMetrics,
+    ctx.input.center,
+    ctx.input.radiusM,
+    "trade_district_q",
+    "trade_district_missing",
+    "법정동 평균 ㎡당",
+    (value) => `${fmt(Math.round(value))}만원/㎡`,
+  );
   const map: MapCandidate[] = points.map((p) => ({
     id: p.i,
     f: {
@@ -208,10 +245,14 @@ export function a07(ctx: EngineContext): TileResult {
       lat: Math.round(p.at[1] * 1e6) / 1e6,
       weight: p.n,
       name: names.get(p.pnu) ?? null,
-      sublabel: `${fmt(Math.round(p.m))}만원/㎡ · ${fmt(p.n)}건`,
+      sublabel: [
+        `㎡당 중앙값 ${fmt(Math.round(p.m))}만원`,
+        `최근 ${p.recent.map(formatTradeRecent).join(" / ")}`,
+      ].join(" · "),
       labelPriority: top3.has(p.pnu) && names.has(p.pnu) ? 1 : 0,
     },
   }));
+  const hasDistrictMissing = district.polygons.some((polygon) => polygon.p.layer === "trade_district_missing");
 
   const limitations: Limitation[] = [
     { kind: "partial", note: "아파트 매매만 다룹니다(오피스텔·연립다세대·전월세 제외)." },
@@ -229,9 +270,18 @@ export function a07(ctx: EngineContext): TileResult {
     metrics,
     judgment: { ruleId: "a07-trade@1", basisMetricIds: med === null ? ["valid_trades"] : ["valid_trades", "median_price_per_m2"], sentence, level: null, criteria: null },
     sources,
-    layers: ["trade_q1", "trade_q2", "trade_q3", "trade_q4", "trade_q5"],
+    layers: [
+      "trade_q1", "trade_q2", "trade_q3", "trade_q4", "trade_q5",
+      "trade_district_q1", "trade_district_q2", "trade_district_q3", "trade_district_q4", "trade_district_q5", "trade_district_missing",
+    ],
     map,
-    legend: tradeLegend(all),
+    polygons: district.polygons,
+    polygonCap: 3000,
+    legend: [
+      ...tradeLegend(all),
+      ...district.legend,
+      ...(hasDistrictMissing ? [{ label: "법정동 자료 부족", min: null, max: null }] : []),
+    ],
     limitations,
   });
 }

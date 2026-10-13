@@ -14,6 +14,10 @@ const optionMatches: Record<string, (layer: string) => boolean> = {
   height_tall: (layer) => layer.startsWith("tall_"),
   height_low: (layer) => layer.startsWith("low_"),
   parcel_size: (layer) => layer.startsWith("lot_"),
+  district: (layer) => layer.startsWith("trade_district_"),
+  rent_district: (layer) => layer.startsWith("rent_district_"),
+  district_jeonse: (layer) => layer.startsWith("rent_district_jeonse_"),
+  district_monthly: (layer) => layer.startsWith("rent_district_monthly_"),
 };
 
 const LEGACY_LAYER_FALLBACKS: Record<string, string> = {

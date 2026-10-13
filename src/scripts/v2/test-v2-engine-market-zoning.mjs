@@ -90,7 +90,8 @@ assert.ok(sigunguMatches("경기도 수원시 팔달구", "수원시") && sigung
   assert.equal(f.find((x) => x.weight === 3).layer, "trade_q5", "B 중앙 단가가 가장 높다");
   assert.equal(f.filter((x) => x.labelPriority === 1).length, 0, "단지명 없는 fixture는 자동 라벨 우선순위를 주지 않는다");
   assert.ok(f.every((x) => x.name === null && x.labelPriority === 0 && Object.hasOwn(x, "sublabel")), "새 라벨 계약 필드");
-  assert.match(f.find((x) => x.weight === 24).sublabel, /^\d[\d,]*만원\/㎡ · 24건$/);
+  assert.match(f.find((x) => x.weight === 24).sublabel, /^㎡당 중앙값 \d[\d,]*만원 · 최근 /, "최근 3건 라벨과 단지별 중앙값");
+  assert.equal((f.find((x) => x.weight === 24).sublabel.match(/2026년/g) ?? []).length, 3, "A07 최근 거래 상한");
   assert.ok(t.presentation.layers.includes("trade_q5"));
   // 한계
   const notes = t.limitations.map((l) => l.note).join("\n");
