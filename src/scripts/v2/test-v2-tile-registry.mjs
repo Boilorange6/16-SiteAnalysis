@@ -29,7 +29,7 @@ const EXPECTED_CACHE_VERSIONS = {
   A04: "v2-p4-ext-1+w3-merge-r1+w2b-r1+clip-r1",
   A05: "v2-p4-ext-1+w2b-r1",
   A06: "v2-p4-ext-1+w2b-r1",
-  A07: "v2-p4-ext-1+w3-merge-r1+w2b-r1+w2-trade-modes-r1",
+  A07: "v2-p4-ext-1+w3-merge-r1+w2b-r1+w2-trade-modes-r1+price-size-r1",
   A08: "v2-p4-ext-1+w2b-r1+w2-trade-modes-r1+w6-building-modes-r1",
   A09: "v2-p4-ext-1+w3-merge-r1+w2b-r1+clip-r1",
   A10: "v2-p4-ext-1+w3-merge-r1+w2b-r1",

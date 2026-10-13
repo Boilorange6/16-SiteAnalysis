@@ -80,18 +80,20 @@ assert.ok(sigunguMatches("경기도 수원시 팔달구", "수원시") && sigung
   assert.equal(t.judgment.level, null);
   assert.match(t.judgment.sentence, /29건, ㎡당 중앙값 1,015만원\(중간 절반 968~1,083만원\), 직전 6개월 대비 중앙값 \+12\.6%/);
   assert.match(t.judgment.sentence, /시세·감정가가 아니고/);
-  // 지도: 필지 3곳 = 점 3개, weight = 건수(A 24, B 3, C 1), 색은 점별 중앙 단가 5분위
+  // 지도: 필지 3곳 = 점 3개, weight = 점별 ㎡당 중앙 단가(값이 클수록 큰 점), 색은 같은 값의 5분위
   const f = t.presentation.features;
   assert.equal(f.length, 3);
-  const byW = Object.fromEntries(f.map((x) => [x.weight, x]));
-  assert.deepEqual(Object.keys(byW).sort(), ["1", "24", "3"]);
+  const byPrice = [...f].sort((a, b) => a.weight - b.weight);
+  assert.deepEqual(byPrice.map((x) => x.weight), [1005, 1200, 1600]);
   assert.ok(f.every((x) => /^trade_q[1-5]$/.test(x.layer)));
-  assert.equal(f.find((x) => x.weight === 24).layer, "trade_q1", "A 중앙 단가가 가장 낮다");
-  assert.equal(f.find((x) => x.weight === 3).layer, "trade_q5", "B 중앙 단가가 가장 높다");
+  const lowest = byPrice[0];
+  const highest = byPrice[2];
+  assert.equal(lowest.layer, "trade_q1", "A 중앙 단가가 가장 낮다 → 가장 작은 점");
+  assert.equal(highest.layer, "trade_q5", "B 중앙 단가가 가장 높다 → 가장 큰 점");
   assert.equal(f.filter((x) => x.labelPriority === 1).length, 0, "단지명 없는 fixture는 자동 라벨 우선순위를 주지 않는다");
   assert.ok(f.every((x) => x.name === null && x.labelPriority === 0 && Object.hasOwn(x, "sublabel")), "새 라벨 계약 필드");
-  assert.match(f.find((x) => x.weight === 24).sublabel, /^㎡당 중앙값 \d[\d,]*만원 · 최근 /, "최근 3건 라벨과 단지별 중앙값");
-  assert.equal((f.find((x) => x.weight === 24).sublabel.match(/2026년/g) ?? []).length, 3, "A07 최근 거래 상한");
+  assert.match(lowest.sublabel, /^㎡당 중앙값 \d[\d,]*만원 · 최근 /, "최근 3건 라벨과 단지별 중앙값");
+  assert.equal((lowest.sublabel.match(/2026년/g) ?? []).length, 3, "A07 최근 거래 상한");
   assert.ok(t.presentation.layers.includes("trade_q5"));
   // 한계
   const notes = t.limitations.map((l) => l.note).join("\n");

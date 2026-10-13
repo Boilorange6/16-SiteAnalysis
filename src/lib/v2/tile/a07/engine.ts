@@ -243,7 +243,7 @@ export function a07(ctx: EngineContext): TileResult {
       layer: `trade_q${quintileOf(p.m, all)}`,
       lng: Math.round(p.at[0] * 1e6) / 1e6,
       lat: Math.round(p.at[1] * 1e6) / 1e6,
-      weight: p.n,
+      weight: Math.round(p.m), // 점 크기 = ㎡당 중앙값(값이 클수록 크게, A08과 같은 규칙)
       name: names.get(p.pnu) ?? null,
       sublabel: [
         `㎡당 중앙값 ${fmt(Math.round(p.m))}만원`,
