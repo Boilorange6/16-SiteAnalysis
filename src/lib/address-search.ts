@@ -22,6 +22,11 @@ export function addressValueForSelection(result: Pick<AddressSearchResult, "addr
   return result.jibunAddress?.trim() || result.address.trim();
 }
 
+/** V2는 번지까지 있는 지번만 해석한다. "대치동"처럼 번지 없는 후보(입구·정문 등)는 고를 수 없다. */
+export function isSelectableSuggestion(result: Pick<AddressSearchResult, "jibunAddress">): boolean {
+  return /\s(산\s?)?\d+(-\d+)?$/.test(result.jibunAddress?.trim() ?? "");
+}
+
 export function addressSuggestionText(result: Pick<AddressSearchResult, "address" | "jibunAddress">): string {
   return addressValueForSelection(result);
 }

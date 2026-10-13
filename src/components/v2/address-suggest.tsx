@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { addressSuggestionText, addressValueForSelection } from "@/lib/address-search";
+import { useEffect, useId, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { addressSuggestionText, addressValueForSelection, isSelectableSuggestion } from "@/lib/address-search";
 import { searchAddresses, type AddressSearchResult } from "@/lib/data-provider";
 import styles from "./board.module.css";
 
@@ -14,17 +14,6 @@ type AddressSuggestProps = {
   readonly ariaDescribedBy?: string;
   readonly onChange: (value: string) => void;
 };
-
-type ParcelAtReply = {
-  readonly jibunAddress?: unknown;
-  readonly error?: unknown;
-};
-
-function fullJibunAddressFromParcel(value: unknown): string | null {
-  if (!value || typeof value !== "object") return null;
-  const candidate = (value as ParcelAtReply).jibunAddress;
-  return typeof candidate === "string" && candidate.trim() ? candidate.trim() : null;
-}
 
 export default function AddressSuggest({
   id,
@@ -42,7 +31,6 @@ export default function AddressSuggest({
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const fallbackRequestRef = useRef(0);
   const trimmedValue = value.trim();
   const activeOptionId = activeIndex >= 0 ? `${listboxId}-option-${activeIndex}` : undefined;
   const shouldShowResults = !disabled && isOpen && (results.length > 0 || isLoading || trimmedValue.length >= 2 || !!errorMessage);
@@ -63,7 +51,7 @@ export default function AddressSuggest({
       searchAddresses(trimmedValue, 1, 5)
         .then((nextResults) => {
           if (!cancelled) {
-            setResults(nextResults.slice(0, 5));
+            setResults(nextResults.filter(isSelectableSuggestion).slice(0, 5));
             setErrorMessage(null);
           }
         })
@@ -90,29 +78,9 @@ export default function AddressSuggest({
       return;
     }
 
-    setActiveIndex((currentIndex) => {
-      if (results.length === 0) return -1;
-      if (currentIndex < 0) return 0;
-      return Math.min(currentIndex, results.length - 1);
-    });
+    // 자동 선택하지 않는다: 지번을 직접 치고 Enter를 누르면 후보가 아니라 분석이 실행돼야 한다.
+    setActiveIndex((currentIndex) => (results.length === 0 ? -1 : Math.min(currentIndex, results.length - 1)));
   }, [results.length, shouldShowResults]);
-
-  function requestJibunFallback(result: AddressSearchResult): void {
-    const requestId = fallbackRequestRef.current + 1;
-    fallbackRequestRef.current = requestId;
-    if (result.jibunAddress?.trim() || !Number.isFinite(result.lat) || !Number.isFinite(result.lng)) return;
-
-    // The current endpoint exposes a numeric label with the PNU. Only a future
-    // full jibunAddress response is safe to put into the V2 parser.
-    void fetch(`/site/api/v2/parcels/at?lng=${encodeURIComponent(result.lng)}&lat=${encodeURIComponent(result.lat)}`, { credentials: "include" })
-      .then(async (response) => {
-        const body: unknown = await response.json().catch(() => null);
-        if (!response.ok || requestId !== fallbackRequestRef.current) return;
-        const jibunAddress = fullJibunAddressFromParcel(body);
-        if (jibunAddress) onChange(jibunAddress);
-      })
-      .catch(() => undefined);
-  }
 
   function handleSelect(result: AddressSearchResult): void {
     setIsOpen(false);
@@ -120,7 +88,6 @@ export default function AddressSuggest({
     setActiveIndex(-1);
     setErrorMessage(null);
     onChange(addressValueForSelection(result));
-    requestJibunFallback(result);
   }
 
   function handleKeyDown(event: ReactKeyboardEvent<HTMLInputElement>): void {
@@ -147,9 +114,13 @@ export default function AddressSuggest({
       return;
     }
 
-    if (event.key === "Enter" && activeIndex >= 0) {
-      event.preventDefault();
-      handleSelect(results[activeIndex]);
+    if (event.key === "Enter") {
+      if (activeIndex >= 0) {
+        event.preventDefault();
+        handleSelect(results[activeIndex]);
+      } else {
+        setIsOpen(false);
+      }
     }
   }
 
@@ -186,7 +157,6 @@ export default function AddressSuggest({
         placeholder="지번 주소 (예: 서울 강동구 고덕동 123)"
         value={value}
         onChange={(event) => {
-          fallbackRequestRef.current += 1;
           onChange(event.target.value);
           setIsOpen(true);
           if (errorMessage) setErrorMessage(null);

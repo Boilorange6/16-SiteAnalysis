@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
 
-const { addressSuggestionText, addressValueForSelection, mapAddressSearchResult } = await import("../../lib/address-search.ts");
+const { addressSuggestionText, addressValueForSelection, isSelectableSuggestion, mapAddressSearchResult } = await import("../../lib/address-search.ts");
 const { initDataFileSchema } = await import("../../lib/v2/data/schema.ts");
 const { resolveJibunDetailed } = await import("../../lib/v2/data/jibun.ts");
 const { insertRelease } = await import("../../lib/v2/ingest/build.ts");
@@ -51,6 +51,11 @@ for (const address of ["서울특별시 강남구 개포동 12-3", "서울특별
   assert.equal(isRoadAddress(address), false, `${address} is not a road address`);
 }
 assert.equal(isRoadAddress("서울특별시 강남구 개포로 307"), true, "road address remains rejected by V2 contract");
+// 실제 네이버 응답(2026-10-13 "개포우성1차"): 입구·정문 항목은 번지 없는 지번이라 V2가 해석하지 못한다.
+assert.equal(isSelectableSuggestion({ jibunAddress: "서울특별시 강남구 대치동 503" }), true);
+assert.equal(isSelectableSuggestion({ jibunAddress: "서울특별시 강남구 대치동 산 12-3" }), true);
+assert.equal(isSelectableSuggestion({ jibunAddress: "서울특별시 강남구 대치동" }), false, "no lot number");
+assert.equal(isSelectableSuggestion({}), false, "no jibun at all");
 db.close();
 
 console.log("v2 address suggestion mapping, selection, and Naver jibun parsing: ok");
