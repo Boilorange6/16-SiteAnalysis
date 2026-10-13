@@ -353,6 +353,7 @@ export type TileCardAction =
   | { type: "cut"; cut: CutSpec }
   | { type: "cardFace"; face: CardFace }
   | { type: "remove" }
+  | { type: "duplicate" }
   | { type: "move"; dir: -1 | 1 }
   | { type: "retry" }
   | { type: "toggleLabel"; key: string }
@@ -377,6 +378,7 @@ type TileCardRenderProps = TileCardBaseProps & {
   onCut: (cut: CutSpec) => void;
   onCardFace: (f: CardFace) => void;
   onRemove: () => void;
+  onDuplicate: () => void;
   onMove: (dir: -1 | 1) => void;
   onRetry: () => void;
   onStackToggle?: (selected: boolean) => void;
@@ -398,7 +400,7 @@ const Svg = ({ children, size = 16, fill }: { children: ReactNode; size?: number
 );
 
 /** ⋯ 더 보기: 상세 보기 · 지도에 보기(도판/구성비) · 보고서에 넣을 그림(도판/구성비/둘 다). Esc·바깥 누름·Tab으로 닫히고 닫힐 때 ⋯ 버튼으로 포커스가 돌아온다. */
-function MoreMenu({ view, active, back, onBack, face, onFace, onDetail, pinnedCount, onSetAllLabels, compact, detailOnly, triggerClass }: { view: TileView; active: boolean; back: boolean; onBack: (v: boolean) => void; face: OutputFace; onFace: (f: OutputFace) => void; onDetail?: () => void; pinnedCount: number; onSetAllLabels?: (on: boolean) => void; compact?: { included: boolean; onInclude: (v: boolean) => void; onOpen: () => void }; detailOnly?: boolean; triggerClass?: string }) {
+function MoreMenu({ view, active, back, onBack, face, onFace, onDetail, onDuplicate, pinnedCount, onSetAllLabels, compact, detailOnly, triggerClass }: { view: TileView; active: boolean; back: boolean; onBack: (v: boolean) => void; face: OutputFace; onFace: (f: OutputFace) => void; onDetail?: () => void; onDuplicate?: () => void; pinnedCount: number; onSetAllLabels?: (on: boolean) => void; compact?: { included: boolean; onInclude: (v: boolean) => void; onOpen: () => void }; detailOnly?: boolean; triggerClass?: string }) {
   const [open, setOpen] = useState(false);
   const trigRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -416,7 +418,7 @@ function MoreMenu({ view, active, back, onBack, face, onFace, onDetail, pinnedCo
   useEffect(() => {
     if (!active) setOpen(false); // 카드가 뒤집히면 메뉴도 닫는다
   }, [active]);
-  if (!compact && !onDetail && !view.hasFace && !onSetAllLabels) return null;
+  if (!compact && !onDetail && !onDuplicate && !view.hasFace && !onSetAllLabels) return null;
   const close = (refocus: boolean) => {
     setOpen(false);
     if (refocus) trigRef.current?.focus();
@@ -462,6 +464,11 @@ function MoreMenu({ view, active, back, onBack, face, onFace, onDetail, pinnedCo
                 펼치기
               </button>
             </>
+          )}
+          {onDuplicate && (
+            <button type="button" role="menuitem" className={`${styles.mfMenuItem} ${styles.mfMenuCompact}`} onClick={() => { onDuplicate(); close(true); }}>
+              복제<span>원본 바로 뒤</span>
+            </button>
           )}
           {onDetail && (
             <button
@@ -560,7 +567,7 @@ function MapFace({ p, active, state, back, onBack, onFlip, onDetail, mapReady }:
           </Svg>
         </button>
         {FaceExtra && <FaceExtra view={view} cut={cut} state={state} placement="header" onCut={p.onCut} onOpen={p.onOpen} />}
-        <MoreMenu view={view} active={active} back={back} onBack={onBack} face={p.face} onFace={p.onFace} onDetail={onDetail} pinnedCount={pinnedCount} onSetAllLabels={labelEntries.length > 0 ? p.onSetAllLabels : undefined} compact={{ included: p.included, onInclude: p.onInclude, onOpen: p.onOpen }} />
+        <MoreMenu view={view} active={active} back={back} onBack={onBack} face={p.face} onFace={p.onFace} onDetail={onDetail} onDuplicate={p.onDuplicate} pinnedCount={pinnedCount} onSetAllLabels={labelEntries.length > 0 ? p.onSetAllLabels : undefined} compact={{ included: p.included, onInclude: p.onInclude, onOpen: p.onOpen }} />
         <button type="button" className={styles.mfBtn} data-card-face-button="summary" onClick={onFlip} aria-pressed aria-label={`${view.title} 요약/지도 보기 전환`} title="요약 보기">
           <Svg size={15}>
             <path d="M3 12a9 9 0 1 0 3-6.7" />
@@ -652,7 +659,7 @@ function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardRende
               </button>
             )}
             {!p.editing && (
-              <MoreMenu view={view} active back={false} onBack={() => {}} face={p.face} onFace={p.onFace} onDetail={onDetail} pinnedCount={0} detailOnly triggerClass={styles.sfMore} compact={{ included: p.included, onInclude: p.onInclude, onOpen: p.onOpen }} />
+              <MoreMenu view={view} active back={false} onBack={() => {}} face={p.face} onFace={p.onFace} onDetail={onDetail} onDuplicate={p.onDuplicate} pinnedCount={0} detailOnly triggerClass={styles.sfMore} compact={{ included: p.included, onInclude: p.onInclude, onOpen: p.onOpen }} />
             )}
           </>
         )}
@@ -779,6 +786,7 @@ function TileCard(p: TileCardProps) {
   const onFace = useCallback((face: OutputFace) => p.onAction(id, { type: "face", face }), [id, p.onAction]);
   const onCut = useCallback((cut: CutSpec) => p.onAction(id, { type: "cut", cut }), [id, p.onAction]);
   const onRemove = useCallback(() => p.onAction(id, { type: "remove" }), [id, p.onAction]);
+  const onDuplicate = useCallback(() => p.onAction(id, { type: "duplicate" }), [id, p.onAction]);
   const onMove = useCallback((dir: -1 | 1) => p.onAction(id, { type: "move", dir }), [id, p.onAction]);
   const onRetry = useCallback(() => p.onAction(id, { type: "retry" }), [id, p.onAction]);
   const onToggleLabel = useCallback((key: string) => p.onAction(id, { type: "toggleLabel", key }), [id, p.onAction]);
@@ -797,6 +805,7 @@ function TileCard(p: TileCardProps) {
     onCut,
     onCardFace,
     onRemove,
+    onDuplicate,
     onMove,
     onRetry,
     onStackToggle,
