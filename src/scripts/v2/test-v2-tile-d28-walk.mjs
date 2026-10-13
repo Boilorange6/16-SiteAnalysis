@@ -199,4 +199,11 @@ if (process.env.D28_RENDER_PATH) {
   await sharp(Buffer.from(svg)).png().toFile(process.env.D28_RENDER_PATH);
 }
 
+  const shareMetrics = result.metrics.filter((metric) => metric.id.startsWith("share_walk_"));
+  assert.deepEqual(shareMetrics.map((metric) => metric.id), ["share_walk_5", "share_walk_10", "share_walk_15"], "D28 구성비 순서는 보행시간 범례와 같다");
+  assert.deepEqual(shareMetrics.map((metric) => metric.label), ["구성비: 도보 5분", "구성비: 도보 10분", "구성비: 도보 15분"]);
+  assert.ok(shareMetrics.every((metric) => metric.unit === "%" && metric.numerator !== null && metric.denominator !== null));
+  assert.ok(shareMetrics.reduce((sum, metric) => sum + metric.value, 0) <= 100.1, "D28 차분 구간 구성비는 반경 원 면적을 넘지 않는다");
+  assert.ok(result.limitations.some((limitation) => limitation.note.includes("차분 구간")));
+
 console.log(`✓ v2 D28 walk isochrones (${Math.round(elapsedMs)} ms)`);

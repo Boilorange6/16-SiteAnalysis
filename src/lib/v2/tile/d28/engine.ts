@@ -12,6 +12,11 @@ import type { LocalGrid } from "../../engine/tiles/raster-grid";
 
 const WALK_MINUTES = [5, 10, 15] as const;
 const WALK_LAYERS = ["walk_5", "walk_10", "walk_15"] as const;
+const WALK_SHARE_ITEMS = [
+  { id: "share_walk_5", label: "도보 5분", layer: "walk_5" },
+  { id: "share_walk_10", label: "도보 10분", layer: "walk_10" },
+  { id: "share_walk_15", label: "도보 15분", layer: "walk_15" },
+] as const;
 const ISOCHRONE_CELL_M = 5;
 const ISOCHRONE_BUFFER_M = 30;
 
@@ -284,6 +289,20 @@ export function d28(ctx: EngineContext): TileResult {
   const lines = walkLineCandidates(field, centerX, centerY, ctx.input.radiusM);
   const cumulativeAreasM2 = bands.cumulativeAreaM2;
   const circleM2 = Math.PI * ctx.input.radiusM ** 2;
+  const bandAreasM2 = [
+    cumulativeAreasM2[0] ?? 0,
+    Math.max(0, (cumulativeAreasM2[1] ?? 0) - (cumulativeAreasM2[0] ?? 0)),
+    Math.max(0, (cumulativeAreasM2[2] ?? 0) - (cumulativeAreasM2[1] ?? 0)),
+  ];
+  const shareMetrics = WALK_SHARE_ITEMS.map((item, index) => est(
+    item.id,
+    `구성비: ${item.label}`,
+    round1(((bandAreasM2[index] ?? 0) / circleM2) * 100),
+    "%",
+    "d28-share-band@1:해당 보행시간 구간의 반경 교차면적÷π·r²",
+    Math.round(bandAreasM2[index] ?? 0),
+    Math.round(circleM2),
+  ));
   const reachRatio10 = round1((cumulativeAreasM2[1] / circleM2) * 100);
   const coverage = ctx.coverage("reference", ["osm_roads"]);
   const status: TileResult["status"] = coverage.some((limitation) => limitation.kind === "partial" || limitation.kind === "incomplete")
@@ -293,6 +312,7 @@ export function d28(ctx: EngineContext): TileResult {
   const limitations: TileDraft["limitations"] = [
     { kind: "unknown", note: "OSM 보행망의 완전성은 측정하지 않았습니다." },
     { kind: "estimated", note: "보행 시간은 80 m/분 내부 제안 기준이며 횡단보도 대기시간을 반영하지 않았습니다." },
+    { kind: "unknown", note: "도보 5·10·15분 면 구성비는 서로 겹치지 않는 차분 구간의 면적 기준입니다. 접근 불가 면적과 보행망 선은 구성비 합에서 제외합니다." },
     { kind: "unknown", note: "지형 경사는 반영하지 않았습니다." },
     ...coverage,
   ];
@@ -307,6 +327,7 @@ export function d28(ctx: EngineContext): TileResult {
       est("area_15min_km2", "도보 15분 도달 면적", areaKm2(cumulativeAreasM2[2]), "km²", "d28-area@2:15분 누적 도달 면적(보행망·5m marching squares+smoothing)", cumulativeAreasM2[2], 1_000_000),
       est("reach_ratio_10min_pct", "10분 도달 면적 / 직선 반경 원 면적", reachRatio10, "%", "d28-reach-ratio@1:10분 누적 도달 면적÷π·반경²", cumulativeAreasM2[1], circleM2),
       obs("network_nodes", "보행망 정점 수", field.nodes, "개", "d28-network-nodes@1:0.1m 정점 병합·보행 제외 도로 제거 후 그래프 정점 수"),
+      ...shareMetrics,
     ],
     judgment: {
       ruleId: "D28-walk-isochrone@1",

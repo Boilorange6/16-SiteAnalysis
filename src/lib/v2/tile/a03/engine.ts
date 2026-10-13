@@ -1,7 +1,7 @@
 /** A03 생활편의·상가 — 소상공인 상가정보를 업종군으로 묶어 센다. 등급 없음. */
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../../engine/context";
-import { candidate, fmt, makeTile, missing, noDataTile, obs } from "../../engine/tiles/common";
+import { candidate, capFeatures, fmt, makeTile, missing, noDataTile, obs } from "../../engine/tiles/common";
 import { formatDistanceM } from "../../ui/tile-view";
 
 export const STORE_GROUPS = [
@@ -13,6 +13,8 @@ export const STORE_GROUPS = [
   { id: "other", label: "기타", basic: false },
 ] as const;
 export type StoreGroup = (typeof STORE_GROUPS)[number]["id"];
+const storeLegendLabel = (group: (typeof STORE_GROUPS)[number]) => group.id === "other" ? "기타 업소" : group.label;
+const pct = (part: number, whole: number) => whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0;
 
 /**
  * 상권업종소분류코드(categoryCode) 접두어 → 업종군. 코드가 없으면 대분류로만 판단한다.
@@ -42,6 +44,20 @@ export function a03(ctx: EngineContext): TileResult {
     const previous = nearestOf[g];
     if (previous === undefined || h.distanceM < previous.distanceM! || (h.distanceM === previous.distanceM && h.featureId < previous.featureId)) nearestOf[g] = h;
   }
+  const map = hits.map((h) => {
+    const g = storeGroup(h.properties);
+    const isNearest = h === nearestOf[g] && h.distanceM !== null;
+    const sublabel = isNearest && h.distanceM !== null ? formatDistanceM(h.distanceM) : null;
+    return candidate(h, `store:${g}`, {
+      distanceM: h.distanceM,
+      sublabel,
+      labelPriority: isNearest ? 2 : 0,
+      ...(isNearest ? { highlight: true } : {}),
+    });
+  });
+  // 구성비 차트는 실제로 남은 지도 범례의 레이어·순서만 따른다(0건 범주는 숨김).
+  const shareGroups = [...new Set(capFeatures(map).features.map((feature) => feature.layer))]
+    .flatMap((layer) => STORE_GROUPS.filter((g) => `store:${g.id}` === layer));
   const basicFound = STORE_GROUPS.filter((g) => g.basic && count[g.id] > 0);
   const basicMissing = STORE_GROUPS.filter((g) => g.basic && count[g.id] === 0);
   const areaKm2 = (Math.PI * ctx.input.radiusM * ctx.input.radiusM) / 1e6;
@@ -49,6 +65,7 @@ export function a03(ctx: EngineContext): TileResult {
     obs("basic_groups", "기초 생활시설 확인 군(4군 중)", basicFound.length, "군", "a03-basic-groups@1", basicFound.length, 4),
     obs("stores", "반경 내 상가 전체", hits.length, "개", "a03-count@1"),
     ...STORE_GROUPS.map((g) => obs(`count_${g.id}`, `${g.label} 업소`, count[g.id], "개", "a03-group-count@1")),
+    ...shareGroups.map((g) => obs(`share_${g.id}`, `구성비: ${storeLegendLabel(g)}`, pct(count[g.id], hits.length), "%", "a03-share-count@1:업종군별 업소 수÷반경 내 상가 전체 업소 수", count[g.id], hits.length)),
     ...STORE_GROUPS.filter((g) => g.basic).map((g) => {
       const n = nearestOf[g.id]?.distanceM;
       return n === undefined || n === null ? missing(`nearest_${g.id}_m`, `최근접 ${g.label}`, "m", "a03-group-nearest@1") : obs(`nearest_${g.id}_m`, `최근접 ${g.label}`, Math.round(n), "m", "a03-group-nearest@1");
@@ -65,17 +82,7 @@ export function a03(ctx: EngineContext): TileResult {
     judgment: { ruleId: "a03-basic-groups@1", basisMetricIds: ["basic_groups"], sentence, level: null, criteria: null },
     sources,
     layers: STORE_GROUPS.map((g) => `store:${g.id}`),
-    map: hits.map((h) => {
-      const g = storeGroup(h.properties);
-      const isNearest = h === nearestOf[g] && h.distanceM !== null;
-      const sublabel = isNearest && h.distanceM !== null ? formatDistanceM(h.distanceM) : null;
-      return candidate(h, `store:${g}`, {
-        distanceM: h.distanceM,
-        sublabel,
-        labelPriority: isNearest ? 2 : 0,
-        ...(isNearest ? { highlight: true } : {}),
-      });
-    }),
+    map,
     limitations: ctx.coverage("reference", ["store"]),
   });
 }

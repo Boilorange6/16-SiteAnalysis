@@ -3,7 +3,7 @@
  * 일정은 월 단위이며 임의의 일자를 붙이지 않는다.
  */
 import type { TileResult } from "../../tile-result";
-import { timingBucket, type Timing } from "../../ui/callout-layout";
+import { TIMING_ORDER, TIMING_STYLE, timingBucket, type Timing } from "../../ui/callout-layout";
 import { unitTypesFromUnknown } from "../../unit-types";
 import type { EngineContext } from "../../engine/context";
 import { candidate, fmt, makeTile, noDataTile, obs, type TileDraft } from "../../engine/tiles/common";
@@ -55,6 +55,7 @@ export function markOverlaps(items: Array<{ source: string; name: string | null;
 }
 
 const TYPE_TEXT: Record<string, string> = { apartment: "아파트", officetel: "오피스텔", residential: "주거" };
+const pct = (part: number, whole: number) => whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0;
 
 export function a06(ctx: EngineContext): TileResult {
   const sources = ctx.sources("market", ["applyhome", "applyhome_types", "move_in"]);
@@ -72,6 +73,12 @@ export function a06(ctx: EngineContext): TileResult {
       : 0;
   }
   const link = `event-link=${linked}/${hits.length}`;
+  const mapped = hits.filter((h) => h.properties.source === "applyhome" || h.properties.source === "move_in");
+  const timingCounts = new Map<Timing, number>(TIMING_ORDER.map((timing) => [timing, 0]));
+  for (const hit of mapped) {
+    const timing = bucketOf(hit.properties.plannedMonth, ctx.input.analysisDate);
+    timingCounts.set(timing, (timingCounts.get(timing) ?? 0) + 1);
+  }
 
   const metrics: TileDraft["metrics"] = [];
   const sums: Record<string, number> = {};
@@ -90,7 +97,7 @@ export function a06(ctx: EngineContext): TileResult {
       metrics.push(obs(`${s.key}_units_${b.id}`, `${s.label} ${b.label} 세대`, inBucket.reduce((sum, h) => sum + (h.properties.units as number), 0), "세대", "a06-buckets@1", inBucket.length, withUnits.length));
     }
   }
-  const mapped = hits.filter((h) => h.properties.source === "applyhome" || h.properties.source === "move_in");
+  metrics.push(...TIMING_ORDER.map((timing) => obs(`share_timing_${timing}`, `구성비: ${TIMING_STYLE[timing].label}`, pct(timingCounts.get(timing) ?? 0, mapped.length), "%", "a06-share-timing@1:입주 시기별 사업 수÷지도에 표시하는 청약홈·입주예정 사업 수", timingCounts.get(timing) ?? 0, mapped.length)));
   const overlaps = markOverlaps(mapped.map((h) => ({ source: h.properties.source as string, name: h.name, address: h.properties.address })));
   const empty = hits.length === 0;
   const sentence = empty
