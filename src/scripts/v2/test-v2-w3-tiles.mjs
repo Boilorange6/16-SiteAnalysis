@@ -74,7 +74,7 @@ assert.equal(a01Transit.defaultLayer, "transit");
 
 const currentLayerOptions = {
   A02: ["all", "school_zone"],
-  A04: ["all", "green_space"],
+  A04: ["all", "park_only", "green_space"],
   A07: ["all"],
   A09: ["all", "maintenance_stage"],
   A10: ["all"],

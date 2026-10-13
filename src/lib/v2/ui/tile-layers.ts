@@ -9,6 +9,7 @@ const optionMatches: Record<string, (layer: string) => boolean> = {
   transit: (layer) => /^(rail_|bus_|walk_)/.test(layer),
   school_zone: (layer) => layer.startsWith("school_zone"),
   green_space: (layer) => ["green_zone", "green_parcel", "water_parcel"].includes(layer),
+  park_only: (layer) => ["park", "park_nearest", "walk_route"].includes(layer),
   maintenance_stage: (layer) => layer.startsWith("maint_stage:"),
   height_tall: (layer) => layer.startsWith("tall_"),
   height_low: (layer) => layer.startsWith("low_"),

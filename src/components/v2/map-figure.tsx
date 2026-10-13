@@ -103,6 +103,13 @@ export const mapFeatureKey = (layer: string, fid: string | undefined, index: num
 const FONT = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif';
 const INK = "#16181d";
 
+function a04PolygonDrawOrder(layer: string): number {
+  if (layer === "green_zone" || layer === "green_parcel") return 0;
+  if (layer === "water_parcel") return 1;
+  if (layer === "park" || layer === "park_nearest") return 2;
+  return 3;
+}
+
 const textW = (s: string, fs: number) => [...s].reduce((w, ch) => w + (ch.charCodeAt(0) > 0x2e80 ? fs : fs * 0.58), 0);
 type Box = { x0: number; y0: number; x1: number; y1: number };
 type ScreenPoint = readonly [number, number];
@@ -518,6 +525,9 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
       index,
     };
   });
+  if (model.tileCode === "A04") {
+    polygons.sort((a, b) => a04PolygonDrawOrder(a.polygon.layer) - a04PolygonDrawOrder(b.polygon.layer) || a.index - b.index);
+  }
   const siteParcelModels = model.siteParcel === undefined ? (model.polygons ?? []).filter((polygon) => isSiteParcelLayer(polygon.layer)) : (model.siteParcel ?? []);
   const siteParcels: ScreenPolygon[] = siteParcelModels.map((polygon, index) => {
     const rings = polygon.rings.map((ring) => ring.map(([lng, lat]) => proj(lng, lat)));
@@ -988,7 +998,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
             const polygonSelected = isSelected(polygonFid);
             const polygonKey = mapElementKey("polygon", polygon.polygon.layer, polygonFid, polygon.index);
             const strong = isElementStrong(polygon.polygon.layer, polygonKey);
-            return <path key={`poly${polygon.index}`} data-poly="true" d={polygonPath(polygon.rings)} fillRule="evenodd" fill={neutralBuilding ? buildingStyle.fill : estimated ? `url(#${hatchId(polygon.index)})` : st.fill ?? st.color} fillOpacity={neutralBuilding ? buildingStyle.fillOpacity : estimated ? 1 : st.fillOpacity ?? polygonOpacity} opacity={isElementDimmed(polygon.polygon.layer, polygonKey) ? 0.2 : undefined} stroke={strong || polygonSelected ? INK : neutralBuilding ? buildingStyle.stroke : st.stroke ?? st.color} strokeWidth={(strong ? 1.6 : polygonSelected ? 3 : neutralBuilding ? buildingStyle.strokeWidth ?? 0.8 : st.strokeWidth ?? 1) * u} {...pickProps({ fid: polygonFid, lng: polygonCenter[0], lat: polygonCenter[1], kind: "polygon" }, polygonKey, labelText(polygon.polygon.layer, "polygon", polygon.polygon))} />;
+            return <path key={`poly${polygon.index}`} data-poly="true" data-map-layer={polygon.polygon.layer} d={polygonPath(polygon.rings)} fillRule="evenodd" fill={neutralBuilding ? buildingStyle.fill : estimated ? `url(#${hatchId(polygon.index)})` : st.fill ?? st.color} fillOpacity={neutralBuilding ? buildingStyle.fillOpacity : estimated ? 1 : st.fillOpacity ?? polygonOpacity} opacity={isElementDimmed(polygon.polygon.layer, polygonKey) ? 0.2 : undefined} stroke={strong || polygonSelected ? INK : neutralBuilding ? buildingStyle.stroke : st.stroke ?? st.color} strokeWidth={(strong ? 1.6 : polygonSelected ? 3 : neutralBuilding ? buildingStyle.strokeWidth ?? 0.8 : st.strokeWidth ?? 1) * u} {...pickProps({ fid: polygonFid, lng: polygonCenter[0], lat: polygonCenter[1], kind: "polygon" }, polygonKey, labelText(polygon.polygon.layer, "polygon", polygon.polygon))} />;
           })}
           {linePaths.map((d) => {
             const st = layerStyle(d.l.layer);

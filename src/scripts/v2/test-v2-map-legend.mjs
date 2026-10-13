@@ -162,7 +162,7 @@ const d04MappedLegend = {
     { label: "1990년대", min: null, max: null },
     { label: "버스정류장", min: null, max: null },
     { label: "미상", min: null, max: null },
-    { label: "공원", min: null, max: null },
+    { label: "지정 공원", min: null, max: null },
     { label: "2000년대", min: null, max: null },
     { label: "1980년대", min: null, max: null },
     { label: "2010년대", min: null, max: null },
