@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { naverLocalSearch, stripHtml, naverCoordsToWgs84 } from "@/lib/naver-api";
+import { mapAddressSearchResult } from "@/lib/address-search";
 import { resolveNaverKeys } from "@/lib/server/naver-key-resolver";
 import { verifyToken } from "@/lib/server/jwt";
 import { getUserById } from "@/lib/server/user-store";
@@ -58,13 +59,14 @@ export async function GET(req: NextRequest) {
 
     const results = response.items.map((item) => {
       const { lat, lng } = naverCoordsToWgs84(item.mapx, item.mapy);
-      return {
+      return mapAddressSearchResult({
         id: `${item.mapx}-${item.mapy}`,
         name: stripHtml(item.title),
         address: item.roadAddress || item.address,
+        jibunAddress: item.address,
         lat,
         lng,
-      };
+      });
     });
 
     return NextResponse.json({ results });
