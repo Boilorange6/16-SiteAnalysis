@@ -71,6 +71,29 @@ export function applyView(vp: Viewport, lat: number, view?: MapView): Viewport {
   return { ...vp, zoom, center: [lng, nextLat] as const };
 }
 
+/**
+ * 화면의 한 점을 고정한 채 줌하는 뷰를 계산한다.
+ * px·py는 base viewport의 픽셀 좌표이며, CSS 좌표를 쓰는 호출부는 먼저
+ * base.width/height와 실제 요소 크기의 비율을 적용해야 한다.
+ */
+export function zoomViewAt(base: Viewport, current: MapView, delta: number, px: number, py: number, maxDelta: number): MapView {
+  const zoomDelta = Math.max(0, Math.min(Math.max(0, maxDelta), current.zoomDelta + delta));
+  const currentViewport = applyView(base, base.center[1], current);
+  const nextZoom = base.zoom + zoomDelta;
+  const scale = 2 ** (nextZoom - currentViewport.zoom);
+  const [currentWorldX, currentWorldY] = worldPx(currentViewport.center[0], currentViewport.center[1], currentViewport.zoom);
+  const pointerOffsetX = px - base.width / 2;
+  const pointerOffsetY = py - base.height / 2;
+  const nextWorldX = (currentWorldX + pointerOffsetX) * scale - pointerOffsetX;
+  const nextWorldY = (currentWorldY + pointerOffsetY) * scale - pointerOffsetY;
+  const [baseWorldX, baseWorldY] = worldPx(base.center[0], base.center[1], nextZoom);
+  const nextMpp = metersPerPixel(base.center[1], nextZoom);
+  return {
+    zoomDelta,
+    offsetM: [(nextWorldX - baseWorldX) * nextMpp, (baseWorldY - nextWorldY) * nextMpp],
+  };
+}
+
 /** 줌 델타와 중심 이동을 허용 범위 안으로 줄인다. offsetM은 [동, 북]이다. */
 export function clampView(view: MapView, radiusM: number, maxZoom: number): MapView {
   const zoomLimit = Math.max(0, maxZoom);

@@ -4,6 +4,7 @@ import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../context";
 import { candidate, lineCandidate, makeTile, missing, noDataTile, obs, type LineCandidate, type MapCandidate, type TileDraft } from "./common";
 import { clipLineToCircle, linePathLength } from "./geo";
+import { railEntranceColor } from "../../tile/rail-presentation";
 
 const BUS_SOURCES = ["bus_stop"] as const;
 const RAIL_SOURCES = ["osm_subway"] as const;
@@ -69,7 +70,10 @@ export function d14(ctx: EngineContext): TileResult {
   if (hasRail) {
     layers.push("rail_station", "rail_entrance", "rail_line");
     stations.forEach((hit) => map.push(candidate(hit, "rail_station")));
-    entrances.forEach((hit) => map.push(candidate(hit, "rail_entrance")));
+    entrances.forEach((hit) => {
+      const color = railEntranceColor(hit, stations);
+      map.push(candidate(hit, "rail_entrance", color ? { color } : {}));
+    });
     lines.forEach((hit) => {
       for (const path of clipLineToCircle(ctx.input.center, ctx.input.radiusM, hit.geometry)) {
         const line = lineCandidate(hit.featureId, "rail_line", path, linePathLength(path));

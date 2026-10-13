@@ -9,7 +9,8 @@ const { insertFeature } = await import("../../lib/v2/data/features.ts");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { TILES } = await import("../../lib/v2/engine/run.ts");
-const d14 = TILES.find(([code]) => code === "A01")[1];
+const { d14: buildD14 } = await import("../../lib/v2/engine/tiles/d14.ts");
+const a01 = TILES.find(([code]) => code === "A01")[1];
 const { a01ClientModule } = await import("../../lib/v2/tile/a01/view.ts");
 const { toTileView, viewWithLayer } = await import("../../lib/v2/ui/tile-view.ts");
 const { layerStyle } = await import("../../lib/v2/ui/map-layers.ts");
@@ -48,7 +49,7 @@ function addDirectionDuplicateSubwayLines(dataDir) {
     "rail_station:나래역",
   );
   db.prepare("UPDATE feature SET properties_json = ? WHERE stable_id = ?").run(
-    JSON.stringify({ lineRefs: ["5", "9"], lineNames: ["서울 지하철 5호선: 방화 → 상일동", "서울 지하철 9호선: 개화 → 중앙보훈병원"], lineColors: [], operator: null }),
+    JSON.stringify({ lineRefs: ["5", "9"], lineNames: ["서울 지하철 5호선: 방화 → 상일동", "서울 지하철 9호선: 개화 → 중앙보훈병원"], lineColors: ["#794698", "#D24791"], operator: null }),
     "rail_station:다온역",
   );
   db.close();
@@ -65,7 +66,7 @@ function addDirectionDuplicateSubwayLines(dataDir) {
     radiusM: 800,
     analysisDate: "2026-09-30",
   });
-  const tile = d14(ctx);
+  const tile = a01(ctx);
 
   assert.equal(tile.tileCode, "A01");
   assert.equal(tile.tileType, "analysis");
@@ -104,13 +105,14 @@ function addDirectionDuplicateSubwayLines(dataDir) {
   const stationFeatures = tile.presentation.features.filter((feature) => ["rail_station", "rail_nearest"].includes(feature.layer));
   const station = stationFeatures.find((feature) => feature.name === "다온역");
   assert.equal(station?.badges?.map((badge) => badge.text).join(","), "5,9", "역은 원천 노선 배지를 최대 4개까지 표시");
-  assert.ok(station?.badges?.every((badge) => badge.color === "#1F5FA8"));
+  assert.deepEqual(station?.badges?.map((badge) => badge.color), ["#794698", "#D24791"]);
   assert.equal(station?.sublabel, "5호선·9호선", "원천 경로명이 아니라 호선 목록을 역 sublabel로 표시");
   assert.equal(station?.layer, "rail_station", "출입구가 있는 역은 대표점을 최근접으로 쓰지 않는다");
   assert.equal(station?.labelPriority, 1);
   const entrance = tile.presentation.features.find((feature) => feature.layer === "rail_entrance");
   assert.equal(entrance?.name, "다온역 1번 출구");
-  assert.deepEqual(entrance?.badges?.map((badge) => badge.text), ["1"]);
+  assert.equal(entrance?.badges, undefined, "출구 번호는 점 주변 배지로 표시하지 않는다");
+  assert.equal(entrance?.color, "#794698", "출구는 매칭 역의 첫 호선 색을 사용한다");
   assert.equal(entrance?.sublabel, null, "최근접이 아닌 출입구는 거리 부라벨 없음");
   assert.equal(entrance?.labelPriority, 0);
   assert.equal(tile.presentation.features.filter((feature) => feature.layer === "rail_line").length, 0, "A01은 노선 위 샘플 점을 만들지 않는다");
@@ -126,6 +128,10 @@ function addDirectionDuplicateSubwayLines(dataDir) {
   assert.match(tile.judgment.sentence, /5호선/);
   assert.ok(tile.limitations.some((limitation) => limitation.note.includes("철도는 OSM 스냅샷")));
   assert.equal(tile.judgment.level, null);
+  const d14Tile = buildD14(ctx);
+  const d14Entrance = d14Tile.presentation.features.find((feature) => feature.layer === "rail_entrance");
+  assert.equal(d14Entrance?.color, "#794698", "D14 출구도 같은 역 호선 색 규칙을 사용한다");
+  assert.equal(d14Entrance?.badges, undefined);
   assert.deepEqual(a01ClientModule.layers.options, [
     { id: "all", label: "전체" },
     { id: "transit", label: "철도" },
@@ -148,7 +154,7 @@ function addDirectionDuplicateSubwayLines(dataDir) {
     radiusM: 800,
     analysisDate: "2026-09-30",
   });
-  const tile = d14(ctx);
+  const tile = a01(ctx);
 
   assert.equal(tile.status, "partial");
   assert.equal(value(tile, "bus_stops"), 2);

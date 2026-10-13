@@ -5,6 +5,17 @@ const P = await import("../../lib/v2/ui/map-projection.ts");
 const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${b}`);
 const center = [127.1546, 37.5556];
 const base = P.framedViewport(center, 1000, 800, 500);
+const pointAt = (view, px, py) => {
+  const viewport = P.applyView(base, center[1], view);
+  const [cx, cy] = P.worldPx(viewport.center[0], viewport.center[1], viewport.zoom);
+  const size = P.TILE_PX * 2 ** viewport.zoom;
+  const x = cx + px - base.width / 2;
+  const y = cy + py - base.height / 2;
+  return [
+    (x / size) * 360 - 180,
+    (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / size))) * 180) / Math.PI,
+  ];
+};
 
 // ── view 없음·0은 기존 뷰포트와 동일하고, 줌만 바꾸면 중심은 유지 ──
 {
@@ -34,6 +45,30 @@ const base = P.framedViewport(center, 1000, 800, 500);
   near(clamped.offsetM[0], 150);
   near(clamped.offsetM[1], 200);
   assert.deepEqual(P.clampView({ zoomDelta: -1, offsetM: [10, 20] }, 250, 3), { zoomDelta: 0, offsetM: [10, 20] });
+}
+
+// ── 포인터 아래 지점을 고정하는 줌 앵커 ──
+{
+  const pointer = [620, 130];
+  const before = pointAt({ zoomDelta: 0, offsetM: [0, 0] }, pointer[0], pointer[1]);
+  const zoomed = P.zoomViewAt(base, { zoomDelta: 0, offsetM: [0, 0] }, 1, pointer[0], pointer[1], 3);
+  const after = pointAt(zoomed, pointer[0], pointer[1]);
+  near(after[0], before[0], 1e-6);
+  near(after[1], before[1], 1e-6);
+
+  let continuous = { zoomDelta: 0, offsetM: [0, 0] };
+  for (let i = 0; i < 3; i += 1) continuous = P.zoomViewAt(base, continuous, 0.5, pointer[0], pointer[1], 3);
+  for (let i = 0; i < 3; i += 1) continuous = P.zoomViewAt(base, continuous, -0.5, pointer[0], pointer[1], 3);
+  const roundTrip = pointAt(continuous, pointer[0], pointer[1]);
+  near(roundTrip[0], before[0], 1e-6);
+  near(roundTrip[1], before[1], 1e-6);
+  near(continuous.zoomDelta, 0, 1e-9);
+  near(continuous.offsetM[0], 0, 1e-6);
+  near(continuous.offsetM[1], 0, 1e-6);
+
+  const centered = P.zoomViewAt(base, { zoomDelta: 0, offsetM: [125, 240] }, 1, base.width / 2, base.height / 2, 3);
+  near(centered.offsetM[0], 125, 1e-6);
+  near(centered.offsetM[1], 240, 1e-6);
 }
 
 // ── 절대 상한 식과 래스터 셀 12 px 상한 ──

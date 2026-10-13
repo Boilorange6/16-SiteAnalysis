@@ -1037,7 +1037,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
               cx={d.p[0]}
               cy={d.p[1]}
               r={r}
-              fill={neutralBuilding ? buildingStyle.fill : hollow ? "#fff" : st.color}
+              fill={neutralBuilding ? buildingStyle.fill : hollow ? "#fff" : d.f.color ?? st.color}
               fillOpacity={neutralBuilding ? buildingStyle.fillOpacity : hollow ? 0.6 : st.sizeBy === "weight" ? 0.55 : d.f.highlight ? 1 : 0.85}
               opacity={isElementDimmed(d.f.layer, featureKey) ? 0.2 : undefined}
               stroke={strong || d.f.highlight || d.selected ? INK : neutralBuilding ? buildingStyle.stroke : sat ? "#fff" : st.sizeBy === "weight" ? st.color : "#fff"}
