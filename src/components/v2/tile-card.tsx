@@ -1,6 +1,7 @@
 "use client";
 
-import { memo, useCallback, useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { memo, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { CardFace, CutSpec, DemoPhase, PinnedLabel, TileSize } from "@/lib/v2/ui/board-state";
 import { STRIP_COLORS } from "@/lib/v2/ui/map-layers";
 import { OV, badgesToShow, cardReserved, stripText } from "@/lib/v2/ui/overlay-layout";
@@ -16,6 +17,7 @@ import { hasDetail } from "@/lib/v2/ui/detail-state";
 import type { TileStageProps } from "@/lib/v2/tile/component-types";
 import { useCardRoving } from "./use-card-roving";
 import { catalogEntry } from "@/lib/v2/ui/tile-catalog";
+import { floatingMenuPosition, type FloatingMenuPosition } from "@/lib/v2/ui/menu-position";
 
 const BADGE_CLASS = { status: styles.badgeStatus, limit: styles.badgeLimit, model: styles.badgeModel } as const;
 const FACES: OutputFace[] = ["front", "back", "both"];
@@ -409,7 +411,40 @@ function MoreMenu({ view, active, back, onBack, face, onFace, onDetail, onDuplic
   const [open, setOpen] = useState(false);
   const trigRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const items = () => Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role^="menuitem"]') ?? []).filter((el) => el.offsetParent !== null);
+  const [menuPosition, setMenuPosition] = useState<FloatingMenuPosition | null>(null);
+  const items = () => Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role^="menuitem"]') ?? []).filter((el) => {
+    const computed = getComputedStyle(el);
+    return !el.hidden && computed.display !== "none" && computed.visibility !== "hidden";
+  });
+  useLayoutEffect(() => {
+    if (!open) {
+      setMenuPosition(null);
+      return;
+    }
+    const update = () => {
+      const trigger = trigRef.current?.getBoundingClientRect();
+      const menu = menuRef.current?.getBoundingClientRect();
+      if (!trigger || !menu) return;
+      setMenuPosition(floatingMenuPosition(
+        trigger,
+        { width: menu.width, height: menu.height },
+        { width: window.innerWidth, height: window.innerHeight },
+      ));
+    };
+    update();
+    window.addEventListener("resize", update);
+    document.addEventListener("scroll", update, true);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    if (observer) {
+      if (trigRef.current) observer.observe(trigRef.current);
+      if (menuRef.current) observer.observe(menuRef.current);
+    }
+    return () => {
+      window.removeEventListener("resize", update);
+      document.removeEventListener("scroll", update, true);
+      observer?.disconnect();
+    };
+  }, [open]);
   useEffect(() => {
     if (!open) return;
     items()[0]?.focus();
@@ -419,7 +454,7 @@ function MoreMenu({ view, active, back, onBack, face, onFace, onDetail, onDuplic
     };
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
-  }, [open]);
+  }, [open, menuPosition !== null]);
   useEffect(() => {
     if (!active) setOpen(false); // 카드가 뒤집히면 메뉴도 닫는다
   }, [active]);
@@ -450,7 +485,7 @@ function MoreMenu({ view, active, back, onBack, face, onFace, onDetail, onDuplic
   );
   return (
     <>
-      <button ref={trigRef} type="button" className={`${styles.mfBtn} ${open ? styles.mfBtnOn : ""} ${triggerClass ?? ""}`} data-more-button aria-haspopup="menu" aria-expanded={open} aria-label={`${view.title} 더 보기${pinnedCount > 0 ? ` · 고정 라벨 ${pinnedCount}개` : ""}`} title="더 보기" onClick={() => setOpen((v) => !v)}>
+      <button ref={trigRef} type="button" className={`${styles.mfBtn} ${open ? styles.mfBtnOn : ""} ${triggerClass ?? ""}`} data-more-button aria-haspopup="menu" aria-expanded={open} aria-label={`${view.title} 더 보기${pinnedCount > 0 ? ` · 고정 라벨 ${pinnedCount}개` : ""}`} title="더 보기" onClick={() => { setMenuPosition(null); setOpen((v) => !v); }}>
         <Svg fill>
           <circle cx="5" cy="12" r="2" />
           <circle cx="12" cy="12" r="2" />
@@ -458,8 +493,16 @@ function MoreMenu({ view, active, back, onBack, face, onFace, onDetail, onDuplic
         </Svg>
         {pinnedCount > 0 && <span className={styles.mfPinBadge} aria-hidden>{pinnedCount}</span>}
       </button>
-      {open && (
-        <div ref={menuRef} role="menu" aria-label={`${view.title} 더 보기`} className={styles.mfMenu} onKeyDown={onKeyDown}>
+      {open && typeof document !== "undefined" && createPortal(
+        <div
+          ref={menuRef}
+          role="menu"
+          aria-label={`${view.title} 더 보기`}
+          className={styles.mfMenu}
+          data-menu-portal="true"
+          onKeyDown={onKeyDown}
+          style={{ top: menuPosition?.top ?? 0, left: menuPosition?.left ?? 0, visibility: menuPosition ? "visible" : "hidden" }}
+        >
           {compact && (
             <>
               <button type="button" role="menuitemcheckbox" aria-checked={compact.showLegend} className={`${styles.mfMenuItem} ${styles.mfMenuLegend}`} onClick={() => compact.onShowLegend(!compact.showLegend)}>
@@ -509,7 +552,8 @@ function MoreMenu({ view, active, back, onBack, face, onFace, onDetail, onDuplic
               </div>
             </>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
