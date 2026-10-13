@@ -171,19 +171,24 @@ function near(actual, expected, tolerance, message) {
   ]);
   assert.equal(view.defaultLayer, "building_jeonse", "A08 기본 모드는 건물-전세");
   assert.equal(viewWithLayer(view, "all").defaultLayer, "building_jeonse", "A08 legacy all은 건물-전세로 매핑");
-  assert.ok(viewWithLayer(view, "building_jeonse").map.features.every((feature) => feature.layer.startsWith("rent_jeonse_")));
-  assert.equal(viewWithLayer(view, "building_jeonse").map.polygons?.length, 0, "A08 건물-전세 모드에서 행정구역 면을 숨긴다");
-  assert.ok(viewWithLayer(view, "building_jeonse").map.legend?.every((entry) => entry.label.startsWith("전세")), "A08 건물-전세 범례는 전세 구간만 보인다");
+  const jeonseView = viewWithLayer(view, "building_jeonse");
+  assert.ok(jeonseView.map.features.length > 0, "A08 건물-전세 feature가 있어야 한다");
+  assert.ok(jeonseView.map.features.every((feature) => feature.layer.startsWith("rent_jeonse_")));
+  assert.equal(jeonseView.map.polygons?.length, 0, "A08 건물-전세 모드에서 행정구역 면을 숨긴다");
+  assert.ok(jeonseView.map.legend?.every((entry) => entry.label.startsWith("전세")), "A08 건물-전세 범례는 전세 구간만 보인다");
   const monthlyView = viewWithLayer(view, "building_monthly");
+  assert.ok(monthlyView.map.features.length > 0, "A08 건물-월세 feature가 있어야 한다");
   assert.ok(monthlyView.map.features.every((feature) => feature.layer.startsWith("rent_monthly_")));
   assert.equal(monthlyView.map.polygons?.length, 0, "A08 건물-월세 모드에서 행정구역 면을 숨긴다");
   assert.ok(monthlyView.map.legend?.every((entry) => entry.label.startsWith("월세")), "A08 건물-월세 범례는 월세 구간만 보인다");
   const districtJeonseView = viewWithLayer(view, "district_jeonse");
   assert.equal(districtJeonseView.map.features.length, 0, "A08 행정구역-전세 모드에서 건물 점을 숨긴다");
+  assert.ok((districtJeonseView.map.polygons?.length ?? 0) > 0, "A08 행정구역-전세 polygon이 있어야 한다");
   assert.ok(districtJeonseView.map.polygons?.every((polygon_) => polygon_.layer.startsWith("rent_district_jeonse_")));
   assert.ok(districtJeonseView.map.legend?.every((entry) => entry.label.startsWith("전세 법정동")), "A08 행정구역-전세 범례는 전세 면 구간만 보인다");
   const districtMonthlyView = viewWithLayer(view, "district_monthly");
   assert.equal(districtMonthlyView.map.features.length, 0, "A08 행정구역-월세 모드에서 건물 점을 숨긴다");
+  assert.ok((districtMonthlyView.map.polygons?.length ?? 0) > 0, "A08 행정구역-월세 polygon이 있어야 한다");
   assert.ok(districtMonthlyView.map.polygons?.every((polygon_) => polygon_.layer.startsWith("rent_district_monthly_")));
   assert.ok(districtMonthlyView.map.legend?.every((entry) => entry.label.startsWith("월세 법정동")), "A08 행정구역-월세 범례는 월세 면 구간만 보인다");
   const legacyAll = filterMapForLayer(tile.presentation, "A08", "all");
@@ -197,6 +202,70 @@ function near(actual, expected, tolerance, message) {
   });
   assert.equal(restored.layers[tile.tileId], "building_jeonse", "저장된 A08 all은 건물-전세로 복원");
   assert.equal(layerStyle("rent_district_jeonse_missing").hatch, true);
+
+  // W2 이전 저장 결과의 정확한 구형 점 레이어는 새 suffix 필터와도 호환한다.
+  const legacyJeonse = tile.presentation.features?.find((feature) => feature.layer.startsWith("rent_jeonse_"));
+  const legacyMonthly = tile.presentation.features?.find((feature) => feature.layer.startsWith("rent_monthly_"));
+  assert.ok(legacyJeonse && legacyMonthly, "구형 레이어 회귀 fixture의 양 계약군 점");
+  const legacyTile = parseTileResult({
+    ...tile,
+    tileId: `${tile.tileId}-legacy`,
+    presentation: {
+      ...tile.presentation,
+      layers: ["rent_jeonse", "rent_monthly"],
+      features: [
+        { ...legacyJeonse, layer: "rent_jeonse" },
+        { ...legacyMonthly, layer: "rent_monthly" },
+      ],
+      featuresTotal: 2,
+      polygons: [],
+      polygonsTotal: 0,
+      legend: [
+        { label: "전세 거래 지점", min: null, max: null },
+        { label: "월세 거래 지점", min: null, max: null },
+      ],
+    },
+  });
+  const legacyView = toTileView(legacyTile);
+  const legacyJeonseView = viewWithLayer(legacyView, "building_jeonse");
+  const legacyMonthlyView = viewWithLayer(legacyView, "building_monthly");
+  assert.equal(legacyJeonseView.map.features.length, 1, "구형 rent_jeonse 레이어를 건물-전세로 표시");
+  assert.equal(legacyMonthlyView.map.features.length, 1, "구형 rent_monthly 레이어를 건물-월세로 표시");
+  assert.ok(legacyMonthlyView.map.legend?.some((entry) => entry.label === "월세 거래 지점"), "구형 월세 범례를 보존");
+  const legacyDistrict = viewWithLayer(legacyView, "district_monthly");
+  assert.equal(legacyDistrict.map.polygons?.length, 0, "polygon이 없는 구형 결과의 행정구역 모드");
+  assert.equal(legacyDistrict.map.emptyMessage, "구버전 저장 결과에는 행정구역 면이 없습니다. 새 분석에서 갱신해 주세요.");
+
+  // 진짜 0건 모드는 지도 위에서 원인을 구분할 수 있는 빈 상태를 제공한다.
+  const zeroMonthlyTile = parseTileResult({
+    ...tile,
+    tileId: `${tile.tileId}-zero-monthly`,
+    presentation: {
+      ...tile.presentation,
+      features: tile.presentation.features?.filter((feature) => !feature.layer.startsWith("rent_monthly_")),
+      polygons: tile.presentation.polygons?.filter((polygon_) => !polygon_.layer.startsWith("rent_district_monthly_")),
+      legend: tile.presentation.legend.filter((entry) => !entry.label.startsWith("월세")),
+    },
+  });
+  const zeroMonthly = viewWithLayer(toTileView(zeroMonthlyTile), "building_monthly");
+  assert.equal(zeroMonthly.map.features.length, 0, "0건 월세 모드 feature 없음");
+  assert.equal(zeroMonthly.map.emptyMessage, "이 반경에 월세 거래 없음", "0건 월세 빈 상태 안내");
+
+  const zeroAllTile = parseTileResult({
+    ...tile,
+    tileId: `${tile.tileId}-zero-all`,
+    presentation: {
+      ...tile.presentation,
+      features: [],
+      polygons: [],
+      layers: [],
+      legend: [],
+    },
+  });
+  const zeroAll = viewWithLayer(toTileView(zeroAllTile), "district_monthly");
+  assert.ok(zeroAll.map, "A08 전체 0건도 빈 지도 모델을 유지");
+  assert.equal(zeroAll.map.polygons?.length ?? 0, 0, "전체 0건 행정구역 polygon 없음");
+  assert.equal(zeroAll.map.emptyMessage, "이 반경에 월세 행정구역 자료 없음", "전체 0건 행정구역 빈 상태 안내");
   ctx.close();
 }
 

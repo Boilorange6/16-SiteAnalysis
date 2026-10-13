@@ -70,6 +70,10 @@ assert.match(mapControlsSource, /aria-label="지도 축소"/);
 assert.match(mapControlsSource, /aria-label="지도 시점 초기화"/);
 assert.match(mapBoxSource, /styles\.mapControlsCard/);
 assert.match(mapBoxSource, /styles\.mapControlsExpanded/);
+assert.match(mapBoxSource, /data-map-empty/);
+assert.match(boardCss, /\.mapEmptyState\s*\{[\s\S]*?pointer-events:\s*none;/, "빈 지도 안내는 지도 조작을 가리지 않음");
+assert.match(boardCss, /\.dialog \.mapControlsExpanded\s*\{[\s\S]*?top:\s*auto;[\s\S]*?right:\s*max\(8px, env\(safe-area-inset-right\)\);[\s\S]*?bottom:\s*calc\(40% \+ 92px\);/, "모바일 상세 컨트롤은 정보 판과 범례 띠 위쪽에 배치");
+assert.match(boardCss, /\.dialog\.dialogPanelOpen \.mapControlsExpanded\s*\{[\s\S]*?top:\s*58px;[\s\S]*?bottom:\s*auto;/, "모바일 고정 라벨 판을 열 때 컨트롤 배치를 유지");
 assert.match(calloutSource, /className=\{styles\.calloutMapControls\}/);
 assert.match(detailSource, /className="detail-map-controls"/);
 

@@ -2120,8 +2120,9 @@ button.badge:focus-visible {
   }
   .dialog .mapControlsExpanded {
     top: auto;
-    right: 4px;
-    bottom: 4px;
+    right: max(8px, env(safe-area-inset-right));
+    /* 정보 판 위 + 범례 띠 44px + 8px 간격: 컨트롤과 두 고정 판을 분리한다. */
+    bottom: calc(40% + 92px);
     left: auto;
   }
   .dialog.dialogPanelOpen .mapControlsExpanded {
@@ -3147,6 +3148,24 @@ button.badge:focus-visible {
 .mapPreview {
   position: absolute;
   inset: 0;
+}
+.mapEmptyState {
+  position: absolute;
+  z-index: 5;
+  top: 50%;
+  left: 50%;
+  max-width: min(82%, 300px);
+  padding: 10px 14px;
+  border: 1px dashed #cbd1da;
+  border-radius: 10px;
+  background: rgba(255,255,255,.94);
+  color: #4f5967;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
 }
 .mapControls {
   position: absolute;

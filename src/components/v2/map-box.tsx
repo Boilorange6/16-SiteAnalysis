@@ -279,6 +279,11 @@ function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, mapInteract
           />
         </div>
       )}
+      {size && near && model.emptyMessage && (
+        <div className={styles.mapEmptyState} role="status" data-map-empty="true">
+          {model.emptyMessage}
+        </div>
+      )}
       {size && near && <MapControls
         controller={controller}
         disabled={!mapInteractive || !!opts.muted}
