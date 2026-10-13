@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import * as React from "react";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+
+globalThis.React = React;
 
 const Database = (await import("better-sqlite3")).default;
 const { buildEngineFixture, at, CENTER } = await import("./engine-fixture.mjs");
@@ -14,7 +19,8 @@ const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { a04ClientModule } = await import("../../lib/v2/tile/a04/view.ts");
 const { filterMapForLayer } = await import("../../lib/v2/ui/tile-layers.ts");
 const { formatDistanceM } = await import("../../lib/v2/ui/tile-view.ts");
-const { layerStyle } = await import("../../lib/v2/ui/map-layers.ts");
+const { layerStyle, legendItems, legendItemsForModel } = await import("../../lib/v2/ui/map-layers.ts");
+const { default: MapFigure } = await import("../../components/v2/map-figure.tsx");
 
 const metric = (tile, id) => tile.metrics.find((m) => m.id === id);
 const value = (tile, id) => metric(tile, id)?.value;
@@ -91,10 +97,22 @@ const makeContext = async (options, radiusM = 800) => {
     assert.equal(tile.presentation.lines?.[0]?.labelPriority, 2);
     assert.doesNotMatch(tile.judgment.sentence, /운영 공원/);
 
-    assert.deepEqual(a04ClientModule.layers.baseExcludes, ["green_space"], "A04 기본 보기에서 녹지·수면 레이어 제외");
+    assert.deepEqual(a04ClientModule.layers.options.map(({ id }) => id), ["all", "park_only", "green_space"], "A04 레이어 선택지와 legacy green_space 유지");
+    assert.equal(a04ClientModule.layers.options[0].label, "전체");
+    assert.equal(a04ClientModule.layers.baseExcludes, undefined, "A04 기본 보기에서 녹지·수면을 함께 표시");
     const a04BaseMap = filterMapForLayer(tile.presentation, "A04", "all");
     assert.ok(a04BaseMap);
-    assert.equal(a04BaseMap.polygons?.some((polygon) => ["green_zone", "green_parcel", "water_parcel"].includes(polygon.layer)), false, "A04 기본 보기에는 녹지·수면 면을 중복 표시하지 않음");
+    assert.ok(a04BaseMap.polygons?.some((polygon) => ["green_zone", "green_parcel", "water_parcel"].includes(polygon.layer)), "A04 전체 보기에는 녹지·수면 면을 포함");
+    const a04ParkOnly = filterMapForLayer(tile.presentation, "A04", "park_only");
+    assert.ok(a04ParkOnly);
+    assert.ok(a04ParkOnly.features?.every((feature) => ["park", "park_nearest"].includes(feature.layer)), "A04 공원만 보기의 점 필터");
+    assert.ok(a04ParkOnly.polygons?.every((polygon) => ["park", "park_nearest"].includes(polygon.layer)), "A04 공원만 보기의 면 필터");
+    assert.ok(a04ParkOnly.lines?.every((line) => line.layer === "walk_route"), "A04 공원만 보기의 보행선 유지");
+    const a04LegacyGreen = filterMapForLayer(tile.presentation, "A04", "green_space");
+    assert.ok(a04LegacyGreen);
+    assert.ok(a04LegacyGreen.polygons?.length > 0);
+    assert.ok(a04LegacyGreen.polygons?.every((polygon) => ["green_zone", "green_parcel", "water_parcel"].includes(polygon.layer)), "legacy green_space 필터 호환");
+    assert.ok(!a04LegacyGreen.features?.some((feature) => feature.layer.startsWith("park")), "legacy green_space에 공원 점을 섞지 않음");
 
     const water = metric(tile, "share_water_pct");
     const greenParcel = metric(tile, "share_green_parcel_pct");
@@ -115,11 +133,91 @@ const makeContext = async (options, radiusM = 800) => {
     assert.ok(tile.limitations.some((l) => l.note.includes("계획 공원")));
     assert.ok(tile.limitations.some((l) => l.note.includes("녹지지역은 지목과 겹칠 수 있어")));
     assert.equal(tile.judgment.level, null);
-    assert.equal(layerStyle("park").label, "공원");
+    assert.equal(layerStyle("park").label, "지정 공원");
+    assert.equal(layerStyle("park").color, "#6CC24A");
+    assert.equal(layerStyle("park").fill, "#6CC24A");
+    assert.equal(layerStyle("park").stroke, "#6CC24A");
+    assert.equal(layerStyle("park").fillOpacity, 1);
+    assert.equal(layerStyle("park").strokeWidth, 0);
+    assert.equal(layerStyle("park_nearest").color, "#6CC24A");
+    assert.equal(layerStyle("park_nearest").fill, "#6CC24A");
+    assert.equal(layerStyle("park_nearest").stroke, "#2F6B1F");
+    assert.equal(layerStyle("park_nearest").strokeWidth, 2.4);
+    assert.equal(layerStyle("park_nearest").showInLegend, true);
+    assert.equal(layerStyle("green_zone").label, "그 밖의 녹지");
+    assert.equal(layerStyle("green_parcel").label, "그 밖의 녹지");
+    assert.equal(layerStyle("green_zone").fill, "#BFE3A5");
+    assert.equal(layerStyle("green_parcel").fill, "#BFE3A5");
+    assert.equal(layerStyle("water_parcel").label, "하천·수면");
+    assert.equal(layerStyle("water_parcel").fill, "#A8D5F0");
+    const a04Model = {
+      center: tile.conditions.center,
+      radiusM: tile.conditions.radiusM,
+      tileCode: "A04",
+      features: tile.presentation.features ?? [],
+      polygons: tile.presentation.polygons ?? [],
+      lines: tile.presentation.lines ?? [],
+      legend: tile.presentation.legend,
+      total: tile.presentation.features?.length ?? 0,
+      notes: [],
+    };
+    assert.deepEqual(legendItems(a04Model).map((item) => item.label), ["지정 공원", "그 밖의 녹지", "하천·수면", "최근접 공원", "보행 경로"], "A04 범례 순서");
+    assert.equal(legendItems(a04Model).filter((item) => item.label === "그 밖의 녹지").length, 1, "A04 녹지 범례 통합");
+    assert.equal(legendItems(a04Model).filter((item) => item.label === "하천·수면").length, 1, "A04 수면 범례 라벨");
+    assert.equal(legendItemsForModel(a04Model).filter((item) => item.label === "그 밖의 녹지").length, 1, "A04 보드 녹지 범례 통합");
+    assert.equal(legendItemsForModel(a04Model).filter((item) => item.label === "하천·수면").length, 1, "A04 보드 수면 범례 라벨");
+    assert.deepEqual(legendItemsForModel(a04Model).map((item) => item.label), ["지정 공원", "그 밖의 녹지", "하천·수면", "최근접 공원", "보행 경로"], "A04 보드 범례 순서");
     assert.equal(layerStyle("walk_route").label, "보행 경로");
   } finally {
     ctx.close();
   }
+}
+
+// A04 보고서/PPT 공용 MapFigure도 녹지 → 수면 → 공원 순서와 불투명 평면 속성을 보장한다.
+{
+  const ring = [
+    [CENTER[0] - 0.001, CENTER[1] - 0.001],
+    [CENTER[0] + 0.001, CENTER[1] - 0.001],
+    [CENTER[0] + 0.001, CENTER[1] + 0.001],
+    [CENTER[0] - 0.001, CENTER[1] + 0.001],
+    [CENTER[0] - 0.001, CENTER[1] - 0.001],
+  ];
+  const svg = renderToStaticMarkup(createElement(MapFigure, {
+    model: {
+      center: CENTER,
+      radiusM: 800,
+      tileCode: "A04",
+      features: [{ layer: "park_nearest", fid: "nearest", lng: CENTER[0] + 0.0005, lat: CENTER[1], weight: 1, highlight: true, name: "다산근린공원", sublabel: "직선 120m", labelPriority: 2, distanceM: 120 }],
+      polygons: [
+        { layer: "park", fid: "park-polygon", rings: [ring] },
+        { layer: "park_nearest", fid: "nearest-polygon", rings: [ring] },
+        { layer: "water_parcel", fid: "water", rings: [ring] },
+        { layer: "green_zone", fid: "zone", rings: [ring] },
+        { layer: "green_parcel", fid: "parcel", rings: [ring] },
+      ],
+      lines: [],
+      total: 1,
+      notes: [],
+    },
+    width: 640,
+    height: 360,
+    basemap: "none",
+    fixed: true,
+    legend: false,
+    north: false,
+    scale: false,
+    showSiteMarker: false,
+    onFeaturePin: () => {},
+  }));
+  const drawOrder = [...svg.matchAll(/<path[^>]*data-map-layer="([^"]+)"/g)].map(([, layer]) => layer);
+  assert.deepEqual(drawOrder, ["green_zone", "green_parcel", "water_parcel", "park", "park_nearest"], "A04 SVG 면 그리기 순서");
+  assert.match(svg, /data-map-layer="green_zone"[^>]*fill="#BFE3A5"[^>]*fill-opacity="1"[^>]*stroke="#BFE3A5"[^>]*stroke-width="0"/);
+  assert.match(svg, /data-map-layer="water_parcel"[^>]*fill="#A8D5F0"[^>]*fill-opacity="1"[^>]*stroke="#A8D5F0"[^>]*stroke-width="0"/);
+  assert.match(svg, /data-map-layer="park_nearest"[^>]*fill="#6CC24A"[^>]*fill-opacity="1"[^>]*stroke="#2F6B1F"[^>]*stroke-width="2\.4"/);
+  const nearestCircle = svg.match(/<circle[^>]*data-map-feature="park_nearest\|nearest"[^>]*>/)?.[0];
+  assert.ok(nearestCircle, "최근접 공원 SVG 점 식별자");
+  assert.match(nearestCircle, /fill="#6CC24A"/);
+  assert.match(nearestCircle, /stroke="#16181d"/);
 }
 
 // zoning_area 원천이 없으면 녹지지역만 missing이고, park·parcel 지표는 유지한다.

@@ -58,6 +58,8 @@ export type LayerStyle = {
   arrow?: boolean;
   /** 미상 범주를 채움 대신 빗금으로 표시한다. */
   hatch?: boolean;
+  /** 최근접 지물처럼 기본 nearest 제외 규칙을 넘어 범례에 표시한다. */
+  showInLegend?: boolean;
 };
 
 /** 래스터가 실제로 그려졌을 때 건물 마스크에 쓰는 중립 스타일. */
@@ -102,6 +104,7 @@ const LEGEND_GROUPS = {
   d05Floors: "d05:floors",
   d16Density: "d16:density",
   d19Jimok: "d19:jimok",
+  a04GreenSpace: "a04:green-space",
 } as const;
 
 const S = (
@@ -118,6 +121,21 @@ const S = (
   subject,
   ...(legendGroup === undefined ? {} : { legendGroup }),
   ...(legendOrder === undefined ? {} : { legendOrder }),
+});
+
+const flatPolygon = (
+  label: string,
+  color: string,
+  sizeBy?: "weight",
+  subject?: string,
+  legendGroup?: string,
+  legendOrder?: number,
+): LayerStyle => ({
+  ...S(label, color, sizeBy, subject, legendGroup, legendOrder),
+  fill: color,
+  stroke: color,
+  fillOpacity: 1,
+  strokeWidth: 0,
 });
 
 export const LAYER_STYLES: Record<string, LayerStyle> = {
@@ -153,8 +171,7 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   "road:보행·자전거": { label: "보행·자전거", color: "#4F8A9E", strokeWidth: 0.75, dash: "3 3" },
   "road:기타": { label: "도로 기타", color: "#9AA0AA", strokeWidth: 1 },
   pop_grid_na: S("인구 비공개 격자", "#B9BDC6"),
-  park: S("공원", "#5C9A3C", "weight", "공원"),
-  park_nearest: S("최근접 공원", "#2F7A1E", "weight", "공원"),
+  park: flatPolygon("지정 공원", "#6CC24A", "weight", "지정 공원", LEGEND_GROUPS.a04GreenSpace, 0),
   apt: S("아파트 단지", "#8C6D5A", "weight"),
   other_housing: S("기타 공동주택", "#9AA0AA"),
   officetel: S("오피스텔", "#2B9CBF", "weight"),
@@ -218,9 +235,15 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   low_unknown: S("높이 미상", "#B9BDC6", undefined, "건물"),
   bldg_assumed_1f: S("1층 가정(추정)", "#B9BDC6", undefined, "건물"),
   bldg_assumed_1f_est: S("1층 가정(추정)", "#B9BDC6", undefined, "건물"),
-  green_zone: S("녹지지역", "#5FAE5B"),
-  green_parcel: S("임야·공원 지목", "#7FB77E"),
-  water_parcel: S("하천·구거·유지 지목", "#4F9DA6"),
+  green_zone: flatPolygon("그 밖의 녹지", "#BFE3A5", undefined, undefined, LEGEND_GROUPS.a04GreenSpace, 1),
+  green_parcel: flatPolygon("그 밖의 녹지", "#BFE3A5", undefined, undefined, LEGEND_GROUPS.a04GreenSpace, 1),
+  water_parcel: flatPolygon("하천·수면", "#A8D5F0", undefined, undefined, LEGEND_GROUPS.a04GreenSpace, 2),
+  park_nearest: {
+    ...flatPolygon("최근접 공원", "#6CC24A", "weight", "최근접 공원", LEGEND_GROUPS.a04GreenSpace, 3),
+    stroke: "#2F6B1F",
+    strokeWidth: 2.4,
+    showInLegend: true,
+  },
   "district:지구단위계획": S("지구단위계획", "#7B61A8"),
   "district:개발제한": S("개발제한", "#C05640"),
   "district:택지·도시개발": S("택지·도시개발", "#D69E2E"),
@@ -303,7 +326,7 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   shadow_15: S("15:00 그림자", "#383E48"),
   rent_jeonse: S("전세 거래 지점", "#2B6CB0", "weight"),
   rent_monthly: S("월세 거래 지점", "#63B3ED", "weight"),
-  walk_route: S("보행 경로", "#7A5BA6"),
+  walk_route: S("보행 경로", "#7A5BA6", undefined, undefined, LEGEND_GROUPS.a04GreenSpace, 4),
   canopy: S("수관", "#2E7D32"),
   osm_green: S("OSM 녹지", "#5FAE5B"),
   osm_water: S("OSM 수계", "#4F9DA6"),
@@ -366,9 +389,9 @@ for (const entries of LEGEND_GROUP_STYLES.values()) {
 /** 지물이 있는 레이어의 범례 항목 (정의된 순서) */
 export const legendItems = (model: MapModel) => {
   const present = new Set([
-    ...model.features.map((feature) => feature.layer).filter((layer) => !layer.endsWith("_nearest")),
-    ...(model.polygons ?? []).map((polygon) => polygon.layer).filter((layer) => !layer.endsWith("_nearest")),
-    ...(model.lines ?? []).map((line) => line.layer).filter((layer) => !layer.endsWith("_nearest")),
+    ...model.features.map((feature) => feature.layer).filter((layer) => !layer.endsWith("_nearest") || LAYER_STYLES[layer]?.showInLegend === true),
+    ...(model.polygons ?? []).map((polygon) => polygon.layer).filter((layer) => !layer.endsWith("_nearest") || LAYER_STYLES[layer]?.showInLegend === true),
+    ...(model.lines ?? []).map((line) => line.layer).filter((layer) => !layer.endsWith("_nearest") || LAYER_STYLES[layer]?.showInLegend === true),
   ]);
   const highlightedLabels = new Set(
     model.features.filter((feature) => feature.highlight && !feature.layer.endsWith("_nearest")).map((feature) => layerStyle(feature.layer).label),
