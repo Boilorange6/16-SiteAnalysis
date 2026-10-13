@@ -2,5 +2,6 @@ import type { TileClientModule } from "../types";
 
 export const d12ClientModule = {
   code: "D12",
+  autoLabels: false,
   headline: { maxPrefix: "back_area_" },
 } satisfies TileClientModule;

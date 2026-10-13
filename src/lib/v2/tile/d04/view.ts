@@ -39,6 +39,7 @@ function headlineForD04(result: TileResult, helpers: TileHeadlineHelpers) {
 
 export const d04ClientModule = {
   code: "D04",
+  autoLabels: false,
   headline: { ids: ["share_pre2000", "share_pre1980", "share_1990s"] },
   parameterBadges: [
     { metricId: "confirmed_share_pct", prefix: "확인율", note: "사용승인일이 확인된 건물의 비율입니다. 준공 연대 분포 자체와는 다른 보조 지표입니다." },

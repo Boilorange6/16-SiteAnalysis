@@ -35,6 +35,8 @@ assert.equal((svg.match(/<polyline[^>]*data-line/g) ?? []).length, 2, "선 2개"
 assert.ok(svg.indexOf("data-poly") < svg.indexOf("data-line"), "면이 선보다 먼저");
 assert.ok(svg.indexOf("data-line") < svg.indexOf("<circle"), "선이 점보다 먼저");
 assert.ok(svg.includes("100m"), "선 라벨");
+assert.match(svg, /data-map-label-variant="auto"/, "선 자동 라벨도 말풍선으로 렌더");
+assert.match(svg, /data-map-label-leader="line\|contour\|0"/, "선 라벨에 꺾인 지시선 렌더");
 
 assert.deepEqual(
   legendItems({ center, radiusM: 500, features: [], polygons: [], lines: [mapLine(null)], total: 0, notes: [] }).map((item) => item.layer),
