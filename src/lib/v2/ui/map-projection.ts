@@ -3,8 +3,12 @@ export const TILE_PX = 256;
 const M_PER_PX_Z0 = 156543.03392804097;
 const MAX_TILE_ZOOM = 19;
 const MAX_LAT = 85.0511287798;
+const DEFAULT_MAX_ZOOM_DELTA = 3;
+const RASTER_MAX_CELL_PX = 12;
 
 export type Viewport = { center: readonly [number, number]; zoom: number; width: number; height: number };
+export type MapView = { zoomDelta: number; offsetM: readonly [number, number] };
+export type MapZoom = { maxDelta?: number; maxAbsZoom?: number; card?: boolean };
 
 const rad = (d: number) => (d * Math.PI) / 180;
 
@@ -39,6 +43,60 @@ export function framedViewport(center: readonly [number, number], radiusM: numbe
   const y = wy + (0.5 - siteY) * height;
   const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / size))) * 180) / Math.PI;
   return { ...vp0, center: [lng, lat] as const };
+}
+
+function lngLatFromWorldPx(x: number, y: number, z: number): [number, number] {
+  const size = TILE_PX * 2 ** z;
+  const lng = (x / size) * 360 - 180;
+  const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / size))) * 180) / Math.PI;
+  return [lng, lat];
+}
+
+/** 화면에서 확정한 미터 단위 뷰를 같은 Web Mercator 투영의 뷰포트로 반영한다. */
+export function applyView(vp: Viewport, lat: number, view?: MapView): Viewport {
+  const zoomDelta = view?.zoomDelta ?? 0;
+  const eastM = view?.offsetM[0] ?? 0;
+  const northM = view?.offsetM[1] ?? 0;
+  if (!view || (zoomDelta === 0 && eastM === 0 && northM === 0)) return vp;
+
+  const zoom = vp.zoom + zoomDelta;
+  if (eastM === 0 && northM === 0) return { ...vp, zoom };
+
+  // metersPerPixel() is the local ground scale used by the rest of this module.
+  // Applying both axes in world pixels keeps an offset followed by its inverse
+  // stable even though the inverse Mercator latitude is non-linear.
+  const [worldX, worldY] = worldPx(vp.center[0], vp.center[1], zoom);
+  const mpp = metersPerPixel(lat, zoom);
+  const [lng, nextLat] = lngLatFromWorldPx(worldX + eastM / mpp, worldY - northM / mpp, zoom);
+  return { ...vp, zoom, center: [lng, nextLat] as const };
+}
+
+/** 줌 델타와 중심 이동을 허용 범위 안으로 줄인다. offsetM은 [동, 북]이다. */
+export function clampView(view: MapView, radiusM: number, maxZoom: number): MapView {
+  const zoomLimit = Math.max(0, maxZoom);
+  const zoomDelta = Math.max(0, Math.min(zoomLimit, view.zoomDelta));
+  const radius = Math.max(0, radiusM);
+  const eastM = view.offsetM[0];
+  const northM = view.offsetM[1];
+  const distance = Math.hypot(eastM, northM);
+  if (distance <= radius || distance === 0) return { zoomDelta, offsetM: [eastM, northM] as const };
+  const scale = radius / distance;
+  return { zoomDelta, offsetM: [eastM * scale, northM * scale] as const };
+}
+
+/** 기준 뷰포트·타일 설정·래스터 해상도에 맞는 절대 최대 줌을 계산한다. */
+export function maxZoomFor(base: Viewport | number, mapZoom?: MapZoom, rasterCellM?: number): number {
+  const baseZoom = typeof base === "number" ? base : base.zoom;
+  const maxDelta = Math.max(0, mapZoom?.maxDelta ?? DEFAULT_MAX_ZOOM_DELTA);
+  const maxAbsZoom = Math.min(MAX_TILE_ZOOM, Math.max(0, mapZoom?.maxAbsZoom ?? MAX_TILE_ZOOM));
+  let maxZoom = Math.min(baseZoom + maxDelta, maxAbsZoom);
+  if (rasterCellM !== undefined && rasterCellM > 0) {
+    // cellM / metersPerPixel(lat, z) <= 12, solved for z.
+    const lat = typeof base === "number" ? 0 : base.center[1];
+    const rasterZoom = Math.log2((RASTER_MAX_CELL_PX * M_PER_PX_Z0 * Math.cos(rad(lat))) / rasterCellM);
+    maxZoom = Math.min(maxZoom, rasterZoom);
+  }
+  return maxZoom;
 }
 
 /** (lng,lat) → 그림 좌표(px). 그림 중앙이 center. */

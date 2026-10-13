@@ -2118,6 +2118,33 @@ button.badge:focus-visible {
   .dialog .kindTag {
     display: none;
   }
+  .dialog .mapControlsExpanded {
+    top: 58px;
+    right: 8px;
+    bottom: auto;
+  }
+  .dialog.dialogPanelOpen .mapControlsExpanded {
+    top: 58px;
+    left: 8px;
+    right: auto;
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
+  }
+  .dialog.dialogPanelOpen .dlgPanel {
+    height: calc(100% - 140px);
+  }
+  .dialog .mapLegendStrip {
+    position: absolute;
+    z-index: 4;
+    left: 8px;
+    right: 8px;
+    bottom: calc(40% + 40px);
+    width: auto;
+    box-shadow: 0 2px 8px rgba(30, 36, 46, .08);
+  }
+  .dialog.dialogPanelOpen .mapLegendStrip {
+    display: none;
+  }
 }
 .stat {
   padding: 2px 0;
@@ -3048,6 +3075,83 @@ button.badge:focus-visible {
   flex: 1 1 auto;
   min-height: 0;
   background: #e9e9ec;
+}
+.mapPreview {
+  position: absolute;
+  inset: 0;
+}
+.mapControls {
+  position: absolute;
+  z-index: 8;
+  right: 8px;
+  bottom: 8px;
+  display: grid;
+  gap: 4px;
+}
+.mapControlsCard {
+  /* 짧은 카드 지도에서는 레이어 선택 아래·축척 위의 가로 한 줄로 둔다. */
+  top: 52px;
+  right: auto;
+  bottom: auto;
+  left: 8px;
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
+}
+.mapControlsExpanded {
+  /* 펼침 정보 판(우측 360px + 양쪽 12px) 왼쪽의 지도 영역 안에 둔다. */
+  right: 384px;
+}
+.mapControlButton {
+  position: relative;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  padding: 6px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #16181d;
+  font: inherit;
+  font-size: 21px;
+  line-height: 1;
+  cursor: pointer;
+}
+.mapControlButton::before {
+  content: "";
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #d5d9e1;
+  border-radius: 8px;
+  background: rgba(255,255,255,.94);
+  box-shadow: 0 2px 8px rgba(30,36,46,.1);
+  pointer-events: none;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+.mapControlButton { isolation: isolate; }
+.mapControlButton::before { z-index: 0; }
+.mapControlButton > span { position: relative; z-index: 1; pointer-events: none; }
+.mapControlButton:hover::before { background: #fff; }
+.mapControlButton:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 1px; }
+.mapControlResetButton {
+  width: auto;
+  min-width: 44px;
+  padding-inline: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.mapControlResetButton::before { width: calc(100% - 4px); }
+.mapControlResetButton > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.calloutMapControls {
+  right: 104px;
 }
 /* 지도 표현 선택은 지도 밖의 별도 행이 아니라 지도 왼쪽 위의 작은 조작으로 둔다. */
 .mfLayerSelect {

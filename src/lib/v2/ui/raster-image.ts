@@ -88,24 +88,31 @@ function screenPoint(x: number, y: number, vp: Viewport): [number, number] {
 }
 
 /**
- * 격자 모서리 3점을 Web Mercator 화면 좌표에 맞춘다.
- * ponytail: 반경 3 km 끝에서의 비선형 잔차는 화면 px 1 이내로 운영한다. 더 큰 격자는 작은 타일로 나눠 타일별 아핀을 적용한다.
+ * 격자 중심 기준점을 Web Mercator 화면 좌표에 맞춘다.
+ * UTM-K→Web Mercator의 비선형 잔차가 큰 반경에서는 모서리 3점(NW·NE·SW)
+ * 기준보다 중앙 기준이 벡터 도형과의 오차를 균등하게 만든다.
  */
 export function rasterAffine(ref: RasterRef, vp: Viewport): [number, number, number, number, number, number] {
-  const west = ref.x0;
-  const east = ref.x0 + ref.cols * ref.cellM;
-  const south = ref.y0;
-  const north = ref.y0 + ref.rows * ref.cellM;
-  const nw = screenPoint(west, north, vp);
-  const ne = screenPoint(east, north, vp);
-  const sw = screenPoint(west, south, vp);
+  const widthM = ref.cols * ref.cellM;
+  const heightM = ref.rows * ref.cellM;
+  const centerX = ref.x0 + widthM / 2;
+  const centerY = ref.y0 + heightM / 2;
+  const center = screenPoint(centerX, centerY, vp);
+  const east = screenPoint(centerX + ref.cellM / 2, centerY, vp);
+  const west = screenPoint(centerX - ref.cellM / 2, centerY, vp);
+  const south = screenPoint(centerX, centerY - ref.cellM / 2, vp);
+  const north = screenPoint(centerX, centerY + ref.cellM / 2, vp);
+  const x0 = east[0] - west[0];
+  const x1 = east[1] - west[1];
+  const y0 = south[0] - north[0];
+  const y1 = south[1] - north[1];
   return [
-    (ne[0] - nw[0]) / ref.cols,
-    (ne[1] - nw[1]) / ref.cols,
-    (sw[0] - nw[0]) / ref.rows,
-    (sw[1] - nw[1]) / ref.rows,
-    nw[0],
-    nw[1],
+    x0,
+    x1,
+    y0,
+    y1,
+    center[0] - (ref.cols / 2) * x0 - (ref.rows / 2) * y0,
+    center[1] - (ref.cols / 2) * x1 - (ref.rows / 2) * y1,
   ];
 }
 

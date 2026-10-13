@@ -1,13 +1,17 @@
 "use client";
 
-import { createContext, memo, useContext, useEffect, useRef, useState } from "react";
+import { createContext, memo, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { buildingStyleForRaster, legendItemsForModel, normalizeLegendStripLabels, RASTER_STYLES, type MapModel } from "@/lib/v2/ui/map-layers";
+import { catalogEntry } from "@/lib/v2/ui/tile-catalog";
 import { activeLegendLabel, appendUniqueLegendItems, toggleLegendPin } from "@/lib/v2/ui/map-legend";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
-import { framedViewport, metersPerPixel, scaleBar, tileUrl, tilesFor } from "@/lib/v2/ui/map-projection";
+import { applyView, framedViewport, maxZoomFor, metersPerPixel, scaleBar, tileUrl, tilesFor } from "@/lib/v2/ui/map-projection";
 import { inflateRaster, paintRaster, rasterLegendColor, rasterLegendEntries, rasterLegendTitle, resolveRasterStyle } from "@/lib/v2/ui/raster-image";
 import MapFigure, { type MapFigureElementPick, type MapFigureProps } from "./map-figure";
 import { MapLegendStrip, type LegendSwatchKind, type MapLegendItem } from "./map-legend-strip";
+import { MapControls } from "./map-controls";
+import { useMapView, type MapTouchPan, type MapWheelMode } from "./use-map-view";
+import styles from "./board.module.css";
 
 /** 보드가 고른 배경지도 종류. 카드·상세·요약의 모든 지도가 같이 따른다. */
 export const BasemapContext = createContext<BasemapChoice>("white");
@@ -24,6 +28,9 @@ type Opts = Pick<MapFigureProps, "legend" | "legendY" | "north" | "scale" | "cre
   siteX?: number | ((w: number) => number);
   /** 반경 원 위아래 여백(px): 지도 높이에서 fill을 정한다(카드). fill보다 우선 */
   pad?: number;
+  mapInteractive?: boolean;
+  mapWheel?: MapWheelMode;
+  mapTouchPan?: MapTouchPan;
 };
 type Opts2 = Omit<Opts, "rightInset"> & { rightInset?: number | ((w: number) => number) };
 
@@ -115,11 +122,20 @@ function rasterLegendItemsForModel(model: MapModel): MapLegendItem[] {
   }));
 }
 
-function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, ...optsIn }: { model: MapModel; bare?: boolean; label?: string } & Opts2) {
+function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, mapInteractive = true, mapWheel = "plain", mapTouchPan = "one", ...optsIn }: { model: MapModel; bare?: boolean; label?: string } & Opts2) {
   const { ref, size, near } = useMeasured();
   const opts = { ...optsIn, fill: pad && size ? Math.max(0.3, (size.h - 2 * pad) / size.h) : optsIn.fill };
   const layer = useContext(BasemapContext);
   const requestedLayer = model.basemap ?? layer;
+  const resolvedSiteX = size ? (typeof siteX === "function" ? siteX(size.w) : (siteX ?? 0.5)) : 0.5;
+  const baseViewport = size ? framedViewport(model.center, model.radiusM, size.w, size.h, resolvedSiteX, opts.fill ?? 0.8, opts.siteY ?? 0.5) : undefined;
+  const maxZoom = baseViewport ? maxZoomFor(baseViewport, catalogEntry(model.tileCode ?? "").mapZoom, model.rasters?.[0]?.cellM) : 0;
+  const resetKey = `${model.analysisId ?? ""}:${model.tileCode ?? ""}:${model.center[0]}:${model.center[1]}:${model.radiusM}`;
+  const controller = useMapView({ baseViewport, radiusM: model.radiusM, maxZoom, resetKey, enabled: mapInteractive && !opts.muted, wheel: mapWheel, touchPan: mapTouchPan });
+  const setViewportRef = useCallback((element: HTMLDivElement | null) => {
+    ref.current = element;
+    controller.bind.ref(element);
+  }, [controller.bind, ref]);
   const [fallbackLayer, setFallbackLayer] = useState<BasemapChoice | null>(null);
   const [rasterHrefs, setRasterHrefs] = useState<Record<string, string>>({});
   const [legendHover, setLegendHover] = useState<string | null>(null);
@@ -152,14 +168,13 @@ function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, ...optsIn }
     // D01은 결과가 지정한 Satellite를 유지한다. 사용자가 고른 넓은 항공 지도만
     // 일부 타일 결손 시 도로 지도로 대체해 회색 빈 칸을 피한다.
     if (!near || !size || requestedLayer !== "Satellite" || model.basemap === "Satellite" || model.radiusM < 1000) return () => { alive = false; };
-    const resolvedSiteX = typeof siteX === "function" ? siteX(size.w) : (siteX ?? 0.5);
-    const viewport = framedViewport(model.center, model.radiusM, size.w, size.h, resolvedSiteX, opts.fill ?? 0.8, opts.siteY ?? 0.5);
+    const viewport = applyView(framedViewport(model.center, model.radiusM, size.w, size.h, resolvedSiteX, opts.fill ?? 0.8, opts.siteY ?? 0.5), model.center[1], controller.view);
     const tiles = tilesFor(viewport).slice(0, 6);
     void Promise.all(tiles.map((tile) => fetch(tileUrl("Satellite", tile.z, tile.x, tile.y), { cache: "force-cache" }).then((response) => response.ok).catch(() => false))).then((ok) => {
       if (alive && ok.length > 0 && ok.some((value) => !value)) setFallbackLayer("Base");
     });
     return () => { alive = false; };
-  }, [model.basemap, model.center, model.radiusM, near, requestedLayer, size, siteX, opts.fill, opts.siteY]);
+  }, [controller.view, model.basemap, model.center, model.radiusM, near, requestedLayer, size, resolvedSiteX, opts.fill, opts.siteY]);
   useEffect(() => {
     let alive = true;
     const rasters = model.rasters ?? [];
@@ -226,8 +241,7 @@ function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, ...optsIn }
   const mapBottomInset = useLegendStrip ? (opts.bottomInset ?? 0) : 0;
   const scale = size
     ? (() => {
-        const resolvedSiteX = typeof siteX === "function" ? siteX(size.w) : (siteX ?? 0.5);
-        const viewport = framedViewport(model.center, model.radiusM, size.w, size.h, resolvedSiteX, opts.fill ?? 0.8, opts.siteY ?? 0.5);
+        const viewport = applyView(framedViewport(model.center, model.radiusM, size.w, size.h, resolvedSiteX, opts.fill ?? 0.8, opts.siteY ?? 0.5), model.center[1], controller.view);
         const u = Math.min(1.5, Math.max(1, size.h / 360));
         return scaleBar(metersPerPixel(model.center[1], viewport.zoom), 88 * u);
       })()
@@ -235,29 +249,35 @@ function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, ...optsIn }
   const mapSurfaceContent = (
     <>
       {size && near && (
-        <MapFigure
-          model={renderModel}
-          width={size.w}
-          height={size.h}
-          bare={bare}
-          label={label}
-          layer={renderLayer}
-          tileHref={renderLayer === "Satellite" ? satelliteTileHref : undefined}
-          rasterHref={(raster) => rasterHrefs[raster.name] ?? null}
-          avoid={typeof avoid === "function" ? avoid(size.w, size.h) : avoid}
-          siteX={typeof siteX === "function" ? siteX(size.w) : siteX}
-          rightInset={typeof rightInset === "function" ? rightInset(size.w) : rightInset}
-          {...opts}
-          highlightLabel={activeHighlight}
-          highlightPinnedLabel={legendPinned}
-          hoverKey={opts.hoverKey ?? featureHover}
-          emphasisKey={opts.emphasisKey ?? null}
-          onFeatureHover={(key) => setFeatureHover(key)}
-          onLegendHover={(value) => setLegendHover(value)}
-          onLegendPin={(value) => setLegendPinned((current) => value === null ? null : toggleLegendPin(current, value))}
-          bottomInset={useLegendStrip ? 0 : opts.bottomInset}
-        />
+        <div className={styles.mapPreview} style={controller.previewTransform}>
+          <MapFigure
+            model={renderModel}
+            width={size.w}
+            height={size.h}
+            bare={bare}
+            label={label}
+            layer={renderLayer}
+            tileHref={renderLayer === "Satellite" ? satelliteTileHref : undefined}
+            rasterHref={(raster) => rasterHrefs[raster.name] ?? null}
+            avoid={typeof avoid === "function" ? avoid(size.w, size.h) : avoid}
+            siteX={typeof siteX === "function" ? siteX(size.w) : siteX}
+            rightInset={typeof rightInset === "function" ? rightInset(size.w) : rightInset}
+            {...opts}
+            scaleLeft={pad !== undefined || !!opts.scaleLeft}
+            view={controller.view}
+            dragging={controller.dragging}
+            highlightLabel={activeHighlight}
+            highlightPinnedLabel={legendPinned}
+            hoverKey={opts.hoverKey ?? featureHover}
+            emphasisKey={opts.emphasisKey ?? null}
+            onFeatureHover={(key) => { if (!controller.dragging) setFeatureHover(key); }}
+            onLegendHover={(value) => setLegendHover(value)}
+            onLegendPin={(value) => setLegendPinned((current) => value === null ? null : toggleLegendPin(current, value))}
+            bottomInset={useLegendStrip ? 0 : opts.bottomInset}
+          />
+        </div>
       )}
+      {size && near && <MapControls controller={controller} disabled={!mapInteractive || !!opts.muted} className={pad !== undefined ? styles.mapControlsCard : styles.mapControlsExpanded} resetVariant={pad !== undefined ? "icon" : "label"} />}
       {size && near && scale && scale.meters >= 1000 && opts.legend !== false && (
         <span aria-label={`지도 축척 ${scale.label}`} style={{ position: "absolute", zIndex: 3, top: 44, right: 8, padding: "4px 7px", borderRadius: 999, background: "rgba(255,255,255,.92)", color: "#16181d", fontSize: 10, lineHeight: 1.2, fontWeight: 700, boxShadow: "0 1px 3px rgba(21,23,28,.12)" }}>
           축척 {scale.label}
@@ -273,7 +293,7 @@ function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, ...optsIn }
   if (useLegendStrip) {
     return (
       <div data-map-box-root="true" style={{ position: "absolute", top: 0, right: 0, bottom: mapBottomInset, left: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
-        <div ref={ref} data-map-viewport="true" style={{ position: "relative", flex: "1 1 auto", minHeight: 0, width: "100%" }}>
+        <div data-map-viewport="true" {...controller.bind} ref={setViewportRef} style={{ ...controller.bind.style, position: "relative", flex: "1 1 auto", minHeight: 0, width: "100%" }}>
           {mapSurfaceContent}
         </div>
         {size && near && <MapLegendStrip items={legendItems} hoverLabel={legendHover} pinnedLabel={legendPinned} onHover={setLegendHover} onToggle={toggleLegend} leadingLabel={legendPresentation.leadingLabel} />}
@@ -281,7 +301,7 @@ function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, ...optsIn }
     );
   }
   return (
-    <div ref={ref} data-map-viewport="true" style={{ position: "absolute", inset: 0 }}>
+    <div data-map-viewport="true" {...controller.bind} ref={setViewportRef} style={{ ...controller.bind.style, position: "absolute", inset: 0 }}>
       {mapSurfaceContent}
     </div>
   );

@@ -160,7 +160,7 @@ const svg = renderToStaticMarkup(createElement(MapFigure, {
 }));
 assert.match(svg, /<image/);
 assert.match(svg, /matrix\(/);
-assert.match(svg, /image-rendering:auto/);
+assert.match(svg, /image-rendering:pixelated/, "단계형 래스터는 셀 경계를 보존한다");
 assert.match(svg, /data-radius-clip="true"/);
 assert.match(svg, /role="img" aria-label="분석 대지"/);
 assert.ok(svg.indexOf("data-raster") < svg.indexOf("data-poly") || !svg.includes("data-poly"), "래스터는 면보다 아래");
@@ -177,6 +177,7 @@ const svfSvg = renderToStaticMarkup(createElement(MapFigure, {
   rasterHref: () => "data:image/png;base64,AAAA",
 }));
 assert.match(svfSvg, /data-raster-legend="svf"/);
+assert.match(svfSvg, /image-rendering:auto/, "연속형 래스터는 부드럽게 보간한다");
 for (const tick of ["0%", "25%", "50%", "75%", "100%"])
   assert.match(svfSvg, new RegExp(tick.replace("%", "\\%")), `SVF 범례 ${tick}`);
 

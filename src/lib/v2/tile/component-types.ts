@@ -22,6 +22,10 @@ export type TileStageProps = {
   hoverKey?: string | null;
   emphasisKey?: string | null;
   onFeaturePin?: (feature: MapFigureElementPick) => void;
+  mapInteractive?: boolean;
+  mapWheel?: "plain" | "modifier" | "off";
+  mapTouchPan?: "one" | "two";
+  mapResetKey?: string;
 };
 
 export type TileFaceExtraProps = {

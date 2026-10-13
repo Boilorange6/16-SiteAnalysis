@@ -1,10 +1,10 @@
 "use client";
 
-import { Fragment, memo, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { OTHER_HOUSING_COLOR, OTHER_HOUSING_LABEL, STRIP_H, calloutLegendMatches, cardName, cardRows, clusterPoints, compactCalloutLegend, compactNameNeedsExtraHeight, displayComplexName, dotColor, dotRadius, fmtInt, inkOn, isHollowComplexMarker, overlapChip, pageCount, pageRange, stripCards, type CalloutFrame, type Complex, type Placed, type StripCard } from "@/lib/v2/ui/callout-layout";
 import { calloutScene, type CalloutFrameKind } from "@/lib/v2/ui/callout-scene";
 import { OV } from "@/lib/v2/ui/overlay-layout";
-import { framedViewport, metersPerPixel, scaleBar } from "@/lib/v2/ui/map-projection";
+import { applyView, framedViewport, maxZoomFor, metersPerPixel, scaleBar } from "@/lib/v2/ui/map-projection";
 import type { CalloutModel } from "@/lib/v2/ui/tile-view";
 import { UNIT_TYPE_BASIS } from "@/lib/v2/unit-types";
 import MapFigure from "./map-figure";
@@ -13,6 +13,8 @@ import { BasemapContext, satelliteTileHref, useMeasured } from "./map-box";
 import styles from "./board.module.css";
 import tileStyles from "@/lib/v2/tile/a05/tile.module.css";
 import UnitTypeSummary from "./unit-type-summary";
+import { MapControls } from "./map-controls";
+import { useMapView, type MapTouchPan, type MapWheelMode } from "./use-map-view";
 
 const INK = "#16181d";
 
@@ -224,6 +226,10 @@ export type CalloutMapProps = {
   page?: number;
   onPage?: (p: number) => void;
   label: string;
+  mapInteractive?: boolean;
+  mapWheel?: MapWheelMode;
+  mapTouchPan?: MapTouchPan;
+  resetKey?: string;
 };
 
 function calloutLegendStripItems(model: CalloutModel, compact: boolean): MapLegendItem[] {
@@ -241,7 +247,7 @@ function calloutLegendStripItems(model: CalloutModel, compact: boolean): MapLege
  * 주변 단지 설명선 지도 (A05, 이후 A06). 지도는 MapFigure(단지 없이), 점·지시선은 SVG, 표는 HTML 판.
  * 카드는 두 칸에만 놓이고 지도 원은 두 칸 사이에 들어가, 점이 카드에 가려지지 않는다.
  */
-function CalloutMap({ model, kind, page = 0, onPage, label }: CalloutMapProps) {
+function CalloutMap({ model, kind, page = 0, onPage, label, mapInteractive = true, mapWheel = "plain", mapTouchPan = "one", resetKey = "" }: CalloutMapProps) {
   const { ref, size, near } = useMeasured();
   const layer = useContext(BasemapContext);
   const [hover, setHover] = useState<string | null>(null);
@@ -278,7 +284,15 @@ function CalloutMap({ model, kind, page = 0, onPage, label }: CalloutMapProps) {
   }, [detail, onPage, page, pages]);
 
   // 상세 화면의 출처 띠는 부모가 지도 위에 고정하므로, 측정된 지도 영역에서는 이미 빠졌다.
-  const scene = useMemo(() => (size ? calloutScene(model, kind, size.w, size.h, page, 0) : null), [model, kind, size, page]);
+  const layoutScene = useMemo(() => (size ? calloutScene(model, kind, size.w, size.h, page, 0) : null), [model, kind, size, page]);
+  const baseViewport = size && layoutScene ? framedViewport(model.center, model.radiusM, size.w, size.h, layoutScene.frame.siteX, layoutScene.frame.fill, layoutScene.siteY) : undefined;
+  const maxZoom = baseViewport ? maxZoomFor(baseViewport, { maxDelta: 2 }) : 0;
+  const controller = useMapView({ baseViewport, radiusM: model.radiusM, maxZoom, resetKey, enabled: mapInteractive, wheel: mapWheel, touchPan: mapTouchPan });
+  const scene = useMemo(() => (size ? calloutScene(model, kind, size.w, size.h, page, 0, controller.view) : null), [controller.view, kind, model, page, size]);
+  const setViewportRef = useCallback((element: HTMLDivElement | null) => {
+    ref.current = element;
+    controller.bind.ref(element);
+  }, [controller.bind, ref]);
   const clusters = useMemo(() => {
     if (!scene) return null;
     return clusterPoints(
@@ -304,7 +318,7 @@ function CalloutMap({ model, kind, page = 0, onPage, label }: CalloutMapProps) {
   const backdrop = useMemo(() => ({ center: model.center, radiusM: model.radiusM, features: [], total: 0, notes: [] }), [model]);
   const scale = scene && size
     ? (() => {
-        const viewport = framedViewport(model.center, model.radiusM, size.w, size.h, scene.frame.siteX, scene.frame.fill, scene.siteY);
+        const viewport = applyView(framedViewport(model.center, model.radiusM, size.w, size.h, scene.frame.siteX, scene.frame.fill, scene.siteY), model.center[1], controller.view);
         const u = Math.min(1.5, Math.max(1, size.h / 360));
         return scaleBar(metersPerPixel(model.center[1], viewport.zoom), 88 * u);
       })()
@@ -312,25 +326,28 @@ function CalloutMap({ model, kind, page = 0, onPage, label }: CalloutMapProps) {
 
   return (
     <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", minHeight: 0, paddingBottom: detail ? OV.stripH : 0 }} data-callout-map-root="true">
-      <div ref={ref} style={{ position: "relative", flex: "1 1 auto", minHeight: 0, width: "100%" }}>
+      <div {...controller.bind} ref={setViewportRef} style={{ ...controller.bind.style, position: "relative", flex: "1 1 auto", minHeight: 0, width: "100%" }}>
         {size && near && scene && (
         <>
+          <div className={styles.mapPreview} style={controller.previewTransform}>
           <MapFigure
-            model={backdrop}
-            width={size.w}
-            height={size.h}
-            layer={layer}
-            label={label}
-            legend={false}
-            north={22}
-            credit={false}
-            bottomInset={0}
-            tileHref={sat ? satelliteTileHref : undefined}
-            siteX={scene.frame.siteX}
-            fill={scene.frame.fill}
-            siteY={scene.siteY}
-            rightInset={scene.panel}
-            scaleX={scaleX}
+              model={backdrop}
+              width={size.w}
+              height={size.h}
+              layer={layer}
+              label={label}
+              legend={false}
+              north={22}
+              credit={false}
+              bottomInset={0}
+              tileHref={sat ? satelliteTileHref : undefined}
+              siteX={scene.frame.siteX}
+              fill={scene.frame.fill}
+              siteY={scene.siteY}
+              rightInset={scene.panel}
+              scaleX={scaleX}
+              view={controller.view}
+              dragging={controller.dragging}
           />
           <svg width={size.w} height={size.h} style={{ position: "absolute", inset: 0, pointerEvents: "none" }} aria-hidden fontFamily='"Noto Sans KR","Malgun Gothic",sans-serif'>
             {clusters?.groups.map((group) => (
@@ -356,8 +373,8 @@ function CalloutMap({ model, kind, page = 0, onPage, label }: CalloutMapProps) {
               const pts = [p.dot, p.knee, p.edge].map((q) => q.join(",")).join(" ");
               return (
                 <g key={p.id}>
-                  <polyline points={pts} fill="none" stroke={sat ? INK : "#fff"} strokeOpacity={sat ? 0.4 : 0.92} strokeWidth={3.4} strokeLinejoin="round" />
-                  <polyline points={pts} fill="none" stroke={sat ? "#fff" : INK} strokeWidth={on ? 1.8 : 1} strokeLinejoin="round" />
+                  {!controller.dragging && <polyline points={pts} fill="none" stroke={sat ? INK : "#fff"} strokeOpacity={sat ? 0.4 : 0.92} strokeWidth={3.4} strokeLinejoin="round" />}
+                  {!controller.dragging && <polyline points={pts} fill="none" stroke={sat ? "#fff" : INK} strokeWidth={on ? 1.8 : 1} strokeLinejoin="round" />}
                 </g>
               );
             })}
@@ -373,8 +390,8 @@ function CalloutMap({ model, kind, page = 0, onPage, label }: CalloutMapProps) {
                   key={c.id}
                   style={{ pointerEvents: "all", cursor: detail ? "pointer" : undefined }}
                   opacity={activeLegendColor && !legendMatch ? 0.2 : 1}
-                  onMouseEnter={() => setHover(c.id)}
-                  onMouseLeave={() => setHover(null)}
+                  onMouseEnter={() => { if (!controller.dragging) setHover(c.id); }}
+                  onMouseLeave={() => { if (!controller.dragging) setHover(null); }}
                   onClick={() => (page === 0 && detail && onPage ? onPage(Math.ceil(c.rank / 10)) : setPicked((v) => (v === c.id ? null : c.id)))}
                 >
                   {on && <circle cx={x} cy={y} r={r + 5} fill="none" stroke={sat ? "#fff" : INK} strokeWidth={2} />}
@@ -390,7 +407,7 @@ function CalloutMap({ model, kind, page = 0, onPage, label }: CalloutMapProps) {
           {displayedPlaced.map((p) => {
             const complex = model.complexes.find((c) => c.id === p.id)!;
             const legendMatch = calloutLegendMatches(complex, activeLegendColor);
-            return <Card key={p.id} c={complex} siblings={model.complexes} p={p} frame={scene.frame} year={model.analysisYear} hover={activeLegendColor ? legendMatch : active === p.id} dim={!!activeLegendColor && !legendMatch} onHover={setHover} onPick={(id) => setPicked((v) => (v === id ? null : id))} />;
+            return <Card key={p.id} c={complex} siblings={model.complexes} p={p} frame={scene.frame} year={model.analysisYear} hover={activeLegendColor ? legendMatch : active === p.id} dim={!!activeLegendColor && !legendMatch} onHover={(id) => { if (!controller.dragging) setHover(id); }} onPick={(id) => setPicked((v) => (v === id ? null : id))} />;
           })}
           {detail && <Pager model={model} page={page} onPage={(p) => onPage?.(Math.max(0, Math.min(pages, p)))} />}
           {scene.strip && page > 0 && <Strip cards={stripCards(scene.withCards, model.analysisYear)} active={active} onPick={(id) => setPicked((v) => (v === id ? null : id))} top={scene.stripTop} />}
@@ -407,6 +424,14 @@ function CalloutMap({ model, kind, page = 0, onPage, label }: CalloutMapProps) {
               </div>
             </div>
           )}
+          </div>
+          <MapControls
+            controller={controller}
+            disabled={!mapInteractive}
+            className={styles.calloutMapControls}
+            resetVariant={detail ? "label" : "icon"}
+            style={detail && scene.panel > 0 ? { right: scene.panel + 12, top: 58, bottom: "auto" } : undefined}
+          />
         </>
         )}
       </div>

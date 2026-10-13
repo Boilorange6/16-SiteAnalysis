@@ -15,6 +15,7 @@ import styles from "./board.module.css";
 import { hasDetail } from "@/lib/v2/ui/detail-state";
 import type { TileStageProps } from "@/lib/v2/tile/component-types";
 import { useCardRoving } from "./use-card-roving";
+import { catalogEntry } from "@/lib/v2/ui/tile-catalog";
 
 const BADGE_CLASS = { status: styles.badgeStatus, limit: styles.badgeLimit, model: styles.badgeModel } as const;
 const FACES: OutputFace[] = ["front", "back", "both"];
@@ -273,9 +274,13 @@ export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, p
   if (chart) return <FaceChart view={view} />;
   const card = frame === "card";
   const label = `${view.title} 지도`;
-  if (state) return <MapBox model={displayView.backdrop} muted legend={false} north={false} scale={false} credit={false} label={label} siteX={siteX} />;
+  const mapZoom = catalogEntry(view.code).mapZoom;
+  const mapInteractive = !state && view.code !== "S01" && view.code !== "D22" && (frame !== "card" || mapZoom?.card !== false);
+  const mapWheel = card ? "modifier" as const : "plain" as const;
+  const mapTouchPan = card ? "two" as const : "one" as const;
+  if (state) return <MapBox model={displayView.backdrop} muted legend={false} north={false} scale={false} credit={false} label={label} siteX={siteX} mapInteractive={false} />;
   const TileStage = stageFor(view.code, displayView);
-  if (TileStage) return <TileStage view={view} displayView={displayView} state={state} chart={chart} frame={frame} label={label} page={page} onPage={onPage} cut={selectedCut} roseSeason={roseSeason} siteX={siteX} rightInset={rightInset} legendY={legendY} pinnedKeys={pinnedKeys} hoverKey={hoverKey} emphasisKey={emphasisKey} onFeaturePin={onFeaturePin} />;
+  if (TileStage) return <TileStage view={view} displayView={displayView} state={state} chart={chart} frame={frame} label={label} page={page} onPage={onPage} cut={selectedCut} roseSeason={roseSeason} siteX={siteX} rightInset={rightInset} legendY={legendY} pinnedKeys={pinnedKeys} hoverKey={hoverKey} emphasisKey={emphasisKey} onFeaturePin={onFeaturePin} mapInteractive={mapInteractive} mapWheel={mapWheel} mapTouchPan={mapTouchPan} mapResetKey={view.tileId} />;
   return (
     <MapBox
       model={displayView.map ?? displayView.backdrop}
@@ -291,6 +296,9 @@ export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, p
       hoverKey={hoverKey}
       emphasisKey={emphasisKey}
       onFeaturePin={onFeaturePin}
+      mapInteractive={mapInteractive}
+      mapWheel={mapWheel}
+      mapTouchPan={mapTouchPan}
       avoid={(w, h) => {
         const inset = typeof rightInset === "function" ? rightInset(w) : (rightInset ?? 0);
         // 카드: 지도 위에는 북쪽(오른쪽 위)·레이어 칩(왼쪽 위)·축척(오른쪽 아래), 아래에는 범례 띠가 있다.
@@ -379,7 +387,9 @@ type TileCardRenderProps = TileCardBaseProps & {
   onSetAllLabels: (on: boolean) => void;
 };
 
-const INTERACTIVE = "button,input,label,a,select,[data-handle],[role=menu],[data-map-feature],[data-map-legend]";
+// 지도 컨트롤이 시점 초기화로 즉시 사라질 때 클릭 대상이 뷰포트로
+// 재조정되어도 카드 펼침으로 전파되지 않게 한다.
+const INTERACTIVE = "button,input,label,a,select,[data-handle],[role=menu],[data-map-feature],[data-map-legend],[data-map-viewport]";
 
 const Svg = ({ children, size = 16, fill }: { children: ReactNode; size?: number; fill?: boolean }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill={fill ? "currentColor" : "none"} stroke={fill ? "none" : "currentColor"} strokeWidth={2.3} strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">

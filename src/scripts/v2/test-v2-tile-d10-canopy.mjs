@@ -399,6 +399,11 @@ try {
   const firstTile = d10(firstContext, { mosaic });
   const firstElapsedMs = performance.now() - firstStarted;
   const firstRasters = firstContext.takeRasters("D10");
+  const canopyGrid = canopyFor(firstContext)?.grid;
+  const canopyRef = firstRasters.find(({ ref }) => ref.name === "canopy")?.ref;
+  assert.ok(canopyGrid && canopyRef, "D10 canopy grid and raster are emitted");
+  assert.equal(canopyRef.x0, canopyGrid.x0 - canopyGrid.cellM / 2, "canopy raster x0 is the first-cell outer edge");
+  assert.equal(canopyRef.y0, canopyGrid.y0 - canopyGrid.cellM / 2, "canopy raster y0 is the first-cell outer edge");
   const parsed = attachRasters(firstTile, firstRasters);
   assert.equal(parsed.tileCode, "D10");
   assert.equal(parsed.status, "complete");

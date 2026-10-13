@@ -191,8 +191,10 @@ export function d10(ctx: EngineContext, options: CanopyForOptions = {}): TileRes
         name: "canopy",
         kind: "mask",
         crs: "EPSG:5179",
-        x0: canopy.grid.x0,
-        y0: canopy.grid.y0,
+        // canopy grid coordinates describe cell centers; RasterRef x0/y0 are
+        // the outer edge of the first cell so the mask aligns with vectors.
+        x0: canopy.grid.x0 - canopy.grid.cellM / 2,
+        y0: canopy.grid.y0 - canopy.grid.cellM / 2,
         cellM: canopy.grid.cellM,
         cols: canopy.grid.cols,
         rows: canopy.grid.rows,
