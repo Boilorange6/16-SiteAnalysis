@@ -14,6 +14,8 @@ import { sheetCells, type SheetGrid } from "../ui/sheet";
 import { COVER_MAP_KEY, mapKeyOf, type PlannedSlide } from "./report-plan";
 import { E, FONT, INK, IW, IX, L, LINE, MUTED, PLATE_ALPHA, fitPt, hex, linesOf, plate, textIn, type Border, type ReportItem, type Slide } from "./pptx-kit";
 import { tileReportModuleFor } from "../tile/report";
+import { addEditableMap, isEditableMap, nativeMapFallbackNote } from "./map-pptx";
+import { badgeTextColor } from "../ui/map-labels";
 
 /** 지도 이미지(PNG/JPEG data URL) — 키는 report-plan의 mapKeyOf */
 export type MapImages = Record<string, string>;
@@ -159,13 +161,16 @@ function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }) {
     if (it.site) {
       s.addShape("diamond", { x: r.x + 0.19, y: y + 0.04, w: 0.16, h: 0.16, fill: { color: "FFFFFF" }, line: { color: "111111", width: 0.8 } });
       s.addShape("ellipse", { x: r.x + 0.25, y: y + 0.1, w: 0.04, h: 0.04, fill: { color: "111111" }, line: { color: "111111", width: 0 } });
+    } else if (it.badge) {
+      s.addShape("ellipse", { x: r.x + 0.18, y: y + 0.03, w: 0.19, h: 0.19, fill: { color: hex(it.color) }, line: { color: "FFFFFF", width: 0.75 }, objectName: `GRP|legend-${p.view.code}-${i}|범례 ${it.label}|badge` });
+      s.addText(it.badge, { x: r.x + 0.18, y: y + 0.03, w: 0.19, h: 0.19, align: "center", valign: "middle", fontFace: FONT, fontSize: 7, bold: true, color: hex(badgeTextColor(it.color)), margin: 0, objectName: `GRP|legend-${p.view.code}-${i}|범례 ${it.label}|badge-text` });
     } else {
-      s.addShape("ellipse", { x: r.x + 0.2, y: y + 0.06, w: 0.13, h: 0.13, fill: { color: hex(it.color) }, line: { color: "FFFFFF", width: 0.75 } });
+      s.addShape("ellipse", { x: r.x + 0.2, y: y + 0.06, w: 0.13, h: 0.13, fill: { color: hex(it.color) }, line: { color: "FFFFFF", width: 0.75 }, objectName: `GRP|legend-${p.view.code}-${i}|범례 ${it.label}|dot` });
     }
-    s.addText(it.label, { x: r.x + 0.45, y, w: r.w - 0.55, h: 0.25, valign: "middle", fontFace: FONT, fontSize: 10, color: INK, margin: 0 });
+    s.addText(it.label, { x: r.x + 0.45, y, w: r.w - 0.55, h: 0.25, valign: "middle", fontFace: FONT, fontSize: 10, color: INK, margin: 0, objectName: `GRP|legend-${p.view.code}-${i}|범례 ${it.label}|label` });
   });
   notes.forEach((n, i) => {
-    s.addText(n, { x: r.x + 0.2, y: r.y + 0.1 + items.length * 0.25 + i * 0.22, w: r.w - 0.3, h: 0.22, valign: "middle", fontFace: FONT, fontSize: 8.5, color: MUTED, margin: 0, fit: "shrink" });
+      s.addText(n, { x: r.x + 0.2, y: r.y + 0.1 + items.length * 0.25 + i * 0.22, w: r.w - 0.3, h: 0.22, valign: "middle", fontFace: FONT, fontSize: 8.5, color: MUTED, margin: 0, fit: "shrink", objectName: `GRP|legend-${p.view.code}-notes|범례 주석|note-${i}` });
   });
 }
 
@@ -229,7 +234,10 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   };
   const co = p.callout;
   const calloutReport = tileReportModuleFor(v.code)?.report;
+  const nativeMap = !!p.map && !(co && co.page > 0) && isEditableMap(p.map);
   background(s, chart ? undefined : images[mapKeyOf(p) ?? v.tileId], chart ? mix(v.color, 0.07) : undefined);
+  if (nativeMap && p.map) addEditableMap(s, p, p.map);
+  else if (p.map) s.addNotes(nativeMapFallbackNote(p.map));
   const coTail = co ? (co.page === 0 ? `개요 · 전체 ${fmtInt(co.model.complexes.length)}${co.model.unit}` : pageRange(co.page, co.model.complexes.length, undefined, co.model.kind === "supply")) : null;
   titlePlate(s, v.color, v.code, v.title, [v.kindLabel, p.faceLabel, coTail].filter((t, i, a) => t && a.indexOf(t) === i).join(" · "), co && co.page > 0 ? SLIDE.w - 2 * E : L.info.x - 2 * E);
   if (co && co.page > 0) {
@@ -385,6 +393,6 @@ export async function renderReportPptx(plan: PlannedSlide[], images: MapImages =
     else sources(pptx, p, images);
   }
   const bytes = (await pptx.write({ outputType: "uint8array" })) as Uint8Array;
-  // pptxgenjs는 도형 그룹을 만들지 못한다: 설명선 장의 단지별 도형(GRP| 이름표)을 후처리로 PPT 그룹으로 묶는다
-  return plan.some((p) => p.kind === "tile" && p.callout) ? groupTaggedShapes(bytes) : bytes;
+  // pptxgenjs는 도형 그룹을 만들지 못한다: GRP| 태그를 선택 창용 그룹으로 후처리한다.
+  return plan.some((p) => p.kind === "tile" && (p.callout || (p.map && isEditableMap(p.map)))) ? groupTaggedShapes(bytes) : bytes;
 }
