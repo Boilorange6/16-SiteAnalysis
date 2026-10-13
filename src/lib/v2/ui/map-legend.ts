@@ -47,6 +47,11 @@ export function activeLegendLabel(hover: string | null, pinned: string | null): 
   return hover ?? pinned;
 }
 
+/** 카드·상세가 같은 범례 자료를 쓰되, 카드 토글이 띠 자체를 제거하는지 판정한다. */
+export function mapLegendStripVisible({ bare, legend, muted, itemCount, showLegendStrip = true }: { bare?: boolean; legend?: boolean; muted?: boolean; itemCount: number; showLegendStrip?: boolean }): boolean {
+  return showLegendStrip && !bare && legend === false && !muted && itemCount > 0;
+}
+
 /** 벡터·래스터처럼 서로 다른 표현 경로가 같은 표시명을 낼 때 한 항목으로 합친다. */
 export function appendUniqueLegendItems<T extends { label: string }>(base: readonly T[], additions: readonly T[]): T[] {
   const labels = new Set(base.map((item) => item.label));

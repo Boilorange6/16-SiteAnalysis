@@ -43,6 +43,7 @@ type TileSettingsSnapshot = {
   camera?: CameraPreset;
   cut?: CutSpec;
   labels?: PinnedLabel[];
+  mapLegend?: boolean;
   layer?: string;
 };
 
@@ -125,6 +126,8 @@ export type BoardState = {
   labels: Record<string, PinnedLabel[]>;
   /** 타일 id → 지도 표현/래스터 레이어. 비어 있으면 타일 기본 레이어. */
   layers: Record<string, string>;
+  /** 카드 지도 범례 띠 표시. 누락된 옛 저장본은 기본 숨김(false)이다. */
+  mapLegend: Record<string, boolean>;
   /** copy:N → 원본 결과 타일 id. 복제본은 결과 배열을 늘리지 않고 보드 설정만 가진다. */
   instances: Record<string, string>;
   /** 빼 둔 타일(더할 수 있는 타일). index는 빼기 전 위치 */
@@ -164,6 +167,7 @@ export type BoardAction =
   | { type: "unpinLabel"; id: string; key: string }
   | { type: "toggleLabel"; id: string; key: string }
   | { type: "setAllLabels"; id: string; on: boolean }
+  | { type: "mapLegend"; id: string; show: boolean }
   | { type: "layer"; id: string; layer: string };
 
 /** 카드의 현재 면 (편집 중에는 화면이 항상 요약면을 쓴다) */
@@ -193,6 +197,7 @@ export function initBoard(results: TileResult[], preset: PresetId = DEFAULT_PRES
     cuts: {},
     labels: {},
     layers: {},
+    mapLegend: {},
     instances: {},
     removed: [],
     undoStack: [],
@@ -281,6 +286,7 @@ function copyTileSettings(s: BoardState, id: string): TileSettingsSnapshot {
     camera: s.cameras[id] ? { ...s.cameras[id] } : undefined,
     cut: s.cuts[id] ? { ...s.cuts[id] } : undefined,
     labels: s.labels[id]?.map((label) => ({ ...label })),
+    mapLegend: s.mapLegend[id],
     layer: s.layers[id],
   };
 }
@@ -309,6 +315,7 @@ function restoreTileSettings(s: BoardState, id: string, settings: TileSettingsSn
     cameras: withRecordValue(s.cameras, id, settings.camera ? { ...settings.camera } : undefined),
     cuts: withRecordValue(s.cuts, id, settings.cut ? { ...settings.cut } : undefined),
     labels: withRecordValue(s.labels, id, settings.labels?.map((label) => ({ ...label }))),
+    mapLegend: withRecordValue(s.mapLegend, id, settings.mapLegend),
     layers: withRecordValue(s.layers, id, settings.layer),
   };
 }
@@ -328,6 +335,7 @@ function removeInstance(s: BoardState, id: string): BoardState {
     cameras: withoutRecordValue(s.cameras, id),
     cuts: withoutRecordValue(s.cuts, id),
     labels: withoutRecordValue(s.labels, id),
+    mapLegend: withoutRecordValue(s.mapLegend, id),
     layers: withoutRecordValue(s.layers, id),
   };
 }
@@ -630,6 +638,8 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
       if (current.length === 0) return s;
       return { ...s, labels: { ...s.labels, [a.id]: current.map((label) => ({ ...label, on: a.on })) } };
     }
+    case "mapLegend":
+      return { ...s, mapLegend: { ...s.mapLegend, [a.id]: a.show } };
     case "layer": {
       if (!a.layer) return s;
       const result = s.results.find((candidate) => candidate.tileId === sourceTileId(s, a.id));
@@ -661,6 +671,8 @@ export type BoardStateSnapshot = {
   roseSeasons?: Record<string, RoseSeason>;
   labels?: Record<string, PinnedLabel[]>;
   layers?: Record<string, string>;
+  /** 카드 범례 띠 표시. 이전 저장본에는 없고 기본 false로 복원한다. */
+  mapLegend?: Record<string, boolean>;
   /** copy:N → 원본 결과 타일 id. 이전 저장본에는 없다. */
   instances?: Record<string, string>;
   removed: { id: string; index: number }[];
@@ -692,6 +704,7 @@ export function serializeBoardState(s: BoardState): BoardStateSnapshot {
     cuts: { ...s.cuts },
     labels: Object.fromEntries(Object.entries(s.labels).map(([id, labels]) => [id, labels.map((label) => ({ ...label }))])),
     layers: { ...s.layers },
+    mapLegend: { ...s.mapLegend },
     instances: { ...s.instances },
     removed: s.removed.map((item) => ({ ...item })),
   };
@@ -798,6 +811,7 @@ export function rewriteSnapshotIds(snapshot: BoardStateSnapshot, mapId: IdMapper
     roseSeasons: mapIdRecord<RoseSeason>(snapshot.roseSeasons, mapId),
     labels: mapIdRecord<PinnedLabel[]>(snapshot.labels, mapId),
     layers,
+    mapLegend: mapIdRecord<boolean>(snapshot.mapLegend, mapId),
     instances,
     removed: Array.isArray(snapshot.removed)
       ? (() => {
@@ -966,6 +980,10 @@ export function restoreBoardState(results: TileResult[], raw: unknown, fallbackP
     });
     if (restored.length > 0) labels[id] = restored;
   }
+  const mapLegend: Record<string, boolean> = {};
+  for (const [id, value] of Object.entries(recordOf(saved.mapLegend))) {
+    if (validTileIds.has(id) && typeof value === "boolean") mapLegend[id] = value;
+  }
   const layers: Record<string, string> = {};
   const resultById = new Map(base.results.map((result) => [result.tileId, result]));
   for (const [id, value] of Object.entries(recordOf(saved.layers))) {
@@ -1001,6 +1019,7 @@ export function restoreBoardState(results: TileResult[], raw: unknown, fallbackP
     cameras,
     cuts,
     labels,
+    mapLegend,
     layers,
     instances: savedInstances,
     removed,

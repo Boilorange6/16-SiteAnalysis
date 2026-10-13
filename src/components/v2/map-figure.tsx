@@ -132,6 +132,55 @@ export type MapLabelEntry = {
   fid?: string;
 };
 
+export type MapCalloutTextLine = {
+  kind: "title" | "detail" | "joined";
+  text: string;
+  title?: string;
+  detail?: string;
+};
+
+export type MapCalloutTextLayout = {
+  fontSize: number;
+  lineHeight: number;
+  width: number;
+  height: number;
+  textWidth: number;
+  lines: MapCalloutTextLine[];
+};
+
+/** SVG 말풍선은 브라우저의 텍스트 측정 없이도 PPT와 같은 크기를 써야 한다. */
+export function mapCalloutTextLayout(
+  entry: Pick<MapLabelEntry, "title" | "detailLines">,
+  fontSize: number,
+  maxWidth: number,
+  textLeft = 8,
+  textRight = 4,
+  padY = 3,
+): MapCalloutTextLayout {
+  const details = entry.detailLines.slice(0, 3);
+  const joined = [entry.title, ...details].join(" · ");
+  const availableTextWidth = Math.max(1, maxWidth - textLeft - textRight);
+  const lines: MapCalloutTextLine[] = details.length > 0 && textW(joined, fontSize) <= availableTextWidth
+    ? [{ kind: "joined", text: joined, title: entry.title, detail: details.join(" · ") }]
+    : [{ kind: "title", text: entry.title }, ...details.map((detail) => ({ kind: "detail" as const, text: detail }))];
+  const textWidth = Math.max(...lines.map((line) => textW(line.text, fontSize)), 1);
+  const width = Math.min(maxWidth, textLeft + textRight + textWidth);
+  const lineHeight = fontSize * 1.24;
+  return { fontSize, lineHeight, width, height: lines.length * lineHeight + 2 * padY, textWidth: Math.min(textWidth, availableTextWidth), lines };
+}
+
+function truncateMapLabelText(value: string, maxWidth: number, fontSize: number): string {
+  if (textW(value, fontSize) <= maxWidth) return value;
+  const ellipsis = "…";
+  if (textW(ellipsis, fontSize) >= maxWidth) return ellipsis;
+  let result = "";
+  for (const character of [...value]) {
+    if (textW(`${result}${character}${ellipsis}`, fontSize) > maxWidth) break;
+    result += character;
+  }
+  return `${result}${ellipsis}`;
+}
+
 /** 대표 지점·폴리곤·선이 같은 fid를 공유해도 고정 라벨 대상을 분리한다. */
 export const mapElementKey = (kind: MapLabelEntry["kind"], layer: string, fid: string | undefined, index: number): string => `${kind}|${mapFeatureKey(layer, fid, index)}`;
 
@@ -735,9 +784,10 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
   const labelByKey = new Map(screenLabels.map((entry) => [entry.key, entry]));
   const labelCollisionGap = 3 * u;
   const calloutLabelFs = Math.max(11, fs);
-  const calloutPad = 6 * u;
+  const calloutTextLeft = 8 * u;
+  const calloutTextRight = 4 * u;
+  const calloutPadY = 3 * u;
   const calloutLineHeight = calloutLabelFs * 1.24;
-  const calloutCardH = calloutPad * 2 + calloutLineHeight * 4;
   const baseCalloutMetrics = W <= 420 ? PX_NARROW : PX;
   const calloutMetrics = {
     ...baseCalloutMetrics,
@@ -751,7 +801,9 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     head: baseCalloutMetrics.head * u,
     row: baseCalloutMetrics.row * u,
     pad: baseCalloutMetrics.pad * u,
-    compactH: calloutCardH,
+    // Variable labels provide their own height. This is only the one-line
+    // fallback used by the frame when there are no measured candidates.
+    compactH: calloutPadY * 2 + calloutLineHeight,
   };
   const calloutTop = showLegend && panelY <= H / 2 ? panelY + panelH + 6 * u : 4 * u;
   const calloutBottom = showLegend && panelY > H / 2 ? panelY - 6 * u : H - bottomInset - 4 * u;
@@ -773,9 +825,9 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     // center left by a detail-panel inset.
     centerX: W / 2,
   };
-  type MapCalloutPlacement = { placed: Placed; box: Box; leader: Box };
-  const calloutPlacement = (placed: Placed, point: ScreenLabel): MapCalloutPlacement => {
-    const box: Box = { x0: placed.x, y0: placed.y, x1: placed.x + calloutFrameModel.cardW, y1: placed.y + calloutFrameModel.cardH };
+  type MapCalloutPlacement = { placed: Placed; box: Box; leader: Box; text: MapCalloutTextLayout };
+  const calloutPlacement = (placed: Placed, point: ScreenLabel, text: MapCalloutTextLayout): MapCalloutPlacement => {
+    const box: Box = { x0: placed.x, y0: placed.y, x1: placed.x + placed.width, y1: placed.y + placed.height };
     const points = [point.p, placed.knee, placed.edge];
     const leader: Box = {
       x0: Math.max(0, Math.min(...points.map(([x]) => x)) - 2 * u),
@@ -783,17 +835,14 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
       x1: Math.min(W, Math.max(...points.map(([x]) => x)) + 2 * u),
       y1: Math.min(H, Math.max(...points.map(([, y]) => y)) + 2 * u),
     };
-    return { placed, box, leader };
+    return { placed, box, leader, text };
   };
   const labelNode = (d: ScreenLabel, placement: MapCalloutPlacement, variant: "auto" | "fixed" | "hover"): ReactNode => {
     const fixedLabel = variant === "fixed";
-    const hoverLabel = variant === "hover";
-    const labelFs = fixedLabel || hoverLabel ? calloutLabelFs : Math.max(9, d.small ? fs * 0.9 : fs);
-    const innerW = Math.max(8, placement.box.x1 - placement.box.x0 - 14 * u);
-    const textFs = Math.max(7, Math.min(labelFs, ...d.lines.map((line) => labelFs * innerW / Math.max(1, textW(line, labelFs)))));
-    const lineHeight = Math.min(calloutLineHeight, (placement.box.y1 - placement.box.y0 - 2 * calloutPad) / Math.max(1, d.lines.length));
-    const textX = placement.box.x0 + 8 * u;
-    const textY = placement.box.y0 + calloutPad + textFs * 0.9;
+    const textFs = placement.text.fontSize;
+    const textX = placement.box.x0 + calloutTextLeft;
+    const textMaxWidth = Math.max(1, placement.box.x1 - placement.box.x0 - calloutTextLeft - calloutTextRight);
+    const textY = placement.box.y0 + calloutPadY + textFs * 0.9;
     const dimmed = variant === "auto" && highlightActive && !d.highlighted;
     const pinPick = () => onFeaturePin?.(d.pick);
     const onKeyDown = (event: ReactKeyboardEvent<SVGGElement>) => {
@@ -812,15 +861,24 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
         pointerEvents={fixedLabel && onFeaturePin ? "all" : "none"}
         opacity={dimmed ? 0.2 : 1}
       >
+        <title>{d.text}</title>
         {!dragging && <>
           <polyline data-map-label-leader={d.key} points={[d.p, placement.placed.knee, placement.placed.edge].map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke="#fff" strokeWidth={3.6 * u} strokeLinecap="round" strokeLinejoin="round" />
           <polyline data-map-label-leader={d.key} points={[d.p, placement.placed.knee, placement.placed.edge].map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke={INK} strokeWidth={1.2 * u} strokeLinecap="round" strokeLinejoin="round" />
-          <circle cx={d.p[0]} cy={d.p[1]} r={Math.max(1.8 * u, labelFs * 0.2)} fill={INK} />
+          <circle cx={d.p[0]} cy={d.p[1]} r={Math.max(1.8 * u, textFs * 0.2)} fill={INK} />
         </>}
         <rect data-map-label-box={d.key} x={placement.box.x0} y={placement.box.y0} width={placement.box.x1 - placement.box.x0} height={placement.box.y1 - placement.box.y0} rx={3 * u} fill="#fff" stroke={INK} strokeWidth={1.2 * u} />
-        <circle cx={placement.box.x0 + 4 * u} cy={(placement.box.y0 + placement.box.y1) / 2} r={Math.max(1.8 * u, labelFs * 0.2)} fill={INK} />
-        <text x={textX} y={textY} fontSize={textFs} fill={INK}>
-          {d.lines.map((line, index) => <tspan key={`${d.key}-line-${index}`} x={textX} dy={index === 0 ? 0 : lineHeight} fontWeight={index === 0 ? 700 : 500}>{line}</tspan>)}
+        <circle cx={placement.box.x0 + 4 * u} cy={(placement.box.y0 + placement.box.y1) / 2} r={Math.max(1.8 * u, textFs * 0.2)} fill={INK} />
+        <text x={textX} y={textY} fontSize={textFs} fill={INK} style={{ whiteSpace: "nowrap" }}>
+          {placement.text.lines.map((line, index) => {
+            const rendered = truncateMapLabelText(line.text, textMaxWidth, textFs);
+            if (line.kind === "joined" && rendered === line.text) {
+              return <tspan key={`${d.key}-line-${index}`} x={textX} dy={index === 0 ? 0 : placement.text.lineHeight}>
+                <tspan fontWeight={700}>{line.title}</tspan><tspan fill="#5c5f66" fontWeight={500}>{` · ${line.detail}`}</tspan>
+              </tspan>;
+            }
+            return <tspan key={`${d.key}-line-${index}`} x={textX} dy={index === 0 ? 0 : placement.text.lineHeight} fontWeight={line.kind === "title" ? 700 : 500} fill={line.kind === "title" ? INK : "#5c5f66"}>{rendered}</tspan>;
+          })}
         </text>
       </g>
     );
@@ -840,12 +898,17 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
       ...(hoverLabel ? [{ entry: hoverLabel, variant: "hover" as const, rank: -1 }] : []),
       ...automatic.map((entry) => ({ entry, variant: "auto" as const, rank: 2 - (entry.labelPriority ?? 0) })),
     ];
-    const layout = layoutCallouts(calloutFrameModel, candidates.map(({ entry, rank }) => ({ id: entry.key, x: entry.p[0], y: entry.p[1], rank })));
+    const candidateLayouts = candidates.map(({ entry, variant, rank }) => {
+      const fontSize = variant === "auto" ? Math.max(9, entry.small ? fs * 0.9 : fs) : calloutLabelFs;
+      const text = mapCalloutTextLayout(entry, fontSize, calloutFrameModel.cardW, calloutTextLeft, calloutTextRight, calloutPadY);
+      return { entry, variant, rank, text };
+    });
+    const layout = layoutCallouts(calloutFrameModel, candidateLayouts.map(({ entry, rank, text }) => ({ id: entry.key, x: entry.p[0], y: entry.p[1], rank, width: text.width, height: text.height })));
     const placedByKey = new Map(layout.placed.map((placed) => [placed.id, placed]));
-    for (const { entry, variant } of candidates) {
+    for (const { entry, variant, text } of candidateLayouts) {
       const placed = placedByKey.get(entry.key);
       if (!placed) continue;
-      const placement = calloutPlacement(placed, entry);
+      const placement = calloutPlacement(placed, entry, text);
       boxes.push(placement.box, placement.leader);
       if (variant === "hover") {
         hoverLabelPlacement = placement;
