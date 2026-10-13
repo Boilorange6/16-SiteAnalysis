@@ -15,8 +15,9 @@ const optionMatches: Record<string, (layer: string) => boolean> = {
   height_low: (layer) => layer.startsWith("low_"),
   parcel_size: (layer) => layer.startsWith("lot_"),
   district: (layer) => layer.startsWith("trade_district_"),
-  building_jeonse: (layer) => layer.startsWith("rent_jeonse_"),
-  building_monthly: (layer) => layer.startsWith("rent_monthly_"),
+  // 구형 A08 저장 결과는 분위 suffix 없이 rent_jeonse/rent_monthly를 사용했다.
+  building_jeonse: (layer) => layer === "rent_jeonse" || layer.startsWith("rent_jeonse_"),
+  building_monthly: (layer) => layer === "rent_monthly" || layer.startsWith("rent_monthly_"),
   rent_district: (layer) => layer.startsWith("rent_district_"),
   district_jeonse: (layer) => layer.startsWith("rent_district_jeonse_"),
   district_monthly: (layer) => layer.startsWith("rent_district_monthly_"),

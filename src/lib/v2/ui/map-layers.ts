@@ -29,6 +29,8 @@ export type MapModel = {
   total: number;
   /** 범례 밑에 적는 짧은 문구 */
   notes: string[];
+  /** 선택한 모드에 표시할 지물이 없을 때 지도 위에 보여 주는 안내 */
+  emptyMessage?: string;
 };
 
 /** 지도 레이어 id → 라벨·색·표현 (엔진의 legend 라벨과 MapFigure가 함께 쓴다). 색은 화면 쪽에서 정한다. */
