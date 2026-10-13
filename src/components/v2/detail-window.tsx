@@ -461,7 +461,13 @@ export default function DetailWindow({ view, layer, onLayer, onClose }: DetailWi
                   />
                 </div>
                 <p className="detail-map-hint">지물을 선택하면 선택 카드와 지도가 함께 갱신됩니다.<br />휠 확대 · 드래그 이동</p>
-                <MapControls controller={mapController} disabled={!mapInteractive} className="detail-map-controls" resetVariant="label">
+                <MapControls
+                  controller={mapController}
+                  disabled={!mapInteractive}
+                  className="detail-map-controls"
+                  resetVariant="icon"
+                  style={{ top: "auto", left: "auto", right: 4, bottom: 4 }}
+                >
                   <button type="button" className="detail-fullscreen-control" onClick={() => void toggleFullscreen()} aria-label={fullscreen ? "전체화면 닫기" : "지도 전체화면"} title={fullscreen ? "전체화면 닫기" : "지도 전체화면"}><span aria-hidden="true">{fullscreen ? "↙" : "↗"}</span></button>
                 </MapControls>
                 {path.length >= 2 && <span className="detail-map-status" role="status">선택 경로 · 보행망 결과</span>}

@@ -2119,14 +2119,16 @@ button.badge:focus-visible {
     display: none;
   }
   .dialog .mapControlsExpanded {
-    top: 58px;
-    right: 8px;
-    bottom: auto;
+    top: auto;
+    right: 4px;
+    bottom: 4px;
+    left: auto;
   }
   .dialog.dialogPanelOpen .mapControlsExpanded {
     top: 58px;
-    left: 8px;
-    right: auto;
+    left: auto;
+    right: 8px;
+    bottom: auto;
     grid-auto-flow: column;
     grid-auto-columns: max-content;
   }
@@ -2506,18 +2508,9 @@ button.badge:focus-visible {
     white-space: normal;
   }
 }
+/* 포털 메뉴에서는 카드 폭과 무관하게 보조 작업(포함·펼치기·복제)을 모두 노출한다. */
 .mfMenu .mfMenuCompact {
-  display: none;
-}
-@container (max-width: 259px) {
-  .sf .mfMenu .mfMenuCompact {
-    display: flex;
-  }
-}
-@container (max-width: 309px) {
-  .mfHead .mfMenu .mfMenuCompact {
-    display: flex;
-  }
+  display: flex;
 }
 .sfMain {
   flex: 1 1 auto;
@@ -3158,23 +3151,31 @@ button.badge:focus-visible {
 .mapControls {
   position: absolute;
   z-index: 8;
-  right: 8px;
-  bottom: 8px;
+  right: 4px;
+  bottom: 4px;
   display: grid;
-  gap: 4px;
-}
-.mapControlsCard {
-  /* 짧은 카드 지도에서는 레이어 선택 아래·축척 위의 가로 한 줄로 둔다. */
-  top: 52px;
-  right: auto;
-  bottom: auto;
-  left: 8px;
   grid-auto-flow: column;
   grid-auto-columns: max-content;
+  gap: 2px;
+}
+.mapControlsCard {
+  /* 카드도 지도 우측 하단에 고정해 레이어 선택·축척과 분리한다. */
+  top: auto;
+  right: 4px;
+  bottom: 4px;
+  left: auto;
 }
 .mapControlsExpanded {
-  /* 펼침 정보 판(우측 360px + 양쪽 12px) 왼쪽의 지도 영역 안에 둔다. */
+  /* 펼침·발표 지도도 우측 하단에 붙인다. 지도 패널 폭은 호출부가 보정한다. */
+  top: auto;
+  right: 4px;
+  bottom: 4px;
+  left: auto;
+}
+/* 상세 펼침은 오른쪽 정보 판을 제외한 지도 영역의 우측 하단을 기준으로 한다. */
+.dialog .mapControlsExpanded {
   right: 384px;
+  bottom: 4px;
 }
 .mapControlButton {
   position: relative;
@@ -3182,25 +3183,25 @@ button.badge:focus-visible {
   width: 44px;
   height: 44px;
   place-items: center;
-  padding: 6px;
+  padding: 0;
   border: 0;
   border-radius: 9px;
   background: transparent;
   color: #16181d;
   font: inherit;
-  font-size: 21px;
+  font-size: 18px;
   line-height: 1;
   cursor: pointer;
 }
 .mapControlButton::before {
   content: "";
   position: absolute;
-  width: 32px;
-  height: 32px;
+  width: 24px;
+  height: 24px;
   border: 1px solid #d5d9e1;
-  border-radius: 8px;
-  background: rgba(255,255,255,.94);
-  box-shadow: 0 2px 8px rgba(30,36,46,.1);
+  border-radius: 6px;
+  background: rgba(255,255,255,.9);
+  box-shadow: 0 1px 4px rgba(30,36,46,.12);
   pointer-events: none;
   left: 50%;
   top: 50%;
@@ -3209,6 +3210,7 @@ button.badge:focus-visible {
 .mapControlButton { isolation: isolate; }
 .mapControlButton::before { z-index: 0; }
 .mapControlButton > span { position: relative; z-index: 1; pointer-events: none; }
+.mapControlButton svg { width: 24px; height: 24px; }
 .mapControlButton:hover::before { background: #fff; }
 .mapControlButton:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 1px; }
 .mapControlResetButton {
@@ -3226,7 +3228,7 @@ button.badge:focus-visible {
   justify-content: center;
 }
 .calloutMapControls {
-  right: 104px;
+  right: 4px;
 }
 /* 지도 표현 선택은 지도 밖의 별도 행이 아니라 지도 왼쪽 위의 작은 조작으로 둔다. */
 .mfLayerSelect {
@@ -3365,19 +3367,23 @@ button.badge:focus-visible {
   cursor: pointer;
 }
 .mfMenu {
-  position: absolute;
-  z-index: 8;
-  top: 42px;
-  right: 8px;
+  position: fixed;
+  z-index: 1000;
+  top: 0;
+  left: 0;
+  right: auto;
   width: 216px;
-  max-width: calc(100% - 16px);
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
   box-sizing: border-box;
   padding: 6px;
   display: flex;
   flex-direction: column;
   gap: 2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: #fff;
-  color: var(--ink);
+  color: var(--ink, #15171c);
   border-radius: 12px;
   box-shadow: 0 8px 24px rgba(20, 20, 30, 0.18), 0 0 0 1px #e4e4e9;
   font-size: 13px;
@@ -3420,7 +3426,7 @@ button.badge:focus-visible {
   border: 0;
   border-radius: 999px;
   background: #f1f1f4;
-  color: var(--ink);
+  color: var(--ink, #15171c);
   font: inherit;
   font-size: 12px;
   white-space: nowrap;
@@ -3430,7 +3436,7 @@ button.badge:focus-visible {
   flex: 1.3;
 }
 .mfSegBtn[aria-checked="true"] {
-  background: var(--black);
+  background: var(--black, #16181d);
   color: #fff;
 }
 @media (pointer: coarse) {

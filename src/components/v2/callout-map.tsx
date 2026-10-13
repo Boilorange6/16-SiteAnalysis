@@ -431,8 +431,13 @@ function CalloutMap({ model, kind, page = 0, onPage, label, mapInteractive = tru
             controller={controller}
             disabled={!mapInteractive}
             className={styles.calloutMapControls}
-            resetVariant={detail ? "label" : "icon"}
-            style={detail && scene.panel > 0 ? { right: scene.panel + 12, top: 58, bottom: "auto" } : undefined}
+            resetVariant="icon"
+            style={{
+              top: "auto",
+              left: "auto",
+              bottom: 4,
+              ...(detail && scene.panel > 0 ? { right: scene.panel + 12 } : {}),
+            }}
           />
         </>
         )}
