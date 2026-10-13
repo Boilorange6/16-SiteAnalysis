@@ -464,7 +464,9 @@ export const legendItems = (model: MapModel): MapLegendLayerItem[] => {
     if (!line.color || !/^#[0-9A-Fa-f]{6}$/.test(line.color)) continue;
     if (line.legendLabel && (line.layer === "rail_line" || line.layer === "rail_station_axis") && !dynamicRailLabels.has(line.legendLabel)) {
       dynamicRailLabels.add(line.legendLabel);
-      dynamicRailItems.push({ layer: line.layer, label: line.legendLabel, color: line.color, badge: railLineBadgeText(line.legendLabel), highlight: false });
+      // 범례 배지는 숫자 호선만 — 이름 호선은 옆 글자가 이미 이름이라 색 점으로 둔다.
+      const badge = railLineBadgeText(line.legendLabel);
+      dynamicRailItems.push({ layer: line.layer, label: line.legendLabel, color: line.color, ...(/^\d+$/.test(badge) ? { badge } : {}), highlight: false });
     }
     const label = layerStyle(line.layer).label;
     const colors = lineColorsByLabel.get(label) ?? [];

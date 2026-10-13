@@ -939,9 +939,10 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
   const boxOverlapArea = (a: Box, b: Box): number => Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
   for (const { d, badge, badgeIndex } of featureBadges) {
     const stationBadge = d.f.layer === "rail_station" || d.f.layer === "rail_nearest";
-    const badgeFs = stationBadge ? Math.max(6, badge.text.length > 2 ? fs * 0.52 : fs * 0.72) : Math.max(8, fs * 0.72);
+    const badgeFs = stationBadge ? Math.max(7, fs * 0.72) : Math.max(8, fs * 0.72);
     const badgeH = stationBadge ? Math.max(15 * u, badgeFs * 1.55) : Math.max(12 * u, badgeFs * 1.35);
-    const badgeW = stationBadge ? badgeH : textW(badge.text, badgeFs) + 8 * u;
+    // 숫자 호선은 원, 수인분당·신분당 같은 이름 호선은 글자 폭만큼 늘린 알약.
+    const badgeW = stationBadge ? Math.max(badgeH, textW(badge.text, badgeFs) + 8 * u) : textW(badge.text, badgeFs) + 8 * u;
     const candidates = badgeDirections.flatMap(([dx, dy]) => [
       badgeBox(d, badgeW, badgeH, dx, dy, radiusOf(d.f) + 3 * u),
       badgeBox(d, badgeW, badgeH, dx, dy, radiusOf(d.f) + 15 * u),
@@ -1168,13 +1169,13 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
          })}
          {featureBadges.map(({ d, badge, badgeIndex }) => {
            const stationBadge = d.f.layer === "rail_station" || d.f.layer === "rail_nearest";
-           const badgeFs = stationBadge ? Math.max(6, badge.text.length > 2 ? fs * 0.52 : fs * 0.72) : Math.max(8, fs * 0.72);
+           const badgeFs = stationBadge ? Math.max(7, fs * 0.72) : Math.max(8, fs * 0.72);
            const placement = badgePositions.get(`${d.index}:${badgeIndex}`)!;
            return (
              <g key={`badge-${d.index}-${badgeIndex}-${badge.text}`} data-map-badge={badge.text} aria-label={badge.text} pointerEvents="none">
                {stationBadge ? (
                  <>
-                   <circle cx={placement.x + placement.width / 2} cy={placement.y + placement.height / 2} r={Math.min(placement.width, placement.height) / 2} fill={badge.color} stroke="#fff" strokeWidth={0.8 * u} />
+                   <rect x={placement.x} y={placement.y} width={placement.width} height={placement.height} rx={placement.height / 2} fill={badge.color} stroke="#fff" strokeWidth={0.8 * u} />
                    <text x={placement.x + placement.width / 2} y={placement.y + placement.height * 0.72} textAnchor="middle" fontSize={badgeFs} fontWeight={700} fill={badgeTextColor(badge.color)}>{badge.text}</text>
                  </>
                ) : (
