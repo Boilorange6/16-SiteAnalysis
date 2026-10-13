@@ -565,10 +565,10 @@
 /* ── 격자 ── */
 .grid {
   --grid-cols: 4;
-  --grid-row-height: 280px;
+  --grid-row-height: 420px;
   display: grid;
   grid-template-columns: repeat(var(--grid-cols), minmax(0, 1fr));
-  /* 행 높이 하한은 보드가 계산한 값(≥280px). 내용이 더 필요한 줄(대지 요약)만 늘어난다. */
+  /* 지도 영역 1.5배를 위한 행 높이 하한은 보드가 계산한 값(≥420px). 내용이 더 필요한 줄(대지 요약)만 늘어난다. */
   grid-auto-rows: minmax(var(--grid-row-height), auto);
   gap: 16px;
 }
@@ -1124,7 +1124,7 @@
   overflow: hidden;
 }
 .placeholder {
-  min-height: var(--grid-row-height, 280px);
+  min-height: var(--grid-row-height, 420px);
   border-radius: 18px;
   border: 2px dashed #8b90a0;
   background: rgba(255, 255, 255, 0.4);
