@@ -423,6 +423,6 @@ const snapshot = {
   station_axes: axes.map(({ label, ...axis }) => axis),
 };
 mkdirSync(dirname(output), { recursive: true });
-writeFileSync(output, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
+writeFileSync(output, `${JSON.stringify(snapshot)}\n`, "utf8");
 console.log(`wrote ${output}`);
 console.log(JSON.stringify({ stations: stations.length, entrances: entrances.length, lines: lines.length, station_axes: axes.length, axis_stations: new Set(axes.map((axis) => axis.station_osm_id)).size, line_refs: new Set(axes.map((axis) => axis.line_ref)).size }, null, 2));
