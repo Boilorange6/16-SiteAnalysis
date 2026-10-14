@@ -193,6 +193,53 @@
   opacity: 0.6;
   cursor: wait;
 }
+.refreshBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  margin: -2px 0 14px;
+  padding: 6px 10px 6px 14px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--ink);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink);
+}
+.refreshBannerError {
+  border-color: #e3c6c1;
+  border-left-color: #8b2f27;
+}
+.refreshCopy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  min-width: 0;
+}
+.refreshMessage,
+.refreshError {
+  margin: 0;
+  line-height: 1.45;
+}
+.refreshMessage {
+  font-weight: 700;
+}
+.refreshError {
+  color: #8b2f27;
+  font-size: 12px;
+  font-weight: 700;
+}
+.refreshButton {
+  flex: none;
+  min-height: 44px;
+  padding-inline: 16px;
+}
+.refreshButton:focus-visible {
+  outline: 2px solid #2f6fdb;
+  outline-offset: 2px;
+}
 .editHint {
   color: var(--muted);
   font-size: 13px;
@@ -634,6 +681,15 @@
   .progressRow {
     margin-top: 0;
     padding-inline: 10px;
+  }
+  .refreshBanner {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 10px 10px;
+  }
+  .refreshButton {
+    width: 100%;
   }
   .grid {
     grid-template-columns: minmax(0, 1fr);

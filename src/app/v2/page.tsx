@@ -44,6 +44,10 @@ type BoardProps = {
   analysisId: string | null;
   scene: Scene | null;
   jobs: JobState[];
+  refreshSummary: RefreshSummary | null;
+  refreshing?: boolean;
+  refreshError: RefreshError | null;
+  onRefresh: () => void;
   /** true면 예시 데이터(실제 분석 전) */
   demo: boolean;
   /** 분석 요청 중 — 모든 타일이 계산 중으로 보인다 */
@@ -68,7 +72,94 @@ type BoardProps = {
   onPresetChange: (preset: PresetId) => void;
 };
 
-type JobState = { code: string; status: "queued" | "running" | "done" | "failed"; enqueuedAt?: string | null; startedAt?: string | null; elapsedMs: number | null };
+type JobState = {
+  code: string;
+  status: "queued" | "running" | "done" | "failed";
+  enqueuedAt?: string | null;
+  startedAt?: string | null;
+  elapsedMs: number | null;
+  error?: string | null;
+  retryable?: boolean;
+};
+type RefreshSummary = { staleTiles: number; canRefresh: boolean };
+type RefreshError = { text: string; retryable: boolean };
+
+type RefreshApiPayload = {
+  refresh?: unknown;
+  refreshSummary?: unknown;
+  staleTiles?: unknown;
+  canRefresh?: unknown;
+};
+
+/** 서버가 갱신 요약을 보내지 않는 기존 응답은 이전 요약을 유지한다. */
+function refreshSummaryFromPayload(payload: RefreshApiPayload, prior: Live | null): RefreshSummary | null {
+  const nested = payload.refreshSummary && typeof payload.refreshSummary === "object" && !Array.isArray(payload.refreshSummary)
+    ? payload.refreshSummary as Record<string, unknown>
+    : payload.refresh && typeof payload.refresh === "object" && !Array.isArray(payload.refresh)
+      ? payload.refresh as Record<string, unknown>
+      : null;
+  // 현재 API는 refresh.staleCodes를, 호환 응답은 staleTiles를 사용할 수 있다.
+  const staleValue = nested?.staleTiles ?? payload.staleTiles ?? nested?.staleCodes;
+  const staleTiles = typeof staleValue === "number" && Number.isFinite(staleValue)
+    ? Math.max(0, Math.floor(staleValue))
+    : Array.isArray(staleValue)
+      ? staleValue.length
+      : null;
+  const canRefreshValue = nested?.canRefresh ?? payload.canRefresh;
+  const canRefresh = typeof canRefreshValue === "boolean" ? canRefreshValue : prior?.refreshSummary?.canRefresh;
+  if (staleTiles === null && canRefresh === undefined) return prior?.refreshSummary ?? null;
+  return {
+    staleTiles: staleTiles ?? prior?.refreshSummary?.staleTiles ?? 0,
+    canRefresh: canRefresh === true,
+  };
+}
+
+const AnalysisRefreshBanner = memo(function AnalysisRefreshBanner({
+  summary,
+  activeJobs,
+  busy,
+  refreshing = false,
+  error,
+  onRefresh,
+}: {
+  summary: RefreshSummary | null;
+  activeJobs: boolean;
+  busy: boolean;
+  refreshing?: boolean;
+  error: RefreshError | null;
+  onRefresh: () => void;
+}) {
+  const staleTiles = summary?.staleTiles ?? 0;
+  const authorized = summary?.canRefresh === true;
+  const visible = staleTiles > 0 && !busy && !activeJobs && (authorized || !!error);
+  if (!visible) return null;
+  const canRetry = authorized && (error?.retryable ?? true);
+  return (
+    <section
+      className={`${styles.refreshBanner} ${error ? styles.refreshBannerError : ""}`}
+      aria-live={error ? "assertive" : "polite"}
+      aria-atomic="true"
+    >
+      <div className={styles.refreshCopy}>
+        <p className={styles.refreshMessage}>
+          {error ? "최신 엔진으로 갱신하지 못했습니다." : `이 분석은 이전 엔진·데이터로 계산됐습니다 (타일 ${staleTiles}개)`}
+        </p>
+        {error && <p className={styles.refreshError}>{error.text}</p>}
+      </div>
+      {canRetry && (
+        <button
+          type="button"
+          className={`${styles.pill} ${styles.refreshButton}`}
+          onClick={onRefresh}
+          disabled={refreshing || busy || activeJobs}
+          aria-busy={refreshing}
+        >
+          {refreshing ? "갱신 중…" : error ? "다시 시도" : "최신 엔진으로 갱신"}
+        </button>
+      )}
+    </section>
+  );
+});
 
 /** 진행 경과 시계는 보드와 카드 트리 밖에서만 갱신한다. */
 const AnalysisProgress = memo(function AnalysisProgress({ jobs, onCancel, canceling = false }: { jobs: JobState[]; onCancel?: () => void; canceling?: boolean }) {
@@ -101,7 +192,7 @@ const AnalysisProgress = memo(function AnalysisProgress({ jobs, onCancel, cancel
 });
 
 /** 타일 보드. 결과가 바뀌면 부모가 key를 바꿔 새로 만든다. */
-function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, controls, onRerun, onCancel, canceling = false, currentProject, initialProjectBoard, onProjectSaved, onProjectDeleted, onOpenProject, onAuthExpired, onWindUploaded, requestedPreset, initialPreset, onPresetChange }: BoardProps) {
+function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSummary, refreshing = false, refreshError, onRefresh, demo, busy, controls, onRerun, onCancel, canceling = false, currentProject, initialProjectBoard, onProjectSaved, onProjectDeleted, onOpenProject, onAuthExpired, onWindUploaded, requestedPreset, initialPreset, onPresetChange }: BoardProps) {
   const [overrides, setOverrides] = useState<Record<string, TileResult>>({});
   const [board, dispatch] = useReducer(boardReducer, baseResults, (results) => initBoard(results, initialPreset));
   const requestedPresetRef = useRef(requestedPreset);
@@ -770,6 +861,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, demo, busy, 
         </header>
 
         {!demo && <AnalysisProgress jobs={jobs} onCancel={onCancel} canceling={canceling} />}
+        {!demo && <AnalysisRefreshBanner summary={refreshSummary} activeJobs={activeJobs} busy={busy} refreshing={refreshing} error={refreshError} onRefresh={onRefresh} />}
 
         {controls}
 
@@ -942,9 +1034,39 @@ async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
 }
 
 type TileState = { code: string; status: TileResult["status"]; revision: string; elapsedMs?: number | null };
-type Live = { analysisId: string; summary: SiteSummary; results: TileResult[]; jobs: JobState[]; tiles: TileState[]; revision: string; scene: Scene | null };
+type Live = { analysisId: string; summary: SiteSummary; results: TileResult[]; jobs: JobState[]; tiles: TileState[]; revision: string; scene: Scene | null; refreshSummary: RefreshSummary | null };
 type Problem = { text: string; login: boolean };
 const POLL_DELAYS_MS = [1000, 2000, 5000] as const;
+
+function refreshErrorForStatus(status: number): RefreshError {
+  switch (status) {
+    case 401:
+      return { text: "로그인이 만료되었습니다. 다시 로그인한 뒤 시도해 주세요.", retryable: true };
+    case 403:
+      return { text: "이 저장 분석을 갱신할 권한이 없습니다.", retryable: false };
+    case 404:
+      return { text: "저장된 분석을 찾지 못했습니다. 프로젝트 목록에서 다시 열어 주세요.", retryable: false };
+    case 409:
+      return { text: "이 분석은 이미 갱신 중이거나 현재 상태에서 갱신할 수 없습니다. 잠시 뒤 다시 시도해 주세요.", retryable: true };
+    case 429:
+      return { text: "갱신 요청이 너무 많습니다. 잠시 뒤 다시 시도해 주세요.", retryable: true };
+    case 500:
+      return { text: "최신 엔진으로 갱신하는 중 서버 오류가 발생했습니다. 잠시 뒤 다시 시도해 주세요.", retryable: true };
+    case 503:
+      return { text: "최신 운영 데이터가 아직 준비되지 않았습니다. 잠시 뒤 다시 시도해 주세요.", retryable: true };
+    default:
+      return { text: "최신 엔진으로 갱신하지 못했습니다. 잠시 뒤 다시 시도해 주세요.", retryable: true };
+  }
+}
+
+function refreshErrorForNetwork(): RefreshError {
+  return { text: "서버에 연결하지 못했습니다. 네트워크를 확인한 뒤 다시 시도해 주세요.", retryable: true };
+}
+
+function refreshErrorForJob(job: JobState): RefreshError {
+  const reason = typeof job.error === "string" && job.error.trim().length > 0 ? ` (${job.error.trim()})` : "";
+  return { text: `타일 ${job.code} 갱신에 실패했습니다${reason}. 다시 시도해 주세요.`, retryable: job.retryable !== false };
+}
 
 const ADDRESS_INPUT_ID = "v2-address-input";
 
@@ -999,9 +1121,11 @@ export default function V2BoardPage() {
   const [currentProject, setCurrentProject] = useState<V2Project | null>(null);
   const [projectBoard, setProjectBoard] = useState<unknown | null>(null);
   const [staleProject, setStaleProject] = useState<V2Project | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<RefreshError | null>(null);
 
   async function load(res: Response, refreshScene = true, update = true, base: Live | null = live, preserveProjectId: string | null = null): Promise<Live | undefined> {
-    const body = (await res.json().catch(() => ({}))) as Partial<Live> & { error?: string };
+    const body = (await res.json().catch(() => ({}))) as Partial<Live> & RefreshApiPayload & { error?: string };
     if (res.status === 401) {
       setProblem({ text: "로그인이 필요합니다.", login: true });
       return undefined;
@@ -1029,6 +1153,7 @@ export default function V2BoardPage() {
       tiles: body.tiles ?? prior?.tiles ?? [],
       revision: body.revision ?? prior?.revision ?? "",
       scene,
+      refreshSummary: refreshSummaryFromPayload(body, prior),
     };
     if (update) {
       setLive(next);
@@ -1044,6 +1169,8 @@ export default function V2BoardPage() {
     if (isRoadAddress(address)) return setProblem({ text: ROAD_ADDRESS_UNSUPPORTED_MESSAGE, login: false });
     setBusy(true);
     setProblem(null);
+    setRefreshing(false);
+    setRefreshError(null);
     if (!restoreProject) {
       setCurrentProject(null);
       setProjectBoard(null);
@@ -1080,6 +1207,55 @@ export default function V2BoardPage() {
     }
   }
 
+  async function refreshCurrentAnalysis() {
+    const current = live;
+    if (!current || busy || activeJobs || refreshing || current.refreshSummary?.canRefresh !== true) return;
+    const id = current.analysisId;
+    setRefreshing(true);
+    setRefreshError(null);
+    try {
+      const response = await apiFetch(`${API}/${encodeURIComponent(id)}/refresh`, { method: "POST" });
+      if (response.status !== 200 && response.status !== 202) {
+        setRefreshError(refreshErrorForStatus(response.status));
+        setRefreshing(false);
+        return;
+      }
+      const accepted = await response.json().catch(() => ({})) as { analysisId?: unknown };
+      if (typeof accepted.analysisId === "string" && accepted.analysisId !== id) {
+        setRefreshError({ text: "갱신 결과가 현재 분석과 달라 반영하지 않았습니다. 다시 시도해 주세요.", retryable: true });
+        setRefreshing(false);
+        return;
+      }
+      // POST가 202를 반환해도 같은 분석 ID의 최신 작업·타일 상태를 즉시 읽는다.
+      const latestResponse = await apiFetch(`${API}/${encodeURIComponent(id)}`);
+      if (!latestResponse.ok) {
+        setRefreshError(refreshErrorForStatus(latestResponse.status));
+        setRefreshing(false);
+        return;
+      }
+      const next = await load(latestResponse, false, true, current, currentProject?.projectId ?? null);
+      if (!next) {
+        setRefreshError({ text: "갱신 상태를 불러오지 못했습니다. 다시 시도해 주세요.", retryable: true });
+        setRefreshing(false);
+        return;
+      }
+      const nextActiveJobs = next.jobs.some((job) => job.status === "queued" || job.status === "running");
+      if (nextActiveJobs) return;
+      const failedJob = next.jobs.find((job) => job.status === "failed");
+      if (failedJob) {
+        setRefreshError(refreshErrorForJob(failedJob));
+      } else if (next.refreshSummary?.staleTiles === 0) {
+        setRefreshError(null);
+      } else {
+        setRefreshError({ text: "갱신 결과가 최신 상태로 반영되지 않았습니다. 다시 시도해 주세요.", retryable: true });
+      }
+      setRefreshing(false);
+    } catch {
+      setRefreshError(refreshErrorForNetwork());
+      setRefreshing(false);
+    }
+  }
+
   async function cancelCurrentAnalysis() {
     if (!live || !activeJobs || canceling) return;
     setCanceling(true);
@@ -1106,6 +1282,8 @@ export default function V2BoardPage() {
     setProjectBoard(null);
     setStaleProject(null);
     setProblem(null);
+    setRefreshing(false);
+    setRefreshError(null);
     setBusy(true);
     history.pushState(null, "", `?project=${encodeURIComponent(projectId)}`);
     try {
@@ -1203,9 +1381,15 @@ export default function V2BoardPage() {
           shouldContinue = currentLive.jobs.some((job) => job.status === "queued" || job.status === "running");
           delayIndex = Math.min(delayIndex + 1, POLL_DELAYS_MS.length - 1);
         } else if (response.ok) {
-          const status = (await response.json()) as { revision: string; tiles: TileState[]; jobs: JobState[] };
+          const status = (await response.json()) as { revision: string; tiles: TileState[]; jobs: JobState[] } & RefreshApiPayload;
           const changedCodes = status.tiles.filter((tile) => currentLive.tiles.find((old) => old.code === tile.code)?.revision !== tile.revision).map((tile) => tile.code);
-          let next: Live = { ...currentLive, revision: status.revision, tiles: status.tiles, jobs: status.jobs };
+          let next: Live = {
+            ...currentLive,
+            revision: status.revision,
+            tiles: status.tiles,
+            jobs: status.jobs,
+            refreshSummary: refreshSummaryFromPayload(status, currentLive),
+          };
           if (changedCodes.length > 0) {
             const resultResponse = await apiFetch(`${API}/${encodeURIComponent(currentLive.analysisId)}?tiles=${encodeURIComponent(changedCodes.join(","))}`);
             const loaded = await load(resultResponse, false, false, currentLive);
@@ -1236,6 +1420,15 @@ export default function V2BoardPage() {
     // load는 렌더마다 새 함수지만, analysisId/jobs 상태가 바뀔 때만 폴링을 재설정한다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live?.analysisId, activeJobs]);
+
+  useEffect(() => {
+    if (!refreshing || !live || activeJobs) return;
+    const failedJob = live.jobs.find((job) => job.status === "failed");
+    if (failedJob) setRefreshError(refreshErrorForJob(failedJob));
+    else if (live.refreshSummary?.staleTiles === 0) setRefreshError(null);
+    else setRefreshError({ text: "갱신 결과가 최신 상태로 반영되지 않았습니다. 다시 시도해 주세요.", retryable: true });
+    setRefreshing(false);
+  }, [activeJobs, live, refreshing]);
 
   // Browser WebGPU uploads update S03 directly; fetch the fresh result once,
   // then the normal job poller continues if S04 was enqueued by the server.
@@ -1388,6 +1581,10 @@ export default function V2BoardPage() {
       scene={live?.scene ?? null}
       demo={!live}
       jobs={live?.jobs ?? []}
+      refreshSummary={live?.refreshSummary ?? null}
+      refreshing={refreshing}
+      refreshError={refreshError}
+      onRefresh={() => void refreshCurrentAnalysis()}
       busy={busy}
       controls={controls}
       onRerun={() => void analyze()}

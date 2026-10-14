@@ -234,7 +234,7 @@ function near(actual, expected, tolerance, message) {
   assert.ok(legacyMonthlyView.map.legend?.some((entry) => entry.label === "월세 거래 지점"), "구형 월세 범례를 보존");
   const legacyDistrict = viewWithLayer(legacyView, "district_monthly");
   assert.equal(legacyDistrict.map.polygons?.length, 0, "polygon이 없는 구형 결과의 행정구역 모드");
-  assert.equal(legacyDistrict.map.emptyMessage, "구버전 저장 결과에는 행정구역 면이 없습니다. 새 분석에서 갱신해 주세요.");
+  assert.equal(legacyDistrict.map.emptyMessage, "구버전 저장 결과에는 행정구역 면이 없습니다. 최신 엔진으로 갱신 버튼을 눌러 주세요.");
 
   // 진짜 0건 모드는 지도 위에서 원인을 구분할 수 있는 빈 상태를 제공한다.
   const zeroMonthlyTile = parseTileResult({

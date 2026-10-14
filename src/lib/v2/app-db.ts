@@ -72,7 +72,8 @@ export function initV2AppSchema(db: Db): void {
       user_id TEXT,
       status TEXT NOT NULL CHECK (status IN ('running','complete','failed')),
       created_at TEXT NOT NULL,
-      cancelled_at TEXT
+      cancelled_at TEXT,
+      refresh_requested_at TEXT
     );
 
     CREATE TABLE IF NOT EXISTS analysis_scene (
@@ -110,6 +111,9 @@ export function initV2AppSchema(db: Db): void {
   }
   if (!analysisColumns.some((column) => column.name === "cancelled_at")) {
     db.exec("ALTER TABLE analysis_run ADD COLUMN cancelled_at TEXT");
+  }
+  if (!analysisColumns.some((column) => column.name === "refresh_requested_at")) {
+    db.exec("ALTER TABLE analysis_run ADD COLUMN refresh_requested_at TEXT");
   }
   const savedProjectColumns = db.prepare("PRAGMA table_info(saved_project)").all() as Array<{ name: string }>;
   if (!savedProjectColumns.some((column) => column.name === "user_id")) {
@@ -197,16 +201,59 @@ export function enqueueAnalysisJobs(db: Db, analysisId: string, codes: readonly 
   enqueue(codes);
 }
 
+export type RefreshAnalysisRunResult =
+  | { ok: true; analysisId: string; queued: string[] }
+  | { ok: false; reason: "not_found" | "active" };
+
+/**
+ * 같은 analysisId의 manifest/엔진 메타데이터를 교체하고 stale job을 재큐잉한다.
+ * 소유권과 stale 판정은 API 계층에서 처리하지만, active 확인과 갱신은 한 트랜잭션으로 묶는다.
+ */
+export function refreshAnalysisRun(db: Db, analysisId: string, manifestHash: string, engineVersion: string, codes: readonly string[]): RefreshAnalysisRunResult {
+  ensureAnalysisJobTable(db);
+  return db.transaction(() => {
+    const row = db.prepare("SELECT status, cancelled_at FROM analysis_run WHERE analysis_id = ?").get(analysisId) as { status: string; cancelled_at: string | null } | undefined;
+    if (!row) return { ok: false as const, reason: "not_found" as const };
+    const activeJobs = Number(db.prepare("SELECT COUNT(*) FROM analysis_job WHERE analysis_id = ? AND status IN ('queued','running')").pluck().get(analysisId));
+    if (row.status === "running" || activeJobs > 0) return { ok: false as const, reason: "active" as const };
+
+    const queued = [...codes];
+    db.prepare(`UPDATE analysis_run
+      SET manifest_hash = ?, engine_version = ?, status = ?, cancelled_at = NULL, refresh_requested_at = ?
+      WHERE analysis_id = ?`)
+      .run(manifestHash, engineVersion, queued.length > 0 ? "running" : "complete", now(), analysisId);
+
+    if (queued.length > 0) {
+      const upsert = db.prepare(`
+        INSERT INTO analysis_job (analysis_id, tile_code, status, priority, enqueued_at)
+        VALUES (?, ?, 'queued', ?, ?)
+        ON CONFLICT(analysis_id, tile_code) DO UPDATE SET
+          status = 'queued',
+          priority = excluded.priority,
+          enqueued_at = excluded.enqueued_at,
+          started_at = NULL,
+          finished_at = NULL,
+          elapsed_ms = NULL,
+          error = NULL,
+          cancel_requested_at = NULL
+      `);
+      const at = now();
+      queued.forEach((code, priority) => upsert.run(analysisId, code, priority, at));
+    }
+    return { ok: true as const, analysisId, queued };
+  })();
+}
+
 export function finishAnalysisRun(db: Db, analysisId: string, status: "complete" | "failed"): void {
   db.prepare("UPDATE analysis_run SET status = ? WHERE analysis_id = ?").run(status, analysisId);
 }
 
 interface RunRow {
   analysis_id: string; address: string; center_lng: number; center_lat: number; radius_m: number;
-  analysis_date: string; manifest_hash: string; engine_version: string; parameters_json: string; user_id: string | null; status: string; cancelled_at: string | null;
+  analysis_date: string; manifest_hash: string; engine_version: string; parameters_json: string; user_id: string | null; status: string; cancelled_at: string | null; refresh_requested_at: string | null;
 }
 
-export function getAnalysisRun(db: Db, analysisId: string): (AnalysisRunInput & { status: string; cancelledAt: string | null }) | null {
+export function getAnalysisRun(db: Db, analysisId: string): (AnalysisRunInput & { status: string; cancelledAt: string | null; refreshRequestedAt: string | null }) | null {
   const row = db.prepare("SELECT * FROM analysis_run WHERE analysis_id = ?").get(analysisId) as RunRow | undefined;
   if (!row) return null;
   return {
@@ -221,6 +268,7 @@ export function getAnalysisRun(db: Db, analysisId: string): (AnalysisRunInput & 
     userId: row.user_id === null ? null : row.user_id,
     status: row.cancelled_at === null ? row.status : "cancelled",
     cancelledAt: row.cancelled_at,
+    refreshRequestedAt: row.refresh_requested_at,
   };
 }
 
