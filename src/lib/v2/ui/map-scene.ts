@@ -692,7 +692,8 @@ function buildRailScene(args: {
       if (!candidate) continue;
       const angle = railAxisAngle([candidate.a, candidate.b]);
       const box = railTextBox(candidate.center[0] - textWidth / 2, candidate.center[1] - fontSize * 0.7, textWidth, fontSize * 1.35);
-      routeLabels.push(railTextPlacement(route.label, box, fontSize, railTextColor(route.color), "route", angle));
+      // 노선 위 글자는 흰 헤일로 위에 놓이므로 노선색과 무관하게 잉크색
+      routeLabels.push(railTextPlacement(route.label, box, fontSize, "#172033", "route", angle));
       candidate.route.labelPlacement = routeLabels.at(-1)!;
     }
   }

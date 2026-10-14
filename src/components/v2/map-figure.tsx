@@ -989,8 +989,8 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
                         </g>
                       ) : it.symbol === "rail-axis" ? (
                         <g data-legend-symbol="rail-axis" aria-hidden="true">
-                          <line x1={panelX + pad * 1.8 + it.x - 2 * u} y1={ly + pad * 0.7 + ri * rowH + rowH / 2} x2={panelX + pad * 1.8 + it.x + 10 * u} y2={ly + pad * 0.7 + ri * rowH + rowH / 2} stroke="#172033" strokeWidth={6 * u} strokeLinecap="round" />
-                          <line x1={panelX + pad * 1.8 + it.x - 2 * u} y1={ly + pad * 0.7 + ri * rowH + rowH / 2} x2={panelX + pad * 1.8 + it.x + 10 * u} y2={ly + pad * 0.7 + ri * rowH + rowH / 2} stroke={it.color} strokeWidth={4 * u} strokeLinecap="round" />
+                          <line x1={panelX + pad * 1.8 + it.x + 0.5 * u} y1={ly + pad * 0.7 + ri * rowH + rowH / 2} x2={panelX + pad * 1.8 + it.x + 7.5 * u} y2={ly + pad * 0.7 + ri * rowH + rowH / 2} stroke="#172033" strokeWidth={6 * u} strokeLinecap="round" />
+                          <line x1={panelX + pad * 1.8 + it.x + 0.5 * u} y1={ly + pad * 0.7 + ri * rowH + rowH / 2} x2={panelX + pad * 1.8 + it.x + 7.5 * u} y2={ly + pad * 0.7 + ri * rowH + rowH / 2} stroke={it.color} strokeWidth={4 * u} strokeLinecap="round" />
                         </g>
                       ) : it.symbol === "rail-exit" ? (
                         <circle data-legend-symbol="rail-exit" cx={panelX + pad * 1.8 + it.x + 4 * u} cy={ly + pad * 0.7 + ri * rowH + rowH / 2} r={4.8 * u} fill="#FFD200" stroke="#172033" strokeWidth={0.8 * u} />

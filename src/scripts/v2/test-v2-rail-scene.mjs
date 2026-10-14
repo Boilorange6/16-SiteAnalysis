@@ -187,6 +187,9 @@ for (let index = 0; index < detailScene.rail.stationLabels.length; index += 1) {
     assert.equal(boxOverlaps(detailScene.rail.stationLabels[index].box, detailScene.rail.stationLabels[otherIndex].box), false, "station label boxes must not overlap");
   }
 }
+// 노선 위 글자는 흰 헤일로 위라 진한 노선색(7호선 등)에서도 흰 글자가 되면 안 된다.
+assert.ok(detailScene.rail.routeLabels.length > 0, "detail scene should place a route label");
+for (const label of detailScene.rail.routeLabels) assert.equal(label.color, "#172033", `${label.text} route label must use ink on white halo`);
 
 const compactScene = sceneFor({ compact: true });
 assert.ok(compactScene.rail.routes.length > 0, "compact scene should retain rail route bars");
