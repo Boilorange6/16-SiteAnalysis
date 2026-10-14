@@ -95,11 +95,11 @@ if (existsSync("public/data/osm-subway.json") && existsSync("public/data/rail/pl
   console.log("real files:", stats.map((s) => `${s.sourceId} read ${s.received} ok ${s.accepted} rej ${s.rejected}`).join(" · "));
   assert.ok(stats[0].accepted > 600 && stats[2].accepted > 100);
   const axesFor = (stationName) => snapshot.station_axes.filter((axis) => axis.station_name === stationName);
-  assert.ok(axesFor("판교").some((axis) => /경강선/u.test(axis.line_name)), "판교역 경강선 역축");
+  assert.ok(axesFor("판교").some((axis) => canonicalRailLineLabel(axis.line_ref, axis.line_name) === "경강"), "판교역 경강선 역축");
   assert.ok(axesFor("성남").some((axis) => axis.line_ref === "GTX-A" || /GTX-A|광역급행/u.test(axis.line_name)), "성남역 GTX-A 역축");
   assert.ok(axesFor("고속터미널").some((axis) => /9호선/u.test(axis.line_name)), "고속터미널 9호선 역축");
   assert.ok(axesFor("왕십리").some((axis) => /경의.?중앙|수인.?분당/u.test(axis.line_name)), "왕십리 광역철도 역축");
-  assert.ok(axesFor("신림").some((axis) => /신림선/u.test(axis.line_name)), "신림선 역축");
+  assert.ok(axesFor("신림").some((axis) => canonicalRailLineLabel(axis.line_ref, axis.line_name) === "신림"), "신림선 역축");
   const publicLineLabels = new Set(
     snapshot.lines
       .filter((line) => publicRailLine(line.line_ref, line.line_name))

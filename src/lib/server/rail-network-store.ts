@@ -64,7 +64,7 @@ type RailQuery = { readonly lat: number; readonly lng: number; readonly radiusM:
 
 const DEFAULT_DATA_PATH = join(process.cwd(), "public", "data", "osm-subway.json");
 const DEFAULT_PLANNED_PATH = join(process.cwd(), "public", "data", "rail", "planned.json");
-const SNAPSHOT_VERSION = "2026-10-14-osm-overpass-a01-v2";
+const SNAPSHOT_VERSION = "2026-10-14-osm-overpass-a01-v3";
 
 let cachedSnapshot: LegacySnapshot | null = null;
 let cachedPlanned: readonly PlannedRailProject[] | null = null;

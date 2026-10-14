@@ -34,6 +34,9 @@ const BOXES = [
 const HEX = /^#[0-9a-f]{6}$/iu;
 const ROUTE_STOP_ROLES = new Set(["stop", "platform", "stop_entry_only", "platform_entry_only", "station"]);
 const METERS_PER_LAT = 111_320;
+const MAX_AXIS_PROJECTION_DISTANCE_M = 400;
+const AXIS_MERGE_DISTANCE_M = 30;
+const AXIS_MERGE_ANGLE_DEG = 15;
 
 function arg(name, fallback) {
   const index = process.argv.indexOf(`--${name}`);
@@ -182,8 +185,11 @@ function routeStopNodes(relation, nodesById) {
   const seen = new Set();
   const stops = [];
   for (const member of relation.members ?? []) {
-    if (member.type !== "node" || !ROUTE_STOP_ROLES.has(member.role ?? "")) continue;
+    if (member.type !== "node") continue;
     const node = nodesById.get(String(member.ref));
+    const role = member.role ?? "";
+    const isStopPosition = tag(node, "public_transport") === "stop_position" || tag(node, "railway") === "stop";
+    if (!ROUTE_STOP_ROLES.has(role) && !isStopPosition) continue;
     const name = node ? nameOf(node) : null;
     const point = node ? pointOf(node) : null;
     if (!node || !name || !point || seen.has(String(member.ref))) continue;
@@ -212,10 +218,14 @@ function projectPoint(point, start, end) {
     t,
     distance: Math.hypot(px - x, py - y),
     direction: { x: dx, y: dy },
+    point: {
+      lng: start[0] + (end[0] - start[0]) * t,
+      lat: start[1] + (end[1] - start[1]) * t,
+    },
   };
 }
 
-function axisEndpoints(point, segments) {
+function nearestProjection(point, segments) {
   let best = null;
   for (const segment of segments) {
     for (let index = 1; index < segment.length; index += 1) {
@@ -224,25 +234,41 @@ function axisEndpoints(point, segments) {
       if (!best || projected.distance < best.distance) best = projected;
     }
   }
-  if (!best || best.distance > 450) return null;
-  const length = Math.hypot(best.direction.x, best.direction.y);
+  return best;
+}
+
+function axisEndpoints(center, direction) {
+  if (!direction || Math.hypot(direction.x, direction.y) < 1) return null;
+  const length = Math.hypot(direction.x, direction.y);
   const halfLengthM = 92;
-  const dxLng = (best.direction.x / length) * halfLengthM / (Math.cos(point.lat * Math.PI / 180) * METERS_PER_LAT);
-  const dyLat = (best.direction.y / length) * halfLengthM / METERS_PER_LAT;
+  const dxLng = (direction.x / length) * halfLengthM / (Math.cos(center.lat * Math.PI / 180) * METERS_PER_LAT);
+  const dyLat = (direction.y / length) * halfLengthM / METERS_PER_LAT;
   return [
-    [point.lng - dxLng, point.lat - dyLat],
-    [point.lng + dxLng, point.lat + dyLat],
+    [center.lng - dxLng, center.lat - dyLat],
+    [center.lng + dxLng, center.lat + dyLat],
   ];
 }
 
+function axisGeometry(station, anchor, segments) {
+  const projection = nearestProjection(anchor, segments);
+  if (!projection) return null;
+  const stationDistance = distanceM(station, projection.point);
+  const useProjectedCenter = stationDistance <= MAX_AXIS_PROJECTION_DISTANCE_M;
+  const center = useProjectedCenter ? projection.point : station;
+  const endpoints = axisEndpoints(center, projection.direction);
+  if (!endpoints) return null;
+  return {
+    center,
+    stationDistance,
+    anchorDistance: projection.distance,
+    direction: projection.direction,
+    endpoints,
+    anomaly: !useProjectedCenter,
+  };
+}
+
 function nearestSegmentDistance(point, segments) {
-  let best = Infinity;
-  for (const segment of segments) {
-    for (let index = 1; index < segment.length; index += 1) {
-      best = Math.min(best, projectPoint(point, segment[index - 1], segment[index]).distance);
-    }
-  }
-  return best;
+  return nearestProjection(point, segments)?.distance ?? Infinity;
 }
 
 function lineCenter(segments) {
@@ -254,11 +280,16 @@ function lineCenter(segments) {
 
 function nearestStation(stations, stop, maxDistanceM = 650) {
   const key = stationKey(stop.name);
-  return stations
+  const exact = stations
     .filter((station) => stationKey(station.station_name) === key)
     .map((station) => ({ station, distance: distanceM(station, stop) }))
     .filter(({ distance }) => distance <= maxDistanceM)
     .sort((a, b) => (b.station._priority ?? 0) - (a.station._priority ?? 0) || a.distance - b.distance || a.station.osm_id.localeCompare(b.station.osm_id))[0]?.station ?? null;
+  if (exact) return exact;
+  return stations
+    .map((station) => ({ station, distance: distanceM(station, stop) }))
+    .filter(({ distance }) => distance <= MAX_AXIS_PROJECTION_DISTANCE_M)
+    .sort((a, b) => a.distance - b.distance || (b.station._priority ?? 0) - (a.station._priority ?? 0) || a.station.osm_id.localeCompare(b.station.osm_id))[0]?.station ?? null;
 }
 
 function isEntrance(node) {
@@ -310,16 +341,24 @@ const publicRelations = relations
 const stationCandidates = nodes.map(stationCandidate).filter(Boolean);
 const stationMap = new Map();
 const axes = [];
+const axisProjectionAnomalies = [];
 const lines = [];
 const lineSeen = new Set();
-const axisSeen = new Set();
 
-function addAxis(station, ref, name, color, segments, label, distance = 0) {
-  const endpoints = axisEndpoints(station, segments);
-  if (!endpoints) return;
-  const key = `${station.osm_id}|${ref}|${name}`;
-  if (axisSeen.has(key)) return;
-  axisSeen.add(key);
+function addAxis(station, ref, name, color, segments, label, anchor = station, relationId = null) {
+  const geometry = axisGeometry(station, anchor, segments);
+  if (!geometry) return;
+  if (geometry.anomaly) {
+    axisProjectionAnomalies.push({
+      station_osm_id: station.osm_id,
+      station_name: station.station_name,
+      line_ref: ref,
+      line_name: label,
+      relation_id: relationId ? `relation/${relationId}` : null,
+      station_distance_m: Math.round(geometry.stationDistance * 10) / 10,
+      anchor_distance_m: Math.round(geometry.anchorDistance * 10) / 10,
+    });
+  }
   stationMap.set(station.osm_id, station);
   axes.push({
     station_osm_id: station.osm_id,
@@ -327,11 +366,12 @@ function addAxis(station, ref, name, color, segments, label, distance = 0) {
     line_ref: ref,
     line_name: name,
     color,
-    lat: station.lat,
-    lng: station.lng,
-    distance_m: Math.round(distance * 10) / 10,
-    endpoints,
+    lat: geometry.center.lat,
+    lng: geometry.center.lng,
+    distance_m: Math.round(geometry.stationDistance * 10) / 10,
+    endpoints: geometry.endpoints,
     label,
+    _direction: geometry.direction,
   });
 }
 
@@ -359,9 +399,18 @@ for (const { relation, ref, name, label } of publicRelations) {
     if (!station) {
       station = { osm_id: stop.id, station_name: stop.name, lat: stop.lat, lng: stop.lng, _priority: 0, _ref: null };
     }
-    const endpoints = axisEndpoints(station, segments);
-    if (!endpoints) continue;
-    addAxis({ ...station, _ref: station._ref ?? null }, ref, name, color, segments, label, distanceM(station, stop));
+    addAxis({ ...station, _ref: station._ref ?? null }, ref, name, color, segments, label, stop, relation.id);
+  }
+  // 일부 relation은 선형만 있고 stop/platform 멤버를 아직 갖지 않는다. 이
+  // 경우에만 선형에서 400m 이내인 역 노드를 보수적으로 fallback으로 쓴다.
+  // stop 멤버가 있는 relation에서 모든 주변 역을 끌어오르면 환승역·병렬
+  // 노선을 잘못 연결할 수 있으므로 적용 범위를 넓히지 않는다.
+  if (stops.length === 0) {
+    for (const candidate of stationCandidates) {
+      const distance = nearestSegmentDistance(candidate, segments);
+      if (distance > MAX_AXIS_PROJECTION_DISTANCE_M) continue;
+      addAxis(candidate, ref, name, color, segments, label, candidate, relation.id);
+    }
   }
   // 일부 GTX-A 관계는 OSM route stop member가 구성·성남 등 전체 역을
   // 아직 포함하지 않는다. 역 후보가 선형에 실제로 붙어 있을 때만 보강해,
@@ -378,10 +427,58 @@ for (const { relation, ref, name, label } of publicRelations) {
       }
     }
     for (const { candidate, distance } of nearby.values()) {
-      addAxis(candidate, ref, name, color, segments, label, distance);
+      addAxis(candidate, ref, name, color, segments, label, candidate, relation.id);
     }
   }
 }
+
+function axisDirectionDifferenceDeg(left, right) {
+  const vector = (axis) => {
+    const [start, end] = axis.endpoints;
+    const scale = Math.cos(axis.lat * Math.PI / 180) * METERS_PER_LAT;
+    return {
+      x: (end[0] - start[0]) * scale,
+      y: (end[1] - start[1]) * METERS_PER_LAT,
+    };
+  };
+  const a = vector(left);
+  const b = vector(right);
+  const denominator = Math.hypot(a.x, a.y) * Math.hypot(b.x, b.y);
+  if (denominator === 0) return 180;
+  const cosine = Math.max(-1, Math.min(1, Math.abs((a.x * b.x + a.y * b.y) / denominator)));
+  return Math.acos(cosine) * 180 / Math.PI;
+}
+
+function mergeStationAxes(rawAxes) {
+  const merged = [];
+  const groups = new Map();
+  const sorted = [...rawAxes].sort((a, b) =>
+    a.station_name.localeCompare(b.station_name, "ko")
+    || a.line_ref.localeCompare(b.line_ref)
+    || a.line_name.localeCompare(b.line_name, "ko")
+    || a.lat - b.lat
+    || a.lng - b.lng,
+  );
+  for (const axis of sorted) {
+    const groupKey = axis.line_ref ? `${stationKey(axis.station_name)}|${axis.line_ref}` : null;
+    const candidates = groupKey ? (groups.get(groupKey) ?? []) : [];
+    const existing = candidates.find((candidate) =>
+      distanceM(candidate, axis) < AXIS_MERGE_DISTANCE_M
+      && axisDirectionDifferenceDeg(candidate, axis) < AXIS_MERGE_ANGLE_DEG,
+    );
+    if (!existing) {
+      const copy = { ...axis, _mergedCount: 1 };
+      merged.push(copy);
+      if (groupKey) groups.set(groupKey, [...candidates, copy]);
+      continue;
+    }
+    existing._mergedCount += 1;
+    existing.line_name = existing.label || existing.line_name;
+  }
+  return merged;
+}
+
+const mergedAxes = mergeStationAxes(axes);
 
 const stations = [...stationMap.values()]
   .map(({ osm_id, station_name, lat, lng }) => ({ osm_id, station_name, lat, lng }))
@@ -434,7 +531,7 @@ for (const node of nodes.filter(isEntrance)) {
   });
 }
 
-axes.sort((a, b) => a.station_name.localeCompare(b.station_name, "ko") || a.line_ref.localeCompare(b.line_ref) || a.line_name.localeCompare(b.line_name));
+mergedAxes.sort((a, b) => a.station_name.localeCompare(b.station_name, "ko") || a.line_ref.localeCompare(b.line_ref) || a.line_name.localeCompare(b.line_name));
 lines.sort((a, b) => canonicalRailLineLabel(a.line_ref, a.line_name).localeCompare(canonicalRailLineLabel(b.line_ref, b.line_name), "ko") || a.line_name.localeCompare(b.line_name, "ko") || a.osm_id.localeCompare(b.osm_id));
 entrances.sort((a, b) => a.station_name.localeCompare(b.station_name, "ko") || (a.entrance_ref ?? "").localeCompare(b.entrance_ref ?? "", "ko") || a.osm_id.localeCompare(b.osm_id));
 
@@ -447,9 +544,19 @@ const snapshot = {
   stations,
   entrances,
   lines,
-  station_axes: axes.map(({ label, ...axis }) => axis),
+  station_axes: mergedAxes.map(({ label, _direction, _mergedCount, ...axis }) => axis),
 };
 mkdirSync(dirname(output), { recursive: true });
 writeFileSync(output, `${JSON.stringify(snapshot)}\n`, "utf8");
 console.log(`wrote ${output}`);
-console.log(JSON.stringify({ stations: stations.length, entrances: entrances.length, lines: lines.length, station_axes: axes.length, axis_stations: new Set(axes.map((axis) => axis.station_osm_id)).size, line_refs: new Set(axes.map((axis) => axis.line_ref)).size }, null, 2));
+console.log(JSON.stringify({
+  stations: stations.length,
+  entrances: entrances.length,
+  lines: lines.length,
+  station_axes_before_merge: axes.length,
+  station_axes: mergedAxes.length,
+  merged_axes: axes.length - mergedAxes.length,
+  axis_stations: new Set(mergedAxes.map((axis) => axis.station_osm_id)).size,
+  line_refs: new Set(mergedAxes.map((axis) => axis.line_ref)).size,
+  axis_projection_anomalies: axisProjectionAnomalies,
+}, null, 2));
