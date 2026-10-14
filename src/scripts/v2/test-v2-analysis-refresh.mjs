@@ -53,6 +53,12 @@ try {
   assert.ok(!currentPending.body.refresh.staleCodes.includes("S03"), "current pending result is not an old engine/data result");
   appDb.prepare("UPDATE tile_result SET status = ?, result_json = ? WHERE analysis_id = ? AND tile_code = 'S03'").run(pendingS03.status, pendingS03.result_json, analysisId);
 
+  // 현재 key로 저장된 실패(예: 지역 데이터 없음)는 갱신해도 같으므로 안내 띠를 띄우지 않는다.
+  const failedA03 = rowFor(analysisId, "A03");
+  appDb.prepare("UPDATE tile_result SET status = 'failed' WHERE analysis_id = ? AND tile_code = 'A03'").run(analysisId);
+  assert.ok(!getAnalysis(appDb, analysisId, 17, { dataDir }).body.refresh.staleCodes.includes("A03"), "current-key failure is not stale");
+  appDb.prepare("UPDATE tile_result SET status = ? WHERE analysis_id = ? AND tile_code = 'A03'").run(failedA03.status, analysisId);
+
   await A.saveProject(appDb, dataDir, {
     projectId: "refresh-board",
     name: "보존 보드",

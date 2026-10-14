@@ -55,8 +55,10 @@ type StatusJob = Pick<JobInfo, "code" | "status" | "elapsedMs" | "error" | "retr
 
 // `pending` can be a current, intentional result (S03 waits for the browser wind
 // case); it is not an old engine/data result once its current cache key is saved.
-// Failed/cancelled rows, by contrast, always need another attempt.
-const STALE_RESULT_STATUSES = new Set(["failed", "cancelled", "running"]);
+// Cancelled/running rows always need another attempt. A failed row saved under the
+// current cache key would fail the same way again (e.g. no data for the region), so it
+// is left to the per-tile retry UI; a failed refresh keeps its old key and stays stale.
+const STALE_RESULT_STATUSES = new Set(["cancelled", "running"]);
 
 export type AnalysisRefreshTile = {
   code: string;
