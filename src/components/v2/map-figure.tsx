@@ -1,14 +1,13 @@
 import { memo, useCallback, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, RASTER_STYLES, type MapModel, type RasterStyle } from "@/lib/v2/ui/map-layers";
-import { automaticLabelText, badgeTextColor, labelBoxesOverlap, legacyLabelPriority, mapLabelContent, mapLabelText as formatMapLabelText, selectAutomaticLabels, type MapLabelKind } from "@/lib/v2/ui/map-labels";
+import { badgeTextColor, mapLabelText as formatMapLabelText } from "@/lib/v2/ui/map-labels";
 import { applyView, BASEMAP_ATTRIBUTION, BASEMAP_STACK, framedViewport, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, worldPx, type BasemapChoice, type MapView, type Viewport } from "@/lib/v2/ui/map-projection";
 import { rasterAffine, rasterLegendColor, rasterLegendEntries, resolveRasterStyle } from "@/lib/v2/ui/raster-image";
 import type { MapFeature, MapLine, MapPolygon, RasterRef } from "@/lib/v2/tile-result";
 import { maxOf, minOf } from "@/lib/v2/extent";
 import { isSiteParcelLayer } from "@/lib/v2/ui/site-parcel";
 import { calloutFrame, layoutCallouts, PX, PX_NARROW, type Placed } from "@/lib/v2/ui/callout-layout";
-import { tileClientModuleFor } from "@/lib/v2/tile/client";
-import { buildMapScene, mapCalloutTextLayout, mapElementKey, mapFeatureKey, mapLabelEntries, mapTextWidth, type MapCalloutTextLayout, type MapLabelEntry, type MapSceneBox, type MapSceneLabel, type MapSceneLabelPlacement } from "@/lib/v2/ui/map-scene";
+import { buildMapScene, mapCalloutTextLayout, mapElementKey, mapFeatureKey, mapLabelEntries, mapTextWidth, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, type MapCalloutTextLayout, type MapSceneLabel } from "@/lib/v2/ui/map-scene";
 
 export { mapCalloutTextLayout, mapFeatureKey, mapLabelEntries, mapLabelText } from "@/lib/v2/ui/map-scene";
 
@@ -562,104 +561,9 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
   const siteMode = scene.siteMode;
   const siteBounds = scene.siteBounds;
 
-  const inFrame = (point: readonly [number, number]): boolean => point[0] >= 0 && point[0] <= W && point[1] >= 0 && point[1] <= H;
-  const segmentAnchor = (a: readonly [number, number], b: readonly [number, number]): [number, number] | null => {
-    const ts = [0, 1];
-    const dx = b[0] - a[0];
-    const dy = b[1] - a[1];
-    if (dx !== 0) { ts.push((0 - a[0]) / dx, (W - a[0]) / dx); }
-    if (dy !== 0) { ts.push((0 - a[1]) / dy, (H - a[1]) / dy); }
-    const visible = ts.filter((t) => t >= 0 && t <= 1).map((t) => [a[0] + dx * t, a[1] + dy * t] as [number, number]).filter(inFrame);
-    if (visible.length === 0) return null;
-    const first = visible[0]!;
-    const last = visible.at(-1)!;
-    return [(first[0] + last[0]) / 2, (first[1] + last[1]) / 2];
-  };
-  const visibleAnchor = (points: readonly (readonly [number, number])[], fallback: readonly [number, number]): [number, number] | null => {
-    const visible = points.filter(inFrame);
-    if (visible.length > 0) return visible[Math.floor(visible.length / 2)] as [number, number];
-    for (let index = 1; index < points.length; index += 1) {
-      const anchor = segmentAnchor(points[index - 1]!, points[index]!);
-      if (anchor) return anchor;
-    }
-    // A polygon can contain the viewport center even when none of its vertices
-    // is visible. Its center is still the most useful label anchor.
-    if (inFrame(fallback)) return fallback as [number, number];
-    return null;
-  };
-  const boxes: Box[] = [...scene.occupiedBoxes];
-
-  type ScreenLabel = MapLabelEntry & {
-    p: [number, number];
-    radius: number;
-    small: boolean;
-    explicit: boolean;
-    highlighted: boolean;
-    pick: MapFigureElementPick;
-  };
-  const labelEntriesByKey = new Map(mapLabelEntries(model).map((entry) => [entry.key, entry]));
-  const legacyScreenLabels: ScreenLabel[] = [
-    ...drawn.flatMap((d) => {
-      if (!inFrame(d.p)) return [];
-      const key = mapFeatureKey(d.f.layer, d.f.fid, d.index);
-      const base = labelEntriesByKey.get(key);
-      if (!base) return [];
-      return [{
-      ...base,
-      autoText: automaticLabelText(d.f.layer, "feature", d.f, isLayerHighlighted(d.f.layer) && (!!d.f.highlight || d.selected)),
-      labelPriority: legacyLabelPriority("feature", d.f, isLayerHighlighted(d.f.layer) && (!!d.f.highlight || d.selected)) ?? 0,
-      order: d.index,
-      p: d.p,
-      radius: radiusOf(d.f),
-      small: false,
-      explicit: !!automaticLabelText(d.f.layer, "feature", d.f),
-      highlighted: isLayerHighlighted(d.f.layer) && (!!d.f.highlight || d.selected),
-      pick: { fid: d.f.fid, lng: d.f.lng, lat: d.f.lat, kind: "feature" as const, key },
-      }];
-    }),
-    ...polygons.flatMap((d) => {
-      const anchor = visibleAnchor(d.rings.flat(), d.center);
-      if (!anchor) return [];
-      const key = mapElementKey("polygon", d.polygon.layer, d.polygon.fid, d.index);
-      const base = labelEntriesByKey.get(key);
-      if (!base) return [];
-      return [{
-      ...base,
-      autoText: automaticLabelText(d.polygon.layer, "polygon", d.polygon, isLayerHighlighted(d.polygon.layer) && highlightActive),
-      labelPriority: legacyLabelPriority("polygon", d.polygon, isLayerHighlighted(d.polygon.layer) && highlightActive) ?? 0,
-      order: model.features.length + d.index,
-      p: anchor,
-      radius: 0,
-      small: false,
-      explicit: !!automaticLabelText(d.polygon.layer, "polygon", d.polygon),
-      highlighted: isLayerHighlighted(d.polygon.layer) && highlightActive,
-      pick: { fid: d.polygon.fid, ...(() => { const [lng, lat] = centerOf(d.polygon.rings[0] ?? []); return { lng, lat }; })(), kind: "polygon" as const, key },
-      }];
-    }),
-    ...linePaths.flatMap((d): ScreenLabel[] => {
-      const center = visibleAnchor(d.points, d.points[Math.floor(d.points.length / 2)] ?? [cx, cy]);
-      if (!center) return [];
-      const [lng, lat] = centerOf(d.l.points);
-      const key = mapElementKey("line", d.l.layer, d.l.fid, d.index);
-      const base = labelEntriesByKey.get(key);
-      if (!base) return [];
-      return [{
-        ...base,
-        autoText: automaticLabelText(d.l.layer, "line", d.l, isLayerHighlighted(d.l.layer) && highlightActive),
-        labelPriority: legacyLabelPriority("line", d.l, isLayerHighlighted(d.l.layer) && highlightActive) ?? 0,
-        order: model.features.length + (model.polygons ?? []).length + d.index,
-        p: center as [number, number],
-        radius: 0,
-        small: true,
-        explicit: !!automaticLabelText(d.l.layer, "line", d.l),
-        highlighted: isLayerHighlighted(d.l.layer) && highlightActive,
-        pick: { fid: d.l.fid, lng, lat, kind: "line" as const, key },
-      }];
-    }),
-  ];
+  type ScreenLabel = MapSceneLabel;
   const screenLabels: ScreenLabel[] = scene.labels;
   const labelByKey = new Map(screenLabels.map((entry) => [entry.key, entry]));
-  const labelCollisionGap = 3 * u;
   const calloutLabelFs = Math.max(11, fs);
   const calloutTextLeft = 8 * u;
   const calloutTextRight = 4 * u;
@@ -760,86 +664,6 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
       </g>
     );
   };
-  const legacyLabels: ReactNode[] = [];
-  let legacyHoverLabelPlacement: MapCalloutPlacement | null = null;
-  let legacyHoverLabelNode: ReactNode = null;
-  if (!bare) {
-    const pinnedLabels = pinnedKeys.map((key) => labelByKey.get(key)).filter((entry): entry is ScreenLabel => !!entry);
-    const pinnedSet = new Set(pinnedLabels.map((entry) => entry.key));
-    const hoverLabel = hoverKey && !pinned.has(hoverKey) ? labelByKey.get(hoverKey) : undefined;
-    const automatic = showAutomaticLabels && (model.tileCode ? tileClientModuleFor(model.tileCode)?.autoLabels !== false : true)
-      ? selectAutomaticLabels(screenLabels).filter((entry) => !pinnedSet.has(entry.key) && entry.key !== hoverLabel?.key)
-      : [];
-    const candidates = [
-      ...pinnedLabels.map((entry) => ({ entry, variant: "fixed" as const, rank: -2 })),
-      ...(hoverLabel ? [{ entry: hoverLabel, variant: "hover" as const, rank: -1 }] : []),
-      ...automatic.map((entry) => ({ entry, variant: "auto" as const, rank: 2 - (entry.labelPriority ?? 0) })),
-    ];
-    const candidateLayouts = candidates.map(({ entry, variant, rank }) => {
-      const fontSize = variant === "auto" ? Math.max(9, entry.small ? fs * 0.9 : fs) : calloutLabelFs;
-      const text = mapCalloutTextLayout(entry, fontSize, calloutFrameModel.cardW, calloutTextLeft, calloutTextRight, calloutPadY);
-      return { entry, variant, rank, text };
-    });
-    const layout = layoutCallouts(calloutFrameModel, candidateLayouts.map(({ entry, rank, text }) => ({ id: entry.key, x: entry.p[0], y: entry.p[1], rank, width: text.width, height: text.height })));
-    const placedByKey = new Map(layout.placed.map((placed) => [placed.id, placed]));
-    for (const { entry, variant, text } of candidateLayouts) {
-      const placed = placedByKey.get(entry.key);
-      if (!placed) continue;
-      const placement = calloutPlacement(placed, entry, text);
-      boxes.push(placement.box, placement.leader);
-      if (variant === "hover") {
-        legacyHoverLabelPlacement = placement;
-        legacyHoverLabelNode = labelNode(entry, placement, variant);
-      } else {
-        legacyLabels.push(labelNode(entry, placement, variant));
-      }
-    }
-  }
-  const legacyFeatureBadges = drawn.flatMap((d) => (d.f.badges ?? []).slice(0, 4).map((badge, badgeIndex) => ({ d, badge, badgeIndex })));
-  const legacyBadgePositions = new Map<string, { x: number; y: number; width: number; height: number }>();
-  const badgeBoxes: Box[] = [];
-  const badgeDirections: ReadonlyArray<readonly [number, number]> = [
-    [1, 0], [-1, 0], [0, -1], [0, 1],
-    [0.707, -0.707], [-0.707, -0.707], [0.707, 0.707], [-0.707, 0.707],
-  ];
-  const badgeBox = (d: (typeof drawn)[number], width: number, height: number, dx: number, dy: number, distance: number): Box => {
-    const centerX = d.p[0] + dx * distance;
-    const centerY = d.p[1] + dy * distance;
-    const x0 = centerX - (dx > 0.2 ? 0 : dx < -0.2 ? width : width / 2);
-    const y0 = centerY - (dy > 0.2 ? 0 : dy < -0.2 ? height : height / 2);
-    return { x0, y0, x1: x0 + width, y1: y0 + height };
-  };
-  const boxOverlapArea = (a: Box, b: Box): number => Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
-  for (const { d, badge, badgeIndex } of legacyFeatureBadges) {
-    const stationBadge = d.f.layer === "rail_station" || d.f.layer === "rail_nearest";
-    const badgeFs = stationBadge ? Math.max(7, fs * 0.72) : Math.max(8, fs * 0.72);
-    const badgeH = stationBadge ? Math.max(15 * u, badgeFs * 1.55) : Math.max(12 * u, badgeFs * 1.35);
-    // 숫자 호선은 원, 수인분당·신분당 같은 이름 호선은 글자 폭만큼 늘린 알약.
-    const badgeW = stationBadge ? Math.max(badgeH, textW(badge.text, badgeFs) + 8 * u) : textW(badge.text, badgeFs) + 8 * u;
-    const candidates = badgeDirections.flatMap(([dx, dy]) => [
-      badgeBox(d, badgeW, badgeH, dx, dy, radiusOf(d.f) + 3 * u),
-      badgeBox(d, badgeW, badgeH, dx, dy, radiusOf(d.f) + 15 * u),
-      badgeBox(d, badgeW, badgeH, dx, dy, radiusOf(d.f) + 29 * u),
-      badgeBox(d, badgeW, badgeH, dx, dy, radiusOf(d.f) + 45 * u),
-    ]);
-    const occupied = [...boxes, ...(legacyHoverLabelPlacement ? [legacyHoverLabelPlacement.box] : []), ...badgeBoxes];
-    const fit = candidates.find((candidate) => candidate.x0 >= 2 && candidate.x1 <= W - 2 && candidate.y0 >= 2 && candidate.y1 <= H - 2 && !occupied.some((other) => labelBoxesOverlap(other, candidate, labelCollisionGap)));
-    const chosen = fit ?? [...candidates]
-      .filter((candidate) => candidate.x1 >= 2 && candidate.x0 <= W - 2 && candidate.y1 >= 2 && candidate.y0 <= H - 2)
-      .sort((a, b) => occupied.reduce((sum, other) => sum + boxOverlapArea(a, other), 0) - occupied.reduce((sum, other) => sum + boxOverlapArea(b, other), 0))[0]
-      ?? candidates[0]!;
-    const clamped: Box = {
-      x0: Math.max(2, Math.min(W - badgeW - 2, chosen.x0)),
-      y0: Math.max(2, Math.min(H - badgeH - 2, chosen.y0)),
-      x1: 0,
-      y1: 0,
-    };
-    clamped.x1 = clamped.x0 + badgeW;
-    clamped.y1 = clamped.y0 + badgeH;
-    badgeBoxes.push(clamped);
-    legacyBadgePositions.set(`${d.index}:${badgeIndex}`, { x: clamped.x0, y: clamped.y0, width: badgeW, height: badgeH });
-  }
-
   const labels: ReactNode[] = [];
   let hoverLabelNode: ReactNode = null;
   for (const placement of scene.labelPlacements) {
@@ -847,12 +671,58 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     if (placement.variant === "hover") hoverLabelNode = node;
     else labels.push(node);
   }
-  const featureByIndex = new Map(drawn.map((entry) => [entry.index, entry]));
-  const featureBadges = scene.badges.flatMap((badge) => {
-    const d = featureByIndex.get(badge.featureIndex);
-    return d ? [{ d, badge: { text: badge.text, color: badge.color }, badgeIndex: badge.badgeIndex }] : [];
-  });
-  const badgePositions = new Map(scene.badges.map((badge) => [`${badge.featureIndex}:${badge.badgeIndex}`, badge]));
+  const railLineSource = (key: string) => scene.lines.find((entry) => entry.key === key);
+  const railFeatureSource = (key: string) => scene.features.find((entry) => entry.key === key);
+  const railNodes = (
+    <g data-rail-overlay="true">
+      {scene.rail.routes.map((route) => {
+        const source = railLineSource(route.key);
+        const center = source ? centerOf(source.line.points) : model.center as [number, number];
+        const routePick = source ? pickProps({ fid: source.line.fid, lng: center[0], lat: center[1], kind: "line" }, route.key, `${route.label} 노선`) : {};
+        const points = route.points.map(([x, y]) => `${x},${y}`).join(" ");
+        return (
+          <g key={`rail-route-${route.key}`} data-rail-route={route.label} opacity={source && isElementDimmed(source.line.layer, source.key) ? 0.2 : 1}>
+            {route.casing && <polyline points={points} fill="none" stroke={route.casing} strokeWidth={route.width + 1.2} strokeLinecap="round" strokeLinejoin="round" pointerEvents="none" />}
+            <polyline data-rail-route-line="true" points={points} fill="none" stroke={route.color} strokeWidth={route.width} strokeLinecap="round" strokeLinejoin="round" {...routePick} />
+          </g>
+        );
+      })}
+      {scene.rail.axes.map((axis) => {
+        const source = railFeatureSource(axis.stationFeatureKey);
+        const pick = source ? pickProps({ fid: source.feature.fid, lng: source.feature.lng, lat: source.feature.lat, kind: "feature" }, source.key, `${source.feature.name ?? "철도역"} ${axis.label}`) : {};
+        const points = axis.points.map(([x, y]) => `${x},${y}`).join(" ");
+        return (
+          <g key={axis.key} data-rail-axis={axis.key} pointerEvents={source ? "all" : "none"}>
+            {axis.casing && <polyline points={points} fill="none" stroke={axis.casing} strokeWidth={axis.width + 1.4} strokeLinecap="butt" strokeLinejoin="miter" pointerEvents="none" />}
+            <polyline data-rail-axis-bar="true" points={points} fill="none" stroke={axis.color} strokeWidth={axis.width} strokeLinecap="butt" strokeLinejoin="miter" {...pick} />
+          </g>
+        );
+      })}
+      {scene.rail.exits.map((exit) => (
+        <g key={exit.key} data-rail-exit={exit.number} aria-label={`${exit.number}번 출구`} pointerEvents="none">
+          <line data-rail-exit-connector="true" x1={exit.axisPoint[0]} y1={exit.axisPoint[1]} x2={exit.point[0]} y2={exit.point[1]} stroke="#fff" strokeWidth={1.5} strokeLinecap="round" opacity={0.75} />
+          <line data-rail-exit-connector-line="true" x1={exit.axisPoint[0]} y1={exit.axisPoint[1]} x2={exit.point[0]} y2={exit.point[1]} stroke={exit.color} strokeWidth={0.6} strokeLinecap="round" opacity={0.6} />
+          {exit.demoted ? (
+            <circle data-rail-exit-dot="true" cx={exit.point[0]} cy={exit.point[1]} r={RAIL_EXIT_DOT_RADIUS} fill={RAIL_EXIT_COLOR} stroke="#172033" strokeWidth={RAIL_EXIT_DOT_STROKE} />
+          ) : (
+            <>
+              <rect data-rail-exit-marker="true" x={exit.box.x0} y={exit.box.y0} width={exit.box.x1 - exit.box.x0} height={exit.box.y1 - exit.box.y0} rx={exit.pill ? (exit.box.y1 - exit.box.y0) / 2 : 2} fill={RAIL_EXIT_COLOR} stroke="#172033" strokeWidth={0.65} />
+              <text data-rail-exit-number="true" x={(exit.box.x0 + exit.box.x1) / 2} y={exit.box.y0 + (exit.box.y1 - exit.box.y0) * 0.76} textAnchor="middle" fontSize={7} fontWeight={700} fill="#111827">{exit.number}</text>
+            </>
+          )}
+        </g>
+      ))}
+      {scene.rail.routeLabels.map((text) => (
+        <text key={`rail-route-label-${text.text}-${text.x}-${text.y}`} data-rail-route-label={text.text} x={text.x + text.width / 2} y={text.y + text.height * 0.78} textAnchor="middle" fontSize={text.fontSize} fontWeight={700} fill={text.color} stroke="#fff" strokeWidth={3} paintOrder="stroke fill" transform={`rotate(${text.angle} ${(text.x + text.width / 2)} ${(text.y + text.height / 2)})`}>{text.text}</text>
+      ))}
+      {scene.rail.axisLabels.map((text, index) => (
+        <text key={`rail-axis-label-${index}-${text.text}-${text.x}-${text.y}`} data-rail-axis-label={text.text} data-rail-axis-label-placement={text.placement} x={text.x + text.width / 2} y={text.y + text.height * 0.78} textAnchor="middle" fontSize={text.fontSize} fontWeight={700} fill={text.color} stroke="#fff" strokeWidth={2.6} paintOrder="stroke fill">{text.text}</text>
+      ))}
+      {scene.rail.stationLabels.map((station) => (
+        <text key={station.key} data-rail-station-label={station.stationKey} x={station.x + station.width / 2} y={station.y + station.height * 0.78} textAnchor="middle" fontSize={station.fontSize} fontWeight={700} fill={INK} stroke="#fff" strokeWidth={5} paintOrder="stroke fill">{station.text}</text>
+      ))}
+    </g>
+  );
 
   const north = scene.north ?? { x: W - rightInset - 20 * u, y: 22 * u };
   const dim = `M0 0H${W}V${H}H0Z M${cx - R} ${cy}a${R} ${R} 0 1 0 ${2 * R} 0a${R} ${R} 0 1 0 ${-2 * R} 0Z`;
@@ -975,7 +845,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
             const strong = isElementStrong(polygon.polygon.layer, polygonKey);
             return <path key={`poly${polygon.index}`} data-poly="true" data-map-layer={polygon.polygon.layer} d={polygonPath(polygon.rings)} fillRule="evenodd" fill={neutralBuilding ? buildingStyle.fill : estimated ? `url(#${hatchId(polygon.index)})` : st.fill ?? st.color} fillOpacity={neutralBuilding ? buildingStyle.fillOpacity : estimated ? 1 : st.fillOpacity ?? polygonOpacity} opacity={isElementDimmed(polygon.polygon.layer, polygonKey) ? 0.2 : undefined} stroke={strong || polygonSelected ? INK : neutralBuilding ? buildingStyle.stroke : st.stroke ?? st.color} strokeWidth={(strong ? 1.6 : polygonSelected ? 3 : neutralBuilding ? buildingStyle.strokeWidth ?? 0.8 : st.strokeWidth ?? 1) * u} {...pickProps({ fid: polygonFid, lng: polygonCenter[0], lat: polygonCenter[1], kind: "polygon" }, polygonKey, labelText(polygon.polygon.layer, "polygon", polygon.polygon))} />;
           })}
-          {linePaths.map((d) => {
+          {linePaths.filter((d) => d.l.layer !== "rail_line" && d.l.layer !== "rail_station_axis").map((d) => {
             const st = layerStyle(d.l.layer);
             const lineSelected = isSelected(d.l.fid);
             const center = centerOf(d.l.points);
@@ -995,6 +865,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
               </g>
             );
           })}
+          {railNodes}
         </g>
         {showRadius && rings.map((r, i) => (
           <circle key={`ring-${i}-${r}`} cx={cx} cy={cy} r={r} fill="none" stroke={line} strokeOpacity={sat ? 0.7 : 0.35} strokeWidth={1 * u} strokeDasharray={`${4 * u} ${4 * u}`} />
@@ -1009,38 +880,17 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
            }
           return null;
         })}
-        {drawn.map((d, i) => {
-            const st = layerStyle(d.f.layer);
-            const r = radiusOf(d.f);
-            const neutralBuilding = rasterImages.length > 0 && isBuildingLayer(d.f.layer);
-            const buildingStyle = buildingStyleForRaster(d.f.layer, rasterImages.length > 0);
-           if (d.p[0] < -r || d.p[1] < -r || d.p[0] > W + r || d.p[1] > H + r) return null;
-           const hollow = st.sizeBy === "weight" && !d.f.weight;
-           const featureKey = mapFeatureKey(d.f.layer, d.f.fid, d.index);
-           const strong = isElementStrong(d.f.layer, featureKey);
-           const isRailEntrance = d.f.layer === "rail_entrance";
-           const entranceLabel = d.f.label?.trim() || null;
-           if (isRailEntrance) {
-             return (
-               <g key={`feature-${i}-${d.f.fid ?? d.f.layer}`} opacity={isElementDimmed(d.f.layer, featureKey) ? 0.2 : undefined}>
-                 <circle
-                   cx={d.p[0]}
-                   cy={d.p[1]}
-                   r={Math.max(3.5 * u, r * 0.85)}
-                   fill="#FFFFFF"
-                   stroke={strong || d.f.highlight || d.selected ? INK : "#334155"}
-                   strokeWidth={(strong || d.f.highlight || d.selected ? 1.6 : 1.1) * u}
-                   {...pickProps({ fid: d.f.fid, lng: d.f.lng, lat: d.f.lat, kind: "feature" }, featureKey, labelText(d.f.layer, "feature", d.f))}
-                 />
-                 {entranceLabel && (!compact || d.f.highlight) && (
-                   <text x={d.p[0]} y={d.p[1] + Math.max(2.5, r * 0.3) * u} textAnchor="middle" fontSize={Math.max(7, fs * 0.72)} fontWeight={700} fill={INK} pointerEvents="none">
-                     {entranceLabel}
-                   </text>
-                 )}
-               </g>
-             );
-           }
-           return (
+         {drawn.map((d, i) => {
+             const st = layerStyle(d.f.layer);
+             const r = radiusOf(d.f);
+             const neutralBuilding = rasterImages.length > 0 && isBuildingLayer(d.f.layer);
+             const buildingStyle = buildingStyleForRaster(d.f.layer, rasterImages.length > 0);
+            if (d.p[0] < -r || d.p[1] < -r || d.p[0] > W + r || d.p[1] > H + r) return null;
+            if (d.f.layer === "rail_station" || d.f.layer === "rail_nearest" || d.f.layer === "rail_entrance") return null;
+            const hollow = st.sizeBy === "weight" && !d.f.weight;
+            const featureKey = mapFeatureKey(d.f.layer, d.f.fid, d.index);
+            const strong = isElementStrong(d.f.layer, featureKey);
+            return (
             <circle
               key={`feature-${i}-${d.f.fid ?? d.f.layer}`}
               cx={d.p[0]}
@@ -1054,26 +904,6 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
               {...pickProps({ fid: d.f.fid, lng: d.f.lng, lat: d.f.lat, kind: "feature" }, featureKey, labelText(d.f.layer, "feature", d.f))}
             />
           );
-         })}
-         {featureBadges.map(({ d, badge, badgeIndex }) => {
-           const stationBadge = d.f.layer === "rail_station" || d.f.layer === "rail_nearest";
-           const badgeFs = stationBadge ? Math.max(7, fs * 0.72) : Math.max(8, fs * 0.72);
-           const placement = badgePositions.get(`${d.index}:${badgeIndex}`)!;
-           return (
-             <g key={`badge-${d.index}-${badgeIndex}-${badge.text}`} data-map-badge={badge.text} aria-label={badge.text} pointerEvents="none">
-               {stationBadge ? (
-                 <>
-                   <rect x={placement.x} y={placement.y} width={placement.width} height={placement.height} rx={placement.height / 2} fill={badge.color} stroke="#fff" strokeWidth={0.8 * u} />
-                   <text x={placement.x + placement.width / 2} y={placement.y + placement.height * 0.72} textAnchor="middle" fontSize={badgeFs} fontWeight={700} fill={badgeTextColor(badge.color)}>{badge.text}</text>
-                 </>
-               ) : (
-                 <>
-                   <rect x={placement.x} y={placement.y} width={placement.width} height={placement.height} rx={3 * u} fill={badge.color} stroke="#fff" strokeWidth={0.8 * u} />
-                   <text x={placement.x + placement.width / 2} y={placement.y + placement.height * 0.72} textAnchor="middle" fontSize={badgeFs} fontWeight={700} fill={badgeTextColor(badge.color)}>{badge.text}</text>
-                 </>
-               )}
-             </g>
-           );
          })}
         {routePoints.length >= 2 && (
           <>

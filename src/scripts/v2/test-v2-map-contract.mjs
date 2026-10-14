@@ -100,7 +100,7 @@ const styledSvg = renderToStaticMarkup(createElement(MapFigure, {
     radiusM: 500,
     features: [{ layer: "rail_station", lng: center[0] + 0.001, lat: center[1], name: "강남역", labelPriority: 2, badges: [{ text: "환승", color: "#1F5FA8" }] }, { layer: "amenity", lng: center[0], lat: center[1] + 0.001, highlight: true, distanceM: 120, name: null, labelPriority: 0 }],
     polygons: [],
-    lines: [{ layer: "planned_rail_line", points: [[center[0] - 0.002, center[1] - 0.002], [center[0] + 0.002, center[1] + 0.002]], name: "계획선", labelPriority: 1, color: "#6D28D9" }, { layer: "wind_inflow", points: [[center[0] - 0.001, center[1]], [center[0] + 0.001, center[1]]], name: "북서 유입", labelPriority: 1, color: "#0E7490" }],
+    lines: [{ layer: "rail_line", points: [[center[0] - 0.004, center[1] - 0.001], [center[0], center[1],], [center[0] + 0.004, center[1] + 0.001]], name: "2호선", legendLabel: "2호선", labelPriority: 1, color: "#00A84D" }, { layer: "rail_station_axis", points: [[center[0] - 0.0018, center[1] + 0.001], [center[0] + 0.0018, center[1] - 0.001]], name: "2호선", legendLabel: "2호선", labelPriority: 1, color: "#00A84D" }, { layer: "planned_rail_line", points: [[center[0] - 0.002, center[1] - 0.002], [center[0] + 0.002, center[1] + 0.002]], name: "계획선", labelPriority: 1, color: "#6D28D9" }, { layer: "wind_inflow", points: [[center[0] - 0.001, center[1]], [center[0] + 0.001, center[1]]], name: "북서 유입", labelPriority: 1, color: "#0E7490" }],
     total: 2,
     notes: [],
   },
@@ -110,7 +110,8 @@ const styledSvg = renderToStaticMarkup(createElement(MapFigure, {
   basemap: "none",
   legend: false,
 }));
-assert.match(styledSvg, /data-map-badge="환승"/);
+assert.doesNotMatch(styledSvg, /data-map-badge=/, "역 배지는 새 지도 계약에서 모두 제거");
+assert.match(styledSvg, /data-rail-axis=/, "역축 막대는 공유 rail scene에서 렌더");
 assert.match(styledSvg, /stroke="#6D28D9"/);
 assert.match(styledSvg, /stroke-dasharray="3 3"/, "최근접 점선은 _nearest 레이어명이 아닌 highlight+distanceM으로 결정");
 assert.match(styledSvg, /stroke-dasharray="7 5"/);

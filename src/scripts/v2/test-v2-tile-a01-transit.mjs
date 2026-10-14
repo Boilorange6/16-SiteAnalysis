@@ -120,8 +120,7 @@ function addDirectionDuplicateSubwayLines(dataDir) {
   assert.equal(nearestBusFeature?.labelPriority, 2);
   const stationFeatures = tile.presentation.features.filter((feature) => ["rail_station", "rail_nearest"].includes(feature.layer));
   const station = stationFeatures.find((feature) => feature.name === "다온역");
-  assert.equal(station?.badges?.map((badge) => badge.text).join(","), "5,9", "역은 원천 노선 배지를 최대 4개까지 표시");
-  assert.deepEqual(station?.badges?.map((badge) => badge.color), ["#996CAC", "#BDB092"]);
+  assert.ok(Array.isArray(station?.badges), "옛 저장 결과의 legacy 노선 메타데이터는 파싱 호환을 유지한다");
   assert.equal(station?.sublabel, "5호선·9호선", "원천 경로명이 아니라 호선 목록을 역 sublabel로 표시");
   assert.equal(station?.layer, "rail_station", "출입구가 있는 역은 대표점을 최근접으로 쓰지 않는다");
   assert.equal(station?.labelPriority, 1);
@@ -191,22 +190,23 @@ function addDirectionDuplicateSubwayLines(dataDir) {
 
   const exitModel = {
     center: CENTER,
-    radiusM: 500,
+    radiusM: 300,
     features: [
+      { layer: "rail_station", lng: CENTER[0], lat: CENTER[1], name: "역", sublabel: "2호선", labelPriority: 1, badges: [{ text: "2", color: "#00A84D" }] },
       { layer: "rail_entrance", lng: CENTER[0], lat: CENTER[1], label: "1", highlight: true, name: "역 1번 출구" },
       { layer: "rail_entrance", lng: CENTER[0] + 0.001, lat: CENTER[1], label: "2", name: "역 2번 출구" },
     ],
     polygons: [],
-    lines: [],
-    total: 2,
+    lines: [{ layer: "rail_station_axis", points: [[CENTER[0] - 0.002, CENTER[1]], [CENTER[0] + 0.002, CENTER[1]]], legendLabel: "2호선", name: "2호선", label: "2호선", color: "#00A84D" }],
+    total: 4,
     notes: [],
   };
   const cardExitSvg = renderToStaticMarkup(createElement(MapFigure, { model: exitModel, width: 320, height: 220, basemap: "none", compact: true, showAutomaticLabels: false, legend: false, scale: false, north: false, showSiteMarker: false }));
-  const detailExitSvg = renderToStaticMarkup(createElement(MapFigure, { model: exitModel, width: 640, height: 360, basemap: "none", legend: false, scale: false, north: false, showSiteMarker: false }));
-  assert.match(cardExitSvg, />1<\//, "카드에는 최근접 출구 번호만 표시");
-  assert.doesNotMatch(cardExitSvg, />2<\//, "카드의 먼 출구 번호는 숨김");
-  assert.match(detailExitSvg, />1<\//);
-  assert.match(detailExitSvg, />2<\//, "상세는 반경 내 출구 번호를 모두 표시");
+  const detailExitSvg = renderToStaticMarkup(createElement(MapFigure, { model: exitModel, width: 960, height: 600, basemap: "none", legend: false, scale: false, north: false, showSiteMarker: false }));
+  assert.doesNotMatch(cardExitSvg, /data-rail-exit=/, "카드는 역사 막대만 표시하고 출구는 숨김");
+  assert.match(cardExitSvg, /data-rail-axis=/, "카드는 역사 막대만 유지");
+  assert.match(detailExitSvg, /data-rail-exit="1"/);
+  assert.match(detailExitSvg, /data-rail-exit="2"/, "300m 상세는 반경 내 출구를 표시");
   noForbidden(tile);
   ctx.close();
 }

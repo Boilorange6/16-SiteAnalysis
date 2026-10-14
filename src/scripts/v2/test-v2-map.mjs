@@ -289,8 +289,8 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
     notes: [],
   };
   const coloredRailSvg = renderToStaticMarkup(createElement(MapFigure, { model: coloredRailModel, width: 640, height: 360, basemap: "none", legend: false, highlightLabel: "철도 노선" }));
-  assert.match(coloredRailSvg, /<polyline data-line="true"[^>]*stroke="#794698"/);
-  assert.match(coloredRailSvg, /<polyline[^>]*stroke="#16181d"/);
+  assert.match(coloredRailSvg, /<polyline data-rail-route-line="true"[^>]*stroke="#794698"/);
+  assert.doesNotMatch(coloredRailSvg, /<polyline[^>]*stroke="#16181d"/, "어두운 호선은 별도 케이싱을 만들지 않음");
   const coloredRailLegendSvg = renderToStaticMarkup(createElement(MapFigure, { model: coloredRailModel, width: 640, height: 360, basemap: "none", legend: true }));
   assert.match(coloredRailLegendSvg, /<circle[^>]*fill="#794698"/);
 
@@ -300,7 +300,8 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   assert.equal(labelBoxesOverlap(labelA, labelB, 3), true, "가까운 자동 라벨은 외곽선 여유를 포함해 충돌");
   assert.equal(labelBoxesOverlap(labelA, labelB, 1), false, "충분히 떨어진 라벨은 충돌하지 않음");
 
-  // 출구 번호처럼 밀집한 짧은 배지도 공용 후보 배치로 서로 겹치지 않는다.
+  // 옛 출구 배지 메타데이터는 저장 호환을 위해 읽지만, 승인 시안 계약상
+  // MapFigure에는 더 이상 배지 DOM을 만들지 않는다.
   const badgeModel = {
     ...model,
     features: [
@@ -315,11 +316,7 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
     notes: [],
   };
   const badgeSvg = renderToStaticMarkup(createElement(MapFigure, { model: badgeModel, width: 300, height: 180, basemap: "none", legend: false, scale: false, north: false }));
-  const badgeBoxes = [...badgeSvg.matchAll(/<g data-map-badge="[^"]+"[^>]*><rect x="([\d.-]+)" y="([\d.-]+)" width="([\d.-]+)" height="([\d.-]+)"/g)].map((match) => ({ x0: Number(match[1]), y0: Number(match[2]), x1: Number(match[1]) + Number(match[3]), y1: Number(match[2]) + Number(match[4]) }));
-  assert.equal(badgeBoxes.length, 3, "출구 배지 3개 렌더");
-  for (let i = 0; i < badgeBoxes.length; i += 1) for (let j = i + 1; j < badgeBoxes.length; j += 1) {
-    assert.equal(labelBoxesOverlap(badgeBoxes[i], badgeBoxes[j], 3), false, "밀집 출구 배지는 여유를 두고 분리");
-  }
+  assert.doesNotMatch(badgeSvg, /data-map-badge=/, "옛 출구 배지는 지도 DOM에 표시하지 않음");
 
   // W2a: 범례 라벨 기준 강조는 같은 라벨의 여러 레이어를 함께 남기고, 나머지를 20%로 흐린다.
   const highlightModel = {
@@ -365,11 +362,21 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   assert.match(longSvg, /매우긴역이…/, "긴 라벨은 줄바꿈 대신 말줄임");
   assert.match(longSvg, new RegExp(`<title>${longName}</title>`), "말줄임 전 원문은 SVG title로 보존");
 
+  // 철도역은 자동 말풍선 후보에서 빠지고, 고정·호버용 철도 텍스트만 남긴다.
+  const railAutoExcluded = {
+    ...model,
+    features: [{ layer: "rail_station", lng: model.center[0], lat: model.center[1], name: "역 자동 제외", labelPriority: 2 }],
+    lines: [],
+    total: 1,
+  };
+  const railAutoExcludedSvg = renderToStaticMarkup(createElement(MapFigure, { model: railAutoExcluded, width: 300, height: 180, basemap: "none", legend: false, scale: false, north: false }));
+  assert.doesNotMatch(railAutoExcludedSvg, /data-map-label-variant="auto"/, "철도역은 자동 말풍선에 넣지 않음");
+
   // W4: 작은 지도에서는 좌우 칸의 높이만큼 우선순위 상위 자동 말풍선만 남기고, 카드가 겹치지 않는다.
   const crowdedModel = {
     ...model,
     features: Array.from({ length: 10 }, (_, index) => ({
-      layer: "rail_station",
+      layer: "bus_stop",
       lng: model.center[0] + (index % 2 === 0 ? -0.001 : 0.001),
       lat: model.center[1] + (index - 5) * 0.00004,
       name: `역 ${index + 1}`,

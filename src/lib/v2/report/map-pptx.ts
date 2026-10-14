@@ -3,8 +3,7 @@ import { buildingStyleForRaster, isBuildingLayer, layerStyle, type MapModel } fr
 import { isSiteParcelLayer } from "../ui/site-parcel";
 import { SLIDE, slideLayout, slideLegend, slideReserved, slideSiteX } from "../ui/overlay-layout";
 import { SLIDE_OVERVIEW_FILL } from "../ui/callout-layout";
-import { buildMapScene, type MapScene, type MapSceneBox } from "../ui/map-scene";
-import { badgeTextColor } from "../ui/map-labels";
+import { buildMapScene, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, type MapScene, type MapSceneBox } from "../ui/map-scene";
 import { FONT, INK, hex, type Slide } from "./pptx-kit";
 import type { PlannedSlide } from "./report-plan";
 
@@ -80,6 +79,20 @@ type PixelPoint = readonly [number, number];
 type PixelPath = readonly PixelPoint[];
 type ShapePart = { x: number; y: number; moveTo?: boolean } | { close: true };
 
+/**
+ * PowerPoint custom geometry는 브라우저 SVG보다 큰 점 배열에 취약하다.
+ * 공개 철도 관계의 로컬 선형은 화면에서 이미 2px 선으로 보이므로, PPT
+ * 네이티브 도형에만 균등 샘플링 상한을 적용해 모양은 유지하고 파일·호환성
+ * 부담을 줄인다. MapFigure의 공유 scene 좌표 자체는 줄이지 않는다.
+ */
+const MAX_NATIVE_PATH_POINTS = 48;
+
+function capNativePath(path: PixelPath): PixelPath {
+  if (path.length <= MAX_NATIVE_PATH_POINTS) return path;
+  const last = path.length - 1;
+  return Array.from({ length: MAX_NATIVE_PATH_POINTS }, (_, index) => path[Math.round((index * last) / (MAX_NATIVE_PATH_POINTS - 1))]!);
+}
+
 function tag(code: string, key: string, display: string, part: string): string {
   return `GRP|map-${safeKey(code)}-${safeKey(key)}|${safeKey(display)}|${safeKey(part)}`;
 }
@@ -89,14 +102,16 @@ function addCustom(
   paths: readonly PixelPath[],
   options: { fill?: string; fillOpacity?: number; line?: string; lineWidth?: number; lineOpacity?: number; dash?: string; objectName: string; closed?: boolean },
 ): void {
-  const points = paths.flatMap((path) => path);
+  // 면 외곽은 원형·필지 모양을 보존하고, 열린 선형만 PPT 점 상한을 적용한다.
+  const nativePaths = options.closed ? paths : paths.map(capNativePath);
+  const points = nativePaths.flatMap((path) => path);
   if (points.length < 2) return;
   const minX = Math.min(...points.map(([x]) => pxX(x)));
   const minY = Math.min(...points.map(([, y]) => pxY(y)));
   const maxX = Math.max(...points.map(([x]) => pxX(x)));
   const maxY = Math.max(...points.map(([, y]) => pxY(y)));
   const parts: ShapePart[] = [];
-  for (const path of paths) {
+  for (const path of nativePaths) {
     if (path.length < 2) continue;
     path.forEach(([x, y], index) => parts.push({ x: pxX(x) - minX, y: pxY(y) - minY, ...(index === 0 ? { moveTo: true } : {}) }));
     if (options.closed) parts.push({ close: true });
@@ -200,6 +215,7 @@ function addPolygons(slide: Slide, code: string, scene: MapScene, model: MapMode
 function addLines(slide: Slide, code: string, scene: MapScene): void {
   const buckets = new Map<string, Bucket>();
   for (const entry of scene.lines) {
+    if (entry.line.layer === "rail_line" || entry.line.layer === "rail_station_axis") continue;
     if (entry.points.length < 2) continue;
     const style = layerStyle(entry.line.layer);
     const baseWidth = entry.line.strokeWidth ?? style.strokeWidth ?? 1.5;
@@ -236,22 +252,16 @@ function addFeatures(slide: Slide, code: string, scene: MapScene, model: MapMode
   const satellite = scene.activeLayer === "Satellite";
   for (const entry of scene.features) {
     const feature = entry.feature;
+    if (feature.layer === "rail_station" || feature.layer === "rail_nearest" || feature.layer === "rail_entrance") continue;
     const r = entry.radius;
     if (entry.p[0] < -r || entry.p[1] < -r || entry.p[0] > VIEW_W + r || entry.p[1] > VIEW_H + r) continue;
     const style = layerStyle(feature.layer);
     const neutral = hasRaster && isBuildingLayer(feature.layer);
     const building = buildingStyleForRaster(feature.layer, hasRaster);
     const hollow = style.sizeBy === "weight" && !feature.weight;
-    const entrance = feature.layer === "rail_entrance";
     const key = `feature-${safeKey(entry.key)}`;
     const display = feature.label?.trim() || style.label;
     const opacity = scene.isElementDimmed(feature.layer, entry.key) ? 0.2 : 1;
-    if (entrance) {
-      const diameter = Math.max(3.5 * scene.unit, r * 1.7);
-      slide.addShape("ellipse", { x: pxX(entry.p[0] - diameter / 2), y: pxY(entry.p[1] - diameter / 2), w: pxX(diameter), h: pxY(diameter), fill: { color: "FFFFFF" }, line: { color: color("334155"), width: pxPt(1.1 * scene.unit), transparency: transparency(opacity) }, objectName: tag(code, key, display, "entrance") });
-      if (feature.label?.trim()) slide.addText(feature.label.trim(), { x: pxX(entry.p[0] - diameter / 2), y: pxY(entry.p[1] - diameter * 0.2), w: pxX(diameter), h: pxY(diameter * 0.8), align: "center", valign: "middle", fontFace: FONT, fontSize: Math.max(7, pxPt(10.5 * scene.unit * 0.72)), bold: true, color: INK, margin: 0, objectName: tag(code, key, display, "number") });
-      continue;
-    }
     const fill = neutral ? building.fill ?? style.color : hollow ? "FFFFFF" : feature.color ?? style.color;
     const fillOpacity = neutral ? building.fillOpacity ?? 0.94 : hollow ? 0.6 : style.sizeBy === "weight" ? 0.55 : feature.highlight ? 1 : 0.85;
     const stroke = scene.isElementStrong(feature.layer, entry.key) || feature.highlight || entry.selected ? INK : neutral ? building.stroke ?? style.color : satellite ? "FFFFFF" : style.sizeBy === "weight" ? style.color : "FFFFFF";
@@ -322,19 +332,47 @@ function addLabels(slide: Slide, code: string, scene: MapScene): void {
   }
 }
 
-function addBadges(slide: Slide, code: string, scene: MapScene): void {
-  for (const badge of scene.badges) {
-    const key = `badge-${badge.featureIndex}-${badge.badgeIndex}`;
-    const display = `배지 · ${badge.text}`;
-    if (badge.station && badge.width > badge.height) {
-      // 이름 호선 알약: rectRadius = 높이 절반(인치)이면 양 끝이 반원.
-      slide.addShape("roundRect", { x: pxX(badge.x), y: pxY(badge.y), w: pxX(badge.width), h: pxY(badge.height), rectRadius: pxY(badge.height) / 2, fill: { color: color(badge.color) }, line: { color: "FFFFFF", width: pxPt(0.8 * scene.unit) }, objectName: tag(code, key, display, "rect") });
-    } else if (badge.station) {
-      slide.addShape("ellipse", { x: pxX(badge.x), y: pxY(badge.y), w: pxX(badge.width), h: pxY(badge.height), fill: { color: color(badge.color) }, line: { color: "FFFFFF", width: pxPt(0.8 * scene.unit) }, objectName: tag(code, key, display, "circle") });
-    } else {
-      slide.addShape("roundRect", { x: pxX(badge.x), y: pxY(badge.y), w: pxX(badge.width), h: pxY(badge.height), rectRadius: 0.04, fill: { color: color(badge.color) }, line: { color: "FFFFFF", width: pxPt(0.8 * scene.unit) }, objectName: tag(code, key, display, "rect") });
+function addRailText(slide: Slide, code: string, key: string, display: string, text: { text: string; x: number; y: number; width: number; height: number; fontSize: number; angle: number; color: string }, scene: MapScene, part: string): void {
+  const options = { x: pxX(text.x), y: pxY(text.y), w: pxX(Math.max(1, text.width)), h: pxY(Math.max(1, text.height)), align: "center" as const, valign: "middle" as const, fontFace: FONT, bold: true, margin: 0, fit: "shrink" as const, rotate: text.angle };
+  slide.addText(text.text, { ...options, fontSize: Math.max(6, pxPt(text.fontSize + 1.6)), color: "FFFFFF", objectName: tag(code, key, display, `${part}-halo`) });
+  slide.addText(text.text, { ...options, fontSize: Math.max(6, pxPt(text.fontSize)), color: color(text.color), objectName: tag(code, key, display, part) });
+}
+
+/** MapFigure와 같은 scene.rail 결과를 PowerPoint의 편집 가능한 네이티브 도형으로 옮긴다. */
+function addRailOverlay(slide: Slide, code: string, scene: MapScene): void {
+  for (const route of scene.rail.routes) {
+    const key = `rail-route-${safeKey(route.key)}`;
+    const display = `노선 · ${route.label}`;
+    if (route.casing) addCustom(slide, [route.points], { line: route.casing, lineWidth: route.width + 1.2, lineOpacity: 1, objectName: tag(code, key, display, "casing") });
+    addCustom(slide, [route.points], { line: route.color, lineWidth: route.width, lineOpacity: 1, objectName: tag(code, key, display, "line") });
+    if (route.labelPlacement) addRailText(slide, code, key, display, route.labelPlacement, scene, "route-label");
+  }
+  for (const axis of scene.rail.axes) {
+    const key = `rail-axis-${safeKey(axis.key)}`;
+    const display = `역사 · ${axis.label}`;
+    if (axis.casing) addCustom(slide, [axis.points], { line: axis.casing, lineWidth: axis.width + 1.4, objectName: tag(code, key, display, "casing") });
+    addCustom(slide, [axis.points], { line: axis.color, lineWidth: axis.width, objectName: tag(code, key, display, "bar") });
+    if (axis.labelPlacement) addRailText(slide, code, key, display, axis.labelPlacement, scene, "axis-label");
+  }
+  for (const exit of scene.rail.exits) {
+    const key = `rail-exit-${safeKey(exit.key)}`;
+    const display = `출구 · ${exit.number}`;
+    addSegment(slide, exit.axisPoint, exit.point, "FFFFFF", 1.5, tag(code, key, display, "connector-halo"), 25);
+    addSegment(slide, exit.axisPoint, exit.point, exit.color, 0.6, tag(code, key, display, "connector"), 40);
+    if (exit.demoted) {
+      slide.addShape("ellipse", { x: pxX(exit.point[0] - RAIL_EXIT_DOT_RADIUS), y: pxY(exit.point[1] - RAIL_EXIT_DOT_RADIUS), w: pxX(RAIL_EXIT_DOT_RADIUS * 2), h: pxY(RAIL_EXIT_DOT_RADIUS * 2), fill: { color: color(RAIL_EXIT_COLOR) }, line: { color: color("172033"), width: pxPt(RAIL_EXIT_DOT_STROKE) }, objectName: tag(code, key, display, "dot") });
+      continue;
     }
-    slide.addText(badge.text, { x: pxX(badge.x), y: pxY(badge.y), w: pxX(badge.width), h: pxY(badge.height), align: "center", valign: "middle", fontFace: FONT, fontSize: Math.max(6, pxPt(badge.fontSize)), bold: true, color: color(badgeTextColor(badge.color)), margin: 0, fit: "shrink", objectName: tag(code, key, display, "text") });
+    const width = exit.box.x1 - exit.box.x0;
+    const height = exit.box.y1 - exit.box.y0;
+    slide.addShape("roundRect", { x: pxX(exit.box.x0), y: pxY(exit.box.y0), w: pxX(width), h: pxY(height), rectRadius: exit.pill ? pxY(height) / 2 : 0.03, fill: { color: color(RAIL_EXIT_COLOR) }, line: { color: color("172033"), width: pxPt(0.65) }, objectName: tag(code, key, display, "marker") });
+    slide.addText(exit.number, { x: pxX(exit.box.x0), y: pxY(exit.box.y0), w: pxX(width), h: pxY(height), align: "center", valign: "middle", fontFace: FONT, fontSize: Math.max(6, pxPt(7)), bold: true, color: color("111827"), margin: 0, fit: "shrink", objectName: tag(code, key, display, "number") });
+  }
+  for (const station of scene.rail.stationLabels) {
+    const key = `rail-station-${safeKey(station.stationKey)}`;
+    const display = `역명 · ${station.text}`;
+    const text = { text: station.text, x: station.x, y: station.y, width: station.width, height: station.height, fontSize: station.fontSize, angle: 0, color: INK };
+    addRailText(slide, code, key, display, text, scene, "station-label");
   }
 }
 
@@ -370,7 +408,7 @@ export function addEditableMap(slide: Slide, plan: PlannedSlide & { kind: "tile"
   addRadius(slide, code, scene);
   addNearestLines(slide, code, scene);
   addFeatures(slide, code, scene, model);
-  addBadges(slide, code, scene);
+  addRailOverlay(slide, code, scene);
   addRoute(slide, code, scene);
   addSite(slide, code, scene);
   addLabels(slide, code, scene);
