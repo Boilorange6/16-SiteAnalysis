@@ -100,7 +100,7 @@ try {
 }
 
 const snapshot = loadRailNetworkSnapshot();
-assert.equal(snapshot.snapshotVersion, "2026-05-26-osm-migration-v1");
+assert.equal(snapshot.snapshotVersion, "2026-10-14-osm-overpass-a01-v1");
 assert.ok(snapshot.stations.length > 0, "snapshot should include stations");
 assert.ok(snapshot.lines.length > 0, "snapshot should include lines");
 assert.equal(snapshot.source.source, "rail-network");

@@ -1,9 +1,9 @@
 {
   "schemaVersion": "1.0.0",
-  "snapshotVersion": "2026-05-26-osm-migration-v1",
-  "generatedAt": "2026-05-26T00:00:00Z",
+  "snapshotVersion": "2026-10-14-osm-overpass-a01-v1",
+  "generatedAt": "2026-10-14T00:00:00Z",
   "sourceFile": "../osm-subway.json",
   "plannedFile": "planned.json",
-  "status": "migration-baseline",
-  "notes": "초기 전환본. 운영 데이터는 기존 승인 OSM 스냅샷을 새 rail-network 계약으로 읽는다. 공식 역 원장 반영 전에는 갱신 PR을 생성하지 않는다."
+  "status": "validated-candidate",
+  "notes": "A01 후보 스냅샷. ODbL 출처를 유지하고 경강선·GTX-A·신림선·서해선을 포함한다. 게시 manifest 전환 전 검증용."
 }

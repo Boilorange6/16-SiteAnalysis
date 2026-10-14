@@ -83,15 +83,24 @@ const legalCodeOf = legalCodeFromCore(core);
 
 // ─── 3. 실제 파일 건수(읽기만, 메모리 DB) ─────────────────────────────────
 if (existsSync("public/data/osm-subway.json") && existsSync("public/data/rail/planned.json")) {
+  const snapshot = JSON.parse(readFileSync("public/data/osm-subway.json", "utf8"));
   const { db, rel } = mk();
   const none = () => null;
   const stats = [
-    ...(await buildOsmSubway(db, JSON.parse(readFileSync("public/data/osm-subway.json", "utf8")), rel, none)),
+    ...(await buildOsmSubway(db, snapshot, rel, none)),
     ...(await buildPlannedRail(db, JSON.parse(readFileSync("public/data/rail/planned.json", "utf8")), rel, none)),
   ];
   stats.forEach(invariant);
   console.log("real files:", stats.map((s) => `${s.sourceId} read ${s.received} ok ${s.accepted} rej ${s.rejected}`).join(" · "));
   assert.ok(stats[0].accepted > 600 && stats[2].accepted > 100);
+  const axesFor = (stationName) => snapshot.station_axes.filter((axis) => axis.station_name === stationName);
+  assert.ok(axesFor("판교").some((axis) => /경강선/u.test(axis.line_name)), "판교역 경강선 역축");
+  assert.ok(axesFor("성남").some((axis) => axis.line_ref === "GTX-A" || /GTX-A|광역급행/u.test(axis.line_name)), "성남역 GTX-A 역축");
+  assert.ok(axesFor("고속터미널").some((axis) => /9호선/u.test(axis.line_name)), "고속터미널 9호선 역축");
+  assert.ok(axesFor("왕십리").some((axis) => /경의.?중앙|수인.?분당/u.test(axis.line_name)), "왕십리 광역철도 역축");
+  assert.ok(axesFor("신림").some((axis) => /신림선/u.test(axis.line_name)), "신림선 역축");
+  assert.ok(!snapshot.lines.some((line) => /인천국제공항\s*셔틀트레인|자기부상철도/u.test(line.line_name)), "공항 셔틀·자기부상 선형 제외");
+  assert.ok(!snapshot.station_axes.some((axis) => /인천국제공항\s*셔틀트레인|자기부상철도/u.test(axis.line_name)), "공항 셔틀·자기부상 역축 제외");
 }
 
 console.log("✓ v2 rail");
