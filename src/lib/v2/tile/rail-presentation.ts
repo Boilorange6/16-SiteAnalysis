@@ -32,6 +32,7 @@ export const OFFICIAL_RAIL_LINE_COLORS: Readonly<Record<string, string>> = {
 export const DEFAULT_RAIL_COLOR = "#64748B";
 
 const LIGHT_RAIL_LABELS = new Set(["우이신설", "신림", "김포골드", "의정부", "용인"]);
+const NON_PUBLIC_RAIL_NAME = /(?:셔틀\s*트레인|자기\s*부상(?:철도|열차)|공항\s*셔틀)/u;
 const NAMED_LINE_ALIASES: Readonly<Record<string, string>> = {
   경의중앙: "경의중앙",
   경의중앙선: "경의중앙",
@@ -42,7 +43,6 @@ const NAMED_LINE_ALIASES: Readonly<Record<string, string>> = {
   "수인·분당선": "수인분당",
   신분당: "신분당",
   신분당선: "신분당",
-  공항: "공항철도",
   공항철도: "공항철도",
   인천국제공항철도: "공항철도",
   우이신설: "우이신설",
@@ -54,6 +54,9 @@ const NAMED_LINE_ALIASES: Readonly<Record<string, string>> = {
   서해: "서해",
   서해선: "서해",
   "GTX-A": "GTX-A",
+  GTXA: "GTX-A",
+  "광역급행철도 A노선": "GTX-A",
+  "광역급행철도 A선": "GTX-A",
   경강: "경강",
   경강선: "경강",
   의정부: "의정부",
@@ -86,22 +89,50 @@ function alias(value: string | null): string | null {
   return entry?.[1] ?? null;
 }
 
+function lineNumberFromName(value: string | null): string | null {
+  if (!value) return null;
+  const regional = value.match(/(부산|대구|대전|광주|인천)\s*(?:도시철도|지하철)?\s*([1-4])호선/u);
+  if (regional) return `${regional[1]}${regional[2]}호선`;
+  const national = value.match(/(?:서울|수도권)\s*[^:]*?([1-9])\s*호선/u)
+    ?? value.match(/(?:^|\s)([1-9])\s*호선(?:\s|:|$)/u);
+  return national ? `${national[1]}호선` : null;
+}
+
+function embeddedAlias(value: string): string | null {
+  return Object.entries(NAMED_LINE_ALIASES)
+    .filter(([name]) => name.length >= 2)
+    .sort(([a], [b]) => b.length - a.length)
+    .find(([name]) => value.includes(compact(name)))?.[1] ?? null;
+}
+
+function isNonPublicRailName(value: string | null): boolean {
+  return value !== null && NON_PUBLIC_RAIL_NAME.test(value);
+}
+
+function isAirportRailName(value: string | null): boolean {
+  return value !== null && /(?:공항철도|인천국제공항철도)/u.test(value);
+}
+
 /** OSM ref/name 변종을 보고서에서 표시할 한 호선명으로 정규화한다. */
 export function canonicalRailLineLabel(ref: string | null | undefined, lineName: string | null | undefined): string {
   const rawRef = text(ref);
   const rawName = text(lineName);
+  if (isNonPublicRailName(rawName)) return "철도";
+
+  // OSM ref가 다른 관계에서 재사용되거나 잘못 입력될 수 있다. 이름에
+  // 숫자 호선이 있으면 ref보다 이름을 우선해 9호선/공항철도 오매칭을 막는다.
+  const nameNumber = lineNumberFromName(rawName);
+  if (nameNumber) return nameNumber;
+  const nameAlias = alias(rawName) ?? (rawName ? embeddedAlias(compact(rawName)) : null);
+  if (nameAlias) return nameAlias;
+
   const refAlias = alias(rawRef);
   if (refAlias) return refAlias;
-  const nameAlias = alias(rawName);
-  if (nameAlias) return nameAlias;
 
   // 역축에 붙은 하남·마천·별내·지선 ref는 본선의 공식 색을 쓴다.
   const source = compact(`${rawRef ?? ""} ${rawName ?? ""}`);
-  const embeddedAlias = Object.entries(NAMED_LINE_ALIASES)
-    .filter(([name]) => name.length >= 2)
-    .sort(([a], [b]) => b.length - a.length)
-    .find(([name]) => source.includes(compact(name)))?.[1];
-  if (embeddedAlias) return embeddedAlias;
+  const sourceAlias = embeddedAlias(source);
+  if (sourceAlias) return sourceAlias;
   if (source.includes("별내선")) return "8호선";
   if (source.includes("마천지선") || source.includes("하남선")) return "5호선";
   if (source.includes("성수지선") || source.includes("신정지선")) return "2호선";
@@ -158,10 +189,16 @@ export function railStationMatchKey(value: string): string {
 }
 
 export function publicRailLine(ref: string | null, lineName: string | null): boolean {
+  const rawRef = text(ref);
+  const rawName = text(lineName);
+  if (isNonPublicRailName(rawName)) return false;
+  // `공항`은 공항철도와 무관한 셔틀/자기부상·잘못 붙은 9호선 관계에도
+  // 반복된다. 이름에 공항철도 또는 숫자 호선이 확인될 때만 공용 ref를 신뢰한다.
+  if (rawRef === "공항" && !isAirportRailName(rawName) && !lineNumberFromName(rawName)) return false;
   const label = canonicalRailLineLabel(ref, lineName);
   return label in OFFICIAL_RAIL_LINE_COLORS
     || LIGHT_RAIL_LABELS.has(label)
-    || isPublicSubwayLineRef(ref ?? undefined)
+    || (rawRef !== "공항" && isPublicSubwayLineRef(rawRef ?? undefined))
     || isPublicSubwayLineRef(label)
     || /^(?:부산[1-4]|대구[1-3]|대전1|광주1|인천[1-2])호선$/u.test(label);
 }

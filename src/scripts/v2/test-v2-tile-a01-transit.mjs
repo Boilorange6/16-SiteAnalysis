@@ -18,7 +18,7 @@ const { a01ClientModule } = await import("../../lib/v2/tile/a01/view.ts");
 const { toTileView, viewWithLayer } = await import("../../lib/v2/ui/tile-view.ts");
 const { layerStyle } = await import("../../lib/v2/ui/map-layers.ts");
 const { legendItemsForModel } = await import("../../lib/v2/ui/map-layers.ts");
-const { canonicalRailLineLabel, DEFAULT_RAIL_COLOR, railLineCasing, railLineColor, railLineEmphasis, publicRailLine } = await import("../../lib/v2/tile/rail-presentation.ts");
+const { canonicalRailLineLabel, DEFAULT_RAIL_COLOR, railLineCasing, railLineColor, railLineEmphasis, railLineMemberships, publicRailLine } = await import("../../lib/v2/tile/rail-presentation.ts");
 const { default: MapFigure } = await import("../../components/v2/map-figure.tsx");
 globalThis.React = React;
 
@@ -167,6 +167,17 @@ function addDirectionDuplicateSubwayLines(dataDir) {
   assert.equal(canonicalRailLineLabel("하남선", "하남선"), "5호선");
   assert.equal(canonicalRailLineLabel("별내선", "서울 지하철 8호선: 별내 → 모란"), "8호선");
   assert.equal(canonicalRailLineLabel("마천지선", "마천지선"), "5호선");
+  assert.equal(canonicalRailLineLabel("공항", "서울 지하철 9호선 급행: 중앙보훈병원 → 김포공항"), "9호선", "숫자 호선 이름이 잘못된 공항 ref보다 우선");
+  assert.equal(publicRailLine("공항", "서울 지하철 9호선 급행: 중앙보훈병원 → 김포공항"), true);
+  assert.equal(canonicalRailLineLabel("공항", "인천국제공항철도 일반열차: 서울역 → 인천공항2터미널"), "공항철도");
+  assert.equal(publicRailLine("공항", "인천국제공항철도 일반열차: 서울역 → 인천공항2터미널"), true);
+  assert.equal(publicRailLine("공항", "인천국제공항 셔틀트레인: 제1터미널 → 제2터미널"), false, "공항 셔틀은 공공 지하철 노선으로 분류하지 않는다");
+  assert.equal(publicRailLine("공항", "인천공항 자기부상철도"), false, "자기부상철도는 공공 지하철 범례에서 제외한다");
+  assert.deepEqual(
+    railLineMemberships({ properties: { lineRefs: ["공항"], lineNames: ["서울 지하철 9호선 급행: 중앙보훈병원 → 김포공항"] } }),
+    [{ label: "9호선", color: "#BDB092" }],
+    "고속터미널 사례의 공항 ref 오매칭 회귀",
+  );
   assert.equal(canonicalRailLineLabel(null, "수인분당선"), "수인분당", "name-only 호선 alias");
   assert.equal(canonicalRailLineLabel(null, "서울 경전철 신림선"), "신림", "name-only 경전철 alias");
   assert.equal(canonicalRailLineLabel("부산1", "부산 도시철도 1호선"), "부산1호선", "지역 호선은 서울 숫자 호선으로 축약하지 않음");
