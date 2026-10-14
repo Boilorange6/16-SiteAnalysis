@@ -445,6 +445,7 @@ export type MapLegendLayerItem = {
   color: string;
   colors?: string[];
   badge?: string;
+  symbol?: "rail-axis" | "rail-exit";
   highlight: boolean;
 };
 
@@ -491,6 +492,9 @@ export const legendItems = (model: MapModel): MapLegendLayerItem[] => {
       label: style.label,
       color: colors[0] ?? style.color,
       ...(colors.length > 0 ? { colors } : {}),
+      ...(layer === "rail_station" || layer === "rail_nearest"
+        ? { symbol: "rail-axis" as const }
+        : layer === "rail_entrance" ? { symbol: "rail-exit" as const } : {}),
       badge: undefined,
       highlight: highlightedLabels.has(style.label),
     }];

@@ -61,12 +61,13 @@ function representativeMap(code) {
   const maps = {
     A01: {
       features: [
-        feature("rail_station", "a01-station", 80, 100, { name: "고덕역", label: "고덕역", highlight: true, distanceM: 480, labelPriority: 2, badges: [{ text: "2", color: FEATURE_COLOR }] }),
+        feature("rail_station", "a01-station", 80, 100, { name: "고덕역", label: "고덕역", sublabel: "2호선", highlight: true, distanceM: 480, labelPriority: 2, badges: [{ text: "2", color: FEATURE_COLOR }] }),
         feature("rail_entrance", "a01-entrance", 94, 86, { name: "2번 출입구", label: "2", labelPriority: 1 }),
         feature("bus_stop", "a01-bus", -180, -100, { name: "고덕역 버스정류장", label: "정류장", labelPriority: 1 }),
         feature("bus_nearest", "a01-nearest", -300, -160, { name: "최근접 정류장", label: "340m", highlight: true, distanceM: 340, labelPriority: 2 }),
       ],
       lines: [
+        line("rail_line", "a01-route", [[-460, 160], [-220, 132], [0, 115], [250, 102], [440, 80]], { label: "2호선", name: "2호선", legendLabel: "2호선", color: FEATURE_COLOR, labelPriority: 1 }),
         line("rail_station_axis", "a01-axis", [[-440, 160], [-220, 132], [0, 115], [250, 102], [440, 80]], { label: "2호선", name: "2호선", legendLabel: "2호선", color: FEATURE_COLOR, casing: "#FFFFFF", strokeWidth: 9, casingWidth: 13, labelPriority: 2 }),
       ],
       polygons: [],
@@ -217,7 +218,7 @@ const a01Scene = buildMapScene({
   avoid: slideReserved(PX_PER_INCH, { legend: a01Legend }),
   bare: false,
 });
-const expectedFeature = a01Scene.features.find((entry) => entry.feature.fid === "a01-station");
+const expectedFeature = a01Scene.features.find((entry) => entry.feature.fid === "a01-bus");
 assert.ok(expectedFeature, "A01 scene representative feature가 필요하다");
 const featureToken = `GRP|map-A01-feature-${expectedFeature.key.replace(/[|\r\n]/g, "-").slice(0, 90)}`;
 const actualFeature = geometryForName(await slideXml(0), featureToken);
@@ -229,6 +230,16 @@ const actualFeatureCenter = {
 const expectedFeatureCenter = { x: (expectedFeature.p[0] / VIEW_W) * SLIDE.w, y: (expectedFeature.p[1] / VIEW_H) * SLIDE.h };
 assert.ok(Math.abs(actualFeatureCenter.x - expectedFeatureCenter.x) < 0.12, `A01 feature x 좌표 불일치: ${actualFeatureCenter.x} vs ${expectedFeatureCenter.x}`);
 assert.ok(Math.abs(actualFeatureCenter.y - expectedFeatureCenter.y) < 0.12, `A01 feature y 좌표 불일치: ${actualFeatureCenter.y} vs ${expectedFeatureCenter.y}`);
+const a01Xml = await slideXml(0);
+assert.match(a01Xml, /\|노선 · 2호선\|/, "A01 PPT에 네이티브 노선명이 없다");
+assert.match(a01Xml, /\|역사 · 2호선\|/, "A01 PPT에 네이티브 역사 막대가 없다");
+assert.match(a01Xml, /\|역명 · 고덕역\|/, "A01 PPT에 네이티브 역명이 없다");
+const a01LegendItems = slideLegend(a01Map, true).items;
+assert.equal(a01LegendItems.find((item) => item.layer === "rail_station")?.symbol, "rail-axis", "PPT 역사 범례는 막대 기호 계약을 가져야 한다");
+assert.equal(a01LegendItems.find((item) => item.layer === "rail_entrance")?.symbol, "rail-exit", "PPT 출구 범례는 출구 기호 계약을 가져야 한다");
+assert.match(a01Xml, /FFD200/u, "PPT 출구 범례에 #FFD200 기호가 없다");
+assert.match(a01Xml, /axis-casing/u, "PPT 역사 범례에 막대 casing 기호가 없다");
+assert.match(a01Xml, /\|exit/u, "PPT 출구 범례에 원형 기호가 없다");
 
 const noteXml = await Promise.all(Object.keys(zip.files).filter((name) => /^ppt\/notesSlides\/notesSlide\d+\.xml$/.test(name)).map((name) => zip.file(name).async("string")));
 const allNotes = noteXml.map(textContent).join("|");

@@ -161,6 +161,11 @@ function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }) {
     if (it.site) {
       s.addShape("diamond", { x: r.x + 0.19, y: y + 0.04, w: 0.16, h: 0.16, fill: { color: "FFFFFF" }, line: { color: "111111", width: 0.8 } });
       s.addShape("ellipse", { x: r.x + 0.25, y: y + 0.1, w: 0.04, h: 0.04, fill: { color: "111111" }, line: { color: "111111", width: 0 } });
+    } else if (it.symbol === "rail-axis") {
+      s.addShape("line", { x: r.x + 0.17, y: y + 0.145, w: 0.22, h: 0, line: { color: "172033", width: 5.2, beginArrowType: "none", endArrowType: "none" }, objectName: `GRP|legend-${p.view.code}-${i}|범례 ${it.label}|axis-casing` });
+      s.addShape("line", { x: r.x + 0.17, y: y + 0.145, w: 0.22, h: 0, line: { color: hex(it.color), width: 3.6, beginArrowType: "none", endArrowType: "none" }, objectName: `GRP|legend-${p.view.code}-${i}|범례 ${it.label}|axis` });
+    } else if (it.symbol === "rail-exit") {
+      s.addShape("ellipse", { x: r.x + 0.18, y: y + 0.035, w: 0.19, h: 0.19, fill: { color: "FFD200" }, line: { color: "172033", width: 0.75 }, objectName: `GRP|legend-${p.view.code}-${i}|범례 ${it.label}|exit` });
     } else if (it.badge) {
       s.addShape("ellipse", { x: r.x + 0.18, y: y + 0.03, w: 0.19, h: 0.19, fill: { color: hex(it.color) }, line: { color: "FFFFFF", width: 0.75 }, objectName: `GRP|legend-${p.view.code}-${i}|범례 ${it.label}|badge` });
       s.addText(it.badge, { x: r.x + 0.18, y: y + 0.03, w: 0.19, h: 0.19, align: "center", valign: "middle", fontFace: FONT, fontSize: 7, bold: true, color: hex(badgeTextColor(it.color)), margin: 0, objectName: `GRP|legend-${p.view.code}-${i}|범례 ${it.label}|badge-text` });
