@@ -6,10 +6,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import type BetterSqlite3 from "better-sqlite3";
 import type { LngLat } from "../crs";
-import { createAnalysisRun, enqueueAnalysisJobs, finishAnalysisRun, findCachedTileResult, getAnalysisRun, saveScene, saveTileResult } from "../app-db";
+import { createAnalysisRun, enqueueAnalysisJobs, finishAnalysisRun, findCachedTileResult, getAnalysisRun, saveScene, saveTileResult, type AnalysisRunInput } from "../app-db";
 import { acquireDataFile, releaseDataFile } from "../data/file-pool";
 import { readManifest } from "../data/manifest";
-import { tileCacheKey, type TileResult } from "../tile-result";
+import { tileCacheKey, type TileConditions, type TileResult } from "../tile-result";
 import { loadTileRaster, saveTileRasters } from "../raster-store";
 import { canonicalJson, sha256Hex } from "../canonical-json";
 import { SEASONS } from "../ingest/sources/asos-wind";
@@ -17,7 +17,7 @@ import type { SiteSummary } from "../ui/tile-view";
 import { catalogEntry } from "../ui/tile-catalog";
 import { EngineContext } from "./context";
 import { buildScene } from "./scene";
-import { resolveSiteGeometry, SITE_DEPENDENT_TILE_CODES, type SiteFailure, type SiteGeometryResult } from "./site";
+import { restoreSiteFromParameters, resolveSiteGeometry, SITE_DEPENDENT_TILE_CODES, siteSnapshotHash, type SiteFailure, type SiteGeometryResult } from "./site";
 import { buildSummary } from "./summary";
 import { cacheEngineVersion, ENGINE_VERSION, makeTile } from "./tiles/common";
 import { DATE_INDEPENDENT_CODES, HEAVY_TILE_CODES, TILES } from "../tile/server";
@@ -48,11 +48,38 @@ const HEAVY_TILE_SET = new Set<string>(HEAVY_TILE_CODES);
 
 export const todayKst = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
 
-export function cacheKeyFor(ctx: EngineContext, code: string, upstream: string | null = null): string {
-  const dateConditions = DATE_INDEPENDENT_CODES.has(code) ? { ...ctx.conditions, analysisDate: "date-independent" } : ctx.conditions;
-  const conditions = SITE_DEPENDENT_TILE_CODES.has(code) ? dateConditions : { ...dateConditions, parcelSnapshotHash: null };
-  const key = tileCacheKey({ tileCode: code, manifestHash: ctx.manifestHash, engineVersion: cacheEngineVersion(code), conditions });
+export type CacheKeyRunInput = Pick<AnalysisRunInput, "address" | "center" | "radiusM" | "analysisDate" | "parameters" | "manifestHash" | "engineVersion">;
+
+/** 저장된 분석 행에서 worker와 같은 타일 조건을 복원한다. 엔진 계산은 수행하지 않는다. */
+export function conditionsForRun(run: Pick<AnalysisRunInput, "address" | "center" | "radiusM" | "analysisDate" | "parameters">): TileConditions {
+  const site = restoreSiteFromParameters(run.parameters);
+  return {
+    address: run.address,
+    center: [run.center[0], run.center[1]],
+    radiusM: run.radiusM,
+    analysisDate: run.analysisDate,
+    timezone: "Asia/Seoul",
+    filters: {},
+    simulation: null,
+    parcelSnapshotHash: siteSnapshotHash(site),
+  };
+}
+
+/** runAnalysis와 queued worker/API stale 판정이 공유하는 실제 cache key 계산. */
+export function cacheKeyForConditions(code: string, manifestHash: string, conditions: TileConditions, upstream: string | null = null, engineVersionBase: string = ENGINE_VERSION): string {
+  const dateConditions = DATE_INDEPENDENT_CODES.has(code) ? { ...conditions, analysisDate: "date-independent" } : conditions;
+  const scopedConditions = SITE_DEPENDENT_TILE_CODES.has(code) ? dateConditions : { ...dateConditions, parcelSnapshotHash: null };
+  const key = tileCacheKey({ tileCode: code, manifestHash, engineVersion: cacheEngineVersion(code, engineVersionBase), conditions: scopedConditions });
   return upstream ? sha256Hex(`${key}:${upstream}`) : key;
+}
+
+/** 분석 행만으로 현재 worker가 사용할 base cache key를 계산한다. */
+export function cacheKeyForRun(run: CacheKeyRunInput, code: string, manifestHash = run.manifestHash, upstream: string | null = null, engineVersionBase = run.engineVersion): string {
+  return cacheKeyForConditions(code, manifestHash, conditionsForRun(run), upstream, engineVersionBase);
+}
+
+export function cacheKeyFor(ctx: EngineContext, code: string, upstream: string | null = null): string {
+  return cacheKeyForConditions(code, ctx.manifestHash, ctx.conditions, upstream, ENGINE_VERSION);
 }
 
 /** S04 reads S03's stored wind/obstacle rasters, and S03's own cache key does not change when a 2D/3D/uploaded wind

@@ -24,13 +24,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   const appDb = openV2AppDb();
   try {
+    const dataDir = v2DataDir();
     void import("@/lib/v2/engine/jobs")
-      .then(({ startJobRunner }) => startJobRunner({ appDbPath: v2AppDbPath(), dataDir: v2DataDir() }))
+      .then(({ startJobRunner }) => startJobRunner({ appDbPath: v2AppDbPath(), dataDir }))
       .catch((error) => console.warn(`v2 analysis worker start failed: ${String(error).slice(0, 200)}`));
     if (req.nextUrl.searchParams.get("status") === "1") return responseFor(req, getAnalysisStatus(appDb, id, auth.id));
     const requested = req.nextUrl.searchParams.get("tiles");
     const tileCodes = requested === null ? undefined : requested.split(",").map((code) => code.trim()).filter(Boolean);
-    return responseFor(req, getAnalysis(appDb, id, auth.id, { tileCodes }));
+    return responseFor(req, getAnalysis(appDb, id, auth.id, { tileCodes, dataDir }));
   } finally {
     appDb.close();
   }

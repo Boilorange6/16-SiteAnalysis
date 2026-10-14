@@ -34,7 +34,7 @@ function emptyMessageFor(layerId: string, model: MapModel): string {
   const normalized = normalizeLayerId(layerId);
   const hasLegacyPointResult = model.features.some((feature) => feature.layer === "rent_jeonse" || feature.layer === "rent_monthly");
   if ((normalized === "district_jeonse" || normalized === "district_monthly") && hasLegacyPointResult) {
-    return "구버전 저장 결과에는 행정구역 면이 없습니다. 새 분석에서 갱신해 주세요.";
+    return "구버전 저장 결과에는 행정구역 면이 없습니다. 최신 엔진으로 갱신 버튼을 눌러 주세요.";
   }
   switch (normalized) {
     case "building_jeonse": return "이 반경에 전세 거래 없음";

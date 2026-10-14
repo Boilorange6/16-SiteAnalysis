@@ -4,22 +4,22 @@ import { Worker } from "node:worker_threads";
 import { existsSync } from "node:fs";
 import { inflateRawSync } from "node:zlib";
 import type BetterSqlite3 from "better-sqlite3";
-import { ANALYSIS_CANCELLED_REASON, cancelQueuedAnalysisJobs, cancelRunningAnalysisJobs, enqueueAnalysisJobs, ensureAnalysisJobTable, finishAnalysisRun, getAnalysisRun, isAnalysisCancellationRequested, openV2AppDb, saveTileResult, findCachedTileResult } from "../app-db";
+import { ANALYSIS_CANCELLED_REASON, cancelQueuedAnalysisJobs, cancelRunningAnalysisJobs, enqueueAnalysisJobs, ensureAnalysisJobTable, finishAnalysisRun, getAnalysisRun, isAnalysisCancellationRequested, openV2AppDb, saveTileResult, findCachedTileResult, loadScene, saveScene } from "../app-db";
 import { acquireDataFile, releaseDataFile } from "../data/file-pool";
 import { ManifestError, manifestHash, readArchivedManifest, resolveDataPath, type Manifest } from "../data/manifest";
-import { parseTileResult, tileCacheKey, type RasterRef, type TileConditions, type TileResult } from "../tile-result";
+import { parseTileResult, type RasterRef, type TileResult } from "../tile-result";
 import { loadTileRaster, saveTileRasters } from "../raster-store";
-import { sha256Hex } from "../canonical-json";
 import { EngineContext, type RasterValues } from "./context";
-import { s03InputsHash, saveTileResultWithElapsed } from "./run";
-import { restoreSiteFromParameters, SITE_DEPENDENT_TILE_CODES, siteSnapshotHash } from "./site";
+import { buildScene } from "./scene";
+import { cacheKeyFor, cacheKeyForRun as cacheKeyForStoredRun, conditionsForRun, s03InputsHash, saveTileResultWithElapsed } from "./run";
+import { restoreSiteFromParameters } from "./site";
 import { DATE_INDEPENDENT, HEAVY_TILES, TILES } from "../tile/server";
 import { d10 } from "../tile/d10/engine";
 import { d29 } from "../tile/d29/engine";
 import { s02 } from "../tile/s02/engine";
 import { s03 } from "../tile/s03/engine";
 import { s04 } from "../tile/s04/engine";
-import { cacheEngineVersion, makeTile } from "./tiles/common";
+import { makeTile } from "./tiles/common";
 import { catalogEntry } from "../ui/tile-catalog";
 import { listJobs, type JobInfo } from "./jobs-store";
 
@@ -51,24 +51,8 @@ type JobRow = {
 
 type AnalysisRun = NonNullable<ReturnType<typeof getAnalysisRun>>;
 
-function conditionsForRun(run: AnalysisRun): TileConditions {
-  const site = restoreSiteFromParameters(run.parameters);
-  return {
-    address: run.address,
-    center: [run.center[0], run.center[1]],
-    radiusM: run.radiusM,
-    analysisDate: run.analysisDate,
-    timezone: "Asia/Seoul",
-    filters: {},
-    simulation: null,
-    parcelSnapshotHash: siteSnapshotHash(site),
-  };
-}
-
-function cacheKeyForRun(run: AnalysisRun, code: string): string {
-  const dateConditions = DATE_INDEPENDENT.has(code) ? { ...conditionsForRun(run), analysisDate: "date-independent" } : conditionsForRun(run);
-  const conditions = SITE_DEPENDENT_TILE_CODES.has(code) ? dateConditions : { ...dateConditions, parcelSnapshotHash: null };
-  return tileCacheKey({ tileCode: code, manifestHash: run.manifestHash, engineVersion: cacheEngineVersion(code, run.engineVersion), conditions });
+function cacheKeyForRun(db: Db, run: AnalysisRun, code: string): string {
+  return cacheKeyForStoredRun(run, code, run.manifestHash, code === "S04" ? s03InputsHash(db, run.analysisId) : null);
 }
 
 function readPinnedManifest(dataDir: string, hash: string): Manifest {
@@ -123,7 +107,7 @@ function failureTile(db: Db, run: AnalysisRun, code: string, reason: string): { 
   }
   const conditions = conditionsForRun(run);
   return {
-    cacheKey: cacheKeyForRun(run, code),
+    cacheKey: cacheKeyForRun(db, run, code),
     result: parseTileResult({
       tileId: `${run.analysisId}-${code}`,
       analysisId: run.analysisId,
@@ -188,6 +172,9 @@ function markCancelled(db: Db, analysisId: string, code: string, elapsedMs: numb
 
 function saveFailedJob(db: Db, run: AnalysisRun, code: string, elapsedMs: number, reason: string, ctx: EngineContext | null, cacheKey: string | null = null): void {
   markFailed(db, run.analysisId, code, elapsedMs, reason);
+  // Refresh는 실패한 새 계산이 기존의 정상/부분 결과를 덮어쓰지 않도록 한다.
+  // 초기 실행은 refresh_requested_at이 null이므로 기존의 failed marker 저장 계약을 유지한다.
+  if (run.refreshRequestedAt !== null && savedTile(db, run.analysisId, code)) return;
   try {
     const fallback = ctx ? null : failureTile(db, run, code, reason);
     const failed = ctx
@@ -199,7 +186,7 @@ function saveFailedJob(db: Db, run: AnalysisRun, code: string, elapsedMs: number
         limitations: [{ kind: "unknown", note: reason }],
       })
       : fallback!.result;
-    const key = cacheKey ?? (ctx ? keyFor(ctx, code) : fallback!.cacheKey);
+    const key = cacheKey ?? (ctx ? cacheKeyFor(ctx, code) : fallback!.cacheKey);
     if (elapsedMs > 0) saveTileResultWithElapsed(db, failed, key, elapsedMs);
     else saveTileResult(db, failed, key);
   } catch (error) {
@@ -220,19 +207,11 @@ function failRemainingJobs(db: Db, run: AnalysisRun, error: unknown): void {
     return;
   }
   const reason = jobFailureReason(error);
-  for (const code of HEAVY_TILES) {
-    const job = listJobs(db, run.analysisId).find((candidate) => candidate.code === code);
-    if (!job || (job.status !== "queued" && job.status !== "running")) continue;
-    saveFailedJob(db, run, code, 1, reason, null);
+  for (const job of listJobs(db, run.analysisId)) {
+    if (job.status !== "queued" && job.status !== "running") continue;
+    saveFailedJob(db, run, job.code, 1, reason, null);
   }
   finishIfIdle(db, run.analysisId);
-}
-
-function keyFor(ctx: EngineContext, code: string, upstream: string | null = null): string {
-  const dateConditions = DATE_INDEPENDENT.has(code) ? { ...ctx.conditions, analysisDate: "date-independent" } : ctx.conditions;
-  const conditions = SITE_DEPENDENT_TILE_CODES.has(code) ? dateConditions : { ...dateConditions, parcelSnapshotHash: null };
-  const key = tileCacheKey({ tileCode: code, manifestHash: ctx.manifestHash, engineVersion: cacheEngineVersion(code), conditions });
-  return upstream ? sha256Hex(`${key}:${upstream}`) : key;
 }
 
 function valuesFromStored(ref: RasterRef, blob: Buffer): RasterValues {
@@ -276,6 +255,7 @@ export function runHeavyTiles(appDb: Db, dataDir: string, analysisId: string): v
   let ctx: EngineContext | null = null;
   let core: BetterSqlite3.Database | null = null;
   let parcels: BetterSqlite3.Database | null = null;
+  let refreshScene = false;
   try {
     // 재현성: 현재 manifest가 아니라 분석 행에 기록된 보관본만 연다.
     const manifest = readPinnedManifest(dataDir, run.manifestHash);
@@ -291,6 +271,8 @@ export function runHeavyTiles(appDb: Db, dataDir: string, analysisId: string): v
       { core, ...(parcels ? { parcels } : {}) },
       { rasterReader: rasterReader(appDb, analysisId), reuseDataFiles: true, pooledKeys: parcels ? ["core", "parcels"] : ["core"] },
     );
+    const scene = loadScene(appDb, analysisId);
+    refreshScene = scene === null || scene.manifestHash !== run.manifestHash;
   } catch (error) {
     if (parcels) releaseDataFile(parcels);
     if (core) releaseDataFile(core);
@@ -303,7 +285,13 @@ export function runHeavyTiles(appDb: Db, dataDir: string, analysisId: string): v
     return;
   }
   try {
-    for (const code of HEAVY_TILES) {
+    // Initial runs queue only HEAVY_TILES. Refresh queues every stale catalog code,
+    // so this single worker path intentionally handles light and heavy computes.
+    const queuedCodes = listJobs(appDb, analysisId)
+      .filter((job) => job.status === "queued")
+      .sort((a, b) => a.priority - b.priority || a.enqueuedAt.localeCompare(b.enqueuedAt))
+      .map((job) => job.code);
+    for (const code of queuedCodes) {
       if (isAnalysisCancellationRequested(appDb, analysisId)) {
         cancelQueuedAnalysisJobs(appDb, analysisId);
         break;
@@ -315,7 +303,7 @@ export function runHeavyTiles(appDb: Db, dataDir: string, analysisId: string): v
       let key: string | null = null;
       let emitted: Array<{ ref: RasterRef; blob: Buffer }> = [];
       try {
-        key = keyFor(engine, code, code === "S04" ? s03InputsHash(appDb, analysisId) : null);
+        key = cacheKeyFor(engine, code, code === "S04" ? s03InputsHash(appDb, analysisId) : null);
         const cached = findCachedTileResult(appDb, key);
         let tile: TileResult;
         if (cached) {
@@ -356,13 +344,22 @@ export function runHeavyTiles(appDb: Db, dataDir: string, analysisId: string): v
               sources: [],
               limitations: [{ kind: "unknown", note: ANALYSIS_CANCELLED_REASON }],
             });
-            saveTileResultWithElapsed(appDb, cancelled, key ?? keyFor(engine, code), elapsedMs);
+            saveTileResultWithElapsed(appDb, cancelled, key ?? cacheKeyFor(engine, code), elapsedMs);
           } catch (saveError) {
             console.warn(`v2 analysis job ${analysisId}/${code} cancelled-result save skipped: ${String(saveError instanceof Error ? saveError.message : saveError).slice(0, 200)}`);
           }
         } else {
           saveFailedJob(appDb, run, code, elapsedMs, jobFailureReason(error), engine, key);
         }
+      }
+    }
+    if (refreshScene && !isAnalysisCancellationRequested(appDb, analysisId)) {
+      try {
+        const scene = buildScene(engine);
+        if (scene) saveScene(appDb, scene);
+      } catch (error) {
+        // Scene is an auxiliary artifact; retain the previous scene if refresh build fails.
+        console.warn(`scene refresh failed for ${analysisId}: ${String(error instanceof Error ? error.message : error).slice(0, 200)}`);
       }
     }
   } finally {

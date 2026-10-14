@@ -3,12 +3,16 @@ import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import type BetterSqlite3 from "better-sqlite3";
 import { z } from "zod";
-import { getAnalysisRun, loadScene, requestAnalysisCancellation } from "../app-db";
+import { getAnalysisRun, loadScene, refreshAnalysisRun as updateAnalysisRun, requestAnalysisCancellation } from "../app-db";
+import { readArchivedManifest, readManifest, manifestHash } from "../data/manifest";
+import { v2DataDir } from "../paths";
 import { DEFAULT_RADIUS_M, RADIUS_CHOICES, restoreSummary, runAnalysis } from "./run";
+import { cacheKeyForRun, s03InputsHash } from "./run";
 import { listJobs, type JobInfo } from "./jobs-store";
 import { SITE_FAILURE_MESSAGE } from "./site";
 import { parseTileResult, type TileResult } from "../tile-result";
 import { TILE_CODES } from "../ui/tile-catalog";
+import { ENGINE_VERSION } from "./tiles/common";
 
 const realDate = (d: string) => {
   const t = new Date(`${d}T00:00:00Z`);
@@ -43,11 +47,48 @@ export interface ApiReply {
   body: Record<string, unknown>;
 }
 
-type StoredTileMetaRow = { tile_code: string; status: string; created_at: string };
+type StoredTileMetaRow = { tile_code: string; status: string; cache_key: string; created_at: string };
 type StoredTileRow = StoredTileMetaRow & { result_json: string };
 type TileState = { code: string; status: TileResult["status"]; revision: string; elapsedMs: number | null };
 type AnalysisSnapshot = { revision: string; tiles: TileState[]; jobs: JobInfo[] };
 type StatusJob = Pick<JobInfo, "code" | "status" | "elapsedMs" | "error" | "retryable" | "cancelRequestedAt">;
+
+// `pending` can be a current, intentional result (S03 waits for the browser wind
+// case); it is not an old engine/data result once its current cache key is saved.
+// Cancelled/running rows always need another attempt. A failed row saved under the
+// current cache key would fail the same way again (e.g. no data for the region), so it
+// is left to the per-tile retry UI; a failed refresh keeps its old key and stays stale.
+const STALE_RESULT_STATUSES = new Set(["cancelled", "running"]);
+
+export type AnalysisRefreshTile = {
+  code: string;
+  stale: boolean;
+  status: string;
+  jobStatus: JobInfo["status"] | null;
+  storedCacheKey: string | null;
+  currentCacheKey: string | null;
+  reason: string | null;
+};
+
+export type AnalysisRefreshSummary = {
+  available: boolean;
+  state: "fresh" | "stale" | "running" | "unavailable";
+  stale: boolean | null;
+  active: boolean;
+  activeCodes: string[];
+  canRefresh: boolean;
+  dataChanged: boolean;
+  engineChanged: boolean;
+  analysisManifestHash: string;
+  currentManifestHash: string | null;
+  analysisEngineVersion: string;
+  currentEngineVersion: string;
+  staleCodes: string[];
+  /** Public alias used by the refresh banner/API contract. */
+  staleTiles: string[];
+  tiles: AnalysisRefreshTile[];
+  error: string | null;
+};
 
 function storedElapsed(raw: unknown): number | null {
   const value = (raw as { elapsedMs?: unknown } | null)?.elapsedMs;
@@ -55,16 +96,16 @@ function storedElapsed(raw: unknown): number | null {
 }
 
 function readTileMetadata(db: BetterSqlite3.Database, analysisId: string): StoredTileMetaRow[] {
-  return db.prepare("SELECT tile_code, status, created_at FROM tile_result WHERE analysis_id = ? ORDER BY tile_code").all(analysisId) as StoredTileMetaRow[];
+  return db.prepare("SELECT tile_code, status, cache_key, created_at FROM tile_result WHERE analysis_id = ? ORDER BY tile_code").all(analysisId) as StoredTileMetaRow[];
 }
 
 function readTileRows(db: BetterSqlite3.Database, analysisId: string, tileCodes?: readonly string[]): StoredTileRow[] {
   if (tileCodes === undefined) {
-    return db.prepare("SELECT tile_code, status, created_at, result_json FROM tile_result WHERE analysis_id = ? ORDER BY tile_code").all(analysisId) as StoredTileRow[];
+    return db.prepare("SELECT tile_code, status, cache_key, created_at, result_json FROM tile_result WHERE analysis_id = ? ORDER BY tile_code").all(analysisId) as StoredTileRow[];
   }
   if (tileCodes.length === 0) return [];
   const placeholders = tileCodes.map(() => "?").join(",");
-  return db.prepare(`SELECT tile_code, status, created_at, result_json FROM tile_result WHERE analysis_id = ? AND tile_code IN (${placeholders}) ORDER BY tile_code`)
+  return db.prepare(`SELECT tile_code, status, cache_key, created_at, result_json FROM tile_result WHERE analysis_id = ? AND tile_code IN (${placeholders}) ORDER BY tile_code`)
     .all(analysisId, ...tileCodes) as StoredTileRow[];
 }
 
@@ -137,7 +178,106 @@ function canRead(run: { userId?: string | number | null }, userId?: string | num
   return run.userId == null || (userId != null && run.userId === String(userId));
 }
 
-export function getAnalysis(appDb: BetterSqlite3.Database, id: string, userId?: string | number | null, options: { tileCodes?: readonly string[] } = {}): ApiReply {
+function currentManifestState(dataDir: string): { hash: string | null; error: string | null } {
+  try {
+    const current = readManifest(dataDir);
+    if (!current) return { hash: null, error: "현재 운영 manifest가 없습니다. 데이터 게시 후 다시 시도해 주세요" };
+    const hash = manifestHash(current);
+    const archived = readArchivedManifest(dataDir, hash);
+    if (!archived || manifestHash(archived) !== hash) {
+      return { hash: null, error: "현재 운영 manifest 보관본을 찾을 수 없습니다. 데이터 게시 상태를 확인해 주세요" };
+    }
+    return { hash, error: null };
+  } catch (error) {
+    return { hash: null, error: `현재 운영 manifest를 읽을 수 없습니다: ${String(error instanceof Error ? error.message : error).slice(0, 160)}` };
+  }
+}
+
+/** 엔진을 실행하지 않고 현재 manifest/cache key와 저장 tile/job 상태만 비교한다. */
+export function getAnalysisRefreshSummary(appDb: BetterSqlite3.Database, id: string, dataDir: string = v2DataDir()): AnalysisRefreshSummary | null {
+  const run = getAnalysisRun(appDb, id);
+  if (!run) return null;
+  const current = currentManifestState(dataDir);
+  const jobs = listJobs(appDb, id);
+  const jobsByCode = new Map(jobs.map((job) => [job.code, job]));
+  const rows = new Map(readTileMetadata(appDb, id).map((row) => [row.tile_code, row]));
+  const dataChanged = current.hash !== null && run.manifestHash !== current.hash;
+  const runEngineChanged = run.engineVersion !== ENGINE_VERSION;
+  let upstreamHash: string | null = null;
+  let keyError: string | null = null;
+  if (current.hash !== null) {
+    try {
+      upstreamHash = s03InputsHash(appDb, id);
+    } catch (error) {
+      keyError = `S04 cache key의 S03 입력을 확인할 수 없습니다: ${String(error instanceof Error ? error.message : error).slice(0, 160)}`;
+    }
+  }
+  const tiles = TILE_CODES.map((code): AnalysisRefreshTile => {
+    const row = rows.get(code);
+    const job = jobsByCode.get(code);
+    const status = row?.status ?? "missing";
+    let currentCacheKey: string | null = null;
+    if (current.hash !== null && keyError === null) {
+      try {
+        currentCacheKey = cacheKeyForRun(run, code, current.hash, code === "S04" ? upstreamHash : null, ENGINE_VERSION);
+      } catch (error) {
+        keyError = `cache key를 계산할 수 없습니다: ${String(error instanceof Error ? error.message : error).slice(0, 160)}`;
+      }
+    }
+    const reason = !row
+      ? "missing"
+      : STALE_RESULT_STATUSES.has(status)
+        ? status
+        : job && job.status !== "done"
+          ? `job_${job.status}`
+          : runEngineChanged
+            ? "engine_changed"
+            : current.hash === null
+              ? "manifest_unavailable"
+              : currentCacheKey === null || row.cache_key !== currentCacheKey
+                ? "cache_key_mismatch"
+                : null;
+    return {
+      code,
+      stale: current.hash === null || reason !== null,
+      status,
+      jobStatus: job?.status ?? null,
+      storedCacheKey: row?.cache_key ?? null,
+      currentCacheKey,
+      reason,
+    };
+  });
+  const activeCodes = jobs.filter((job) => job.status === "queued" || job.status === "running").map((job) => job.code);
+  const active = run.status === "running" || activeCodes.length > 0;
+  const available = current.hash !== null && keyError === null;
+  const staleCodes = tiles.filter((tile) => tile.stale).map((tile) => tile.code);
+  // A per-tile TILE_CACHE_REVISION bump changes the cache key without changing
+  // the global run engine string. Treat a key mismatch against the same manifest
+  // as an engine change in the summary, while leaving dataChanged independent.
+  const engineChanged = run.engineVersion !== ENGINE_VERSION
+    || (!dataChanged && tiles.some((tile) => tile.reason === "cache_key_mismatch"));
+  const error = current.error ?? keyError;
+  return {
+    available,
+    state: !available ? "unavailable" : active ? "running" : staleCodes.length > 0 ? "stale" : "fresh",
+    stale: available ? staleCodes.length > 0 : null,
+    active,
+    activeCodes,
+    canRefresh: available && !active && staleCodes.length > 0,
+    dataChanged,
+    engineChanged,
+    analysisManifestHash: run.manifestHash,
+    currentManifestHash: current.hash,
+    analysisEngineVersion: run.engineVersion,
+    currentEngineVersion: ENGINE_VERSION,
+    staleCodes,
+    staleTiles: staleCodes,
+    tiles,
+    error,
+  };
+}
+
+export function getAnalysis(appDb: BetterSqlite3.Database, id: string, userId?: string | number | null, options: { tileCodes?: readonly string[]; dataDir?: string } = {}): ApiReply {
   const run = getAnalysisRun(appDb, id);
   if (!run || !canRead(run, userId)) return { status: 404, body: { error: "분석을 찾을 수 없습니다" } };
   const snapshot = analysisSnapshot(appDb, id, run);
@@ -146,7 +286,50 @@ export function getAnalysis(appDb: BetterSqlite3.Database, id: string, userId?: 
   const allResults = loadResults(appDb, id);
   const requested = options.tileCodes === undefined ? null : new Set(options.tileCodes);
   const results = requested === null ? allResults : allResults.filter((result) => requested.has(result.tileCode));
-  return { status: 200, body: { analysisId: id, status: run.status, summary: restoreSummary(run, allResults), results, jobs: snapshot.jobs, tiles: snapshot.tiles, revision: snapshot.revision } };
+  const refresh = getAnalysisRefreshSummary(appDb, id, options.dataDir);
+  // A readable/null-owner or shared analysis may expose its stale state, but
+  // the refresh action is owner-only. Keep the banner action disabled for that
+  // response even when the pure summary calculation is otherwise refreshable.
+  if (refresh && (run.userId == null || userId == null || String(run.userId) !== String(userId))) refresh.canRefresh = false;
+  return { status: 200, body: { analysisId: id, status: run.status, summary: restoreSummary(run, allResults), results, jobs: snapshot.jobs, tiles: snapshot.tiles, revision: snapshot.revision, refresh } };
+}
+
+/** 같은 analysisId를 유지한 채 소유자 분석의 stale 타일을 현재 데이터/엔진 기준으로 다시 큐에 넣는다. */
+export function refreshAnalysis(appDb: BetterSqlite3.Database, dataDir: string, id: string, userId?: string | number | null): ApiReply {
+  const run = getAnalysisRun(appDb, id);
+  if (!run || run.userId == null || userId == null || String(run.userId) !== String(userId)) {
+    return { status: 404, body: { error: "분석을 찾을 수 없습니다" } };
+  }
+  const summary = getAnalysisRefreshSummary(appDb, id, dataDir);
+  if (!summary) return { status: 404, body: { error: "분석을 찾을 수 없습니다" } };
+  if (!summary.available) return { status: 503, body: { error: summary.error ?? "현재 운영 manifest를 확인할 수 없습니다", refresh: summary } };
+  if (summary.active) {
+    return { status: 409, body: { error: "이미 실행 중인 분석입니다", analysisId: id, status: run.status, refresh: summary, jobs: listJobs(appDb, id) } };
+  }
+  if (summary.staleCodes.length === 0) {
+    const snapshot = analysisSnapshot(appDb, id, run);
+    return { status: 200, body: { analysisId: id, status: run.status, queued: [], refresh: summary, jobs: snapshot.jobs, tiles: snapshot.tiles, revision: snapshot.revision } };
+  }
+  const updated = updateAnalysisRun(appDb, id, summary.currentManifestHash!, ENGINE_VERSION, summary.staleCodes);
+  if (!updated.ok) {
+    if (updated.reason === "active") return { status: 409, body: { error: "이미 실행 중인 분석입니다", analysisId: id } };
+    return { status: 404, body: { error: "분석을 찾을 수 없습니다" } };
+  }
+  const refreshedRun = getAnalysisRun(appDb, id)!;
+  const snapshot = analysisSnapshot(appDb, id, refreshedRun);
+  const refreshed = getAnalysisRefreshSummary(appDb, id, dataDir)!;
+  return {
+    status: 202,
+    body: {
+      analysisId: id,
+      status: refreshedRun.status,
+      queued: updated.queued,
+      refresh: refreshed,
+      jobs: snapshot.jobs,
+      tiles: snapshot.tiles,
+      revision: snapshot.revision,
+    },
+  };
 }
 
 export function getAnalysisStatus(appDb: BetterSqlite3.Database, id: string, userId?: string | number | null): ApiReply {
