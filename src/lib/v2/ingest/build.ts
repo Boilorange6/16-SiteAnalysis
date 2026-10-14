@@ -832,6 +832,10 @@ export interface BuildPlan {
   expectations?: SiteExpectation[];
   /** 이 원천 id들은 이전 스냅샷과 비교하지 않는다(원천 구성이 바뀐 첫 재빌드용). 나머지 원천은 그대로 검사한다. */
   resetBaseline?: string[];
+  /** 정규화로 행 수 계약이 바뀐 원천의 게시 가능한 최소 행 수. 지정해도 지역·유형·채움률 검사는 유지한다. */
+  expectedMinimumTotals?: Record<string, number>;
+  /** 과거 원천의 잘못된 지역 집계를 제거할 때만 source별로 허용한다. */
+  allowedMissingRegions?: Record<string, string[]>;
 }
 
 export interface BuildOutcome {
@@ -889,6 +893,8 @@ function gate(plan: BuildPlan, previous: Manifest | null, stats: Record<string, 
           next: s.snapshot(),
           previous: prevDb && !reset ? previousSnapshot(prevDb, s.sourceId) : null,
           expectedRegions: s.expectedRegions,
+          expectedMinimumTotal: plan.expectedMinimumTotals?.[s.sourceId],
+          allowedMissingRegions: plan.allowedMissingRegions?.[s.sourceId],
         });
         for (const f of r.failures) failures.push({ code: f.code, detail: `${s.sourceId}: ${f.detail}` });
         // 원천이 밝힌 전체 건수는 읽은 행(received)과 견준다: accepted에는 reject·unlocated 행이 빠져 있다.

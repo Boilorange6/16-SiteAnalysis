@@ -25,6 +25,10 @@ export interface IngestObservation {
   previous: IngestSnapshot | null;
   /** 첫 적재에도 반드시 있어야 하는 지역 코드 */
   expectedRegions?: readonly string[];
+  /** 원천 계약이 정규화로 바뀐 경우에도 게시를 허용할 source별 최소 행 수 */
+  expectedMinimumTotal?: number;
+  /** 의도적으로 제거한 이전 지역 집계. 다른 지역 소실은 계속 차단한다. */
+  allowedMissingRegions?: readonly string[];
 }
 
 export type GateFailureCode =
@@ -66,13 +70,18 @@ export function evaluateIngest(obs: IngestObservation): GateResult {
     failures.push({ code: "EMPTY", detail: "ingest produced 0 rows" });
   }
 
-  if (previous && previous.total > 0 && next.total < previous.total * (1 - DROP_REJECT_RATIO)) {
-    failures.push({ code: "TOTAL_DROP", detail: `${previous.total} -> ${next.total}` });
+  const expectedMinimumTotal = obs.expectedMinimumTotal;
+  const belowExpectedMinimum = expectedMinimumTotal !== undefined && next.total < expectedMinimumTotal;
+  const exceedsHistoricalDrop = previous && previous.total > 0 && next.total < previous.total * (1 - DROP_REJECT_RATIO);
+  if (belowExpectedMinimum || (exceedsHistoricalDrop && expectedMinimumTotal === undefined)) {
+    const floor = expectedMinimumTotal === undefined ? "" : ` (expected minimum ${expectedMinimumTotal})`;
+    failures.push({ code: "TOTAL_DROP", detail: `${previous?.total ?? "none"} -> ${next.total}${floor}` });
   }
 
   const regionBaseline: Record<string, number> = { ...(previous?.byRegion ?? {}) };
   for (const region of obs.expectedRegions ?? []) regionBaseline[region] = Math.max(regionBaseline[region] ?? 0, 1);
-  const lostRegions = missingKeys(regionBaseline, next.byRegion);
+  const allowedMissingRegions = new Set(obs.allowedMissingRegions ?? []);
+  const lostRegions = missingKeys(regionBaseline, next.byRegion).filter((region) => !allowedMissingRegions.has(region));
   if (lostRegions.length > 0) failures.push({ code: "REGION_MISSING", detail: lostRegions.join(",") });
 
   if (previous) {

@@ -39,11 +39,36 @@ const inKorea = (lng: unknown, lat: unknown): lng is number =>
 const regionOf = (code: string | null) => (code ? code.slice(0, 2) : UNKNOWN_REGION);
 const list = (v: unknown): Json[] => (Array.isArray(v) ? (v as Json[]) : []);
 
-/** 선형 대표 좌표: 첫 점 */
+/** 선형 대표 좌표: WGS84 대한민국 안에 있는 첫 점 */
+function coordinatesOf(g: unknown): [number, number][] {
+  const points: [number, number][] = [];
+  const visit = (value: unknown): void => {
+    if (!Array.isArray(value)) return;
+    if (typeof value[0] === "number" && typeof value[1] === "number") {
+      points.push([value[0], value[1]]);
+      return;
+    }
+    for (const child of value) visit(child);
+  };
+  visit((g as { coordinates?: unknown } | null)?.coordinates);
+  return points;
+}
+
 function firstPoint(g: unknown): [number, number] | null {
-  let c: unknown = (g as { coordinates?: unknown } | null)?.coordinates;
-  while (Array.isArray(c) && Array.isArray(c[0])) c = c[0];
-  return Array.isArray(c) && inKorea(c[0], c[1]) ? [c[0] as number, c[1] as number] : null;
+  return coordinatesOf(g).find(([lng, lat]) => inKorea(lng, lat)) ?? null;
+}
+
+function legalCodeForGeometry(g: unknown, legalCodeOf: LegalCodeOf): string | null {
+  const points = coordinatesOf(g);
+  if (points.length === 0) return null;
+  const indexes = [...new Set([0, Math.floor(points.length / 2), points.length - 1])];
+  for (const index of indexes) {
+    const [lng, lat] = points[index];
+    if (!inKorea(lng, lat)) continue;
+    const code = legalCodeOf(lng, lat);
+    if (code) return code;
+  }
+  return null;
 }
 const isLine = (g: unknown): g is Geometry => {
   const t = (g as { type?: string } | null)?.type;
@@ -82,7 +107,7 @@ export async function buildOsmSubway(db: Db, snapshot: Json, releaseId: string, 
     const id = key ? `${kind}:${key}` : null;
     if (!id || !geometry || seen.has(id)) return stats.reject();
     const p = geometry.type === "Point" ? [lng as number, lat as number] : (firstPoint(geometry) as [number, number]);
-    const code = legalCodeOf(p[0], p[1]);
+    const code = geometry.type === "Point" ? legalCodeOf(p[0], p[1]) : legalCodeForGeometry(geometry, legalCodeOf);
     seen.add(id);
     insertFeature(db, { stableId: id, kind, sourceKey: key!, releaseId, geometry, name, legalCode: code, properties: props });
     stats.accept(props, regionOf(code), type);

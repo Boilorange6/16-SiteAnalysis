@@ -31,11 +31,25 @@ assert.ok(codes(evaluateIngest(obs({ responseRowsReported: 0, parsedRows: 0, tot
 // 30% 초과 급감 / 경계 30%는 통과
 assert.ok(codes(evaluateIngest(obs({ parsedRows: 650, totalCountReported: 650, next: snap({ total: 650 }) }))).includes("TOTAL_DROP"));
 assert.ok(!codes(evaluateIngest(obs({ parsedRows: 700, totalCountReported: 700, next: snap({ total: 700 }) }))).includes("TOTAL_DROP"));
+assert.deepEqual(
+  codes(evaluateIngest(obs({ parsedRows: 650, totalCountReported: 650, next: snap({ total: 650 }), expectedMinimumTotal: 650 }))),
+  [],
+  "정규화된 원천은 선언한 최소 행 수 이상이면 역사적 급감을 허용한다",
+);
+assert.ok(
+  codes(evaluateIngest(obs({ parsedRows: 649, totalCountReported: 649, next: snap({ total: 649 }), expectedMinimumTotal: 650 }))).includes("TOTAL_DROP"),
+  "선언한 source별 최소 행 수 아래는 계속 차단한다",
+);
 
 // 전국 합계는 정상인데 부산(26)이 통째로 사라짐
 assert.deepEqual(
   codes(evaluateIngest(obs({ next: snap({ byRegion: { "11": 800, "41": 200 } }) }))),
   ["REGION_MISSING"],
+);
+assert.deepEqual(
+  codes(evaluateIngest(obs({ next: snap({ byRegion: { "11": 500, "41": 200 } }), allowedMissingRegions: ["26"] }))),
+  [],
+  "허용 목록에 있는 과거 지역만 제거할 수 있다",
 );
 
 // 첫 적재라도 기대 지역이 빠지면 차단

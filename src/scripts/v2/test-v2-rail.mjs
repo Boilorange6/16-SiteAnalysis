@@ -6,6 +6,7 @@ const { initDataFileSchema } = await import("../../lib/v2/data/schema.ts");
 const { insertFeature, queryFeaturesInRadius } = await import("../../lib/v2/data/features.ts");
 const { insertRelease } = await import("../../lib/v2/ingest/build.ts");
 const { buildOsmSubway, buildPlannedRail, legalCodeFromCore } = await import("../../lib/v2/ingest/sources/rail.ts");
+const { canonicalRailLineLabel, publicRailLine } = await import("../../lib/v2/tile/rail-presentation.ts");
 
 const fx = (n) => JSON.parse(readFileSync(new URL(`./fixtures/${n}`, import.meta.url), "utf8"));
 const mk = () => {
@@ -94,11 +95,21 @@ if (existsSync("public/data/osm-subway.json") && existsSync("public/data/rail/pl
   console.log("real files:", stats.map((s) => `${s.sourceId} read ${s.received} ok ${s.accepted} rej ${s.rejected}`).join(" · "));
   assert.ok(stats[0].accepted > 600 && stats[2].accepted > 100);
   const axesFor = (stationName) => snapshot.station_axes.filter((axis) => axis.station_name === stationName);
-  assert.ok(axesFor("판교").some((axis) => /경강선/u.test(axis.line_name)), "판교역 경강선 역축");
+  assert.ok(axesFor("판교").some((axis) => canonicalRailLineLabel(axis.line_ref, axis.line_name) === "경강"), "판교역 경강선 역축");
   assert.ok(axesFor("성남").some((axis) => axis.line_ref === "GTX-A" || /GTX-A|광역급행/u.test(axis.line_name)), "성남역 GTX-A 역축");
   assert.ok(axesFor("고속터미널").some((axis) => /9호선/u.test(axis.line_name)), "고속터미널 9호선 역축");
   assert.ok(axesFor("왕십리").some((axis) => /경의.?중앙|수인.?분당/u.test(axis.line_name)), "왕십리 광역철도 역축");
-  assert.ok(axesFor("신림").some((axis) => /신림선/u.test(axis.line_name)), "신림선 역축");
+  assert.ok(axesFor("신림").some((axis) => canonicalRailLineLabel(axis.line_ref, axis.line_name) === "신림"), "신림선 역축");
+  const publicLineLabels = new Set(
+    snapshot.lines
+      .filter((line) => publicRailLine(line.line_ref, line.line_name))
+      .map((line) => canonicalRailLineLabel(line.line_ref, line.line_name)),
+  );
+  for (const label of ["대구3호선", "부산4호선", "동해선"]) {
+    assert.ok(publicLineLabels.has(label), `${label} 공개 노선 보존`);
+  }
+  assert.ok(snapshot.entrances.some((entry) => entry.station_name === "태화강"), "울산 태화강 출입구 보존");
+  assert.ok(snapshot.entrances.some((entry) => entry.station_name === "오송"), "충북 오송 출입구 보존");
   assert.ok(!snapshot.lines.some((line) => /인천국제공항\s*셔틀트레인|자기부상철도/u.test(line.line_name)), "공항 셔틀·자기부상 선형 제외");
   assert.ok(!snapshot.station_axes.some((axis) => /인천국제공항\s*셔틀트레인|자기부상철도/u.test(axis.line_name)), "공항 셔틀·자기부상 역축 제외");
 }

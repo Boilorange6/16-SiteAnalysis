@@ -26,6 +26,8 @@ export const OFFICIAL_RAIL_LINE_COLORS: Readonly<Record<string, string>> = {
   서해: "#8FC31F",
   "GTX-A": "#9A6292",
   경강: "#0054A6",
+  동해선: "#64748B",
+  충북선: "#64748B",
 };
 
 /** 공식표에서 찾지 못한 노선은 원천색을 재사용하지 않고 중립색으로 표시한다. */
@@ -63,6 +65,10 @@ const NAMED_LINE_ALIASES: Readonly<Record<string, string>> = {
   의정부경전철: "의정부",
   용인: "용인",
   용인경전철: "용인",
+  동해선: "동해선",
+  동해남부선: "동해선",
+  "동해선 광역전철": "동해선",
+  충북선: "충북선",
   성수지선: "2호선",
   신정지선: "2호선",
   마천지선: "5호선",

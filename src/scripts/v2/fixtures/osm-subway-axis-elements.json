@@ -1,0 +1,163 @@
+[
+  {
+    "type": "relation",
+    "id": 7700001,
+    "tags": {
+      "type": "route",
+      "route": "subway",
+      "ref": "7",
+      "name": "서울 지하철 7호선: 장암 → 석남",
+      "name:ko": "서울 지하철 7호선: 장암 → 석남",
+      "network": "서울교통공사",
+      "colour": "#747F00"
+    },
+    "members": [
+      {
+        "type": "way",
+        "ref": 7701001,
+        "role": "",
+        "geometry": [
+          { "lon": 127.0975, "lat": 37.50126 },
+          { "lon": 127.1025, "lat": 37.50126 }
+        ]
+      },
+      { "type": "node", "ref": 7702001, "role": "stop" }
+    ]
+  },
+  {
+    "type": "relation",
+    "id": 7700002,
+    "tags": {
+      "type": "route",
+      "route": "subway",
+      "ref": "7",
+      "name": "서울 지하철 7호선: 석남 → 장암",
+      "name:ko": "서울 지하철 7호선: 석남 → 장암",
+      "network": "서울교통공사",
+      "colour": "#747F00"
+    },
+    "members": [
+      {
+        "type": "way",
+        "ref": 7701002,
+        "role": "",
+        "geometry": [
+          { "lon": 127.0975, "lat": 37.5012 },
+          { "lon": 127.1025, "lat": 37.50152 }
+        ]
+      },
+      { "type": "node", "ref": 7702002, "role": "stop" }
+    ]
+  },
+  {
+    "type": "relation",
+    "id": 7700003,
+    "tags": {
+      "type": "route",
+      "route": "subway",
+      "ref": "7",
+      "name": "서울 지하철 7호선: 장암 → 석남 (승강장 B)",
+      "name:ko": "서울 지하철 7호선: 장암 → 석남 (승강장 B)",
+      "network": "서울교통공사",
+      "colour": "#747F00"
+    },
+    "members": [
+      {
+        "type": "way",
+        "ref": 7701003,
+        "role": "",
+        "geometry": [
+          { "lon": 127.0975, "lat": 37.50176 },
+          { "lon": 127.1025, "lat": 37.50176 }
+        ]
+      },
+      { "type": "node", "ref": 7702003, "role": "stop" }
+    ]
+  },
+  {
+    "type": "relation",
+    "id": 7700004,
+    "tags": {
+      "type": "route",
+      "route": "subway",
+      "ref": "7",
+      "name": "서울 지하철 7호선: 석남 → 장암 (승강장 B)",
+      "name:ko": "서울 지하철 7호선: 석남 → 장암 (승강장 B)",
+      "network": "서울교통공사",
+      "colour": "#747F00"
+    },
+    "members": [
+      {
+        "type": "way",
+        "ref": 7701004,
+        "role": "",
+        "geometry": [
+          { "lon": 127.0975, "lat": 37.5017 },
+          { "lon": 127.1025, "lat": 37.50199 }
+        ]
+      },
+      { "type": "node", "ref": 7702004, "role": "stop" }
+    ]
+  },
+  {
+    "type": "node",
+    "id": 7700100,
+    "lat": 37.5,
+    "lon": 127.1,
+    "tags": {
+      "railway": "station",
+      "station": "subway",
+      "public_transport": "station",
+      "name": "샘플역",
+      "name:ko": "샘플역"
+    }
+  },
+  {
+    "type": "node",
+    "id": 7702001,
+    "lat": 37.50126,
+    "lon": 127.1,
+    "tags": {
+      "railway": "stop",
+      "public_transport": "stop_position",
+      "name": "샘플역",
+      "name:ko": "샘플역"
+    }
+  },
+  {
+    "type": "node",
+    "id": 7702002,
+    "lat": 37.50136,
+    "lon": 127.1,
+    "tags": {
+      "railway": "stop",
+      "public_transport": "stop_position",
+      "name": "샘플역",
+      "name:ko": "샘플역"
+    }
+  },
+  {
+    "type": "node",
+    "id": 7702003,
+    "lat": 37.50176,
+    "lon": 127.1,
+    "tags": {
+      "railway": "stop",
+      "public_transport": "stop_position",
+      "name": "샘플역",
+      "name:ko": "샘플역"
+    }
+  },
+  {
+    "type": "node",
+    "id": 7702004,
+    "lat": 37.501845,
+    "lon": 127.1,
+    "tags": {
+      "railway": "stop",
+      "public_transport": "stop_position",
+      "name": "샘플역",
+      "name:ko": "샘플역"
+    }
+  }
+]
