@@ -54,8 +54,9 @@ function queryFor(box) {
 (
   relation["route"="subway"](${bbox});
   relation["route"="light_rail"](${bbox});
-  relation["route"="train"]["network"~"수도권 전철|수도권|서울"](${bbox});
-  relation["route"="train"]["name"~"GTX|광역급행|경강|서해|공항철도"](${bbox});
+  relation["route"="monorail"](${bbox});
+  relation["route"="train"]["network"~"수도권 전철|수도권|서울|부산|대구|대전|광주|인천|동해|경강|서해|광역|도시철도|경전철"](${bbox});
+  relation["route"="train"]["name"~"GTX|광역급행|경강|서해|공항철도|동해|충북선|도시철도|지하철|전철|경전철"](${bbox});
 )->.rail_routes;
 (
   .rail_routes;
@@ -138,6 +139,16 @@ function pointOf(node) {
     : null;
 }
 
+function inKorea(point) {
+  return point
+    && Number.isFinite(point.lon)
+    && Number.isFinite(point.lat)
+    && point.lon >= 124
+    && point.lon <= 132
+    && point.lat >= 33
+    && point.lat <= 39;
+}
+
 function distanceM(a, b) {
   const lat = ((a.lat + b.lat) / 2) * Math.PI / 180;
   const dx = (a.lng - b.lng) * Math.cos(lat) * METERS_PER_LAT;
@@ -162,7 +173,7 @@ function relationSegments(relation) {
   return (relation.members ?? [])
     .filter((member) => member.type === "way" && Array.isArray(member.geometry) && member.geometry.length >= 2)
     .map((member) => member.geometry
-      .filter((point) => Number.isFinite(point.lon) && Number.isFinite(point.lat))
+      .filter((point) => inKorea(point))
       .map((point) => [Number(point.lon), Number(point.lat)]))
     .filter((segment) => segment.length >= 2);
 }
@@ -382,15 +393,31 @@ for (const station of stations) {
   if (!current || station.osm_id.localeCompare(current.osm_id) < 0) stationByName.set(key, station);
 }
 
+// 운영 노선 relation에 아직 연결되지 않은 광역전철 역도 출입구 원천은
+// 기존 스냅샷에 포함돼 있었다(예: 오송·태화강). 출입구를 공개 station 목록에
+// 종속시키면 전국 지역 출입구가 조용히 사라지므로, bbox에서 수집한 역 후보를
+// 출입구 매칭 전용 fallback으로 유지한다. 이 fallback은 stations 배열을 넓히지 않는다.
+const entranceStationCandidates = stationCandidates
+  .map(({ osm_id, station_name, lat, lng, _priority }) => ({ osm_id, station_name, lat, lng, _priority }))
+  .sort((a, b) => (b._priority ?? 0) - (a._priority ?? 0) || a.station_name.localeCompare(b.station_name, "ko") || a.osm_id.localeCompare(b.osm_id));
+const entranceStationByName = new Map();
+for (const station of entranceStationCandidates) {
+  const key = stationKey(station.station_name);
+  const current = entranceStationByName.get(key);
+  if (!current || (station._priority ?? 0) > (current._priority ?? 0) || station.osm_id.localeCompare(current.osm_id) < 0) {
+    entranceStationByName.set(key, station);
+  }
+}
+
 const entrances = [];
 const entranceSeen = new Set();
 for (const node of nodes.filter(isEntrance)) {
   const point = pointOf(node);
   if (!point) continue;
   const hintedName = tag(node, "station") ?? tag(node, "station_name") ?? tag(node, "station:name");
-  let station = hintedName ? stationByName.get(stationKey(hintedName)) : null;
+  let station = hintedName ? stationByName.get(stationKey(hintedName)) ?? entranceStationByName.get(stationKey(hintedName)) : null;
   if (!station) {
-    station = stations
+    station = [...stations, ...entranceStationCandidates]
       .map((candidate) => ({ candidate, distance: distanceM(candidate, point) }))
       .filter(({ distance }) => distance <= 300)
       .sort((a, b) => a.distance - b.distance || a.candidate.osm_id.localeCompare(b.candidate.osm_id))[0]?.candidate ?? null;

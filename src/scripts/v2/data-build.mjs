@@ -46,7 +46,7 @@ const opt = (name, fallback) => {
 };
 const version = opt("version");
 if (!version || !/^[0-9A-Za-z._-]+$/.test(version)) {
-  console.error("usage: data:build -- --version <name> [--raw dir] [--data-dir dir] [--dem-source glo30|hgt] [--only core,buildings,parcels,reference,market,terrain] [--with buildings,parcels] [--resume] [--log file] [--expectations file.json] [--reset-baseline parcel,parcel_building] [--dry-run]");
+  console.error("usage: data:build -- --version <name> [--raw dir] [--data-dir dir] [--dem-source glo30|hgt] [--only core,buildings,parcels,reference,market,terrain] [--with buildings,parcels] [--resume] [--log file] [--expectations file.json] [--reset-baseline parcel,parcel_building] [--expected-min source=rows,...] [--allow-missing-region source=region,...] [--dry-run]");
   process.exit(2);
 }
 // 로그: 콘솔 출력도 로그 파일(--log, 버전 폴더의 build.log)에 덧붙이고, 셸이 죽어 stdout이 닫혀도 빌드는 계속된다.
@@ -71,6 +71,25 @@ if (only.has("market")) {
 const waitLockIdx = args.indexOf("--wait-lock");
 const waitLockMin = waitLockIdx < 0 ? null : /^\d+(\.\d+)?$/.test(args[waitLockIdx + 1] ?? "") ? Number(args[waitLockIdx + 1]) : 180;
 const resetBaseline = opt("reset-baseline") ? opt("reset-baseline").split(",") : undefined;
+const parseSourceList = (value, flagName, parseValue) => {
+  if (!value) return undefined;
+  const out = {};
+  for (const item of String(value).split(",")) {
+    const separator = item.indexOf("=");
+    const sourceId = separator >= 0 ? item.slice(0, separator).trim() : "";
+    const rawValue = separator >= 0 ? item.slice(separator + 1).trim() : "";
+    if (!sourceId || !rawValue) throw new Error(`invalid --${flagName} entry: ${item}`);
+    const parsed = parseValue(rawValue);
+    if (parsed === null) throw new Error(`invalid --${flagName} value: ${item}`);
+    out[sourceId] = parsed;
+  }
+  return out;
+};
+const expectedMinimumTotals = parseSourceList(opt("expected-min"), "expected-min", (value) => {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+});
+const allowedMissingRegions = parseSourceList(opt("allow-missing-region"), "allow-missing-region", (value) => value.split("|").filter(Boolean));
 const expectations = opt("expectations") ? JSON.parse(readFileSync(opt("expectations"), "utf8")) : undefined;
 
 function* walk(dir) {
@@ -898,7 +917,7 @@ if (only.has("reference")) {
 }
 
 const started = Date.now();
-const out = await buildAndPublish({ dataDir, version, builders, progress, resume, expectations, resetBaseline, logFile: opt("log") });
+const out = await buildAndPublish({ dataDir, version, builders, progress, resume, expectations, resetBaseline, expectedMinimumTotals, allowedMissingRegions, logFile: opt("log") });
 for (const [kind, list] of Object.entries(out.stats)) {
   for (const s of list) {
     const located = s.accepted + s.unlocated === 0 ? "-" : `${((100 * s.accepted) / (s.accepted + s.unlocated)).toFixed(1)}%`;

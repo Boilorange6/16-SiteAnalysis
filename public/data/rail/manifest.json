@@ -1,9 +1,9 @@
 {
   "schemaVersion": "1.0.0",
-  "snapshotVersion": "2026-10-14-osm-overpass-a01-v1",
-  "generatedAt": "2026-10-14T00:00:00Z",
+  "snapshotVersion": "2026-10-14-osm-overpass-a01-v2",
+  "generatedAt": "2026-10-14T12:30:00Z",
   "sourceFile": "../osm-subway.json",
   "plannedFile": "planned.json",
   "status": "validated-candidate",
-  "notes": "A01 후보 스냅샷. ODbL 출처를 유지하고 경강선·GTX-A·신림선·서해선을 포함한다. 게시 manifest 전환 전 검증용."
+  "notes": "A01 후보 스냅샷. ODbL 출처를 유지하고 전국 도시철도·광역전철 관계와 기존 지역 출입구 커버리지를 보존한다. 게시 manifest 전환 전 검증용."
 }
