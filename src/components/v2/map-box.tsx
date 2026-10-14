@@ -222,7 +222,7 @@ function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, mapInteract
               return {
                 ...item,
                 site: false as const,
-                swatch: swatchKind(item.layer),
+                swatch: item.symbol ?? swatchKind(item.layer),
                 ...(swatchStyle.fill ? { fill: swatchStyle.fill } : {}),
                 ...(swatchStyle.stroke ? { stroke: swatchStyle.stroke } : {}),
                 ...(swatchStyle.fillOpacity !== undefined ? { fillOpacity: swatchStyle.fillOpacity } : {}),

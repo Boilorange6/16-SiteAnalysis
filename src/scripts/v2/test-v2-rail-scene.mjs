@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
+import * as React from "react";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
-const { buildMapScene, RAIL_EXIT_REFERENCE_MPP } = await import("../../lib/v2/ui/map-scene.ts");
+globalThis.React = React;
+
+const { buildMapScene, RAIL_EXIT_REFERENCE_MPP, railTextContrastRatio } = await import("../../lib/v2/ui/map-scene.ts");
+const { default: MapFigure } = await import("../../components/v2/map-figure.tsx");
+const { legendItems } = await import("../../lib/v2/ui/map-layers.ts");
 
 const CENTER = [127.1542, 37.555];
 const METERS_PER_DEGREE_LNG = 88200;
@@ -62,12 +69,41 @@ const fixture = {
       color: LINE_COLOR,
       labelPriority: 1,
     }),
+    line("rail_line", "line-5-fragment", [[-460, -220], [-240, -220], [-20, -220]], {
+      label: "5호선",
+      name: "5호선",
+      legendLabel: "5호선",
+      color: LINE_COLOR,
+      labelPriority: 1,
+    }),
     line("rail_station_axis", "axis-station-primary", [[-120, 0], [120, 0]], {
       label: "5호선",
       name: "5호선",
       legendLabel: "5호선",
       color: LINE_COLOR,
       labelPriority: 2,
+    }),
+    // 같은 역·호선의 거의 같은 축은 한 막대로 합쳐져야 한다.
+    line("rail_station_axis", "axis-station-duplicate", [[-118, 1], [122, 1]], {
+      label: "5호선",
+      name: "5호선",
+      legendLabel: "5호선",
+      color: LINE_COLOR,
+      labelPriority: 3,
+    }),
+    line("rail_station_axis", "axis-line-2", [[-120, 80], [120, 80]], {
+      label: "2호선",
+      name: "2호선",
+      legendLabel: "2호선",
+      color: "#3CB44A",
+      labelPriority: 2,
+    }),
+    line("rail_line", "line-2", [[-460, 80], [-240, 80], [0, 80], [240, 80], [460, 80]], {
+      label: "2호선",
+      name: "2호선",
+      legendLabel: "2호선",
+      color: "#3CB44A",
+      labelPriority: 1,
     }),
   ],
   polygons: [],
@@ -100,10 +136,32 @@ assert.ok(defaultScene.mpp > RAIL_EXIT_REFERENCE_MPP, `1km default mpp ${default
 assert.equal(defaultScene.rail.exitVisible, false, "1km default scene must hide exits");
 assert.equal(defaultScene.rail.exits.length, 0, "1km default scene must not emit exits");
 
-const detailScene = sceneFor({ model: { ...fixture, radiusM: 300 } });
+const detailScene = sceneFor({ model: { ...fixture, radiusM: 300, features: fixture.features.map((entry) => entry.fid === "station-primary" ? { ...entry, sublabel: "5호선·2호선", badges: [{ text: "5", color: LINE_COLOR }, { text: "2", color: "#3CB44A" }] } : entry) } });
 assert.ok(detailScene.mpp <= RAIL_EXIT_REFERENCE_MPP, `300m mpp ${detailScene.mpp} should reach the exit threshold`);
 assert.equal(detailScene.rail.exitVisible, true, "300m scene must enable exits");
 assert.equal(detailScene.rail.exits.length, 2, "300m scene must include both numbered entrances");
+assert.equal(defaultScene.rail.routes.filter((route) => route.label === "5호선").length, 2, "same-line route fragments must all remain in the scene");
+assert.equal(detailScene.rail.axes.filter((axis) => axis.label === "5호선").length, 1, "near-identical same-line axes must merge");
+assert.equal(detailScene.rail.axes.filter((axis) => axis.label === "2호선").length, 1, "one horizontal platform axis should remain");
+const horizontalInside = detailScene.rail.axisLabels.find((label) => label.text === "2호선");
+assert.ok(horizontalInside, "the 18px horizontal axis should receive an inside label");
+assert.equal(horizontalInside.placement, "inside", "the 18px horizontal axis label should be inside the bar");
+assert.equal(horizontalInside.fontSize, 9, "inside axis labels should fit the 18px bar at 9px");
+assert.ok(Math.abs(horizontalInside.angle) <= 90, "inside axis labels must use normalized readable rotation");
+const horizontalAxis = detailScene.rail.axes.find((axis) => axis.label === "2호선");
+assert.ok(horizontalAxis, "horizontal axis fixture is present");
+assert.ok(railTextContrastRatio(horizontalInside.color, horizontalAxis.color) >= 4.5, "inside axis label contrast must be at least 4.5:1");
+const insideSvg = renderToStaticMarkup(createElement(MapFigure, { model: { ...fixture, radiusM: 300, features: fixture.features.map((entry) => entry.fid === "station-primary" ? { ...entry, sublabel: "5호선·2호선", badges: [{ text: "5", color: LINE_COLOR }, { text: "2", color: "#3CB44A" }] } : entry) }, width: 1000, height: 600, basemap: "none", legend: false, scale: false, showRadius: false, showSiteMarker: false, showAutomaticLabels: false }));
+const insideTag = insideSvg.match(/<text[^>]*data-rail-axis-label="2호선"[^>]*>/u)?.[0] ?? "";
+assert.match(insideTag, /data-rail-axis-label-placement="inside"/u, "SVG should expose the inside placement");
+assert.match(insideTag, /stroke="none"/u, "inside SVG labels must not have a white halo");
+assert.notEqual(insideTag.match(/fill="([^"]+)"/u)?.[1], insideTag.match(/stroke="([^"]+)"/u)?.[1], "inside SVG label fill and stroke must differ");
+const sceneLegend = legendItems({ ...fixture, radiusM: 300 });
+assert.equal(sceneLegend.find((item) => item.layer === "rail_station")?.symbol, "rail-axis", "history legend must use a bar symbol");
+assert.equal(sceneLegend.find((item) => item.layer === "rail_entrance")?.symbol, "rail-exit", "entrance legend must use an exit symbol");
+const legendSvg = renderToStaticMarkup(createElement(MapFigure, { model: { ...fixture, radiusM: 300 }, width: 1000, height: 600, basemap: "none", legend: true, scale: false, showRadius: false, showSiteMarker: false, showAutomaticLabels: false }));
+assert.match(legendSvg, /data-legend-symbol="rail-axis"/u, "MapFigure legend should render the history bar symbol");
+assert.match(legendSvg, /data-legend-symbol="rail-exit"[^>]*fill="#FFD200"/u, "MapFigure legend should render the yellow exit symbol");
 for (const exit of detailScene.rail.exits) {
   assert.equal(exit.demoted, false, `${exit.number} exit should keep its full-size marker`);
   const height = exit.box.y1 - exit.box.y0;

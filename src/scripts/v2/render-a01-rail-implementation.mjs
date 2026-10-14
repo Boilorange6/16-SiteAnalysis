@@ -13,6 +13,8 @@ const { canonicalRailLineLabel, railLineColor, railLineCasing, railLineEmphasis,
 const { subwayStationDisplayName } = await import("../../lib/osm-subway-overlay.ts");
 const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
+const { framedViewport, tileUrl, tilesFor } = await import("../../lib/v2/ui/map-projection.ts");
+const { serveTile } = await import("../../lib/v2/tiles.ts");
 const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
 
 const { createRequire } = await import("node:module");
@@ -26,6 +28,11 @@ const outputDir = process.env.A01_RAIL_IMPL_OUT_DIR
 const publicDataPath = process.env.PUBLIC_SUBWAY_PATH ?? fileURLToPath(new URL("public/data/osm-subway.json", ROOT));
 const mockupDir = process.env.RAIL_MOCKUP_DIR
   ?? "C:/Users/da/AppData/Local/Temp/claude/D--V-coding-16-SiteAnalysis/6c9abf34-5f45-4bb2-a9cd-a613cdb3c712/scratchpad/W14a3";
+// 승인 시안 3과 같은 VWorld white 타일 캐시를 사용해 비교판의 좌우가
+// 배경·프레임·축척까지 동일하게 맞는다. 렌더 산출물 폴더에는 타일을 복사하지 않는다.
+const tileCacheDir = process.env.RAIL_BASEMAP_CACHE_DIR ?? join(mockupDir, ".vworld-white-cache");
+const tileDataCache = new Map();
+const tileStats = { requested: 0, loaded: 0, failed: 0 };
 
 const publicData = JSON.parse(await readFile(publicDataPath, "utf8"));
 const TARGETS = [
@@ -218,14 +225,38 @@ function buildModel(target, radiusM) {
   };
 }
 
-function figureOptions(model, cut) {
+function dataUrl(buffer, type = "image/png") {
+  return `data:${type};base64,${Buffer.from(buffer).toString("base64")}`;
+}
+
+async function loadTileData(tile) {
+  const cacheKey = `${tile.z}/${tile.x}/${tile.y}`;
+  if (tileDataCache.has(cacheKey)) return tileDataCache.get(cacheKey);
+  tileStats.requested += 1;
+  const reply = await serveTile({ layer: "white", z: String(tile.z), y: String(tile.y), x: String(tile.x) }, null, { cacheRoot: tileCacheDir });
+  const value = reply.status === 200 && reply.body instanceof Uint8Array ? dataUrl(reply.body, reply.type) : null;
+  if (value) tileStats.loaded += 1;
+  else tileStats.failed += 1;
+  tileDataCache.set(cacheKey, value);
+  return value;
+}
+
+async function loadBackground(center, cut) {
+  if (process.env.RAIL_IMPL_SKIP_TILES === "1") return new Map();
+  const viewport = framedViewport(center, cut.radiusM, cut.width, cut.height, 0.5, 0.8, 0.5);
+  const entries = await Promise.all(tilesFor(viewport).map(async (tile) => [tileUrl("white", tile.z, tile.x, tile.y), await loadTileData(tile)]));
+  return new Map(entries.filter(([, href]) => href));
+}
+
+function figureOptions(model, cut, background = new Map()) {
   return {
     model,
     width: cut.width,
     height: cut.height,
     fixed: true,
-    basemap: "none",
+    basemap: "tiles",
     layer: "white",
+    tileHref: (url) => background.get(url) ?? null,
     compact: cut.compact,
     view: cut.view,
     showAutomaticLabels: !cut.compact,
@@ -299,7 +330,8 @@ for (const target of TARGETS) {
     const model = models.get(cut.radiusM) ?? buildModel(target, cut.radiusM);
     models.set(cut.radiusM, model);
     if (target.id === "dogok" && cut.id === "detail-r300") representativeModel = model;
-    const options = figureOptions(model, cut);
+    const background = await loadBackground(model.center, cut);
+    const options = figureOptions(model, cut, background);
     const svg = renderToStaticMarkup(createElement(MapFigure, options));
     const scene = buildMapScene(sceneOptions(model, cut));
     assertRailSceneContract(scene, target.id, cut.id);
@@ -341,8 +373,9 @@ if (!representativeModel) throw new Error("대표 A01 PPT 모델이 만들어지
 // 상세 프레임보다 한 단계 더 들어간 250m 장면으로 만든다.
 const representativePptModel = buildModel({ id: "dogok", stationName: "도곡" }, 250);
 const pptCut = { id: "ppt", width: 960, height: 540, radiusM: 250, compact: false };
+const pptBackground = await loadBackground(representativePptModel.center, pptCut);
 const pptBackgroundSvg = renderToStaticMarkup(createElement(MapFigure, {
-  ...figureOptions(representativePptModel, pptCut),
+  ...figureOptions(representativePptModel, pptCut, pptBackground),
   backgroundOnly: true,
 }));
 const pptBackgroundPath = join(outputDir, "a01-rail-impl-representative-background.png");
@@ -377,6 +410,7 @@ const representativePptx = await renderReportPptx([representativePlan], { [repre
 const representativePptxPath = join(outputDir, "a01-rail-impl-representative.pptx");
 await writeFile(representativePptxPath, representativePptx);
 manifest.pptx = representativePptxPath;
+manifest.basemap = { layer: "white", cacheDir: tileCacheDir, requested: tileStats.requested, loaded: tileStats.loaded, failed: tileStats.failed };
 await writeFile(join(outputDir, "a01-rail-implementation-manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 console.log(`wrote ${representativePptxPath}`);
 console.log(`wrote ${outputDir}`);

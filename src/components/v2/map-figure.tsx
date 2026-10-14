@@ -279,7 +279,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     ...(model.linesTotal !== undefined && model.linesTotal > (model.lines?.length ?? 0) ? [`경로 표시 ${(model.lines?.length ?? 0).toLocaleString("en-US")} / 전체 ${model.linesTotal.toLocaleString("en-US")}`] : []),
   ];
   const notes = [...model.notes, ...cuts];
-  const legendRows: Array<Array<{ layer: string; label: string; color: string; x: number; w: number; site?: boolean; badge?: string }>> = [[]];
+  const legendRows: Array<Array<{ layer: string; label: string; color: string; x: number; w: number; site?: boolean; badge?: string; symbol?: "rail-axis" | "rail-exit" }>> = [[]];
   let lx = 0;
   for (const item of present) {
     const w = 12 * u + textW(item.label, fs) + 8 * u;
@@ -287,7 +287,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
       legendRows.push([]);
       lx = 0;
     }
-    legendRows.at(-1)!.push({ layer: item.layer, label: item.label, color: item.color, badge: item.badge, x: lx, w });
+    legendRows.at(-1)!.push({ layer: item.layer, label: item.label, color: item.color, badge: item.badge, symbol: item.symbol, x: lx, w });
     lx += w;
   }
   if (!bare && !muted) {
@@ -716,7 +716,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
         <text key={`rail-route-label-${text.text}-${text.x}-${text.y}`} data-rail-route-label={text.text} x={text.x + text.width / 2} y={text.y + text.height * 0.78} textAnchor="middle" fontSize={text.fontSize} fontWeight={700} fill={text.color} stroke="#fff" strokeWidth={3} paintOrder="stroke fill" transform={`rotate(${text.angle} ${(text.x + text.width / 2)} ${(text.y + text.height / 2)})`}>{text.text}</text>
       ))}
       {scene.rail.axisLabels.map((text, index) => (
-        <text key={`rail-axis-label-${index}-${text.text}-${text.x}-${text.y}`} data-rail-axis-label={text.text} data-rail-axis-label-placement={text.placement} x={text.x + text.width / 2} y={text.y + text.height * 0.78} textAnchor="middle" fontSize={text.fontSize} fontWeight={700} fill={text.color} stroke="#fff" strokeWidth={2.6} paintOrder="stroke fill">{text.text}</text>
+        <text key={`rail-axis-label-${index}-${text.text}-${text.x}-${text.y}`} data-rail-axis-label={text.text} data-rail-axis-label-placement={text.placement} x={text.x + text.width / 2} y={text.y + text.height * 0.78} textAnchor="middle" fontSize={text.fontSize} fontWeight={700} fill={text.color} stroke={text.placement === "inside" ? "none" : "#fff"} strokeWidth={text.placement === "inside" ? 0 : 2.6} paintOrder={text.placement === "inside" ? undefined : "stroke fill"} transform={`rotate(${text.angle} ${(text.x + text.width / 2)} ${(text.y + text.height / 2)})`}>{text.text}</text>
       ))}
       {scene.rail.stationLabels.map((station) => (
         <text key={station.key} data-rail-station-label={station.stationKey} x={station.x + station.width / 2} y={station.y + station.height * 0.78} textAnchor="middle" fontSize={station.fontSize} fontWeight={700} fill={INK} stroke="#fff" strokeWidth={5} paintOrder="stroke fill">{station.text}</text>
@@ -987,6 +987,13 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
                           <rect x={-3.2 * u} y={-3.2 * u} width={6.4 * u} height={6.4 * u} fill="#fff" stroke="#111" strokeWidth={0.9 * u} transform="rotate(45)" />
                           <circle r={0.9 * u} fill="#111" />
                         </g>
+                      ) : it.symbol === "rail-axis" ? (
+                        <g data-legend-symbol="rail-axis" aria-hidden="true">
+                          <line x1={panelX + pad * 1.8 + it.x - 2 * u} y1={ly + pad * 0.7 + ri * rowH + rowH / 2} x2={panelX + pad * 1.8 + it.x + 10 * u} y2={ly + pad * 0.7 + ri * rowH + rowH / 2} stroke="#172033" strokeWidth={6 * u} strokeLinecap="round" />
+                          <line x1={panelX + pad * 1.8 + it.x - 2 * u} y1={ly + pad * 0.7 + ri * rowH + rowH / 2} x2={panelX + pad * 1.8 + it.x + 10 * u} y2={ly + pad * 0.7 + ri * rowH + rowH / 2} stroke={it.color} strokeWidth={4 * u} strokeLinecap="round" />
+                        </g>
+                      ) : it.symbol === "rail-exit" ? (
+                        <circle data-legend-symbol="rail-exit" cx={panelX + pad * 1.8 + it.x + 4 * u} cy={ly + pad * 0.7 + ri * rowH + rowH / 2} r={4.8 * u} fill="#FFD200" stroke="#172033" strokeWidth={0.8 * u} />
                       ) : it.badge ? (
                         <>
                           <circle cx={panelX + pad * 1.8 + it.x + 4 * u} cy={ly + pad * 0.7 + ri * rowH + rowH / 2} r={5 * u} fill={it.color} fillOpacity={0.95} stroke="#fff" strokeWidth={0.8 * u} />

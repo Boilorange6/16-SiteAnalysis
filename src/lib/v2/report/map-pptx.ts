@@ -93,6 +93,39 @@ function capNativePath(path: PixelPath): PixelPath {
   return Array.from({ length: MAX_NATIVE_PATH_POINTS }, (_, index) => path[Math.round((index * last) / (MAX_NATIVE_PATH_POINTS - 1))]!);
 }
 
+/** PPT native geometry에는 화면 밖 조각을 넘기지 않는다. */
+function clipSegmentToFrame(a: PixelPoint, b: PixelPoint, width: number, height: number): PixelPath | null {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  let t0 = 0;
+  let t1 = 1;
+  const edges: Array<[number, number]> = [[-dx, a[0]], [dx, width - a[0]], [-dy, a[1]], [dy, height - a[1]]];
+  for (const [p, q] of edges) {
+    if (p === 0) {
+      if (q < 0) return null;
+      continue;
+    }
+    const t = q / p;
+    if (p < 0) t0 = Math.max(t0, t);
+    else t1 = Math.min(t1, t);
+    if (t0 > t1) return null;
+  }
+  return [[a[0] + dx * t0, a[1] + dy * t0], [a[0] + dx * t1, a[1] + dy * t1]];
+}
+
+function clipRailPath(points: PixelPath, width = VIEW_W, height = VIEW_H): PixelPath[] {
+  const clipped: PixelPath[] = [];
+  for (let index = 1; index < points.length; index += 1) {
+    const segment = clipSegmentToFrame(points[index - 1]!, points[index]!, width, height);
+    if (!segment) continue;
+    const previous = clipped.at(-1);
+    const joins = previous && Math.hypot(previous.at(-1)![0] - segment[0]![0], previous.at(-1)![1] - segment[0]![1]) < 0.01;
+    if (joins) clipped[clipped.length - 1] = [...previous!, segment[1]!];
+    else clipped.push(segment);
+  }
+  return clipped;
+}
+
 function tag(code: string, key: string, display: string, part: string): string {
   return `GRP|map-${safeKey(code)}-${safeKey(key)}|${safeKey(display)}|${safeKey(part)}`;
 }
@@ -332,9 +365,9 @@ function addLabels(slide: Slide, code: string, scene: MapScene): void {
   }
 }
 
-function addRailText(slide: Slide, code: string, key: string, display: string, text: { text: string; x: number; y: number; width: number; height: number; fontSize: number; angle: number; color: string }, scene: MapScene, part: string): void {
+function addRailText(slide: Slide, code: string, key: string, display: string, text: { text: string; x: number; y: number; width: number; height: number; fontSize: number; angle: number; color: string; placement?: "inside" | "adjacent" | "route" }, scene: MapScene, part: string): void {
   const options = { x: pxX(text.x), y: pxY(text.y), w: pxX(Math.max(1, text.width)), h: pxY(Math.max(1, text.height)), align: "center" as const, valign: "middle" as const, fontFace: FONT, bold: true, margin: 0, fit: "shrink" as const, rotate: text.angle };
-  slide.addText(text.text, { ...options, fontSize: Math.max(6, pxPt(text.fontSize + 1.6)), color: "FFFFFF", objectName: tag(code, key, display, `${part}-halo`) });
+  if (text.placement !== "inside") slide.addText(text.text, { ...options, fontSize: Math.max(6, pxPt(text.fontSize + 1.6)), color: "FFFFFF", objectName: tag(code, key, display, `${part}-halo`) });
   slide.addText(text.text, { ...options, fontSize: Math.max(6, pxPt(text.fontSize)), color: color(text.color), objectName: tag(code, key, display, part) });
 }
 
@@ -343,15 +376,19 @@ function addRailOverlay(slide: Slide, code: string, scene: MapScene): void {
   for (const route of scene.rail.routes) {
     const key = `rail-route-${safeKey(route.key)}`;
     const display = `노선 · ${route.label}`;
-    if (route.casing) addCustom(slide, [route.points], { line: route.casing, lineWidth: route.width + 1.2, lineOpacity: 1, objectName: tag(code, key, display, "casing") });
-    addCustom(slide, [route.points], { line: route.color, lineWidth: route.width, lineOpacity: 1, objectName: tag(code, key, display, "line") });
+    const paths = clipRailPath(route.points);
+    if (paths.length === 0) continue;
+    if (route.casing) addCustom(slide, paths, { line: route.casing, lineWidth: route.width + 1.2, lineOpacity: 1, objectName: tag(code, key, display, "casing") });
+    addCustom(slide, paths, { line: route.color, lineWidth: route.width, lineOpacity: 1, objectName: tag(code, key, display, "line") });
     if (route.labelPlacement) addRailText(slide, code, key, display, route.labelPlacement, scene, "route-label");
   }
   for (const axis of scene.rail.axes) {
     const key = `rail-axis-${safeKey(axis.key)}`;
     const display = `역사 · ${axis.label}`;
-    if (axis.casing) addCustom(slide, [axis.points], { line: axis.casing, lineWidth: axis.width + 1.4, objectName: tag(code, key, display, "casing") });
-    addCustom(slide, [axis.points], { line: axis.color, lineWidth: axis.width, objectName: tag(code, key, display, "bar") });
+    const paths = clipRailPath(axis.points);
+    if (paths.length === 0) continue;
+    if (axis.casing) addCustom(slide, paths, { line: axis.casing, lineWidth: axis.width + 1.4, objectName: tag(code, key, display, "casing") });
+    addCustom(slide, paths, { line: axis.color, lineWidth: axis.width, objectName: tag(code, key, display, "bar") });
     if (axis.labelPlacement) addRailText(slide, code, key, display, axis.labelPlacement, scene, "axis-label");
   }
   for (const exit of scene.rail.exits) {

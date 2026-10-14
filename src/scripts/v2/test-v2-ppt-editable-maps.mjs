@@ -234,6 +234,12 @@ const a01Xml = await slideXml(0);
 assert.match(a01Xml, /\|노선 · 2호선\|/, "A01 PPT에 네이티브 노선명이 없다");
 assert.match(a01Xml, /\|역사 · 2호선\|/, "A01 PPT에 네이티브 역사 막대가 없다");
 assert.match(a01Xml, /\|역명 · 고덕역\|/, "A01 PPT에 네이티브 역명이 없다");
+const a01LegendItems = slideLegend(a01Map, true).items;
+assert.equal(a01LegendItems.find((item) => item.layer === "rail_station")?.symbol, "rail-axis", "PPT 역사 범례는 막대 기호 계약을 가져야 한다");
+assert.equal(a01LegendItems.find((item) => item.layer === "rail_entrance")?.symbol, "rail-exit", "PPT 출구 범례는 출구 기호 계약을 가져야 한다");
+assert.match(a01Xml, /FFD200/u, "PPT 출구 범례에 #FFD200 기호가 없다");
+assert.match(a01Xml, /axis-casing/u, "PPT 역사 범례에 막대 casing 기호가 없다");
+assert.match(a01Xml, /\|exit/u, "PPT 출구 범례에 원형 기호가 없다");
 
 const noteXml = await Promise.all(Object.keys(zip.files).filter((name) => /^ppt\/notesSlides\/notesSlide\d+\.xml$/.test(name)).map((name) => zip.file(name).async("string")));
 const allNotes = noteXml.map(textContent).join("|");

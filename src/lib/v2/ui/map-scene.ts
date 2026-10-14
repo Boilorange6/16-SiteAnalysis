@@ -382,11 +382,44 @@ function railCasing(color: string): string | null {
   return yiq > 0.55 ? "#172033" : null;
 }
 
-function railTextColor(color: string): string {
+function railRgb(color: string): [number, number, number] | null {
   const value = color.match(/^#([0-9a-f]{6})$/iu)?.[1];
-  if (!value) return "#172033";
-  const yiq = (0.299 * parseInt(value.slice(0, 2), 16) + 0.587 * parseInt(value.slice(2, 4), 16) + 0.114 * parseInt(value.slice(4, 6), 16)) / 255;
-  return yiq > 0.55 ? "#172033" : "#FFFFFF";
+  if (!value) return null;
+  return [parseInt(value.slice(0, 2), 16), parseInt(value.slice(2, 4), 16), parseInt(value.slice(4, 6), 16)];
+}
+
+function railLuminance(color: string): number {
+  const rgb = railRgb(color) ?? [23, 32, 51];
+  const linear = rgb.map((channel) => {
+    const value = channel / 255;
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!;
+}
+
+/** 작은 inside 라벨도 SVG·PPT에서 같은 WCAG 대비 판단을 쓴다. */
+export function railTextContrastRatio(foreground: string, background: string): number {
+  const foregroundLuminance = railLuminance(foreground);
+  const backgroundLuminance = railLuminance(background);
+  const lighter = Math.max(foregroundLuminance, backgroundLuminance);
+  const darker = Math.min(foregroundLuminance, backgroundLuminance);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function railTextColor(color: string): string {
+  const dark = "#172033";
+  const light = "#FFFFFF";
+  return railTextContrastRatio(light, color) >= railTextContrastRatio(dark, color) ? light : dark;
+}
+
+function railAxisAngle(points: readonly (readonly [number, number])[]): number {
+  const first = points[0];
+  const last = points.at(-1);
+  if (!first || !last) return 0;
+  let angle = Math.atan2(last[1] - first[1], last[0] - first[0]) * 180 / Math.PI;
+  while (angle > 90) angle -= 180;
+  while (angle < -90) angle += 180;
+  return angle;
 }
 
 function railPointSegment(point: readonly [number, number], a: readonly [number, number], b: readonly [number, number]): { point: [number, number]; distance: number; t: number } {
@@ -536,11 +569,20 @@ function buildRailScene(args: {
     group.push(entry);
     routeGroups.set(label, group);
   }
-  const routes: MapSceneRailRoute[] = [...routeGroups.entries()].map(([label, entries]) => {
-    const entry = [...entries].sort((a, b) => railPolylineLength(b.points) - railPolylineLength(a.points))[0]!;
+  // 같은 호선의 공개 데이터는 타일 경계·관계 분할 때문에 여러 조각으로
+  // 들어온다. 조각 하나를 대표로 고르면 화면 안 조각이 사라질 수 있으므로
+  // scene에는 원본 조각을 모두 남긴다.
+  const routes: MapSceneRailRoute[] = [...routeGroups.entries()].flatMap(([label, entries]) => entries.map((entry) => {
     const color = railColor(label, entry.line.color);
     return { key: entry.key, label, color, casing: railCasing(color), width: compact ? 1.8 : 2, points: entry.points, labelPlacement: null };
-  });
+  }))
+    .sort((a, b) => a.label.localeCompare(b.label) || a.key.localeCompare(b.key));
+  const routesByLabel = new Map<string, MapSceneRailRoute[]>();
+  for (const route of routes) {
+    const group = routesByLabel.get(route.label) ?? [];
+    group.push(route);
+    routesByLabel.set(route.label, group);
+  }
   const axisEntries = lines.filter((entry) => entry.line.layer === "rail_station_axis" && entry.points.length >= 2);
   const axes: MapSceneRailAxis[] = [];
   for (const station of stations) {
@@ -553,57 +595,105 @@ function buildRailScene(args: {
       const sameLabel = nearbyAxes.filter((candidate) => candidate.label === label);
       const scoped = sameLabel.filter((candidate) => station.representative.feature.fid && candidate.entry.line.fid?.includes(station.representative.feature.fid));
       const selected = scoped.length > 0 ? scoped : sameLabel.length > 0 ? sameLabel : [];
-      const fallbackRoute = routes.find((route) => route.label === label);
+      const fallbackRoutes = routesByLabel.get(label) ?? [];
+      const fallbackRoute = [...fallbackRoutes]
+        .map((route) => ({ route, entry: lines.find((entry) => entry.key === route.key), distance: railNearestPoint(station.p, route.points)?.distance ?? Infinity }))
+        .filter((candidate): candidate is { route: MapSceneRailRoute; entry: MapSceneLine; distance: number } => !!candidate.entry)
+        .sort((a, b) => a.distance - b.distance)[0];
       const sources = selected.length > 0
-        ? selected.slice(0, 4).map((candidate) => ({ points: railAxisPoints(candidate.entry.points, (railLineIsLightRail(label) ? 50 : 160) / mpp), source: "stationAxes" as const }))
+        ? selected.slice(0, 4).map((candidate) => ({ entry: candidate.entry, points: railAxisPoints(candidate.entry.points, (railLineIsLightRail(label) ? 50 : 160) / mpp), source: "stationAxes" as const }))
         : fallbackRoute
-          ? (railAxisFallback(station.p, lines.find((entry) => entry.key === fallbackRoute.key)!, (railLineIsLightRail(label) ? 50 : 160) / mpp) ? [{ points: railAxisFallback(station.p, lines.find((entry) => entry.key === fallbackRoute.key)!, (railLineIsLightRail(label) ? 50 : 160) / mpp)!, source: "fallback" as const }] : [])
+          ? (railAxisFallback(station.p, fallbackRoute.entry, (railLineIsLightRail(label) ? 50 : 160) / mpp) ? [{ entry: fallbackRoute.entry, points: railAxisFallback(station.p, fallbackRoute.entry, (railLineIsLightRail(label) ? 50 : 160) / mpp)!, source: "fallback" as const }] : [])
           : [];
       for (const [sourceIndex, source] of sources.entries()) {
         const points = source.points;
         if (points.length < 2) continue;
-        const color = railColor(label, selected[sourceIndex]?.entry.line.color);
+        const color = railColor(label, source.entry.line.color);
         axes.push({ key: `rail-axis-${station.key}-${label}-${sourceIndex}`, stationKey: station.key, stationFeatureKey: station.representative.key, label, color, casing: railCasing(color), width: mpp <= RAIL_EXIT_REFERENCE_MPP ? RAIL_AXIS_WIDTH_DETAIL : RAIL_AXIS_WIDTH_DEFAULT, points, center: [(points[0]![0] + points.at(-1)![0]) / 2, (points[0]![1] + points.at(-1)![1]) / 2], source: source.source, labelPlacement: null });
       }
     }
   }
+  // 같은 역·호선의 중복 저장 축은 한 막대로 합친다. 끝점이 막대 굵기
+  // 이내일 때만 병합해, 고속터미널처럼 떨어진 승강장은 보존한다.
+  const dedupedAxes: MapSceneRailAxis[] = [];
+  for (const axis of axes) {
+    const first = axis.points[0];
+    const last = axis.points.at(-1);
+    if (!first || !last) continue;
+    const duplicateIndex = dedupedAxes.findIndex((other) => {
+      const otherFirst = other.points[0];
+      const otherLast = other.points.at(-1);
+      if (!otherFirst || !otherLast || other.stationKey !== axis.stationKey || other.label !== axis.label) return false;
+      const tolerance = Math.max(axis.width, other.width);
+      const sameDirection = railPointDistance(first, otherFirst) <= tolerance && railPointDistance(last, otherLast) <= tolerance;
+      const reverseDirection = railPointDistance(first, otherLast) <= tolerance && railPointDistance(last, otherFirst) <= tolerance;
+      return sameDirection || reverseDirection;
+    });
+    if (duplicateIndex < 0) {
+      dedupedAxes.push(axis);
+      continue;
+    }
+    if (axis.source === "stationAxes" && dedupedAxes[duplicateIndex]!.source === "fallback") dedupedAxes[duplicateIndex] = axis;
+  }
+  axes.length = 0;
+  axes.push(...dedupedAxes);
   // 오래된 저장 결과가 호선 소속도 축도 잃은 경우에도 역을 빈 점으로 되돌리지 않는다.
   for (const station of stations) {
     if (axes.some((axis) => axis.stationKey === station.key)) continue;
-    const nearestRoute = [...routes].sort((a, b) => (railNearestPoint(station.p, a.points)?.distance ?? Infinity) - (railNearestPoint(station.p, b.points)?.distance ?? Infinity))[0];
-    const routeLine = nearestRoute ? lines.find((entry) => entry.key === nearestRoute.key) : undefined;
-    if (!nearestRoute || !routeLine) continue;
-    const label = nearestRoute.label;
-    const points = railAxisFallback(station.p, routeLine, (railLineIsLightRail(label) ? 50 : 160) / mpp);
+    const nearestRoute = [...routes]
+      .map((route) => ({ route, entry: lines.find((entry) => entry.key === route.key), distance: railNearestPoint(station.p, route.points)?.distance ?? Infinity }))
+      .filter((candidate): candidate is { route: MapSceneRailRoute; entry: MapSceneLine; distance: number } => !!candidate.entry)
+      .sort((a, b) => a.distance - b.distance)[0];
+    if (!nearestRoute) continue;
+    const label = nearestRoute.route.label;
+    const points = railAxisFallback(station.p, nearestRoute.entry, (railLineIsLightRail(label) ? 50 : 160) / mpp);
     if (!points) continue;
-    axes.push({ key: `rail-axis-${station.key}-${label}-fallback`, stationKey: station.key, stationFeatureKey: station.representative.key, label, color: nearestRoute.color, casing: nearestRoute.casing, width: mpp <= RAIL_EXIT_REFERENCE_MPP ? RAIL_AXIS_WIDTH_DETAIL : RAIL_AXIS_WIDTH_DEFAULT, points, center: [(points[0]![0] + points[1]![0]) / 2, (points[0]![1] + points[1]![1]) / 2], source: "fallback", labelPlacement: null });
+    axes.push({ key: `rail-axis-${station.key}-${label}-fallback`, stationKey: station.key, stationFeatureKey: station.representative.key, label, color: nearestRoute.route.color, casing: nearestRoute.route.casing, width: mpp <= RAIL_EXIT_REFERENCE_MPP ? RAIL_AXIS_WIDTH_DETAIL : RAIL_AXIS_WIDTH_DEFAULT, points, center: [(points[0]![0] + points[1]![0]) / 2, (points[0]![1] + points[1]![1]) / 2], source: "fallback", labelPlacement: null });
   }
+  // 위 fallback도 같은 역에서 이미 생성된 축과 겹칠 수 있다.
+  const uniqueAxes: MapSceneRailAxis[] = [];
+  for (const axis of axes) {
+    const first = axis.points[0];
+    const last = axis.points.at(-1);
+    const duplicateIndex = first && last ? uniqueAxes.findIndex((other) => {
+      const otherFirst = other.points[0];
+      const otherLast = other.points.at(-1);
+      if (!otherFirst || !otherLast || other.stationKey !== axis.stationKey || other.label !== axis.label) return false;
+      const tolerance = Math.max(axis.width, other.width);
+      return (railPointDistance(first, otherFirst) <= tolerance && railPointDistance(last, otherLast) <= tolerance)
+        || (railPointDistance(first, otherLast) <= tolerance && railPointDistance(last, otherFirst) <= tolerance);
+    }) : -1;
+    if (duplicateIndex < 0) uniqueAxes.push(axis);
+    else if (axis.source === "stationAxes" && uniqueAxes[duplicateIndex]!.source === "fallback") uniqueAxes[duplicateIndex] = axis;
+  }
+  axes.length = 0;
+  axes.push(...uniqueAxes);
   const axisBoxes = axes.map((axis) => railLineBox(axis.points, axis.width / 2 + 3));
   const routeLabels: MapSceneRailText[] = [];
   if (!compact) {
+    const placedRouteLabels = new Set<string>();
     for (const route of routes) {
-      const candidates = route.points.slice(1).map((point, index) => {
-        const a = route.points[index]!;
+      if (placedRouteLabels.has(route.label)) continue;
+      placedRouteLabels.add(route.label);
+      const candidates = (routesByLabel.get(route.label) ?? []).flatMap((fragment) => fragment.points.slice(1).map((point, index) => {
+        const a = fragment.points[index]!;
         const b = point;
         const center: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
         const distance = axes.reduce((best, axis) => Math.min(best, railNearestPoint(center, axis.points)?.distance ?? Infinity), Infinity);
-        return { a, b, center, distance, length: railPointDistance(a, b) };
-      }).sort((a, b) => b.distance - a.distance || b.length - a.length);
+        return { route: fragment, a, b, center, distance, length: railPointDistance(a, b) };
+      })).sort((a, b) => b.distance - a.distance || b.length - a.length);
       const fontSize = 10;
       const textWidth = mapTextWidth(route.label, fontSize) + 4;
       const candidate = candidates.find((item) => {
         if (item.length < textWidth + 8 || !inFrame(item.center)) return false;
-        const angleRaw = Math.atan2(item.b[1] - item.a[1], item.b[0] - item.a[0]) * 180 / Math.PI;
-        const angle = angleRaw > 90 || angleRaw < -90 ? angleRaw + 180 : angleRaw;
         const box = railTextBox(item.center[0] - textWidth / 2, item.center[1] - fontSize * 0.7, textWidth, fontSize * 1.35);
         return box.x0 >= 2 && box.y0 >= 2 && box.x1 <= W - 2 && box.y1 <= H - 2 && ![...occupied, ...axisBoxes, ...routeLabels.map((label) => label.box)].some((other) => railBoxOverlap(other, box, 2));
       });
       if (!candidate) continue;
-      const angleRaw = Math.atan2(candidate.b[1] - candidate.a[1], candidate.b[0] - candidate.a[0]) * 180 / Math.PI;
-      const angle = angleRaw > 90 || angleRaw < -90 ? angleRaw + 180 : angleRaw;
+      const angle = railAxisAngle([candidate.a, candidate.b]);
       const box = railTextBox(candidate.center[0] - textWidth / 2, candidate.center[1] - fontSize * 0.7, textWidth, fontSize * 1.35);
       routeLabels.push(railTextPlacement(route.label, box, fontSize, railTextColor(route.color), "route", angle));
-      route.labelPlacement = routeLabels.at(-1)!;
+      candidate.route.labelPlacement = routeLabels.at(-1)!;
     }
   }
   const exits: MapSceneRailExit[] = [];
@@ -639,9 +729,17 @@ function buildRailScene(args: {
       const textHeight = fontSize * 1.35;
       const occupiedForLabel = [...occupied, ...routeLabels.map((label) => label.box), ...exits.map((exit) => exit.box), ...axisLabels.map((label) => label.box)];
       let placement: MapSceneRailText | null = null;
+      const angle = railAxisAngle(axis.points);
       if (length >= textWidth + 12) {
-        const box = railTextBox(axis.center[0] - textWidth / 2, axis.center[1] - textHeight / 2, textWidth, textHeight);
-        if (box.x0 >= 2 && box.y0 >= 2 && box.x1 <= W - 2 && box.y1 <= H - 2 && !occupiedForLabel.some((other) => railBoxOverlap(other, box, 1))) placement = railTextPlacement(axis.label, box, fontSize, railTextColor(axis.color), "inside");
+        const insideCenters = [0.5, 0.28, 0.72, 0.12, 0.88].map((ratio) => [first[0] + (last[0] - first[0]) * ratio, first[1] + (last[1] - first[1]) * ratio] as [number, number]);
+        for (const center of insideCenters) {
+          // 회전은 렌더러에 맡기되, 점유 판정은 보수적인 축정렬 박스로
+          // 계산한다. 중심 표식에 걸리면 같은 막대의 빈 구간으로 옮긴다.
+          const box = railTextBox(center[0] - textWidth / 2, center[1] - textHeight / 2, textWidth, textHeight);
+          if (box.x0 < 2 || box.y0 < 2 || box.x1 > W - 2 || box.y1 > H - 2 || occupiedForLabel.some((other) => railBoxOverlap(other, box, 1))) continue;
+          placement = railTextPlacement(axis.label, box, fontSize, railTextColor(axis.color), "inside", angle);
+          break;
+        }
       }
       if (!placement) {
         const dx = last[0] - first[0];
@@ -655,7 +753,7 @@ function buildRailScene(args: {
           if (box.x0 < 2 || box.y0 < 2 || box.x1 > W - 2 || box.y1 > H - 2 || occupiedForLabel.some((other) => railBoxOverlap(other, box, 1))) continue;
           // 축 밖 후보는 흰 바탕이므로 호선색 자체가 아니라 잉크색을
           // 사용해 작은 글자도 4.5:1 대비를 유지한다.
-          placement = railTextPlacement(axis.label, box, fontSize, "#172033", "adjacent");
+          placement = railTextPlacement(axis.label, box, fontSize, "#172033", "adjacent", angle);
           break;
         }
       }
@@ -894,7 +992,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     ...(legendBox ? [legendBox] : []),
     ...avoid,
     ...(scale ? [{ x0: barX0 - 8 * u, y0: barY - 16 * u, x1: W, y1: H }] : []),
-    ...(!muted ? [siteBounds] : []),
+    ...(showSiteMarker && !muted ? [siteBounds] : []),
     ...labelPlacements.flatMap((placement) => [placement.box, placement.leader]),
   ];
   const rail = buildRailScene({ model, features: drawn, lines: linePaths, width: W, height: H, mpp, compact, occupied: occupiedBoxes, inFrame });
