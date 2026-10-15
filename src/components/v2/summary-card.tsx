@@ -51,7 +51,6 @@ function SummaryCard({ view, face, onFace, rovingTabIndex, onRovingFocus, onRovi
   );
   const body = (
     <>
-      <div className={styles.summaryKicker}>대지 요약</div>
       <h2 className={`${styles.display} ${styles.summaryAddr}`}>{view.address}</h2>
       <div className={styles.chips}>
         <span className={styles.chip}>면적: {view.area}</span>
@@ -87,14 +86,20 @@ function SummaryCard({ view, face, onFace, rovingTabIndex, onRovingFocus, onRovi
     >
       <div className={styles.flipInner} data-face={face}>
         <div className={`${styles.face} ${styles.faceSummary} ${styles.sumFront}`} data-on={face === "summary"} inert={face !== "summary"}>
+          <div className={styles.sumHead}>
+            <span className={styles.summaryKicker}>대지 요약</span>
+            {view.map && (
+              <button type="button" className={styles.mfBtn} data-card-face-button="map" onClick={() => changeFace("map")} aria-pressed={false} aria-label="대지 요약 지도 보기" title="지도 보기">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
+                  <path d="M3 12a9 9 0 1 0 3-6.7" />
+                  <path d="M3 4v5h5" />
+                </svg>
+              </button>
+            )}
+          </div>
           <div className={styles.sumBody}>{body}</div>
           <div className={styles.sfLine}>
             <div className={styles.sumAsOf}>{asOf}</div>
-            {view.map && (
-              <button type="button" className={styles.flipBtn} data-card-face-button="map" onClick={() => changeFace("map")} aria-pressed={false} aria-label="대지 요약 지도 보기">
-                지도 ↻
-              </button>
-            )}
           </div>
         </div>
         <div className={`${styles.face} ${styles.faceMap}`} data-on={face === "map"} inert={face !== "map"}>

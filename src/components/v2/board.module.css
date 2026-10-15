@@ -29,6 +29,154 @@
   margin: 0 auto;
   padding: 14px 24px 40px;
 }
+.boardRail,
+.mobileRail {
+  display: none;
+}
+.boardRail {
+  min-width: 0;
+}
+.railContent {
+  display: grid;
+  gap: 14px;
+}
+.railSection {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+}
+.railTitle,
+.railHeading {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+.railLabel {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.railSegments {
+  display: grid;
+  gap: 4px;
+}
+.railSegments button,
+.railAction,
+.railClear,
+.railTrayBtn {
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f4f4f7;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+.railSegments button[aria-pressed="true"] {
+  border-color: var(--black);
+  background: var(--black);
+  color: #fff;
+}
+.railSegments button:focus-visible,
+.railAction:focus-visible,
+.railClear:focus-visible,
+.railTrayBtn:focus-visible {
+  outline: 2px solid #2f6fdb;
+  outline-offset: 2px;
+}
+.railAction,
+.railClear {
+  width: 100%;
+  padding: 0 10px;
+  text-align: left;
+}
+.railAction {
+  background: #fff;
+}
+.railAction:hover:not(:disabled),
+.railClear:hover {
+  box-shadow: 0 0 0 2px var(--ink) inset;
+}
+.railAction:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.railSelection {
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.railSelectionDetail,
+.railEmpty {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+.railClear {
+  background: transparent;
+  color: var(--muted);
+  text-align: center;
+}
+.railTray {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  max-height: min(42vh, 360px);
+  overflow-y: auto;
+}
+.railTrayBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 8px;
+  text-align: left;
+}
+.railTrayBtn > span:nth-child(2) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.railTrayBtn > span:last-child {
+  margin-left: auto;
+}
+@media (min-width: 1280px) {
+  .page {
+    display: grid;
+    grid-template-columns: 200px minmax(0, 1fr);
+    column-gap: 24px;
+  }
+  .boardRail {
+    display: block;
+    grid-column: 1;
+    grid-row: 1 / span 6;
+    position: sticky;
+    top: 14px;
+    align-self: start;
+  }
+  .page > .topbar,
+  .page > .progressRow,
+  .page > .refreshBanner,
+  .page > .analyzeWrap,
+  .page > .analyzeBar,
+  .page > .grid,
+  .page > .notProvidedGroup {
+    grid-column: 2;
+    min-width: 0;
+  }
+}
+@media (max-width: 1279px) {
+  .mobileRail {
+    display: block;
+  }
+}
 .skipLink {
   position: absolute;
   z-index: 70;
@@ -116,7 +264,6 @@
   cursor: not-allowed;
 }
 .pill:focus-visible,
-.iconBtn:focus-visible,
 .open:focus-visible,
 .seg button:focus-visible,
 .check input:focus-visible {
@@ -239,10 +386,6 @@
 .refreshButton:focus-visible {
   outline: 2px solid #2f6fdb;
   outline-offset: 2px;
-}
-.editHint {
-  color: var(--muted);
-  font-size: 13px;
 }
 .presetSelect:focus-visible {
   outline: 2px solid #2f6fdb;
@@ -509,15 +652,6 @@
   align-items: center;
   gap: 6px;
 }
-.gridControls {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-.gridControls .seg {
-  flex-wrap: nowrap;
-}
 .segLabel {
   color: var(--muted);
   font-size: 11px;
@@ -635,7 +769,6 @@
   }
   .spacer,
   .demoTag,
-  .editHint,
   .desktopTools {
     display: none;
   }
@@ -743,7 +876,7 @@
   }
 }
 
-@media (max-width: 1280px) and (min-width: 901px) {
+@media (max-width: 1279px) and (min-width: 901px) {
   .topbar {
     flex-wrap: nowrap;
   }
@@ -1144,11 +1277,6 @@
   outline: 2px solid #2f6fdb;
   outline-offset: 2px;
 }
-.tileEdit {
-  cursor: default;
-  outline: 2px dashed #8b90a0;
-  outline-offset: -2px;
-}
 .span2 {
   grid-column: span 2;
 }
@@ -1160,16 +1288,112 @@
 .grid[data-grid-cols="1"] .span4 {
   grid-column: auto;
 }
+.grid[data-grid-cols="1"] .resizeHandle {
+  display: none;
+}
 .handle {
   flex: none;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+  margin: -10px -2px -10px -8px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
   cursor: grab;
   touch-action: none;
   user-select: none;
   color: var(--muted);
   font-size: 18px;
   line-height: 1;
-  padding: 8px 6px;
-  margin: -8px -2px -8px -6px;
+  opacity: 0;
+}
+.tile:hover .handle,
+.tile:focus-within .handle {
+  opacity: 1;
+}
+.handle:hover {
+  background: #eef0f3;
+}
+.handle:focus-visible {
+  outline: 2px solid #2f6fdb;
+  outline-offset: 2px;
+  opacity: 1;
+}
+.resizeHandle {
+  position: absolute;
+  z-index: 45;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  opacity: 0;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+.resizeHandleLeft {
+  left: -6px;
+  bottom: -6px;
+}
+.resizeHandleRight {
+  right: -6px;
+  bottom: -6px;
+}
+.resizeHandle::before {
+  content: "";
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 16px;
+  height: 16px;
+  border-right: 3px solid var(--ink);
+  border-bottom: 3px solid var(--ink);
+  border-radius: 0 0 4px 0;
+}
+.resizeHandleLeft::before {
+  right: auto;
+  left: 8px;
+  border-right: 0;
+  border-left: 3px solid var(--ink);
+  border-radius: 0 0 0 4px;
+}
+.tile:hover .resizeHandle,
+.tile:focus-within .resizeHandle,
+.resizeHandle:focus-visible {
+  opacity: 1;
+}
+.resizeHandle:focus-visible {
+  outline: 2px solid #2f6fdb;
+  outline-offset: -1px;
+}
+.resizePreview {
+  position: absolute;
+  z-index: 44;
+  pointer-events: none;
+  border: 2px dashed #2f6fdb;
+  border-radius: 18px;
+  background: rgba(47, 111, 219, 0.06);
+}
+.resizePreviewBadge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: #2f6fdb;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
 }
 .tileDrag {
   outline: 2px solid var(--ink);
@@ -1232,41 +1456,6 @@
   margin-left: auto;
   color: var(--muted);
   font-size: 11px;
-}
-.tray {
-  position: sticky;
-  bottom: 0;
-  padding: 12px max(24px, calc((100% - 1392px) / 2));
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  background: var(--bg);
-  border-top: 1px solid var(--line);
-  z-index: 30;
-}
-.trayLabel {
-  font-size: 12px;
-  color: var(--muted);
-  margin-right: 4px;
-}
-.trayBtn {
-  border: 0;
-  border-radius: 999px;
-  background: #fff;
-  padding: 8px 14px;
-  font-size: 13px;
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.trayBtn:hover {
-  box-shadow: 0 0 0 2px var(--ink) inset;
-}
-.trayBtn:focus-visible {
-  outline: 2px solid #2f6fdb;
-  outline-offset: 2px;
 }
 .srOnly {
   position: absolute;
@@ -1334,29 +1523,6 @@
   opacity: 0;
   accent-color: var(--black);
   cursor: pointer;
-}
-.editRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 6px 8px;
-}
-.iconBtn {
-  border: 0;
-  background: #eef0f3;
-  border-radius: 999px;
-  min-width: 32px;
-  height: 30px;
-  padding: 0 10px;
-  font-size: 13px;
-  font-weight: 700;
-}
-.iconBtn:hover:not(:disabled) {
-  background: #dfe2e8;
-}
-.iconBtn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
 }
 .bigWrap {
   min-width: 0;
@@ -2521,10 +2687,6 @@ button.badge:focus-visible {
 .sfTop .check:first-of-type {
   margin-left: auto;
 }
-.tileEdit .sfTop {
-  flex-wrap: wrap;
-  align-items: flex-start;
-}
 .sfTop .open {
   padding: 3px 9px;
 }
@@ -2547,7 +2709,7 @@ button.badge:focus-visible {
   }
 }
 @container (max-width: 259px) {
-  .tile:not(.tileEdit) .sfCollapse {
+  .tile .sfCollapse {
     display: none;
   }
   .sfTop .sfMore {
@@ -2704,49 +2866,17 @@ button.badge:focus-visible {
   font-size: 11px;
   color: var(--muted);
 }
-.flipBtn {
-  flex: none;
-  border: 0;
-  border-radius: 999px;
-  background: #eef0f3;
-  padding: 4px 11px;
-  font-size: 12px;
-  font-weight: 700;
-}
-.flipBtn:hover {
-  background: #dfe2e8;
-}
-.flipBtn:focus-visible,
-.flipIcon:focus-visible {
-  outline: 2px solid #2f6fdb;
-  outline-offset: 2px;
-}
-.flipIcon {
-  flex: none;
-  border: 0;
-  border-radius: 999px;
-  background: #eef0f3;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  font-size: 14px;
-  line-height: 1;
-  min-width: 24px;
-  min-height: 24px;
-}
-.flipIconPlate {
-  background: rgba(255, 255, 255, 0.86);
-  width: 34px;
-  height: 34px;
-  font-size: 16px;
-}
 .sumFront {
   display: flex;
   flex-direction: column;
   gap: 8px;
   padding: 16px 18px 12px;
+}
+.sumHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
 }
 .sumBody {
   flex: 1 1 auto;
@@ -2811,8 +2941,9 @@ button.badge:focus-visible {
   .root .seg button[aria-pressed="true"] {
     background: radial-gradient(ellipse 100% 12px at center, var(--black, #16181d) 0 100%, transparent 101%);
   }
-  .root .editRow {
-    gap: 8px;
+  .root .handle,
+  .root .resizeHandle {
+    opacity: 1;
   }
   .root .check {
     min-width: 44px;
@@ -2827,14 +2958,12 @@ button.badge:focus-visible {
   .root .skipLink {
     min-height: 44px;
   }
-  .root .sfLine > .sourceTrigger,
-  .root .sfLine > .flipBtn {
+  .root .sfLine > .sourceTrigger {
     position: relative;
     min-height: 26px;
     height: 26px;
   }
-  .root .sfLine > .sourceTrigger::before,
-  .root .sfLine > .flipBtn::before {
+  .root .sfLine > .sourceTrigger::before {
     content: "";
     position: absolute;
     inset: -9px 0;
@@ -3467,7 +3596,7 @@ button.badge:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 10px;
   border: 0;
   border-radius: 8px;
@@ -3476,6 +3605,13 @@ button.badge:focus-visible {
   font: inherit;
   text-align: left;
   cursor: pointer;
+}
+.mfMenuItem:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.mfMenuDanger {
+  color: #9a3b2f;
 }
 .mfMenuItem span {
   font-size: 12px;
@@ -3497,7 +3633,7 @@ button.badge:focus-visible {
 }
 .mfSegBtn {
   flex: 1;
-  min-height: 34px;
+  min-height: 44px;
   border: 0;
   border-radius: 999px;
   background: #f1f1f4;
