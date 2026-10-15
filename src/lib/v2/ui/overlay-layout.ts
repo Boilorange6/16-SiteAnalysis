@@ -78,10 +78,17 @@ export function slideLayout(): { title: Rect; info: Rect; legendX: number; legen
 }
 
 const panelScale = (value: number | undefined): number => Math.max(0.7, Math.min(1.5, value ?? 1));
+export const slidePanelScale = panelScale;
 
-function scaleAnchoredRect(rect: Rect, scale: number, anchor: "top-left" | "top-right" | "bottom-left"): Rect {
-  const w = rect.w * scale;
-  const h = rect.h * scale;
+function scaleAnchoredRect(
+  rect: Rect,
+  scale: number,
+  anchor: "top-left" | "top-right" | "bottom-left",
+  maxW = Number.POSITIVE_INFINITY,
+  maxH = Number.POSITIVE_INFINITY,
+): Rect {
+  const w = Math.min(rect.w * scale, Math.max(0, maxW));
+  const h = Math.min(rect.h * scale, Math.max(0, maxH));
   return {
     x: anchor === "top-right" ? rect.x + rect.w - w : rect.x,
     y: anchor === "bottom-left" ? rect.y + rect.h - h : rect.y,
@@ -102,10 +109,35 @@ export function slidePanelRects(
 ): SlidePanelRects {
   const l = slideLayout();
   const baseLegend = legendBase ?? slideLegendRect(4, 0, 8);
+  const titleScale = panelScale(style?.titleScale);
+  const summaryScale = panelScale(style?.summaryScale);
+  const legendScale = panelScale(style?.legendScale);
+  const panelGap = 0.18;
+  const maxSideBySideW = Math.max(0, SLIDE.w - 2 * SLIDE.edge - panelGap);
+  const requestedTitleW = Math.min(l.title.w * titleScale, SLIDE.w - 2 * SLIDE.edge);
+  const requestedSummaryW = Math.min(l.info.w * summaryScale, SLIDE.w - 2 * SLIDE.edge);
+  const sideBySideRatio = hasSummary && requestedTitleW + requestedSummaryW > maxSideBySideW
+    ? maxSideBySideW / (requestedTitleW + requestedSummaryW)
+    : 1;
+  const titleW = requestedTitleW * sideBySideRatio;
+  const summaryW = requestedSummaryW * sideBySideRatio;
+  const safeBottom = l.strip.y - SLIDE.edge * 0.6;
+  const safeHeight = Math.max(0, safeBottom - SLIDE.edge);
+  const title = scaleAnchoredRect(l.title, titleScale, "top-left", titleW, safeHeight);
+  const summary = hasSummary
+    ? scaleAnchoredRect(l.info, summaryScale, "top-right", summaryW, safeHeight)
+    : null;
+  const requestedLegend = baseLegend ? scaleAnchoredRect(baseLegend, legendScale, "bottom-left") : null;
+  const legend = requestedLegend
+    ? {
+        ...requestedLegend,
+        w: Math.min(requestedLegend.w, Math.max(0, (summary?.x ?? SLIDE.w - SLIDE.edge) - SLIDE.edge - panelGap)),
+      }
+    : null;
   return {
-    title: scaleAnchoredRect(l.title, panelScale(style?.titleScale), "top-left"),
-    summary: hasSummary ? scaleAnchoredRect(l.info, panelScale(style?.summaryScale), "top-right") : null,
-    legend: baseLegend ? scaleAnchoredRect(baseLegend, panelScale(style?.legendScale), "bottom-left") : null,
+    title,
+    summary,
+    legend,
   };
 }
 

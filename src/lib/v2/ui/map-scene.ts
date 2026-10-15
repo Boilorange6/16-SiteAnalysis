@@ -975,7 +975,10 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   const legendY = legendBox?.y0 ?? 0;
   const legendH = legendBox ? legendBox.y1 - legendBox.y0 : 0;
   const calloutTop = calloutTopOpt ?? (legendBox && legendY <= H / 2 ? legendY + legendH + 6 * u : 4 * u);
-  const calloutBottom = legendBox && legendY > H / 2 ? legendY - 6 * u : H - bottomInset - 4 * u;
+  const naturalCalloutBottom = legendBox && legendY > H / 2 ? legendY - 6 * u : H - bottomInset - 4 * u;
+  // 축척 판은 occupiedBoxes에만 기록하면 이미 배치된 콜아웃과 겹칠 수 있다.
+  // 콜아웃 하단을 축척 판 위로 먼저 제한해 조판 셀에서도 카드가 축척을 가리지 않게 한다.
+  const calloutBottom = Math.min(naturalCalloutBottom, scale ? barY - 20 * u : H);
   const calloutFrameModel = { ...calloutFrame({ W, H, m: calloutMetrics, edge: 4 * u, top: calloutTop, bottom: Math.max(calloutTop, calloutBottom), ...(calloutLeftBottom !== undefined ? { leftBottom: Math.max(calloutTop, calloutLeftBottom) } : {}), rightInset, perSide: 100, rows: 3, variant: "compact", maxFill: 0.8 }), centerX: W / 2 };
   const placementFor = (placed: Placed, entry: MapSceneLabel, text: MapCalloutTextLayout): MapSceneLabelPlacement => {
     const box: MapSceneBox = { x0: placed.x, y0: placed.y, x1: placed.x + placed.width, y1: placed.y + placed.height };
