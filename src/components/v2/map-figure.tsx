@@ -74,6 +74,8 @@ export type MapFigureProps = {
   selectedFids?: readonly string[];
   /** 범례 라벨 기준 화면 강조. 같은 라벨의 여러 레이어를 함께 강조한다. */
   highlightLabel?: string | null;
+  /** 보고서 범례 강조: 선택 항목의 원래 geometry style을 보존한다. */
+  legendFocus?: string | null;
   /** 키보드/클릭으로 고정된 범례 라벨(aria-pressed에 사용). */
   highlightPinnedLabel?: string | null;
   /** 요소 호버 라벨과 고정 라벨에 쓰는 현재 요소 키. */
@@ -100,6 +102,8 @@ export type MapFigureProps = {
   onMapClick?: (coordinate: { lng: number; lat: number }) => void;
   /** 화면 탐색용 확정 뷰. 생략하면 보고서·기존 렌더와 같은 반경 전체 뷰다. */
   view?: MapView;
+  /** 보고서·래스터가 이미 계산한 동일 프레임 뷰. 지정하면 view보다 우선한다. */
+  viewport?: Viewport;
   /** 드래그 중에는 hover 라벨을 갱신하지 않는다. */
   dragging?: boolean;
 };
@@ -245,7 +249,7 @@ function backgroundTransform(from: Viewport, to: Viewport, width: number, height
   return `matrix(${scale},0,0,${scale},${e},${f})`;
 }
 
-function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, backgroundOnly = false, fixed, compact = false, label, legend, legendY, north: northOpt, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, selectedFids = [], highlightLabel = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = [], showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeaturePin, onLegendHover, onLegendPin, path = [], onMapClick, view, dragging = false }: MapFigureProps) {
+function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, backgroundOnly = false, fixed, compact = false, label, legend, legendY, north: northOpt, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, selectedFids = [], highlightLabel = null, legendFocus = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = [], showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeaturePin, onLegendHover, onLegendPin, path = [], onMapClick, view, viewport, dragging = false }: MapFigureProps) {
   const backgroundLayerSet = Array.isArray(backgroundOnly) ? new Set(backgroundOnly) : null;
   const backgroundOnlyActive = backgroundOnly === true || backgroundLayerSet !== null;
   const shouldRasterizeLayer = (layerName: string) => !backgroundOnlyActive || !!backgroundLayerSet?.has(layerName);
@@ -437,6 +441,8 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     north: northOpt,
     dragging,
     view,
+    viewport,
+    legendFocus,
   });
   const vp = scene.viewport;
   const proj = makeProjector(vp);
@@ -628,7 +634,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     const textX = placement.box.x0 + calloutTextLeft;
     const textMaxWidth = Math.max(1, placement.box.x1 - placement.box.x0 - calloutTextLeft - calloutTextRight);
     const textY = placement.box.y0 + calloutPadY + textFs * 0.9;
-    const dimmed = variant === "auto" && highlightActive && !d.highlighted;
+    const dimmed = variant === "auto" && (isElementDimmed(d.layer, d.key) || (highlightActive && !d.highlighted));
     const pinPick = () => onFeaturePin?.(d.pick);
     const onKeyDown = (event: ReactKeyboardEvent<SVGGElement>) => {
       if (event.key === "Enter" || event.key === " ") {
@@ -685,7 +691,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
         const routePick = source ? pickProps({ fid: source.line.fid, lng: center[0], lat: center[1], kind: "line" }, route.key, `${route.label} 노선`) : {};
         const points = route.points.map(([x, y]) => `${x},${y}`).join(" ");
         return (
-          <g key={`rail-route-${route.key}`} data-rail-route={route.label} opacity={source && isElementDimmed(source.line.layer, source.key) ? 0.2 : 1}>
+          <g key={`rail-route-${route.key}`} data-rail-route={route.label} opacity={source && isElementDimmed(source.line.layer, source.key, route.label) ? 0.2 : 1}>
             {route.casing && <polyline points={points} fill="none" stroke={route.casing} strokeWidth={route.width + 1.2} strokeLinecap="round" strokeLinejoin="round" pointerEvents="none" />}
             <polyline data-rail-route-line="true" points={points} fill="none" stroke={route.color} strokeWidth={route.width} strokeLinecap="round" strokeLinejoin="round" {...routePick} />
           </g>
@@ -696,14 +702,14 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
         const pick = source ? pickProps({ fid: source.feature.fid, lng: source.feature.lng, lat: source.feature.lat, kind: "feature" }, source.key, `${source.feature.name ?? "철도역"} ${axis.label}`) : {};
         const points = axis.points.map(([x, y]) => `${x},${y}`).join(" ");
         return (
-          <g key={axis.key} data-rail-axis={axis.key} pointerEvents={source ? "all" : "none"}>
+          <g key={axis.key} data-rail-axis={axis.key} pointerEvents={source ? "all" : "none"} opacity={isElementDimmed("rail_station_axis", axis.key, axis.label) ? 0.2 : 1}>
             {axis.casing && <polyline points={points} fill="none" stroke={axis.casing} strokeWidth={axis.width + 1.4} strokeLinecap="butt" strokeLinejoin="miter" pointerEvents="none" />}
             <polyline data-rail-axis-bar="true" points={points} fill="none" stroke={axis.color} strokeWidth={axis.width} strokeLinecap="butt" strokeLinejoin="miter" {...pick} />
           </g>
         );
       })}
       {scene.rail.exits.map((exit) => (
-        <g key={exit.key} data-rail-exit={exit.number} aria-label={`${exit.number}번 출구`} pointerEvents="none">
+        <g key={exit.key} data-rail-exit={exit.number} aria-label={`${exit.number}번 출구`} pointerEvents="none" opacity={isElementDimmed("rail_entrance", exit.featureKey) ? 0.2 : 1}>
           <line data-rail-exit-connector="true" x1={exit.axisPoint[0]} y1={exit.axisPoint[1]} x2={exit.point[0]} y2={exit.point[1]} stroke="#fff" strokeWidth={1.5} strokeLinecap="round" opacity={0.75} />
           <line data-rail-exit-connector-line="true" x1={exit.axisPoint[0]} y1={exit.axisPoint[1]} x2={exit.point[0]} y2={exit.point[1]} stroke={exit.color} strokeWidth={0.6} strokeLinecap="round" opacity={0.6} />
           {exit.demoted ? (
@@ -716,15 +722,20 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
           )}
         </g>
       ))}
-      {scene.rail.routeLabels.map((text) => (
-        <text key={`rail-route-label-${text.text}-${text.x}-${text.y}`} data-rail-route-label={text.text} x={text.x + text.width / 2} y={text.y + text.height * 0.78} textAnchor="middle" fontSize={text.fontSize} fontWeight={700} fill={text.color} stroke="#fff" strokeWidth={3} paintOrder="stroke fill" transform={`rotate(${text.angle} ${(text.x + text.width / 2)} ${(text.y + text.height / 2)})`}>{text.text}</text>
-      ))}
-      {scene.rail.axisLabels.map((text, index) => (
-        <text key={`rail-axis-label-${index}-${text.text}-${text.x}-${text.y}`} data-rail-axis-label={text.text} data-rail-axis-label-placement={text.placement} x={text.x + text.width / 2} y={text.y + text.height * 0.78} textAnchor="middle" fontSize={text.fontSize} fontWeight={700} fill={text.color} stroke={text.placement === "inside" ? "none" : "#fff"} strokeWidth={text.placement === "inside" ? 0 : 2.6} paintOrder={text.placement === "inside" ? undefined : "stroke fill"} transform={`rotate(${text.angle} ${(text.x + text.width / 2)} ${(text.y + text.height / 2)})`}>{text.text}</text>
-      ))}
-      {scene.rail.stationLabels.map((station) => (
-        <text key={station.key} data-rail-station-label={station.stationKey} x={station.x + station.width / 2} y={station.y + station.height * 0.78} textAnchor="middle" fontSize={station.fontSize} fontWeight={700} fill={INK} stroke="#fff" strokeWidth={5} paintOrder="stroke fill">{station.text}</text>
-      ))}
+      {scene.rail.routeLabels.map((text) => {
+        const route = scene.rail.routes.find((entry) => entry.labelPlacement === text);
+        const dimmed = route ? isElementDimmed("rail_line", route.key, route.label) : false;
+        return <text key={`rail-route-label-${text.text}-${text.x}-${text.y}`} data-rail-route-label={text.text} x={text.x + text.width / 2} y={text.y + text.height * 0.78} textAnchor="middle" fontSize={text.fontSize} fontWeight={700} fill={dimmed ? "#7A7E87" : text.color} opacity={dimmed ? 0.2 : 1} stroke="#fff" strokeWidth={3} paintOrder="stroke fill" transform={`rotate(${text.angle} ${(text.x + text.width / 2)} ${(text.y + text.height / 2)})`}>{text.text}</text>;
+      })}
+      {scene.rail.axisLabels.map((text, index) => {
+        const axis = scene.rail.axes.find((entry) => entry.labelPlacement === text);
+        const dimmed = axis ? isElementDimmed("rail_station_axis", axis.key, axis.label) : false;
+        return <text key={`rail-axis-label-${index}-${text.text}-${text.x}-${text.y}`} data-rail-axis-label={text.text} data-rail-axis-label-placement={text.placement} x={text.x + text.width / 2} y={text.y + text.height * 0.78} textAnchor="middle" fontSize={text.fontSize} fontWeight={700} fill={dimmed ? "#7A7E87" : text.color} opacity={dimmed ? 0.2 : 1} stroke={text.placement === "inside" ? "none" : "#fff"} strokeWidth={text.placement === "inside" ? 0 : 2.6} paintOrder={text.placement === "inside" ? undefined : "stroke fill"} transform={`rotate(${text.angle} ${(text.x + text.width / 2)} ${(text.y + text.height / 2)})`}>{text.text}</text>;
+      })}
+      {scene.rail.stationLabels.map((station) => {
+        const dimmed = isElementDimmed("rail_station", station.stationFeatureKey, station.text);
+        return <text key={station.key} data-rail-station-label={station.stationKey} x={station.x + station.width / 2} y={station.y + station.height * 0.78} textAnchor="middle" fontSize={station.fontSize} fontWeight={700} fill={dimmed ? "#7A7E87" : INK} stroke="#fff" strokeWidth={5} opacity={dimmed ? 0.2 : 1} paintOrder="stroke fill">{station.text}</text>;
+      })}
     </g>
   );
 
@@ -969,6 +980,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
                   return (
                     <g
                       key={`legend-${ri}-${ii}-${it.layer}`}
+                      opacity={highlightLabel !== null && !it.site && legendLabel !== highlightLabel ? 0.35 : 1}
                       data-map-legend={interactive ? legendLabel : "decorative"}
                       {...(interactive ? {
                         role: "button" as const,
@@ -1007,7 +1019,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
                       ) : (
                         <circle cx={panelX + pad * 1.8 + it.x + 4 * u} cy={ly + pad * 0.7 + ri * rowH + rowH / 2} r={4 * u} fill={it.color} fillOpacity={0.85} />
                       )}
-                      <text x={panelX + pad * 1.8 + it.x + 11 * u} y={ly + pad * 0.7 + ri * rowH + rowH * 0.72} fontSize={fs} fill={INK}>
+                      <text x={panelX + pad * 1.8 + it.x + 11 * u} y={ly + pad * 0.7 + ri * rowH + rowH * 0.72} fontSize={fs} fontWeight={highlightLabel === legendLabel ? 700 : undefined} fill={highlightLabel !== null && !it.site && legendLabel !== highlightLabel ? "#7A7E87" : INK}>
                         {legendLabel}
                       </text>
                     </g>

@@ -9,15 +9,15 @@ import { createRoot } from "react-dom/client";
 import MapFigure, { type MapFigureProps } from "@/components/v2/map-figure";
 import MassFigure from "@/components/v2/mass-figure";
 import WindRoseFigure from "@/components/v2/wind-rose-figure";
-import type { MapModel } from "../ui/map-layers";
+import { legendLabelOf, type MapModel } from "../ui/map-layers";
 import type { MassCamera, MassColorScheme, MassModel } from "../ui/mass-projection";
 import type { RoseModel } from "../ui/wind-rose";
 import { S01_MASS_LABEL } from "../tile/s01/cut";
 import type { RoseSeason } from "../tile-result";
 import type { Scene } from "../scene";
 import { renderMass3dPng } from "../ui/mass-3d-runtime";
-import { SLIDE, slideLayout, slideReserved, slideSiteX, slideLegend } from "../ui/overlay-layout";
-import { BASEMAP_STACK, framedViewport, tilesFor, tileUrl, type BasemapChoice } from "../ui/map-projection";
+import { SLIDE, slideLayout, slidePanelRects, slideReserved, slideSiteX, slideLegend } from "../ui/overlay-layout";
+import { BASEMAP_STACK, slideViewport, tilesFor, tileUrl, type BasemapChoice, type Viewport } from "../ui/map-projection";
 import { inflateRaster, paintRaster } from "../ui/raster-image";
 import { RASTER_STYLES } from "../ui/map-layers";
 import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
@@ -25,6 +25,7 @@ import { sheetCells, type SheetGrid } from "../ui/sheet";
 import { mapKeyOf, type PlannedSlide } from "./report-plan";
 import type { MapImages } from "./render-pptx";
 import { nativeMapStatus } from "./map-pptx";
+import type { PageStyle } from "../ui/board-state";
 
 // 슬라이드 비율(16:9)로 그린다: 지도가 슬라이드 전체이고 오버레이는 pptx 도형이 얹는다
 const VIEW_W = 960;
@@ -35,6 +36,10 @@ const PX_PER_INCH = VIEW_W / SLIDE.w;
 type Extra = Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "scale" | "legend" | "bare" | "pinnedKeys" | "north" | "credit" | "label" | "rightInset" | "backgroundOnly"> & {
   size?: { width: number; height: number };
   bottomInset?: number;
+  style?: PageStyle;
+  viewport?: Viewport;
+  highlightLabel?: string | null;
+  legendFocus?: string | null;
 };
 type MassExplodedOptions = { spreadPct: number; scheme?: MassColorScheme };
 const TILE_TIMEOUT_MS = 8000;
@@ -70,7 +75,7 @@ export async function fetchTile(url: string): Promise<string | null> {
 export function svgOf(model: MapModel, tiles: Map<string, string>, layer: BasemapChoice, extra: Extra, rasterCache: Map<string, string>, width = VIEW_W, height = VIEW_H): string {
   const host = document.createElement("div");
   const root = createRoot(host);
-  const { size: _size, bottomInset, ...figureExtra } = extra;
+  const { size: _size, bottomInset, style, viewport, highlightLabel, legendFocus, ...figureExtra } = extra;
   try {
     const usable = tiles.size > 0;
     const activeLayer = effectiveLayer(model, layer);
@@ -92,6 +97,9 @@ export function svgOf(model: MapModel, tiles: Map<string, string>, layer: Basema
           north: extra.north ?? false,
           credit: extra.credit ?? false,
           backgroundOnly: extra.backgroundOnly ?? false,
+          highlightLabel: highlightLabel ?? legendLabelOf(model, style?.legendFocus),
+          legendFocus: legendFocus ?? legendLabelOf(model, style?.legendFocus),
+          viewport,
           bottomInset: bottomInset ?? slideLayout().strip.h * (width / SLIDE.w),
           ...figureExtra,
         }),
@@ -194,7 +202,7 @@ export async function rasterizeMap(
 ): Promise<string> {
   const width = extra.size?.width ?? VIEW_W;
   const height = extra.size?.height ?? VIEW_H;
-  const vp = framedViewport(model.center, model.radiusM, width, height, extra.siteX, extra.fill);
+  const vp = extra.viewport ?? slideViewport(model, extra.style, { width, height, siteX: extra.siteX ?? 0.5, fill: extra.fill ?? 0.8 });
   const activeLayer = effectiveLayer(model, layer);
   const urls = BASEMAP_STACK[activeLayer].flatMap((ly) => tilesFor(vp).map((t) => tileUrl(ly, t.z, t.x, t.y)));
   await Promise.all(
@@ -210,7 +218,7 @@ export async function rasterizeMap(
     if (d) got.set(u, d);
   }
   await loadRasters(model, rasterCache);
-  return toJpeg(svgOf(model, got, activeLayer, extra, rasterCache, width, height), Math.max(1, Math.round(width * 2)), Math.max(1, Math.round(height * 2)));
+  return toJpeg(svgOf(model, got, activeLayer, { ...extra, viewport: vp }, rasterCache, width, height), Math.max(1, Math.round(width * 2)), Math.max(1, Math.round(height * 2)));
 }
 
 type SheetCell = Extract<PlannedSlide, { kind: "sheet" }>["cells"][number];
@@ -258,15 +266,34 @@ export async function rasterizeRose(model: RoseModel, width = VIEW_W, height = V
 
 /** 슬라이드마다 다른 오버레이 자리를 피하게 한다 (표지·출처는 지도 가운데, 타일은 오른쪽 정보 판을 뺀 영역) */
 function extraFor(p: PlannedSlide, model: MapModel): Extra {
-  if (p.kind !== "tile") return { avoid: slideReserved(PX_PER_INCH, { info: false }) };
-  const pinned = p.pinnedKeys && p.pinnedKeys.length > 0 ? { pinnedKeys: p.pinnedKeys } : {};
+  if (p.kind !== "tile") {
+    const style = p.style ?? {};
+    return {
+      siteX: 0.5,
+      rightInset: 0,
+      avoid: slideReserved(PX_PER_INCH, { info: false }),
+      style,
+      highlightLabel: legendLabelOf(model, style.legendFocus),
+      legendFocus: legendLabelOf(model, style.legendFocus),
+      pinnedKeys: style.pinnedKeys ?? [],
+    };
+  }
+  const style = p.style ?? {};
+  const hasSummary = style.summary !== false && !(p.callout && p.callout.page > 0);
+  const baseLegend = slideLegend(model, !p.muted).rect;
+  const panels = slidePanelRects(style, hasSummary, baseLegend);
+  const pinned = { pinnedKeys: p.pinnedKeys ?? [] };
+  const highlightLabel = legendLabelOf(model, style.legendFocus);
+  const rightInset = hasSummary ? Math.max(0, VIEW_W - (panels.summary?.x ?? SLIDE.w) * PX_PER_INCH + SLIDE.edge * PX_PER_INCH * 0.5) : 0;
   // 설명표 장: 두 칸 사이에 반경 원을 넣는 프레임 (렌더러가 점·표를 같은 프레임으로 놓는다)
   if (p.callout && p.callout.page > 0) {
     const f = slideCalloutFrame(4);
-    return { siteX: f.siteX, fill: f.fill, avoid: [], scale: false, ...pinned };
+    return { siteX: f.siteX, fill: f.fill, avoid: [], scale: false, rightInset: 0, style, highlightLabel, legendFocus: highlightLabel, ...pinned };
   }
-  if (p.callout) return { siteX: slideSiteX(), fill: SLIDE_OVERVIEW_FILL, avoid: slideReserved(PX_PER_INCH, { legend: slideLegend(model).rect }), ...pinned };
-  return { muted: p.muted, siteX: slideSiteX(), avoid: slideReserved(PX_PER_INCH, { legend: slideLegend(model, !p.muted).rect }), ...pinned };
+  const siteX = slideSiteX(style, hasSummary);
+  const avoid = slideReserved(PX_PER_INCH, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend: panels.legend });
+  if (p.callout) return { siteX, fill: SLIDE_OVERVIEW_FILL, rightInset, avoid, style, highlightLabel, legendFocus: highlightLabel, ...pinned };
+  return { muted: p.muted, siteX, rightInset, avoid, style, highlightLabel, legendFocus: highlightLabel, ...pinned };
 }
 
 /** 계획의 모든 지도 자리에 대한 PNG. 실패한 장은 빠진다(렌더러가 자리표시를 넣는다). */
@@ -294,6 +321,9 @@ export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice 
               bare: false,
               pinnedKeys: cell.pinnedKeys,
               backgroundOnly: status.native ? status.rasterLayers : false,
+              style: cell.style,
+              highlightLabel: legendLabelOf(model, cell.style?.legendFocus),
+              legendFocus: legendLabelOf(model, cell.style?.legendFocus),
               size: { width: Math.max(1, Math.round(rect.w * PX_PER_INCH)), height: Math.max(1, Math.round(rect.h * PX_PER_INCH)) },
               bottomInset: 0,
             }, rasterCache);

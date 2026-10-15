@@ -23,6 +23,23 @@ const chW = (ch: string) => (ch.charCodeAt(0) > 0x2e80 ? 1 : 0.56);
 export const textIn = (value: string, pt: number) => ([...value].reduce((width, ch) => width + chW(ch), 0) * pt) / 72;
 export const linesOf = (value: string, pt: number, width: number) => Math.max(1, Math.ceil((textIn(value, pt) / width) * 1.1));
 
+export type FitBlockBox = { w: number; h: number };
+
+/** 줄 배열이 박스 안에 들어가는 최대 글자 크기(기준 상한, 최소 7pt). */
+export function fitBlock(lines: readonly string[] | string, box: FitBlockBox, maxPt = 18, minPt = 7): number {
+  const values = (Array.isArray(lines) ? lines : [lines]).flatMap((line) => String(line).split("\n"));
+  const width = Math.max(0.01, box.w);
+  const height = Math.max(0, box.h);
+  const floor = Math.max(7, minPt);
+  const ceiling = Math.max(floor, maxPt);
+  for (let pt = ceiling; pt >= floor; pt -= 0.5) {
+    const rows = values.reduce((sum, value) => sum + linesOf(value, pt, width), 0);
+    const blockH = rows * (pt / 72) * 1.25;
+    if (blockH <= height + 1e-9) return pt;
+  }
+  return floor;
+}
+
 /** maxLines 안에 들어가는 가장 큰 글자 크기 */
 export function fitPt(value: string, maxPt: number, width: number, maxLines: number, minPt = 8): number {
   let pt = maxPt;

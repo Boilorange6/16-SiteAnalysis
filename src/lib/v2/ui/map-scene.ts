@@ -4,7 +4,7 @@ import { automaticLabelText, legacyLabelPriority, mapLabelContent, mapLabelText 
 import { applyView, framedViewport, makeProjector, metersPerPixel, scaleBar, tilesFor, type BasemapChoice, type MapView, type Viewport } from "./map-projection";
 import { calloutFrame, layoutCallouts, PX, PX_NARROW, type Placed } from "./callout-layout";
 import { isSiteParcelLayer } from "./site-parcel";
-import { layerStyle, type MapModel } from "./map-layers";
+import { layerStyle, legendItemsForModel, type MapModel } from "./map-layers";
 import { tileClientModuleFor } from "../tile/client";
 import { canonicalRailLineLabel, railLineColor, railLineIsLightRail, railStationMatchKey } from "../tile/rail-presentation";
 
@@ -260,6 +260,8 @@ export type MapSceneOptions = {
   compact?: boolean;
   selectedFids?: readonly string[];
   highlightLabel?: string | null;
+  /** 보고서 legendFocus 모드: 강조 항목의 원래 색·두께를 보존한다. */
+  legendFocus?: string | null;
   emphasisKey?: string | null;
   hoverKey?: string | null;
   pinnedKeys?: readonly string[];
@@ -274,6 +276,8 @@ export type MapSceneOptions = {
   path?: Array<[number, number]>;
   north?: number | false;
   dragging?: boolean;
+  /** 보고서가 미리 계산한 동일 프레임 뷰. 지정하면 view 재계산을 하지 않는다. */
+  viewport?: Viewport;
 };
 
 export type MapScene = {
@@ -305,8 +309,8 @@ export type MapScene = {
   polygonOpacity: number;
   lineColor: string;
   isLayerHighlighted: (layer: string) => boolean;
-  isElementDimmed: (layer: string, key: string) => boolean;
-  isElementStrong: (layer: string, key: string) => boolean;
+  isElementDimmed: (layer: string, key: string, explicitLabel?: string) => boolean;
+  isElementStrong: (layer: string, key: string, explicitLabel?: string) => boolean;
 };
 
 function a04PolygonDrawOrder(layer: string): number {
@@ -818,6 +822,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     compact = false,
     selectedFids = [],
     highlightLabel = null,
+    legendFocus: legendFocusOpt = null,
     emphasisKey = null,
     hoverKey = null,
     pinnedKeys = [],
@@ -830,12 +835,13 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     path = [],
     north: northOpt,
     dragging = false,
+    viewport: viewportOpt,
   } = options;
   const layer = model.basemap ?? activeLayer;
   const sat = layer === "Satellite";
   const lineColor = sat ? "#fff" : "#16181d";
   const u = Math.min(1.5, Math.max(1, H / 360));
-  const vp = applyView(framedViewport(model.center, model.radiusM, W, H, siteX, fill, siteY), model.center[1], options.view);
+  const vp = viewportOpt ?? applyView(framedViewport(model.center, model.radiusM, W, H, siteX, fill, siteY), model.center[1], options.view);
   const project = makeProjector(vp);
   const mpp = metersPerPixel(model.center[1], vp.zoom);
   const [cx, cy] = project(model.center[0], model.center[1]);
@@ -844,11 +850,13 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   const selected = new Set(selectedFids);
   const pinned = new Set(pinnedKeys);
   const highlightActive = highlightLabel !== null;
+  const legendFocusOnly = legendFocusOpt !== null;
   const emphasisActive = emphasisKey !== null;
-  const isLayerHighlighted = (layerName: string) => !highlightActive || layerStyle(layerName).label === highlightLabel;
+  const presentedLegendByLayer = new Map(legendItemsForModel(model).map((item) => [item.layer, item.label]));
+  const presentedLabelOf = (layerName: string, explicit?: string) => explicit?.trim() || presentedLegendByLayer.get(layerName) || layerStyle(layerName).label;
+  const isLayerHighlighted = (layerName: string) => !highlightActive || presentedLabelOf(layerName) === highlightLabel
+    || (highlightLabel !== null && (model.lines ?? []).some((line) => line.layer === layerName && line.legendLabel === highlightLabel));
   const isElementEmphasized = (key: string) => !emphasisActive || key === emphasisKey;
-  const isElementDimmed = (layerName: string, key: string) => (highlightActive && !isLayerHighlighted(layerName)) || (emphasisActive && !isElementEmphasized(key));
-  const isElementStrong = (layerName: string, key: string) => (highlightActive && isLayerHighlighted(layerName)) || (emphasisActive && isElementEmphasized(key));
   const isSelected = (fid: string | undefined) => !!fid && selected.has(fid);
   const wmax = Math.max(0, maxOf(model.features.map((feature) => feature.weight ?? 0)));
   const radiusOf = (feature: MapFeature) => {
@@ -885,6 +893,16 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     const center: [number, number] = xs.length > 0 ? [(minOf(xs) + maxOf(xs)) / 2, (minOf(ys) + maxOf(ys)) / 2] : [cx, cy];
     return { polygon, rings, center, area: polygonArea(outer), index: polygons.length + index, key: mapElementKey("polygon", polygon.layer, polygon.fid, polygons.length + index) };
   });
+  const legendLabelByElementKey = new Map<string, string>();
+  for (const entry of features) legendLabelByElementKey.set(entry.key, presentedLabelOf(entry.feature.layer));
+  for (const entry of linePaths) legendLabelByElementKey.set(entry.key, presentedLabelOf(entry.line.layer, entry.line.legendLabel));
+  for (const entry of polygons) legendLabelByElementKey.set(entry.key, presentedLabelOf(entry.polygon.layer));
+  const elementHighlighted = (layerName: string, key: string, explicitLabel?: string) => !highlightActive
+    || explicitLabel === highlightLabel
+    || legendLabelByElementKey.get(key) === highlightLabel
+    || layerStyle(layerName).label === highlightLabel;
+  const isElementDimmed = (layerName: string, key: string, explicitLabel?: string) => !elementHighlighted(layerName, key, explicitLabel) || (emphasisActive && !isElementEmphasized(key));
+  const isElementStrong = (layerName: string, key: string, explicitLabel?: string) => ((!legendFocusOnly && highlightActive && elementHighlighted(layerName, key, explicitLabel)) || (emphasisActive && isElementEmphasized(key)));
   const sitePoints = siteParcels.flatMap((polygon) => polygon.rings.flat());
   const sitePath = siteParcels.map((polygon) => polygonPath(polygon.rings)).join(" ");
   const siteMode: "parcel" | "ring" = siteParcels.flatMap((polygon) => polygon.rings[0] ?? []).length >= 3

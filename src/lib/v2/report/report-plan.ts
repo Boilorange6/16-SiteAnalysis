@@ -2,9 +2,10 @@
  * 보드 → 보고서 슬라이드 계획. 순수 함수 (pptx 라이브러리 의존 없음).
  * 슬라이드 수는 board-state의 reportPages(board).pages(표지+타일+출처 장)와 항상 같다.
  */
-import { defaultCutForCode, isCutSpec, type BoardState, type CutSpec } from "../ui/board-state";
+import { defaultCutForCode, extraPageKey, isCutSpec, type BoardState, type CutSpec, type ExtraReportPage, type PageKey, type PageStyle } from "../ui/board-state";
 import { calloutReportPages, DEFAULT_CALLOUT_MODE, pageCount } from "../ui/callout-layout";
 import type { MapModel } from "../ui/map-layers";
+export { legendItemsOf, legendLabelOf } from "../ui/map-layers";
 import { type CalloutModel, type SummaryView, type TileView } from "../ui/tile-view";
 import type { MassModel } from "../ui/mass-projection";
 import type { SheetGrid } from "../ui/sheet";
@@ -71,6 +72,8 @@ export type ReportSlide =
         mapKey: string;
         sourceLine?: string;
         pinnedKeys?: string[];
+        /** 조판 셀 전체에 적용할 페이지 지도 설정(scale·summary는 소비하지 않는다). */
+        style?: PageStyle;
         mass?: MassModel;
         rose?: RoseModel;
         roseSeason?: RoseSeason;
@@ -78,18 +81,64 @@ export type ReportSlide =
     }
   | { kind: "sources"; rows: ReportSourceRow[]; analysisDate: string; /** 배경(흐린 대지 지도) */ map: MapModel | null };
 
-export type PlannedSlide = ReportSlide & { no: number; total: number; footer: string };
+export type PlannedSlide = ReportSlide & { no: number; total: number; footer: string; key: PageKey; style: PageStyle };
+type RawPlanSlide = ReportSlide & { footer: string; key: PageKey };
+
+export type PageKeyContext = {
+  /** 컷 조판/단일 장의 키 규칙을 선택한다. */
+  cut?: "sheet" | "single";
+  /** 컷 조판 장 번호 또는 출처 장 번호(0부터). */
+  index?: number;
+};
+
+/** 보고서 페이지의 안정적인 보드 키를 만든다. 보드 배열 순서에는 의존하지 않는다. */
+export function pageKeyOf(
+  slide: ReportSlide | (ReportSlide & { key?: PageKey }),
+  context: PageKeyContext = {},
+): PageKey {
+  const existing = (slide as { key?: unknown }).key;
+  if (typeof existing === "string" && existing.length > 0) return existing;
+  if (slide.kind === "cover") return "cover";
+  if (slide.kind === "sources") return `sources:${context.index ?? 0}`;
+  if (slide.kind === "sheet") {
+    return slide.view.code === "SHEET"
+      ? `${slide.view.tileId}:sheet`
+      : `${slide.view.tileId}:cut:sheet:${context.index ?? 0}`;
+  }
+  if (slide.callout) return `${slide.view.tileId}:callout:${slide.callout.page}`;
+  if (context.cut === "single") return `${slide.view.tileId}:cut:single`;
+  return `${slide.view.tileId}:${slide.body.face}`;
+}
 
 /** 지도 이미지 키: 표지는 "cover", 타일 장은 tileId */
 export const COVER_MAP_KEY = "cover";
+const pageStyleAffectsMap = (style: PageStyle | undefined): boolean => !!style && (
+  style.zoomDelta !== undefined
+  || style.offsetM !== undefined
+  || style.pinnedKeys !== undefined
+  || style.legendFocus !== undefined
+  || style.summary !== undefined
+  || style.titleScale !== undefined
+  || style.summaryScale !== undefined
+  || style.legendScale !== undefined
+);
+const cellStyleAffectsMap = (style: PageStyle | undefined): boolean => !!style && (
+  style.zoomDelta !== undefined
+  || style.offsetM !== undefined
+  || style.pinnedKeys !== undefined
+  || style.legendFocus !== undefined
+);
 export const mapKeysOf = (p: PlannedSlide): string[] => {
   if (p.kind === "sheet") return p.cells.map((cell) => cell.mapKey);
   if (p.kind === "tile") {
     if (p.mass) return [`${p.view.tileId}:mass`];
     if (p.rose) return [`${p.view.tileId}:rose`];
-    return p.map ? [p.callout && p.callout.page > 0 ? `${p.view.tileId}:cp` : p.view.tileId] : [];
+    if (!p.map) return [];
+    const base = p.callout && p.callout.page > 0 ? `${p.view.tileId}:cp` : p.view.tileId;
+    return [pageStyleAffectsMap(p.style) ? `${base}:style:${p.key}` : base];
   }
-  return p.map ? [COVER_MAP_KEY] : [];
+  if (!p.map) return [];
+  return [pageStyleAffectsMap(p.style) ? `${COVER_MAP_KEY}:style:${p.key}` : COVER_MAP_KEY];
 };
 export const mapKeyOf = (p: PlannedSlide): string | null => mapKeysOf(p)[0] ?? null;
 
@@ -188,7 +237,10 @@ export function buildReportPlan(input: {
   const date = input.analysisDate ?? "미확인";
   const sourceMeta = input.sourceMeta ?? new Map<string, SourceMeta>();
   const tiles = board.order.filter((id) => board.included[id] && views.has(id)).map((id) => views.get(id)!);
-  const raw: (ReportSlide & { footer: string })[] = [];
+  const raw: RawPlanSlide[] = [];
+  const pushRaw = (slide: ReportSlide, footer: string, context: PageKeyContext = {}) => {
+    raw.push({ ...slide, footer, key: pageKeyOf(slide, context) } as RawPlanSlide);
+  };
 
   const detailsFor = (view: TileView) => view.sourceRefs.length > 0
     ? sourceDetailsFor({ code: view.code, tileType: view.tileType, provenance: { sources: view.sourceRefs } }, sourceMeta)
@@ -211,7 +263,7 @@ export function buildReportPlan(input: {
     return line === "출처 없음" ? "출처 없음 · 기준일 해당 없음" : `출처 ${line}`;
   };
 
-  raw.push({
+  pushRaw({
     kind: "cover",
     address: summary.address,
     metrics: [
@@ -224,8 +276,7 @@ export function buildReportPlan(input: {
     incomplete: summary.incomplete ? `지역 자료 불완전 · ${summary.incompleteCount}개 타일` : null,
     lines: tiles.map((v) => ({ title: v.title, color: v.color, text: oneLine(v) })),
     map: summary.map,
-    footer: `${summary.asOfLine} · 출처와 기준일은 마지막 장 참조`,
-  });
+  }, `${summary.asOfLine} · 출처와 기준일은 마지막 장 참조`);
 
   for (const v of tiles) {
     if (v.code === "SHEET" && v.sheetTiles && v.sheetGrid) {
@@ -239,13 +290,12 @@ export function buildReportPlan(input: {
           sourceLine: sourceLineFor(cell),
           pinnedKeys: pinnedKeysFor(board, cell.tileId),
         }));
-      raw.push({
+      pushRaw({
         kind: "sheet",
         view: v,
         grid: v.sheetGrid,
         cells,
-        footer: sourceFooterFor(v),
-      });
+      }, sourceFooterFor(v));
       continue;
     }
     const selectedCut = isCutSpec(board.cuts[v.tileId]) && board.cuts[v.tileId].tile === v.code
@@ -253,18 +303,17 @@ export function buildReportPlan(input: {
       : defaultCutForCode(v.code);
     if (selectedCut && CUT_CODES.has(v.code) && hasResult(v)) {
       const cutPlan = cutPlanFor(v, selectedCut);
-      for (const sheetPlan of cutPlan.sheets) {
-        raw.push({
+      for (const [sheetIndex, sheetPlan] of cutPlan.sheets.entries()) {
+        pushRaw({
           kind: "sheet",
           view: v,
           grid: sheetPlan.grid,
           cells: sheetPlan.cells.map((cell) => cutCellWithMeta(cell, sourceLineFor(v), pinnedKeysFor(board, v.tileId))),
-          footer: sourceFooterFor(v),
-        });
+        }, sourceFooterFor(v), { cut: "sheet", index: sheetIndex });
       }
       if (cutPlan.single) {
         const cell = cutPlan.single;
-        raw.push({
+        pushRaw({
           kind: "tile",
           view: cell.view,
           body: { kind: "result", face: "single" },
@@ -274,8 +323,7 @@ export function buildReportPlan(input: {
           ...(cell.mass ? { mass: cell.mass } : {}),
           ...(cell.rose ? { rose: cell.rose, roseSeason: cell.roseSeason ?? "annual" } : {}),
           pinnedKeys: pinnedKeysFor(board, v.tileId),
-          footer: sourceFooterFor(v),
-        });
+        }, sourceFooterFor(v), { cut: "single" });
       }
       continue;
     }
@@ -285,7 +333,7 @@ export function buildReportPlan(input: {
       const count = calloutReportPages(board.callout[v.tileId] ?? DEFAULT_CALLOUT_MODE, cm.complexes.length);
       const sourceFooter = sourceFooterFor(v);
       for (let page = 0; page < count; page++) {
-        raw.push({
+        pushRaw({
           kind: "tile",
           view: v,
           body: { kind: "result", face: "single" },
@@ -295,8 +343,7 @@ export function buildReportPlan(input: {
           map: { ...v.backdrop, tileCode: v.code },
           muted: false,
           callout: { model: cm, page, pages: pageCount(cm.complexes.length), filterLine: v.filterLine },
-          footer: v.filterLine ? `${v.filterLine} · ${sourceFooter}` : sourceFooter,
-        });
+        }, v.filterLine ? `${v.filterLine} · ${sourceFooter}` : sourceFooter);
       }
       continue;
     }
@@ -306,7 +353,7 @@ export function buildReportPlan(input: {
       const result = hasResult(v);
       const mass = result && v.mass ? { ...v.mass } : undefined;
       const rose = result && face !== "back" ? v.rose ?? undefined : undefined;
-      raw.push({
+      pushRaw({
         kind: "tile",
         view: v,
         body: hasResult(v) ? { kind: "result", face } : { kind: "state", face, message: message ?? "결과 없음 — 보고서에는 결과 없이 표시합니다" },
@@ -317,8 +364,7 @@ export function buildReportPlan(input: {
         pinnedKeys: pinnedKeysFor(board, v.tileId),
         ...(mass ? { mass } : {}),
         ...(rose ? { rose, roseSeason: "annual" as const } : {}),
-        footer: sourceFooterFor(v),
-      });
+      }, sourceFooterFor(v));
     }
   }
 
@@ -339,16 +385,123 @@ export function buildReportPlan(input: {
   const sourceRows = [...bySource.values()].map((row) => ({ ...row, tiles: row.tiles.join(", ") }));
   const sourcePages = sourcePageCount(sourceRows.length);
   for (let page = 0; page < sourcePages; page++) {
-    raw.push({
+    pushRaw({
       kind: "sources",
       rows: sourceRows.slice(page * REPORT_SOURCE_ROWS_PER_SLIDE, (page + 1) * REPORT_SOURCE_ROWS_PER_SLIDE),
       analysisDate: date,
       map: summary.map,
-      footer: `${summary.asOfLine} · 출처 ${bySource.size}건${sourcePages > 1 ? ` · 출처 ${page + 1}/${sourcePages}` : ""}`,
-    });
+    }, `${summary.asOfLine} · 출처 ${bySource.size}건${sourcePages > 1 ? ` · 출처 ${page + 1}/${sourcePages}` : ""}`, { index: page });
   }
 
-  return raw.map((s, i) => ({ ...s, no: i + 1, total: raw.length }));
+  const extraRaw: RawPlanSlide[] = board.report.extra.flatMap((extra: ExtraReportPage) => {
+    const view = views.get(extra.tileId);
+    if (!view) return [];
+    const face: "single" | "front" | "back" = view.hasFace ? extra.face : "single";
+    const result = hasResult(view);
+    const mass = result && face !== "back" && view.mass ? { ...view.mass } : undefined;
+    const rose = result && face !== "back" ? view.rose ?? undefined : undefined;
+    const map = mass || rose
+      ? null
+      : !result
+        ? view.backdrop
+        : view.hasFace && face === "back"
+          ? null
+          : view.callout
+            ? { ...view.backdrop, tileCode: view.code }
+            : (view.map ?? view.backdrop);
+    const slide: ReportSlide = {
+      kind: "tile",
+      view,
+      body: result ? { kind: "result", face } : { kind: "state", face, message: STATE_MESSAGE[view.status] ?? "결과 없음 — 보고서에는 결과 없이 표시합니다" },
+      faceLabel: view.code === "STACK" ? "스택" : view.hasFace ? FACE_TEXT[face === "front" ? "front" : "back"] : null,
+      map,
+      muted: !result,
+      ...(view.callout && face !== "back" ? {
+        callout: { model: view.callout, page: 0, pages: pageCount(view.callout.complexes.length), filterLine: view.filterLine },
+      } : {}),
+      pinnedKeys: pinnedKeysFor(board, view.tileId),
+      ...(mass ? { mass } : {}),
+      ...(rose ? { rose, roseSeason: "annual" as const } : {}),
+    };
+    return [{ ...slide, footer: sourceFooterFor(view), key: extraPageKey(extra.id) } as RawPlanSlide];
+  });
+
+  const baseKeys = new Set(raw.map((slide) => slide.key));
+  const extraKeys = new Set(extraRaw.map((slide) => slide.key));
+  const afterGroups = new Map<PageKey, RawPlanSlide[]>();
+  const fallbackExtras: RawPlanSlide[] = [];
+  for (const extra of board.report.extra) {
+    const slide = extraRaw.find((candidate) => candidate.key === extraPageKey(extra.id));
+    if (!slide) continue;
+    const anchor = extra.after ?? "cover";
+    if (baseKeys.has(anchor) || extraKeys.has(anchor)) {
+      const group = afterGroups.get(anchor) ?? [];
+      group.push(slide);
+      afterGroups.set(anchor, group);
+    } else {
+      fallbackExtras.push(slide);
+    }
+  }
+  const emitted = new Set<PageKey>();
+  const ordered: RawPlanSlide[] = [];
+  const emitAfter = (anchor: PageKey) => {
+    for (const slide of afterGroups.get(anchor) ?? []) {
+      if (emitted.has(slide.key)) continue;
+      emitted.add(slide.key);
+      ordered.push(slide);
+      emitAfter(slide.key);
+    }
+  };
+  for (const slide of raw) {
+    ordered.push(slide);
+    emitAfter(slide.key);
+  }
+  // A stale after key is placed immediately before the first source page.
+  const beforeSources: RawPlanSlide[] = [];
+  for (const slide of fallbackExtras) {
+    if (emitted.has(slide.key)) continue;
+    emitted.add(slide.key);
+    beforeSources.push(slide);
+    const descendants = ordered.length;
+    emitAfter(slide.key);
+    if (ordered.length > descendants) beforeSources.push(...ordered.splice(descendants));
+  }
+  const insertAt = ordered.findIndex((slide) => slide.kind === "sources");
+  ordered.splice(insertAt < 0 ? ordered.length : insertAt, 0, ...beforeSources);
+
+  const cellStyleFor = (style: PageStyle, pinnedKeys: string[]): PageStyle => ({
+    pinnedKeys: [...pinnedKeys],
+    ...(style.legendFocus !== undefined ? { legendFocus: style.legendFocus } : {}),
+    ...(style.zoomDelta !== undefined ? { zoomDelta: style.zoomDelta } : {}),
+    ...(style.offsetM !== undefined ? { offsetM: style.offsetM } : {}),
+  });
+  const styled = ordered.map((slide): PlannedSlide => {
+    const style = { ...(board.report.styles[slide.key] ?? {}) };
+    if (slide.kind === "tile") {
+      return {
+        ...slide,
+        style,
+        pinnedKeys: style.pinnedKeys !== undefined ? [...style.pinnedKeys] : slide.pinnedKeys,
+        no: 0,
+        total: 0,
+      };
+    }
+    if (slide.kind === "sheet") {
+      const cells = slide.cells.map((cell) => {
+        const pinnedKeys = style.pinnedKeys !== undefined ? [...style.pinnedKeys] : [...(cell.pinnedKeys ?? [])];
+        const cellStyle = cellStyleFor(style, pinnedKeys);
+        return {
+          ...cell,
+          mapKey: cellStyleAffectsMap(style) ? `${cell.mapKey}:style:${slide.key}` : cell.mapKey,
+          pinnedKeys,
+          style: cellStyle,
+        };
+      });
+      return { ...slide, cells, style, no: 0, total: 0 };
+    }
+    return { ...slide, style, no: 0, total: 0 };
+  });
+  return styled.map((slide, index) => ({ ...slide, no: index + 1, total: styled.length }));
 }
 
 /** 다운로드 파일명: 사이트분석_<주소>_<YYYYMMDD>.pptx */

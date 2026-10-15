@@ -609,6 +609,22 @@ export function legendItemsForModel(model: MapModel, limit = Number.POSITIVE_INF
   return [...orderedMapped, ...remainder].slice(0, Math.max(0, limit));
 }
 
+const legendKeyPart = (value: string): string => value.replace(/[|\r\n]/g, "-").slice(0, 90);
+
+/** 보고서·미리보기에서 공유하는 범례 항목 키. 대지 표식은 지도 범례의 데이터 항목이 아니므로 제외한다. */
+export function legendItemsOf(model: MapModel): Array<{ key: string; label: string }> {
+  const code = legendKeyPart(model.tileCode?.trim() || "map");
+  return legendItemsForModel(model).map((item) => ({ key: `legend-${code}-${legendKeyPart(item.label)}`, label: item.label }));
+}
+
+/** 저장된 legendFocus 키를 현재 지도에 표시할 범례 라벨로 해석한다. 라벨 자체도 호환한다. */
+export function legendLabelOf(model: MapModel, key: string | null | undefined): string | null {
+  if (!key) return null;
+  return legendItemsOf(model).find((item) => item.key === key)?.label
+    ?? legendItemsForModel(model).find((item) => item.label === key)?.label
+    ?? null;
+}
+
 type LegendStripLabelItem = { label: string; highlightLabel?: string };
 export type LegendStripLabelResult<T extends LegendStripLabelItem> = {
   /** MapLegendStrip.leadingLabel에 전달할 공통 접두. 없으면 null이다. */

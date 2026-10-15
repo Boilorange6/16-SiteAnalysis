@@ -6,16 +6,17 @@
 import PptxGenJS from "pptxgenjs";
 import { groupTaggedShapes } from "../../pptx-shape-group";
 import { fmtInt, pageRange } from "../ui/callout-layout";
-import { STRIP_COLORS } from "../ui/map-layers";
-import { SLIDE, slideLegend, stripText } from "../ui/overlay-layout";
+import { legendItemsOf, STRIP_COLORS } from "../ui/map-layers";
+import { SLIDE, slideLegend, slidePanelRects, stripText, type Rect } from "../ui/overlay-layout";
 import type { Badge, TileView } from "../ui/tile-view";
 import type { RoseModel } from "../ui/wind-rose";
 import { sheetCells, type SheetGrid } from "../ui/sheet";
 import { COVER_MAP_KEY, mapKeyOf, type PlannedSlide } from "./report-plan";
-import { E, FONT, INK, IW, IX, L, LINE, MUTED, PLATE_ALPHA, fitPt, hex, linesOf, plate, textIn, type Border, type ReportItem, type Slide } from "./pptx-kit";
+import { E, FONT, INK, L, LINE, MUTED, PLATE_ALPHA, fitBlock, fitPt, hex, linesOf, plate, textIn, type Border, type ReportItem, type Slide } from "./pptx-kit";
 import { tileReportModuleFor } from "../tile/report";
 import { addEditableMap, nativeMapFallbackNote, nativeMapStatus } from "./map-pptx";
 import { badgeTextColor } from "../ui/map-labels";
+import type { PageStyle } from "../ui/board-state";
 
 /** 지도 이미지(PNG/JPEG data URL) — 키는 report-plan의 mapKeyOf */
 export type MapImages = Record<string, string>;
@@ -51,19 +52,23 @@ function strip(s: Slide, p: PlannedSlide, credit: boolean) {
 }
 
 /** 왼쪽 위 제목 판: 타일 색 점 + 번호 + 타일명 + 종류 */
-function titlePlate(s: Slide, color: string, code: string, title: string, kind: string, maxW: number) {
-  const w = Math.min(maxW, 0.62 + textIn(`${code}  `, 10) + textIn(title, 18) + textIn(`  ${kind}`, 10));
-  const r = { x: L.title.x, y: L.title.y, w, h: L.title.h };
+function titlePlate(s: Slide, color: string, code: string, title: string, kind: string, maxW: number, style: PageStyle = {}, hasSummary = true) {
+  const base = slidePanelRects(style, hasSummary).title;
+  const w = Math.min(maxW, Math.max(base.w, 0.62 + textIn(`${code}  `, 10) + textIn(title, 18) + textIn(`  ${kind}`, 10)));
+  const r = { ...base, w };
+  const textBox = { w: Math.max(0.2, w - 0.58), h: Math.max(0.16, r.h - 0.08) };
+  const titlePt = fitBlock([title], textBox, 18, 7);
+  const metaPt = fitBlock([`${code}  ${kind}`], textBox, 10, 7);
   const group = panelTag("title", "제목", "plate");
   plate(s, r, 0.12, group);
   s.addShape("ellipse", { x: r.x + 0.2, y: r.y + r.h / 2 - 0.09, w: 0.18, h: 0.18, fill: { color: hex(color) }, line: { color: hex(color) }, objectName: panelTag("title", "제목", "mark") });
   s.addText(
     [
-      { text: `${code}  `, options: { fontSize: 10, color: MUTED, bold: true } },
-      { text: title, options: { fontSize: 18, color: INK, bold: true } },
-      { text: `  ${kind}`, options: { fontSize: 10, color: MUTED, bold: true } },
+      { text: `${code}  `, options: { fontSize: metaPt, color: MUTED, bold: true } },
+      { text: title, options: { fontSize: titlePt, color: INK, bold: true } },
+      { text: `  ${kind}`, options: { fontSize: metaPt, color: MUTED, bold: true } },
     ],
-    { x: r.x + 0.48, y: r.y, w: w - 0.58, h: r.h, valign: "middle", fontFace: FONT, margin: 0, objectName: panelTag("title", "제목", "text") },
+    { x: r.x + 0.48, y: r.y, w: textBox.w, h: r.h, valign: "middle", fontFace: FONT, margin: 0, objectName: panelTag("title", "제목", "text") },
   );
 }
 
@@ -79,7 +84,7 @@ function chipRows(s: Slide, items: { text: string; tone: Badge["tone"] }[], x: n
     }
     if (draw) {
       s.addShape("roundRect", { x: cx, y: cy, w, h: 0.3, fill: { color: CHIP[b.tone].fill }, line: { color: CHIP[b.tone].fill }, rectRadius: 0.15 });
-      s.addText(b.text, { x: cx, y: cy, w, h: 0.3, align: "center", valign: "middle", fontFace: FONT, fontSize: 10, bold: true, color: CHIP[b.tone].color, margin: 0 });
+      s.addText(b.text, { x: cx, y: cy, w, h: 0.3, align: "center", valign: "middle", fontFace: FONT, fontSize: fitBlock([b.text], { w: Math.max(0.1, w - 0.12), h: 0.3 }, 10, 7), bold: true, color: CHIP[b.tone].color, margin: 0 });
     }
     cx += w + 0.08;
   }
@@ -87,13 +92,17 @@ function chipRows(s: Slide, items: { text: string; tone: Badge["tone"] }[], x: n
 }
 
 type Item = ReportItem;
+type InfoBox = { x: number; y?: number; w: number; h: number };
+
+const innerInfoBox = (rect: Rect): InfoBox => ({ x: rect.x + 0.22, w: Math.max(0.2, rect.w - 0.44), h: Math.max(0.2, rect.h - 0.44) });
 
 /** 오른쪽 정보 판: 항목을 쌓아 높이를 정한 뒤 판을 먼저 그리고 항목을 얹는다 */
-function infoPanel(s: Slide, items: Item[]) {
+function infoPanel(s: Slide, items: Item[], rect: Rect | null) {
+  if (!rect) return;
   const gap = 0.12;
   const pad = 0.22;
   const need = items.reduce((a, i) => a + i.h, 0) + gap * Math.max(0, items.length - 1) + pad * 2;
-  const r = { x: L.info.x, y: L.info.y, w: L.info.w, h: Math.min(L.info.h, need) };
+  const r = { x: rect.x, y: rect.y, w: rect.w, h: Math.min(rect.h, need) };
   const group = panelTag("summary", "요약", "plate");
   plate(s, r, 0.16, group);
   const groupedSlide = {
@@ -107,32 +116,33 @@ function infoPanel(s: Slide, items: Item[]) {
   }
 }
 
-const badgeItem = (s: Slide, badges: Badge[]): Item | null => {
+const badgeItem = (s: Slide, badges: Badge[], box: InfoBox): Item | null => {
   const items = badges.map((b) => ({ text: b.text, tone: b.tone }));
-  const h = chipRows(s, items, IX, 0, IW, false);
-  return h ? { h, draw: (y, target = s) => void chipRows(target, items, IX, y, IW, true) } : null;
+  const h = chipRows(s, items, box.x, 0, box.w, false);
+  return h ? { h, draw: (y, target = s) => void chipRows(target, items, box.x, y, box.w, true) } : null;
 };
 
-function headlineItems(s: Slide, h: NonNullable<TileView["headline"]>): Item[] {
+function headlineItems(s: Slide, h: NonNullable<TileView["headline"]>, box: InfoBox): Item[] {
   const sub = [h.aux, h.tag].filter(Boolean).join(" · ");
-  const pt = fitPt(h.value, 36, IW, 1, 20);
+  const pt = fitBlock([h.value], { w: box.w, h: 0.66 }, 36, 7);
   // 라벨·값·보조어는 붙여서 한 덩어리로 (항목 사이 간격을 넣지 않는다)
   return [
     {
       h: 0.24 + 0.66 + (sub ? 0.24 : 0),
       draw: (y, target = s) => {
-        target.addText(h.label, { x: IX, y, w: IW, h: 0.24, fontFace: FONT, fontSize: fitPt(h.label, 11, IW, 1, 8), color: MUTED, margin: 0 });
-        target.addText(h.value, { x: IX, y: y + 0.24, w: IW, h: 0.66, valign: "middle", fontFace: FONT, fontSize: pt, bold: true, color: INK, margin: 0 });
-        if (sub) target.addText(sub, { x: IX, y: y + 0.9, w: IW, h: 0.24, fontFace: FONT, fontSize: 10.5, color: MUTED, margin: 0 });
+        target.addText(h.label, { x: box.x, y, w: box.w, h: 0.24, fontFace: FONT, fontSize: fitBlock([h.label], { w: box.w, h: 0.24 }, 11, 7), color: MUTED, margin: 0 });
+        target.addText(h.value, { x: box.x, y: y + 0.24, w: box.w, h: 0.66, valign: "middle", fontFace: FONT, fontSize: pt, bold: true, color: INK, margin: 0 });
+        if (sub) target.addText(sub, { x: box.x, y: y + 0.9, w: box.w, h: 0.24, fontFace: FONT, fontSize: fitBlock([sub], { w: box.w, h: 0.24 }, 10.5, 7), color: MUTED, margin: 0 });
       },
     },
   ];
 }
 
-const textItem = (s: Slide, text: string, pt: number, color: string, bold = false, maxLines = 6): Item => {
-  const size = fitPt(text, pt, IW, maxLines, 8);
-  const h = linesOf(text, size, IW) * (size / 72) * 1.45 + 0.04;
-  return { h, draw: (y, target = s) => void target.addText(text, { x: IX, y, w: IW, h, valign: "top", fontFace: FONT, fontSize: size, bold, color, margin: 0 }) };
+const textItem = (s: Slide, text: string, pt: number, color: string, bold = false, maxLines = 6, box: InfoBox): Item => {
+  const size = fitBlock(text.split("\n"), { w: box.w, h: maxLines * (pt / 72) * 1.45 }, pt, 7);
+  const rows = text.split("\n").reduce((sum, line) => sum + linesOf(line, size, box.w), 0);
+  const h = rows * (size / 72) * 1.45 + 0.04;
+  return { h, draw: (y, target = s) => void target.addText(text, { x: box.x, y, w: box.w, h, valign: "top", fontFace: FONT, fontSize: size, bold, color, margin: 0 }) };
 };
 
 function roseSummary(model: RoseModel): string {
@@ -145,52 +155,58 @@ function roseSummary(model: RoseModel): string {
 
 const ROSE_SEASON_LABEL = { annual: "연간", spring: "봄", summer: "여름", autumn: "가을", winter: "겨울" } as const;
 
-function rowItems(s: Slide, rows: TileView["rows"]): Item[] {
+function rowItems(s: Slide, rows: TileView["rows"], box: InfoBox): Item[] {
   return rows.map((r) => ({
     h: 0.3,
     draw: (y, target = s) => {
-      target.addText(r.label, { x: IX, y, w: IW * 0.55, h: 0.28, valign: "middle", fontFace: FONT, fontSize: fitPt(r.label, 11, IW * 0.55, 1, 8), color: MUTED, margin: 0 });
+      target.addText(r.label, { x: box.x, y, w: box.w * 0.55, h: 0.28, valign: "middle", fontFace: FONT, fontSize: fitBlock([r.label], { w: box.w * 0.55, h: 0.28 }, 11, 7), color: MUTED, margin: 0 });
       const v = [r.value, r.aux, r.tag].filter(Boolean).join(" · ");
-      target.addText(v, { x: IX + IW * 0.55, y, w: IW * 0.45, h: 0.28, align: "right", valign: "middle", fontFace: FONT, fontSize: fitPt(v, 11, IW * 0.45, 1, 8), bold: true, color: INK, margin: 0 });
-      target.addShape("line", { x: IX, y: y + 0.3, w: IW, h: 0, line: { color: LINE, width: 0.75 } });
+      target.addText(v, { x: box.x + box.w * 0.55, y, w: box.w * 0.45, h: 0.28, align: "right", valign: "middle", fontFace: FONT, fontSize: fitBlock([v], { w: box.w * 0.45, h: 0.28 }, 11, 7), bold: true, color: INK, margin: 0 });
+      target.addShape("line", { x: box.x, y: y + 0.3, w: box.w, h: 0, line: { color: LINE, width: 0.75 } });
     },
   }));
 }
 
 /** 왼쪽 아래 범례 판 (지도 레이어 색) */
-function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }) {
+function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = true) {
   const model = p.map;
   if (!model) return;
-  const { items, notes, rect: r } = slideLegend(model, !p.muted);
+  const style = p.style ?? {};
+  const { items, notes, rect: r } = slideLegend(model, !p.muted, style, hasSummary);
   if (!r) return;
+  const focus = style.legendFocus ? legendItemsOf(model).find((item) => item.key === style.legendFocus)?.label ?? style.legendFocus : null;
   const group = panelTag("legend", "범례", "plate");
   plate(s, r, 0.12, group);
   items.forEach((it, i) => {
     const y = r.y + 0.1 + i * 0.25;
+    const focused = !it.site && focus !== null && it.label === focus;
+    const dimmed = focus !== null && !it.site && !focused;
+    const fade = dimmed ? 65 : 0;
+    const labelPt = fitBlock([it.label], { w: Math.max(0.2, r.w - 0.55), h: 0.25 }, 10, 7);
     if (it.site) {
-      s.addShape("diamond", { x: r.x + 0.19, y: y + 0.04, w: 0.16, h: 0.16, fill: { color: "FFFFFF" }, line: { color: "111111", width: 0.8 }, objectName: group });
-      s.addShape("ellipse", { x: r.x + 0.25, y: y + 0.1, w: 0.04, h: 0.04, fill: { color: "111111" }, line: { color: "111111", width: 0 }, objectName: group });
+      s.addShape("diamond", { x: r.x + 0.19, y: y + 0.04, w: 0.16, h: 0.16, fill: { color: "FFFFFF", transparency: fade }, line: { color: "111111", width: 0.8, transparency: fade }, objectName: group });
+      s.addShape("ellipse", { x: r.x + 0.25, y: y + 0.1, w: 0.04, h: 0.04, fill: { color: "111111", transparency: fade }, line: { color: "111111", width: 0, transparency: fade }, objectName: group });
     } else if (it.symbol === "rail-axis") {
-      s.addShape("line", { x: r.x + 0.17, y: y + 0.145, w: 0.22, h: 0, line: { color: "172033", width: 5.2, beginArrowType: "none", endArrowType: "none" }, objectName: group });
-      s.addShape("line", { x: r.x + 0.17, y: y + 0.145, w: 0.22, h: 0, line: { color: hex(it.color), width: 3.6, beginArrowType: "none", endArrowType: "none" }, objectName: group });
+      s.addShape("line", { x: r.x + 0.17, y: y + 0.145, w: 0.22, h: 0, line: { color: "172033", width: 5.2, transparency: fade, beginArrowType: "none", endArrowType: "none" }, objectName: group });
+      s.addShape("line", { x: r.x + 0.17, y: y + 0.145, w: 0.22, h: 0, line: { color: hex(it.color), width: 3.6, transparency: fade, beginArrowType: "none", endArrowType: "none" }, objectName: group });
     } else if (it.symbol === "rail-exit") {
-      s.addShape("ellipse", { x: r.x + 0.18, y: y + 0.035, w: 0.19, h: 0.19, fill: { color: "FFD200" }, line: { color: "172033", width: 0.75 }, objectName: group });
+      s.addShape("ellipse", { x: r.x + 0.18, y: y + 0.035, w: 0.19, h: 0.19, fill: { color: "FFD200", transparency: fade }, line: { color: "172033", width: 0.75, transparency: fade }, objectName: group });
     } else if (it.badge) {
-      s.addShape("ellipse", { x: r.x + 0.18, y: y + 0.03, w: 0.19, h: 0.19, fill: { color: hex(it.color) }, line: { color: "FFFFFF", width: 0.75 }, objectName: group });
-      s.addText(it.badge, { x: r.x + 0.18, y: y + 0.03, w: 0.19, h: 0.19, align: "center", valign: "middle", fontFace: FONT, fontSize: 7, bold: true, color: hex(badgeTextColor(it.color)), margin: 0, objectName: group });
+      s.addShape("ellipse", { x: r.x + 0.18, y: y + 0.03, w: 0.19, h: 0.19, fill: { color: hex(it.color), transparency: fade }, line: { color: "FFFFFF", width: 0.75, transparency: fade }, objectName: group });
+      s.addText(it.badge, { x: r.x + 0.18, y: y + 0.03, w: 0.19, h: 0.19, align: "center", valign: "middle", fontFace: FONT, fontSize: 7, bold: true, color: dimmed ? "8C919B" : hex(badgeTextColor(it.color)), margin: 0, objectName: group });
     } else {
-      s.addShape("ellipse", { x: r.x + 0.2, y: y + 0.06, w: 0.13, h: 0.13, fill: { color: hex(it.color) }, line: { color: "FFFFFF", width: 0.75 }, objectName: group });
+      s.addShape("ellipse", { x: r.x + 0.2, y: y + 0.06, w: 0.13, h: 0.13, fill: { color: hex(it.color), transparency: fade }, line: { color: "FFFFFF", width: 0.75, transparency: fade }, objectName: group });
     }
-    s.addText(it.label, { x: r.x + 0.45, y, w: r.w - 0.55, h: 0.25, valign: "middle", fontFace: FONT, fontSize: 10, color: INK, margin: 0, objectName: group });
+    s.addText(it.label, { x: r.x + 0.45, y, w: r.w - 0.55, h: 0.25, valign: "middle", fontFace: FONT, fontSize: labelPt, bold: focused, color: dimmed ? "8C919B" : INK, margin: 0, objectName: group });
   });
   notes.forEach((n, i) => {
-      s.addText(n, { x: r.x + 0.2, y: r.y + 0.1 + items.length * 0.25 + i * 0.22, w: r.w - 0.3, h: 0.22, valign: "middle", fontFace: FONT, fontSize: 8.5, color: MUTED, margin: 0, fit: "shrink", objectName: group });
+      s.addText(n, { x: r.x + 0.2, y: r.y + 0.1 + items.length * 0.25 + i * 0.22, w: r.w - 0.3, h: 0.22, valign: "middle", fontFace: FONT, fontSize: fitBlock([n], { w: r.w - 0.3, h: 0.22 }, 8.5, 7), color: MUTED, margin: 0, fit: "shrink", objectName: group });
   });
 }
 
 function cover(pptx: PptxGenJS, p: PlannedSlide & { kind: "cover" }, images: MapImages) {
   const s = pptx.addSlide();
-  background(s, images[COVER_MAP_KEY]);
+  background(s, images[mapKeyOf(p) ?? COVER_MAP_KEY]);
   // 왼쪽 큰 제목 판
   const tw = 5.7;
   const ad = p.address;
@@ -240,6 +256,7 @@ function cover(pptx: PptxGenJS, p: PlannedSlide & { kind: "cover" }, images: Map
 function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapImages) {
   const v = p.view;
   const s = pptx.addSlide();
+  const style = p.style ?? {};
   const chart = !p.map && !p.mass && !p.rose; // 도판 구성비 면: 연한 타일색 바탕에 차트가 전면
   const mix = (c: string, a: number) => {
     const n = parseInt(hex(c), 16);
@@ -247,16 +264,22 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
     return [16, 8, 0].map((sh) => ch(sh).toString(16).padStart(2, "0")).join("").toUpperCase();
   };
   const co = p.callout;
+  const hasSummary = style.summary !== false && !(co && co.page > 0);
+  const baseLegend = p.map ? slideLegend(p.map, !p.muted).rect : null;
+  const panels = slidePanelRects(style, hasSummary, baseLegend);
+  const summaryRect = panels.summary;
+  const summaryX = summaryRect?.x ?? SLIDE.w;
+  const contentBox = summaryRect ? innerInfoBox(summaryRect) : { x: E, w: Math.max(0.2, SLIDE.w - 2 * E), h: 0.2 };
   const calloutReport = tileReportModuleFor(v.code)?.report;
   const mapStatus = p.map ? nativeMapStatus(p.map) : null;
   const nativeMap = !!p.map && !!mapStatus?.native;
   background(s, chart ? undefined : images[mapKeyOf(p) ?? v.tileId], chart ? mix(v.color, 0.07) : undefined);
   if (nativeMap && p.map) {
-    addEditableMap(s, p, p.map);
+    addEditableMap(s, p, p.map, { style });
     if (mapStatus?.denseLayers.length || mapStatus?.rasterValues.length) s.addNotes(nativeMapFallbackNote(p.map));
   } else if (p.map) s.addNotes(nativeMapFallbackNote(p.map));
   const coTail = co ? (co.page === 0 ? `개요 · 전체 ${fmtInt(co.model.complexes.length)}${co.model.unit}` : pageRange(co.page, co.model.complexes.length, undefined, co.model.kind === "supply")) : null;
-  titlePlate(s, v.color, v.code, v.title, [v.kindLabel, p.faceLabel, coTail].filter((t, i, a) => t && a.indexOf(t) === i).join(" · "), co && co.page > 0 ? SLIDE.w - 2 * E : L.info.x - 2 * E);
+  titlePlate(s, v.color, v.code, v.title, [v.kindLabel, p.faceLabel, coTail].filter((t, i, a) => t && a.indexOf(t) === i).join(" · "), co && co.page > 0 ? SLIDE.w - 2 * E : summaryX - 2 * E, style, hasSummary);
   if (co && co.page > 0) {
     calloutReport?.render({ slide: s, planned: p, part: "page" });
     strip(s, p, true);
@@ -270,21 +293,21 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
     ...(p.rose ? [roseSummary(p.rose), `바람장미 선택 계절 · ${ROSE_SEASON_LABEL[p.roseSeason ?? "annual"]}`] : []),
   ];
   const items: Item[] = [];
-  const b = badgeItem(s, v.badges);
+  const b = badgeItem(s, v.badges, contentBox);
   if (b) items.push(b);
 
   if (p.body.kind === "state") {
     // 상태 화면: 흐린 대지 지도 가운데 판
     const w = 5.0;
     const msg = p.body.message;
-    const pt = fitPt(msg, 20, w - 0.6, 2, 13);
+    const pt = fitBlock([msg], { w: w - 0.6, h: 1.1 }, 20, 7);
     const h = 0.4 + linesOf(msg, pt, w - 0.6) * (pt / 72) * 1.4 + 0.75;
-    const r = { x: (L.info.x - w) / 2, y: (SLIDE.h - h) / 2, w, h };
+    const r = { x: (summaryX - w) / 2, y: (SLIDE.h - h) / 2, w, h };
     plate(s, r, 0.16);
     s.addText(msg, { x: r.x + 0.3, y: r.y + 0.22, w: w - 0.6, h: h - 0.9, valign: "top", fontFace: FONT, fontSize: pt, bold: true, color: INK, margin: 0 });
     s.addText("이 타일의 수치는 만들지 않았습니다. 조건을 바꾸거나 다시 계산한 뒤 보고서를 만들 수 있습니다.", { x: r.x + 0.3, y: r.y + h - 0.68, w: w - 0.6, h: 0.5, valign: "top", fontFace: FONT, fontSize: 10.5, color: MUTED, margin: 0 });
-    notes.forEach((n) => items.push(textItem(s, n, 10, MUTED)));
-    infoPanel(s, items);
+    notes.forEach((n) => items.push(textItem(s, n, 10, MUTED, false, 6, contentBox)));
+    infoPanel(s, items, summaryRect);
     strip(s, p, true);
     return;
   }
@@ -293,15 +316,15 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
     const stat = calloutReport?.render({ slide: s, planned: p, part: "stat" });
     if (stat) items.push(stat);
   }
-  else if (v.headline) items.push(...headlineItems(s, v.headline));
-  if (v.sentence) items.push(textItem(s, v.sentence, 12.5, INK, true, 5));
-  if (v.filterLine) items.push(textItem(s, v.filterLine, 10, MUTED, true, 2));
+  else if (v.headline) items.push(...headlineItems(s, v.headline, contentBox));
+  if (v.sentence) items.push(textItem(s, v.sentence, 12.5, INK, true, 5, contentBox));
+  if (v.filterLine) items.push(textItem(s, v.filterLine, 10, MUTED, true, 2, contentBox));
   // 도판(지도) 면에 구성비 수치를 반복하지 않는다
   const rows = p.body.face === "front" || p.body.face === "back" ? [] : v.rows.filter((r) => r.label !== v.headline?.label).slice(0, 5);
-  if (rows.length) items.push(...rowItems(s, rows));
-  if (v.grades.length > 0) items.push(textItem(s, v.grades.map((g) => `${g.label} · ${g.criteria}`).join("\n"), 9, MUTED, false, 4));
-  else if (v.grade) items.push(textItem(s, `거리 등급 ${v.grade.label} · ${v.grade.criteria}`, 9, MUTED, false, 3));
-  if (notes.length) items.push(textItem(s, notes.join("\n"), 9, MUTED, false, 5));
+  if (rows.length) items.push(...rowItems(s, rows, contentBox));
+  if (v.grades.length > 0) items.push(textItem(s, v.grades.map((g) => `${g.label} · ${g.criteria}`).join("\n"), 9, MUTED, false, 4, contentBox));
+  else if (v.grade) items.push(textItem(s, `거리 등급 ${v.grade.label} · ${v.grade.criteria}`, 9, MUTED, false, 3, contentBox));
+  if (notes.length) items.push(textItem(s, notes.join("\n"), 9, MUTED, false, 5, contentBox));
 
   if (chart) {
     // 전면 구성비 차트 (왼쪽 영역)
@@ -312,7 +335,7 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
     const y1 = L.strip.y - 0.4;
     const rh = Math.min(0.72, (y1 - y0) / Math.max(1, data.length));
     const labW = 1.9;
-    const trackW = L.info.x - E - 0.4 - x0 - labW - 1.0;
+    const trackW = summaryX - E - 0.4 - x0 - labW - 1.0;
     data.forEach((c, i) => {
       const y = y0 + i * rh;
       s.addText(c.label, { x: x0, y, w: labW, h: rh, valign: "middle", fontFace: FONT, fontSize: 14, bold: true, color: "454A55", margin: 0 });
@@ -321,9 +344,9 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
       s.addText(`${c.value}${c.unit === "%" ? "%" : ` ${c.unit}`}`, { x: x0 + labW + trackW + 0.1, y, w: 0.8, h: rh, align: "right", valign: "middle", fontFace: FONT, fontSize: 14, bold: true, color: INK, margin: 0 });
     });
   } else if (co) calloutReport?.render({ slide: s, planned: p, part: "overview" });
-  else legendPlate(s, p);
+  else legendPlate(s, p, hasSummary);
 
-  infoPanel(s, items);
+  infoPanel(s, items, summaryRect);
   strip(s, p, !chart);
 }
 
@@ -362,7 +385,7 @@ function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: Map
       const cellMap = sourceMap && sourceMap.tileCode ? sourceMap : sourceMap ? { ...sourceMap, tileCode: cell.view.code } : null;
       const cellStatus = cellMap ? nativeMapStatus(cellMap) : null;
       if (cellMap && cellStatus?.native) {
-        addEditableMap(s, null, cellMap, { mode: "cell", scope: `cell-${index}`, frame: { x: r.x, y: r.y, w: r.w, h: r.h } });
+        addEditableMap(s, null, cellMap, { mode: "cell", scope: `cell-${index}`, frame: { x: r.x, y: r.y, w: r.w, h: r.h }, style: cell.style });
         if (cellStatus.denseLayers.length || cellStatus.rasterValues.length) s.addNotes(nativeMapFallbackNote(cellMap));
       }
     }
@@ -378,10 +401,10 @@ function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: Map
 
 function sources(pptx: PptxGenJS, p: PlannedSlide & { kind: "sources" }, images: MapImages) {
   const s = pptx.addSlide();
-  background(s, images[COVER_MAP_KEY]);
+  background(s, images[mapKeyOf(p) ?? COVER_MAP_KEY]);
   // 지도를 흐리게: 흰 막
   s.addShape("rect", { x: 0, y: 0, w: SLIDE.w, h: SLIDE.h, fill: { color: "FFFFFF", transparency: 25 }, line: { color: "FFFFFF", width: 0, transparency: 100 } });
-  titlePlate(s, "#7A7E87", "", "자료 출처와 기준일", "", SLIDE.w - 2 * E);
+  titlePlate(s, "#7A7E87", "", "자료 출처와 기준일", "", SLIDE.w - 2 * E, p.style ?? {}, false);
   // 원천이 많은 분석은 report-plan에서 여러 출처 장으로 나눈다. 한 장 안의 표는 승인 시안의 열 구조를 유지한다.
   const dense = p.rows.length >= 12;
   // 행 대부분이 제공처·자료 두 줄이라 두 줄 높이로 판 높이를 잡는다.
