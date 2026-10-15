@@ -19,6 +19,7 @@ const { isEditableMap, nativeMapStatus } = await import("../../lib/v2/report/map
 const { buildMapScene } = await import("../../lib/v2/ui/map-scene.ts");
 const { SLIDE, slideLegend, slideReserved, slideSiteX } = await import("../../lib/v2/ui/overlay-layout.ts");
 const { mapKeysOf } = await import("../../lib/v2/report/report-plan.ts");
+const { sheetCells } = await import("../../lib/v2/ui/sheet.ts");
 
 const VIEW_W = 960;
 const VIEW_H = 540;
@@ -195,6 +196,43 @@ const textContent = (xml) => [...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((matc
 const taggedShapeBlocks = (xml) => [...xml.matchAll(/<p:sp>[\s\S]*?<\/p:sp>/g)].map((match) => match[0]).filter((block) => block.includes("GRP|"));
 const groupBlocks = (xml) => [...xml.matchAll(/<p:grpSp>[\s\S]*?<\/p:grpSp>/g)].map((match) => match[0]);
 const groupNames = (xml) => groupBlocks(xml).map((block) => block.match(/<p:cNvPr id="\d+" name="([^"]*)"/)?.[1]).filter(Boolean);
+const shapeBlocks = (xml) => [...xml.matchAll(/<p:sp>[\s\S]*?<\/p:sp>/g)].map((match) => match[0]);
+
+function geometryForBlock(block) {
+  const off = block.match(/<a:off x="(-?\d+)" y="(-?\d+)"\/>/);
+  const ext = block.match(/<a:ext cx="(\d+)" cy="(\d+)"\/>/);
+  if (!off || !ext) return null;
+  return { x: Number(off[1]), y: Number(off[2]), w: Number(ext[1]), h: Number(ext[2]) };
+}
+
+function textForBlock(block) {
+  return [...block.matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)].map((match) => match[1]).join("");
+}
+
+function textShapesInRect(xml, rect) {
+  return shapeBlocks(xml).flatMap((block) => {
+    const geometry = geometryForBlock(block);
+    const text = textForBlock(block);
+    if (!geometry || !text) return [];
+    const center = { x: geometry.x + geometry.w / 2, y: geometry.y + geometry.h / 2 };
+    if (center.x < rect.x || center.x > rect.x + rect.w || center.y < rect.y || center.y > rect.y + rect.h) return [];
+    return [{ geometry, text, fontSizes: [...block.matchAll(/\bsz="(\d+)"/g)].map((match) => Number(match[1])) }];
+  });
+}
+
+function groupGeometryContaining(xml, token) {
+  const block = groupBlocks(xml).find((candidate) => candidate.includes(token));
+  return block ? geometryForBlock(block) : null;
+}
+
+function groupGeometryContainingAll(xml, tokens) {
+  const block = groupBlocks(xml).find((candidate) => tokens.every((token) => candidate.includes(token)));
+  return block ? geometryForBlock(block) : null;
+}
+
+function overlapsRect(a, b) {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
 
 function assertValidGroupedXml(xml, label) {
   assert.ok(xml.includes("<p:spTree>"), `${label} spTree 없음`);
@@ -320,6 +358,11 @@ assert.equal(nativeMapStatus(a05BackdropMap).native, true, "A05 backdrop tileCod
 assert.match(a05Xml, /GRP\|map-A05-/, "A05 backdrop에 편집 가능한 지도 도형이 없다");
 assert.match(a05Xml, /<p:grpSp>/, "A05 backdrop 그룹이 없다");
 assertValidGroupedXml(a05Xml, "A05 backdrop");
+const a05ScaleGroup = groupGeometryContaining(a05Xml, "map-A05-scale");
+const a05CalloutLegendGroup = groupGeometryContaining(a05Xml, "panel-callout-legend");
+assert.ok(a05ScaleGroup, "A05 개요 축척 그룹 bbox가 없다");
+assert.ok(a05CalloutLegendGroup, "A05 개요 콜아웃 범례 그룹 bbox가 없다");
+assert.equal(overlapsRect(a05ScaleGroup, a05CalloutLegendGroup), false, "A05 개요 축척과 콜아웃 범례가 겹친다");
 
 const sheetIndex = a05Index + 1;
 const sheetXml = await slideXml(sheetIndex);
@@ -328,6 +371,23 @@ assert.ok(groupNames(sheetXml).some((name) => name === "범례"), "조판 셀 �
 assert.match(sheetXml, /GRP\|map-cell-0-A01-/, "조판 A01 셀 native 도형이 없다");
 assert.match(sheetXml, /GRP\|map-cell-1-D13-/, "조판 D13 셀 native 도형이 없다");
 assertValidGroupedXml(sheetXml, "sheet");
+
+const sheetCellRects = sheetCells("2x2").slice(0, sheetPlan.cells.length).map((cell) => ({ x: cell.x * EMU_PER_INCH, y: cell.y * EMU_PER_INCH, w: cell.w * EMU_PER_INCH, h: cell.h * EMU_PER_INCH }));
+for (const [index, cellRect] of sheetCellRects.entries()) {
+  const cellTextShapes = textShapesInRect(sheetXml, cellRect);
+  assert.ok(cellTextShapes.length > 0, `조판 ${index} 셀 텍스트가 없다`);
+  const legendGroup = groupGeometryContainingAll(sheetXml, [`map-cell-${index}-`, "legend-panel"]);
+  assert.ok(legendGroup, `조판 ${index} 셀 범례 그룹 bbox가 없다`);
+  for (const shape of cellTextShapes) {
+    assert.ok(shape.fontSizes.length > 0, `조판 ${index} 셀 텍스트 run 크기가 없다: ${shape.text}`);
+    assert.ok(Math.min(...shape.fontSizes) >= 800, `조판 ${index} 셀 텍스트가 8pt 미만이다: ${shape.text} (${shape.fontSizes.join(",")})`);
+  }
+  const sourceTexts = cellTextShapes.filter((shape) => shape.text.startsWith("출처 "));
+  if (sourceTexts.length > 0) {
+    assert.equal(sourceTexts.some((shape) => overlapsRect(shape.geometry, legendGroup)), false, `조판 ${index} 셀 출처와 범례가 겹친다`);
+  }
+}
+assert.equal(textShapesInRect(sheetXml, sheetCellRects[0]).some((shape) => shape.text.startsWith("출처 ")), false, "조판 셀 안에 출처 문구가 남아 있다");
 
 for (const name of slideNames) assertValidGroupedXml(await zip.file(name).async("string"), name);
 

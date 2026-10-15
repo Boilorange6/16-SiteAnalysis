@@ -121,8 +121,8 @@ assert.equal(pending.find((candidate) => candidate.label === "단일 · 겨울 1
 assert.equal(pending.find((candidate) => candidate.label.startsWith("계절 4컷"))?.disabled, true);
 
 const xmlZip = await JSZip.loadAsync(await renderReportPptx(s02Hours.plan));
-const sheetXml = await xmlZip.file("ppt/slides/slide2.xml").async("string");
-assert.match(sheetXml, /하지 13:00/);
+const sheetNotesXml = await xmlZip.file("ppt/notesSlides/notesSlide2.xml").async("string");
+assert.match(sheetNotesXml, /하지 13:00/);
 
 assert.deepEqual(defaultCutForCode("S01"), { tile: "S01", mode: "mass" });
 console.log("✓ v2 CutSpec generalized S01/S02/S03/S04/D22 plans, pending choices, and PPT notes");

@@ -332,6 +332,7 @@ function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: Map
   s.background = { color: "F2F2EF" };
   titlePlate(s, p.view.color, "SHEET", p.view.title, p.grid, SLIDE.w - 2 * E);
   const cells = sheetCells(p.grid as SheetGrid);
+  const cellNotes = new Set<string>();
   for (const [index, cell] of p.cells.entries()) {
     const r = cells[index];
     if (!r) continue;
@@ -365,13 +366,13 @@ function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: Map
         if (cellStatus.denseLayers.length || cellStatus.rasterValues.length) s.addNotes(nativeMapFallbackNote(cellMap));
       }
     }
-    const faceText = cell.face === "back" ? "구성비" : "도판";
     const cutNote = cell.view.notes[0] ?? null;
-    const chipText = `${cell.view.code} · ${cell.view.title} · ${faceText}${cutNote ? ` · ${cutNote}` : ""}`;
+    if (cutNote) cellNotes.add(`${cell.view.code} · ${cutNote}`);
+    const chipText = `${cell.view.code} · ${cell.view.title}`;
     s.addShape("roundRect", { x: r.x + 0.1, y: r.y + 0.1, w: Math.min(r.w - 0.2, 2.9), h: 0.3, rectRadius: 0.12, fill: { color: "FFFFFF", transparency: 10 }, line: { color: INK, transparency: 88, width: 0.5 } });
-    s.addText(chipText, { x: r.x + 0.2, y: r.y + 0.1, w: Math.min(r.w - 0.4, 2.7), h: 0.3, valign: "middle", fontFace: FONT, fontSize: fitPt(chipText, 8.5, Math.min(r.w - 0.4, 2.7), 1, 6), bold: true, color: INK, margin: 0, fit: "shrink" });
-    s.addText(`출처 ${cell.sourceLine ?? cell.view.sourceLine}`, { x: r.x + 0.12, y: r.y + r.h - 0.29, w: r.w - 0.24, h: 0.18, fontFace: FONT, fontSize: 7.5, color: MUTED, margin: 0, fit: "shrink" });
+    s.addText(chipText, { x: r.x + 0.2, y: r.y + 0.1, w: Math.min(r.w - 0.4, 2.7), h: 0.3, valign: "middle", fontFace: FONT, fontSize: fitPt(chipText, 8.5, Math.min(r.w - 0.4, 2.7), 1, 8), bold: true, color: INK, margin: 0, fit: "shrink" });
   }
+  if (cellNotes.size > 0) s.addNotes([...cellNotes].join("\n"));
   strip(s, p, false);
 }
 

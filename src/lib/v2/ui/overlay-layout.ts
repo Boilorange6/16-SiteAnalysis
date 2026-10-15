@@ -79,6 +79,39 @@ export function slideLegendRect(items: number, notes: number, labelChars: number
   return { x: l.legendX, y: l.legendBottom - h, w, h };
 }
 
+export type SlideCalloutLegendEntry = { text: string; color?: string | null; hollow?: boolean };
+export type SlideCalloutLegendRow = SlideCalloutLegendEntry & { x: number; w: number };
+export type SlideCalloutLegendLayout = { rect: Rect; rows: SlideCalloutLegendRow[][] };
+
+/**
+ * A05/A06 개요·설명표가 공유하는 가로 범례의 실제 판 자리와 줄바꿈.
+ * PPT 글자 측정은 pptx-kit과 같은 고정폭 규칙을 써서 지도 장면도 같은
+ * rect를 회피 입력으로 사용할 수 있게 한다.
+ */
+export function slideCalloutLegendLayout(
+  entries: readonly SlideCalloutLegendEntry[],
+  x: number,
+  bottom: number,
+  maxW: number,
+): SlideCalloutLegendLayout | null {
+  if (entries.length === 0 || maxW <= 0) return null;
+  const textIn = (value: string, pt: number) => ([...value].reduce((width, ch) => width + (ch.charCodeAt(0) > 0x2e80 ? 1 : 0.56), 0) * pt) / 72;
+  const rows: SlideCalloutLegendRow[][] = [[]];
+  let cx = 0;
+  for (const entry of entries) {
+    const w = (entry.color ? 0.22 : 0.04) + textIn(entry.text, 9) + 0.1;
+    if (cx > 0 && cx + w > maxW - 0.3) {
+      rows.push([]);
+      cx = 0;
+    }
+    rows.at(-1)!.push({ ...entry, x: cx, w });
+    cx += w;
+  }
+  const width = Math.min(maxW, Math.max(...rows.map((row) => row.reduce((sum, entry) => sum + entry.w, 0))) + 0.3);
+  const height = 0.14 + rows.length * 0.24;
+  return { rect: { x, y: bottom - height, w: width, h: height }, rows };
+}
+
 /** 지도 모델 → 범례 항목·문구·자리 (슬라이드 그리기와 지도 이미지의 라벨 회피가 같은 값을 쓴다) */
 export function slideLegend(model: MapModel, includeSite = true) {
   const items: Array<{ layer: string; label: string; color: string; site?: boolean; badge?: string; symbol?: "rail-axis" | "rail-exit" }> = [
@@ -91,10 +124,10 @@ export function slideLegend(model: MapModel, includeSite = true) {
 }
 
 /** 슬라이드 좌표(inch)를 지도 이미지 픽셀 좌표로 바꾼 예약 자리 (라벨 충돌 회피용) */
-export function slideReserved(pxPerInch: number, opts: { info?: boolean; legend?: Rect | null } = {}): Box[] {
+export function slideReserved(pxPerInch: number, opts: { info?: boolean; legend?: Rect | null; calloutLegend?: Rect | null } = {}): Box[] {
   const l = slideLayout();
   const b = (r: Rect): Box => ({ x0: r.x * pxPerInch, y0: r.y * pxPerInch, x1: (r.x + r.w) * pxPerInch, y1: (r.y + r.h) * pxPerInch });
-  return [b(l.title), ...(opts.info === false ? [] : [b(l.info)]), ...(opts.legend ? [b(opts.legend)] : []), b(l.strip)];
+  return [b(l.title), ...(opts.info === false ? [] : [b(l.info)]), ...(opts.legend ? [b(opts.legend)] : []), ...(opts.calloutLegend ? [b(opts.calloutLegend)] : []), b(l.strip)];
 }
 
 /** 가로 방향 지도 중심 위치: 슬라이드에서는 오른쪽 정보 판을 뺀 영역의 가운데 */
