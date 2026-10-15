@@ -7,12 +7,12 @@ import PptxGenJS from "pptxgenjs";
 import { groupTaggedShapes } from "../../pptx-shape-group";
 import { fmtInt, pageRange } from "../ui/callout-layout";
 import { legendItemsOf, STRIP_COLORS } from "../ui/map-layers";
-import { SLIDE, slideLegend, slidePanelRects, slidePanelScale, stripText, type Rect } from "../ui/overlay-layout";
+import { SLIDE, slideLegend, slidePanelRects, slidePanelScale, type Rect } from "../ui/overlay-layout";
 import type { Badge, TileView } from "../ui/tile-view";
 import type { RoseModel } from "../ui/wind-rose";
 import { sheetCells, type SheetGrid } from "../ui/sheet";
 import { COVER_MAP_KEY, mapKeyOf, type PlannedSlide } from "./report-plan";
-import { E, FONT, INK, L, LINE, MUTED, fitBlock, fitPt, hex, linesOf, plate, textIn, type Border, type ReportItem, type Slide } from "./pptx-kit";
+import { E, FONT, INK, L, LINE, MUTED, coverLayout, fitBlock, fitFooterText, fitPt, hex, linesOf, plate, sourceLayout, textIn, titlePlateRect, type Border, type ReportItem, type Slide } from "./pptx-kit";
 import { tileReportModuleFor } from "../tile/report";
 import { addEditableMap, nativeMapFallbackNote, nativeMapStatus } from "./map-pptx";
 import { badgeTextColor } from "../ui/map-labels";
@@ -46,19 +46,16 @@ function strip(s: Slide, p: PlannedSlide, credit: boolean) {
   s.addShape("rect", { x: r.x, y: r.y, w: r.w, h: r.h, fill: { color: "FFFFFF", transparency: 0 }, line: { color: "FFFFFF", width: 0, transparency: 100 } });
   s.addShape("line", { x: r.x, y: r.y, w: r.w, h: 0, line: { color: INK, width: 0.5, transparency: 92 } });
   const room = SLIDE.w - E - 1.7;
-  const full = stripText(p.footer, credit);
-  const text = textIn(full, 9) <= room ? full : p.footer;
-  s.addText(text, { x: E, y: r.y, w: room, h: r.h, valign: "middle", fontFace: FONT, fontSize: 9, color: "454A55", margin: 0, fit: "shrink" });
+  const footer = fitFooterText(p.footer, credit, room);
+  s.addText(footer.text, { x: E, y: r.y, w: room, h: r.h, valign: "middle", fontFace: FONT, fontSize: footer.fontSize, color: "454A55", margin: 0, fit: "shrink" });
   s.addText(`${p.no} / ${p.total}`, { x: SLIDE.w - E - 1.2, y: r.y, w: 1.2, h: r.h, align: "right", valign: "middle", fontFace: FONT, fontSize: 9, color: "454A55", margin: 0 });
 }
 
 /** 왼쪽 위 제목 판: 타일 색 점 + 번호 + 타일명 + 종류 */
 function titlePlate(s: Slide, color: string, code: string, title: string, kind: string, maxW: number, style: PageStyle = {}, hasSummary = true) {
-  const base = slidePanelRects(style, hasSummary).title;
   const scale = slidePanelScale(style.titleScale);
-  const w = Math.min(maxW, Math.max(base.w, 0.62 + textIn(`${code}  `, 10 * scale) + textIn(title, 18 * scale) + textIn(`  ${kind}`, 10 * scale)));
-  const r = { ...base, w };
-  const textBox = { w: Math.max(0.2, w - 0.58), h: Math.max(0.16, r.h - 0.08) };
+  const r = titlePlateRect(code, title, kind, maxW, style, hasSummary);
+  const textBox = { w: Math.max(0.2, r.w - 0.58), h: Math.max(0.16, r.h - 0.08) };
   const titlePt = fitBlock([title], textBox, 18 * scale, 7);
   const metaPt = fitBlock([`${code}  ${kind}`], textBox, 10 * scale, 7);
   const group = panelTag("title", "제목", "plate");
@@ -224,46 +221,34 @@ function cover(pptx: PptxGenJS, p: PlannedSlide & { kind: "cover" }, images: Map
   const s = pptx.addSlide();
   background(s, images[mapKeyOf(p) ?? COVER_MAP_KEY]);
   // 왼쪽 큰 제목 판
-  const tw = 5.7;
-  const ad = p.address;
-  const apt = fitPt(ad, 28, tw - 0.6, 2, 16);
-  const ah = linesOf(ad, apt, tw - 0.6) * (apt / 72) * 1.35 + 0.05;
-  const metricsH = 0.62 * 2;
-  const chipH = p.incomplete ? 0.42 : 0;
-  const th = 0.25 + 0.3 + ah + 0.15 + metricsH + 0.3 + chipH + 0.2;
-  plate(s, { x: E, y: E, w: tw, h: th }, 0.16);
-  let y = E + 0.22;
-  s.addText("사이트 분석 보고서", { x: E + 0.3, y, w: tw - 0.6, h: 0.26, fontFace: FONT, fontSize: 11, bold: true, color: MUTED, margin: 0 });
-  y += 0.3;
-  s.addText(ad, { x: E + 0.3, y, w: tw - 0.6, h: ah, valign: "top", fontFace: FONT, fontSize: apt, bold: true, color: INK, margin: 0 });
-  y += ah + 0.15;
+  const layout = coverLayout({ address: p.address, metricCount: p.metrics.length, lineCount: p.lines.length, incomplete: !!p.incomplete });
+  const { left, right, leftInner, address, metricCellW, metricsY, asOf, incompleteY, rightHeading, rowH, addressPt } = layout;
+  plate(s, left, 0.16);
+  s.addText("사이트 분석 보고서", { x: leftInner.x, y: leftInner.y, w: leftInner.w, h: leftInner.h, fontFace: FONT, fontSize: 11, bold: true, color: MUTED, margin: 0 });
+  s.addText(p.address, { x: address.x, y: address.y, w: address.w, h: address.h, valign: "top", fontFace: FONT, fontSize: addressPt, bold: true, color: INK, margin: 0 });
   p.metrics.forEach((m, i) => {
-    const x = E + 0.3 + (i % 2) * ((tw - 0.6) / 2);
-    const my = y + Math.floor(i / 2) * 0.62;
-    s.addText(m.label, { x, y: my, w: (tw - 0.6) / 2 - 0.1, h: 0.22, fontFace: FONT, fontSize: 10, color: MUTED, margin: 0 });
-    s.addText(m.value, { x, y: my + 0.22, w: (tw - 0.6) / 2 - 0.1, h: 0.36, valign: "middle", fontFace: FONT, fontSize: fitPt(m.value, 17, (tw - 0.6) / 2 - 0.1, 1, 11), bold: true, color: INK, margin: 0 });
+    const x = leftInner.x + (i % 2) * (leftInner.w / 2);
+    const my = metricsY + Math.floor(i / 2) * 0.62;
+    s.addText(m.label, { x, y: my, w: metricCellW, h: 0.22, fontFace: FONT, fontSize: 10, color: MUTED, margin: 0 });
+    s.addText(m.value, { x, y: my + 0.22, w: metricCellW, h: 0.36, valign: "middle", fontFace: FONT, fontSize: fitPt(m.value, 17, metricCellW, 1, 11), bold: true, color: INK, margin: 0 });
   });
-  y += metricsH + 0.1;
-  s.addText(p.asOfLine, { x: E + 0.3, y, w: tw - 0.6, h: 0.26, valign: "middle", fontFace: FONT, fontSize: 11, color: MUTED, margin: 0 });
-  if (p.incomplete) chipRows(s, [{ text: p.incomplete, tone: "status" }], E + 0.3, y + 0.36, tw - 0.6, true);
+  s.addText(p.asOfLine, { x: asOf.x, y: asOf.y, w: asOf.w, h: asOf.h, valign: "middle", fontFace: FONT, fontSize: 11, color: MUTED, margin: 0 });
+  if (p.incomplete) chipRows(s, [{ text: p.incomplete, tone: "status" }], leftInner.x, incompleteY, leftInner.w, true);
 
   // 오른쪽 타일 목록 판
-  const lw = 5.6;
-  const rowH = Math.min(0.4, 6.0 / Math.max(1, p.lines.length));
-  const lh = 0.62 + p.lines.length * rowH + 0.12;
-  const lx = SLIDE.w - E - lw;
-  plate(s, { x: lx, y: E, w: lw, h: Math.min(lh, L.info.h) }, 0.16);
-  s.addText("타일", { x: lx + 0.3, y: E + 0.18, w: lw - 0.6, h: 0.28, fontFace: FONT, fontSize: 11, bold: true, color: MUTED, margin: 0 });
+  plate(s, right, 0.16);
+  s.addText("타일", { x: rightHeading.x, y: rightHeading.y, w: rightHeading.w, h: rightHeading.h, fontFace: FONT, fontSize: 11, bold: true, color: MUTED, margin: 0 });
   p.lines.forEach((l, i) => {
-    const ry = E + 0.55 + i * rowH;
-    s.addShape("ellipse", { x: lx + 0.3, y: ry + rowH / 2 - 0.06, w: 0.12, h: 0.12, fill: { color: hex(l.color) }, line: { color: hex(l.color) } });
+    const row = layout.row(i);
+    const ry = row.y;
+    s.addShape("ellipse", { x: row.x, y: ry + rowH / 2 - 0.06, w: 0.12, h: 0.12, fill: { color: hex(l.color) }, line: { color: hex(l.color) } });
     const text = `${l.title}  ${l.text}`;
     s.addText(
       [
         { text: `${l.title}  `, options: { bold: true, color: INK } },
         { text: l.text, options: { color: MUTED } },
       ],
-      { x: lx + 0.52, y: ry, w: lw - 0.85, h: rowH, valign: "middle", fontFace: FONT, fontSize: fitPt(text, 11, lw - 0.85, 1, 8), margin: 0 },
+      { x: row.x + 0.22, y: ry, w: row.w, h: row.h, valign: "middle", fontFace: FONT, fontSize: fitPt(text, 11, row.w, 1, 8), margin: 0 },
     );
   });
   strip(s, p, !!p.map);
@@ -423,10 +408,9 @@ function sources(pptx: PptxGenJS, p: PlannedSlide & { kind: "sources" }, images:
   s.addShape("rect", { x: 0, y: 0, w: SLIDE.w, h: SLIDE.h, fill: { color: "FFFFFF", transparency: 25 }, line: { color: "FFFFFF", width: 0, transparency: 100 } });
   titlePlate(s, "#7A7E87", "", "자료 출처와 기준일", "", SLIDE.w - 2 * E, p.style ?? {}, false);
   // 원천이 많은 분석은 report-plan에서 여러 출처 장으로 나눈다. 한 장 안의 표는 승인 시안의 열 구조를 유지한다.
-  const dense = p.rows.length >= 12;
-  // 행 대부분이 제공처·자료 두 줄이라 두 줄 높이로 판 높이를 잡는다.
-  const h = Math.min(L.strip.y - 1.2 - 0.46, 0.5 + (dense ? 0.34 : 0.4) * (p.rows.length + 1));
-  const r = { x: E, y: 1.2, w: SLIDE.w - 2 * E, h };
+  const source = sourceLayout(p.rows.length, p.style ?? {});
+  const dense = source.dense;
+  const r = source.table;
   plate(s, r, 0.16);
   const cell = (t: string, opts: { bold?: boolean; fontSize?: number; color?: string } = {}) => ({
     text: t,
@@ -443,9 +427,9 @@ function sources(pptx: PptxGenJS, p: PlannedSlide & { kind: "sources" }, images:
       cell(row.tiles),
     ]),
   ];
-  const W = r.w - 0.6;
-  s.addTable(rows, { x: r.x + 0.3, y: r.y + 0.2, w: W, colW: [W * 0.24, W * 0.14, W * 0.16, W * 0.25, W * 0.21], rowH: dense ? 0.28 : 0.32, margin: 0 });
-  s.addText(`분석 생성일 ${p.analysisDate} · 기준일은 원천 자료 날짜${p.rows.length > 12 ? ` · 원천 ${p.rows.length}건` : ""}`, { x: r.x + 0.3, y: r.y + r.h + 0.08, w: W, h: 0.24, fontFace: FONT, fontSize: 9, color: MUTED, margin: 0, fit: "shrink" });
+  const W = source.tableContent.w;
+  s.addTable(rows, { x: source.tableContent.x, y: source.tableContent.y, w: W, colW: [W * 0.24, W * 0.14, W * 0.16, W * 0.25, W * 0.21], rowH: dense ? 0.28 : 0.32, margin: 0 });
+  s.addText(`분석 생성일 ${p.analysisDate} · 기준일은 원천 자료 날짜${p.rows.length > 12 ? ` · 원천 ${p.rows.length}건` : ""}`, { x: source.footer.x, y: source.footer.y, w: source.footer.w, h: source.footer.h, fontFace: FONT, fontSize: 9, color: MUTED, margin: 0, fit: "shrink" });
   strip(s, p, !!p.map);
 }
 

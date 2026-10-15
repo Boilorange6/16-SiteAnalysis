@@ -1,6 +1,7 @@
 import type PptxGenJS from "pptxgenjs";
 import { PPT_FONT_MAIN as FONT } from "../../ppt-design-config";
-import { OV, SLIDE, slideLayout, type Rect } from "../ui/overlay-layout";
+import type { PageStyle } from "../ui/board-state";
+import { OV, SLIDE, slideLayout, slidePanelRects, slidePanelScale, stripText, type Rect } from "../ui/overlay-layout";
 
 export { SLIDE };
 
@@ -45,6 +46,104 @@ export function fitPt(value: string, maxPt: number, width: number, maxLines: num
   let pt = maxPt;
   while (pt > minPt && linesOf(value, pt, width) > maxLines) pt -= 0.5;
   return pt;
+}
+
+export type CoverLayout = {
+  left: Rect;
+  right: Rect;
+  leftInner: Rect;
+  address: Rect;
+  metricCellW: number;
+  metricsY: number;
+  metricsH: number;
+  asOf: Rect;
+  incompleteY: number;
+  rightHeading: Rect;
+  rowH: number;
+  row: (index: number) => Rect;
+  addressPt: number;
+};
+
+/** 표지의 판·텍스트 자리를 화면 미리보기와 PPT가 함께 사용한다. */
+export function coverLayout(input: { address: string; metricCount: number; lineCount: number; incomplete: boolean }): CoverLayout {
+  const leftW = 5.7;
+  const leftInner = { x: E + 0.3, y: E + 0.22, w: leftW - 0.6, h: 0.26 };
+  const addressPt = fitPt(input.address, 28, leftInner.w, 2, 16);
+  const addressH = linesOf(input.address, addressPt, leftInner.w) * (addressPt / 72) * 1.35 + 0.05;
+  const metricRows = Math.max(1, Math.ceil(input.metricCount / 2));
+  const metricsH = 0.62 * metricRows;
+  const metricsY = E + 0.22 + 0.3 + addressH + 0.15;
+  const asOfY = metricsY + metricsH + 0.1;
+  const chipH = input.incomplete ? 0.42 : 0;
+  const leftH = 0.25 + 0.3 + addressH + 0.15 + metricsH + 0.3 + chipH + 0.2;
+  const left = { x: E, y: E, w: leftW, h: leftH };
+  const rightW = 5.6;
+  const rowH = Math.min(0.4, 6 / Math.max(1, input.lineCount));
+  const rightH = Math.min(0.62 + input.lineCount * rowH + 0.12, L.info.h);
+  const right = { x: SLIDE.w - E - rightW, y: E, w: rightW, h: rightH };
+  const rightHeading = { x: right.x + 0.3, y: E + 0.18, w: rightW - 0.6, h: 0.28 };
+  return {
+    left,
+    right,
+    leftInner,
+    address: { x: leftInner.x, y: E + 0.52, w: leftInner.w, h: addressH },
+    metricCellW: leftInner.w / 2 - 0.1,
+    metricsY,
+    metricsH,
+    asOf: { x: leftInner.x, y: asOfY, w: leftInner.w, h: 0.26 },
+    incompleteY: asOfY + 0.36,
+    rightHeading,
+    rowH,
+    row: (index) => ({ x: right.x + 0.3, y: E + 0.55 + index * rowH, w: right.w - 0.85, h: rowH }),
+    addressPt,
+  };
+}
+
+/** 보고서 제목 판의 실제 폭을 계산한다. render-pptx와 미리보기의 제목 조판 계약. */
+export function titlePlateRect(code: string, title: string, kind: string, maxW: number, style: PageStyle = {}, hasSummary = true): Rect {
+  const base = slidePanelRects(style, hasSummary).title;
+  const scale = slidePanelScale(style.titleScale);
+  const w = Math.min(maxW, Math.max(base.w, 0.62 + textIn(`${code}  `, 10 * scale) + textIn(title, 18 * scale) + textIn(`  ${kind}`, 10 * scale)));
+  return { ...base, w };
+}
+
+export type SourceLayout = { title: Rect; table: Rect; dense: boolean; tableContent: Rect; footer: Rect };
+
+/** 출처 장의 표·기준일 자리를 미리보기와 PPT가 함께 사용한다. */
+export function sourceLayout(rowCount: number, style: PageStyle = {}): SourceLayout {
+  const dense = rowCount >= 12;
+  const table = { x: E, y: 1.2, w: SLIDE.w - 2 * E, h: Math.min(L.strip.y - 1.2 - 0.46, 0.5 + (dense ? 0.34 : 0.4) * (rowCount + 1)) };
+  return {
+    title: titlePlateRect("", "자료 출처와 기준일", "", SLIDE.w - 2 * E, style, false),
+    table,
+    dense,
+    tableContent: { x: table.x + 0.3, y: table.y + 0.2, w: table.w - 0.6, h: Math.max(0, table.h - 0.3) },
+    footer: { x: table.x + 0.3, y: table.y + table.h + 0.08, w: table.w - 0.6, h: 0.24 },
+  };
+}
+
+export type FooterFit = { text: string; fontSize: number; lines: 1 };
+
+function oneLineAt(value: string, pt: number, width: number): boolean {
+  return linesOf(value, pt, width) <= 1 && textIn(value, pt) <= width;
+}
+
+/** 출처 띠는 최소 7pt 한 줄을 우선하고, 그래도 길면 출처 장 참조로 요약한다. */
+export function fitFooterText(sourceLine: string, credit: boolean, width = SLIDE.w - E - 1.7): FooterFit {
+  const full = stripText(sourceLine, credit);
+  for (let pt = 9; pt >= 7; pt -= 0.5) {
+    if (oneLineAt(full, pt, width)) return { text: full, fontSize: pt, lines: 1 };
+  }
+  const parts = full.split(" · ");
+  const dateCount = full.match(/(?:\d{4}(?:-\d{2}){0,2}|기준일 미확인)/g)?.length ?? 0;
+  const totalEntries = Math.max(1, dateCount || parts.length - 1);
+  for (let keep = parts.length - 1; keep >= 1; keep -= 1) {
+    const keptEntries = parts.slice(0, keep).join(" · ").match(/(?:\d{4}(?:-\d{2}){0,2}|기준일 미확인)/g)?.length ?? 0;
+    const suffix = `… 외 ${Math.max(1, totalEntries - keptEntries)}건 · 출처 장 참조`;
+    const candidate = `${parts.slice(0, keep).join(" · ")} ${suffix}`;
+    if (oneLineAt(candidate, 7, width)) return { text: candidate, fontSize: 7, lines: 1 };
+  }
+  return { text: `… 외 ${totalEntries}건 · 출처 장 참조`, fontSize: 7, lines: 1 };
 }
 
 export function plate(s: Slide, r: Rect, radius = 0.12, objectName?: string) {

@@ -322,9 +322,16 @@
 }
 
 .addPopover {
+  position: fixed;
+  z-index: 30;
   display: grid;
   gap: 8px;
-  min-width: 0;
+  width: min(360px, calc(100vw - 24px));
+  min-width: min(320px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  max-height: min(560px, calc(100dvh - 24px));
+  top: 12px;
+  left: 12px;
   padding: 10px;
   background: #fff;
   border: 1px solid #9ba5b4;
@@ -343,40 +350,42 @@
 .addTileList {
   display: grid;
   gap: 4px;
-  max-height: 240px;
+  min-height: 0;
+  max-height: min(420px, calc(100dvh - 112px));
   overflow: auto;
 }
 
 .addTileButton {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
+  align-items: start;
   gap: 8px;
-  min-height: 44px;
-  padding: 7px 9px;
+  min-width: 0;
+  min-height: 96px;
+  padding: 8px 10px;
   color: var(--ink);
   background: #f4f6f8;
   border: 1px solid #d3d7de;
   border-radius: 7px;
-  cursor: pointer;
   text-align: left;
 }
 
-.addTileButton span:first-child {
+.addTileName {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  line-height: 1.35;
 }
 
 .faceOptions {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  justify-content: flex-end;
+  gap: 8px;
+  justify-content: flex-start;
+  width: 100%;
 }
 
 .faceButton {
+  flex: 1 1 0;
   min-width: 44px;
   min-height: 44px;
   padding: 4px 7px;
@@ -387,12 +396,14 @@
   font-size: 11px;
   font-weight: 800;
   cursor: pointer;
+  overflow-wrap: anywhere;
 }
 
 .stageColumn {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  justify-content: center;
   overflow: auto;
 }
 
@@ -704,6 +715,21 @@
 }
 
 .coverSlide {
+  padding: 0;
+  overflow: hidden;
+}
+
+.coverPlate {
+  position: absolute;
+  z-index: 1;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(21, 23, 28, 0.18);
+  border-radius: calc(var(--slide-unit) * 0.16);
+  box-shadow: 0 calc(var(--slide-unit) * 0.04) calc(var(--slide-unit) * 0.14) rgba(21, 23, 28, 0.08);
+}
+
+.coverSlide {
   pointer-events: none;
 }
 
@@ -718,12 +744,27 @@
   font-weight: 800;
 }
 
+.coverKicker {
+  position: absolute;
+  z-index: 2;
+  margin: 0;
+  padding: 0;
+  line-height: 1.2;
+}
+
 .coverTitle,
 .sourceTitle {
   margin: 0 0 calc(var(--slide-unit) * 0.22);
   color: #15171c;
   font-weight: 800;
   line-height: 1.2;
+}
+
+.coverTitle {
+  position: absolute;
+  z-index: 2;
+  margin: 0;
+  padding: 0;
 }
 
 .coverMetrics {
@@ -740,6 +781,15 @@
   background: rgba(255, 255, 255, 0.86);
   border: 1px solid #d2d5db;
   border-radius: calc(var(--slide-unit) * 0.1);
+}
+
+.coverMetric {
+  position: absolute;
+  z-index: 2;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
 }
 
 .coverLabel,
@@ -768,6 +818,16 @@
   list-style: none;
 }
 
+.coverList {
+  position: absolute;
+  z-index: 2;
+  gap: 0;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
 .coverList li {
   display: grid;
   grid-template-columns: calc(var(--slide-unit) * 0.13) minmax(0, 0.35fr) minmax(0, 0.65fr);
@@ -790,11 +850,45 @@
   line-height: 1.3;
 }
 
+.coverAsOf {
+  position: absolute;
+  z-index: 2;
+  margin: 0;
+  padding: 0;
+}
+
+.coverIncomplete {
+  position: absolute;
+  z-index: 2;
+  display: block;
+  padding: calc(var(--slide-unit) * 0.08) calc(var(--slide-unit) * 0.14);
+  color: #7a4b00;
+  background: #fce9c7;
+  border-radius: calc(var(--slide-unit) * 0.15);
+  font-size: calc(var(--slide-unit) * 0.125);
+  font-weight: 800;
+  line-height: 1.2;
+}
+
 .sourceTableWrap {
   max-height: 78%;
   overflow: auto;
   border: 1px solid #c7cbd3;
   background: #fff;
+}
+
+.sourceSlide {
+  padding: 0;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.sourceTableWrap {
+  position: absolute;
+  box-sizing: border-box;
+  max-height: none;
+  padding: calc(var(--slide-unit) * 0.2) calc(var(--slide-unit) * 0.3);
+  overflow: hidden;
 }
 
 .sourceTable {
@@ -822,6 +916,13 @@
   color: #15171c;
 }
 
+.sourceAsOf {
+  position: absolute;
+  z-index: 2;
+  margin: 0;
+  padding: 0;
+}
+
 .sheetSlide {
   position: absolute;
   inset: 0;
@@ -829,6 +930,10 @@
   padding: calc(var(--slide-unit) * 0.3);
   overflow: hidden;
   background: #f2f2ef;
+}
+
+.sheetSlide {
+  padding: 0;
 }
 
 .sheetHeading {
@@ -845,6 +950,13 @@
   height: calc(100% - var(--slide-unit) * 0.45);
 }
 
+.sheetGrid {
+  position: absolute;
+  inset: 0;
+  display: block;
+  height: auto;
+}
+
 .sheetCell {
   position: relative;
   min-width: 0;
@@ -853,6 +965,10 @@
   background: #dfe3e8;
   border: 1px solid #c2c7cf;
   border-radius: calc(var(--slide-unit) * 0.08);
+}
+
+.sheetCell {
+  position: absolute;
 }
 
 .sheetCellMap {
@@ -1065,12 +1181,18 @@
   overflow-wrap: anywhere;
 }
 
+.footerStatus:focus-visible {
+  outline: 2px solid #164e9b;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .footerError {
   color: #8c2530;
   font-weight: 800;
 }
 
-.exportButton {
+.dialog .exportButton {
   min-width: 148px;
   min-height: 44px;
   margin-left: auto;
@@ -1083,8 +1205,16 @@
   cursor: pointer;
 }
 
-.exportButton:hover {
+.dialog .exportButton:hover {
   background: #303640;
+}
+
+.dialog .exportButton:disabled {
+  color: #f8fafc;
+  background: #526071;
+  border-color: #526071;
+  opacity: 1;
+  cursor: not-allowed;
 }
 
 .emptyState {

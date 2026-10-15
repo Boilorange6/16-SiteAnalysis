@@ -4,7 +4,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSPrope
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { metersPerPixel, slideViewport } from "@/lib/v2/ui/map-projection";
 import { SLIDE, slideLegend, slidePanelRects, slideSiteX, type Rect } from "@/lib/v2/ui/overlay-layout";
-import { fitBlock } from "@/lib/v2/report/pptx-kit";
+import { coverLayout, fitBlock, fitFooterText, sourceLayout, titlePlateRect } from "@/lib/v2/report/pptx-kit";
 import { legendItemsOf, legendLabelOf } from "@/lib/v2/ui/map-layers";
 import { mapLabelEntries } from "./map-figure";
 import MapFigure from "./map-figure";
@@ -12,6 +12,7 @@ import { useFocusTrap } from "./use-focus-trap";
 import { extraPageKey, type BoardAction, type BoardState, type PageKey, type PageStyle } from "@/lib/v2/ui/board-state";
 import type { PlannedSlide } from "@/lib/v2/report/report-plan";
 import type { TileView } from "@/lib/v2/ui/tile-view";
+import { sheetCells, type SheetGrid } from "@/lib/v2/ui/sheet";
 import { mixedValue, movePageSelection, nextExtraPageId, pageKeyAfterInsertion, selectPageKeys, type PageSelectionModifiers } from "@/lib/v2/ui/report-preview-logic";
 import styles from "./report-preview.module.css";
 
@@ -42,8 +43,8 @@ function slideTitle(slide: PlannedSlide): string {
   return slide.view.title;
 }
 
-function mapForSlide(slide: PlannedSlide): NonNullable<Extract<PlannedSlide, { kind: "tile" | "cover" }>["map"]> | null {
-  return slide.kind === "tile" || slide.kind === "cover" ? slide.map : null;
+function mapForSlide(slide: PlannedSlide): NonNullable<Extract<PlannedSlide, { kind: "tile" | "cover" | "sources" }>["map"]> | null {
+  return slide.kind === "tile" || slide.kind === "cover" || slide.kind === "sources" ? slide.map : null;
 }
 
 function hasSummaryPanel(slide: PlannedSlide): boolean {
@@ -89,12 +90,13 @@ type MapLayerProps = {
   basemap: BasemapChoice;
   panels: { title: Rect; summary: Rect | null; legend: Rect | null };
   siteX: number;
+  pinnedKeys?: readonly string[];
   interactive: boolean;
   onPatch: (patch: PreviewStylePatch) => void;
   label: string;
 };
 
-function MapLayer({ model, style, unit, basemap, panels, siteX, interactive, onPatch, label }: MapLayerProps) {
+function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, interactive, onPatch, label }: MapLayerProps) {
   const width = Math.max(1, Math.round(SLIDE.w * unit));
   const height = Math.max(1, Math.round(SLIDE.h * unit));
   const [draftOffset, setDraftOffset] = useState<[number, number] | null>(null);
@@ -155,7 +157,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, interactive, onP
       label={label}
       viewport={viewport}
       avoid={avoid}
-      pinnedKeys={renderStyle.pinnedKeys ?? []}
+      pinnedKeys={renderStyle.pinnedKeys ?? pinnedKeys ?? []}
       legendFocus={focusedLabel}
       highlightLabel={focusedLabel}
       showAutomaticLabels
@@ -192,27 +194,32 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, interactive, onP
   );
 }
 
-function SlideFooter({ slide }: { slide: PlannedSlide }) {
+function SlideFooter({ slide, unit }: { slide: PlannedSlide; unit: number }) {
+  const footer = fitFooterText(slide.footer, slide.kind !== "sheet" && !!slide.map);
   return (
     <div className={styles.slideFooter}>
-      <span className={styles.slideFooterText}>{slide.footer}</span>
+      <span className={styles.slideFooterText} style={fontStyle(footer.fontSize, unit)}>{footer.text}</span>
       <span className={styles.slideFooterPage}>{slide.no} / {slide.total}</span>
     </div>
   );
 }
 
-function TitlePanel({ slide, rect, unit }: { slide: Extract<PlannedSlide, { kind: "tile" }>; rect: Rect; unit: number }) {
+function ReportTitlePanel({ color, code, title, kind, rect, unit }: { color: string; code: string; title: string; kind: string; rect: Rect; unit: number }) {
   const titleBox = { w: Math.max(0.2, rect.w - 0.58), h: Math.max(0.16, rect.h - 0.08) };
-  const titlePt = fitBlock([slide.view.title], titleBox, 18, 7);
-  const metaPt = fitBlock([slide.view.code + "  " + slide.view.kindLabel], titleBox, 10, 7);
+  const titlePt = fitBlock([title], titleBox, 18, 7);
+  const metaPt = fitBlock([[code, kind].filter(Boolean).join("  ")], titleBox, 10, 7);
   return (
     <div className={styles.slidePanel + " " + styles.titlePanel} style={rectStyle(rect, unit)}>
-      <span className={styles.titleDot} style={{ background: slide.view.color }} aria-hidden="true" />
-      <span className={styles.slideMeta} style={fontStyle(metaPt, unit)}>{slide.view.code}</span>
-      <h3 className={styles.slideTitle} style={fontStyle(titlePt, unit)}>{slide.view.title}</h3>
-      <span className={styles.slideKind} style={fontStyle(metaPt, unit)}>{slide.view.kindLabel}</span>
+      <span className={styles.titleDot} style={{ background: color }} aria-hidden="true" />
+      {code && <span className={styles.slideMeta} style={fontStyle(metaPt, unit)}>{code}</span>}
+      <h3 className={styles.slideTitle} style={fontStyle(titlePt, unit)}>{title}</h3>
+      {kind && <span className={styles.slideKind} style={fontStyle(metaPt, unit)}>{kind}</span>}
     </div>
   );
+}
+
+function TitlePanel({ slide, rect, unit }: { slide: Extract<PlannedSlide, { kind: "tile" }>; rect: Rect; unit: number }) {
+  return <ReportTitlePanel color={slide.view.color} code={slide.view.code} title={slide.view.title} kind={slide.view.kindLabel} rect={rect} unit={unit} />;
 }
 
 function SummaryPanel({ slide, rect, unit }: { slide: Extract<PlannedSlide, { kind: "tile" }>; rect: Rect; unit: number }) {
@@ -308,96 +315,117 @@ function VisualPlaceholder({ title, message, unit }: { title: string; message: s
   );
 }
 
-function CoverSurface({ slide, unit, basemap, panels, interactive, onPatch }: { slide: Extract<PlannedSlide, { kind: "cover" }>; unit: number; basemap: BasemapChoice; panels: { title: Rect; summary: Rect | null; legend: Rect | null }; interactive: boolean; onPatch: (patch: PreviewStylePatch) => void }) {
+function CoverSurface({ slide, unit, basemap, interactive, onPatch }: { slide: Extract<PlannedSlide, { kind: "cover" }>; unit: number; basemap: BasemapChoice; interactive: boolean; onPatch: (patch: PreviewStylePatch) => void }) {
   const map = slide.map;
+  const layout = coverLayout({ address: slide.address, metricCount: slide.metrics.length, lineCount: slide.lines.length, incomplete: !!slide.incomplete });
+  const mapPanels = { title: layout.left, summary: layout.right, legend: null };
   return (
     <>
-      {map && <MapLayer model={map} style={slide.style} unit={unit} basemap={basemap} panels={panels} siteX={0.5} interactive={interactive} onPatch={onPatch} label="표지 지도" />}
+      {map && <MapLayer model={map} style={slide.style} unit={unit} basemap={basemap} panels={mapPanels} siteX={0.5} interactive={interactive} onPatch={onPatch} label="표지 지도" />}
       <div className={styles.coverSlide}>
-        <p className={styles.coverKicker} style={fontStyle(11, unit)}>사이트 분석 보고서</p>
-        <h2 className={styles.coverTitle} style={fontStyle(28, unit, { maxWidth: unit * 7.2 })}>{slide.address}</h2>
-        <div className={styles.coverMetrics}>
-          {slide.metrics.map((metric) => (
-            <div className={styles.coverMetric} key={metric.label}>
-              <span className={styles.coverLabel} style={fontStyle(10, unit)}>{metric.label}</span>
-              <span className={styles.coverValue} style={fontStyle(17, unit)}>{metric.value}</span>
-            </div>
-          ))}
-        </div>
-        <ul className={styles.coverList}>
-          {slide.lines.slice(0, 12).map((line) => (
-            <li key={line.title}>
+        <div className={styles.coverPlate} style={rectStyle(layout.left, unit)} aria-hidden="true" />
+        <p className={styles.coverKicker} style={{ ...rectStyle(layout.leftInner, unit), ...fontStyle(11, unit) }}>사이트 분석 보고서</p>
+        <h2 className={styles.coverTitle} style={{ ...rectStyle(layout.address, unit), ...fontStyle(layout.addressPt, unit) }}>{slide.address}</h2>
+        {slide.metrics.map((metric, index) => {
+          const x = layout.leftInner.x + (index % 2) * (layout.leftInner.w / 2);
+          const y = layout.metricsY + Math.floor(index / 2) * 0.62;
+          const metricRect = { x, y, w: layout.metricCellW, h: 0.58 };
+          return <div className={styles.coverMetric} style={rectStyle(metricRect, unit)} key={metric.label}>
+            <span className={styles.coverLabel} style={fontStyle(10, unit)}>{metric.label}</span>
+            <span className={styles.coverValue} style={fontStyle(fitBlock([metric.value], { w: metricRect.w, h: 0.36 }, 17, 11), unit)}>{metric.value}</span>
+          </div>;
+        })}
+        <p className={styles.coverAsOf} style={{ ...rectStyle(layout.asOf, unit), ...fontStyle(11, unit) }}>{slide.asOfLine}</p>
+        {slide.incomplete && <span className={styles.coverIncomplete} style={{ left: layout.leftInner.x * unit, top: layout.incompleteY * unit, width: layout.leftInner.w * unit }}>{slide.incomplete}</span>}
+        <div className={styles.coverPlate} style={rectStyle(layout.right, unit)} aria-hidden="true" />
+        <p className={styles.coverKicker} style={{ ...rectStyle(layout.rightHeading, unit), ...fontStyle(11, unit) }}>타일</p>
+        <ul className={styles.coverList} style={{ left: (layout.right.x + 0.3) * unit, top: (0.3 + 0.55) * unit, width: (layout.right.w - 0.6) * unit, height: Math.max(0, (layout.right.h - 0.67) * unit) }}>
+          {slide.lines.map((line, index) => {
+            const row = layout.row(index);
+            const text = `${line.title}  ${line.text}`;
+            const pt = fitBlock([text], { w: row.w, h: row.h }, 11, 8);
+            return <li key={line.title} style={{ height: row.h * unit }}>
               <span className={styles.coverListDot} style={{ background: line.color }} aria-hidden="true" />
-              <b className={styles.slideText} style={fontStyle(10, unit)}>{line.title}</b>
-              <span className={styles.slideText} style={fontStyle(10, unit)}>{line.text}</span>
-            </li>
-          ))}
+              <b className={styles.slideText} style={fontStyle(pt, unit)}>{line.title}</b>
+              <span className={styles.slideText} style={fontStyle(pt, unit)}>{line.text}</span>
+            </li>;
+          })}
         </ul>
-        <p className={styles.coverAsOf} style={fontStyle(10, unit)}>{slide.asOfLine}{slide.incomplete ? " · " + slide.incomplete : ""}</p>
       </div>
-      <SlideFooter slide={slide} />
+      <SlideFooter slide={slide} unit={unit} />
     </>
   );
 }
 
-function SourcesSurface({ slide, unit }: { slide: Extract<PlannedSlide, { kind: "sources" }>; unit: number }) {
+function SourcesSurface({ slide, unit, basemap }: { slide: Extract<PlannedSlide, { kind: "sources" }>; unit: number; basemap: BasemapChoice }) {
+  const layout = sourceLayout(slide.rows.length, slide.style);
+  const mapPanels = { title: layout.title, summary: null, legend: null };
+  const map = slide.map;
+  const kind = layout.dense;
   return (
     <>
+      {map && <MapLayer model={map} style={slide.style} unit={unit} basemap={basemap} panels={mapPanels} siteX={0.5} interactive={false} onPatch={() => undefined} label="출처 장 배경 지도" />}
       <div className={styles.sourceSlide}>
-        <p className={styles.sourceKicker} style={fontStyle(11, unit)}>대지분석 v2 · 출처</p>
-        <h2 className={styles.sourceTitle} style={fontStyle(22, unit)}>출처·기준일</h2>
-        <div className={styles.sourceTableWrap}>
+        <ReportTitlePanel color="#7A7E87" code="" title="자료 출처와 기준일" kind="" rect={layout.title} unit={unit} />
+        <div className={styles.sourceTableWrap} style={rectStyle(layout.table, unit)}>
           <table className={styles.sourceTable}>
-            <thead><tr><th style={fontStyle(9, unit)}>자료</th><th style={fontStyle(9, unit)}>기준일</th><th style={fontStyle(9, unit)}>사용 타일</th><th style={fontStyle(9, unit)}>제공처</th></tr></thead>
-            <tbody>{slide.rows.map((row) => <tr key={row.source + "|" + row.asOf}><td className={styles.sourceCell} style={fontStyle(8.5, unit)}>{row.source}</td><td className={styles.sourceCell} style={fontStyle(8.5, unit)}>{row.asOf}</td><td className={styles.sourceCell} style={fontStyle(8.5, unit)}>{row.tiles}</td><td className={styles.sourceCell} style={fontStyle(8.5, unit)}>{row.provider ?? "제공처 미기록"}</td></tr>)}</tbody>
+            <colgroup><col style={{ width: "24%" }} /><col style={{ width: "14%" }} /><col style={{ width: "16%" }} /><col style={{ width: "25%" }} /><col style={{ width: "21%" }} /></colgroup>
+            <thead><tr><th style={fontStyle(kind ? 9 : 11, unit)}>제공처·자료</th><th style={fontStyle(kind ? 9 : 11, unit)}>기준일</th><th style={fontStyle(kind ? 9 : 11, unit)}>이용조건</th><th style={fontStyle(kind ? 9 : 11, unit)}>원문 확인</th><th style={fontStyle(kind ? 9 : 11, unit)}>사용한 타일</th></tr></thead>
+            <tbody>{slide.rows.map((row) => <tr key={row.source + "|" + row.asOf}><td className={styles.sourceCell} style={fontStyle(kind ? 9 : 11, unit)}><b>{row.provider || "제공처 미기록"}</b><br />{row.source}</td><td className={styles.sourceCell} style={fontStyle(kind ? 9 : 11, unit)}>{row.asOf}</td><td className={styles.sourceCell} style={fontStyle(kind ? 9 : 11, unit)}>{row.license || "미기록"}</td><td className={styles.sourceCell} style={fontStyle(kind ? 9 : 11, unit)}>{row.url ? <a href={row.url}>원문 확인</a> : "원문 링크 미기록"}</td><td className={styles.sourceCell} style={fontStyle(kind ? 9 : 11, unit)}>{row.tiles}</td></tr>)}</tbody>
           </table>
         </div>
-        <p className={styles.sourceAsOf} style={fontStyle(10, unit)}>분석일 {slide.analysisDate}</p>
+        <p className={styles.sourceAsOf} style={{ ...rectStyle(layout.footer, unit), ...fontStyle(9, unit) }}>분석 생성일 {slide.analysisDate} · 기준일은 원천 자료 날짜{slide.rows.length > 12 ? ` · 원천 ${slide.rows.length}건` : ""}</p>
       </div>
-      <SlideFooter slide={slide} />
+      <SlideFooter slide={slide} unit={unit} />
     </>
   );
 }
 
 function SheetSurface({ slide, unit, basemap }: { slide: Extract<PlannedSlide, { kind: "sheet" }>; unit: number; basemap: BasemapChoice }) {
-  const columns = slide.grid === "2x2" ? 2 : 3;
+  const cellRects = sheetCells(slide.grid as SheetGrid);
+  const titleRect = titlePlateRect("SHEET", slide.view.title, slide.grid, SLIDE.w - 2 * SLIDE.edge, slide.style, false);
   return (
     <>
       <div className={styles.sheetSlide}>
-        <div className={styles.sheetHeading}>
-          <strong className={styles.slideTitle} style={fontStyle(18, unit)}>{slide.view.title}</strong>
-          <span className={styles.slideMeta} style={fontStyle(9, unit)}>{slide.grid}</span>
-        </div>
-        <div className={styles.sheetGrid} style={{ "--sheet-cols": columns } as CSSProperties}>
-          {slide.cells.map((cell) => {
+        <ReportTitlePanel color={slide.view.color} code="SHEET" title={slide.view.title} kind={slide.grid} rect={titleRect} unit={unit} />
+        <div className={styles.sheetGrid}>
+          {slide.cells.map((cell, index) => {
+            const rect = cellRects[index];
+            if (!rect) return null;
             const model = cell.view.map ?? cell.view.backdrop;
+            const width = Math.max(1, Math.round(rect.w * unit));
+            const height = Math.max(1, Math.round(rect.h * unit));
+            const chart = cell.face === "back" && !!cell.view.chart;
             return (
-              <div className={styles.sheetCell} key={cell.mapKey}>
-                {model ? (
-                  <MapFigure
-                    model={model}
-                    width={Math.max(1, Math.round((SLIDE.w / columns) * unit))}
-                    height={Math.max(1, Math.round((SLIDE.h / 2) * unit))}
-                    fixed
-                    basemap="tiles"
-                    layer={basemap}
-                    legend={false}
-                    north={false}
-                    credit={false}
-                    scale={false}
-                    viewport={slideViewport(model, cell.style ?? slide.style, { width: Math.max(1, Math.round((SLIDE.w / columns) * unit)), height: Math.max(1, Math.round((SLIDE.h / 2) * unit)), siteX: 0.5, fill: 0.8 })}
-                    pinnedKeys={cell.pinnedKeys ?? []}
-                    legendFocus={legendLabelOf(model, cell.style?.legendFocus ?? slide.style.legendFocus)}
-                    showAutomaticLabels
-                  />
+              <div className={styles.sheetCell} style={rectStyle(rect, unit)} key={cell.mapKey}>
+                {chart ? <ChartPlaceholder view={cell.view} unit={unit} /> : model ? (
+                  <div className={styles.sheetCellMap}>
+                    <MapFigure
+                      model={model}
+                      width={width}
+                      height={height}
+                      fixed
+                      basemap="tiles"
+                      layer={basemap}
+                      legend={false}
+                      north={false}
+                      credit={false}
+                      scale={false}
+                      viewport={slideViewport(model, cell.style ?? slide.style, { width, height, siteX: 0.5, fill: 0.8 })}
+                      pinnedKeys={cell.pinnedKeys ?? cell.style?.pinnedKeys ?? slide.style.pinnedKeys ?? []}
+                      legendFocus={legendLabelOf(model, cell.style?.legendFocus ?? slide.style.legendFocus)}
+                      highlightLabel={legendLabelOf(model, cell.style?.legendFocus ?? slide.style.legendFocus)}
+                      showAutomaticLabels
+                    />
+                  </div>
                 ) : <VisualPlaceholder title={cell.view.title} message="이 장은 지도 대신 도판으로 표시됩니다." unit={unit} />}
-                <span className={styles.sheetLabel} style={fontStyle(9, unit)}>{cell.view.title}</span>
+                <span className={styles.sheetLabel} style={fontStyle(9, unit)}>{cell.view.code} · {cell.view.title}</span>
               </div>
             );
           })}
         </div>
       </div>
-      <SlideFooter slide={slide} />
+      <SlideFooter slide={slide} unit={unit} />
     </>
   );
 }
@@ -407,12 +435,12 @@ function TileSurface({ slide, unit, basemap, panels, interactive, onPatch }: { s
   const chart = !model && !slide.mass && !slide.rose && slide.body.face !== "single";
   return (
     <>
-      {model ? <MapLayer model={model} style={slide.style} unit={unit} basemap={basemap} panels={panels} siteX={slideSiteX(slide.style, panels.summary !== null)} interactive={interactive} onPatch={onPatch} label={slide.view.title + " 지도"} /> : slide.mass ? <VisualPlaceholder title={slide.view.title} message="3D 매스 미리보기는 내보내기와 같은 페이지 위치로 표시됩니다." unit={unit} /> : slide.rose ? <VisualPlaceholder title={slide.view.title} message="바람장미 도판 미리보기" unit={unit} /> : chart ? <ChartPlaceholder view={slide.view} unit={unit} /> : <VisualPlaceholder title={slide.view.title} message={slide.body.kind === "state" ? slide.body.message : "표시할 지도 결과가 없습니다."} unit={unit} />}
+      {model ? <MapLayer model={model} style={slide.style} unit={unit} basemap={basemap} panels={panels} siteX={slideSiteX(slide.style, panels.summary !== null)} pinnedKeys={slide.pinnedKeys} interactive={interactive} onPatch={onPatch} label={slide.view.title + " 지도"} /> : slide.mass ? <VisualPlaceholder title={slide.view.title} message="3D 매스 미리보기는 내보내기와 같은 페이지 위치로 표시됩니다." unit={unit} /> : slide.rose ? <VisualPlaceholder title={slide.view.title} message="바람장미 도판 미리보기" unit={unit} /> : chart ? <ChartPlaceholder view={slide.view} unit={unit} /> : <VisualPlaceholder title={slide.view.title} message={slide.body.kind === "state" ? slide.body.message : "표시할 지도 결과가 없습니다."} unit={unit} />}
       {slide.body.kind === "state" && <div className={styles.slidePanel} style={{ left: unit * 4, top: unit * 2.7, width: unit * 5.1, height: unit * 1.15 }}><div className={styles.slideText + " " + styles.slideTextStrong} style={fontStyle(16, unit)}>{slide.body.message}</div></div>}
       <TitlePanel slide={slide} rect={panels.title} unit={unit} />
       {panels.summary && hasSummaryPanel(slide) && <SummaryPanel slide={slide} rect={panels.summary} unit={unit} />}
       {panels.legend && <LegendPanel slide={slide} rect={panels.legend} unit={unit} />}
-      <SlideFooter slide={slide} />
+      <SlideFooter slide={slide} unit={unit} />
     </>
   );
 }
@@ -427,8 +455,8 @@ function SlidePreview({ slide, basemap, editable, onPatch }: { slide: PlannedSli
   return (
     <div className={styles.previewFrame}>
       <div ref={canvasRef} className={styles.slideCanvas} style={canvasStyle(unit)}>
-        {slide.kind === "cover" && <CoverSurface slide={slide} unit={unit} basemap={basemap} panels={panels} interactive={editable && !!model} onPatch={onPatch} />}
-        {slide.kind === "sources" && <SourcesSurface slide={slide} unit={unit} />}
+        {slide.kind === "cover" && <CoverSurface slide={slide} unit={unit} basemap={basemap} interactive={editable && !!model} onPatch={onPatch} />}
+        {slide.kind === "sources" && <SourcesSurface slide={slide} unit={unit} basemap={basemap} />}
         {slide.kind === "sheet" && <SheetSurface slide={slide} unit={unit} basemap={basemap} />}
         {slide.kind === "tile" && <TileSurface slide={slide} unit={unit} basemap={basemap} panels={panels} interactive={editable && !!model} onPatch={onPatch} />}
       </div>
@@ -565,12 +593,84 @@ type Props = {
 export default function ReportPreview({ board, dispatch, views, plan, basemap, onClose, onExport, exportEnabled, exporting, makingKind, exportProblem }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const thumbnailRefs = useRef(new Map<PageKey, HTMLButtonElement>());
+  const addButtonRefs = useRef(new Map<PageKey, HTMLButtonElement>());
+  const addPopoverRef = useRef<HTMLDivElement>(null);
+  const pendingAddedPageRef = useRef<PageKey | null>(null);
+  const addAfterKeyRef = useRef<PageKey | null>(null);
+  const exportStatusRef = useRef<HTMLParagraphElement>(null);
+  const exportFocusRequestedRef = useRef(false);
   const headingId = useId().replace(/:/g, "");
+  const addPopoverId = useId().replace(/:/g, "");
   const [activeKey, setActiveKey] = useState<PageKey | null>(plan[0]?.key ?? null);
   const [selectedKeys, setSelectedKeys] = useState<PageKey[]>(plan[0]?.key ? [plan[0].key] : []);
   const [anchorKey, setAnchorKey] = useState<PageKey | null>(plan[0]?.key ?? null);
   const [addAfterKey, setAddAfterKey] = useState<PageKey | null>(null);
-  useFocusTrap({ ref: dialogRef, onClose });
+  const [addPopoverStyle, setAddPopoverStyle] = useState<CSSProperties | null>(null);
+  addAfterKeyRef.current = addAfterKey;
+
+  const closeAddPopover = useCallback((restoreFocus = false) => {
+    const key = addAfterKeyRef.current;
+    setAddAfterKey(null);
+    setAddPopoverStyle(null);
+    if (restoreFocus && key) addButtonRefs.current.get(key)?.focus({ preventScroll: true });
+  }, []);
+
+  const updateAddPopoverPosition = useCallback(() => {
+    if (!addAfterKey) return;
+    const anchor = addButtonRefs.current.get(addAfterKey);
+    const popover = addPopoverRef.current;
+    if (!anchor || !popover) return;
+    const anchorRect = anchor.getBoundingClientRect();
+    const popoverRect = popover.getBoundingClientRect();
+    const viewportWidth = Math.max(document.documentElement.clientWidth, window.innerWidth);
+    const viewportHeight = Math.max(document.documentElement.clientHeight, window.innerHeight);
+    const margin = 12;
+    const left = Math.max(margin, Math.min(anchorRect.right + 8, viewportWidth - popoverRect.width - margin));
+    let top = anchorRect.bottom + 8;
+    if (top + popoverRect.height > viewportHeight - margin) top = anchorRect.top - popoverRect.height - 8;
+    top = Math.max(margin, Math.min(top, viewportHeight - popoverRect.height - margin));
+    setAddPopoverStyle((current) => current?.left === left && current?.top === top ? current : { left, top });
+  }, [addAfterKey]);
+
+  useEffect(() => {
+    if (!addAfterKey) {
+      setAddPopoverStyle(null);
+      return;
+    }
+    const frame = window.requestAnimationFrame(updateAddPopoverPosition);
+    const onViewportChange = () => window.requestAnimationFrame(updateAddPopoverPosition);
+    window.addEventListener("resize", onViewportChange);
+    window.addEventListener("scroll", onViewportChange, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", onViewportChange);
+      window.removeEventListener("scroll", onViewportChange, true);
+    };
+  }, [addAfterKey, updateAddPopoverPosition]);
+
+  useFocusTrap({
+    ref: dialogRef,
+    onClose,
+    onEscape: () => {
+      if (addAfterKeyRef.current === null) return false;
+      closeAddPopover(true);
+      return true;
+    },
+  });
+
+  useEffect(() => {
+    const onDocumentKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      const target = event.target;
+      if (target instanceof Node && dialogRef.current?.contains(target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (addAfterKeyRef.current !== null) closeAddPopover(true);
+      else onClose();
+    };
+    document.addEventListener("keydown", onDocumentKeyDown, true);
+    return () => document.removeEventListener("keydown", onDocumentKeyDown, true);
+  }, [closeAddPopover, onClose]);
 
   const planKeys = useMemo(() => plan.map((slide) => slide.key), [plan]);
   useEffect(() => {
@@ -582,6 +682,18 @@ export default function ReportPreview({ board, dispatch, views, plan, basemap, o
     });
     setAnchorKey((key) => key && available.has(key) ? key : planKeys[0] ?? null);
     setAddAfterKey((key) => key && available.has(key) ? key : null);
+  }, [planKeys]);
+
+  useEffect(() => {
+    const key = pendingAddedPageRef.current;
+    if (!key || !planKeys.includes(key)) return;
+    pendingAddedPageRef.current = null;
+    const frame = window.requestAnimationFrame(() => {
+      const element = thumbnailRefs.current.get(key);
+      element?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      element?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [planKeys]);
 
   const current = plan.find((slide) => slide.key === activeKey) ?? plan[0] ?? null;
@@ -627,11 +739,24 @@ export default function ReportPreview({ board, dispatch, views, plan, basemap, o
     const after = pageKeyAfterInsertion(planKeys, addAfterKey);
     dispatch({ type: "addPage", id, after, tileId, face });
     const key = extraPageKey(id);
+    pendingAddedPageRef.current = key;
     setActiveKey(key);
     setSelectedKeys([key]);
     setAnchorKey(key);
-    setAddAfterKey(null);
+    closeAddPopover();
   };
+
+  const handleExport = useCallback(() => {
+    if (!exportEnabled || exporting) return;
+    exportFocusRequestedRef.current = true;
+    exportStatusRef.current?.focus({ preventScroll: true });
+    void onExport();
+  }, [exportEnabled, exporting, onExport]);
+
+  useEffect(() => {
+    if (!exportFocusRequestedRef.current) return;
+    exportStatusRef.current?.focus({ preventScroll: true });
+  }, [exportProblem, exporting]);
   const removeExtra = (key: PageKey) => {
     if (!key.startsWith("extra:")) return;
     dispatch({ type: "removePage", id: key.slice("extra:".length) });
@@ -670,15 +795,21 @@ export default function ReportPreview({ board, dispatch, views, plan, basemap, o
                       <span className={styles.thumbCopy}><span className={styles.thumbNumber}>{slide.no} / {slide.total}</span><span className={styles.thumbTitle}>{slideTitle(slide)}{extra && <span className={styles.extraBadge}>추가</span>}</span><span className={styles.thumbKind}>{slide.kind === "tile" ? slide.view.kindLabel : slide.kind === "sheet" ? "타일 조판" : slide.kind === "sources" ? "출처" : "표지"}</span></span>
                     </button>
                     {extra && <button type="button" className={styles.deleteExtra} onClick={() => removeExtra(slide.key)}>추가 페이지 삭제</button>}
-                    <button type="button" className={styles.addButton} aria-label={slideTitle(slide) + " 뒤에 페이지 추가"} aria-expanded={addAfterKey === slide.key} onClick={() => setAddAfterKey((key) => key === slide.key ? null : slide.key)}>+</button>
+                    <button type="button" ref={(element) => {
+                      if (element) addButtonRefs.current.set(slide.key, element);
+                      else addButtonRefs.current.delete(slide.key);
+                    }} className={styles.addButton} aria-label={slideTitle(slide) + " 뒤에 페이지 추가"} aria-expanded={addAfterKey === slide.key} aria-controls={addAfterKey === slide.key ? addPopoverId : undefined} onClick={() => {
+                      setAddPopoverStyle(null);
+                      setAddAfterKey((key) => key === slide.key ? null : slide.key);
+                    }}>+</button>
                     {addAfterKey === slide.key && (
-                      <div className={styles.addPopover}>
+                      <div ref={addPopoverRef} id={addPopoverId} className={styles.addPopover} style={addPopoverStyle ?? undefined} role="region" aria-label="페이지 추가">
                         <p className={styles.addPopoverHeading}>이 페이지 뒤에 타일 추가</p>
                         <div className={styles.addTileList}>
                           {addOptions.map((entry) => (
                             <div className={styles.addTileButton} key={entry.id}>
-                              <span>{entry.view.title}</span>
-                              {entry.view.hasFace ? <span className={styles.faceOptions}><button type="button" className={styles.faceButton} onClick={() => addPage(entry.id, "front")}>앞면</button><button type="button" className={styles.faceButton} onClick={() => addPage(entry.id, "back")}>뒷면</button></span> : <button type="button" className={styles.faceButton} onClick={() => addPage(entry.id, "front")}>추가</button>}
+                              <span className={styles.addTileName}>{entry.view.title}</span>
+                              {entry.view.hasFace ? <span className={styles.faceOptions}><button type="button" className={styles.faceButton} aria-label={entry.view.title + " 앞면 추가"} onClick={() => addPage(entry.id, "front")}>앞면</button><button type="button" className={styles.faceButton} aria-label={entry.view.title + " 뒷면 추가"} onClick={() => addPage(entry.id, "back")}>뒷면</button></span> : <button type="button" className={styles.faceButton} aria-label={entry.view.title + " 페이지 추가"} onClick={() => addPage(entry.id, "front")}>추가</button>}
                             </div>
                           ))}
                         </div>
@@ -695,8 +826,8 @@ export default function ReportPreview({ board, dispatch, views, plan, basemap, o
           <SettingsPanel board={board} selectedSlides={selectedSlides} current={current} applyPatch={applyPatch} resetStyles={resetStyles} />
         </div>
         <footer className={styles.footer}>
-          <p className={styles.footerStatus + " " + (exportProblem ? styles.footerError : "")} role={exportProblem ? "alert" : "status"} aria-live="polite">{exportProblem ?? (exporting ? (makingKind ?? "PPT") + " 내보내는 중…" : "설정은 보드에 자동 저장됩니다.")}</p>
-          <button type="button" className={styles.exportButton} onClick={() => void onExport()} disabled={!exportEnabled || exporting}>{exporting ? "내보내는 중…" : "PPT 내보내기"}</button>
+          <p ref={exportStatusRef} className={styles.footerStatus + " " + (exportProblem ? styles.footerError : "")} role={exportProblem ? "alert" : "status"} aria-live="polite" aria-busy={exporting} tabIndex={-1}>{exportProblem ?? (exporting ? (makingKind ?? "PPT") + " 내보내는 중…" : "설정은 보드에 자동 저장됩니다.")}</p>
+          <button type="button" className={styles.exportButton} onClick={handleExport} disabled={!exportEnabled || exporting}>{exporting ? "내보내는 중…" : "PPT 내보내기"}</button>
         </footer>
       </div>
     </div>

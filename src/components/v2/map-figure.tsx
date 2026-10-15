@@ -634,7 +634,9 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     const textX = placement.box.x0 + calloutTextLeft;
     const textMaxWidth = Math.max(1, placement.box.x1 - placement.box.x0 - calloutTextLeft - calloutTextRight);
     const textY = placement.box.y0 + calloutPadY + textFs * 0.9;
-    const dimmed = variant === "auto" && (isElementDimmed(d.layer, d.key) || (highlightActive && !d.highlighted));
+    // 범례 강조는 도형과 범례 패널에만 적용한다. 사용자 고정 라벨·콜아웃은
+    // 지도 맥락을 설명하는 주석이므로 native PPT 경로와 함께 항상 선명하게 둔다.
+    const dimmed = false;
     const pinPick = () => onFeaturePin?.(d.pick);
     const onKeyDown = (event: ReactKeyboardEvent<SVGGElement>) => {
       if (event.key === "Enter" || event.key === " ") {
@@ -723,17 +725,15 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
         </g>
       ))}
       {scene.rail.routeLabels.map((text) => {
-        const route = scene.rail.routes.find((entry) => entry.labelPlacement === text);
-        const dimmed = route ? isElementDimmed("rail_line", route.key, route.label) : false;
+        const dimmed = false;
         return <text key={`rail-route-label-${text.text}-${text.x}-${text.y}`} data-rail-route-label={text.text} x={text.x + text.width / 2} y={text.y + text.height * 0.78} textAnchor="middle" fontSize={text.fontSize} fontWeight={700} fill={dimmed ? "#7A7E87" : text.color} opacity={dimmed ? 0.2 : 1} stroke="#fff" strokeWidth={3} paintOrder="stroke fill" transform={`rotate(${text.angle} ${(text.x + text.width / 2)} ${(text.y + text.height / 2)})`}>{text.text}</text>;
       })}
       {scene.rail.axisLabels.map((text, index) => {
-        const axis = scene.rail.axes.find((entry) => entry.labelPlacement === text);
-        const dimmed = axis ? isElementDimmed("rail_station_axis", axis.key, axis.label) : false;
+        const dimmed = false;
         return <text key={`rail-axis-label-${index}-${text.text}-${text.x}-${text.y}`} data-rail-axis-label={text.text} data-rail-axis-label-placement={text.placement} x={text.x + text.width / 2} y={text.y + text.height * 0.78} textAnchor="middle" fontSize={text.fontSize} fontWeight={700} fill={dimmed ? "#7A7E87" : text.color} opacity={dimmed ? 0.2 : 1} stroke={text.placement === "inside" ? "none" : "#fff"} strokeWidth={text.placement === "inside" ? 0 : 2.6} paintOrder={text.placement === "inside" ? undefined : "stroke fill"} transform={`rotate(${text.angle} ${(text.x + text.width / 2)} ${(text.y + text.height / 2)})`}>{text.text}</text>;
       })}
       {scene.rail.stationLabels.map((station) => {
-        const dimmed = isElementDimmed("rail_station", station.stationFeatureKey, station.text);
+        const dimmed = false;
         return <text key={station.key} data-rail-station-label={station.stationKey} x={station.x + station.width / 2} y={station.y + station.height * 0.78} textAnchor="middle" fontSize={station.fontSize} fontWeight={700} fill={dimmed ? "#7A7E87" : INK} stroke="#fff" strokeWidth={5} opacity={dimmed ? 0.2 : 1} paintOrder="stroke fill">{station.text}</text>;
       })}
     </g>

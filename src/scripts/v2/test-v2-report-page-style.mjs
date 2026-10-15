@@ -20,7 +20,7 @@ const { buildMapScene } = await import("../../lib/v2/ui/map-scene.ts");
 const { layerStyle } = await import("../../lib/v2/ui/map-layers.ts");
 const { slideViewport } = await import("../../lib/v2/ui/map-projection.ts");
 const { SLIDE, slideLegend, slidePanelRects, slideReserved, slideSiteX } = await import("../../lib/v2/ui/overlay-layout.ts");
-const { fitBlock, linesOf } = await import("../../lib/v2/report/pptx-kit.ts");
+const { fitBlock, fitFooterText, linesOf } = await import("../../lib/v2/report/pptx-kit.ts");
 const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
 
 const VIEW_W = 960;
@@ -71,6 +71,23 @@ const sourcePages = sourcePageCountForViews([...views.values()]);
 const build = (board) => buildReportPlan({ summary, views, board, analysisDate: "2026-10-15" });
 const baseBoard = initBoard(GODEOK_RESULTS);
 const basePlan = build(baseBoard);
+
+// 긴 출처 목록도 출처 띠 안의 한 줄로 축약하고, PPT 텍스트 상자를 슬라이드 안에 둔다.
+{
+  const longSource = Array.from({ length: 24 }, (_, index) => `자료 원천 ${index + 1} 2026-${String((index % 12) + 1).padStart(2, "0")}`).join(" · ");
+  const room = SLIDE.w - SLIDE.edge - 1.7;
+  const fitted = fitFooterText(longSource, true, room);
+  assert.equal(fitted.lines, 1, "긴 출처 목록은 출처 띠 한 줄");
+  assert.ok(linesOf(fitted.text, fitted.fontSize, room) <= 1, "긴 출처 목록의 축약 텍스트 한 줄");
+  assert.match(fitted.text, /출처 장 참조/, "긴 출처 목록 축약 안내");
+  const sample = { ...basePlan.find((slide) => slide.kind === "tile"), footer: longSource };
+  const { xml } = await renderOneTile(sample);
+  const footerText = xmlShapes(xml).find((shape) => shape.geometry && shape.geometry.y >= SLIDE.h - SLIDE.stripH - 0.002 && shape.text.includes("출처"));
+  assert.ok(footerText, "긴 출처 텍스트 상자");
+  assert.ok(inside(footerText.geometry), "긴 출처 텍스트 상자가 슬라이드 안");
+  assert.equal(fitted.lines, 1, "긴 출처 텍스트의 줄 수 1");
+}
+
 const styledPlanFor = (key, patch) => build(boardReducer(baseBoard, { type: "pageStyle", keys: [key], patch }));
 const styledTileFor = (key, patch) => {
   const plan = styledPlanFor(key, patch);
