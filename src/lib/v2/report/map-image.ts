@@ -284,7 +284,7 @@ function extraFor(p: PlannedSlide, model: MapModel): Extra {
   const panels = slidePanelRects(style, hasSummary, baseLegend);
   const pinned = { pinnedKeys: p.pinnedKeys ?? [] };
   const highlightLabel = legendLabelOf(model, style.legendFocus);
-  const rightInset = hasSummary ? Math.max(0, VIEW_W - (panels.summary?.x ?? SLIDE.w) * PX_PER_INCH + SLIDE.edge * PX_PER_INCH * 0.5) : 0;
+  const rightInset = hasSummary ? Math.max(0, VIEW_W - (panels.summary?.x ?? SLIDE.w) * PX_PER_INCH + SLIDE.edge * PX_PER_INCH * 0.5) : SLIDE.edge * PX_PER_INCH;
   // 설명표 장: 두 칸 사이에 반경 원을 넣는 프레임 (렌더러가 점·표를 같은 프레임으로 놓는다)
   if (p.callout && p.callout.page > 0) {
     const f = slideCalloutFrame(4);

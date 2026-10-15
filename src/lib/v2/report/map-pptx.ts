@@ -401,7 +401,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
   const lowerOverlayTop = Math.min(legend?.y ?? SLIDE.h, calloutLegend?.y ?? SLIDE.h);
   const siteX = calloutDetail?.siteX ?? slideSiteX(style, hasSummary);
   const fill = calloutDetail?.fill ?? (calloutOverview ? SLIDE_OVERVIEW_FILL : undefined);
-  const rightInset = calloutDetail ? 0 : hasSummary ? Math.max(0, VIEW_W - summaryX * PX_PER_INCH + gap) : 0;
+  const rightInset = calloutDetail ? 0 : hasSummary ? Math.max(0, VIEW_W - summaryX * PX_PER_INCH + gap) : SLIDE.edge * PX_PER_INCH;
   // 방위표는 지도 scene의 고정 y(22u)만 쓰면 크게 키운 제목 판과 겹친다.
   // 제목 판 아래에 13u 반지름과 안전 간격을 확보한 중심을 전달한다.
   const northY = (panels.title.y + panels.title.h) * PX_PER_INCH + gap + 13 * Math.min(1.5, Math.max(1, VIEW_H / 360));
