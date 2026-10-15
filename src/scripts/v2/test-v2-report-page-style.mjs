@@ -7,6 +7,7 @@ import JSZip from "jszip";
 const { GODEOK_RESULTS, GODEOK_SUMMARY } = await import("../../lib/v2/ui/fixtures/godeok.ts");
 const { boardReducer, initBoard, reportPages } = await import("../../lib/v2/ui/board-state.ts");
 const { toSummaryView, toTileView } = await import("../../lib/v2/ui/tile-view.ts");
+const { sheetView } = await import("../../lib/v2/ui/sheet.ts");
 const {
   buildReportPlan,
   complexCounts,
@@ -18,9 +19,50 @@ const {
 const { buildMapScene } = await import("../../lib/v2/ui/map-scene.ts");
 const { layerStyle } = await import("../../lib/v2/ui/map-layers.ts");
 const { slideViewport } = await import("../../lib/v2/ui/map-projection.ts");
-const { SLIDE, slidePanelRects, slideSiteX } = await import("../../lib/v2/ui/overlay-layout.ts");
+const { SLIDE, slideLegend, slidePanelRects, slideReserved, slideSiteX } = await import("../../lib/v2/ui/overlay-layout.ts");
 const { fitBlock, linesOf } = await import("../../lib/v2/report/pptx-kit.ts");
 const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
+
+const VIEW_W = 960;
+const VIEW_H = 540;
+const EMU_PER_INCH = 914400;
+const PX_PER_INCH = VIEW_W / SLIDE.w;
+const TINY_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+const SHAPE_BLOCK_RE = /<p:(?:sp|cxnSp)>[\s\S]*?<\/p:(?:sp|cxnSp)>/g;
+
+const xmlShapes = (xml) => [...xml.matchAll(SHAPE_BLOCK_RE)].map((match) => {
+  const block = match[0];
+  const name = block.match(/<p:cNvPr[^>]+name="([^"]+)"/)?.[1] ?? "";
+  const off = block.match(/<a:off x="(-?\d+)" y="(-?\d+)"\/>/);
+  const ext = block.match(/<a:ext cx="(-?\d+)" cy="(-?\d+)"\/>/);
+  const geometry = off && ext
+    ? { x: Number(off[1]) / EMU_PER_INCH, y: Number(off[2]) / EMU_PER_INCH, w: Number(ext[1]) / EMU_PER_INCH, h: Number(ext[2]) / EMU_PER_INCH }
+    : null;
+  return { block, name, geometry, text: [...block.matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)].map((item) => item[1]).join(""), index: match.index ?? 0 };
+});
+
+const runSizes = (shape) => [...shape.block.matchAll(/<a:rPr[^>]*\bsz="(\d+)"/g)].map((match) => Number(match[1]));
+const alphaValues = (shape) => [...shape.block.matchAll(/<a:alpha val="(\d+)"/g)].map((match) => Number(match[1]));
+const colorValues = (shape) => [...shape.block.matchAll(/<a:srgbClr val="([0-9a-f]{6})"/gi)].map((match) => match[1].toUpperCase());
+const hasAlpha = (shape, value) => alphaValues(shape).includes(value);
+const hasColor = (shape, value) => colorValues(shape).includes(value.toUpperCase());
+const textOf = (shape) => shape.text.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+const inside = (rect, box = { x: 0, y: 0, w: SLIDE.w, h: SLIDE.h }, epsilon = 0.002) => (
+  rect.x >= box.x - epsilon
+  && rect.y >= box.y - epsilon
+  && rect.x + rect.w <= box.x + box.w + epsilon
+  && rect.y + rect.h <= box.y + box.h + epsilon
+);
+const intersects = (a, b = { x: 0, y: 0, w: SLIDE.w, h: SLIDE.h }) => (
+  a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+);
+const overlaps = (a, b) => a.x < b.x + b.w - 1e-9 && b.x < a.x + a.w - 1e-9 && a.y < b.y + b.h - 1e-9 && b.y < a.y + a.h - 1e-9;
+const imagesFor = (plan) => Object.fromEntries([...new Set(plan.flatMap(mapKeysOf))].map((key) => [key, TINY_PNG]));
+const renderOneTile = async (tile) => {
+  const bytes = await renderReportPptx([tile], imagesFor([tile]));
+  const zip = await JSZip.loadAsync(bytes);
+  return { bytes, zip, xml: await zip.file("ppt/slides/slide1.xml").async("string") };
+};
 
 const views = new Map(GODEOK_RESULTS.map((result) => [result.tileId, toTileView(result)]));
 const summary = toSummaryView(GODEOK_SUMMARY, GODEOK_RESULTS);
@@ -29,6 +71,13 @@ const sourcePages = sourcePageCountForViews([...views.values()]);
 const build = (board) => buildReportPlan({ summary, views, board, analysisDate: "2026-10-15" });
 const baseBoard = initBoard(GODEOK_RESULTS);
 const basePlan = build(baseBoard);
+const styledPlanFor = (key, patch) => build(boardReducer(baseBoard, { type: "pageStyle", keys: [key], patch }));
+const styledTileFor = (key, patch) => {
+  const plan = styledPlanFor(key, patch);
+  const tile = plan.find((slide) => slide.key === key);
+  assert.ok(tile && tile.kind === "tile", `스타일 계획 ${key} 타일`);
+  return tile;
+};
 
 const assertPlanContract = (plan, board, label) => {
   const keys = plan.map((slide) => slide.key);
@@ -104,8 +153,10 @@ const extraIndex = (plan, id) => plan.findIndex((slide) => slide.key === `extra:
   const small = slidePanelRects({ titleScale: 0.7, summaryScale: 0.7, legendScale: 0.7 }, true);
   for (const part of ["title", "summary", "legend"]) {
     assert.ok(base[part] && large[part] && small[part]);
-    assert.ok(Math.abs(large[part].w / base[part].w - 1.5) < 1e-9, `${part} 큰 패널 폭 비례`);
-    assert.ok(Math.abs(small[part].w / base[part].w - 0.7) < 1e-9, `${part} 작은 패널 폭 비례`);
+    assert.ok(large[part].w >= base[part].w, `${part} 큰 패널 폭이 기준보다 작지 않다`);
+    assert.ok(small[part].w <= base[part].w, `${part} 작은 패널 폭이 기준보다 크지 않다`);
+    assert.ok(large[part].h >= base[part].h, `${part} 큰 패널 높이가 기준보다 작지 않다`);
+    assert.ok(small[part].h <= base[part].h, `${part} 작은 패널 높이가 기준보다 크지 않다`);
   }
   const lines = ["대지분석 보고서의 긴 제목과 자료 기준일", "범례와 설명이 들어가는 두 번째 줄"];
   const bigPt = fitBlock(lines, { w: 4.8, h: 1.2 }, 18, 7);
@@ -217,11 +268,223 @@ const extraIndex = (plan, id) => plan.findIndex((slide) => slide.key === `extra:
   assert.ok(xml.includes("transparency") || xml.includes("alpha"), "legendFocus PPT 도형 투명도 표현");
   assert.ok(!xml.includes("GRP|panel-summary"), "legendFocus PPT에 요약 패널 태그 없음");
 
-  if (process.env.V2_PAGE_STYLE_SAMPLE_PATH) {
-    mkdirSync(dirname(process.env.V2_PAGE_STYLE_SAMPLE_PATH), { recursive: true });
-    writeFileSync(process.env.V2_PAGE_STYLE_SAMPLE_PATH, bytes);
-    console.log(`page style PPT sample: ${process.env.V2_PAGE_STYLE_SAMPLE_PATH}`);
+}
+
+// 렌더 PPTX XML의 제목·요약·범례 run 크기도 각 scale을 실제로 소비한다.
+{
+  const a03 = basePlan.find((slide) => slide.kind === "tile" && slide.view.tileId === "t-A03");
+  assert.ok(a03?.map, "scale 회귀용 A03 지도");
+  for (const part of ["title", "summary", "legend"]) {
+    const xmlFor = async (scale) => {
+      const tile = styledTileFor(a03.key, {
+        summary: true,
+        titleScale: part === "title" ? scale : 1,
+        summaryScale: part === "summary" ? scale : 1,
+        legendScale: part === "legend" ? scale : 1,
+      });
+      return (await renderOneTile(tile)).xml;
+    };
+    const [smallXml, baseXml, largeXml] = await Promise.all([0.7, 1, 1.4].map(xmlFor));
+    const maxRunSize = (xml) => {
+      const sizes = xmlShapes(xml).filter((shape) => shape.name.includes(`panel-${part}`)).flatMap(runSizes);
+      assert.ok(sizes.length > 0, `${part} scale XML run이 없다`);
+      assert.ok(Math.min(...sizes) >= 700, `${part} scale XML run이 7pt 미만이다: ${sizes.join(",")}`);
+      return Math.max(...sizes);
+    };
+    const small = maxRunSize(smallXml);
+    const base = maxRunSize(baseXml);
+    const large = maxRunSize(largeXml);
+    assert.ok(large > base, `${part}Scale=1.4 run 최대 sz가 기준보다 크다: ${large} <= ${base}`);
+    assert.ok(small < base, `${part}Scale=0.7 run 최대 sz가 기준보다 작다: ${small} >= ${base}`);
   }
+}
+
+// overlay-layout rect와 같은 좌표계에서 summary on/off·0.7/1.5의 패널/축척/방위표가
+// 슬라이드 안에 있고 서로 겹치지 않는지 수치로 고정한다.
+{
+  const a03 = basePlan.find((slide) => slide.kind === "tile" && slide.view.tileId === "t-A03");
+  assert.ok(a03?.map, "overlay rect 회귀용 A03 지도");
+  const baseLegend = slideLegend(a03.map, true).rect;
+  const rectsFor = (hasSummary, scale) => {
+    const style = { summary: hasSummary, titleScale: scale, summaryScale: scale, legendScale: scale };
+    const panels = slidePanelRects(style, hasSummary, baseLegend);
+    const siteX = slideSiteX(style, hasSummary);
+    const rightInset = panels.summary
+      ? Math.max(0, VIEW_W - panels.summary.x * PX_PER_INCH + SLIDE.edge * PX_PER_INCH * 0.5)
+      : 0;
+    const scene = buildMapScene({
+      model: a03.map,
+      width: VIEW_W,
+      height: VIEW_H,
+      activeLayer: a03.map.basemap ?? "white",
+      siteX,
+      rightInset,
+      north: (panels.title.y + panels.title.h) * PX_PER_INCH + SLIDE.edge * PX_PER_INCH * 0.5 + 13 * Math.min(1.5, Math.max(1, VIEW_H / 360)),
+      bottomInset: SLIDE.stripH * PX_PER_INCH,
+      scale: true,
+      showAutomaticLabels: false,
+      avoid: slideReserved(PX_PER_INCH, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend: panels.legend }),
+      viewport: slideViewport(a03.map, style, { width: VIEW_W, height: VIEW_H, siteX, fill: 0.8 }),
+    });
+    const fromPixels = (x, y, w, h) => ({ x: x / PX_PER_INCH, y: y / PX_PER_INCH, w: w / PX_PER_INCH, h: h / PX_PER_INCH });
+    const unit = scene.unit;
+    const rects = {
+      title: panels.title,
+      summary: panels.summary,
+      legend: panels.legend,
+      scale: fromPixels(scene.scale.x0 - 6 * unit, scene.scale.y - 14 * unit, scene.scale.px + 12 * unit, 22 * unit),
+      north: scene.north ? fromPixels(scene.north.x - 13 * unit, scene.north.y - 13 * unit, 26 * unit, 26 * unit) : null,
+    };
+    return Object.entries(rects).filter(([, rect]) => rect).map(([name, rect]) => ({ name, rect }));
+  };
+  for (const hasSummary of [true, false]) {
+    for (const scale of [0.7, 1.5]) {
+      const rects = rectsFor(hasSummary, scale);
+      assert.ok(rects.some(({ name }) => name === "title"), `summary=${hasSummary} scale=${scale} title rect`);
+      assert.ok(rects.some(({ name }) => name === "legend"), `summary=${hasSummary} scale=${scale} legend rect`);
+      for (const { name, rect } of rects) assert.ok(inside(rect), `summary=${hasSummary} scale=${scale} ${name}가 SLIDE 밖이다: ${JSON.stringify(rect)}`);
+      for (let i = 0; i < rects.length; i += 1) {
+        for (let j = i + 1; j < rects.length; j += 1) {
+          assert.equal(overlaps(rects[i].rect, rects[j].rect), false, `summary=${hasSummary} scale=${scale} ${rects[i].name}/${rects[j].name} 겹침`);
+        }
+      }
+    }
+  }
+}
+
+// zoomDelta=2 + offsetM의 native 도형 bbox/점 중심과 출처 띠 z-order.
+{
+  const a03 = basePlan.find((slide) => slide.kind === "tile" && slide.view.tileId === "t-A03");
+  const zoomStyle = { summary: false, zoomDelta: 2, offsetM: [80, -20] };
+  const zoomTile = styledTileFor(a03.key, zoomStyle);
+  const [lng, lat] = zoomTile.map.center;
+  const span = 0.02;
+  const partialMap = {
+    ...zoomTile.map,
+    lines: [{ layer: "road:간선", fid: "page-style-partial-line", points: [[lng - span, lat], [lng + span, lat]], label: "간선도로", name: "간선도로" }],
+    polygons: [{ layer: "building", fid: "page-style-partial-polygon", rings: [[[lng - span, lat - span], [lng + span, lat - span], [lng + span, lat + span], [lng - span, lat - span]]], label: "건물", name: "건물" }],
+    total: (zoomTile.map.total ?? zoomTile.map.features.length) + 2,
+  };
+  const partialTile = {
+    ...zoomTile,
+    map: partialMap,
+    view: { ...zoomTile.view, map: partialMap, backdrop: partialMap },
+  };
+  const { xml } = await renderOneTile(partialTile);
+  const records = xmlShapes(xml);
+  const native = records.filter((shape) => shape.name.includes("GRP|map-A03-"));
+  assert.ok(native.length > 0, "zoom native 지도 도형이 없다");
+  const partial = native.filter((shape) => shape.name.endsWith("|geometry"));
+  assert.ok(partial.length >= 2, "선·면 partial clipping 회귀 도형이 없다");
+  assert.ok(partial.some((shape) => intersects(shape.geometry)), "선·면 partial clipping 회귀 도형이 없다");
+  for (const shape of native) {
+    assert.ok(shape.geometry, `native 도형 bbox가 없다: ${shape.name}`);
+    assert.ok(inside(shape.geometry), `native 도형 bbox가 SLIDE 밖이다: ${shape.name} ${JSON.stringify(shape.geometry)}`);
+    if (/\|(?:dot|badge-\d+)$/.test(shape.name)) {
+      const centerY = shape.geometry.y + shape.geometry.h / 2;
+      assert.ok(centerY < SLIDE.h - SLIDE.stripH + 0.002, `점 중심이 출처 띠 위가 아니다: ${shape.name} y=${centerY}`);
+    }
+  }
+  const footerIndex = records.findIndex((shape) => shape.geometry
+    && Math.abs(shape.geometry.x) < 0.002
+    && Math.abs(shape.geometry.y - (SLIDE.h - SLIDE.stripH)) < 0.002
+    && shape.geometry.w >= SLIDE.w - 0.01
+    && shape.geometry.h >= SLIDE.stripH - 0.01);
+  const lastNativeIndex = Math.max(...records.map((shape, index) => shape.name.includes("GRP|map-A03-") ? index : -1));
+  assert.ok(footerIndex > lastNativeIndex, `footer z-order가 native 지도 뒤가 아니다: footer=${footerIndex}, map=${lastNativeIndex}`);
+}
+
+// legendFocus XML: 사용자가 고정한 라벨·콜아웃·대지·반경은 dim하지 않고,
+// 비강조 범례 geometry/panel entry만 dim transparency를 받는다.
+{
+  const a03 = basePlan.find((slide) => slide.kind === "tile" && slide.view.tileId === "t-A03");
+  const legend = legendItemsOf(a03.map);
+  const focusItem = legend[0];
+  const focusTile = styledTileFor(a03.key, { summary: false, legendFocus: focusItem.key, pinnedKeys: ["store:other|0"] });
+  const focusXml = (await renderOneTile(focusTile)).xml;
+  const focusShapes = xmlShapes(focusXml);
+  const focusedGeometry = focusShapes.filter((shape) => shape.name.includes(`GRP|map-A03-legend-${focusItem.label}`));
+  const dimmedGeometry = focusShapes.filter((shape) => shape.name.includes("GRP|map-A03-legend-") && !shape.name.includes(`GRP|map-A03-legend-${focusItem.label}`));
+  assert.ok(focusedGeometry.length > 0, "legendFocus 강조 geometry 태그가 없다");
+  assert.ok(dimmedGeometry.length > 0, "legendFocus 비강조 geometry 태그가 없다");
+  assert.equal(focusedGeometry.some((shape) => hasAlpha(shape, 20000)), false, "강조 geometry가 dim transparency를 받았다");
+  assert.ok(dimmedGeometry.some((shape) => hasAlpha(shape, 20000)), "비강조 geometry에 dim transparency가 없다");
+
+  const panelShapes = focusShapes.filter((shape) => shape.name.includes("GRP|panel-legend"));
+  const focusedPanelText = panelShapes.find((shape) => textOf(shape) === focusItem.label);
+  const otherPanelText = panelShapes.find((shape) => textOf(shape) && textOf(shape) !== focusItem.label && textOf(shape) !== "대지");
+  assert.ok(focusedPanelText && otherPanelText, "범례 panel의 강조/비강조 text entry가 없다");
+  assert.equal(hasColor(focusedPanelText, "8C919B"), false, "강조 panel entry가 dim 색이다");
+  assert.equal(hasColor(otherPanelText, "8C919B"), true, "비강조 panel entry가 dim 색이 아니다");
+  assert.ok(panelShapes.some((shape) => hasAlpha(shape, 35000)), "비강조 panel geometry의 dim transparency가 없다");
+
+  const userLabelShapes = focusShapes.filter((shape) => shape.name.includes("GRP|map-A03-label-store:other-0"));
+  assert.ok(userLabelShapes.length > 0, "pinned 사용자 라벨 XML 태그가 없다");
+  assert.equal(userLabelShapes.some((shape) => hasAlpha(shape, 20000)), false, "사용자 라벨이 dim transparency를 받았다");
+  for (const token of ["GRP|map-A03-site", "GRP|map-A03-radius"]) {
+    const shapes = focusShapes.filter((shape) => shape.name.includes(token));
+    assert.ok(shapes.length > 0, `${token} XML 태그가 없다`);
+    assert.equal(shapes.some((shape) => hasAlpha(shape, 20000)), false, `${token}이 dim transparency를 받았다`);
+  }
+
+  const a05 = basePlan.find((slide) => slide.kind === "tile" && slide.view.tileId === "t-A05" && slide.callout?.page === 0);
+  assert.ok(a05, "콜아웃 focus 회귀용 A05 개요 장");
+  const calloutTile = styledTileFor(a05.key, { legendFocus: focusItem.key });
+  const calloutShapes = xmlShapes((await renderOneTile(calloutTile)).xml).filter((shape) => shape.name.startsWith("GRP|callout-"));
+  assert.ok(calloutShapes.length > 0, "콜아웃 XML 태그가 없다");
+  assert.equal(calloutShapes.some((shape) => hasAlpha(shape, 20000)), false, "콜아웃이 dim transparency를 받았다");
+}
+
+// PowerPoint COM은 호출하지 않는다. env가 지정된 경우에만 판별 가능한 다중 슬라이드 샘플을 쓴다.
+if (process.env.V2_PAGE_STYLE_SAMPLE_PATH) {
+  const a03 = basePlan.find((slide) => slide.kind === "tile" && slide.view.tileId === "t-A03");
+  const focusItem = legendItemsOf(a03.map)[0];
+  const sampleTile = (patch, marker) => {
+    const tile = styledTileFor(a03.key, patch);
+    return {
+      ...tile,
+      view: { ...tile.view, title: `${tile.view.title} · ${marker}` },
+      footer: `${marker} · ${tile.footer}`,
+    };
+  };
+  const sampleA = sampleTile({ summary: false, titleScale: 1.4, summaryScale: 1.4, legendScale: 1.4, legendFocus: focusItem.key, zoomDelta: 1, offsetM: [80, -20] }, "[SAMPLE-A]");
+  const sampleB = sampleTile({ summary: true, titleScale: 1.4, summaryScale: 1.4, legendScale: 1.4 }, "[SAMPLE-B]");
+  const sampleC = sampleTile({ summary: true, titleScale: 0.7, summaryScale: 0.7, legendScale: 0.7 }, "[SAMPLE-C]");
+  const sampleD = sampleTile({ summary: false, zoomDelta: 2, offsetM: [80, -20] }, "[SAMPLE-D]");
+  const sheetViews = ["t-A01", "t-A03", "t-A04", "t-A05"].map((tileId) => views.get(tileId)).filter(Boolean);
+  assert.equal(sheetViews.length, 4, "샘플 2x2 sheet에 네 셀이 필요하다");
+  const sheetModel = sheetView("sample-sheet", sheetViews, "2x2");
+  const sheetStyle = { zoomDelta: 2, offsetM: [40, -20], legendFocus: focusItem.key };
+  const sampleSheet = {
+    kind: "sheet",
+    view: { ...sheetModel, title: `${sheetModel.title} · [SAMPLE-E]` },
+    grid: "2x2",
+    cells: sheetViews.map((view, index) => ({
+      view,
+      face: "front",
+      mapKey: `sample-sheet-${index}`,
+      sourceLine: view.sourceLine,
+      pinnedKeys: [],
+      style: { ...sheetStyle, pinnedKeys: [], legendFocus: legendItemsOf(view.map ?? view.backdrop)[0]?.key ?? focusItem.key },
+    })),
+    footer: "[SAMPLE-E] zoomDelta=2 · legendFocus",
+    key: "sample-sheet",
+    style: sheetStyle,
+    no: 0,
+    total: 0,
+  };
+  const samplePlan = [sampleA, sampleB, sampleC, sampleD, sampleSheet].map((slide, index, all) => ({ ...slide, no: index + 1, total: all.length }));
+  assert.ok(samplePlan.some((slide) => slide.kind === "sheet" && slide.grid === "2x2"), "샘플에 2x2 sheet가 없다");
+  assert.ok(sampleSheet.cells.every((cell) => cell.style.zoomDelta === 2 && cell.style.legendFocus), "샘플 2x2 sheet에 zoom/legendFocus가 전달되지 않았다");
+  const sampleBytes = await renderReportPptx(samplePlan, imagesFor(samplePlan));
+  mkdirSync(dirname(process.env.V2_PAGE_STYLE_SAMPLE_PATH), { recursive: true });
+  writeFileSync(process.env.V2_PAGE_STYLE_SAMPLE_PATH, sampleBytes);
+  const sampleZip = await JSZip.loadAsync(sampleBytes);
+  const sampleSlideNames = Object.keys(sampleZip.files).filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name));
+  assert.ok(sampleSlideNames.length >= 5, `페이지 스타일 샘플이 단일/소수 장이다: ${sampleSlideNames.length}`);
+  const sampleText = (await Promise.all(sampleSlideNames.map((name) => sampleZip.file(name).async("string")))).join("|");
+  for (const marker of ["[SAMPLE-A]", "[SAMPLE-B]", "[SAMPLE-C]", "[SAMPLE-D]", "[SAMPLE-E]"]) assert.ok(sampleText.includes(marker), `${marker} 식별 표식이 없다`);
+  console.log(`page style PPT sample: ${process.env.V2_PAGE_STYLE_SAMPLE_PATH} (${sampleSlideNames.length} slides)`);
 }
 
 console.log("v2 report page style tests passed");

@@ -7,12 +7,12 @@ import PptxGenJS from "pptxgenjs";
 import { groupTaggedShapes } from "../../pptx-shape-group";
 import { fmtInt, pageRange } from "../ui/callout-layout";
 import { legendItemsOf, STRIP_COLORS } from "../ui/map-layers";
-import { SLIDE, slideLegend, slidePanelRects, stripText, type Rect } from "../ui/overlay-layout";
+import { SLIDE, slideLegend, slidePanelRects, slidePanelScale, stripText, type Rect } from "../ui/overlay-layout";
 import type { Badge, TileView } from "../ui/tile-view";
 import type { RoseModel } from "../ui/wind-rose";
 import { sheetCells, type SheetGrid } from "../ui/sheet";
 import { COVER_MAP_KEY, mapKeyOf, type PlannedSlide } from "./report-plan";
-import { E, FONT, INK, L, LINE, MUTED, PLATE_ALPHA, fitBlock, fitPt, hex, linesOf, plate, textIn, type Border, type ReportItem, type Slide } from "./pptx-kit";
+import { E, FONT, INK, L, LINE, MUTED, fitBlock, fitPt, hex, linesOf, plate, textIn, type Border, type ReportItem, type Slide } from "./pptx-kit";
 import { tileReportModuleFor } from "../tile/report";
 import { addEditableMap, nativeMapFallbackNote, nativeMapStatus } from "./map-pptx";
 import { badgeTextColor } from "../ui/map-labels";
@@ -42,7 +42,8 @@ function background(s: Slide, image: string | undefined, tint?: string) {
 /** 맨 아래 출처 띠 + 쪽 번호. 출처·기준일은 모든 장에 있다 */
 function strip(s: Slide, p: PlannedSlide, credit: boolean) {
   const r = L.strip;
-  s.addShape("rect", { x: r.x, y: r.y, w: r.w, h: r.h, fill: { color: "FFFFFF", transparency: PLATE_ALPHA }, line: { color: "FFFFFF", width: 0, transparency: 100 } });
+  // 출처 띠는 지도 래스터와 네이티브 도형을 모두 가리는 최상단의 불투명 안전영역이다.
+  s.addShape("rect", { x: r.x, y: r.y, w: r.w, h: r.h, fill: { color: "FFFFFF", transparency: 0 }, line: { color: "FFFFFF", width: 0, transparency: 100 } });
   s.addShape("line", { x: r.x, y: r.y, w: r.w, h: 0, line: { color: INK, width: 0.5, transparency: 92 } });
   const room = SLIDE.w - E - 1.7;
   const full = stripText(p.footer, credit);
@@ -54,11 +55,12 @@ function strip(s: Slide, p: PlannedSlide, credit: boolean) {
 /** 왼쪽 위 제목 판: 타일 색 점 + 번호 + 타일명 + 종류 */
 function titlePlate(s: Slide, color: string, code: string, title: string, kind: string, maxW: number, style: PageStyle = {}, hasSummary = true) {
   const base = slidePanelRects(style, hasSummary).title;
-  const w = Math.min(maxW, Math.max(base.w, 0.62 + textIn(`${code}  `, 10) + textIn(title, 18) + textIn(`  ${kind}`, 10)));
+  const scale = slidePanelScale(style.titleScale);
+  const w = Math.min(maxW, Math.max(base.w, 0.62 + textIn(`${code}  `, 10 * scale) + textIn(title, 18 * scale) + textIn(`  ${kind}`, 10 * scale)));
   const r = { ...base, w };
   const textBox = { w: Math.max(0.2, w - 0.58), h: Math.max(0.16, r.h - 0.08) };
-  const titlePt = fitBlock([title], textBox, 18, 7);
-  const metaPt = fitBlock([`${code}  ${kind}`], textBox, 10, 7);
+  const titlePt = fitBlock([title], textBox, 18 * scale, 7);
+  const metaPt = fitBlock([`${code}  ${kind}`], textBox, 10 * scale, 7);
   const group = panelTag("title", "제목", "plate");
   plate(s, r, 0.12, group);
   s.addShape("ellipse", { x: r.x + 0.2, y: r.y + r.h / 2 - 0.09, w: 0.18, h: 0.18, fill: { color: hex(color) }, line: { color: hex(color) }, objectName: panelTag("title", "제목", "mark") });
@@ -73,34 +75,40 @@ function titlePlate(s: Slide, color: string, code: string, title: string, kind: 
 }
 
 /** 배지 줄바꿈 배치. draw=false면 높이만 잰다 */
-function chipRows(s: Slide, items: { text: string; tone: Badge["tone"] }[], x: number, y: number, maxW: number, draw: boolean): number {
+function chipRows(s: Slide, items: { text: string; tone: Badge["tone"] }[], x: number, y: number, maxW: number, draw: boolean, scale = 1): number {
+  const chipH = 0.3 * scale;
+  const rowGap = 0.36 * scale;
+  const itemGap = 0.08 * scale;
   let cx = x;
   let cy = y;
   for (const b of items) {
-    const w = Math.min(maxW, textIn(b.text, 10) + 0.3);
+    const w = Math.min(maxW, textIn(b.text, 10 * scale) + 0.3 * scale);
     if (cx > x && cx + w > x + maxW) {
       cx = x;
-      cy += 0.36;
+      cy += rowGap;
     }
     if (draw) {
-      s.addShape("roundRect", { x: cx, y: cy, w, h: 0.3, fill: { color: CHIP[b.tone].fill }, line: { color: CHIP[b.tone].fill }, rectRadius: 0.15 });
-      s.addText(b.text, { x: cx, y: cy, w, h: 0.3, align: "center", valign: "middle", fontFace: FONT, fontSize: fitBlock([b.text], { w: Math.max(0.1, w - 0.12), h: 0.3 }, 10, 7), bold: true, color: CHIP[b.tone].color, margin: 0 });
+      s.addShape("roundRect", { x: cx, y: cy, w, h: chipH, fill: { color: CHIP[b.tone].fill }, line: { color: CHIP[b.tone].fill }, rectRadius: 0.15 * scale });
+      s.addText(b.text, { x: cx, y: cy, w, h: chipH, align: "center", valign: "middle", fontFace: FONT, fontSize: fitBlock([b.text], { w: Math.max(0.1, w - 0.12 * scale), h: chipH }, 10 * scale, 7), bold: true, color: CHIP[b.tone].color, margin: 0 });
     }
-    cx += w + 0.08;
+    cx += w + itemGap;
   }
-  return items.length ? cy - y + 0.3 : 0;
+  return items.length ? cy - y + chipH : 0;
 }
 
 type Item = ReportItem;
 type InfoBox = { x: number; y?: number; w: number; h: number };
 
-const innerInfoBox = (rect: Rect): InfoBox => ({ x: rect.x + 0.22, w: Math.max(0.2, rect.w - 0.44), h: Math.max(0.2, rect.h - 0.44) });
+const innerInfoBox = (rect: Rect, scale = 1): InfoBox => {
+  const pad = 0.22 * scale;
+  return { x: rect.x + pad, w: Math.max(0.2, rect.w - pad * 2), h: Math.max(0.2, rect.h - pad * 2) };
+};
 
 /** 오른쪽 정보 판: 항목을 쌓아 높이를 정한 뒤 판을 먼저 그리고 항목을 얹는다 */
-function infoPanel(s: Slide, items: Item[], rect: Rect | null) {
+function infoPanel(s: Slide, items: Item[], rect: Rect | null, scale = 1) {
   if (!rect) return;
-  const gap = 0.12;
-  const pad = 0.22;
+  const gap = 0.12 * scale;
+  const pad = 0.22 * scale;
   const need = items.reduce((a, i) => a + i.h, 0) + gap * Math.max(0, items.length - 1) + pad * 2;
   const r = { x: rect.x, y: rect.y, w: rect.w, h: Math.min(rect.h, need) };
   const group = panelTag("summary", "요약", "plate");
@@ -116,30 +124,34 @@ function infoPanel(s: Slide, items: Item[], rect: Rect | null) {
   }
 }
 
-const badgeItem = (s: Slide, badges: Badge[], box: InfoBox): Item | null => {
+const badgeItem = (s: Slide, badges: Badge[], box: InfoBox, scale = 1): Item | null => {
   const items = badges.map((b) => ({ text: b.text, tone: b.tone }));
-  const h = chipRows(s, items, box.x, 0, box.w, false);
-  return h ? { h, draw: (y, target = s) => void chipRows(target, items, box.x, y, box.w, true) } : null;
+  const h = chipRows(s, items, box.x, 0, box.w, false, scale);
+  return h ? { h, draw: (y, target = s) => void chipRows(target, items, box.x, y, box.w, true, scale) } : null;
 };
 
-function headlineItems(s: Slide, h: NonNullable<TileView["headline"]>, box: InfoBox): Item[] {
+function headlineItems(s: Slide, h: NonNullable<TileView["headline"]>, box: InfoBox, scale = 1): Item[] {
   const sub = [h.aux, h.tag].filter(Boolean).join(" · ");
-  const pt = fitBlock([h.value], { w: box.w, h: 0.66 }, 36, 7);
+  const labelH = 0.24 * scale;
+  const valueH = 0.66 * scale;
+  const subH = 0.24 * scale;
+  const pt = fitBlock([h.value], { w: box.w, h: valueH }, 36 * scale, 7);
   // 라벨·값·보조어는 붙여서 한 덩어리로 (항목 사이 간격을 넣지 않는다)
   return [
     {
-      h: 0.24 + 0.66 + (sub ? 0.24 : 0),
+      h: labelH + valueH + (sub ? subH : 0),
       draw: (y, target = s) => {
-        target.addText(h.label, { x: box.x, y, w: box.w, h: 0.24, fontFace: FONT, fontSize: fitBlock([h.label], { w: box.w, h: 0.24 }, 11, 7), color: MUTED, margin: 0 });
-        target.addText(h.value, { x: box.x, y: y + 0.24, w: box.w, h: 0.66, valign: "middle", fontFace: FONT, fontSize: pt, bold: true, color: INK, margin: 0 });
-        if (sub) target.addText(sub, { x: box.x, y: y + 0.9, w: box.w, h: 0.24, fontFace: FONT, fontSize: fitBlock([sub], { w: box.w, h: 0.24 }, 10.5, 7), color: MUTED, margin: 0 });
+        target.addText(h.label, { x: box.x, y, w: box.w, h: labelH, fontFace: FONT, fontSize: fitBlock([h.label], { w: box.w, h: labelH }, 11 * scale, 7), color: MUTED, margin: 0 });
+        target.addText(h.value, { x: box.x, y: y + labelH, w: box.w, h: valueH, valign: "middle", fontFace: FONT, fontSize: pt, bold: true, color: INK, margin: 0 });
+        if (sub) target.addText(sub, { x: box.x, y: y + labelH + valueH, w: box.w, h: subH, fontFace: FONT, fontSize: fitBlock([sub], { w: box.w, h: subH }, 10.5 * scale, 7), color: MUTED, margin: 0 });
       },
     },
   ];
 }
 
-const textItem = (s: Slide, text: string, pt: number, color: string, bold = false, maxLines = 6, box: InfoBox): Item => {
-  const size = fitBlock(text.split("\n"), { w: box.w, h: maxLines * (pt / 72) * 1.45 }, pt, 7);
+const textItem = (s: Slide, text: string, pt: number, color: string, bold = false, maxLines = 6, box: InfoBox, scale = 1): Item => {
+  const scaledPt = pt * scale;
+  const size = fitBlock(text.split("\n"), { w: box.w, h: maxLines * (scaledPt / 72) * 1.45 }, scaledPt, 7);
   const rows = text.split("\n").reduce((sum, line) => sum + linesOf(line, size, box.w), 0);
   const h = rows * (size / 72) * 1.45 + 0.04;
   return { h, draw: (y, target = s) => void target.addText(text, { x: box.x, y, w: box.w, h, valign: "top", fontFace: FONT, fontSize: size, bold, color, margin: 0 }) };
@@ -155,14 +167,15 @@ function roseSummary(model: RoseModel): string {
 
 const ROSE_SEASON_LABEL = { annual: "연간", spring: "봄", summer: "여름", autumn: "가을", winter: "겨울" } as const;
 
-function rowItems(s: Slide, rows: TileView["rows"], box: InfoBox): Item[] {
+function rowItems(s: Slide, rows: TileView["rows"], box: InfoBox, scale = 1): Item[] {
   return rows.map((r) => ({
-    h: 0.3,
+    h: 0.3 * scale,
     draw: (y, target = s) => {
-      target.addText(r.label, { x: box.x, y, w: box.w * 0.55, h: 0.28, valign: "middle", fontFace: FONT, fontSize: fitBlock([r.label], { w: box.w * 0.55, h: 0.28 }, 11, 7), color: MUTED, margin: 0 });
+      const rowH = 0.28 * scale;
+      target.addText(r.label, { x: box.x, y, w: box.w * 0.55, h: rowH, valign: "middle", fontFace: FONT, fontSize: fitBlock([r.label], { w: box.w * 0.55, h: rowH }, 11 * scale, 7), color: MUTED, margin: 0 });
       const v = [r.value, r.aux, r.tag].filter(Boolean).join(" · ");
-      target.addText(v, { x: box.x + box.w * 0.55, y, w: box.w * 0.45, h: 0.28, align: "right", valign: "middle", fontFace: FONT, fontSize: fitBlock([v], { w: box.w * 0.45, h: 0.28 }, 11, 7), bold: true, color: INK, margin: 0 });
-      target.addShape("line", { x: box.x, y: y + 0.3, w: box.w, h: 0, line: { color: LINE, width: 0.75 } });
+      target.addText(v, { x: box.x + box.w * 0.55, y, w: box.w * 0.45, h: rowH, align: "right", valign: "middle", fontFace: FONT, fontSize: fitBlock([v], { w: box.w * 0.45, h: rowH }, 11 * scale, 7), bold: true, color: INK, margin: 0 });
+      target.addShape("line", { x: box.x, y: y + 0.3 * scale, w: box.w, h: 0, line: { color: LINE, width: 0.75 } });
     },
   }));
 }
@@ -174,33 +187,36 @@ function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = 
   const style = p.style ?? {};
   const { items, notes, rect: r } = slideLegend(model, !p.muted, style, hasSummary);
   if (!r) return;
+  const scale = slidePanelScale(style.legendScale);
   const focus = style.legendFocus ? legendItemsOf(model).find((item) => item.key === style.legendFocus)?.label ?? style.legendFocus : null;
   const group = panelTag("legend", "범례", "plate");
   plate(s, r, 0.12, group);
+  const rowH = 0.25 * scale;
   items.forEach((it, i) => {
-    const y = r.y + 0.1 + i * 0.25;
+    const y = r.y + 0.1 * scale + i * rowH;
     const focused = !it.site && focus !== null && it.label === focus;
     const dimmed = focus !== null && !it.site && !focused;
     const fade = dimmed ? 65 : 0;
-    const labelPt = fitBlock([it.label], { w: Math.max(0.2, r.w - 0.55), h: 0.25 }, 10, 7);
+    const labelPt = fitBlock([it.label], { w: Math.max(0.2, r.w - 0.55 * scale), h: rowH }, 10 * scale, 7);
     if (it.site) {
-      s.addShape("diamond", { x: r.x + 0.19, y: y + 0.04, w: 0.16, h: 0.16, fill: { color: "FFFFFF", transparency: fade }, line: { color: "111111", width: 0.8, transparency: fade }, objectName: group });
-      s.addShape("ellipse", { x: r.x + 0.25, y: y + 0.1, w: 0.04, h: 0.04, fill: { color: "111111", transparency: fade }, line: { color: "111111", width: 0, transparency: fade }, objectName: group });
+      s.addShape("diamond", { x: r.x + 0.19 * scale, y: y + 0.04 * scale, w: 0.16 * scale, h: 0.16 * scale, fill: { color: "FFFFFF", transparency: fade }, line: { color: "111111", width: 0.8, transparency: fade }, objectName: group });
+      s.addShape("ellipse", { x: r.x + 0.25 * scale, y: y + 0.1 * scale, w: 0.04 * scale, h: 0.04 * scale, fill: { color: "111111", transparency: fade }, line: { color: "111111", width: 0, transparency: fade }, objectName: group });
     } else if (it.symbol === "rail-axis") {
-      s.addShape("line", { x: r.x + 0.17, y: y + 0.145, w: 0.22, h: 0, line: { color: "172033", width: 5.2, transparency: fade, beginArrowType: "none", endArrowType: "none" }, objectName: group });
-      s.addShape("line", { x: r.x + 0.17, y: y + 0.145, w: 0.22, h: 0, line: { color: hex(it.color), width: 3.6, transparency: fade, beginArrowType: "none", endArrowType: "none" }, objectName: group });
+      s.addShape("line", { x: r.x + 0.17 * scale, y: y + 0.145 * scale, w: 0.22 * scale, h: 0, line: { color: "172033", width: 5.2, transparency: fade, beginArrowType: "none", endArrowType: "none" }, objectName: group });
+      s.addShape("line", { x: r.x + 0.17 * scale, y: y + 0.145 * scale, w: 0.22 * scale, h: 0, line: { color: hex(it.color), width: 3.6, transparency: fade, beginArrowType: "none", endArrowType: "none" }, objectName: group });
     } else if (it.symbol === "rail-exit") {
-      s.addShape("ellipse", { x: r.x + 0.18, y: y + 0.035, w: 0.19, h: 0.19, fill: { color: "FFD200", transparency: fade }, line: { color: "172033", width: 0.75, transparency: fade }, objectName: group });
+      s.addShape("ellipse", { x: r.x + 0.18 * scale, y: y + 0.035 * scale, w: 0.19 * scale, h: 0.19 * scale, fill: { color: "FFD200", transparency: fade }, line: { color: "172033", width: 0.75, transparency: fade }, objectName: group });
     } else if (it.badge) {
-      s.addShape("ellipse", { x: r.x + 0.18, y: y + 0.03, w: 0.19, h: 0.19, fill: { color: hex(it.color), transparency: fade }, line: { color: "FFFFFF", width: 0.75, transparency: fade }, objectName: group });
-      s.addText(it.badge, { x: r.x + 0.18, y: y + 0.03, w: 0.19, h: 0.19, align: "center", valign: "middle", fontFace: FONT, fontSize: 7, bold: true, color: dimmed ? "8C919B" : hex(badgeTextColor(it.color)), margin: 0, objectName: group });
+      s.addShape("ellipse", { x: r.x + 0.18 * scale, y: y + 0.03 * scale, w: 0.19 * scale, h: 0.19 * scale, fill: { color: hex(it.color), transparency: fade }, line: { color: "FFFFFF", width: 0.75, transparency: fade }, objectName: group });
+      s.addText(it.badge, { x: r.x + 0.18 * scale, y: y + 0.03 * scale, w: 0.19 * scale, h: 0.19 * scale, align: "center", valign: "middle", fontFace: FONT, fontSize: Math.max(7, 7 * scale), bold: true, color: dimmed ? "8C919B" : hex(badgeTextColor(it.color)), margin: 0, objectName: group });
     } else {
-      s.addShape("ellipse", { x: r.x + 0.2, y: y + 0.06, w: 0.13, h: 0.13, fill: { color: hex(it.color), transparency: fade }, line: { color: "FFFFFF", width: 0.75, transparency: fade }, objectName: group });
+      s.addShape("ellipse", { x: r.x + 0.2 * scale, y: y + 0.06 * scale, w: 0.13 * scale, h: 0.13 * scale, fill: { color: hex(it.color), transparency: fade }, line: { color: "FFFFFF", width: 0.75, transparency: fade }, objectName: group });
     }
-    s.addText(it.label, { x: r.x + 0.45, y, w: r.w - 0.55, h: 0.25, valign: "middle", fontFace: FONT, fontSize: labelPt, bold: focused, color: dimmed ? "8C919B" : INK, margin: 0, objectName: group });
+    s.addText(it.label, { x: r.x + 0.45 * scale, y, w: Math.max(0.2, r.w - 0.55 * scale), h: rowH, valign: "middle", fontFace: FONT, fontSize: labelPt, bold: focused, color: dimmed ? "8C919B" : INK, margin: 0, objectName: group });
   });
   notes.forEach((n, i) => {
-      s.addText(n, { x: r.x + 0.2, y: r.y + 0.1 + items.length * 0.25 + i * 0.22, w: r.w - 0.3, h: 0.22, valign: "middle", fontFace: FONT, fontSize: fitBlock([n], { w: r.w - 0.3, h: 0.22 }, 8.5, 7), color: MUTED, margin: 0, fit: "shrink", objectName: group });
+      const noteH = 0.22 * scale;
+      s.addText(n, { x: r.x + 0.2 * scale, y: r.y + 0.1 * scale + items.length * rowH + i * noteH, w: Math.max(0.2, r.w - 0.3 * scale), h: noteH, valign: "middle", fontFace: FONT, fontSize: fitBlock([n], { w: r.w - 0.3 * scale, h: noteH }, 8.5 * scale, 7), color: MUTED, margin: 0, fit: "shrink", objectName: group });
   });
 }
 
@@ -258,6 +274,7 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   const s = pptx.addSlide();
   const style = p.style ?? {};
   const chart = !p.map && !p.mass && !p.rose; // 도판 구성비 면: 연한 타일색 바탕에 차트가 전면
+  const summaryScale = slidePanelScale(style.summaryScale);
   const mix = (c: string, a: number) => {
     const n = parseInt(hex(c), 16);
     const ch = (sh: number) => Math.round(255 - (255 - ((n >> sh) & 255)) * a);
@@ -269,7 +286,7 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   const panels = slidePanelRects(style, hasSummary, baseLegend);
   const summaryRect = panels.summary;
   const summaryX = summaryRect?.x ?? SLIDE.w;
-  const contentBox = summaryRect ? innerInfoBox(summaryRect) : { x: E, w: Math.max(0.2, SLIDE.w - 2 * E), h: 0.2 };
+  const contentBox = summaryRect ? innerInfoBox(summaryRect, summaryScale) : { x: E, w: Math.max(0.2, SLIDE.w - 2 * E), h: 0.2 };
   const calloutReport = tileReportModuleFor(v.code)?.report;
   const mapStatus = p.map ? nativeMapStatus(p.map) : null;
   const nativeMap = !!p.map && !!mapStatus?.native;
@@ -293,7 +310,7 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
     ...(p.rose ? [roseSummary(p.rose), `바람장미 선택 계절 · ${ROSE_SEASON_LABEL[p.roseSeason ?? "annual"]}`] : []),
   ];
   const items: Item[] = [];
-  const b = badgeItem(s, v.badges, contentBox);
+  const b = badgeItem(s, v.badges, contentBox, summaryScale);
   if (b) items.push(b);
 
   if (p.body.kind === "state") {
@@ -306,8 +323,8 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
     plate(s, r, 0.16);
     s.addText(msg, { x: r.x + 0.3, y: r.y + 0.22, w: w - 0.6, h: h - 0.9, valign: "top", fontFace: FONT, fontSize: pt, bold: true, color: INK, margin: 0 });
     s.addText("이 타일의 수치는 만들지 않았습니다. 조건을 바꾸거나 다시 계산한 뒤 보고서를 만들 수 있습니다.", { x: r.x + 0.3, y: r.y + h - 0.68, w: w - 0.6, h: 0.5, valign: "top", fontFace: FONT, fontSize: 10.5, color: MUTED, margin: 0 });
-    notes.forEach((n) => items.push(textItem(s, n, 10, MUTED, false, 6, contentBox)));
-    infoPanel(s, items, summaryRect);
+    notes.forEach((n) => items.push(textItem(s, n, 10, MUTED, false, 6, contentBox, summaryScale)));
+    infoPanel(s, items, summaryRect, summaryScale);
     strip(s, p, true);
     return;
   }
@@ -316,15 +333,15 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
     const stat = calloutReport?.render({ slide: s, planned: p, part: "stat" });
     if (stat) items.push(stat);
   }
-  else if (v.headline) items.push(...headlineItems(s, v.headline, contentBox));
-  if (v.sentence) items.push(textItem(s, v.sentence, 12.5, INK, true, 5, contentBox));
-  if (v.filterLine) items.push(textItem(s, v.filterLine, 10, MUTED, true, 2, contentBox));
+  else if (v.headline) items.push(...headlineItems(s, v.headline, contentBox, summaryScale));
+  if (v.sentence) items.push(textItem(s, v.sentence, 12.5, INK, true, 5, contentBox, summaryScale));
+  if (v.filterLine) items.push(textItem(s, v.filterLine, 10, MUTED, true, 2, contentBox, summaryScale));
   // 도판(지도) 면에 구성비 수치를 반복하지 않는다
   const rows = p.body.face === "front" || p.body.face === "back" ? [] : v.rows.filter((r) => r.label !== v.headline?.label).slice(0, 5);
-  if (rows.length) items.push(...rowItems(s, rows, contentBox));
-  if (v.grades.length > 0) items.push(textItem(s, v.grades.map((g) => `${g.label} · ${g.criteria}`).join("\n"), 9, MUTED, false, 4, contentBox));
-  else if (v.grade) items.push(textItem(s, `거리 등급 ${v.grade.label} · ${v.grade.criteria}`, 9, MUTED, false, 3, contentBox));
-  if (notes.length) items.push(textItem(s, notes.join("\n"), 9, MUTED, false, 5, contentBox));
+  if (rows.length) items.push(...rowItems(s, rows, contentBox, summaryScale));
+  if (v.grades.length > 0) items.push(textItem(s, v.grades.map((g) => `${g.label} · ${g.criteria}`).join("\n"), 9, MUTED, false, 4, contentBox, summaryScale));
+  else if (v.grade) items.push(textItem(s, `거리 등급 ${v.grade.label} · ${v.grade.criteria}`, 9, MUTED, false, 3, contentBox, summaryScale));
+  if (notes.length) items.push(textItem(s, notes.join("\n"), 9, MUTED, false, 5, contentBox, summaryScale));
 
   if (chart) {
     // 전면 구성비 차트 (왼쪽 영역)
@@ -346,7 +363,7 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   } else if (co) calloutReport?.render({ slide: s, planned: p, part: "overview" });
   else legendPlate(s, p, hasSummary);
 
-  infoPanel(s, items, summaryRect);
+  infoPanel(s, items, summaryRect, summaryScale);
   strip(s, p, !chart);
 }
 
