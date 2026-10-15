@@ -32,6 +32,47 @@ export type CutSpec =
 export type LegacyCutSpec = CutSpec | CutCount;
 export type PinnedLabel = { key: string; on: boolean };
 
+export type PageKey = string;
+export type PageStyle = {
+  pinnedKeys?: string[];
+  legendFocus?: string | null;
+  zoomDelta?: number;
+  offsetM?: [number, number];
+  summary?: boolean;
+  titleScale?: number;
+  summaryScale?: number;
+  legendScale?: number;
+};
+export type ExtraReportPage = {
+  id: string;
+  after: PageKey | null;
+  tileId: string;
+  face: "front" | "back";
+};
+export type ReportState = {
+  styles: Record<PageKey, PageStyle>;
+  extra: ExtraReportPage[];
+};
+
+const PAGE_STYLE_SCALE_MIN = 0.7;
+const PAGE_STYLE_SCALE_MAX = 1.5;
+const PAGE_STYLE_ZOOM_MIN = -3;
+const PAGE_STYLE_ZOOM_MAX = 3;
+const PAGE_STYLE_KEYS = [
+  "pinnedKeys",
+  "legendFocus",
+  "zoomDelta",
+  "offsetM",
+  "summary",
+  "titleScale",
+  "summaryScale",
+  "legendScale",
+] as const;
+
+export function extraPageKey(id: string): PageKey {
+  return `extra:${id}`;
+}
+
 type TileSettingsSnapshot = {
   included?: boolean;
   faces?: OutputFace;
@@ -49,11 +90,11 @@ type TileSettingsSnapshot = {
 
 /** 되돌리기 한 단계. 모든 편집(순서·크기·제거·더하기)이 여기 쌓인다. */
 export type UndoEntry =
-  | { kind: "order"; id: string; order: string[] }
+  | { kind: "order"; id: string; order: string[]; report?: ReportState }
   | { kind: "size"; id: string; size: TileSize }
   | { kind: "columns"; columns: GridColumns }
-  | { kind: "remove"; id: string; index: number }
-  | { kind: "removeCopy"; id: string; sourceId: string; index: number; settings: TileSettingsSnapshot }
+  | { kind: "remove"; id: string; index: number; report?: ReportState }
+  | { kind: "removeCopy"; id: string; sourceId: string; index: number; settings: TileSettingsSnapshot; report?: ReportState }
   | { kind: "duplicate"; id: string; index: number }
   | { kind: "add"; id: string; trayIndex: number }
   | { kind: "preset"; preset: PresetId; order: string[]; included: Record<string, boolean>; removed: { id: string; index: number }[] };
@@ -130,6 +171,8 @@ export type BoardState = {
   mapLabels: Record<string, boolean>;
   /** copy:N → 원본 결과 타일 id. 복제본은 결과 배열을 늘리지 않고 보드 설정만 가진다. */
   instances: Record<string, string>;
+  /** 보고서 페이지별 표시 설정과 보드 타일에서 파생한 추가 페이지. */
+  report: ReportState;
   /** 빼 둔 타일(더할 수 있는 타일). index는 빼기 전 위치 */
   removed: { id: string; index: number }[];
   undoStack: UndoEntry[];
@@ -168,7 +211,11 @@ export type BoardAction =
   | { type: "toggleLabel"; id: string; key: string }
   | { type: "setAllLabels"; id: string; on: boolean }
   | { type: "mapLabels"; id: string; show: boolean }
-  | { type: "layer"; id: string; layer: string };
+  | { type: "layer"; id: string; layer: string }
+  | { type: "pageStyle"; keys: PageKey[]; patch: Partial<PageStyle> }
+  | { type: "pageStyleReset"; keys: PageKey[] }
+  | { type: "addPage"; id: string; after: PageKey | null; tileId: string; face: ExtraReportPage["face"] }
+  | { type: "removePage"; id: string };
 
 /** 카드의 현재 면 (편집 중에는 화면이 항상 요약면을 쓴다) */
 export const viewOf = (s: Pick<BoardState, "view" | "viewAll">, id: string): CardFace => s.view[id] ?? s.viewAll;
@@ -199,6 +246,7 @@ export function initBoard(results: TileResult[], preset: PresetId = DEFAULT_PRES
     layers: {},
     mapLabels: {},
     instances: {},
+    report: { styles: {}, extra: [] },
     removed: [],
     undoStack: [],
   };
@@ -302,6 +350,103 @@ function withoutRecordValue<T>(record: Record<string, T>, id: string): Record<st
   return next;
 }
 
+function clonePageStyle(style: PageStyle): PageStyle {
+  return {
+    ...(style.pinnedKeys ? { pinnedKeys: [...style.pinnedKeys] } : {}),
+    ...(style.legendFocus !== undefined ? { legendFocus: style.legendFocus } : {}),
+    ...(style.zoomDelta !== undefined ? { zoomDelta: style.zoomDelta } : {}),
+    ...(style.offsetM ? { offsetM: [style.offsetM[0], style.offsetM[1]] } : {}),
+    ...(style.summary !== undefined ? { summary: style.summary } : {}),
+    ...(style.titleScale !== undefined ? { titleScale: style.titleScale } : {}),
+    ...(style.summaryScale !== undefined ? { summaryScale: style.summaryScale } : {}),
+    ...(style.legendScale !== undefined ? { legendScale: style.legendScale } : {}),
+  };
+}
+
+function cloneReport(report: ReportState): ReportState {
+  return {
+    styles: Object.fromEntries(Object.entries(report.styles).map(([key, style]) => [key, clonePageStyle(style)])),
+    extra: report.extra.map((page) => ({ ...page })),
+  };
+}
+
+function reportWithoutTile(s: BoardState, tileId: string): { report: ReportState; undo: ReportState | undefined } {
+  const extra = s.report.extra.filter((page) => page.tileId !== tileId);
+  if (extra.length === s.report.extra.length) return { report: s.report, undo: undefined };
+  const styles: Record<PageKey, PageStyle> = {};
+  for (const [key, style] of Object.entries(s.report.styles)) {
+    const removed = s.report.extra.some((page) => page.tileId === tileId && key === extraPageKey(page.id));
+    if (!removed) styles[key] = clonePageStyle(style);
+  }
+  return {
+    report: { styles, extra: extra.map((page) => ({ ...page })) },
+    undo: cloneReport(s.report),
+  };
+}
+
+function restoreReportUndo(report: ReportState, undo: ReportState | undefined): ReportState {
+  return undo ? cloneReport(undo) : report;
+}
+
+function pageStyleValue(field: typeof PAGE_STYLE_KEYS[number], value: unknown): PageStyle | null {
+  if (field === "pinnedKeys") {
+    return Array.isArray(value)
+      ? { pinnedKeys: [...new Set(value.filter((item): item is string => typeof item === "string" && item.length > 0))] }
+      : null;
+  }
+  if (field === "offsetM") {
+    return Array.isArray(value) && value.length === 2 && value.every((item) => typeof item === "number" && Number.isFinite(item))
+      ? { offsetM: [value[0] as number, value[1] as number] }
+      : null;
+  }
+  if (field === "legendFocus") return value === null || (typeof value === "string" && value.length > 0) ? { legendFocus: value } : null;
+  if (field === "summary") return typeof value === "boolean" ? { summary: value } : null;
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  if (field === "zoomDelta") return { zoomDelta: Math.max(PAGE_STYLE_ZOOM_MIN, Math.min(PAGE_STYLE_ZOOM_MAX, value)) };
+  const scale = Math.max(PAGE_STYLE_SCALE_MIN, Math.min(PAGE_STYLE_SCALE_MAX, value));
+  return { [field]: scale } as PageStyle;
+}
+
+function mergePageStyle(current: PageStyle | undefined, patch: Partial<PageStyle>): PageStyle | undefined {
+  const next = clonePageStyle(current ?? {});
+  for (const field of PAGE_STYLE_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(patch, field)) continue;
+    const value = patch[field];
+    if (value === undefined) {
+      delete next[field];
+      continue;
+    }
+    const normalized = pageStyleValue(field, value);
+    if (normalized) Object.assign(next, normalized);
+  }
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
+function pageStyleRecordsEqual(a: PageStyle | undefined, b: PageStyle | undefined): boolean {
+  if (!a || !b) return !a && !b;
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function validReportTile(s: BoardState, tileId: string): boolean {
+  return s.order.includes(tileId) || s.results.some((result) => result.tileId === tileId);
+}
+
+function reportPageFromAction(s: BoardState, action: Extract<BoardAction, { type: "addPage" }>): ExtraReportPage | null {
+  const id = typeof action.id === "string" && action.id.length > 0 ? action.id : null;
+  if (action.after !== null && typeof action.after !== "string") return null;
+  const after = action.after;
+  const tileId = typeof action.tileId === "string" && action.tileId.length > 0 ? action.tileId : null;
+  const face = action.face === "front" || action.face === "back" ? action.face : null;
+  if (!id || tileId === null || face === null || !validReportTile(s, tileId)) return null;
+  if (s.report.extra.some((page) => page.id === id)) return null;
+  return { id, after, tileId, face };
+}
+
+/** report 변경도 기존 UI가 소비하는 order undo 형태로 한 단계만 쌓는다. */
+function reportUndoEntry(s: BoardState): Extract<UndoEntry, { kind: "order" }> {
+  return { kind: "order", id: s.order[0] ?? SUMMARY_ID, order: [...s.order], report: cloneReport(s.report) };
+}
+
 function restoreTileSettings(s: BoardState, id: string, settings: TileSettingsSnapshot): BoardState {
   return {
     ...s,
@@ -321,6 +466,7 @@ function restoreTileSettings(s: BoardState, id: string, settings: TileSettingsSn
 }
 
 function removeInstance(s: BoardState, id: string): BoardState {
+  const report = reportWithoutTile(s, id).report;
   return {
     ...s,
     order: s.order.filter((candidate) => candidate !== id),
@@ -337,6 +483,7 @@ function removeInstance(s: BoardState, id: string): BoardState {
     labels: withoutRecordValue(s.labels, id),
     mapLabels: withoutRecordValue(s.mapLabels, id),
     layers: withoutRecordValue(s.layers, id),
+    report,
   };
 }
 
@@ -396,23 +543,26 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
       if (index < 0) return s;
       const sourceId = s.instances[a.id];
       if (sourceId) {
-        const next = removeInstance(s, a.id);
+        const reportCleanup = reportWithoutTile(s, a.id);
+        const next = { ...removeInstance(s, a.id), report: reportCleanup.report };
         return {
           ...next,
-          undoStack: [...s.undoStack, { kind: "removeCopy", id: a.id, sourceId, index, settings: copyTileSettings(s, a.id) }],
+          undoStack: [...s.undoStack, { kind: "removeCopy", id: a.id, sourceId, index, settings: copyTileSettings(s, a.id), report: reportCleanup.undo }],
         };
       }
       const stacks = { ...s.stacks };
       delete stacks[a.id];
       const sheets = { ...s.sheets };
       delete sheets[a.id];
+      const reportCleanup = reportWithoutTile(s, a.id);
       return {
         ...s,
         order: s.order.filter((x) => x !== a.id),
         stacks,
         sheets,
+        report: reportCleanup.report,
         removed: [...s.removed, { id: a.id, index }],
-        undoStack: [...s.undoStack, { kind: "remove", id: a.id, index }],
+        undoStack: [...s.undoStack, { kind: "remove", id: a.id, index, report: reportCleanup.undo }],
       };
     }
     case "duplicate": {
@@ -442,7 +592,7 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
       const rest = { undoStack: s.undoStack.slice(0, -1) };
       switch (u.kind) {
         case "order":
-          return { ...s, ...rest, order: u.order };
+          return { ...s, ...rest, order: u.order, ...(u.report ? { report: cloneReport(u.report) } : {}) };
         case "size":
           return { ...s, ...rest, sizes: { ...s.sizes, [u.id]: u.size } };
         case "columns":
@@ -450,14 +600,14 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
         case "remove": {
           const order = [...s.order];
           order.splice(Math.min(u.index, order.length), 0, u.id);
-          return { ...s, ...rest, order, removed: s.removed.filter((r) => r.id !== u.id) };
+          return { ...s, ...rest, order, report: restoreReportUndo(s.report, u.report), removed: s.removed.filter((r) => r.id !== u.id) };
         }
         case "removeCopy": {
           if (s.order.includes(u.id)) return { ...s, ...rest };
           const order = [...s.order];
           order.splice(Math.min(u.index, order.length), 0, u.id);
           const restored = restoreTileSettings({ ...s, order, instances: { ...s.instances, [u.id]: u.sourceId } }, u.id, u.settings);
-          return { ...restored, undoStack: rest.undoStack };
+          return { ...restored, report: restoreReportUndo(restored.report, u.report), undoStack: rest.undoStack };
         }
         case "duplicate":
           return { ...removeInstance(s, u.id), ...rest };
@@ -647,6 +797,63 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
       if (result && !layerOptionsForResult(result).some((option) => option.id === normalizedLayerId)) return s;
       return { ...s, layers: { ...s.layers, [a.id]: normalizedLayerId } };
     }
+    case "pageStyle": {
+      if (!a.patch || typeof a.patch !== "object" || Array.isArray(a.patch) || !Array.isArray(a.keys)) return s;
+      const keys = [...new Set(a.keys.filter((key): key is string => typeof key === "string" && key.length > 0))];
+      if (keys.length === 0) return s;
+      const styles = { ...s.report.styles };
+      let changed = false;
+      for (const key of keys) {
+        const previous = styles[key];
+        const next = mergePageStyle(previous, a.patch);
+        if (pageStyleRecordsEqual(previous, next)) continue;
+        changed = true;
+        if (next) styles[key] = next;
+        else delete styles[key];
+      }
+      return changed
+        ? { ...s, report: { ...s.report, styles }, undoStack: [...s.undoStack, reportUndoEntry(s)] }
+        : s;
+    }
+    case "pageStyleReset": {
+      if (!Array.isArray(a.keys)) return s;
+      const keys = [...new Set(a.keys.filter((key): key is string => typeof key === "string" && key.length > 0))];
+      const styles = { ...s.report.styles };
+      let changed = false;
+      for (const key of keys) {
+        if (!(key in styles)) continue;
+        delete styles[key];
+        changed = true;
+      }
+      return changed
+        ? { ...s, report: { ...s.report, styles }, undoStack: [...s.undoStack, reportUndoEntry(s)] }
+        : s;
+    }
+    case "addPage": {
+      const page = reportPageFromAction(s, a);
+      if (!page) return s;
+      return {
+        ...s,
+        report: { ...s.report, extra: [...s.report.extra, page] },
+        undoStack: [...s.undoStack, reportUndoEntry(s)],
+      };
+    }
+    case "removePage": {
+      if (typeof a.id !== "string" || a.id.length === 0) return s;
+      const direct = s.report.extra.findIndex((page) => page.id === a.id);
+      const prefixed = a.id.startsWith("extra:") ? a.id.slice("extra:".length) : null;
+      const index = direct >= 0 ? direct : prefixed === null ? -1 : s.report.extra.findIndex((page) => page.id === prefixed);
+      if (index < 0) return s;
+      const removed = s.report.extra[index]!;
+      const extra = s.report.extra.filter((_, pageIndex) => pageIndex !== index);
+      const styles = { ...s.report.styles };
+      delete styles[extraPageKey(removed.id)];
+      return {
+        ...s,
+        report: { styles, extra },
+        undoStack: [...s.undoStack, reportUndoEntry(s)],
+      };
+    }
   }
 }
 
@@ -676,6 +883,8 @@ export type BoardStateSnapshot = {
   mapLabels?: Record<string, boolean>;
   /** copy:N → 원본 결과 타일 id. 이전 저장본에는 없다. */
   instances?: Record<string, string>;
+  /** 페이지별 보고서 설정. 기존 저장본에는 없다. */
+  report?: ReportState;
   removed: { id: string; index: number }[];
 };
 
@@ -707,6 +916,7 @@ export function serializeBoardState(s: BoardState): BoardStateSnapshot {
     layers: { ...s.layers },
     mapLabels: { ...s.mapLabels },
     instances: { ...s.instances },
+    report: cloneReport(s.report),
     removed: s.removed.map((item) => ({ ...item })),
   };
 }
@@ -721,6 +931,59 @@ const isCardFace = (value: unknown): value is CardFace => value === "summary" ||
 const isTileSize = (value: unknown): value is TileSize => value === 1 || value === 2 || value === 4;
 const isGridColumns = (value: unknown): value is GridColumns => value === 2 || value === 3 || value === 4 || value === 5 || value === 6;
 const isTileKind = (value: unknown): value is TileResult["tileType"] => value === "analysis" || value === "diagram" || value === "simulation" || value === "stack";
+
+function normalizePageStyle(value: unknown): PageStyle | null {
+  if (!isRecord(value)) return null;
+  const style: PageStyle = {};
+  for (const field of PAGE_STYLE_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(value, field)) continue;
+    const normalized = pageStyleValue(field, value[field]);
+    if (normalized) Object.assign(style, normalized);
+  }
+  return Object.keys(style).length > 0 ? style : null;
+}
+
+function normalizeReport(value: unknown): ReportState {
+  const raw = isRecord(value) ? value : {};
+  const styles: Record<PageKey, PageStyle> = {};
+  for (const [key, style] of Object.entries(recordOf(raw.styles))) {
+    if (!key) continue;
+    const normalized = normalizePageStyle(style);
+    if (normalized) styles[key] = normalized;
+  }
+  const extra: ExtraReportPage[] = [];
+  const ids = new Set<string>();
+  if (Array.isArray(raw.extra)) {
+    for (const value of raw.extra) {
+      if (!isRecord(value)) continue;
+      const id = typeof value.id === "string" && value.id.length > 0 ? value.id : null;
+      const after = value.after === null || typeof value.after === "string" ? value.after : null;
+      const tileId = typeof value.tileId === "string" && value.tileId.length > 0 ? value.tileId : null;
+      const face = value.face === "front" || value.face === "back" ? value.face : null;
+      if (!id || ids.has(id) || tileId === null || face === null) continue;
+      ids.add(id);
+      extra.push({ id, after, tileId, face });
+    }
+  }
+  return { styles, extra };
+}
+
+function restoreReport(value: unknown, validTileIds: ReadonlySet<string>): ReportState {
+  const normalized = normalizeReport(value);
+  const extra: ExtraReportPage[] = [];
+  const ids = new Set<string>();
+  for (const page of normalized.extra) {
+    if (ids.has(page.id) || !validTileIds.has(page.tileId)) continue;
+    ids.add(page.id);
+    extra.push({ ...page });
+  }
+  const styles: Record<PageKey, PageStyle> = {};
+  for (const [key, style] of Object.entries(normalized.styles)) {
+    if (key.startsWith("extra:") && !ids.has(key.slice("extra:".length))) continue;
+    styles[key] = clonePageStyle(style);
+  }
+  return { styles, extra };
+}
 
 function rawSnapshot(raw: unknown): Record<string, unknown> | null {
   if (typeof raw === "string") {
@@ -795,6 +1058,11 @@ export function rewriteSnapshotIds(snapshot: BoardStateSnapshot, mapId: IdMapper
     const mapped = mapId(id);
     if (!(mapped in instances)) instances[mapped] = mapId(sourceId);
   }
+  const report = normalizeReport(snapshot.report);
+  const reportStyles: Record<PageKey, PageStyle> = {};
+  for (const [key, style] of Object.entries(report.styles)) {
+    if (!(key in reportStyles)) reportStyles[key] = style;
+  }
   return {
     ...snapshot,
     order: unique(stringsOf(snapshot.order).map(mapId)),
@@ -814,6 +1082,10 @@ export function rewriteSnapshotIds(snapshot: BoardStateSnapshot, mapId: IdMapper
     layers,
     mapLabels: mapIdRecord<boolean>(snapshot.mapLabels, mapId),
     instances,
+    report: {
+      styles: reportStyles,
+      extra: report.extra.map((page) => ({ ...page, tileId: mapId(page.tileId) })),
+    },
     removed: Array.isArray(snapshot.removed)
       ? (() => {
           const seen = new Set<string>();
@@ -892,6 +1164,7 @@ export function migrateSnapshot(raw: unknown): BoardStateSnapshot | null {
     ...migrated,
     columns: isGridColumns(migrated.columns) ? migrated.columns : 4,
     preset: isPresetId(migrated.preset) ? migrated.preset : DEFAULT_PRESET_ID,
+    report: normalizeReport(migrated.report),
     version: BOARD_STATE_VERSION,
   };
 }
@@ -933,6 +1206,8 @@ export function restoreBoardState(results: TileResult[], raw: unknown, fallbackP
   }
   const compositeIds = new Set([...Object.keys(savedStacks), ...Object.keys(savedSheets)]);
   const validIds = new Set([...validTileIds, ...compositeIds]);
+  const validReportTileIds = new Set([...validIds, ...results.map((result) => result.tileId)]);
+  const report = restoreReport(saved.report, validReportTileIds);
   const savedOrder = unique(stringsOf(saved.order)).filter((id) => validIds.has(id));
   const order = savedOrder.length > 0 ? savedOrder : base.order;
 
@@ -1024,6 +1299,7 @@ export function restoreBoardState(results: TileResult[], raw: unknown, fallbackP
     mapLabels,
     layers,
     instances: savedInstances,
+    report,
     removed,
     undoStack: [],
   };
@@ -1055,6 +1331,7 @@ function cutPagesForResult(result: TileResult, cut: CutSpec): number {
 /**
  * 표지 1장 + 포함된 타일 + 출처 장. 출력 면 both는 2장.
  * 설명선 타일은 단지 수(complexCounts[tileId])와 설명표 설정에 따라 개요 + 설명표 장 수만큼 (report-plan과 같은 계산).
+ * 추가 보고서 페이지는 여기서 한 장씩 더한다. 다음 report-plan 단계도 이 extra 규칙을 소비해야 한다.
  */
 export function reportPages(s: BoardState, complexCounts: Record<string, number> = {}, sourcePages = 1): { tiles: number; pages: number } {
   let tiles = 0;
@@ -1071,6 +1348,7 @@ export function reportPages(s: BoardState, complexCounts: Record<string, number>
         ? cutPages
         : s.faces[id] === "both" ? 2 : 1;
   }
+  pages += s.report.extra.length;
   return { tiles, pages };
 }
 
