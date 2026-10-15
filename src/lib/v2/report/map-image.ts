@@ -21,9 +21,10 @@ import { BASEMAP_STACK, framedViewport, tilesFor, tileUrl, type BasemapChoice } 
 import { inflateRaster, paintRaster } from "../ui/raster-image";
 import { RASTER_STYLES } from "../ui/map-layers";
 import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
+import { sheetCells, type SheetGrid } from "../ui/sheet";
 import { mapKeyOf, type PlannedSlide } from "./report-plan";
 import type { MapImages } from "./render-pptx";
-import { isEditableMap } from "./map-pptx";
+import { nativeMapStatus } from "./map-pptx";
 
 // 슬라이드 비율(16:9)로 그린다: 지도가 슬라이드 전체이고 오버레이는 pptx 도형이 얹는다
 const VIEW_W = 960;
@@ -31,7 +32,10 @@ const VIEW_H = 540;
 const OUT_W = 1920;
 const OUT_H = 1080;
 const PX_PER_INCH = VIEW_W / SLIDE.w;
-type Extra = Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "scale" | "legend" | "bare" | "pinnedKeys" | "north" | "credit" | "label" | "rightInset" | "backgroundOnly">;
+type Extra = Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "scale" | "legend" | "bare" | "pinnedKeys" | "north" | "credit" | "label" | "rightInset" | "backgroundOnly"> & {
+  size?: { width: number; height: number };
+  bottomInset?: number;
+};
 type MassExplodedOptions = { spreadPct: number; scheme?: MassColorScheme };
 const TILE_TIMEOUT_MS = 8000;
 
@@ -66,6 +70,7 @@ export async function fetchTile(url: string): Promise<string | null> {
 export function svgOf(model: MapModel, tiles: Map<string, string>, layer: BasemapChoice, extra: Extra, rasterCache: Map<string, string>, width = VIEW_W, height = VIEW_H): string {
   const host = document.createElement("div");
   const root = createRoot(host);
+  const { size: _size, bottomInset, ...figureExtra } = extra;
   try {
     const usable = tiles.size > 0;
     const activeLayer = effectiveLayer(model, layer);
@@ -84,11 +89,11 @@ export function svgOf(model: MapModel, tiles: Map<string, string>, layer: Basema
           // 범례·북쪽·저작권은 슬라이드의 판/출처 띠가 대신한다 (축척만 그림 안, 출처 띠 위)
           legend: extra.legend ?? false,
           bare: extra.bare,
-           north: extra.north ?? false,
-           credit: extra.credit ?? false,
-           backgroundOnly: extra.backgroundOnly ?? false,
-          bottomInset: slideLayout().strip.h * (width / SLIDE.w),
-          ...extra,
+          north: extra.north ?? false,
+          credit: extra.credit ?? false,
+          backgroundOnly: extra.backgroundOnly ?? false,
+          bottomInset: bottomInset ?? slideLayout().strip.h * (width / SLIDE.w),
+          ...figureExtra,
         }),
       ),
     );
@@ -122,7 +127,7 @@ export async function loadRasters(model: MapModel, rasterCache: Map<string, stri
 export async function prefetchRasters(plan: PlannedSlide[], analysisId: string): Promise<Map<string, string>> {
   const models: MapModel[] = [];
   for (const slide of plan) {
-    if (slide.kind === "sheet") models.push(...slide.cells.map((cell) => cell.view.map).filter((model): model is MapModel => !!model));
+    if (slide.kind === "sheet") models.push(...slide.cells.map(mapForCell).filter((model): model is MapModel => !!model));
     else if (slide.map) models.push(slide.map);
   }
   const cache = new Map<string, string>();
@@ -174,7 +179,7 @@ async function toImage(svg: string, mime: "image/png" | "image/jpeg", quality?: 
 
 /** true PNG path; JPEG quality 0.82 belongs only to toJpeg below. */
 export const toPng = (svg: string, width = OUT_W, height = OUT_H): Promise<string> => toImage(svg, "image/png", undefined, width, height);
-const toJpeg = (svg: string): Promise<string> => toImage(svg, "image/jpeg", 0.82);
+const toJpeg = (svg: string, width = OUT_W, height = OUT_H): Promise<string> => toImage(svg, "image/jpeg", 0.82, width, height);
 
 /** 타일 저장용 SVG → PNG. scale=2이면 1600×1200 SVG가 3200×2400 PNG가 된다. */
 export const svgToPng = (svg: string, width: number, height: number, scale = 2): Promise<string> => toPng(svg, Math.round(width * scale), Math.round(height * scale));
@@ -187,7 +192,9 @@ export async function rasterizeMap(
   extra: Extra = {},
   rasterCache: Map<string, string> = new Map(),
 ): Promise<string> {
-  const vp = framedViewport(model.center, model.radiusM, VIEW_W, VIEW_H, extra.siteX, extra.fill);
+  const width = extra.size?.width ?? VIEW_W;
+  const height = extra.size?.height ?? VIEW_H;
+  const vp = framedViewport(model.center, model.radiusM, width, height, extra.siteX, extra.fill);
   const activeLayer = effectiveLayer(model, layer);
   const urls = BASEMAP_STACK[activeLayer].flatMap((ly) => tilesFor(vp).map((t) => tileUrl(ly, t.z, t.x, t.y)));
   await Promise.all(
@@ -203,7 +210,14 @@ export async function rasterizeMap(
     if (d) got.set(u, d);
   }
   await loadRasters(model, rasterCache);
-  return toJpeg(svgOf(model, got, activeLayer, extra, rasterCache));
+  return toJpeg(svgOf(model, got, activeLayer, extra, rasterCache, width, height), Math.max(1, Math.round(width * 2)), Math.max(1, Math.round(height * 2)));
+}
+
+type SheetCell = Extract<PlannedSlide, { kind: "sheet" }>["cells"][number];
+function mapForCell(cell: SheetCell): MapModel | null {
+  const model = cell.view.map ?? cell.view.backdrop;
+  if (!model) return null;
+  return model.tileCode ? model : { ...model, tileCode: cell.view.code };
 }
 
 export function rasterizeMass(mass: MassModel, exploded?: MassExplodedOptions): Promise<string>;
@@ -262,12 +276,28 @@ export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice 
   const out: MapImages = {};
   for (const p of plan) {
     if (p.kind === "sheet") {
-      for (const cell of p.cells) {
+      const cells = sheetCells(p.grid as SheetGrid);
+      for (const [cellIndex, cell] of p.cells.entries()) {
         if (out[cell.mapKey]) continue;
         try {
           if (cell.mass) out[cell.mapKey] = await rasterizeMass(cell.mass, cell.mass.exploded);
           else if (cell.rose) out[cell.mapKey] = await rasterizeRose(cell.rose, VIEW_W, VIEW_H, cell.roseSeason ?? "annual");
-          else if (cell.view.map) out[cell.mapKey] = await rasterizeMap(cell.view.map, cache, effectiveLayer(cell.view.map, layer), { siteX: 0.5, avoid: [], legend: true, bare: false, pinnedKeys: cell.pinnedKeys }, rasterCache);
+          else {
+            const model = mapForCell(cell);
+            const rect = cells[cellIndex];
+            if (!model || !rect) continue;
+            const status = nativeMapStatus(model);
+            out[cell.mapKey] = await rasterizeMap(model, cache, effectiveLayer(model, layer), {
+              siteX: 0.5,
+              avoid: [],
+              legend: false,
+              bare: false,
+              pinnedKeys: cell.pinnedKeys,
+              backgroundOnly: status.native ? status.rasterLayers : false,
+              size: { width: Math.max(1, Math.round(rect.w * PX_PER_INCH)), height: Math.max(1, Math.round(rect.h * PX_PER_INCH)) },
+              bottomInset: 0,
+            }, rasterCache);
+          }
         } catch (e) {
           console.warn(`조판 셀 이미지 생성 실패 (${cell.mapKey})`, e);
         }
@@ -296,8 +326,9 @@ export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice 
     if (!model) continue;
     try {
       const extra = extraFor(p, model);
-      const nativeBackground = p.kind === "tile" && !(p.callout && p.callout.page > 0) && isEditableMap(model);
-      out[key] = await rasterizeMap(model, cache, effectiveLayer(model, layer), { ...extra, backgroundOnly: nativeBackground }, rasterCache);
+      const status = nativeMapStatus(model);
+      const nativeBackground = p.kind === "tile" && status.native;
+      out[key] = await rasterizeMap(model, cache, effectiveLayer(model, layer), { ...extra, backgroundOnly: nativeBackground ? status.rasterLayers : false }, rasterCache);
     } catch (e) {
       console.warn(`지도 이미지 생성 실패 (${key})`, e);
     }

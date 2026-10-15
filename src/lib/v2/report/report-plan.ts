@@ -290,7 +290,9 @@ export function buildReportPlan(input: {
           view: v,
           body: { kind: "result", face: "single" },
           faceLabel: null,
-          map: v.backdrop,
+          // A05/A06 설명선 장도 실제 타일의 backdrop을 사용하되 tileCode를
+          // 보강해 PPT native map 경로와 화면용 지도 판정을 공유한다.
+          map: { ...v.backdrop, tileCode: v.code },
           muted: false,
           callout: { model: cm, page, pages: pageCount(cm.complexes.length), filterLine: v.filterLine },
           footer: v.filterLine ? `${v.filterLine} · ${sourceFooter}` : sourceFooter,

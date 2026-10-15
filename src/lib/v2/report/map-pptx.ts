@@ -1,9 +1,10 @@
 import PptxGenJS from "pptxgenjs";
-import { buildingStyleForRaster, isBuildingLayer, layerStyle, type MapModel } from "../ui/map-layers";
+import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, legendItemsForModel, type MapModel } from "../ui/map-layers";
 import { isSiteParcelLayer } from "../ui/site-parcel";
-import { SLIDE, slideLayout, slideLegend, slideReserved, slideSiteX } from "../ui/overlay-layout";
+import { SLIDE, slideCalloutLegendLayout, slideLayout, slideLegend, slideReserved, slideSiteX } from "../ui/overlay-layout";
 import { SLIDE_OVERVIEW_FILL } from "../ui/callout-layout";
 import { buildMapScene, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, type MapScene, type MapSceneBox } from "../ui/map-scene";
+import { badgeTextColor } from "../ui/map-labels";
 import { FONT, INK, hex, type Slide } from "./pptx-kit";
 import type { PlannedSlide } from "./report-plan";
 
@@ -11,8 +12,16 @@ const VIEW_W = 960;
 const VIEW_H = 540;
 const PX_PER_INCH = VIEW_W / SLIDE.w;
 const PX_TO_PT = 0.75;
-const EDITABLE_CODES = new Set(["A01", "A09", "D02", "D13"]);
 const MAX_LAYER_ELEMENTS = 1500;
+
+export type NativeMapFrame = { x: number; y: number; w: number; h: number };
+export type NativeMapMode = "tile" | "cell";
+export type NativeMapOptions = {
+  frame?: NativeMapFrame;
+  mode?: NativeMapMode;
+  /** 셀마다 같은 범례가 별도 그룹이 되도록 하는 슬라이드 내 scope. */
+  scope?: string;
+};
 
 export type NativeMapStatus = {
   code: string | undefined;
@@ -21,6 +30,10 @@ export type NativeMapStatus = {
   estimatedShapes: number;
   layerCounts: Record<string, number>;
   denseLayers: string[];
+  /** 값 래스터·배경 타일은 늘 이미지로 남고, 이 목록은 도형 수 상한을 넘은 벡터 층이다. */
+  rasterLayers: string[];
+  /** scene에 대응하는 native 도형이 없는 값 래스터 이름. */
+  rasterValues: string[];
 };
 
 const color = (value: string): string => {
@@ -51,15 +64,15 @@ export function nativeMapStatus(model: MapModel): NativeMapStatus {
     + badgeCount * 2
     + Math.max(0, Math.ceil(model.radiusM / 500));
   const code = model.tileCode;
-  const native = !!code && EDITABLE_CODES.has(code) && denseLayers.length === 0;
+  // tileCode가 있는 지도는 모두 native 경로로 보낸다. 밀집 층은 아래
+  // rasterLayers만 배경 SVG에 남겨 나머지 층의 편집성을 보존한다.
+  const native = !!code;
   const reason = !code
     ? "tileCode 없음"
-    : !EDITABLE_CODES.has(code)
-      ? `1단계 대표 타일 외 타일(${code})`
-      : denseLayers.length > 0
-        ? `레이어 도형 수 상한 초과: ${denseLayers.join(", ")}`
-        : "대표 타일 네이티브 경로";
-  return { code, native, reason, estimatedShapes, layerCounts: Object.fromEntries(layerCounts), denseLayers };
+    : denseLayers.length > 0
+      ? `레이어 도형 수 상한 초과: ${denseLayers.join(", ")}`
+      : "tileCode 지도 네이티브 경로";
+  return { code, native, reason, estimatedShapes, layerCounts: Object.fromEntries(layerCounts), denseLayers, rasterLayers: denseLayers, rasterValues: (model.rasters ?? []).map((raster) => raster.name) };
 }
 
 export function isEditableMap(model: MapModel | null | undefined): boolean {
@@ -68,12 +81,62 @@ export function isEditableMap(model: MapModel | null | undefined): boolean {
 
 export function nativeMapFallbackNote(model: MapModel): string {
   const status = nativeMapStatus(model);
-  return `지도 네이티브 도형 폴백: ${status.reason}. 이미지 배경/기존 지도 표현을 유지했습니다.`;
+  const rasterNote = status.rasterValues.length > 0 ? ` 값 래스터 배경 유지: ${status.rasterValues.join(", ")}.` : "";
+  return status.denseLayers.length > 0
+    ? `지도 네이티브 도형 폴백: ${status.reason}. 해당 층은 배경 래스터로 유지했습니다.${rasterNote}`
+    : status.rasterValues.length > 0
+      ? `지도 네이티브 도형 폴백: 값 래스터는 도형화하지 않고 배경 래스터로 유지했습니다.${rasterNote}`
+      : `지도 네이티브 도형 폴백: ${status.reason}. 이미지 배경/기존 지도 표현을 유지했습니다.`;
 }
 
-function pxX(x: number): number { return (x / VIEW_W) * SLIDE.w; }
-function pxY(y: number): number { return (y / VIEW_H) * SLIDE.h; }
-function pxPt(value: number): number { return value * PX_TO_PT; }
+const FULL_FRAME: NativeMapFrame = { x: 0, y: 0, w: SLIDE.w, h: SLIDE.h };
+let activeFrame = FULL_FRAME;
+let activeSceneWidth = VIEW_W;
+let activeSceneHeight = VIEW_H;
+let activeRasterLayers = new Set<string>();
+let activeMode: NativeMapMode = "tile";
+
+const CELL_LEGEND_MAX_ITEMS = 4;
+const CELL_LEGEND_ROW_H = 28;
+const CELL_LEGEND_PAD = 10;
+
+type CellLegendItem = ReturnType<typeof slideLegend>["items"][number];
+
+function cellLegendItems(model: MapModel): CellLegendItem[] {
+  const all = slideLegend(model, true).items;
+  if (all.length <= CELL_LEGEND_MAX_ITEMS) return all;
+  const site = all.find((item) => item.site);
+  const nonSite = all.filter((item) => !item.site);
+  const shown = nonSite.slice(0, Math.max(1, CELL_LEGEND_MAX_ITEMS - (site ? 2 : 1)));
+  const hidden = all.length - shown.length - (site ? 1 : 0);
+  return [
+    ...shown,
+    ...(site ? [site] : []),
+    { layer: "__more__", label: `외 ${hidden}`, color: "#7A7E87" },
+  ];
+}
+
+function cellLegendLayout(model: MapModel): { items: CellLegendItem[]; x: number; y: number; w: number; h: number; box: MapSceneBox } | null {
+  const base = slideLegend(model, true).rect;
+  if (!base) return null;
+  const items = cellLegendItems(model);
+  const x = 24;
+  const w = Math.min(activeSceneWidth - x * 2, Math.max(220, base.w * PX_PER_INCH));
+  const h = CELL_LEGEND_PAD * 2 + items.length * CELL_LEGEND_ROW_H;
+  const y = activeSceneHeight - 24 - h;
+  return { items, x, y, w, h, box: { x0: x, y0: y, x1: x + w, y1: y + h } };
+}
+
+function fontPt(value: number, regularFloor: number): number {
+  return Math.max(activeMode === "cell" ? 8 : regularFloor, pxPt(value));
+}
+
+function pxX(x: number): number { return activeFrame.x + (x / activeSceneWidth) * activeFrame.w; }
+function pxY(y: number): number { return activeFrame.y + (y / activeSceneHeight) * activeFrame.h; }
+function pxW(value: number): number { return (value / VIEW_W) * activeFrame.w; }
+function pxH(value: number): number { return (value / activeSceneHeight) * activeFrame.h; }
+function pxPt(value: number): number { return value * PX_TO_PT * Math.min(activeFrame.w / SLIDE.w, activeFrame.h / SLIDE.h); }
+function isRasterizedLayer(layer: string): boolean { return activeRasterLayers.has(layer); }
 
 type PixelPoint = readonly [number, number];
 type PixelPath = readonly PixelPoint[];
@@ -113,7 +176,7 @@ function clipSegmentToFrame(a: PixelPoint, b: PixelPoint, width: number, height:
   return [[a[0] + dx * t0, a[1] + dy * t0], [a[0] + dx * t1, a[1] + dy * t1]];
 }
 
-function clipRailPath(points: PixelPath, width = VIEW_W, height = VIEW_H): PixelPath[] {
+function clipRailPath(points: PixelPath, width = activeSceneWidth, height = activeSceneHeight): PixelPath[] {
   const clipped: PixelPath[] = [];
   for (let index = 1; index < points.length; index += 1) {
     const segment = clipSegmentToFrame(points[index - 1]!, points[index]!, width, height);
@@ -128,6 +191,20 @@ function clipRailPath(points: PixelPath, width = VIEW_W, height = VIEW_H): Pixel
 
 function tag(code: string, key: string, display: string, part: string): string {
   return `GRP|map-${safeKey(code)}-${safeKey(key)}|${safeKey(display)}|${safeKey(part)}`;
+}
+
+function legendLabelFor(model: MapModel, layer: string, explicit?: string): string {
+  if (explicit?.trim()) return explicit.trim();
+  const presented = legendItemsForModel(model);
+  const exact = presented.find((item) => item.layer === layer);
+  if (exact) return exact.label;
+  const style = layerStyle(layer);
+  return presented.find((item) => item.label === style.label)?.label ?? legendItems(model).find((item) => item.label === style.label)?.label ?? style.label;
+}
+
+function legendTag(model: MapModel, code: string, layer: string, part: string, explicit?: string): string {
+  const label = legendLabelFor(model, layer, explicit);
+  return tag(code, `legend-${safeKey(label)}`, `범례 ${label}`, part);
 }
 
 function addCustom(
@@ -179,24 +256,59 @@ function addSegment(slide: Slide, a: PixelPoint, b: PixelPoint, lineColor: strin
   });
 }
 
-function sceneFor(plan: PlannedSlide & { kind: "tile" }, model: MapModel): MapScene {
+function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "tile" }; mode?: NativeMapMode }): MapScene {
+  const mode = options.mode ?? "tile";
+  if (mode === "cell") {
+    const width = VIEW_W;
+    const height = activeSceneHeight;
+    const cellLegend = cellLegendLayout(model);
+    return buildMapScene({
+      model,
+      width,
+      height,
+      activeLayer: model.basemap ?? "white",
+      siteX: 0.5,
+      bottomInset: cellLegend ? cellLegend.h + 32 : 0,
+      scale: true,
+      compact: true,
+      pinnedKeys: [],
+      showAutomaticLabels: true,
+      legendBox: cellLegend?.box ?? null,
+      avoid: [],
+      bare: false,
+    });
+  }
+  const plan = options.plan!;
   const legend = slideLegend(model, !plan.muted).rect;
-  const avoid = slideReserved(PX_PER_INCH, { legend });
   const calloutOverview = !!plan.callout && plan.callout.page === 0;
-  // 지도 위 판(제목·정보·범례)을 피한다: 방위표·축척·오른쪽 말풍선은 정보 판 왼쪽, 말풍선은 제목 판 아래·범례 판 위.
   const layout = slideLayout();
+  const calloutLegend = calloutOverview
+    ? slideCalloutLegendLayout(
+      [
+        { text: plan.callout!.model.legend.title },
+        ...plan.callout!.model.legend.items.map((item) => ({ text: item.label, color: item.color, hollow: item.hollow === true })),
+        { text: plan.callout!.model.legend.sizeLabel },
+      ],
+      SLIDE.edge,
+      layout.legendBottom,
+      layout.info.x - 2 * SLIDE.edge,
+    )?.rect ?? null
+    : null;
+  const avoid = slideReserved(PX_PER_INCH, { legend, calloutLegend });
+  // 지도 위 판(제목·정보·범례)을 피한다: 방위표·축척·오른쪽 말풍선은 정보 판 왼쪽, 말풍선은 제목 판 아래·범례 판 위.
   const gap = SLIDE.edge * PX_PER_INCH * 0.5;
+  const lowerOverlayTop = Math.min(legend?.y ?? SLIDE.h, calloutLegend?.y ?? SLIDE.h);
   return buildMapScene({
     rightInset: VIEW_W - layout.info.x * PX_PER_INCH + gap,
     calloutTop: (layout.title.y + layout.title.h) * PX_PER_INCH + gap,
-    ...(legend ? { calloutLeftBottom: legend.y * PX_PER_INCH - gap } : {}),
+    ...(lowerOverlayTop < SLIDE.h ? { calloutLeftBottom: lowerOverlayTop * PX_PER_INCH - gap } : {}),
     model,
     width: VIEW_W,
     height: VIEW_H,
     activeLayer: model.basemap ?? "white",
     fill: calloutOverview ? SLIDE_OVERVIEW_FILL : undefined,
     siteX: slideSiteX(),
-    bottomInset: SLIDE.stripH * PX_PER_INCH,
+    bottomInset: SLIDE.stripH * PX_PER_INCH + (calloutLegend ? (calloutLegend.h + 0.18) * PX_PER_INCH : 0),
     scale: true,
     muted: !!plan.muted,
     pinnedKeys: plan.pinnedKeys ?? [],
@@ -227,7 +339,9 @@ function addPolygons(slide: Slide, code: string, scene: MapScene, model: MapMode
   const buckets = new Map<string, Bucket>();
   const hasRaster = (model.rasters?.length ?? 0) > 0;
   for (const polygon of scene.polygons) {
-    if (isSiteParcelLayer(polygon.polygon.layer)) continue;
+    if (isSiteParcelLayer(polygon.polygon.layer) || isRasterizedLayer(polygon.polygon.layer)) continue;
+    const legendLabel = legendLabelFor(model, polygon.polygon.layer);
+    const groupKey = `legend-${safeKey(legendLabel)}`;
     const style = layerStyle(polygon.polygon.layer);
     const estimated = polygon.polygon.layer.endsWith("_est") || style.label.startsWith("[추정]") || style.hatch === true;
     const neutral = hasRaster && isBuildingLayer(polygon.polygon.layer);
@@ -237,18 +351,18 @@ function addPolygons(slide: Slide, code: string, scene: MapScene, model: MapMode
     const stroke = neutral ? building.stroke : style.stroke ?? style.color;
     const lineWidth = neutral ? building.strokeWidth ?? 0.8 : style.strokeWidth ?? 1;
     const dash = estimated ? "dash" : undefined;
-    const key = `polygon-${safeKey(`${fill}-${fillOpacity}-${stroke}-${lineWidth}-${dash ?? "solid"}`)}`;
-    const bucket = buckets.get(key) ?? { paths: [], fill, fillOpacity, line: stroke, lineWidth, dash, key, display: `면 · ${style.label}` };
+    const key = `${groupKey}-polygon-${safeKey(`${fill}-${fillOpacity}-${stroke}-${lineWidth}-${dash ?? "solid"}`)}`;
+    const bucket = buckets.get(key) ?? { paths: [], fill, fillOpacity, line: stroke, lineWidth, dash, key: groupKey, display: `범례 ${legendLabel}` };
     bucket.paths.push(...polygon.rings);
     buckets.set(key, bucket);
   }
   addBuckets(slide, code, buckets, true);
 }
 
-function addLines(slide: Slide, code: string, scene: MapScene): void {
+function addLines(slide: Slide, code: string, scene: MapScene, model: MapModel): void {
   const buckets = new Map<string, Bucket>();
   for (const entry of scene.lines) {
-    if (entry.line.layer === "rail_line" || entry.line.layer === "rail_station_axis") continue;
+    if (isRasterizedLayer(entry.line.layer) || entry.line.layer === "rail_line" || entry.line.layer === "rail_station_axis") continue;
     if (entry.points.length < 2) continue;
     const style = layerStyle(entry.line.layer);
     const baseWidth = entry.line.strokeWidth ?? style.strokeWidth ?? 1.5;
@@ -257,14 +371,16 @@ function addLines(slide: Slide, code: string, scene: MapScene): void {
     const stroke = entry.line.color ?? style.color;
     const casing = entry.line.casing ?? style.casing;
     const casingWidth = entry.line.casingWidth ?? width + 2.4;
+    const legendLabel = legendLabelFor(model, entry.line.layer, entry.line.legendLabel);
+    const groupKey = `legend-${safeKey(legendLabel)}`;
     if (casing) {
-      const key = `line-casing-${safeKey(`${casing}-${casingWidth}-${style.dash ?? "solid"}`)}`;
-      const bucket = buckets.get(key) ?? { paths: [], line: casing, lineWidth: casingWidth, lineOpacity: opacity, dash: style.dash, key, display: `선 외곽 · ${style.label}` };
+      const key = `${groupKey}-line-casing-${safeKey(`${casing}-${casingWidth}-${style.dash ?? "solid"}`)}`;
+      const bucket = buckets.get(key) ?? { paths: [], line: casing, lineWidth: casingWidth, lineOpacity: opacity, dash: style.dash, key: groupKey, display: `범례 ${legendLabel}` };
       bucket.paths.push(entry.points);
       buckets.set(key, bucket);
     }
-    const key = `line-${safeKey(`${stroke}-${width}-${style.dash ?? "solid"}`)}`;
-    const bucket = buckets.get(key) ?? { paths: [], line: stroke, lineWidth: width, lineOpacity: opacity, dash: style.dash, key, display: `선 · ${style.label}` };
+    const key = `${groupKey}-line-${safeKey(`${stroke}-${width}-${style.dash ?? "solid"}`)}`;
+    const bucket = buckets.get(key) ?? { paths: [], line: stroke, lineWidth: width, lineOpacity: opacity, dash: style.dash, key: groupKey, display: `범례 ${legendLabel}` };
     bucket.paths.push(entry.points);
     buckets.set(key, bucket);
   }
@@ -274,10 +390,10 @@ function addLines(slide: Slide, code: string, scene: MapScene): void {
 function addRadius(slide: Slide, code: string, scene: MapScene): void {
   const [cx, cy] = scene.center;
   for (const [index, radius] of scene.rings.entries()) {
-    slide.addShape("ellipse", { x: pxX(cx - radius), y: pxY(cy - radius), w: pxX(radius * 2), h: pxY(radius * 2), fill: { color: "FFFFFF", transparency: 100 }, line: { color: color(scene.lineColor), width: pxPt(1), transparency: scene.activeLayer === "Satellite" ? 30 : 65, dashType: "dash" }, objectName: tag(code, "radius", "분석 반경", `ring-${index}`) });
+    slide.addShape("ellipse", { x: pxX(cx - radius), y: pxY(cy - radius), w: pxW(radius * 2), h: pxH(radius * 2), fill: { color: "FFFFFF", transparency: 100 }, line: { color: color(scene.lineColor), width: pxPt(1), transparency: scene.activeLayer === "Satellite" ? 30 : 65, dashType: "dash" }, objectName: tag(code, "radius", "반경", `ring-${index}`) });
   }
   const radius = scene.radiusPx;
-  slide.addShape("ellipse", { x: pxX(cx - radius), y: pxY(cy - radius), w: pxX(radius * 2), h: pxY(radius * 2), fill: { color: "FFFFFF", transparency: 100 }, line: { color: color(scene.lineColor), width: pxPt(1.6), transparency: scene.activeLayer === "Satellite" ? 5 : 25 }, objectName: tag(code, "radius", "분석 반경", "outer") });
+  slide.addShape("ellipse", { x: pxX(cx - radius), y: pxY(cy - radius), w: pxW(radius * 2), h: pxH(radius * 2), fill: { color: "FFFFFF", transparency: 100 }, line: { color: color(scene.lineColor), width: pxPt(1.6), transparency: scene.activeLayer === "Satellite" ? 5 : 25 }, objectName: tag(code, "radius", "반경", "outer") });
 }
 
 function addFeatures(slide: Slide, code: string, scene: MapScene, model: MapModel): void {
@@ -285,27 +401,37 @@ function addFeatures(slide: Slide, code: string, scene: MapScene, model: MapMode
   const satellite = scene.activeLayer === "Satellite";
   for (const entry of scene.features) {
     const feature = entry.feature;
-    if (feature.layer === "rail_station" || feature.layer === "rail_nearest" || feature.layer === "rail_entrance") continue;
+    if (isRasterizedLayer(feature.layer)) continue;
     const r = entry.radius;
-    if (entry.p[0] < -r || entry.p[1] < -r || entry.p[0] > VIEW_W + r || entry.p[1] > VIEW_H + r) continue;
+    if (entry.p[0] < -r || entry.p[1] < -r || entry.p[0] > activeSceneWidth + r || entry.p[1] > activeSceneHeight + r) continue;
     const style = layerStyle(feature.layer);
     const neutral = hasRaster && isBuildingLayer(feature.layer);
     const building = buildingStyleForRaster(feature.layer, hasRaster);
     const hollow = style.sizeBy === "weight" && !feature.weight;
-    const key = `feature-${safeKey(entry.key)}`;
-    const display = feature.label?.trim() || style.label;
     const opacity = scene.isElementDimmed(feature.layer, entry.key) ? 0.2 : 1;
     const fill = neutral ? building.fill ?? style.color : hollow ? "FFFFFF" : feature.color ?? style.color;
     const fillOpacity = neutral ? building.fillOpacity ?? 0.94 : hollow ? 0.6 : style.sizeBy === "weight" ? 0.55 : feature.highlight ? 1 : 0.85;
     const stroke = scene.isElementStrong(feature.layer, entry.key) || feature.highlight || entry.selected ? INK : neutral ? building.stroke ?? style.color : satellite ? "FFFFFF" : style.sizeBy === "weight" ? style.color : "FFFFFF";
     const strokeWidth = scene.isElementStrong(feature.layer, entry.key) ? 1.6 : feature.highlight || entry.selected ? 2.8 : neutral ? building.strokeWidth ?? 0.8 : satellite ? 1.5 : style.sizeBy === "weight" ? 1.4 : 0.8;
-    slide.addShape("ellipse", { x: pxX(entry.p[0] - r), y: pxY(entry.p[1] - r), w: pxX(r * 2), h: pxY(r * 2), fill: { color: color(fill), transparency: transparency(fillOpacity) }, line: { color: color(stroke), width: pxPt(strokeWidth), transparency: transparency(opacity) }, objectName: tag(code, key, display, "dot") });
+    const specialRail = feature.layer === "rail_station" || feature.layer === "rail_nearest" || feature.layer === "rail_entrance";
+    if (!specialRail) slide.addShape("ellipse", { x: pxX(entry.p[0] - r), y: pxY(entry.p[1] - r), w: pxW(r * 2), h: pxH(r * 2), fill: { color: color(fill), transparency: transparency(fillOpacity) }, line: { color: color(stroke), width: pxPt(strokeWidth), transparency: transparency(opacity) }, objectName: legendTag(model, code, feature.layer, "dot") });
+    const legendLabel = legendLabelFor(model, feature.layer);
+    const badgeKey = `legend-${safeKey(legendLabel)}`;
+    for (const [badgeIndex, badge] of (feature.badges ?? []).slice(0, 4).entries()) {
+      const badgeR = Math.max(3.2, r * 0.72);
+      const offset = (badgeIndex - ((feature.badges?.length ?? 1) - 1) / 2) * (badgeR * 2.05);
+      const bx = Math.max(badgeR, Math.min(VIEW_W - badgeR, entry.p[0] + offset));
+      const by = Math.max(badgeR, entry.p[1] - r - badgeR * 0.35);
+      slide.addShape("ellipse", { x: pxX(bx - badgeR), y: pxY(by - badgeR), w: pxW(badgeR * 2), h: pxH(badgeR * 2), fill: { color: color(badge.color ?? style.color), transparency: 5 }, line: { color: "FFFFFF", width: pxPt(0.8) }, objectName: tag(code, badgeKey, `범례 ${legendLabel}`, `badge-${badgeIndex}`) });
+      slide.addText(badge.text, { x: pxX(bx - badgeR), y: pxY(by - badgeR), w: pxW(badgeR * 2), h: pxH(badgeR * 2), align: "center", valign: "middle", fontFace: FONT, fontSize: fontPt(badgeR * 0.9, 5.5), bold: true, color: color(badgeTextColor(badge.color ?? style.color)), margin: 0, fit: "shrink", objectName: tag(code, badgeKey, `범례 ${legendLabel}`, `badge-text-${badgeIndex}`) });
+    }
   }
 }
 
 function addNearestLines(slide: Slide, code: string, scene: MapScene): void {
   const [cx, cy] = scene.center;
   for (const entry of scene.features) {
+    if (isRasterizedLayer(entry.feature.layer)) continue;
     if (!entry.feature.highlight || entry.feature.distanceM == null) continue;
     addSegment(slide, [cx, cy], entry.p, scene.isElementStrong(entry.feature.layer, entry.key) ? INK : scene.lineColor, scene.isElementStrong(entry.feature.layer, entry.key) ? 1.6 : 1.4, tag(code, `nearest-${safeKey(entry.key)}`, "최근접 지시선", "line"), scene.isElementDimmed(entry.feature.layer, entry.key) ? 80 : 0, "3 3");
   }
@@ -317,8 +443,8 @@ function addRoute(slide: Slide, code: string, scene: MapScene): void {
   addCustom(slide, [scene.routePoints], { line: "D97706", lineWidth: 4.5, objectName: tag(code, "route", "보행 경로", "line") });
   const start = scene.routePoints[0]!;
   const end = scene.routePoints.at(-1)!;
-  slide.addShape("ellipse", { x: pxX(start[0] - 5.5), y: pxY(start[1] - 5.5), w: pxX(11), h: pxY(11), fill: { color: color(INK) }, line: { color: "FFFFFF", width: pxPt(2) }, objectName: tag(code, "route", "보행 경로", "start") });
-  slide.addShape("ellipse", { x: pxX(end[0] - 6.5), y: pxY(end[1] - 6.5), w: pxX(13), h: pxY(13), fill: { color: "D97706" }, line: { color: "FFFFFF", width: pxPt(2.5) }, objectName: tag(code, "route", "보행 경로", "end") });
+  slide.addShape("ellipse", { x: pxX(start[0] - 5.5), y: pxY(start[1] - 5.5), w: pxW(11), h: pxH(11), fill: { color: color(INK) }, line: { color: "FFFFFF", width: pxPt(2) }, objectName: tag(code, "route", "보행 경로", "start") });
+  slide.addShape("ellipse", { x: pxX(end[0] - 6.5), y: pxY(end[1] - 6.5), w: pxW(13), h: pxH(13), fill: { color: "D97706" }, line: { color: "FFFFFF", width: pxPt(2.5) }, objectName: tag(code, "route", "보행 경로", "end") });
 }
 
 function addSite(slide: Slide, code: string, scene: MapScene): void {
@@ -328,12 +454,12 @@ function addSite(slide: Slide, code: string, scene: MapScene): void {
     const paths = scene.siteParcels.flatMap((polygon) => polygon.rings);
     addCustom(slide, paths, { fill: "FFFFFF", fillOpacity: 0.18, line: "FFFFFF", lineWidth: Math.max(0.5 * siteR, 2.4), objectName: tag(code, "site", "분석 대지", "halo"), closed: true });
     addCustom(slide, paths, { line: "111111", lineWidth: Math.max(0.2 * siteR, 1.2), objectName: tag(code, "site", "분석 대지", "outline"), closed: true });
-    slide.addShape("diamond", { x: pxX(cx - 0.7 * siteR), y: pxY(cy - 0.7 * siteR), w: pxX(1.4 * siteR), h: pxY(1.4 * siteR), fill: { color: "FFFFFF" }, line: { color: "111111", width: pxPt(0.22 * siteR) }, objectName: tag(code, "site", "분석 대지", "diamond") });
-    slide.addShape("ellipse", { x: pxX(cx - 0.2 * siteR), y: pxY(cy - 0.2 * siteR), w: pxX(0.4 * siteR), h: pxY(0.4 * siteR), fill: { color: "111111" }, line: { color: "111111", width: 0 }, objectName: tag(code, "site", "분석 대지", "dot") });
+    slide.addShape("diamond", { x: pxX(cx - 0.7 * siteR), y: pxY(cy - 0.7 * siteR), w: pxW(1.4 * siteR), h: pxH(1.4 * siteR), fill: { color: "FFFFFF" }, line: { color: "111111", width: pxPt(0.22 * siteR) }, objectName: tag(code, "site", "분석 대지", "diamond") });
+    slide.addShape("ellipse", { x: pxX(cx - 0.2 * siteR), y: pxY(cy - 0.2 * siteR), w: pxW(0.4 * siteR), h: pxH(0.4 * siteR), fill: { color: "111111" }, line: { color: "111111", width: 0 }, objectName: tag(code, "site", "분석 대지", "dot") });
     return;
   }
-  slide.addShape("ellipse", { x: pxX(cx - 1.25 * siteR), y: pxY(cy - 1.25 * siteR), w: pxX(2.5 * siteR), h: pxY(2.5 * siteR), fill: { color: "FFFFFF", transparency: 100 }, line: { color: "FFFFFF", width: pxPt(0.55 * siteR) }, objectName: tag(code, "site", "분석 대지", "ring-halo") });
-  slide.addShape("ellipse", { x: pxX(cx - 1.25 * siteR), y: pxY(cy - 1.25 * siteR), w: pxX(2.5 * siteR), h: pxY(2.5 * siteR), fill: { color: "FFFFFF", transparency: 100 }, line: { color: "111111", width: pxPt(0.22 * siteR) }, objectName: tag(code, "site", "분석 대지", "ring") });
+  slide.addShape("ellipse", { x: pxX(cx - 1.25 * siteR), y: pxY(cy - 1.25 * siteR), w: pxW(2.5 * siteR), h: pxH(2.5 * siteR), fill: { color: "FFFFFF", transparency: 100 }, line: { color: "FFFFFF", width: pxPt(0.55 * siteR) }, objectName: tag(code, "site", "분석 대지", "ring-halo") });
+  slide.addShape("ellipse", { x: pxX(cx - 1.25 * siteR), y: pxY(cy - 1.25 * siteR), w: pxW(2.5 * siteR), h: pxH(2.5 * siteR), fill: { color: "FFFFFF", transparency: 100 }, line: { color: "111111", width: pxPt(0.22 * siteR) }, objectName: tag(code, "site", "분석 대지", "ring") });
   addSegment(slide, [cx, cy - 2 * siteR], [cx, cy - 0.6 * siteR], "FFFFFF", 0.5 * siteR, tag(code, "site", "분석 대지", "cross-halo"));
   addSegment(slide, [cx, cy + 0.6 * siteR], [cx, cy + 2 * siteR], "FFFFFF", 0.5 * siteR, tag(code, "site", "분석 대지", "cross-halo"));
   addSegment(slide, [cx - 2 * siteR, cy], [cx - 0.6 * siteR, cy], "FFFFFF", 0.5 * siteR, tag(code, "site", "분석 대지", "cross-halo"));
@@ -342,12 +468,13 @@ function addSite(slide: Slide, code: string, scene: MapScene): void {
   addSegment(slide, [cx, cy + 0.6 * siteR], [cx, cy + 2 * siteR], "111111", 0.2 * siteR, tag(code, "site", "분석 대지", "cross"));
   addSegment(slide, [cx - 2 * siteR, cy], [cx - 0.6 * siteR, cy], "111111", 0.2 * siteR, tag(code, "site", "분석 대지", "cross"));
   addSegment(slide, [cx + 0.6 * siteR, cy], [cx + 2 * siteR, cy], "111111", 0.2 * siteR, tag(code, "site", "분석 대지", "cross"));
-  slide.addShape("ellipse", { x: pxX(cx - 0.28 * siteR), y: pxY(cy - 0.28 * siteR), w: pxX(0.56 * siteR), h: pxY(0.56 * siteR), fill: { color: "111111" }, line: { color: "FFFFFF", width: pxPt(0.12 * siteR) }, objectName: tag(code, "site", "분석 대지", "dot") });
+  slide.addShape("ellipse", { x: pxX(cx - 0.28 * siteR), y: pxY(cy - 0.28 * siteR), w: pxW(0.56 * siteR), h: pxH(0.56 * siteR), fill: { color: "111111" }, line: { color: "FFFFFF", width: pxPt(0.12 * siteR) }, objectName: tag(code, "site", "분석 대지", "dot") });
 }
 
 function addLabels(slide: Slide, code: string, scene: MapScene): void {
   for (const placement of scene.labelPlacements) {
     const entry = placement.entry;
+    if (isRasterizedLayer(entry.layer)) continue;
     const key = `label-${safeKey(entry.key)}`;
     const display = entry.text || entry.title;
     const points: PixelPoint[] = [entry.p, placement.placed.knee, placement.placed.edge];
@@ -355,27 +482,28 @@ function addLabels(slide: Slide, code: string, scene: MapScene): void {
     addSegment(slide, points[1]!, points[2]!, "FFFFFF", 3.6 * scene.unit, tag(code, key, `라벨 · ${display}`, "leader-halo"));
     addSegment(slide, points[0]!, points[1]!, INK, 1.2 * scene.unit, tag(code, key, `라벨 · ${display}`, "leader"));
     addSegment(slide, points[1]!, points[2]!, INK, 1.2 * scene.unit, tag(code, key, `라벨 · ${display}`, "leader"));
-    slide.addShape("ellipse", { x: pxX(entry.p[0] - Math.max(1.8 * scene.unit, placement.text.fontSize * 0.2)), y: pxY(entry.p[1] - Math.max(1.8 * scene.unit, placement.text.fontSize * 0.2)), w: pxX(Math.max(1.8 * scene.unit, placement.text.fontSize * 0.2) * 2), h: pxY(Math.max(1.8 * scene.unit, placement.text.fontSize * 0.2) * 2), fill: { color: color(INK) }, line: { color: color(INK), width: 0 }, objectName: tag(code, key, `라벨 · ${display}`, "anchor") });
+    slide.addShape("ellipse", { x: pxX(entry.p[0] - Math.max(1.8 * scene.unit, placement.text.fontSize * 0.2)), y: pxY(entry.p[1] - Math.max(1.8 * scene.unit, placement.text.fontSize * 0.2)), w: pxW(Math.max(1.8 * scene.unit, placement.text.fontSize * 0.2) * 2), h: pxH(Math.max(1.8 * scene.unit, placement.text.fontSize * 0.2) * 2), fill: { color: color(INK) }, line: { color: color(INK), width: 0 }, objectName: tag(code, key, `라벨 · ${display}`, "anchor") });
     const box = placement.box;
-    slide.addShape("roundRect", { x: pxX(box.x0), y: pxY(box.y0), w: pxX(box.x1 - box.x0), h: pxY(box.y1 - box.y0), rectRadius: 0.04, fill: { color: "FFFFFF" }, line: { color: color(INK), width: pxPt(1.2 * scene.unit) }, objectName: tag(code, key, `라벨 · ${display}`, "box") });
+    slide.addShape("roundRect", { x: pxX(box.x0), y: pxY(box.y0), w: pxW(box.x1 - box.x0), h: pxH(box.y1 - box.y0), rectRadius: 0.04, fill: { color: "FFFFFF" }, line: { color: color(INK), width: pxPt(1.2 * scene.unit) }, objectName: tag(code, key, `라벨 · ${display}`, "box") });
     const dot = Math.max(1.8 * scene.unit, placement.text.fontSize * 0.2);
-    slide.addShape("ellipse", { x: pxX(box.x0 + 4 * scene.unit - dot), y: pxY((box.y0 + box.y1) / 2 - dot), w: pxX(dot * 2), h: pxY(dot * 2), fill: { color: color(INK) }, line: { color: color(INK), width: 0 }, objectName: tag(code, key, `라벨 · ${display}`, "box-dot") });
+    slide.addShape("ellipse", { x: pxX(box.x0 + 4 * scene.unit - dot), y: pxY((box.y0 + box.y1) / 2 - dot), w: pxW(dot * 2), h: pxH(dot * 2), fill: { color: color(INK) }, line: { color: color(INK), width: 0 }, objectName: tag(code, key, `라벨 · ${display}`, "box-dot") });
     const text = placement.text.lines.map((line) => line.kind === "joined" ? `${line.title} · ${line.detail}` : line.text).join("\n");
-    slide.addText(text, { x: pxX(box.x0 + 8 * scene.unit), y: pxY(box.y0 + 3 * scene.unit), w: pxX(Math.max(1, box.x1 - box.x0 - 12 * scene.unit)), h: pxY(Math.max(1, box.y1 - box.y0 - 6 * scene.unit)), valign: "top", fontFace: FONT, fontSize: Math.max(7, pxPt(placement.text.fontSize)), color: INK, margin: 0, fit: "shrink", breakLine: false, objectName: tag(code, key, `라벨 · ${display}`, "text") });
+    slide.addText(text, { x: pxX(box.x0 + 8 * scene.unit), y: pxY(box.y0 + 3 * scene.unit), w: pxW(Math.max(1, box.x1 - box.x0 - 12 * scene.unit)), h: pxH(Math.max(1, box.y1 - box.y0 - 6 * scene.unit)), valign: "top", fontFace: FONT, fontSize: fontPt(placement.text.fontSize, 7), color: INK, margin: 0, fit: "shrink", breakLine: false, objectName: tag(code, key, `라벨 · ${display}`, "text") });
   }
 }
 
 function addRailText(slide: Slide, code: string, key: string, display: string, text: { text: string; x: number; y: number; width: number; height: number; fontSize: number; angle: number; color: string; placement?: "inside" | "adjacent" | "route" }, scene: MapScene, part: string): void {
-  const options = { x: pxX(text.x), y: pxY(text.y), w: pxX(Math.max(1, text.width)), h: pxY(Math.max(1, text.height)), align: "center" as const, valign: "middle" as const, fontFace: FONT, bold: true, margin: 0, fit: "shrink" as const, rotate: text.angle };
-  if (text.placement !== "inside") slide.addText(text.text, { ...options, fontSize: Math.max(6, pxPt(text.fontSize + 1.6)), color: "FFFFFF", objectName: tag(code, key, display, `${part}-halo`) });
-  slide.addText(text.text, { ...options, fontSize: Math.max(6, pxPt(text.fontSize)), color: color(text.color), objectName: tag(code, key, display, part) });
+  const options = { x: pxX(text.x), y: pxY(text.y), w: pxW(Math.max(1, text.width)), h: pxH(Math.max(1, text.height)), align: "center" as const, valign: "middle" as const, fontFace: FONT, bold: true, margin: 0, fit: "shrink" as const, rotate: text.angle };
+  if (text.placement !== "inside") slide.addText(text.text, { ...options, fontSize: fontPt(text.fontSize + 1.6, 6), color: "FFFFFF", objectName: tag(code, key, display, `${part}-halo`) });
+  slide.addText(text.text, { ...options, fontSize: fontPt(text.fontSize, 6), color: color(text.color), objectName: tag(code, key, display, part) });
 }
 
 /** MapFigure와 같은 scene.rail 결과를 PowerPoint의 편집 가능한 네이티브 도형으로 옮긴다. */
 function addRailOverlay(slide: Slide, code: string, scene: MapScene): void {
   for (const route of scene.rail.routes) {
-    const key = `rail-route-${safeKey(route.key)}`;
-    const display = `노선 · ${route.label}`;
+    if (isRasterizedLayer("rail_line")) continue;
+    const key = `legend-${safeKey(route.label)}`;
+    const display = `범례 ${route.label}`;
     const paths = clipRailPath(route.points);
     if (paths.length === 0) continue;
     if (route.casing) addCustom(slide, paths, { line: route.casing, lineWidth: route.width + 1.2, lineOpacity: 1, objectName: tag(code, key, display, "casing") });
@@ -383,8 +511,9 @@ function addRailOverlay(slide: Slide, code: string, scene: MapScene): void {
     if (route.labelPlacement) addRailText(slide, code, key, display, route.labelPlacement, scene, "route-label");
   }
   for (const axis of scene.rail.axes) {
-    const key = `rail-axis-${safeKey(axis.key)}`;
-    const display = `역사 · ${axis.label}`;
+    if (isRasterizedLayer("rail_station_axis")) continue;
+    const key = `legend-${safeKey(axis.label)}`;
+    const display = `범례 ${axis.label}`;
     const paths = clipRailPath(axis.points);
     if (paths.length === 0) continue;
     if (axis.casing) addCustom(slide, paths, { line: axis.casing, lineWidth: axis.width + 1.4, objectName: tag(code, key, display, "casing") });
@@ -392,20 +521,22 @@ function addRailOverlay(slide: Slide, code: string, scene: MapScene): void {
     if (axis.labelPlacement) addRailText(slide, code, key, display, axis.labelPlacement, scene, "axis-label");
   }
   for (const exit of scene.rail.exits) {
+    if (isRasterizedLayer("rail_entrance")) continue;
     const key = `rail-exit-${safeKey(exit.key)}`;
     const display = `출구 · ${exit.number}`;
     addSegment(slide, exit.axisPoint, exit.point, "FFFFFF", 1.5, tag(code, key, display, "connector-halo"), 25);
     addSegment(slide, exit.axisPoint, exit.point, exit.color, 0.6, tag(code, key, display, "connector"), 40);
     if (exit.demoted) {
-      slide.addShape("ellipse", { x: pxX(exit.point[0] - RAIL_EXIT_DOT_RADIUS), y: pxY(exit.point[1] - RAIL_EXIT_DOT_RADIUS), w: pxX(RAIL_EXIT_DOT_RADIUS * 2), h: pxY(RAIL_EXIT_DOT_RADIUS * 2), fill: { color: color(RAIL_EXIT_COLOR) }, line: { color: color("172033"), width: pxPt(RAIL_EXIT_DOT_STROKE) }, objectName: tag(code, key, display, "dot") });
+      slide.addShape("ellipse", { x: pxX(exit.point[0] - RAIL_EXIT_DOT_RADIUS), y: pxY(exit.point[1] - RAIL_EXIT_DOT_RADIUS), w: pxW(RAIL_EXIT_DOT_RADIUS * 2), h: pxH(RAIL_EXIT_DOT_RADIUS * 2), fill: { color: color(RAIL_EXIT_COLOR) }, line: { color: color("172033"), width: pxPt(RAIL_EXIT_DOT_STROKE) }, objectName: tag(code, key, display, "dot") });
       continue;
     }
     const width = exit.box.x1 - exit.box.x0;
     const height = exit.box.y1 - exit.box.y0;
-    slide.addShape("roundRect", { x: pxX(exit.box.x0), y: pxY(exit.box.y0), w: pxX(width), h: pxY(height), rectRadius: exit.pill ? pxY(height) / 2 : 0.03, fill: { color: color(RAIL_EXIT_COLOR) }, line: { color: color("172033"), width: pxPt(0.65) }, objectName: tag(code, key, display, "marker") });
-    slide.addText(exit.number, { x: pxX(exit.box.x0), y: pxY(exit.box.y0), w: pxX(width), h: pxY(height), align: "center", valign: "middle", fontFace: FONT, fontSize: Math.max(6, pxPt(7)), bold: true, color: color("111827"), margin: 0, fit: "shrink", objectName: tag(code, key, display, "number") });
+    slide.addShape("roundRect", { x: pxX(exit.box.x0), y: pxY(exit.box.y0), w: pxW(width), h: pxH(height), rectRadius: exit.pill ? pxH(height) / 2 : 0.03, fill: { color: color(RAIL_EXIT_COLOR) }, line: { color: color("172033"), width: pxPt(0.65) }, objectName: tag(code, key, display, "marker") });
+    slide.addText(exit.number, { x: pxX(exit.box.x0), y: pxY(exit.box.y0), w: pxW(width), h: pxH(height), align: "center", valign: "middle", fontFace: FONT, fontSize: Math.max(6, pxPt(7)), bold: true, color: color("111827"), margin: 0, fit: "shrink", objectName: tag(code, key, display, "number") });
   }
   for (const station of scene.rail.stationLabels) {
+    if (isRasterizedLayer("rail_station")) continue;
     const key = `rail-station-${safeKey(station.stationKey)}`;
     const display = `역명 · ${station.text}`;
     const text = { text: station.text, x: station.x, y: station.y, width: station.width, height: station.height, fontSize: station.fontSize, angle: 0, color: INK };
@@ -418,40 +549,85 @@ function addNorth(slide: Slide, code: string, scene: MapScene): void {
   const { x, y } = scene.north;
   const u = scene.unit;
   const key = "north";
-  slide.addShape("ellipse", { x: pxX(x - 13 * u), y: pxY(y - 13 * u), w: pxX(26 * u), h: pxY(26 * u), fill: { color: "FFFFFF", transparency: 10 }, line: { color: "FFFFFF", width: 0 }, objectName: tag(code, key, "방위표", "bg") });
+  slide.addShape("ellipse", { x: pxX(x - 13 * u), y: pxY(y - 13 * u), w: pxW(26 * u), h: pxH(26 * u), fill: { color: "FFFFFF", transparency: 10 }, line: { color: "FFFFFF", width: 0 }, objectName: tag(code, key, "방위표", "bg") });
   addCustom(slide, [[ [x, y - 9 * u], [x + 4.5 * u, y + 3 * u], [x, y + 0.5 * u], [x - 4.5 * u, y + 3 * u] ]], { fill: INK, line: INK, lineWidth: 0.1, objectName: tag(code, key, "방위표", "arrow"), closed: true });
-  slide.addText("N", { x: pxX(x - 8 * u), y: pxY(y + 5 * u), w: pxX(16 * u), h: pxY(8 * u), align: "center", valign: "middle", fontFace: FONT, fontSize: Math.max(6, pxPt(7.5 * u)), bold: true, color: INK, margin: 0, objectName: tag(code, key, "방위표", "label") });
+  slide.addText("N", { x: pxX(x - 8 * u), y: pxY(y + 5 * u), w: pxW(16 * u), h: pxH(8 * u), align: "center", valign: "middle", fontFace: FONT, fontSize: fontPt(7.5 * u, 6), bold: true, color: INK, margin: 0, objectName: tag(code, key, "방위표", "label") });
 }
 
 function addScale(slide: Slide, code: string, scene: MapScene): void {
   const bar = scene.scale;
   const u = scene.unit;
   const key = "scale";
-  slide.addShape("roundRect", { x: pxX(bar.x0 - 6 * u), y: pxY(bar.y - 14 * u), w: pxX(bar.px + 12 * u), h: pxY(22 * u), rectRadius: 0.06, fill: { color: "FFFFFF", transparency: 15 }, line: { color: "FFFFFF", width: 0 }, objectName: tag(code, key, "축척", "bg") });
+  slide.addShape("roundRect", { x: pxX(bar.x0 - 6 * u), y: pxY(bar.y - 14 * u), w: pxW(bar.px + 12 * u), h: pxH(22 * u), rectRadius: 0.06, fill: { color: "FFFFFF", transparency: 15 }, line: { color: "FFFFFF", width: 0 }, objectName: tag(code, key, "축척", "bg") });
   addSegment(slide, [bar.x0, bar.y - 4 * u], [bar.x0, bar.y], INK, 1.6 * u, tag(code, key, "축척", "left"));
   addSegment(slide, [bar.x0, bar.y], [bar.x1, bar.y], INK, 1.6 * u, tag(code, key, "축척", "bar"));
   addSegment(slide, [bar.x1, bar.y], [bar.x1, bar.y - 4 * u], INK, 1.6 * u, tag(code, key, "축척", "right"));
-  slide.addText(bar.label, { x: pxX(bar.x0), y: pxY(bar.y - 11 * u), w: pxX(bar.px), h: pxY(8 * u), align: "center", valign: "middle", fontFace: FONT, fontSize: Math.max(6, pxPt(9.5 * u)), bold: true, color: INK, margin: 0, objectName: tag(code, key, "축척", "label") });
+  slide.addText(bar.label, { x: pxX(bar.x0), y: pxY(bar.y - 11 * u), w: pxW(bar.px), h: pxH(8 * u), align: "center", valign: "middle", fontFace: FONT, fontSize: fontPt(9.5 * u, 6), bold: true, color: INK, margin: 0, objectName: tag(code, key, "축척", "label") });
+}
+
+/** 조판 셀은 지도 이미지 안의 범례도 native로 옮겨야 하므로 셀 전용 패널을 그린다. */
+function addCellLegend(slide: Slide, code: string, model: MapModel): void {
+  const layout = cellLegendLayout(model);
+  if (!layout) return;
+  const { items, x, y, w, h } = layout;
+  const panelTag = (part: string) => tag(code, "legend-panel", "범례", part);
+  slide.addShape("roundRect", { x: pxX(x), y: pxY(y), w: pxW(w), h: pxH(h), rectRadius: 0.08, fill: { color: "FFFFFF", transparency: 6 }, line: { color: "FFFFFF", width: 0 }, objectName: panelTag("panel") });
+  items.forEach((item, index) => {
+    const iy = y + CELL_LEGEND_PAD + index * CELL_LEGEND_ROW_H;
+    if (item.site) {
+      slide.addShape("diamond", { x: pxX(x + 13), y: pxY(iy + 8), w: pxW(12), h: pxH(12), fill: { color: "FFFFFF" }, line: { color: "111111", width: pxPt(0.8) }, objectName: panelTag(`item-${index}`) });
+      slide.addShape("ellipse", { x: pxX(x + 17), y: pxY(iy + 12), w: pxW(4), h: pxH(4), fill: { color: "111111" }, line: { color: "111111", width: 0 }, objectName: panelTag(`item-dot-${index}`) });
+    } else if (item.symbol === "rail-axis") {
+      slide.addShape("line", { x: pxX(x + 10), y: pxY(iy + 14), w: pxW(22), h: 0, line: { color: "172033", width: pxPt(5) }, objectName: panelTag(`item-${index}`) });
+      slide.addShape("line", { x: pxX(x + 10), y: pxY(iy + 14), w: pxW(22), h: 0, line: { color: color(item.color), width: pxPt(3.5) }, objectName: panelTag(`item-color-${index}`) });
+    } else if (item.symbol === "rail-exit") {
+      slide.addShape("ellipse", { x: pxX(x + 10), y: pxY(iy + 7), w: pxW(16), h: pxH(16), fill: { color: "FFD200" }, line: { color: "172033", width: pxPt(0.75) }, objectName: panelTag(`item-${index}`) });
+    } else {
+      slide.addShape("ellipse", { x: pxX(x + 12), y: pxY(iy + 9), w: pxW(12), h: pxH(12), fill: { color: color(item.color) }, line: { color: "FFFFFF", width: pxPt(0.75) }, objectName: panelTag(`item-${index}`) });
+      if (item.badge) slide.addText(item.badge, { x: pxX(x + 12), y: pxY(iy + 9), w: pxW(12), h: pxH(12), align: "center", valign: "middle", fontFace: FONT, fontSize: fontPt(6, 5), bold: true, color: color(badgeTextColor(item.color)), margin: 0, objectName: panelTag(`item-badge-${index}`) });
+    }
+    slide.addText(item.label, { x: pxX(x + 36), y: pxY(iy), w: pxW(w - 46), h: pxH(CELL_LEGEND_ROW_H), valign: "middle", fontFace: FONT, fontSize: fontPt(9, 6), color: INK, margin: 0, fit: "shrink", objectName: panelTag(`item-label-${index}`) });
+  });
 }
 
 /** 지도 장에 배경 이미지 위의 편집 가능한 네이티브 지도 표현을 그린다. */
-export function addEditableMap(slide: Slide, plan: PlannedSlide & { kind: "tile" }, model: MapModel): NativeMapStatus {
+export function addEditableMap(slide: Slide, plan: (PlannedSlide & { kind: "tile" }) | null, model: MapModel, options: NativeMapOptions = {}): NativeMapStatus {
   const status = nativeMapStatus(model);
   if (!status.native) return status;
-  const scene = sceneFor(plan, model);
-  const code = model.tileCode ?? "map";
-  addPolygons(slide, code, scene, model);
-  addLines(slide, code, scene);
-  addRadius(slide, code, scene);
-  addNearestLines(slide, code, scene);
-  addFeatures(slide, code, scene, model);
-  addRailOverlay(slide, code, scene);
-  addRoute(slide, code, scene);
-  addSite(slide, code, scene);
-  addLabels(slide, code, scene);
-  addNorth(slide, code, scene);
-  addScale(slide, code, scene);
-  return status;
+  const previousFrame = activeFrame;
+  const previousSceneWidth = activeSceneWidth;
+  const previousSceneHeight = activeSceneHeight;
+  const previousRasterLayers = activeRasterLayers;
+  const previousMode = activeMode;
+  activeFrame = options.frame ?? FULL_FRAME;
+  activeSceneWidth = VIEW_W;
+  activeSceneHeight = options.mode === "cell" && activeFrame.w > 0 ? VIEW_W * (activeFrame.h / activeFrame.w) : VIEW_H;
+  activeRasterLayers = new Set(status.rasterLayers);
+  activeMode = options.mode ?? "tile";
+  try {
+    const scene = sceneFor(model, { plan: plan ?? undefined, mode: options.mode ?? "tile" });
+    const baseCode = model.tileCode ?? "map";
+    const code = options.scope ? `${options.scope}-${baseCode}` : baseCode;
+    addPolygons(slide, code, scene, model);
+    addLines(slide, code, scene, model);
+    addRadius(slide, code, scene);
+    addNearestLines(slide, code, scene);
+    addFeatures(slide, code, scene, model);
+    addRailOverlay(slide, code, scene);
+    addRoute(slide, code, scene);
+    addSite(slide, code, scene);
+    addLabels(slide, code, scene);
+    addNorth(slide, code, scene);
+    addScale(slide, code, scene);
+    if ((options.mode ?? "tile") === "cell") addCellLegend(slide, code, model);
+    return status;
+  } finally {
+    activeFrame = previousFrame;
+    activeSceneWidth = previousSceneWidth;
+    activeSceneHeight = previousSceneHeight;
+    activeRasterLayers = previousRasterLayers;
+    activeMode = previousMode;
+  }
 }
 
 export function editableMapAvoid(plan: PlannedSlide & { kind: "tile" }, model: MapModel): MapSceneBox[] {

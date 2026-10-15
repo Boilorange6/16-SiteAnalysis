@@ -1,7 +1,7 @@
 import { GROUP_TAG_PREFIX } from "../../../pptx-shape-group";
 import { INCH, SLIDE_OVERVIEW_FILL, cardName, cardRows, dotColor, dotRadius, inkOn, isHollowComplexMarker, layoutCallouts, overlapChip, pageItems, rowsFor, slideCalloutFrame, type CalloutFrame, type Complex, type Placed, type Pt } from "../../ui/callout-layout";
 import { framedViewport, makeProjector } from "../../ui/map-projection";
-import { slideSiteX } from "../../ui/overlay-layout";
+import { slideCalloutLegendLayout, slideSiteX } from "../../ui/overlay-layout";
 import type { CalloutModel } from "../../ui/tile-view";
 import { unitTypeSummaryParts } from "../../unit-types";
 import { E, FONT, INK, IW, IX, L, MUTED, SLIDE, fitPt, hex, plate, seg, textIn, type ReportItem, type Slide } from "../../report/pptx-kit";
@@ -86,26 +86,16 @@ function calloutCard(s: Slide, c: Complex, p: Placed, f: CalloutFrame, year: num
 /** 준공 연대 색 + 크기 = 세대수 범례 판. 아래 가장자리(bottom)에 붙고, 폭(maxW)을 넘으면 줄을 바꾄다 */
 function calloutLegend(s: Slide, model: CalloutModel, x: number, bottom: number, maxW: number) {
   const entries = [{ text: model.legend.title, color: null as string | null, hollow: false }, ...model.legend.items.map((it) => ({ text: it.label, color: it.color, hollow: it.hollow === true })), { text: model.legend.sizeLabel, color: null, hollow: false }];
-  const rows: Array<Array<{ text: string; color: string | null; hollow: boolean; x: number; w: number }>> = [[]];
-  let cx = 0;
-  for (const e of entries) {
-    const w = (e.color ? 0.22 : 0.04) + textIn(e.text, 9) + 0.1;
-    if (cx > 0 && cx + w > maxW - 0.3) {
-      rows.push([]);
-      cx = 0;
-    }
-    rows.at(-1)!.push({ ...e, x: cx, w });
-    cx += w;
-  }
-  const w = Math.min(maxW, Math.max(...rows.map((r) => r.reduce((a, i) => a + i.w, 0))) + 0.3);
-  const h = 0.14 + rows.length * 0.24;
-  const r = { x, y: bottom - h, w, h };
-  plate(s, r);
+  const layout = slideCalloutLegendLayout(entries, x, bottom, maxW);
+  if (!layout) return;
+  const { rect: r, rows } = layout;
+  const group = `${GROUP_TAG_PREFIX}panel-callout-legend|범례|item`;
+  plate(s, r, 0.12, group);
   rows.forEach((row, ri) =>
     row.forEach((e) => {
       const y = r.y + 0.07 + ri * 0.24;
-      if (e.color) s.addShape("ellipse", { x: r.x + 0.15 + e.x, y: y + 0.06, w: 0.12, h: 0.12, fill: { color: e.hollow ? "FFFFFF" : hex(e.color), transparency: e.hollow ? 100 : 0 }, line: { color: hex(e.color), width: 0.5, transparency: 0 } });
-      s.addText(e.text, { x: r.x + 0.15 + e.x + (e.color ? 0.16 : 0), y, w: e.w, h: 0.24, valign: "middle", fontFace: FONT, fontSize: 9, bold: !e.color, color: e.color ? INK : MUTED, margin: 0 });
+      if (e.color) s.addShape("ellipse", { x: r.x + 0.15 + e.x, y: y + 0.06, w: 0.12, h: 0.12, fill: { color: e.hollow ? "FFFFFF" : hex(e.color), transparency: e.hollow ? 100 : 0 }, line: { color: hex(e.color), width: 0.5, transparency: 0 }, objectName: group });
+      s.addText(e.text, { x: r.x + 0.15 + e.x + (e.color ? 0.16 : 0), y, w: e.w, h: 0.24, valign: "middle", fontFace: FONT, fontSize: 9, bold: !e.color, color: e.color ? INK : MUTED, margin: 0, objectName: group });
     }),
   );
 }
@@ -135,13 +125,13 @@ function calloutStatItem(s: Slide, cm: CalloutModel): ReportItem {
   const cw = IW / 3;
   return {
     h: 0.86 + (note ? 0.24 : 0),
-    draw: (y) => {
+    draw: (y, target = s) => {
       stats.forEach(([v, u, label], i) => {
         const x = IX + i * cw;
-        s.addText([{ text: v, options: { fontSize: v.length > 5 ? 15 : 24, bold: true, color: INK } }, { text: u ? ` ${u}` : "", options: { fontSize: 10, color: MUTED } }], { x, y, w: cw - 0.05, h: 0.6, valign: "middle", fontFace: FONT, margin: 0 });
-        s.addText(label, { x, y: y + 0.6, w: cw - 0.05, h: 0.24, valign: "middle", fontFace: FONT, fontSize: 9, color: MUTED, margin: 0 });
+        target.addText([{ text: v, options: { fontSize: v.length > 5 ? 15 : 24, bold: true, color: INK } }, { text: u ? ` ${u}` : "", options: { fontSize: 10, color: MUTED } }], { x, y, w: cw - 0.05, h: 0.6, valign: "middle", fontFace: FONT, margin: 0 });
+        target.addText(label, { x, y: y + 0.6, w: cw - 0.05, h: 0.24, valign: "middle", fontFace: FONT, fontSize: 9, color: MUTED, margin: 0 });
       });
-      if (note) s.addText(note, { x: IX, y: y + 0.86, w: IW, h: 0.22, valign: "middle", fontFace: FONT, fontSize: 9, color: MUTED, margin: 0, fit: "shrink" });
+      if (note) target.addText(note, { x: IX, y: y + 0.86, w: IW, h: 0.22, valign: "middle", fontFace: FONT, fontSize: 9, color: MUTED, margin: 0, fit: "shrink" });
     },
   };
 }

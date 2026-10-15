@@ -6,7 +6,7 @@ export { SLIDE };
 
 export type Slide = ReturnType<PptxGenJS["addSlide"]>;
 export type Border = PptxGenJS.BorderProps;
-export type ReportItem = { h: number; draw: (y: number) => void };
+export type ReportItem = { h: number; draw: (y: number, slide?: Slide) => void };
 
 export { FONT };
 export const INK = "15171C";
@@ -30,8 +30,8 @@ export function fitPt(value: string, maxPt: number, width: number, maxLines: num
   return pt;
 }
 
-export function plate(s: Slide, r: Rect, radius = 0.12) {
-  s.addShape("roundRect", { x: r.x, y: r.y, w: r.w, h: r.h, fill: { color: "FFFFFF", transparency: PLATE_ALPHA }, line: { color: INK, width: 0.5, transparency: 92 }, rectRadius: radius });
+export function plate(s: Slide, r: Rect, radius = 0.12, objectName?: string) {
+  s.addShape("roundRect", { x: r.x, y: r.y, w: r.w, h: r.h, fill: { color: "FFFFFF", transparency: PLATE_ALPHA }, line: { color: INK, width: 0.5, transparency: 92 }, rectRadius: radius, ...(objectName ? { objectName } : {}) });
 }
 
 export function seg(s: Slide, a: [number, number], b: [number, number], color: string, width: number, transparency: number, objectName: string) {
