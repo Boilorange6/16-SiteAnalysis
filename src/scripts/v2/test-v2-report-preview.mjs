@@ -6,6 +6,8 @@ const {
   nextExtraPageId,
   pageKeyAfterInsertion,
   selectPageKeys,
+  toggleLegendFocus,
+  togglePinnedKey,
 } = await import("../../lib/v2/ui/report-preview-logic.ts");
 
 const pages = ["cover", "A01:front", "A02:front", "sources:0"];
@@ -67,6 +69,26 @@ assert.equal(mixedValue([undefined, undefined], 0), 0);
 assert.equal(mixedValue([], 0), 0);
 assert.equal(mixedValue([0.7, 1.2], 1), undefined);
 assert.equal(mixedValue([null, null], false), null);
+
+// 보드 라벨에서 시작해 새 라벨을 추가하고, 같은 지도 요소를 다시 눌러 제거한다.
+const boardPinnedKeys = ["site", "road", "site"];
+const pagePinnedKeys = togglePinnedKey(boardPinnedKeys, "station");
+assert.deepEqual(pagePinnedKeys, ["site", "road", "station"]);
+assert.deepEqual(
+  togglePinnedKey(pagePinnedKeys, "station"),
+  ["site", "road"],
+  "같은 라벨 재클릭은 중복 없이 해당 라벨을 제거",
+);
+assert.deepEqual(
+  togglePinnedKey(["road", "road", "site"], "road"),
+  ["site"],
+  "기존 중복 라벨도 토글 시 모두 제거",
+);
+
+// 범례 항목은 첫 클릭으로 focus하고 같은 항목을 다시 누르면 null로 돌아간다.
+assert.equal(toggleLegendFocus(null, "road"), "road");
+assert.equal(toggleLegendFocus("road", "road"), null);
+assert.equal(toggleLegendFocus("road", "station"), "station");
 
 // after key는 현재 plan에 있는 key만 통과시키고, stale key는 첫 장 앞(null)으로 보낸다.
 assert.equal(pageKeyAfterInsertion(pages, null), null);

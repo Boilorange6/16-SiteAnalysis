@@ -22,6 +22,30 @@ function orderedKeys(keys: readonly string[]): string[] {
   return keys.filter((key) => key.length > 0 && !seen.has(key) && (seen.add(key), true));
 }
 
+/**
+ * 지도 라벨 고정 상태를 순수하게 토글한다.
+ *
+ * 보드 라벨 또는 페이지 style에서 온 목록을 먼저 현재 순서대로
+ * 정규화하고, 이미 있는 key는 모든 중복을 제거하며, 없는 key는 끝에
+ * 한 번만 추가한다. 빈 key는 상태를 바꾸지 않는다.
+ */
+export function togglePinnedKey(currentKeys: readonly string[], key: string): string[] {
+  const normalizedKeys = orderedKeys(currentKeys);
+  if (key.length === 0) return normalizedKeys;
+  return normalizedKeys.includes(key)
+    ? normalizedKeys.filter((currentKey) => currentKey !== key)
+    : [...normalizedKeys, key];
+}
+
+/**
+ * 범례 강조 상태를 순수하게 토글한다.
+ * 같은 항목을 다시 누르면 강조를 해제하고, 다른 항목이면 새 항목을
+ * 강조한다.
+ */
+export function toggleLegendFocus(currentKey: string | null, key: string): string | null {
+  return currentKey === key ? null : key;
+}
+
 function pageRange(keys: readonly string[], fromKey: string, toKey: string): string[] {
   const from = keys.indexOf(fromKey);
   const to = keys.indexOf(toKey);

@@ -6,14 +6,13 @@ import { metersPerPixel, slideViewport } from "@/lib/v2/ui/map-projection";
 import { SLIDE, slideLegend, slidePanelRects, slideSiteX, type Rect } from "@/lib/v2/ui/overlay-layout";
 import { coverLayout, fitBlock, fitFooterText, sourceLayout, titlePlateRect } from "@/lib/v2/report/pptx-kit";
 import { legendItemsOf, legendLabelOf } from "@/lib/v2/ui/map-layers";
-import { mapLabelEntries } from "./map-figure";
 import MapFigure from "./map-figure";
 import { useFocusTrap } from "./use-focus-trap";
 import { extraPageKey, type BoardAction, type BoardState, type PageKey, type PageStyle } from "@/lib/v2/ui/board-state";
 import type { PlannedSlide } from "@/lib/v2/report/report-plan";
 import type { TileView } from "@/lib/v2/ui/tile-view";
 import { sheetCells, type SheetGrid } from "@/lib/v2/ui/sheet";
-import { mixedValue, movePageSelection, nextExtraPageId, pageKeyAfterInsertion, selectPageKeys, type PageSelectionModifiers } from "@/lib/v2/ui/report-preview-logic";
+import { mixedValue, movePageSelection, nextExtraPageId, pageKeyAfterInsertion, selectPageKeys, toggleLegendFocus, togglePinnedKey, type PageSelectionModifiers } from "@/lib/v2/ui/report-preview-logic";
 import styles from "./report-preview.module.css";
 
 type PreviewStylePatch = Partial<PageStyle>;
@@ -64,13 +63,20 @@ function canvasStyle(unit: number): CSSProperties {
   return { "--slide-unit": String(unit) + "px" } as CSSProperties;
 }
 
-function useCanvasUnit(ref: React.RefObject<HTMLDivElement | null>): number {
-  const [unit, setUnit] = useState(1);
+type ContainFrameSize = { width: number; height: number };
+
+function useContainFrameSize(ref: React.RefObject<HTMLDivElement | null>): ContainFrameSize {
+  const [size, setSize] = useState<ContainFrameSize>({ width: 0, height: 0 });
   useEffect(() => {
     const element = ref.current;
     if (!element) return;
     const measure = () => {
-      if (element.clientWidth > 0) setUnit(element.clientWidth / SLIDE.w);
+      const maxWidth = Math.min(1320, element.clientWidth);
+      const maxHeight = element.clientHeight;
+      if (maxWidth <= 0 || maxHeight <= 0) return;
+      const width = Math.floor(Math.min(maxWidth, maxHeight * SLIDE.w / SLIDE.h));
+      const height = Math.floor(width * SLIDE.h / SLIDE.w);
+      setSize((current) => current.width === width && current.height === height ? current : { width, height });
     };
     measure();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
@@ -81,7 +87,7 @@ function useCanvasUnit(ref: React.RefObject<HTMLDivElement | null>): number {
       window.removeEventListener("resize", measure);
     };
   }, [ref]);
-  return unit;
+  return size;
 }
 
 type MapLayerProps = {
@@ -94,19 +100,28 @@ type MapLayerProps = {
   pinnedKeys?: readonly string[];
   interactive: boolean;
   onPatch: (patch: PreviewStylePatch) => void;
+  onDirectPatch?: (patch: PreviewStylePatch) => void;
+  hoverLegend?: string | null;
   label: string;
 };
 
-function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, interactive, onPatch, label }: MapLayerProps) {
+function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, interactive, onPatch, onDirectPatch, hoverLegend, label }: MapLayerProps) {
   const width = Math.max(1, Math.round(SLIDE.w * unit));
   const height = Math.max(1, Math.round(SLIDE.h * unit));
   const [draftOffset, setDraftOffset] = useState<[number, number] | null>(null);
   const [dragging, setDragging] = useState(false);
   const draftOffsetRef = useRef<[number, number] | null>(null);
-  const drag = useRef<{ id: number; x: number; y: number; offset: [number, number] } | null>(null);
+  const drag = useRef<{ id: number; x: number; y: number; offset: [number, number]; moved: boolean } | null>(null);
+  const suppressFeatureClick = useRef(false);
   const renderStyle = draftOffset ? { ...style, offsetM: draftOffset } : style;
   const viewport = slideViewport(model, renderStyle, { width, height, siteX, fill: 0.8 });
   const focusedLabel = legendLabelOf(model, renderStyle.legendFocus);
+  const activeLegendLabel = hoverLegend ?? focusedLabel;
+  const onFeaturePin = onDirectPatch ? (feature: { key: string }) => {
+    if (suppressFeatureClick.current) return;
+    const currentKeys = renderStyle.pinnedKeys ?? pinnedKeys ?? [];
+    onDirectPatch({ pinnedKeys: togglePinnedKey(currentKeys, feature.key) });
+  } : undefined;
   useEffect(() => {
     draftOffsetRef.current = null;
     setDraftOffset(null);
@@ -118,9 +133,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
     if (!interactive || event.button !== 0) return;
     const sourceOffset = renderStyle.offsetM ?? [0, 0];
     const offset: [number, number] = [sourceOffset[0], sourceOffset[1]];
-    drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, offset };
-    setDragging(true);
-    event.currentTarget.setPointerCapture(event.pointerId);
+    drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, offset, moved: false };
   };
   const movePointer = (event: ReactPointerEvent<HTMLDivElement>) => {
     const state = drag.current;
@@ -128,19 +141,32 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
     const mpp = metersPerPixel(viewport.center[1], viewport.zoom);
     const dx = event.clientX - state.x;
     const dy = event.clientY - state.y;
+    if (!state.moved && Math.hypot(dx, dy) < 4) return;
+    if (!state.moved) {
+      state.moved = true;
+      suppressFeatureClick.current = true;
+      setDragging(true);
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
     const next: [number, number] = [state.offset[0] - dx * mpp, state.offset[1] + dy * mpp];
     draftOffsetRef.current = next;
     setDraftOffset(next);
+    event.preventDefault();
   };
   const endPointer = (event: ReactPointerEvent<HTMLDivElement>) => {
     const state = drag.current;
     if (!state || state.id !== event.pointerId) return;
+    if (!state.moved) {
+      drag.current = null;
+      return;
+    }
     const next = draftOffsetRef.current ?? draftOffset ?? state.offset;
     onPatch({ offsetM: [next[0], next[1]] });
     drag.current = null;
     setDragging(false);
     draftOffsetRef.current = null;
     setDraftOffset(null);
+    window.setTimeout(() => { suppressFeatureClick.current = false; }, 0);
   };
   const map = (
     <MapFigure
@@ -160,8 +186,10 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
       avoid={avoid}
       pinnedKeys={renderStyle.pinnedKeys ?? pinnedKeys ?? []}
       legendFocus={focusedLabel}
-      highlightLabel={focusedLabel}
+      highlightLabel={activeLegendLabel}
+      highlightPinnedLabel={focusedLabel}
       showAutomaticLabels
+      onFeaturePin={onFeaturePin}
       dragging={dragging}
     />
   );
@@ -223,7 +251,7 @@ function TitlePanel({ slide, rect, unit }: { slide: Extract<PlannedSlide, { kind
   return <ReportTitlePanel color={slide.view.color} code={slide.view.code} title={slide.view.title} kind={slide.view.kindLabel} rect={rect} unit={unit} />;
 }
 
-function SummaryPanel({ slide, rect, unit }: { slide: Extract<PlannedSlide, { kind: "tile" }>; rect: Rect; unit: number }) {
+function SummaryPanel({ slide, rect, unit, onHide }: { slide: Extract<PlannedSlide, { kind: "tile" }>; rect: Rect; unit: number; onHide?: () => void }) {
   const view = slide.view;
   const innerW = Math.max(0.2, rect.w - 0.44);
   const children: React.ReactNode[] = [];
@@ -263,24 +291,40 @@ function SummaryPanel({ slide, rect, unit }: { slide: Extract<PlannedSlide, { ki
     const pt = fitBlock([note], { w: innerW, h: 0.44 }, 9, 7);
     children.push(<div className={styles.summaryLineFull} key={"note-" + index}><div className={styles.slideText} style={fontStyle(pt, unit)}>{note}</div></div>);
   });
-  return <div className={styles.slidePanel + " " + styles.summaryPanel} style={rectStyle(rect, unit)}>{children}</div>;
+  return <div className={styles.slidePanel + " " + styles.summaryPanel} style={rectStyle(rect, unit)}>
+    {onHide && <button type="button" className={styles.summaryClose} onClick={onHide} aria-label="요약 탭 숨기기" title="요약 탭 숨기기">×</button>}
+    {children}
+  </div>;
 }
 
-function LegendPanel({ slide, rect, unit }: { slide: Extract<PlannedSlide, { kind: "tile" }>; rect: Rect; unit: number }) {
+function LegendPanel({ slide, rect, unit, hoverLabel, onLegendHover, onLegendPin }: { slide: Extract<PlannedSlide, { kind: "tile" }>; rect: Rect; unit: number; hoverLabel?: string | null; onLegendHover?: (label: string | null) => void; onLegendPin?: (label: string) => void }) {
   if (!slide.map) return null;
   const legend = slideLegend(slide.map, !slide.muted);
   const focus = legendLabelOf(slide.map, slide.style.legendFocus);
+  const legendKeys = new Map(legendItemsOf(slide.map).map((entry) => [entry.label, entry.key]));
+  const activeLabel = hoverLabel ?? focus;
   return (
-    <div className={styles.slidePanel + " " + styles.legendPanel} style={rectStyle(rect, unit)}>
+    <div className={styles.slidePanel + " " + styles.legendPanel} style={rectStyle(rect, unit)} role="group" aria-label="페이지 범례">
       {legend.items.map((item, index) => {
         const focused = !item.site && focus !== null && item.label === focus;
-        const dimmed = focus !== null && !item.site && !focused;
+        const hovered = !item.site && hoverLabel !== null && hoverLabel !== undefined && item.label === hoverLabel;
+        const dimmed = activeLabel !== null && activeLabel !== undefined && !item.site && !focused && !hovered;
         const pt = fitBlock([item.label], { w: Math.max(0.2, rect.w - 0.55), h: 0.25 }, 10, 7);
-        return (
+        const key = legendKeys.get(item.label) ?? item.label;
+        const instruction = focused ? "강조 해제" : "눌러서 강조";
+        const rowClass = styles.legendRow + (focused || hovered ? " " + styles.legendRowActive : "");
+        if (item.site) return (
           <div className={styles.legendRow} key={item.label + "-" + index}>
-            <span className={item.site ? styles.legendSwatchSite : styles.legendSwatch} style={item.site ? undefined : { background: item.color }} aria-hidden="true" />
-            <span className={styles.legendText + (dimmed ? " " + styles.legendDimmed : "") + (focused ? " " + styles.legendFocused : "")} style={fontStyle(pt, unit)}>{item.label}</span>
+            <span className={styles.legendSwatchSite} aria-hidden="true" />
+            <span className={styles.legendText} style={fontStyle(pt, unit)}>{item.label}</span>
           </div>
+        );
+        return (
+          <button key={key + "-" + index} type="button" className={rowClass} data-preview-legend={item.label} aria-label={`${item.label} 범례 강조`} aria-pressed={focused} title={instruction} onClick={() => onLegendPin?.(key)} onPointerEnter={(event) => { if (event.pointerType !== "touch") onLegendHover?.(item.label); }} onPointerLeave={() => onLegendHover?.(null)} onFocus={() => onLegendHover?.(item.label)} onBlur={() => onLegendHover?.(null)}>
+            <span className={styles.legendSwatch} style={{ background: item.color }} aria-hidden="true" />
+            <span className={styles.legendText + (dimmed ? " " + styles.legendDimmed : "") + (focused ? " " + styles.legendFocused : "")} style={fontStyle(pt, unit)}>{item.label}</span>
+            {focused && <span className={styles.legendCheck} aria-hidden="true">✓</span>}
+          </button>
         );
       })}
       {legend.notes.map((note, index) => {
@@ -316,13 +360,13 @@ function VisualPlaceholder({ title, message, unit }: { title: string; message: s
   );
 }
 
-function CoverSurface({ slide, unit, basemap, interactive, onPatch }: { slide: Extract<PlannedSlide, { kind: "cover" }>; unit: number; basemap: BasemapChoice; interactive: boolean; onPatch: (patch: PreviewStylePatch) => void }) {
+function CoverSurface({ slide, unit, basemap, interactive, onPatch, onDirectPatch }: { slide: Extract<PlannedSlide, { kind: "cover" }>; unit: number; basemap: BasemapChoice; interactive: boolean; onPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void }) {
   const map = slide.map;
   const layout = coverLayout({ address: slide.address, metricCount: slide.metrics.length, lineCount: slide.lines.length, incomplete: !!slide.incomplete });
   const mapPanels = { title: layout.left, summary: layout.right, legend: null };
   return (
     <>
-      {map && <MapLayer model={map} style={slide.style} unit={unit} basemap={basemap} panels={mapPanels} siteX={0.5} interactive={interactive} onPatch={onPatch} label="표지 지도" />}
+      {map && <MapLayer model={map} style={slide.style} unit={unit} basemap={basemap} panels={mapPanels} siteX={0.5} interactive={interactive} onPatch={onPatch} onDirectPatch={onDirectPatch} label="표지 지도" />}
       <div className={styles.coverSlide}>
         <div className={styles.coverPlate} style={rectStyle(layout.left, unit)} aria-hidden="true" />
         <p className={styles.coverKicker} style={{ ...rectStyle(layout.leftInner, unit), ...fontStyle(11, unit) }}>사이트 분석 보고서</p>
@@ -431,149 +475,167 @@ function SheetSurface({ slide, unit, basemap }: { slide: Extract<PlannedSlide, {
   );
 }
 
-function TileSurface({ slide, unit, basemap, panels, interactive, onPatch }: { slide: Extract<PlannedSlide, { kind: "tile" }>; unit: number; basemap: BasemapChoice; panels: { title: Rect; summary: Rect | null; legend: Rect | null }; interactive: boolean; onPatch: (patch: PreviewStylePatch) => void }) {
+function TileSurface({ slide, unit, basemap, panels, interactive, onPatch, onDirectPatch }: { slide: Extract<PlannedSlide, { kind: "tile" }>; unit: number; basemap: BasemapChoice; panels: { title: Rect; summary: Rect | null; legend: Rect | null }; interactive: boolean; onPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void }) {
   const model = slide.map;
   const chart = !model && !slide.mass && !slide.rose && slide.body.face !== "single";
+  const [hoverLegend, setHoverLegend] = useState<string | null>(null);
+  const onLegendPin = useCallback((key: string) => {
+    if (!model || !onDirectPatch) return;
+    const target = legendItemsOf(model).find((entry) => entry.key === key);
+    if (!target) return;
+    const focusLabel = legendLabelOf(model, slide.style.legendFocus);
+    const currentKey = focusLabel ? legendItemsOf(model).find((entry) => entry.label === focusLabel)?.key ?? null : null;
+    onDirectPatch({ legendFocus: toggleLegendFocus(currentKey, target.key) });
+  }, [model, onDirectPatch, slide.style.legendFocus]);
   return (
     <>
-      {model ? <MapLayer model={model} style={slide.style} unit={unit} basemap={basemap} panels={panels} siteX={slideSiteX(slide.style, panels.summary !== null)} pinnedKeys={slide.pinnedKeys} interactive={interactive} onPatch={onPatch} label={slide.view.title + " 지도"} /> : slide.mass ? <VisualPlaceholder title={slide.view.title} message="3D 매스 미리보기는 내보내기와 같은 페이지 위치로 표시됩니다." unit={unit} /> : slide.rose ? <VisualPlaceholder title={slide.view.title} message="바람장미 도판 미리보기" unit={unit} /> : chart ? <ChartPlaceholder view={slide.view} unit={unit} /> : <VisualPlaceholder title={slide.view.title} message={slide.body.kind === "state" ? slide.body.message : "표시할 지도 결과가 없습니다."} unit={unit} />}
+      {model ? <MapLayer model={model} style={slide.style} unit={unit} basemap={basemap} panels={panels} siteX={slideSiteX(slide.style, panels.summary !== null)} pinnedKeys={slide.pinnedKeys} interactive={interactive} onPatch={onPatch} onDirectPatch={onDirectPatch} hoverLegend={hoverLegend} label={slide.view.title + " 지도"} /> : slide.mass ? <VisualPlaceholder title={slide.view.title} message="3D 매스 미리보기는 내보내기와 같은 페이지 위치로 표시됩니다." unit={unit} /> : slide.rose ? <VisualPlaceholder title={slide.view.title} message="바람장미 도판 미리보기" unit={unit} /> : chart ? <ChartPlaceholder view={slide.view} unit={unit} /> : <VisualPlaceholder title={slide.view.title} message={slide.body.kind === "state" ? slide.body.message : "표시할 지도 결과가 없습니다."} unit={unit} />}
       {slide.body.kind === "state" && <div className={styles.slidePanel} style={{ left: unit * 4, top: unit * 2.7, width: unit * 5.1, height: unit * 1.15 }}><div className={styles.slideText + " " + styles.slideTextStrong} style={fontStyle(16, unit)}>{slide.body.message}</div></div>}
       <TitlePanel slide={slide} rect={panels.title} unit={unit} />
-      {panels.summary && hasSummaryPanel(slide) && <SummaryPanel slide={slide} rect={panels.summary} unit={unit} />}
-      {panels.legend && <LegendPanel slide={slide} rect={panels.legend} unit={unit} />}
+      {panels.summary && hasSummaryPanel(slide) && <SummaryPanel slide={slide} rect={panels.summary} unit={unit} onHide={onDirectPatch ? () => onDirectPatch({ summary: false }) : undefined} />}
+      {panels.legend && <LegendPanel slide={slide} rect={panels.legend} unit={unit} hoverLabel={hoverLegend} onLegendHover={setHoverLegend} onLegendPin={onLegendPin} />}
       <SlideFooter slide={slide} unit={unit} />
     </>
   );
 }
 
-function SlidePreview({ slide, basemap, editable, onPatch }: { slide: PlannedSlide; basemap: BasemapChoice; editable: boolean; onPatch: (patch: PreviewStylePatch) => void }) {
-  const canvasRef = useRef<HTMLDivElement>(null);
-  const unit = useCanvasUnit(canvasRef);
-  const model = mapForSlide(slide);
-  const hasSummary = hasSummaryPanel(slide);
-  const baseLegend = model && slide.kind === "tile" ? slideLegend(model, !slide.muted).rect : null;
-  const panels = slidePanelRects(slide.style, hasSummary, baseLegend);
+type PanelScaleField = "titleScale" | "summaryScale" | "legendScale";
+
+function PanelResizeHandle({ field, label, rect, unit, value, onPreview, onCommit }: { field: PanelScaleField; label: string; rect: Rect; unit: number; value: number; onPreview: (patch: PreviewStylePatch) => void; onCommit: (patch: PreviewStylePatch) => void }) {
+  const drag = useRef<{ pointerId: number; x: number; y: number; scale: number } | null>(null);
+  const lastScale = useRef(value);
+  const setScale = (scale: number, commit = false) => {
+    const next = clampNumber(Math.round(scale * 100) / 100, 0.7, 1.5);
+    lastScale.current = next;
+    const patch = { [field]: next } as PreviewStylePatch;
+    if (commit) onCommit(patch);
+    else onPreview(patch);
+  };
+  const finishPointer = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!drag.current || drag.current.pointerId !== event.pointerId) return;
+    setScale(lastScale.current, true);
+    drag.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    event.stopPropagation();
+  };
   return (
-    <div className={styles.previewFrame}>
-      <div ref={canvasRef} className={styles.slideCanvas} style={canvasStyle(unit)}>
-        {slide.kind === "cover" && <CoverSurface slide={slide} unit={unit} basemap={basemap} interactive={editable && !!model} onPatch={onPatch} />}
-        {slide.kind === "sources" && <SourcesSurface slide={slide} unit={unit} basemap={basemap} />}
-        {slide.kind === "sheet" && <SheetSurface slide={slide} unit={unit} basemap={basemap} />}
-        {slide.kind === "tile" && <TileSurface slide={slide} unit={unit} basemap={basemap} panels={panels} interactive={editable && !!model} onPatch={onPatch} />}
+    <button
+      type="button"
+      role="slider"
+      className={styles.resizeHandle}
+      data-panel-resize-handle={field}
+      aria-label={`${label} 탭 크기 핸들`}
+      title={`드래그하여 ${label} 탭 크기 조절`}
+      aria-valuemin={0.7}
+      aria-valuemax={1.5}
+      aria-valuenow={value}
+      aria-valuetext={formatScale(value)}
+      aria-orientation="horizontal"
+      style={{ left: (rect.x + rect.w) * unit - 22, top: (rect.y + rect.h) * unit - 22 }}
+      onPointerDown={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        drag.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, scale: value };
+        lastScale.current = value;
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      onPointerMove={(event) => {
+        if (!drag.current || drag.current.pointerId !== event.pointerId) return;
+        const delta = ((event.clientX - drag.current.x) + (event.clientY - drag.current.y)) / 2;
+        setScale(drag.current.scale + delta / 320);
+        event.stopPropagation();
+      }}
+      onPointerUp={finishPointer}
+      onPointerCancel={finishPointer}
+      onKeyDown={(event) => {
+        const direction = event.key === "ArrowRight" || event.key === "ArrowUp" ? 0.1 : event.key === "ArrowLeft" || event.key === "ArrowDown" ? -0.1 : event.key === "Home" ? 1 - value : event.key === "End" ? 1.5 - value : 0;
+        if (!direction) return;
+        event.preventDefault();
+        event.stopPropagation();
+        setScale(value + direction, true);
+      }}
+    >
+      <span aria-hidden="true" />
+    </button>
+  );
+}
+
+function SlidePreview({ slide, basemap, editable, onPatch, onMapPatch, onDirectPatch }: { slide: PlannedSlide; basemap: BasemapChoice; editable: boolean; onPatch: (patch: PreviewStylePatch) => void; onMapPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void }) {
+  const slotRef = useRef<HTMLDivElement>(null);
+  const frameSize = useContainFrameSize(slotRef);
+  const unit = frameSize.width > 0 ? frameSize.width / SLIDE.w : 1;
+  const [draftStyle, setDraftStyle] = useState<PreviewStylePatch>({});
+  const displaySlide = Object.keys(draftStyle).length > 0 ? { ...slide, style: { ...slide.style, ...draftStyle } } : slide;
+  const displayModel = mapForSlide(displaySlide);
+  const hasSummary = hasSummaryPanel(displaySlide);
+  const baseLegend = displayModel && displaySlide.kind === "tile" ? slideLegend(displayModel, !displaySlide.muted).rect : null;
+  const panels = slidePanelRects(displaySlide.style, hasSummary, baseLegend);
+  const previewPatch = (patch: PreviewStylePatch) => setDraftStyle((current) => ({ ...current, ...patch }));
+  const commitPatch = (patch: PreviewStylePatch) => {
+    setDraftStyle({});
+    onPatch(patch);
+  };
+  const handles = displaySlide.kind === "tile"
+    ? ([
+      { field: "titleScale" as const, label: "제목", rect: panels.title, value: displaySlide.style.titleScale ?? 1 },
+      ...(panels.summary && hasSummaryPanel(displaySlide) ? [{ field: "summaryScale" as const, label: "요약", rect: panels.summary, value: displaySlide.style.summaryScale ?? 1 }] : []),
+      ...(panels.legend ? [{ field: "legendScale" as const, label: "범례", rect: panels.legend, value: displaySlide.style.legendScale ?? 1 }] : []),
+    ])
+    : [];
+  return (
+    <div ref={slotRef} className={styles.previewSlot}>
+      <div className={styles.previewFrame} style={frameSize.width > 0 ? { width: frameSize.width, height: frameSize.height } : undefined}>
+        <div className={styles.slideCanvas} style={canvasStyle(unit)}>
+        {displaySlide.kind === "cover" && <CoverSurface slide={displaySlide} unit={unit} basemap={basemap} interactive={editable && !!displayModel} onPatch={onMapPatch} onDirectPatch={onDirectPatch} />}
+        {displaySlide.kind === "sources" && <SourcesSurface slide={displaySlide} unit={unit} basemap={basemap} />}
+        {displaySlide.kind === "sheet" && <SheetSurface slide={displaySlide} unit={unit} basemap={basemap} />}
+        {displaySlide.kind === "tile" && <TileSurface slide={displaySlide} unit={unit} basemap={basemap} panels={panels} interactive={editable && !!displayModel} onPatch={onMapPatch} onDirectPatch={onDirectPatch} />}
+        {handles.map((handle) => <PanelResizeHandle key={handle.field} {...handle} unit={unit} onPreview={previewPatch} onCommit={commitPatch} />)}
+        </div>
       </div>
     </div>
   );
 }
 
-type SettingsProps = {
-  board: BoardState;
+type PageToolbarProps = {
   selectedSlides: PlannedSlide[];
   current: PlannedSlide | null;
   applyPatch: (patch: PreviewStylePatch) => void;
-  resetStyles: () => void;
+  resetScales: () => void;
+  resetLabels: () => void;
 };
 
-function SettingsPanel({ board, selectedSlides, current, applyPatch, resetStyles }: SettingsProps) {
-  const mapModel = current ? mapForSlide(current) : null;
-  const mapEnabled = !!mapModel;
-  const oneTileMap = selectedSlides.length === 1 && current?.kind === "tile" && !!current.map && selectedSlides[0]?.key === current.key;
+function PageToolbar({ selectedSlides, current, applyPatch, resetScales, resetLabels }: PageToolbarProps) {
+  const targets = selectedSlides.length > 0 ? selectedSlides : current ? [current] : [];
+  const mapEnabled = !!(current && mapForSlide(current));
   const summaryEnabled = current?.kind === "tile" && !(current.callout && current.callout.page > 0);
-  const zoom = mixedField(selectedSlides, (slide) => slide.style.zoomDelta ?? 0, 0);
-  const titleScale = mixedField(selectedSlides, (slide) => slide.style.titleScale ?? 1, 1);
-  const summaryScale = mixedField(selectedSlides, (slide) => slide.style.summaryScale ?? 1, 1);
-  const legendScale = mixedField(selectedSlides, (slide) => slide.style.legendScale ?? 1, 1);
-  const summary = mixedField(selectedSlides, (slide) => slide.style.summary !== false, true);
-  const currentPinned = current && current.kind === "tile" ? (current.style.pinnedKeys ?? current.pinnedKeys ?? []) : [];
-  const labelEntries = oneTileMap && current?.map ? mapLabelEntries(current.map) : [];
-  const legendEntries = oneTileMap && current?.map ? legendItemsOf(current.map) : [];
-  const focusKey = oneTileMap ? current?.style.legendFocus ?? null : null;
-  const updateScale = (field: "titleScale" | "summaryScale" | "legendScale", value: number) => applyPatch({ [field]: clampNumber(value, 0.7, 1.5) });
-  const mapReason = !selectedSlides.length ? "페이지를 먼저 선택하세요." : !mapEnabled ? "현재 장은 지도 설정을 지원하지 않습니다." : undefined;
+  const zoom = mixedField(targets, (slide) => slide.style.zoomDelta ?? 0, 0);
+  const summary = mixedField(targets, (slide) => slide.style.summary !== false, true);
+  const directHint = current?.kind === "tile" && !!current.map && (
+    current.style.pinnedKeys === undefined
+    || current.style.legendFocus === undefined
+    || ((current.style.pinnedKeys?.length ?? 0) === 0 && current.style.legendFocus === null)
+  );
+  const targetLabel = targets.length > 1 ? `${targets.length}장에 적용` : targets.length === 1 ? "현재 1장" : "페이지를 선택하세요";
   return (
-    <aside className={styles.settings} aria-label="페이지 설정">
-      <div className={styles.settingsHeader}>
-        <h2>페이지 설정</h2>
-        <span className={styles.railHint}>{selectedSlides.length}장</span>
+    <div className={styles.pageToolbar} role="toolbar" aria-label="페이지 직접 조작 도구">
+      <div className={styles.toolbarContext}>
+        <strong>{targetLabel}</strong>
+        {targets.length > 1 && <span>라벨·범례는 현재 장만</span>}
+        {directHint && <span className={styles.interactionHint}>지도 요소를 누르면 라벨, 범례를 누르면 강조</span>}
       </div>
-      <section className={styles.settingsSection} aria-labelledby="preview-map-settings">
-        <h3 id="preview-map-settings">지도</h3>
-        {mapReason && <p className={styles.disabledReason}>{mapReason}</p>}
-        <div aria-disabled={!mapEnabled || !selectedSlides.length} style={!mapEnabled || !selectedSlides.length ? { opacity: 0.55 } : undefined}>
-          <div className={styles.controlRow}>
-            <div className={styles.controlRowInline}>
-              <span className={styles.controlLabel}>지도 확대</span>
-              <span className={styles.rangeValue}>{zoom.mixed ? "여러 값" : formatZoom(zoom.value)}</span>
-            </div>
-            <div className={styles.zoomActions}>
-              <button type="button" className={styles.smallButton} disabled={!mapEnabled || !selectedSlides.length} onClick={() => applyPatch({ zoomDelta: clampNumber((zoom.mixed ? 0 : zoom.value) - 0.5, -3, 3) })} aria-label="지도 축소">−</button>
-              <input className={styles.range} type="range" min="-3" max="3" step="0.5" value={zoom.mixed ? 0 : zoom.value} disabled={!mapEnabled || !selectedSlides.length} onChange={(event) => applyPatch({ zoomDelta: Number(event.currentTarget.value) })} aria-label="지도 확대" aria-valuetext={zoom.mixed ? "여러 값" : formatZoom(zoom.value)} />
-              <button type="button" className={styles.smallButton} disabled={!mapEnabled || !selectedSlides.length} onClick={() => applyPatch({ zoomDelta: clampNumber((zoom.mixed ? 0 : zoom.value) + 0.5, -3, 3) })} aria-label="지도 확대">+</button>
-            </div>
-          </div>
-          <button type="button" className={styles.centerButton} disabled={!mapEnabled || !selectedSlides.length} onClick={() => applyPatch({ offsetM: [0, 0] })}>대지 중앙 정렬</button>
+      <div className={styles.toolbarActions}>
+        <div className={styles.toolbarGroup} aria-label="지도 확대">
+          <span className={styles.toolbarLabel}>지도 {zoom.mixed ? "여러 값" : formatZoom(zoom.value)}</span>
+          <button type="button" className={styles.smallButton} disabled={!mapEnabled || targets.length === 0} onClick={() => applyPatch({ zoomDelta: clampNumber((zoom.mixed ? 0 : zoom.value) - 0.5, -3, 3) })} aria-label="지도 축소">−</button>
+          <button type="button" className={styles.smallButton} disabled={!mapEnabled || targets.length === 0} onClick={() => applyPatch({ zoomDelta: clampNumber((zoom.mixed ? 0 : zoom.value) + 0.5, -3, 3) })} aria-label="지도 확대">+</button>
+          <button type="button" className={styles.centerButton} disabled={!mapEnabled || targets.length === 0} onClick={() => applyPatch({ offsetM: [0, 0] })}><span className={styles.toolbarLongLabel}>대지 중앙 정렬</span><span className={styles.toolbarShortLabel}>정렬</span></button>
         </div>
-        <p className={styles.helper}>큰 페이지에서 지도를 드래그하거나 휠로 이동·확대할 수 있습니다.</p>
-      </section>
-      <section className={styles.settingsSection} aria-labelledby="preview-panel-settings">
-        <h3 id="preview-panel-settings">패널</h3>
-        <label className={styles.switchRow}>
-          <input type="checkbox" checked={summary.value} disabled={!summaryEnabled || !selectedSlides.length} onChange={(event) => applyPatch({ summary: event.currentTarget.checked })} />
-          <span className={styles.switchText}>요약 탭 표시{summary.mixed ? " · 여러 값" : ""}</span>
-        </label>
-        <div className={styles.controlRow}>
-          <div className={styles.controlRowInline}><span className={styles.controlLabel}>제목 탭 크기</span><span className={styles.rangeValue}>{titleScale.mixed ? "여러 값" : formatScale(titleScale.value)}</span></div>
-          <input className={styles.range} type="range" min="0.7" max="1.5" step="0.1" value={titleScale.mixed ? 1 : titleScale.value} disabled={!selectedSlides.length} onChange={(event) => updateScale("titleScale", Number(event.currentTarget.value))} aria-label="제목 탭 크기" aria-valuetext={titleScale.mixed ? "여러 값" : formatScale(titleScale.value)} />
-        </div>
-        <div className={styles.controlRow}>
-          <div className={styles.controlRowInline}><span className={styles.controlLabel}>요약 탭 크기</span><span className={styles.rangeValue}>{summaryScale.mixed ? "여러 값" : formatScale(summaryScale.value)}</span></div>
-          <input className={styles.range} type="range" min="0.7" max="1.5" step="0.1" value={summaryScale.mixed ? 1 : summaryScale.value} disabled={!summaryEnabled || !selectedSlides.length} onChange={(event) => updateScale("summaryScale", Number(event.currentTarget.value))} aria-label="요약 탭 크기" aria-valuetext={summaryScale.mixed ? "여러 값" : formatScale(summaryScale.value)} />
-        </div>
-        <div className={styles.controlRow}>
-          <div className={styles.controlRowInline}><span className={styles.controlLabel}>범례 탭 크기</span><span className={styles.rangeValue}>{legendScale.mixed ? "여러 값" : formatScale(legendScale.value)}</span></div>
-          <input className={styles.range} type="range" min="0.7" max="1.5" step="0.1" value={legendScale.mixed ? 1 : legendScale.value} disabled={!mapEnabled || !selectedSlides.length} onChange={(event) => updateScale("legendScale", Number(event.currentTarget.value))} aria-label="범례 탭 크기" aria-valuetext={legendScale.mixed ? "여러 값" : formatScale(legendScale.value)} />
-        </div>
-        <button type="button" className={styles.resetButton} disabled={!selectedSlides.length} onClick={resetStyles}>선택 장 기본값</button>
-      </section>
-      <section className={styles.settingsSection} aria-labelledby="preview-label-settings">
-        <h3 id="preview-label-settings">지도 라벨</h3>
-        {!oneTileMap ? <p className={styles.disabledReason}>한 장의 지도 페이지를 선택하면 라벨을 설정할 수 있습니다.</p> : labelEntries.length === 0 ? <p className={styles.disabledReason}>이 지도에는 고정할 라벨 후보가 없습니다.</p> : (
-          <>
-            <div className={styles.checkList}>
-              {labelEntries.map((entry) => (
-                <label className={styles.checkOption} key={entry.key}>
-                  <input type="checkbox" checked={currentPinned.includes(entry.key)} onChange={(event) => {
-                    const next = new Set(currentPinned);
-                    if (event.currentTarget.checked) next.add(entry.key);
-                    else next.delete(entry.key);
-                    applyPatch({ pinnedKeys: [...next] });
-                  }} />
-                  <span className={styles.optionText}>{entry.text}</span>
-                </label>
-              ))}
-            </div>
-            <button type="button" className={styles.resetButton} onClick={() => applyPatch({ pinnedKeys: undefined })}>보드 라벨 따르기</button>
-          </>
-        )}
-      </section>
-      <section className={styles.settingsSection} aria-labelledby="preview-legend-settings">
-        <h3 id="preview-legend-settings">범례 강조</h3>
-        {!oneTileMap ? <p className={styles.disabledReason}>한 장의 지도 페이지를 선택하면 범례를 설정할 수 있습니다.</p> : legendEntries.length === 0 ? <p className={styles.disabledReason}>표시할 범례가 없습니다.</p> : (
-          <div className={styles.radioList}>
-            <label className={styles.radioOption}>
-              <input type="radio" name="preview-legend-focus" checked={focusKey === null} onChange={() => applyPatch({ legendFocus: null })} />
-              <span className={styles.optionText}>강조 없이 전체 표시</span>
-            </label>
-            {legendEntries.map((entry) => (
-              <label className={styles.radioOption} key={entry.key}>
-                <input type="radio" name="preview-legend-focus" checked={focusKey === entry.key} onChange={() => applyPatch({ legendFocus: entry.key })} />
-                <span className={styles.optionText}>{entry.label}</span>
-              </label>
-            ))}
-          </div>
-        )}
-      </section>
-      {board.report.extra.length > 0 && <p className={styles.helper}>추가 페이지 {board.report.extra.length}장은 보드에 저장됩니다.</p>}
-    </aside>
+        <button type="button" className={styles.toolbarToggle} disabled={!summaryEnabled || targets.length === 0} aria-pressed={summary.value} onClick={() => applyPatch({ summary: !summary.value })}><span className={styles.toolbarLongLabel}>{summary.value ? "요약 탭 숨기기" : "요약 탭 켜기"}{summary.mixed ? " · 여러 값" : ""}</span><span className={styles.toolbarShortLabel}>요약</span></button>
+        <button type="button" className={styles.toolbarReset} disabled={targets.length === 0} onClick={resetScales} aria-label="탭 크기 기본값"><span className={styles.toolbarLongLabel}>탭 크기 기본값</span><span className={styles.toolbarShortLabel}>크기</span></button>
+        <button type="button" className={styles.toolbarReset} disabled={!mapEnabled || !current} onClick={resetLabels} aria-label="라벨 초기화"><span className={styles.toolbarLongLabel}>라벨 초기화</span><span className={styles.toolbarShortLabel}>라벨</span></button>
+      </div>
+    </div>
   );
 }
 
@@ -605,6 +667,7 @@ export default function ReportPreview({ board, dispatch, views, plan, basemap, o
   const [activeKey, setActiveKey] = useState<PageKey | null>(plan[0]?.key ?? null);
   const [selectedKeys, setSelectedKeys] = useState<PageKey[]>(plan[0]?.key ? [plan[0].key] : []);
   const [anchorKey, setAnchorKey] = useState<PageKey | null>(plan[0]?.key ?? null);
+  const [filmstripOpen, setFilmstripOpen] = useState(true);
   const [addAfterKey, setAddAfterKey] = useState<PageKey | null>(null);
   const [addPopoverStyle, setAddPopoverStyle] = useState<CSSProperties | null>(null);
   addAfterKeyRef.current = addAfterKey;
@@ -703,10 +766,6 @@ export default function ReportPreview({ board, dispatch, views, plan, basemap, o
     const keys = selectedKeys.length > 0 ? selectedKeys : (current ? [current.key] : []);
     if (keys.length > 0) dispatch({ type: "pageStyle", keys, patch });
   }, [current, dispatch, selectedKeys]);
-  const resetStyles = useCallback(() => {
-    const keys = selectedKeys.length > 0 ? selectedKeys : (current ? [current.key] : []);
-    if (keys.length > 0) dispatch({ type: "pageStyleReset", keys });
-  }, [current, dispatch, selectedKeys]);
   const select = useCallback((key: PageKey, modifiers: PageSelectionModifiers = {}) => {
     const next = selectPageKeys(planKeys, anchorKey, key, { ...modifiers, selectedKeys });
     setActiveKey(key);
@@ -766,6 +825,15 @@ export default function ReportPreview({ board, dispatch, views, plan, basemap, o
     const keys = selectedKeys.includes(current?.key ?? "") ? selectedKeys : (current ? [current.key] : []);
     if (keys.length > 0) dispatch({ type: "pageStyle", keys, patch });
   };
+  const onDirectPagePatch = useCallback((patch: PreviewStylePatch) => {
+    if (current) dispatch({ type: "pageStyle", keys: [current.key], patch });
+  }, [current, dispatch]);
+  const resetScales = useCallback(() => {
+    applyPatch({ titleScale: undefined, summaryScale: undefined, legendScale: undefined });
+  }, [applyPatch]);
+  const resetLabels = useCallback(() => {
+    onDirectPagePatch({ pinnedKeys: undefined });
+  }, [onDirectPagePatch]);
 
   return (
     <div className={styles.backdrop}>
@@ -779,10 +847,14 @@ export default function ReportPreview({ board, dispatch, views, plan, basemap, o
           <span className={styles.headerSpacer} />
           <button type="button" className={styles.closeButton} onClick={onClose}>닫기</button>
         </header>
-        <div className={styles.body}>
-          <nav className={styles.thumbRail} aria-label="보고서 페이지 목록">
-            <div className={styles.railHeading}><h2>페이지</h2><span className={styles.railHint}>{plan.length}장</span></div>
-            <ol className={styles.thumbList}>
+        <div className={styles.body + (!filmstripOpen ? " " + styles.bodyFilmstripCollapsed : "")}>
+          <nav className={styles.thumbRail + (!filmstripOpen ? " " + styles.thumbRailCollapsed : "")} aria-label="보고서 페이지 목록">
+            <div className={styles.railHeading}>
+              <h2>페이지</h2>
+              {filmstripOpen && <span className={styles.railHint}>{plan.length}장</span>}
+              <button type="button" className={styles.filmstripToggle} aria-expanded={filmstripOpen} onClick={() => setFilmstripOpen((open) => !open)}>{filmstripOpen ? "목록 접기" : "페이지 목록"}</button>
+            </div>
+            {filmstripOpen && <ol className={styles.thumbList}>
               {plan.map((slide) => {
                 const selected = selectedKeys.includes(slide.key);
                 const extra = slide.key.startsWith("extra:");
@@ -819,12 +891,15 @@ export default function ReportPreview({ board, dispatch, views, plan, basemap, o
                   </li>
                 );
               })}
-            </ol>
+            </ol>}
           </nav>
           <main className={styles.stageColumn} aria-label="현재 페이지 미리보기">
-            {current ? <><div className={styles.stageHeading}><h2>{current.no}장 · {slideTitle(current)}</h2><span>{current.kind === "tile" ? current.view.kindLabel : current.kind === "sheet" ? "타일 조판" : current.kind === "sources" ? "출처" : "표지"}</span></div><SlidePreview slide={current} basemap={basemap} editable={!!mapForSlide(current)} onPatch={onLargeMapPatch} /></> : <p className={styles.emptyState}>표시할 페이지가 없습니다.</p>}
+            {current ? <>
+              <div className={styles.stageHeading}><h2>{current.no}장 · {slideTitle(current)}</h2><span>{current.kind === "tile" ? current.view.kindLabel : current.kind === "sheet" ? "타일 조판" : current.kind === "sources" ? "출처" : "표지"}</span></div>
+              <PageToolbar selectedSlides={selectedSlides} current={current} applyPatch={applyPatch} resetScales={resetScales} resetLabels={resetLabels} />
+              <SlidePreview slide={current} basemap={basemap} editable={!!mapForSlide(current)} onPatch={applyPatch} onMapPatch={onLargeMapPatch} onDirectPatch={onDirectPagePatch} />
+            </> : <p className={styles.emptyState}>표시할 페이지가 없습니다.</p>}
           </main>
-          <SettingsPanel board={board} selectedSlides={selectedSlides} current={current} applyPatch={applyPatch} resetStyles={resetStyles} />
         </div>
         <footer className={styles.footer}>
           <p ref={exportStatusRef} className={styles.footerStatus + " " + (exportProblem ? styles.footerError : "")} role={exportProblem ? "alert" : "status"} aria-live="polite" aria-busy={exporting} tabIndex={-1}>{exportProblem ?? (exporting ? (makingKind ?? "PPT") + " 내보내는 중…" : "설정은 보드에 자동 저장됩니다.")}</p>
