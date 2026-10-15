@@ -98,7 +98,10 @@ export function useFocusTrap({ ref, active = true, onClose, onEscape, restoreFoc
       window.cancelAnimationFrame(initialFrame);
       document.removeEventListener("keydown", onKeyDown, true);
       if (!restoreFocus) return;
-      const restoreTarget = opener?.isConnected ? opener : restoreFocusRef?.current;
+      const connectedOpener = opener?.isConnected ? opener : restoreFocusRef?.current;
+      // 연 버튼이 닫힌 <details> 메뉴 안에 있으면 보이지 않아 포커스를 못 받으므로 그 메뉴의 summary로 돌린다.
+      const closedMenu = connectedOpener?.closest("details:not([open])");
+      const restoreTarget = closedMenu?.querySelector<HTMLElement>(":scope > summary") ?? connectedOpener;
       if (!restoreTarget?.isConnected) return;
       let attempts = 0;
       const restore = () => {

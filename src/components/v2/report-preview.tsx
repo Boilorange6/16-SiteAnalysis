@@ -56,7 +56,8 @@ function rectStyle(rect: Rect, unit: number): CSSProperties {
 }
 
 function fontStyle(pt: number, unit: number, extra: CSSProperties = {}): CSSProperties {
-  return { ...extra, fontSize: Math.max(7, (pt / 72) * unit) };
+  // 슬라이드 축소본이므로 글자도 배치와 같은 비율로 줄인다(하한을 두면 좁은 화면에서 줄이 겹친다).
+  return { ...extra, fontSize: (pt / 72) * unit };
 }
 
 function canvasStyle(unit: number): CSSProperties {
