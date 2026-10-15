@@ -527,6 +527,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
       tabIndex: 0,
       "aria-label": labelText,
       "aria-pressed": onFeaturePin ? pinned.has(key) : undefined,
+      title: onFeaturePin ? (pinned.has(key) ? "눌러서 라벨 숨기기" : "눌러서 라벨 표시") : undefined,
       onClick: () => {
         choose();
         pin();
@@ -649,12 +650,13 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
         key={`${variant}-label-${d.key}`}
         data-map-label-key={d.key}
         data-map-label-variant={variant}
-        {...(fixedLabel && onFeaturePin ? { "data-map-feature": d.key, className: "map-figure-interactive", role: "button" as const, tabIndex: 0, "aria-label": `${d.text} 고정 라벨`, "aria-pressed": true, onClick: pinPick, onKeyDown } : { "aria-hidden": true })}
+        {...(fixedLabel && onFeaturePin ? { "data-map-feature": d.key, className: "map-figure-interactive", role: "button" as const, tabIndex: 0, "aria-label": `${d.text} · 눌러서 라벨 숨기기`, "aria-pressed": true, onClick: pinPick, onKeyDown } : { "aria-hidden": true })}
         style={fixedLabel && onFeaturePin ? { cursor: "pointer" } : undefined}
         pointerEvents={fixedLabel && onFeaturePin ? "all" : "none"}
         opacity={dimmed ? 0.2 : 1}
       >
         <title>{d.text}</title>
+        {fixedLabel && onFeaturePin && <title>눌러서 라벨 숨기기</title>}
         {!dragging && <>
           <polyline data-map-label-leader={d.key} points={[d.p, placement.placed.knee, placement.placed.edge].map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke="#fff" strokeWidth={3.6 * u} strokeLinecap="round" strokeLinejoin="round" />
           <polyline data-map-label-leader={d.key} points={[d.p, placement.placed.knee, placement.placed.edge].map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke={INK} strokeWidth={1.2 * u} strokeLinecap="round" strokeLinejoin="round" />
@@ -905,21 +907,29 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
             if (!shouldRasterizeLayer(d.f.layer)) return null;
             const hollow = st.sizeBy === "weight" && !d.f.weight;
             const featureKey = mapFeatureKey(d.f.layer, d.f.fid, d.index);
-            const strong = isElementStrong(d.f.layer, featureKey);
-            return (
-            <circle
-              key={`feature-${i}-${d.f.fid ?? d.f.layer}`}
-              cx={d.p[0]}
-              cy={d.p[1]}
-              r={r}
-              fill={neutralBuilding ? buildingStyle.fill : hollow ? "#fff" : d.f.color ?? st.color}
-              fillOpacity={neutralBuilding ? buildingStyle.fillOpacity : hollow ? 0.6 : st.sizeBy === "weight" ? 0.55 : d.f.highlight ? 1 : 0.85}
-              opacity={isElementDimmed(d.f.layer, featureKey) ? 0.2 : undefined}
-              stroke={strong || d.f.highlight || d.selected ? INK : neutralBuilding ? buildingStyle.stroke : sat ? "#fff" : st.sizeBy === "weight" ? st.color : "#fff"}
-              strokeWidth={(strong ? 1.6 : d.f.highlight || d.selected ? 2.8 : neutralBuilding ? buildingStyle.strokeWidth ?? 0.8 : sat ? 1.5 : st.sizeBy === "weight" ? 1.4 : 0.8) * u}
-              {...pickProps({ fid: d.f.fid, lng: d.f.lng, lat: d.f.lat, kind: "feature" }, featureKey, labelText(d.f.layer, "feature", d.f))}
-            />
-          );
+             const strong = isElementStrong(d.f.layer, featureKey);
+             const pick = pickProps({ fid: d.f.fid, lng: d.f.lng, lat: d.f.lat, kind: "feature" }, featureKey, labelText(d.f.layer, "feature", d.f));
+             const expandedHit = !!onFeaturePin && r < 22 * u;
+             const visiblePoint = (
+               <circle
+                 key={`feature-${i}-${d.f.fid ?? d.f.layer}`}
+                 cx={d.p[0]}
+                 cy={d.p[1]}
+                 r={r}
+                 fill={neutralBuilding ? buildingStyle.fill : hollow ? "#fff" : d.f.color ?? st.color}
+                 fillOpacity={neutralBuilding ? buildingStyle.fillOpacity : hollow ? 0.6 : st.sizeBy === "weight" ? 0.55 : d.f.highlight ? 1 : 0.85}
+                 opacity={isElementDimmed(d.f.layer, featureKey) ? 0.2 : undefined}
+                 stroke={strong || d.f.highlight || d.selected ? INK : neutralBuilding ? buildingStyle.stroke : sat ? "#fff" : st.sizeBy === "weight" ? st.color : "#fff"}
+                 strokeWidth={(strong ? 1.6 : d.f.highlight || d.selected ? 2.8 : neutralBuilding ? buildingStyle.strokeWidth ?? 0.8 : sat ? 1.5 : st.sizeBy === "weight" ? 1.4 : 0.8) * u}
+                 {...pick}
+               />
+             );
+             return expandedHit ? (
+               <g key={`feature-hit-${i}-${d.f.fid ?? d.f.layer}`} className="map-figure-interactive">
+                 {visiblePoint}
+                 <circle cx={d.p[0]} cy={d.p[1]} r={22 * u} fill="transparent" stroke="transparent" pointerEvents="all" {...pick} />
+               </g>
+             ) : visiblePoint;
          })}
         {showNativeChrome && routePoints.length >= 2 && (
           <>
