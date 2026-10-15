@@ -19,7 +19,7 @@ interface TaggedShape {
   readonly display: string;
 }
 
-const SP_BLOCK_RE = /<p:sp>[\s\S]*?<\/p:sp>/g;
+const SHAPE_BLOCK_RE = /<p:sp>[\s\S]*?<\/p:sp>|<p:cxnSp>[\s\S]*?<\/p:cxnSp>/g;
 const NAME_RE = /<p:cNvPr id="\d+" name="([^"]*)"/;
 const OFF_RE = /<a:off x="(-?\d+)" y="(-?\d+)"\/>/;
 const EXT_RE = /<a:ext cx="(\d+)" cy="(\d+)"\/>/;
@@ -35,7 +35,7 @@ function escapeXmlAttr(s: string): string {
 /** 슬라이드 XML 1개에서 태깅 도형들을 요소 단위 grpSp로 재배치. 태깅이 없으면 원본 그대로. */
 export function groupSlideXml(xml: string): string {
   const tagged: TaggedShape[] = [];
-  for (const m of xml.matchAll(SP_BLOCK_RE)) {
+  for (const m of xml.matchAll(SHAPE_BLOCK_RE)) {
     const nm = m[0].match(NAME_RE);
     if (!nm || !nm[1].startsWith(GROUP_TAG_PREFIX)) continue;
     const parts = nm[1].slice(GROUP_TAG_PREFIX.length).split("|");

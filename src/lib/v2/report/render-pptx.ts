@@ -14,7 +14,7 @@ import { sheetCells, type SheetGrid } from "../ui/sheet";
 import { COVER_MAP_KEY, mapKeyOf, type PlannedSlide } from "./report-plan";
 import { E, FONT, INK, IW, IX, L, LINE, MUTED, PLATE_ALPHA, fitPt, hex, linesOf, plate, textIn, type Border, type ReportItem, type Slide } from "./pptx-kit";
 import { tileReportModuleFor } from "../tile/report";
-import { addEditableMap, isEditableMap, nativeMapFallbackNote } from "./map-pptx";
+import { addEditableMap, nativeMapFallbackNote, nativeMapStatus } from "./map-pptx";
 import { badgeTextColor } from "../ui/map-labels";
 
 /** 지도 이미지(PNG/JPEG data URL) — 키는 report-plan의 mapKeyOf */
@@ -27,6 +27,8 @@ const CHIP: Record<Badge["tone"], { fill: string; color: string }> = {
   limit: { fill: "F0E8DC", color: "5B4A2F" },
   model: { fill: "E6E1F7", color: "3D2E8C" },
 };
+
+const panelTag = (key: string, display: string, part: string): string => `GRP|panel-${key}|${display}|${part}`;
 
 function background(s: Slide, image: string | undefined, tint?: string) {
   if (image) s.addImage({ data: image, x: 0, y: 0, w: SLIDE.w, h: SLIDE.h });
@@ -52,15 +54,16 @@ function strip(s: Slide, p: PlannedSlide, credit: boolean) {
 function titlePlate(s: Slide, color: string, code: string, title: string, kind: string, maxW: number) {
   const w = Math.min(maxW, 0.62 + textIn(`${code}  `, 10) + textIn(title, 18) + textIn(`  ${kind}`, 10));
   const r = { x: L.title.x, y: L.title.y, w, h: L.title.h };
-  plate(s, r);
-  s.addShape("ellipse", { x: r.x + 0.2, y: r.y + r.h / 2 - 0.09, w: 0.18, h: 0.18, fill: { color: hex(color) }, line: { color: hex(color) } });
+  const group = panelTag("title", "제목", "plate");
+  plate(s, r, 0.12, group);
+  s.addShape("ellipse", { x: r.x + 0.2, y: r.y + r.h / 2 - 0.09, w: 0.18, h: 0.18, fill: { color: hex(color) }, line: { color: hex(color) }, objectName: panelTag("title", "제목", "mark") });
   s.addText(
     [
       { text: `${code}  `, options: { fontSize: 10, color: MUTED, bold: true } },
       { text: title, options: { fontSize: 18, color: INK, bold: true } },
       { text: `  ${kind}`, options: { fontSize: 10, color: MUTED, bold: true } },
     ],
-    { x: r.x + 0.48, y: r.y, w: w - 0.58, h: r.h, valign: "middle", fontFace: FONT, margin: 0 },
+    { x: r.x + 0.48, y: r.y, w: w - 0.58, h: r.h, valign: "middle", fontFace: FONT, margin: 0, objectName: panelTag("title", "제목", "text") },
   );
 }
 
@@ -91,10 +94,15 @@ function infoPanel(s: Slide, items: Item[]) {
   const pad = 0.22;
   const need = items.reduce((a, i) => a + i.h, 0) + gap * Math.max(0, items.length - 1) + pad * 2;
   const r = { x: L.info.x, y: L.info.y, w: L.info.w, h: Math.min(L.info.h, need) };
-  plate(s, r, 0.16);
+  const group = panelTag("summary", "요약", "plate");
+  plate(s, r, 0.16, group);
+  const groupedSlide = {
+    addShape: (name: Parameters<Slide["addShape"]>[0], options: Parameters<Slide["addShape"]>[1]) => s.addShape(name, { ...options, objectName: group }),
+    addText: (text: Parameters<Slide["addText"]>[0], options: Parameters<Slide["addText"]>[1]) => s.addText(text, { ...options, objectName: group }),
+  } as Slide;
   let y = r.y + pad;
   for (const it of items) {
-    it.draw(y);
+    it.draw(y, groupedSlide);
     y += it.h + gap;
   }
 }
@@ -102,7 +110,7 @@ function infoPanel(s: Slide, items: Item[]) {
 const badgeItem = (s: Slide, badges: Badge[]): Item | null => {
   const items = badges.map((b) => ({ text: b.text, tone: b.tone }));
   const h = chipRows(s, items, IX, 0, IW, false);
-  return h ? { h, draw: (y) => void chipRows(s, items, IX, y, IW, true) } : null;
+  return h ? { h, draw: (y, target = s) => void chipRows(target, items, IX, y, IW, true) } : null;
 };
 
 function headlineItems(s: Slide, h: NonNullable<TileView["headline"]>): Item[] {
@@ -112,10 +120,10 @@ function headlineItems(s: Slide, h: NonNullable<TileView["headline"]>): Item[] {
   return [
     {
       h: 0.24 + 0.66 + (sub ? 0.24 : 0),
-      draw: (y) => {
-        s.addText(h.label, { x: IX, y, w: IW, h: 0.24, fontFace: FONT, fontSize: fitPt(h.label, 11, IW, 1, 8), color: MUTED, margin: 0 });
-        s.addText(h.value, { x: IX, y: y + 0.24, w: IW, h: 0.66, valign: "middle", fontFace: FONT, fontSize: pt, bold: true, color: INK, margin: 0 });
-        if (sub) s.addText(sub, { x: IX, y: y + 0.9, w: IW, h: 0.24, fontFace: FONT, fontSize: 10.5, color: MUTED, margin: 0 });
+      draw: (y, target = s) => {
+        target.addText(h.label, { x: IX, y, w: IW, h: 0.24, fontFace: FONT, fontSize: fitPt(h.label, 11, IW, 1, 8), color: MUTED, margin: 0 });
+        target.addText(h.value, { x: IX, y: y + 0.24, w: IW, h: 0.66, valign: "middle", fontFace: FONT, fontSize: pt, bold: true, color: INK, margin: 0 });
+        if (sub) target.addText(sub, { x: IX, y: y + 0.9, w: IW, h: 0.24, fontFace: FONT, fontSize: 10.5, color: MUTED, margin: 0 });
       },
     },
   ];
@@ -124,7 +132,7 @@ function headlineItems(s: Slide, h: NonNullable<TileView["headline"]>): Item[] {
 const textItem = (s: Slide, text: string, pt: number, color: string, bold = false, maxLines = 6): Item => {
   const size = fitPt(text, pt, IW, maxLines, 8);
   const h = linesOf(text, size, IW) * (size / 72) * 1.45 + 0.04;
-  return { h, draw: (y) => void s.addText(text, { x: IX, y, w: IW, h, valign: "top", fontFace: FONT, fontSize: size, bold, color, margin: 0 }) };
+  return { h, draw: (y, target = s) => void target.addText(text, { x: IX, y, w: IW, h, valign: "top", fontFace: FONT, fontSize: size, bold, color, margin: 0 }) };
 };
 
 function roseSummary(model: RoseModel): string {
@@ -140,11 +148,11 @@ const ROSE_SEASON_LABEL = { annual: "연간", spring: "봄", summer: "여름", a
 function rowItems(s: Slide, rows: TileView["rows"]): Item[] {
   return rows.map((r) => ({
     h: 0.3,
-    draw: (y) => {
-      s.addText(r.label, { x: IX, y, w: IW * 0.55, h: 0.28, valign: "middle", fontFace: FONT, fontSize: fitPt(r.label, 11, IW * 0.55, 1, 8), color: MUTED, margin: 0 });
+    draw: (y, target = s) => {
+      target.addText(r.label, { x: IX, y, w: IW * 0.55, h: 0.28, valign: "middle", fontFace: FONT, fontSize: fitPt(r.label, 11, IW * 0.55, 1, 8), color: MUTED, margin: 0 });
       const v = [r.value, r.aux, r.tag].filter(Boolean).join(" · ");
-      s.addText(v, { x: IX + IW * 0.55, y, w: IW * 0.45, h: 0.28, align: "right", valign: "middle", fontFace: FONT, fontSize: fitPt(v, 11, IW * 0.45, 1, 8), bold: true, color: INK, margin: 0 });
-      s.addShape("line", { x: IX, y: y + 0.3, w: IW, h: 0, line: { color: LINE, width: 0.75 } });
+      target.addText(v, { x: IX + IW * 0.55, y, w: IW * 0.45, h: 0.28, align: "right", valign: "middle", fontFace: FONT, fontSize: fitPt(v, 11, IW * 0.45, 1, 8), bold: true, color: INK, margin: 0 });
+      target.addShape("line", { x: IX, y: y + 0.3, w: IW, h: 0, line: { color: LINE, width: 0.75 } });
     },
   }));
 }
@@ -155,27 +163,28 @@ function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }) {
   if (!model) return;
   const { items, notes, rect: r } = slideLegend(model, !p.muted);
   if (!r) return;
-  plate(s, r);
+  const group = panelTag("legend", "범례", "plate");
+  plate(s, r, 0.12, group);
   items.forEach((it, i) => {
     const y = r.y + 0.1 + i * 0.25;
     if (it.site) {
-      s.addShape("diamond", { x: r.x + 0.19, y: y + 0.04, w: 0.16, h: 0.16, fill: { color: "FFFFFF" }, line: { color: "111111", width: 0.8 } });
-      s.addShape("ellipse", { x: r.x + 0.25, y: y + 0.1, w: 0.04, h: 0.04, fill: { color: "111111" }, line: { color: "111111", width: 0 } });
+      s.addShape("diamond", { x: r.x + 0.19, y: y + 0.04, w: 0.16, h: 0.16, fill: { color: "FFFFFF" }, line: { color: "111111", width: 0.8 }, objectName: group });
+      s.addShape("ellipse", { x: r.x + 0.25, y: y + 0.1, w: 0.04, h: 0.04, fill: { color: "111111" }, line: { color: "111111", width: 0 }, objectName: group });
     } else if (it.symbol === "rail-axis") {
-      s.addShape("line", { x: r.x + 0.17, y: y + 0.145, w: 0.22, h: 0, line: { color: "172033", width: 5.2, beginArrowType: "none", endArrowType: "none" }, objectName: `GRP|legend-${p.view.code}-${i}|범례 ${it.label}|axis-casing` });
-      s.addShape("line", { x: r.x + 0.17, y: y + 0.145, w: 0.22, h: 0, line: { color: hex(it.color), width: 3.6, beginArrowType: "none", endArrowType: "none" }, objectName: `GRP|legend-${p.view.code}-${i}|범례 ${it.label}|axis` });
+      s.addShape("line", { x: r.x + 0.17, y: y + 0.145, w: 0.22, h: 0, line: { color: "172033", width: 5.2, beginArrowType: "none", endArrowType: "none" }, objectName: group });
+      s.addShape("line", { x: r.x + 0.17, y: y + 0.145, w: 0.22, h: 0, line: { color: hex(it.color), width: 3.6, beginArrowType: "none", endArrowType: "none" }, objectName: group });
     } else if (it.symbol === "rail-exit") {
-      s.addShape("ellipse", { x: r.x + 0.18, y: y + 0.035, w: 0.19, h: 0.19, fill: { color: "FFD200" }, line: { color: "172033", width: 0.75 }, objectName: `GRP|legend-${p.view.code}-${i}|범례 ${it.label}|exit` });
+      s.addShape("ellipse", { x: r.x + 0.18, y: y + 0.035, w: 0.19, h: 0.19, fill: { color: "FFD200" }, line: { color: "172033", width: 0.75 }, objectName: group });
     } else if (it.badge) {
-      s.addShape("ellipse", { x: r.x + 0.18, y: y + 0.03, w: 0.19, h: 0.19, fill: { color: hex(it.color) }, line: { color: "FFFFFF", width: 0.75 }, objectName: `GRP|legend-${p.view.code}-${i}|범례 ${it.label}|badge` });
-      s.addText(it.badge, { x: r.x + 0.18, y: y + 0.03, w: 0.19, h: 0.19, align: "center", valign: "middle", fontFace: FONT, fontSize: 7, bold: true, color: hex(badgeTextColor(it.color)), margin: 0, objectName: `GRP|legend-${p.view.code}-${i}|범례 ${it.label}|badge-text` });
+      s.addShape("ellipse", { x: r.x + 0.18, y: y + 0.03, w: 0.19, h: 0.19, fill: { color: hex(it.color) }, line: { color: "FFFFFF", width: 0.75 }, objectName: group });
+      s.addText(it.badge, { x: r.x + 0.18, y: y + 0.03, w: 0.19, h: 0.19, align: "center", valign: "middle", fontFace: FONT, fontSize: 7, bold: true, color: hex(badgeTextColor(it.color)), margin: 0, objectName: group });
     } else {
-      s.addShape("ellipse", { x: r.x + 0.2, y: y + 0.06, w: 0.13, h: 0.13, fill: { color: hex(it.color) }, line: { color: "FFFFFF", width: 0.75 }, objectName: `GRP|legend-${p.view.code}-${i}|범례 ${it.label}|dot` });
+      s.addShape("ellipse", { x: r.x + 0.2, y: y + 0.06, w: 0.13, h: 0.13, fill: { color: hex(it.color) }, line: { color: "FFFFFF", width: 0.75 }, objectName: group });
     }
-    s.addText(it.label, { x: r.x + 0.45, y, w: r.w - 0.55, h: 0.25, valign: "middle", fontFace: FONT, fontSize: 10, color: INK, margin: 0, objectName: `GRP|legend-${p.view.code}-${i}|범례 ${it.label}|label` });
+    s.addText(it.label, { x: r.x + 0.45, y, w: r.w - 0.55, h: 0.25, valign: "middle", fontFace: FONT, fontSize: 10, color: INK, margin: 0, objectName: group });
   });
   notes.forEach((n, i) => {
-      s.addText(n, { x: r.x + 0.2, y: r.y + 0.1 + items.length * 0.25 + i * 0.22, w: r.w - 0.3, h: 0.22, valign: "middle", fontFace: FONT, fontSize: 8.5, color: MUTED, margin: 0, fit: "shrink", objectName: `GRP|legend-${p.view.code}-notes|범례 주석|note-${i}` });
+      s.addText(n, { x: r.x + 0.2, y: r.y + 0.1 + items.length * 0.25 + i * 0.22, w: r.w - 0.3, h: 0.22, valign: "middle", fontFace: FONT, fontSize: 8.5, color: MUTED, margin: 0, fit: "shrink", objectName: group });
   });
 }
 
@@ -239,10 +248,13 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   };
   const co = p.callout;
   const calloutReport = tileReportModuleFor(v.code)?.report;
-  const nativeMap = !!p.map && !(co && co.page > 0) && isEditableMap(p.map);
+  const mapStatus = p.map ? nativeMapStatus(p.map) : null;
+  const nativeMap = !!p.map && !!mapStatus?.native;
   background(s, chart ? undefined : images[mapKeyOf(p) ?? v.tileId], chart ? mix(v.color, 0.07) : undefined);
-  if (nativeMap && p.map) addEditableMap(s, p, p.map);
-  else if (p.map) s.addNotes(nativeMapFallbackNote(p.map));
+  if (nativeMap && p.map) {
+    addEditableMap(s, p, p.map);
+    if (mapStatus?.denseLayers.length || mapStatus?.rasterValues.length) s.addNotes(nativeMapFallbackNote(p.map));
+  } else if (p.map) s.addNotes(nativeMapFallbackNote(p.map));
   const coTail = co ? (co.page === 0 ? `개요 · 전체 ${fmtInt(co.model.complexes.length)}${co.model.unit}` : pageRange(co.page, co.model.complexes.length, undefined, co.model.kind === "supply")) : null;
   titlePlate(s, v.color, v.code, v.title, [v.kindLabel, p.faceLabel, coTail].filter((t, i, a) => t && a.indexOf(t) === i).join(" · "), co && co.page > 0 ? SLIDE.w - 2 * E : L.info.x - 2 * E);
   if (co && co.page > 0) {
@@ -344,6 +356,15 @@ function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: Map
     } else {
       s.addText("그림을 만들지 못했습니다", { x: r.x + 0.15, y: r.y + r.h / 2 - 0.12, w: r.w - 0.3, h: 0.25, align: "center", fontFace: FONT, fontSize: 9, color: MUTED, margin: 0 });
     }
+    if (!chart && !cell.mass && !cell.rose) {
+      const sourceMap = cell.view.map ?? cell.view.backdrop;
+      const cellMap = sourceMap && sourceMap.tileCode ? sourceMap : sourceMap ? { ...sourceMap, tileCode: cell.view.code } : null;
+      const cellStatus = cellMap ? nativeMapStatus(cellMap) : null;
+      if (cellMap && cellStatus?.native) {
+        addEditableMap(s, null, cellMap, { mode: "cell", scope: `cell-${index}`, frame: { x: r.x, y: r.y, w: r.w, h: r.h } });
+        if (cellStatus.denseLayers.length || cellStatus.rasterValues.length) s.addNotes(nativeMapFallbackNote(cellMap));
+      }
+    }
     const faceText = cell.face === "back" ? "구성비" : "도판";
     const cutNote = cell.view.notes[0] ?? null;
     const chipText = `${cell.view.code} · ${cell.view.title} · ${faceText}${cutNote ? ` · ${cutNote}` : ""}`;
@@ -399,5 +420,5 @@ export async function renderReportPptx(plan: PlannedSlide[], images: MapImages =
   }
   const bytes = (await pptx.write({ outputType: "uint8array" })) as Uint8Array;
   // pptxgenjs는 도형 그룹을 만들지 못한다: GRP| 태그를 선택 창용 그룹으로 후처리한다.
-  return plan.some((p) => p.kind === "tile" && (p.callout || (p.map && isEditableMap(p.map)))) ? groupTaggedShapes(bytes) : bytes;
+  return groupTaggedShapes(bytes);
 }

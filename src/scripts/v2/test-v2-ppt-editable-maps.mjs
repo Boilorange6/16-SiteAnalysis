@@ -12,11 +12,13 @@ import { dirname } from "node:path";
 import JSZip from "jszip";
 
 const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");
+const { TILE_CODES, TILE_CATALOG } = await import("../../lib/v2/ui/tile-catalog.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
 const { isEditableMap, nativeMapStatus } = await import("../../lib/v2/report/map-pptx.ts");
 const { buildMapScene } = await import("../../lib/v2/ui/map-scene.ts");
 const { SLIDE, slideLegend, slideReserved, slideSiteX } = await import("../../lib/v2/ui/overlay-layout.ts");
+const { mapKeysOf } = await import("../../lib/v2/report/report-plan.ts");
 
 const VIEW_W = 960;
 const VIEW_H = 540;
@@ -30,6 +32,7 @@ const SAMPLE_PATH = process.env.V2_EDITABLE_MAP_SAMPLE_PATH
 const BACKGROUND_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 const CENTER = [127.1542, 37.555];
 const FEATURE_COLOR = "#1F5FA8";
+const MAP_CODES = TILE_CODES.filter((code) => code !== "S01" && code !== "D22");
 
 const point = (eastM, northM) => [CENTER[0] + eastM / 88200, CENTER[1] + northM / 111320];
 const closedRing = (points) => [...points, points[0]];
@@ -64,6 +67,7 @@ function representativeMap(code) {
         feature("rail_station", "a01-station", 80, 100, { name: "고덕역", label: "고덕역", sublabel: "2호선", highlight: true, distanceM: 480, labelPriority: 2, badges: [{ text: "2", color: FEATURE_COLOR }] }),
         feature("rail_entrance", "a01-entrance", 94, 86, { name: "2번 출입구", label: "2", labelPriority: 1 }),
         feature("bus_stop", "a01-bus", -180, -100, { name: "고덕역 버스정류장", label: "정류장", labelPriority: 1 }),
+        feature("bus_stop", "a01-bus-2", -140, -120, { name: "보조 버스정류장", label: "정류장", labelPriority: 1 }),
         feature("bus_nearest", "a01-nearest", -300, -160, { name: "최근접 정류장", label: "340m", highlight: true, distanceM: 340, labelPriority: 2 }),
       ],
       lines: [
@@ -112,6 +116,11 @@ function representativeMap(code) {
 const a01Fixture = GODEOK_RESULTS.find((result) => result.tileCode === "A01");
 assert.ok(a01Fixture, "GODEOK_RESULTS A01 fixture가 필요하다");
 const fixtureView = toTileView(a01Fixture);
+const a05Fixture = GODEOK_RESULTS.find((result) => result.tileCode === "A05");
+assert.ok(a05Fixture, "GODEOK_RESULTS A05 fixture가 필요하다");
+const a05View = toTileView(a05Fixture);
+assert.equal(TILE_CATALOG.S01.kind, "simulation", "S01 매스 특수 경로가 카탈로그에 남아 있다");
+assert.equal(TILE_CATALOG.D22.kind, "diagram", "D22 장미 특수 경로가 카탈로그에 남아 있다");
 
 function viewFor(code, map, suffix = code) {
   return {
@@ -146,8 +155,27 @@ const fallbackPlan = plannedTile("A03", fallbackMap, "fallback-a03");
 const denseFeatures = Array.from({ length: 1501 }, (_, index) => feature("bus_stop", `dense-${index}`, -400 + (index % 60) * 12, -300 + Math.floor(index / 60) * 12, { label: null }));
 const denseMap = { ...representativeMap("D02"), tileCode: "D02", features: denseFeatures, total: denseFeatures.length, notes: ["dense layer fallback fixture"] };
 const densePlan = plannedTile("D02", denseMap, "dense-d02");
-const plans = [...representativePlans, fallbackPlan, densePlan].map((plan, index, all) => ({ ...plan, no: index + 1, total: all.length }));
-const images = Object.fromEntries(plans.map((plan) => [plan.view.tileId, BACKGROUND_PNG]));
+const catalogPlans = MAP_CODES.map((code) => plannedTile(code, representativeMap(code), `catalog-${code}`));
+const a05BackdropMap = { ...a05View.backdrop, tileCode: "A05" };
+const a05BackdropPlan = {
+  ...plannedTile("A05", a05BackdropMap, "a05-backdrop"),
+  view: { ...a05View, tileId: "editable-a05-backdrop", code: "A05", map: a05BackdropMap, backdrop: a05BackdropMap },
+  ...(a05View.callout ? { callout: { model: a05View.callout, page: 0, pages: 1, filterLine: a05View.filterLine } } : {}),
+};
+const sheetPlan = {
+  kind: "sheet",
+  view: { ...fixtureView, tileId: "editable-sheet", code: "SHEET", title: "지도 조판", tileType: "stack", map: null },
+  grid: "2x2",
+  cells: [
+    { view: viewFor("A01", representativeMap("A01"), "sheet-a01"), face: "front", mapKey: "sheet-a01", pinnedKeys: [] },
+    { view: viewFor("D13", representativeMap("D13"), "sheet-d13"), face: "front", mapKey: "sheet-d13", pinnedKeys: [] },
+  ],
+  footer: "조판 회귀 fixture · 기준일 2026-10-14",
+};
+const rawPlans = [...representativePlans, fallbackPlan, densePlan, ...catalogPlans, a05BackdropPlan, sheetPlan];
+const plans = rawPlans.map((plan, index, all) => ({ ...plan, no: index + 1, total: all.length }));
+const imageKeys = [...new Set(plans.flatMap((plan) => mapKeysOf(plan)))];
+const images = Object.fromEntries(imageKeys.map((key) => [key, BACKGROUND_PNG]));
 
 const bytes = await renderReportPptx(plans, images);
 mkdirSync(dirname(SAMPLE_PATH), { recursive: true });
@@ -165,6 +193,16 @@ const groupCount = (xml) => (xml.match(/<p:grpSp>/g) ?? []).length;
 const pictureCount = (xml) => (xml.match(/<p:pic>/g) ?? []).length;
 const textContent = (xml) => [...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((match) => match[1]).join("|");
 const taggedShapeBlocks = (xml) => [...xml.matchAll(/<p:sp>[\s\S]*?<\/p:sp>/g)].map((match) => match[0]).filter((block) => block.includes("GRP|"));
+const groupBlocks = (xml) => [...xml.matchAll(/<p:grpSp>[\s\S]*?<\/p:grpSp>/g)].map((match) => match[0]);
+const groupNames = (xml) => groupBlocks(xml).map((block) => block.match(/<p:cNvPr id="\d+" name="([^"]*)"/)?.[1]).filter(Boolean);
+
+function assertValidGroupedXml(xml, label) {
+  assert.ok(xml.includes("<p:spTree>"), `${label} spTree 없음`);
+  for (const block of groupBlocks(xml)) {
+    const ids = [...block.matchAll(/<p:cNvPr id="(\d+)"/g)].map((match) => match[1]);
+    assert.equal(new Set(ids).size, ids.length, `${label} grpSp 안 id 중복: ${ids.join(",")}`);
+  }
+}
 
 function geometryForName(xml, token) {
   const block = taggedShapeBlocks(xml).find((candidate) => candidate.includes(token));
@@ -197,7 +235,24 @@ for (let index = 0; index < representativePlans.length; index += 1) {
   assert.match(xml, /<p:grpSp>/, `${plan.view.code} 후처리 p:grpSp 없음`);
   assert.match(xml, /\|방위표\|/, `${plan.view.code} 방위표 없음`);
   assert.match(xml, /\|축척\|/, `${plan.view.code} 축척 없음`);
+  assertValidGroupedXml(xml, plan.view.code);
   assert.ok(count <= 1500, `${plan.view.code} native shape count ${count} > 1500`);
+}
+
+const catalogStart = representativePlans.length + 2;
+for (const [index, plan] of catalogPlans.entries()) {
+  const xml = await slideXml(catalogStart + index);
+  const status = nativeMapStatus(plan.map);
+  assert.equal(status.native, true, `${plan.view.code} 카탈로그 지도 타일은 native 판정이어야 한다`);
+  assert.equal(isEditableMap(plan.map), true, `${plan.view.code} 카탈로그 지도 타일 native 판정`);
+  assert.equal(pictureCount(xml), 1, `${plan.view.code} 지도 배경은 한 장이어야 한다`);
+  assert.match(xml, new RegExp(`GRP\\|map-${plan.view.code}-`), `${plan.view.code} 지도 GRP 태그 없음`);
+  assert.match(xml, /\|반경\|/, `${plan.view.code} 반경 그룹 태그 없음`);
+  assert.match(xml, /\|범례 /, `${plan.view.code} 레이어 범례 그룹 태그 없음`);
+  assert.match(xml, /\|범례\|/, `${plan.view.code} 범례 패널 그룹 태그 없음`);
+  assert.match(xml, /\|요약\|/, `${plan.view.code} 요약 패널 그룹 태그 없음`);
+  assert.match(xml, /\|제목\|/, `${plan.view.code} 제목 패널 그룹 태그 없음`);
+  assertValidGroupedXml(xml, plan.view.code);
 }
 
 // 같은 MapScene 투영 결과가 PPT 점 도형의 중심으로 이어지는지 한 대표 지물만
@@ -220,7 +275,7 @@ const a01Scene = buildMapScene({
 });
 const expectedFeature = a01Scene.features.find((entry) => entry.feature.fid === "a01-bus");
 assert.ok(expectedFeature, "A01 scene representative feature가 필요하다");
-const featureToken = `GRP|map-A01-feature-${expectedFeature.key.replace(/[|\r\n]/g, "-").slice(0, 90)}`;
+const featureToken = "GRP|map-A01-legend-버스정류장";
 const actualFeature = geometryForName(await slideXml(0), featureToken);
 assert.ok(actualFeature, "A01 representative feature의 PPT 도형 위치를 찾을 수 없다");
 const actualFeatureCenter = {
@@ -231,30 +286,53 @@ const expectedFeatureCenter = { x: (expectedFeature.p[0] / VIEW_W) * SLIDE.w, y:
 assert.ok(Math.abs(actualFeatureCenter.x - expectedFeatureCenter.x) < 0.12, `A01 feature x 좌표 불일치: ${actualFeatureCenter.x} vs ${expectedFeatureCenter.x}`);
 assert.ok(Math.abs(actualFeatureCenter.y - expectedFeatureCenter.y) < 0.12, `A01 feature y 좌표 불일치: ${actualFeatureCenter.y} vs ${expectedFeatureCenter.y}`);
 const a01Xml = await slideXml(0);
-assert.match(a01Xml, /\|노선 · 2호선\|/, "A01 PPT에 네이티브 노선명이 없다");
-assert.match(a01Xml, /\|역사 · 2호선\|/, "A01 PPT에 네이티브 역사 막대가 없다");
+assert.match(a01Xml, /\|범례 2호선\|/, "A01 PPT에 네이티브 노선 범례 그룹이 없다");
+assert.match(a01Xml, /\|axis-label/, "A01 PPT에 네이티브 역사 막대 라벨이 없다");
 assert.match(a01Xml, /\|역명 · 고덕역\|/, "A01 PPT에 네이티브 역명이 없다");
 const a01LegendItems = slideLegend(a01Map, true).items;
 assert.equal(a01LegendItems.find((item) => item.layer === "rail_station")?.symbol, "rail-axis", "PPT 역사 범례는 막대 기호 계약을 가져야 한다");
 assert.equal(a01LegendItems.find((item) => item.layer === "rail_entrance")?.symbol, "rail-exit", "PPT 출구 범례는 출구 기호 계약을 가져야 한다");
 assert.match(a01Xml, /FFD200/u, "PPT 출구 범례에 #FFD200 기호가 없다");
-assert.match(a01Xml, /axis-casing/u, "PPT 역사 범례에 막대 casing 기호가 없다");
-assert.match(a01Xml, /\|exit/u, "PPT 출구 범례에 원형 기호가 없다");
+assert.match(a01Xml, /name="범례 2호선"/u, "PPT 역사 범례 그룹이 없다");
+
+const d13Xml = await slideXml(3);
+const d13LegendTagCounts = new Map();
+for (const match of d13Xml.matchAll(/GRP\|map-D13-(legend-[^|]+)\|범례 ([^|]+)\|/g)) d13LegendTagCounts.set(match[1], (d13LegendTagCounts.get(match[1]) ?? 0) + 1);
+assert.ok([...d13LegendTagCounts.values()].some((count) => count >= 2), "같은 범례 항목의 점·선이 하나의 그룹 키를 공유하지 않는다");
 
 const noteXml = await Promise.all(Object.keys(zip.files).filter((name) => /^ppt\/notesSlides\/notesSlide\d+\.xml$/.test(name)).map((name) => zip.file(name).async("string")));
 const allNotes = noteXml.map(textContent).join("|");
 const fallbackXml = await slideXml(representativePlans.length);
 const denseXml = await slideXml(representativePlans.length + 1);
-assert.equal(isEditableMap(fallbackMap), false, "비대표 타일은 네이티브 경로가 아니어야 한다");
-assert.equal(pictureCount(fallbackXml), 1, "비대표 폴백도 기존 지도 이미지 한 장을 유지한다");
-assert.match(allNotes, /지도 네이티브 도형 폴백/, "비대표/밀집 폴백 speaker note가 없다");
-assert.equal(isEditableMap(denseMap), false, "밀집 레이어는 상한 폴백이어야 한다");
+assert.equal(isEditableMap(fallbackMap), true, "tileCode가 있는 비대표 타일도 네이티브 경로여야 한다");
+assert.equal(pictureCount(fallbackXml), 1, "비대표 지도도 배경 이미지 한 장을 유지한다");
+assert.equal(isEditableMap(denseMap), true, "밀집 지도도 층별 폴백 native 경로여야 한다");
 assert.ok(nativeMapStatus(denseMap).denseLayers.includes("bus_stop"), "밀집 폴백 레이어가 기록되지 않았다");
 assert.equal(pictureCount(denseXml), 1, "밀집 폴백도 기존 지도 이미지 한 장을 유지한다");
 assert.match(allNotes, /레이어 도형 수 상한 초과/, "밀집 폴백 사유 speaker note가 없다");
+assert.ok(nativeMapStatus(denseMap).rasterLayers.includes("bus_stop"), "밀집 층이 backgroundOnly 목록에 없다");
+assertValidGroupedXml(fallbackXml, "A03 dense-free");
+assertValidGroupedXml(denseXml, "D02 dense");
 
-counts.push({ code: fallbackMap.tileCode, native: false, shapeCount: shapeCount(fallbackXml), groups: groupCount(fallbackXml), pictures: pictureCount(fallbackXml), reason: nativeMapStatus(fallbackMap).reason });
-counts.push({ code: "D02:dense", native: false, shapeCount: shapeCount(denseXml), groups: groupCount(denseXml), pictures: pictureCount(denseXml), reason: nativeMapStatus(denseMap).reason });
+const a05Index = catalogStart + catalogPlans.length;
+const a05Xml = await slideXml(a05Index);
+assert.equal(nativeMapStatus(a05BackdropMap).native, true, "A05 backdrop tileCode native 판정");
+assert.match(a05Xml, /GRP\|map-A05-/, "A05 backdrop에 편집 가능한 지도 도형이 없다");
+assert.match(a05Xml, /<p:grpSp>/, "A05 backdrop 그룹이 없다");
+assertValidGroupedXml(a05Xml, "A05 backdrop");
+
+const sheetIndex = a05Index + 1;
+const sheetXml = await slideXml(sheetIndex);
+assert.ok(shapeCount(sheetXml) > 4, "조판 셀 지도 도형이 생성되지 않았다");
+assert.ok(groupNames(sheetXml).some((name) => name === "범례"), "조판 셀 범례 패널 그룹이 없다");
+assert.match(sheetXml, /GRP\|map-cell-0-A01-/, "조판 A01 셀 native 도형이 없다");
+assert.match(sheetXml, /GRP\|map-cell-1-D13-/, "조판 D13 셀 native 도형이 없다");
+assertValidGroupedXml(sheetXml, "sheet");
+
+for (const name of slideNames) assertValidGroupedXml(await zip.file(name).async("string"), name);
+
+counts.push({ code: fallbackMap.tileCode, native: true, shapeCount: shapeCount(fallbackXml), groups: groupCount(fallbackXml), pictures: pictureCount(fallbackXml), reason: nativeMapStatus(fallbackMap).reason });
+counts.push({ code: "D02:dense", native: true, rasterLayers: nativeMapStatus(denseMap).rasterLayers, shapeCount: shapeCount(denseXml), groups: groupCount(denseXml), pictures: pictureCount(denseXml), reason: nativeMapStatus(denseMap).reason });
 console.log(`editable map PPT sample: ${SAMPLE_PATH}`);
 console.log(`editable map PPT counts: ${JSON.stringify(counts)}`);
 console.log(`editable map coordinate check: ${JSON.stringify({ expected: expectedFeatureCenter, actual: actualFeatureCenter, delta: { x: actualFeatureCenter.x - expectedFeatureCenter.x, y: actualFeatureCenter.y - expectedFeatureCenter.y } })}`);

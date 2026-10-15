@@ -31,8 +31,8 @@ export type MapFigureProps = {
   rasterName?: string;
   /** true면 범례·문구를 그리지 않는다 (대지 요약 칸) */
   bare?: boolean;
-  /** 배경 타일·래스터만 남겨 PPT 네이티브 오버레이의 바탕으로 쓴다. */
-  backgroundOnly?: boolean;
+  /** 배경 타일·래스터만 남긴다. 문자열 배열이면 해당 벡터 층만 래스터에 남긴다. */
+  backgroundOnly?: boolean | readonly string[];
   /** 직렬화용: width/height 속성을 붙인다. 아니면 부모를 채운다 */
   fixed?: boolean;
   /** 카드처럼 작은 프레임에서 출구 번호를 최근접 출구 하나로 줄인다. */
@@ -246,6 +246,10 @@ function backgroundTransform(from: Viewport, to: Viewport, width: number, height
 }
 
 function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, backgroundOnly = false, fixed, compact = false, label, legend, legendY, north: northOpt, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, selectedFids = [], highlightLabel = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = [], showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeaturePin, onLegendHover, onLegendPin, path = [], onMapClick, view, dragging = false }: MapFigureProps) {
+  const backgroundLayerSet = Array.isArray(backgroundOnly) ? new Set(backgroundOnly) : null;
+  const backgroundOnlyActive = backgroundOnly === true || backgroundLayerSet !== null;
+  const shouldRasterizeLayer = (layerName: string) => !backgroundOnlyActive || !!backgroundLayerSet?.has(layerName);
+  const showNativeChrome = !backgroundOnlyActive;
   const rasterModel = model as RasterPresentationModel;
   const activeLayer = model.basemap ?? layer;
   const sat = activeLayer === "Satellite";
@@ -829,11 +833,11 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
           />
         ))}
 
-        {!backgroundOnly && <>
-        {showRadius && <path d={dim} fillRule="evenodd" fill="#14161c" fillOpacity={0.09} />}
+        {(!backgroundOnlyActive || (backgroundLayerSet?.size ?? 0) > 0) && <>
+        {showNativeChrome && showRadius && <path d={dim} fillRule="evenodd" fill="#14161c" fillOpacity={0.09} />}
         <g clipPath={showRadius ? `url(#r${uid})` : undefined} data-radius-clip={showRadius ? "true" : undefined}>
           {polygons.map((polygon) => {
-            if (isSiteParcelLayer(polygon.polygon.layer)) return null;
+            if (isSiteParcelLayer(polygon.polygon.layer) || !shouldRasterizeLayer(polygon.polygon.layer)) return null;
             const st = layerStyle(polygon.polygon.layer);
             const estimated = isEstimated(polygon);
             const neutralBuilding = rasterImages.length > 0 && isBuildingLayer(polygon.polygon.layer);
@@ -845,7 +849,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
             const strong = isElementStrong(polygon.polygon.layer, polygonKey);
             return <path key={`poly${polygon.index}`} data-poly="true" data-map-layer={polygon.polygon.layer} d={polygonPath(polygon.rings)} fillRule="evenodd" fill={neutralBuilding ? buildingStyle.fill : estimated ? `url(#${hatchId(polygon.index)})` : st.fill ?? st.color} fillOpacity={neutralBuilding ? buildingStyle.fillOpacity : estimated ? 1 : st.fillOpacity ?? polygonOpacity} opacity={isElementDimmed(polygon.polygon.layer, polygonKey) ? 0.2 : undefined} stroke={strong || polygonSelected ? INK : neutralBuilding ? buildingStyle.stroke : st.stroke ?? st.color} strokeWidth={(strong ? 1.6 : polygonSelected ? 3 : neutralBuilding ? buildingStyle.strokeWidth ?? 0.8 : st.strokeWidth ?? 1) * u} {...pickProps({ fid: polygonFid, lng: polygonCenter[0], lat: polygonCenter[1], kind: "polygon" }, polygonKey, labelText(polygon.polygon.layer, "polygon", polygon.polygon))} />;
           })}
-          {linePaths.filter((d) => d.l.layer !== "rail_line" && d.l.layer !== "rail_station_axis").map((d) => {
+          {linePaths.filter((d) => backgroundOnlyActive ? shouldRasterizeLayer(d.l.layer) : (d.l.layer !== "rail_line" && d.l.layer !== "rail_station_axis")).map((d) => {
             const st = layerStyle(d.l.layer);
             const lineSelected = isSelected(d.l.fid);
             const center = centerOf(d.l.points);
@@ -865,14 +869,14 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
               </g>
             );
           })}
-          {railNodes}
+          {showNativeChrome && railNodes}
         </g>
-        {showRadius && rings.map((r, i) => (
+        {showNativeChrome && showRadius && rings.map((r, i) => (
           <circle key={`ring-${i}-${r}`} cx={cx} cy={cy} r={r} fill="none" stroke={line} strokeOpacity={sat ? 0.7 : 0.35} strokeWidth={1 * u} strokeDasharray={`${4 * u} ${4 * u}`} />
         ))}
-        {showRadius && <circle cx={cx} cy={cy} r={R} fill="none" stroke={line} strokeOpacity={sat ? 0.95 : 0.75} strokeWidth={1.6 * u} />}
+        {showNativeChrome && showRadius && <circle cx={cx} cy={cy} r={R} fill="none" stroke={line} strokeOpacity={sat ? 0.95 : 0.75} strokeWidth={1.6 * u} />}
 
-         {drawn.map((d, i) => {
+         {showNativeChrome && drawn.map((d, i) => {
             if (d.f.highlight && d.f.distanceM != null) {
              const featureKey = mapFeatureKey(d.f.layer, d.f.fid, d.index);
              const strong = isElementStrong(d.f.layer, featureKey);
@@ -886,7 +890,8 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
              const neutralBuilding = rasterImages.length > 0 && isBuildingLayer(d.f.layer);
              const buildingStyle = buildingStyleForRaster(d.f.layer, rasterImages.length > 0);
             if (d.p[0] < -r || d.p[1] < -r || d.p[0] > W + r || d.p[1] > H + r) return null;
-            if (d.f.layer === "rail_station" || d.f.layer === "rail_nearest" || d.f.layer === "rail_entrance") return null;
+            if (!backgroundOnlyActive && (d.f.layer === "rail_station" || d.f.layer === "rail_nearest" || d.f.layer === "rail_entrance")) return null;
+            if (!shouldRasterizeLayer(d.f.layer)) return null;
             const hollow = st.sizeBy === "weight" && !d.f.weight;
             const featureKey = mapFeatureKey(d.f.layer, d.f.fid, d.index);
             const strong = isElementStrong(d.f.layer, featureKey);
@@ -905,7 +910,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
             />
           );
          })}
-        {routePoints.length >= 2 && (
+        {showNativeChrome && routePoints.length >= 2 && (
           <>
             <polyline data-route="true" points={routePoints.map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke="#fff" strokeWidth={8 * u} strokeLinecap="round" strokeLinejoin="round" opacity={0.92} />
             <polyline data-route="true" points={routePoints.map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke="#D97706" strokeWidth={4.5 * u} strokeLinecap="round" strokeLinejoin="round" />
@@ -914,7 +919,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
           </>
         )}
         {/* 대지 표시 */}
-        {!muted && showSiteMarker && (
+        {showNativeChrome && !muted && showSiteMarker && (
           <g role="img" aria-label="분석 대지">
             {siteMode === "parcel" && sitePath ? (
               <>
@@ -942,7 +947,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
         )}
 
         {/* 범례·문구 */}
-        {showLegend && (
+        {showNativeChrome && showLegend && (
           <g>
             <rect data-map-legend="panel" data-map-legend-panel="true" x={panelX} y={panelY} width={panelW} height={panelH} rx={cardRailRasterLegend ? 11 * u : 6 * u} fill="#fff" fillOpacity={0.94} />
             {vectorLegendVisible && (
@@ -1117,7 +1122,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
         )}
 
         {/* 북쪽 */}
-        {northOpt !== false && (
+        {showNativeChrome && northOpt !== false && (
           <g>
             <circle cx={north.x} cy={north.y} r={13 * u} fill="#fff" fillOpacity={0.9} />
             <path d={`M${north.x} ${north.y - 9 * u}L${north.x + 4.5 * u} ${north.y + 3 * u}L${north.x} ${north.y + 0.5 * u}L${north.x - 4.5 * u} ${north.y + 3 * u}Z`} fill={INK} />
@@ -1128,7 +1133,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
         )}
 
         {/* 축척 막대 + 저작권 */}
-        <g>
+        {showNativeChrome && <g>
           {scale && (
             <>
               <rect x={barX0 - 6 * u} y={barY - 14 * u} width={bar.px + 12 * u} height={22 * u} rx={5 * u} fill="#fff" fillOpacity={0.85} />
@@ -1143,10 +1148,10 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
               {BASEMAP_ATTRIBUTION}
             </text>
           )}
-        </g>
-        {labels}
+        </g>}
+        {showNativeChrome && labels}
         {/* 호버 라벨은 모든 지도 장식 위에 놓고 포인터 이벤트를 받지 않는다. */}
-        {hoverLabelNode}
+        {showNativeChrome && hoverLabelNode}
         </>}
       </g>
     </svg>
