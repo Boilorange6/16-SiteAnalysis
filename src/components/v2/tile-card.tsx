@@ -16,6 +16,7 @@ import styles from "./board.module.css";
 import { hasDetail } from "@/lib/v2/ui/detail-state";
 import type { TileStageProps } from "@/lib/v2/tile/component-types";
 import { useCardRoving } from "./use-card-roving";
+import { useTileResize } from "./use-tile-resize";
 import { catalogEntry } from "@/lib/v2/ui/tile-catalog";
 import { floatingMenuPosition, type FloatingMenuPosition } from "@/lib/v2/ui/menu-position";
 
@@ -326,10 +327,11 @@ type TileCardBaseProps = {
   phase: DemoPhase | null;
   included: boolean;
   face: OutputFace;
-  editing: boolean;
   canUp: boolean;
   canDown: boolean;
   size: TileSize;
+  cellW: number;
+  rowH: number;
   dragging: boolean;
   floatStyle?: CSSProperties;
   /** queued/running 타일에 표시할 대기 위치·경과 시간 안내 */
@@ -397,9 +399,12 @@ type TileCardRenderProps = TileCardBaseProps & {
   onMapLabels: (show: boolean) => void;
 };
 
+type BoardMenuActions = Pick<TileCardRenderProps, "canUp" | "canDown" | "size" | "stackable" | "stackSelected" | "sheetable" | "sheetSelected" | "onResize" | "onMove" | "onRemove" | "onStackToggle" | "onUnstack" | "onSheetToggle" | "onUnsheet">;
+
 // 지도 컨트롤이 시점 초기화로 즉시 사라질 때 클릭 대상이 뷰포트로
 // 재조정되어도 카드 펼침으로 전파되지 않게 한다.
 const INTERACTIVE = "button,input,label,a,select,[data-handle],[role=menu],[data-map-feature],[data-map-legend],[data-map-viewport]";
+const BOARD_GRID_GAP = 16;
 
 const Svg = ({ children, size = 16, fill }: { children: ReactNode; size?: number; fill?: boolean }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill={fill ? "currentColor" : "none"} stroke={fill ? "none" : "currentColor"} strokeWidth={2.3} strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
@@ -407,8 +412,32 @@ const Svg = ({ children, size = 16, fill }: { children: ReactNode; size?: number
   </svg>
 );
 
+function DragHandle({ p }: { p: Pick<TileCardRenderProps, "view" | "canUp" | "canDown" | "onHandleDown" | "onMove"> }) {
+  return (
+    <button
+      type="button"
+      className={styles.handle}
+      data-handle
+      onPointerDown={p.onHandleDown}
+      onKeyDown={(event) => {
+        if (event.key === "ArrowUp" && p.canUp) {
+          event.preventDefault();
+          p.onMove(-1);
+        } else if (event.key === "ArrowDown" && p.canDown) {
+          event.preventDefault();
+          p.onMove(1);
+        }
+      }}
+      title="끌어서 옮기기 · 키보드는 위·아래 화살표 또는 더 보기"
+      aria-label={`${p.view.title} 순서 조정. 끌어서 옮기거나 위·아래 화살표를 사용하세요`}
+    >
+      <span aria-hidden>⠿</span>
+    </button>
+  );
+}
+
 /** ⋯ 더 보기: 상세 보기 · 지도에 보기(도판/구성비) · 보고서에 넣을 그림(도판/구성비/둘 다). Esc·바깥 누름·Tab으로 닫히고 닫힐 때 ⋯ 버튼으로 포커스가 돌아온다. */
-function MoreMenu({ view, active, back, onBack, face, onFace, onDetail, onDuplicate, pinnedCount, onSetAllLabels, compact, detailOnly, triggerClass }: { view: TileView; active: boolean; back: boolean; onBack: (v: boolean) => void; face: OutputFace; onFace: (f: OutputFace) => void; onDetail?: () => void; onDuplicate?: () => void; pinnedCount: number; onSetAllLabels?: (on: boolean) => void; compact?: { included: boolean; onInclude: (v: boolean) => void; onOpen: () => void; showLabels: boolean; onShowLabels: (show: boolean) => void }; detailOnly?: boolean; triggerClass?: string }) {
+function MoreMenu({ view, active, back, onBack, face, onFace, onDetail, onDuplicate, pinnedCount, onSetAllLabels, compact, detailOnly, triggerClass, actions }: { view: TileView; active: boolean; back: boolean; onBack: (v: boolean) => void; face: OutputFace; onFace: (f: OutputFace) => void; onDetail?: () => void; onDuplicate?: () => void; pinnedCount: number; onSetAllLabels?: (on: boolean) => void; compact?: { included: boolean; onInclude: (v: boolean) => void; onOpen: () => void; showLabels: boolean; onShowLabels: (show: boolean) => void }; detailOnly?: boolean; triggerClass?: string; actions?: BoardMenuActions }) {
   const [open, setOpen] = useState(false);
   const trigRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -459,7 +488,7 @@ function MoreMenu({ view, active, back, onBack, face, onFace, onDetail, onDuplic
   useEffect(() => {
     if (!active) setOpen(false); // 카드가 뒤집히면 메뉴도 닫는다
   }, [active]);
-  if (!compact && !onDetail && !onDuplicate && !view.hasFace && !onSetAllLabels) return null;
+  if (!compact && !onDetail && !onDuplicate && !view.hasFace && !onSetAllLabels && !actions) return null;
   const close = (refocus: boolean) => {
     setOpen(false);
     if (refocus) trigRef.current?.focus();
@@ -539,6 +568,44 @@ function MoreMenu({ view, active, back, onBack, face, onFace, onDetail, onDuplic
             <button type="button" role="menuitem" className={styles.mfMenuItem} onClick={() => { onSetAllLabels(false); close(true); }}>
               고정 라벨 모두 끄기 ({pinnedCount})
             </button>
+          )}
+          {actions && (
+            <>
+              <div className={styles.mfMenuHead}>배치</div>
+              <button type="button" role="menuitem" className={styles.mfMenuItem} onClick={() => { actions.onMove(-1); close(true); }} disabled={!actions.canUp}>
+                위로
+              </button>
+              <button type="button" role="menuitem" className={styles.mfMenuItem} onClick={() => { actions.onMove(1); close(true); }} disabled={!actions.canDown}>
+                아래로
+              </button>
+              <div className={styles.mfMenuHead}>크기</div>
+              <div role="group" aria-label={`${view.title} 크기`} className={styles.mfSeg}>
+                {([1, 2, 4] as const).map((size) => seg(`${size}칸`, actions.size === size, () => actions.onResize(size)))}
+              </div>
+              {actions.stackable && actions.onStackToggle && (
+                <button type="button" role="menuitemcheckbox" aria-checked={!!actions.stackSelected} className={styles.mfMenuItem} onClick={() => actions.onStackToggle!(!actions.stackSelected)}>
+                  스택에 넣기<span>{actions.stackSelected ? "선택됨" : "선택"}</span>
+                </button>
+              )}
+              {actions.sheetable && actions.onSheetToggle && (
+                <button type="button" role="menuitemcheckbox" aria-checked={!!actions.sheetSelected} className={styles.mfMenuItem} onClick={() => actions.onSheetToggle!(!actions.sheetSelected)}>
+                  조판에 넣기<span>{actions.sheetSelected ? "선택됨" : "선택"}</span>
+                </button>
+              )}
+              {view.code === "STACK" && actions.onUnstack && (
+                <button type="button" role="menuitem" className={styles.mfMenuItem} onClick={() => { actions.onUnstack!(); close(true); }}>
+                  풀기
+                </button>
+              )}
+              {view.code === "SHEET" && actions.onUnsheet && (
+                <button type="button" role="menuitem" className={styles.mfMenuItem} onClick={() => { actions.onUnsheet!(); close(true); }}>
+                  풀기
+                </button>
+              )}
+              <button type="button" role="menuitem" className={`${styles.mfMenuItem} ${styles.mfMenuDanger}`} onClick={() => { actions.onRemove(); close(true); }}>
+                삭제
+              </button>
+            </>
           )}
           {view.hasFace && !detailOnly && (
             <>
@@ -620,7 +687,7 @@ function MapFace({ p, active, state, back, onBack, onFlip, onDetail, mapReady }:
           </Svg>
         </button>
         {FaceExtra && <FaceExtra view={view} cut={cut} state={state} placement="header" onCut={p.onCut} onOpen={p.onOpen} />}
-        <MoreMenu view={view} active={active} back={back} onBack={onBack} face={p.face} onFace={p.onFace} onDetail={onDetail} onDuplicate={p.onDuplicate} pinnedCount={pinnedCount} onSetAllLabels={labelEntries.length > 0 ? p.onSetAllLabels : undefined} compact={{ included: p.included, onInclude: p.onInclude, onOpen: p.onOpen, showLabels: p.showMapLabels, onShowLabels: p.onMapLabels }} />
+        <MoreMenu view={view} active={active} back={back} onBack={onBack} face={p.face} onFace={p.onFace} onDetail={onDetail} onDuplicate={p.onDuplicate} pinnedCount={pinnedCount} onSetAllLabels={labelEntries.length > 0 ? p.onSetAllLabels : undefined} actions={p} compact={{ included: p.included, onInclude: p.onInclude, onOpen: p.onOpen, showLabels: p.showMapLabels, onShowLabels: p.onMapLabels }} />
         <button type="button" className={styles.mfBtn} data-card-face-button="summary" onClick={onFlip} aria-pressed aria-label={`${view.title} 요약/지도 보기 전환`} title="요약 보기">
           <Svg size={15}>
             <path d="M3 12a9 9 0 1 0 3-6.7" />
@@ -658,7 +725,7 @@ function MapFace({ p, active, state, back, onBack, onFlip, onDetail, mapReady }:
   );
 }
 
-/** 요약면: 지도 없는 흰 카드. 제목 줄 · 큰 숫자 + 한 줄 라벨 · 사실 3줄 · 상태 배지(최대 2개) · 출처 한 줄 · "지도 ↻" */
+/** 요약면: 지도 없는 흰 카드. 제목 줄 · 큰 숫자 + 한 줄 라벨 · 사실 3줄 · 상태 배지(최대 2개) · 출처 한 줄 */
 function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardRenderProps; state: boolean; waiting: boolean; onFlip: () => void; onDetail?: () => void }) {
   const { view, phase } = p;
   const cut = normalizedCut(view, p.cut);
@@ -672,48 +739,33 @@ function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardRende
   return (
     <div className={styles.sf}>
       <div className={styles.sfTop}>
-        {p.editing && (
-          <span className={styles.handle} data-handle onPointerDown={p.onHandleDown} title="끌어서 옮기기 (키보드는 위로·아래로 버튼)" aria-hidden>
-            ⠿
-          </span>
-        )}
         <span className={styles.dot} style={{ background: view.color }} />
         <h3 className={styles.title}>{view.title}</h3>
         <span className={styles.kindTag}>{view.kindLabel}</span>
         {view.filterChip && <span className={styles.filterChip} title={view.filterChip}>{view.filterChip}</span>}
         {view.stackLayers && <span className={styles.kindTag}>{view.stackLayers.join(" + ")}</span>}
         {view.sheetGrid && <span className={styles.kindTag}>{view.sheetGrid}</span>}
-        {p.editing && p.stackable && p.onStackToggle && (
-          <label className={styles.check}>
-            <input type="checkbox" checked={!!p.stackSelected} onChange={(e) => p.onStackToggle!(e.target.checked)} aria-label={`${view.title} 스택에 넣기`} />
-            스택에 넣기
-          </label>
-        )}
-        {p.editing && p.sheetable && p.onSheetToggle && (
-          <label className={styles.check}>
-            <input type="checkbox" checked={!!p.sheetSelected} onChange={(e) => p.onSheetToggle!(e.target.checked)} aria-label={`${view.title} 조판에 넣기`} />
-            조판에 넣기
-          </label>
-        )}
         {!waiting && (
           <>
             <label className={`${styles.check} ${styles.sfCollapse}`}>
               <input type="checkbox" checked={p.included} onChange={(e) => p.onInclude(e.target.checked)} aria-label={`${view.title} 보고서 포함`} />
               <span className={styles.checkText}>보고서</span>
             </label>
-            {!p.editing && (
-              <button type="button" className={`${styles.open} ${styles.sfCollapse}`} onClick={p.onOpen} aria-label={`${view.title} 펼치기`} title="펼치기">
-                ↗
-              </button>
-            )}
+            <button type="button" className={`${styles.open} ${styles.sfCollapse}`} onClick={p.onOpen} aria-label={`${view.title} 펼치기`} title="펼치기">
+              ↗
+            </button>
             {onDetail && (
               <button type="button" className={`${styles.open} ${styles.sfCollapse}`} data-detail-button onClick={onDetail} aria-label={`${view.title} 상세 열기`} title="상세">
                 상세
               </button>
             )}
-            {!p.editing && (
-              <MoreMenu view={view} active back={false} onBack={() => {}} face={p.face} onFace={p.onFace} onDetail={onDetail} onDuplicate={p.onDuplicate} pinnedCount={0} detailOnly triggerClass={styles.sfMore} compact={{ included: p.included, onInclude: p.onInclude, onOpen: p.onOpen, showLabels: p.showMapLabels, onShowLabels: p.onMapLabels }} />
-            )}
+            <MoreMenu view={view} active back={false} onBack={() => {}} face={p.face} onFace={p.onFace} onDetail={onDetail} onDuplicate={p.onDuplicate} pinnedCount={0} detailOnly triggerClass={styles.sfMore} actions={p} compact={{ included: p.included, onInclude: p.onInclude, onOpen: p.onOpen, showLabels: p.showMapLabels, onShowLabels: p.onMapLabels }} />
+            <button type="button" className={styles.mfBtn} data-card-face-button="map" onClick={onFlip} aria-pressed={false} aria-label={`${view.title} 요약/지도 보기 전환`} title="지도 보기">
+              <Svg size={15}>
+                <path d="M3 12a9 9 0 1 0 3-6.7" />
+                <path d="M3 4v5h5" />
+              </Svg>
+            </button>
           </>
         )}
       </div>
@@ -741,51 +793,13 @@ function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardRende
       )}
 
       <div className={styles.sfFoot}>
-        {p.editing ? (
-          <div className={styles.editRow}>
-            <button type="button" className={styles.iconBtn} onClick={() => p.onMove(-1)} disabled={!p.canUp} aria-label={`${view.title} 위로 이동`}>
-              위로
-            </button>
-            <button type="button" className={styles.iconBtn} onClick={() => p.onMove(1)} disabled={!p.canDown} aria-label={`${view.title} 아래로 이동`}>
-              아래로
-            </button>
-            <span className={styles.seg} role="group" aria-label={`${view.title} 크기`}>
-              {([1, 2, 4] as const).map((n) => (
-                <button key={n} type="button" aria-pressed={p.size === n} onClick={() => p.onResize(n)} aria-label={`${view.title} ${n}칸`}>
-                  {n}칸
-                </button>
-              ))}
-            </span>
-            {view.code === "STACK" && p.onUnstack && (
-              <button type="button" className={styles.iconBtn} onClick={p.onUnstack} aria-label={`${view.title} 풀기`}>
-                풀기
-              </button>
-            )}
-            {view.code === "SHEET" && p.onUnsheet && (
-              <button type="button" className={styles.iconBtn} onClick={p.onUnsheet} aria-label={`${view.title} 풀기`}>
-                풀기
-              </button>
-            )}
-            <button type="button" className={styles.iconBtn} onClick={p.onRemove} aria-label={`${view.title} 제거`}>
-              ×
-            </button>
-          </div>
-        ) : (
-          <>
-            {!state && <ValueBadges badges={view.badges} />}
-            <div className={styles.sfLine}>
-              <button type="button" className={styles.sourceTrigger} data-source-button onClick={p.onSources} aria-label={`${view.title} 출처·기준일 열기`}>
-                <span className={styles.sfSrc} title={stripText(view.sourceLine, false)}>{stripText(view.sourceLine, false)}</span>
-                <span className={styles.sourceCount} aria-label={`출처 ${view.sourceRefs.length}개`}>출처 {view.sourceRefs.length}</span>
-              </button>
-              {!state && (
-                <button type="button" className={styles.flipBtn} data-card-face-button="map" onClick={onFlip} aria-pressed={false} aria-label={`${view.title} 요약/지도 보기 전환`}>
-                  지도 ↻
-                </button>
-              )}
-            </div>
-          </>
-        )}
+        {!state && <ValueBadges badges={view.badges} />}
+        <div className={styles.sfLine}>
+          <button type="button" className={styles.sourceTrigger} data-source-button onClick={p.onSources} aria-label={`${view.title} 출처·기준일 열기`}>
+            <span className={styles.sfSrc} title={stripText(view.sourceLine, false)}>{stripText(view.sourceLine, false)}</span>
+            <span className={styles.sourceCount} aria-label={`출처 ${view.sourceRefs.length}개`}>출처 {view.sourceRefs.length}</span>
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -801,8 +815,8 @@ function TileCard(p: TileCardProps) {
   const waiting = phase === "pending" || phase === "running";
   const noResult = !waiting && view.headline === null;
   const state = waiting || noResult;
-  // 편집 중·결과 없음·계산 중에는 요약면만 (지도면에 보여 줄 것이 없다)
-  const shown: CardFace = state || p.editing ? "summary" : p.cardFace;
+  // 결과 없음·계산 중에는 요약면만 (지도면에 보여 줄 것이 없다)
+  const shown: CardFace = state ? "summary" : p.cardFace;
   const [seen, setSeen] = useState(false);
   useEffect(() => {
     if (shown === "map") setSeen(true);
@@ -833,6 +847,7 @@ function TileCard(p: TileCardProps) {
     p.onAction(id, { type: "cardFace", face });
   }, [id, p.onAction]);
   const onResize = useCallback((size: TileSize) => p.onAction(id, { type: "resize", size }), [id, p.onAction]);
+  const resize = useTileResize({ size: p.size, cellW: p.cellW, rowH: p.rowH, onCommit: onResize });
   const onOpen = useCallback(() => p.onAction(id, { type: "open" }), [id, p.onAction]);
   const onSources = useCallback(() => p.onAction(id, { type: "sources" }), [id, p.onAction]);
   const onInclude = useCallback((value: boolean) => p.onAction(id, { type: "include", value }), [id, p.onAction]);
@@ -870,15 +885,23 @@ function TileCard(p: TileCardProps) {
     onSetAllLabels,
     onMapLabels,
   };
-  const cls = [styles.tile, p.size === 2 && styles.span2, p.size === 4 && styles.span4, p.editing && styles.tileEdit, p.dragging && styles.tileDrag, state && styles.tileState, !waiting && view.status === "failed" && styles.tileFail]
+  const cls = [styles.tile, p.size === 2 && styles.span2, p.size === 4 && styles.span4, p.dragging && styles.tileDrag, state && styles.tileState, !waiting && view.status === "failed" && styles.tileFail]
     .filter(Boolean)
     .join(" ");
-  const openable = !p.editing && !waiting;
+  const openable = !waiting;
   // 결과가 빈 상태여도 T34 상세 API는 분석 ID로 요약/결측을 보여 줄 수 있다.
   // 지도 모델이 없는 타일(D19/D20/D22/D28/D29)도 현재 분석 URL을 사용해 상세를 연다.
   const hasAnalysisContext = !!p.analysisId || !!view.map?.analysisId;
   const detailable = openable && hasDetail(view.code) && hasAnalysisContext;
   const [detailOpen, setDetailOpen] = useState(false);
+  const resizePreview = resize.preview;
+  const previewColumns = resizePreview?.size === 1 ? 1 : 2;
+  const previewRows = resizePreview?.size === 4 ? 2 : 1;
+  const currentColumns = p.size === 1 ? 1 : 2;
+  const previewWidth = p.cellW > 0 ? p.cellW * previewColumns + BOARD_GRID_GAP * (previewColumns - 1) : 0;
+  const previewHeight = p.rowH > 0 ? p.rowH * previewRows + BOARD_GRID_GAP * (previewRows - 1) : 0;
+  const currentWidth = p.cellW > 0 ? p.cellW * currentColumns + BOARD_GRID_GAP * (currentColumns - 1) : 0;
+  const previewLeft = resizePreview?.side === "left" ? currentWidth - previewWidth : 0;
   const onClick = (e: MouseEvent<HTMLElement>) => {
     if (openable && !(e.target as HTMLElement).closest(INTERACTIVE)) onOpen();
   };
@@ -908,7 +931,7 @@ function TileCard(p: TileCardProps) {
       data-tile-id={view.tileId}
       data-v2-roving-id={id}
       data-v2-roving-card
-      style={p.floatStyle}
+      style={resizePreview ? { ...p.floatStyle, zIndex: 40 } : p.floatStyle}
       tabIndex={roving.controlsEntered ? -1 : p.rovingTabIndex}
       onFocus={(event) => {
         if (event.target === event.currentTarget) p.onRovingFocus(id);
@@ -928,6 +951,30 @@ function TileCard(p: TileCardProps) {
           )}
         </div>
       </div>
+      <DragHandle p={renderProps} />
+      {resizePreview && previewWidth > 0 && previewHeight > 0 && (
+        <div
+          className={styles.resizePreview}
+          data-resize-preview
+          data-resize-target-size={resizePreview.size}
+          aria-hidden
+          style={{ width: previewWidth, height: previewHeight, left: previewLeft, top: 0 }}
+        >
+          <span className={styles.resizePreviewBadge} data-resize-preview-badge>{resizePreview.size}칸</span>
+        </div>
+      )}
+      <button
+        {...resize.handleProps("left")}
+        className={`${styles.resizeHandle} ${styles.resizeHandleLeft}`}
+        data-resize-handle="left"
+        title="왼쪽 크기 조정"
+      />
+      <button
+        {...resize.handleProps("right")}
+        className={`${styles.resizeHandle} ${styles.resizeHandleRight}`}
+        data-resize-handle="right"
+        title="오른쪽 크기 조정"
+      />
       {detailOpen && detailable && <DetailWindow view={view} layer={p.layer} onLayer={p.onLayer} onClose={() => setDetailOpen(false)} />}
     </article>
   );

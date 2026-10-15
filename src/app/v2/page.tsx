@@ -17,7 +17,7 @@ import { stackView } from "@/lib/v2/ui/stack";
 import { sheetView } from "@/lib/v2/ui/sheet";
 import { exportAvailability, formatElapsedMs, jobProgress } from "@/lib/v2/ui/board-status";
 import { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } from "@/lib/v2/ui/fixtures/godeok";
-import { toSummaryView, toTileView, viewWithLayer, type SiteSummary } from "@/lib/v2/ui/tile-view";
+import { toSummaryView, toTileView, viewWithLayer, type SiteSummary, type TileView } from "@/lib/v2/ui/tile-view";
 import { siteParcelFromResults } from "@/lib/v2/ui/site-parcel";
 import { sourceIdsForRefs, sourceMetaMap, type SourceApiBody } from "@/lib/v2/ui/source-api";
 import type { SourceMeta } from "@/lib/v2/ui/source-details";
@@ -66,7 +66,7 @@ type BoardProps = {
   onAuthExpired: () => void;
   /** 브라우저 S03 업로드·대체 요청 뒤 결과와 작업 폴링을 다시 연다. */
   onWindUploaded: () => void;
-  /** 주소 입력부에서 고른 초기 프리셋과 보드 편집부의 현재 프리셋을 맞춘다. */
+  /** 주소 입력부에서 고른 초기 프리셋과 보드 배치부의 현재 프리셋을 맞춘다. */
   requestedPreset: PresetId;
   initialPreset: PresetId;
   onPresetChange: (preset: PresetId) => void;
@@ -191,6 +191,86 @@ const AnalysisProgress = memo(function AnalysisProgress({ jobs, onCancel, cancel
   );
 });
 
+type BoardRailProps = {
+  columns: GridColumns;
+  onColumns: (columns: GridColumns) => void;
+  stackSelection: string[];
+  sheetSelection: string[];
+  onCreateStack: () => void;
+  onCreateSheet: (grid: "2x2" | "3x2") => void;
+  onClearSelections: () => void;
+  removed: { id: string; index: number }[];
+  views: ReadonlyMap<string, Pick<TileView, "title" | "color">>;
+  onAdd: (id: string) => void;
+};
+
+const BoardRail = memo(function BoardRail({ columns, onColumns, stackSelection, sheetSelection, onCreateStack, onCreateSheet, onClearSelections, removed, views, onAdd }: BoardRailProps) {
+  const selectedTotal = stackSelection.length + sheetSelection.length;
+  return (
+    <div className={styles.railContent}>
+      <section className={styles.railSection} aria-label="보드 열 수">
+        <h2 className={styles.railTitle}>보드 설정</h2>
+        <span className={styles.railLabel}>열</span>
+        <span className={styles.railSegments} role="group" aria-label="보드 열 수">
+          {GRID_COLUMN_OPTIONS.map((option) => (
+            <button key={option} type="button" aria-pressed={columns === option} onClick={() => onColumns(option)}>
+              {option}
+            </button>
+          ))}
+        </span>
+      </section>
+
+      {selectedTotal > 0 && (
+        <section className={styles.railSection} aria-label="선택한 타일">
+          <div className={styles.railSelection}>
+            <span>선택 {selectedTotal}개</span>
+            <span className={styles.railSelectionDetail}>스택 {stackSelection.length} · 조판 {sheetSelection.length}</span>
+          </div>
+          <button type="button" className={styles.railClear} onClick={onClearSelections}>선택 해제</button>
+        </section>
+      )}
+
+      {(stackSelection.length >= 2 || sheetSelection.length >= 2) && (
+        <section className={styles.railSection} aria-label="선택한 타일로 만들기">
+          {stackSelection.length >= 2 && (
+            <button type="button" className={styles.railAction} onClick={onCreateStack}>
+              스택 만들기 · {stackSelection.length}층
+            </button>
+          )}
+          {sheetSelection.length >= 2 && (
+            <>
+              <button type="button" className={styles.railAction} disabled={sheetSelection.length > 4} onClick={() => onCreateSheet("2x2")}>
+                조판 만들기(2×2)
+              </button>
+              <button type="button" className={styles.railAction} disabled={sheetSelection.length > 6} onClick={() => onCreateSheet("3x2")}>
+                조판 만들기(3×2)
+              </button>
+            </>
+          )}
+        </section>
+      )}
+
+      <section className={styles.railSection} aria-label="더할 수 있는 타일">
+        <h3 className={styles.railHeading}>더할 수 있는 타일</h3>
+        {removed.length === 0 && <span className={styles.railEmpty}>없음</span>}
+        <div className={styles.railTray} role="list">
+          {removed.map((item) => {
+            const view = views.get(item.id);
+            if (!view) return null;
+            return (
+              <button key={item.id} type="button" className={styles.railTrayBtn} onClick={() => onAdd(item.id)} aria-label={`${view.title} 더하기`}>
+                <span className={styles.dot} style={{ background: view.color }} />
+                <span>{view.title}</span>
+                <span aria-hidden>+</span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+    </div>
+  );
+});
+
 /** 타일 보드. 결과가 바뀌면 부모가 key를 바꿔 새로 만든다. */
 function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSummary, refreshing = false, refreshError, onRefresh, demo, busy, controls, onRerun, onCancel, canceling = false, currentProject, initialProjectBoard, onProjectSaved, onProjectDeleted, onOpenProject, onAuthExpired, onWindUploaded, requestedPreset, initialPreset, onPresetChange }: BoardProps) {
   const [overrides, setOverrides] = useState<Record<string, TileResult>>({});
@@ -244,7 +324,6 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
   }, [flushStorage]);
   useEffect(() => () => flushStorage(), [flushStorage]);
   const results = useMemo(() => board.results.map((r) => overrides[r.tileId] ?? r), [board.results, overrides]);
-  const [editing, setEditing] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [dialogTab, setDialogTab] = useState<"overview" | "sources">("overview");
   const [stackSelection, setStackSelection] = useState<string[]>([]);
@@ -252,7 +331,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
   const [note, setNote] = useState(""); // 스크린리더 안내(aria-live)
   const [basemap, setBasemap] = useState<BasemapChoice>("white"); // 보드 상태(서버에 저장하지 않음). 화면과 PPT가 같이 따른다
   const gridRef = useRef<HTMLDivElement>(null);
-  const [gridLayout, setGridLayout] = useState({ columns: 4, rowHeight: 377 });
+  const [gridLayout, setGridLayout] = useState({ columns: 4, rowHeight: 377, cellWidth: 0 });
   useEffect(() => {
     const grid = gridRef.current;
     if (!grid) return;
@@ -265,7 +344,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
       const cellWidth = (width - (columns - 1) * gap) / columns;
       // 지도 영역(행 높이 − 카드 머리·지표줄·바닥 약 86px)만 1.5배: 1.5·row − 0.5·86
       const rowHeight = Math.round(Math.max(280, cellWidth * (5 / 6)) * 1.5 - 43);
-      setGridLayout((current) => current.columns === columns && current.rowHeight === rowHeight ? current : { columns, rowHeight });
+      setGridLayout((current) => current.columns === columns && current.rowHeight === rowHeight && current.cellWidth === cellWidth ? current : { columns, rowHeight, cellWidth });
     };
     update();
     if (typeof ResizeObserver !== "undefined") {
@@ -608,6 +687,30 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
     }
   }, [board.order, retry, views]);
   const onSummaryFace = useCallback((face: CardFace) => dispatch({ type: "view", id: SUMMARY_ID, face }), []);
+  const createStack = useCallback(() => {
+    if (stackSelection.length < 2) return;
+    const count = stackSelection.length;
+    dispatch({ type: "stack", layers: stackSelection });
+    setStackSelection([]);
+    setNote(`${count}개 층으로 스택을 만듦`);
+  }, [stackSelection]);
+  const createSheet = useCallback((grid: "2x2" | "3x2") => {
+    if (sheetSelection.length < 2) return;
+    const count = sheetSelection.length;
+    dispatch({ type: "sheet", tiles: sheetSelection, grid });
+    setSheetSelection([]);
+    setNote(`${count}개 타일로 ${grid === "2x2" ? "2×2" : "3×2"} 조판을 만듦`);
+  }, [sheetSelection]);
+  const clearSelections = useCallback(() => {
+    setStackSelection([]);
+    setSheetSelection([]);
+    setNote("선택을 해제함");
+  }, []);
+  const addRemoved = useCallback((id: string) => {
+    const view = views.get(id);
+    dispatch({ type: "add", id });
+    setNote(`${view?.title ?? "타일"} 타일을 끝에 더함`);
+  }, [views]);
 
   const lastUndo = board.undoStack[board.undoStack.length - 1];
   const openView = openId ? views.get(openId) : undefined;
@@ -631,8 +734,22 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
         <a className={styles.skipLink} href="#v2-board-grid">
           보드로 건너뛰기
         </a>
+        <aside className={styles.boardRail} aria-label="보드 설정">
+          <BoardRail
+            columns={board.columns}
+            onColumns={(columns) => dispatch({ type: "columns", columns })}
+            stackSelection={stackSelection}
+            sheetSelection={sheetSelection}
+            onCreateStack={createStack}
+            onCreateSheet={createSheet}
+            onClearSelections={clearSelections}
+            removed={board.removed}
+            views={views}
+            onAdd={addRemoved}
+          />
+        </aside>
         <header className={styles.topbar}>
-          <span className={`${styles.display} ${styles.brand}`}>{editing ? "보드 편집" : "사이트 분석"}</span>
+          <span className={`${styles.display} ${styles.brand}`}>사이트 분석</span>
           <a className={styles.pill} href="/site/v2/guide">가이드</a>
           <ProjectMenu
             analysisId={analysisId}
@@ -653,74 +770,12 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
             onOpenProject={onOpenProject}
             onAuthExpired={onAuthExpired}
           />
-          {editing ? (
-            <>
-              <span className={styles.editHint}>순서를 바꾸거나 빼세요. 순서는 보고서 순서가 됩니다.</span>
-              <span className={styles.gridControls}>
-                <span className={styles.segLabel}>열</span>
-                <span className={styles.seg} role="group" aria-label="보드 열 수">
-                  {GRID_COLUMN_OPTIONS.map((columns) => (
-                    <button key={columns} type="button" aria-pressed={board.columns === columns} onClick={() => dispatch({ type: "columns", columns })}>
-                      {columns}
-                    </button>
-                  ))}
-                </span>
-              </span>
-              {stackSelection.length >= 2 && (
-                <button
-                  type="button"
-                  className={styles.pill}
-                  onClick={() => {
-                    dispatch({ type: "stack", layers: stackSelection });
-                    setStackSelection([]);
-                    setNote(`${stackSelection.length}개 층으로 스택을 만듦`);
-                  }}
-                >
-                  스택 만들기 · {stackSelection.length}층
-                </button>
-              )}
-              {sheetSelection.length >= 2 && (
-                <>
-                  <button
-                    type="button"
-                    className={styles.pill}
-                    disabled={sheetSelection.length > 4}
-                    onClick={() => {
-                      dispatch({ type: "sheet", tiles: sheetSelection, grid: "2x2" });
-                      setSheetSelection([]);
-                      setNote(`${sheetSelection.length}개 타일로 2×2 조판을 만듦`);
-                    }}
-                  >
-                    조판 만들기(2×2)
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.pill}
-                    disabled={sheetSelection.length > 6}
-                    onClick={() => {
-                      dispatch({ type: "sheet", tiles: sheetSelection, grid: "3x2" });
-                      setSheetSelection([]);
-                      setNote(`${sheetSelection.length}개 타일로 3×2 조판을 만듦`);
-                    }}
-                  >
-                    조판 만들기(3×2)
-                  </button>
-                </>
-              )}
-            </>
-          ) : (
-            <span className={styles.topTitle} title={`${siteSummary.address} · ${summary.radius}`}>
-              {siteSummary.address} · {summary.radius}
-            </span>
-          )}
+          <span className={styles.topTitle} title={`${siteSummary.address} · ${summary.radius}`}>
+            {siteSummary.address} · {summary.radius}
+          </span>
           <span className={styles.spacer} />
           {demo && <span className={styles.demoTag}>데모 데이터</span>}
-          {editing ? (
-            <button type="button" className={`${styles.pill} ${styles.pillDark}`} onClick={() => setEditing(false)}>
-              완료
-            </button>
-          ) : (
-            <>
+          <>
               <div className={styles.desktopTools}>
                 <span className={styles.segGroup}>
                   <span className={styles.segLabel}>카드</span>
@@ -742,9 +797,6 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
                     ))}
                   </span>
                 </span>
-                <button type="button" className={styles.pill} onClick={() => setEditing(true)} disabled={actionBusy}>
-                  보드 편집
-                </button>
                 <span className={styles.reportHint}>표지 1 + 타일 {tiles}</span>
                 {demo ? (
                   <button type="button" className={`${styles.pill} ${styles.pillDark}`} disabled title="실제 분석 후 사용">
@@ -796,7 +848,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
               </div>
               {exportProblem && <span className={styles.exportError} role="alert">{exportProblem}</span>}
               <details className={styles.mobileTools}>
-                <summary className={`${styles.pill} ${styles.pillDark}`} aria-label="보기·편집·내보내기 메뉴">
+                <summary className={`${styles.pill} ${styles.pillDark}`} aria-label="보기·내보내기 메뉴">
                   더 보기
                 </summary>
                 <div className={styles.mobileToolsPanel}>
@@ -820,9 +872,20 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
                       ))}
                     </span>
                   </span>
-                  <button type="button" className={styles.pill} onClick={() => setEditing(true)} disabled={actionBusy}>
-                    보드 편집
-                  </button>
+                  <div className={styles.mobileRail}>
+                    <BoardRail
+                      columns={board.columns}
+                      onColumns={(columns) => dispatch({ type: "columns", columns })}
+                      stackSelection={stackSelection}
+                      sheetSelection={sheetSelection}
+                      onCreateStack={createStack}
+                      onCreateSheet={createSheet}
+                      onClearSelections={clearSelections}
+                      removed={board.removed}
+                      views={views}
+                      onAdd={addRemoved}
+                    />
+                  </div>
                   <span className={styles.reportHint}>표지 1 + 타일 {tiles}</span>
                   {demo ? (
                     <button type="button" className={`${styles.pill} ${styles.pillDark}`} disabled title="실제 분석 후 사용">
@@ -856,8 +919,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
                   )}
                 </div>
               </details>
-            </>
-          )}
+          </>
         </header>
 
         {!demo && <AnalysisProgress jobs={jobs} onCancel={onCancel} canceling={canceling} />}
@@ -868,7 +930,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
         <div className={styles.grid} id="v2-board-grid" ref={gridRef} tabIndex={-1} data-grid-cols={gridLayout.columns} style={{ "--grid-cols": gridLayout.columns, "--grid-row-height": `${gridLayout.rowHeight}px` } as CSSProperties}>
           <SummaryCard
             view={summary}
-            face={editing ? "summary" : viewOf(board, SUMMARY_ID)}
+            face={viewOf(board, SUMMARY_ID)}
             onFace={onSummaryFace}
             rovingTabIndex={activeRovingId === SUMMARY_ID ? 0 : -1}
             onRovingFocus={onRovingFocus}
@@ -896,10 +958,11 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
                   waitingNote={jobState.byCode.get(view.code)?.note ?? null}
                   included={!!board.included[id]}
                   face={board.faces[id]}
-                  editing={editing}
                   canUp={oi > 0}
                   canDown={oi < total - 1}
                   size={size}
+                  cellW={gridLayout.cellWidth}
+                  rowH={gridLayout.rowHeight}
                   dragging={dragged}
                   floatStyle={floatStyle(id)}
                   onHandleDown={start(id)}
@@ -938,32 +1001,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
         {note}
       </div>
 
-      {editing && (
-        <div className={styles.tray} role="region" aria-label="더할 수 있는 타일">
-          <span className={styles.trayLabel}>더할 수 있는 타일</span>
-          {board.removed.length === 0 && <span className={styles.trayLabel}>없음</span>}
-          {board.removed.map((r) => {
-            const v = views.get(r.id)!;
-            return (
-              <button
-                key={r.id}
-                type="button"
-                className={styles.trayBtn}
-                onClick={() => {
-                  dispatch({ type: "add", id: r.id });
-                  setNote(`${v.title} 타일을 끝에 더함`);
-                }}
-                aria-label={`${v.title} 더하기`}
-              >
-                <span className={styles.dot} style={{ background: v.color }} />
-                {v.title} +
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {editing && lastUndo && (
+      {lastUndo && (
         <div className={styles.toast} role="status" style={{ bottom: 76 }}>
           {lastUndo.kind === "columns"
             ? `${UNDO_LABEL.columns} · ${lastUndo.columns}열`
@@ -1508,7 +1546,7 @@ export default function V2BoardPage() {
         </button>
       </form>
       <p id="v2-radius-help" className={styles.radiusCaption}>반경 해석: {RADIUS_CAPTION}</p>
-      <p id="v2-preset-help" className={styles.radiusCaption}>분석은 모든 타일을 계산하고, 보드는 {TILE_PRESETS[preset].label} 구성으로 시작합니다. 분석 후에는 보드 편집에서 바꿀 수 있습니다.</p>
+      <p id="v2-preset-help" className={styles.radiusCaption}>분석은 모든 타일을 계산하고, 보드는 {TILE_PRESETS[preset].label} 구성으로 시작합니다. 분석 후에는 카드 ⋯ 메뉴와 모서리 핸들로 바꿀 수 있습니다.</p>
       {sitePickerOpen && (
         <div id="v2-site-picker">
           <SitePicker

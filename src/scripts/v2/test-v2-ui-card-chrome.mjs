@@ -9,6 +9,7 @@ const mapBoxSource = readFileSync(new URL("../../components/v2/map-box.tsx", imp
 const calloutSource = readFileSync(new URL("../../components/v2/callout-map.tsx", import.meta.url), "utf8");
 const detailSource = readFileSync(new URL("../../components/v2/detail-window.tsx", import.meta.url), "utf8");
 const boardCss = readFileSync(new URL("../../components/v2/board.module.css", import.meta.url), "utf8");
+const pageSource = readFileSync(new URL("../../app/v2/page.tsx", import.meta.url), "utf8");
 
 assert.match(tileCardSource, /createPortal\(/, "⋯ 메뉴는 React portal로 렌더");
 assert.match(tileCardSource, /document\.body/, "⋯ 메뉴 portal 대상은 body");
@@ -19,6 +20,16 @@ assert.match(calloutSource, /scaleLeft=\{kind === "card"\}/, "A05/A06 카드 축
 for (const label of ["라벨 보기", "보고서에 포함", "펼치기", "복제", "상세 보기"]) {
   assert.match(tileCardSource, new RegExp(label), `⋯ 메뉴 항목 유지: ${label}`);
 }
+assert.match(tileCardSource, /function DragHandle/, "카드 재정렬 핸들은 공용 컴포넌트");
+assert.equal((tileCardSource.match(/<DragHandle p=\{renderProps\} \/>/g) ?? []).length, 1, "요약·지도면은 카드 공용 핸들 하나를 사용");
+assert.match(tileCardSource, /<div className=\{styles\.mfMenuHead\}>배치<\/div>/, "⋯ 메뉴의 현재 섹션 제목은 배치");
+assert.match(boardCss, /\.handle\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?top:\s*0;[\s\S]*?left:\s*0;[\s\S]*?width:\s*44px;/, "재정렬 핸들은 헤더 flex 공간 밖의 44px 절대 hit area");
+assert.match(boardCss, /\.sfTop\s*\{[\s\S]*?flex-wrap:\s*nowrap;/, "요약 헤더는 한 줄");
+assert.match(boardCss, /\.sfTop \.title\s*\{[\s\S]*?text-overflow:\s*ellipsis;[\s\S]*?white-space:\s*nowrap;/, "요약 제목은 좁을 때 말줄임");
+assert.match(boardCss, /\.mfTitle\s*\{[\s\S]*?text-overflow:\s*ellipsis;[\s\S]*?white-space:\s*nowrap;/, "지도 제목은 좁을 때 말줄임");
+assert.match(pageSource, /className=\{styles\.railSegments\}[\s\S]*?GRID_COLUMN_OPTIONS\.map\([\s\S]*?aria-pressed=\{columns === option\}/, "보드 열 선택은 기존 aria-pressed 계약을 유지");
+assert.match(boardCss, /\.railSegments\s*\{[\s\S]*?grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\);[\s\S]*?gap:\s*0;/, "보드 열 선택은 5분할 가로 세그먼트");
+assert.match(boardCss, /\.railSegments button,[\s\S]*?min-height:\s*44px;/, "보드 열 세그먼트 버튼은 44px 높이");
 
 const { floatingMenuPosition } = await import("../../lib/v2/ui/menu-position.ts");
 assert.deepEqual(
