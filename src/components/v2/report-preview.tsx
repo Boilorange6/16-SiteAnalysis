@@ -63,13 +63,20 @@ function canvasStyle(unit: number): CSSProperties {
   return { "--slide-unit": String(unit) + "px" } as CSSProperties;
 }
 
-function useCanvasUnit(ref: React.RefObject<HTMLDivElement | null>): number {
-  const [unit, setUnit] = useState(1);
+type ContainFrameSize = { width: number; height: number };
+
+function useContainFrameSize(ref: React.RefObject<HTMLDivElement | null>): ContainFrameSize {
+  const [size, setSize] = useState<ContainFrameSize>({ width: 0, height: 0 });
   useEffect(() => {
     const element = ref.current;
     if (!element) return;
     const measure = () => {
-      if (element.clientWidth > 0) setUnit(element.clientWidth / SLIDE.w);
+      const maxWidth = Math.min(1320, element.clientWidth);
+      const maxHeight = element.clientHeight;
+      if (maxWidth <= 0 || maxHeight <= 0) return;
+      const width = Math.floor(Math.min(maxWidth, maxHeight * SLIDE.w / SLIDE.h));
+      const height = Math.floor(width * SLIDE.h / SLIDE.w);
+      setSize((current) => current.width === width && current.height === height ? current : { width, height });
     };
     measure();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
@@ -80,7 +87,7 @@ function useCanvasUnit(ref: React.RefObject<HTMLDivElement | null>): number {
       window.removeEventListener("resize", measure);
     };
   }, [ref]);
-  return unit;
+  return size;
 }
 
 type MapLayerProps = {
@@ -104,12 +111,14 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
   const [draftOffset, setDraftOffset] = useState<[number, number] | null>(null);
   const [dragging, setDragging] = useState(false);
   const draftOffsetRef = useRef<[number, number] | null>(null);
-  const drag = useRef<{ id: number; x: number; y: number; offset: [number, number] } | null>(null);
+  const drag = useRef<{ id: number; x: number; y: number; offset: [number, number]; moved: boolean } | null>(null);
+  const suppressFeatureClick = useRef(false);
   const renderStyle = draftOffset ? { ...style, offsetM: draftOffset } : style;
   const viewport = slideViewport(model, renderStyle, { width, height, siteX, fill: 0.8 });
   const focusedLabel = legendLabelOf(model, renderStyle.legendFocus);
   const activeLegendLabel = hoverLegend ?? focusedLabel;
   const onFeaturePin = onDirectPatch ? (feature: { key: string }) => {
+    if (suppressFeatureClick.current) return;
     const currentKeys = renderStyle.pinnedKeys ?? pinnedKeys ?? [];
     onDirectPatch({ pinnedKeys: togglePinnedKey(currentKeys, feature.key) });
   } : undefined;
@@ -124,9 +133,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
     if (!interactive || event.button !== 0) return;
     const sourceOffset = renderStyle.offsetM ?? [0, 0];
     const offset: [number, number] = [sourceOffset[0], sourceOffset[1]];
-    drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, offset };
-    setDragging(true);
-    event.currentTarget.setPointerCapture(event.pointerId);
+    drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, offset, moved: false };
   };
   const movePointer = (event: ReactPointerEvent<HTMLDivElement>) => {
     const state = drag.current;
@@ -134,19 +141,32 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
     const mpp = metersPerPixel(viewport.center[1], viewport.zoom);
     const dx = event.clientX - state.x;
     const dy = event.clientY - state.y;
+    if (!state.moved && Math.hypot(dx, dy) < 4) return;
+    if (!state.moved) {
+      state.moved = true;
+      suppressFeatureClick.current = true;
+      setDragging(true);
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
     const next: [number, number] = [state.offset[0] - dx * mpp, state.offset[1] + dy * mpp];
     draftOffsetRef.current = next;
     setDraftOffset(next);
+    event.preventDefault();
   };
   const endPointer = (event: ReactPointerEvent<HTMLDivElement>) => {
     const state = drag.current;
     if (!state || state.id !== event.pointerId) return;
+    if (!state.moved) {
+      drag.current = null;
+      return;
+    }
     const next = draftOffsetRef.current ?? draftOffset ?? state.offset;
     onPatch({ offsetM: [next[0], next[1]] });
     drag.current = null;
     setDragging(false);
     draftOffsetRef.current = null;
     setDraftOffset(null);
+    window.setTimeout(() => { suppressFeatureClick.current = false; }, 0);
   };
   const map = (
     <MapFigure
@@ -300,7 +320,7 @@ function LegendPanel({ slide, rect, unit, hoverLabel, onLegendHover, onLegendPin
           </div>
         );
         return (
-          <button type="button" className={rowClass} data-preview-legend={item.label} aria-label={`${item.label} 범례 강조`} aria-pressed={focused} title={instruction} onClick={() => onLegendPin?.(key)} onPointerEnter={(event) => { if (event.pointerType !== "touch") onLegendHover?.(item.label); }} onPointerLeave={() => onLegendHover?.(null)} onFocus={() => onLegendHover?.(item.label)} onBlur={() => onLegendHover?.(null)}>
+          <button key={key + "-" + index} type="button" className={rowClass} data-preview-legend={item.label} aria-label={`${item.label} 범례 강조`} aria-pressed={focused} title={instruction} onClick={() => onLegendPin?.(key)} onPointerEnter={(event) => { if (event.pointerType !== "touch") onLegendHover?.(item.label); }} onPointerLeave={() => onLegendHover?.(null)} onFocus={() => onLegendHover?.(item.label)} onBlur={() => onLegendHover?.(null)}>
             <span className={styles.legendSwatch} style={{ background: item.color }} aria-hidden="true" />
             <span className={styles.legendText + (dimmed ? " " + styles.legendDimmed : "") + (focused ? " " + styles.legendFocused : "")} style={fontStyle(pt, unit)}>{item.label}</span>
             {focused && <span className={styles.legendCheck} aria-hidden="true">✓</span>}
@@ -541,8 +561,9 @@ function PanelResizeHandle({ field, label, rect, unit, value, onPreview, onCommi
 }
 
 function SlidePreview({ slide, basemap, editable, onPatch, onMapPatch, onDirectPatch }: { slide: PlannedSlide; basemap: BasemapChoice; editable: boolean; onPatch: (patch: PreviewStylePatch) => void; onMapPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void }) {
-  const canvasRef = useRef<HTMLDivElement>(null);
-  const unit = useCanvasUnit(canvasRef);
+  const slotRef = useRef<HTMLDivElement>(null);
+  const frameSize = useContainFrameSize(slotRef);
+  const unit = frameSize.width > 0 ? frameSize.width / SLIDE.w : 1;
   const [draftStyle, setDraftStyle] = useState<PreviewStylePatch>({});
   const displaySlide = Object.keys(draftStyle).length > 0 ? { ...slide, style: { ...slide.style, ...draftStyle } } : slide;
   const displayModel = mapForSlide(displaySlide);
@@ -562,13 +583,15 @@ function SlidePreview({ slide, basemap, editable, onPatch, onMapPatch, onDirectP
     ])
     : [];
   return (
-    <div className={styles.previewFrame}>
-      <div ref={canvasRef} className={styles.slideCanvas} style={canvasStyle(unit)}>
+    <div ref={slotRef} className={styles.previewSlot}>
+      <div className={styles.previewFrame} style={frameSize.width > 0 ? { width: frameSize.width, height: frameSize.height } : undefined}>
+        <div className={styles.slideCanvas} style={canvasStyle(unit)}>
         {displaySlide.kind === "cover" && <CoverSurface slide={displaySlide} unit={unit} basemap={basemap} interactive={editable && !!displayModel} onPatch={onMapPatch} onDirectPatch={onDirectPatch} />}
         {displaySlide.kind === "sources" && <SourcesSurface slide={displaySlide} unit={unit} basemap={basemap} />}
         {displaySlide.kind === "sheet" && <SheetSurface slide={displaySlide} unit={unit} basemap={basemap} />}
         {displaySlide.kind === "tile" && <TileSurface slide={displaySlide} unit={unit} basemap={basemap} panels={panels} interactive={editable && !!displayModel} onPatch={onMapPatch} onDirectPatch={onDirectPatch} />}
         {handles.map((handle) => <PanelResizeHandle key={handle.field} {...handle} unit={unit} onPreview={previewPatch} onCommit={commitPatch} />)}
+        </div>
       </div>
     </div>
   );
@@ -606,11 +629,11 @@ function PageToolbar({ selectedSlides, current, applyPatch, resetScales, resetLa
           <span className={styles.toolbarLabel}>지도 {zoom.mixed ? "여러 값" : formatZoom(zoom.value)}</span>
           <button type="button" className={styles.smallButton} disabled={!mapEnabled || targets.length === 0} onClick={() => applyPatch({ zoomDelta: clampNumber((zoom.mixed ? 0 : zoom.value) - 0.5, -3, 3) })} aria-label="지도 축소">−</button>
           <button type="button" className={styles.smallButton} disabled={!mapEnabled || targets.length === 0} onClick={() => applyPatch({ zoomDelta: clampNumber((zoom.mixed ? 0 : zoom.value) + 0.5, -3, 3) })} aria-label="지도 확대">+</button>
-          <button type="button" className={styles.centerButton} disabled={!mapEnabled || targets.length === 0} onClick={() => applyPatch({ offsetM: [0, 0] })}>대지 중앙 정렬</button>
+          <button type="button" className={styles.centerButton} disabled={!mapEnabled || targets.length === 0} onClick={() => applyPatch({ offsetM: [0, 0] })}><span className={styles.toolbarLongLabel}>대지 중앙 정렬</span><span className={styles.toolbarShortLabel}>정렬</span></button>
         </div>
-        <button type="button" className={styles.toolbarToggle} disabled={!summaryEnabled || targets.length === 0} aria-pressed={summary.value} onClick={() => applyPatch({ summary: !summary.value })}>{summary.value ? "요약 탭 숨기기" : "요약 탭 켜기"}{summary.mixed ? " · 여러 값" : ""}</button>
-        <button type="button" className={styles.toolbarReset} disabled={targets.length === 0} onClick={resetScales} aria-label="탭 크기 기본값">탭 크기 기본값</button>
-        <button type="button" className={styles.toolbarReset} disabled={!mapEnabled || !current} onClick={resetLabels} aria-label="라벨 초기화">라벨 초기화</button>
+        <button type="button" className={styles.toolbarToggle} disabled={!summaryEnabled || targets.length === 0} aria-pressed={summary.value} onClick={() => applyPatch({ summary: !summary.value })}><span className={styles.toolbarLongLabel}>{summary.value ? "요약 탭 숨기기" : "요약 탭 켜기"}{summary.mixed ? " · 여러 값" : ""}</span><span className={styles.toolbarShortLabel}>요약</span></button>
+        <button type="button" className={styles.toolbarReset} disabled={targets.length === 0} onClick={resetScales} aria-label="탭 크기 기본값"><span className={styles.toolbarLongLabel}>탭 크기 기본값</span><span className={styles.toolbarShortLabel}>크기</span></button>
+        <button type="button" className={styles.toolbarReset} disabled={!mapEnabled || !current} onClick={resetLabels} aria-label="라벨 초기화"><span className={styles.toolbarLongLabel}>라벨 초기화</span><span className={styles.toolbarShortLabel}>라벨</span></button>
       </div>
     </div>
   );

@@ -437,11 +437,10 @@
 }
 
 .stageColumn {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: 10px;
-  justify-content: center;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .stageHeading {
@@ -511,12 +510,16 @@
 }
 
 .toolbarActions {
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-end;
 }
 
 .toolbarGroup {
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+}
+
+.pageToolbar .centerButton {
+  width: auto;
 }
 
 .toolbarLabel {
@@ -561,6 +564,10 @@
   border-color: #5f87be;
 }
 
+.toolbarShortLabel {
+  display: none;
+}
+
 .toolbarToggle:disabled,
 .toolbarReset:disabled,
 .filmstripToggle:disabled {
@@ -570,13 +577,23 @@
   cursor: not-allowed;
 }
 
+.previewSlot {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .previewFrame {
   position: relative;
+  flex: 0 0 auto;
   width: 100%;
+  height: auto;
   max-width: 1320px;
   min-width: 0;
   margin: 0 auto;
-  aspect-ratio: 13.333 / 7.5;
+  aspect-ratio: 16 / 9;
   overflow: hidden;
   background: #dfe3e8;
   border: 1px solid #8f98a6;
@@ -1542,11 +1559,30 @@
     flex: 0 0 auto;
     order: 1;
     overflow: visible;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .previewSlot {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    flex: 0 0 auto;
   }
 
   .pageToolbar {
     width: 100%;
     margin-inline: 0;
+  }
+}
+
+@media (min-width: 601px) and (max-width: 1100px) {
+  .toolbarContext .interactionHint,
+  .toolbarLongLabel {
+    display: none;
+  }
+
+  .toolbarShortLabel {
+    display: inline;
   }
 }
 
@@ -1591,29 +1627,74 @@
   }
 
   .pageToolbar {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 6px;
-    padding: 6px;
+    order: 2;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 4px;
   }
 
-  .toolbarContext,
-  .toolbarActions,
-  .toolbarGroup {
+  .stageHeading {
+    order: 0;
+  }
+
+  .previewSlot {
+    order: 1;
+  }
+
+  .toolbarContext {
     width: 100%;
+    flex: 0 0 100%;
+    flex-wrap: nowrap;
+    padding-inline: 4px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .toolbarContext .interactionHint {
+    display: none;
   }
 
   .toolbarActions {
-    justify-content: flex-start;
+    display: grid;
+    grid-template-columns: repeat(7, minmax(44px, 1fr));
+    width: 100%;
+    flex: 0 0 100%;
+    gap: 4px;
   }
 
   .toolbarGroup {
-    flex-wrap: wrap;
+    display: contents;
   }
 
+  .toolbarLabel,
+  .smallButton,
+  .centerButton,
   .toolbarToggle,
   .toolbarReset {
-    flex: 1 1 132px;
+    min-width: 44px;
+    width: 100%;
+    min-height: 44px;
+    padding: 6px 2px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .pageToolbar .centerButton {
+    width: 100%;
+  }
+
+  .toolbarLabel {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .toolbarLongLabel {
+    display: none;
+  }
+
+  .toolbarShortLabel {
+    display: inline;
   }
 
   .stageHeading {

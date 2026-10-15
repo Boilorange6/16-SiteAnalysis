@@ -522,6 +522,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     };
     return {
       "data-map-feature": key,
+      "data-map-pick": "true",
       className: "map-figure-interactive",
       role: "button" as const,
       tabIndex: 0,
@@ -635,6 +636,10 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     const textX = placement.box.x0 + calloutTextLeft;
     const textMaxWidth = Math.max(1, placement.box.x1 - placement.box.x0 - calloutTextLeft - calloutTextRight);
     const textY = placement.box.y0 + calloutPadY + textFs * 0.9;
+    const labelHitX = Math.min(placement.box.x0, placement.leader.x0);
+    const labelHitY = Math.min(placement.box.y0, placement.leader.y0);
+    const labelHitRight = Math.max(placement.box.x1, placement.leader.x1);
+    const labelHitBottom = Math.max(placement.box.y1, placement.leader.y1);
     // 범례 강조는 도형과 범례 패널에만 적용한다. 사용자 고정 라벨·콜아웃은
     // 지도 맥락을 설명하는 주석이므로 native PPT 경로와 함께 항상 선명하게 둔다.
     const dimmed = false;
@@ -651,12 +656,14 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
         data-map-label-key={d.key}
         data-map-label-variant={variant}
         {...(fixedLabel && onFeaturePin ? { "data-map-feature": d.key, className: "map-figure-interactive", role: "button" as const, tabIndex: 0, "aria-label": `${d.text} · 눌러서 라벨 숨기기`, "aria-pressed": true, onClick: pinPick, onKeyDown } : { "aria-hidden": true })}
+        {...(fixedLabel && onFeaturePin ? { "data-map-pick": "true" } : {})}
         style={fixedLabel && onFeaturePin ? { cursor: "pointer" } : undefined}
         pointerEvents={fixedLabel && onFeaturePin ? "all" : "none"}
         opacity={dimmed ? 0.2 : 1}
       >
         <title>{d.text}</title>
         {fixedLabel && onFeaturePin && <title>눌러서 라벨 숨기기</title>}
+        {fixedLabel && onFeaturePin && <rect data-map-label-hit={d.key} x={labelHitX} y={labelHitY} width={labelHitRight - labelHitX} height={labelHitBottom - labelHitY} fill="transparent" pointerEvents="all" />}
         {!dragging && <>
           <polyline data-map-label-leader={d.key} points={[d.p, placement.placed.knee, placement.placed.edge].map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke="#fff" strokeWidth={3.6 * u} strokeLinecap="round" strokeLinejoin="round" />
           <polyline data-map-label-leader={d.key} points={[d.p, placement.placed.knee, placement.placed.edge].map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke={INK} strokeWidth={1.2 * u} strokeLinecap="round" strokeLinejoin="round" />
@@ -860,7 +867,13 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
             const polygonSelected = isSelected(polygonFid);
             const polygonKey = mapElementKey("polygon", polygon.polygon.layer, polygonFid, polygon.index);
             const strong = isElementStrong(polygon.polygon.layer, polygonKey);
-            return <path key={`poly${polygon.index}`} data-poly="true" data-map-layer={polygon.polygon.layer} d={polygonPath(polygon.rings)} fillRule="evenodd" fill={neutralBuilding ? buildingStyle.fill : estimated ? `url(#${hatchId(polygon.index)})` : st.fill ?? st.color} fillOpacity={neutralBuilding ? buildingStyle.fillOpacity : estimated ? 1 : st.fillOpacity ?? polygonOpacity} opacity={isElementDimmed(polygon.polygon.layer, polygonKey) ? 0.2 : undefined} stroke={strong || polygonSelected ? INK : neutralBuilding ? buildingStyle.stroke : st.stroke ?? st.color} strokeWidth={(strong ? 1.6 : polygonSelected ? 3 : neutralBuilding ? buildingStyle.strokeWidth ?? 0.8 : st.strokeWidth ?? 1) * u} {...pickProps({ fid: polygonFid, lng: polygonCenter[0], lat: polygonCenter[1], kind: "polygon" }, polygonKey, labelText(polygon.polygon.layer, "polygon", polygon.polygon))} />;
+            const pick = pickProps({ fid: polygonFid, lng: polygonCenter[0], lat: polygonCenter[1], kind: "polygon" }, polygonKey, labelText(polygon.polygon.layer, "polygon", polygon.polygon));
+            return (
+              <g key={`poly${polygon.index}`}>
+                <path data-poly="true" data-map-layer={polygon.polygon.layer} d={polygonPath(polygon.rings)} fillRule="evenodd" fill={neutralBuilding ? buildingStyle.fill : estimated ? `url(#${hatchId(polygon.index)})` : st.fill ?? st.color} fillOpacity={neutralBuilding ? buildingStyle.fillOpacity : estimated ? 1 : st.fillOpacity ?? polygonOpacity} opacity={isElementDimmed(polygon.polygon.layer, polygonKey) ? 0.2 : undefined} stroke={strong || polygonSelected ? INK : neutralBuilding ? buildingStyle.stroke : st.stroke ?? st.color} strokeWidth={(strong ? 1.6 : polygonSelected ? 3 : neutralBuilding ? buildingStyle.strokeWidth ?? 0.8 : st.strokeWidth ?? 1) * u} />
+                {Object.keys(pick).length > 0 && <path data-map-hit="polygon" d={polygonPath(polygon.rings)} fill="transparent" stroke="transparent" pointerEvents="all" {...pick} />}
+              </g>
+            );
           })}
           {linePaths.filter((d) => backgroundOnlyActive ? shouldRasterizeLayer(d.l.layer) : (d.l.layer !== "rail_line" && d.l.layer !== "rail_station_axis")).map((d) => {
             const st = layerStyle(d.l.layer);
@@ -875,10 +888,12 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
             const casing = strong || lineSelected ? INK : d.l.casing ?? st.casing;
             const casingWidth = d.l.casingWidth ?? width + 2.4;
             const opacity = d.l.opacity ?? st.opacity;
+            const pick = pickProps({ fid: d.l.fid, lng: center[0], lat: center[1], kind: "line" }, lineKey, labelText(d.l.layer, "line", d.l));
             return (
               <g key={`line${d.index}`} opacity={isElementDimmed(d.l.layer, lineKey) ? 0.2 : opacity}>
                 {casing && <polyline points={points} fill="none" stroke={casing} strokeWidth={casingWidth * u} strokeDasharray={st.dash} strokeLinejoin="round" pointerEvents="none" />}
-                <polyline data-line="true" points={points} fill="none" stroke={stroke} strokeWidth={width * u} strokeDasharray={st.dash} strokeLinejoin="round" markerEnd={st.arrow ? `url(#arrow-${uid}-${d.index})` : undefined} {...pickProps({ fid: d.l.fid, lng: center[0], lat: center[1], kind: "line" }, lineKey, labelText(d.l.layer, "line", d.l))} />
+                <polyline data-line="true" points={points} fill="none" stroke={stroke} strokeWidth={width * u} strokeDasharray={st.dash} strokeLinejoin="round" markerEnd={st.arrow ? `url(#arrow-${uid}-${d.index})` : undefined} />
+                {Object.keys(pick).length > 0 && <polyline data-map-hit="line" points={points} fill="none" stroke="transparent" strokeWidth={Math.max(32 * u, casingWidth * u)} strokeLinejoin="round" pointerEvents="stroke" {...pick} />}
               </g>
             );
           })}
