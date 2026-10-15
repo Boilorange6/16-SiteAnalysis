@@ -1,0 +1,84 @@
+import assert from "node:assert/strict";
+
+const {
+  mixedValue,
+  movePageSelection,
+  nextExtraPageId,
+  pageKeyAfterInsertion,
+  selectPageKeys,
+} = await import("../../lib/v2/ui/report-preview-logic.ts");
+
+const pages = ["cover", "A01:front", "A02:front", "sources:0"];
+
+// plain은 기존 다중 선택을 버리고 한 장만 남긴다.
+assert.deepEqual(
+  selectPageKeys(pages, "A01:front", "sources:0"),
+  ["sources:0"],
+);
+
+// Ctrl/Meta 토글은 plan 순서를 유지하고, 이미 선택된 장은 제거한다.
+assert.deepEqual(
+  selectPageKeys(pages, "A02:front", "A01:front", { ctrlKey: true, selectedKeys: ["A02:front"] }),
+  ["A01:front", "A02:front"],
+);
+assert.deepEqual(
+  selectPageKeys(pages, "A01:front", "A01:front", { metaKey: true, selectedKeys: ["A01:front", "A02:front"] }),
+  ["A02:front"],
+);
+
+// Shift 클릭은 anchor와 target을 포함하며 양방향 모두 plan 순서로 정렬된다.
+assert.deepEqual(
+  selectPageKeys(pages, "A02:front", "cover", { shiftKey: true }),
+  ["cover", "A01:front", "A02:front"],
+);
+assert.deepEqual(
+  selectPageKeys(pages, "A01:front", "sources:0", { shiftKey: true }),
+  ["A01:front", "A02:front", "sources:0"],
+);
+assert.deepEqual(
+  selectPageKeys(pages, null, "A02:front", { shiftKey: true }),
+  ["A02:front"],
+  "anchor가 없으면 클릭 장만 선택",
+);
+
+// Shift+방향은 active를 한 칸 움직인 범위이며 목록 경계에서 넘지 않는다.
+assert.deepEqual(
+  movePageSelection(pages, "A01:front", "A02:front", 1, true),
+  ["A01:front", "A02:front", "sources:0"],
+);
+assert.deepEqual(
+  movePageSelection(pages, "A01:front", "A02:front", -1, true),
+  ["A01:front"],
+);
+assert.deepEqual(
+  movePageSelection(pages, "cover", "cover", -1, true),
+  ["cover"],
+  "첫 장에서 위로 이동해도 범위를 벗어나지 않음",
+);
+assert.deepEqual(
+  movePageSelection(pages, "A01:front", "A01:front", 1, false),
+  ["A02:front"],
+  "Shift가 없으면 이동한 한 장만 선택",
+);
+
+// 공통값은 같은 값·all-undefined fallback·mixed(undefined)를 구분한다.
+assert.equal(mixedValue([1, 1, 1], 0), 1);
+assert.equal(mixedValue([undefined, undefined], 0), 0);
+assert.equal(mixedValue([], 0), 0);
+assert.equal(mixedValue([0.7, 1.2], 1), undefined);
+assert.equal(mixedValue([null, null], false), null);
+
+// after key는 현재 plan에 있는 key만 통과시키고, stale key는 첫 장 앞(null)으로 보낸다.
+assert.equal(pageKeyAfterInsertion(pages, null), null);
+assert.equal(pageKeyAfterInsertion(pages, "A01:front"), "A01:front");
+assert.equal(pageKeyAfterInsertion(pages, "stale"), null);
+
+// 같은 타일의 중복은 결정적 suffix로 구분한다. extra: key도 비교 대상으로 받는다.
+const firstId = nextExtraPageId([], "t-A01");
+assert.equal(firstId, "preview-5-t-A01");
+assert.equal(
+  nextExtraPageId([firstId, "extra:preview-5-t-A01-2"], "t-A01"),
+  "preview-5-t-A01-3",
+);
+
+console.log("v2 report preview pure logic tests passed");

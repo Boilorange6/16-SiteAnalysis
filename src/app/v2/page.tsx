@@ -5,6 +5,7 @@ import SummaryCard from "@/components/v2/summary-card";
 import TileCard, { type TileCardAction } from "@/components/v2/tile-card";
 import TileDialog from "@/components/v2/tile-dialog";
 import Presentation from "@/components/v2/presentation";
+import ReportPreview from "@/components/v2/report-preview";
 import { useTileDrag } from "@/components/v2/use-tile-drag";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "@/components/v2/map-box";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
@@ -497,6 +498,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
   const [makingKind, setMakingKind] = useState<string | null>(null);
   const [exportProblem, setExportProblem] = useState<string | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [reportPreviewOpen, setReportPreviewOpen] = useState(false);
   const exportState = exportAvailability({ activeJobs, making, requesting: busy, sceneReady: !!scene });
   const [presentationPlan, setPresentationPlan] = useState<PlannedSlide[] | null>(null);
   // PPT와 발표가 같은 출처 메타데이터로 같은 계획(같은 장수)을 만든다.
@@ -518,6 +520,12 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
     if (demo || actionBusy || !exportState.ppt.enabled) return;
     setExportOpen(false);
     setPresentationPlan(await metadataPlan().catch(() => reportPlan));
+  };
+
+  const openReportPreview = () => {
+    if (demo || actionBusy || !exportState.ppt.enabled) return;
+    setExportOpen(false);
+    setReportPreviewOpen(true);
   };
 
   const makeReport = async () => {
@@ -816,7 +824,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
                       {making ? `${makingKind ?? "파일"} 만드는 중…` : "내보내기 ▾"}
                     </summary>
                     <div className={styles.exportMenu} aria-label="내보내기 형식">
-                      <button type="button" className={styles.pill} onClick={() => void makeReport()} disabled={!exportState.ppt.enabled} title={exportState.ppt.reason ?? exportState.ppt.pendingNote ?? undefined}>
+                      <button type="button" className={styles.pill} onClick={openReportPreview} disabled={!exportState.ppt.enabled} title={exportState.ppt.reason ?? exportState.ppt.pendingNote ?? undefined}>
                         PPT · {planPageCount}장
                       </button>
                       <button type="button" className={styles.pill} onClick={openPresentation} disabled={demo || !exportState.ppt.enabled || actionBusy} title={demo ? "실제 분석 후 사용" : exportState.ppt.reason ?? undefined}>
@@ -893,7 +901,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
                     </button>
                   ) : (
                     <div className={styles.mobileExportActions}>
-                      <button type="button" className={styles.pill} onClick={() => void makeReport()} disabled={!exportState.ppt.enabled} title={exportState.ppt.reason ?? exportState.ppt.pendingNote ?? undefined}>
+                      <button type="button" className={styles.pill} onClick={openReportPreview} disabled={!exportState.ppt.enabled} title={exportState.ppt.reason ?? exportState.ppt.pendingNote ?? undefined}>
                         PPT · {planPageCount}장
                       </button>
                       <button type="button" className={styles.pill} onClick={openPresentation} disabled={demo || !exportState.ppt.enabled || actionBusy} title={demo ? "실제 분석 후 사용" : exportState.ppt.reason ?? undefined}>
@@ -1051,6 +1059,21 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
             setOpenId(null);
             setDialogTab("overview");
           }}
+        />
+      )}
+      {reportPreviewOpen && (exportState.ppt.enabled || making) && (
+        <ReportPreview
+          board={board}
+          dispatch={dispatch}
+          views={views}
+          plan={reportPlan}
+          basemap={basemap}
+          onClose={() => setReportPreviewOpen(false)}
+          onExport={makeReport}
+          exportEnabled={exportState.ppt.enabled}
+          exporting={making}
+          makingKind={makingKind}
+          exportProblem={exportProblem}
         />
       )}
       {presentationPlan && <Presentation plan={presentationPlan} onClose={() => setPresentationPlan(null)} />}

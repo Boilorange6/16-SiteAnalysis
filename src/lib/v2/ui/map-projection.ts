@@ -1,4 +1,7 @@
 /** 지도 그림의 순수 계산: Web Mercator 줌·좌표·타일 목록·축척 막대. 브라우저·Node 공용. */
+import type { PageStyle } from "./board-state";
+import type { MapModel } from "./map-layers";
+
 export const TILE_PX = 256;
 const M_PER_PX_Z0 = 156543.03392804097;
 const MAX_TILE_ZOOM = 19;
@@ -9,6 +12,7 @@ const RASTER_MAX_CELL_PX = 12;
 export type Viewport = { center: readonly [number, number]; zoom: number; width: number; height: number };
 export type MapView = { zoomDelta: number; offsetM: readonly [number, number] };
 export type MapZoom = { maxDelta?: number; maxAbsZoom?: number; card?: boolean };
+export type SlideViewportFrame = { width: number; height: number; siteX?: number; siteY?: number; fill?: number };
 
 const rad = (d: number) => (d * Math.PI) / 180;
 
@@ -43,6 +47,27 @@ export function framedViewport(center: readonly [number, number], radiusM: numbe
   const y = wy + (0.5 - siteY) * height;
   const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / size))) * 180) / Math.PI;
   return { ...vp0, center: [lng, lat] as const };
+}
+
+/** 보고서·미리보기가 공유하는 기준 프레임과 페이지별 지도 이동/확대. */
+export function slideViewport(
+  map: Pick<MapModel, "center" | "radiusM">,
+  style: Pick<PageStyle, "zoomDelta" | "offsetM"> | undefined,
+  frame: SlideViewportFrame,
+): Viewport {
+  const base = framedViewport(
+    map.center,
+    map.radiusM,
+    frame.width,
+    frame.height,
+    frame.siteX ?? 0.5,
+    frame.fill ?? 0.8,
+    frame.siteY ?? 0.5,
+  );
+  return applyView(base, map.center[1], {
+    zoomDelta: style?.zoomDelta ?? 0,
+    offsetM: style?.offsetM ?? [0, 0],
+  });
 }
 
 function lngLatFromWorldPx(x: number, y: number, z: number): [number, number] {

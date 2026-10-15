@@ -5,7 +5,8 @@
  *  왼쪽 위 = 제목 칩 · 오른쪽 위 = 보고서 칩/북쪽 · 왼쪽 아래 = 핵심 값 카드(+범례)
  *  오른쪽 아래 = 축척 · 맨 아래 = 출처 띠
  */
-import { legendItems, type MapModel } from "./map-layers";
+import { legendItemsForModel, type MapModel } from "./map-layers";
+import type { PageStyle } from "./board-state";
 
 export type Box = { x0: number; y0: number; x1: number; y1: number };
 
@@ -53,6 +54,12 @@ export function cardReserved(w: number, h: number, opts: { valueH?: number; titl
 
 export type Rect = { x: number; y: number; w: number; h: number };
 
+export type SlidePanelRects = {
+  title: Rect;
+  summary: Rect | null;
+  legend: Rect | null;
+};
+
 /** 슬라이드(16:9, inch) 오버레이 자리. */
 export const SLIDE = { w: 13.333, h: 7.5, edge: 0.3, stripH: 0.36, infoRatio: 0.32 } as const;
 
@@ -67,6 +74,70 @@ export function slideLayout(): { title: Rect; info: Rect; legendX: number; legen
     legendBottom: stripY - edge * 0.6,
     strip: { x: 0, y: stripY, w, h: stripH },
     page: { x: w - 1.4, y: stripY, w: 1.3, h: stripH },
+  };
+}
+
+const panelScale = (value: number | undefined): number => Math.max(0.7, Math.min(1.5, value ?? 1));
+export const slidePanelScale = panelScale;
+
+function scaleAnchoredRect(
+  rect: Rect,
+  scale: number,
+  anchor: "top-left" | "top-right" | "bottom-left",
+  maxW = Number.POSITIVE_INFINITY,
+  maxH = Number.POSITIVE_INFINITY,
+): Rect {
+  const w = Math.min(rect.w * scale, Math.max(0, maxW));
+  const h = Math.min(rect.h * scale, Math.max(0, maxH));
+  return {
+    x: anchor === "top-right" ? rect.x + rect.w - w : rect.x,
+    y: anchor === "bottom-left" ? rect.y + rect.h - h : rect.y,
+    w,
+    h,
+  };
+}
+
+/**
+ * 페이지 스타일이 적용된 PPT 패널 자리.
+ * 범례는 항목 수에 따라 기준 rect가 달라지므로 실제 rect를 넘길 수 있고,
+ * 생략하면 테스트·미리보기용 대표 4행 rect를 사용한다.
+ */
+export function slidePanelRects(
+  style: Pick<PageStyle, "titleScale" | "summaryScale" | "legendScale"> | undefined,
+  hasSummary: boolean,
+  legendBase?: Rect | null,
+): SlidePanelRects {
+  const l = slideLayout();
+  const baseLegend = legendBase ?? slideLegendRect(4, 0, 8);
+  const titleScale = panelScale(style?.titleScale);
+  const summaryScale = panelScale(style?.summaryScale);
+  const legendScale = panelScale(style?.legendScale);
+  const panelGap = 0.18;
+  const maxSideBySideW = Math.max(0, SLIDE.w - 2 * SLIDE.edge - panelGap);
+  const requestedTitleW = Math.min(l.title.w * titleScale, SLIDE.w - 2 * SLIDE.edge);
+  const requestedSummaryW = Math.min(l.info.w * summaryScale, SLIDE.w - 2 * SLIDE.edge);
+  const sideBySideRatio = hasSummary && requestedTitleW + requestedSummaryW > maxSideBySideW
+    ? maxSideBySideW / (requestedTitleW + requestedSummaryW)
+    : 1;
+  const titleW = requestedTitleW * sideBySideRatio;
+  const summaryW = requestedSummaryW * sideBySideRatio;
+  const safeBottom = l.strip.y - SLIDE.edge * 0.6;
+  const safeHeight = Math.max(0, safeBottom - SLIDE.edge);
+  const title = scaleAnchoredRect(l.title, titleScale, "top-left", titleW, safeHeight);
+  const summary = hasSummary
+    ? scaleAnchoredRect(l.info, summaryScale, "top-right", summaryW, safeHeight)
+    : null;
+  const requestedLegend = baseLegend ? scaleAnchoredRect(baseLegend, legendScale, "bottom-left") : null;
+  const legend = requestedLegend
+    ? {
+        ...requestedLegend,
+        w: Math.min(requestedLegend.w, Math.max(0, (summary?.x ?? SLIDE.w - SLIDE.edge) - SLIDE.edge - panelGap)),
+      }
+    : null;
+  return {
+    title,
+    summary,
+    legend,
   };
 }
 
@@ -113,27 +184,40 @@ export function slideCalloutLegendLayout(
 }
 
 /** 지도 모델 → 범례 항목·문구·자리 (슬라이드 그리기와 지도 이미지의 라벨 회피가 같은 값을 쓴다) */
-export function slideLegend(model: MapModel, includeSite = true) {
+export function slideLegend(
+  model: MapModel,
+  includeSite = true,
+  style?: Pick<PageStyle, "titleScale" | "summaryScale" | "legendScale">,
+  hasSummary = true,
+) {
   const items: Array<{ layer: string; label: string; color: string; site?: boolean; badge?: string; symbol?: "rail-axis" | "rail-exit" }> = [
-    ...legendItems(model).filter((item) => item.layer !== "parcel_site" && item.layer !== "pnu"),
+    ...legendItemsForModel(model).filter((item) => item.layer !== "parcel_site" && item.layer !== "pnu"),
     ...(includeSite ? [{ layer: "__site_marker", label: "대지", color: "#111", site: true as const }] : []),
   ];
   const notes = [...model.notes, ...(model.total > model.features.length ? [`표시 ${model.features.length.toLocaleString("en-US")} / 전체 ${model.total.toLocaleString("en-US")}`] : [])];
-  const rect = slideLegendRect(items.length, notes.length, Math.max(0, ...items.map((i) => i.label.length), ...notes.map((n) => n.length * 0.75)));
+  const baseRect = slideLegendRect(items.length, notes.length, Math.max(0, ...items.map((i) => i.label.length), ...notes.map((n) => n.length * 0.75)));
+  const rect = baseRect ? slidePanelRects(style, hasSummary, baseRect).legend : null;
   return { items, notes, rect };
 }
 
 /** 슬라이드 좌표(inch)를 지도 이미지 픽셀 좌표로 바꾼 예약 자리 (라벨 충돌 회피용) */
-export function slideReserved(pxPerInch: number, opts: { info?: boolean; legend?: Rect | null; calloutLegend?: Rect | null } = {}): Box[] {
+export function slideReserved(
+  pxPerInch: number,
+  opts: { info?: boolean; infoRect?: Rect | null; titleRect?: Rect | null; legend?: Rect | null; calloutLegend?: Rect | null } = {},
+): Box[] {
   const l = slideLayout();
   const b = (r: Rect): Box => ({ x0: r.x * pxPerInch, y0: r.y * pxPerInch, x1: (r.x + r.w) * pxPerInch, y1: (r.y + r.h) * pxPerInch });
-  return [b(l.title), ...(opts.info === false ? [] : [b(l.info)]), ...(opts.legend ? [b(opts.legend)] : []), ...(opts.calloutLegend ? [b(opts.calloutLegend)] : []), b(l.strip)];
+  return [b(opts.titleRect ?? l.title), ...(opts.info === false ? [] : [b(opts.infoRect ?? l.info)]), ...(opts.legend ? [b(opts.legend)] : []), ...(opts.calloutLegend ? [b(opts.calloutLegend)] : []), b(l.strip)];
 }
 
 /** 가로 방향 지도 중심 위치: 슬라이드에서는 오른쪽 정보 판을 뺀 영역의 가운데 */
-export function slideSiteX(): number {
+export function slideSiteX(
+  style?: Pick<PageStyle, "summaryScale">,
+  hasSummary = true,
+): number {
   const l = slideLayout();
-  return (l.info.x - SLIDE.edge) / 2 / SLIDE.w;
+  const summary = slidePanelRects(style, hasSummary).summary;
+  return summary ? (summary.x - SLIDE.edge) / 2 / SLIDE.w : 0.5;
 }
 
 /** 펼침에서 오른쪽 정보 판(360px)을 뺀 영역의 가운데 (모바일은 0.5) */

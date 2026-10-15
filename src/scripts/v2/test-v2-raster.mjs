@@ -11,11 +11,11 @@ globalThis.React = React;
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 const { effectiveLayer } = await import("../../lib/v2/report/map-image.ts");
-const { default: MapFigure, siteMarkerMode, siteMarkerRadius } = await import("../../components/v2/map-figure.tsx");
+const { default: MapFigure, mapLabelEntries, siteMarkerMode, siteMarkerRadius } = await import("../../components/v2/map-figure.tsx");
 const { framedViewport, worldPx } = await import("../../lib/v2/ui/map-projection.ts");
 const { toUtmk, toLngLat } = await import("../../lib/v2/crs.ts");
 const { rasterAffine, paintRgba } = await import("../../lib/v2/ui/raster-image.ts");
-const { RASTER_STYLES } = await import("../../lib/v2/ui/map-layers.ts");
+const { RASTER_STYLES, legendItemsOf } = await import("../../lib/v2/ui/map-layers.ts");
 const { encodeRaster, loadTileRaster, saveTileRasters } = await import("../../lib/v2/raster-store.ts");
 const { getTileRaster } = await import("../../lib/v2/engine/raster-api.ts");
 const A = await import("../../lib/v2/app-db.ts");
@@ -164,6 +164,28 @@ assert.match(svg, /image-rendering:pixelated/, "단계형 래스터는 셀 경�
 assert.match(svg, /data-radius-clip="true"/);
 assert.match(svg, /role="img" aria-label="분석 대지"/);
 assert.ok(svg.indexOf("data-raster") < svg.indexOf("data-poly") || !svg.includes("data-poly"), "래스터는 면보다 아래");
+
+// 범례 강조는 래스터·도형만 약화하고, 고정 라벨/콜아웃은 MapFigure와 PPT에서 함께 보존한다.
+const focusMap = toTileView(GODEOK_RESULTS.find((result) => result.tileCode === "A01") ?? base).map;
+assert.ok(focusMap, "범례 강조용 A01 지도");
+const focusLegend = legendItemsOf(focusMap).find((entry) => !entry.site);
+const focusLabel = mapLabelEntries(focusMap)[0];
+assert.ok(focusLegend && focusLabel, "범례 강조·고정 라벨 회귀용 지도 요소");
+const focusRasterMap = { ...focusMap, rasters: [encoded.ref], rasterOptions: [encoded.ref], defaultRaster: encoded.ref.name };
+const focusSvg = renderToStaticMarkup(createElement(MapFigure, {
+  model: focusRasterMap,
+  width: 800,
+  height: 500,
+  basemap: "none",
+  fixed: true,
+  legendFocus: focusLegend.label,
+  highlightLabel: focusLegend.label,
+  pinnedKeys: [focusLabel.key],
+  rasterHref: () => "data:image/png;base64,AAAA",
+}));
+assert.match(focusSvg, /data-map-label-variant="fixed"/, "고정 라벨이 범례 강조 지도에 있다");
+assert.doesNotMatch(focusSvg, /data-map-label-variant="fixed"[^>]*opacity="0\.2"/, "고정 라벨이 범례 강조로 dim되지 않는다");
+assert.match(focusSvg, /data-raster/, "범례 강조 래스터 경로가 유지된다");
 
 const svfModel = { ...view.map, rasters: [svfRef], notes: ["SVF 색 구간 0·25·50·65·75·85·92·100%"] };
 const svfSvg = renderToStaticMarkup(createElement(MapFigure, {

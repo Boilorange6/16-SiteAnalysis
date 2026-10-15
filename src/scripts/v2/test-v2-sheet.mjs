@@ -58,6 +58,7 @@ const xml = await zip.file(`ppt/slides/slide${sheetSlideNo}.xml`).async("string"
 const text = [...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((match) => match[1]).join("|");
 assert.equal((xml.match(/<p:pic>/g) ?? []).length, 4);
 assert.ok(text.includes("A01") && text.includes("D04"));
-assert.ok(text.includes("출처") && text.includes(SOURCE_NAMES.rail) && text.includes("GIS건물통합정보"));
+// 긴 출처 띠는 한 줄로 축약할 수 있으므로 전체 원천명은 출처 장에서 검증한다.
+assert.ok(text.includes("출처") && (text.includes(SOURCE_NAMES.rail) && text.includes("GIS건물통합정보") || text.includes("출처 장 참조")));
 
 console.log("✓ v2 sheet layout and report");
