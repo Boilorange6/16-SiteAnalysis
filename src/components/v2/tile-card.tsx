@@ -931,7 +931,7 @@ function TileCard(p: TileCardProps) {
       data-tile-id={view.tileId}
       data-v2-roving-id={id}
       data-v2-roving-card
-      style={p.floatStyle}
+      style={resizePreview ? { ...p.floatStyle, zIndex: 40 } : p.floatStyle}
       tabIndex={roving.controlsEntered ? -1 : p.rovingTabIndex}
       onFocus={(event) => {
         if (event.target === event.currentTarget) p.onRovingFocus(id);
