@@ -38,13 +38,13 @@
 }
 .railContent {
   display: grid;
-  gap: 14px;
+  gap: 10px;
 }
 .railSection {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
-  padding: 12px;
+  padding: 10px;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: #fff;
@@ -62,7 +62,9 @@
 }
 .railSegments {
   display: grid;
-  gap: 4px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0;
+  min-width: 0;
 }
 .railSegments button,
 .railAction,
@@ -81,6 +83,19 @@
   border-color: var(--black);
   background: var(--black);
   color: #fff;
+}
+.railSegments button {
+  min-width: 0;
+  width: 100%;
+  padding: 0 4px;
+  border-radius: 0;
+  background: #f4f4f7;
+}
+.railSegments button:first-child {
+  border-radius: 10px 0 0 10px;
+}
+.railSegments button:last-child {
+  border-radius: 0 10px 10px 0;
 }
 .railSegments button:focus-visible,
 .railAction:focus-visible,
@@ -752,6 +767,7 @@
   /* 지도 영역 1.5배를 위한 행 높이 하한은 보드가 계산한 값(≥377px). 내용이 더 필요한 줄(대지 요약)만 늘어난다. */
   grid-auto-rows: minmax(var(--grid-row-height), auto);
   gap: 16px;
+  overflow: visible;
 }
 @media (max-width: 900px) {
   .page {
@@ -1269,6 +1285,7 @@
 .tile {
   position: relative;
   min-width: 0;
+  overflow: visible;
   border-radius: 18px;
   cursor: pointer;
   perspective: 1400px; /* 뒤집기(요약면 ↔ 지도면) */
@@ -1292,14 +1309,17 @@
   display: none;
 }
 .handle {
-  flex: none;
+  position: absolute;
+  z-index: 46;
+  top: 0;
+  left: 0;
   width: 44px;
   min-width: 44px;
   height: 44px;
   min-height: 44px;
   display: grid;
   place-items: center;
-  margin: -10px -2px -10px -8px;
+  margin: 0;
   padding: 0;
   border: 0;
   border-radius: 8px;
@@ -1401,7 +1421,7 @@
   transform: rotate(-1.5deg);
   cursor: grabbing;
   user-select: none;
-  overflow: hidden;
+  overflow: visible;
 }
 .placeholder {
   min-height: var(--grid-row-height, 377px);
@@ -2659,17 +2679,16 @@ button.badge:focus-visible {
   align-items: center;
   gap: 8px;
   min-height: 24px;
-}
-.sfTop {
-  flex-wrap: wrap;
-  row-gap: 4px;
+  flex-wrap: nowrap;
 }
 .sfTop .title {
   flex: 1 1 auto;
   min-width: 0;
   line-height: 1.2;
   word-break: keep-all;
-  white-space: nowrap; /* 제목은 한 줄 — 공간이 모자라면 덜 중요한 것부터 접는다(아래 @container) */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .sfTop .sfMore {
   display: none;
@@ -2720,11 +2739,6 @@ button.badge:focus-visible {
   }
   .sfTop .sfMore {
     margin-left: auto;
-  }
-}
-@container (max-width: 167px) {
-  .sfTop .title {
-    white-space: normal;
   }
 }
 /* 포털 메뉴에서는 카드 폭과 무관하게 보조 작업(포함·펼치기·복제)을 모두 노출한다. */
@@ -3025,7 +3039,9 @@ button.badge:focus-visible {
   line-height: 1.15;
   word-break: keep-all;
   overflow-wrap: normal;
-  text-wrap: balance;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* 제목은 말줄임 금지: 키값 숨김 → 보고서 아이콘만 → 13px → 마지막에 두 줄 */
 .mfCheckText {
@@ -3107,11 +3123,6 @@ button.badge:focus-visible {
 @container (max-width: 239px) {
   .mfHead .mfBtn {
     width: 36px;
-  }
-}
-@container (max-width: 183px) {
-  .mfTitle {
-    white-space: normal;
   }
 }
 /* 아이콘 버튼: 눈에 보이는 원은 32px, 눌리는 자리는 44×44 */

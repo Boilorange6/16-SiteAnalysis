@@ -155,7 +155,7 @@ try {
   assert.equal(recoverRunningJobs(appDb), 1);
   assert.equal(listJobs(appDb, "restart")[0].status, "queued");
 
-  // 폴링으로 새 결과를 받아도 보드 편집(순서·포함·면)은 유지한다.
+  // 폴링으로 새 결과를 받아도 보드 배치 상태(순서·포함·면)는 유지한다.
   const original = initBoard(GODEOK_RESULTS);
   let edited = boardReducer(original, { type: "move", id: GODEOK_RESULTS[1].tileId, dir: 1 });
   edited = boardReducer(edited, { type: "include", id: GODEOK_RESULTS[2].tileId, value: false });

@@ -66,7 +66,7 @@ type BoardProps = {
   onAuthExpired: () => void;
   /** 브라우저 S03 업로드·대체 요청 뒤 결과와 작업 폴링을 다시 연다. */
   onWindUploaded: () => void;
-  /** 주소 입력부에서 고른 초기 프리셋과 보드 편집부의 현재 프리셋을 맞춘다. */
+  /** 주소 입력부에서 고른 초기 프리셋과 보드 배치부의 현재 프리셋을 맞춘다. */
   requestedPreset: PresetId;
   initialPreset: PresetId;
   onPresetChange: (preset: PresetId) => void;
@@ -1546,7 +1546,7 @@ export default function V2BoardPage() {
         </button>
       </form>
       <p id="v2-radius-help" className={styles.radiusCaption}>반경 해석: {RADIUS_CAPTION}</p>
-      <p id="v2-preset-help" className={styles.radiusCaption}>분석은 모든 타일을 계산하고, 보드는 {TILE_PRESETS[preset].label} 구성으로 시작합니다. 분석 후에는 보드 편집에서 바꿀 수 있습니다.</p>
+      <p id="v2-preset-help" className={styles.radiusCaption}>분석은 모든 타일을 계산하고, 보드는 {TILE_PRESETS[preset].label} 구성으로 시작합니다. 분석 후에는 카드 ⋯ 메뉴와 모서리 핸들로 바꿀 수 있습니다.</p>
       {sitePickerOpen && (
         <div id="v2-site-picker">
           <SitePicker

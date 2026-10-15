@@ -404,12 +404,37 @@ type BoardMenuActions = Pick<TileCardRenderProps, "canUp" | "canDown" | "size" |
 // 지도 컨트롤이 시점 초기화로 즉시 사라질 때 클릭 대상이 뷰포트로
 // 재조정되어도 카드 펼침으로 전파되지 않게 한다.
 const INTERACTIVE = "button,input,label,a,select,[data-handle],[role=menu],[data-map-feature],[data-map-legend],[data-map-viewport]";
+const BOARD_GRID_GAP = 16;
 
 const Svg = ({ children, size = 16, fill }: { children: ReactNode; size?: number; fill?: boolean }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill={fill ? "currentColor" : "none"} stroke={fill ? "none" : "currentColor"} strokeWidth={2.3} strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
     {children}
   </svg>
 );
+
+function DragHandle({ p }: { p: Pick<TileCardRenderProps, "view" | "canUp" | "canDown" | "onHandleDown" | "onMove"> }) {
+  return (
+    <button
+      type="button"
+      className={styles.handle}
+      data-handle
+      onPointerDown={p.onHandleDown}
+      onKeyDown={(event) => {
+        if (event.key === "ArrowUp" && p.canUp) {
+          event.preventDefault();
+          p.onMove(-1);
+        } else if (event.key === "ArrowDown" && p.canDown) {
+          event.preventDefault();
+          p.onMove(1);
+        }
+      }}
+      title="끌어서 옮기기 · 키보드는 위·아래 화살표 또는 더 보기"
+      aria-label={`${p.view.title} 순서 조정. 끌어서 옮기거나 위·아래 화살표를 사용하세요`}
+    >
+      <span aria-hidden>⠿</span>
+    </button>
+  );
+}
 
 /** ⋯ 더 보기: 상세 보기 · 지도에 보기(도판/구성비) · 보고서에 넣을 그림(도판/구성비/둘 다). Esc·바깥 누름·Tab으로 닫히고 닫힐 때 ⋯ 버튼으로 포커스가 돌아온다. */
 function MoreMenu({ view, active, back, onBack, face, onFace, onDetail, onDuplicate, pinnedCount, onSetAllLabels, compact, detailOnly, triggerClass, actions }: { view: TileView; active: boolean; back: boolean; onBack: (v: boolean) => void; face: OutputFace; onFace: (f: OutputFace) => void; onDetail?: () => void; onDuplicate?: () => void; pinnedCount: number; onSetAllLabels?: (on: boolean) => void; compact?: { included: boolean; onInclude: (v: boolean) => void; onOpen: () => void; showLabels: boolean; onShowLabels: (show: boolean) => void }; detailOnly?: boolean; triggerClass?: string; actions?: BoardMenuActions }) {
@@ -546,7 +571,7 @@ function MoreMenu({ view, active, back, onBack, face, onFace, onDetail, onDuplic
           )}
           {actions && (
             <>
-              <div className={styles.mfMenuHead}>보드 편집</div>
+              <div className={styles.mfMenuHead}>배치</div>
               <button type="button" role="menuitem" className={styles.mfMenuItem} onClick={() => { actions.onMove(-1); close(true); }} disabled={!actions.canUp}>
                 위로
               </button>
@@ -714,25 +739,6 @@ function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardRende
   return (
     <div className={styles.sf}>
       <div className={styles.sfTop}>
-        <button
-          type="button"
-          className={styles.handle}
-          data-handle
-          onPointerDown={p.onHandleDown}
-          onKeyDown={(event) => {
-            if (event.key === "ArrowUp" && p.canUp) {
-              event.preventDefault();
-              p.onMove(-1);
-            } else if (event.key === "ArrowDown" && p.canDown) {
-              event.preventDefault();
-              p.onMove(1);
-            }
-          }}
-          title="끌어서 옮기기 · 키보드는 위·아래 화살표 또는 더 보기"
-          aria-label={`${view.title} 순서 조정. 끌어서 옮기거나 위·아래 화살표를 사용하세요`}
-        >
-          <span aria-hidden>⠿</span>
-        </button>
         <span className={styles.dot} style={{ background: view.color }} />
         <h3 className={styles.title}>{view.title}</h3>
         <span className={styles.kindTag}>{view.kindLabel}</span>
@@ -892,9 +898,9 @@ function TileCard(p: TileCardProps) {
   const previewColumns = resizePreview?.size === 1 ? 1 : 2;
   const previewRows = resizePreview?.size === 4 ? 2 : 1;
   const currentColumns = p.size === 1 ? 1 : 2;
-  const previewWidth = p.cellW > 0 ? p.cellW * previewColumns + 16 * (previewColumns - 1) : 0;
-  const previewHeight = p.rowH > 0 ? p.rowH * previewRows + 16 * (previewRows - 1) : 0;
-  const currentWidth = p.cellW > 0 ? p.cellW * currentColumns + 16 * (currentColumns - 1) : 0;
+  const previewWidth = p.cellW > 0 ? p.cellW * previewColumns + BOARD_GRID_GAP * (previewColumns - 1) : 0;
+  const previewHeight = p.rowH > 0 ? p.rowH * previewRows + BOARD_GRID_GAP * (previewRows - 1) : 0;
+  const currentWidth = p.cellW > 0 ? p.cellW * currentColumns + BOARD_GRID_GAP * (currentColumns - 1) : 0;
   const previewLeft = resizePreview?.side === "left" ? currentWidth - previewWidth : 0;
   const onClick = (e: MouseEvent<HTMLElement>) => {
     if (openable && !(e.target as HTMLElement).closest(INTERACTIVE)) onOpen();
@@ -945,13 +951,16 @@ function TileCard(p: TileCardProps) {
           )}
         </div>
       </div>
+      <DragHandle p={renderProps} />
       {resizePreview && previewWidth > 0 && previewHeight > 0 && (
         <div
           className={styles.resizePreview}
+          data-resize-preview
+          data-resize-target-size={resizePreview.size}
           aria-hidden
           style={{ width: previewWidth, height: previewHeight, left: previewLeft, top: 0 }}
         >
-          <span className={styles.resizePreviewBadge}>{resizePreview.size}칸</span>
+          <span className={styles.resizePreviewBadge} data-resize-preview-badge>{resizePreview.size}칸</span>
         </div>
       )}
       <button

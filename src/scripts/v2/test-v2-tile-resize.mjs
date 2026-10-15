@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 
 const { sizeFromDrag } = await import("../../components/v2/use-tile-resize.ts");
 const resizeSource = readFileSync(new URL("../../components/v2/use-tile-resize.ts", import.meta.url), "utf8");
+const tileCardSource = readFileSync(new URL("../../components/v2/tile-card.tsx", import.meta.url), "utf8");
+const boardCss = readFileSync(new URL("../../components/v2/board.module.css", import.meta.url), "utf8");
 
 const cellW = 100;
 const rowH = 80;
@@ -48,5 +50,15 @@ assert.match(resizeSource, /releasePointerCapture\(/, "pointer capture를 해제
 assert.match(resizeSource, /event\.key === "Escape"/, "Esc 취소 경로가 있어야 함");
 assert.match(resizeSource, /TILE_RESIZE_HANDLE_MIN_SIZE = 44/, "핸들 hit area는 44px이어야 함");
 assert.match(resizeSource, /aria-keyshortcuts/, "키보드 대안을 접근성 API에 노출해야 함");
+
+// 카드 미리보기는 현재 카드의 시작점/끝점을 기준으로 16px grid gap을 포함한 목표 span을 그린다.
+assert.match(tileCardSource, /const BOARD_GRID_GAP = 16/, "미리보기는 보드의 16px gap 계약을 사용");
+assert.match(tileCardSource, /p\.cellW \* previewColumns \+ BOARD_GRID_GAP \* \(previewColumns - 1\)/, "가로 미리보기는 cellW와 열 사이 gap을 계산");
+assert.match(tileCardSource, /p\.rowH \* previewRows \+ BOARD_GRID_GAP \* \(previewRows - 1\)/, "세로 미리보기는 rowH와 행 사이 gap을 계산");
+assert.match(tileCardSource, /resizePreview\?\.side === "left" \? currentWidth - previewWidth : 0/, "왼쪽 핸들은 현재 카드의 오른쪽 모서리를 고정");
+assert.match(tileCardSource, /style=\{\{ width: previewWidth, height: previewHeight, left: previewLeft, top: 0 \}\}/, "오른쪽 핸들은 카드 시작점에서 미리보기를 그림");
+assert.match(tileCardSource, /data-resize-target-size=\{resizePreview\.size\}/, "미리보기 목표 칸 수를 DOM에 노출");
+assert.match(boardCss, /\.grid\s*\{[\s\S]*?overflow:\s*visible;/, "그리드는 리사이즈 미리보기를 자르지 않음");
+assert.match(boardCss, /\.tile\s*\{[\s\S]*?overflow:\s*visible;/, "카드는 리사이즈 미리보기를 자르지 않음");
 
 console.log("v2 tile resize contracts ok");
