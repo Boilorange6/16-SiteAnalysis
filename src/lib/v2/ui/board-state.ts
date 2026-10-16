@@ -12,10 +12,11 @@ import type { S01Cut } from "../tile/s01/cut";
 import type { S02Cut, S02DateKey } from "../tile/s02/cut";
 import type { S03Cut } from "../tile/s03/cut";
 import type { S04Cut } from "../tile/s04/cut";
+import { sheetCapacity, type SheetGrid as UiSheetGrid } from "./sheet";
 
 export type TileSize = 1 | 2 | 4;
 export type GridColumns = 2 | 3 | 4 | 5 | 6;
-export type SheetGrid = "2x2" | "3x2";
+export type SheetGrid = UiSheetGrid;
 export type SheetSpec = { tiles: string[]; grid: SheetGrid };
 export type CameraPreset = { azimuthDeg: number; elevationDeg: number };
 export type CutCount = 1 | 3;
@@ -38,6 +39,7 @@ export type PagePanelRect = { x: number; y: number; w: number; h: number };
 export type PagePanels = Partial<Record<PagePanelKey, PagePanelRect>>;
 export type PageStyle = {
   pinnedKeys?: string[];
+  hiddenKeys?: string[];
   legendFocus?: string | null;
   zoomDelta?: number;
   offsetM?: [number, number];
@@ -53,6 +55,7 @@ export type ExtraReportPage = {
   after: PageKey | null;
   tileId: string;
   face: "front" | "back";
+  sheet?: { grid: SheetGrid; tiles: string[] };
 };
 export type ReportState = {
   styles: Record<PageKey, PageStyle>;
@@ -65,6 +68,7 @@ const PAGE_STYLE_ZOOM_MIN = -3;
 const PAGE_STYLE_ZOOM_MAX = 3;
 const PAGE_STYLE_KEYS = [
   "pinnedKeys",
+  "hiddenKeys",
   "legendFocus",
   "zoomDelta",
   "offsetM",
@@ -222,7 +226,9 @@ export type BoardAction =
   | { type: "layer"; id: string; layer: string }
   | { type: "pageStyle"; keys: PageKey[]; patch: Partial<PageStyle> }
   | { type: "pageStyleReset"; keys: PageKey[] }
-  | { type: "addPage"; id: string; after: PageKey | null; tileId: string; face: ExtraReportPage["face"] }
+  | { type: "addPage"; id: string; after: PageKey | null; tileId: string; face: ExtraReportPage["face"]; sheet?: ExtraReportPage["sheet"] }
+  | { type: "setSheetCell"; id: string; index: number; tileId: string }
+  | { type: "setSheetGrid"; id: string; grid: SheetGrid }
   | { type: "removePage"; id: string };
 
 /** 카드의 현재 면 (편집 중에는 화면이 항상 요약면을 쓴다) */
@@ -399,6 +405,7 @@ function clonePageStyle(style: PageStyle): PageStyle {
   const panels = clonePagePanels(style.panels);
   return {
     ...(style.pinnedKeys ? { pinnedKeys: [...style.pinnedKeys] } : {}),
+    ...(style.hiddenKeys ? { hiddenKeys: [...style.hiddenKeys] } : {}),
     ...(style.legendFocus !== undefined ? { legendFocus: style.legendFocus } : {}),
     ...(style.zoomDelta !== undefined ? { zoomDelta: style.zoomDelta } : {}),
     ...(style.offsetM ? { offsetM: [style.offsetM[0], style.offsetM[1]] } : {}),
@@ -413,20 +420,36 @@ function clonePageStyle(style: PageStyle): PageStyle {
 function cloneReport(report: ReportState): ReportState {
   return {
     styles: Object.fromEntries(Object.entries(report.styles).map(([key, style]) => [key, clonePageStyle(style)])),
-    extra: report.extra.map((page) => ({ ...page })),
+    extra: report.extra.map((page) => ({
+      ...page,
+      ...(page.sheet ? { sheet: { grid: page.sheet.grid, tiles: [...page.sheet.tiles] } } : {}),
+    })),
   };
 }
 
 function reportWithoutTile(s: BoardState, tileId: string): { report: ReportState; undo: ReportState | undefined } {
-  const extra = s.report.extra.filter((page) => page.tileId !== tileId);
-  if (extra.length === s.report.extra.length) return { report: s.report, undo: undefined };
+  let changed = false;
+  const extra = s.report.extra.flatMap((page) => {
+    if (page.sheet) {
+      const tiles = page.sheet.tiles.map((candidate) => candidate === tileId ? "" : candidate);
+      if (tiles.every((candidate, index) => candidate === page.sheet!.tiles[index])) return [page];
+      changed = true;
+      return [{ ...page, sheet: { ...page.sheet, tiles } }];
+    }
+    if (page.tileId === tileId) {
+      changed = true;
+      return [];
+    }
+    return [page];
+  });
+  if (!changed) return { report: s.report, undo: undefined };
   const styles: Record<PageKey, PageStyle> = {};
   for (const [key, style] of Object.entries(s.report.styles)) {
     const removed = s.report.extra.some((page) => page.tileId === tileId && key === extraPageKey(page.id));
     if (!removed) styles[key] = clonePageStyle(style);
   }
   return {
-    report: { styles, extra: extra.map((page) => ({ ...page })) },
+    report: { styles, extra: extra.map((page) => ({ ...page, ...(page.sheet ? { sheet: { ...page.sheet, tiles: [...page.sheet.tiles] } } : {}) })) },
     undo: cloneReport(s.report),
   };
 }
@@ -440,9 +463,10 @@ function pageStyleValue(field: typeof PAGE_STYLE_KEYS[number], value: unknown): 
     const panels = normalizePagePanels(value);
     return panels ? { panels } : null;
   }
-  if (field === "pinnedKeys") {
+  if (field === "pinnedKeys" || field === "hiddenKeys") {
+    const key = field;
     return Array.isArray(value)
-      ? { pinnedKeys: [...new Set(value.filter((item): item is string => typeof item === "string" && item.length > 0))] }
+      ? { [key]: [...new Set(value.filter((item): item is string => typeof item === "string" && item.length > 0))] } as PageStyle
       : null;
   }
   if (field === "offsetM") {
@@ -509,9 +533,15 @@ function reportPageFromAction(s: BoardState, action: Extract<BoardAction, { type
   const after = action.after;
   const tileId = typeof action.tileId === "string" && action.tileId.length > 0 ? action.tileId : null;
   const face = action.face === "front" || action.face === "back" ? action.face : null;
-  if (!id || tileId === null || face === null || !validReportTile(s, tileId)) return null;
+  const hasSheet = action.sheet !== undefined;
+  const sheet = hasSheet && isSheetGrid(action.sheet?.grid) && Array.isArray(action.sheet.tiles) && action.sheet.tiles.length === sheetCapacity(action.sheet.grid) && action.sheet.tiles.every((candidate) => typeof candidate === "string")
+    ? { grid: action.sheet.grid, tiles: [...action.sheet.tiles] }
+    : null;
+  if (hasSheet && !sheet) return null;
+  if (!id || face === null || (sheet ? tileId !== null : tileId === null) || (!sheet && tileId !== null && !validReportTile(s, tileId))) return null;
+  if (sheet && sheet.tiles.some((candidate) => candidate !== "" && !validReportTile(s, candidate))) return null;
   if (s.report.extra.some((page) => page.id === id)) return null;
-  return { id, after, tileId, face };
+  return { id, after, tileId: tileId ?? "", face, ...(sheet ? { sheet } : {}) };
 }
 
 /** report 변경도 기존 UI가 소비하는 order undo 형태로 한 단계만 쌓는다. */
@@ -794,7 +824,7 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
       return { ...s, order: s.order.filter((id) => id !== a.id), included, faces, sizes, tileKinds, stacks };
     }
     case "sheet": {
-      const capacity = a.grid === "2x2" ? 4 : 6;
+      const capacity = sheetCapacity(a.grid);
       const tiles = [...new Set(a.tiles)].filter((id) => s.order.includes(id));
       if (tiles.length < 2 || tiles.length > capacity || tiles.some((id) => id in s.sheets)) return s;
       let number = Object.keys(s.sheets).length + 1;
@@ -922,6 +952,38 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
         undoStack: [...s.undoStack, reportUndoEntry(s)],
       };
     }
+    case "setSheetCell": {
+      if (typeof a.id !== "string" || !Number.isInteger(a.index) || typeof a.tileId !== "string") return s;
+      const index = s.report.extra.findIndex((page) => page.id === a.id || extraPageKey(page.id) === a.id);
+      const page = index >= 0 ? s.report.extra[index] : null;
+      if (!page?.sheet || a.index < 0 || a.index >= page.sheet.tiles.length) return s;
+      if (a.tileId !== "" && !validReportTile(s, a.tileId)) return s;
+      if (page.sheet.tiles[a.index] === a.tileId) return s;
+      const extra = s.report.extra.map((candidate, candidateIndex) => candidateIndex !== index
+        ? candidate
+        : { ...candidate, sheet: { ...candidate.sheet!, tiles: candidate.sheet!.tiles.map((tileId, tileIndex) => tileIndex === a.index ? a.tileId : tileId) } });
+      return {
+        ...s,
+        report: { ...s.report, extra },
+        undoStack: [...s.undoStack, reportUndoEntry(s)],
+      };
+    }
+    case "setSheetGrid": {
+      if (typeof a.id !== "string" || !isSheetGrid(a.grid)) return s;
+      const index = s.report.extra.findIndex((page) => page.id === a.id || extraPageKey(page.id) === a.id);
+      const page = index >= 0 ? s.report.extra[index] : null;
+      if (!page?.sheet || page.sheet.grid === a.grid) return s;
+      const tiles = page.sheet.tiles.slice(0, sheetCapacity(a.grid));
+      while (tiles.length < sheetCapacity(a.grid)) tiles.push("");
+      const extra = s.report.extra.map((candidate, candidateIndex) => candidateIndex !== index
+        ? candidate
+        : { ...candidate, sheet: { grid: a.grid, tiles } });
+      return {
+        ...s,
+        report: { ...s.report, extra },
+        undoStack: [...s.undoStack, reportUndoEntry(s)],
+      };
+    }
     case "removePage": {
       if (typeof a.id !== "string" || a.id.length === 0) return s;
       const direct = s.report.extra.findIndex((page) => page.id === a.id);
@@ -1014,6 +1076,7 @@ const isCalloutMode = (value: unknown): value is CalloutMode => value === "overv
 const isCardFace = (value: unknown): value is CardFace => value === "summary" || value === "map";
 const isTileSize = (value: unknown): value is TileSize => value === 1 || value === 2 || value === 4;
 const isGridColumns = (value: unknown): value is GridColumns => value === 2 || value === 3 || value === 4 || value === 5 || value === 6;
+const isSheetGrid = (value: unknown): value is SheetGrid => value === "2x2" || value === "3x2" || value === "3x1";
 const isTileKind = (value: unknown): value is TileResult["tileType"] => value === "analysis" || value === "diagram" || value === "simulation" || value === "stack";
 
 function normalizePageStyle(value: unknown): PageStyle | null {
@@ -1044,9 +1107,16 @@ function normalizeReport(value: unknown): ReportState {
       const after = value.after === null || typeof value.after === "string" ? value.after : null;
       const tileId = typeof value.tileId === "string" && value.tileId.length > 0 ? value.tileId : null;
       const face = value.face === "front" || value.face === "back" ? value.face : null;
-      if (!id || ids.has(id) || tileId === null || face === null) continue;
+      const rawSheet = isRecord(value.sheet) ? value.sheet : null;
+      const grid = rawSheet && isSheetGrid(rawSheet.grid) ? rawSheet.grid : null;
+      const rawSheetTiles = rawSheet && Array.isArray(rawSheet.tiles) ? rawSheet.tiles : null;
+      const sheetTiles = rawSheetTiles && grid
+        ? Array.from({ length: sheetCapacity(grid) }, (_, index) => typeof rawSheetTiles[index] === "string" ? rawSheetTiles[index] as string : "")
+        : null;
+      const sheet = grid && sheetTiles ? { grid, tiles: sheetTiles } : null;
+      if (!id || ids.has(id) || face === null || (!sheet && tileId === null)) continue;
       ids.add(id);
-      extra.push({ id, after, tileId, face });
+      extra.push({ id, after, tileId: sheet ? "" : tileId!, face, ...(sheet ? { sheet } : {}) });
     }
   }
   return { styles, extra };
@@ -1057,7 +1127,17 @@ function restoreReport(value: unknown, validTileIds: ReadonlySet<string>): Repor
   const extra: ExtraReportPage[] = [];
   const ids = new Set<string>();
   for (const page of normalized.extra) {
-    if (ids.has(page.id) || !validTileIds.has(page.tileId)) continue;
+    if (ids.has(page.id)) continue;
+    if (page.sheet) {
+      ids.add(page.id);
+      extra.push({
+        ...page,
+        tileId: "",
+        sheet: { grid: page.sheet.grid, tiles: page.sheet.tiles.map((tileId) => tileId && validTileIds.has(tileId) ? tileId : "") },
+      });
+      continue;
+    }
+    if (!validTileIds.has(page.tileId)) continue;
     ids.add(page.id);
     extra.push({ ...page });
   }
@@ -1168,7 +1248,9 @@ export function rewriteSnapshotIds(snapshot: BoardStateSnapshot, mapId: IdMapper
     instances,
     report: {
       styles: reportStyles,
-      extra: report.extra.map((page) => ({ ...page, tileId: mapId(page.tileId) })),
+      extra: report.extra.map((page) => page.sheet
+        ? { ...page, tileId: "", sheet: { grid: page.sheet.grid, tiles: page.sheet.tiles.map((tileId) => tileId ? mapId(tileId) : "") } }
+        : { ...page, tileId: mapId(page.tileId) }),
     },
     removed: Array.isArray(snapshot.removed)
       ? (() => {
@@ -1285,7 +1367,7 @@ export function restoreBoardState(results: TileResult[], raw: unknown, fallbackP
   for (const [id, spec] of Object.entries(recordOf(saved.sheets))) {
     if (!isRecord(spec)) continue;
     const tiles = unique(stringsOf(spec.tiles)).filter((tile) => validTileIds.has(tile));
-    const grid = spec.grid === "2x2" || spec.grid === "3x2" ? spec.grid : null;
+    const grid = isSheetGrid(spec.grid) ? spec.grid : null;
     if (tiles.length >= 2 && grid) savedSheets[id] = { tiles, grid };
   }
   const compositeIds = new Set([...Object.keys(savedStacks), ...Object.keys(savedSheets)]);

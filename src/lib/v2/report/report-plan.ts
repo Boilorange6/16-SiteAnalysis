@@ -8,7 +8,7 @@ import type { MapModel } from "../ui/map-layers";
 export { legendItemsOf, legendLabelOf } from "../ui/map-layers";
 import { type CalloutModel, type SummaryView, type TileView } from "../ui/tile-view";
 import type { MassModel } from "../ui/mass-projection";
-import type { SheetGrid } from "../ui/sheet";
+import { sheetView, type SheetGrid } from "../ui/sheet";
 import { FACE_TEXT } from "../ui/tile-view";
 import type { RoseModel } from "../ui/wind-rose";
 import type { RoseSeason } from "../tile-result";
@@ -77,7 +77,7 @@ export type ReportSlide =
         mass?: MassModel;
         rose?: RoseModel;
         roseSeason?: RoseSeason;
-      }>;
+      } | null>;
     }
   | { kind: "sources"; rows: ReportSourceRow[]; analysisDate: string; /** 배경(흐린 대지 지도) */ map: MapModel | null };
 
@@ -116,6 +116,7 @@ const pageStyleAffectsMap = (style: PageStyle | undefined): boolean => !!style &
   style.zoomDelta !== undefined
   || style.offsetM !== undefined
   || style.pinnedKeys !== undefined
+  || style.hiddenKeys !== undefined
   || style.legendFocus !== undefined
   || style.summary !== undefined
   || style.titleScale !== undefined
@@ -127,6 +128,7 @@ const cellStyleAffectsMap = (style: PageStyle | undefined): boolean => !!style &
   style.zoomDelta !== undefined
   || style.offsetM !== undefined
   || style.pinnedKeys !== undefined
+  || style.hiddenKeys !== undefined
   || style.legendFocus !== undefined
 );
 const panelGeometryCacheKey = (style: PageStyle | undefined): string => {
@@ -140,7 +142,7 @@ const styledMapKey = (base: string, p: PlannedSlide): string => pageStyleAffects
   ? `${base}:style:${p.key}${panelGeometryCacheKey(p.style)}`
   : base;
 export const mapKeysOf = (p: PlannedSlide): string[] => {
-  if (p.kind === "sheet") return p.cells.map((cell) => cell.mapKey);
+  if (p.kind === "sheet") return p.cells.flatMap((cell) => cell ? [cell.mapKey] : []);
   if (p.kind === "tile") {
     if (p.mass) return [`${p.view.tileId}:mass`];
     if (p.rose) return [`${p.view.tileId}:rose`];
@@ -405,6 +407,30 @@ export function buildReportPlan(input: {
   }
 
   const extraRaw: RawPlanSlide[] = board.report.extra.flatMap((extra: ExtraReportPage) => {
+    if (extra.sheet) {
+      const cellViews = extra.sheet.tiles.flatMap((tileId) => {
+        const view = tileId ? views.get(tileId) : undefined;
+        return view ? [view] : [];
+      });
+      const view = sheetView(extraPageKey(extra.id), cellViews, extra.sheet.grid);
+      const slide: ReportSlide = {
+        kind: "sheet",
+        view,
+        grid: extra.sheet.grid,
+        cells: extra.sheet.tiles.map((tileId, index) => {
+          const cell = tileId ? views.get(tileId) : undefined;
+          if (!cell) return null;
+          return {
+            view: cell,
+            face: cell.hasFace && board.faces[cell.tileId] === "back" ? "back" as const : "front" as const,
+            mapKey: `${extraPageKey(extra.id)}:cell:${index}`,
+            sourceLine: sourceLineFor(cell),
+            pinnedKeys: pinnedKeysFor(board, cell.tileId),
+          };
+        }),
+      };
+      return [{ ...slide, footer: sourceFooterFor(view), key: extraPageKey(extra.id) } as RawPlanSlide];
+    }
     const view = views.get(extra.tileId);
     if (!view) return [];
     const face: "single" | "front" | "back" = view.hasFace ? extra.face : "single";
@@ -482,6 +508,7 @@ export function buildReportPlan(input: {
 
   const cellStyleFor = (style: PageStyle, pinnedKeys: string[]): PageStyle => ({
     pinnedKeys: [...pinnedKeys],
+    ...(style.hiddenKeys !== undefined ? { hiddenKeys: [...style.hiddenKeys] } : {}),
     ...(style.legendFocus !== undefined ? { legendFocus: style.legendFocus } : {}),
     ...(style.zoomDelta !== undefined ? { zoomDelta: style.zoomDelta } : {}),
     ...(style.offsetM !== undefined ? { offsetM: style.offsetM } : {}),
@@ -499,6 +526,7 @@ export function buildReportPlan(input: {
     }
     if (slide.kind === "sheet") {
       const cells = slide.cells.map((cell) => {
+        if (!cell) return null;
         const pinnedKeys = style.pinnedKeys !== undefined ? [...style.pinnedKeys] : [...(cell.pinnedKeys ?? [])];
         const cellStyle = cellStyleFor(style, pinnedKeys);
         return {

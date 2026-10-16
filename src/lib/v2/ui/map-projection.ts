@@ -101,8 +101,10 @@ export function applyView(vp: Viewport, lat: number, view?: MapView): Viewport {
  * px·py는 base viewport의 픽셀 좌표이며, CSS 좌표를 쓰는 호출부는 먼저
  * base.width/height와 실제 요소 크기의 비율을 적용해야 한다.
  */
-export function zoomViewAt(base: Viewport, current: MapView, delta: number, px: number, py: number, maxDelta: number): MapView {
-  const zoomDelta = Math.max(0, Math.min(Math.max(0, maxDelta), current.zoomDelta + delta));
+export function zoomViewAt(base: Viewport, current: MapView, delta: number, px: number, py: number, maxDelta: number, minDelta = 0): MapView {
+  const lowerBound = Math.min(minDelta, maxDelta);
+  const upperBound = Math.max(minDelta, maxDelta);
+  const zoomDelta = Math.max(lowerBound, Math.min(upperBound, current.zoomDelta + delta));
   const currentViewport = applyView(base, base.center[1], current);
   const nextZoom = base.zoom + zoomDelta;
   const scale = 2 ** (nextZoom - currentViewport.zoom);

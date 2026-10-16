@@ -3,14 +3,24 @@ import assert from "node:assert/strict";
 const {
   mixedValue,
   movePageSelection,
+  neighborPageKey,
   nextExtraPageId,
   pageKeyAfterInsertion,
   selectPageKeys,
   toggleLegendFocus,
+  toggleLabelVisibility,
   togglePinnedKey,
 } = await import("../../lib/v2/ui/report-preview-logic.ts");
 
 const pages = ["cover", "A01:front", "A02:front", "sources:0"];
+
+assert.equal(neighborPageKey(pages, "A01:front", "ArrowLeft"), "cover");
+assert.equal(neighborPageKey(pages, "A01:front", "PageDown"), "A02:front");
+assert.equal(neighborPageKey(pages, "A01:front", "Home"), "cover");
+assert.equal(neighborPageKey(pages, "A01:front", "End"), "sources:0");
+assert.equal(neighborPageKey(pages, "cover", "ArrowLeft"), "cover", "첫 장 이전은 경계를 넘지 않음");
+assert.equal(neighborPageKey(pages, "sources:0", "ArrowRight"), "sources:0", "끝 장 다음은 경계를 넘지 않음");
+assert.equal(neighborPageKey([], "cover", "ArrowRight"), null);
 
 // plain은 기존 다중 선택을 버리고 한 장만 남긴다.
 assert.deepEqual(
@@ -83,6 +93,21 @@ assert.deepEqual(
   togglePinnedKey(["road", "road", "site"], "road"),
   ["site"],
   "기존 중복 라벨도 토글 시 모두 제거",
+);
+
+// 자동 라벨도 현재 표시 상태를 기준으로 숨김↔고정 표시를 왕복한다.
+assert.deepEqual(
+  toggleLabelVisibility(["station"], [], "station", true),
+  { pinnedKeys: [], hiddenKeys: ["station"] },
+);
+assert.deepEqual(
+  toggleLabelVisibility([], ["station", "station"], "station", false),
+  { pinnedKeys: ["station"], hiddenKeys: [] },
+);
+assert.deepEqual(
+  toggleLabelVisibility(["road", "road"], ["station", "station"], "", true),
+  { pinnedKeys: ["road"], hiddenKeys: ["station"] },
+  "빈 key는 기존 상태만 정규화",
 );
 
 // 범례 항목은 첫 클릭으로 focus하고 같은 항목을 다시 누르면 null로 돌아간다.

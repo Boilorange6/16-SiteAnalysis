@@ -265,6 +265,7 @@ export type MapSceneOptions = {
   emphasisKey?: string | null;
   hoverKey?: string | null;
   pinnedKeys?: readonly string[];
+  hiddenKeys?: readonly string[];
   showAutomaticLabels?: boolean;
   bare?: boolean;
   view?: MapView;
@@ -304,6 +305,7 @@ export type MapScene = {
   routePoints: Array<[number, number]>;
   labels: MapSceneLabel[];
   labelPlacements: MapSceneLabelPlacement[];
+  hiddenKeys: ReadonlySet<string>;
   rail: MapSceneRail;
   occupiedBoxes: MapSceneBox[];
   polygonOpacity: number;
@@ -312,6 +314,13 @@ export type MapScene = {
   isElementDimmed: (layer: string, key: string, explicitLabel?: string) => boolean;
   isElementStrong: (layer: string, key: string, explicitLabel?: string) => boolean;
 };
+
+function recordMapSceneBuild(): void {
+  if (typeof window === "undefined" || process.env.NODE_ENV === "production") return;
+  const target = window as Window & { __V2_PREVIEW_METRICS__?: Record<string, number> };
+  const metrics = target.__V2_PREVIEW_METRICS__ ?? (target.__V2_PREVIEW_METRICS__ = {});
+  metrics.buildMapSceneCalls = (metrics.buildMapSceneCalls ?? 0) + 1;
+}
 
 function a04PolygonDrawOrder(layer: string): number {
   if (layer === "green_zone" || layer === "green_parcel") return 0;
@@ -545,10 +554,11 @@ function buildRailScene(args: {
   height: number;
   mpp: number;
   compact: boolean;
+  hiddenKeys: ReadonlySet<string>;
   occupied: MapSceneBox[];
   inFrame: (point: readonly [number, number]) => boolean;
 }): MapSceneRail {
-  const { model, features, lines, width: W, height: H, mpp, compact, occupied, inFrame } = args;
+  const { model, features, lines, width: W, height: H, mpp, compact, hiddenKeys, occupied, inFrame } = args;
   const stationMap = new Map<string, RailStationBuildRecord>();
   for (const feature of features.filter((entry) => entry.feature.layer === "rail_station" || entry.feature.layer === "rail_nearest")) {
     const rawName = feature.feature.name?.trim() || feature.feature.label?.trim() || feature.feature.fid || `station-${feature.index}`;
@@ -677,6 +687,7 @@ function buildRailScene(args: {
   if (!compact) {
     const placedRouteLabels = new Set<string>();
     for (const route of routes) {
+      if ((routesByLabel.get(route.label) ?? []).every((fragment) => hiddenKeys.has(fragment.key))) continue;
       if (placedRouteLabels.has(route.label)) continue;
       placedRouteLabels.add(route.label);
       const candidates = (routesByLabel.get(route.label) ?? []).flatMap((fragment) => fragment.points.slice(1).map((point, index) => {
@@ -726,6 +737,7 @@ function buildRailScene(args: {
   const axisLabels: MapSceneRailText[] = [];
   if (!compact) {
     for (const [axisIndex, axis] of axes.entries()) {
+      if (hiddenKeys.has(axis.key)) continue;
       const first = axis.points[0]!;
       const last = axis.points.at(-1)!;
       const length = railPointDistance(first, last);
@@ -770,6 +782,7 @@ function buildRailScene(args: {
   if (!compact) {
     const labelFontSize = mpp <= RAIL_EXIT_REFERENCE_MPP ? 13 : 14;
     for (const station of stations) {
+      if (hiddenKeys.has(station.representative.key)) continue;
       const stationAxes = axes.filter((axis) => axis.stationKey === station.key);
       const points = stationAxes.flatMap((axis) => axis.points);
       const origin: [number, number] = points.length > 0 ? [points.reduce((sum, point) => sum + point[0], 0) / points.length, points.reduce((sum, point) => sum + point[1], 0) / points.length] : station.p;
@@ -802,6 +815,7 @@ function buildRailScene(args: {
 
 /** MapFigure의 투영·표식·말풍선·철도 표현 배치를 하나의 순수 장면으로 계산한다. */
 export function buildMapScene(options: MapSceneOptions): MapScene {
+  recordMapSceneBuild();
   const {
     model,
     width: W,
@@ -826,6 +840,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     emphasisKey = null,
     hoverKey = null,
     pinnedKeys = [],
+    hiddenKeys = [],
     showAutomaticLabels = true,
     bare = false,
     legendBox = null,
@@ -849,6 +864,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   const tiles = tilesFor(vp);
   const selected = new Set(selectedFids);
   const pinned = new Set(pinnedKeys);
+  const hidden = new Set(hiddenKeys);
   const highlightActive = highlightLabel !== null;
   const legendFocusOnly = legendFocusOpt !== null;
   const emphasisActive = emphasisKey !== null;
@@ -988,11 +1004,11 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   };
   const placementCandidates: Array<{ entry: MapSceneLabel; variant: "auto" | "fixed" | "hover"; rank: number }> = [];
   if (!bare) {
-    const pinnedLabels = pinnedKeys.map((key) => labelByKey.get(key)).filter((entry): entry is MapSceneLabel => !!entry);
+    const pinnedLabels = pinnedKeys.map((key) => labelByKey.get(key)).filter((entry): entry is MapSceneLabel => !!entry && !hidden.has(entry.key));
     const pinnedSet = new Set(pinnedLabels.map((entry) => entry.key));
-    const hoverLabel = hoverKey && !pinned.has(hoverKey) ? labelByKey.get(hoverKey) : undefined;
+    const hoverLabel = hoverKey && !pinned.has(hoverKey) && !hidden.has(hoverKey) ? labelByKey.get(hoverKey) : undefined;
     const automatic = showAutomaticLabels && (model.tileCode ? tileClientModuleFor(model.tileCode)?.autoLabels !== false : true)
-      ? selectAutomaticLabels(labels).filter((entry) => !pinnedSet.has(entry.key) && entry.key !== hoverLabel?.key && !["rail_station", "rail_nearest", "rail_entrance", "rail_line", "rail_station_axis"].includes(entry.layer))
+      ? selectAutomaticLabels(labels).filter((entry) => !hidden.has(entry.key) && !pinnedSet.has(entry.key) && entry.key !== hoverLabel?.key && !["rail_station", "rail_nearest", "rail_entrance", "rail_line", "rail_station_axis"].includes(entry.layer))
       : [];
     placementCandidates.push(...pinnedLabels.map((entry) => ({ entry, variant: "fixed" as const, rank: -2 })), ...(hoverLabel ? [{ entry: hoverLabel, variant: "hover" as const, rank: -1 }] : []), ...automatic.map((entry) => ({ entry, variant: "auto" as const, rank: 2 - (entry.labelPriority ?? 0) })));
   }
@@ -1017,7 +1033,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     ...(showSiteMarker && !muted ? [siteBounds] : []),
     ...labelPlacements.flatMap((placement) => [placement.box, placement.leader]),
   ];
-  const rail = buildRailScene({ model, features: drawn, lines: linePaths, width: W, height: H, mpp, compact, occupied: occupiedBoxes, inFrame });
+  const rail = buildRailScene({ model, features: drawn, lines: linePaths, width: W, height: H, mpp, compact, hiddenKeys: hidden, occupied: occupiedBoxes, inFrame });
   occupiedBoxes.push(...rail.occupiedBoxes);
   return {
     width: W,
@@ -1043,6 +1059,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     routePoints,
     labels,
     labelPlacements,
+    hiddenKeys: hidden,
     rail,
     occupiedBoxes,
     polygonOpacity: sat ? 0.45 : 0.35,

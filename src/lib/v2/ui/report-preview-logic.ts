@@ -22,6 +22,24 @@ function orderedKeys(keys: readonly string[]): string[] {
   return keys.filter((key) => key.length > 0 && !seen.has(key) && (seen.add(key), true));
 }
 
+export type PageNavigationKey = "ArrowLeft" | "ArrowRight" | "PageUp" | "PageDown" | "Home" | "End";
+
+/** 미리보기 대화상자의 페이지 이동 키를 현재 plan 순서로 해석한다. */
+export function neighborPageKey(
+  keys: readonly string[],
+  currentKey: string,
+  key: PageNavigationKey,
+): string | null {
+  const planKeys = orderedKeys(keys);
+  if (planKeys.length === 0) return null;
+  const currentIndex = planKeys.indexOf(currentKey);
+  if (currentIndex < 0) return null;
+  if (key === "Home") return planKeys[0] ?? null;
+  if (key === "End") return planKeys[planKeys.length - 1] ?? null;
+  const direction = key === "ArrowLeft" || key === "PageUp" ? -1 : 1;
+  return planKeys[Math.max(0, Math.min(planKeys.length - 1, currentIndex + direction))] ?? null;
+}
+
 /**
  * 지도 라벨 고정 상태를 순수하게 토글한다.
  *
@@ -35,6 +53,21 @@ export function togglePinnedKey(currentKeys: readonly string[], key: string): st
   return normalizedKeys.includes(key)
     ? normalizedKeys.filter((currentKey) => currentKey !== key)
     : [...normalizedKeys, key];
+}
+
+/** 자동 라벨과 고정 라벨을 같은 visible/hidden 상태 기계로 토글한다. */
+export function toggleLabelVisibility(
+  pinnedKeys: readonly string[],
+  hiddenKeys: readonly string[],
+  key: string,
+  currentlyVisible: boolean,
+): { pinnedKeys: string[]; hiddenKeys: string[] } {
+  const pinned = orderedKeys(pinnedKeys).filter((candidate) => candidate !== key);
+  const hidden = orderedKeys(hiddenKeys).filter((candidate) => candidate !== key);
+  if (key.length === 0) return { pinnedKeys: pinned, hiddenKeys: hidden };
+  return currentlyVisible
+    ? { pinnedKeys: pinned, hiddenKeys: [...hidden, key] }
+    : { pinnedKeys: [...pinned, key], hiddenKeys: hidden };
 }
 
 /**

@@ -4,6 +4,10 @@ import type { SourceRefLike } from "./source-details";
 export type SheetGrid = "2x2" | "3x2" | "3x1";
 export type SheetRect = { x: number; y: number; w: number; h: number };
 
+export function sheetCapacity(grid: SheetGrid): number {
+  return grid === "2x2" ? 4 : grid === "3x1" ? 3 : 6;
+}
+
 const SLIDE = { w: 13.333, h: 7.5, edge: 0.3, titleH: 0.66, stripH: 0.36 } as const;
 const GAP = 0.15;
 

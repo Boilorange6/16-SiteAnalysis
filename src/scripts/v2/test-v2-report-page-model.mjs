@@ -1,7 +1,11 @@
 /** v2 보고서 페이지 스타일·추가 페이지 영속 모델 회귀 테스트. */
 import assert from "node:assert/strict";
+import JSZip from "jszip";
 
-const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");
+const { GODEOK_RESULTS, GODEOK_SUMMARY } = await import("../../lib/v2/ui/fixtures/godeok.ts");
+const { toSummaryView, toTileView } = await import("../../lib/v2/ui/tile-view.ts");
+const { buildReportPlan, mapKeysOf } = await import("../../lib/v2/report/report-plan.ts");
+const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
 const {
   extraPageKey,
   initBoard,
@@ -22,6 +26,7 @@ board = boardReducer(board, {
   keys: styleKeys,
   patch: {
     pinnedKeys: ["station|1"],
+    hiddenKeys: ["bus|2"],
     legendFocus: "rail",
     zoomDelta: 1.25,
     offsetM: [12, -8],
@@ -33,6 +38,12 @@ board = boardReducer(board, {
 });
 assert.deepEqual(board.report.styles["t-A01"], board.report.styles["t-A02"], "pageStyle 다중 적용");
 assert.deepEqual(board.report.styles["t-A01"].offsetM, [12, -8]);
+assert.deepEqual(board.report.styles["t-A01"].hiddenKeys, ["bus|2"], "hiddenKeys 다중 적용");
+const hiddenBeforeUndo = board.report;
+board = boardReducer(board, { type: "pageStyle", keys: ["t-A01"], patch: { hiddenKeys: ["bus|2", "station|3"] } });
+assert.deepEqual(board.report.styles["t-A01"].hiddenKeys, ["bus|2", "station|3"], "hiddenKeys 추가 patch");
+board = boardReducer(board, { type: "undo" });
+assert.deepEqual(board.report, hiddenBeforeUndo, "hiddenKeys pageStyle undo 복원");
 
 // 패널은 슬라이드 비율로 저장하고, nested patch는 기존 패널을 보존한다.
 let panelBoard = initBoard(GODEOK_RESULTS);
@@ -86,6 +97,7 @@ assert.equal(board.report.styles["t-A01"].zoomDelta, -3, "zoomDelta 하한 clamp
 assert.equal(board.report.styles["t-A01"].legendFocus, null, "legendFocus null은 전체 강조 해제로 유지");
 assert.equal(board.report.styles["t-A01"].summary, undefined, "undefined patch는 필드 삭제");
 assert.equal(board.report.styles["t-A01"].pinnedKeys, undefined, "undefined 배열 patch는 필드 삭제");
+assert.deepEqual(board.report.styles["t-A01"].hiddenKeys, ["bus|2"], "hiddenKeys는 다른 필드 삭제에서 보존");
 
 board = boardReducer(board, { type: "pageStyleReset", keys: styleKeys });
 assert.deepEqual(board.report.styles, {}, "pageStyleReset은 지정 페이지 스타일만 삭제");
@@ -97,6 +109,48 @@ assert.equal(board.report.extra.length, 2, "같은 tileId 추가 페이지 중�
 assert.notEqual(board.report.extra[0].id, board.report.extra[1].id, "추가 페이지 id는 중복되지 않음");
 const beforeInvalidAdd = board;
 assert.equal(boardReducer(board, { type: "addPage", after: "t-A01", tileId: "missing-tile", face: "front" }), beforeInvalidAdd, "invalid tileId 추가 거부");
+
+// 미리보기에서 만든 빈 sheet extra 페이지는 칸 수를 유지한 채 plan/PPT로 내려가며,
+// 채운 칸만 이미지로 출력한다. 셀 변경·격자 변경·undo·serialize/restore도 같은 report undo를 쓴다.
+let sheetBoard = initBoard(GODEOK_RESULTS);
+sheetBoard = boardReducer(sheetBoard, {
+  type: "addPage",
+  id: "sheet-extra",
+  after: "cover",
+  tileId: "",
+  face: "front",
+  sheet: { grid: "2x2", tiles: ["t-A01", "", "t-A02", ""] },
+});
+assert.deepEqual(sheetBoard.report.extra[0].sheet, { grid: "2x2", tiles: ["t-A01", "", "t-A02", ""] }, "빈 sheet extra 추가");
+const sheetBeforeCell = sheetBoard.report;
+sheetBoard = boardReducer(sheetBoard, { type: "setSheetCell", id: "sheet-extra", index: 1, tileId: "t-A03" });
+assert.deepEqual(sheetBoard.report.extra[0].sheet.tiles, ["t-A01", "t-A03", "t-A02", ""], "sheet 셀 지정");
+sheetBoard = boardReducer(sheetBoard, { type: "undo" });
+assert.deepEqual(sheetBoard.report, sheetBeforeCell, "sheet 셀 변경 undo");
+sheetBoard = boardReducer(sheetBoard, { type: "setSheetCell", id: "extra:sheet-extra", index: 1, tileId: "t-A03" });
+sheetBoard = boardReducer(sheetBoard, { type: "setSheetGrid", id: "sheet-extra", grid: "3x1" });
+assert.deepEqual(sheetBoard.report.extra[0].sheet, { grid: "3x1", tiles: ["t-A01", "t-A03", "t-A02"] }, "sheet 격자 변경");
+sheetBoard = boardReducer(sheetBoard, { type: "undo" });
+assert.deepEqual(sheetBoard.report.extra[0].sheet, { grid: "2x2", tiles: ["t-A01", "t-A03", "t-A02", ""] }, "sheet 격자 변경 undo");
+const sheetSnapshot = serializeBoardState(sheetBoard);
+assert.deepEqual(restoreBoardState(GODEOK_RESULTS, JSON.stringify(sheetSnapshot)).report, sheetBoard.report, "sheet serialize→restore 왕복");
+const sheetViews = new Map(GODEOK_RESULTS.map((result) => [result.tileId, toTileView(result)]));
+const sheetPlan = buildReportPlan({
+  summary: toSummaryView(GODEOK_SUMMARY, GODEOK_RESULTS),
+  views: sheetViews,
+  board: sheetBoard,
+  analysisDate: "2026-10-16",
+});
+const extraSheetSlide = sheetPlan.find((slide) => slide.key === extraPageKey("sheet-extra"));
+assert.ok(extraSheetSlide && extraSheetSlide.kind === "sheet", "extra sheet가 report-plan kind sheet로 생성");
+assert.equal(extraSheetSlide.cells.length, 4, "sheet 칸 수 보존");
+assert.equal(extraSheetSlide.cells.filter(Boolean).length, 3, "plan은 채운 sheet 칸만 cell로 유지");
+assert.equal(extraSheetSlide.cells[3], null, "빈 sheet 칸은 plan에서 null 자리로 유지");
+const onePixel = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+const sheetImages = Object.fromEntries(mapKeysOf(extraSheetSlide).map((key) => [key, onePixel]));
+const sheetZip = await JSZip.loadAsync(await renderReportPptx([extraSheetSlide], sheetImages));
+const sheetXml = await sheetZip.file("ppt/slides/slide1.xml").async("string");
+assert.equal((sheetXml.match(/<p:pic>/g) ?? []).length, 3, "빈 sheet 칸은 PPT 이미지에서 생략");
 
 // removePage는 extra id와 extra:${id} 스타일만 제거하고, 기존 페이지 스타일은 보존한다.
 const removablePage = board.report.extra[0];
@@ -127,7 +181,7 @@ assert.equal(board.report.extra.filter((page) => page.tileId === "t-A04").length
 assert.equal(board.report.styles[extraPageKey(extraForDeletedTile.at(-1).id)].legendScale, 1.4, "tile 삭제 undo 시 style 복원");
 
 // serialize → JSON → restore 왕복과 reportPages의 추가 페이지 장수.
-board = boardReducer(board, { type: "pageStyle", keys: ["t-A01"], patch: { summary: false, offsetM: [20, 30], legendScale: 1.3 } });
+board = boardReducer(board, { type: "pageStyle", keys: ["t-A01"], patch: { summary: false, offsetM: [20, 30], legendScale: 1.3, hiddenKeys: ["station|1"] } });
 const snapshot = serializeBoardState(board);
 assert.equal(snapshot.version, 3, "report additive field도 기존 schema version 유지");
 assert.deepEqual(snapshot.report, board.report, "serialize에 report 포함");

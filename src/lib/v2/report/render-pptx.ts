@@ -433,6 +433,7 @@ function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: Map
   const cells = sheetCells(p.grid as SheetGrid);
   const cellNotes = new Set<string>();
   for (const [index, cell] of p.cells.entries()) {
+    if (!cell) continue;
     const r = cells[index];
     if (!r) continue;
     s.addShape("roundRect", { x: r.x, y: r.y, w: r.w, h: r.h, rectRadius: 0.08, fill: { color: "FFFFFF" }, line: { color: LINE, width: 0.75 } });

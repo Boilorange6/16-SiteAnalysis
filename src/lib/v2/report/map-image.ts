@@ -135,7 +135,7 @@ export async function loadRasters(model: MapModel, rasterCache: Map<string, stri
 export async function prefetchRasters(plan: PlannedSlide[], analysisId: string): Promise<Map<string, string>> {
   const models: MapModel[] = [];
   for (const slide of plan) {
-    if (slide.kind === "sheet") models.push(...slide.cells.map(mapForCell).filter((model): model is MapModel => !!model));
+    if (slide.kind === "sheet") models.push(...slide.cells.flatMap((cell) => cell ? [mapForCell(cell)] : []).filter((model): model is MapModel => !!model));
     else if (slide.map) models.push(slide.map);
   }
   const cache = new Map<string, string>();
@@ -221,7 +221,7 @@ export async function rasterizeMap(
   return toJpeg(svgOf(model, got, activeLayer, { ...extra, viewport: vp }, rasterCache, width, height), Math.max(1, Math.round(width * 2)), Math.max(1, Math.round(height * 2)));
 }
 
-type SheetCell = Extract<PlannedSlide, { kind: "sheet" }>["cells"][number];
+type SheetCell = NonNullable<Extract<PlannedSlide, { kind: "sheet" }>["cells"][number]>;
 function mapForCell(cell: SheetCell): MapModel | null {
   const model = cell.view.map ?? cell.view.backdrop;
   if (!model) return null;
@@ -305,6 +305,7 @@ export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice 
     if (p.kind === "sheet") {
       const cells = sheetCells(p.grid as SheetGrid);
       for (const [cellIndex, cell] of p.cells.entries()) {
+        if (!cell) continue;
         if (out[cell.mapKey]) continue;
         try {
           if (cell.mass) out[cell.mapKey] = await rasterizeMass(cell.mass, cell.mass.exploded);
