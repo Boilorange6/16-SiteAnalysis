@@ -13,6 +13,9 @@ const sourceResult = GODEOK_RESULTS.find((result) => {
 });
 assert.ok(sourceResult, "복제 모드 테스트용 다중 레이어 타일이 필요하다");
 const sourceId = sourceResult.tileId;
+const otherResult = GODEOK_RESULTS.find((result) => result.tileId !== sourceId);
+assert.ok(otherResult, "끝 append 테스트에 두 번째 결과 타일이 필요하다");
+const otherId = otherResult.tileId;
 const sourceView = toTileView(sourceResult);
 const alternateLayer = sourceView.layerOptions.find((option) => option.id !== sourceView.defaultLayer);
 assert.ok(alternateLayer, `${sourceResult.tileCode}에 원본과 다른 레이어가 필요하다`);
@@ -52,6 +55,45 @@ assert.equal(restoredAfterRemove.instances[copyId], sourceId, "복제본 삭제�
 const undoneDuplicate = boardReducer(boardReducer(initBoard([sourceResult]), { type: "duplicate", id: sourceId }), { type: "undo" });
 assert.deepEqual(undoneDuplicate.order, [sourceId], "복제 추가를 undo하면 인스턴스와 순서가 함께 사라진다");
 assert.deepEqual(undoneDuplicate.instances, {});
+
+// 마지막 + 칸의 addCopy는 기존 타일 설정을 복제해 보드 끝에 붙이고, 기존 duplicate undo 경로를 사용한다.
+let appended = initBoard([sourceResult, otherResult]);
+appended = boardReducer(appended, { type: "face", id: sourceId, face: "both" });
+appended = boardReducer(appended, { type: "toggleLabel", id: sourceId, key: "add-copy|0" });
+appended = boardReducer(appended, { type: "layer", id: sourceId, layer: alternateLayer.id });
+appended = boardReducer(appended, { type: "addCopy", sourceId });
+const appendedCopyId = "copy:1";
+assert.deepEqual(appended.order, [sourceId, otherId, appendedCopyId], "addCopy 복제본은 보드 끝에 append된다");
+assert.equal(appended.instances[appendedCopyId], sourceId, "addCopy 인스턴스가 원본 결과를 가리킨다");
+assert.equal(appended.faces[appendedCopyId], "both", "addCopy가 원본 면 설정을 복제한다");
+assert.deepEqual(appended.labels[appendedCopyId], [{ key: "add-copy|0", on: true }], "addCopy가 원본 라벨 설정을 복제한다");
+assert.equal(appended.layers[appendedCopyId], alternateLayer.id, "addCopy가 원본 레이어 설정을 복제한다");
+assert.equal(appended.undoStack.at(-1)?.kind, "duplicate", "addCopy undo kind는 duplicate를 유지한다");
+assert.equal(appended.undoStack.at(-1)?.origin, "addCopy", "addCopy undo origin을 구분한다");
+
+const appendedSnapshot = serializeBoardState(appended);
+assert.equal("undoStack" in appendedSnapshot, false, "보드 snapshot에는 undoStack을 추가하지 않는다");
+const restoredAppended = restoreBoardState([sourceResult, otherResult], appendedSnapshot);
+assert.deepEqual(restoredAppended.order, appended.order, "addCopy 끝 append 저장→복원");
+assert.deepEqual(restoredAppended.instances, appended.instances, "addCopy 인스턴스 저장→복원");
+assert.deepEqual(restoredAppended.faces, appended.faces, "addCopy 설정 저장→복원");
+assert.deepEqual(restoredAppended.labels, appended.labels, "addCopy 라벨 저장→복원");
+assert.deepEqual(restoredAppended.layers, appended.layers, "addCopy 레이어 저장→복원");
+
+const undoneAddCopy = boardReducer(appended, { type: "undo" });
+assert.deepEqual(undoneAddCopy.order, [sourceId, otherId], "addCopy undo는 끝 복제본 order를 제거한다");
+assert.equal(undoneAddCopy.instances[appendedCopyId], undefined, "addCopy undo는 인스턴스를 제거한다");
+assert.equal(undoneAddCopy.faces[appendedCopyId], undefined, "addCopy undo는 복제 설정을 제거한다");
+assert.equal(undoneAddCopy.layers[appendedCopyId], undefined, "addCopy undo는 복제 레이어를 제거한다");
+
+const stackBoard = boardReducer(initBoard([sourceResult, otherResult]), { type: "stack", layers: [sourceId, otherId] });
+const stackCopyGuard = boardReducer(stackBoard, { type: "addCopy", sourceId: "stack:1" });
+assert.equal(stackCopyGuard, stackBoard, "스택 addCopy는 no-op");
+const sheetBoard = boardReducer(initBoard([sourceResult, otherResult]), { type: "sheet", tiles: [sourceId, otherId], grid: "2x2" });
+const sheetCopyGuard = boardReducer(sheetBoard, { type: "addCopy", sourceId: "sheet:1" });
+assert.equal(sheetCopyGuard, sheetBoard, "조판 addCopy는 no-op");
+const missingCopyGuard = initBoard([sourceResult]);
+assert.equal(boardReducer(missingCopyGuard, { type: "addCopy", sourceId: "missing-tile" }), missingCopyGuard, "결과가 없는 addCopy는 no-op");
 
 const views = new Map([
   [sourceId, viewWithLayer(sourceView, board.layers[sourceId] ?? sourceView.defaultLayer)],

@@ -347,6 +347,8 @@ type TileCardBaseProps = {
   pinnedLabels: PinnedLabel[];
   /** 카드 지도 자동 라벨 표시 상태. 누락된 옛 저장본은 false로 읽는다. */
   showMapLabels: boolean;
+  /** + 칸에서 방금 추가된 타일의 짧은 확인 링. */
+  highlighted?: boolean;
   rovingTabIndex: number;
   onRovingFocus: (id: string) => void;
   onRovingMove: (id: string, key: string, event: KeyboardEvent<HTMLElement>) => void;
@@ -885,7 +887,7 @@ function TileCard(p: TileCardProps) {
     onSetAllLabels,
     onMapLabels,
   };
-  const cls = [styles.tile, p.size === 2 && styles.span2, p.size === 4 && styles.span4, p.dragging && styles.tileDrag, state && styles.tileState, !waiting && view.status === "failed" && styles.tileFail]
+  const cls = [styles.tile, p.size === 2 && styles.span2, p.size === 4 && styles.span4, p.dragging && styles.tileDrag, p.highlighted && styles.tileAdded, state && styles.tileState, !waiting && view.status === "failed" && styles.tileFail]
     .filter(Boolean)
     .join(" ");
   const openable = !waiting;

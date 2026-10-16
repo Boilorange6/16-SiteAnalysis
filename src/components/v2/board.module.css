@@ -25,97 +25,128 @@
 }
 .page {
   position: relative;
-  max-width: 1440px;
-  margin: 0 auto;
-  padding: 14px 24px 40px;
+  width: 100%;
+  margin: 0;
+  padding: 14px 24px 40px 72px;
 }
 .boardRail,
 .mobileRail {
   display: none;
 }
+/* 본문은 넓히고 숫자 버튼만 왼쪽 여백에 고정한다. 선택 조작은 버튼 아래에만 잠깐 나타난다. */
 .boardRail {
-  min-width: 0;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 64px;
+}
+.boardRail > .railContent {
+  position: sticky;
+  top: 96px;
+  width: 64px;
 }
 .railContent {
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 .railSection {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: #fff;
 }
-.railTitle,
-.railHeading {
-  margin: 0;
+.columnPicker {
+  position: relative;
+  display: inline-flex;
+  width: 44px;
+}
+.columnTrigger {
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: inset 0 -2px 0 var(--ink);
+  transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.columnTrigger:active {
+  transform: scale(0.97);
+}
+.columnTrigger:focus-visible,
+.columnMenu button:focus-visible,
+.railAction:focus-visible,
+.railClear:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.columnMenu {
+  position: absolute;
+  z-index: 35;
+  top: calc(100% + 4px);
+  left: 0;
+  display: grid;
+  min-width: 44px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(21, 23, 28, 0.14);
+  transform: scale(1);
+  transform-origin: top center;
+  opacity: 1;
+  transition: transform 180ms cubic-bezier(0.23, 1, 0.32, 1), opacity 180ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+@starting-style {
+  .columnMenu {
+    transform: scale(0.96);
+    opacity: 0;
+  }
+}
+.columnMenuKeyboard {
+  transition: none;
+}
+.columnMenu button {
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
   font-size: 13px;
   font-weight: 700;
 }
-.railLabel {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 700;
-}
-.railSegments {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 0;
-  min-width: 0;
-}
-.railSegments button,
-.railAction,
-.railClear,
-.railTrayBtn {
-  min-height: 44px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #f4f4f7;
-  color: var(--ink);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-}
-.railSegments button[aria-pressed="true"] {
-  border-color: var(--black);
+.columnMenu button[aria-selected="true"] {
   background: var(--black);
   color: #fff;
 }
-.railSegments button {
-  min-width: 0;
-  width: 100%;
-  padding: 0 4px;
-  border-radius: 0;
-  background: #f4f4f7;
-}
-.railSegments button:first-child {
-  border-radius: 10px 0 0 10px;
-}
-.railSegments button:last-child {
-  border-radius: 0 10px 10px 0;
-}
-.railSegments button:focus-visible,
-.railAction:focus-visible,
-.railClear:focus-visible,
-.railTrayBtn:focus-visible {
-  outline: 2px solid #2f6fdb;
-  outline-offset: 2px;
-}
 .railAction,
 .railClear {
-  width: 100%;
-  padding: 0 10px;
-  text-align: left;
+  width: 64px;
+  min-height: 44px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  text-align: center;
+  transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1), border-color 160ms ease;
 }
-.railAction {
-  background: #fff;
-}
-.railAction:hover:not(:disabled),
-.railClear:hover {
-  box-shadow: 0 0 0 2px var(--ink) inset;
+.railAction:active,
+.railClear:active {
+  transform: scale(0.97);
 }
 .railAction:disabled {
   opacity: 0.45;
@@ -124,72 +155,71 @@
 .railSelection {
   display: grid;
   gap: 2px;
-  font-size: 12px;
-  font-weight: 700;
-}
-.railSelectionDetail,
-.railEmpty {
-  color: var(--muted);
   font-size: 11px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.railSelectionDetail {
+  color: var(--muted);
+  font-size: 10px;
   font-weight: 400;
+  line-height: 1.25;
 }
 .railClear {
-  background: transparent;
   color: var(--muted);
-  text-align: center;
 }
-.railTray {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-  max-height: min(42vh, 360px);
-  overflow-y: auto;
-}
-.railTrayBtn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  padding: 0 8px;
-  text-align: left;
-}
-.railTrayBtn > span:nth-child(2) {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.railTrayBtn > span:last-child {
-  margin-left: auto;
-}
-@media (min-width: 1280px) {
-  .page {
-    display: grid;
-    grid-template-columns: 200px minmax(0, 1fr);
-    column-gap: 24px;
+@media (hover: hover) and (pointer: fine) {
+  .columnMenu button:hover {
+    background: #f0f1f4;
   }
+  .columnMenu button[aria-selected="true"]:hover {
+    background: var(--black);
+    color: #fff;
+  }
+  .railAction:hover:not(:disabled),
+  .railClear:hover {
+    border-color: var(--ink);
+    color: var(--ink);
+  }
+}
+/* 1280 px 미만은 본문을 밀지 않고 더 보기 안에서 같은 컨트롤을 재사용한다. */
+@media (min-width: 1280px) {
   .boardRail {
     display: block;
-    grid-column: 1;
-    grid-row: 1 / span 6;
-    position: sticky;
-    top: 14px;
-    align-self: start;
-  }
-  .page > .topbar,
-  .page > .progressRow,
-  .page > .refreshBanner,
-  .page > .analyzeWrap,
-  .page > .analyzeBar,
-  .page > .grid,
-  .page > .notProvidedGroup {
-    grid-column: 2;
-    min-width: 0;
   }
 }
 @media (max-width: 1279px) {
   .mobileRail {
     display: block;
+  }
+}
+@media (max-width: 1279px) {
+  .mobileRail .railContent {
+    width: auto;
+  }
+  .mobileRail .columnPicker {
+    width: 44px;
+  }
+  .mobileRail .railAction,
+  .mobileRail .railClear {
+    width: 100%;
+    padding-inline: 10px;
+    font-size: 12px;
+    text-align: left;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .columnTrigger,
+  .railAction,
+  .railClear {
+    transition: none;
+  }
+  .columnMenu {
+    transform: none;
+    transition: opacity 120ms ease;
+  }
+  .columnMenuKeyboard {
+    transition: none;
   }
 }
 .skipLink {
@@ -758,6 +788,194 @@
   font-weight: 700;
 }
 
+/* ── 마지막 타일 뒤의 추가 칸 ── */
+.addTileCell {
+  min-width: 0;
+  min-height: 160px;
+  align-self: start;
+  border: 2px dashed var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.22);
+}
+.addTileTrigger {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 100%;
+  min-height: 156px;
+  padding: 16px;
+  border: 0;
+  border-radius: 16px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1), color 160ms ease;
+}
+.addTileTrigger:active {
+  transform: scale(0.97);
+}
+.addTileTrigger:focus-visible,
+.addTileClose:focus-visible,
+.addTileSearchLabel input:focus-visible,
+.addTileOption:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.addTilePlus {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1.5px solid var(--ink);
+  border-radius: 50%;
+  color: var(--ink);
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 1;
+}
+@media (hover: hover) and (pointer: fine) {
+  .addTileTrigger:hover {
+    color: var(--ink);
+    background: rgba(255, 255, 255, 0.55);
+  }
+}
+.addTileCellOpen {
+  grid-row: span 2;
+  align-self: stretch;
+  min-height: calc(var(--grid-row-height, 377px) * 2 + 16px);
+  border-color: var(--muted);
+}
+.addTilePicker {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+  height: 100%;
+  min-height: calc(var(--grid-row-height, 377px) * 2 + 16px);
+  padding: 14px;
+  border: 0;
+  border-radius: 16px;
+  background: #fff;
+  transform: scale(1);
+  transform-origin: center;
+  opacity: 1;
+  transition: transform 180ms cubic-bezier(0.23, 1, 0.32, 1), opacity 180ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+@starting-style {
+  .addTilePicker {
+    transform: scale(0.96);
+    opacity: 0;
+  }
+}
+.addTilePickerHead {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+.addTileSearchLabel {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 4px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.addTileSearchLabel input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 16px;
+}
+.addTileSearchLabel input::placeholder {
+  color: var(--muted);
+}
+.addTileClose {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 24px;
+  line-height: 1;
+}
+.addTileList {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.addTileGroup {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.addTileGroup h3 {
+  margin: 0 4px 2px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.addTileOption {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+}
+.addTileOptionActive {
+  background: #f0f1f4;
+}
+.addTileOptionTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.addTileOptionCount {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.addTileEmpty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .addTileTrigger {
+    transition: none;
+  }
+  .addTilePicker {
+    transform: none;
+    transition: opacity 120ms ease;
+  }
+}
+
 /* ── 격자 ── */
 .grid {
   --grid-cols: 4;
@@ -1289,6 +1507,28 @@
   border-radius: 18px;
   cursor: pointer;
   perspective: 1400px; /* 뒤집기(요약면 ↔ 지도면) */
+}
+.tile::after {
+  position: absolute;
+  z-index: 48;
+  inset: -4px;
+  border: 2px solid var(--ink);
+  border-radius: 22px;
+  content: "";
+  pointer-events: none;
+  transform: scale(0.98);
+  opacity: 0;
+  transition: transform 180ms cubic-bezier(0.23, 1, 0.32, 1), opacity 180ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.tileAdded::after {
+  transform: scale(1);
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tile::after {
+    transform: none;
+    transition: opacity 120ms ease;
+  }
 }
 .tile:focus-visible {
   outline: 2px solid #2f6fdb;
