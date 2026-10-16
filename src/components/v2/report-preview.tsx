@@ -61,6 +61,56 @@ function formatScale(value: number): string {
   return String(Math.round(value * 100)) + "%";
 }
 
+type InlineIconName = "close" | "grid" | "plus" | "chevronDown" | "zoomOut" | "zoomIn" | "center" | "summary";
+
+function InlineIcon({ name, size }: { name: InlineIconName; size?: number }) {
+  let content: React.ReactNode;
+  switch (name) {
+    case "close":
+      content = <path d="M6 6l12 12M18 6 6 18" />;
+      break;
+    case "grid":
+      content = <>
+        <rect x="4" y="4" width="6.5" height="6.5" rx="1" />
+        <rect x="13.5" y="4" width="6.5" height="6.5" rx="1" />
+        <rect x="4" y="13.5" width="6.5" height="6.5" rx="1" />
+        <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1" />
+      </>;
+      break;
+    case "plus":
+      content = <path d="M12 5v14M5 12h14" />;
+      break;
+    case "chevronDown":
+      content = <path d="m7 9 5 5 5-5" />;
+      break;
+    case "zoomOut":
+      content = <>
+        <circle cx="10.5" cy="10.5" r="5.75" />
+        <path d="m15 15 4.25 4.25M8 10.5h5" />
+      </>;
+      break;
+    case "zoomIn":
+      content = <>
+        <circle cx="10.5" cy="10.5" r="5.75" />
+        <path d="m15 15 4.25 4.25M8 10.5h5M10.5 8v5" />
+      </>;
+      break;
+    case "center":
+      content = <>
+        <circle cx="12" cy="12" r="3.5" />
+        <path d="M12 3v4M12 17v4M3 12h4M17 12h4" />
+      </>;
+      break;
+    case "summary":
+      content = <>
+        <rect x="4" y="4" width="16" height="16" rx="2" />
+        <path d="M7.5 9h9M7.5 12h6M7.5 15h8" />
+      </>;
+      break;
+  }
+  return <svg className={styles.iconSvg} style={size ? { width: size, height: size } : undefined} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{content}</svg>;
+}
+
 function slideTitle(slide: PlannedSlide): string {
   if (slide.kind === "cover") return slide.address;
   if (slide.kind === "sources") return "출처·기준일";
@@ -827,42 +877,50 @@ type PageToolbarProps = {
   makingKind: string | null;
   exportProblem: string | null;
   onExport: () => void;
-  onClose: () => void;
 };
 
-function PageToolbar({ selectedSlides, current, applyPatch, resetScales, resetLabels, exportStatusRef, exportEnabled, exporting, makingKind, exportProblem, onExport, onClose }: PageToolbarProps) {
+function PageToolbar({ selectedSlides, current, applyPatch, resetScales, resetLabels, exportStatusRef, exportEnabled, exporting, makingKind, exportProblem, onExport }: PageToolbarProps) {
+  const resetMenuRef = useRef<HTMLDivElement>(null);
+  const resetMenuId = useId().replace(/:/g, "");
+  const [resetMenuOpen, setResetMenuOpen] = useState(false);
   const targets = selectedSlides.length > 0 ? selectedSlides : current ? [current] : [];
   const mapEnabled = !!(current && mapForSlide(current));
   const summaryEnabled = current?.kind === "tile" && !(current.callout && current.callout.page > 0);
   const zoom = mixedField(targets, (slide) => slide.style.zoomDelta ?? 0, 0);
   const summary = mixedField(targets, (slide) => slide.style.summary !== false, true);
-  const directHint = current?.kind === "tile" && !!current.map && (
-    current.style.pinnedKeys === undefined
-    || current.style.legendFocus === undefined
-    || ((current.style.pinnedKeys?.length ?? 0) === 0 && current.style.legendFocus === null)
-  );
-  const targetLabel = targets.length > 1 ? `${targets.length}장에 적용` : targets.length === 1 ? "현재 1장" : "페이지를 선택하세요";
+
+  useEffect(() => {
+    if (!resetMenuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && resetMenuRef.current?.contains(target)) return;
+      setResetMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [resetMenuOpen]);
+
   return (
     <div className={styles.pageToolbar} role="toolbar" aria-label="페이지 직접 조작 도구">
-      <div className={styles.toolbarContext}>
-        <strong>{targetLabel}</strong>
-        {targets.length > 1 && <span>라벨·범례는 현재 장만</span>}
-        {directHint && <span className={styles.interactionHint}>지도 요소를 누르면 라벨, 범례를 누르면 강조</span>}
-      </div>
+      {targets.length > 1 && <div className={styles.toolbarContext}><strong className={styles.selectionChip}>{targets.length}장에 적용</strong></div>}
       <div className={styles.toolbarActions}>
         <div className={styles.toolbarGroup} aria-label="지도 확대">
-          <span className={styles.toolbarLabel}>지도 {zoom.mixed ? "여러 값" : formatZoom(zoom.value)}</span>
-          <button type="button" className={styles.smallButton} disabled={!mapEnabled || targets.length === 0} onClick={() => applyPatch({ zoomDelta: clampNumber((zoom.mixed ? 0 : zoom.value) - 0.5, -3, 3) })} aria-label="지도 축소">−</button>
-          <button type="button" className={styles.smallButton} disabled={!mapEnabled || targets.length === 0} onClick={() => applyPatch({ zoomDelta: clampNumber((zoom.mixed ? 0 : zoom.value) + 0.5, -3, 3) })} aria-label="지도 확대">+</button>
-          <button type="button" className={styles.centerButton} disabled={!mapEnabled || targets.length === 0} onClick={() => applyPatch({ offsetM: [0, 0] })}><span className={styles.toolbarLongLabel}>대지 중앙 정렬</span><span className={styles.toolbarShortLabel}>정렬</span></button>
+          <button type="button" className={styles.smallButton + " " + styles.toolbarIconButton} disabled={!mapEnabled || targets.length === 0} onClick={() => applyPatch({ zoomDelta: clampNumber((zoom.mixed ? 0 : zoom.value) - 0.5, -3, 3) })} aria-label="지도 축소" title="지도 축소" data-tooltip="지도 축소"><InlineIcon name="zoomOut" /></button>
+          <span className={styles.toolbarLabel}>{zoom.mixed ? "—" : formatZoom(zoom.value)}</span>
+          <button type="button" className={styles.smallButton + " " + styles.toolbarIconButton} disabled={!mapEnabled || targets.length === 0} onClick={() => applyPatch({ zoomDelta: clampNumber((zoom.mixed ? 0 : zoom.value) + 0.5, -3, 3) })} aria-label="지도 확대" title="지도 확대" data-tooltip="지도 확대"><InlineIcon name="zoomIn" /></button>
+          <button type="button" className={styles.centerButton + " " + styles.toolbarIconButton} disabled={!mapEnabled || targets.length === 0} onClick={() => applyPatch({ offsetM: [0, 0] })} aria-label="대지 중앙 정렬" title="대지 중앙 정렬" data-tooltip="대지 중앙 정렬"><InlineIcon name="center" /></button>
         </div>
-        <button type="button" className={styles.toolbarToggle} disabled={!summaryEnabled || targets.length === 0} aria-pressed={summary.value} onClick={() => applyPatch({ summary: !summary.value })}><span className={styles.toolbarLongLabel}>{summary.value ? "요약 탭 숨기기" : "요약 탭 켜기"}{summary.mixed ? " · 여러 값" : ""}</span><span className={styles.toolbarShortLabel}>요약</span></button>
-        <button type="button" className={styles.toolbarReset} disabled={targets.length === 0} onClick={resetScales} aria-label="탭 배치 초기화"><span className={styles.toolbarLongLabel}>탭 배치 초기화</span><span className={styles.toolbarShortLabel}>초기화</span></button>
-        <button type="button" className={styles.toolbarReset} disabled={!mapEnabled || !current} onClick={resetLabels} aria-label="라벨 초기화"><span className={styles.toolbarLongLabel}>라벨 초기화</span><span className={styles.toolbarShortLabel}>라벨</span></button>
-        <button type="button" className={styles.toolbarExport} disabled={!exportEnabled || exporting} onClick={onExport}>{exporting ? "내보내는 중…" : "내보내기"}</button>
-        <button type="button" className={styles.toolbarClose} onClick={onClose}>닫기</button>
+        <button type="button" className={styles.toolbarToggle + " " + styles.toolbarIconButton} disabled={!summaryEnabled || targets.length === 0} aria-pressed={summary.value} aria-label={summary.value ? "요약 탭 숨기기" : "요약 탭 켜기"} title={summary.value ? "요약 탭 숨기기" : "요약 탭 켜기"} data-tooltip={summary.value ? "요약 탭 숨기기" : "요약 탭 켜기"} onClick={() => applyPatch({ summary: !summary.value })}><InlineIcon name="summary" /></button>
+        <div ref={resetMenuRef} className={styles.toolbarResetWrap}>
+          <button type="button" className={styles.toolbarReset} disabled={targets.length === 0} aria-haspopup="menu" aria-expanded={resetMenuOpen} aria-controls={resetMenuId} onClick={() => setResetMenuOpen((open) => !open)}>초기화 <InlineIcon name="chevronDown" size={14} /></button>
+          {resetMenuOpen && <div id={resetMenuId} className={styles.toolbarResetMenu} role="menu" aria-label="초기화">
+            <button type="button" role="menuitem" className={styles.toolbarResetMenuItem} disabled={targets.length === 0} onClick={() => { resetScales(); setResetMenuOpen(false); }}>탭 배치 초기화</button>
+            <button type="button" role="menuitem" className={styles.toolbarResetMenuItem} disabled={!mapEnabled || !current} onClick={() => { resetLabels(); setResetMenuOpen(false); }}>라벨 초기화</button>
+          </div>}
+        </div>
+        <button type="button" className={styles.toolbarExport} disabled={!exportEnabled || exporting} aria-busy={exporting} onClick={onExport}>내보내기</button>
       </div>
-      <p ref={exportStatusRef} className={styles.toolbarStatus + (exportProblem ? " " + styles.footerError : "")} role={exportProblem ? "alert" : "status"} aria-live="polite" aria-busy={exporting} tabIndex={-1}>{exportProblem ?? (exporting ? (makingKind ?? "PPT") + " 내보내는 중…" : "탭을 누르면 선택하고, 안쪽을 끌어 이동합니다")}</p>
+      <p ref={exportStatusRef} className={styles.toolbarStatus + (exportProblem ? " " + styles.footerError : "")} role={exportProblem ? "alert" : "status"} aria-live="polite" aria-busy={exporting} tabIndex={-1}>{exportProblem ?? (exporting ? (makingKind ?? "PPT") + " 내보내는 중…" : "")}</p>
     </div>
   );
 }
@@ -948,6 +1006,11 @@ export default function ReportPreview({ board, dispatch, views, plan, basemap, o
     onEscape: () => {
       if (addAfterKeyRef.current !== null) {
         closeAddPopover(true);
+        return true;
+      }
+      const resetMenu = dialogRef.current?.querySelector<HTMLButtonElement>('[aria-haspopup="menu"][aria-expanded="true"]');
+      if (resetMenu) {
+        resetMenu.click();
         return true;
       }
       const selectedPanel = dialogRef.current?.querySelector<HTMLElement>('[data-panel-selected="true"]');
@@ -1089,20 +1152,14 @@ export default function ReportPreview({ board, dispatch, views, plan, basemap, o
   return (
     <div className={styles.backdrop}>
       <div ref={dialogRef} className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby={headingId} tabIndex={-1}>
-        <header className={styles.header}>
-          <div className={styles.headingGroup}>
-            <p className={styles.eyebrow}>PPT 내보내기</p>
-            <h1 id={headingId} className={styles.heading}>페이지 미리보기</h1>
-          </div>
-          <span className={styles.selectionCount}>{selectedKeys.length}장 선택</span>
-          <span className={styles.headerSpacer} />
-        </header>
+        <h1 id={headingId} className={styles.visuallyHidden}>페이지 미리보기</h1>
+        <button type="button" className={styles.dialogClose} aria-label="미리보기 닫기" title="미리보기 닫기" onClick={onClose}><InlineIcon name="close" /></button>
         <div className={styles.body + (!filmstripOpen ? " " + styles.bodyFilmstripCollapsed : "")}>
           <nav className={styles.thumbRail + (!filmstripOpen ? " " + styles.thumbRailCollapsed : "")} aria-label="보고서 페이지 목록">
             <div className={styles.railHeading}>
               <h2>페이지</h2>
-              {filmstripOpen && <span className={styles.railHint}>{plan.length}장</span>}
-              <button type="button" className={styles.filmstripToggle} aria-expanded={filmstripOpen} onClick={() => setFilmstripOpen((open) => !open)}>{filmstripOpen ? "목록 접기" : "페이지 목록"}</button>
+              <span className={styles.railHint + " " + styles.filmstripCount}>{current?.no ?? 0} / {plan.length}</span>
+              <button type="button" className={styles.filmstripToggle} aria-label="페이지 목록 펼치기/접기" title="페이지 목록 펼치기/접기" aria-expanded={filmstripOpen} onClick={() => setFilmstripOpen((open) => !open)}><InlineIcon name="grid" /></button>
             </div>
             {filmstripOpen && <ol className={styles.thumbList}>
               {plan.map((slide) => {
@@ -1126,7 +1183,7 @@ export default function ReportPreview({ board, dispatch, views, plan, basemap, o
                  );
                })}
              </ol>}
-             <button ref={addButtonRef} type="button" className={styles.addPageButton} disabled={!current} aria-label="현재 페이지 뒤에 페이지 추가" title="현재 페이지 뒤에 페이지 추가" aria-expanded={!!addAfterKey} aria-controls={addAfterKey ? addPopoverId : undefined} onClick={() => current && openAddPopover(current.key)}><span aria-hidden="true">＋</span><span className={styles.addPageLabel}>페이지</span></button>
+             <button ref={addButtonRef} type="button" className={styles.addPageButton} disabled={!current} aria-label="현재 페이지 뒤에 페이지 추가" title="현재 페이지 뒤에 페이지 추가" aria-expanded={!!addAfterKey} aria-controls={addAfterKey ? addPopoverId : undefined} onClick={() => current && openAddPopover(current.key)}><InlineIcon name="plus" /></button>
            </nav>
            {addAfterKey && <div ref={addPopoverRef} id={addPopoverId} className={styles.addPopover} style={addPopoverStyle ?? undefined} role="region" aria-label="페이지 추가">
              <p className={styles.addPopoverHeading}>현재 페이지 뒤에 추가{plan.find((slide) => slide.key === addAfterKey) ? ` · ${slideTitle(plan.find((slide) => slide.key === addAfterKey)!)}` : ""}</p>
@@ -1147,8 +1204,7 @@ export default function ReportPreview({ board, dispatch, views, plan, basemap, o
            </div>}
            <main className={styles.stageColumn} aria-label="현재 페이지 미리보기">
              {current ? <>
-               <div className={styles.stageHeading}><h2>{current.no}장 · {slideTitle(current)}</h2><span>{current.kind === "tile" ? current.view.kindLabel : current.kind === "sheet" ? "타일 조판" : current.kind === "sources" ? "출처" : "표지"}</span></div>
-               <PageToolbar selectedSlides={selectedSlides} current={current} applyPatch={applyPatch} resetScales={resetScales} resetLabels={resetLabels} exportStatusRef={exportStatusRef} exportEnabled={exportEnabled} exporting={exporting} makingKind={makingKind} exportProblem={exportProblem} onExport={handleExport} onClose={onClose} />
+               <PageToolbar selectedSlides={selectedSlides} current={current} applyPatch={applyPatch} resetScales={resetScales} resetLabels={resetLabels} exportStatusRef={exportStatusRef} exportEnabled={exportEnabled} exporting={exporting} makingKind={makingKind} exportProblem={exportProblem} onExport={handleExport} />
                <SlidePreview slide={current} basemap={basemap} editable={current.kind === "tile"} onPatch={applyPatch} onMapPatch={onLargeMapPatch} onDirectPatch={onDirectPagePatch} />
              </> : <p className={styles.emptyState}>표시할 페이지가 없습니다.</p>}
            </main>

@@ -2487,3 +2487,627 @@
     animation-iteration-count: 1 !important;
   }
 }
+
+/* Judge follow-up: the preview is a canvas first. Keep these rules last so the
+   v3 shell cannot re-introduce the old header, title chip, or text toolbar. */
+.visuallyHidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.backdrop {
+  place-items: stretch;
+  padding: 10px;
+  overflow: hidden;
+}
+
+.dialog {
+  width: 100%;
+  height: calc(100dvh - 20px);
+  max-width: none;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+  border-radius: 14px;
+}
+
+.dialog > .header {
+  display: none;
+}
+
+.body,
+.bodyFilmstripCollapsed {
+  position: relative;
+  display: block;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.stageColumn {
+  position: absolute;
+  inset: 0;
+  display: block;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.stageHeading {
+  display: none;
+}
+
+.previewSlot {
+  position: absolute;
+  inset: 0 0 66px 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.previewFrame {
+  width: auto;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 10px;
+  box-shadow: 0 12px 36px rgba(21, 23, 28, 0.2);
+}
+
+.bodyFilmstripCollapsed .stageColumn {
+  padding-left: 47px;
+}
+
+.bodyFilmstripCollapsed .previewSlot {
+  inset: 0 0 66px 47px;
+}
+
+.dialogClose {
+  position: absolute;
+  z-index: 80;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: #15171c;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #8f98a6;
+  border-radius: 999px;
+  font: inherit;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(21, 23, 28, 0.2);
+}
+
+.dialogClose:hover,
+.dialogClose:focus-visible {
+  color: #fff;
+  background: #15171c;
+  border-color: #15171c;
+}
+
+.dialogClose .iconSvg {
+  width: 20px;
+  height: 20px;
+}
+
+.pageToolbar {
+  position: absolute;
+  z-index: 70;
+  right: 12px;
+  bottom: 12px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  margin: 0;
+  padding: 6px;
+  color: #15171c;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #8f98a6;
+  border-radius: 999px;
+  box-shadow: 0 10px 30px rgba(21, 23, 28, 0.2);
+  transform: translateX(-50%);
+}
+
+.toolbarContext {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  max-width: none;
+  padding: 0 4px;
+  color: #173f78;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.toolbarContext > span,
+.toolbarContext .interactionHint {
+  display: none !important;
+}
+
+.selectionChip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 10px;
+  color: #173f78;
+  background: #e8f0fd;
+  border: 1px solid #9bb5dc;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.toolbarActions,
+.toolbarGroup {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.toolbarGroup {
+  flex: 0 0 auto;
+}
+
+.toolbarLabel {
+  display: grid;
+  place-items: center;
+  min-width: 34px;
+  color: #454a55;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.toolbarIconButton {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  color: #15171c;
+  background: #fff;
+  border: 1px solid #aeb4bf;
+  border-radius: 999px;
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.toolbarIconButton:hover,
+.toolbarIconButton:focus-visible,
+.toolbarIconButton[aria-pressed="true"] {
+  color: #173f78;
+  background: #e8f0fd;
+  border-color: #5f87be;
+}
+
+.toolbarIconButton .iconSvg,
+.filmstripToggle .iconSvg,
+.addPageButton .iconSvg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.toolbarIconButton[data-tooltip]::after {
+  position: absolute;
+  z-index: 120;
+  right: auto;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  display: block;
+  max-width: 180px;
+  padding: 5px 8px;
+  color: #fff;
+  background: #15171c;
+  border-radius: 6px;
+  content: attr(data-tooltip);
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.25;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 4px);
+  transition: opacity 150ms cubic-bezier(0.23, 1, 0.32, 1), transform 150ms cubic-bezier(0.23, 1, 0.32, 1);
+  white-space: nowrap;
+}
+
+.toolbarIconButton[data-tooltip]:hover::after,
+.toolbarIconButton[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.toolbarToggle {
+  color: #24344d;
+  background: #e9f0fb;
+  border-color: #9bb5dc;
+}
+
+.toolbarResetWrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.toolbarReset {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 11px;
+  color: #15171c;
+  background: #fff;
+  border: 1px solid #aeb4bf;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.toolbarReset:hover,
+.toolbarReset:focus-visible,
+.toolbarReset[aria-expanded="true"] {
+  background: #eef0f3;
+  border-color: #596579;
+}
+
+.toolbarResetMenu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 90;
+  display: grid;
+  min-width: 168px;
+  padding: 5px;
+  background: #fff;
+  border: 1px solid #9ba5b4;
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(21, 23, 28, 0.22);
+}
+
+.toolbarResetMenuItem {
+  min-height: 44px;
+  padding: 8px 10px;
+  color: #15171c;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  text-align: left;
+  cursor: pointer;
+}
+
+.toolbarResetMenuItem:hover,
+.toolbarResetMenuItem:focus-visible {
+  background: #eef0f3;
+}
+
+.toolbarExport {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 92px;
+  min-height: 44px;
+  padding: 0 16px;
+  color: #fff !important;
+  background: #15171c !important;
+  border: 1px solid #15171c !important;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.toolbarExport:hover,
+.toolbarExport:focus-visible {
+  background: #303640 !important;
+  border-color: #303640 !important;
+}
+
+.toolbarExport:disabled {
+  color: #f8fafc !important;
+  background: #526071 !important;
+  border-color: #526071 !important;
+}
+
+.toolbarStatus {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.toolbarStatus.footerError {
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 0 4px;
+  overflow: visible;
+  clip: auto;
+  color: #8c2530;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.thumbRail {
+  top: 12px;
+  bottom: 12px;
+  left: 12px;
+  width: 224px;
+  max-width: min(224px, calc(100% - 24px));
+  padding: 9px;
+}
+
+.thumbRailCollapsed {
+  top: 12px;
+  bottom: auto;
+  left: 0;
+  display: flex;
+  align-items: center;
+  width: 44px;
+  height: auto;
+  max-width: 44px;
+  padding: 0;
+  overflow: visible;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.thumbRailCollapsed .railHeading {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  width: 44px;
+  min-height: 0;
+}
+
+.thumbRailCollapsed .railHeading h2 {
+  display: none;
+}
+
+.thumbRailCollapsed .railHint {
+  display: block;
+  order: 2;
+  color: #454a55;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 850;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.thumbRailCollapsed .filmstripToggle,
+.thumbRailCollapsed .addPageButton {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border-radius: 999px;
+}
+
+.thumbRailCollapsed .filmstripToggle {
+  order: 1;
+  writing-mode: horizontal-tb;
+  color: #15171c;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #8f98a6;
+  box-shadow: 0 6px 18px rgba(21, 23, 28, 0.16);
+  font-size: 0;
+}
+
+.thumbRailCollapsed .addPageButton {
+  order: 3;
+  margin-top: 8px;
+  color: #15171c;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #8f98a6;
+  border-style: solid;
+  box-shadow: 0 6px 18px rgba(21, 23, 28, 0.16);
+  font-size: 0;
+}
+
+.thumbRailCollapsed .addPageLabel {
+  display: none;
+}
+
+.thumbRailCollapsed .filmstripToggle:hover,
+.thumbRailCollapsed .filmstripToggle:focus-visible,
+.thumbRailCollapsed .addPageButton:hover,
+.thumbRailCollapsed .addPageButton:focus-visible {
+  color: #173f78;
+  background: #e8f0fd;
+  border-color: #5f87be;
+}
+
+.panelSelectionFrame {
+  border: 1px solid #15171c;
+  box-shadow: none;
+}
+
+.panelHandle > span {
+  width: 8px;
+  height: 8px;
+  background: #fff;
+  border: 1.5px solid #15171c;
+  box-shadow: none;
+}
+
+.panelRemove {
+  top: -24px;
+  right: -24px;
+  width: 44px;
+  height: 44px;
+  border: 8px solid transparent;
+  background: #15171c;
+  background-clip: padding-box;
+}
+
+.snapGuideX,
+.snapGuideY {
+  z-index: 1;
+  background: #164e9b;
+  border-color: #164e9b;
+  opacity: 0.9;
+}
+
+.snapGuideX { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55); }
+.snapGuideY { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55); }
+
+/* Keep the invisible hit geometry interactive without letting it paint a
+   generic gray box over the map. Visible lines/points remain owned by the
+   map renderer and are highlighted by their own shape. */
+.slideCanvas svg [data-map-hit] {
+  fill: transparent !important;
+  stroke: transparent !important;
+  opacity: 0 !important;
+}
+
+/* The board's base button rule supplies pointer feedback. Handles need their
+   directional resize cursors to win over that generic rule. */
+.panelHandleNW { cursor: nwse-resize !important; }
+.panelHandleN { cursor: ns-resize !important; }
+.panelHandleNE { cursor: nesw-resize !important; }
+.panelHandleE { cursor: ew-resize !important; }
+.panelHandleSE { cursor: nwse-resize !important; }
+.panelHandleS { cursor: ns-resize !important; }
+.panelHandleSW { cursor: nesw-resize !important; }
+.panelHandleW { cursor: ew-resize !important; }
+
+/* Report-preview-only interaction polish. The map renderer owns geometry; this
+   keeps a picked line/point from acquiring a generic rectangular overlay. */
+.slideCanvas [data-map-feature][data-map-label-variant="fixed"] [data-map-label-box],
+.slideCanvas [data-map-label-variant="fixed"] [data-map-label-box] {
+  vector-effect: non-scaling-stroke;
+}
+
+@media (max-width: 600px) {
+  .backdrop {
+    padding: 8px;
+  }
+
+  .dialog {
+    height: calc(100dvh - 16px);
+    border-radius: 12px;
+  }
+
+  .dialogClose {
+    top: 8px;
+    right: 8px;
+  }
+
+  .previewSlot {
+    inset: 0 0 126px 0;
+  }
+
+  .bodyFilmstripCollapsed .stageColumn {
+    padding-left: 47px;
+  }
+
+  .bodyFilmstripCollapsed .previewSlot {
+    inset: 0 0 126px 47px;
+  }
+
+  .pageToolbar {
+    right: 8px;
+    bottom: 66px;
+    left: 8px;
+    width: auto;
+    max-width: none;
+    justify-content: initial;
+    flex-wrap: nowrap;
+    border-radius: 16px;
+    transform: none;
+  }
+
+  .toolbarContext {
+    display: none;
+  }
+
+  .toolbarActions {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(44px, 1fr));
+    flex: 1 1 auto;
+    width: 100%;
+    gap: 4px;
+  }
+
+  .toolbarGroup {
+    display: contents;
+  }
+
+  .toolbarActions > *,
+  .toolbarGroup > * {
+    width: 100%;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+    padding-inline: 3px;
+  }
+
+  .toolbarLabel {
+    min-width: 44px;
+  }
+
+  .toolbarResetMenu {
+    right: 0;
+  }
+
+  .toolbarExport {
+    min-width: 80px;
+    padding-inline: 8px;
+  }
+
+  .thumbRailCollapsed {
+    top: 8px;
+    left: 0;
+  }
+
+  .thumbRail:not(.thumbRailCollapsed) {
+    top: 8px;
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    width: auto;
+    max-width: none;
+  }
+}
