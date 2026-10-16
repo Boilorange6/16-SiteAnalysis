@@ -95,7 +95,7 @@ export type UndoEntry =
   | { kind: "columns"; columns: GridColumns }
   | { kind: "remove"; id: string; index: number; report?: ReportState }
   | { kind: "removeCopy"; id: string; sourceId: string; index: number; settings: TileSettingsSnapshot; report?: ReportState }
-  | { kind: "duplicate"; id: string; index: number }
+  | { kind: "duplicate"; id: string; index: number; origin?: "addCopy" }
   | { kind: "add"; id: string; trayIndex: number }
   | { kind: "preset"; preset: PresetId; order: string[]; included: Record<string, boolean>; removed: { id: string; index: number }[] };
 
@@ -184,6 +184,7 @@ export type BoardAction =
   | { type: "preset"; preset: PresetId }
   | { type: "remove"; id: string }
   | { type: "duplicate"; id: string }
+  | { type: "addCopy"; sourceId: string }
   | { type: "undo" }
   | { type: "move"; id: string; dir: -1 | 1 }
   | { type: "reorder"; from: number; to: number }
@@ -487,7 +488,7 @@ function removeInstance(s: BoardState, id: string): BoardState {
   };
 }
 
-function nextCopyId(s: BoardState): string {
+export function nextCopyId(s: BoardState): string {
   let number = 1;
   while (s.order.includes(`copy:${number}`) || s.instances[`copy:${number}`] || s.removed.some((item) => item.id === `copy:${number}`)) number += 1;
   return `copy:${number}`;
@@ -575,6 +576,18 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
       order.splice(index + 1, 0, copyId);
       const next = duplicateTileSettings(s, a.id, sourceId, copyId);
       return { ...next, order, undoStack: [...s.undoStack, { kind: "duplicate", id: copyId, index: index + 1 }] };
+    }
+    case "addCopy": {
+      const sourceId = sourceTileId(s, a.sourceId);
+      // stack/sheet는 결과 타일이 아니므로 복제 대상에서 제외한다.
+      if (sourceId in s.stacks || sourceId in s.sheets || !s.results.some((result) => result.tileId === sourceId)) return s;
+      const copyId = nextCopyId(s);
+      const next = duplicateTileSettings(s, a.sourceId, sourceId, copyId);
+      return {
+        ...next,
+        order: [...s.order, copyId],
+        undoStack: [...s.undoStack, { kind: "duplicate", id: copyId, index: s.order.length, origin: "addCopy" }],
+      };
     }
     case "add": {
       const trayIndex = s.removed.findIndex((r) => r.id === a.id);

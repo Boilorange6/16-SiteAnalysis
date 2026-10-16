@@ -27,9 +27,20 @@ assert.match(boardCss, /\.handle\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?top:\s
 assert.match(boardCss, /\.sfTop\s*\{[\s\S]*?flex-wrap:\s*nowrap;/, "요약 헤더는 한 줄");
 assert.match(boardCss, /\.sfTop \.title\s*\{[\s\S]*?text-overflow:\s*ellipsis;[\s\S]*?white-space:\s*nowrap;/, "요약 제목은 좁을 때 말줄임");
 assert.match(boardCss, /\.mfTitle\s*\{[\s\S]*?text-overflow:\s*ellipsis;[\s\S]*?white-space:\s*nowrap;/, "지도 제목은 좁을 때 말줄임");
-assert.match(pageSource, /className=\{styles\.railSegments\}[\s\S]*?GRID_COLUMN_OPTIONS\.map\([\s\S]*?aria-pressed=\{columns === option\}/, "보드 열 선택은 기존 aria-pressed 계약을 유지");
-assert.match(boardCss, /\.railSegments\s*\{[\s\S]*?grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\);[\s\S]*?gap:\s*0;/, "보드 열 선택은 5분할 가로 세그먼트");
-assert.match(boardCss, /\.railSegments button,[\s\S]*?min-height:\s*44px;/, "보드 열 세그먼트 버튼은 44px 높이");
+assert.match(pageSource, /className=\{styles\.columnTrigger\}/, "보드 열 선택은 숫자 하나 버튼");
+assert.match(pageSource, /aria-label=\{`보드 열 수, 현재 \$\{columns\}열`\}/, "보드 열 버튼은 현재 열 수를 accessible name에 포함");
+assert.match(pageSource, /aria-expanded=\{open\}/, "보드 열 버튼은 펼침 상태를 노출");
+assert.match(pageSource, /role="listbox" aria-label="보드 열 수 선택"/, "보드 열 목록은 listbox 의미를 노출");
+assert.match(pageSource, /GRID_COLUMN_OPTIONS\.map\([\s\S]*?role="option"[\s\S]*?aria-selected=\{columns === option\}/, "기존 GRID_COLUMN_OPTIONS와 현재 선택 상태를 재사용");
+assert.doesNotMatch(boardCss, /\.railSegments/, "옛 가로 rail 세그먼트는 제거");
+assert.match(boardCss, /\.columnTrigger\s*\{[\s\S]*?width:\s*44px;[\s\S]*?min-height:\s*44px;[\s\S]*?box-shadow:\s*inset 0 -2px 0 var\(--ink\)/, "숫자 열 버튼은 44px·밑줄");
+assert.match(boardCss, /\.columnMenu\s*\{[\s\S]*?background:\s*#fff;[\s\S]*?box-shadow:/, "열 목록은 흰 판과 그림자");
+assert.match(pageSource, /<AddTileCell items=\{addTileItems\} onAdd=\{addTile\} \/>/, "보드 마지막에 타일 추가 칸을 렌더");
+assert.match(pageSource, /data-v2-add-cell/, "타일 추가 칸은 roving/드래그 카드 표식과 분리");
+assert.match(boardCss, /\.addTileCell\s*\{[\s\S]*?border:\s*2px dashed var\(--line\)/, "타일 추가 칸은 점선");
+assert.match(boardCss, /\.addTileCellOpen\s*\{[\s\S]*?grid-row:\s*span 2/, "임시 타일은 2행 높이");
+assert.match(pageSource, /타일 검색/, "임시 타일 검색 입력은 라벨을 가짐");
+assert.match(pageSource, /type="search"/, "임시 타일은 검색 입력을 사용");
 
 const { floatingMenuPosition } = await import("../../lib/v2/ui/menu-position.ts");
 assert.deepEqual(

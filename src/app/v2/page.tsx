@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { Fragment, memo, useCallback, useEffect, useId, useMemo, useReducer, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import SummaryCard from "@/components/v2/summary-card";
 import TileCard, { type TileCardAction } from "@/components/v2/tile-card";
 import TileDialog from "@/components/v2/tile-dialog";
@@ -10,7 +10,7 @@ import { useTileDrag } from "@/components/v2/use-tile-drag";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "@/components/v2/map-box";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import styles from "@/components/v2/board.module.css";
-import { SUMMARY_ID, boardReducer, boardStorageKey, initBoard, rebaseSnapshotAnalysisId, reportPages, serializeBoardState, sourceTileId, viewOf, type CardFace, type CutSpec, type GridColumns, type PinnedLabel } from "@/lib/v2/ui/board-state";
+import { SUMMARY_ID, boardReducer, boardStorageKey, initBoard, nextCopyId, rebaseSnapshotAnalysisId, reportPages, serializeBoardState, sourceTileId, viewOf, type CardFace, type CutSpec, type GridColumns, type PinnedLabel } from "@/lib/v2/ui/board-state";
 import { buildReportPlan, complexCounts, reportFileName, sourcePageCountForViews, type PlannedSlide } from "@/lib/v2/report/report-plan";
 import { downloadBytes, exportFileName, EXPORT_MIME, DAE_MIME } from "@/lib/v2/export/download";
 import { DEFAULT_CALLOUT_MODE } from "@/lib/v2/ui/callout-layout";
@@ -35,7 +35,7 @@ import type { SiteInput } from "@/lib/v2/site";
 import { DEFAULT_PRESET_ID, PRESET_IDS, TILE_PRESETS, type PresetId } from "@/lib/v2/ui/tile-catalog";
 import { getRovingTargetIndex, type RovingGridItem } from "@/lib/v2/ui/roving-grid";
 
-const UNDO_LABEL = { order: "옮김", size: "크기 바꿈", columns: "열 수 바꿈", remove: "삭제됨", removeCopy: "복제 삭제됨", duplicate: "복제됨", add: "더함", preset: "프리셋 적용" } as const;
+const UNDO_LABEL = { order: "옮김", size: "크기 바꿈", columns: "열 수 바꿈", remove: "삭제됨", removeCopy: "복제 삭제됨", duplicate: "복제됨", add: "추가됨", preset: "프리셋 적용" } as const;
 const GRID_COLUMN_OPTIONS: GridColumns[] = [2, 3, 4, 5, 6];
 const EMPTY_PINNED_LABELS: PinnedLabel[] = [];
 
@@ -192,6 +192,116 @@ const AnalysisProgress = memo(function AnalysisProgress({ jobs, onCancel, cancel
   );
 });
 
+type ColumnPickerProps = {
+  columns: GridColumns;
+  onColumns: (columns: GridColumns) => void;
+};
+
+function ColumnPicker({ columns, onColumns }: ColumnPickerProps) {
+  const [open, setOpen] = useState(false);
+  const [keyboardOpened, setKeyboardOpened] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const keyboardOpenRef = useRef(false);
+  const menuId = `v2-columns-${useId().replace(/:/g, "")}`;
+
+  const focusOption = useCallback((index: number) => {
+    window.requestAnimationFrame(() => optionRefs.current[index]?.focus());
+  }, []);
+  const openMenu = useCallback((byKeyboard: boolean) => {
+    setKeyboardOpened(byKeyboard);
+    setOpen(true);
+    focusOption(GRID_COLUMN_OPTIONS.indexOf(columns));
+  }, [columns, focusOption]);
+  const closeMenu = useCallback((returnFocus = false) => {
+    setOpen(false);
+    if (returnFocus) window.requestAnimationFrame(() => triggerRef.current?.focus());
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) closeMenu();
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [closeMenu, open]);
+
+  const select = (option: GridColumns) => {
+    onColumns(option);
+    closeMenu(true);
+  };
+
+  return (
+    <div ref={rootRef} className={styles.columnPicker}>
+      <span className={styles.srOnly}>보드 열 수</span>
+      <button
+        ref={triggerRef}
+        type="button"
+        className={styles.columnTrigger}
+        aria-label={`보드 열 수, 현재 ${columns}열`}
+        aria-expanded={open}
+        aria-controls={menuId}
+        aria-haspopup="listbox"
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") keyboardOpenRef.current = true;
+          if (event.key === "ArrowDown" && !open) {
+            event.preventDefault();
+            keyboardOpenRef.current = true;
+            openMenu(true);
+          }
+        }}
+        onClick={() => {
+          if (open) {
+            closeMenu();
+            return;
+          }
+          const byKeyboard = keyboardOpenRef.current;
+          keyboardOpenRef.current = false;
+          openMenu(byKeyboard);
+        }}
+      >
+        {columns}
+      </button>
+      {open && (
+        <div id={menuId} className={`${styles.columnMenu} ${keyboardOpened ? styles.columnMenuKeyboard : ""}`} role="listbox" aria-label="보드 열 수 선택">
+          {GRID_COLUMN_OPTIONS.map((option, index) => (
+            <button
+              key={option}
+              ref={(element) => { optionRefs.current[index] = element; }}
+              type="button"
+              role="option"
+              aria-selected={columns === option}
+              onClick={() => select(option)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  select(option);
+                  return;
+                }
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  closeMenu(true);
+                  return;
+                }
+                if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                  event.preventDefault();
+                  const direction = event.key === "ArrowDown" ? 1 : -1;
+                  const next = (index + direction + GRID_COLUMN_OPTIONS.length) % GRID_COLUMN_OPTIONS.length;
+                  optionRefs.current[next]?.focus();
+                }
+              }}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 type BoardRailProps = {
   columns: GridColumns;
   onColumns: (columns: GridColumns) => void;
@@ -200,25 +310,14 @@ type BoardRailProps = {
   onCreateStack: () => void;
   onCreateSheet: (grid: "2x2" | "3x2") => void;
   onClearSelections: () => void;
-  removed: { id: string; index: number }[];
-  views: ReadonlyMap<string, Pick<TileView, "title" | "color">>;
-  onAdd: (id: string) => void;
 };
 
-const BoardRail = memo(function BoardRail({ columns, onColumns, stackSelection, sheetSelection, onCreateStack, onCreateSheet, onClearSelections, removed, views, onAdd }: BoardRailProps) {
+const BoardRail = memo(function BoardRail({ columns, onColumns, stackSelection, sheetSelection, onCreateStack, onCreateSheet, onClearSelections }: BoardRailProps) {
   const selectedTotal = stackSelection.length + sheetSelection.length;
   return (
     <div className={styles.railContent}>
       <section className={styles.railSection} aria-label="보드 열 수">
-        <h2 className={styles.railTitle}>보드 설정</h2>
-        <span className={styles.railLabel}>열</span>
-        <span className={styles.railSegments} role="group" aria-label="보드 열 수">
-          {GRID_COLUMN_OPTIONS.map((option) => (
-            <button key={option} type="button" aria-pressed={columns === option} onClick={() => onColumns(option)}>
-              {option}
-            </button>
-          ))}
-        </span>
+        <ColumnPicker columns={columns} onColumns={onColumns} />
       </section>
 
       {selectedTotal > 0 && (
@@ -250,27 +349,161 @@ const BoardRail = memo(function BoardRail({ columns, onColumns, stackSelection, 
           )}
         </section>
       )}
-
-      <section className={styles.railSection} aria-label="더할 수 있는 타일">
-        <h3 className={styles.railHeading}>더할 수 있는 타일</h3>
-        {removed.length === 0 && <span className={styles.railEmpty}>없음</span>}
-        <div className={styles.railTray} role="list">
-          {removed.map((item) => {
-            const view = views.get(item.id);
-            if (!view) return null;
-            return (
-              <button key={item.id} type="button" className={styles.railTrayBtn} onClick={() => onAdd(item.id)} aria-label={`${view.title} 더하기`}>
-                <span className={styles.dot} style={{ background: view.color }} />
-                <span>{view.title}</span>
-                <span aria-hidden>+</span>
-              </button>
-            );
-          })}
-        </div>
-      </section>
     </div>
   );
 });
+
+type AddTileItem = {
+  id: string;
+  title: string;
+  color: string;
+  category: string;
+  boardCount: number;
+  index: number;
+};
+
+const ADD_TILE_CATEGORIES = ["분석", "도판", "시뮬레이션"] as const;
+
+function AddTileCell({ items, onAdd }: { items: readonly AddTileItem[]; onAdd: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const pickerId = `v2-add-tile-${useId().replace(/:/g, "")}`;
+  const filteredItems = useMemo(() => {
+    const normalized = query.trim().toLocaleLowerCase("ko-KR");
+    return normalized.length === 0 ? [...items] : items.filter((item) => item.title.toLocaleLowerCase("ko-KR").includes(normalized));
+  }, [items, query]);
+  const groups = useMemo(() => ADD_TILE_CATEGORIES.map((category) => ({
+    category,
+    items: filteredItems.filter((item) => item.category === category),
+  })).filter((group) => group.items.length > 0), [filteredItems]);
+  const flatItems = useMemo(() => groups.flatMap((group) => group.items), [groups]);
+
+  const closePicker = useCallback(() => {
+    setOpen(false);
+    window.requestAnimationFrame(() => triggerRef.current?.focus());
+  }, []);
+  const focusOption = useCallback((index: number) => {
+    if (flatItems.length === 0) return;
+    const next = (index + flatItems.length) % flatItems.length;
+    setActiveIndex(next);
+    window.requestAnimationFrame(() => optionRefs.current[next]?.focus());
+  }, [flatItems.length]);
+  const selectItem = useCallback((item: AddTileItem) => {
+    closePicker();
+    onAdd(item.id);
+  }, [closePicker, onAdd]);
+
+  useEffect(() => {
+    if (!open) return;
+    setQuery("");
+    setActiveIndex(0);
+    optionRefs.current = [];
+    window.requestAnimationFrame(() => searchRef.current?.focus());
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) closePicker();
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [closePicker, open]);
+  useEffect(() => {
+    setActiveIndex((current) => Math.min(current, Math.max(0, flatItems.length - 1)));
+  }, [flatItems.length]);
+
+  return (
+    <div ref={rootRef} className={`${styles.addTileCell} ${open ? styles.addTileCellOpen : ""}`} data-v2-add-cell>
+      {!open ? (
+        <button ref={triggerRef} type="button" className={styles.addTileTrigger} aria-label="타일 추가" aria-expanded={false} aria-controls={pickerId} onClick={() => setOpen(true)}>
+          <span className={styles.addTilePlus} aria-hidden>+</span>
+          <span>타일 추가</span>
+        </button>
+      ) : (
+        <section id={pickerId} className={styles.addTilePicker} aria-label="타일 추가" onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            closePicker();
+          }
+        }}>
+          <div className={styles.addTilePickerHead}>
+            <label className={styles.addTileSearchLabel}>
+              <span>타일 검색</span>
+              <input
+                ref={searchRef}
+                type="search"
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.currentTarget.value);
+                  setActiveIndex(0);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    focusOption(0);
+                  } else if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    focusOption(flatItems.length - 1);
+                  } else if (event.key === "Enter" && flatItems[activeIndex]) {
+                    event.preventDefault();
+                    selectItem(flatItems[activeIndex]!);
+                  }
+                }}
+                placeholder="제목으로 찾기"
+                autoComplete="off"
+              />
+            </label>
+            <button type="button" className={styles.addTileClose} aria-label="타일 추가 닫기" onClick={closePicker}>×</button>
+          </div>
+          {flatItems.length === 0 ? (
+            <p className={styles.addTileEmpty}>검색 결과가 없습니다.</p>
+          ) : (
+            <div className={styles.addTileList} role="listbox" aria-label="추가할 타일">
+              {groups.map((group) => (
+                <div key={group.category} className={styles.addTileGroup} role="group" aria-label={group.category}>
+                  <h3>{group.category}</h3>
+                  {group.items.map((item) => {
+                    const index = flatItems.indexOf(item);
+                    return (
+                      <button
+                        key={item.id}
+                        ref={(element) => { optionRefs.current[index] = element; }}
+                        type="button"
+                        role="option"
+                        aria-selected={activeIndex === index}
+                        className={`${styles.addTileOption} ${activeIndex === index ? styles.addTileOptionActive : ""}`}
+                        onMouseEnter={() => setActiveIndex(index)}
+                        onClick={() => selectItem(item)}
+                        onKeyDown={(event) => {
+                          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                            event.preventDefault();
+                            focusOption(index + (event.key === "ArrowDown" ? 1 : -1));
+                          } else if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            selectItem(item);
+                          }
+                        }}
+                      >
+                        <span className={styles.dot} style={{ background: item.color }} aria-hidden />
+                        <span className={styles.addTileOptionTitle}>{item.title}</span>
+                        <span className={styles.addTileOptionCount}>보드에 {item.boardCount}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+    </div>
+  );
+}
 
 /** 타일 보드. 결과가 바뀌면 부모가 key를 바꿔 새로 만든다. */
 function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSummary, refreshing = false, refreshError, onRefresh, demo, busy, controls, onRerun, onCancel, canceling = false, currentProject, initialProjectBoard, onProjectSaved, onProjectDeleted, onOpenProject, onAuthExpired, onWindUploaded, requestedPreset, initialPreset, onPresetChange }: BoardProps) {
@@ -330,6 +563,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
   const [stackSelection, setStackSelection] = useState<string[]>([]);
   const [sheetSelection, setSheetSelection] = useState<string[]>([]);
   const [note, setNote] = useState(""); // 스크린리더 안내(aria-live)
+  const [highlightedTileId, setHighlightedTileId] = useState<string | null>(null);
   const [basemap, setBasemap] = useState<BasemapChoice>("white"); // 보드 상태(서버에 저장하지 않음). 화면과 PPT가 같이 따른다
   const gridRef = useRef<HTMLDivElement>(null);
   const [gridLayout, setGridLayout] = useState({ columns: 4, rowHeight: 377, cellWidth: 0 });
@@ -397,6 +631,21 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
     }
     return next;
   }, [baseViews, board.cameras, board.sheets, board.stacks]);
+  const addTileItems = useMemo<AddTileItem[]>(() => {
+    const resultIds = new Set(results.map((result) => result.tileId));
+    const boardCounts = new Map<string, number>();
+    for (const id of board.order) {
+      const sourceId = sourceTileId(board, id);
+      if (resultIds.has(sourceId)) boardCounts.set(sourceId, (boardCounts.get(sourceId) ?? 0) + 1);
+    }
+    const categoryIndex = new Map(ADD_TILE_CATEGORIES.map((category, index) => [category, index]));
+    return results.flatMap((result, index) => {
+      const view = views.get(result.tileId);
+      // 엔진 결과가 없는 타일과 스택·조판 구성물은 추가 목록의 원천 타일이 아니다.
+      if (!view || view.status === "not_provided" || view.code === "STACK" || view.code === "SHEET" || view.stackLayers || view.sheetTiles) return [];
+      return [{ id: result.tileId, title: view.title, color: view.color, category: view.kindLabel, boardCount: boardCounts.get(result.tileId) ?? 0, index }];
+    }).sort((a, b) => (categoryIndex.get(a.category as typeof ADD_TILE_CATEGORIES[number]) ?? ADD_TILE_CATEGORIES.length) - (categoryIndex.get(b.category as typeof ADD_TILE_CATEGORIES[number]) ?? ADD_TILE_CATEGORIES.length) || a.index - b.index);
+  }, [board, results, views]);
   const stackableIds = useMemo(
     () => board.order.filter((id) => {
       const view = baseViews.get(id);
@@ -426,6 +675,11 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
   useEffect(() => {
     if (rovingId !== activeRovingId) setRovingId(activeRovingId);
   }, [activeRovingId, rovingId]);
+  useEffect(() => {
+    if (!highlightedTileId) return;
+    const timer = window.setTimeout(() => setHighlightedTileId(null), 1200);
+    return () => window.clearTimeout(timer);
+  }, [highlightedTileId]);
   const focusRovingCard = useCallback((id: string) => {
     setRovingId(id);
     window.requestAnimationFrame(() => {
@@ -714,11 +968,22 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
     setSheetSelection([]);
     setNote("선택을 해제함");
   }, []);
-  const addRemoved = useCallback((id: string) => {
-    const view = views.get(id);
-    dispatch({ type: "add", id });
-    setNote(`${view?.title ?? "타일"} 타일을 끝에 더함`);
-  }, [views]);
+  const addTile = useCallback((sourceId: string) => {
+    const view = views.get(sourceId);
+    const title = view?.title ?? "타일";
+    const alreadyOnBoard = board.order.some((id) => sourceTileId(board, id) === sourceId);
+    if (alreadyOnBoard) {
+      const copyId = nextCopyId(board);
+      dispatch({ type: "addCopy", sourceId });
+      setHighlightedTileId(copyId);
+    } else if (board.removed.some((item) => item.id === sourceId)) {
+      dispatch({ type: "add", id: sourceId });
+      setHighlightedTileId(sourceId);
+    } else {
+      return;
+    }
+    setNote(`${title} 타일이 보드 끝에 추가됨`);
+  }, [board, views]);
 
   const lastUndo = board.undoStack[board.undoStack.length - 1];
   const openView = openId ? views.get(openId) : undefined;
@@ -751,9 +1016,6 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
             onCreateStack={createStack}
             onCreateSheet={createSheet}
             onClearSelections={clearSelections}
-            removed={board.removed}
-            views={views}
-            onAdd={addRemoved}
           />
         </aside>
         <header className={styles.topbar}>
@@ -889,9 +1151,6 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
                       onCreateStack={createStack}
                       onCreateSheet={createSheet}
                       onClearSelections={clearSelections}
-                      removed={board.removed}
-                      views={views}
-                      onAdd={addRemoved}
                     />
                   </div>
                   <span className={styles.reportHint}>표지 1 + 타일 {tiles}</span>
@@ -979,6 +1238,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
                   pinnedLabels={board.labels[id] ?? EMPTY_PINNED_LABELS}
                   showMapLabels={!!board.mapLabels[id]}
                   cardFace={viewOf(board, id)}
+                  highlighted={highlightedTileId === id}
                   onWindUploaded={onWindUploaded}
                   stackable={stackableIds.includes(id)}
                   stackSelected={stackSelection.includes(id)}
@@ -991,6 +1251,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
               </Fragment>
             );
           })}
+          <AddTileCell items={addTileItems} onAdd={addTile} />
         </div>
         {notProvidedIds.length > 0 && (
           <details className={styles.notProvidedGroup}>
@@ -1015,6 +1276,8 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
             ? `${UNDO_LABEL.columns} · ${lastUndo.columns}열`
             : lastUndo.kind === "preset"
               ? `${UNDO_LABEL.preset} · ${TILE_PRESETS[board.preset].label}`
+              : lastUndo.kind === "duplicate" && lastUndo.origin === "addCopy"
+                ? `${views.get(lastUndo.id)?.title ?? "타일"} 추가됨`
               : `${UNDO_LABEL[lastUndo.kind]} · ${views.get(lastUndo.id)?.title}`}
           <button type="button" onClick={() => dispatch({ type: "undo" })}>
             되돌리기
