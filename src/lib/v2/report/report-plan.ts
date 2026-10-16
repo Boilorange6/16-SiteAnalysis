@@ -121,6 +121,7 @@ const pageStyleAffectsMap = (style: PageStyle | undefined): boolean => !!style &
   || style.titleScale !== undefined
   || style.summaryScale !== undefined
   || style.legendScale !== undefined
+  || style.panels !== undefined
 );
 const cellStyleAffectsMap = (style: PageStyle | undefined): boolean => !!style && (
   style.zoomDelta !== undefined
@@ -128,6 +129,16 @@ const cellStyleAffectsMap = (style: PageStyle | undefined): boolean => !!style &
   || style.pinnedKeys !== undefined
   || style.legendFocus !== undefined
 );
+const panelGeometryCacheKey = (style: PageStyle | undefined): string => {
+  if (!style?.panels) return "";
+  return `:panels:${["title", "summary", "legend"].map((key) => {
+    const panel = style.panels?.[key as "title" | "summary" | "legend"];
+    return panel ? `${key}=${panel.x},${panel.y},${panel.w},${panel.h}` : `${key}=-`;
+  }).join(";")}`;
+};
+const styledMapKey = (base: string, p: PlannedSlide): string => pageStyleAffectsMap(p.style)
+  ? `${base}:style:${p.key}${panelGeometryCacheKey(p.style)}`
+  : base;
 export const mapKeysOf = (p: PlannedSlide): string[] => {
   if (p.kind === "sheet") return p.cells.map((cell) => cell.mapKey);
   if (p.kind === "tile") {
@@ -135,10 +146,10 @@ export const mapKeysOf = (p: PlannedSlide): string[] => {
     if (p.rose) return [`${p.view.tileId}:rose`];
     if (!p.map) return [];
     const base = p.callout && p.callout.page > 0 ? `${p.view.tileId}:cp` : p.view.tileId;
-    return [pageStyleAffectsMap(p.style) ? `${base}:style:${p.key}` : base];
+    return [styledMapKey(base, p)];
   }
   if (!p.map) return [];
-  return [pageStyleAffectsMap(p.style) ? `${COVER_MAP_KEY}:style:${p.key}` : COVER_MAP_KEY];
+  return [styledMapKey(COVER_MAP_KEY, p)];
 };
 export const mapKeyOf = (p: PlannedSlide): string | null => mapKeysOf(p)[0] ?? null;
 

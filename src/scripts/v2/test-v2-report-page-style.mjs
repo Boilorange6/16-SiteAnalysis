@@ -194,6 +194,46 @@ const extraIndex = (plan, id) => plan.findIndex((slide) => slide.key === `extra:
   assert.ok(slideSiteX({}, false) > slideSiteX({}, true), "summary=false 대지 중심이 확장 지도 중앙으로 이동");
 }
 
+// panels는 0..1 비율을 슬라이드 Rect로 복원하고, scale과 공존해도 geometry를 바꾸지 않는다.
+{
+  const customStyle = {
+    summary: true,
+    titleScale: 1.5,
+    summaryScale: 0.7,
+    legendScale: 1.4,
+    panels: {
+      title: { x: 0.08, y: 0.1, w: 0.28, h: 0.12 },
+      summary: { x: 0.65, y: 0.12, w: 0.27, h: 0.68 },
+      legend: { x: 0.08, y: 0.66, w: 0.3, h: 0.2 },
+    },
+  };
+  const baseLegend = slideLegend(firstA01.map, true).rect;
+  const custom = slidePanelRects(customStyle, true, baseLegend);
+  const expected = {
+    title: { x: 0.08 * SLIDE.w, y: 0.1 * SLIDE.h, w: 0.28 * SLIDE.w, h: 0.12 * SLIDE.h },
+    summary: { x: 0.65 * SLIDE.w, y: 0.12 * SLIDE.h, w: 0.27 * SLIDE.w, h: 0.68 * SLIDE.h },
+    legend: { x: 0.08 * SLIDE.w, y: 0.66 * SLIDE.h, w: 0.3 * SLIDE.w, h: 0.2 * SLIDE.h },
+  };
+  for (const part of ["title", "summary", "legend"]) {
+    for (const key of ["x", "y", "w", "h"]) assert.ok(Math.abs(custom[part][key] - expected[part][key]) < 1e-9, `${part}.${key} custom geometry 복원`);
+    assert.ok(custom[part].y + custom[part].h <= SLIDE.h - SLIDE.stripH - SLIDE.edge * 0.6 + 1e-9, `${part} footer 위 안전범위`);
+  }
+  const scaleChanged = slidePanelRects({ ...customStyle, titleScale: 0.7, summaryScale: 1.5, legendScale: 0.7 }, true, baseLegend);
+  assert.deepEqual(scaleChanged, custom, "custom panels가 scale geometry보다 우선");
+  const reserved = slideReserved(PX_PER_INCH, { style: customStyle, hasSummary: true });
+  for (const part of ["title", "summary", "legend"]) {
+    const box = { x0: expected[part].x * PX_PER_INCH, y0: expected[part].y * PX_PER_INCH, x1: (expected[part].x + expected[part].w) * PX_PER_INCH, y1: (expected[part].y + expected[part].h) * PX_PER_INCH };
+    assert.ok(reserved.some((entry) => Math.abs(entry.x0 - box.x0) < 1e-6 && Math.abs(entry.y0 - box.y0) < 1e-6 && Math.abs(entry.x1 - box.x1) < 1e-6 && Math.abs(entry.y1 - box.y1) < 1e-6), `${part} custom Rect가 slideReserved에 전달`);
+  }
+  assert.ok(Math.abs(slideSiteX(customStyle, true) - (custom.summary.x - SLIDE.edge) / 2 / SLIDE.w) < 1e-9, "slideSiteX가 custom summary를 소비");
+  const noSummary = slidePanelRects({ ...customStyle, summary: false }, false, baseLegend);
+  assert.equal(noSummary.summary, null, "custom summary도 summary=false에서 제거");
+  assert.ok(noSummary.title.y + noSummary.title.h <= SLIDE.h - SLIDE.stripH - SLIDE.edge * 0.6 + 1e-9, "summary=false custom title footer safe");
+  assert.equal(slideSiteX({ ...customStyle, summary: false }, false), 0.5, "summary=false custom siteX");
+  const noSummaryReserved = slideReserved(PX_PER_INCH, { style: { ...customStyle, summary: false }, hasSummary: false });
+  assert.equal(noSummaryReserved.length, 3, "summary=false slideReserved가 기본 요약 판을 되살리지 않는다");
+}
+
 // 같은 feature의 좌표 간격은 zoomDelta로 커지고, offsetM은 대지 표식을 옮긴다.
 {
   const focusSlide = basePlan.find((slide) => slide.kind === "tile" && slide.view.tileId === "t-A03") ?? firstA01;
@@ -313,6 +353,63 @@ const extraIndex = (plan, id) => plan.findIndex((slide) => slide.key === `extra:
     const large = maxRunSize(largeXml);
     assert.ok(large > base, `${part}Scale=1.4 run 최대 sz가 기준보다 크다: ${large} <= ${base}`);
     assert.ok(small < base, `${part}Scale=0.7 run 최대 sz가 기준보다 작다: ${small} >= ${base}`);
+  }
+}
+
+// custom panels는 Preview와 PPT가 같은 Rect를 쓰고, 판·내부 텍스트를 그 Rect 안에 둔다.
+// 사용자 geometry가 있는 지도 이미지는 panel geometry까지 캐시 키에 포함한다.
+{
+  const a03 = basePlan.find((slide) => slide.kind === "tile" && slide.view.tileId === "t-A03");
+  assert.ok(a03?.map, "custom panel XML 회귀용 A03 지도");
+  const panelPatch = {
+    summary: true,
+    titleScale: 1.4,
+    summaryScale: 1.2,
+    legendScale: 1.3,
+    panels: {
+      title: { x: 0.08, y: 0.1, w: 0.28, h: 0.12 },
+      summary: { x: 0.65, y: 0.12, w: 0.27, h: 0.68 },
+      legend: { x: 0.08, y: 0.66, w: 0.3, h: 0.2 },
+    },
+  };
+  const tile = styledTileFor(a03.key, panelPatch);
+  const baseLegend = slideLegend(tile.map, !tile.muted).rect;
+  const panels = slidePanelRects(tile.style, true, baseLegend);
+  const { xml } = await renderOneTile(tile);
+  const shapes = xmlShapes(xml);
+  const closeRect = (actual, expected, label) => {
+    assert.ok(actual, `${label} plate bbox가 없다`);
+    for (const key of ["x", "y", "w", "h"]) assert.ok(Math.abs(actual[key] - expected[key]) < 0.002, `${label}.${key} bbox가 custom Rect와 다르다: ${actual[key]} != ${expected[key]}`);
+  };
+  for (const part of ["title", "summary", "legend"]) {
+    const panel = panels[part];
+    assert.ok(panel, `${part} custom Rect`);
+    const plateShape = shapes.find((shape) => shape.name.includes(`GRP|panel-${part}`) && shape.name.endsWith("|plate"));
+    closeRect(plateShape?.geometry, panel, `${part} panel`);
+    const textEntries = shapes.filter((shape) => shape.name.includes(`GRP|panel-${part}`) && shape.geometry && shape.text);
+    assert.ok(textEntries.length > 0, `${part} panel 내부 텍스트가 없다`);
+    for (const entry of textEntries) assert.ok(inside(entry.geometry, panel), `${part} panel 텍스트 bbox가 판 밖이다: ${entry.name}`);
+  }
+  assert.ok(Object.values(panels).filter(Boolean).every((panel) => panel.y + panel.h <= SLIDE.h - SLIDE.stripH - SLIDE.edge * 0.6 + 0.002), "custom panel이 footer 안전범위를 침범하지 않는다");
+
+  const customKey = mapKeysOf(tile)[0];
+  assert.match(customKey, /:style:.*:panels:title=/, "custom panel geometry가 map cache key에 반영된다");
+  const movedTile = styledTileFor(a03.key, {
+    ...panelPatch,
+    panels: { ...panelPatch.panels, title: { ...panelPatch.panels.title, x: 0.12 } },
+  });
+  assert.notEqual(mapKeysOf(movedTile)[0], customKey, "custom panel 위치 변경이 map cache key를 바꾼다");
+
+  const noSummaryTile = styledTileFor(a03.key, { ...panelPatch, summary: false });
+  const noSummaryXml = (await renderOneTile(noSummaryTile)).xml;
+  assert.equal(noSummaryXml.includes("GRP|panel-summary"), false, "summary=false custom PPT에 요약 panel이 없다");
+  const noSummaryShapes = xmlShapes(noSummaryXml);
+  const noSummaryPanels = slidePanelRects(noSummaryTile.style, false, slideLegend(noSummaryTile.map, !noSummaryTile.muted).rect);
+  for (const part of ["title", "legend"]) {
+    const panel = noSummaryPanels[part];
+    const plateShape = noSummaryShapes.find((shape) => shape.name.includes(`GRP|panel-${part}`) && shape.name.endsWith("|plate"));
+    closeRect(plateShape?.geometry, panel, `summary=false ${part} panel`);
+    for (const entry of noSummaryShapes.filter((shape) => shape.name.includes(`GRP|panel-${part}`) && shape.geometry && shape.text)) assert.ok(inside(entry.geometry, panel), `summary=false ${part} 텍스트 bbox가 판 밖이다`);
   }
 }
 
