@@ -346,6 +346,10 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   const pinned = renderToStaticMarkup(createElement(MapFigure, { model: collisionModel, width: 640, height: 360, basemap: "none", pinnedKeys: entries.slice(0, 2).map((entry) => entry.key), onFeaturePin: () => {} }));
   assert.match(pinned, /data-map-feature="bus_stop\|0"/);
   assert.match(pinned, /data-map-feature="bus_stop\|1"/);
+  assert.match(pinned, /<circle[^>]*data-map-feature="bus_stop\|0"[^>]*data-map-pick="true"/, "보이는 점이 선택·포커스 대상");
+  assert.doesNotMatch(pinned, /<circle data-map-hit="point"[^>]*tabindex=/i, "점 히트 영역은 포커스 순서에서 분리");
+  assert.doesNotMatch(pinned, /<circle data-map-hit="point"[^>]*data-map-feature=/, "점 히트 영역은 시각 bbox 키를 갖지 않음");
+  assert.match(pinned, /data-map-label-hit="bus_stop\|0"/, "고정 라벨에 별도 히트 영역");
   const fixedBoxes = [...pinned.matchAll(/<rect data-map-label-box="[^"]+" x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)" rx="[^"]+" fill="#fff" stroke="#16181d"/g)].map((match) => ({ x0: Number(match[1]), y0: Number(match[2]), x1: Number(match[1]) + Number(match[3]), y1: Number(match[2]) + Number(match[4]) }));
   assert.ok(fixedBoxes.length >= 2, "고정 말풍선 2개 렌더");
   assert.ok(fixedBoxes[0].x0 !== fixedBoxes[1].x0 || fixedBoxes[0].y0 !== fixedBoxes[1].y0, "겹친 고정 라벨을 다른 후보 위치에 배치");

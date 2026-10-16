@@ -171,7 +171,6 @@ export function useMapView({ baseViewport, radiusM, maxZoom, enabled = true, whe
   const onPointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     if (!enabled) return;
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY, pointerType: event.pointerType });
-    try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* older WebKit */ }
     const pointers = [...pointersRef.current.values()];
     if (pointers.length >= 2) {
       const [a, b] = pointers;
@@ -199,13 +198,21 @@ export function useMapView({ baseViewport, radiusM, maxZoom, enabled = true, whe
       const zoom = baseViewport ? baseViewport.zoom + zoomed.zoomDelta : 0;
       const mpp = baseViewport ? metersPerPixel(baseViewport.center[1], zoom) : 1;
       const next: MapView = { zoomDelta: zoomed.zoomDelta, offsetM: [zoomed.offsetM[0] - (midX - gesture.startMidX) * mpp, zoomed.offsetM[1] + (midY - gesture.startMidY) * mpp] };
-      if (Math.hypot(midX - gesture.startMidX, midY - gesture.startMidY) > DRAG_THRESHOLD || Math.abs(zoomed.zoomDelta - gesture.startView.zoomDelta) > 0.01) gesture.moved = true;
+      if (Math.hypot(midX - gesture.startMidX, midY - gesture.startMidY) > DRAG_THRESHOLD || Math.abs(zoomed.zoomDelta - gesture.startView.zoomDelta) > 0.01) {
+        if (!gesture.moved) {
+          try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* older WebKit */ }
+        }
+        gesture.moved = true;
+      }
       updateGesture(next, gesture.moved);
       return;
     }
     const dx = event.clientX - gesture.startX;
     const dy = event.clientY - gesture.startY;
     if (Math.hypot(dx, dy) <= DRAG_THRESHOLD) return;
+    if (!gesture.moved) {
+      try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* older WebKit */ }
+    }
     gesture.moved = true;
     const zoom = baseViewport ? baseViewport.zoom + gesture.startView.zoomDelta : 0;
     const mpp = baseViewport ? metersPerPixel(baseViewport.center[1], zoom) : 1;
