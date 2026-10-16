@@ -37,6 +37,21 @@ export function togglePinnedKey(currentKeys: readonly string[], key: string): st
     : [...normalizedKeys, key];
 }
 
+/** 자동 라벨과 고정 라벨을 같은 visible/hidden 상태 기계로 토글한다. */
+export function toggleLabelVisibility(
+  pinnedKeys: readonly string[],
+  hiddenKeys: readonly string[],
+  key: string,
+  currentlyVisible: boolean,
+): { pinnedKeys: string[]; hiddenKeys: string[] } {
+  const pinned = orderedKeys(pinnedKeys).filter((candidate) => candidate !== key);
+  const hidden = orderedKeys(hiddenKeys).filter((candidate) => candidate !== key);
+  if (key.length === 0) return { pinnedKeys: pinned, hiddenKeys: hidden };
+  return currentlyVisible
+    ? { pinnedKeys: pinned, hiddenKeys: [...hidden, key] }
+    : { pinnedKeys: [...pinned, key], hiddenKeys: hidden };
+}
+
 /**
  * 범례 강조 상태를 순수하게 토글한다.
  * 같은 항목을 다시 누르면 강조를 해제하고, 다른 항목이면 새 항목을

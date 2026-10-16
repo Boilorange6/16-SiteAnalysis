@@ -359,6 +359,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
       scale: true,
       compact: true,
       pinnedKeys: style.pinnedKeys ?? [],
+      hiddenKeys: style.hiddenKeys ?? [],
       highlightLabel: focus,
       legendFocus: focus,
       // 2x2 셀에서는 자동 콜아웃을 모두 쌓으면 카드가 지도를 압도한다.
@@ -420,6 +421,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     scale: !calloutDetail,
     muted: !!plan.muted,
     pinnedKeys: plan.pinnedKeys ?? [],
+    hiddenKeys: style.hiddenKeys ?? [],
     highlightLabel: focus,
     legendFocus: focus,
     showAutomaticLabels: true,
@@ -649,7 +651,7 @@ function addRailOverlay(slide: Slide, code: string, scene: MapScene): void {
     if (paths.length === 0) continue;
     if (route.casing) addCustom(slide, paths, { line: route.casing, lineWidth: route.width + 1.2, lineOpacity: dimmed ? 0.2 : 1, objectName: tag(code, key, display, "casing") });
     addCustom(slide, paths, { line: route.color, lineWidth: route.width, lineOpacity: dimmed ? 0.2 : 1, objectName: tag(code, key, display, "line") });
-    if (route.labelPlacement) addRailText(slide, code, key, display, route.labelPlacement, scene, "route-label", false);
+    if (!scene.hiddenKeys.has(route.key) && route.labelPlacement) addRailText(slide, code, key, display, route.labelPlacement, scene, "route-label", false);
   }
   for (const axis of scene.rail.axes) {
     if (isRasterizedLayer("rail_station_axis")) continue;
@@ -660,10 +662,11 @@ function addRailOverlay(slide: Slide, code: string, scene: MapScene): void {
     if (paths.length === 0) continue;
     if (axis.casing) addCustom(slide, paths, { line: axis.casing, lineWidth: axis.width + 1.4, lineOpacity: dimmed ? 0.2 : 1, objectName: tag(code, key, display, "casing") });
     addCustom(slide, paths, { line: axis.color, lineWidth: axis.width, lineOpacity: dimmed ? 0.2 : 1, objectName: tag(code, key, display, "bar") });
-    if (axis.labelPlacement) addRailText(slide, code, key, display, axis.labelPlacement, scene, "axis-label", false);
+    if (!scene.hiddenKeys.has(axis.key) && axis.labelPlacement) addRailText(slide, code, key, display, axis.labelPlacement, scene, "axis-label", false);
   }
   for (const exit of scene.rail.exits) {
     if (isRasterizedLayer("rail_entrance")) continue;
+    if (scene.hiddenKeys.has(exit.featureKey)) continue;
     const key = `rail-exit-${safeKey(exit.key)}`;
     const display = `출구 · ${exit.number}`;
     const dimmed = scene.isElementDimmed("rail_entrance", exit.featureKey);
@@ -684,6 +687,7 @@ function addRailOverlay(slide: Slide, code: string, scene: MapScene): void {
   }
   for (const station of scene.rail.stationLabels) {
     if (isRasterizedLayer("rail_station")) continue;
+    if (scene.hiddenKeys.has(station.stationFeatureKey)) continue;
     const key = `rail-station-${safeKey(station.stationKey)}`;
     const display = `역명 · ${station.text}`;
     const text = { text: station.text, x: station.x, y: station.y, width: station.width, height: station.height, fontSize: station.fontSize, angle: 0, color: INK };

@@ -324,6 +324,33 @@ const expectedFeatureCenter = { x: (expectedFeature.p[0] / VIEW_W) * SLIDE.w, y:
 assert.ok(Math.abs(actualFeatureCenter.x - expectedFeatureCenter.x) < 0.12, `A01 feature x 좌표 불일치: ${actualFeatureCenter.x} vs ${expectedFeatureCenter.x}`);
 assert.ok(Math.abs(actualFeatureCenter.y - expectedFeatureCenter.y) < 0.12, `A01 feature y 좌표 불일치: ${actualFeatureCenter.y} vs ${expectedFeatureCenter.y}`);
 const a01Xml = await slideXml(0);
+const hiddenBus = a01Scene.labels.find((entry) => entry.pick.fid === "a01-bus");
+assert.ok(hiddenBus, "A01 자동 라벨 숨김 검증용 버스 라벨이 없다");
+const hiddenScene = buildMapScene({
+  model: a01Map,
+  width: VIEW_W,
+  height: VIEW_H,
+  activeLayer: a01Map.basemap ?? "white",
+  siteX: slideSiteX(),
+  bottomInset: SLIDE.stripH * PX_PER_INCH,
+  scale: true,
+  muted: false,
+  pinnedKeys: [],
+  hiddenKeys: [hiddenBus.key],
+  showAutomaticLabels: true,
+  avoid: slideReserved(PX_PER_INCH, { legend: a01Legend }),
+  bare: false,
+});
+assert.equal(hiddenScene.labelPlacements.some((placement) => placement.entry.key === hiddenBus.key), false, "scene가 hiddenKeys 자동 라벨을 제거하지 않았다");
+const hiddenBusKey = hiddenBus.key.replace(/[|\r\n]/g, "-").slice(0, 90);
+const hiddenBusPlan = {
+  ...representativePlans[0],
+  style: { ...(representativePlans[0].style ?? {}), hiddenKeys: [hiddenBus.key] },
+};
+const hiddenBytes = await renderReportPptx([hiddenBusPlan], images);
+const hiddenZip = await JSZip.loadAsync(hiddenBytes);
+const hiddenXml = await hiddenZip.file("ppt/slides/slide1.xml")?.async("string") ?? "";
+assert.doesNotMatch(hiddenXml, new RegExp(`GRP\\|map-A01-label-${hiddenBusKey}\\|`), "hiddenKeys 라벨이 PPT XML에 남아 있다");
 assert.match(a01Xml, /\|범례 2호선\|/, "A01 PPT에 네이티브 노선 범례 그룹이 없다");
 assert.match(a01Xml, /\|axis-label/, "A01 PPT에 네이티브 역사 막대 라벨이 없다");
 assert.match(a01Xml, /\|역명 · 고덕역\|/, "A01 PPT에 네이티브 역명이 없다");

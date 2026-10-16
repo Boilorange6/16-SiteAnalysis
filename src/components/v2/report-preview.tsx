@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type Dispatch, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
-import { metersPerPixel, slideViewport } from "@/lib/v2/ui/map-projection";
+import { metersPerPixel, slideViewport, zoomViewAt, type MapView } from "@/lib/v2/ui/map-projection";
 import { SLIDE, slideLegend, slidePanelRects, slideSiteX, type Rect } from "@/lib/v2/ui/overlay-layout";
 import { coverLayout, fitBlock, fitFooterText, sourceLayout, titlePlateRect } from "@/lib/v2/report/pptx-kit";
 import { legendItemsOf, legendLabelOf } from "@/lib/v2/ui/map-layers";
@@ -12,7 +12,7 @@ import { extraPageKey, type BoardAction, type BoardState, type PageKey, type Pag
 import type { PlannedSlide } from "@/lib/v2/report/report-plan";
 import type { TileView } from "@/lib/v2/ui/tile-view";
 import { sheetCells, type SheetGrid } from "@/lib/v2/ui/sheet";
-import { mixedValue, movePageSelection, nextExtraPageId, pageKeyAfterInsertion, selectPageKeys, toggleLegendFocus, togglePinnedKey, type PageSelectionModifiers } from "@/lib/v2/ui/report-preview-logic";
+import { mixedValue, movePageSelection, nextExtraPageId, pageKeyAfterInsertion, selectPageKeys, toggleLabelVisibility, toggleLegendFocus, type PageSelectionModifiers } from "@/lib/v2/ui/report-preview-logic";
 import styles from "./report-preview.module.css";
 
 type PreviewStylePatch = Partial<PageStyle>;
@@ -252,40 +252,95 @@ type MapLayerProps = {
   label: string;
 };
 
+const EMPTY_PAGE_KEYS: readonly string[] = [];
+
+function recordPreviewMetric(name: string): void {
+  if (typeof window === "undefined" || process.env.NODE_ENV === "production") return;
+  const target = window as Window & { __V2_PREVIEW_METRICS__?: Record<string, number> };
+  const metrics = target.__V2_PREVIEW_METRICS__ ?? (target.__V2_PREVIEW_METRICS__ = {});
+  metrics[name] = (metrics[name] ?? 0) + 1;
+}
+
+function recordPreviewTiming(name: string, elapsedMs: number): void {
+  if (typeof window === "undefined" || process.env.NODE_ENV === "production") return;
+  const target = window as Window & { __V2_PREVIEW_METRICS__?: Record<string, number> };
+  const metrics = target.__V2_PREVIEW_METRICS__ ?? (target.__V2_PREVIEW_METRICS__ = {});
+  metrics[`${name}LastMs`] = elapsedMs;
+  metrics[`${name}TotalMs`] = (metrics[`${name}TotalMs`] ?? 0) + elapsedMs;
+  metrics[`${name}Samples`] = (metrics[`${name}Samples`] ?? 0) + 1;
+}
+
 function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, interactive, onPatch, onDirectPatch, hoverLegend, label }: MapLayerProps) {
   const width = Math.max(1, Math.round(SLIDE.w * unit));
   const height = Math.max(1, Math.round(SLIDE.h * unit));
-  const [draftOffset, setDraftOffset] = useState<[number, number] | null>(null);
   const [dragging, setDragging] = useState(false);
-  const draftOffsetRef = useRef<[number, number] | null>(null);
-  const drag = useRef<{ id: number; x: number; y: number; offset: [number, number]; moved: boolean } | null>(null);
+  const [hoverKey, setHoverKey] = useState<string | null>(null);
+  const mapInteractionRef = useRef<HTMLDivElement>(null);
+  const gestureLayerRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ id: number; x: number; y: number; offset: [number, number]; dx: number; dy: number; moved: boolean } | null>(null);
   const suppressFeatureClick = useRef(false);
-  const renderStyle = draftOffset ? { ...style, offsetM: draftOffset } : style;
-  const viewport = slideViewport(model, renderStyle, { width, height, siteX, fill: 0.8 });
-  const focusedLabel = legendLabelOf(model, renderStyle.legendFocus);
+  const panDeltaRef = useRef<[number, number] | null>(null);
+  const wheelDeltaRef = useRef(0);
+  const wheelBaseViewRef = useRef<MapView | null>(null);
+  const wheelPreviewViewRef = useRef<MapView | null>(null);
+  const wheelOriginRef = useRef<[number, number] | null>(null);
+  const wheelTimerRef = useRef<number | null>(null);
+  const labelToggleStartedRef = useRef<number | null>(null);
+  const styleRef = useRef(style);
+  const patchRef = useRef(onPatch);
+  styleRef.current = style;
+  patchRef.current = onPatch;
+  const baseViewport = useMemo(() => slideViewport(model, undefined, { width, height, siteX, fill: 0.8 }), [height, model, siteX, width]);
+  const viewport = useMemo(() => slideViewport(model, style, { width, height, siteX, fill: 0.8 }), [height, model, siteX, style, width]);
+  const focusedLabel = useMemo(() => legendLabelOf(model, style.legendFocus), [model, style.legendFocus]);
   const activeLegendLabel = hoverLegend ?? focusedLabel;
-  const onFeaturePin = onDirectPatch ? (feature: { key: string }) => {
-    if (suppressFeatureClick.current) return;
-    const currentKeys = renderStyle.pinnedKeys ?? pinnedKeys ?? [];
-    onDirectPatch({ pinnedKeys: togglePinnedKey(currentKeys, feature.key) });
-  } : undefined;
-  useEffect(() => {
-    draftOffsetRef.current = null;
-    setDraftOffset(null);
-  }, [style.offsetM?.[0], style.offsetM?.[1], style.zoomDelta]);
-  const avoid = [panels.title, panels.summary, panels.legend]
+  const avoid = useMemo(() => [panels.title, panels.summary, panels.legend]
     .filter((rect): rect is Rect => !!rect)
-    .map((rect) => ({ x0: rect.x * unit, y0: rect.y * unit, x1: (rect.x + rect.w) * unit, y1: (rect.y + rect.h) * unit }));
-  const startPointer = (event: ReactPointerEvent<HTMLDivElement>) => {
+    .map((rect) => ({ x0: rect.x * unit, y0: rect.y * unit, x1: (rect.x + rect.w) * unit, y1: (rect.y + rect.h) * unit })), [panels.legend, panels.summary, panels.title, unit]);
+  const onFeatureHover = useCallback((key: string | null) => {
+    if (!interactive) return;
+    setHoverKey((current) => current === key ? current : key);
+  }, [interactive]);
+  const onFeaturePin = useCallback((feature: { key: string; labelVisible?: boolean }) => {
+    if (!onDirectPatch || suppressFeatureClick.current) return;
+    const currentStyle = styleRef.current;
+    const next = toggleLabelVisibility(
+      currentStyle.pinnedKeys ?? pinnedKeys ?? EMPTY_PAGE_KEYS,
+      currentStyle.hiddenKeys ?? EMPTY_PAGE_KEYS,
+      feature.key,
+      feature.labelVisible ?? false,
+    );
+    labelToggleStartedRef.current = typeof performance === "undefined" ? null : performance.now();
+    recordPreviewMetric("labelToggleDispatches");
+    onDirectPatch({ pinnedKeys: next.pinnedKeys, hiddenKeys: next.hiddenKeys });
+  }, [onDirectPatch, pinnedKeys]);
+  const setGestureTransform = useCallback(() => {
+    const element = gestureLayerRef.current;
+    if (!element) return;
+    const pan = panDeltaRef.current;
+    const zoom = wheelDeltaRef.current;
+    const origin = wheelOriginRef.current;
+    if (!pan && zoom === 0) {
+      element.style.transform = "";
+      element.style.transformOrigin = "";
+      element.style.willChange = "";
+      return;
+    }
+    const translate = pan ? `translate3d(${pan[0]}px, ${pan[1]}px, 0)` : "";
+    const scale = zoom === 0 ? "" : `scale(${2 ** zoom})`;
+    element.style.transformOrigin = origin ? `${origin[0]}px ${origin[1]}px` : "50% 50%";
+    element.style.transform = `${translate} ${scale}`.trim();
+    element.style.willChange = "transform";
+  }, []);
+  const startPointer = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (!interactive || event.button !== 0) return;
-    const sourceOffset = renderStyle.offsetM ?? [0, 0];
-    const offset: [number, number] = [sourceOffset[0], sourceOffset[1]];
-    drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, offset, moved: false };
-  };
-  const movePointer = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const sourceOffset = styleRef.current.offsetM ?? [0, 0];
+    drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, offset: [sourceOffset[0], sourceOffset[1]], dx: 0, dy: 0, moved: false };
+  }, [interactive]);
+  const movePointer = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     const state = drag.current;
     if (!state || state.id !== event.pointerId) return;
-    const mpp = metersPerPixel(viewport.center[1], viewport.zoom);
     const dx = event.clientX - state.x;
     const dy = event.clientY - state.y;
     if (!state.moved && Math.hypot(dx, dy) < 4) return;
@@ -293,66 +348,132 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
       state.moved = true;
       suppressFeatureClick.current = true;
       setDragging(true);
+      // 4px 전에는 capture하지 않아야 click이 지도 SVG로 간다.
       event.currentTarget.setPointerCapture(event.pointerId);
     }
-    const next: [number, number] = [state.offset[0] - dx * mpp, state.offset[1] + dy * mpp];
-    draftOffsetRef.current = next;
-    setDraftOffset(next);
+    state.dx = dx;
+    state.dy = dy;
+    panDeltaRef.current = [dx, dy];
+    setGestureTransform();
     event.preventDefault();
-  };
-  const endPointer = (event: ReactPointerEvent<HTMLDivElement>) => {
+  }, [setGestureTransform]);
+  const endPointer = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     const state = drag.current;
     if (!state || state.id !== event.pointerId) return;
-    if (!state.moved) {
-      drag.current = null;
-      return;
+    if (state.moved) {
+      const mpp = metersPerPixel(viewport.center[1], viewport.zoom);
+      const next: [number, number] = [state.offset[0] - state.dx * mpp, state.offset[1] + state.dy * mpp];
+      patchRef.current({ offsetM: next });
+      recordPreviewMetric("panCommits");
+      panDeltaRef.current = null;
+      setGestureTransform();
+      setDragging(false);
+      window.setTimeout(() => { suppressFeatureClick.current = false; }, 0);
+      event.preventDefault();
+    } else {
+      suppressFeatureClick.current = false;
     }
-    const next = draftOffsetRef.current ?? draftOffset ?? state.offset;
-    onPatch({ offsetM: [next[0], next[1]] });
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     drag.current = null;
-    setDragging(false);
-    draftOffsetRef.current = null;
-    setDraftOffset(null);
-    window.setTimeout(() => { suppressFeatureClick.current = false; }, 0);
-  };
+  }, [setGestureTransform, viewport.center, viewport.zoom]);
+  useEffect(() => () => {
+    if (wheelTimerRef.current !== null) window.clearTimeout(wheelTimerRef.current);
+  }, []);
+  useEffect(() => {
+    if (!interactive) return;
+    const element = mapInteractionRef.current;
+    if (!element) return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const rect = element.getBoundingClientRect();
+      const cssWidth = rect.width > 0 ? rect.width : width;
+      const cssHeight = rect.height > 0 ? rect.height : height;
+      const px = (event.clientX - rect.left) * (width / cssWidth);
+      const py = (event.clientY - rect.top) * (height / cssHeight);
+      const currentView = wheelPreviewViewRef.current ?? {
+        zoomDelta: styleRef.current.zoomDelta ?? 0,
+        offsetM: styleRef.current.offsetM ?? [0, 0],
+      };
+      wheelBaseViewRef.current ??= currentView;
+      const nextView = zoomViewAt(baseViewport, currentView, event.deltaY < 0 ? 0.5 : -0.5, px, py, 3, -3);
+      wheelPreviewViewRef.current = nextView;
+      wheelDeltaRef.current = nextView.zoomDelta - (wheelBaseViewRef.current?.zoomDelta ?? 0);
+      wheelOriginRef.current = [event.clientX - rect.left, event.clientY - rect.top];
+      setGestureTransform();
+      if (wheelTimerRef.current !== null) window.clearTimeout(wheelTimerRef.current);
+      wheelTimerRef.current = window.setTimeout(() => {
+        const committed = wheelPreviewViewRef.current;
+        if (!committed) return;
+        patchRef.current({ zoomDelta: committed.zoomDelta, offsetM: [committed.offsetM[0], committed.offsetM[1]] });
+        recordPreviewMetric("wheelCommits");
+        wheelDeltaRef.current = 0;
+        wheelBaseViewRef.current = null;
+        wheelPreviewViewRef.current = null;
+        wheelOriginRef.current = null;
+        wheelTimerRef.current = null;
+        setGestureTransform();
+      }, 150);
+    };
+    element.addEventListener("wheel", onWheel, { passive: false });
+    return () => element.removeEventListener("wheel", onWheel);
+  }, [baseViewport, height, interactive, setGestureTransform, width]);
+  useEffect(() => {
+    if (drag.current || wheelTimerRef.current !== null) return;
+    panDeltaRef.current = null;
+    wheelDeltaRef.current = 0;
+    wheelBaseViewRef.current = null;
+    wheelPreviewViewRef.current = null;
+    wheelOriginRef.current = null;
+    setGestureTransform();
+  }, [setGestureTransform, style.offsetM?.[0], style.offsetM?.[1], style.zoomDelta]);
+  useEffect(() => {
+    const started = labelToggleStartedRef.current;
+    if (started === null || typeof window === "undefined" || typeof performance === "undefined") return;
+    labelToggleStartedRef.current = null;
+    const frame = window.requestAnimationFrame(() => recordPreviewTiming("labelToggleCommit", performance.now() - started));
+    return () => window.cancelAnimationFrame(frame);
+  }, [style.hiddenKeys, style.pinnedKeys]);
   const map = (
-    <MapFigure
-      model={model}
-      width={width}
-      height={height}
-      fixed
-      basemap="tiles"
-      layer={basemap}
-      legend={false}
-      north={false}
-      credit={false}
-      scale
-      bottomInset={unit * SLIDE.stripH}
-      label={label}
-      viewport={viewport}
-      avoid={avoid}
-      pinnedKeys={renderStyle.pinnedKeys ?? pinnedKeys ?? []}
-      legendFocus={focusedLabel}
-      highlightLabel={activeLegendLabel}
-      highlightPinnedLabel={focusedLabel}
-      showAutomaticLabels
-      onFeaturePin={onFeaturePin}
-      dragging={dragging}
-    />
+    <div ref={gestureLayerRef} className={styles.mapGestureLayer} onDragStart={(event) => event.preventDefault()}>
+      <MapFigure
+        model={model}
+        width={width}
+        height={height}
+        fixed
+        basemap="tiles"
+        layer={basemap}
+        legend={false}
+        north={false}
+        credit={false}
+        scale
+        bottomInset={unit * SLIDE.stripH}
+        label={label}
+        viewport={viewport}
+        avoid={avoid}
+        pinnedKeys={style.pinnedKeys ?? pinnedKeys ?? EMPTY_PAGE_KEYS}
+        hiddenKeys={style.hiddenKeys ?? EMPTY_PAGE_KEYS}
+        legendFocus={focusedLabel}
+        highlightLabel={activeLegendLabel}
+        highlightPinnedLabel={focusedLabel}
+        showAutomaticLabels
+        previewInteraction={interactive}
+        hoverKey={interactive ? hoverKey : null}
+        onFeatureHover={interactive ? onFeatureHover : undefined}
+        onFeaturePin={onFeaturePin}
+        dragging={dragging}
+      />
+    </div>
   );
   if (!interactive) return <div className={styles.slideMap}>{map}</div>;
-  const zoomByWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    onPatch({ zoomDelta: clampNumber((style.zoomDelta ?? 0) + (event.deltaY < 0 ? 0.5 : -0.5), -3, 3) });
-  };
   const mapKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Home") {
       event.preventDefault();
-      onPatch({ offsetM: [0, 0] });
+      patchRef.current({ offsetM: [0, 0] });
     }
   };
   return (
     <div
+      ref={mapInteractionRef}
       className={styles.mapInteraction}
       data-dragging={dragging ? "true" : "false"}
       tabIndex={0}
@@ -362,8 +483,8 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
       onPointerMove={movePointer}
       onPointerUp={endPointer}
       onPointerCancel={endPointer}
-      onWheel={zoomByWheel}
       onKeyDown={mapKeyDown}
+      onDragStart={(event) => event.preventDefault()}
     >
       {map}
     </div>
@@ -851,6 +972,7 @@ function SlidePreview({ slide, basemap, editable, onPatch, onMapPatch, onDirectP
             const target = event.target as HTMLElement;
             if (!target.closest("[data-panel-key]") && !target.closest("[data-panel-frame]")) setSelectedPanel(null);
           }}
+          onDragStart={(event) => event.preventDefault()}
           onKeyDown={(event) => { if (event.key === "Escape") setSelectedPanel(null); }}
           data-transforming={panelDrag.current || panelResize.current ? "true" : "false"}
         >
@@ -1146,7 +1268,7 @@ export default function ReportPreview({ board, dispatch, views, plan, basemap, o
     applyPatch({ titleScale: undefined, summaryScale: undefined, legendScale: undefined, panels: undefined } as unknown as PreviewStylePatch);
   }, [applyPatch]);
   const resetLabels = useCallback(() => {
-    onDirectPagePatch({ pinnedKeys: undefined });
+    onDirectPagePatch({ pinnedKeys: undefined, hiddenKeys: undefined });
   }, [onDirectPagePatch]);
 
   return (

@@ -22,6 +22,7 @@ board = boardReducer(board, {
   keys: styleKeys,
   patch: {
     pinnedKeys: ["station|1"],
+    hiddenKeys: ["bus|2"],
     legendFocus: "rail",
     zoomDelta: 1.25,
     offsetM: [12, -8],
@@ -33,6 +34,12 @@ board = boardReducer(board, {
 });
 assert.deepEqual(board.report.styles["t-A01"], board.report.styles["t-A02"], "pageStyle 다중 적용");
 assert.deepEqual(board.report.styles["t-A01"].offsetM, [12, -8]);
+assert.deepEqual(board.report.styles["t-A01"].hiddenKeys, ["bus|2"], "hiddenKeys 다중 적용");
+const hiddenBeforeUndo = board.report;
+board = boardReducer(board, { type: "pageStyle", keys: ["t-A01"], patch: { hiddenKeys: ["bus|2", "station|3"] } });
+assert.deepEqual(board.report.styles["t-A01"].hiddenKeys, ["bus|2", "station|3"], "hiddenKeys 추가 patch");
+board = boardReducer(board, { type: "undo" });
+assert.deepEqual(board.report, hiddenBeforeUndo, "hiddenKeys pageStyle undo 복원");
 
 // 패널은 슬라이드 비율로 저장하고, nested patch는 기존 패널을 보존한다.
 let panelBoard = initBoard(GODEOK_RESULTS);
@@ -86,6 +93,7 @@ assert.equal(board.report.styles["t-A01"].zoomDelta, -3, "zoomDelta 하한 clamp
 assert.equal(board.report.styles["t-A01"].legendFocus, null, "legendFocus null은 전체 강조 해제로 유지");
 assert.equal(board.report.styles["t-A01"].summary, undefined, "undefined patch는 필드 삭제");
 assert.equal(board.report.styles["t-A01"].pinnedKeys, undefined, "undefined 배열 patch는 필드 삭제");
+assert.deepEqual(board.report.styles["t-A01"].hiddenKeys, ["bus|2"], "hiddenKeys는 다른 필드 삭제에서 보존");
 
 board = boardReducer(board, { type: "pageStyleReset", keys: styleKeys });
 assert.deepEqual(board.report.styles, {}, "pageStyleReset은 지정 페이지 스타일만 삭제");
@@ -127,7 +135,7 @@ assert.equal(board.report.extra.filter((page) => page.tileId === "t-A04").length
 assert.equal(board.report.styles[extraPageKey(extraForDeletedTile.at(-1).id)].legendScale, 1.4, "tile 삭제 undo 시 style 복원");
 
 // serialize → JSON → restore 왕복과 reportPages의 추가 페이지 장수.
-board = boardReducer(board, { type: "pageStyle", keys: ["t-A01"], patch: { summary: false, offsetM: [20, 30], legendScale: 1.3 } });
+board = boardReducer(board, { type: "pageStyle", keys: ["t-A01"], patch: { summary: false, offsetM: [20, 30], legendScale: 1.3, hiddenKeys: ["station|1"] } });
 const snapshot = serializeBoardState(board);
 assert.equal(snapshot.version, 3, "report additive field도 기존 schema version 유지");
 assert.deepEqual(snapshot.report, board.report, "serialize에 report 포함");

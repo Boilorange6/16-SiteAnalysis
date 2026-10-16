@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, RASTER_STYLES, type MapModel, type RasterStyle } from "@/lib/v2/ui/map-layers";
 import { badgeTextColor, mapLabelText as formatMapLabelText } from "@/lib/v2/ui/map-labels";
 import { applyView, BASEMAP_ATTRIBUTION, BASEMAP_STACK, framedViewport, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, worldPx, type BasemapChoice, type MapView, type Viewport } from "@/lib/v2/ui/map-projection";
@@ -106,13 +106,20 @@ export type MapFigureProps = {
   viewport?: Viewport;
   /** 드래그 중에는 hover 라벨을 갱신하지 않는다. */
   dragging?: boolean;
+  /** PPT 미리보기 전용: DOM 순서가 아닌 화면 거리 기반 hover/click을 사용한다. */
+  previewInteraction?: boolean;
+  /** 자동·고정 라벨을 모두 숨긴 key. */
+  hiddenKeys?: readonly string[];
 };
 
 export type MapFigurePick = { fid?: string; lng: number; lat: number; kind: "feature" | "polygon" | "line" };
-export type MapFigureElementPick = MapFigurePick & { key: string };
+export type MapFigureElementPick = MapFigurePick & { key: string; labelVisible?: boolean };
 
 const FONT = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif';
 const INK = "#16181d";
+const EMPTY_KEYS: string[] = [];
+const EMPTY_BOXES: Box[] = [];
+const EMPTY_PATH: Array<[number, number]> = [];
 
 function a04PolygonDrawOrder(layer: string): number {
   if (layer === "green_zone" || layer === "green_parcel") return 0;
@@ -124,6 +131,48 @@ function a04PolygonDrawOrder(layer: string): number {
 const textW = mapTextWidth;
 type Box = { x0: number; y0: number; x1: number; y1: number };
 type ScreenPoint = readonly [number, number];
+
+type PreviewPickCandidate = {
+  key: string;
+  pick: MapFigurePick;
+  text: string;
+  point: [number, number];
+  kind: MapFigurePick["kind"];
+  color: string;
+  radius?: number;
+  points?: Array<[number, number]>;
+  rings?: Array<Array<[number, number]>>;
+  strokeWidth?: number;
+};
+
+function pointSegmentDistance(point: ScreenPoint, a: ScreenPoint, b: ScreenPoint): number {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const length2 = dx * dx + dy * dy;
+  const t = length2 === 0 ? 0 : Math.max(0, Math.min(1, ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / length2));
+  return Math.hypot(point[0] - (a[0] + dx * t), point[1] - (a[1] + dy * t));
+}
+
+function pointInRing(point: ScreenPoint, ring: readonly ScreenPoint[]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i]!;
+    const b = ring[j]!;
+    const crosses = (a[1] > point[1]) !== (b[1] > point[1])
+      && point[0] < ((b[0] - a[0]) * (point[1] - a[1])) / ((b[1] - a[1]) || Number.EPSILON) + a[0];
+    if (crosses) inside = !inside;
+  }
+  return inside;
+}
+
+function polygonDistance(point: ScreenPoint, rings: readonly (readonly ScreenPoint[])[]): number {
+  if (rings.some((ring) => pointInRing(point, ring))) return 0;
+  let best = Number.POSITIVE_INFINITY;
+  for (const ring of rings) {
+    for (let i = 0; i < ring.length; i += 1) best = Math.min(best, pointSegmentDistance(point, ring[i]!, ring[(i + 1) % ring.length]!));
+  }
+  return best;
+}
 
 export type SiteMarkerMode = "parcel" | "ring";
 
@@ -249,7 +298,12 @@ function backgroundTransform(from: Viewport, to: Viewport, width: number, height
   return `matrix(${scale},0,0,${scale},${e},${f})`;
 }
 
-function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, backgroundOnly = false, fixed, compact = false, label, legend, legendY, north: northOpt, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = [], siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, selectedFids = [], highlightLabel = null, legendFocus = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = [], showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeaturePin, onLegendHover, onLegendPin, path = [], onMapClick, view, viewport, dragging = false }: MapFigureProps) {
+function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, backgroundOnly = false, fixed, compact = false, label, legend, legendY, north: northOpt, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = EMPTY_BOXES, siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, selectedFids = EMPTY_KEYS, highlightLabel = null, legendFocus = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = EMPTY_KEYS, showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeaturePin, onLegendHover, onLegendPin, path = EMPTY_PATH, onMapClick, view, viewport, dragging = false, previewInteraction = false, hiddenKeys = EMPTY_KEYS }: MapFigureProps) {
+  if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
+    const target = window as Window & { __V2_PREVIEW_METRICS__?: Record<string, number> };
+    const metrics = target.__V2_PREVIEW_METRICS__ ?? (target.__V2_PREVIEW_METRICS__ = {});
+    metrics.mapFigureRenders = (metrics.mapFigureRenders ?? 0) + 1;
+  }
   const backgroundLayerSet = Array.isArray(backgroundOnly) ? new Set(backgroundOnly) : null;
   const backgroundOnlyActive = backgroundOnly === true || backgroundLayerSet !== null;
   const shouldRasterizeLayer = (layerName: string) => !backgroundOnlyActive || !!backgroundLayerSet?.has(layerName);
@@ -260,6 +314,13 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
   // 항공 사진 위에서는 어두운 선·점 테두리가 묻히므로 흰색으로 바꾼다
   const line = sat ? "#fff" : INK;
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
+  const svgRef = useRef<SVGSVGElement>(null);
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    svg.setAttribute("draggable", "false");
+    svg.querySelectorAll("image").forEach((image) => image.setAttribute("draggable", "false"));
+  }, []);
   const lastPointerType = useRef<string | null>(null);
   const lastLegendPointerType = useRef<string | null>(null);
   const u = Math.min(1.5, Math.max(1, H / 360));
@@ -410,7 +471,9 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
       : Math.min(H - bottomInset - legendMargin - mapRadius, Math.max(preferredCenterY, panelY + panelH + legendMargin + mapRadius))
     : preferredCenterY;
   const mapSiteY = H > 0 ? mapCenterY / H : siteY;
-  const scene = buildMapScene({
+  const sceneHoverKey = previewInteraction ? null : hoverKey;
+  const sceneDragging = previewInteraction ? false : dragging;
+  const scene = useMemo(() => buildMapScene({
     model,
     width: W,
     height: H,
@@ -431,19 +494,20 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     selectedFids,
     highlightLabel,
     emphasisKey,
-    hoverKey,
+    hoverKey: previewInteraction ? null : hoverKey,
     pinnedKeys,
+    hiddenKeys,
     showAutomaticLabels,
     bare: !!bare,
     legendBox: showLegend ? { x0: panelX, y0: panelY, x1: panelX + panelW, y1: panelY + panelH } : null,
     avoid,
     path,
     north: northOpt,
-    dragging,
+    dragging: sceneDragging,
     view,
     viewport,
     legendFocus,
-  });
+  }), [activeLayer, avoid, bare, bottomInset, compact, emphasisKey, fill, fixed, H, hiddenKeys, highlightLabel, legendFocus, mapCenterY, mapFill, mapSiteX, mapSiteY, muted, model, northOpt, panelH, panelW, panelX, panelY, path, rightInset, scale, scaleLeft, scaleX, sceneDragging, sceneHoverKey, showAutomaticLabels, showLegend, showRadius, showSiteMarker, siteX, selectedFids, pinnedKeys, W, view, viewport]);
   const vp = scene.viewport;
   const proj = makeProjector(vp);
   const mpp = scene.mpp;
@@ -505,11 +569,110 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     const total = points.reduce(([lng, lat], [nextLng, nextLat]) => [lng + nextLng, lat + nextLat], [0, 0]);
     return [total[0] / points.length, total[1] / points.length];
   };
+  const hiddenSet = useMemo(() => new Set(hiddenKeys), [hiddenKeys]);
+  const previewLabelByKey = useMemo(() => new Map(scene.labels.map((entry) => [entry.key, entry])), [scene.labels]);
+  const previewCandidates = useMemo<PreviewPickCandidate[]>(() => {
+    if (!previewInteraction) return [];
+    const featureCandidates = scene.features.map((entry) => {
+      const style = layerStyle(entry.feature.layer);
+      const label = previewLabelByKey.get(entry.key);
+      return {
+        key: entry.key,
+        pick: { fid: entry.feature.fid, lng: entry.feature.lng, lat: entry.feature.lat, kind: "feature" as const },
+        text: label?.text ?? labelText(entry.feature.layer, "feature", entry.feature),
+        point: [...entry.p] as [number, number],
+        kind: "feature" as const,
+        color: entry.feature.color ?? style.color ?? INK,
+        radius: entry.radius,
+      };
+    });
+    const lineCandidates = scene.lines.map((entry) => {
+      const style = layerStyle(entry.line.layer);
+      const label = previewLabelByKey.get(entry.key);
+      return {
+        key: entry.key,
+        pick: { fid: entry.line.fid, lng: entry.line.points[Math.floor(entry.line.points.length / 2)]?.[0] ?? model.center[0], lat: entry.line.points[Math.floor(entry.line.points.length / 2)]?.[1] ?? model.center[1], kind: "line" as const },
+        text: label?.text ?? labelText(entry.line.layer, "line", entry.line),
+        point: [...entry.center] as [number, number],
+        kind: "line" as const,
+        color: entry.line.color ?? style.color ?? INK,
+        points: entry.points,
+        strokeWidth: entry.line.strokeWidth ?? style.strokeWidth ?? 1.5,
+      };
+    });
+    const polygonCandidates = scene.polygons.filter((entry) => !isSiteParcelLayer(entry.polygon.layer)).map((entry) => {
+      const style = layerStyle(entry.polygon.layer);
+      const label = previewLabelByKey.get(entry.key);
+      const [lng, lat] = centerOf(entry.polygon.rings[0] ?? []);
+      return {
+        key: entry.key,
+        pick: { fid: entry.polygon.fid, lng, lat, kind: "polygon" as const },
+        text: label?.text ?? labelText(entry.polygon.layer, "polygon", entry.polygon),
+        point: [...entry.center] as [number, number],
+        kind: "polygon" as const,
+        color: style.color ?? INK,
+        rings: entry.rings,
+        strokeWidth: style.strokeWidth ?? 1,
+      };
+    });
+    return [...featureCandidates, ...lineCandidates, ...polygonCandidates];
+  }, [model.center, previewInteraction, previewLabelByKey, scene.features, scene.lines, scene.polygons]);
+  const candidateByKey = useMemo(() => new Map(previewCandidates.map((candidate) => [candidate.key, candidate])), [previewCandidates]);
+  const isLabelVisible = useCallback((key: string) => !hiddenSet.has(key) && (
+    scene.labelPlacements.some((placement) => placement.entry.key === key)
+    || scene.rail.exits.some((exit) => exit.featureKey === key)
+    || scene.rail.routes.some((route) => route.key === key && !!route.labelPlacement)
+    || scene.rail.axes.some((axis) => axis.key === key && !!axis.labelPlacement)
+    || scene.rail.stationLabels.some((station) => station.stationFeatureKey === key)
+  ), [hiddenSet, scene.labelPlacements, scene.rail.axes, scene.rail.exits, scene.rail.routes, scene.rail.stationLabels]);
+  const previewPickAt = useCallback((point: ScreenPoint): PreviewPickCandidate | null => {
+    if (!previewInteraction) return null;
+    let labelHit: { candidate: PreviewPickCandidate; distance: number; area: number } | null = null;
+    for (const placement of scene.labelPlacements) {
+      const { box, placed } = placement;
+      const candidate = candidateByKey.get(placement.entry.key);
+      if (!candidate) continue;
+      const inBox = point[0] >= box.x0 && point[0] <= box.x1 && point[1] >= box.y0 && point[1] <= box.y1;
+      const area = Math.max(1, (box.x1 - box.x0) * (box.y1 - box.y0));
+      if (inBox) return candidate;
+      const leaderPoints = [candidate.point, placed.knee, placed.edge] as Array<[number, number]>;
+      const leaderDistance = Math.min(
+        pointSegmentDistance(point, leaderPoints[0]!, leaderPoints[1]!),
+        pointSegmentDistance(point, leaderPoints[1]!, leaderPoints[2]!),
+      );
+      const fromPoint = Math.hypot(point[0] - candidate.point[0], point[1] - candidate.point[1]);
+      if (fromPoint > 8 * u && leaderDistance <= Math.max(4 * u, 3)) {
+        const next = { candidate, distance: leaderDistance, area };
+        if (!labelHit || next.distance < labelHit.distance || (next.distance === labelHit.distance && next.area < labelHit.area)) labelHit = next;
+      }
+    }
+    let best: { candidate: PreviewPickCandidate; distance: number; priority: number } | null = null;
+    for (const candidate of previewCandidates) {
+      let distance = Number.POSITIVE_INFINITY;
+      let priority = candidate.kind === "feature" ? 0 : candidate.kind === "line" ? 1 : 2;
+      if (candidate.kind === "feature") {
+        distance = Math.hypot(point[0] - candidate.point[0], point[1] - candidate.point[1]);
+        if (distance > Math.max(22 * u, (candidate.radius ?? 0) + 6 * u)) continue;
+      } else if (candidate.kind === "line") {
+        for (let i = 1; i < (candidate.points?.length ?? 0); i += 1) distance = Math.min(distance, pointSegmentDistance(point, candidate.points![i - 1]!, candidate.points![i]!));
+        if (distance > Math.max(10 * u, (candidate.strokeWidth ?? 1) * u / 2 + 6 * u)) continue;
+      } else {
+        distance = polygonDistance(point, candidate.rings ?? []);
+        if (distance > 12 * u) continue;
+        if (distance === 0) priority += 2;
+      }
+      if (!best || distance < best.distance || (distance === best.distance && priority < best.priority)) best = { candidate, distance, priority };
+    }
+    // A leader is only a fallback hit. A nearby point/line/polygon wins so a
+    // leader crossing another feature cannot steal that feature's toggle.
+    return best?.candidate ?? labelHit?.candidate ?? null;
+  }, [candidateByKey, previewCandidates, previewInteraction, scene.labelPlacements, u]);
+  const previewHoverCandidate = previewInteraction && hoverKey ? candidateByKey.get(hoverKey) ?? null : null;
   const pickProps = (pick: MapFigurePick, key: string, labelText: string) => {
     if (!onFeatureClick && !onFeatureHover && !onFeaturePin) return {};
     const hover = (value: string | null) => { if (!dragging) onFeatureHover?.(value); };
     const choose = () => onFeatureClick?.(pick);
-    const pin = () => onFeaturePin?.({ ...pick, key });
+    const pin = () => onFeaturePin?.({ ...pick, key, labelVisible: isLabelVisible(key) });
     const onKeyDown = (event: ReactKeyboardEvent<SVGElement>) => {
       if (event.key === "Escape") {
         hover(null);
@@ -529,20 +692,21 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
       "aria-label": labelText,
       "aria-pressed": onFeaturePin ? pinned.has(key) : undefined,
       title: onFeaturePin ? (pinned.has(key) ? "눌러서 라벨 숨기기" : "눌러서 라벨 표시") : undefined,
-      onClick: () => {
+      onClick: previewInteraction ? undefined : () => {
         choose();
         pin();
       },
       onMouseDown: (event: ReactMouseEvent<SVGElement>) => { event.stopPropagation(); },
       onKeyDown,
       onPointerDown: (event: ReactPointerEvent<SVGElement>) => { lastPointerType.current = event.pointerType; },
-      onPointerEnter: (event: ReactPointerEvent<SVGElement>) => {
+      onPointerEnter: previewInteraction ? undefined : (event: ReactPointerEvent<SVGElement>) => {
         lastPointerType.current = event.pointerType;
         if (event.pointerType !== "touch") hover(key);
       },
-      onPointerLeave: () => { lastPointerType.current = null; hover(null); },
+      onPointerLeave: previewInteraction ? undefined : () => { lastPointerType.current = null; hover(null); },
       onFocus: () => { if (lastPointerType.current !== "touch") hover(key); },
       onBlur: () => { lastPointerType.current = null; hover(null); },
+      pointerEvents: previewInteraction ? "none" : undefined,
       style: { cursor: "pointer" },
     };
   };
@@ -576,6 +740,42 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     const lng = (worldX / size) * 360 - 180;
     const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * worldY) / size))) * 180) / Math.PI;
     if (Number.isFinite(lng) && Number.isFinite(lat)) onMapClick({ lng, lat });
+  };
+  const previewPointFromEvent = (event: { clientX: number; clientY: number; currentTarget: SVGSVGElement }): [number, number] | null => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    return [(event.clientX - rect.left) * (W / rect.width), (event.clientY - rect.top) * (H / rect.height)];
+  };
+  const previewPointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (!previewInteraction) return;
+    if (event.pointerType === "touch" || dragging) {
+      event.currentTarget.style.cursor = dragging ? "grabbing" : "grab";
+      if (!dragging) onFeatureHover?.(null);
+      return;
+    }
+    const point = previewPointFromEvent(event);
+    const picked = point ? previewPickAt(point) : null;
+    event.currentTarget.style.cursor = picked ? "pointer" : "grab";
+    onFeatureHover?.(picked?.key ?? null);
+  };
+  const previewClick = (event: ReactMouseEvent<SVGSVGElement>) => {
+    if (!previewInteraction) {
+      mapClick(event);
+      return;
+    }
+    const point = previewPointFromEvent(event);
+    const picked = point ? previewPickAt(point) : null;
+    if (picked) {
+      event.preventDefault();
+      event.stopPropagation();
+      onFeatureClick?.(picked.pick);
+      onFeaturePin?.({ ...picked.pick, key: picked.key, labelVisible: isLabelVisible(picked.key) });
+      return;
+    }
+    mapClick(event);
+  };
+  const previewPointerLeave = () => {
+    if (previewInteraction) onFeatureHover?.(null);
   };
 
   const bar = scene.scale;
@@ -651,33 +851,42 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     const textX = placement.box.x0 + calloutTextLeft;
     const textMaxWidth = Math.max(1, placement.box.x1 - placement.box.x0 - calloutTextLeft - calloutTextRight);
     const textY = placement.box.y0 + calloutPadY + textFs * 0.9;
-    const labelHitX = Math.min(placement.box.x0, placement.leader.x0);
-    const labelHitY = Math.min(placement.box.y0, placement.leader.y0);
-    const labelHitRight = Math.max(placement.box.x1, placement.leader.x1);
-    const labelHitBottom = Math.max(placement.box.y1, placement.leader.y1);
-    const labelHitWidth = Math.max(44 * u, labelHitRight - labelHitX);
-    const labelHitHeight = Math.max(44 * u, labelHitBottom - labelHitY);
-    const labelHitLeft = Math.max(0, Math.min(W - labelHitWidth, (labelHitX + labelHitRight - labelHitWidth) / 2));
-    const labelHitTop = Math.max(0, Math.min(H - labelHitHeight, (labelHitY + labelHitBottom - labelHitHeight) / 2));
+    const legacyHitLeft = Math.min(placement.box.x0, placement.leader.x0);
+    const legacyHitTop = Math.min(placement.box.y0, placement.leader.y0);
+    const legacyHitRight = Math.max(placement.box.x1, placement.leader.x1);
+    const legacyHitBottom = Math.max(placement.box.y1, placement.leader.y1);
+    const labelHitWidth = Math.max(44 * u, previewInteraction ? placement.box.x1 - placement.box.x0 : legacyHitRight - legacyHitLeft);
+    const labelHitHeight = Math.max(44 * u, previewInteraction ? placement.box.y1 - placement.box.y0 : legacyHitBottom - legacyHitTop);
+    const labelHitLeft = Math.max(0, Math.min(W - labelHitWidth, (previewInteraction ? placement.box.x0 + placement.box.x1 : legacyHitLeft + legacyHitRight - labelHitWidth) / 2));
+    const labelHitTop = Math.max(0, Math.min(H - labelHitHeight, (previewInteraction ? placement.box.y0 + placement.box.y1 : legacyHitTop + legacyHitBottom - labelHitHeight) / 2));
+    const leaderHitStart: [number, number] = (() => {
+      const [x0, y0] = d.p;
+      const [x1, y1] = placement.placed.knee;
+      const distance = Math.hypot(x1 - x0, y1 - y0);
+      const inset = Math.min(distance, 10 * u);
+      if (distance === 0) return [x1, y1];
+      return [x0 + ((x1 - x0) * inset) / distance, y0 + ((y1 - y0) * inset) / distance];
+    })();
+    const leaderHitPoints = [leaderHitStart, placement.placed.knee, placement.placed.edge];
     // 범례 강조는 도형과 범례 패널에만 적용한다. 사용자 고정 라벨·콜아웃은
     // 지도 맥락을 설명하는 주석이므로 native PPT 경로와 함께 항상 선명하게 둔다.
     const dimmed = false;
-    const pinPick = () => onFeaturePin?.(d.pick);
+    const pinPick = () => onFeaturePin?.({ ...d.pick, labelVisible: isLabelVisible(d.key) });
     const onKeyDown = (event: ReactKeyboardEvent<SVGRectElement>) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         pinPick();
       }
     };
-    const labelButtonProps = fixedLabel && onFeaturePin ? {
+    const labelButtonProps = (fixedLabel || previewInteraction) && onFeaturePin ? {
       "data-map-feature": d.key,
       "data-map-pick": "true",
       className: "map-figure-interactive",
       role: "button" as const,
       tabIndex: 0,
-      "aria-label": `${d.text} · 눌러서 라벨 숨기기`,
-      "aria-pressed": true,
-      onClick: pinPick,
+      "aria-label": `${d.text} · 현재 라벨 표시 · 눌러서 숨기기`,
+      "aria-pressed": pinned.has(d.key),
+      onClick: (event: ReactMouseEvent<SVGRectElement>) => { event.stopPropagation(); pinPick(); },
       onMouseDown: (event: ReactMouseEvent<SVGRectElement>) => { event.stopPropagation(); },
       onKeyDown,
       style: { cursor: "pointer" },
@@ -687,12 +896,12 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
         key={`${variant}-label-${d.key}`}
         data-map-label-key={d.key}
         data-map-label-variant={variant}
-        aria-hidden={fixedLabel && onFeaturePin ? undefined : true}
-        pointerEvents={fixedLabel && onFeaturePin ? "all" : "none"}
+        aria-hidden={(fixedLabel || previewInteraction) && onFeaturePin ? undefined : true}
+        pointerEvents={(fixedLabel || previewInteraction) && onFeaturePin ? "all" : "none"}
         opacity={dimmed ? 0.2 : 1}
       >
         <title>{d.text}</title>
-        {fixedLabel && onFeaturePin && <title>눌러서 라벨 숨기기</title>}
+        {(fixedLabel || previewInteraction) && onFeaturePin && <title>현재 라벨 표시 · 눌러서 숨기기</title>}
         {!dragging && <>
           <polyline data-map-label-leader={d.key} points={[d.p, placement.placed.knee, placement.placed.edge].map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke="#fff" strokeWidth={3.6 * u} strokeLinecap="round" strokeLinejoin="round" />
           <polyline data-map-label-leader={d.key} points={[d.p, placement.placed.knee, placement.placed.edge].map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke={INK} strokeWidth={1.2 * u} strokeLinecap="round" strokeLinejoin="round" />
@@ -711,10 +920,31 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
             return <tspan key={`${d.key}-line-${index}`} x={textX} dy={index === 0 ? 0 : placement.text.lineHeight} fontWeight={line.kind === "title" ? 700 : 500} fill={line.kind === "title" ? INK : "#5c5f66"}>{rendered}</tspan>;
           })}
         </text>
-        {fixedLabel && onFeaturePin && <rect data-map-label-hit={d.key} data-map-pick="true" x={labelHitLeft} y={labelHitTop} width={labelHitWidth} height={labelHitHeight} fill="transparent" pointerEvents="all" aria-hidden="true" className="map-figure-hit" onClick={(event: ReactMouseEvent<SVGRectElement>) => { event.stopPropagation(); pinPick(); }} onPointerDownCapture={(event: ReactPointerEvent<SVGRectElement>) => { event.stopPropagation(); }} onMouseDownCapture={(event: ReactMouseEvent<SVGRectElement>) => { event.stopPropagation(); }} />}
+        {onFeaturePin && (fixedLabel || previewInteraction) && <rect data-map-label-hit={d.key} data-map-pick="true" x={labelHitLeft} y={labelHitTop} width={labelHitWidth} height={labelHitHeight} fill="transparent" pointerEvents="all" aria-hidden="true" className="map-figure-hit" onClick={(event: ReactMouseEvent<SVGRectElement>) => { event.stopPropagation(); pinPick(); }} onPointerDownCapture={(event: ReactPointerEvent<SVGRectElement>) => { event.stopPropagation(); }} onMouseDownCapture={(event: ReactMouseEvent<SVGRectElement>) => { event.stopPropagation(); }} />}
+        {previewInteraction && onFeaturePin && <polyline data-map-label-hit={d.key} points={leaderHitPoints.map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke="transparent" strokeWidth={Math.max(6 * u, 2)} strokeLinecap="round" strokeLinejoin="round" pointerEvents="stroke" aria-hidden="true" onPointerDownCapture={(event: ReactPointerEvent<SVGPolylineElement>) => { event.stopPropagation(); }} onMouseDownCapture={(event: ReactMouseEvent<SVGPolylineElement>) => { event.stopPropagation(); }} />}
       </g>
     );
   };
+  const previewHoverNode = previewHoverCandidate ? (() => {
+    const candidate = previewHoverCandidate;
+    const tooltip = `${candidate.text} · 라벨 ${isLabelVisible(candidate.key) ? "켜짐" : "꺼짐"}`;
+    const tooltipFs = Math.max(9, 9 * u);
+    const tooltipW = Math.min(300 * u, Math.max(72 * u, textW(tooltip, tooltipFs) + 16 * u));
+    const tooltipH = 22 * u;
+    const tooltipX = Math.max(4 * u, Math.min(W - tooltipW - 4 * u, candidate.point[0] + 10 * u));
+    const tooltipY = Math.max(4 * u, Math.min(H - tooltipH - 4 * u, candidate.point[1] - tooltipH - 10 * u));
+    return (
+      <g data-map-hover="true" pointerEvents="none">
+        {candidate.kind === "feature" && <circle cx={candidate.point[0]} cy={candidate.point[1]} r={Math.max(12 * u, (candidate.radius ?? 3) + 7 * u)} fill="none" stroke={candidate.color} strokeWidth={2.4 * u} />}
+        {candidate.kind === "line" && <polyline points={(candidate.points ?? []).map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke={candidate.color} strokeWidth={(candidate.strokeWidth ?? 1.5) * u + 2.4 * u} strokeLinecap="round" strokeLinejoin="round" />}
+        {candidate.kind === "polygon" && <path d={polygonPath(candidate.rings ?? [])} fill="none" stroke={candidate.color} strokeWidth={2.4 * u} strokeLinejoin="round" />}
+        <g data-map-hover-tooltip="true">
+          <rect x={tooltipX} y={tooltipY} width={tooltipW} height={tooltipH} rx={5 * u} fill="#111827" fillOpacity={0.94} stroke="#fff" strokeOpacity={0.75} strokeWidth={0.8 * u} />
+          <text x={tooltipX + 8 * u} y={tooltipY + tooltipH * 0.67} fontSize={tooltipFs} fill="#fff" fontWeight={600}>{truncateMapLabelText(tooltip, tooltipW - 16 * u, tooltipFs)}</text>
+        </g>
+      </g>
+    );
+  })() : null;
   const labels: ReactNode[] = [];
   let hoverLabelNode: ReactNode = null;
   for (const placement of scene.labelPlacements) {
@@ -749,20 +979,26 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
           </g>
         );
       })}
-      {scene.rail.exits.map((exit) => (
-        <g key={exit.key} data-rail-exit={exit.number} aria-label={`${exit.number}번 출구`} pointerEvents="none" opacity={isElementDimmed("rail_entrance", exit.featureKey) ? 0.2 : 1}>
-          <line data-rail-exit-connector="true" x1={exit.axisPoint[0]} y1={exit.axisPoint[1]} x2={exit.point[0]} y2={exit.point[1]} stroke="#fff" strokeWidth={1.5} strokeLinecap="round" opacity={0.75} />
-          <line data-rail-exit-connector-line="true" x1={exit.axisPoint[0]} y1={exit.axisPoint[1]} x2={exit.point[0]} y2={exit.point[1]} stroke={exit.color} strokeWidth={0.6} strokeLinecap="round" opacity={0.6} />
-          {exit.demoted ? (
-            <circle data-rail-exit-dot="true" cx={exit.point[0]} cy={exit.point[1]} r={RAIL_EXIT_DOT_RADIUS} fill={RAIL_EXIT_COLOR} stroke="#172033" strokeWidth={RAIL_EXIT_DOT_STROKE} />
-          ) : (
-            <>
-              <rect data-rail-exit-marker="true" x={exit.box.x0} y={exit.box.y0} width={exit.box.x1 - exit.box.x0} height={exit.box.y1 - exit.box.y0} rx={exit.pill ? (exit.box.y1 - exit.box.y0) / 2 : 2} fill={RAIL_EXIT_COLOR} stroke="#172033" strokeWidth={0.65} />
-              <text data-rail-exit-number="true" x={(exit.box.x0 + exit.box.x1) / 2} y={exit.box.y0 + (exit.box.y1 - exit.box.y0) * 0.76} textAnchor="middle" fontSize={7} fontWeight={700} fill="#111827">{exit.number}</text>
-            </>
-          )}
-        </g>
-      ))}
+      {scene.rail.exits.map((exit) => {
+        const source = railFeatureSource(exit.featureKey);
+        const exitPick = source ? pickProps({ fid: source.feature.fid, lng: source.feature.lng, lat: source.feature.lat, kind: "feature" }, source.key, `${source.feature.name ?? "철도역"} ${exit.number}번 출구`) : {};
+        const hidden = hiddenSet.has(exit.featureKey);
+        return (
+          <g key={exit.key} data-rail-exit={exit.number} aria-label={`${exit.number}번 출구`} pointerEvents="none" opacity={hidden ? 0 : isElementDimmed("rail_entrance", exit.featureKey) ? 0.2 : 1}>
+            <line data-rail-exit-connector="true" x1={exit.axisPoint[0]} y1={exit.axisPoint[1]} x2={exit.point[0]} y2={exit.point[1]} stroke="#fff" strokeWidth={1.5} strokeLinecap="round" opacity={0.75} />
+            <line data-rail-exit-connector-line="true" x1={exit.axisPoint[0]} y1={exit.axisPoint[1]} x2={exit.point[0]} y2={exit.point[1]} stroke={exit.color} strokeWidth={0.6} strokeLinecap="round" opacity={0.6} />
+            {exit.demoted ? (
+              <circle data-rail-exit-dot="true" cx={exit.point[0]} cy={exit.point[1]} r={RAIL_EXIT_DOT_RADIUS} fill={RAIL_EXIT_COLOR} stroke="#172033" strokeWidth={RAIL_EXIT_DOT_STROKE} />
+            ) : (
+              <>
+                <rect data-rail-exit-marker="true" x={exit.box.x0} y={exit.box.y0} width={exit.box.x1 - exit.box.x0} height={exit.box.y1 - exit.box.y0} rx={exit.pill ? (exit.box.y1 - exit.box.y0) / 2 : 2} fill={RAIL_EXIT_COLOR} stroke="#172033" strokeWidth={0.65} />
+                <text data-rail-exit-number="true" x={(exit.box.x0 + exit.box.x1) / 2} y={exit.box.y0 + (exit.box.y1 - exit.box.y0) * 0.76} textAnchor="middle" fontSize={7} fontWeight={700} fill="#111827">{exit.number}</text>
+              </>
+            )}
+            {previewInteraction && source && <circle data-map-hit="rail-exit" cx={exit.point[0]} cy={exit.point[1]} r={22 * u} fill="transparent" stroke="transparent" pointerEvents="none" {...hitProps(exitPick)} />}
+          </g>
+        );
+      })}
       {scene.rail.routeLabels.map((text) => {
         const dimmed = false;
         return <text key={`rail-route-label-${text.text}-${text.x}-${text.y}`} data-rail-route-label={text.text} x={text.x + text.width / 2} y={text.y + text.height * 0.78} textAnchor="middle" fontSize={text.fontSize} fontWeight={700} fill={dimmed ? "#7A7E87" : text.color} opacity={dimmed ? 0.2 : 1} stroke="#fff" strokeWidth={3} paintOrder="stroke fill" transform={`rotate(${text.angle} ${(text.x + text.width / 2)} ${(text.y + text.height / 2)})`}>{text.text}</text>;
@@ -773,7 +1009,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
       })}
       {scene.rail.stationLabels.map((station) => {
         const dimmed = false;
-        return <text key={station.key} data-rail-station-label={station.stationKey} x={station.x + station.width / 2} y={station.y + station.height * 0.78} textAnchor="middle" fontSize={station.fontSize} fontWeight={700} fill={dimmed ? "#7A7E87" : INK} stroke="#fff" strokeWidth={5} opacity={dimmed ? 0.2 : 1} paintOrder="stroke fill">{station.text}</text>;
+        return <text key={station.key} data-rail-station-label={station.stationKey} x={station.x + station.width / 2} y={station.y + station.height * 0.78} textAnchor="middle" fontSize={station.fontSize} fontWeight={700} fill={dimmed ? "#7A7E87" : INK} stroke="#fff" strokeWidth={5} opacity={hiddenSet.has(station.stationFeatureKey) ? 0 : dimmed ? 0.2 : 1} paintOrder="stroke fill">{station.text}</text>;
       })}
     </g>
   );
@@ -790,8 +1026,12 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
       role="img"
       aria-label={label ?? "분석 반경 지도"}
       fontFamily={FONT}
-      style={{ display: "block" }}
-      onClick={mapClick}
+      ref={svgRef}
+      style={{ display: "block", userSelect: "none", WebkitUserSelect: "none", touchAction: previewInteraction ? "none" : undefined, cursor: previewInteraction ? "grab" : undefined }}
+      onClick={previewClick}
+      onPointerMove={previewPointerMove}
+      onPointerLeave={previewPointerLeave}
+      onDragStart={(event) => event.preventDefault()}
       onMouseDownCapture={(event) => {
         if ((event.target as Element).closest("[data-map-pick]")) event.stopPropagation();
       }}
@@ -951,13 +1191,13 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
              const neutralBuilding = rasterImages.length > 0 && isBuildingLayer(d.f.layer);
              const buildingStyle = buildingStyleForRaster(d.f.layer, rasterImages.length > 0);
             if (d.p[0] < -r || d.p[1] < -r || d.p[0] > W + r || d.p[1] > H + r) return null;
-            if (!backgroundOnlyActive && (d.f.layer === "rail_station" || d.f.layer === "rail_nearest" || d.f.layer === "rail_entrance")) return null;
+            if (!previewInteraction && !backgroundOnlyActive && (d.f.layer === "rail_station" || d.f.layer === "rail_nearest" || d.f.layer === "rail_entrance")) return null;
             if (!shouldRasterizeLayer(d.f.layer)) return null;
             const hollow = st.sizeBy === "weight" && !d.f.weight;
             const featureKey = mapFeatureKey(d.f.layer, d.f.fid, d.index);
              const strong = isElementStrong(d.f.layer, featureKey);
              const pick = pickProps({ fid: d.f.fid, lng: d.f.lng, lat: d.f.lat, kind: "feature" }, featureKey, labelText(d.f.layer, "feature", d.f));
-             const expandedHit = !!onFeaturePin && r < 22 * u;
+             const expandedHit = !!onFeaturePin && (previewInteraction || r < 22 * u);
              const visiblePoint = (
                <circle
                  key={`feature-${i}-${d.f.fid ?? d.f.layer}`}
@@ -989,7 +1229,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
         )}
         {/* 대지 표시 */}
         {showNativeChrome && !muted && showSiteMarker && (
-          <g role="img" aria-label="분석 대지">
+          <g role="img" aria-label="분석 대지" pointerEvents="none">
             {siteMode === "parcel" && sitePath ? (
               <>
                 <path d={sitePath} fillRule="evenodd" fill="rgba(255,255,255,.18)" stroke="#fff" strokeWidth={Math.max(0.5 * siteR, 2.4)} strokeLinejoin="round" clipPath={`url(#r${uid})`} />
@@ -1219,6 +1459,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
             </text>
           )}
         </g>}
+        {showNativeChrome && previewHoverNode}
         {showNativeChrome && labels}
         {/* 호버 라벨은 모든 지도 장식 위에 놓고 포인터 이벤트를 받지 않는다. */}
         {showNativeChrome && hoverLabelNode}

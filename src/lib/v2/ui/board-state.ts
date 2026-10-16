@@ -38,6 +38,7 @@ export type PagePanelRect = { x: number; y: number; w: number; h: number };
 export type PagePanels = Partial<Record<PagePanelKey, PagePanelRect>>;
 export type PageStyle = {
   pinnedKeys?: string[];
+  hiddenKeys?: string[];
   legendFocus?: string | null;
   zoomDelta?: number;
   offsetM?: [number, number];
@@ -65,6 +66,7 @@ const PAGE_STYLE_ZOOM_MIN = -3;
 const PAGE_STYLE_ZOOM_MAX = 3;
 const PAGE_STYLE_KEYS = [
   "pinnedKeys",
+  "hiddenKeys",
   "legendFocus",
   "zoomDelta",
   "offsetM",
@@ -399,6 +401,7 @@ function clonePageStyle(style: PageStyle): PageStyle {
   const panels = clonePagePanels(style.panels);
   return {
     ...(style.pinnedKeys ? { pinnedKeys: [...style.pinnedKeys] } : {}),
+    ...(style.hiddenKeys ? { hiddenKeys: [...style.hiddenKeys] } : {}),
     ...(style.legendFocus !== undefined ? { legendFocus: style.legendFocus } : {}),
     ...(style.zoomDelta !== undefined ? { zoomDelta: style.zoomDelta } : {}),
     ...(style.offsetM ? { offsetM: [style.offsetM[0], style.offsetM[1]] } : {}),
@@ -440,9 +443,10 @@ function pageStyleValue(field: typeof PAGE_STYLE_KEYS[number], value: unknown): 
     const panels = normalizePagePanels(value);
     return panels ? { panels } : null;
   }
-  if (field === "pinnedKeys") {
+  if (field === "pinnedKeys" || field === "hiddenKeys") {
+    const key = field;
     return Array.isArray(value)
-      ? { pinnedKeys: [...new Set(value.filter((item): item is string => typeof item === "string" && item.length > 0))] }
+      ? { [key]: [...new Set(value.filter((item): item is string => typeof item === "string" && item.length > 0))] } as PageStyle
       : null;
   }
   if (field === "offsetM") {

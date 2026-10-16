@@ -116,6 +116,7 @@ const pageStyleAffectsMap = (style: PageStyle | undefined): boolean => !!style &
   style.zoomDelta !== undefined
   || style.offsetM !== undefined
   || style.pinnedKeys !== undefined
+  || style.hiddenKeys !== undefined
   || style.legendFocus !== undefined
   || style.summary !== undefined
   || style.titleScale !== undefined
@@ -127,6 +128,7 @@ const cellStyleAffectsMap = (style: PageStyle | undefined): boolean => !!style &
   style.zoomDelta !== undefined
   || style.offsetM !== undefined
   || style.pinnedKeys !== undefined
+  || style.hiddenKeys !== undefined
   || style.legendFocus !== undefined
 );
 const panelGeometryCacheKey = (style: PageStyle | undefined): string => {
@@ -482,6 +484,7 @@ export function buildReportPlan(input: {
 
   const cellStyleFor = (style: PageStyle, pinnedKeys: string[]): PageStyle => ({
     pinnedKeys: [...pinnedKeys],
+    ...(style.hiddenKeys !== undefined ? { hiddenKeys: [...style.hiddenKeys] } : {}),
     ...(style.legendFocus !== undefined ? { legendFocus: style.legendFocus } : {}),
     ...(style.zoomDelta !== undefined ? { zoomDelta: style.zoomDelta } : {}),
     ...(style.offsetM !== undefined ? { offsetM: style.offsetM } : {}),

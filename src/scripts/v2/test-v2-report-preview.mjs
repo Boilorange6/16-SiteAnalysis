@@ -7,6 +7,7 @@ const {
   pageKeyAfterInsertion,
   selectPageKeys,
   toggleLegendFocus,
+  toggleLabelVisibility,
   togglePinnedKey,
 } = await import("../../lib/v2/ui/report-preview-logic.ts");
 
@@ -83,6 +84,21 @@ assert.deepEqual(
   togglePinnedKey(["road", "road", "site"], "road"),
   ["site"],
   "기존 중복 라벨도 토글 시 모두 제거",
+);
+
+// 자동 라벨도 현재 표시 상태를 기준으로 숨김↔고정 표시를 왕복한다.
+assert.deepEqual(
+  toggleLabelVisibility(["station"], [], "station", true),
+  { pinnedKeys: [], hiddenKeys: ["station"] },
+);
+assert.deepEqual(
+  toggleLabelVisibility([], ["station", "station"], "station", false),
+  { pinnedKeys: ["station"], hiddenKeys: [] },
+);
+assert.deepEqual(
+  toggleLabelVisibility(["road", "road"], ["station", "station"], "", true),
+  { pinnedKeys: ["road"], hiddenKeys: ["station"] },
+  "빈 key는 기존 상태만 정규화",
 );
 
 // 범례 항목은 첫 클릭으로 focus하고 같은 항목을 다시 누르면 null로 돌아간다.
