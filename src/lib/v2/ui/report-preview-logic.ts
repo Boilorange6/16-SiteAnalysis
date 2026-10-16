@@ -22,6 +22,24 @@ function orderedKeys(keys: readonly string[]): string[] {
   return keys.filter((key) => key.length > 0 && !seen.has(key) && (seen.add(key), true));
 }
 
+export type PageNavigationKey = "ArrowLeft" | "ArrowRight" | "PageUp" | "PageDown" | "Home" | "End";
+
+/** 미리보기 대화상자의 페이지 이동 키를 현재 plan 순서로 해석한다. */
+export function neighborPageKey(
+  keys: readonly string[],
+  currentKey: string,
+  key: PageNavigationKey,
+): string | null {
+  const planKeys = orderedKeys(keys);
+  if (planKeys.length === 0) return null;
+  const currentIndex = planKeys.indexOf(currentKey);
+  if (currentIndex < 0) return null;
+  if (key === "Home") return planKeys[0] ?? null;
+  if (key === "End") return planKeys[planKeys.length - 1] ?? null;
+  const direction = key === "ArrowLeft" || key === "PageUp" ? -1 : 1;
+  return planKeys[Math.max(0, Math.min(planKeys.length - 1, currentIndex + direction))] ?? null;
+}
+
 /**
  * 지도 라벨 고정 상태를 순수하게 토글한다.
  *

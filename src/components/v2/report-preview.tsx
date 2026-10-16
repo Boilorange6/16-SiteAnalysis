@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type Dispatch, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type Dispatch, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { metersPerPixel, slideViewport, zoomViewAt, type MapView } from "@/lib/v2/ui/map-projection";
 import { SLIDE, slideLegend, slidePanelRects, slideSiteX, type Rect } from "@/lib/v2/ui/overlay-layout";
@@ -11,8 +11,8 @@ import { useFocusTrap } from "./use-focus-trap";
 import { extraPageKey, type BoardAction, type BoardState, type PageKey, type PageStyle } from "@/lib/v2/ui/board-state";
 import type { PlannedSlide } from "@/lib/v2/report/report-plan";
 import type { TileView } from "@/lib/v2/ui/tile-view";
-import { sheetCells, type SheetGrid } from "@/lib/v2/ui/sheet";
-import { mixedValue, movePageSelection, nextExtraPageId, pageKeyAfterInsertion, selectPageKeys, toggleLabelVisibility, toggleLegendFocus, type PageSelectionModifiers } from "@/lib/v2/ui/report-preview-logic";
+import { sheetCapacity, sheetCells, type SheetGrid } from "@/lib/v2/ui/sheet";
+import { mixedValue, movePageSelection, neighborPageKey, nextExtraPageId, pageKeyAfterInsertion, selectPageKeys, toggleLabelVisibility, toggleLegendFocus, type PageNavigationKey, type PageSelectionModifiers } from "@/lib/v2/ui/report-preview-logic";
 import styles from "./report-preview.module.css";
 
 type PreviewStylePatch = Partial<PageStyle>;
@@ -28,6 +28,11 @@ const PANEL_MIN: Record<PanelKey, { w: number; h: number }> = {
   legend: { w: 1.3, h: 0.52 },
 };
 const SNAP_THRESHOLD = SLIDE.w * 0.01;
+const SHEET_GRID_OPTIONS: readonly { grid: SheetGrid; label: string }[] = [
+  { grid: "2x2", label: "2×2 · 4칸" },
+  { grid: "3x2", label: "3×2 · 6칸" },
+  { grid: "3x1", label: "3×1 · 3칸" },
+];
 
 type PanelInteraction = {
   "data-panel-key": PanelKey;
@@ -61,7 +66,7 @@ function formatScale(value: number): string {
   return String(Math.round(value * 100)) + "%";
 }
 
-type InlineIconName = "close" | "grid" | "plus" | "chevronDown" | "zoomOut" | "zoomIn" | "center" | "summary";
+type InlineIconName = "close" | "grid" | "plus" | "chevronDown" | "chevronLeft" | "chevronRight" | "zoomOut" | "zoomIn" | "center" | "summary";
 
 function InlineIcon({ name, size }: { name: InlineIconName; size?: number }) {
   let content: React.ReactNode;
@@ -82,6 +87,12 @@ function InlineIcon({ name, size }: { name: InlineIconName; size?: number }) {
       break;
     case "chevronDown":
       content = <path d="m7 9 5 5 5-5" />;
+      break;
+    case "chevronLeft":
+      content = <path d="m14.5 5-7 7 7 7" />;
+      break;
+    case "chevronRight":
+      content = <path d="m9.5 5 7 7-7 7" />;
       break;
     case "zoomOut":
       content = <>
@@ -246,6 +257,7 @@ type MapLayerProps = {
   siteX: number;
   pinnedKeys?: readonly string[];
   interactive: boolean;
+  thumbnail?: boolean;
   onPatch: (patch: PreviewStylePatch) => void;
   onDirectPatch?: (patch: PreviewStylePatch) => void;
   hoverLegend?: string | null;
@@ -270,7 +282,7 @@ function recordPreviewTiming(name: string, elapsedMs: number): void {
   metrics[`${name}Samples`] = (metrics[`${name}Samples`] ?? 0) + 1;
 }
 
-function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, interactive, onPatch, onDirectPatch, hoverLegend, label }: MapLayerProps) {
+function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, interactive, thumbnail = false, onPatch, onDirectPatch, hoverLegend, label }: MapLayerProps) {
   const width = Math.max(1, Math.round(SLIDE.w * unit));
   const height = Math.max(1, Math.round(SLIDE.h * unit));
   const [dragging, setDragging] = useState(false);
@@ -440,7 +452,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
         width={width}
         height={height}
         fixed
-        basemap="tiles"
+        basemap={thumbnail ? "none" : "tiles"}
         layer={basemap}
         legend={false}
         north={false}
@@ -475,6 +487,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
     <div
       ref={mapInteractionRef}
       className={styles.mapInteraction}
+      data-preview-map="true"
       data-dragging={dragging ? "true" : "false"}
       tabIndex={0}
       role="application"
@@ -586,6 +599,13 @@ function LegendPanel({ slide, rect, unit, hoverLabel, onLegendHover, onLegendPin
             <span className={styles.legendText} style={fontStyle(pt, unit)}>{item.label}</span>
           </div>
         );
+        // 썸네일(버튼 안)처럼 조작할 수 없는 범례는 button을 중첩하지 않는다.
+        if (!onLegendPin) return (
+          <div className={styles.legendRow} key={key + "-" + index}>
+            <span className={styles.legendSwatch} style={{ background: item.color }} aria-hidden="true" />
+            <span className={styles.legendText} style={fontStyle(pt, unit)}>{item.label}</span>
+          </div>
+        );
           return (
           <button key={key + "-" + index} type="button" className={rowClass} data-panel-action="legend-item" data-preview-legend={item.label} aria-label={`${item.label} 범례 강조`} aria-pressed={focused} title={instruction} onClick={() => onLegendPin?.(key)} onPointerEnter={(event) => { if (event.pointerType !== "touch") onLegendHover?.(item.label); }} onPointerLeave={() => onLegendHover?.(null)} onFocus={() => onLegendHover?.(item.label)} onBlur={() => onLegendHover?.(null)}>
             <span className={styles.legendSwatch} style={{ background: item.color }} aria-hidden="true" />
@@ -627,13 +647,13 @@ function VisualPlaceholder({ title, message, unit }: { title: string; message: s
   );
 }
 
-function CoverSurface({ slide, unit, basemap, interactive, onPatch, onDirectPatch }: { slide: Extract<PlannedSlide, { kind: "cover" }>; unit: number; basemap: BasemapChoice; interactive: boolean; onPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void }) {
+function CoverSurface({ slide, unit, basemap, interactive, thumbnail = false, onPatch, onDirectPatch }: { slide: Extract<PlannedSlide, { kind: "cover" }>; unit: number; basemap: BasemapChoice; interactive: boolean; thumbnail?: boolean; onPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void }) {
   const map = slide.map;
   const layout = coverLayout({ address: slide.address, metricCount: slide.metrics.length, lineCount: slide.lines.length, incomplete: !!slide.incomplete });
   const mapPanels = { title: layout.left, summary: layout.right, legend: null };
   return (
     <>
-      {map && <MapLayer model={map} style={slide.style} unit={unit} basemap={basemap} panels={mapPanels} siteX={0.5} interactive={interactive} onPatch={onPatch} onDirectPatch={onDirectPatch} label="표지 지도" />}
+      {map && <MapLayer model={map} style={slide.style} unit={unit} basemap={basemap} panels={mapPanels} siteX={0.5} interactive={interactive} thumbnail={thumbnail} onPatch={onPatch} onDirectPatch={onDirectPatch} label="표지 지도" />}
       <div className={styles.coverSlide}>
         <div className={styles.coverPlate} style={rectStyle(layout.left, unit)} aria-hidden="true" />
         <p className={styles.coverKicker} style={{ ...rectStyle(layout.leftInner, unit), ...fontStyle(11, unit) }}>사이트 분석 보고서</p>
@@ -669,14 +689,14 @@ function CoverSurface({ slide, unit, basemap, interactive, onPatch, onDirectPatc
   );
 }
 
-function SourcesSurface({ slide, unit, basemap }: { slide: Extract<PlannedSlide, { kind: "sources" }>; unit: number; basemap: BasemapChoice }) {
+function SourcesSurface({ slide, unit, basemap, thumbnail = false }: { slide: Extract<PlannedSlide, { kind: "sources" }>; unit: number; basemap: BasemapChoice; thumbnail?: boolean }) {
   const layout = sourceLayout(slide.rows.length, slide.style);
   const mapPanels = { title: layout.title, summary: null, legend: null };
   const map = slide.map;
   const kind = layout.dense;
   return (
     <>
-      {map && <MapLayer model={map} style={slide.style} unit={unit} basemap={basemap} panels={mapPanels} siteX={0.5} interactive={false} onPatch={() => undefined} label="출처 장 배경 지도" />}
+      {map && <MapLayer model={map} style={slide.style} unit={unit} basemap={basemap} panels={mapPanels} siteX={0.5} interactive={false} thumbnail={thumbnail} onPatch={() => undefined} label="출처 장 배경 지도" />}
       <div className={styles.sourceSlide}>
         <ReportTitlePanel color="#7A7E87" code="" title="자료 출처와 기준일" kind="" rect={layout.title} unit={unit} />
         <div className={styles.sourceTableWrap} style={rectStyle(layout.table, unit)}>
@@ -693,7 +713,7 @@ function SourcesSurface({ slide, unit, basemap }: { slide: Extract<PlannedSlide,
   );
 }
 
-function SheetSurface({ slide, unit, basemap }: { slide: Extract<PlannedSlide, { kind: "sheet" }>; unit: number; basemap: BasemapChoice }) {
+function SheetSurface({ slide, unit, basemap, thumbnail = false, onCellActivate }: { slide: Extract<PlannedSlide, { kind: "sheet" }>; unit: number; basemap: BasemapChoice; thumbnail?: boolean; onCellActivate?: (index: number) => void }) {
   const cellRects = sheetCells(slide.grid as SheetGrid);
   const titleRect = titlePlateRect("SHEET", slide.view.title, slide.grid, SLIDE.w - 2 * SLIDE.edge, slide.style, false);
   return (
@@ -701,9 +721,15 @@ function SheetSurface({ slide, unit, basemap }: { slide: Extract<PlannedSlide, {
       <div className={styles.sheetSlide}>
         <ReportTitlePanel color={slide.view.color} code="SHEET" title={slide.view.title} kind={slide.grid} rect={titleRect} unit={unit} />
         <div className={styles.sheetGrid}>
-          {slide.cells.map((cell, index) => {
-            const rect = cellRects[index];
+          {cellRects.map((rect, index) => {
+            const cell = slide.cells[index] ?? null;
             if (!rect) return null;
+            if (!cell) return (
+              <div className={styles.sheetCell + " " + styles.sheetCellEmpty} style={rectStyle(rect, unit)} key={`empty-${index}`}>
+                <span style={fontStyle(12, unit)}>타일 선택</span>
+                {onCellActivate && !thumbnail && <button type="button" className={styles.sheetCellButton} data-sheet-cell-index={index} aria-label={`${index + 1}번째 칸 타일 선택`} onClick={() => onCellActivate(index)} />}
+              </div>
+            );
             const model = cell.view.map ?? cell.view.backdrop;
             const width = Math.max(1, Math.round(rect.w * unit));
             const height = Math.max(1, Math.round(rect.h * unit));
@@ -717,7 +743,7 @@ function SheetSurface({ slide, unit, basemap }: { slide: Extract<PlannedSlide, {
                       width={width}
                       height={height}
                       fixed
-                      basemap="tiles"
+                      basemap={thumbnail ? "none" : "tiles"}
                       layer={basemap}
                       legend={false}
                       north={false}
@@ -732,6 +758,7 @@ function SheetSurface({ slide, unit, basemap }: { slide: Extract<PlannedSlide, {
                   </div>
                 ) : <VisualPlaceholder title={cell.view.title} message="이 장은 지도 대신 도판으로 표시됩니다." unit={unit} />}
                 <span className={styles.sheetLabel} style={fontStyle(9, unit)}>{cell.view.code} · {cell.view.title}</span>
+                {onCellActivate && !thumbnail && <button type="button" className={styles.sheetCellButton} data-sheet-cell-index={index} aria-label={`${cell.view.code} ${cell.view.title} 타일 선택`} onClick={() => onCellActivate(index)} />}
               </div>
             );
           })}
@@ -742,7 +769,7 @@ function SheetSurface({ slide, unit, basemap }: { slide: Extract<PlannedSlide, {
   );
 }
 
-function TileSurface({ slide, unit, basemap, panels, interactive, onPatch, onDirectPatch, panelInteraction }: { slide: Extract<PlannedSlide, { kind: "tile" }>; unit: number; basemap: BasemapChoice; panels: { title: Rect; summary: Rect | null; legend: Rect | null }; interactive: boolean; onPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void; panelInteraction?: (key: PanelKey) => PanelInteraction }) {
+function TileSurface({ slide, unit, basemap, panels, interactive, thumbnail = false, onPatch, onDirectPatch, panelInteraction }: { slide: Extract<PlannedSlide, { kind: "tile" }>; unit: number; basemap: BasemapChoice; panels: { title: Rect; summary: Rect | null; legend: Rect | null }; interactive: boolean; thumbnail?: boolean; onPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void; panelInteraction?: (key: PanelKey) => PanelInteraction }) {
   const model = slide.map;
   const chart = !model && !slide.mass && !slide.rose && slide.body.face !== "single";
   const [hoverLegend, setHoverLegend] = useState<string | null>(null);
@@ -756,11 +783,11 @@ function TileSurface({ slide, unit, basemap, panels, interactive, onPatch, onDir
   }, [model, onDirectPatch, slide.style.legendFocus]);
   return (
     <>
-      {model ? <MapLayer model={model} style={slide.style} unit={unit} basemap={basemap} panels={panels} siteX={slideSiteX(slide.style, panels.summary !== null)} pinnedKeys={slide.pinnedKeys} interactive={interactive} onPatch={onPatch} onDirectPatch={onDirectPatch} hoverLegend={hoverLegend} label={slide.view.title + " 지도"} /> : slide.mass ? <VisualPlaceholder title={slide.view.title} message="3D 매스 미리보기는 내보내기와 같은 페이지 위치로 표시됩니다." unit={unit} /> : slide.rose ? <VisualPlaceholder title={slide.view.title} message="바람장미 도판 미리보기" unit={unit} /> : chart ? <ChartPlaceholder view={slide.view} unit={unit} /> : <VisualPlaceholder title={slide.view.title} message={slide.body.kind === "state" ? slide.body.message : "표시할 지도 결과가 없습니다."} unit={unit} />}
+      {model ? <MapLayer model={model} style={slide.style} unit={unit} basemap={basemap} panels={panels} siteX={slideSiteX(slide.style, panels.summary !== null)} pinnedKeys={slide.pinnedKeys} interactive={interactive} thumbnail={thumbnail} onPatch={onPatch} onDirectPatch={onDirectPatch} hoverLegend={hoverLegend} label={slide.view.title + " 지도"} /> : slide.mass ? <VisualPlaceholder title={slide.view.title} message="3D 매스 미리보기는 내보내기와 같은 페이지 위치로 표시됩니다." unit={unit} /> : slide.rose ? <VisualPlaceholder title={slide.view.title} message="바람장미 도판 미리보기" unit={unit} /> : chart ? <ChartPlaceholder view={slide.view} unit={unit} /> : <VisualPlaceholder title={slide.view.title} message={slide.body.kind === "state" ? slide.body.message : "표시할 지도 결과가 없습니다."} unit={unit} />}
       {slide.body.kind === "state" && <div className={styles.slidePanel} style={{ left: unit * 4, top: unit * 2.7, width: unit * 5.1, height: unit * 1.15 }}><div className={styles.slideText + " " + styles.slideTextStrong} style={fontStyle(16, unit)}>{slide.body.message}</div></div>}
       <TitlePanel slide={slide} rect={panels.title} unit={unit} interaction={panelInteraction?.("title")} />
       {panels.summary && hasSummaryPanel(slide) && <SummaryPanel slide={slide} rect={panels.summary} unit={unit} interaction={panelInteraction?.("summary")} />}
-      {panels.legend && <LegendPanel slide={slide} rect={panels.legend} unit={unit} hoverLabel={hoverLegend} onLegendHover={setHoverLegend} onLegendPin={onLegendPin} interaction={panelInteraction?.("legend")} />}
+      {panels.legend && <LegendPanel slide={slide} rect={panels.legend} unit={unit} hoverLabel={hoverLegend} onLegendHover={setHoverLegend} onLegendPin={thumbnail ? undefined : onLegendPin} interaction={panelInteraction?.("legend")} />}
       <SlideFooter slide={slide} unit={unit} />
     </>
   );
@@ -804,7 +831,7 @@ function PanelTransformFrame({ panelKey, rect, unit, xGuides, yGuides, onResizeS
   </>;
 }
 
-function SlidePreview({ slide, basemap, editable, onPatch, onMapPatch, onDirectPatch }: { slide: PlannedSlide; basemap: BasemapChoice; editable: boolean; onPatch: (patch: PreviewStylePatch) => void; onMapPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void }) {
+function SlidePreview({ slide, basemap, editable, thumbnail = false, onSheetCellActivate, onPatch, onMapPatch, onDirectPatch }: { slide: PlannedSlide; basemap: BasemapChoice; editable: boolean; thumbnail?: boolean; onSheetCellActivate?: (index: number) => void; onPatch: (patch: PreviewStylePatch) => void; onMapPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void }) {
   const slotRef = useRef<HTMLDivElement>(null);
   const frameSize = useContainFrameSize(slotRef);
   const unit = frameSize.width > 0 ? frameSize.width / SLIDE.w : 1;
@@ -976,16 +1003,47 @@ function SlidePreview({ slide, basemap, editable, onPatch, onMapPatch, onDirectP
           onKeyDown={(event) => { if (event.key === "Escape") setSelectedPanel(null); }}
           data-transforming={panelDrag.current || panelResize.current ? "true" : "false"}
         >
-        {displaySlide.kind === "cover" && <CoverSurface slide={displaySlide} unit={unit} basemap={basemap} interactive={editable && !!displayModel} onPatch={onMapPatch} onDirectPatch={onDirectPatch} />}
-        {displaySlide.kind === "sources" && <SourcesSurface slide={displaySlide} unit={unit} basemap={basemap} />}
-        {displaySlide.kind === "sheet" && <SheetSurface slide={displaySlide} unit={unit} basemap={basemap} />}
-        {displaySlide.kind === "tile" && <TileSurface slide={displaySlide} unit={unit} basemap={basemap} panels={panels} interactive={editable && !!displayModel} onPatch={onMapPatch} onDirectPatch={onDirectPatch} panelInteraction={editable ? panelInteraction : undefined} />}
+        {displaySlide.kind === "cover" && <CoverSurface slide={displaySlide} unit={unit} basemap={basemap} interactive={editable && !!displayModel} thumbnail={thumbnail} onPatch={onMapPatch} onDirectPatch={onDirectPatch} />}
+        {displaySlide.kind === "sources" && <SourcesSurface slide={displaySlide} unit={unit} basemap={basemap} thumbnail={thumbnail} />}
+        {displaySlide.kind === "sheet" && <SheetSurface slide={displaySlide} unit={unit} basemap={basemap} thumbnail={thumbnail} onCellActivate={onSheetCellActivate} />}
+        {displaySlide.kind === "tile" && <TileSurface slide={displaySlide} unit={unit} basemap={basemap} panels={panels} interactive={editable && !!displayModel} thumbnail={thumbnail} onPatch={onMapPatch} onDirectPatch={onDirectPatch} panelInteraction={editable ? panelInteraction : undefined} />}
         {handles}
         </div>
       </div>
     </div>
   );
 }
+
+const noopPreviewPatch = (_patch: PreviewStylePatch): void => undefined;
+
+const ThumbnailPreview = memo(function ThumbnailPreview({ slide, basemap }: { slide: PlannedSlide; basemap: BasemapChoice }) {
+  const hostRef = useRef<HTMLSpanElement>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setMounted(true);
+      return;
+    }
+    const root = host.closest("[data-thumbnail-scroll]");
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[0];
+      if (entry) setMounted(entry.isIntersecting);
+    }, { root: root instanceof Element ? root : null, rootMargin: "0px" });
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <span ref={hostRef} className={styles.thumbMini} data-preview-thumbnail="true" aria-hidden="true">
+      {mounted
+        ? <SlidePreview slide={slide} basemap={basemap} editable={false} thumbnail onPatch={noopPreviewPatch} onMapPatch={noopPreviewPatch} />
+        : <span className={styles.thumbMiniText}>{slide.kind === "cover" ? "표지" : slide.kind === "sources" ? "출처" : slide.kind === "sheet" ? "조판" : slide.view.code}</span>}
+    </span>
+  );
+});
 
 type PageToolbarProps = {
   selectedSlides: PlannedSlide[];
@@ -1066,12 +1124,16 @@ export default function ReportPreview({ board, dispatch, views, plan, basemap, o
   const thumbnailRefs = useRef(new Map<PageKey, HTMLButtonElement>());
   const addButtonRef = useRef<HTMLButtonElement>(null);
   const addPopoverRef = useRef<HTMLDivElement>(null);
+  const sheetCellPopoverRef = useRef<HTMLDivElement>(null);
+  const sheetCellFocusRef = useRef<number | null>(null);
   const pendingAddedPageRef = useRef<PageKey | null>(null);
   const addAfterKeyRef = useRef<PageKey | null>(null);
+  const sheetCellIndexRef = useRef<number | null>(null);
   const exportStatusRef = useRef<HTMLParagraphElement>(null);
   const exportFocusRequestedRef = useRef(false);
   const headingId = useId().replace(/:/g, "");
   const addPopoverId = useId().replace(/:/g, "");
+  const sheetCellPopoverId = useId().replace(/:/g, "");
   const [activeKey, setActiveKey] = useState<PageKey | null>(plan[0]?.key ?? null);
   const [selectedKeys, setSelectedKeys] = useState<PageKey[]>(plan[0]?.key ? [plan[0].key] : []);
   const [anchorKey, setAnchorKey] = useState<PageKey | null>(plan[0]?.key ?? null);
@@ -1080,7 +1142,11 @@ export default function ReportPreview({ board, dispatch, views, plan, basemap, o
   const [addPopoverStyle, setAddPopoverStyle] = useState<CSSProperties | null>(null);
   const [addSearch, setAddSearch] = useState("");
   const [thumbnailMenuKey, setThumbnailMenuKey] = useState<PageKey | null>(null);
+  const [sheetCellIndex, setSheetCellIndex] = useState<number | null>(null);
+  const [sheetCellPopoverStyle, setSheetCellPopoverStyle] = useState<CSSProperties | null>(null);
+  const [sheetCellSearch, setSheetCellSearch] = useState("");
   addAfterKeyRef.current = addAfterKey;
+  sheetCellIndexRef.current = sheetCellIndex;
 
   const closeAddPopover = useCallback((restoreFocus = false) => {
     setAddAfterKey(null);
@@ -1088,6 +1154,51 @@ export default function ReportPreview({ board, dispatch, views, plan, basemap, o
     setAddSearch("");
     if (restoreFocus) addButtonRef.current?.focus({ preventScroll: true });
   }, []);
+
+  const closeSheetCellPopover = useCallback((restoreFocus = false) => {
+    const focusIndex = sheetCellFocusRef.current;
+    setSheetCellIndex(null);
+    setSheetCellPopoverStyle(null);
+    setSheetCellSearch("");
+    sheetCellFocusRef.current = null;
+    if (restoreFocus) window.requestAnimationFrame(() => {
+      if (focusIndex === null) return;
+      dialogRef.current?.querySelector<HTMLElement>(`[data-sheet-cell-index="${focusIndex}"]`)?.focus({ preventScroll: true });
+    });
+  }, []);
+
+  const updateSheetCellPopoverPosition = useCallback(() => {
+    if (sheetCellIndex === null) return;
+    const anchor = dialogRef.current?.querySelector<HTMLElement>(`[data-sheet-cell-index="${sheetCellIndex}"]`);
+    const popover = sheetCellPopoverRef.current;
+    if (!anchor || !popover) return;
+    const anchorRect = anchor.getBoundingClientRect();
+    const popoverRect = popover.getBoundingClientRect();
+    const viewportWidth = Math.max(document.documentElement.clientWidth, window.innerWidth);
+    const viewportHeight = Math.max(document.documentElement.clientHeight, window.innerHeight);
+    const margin = 12;
+    const left = Math.max(margin, Math.min(anchorRect.left, viewportWidth - popoverRect.width - margin));
+    let top = anchorRect.bottom + 8;
+    if (top + popoverRect.height > viewportHeight - margin) top = anchorRect.top - popoverRect.height - 8;
+    top = Math.max(margin, Math.min(top, viewportHeight - popoverRect.height - margin));
+    setSheetCellPopoverStyle((currentStyle) => currentStyle?.left === left && currentStyle?.top === top ? currentStyle : { left, top });
+  }, [sheetCellIndex]);
+
+  useEffect(() => {
+    if (sheetCellIndex === null) {
+      setSheetCellPopoverStyle(null);
+      return;
+    }
+    const frame = window.requestAnimationFrame(updateSheetCellPopoverPosition);
+    const onViewportChange = () => window.requestAnimationFrame(updateSheetCellPopoverPosition);
+    window.addEventListener("resize", onViewportChange);
+    window.addEventListener("scroll", onViewportChange, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", onViewportChange);
+      window.removeEventListener("scroll", onViewportChange, true);
+    };
+  }, [sheetCellIndex, updateSheetCellPopoverPosition]);
 
   const updateAddPopoverPosition = useCallback(() => {
     if (!addAfterKey) return;
@@ -1126,6 +1237,10 @@ export default function ReportPreview({ board, dispatch, views, plan, basemap, o
     ref: dialogRef,
     onClose,
     onEscape: () => {
+      if (sheetCellIndexRef.current !== null) {
+        closeSheetCellPopover(true);
+        return true;
+      }
       if (addAfterKeyRef.current !== null) {
         closeAddPopover(true);
         return true;
@@ -1184,6 +1299,8 @@ export default function ReportPreview({ board, dispatch, views, plan, basemap, o
   }, [planKeys]);
 
   const current = plan.find((slide) => slide.key === activeKey) ?? plan[0] ?? null;
+  const previousPageKey = neighborPageKey(planKeys, current?.key ?? "", "ArrowLeft");
+  const nextPageKey = neighborPageKey(planKeys, current?.key ?? "", "ArrowRight");
   const selectedSlides = plan.filter((slide) => selectedKeys.includes(slide.key));
   const applyPatch = useCallback((patch: PreviewStylePatch) => {
     const keys = selectedKeys.length > 0 ? selectedKeys : (current ? [current.key] : []);
@@ -1195,6 +1312,21 @@ export default function ReportPreview({ board, dispatch, views, plan, basemap, o
     setSelectedKeys(next);
     if (!modifiers.shiftKey) setAnchorKey(key);
   }, [anchorKey, planKeys, selectedKeys]);
+  const onDialogKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    if (!target) return;
+    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target.isContentEditable || target.getAttribute("role") === "textbox") return;
+    if (target.closest("[data-preview-map]")) return;
+    if (target.closest("[data-panel-selected=\"true\"]")) return;
+    if (target.closest("[role=\"menu\"], [role=\"listbox\"], [role=\"region\"], [aria-haspopup=\"menu\"][aria-expanded=\"true\"]")) return;
+    if (addAfterKey !== null || sheetCellIndex !== null || thumbnailMenuKey !== null) return;
+    if (!(event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "PageUp" || event.key === "PageDown" || event.key === "Home" || event.key === "End")) return;
+    const currentKey = current?.key ?? planKeys[0] ?? "";
+    const nextKey = neighborPageKey(planKeys, currentKey, event.key as PageNavigationKey);
+    if (!nextKey || nextKey === currentKey) return;
+    event.preventDefault();
+    select(nextKey);
+  };
   const onThumbnailKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, key: PageKey) => {
     if (event.key === "ArrowUp" || event.key === "ArrowDown") {
       event.preventDefault();
@@ -1223,11 +1355,28 @@ export default function ReportPreview({ board, dispatch, views, plan, basemap, o
     return !query || [id, view.code, view.title, view.kindLabel].some((value) => value.toLocaleLowerCase().includes(query));
   });
   const addGroups = [...new Map(filteredAddOptions.map((entry) => [entry.view.kindLabel, filteredAddOptions.filter((candidate) => candidate.view.kindLabel === entry.view.kindLabel)])).entries()];
+  const filteredSheetOptions = addOptions.filter(({ id, view }) => {
+    const query = sheetCellSearch.trim().toLocaleLowerCase();
+    return !query || [id, view.code, view.title, view.kindLabel].some((value) => value.toLocaleLowerCase().includes(query));
+  });
   const openAddPopover = (key: PageKey) => {
+    closeSheetCellPopover();
     setThumbnailMenuKey(null);
     setAddSearch("");
     setAddPopoverStyle(null);
     setAddAfterKey((currentKey) => currentKey === key ? null : key);
+  };
+  const addSheetPage = (grid: SheetGrid) => {
+    if (!addAfterKey) return;
+    const id = nextExtraPageId(board.report.extra.map((page) => page.id), `sheet-${grid}`);
+    const after = pageKeyAfterInsertion(planKeys, addAfterKey);
+    dispatch({ type: "addPage", id, after, tileId: "", face: "front", sheet: { grid, tiles: Array.from({ length: sheetCapacity(grid) }, () => "") } });
+    const key = extraPageKey(id);
+    pendingAddedPageRef.current = key;
+    setActiveKey(key);
+    setSelectedKeys([key]);
+    setAnchorKey(key);
+    closeAddPopover();
   };
   const addPage = (tileId: string, face: "front" | "back") => {
     if (!addAfterKey) return;
@@ -1240,6 +1389,20 @@ export default function ReportPreview({ board, dispatch, views, plan, basemap, o
     setSelectedKeys([key]);
     setAnchorKey(key);
     closeAddPopover();
+  };
+  const openSheetCellPopover = (index: number) => {
+    if (current?.kind !== "sheet") return;
+    sheetCellFocusRef.current = index;
+    closeAddPopover();
+    setThumbnailMenuKey(null);
+    setSheetCellSearch("");
+    setSheetCellPopoverStyle(null);
+    setSheetCellIndex(index);
+  };
+  const setSheetCell = (tileId: string) => {
+    if (!current?.key.startsWith("extra:") || sheetCellIndex === null) return;
+    dispatch({ type: "setSheetCell", id: current.key.slice("extra:".length), index: sheetCellIndex, tileId });
+    closeSheetCellPopover(true);
   };
 
   const handleExport = useCallback(() => {
@@ -1273,7 +1436,7 @@ export default function ReportPreview({ board, dispatch, views, plan, basemap, o
 
   return (
     <div className={styles.backdrop}>
-      <div ref={dialogRef} className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby={headingId} tabIndex={-1}>
+      <div ref={dialogRef} className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby={headingId} tabIndex={-1} onKeyDown={onDialogKeyDown}>
         <h1 id={headingId} className={styles.visuallyHidden}>페이지 미리보기</h1>
         <button type="button" className={styles.dialogClose} aria-label="미리보기 닫기" title="미리보기 닫기" onClick={onClose}><InlineIcon name="close" /></button>
         <div className={styles.body + (!filmstripOpen ? " " + styles.bodyFilmstripCollapsed : "")}>
@@ -1283,7 +1446,7 @@ export default function ReportPreview({ board, dispatch, views, plan, basemap, o
               <span className={styles.railHint + " " + styles.filmstripCount}>{current?.no ?? 0} / {plan.length}</span>
               <button type="button" className={styles.filmstripToggle} aria-label="페이지 목록 펼치기/접기" title="페이지 목록 펼치기/접기" aria-expanded={filmstripOpen} onClick={() => setFilmstripOpen((open) => !open)}><InlineIcon name="grid" /></button>
             </div>
-            {filmstripOpen && <ol className={styles.thumbList}>
+            {filmstripOpen && <ol className={styles.thumbList} data-thumbnail-scroll="true">
               {plan.map((slide) => {
                 const selected = selectedKeys.includes(slide.key);
                 const extra = slide.key.startsWith("extra:");
@@ -1293,7 +1456,7 @@ export default function ReportPreview({ board, dispatch, views, plan, basemap, o
                       if (element) thumbnailRefs.current.set(slide.key, element);
                       else thumbnailRefs.current.delete(slide.key);
                     }} className={styles.thumbButton} aria-current={activeKey === slide.key ? "true" : undefined} aria-selected={selected} onClick={(event) => select(slide.key, { shiftKey: event.shiftKey, ctrlKey: event.ctrlKey, metaKey: event.metaKey })} onKeyDown={(event) => onThumbnailKeyDown(event, slide.key)}>
-                       <span className={styles.thumbMini}><span className={styles.thumbMiniText}>{slide.kind === "cover" ? "표지" : slide.kind === "sources" ? "출처" : slide.kind === "sheet" ? "조판" : slide.view.code}</span></span>
+                       <ThumbnailPreview slide={slide} basemap={basemap} />
                        <span className={styles.thumbCopy}><span className={styles.thumbNumber}>{slide.no} / {slide.total}</span><span className={styles.thumbTitle}>{slideTitle(slide)}{extra && <span className={styles.extraBadge}>추가</span>}</span><span className={styles.thumbKind}>{slide.kind === "tile" ? slide.view.kindLabel : slide.kind === "sheet" ? "타일 조판" : slide.kind === "sources" ? "출처" : "표지"}</span></span>
                      </button>
                      <button type="button" className={styles.thumbMenuButton} aria-label={slideTitle(slide) + " 페이지 메뉴"} aria-expanded={thumbnailMenuKey === slide.key} onClick={(event) => { event.stopPropagation(); setThumbnailMenuKey((key) => key === slide.key ? null : slide.key); }} title="페이지 메뉴">⋯</button>
@@ -1310,6 +1473,12 @@ export default function ReportPreview({ board, dispatch, views, plan, basemap, o
            {addAfterKey && <div ref={addPopoverRef} id={addPopoverId} className={styles.addPopover} style={addPopoverStyle ?? undefined} role="region" aria-label="페이지 추가">
              <p className={styles.addPopoverHeading}>현재 페이지 뒤에 추가{plan.find((slide) => slide.key === addAfterKey) ? ` · ${slideTitle(plan.find((slide) => slide.key === addAfterKey)!)}` : ""}</p>
              <label className={styles.addSearchLabel}>타일 검색<input type="search" value={addSearch} onChange={(event) => setAddSearch(event.target.value)} placeholder="타일 이름·코드·분류" aria-label="추가할 타일 검색" /></label>
+             <section className={styles.sheetGridOptions} aria-label="여러 타일 페이지">
+               <h3>여러 타일 페이지</h3>
+               <div className={styles.sheetGridOptionList}>
+                 {SHEET_GRID_OPTIONS.map((option) => <button key={option.grid} type="button" className={styles.sheetGridOption} onClick={() => addSheetPage(option.grid)} aria-label={`${option.label} 페이지 추가`}>{option.label}</button>)}
+               </div>
+             </section>
              <div className={styles.addTileList}>
                {addGroups.map(([group, entries]) => <section className={styles.addTileGroup} key={group}>
                  <h3>{group}</h3>
@@ -1324,10 +1493,23 @@ export default function ReportPreview({ board, dispatch, views, plan, basemap, o
                {addGroups.length === 0 && <p className={styles.addEmpty}>검색 결과가 없습니다.</p>}
              </div>
            </div>}
+           {sheetCellIndex !== null && <div ref={sheetCellPopoverRef} id={sheetCellPopoverId} className={styles.sheetCellPicker} style={sheetCellPopoverStyle ?? undefined} role="region" aria-label="타일 선택">
+             <div className={styles.sheetCellPickerHeading}>타일 선택</div>
+             <label className={styles.addSearchLabel}>검색<input type="search" value={sheetCellSearch} onChange={(event) => setSheetCellSearch(event.target.value)} placeholder="타일 이름·코드" aria-label="타일 검색" /></label>
+             <div className={styles.sheetCellPickerList}>
+               {filteredSheetOptions.map((entry) => <button key={entry.id} type="button" className={styles.sheetCellPickerOption} onClick={() => setSheetCell(entry.id)} aria-label={`${entry.view.code} ${entry.view.title} 선택`}><b>{entry.view.code}</b><span>{entry.view.title}</span></button>)}
+               {filteredSheetOptions.length === 0 && <p className={styles.addEmpty}>검색 결과가 없습니다.</p>}
+             </div>
+             <button type="button" className={styles.sheetCellClear} onClick={() => setSheetCell("")}>칸 비우기</button>
+           </div>}
            <main className={styles.stageColumn} aria-label="현재 페이지 미리보기">
              {current ? <>
                <PageToolbar selectedSlides={selectedSlides} current={current} applyPatch={applyPatch} resetScales={resetScales} resetLabels={resetLabels} exportStatusRef={exportStatusRef} exportEnabled={exportEnabled} exporting={exporting} makingKind={makingKind} exportProblem={exportProblem} onExport={handleExport} />
-               <SlidePreview slide={current} basemap={basemap} editable={current.kind === "tile"} onPatch={applyPatch} onMapPatch={onLargeMapPatch} onDirectPatch={onDirectPagePatch} />
+               <div className={styles.pageStage}>
+                 <button type="button" className={styles.toolbarIconButton + " " + styles.pageNavButton + " " + styles.pageNavPrevious} disabled={!previousPageKey || previousPageKey === current.key} aria-label="이전 페이지" title="이전 페이지" data-tooltip="이전 페이지" onClick={() => previousPageKey && select(previousPageKey)}><InlineIcon name="chevronLeft" /></button>
+                 <SlidePreview slide={current} basemap={basemap} editable={current.kind === "tile"} onSheetCellActivate={current.kind === "sheet" && current.key.startsWith("extra:") ? openSheetCellPopover : undefined} onPatch={applyPatch} onMapPatch={onLargeMapPatch} onDirectPatch={onDirectPagePatch} />
+                 <button type="button" className={styles.toolbarIconButton + " " + styles.pageNavButton + " " + styles.pageNavNext} disabled={!nextPageKey || nextPageKey === current.key} aria-label="다음 페이지" title="다음 페이지" data-tooltip="다음 페이지" onClick={() => nextPageKey && select(nextPageKey)}><InlineIcon name="chevronRight" /></button>
+               </div>
              </> : <p className={styles.emptyState}>표시할 페이지가 없습니다.</p>}
            </main>
          </div>

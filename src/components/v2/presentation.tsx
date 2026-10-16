@@ -55,7 +55,7 @@ function SheetSlide({ slide }: { slide: Extract<ReportSlide, { kind: "sheet" }> 
         <span>{slide.grid}</span>
       </header>
       <div className={styles.presentationSheetGrid} style={{ "--presentation-sheet-cols": columns } as CSSProperties}>
-        {slide.cells.map((cell) => (
+        {slide.cells.map((cell, index) => cell ? (
           <div key={cell.mapKey} className={styles.presentationSheetCell}>
             <Stage
               key={cell.view.tileId}
@@ -68,6 +68,8 @@ function SheetSlide({ slide }: { slide: Extract<ReportSlide, { kind: "sheet" }> 
             />
             <span className={styles.presentationSheetLabel}>{cell.view.title}</span>
           </div>
+        ) : (
+          <div key={`empty-${index}`} className={styles.presentationSheetCell}>타일 선택</div>
         ))}
       </div>
     </section>

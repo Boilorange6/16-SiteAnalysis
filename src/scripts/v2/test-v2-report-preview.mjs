@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 const {
   mixedValue,
   movePageSelection,
+  neighborPageKey,
   nextExtraPageId,
   pageKeyAfterInsertion,
   selectPageKeys,
@@ -12,6 +13,14 @@ const {
 } = await import("../../lib/v2/ui/report-preview-logic.ts");
 
 const pages = ["cover", "A01:front", "A02:front", "sources:0"];
+
+assert.equal(neighborPageKey(pages, "A01:front", "ArrowLeft"), "cover");
+assert.equal(neighborPageKey(pages, "A01:front", "PageDown"), "A02:front");
+assert.equal(neighborPageKey(pages, "A01:front", "Home"), "cover");
+assert.equal(neighborPageKey(pages, "A01:front", "End"), "sources:0");
+assert.equal(neighborPageKey(pages, "cover", "ArrowLeft"), "cover", "첫 장 이전은 경계를 넘지 않음");
+assert.equal(neighborPageKey(pages, "sources:0", "ArrowRight"), "sources:0", "끝 장 다음은 경계를 넘지 않음");
+assert.equal(neighborPageKey([], "cover", "ArrowRight"), null);
 
 // plain은 기존 다중 선택을 버리고 한 장만 남긴다.
 assert.deepEqual(

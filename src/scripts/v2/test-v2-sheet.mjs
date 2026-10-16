@@ -23,6 +23,11 @@ assert.ok(cells3.every(inside));
 assert.ok(cells3.every((cell) => Math.abs(cell.w - 4.2) < 1e-9 && Math.abs(cell.h - 3) < 1e-9));
 for (let i = 0; i < cells3.length; i += 1) for (let j = i + 1; j < cells3.length; j += 1) assert.equal(overlap(cells3[i], cells3[j]), false);
 
+const cells31 = sheetCells("3x1");
+assert.equal(cells31.length, 3);
+assert.ok(cells31.every(inside));
+assert.ok(cells31.every((cell) => Math.abs(cell.w / cell.h - 16 / 9) < 1e-9));
+
 const results = ["A01", "A03", "A04", "D04"].map((code) => GODEOK_RESULTS.find((result) => result.tileCode === code));
 const views = new Map(results.map((result) => [result.tileId, toTileView(result)]));
 const layerViews = results.map((result) => views.get(result.tileId));
