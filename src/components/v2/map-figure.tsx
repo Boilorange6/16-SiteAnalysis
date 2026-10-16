@@ -551,7 +551,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     "data-map-feature": undefined,
     className: "map-figure-hit",
     role: undefined,
-    tabIndex: -1,
+    tabIndex: undefined,
     "aria-label": undefined,
     "aria-pressed": undefined,
     title: undefined,

@@ -347,7 +347,7 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   assert.match(pinned, /data-map-feature="bus_stop\|0"/);
   assert.match(pinned, /data-map-feature="bus_stop\|1"/);
   assert.match(pinned, /<circle[^>]*data-map-feature="bus_stop\|0"[^>]*data-map-pick="true"/, "보이는 점이 선택·포커스 대상");
-  assert.match(pinned, /<circle data-map-hit="point"[^>]*data-map-pick="true"[^>]*tabindex="-1"/, "점 히트 영역은 포커스 순서에서 분리");
+  assert.doesNotMatch(pinned, /<circle data-map-hit="point"[^>]*tabindex=/i, "점 히트 영역은 포커스 순서에서 분리");
   assert.doesNotMatch(pinned, /<circle data-map-hit="point"[^>]*data-map-feature=/, "점 히트 영역은 시각 bbox 키를 갖지 않음");
   assert.match(pinned, /data-map-label-hit="bus_stop\|0"/, "고정 라벨에 별도 히트 영역");
   const fixedBoxes = [...pinned.matchAll(/<rect data-map-label-box="[^"]+" x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)" rx="[^"]+" fill="#fff" stroke="#16181d"/g)].map((match) => ({ x0: Number(match[1]), y0: Number(match[2]), x1: Number(match[1]) + Number(match[3]), y1: Number(match[2]) + Number(match[4]) }));
