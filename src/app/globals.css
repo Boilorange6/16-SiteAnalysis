@@ -75,8 +75,10 @@ body {
   outline-offset: 2px;
 }
 
-.map-figure-interactive:hover {
-  filter: drop-shadow(0 0 2px rgba(22, 78, 155, 0.9));
+@media (hover: hover) and (pointer: fine) {
+  .map-figure-interactive:hover {
+    filter: drop-shadow(0 0 2px rgba(22, 78, 155, 0.9));
+  }
 }
 
 .maintenance-boundary-label {

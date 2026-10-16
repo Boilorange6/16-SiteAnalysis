@@ -533,6 +533,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
         choose();
         pin();
       },
+      onMouseDown: (event: ReactMouseEvent<SVGElement>) => { event.stopPropagation(); },
       onKeyDown,
       onPointerDown: (event: ReactPointerEvent<SVGElement>) => { lastPointerType.current = event.pointerType; },
       onPointerEnter: (event: ReactPointerEvent<SVGElement>) => {
@@ -545,12 +546,26 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
       style: { cursor: "pointer" },
     };
   };
+  const hitProps = (props: ReturnType<typeof pickProps>) => ({
+    ...props,
+    "data-map-feature": undefined,
+    className: "map-figure-hit",
+    role: undefined,
+    tabIndex: -1,
+    "aria-label": undefined,
+    "aria-pressed": undefined,
+    title: undefined,
+    onKeyDown: undefined,
+    onFocus: undefined,
+    onBlur: undefined,
+    "aria-hidden": true,
+  });
   const routePoints = scene.routePoints;
   const [worldCenterX, worldCenterY] = worldPx(vp.center[0], vp.center[1], vp.zoom);
   const mapClick = (event: ReactMouseEvent<SVGSVGElement>) => {
     if (!onMapClick) return;
     const target = event.target as Element;
-    if (target.closest("[data-map-feature], [data-map-legend]")) return;
+    if (target.closest("[data-map-feature], [data-map-pick], [data-map-legend]")) return;
     const rect = event.currentTarget.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
     const x = (event.clientX - rect.left) * (W / rect.width);
@@ -640,36 +655,50 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     const labelHitY = Math.min(placement.box.y0, placement.leader.y0);
     const labelHitRight = Math.max(placement.box.x1, placement.leader.x1);
     const labelHitBottom = Math.max(placement.box.y1, placement.leader.y1);
+    const labelHitWidth = Math.max(44 * u, labelHitRight - labelHitX);
+    const labelHitHeight = Math.max(44 * u, labelHitBottom - labelHitY);
+    const labelHitLeft = Math.max(0, Math.min(W - labelHitWidth, (labelHitX + labelHitRight - labelHitWidth) / 2));
+    const labelHitTop = Math.max(0, Math.min(H - labelHitHeight, (labelHitY + labelHitBottom - labelHitHeight) / 2));
     // 범례 강조는 도형과 범례 패널에만 적용한다. 사용자 고정 라벨·콜아웃은
     // 지도 맥락을 설명하는 주석이므로 native PPT 경로와 함께 항상 선명하게 둔다.
     const dimmed = false;
     const pinPick = () => onFeaturePin?.(d.pick);
-    const onKeyDown = (event: ReactKeyboardEvent<SVGGElement>) => {
+    const onKeyDown = (event: ReactKeyboardEvent<SVGRectElement>) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         pinPick();
       }
     };
+    const labelButtonProps = fixedLabel && onFeaturePin ? {
+      "data-map-feature": d.key,
+      "data-map-pick": "true",
+      className: "map-figure-interactive",
+      role: "button" as const,
+      tabIndex: 0,
+      "aria-label": `${d.text} · 눌러서 라벨 숨기기`,
+      "aria-pressed": true,
+      onClick: pinPick,
+      onMouseDown: (event: ReactMouseEvent<SVGRectElement>) => { event.stopPropagation(); },
+      onKeyDown,
+      style: { cursor: "pointer" },
+    } : {};
     return (
       <g
         key={`${variant}-label-${d.key}`}
         data-map-label-key={d.key}
         data-map-label-variant={variant}
-        {...(fixedLabel && onFeaturePin ? { "data-map-feature": d.key, className: "map-figure-interactive", role: "button" as const, tabIndex: 0, "aria-label": `${d.text} · 눌러서 라벨 숨기기`, "aria-pressed": true, onClick: pinPick, onKeyDown } : { "aria-hidden": true })}
-        {...(fixedLabel && onFeaturePin ? { "data-map-pick": "true" } : {})}
-        style={fixedLabel && onFeaturePin ? { cursor: "pointer" } : undefined}
+        aria-hidden={fixedLabel && onFeaturePin ? undefined : true}
         pointerEvents={fixedLabel && onFeaturePin ? "all" : "none"}
         opacity={dimmed ? 0.2 : 1}
       >
         <title>{d.text}</title>
         {fixedLabel && onFeaturePin && <title>눌러서 라벨 숨기기</title>}
-        {fixedLabel && onFeaturePin && <rect data-map-label-hit={d.key} x={labelHitX} y={labelHitY} width={labelHitRight - labelHitX} height={labelHitBottom - labelHitY} fill="transparent" pointerEvents="all" />}
         {!dragging && <>
           <polyline data-map-label-leader={d.key} points={[d.p, placement.placed.knee, placement.placed.edge].map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke="#fff" strokeWidth={3.6 * u} strokeLinecap="round" strokeLinejoin="round" />
           <polyline data-map-label-leader={d.key} points={[d.p, placement.placed.knee, placement.placed.edge].map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke={INK} strokeWidth={1.2 * u} strokeLinecap="round" strokeLinejoin="round" />
           <circle cx={d.p[0]} cy={d.p[1]} r={Math.max(1.8 * u, textFs * 0.2)} fill={INK} />
         </>}
-        <rect data-map-label-box={d.key} x={placement.box.x0} y={placement.box.y0} width={placement.box.x1 - placement.box.x0} height={placement.box.y1 - placement.box.y0} rx={3 * u} fill="#fff" stroke={INK} strokeWidth={1.2 * u} />
+        <rect data-map-label-box={d.key} x={placement.box.x0} y={placement.box.y0} width={placement.box.x1 - placement.box.x0} height={placement.box.y1 - placement.box.y0} rx={3 * u} fill="#fff" stroke={INK} strokeWidth={1.2 * u} {...labelButtonProps} />
         <circle cx={placement.box.x0 + 4 * u} cy={(placement.box.y0 + placement.box.y1) / 2} r={Math.max(1.8 * u, textFs * 0.2)} fill={INK} />
         <text x={textX} y={textY} fontSize={textFs} fill={INK} style={{ whiteSpace: "nowrap" }}>
           {placement.text.lines.map((line, index) => {
@@ -682,6 +711,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
             return <tspan key={`${d.key}-line-${index}`} x={textX} dy={index === 0 ? 0 : placement.text.lineHeight} fontWeight={line.kind === "title" ? 700 : 500} fill={line.kind === "title" ? INK : "#5c5f66"}>{rendered}</tspan>;
           })}
         </text>
+        {fixedLabel && onFeaturePin && <rect data-map-label-hit={d.key} data-map-pick="true" x={labelHitLeft} y={labelHitTop} width={labelHitWidth} height={labelHitHeight} fill="transparent" pointerEvents="all" aria-hidden="true" className="map-figure-hit" onClick={(event: ReactMouseEvent<SVGRectElement>) => { event.stopPropagation(); pinPick(); }} onPointerDownCapture={(event: ReactPointerEvent<SVGRectElement>) => { event.stopPropagation(); }} onMouseDownCapture={(event: ReactMouseEvent<SVGRectElement>) => { event.stopPropagation(); }} />}
       </g>
     );
   };
@@ -762,6 +792,9 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
       fontFamily={FONT}
       style={{ display: "block" }}
       onClick={mapClick}
+      onMouseDownCapture={(event) => {
+        if ((event.target as Element).closest("[data-map-pick]")) event.stopPropagation();
+      }}
     >
       <defs>
         <filter id={`s${uid}`}>
@@ -870,8 +903,8 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
             const pick = pickProps({ fid: polygonFid, lng: polygonCenter[0], lat: polygonCenter[1], kind: "polygon" }, polygonKey, labelText(polygon.polygon.layer, "polygon", polygon.polygon));
             return (
               <g key={`poly${polygon.index}`}>
-                <path data-poly="true" data-map-layer={polygon.polygon.layer} d={polygonPath(polygon.rings)} fillRule="evenodd" fill={neutralBuilding ? buildingStyle.fill : estimated ? `url(#${hatchId(polygon.index)})` : st.fill ?? st.color} fillOpacity={neutralBuilding ? buildingStyle.fillOpacity : estimated ? 1 : st.fillOpacity ?? polygonOpacity} opacity={isElementDimmed(polygon.polygon.layer, polygonKey) ? 0.2 : undefined} stroke={strong || polygonSelected ? INK : neutralBuilding ? buildingStyle.stroke : st.stroke ?? st.color} strokeWidth={(strong ? 1.6 : polygonSelected ? 3 : neutralBuilding ? buildingStyle.strokeWidth ?? 0.8 : st.strokeWidth ?? 1) * u} />
-                {Object.keys(pick).length > 0 && <path data-map-hit="polygon" d={polygonPath(polygon.rings)} fill="transparent" stroke="transparent" pointerEvents="all" {...pick} />}
+                <path data-poly="true" data-map-layer={polygon.polygon.layer} d={polygonPath(polygon.rings)} fillRule="evenodd" fill={neutralBuilding ? buildingStyle.fill : estimated ? `url(#${hatchId(polygon.index)})` : st.fill ?? st.color} fillOpacity={neutralBuilding ? buildingStyle.fillOpacity : estimated ? 1 : st.fillOpacity ?? polygonOpacity} opacity={isElementDimmed(polygon.polygon.layer, polygonKey) ? 0.2 : undefined} stroke={strong || polygonSelected ? INK : neutralBuilding ? buildingStyle.stroke : st.stroke ?? st.color} strokeWidth={(strong ? 1.6 : polygonSelected ? 3 : neutralBuilding ? buildingStyle.strokeWidth ?? 0.8 : st.strokeWidth ?? 1) * u} {...pick} />
+                {Object.keys(pick).length > 0 && <path data-map-hit="polygon" d={polygonPath(polygon.rings)} fill="transparent" stroke="transparent" pointerEvents="all" {...hitProps(pick)} />}
               </g>
             );
           })}
@@ -892,8 +925,8 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
             return (
               <g key={`line${d.index}`} opacity={isElementDimmed(d.l.layer, lineKey) ? 0.2 : opacity}>
                 {casing && <polyline points={points} fill="none" stroke={casing} strokeWidth={casingWidth * u} strokeDasharray={st.dash} strokeLinejoin="round" pointerEvents="none" />}
-                <polyline data-line="true" points={points} fill="none" stroke={stroke} strokeWidth={width * u} strokeDasharray={st.dash} strokeLinejoin="round" markerEnd={st.arrow ? `url(#arrow-${uid}-${d.index})` : undefined} />
-                {Object.keys(pick).length > 0 && <polyline data-map-hit="line" points={points} fill="none" stroke="transparent" strokeWidth={Math.max(32 * u, casingWidth * u)} strokeLinejoin="round" pointerEvents="stroke" {...pick} />}
+                <polyline data-line="true" points={points} fill="none" stroke={stroke} strokeWidth={width * u} strokeDasharray={st.dash} strokeLinejoin="round" markerEnd={st.arrow ? `url(#arrow-${uid}-${d.index})` : undefined} {...pick} />
+                {Object.keys(pick).length > 0 && <polyline data-map-hit="line" points={points} fill="none" stroke="transparent" strokeWidth={Math.max(44 * u, casingWidth * u)} strokeLinejoin="round" pointerEvents="stroke" {...hitProps(pick)} />}
               </g>
             );
           })}
@@ -940,10 +973,10 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
                />
              );
              return expandedHit ? (
-               <g key={`feature-hit-${i}-${d.f.fid ?? d.f.layer}`} className="map-figure-interactive">
-                 {visiblePoint}
-                 <circle cx={d.p[0]} cy={d.p[1]} r={22 * u} fill="transparent" stroke="transparent" pointerEvents="all" {...pick} />
-               </g>
+                <g key={`feature-hit-${i}-${d.f.fid ?? d.f.layer}`}>
+                  {visiblePoint}
+                  <circle data-map-hit="point" cx={d.p[0]} cy={d.p[1]} r={22 * u} fill="transparent" stroke="transparent" pointerEvents="all" {...hitProps(pick)} />
+                </g>
              ) : visiblePoint;
          })}
         {showNativeChrome && routePoints.length >= 2 && (
