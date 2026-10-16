@@ -678,7 +678,7 @@ function PanelTransformFrame({ panelKey, rect, unit, xGuides, yGuides, onResizeS
         onPointerUp={onResizeEnd}
         onPointerCancel={onResizeEnd}
       ><span aria-hidden="true" /></button>)}
-      {panelKey === "summary" && <button type="button" className={styles.panelRemove} data-panel-action="remove" aria-label="요약 탭 숨기기" title="요약 탭 숨기기" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onRemove(); }}>×</button>}
+      {panelKey === "summary" && <button type="button" className={styles.panelRemove} data-panel-action="remove" aria-label="요약 탭 숨기기" title="요약 탭 숨기기" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onRemove(); }}><InlineIcon name="close" size={14} /></button>}
     </div>
   </>;
 }

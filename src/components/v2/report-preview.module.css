@@ -877,6 +877,7 @@
 .legendPanel {
   display: grid;
   align-content: start;
+  grid-auto-rows: minmax(0, calc(var(--slide-unit) * 0.3));
   gap: 0;
   overflow: visible;
 }
@@ -887,7 +888,7 @@
   grid-template-columns: calc(var(--slide-unit) * 0.25) minmax(0, 1fr) auto;
   align-items: center;
   gap: calc(var(--slide-unit) * 0.12);
-  min-height: calc(var(--slide-unit) * 0.25);
+  min-height: 0;
   box-sizing: border-box;
   width: 100%;
   padding: 0 calc(var(--slide-unit) * 0.04);
@@ -1890,7 +1891,8 @@
 }
 
 /* The board shell sets `button { color: inherit; }`; keep the dark export pill legible. */
-.dialog .toolbarExport {
+.dialog .toolbarExport,
+.dialog .panelRemove {
   color: #fff;
 }
 
@@ -2243,7 +2245,7 @@
   position: absolute;
   z-index: 1;
   top: -31px;
-  right: -31px;
+  left: -31px;
   display: grid;
   place-items: center;
   width: 44px;
@@ -2974,7 +2976,7 @@
 
 .panelRemove {
   top: -24px;
-  right: -24px;
+  left: -24px;
   width: 44px;
   height: 44px;
   border: 8px solid transparent;
