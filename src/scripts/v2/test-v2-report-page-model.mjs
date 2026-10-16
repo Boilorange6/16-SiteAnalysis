@@ -34,6 +34,37 @@ board = boardReducer(board, {
 assert.deepEqual(board.report.styles["t-A01"], board.report.styles["t-A02"], "pageStyle 다중 적용");
 assert.deepEqual(board.report.styles["t-A01"].offsetM, [12, -8]);
 
+// 패널은 슬라이드 비율로 저장하고, nested patch는 기존 패널을 보존한다.
+let panelBoard = initBoard(GODEOK_RESULTS);
+const panelGeometry = {
+  title: { x: -0.2, y: 0.12, w: 0.32, h: 0.14 },
+  summary: { x: 0.64, y: 0.1, w: 0.3, h: 0.72 },
+  legend: { x: 0.08, y: 0.64, w: 0.26, h: 0.2 },
+};
+panelBoard = boardReducer(panelBoard, { type: "pageStyle", keys: styleKeys, patch: { panels: panelGeometry, titleScale: 1.4 } });
+assert.deepEqual(panelBoard.report.styles["t-A01"].panels, {
+  title: { x: 0, y: 0.12, w: 0.32, h: 0.14 },
+  summary: { x: 0.64, y: 0.1, w: 0.3, h: 0.72 },
+  legend: { x: 0.08, y: 0.64, w: 0.26, h: 0.2 },
+}, "panels 좌표·크기 0..1 정규화");
+assert.notStrictEqual(panelBoard.report.styles["t-A01"].panels, panelBoard.report.styles["t-A02"].panels, "다중 적용 패널은 페이지별 clone");
+panelBoard = boardReducer(panelBoard, {
+  type: "pageStyle",
+  keys: ["t-A01"],
+  patch: { panels: { summary: { x: 0.58, y: 0.16, w: 0.34, h: 0.66 }, legend: { x: "bad", y: 0, w: 0.2, h: 0.2 } } },
+});
+assert.equal(panelBoard.report.styles["t-A01"].panels.title.x, 0, "nested panels patch가 기존 title을 보존");
+assert.deepEqual(panelBoard.report.styles["t-A01"].panels.summary, { x: 0.58, y: 0.16, w: 0.34, h: 0.66 }, "nested panels patch 적용");
+assert.deepEqual(panelBoard.report.styles["t-A01"].panels.legend, { x: 0.08, y: 0.64, w: 0.26, h: 0.2 }, "malformed panel field 안전 드롭");
+const panelSnapshot = serializeBoardState(panelBoard);
+assert.deepEqual(restoreBoardState(GODEOK_RESULTS, JSON.stringify(panelSnapshot)).report, panelBoard.report, "panels serialize→restore 왕복");
+const panelBeforeClear = panelBoard.report;
+panelBoard = boardReducer(panelBoard, { type: "pageStyle", keys: styleKeys, patch: { panels: undefined } });
+assert.equal(panelBoard.report.styles["t-A01"].panels, undefined, "panels undefined는 전체 geometry override 삭제");
+assert.equal(panelBoard.report.styles["t-A02"].panels, undefined, "panels undefined 다중 적용");
+panelBoard = boardReducer(panelBoard, { type: "undo" });
+assert.deepEqual(panelBoard.report, panelBeforeClear, "panels 삭제 undo 복원");
+
 // scale은 0.7..1.5, zoomDelta는 MapView 고정 상한이 없어 요구된 -3..3 fallback을 쓴다.
 board = boardReducer(board, {
   type: "pageStyle",
@@ -127,6 +158,13 @@ const malformed = {
   report: {
     styles: {
       "t-A01": { titleScale: 10, zoomDelta: -10, offsetM: ["bad", 1], unknown: true },
+      "t-A02": {
+        panels: {
+          title: { x: 2, y: -1, w: 0.3, h: 0.2 },
+          summary: { x: "bad", y: 0.1, w: 0.3, h: 0.2 },
+          legend: { x: 0.1, y: 0.7, w: 0.2, h: 0.2 },
+        },
+      },
       [extraPageKey("missing")]: { summary: true },
     },
     extra: [
@@ -139,6 +177,10 @@ const malformed = {
 const safe = restoreBoardState(GODEOK_RESULTS, malformed);
 assert.deepEqual(safe.report.extra, [{ id: "good", after: "t-A01", tileId: "t-A01", face: "back" }], "malformed/중복/없는 tile extra 드롭");
 assert.deepEqual(safe.report.styles["t-A01"], { titleScale: 1.5, zoomDelta: -3 }, "malformed style field drop 및 수치 clamp");
+assert.deepEqual(safe.report.styles["t-A02"].panels, {
+  title: { x: 1, y: 0, w: 0.3, h: 0.2 },
+  legend: { x: 0.1, y: 0.7, w: 0.2, h: 0.2 },
+}, "malformed panels도 필드별 안전 드롭");
 assert.equal(safe.report.styles[extraPageKey("missing")], undefined, "dangling extra style 드롭");
 
 console.log("v2 report page model tests passed");

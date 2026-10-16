@@ -877,6 +877,7 @@
 .legendPanel {
   display: grid;
   align-content: start;
+  grid-auto-rows: minmax(0, calc(var(--slide-unit) * 0.3));
   gap: 0;
   overflow: visible;
 }
@@ -887,7 +888,7 @@
   grid-template-columns: calc(var(--slide-unit) * 0.25) minmax(0, 1fr) auto;
   align-items: center;
   gap: calc(var(--slide-unit) * 0.12);
-  min-height: calc(var(--slide-unit) * 0.25);
+  min-height: 0;
   box-sizing: border-box;
   width: 100%;
   padding: 0 calc(var(--slide-unit) * 0.04);
@@ -1736,5 +1737,1379 @@
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+  }
+}
+
+/* v3 immersive preview: the slide owns the available stage; the filmstrip and
+   toolbar float above it so opening either never changes the slide's contain box. */
+.backdrop {
+  place-items: stretch;
+  padding: 12px;
+  overflow: hidden;
+}
+
+.dialog {
+  position: relative;
+  width: 100%;
+  height: calc(100dvh - 24px);
+  max-width: none;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  border-radius: 16px;
+  background: #eef0f3;
+}
+
+.header {
+  position: relative;
+  z-index: 35;
+  min-height: 52px;
+  padding: 9px 16px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.heading {
+  font-size: 18px;
+}
+
+.body,
+.bodyFilmstripCollapsed {
+  position: relative;
+  display: block;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.stageColumn {
+  position: absolute;
+  inset: 0;
+  display: block;
+  min-height: 0;
+  padding: 50px 16px 16px;
+  overflow: hidden;
+}
+
+.stageHeading {
+  position: absolute;
+  z-index: 18;
+  top: 12px;
+  left: 16px;
+  max-width: calc(100% - 32px);
+  margin: 0;
+  padding: 5px 9px;
+  color: #15171c;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(21, 23, 28, 0.18);
+  border-radius: 999px;
+  box-shadow: 0 4px 16px rgba(21, 23, 28, 0.08);
+}
+
+.stageHeading h2 {
+  font-size: 12px;
+}
+
+.stageHeading span {
+  font-size: 11px;
+}
+
+.previewSlot {
+  position: absolute;
+  inset: 50px 16px 86px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.previewFrame {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 12px;
+  box-shadow: 0 12px 36px rgba(21, 23, 28, 0.2);
+}
+
+.pageToolbar {
+  position: absolute;
+  z-index: 25;
+  right: 16px;
+  bottom: 16px;
+  left: 50%;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  margin: 0;
+  padding: 6px 8px;
+  transform: translateX(-50%);
+  color: #15171c;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #8f98a6;
+  border-radius: 999px;
+  box-shadow: 0 10px 30px rgba(21, 23, 28, 0.2);
+}
+
+.toolbarContext {
+  flex: 0 1 auto;
+  max-width: 240px;
+  padding-inline: 7px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.toolbarContext > span:not(.interactionHint) {
+  display: none;
+}
+
+.toolbarActions {
+  gap: 4px;
+}
+
+.toolbarToggle,
+.toolbarReset,
+.toolbarExport,
+.toolbarClose,
+.smallButton,
+.centerButton {
+  min-height: 38px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.toolbarExport,
+.toolbarClose {
+  min-width: 44px;
+  color: #fff;
+  background: #15171c;
+  border: 1px solid #15171c;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.toolbarClose {
+  color: #15171c;
+  background: #fff;
+  border-color: #aeb4bf;
+}
+
+/* The board shell sets `button { color: inherit; }`; keep the dark export pill legible. */
+.dialog .toolbarExport,
+.dialog .panelRemove {
+  color: #fff;
+}
+
+.dialog .toolbarClose {
+  color: #15171c;
+}
+
+.toolbarExport:disabled {
+  color: #f8fafc;
+  background: #526071;
+  border-color: #526071;
+  cursor: not-allowed;
+}
+
+.toolbarStatus {
+  max-width: 180px;
+  margin: 0 4px 0 8px;
+  overflow: hidden;
+  color: #676c76;
+  font-size: 10px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolbarStatus:focus-visible {
+  outline: 2px solid #164e9b;
+  outline-offset: 2px;
+}
+
+.thumbRail {
+  position: absolute;
+  z-index: 30;
+  top: 16px;
+  bottom: 16px;
+  left: 16px;
+  display: flex;
+  width: 224px;
+  max-width: min(224px, calc(100% - 32px));
+  padding: 9px;
+  overflow: hidden;
+  background: rgba(238, 240, 243, 0.92);
+  border: 1px solid rgba(21, 23, 28, 0.22);
+  border-radius: 14px;
+  box-shadow: 0 10px 32px rgba(21, 23, 28, 0.16);
+  backdrop-filter: blur(12px);
+}
+
+.thumbRailCollapsed {
+  width: 50px;
+  padding: 4px;
+  background: rgba(238, 240, 243, 0.78);
+}
+
+.thumbRailCollapsed .railHeading {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+
+.thumbRailCollapsed .railHeading h2,
+.thumbRailCollapsed .railHint {
+  display: none;
+}
+
+.thumbRailCollapsed .filmstripToggle {
+  writing-mode: vertical-rl;
+  min-width: 40px;
+  height: 72px;
+  padding: 7px 5px;
+}
+
+.railHeading {
+  flex: 0 0 auto;
+  min-height: 40px;
+}
+
+.thumbList {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0 2px 4px;
+  overflow: auto;
+}
+
+.thumbItem {
+  position: relative;
+  display: block;
+}
+
+.thumbButton {
+  grid-template-columns: 54px minmax(0, 1fr);
+  min-height: 70px;
+  padding: 7px 42px 7px 7px;
+  border-radius: 10px;
+}
+
+.thumbMenuButton {
+  position: absolute;
+  z-index: 2;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: #15171c;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #aeb4bf;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.thumbItem:hover .thumbMenuButton,
+.thumbItem:focus-within .thumbMenuButton,
+.thumbMenuButton[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.thumbMenu {
+  position: absolute;
+  z-index: 40;
+  top: 48px;
+  right: 4px;
+  display: grid;
+  min-width: 172px;
+  padding: 5px;
+  background: #fff;
+  border: 1px solid #9ba5b4;
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(21, 23, 28, 0.2);
+}
+
+.thumbMenu button {
+  min-height: 40px;
+  padding: 7px 9px;
+  color: #15171c;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.thumbMenu button:hover,
+.thumbMenu button:focus-visible {
+  background: #eef0f3;
+}
+
+.thumbMenu .thumbMenuDanger {
+  color: #8c2530;
+}
+
+.addPageButton {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 7px;
+  padding: 7px 10px;
+  color: #15171c;
+  background: #fff;
+  border: 1px dashed #596579;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.addPageButton > span:first-child {
+  font-size: 19px;
+  line-height: 1;
+}
+
+.thumbRailCollapsed .addPageButton {
+  width: 40px;
+  padding: 4px;
+}
+
+.thumbRailCollapsed .addPageLabel {
+  display: none;
+}
+
+.addPageButton:disabled {
+  color: #8b9099;
+  background: #e4e6ea;
+  border-color: #cdd1d8;
+  cursor: not-allowed;
+}
+
+.addPopover {
+  position: fixed;
+  z-index: 60;
+  display: grid;
+  gap: 9px;
+  width: min(420px, calc(100vw - 24px));
+  min-width: min(320px, calc(100vw - 24px));
+  max-height: min(640px, calc(100dvh - 24px));
+  padding: 13px;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #7e8998;
+  border-radius: 14px;
+  box-shadow: 0 18px 44px rgba(21, 23, 28, 0.26);
+  transform-origin: top left;
+}
+
+.addPopoverHeading {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.addSearchLabel {
+  display: grid;
+  gap: 5px;
+  color: #454a55;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.addSearchLabel input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  color: #15171c;
+  background: #f7f8fa;
+  border: 1px solid #aeb4bf;
+  border-radius: 8px;
+  font: inherit;
+}
+
+.addTileList {
+  max-height: min(450px, calc(100dvh - 170px));
+  padding-right: 2px;
+  overflow: auto;
+}
+
+.addTileGroup {
+  display: grid;
+  gap: 5px;
+  margin: 0 0 10px;
+}
+
+.addTileGroup h3 {
+  margin: 3px 2px;
+  color: #676c76;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.addTileButton {
+  min-height: 0;
+  padding: 8px 9px;
+  background: #f4f6f8;
+  border-radius: 8px;
+}
+
+.addTileName {
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.faceOptions {
+  gap: 6px;
+}
+
+.faceButton {
+  min-height: 40px;
+  padding-inline: 8px;
+  border-radius: 7px;
+  font-size: 11px;
+}
+
+.addEmpty {
+  margin: 4px 0;
+  color: #676c76;
+  font-size: 12px;
+}
+
+.slidePanel[data-panel-key] {
+  cursor: grab;
+}
+
+.slidePanel[data-panel-key][data-panel-selected="true"] {
+  z-index: 10;
+  cursor: move;
+}
+
+.slidePanel[data-panel-key]:focus-visible {
+  outline: 2px solid #164e9b;
+  outline-offset: -3px;
+}
+
+.panelSelectionFrame {
+  position: absolute;
+  z-index: 14;
+  overflow: visible;
+  pointer-events: none;
+  border: 1.5px solid #15171c;
+  box-shadow: 0 0 0 1px #fff;
+}
+
+.panelHandle {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: #15171c;
+  background: transparent;
+  border: 0;
+  pointer-events: auto;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+
+.panelHandle > span {
+  width: 8px;
+  height: 8px;
+  background: #fff;
+  border: 1.5px solid #15171c;
+  box-shadow: 0 0 0 1px #fff;
+}
+
+.panelHandleN { top: -22px; left: calc(50% - 22px); cursor: ns-resize; }
+.panelHandleNE { top: -22px; right: -22px; cursor: nesw-resize; }
+.panelHandleE { top: calc(50% - 22px); right: -22px; cursor: ew-resize; }
+.panelHandleSE { right: -22px; bottom: -22px; cursor: nwse-resize; }
+.panelHandleS { bottom: -22px; left: calc(50% - 22px); cursor: ns-resize; }
+.panelHandleSW { bottom: -22px; left: -22px; cursor: nesw-resize; }
+.panelHandleW { top: calc(50% - 22px); left: -22px; cursor: ew-resize; }
+.panelHandleNW { top: -22px; left: -22px; cursor: nwse-resize; }
+
+.panelRemove {
+  position: absolute;
+  z-index: 1;
+  top: -31px;
+  left: -31px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: #fff;
+  background: #15171c;
+  border: 8px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.snapGuides {
+  position: absolute;
+  z-index: 13;
+  inset: 0;
+  pointer-events: none;
+}
+
+.snapGuideX,
+.snapGuideY {
+  position: absolute;
+  display: block;
+  background: #15171c;
+  opacity: 0.55;
+}
+
+.snapGuideX {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  border-left: 1px dashed #15171c;
+}
+
+.snapGuideY {
+  right: 0;
+  left: 0;
+  height: 1px;
+  border-top: 1px dashed #15171c;
+}
+
+.slideCanvas[data-transforming="true"] .panelHandle,
+.slideCanvas[data-transforming="true"] .panelSelectionFrame {
+  transition: none !important;
+}
+
+.dialog button {
+  transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1), opacity 180ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.dialog button:active {
+  transform: scale(0.97);
+}
+
+.panelHandle:active,
+.panelRemove:active,
+.slideCanvas[data-transforming="true"] button:active {
+  transform: none;
+}
+
+.footer {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  .backdrop {
+    padding: 12px;
+  }
+
+  .dialog {
+    height: calc(100dvh - 24px);
+    border-radius: 14px;
+  }
+
+  .header {
+    min-height: 48px;
+    padding: 8px 11px;
+  }
+
+  .heading {
+    font-size: 16px;
+  }
+
+  .selectionCount {
+    min-width: 66px;
+    padding: 6px 7px;
+    font-size: 10px;
+  }
+
+  .stageColumn {
+    padding: 44px 8px 8px;
+  }
+
+  .stageHeading {
+    top: 8px;
+    left: 8px;
+    max-width: calc(100% - 16px);
+  }
+
+  .previewSlot {
+    inset: 44px 8px 132px;
+    width: auto;
+    height: auto;
+    aspect-ratio: auto;
+    flex: none;
+  }
+
+  .pageToolbar {
+    width: auto;
+    right: 8px;
+    bottom: 68px;
+    left: 8px;
+    justify-content: initial;
+    max-width: none;
+    flex-wrap: nowrap;
+    overflow: visible;
+    border-radius: 18px;
+    transform: none;
+  }
+
+  .toolbarContext {
+    display: none;
+  }
+
+  .toolbarActions {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    flex: 0 0 auto;
+    width: 100%;
+    gap: 4px;
+  }
+
+  .toolbarGroup {
+    display: contents;
+  }
+
+  .toolbarLabel {
+    display: none;
+  }
+
+  .toolbarActions > *,
+  .toolbarGroup > * {
+    width: 100%;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+    padding-inline: 3px;
+    font-size: 10px;
+  }
+
+  .toolbarStatus {
+    display: none;
+  }
+
+  .toolbarLongLabel {
+    display: none;
+  }
+
+  .toolbarShortLabel {
+    display: inline;
+  }
+
+  .thumbRail {
+    top: auto;
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    width: auto;
+    max-width: none;
+    height: 50px;
+    padding: 4px;
+    border-radius: 12px;
+  }
+
+  .thumbRail:not(.thumbRailCollapsed) {
+    height: min(42dvh, 310px);
+  }
+
+  .thumbRailCollapsed {
+    width: auto;
+  }
+
+  .thumbRailCollapsed .railHeading {
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .thumbRailCollapsed .filmstripToggle {
+    writing-mode: horizontal-tb;
+    width: auto;
+    height: 40px;
+  }
+
+  .thumbRailCollapsed .addPageButton {
+    width: auto;
+    margin: 0 2px 0 auto;
+    padding-inline: 10px;
+  }
+
+  .thumbRailCollapsed .addPageLabel {
+    display: inline;
+  }
+
+  .thumbList {
+    display: flex;
+    width: max-content;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .thumbItem {
+    flex: 0 0 158px;
+    width: 158px;
+  }
+
+  .thumbMenuButton {
+    opacity: 1;
+  }
+
+  .addPopover {
+    width: calc(100vw - 24px);
+    min-width: 0;
+    max-height: calc(100dvh - 24px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog button,
+  .dialog *,
+  .dialog *::before,
+  .dialog *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* Judge follow-up: the preview is a canvas first. Keep these rules last so the
+   v3 shell cannot re-introduce the old header, title chip, or text toolbar. */
+.visuallyHidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.backdrop {
+  place-items: stretch;
+  padding: 10px;
+  overflow: hidden;
+}
+
+.dialog {
+  width: 100%;
+  height: calc(100dvh - 20px);
+  max-width: none;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+  border-radius: 14px;
+}
+
+.dialog > .header {
+  display: none;
+}
+
+.body,
+.bodyFilmstripCollapsed {
+  position: relative;
+  display: block;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.stageColumn {
+  position: absolute;
+  inset: 0;
+  display: block;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.stageHeading {
+  display: none;
+}
+
+.previewSlot {
+  position: absolute;
+  inset: 0 0 66px 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.previewFrame {
+  width: auto;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 10px;
+  box-shadow: 0 12px 36px rgba(21, 23, 28, 0.2);
+}
+
+.bodyFilmstripCollapsed .stageColumn {
+  padding-left: 47px;
+}
+
+.bodyFilmstripCollapsed .previewSlot {
+  inset: 0 0 66px 47px;
+}
+
+.dialogClose {
+  position: absolute;
+  z-index: 80;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: #15171c;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #8f98a6;
+  border-radius: 999px;
+  font: inherit;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(21, 23, 28, 0.2);
+}
+
+.dialogClose:hover,
+.dialogClose:focus-visible {
+  color: #fff;
+  background: #15171c;
+  border-color: #15171c;
+}
+
+.dialogClose .iconSvg {
+  width: 20px;
+  height: 20px;
+}
+
+.pageToolbar {
+  position: absolute;
+  z-index: 70;
+  right: 12px;
+  bottom: 12px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  margin: 0;
+  padding: 6px;
+  color: #15171c;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #8f98a6;
+  border-radius: 999px;
+  box-shadow: 0 10px 30px rgba(21, 23, 28, 0.2);
+  transform: translateX(-50%);
+}
+
+.toolbarContext {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  max-width: none;
+  padding: 0 4px;
+  color: #173f78;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.toolbarContext > span,
+.toolbarContext .interactionHint {
+  display: none !important;
+}
+
+.selectionChip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 10px;
+  color: #173f78;
+  background: #e8f0fd;
+  border: 1px solid #9bb5dc;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.toolbarActions,
+.toolbarGroup {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.toolbarGroup {
+  flex: 0 0 auto;
+}
+
+.toolbarLabel {
+  display: grid;
+  place-items: center;
+  min-width: 34px;
+  color: #454a55;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.toolbarIconButton {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  color: #15171c;
+  background: #fff;
+  border: 1px solid #aeb4bf;
+  border-radius: 999px;
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.toolbarIconButton:hover,
+.toolbarIconButton:focus-visible,
+.toolbarIconButton[aria-pressed="true"] {
+  color: #173f78;
+  background: #e8f0fd;
+  border-color: #5f87be;
+}
+
+.toolbarIconButton .iconSvg,
+.filmstripToggle .iconSvg,
+.addPageButton .iconSvg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.toolbarIconButton[data-tooltip]::after {
+  position: absolute;
+  z-index: 120;
+  right: auto;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  display: block;
+  max-width: 180px;
+  padding: 5px 8px;
+  color: #fff;
+  background: #15171c;
+  border-radius: 6px;
+  content: attr(data-tooltip);
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.25;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 4px);
+  transition: opacity 150ms cubic-bezier(0.23, 1, 0.32, 1), transform 150ms cubic-bezier(0.23, 1, 0.32, 1);
+  white-space: nowrap;
+}
+
+.toolbarIconButton[data-tooltip]:hover::after,
+.toolbarIconButton[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.toolbarToggle {
+  color: #24344d;
+  background: #e9f0fb;
+  border-color: #9bb5dc;
+}
+
+.toolbarResetWrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.toolbarReset {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 11px;
+  color: #15171c;
+  background: #fff;
+  border: 1px solid #aeb4bf;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.toolbarReset:hover,
+.toolbarReset:focus-visible,
+.toolbarReset[aria-expanded="true"] {
+  background: #eef0f3;
+  border-color: #596579;
+}
+
+.toolbarResetMenu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 90;
+  display: grid;
+  min-width: 168px;
+  padding: 5px;
+  background: #fff;
+  border: 1px solid #9ba5b4;
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(21, 23, 28, 0.22);
+}
+
+.toolbarResetMenuItem {
+  min-height: 44px;
+  padding: 8px 10px;
+  color: #15171c;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  text-align: left;
+  cursor: pointer;
+}
+
+.toolbarResetMenuItem:hover,
+.toolbarResetMenuItem:focus-visible {
+  background: #eef0f3;
+}
+
+.toolbarExport {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 92px;
+  min-height: 44px;
+  padding: 0 16px;
+  color: #fff !important;
+  background: #15171c !important;
+  border: 1px solid #15171c !important;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.toolbarExport:hover,
+.toolbarExport:focus-visible {
+  background: #303640 !important;
+  border-color: #303640 !important;
+}
+
+.toolbarExport:disabled {
+  color: #f8fafc !important;
+  background: #526071 !important;
+  border-color: #526071 !important;
+}
+
+.toolbarStatus {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.toolbarStatus.footerError {
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 0 4px;
+  overflow: visible;
+  clip: auto;
+  color: #8c2530;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.thumbRail {
+  top: 12px;
+  bottom: 12px;
+  left: 12px;
+  width: 224px;
+  max-width: min(224px, calc(100% - 24px));
+  padding: 9px;
+}
+
+.thumbRailCollapsed {
+  top: 12px;
+  bottom: auto;
+  left: 0;
+  display: flex;
+  align-items: center;
+  width: 44px;
+  height: auto;
+  max-width: 44px;
+  padding: 0;
+  overflow: visible;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.thumbRailCollapsed .railHeading {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  width: 44px;
+  min-height: 0;
+}
+
+.thumbRailCollapsed .railHeading h2 {
+  display: none;
+}
+
+.thumbRailCollapsed .railHint {
+  display: block;
+  order: 2;
+  color: #454a55;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 850;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.thumbRailCollapsed .filmstripToggle,
+.thumbRailCollapsed .addPageButton {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border-radius: 999px;
+}
+
+.thumbRailCollapsed .filmstripToggle {
+  order: 1;
+  writing-mode: horizontal-tb;
+  color: #15171c;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #8f98a6;
+  box-shadow: 0 6px 18px rgba(21, 23, 28, 0.16);
+  font-size: 0;
+}
+
+.thumbRailCollapsed .addPageButton {
+  order: 3;
+  margin-top: 8px;
+  color: #15171c;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #8f98a6;
+  border-style: solid;
+  box-shadow: 0 6px 18px rgba(21, 23, 28, 0.16);
+  font-size: 0;
+}
+
+.thumbRailCollapsed .addPageLabel {
+  display: none;
+}
+
+.thumbRailCollapsed .filmstripToggle:hover,
+.thumbRailCollapsed .filmstripToggle:focus-visible,
+.thumbRailCollapsed .addPageButton:hover,
+.thumbRailCollapsed .addPageButton:focus-visible {
+  color: #173f78;
+  background: #e8f0fd;
+  border-color: #5f87be;
+}
+
+.panelSelectionFrame {
+  border: 1px solid #15171c;
+  box-shadow: none;
+}
+
+.panelHandle > span {
+  width: 8px;
+  height: 8px;
+  background: #fff;
+  border: 1.5px solid #15171c;
+  box-shadow: none;
+}
+
+.panelRemove {
+  top: -24px;
+  left: -24px;
+  width: 44px;
+  height: 44px;
+  border: 8px solid transparent;
+  background: #15171c;
+  background-clip: padding-box;
+}
+
+.snapGuideX,
+.snapGuideY {
+  z-index: 1;
+  background: #164e9b;
+  border-color: #164e9b;
+  opacity: 0.9;
+}
+
+.snapGuideX { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55); }
+.snapGuideY { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55); }
+
+/* Keep the invisible hit geometry interactive without letting it paint a
+   generic gray box over the map. Visible lines/points remain owned by the
+   map renderer and are highlighted by their own shape. */
+.slideCanvas svg [data-map-hit] {
+  fill: transparent !important;
+  stroke: transparent !important;
+  opacity: 0 !important;
+}
+
+/* The board's base button rule supplies pointer feedback. Handles need their
+   directional resize cursors to win over that generic rule. */
+.panelHandleNW { cursor: nwse-resize !important; }
+.panelHandleN { cursor: ns-resize !important; }
+.panelHandleNE { cursor: nesw-resize !important; }
+.panelHandleE { cursor: ew-resize !important; }
+.panelHandleSE { cursor: nwse-resize !important; }
+.panelHandleS { cursor: ns-resize !important; }
+.panelHandleSW { cursor: nesw-resize !important; }
+.panelHandleW { cursor: ew-resize !important; }
+
+/* Report-preview-only interaction polish. The map renderer owns geometry; this
+   keeps a picked line/point from acquiring a generic rectangular overlay. */
+.slideCanvas [data-map-feature][data-map-label-variant="fixed"] [data-map-label-box],
+.slideCanvas [data-map-label-variant="fixed"] [data-map-label-box] {
+  vector-effect: non-scaling-stroke;
+}
+
+@media (max-width: 600px) {
+  .backdrop {
+    padding: 8px;
+  }
+
+  .dialog {
+    height: calc(100dvh - 16px);
+    border-radius: 12px;
+  }
+
+  .dialogClose {
+    top: 8px;
+    right: 8px;
+  }
+
+  .previewSlot {
+    inset: 0 0 126px 0;
+  }
+
+  .bodyFilmstripCollapsed .stageColumn {
+    padding-left: 47px;
+  }
+
+  .bodyFilmstripCollapsed .previewSlot {
+    inset: 0 0 126px 47px;
+  }
+
+  .pageToolbar {
+    right: 8px;
+    bottom: 66px;
+    left: 8px;
+    width: auto;
+    max-width: none;
+    justify-content: initial;
+    flex-wrap: nowrap;
+    border-radius: 16px;
+    transform: none;
+  }
+
+  .toolbarContext {
+    display: none;
+  }
+
+  .toolbarActions {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(44px, 1fr));
+    flex: 1 1 auto;
+    width: 100%;
+    gap: 4px;
+  }
+
+  .toolbarGroup {
+    display: contents;
+  }
+
+  .toolbarActions > *,
+  .toolbarGroup > * {
+    width: 100%;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+    padding-inline: 3px;
+  }
+
+  .toolbarLabel {
+    min-width: 44px;
+  }
+
+  .toolbarResetMenu {
+    right: 0;
+  }
+
+  .toolbarExport {
+    min-width: 80px;
+    padding-inline: 8px;
+  }
+
+  .thumbRailCollapsed {
+    top: 8px;
+    left: 0;
+  }
+
+  .thumbRail:not(.thumbRailCollapsed) {
+    top: 8px;
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    width: auto;
+    max-width: none;
   }
 }

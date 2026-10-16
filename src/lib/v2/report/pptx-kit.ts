@@ -102,6 +102,9 @@ export function coverLayout(input: { address: string; metricCount: number; lineC
 /** 보고서 제목 판의 실제 폭을 계산한다. render-pptx와 미리보기의 제목 조판 계약. */
 export function titlePlateRect(code: string, title: string, kind: string, maxW: number, style: PageStyle = {}, hasSummary = true): Rect {
   const base = slidePanelRects(style, hasSummary).title;
+  // panels.title이 있으면 사용자가 정한 도형 자리를 그대로 보존한다.
+  // 좁은 사용자 박스를 텍스트 길이에 맞춰 다시 키우면 Preview/PPT 좌표가 달라진다.
+  if (style.panels?.title) return base;
   const scale = slidePanelScale(style.titleScale);
   const w = Math.min(maxW, Math.max(base.w, 0.62 + textIn(`${code}  `, 10 * scale) + textIn(title, 18 * scale) + textIn(`  ${kind}`, 10 * scale)));
   return { ...base, w };

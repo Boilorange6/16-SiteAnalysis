@@ -31,6 +31,21 @@ const CHIP: Record<Badge["tone"], { fill: string; color: string }> = {
 
 const panelTag = (key: string, display: string, part: string): string => `GRP|panel-${key}|${display}|${part}`;
 
+function titleTextFit(code: string, title: string, kind: string, box: { w: number; h: number }, scale: number): { titlePt: number; metaPt: number } {
+  let titlePt = fitBlock([title], box, 18 * scale, 7);
+  let metaPt = fitBlock([`${code}  ${kind}`], box, 10 * scale, 7);
+  const widthAt = (value: string, pt: number) => textIn(value, pt);
+  const textWidth = () => widthAt(`${code}  `, metaPt) + widthAt(title, titlePt) + widthAt(`  ${kind}`, metaPt);
+  // fitBlock은 각 run을 따로 측정하므로, 한 텍스트 상자 안의 세 run 합도
+  // 확인해 좁은 사용자 패널에서 실제 run 폭이 밖으로 밀리지 않게 한다.
+  while (textWidth() > box.w + 1e-9 && (titlePt > 7 || metaPt > 7)) {
+    if (titlePt >= metaPt && titlePt > 7) titlePt = Math.max(7, titlePt - 0.5);
+    else if (metaPt > 7) metaPt = Math.max(7, metaPt - 0.5);
+    else break;
+  }
+  return { titlePt, metaPt };
+}
+
 function background(s: Slide, image: string | undefined, tint?: string) {
   if (image) s.addImage({ data: image, x: 0, y: 0, w: SLIDE.w, h: SLIDE.h });
   else {
@@ -55,19 +70,22 @@ function strip(s: Slide, p: PlannedSlide, credit: boolean) {
 function titlePlate(s: Slide, color: string, code: string, title: string, kind: string, maxW: number, style: PageStyle = {}, hasSummary = true) {
   const scale = slidePanelScale(style.titleScale);
   const r = titlePlateRect(code, title, kind, maxW, style, hasSummary);
-  const textBox = { w: Math.max(0.2, r.w - 0.58), h: Math.max(0.16, r.h - 0.08) };
-  const titlePt = fitBlock([title], textBox, 18 * scale, 7);
-  const metaPt = fitBlock([`${code}  ${kind}`], textBox, 10 * scale, 7);
+  const textX = r.x + Math.min(0.48, Math.max(0.04, r.w * 0.35));
+  const textRight = r.x + r.w - Math.min(0.1, Math.max(0.01, r.w * 0.08));
+  const textBox = { w: Math.max(0.01, textRight - textX), h: Math.max(0.01, r.h - Math.min(0.08, r.h * 0.2)) };
+  const { titlePt, metaPt } = titleTextFit(code, title, kind, textBox, scale);
   const group = panelTag("title", "제목", "plate");
   plate(s, r, 0.12, group);
-  s.addShape("ellipse", { x: r.x + 0.2, y: r.y + r.h / 2 - 0.09, w: 0.18, h: 0.18, fill: { color: hex(color) }, line: { color: hex(color) }, objectName: panelTag("title", "제목", "mark") });
+  const dotSize = Math.min(0.18, Math.max(0.02, r.w * 0.16));
+  const dotX = r.x + Math.min(0.2, Math.max(0.01, r.w - dotSize - 0.01));
+  s.addShape("ellipse", { x: dotX, y: r.y + Math.max(0, r.h / 2 - dotSize / 2), w: dotSize, h: dotSize, fill: { color: hex(color) }, line: { color: hex(color) }, objectName: panelTag("title", "제목", "mark") });
   s.addText(
     [
       { text: `${code}  `, options: { fontSize: metaPt, color: MUTED, bold: true } },
       { text: title, options: { fontSize: titlePt, color: INK, bold: true } },
       { text: `  ${kind}`, options: { fontSize: metaPt, color: MUTED, bold: true } },
     ],
-    { x: r.x + 0.48, y: r.y, w: textBox.w, h: r.h, valign: "middle", fontFace: FONT, margin: 0, objectName: panelTag("title", "제목", "text") },
+    { x: textX, y: r.y, w: textBox.w, h: r.h, valign: "middle", fontFace: FONT, margin: 0, objectName: panelTag("title", "제목", "text") },
   );
 }
 
@@ -105,17 +123,38 @@ const innerInfoBox = (rect: Rect, scale = 1): InfoBox => {
 function infoPanel(s: Slide, items: Item[], rect: Rect | null, scale = 1) {
   if (!rect) return;
   const gap = 0.12 * scale;
-  const pad = 0.22 * scale;
-  const need = items.reduce((a, i) => a + i.h, 0) + gap * Math.max(0, items.length - 1) + pad * 2;
-  const r = { x: rect.x, y: rect.y, w: rect.w, h: Math.min(rect.h, need) };
+  const pad = Math.min(0.22 * scale, Math.max(0, rect.w / 2), Math.max(0, rect.h / 2));
+  const r = rect;
   const group = panelTag("summary", "요약", "plate");
   plate(s, r, 0.16, group);
+  const confine = <T extends object>(options: T | undefined): T | null => {
+    if (!options) return null;
+    const box = options as T & { x?: number; y?: number; w?: number; h?: number };
+    if (![box.x, box.y, box.w, box.h].every((value) => typeof value === "number" && Number.isFinite(value))) return options;
+    const x = box.x as number;
+    const y = box.y as number;
+    const w = Math.max(0, box.w as number);
+    const h = Math.max(0, box.h as number);
+    const x0 = Math.max(r.x, x);
+    const y0 = Math.max(r.y, y);
+    const x1 = Math.min(r.x + r.w, x + w);
+    const y1 = Math.min(r.y + r.h, y + h);
+    if (x1 < x0 || y1 < y0) return null;
+    return { ...options, x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) } as T;
+  };
   const groupedSlide = {
-    addShape: (name: Parameters<Slide["addShape"]>[0], options: Parameters<Slide["addShape"]>[1]) => s.addShape(name, { ...options, objectName: group }),
-    addText: (text: Parameters<Slide["addText"]>[0], options: Parameters<Slide["addText"]>[1]) => s.addText(text, { ...options, objectName: group }),
+    addShape: (name: Parameters<Slide["addShape"]>[0], options: Parameters<Slide["addShape"]>[1]) => {
+      const clipped = confine(options);
+      return clipped ? s.addShape(name, { ...clipped, objectName: group }) : undefined;
+    },
+    addText: (text: Parameters<Slide["addText"]>[0], options: Parameters<Slide["addText"]>[1]) => {
+      const clipped = confine(options);
+      return clipped ? s.addText(text, { ...clipped, objectName: group }) : undefined;
+    },
   } as Slide;
   let y = r.y + pad;
   for (const it of items) {
+    if (y >= r.y + r.h) break;
     it.draw(y, groupedSlide);
     y += it.h + gap;
   }
@@ -188,32 +227,67 @@ function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = 
   const focus = style.legendFocus ? legendItemsOf(model).find((item) => item.key === style.legendFocus)?.label ?? style.legendFocus : null;
   const group = panelTag("legend", "범례", "plate");
   plate(s, r, 0.12, group);
-  const rowH = 0.25 * scale;
+  const topPad = Math.min(0.1 * scale, Math.max(0, r.h));
+  const nominalRowH = 0.25 * scale;
+  const nominalNoteH = 0.22 * scale;
+  const wantedH = items.length * nominalRowH + notes.length * nominalNoteH;
+  const compression = wantedH > 0 ? Math.min(1, Math.max(0, (r.h - topPad - 0.04 * scale) / wantedH)) : 1;
+  const rowH = nominalRowH * compression;
+  const noteH = nominalNoteH * compression;
+  const iconScale = scale * compression;
+  const confine = <T extends object>(options: T | undefined): T | null => {
+    if (!options) return null;
+    const box = options as T & { x?: number; y?: number; w?: number; h?: number };
+    if (![box.x, box.y, box.w, box.h].every((value) => typeof value === "number" && Number.isFinite(value))) return options;
+    const x = box.x as number;
+    const y = box.y as number;
+    const w = Math.max(0, box.w as number);
+    const h = Math.max(0, box.h as number);
+    const x0 = Math.max(r.x, x);
+    const y0 = Math.max(r.y, y);
+    const x1 = Math.min(r.x + r.w, x + w);
+    const y1 = Math.min(r.y + r.h, y + h);
+    if (x1 < x0 || y1 < y0) return null;
+    return { ...options, x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) } as T;
+  };
+  const target = {
+    addShape: (name: Parameters<Slide["addShape"]>[0], options: Parameters<Slide["addShape"]>[1]) => {
+      const clipped = confine(options);
+      return clipped ? s.addShape(name, { ...clipped, objectName: group }) : undefined;
+    },
+    addText: (text: Parameters<Slide["addText"]>[0], options: Parameters<Slide["addText"]>[1]) => {
+      const clipped = confine(options);
+      return clipped ? s.addText(text, { ...clipped, objectName: group }) : undefined;
+    },
+  } as Slide;
   items.forEach((it, i) => {
-    const y = r.y + 0.1 * scale + i * rowH;
+    const y = r.y + topPad + i * rowH;
     const focused = !it.site && focus !== null && it.label === focus;
     const dimmed = focus !== null && !it.site && !focused;
     const fade = dimmed ? 65 : 0;
-    const labelPt = fitBlock([it.label], { w: Math.max(0.2, r.w - 0.55 * scale), h: rowH }, 10 * scale, 7);
+    const labelX = r.x + Math.min(0.45 * scale, Math.max(0, r.w * 0.35));
+    const labelW = Math.max(0.01, r.x + r.w - labelX - Math.min(0.1 * scale, Math.max(0, r.w * 0.08)));
+    const labelPt = fitBlock([it.label], { w: labelW, h: Math.max(0.01, rowH) }, 10 * scale, 7);
     if (it.site) {
-      s.addShape("diamond", { x: r.x + 0.19 * scale, y: y + 0.04 * scale, w: 0.16 * scale, h: 0.16 * scale, fill: { color: "FFFFFF", transparency: fade }, line: { color: "111111", width: 0.8, transparency: fade }, objectName: group });
-      s.addShape("ellipse", { x: r.x + 0.25 * scale, y: y + 0.1 * scale, w: 0.04 * scale, h: 0.04 * scale, fill: { color: "111111", transparency: fade }, line: { color: "111111", width: 0, transparency: fade }, objectName: group });
+      target.addShape("diamond", { x: r.x + 0.19 * iconScale, y: y + 0.04 * iconScale, w: 0.16 * iconScale, h: 0.16 * iconScale, fill: { color: "FFFFFF", transparency: fade }, line: { color: "111111", width: 0.8, transparency: fade } });
+      target.addShape("ellipse", { x: r.x + 0.25 * iconScale, y: y + 0.1 * iconScale, w: 0.04 * iconScale, h: 0.04 * iconScale, fill: { color: "111111", transparency: fade }, line: { color: "111111", width: 0, transparency: fade } });
     } else if (it.symbol === "rail-axis") {
-      s.addShape("line", { x: r.x + 0.17 * scale, y: y + 0.145 * scale, w: 0.22 * scale, h: 0, line: { color: "172033", width: 5.2, transparency: fade, beginArrowType: "none", endArrowType: "none" }, objectName: group });
-      s.addShape("line", { x: r.x + 0.17 * scale, y: y + 0.145 * scale, w: 0.22 * scale, h: 0, line: { color: hex(it.color), width: 3.6, transparency: fade, beginArrowType: "none", endArrowType: "none" }, objectName: group });
+      target.addShape("line", { x: r.x + 0.17 * iconScale, y: y + 0.145 * iconScale, w: 0.22 * iconScale, h: 0, line: { color: "172033", width: 5.2, transparency: fade, beginArrowType: "none", endArrowType: "none" } });
+      target.addShape("line", { x: r.x + 0.17 * iconScale, y: y + 0.145 * iconScale, w: 0.22 * iconScale, h: 0, line: { color: hex(it.color), width: 3.6, transparency: fade, beginArrowType: "none", endArrowType: "none" } });
     } else if (it.symbol === "rail-exit") {
-      s.addShape("ellipse", { x: r.x + 0.18 * scale, y: y + 0.035 * scale, w: 0.19 * scale, h: 0.19 * scale, fill: { color: "FFD200", transparency: fade }, line: { color: "172033", width: 0.75, transparency: fade }, objectName: group });
+      target.addShape("ellipse", { x: r.x + 0.18 * iconScale, y: y + 0.035 * iconScale, w: 0.19 * iconScale, h: 0.19 * iconScale, fill: { color: "FFD200", transparency: fade }, line: { color: "172033", width: 0.75, transparency: fade } });
     } else if (it.badge) {
-      s.addShape("ellipse", { x: r.x + 0.18 * scale, y: y + 0.03 * scale, w: 0.19 * scale, h: 0.19 * scale, fill: { color: hex(it.color), transparency: fade }, line: { color: "FFFFFF", width: 0.75, transparency: fade }, objectName: group });
-      s.addText(it.badge, { x: r.x + 0.18 * scale, y: y + 0.03 * scale, w: 0.19 * scale, h: 0.19 * scale, align: "center", valign: "middle", fontFace: FONT, fontSize: Math.max(7, 7 * scale), bold: true, color: dimmed ? "8C919B" : hex(badgeTextColor(it.color)), margin: 0, objectName: group });
+      target.addShape("ellipse", { x: r.x + 0.18 * iconScale, y: y + 0.03 * iconScale, w: 0.19 * iconScale, h: 0.19 * iconScale, fill: { color: hex(it.color), transparency: fade }, line: { color: "FFFFFF", width: 0.75, transparency: fade } });
+      target.addText(it.badge, { x: r.x + 0.18 * iconScale, y: y + 0.03 * iconScale, w: 0.19 * iconScale, h: 0.19 * iconScale, align: "center", valign: "middle", fontFace: FONT, fontSize: Math.max(7, 7 * scale), bold: true, color: dimmed ? "8C919B" : hex(badgeTextColor(it.color)), margin: 0 });
     } else {
-      s.addShape("ellipse", { x: r.x + 0.2 * scale, y: y + 0.06 * scale, w: 0.13 * scale, h: 0.13 * scale, fill: { color: hex(it.color), transparency: fade }, line: { color: "FFFFFF", width: 0.75, transparency: fade }, objectName: group });
+      target.addShape("ellipse", { x: r.x + 0.2 * iconScale, y: y + 0.06 * iconScale, w: 0.13 * iconScale, h: 0.13 * iconScale, fill: { color: hex(it.color), transparency: fade }, line: { color: "FFFFFF", width: 0.75, transparency: fade } });
     }
-    s.addText(it.label, { x: r.x + 0.45 * scale, y, w: Math.max(0.2, r.w - 0.55 * scale), h: rowH, valign: "middle", fontFace: FONT, fontSize: labelPt, bold: focused, color: dimmed ? "8C919B" : INK, margin: 0, objectName: group });
+    target.addText(it.label, { x: labelX, y, w: labelW, h: Math.max(0.01, rowH), valign: "middle", fontFace: FONT, fontSize: labelPt, bold: focused, color: dimmed ? "8C919B" : INK, margin: 0 });
   });
   notes.forEach((n, i) => {
-      const noteH = 0.22 * scale;
-      s.addText(n, { x: r.x + 0.2 * scale, y: r.y + 0.1 * scale + items.length * rowH + i * noteH, w: Math.max(0.2, r.w - 0.3 * scale), h: noteH, valign: "middle", fontFace: FONT, fontSize: fitBlock([n], { w: r.w - 0.3 * scale, h: noteH }, 8.5 * scale, 7), color: MUTED, margin: 0, fit: "shrink", objectName: group });
+      const noteX = r.x + Math.min(0.2 * scale, Math.max(0, r.w * 0.12));
+      const noteW = Math.max(0.01, r.x + r.w - noteX - Math.min(0.1 * scale, Math.max(0, r.w * 0.04)));
+      target.addText(n, { x: noteX, y: r.y + topPad + items.length * rowH + i * noteH, w: noteW, h: Math.max(0.01, noteH), valign: "middle", fontFace: FONT, fontSize: fitBlock([n], { w: noteW, h: Math.max(0.01, noteH) }, 8.5 * scale, 7), color: MUTED, margin: 0, fit: "shrink" });
   });
 }
 

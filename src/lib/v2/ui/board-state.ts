@@ -33,6 +33,9 @@ export type LegacyCutSpec = CutSpec | CutCount;
 export type PinnedLabel = { key: string; on: boolean };
 
 export type PageKey = string;
+export type PagePanelKey = "title" | "summary" | "legend";
+export type PagePanelRect = { x: number; y: number; w: number; h: number };
+export type PagePanels = Partial<Record<PagePanelKey, PagePanelRect>>;
 export type PageStyle = {
   pinnedKeys?: string[];
   legendFocus?: string | null;
@@ -42,6 +45,8 @@ export type PageStyle = {
   titleScale?: number;
   summaryScale?: number;
   legendScale?: number;
+  /** 슬라이드 비율(0..1)로 저장하는 제목·요약·범례 도형 자리. */
+  panels?: PagePanels;
 };
 export type ExtraReportPage = {
   id: string;
@@ -67,7 +72,9 @@ const PAGE_STYLE_KEYS = [
   "titleScale",
   "summaryScale",
   "legendScale",
+  "panels",
 ] as const;
+const PAGE_PANEL_KEYS = ["title", "summary", "legend"] as const satisfies readonly PagePanelKey[];
 
 export function extraPageKey(id: string): PageKey {
   return `extra:${id}`;
@@ -351,7 +358,45 @@ function withoutRecordValue<T>(record: Record<string, T>, id: string): Record<st
   return next;
 }
 
+const clampPagePanelUnit = (value: number): number => Math.max(0, Math.min(1, value));
+
+function normalizePagePanelRect(value: unknown): PagePanelRect | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const values = [raw.x, raw.y, raw.w, raw.h];
+  if (!values.every((item) => typeof item === "number" && Number.isFinite(item))) return null;
+  return {
+    x: clampPagePanelUnit(raw.x as number),
+    y: clampPagePanelUnit(raw.y as number),
+    w: clampPagePanelUnit(raw.w as number),
+    h: clampPagePanelUnit(raw.h as number),
+  };
+}
+
+function normalizePagePanels(value: unknown): PagePanels | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const panels: PagePanels = {};
+  for (const key of PAGE_PANEL_KEYS) {
+    const raw = (value as Record<string, unknown>)[key];
+    if (raw === undefined) continue;
+    const normalized = normalizePagePanelRect(raw);
+    if (normalized) panels[key] = normalized;
+  }
+  return Object.keys(panels).length > 0 ? panels : null;
+}
+
+function clonePagePanels(panels: PagePanels | undefined): PagePanels | undefined {
+  if (!panels) return undefined;
+  const clone: PagePanels = {};
+  for (const key of PAGE_PANEL_KEYS) {
+    const rect = panels[key];
+    if (rect) clone[key] = { x: rect.x, y: rect.y, w: rect.w, h: rect.h };
+  }
+  return Object.keys(clone).length > 0 ? clone : undefined;
+}
+
 function clonePageStyle(style: PageStyle): PageStyle {
+  const panels = clonePagePanels(style.panels);
   return {
     ...(style.pinnedKeys ? { pinnedKeys: [...style.pinnedKeys] } : {}),
     ...(style.legendFocus !== undefined ? { legendFocus: style.legendFocus } : {}),
@@ -361,6 +406,7 @@ function clonePageStyle(style: PageStyle): PageStyle {
     ...(style.titleScale !== undefined ? { titleScale: style.titleScale } : {}),
     ...(style.summaryScale !== undefined ? { summaryScale: style.summaryScale } : {}),
     ...(style.legendScale !== undefined ? { legendScale: style.legendScale } : {}),
+    ...(panels ? { panels } : {}),
   };
 }
 
@@ -390,6 +436,10 @@ function restoreReportUndo(report: ReportState, undo: ReportState | undefined): 
 }
 
 function pageStyleValue(field: typeof PAGE_STYLE_KEYS[number], value: unknown): PageStyle | null {
+  if (field === "panels") {
+    const panels = normalizePagePanels(value);
+    return panels ? { panels } : null;
+  }
   if (field === "pinnedKeys") {
     return Array.isArray(value)
       ? { pinnedKeys: [...new Set(value.filter((item): item is string => typeof item === "string" && item.length > 0))] }
@@ -413,6 +463,27 @@ function mergePageStyle(current: PageStyle | undefined, patch: Partial<PageStyle
   for (const field of PAGE_STYLE_KEYS) {
     if (!Object.prototype.hasOwnProperty.call(patch, field)) continue;
     const value = patch[field];
+    if (field === "panels") {
+      if (value === undefined) {
+        delete next.panels;
+        continue;
+      }
+      if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+      const panels: PagePanels = { ...(next.panels ?? {}) };
+      for (const key of PAGE_PANEL_KEYS) {
+        const raw = (value as Record<string, unknown>)[key];
+        if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+        if (raw === undefined) {
+          delete panels[key];
+          continue;
+        }
+        const normalized = normalizePagePanelRect(raw);
+        if (normalized) panels[key] = normalized;
+      }
+      if (Object.keys(panels).length > 0) next.panels = panels;
+      else delete next.panels;
+      continue;
+    }
     if (value === undefined) {
       delete next[field];
       continue;

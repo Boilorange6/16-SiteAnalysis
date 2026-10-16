@@ -6,7 +6,7 @@
  *  오른쪽 아래 = 축척 · 맨 아래 = 출처 띠
  */
 import { legendItemsForModel, type MapModel } from "./map-layers";
-import type { PageStyle } from "./board-state";
+import type { PagePanelKey, PageStyle } from "./board-state";
 
 export type Box = { x0: number; y0: number; x1: number; y1: number };
 
@@ -80,6 +80,35 @@ export function slideLayout(): { title: Rect; info: Rect; legendX: number; legen
 const panelScale = (value: number | undefined): number => Math.max(0.7, Math.min(1.5, value ?? 1));
 export const slidePanelScale = panelScale;
 
+type PanelStyle = Pick<PageStyle, "titleScale" | "summaryScale" | "legendScale" | "panels" | "summary">;
+
+function slideSafeRect(rect: Rect): Rect {
+  const left = SLIDE.edge;
+  const top = SLIDE.edge;
+  const right = SLIDE.w - SLIDE.edge;
+  const bottom = slideLayout().strip.y - SLIDE.edge * 0.6;
+  const w = Math.min(Math.max(0, rect.w), Math.max(0, right - left));
+  const h = Math.min(Math.max(0, rect.h), Math.max(0, bottom - top));
+  return {
+    x: Math.max(left, Math.min(right - w, rect.x)),
+    y: Math.max(top, Math.min(bottom - h, rect.y)),
+    w,
+    h,
+  };
+}
+
+function customPanelRect(style: PanelStyle | undefined, key: PagePanelKey): Rect | null {
+  const panel = style?.panels?.[key];
+  if (!panel) return null;
+  const unit = (value: number): number => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+  return slideSafeRect({
+    x: unit(panel.x) * SLIDE.w,
+    y: unit(panel.y) * SLIDE.h,
+    w: unit(panel.w) * SLIDE.w,
+    h: unit(panel.h) * SLIDE.h,
+  });
+}
+
 function scaleAnchoredRect(
   rect: Rect,
   scale: number,
@@ -103,7 +132,7 @@ function scaleAnchoredRect(
  * 생략하면 테스트·미리보기용 대표 4행 rect를 사용한다.
  */
 export function slidePanelRects(
-  style: Pick<PageStyle, "titleScale" | "summaryScale" | "legendScale"> | undefined,
+  style: PanelStyle | undefined,
   hasSummary: boolean,
   legendBase?: Rect | null,
 ): SlidePanelRects {
@@ -112,6 +141,7 @@ export function slidePanelRects(
   const titleScale = panelScale(style?.titleScale);
   const summaryScale = panelScale(style?.summaryScale);
   const legendScale = panelScale(style?.legendScale);
+  const customSummary = hasSummary ? customPanelRect(style, "summary") : null;
   const panelGap = 0.18;
   const maxSideBySideW = Math.max(0, SLIDE.w - 2 * SLIDE.edge - panelGap);
   const requestedTitleW = Math.min(l.title.w * titleScale, SLIDE.w - 2 * SLIDE.edge);
@@ -123,21 +153,26 @@ export function slidePanelRects(
   const summaryW = requestedSummaryW * sideBySideRatio;
   const safeBottom = l.strip.y - SLIDE.edge * 0.6;
   const safeHeight = Math.max(0, safeBottom - SLIDE.edge);
-  const title = scaleAnchoredRect(l.title, titleScale, "top-left", titleW, safeHeight);
+  const title = slideSafeRect(scaleAnchoredRect(l.title, titleScale, "top-left", titleW, safeHeight));
   const summary = hasSummary
-    ? scaleAnchoredRect(l.info, summaryScale, "top-right", summaryW, safeHeight)
+    ? slideSafeRect(scaleAnchoredRect(l.info, summaryScale, "top-right", summaryW, safeHeight))
     : null;
   const requestedLegend = baseLegend ? scaleAnchoredRect(baseLegend, legendScale, "bottom-left") : null;
   const legend = requestedLegend
-    ? {
+    ? slideSafeRect({
         ...requestedLegend,
-        w: Math.min(requestedLegend.w, Math.max(0, (summary?.x ?? SLIDE.w - SLIDE.edge) - SLIDE.edge - panelGap)),
-      }
+        w: Math.min(requestedLegend.w, Math.max(0, (customSummary?.x ?? summary?.x ?? SLIDE.w - SLIDE.edge) - SLIDE.edge - panelGap)),
+      })
     : null;
+  const custom = {
+    title: customPanelRect(style, "title"),
+    summary: customSummary,
+    legend: customPanelRect(style, "legend"),
+  };
   return {
-    title,
-    summary,
-    legend,
+    title: custom.title ?? title,
+    summary: custom.summary ?? summary,
+    legend: custom.legend ?? legend,
   };
 }
 
@@ -187,7 +222,7 @@ export function slideCalloutLegendLayout(
 export function slideLegend(
   model: MapModel,
   includeSite = true,
-  style?: Pick<PageStyle, "titleScale" | "summaryScale" | "legendScale">,
+  style?: PanelStyle,
   hasSummary = true,
 ) {
   const items: Array<{ layer: string; label: string; color: string; site?: boolean; badge?: string; symbol?: "rail-axis" | "rail-exit" }> = [
@@ -203,16 +238,32 @@ export function slideLegend(
 /** 슬라이드 좌표(inch)를 지도 이미지 픽셀 좌표로 바꾼 예약 자리 (라벨 충돌 회피용) */
 export function slideReserved(
   pxPerInch: number,
-  opts: { info?: boolean; infoRect?: Rect | null; titleRect?: Rect | null; legend?: Rect | null; calloutLegend?: Rect | null } = {},
+  opts: {
+    info?: boolean;
+    hasSummary?: boolean;
+    style?: PanelStyle;
+    infoRect?: Rect | null;
+    titleRect?: Rect | null;
+    legend?: Rect | null;
+    legendBase?: Rect | null;
+    calloutLegend?: Rect | null;
+  } = {},
 ): Box[] {
   const l = slideLayout();
+  const hasSummary = opts.hasSummary ?? (opts.info !== false && opts.style?.summary !== false);
+  const derived = opts.style
+    ? slidePanelRects(opts.style, hasSummary, opts.legendBase)
+    : null;
   const b = (r: Rect): Box => ({ x0: r.x * pxPerInch, y0: r.y * pxPerInch, x1: (r.x + r.w) * pxPerInch, y1: (r.y + r.h) * pxPerInch });
-  return [b(opts.titleRect ?? l.title), ...(opts.info === false ? [] : [b(opts.infoRect ?? l.info)]), ...(opts.legend ? [b(opts.legend)] : []), ...(opts.calloutLegend ? [b(opts.calloutLegend)] : []), b(l.strip)];
+  const title = opts.titleRect ?? derived?.title ?? l.title;
+  const info = opts.infoRect ?? (derived ? derived.summary : l.info);
+  const legend = opts.legend ?? derived?.legend ?? null;
+  return [b(title), ...(opts.info === false ? [] : info ? [b(info)] : []), ...(legend ? [b(legend)] : []), ...(opts.calloutLegend ? [b(opts.calloutLegend)] : []), b(l.strip)];
 }
 
 /** 가로 방향 지도 중심 위치: 슬라이드에서는 오른쪽 정보 판을 뺀 영역의 가운데 */
 export function slideSiteX(
-  style?: Pick<PageStyle, "summaryScale">,
+  style?: PanelStyle,
   hasSummary = true,
 ): number {
   const l = slideLayout();
