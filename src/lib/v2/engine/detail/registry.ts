@@ -18,6 +18,7 @@ import { RASTER_SPECS } from "./raster";
 import { WEATHER_SPECS } from "./weather";
 import { HOUSING_SPECS } from "./housing";
 import { detailDisplayValue } from "../../ui/detail-labels";
+import { hasTopoParameter, topoHandleFor } from "../../topo/context";
 
 export type DetailValue = string | number | null;
 
@@ -286,6 +287,8 @@ function makeContext(appDb: BetterSqlite3.Database, dataDir: string, analysisId:
   const run = getAnalysisRun(appDb, analysisId);
   const manifest = runManifest(dataDir, run);
   if (!run || !manifest) return null;
+  const topo = topoHandleFor(appDb, run.parameters, run.userId);
+  if (hasTopoParameter(run.parameters) && !topo) return null;
   return {
     run,
     ctx: new EngineContext(dataDir, manifest, analysisId, {
@@ -295,7 +298,7 @@ function makeContext(appDb: BetterSqlite3.Database, dataDir: string, analysisId:
       analysisDate: run.analysisDate,
       pnu: typeof run.parameters.pnu === "string" ? run.parameters.pnu : null,
       site: restoreSiteFromParameters(run.parameters),
-    }, {}, { rasterReader: rasterReader(appDb, analysisId) }),
+    }, {}, { rasterReader: rasterReader(appDb, analysisId), topo }),
   };
 }
 

@@ -15,6 +15,7 @@ import { ensureAnalysisJobTable, getAnalysisRun, openV2AppDb, saveTileResult } f
 import { openDataFile, readManifest } from "../data/manifest";
 import { EngineContext } from "./context";
 import { restoreSiteFromParameters } from "./site";
+import { hasTopoParameter, topoHandleFor } from "../topo/context";
 import { encodeRaster, loadTileRaster, saveTileRasters } from "../raster-store";
 import { parseTileResult, type RasterRef, type TileResult } from "../tile-result";
 import {
@@ -537,6 +538,11 @@ function runFallbackInternal(db: Db, dataDir: string, analysisId: string, userId
   if (!manifest) throw new WindApiError(503, "분석 데이터가 아직 게시되지 않았습니다");
   const core = openDataFile(dataDir, manifest, "core");
   const run = state.run;
+  const topo = topoHandleFor(db, run.parameters, run.userId);
+  if (hasTopoParameter(run.parameters) && !topo) {
+    core.close();
+    throw new WindApiError(404, "분석 자료를 찾을 수 없습니다");
+  }
   const ctx = new EngineContext(dataDir, manifest, analysisId, {
     address: run.address,
     center: run.center,
@@ -544,7 +550,7 @@ function runFallbackInternal(db: Db, dataDir: string, analysisId: string, userId
     analysisDate: run.analysisDate,
     pnu: typeof run.parameters.pnu === "string" ? run.parameters.pnu : null,
     site: restoreSiteFromParameters(run.parameters),
-  }, { core });
+  }, { core }, { topo });
   try {
     const built = buildWindCase(ctx);
     if (!built) throw new WindApiError(409, "D2Q9 대체 계산에 필요한 기상·건축물 자료가 없습니다");

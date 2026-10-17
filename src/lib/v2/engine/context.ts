@@ -12,6 +12,7 @@ import { manifestHash, openDataFile, type Manifest } from "../data/manifest";
 import type { RasterRef, TileConditions, TileResult } from "../tile-result";
 import { encodeRaster, MAX_TILE_RASTER_BYTES, type RasterData } from "../raster-store";
 import { siteSnapshotHash, type EngineSite } from "./site";
+import { bindTopoHandle, closeTopoHandle, filtersForTopo, type TopoHandle } from "../topo/context";
 
 export type Limitation = TileResult["limitations"][number];
 export type FileKey = "core" | "buildings" | "parcels" | "reference" | "market" | "terrain" | "weather";
@@ -45,6 +46,7 @@ export class EngineContext {
   readonly manifestHash: string;
   readonly conditions: TileConditions;
   readonly input: EngineInput;
+  readonly topo: TopoHandle | null;
   private readonly handles = new Map<FileKey, BetterSqlite3.Database>();
   private readonly refs = new Map<FileKey, SourceRef[]>();
   private readonly hitCache = new Map<string, FeatureHit[]>();
@@ -59,10 +61,11 @@ export class EngineContext {
     readonly analysisId: string,
     input: EngineInput,
     initialHandles: InitialDataHandles = {},
-    options: { rasterReader?: RasterReader; reuseDataFiles?: boolean; pooledKeys?: readonly FileKey[] } = {},
+    options: { rasterReader?: RasterReader; reuseDataFiles?: boolean; pooledKeys?: readonly FileKey[]; topo?: TopoHandle | null } = {},
   ) {
     this.rasterReader = options.rasterReader;
     this.reuseDataFiles = options.reuseDataFiles === true;
+    this.topo = options.topo ?? null;
     const pooledKeys = new Set(options.pooledKeys ?? []);
     const site = input.site ?? { pnus: input.pnu ? [input.pnu] : [], geometry: null, kind: "address" as const };
     this.input = { ...input, site, pnu: input.pnu ?? site.pnus[0] ?? null };
@@ -74,13 +77,14 @@ export class EngineContext {
       }
     }
     this.manifestHash = manifestHash(manifest);
+    if (this.topo) bindTopoHandle(this.topo, this.input.center, this.input.radiusM);
     this.conditions = {
       address: input.address,
       center: [input.center[0], input.center[1]],
       radiusM: input.radiusM,
       analysisDate: input.analysisDate,
       timezone: "Asia/Seoul",
-      filters: {},
+      filters: filtersForTopo(this.topo?.sha256 ?? null),
       simulation: null,
       parcelSnapshotHash: siteSnapshotHash(site),
     };
@@ -254,5 +258,6 @@ export class EngineContext {
     this.hitCache.clear();
     this.memoCache.clear();
     this.rasterItems.clear();
+    closeTopoHandle(this.topo);
   }
 }
