@@ -47,6 +47,9 @@ export class EngineContext {
   readonly conditions: TileConditions;
   readonly input: EngineInput;
   readonly topo: TopoHandle | null;
+  /** buildingRows()가 수치지형도 건물 보강을 실제 적용했는지. source view가 tile 순서를 넘겨 전달한다. */
+  topoBuildingSupplementApplied = false;
+  readonly topoBuildingSupplementByRadius = new Map<number, boolean>();
   private readonly handles = new Map<FileKey, BetterSqlite3.Database>();
   private readonly refs = new Map<FileKey, SourceRef[]>();
   private readonly hitCache = new Map<string, FeatureHit[]>();
@@ -191,7 +194,20 @@ export class EngineContext {
 
   /** 파일에 적재된 원천 릴리스. 적재되지 않은 원천은 빠진다. */
   sources(key: FileKey, sourceIds: readonly string[]): SourceRef[] {
-    return this.allRefs(key).filter((r) => sourceIds.includes(r.sourceId));
+    const sources = this.allRefs(key).filter((r) => sourceIds.includes(r.sourceId));
+    const hasBuildingSource = sourceIds.some((sourceId) => sourceId === "building" || sourceId === "building_juso" || sourceId === "gis_bldg");
+    if (key !== "buildings" || !this.topo || !hasBuildingSource) return sources;
+    const topo = this.topo;
+    const appendTopo = () => {
+      if (!this.topoBuildingSupplementApplied || sources.some((source) => source.sourceId === topo.source.sourceId)) return;
+      sources.push(topo.source);
+    };
+    return new Proxy(sources, {
+      get: (target, property, receiver) => {
+        appendTopo();
+        return Reflect.get(target, property, receiver);
+      },
+    });
   }
 
   /** 반경이 걸치는 시도 코드(법정구역 기준) */

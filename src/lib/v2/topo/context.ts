@@ -11,7 +11,7 @@ import { openTopoForUser } from "./upload";
 type Db = BetterSqlite3.Database;
 
 export const TOPO_AFFECTED_TILES = [
-  "D02", "D03", "D04", "D05", "D10", "D13", "D15", "D16",
+  "D02", "D03", "D04", "D05", "D06", "D07", "D10", "D13", "D15", "D16",
   "D17", "D18", "D29", "S01", "S02", "S03", "S04",
 ] as const;
 
