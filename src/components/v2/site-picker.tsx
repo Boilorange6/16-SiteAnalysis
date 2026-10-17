@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import MapFigure, { siteMarkerMode, siteMarkerRadius } from "./map-figure";
 import type { MapModel } from "@/lib/v2/ui/map-layers";
 import type { MapPolygon } from "@/lib/v2/tile-result";
@@ -35,7 +35,10 @@ type SitePickerProps = {
   initialParcels?: readonly SitePickerParcel[];
   disabled?: boolean;
   serverError?: string | null;
+  extra?: ReactNode;
+  topoCoverage?: readonly [number, number][];
   onSiteChange: (site: SiteInput | null) => void;
+  onCenterChange?: (center: LngLat | null) => void;
   onValidityChange?: (valid: boolean) => void;
 };
 
@@ -115,7 +118,7 @@ async function responseJson<T>(response: Response): Promise<T & { error?: string
   return (await response.json().catch(() => ({}))) as T & { error?: string };
 }
 
-export default function SitePicker({ address, radiusM, initialSite = null, initialParcels = [], disabled = false, serverError = null, onSiteChange, onValidityChange }: SitePickerProps) {
+export default function SitePicker({ address, radiusM, initialSite = null, initialParcels = [], disabled = false, serverError = null, extra, topoCoverage = [], onSiteChange, onCenterChange, onValidityChange }: SitePickerProps) {
   const initialSignature = siteSignature(initialSite);
   const initialMode = modeFromSite(initialSite);
   const [mode, setMode] = useState<SitePickerMode>(initialMode);
@@ -282,6 +285,10 @@ export default function SitePicker({ address, radiusM, initialSite = null, initi
   useEffect(() => {
     onValidityChange?.(valid);
   }, [valid, onValidityChange]);
+
+  useEffect(() => {
+    onCenterChange?.(center);
+  }, [center, onCenterChange]);
 
   useEffect(() => {
     const signature = siteSignature(draftSite);
@@ -577,6 +584,19 @@ export default function SitePicker({ address, radiusM, initialSite = null, initi
                     onFeatureClick={mode === "polygon" ? undefined : handleFeatureClick}
                   />
                   <svg className={styles.overlay} viewBox={`0 0 ${size.w} ${size.h}`} aria-label="대지 선택 지도">
+                     {topoCoverage.length > 2 && (() => {
+                       const points = topoCoverage.map(([lng, lat]) => project(lng, lat));
+                       return (
+                         <g data-topo-coverage aria-label="수치지형도 범위">
+                           <path d={polygonPath(points)} fill="none" stroke="#2350b8" strokeWidth="1.5" strokeDasharray="10 6" strokeLinejoin="round" />
+                           <g transform="translate(12 14)">
+                             <rect x="-5" y="-10" width="178" height="20" rx="5" fill="#fff" fillOpacity="0.9" />
+                             <line x1="0" y1="0" x2="22" y2="0" stroke="#2350b8" strokeWidth="1.5" strokeDasharray="10 6" />
+                             <text x="28" y="4" fill="#15171c" fontSize="10">수치지형도 범위 · 밖은 기존 자료</text>
+                           </g>
+                         </g>
+                       );
+                     })()}
                      {labelParcels.map((parcel) => {
                        const rings = parcel.geometry.type === "Polygon" ? parcel.geometry.coordinates : parcel.geometry.coordinates.flat();
                        const points = rings[0]?.map(([lng, lat]) => project(lng, lat)) ?? [];
@@ -688,6 +708,7 @@ export default function SitePicker({ address, radiusM, initialSite = null, initi
            {roadWarning && <p className={`${styles.status} ${styles.statusWarning}`} role="status">{roadWarning}</p>}
            {statusText && <p className={`${styles.status} ${statusTone === "good" ? styles.statusGood : statusTone === "warning" ? styles.statusWarning : statusTone === "error" ? styles.statusError : ""}`} role={statusTone === "error" ? "alert" : "status"}>{statusText}</p>}
           <p className={styles.helpText}>{mode === "polygon" ? "Ctrl+Z·⌫: 마지막 점 되돌리기 · Esc: 그리기 취소 · 점 목록의 화살표로 키보드 수정" : "지도 이동: 한 손가락/마우스 드래그 · 확대: 휠 또는 두 손가락 · 필지 선택: 탭 또는 Enter"}</p>
+          {extra}
         </aside>
       </div>
     </section>
