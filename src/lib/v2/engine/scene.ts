@@ -291,9 +291,9 @@ export function buildScene(ctx: EngineContext): Scene | null {
         rows: grid.rows,
         originZ: terrain.originZ,
         z: Array.from(grid.values, (value) => Number.isFinite(value) ? roundCentimeter(value - terrain.originZ) : null),
-        resolutionM: 30,
+        resolutionM: ctx.topo ? 5 : 30,
         vertical: terrain.reader.verticalDatum() ?? "EGM2008",
-        sourceId: "terrain_tiles",
+        sourceId: ctx.topo ? "ngii_topo" : "terrain_tiles",
       }
     : { kind: "flat" };
 

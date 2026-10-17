@@ -16,7 +16,7 @@ export type SceneGround =
       rows: number;
       originZ: number;
       z: (number | null)[];
-      resolutionM: 30;
+      resolutionM: 5 | 30;
       vertical: DemVertical;
       sourceId: string;
     };
@@ -94,7 +94,7 @@ const SceneGroundSchema: z.ZodType<SceneGround> = z.discriminatedUnion("kind", [
     rows: z.number().int().positive().max(SCENE_GRID_MAX),
     originZ: z.number().finite(),
     z: z.array(z.number().finite().nullable()),
-    resolutionM: z.literal(30),
+    resolutionM: z.union([z.literal(5), z.literal(30)]),
     vertical: z.enum(["EGM96", "EGM2008"]),
     sourceId: z.string().min(1),
   }).superRefine((ground, ctx) => {

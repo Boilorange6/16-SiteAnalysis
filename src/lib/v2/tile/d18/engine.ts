@@ -2,7 +2,7 @@
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../../engine/context";
 import { slopeGridFor, terrainBandPolygons, terrainClassGrid, terrainGridFor, terrainGridStats, terrainValuesInCircle } from "../../engine/tiles/terrain-grid";
-import { DEM_LIMITATION, demSources } from "../../engine/tiles/terrain-shared";
+import { DEM_LIMITATION, demSources, terrainCellM, topoTerrainLimitation } from "../../engine/tiles/terrain-shared";
 import { est, makeTile, obs } from "../../engine/tiles/common";
 import { notProvided } from "../../engine/tiles/not-provided";
 import { maxOf } from "../../extent";
@@ -14,12 +14,16 @@ const SLOPE_LABELS = ["경사 0~5°", "경사 5~10°", "경사 10~15°", "경사
 const percent = (part: number, whole: number): number => whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0;
 
 export function d18(ctx: EngineContext): TileResult {
-  const dem = terrainGridFor(ctx, 30);
+  const cellM = terrainCellM(ctx);
+  const dem = terrainGridFor(ctx, cellM);
   if (!dem) return notProvided(ctx, "D18", "지형 자료를 확인하지 못했습니다.");
 
-  const slope = slopeGridFor(ctx, 30);
+  const slope = slopeGridFor(ctx, cellM);
   if (!slope) return notProvided(ctx, "D18", "지형 경사 자료를 확인하지 못했습니다.");
   const reportedSlope = terrainClassGrid(slope);
+  // Keep 5 m samples for metrics while avoiding a large Turf isobands call
+  // argument list for the filled presentation bands.
+  const bandSlope = ctx.topo && cellM === 5 ? terrainClassGrid(slopeGridFor(ctx, 30) ?? slope) : reportedSlope;
   const stats = terrainGridStats(reportedSlope, ctx.input.radiusM);
   const values = terrainValuesInCircle(reportedSlope, ctx.input.radiusM);
   if (values.length === 0) {
@@ -38,7 +42,7 @@ export function d18(ctx: EngineContext): TileResult {
   const ordered = [...values].sort((a, b) => a - b);
   const middle = Math.floor(ordered.length / 2);
   const slopeMedian = ordered.length % 2 === 0 ? (ordered[middle - 1] + ordered[middle]) / 2 : ordered[middle];
-  const bands = terrainBandPolygons(ctx.input.center, ctx.input.radiusM, reportedSlope, SLOPE_BREAKS, SLOPE_LAYERS, "slope_nodata");
+  const bands = terrainBandPolygons(ctx.input.center, ctx.input.radiusM, bandSlope, SLOPE_BREAKS, SLOPE_LAYERS, "slope_nodata");
   const polygons = bands.polygons.map((polygon) => ({
     ...polygon,
     p: {
@@ -50,6 +54,7 @@ export function d18(ctx: EngineContext): TileResult {
   }));
   const slopeMax = maxOf(values);
   const steepPct = percent((bands.areaM2[3] ?? 0) + (bands.areaM2[4] ?? 0), circleAreaM2);
+  const sampleNote = ctx.topo ? `${cellM}m 표본 간격` : "30m 표본 간격";
   const nodataArea = bands.areaM2.at(-1) ?? 0;
   const metrics: TileResult["metrics"] = [
     obs("fill_slope_pct", "경사 계산 가능 셀 채움률", percent(stats.valid, stats.cells), "%", "d18-fill-slope@1:원 안 셀 중심 중 중앙차분 경사 계산 가능 셀÷원 안 셀", stats.valid, stats.cells),
@@ -69,7 +74,9 @@ export function d18(ctx: EngineContext): TileResult {
 
   const limitations: TileResult["limitations"] = [
     DEM_LIMITATION,
-    { kind: "estimated", note: "개발 여부(가능·불가능)를 판정하지 않으며 30m 표본 간격으로 계산했습니다." },
+    ctx.topo
+      ? topoTerrainLimitation
+      : { kind: "estimated", note: "개발 여부(가능·불가능)를 판정하지 않으며 30m 표본 간격으로 계산했습니다." },
   ];
   if (stats.valid < stats.cells) limitations.push({ kind: "partial", note: `원 안 경사 결측 셀 ${stats.cells - stats.valid}개는 slope_nodata로 별도 표시했습니다.` });
 
@@ -81,7 +88,7 @@ export function d18(ctx: EngineContext): TileResult {
     judgment: {
       ruleId: "D18-slope@1",
       basisMetricIds: ["fill_slope_pct", "slope_median_deg", "slope_max_deg"],
-      sentence: `반경 안 경사 계산 가능 셀 ${stats.valid.toLocaleString("en-US")}개에서 경사도 중앙값 ${slopeMedian.toFixed(1)}°, 최댓값 ${slopeMax.toFixed(1)}°, 15° 이상 ${steepPct}%를 확인 → 30m 표본 간격의 경사 분포를 표시 → 현장 측량과 배수·지반 조건을 별도로 확인할 것`,
+      sentence: `반경 안 경사 계산 가능 셀 ${stats.valid.toLocaleString("en-US")}개에서 경사도 중앙값 ${slopeMedian.toFixed(1)}°, 최댓값 ${slopeMax.toFixed(1)}°, 15° 이상 ${steepPct}%를 확인 → ${sampleNote}의 경사 분포를 표시 → 현장 측량과 배수·지반 조건을 별도로 확인할 것`,
       level: null,
       criteria: null,
     },
