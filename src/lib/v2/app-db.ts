@@ -179,6 +179,21 @@ export function ensureAnalysisJobTable(db: Db): void {
   db.exec("CREATE INDEX IF NOT EXISTS idx_analysis_job_queue ON analysis_job (status, priority, enqueued_at)");
 }
 
+/** 분석별 수치지형도 업로드 메타데이터. 실제 topo SQLite는 분석 자료 폴더에 따로 둔다. */
+export function ensureTopoUploadTable(db: Db): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS topo_upload (
+      topo_id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      sha256 TEXT NOT NULL,
+      db_path TEXT NOT NULL,
+      summary_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE (user_id, sha256)
+    );
+  `);
+}
+
 const now = () => new Date().toISOString();
 
 export function createAnalysisRun(db: Db, r: AnalysisRunInput): void {
