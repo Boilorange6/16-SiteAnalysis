@@ -21,6 +21,7 @@ import { areaInCircle, clipLineToCircle, linePathLength, polygonArea, polygonPar
 import { hitPoint } from "./tiles/common";
 import { demReader, demSources, DEM_LIMITATION } from "./tiles/terrain-shared";
 import type { LocalGrid } from "./tiles/raster-grid";
+import { mergedRoadLines } from "./tiles/topo-roads";
 
 function localRings(hit: FeatureHit, origin: { x: number; y: number }): Ring[] {
   return polygonParts(hit.geometry).flatMap((rings) => rings.map((ring) => toLocalRing(ring, origin)));
@@ -158,7 +159,8 @@ export const ROAD_WIDTH_M: Readonly<Record<string, number>> = Object.freeze({
   기타: 6,
 });
 
-export function roadWidthM(hierarchy: unknown): number {
+export function roadWidthM(hierarchy: unknown, topoWidthM: number | null = null): number {
+  if (topoWidthM !== null && Number.isFinite(topoWidthM) && topoWidthM > 0) return topoWidthM;
   const key = typeof hierarchy === "string" ? hierarchy.trim() : "";
   return ROAD_WIDTH_M[key] ?? ROAD_WIDTH_M["기타"];
 }
@@ -208,6 +210,7 @@ interface SceneContextBuild {
 }
 
 function buildSceneContext(ctx: EngineContext, origin: { x: number; y: number }): SceneContextBuild {
+  if (ctx.topo) return buildTopoSceneContext(ctx, origin);
   const roadSources = ctx.sources("reference", ["osm_roads"]);
   const greenSources = ctx.sources("reference", ["osm_landuse"]);
   const waterSources = ctx.sources("reference", ["osm_water"]);
@@ -263,6 +266,63 @@ function buildSceneContext(ctx: EngineContext, origin: { x: number; y: number })
     limitations.push({ kind: "partial", note: `반경 안 녹지·수계 면 ${polygonCandidates.length.toLocaleString()}개 중 면적이 큰 ${SCENE_MAX_CONTEXT_POLYGONS.toLocaleString()}개까지 장면에 포함했습니다.` });
   }
   if (roadSources.length === 0) limitations.push({ kind: "not_provided", note: "OSM 도로 자료 미적재 — 장면 도로 맥락층 없음" });
+  if (greenSources.length === 0) limitations.push({ kind: "not_provided", note: "OSM 녹지 면 자료 미적재 — 장면 녹지 맥락층 없음" });
+  if (waterSources.length === 0) limitations.push({ kind: "not_provided", note: "OSM 수계 면 자료 미적재 — 장면 수계 맥락층 없음" });
+
+  return { context: { roads, green, water }, sources, limitations };
+}
+
+function buildTopoSceneContext(ctx: EngineContext, origin: { x: number; y: number }): SceneContextBuild {
+  const roadSources = ctx.sources("reference", ["osm_roads"]);
+  const greenSources = ctx.sources("reference", ["osm_landuse"]);
+  const waterSources = ctx.sources("reference", ["osm_water"]);
+  const sources = uniqueSources([ctx.topo!.source], roadSources, greenSources, waterSources);
+  const roadCandidates: RoadCandidate[] = [];
+  let roadOrder = 0;
+  for (const line of mergedRoadLines(ctx, ctx.input.radiusM)) {
+    const hierarchy = line.hierarchy ?? "기타";
+    const paths = line.geometry.type === "LineString" ? [line.geometry.coordinates] : line.geometry.coordinates;
+    for (const path of paths) {
+      const points = localContextPath(path, origin);
+      if (points.length < 2) continue;
+      roadCandidates.push({
+        road: { points, widthM: roadWidthM(hierarchy, line.widthM), hierarchy },
+        lengthM: linePathLength(path),
+        order: roadOrder++,
+      });
+    }
+  }
+
+  const polygonCandidates: PolygonCandidate[] = [];
+  let polygonOrder = 0;
+  const addPolygons = (kind: "green" | "water", sourceReady: boolean, hits: FeatureHit[]) => {
+    if (!sourceReady) return;
+    for (const hit of hits) {
+      for (const polygon of localContextPolygons(hit, ctx.input.center, ctx.input.radiusM, origin)) {
+        polygonCandidates.push({ kind, polygon, areaM2: Math.max(0, polygonArea(polygon)), order: polygonOrder++ });
+      }
+    }
+  };
+  addPolygons("green", greenSources.length > 0, ctx.hits("reference", ["landuse"]));
+  addPolygons("water", waterSources.length > 0, ctx.hits("reference", ["water"]));
+
+  const roads = roadCandidates
+    .sort((a, b) => b.lengthM - a.lengthM || a.order - b.order)
+    .slice(0, SCENE_MAX_ROADS)
+    .map(({ road }) => road);
+  const polygons = polygonCandidates
+    .sort((a, b) => b.areaM2 - a.areaM2 || a.order - b.order)
+    .slice(0, SCENE_MAX_CONTEXT_POLYGONS);
+  const green = polygons.filter((candidate) => candidate.kind === "green").map((candidate) => candidate.polygon);
+  const water = polygons.filter((candidate) => candidate.kind === "water").map((candidate) => candidate.polygon);
+
+  const limitations: Scene["limitations"] = [];
+  if (roadCandidates.length > SCENE_MAX_ROADS) {
+    limitations.push({ kind: "partial", note: `반경 안 도로 ${roadCandidates.length.toLocaleString()}개 중 장면에는 ${SCENE_MAX_ROADS.toLocaleString()}개까지 포함했습니다.` });
+  }
+  if (polygonCandidates.length > SCENE_MAX_CONTEXT_POLYGONS) {
+    limitations.push({ kind: "partial", note: `반경 안 녹지·수계 면 ${polygonCandidates.length.toLocaleString()}개 중 면적이 큰 ${SCENE_MAX_CONTEXT_POLYGONS.toLocaleString()}개까지 장면에 포함했습니다.` });
+  }
   if (greenSources.length === 0) limitations.push({ kind: "not_provided", note: "OSM 녹지 면 자료 미적재 — 장면 녹지 맥락층 없음" });
   if (waterSources.length === 0) limitations.push({ kind: "not_provided", note: "OSM 수계 면 자료 미적재 — 장면 수계 맥락층 없음" });
 
