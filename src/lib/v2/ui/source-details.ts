@@ -48,6 +48,11 @@ export type SourceDetails = {
 
 type SourceDefinition = {
   role?: "보강";
+  provider?: string;
+  name?: string;
+  sourceUrl?: string;
+  license?: string;
+  asOf?: string;
   usedFor: string | null;
 };
 
@@ -67,6 +72,14 @@ export const SOURCE_DETAIL_DEFINITIONS: Readonly<Record<string, SourceDefinition
   parcel_polygon: { usedFor: "대지·연속지적 도형과 지목" },
   land_price: { usedFor: "개별공시지가" },
   terrain_tiles: { usedFor: "DEM 표면고·지형·경사·하늘열림 보강" },
+  ngii_topo: {
+    provider: "국토지리정보원",
+    name: "연속수치지형도",
+    sourceUrl: "https://map.ngii.go.kr",
+    license: "이용조건 확인 필요",
+    asOf: UNKNOWN_AS_OF,
+    usedFor: "분석별 선택 추가 자료(지형·단차·도로·건물·수계)",
+  },
   asos: { usedFor: "최근접 ASOS 관측소의 풍향·기상" },
   osm_roads: { usedFor: "OSM 도로·보행망" },
   osm_landuse: { usedFor: "OSM 토지이용·녹지 면" },
@@ -85,16 +98,16 @@ function metaFor(meta: ReadonlyMap<string, SourceMeta>, source: SourceRefLike): 
   return meta.get(`${source.sourceId}:${source.releaseId}`) ?? meta.get(source.sourceId);
 }
 
-function licenseOf(meta: SourceMeta | undefined): string {
+function licenseOf(meta: SourceMeta | undefined, fallback = "미기록"): string {
   const raw = nonEmpty(meta?.licenseCode) ?? nonEmpty(meta?.license);
-  if (!raw || /^(?:UNKNOWN|UNRECORDED|미기록)$/i.test(raw)) return "미기록";
+  if (!raw || /^(?:UNKNOWN|UNRECORDED|미기록)$/i.test(raw)) return fallback;
   if (/^UNRESTRICTED$/i.test(raw)) return "이용허락범위 제한 없음";
   if (/^attribution$/i.test(raw)) return "출처 표시";
   return raw;
 }
 
-function nameOf(sourceId: string, meta: SourceMeta | undefined): string {
-  return nonEmpty(meta?.name) ?? (SOURCE_NAMES[sourceId] ? sourceName(sourceId) : "자료명 미기록");
+function nameOf(sourceId: string, meta: SourceMeta | undefined, definition: SourceDefinition | undefined): string {
+  return nonEmpty(meta?.name) ?? definition?.name ?? (SOURCE_NAMES[sourceId] ? sourceName(sourceId) : "자료명 미기록");
 }
 
 function isCalculationTile(tile: SourceDetailTile, calculation: string | null): boolean {
@@ -120,12 +133,12 @@ export function sourceDetailsFor(tile: SourceDetailTile, meta: ReadonlyMap<strin
     const sourceMeta = metaFor(meta, source);
     return {
       sourceId: source.sourceId,
-      provider: nonEmpty(sourceMeta?.provider) ?? "제공처 미기록",
-      name: nameOf(source.sourceId, sourceMeta),
+      provider: nonEmpty(sourceMeta?.provider) ?? definition?.provider ?? "제공처 미기록",
+      name: nameOf(source.sourceId, sourceMeta, definition),
       role,
-      asOf: nonEmpty(source.sourceAsOf) ?? UNKNOWN_AS_OF,
-      license: licenseOf(sourceMeta),
-      url: nonEmpty(sourceMeta?.sourceUrl) ?? nonEmpty(sourceMeta?.url) ?? "",
+      asOf: definition?.asOf ?? nonEmpty(source.sourceAsOf) ?? UNKNOWN_AS_OF,
+      license: licenseOf(sourceMeta, definition?.license),
+      url: nonEmpty(sourceMeta?.sourceUrl) ?? nonEmpty(sourceMeta?.url) ?? definition?.sourceUrl ?? "",
       usedFor: definition?.usedFor ?? null,
     };
   });

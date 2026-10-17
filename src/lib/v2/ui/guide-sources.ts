@@ -3,6 +3,7 @@ import type BetterSqlite3 from "better-sqlite3";
 import { DATA_FILE_KINDS } from "../data/schema";
 import { openDataFile, readManifest } from "../data/manifest";
 import { v2DataDir } from "../paths";
+import { SOURCE_DETAIL_DEFINITIONS } from "./source-details";
 
 export type GuideSourceRelease = {
   sourceId: string;
@@ -45,6 +46,23 @@ function rightsOf(raw: string | null): Record<string, unknown> {
   }
 }
 
+function catalogFallbackFor(sourceId: string): GuideSourceRelease | null {
+  if (sourceId !== "ngii_topo") return null;
+  const definition = SOURCE_DETAIL_DEFINITIONS[sourceId];
+  return {
+    sourceId,
+    releaseId: "catalog",
+    provider: definition?.provider ?? "제공처 미기록",
+    sourceUrl: definition?.sourceUrl ?? "",
+    sourceAsOf: null,
+    publishedAt: null,
+    fetchedAt: "",
+    licenseCode: definition?.license ?? "미기록",
+    rights: {},
+    fileKey: "catalog",
+  };
+}
+
 /** 여러 data file에 중복 저장된 source_release를 releaseId 단위로 한 번만 반환한다. */
 export function readGuideSourceSnapshot(): GuideSourceSnapshot {
   try {
@@ -82,6 +100,10 @@ export function readGuideSourceSnapshot(): GuideSourceSnapshot {
       } finally {
         db?.close();
       }
+    }
+    if (!rows.some((row) => row.sourceId === "ngii_topo")) {
+      const fallback = catalogFallbackFor("ngii_topo");
+      if (fallback) rows.push(fallback);
     }
     rows.sort((a, b) => a.sourceId.localeCompare(b.sourceId) || a.releaseId.localeCompare(b.releaseId));
     return { manifestVersion: manifest.version, manifestCreatedAt: manifest.createdAt, rows };

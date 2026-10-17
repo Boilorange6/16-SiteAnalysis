@@ -31,6 +31,33 @@ const meta = (sourceId, extra = {}) => new Map([[sourceId, {
 }
 
 {
+  const details = sourceDetailsFor(tile("D17", "diagram", [
+    source("ngii_topo", null, "ngii_topo@abcdef123456"),
+    source("terrain_tiles", null),
+  ]), new Map());
+  assert.deepEqual(details.rows.map((row) => [row.sourceId, row.role]), [
+    ["ngii_topo", "주 원천"],
+    ["terrain_tiles", "보강"],
+  ]);
+  assert.equal(details.rows[0].provider, "국토지리정보원");
+  assert.equal(details.rows[0].name, "연속수치지형도");
+  assert.equal(details.rows[0].url, "https://map.ngii.go.kr");
+  assert.equal(details.rows[0].license, "이용조건 확인 필요");
+  assert.equal(details.rows[0].asOf, UNKNOWN_AS_OF);
+}
+
+{
+  const details = sourceDetailsFor(tile("D02", "diagram", [
+    source("building"),
+    source("ngii_topo", null, "ngii_topo@abcdef123456"),
+  ]), new Map());
+  assert.deepEqual(details.rows.map((row) => [row.sourceId, row.role]), [
+    ["building", "주 원천"],
+    ["ngii_topo", "보강"],
+  ]);
+}
+
+{
   const details = sourceDetailsFor(tile("A05", "analysis", [source("ledger_recap"), source("ledger_title"), source("kapt")]), new Map([
     ["ledger_recap", { provider: "건축HUB", sourceUrl: "https://example.test/recap", licenseCode: "UNRESTRICTED" }],
     ["ledger_title", { provider: "건축HUB", sourceUrl: "https://example.test/title", licenseCode: "UNRESTRICTED" }],
