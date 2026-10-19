@@ -361,7 +361,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const legacyAvailable = hasLegacyReport(board);
 
   return (
-    <section className={styles.reportRoot} aria-label="보고서 모드">
+    <section className={styles.reportRoot} data-report-root aria-label="보고서 모드">
       <header className={styles.reportHeader}>
         <div className={styles.reportHeading}>
           <p className={styles.eyebrow}>대지분석 보고서</p>
@@ -369,7 +369,11 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
         </div>
         <span className={styles.saveState} data-dirty={dirty ? "true" : "false"}>{dirty ? "저장 안 됨" : "저장됨"}</span>
         <div className={styles.reportHeaderSpacer} />
-        <button type="button" className={styles.headerSelect} onClick={() => setRail("theme")} aria-label="보고서 판형">{formatLabel(history.present.format)}⌄</button>
+        <div className={styles.reportHeaderActions}>
+          <button type="button" className={styles.iconButton} onClick={undo} disabled={history.past.length === 0} aria-label="되돌리기" title="되돌리기">↶</button>
+          <button type="button" className={styles.iconButton} onClick={redo} disabled={history.future.length === 0} aria-label="다시 실행" title="다시 실행">↷</button>
+          <button type="button" className={styles.headerSelect} onClick={() => setRail("theme")} aria-label="보고서 판형">{formatLabel(history.present.format)}</button>
+        </div>
         <button type="button" className={styles.secondaryButton} onClick={onPresentation} disabled={demo || busy || history.present.pages.length === 0}>발표 미리보기</button>
         <button type="button" className={styles.primaryDarkButton} disabled title="내보내기 패널은 Task 9에서 연결됩니다.">내보내기</button>
       </header>
@@ -390,8 +394,6 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
           <div className={styles.workspaceTools}>
             <div><span className={styles.workspaceKicker}>보고서 작업 공간</span><strong>{printedCount}쪽</strong></div>
             <div className={styles.workspaceActions}>
-              <button type="button" className={styles.iconButton} onClick={undo} disabled={history.past.length === 0} aria-label="되돌리기" title="되돌리기">↶</button>
-              <button type="button" className={styles.iconButton} onClick={redo} disabled={history.future.length === 0} aria-label="다시 실행" title="다시 실행">↷</button>
               {selectedPage && <span className={styles.selectedPageLabel}>{pageTypeLabel(selectedPage)}</span>}
             </div>
           </div>
@@ -410,11 +412,11 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
                 <div className={styles.stageFrame} data-report-stage>
                   <SlideSurface slide={selectedSlide} basemap={basemap} mode="edit" selection={selection} onSelect={handleSurfaceSelect} onFrame={applyFrame} onPanels={applyPanels} onTextBox={applyTextBox} onText={editPanelText} onSheetCellActivate={(index) => setSelection({ kind: "map", cell: index })} mapActive={selection?.kind === "map"} classMap={surfaceClassMap} />
                 </div>
+                {selectedPage && <NotesField pageId={selectedPage.id} value={selectedPage.notes} onChange={(notes) => apply({ type: "notes", id: selectedPage.id, notes })} />}
               </div>
               <aside className={styles.editorSide}>
                 {mapFrame && selectedPage && (selectedPage.kind === "tile" || selectedPage.kind === "compare") && <DrawerMap page={selectedPage} frame={mapFrame} view={mapView} cell={mapCell} mapWidthMm={mapWidth} sameExtent={selectedPage.kind === "compare" ? selectedPage.sameExtent : undefined} onSameExtent={selectedPage.kind === "compare" ? (value) => apply({ type: "sameExtent", id: selectedPage.id, value }) : undefined} onFrame={(patch: Partial<MapFrameState>) => applyFrame(mapCell, patch)} />}
                 {selectedPage && <LayoutSwitcher value={selectedPage.layout} onChange={(layout) => apply({ type: "layout", id: selectedPage.id, layout })} />}
-                {selectedPage && <NotesField pageId={selectedPage.id} value={selectedPage.notes} onChange={(notes) => apply({ type: "notes", id: selectedPage.id, notes })} />}
               </aside>
             </div>
           ) : <div className={styles.emptyCanvas}>이 페이지는 아직 미리보기를 준비하고 있습니다.</div>}

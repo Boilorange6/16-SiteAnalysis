@@ -1515,8 +1515,12 @@ function migrateV2ToV3(snapshot: BoardStateSnapshot): BoardStateSnapshot {
   return migrated;
 }
 
-function migrateV3ToV4(snapshot: BoardStateSnapshot, resetReportDoc = true): BoardStateSnapshot {
-  return { ...snapshot, ...(resetReportDoc ? { reportDoc: { ...EMPTY_REPORT_DOC, pages: [] } } : {}), version: BOARD_STATE_VERSION };
+function migrateV3ToV4(snapshot: BoardStateSnapshot): BoardStateSnapshot {
+  return {
+    ...snapshot,
+    reportDoc: snapshot.reportDoc ?? { ...EMPTY_REPORT_DOC, pages: [] },
+    version: BOARD_STATE_VERSION,
+  };
 }
 
 /** 저장본 버전을 단계별로 현재 버전까지 올린다. 미래 버전은 호출자가 기본 보드로 처리한다. */
@@ -1529,7 +1533,7 @@ export function migrateSnapshot(raw: unknown): BoardStateSnapshot | null {
   if (version === 1) migrated = migrateV1ToV2(migrated);
   migrated = rewriteSnapshotIds(migrated, renameTileId);
   if (version <= 2) migrated = migrateV2ToV3(migrated);
-  if (version <= 3) migrated = migrateV3ToV4(migrated, version === 3);
+  if (version <= 3) migrated = migrateV3ToV4(migrated);
   // 열 수는 컷 이관과 같은 v3에서 생겼다 — 컷만 가진 v3 저장본도 기본 4열로 읽는다. 프리셋이 없으면 '전체'.
   return {
     ...migrated,
@@ -1538,6 +1542,30 @@ export function migrateSnapshot(raw: unknown): BoardStateSnapshot | null {
     report: normalizeReport(migrated.report),
     reportDoc: restoreReportDoc(migrated.reportDoc, new Set()),
     version: BOARD_STATE_VERSION,
+  };
+}
+
+function mergeReportState(serverReport: ReportState, localReport: ReportState): ReportState {
+  const extra = new Map(serverReport.extra.map((page) => [page.id, page]));
+  for (const page of localReport.extra) extra.set(page.id, page);
+  return {
+    styles: { ...serverReport.styles, ...localReport.styles },
+    extra: [...extra.values()],
+  };
+}
+
+/** 서버 저장본과 브라우저 임시 저장본을 합쳐 새로고침 뒤에도 편집 중인 보고서를 복원한다. */
+export function selectBoardSnapshotForLoad(serverRaw: unknown, localRaw: unknown): BoardStateSnapshot | null {
+  const server = migrateSnapshot(serverRaw);
+  const local = migrateSnapshot(localRaw);
+  if (!server) return local;
+  if (!local) return server;
+  const serverPageCount = server.reportDoc?.pages.length ?? 0;
+  const localPageCount = local.reportDoc?.pages.length ?? 0;
+  if (localPageCount === 0 && serverPageCount > 0) return server;
+  return {
+    ...local,
+    report: mergeReportState(server.report ?? { styles: {}, extra: [] }, local.report ?? { styles: {}, extra: [] }),
   };
 }
 

@@ -24,7 +24,8 @@ type PageStripProps = {
   classMap: Record<string, string>;
 };
 
-function pageLabel(page: ReportPage): string {
+function pageLabel(page: ReportPage, slide?: PlannedSlide): string {
+  if (slide?.kind === "tile" || slide?.kind === "sheet") return slide.view.title;
   if (page.kind === "cover") return "표지";
   if (page.kind === "sources") return "출처·기준일";
   if (page.kind === "blank") return "빈 페이지";
@@ -64,7 +65,8 @@ export default function PageStrip({ items, selectedId, onSelect, onMove, onDropM
               type="button"
               className={`${styles.pageThumb} ${selected ? styles.pageThumbSelected : ""}`}
               aria-current={selected ? "page" : undefined}
-              aria-label={`${index + 1}쪽 ${pageLabel(item.page)}${item.printedCount > 1 ? `, ${item.printedCount}장` : ""}`}
+              aria-selected={selected}
+              aria-label={`${index + 1}쪽 ${pageLabel(item.page, slide)}`}
               onClick={() => onSelect(item.page.id)}
               onKeyDown={onKeyDown}
             >
@@ -73,7 +75,7 @@ export default function PageStrip({ items, selectedId, onSelect, onMove, onDropM
               </span>
               <span className={styles.pageThumbMeta}>
                 <span className={styles.pageNumber}>{index + 1}</span>
-                <span className={styles.pageLabel}>{pageLabel(item.page)}</span>
+                <span className={styles.pageLabel}>{pageLabel(item.page, slide)}</span>
                 {item.printedCount > 1 && <span className={styles.pageOverflow}>+{item.printedCount - 1}</span>}
               </span>
             </button>

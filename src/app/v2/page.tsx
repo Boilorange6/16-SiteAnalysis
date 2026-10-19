@@ -11,7 +11,7 @@ import { useTileDrag } from "@/components/v2/use-tile-drag";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "@/components/v2/map-box";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import styles from "@/components/v2/board.module.css";
-import { SUMMARY_ID, boardReducer, boardStorageKey, initBoard, nextCopyId, rebaseSnapshotAnalysisId, reportPages, serializeBoardState, sourceTileId, viewOf, type CardFace, type CutSpec, type GridColumns, type PinnedLabel } from "@/lib/v2/ui/board-state";
+import { SUMMARY_ID, boardReducer, boardStorageKey, initBoard, nextCopyId, rebaseSnapshotAnalysisId, reportPages, selectBoardSnapshotForLoad, serializeBoardState, sourceTileId, viewOf, type CardFace, type CutSpec, type GridColumns, type PinnedLabel } from "@/lib/v2/ui/board-state";
 import { buildReportPlan, complexCounts, reportFileName, sourcePageCountForViews, type PlannedSlide } from "@/lib/v2/report/report-plan";
 import { planReportDoc, printedPageCount } from "@/lib/v2/report/report-doc-plan";
 import { downloadBytes, exportFileName, EXPORT_MIME, DAE_MIME } from "@/lib/v2/export/download";
@@ -532,6 +532,8 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
     }
   }, [initialProjectBoard]);
   const [storageReady, setStorageReady] = useState(false);
+  const [persistedStorageJson, setPersistedStorageJson] = useState<string | null>(null);
+  const [storageWriteFailed, setStorageWriteFailed] = useState(false);
   const [serverSnapshotJson, setServerSnapshotJson] = useState<string | null>(initialSnapshotJson);
   const pendingStorageRef = useRef<{ key: string; json: string } | null>(null);
   const scheduledStorageRef = useRef<{ kind: "idle" | "timeout"; handle: number } | null>(null);
@@ -541,8 +543,11 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
     pendingStorageRef.current = null;
     try {
       window.localStorage.setItem(pending.key, pending.json);
+      setPersistedStorageJson(pending.json);
+      setStorageWriteFailed(false);
     } catch {
       // 저장소가 막힌 브라우저에서는 현재 세션의 보드 상태만 유지한다.
+      setStorageWriteFailed(true);
     }
   }, []);
   useEffect(() => {
@@ -550,15 +555,15 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
   }, [baseResults]);
   useEffect(() => {
     setStorageReady(false);
-    let snapshot = initialSnapshotJson;
-    if (snapshot === null) {
-      try {
-        snapshot = window.localStorage.getItem(storageKey);
-      } catch {
-        snapshot = null;
-      }
+    let localSnapshot: string | null = null;
+    try {
+      localSnapshot = window.localStorage.getItem(storageKey);
+    } catch {
+      localSnapshot = null;
     }
-    dispatch({ type: "restore", snapshot, fallbackPreset: initialPreset });
+    setPersistedStorageJson(localSnapshot);
+    setStorageWriteFailed(false);
+    dispatch({ type: "restore", snapshot: selectBoardSnapshotForLoad(initialSnapshotJson, localSnapshot), fallbackPreset: initialPreset });
     setStorageReady(true);
   }, [initialSnapshotJson, storageKey]);
   useEffect(() => {
@@ -591,6 +596,11 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
     const query = params.toString();
     window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`);
   }, [boardMode]);
+  useEffect(() => {
+    const syncModeFromLocation = () => setBoardMode(new URLSearchParams(window.location.search).get("mode") === "report" ? "report" : "tile");
+    window.addEventListener("popstate", syncModeFromLocation);
+    return () => window.removeEventListener("popstate", syncModeFromLocation);
+  }, []);
   const gridRef = useRef<HTMLDivElement>(null);
   const [gridLayout, setGridLayout] = useState({ columns: 4, rowHeight: 377, cellWidth: 0 });
   useEffect(() => {
@@ -764,7 +774,9 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
       scheduledStorageRef.current = null;
     };
   }, [boardSnapshotJson, flushStorage, storageKey, storageReady]);
+  const storageDirty = storageReady && (storageWriteFailed || persistedStorageJson !== boardSnapshotJson);
   const projectDirty = !!currentProject?.projectId && serverSnapshotJson !== null && boardSnapshotJson !== serverSnapshotJson;
+  const boardDirty = projectDirty || storageDirty;
   const changePreset = useCallback((preset: PresetId) => {
     if (preset === board.preset) return;
     dispatch({ type: "preset", preset });
@@ -1032,7 +1044,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
     <SetBasemapContext.Provider value={setBasemap}>
     <main className={styles.root}>
       <div
-        className={styles.page}
+        className={`${styles.page} ${boardMode === "report" ? styles.reportPage : ""}`}
         data-v2-page
         inert={openView || presentationPlan || topoDialogOpen ? true : undefined}
         onClickCapture={(event) => {
@@ -1067,7 +1079,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
             defaultName={`${siteSummary.address} · ${summary.radius}`}
             board={demo ? null : boardSnapshot}
             canSave={!demo && !!analysisId && !actionBusy}
-            dirty={projectDirty}
+            dirty={boardDirty}
             onSaved={(project) => {
               if (project.board !== undefined) setServerSnapshotJson(JSON.stringify(project.board));
               onProjectSaved(project);
@@ -1082,9 +1094,9 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
           <span className={styles.topTitle} title={`${siteSummary.address} · ${summary.radius}`}>
             {siteSummary.address} · {summary.radius}
           </span>
-          <div className={styles.seg} role="tablist" aria-label="작업 모드">
-            <button type="button" role="tab" aria-selected={boardMode === "tile"} onClick={() => setBoardMode("tile")}>타일</button>
-            <button type="button" role="tab" aria-selected={boardMode === "report"} onClick={() => setBoardMode("report")}>보고서 · {reportDocPageCount}쪽</button>
+          <div className={styles.modeTabs} role="tablist" aria-label="작업 모드">
+            <button type="button" className={styles.modeTab} role="tab" aria-selected={boardMode === "tile"} onClick={() => setBoardMode("tile")}>타일</button>
+            <button type="button" className={styles.modeTab} role="tab" aria-selected={boardMode === "report"} onClick={() => setBoardMode("report")}>보고서 · {reportDocPageCount}쪽</button>
           </div>
           <span className={styles.spacer} />
           {demo && <span className={styles.demoTag}>데모 데이터</span>}
@@ -1246,7 +1258,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
           </>}
         </header>
 
-        {boardMode === "report" && <ReportMode board={board} dispatch={dispatch} views={views} summary={summary} analysisDate={analysisDate} basemap={basemap} dirty={projectDirty} demo={demo} busy={actionBusy} onPresentation={openReportPresentation} />}
+        {boardMode === "report" && <ReportMode board={board} dispatch={dispatch} views={views} summary={summary} analysisDate={analysisDate} basemap={basemap} dirty={boardDirty} demo={demo} busy={actionBusy} onPresentation={openReportPresentation} />}
 
         {boardMode === "tile" && <>
         {!demo && <AnalysisProgress jobs={jobs} onCancel={onCancel} canceling={canceling} />}
@@ -1441,6 +1453,14 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
 const API = "/site/api/v2/analyses";
 const PROJECTS_API = "/site/api/v2/projects";
 
+function boardLocation(kind: "project" | "analysis", id: string): string {
+  const params = new URLSearchParams(window.location.search);
+  params.delete(kind === "project" ? "analysis" : "project");
+  params.set(kind, id);
+  const query = params.toString();
+  return `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
+}
+
 /** 401이면 refresh 쿠키로 한 번 갱신하고 같은 요청을 다시 보낸다. */
 async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(url, { ...init, credentials: "include" });
@@ -1607,7 +1627,7 @@ export default function V2BoardPage() {
     if (center) topoCenterRef.current = center;
     if (update) {
       setLive(next);
-      history.replaceState(null, "", preserveProjectId ? `?project=${encodeURIComponent(preserveProjectId)}` : `?analysis=${body.analysisId}`);
+      history.replaceState(null, "", preserveProjectId ? boardLocation("project", preserveProjectId) : boardLocation("analysis", body.analysisId));
     }
     return next;
   }
@@ -1738,7 +1758,7 @@ export default function V2BoardPage() {
         setProjectBoard(saveBody.project.board ?? rebasedBoard);
         setWantedProjectId(saveBody.project.projectId);
         setStaleProject(null);
-        history.replaceState(null, "", `?project=${encodeURIComponent(saveBody.project.projectId)}`);
+        history.replaceState(null, "", boardLocation("project", saveBody.project.projectId));
       }
     } catch {
       setProblem({ text: "서버에 연결하지 못했습니다.", login: false });
@@ -1831,7 +1851,7 @@ export default function V2BoardPage() {
     setRefreshing(false);
     setRefreshError(null);
     setBusy(true);
-    history.pushState(null, "", `?project=${encodeURIComponent(projectId)}`);
+    history.pushState(null, "", boardLocation("project", projectId));
     try {
       const projectResponse = await apiFetch(`${PROJECTS_API}/${encodeURIComponent(projectId)}`);
       const projectBody = await projectResponse.json().catch(() => ({})) as { project?: V2Project; error?: string; code?: string };
@@ -1878,7 +1898,7 @@ export default function V2BoardPage() {
     setWantedProjectId(project.projectId);
     setWantedId(null);
     setStaleProject(null);
-    history.replaceState(null, "", `?project=${encodeURIComponent(project.projectId)}`);
+    history.replaceState(null, "", boardLocation("project", project.projectId));
     setProblem(null);
   }
 
@@ -1887,7 +1907,7 @@ export default function V2BoardPage() {
     setCurrentProject(null);
     setProjectBoard(null);
     setWantedProjectId(null);
-    history.replaceState(null, "", live ? `?analysis=${encodeURIComponent(live.analysisId)}` : "/site/v2");
+    history.replaceState(null, "", live ? boardLocation("analysis", live.analysisId) : "/site/v2");
   }
 
   // 주소창의 ?analysis=<id>로 저장된 분석을 다시 연다

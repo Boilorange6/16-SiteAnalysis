@@ -10,6 +10,7 @@ const {
   migrateSnapshot,
   restoreBoardState,
   restoreReportDoc,
+  selectBoardSnapshotForLoad,
   serializeBoardState,
 } = await import("../../lib/v2/ui/board-state.ts");
 const { hasLegacyReport } = await import("../../lib/v2/report/report-doc-plan.ts");
@@ -43,6 +44,23 @@ const snapshot = serializeBoardState(withDoc);
 assert.equal(snapshot.version, 4);
 assert.deepEqual(restoreBoardState(GODEOK_RESULTS, snapshot).reportDoc, withDoc.reportDoc, "v4 reportDoc 저장·복원 왕복");
 assert.equal(restoreBoardState(GODEOK_RESULTS, snapshot).reportDoc.pages[0].settings.terrainSection, "B", "D17 단면 설정 저장·복원");
+
+const legacyReport = { styles: {}, extra: [{ id: "legacy-extra", after: null, tileId: "t-A01", face: "front" }] };
+const reportBoard = { ...withDoc, report: legacyReport };
+const reportSnapshot = serializeBoardState(reportBoard);
+const reportRoundTrip = restoreBoardState(GODEOK_RESULTS, reportSnapshot);
+assert.equal(reportRoundTrip.reportDoc.pages.length, 1, "serialize 후 non-empty reportDoc 보존");
+assert.equal(hasLegacyReport(reportRoundTrip), true, "serialize 후 legacy report 보존");
+
+const v3WithDoc = { ...reportSnapshot, version: 3 };
+const migratedWithDoc = restoreBoardState(GODEOK_RESULTS, v3WithDoc);
+assert.equal(migratedWithDoc.reportDoc.pages.length, 1, "v3 reportDoc를 비우지 않고 v4로 이관");
+assert.equal(hasLegacyReport(migratedWithDoc), true, "v3 legacy report와 reportDoc 동시 보존");
+
+const selectedSnapshot = selectBoardSnapshotForLoad(v3WithDoc, reportSnapshot);
+const selectedBoard = restoreBoardState(GODEOK_RESULTS, selectedSnapshot);
+assert.equal(selectedBoard.reportDoc.pages.length, 1, "페이지 로더가 local/server reportDoc를 선택");
+assert.equal(hasLegacyReport(selectedBoard), true, "페이지 로더가 legacy report를 함께 보존");
 
 const cleaned = restoreReportDoc({
   v: 1,

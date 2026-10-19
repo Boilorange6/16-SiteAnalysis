@@ -8,8 +8,9 @@
   --report-dark: #16181d;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
   min-width: 0;
-  min-height: calc(100dvh - 72px);
+  min-height: 0;
   color: var(--report-ink);
   background: var(--report-bg);
 }
@@ -29,6 +30,7 @@
 .reportHeading h1 { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 18px; line-height: 1.25; }
 .eyebrow { margin: 0 0 3px; color: var(--report-muted); font-size: 11px; font-weight: 800; letter-spacing: .03em; }
 .reportHeaderSpacer { flex: 1 1 auto; min-width: 8px; }
+.reportHeaderActions { display: flex; align-items: center; gap: 6px; }
 .saveState { color: var(--report-muted); font-size: 12px; white-space: nowrap; }
 .saveState[data-dirty="true"] { color: #8a4c00; font-weight: 800; }
 
@@ -59,6 +61,7 @@
 .reportRail { display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 16px 8px; background: #f7f8fa; border-right: 1px solid var(--report-line); }
 .railButton { display: grid; place-items: center; gap: 5px; min-width: 60px; min-height: 64px; padding: 8px 4px; color: #4d535e; background: transparent; border: 1px solid transparent; border-radius: 9px; cursor: pointer; font-size: 11px; font-weight: 800; }
 .railButton span:first-child { display: grid; place-items: center; min-height: 20px; font-size: 20px; }
+.railButton span:last-child { white-space: nowrap; }
 .railButton:hover { background: #e4e8ef; }
 .railButtonActive { color: #153f83; background: #e0eafa; border-color: #9db7e1; }
 .drawerColumn { min-width: 0; min-height: 0; overflow: auto; background: #fff; border-right: 1px solid var(--report-line); }
@@ -106,7 +109,7 @@
 .compareGridChoices { display: grid; grid-template-columns: 1fr; gap: 6px; }
 .compareGridChoices .filterChip { justify-self: start; }
 
-.reportWorkspace { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 10px; min-width: 0; min-height: 0; padding: 18px 22px 16px; overflow: auto; }
+.reportWorkspace { display: grid; grid-template-rows: auto minmax(0, 1fr) 128px; gap: 10px; min-width: 0; min-height: 0; padding: 18px 22px 16px; overflow: hidden; }
 .workspaceTools { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
 .workspaceTools > div:first-child { display: grid; gap: 2px; }
 .workspaceTools strong { font-size: 15px; }
@@ -114,8 +117,8 @@
 .selectedPageLabel { max-width: 180px; overflow: hidden; color: var(--report-muted); text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .iconButton { display: inline-grid; place-items: center; min-width: 44px; min-height: 44px; padding: 5px; color: var(--report-ink); background: #fff; border: 1px solid var(--report-line); border-radius: 7px; cursor: pointer; font-size: 17px; }
 .iconButton:hover { background: #e9edf3; }
-.stageAndSettings { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 312px); gap: 14px; min-height: 0; }
-.stageColumn { display: grid; grid-template-rows: auto minmax(360px, 1fr); gap: 8px; min-width: 0; min-height: 0; }
+.stageAndSettings { display: grid; grid-template-columns: minmax(0, 1fr) 216px; gap: 14px; min-height: 0; }
+.stageColumn { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; }
 .editorSide { display: grid; align-content: start; gap: 12px; min-width: 0; min-height: 0; max-height: 100%; overflow: auto; }
 .mapToolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 6px; background: rgba(255,255,255,.94); border: 1px solid #c6cad2; border-radius: 8px; }
 .mapToolButton, .mapToolButtonWide { min-height: 44px; padding: 8px 10px; color: var(--report-ink); background: #fff; border: 1px solid var(--report-line); border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 800; }
@@ -125,7 +128,7 @@
 .mapToolButtonActive { color: #153f83; background: #e0eafa; border-color: #9db7e1; }
 .mapScale { min-width: 70px; padding: 0 2px; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; }
 .mapHint { margin: 0; color: var(--report-muted); font-size: 11px; line-height: 1.4; }
-.stageFrame { display: grid; place-items: center; min-width: 0; min-height: 0; padding: 12px; background: #dfe2e8; border: 1px solid #c6cad2; border-radius: 10px; overflow: hidden; }
+.stageFrame { display: grid; place-items: center; flex: 1 1 auto; min-width: 0; min-height: 0; padding: 12px; background: #dfe2e8; border: 1px solid #c6cad2; border-radius: 10px; overflow: hidden; }
 .stageFrame > * { width: min(100%, 1120px); height: 100%; min-height: 0; }
 .stageFrame [data-slide-canvas][data-map-selected="true"] [data-surface-map="true"] { outline: 3px solid var(--report-accent); outline-offset: -3px; }
 .quickSettings { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; padding: 8px 0; }
@@ -137,9 +140,9 @@
 .emptyCanvas strong { color: var(--report-ink); font-size: 20px; }
 .emptyCanvasMark { display: grid; place-items: center; width: 54px; height: 54px; color: var(--report-accent); border: 1px solid #9db7e1; border-radius: 50%; font-size: 30px; }
 .emptyActions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
-.pageStrip { display: flex; gap: 10px; min-width: 0; min-height: 156px; margin: 0; padding: 6px 2px 8px; overflow-x: auto; overflow-y: hidden; list-style: none; scrollbar-width: thin; }
-.pageStripItem { position: relative; flex: 0 0 128px; min-width: 128px; }
-.pageThumb { display: grid; grid-template-rows: 94px auto; gap: 5px; width: 100%; min-height: 132px; padding: 5px; color: var(--report-ink); text-align: left; background: #fff; border: 1px solid var(--report-line); border-radius: 7px; cursor: pointer; }
+.pageStrip { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 128px; height: 128px; margin: 0 -22px -16px; padding: 0 22px; overflow-x: auto; overflow-y: hidden; background: #fff; border-top: 1px solid var(--report-line); list-style: none; scrollbar-width: thin; }
+.pageStripItem { position: relative; flex: 0 0 136px; min-width: 136px; }
+.pageThumb { display: grid; grid-template-rows: 77px auto; gap: 5px; width: 100%; min-height: 100px; padding: 5px; color: var(--report-ink); text-align: left; background: #fff; border: 1px solid var(--report-line); border-radius: 7px; cursor: pointer; }
 .pageThumb:hover { border-color: #91a8cd; }
 .pageThumbSelected { border: 2px solid var(--report-accent); padding: 4px; box-shadow: 0 0 0 2px rgba(47,111,219,.14); }
 .pageThumbCanvas { display: block; min-width: 0; min-height: 0; overflow: hidden; background: #eef0f3; border-radius: 4px; }
@@ -152,7 +155,7 @@
 .pageActions { display: flex; position: absolute; right: 2px; bottom: 28px; left: 2px; justify-content: center; gap: 2px; padding: 2px; background: rgba(255,255,255,.94); border: 1px solid var(--report-line); border-radius: 6px; }
 .pageActions .iconButton { min-width: 30px; min-height: 30px; border: 0; font-size: 14px; }
 .pageStripEmpty { display: grid; place-items: center; width: 100%; color: var(--report-muted); font-size: 12px; }
-.pageStripAdd { min-width: 128px; min-height: 132px; padding: 12px; color: var(--report-accent); background: #fff; border: 1px dashed #9db7e1; border-radius: 7px; cursor: pointer; font: inherit; font-size: 12px; font-weight: 800; }
+.pageStripAdd { min-width: 136px; min-height: 77px; padding: 12px; color: var(--report-accent); background: #fff; border: 1px dashed #9db7e1; border-radius: 7px; cursor: pointer; font: inherit; font-size: 12px; font-weight: 800; }
 
 .fieldLabel { display: grid; gap: 7px; }
 .fieldLabel select { min-height: 44px; padding: 8px 10px; color: var(--report-ink); background: #fff; border: 1px solid var(--report-line); border-radius: 7px; font: inherit; font-size: 13px; }
@@ -163,7 +166,7 @@
 .themeScaleOptions { display: flex; flex-wrap: wrap; gap: 6px; }
 .layoutSwitcher { display: grid; gap: 9px; padding: 14px; background: #fff; border: 1px solid var(--report-line); border-radius: 8px; }
 .layoutSwitcher h2 { margin: 0; font-size: 16px; }
-.layoutOptions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.layoutOptions { display: grid; grid-template-columns: 1fr; gap: 7px; }
 .layoutOption, .layoutOptionActive { display: grid; gap: 5px; min-height: 64px; padding: 8px; color: var(--report-muted); text-align: left; background: #fff; border: 1px solid var(--report-line); border-radius: 7px; cursor: pointer; font-size: 11px; font-weight: 800; }
 .layoutOptionActive { color: #153f83; background: #e0eafa; border-color: #9db7e1; }
 .layoutIcon { color: #49658e; font-size: 21px; }
@@ -205,7 +208,7 @@
 .lockBadge { padding: 5px 7px; color: #153f83; background: #e0eafa; border-radius: 999px; font-size: 10px; font-weight: 800; }
 .disabledReason { margin: 0; color: #8a4c00; font-size: 11px; line-height: 1.4; }
 .toast { position: fixed; right: 24px; bottom: 24px; z-index: 50; display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 8px 10px 8px 14px; color: #fff; background: #20242c; border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,.22); font-size: 12px; }
-.toast button { min-height: 32px; padding: 5px 9px; color: #fff; background: transparent; border: 1px solid #737a87; border-radius: 5px; cursor: pointer; font: inherit; font-weight: 800; }
+.toast button { min-height: 44px; padding: 5px 9px; color: #fff; background: transparent; border: 1px solid #737a87; border-radius: 5px; cursor: pointer; font: inherit; font-weight: 800; }
 .srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
 .reportRoot :focus-visible { outline: 3px solid var(--report-accent); outline-offset: 2px; }
@@ -219,13 +222,14 @@
 }
 
 @media (max-width: 860px) {
-  .reportRoot { min-height: calc(100dvh - 56px); }
+  .reportRoot { height: auto; min-height: calc(100dvh - 56px); }
   .reportHeader { flex-wrap: wrap; min-height: 0; }
   .reportHeaderSpacer { display: none; }
   .reportBody { grid-template-columns: 64px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
   .drawerColumn { position: fixed; top: 72px; bottom: 0; left: 64px; z-index: 20; width: min(312px, calc(100vw - 64px)); box-shadow: 12px 0 30px rgba(0,0,0,.12); }
   .reportWorkspace { grid-column: 2; }
   .stageAndSettings { grid-template-columns: minmax(0, 1fr); }
+  .reportWorkspace { grid-template-rows: auto minmax(0, 1fr) 128px; }
   .editorSide { max-height: none; overflow: visible; }
 }
 
