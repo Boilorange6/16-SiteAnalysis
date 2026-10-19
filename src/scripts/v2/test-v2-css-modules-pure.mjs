@@ -100,3 +100,18 @@ function checkFile(path) {
 const errors = cssFiles(srcDir).flatMap(checkFile);
 assert.deepEqual(errors, [], `CSS Modules selectors must include a local class or id:\n${errors.join("\n")}`);
 console.log(`[css-modules-pure] ${cssFiles(srcDir).length} files PASS`);
+
+// tsc는 CSS 모듈 import 경로를 확인하지 않으므로, 상대 경로 import가 실제 파일을 가리키는지 본다.
+function tsxFiles(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) return entry.name === "node_modules" ? [] : tsxFiles(path);
+    return entry.isFile() && /\.tsx?$/.test(entry.name) ? [path] : [];
+  });
+}
+const missingImports = tsxFiles(srcDir).flatMap((file) =>
+  [...readFileSync(file, "utf8").matchAll(/from\s+["'](\.{1,2}\/[^"']+\.module\.css)["']/g)]
+    .filter((match) => !cssFiles(dirname(resolve(dirname(file), match[1]))).includes(resolve(dirname(file), match[1])))
+    .map((match) => `${relative(srcDir, file)} → ${match[1]}`));
+assert.deepEqual(missingImports, [], `CSS module imports must resolve:\n${missingImports.join("\n")}`);
+console.log("[css-modules-imports] PASS");

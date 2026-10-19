@@ -12,7 +12,7 @@ import type { ReportFormat } from "@/lib/v2/report/report-doc";
 import type { PlannedSlide } from "@/lib/v2/report/report-plan";
 import { SlideSurface } from "./slide-surface";
 import { useFocusTrap } from "../use-focus-trap";
-import styles from "../report-mode.module.css";
+import styles from "./report-mode.module.css";
 import surfaceStyles from "../report-preview.module.css";
 import localSurfaceStyles from "./slide-surface.module.css";
 
@@ -164,11 +164,15 @@ export default function ExportPanel({ plan, format, basemap, currentPageId, sele
 
   useEffect(() => () => {
     controllerRef.current?.abort();
-    for (const [node, root] of rootsRef.current) {
-      root.unmount();
-      node.remove();
-    }
+    const roots = [...rootsRef.current];
     rootsRef.current.clear();
+    // 패널이 내려가는 렌더 도중에는 다른 루트를 동기로 내릴 수 없다.
+    setTimeout(() => {
+      for (const [node, root] of roots) {
+        root.unmount();
+        node.remove();
+      }
+    }, 0);
   }, []);
 
   const selectedPlan = useMemo(() => selectReportPlan(plan, scope, currentPageId, selectedPageIds), [currentPageId, plan, scope, selectedPageIds]);

@@ -40,8 +40,9 @@ export async function* rasterizePages(
       if (opts.signal?.aborted) return;
       png = await toBlob(node, { pixelRatio });
     } finally {
-      emptyDom(node);
-      opts.dispose?.(node);
+      // React 루트가 그린 노드는 루트를 먼저 내려야 한다. 직접 비우면 해제 중 removeChild 오류가 난다.
+      if (opts.dispose) opts.dispose(node);
+      else emptyDom(node);
     }
     if (opts.signal?.aborted) return;
     if (!png) throw new Error(`${index + 1}쪽 이미지 생성에 실패했습니다`);
