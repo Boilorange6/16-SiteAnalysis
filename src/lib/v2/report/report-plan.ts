@@ -17,7 +17,7 @@ import { exportFileName } from "../export/download";
 import { sourceDetailsFor, UNKNOWN_AS_OF, type SourceDetailRow, type SourceMeta } from "../ui/source-details";
 import { CUT_CODES, tileClientModuleFor } from "../tile/client";
 import type { TileCutCell, TileCutPlan } from "../tile/types";
-import type { ReportFormat, ReportPage } from "./report-doc";
+import type { MapFrameState, ReportFormat, ReportPage } from "./report-doc";
 
 export type TileSlideBody =
   | { kind: "result"; face: "single" | "front" | "back" }
@@ -80,6 +80,8 @@ export type ReportSlide =
         pinnedKeys?: string[];
         /** 조판 셀 전체에 적용할 페이지 지도 설정(scale·summary는 소비하지 않는다). */
         style?: PageStyle;
+        /** 보고서 모드에서 셀마다 저장한 지도 프레임. */
+        reportFrame?: MapFrameState;
         mass?: MassModel;
         rose?: RoseModel;
         roseSeason?: RoseSeason;

@@ -2,6 +2,7 @@ import type { TileReportSettings } from "./report-plan";
 
 export type ReportFormat = "wide" | "a3" | "a4";
 export type ReportLayout = "map-full" | "map-summary" | "numbers-first" | "side-by-side";
+export type ReportFontScale = 0.85 | 1 | 1.15;
 
 export type LegendPlacement = "below" | "right" | "hidden";
 export type LabelRule = "site-near" | "all-visible" | "off";
@@ -42,7 +43,7 @@ export type ReportPage = ReportPageBase & (
   | { kind: "sources" }
   | { kind: "blank" }
 );
-export type ReportDoc = { v: 1; format: ReportFormat; pages: ReportPage[] };
+export type ReportDoc = { v: 1; format: ReportFormat; pages: ReportPage[]; fontScale?: ReportFontScale };
 
 export type ReportDocAction =
   | { type: "add"; pages: ReportPage[]; index: number }
@@ -51,11 +52,13 @@ export type ReportDocAction =
   | { type: "duplicate"; id: string }
   | { type: "layout"; id: string; layout: ReportLayout }
   | { type: "frame"; id: string; cell?: number; patch: Partial<MapFrameState>; force?: boolean }
+  | { type: "sameExtent"; id: string; value: boolean }
   | { type: "panels"; id: string; panels: PagePanels }
   | { type: "notes"; id: string; notes: string }
   | { type: "text"; id: string; title?: string; summary?: string }
   | { type: "textBox"; id: string; box: TextBox | { id: string; remove: true } }
   | { type: "format"; format: ReportFormat }
+  | { type: "theme"; fontScale: ReportFontScale }
   | { type: "replaceAll"; pages: ReportPage[] };
 
 export const EMPTY_REPORT_DOC: ReportDoc = { v: 1, format: "wide", pages: [] };
@@ -239,6 +242,8 @@ export function reportDocReducer(doc: ReportDoc, action: ReportDocAction): Repor
       return updatePage(doc, action.id, (page) => ({ ...resetPanels(page), layout: action.layout }));
     case "frame":
       return updatePage(doc, action.id, (page) => updateFrame(page, action.cell, action.patch, action.force));
+    case "sameExtent":
+      return updatePage(doc, action.id, (page) => page.kind === "compare" ? { ...page, sameExtent: action.value } : page);
     case "panels":
       return updatePage(doc, action.id, (page) => ({ ...clonePage(page), panels: clonePanels(action.panels) }));
     case "notes":
@@ -262,6 +267,8 @@ export function reportDocReducer(doc: ReportDoc, action: ReportDocAction): Repor
       });
     case "format":
       return { ...doc, format: action.format, pages: doc.pages.map(resetPanels) };
+    case "theme":
+      return { ...doc, fontScale: action.fontScale };
     case "replaceAll":
       return { ...doc, pages: clonePages(action.pages) };
   }

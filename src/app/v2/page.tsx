@@ -6,12 +6,14 @@ import TileCard, { type TileCardAction } from "@/components/v2/tile-card";
 import TileDialog from "@/components/v2/tile-dialog";
 import Presentation from "@/components/v2/presentation";
 import ReportPreview from "@/components/v2/report-preview";
+import ReportMode from "@/components/v2/report/report-mode";
 import { useTileDrag } from "@/components/v2/use-tile-drag";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "@/components/v2/map-box";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import styles from "@/components/v2/board.module.css";
 import { SUMMARY_ID, boardReducer, boardStorageKey, initBoard, nextCopyId, rebaseSnapshotAnalysisId, reportPages, serializeBoardState, sourceTileId, viewOf, type CardFace, type CutSpec, type GridColumns, type PinnedLabel } from "@/lib/v2/ui/board-state";
 import { buildReportPlan, complexCounts, reportFileName, sourcePageCountForViews, type PlannedSlide } from "@/lib/v2/report/report-plan";
+import { planReportDoc, printedPageCount } from "@/lib/v2/report/report-doc-plan";
 import { downloadBytes, exportFileName, EXPORT_MIME, DAE_MIME } from "@/lib/v2/export/download";
 import { DEFAULT_CALLOUT_MODE } from "@/lib/v2/ui/callout-layout";
 import { stackView } from "@/lib/v2/ui/stack";
@@ -575,9 +577,20 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
   const [dialogTab, setDialogTab] = useState<"overview" | "sources">("overview");
   const [stackSelection, setStackSelection] = useState<string[]>([]);
   const [sheetSelection, setSheetSelection] = useState<string[]>([]);
+  const [boardMode, setBoardMode] = useState<"tile" | "report">(() => {
+    if (typeof window === "undefined") return "tile";
+    return new URLSearchParams(window.location.search).get("mode") === "report" ? "report" : "tile";
+  });
   const [note, setNote] = useState(""); // 스크린리더 안내(aria-live)
   const [highlightedTileId, setHighlightedTileId] = useState<string | null>(null);
   const [basemap, setBasemap] = useState<BasemapChoice>("white"); // 보드 상태(서버에 저장하지 않음). 화면과 PPT가 같이 따른다
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (boardMode === "report") params.set("mode", "report");
+    else params.delete("mode");
+    const query = params.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`);
+  }, [boardMode]);
   const gridRef = useRef<HTMLDivElement>(null);
   const [gridLayout, setGridLayout] = useState({ columns: 4, rowHeight: 377, cellWidth: 0 });
   useEffect(() => {
@@ -677,6 +690,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
     return reportPages(board, complexCounts(views), sourcePageCountForViews(reportViews));
   }, [board, views]);
   const reportPlan = useMemo(() => buildReportPlan({ summary, views, board, analysisDate }), [analysisDate, board, summary, views]);
+  const reportDocPageCount = useMemo(() => printedPageCount(board.reportDoc, views, { summary, analysisDate, views }), [analysisDate, board.reportDoc, summary, views]);
   const { tiles } = reportSummary;
   const planPageCount = reportPlan.length;
   const total = board.order.length;
@@ -794,6 +808,11 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
     if (demo || actionBusy || !exportState.ppt.enabled) return;
     setExportOpen(false);
     setPresentationPlan(await metadataPlan().catch(() => reportPlan));
+  };
+
+  const openReportPresentation = () => {
+    if (demo || actionBusy || board.reportDoc.pages.length === 0) return;
+    setPresentationPlan(planReportDoc(board.reportDoc, views, { summary, analysisDate, views }));
   };
 
   const openReportPreview = () => {
@@ -1027,7 +1046,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
         <a className={styles.skipLink} href="#v2-board-grid">
           보드로 건너뛰기
         </a>
-        <aside className={styles.boardRail} aria-label="보드 설정">
+        {boardMode === "tile" && <aside className={styles.boardRail} aria-label="보드 설정">
           <BoardRail
             columns={board.columns}
             onColumns={(columns) => dispatch({ type: "columns", columns })}
@@ -1037,7 +1056,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
             onCreateSheet={createSheet}
             onClearSelections={clearSelections}
           />
-        </aside>
+        </aside>}
         <header className={styles.topbar}>
           <span className={`${styles.display} ${styles.brand}`}>사이트 분석</span>
           <a className={styles.pill} href="/site/v2/guide">가이드</a>
@@ -1063,6 +1082,10 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
           <span className={styles.topTitle} title={`${siteSummary.address} · ${summary.radius}`}>
             {siteSummary.address} · {summary.radius}
           </span>
+          <div className={styles.seg} role="tablist" aria-label="작업 모드">
+            <button type="button" role="tab" aria-selected={boardMode === "tile"} onClick={() => setBoardMode("tile")}>타일</button>
+            <button type="button" role="tab" aria-selected={boardMode === "report"} onClick={() => setBoardMode("report")}>보고서 · {reportDocPageCount}쪽</button>
+          </div>
           <span className={styles.spacer} />
           {demo && <span className={styles.demoTag}>데모 데이터</span>}
           <button
@@ -1079,7 +1102,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
           >
             {hasTopo ? "추가 자료 · 수치지형도" : "수치지형도 추가"}
           </button>
-          <>
+          {boardMode === "tile" && <>
               <div className={styles.desktopTools}>
                 <span className={styles.segGroup}>
                   <span className={styles.segLabel}>카드</span>
@@ -1220,9 +1243,12 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
                   )}
                 </div>
               </details>
-          </>
+          </>}
         </header>
 
+        {boardMode === "report" && <ReportMode board={board} dispatch={dispatch} views={views} summary={summary} analysisDate={analysisDate} basemap={basemap} dirty={projectDirty} demo={demo} busy={actionBusy} onPresentation={openReportPresentation} />}
+
+        {boardMode === "tile" && <>
         {!demo && <AnalysisProgress jobs={jobs} onCancel={onCancel} canceling={canceling} />}
         {!demo && <AnalysisRefreshBanner summary={refreshSummary} activeJobs={activeJobs} busy={busy} refreshing={refreshing} error={refreshError} onRefresh={onRefresh} />}
 
@@ -1301,6 +1327,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
             </ul>
           </details>
         )}
+        </>}
       </div>
 
       <div className={styles.srOnly} aria-live="polite">
@@ -1321,7 +1348,6 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
           </button>
         </div>
       )}
-
       {openView && (
         <TileDialog
           view={openView}

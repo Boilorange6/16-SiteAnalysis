@@ -818,6 +818,24 @@ function addScale(slide: Slide, code: string, scene: MapScene): void {
   slide.addText(bar.label, { x: pxX(x0), y: pxY(y - 11 * u), w: pxW(bar.px), h: pxH(8 * u), align: "center", valign: "middle", fontFace: FONT, fontSize: fontPt(9.5 * u, 6), bold: true, color: INK, margin: 0, objectName: tag(code, key, "축척", "label") });
 }
 
+function addLocator(slide: Slide, code: string, model: MapModel): void {
+  if (!Number.isFinite(model.radiusM) || model.radiusM <= 0) return;
+  const width = Math.min(170, Math.max(90, activeSceneWidth * 0.25));
+  const height = Math.min(105, Math.max(60, activeSceneHeight * 0.22));
+  const x = Math.max(10, activeSceneWidth - width - 18);
+  const y = 18;
+  const locatorModel = { ...model, radiusM: Math.max(model.radiusM * 3, model.radiusM + 1), features: [], polygons: [], lines: [], total: 0 };
+  const viewport = slideViewport(locatorModel, undefined, { width, height, siteX: 0.5, siteY: 0.5, fill: 0.82 });
+  const radiusPx = Math.min(width * 0.45, model.radiusM / Math.max(0.0001, metersPerPixel(model.center[1], viewport.zoom)));
+  const cx = x + width / 2;
+  const cy = y + height / 2;
+  const frameTag = (part: string) => tag(code, "locator", "위치도", part);
+  slide.addShape("roundRect", { x: pxX(x), y: pxY(y), w: pxW(width), h: pxH(height), rectRadius: 0.04, fill: { color: "FFFFFF", transparency: 5 }, line: { color: "26364E", width: pxPt(0.8) }, objectName: frameTag("frame") });
+  slide.addShape("ellipse", { x: pxX(cx - radiusPx), y: pxY(cy - radiusPx), w: pxW(radiusPx * 2), h: pxH(radiusPx * 2), fill: { color: "2F6FDB", transparency: 88 }, line: { color: "2F6FDB", width: pxPt(1.1) }, objectName: frameTag("radius") });
+  slide.addShape("diamond", { x: pxX(cx - 6), y: pxY(cy - 6), w: pxW(12), h: pxH(12), fill: { color: "FFFFFF" }, line: { color: "111111", width: pxPt(0.8) }, objectName: frameTag("site") });
+  slide.addShape("ellipse", { x: pxX(cx - 2), y: pxY(cy - 2), w: pxW(4), h: pxH(4), fill: { color: "111111" }, line: { color: "111111", width: 0 }, objectName: frameTag("site-dot") });
+}
+
 /** 조판 셀은 지도 이미지 안의 범례도 native로 옮겨야 하므로 셀 전용 패널을 그린다. */
 function addCellLegend(slide: Slide, code: string, model: MapModel, style: PageStyle = {}): void {
   const layout = cellLegendLayout(model);
@@ -896,6 +914,7 @@ export function addEditableMap(slide: Slide, plan: (PlannedSlide & { kind: "tile
     addLabels(slide, code, scene);
     addNorth(slide, code, scene);
     addScale(slide, code, scene);
+    if (options.reportFrame?.decorations.locator) addLocator(slide, code, model);
     if ((options.mode ?? "tile") === "cell") addCellLegend(slide, code, visibleModel, options.style);
     return status;
   } finally {

@@ -26,6 +26,8 @@ import { mapKeyOf, type PlannedSlide } from "./report-plan";
 import type { MapImages } from "./render-pptx";
 import { nativeMapStatus } from "./map-pptx";
 import type { PageStyle } from "../ui/board-state";
+import { zoomForScale } from "../ui/report-scale";
+import type { MapFrameState } from "./report-doc";
 import { northArrowBox, scaleBarBox } from "../ui/map-scene";
 
 // 슬라이드 비율(16:9)로 그린다: 지도가 슬라이드 전체이고 오버레이는 pptx 도형이 얹는다
@@ -34,7 +36,7 @@ const VIEW_H = 540;
 const OUT_W = 1920;
 const OUT_H = 1080;
 const PX_PER_INCH = VIEW_W / SLIDE.w;
-type Extra = Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "siteY" | "calloutTop" | "calloutLeftBottom" | "scale" | "legend" | "bare" | "pinnedKeys" | "north" | "credit" | "label" | "rightInset" | "backgroundOnly" | "terrainSection"> & {
+type Extra = Partial<Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "siteY" | "calloutTop" | "calloutLeftBottom" | "scale" | "legend" | "bare" | "pinnedKeys" | "hiddenKeys" | "showAutomaticLabels" | "north" | "credit" | "label" | "rightInset" | "backgroundOnly" | "terrainSection">> & {
   size?: { width: number; height: number };
   bottomInset?: number;
   style?: PageStyle;
@@ -49,6 +51,29 @@ const rasterKey = (analysisId: string, code: string, name: string) => `${analysi
 
 /** 결과 타일이 지정한 배경을 PPT·화면 공통으로 우선한다(D01은 항상 Satellite). */
 export const effectiveLayer = (model: MapModel, layer: BasemapChoice): BasemapChoice => model.basemap ?? layer;
+
+function frameLayer(frame: MapFrameState): BasemapChoice {
+  if (frame.basemap === "air") return "Satellite";
+  if (frame.basemap === "road") return "Base";
+  if (frame.basemap === "none") return "white";
+  return "Base";
+}
+
+function reportFrameStyle(frame: MapFrameState, style: PageStyle, mapWidthMm: number, radiusM: number): PageStyle {
+  return {
+    ...style,
+    zoomDelta: frame.scaleDenominator === null ? frame.zoomDelta : zoomForScale(frame.scaleDenominator, mapWidthMm, radiusM),
+    offsetM: [...frame.offsetM] as [number, number],
+    pinnedKeys: [...new Set([...(style.pinnedKeys ?? []), ...frame.pinnedKeys])],
+    hiddenKeys: [...new Set([...(style.hiddenKeys ?? []), ...frame.hiddenLayers])],
+  };
+}
+
+function reportMapWidthMm(p: PlannedSlide): number {
+  const format = p.format ?? "wide";
+  const base = format === "wide" ? 240 : format === "a3" ? 270 : 190;
+  return p.page?.layout === "numbers-first" || p.page?.layout === "side-by-side" ? base * 0.45 : base;
+}
 
 const blobToDataUrl = (b: Blob) =>
   new Promise<string>((resolve, reject) => {
@@ -279,13 +304,16 @@ function extraFor(p: PlannedSlide, model: MapModel): Extra {
       pinnedKeys: style.pinnedKeys ?? [],
     };
   }
-  const style = p.style ?? {};
+  const baseStyle = p.style ?? {};
+  const frame = p.page?.kind === "tile" ? p.page.frame : undefined;
+  const style = frame ? reportFrameStyle(frame, baseStyle, reportMapWidthMm(p), model.radiusM) : baseStyle;
   const hasSummary = style.summary !== false && !(p.callout && p.callout.page > 0);
   const baseLegend = slideLegend(model, !p.muted).rect;
   const panels = slidePanelRects(style, hasSummary, baseLegend);
   const terrainShown = p.view.code === "D17" && !!p.view.terrainSections && !!p.terrainSection;
   const terrainLayout = terrainShown ? terrainSectionLayout(panels) : null;
-  const pinned = { pinnedKeys: p.pinnedKeys ?? [] };
+  const pinned = { pinnedKeys: [...new Set([...(p.pinnedKeys ?? []), ...(frame?.pinnedKeys ?? [])])] };
+  const frameOptions = frame ? { hiddenKeys: [...new Set([...(style.hiddenKeys ?? []), ...frame.legend.hidden])], showAutomaticLabels: frame.labelRule !== "off", north: frame.decorations.north ? 24 : (false as const), scale: frame.decorations.scaleBar } : {};
   const highlightLabel = legendLabelOf(model, style.legendFocus);
   const rightInset = hasSummary ? Math.max(0, VIEW_W - (panels.summary?.x ?? SLIDE.w) * PX_PER_INCH + SLIDE.edge * PX_PER_INCH * 0.5) : SLIDE.edge * PX_PER_INCH;
   // 설명표 장: 두 칸 사이에 반경 원을 넣는 프레임 (렌더러가 점·표를 같은 프레임으로 놓는다)
@@ -326,8 +354,8 @@ function extraFor(p: PlannedSlide, model: MapModel): Extra {
     : {};
   const terrainPatch = terrainShown ? { terrainSection: p.terrainSection } : {};
   const calloutPatch = calloutTop !== undefined ? { calloutTop, ...(calloutAlignment?.calloutLeftBottom !== undefined ? { calloutLeftBottom: calloutAlignment.calloutLeftBottom * PX_PER_INCH } : {}) } : {};
-  if (p.callout) return { siteX, fill: SLIDE_OVERVIEW_FILL, siteY, rightInset, avoid, bottomInset, viewport, style, highlightLabel, legendFocus: highlightLabel, ...calloutPatch, ...framePatch, ...terrainPatch, ...pinned };
-  return { muted: p.muted, siteX, fill, siteY, rightInset, avoid, bottomInset, viewport, style, highlightLabel, legendFocus: highlightLabel, ...calloutPatch, ...framePatch, ...terrainPatch, ...pinned };
+  if (p.callout) return { siteX, fill: SLIDE_OVERVIEW_FILL, siteY, rightInset, avoid, bottomInset, viewport, style, highlightLabel, legendFocus: highlightLabel, ...calloutPatch, ...framePatch, ...terrainPatch, ...pinned, ...frameOptions };
+  return { muted: p.muted, siteX, fill, siteY, rightInset, avoid, bottomInset, viewport, style, highlightLabel, legendFocus: highlightLabel, ...calloutPatch, ...framePatch, ...terrainPatch, ...pinned, ...frameOptions };
 }
 
 /** 계획의 모든 지도 자리에 대한 PNG. 실패한 장은 빠진다(렌더러가 자리표시를 넣는다). */
@@ -348,17 +376,24 @@ export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice 
             const model = mapForCell(cell);
             const rect = cells[cellIndex];
             if (!model || !rect) continue;
+            const frame = cell.reportFrame;
+            const renderModel = frame ? { ...model, basemap: undefined } : model;
+            const cellStyle = frame ? reportFrameStyle(frame, cell.style ?? p.style ?? {}, reportMapWidthMm(p), model.radiusM) : cell.style;
             const status = nativeMapStatus(model);
-            out[cell.mapKey] = await rasterizeMap(model, cache, effectiveLayer(model, layer), {
+            out[cell.mapKey] = await rasterizeMap(renderModel, cache, frame ? frameLayer(frame) : effectiveLayer(model, layer), {
               siteX: 0.5,
               avoid: [],
               legend: false,
               bare: false,
               pinnedKeys: cell.pinnedKeys,
               backgroundOnly: status.native ? status.rasterLayers : false,
-              style: cell.style,
-              highlightLabel: legendLabelOf(model, cell.style?.legendFocus),
-              legendFocus: legendLabelOf(model, cell.style?.legendFocus),
+              hiddenKeys: frame?.legend.hidden,
+              showAutomaticLabels: frame?.labelRule !== "off",
+              north: frame ? (frame.decorations.north ? 24 : (false as const)) : undefined,
+              scale: frame?.decorations.scaleBar,
+              style: cellStyle,
+              highlightLabel: legendLabelOf(model, cellStyle?.legendFocus),
+              legendFocus: legendLabelOf(model, cellStyle?.legendFocus),
               size: { width: Math.max(1, Math.round(rect.w * PX_PER_INCH)), height: Math.max(1, Math.round(rect.h * PX_PER_INCH)) },
               bottomInset: 0,
             }, rasterCache);
@@ -393,7 +428,9 @@ export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice 
       const extra = extraFor(p, model);
       const status = nativeMapStatus(model);
       const nativeBackground = p.kind === "tile" && status.native;
-      out[key] = await rasterizeMap(model, cache, effectiveLayer(model, layer), { ...extra, backgroundOnly: nativeBackground ? status.rasterLayers : false }, rasterCache);
+      const frame = p.kind === "tile" && p.page?.kind === "tile" ? p.page.frame : undefined;
+      const renderModel = frame ? { ...model, basemap: undefined } : model;
+      out[key] = await rasterizeMap(renderModel, cache, frame ? frameLayer(frame) : effectiveLayer(model, layer), { ...extra, backgroundOnly: nativeBackground ? status.rasterLayers : false }, rasterCache);
     } catch (e) {
       console.warn(`지도 이미지 생성 실패 (${key})`, e);
     }

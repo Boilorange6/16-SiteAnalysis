@@ -452,6 +452,10 @@ export function planReportDoc(doc: ReportDoc, views: ReadonlyMap<string, TileVie
       }
       continue;
     }
+    if (page.kind === "blank") {
+      raw.push(plannedWithMeta({ kind: "cover", address: "", metrics: [], asOfLine: "", incomplete: null, lines: [], map: null }, page, page.id, "빈 페이지", pageStyleFor(page), doc.format));
+      continue;
+    }
     if (page.kind === "tile") {
       const view = views.get(page.tileId);
       const slide = view
@@ -475,13 +479,17 @@ export function planReportDoc(doc: ReportDoc, views: ReadonlyMap<string, TileVie
           mapKey: `${page.id}:cell:${index}`,
           sourceLine: sourceLineFor(view, sourceMeta),
           pinnedKeys: [...cell.frame.pinnedKeys],
+          reportFrame: cell.frame,
         };
       });
       const cellViews = cells.flatMap((cell) => cell ? [cell.view] : []);
       raw.push(plannedWithMeta({ kind: "sheet", view: sheetView(page.id, cellViews, page.grid), grid: page.grid, cells }, page, page.id, `${ctx.summary.asOfLine} · 비교`, pageStyleFor(page), doc.format));
     }
   }
-  return raw.map((slide, index) => ({ ...slide, no: index + 1, total: raw.length }));
+  const numbered = raw.map((slide, index) => ({ ...slide, no: index + 1, total: raw.length }));
+  const fontScale = doc.fontScale;
+  if (fontScale === undefined || fontScale === 1) return numbered;
+  return numbered.map((slide) => ({ ...slide, style: { ...slide.style, titleScale: fontScale, summaryScale: fontScale, legendScale: fontScale } }));
 }
 
 export function printedPageCount(doc: ReportDoc, views: ReadonlyMap<string, TileView>, ctx: ReportDocPlanContext): number {

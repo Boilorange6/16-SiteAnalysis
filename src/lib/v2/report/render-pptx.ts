@@ -467,7 +467,7 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
     if (mapStatus?.denseLayers.length || mapStatus?.rasterValues.length) fallbackNotes.push(nativeMapFallbackNote(p.map));
   } else if (p.map) fallbackNotes.push(nativeMapFallbackNote(p.map));
   const coTail = co ? (co.page === 0 ? `개요 · 전체 ${fmtInt(co.model.complexes.length)}${co.model.unit}` : pageRange(co.page, co.model.complexes.length, undefined, co.model.kind === "supply")) : null;
-  titlePlate(s, v.color, v.code, v.title, [v.kindLabel, p.faceLabel, coTail].filter((t, i, a) => t && a.indexOf(t) === i).join(" · "), co && co.page > 0 ? g.w - 2 * g.edge : summaryX - 2 * g.edge, style, hasSummary, format);
+  titlePlate(s, v.color, v.code, p.page?.titleOverride ?? v.title, [v.kindLabel, p.faceLabel, coTail].filter((t, i, a) => t && a.indexOf(t) === i).join(" · "), co && co.page > 0 ? g.w - 2 * g.edge : summaryX - 2 * g.edge, style, hasSummary, format);
   if (co && co.page > 0) {
     calloutReport?.render({ slide: s, planned: p, part: "page" });
     pageTextBoxes(s, p, format);
@@ -509,7 +509,8 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
     if (stat) items.push(stat);
   }
   else if (v.headline) items.push(...headlineItems(s, v.headline, contentBox, summaryScale));
-  if (v.sentence) items.push(textItem(s, v.sentence, 12.5, INK, true, 5, contentBox, summaryScale));
+  const summaryText = p.page?.summaryOverride ?? v.sentence;
+  if (summaryText) items.push(textItem(s, summaryText, 12.5, INK, true, 5, contentBox, summaryScale));
   if (v.filterLine) items.push(textItem(s, v.filterLine, 10, MUTED, true, 2, contentBox, summaryScale));
   // 도판(지도) 면에 구성비 수치를 반복하지 않는다
   const rows = p.body.face === "front" || p.body.face === "back" ? [] : v.rows.filter((r) => r.label !== v.headline?.label).slice(0, 5);
@@ -587,7 +588,7 @@ function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: Map
       const cellMap = sourceMap && sourceMap.tileCode ? sourceMap : sourceMap ? { ...sourceMap, tileCode: cell.view.code } : null;
       const cellStatus = cellMap ? nativeMapStatus(cellMap) : null;
       if (cellMap && cellStatus?.native) {
-        addEditableMap(s, null, cellMap, { mode: "cell", scope: `cell-${index}`, frame: { x: r.x, y: r.y, w: r.w, h: r.h }, style: cell.style, format });
+        addEditableMap(s, null, cellMap, { mode: "cell", scope: `cell-${index}`, frame: { x: r.x, y: r.y, w: r.w, h: r.h }, style: cell.style, reportFrame: cell.reportFrame, format });
         if (cellStatus.denseLayers.length || cellStatus.rasterValues.length) cellNotes.add(nativeMapFallbackNote(cellMap));
       }
     }
@@ -639,6 +640,17 @@ function sources(pptx: PptxGenJS, p: PlannedSlide & { kind: "sources" }, images:
   strip(s, p, !!p.map, format);
 }
 
+function blank(pptx: PptxGenJS, p: PlannedSlide) {
+  const format = formatOf(p);
+  const size = slideSize(format);
+  const s = pptx.addSlide();
+  background(s, undefined, "FFFFFF", format);
+  s.addShape("rect", { x: 0.45, y: 0.45, w: size.w - 0.9, h: size.h - 0.9, fill: { color: "FFFFFF", transparency: 100 }, line: { color: "D9DCE2", width: 0.75 }, objectName: "GRP|blank|빈 페이지|frame" });
+  pageTextBoxes(s, p, format);
+  pageNotes(s, p);
+  strip(s, p, false, format);
+}
+
 export async function renderReportPptx(plan: PlannedSlide[], images: MapImages = {}): Promise<Uint8Array> {
   const pptx = new PptxGenJS();
   const format = plan.find((slide) => slide.format)?.format ?? "wide";
@@ -651,7 +663,8 @@ export async function renderReportPptx(plan: PlannedSlide[], images: MapImages =
   }
   pptx.title = "사이트 분석 보고서";
   for (const p of plan) {
-    if (p.kind === "cover") cover(pptx, p, images);
+    if (p.page?.kind === "blank") blank(pptx, p);
+    else if (p.kind === "cover") cover(pptx, p, images);
     else if (p.kind === "tile") tile(pptx, p, images);
     else if (p.kind === "sheet") sheet(pptx, p, images);
     else sources(pptx, p, images);
