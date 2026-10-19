@@ -892,11 +892,15 @@ function TextBoxSurface({ boxes, unit, selectedId, maxWidth, maxHeight, onSelect
       return;
     }
     setEditingId(selectedId);
+  }, [selectedId]);
+
+  // 글 칸은 편집 상태로 그려진 뒤에야 포커스를 받을 수 있다.
+  useEffect(() => {
+    if (!editingId) return;
     const frame = window.requestAnimationFrame(() => {
-      const element = boxRefs.current.get(selectedId);
-      const text = element?.querySelector<HTMLElement>("[data-text-box-content]");
-      if (!element || !text) return;
-      element.focus();
+      const text = boxRefs.current.get(editingId)?.querySelector<HTMLElement>("[data-text-box-content]");
+      if (!text || document.activeElement === text) return;
+      text.focus();
       const range = document.createRange();
       range.selectNodeContents(text);
       const selection = window.getSelection();
@@ -904,7 +908,7 @@ function TextBoxSurface({ boxes, unit, selectedId, maxWidth, maxHeight, onSelect
       selection?.addRange(range);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [selectedId]);
+  }, [editingId]);
 
   const updateDraft = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (!draft || draft.pointerId !== event.pointerId) return;
@@ -950,8 +954,6 @@ function TextBoxSurface({ boxes, unit, selectedId, maxWidth, maxHeight, onSelect
         if (!selected) onSelect?.({ kind: "textBox", id: box.id });
         else setEditingId(box.id);
       }}
-      contentEditable={editing}
-      suppressContentEditableWarning
       onBlur={(event) => {
         if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
         const text = event.currentTarget.querySelector<HTMLElement>("[data-text-box-content]")?.textContent ?? "";
@@ -974,7 +976,7 @@ function TextBoxSurface({ boxes, unit, selectedId, maxWidth, maxHeight, onSelect
           onTextBox?.({ ...box, x: Math.max(0, Math.min(Math.max(0, maxWidth - box.w), box.x + dx)), y: Math.max(0, Math.min(Math.max(0, maxHeight - box.h), box.y + dy)) });
         }
       }}
-    ><span data-text-box-content>{visibleBox.text}</span>{selected && <><button type="button" className={styles.textBoxMoveHandle} aria-label="글상자 이동" onPointerDown={(event) => beginDraft("move", visibleBox, event)} onPointerMove={updateDraft} onPointerUp={endDraft} onPointerCancel={endDraft}>↕</button><button type="button" className={styles.textBoxResizeHandle} aria-label="글상자 크기 조절" onPointerDown={(event) => beginDraft("resize", visibleBox, event)} onPointerMove={updateDraft} onPointerUp={endDraft} onPointerCancel={endDraft}>↘</button></>}</div>;
+    >{/* 손잡이 버튼이 편집 영역 안에 있으면 입력 글자가 버튼으로 들어가므로 글 칸만 편집한다. */}<span data-text-box-content contentEditable={editing} suppressContentEditableWarning style={{ display: "block", minHeight: "100%", outline: "none" }}>{visibleBox.text}</span>{selected && <><button type="button" className={styles.textBoxMoveHandle} aria-label="글상자 이동" onPointerDown={(event) => beginDraft("move", visibleBox, event)} onPointerMove={updateDraft} onPointerUp={endDraft} onPointerCancel={endDraft}>↕</button><button type="button" className={styles.textBoxResizeHandle} aria-label="글상자 크기 조절" onPointerDown={(event) => beginDraft("resize", visibleBox, event)} onPointerMove={updateDraft} onPointerUp={endDraft} onPointerCancel={endDraft}>↘</button></>}</div>;
   })}</>;
 }
 
