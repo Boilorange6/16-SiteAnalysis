@@ -231,10 +231,18 @@
   color: #15171c;
 }
 
-.primaryButton:disabled,
-.secondaryButton:disabled {
+.primaryButton:disabled {
+  border-color: #626875;
+  background: #626875;
+  color: #fff;
   cursor: not-allowed;
-  opacity: 0.5;
+}
+
+.secondaryButton:disabled {
+  border-color: #aeb3bc;
+  background: #f4f5f6;
+  color: #5f6570;
+  cursor: not-allowed;
 }
 
 .error {

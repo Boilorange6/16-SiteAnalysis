@@ -38,6 +38,29 @@ assert.equal(state.fileName, "sample.zip");
 assert.equal(state.coveragePct, coveragePct(summary, [127, 37], 500));
 assert.ok(state.coveragePct > 0);
 
+state = topoReducer({ s: "idle" }, {
+  type: "done",
+  topoId: "topo-pending",
+  fileName: "sample.zip",
+  summary,
+  center: null,
+  radiusM: 500,
+});
+assert.deepEqual(state, {
+  s: "ready",
+  topoId: "topo-pending",
+  fileName: "sample.zip",
+  summary,
+  coveragePct: null,
+});
+state = topoReducer(state, {
+  type: "recheck",
+  center: [127, 37],
+  radiusM: 500,
+});
+assert.equal(state.s, "ready");
+assert.equal(state.coveragePct, coveragePct(summary, [127, 37], 500));
+
 state = topoReducer(state, {
   type: "recheck",
   center: [128, 38],

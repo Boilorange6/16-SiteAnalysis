@@ -20,7 +20,6 @@
 }
 .root button {
   font: inherit;
-  color: inherit;
   cursor: pointer;
 }
 .page {
@@ -353,10 +352,11 @@
   white-space: nowrap;
 }
 .topoNudge {
-  grid-column: 1 / -1;
-  display: flex;
+  width: 100%;
+  flex: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 14px;
   padding: 12px 14px;
   border: 1px solid #d9dce2;
@@ -366,6 +366,7 @@
   color: #15171c;
 }
 .topoNudge p {
+  min-width: 0;
   margin: 0;
   font-size: 12px;
   line-height: 1.5;
@@ -1126,8 +1127,8 @@
     grid-row: span 2;
   }
   .topoNudge {
+    grid-template-columns: 1fr;
     align-items: stretch;
-    flex-direction: column;
     gap: 8px;
   }
   .topoNudge button {

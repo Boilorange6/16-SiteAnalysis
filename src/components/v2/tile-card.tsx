@@ -336,6 +336,8 @@ type TileCardBaseProps = {
   floatStyle?: CSSProperties;
   /** queued/running 타일에 표시할 대기 위치·경과 시간 안내 */
   waitingNote?: string | null;
+  /** 특정 카드에 직접 붙이는 추가 자료 안내 */
+  topoNudge?: { onClick: () => void; disabled: boolean };
   cut: CutSpec | null;
   /** 화면 면 (요약면/지도면). 보고서 출력 면(face)과 무관 */
   cardFace: CardFace;
@@ -792,6 +794,13 @@ function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardRende
           <Headline view={displayView} />
           {facts.length > 0 && <FitRows rows={facts} />}
         </div>
+      )}
+
+      {p.topoNudge && (
+        <aside className={styles.topoNudge} role="note" aria-label="수치지형도 안내">
+          <p>대지 고저차가 커서 30 m 자료로는 부정확할 수 있습니다. 수치지형도를 넣으면 원본 등고선으로 다시 계산합니다.</p>
+          <button type="button" onClick={p.topoNudge.onClick} disabled={p.topoNudge.disabled}>수치지형도 넣고 다시 분석</button>
+        </aside>
       )}
 
       <div className={styles.sfFoot}>

@@ -22,6 +22,11 @@ const TOPO_CHIPS = [
   { tone: "support", label: "하천·호소", detail: "" },
 ] as const;
 
+function coverageCopy(coveragePct: number | null): string {
+  if (coveragePct === null) return "대지를 정하면 분석 반경을 얼마나 덮는지 알려 드립니다.";
+  return `분석 반경의 ${coveragePct}%를 덮습니다.${coveragePct === 100 ? "" : " 나머지는 기존 자료로 채웁니다."}`;
+}
+
 function DropZone({ disabled, onPick, onDropFile }: { disabled: boolean; onPick: () => void; onDropFile: (file: File) => void }) {
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Enter" && event.key !== " ") return;
@@ -102,7 +107,7 @@ export default function TopoPanel({ state, disabled = false, onPick, onDropFile,
           <span className={styles.fileName} title={state.fileName}>{state.fileName}</span>
           <span className={styles.readyTag}>준비됨</span>
         </div>
-        <p className={styles.coverageCopy}>분석 반경의 {state.coveragePct}%를 덮습니다. 나머지는 기존 자료로 채웁니다.</p>
+        <p className={styles.coverageCopy}>{coverageCopy(state.coveragePct)}</p>
         <ul className={styles.chips} aria-label="수치지형도에서 보강하는 자료">
           {TOPO_CHIPS.map((chip) => (
             <li className={styles.chip} key={`${chip.label}-${chip.detail}`}>

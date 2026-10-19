@@ -6,7 +6,7 @@ export type TopoState =
   | { s: "idle" }
   | { s: "preparing" }
   | { s: "uploading"; loaded: number; total: number }
-  | { s: "ready"; topoId: string; fileName: string; summary: TopoSummary; coveragePct: number }
+  | { s: "ready"; topoId: string; fileName: string; summary: TopoSummary; coveragePct: number | null }
   | { s: "error"; code: TopoErrorCopyCode };
 
 export type TopoAction =
@@ -17,7 +17,7 @@ export type TopoAction =
       topoId: string;
       fileName: string;
       summary: TopoSummary;
-      center: LngLat;
+      center: LngLat | null;
       radiusM: number;
     }
   | { type: "fail"; code: TopoErrorCopyCode }
@@ -74,9 +74,10 @@ export function coveragePct(summary: TopoSummary, center: LngLat, radiusM: numbe
 
 function readyCoverage(
   summary: TopoSummary,
-  center: LngLat,
+  center: LngLat | null,
   radiusM: number,
-): { coveragePct: number; outside: boolean } {
+): { coveragePct: number | null; outside: boolean } {
+  if (!center) return { coveragePct: null, outside: false };
   const pct = coveragePct(summary, center, radiusM);
   return { coveragePct: pct, outside: pct <= 0 };
 }

@@ -710,11 +710,11 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
   }, [focusRovingCard, gridLayout.columns, rovingItems]);
   const activeJobs = jobs.some((job) => job.status === "queued" || job.status === "running");
   const actionBusy = busy || activeJobs;
-  const hasTopo = topoState.s === "ready" || topoUsed || results.some((result) => result.presentation.polygons?.some((polygon) => polygon.layer === "topo_coverage") ?? false);
+  const hasTopo = topoUsed || results.some((result) => result.presentation.polygons?.some((polygon) => polygon.layer === "topo_coverage") ?? false);
   const d17 = results.find((result) => result.tileCode === "D17");
   const d17ReliefMin = d17?.metrics.find((metric) => metric.id === "relief_min_m")?.value;
   const d17ReliefMax = d17?.metrics.find((metric) => metric.id === "relief_max_m")?.value;
-  const showTopoNudge = !hasTopo && topoState.s !== "preparing" && topoState.s !== "uploading" && d17ReliefMin !== null && d17ReliefMin !== undefined && d17ReliefMax !== null && d17ReliefMax !== undefined && d17ReliefMax - d17ReliefMin >= TOPO_NUDGE_RELIEF_M;
+  const showTopoNudge = topoState.s !== "ready" && !hasTopo && topoState.s !== "preparing" && topoState.s !== "uploading" && d17ReliefMin !== null && d17ReliefMin !== undefined && d17ReliefMax !== null && d17ReliefMax !== undefined && d17ReliefMax - d17ReliefMin >= TOPO_NUDGE_RELIEF_M;
   const closeTopoDialog = useCallback(() => setTopoDialogOpen(false), []);
   useFocusTrap({ ref: topoDialogRef, active: topoDialogOpen, onClose: closeTopoDialog, restoreFocusRef: topoTriggerRef });
   const jobState = useMemo(() => jobProgress(jobs), [jobs]);
@@ -1074,7 +1074,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
               else onTopoPick();
             }}
             disabled={actionBusy}
-            aria-label="수치지형도 추가"
+            aria-label={hasTopo ? "추가 자료 · 수치지형도" : "수치지형도 추가"}
             aria-haspopup={hasTopo ? "dialog" : undefined}
           >
             {hasTopo ? "추가 자료 · 수치지형도" : "수치지형도 추가"}
@@ -1244,12 +1244,6 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
             const dragged = drag?.id === id;
             return (
               <Fragment key={id}>
-                {view.code === "D17" && showTopoNudge && (
-                  <aside className={styles.topoNudge} role="note" aria-label="수치지형도 안내">
-                    <p>대지 고저차가 커서 30 m 자료로는 부정확할 수 있습니다. 수치지형도를 넣으면 원본 등고선으로 다시 계산합니다.</p>
-                    <button type="button" onClick={onTopoNudge} disabled={actionBusy}>수치지형도 넣고 다시 분석</button>
-                  </aside>
-                )}
                 {dragged && (
                   <div key="ph" className={`${styles.placeholder} ${size === 2 ? styles.span2 : size === 4 ? styles.span4 : ""}`} data-placeholder>
                     여기에 놓기
@@ -1263,6 +1257,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
                   onLayer={(layer) => dispatch({ type: "layer", id, layer })}
                   phase={jobState.byCode.get(view.code)?.phase ?? null}
                   waitingNote={jobState.byCode.get(view.code)?.note ?? null}
+                  topoNudge={view.code === "D17" && showTopoNudge ? { onClick: onTopoNudge, disabled: actionBusy } : undefined}
                   included={!!board.included[id]}
                   face={board.faces[id]}
                   canUp={oi > 0}
@@ -1380,9 +1375,9 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
             </div>
             <p className={styles.topoDialogFile}>{topoState.s === "ready" ? topoState.fileName : "수치지형도 추가 자료"}</p>
             <p className={styles.topoDialogSummary}>
-              {topoState.s === "ready" ? `분석 반경의 ${topoState.coveragePct}%를 덮습니다.` : "이 분석에 수치지형도 추가 자료가 사용되었습니다."}<br />
+              {topoState.s === "ready" ? topoState.coveragePct === null ? "대지를 정하면 분석 반경을 얼마나 덮는지 알려 드립니다." : `분석 반경의 ${topoState.coveragePct}%를 덮습니다.${topoState.coveragePct === 100 ? "" : " 나머지는 기존 자료로 채웁니다."}` : "이 분석에 수치지형도 추가 자료가 사용되었습니다."}<br />
               원본 등고선·표고점과 필요한 도로·건물 자료를 우선 사용합니다.<br />
-              범위 밖은 기존 자료로 채웁니다.
+              {(topoState.s !== "ready" || topoState.coveragePct !== 100) && "범위 밖은 기존 자료로 채웁니다."}
             </p>
             <div className={styles.topoDialogActions}>
               <button type="button" className={styles.pill} onClick={() => { closeTopoDialog(); onTopoRemove(); }}>빼고 다시 분석</button>
@@ -1502,7 +1497,7 @@ function storedTopoState(raw: string | null): TopoState | null {
   if (!raw) return null;
   try {
     const value = JSON.parse(raw) as Partial<Extract<TopoState, { s: "ready" }>>;
-    if (value.s !== "ready" || typeof value.topoId !== "string" || typeof value.fileName !== "string" || typeof value.coveragePct !== "number" || !value.summary || typeof value.summary !== "object") return null;
+    if (value.s !== "ready" || typeof value.topoId !== "string" || typeof value.fileName !== "string" || (typeof value.coveragePct !== "number" && value.coveragePct !== null) || !value.summary || typeof value.summary !== "object") return null;
     return value as Extract<TopoState, { s: "ready" }>;
   } catch {
     return null;
@@ -1615,7 +1610,6 @@ export default function V2BoardPage() {
         center = await resolveAddressCenter(addressAtStart);
         if (center) topoCenterRef.current = center;
       }
-      if (!center) throw new TopoClientError("topo_outside");
       const prepared = await prepareTopoZip(file);
       if (controller.signal.aborted) return;
       current = topoReducer(current, { type: "progress", loaded: 0, total: prepared.blob.size });
@@ -1629,11 +1623,11 @@ export default function V2BoardPage() {
         topoId: uploaded.topoId,
         fileName: file.name,
         summary: uploaded.summary,
-        center,
+        center: center ?? null,
         radiusM,
       });
       const currentCenter = topoCenterRef.current;
-      if (current.s === "ready" && topoAddressDirtyRef.current && currentCenter) {
+      if (current.s === "ready" && currentCenter && (current.coveragePct === null || topoAddressDirtyRef.current)) {
         current = topoReducer(current, { type: "recheck", center: currentCenter, radiusM });
         topoAddressDirtyRef.current = false;
       }
@@ -1998,19 +1992,24 @@ export default function V2BoardPage() {
 
   const handleTopoCenterChange = useCallback((center: readonly [number, number] | null) => {
     topoCenterRef.current = center;
-    if (!center || !topoAddressDirtyRef.current) return;
+    if (!center) return;
     const state = topoStateRef.current;
-    if (state.s !== "ready") return;
+    if (state.s !== "ready" || (!topoAddressDirtyRef.current && state.coveragePct !== null)) return;
     const next = topoReducer(state, { type: "recheck", center, radiusM });
     topoAddressDirtyRef.current = false;
     setTopoState(next);
+    if (next.s === "error") {
+      const copy = TOPO_ERROR_COPY[next.code];
+      setProblem({ text: `${copy.title}. ${copy.body}`, login: false });
+    }
   }, [radiusM]);
 
   useEffect(() => {
     const center = topoCenterRef.current;
-    if (topoState.s !== "ready" || !topoAddressDirtyRef.current || !center) return;
+    const coveragePct = topoState.s === "ready" ? topoState.coveragePct : null;
+    if (topoState.s !== "ready" || !center || (!topoAddressDirtyRef.current && coveragePct !== null)) return;
     handleTopoCenterChange(center);
-  }, [handleTopoCenterChange, topoState.s]);
+  }, [handleTopoCenterChange, topoState.s, topoState.s === "ready" ? topoState.coveragePct : null]);
 
   function handleAddressChange(value: string) {
     addressDirtyRef.current = true;
@@ -2042,8 +2041,7 @@ export default function V2BoardPage() {
       topoCenterRef.current = center;
       const current = topoStateRef.current;
       if (current.s !== "ready" || current.topoId !== topoIdAtChange) return;
-      topoAddressDirtyRef.current = false;
-      setTopoState(topoReducer(current, { type: "recheck", center, radiusM }));
+      handleTopoCenterChange(center);
     });
   }
 
@@ -2079,6 +2077,10 @@ export default function V2BoardPage() {
     void analyze(undefined, null, null);
   }
 
+  const topoProblemText = topoState.s === "error" ? `${TOPO_ERROR_COPY[topoState.code].title}. ${TOPO_ERROR_COPY[topoState.code].body}` : null;
+  const topoProblemVisible = !!problem && !problem.login && problem.text === topoProblemText;
+  const showGlobalProblem = !!problem && (!sitePickerOpen || !topoProblemVisible);
+
   const controls = (
     <div className={styles.analyzeWrap}>
       {!live && <p className={styles.demoContext}>예시: 고덕동 123 · 반경 1km — 주소를 넣으면 실제 분석</p>}
@@ -2103,8 +2105,8 @@ export default function V2BoardPage() {
           inputClassName={styles.addrInput}
           value={address}
           onChange={handleAddressChange}
-          ariaInvalid={problem && !problem.login ? true : undefined}
-          ariaDescribedBy={problem && !problem.login ? "v2-address-error" : undefined}
+          ariaInvalid={showGlobalProblem && problem && !problem.login ? true : undefined}
+          ariaDescribedBy={showGlobalProblem && problem && !problem.login ? "v2-address-error" : undefined}
           disabled={busy || activeJobs}
         />
         <select className={styles.radiusSelect} value={radiusM} onChange={(e) => setRadiusM(Number(e.target.value))} aria-label="분석 반경" aria-describedby="v2-radius-help" disabled={busy || activeJobs}>
@@ -2157,7 +2159,7 @@ export default function V2BoardPage() {
             initialSite={siteInput}
             initialParcels={pickerParcels}
             disabled={busy || activeJobs}
-            serverError={problem && !problem.login ? problem.text : null}
+            serverError={problem && !problem.login && !topoProblemVisible ? problem.text : null}
             extra={<TopoPanel state={topoState} disabled={busy || activeJobs} onPick={openTopoPicker} onCancel={cancelTopoUpload} onRemove={removeTopo} onDropFile={(file) => void handleTopoFile(file)} />}
             topoCoverage={topoState.s === "ready" ? topoState.summary.coverageWgs84 : []}
             onSiteChange={(site) => setSiteInput(site)}
@@ -2166,7 +2168,7 @@ export default function V2BoardPage() {
           />
         </div>
       )}
-      {problem && (
+      {showGlobalProblem && problem && (
         <p id="v2-address-error" className={styles.problem} role="alert">
           {problem.text}
           {problem.login && (
