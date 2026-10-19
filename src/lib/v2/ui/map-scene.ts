@@ -38,12 +38,9 @@ function scaleBarLayout(width: number, height: number, mpp: number, bottomInset 
 
 function scaleBarBoxFromLayout(width: number, height: number, layout: ScaleBarLayout): MapSceneBox {
   const { x0, x1, y, unit } = layout;
-  return {
-    x0: Math.max(0, x0 - 6 * unit),
-    y0: Math.max(0, y - 14 * unit),
-    x1: Math.min(width, x1 + 6 * unit),
-    y1: Math.min(height, y + 8 * unit),
-  };
+  const box = { x0: Math.max(0, x0 - 6 * unit), y0: Math.max(0, y - 14 * unit) };
+  // 작은 썸네일·큰 하단 여백에서는 막대가 화면 밖이라 상자가 뒤집히지 않게 빈 상자로 둔다.
+  return { ...box, x1: Math.max(box.x0, Math.min(width, x1 + 6 * unit)), y1: Math.max(box.y0, Math.min(height, y + 8 * unit)) };
 }
 
 /** 축척 막대의 실제 불투명 판·막대·문자 영역과 같은 회피 상자. */
