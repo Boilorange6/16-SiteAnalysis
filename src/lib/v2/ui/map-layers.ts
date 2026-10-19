@@ -55,6 +55,12 @@ export type LayerStyle = {
   opacity?: number;
   /** SVG stroke-dasharray, e.g. "6 4". */
   dash?: string;
+  /** SVG stroke-linecap for line layers and their legend swatch. */
+  lineCap?: "butt" | "round" | "square";
+  /** Draw short perpendicular ticks for retaining-wall style consumers. */
+  tickMarks?: boolean;
+  /** Opt in to a geometry-faithful line swatch in the shared legend strip. */
+  lineSwatch?: boolean;
   /** 선 아래에 까는 외곽선 색. 색약 환경에서 선을 분리한다. */
   casing?: string;
   /** 방향성이 있는 선에 화살표 끝을 붙인다. */
@@ -340,9 +346,11 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   dem_nodata: S("지형 결측", "#B9BDC6"),
   contour: { label: "등고선", color: "#8a5a2e", strokeWidth: 1 },
   topo_coverage: { label: "수치지형도 범위 · 밖은 기존 자료", color: "#2350b8", fill: "none", stroke: "#2350b8", fillOpacity: 0, strokeWidth: 1.5, dash: "10 6" },
-  retaining_wall: { label: "옹벽", color: "#8a5a2e", strokeWidth: 2 },
-  cut_fill: { label: "절성토", color: "#8a5a2e", strokeWidth: 1.5, dash: "4 3" },
-  fence: { label: "울타리", color: "#8a5a2e", strokeWidth: 1.25, dash: "2 3" },
+  // The casing is the second dark edge of the retaining-wall symbol; the map
+  // renderer already draws it underneath the main stroke.
+  retaining_wall: { label: "옹벽", color: "#3d3f45", strokeWidth: 3, casing: "#15171c", tickMarks: true, lineSwatch: true },
+  cut_fill: { label: "절성토", color: "#b25a1e", strokeWidth: 1.5, dash: "6 3", lineSwatch: true },
+  fence: { label: "울타리", color: "#2e6b3a", strokeWidth: 1.25, dash: "1 3", lineCap: "round", lineSwatch: true },
   terrain_section_a: { label: "단면 A–A′ (동서)", color: "#2350b8", strokeWidth: 2.25 },
   terrain_section_b: { label: "단면 B–B′ (남북)", color: "#2350b8", strokeWidth: 1.75, dash: "7 5" },
   slope_0_5: S("경사 0~5°", "#E6E2F4"),
@@ -456,7 +464,32 @@ export type MapLegendLayerItem = {
   colors?: string[];
   badge?: string;
   symbol?: "rail-axis" | "rail-exit";
+  lineSwatch?: boolean;
+  strokeWidth?: number;
+  dash?: string;
+  lineCap?: "butt" | "round" | "square";
+  tickMarks?: boolean;
+  casing?: string;
   highlight: boolean;
+};
+
+const lineLegendStyle = (style: LayerStyle): Pick<MapLegendLayerItem, "lineSwatch" | "strokeWidth" | "dash" | "lineCap" | "tickMarks" | "casing"> => {
+  if (!style.lineSwatch) return {};
+  return {
+    lineSwatch: true,
+    ...(style.strokeWidth === undefined ? {} : { strokeWidth: style.strokeWidth }),
+    ...(style.dash === undefined ? {} : { dash: style.dash }),
+    ...(style.lineCap === undefined ? {} : { lineCap: style.lineCap }),
+    ...(style.tickMarks === undefined ? {} : { tickMarks: style.tickMarks }),
+    ...(style.casing === undefined ? {} : { casing: style.casing }),
+  };
+};
+
+const TOPO_STEP_LAYERS = new Set(["retaining_wall", "cut_fill", "fence"]);
+const lineLegendStyleForModel = (style: LayerStyle, layer: string, model: MapModel): Pick<MapLegendLayerItem, "lineSwatch" | "strokeWidth" | "dash" | "lineCap" | "tickMarks" | "casing"> => {
+  const hasTopoSupplement = (model.lines ?? []).some((line) => TOPO_STEP_LAYERS.has(line.layer));
+  if (layer === "contour" && hasTopoSupplement) return { lineSwatch: true, strokeWidth: style.strokeWidth ?? 1 };
+  return lineLegendStyle(style);
 };
 
 export const legendItems = (model: MapModel): MapLegendLayerItem[] => {
@@ -505,6 +538,7 @@ export const legendItems = (model: MapModel): MapLegendLayerItem[] => {
       ...(layer === "rail_station" || layer === "rail_nearest"
         ? { symbol: "rail-axis" as const }
         : layer === "rail_entrance" ? { symbol: "rail-exit" as const } : {}),
+      ...lineLegendStyleForModel(style, layer, model),
       badge: undefined,
       highlight: highlightedLabels.has(style.label),
     }];
@@ -598,7 +632,7 @@ export function legendItemsForModel(model: MapModel, limit = Number.POSITIVE_INF
     const existing = staticItems.find((item) => item.layer === layer);
     if (existing) return existing;
     const style = LAYER_STYLES[layer];
-    return style ? { layer, label: style.label, color: style.color, highlight: false } : undefined;
+    return style ? { layer, label: style.label, color: style.color, ...lineLegendStyleForModel(style, layer, model), highlight: false } : undefined;
   };
   const seenDisplayLabels = new Set<string>();
   const mapped: PresentedLegendLayerItem[] = engineLegend.flatMap((entry, index) => {

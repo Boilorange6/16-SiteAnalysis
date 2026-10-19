@@ -30,6 +30,12 @@ export type MapLegendItem = {
   stroke?: string;
   fillOpacity?: number;
   strokeWidth?: number;
+  /** Geometry-faithful line style metadata from map-layers.ts. */
+  lineSwatch?: boolean;
+  dash?: string;
+  lineCap?: "butt" | "round" | "square";
+  tickMarks?: boolean;
+  casing?: string;
   hatch?: boolean;
   /** 화면에 표시하는 값 범례와 지도 요소 강조에 쓰는 공용 레이어명을 분리한다. */
   highlightLabel?: string;
@@ -94,6 +100,17 @@ function LegendSwatch({ item }: { item: MapLegendItem }) {
           stroke={stroke}
           strokeWidth={item.strokeWidth ?? 1}
         />
+      </svg>
+    );
+  }
+  if (kind === "line" && item.lineSwatch) {
+    const strokeWidth = Math.max(1, item.strokeWidth ?? 1.5);
+    const lineCap = item.lineCap ?? "butt";
+    return (
+      <svg className={styles.mapLegendSwatchSvg} data-kind={kind} width="20" height="12" viewBox="0 0 20 12" aria-hidden="true" focusable="false">
+        {item.casing && <line x1="1" y1="6" x2="19" y2="6" stroke={item.casing} strokeWidth={strokeWidth + 2.4} strokeDasharray={item.dash} strokeLinecap={lineCap} strokeLinejoin="round" />}
+        <line x1="1" y1="6" x2="19" y2="6" stroke={item.color} strokeWidth={strokeWidth} strokeDasharray={item.dash} strokeLinecap={lineCap} strokeLinejoin="round" />
+        {item.tickMarks && [4, 8, 12, 16].map((x) => <line key={x} x1={x} y1="3" x2={x} y2="9" stroke={item.color} strokeWidth="1" strokeLinecap="round" />)}
       </svg>
     );
   }

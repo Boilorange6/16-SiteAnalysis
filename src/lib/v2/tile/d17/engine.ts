@@ -10,6 +10,7 @@ import { clipLineToCircle, linePathLength, polygonArea } from "../../engine/tile
 import { notProvided } from "../../engine/tiles/not-provided";
 import { maxOf, minOf } from "../../extent";
 import { terrainSections, type TerrainSections } from "../../engine/tiles/terrain-section";
+import { TERRAIN_SECTION_LABELS, TERRAIN_SECTION_MAP_LABELS } from "../../ui/terrain-section";
 
 const RELIEF_BREAKS = [-20, -5, 5, 20];
 const RELIEF_LAYERS = ["relief_lt_m20", "relief_m20_m5", "relief_m5_5", "relief_5_20", "relief_ge20"];
@@ -62,16 +63,16 @@ function topoLines(ctx: EngineContext, hits: FeatureHit[]) {
 function sectionLines(sections: TerrainSections | null): LineCandidate[] {
   if (!sections) return [];
   return ([
-    [sections.A, "terrain_section_a", "단면 A–A′ (동서)", 1_000_000_010],
-    [sections.B, "terrain_section_b", "단면 B–B′ (남북)", 1_000_000_011],
-  ] as const).flatMap(([section, layer, name, id]) => {
+    [sections.A, "terrain_section_a", TERRAIN_SECTION_MAP_LABELS.A, TERRAIN_SECTION_LABELS.A, 1_000_000_010],
+    [sections.B, "terrain_section_b", TERRAIN_SECTION_MAP_LABELS.B, TERRAIN_SECTION_LABELS.B, 1_000_000_011],
+  ] as const).flatMap(([section, layer, name, legendLabel, id]) => {
     const lengthM = Math.hypot(section.to[0] - section.from[0], section.to[1] - section.from[1]);
     const line = lineCandidate(id, layer, [section.from, section.to], lengthM, null, {
       fid: `terrain-section:${section.axis}`,
       name,
       sublabel: null,
       labelPriority: 1,
-      legendLabel: name,
+      legendLabel,
     });
     return line ? [line] : [];
   });

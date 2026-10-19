@@ -1,9 +1,11 @@
 import type { TerrainSections } from "../tile-result";
 import { FONT, INK, LINE, MUTED, fitPt, plate, seg, type Slide } from "./pptx-kit";
 import type { Rect } from "../ui/overlay-layout";
+import { layerStyle } from "../ui/map-layers";
+import { terrainCrossingLayer, terrainElevationLabel, terrainSectionAxisLabel, terrainSectionPosition, terrainSectionTotal, sortTerrainCrossings, TERRAIN_CROSSING_LABELS, TERRAIN_SECTION_LABELS } from "../ui/terrain-section";
 
-const SECTION_LABELS = { A: "단면 A–A′ (동서)", B: "단면 B–B′ (남북)" } as const;
-const CROSSING_LABELS = { retaining: "옹벽", cut_fill: "절성토", fence: "울타리" } as const;
+const SECTION_LABELS = TERRAIN_SECTION_LABELS;
+const CROSSING_LABELS = TERRAIN_CROSSING_LABELS;
 const CAVEAT = "등고선·표고점 보간값(추정)입니다. 현장 실측을 대신하지 않습니다.";
 
 function validSamples(section: TerrainSections["A"]): Array<{ d: number; z: number }> {
@@ -37,14 +39,14 @@ function fmt(value: number | null, unit = "m"): string {
 }
 
 function drawProfile(slide: Slide, section: TerrainSections["A"], rect: Rect, group: string): void {
-  const pad = { left: 0.42, right: 0.12, top: 0.35, bottom: 0.2 };
+  const pad = { left: 0.52, right: 0.12, top: 0.38, bottom: 0.28 };
   const width = Math.max(0.6, rect.w - pad.left - pad.right);
   const height = Math.max(0.35, rect.h - pad.top - pad.bottom);
   const samples = validSamples(section);
   const minZ = samples.length > 0 ? Math.min(...samples.map((sample) => sample.z)) : 0;
   const maxZ = samples.length > 0 ? Math.max(...samples.map((sample) => sample.z)) : 1;
   const zRange = Math.max(1, maxZ - minZ);
-  const total = Math.max(1, Math.hypot(section.to[0] - section.from[0], section.to[1] - section.from[1]));
+  const total = terrainSectionTotal(section);
   const xFor = (d: number) => rect.x + pad.left + (d / total) * width;
   const yFor = (z: number) => rect.y + pad.top + height - ((z - minZ) / zRange) * height;
   const [siteStart, siteEnd] = section.siteSpan;
@@ -56,13 +58,20 @@ function drawProfile(slide: Slide, section: TerrainSections["A"], rect: Rect, gr
     if (before.z === null || current.z === null) continue;
     seg(slide, [xFor(before.d), yFor(before.z)], [xFor(current.d), yFor(current.z)], "8A5A2E", 1.35, 0, `${group}|profile`);
   }
-  for (const [index, crossing] of section.crossings.entries()) {
-    slide.addShape("line", { x: xFor(crossing.d), y: rect.y + pad.top, w: 0.001, h: height, line: { color: "6B3D14", width: 0.8, dashType: "dash" }, objectName: `${group}|step-${index}` });
+  for (const [index, crossing] of sortTerrainCrossings(section).entries()) {
+    const style = layerStyle(terrainCrossingLayer(crossing.kind));
+    const x = xFor(crossing.d);
+    const color = style.color.replace(/^#/, "");
+    const dashType = style.dash === "1 3" ? "sysDot" : style.dash ? "dash" : "solid";
+    if (style.casing) slide.addShape("line", { x, y: rect.y + pad.top, w: 0.001, h: height, line: { color: style.casing.replace(/^#/, ""), width: (style.strokeWidth ?? 1.5) + 2.4 }, objectName: `${group}|step-${index}-casing` });
+    slide.addShape("line", { x, y: rect.y + pad.top, w: 0.001, h: height, line: { color, width: style.strokeWidth ?? 1.5, dashType }, objectName: `${group}|step-${index}` });
+    if (style.tickMarks) for (const tickY of [0.18, 0.5, 0.82]) {
+      slide.addShape("line", { x: x - 0.06, y: rect.y + pad.top + height * tickY, w: 0.12, h: 0.001, line: { color, width: Math.max(0.65, (style.strokeWidth ?? 1.5) * 0.7) }, objectName: `${group}|step-${index}-tick` });
+    }
   }
-  slide.addText("0m", { x: rect.x + pad.left - 0.08, y: rect.y + pad.top + height + 0.03, w: 0.35, h: 0.16, fontFace: FONT, fontSize: 6.5, color: MUTED, margin: 0 });
-  slide.addText(`${total.toFixed(0)}m`, { x: rect.x + rect.w - 0.45, y: rect.y + pad.top + height + 0.03, w: 0.45, h: 0.16, align: "right", fontFace: FONT, fontSize: 6.5, color: MUTED, margin: 0 });
-  slide.addText(`${maxZ.toFixed(1)}m`, { x: rect.x, y: rect.y + pad.top - 0.13, w: 0.38, h: 0.16, align: "right", fontFace: FONT, fontSize: 6.5, color: MUTED, margin: 0 });
-  slide.addText(`${minZ.toFixed(1)}m`, { x: rect.x, y: rect.y + pad.top + height - 0.1, w: 0.38, h: 0.16, align: "right", fontFace: FONT, fontSize: 6.5, color: MUTED, margin: 0 });
+  slide.addText(terrainSectionAxisLabel(section), { x: rect.x + pad.left, y: rect.y + pad.top + height + 0.03, w: width, h: 0.18, align: "center", fontFace: FONT, fontSize: 8.5, color: MUTED, margin: 0, fit: "shrink", objectName: `${group}|axis-label` });
+  slide.addText(terrainElevationLabel(maxZ), { x: rect.x, y: rect.y + pad.top - 0.16, w: 0.48, h: 0.16, align: "right", fontFace: FONT, fontSize: 8.5, color: MUTED, margin: 0 });
+  slide.addText(terrainElevationLabel(minZ), { x: rect.x, y: rect.y + pad.top + height - 0.1, w: 0.48, h: 0.16, align: "right", fontFace: FONT, fontSize: 8.5, color: MUTED, margin: 0 });
 }
 
 /** D17 지도 장 위에 선택 단면을 편집 가능한 PPT 도형으로 그린다. */
@@ -72,17 +81,15 @@ export function drawTerrainSectionPptx(slide: Slide, sections: TerrainSections, 
   plate(slide, rect, 0.12, `${group}|plate`);
   const titleH = 0.24;
   slide.addText(`${SECTION_LABELS[selected]} · 지형 단면`, { x: rect.x + 0.16, y: rect.y + 0.1, w: rect.w - 0.32, h: titleH, fontFace: FONT, fontSize: fitPt(`${SECTION_LABELS[selected]} · 지형 단면`, 9.5, rect.w - 0.32, 1, 7), bold: true, color: INK, margin: 0, objectName: `${group}|title` });
-  const graph = { x: rect.x, y: rect.y + 0.34, w: Math.max(2.4, rect.w * 0.58), h: rect.h - 0.45 };
+  const graph = { x: rect.x, y: rect.y + 0.34, w: Math.max(2.4, rect.w * 0.62), h: rect.h - 0.45 };
   drawProfile(slide, section, graph, group);
-  const tableX = rect.x + rect.w * 0.61;
+  const tableX = rect.x + rect.w * 0.65;
   const tableW = rect.x + rect.w - tableX - 0.14;
   slide.addText("종류 · 위치 · 높이", { x: tableX, y: rect.y + 0.43, w: tableW, h: 0.18, fontFace: FONT, fontSize: 7.5, bold: true, color: MUTED, margin: 0, objectName: `${group}|table-title` });
-  const rows = section.crossings.slice(0, 5);
+  const rows = sortTerrainCrossings(section).slice(0, 5);
   rows.forEach((crossing, index) => {
     const y = rect.y + 0.66 + index * 0.24;
-    const total = Math.max(1, Math.hypot(section.to[0] - section.from[0], section.to[1] - section.from[1]));
-    const offset = crossing.d - total / 2;
-    const text = `${CROSSING_LABELS[crossing.kind]} · ${Math.abs(offset).toFixed(0)}m ${offset < 0 ? "전" : "후"} · ${crossing.heightM === null ? "높이 미확인" : `${crossing.heightM.toFixed(1)}m`}`;
+    const text = `${CROSSING_LABELS[crossing.kind]} · ${terrainSectionPosition(section, crossing.d)} · ${crossing.heightM === null ? "높이 미확인" : `${crossing.heightM.toFixed(1)}m`}`;
     slide.addText(text, { x: tableX, y, w: tableW, h: 0.2, fontFace: FONT, fontSize: fitPt(text, 7.2, tableW, 1, 6), color: INK, margin: 0, fit: "shrink", objectName: `${group}|table-row-${index}` });
     slide.addShape("line", { x: tableX, y: y + 0.22, w: tableW, h: 0, line: { color: LINE, width: 0.45 }, objectName: `${group}|table-rule-${index}` });
   });

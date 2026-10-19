@@ -78,9 +78,10 @@
 .graph {
   display: block;
   width: 100%;
-  height: auto;
+  height: clamp(180px, 22vw, 240px);
+  max-width: 100%;
   min-width: 0;
-  overflow: visible;
+  overflow: hidden;
   border: 1px solid #e0e3e8;
   border-radius: 9px;
   background: #fbfcfd;
@@ -89,7 +90,7 @@
 .graph text {
   fill: #5b6472;
   font-family: inherit;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .profile {
@@ -106,9 +107,11 @@
 }
 
 .step {
-  stroke: #6b3d14;
-  stroke-dasharray: 3 2;
-  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.stepTick {
+  vector-effect: non-scaling-stroke;
 }
 
 .axis {

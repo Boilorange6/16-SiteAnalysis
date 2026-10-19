@@ -337,6 +337,24 @@ function addSegment(slide: Slide, a: PixelPoint, b: PixelPoint, lineColor: strin
   });
 }
 
+function lineTickSegments(points: readonly PixelPoint[], size: number): Array<[PixelPoint, PixelPoint]> {
+  const ticks: Array<[PixelPoint, PixelPoint]> = [];
+  for (let index = 1; index < points.length; index += 1) {
+    const a = points[index - 1]!;
+    const b = points[index]!;
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const length = Math.hypot(dx, dy);
+    if (length < 1) continue;
+    const mx = (a[0] + b[0]) / 2;
+    const my = (a[1] + b[1]) / 2;
+    const nx = -dy / length * size;
+    const ny = dx / length * size;
+    ticks.push([[mx - nx, my - ny], [mx + nx, my + ny]]);
+  }
+  return ticks;
+}
+
 function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "tile" }; mode?: NativeMapMode; style?: PageStyle }): MapScene {
   const mode = options.mode ?? "tile";
   if (mode === "cell") {
@@ -477,6 +495,7 @@ function addPolygons(slide: Slide, code: string, scene: MapScene, model: MapMode
 
 function addLines(slide: Slide, code: string, scene: MapScene, model: MapModel): void {
   const buckets = new Map<string, Bucket>();
+  const ticks: Array<{ points: Array<[PixelPoint, PixelPoint]>; color: string; width: number; opacity: number; key: string }> = [];
   for (const entry of scene.lines) {
     if (isRasterizedLayer(entry.line.layer) || entry.line.layer === "rail_line" || entry.line.layer === "rail_station_axis") continue;
     if (entry.points.length < 2) continue;
@@ -500,8 +519,10 @@ function addLines(slide: Slide, code: string, scene: MapScene, model: MapModel):
     const bucket = buckets.get(key) ?? { paths: [], line: stroke, lineWidth: width, lineOpacity: opacity * (dimmed ? 0.2 : 1), dash: style.dash, key: groupKey, display: `범례 ${legendLabel}` };
     bucket.paths.push(entry.points);
     buckets.set(key, bucket);
+    if (style.tickMarks) ticks.push({ points: lineTickSegments(entry.points, 4), color: stroke, width: Math.max(0.7, width * 0.55), opacity: opacity * (dimmed ? 0.2 : 1), key: `${groupKey}-tick-${entry.index}` });
   }
   addBuckets(slide, code, buckets, false);
+  for (const entry of ticks) for (const [index, [start, end]] of entry.points.entries()) addSegment(slide, start, end, entry.color, entry.width, tag(code, entry.key, "옹벽", `tick-${index}`), transparency(entry.opacity));
 }
 
 function addRadius(slide: Slide, code: string, scene: MapScene): void {

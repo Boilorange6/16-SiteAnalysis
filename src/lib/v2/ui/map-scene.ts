@@ -94,6 +94,7 @@ export function mapCalloutTextLayout(
   textLeft = 8,
   textRight = 4,
   padY = 3,
+  reserveShortLabelSpace = true,
 ): MapCalloutTextLayout {
   const details = entry.detailLines.slice(0, 3);
   const joined = [entry.title, ...details].join(" · ");
@@ -102,7 +103,12 @@ export function mapCalloutTextLayout(
     ? [{ kind: "joined", text: joined, title: entry.title, detail: details.join(" · ") }]
     : [{ kind: "title", text: entry.title }, ...details.map((detail) => ({ kind: "detail" as const, text: detail }))];
   const textWidth = Math.max(...lines.map((line) => mapTextWidth(line.text, fontSize)), 1);
-  const width = Math.min(maxWidth, textLeft + textRight + textWidth);
+  // Fixed-width CJK estimates can be a fraction narrower than the active SVG
+  // font (especially for three-glyph Korean labels). Reserve a small, bounded
+  // breathing room so the renderer does not turn a meaningful short label into
+  // an ellipsis at the exact measured width.
+  const textSafety = reserveShortLabelSpace && textWidth > 0 ? Math.max(2, fontSize * 0.25) : 0;
+  const width = Math.min(maxWidth, textLeft + textRight + textWidth + textSafety);
   const lineHeight = fontSize * 1.24;
   return { fontSize, lineHeight, width, height: lines.length * lineHeight + 2 * padY, textWidth: Math.min(textWidth, availableTextWidth), lines };
 }
@@ -990,12 +996,23 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   const calloutMetrics = { ...baseCalloutMetrics, cardW: baseCalloutMetrics.cardW * u, compactW: baseCalloutMetrics.compactW * u, minW: baseCalloutMetrics.minW * u, gap: baseCalloutMetrics.gap * u, stub: baseCalloutMetrics.stub * u, rMin: baseCalloutMetrics.rMin * u, rMax: baseCalloutMetrics.rMax * u, head: baseCalloutMetrics.head * u, row: baseCalloutMetrics.row * u, pad: baseCalloutMetrics.pad * u, compactH: calloutPadY * 2 + calloutLineHeight };
   const legendY = legendBox?.y0 ?? 0;
   const legendH = legendBox ? legendBox.y1 - legendBox.y0 : 0;
-  const calloutTop = calloutTopOpt ?? (legendBox && legendY <= H / 2 ? legendY + legendH + 6 * u : 4 * u);
+  const naturalCalloutTop = calloutTopOpt ?? (legendBox && legendY <= H / 2 ? legendY + legendH + 6 * u : 4 * u);
+  // 외부 제목 칩·컨트롤은 occupiedBoxes에만 남겨 두면 콜아웃 배치가 이미
+  // 그 위를 지난 뒤라서 의미가 없다. 좌우 카드 칸과 실제로 겹치는 상단
+  // 오버레이만 먼저 예약해 카드와 설명선의 시작점을 함께 아래로 내린다.
+  const provisionalFrame = calloutFrame({ W, H, m: calloutMetrics, edge: 4 * u, top: naturalCalloutTop, bottom: H, ...(calloutLeftBottom !== undefined ? { leftBottom: Math.max(naturalCalloutTop, calloutLeftBottom) } : {}), rightInset, perSide: 100, rows: 3, variant: "compact", maxFill: 0.8 });
+  const calloutColumns = [provisionalFrame.left, provisionalFrame.right];
+  const overlayCalloutTop = avoid
+    .filter((box) => box.y0 <= naturalCalloutTop + 4 * u && calloutColumns.some((column) => box.x0 < column.x1 && column.x0 < box.x1))
+    .reduce((top, box) => Math.max(top, box.y1 + 6 * u), naturalCalloutTop);
+  const calloutTop = overlayCalloutTop;
   const naturalCalloutBottom = legendBox && legendY > H / 2 ? legendY - 6 * u : H - bottomInset - 4 * u;
   // 축척 판은 occupiedBoxes에만 기록하면 이미 배치된 콜아웃과 겹칠 수 있다.
   // 콜아웃 하단을 축척 판 위로 먼저 제한해 조판 셀에서도 카드가 축척을 가리지 않게 한다.
   const calloutBottom = Math.min(naturalCalloutBottom, scale ? barY - 20 * u : H);
   const calloutFrameModel = { ...calloutFrame({ W, H, m: calloutMetrics, edge: 4 * u, top: calloutTop, bottom: Math.max(calloutTop, calloutBottom), ...(calloutLeftBottom !== undefined ? { leftBottom: Math.max(calloutTop, calloutLeftBottom) } : {}), rightInset, perSide: 100, rows: 3, variant: "compact", maxFill: 0.8 }), centerX: W / 2 };
+  const hasTerrainSupplement = (model.lines ?? []).some((line) => ["retaining_wall", "cut_fill", "fence"].includes(line.layer));
+  const protectTerrainLabel = (layerName: string) => hasTerrainSupplement && (layerName === "contour" || layerName === "retaining_wall" || layerName === "cut_fill" || layerName === "fence" || layerName === "terrain_section_a" || layerName === "terrain_section_b");
   const placementFor = (placed: Placed, entry: MapSceneLabel, text: MapCalloutTextLayout): MapSceneLabelPlacement => {
     const box: MapSceneBox = { x0: placed.x, y0: placed.y, x1: placed.x + placed.width, y1: placed.y + placed.height };
     const points = [entry.p, placed.knee, placed.edge];
@@ -1014,7 +1031,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   }
   const candidateLayouts = placementCandidates.map(({ entry, variant, rank }) => {
     const fontSize = variant === "auto" ? Math.max(9, entry.small ? 10.5 * u * 0.9 : 10.5 * u) : calloutLabelFs;
-    return { entry, variant, rank, text: mapCalloutTextLayout(entry, fontSize, calloutFrameModel.cardW, calloutTextLeft, calloutTextRight, calloutPadY) };
+    return { entry, variant, rank, text: mapCalloutTextLayout(entry, fontSize, calloutFrameModel.cardW, calloutTextLeft, calloutTextRight, calloutPadY, protectTerrainLabel(entry.layer)) };
   });
   const layout = layoutCallouts(calloutFrameModel, candidateLayouts.map(({ entry, rank, text }) => ({ id: entry.key, x: entry.p[0], y: entry.p[1], rank, width: text.width, height: text.height })));
   const placedByKey = new Map(layout.placed.map((placed) => [placed.id, placed]));

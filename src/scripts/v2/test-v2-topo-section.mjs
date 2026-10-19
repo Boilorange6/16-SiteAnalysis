@@ -9,6 +9,7 @@ const { toLngLat, toUtmk } = await import("../../lib/v2/crs.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { TopoDemReader } = await import("../../lib/v2/topo/dem.ts");
 const { terrainSections } = await import("../../lib/v2/engine/tiles/terrain-section.ts");
+const { terrainSectionPosition } = await import("../../lib/v2/ui/terrain-section.ts");
 
 const RADIUS_M = 800;
 
@@ -179,6 +180,12 @@ try {
   const fenceCrossing = sections.B.crossings.find((crossing) => crossing.kind === "fence");
   assert.ok(fenceCrossing);
   assert.equal(fenceCrossing.heightM, null, "missing height stays unknown");
+
+  const formatterA = { axis: "EW", from: [0, 0], to: [2_400, 0], samples: [], siteSpan: [1_000, 1_400], crossings: [] };
+  const formatterB = { axis: "NS", from: [0, 0], to: [0, 2_400], samples: [], siteSpan: [1_000, 1_400], crossings: [] };
+  const farWest = terrainSectionPosition(formatterA, 64);
+  assert.equal(farWest, "서쪽 1.1 km", "A 단면은 좌표상 서쪽 끝을 판정하고 1,136m를 1.1 km로 표시");
+  assert.equal(terrainSectionPosition(formatterB, 1_800), "북쪽 600m", "B 단면은 좌표상 북쪽 끝을 판정");
 
   const triangle = {
     type: "Polygon",

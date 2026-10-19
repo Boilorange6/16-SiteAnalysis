@@ -847,7 +847,7 @@
   width: 100%;
   min-width: 0;
   height: 100%;
-  overflow: visible;
+  overflow: hidden;
   border: 1px solid #e0e3e8;
   border-radius: calc(var(--slide-unit) * 0.08);
   background: #fbfcfd;
@@ -856,7 +856,7 @@
 .terrainPreviewGraph text {
   fill: #5b6472;
   font-family: inherit;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .terrainPreviewTable {

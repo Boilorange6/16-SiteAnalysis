@@ -5,7 +5,8 @@ import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { metersPerPixel, slideViewport, zoomViewAt, type MapView } from "@/lib/v2/ui/map-projection";
 import { SLIDE, slideLegend, slidePanelRects, slideSiteX, type Rect } from "@/lib/v2/ui/overlay-layout";
 import { coverLayout, fitBlock, fitFooterText, sourceLayout, titlePlateRect } from "@/lib/v2/report/pptx-kit";
-import { legendItemsOf, legendLabelOf } from "@/lib/v2/ui/map-layers";
+import { layerStyle, legendItemsOf, legendLabelOf } from "@/lib/v2/ui/map-layers";
+import { terrainCrossingLayer, terrainElevationLabel, terrainSectionAxisLabel, terrainSectionPosition, terrainSectionTotal, sortTerrainCrossings, TERRAIN_CROSSING_LABELS, TERRAIN_SECTION_LABELS } from "@/lib/v2/ui/terrain-section";
 import MapFigure from "./map-figure";
 import { useFocusTrap } from "./use-focus-trap";
 import { extraPageKey, type BoardAction, type BoardState, type PageKey, type PageStyle } from "@/lib/v2/ui/board-state";
@@ -638,8 +639,6 @@ function ChartPlaceholder({ view, unit }: { view: TileView; unit: number }) {
   );
 }
 
-const TERRAIN_SECTION_LABELS = { A: "단면 A–A′ (동서)", B: "단면 B–B′ (남북)" } as const;
-const TERRAIN_CROSSING_LABELS = { retaining: "옹벽", cut_fill: "절성토", fence: "울타리" } as const;
 const TERRAIN_CAVEAT = "등고선·표고점 보간값(추정)입니다. 현장 실측을 대신하지 않습니다.";
 
 function TerrainSectionPreview({ slide, unit, panels }: { slide: Extract<PlannedSlide, { kind: "tile" }>; unit: number; panels: { summary: Rect | null } }) {
@@ -647,12 +646,12 @@ function TerrainSectionPreview({ slide, unit, panels }: { slide: Extract<Planned
   if (!sections || !slide.terrainSection) return null;
   const section = sections[slide.terrainSection];
   const valid = section.samples.filter((sample): sample is { d: number; z: number } => sample.z !== null && Number.isFinite(sample.z));
-  const total = Math.max(1, Math.hypot(section.to[0] - section.from[0], section.to[1] - section.from[1]));
+  const total = terrainSectionTotal(section);
   const minZ = valid.length > 0 ? Math.min(...valid.map((sample) => sample.z)) : 0;
   const maxZ = valid.length > 0 ? Math.max(...valid.map((sample) => sample.z)) : 1;
   const zRange = Math.max(1, maxZ - minZ);
-  const xFor = (d: number) => 22 + (d / total) * 476;
-  const yFor = (z: number) => 112 - ((z - minZ) / zRange) * 78;
+  const xFor = (d: number) => 52 + (d / total) * 656;
+  const yFor = (z: number) => 212 - ((z - minZ) / zRange) * 184;
   const paths: string[] = [];
   let path: string[] = [];
   for (const sample of section.samples) {
@@ -679,31 +678,36 @@ function TerrainSectionPreview({ slide, unit, panels }: { slide: Extract<Planned
   }
   const slope = slopeSamples.length > 0 ? slopeSamples.reduce((sum, value) => sum + value, 0) / slopeSamples.length : null;
   const format = (value: number | null, suffix: string) => value === null ? "미확인" : `${value.toFixed(1)}${suffix}`;
-  const position = (d: number) => {
-    const offset = d - total / 2;
-    return `${Math.abs(offset).toFixed(0)}m ${offset < 0 ? "전" : "후"}`;
-  };
+  const crossings = sortTerrainCrossings(section);
   const previewW = Math.max(4.2, Math.min(6.5, (panels.summary?.x ?? SLIDE.w) - 0.55));
   const preview = { left: 0.32, top: 3.05, width: previewW, height: 2.22 };
   return (
     <section className={styles.terrainPreview} style={{ left: preview.left * unit, top: preview.top * unit, width: preview.width * unit, height: preview.height * unit }} aria-label={`${TERRAIN_SECTION_LABELS[slide.terrainSection]} 보고서 미리보기`}>
       <div className={styles.terrainPreviewHeader}>
         <strong style={fontStyle(9.5, unit)}>{TERRAIN_SECTION_LABELS[slide.terrainSection]} · 지형 단면</strong>
-        <span style={fontStyle(7.5, unit)}>대지 음영 · 단차 시설 점선</span>
+        <span style={fontStyle(7.5, unit)}>대지 음영 · 단차 시설 표식</span>
       </div>
-      <svg className={styles.terrainPreviewGraph} viewBox="0 0 520 132" role="img" aria-label={`${TERRAIN_SECTION_LABELS[slide.terrainSection]} 표고 프로파일`}>
+      <svg className={styles.terrainPreviewGraph} viewBox="0 0 760 240" preserveAspectRatio="none" role="img" aria-label={`${TERRAIN_SECTION_LABELS[slide.terrainSection]} 표고 프로파일`}>
         <title>{`${TERRAIN_SECTION_LABELS[slide.terrainSection]} 표고 프로파일`}</title>
-        <rect x={xFor(siteStart)} y="16" width={Math.max(0, xFor(siteEnd) - xFor(siteStart))} height="96" fill="#2350b8" fillOpacity=".09" />
-        <line x1="22" x2="498" y1="112" y2="112" stroke="#b9c0ca" strokeWidth="1" />
-        <text x="22" y="128">0m</text><text x="498" y="128" textAnchor="end">{total.toFixed(0)}m</text>
-        <text x="18" y="13" textAnchor="end">{maxZ.toFixed(1)}m</text>
-        <text x="18" y="113" textAnchor="end">{minZ.toFixed(1)}m</text>
-        {section.crossings.map((crossing, index) => <line key={`${crossing.d}-${crossing.kind}-${index}`} x1={xFor(crossing.d)} x2={xFor(crossing.d)} y1="16" y2="112" stroke="#6b3d14" strokeWidth="1.2" strokeDasharray="3 2" />)}
+        <rect x={xFor(siteStart)} y="28" width={Math.max(0, xFor(siteEnd) - xFor(siteStart))} height="184" fill="#2350b8" fillOpacity=".09" />
+        <line x1="52" x2="708" y1="212" y2="212" stroke="#b9c0ca" strokeWidth="1" />
+        <text x="380" y="232" textAnchor="middle" fontSize="11">{terrainSectionAxisLabel(section)}</text>
+        <text x="44" y="20" textAnchor="end" fontSize="11">{terrainElevationLabel(maxZ)}</text>
+        <text x="44" y="216" textAnchor="end" fontSize="11">{terrainElevationLabel(minZ)}</text>
+        {crossings.map((crossing, index) => {
+          const style = layerStyle(terrainCrossingLayer(crossing.kind));
+          const x = xFor(crossing.d);
+          const tickYs = [46, 120, 194];
+          return <g key={`${crossing.d}-${crossing.kind}-${index}`}>
+            <line x1={x} x2={x} y1="28" y2="212" stroke={style.color} strokeWidth={(style.strokeWidth ?? 1.5) * 1.15} strokeDasharray={style.dash} strokeLinecap={style.lineCap ?? "butt"} />
+            {style.tickMarks && tickYs.map((y) => <line key={y} x1={x - 5} x2={x + 5} y1={y} y2={y} stroke={style.color} strokeWidth={Math.max(1.5, (style.strokeWidth ?? 1.5) * 0.75)} strokeLinecap="round" />)}
+          </g>;
+        })}
         {paths.map((entry, index) => <path key={index} d={entry} fill="none" stroke="#8a5a2e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />)}
       </svg>
       <table className={styles.terrainPreviewTable} aria-label="단면 시설 표">
         <caption className={styles.srOnly}>단면 시설 표</caption>
-        <tbody>{section.crossings.slice(0, 2).map((crossing, index) => <tr key={`${crossing.d}-${crossing.kind}-${index}`}><td>{TERRAIN_CROSSING_LABELS[crossing.kind]}</td><td>{position(crossing.d)}</td><td>{crossing.heightM === null ? "높이 미확인" : `${crossing.heightM.toFixed(1)}m`}</td></tr>)}</tbody>
+        <tbody>{crossings.slice(0, 2).map((crossing, index) => <tr key={`${crossing.d}-${crossing.kind}-${index}`}><td>{TERRAIN_CROSSING_LABELS[crossing.kind]}</td><td>{terrainSectionPosition(section, crossing.d)}</td><td>{crossing.heightM === null ? "높이 미확인" : `${crossing.heightM.toFixed(1)}m`}</td></tr>)}</tbody>
       </table>
       <div className={styles.terrainPreviewSummary} style={fontStyle(7.4, unit)}>{`대지 고저차 ${format(range, "m")} · 대지 평균 경사 ${format(slope, "°")} · 반경 내 단차 시설 수 ${facilityCount}개`}</div>
       <div className={styles.terrainPreviewCaveat} style={fontStyle(6.5, unit)}>{TERRAIN_CAVEAT}</div>
