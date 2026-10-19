@@ -1,9 +1,10 @@
 import type PptxGenJS from "pptxgenjs";
 import { PPT_FONT_MAIN as FONT } from "../../ppt-design-config";
 import type { PageStyle } from "../ui/board-state";
-import { OV, SLIDE, slideLayout, slidePanelRects, slidePanelScale, stripText, type Rect } from "../ui/overlay-layout";
+import { OV, SLIDE, slideLayout, slidePanelRects, slidePanelScale, slideSize, stripText, layoutRects, type Rect, type SlideFormat } from "../ui/overlay-layout";
 
-export { SLIDE };
+export { SLIDE, layoutRects, slideSize };
+export type { SlideFormat };
 
 export type Slide = ReturnType<PptxGenJS["addSlide"]>;
 export type Border = PptxGenJS.BorderProps;
@@ -70,28 +71,31 @@ export type CoverLayout = {
 };
 
 /** 표지의 판·텍스트 자리를 화면 미리보기와 PPT가 함께 사용한다. */
-export function coverLayout(input: { address: string; metricCount: number; lineCount: number; incomplete: boolean }): CoverLayout {
+export function coverLayout(input: { address: string; metricCount: number; lineCount: number; incomplete: boolean }, format: SlideFormat = "wide"): CoverLayout {
+  const size = slideSize(format);
+  const geometry = slideLayout(format);
+  const edge = format === "wide" ? E : geometry.title.x;
   const leftW = 5.7;
-  const leftInner = { x: E + 0.3, y: E + 0.22, w: leftW - 0.6, h: 0.26 };
+  const leftInner = { x: edge + 0.3, y: edge + 0.22, w: leftW - 0.6, h: 0.26 };
   const addressPt = fitPt(input.address, 28, leftInner.w, 2, 16);
   const addressH = linesOf(input.address, addressPt, leftInner.w) * (addressPt / 72) * 1.35 + 0.05;
   const metricRows = Math.max(1, Math.ceil(input.metricCount / 2));
   const metricsH = 0.62 * metricRows;
-  const metricsY = E + 0.22 + 0.3 + addressH + 0.15;
+  const metricsY = edge + 0.22 + 0.3 + addressH + 0.15;
   const asOfY = metricsY + metricsH + 0.1;
   const chipH = input.incomplete ? 0.42 : 0;
   const leftH = 0.25 + 0.3 + addressH + 0.15 + metricsH + 0.3 + chipH + 0.2;
-  const left = { x: E, y: E, w: leftW, h: leftH };
+  const left = { x: edge, y: edge, w: leftW, h: leftH };
   const rightW = 5.6;
   const rowH = Math.min(0.4, 6 / Math.max(1, input.lineCount));
-  const rightH = Math.min(0.62 + input.lineCount * rowH + 0.12, L.info.h);
-  const right = { x: SLIDE.w - E - rightW, y: E, w: rightW, h: rightH };
-  const rightHeading = { x: right.x + 0.3, y: E + 0.18, w: rightW - 0.6, h: 0.28 };
+  const rightH = Math.min(0.62 + input.lineCount * rowH + 0.12, geometry.info.h);
+  const right = { x: size.w - edge - rightW, y: edge, w: rightW, h: rightH };
+  const rightHeading = { x: right.x + 0.3, y: edge + 0.18, w: rightW - 0.6, h: 0.28 };
   return {
     left,
     right,
     leftInner,
-    address: { x: leftInner.x, y: E + 0.52, w: leftInner.w, h: addressH },
+    address: { x: leftInner.x, y: edge + 0.52, w: leftInner.w, h: addressH },
     metricCellW: leftInner.w / 2 - 0.1,
     metricsY,
     metricsH,
@@ -99,14 +103,14 @@ export function coverLayout(input: { address: string; metricCount: number; lineC
     incompleteY: asOfY + 0.36,
     rightHeading,
     rowH,
-    row: (index) => ({ x: right.x + 0.3, y: E + 0.55 + index * rowH, w: right.w - 0.85, h: rowH }),
+    row: (index) => ({ x: right.x + 0.3, y: edge + 0.55 + index * rowH, w: right.w - 0.85, h: rowH }),
     addressPt,
   };
 }
 
 /** 보고서 제목 판의 실제 폭을 계산한다. render-pptx와 미리보기의 제목 조판 계약. */
-export function titlePlateRect(code: string, title: string, kind: string, maxW: number, style: PageStyle = {}, hasSummary = true): Rect {
-  const base = slidePanelRects(style, hasSummary).title;
+export function titlePlateRect(code: string, title: string, kind: string, maxW: number, style: PageStyle = {}, hasSummary = true, format: SlideFormat = "wide"): Rect {
+  const base = slidePanelRects(style, hasSummary, undefined, format).title;
   // panels.title이 있으면 사용자가 정한 도형 자리를 그대로 보존한다.
   // 좁은 사용자 박스를 텍스트 길이에 맞춰 다시 키우면 Preview/PPT 좌표가 달라진다.
   if (style.panels?.title) return base;
@@ -118,11 +122,14 @@ export function titlePlateRect(code: string, title: string, kind: string, maxW: 
 export type SourceLayout = { title: Rect; table: Rect; dense: boolean; tableContent: Rect; footer: Rect };
 
 /** 출처 장의 표·기준일 자리를 미리보기와 PPT가 함께 사용한다. */
-export function sourceLayout(rowCount: number, style: PageStyle = {}): SourceLayout {
+export function sourceLayout(rowCount: number, style: PageStyle = {}, format: SlideFormat = "wide"): SourceLayout {
+  const size = slideSize(format);
+  const geometry = slideLayout(format);
+  const edge = format === "wide" ? E : geometry.title.x;
   const dense = rowCount >= 12;
-  const table = { x: E, y: 1.2, w: SLIDE.w - 2 * E, h: Math.min(L.strip.y - 1.2 - 0.46, 0.5 + (dense ? 0.34 : 0.4) * (rowCount + 1)) };
+  const table = { x: edge, y: 1.2, w: size.w - 2 * edge, h: Math.min(geometry.strip.y - 1.2 - 0.46, 0.5 + (dense ? 0.34 : 0.4) * (rowCount + 1)) };
   return {
-    title: titlePlateRect("", "자료 출처와 기준일", "", SLIDE.w - 2 * E, style, false),
+    title: titlePlateRect("", "자료 출처와 기준일", "", size.w - 2 * edge, style, false, format),
     table,
     dense,
     tableContent: { x: table.x + 0.3, y: table.y + 0.2, w: table.w - 0.6, h: Math.max(0, table.h - 0.3) },

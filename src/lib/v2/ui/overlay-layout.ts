@@ -5,7 +5,7 @@
  *  왼쪽 위 = 제목 칩 · 오른쪽 위 = 보고서 칩/북쪽 · 왼쪽 아래 = 핵심 값 카드(+범례)
  *  오른쪽 아래 = 축척 · 맨 아래 = 출처 띠
  */
-import { legendItemsForModel, type MapLegendLayerItem, type MapModel } from "./map-layers";
+import { isBuildingLayer, legendItemsForModel, type MapLegendLayerItem, type MapModel } from "./map-layers";
 import type { PagePanelKey, PageStyle } from "./board-state";
 
 export type Box = { x0: number; y0: number; x1: number; y1: number };
@@ -76,15 +76,36 @@ export type TerrainSectionLayout = {
   calloutLeftBottom?: number;
 };
 
-/** 슬라이드(16:9, inch) 오버레이 자리. */
+export type SlideFormat = "wide" | "a3" | "a4";
+export type ReportLayoutName = "map-full" | "map-summary" | "numbers-first" | "side-by-side";
+
+/** 슬라이드 판형의 실제 PowerPoint inch 크기. wide 수치는 기존 골든과 같다. */
 export const SLIDE = { w: 13.333, h: 7.5, edge: 0.3, stripH: 0.36, infoRatio: 0.32 } as const;
 
-export function slideLayout(): { title: Rect; info: Rect; legendX: number; legendBottom: number; strip: Rect; page: Rect } {
-  const { w, h, edge, stripH } = SLIDE;
-  const infoW = Math.round(w * SLIDE.infoRatio * 100) / 100;
+const FORMAT_SIZES: Record<SlideFormat, { w: number; h: number }> = {
+  wide: { w: SLIDE.w, h: SLIDE.h },
+  a3: { w: 15120000 / 914400, h: 10692000 / 914400 },
+  a4: { w: 10692000 / 914400, h: 7560000 / 914400 },
+};
+
+export function slideSize(format: SlideFormat = "wide"): { w: number; h: number } {
+  return { ...FORMAT_SIZES[format] };
+}
+
+export type SlideGeometry = { w: number; h: number; edge: number; stripH: number; infoRatio: number };
+
+export function slideGeometry(format: SlideFormat = "wide"): SlideGeometry {
+  const size = slideSize(format);
+  return { ...size, edge: SLIDE.edge, stripH: SLIDE.stripH, infoRatio: SLIDE.infoRatio };
+}
+
+export function slideLayout(format: SlideFormat = "wide"): { title: Rect; info: Rect; legendX: number; legendBottom: number; strip: Rect; page: Rect } {
+  const { w, h, edge, stripH, infoRatio } = slideGeometry(format);
+  const infoW = Math.round(w * infoRatio * 100) / 100;
+  const titleW = format === "wide" ? 4.6 : Math.min(5.8, w * 0.35);
   const stripY = h - stripH;
   return {
-    title: { x: edge, y: edge, w: 4.6, h: 0.66 },
+    title: { x: edge, y: edge, w: titleW, h: 0.66 },
     info: { x: w - edge - infoW, y: edge, w: infoW, h: stripY - edge * 1.6 - edge },
     legendX: edge,
     legendBottom: stripY - edge * 0.6,
@@ -98,11 +119,12 @@ export const slidePanelScale = panelScale;
 
 type PanelStyle = Pick<PageStyle, "titleScale" | "summaryScale" | "legendScale" | "panels" | "summary">;
 
-function slideSafeRect(rect: Rect): Rect {
-  const left = SLIDE.edge;
-  const top = SLIDE.edge;
-  const right = SLIDE.w - SLIDE.edge;
-  const bottom = slideLayout().strip.y - SLIDE.edge * 0.6;
+function slideSafeRect(rect: Rect, format: SlideFormat = "wide"): Rect {
+  const g = slideGeometry(format);
+  const left = g.edge;
+  const top = g.edge;
+  const right = g.w - g.edge;
+  const bottom = slideLayout(format).strip.y - g.edge * 0.6;
   const w = Math.min(Math.max(0, rect.w), Math.max(0, right - left));
   const h = Math.min(Math.max(0, rect.h), Math.max(0, bottom - top));
   return {
@@ -113,16 +135,17 @@ function slideSafeRect(rect: Rect): Rect {
   };
 }
 
-function customPanelRect(style: PanelStyle | undefined, key: PagePanelKey): Rect | null {
+function customPanelRect(style: PanelStyle | undefined, key: PagePanelKey, format: SlideFormat = "wide"): Rect | null {
   const panel = style?.panels?.[key];
   if (!panel) return null;
   const unit = (value: number): number => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+  const g = slideGeometry(format);
   return slideSafeRect({
-    x: unit(panel.x) * SLIDE.w,
-    y: unit(panel.y) * SLIDE.h,
-    w: unit(panel.w) * SLIDE.w,
-    h: unit(panel.h) * SLIDE.h,
-  });
+    x: unit(panel.x) * g.w,
+    y: unit(panel.y) * g.h,
+    w: unit(panel.w) * g.w,
+    h: unit(panel.h) * g.h,
+  }, format);
 }
 
 function scaleAnchoredRect(
@@ -151,39 +174,41 @@ export function slidePanelRects(
   style: PanelStyle | undefined,
   hasSummary: boolean,
   legendBase?: Rect | null,
+  format: SlideFormat = "wide",
 ): SlidePanelRects {
-  const l = slideLayout();
-  const baseLegend = legendBase ?? slideLegendRect(4, 0, 8);
+  const g = slideGeometry(format);
+  const l = slideLayout(format);
+  const baseLegend = legendBase ?? slideLegendRect(4, 0, 8, format);
   const titleScale = panelScale(style?.titleScale);
   const summaryScale = panelScale(style?.summaryScale);
   const legendScale = panelScale(style?.legendScale);
-  const customSummary = hasSummary ? customPanelRect(style, "summary") : null;
+  const customSummary = hasSummary ? customPanelRect(style, "summary", format) : null;
   const panelGap = 0.18;
-  const maxSideBySideW = Math.max(0, SLIDE.w - 2 * SLIDE.edge - panelGap);
-  const requestedTitleW = Math.min(l.title.w * titleScale, SLIDE.w - 2 * SLIDE.edge);
-  const requestedSummaryW = Math.min(l.info.w * summaryScale, SLIDE.w - 2 * SLIDE.edge);
+  const maxSideBySideW = Math.max(0, g.w - 2 * g.edge - panelGap);
+  const requestedTitleW = Math.min(l.title.w * titleScale, g.w - 2 * g.edge);
+  const requestedSummaryW = Math.min(l.info.w * summaryScale, g.w - 2 * g.edge);
   const sideBySideRatio = hasSummary && requestedTitleW + requestedSummaryW > maxSideBySideW
     ? maxSideBySideW / (requestedTitleW + requestedSummaryW)
     : 1;
   const titleW = requestedTitleW * sideBySideRatio;
   const summaryW = requestedSummaryW * sideBySideRatio;
-  const safeBottom = l.strip.y - SLIDE.edge * 0.6;
-  const safeHeight = Math.max(0, safeBottom - SLIDE.edge);
-  const title = slideSafeRect(scaleAnchoredRect(l.title, titleScale, "top-left", titleW, safeHeight));
+  const safeBottom = l.strip.y - g.edge * 0.6;
+  const safeHeight = Math.max(0, safeBottom - g.edge);
+  const title = slideSafeRect(scaleAnchoredRect(l.title, titleScale, "top-left", titleW, safeHeight), format);
   const summary = hasSummary
-    ? slideSafeRect(scaleAnchoredRect(l.info, summaryScale, "top-right", summaryW, safeHeight))
+    ? slideSafeRect(scaleAnchoredRect(l.info, summaryScale, "top-right", summaryW, safeHeight), format)
     : null;
   const requestedLegend = baseLegend ? scaleAnchoredRect(baseLegend, legendScale, "bottom-left") : null;
   const legend = requestedLegend
     ? slideSafeRect({
         ...requestedLegend,
-        w: Math.min(requestedLegend.w, Math.max(0, (customSummary?.x ?? summary?.x ?? SLIDE.w - SLIDE.edge) - SLIDE.edge - panelGap)),
-      })
+        w: Math.min(requestedLegend.w, Math.max(0, (customSummary?.x ?? summary?.x ?? g.w - g.edge) - g.edge - panelGap)),
+      }, format)
     : null;
   const custom = {
-    title: customPanelRect(style, "title"),
+    title: customPanelRect(style, "title", format),
     summary: customSummary,
-    legend: customPanelRect(style, "legend"),
+    legend: customPanelRect(style, "legend", format),
   };
   return {
     title: custom.title ?? title,
@@ -196,8 +221,10 @@ export function slidePanelRects(
 export function terrainSectionLayout(
   panels: Pick<SlidePanelRects, "summary" | "legend">,
   layout = slideLayout(),
+  format: SlideFormat = "wide",
 ): TerrainSectionLayout | null {
-  const pageBottom = layout.strip.y - SLIDE.edge * 0.6;
+  const g = slideGeometry(format);
+  const pageBottom = layout.strip.y - g.edge * 0.6;
   const sectionH = TERRAIN_SECTION_HEIGHT;
   const summary = panels.summary;
   if (summary) {
@@ -215,25 +242,25 @@ export function terrainSectionLayout(
   }
 
   const safeBottom = Math.min(pageBottom, panels.legend ? panels.legend.y - TERRAIN_SECTION_GAP : pageBottom);
-  const bandW = Math.max(0.2, Math.min(6.7, (summary?.x ?? SLIDE.w) - SLIDE.edge - TERRAIN_SECTION_GAP));
-  const rect = { x: SLIDE.edge, y: safeBottom - sectionH, w: bandW, h: sectionH };
+  const bandW = Math.max(0.2, Math.min(6.7, (summary?.x ?? g.w) - g.edge - TERRAIN_SECTION_GAP));
+  const rect = { x: g.edge, y: safeBottom - sectionH, w: bandW, h: sectionH };
   const mapSiteY = 0.32;
-  const mapCenterY = SLIDE.h * mapSiteY;
+  const mapCenterY = g.h * mapSiteY;
   const radius = Math.max(0, rect.y - TERRAIN_SECTION_GAP - mapCenterY);
   return {
     rect,
     summary,
     mode: "bottom-band",
-    mapFill: Math.max(0.28, Math.min(0.52, (2 * radius) / SLIDE.h)),
+    mapFill: Math.max(0.28, Math.min(0.52, (2 * radius) / g.h)),
     mapSiteY,
     calloutLeftBottom: rect.y - TERRAIN_SECTION_GAP,
   };
 }
 
 /** 왼쪽 아래 범례 판: 항목 n개 + 문구 m줄. 출처 띠 바로 위에 붙는다 */
-export function slideLegendRect(items: number, notes: number, labelChars: number): Rect | null {
+export function slideLegendRect(items: number, notes: number, labelChars: number, format: SlideFormat = "wide"): Rect | null {
   if (items + notes === 0) return null;
-  const l = slideLayout();
+  const l = slideLayout(format);
   const h = 0.16 + items * 0.25 + notes * 0.22;
   const w = Math.min(4.4, Math.max(2.0, 0.75 + labelChars * 0.16));
   return { x: l.legendX, y: l.legendBottom - h, w, h };
@@ -283,13 +310,15 @@ export function slideCalloutAvoidance(
   panels: SlidePanelRects,
   entries: readonly SlideCalloutLegendEntry[] = [],
   layout = slideLayout(),
+  format: SlideFormat = "wide",
 ): SlideCalloutAvoidance {
-  const summaryX = panels.summary?.x ?? SLIDE.w;
+  const g = slideGeometry(format);
+  const summaryX = panels.summary?.x ?? g.w;
   const calloutLegend = entries.length > 0
-    ? slideCalloutLegendLayout(entries, SLIDE.edge, layout.legendBottom, Math.max(0, summaryX - 2 * SLIDE.edge))?.rect ?? null
+    ? slideCalloutLegendLayout(entries, g.edge, layout.legendBottom, Math.max(0, summaryX - 2 * g.edge))?.rect ?? null
     : null;
-  const gap = SLIDE.edge * 0.5;
-  const lowerOverlayTop = Math.min(panels.legend?.y ?? SLIDE.h, calloutLegend?.y ?? SLIDE.h);
+  const gap = g.edge * 0.5;
+  const lowerOverlayTop = Math.min(panels.legend?.y ?? g.h, calloutLegend?.y ?? g.h);
   return {
     calloutLegend,
     calloutTop: panels.title.y + panels.title.h + gap,
@@ -298,6 +327,19 @@ export function slideCalloutAvoidance(
 }
 
 type SlideLegendItem = Omit<MapLegendLayerItem, "highlight"> & { site?: boolean };
+export type SlideLegendOptions = { order?: readonly string[]; hidden?: readonly string[]; visibleOnly?: boolean; placement?: "below" | "right" | "hidden" };
+
+function legendMatches(item: Pick<MapLegendLayerItem, "layer" | "label">, value: string): boolean {
+  const needle = value.trim().toLowerCase();
+  if (!needle) return false;
+  const layer = item.layer.toLowerCase();
+  const label = item.label.toLowerCase();
+  return layer === needle
+    || label === needle
+    || label.startsWith(`${needle}(`)
+    || label.startsWith(`${needle} ·`)
+    || (needle === "건물" && isBuildingLayer(item.layer));
+}
 
 /** 지도 모델 → 범례 항목·문구·자리 (슬라이드 그리기와 지도 이미지의 라벨 회피가 같은 값을 쓴다) */
 export function slideLegend(
@@ -305,14 +347,28 @@ export function slideLegend(
   includeSite = true,
   style?: PanelStyle,
   hasSummary = true,
+  format: SlideFormat = "wide",
+  options: SlideLegendOptions = {},
 ) {
-  const items: SlideLegendItem[] = [
+  let items: SlideLegendItem[] = [
     ...legendItemsForModel(model).filter((item) => item.layer !== "parcel_site" && item.layer !== "pnu"),
     ...(includeSite ? [{ layer: "__site_marker", label: "대지", color: "#111", site: true as const }] : []),
   ];
+  if (options.hidden?.length) items = items.filter((item) => item.site || !options.hidden!.some((hidden) => legendMatches(item, hidden)));
+  if (options.order?.length) {
+    const order = options.order;
+    items = items
+      .map((item, index) => ({ item, index, rank: order.findIndex((value) => legendMatches(item, value)) }))
+      .sort((a, b) => (a.rank < 0 ? Number.MAX_SAFE_INTEGER : a.rank) - (b.rank < 0 ? Number.MAX_SAFE_INTEGER : b.rank) || a.index - b.index)
+      .map(({ item }) => item);
+  }
   const notes = [...model.notes, ...(model.total > model.features.length ? [`표시 ${model.features.length.toLocaleString("en-US")} / 전체 ${model.total.toLocaleString("en-US")}`] : [])];
-  const baseRect = slideLegendRect(items.length, notes.length, Math.max(0, ...items.map((i) => i.label.length), ...notes.map((n) => n.length * 0.75)));
-  const rect = baseRect ? slidePanelRects(style, hasSummary, baseRect).legend : null;
+  const baseRect = slideLegendRect(items.length, notes.length, Math.max(0, ...items.map((i) => i.label.length), ...notes.map((n) => n.length * 0.75)), format);
+  let rect = options.placement === "hidden" ? null : baseRect ? slidePanelRects(style, hasSummary, baseRect, format).legend : null;
+  if (rect && options.placement === "right") {
+    const g = slideGeometry(format);
+    rect = { ...rect, x: g.w - g.edge - rect.w, y: g.edge + 0.9 };
+  }
   return { items, notes, rect };
 }
 
@@ -329,12 +385,14 @@ export function slideReserved(
     legendBase?: Rect | null;
     calloutLegend?: Rect | null;
     terrainSection?: Rect | null;
+    format?: SlideFormat;
   } = {},
 ): Box[] {
-  const l = slideLayout();
+  const format = opts.format ?? "wide";
+  const l = slideLayout(format);
   const hasSummary = opts.hasSummary ?? (opts.info !== false && opts.style?.summary !== false);
   const derived = opts.style
-    ? slidePanelRects(opts.style, hasSummary, opts.legendBase)
+    ? slidePanelRects(opts.style, hasSummary, opts.legendBase, format)
     : null;
   const b = (r: Rect): Box => ({ x0: r.x * pxPerInch, y0: r.y * pxPerInch, x1: (r.x + r.w) * pxPerInch, y1: (r.y + r.h) * pxPerInch });
   const title = opts.titleRect ?? derived?.title ?? l.title;
@@ -354,10 +412,46 @@ export function slideReserved(
 export function slideSiteX(
   style?: PanelStyle,
   hasSummary = true,
+  format: SlideFormat = "wide",
 ): number {
-  const l = slideLayout();
-  const summary = slidePanelRects(style, hasSummary).summary;
-  return summary ? (summary.x - SLIDE.edge) / 2 / SLIDE.w : 0.5;
+  const g = slideGeometry(format);
+  const summary = slidePanelRects(style, hasSummary, undefined, format).summary;
+  return summary ? (summary.x - g.edge) / 2 / g.w : 0.5;
+}
+
+export type LayoutRects = { map: Rect | null; title: Rect; summary: Rect | null; legend: Rect | null; second?: Rect };
+
+function normalized(rect: Rect | null, g: SlideGeometry): Rect | null {
+  return rect ? { x: rect.x / g.w, y: rect.y / g.h, w: rect.w / g.w, h: rect.h / g.h } : null;
+}
+
+/** 보고서 편집기와 PPT가 공유하는 정규화된 페이지 레이아웃. */
+export function layoutRects(layout: ReportLayoutName = "map-summary", format: SlideFormat = "wide"): LayoutRects {
+  const g = slideGeometry(format);
+  if (layout === "numbers-first") {
+    return {
+      map: { x: 0.55, y: 0.14, w: 0.42, h: 0.72 },
+      title: { x: 0.03, y: 0.03, w: 0.48, h: 0.08 },
+      summary: { x: 0.03, y: 0.14, w: 0.48, h: 0.5 },
+      legend: { x: 0.03, y: 0.67, w: 0.48, h: 0.19 },
+    };
+  }
+  if (layout === "side-by-side") {
+    return {
+      map: { x: 0.03, y: 0.14, w: 0.45, h: 0.72 },
+      second: { x: 0.52, y: 0.14, w: 0.45, h: 0.72 },
+      title: { x: 0.03, y: 0.03, w: 0.94, h: 0.08 },
+      summary: null,
+      legend: { x: 0.03, y: 0.87, w: 0.94, h: 0.08 },
+    };
+  }
+  const panels = slidePanelRects({}, layout === "map-summary", undefined, format);
+  return {
+    map: { x: 0, y: 0, w: 1, h: 1 },
+    title: normalized(panels.title, g)!,
+    summary: normalized(panels.summary, g),
+    legend: normalized(panels.legend, g),
+  };
 }
 
 /** 펼침에서 오른쪽 정보 판(360px)을 뺀 영역의 가운데 (모바일은 0.5) */

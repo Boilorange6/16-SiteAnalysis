@@ -7,7 +7,7 @@ import PptxGenJS from "pptxgenjs";
 import { groupTaggedShapes } from "../../pptx-shape-group";
 import { fmtInt, pageRange } from "../ui/callout-layout";
 import { legendItemsOf, STRIP_COLORS } from "../ui/map-layers";
-import { SLIDE, slideLegend, slidePanelRects, slidePanelScale, terrainSectionLayout, type Rect } from "../ui/overlay-layout";
+import { SLIDE, layoutRects, slideGeometry, slideLayout, slideLegend, slidePanelRects, slidePanelScale, slideSize, terrainSectionLayout, type Rect, type SlideFormat, type SlideLegendOptions } from "../ui/overlay-layout";
 import type { Badge, TileView } from "../ui/tile-view";
 import type { RoseModel } from "../ui/wind-rose";
 import { sheetCells, type SheetGrid } from "../ui/sheet";
@@ -19,6 +19,7 @@ import { addEditableMap, nativeMapFallbackNote, nativeMapStatus } from "./map-pp
 import { badgeTextColor } from "../ui/map-labels";
 import type { PageStyle } from "../ui/board-state";
 import { drawTerrainSectionPptx } from "./terrain-section-pptx";
+import type { MapFrameState, ReportLayout } from "./report-doc";
 
 /** 지도 이미지(PNG/JPEG data URL) — 키는 report-plan의 mapKeyOf */
 export type MapImages = Record<string, string>;
@@ -49,30 +50,105 @@ function titleTextFit(code: string, title: string, kind: string, box: { w: numbe
   return { titlePt, metaPt };
 }
 
-function background(s: Slide, image: string | undefined, tint?: string) {
-  if (image) s.addImage({ data: image, x: 0, y: 0, w: SLIDE.w, h: SLIDE.h });
+function background(s: Slide, image: string | undefined, tint?: string, format: SlideFormat = "wide") {
+  const size = slideSize(format);
+  const edge = slideGeometry(format).edge;
+  if (image) s.addImage({ data: image, x: 0, y: 0, w: size.w, h: size.h });
   else {
-    s.addShape("rect", { x: 0, y: 0, w: SLIDE.w, h: SLIDE.h, fill: { color: tint ?? "F2F2EF" }, line: { color: tint ?? "F2F2EF", width: 0 } });
-    if (!tint) s.addText("지도 이미지를 만들지 못했습니다", { x: E, y: SLIDE.h / 2 - 0.2, w: 5, h: 0.4, fontFace: FONT, fontSize: 11, color: MUTED, margin: 0 });
+    s.addShape("rect", { x: 0, y: 0, w: size.w, h: size.h, fill: { color: tint ?? "F2F2EF" }, line: { color: tint ?? "F2F2EF", width: 0 } });
+    if (!tint) s.addText("지도 이미지를 만들지 못했습니다", { x: edge, y: size.h / 2 - 0.2, w: 5, h: 0.4, fontFace: FONT, fontSize: 11, color: MUTED, margin: 0 });
   }
 }
 
 /** 맨 아래 출처 띠 + 쪽 번호. 출처·기준일은 모든 장에 있다 */
-function strip(s: Slide, p: PlannedSlide, credit: boolean) {
-  const r = L.strip;
+function strip(s: Slide, p: PlannedSlide, credit: boolean, format: SlideFormat = "wide") {
+  const size = slideSize(format);
+  const g = slideGeometry(format);
+  const r = format === "wide" ? L.strip : slideLayout(format).strip;
   // 출처 띠는 지도 래스터와 네이티브 도형을 모두 가리는 최상단의 불투명 안전영역이다.
   s.addShape("rect", { x: r.x, y: r.y, w: r.w, h: r.h, fill: { color: "FFFFFF", transparency: 0 }, line: { color: "FFFFFF", width: 0, transparency: 100 } });
   s.addShape("line", { x: r.x, y: r.y, w: r.w, h: 0, line: { color: INK, width: 0.5, transparency: 92 } });
-  const room = SLIDE.w - E - 1.7;
+  const room = size.w - g.edge - 1.7;
   const footer = fitFooterText(p.footer, credit, room);
-  s.addText(footer.text, { x: E, y: r.y, w: room, h: r.h, valign: "middle", fontFace: FONT, fontSize: footer.fontSize, color: "454A55", margin: 0, fit: "shrink" });
-  s.addText(`${p.no} / ${p.total}`, { x: SLIDE.w - E - 1.2, y: r.y, w: 1.2, h: r.h, align: "right", valign: "middle", fontFace: FONT, fontSize: 9, color: "454A55", margin: 0 });
+  s.addText(footer.text, { x: g.edge, y: r.y, w: room, h: r.h, valign: "middle", fontFace: FONT, fontSize: footer.fontSize, color: "454A55", margin: 0, fit: "shrink" });
+  s.addText(`${p.no} / ${p.total}`, { x: size.w - g.edge - 1.2, y: r.y, w: 1.2, h: r.h, align: "right", valign: "middle", fontFace: FONT, fontSize: 9, color: "454A55", margin: 0 });
+}
+
+function formatOf(p: PlannedSlide): SlideFormat {
+  return p.format ?? "wide";
+}
+
+function layoutOf(p: PlannedSlide): ReportLayout {
+  return p.page?.layout ?? (p.style?.summary === false ? "map-full" : "map-summary");
+}
+
+function pageStyleFor(p: PlannedSlide, format: SlideFormat): PageStyle {
+  const page = p.page;
+  const pageLayout = p.page?.layout;
+  if (!pageLayout || !page) return p.style ?? {};
+  const rects = layoutRects(pageLayout, format);
+  const panels = {
+    ...(pageLayout === "map-summary" || pageLayout === "map-full" ? {} : {
+      title: rects.title,
+      ...(rects.summary ? { summary: rects.summary } : {}),
+      ...(rects.legend ? { legend: rects.legend } : {}),
+    }),
+    ...(page.panels ?? {}),
+  };
+  return {
+    ...(p.style ?? {}),
+    ...(Object.keys(panels).length > 0 ? { panels } : {}),
+    ...(pageLayout === "side-by-side" ? { summary: false } : pageLayout === "numbers-first" ? { summary: true } : {}),
+  };
+}
+
+function frameOf(p: PlannedSlide): MapFrameState | undefined {
+  return p.page?.kind === "tile" ? p.page.frame : undefined;
+}
+
+function frameLegendOptions(frame: MapFrameState | undefined): SlideLegendOptions {
+  if (!frame) return {};
+  return frame.legend;
+}
+
+function frameForLayout(p: PlannedSlide, format: SlideFormat): { x: number; y: number; w: number; h: number } | undefined {
+  if (p.kind !== "tile") return undefined;
+  const pageLayout = layoutOf(p);
+  if (pageLayout === "map-full" || pageLayout === "map-summary") return undefined;
+  const rect = layoutRects(pageLayout, format).map;
+  if (!rect) return undefined;
+  const size = slideSize(format);
+  return { x: rect.x * size.w, y: rect.y * size.h, w: rect.w * size.w, h: rect.h * size.h };
+}
+
+function pageTextBoxes(s: Slide, p: PlannedSlide, format: SlideFormat): void {
+  if (!p.page?.textBoxes.length) return;
+  const size = slideSize(format);
+  for (const box of p.page.textBoxes) {
+    s.addText(box.text, {
+      x: box.x * size.w,
+      y: box.y * size.h,
+      w: box.w * size.w,
+      h: box.h * size.h,
+      fontFace: FONT,
+      fontSize: box.pt,
+      color: INK,
+      margin: 0,
+      fit: "shrink",
+      objectName: `GRP|textBox-${box.id}|글상자|text`,
+    });
+  }
+}
+
+function pageNotes(s: Slide, p: PlannedSlide, extra: readonly string[] = []): void {
+  const notes = [p.notes?.trim(), ...extra.map((note) => note.trim())].filter((note): note is string => !!note);
+  if (notes.length > 0) s.addNotes(notes.join("\n"));
 }
 
 /** 왼쪽 위 제목 판: 타일 색 점 + 번호 + 타일명 + 종류 */
-function titlePlate(s: Slide, color: string, code: string, title: string, kind: string, maxW: number, style: PageStyle = {}, hasSummary = true) {
+function titlePlate(s: Slide, color: string, code: string, title: string, kind: string, maxW: number, style: PageStyle = {}, hasSummary = true, format: SlideFormat = "wide") {
   const scale = slidePanelScale(style.titleScale);
-  const r = titlePlateRect(code, title, kind, maxW, style, hasSummary);
+  const r = titlePlateRect(code, title, kind, maxW, style, hasSummary, format);
   const textX = r.x + Math.min(0.48, Math.max(0.04, r.w * 0.35));
   const textRight = r.x + r.w - Math.min(0.1, Math.max(0.01, r.w * 0.08));
   const textBox = { w: Math.max(0.01, textRight - textX), h: Math.max(0.01, r.h - Math.min(0.08, r.h * 0.2)) };
@@ -220,11 +296,10 @@ function rowItems(s: Slide, rows: TileView["rows"], box: InfoBox, scale = 1): It
 }
 
 /** 왼쪽 아래 범례 판 (지도 레이어 색) */
-function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = true) {
+function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = true, format: SlideFormat = "wide", style: PageStyle = p.style ?? {}) {
   const model = p.map;
   if (!model) return;
-  const style = p.style ?? {};
-  const { items, notes, rect: r } = slideLegend(model, !p.muted, style, hasSummary);
+  const { items, notes, rect: r } = slideLegend(model, !p.muted, style, hasSummary, format, frameLegendOptions(frameOf(p)));
   if (!r) return;
   const scale = slidePanelScale(style.legendScale);
   const focus = style.legendFocus ? legendItemsOf(model).find((item) => item.key === style.legendFocus)?.label ?? style.legendFocus : null;
@@ -320,10 +395,11 @@ function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = 
 }
 
 function cover(pptx: PptxGenJS, p: PlannedSlide & { kind: "cover" }, images: MapImages) {
+  const format = formatOf(p);
   const s = pptx.addSlide();
-  background(s, images[mapKeyOf(p) ?? COVER_MAP_KEY]);
+  background(s, images[mapKeyOf(p) ?? COVER_MAP_KEY], undefined, format);
   // 왼쪽 큰 제목 판
-  const layout = coverLayout({ address: p.address, metricCount: p.metrics.length, lineCount: p.lines.length, incomplete: !!p.incomplete });
+  const layout = coverLayout({ address: p.address, metricCount: p.metrics.length, lineCount: p.lines.length, incomplete: !!p.incomplete }, format);
   const { left, right, leftInner, address, metricCellW, metricsY, asOf, incompleteY, rightHeading, rowH, addressPt } = layout;
   plate(s, left, 0.16);
   s.addText("사이트 분석 보고서", { x: leftInner.x, y: leftInner.y, w: leftInner.w, h: leftInner.h, fontFace: FONT, fontSize: 11, bold: true, color: MUTED, margin: 0 });
@@ -353,13 +429,18 @@ function cover(pptx: PptxGenJS, p: PlannedSlide & { kind: "cover" }, images: Map
       { x: row.x + 0.22, y: ry, w: row.w, h: row.h, valign: "middle", fontFace: FONT, fontSize: fitPt(text, 11, row.w, 1, 8), margin: 0 },
     );
   });
-  strip(s, p, !!p.map);
+  pageTextBoxes(s, p, format);
+  pageNotes(s, p);
+  strip(s, p, !!p.map, format);
 }
 
 function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapImages) {
   const v = p.view;
+  const format = formatOf(p);
+  const g = slideGeometry(format);
+  const layout = slideLayout(format);
   const s = pptx.addSlide();
-  const style = p.style ?? {};
+  const style = pageStyleFor(p, format);
   const chart = !p.map && !p.mass && !p.rose; // 도판 구성비 면: 연한 타일색 바탕에 차트가 전면
   const summaryScale = slidePanelScale(style.summaryScale);
   const mix = (c: string, a: number) => {
@@ -369,26 +450,29 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   };
   const co = p.callout;
   const hasSummary = style.summary !== false && !(co && co.page > 0);
-  const baseLegend = p.map ? slideLegend(p.map, !p.muted).rect : null;
-  const panels = slidePanelRects(style, hasSummary, baseLegend);
+  const baseLegend = p.map ? slideLegend(p.map, !p.muted, undefined, hasSummary, format, frameLegendOptions(frameOf(p))).rect : null;
+  const panels = slidePanelRects(style, hasSummary, baseLegend, format);
   const terrainShown = v.code === "D17" && !!v.terrainSections && !!p.terrainSection;
-  const terrainLayout = terrainShown ? terrainSectionLayout(panels) : null;
+  const terrainLayout = terrainShown ? terrainSectionLayout(panels, layout, format) : null;
   const summaryRect = terrainLayout?.summary ?? panels.summary;
-  const summaryX = summaryRect?.x ?? SLIDE.w;
-  const contentBox = summaryRect ? innerInfoBox(summaryRect, summaryScale) : { x: E, w: Math.max(0.2, SLIDE.w - 2 * E), h: 0.2 };
+  const summaryX = summaryRect?.x ?? g.w;
+  const contentBox = summaryRect ? innerInfoBox(summaryRect, summaryScale) : { x: g.edge, w: Math.max(0.2, g.w - 2 * g.edge), h: 0.2 };
   const calloutReport = tileReportModuleFor(v.code)?.report;
   const mapStatus = p.map ? nativeMapStatus(p.map) : null;
   const nativeMap = !!p.map && !!mapStatus?.native;
-  background(s, chart ? undefined : images[mapKeyOf(p) ?? v.tileId], chart ? mix(v.color, 0.07) : undefined);
+  background(s, chart ? undefined : images[mapKeyOf(p) ?? v.tileId], chart ? mix(v.color, 0.07) : undefined, format);
+  const fallbackNotes: string[] = [];
   if (nativeMap && p.map) {
-    addEditableMap(s, p, p.map, { style });
-    if (mapStatus?.denseLayers.length || mapStatus?.rasterValues.length) s.addNotes(nativeMapFallbackNote(p.map));
-  } else if (p.map) s.addNotes(nativeMapFallbackNote(p.map));
+    addEditableMap(s, p, p.map, { style, format, frame: frameForLayout(p, format), reportFrame: frameOf(p), layout: layoutOf(p) });
+    if (mapStatus?.denseLayers.length || mapStatus?.rasterValues.length) fallbackNotes.push(nativeMapFallbackNote(p.map));
+  } else if (p.map) fallbackNotes.push(nativeMapFallbackNote(p.map));
   const coTail = co ? (co.page === 0 ? `개요 · 전체 ${fmtInt(co.model.complexes.length)}${co.model.unit}` : pageRange(co.page, co.model.complexes.length, undefined, co.model.kind === "supply")) : null;
-  titlePlate(s, v.color, v.code, v.title, [v.kindLabel, p.faceLabel, coTail].filter((t, i, a) => t && a.indexOf(t) === i).join(" · "), co && co.page > 0 ? SLIDE.w - 2 * E : summaryX - 2 * E, style, hasSummary);
+  titlePlate(s, v.color, v.code, v.title, [v.kindLabel, p.faceLabel, coTail].filter((t, i, a) => t && a.indexOf(t) === i).join(" · "), co && co.page > 0 ? g.w - 2 * g.edge : summaryX - 2 * g.edge, style, hasSummary, format);
   if (co && co.page > 0) {
     calloutReport?.render({ slide: s, planned: p, part: "page" });
-    strip(s, p, true);
+    pageTextBoxes(s, p, format);
+    pageNotes(s, p, fallbackNotes);
+    strip(s, p, true, format);
     return;
   }
 
@@ -408,13 +492,15 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
     const msg = p.body.message;
     const pt = fitBlock([msg], { w: w - 0.6, h: 1.1 }, 20, 7);
     const h = 0.4 + linesOf(msg, pt, w - 0.6) * (pt / 72) * 1.4 + 0.75;
-    const r = { x: (summaryX - w) / 2, y: (SLIDE.h - h) / 2, w, h };
+    const r = { x: (summaryX - w) / 2, y: (g.h - h) / 2, w, h };
     plate(s, r, 0.16);
     s.addText(msg, { x: r.x + 0.3, y: r.y + 0.22, w: w - 0.6, h: h - 0.9, valign: "top", fontFace: FONT, fontSize: pt, bold: true, color: INK, margin: 0 });
     s.addText("이 타일의 수치는 만들지 않았습니다. 조건을 바꾸거나 다시 계산한 뒤 보고서를 만들 수 있습니다.", { x: r.x + 0.3, y: r.y + h - 0.68, w: w - 0.6, h: 0.5, valign: "top", fontFace: FONT, fontSize: 10.5, color: MUTED, margin: 0 });
     notes.forEach((n) => items.push(textItem(s, n, 10, MUTED, false, 6, contentBox, summaryScale)));
     infoPanel(s, items, summaryRect, summaryScale);
-    strip(s, p, true);
+    pageTextBoxes(s, p, format);
+    pageNotes(s, p, fallbackNotes);
+    strip(s, p, true, format);
     return;
   }
 
@@ -436,9 +522,9 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
     // 전면 구성비 차트 (왼쪽 영역)
     const data = v.chart ?? [];
     const max = Math.max(1, ...data.map((c) => c.value));
-    const x0 = E + 0.2;
-    const y0 = L.title.y + L.title.h + 0.4;
-    const y1 = L.strip.y - 0.4;
+    const x0 = g.edge + 0.2;
+    const y0 = layout.title.y + layout.title.h + 0.4;
+    const y1 = layout.strip.y - 0.4;
     const rh = Math.min(0.72, (y1 - y0) / Math.max(1, data.length));
     const labW = 1.9;
     const trackW = summaryX - E - 0.4 - x0 - labW - 1.0;
@@ -453,18 +539,22 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
     const stepRow = v.rows.find((row) => row.label === "반경 안 단차 시설 수");
     const facilityCount = stepRow ? Number.parseInt(stepRow.value.replace(/[^0-9-]/g, ""), 10) : null;
     drawTerrainSectionPptx(s, v.terrainSections, p.terrainSection, terrainLayout.rect, Number.isFinite(facilityCount) ? facilityCount : null);
-    legendPlate(s, p, hasSummary);
+    legendPlate(s, p, hasSummary, format, style);
   } else if (co) calloutReport?.render({ slide: s, planned: p, part: "overview" });
-  else legendPlate(s, p, hasSummary);
+  else legendPlate(s, p, hasSummary, format, style);
 
   infoPanel(s, items, summaryRect, summaryScale);
-  strip(s, p, !chart);
+  pageTextBoxes(s, p, format);
+  pageNotes(s, p, fallbackNotes);
+  strip(s, p, !chart, format);
 }
 
 function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: MapImages) {
+  const format = formatOf(p);
+  const g = slideGeometry(format);
   const s = pptx.addSlide();
   s.background = { color: "F2F2EF" };
-  titlePlate(s, p.view.color, "SHEET", p.view.title, p.grid, SLIDE.w - 2 * E);
+  titlePlate(s, p.view.color, "SHEET", p.view.title, p.grid, g.w - 2 * g.edge, p.style, false, format);
   const cells = sheetCells(p.grid as SheetGrid);
   const cellNotes = new Set<string>();
   for (const [index, cell] of p.cells.entries()) {
@@ -497,8 +587,8 @@ function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: Map
       const cellMap = sourceMap && sourceMap.tileCode ? sourceMap : sourceMap ? { ...sourceMap, tileCode: cell.view.code } : null;
       const cellStatus = cellMap ? nativeMapStatus(cellMap) : null;
       if (cellMap && cellStatus?.native) {
-        addEditableMap(s, null, cellMap, { mode: "cell", scope: `cell-${index}`, frame: { x: r.x, y: r.y, w: r.w, h: r.h }, style: cell.style });
-        if (cellStatus.denseLayers.length || cellStatus.rasterValues.length) s.addNotes(nativeMapFallbackNote(cellMap));
+        addEditableMap(s, null, cellMap, { mode: "cell", scope: `cell-${index}`, frame: { x: r.x, y: r.y, w: r.w, h: r.h }, style: cell.style, format });
+        if (cellStatus.denseLayers.length || cellStatus.rasterValues.length) cellNotes.add(nativeMapFallbackNote(cellMap));
       }
     }
     const cutNote = cell.view.notes[0] ?? null;
@@ -507,18 +597,22 @@ function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: Map
     s.addShape("roundRect", { x: r.x + 0.1, y: r.y + 0.1, w: Math.min(r.w - 0.2, 2.9), h: 0.3, rectRadius: 0.12, fill: { color: "FFFFFF", transparency: 10 }, line: { color: INK, transparency: 88, width: 0.5 } });
     s.addText(chipText, { x: r.x + 0.2, y: r.y + 0.1, w: Math.min(r.w - 0.4, 2.7), h: 0.3, valign: "middle", fontFace: FONT, fontSize: fitPt(chipText, 8.5, Math.min(r.w - 0.4, 2.7), 1, 8), bold: true, color: INK, margin: 0, fit: "shrink" });
   }
-  if (cellNotes.size > 0) s.addNotes([...cellNotes].join("\n"));
-  strip(s, p, false);
+  pageTextBoxes(s, p, format);
+  pageNotes(s, p, [...cellNotes]);
+  strip(s, p, false, format);
 }
 
 function sources(pptx: PptxGenJS, p: PlannedSlide & { kind: "sources" }, images: MapImages) {
+  const format = formatOf(p);
+  const size = slideSize(format);
+  const g = slideGeometry(format);
   const s = pptx.addSlide();
-  background(s, images[mapKeyOf(p) ?? COVER_MAP_KEY]);
+  background(s, images[mapKeyOf(p) ?? COVER_MAP_KEY], undefined, format);
   // 지도를 흐리게: 흰 막
-  s.addShape("rect", { x: 0, y: 0, w: SLIDE.w, h: SLIDE.h, fill: { color: "FFFFFF", transparency: 25 }, line: { color: "FFFFFF", width: 0, transparency: 100 } });
-  titlePlate(s, "#7A7E87", "", "자료 출처와 기준일", "", SLIDE.w - 2 * E, p.style ?? {}, false);
+  s.addShape("rect", { x: 0, y: 0, w: size.w, h: size.h, fill: { color: "FFFFFF", transparency: 25 }, line: { color: "FFFFFF", width: 0, transparency: 100 } });
+  titlePlate(s, "#7A7E87", "", "자료 출처와 기준일", "", size.w - 2 * g.edge, p.style ?? {}, false, format);
   // 원천이 많은 분석은 report-plan에서 여러 출처 장으로 나눈다. 한 장 안의 표는 승인 시안의 열 구조를 유지한다.
-  const source = sourceLayout(p.rows.length, p.style ?? {});
+  const source = sourceLayout(p.rows.length, p.style ?? {}, format);
   const dense = source.dense;
   const r = source.table;
   plate(s, r, 0.16);
@@ -540,12 +634,21 @@ function sources(pptx: PptxGenJS, p: PlannedSlide & { kind: "sources" }, images:
   const W = source.tableContent.w;
   s.addTable(rows, { x: source.tableContent.x, y: source.tableContent.y, w: W, colW: [W * 0.24, W * 0.14, W * 0.16, W * 0.25, W * 0.21], rowH: dense ? 0.28 : 0.32, margin: 0 });
   s.addText(`분석 생성일 ${p.analysisDate} · 기준일은 원천 자료 날짜${p.rows.length > 12 ? ` · 원천 ${p.rows.length}건` : ""}`, { x: source.footer.x, y: source.footer.y, w: source.footer.w, h: source.footer.h, fontFace: FONT, fontSize: 9, color: MUTED, margin: 0, fit: "shrink" });
-  strip(s, p, !!p.map);
+  pageTextBoxes(s, p, format);
+  pageNotes(s, p);
+  strip(s, p, !!p.map, format);
 }
 
 export async function renderReportPptx(plan: PlannedSlide[], images: MapImages = {}): Promise<Uint8Array> {
   const pptx = new PptxGenJS();
-  pptx.layout = "LAYOUT_WIDE"; // 13.33 x 7.5
+  const format = plan.find((slide) => slide.format)?.format ?? "wide";
+  if (format === "wide") pptx.layout = "LAYOUT_WIDE"; // 13.33 x 7.5
+  else {
+    const size = slideSize(format);
+    const name = `REPORT_${format.toUpperCase()}`;
+    pptx.defineLayout({ name, width: size.w, height: size.h });
+    pptx.layout = name;
+  }
   pptx.title = "사이트 분석 보고서";
   for (const p of plan) {
     if (p.kind === "cover") cover(pptx, p, images);

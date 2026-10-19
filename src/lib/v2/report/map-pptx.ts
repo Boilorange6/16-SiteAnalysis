@@ -1,15 +1,16 @@
 import PptxGenJS from "pptxgenjs";
 import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, legendItemsForModel, legendLabelOf, type MapModel } from "../ui/map-layers";
 import { isSiteParcelLayer } from "../ui/site-parcel";
-import { SLIDE, slideCalloutAvoidance, slideLayout, slideLegend, slidePanelRects, slideReserved, slideSiteX, terrainSectionLayout } from "../ui/overlay-layout";
+import { SLIDE, slideCalloutAvoidance, slideGeometry, slideLayout, slideLegend, slidePanelRects, slideReserved, slideSiteX, terrainSectionLayout, type SlideFormat } from "../ui/overlay-layout";
 import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
-import { buildMapScene, northArrowBox, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, scaleBarBox, type MapScene, type MapSceneBox } from "../ui/map-scene";
+import { buildMapScene, mapLabelEntries, northArrowBox, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, scaleBarBox, type MapScene, type MapSceneBox } from "../ui/map-scene";
 import { badgeTextColor } from "../ui/map-labels";
 import { terrainSectionMapStyle } from "../ui/terrain-section";
 import { FONT, INK, hex, textIn, type Slide } from "./pptx-kit";
 import type { PlannedSlide } from "./report-plan";
 import type { PageStyle } from "../ui/board-state";
-import { metersPerPixel, slideViewport } from "../ui/map-projection";
+import { applyView, metersPerPixel, slideViewport } from "../ui/map-projection";
+import type { MapFrameState, ReportLayout } from "./report-doc";
 
 const VIEW_W = 960;
 const VIEW_H = 540;
@@ -28,6 +29,12 @@ export type NativeMapOptions = {
   style?: PageStyle;
   /** 타일 지도에서 출처 띠 위까지의 로컬 장면 하단(px). 셀은 기본값(셀 전체)을 쓴다. */
   clipBottom?: number;
+  /** 보고서 판형. 셀·기존 호출은 wide 기본값을 사용한다. */
+  format?: SlideFormat;
+  /** 보고서 편집기의 지도 프레임 상태. */
+  reportFrame?: MapFrameState;
+  /** report page layout, used for shared map geometry. */
+  layout?: ReportLayout;
 };
 
 export type NativeMapStatus = {
@@ -94,6 +101,9 @@ export function nativeMapFallbackNote(model: MapModel): string {
 
 const FULL_FRAME: NativeMapFrame = { x: 0, y: 0, w: SLIDE.w, h: SLIDE.h };
 let activeFrame = FULL_FRAME;
+let activeFormat: SlideFormat = "wide";
+let activeGeometry = slideGeometry();
+let activePxPerInch = PX_PER_INCH;
 let activeSceneWidth = VIEW_W;
 let activeSceneHeight = VIEW_H;
 let activeClipBottom = VIEW_H;
@@ -106,8 +116,45 @@ const CELL_LEGEND_PAD = 10;
 
 type CellLegendItem = ReturnType<typeof slideLegend>["items"][number];
 
+function fullFrame(format: SlideFormat): NativeMapFrame {
+  const geometry = slideGeometry(format);
+  return { x: 0, y: 0, w: geometry.w, h: geometry.h };
+}
+
+function hiddenLayerMatches(layer: string, value: string): boolean {
+  const needle = value.trim().toLowerCase();
+  if (!needle) return false;
+  const style = layerStyle(layer);
+  return layer.toLowerCase() === needle
+    || style.label.toLowerCase() === needle
+    || (needle === "건물" && isBuildingLayer(layer));
+}
+
+function frameHidden(model: MapModel, hiddenLayers: readonly string[]): MapModel {
+  if (hiddenLayers.length === 0) return model;
+  const hidden = (layer: string) => hiddenLayers.some((value) => hiddenLayerMatches(layer, value));
+  return {
+    ...model,
+    features: model.features.filter((feature) => !hidden(feature.layer)),
+    polygons: model.polygons?.filter((polygon) => !hidden(polygon.layer)),
+    lines: model.lines?.filter((line) => !hidden(line.layer)),
+    siteParcel: model.siteParcel?.filter((polygon) => !hidden(polygon.layer)),
+  };
+}
+
+function fixedScaleViewport(model: MapModel, style: PageStyle, frame: MapFrameState | undefined, dimensions: { width: number; height: number; siteX: number; siteY: number; fill: number }) {
+  const base = slideViewport(model, { zoomDelta: 0, offsetM: [0, 0] }, dimensions);
+  if (!frame || frame.scaleDenominator === null || !Number.isFinite(frame.scaleDenominator) || frame.scaleDenominator <= 0) {
+    return slideViewport(model, style, dimensions);
+  }
+  const metersPerPixelAtZoom0 = metersPerPixel(model.center[1], 0);
+  const targetMpp = frame.scaleDenominator * 0.0254 / 96;
+  const zoom = Math.log2(metersPerPixelAtZoom0 / targetMpp);
+  return applyView({ ...base, zoom }, model.center[1], { zoomDelta: 0, offsetM: frame.offsetM });
+}
+
 function cellLegendItems(model: MapModel): CellLegendItem[] {
-  const all = slideLegend(model, true).items;
+  const all = slideLegend(model, true, undefined, true, activeFormat).items;
   if (all.length <= CELL_LEGEND_MAX_ITEMS) return all;
   const site = all.find((item) => item.site);
   const nonSite = all.filter((item) => !item.site);
@@ -121,14 +168,14 @@ function cellLegendItems(model: MapModel): CellLegendItem[] {
 }
 
 function cellLegendLayout(model: MapModel): { items: CellLegendItem[]; x: number; y: number; w: number; h: number; box: MapSceneBox } | null {
-  const base = slideLegend(model, true).rect;
+  const base = slideLegend(model, true, undefined, true, activeFormat).rect;
   if (!base) return null;
   const items = cellLegendItems(model);
   const x = 24;
-  const measuredLabelW = Math.max(...items.map((item) => textIn(item.label, 8) * PX_PER_INCH), 0);
+  const measuredLabelW = Math.max(...items.map((item) => textIn(item.label, 8) * activePxPerInch), 0);
   // 8pt 셀 라벨은 PPT의 fit="shrink"에 맡기면 긴 역명이 끝에서 잘린다.
   // 측정 폭을 먼저 확보해 셀 전체 범위 안에서 범례 판을 넓힌다.
-  const w = Math.min(activeSceneWidth - x * 2, Math.max(220, base.w * PX_PER_INCH, measuredLabelW + 46 + 18));
+  const w = Math.min(activeSceneWidth - x * 2, Math.max(220, base.w * activePxPerInch, measuredLabelW + 46 + 18));
   const h = CELL_LEGEND_PAD * 2 + items.length * CELL_LEGEND_ROW_H;
   const y = activeSceneHeight - 24 - h;
   return { items, x, y, w, h, box: { x0: x, y0: y, x1: x + w, y1: y + h } };
@@ -142,7 +189,7 @@ function pxX(x: number): number { return activeFrame.x + (x / activeSceneWidth) 
 function pxY(y: number): number { return activeFrame.y + (y / activeSceneHeight) * activeFrame.h; }
 function pxW(value: number): number { return (value / VIEW_W) * activeFrame.w; }
 function pxH(value: number): number { return (value / activeSceneHeight) * activeFrame.h; }
-function pxPt(value: number): number { return value * PX_TO_PT * Math.min(activeFrame.w / SLIDE.w, activeFrame.h / SLIDE.h); }
+function pxPt(value: number): number { return value * PX_TO_PT * Math.min(activeFrame.w / activeGeometry.w, activeFrame.h / activeGeometry.h); }
 function isRasterizedLayer(layer: string): boolean { return activeRasterLayers.has(layer); }
 
 type PixelPoint = readonly [number, number];
@@ -354,23 +401,26 @@ function lineTickSegments(points: readonly PixelPoint[], size: number): Array<[P
   return ticks;
 }
 
-function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "tile" }; mode?: NativeMapMode; style?: PageStyle }): MapScene {
+function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "tile" }; mode?: NativeMapMode; style?: PageStyle; format?: SlideFormat; reportFrame?: MapFrameState; layout?: ReportLayout }): MapScene {
   const mode = options.mode ?? "tile";
+  const format = options.format ?? activeFormat;
+  const reportFrame = options.reportFrame;
+  const displayModel = frameHidden(model, reportFrame?.hiddenLayers ?? []);
   if (mode === "cell") {
     const width = VIEW_W;
     const height = activeSceneHeight;
-    const cellLegend = cellLegendLayout(model);
+    const cellLegend = cellLegendLayout(displayModel);
     const style = options.style ?? {};
-    const focus = legendLabelOf(model, style.legendFocus);
+    const focus = legendLabelOf(displayModel, style.legendFocus);
     // 조판 셀의 코드 chip은 map scene 위에 마지막으로 그려진다. 고정·자동
     // 라벨 카드가 chip 아래에서 시작하도록 셀 좌표의 상단 안전영역을 예약한다.
     const cellUnit = Math.min(1.5, Math.max(1, height / 360));
     const cellChipBottom = ((0.1 + 0.3) / activeFrame.h) * height;
     return buildMapScene({
-      model,
+      model: displayModel,
       width,
       height,
-      activeLayer: model.basemap ?? "white",
+      activeLayer: displayModel.basemap ?? "white",
       siteX: 0.5,
       bottomInset: cellLegend ? cellLegend.h + 32 : 0,
       scale: true,
@@ -386,20 +436,28 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
       calloutTop: cellChipBottom + 8 * cellUnit,
       avoid: [],
       bare: false,
-      viewport: slideViewport(model, style, { width, height, siteX: 0.5, fill: 0.8 }),
+      viewport: slideViewport(displayModel, style, { width, height, siteX: 0.5, fill: 0.8 }),
     });
   }
   const plan = options.plan!;
-  const style = plan.style ?? {};
+  const style = options.style ?? plan.style ?? {};
+  const frameStyle: PageStyle = reportFrame
+    ? {
+        ...style,
+        zoomDelta: reportFrame.zoomDelta,
+        offsetM: reportFrame.offsetM,
+        pinnedKeys: [...new Set([...(style.pinnedKeys ?? []), ...reportFrame.pinnedKeys])],
+      }
+    : style;
   const hasSummary = style.summary !== false && !(plan.callout && plan.callout.page > 0);
-  const baseLegend = slideLegend(model, !plan.muted).rect;
-  const panels = slidePanelRects(style, hasSummary, baseLegend);
+  const baseLegend = slideLegend(displayModel, !plan.muted, undefined, hasSummary, format, reportFrame?.legend ?? {}).rect;
+  const panels = slidePanelRects(style, hasSummary, baseLegend, format);
   const terrainShown = plan.view.code === "D17" && !!plan.view.terrainSections && !!plan.terrainSection;
-  const terrainLayout = terrainShown ? terrainSectionLayout(panels) : null;
+  const terrainLayout = terrainShown ? terrainSectionLayout(panels, slideLayout(format), format) : null;
   const legend = panels.legend;
   const calloutOverview = !!plan.callout && plan.callout.page === 0;
   const calloutDetail = !!plan.callout && plan.callout.page > 0 ? slideCalloutFrame(4) : null;
-  const layout = slideLayout();
+  const layout = slideLayout(format);
   const calloutEntries = calloutOverview
     ? [
         { text: plan.callout!.model.legend.title },
@@ -407,47 +465,56 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
         { text: plan.callout!.model.legend.sizeLabel },
       ]
     : [];
-  const calloutAlignment = calloutDetail ? null : slideCalloutAvoidance(panels, calloutEntries, layout);
+  const calloutAlignment = calloutDetail ? null : slideCalloutAvoidance(panels, calloutEntries, layout, format);
   const calloutLegend = calloutAlignment?.calloutLegend ?? null;
-  const summaryX = panels.summary?.x ?? SLIDE.w;
-  const gap = SLIDE.edge * PX_PER_INCH * 0.5;
-  const siteX = calloutDetail?.siteX ?? slideSiteX(style, hasSummary);
+  const geometry = slideGeometry(format);
+  const summaryX = panels.summary?.x ?? geometry.w;
+  const gap = geometry.edge * activePxPerInch * 0.5;
+  const siteX = calloutDetail?.siteX ?? slideSiteX(style, hasSummary, format);
   const fill = calloutDetail?.fill ?? terrainLayout?.mapFill ?? (calloutOverview ? SLIDE_OVERVIEW_FILL : undefined);
-  const rightInset = calloutDetail ? 0 : hasSummary ? Math.max(0, VIEW_W - summaryX * PX_PER_INCH + gap) : SLIDE.edge * PX_PER_INCH;
+  const rightInset = calloutDetail ? 0 : hasSummary ? Math.max(0, VIEW_W - summaryX * activePxPerInch + gap) : geometry.edge * activePxPerInch;
   // 방위표는 지도 scene의 고정 y(22u)만 쓰면 크게 키운 제목 판과 겹친다.
   // 제목 판 아래에 13u 반지름과 안전 간격을 확보한 중심을 전달한다.
-  const calloutTopPx = calloutAlignment ? calloutAlignment.calloutTop * PX_PER_INCH : (panels.title.y + panels.title.h) * PX_PER_INCH + gap;
-  const northY = calloutTopPx + 13 * Math.min(1.5, Math.max(1, VIEW_H / 360));
-  const bottomInset = SLIDE.stripH * PX_PER_INCH + (calloutLegend ? (calloutLegend.h + 0.18) * PX_PER_INCH : 0);
-  const viewport = slideViewport(model, style, { width: VIEW_W, height: VIEW_H, siteX, siteY: terrainLayout?.mapSiteY ?? 0.5, fill: fill ?? 0.8 });
-  const scaleAvoid = calloutDetail ? null : scaleBarBox(VIEW_W, VIEW_H, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset);
-  const northAvoid = calloutDetail ? null : northArrowBox(VIEW_W, VIEW_H, rightInset, northY);
+  const calloutTopPx = calloutAlignment ? calloutAlignment.calloutTop * activePxPerInch : (panels.title.y + panels.title.h) * activePxPerInch + gap;
+  const height = activeSceneHeight;
+  const northY = calloutTopPx + 13 * Math.min(1.5, Math.max(1, height / 360));
+  const bottomInset = geometry.stripH * activePxPerInch + (calloutLegend ? (calloutLegend.h + 0.18) * activePxPerInch : 0);
+  const viewport = fixedScaleViewport(displayModel, frameStyle, reportFrame, { width: VIEW_W, height, siteX, siteY: terrainLayout?.mapSiteY ?? 0.5, fill: fill ?? 0.8 });
+  const showScale = reportFrame?.decorations.scaleBar ?? true;
+  const showNorth = reportFrame?.decorations.north ?? true;
+  const scaleAvoid = calloutDetail || !showScale ? null : scaleBarBox(VIEW_W, height, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset);
+  const northAvoid = calloutDetail || !showNorth ? null : northArrowBox(VIEW_W, height, rightInset, northY);
   const avoid = calloutDetail
     ? []
-    : [...slideReserved(PX_PER_INCH, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend, calloutLegend, terrainSection: terrainLayout?.rect }), ...(scaleAvoid ? [scaleAvoid] : []), ...(northAvoid ? [northAvoid] : [])];
-  const focus = legendLabelOf(model, style.legendFocus);
+     : [...slideReserved(activePxPerInch, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend, calloutLegend, terrainSection: terrainLayout?.rect, format }), ...(scaleAvoid ? [scaleAvoid] : []), ...(northAvoid ? [northAvoid] : [])];
+  const focus = legendLabelOf(displayModel, style.legendFocus);
+  const pinnedKeys = [...new Set([
+    ...(plan.pinnedKeys ?? []),
+    ...(frameStyle.pinnedKeys ?? []),
+    ...(reportFrame?.labelRule === "all-visible" ? mapLabelEntries(displayModel).map((entry) => entry.key) : []),
+  ])];
   return buildMapScene({
     rightInset,
     ...(calloutDetail ? {} : { calloutTop: calloutTopPx }),
     ...(calloutAlignment?.calloutLeftBottom !== undefined
-      ? { calloutLeftBottom: calloutAlignment.calloutLeftBottom * PX_PER_INCH }
-      : terrainLayout?.calloutLeftBottom !== undefined ? { calloutLeftBottom: terrainLayout.calloutLeftBottom * PX_PER_INCH } : {}),
-    model,
+      ? { calloutLeftBottom: calloutAlignment.calloutLeftBottom * activePxPerInch }
+      : terrainLayout?.calloutLeftBottom !== undefined ? { calloutLeftBottom: terrainLayout.calloutLeftBottom * activePxPerInch } : {}),
+    model: displayModel,
     width: VIEW_W,
-    height: VIEW_H,
-    activeLayer: model.basemap ?? "white",
+    height,
+    activeLayer: displayModel.basemap ?? "white",
     fill,
     siteX,
     bottomInset,
     scale: !calloutDetail,
     muted: !!plan.muted,
-    pinnedKeys: plan.pinnedKeys ?? [],
-    hiddenKeys: style.hiddenKeys ?? [],
+    pinnedKeys,
+    hiddenKeys: frameStyle.hiddenKeys ?? [],
     terrainSection: plan.terrainSection,
     highlightLabel: focus,
     legendFocus: focus,
-    showAutomaticLabels: true,
-    north: northY,
+    showAutomaticLabels: reportFrame?.labelRule !== "off",
+    north: showNorth ? northY : false,
     avoid,
     bare: false,
     viewport,
@@ -785,36 +852,57 @@ export function addEditableMap(slide: Slide, plan: (PlannedSlide & { kind: "tile
   const status = nativeMapStatus(model);
   if (!status.native) return status;
   const previousFrame = activeFrame;
+  const previousFormat = activeFormat;
+  const previousGeometry = activeGeometry;
+  const previousPxPerInch = activePxPerInch;
   const previousSceneWidth = activeSceneWidth;
   const previousSceneHeight = activeSceneHeight;
   const previousClipBottom = activeClipBottom;
   const previousRasterLayers = activeRasterLayers;
   const previousMode = activeMode;
-  activeFrame = options.frame ?? FULL_FRAME;
+  activeFormat = options.format ?? "wide";
+  activeGeometry = slideGeometry(activeFormat);
+  activePxPerInch = VIEW_W / activeGeometry.w;
+  const explicitFrame = options.frame !== undefined;
+  activeFrame = options.frame ?? (activeFormat === "wide" ? FULL_FRAME : fullFrame(activeFormat));
   activeSceneWidth = VIEW_W;
-  activeSceneHeight = options.mode === "cell" && activeFrame.w > 0 ? VIEW_W * (activeFrame.h / activeFrame.w) : VIEW_H;
-  activeClipBottom = Math.max(0, Math.min(activeSceneHeight, options.clipBottom ?? (options.mode === "cell" ? activeSceneHeight : VIEW_H - SLIDE.stripH * PX_PER_INCH)));
+  activeSceneHeight = !explicitFrame && activeFormat === "wide" && options.mode !== "cell"
+    ? VIEW_H
+    : activeFrame.w > 0 ? VIEW_W * (activeFrame.h / activeFrame.w) : VIEW_H;
+  const defaultClipBottom = options.mode === "cell" || options.frame ? activeSceneHeight : activeSceneHeight - activeGeometry.stripH * activePxPerInch;
+  activeClipBottom = Math.max(0, Math.min(activeSceneHeight, options.clipBottom ?? defaultClipBottom));
   activeRasterLayers = new Set(status.rasterLayers);
   activeMode = options.mode ?? "tile";
   try {
-    const scene = sceneFor(model, { plan: plan ?? undefined, mode: options.mode ?? "tile", style: options.style ?? plan?.style });
+    const visibleModel = frameHidden(model, options.reportFrame?.hiddenLayers ?? []);
+    const scene = sceneFor(visibleModel, {
+      plan: plan ?? undefined,
+      mode: options.mode ?? "tile",
+      style: options.style ?? plan?.style,
+      format: activeFormat,
+      reportFrame: options.reportFrame,
+      layout: options.layout,
+    });
     const baseCode = model.tileCode ?? "map";
     const code = options.scope ? `${options.scope}-${baseCode}` : baseCode;
-    addPolygons(slide, code, scene, model);
-    addLines(slide, code, scene, model);
+    addPolygons(slide, code, scene, visibleModel);
+    addLines(slide, code, scene, visibleModel);
     addRadius(slide, code, scene);
     addNearestLines(slide, code, scene);
-    addFeatures(slide, code, scene, model);
+    addFeatures(slide, code, scene, visibleModel);
     addRailOverlay(slide, code, scene);
     addRoute(slide, code, scene);
     addSite(slide, code, scene);
     addLabels(slide, code, scene);
     addNorth(slide, code, scene);
     addScale(slide, code, scene);
-    if ((options.mode ?? "tile") === "cell") addCellLegend(slide, code, model, options.style);
+    if ((options.mode ?? "tile") === "cell") addCellLegend(slide, code, visibleModel, options.style);
     return status;
   } finally {
     activeFrame = previousFrame;
+    activeFormat = previousFormat;
+    activeGeometry = previousGeometry;
+    activePxPerInch = previousPxPerInch;
     activeSceneWidth = previousSceneWidth;
     activeSceneHeight = previousSceneHeight;
     activeClipBottom = previousClipBottom;
