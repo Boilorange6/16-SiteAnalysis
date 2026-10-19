@@ -1,3 +1,4 @@
+import * as React from "react";
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, RASTER_STYLES, type MapModel, type RasterStyle } from "@/lib/v2/ui/map-layers";
 import { badgeTextColor, mapLabelText as formatMapLabelText } from "@/lib/v2/ui/map-labels";
