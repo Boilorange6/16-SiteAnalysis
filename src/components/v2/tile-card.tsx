@@ -22,6 +22,7 @@ import { floatingMenuPosition, type FloatingMenuPosition } from "@/lib/v2/ui/men
 
 const BADGE_CLASS = { status: styles.badgeStatus, limit: styles.badgeLimit, model: styles.badgeModel } as const;
 const FACES: OutputFace[] = ["front", "back", "both"];
+const TOPO_NUDGE_COPY = "대지 고저차가 커서 30 m 자료로는 부정확할 수 있습니다. 수치지형도를 넣으면 원본 등고선으로 다시 계산합니다.";
 
 function BadgeHint({ text, note, tone }: { text: string; note?: string; tone?: Badge["tone"] }) {
   const [open, setOpen] = useState(false);
@@ -149,19 +150,22 @@ function FitRows({ rows }: { rows: TileView["rows"] }) {
     // 기준은 높이가 고정된 요약면(.sf, container-type: size) — ul·sfMain은 flex로 줄어들어 기준이 되면 행이 모두 숨는다
     const face = ul?.closest<HTMLElement>(`.${styles.sf}`);
     const foot = face?.querySelector<HTMLElement>(`:scope > .${styles.sfFoot}`);
+    const nudge = face?.querySelector<HTMLElement>(`:scope > .${styles.topoNudge}`);
     if (!ul || !face) return;
     const fit = () => {
       const items = Array.from(ul.children) as HTMLElement[];
       for (const li of items) li.style.display = "";
       const cs = getComputedStyle(face);
       const gap = parseFloat(cs.rowGap) || 0;
-      const limit = face.getBoundingClientRect().bottom - parseFloat(cs.paddingBottom) - (foot ? foot.getBoundingClientRect().height + gap : 0) + 0.5;
+      const bottomReserved = (nudge ? nudge.getBoundingClientRect().height + gap : 0) + (foot ? foot.getBoundingClientRect().height + gap : 0);
+      const limit = face.getBoundingClientRect().bottom - parseFloat(cs.paddingBottom) - bottomReserved + 0.5;
       for (const li of items) if (li.getBoundingClientRect().bottom > limit) li.style.display = "none";
     };
     fit();
     const ro = new ResizeObserver(fit);
     ro.observe(face);
     if (foot) ro.observe(foot);
+    if (nudge) ro.observe(nudge);
     return () => ro.disconnect();
   }, [rows]);
   return (
@@ -732,6 +736,7 @@ function MapFace({ p, active, state, back, onBack, onFlip, onDetail, mapReady }:
 /** 요약면: 지도 없는 흰 카드. 제목 줄 · 큰 숫자 + 한 줄 라벨 · 사실 3줄 · 상태 배지(최대 2개) · 출처 한 줄 */
 function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardRenderProps; state: boolean; waiting: boolean; onFlip: () => void; onDetail?: () => void }) {
   const { view, phase } = p;
+  const topoNudgeCopyId = `topo-nudge-copy-${useId().replace(/:/g, "")}`;
   const cut = normalizedCut(view, p.cut);
   const cutOwnsS02 = cutOwnsRaster(view, cut);
   const displayView = cutOwnsS02 ? viewForCut(view, cut!) : view;
@@ -798,8 +803,8 @@ function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardRende
 
       {p.topoNudge && (
         <aside className={styles.topoNudge} role="note" aria-label="수치지형도 안내">
-          <p>대지 고저차가 커서 30 m 자료로는 부정확할 수 있습니다. 수치지형도를 넣으면 원본 등고선으로 다시 계산합니다.</p>
-          <button type="button" onClick={p.topoNudge.onClick} disabled={p.topoNudge.disabled}>수치지형도 넣고 다시 분석</button>
+          <p id={topoNudgeCopyId}>{TOPO_NUDGE_COPY}</p>
+          <button type="button" onClick={p.topoNudge.onClick} disabled={p.topoNudge.disabled} aria-describedby={topoNudgeCopyId}>수치지형도 넣고 다시 분석</button>
         </aside>
       )}
 
