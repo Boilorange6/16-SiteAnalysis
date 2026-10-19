@@ -76,7 +76,7 @@ export default function DrawerTiles({ open, doc, views, mode, compareGrid, compa
                   <span className={styles.tileAdd} aria-hidden="true">＋</span>
                 </button>
               )}
-              {used.length > 0 && <span className={styles.tileUsed}>{used.length}쪽에 있음</span>}
+              {used.length > 0 && <span className={styles.tileUsed}>{used.join("·")}쪽에 있음</span>}
             </div>
           );
         })}
