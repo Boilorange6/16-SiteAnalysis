@@ -10,6 +10,7 @@ export type RasterizePagesOptions = {
   onProgress?(done: number, total: number): void;
   render(slide: PlannedSlide): Promise<HTMLElement>;
   toBlob?: RasterToBlob;
+  dispose?(node: HTMLElement): void;
 };
 
 async function defaultToBlob(node: HTMLElement, options: { pixelRatio: number }): Promise<Blob | null> {
@@ -40,6 +41,7 @@ export async function* rasterizePages(
       png = await toBlob(node, { pixelRatio });
     } finally {
       emptyDom(node);
+      opts.dispose?.(node);
     }
     if (opts.signal?.aborted) return;
     if (!png) throw new Error(`${index + 1}쪽 이미지 생성에 실패했습니다`);

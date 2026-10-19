@@ -838,7 +838,9 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
     setMakingKind("PPT");
     setExportProblem(null);
     try {
-      const exportPlan = await metadataPlan();
+      const exportPlan = boardMode === "report" && board.reportDoc.pages.length > 0
+        ? planReportDoc(board.reportDoc, views, { summary, analysisDate, views })
+        : await metadataPlan();
       const { renderReportPptx } = await import("@/lib/v2/report/render-pptx");
       // 지도 그림은 브라우저에서 SVG → PNG로 만든다. 못 만들면 자리표시로 계속한다.
       const { buildMapImages } = await import("@/lib/v2/report/map-image");

@@ -23,6 +23,7 @@ import type { MapFrameState, ReportLayout } from "./report-doc";
 
 /** 지도 이미지(PNG/JPEG data URL) — 키는 report-plan의 mapKeyOf */
 export type MapImages = Record<string, string>;
+export type PptxMapDrawing = "editable" | "image";
 
 const underline = (pt: number): [Border, Border, Border, Border] => [{ type: "none" }, { type: "none" }, { type: "solid", pt, color: LINE }, { type: "none" }];
 
@@ -435,7 +436,7 @@ function cover(pptx: PptxGenJS, p: PlannedSlide & { kind: "cover" }, images: Map
   strip(s, p, !!p.map, format);
 }
 
-function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapImages) {
+function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapImages, mapDrawing: PptxMapDrawing) {
   const v = p.view;
   const format = formatOf(p);
   const g = slideGeometry(format);
@@ -460,7 +461,7 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   const contentBox = summaryRect ? innerInfoBox(summaryRect, summaryScale) : { x: g.edge, w: Math.max(0.2, g.w - 2 * g.edge), h: 0.2 };
   const calloutReport = tileReportModuleFor(v.code)?.report;
   const mapStatus = p.map ? nativeMapStatus(p.map) : null;
-  const nativeMap = !!p.map && !!mapStatus?.native;
+  const nativeMap = mapDrawing === "editable" && !!p.map && !!mapStatus?.native;
   background(s, chart ? undefined : images[mapKeyOf(p) ?? v.tileId], chart ? mix(v.color, 0.07) : undefined, format);
   const fallbackNotes: string[] = [];
   if (nativeMap && p.map) {
@@ -652,7 +653,8 @@ function blank(pptx: PptxGenJS, p: PlannedSlide) {
   strip(s, p, false, format);
 }
 
-export async function renderReportPptx(plan: PlannedSlide[], images: MapImages = {}): Promise<Uint8Array> {
+export async function renderReportPptx(plan: PlannedSlide[], images: MapImages = {}, options: { mapDrawing?: PptxMapDrawing } = {}): Promise<Uint8Array> {
+  const mapDrawing = options.mapDrawing ?? "editable";
   const pptx = new PptxGenJS();
   const format = plan.find((slide) => slide.format)?.format ?? "wide";
   if (format === "wide") pptx.layout = "LAYOUT_WIDE"; // 13.33 x 7.5
@@ -666,7 +668,7 @@ export async function renderReportPptx(plan: PlannedSlide[], images: MapImages =
   for (const p of plan) {
     if (p.page?.kind === "blank") blank(pptx, p);
     else if (p.kind === "cover") cover(pptx, p, images);
-    else if (p.kind === "tile") tile(pptx, p, images);
+    else if (p.kind === "tile") tile(pptx, p, images, mapDrawing);
     else if (p.kind === "sheet") sheet(pptx, p, images);
     else sources(pptx, p, images);
   }

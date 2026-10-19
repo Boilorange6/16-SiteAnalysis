@@ -22,6 +22,9 @@ type PageStripProps = {
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
   classMap: Record<string, string>;
+  exportSelectionMode?: boolean;
+  exportPageIds?: ReadonlySet<string>;
+  onToggleExportPage?: (id: string) => void;
 };
 
 function pageLabel(page: ReportPage, slide?: PlannedSlide): string {
@@ -33,7 +36,7 @@ function pageLabel(page: ReportPage, slide?: PlannedSlide): string {
   return page.part.type === "single" ? "분석 타일 한 장" : "분석 타일";
 }
 
-export default function PageStrip({ items, selectedId, onSelect, onMove, onDropMove, onAddPage, onDuplicate, onDelete, classMap }: PageStripProps) {
+export default function PageStrip({ items, selectedId, onSelect, onMove, onDropMove, onAddPage, onDuplicate, onDelete, classMap, exportSelectionMode = false, exportPageIds = new Set(), onToggleExportPage }: PageStripProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const menuButtonRefs = useRef(new Map<string, HTMLButtonElement>());
 
@@ -95,6 +98,14 @@ export default function PageStrip({ items, selectedId, onSelect, onMove, onDropM
                 {item.printedCount > 1 && <span className={styles.pageOverflow}>+{item.printedCount - 1}</span>}
               </span>
             </button>
+            {exportSelectionMode && <button
+              type="button"
+              role="checkbox"
+              aria-checked={exportPageIds.has(item.page.id)}
+              className={styles.pageExportToggle}
+              aria-label={`${index + 1}쪽 내보내기 포함`}
+              onClick={(event) => { event.stopPropagation(); onToggleExportPage?.(item.page.id); }}
+            >{exportPageIds.has(item.page.id) ? "✓" : ""}</button>}
             {selected && <div className={styles.pageMenuRoot}>
               <button
                 type="button"

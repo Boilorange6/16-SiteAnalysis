@@ -703,7 +703,7 @@ function LegendPanel({ slide, rect, unit, format = (slide.format ?? "wide") as S
   const legendKeys = new Map(legendItemsOf(slide.map).map((entry) => [entry.label, entry.key]));
   const activeLabel = hoverLabel ?? focus;
   return (
-    <div className={styles.slidePanel + " " + styles.legendPanel} style={rectStyle(rect, unit)} {...interaction}>
+    <div className={styles.slidePanel + " " + styles.legendPanel} data-report-panel="legend" style={rectStyle(rect, unit)} {...interaction}>
       {legend.items.map((item, index) => {
         const focused = !item.site && focus !== null && item.label === focus;
         const hovered = !item.site && hoverLabel !== null && hoverLabel !== undefined && item.label === hoverLabel;

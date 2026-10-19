@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import type { Dispatch } from "react";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { defaultFrame, EMPTY_REPORT_DOC, newPageId, reportDocReducer, type MapFrameState, type PagePanels, type ReportDoc, type ReportDocAction, type ReportFontScale, type ReportFormat, type ReportPage, type TextBox } from "@/lib/v2/report/report-doc";
@@ -8,7 +8,8 @@ import { mapFrameScaleOptions, scaleForFrame } from "@/lib/v2/ui/report-scale";
 import { SLIDE_OVERVIEW_FILL } from "@/lib/v2/ui/callout-layout";
 import { slideSiteX } from "@/lib/v2/ui/overlay-layout";
 import { importLegacyReport, hasLegacyReport, pagesForTile, planReportDoc, recommendedPages } from "@/lib/v2/report/report-doc-plan";
-import { tileReportSettingsFromBoard, type PlannedSlide } from "@/lib/v2/report/report-plan";
+import { reportFileName, tileReportSettingsFromBoard, type PlannedSlide } from "@/lib/v2/report/report-plan";
+import type { ExportPageScope } from "@/lib/v2/report/export-runner";
 import { insertIndexAfter, moveByKey, transitionMapInteraction } from "@/lib/v2/ui/report-mode-logic";
 import type { BoardAction, BoardState } from "@/lib/v2/ui/board-state";
 import type { SummaryView, TileView } from "@/lib/v2/ui/tile-view";
@@ -20,6 +21,7 @@ import DrawerMap from "./drawer-map";
 import LayoutSwitcher from "./layout-switcher";
 import MapToolbar from "./map-toolbar";
 import NotesField from "./notes-field";
+import ExportPanel from "./export-panel";
 import styles from "./report-mode.module.css";
 import legacySurfaceStyles from "../report-preview.module.css";
 import localSurfaceStyles from "./slide-surface.module.css";
@@ -120,6 +122,11 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const [selection, setSelection] = useState<SurfaceSelection>(null);
   const [mapMoveActive, setMapMoveActive] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportPageScope, setExportPageScope] = useState<ExportPageScope | null>(null);
+  const [exportPageIds, setExportPageIds] = useState<Set<string>>(new Set());
+  const exportTriggerRef = useRef<HTMLButtonElement>(null);
+  const exportDialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (history.present === board.reportDoc) return;
@@ -439,6 +446,33 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     applyFrame(mapCell, { locked: !mapFrame.locked });
   }, [applyFrame, mapCell, mapFrame]);
 
+  const closeExport = useCallback(() => {
+    setExportOpen(false);
+    setExportPageScope(null);
+    setExportPageIds(new Set());
+  }, []);
+  const handleExportScopeChange = useCallback((scope: ExportPageScope | null) => {
+    setExportPageScope(scope);
+    if (scope !== "selected") setExportPageIds(new Set());
+  }, []);
+  const enterSelectedExportPages = useCallback(() => {
+    const id = selectedId ?? history.present.pages[0]?.id;
+    setExportPageIds(id ? new Set([id]) : new Set());
+  }, [history.present.pages, selectedId]);
+  const toggleExportPage = useCallback((id: string) => {
+    setExportPageIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+  const viewExportPage = useCallback((id: string) => {
+    setSelectedId(id);
+    setSelection(null);
+    setMapMoveActive(false);
+  }, []);
+
   return (
     <section className={styles.reportRoot} data-report-root aria-label="보고서 모드" onPointerDownCapture={(event) => {
       if (!mapMoveActive || selection?.kind !== "map") return;
@@ -465,8 +499,23 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
           </label>
         </div>
         <button type="button" className={styles.secondaryButton} onClick={onPresentation} disabled={demo || busy || history.present.pages.length === 0}>발표 미리보기</button>
-        <button type="button" className={styles.primaryDarkButton} disabled title="내보내기 패널은 Task 9에서 연결됩니다.">내보내기</button>
+        <button ref={exportTriggerRef} type="button" className={styles.primaryDarkButton} onClick={() => setExportOpen(true)} disabled={demo || busy || history.present.pages.length === 0} aria-haspopup="dialog" aria-expanded={exportOpen} aria-controls={exportOpen ? "report-export-panel" : undefined}>내보내기</button>
       </header>
+      {exportOpen && <ExportPanel
+        plan={plan}
+        format={history.present.format}
+        basemap={basemap}
+        currentPageId={selectedId}
+        selectedPageIds={exportPageIds}
+        defaultFileName={reportFileName(summary.address, analysisDate)}
+        dialogRef={exportDialogRef}
+        restoreFocusRef={exportTriggerRef}
+        onClose={closeExport}
+        onPageScopeChange={handleExportScopeChange}
+        onEnterSelectedPages={enterSelectedExportPages}
+        onToggleSelectedPage={toggleExportPage}
+        onViewPage={viewExportPage}
+      />}
       <div className={styles.reportBody} onDragOver={(event) => event.preventDefault()} onDrop={handleDrop}>
         <nav className={styles.reportRail} aria-label="보고서 요소">
           <button type="button" className={`${styles.railButton} ${rail === "pages" ? styles.railButtonActive : ""}`} aria-pressed={rail === "pages"} onClick={() => toggleRail("pages")}><span aria-hidden="true">▤</span><span>페이지</span></button>
@@ -507,7 +556,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
               </aside>
             </div>
           ) : <div className={styles.emptyCanvas}>이 페이지는 아직 미리보기를 준비하고 있습니다.</div>}
-          <PageStrip items={stripItems} selectedId={selectedId} onSelect={(id) => { setSelectedId(id); setSelection(null); setMapMoveActive(false); }} onMove={movePage} onDropMove={dropMovePage} onAddPage={() => { setRail("pages"); setSelection(null); setMapMoveActive(false); addPage("blank"); }} onDuplicate={duplicatePage} onDelete={deletePage} classMap={surfaceClassMap} />
+          <PageStrip items={stripItems} selectedId={selectedId} onSelect={(id) => { setSelectedId(id); setSelection(null); setMapMoveActive(false); }} onMove={movePage} onDropMove={dropMovePage} onAddPage={() => { setRail("pages"); setSelection(null); setMapMoveActive(false); addPage("blank"); }} onDuplicate={duplicatePage} onDelete={deletePage} classMap={surfaceClassMap} exportSelectionMode={exportPageScope === "selected"} exportPageIds={exportPageIds} onToggleExportPage={toggleExportPage} />
         </main>
       </div>
       {toast && <div className={styles.toast} role="status">{toast} <button type="button" onClick={undo}>되돌리기</button></div>}
