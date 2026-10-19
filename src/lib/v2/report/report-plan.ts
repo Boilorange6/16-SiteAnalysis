@@ -17,6 +17,7 @@ import { exportFileName } from "../export/download";
 import { sourceDetailsFor, UNKNOWN_AS_OF, type SourceDetailRow, type SourceMeta } from "../ui/source-details";
 import { CUT_CODES, tileClientModuleFor } from "../tile/client";
 import type { TileCutCell, TileCutPlan } from "../tile/types";
+import type { ReportFormat, ReportPage } from "./report-doc";
 
 export type TileSlideBody =
   | { kind: "result"; face: "single" | "front" | "back" }
@@ -64,6 +65,8 @@ export type ReportSlide =
       pinnedKeys?: string[];
       /** D17 수치지형도 선택 단면. view에 단면이 있을 때만 저장한다. */
       terrainSection?: TerrainSectionId;
+      /** 보고서 문서가 가리키는 결과가 현재 분석에 없을 때의 자리표시자. */
+      missing?: boolean;
     }
   | {
       kind: "sheet";
@@ -84,7 +87,17 @@ export type ReportSlide =
     }
   | { kind: "sources"; rows: ReportSourceRow[]; analysisDate: string; /** 배경(흐린 대지 지도) */ map: MapModel | null };
 
-export type PlannedSlide = ReportSlide & { no: number; total: number; footer: string; key: PageKey; style: PageStyle };
+export type PlannedSlide = ReportSlide & {
+  no: number;
+  total: number;
+  footer: string;
+  key: PageKey;
+  style: PageStyle;
+  /** 새 보고서 문서 경로에서만 채워지는 원본 페이지. 옛 buildReportPlan과의 호환을 위해 optional이다. */
+  page?: ReportPage;
+  format?: ReportFormat;
+  notes?: string;
+};
 type RawPlanSlide = ReportSlide & { footer: string; key: PageKey };
 
 export type TileReportSettings = {
