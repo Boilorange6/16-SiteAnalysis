@@ -1580,7 +1580,6 @@ export default function V2BoardPage() {
     };
     const center = next.results.find((result) => Array.isArray(result.conditions.center))?.conditions.center;
     if (center) topoCenterRef.current = center;
-    if (update) topoAddressDirtyRef.current = false;
     if (update) {
       setLive(next);
       history.replaceState(null, "", preserveProjectId ? `?project=${encodeURIComponent(preserveProjectId)}` : `?analysis=${body.analysisId}`);
@@ -1625,10 +1624,6 @@ export default function V2BoardPage() {
         setTopoState((state) => topoReducer(state, { type: "progress", loaded, total }));
       }, controller.signal);
       if (controller.signal.aborted) return;
-      if (addressAtStart !== address.trim() || topoAddressDirtyRef.current) {
-        setTopoState({ s: "idle" });
-        return;
-      }
       current = topoReducer(current, {
         type: "done",
         topoId: uploaded.topoId,
@@ -1637,14 +1632,18 @@ export default function V2BoardPage() {
         center,
         radiusM,
       });
+      const currentCenter = topoCenterRef.current;
+      if (current.s === "ready" && topoAddressDirtyRef.current && currentCenter) {
+        current = topoReducer(current, { type: "recheck", center: currentCenter, radiusM });
+        topoAddressDirtyRef.current = false;
+      }
       setTopoState(current);
       if (current.s === "error") {
         const copy = TOPO_ERROR_COPY[current.code];
         setProblem({ text: `${copy.title}. ${copy.body}`, login: false });
         return;
       }
-      topoAddressDirtyRef.current = false;
-      if (autoAnalyze && current.s === "ready") await analyze(undefined, null, current.topoId);
+      if (autoAnalyze && current.s === "ready" && !topoAddressDirtyRef.current) await analyze(undefined, null, current.topoId);
     } catch (error: unknown) {
       if (controller.signal.aborted || error instanceof DOMException && error.name === "AbortError") {
         setTopoState({ s: "idle" });
@@ -1672,10 +1671,6 @@ export default function V2BoardPage() {
       : stateAtAnalyze.s === "ready" && !topoAddressDirtyRef.current
         ? stateAtAnalyze.topoId
         : undefined;
-    if (topoIdOverride === undefined && (stateAtAnalyze.s === "preparing" || stateAtAnalyze.s === "uploading")) {
-      topoAbortRef.current?.abort();
-      setTopoState({ s: "idle" });
-    }
     setBusy(true);
     setProblem(null);
     setRefreshing(false);
@@ -1697,7 +1692,10 @@ export default function V2BoardPage() {
         return;
       }
       const loaded = await load(response, true, true, null, restoreProject?.projectId ?? null);
-      if (requestedTopoId === undefined && (stateAtAnalyze.s === "ready" || stateAtAnalyze.s === "preparing" || stateAtAnalyze.s === "uploading")) setTopoState({ s: "idle" });
+      if (requestedTopoId === undefined && stateAtAnalyze.s === "ready") {
+        topoAddressDirtyRef.current = false;
+        setTopoState({ s: "idle" });
+      }
       if (!loaded || !restoreProject) return;
       const rebasedBoard = rebaseSnapshotAnalysisId(restoreProject.board, restoreProject.analysisId, loaded.analysisId);
       setProjectBoard(rebasedBoard);
@@ -2008,6 +2006,12 @@ export default function V2BoardPage() {
     setTopoState(next);
   }, [radiusM]);
 
+  useEffect(() => {
+    const center = topoCenterRef.current;
+    if (topoState.s !== "ready" || !topoAddressDirtyRef.current || !center) return;
+    handleTopoCenterChange(center);
+  }, [handleTopoCenterChange, topoState.s]);
+
   function handleAddressChange(value: string) {
     addressDirtyRef.current = true;
     setAddress(value);
@@ -2017,10 +2021,8 @@ export default function V2BoardPage() {
     topoRecheckAbortRef.current?.abort();
     const state = topoStateRef.current;
     if (state.s === "preparing" || state.s === "uploading") {
-      topoAbortRef.current?.abort();
-      topoAfterUploadAnalyzeRef.current = false;
-      topoAddressDirtyRef.current = false;
-      setTopoState({ s: "idle" });
+      topoAddressDirtyRef.current = true;
+      topoCenterRef.current = null;
       return;
     }
     if (state.s !== "ready") {
