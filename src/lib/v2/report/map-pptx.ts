@@ -9,7 +9,8 @@ import { terrainSectionMapStyle } from "../ui/terrain-section";
 import { FONT, INK, hex, textIn, type Slide } from "./pptx-kit";
 import type { PlannedSlide } from "./report-plan";
 import type { PageStyle } from "../ui/board-state";
-import { applyView, metersPerPixel, slideViewport } from "../ui/map-projection";
+import { metersPerPixel, slideViewport } from "../ui/map-projection";
+import { scaleOptionsForFrame, zoomForScale } from "../ui/report-scale";
 import type { MapFrameState, ReportLayout } from "./report-doc";
 
 const VIEW_W = 960;
@@ -109,7 +110,6 @@ let activeSceneHeight = VIEW_H;
 let activeClipBottom = VIEW_H;
 let activeRasterLayers = new Set<string>();
 let activeMode: NativeMapMode = "tile";
-let activeExplicitFrame = false;
 
 const CELL_LEGEND_MAX_ITEMS = 4;
 const CELL_LEGEND_ROW_H = 28;
@@ -148,12 +148,9 @@ function fixedScaleViewport(model: MapModel, style: PageStyle, frame: MapFrameSt
   if (!frame || frame.scaleDenominator === null || !Number.isFinite(frame.scaleDenominator) || frame.scaleDenominator <= 0) {
     return slideViewport(model, style, dimensions);
   }
-  const metersPerPixelAtZoom0 = metersPerPixel(model.center[1], 0);
-  const targetMpp = activeExplicitFrame
-    ? (activeFrame.w * 25.4 * frame.scaleDenominator) / (1000 * dimensions.width)
-    : frame.scaleDenominator * 0.0254 / 96;
-  const zoom = Math.log2(metersPerPixelAtZoom0 / targetMpp);
-  return applyView({ ...base, zoom }, model.center[1], { zoomDelta: 0, offsetM: frame.offsetM });
+  const scaleOptions = scaleOptionsForFrame(activeFrame.w * 25.4, dimensions);
+  const zoomDelta = zoomForScale(frame.scaleDenominator, model, scaleOptions);
+  return slideViewport(model, { zoomDelta, offsetM: frame.offsetM }, dimensions);
 }
 
 function cellLegendItems(model: MapModel): CellLegendItem[] {
@@ -485,7 +482,8 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
   const viewport = fixedScaleViewport(displayModel, frameStyle, reportFrame, { width: VIEW_W, height, siteX, siteY: terrainLayout?.mapSiteY ?? 0.5, fill: fill ?? 0.8 });
   const showScale = reportFrame?.decorations.scaleBar ?? true;
   const showNorth = reportFrame?.decorations.north ?? true;
-  const scaleAvoid = calloutDetail || !showScale ? null : scaleBarBox(VIEW_W, height, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset);
+  const nativeScaleMaxPx = reportFrame?.scaleDenominator !== null && reportFrame?.scaleDenominator !== undefined ? 150 : undefined;
+  const scaleAvoid = calloutDetail || !showScale ? null : scaleBarBox(VIEW_W, height, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset, false, undefined, undefined, nativeScaleMaxPx);
   const northAvoid = calloutDetail || !showNorth ? null : northArrowBox(VIEW_W, height, rightInset, northY);
   const avoid = calloutDetail
     ? []
@@ -521,6 +519,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     avoid,
     bare: false,
     viewport,
+    ...(nativeScaleMaxPx !== undefined ? { scaleMaxPx: nativeScaleMaxPx } : {}),
   });
 }
 
@@ -881,12 +880,10 @@ export function addEditableMap(slide: Slide, plan: (PlannedSlide & { kind: "tile
   const previousClipBottom = activeClipBottom;
   const previousRasterLayers = activeRasterLayers;
   const previousMode = activeMode;
-  const previousExplicitFrame = activeExplicitFrame;
   activeFormat = options.format ?? "wide";
   activeGeometry = slideGeometry(activeFormat);
   activePxPerInch = VIEW_W / activeGeometry.w;
   const explicitFrame = options.frame !== undefined;
-  activeExplicitFrame = explicitFrame;
   activeFrame = options.frame ?? (activeFormat === "wide" ? FULL_FRAME : fullFrame(activeFormat));
   activeSceneWidth = VIEW_W;
   activeSceneHeight = !explicitFrame && activeFormat === "wide" && options.mode !== "cell"
@@ -932,7 +929,6 @@ export function addEditableMap(slide: Slide, plan: (PlannedSlide & { kind: "tile
     activeClipBottom = previousClipBottom;
     activeRasterLayers = previousRasterLayers;
     activeMode = previousMode;
-    activeExplicitFrame = previousExplicitFrame;
   }
 }
 

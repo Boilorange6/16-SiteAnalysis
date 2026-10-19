@@ -28,9 +28,9 @@ export function northArrowBox(width: number, height: number, rightInset = 0, nor
   return { x0: Math.max(0, x - 13 * u), y0: Math.max(0, y - 13 * u), x1: Math.min(width, x + 13 * u), y1: Math.min(height, y + 13 * u) };
 }
 
-function scaleBarLayout(width: number, height: number, mpp: number, bottomInset = 0, rightInset = 0, scaleLeft = false, scaleX?: number, unitOverride?: number): ScaleBarLayout {
+function scaleBarLayout(width: number, height: number, mpp: number, bottomInset = 0, rightInset = 0, scaleLeft = false, scaleX?: number, unitOverride?: number, maxBarPx = 88): ScaleBarLayout {
   const unit = unitOverride ?? Math.min(1.5, Math.max(1, height / 360));
-  const bar = scaleBar(mpp, 88 * unit);
+  const bar = scaleBar(mpp, maxBarPx * unit);
   const y = height - bottomInset - 20 * unit;
   const x1 = scaleX !== undefined ? scaleX + bar.px : scaleLeft ? Math.max(6 * unit, 12) + bar.px : width - 6 * unit - rightInset;
   return { bar, x0: x1 - bar.px, x1, y, unit };
@@ -44,8 +44,8 @@ function scaleBarBoxFromLayout(width: number, height: number, layout: ScaleBarLa
 }
 
 /** 축척 막대의 실제 불투명 판·막대·문자 영역과 같은 회피 상자. */
-export function scaleBarBox(width: number, height: number, mpp: number, bottomInset = 0, rightInset = 0, scaleLeft = false, scaleX?: number, unitOverride?: number): MapSceneBox {
-  return scaleBarBoxFromLayout(width, height, scaleBarLayout(width, height, mpp, bottomInset, rightInset, scaleLeft, scaleX, unitOverride));
+export function scaleBarBox(width: number, height: number, mpp: number, bottomInset = 0, rightInset = 0, scaleLeft = false, scaleX?: number, unitOverride?: number, maxBarPx = 88): MapSceneBox {
+  return scaleBarBoxFromLayout(width, height, scaleBarLayout(width, height, mpp, bottomInset, rightInset, scaleLeft, scaleX, unitOverride, maxBarPx));
 }
 type ScreenPoint = readonly [number, number];
 
@@ -327,6 +327,8 @@ export type MapSceneOptions = {
   viewport?: Viewport;
   /** 보고서 preview와 PPT가 같은 논리 단위로 callout·scale chrome을 배치할 때 쓴다. */
   layoutUnit?: number;
+  /** 명시적 보고서 축척에서 네이티브 막대의 기존 판형 라벨 여유를 유지한다. */
+  scaleMaxPx?: number;
 };
 
 export type MapScene = {
@@ -903,6 +905,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     dragging = false,
     viewport: viewportOpt,
     layoutUnit,
+    scaleMaxPx = 88,
   } = options;
   const layer = model.basemap ?? activeLayer;
   const sat = layer === "Satellite";
@@ -996,7 +999,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     : { x0: cx - 2.25 * siteR, y0: cy - 2.25 * siteR, x1: cx + 2.25 * siteR, y1: cy + 2.25 * siteR };
   const rings: number[] = [];
   if (showRadius) for (let meters = 500; meters < model.radiusM - 1; meters += 500) rings.push(meters / mpp);
-  const scaleLayout = scaleBarLayout(W, H, mpp, bottomInset, rightInset, scaleLeft, scaleX, u);
+  const scaleLayout = scaleBarLayout(W, H, mpp, bottomInset, rightInset, scaleLeft, scaleX, u, scaleMaxPx);
   const { bar, y: barY, x0: barX0, x1: barX1 } = scaleLayout;
   const scaleBox = scaleBarBoxFromLayout(W, H, scaleLayout);
   const north = northOpt === false ? null : { x: W - rightInset - 20 * u, y: northOpt || 22 * u };

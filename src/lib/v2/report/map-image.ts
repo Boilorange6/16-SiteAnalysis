@@ -26,7 +26,7 @@ import { mapKeyOf, type PlannedSlide } from "./report-plan";
 import type { MapImages } from "./render-pptx";
 import { nativeMapStatus } from "./map-pptx";
 import type { PageStyle } from "../ui/board-state";
-import { mapFrameScaleOptions, mapFrameWidthMm, zoomForScale, type ReportScaleOptions } from "../ui/report-scale";
+import { mapFrameScaleOptions, scaleOptionsForFrame, zoomForScale, type ReportScaleOptions } from "../ui/report-scale";
 import type { MapFrameState } from "./report-doc";
 import { northArrowBox, scaleBarBox } from "../ui/map-scene";
 
@@ -59,23 +59,14 @@ function frameLayer(frame: MapFrameState): BasemapChoice {
   return "Base";
 }
 
-function reportFrameStyle(frame: MapFrameState, style: PageStyle, mapWidthMm: number, radiusM: number, scaleOptions?: ReportScaleOptions): PageStyle {
+function reportFrameStyle(frame: MapFrameState, style: PageStyle, model: MapModel, scaleOptions: ReportScaleOptions): PageStyle {
   return {
     ...style,
-    zoomDelta: frame.scaleDenominator === null ? frame.zoomDelta : zoomForScale(frame.scaleDenominator, mapWidthMm, radiusM, scaleOptions),
+    zoomDelta: frame.scaleDenominator === null ? frame.zoomDelta : zoomForScale(frame.scaleDenominator, model, scaleOptions),
     offsetM: [...frame.offsetM] as [number, number],
     pinnedKeys: [...new Set([...(style.pinnedKeys ?? []), ...frame.pinnedKeys])],
     hiddenKeys: [...new Set([...(style.hiddenKeys ?? []), ...frame.hiddenLayers])],
   };
-}
-
-function reportMapWidthMm(p: PlannedSlide): number {
-  const format = p.format ?? "wide";
-  return mapFrameWidthMm(format, p.page?.layout ?? "map-summary");
-}
-
-function reportScaleOptions(p: PlannedSlide): ReportScaleOptions | undefined {
-  return mapFrameScaleOptions(p.format ?? "wide", p.page?.layout ?? "map-summary");
 }
 
 const blobToDataUrl = (b: Blob) =>
@@ -309,23 +300,14 @@ function extraFor(p: PlannedSlide, model: MapModel): Extra {
   }
   const baseStyle = p.style ?? {};
   const frame = p.page?.kind === "tile" ? p.page.frame : undefined;
-  const style = frame ? reportFrameStyle(frame, baseStyle, reportMapWidthMm(p), model.radiusM, reportScaleOptions(p)) : baseStyle;
-  const hasSummary = style.summary !== false && !(p.callout && p.callout.page > 0);
+  const hasSummary = baseStyle.summary !== false && !(p.callout && p.callout.page > 0);
   const baseLegend = slideLegend(model, !p.muted).rect;
-  const panels = slidePanelRects(style, hasSummary, baseLegend);
+  const panels = slidePanelRects(baseStyle, hasSummary, baseLegend);
   const terrainShown = p.view.code === "D17" && !!p.view.terrainSections && !!p.terrainSection;
   const terrainLayout = terrainShown ? terrainSectionLayout(panels) : null;
   const pinned = { pinnedKeys: [...new Set([...(p.pinnedKeys ?? []), ...(frame?.pinnedKeys ?? [])])] };
-  const frameOptions = frame ? { hiddenKeys: [...new Set([...(style.hiddenKeys ?? []), ...frame.legend.hidden])], showAutomaticLabels: frame.labelRule !== "off", north: frame.decorations.north ? 24 : (false as const), scale: frame.decorations.scaleBar } : {};
-  const highlightLabel = legendLabelOf(model, style.legendFocus);
   const rightInset = hasSummary ? Math.max(0, VIEW_W - (panels.summary?.x ?? SLIDE.w) * PX_PER_INCH + SLIDE.edge * PX_PER_INCH * 0.5) : SLIDE.edge * PX_PER_INCH;
-  // 설명표 장: 두 칸 사이에 반경 원을 넣는 프레임 (렌더러가 점·표를 같은 프레임으로 놓는다)
-  if (p.callout && p.callout.page > 0) {
-    const f = slideCalloutFrame(4);
-    const detailNorthY = (panels.title.y + panels.title.h) * PX_PER_INCH + SLIDE.edge * PX_PER_INCH * 0.5 + 13 * Math.min(1.5, Math.max(1, VIEW_H / 360));
-    const detailNorthAvoid = northArrowBox(VIEW_W, VIEW_H, 0, detailNorthY);
-    return { siteX: f.siteX, fill: f.fill, avoid: detailNorthAvoid ? [detailNorthAvoid] : [], scale: false, rightInset: 0, style, highlightLabel, legendFocus: highlightLabel, ...(terrainShown ? { terrainSection: p.terrainSection } : {}), ...pinned };
-  }
+  const calloutDetail = p.callout && p.callout.page > 0 ? slideCalloutFrame(4) : null;
   const calloutOverview = p.callout?.page === 0;
   const calloutEntries = calloutOverview
     ? [
@@ -338,9 +320,19 @@ function extraFor(p: PlannedSlide, model: MapModel): Extra {
   const calloutTop = calloutAlignment ? calloutAlignment.calloutTop * PX_PER_INCH : undefined;
   const northTop = (calloutTop ?? (panels.title.y + panels.title.h) * PX_PER_INCH + SLIDE.edge * PX_PER_INCH * 0.5) + 13 * Math.min(1.5, Math.max(1, VIEW_H / 360));
   const northAvoid = northArrowBox(VIEW_W, VIEW_H, rightInset, northTop);
-  const siteX = slideSiteX(style, hasSummary);
-  const fill = terrainLayout?.mapFill ?? (calloutOverview ? SLIDE_OVERVIEW_FILL : 0.8);
+  const siteX = calloutDetail?.siteX ?? slideSiteX(baseStyle, hasSummary);
+  const fill = calloutDetail?.fill ?? terrainLayout?.mapFill ?? (calloutOverview ? SLIDE_OVERVIEW_FILL : 0.8);
   const siteY = terrainLayout?.mapSiteY ?? 0.5;
+  const scaleOptions = frame ? mapFrameScaleOptions(p.format ?? "wide", p.page?.layout ?? "map-summary", { width: VIEW_W, height: VIEW_H, siteX, siteY, fill }) : null;
+  const style = frame && scaleOptions ? reportFrameStyle(frame, baseStyle, model, scaleOptions) : baseStyle;
+  const frameOptions = frame ? { hiddenKeys: [...new Set([...(style.hiddenKeys ?? []), ...frame.legend.hidden])], showAutomaticLabels: frame.labelRule !== "off", north: frame.decorations.north ? 24 : (false as const), scale: frame.decorations.scaleBar } : {};
+  const highlightLabel = legendLabelOf(model, style.legendFocus);
+  // 설명표 장: 두 칸 사이에 반경 원을 넣는 프레임 (렌더러가 점·표를 같은 프레임으로 놓는다)
+  if (calloutDetail) {
+    const detailNorthY = (panels.title.y + panels.title.h) * PX_PER_INCH + SLIDE.edge * PX_PER_INCH * 0.5 + 13 * Math.min(1.5, Math.max(1, VIEW_H / 360));
+    const detailNorthAvoid = northArrowBox(VIEW_W, VIEW_H, 0, detailNorthY);
+    return { siteX: calloutDetail.siteX, fill: calloutDetail.fill, avoid: detailNorthAvoid ? [detailNorthAvoid] : [], scale: false, rightInset: 0, style, highlightLabel, legendFocus: highlightLabel, ...(terrainShown ? { terrainSection: p.terrainSection } : {}), ...pinned };
+  }
   const bottomInset = SLIDE.stripH * PX_PER_INCH + (calloutAlignment.calloutLegend ? (calloutAlignment.calloutLegend.h + 0.18) * PX_PER_INCH : 0);
   const viewport = slideViewport(model, style, { width: VIEW_W, height: VIEW_H, siteX, siteY, fill });
   const scaleAvoid = scaleBarBox(VIEW_W, VIEW_H, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset);
@@ -381,7 +373,10 @@ export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice 
             if (!model || !rect) continue;
             const frame = cell.reportFrame;
             const renderModel = frame ? { ...model, basemap: undefined } : model;
-            const cellStyle = frame ? reportFrameStyle(frame, cell.style ?? p.style ?? {}, reportMapWidthMm(p), model.radiusM, reportScaleOptions(p)) : cell.style;
+            const cellWidth = Math.max(1, Math.round(rect.w * PX_PER_INCH));
+            const cellHeight = Math.max(1, Math.round(rect.h * PX_PER_INCH));
+            const cellScaleOptions = frame ? scaleOptionsForFrame(rect.w * 25.4, { width: cellWidth, height: cellHeight, siteX: 0.5, fill: 0.8 }) : null;
+            const cellStyle = frame && cellScaleOptions ? reportFrameStyle(frame, cell.style ?? p.style ?? {}, model, cellScaleOptions) : cell.style;
             const status = nativeMapStatus(model);
             out[cell.mapKey] = await rasterizeMap(renderModel, cache, frame ? frameLayer(frame) : effectiveLayer(model, layer), {
               siteX: 0.5,
@@ -397,7 +392,7 @@ export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice 
               style: cellStyle,
               highlightLabel: legendLabelOf(model, cellStyle?.legendFocus),
               legendFocus: legendLabelOf(model, cellStyle?.legendFocus),
-              size: { width: Math.max(1, Math.round(rect.w * PX_PER_INCH)), height: Math.max(1, Math.round(rect.h * PX_PER_INCH)) },
+              size: { width: cellWidth, height: cellHeight },
               bottomInset: 0,
             }, rasterCache);
           }

@@ -125,6 +125,7 @@ function pageTextBoxes(s: Slide, p: PlannedSlide, format: SlideFormat): void {
   if (!p.page?.textBoxes.length) return;
   const size = slideSize(format);
   for (const box of p.page.textBoxes) {
+    if (!box.text.trim()) continue;
     s.addText(box.text, {
       x: box.x * size.w,
       y: box.y * size.h,

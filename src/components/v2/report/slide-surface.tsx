@@ -4,7 +4,7 @@ import * as React from "react";
 import { createContext, memo, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { metersPerPixel, slideViewport, zoomViewAt, type MapView } from "@/lib/v2/ui/map-projection";
-import { mapFrameScaleOptions, mapFrameWidthMm, zoomForScale } from "@/lib/v2/ui/report-scale";
+import { mapFrameScaleOptions, scaleOptionsForFrame, zoomForScale } from "@/lib/v2/ui/report-scale";
 import { layoutRects, slideCalloutAvoidance, slideGeometry, slideLayout, slideLegend, slidePanelRects, slideReserved, slideSize, slideSiteX, terrainSectionLayout, type Rect, type SlideFormat, type TerrainSectionLayout } from "@/lib/v2/ui/overlay-layout";
 import { coverLayout, fitBlock, fitFooterText, sourceLayout, titlePlateRect } from "@/lib/v2/report/pptx-kit";
 import { layerStyle, legendItemsOf, legendLabelOf } from "@/lib/v2/ui/map-layers";
@@ -1051,8 +1051,6 @@ function SourcesSurface({ slide, unit, basemap, thumbnail = false }: { slide: Ex
 function SheetSurface({ slide, unit, basemap, thumbnail = false, onCellActivate }: { slide: Extract<PlannedSlide, { kind: "sheet" }>; unit: number; basemap: BasemapChoice; thumbnail?: boolean; onCellActivate?: (index: number) => void }) {
   const format = (slide.format ?? "wide") as SlideFormat;
   const layoutName = slide.page?.layout ?? "map-summary";
-  const mapWidthMm = mapFrameWidthMm(format, layoutName);
-  const scaleOptions = mapFrameScaleOptions(format, layoutName);
   const styles = useSurfaceStyles();
   const cellRects = sheetCells(slide.grid as SheetGrid);
   const geometry = slideGeometry(format);
@@ -1075,6 +1073,12 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, onCellActivate 
             const width = Math.max(1, Math.round(rect.w * unit));
             const height = Math.max(1, Math.round(rect.h * unit));
             const chart = cell.face === "back" && !!cell.view.chart;
+            const cellScaleOptions = cell.reportFrame ? scaleOptionsForFrame(rect.w * 25.4, { width, height, siteX: 0.5, fill: 0.8 }) : null;
+            const cellStyle = cell.reportFrame && model ? {
+              ...(cell.style ?? slide.style),
+              zoomDelta: cell.reportFrame.scaleDenominator === null ? cell.reportFrame.zoomDelta : zoomForScale(cell.reportFrame.scaleDenominator, model, cellScaleOptions!),
+              offsetM: cell.reportFrame.offsetM,
+            } : cell.style ?? slide.style;
             return (
               <div className={styles.sheetCell} style={rectStyle(rect, unit)} key={cell.mapKey}>
                 {chart ? <ChartPlaceholder view={cell.view} unit={unit} /> : model ? (
@@ -1090,7 +1094,7 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, onCellActivate 
                       north={cell.reportFrame?.decorations.north ? 24 : false}
                       credit={false}
                       scale={cell.reportFrame?.decorations.scaleBar ?? false}
-                      viewport={slideViewport(model, cell.reportFrame ? { ...(cell.style ?? slide.style), zoomDelta: cell.reportFrame.scaleDenominator === null ? cell.reportFrame.zoomDelta : zoomForScale(cell.reportFrame.scaleDenominator, mapWidthMm, model.radiusM, scaleOptions), offsetM: cell.reportFrame.offsetM } : cell.style ?? slide.style, { width, height, siteX: 0.5, fill: 0.8 })}
+                      viewport={slideViewport(model, cellStyle, { width, height, siteX: 0.5, fill: 0.8 })}
                       pinnedKeys={cell.reportFrame ? [...new Set([...(cell.pinnedKeys ?? []), ...cell.reportFrame.pinnedKeys])] : cell.pinnedKeys ?? cell.style?.pinnedKeys ?? slide.style.pinnedKeys ?? []}
                       hiddenKeys={cell.reportFrame?.legend.hidden}
                       legendFocus={legendLabelOf(model, cell.style?.legendFocus ?? slide.style.legendFocus)}
@@ -1126,19 +1130,28 @@ function TileSurface({ slide, unit, basemap, panels, interactive, thumbnail = fa
   const model = slide.map;
   const reportFrame = slide.page?.kind === "tile" ? slide.page.frame : undefined;
   const layoutName = slide.page?.layout;
-  const mapWidthMm = mapFrameWidthMm(format, layoutName ?? "map-summary");
-  const scaleOptions = mapFrameScaleOptions(format, layoutName ?? "map-summary");
-  const mapStyle: PageStyle = reportFrame && model ? {
-    ...slide.style,
-    zoomDelta: reportFrame.scaleDenominator === null ? reportFrame.zoomDelta : zoomForScale(reportFrame.scaleDenominator, mapWidthMm, model.radiusM, scaleOptions),
-    offsetM: [...reportFrame.offsetM] as [number, number],
-    pinnedKeys: [...new Set([...(slide.style.pinnedKeys ?? []), ...reportFrame.pinnedKeys])],
-    hiddenKeys: [...new Set([...(slide.style.hiddenKeys ?? []), ...reportFrame.legend.hidden])],
-  } : slide.style;
   const displayModel = model && reportFrame ? modelWithHiddenLayers(model, reportFrame.hiddenLayers) : model;
   const chart = !model && !slide.mass && !slide.rose && slide.body.face !== "single";
   const terrainShown = slide.view.code === "D17" && !!slide.view.terrainSections && !!slide.terrainSection;
   const terrainLayout = terrainShown ? terrainSectionLayout(panels, slideLayout(format), format) : null;
+  const geometry = slideGeometry(format);
+  const mapLayout = slide.page?.layout === "numbers-first" || slide.page?.layout === "side-by-side" ? layoutRects(slide.page.layout, format).map : null;
+  const mapFrame = mapLayout ? { x: mapLayout.x * geometry.w, y: mapLayout.y * geometry.h, w: mapLayout.w * geometry.w, h: mapLayout.h * geometry.h } : null;
+  const width = Math.max(1, Math.round((mapFrame?.w ?? geometry.w) * unit));
+  const height = Math.max(1, Math.round((mapFrame?.h ?? geometry.h) * unit));
+  const mapFill = terrainLayout?.mapFill ?? 0.8;
+  const mapSiteY = terrainLayout?.mapSiteY ?? 0.5;
+  const mapSiteX = slideSiteX(slide.style, panels.summary !== null, format);
+  const scaleOptions = reportFrame && model
+    ? mapFrameScaleOptions(format, layoutName ?? "map-summary", { width, height, siteX: mapSiteX, siteY: mapSiteY, fill: mapFill })
+    : null;
+  const mapStyle: PageStyle = reportFrame && model ? {
+    ...slide.style,
+    zoomDelta: reportFrame.scaleDenominator === null ? reportFrame.zoomDelta : zoomForScale(reportFrame.scaleDenominator, model, scaleOptions!),
+    offsetM: [...reportFrame.offsetM] as [number, number],
+    pinnedKeys: [...new Set([...(slide.style.pinnedKeys ?? []), ...reportFrame.pinnedKeys])],
+    hiddenKeys: [...new Set([...(slide.style.hiddenKeys ?? []), ...reportFrame.legend.hidden])],
+  } : slide.style;
   const calloutEntries = slide.callout?.page === 0
     ? [
         { text: slide.callout.model.legend.title },
@@ -1147,9 +1160,6 @@ function TileSurface({ slide, unit, basemap, panels, interactive, thumbnail = fa
       ]
     : [];
   const calloutAlignment = model ? slideCalloutAvoidance(panels, calloutEntries, slideLayout(format), format) : null;
-  const geometry = slideGeometry(format);
-  const width = Math.max(1, Math.round(geometry.w * unit));
-  const height = Math.max(1, Math.round(geometry.h * unit));
   const northUnit = 1.5 * (unit / (960 / geometry.w));
   const northRightInset = panels.summary
     ? Math.max(0, width - panels.summary.x * unit + geometry.edge * unit * 0.5)
@@ -1165,8 +1175,6 @@ function TileSurface({ slide, unit, basemap, panels, interactive, thumbnail = fa
     const currentKey = focusLabel ? legendItemsOf(model).find((entry) => entry.label === focusLabel)?.key ?? null : null;
     onDirectPatch({ legendFocus: toggleLegendFocus(currentKey, target.key) });
   }, [model, onDirectPatch, slide.style.legendFocus]);
-  const mapLayout = slide.page?.layout === "numbers-first" || slide.page?.layout === "side-by-side" ? layoutRects(slide.page.layout, format).map : null;
-  const mapFrame = mapLayout ? { x: mapLayout.x * geometry.w, y: mapLayout.y * geometry.h, w: mapLayout.w * geometry.w, h: mapLayout.h * geometry.h } : null;
   return (
     <>
       {displayModel ? <div data-surface-map={mapFrame ? "true" : undefined} style={mapFrame ? { position: "absolute", left: String(Number((mapLayout!.x * 100).toFixed(2))) + "%", top: String(Number((mapLayout!.y * 100).toFixed(2))) + "%", width: String(Number((mapLayout!.w * 100).toFixed(2))) + "%", height: String(Number((mapLayout!.h * 100).toFixed(2))) + "%" } : undefined}><MapLayer model={displayModel} style={mapStyle} unit={unit} basemap={basemap} panels={panels} siteX={slideSiteX(mapStyle, panels.summary !== null, format)} pinnedKeys={mapStyle.pinnedKeys} interactive={interactive} thumbnail={thumbnail} onPatch={onPatch} onDirectPatch={onDirectPatch} hoverLegend={hoverLegend} terrainSection={slide.view.code === "D17" ? slide.terrainSection ?? "A" : undefined} terrainLayout={terrainLayout} calloutLegend={calloutAlignment?.calloutLegend} calloutTop={calloutAlignment ? calloutAlignment.calloutTop * unit : undefined} calloutLeftBottom={calloutAlignment?.calloutLeftBottom ? calloutAlignment.calloutLeftBottom * unit : undefined} northAvoid={northAvoid} scale={!(slide.callout && slide.callout.page > 0)} frame={mapFrame ?? undefined} format={format} label={slide.view.title + " 지도"} reportFrame={reportFrame} /></div> : slide.mass ? <VisualPlaceholder title={slide.view.title} message="3D 매스 미리보기는 내보내기와 같은 페이지 위치로 표시됩니다." unit={unit} /> : slide.rose ? <VisualPlaceholder title={slide.view.title} message="바람장미 도판 미리보기" unit={unit} /> : chart ? <ChartPlaceholder view={slide.view} unit={unit} /> : <VisualPlaceholder title={slide.view.title} message={slide.body.kind === "state" ? slide.body.message : "표시할 지도 결과가 없습니다."} unit={unit} />}

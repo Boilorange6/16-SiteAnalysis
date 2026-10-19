@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react
 import type { Dispatch } from "react";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { defaultFrame, EMPTY_REPORT_DOC, newPageId, reportDocReducer, type MapFrameState, type PagePanels, type ReportDoc, type ReportDocAction, type ReportFontScale, type ReportFormat, type ReportPage, type TextBox } from "@/lib/v2/report/report-doc";
-import { mapFrameScaleOptions, mapFrameWidthMm, scaleForFrame } from "@/lib/v2/ui/report-scale";
+import { mapFrameScaleOptions, scaleForFrame } from "@/lib/v2/ui/report-scale";
+import { SLIDE_OVERVIEW_FILL } from "@/lib/v2/ui/callout-layout";
+import { slideSiteX } from "@/lib/v2/ui/overlay-layout";
 import { importLegacyReport, hasLegacyReport, pagesForTile, planReportDoc, recommendedPages } from "@/lib/v2/report/report-doc-plan";
 import { tileReportSettingsFromBoard, type PlannedSlide } from "@/lib/v2/report/report-plan";
 import { insertIndexAfter, moveByKey } from "@/lib/v2/ui/report-mode-logic";
@@ -279,7 +281,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     if (!selectedId) return;
     const page = history.present.pages.find((candidate) => candidate.id === selectedId);
     if (!page) return;
-    const box: TextBox = { id: `text-${Date.now().toString(36)}`, x: 4.4, y: 3.1, w: 4.4, h: 0.72, text: "글을 입력하세요", pt: 16 };
+    const box: TextBox = { id: `text-${Date.now().toString(36)}`, x: 4.4, y: 3.1, w: 4.4, h: 0.72, text: "", pt: 16 };
     apply({ type: "textBox", id: selectedId, box }, "글상자를 추가했습니다.");
     setSelection({ kind: "textBox", id: box.id });
   }, [apply, history.present.pages, selectedId]);
@@ -357,9 +359,11 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
       : undefined;
   const mapView = mapTileId ? views.get(mapTileId) ?? null : null;
   const mapModel = mapView?.map ?? mapView?.backdrop ?? null;
-  const mapWidth = selectedPage ? mapFrameWidthMm(history.present.format, selectedPage.layout) : 240;
-  const mapScaleOptions = selectedPage ? mapFrameScaleOptions(history.present.format, selectedPage.layout) : undefined;
-  const mapScale = mapFrame && mapModel ? scaleForFrame(mapFrame, mapWidth, mapModel.radiusM, mapScaleOptions) : 1000;
+  const mapScaleOptions = selectedPage ? mapFrameScaleOptions(history.present.format, selectedPage.layout, {
+    siteX: slideSiteX(selectedSlide?.style, selectedPage.layout !== "side-by-side", history.present.format),
+    fill: selectedSlide?.kind === "tile" && selectedSlide.callout?.page === 0 ? SLIDE_OVERVIEW_FILL : 0.8,
+  }) : null;
+  const mapScale = mapFrame && mapModel && mapScaleOptions ? scaleForFrame(mapModel, mapFrame, mapScaleOptions) : 1000;
   const mapEditing = !!mapFrame && !!mapModel && !!selectedPage && (selectedPage.kind === "tile" || selectedPage.kind === "compare") && selection?.kind === "map";
   const legacyAvailable = hasLegacyReport(board);
 
@@ -395,7 +399,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
           <button type="button" className={`${styles.railButton} ${rail === "theme" ? styles.railButtonActive : ""}`} aria-pressed={rail === "theme"} onClick={() => toggleRail("theme")}><span aria-hidden="true">◌</span><span>테마</span></button>
         </nav>
         <aside className={styles.drawerColumn}>
-          {mapEditing && selectedPage && mapFrame && <DrawerMap page={selectedPage} frame={mapFrame} view={mapView} cell={mapCell} mapWidthMm={mapWidth} scaleOptions={mapScaleOptions} sameExtent={selectedPage.kind === "compare" ? selectedPage.sameExtent : undefined} onSameExtent={selectedPage.kind === "compare" ? (value) => apply({ type: "sameExtent", id: selectedPage.id, value }) : undefined} onFrame={(patch: Partial<MapFrameState>) => applyFrame(mapCell, patch)} />}
+          {mapEditing && selectedPage && mapFrame && mapScaleOptions && <DrawerMap page={selectedPage} frame={mapFrame} view={mapView} cell={mapCell} scaleOptions={mapScaleOptions} sameExtent={selectedPage.kind === "compare" ? selectedPage.sameExtent : undefined} onSameExtent={selectedPage.kind === "compare" ? (value) => apply({ type: "sameExtent", id: selectedPage.id, value }) : undefined} onFrame={(patch: Partial<MapFrameState>) => applyFrame(mapCell, patch)} />}
           {!mapEditing && rail === "pages" && <DrawerPages open hasLegacy={legacyAvailable} onAdd={addPage} onRecommended={startRecommended} onLegacy={importLegacy} />}
           {!mapEditing && rail === "tiles" && <DrawerTiles open doc={history.present} views={views} mode={compareMode ? "compare" : "single"} compareGrid={compareGrid} compareSelected={compareSelected} onCompareGrid={setCompareGrid} onAdd={addTile} onToggleCompare={toggleCompareTile} onCreateCompare={addComparePage} onCancelCompare={() => { setCompareSelected([]); setCompareMode(false); }} />}
           {!mapEditing && rail === "textbox" && <TextBoxDrawer onAdd={addTextBox} />}
@@ -412,8 +416,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
               <div className={styles.stageColumn}>
                 <div className={styles.stageFrame} data-report-stage>
                   {mapFrame && mapModel && <>
-                    <MapToolbar scale={mapScale} locked={mapFrame.locked} mapActive={selection?.kind === "map"} onZoom={(delta) => applyFrame(mapCell, { zoomDelta: mapFrame.zoomDelta + delta, scaleDenominator: null })} onFit={() => applyFrame(mapCell, { zoomDelta: 0, offsetM: [0, 0], scaleDenominator: null })} onToggleMove={() => handleSurfaceSelect(selection?.kind === "map" ? null : { kind: "map", ...(mapCell === undefined ? {} : { cell: mapCell }) })} onToggleLock={() => applyFrame(mapCell, { locked: !mapFrame.locked })} onOpen={() => handleSurfaceSelect({ kind: "map", ...(mapCell === undefined ? {} : { cell: mapCell }) })} />
-                    {selection?.kind === "map" && <p className={styles.mapHint}>지도를 끌어 옮기고 휠로 확대합니다 · Esc 또는 바깥을 누르면 끝납니다</p>}
+                    <MapToolbar scale={mapScale} locked={mapFrame.locked} mapActive={selection?.kind === "map" && !mapFrame.locked} onZoom={(delta) => applyFrame(mapCell, { zoomDelta: mapFrame.zoomDelta + delta, scaleDenominator: null })} onFit={() => applyFrame(mapCell, { zoomDelta: 0, offsetM: [0, 0], scaleDenominator: null })} onToggleMove={() => handleSurfaceSelect(selection?.kind === "map" ? null : { kind: "map", ...(mapCell === undefined ? {} : { cell: mapCell }) })} onToggleLock={() => applyFrame(mapCell, { locked: !mapFrame.locked })} onOpen={() => handleSurfaceSelect({ kind: "map", ...(mapCell === undefined ? {} : { cell: mapCell }) })} />
+                    {selection?.kind === "map" && !mapFrame.locked && <p className={styles.mapHint}>지도를 끌어 옮기고 휠로 확대합니다 · Esc 또는 바깥을 누르면 끝납니다</p>}
                   </>}
                   <SlideSurface slide={selectedSlide} basemap={basemap} mode="edit" selection={selection} onSelect={handleSurfaceSelect} onFrame={applyFrame} onPanels={applyPanels} onTextBox={applyTextBox} onText={editPanelText} onSheetCellActivate={(index) => handleSurfaceSelect({ kind: "map", cell: index })} mapActive={selection?.kind === "map"} classMap={surfaceClassMap} />
                 </div>

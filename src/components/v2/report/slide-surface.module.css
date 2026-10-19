@@ -50,14 +50,20 @@
   cursor: text;
 }
 
+.textBox [data-text-box-content]:empty::before {
+  content: "글을 입력하세요";
+  color: #676c76;
+  pointer-events: none;
+}
+
 .textBoxMoveHandle,
 .textBoxResizeHandle {
   position: absolute;
   z-index: 2;
   display: grid;
   place-items: center;
-  min-width: 24px;
-  min-height: 24px;
+  min-width: 44px;
+  min-height: 44px;
   padding: 0;
   color: #153f83;
   background: #e0eafa;
@@ -68,5 +74,5 @@
   font-size: 11px;
 }
 
-.textBoxMoveHandle { top: -12px; left: 50%; transform: translateX(-50%); }
-.textBoxResizeHandle { right: -12px; bottom: -12px; cursor: nwse-resize; }
+.textBoxMoveHandle { top: -22px; left: 50%; transform: translateX(-50%); }
+.textBoxResizeHandle { right: -22px; bottom: -22px; cursor: nwse-resize; }

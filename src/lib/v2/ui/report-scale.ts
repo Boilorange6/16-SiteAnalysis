@@ -1,29 +1,52 @@
 import type { MapFrameState } from "../report/report-doc";
+import type { MapModel } from "./map-layers";
 import { layoutRects, slideSize, type SlideFormat } from "./overlay-layout";
+import { metersPerPixel, slideViewport, type Viewport } from "./map-projection";
 import type { ReportLayout } from "../report/report-doc";
 
 export const SCALE_PRESETS = [1000, 2500, 5000, 10000] as const;
 const SCALE_MIN = 500;
 const SCALE_MAX = 50000;
+const DEFAULT_VIEW_WIDTH = 960;
 
-export type ReportScaleOptions = { aspectRatio?: number };
+export type ReportScaleViewport = {
+  width: number;
+  height: number;
+  siteX?: number;
+  siteY?: number;
+  fill?: number;
+};
 
-const LEGACY_MAP_WIDTH_MM: Record<SlideFormat, number> = { wide: 240, a3: 270, a4: 190 };
+export type ReportScaleOptions = ReportScaleViewport & { frameWidthMm: number };
 
-/** 보고서 지도 프레임의 실제 종이 폭(mm). 기존 map-summary 폭은 PPT 호환을 위해 보존한다. */
+/** 보고서 지도 프레임이 실제 PPT 종이에서 차지하는 가로 폭(mm). */
 export function mapFrameWidthMm(format: SlideFormat, layout: ReportLayout): number {
   const map = layoutRects(layout, format).map;
-  if (layout === "numbers-first" || layout === "side-by-side") {
-    return map ? slideSize(format).w * 25.4 * map.w : LEGACY_MAP_WIDTH_MM[format] * 0.45;
-  }
-  return LEGACY_MAP_WIDTH_MM[format];
+  const widthRatio = map && Number.isFinite(map.w) && map.w > 0 ? map.w : 1;
+  return slideSize(format).w * widthRatio * 25.4;
 }
 
-/** 비기본 레이아웃에서 기준 반경 뷰의 가로/세로 지상폭 비율을 반환한다. */
-export function mapFrameScaleOptions(format: SlideFormat, layout: ReportLayout, fill = 0.8): ReportScaleOptions | undefined {
+/** 주어진 물리 폭과 실제 렌더러 viewport 인자를 묶어 축척 계산 계약으로 만든다. */
+export function scaleOptionsForFrame(frameWidthMm: number, viewport: ReportScaleViewport): ReportScaleOptions {
+  return { ...viewport, frameWidthMm };
+}
+
+/** 보고서 레이아웃의 map rect에 맞춘 축척 계산 인자. 기본 크기는 PPT scene 기준이다. */
+export function mapFrameScaleOptions(
+  format: SlideFormat,
+  layout: ReportLayout,
+  viewport: Partial<ReportScaleViewport> = {},
+): ReportScaleOptions {
   const map = layoutRects(layout, format).map;
-  if (!map || layout === "map-full" || layout === "map-summary" || !(map.w > 0) || !(map.h > 0) || !(fill > 0)) return undefined;
-  return { aspectRatio: map.w / (map.h * fill) };
+  const size = slideSize(format);
+  const fullHeight = DEFAULT_VIEW_WIDTH * size.h / size.w;
+  return scaleOptionsForFrame(mapFrameWidthMm(format, layout), {
+    width: viewport.width ?? DEFAULT_VIEW_WIDTH * (map?.w ?? 1),
+    height: viewport.height ?? fullHeight * (map?.h ?? 1),
+    siteX: viewport.siteX ?? 0.5,
+    siteY: viewport.siteY ?? 0.5,
+    fill: viewport.fill ?? 0.8,
+  });
 }
 
 /** 1:N 축척에서 지도 프레임에 보이는 지상 폭(m). */
@@ -31,26 +54,45 @@ export function visibleGroundWidthM(frameWidthMm: number, denominator: number): 
   return frameWidthMm * denominator / 1000;
 }
 
+function viewportArgs(options: ReportScaleOptions): ReportScaleViewport {
+  return { width: options.width, height: options.height, siteX: options.siteX, siteY: options.siteY, fill: options.fill };
+}
+
+function validDenominator(value: number): boolean {
+  return Number.isFinite(value) && value > 0;
+}
+
 function roundScale(value: number): number {
   return Math.max(1, Math.round(value / 10) * 10);
 }
 
-function baseScale(mapWidthMm: number, radiusM: number, options: ReportScaleOptions = {}): number {
-  if (!Number.isFinite(mapWidthMm) || mapWidthMm <= 0 || !Number.isFinite(radiusM) || radiusM <= 0) return 1;
-  const aspectRatio = Number.isFinite(options.aspectRatio) && (options.aspectRatio ?? 0) > 0 ? options.aspectRatio! : 1;
-  return (radiusM * 2 * aspectRatio * 1000) / mapWidthMm;
+/** 실제로 그려진 viewport의 폭과 물리 프레임 폭으로 1:N 축척을 계산한다. */
+export function scaleForViewport(viewport: Viewport, frameWidthMm: number): number {
+  if (!Number.isFinite(viewport.width) || viewport.width <= 0 || !Number.isFinite(frameWidthMm) || frameWidthMm <= 0) return 1;
+  return roundScale(metersPerPixel(viewport.center[1], viewport.zoom) * viewport.width / (frameWidthMm / 1000));
 }
 
-/** 지도 프레임의 가로 폭과 분석 반경으로 1:N 축척을 계산한다. */
-export function scaleForFrame(frame: Pick<MapFrameState, "zoomDelta" | "scaleDenominator">, mapWidthMm: number, radiusM: number, options: ReportScaleOptions = {}): number {
-  if (frame.scaleDenominator !== null && Number.isFinite(frame.scaleDenominator) && frame.scaleDenominator > 0) return roundScale(frame.scaleDenominator);
-  return roundScale(baseScale(mapWidthMm, radiusM, options) * (2 ** frame.zoomDelta));
+/** 지도 프레임의 현재 view를 실제 투영에서 1:N으로 표시한다. */
+export function scaleForFrame(
+  map: Pick<MapModel, "center" | "radiusM">,
+  frame: Pick<MapFrameState, "zoomDelta" | "offsetM" | "scaleDenominator">,
+  options: ReportScaleOptions,
+): number {
+  if (frame.scaleDenominator !== null && validDenominator(frame.scaleDenominator)) return roundScale(frame.scaleDenominator);
+  return scaleForViewport(slideViewport(map, frame, viewportArgs(options)), options.frameWidthMm);
 }
 
-/** 1:N 축척을 현재 반경 기준의 화면 확대량으로 바꾼다. */
-export function zoomForScale(denominator: number, mapWidthMm: number, radiusM: number, options: ReportScaleOptions = {}): number {
-  const scale = Number.isFinite(denominator) && denominator > 0 ? denominator : baseScale(mapWidthMm, radiusM, options);
-  return Math.log2(scale / baseScale(mapWidthMm, radiusM, options));
+/** 실제 기준 viewport에서 목표 1:N 축척으로 가는 zoomDelta를 역산한다. */
+export function zoomForScale(
+  denominator: number,
+  map: Pick<MapModel, "center" | "radiusM">,
+  options: ReportScaleOptions,
+): number {
+  const base = slideViewport(map, undefined, viewportArgs(options));
+  const targetScale = validDenominator(denominator) ? denominator : scaleForViewport(base, options.frameWidthMm);
+  const targetMpp = targetScale * (options.frameWidthMm / 1000) / options.width;
+  if (!Number.isFinite(targetMpp) || targetMpp <= 0) return 0;
+  return Math.log2(metersPerPixel(base.center[1], base.zoom) / targetMpp);
 }
 
 export function parseScaleInput(value: string): number | null {
