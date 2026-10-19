@@ -8,6 +8,7 @@ import type { EngineContext, Limitation } from "../../engine/context";
 import { makeTile, missing, obs, polygonCandidate, type PolygonCandidate, type TileDraft } from "../../engine/tiles/common";
 import { areaInCircle, polygonArea } from "../../engine/tiles/geo";
 import { notProvided } from "../../engine/tiles/not-provided";
+import { mergedRoadLines, type MergedRoadLine } from "../../engine/tiles/topo-roads";
 
 const ROAD_SOURCES = ["osm_roads"] as const;
 const BLOCK_LAYERS = ["block_lt05", "block_05_1", "block_1_2", "block_2_5", "block_ge5", "block_open"] as const;
@@ -115,6 +116,27 @@ function roadLines(hits: FeatureHit[], bounds: Bbox): RoadLine[] {
     }
   }
   return lines;
+}
+
+function mergedLineParts(geometry: MergedRoadLine["geometry"]): number[][][] {
+  if (geometry.type === "LineString") return [geometry.coordinates];
+  return geometry.coordinates;
+}
+
+function roadLinesFromMerged(lines: MergedRoadLine[], bounds: Bbox): RoadLine[] {
+  const output: RoadLine[] = [];
+  let id = 1;
+  for (const line of lines) {
+    if (line.source === "osm_roads" && !BLOCK_ROAD_FILTER.includePedestrian && hierarchyOf(line.hierarchy) === "보행·자전거") continue;
+    for (const part of mergedLineParts(line.geometry)) {
+      for (let index = 1; index < part.length; index += 1) {
+        const clipped = clipSegment(part[index - 1], part[index], bounds);
+        if (!clipped) continue;
+        output.push({ id: id++, feature: lineString(clipped as Position[]), bbox: bboxOf(clipped) });
+      }
+    }
+  }
+  return output;
 }
 
 function pointOnSegment(point: number[], a: number[], b: number[]): boolean {
@@ -722,13 +744,16 @@ function measureBlocks(ctx: EngineContext, blocks: Block[]): { blocks: MeasuredB
 }
 
 export function d15(ctx: EngineContext): TileResult {
-  const sources = ctx.sources("reference", ROAD_SOURCES);
+  const osmSources = ctx.sources("reference", ROAD_SOURCES);
+  const sources = ctx.topo ? [ctx.topo.source, ...osmSources] : osmSources;
   if (sources.length === 0) return notProvided(ctx, "D15", "도로(OSM) 자료를 확인하지 못했습니다. 최신 자료 확인 후 제공됩니다.");
 
   const readRadiusM = ctx.input.radiusM + BLOCK_ROAD_FILTER.bufferM;
   const [cx, cy] = toUtmk(ctx.input.center);
   const bounds: Bbox = [cx - readRadiusM, cy - readRadiusM, cx + readRadiusM, cy + readRadiusM];
-  const roads = roadLines(ctx.hits("reference", ["road"], readRadiusM), bounds);
+  const roads = ctx.topo
+    ? roadLinesFromMerged(mergedRoadLines(ctx, readRadiusM), bounds)
+    : roadLines(ctx.hits("reference", ["road"], readRadiusM), bounds);
   const closed = closedBlocks(roads, bounds);
   const { blocks, failed } = measureBlocks(ctx, closed.blocks);
   const circleAreaM2 = Math.PI * ctx.input.radiusM ** 2;
@@ -765,7 +790,7 @@ export function d15(ctx: EngineContext): TileResult {
 
   const coverage = ctx.coverage("reference", ROAD_SOURCES);
   const limitations: Limitation[] = [
-    { kind: "partial", note: "OSM 중심선 기준 폐합 — 도로 폭·사유 통로 미반영, 보행로 제외" },
+    { kind: "partial", note: ctx.topo ? "수치지형도 중심선과 범위 밖 OSM 중심선 기준 폐합 — 도로 폭·사유 통로 미반영, 보행로 제외" : "OSM 중심선 기준 폐합 — 도로 폭·사유 통로 미반영, 보행로 제외" },
     { kind: "unknown", note: "폐합 블록 면적은 EPSG:5179 평면 도형 계산값이며 실제 대지·도로 폭·필지 경계를 뜻하지 않습니다." },
     { kind: "unknown", note: "© OpenStreetMap contributors · ODbL 1.0" },
     ...(closed.polygonizeFailed ? [{ kind: "partial" as const, note: "도로망 폐합 계산이 일부 실패해 폐합 블록을 산출하지 못했습니다. 지도·지표는 도로망의 나머지 부분만 반영할 수 있습니다." }] : []),

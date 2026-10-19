@@ -20,7 +20,6 @@
 }
 .root button {
   font: inherit;
-  color: inherit;
   cursor: pointer;
 }
 .page {
@@ -308,6 +307,11 @@
   opacity: 0.45;
   cursor: not-allowed;
 }
+.topoHeaderButton {
+  min-height: 44px;
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
 .pill:focus-visible,
 .open:focus-visible,
 .seg button:focus-visible,
@@ -346,6 +350,62 @@
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+.topoNudge {
+  width: 100%;
+  flex: none;
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: stretch;
+  gap: 8px;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid #d9dce2;
+  border-radius: 8px;
+  background: #fff;
+  color: #15171c;
+}
+.topoNudge p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.topoNudge button {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid #15171c;
+  border-radius: 8px;
+  background: #15171c;
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.topoNudge button:focus-visible {
+  outline: 2px solid #2f6fdb;
+  outline-offset: 2px;
+}
+.topoNudge button:disabled {
+  cursor: not-allowed;
+  border-color: #8c929d;
+  background: #d9dce2;
+  color: #15171c;
+}
+@container (max-width: 239px), (max-height: 360px) {
+  .topoNudge p {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
 }
 .progressRow {
   display: flex;
@@ -1013,6 +1073,18 @@
   .topbar > .pill {
     order: 3;
     padding-inline: 12px;
+  }
+  .topbar > .topoHeaderButton {
+    width: 44px;
+    min-width: 44px;
+    padding: 0;
+    overflow: hidden;
+    font-size: 0;
+  }
+  .topbar > .topoHeaderButton::before {
+    content: "+";
+    font-size: 20px;
+    line-height: 1;
   }
   .projectControls {
     order: 4;
@@ -2125,6 +2197,55 @@ button.badge:focus-visible {
 .dialog:focus {
   outline: none;
 }
+.topoDialog {
+  width: min(520px, calc(100vw - 32px));
+  height: auto;
+  max-height: min(640px, calc(100vh - 48px));
+  overflow: auto;
+  padding: 22px;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+.topoDialogHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.topoDialogHead h2 {
+  margin: 0;
+  font-family: var(--font-dohyeon), var(--font-noto-kr), sans-serif;
+  font-size: 24px;
+  font-weight: 400;
+}
+.topoDialogFile {
+  margin: 20px 0 8px;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.topoDialogSummary {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.8;
+}
+.topoDialogActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 22px;
+}
+.topoDialogActions .pill {
+  min-height: 44px;
+  border: 1px solid var(--line);
+}
+.topoDialogActions .pill:focus-visible,
+.topoDialog .closeBtn:focus-visible {
+  outline: 2px solid #2f6fdb;
+  outline-offset: 2px;
+}
 .dlgTop {
   position: absolute;
   z-index: 3;
@@ -2851,6 +2972,10 @@ button.badge:focus-visible {
   outline: 2px solid #2f6fdb;
   outline-offset: 2px;
 }
+.topoAddressButton {
+  min-height: 44px;
+  border: 1px solid var(--line);
+}
 .problem {
   margin: 8px 4px 0;
   font-size: 13px;
@@ -3242,6 +3367,18 @@ button.badge:focus-visible {
   .analyzeBar > .pill {
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .analyzeBar > .topoAddressButton {
+    width: 44px;
+    min-width: 44px;
+    padding: 0;
+    font-size: 0;
+    justify-self: start;
+  }
+  .analyzeBar > .topoAddressButton::before {
+    content: "+";
+    font-size: 20px;
+    line-height: 1;
   }
 }
 

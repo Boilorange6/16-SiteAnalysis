@@ -30,14 +30,19 @@ import { isRoadAddress, ROAD_ADDRESS_UNSUPPORTED_MESSAGE } from "@/lib/v2/site";
 import { RADIUS_CAPTION, RADIUS_OPTIONS } from "@/lib/v2/ui/radius-options";
 import ProjectMenu, { type V2Project } from "@/components/v2/project-menu";
 import SitePicker from "@/components/v2/site-picker";
+import TopoPanel from "@/components/v2/topo-panel";
+import { useFocusTrap } from "@/components/v2/use-focus-trap";
 import AddressSuggest from "@/components/v2/address-suggest";
 import type { SiteInput } from "@/lib/v2/site";
 import { DEFAULT_PRESET_ID, PRESET_IDS, TILE_PRESETS, type PresetId } from "@/lib/v2/ui/tile-catalog";
 import { getRovingTargetIndex, type RovingGridItem } from "@/lib/v2/ui/roving-grid";
+import { topoReducer, type TopoState } from "@/lib/v2/ui/topo-state";
+import { prepareTopoZip, TOPO_ERROR_COPY, TopoClientError, uploadTopo, type TopoErrorCopyCode } from "@/lib/v2/ui/topo-upload";
 
 const UNDO_LABEL = { order: "옮김", size: "크기 바꿈", columns: "열 수 바꿈", remove: "삭제됨", removeCopy: "복제 삭제됨", duplicate: "복제됨", add: "추가됨", preset: "프리셋 적용" } as const;
 const GRID_COLUMN_OPTIONS: GridColumns[] = [2, 3, 4, 5, 6];
 const EMPTY_PINNED_LABELS: PinnedLabel[] = [];
+const TOPO_NUDGE_RELIEF_M = 10;
 
 type BoardProps = {
   baseResults: TileResult[];
@@ -71,6 +76,11 @@ type BoardProps = {
   requestedPreset: PresetId;
   initialPreset: PresetId;
   onPresetChange: (preset: PresetId) => void;
+  topoState: TopoState;
+  topoUsed?: boolean;
+  onTopoPick: () => void;
+  onTopoNudge: () => void;
+  onTopoRemove: () => void;
 };
 
 type JobState = {
@@ -506,7 +516,7 @@ function AddTileCell({ items, onAdd }: { items: readonly AddTileItem[]; onAdd: (
 }
 
 /** 타일 보드. 결과가 바뀌면 부모가 key를 바꿔 새로 만든다. */
-function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSummary, refreshing = false, refreshError, onRefresh, demo, busy, controls, onRerun, onCancel, canceling = false, currentProject, initialProjectBoard, onProjectSaved, onProjectDeleted, onOpenProject, onAuthExpired, onWindUploaded, requestedPreset, initialPreset, onPresetChange }: BoardProps) {
+function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSummary, refreshing = false, refreshError, onRefresh, demo, busy, controls, onRerun, onCancel, canceling = false, currentProject, initialProjectBoard, onProjectSaved, onProjectDeleted, onOpenProject, onAuthExpired, onWindUploaded, requestedPreset, initialPreset, onPresetChange, topoState, topoUsed = false, onTopoPick, onTopoNudge, onTopoRemove }: BoardProps) {
   const [overrides, setOverrides] = useState<Record<string, TileResult>>({});
   const [board, dispatch] = useReducer(boardReducer, baseResults, (results) => initBoard(results, initialPreset));
   const requestedPresetRef = useRef(requestedPreset);
@@ -559,6 +569,9 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
   useEffect(() => () => flushStorage(), [flushStorage]);
   const results = useMemo(() => board.results.map((r) => overrides[r.tileId] ?? r), [board.results, overrides]);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [topoDialogOpen, setTopoDialogOpen] = useState(false);
+  const topoDialogRef = useRef<HTMLDivElement>(null);
+  const topoTriggerRef = useRef<HTMLButtonElement>(null);
   const [dialogTab, setDialogTab] = useState<"overview" | "sources">("overview");
   const [stackSelection, setStackSelection] = useState<string[]>([]);
   const [sheetSelection, setSheetSelection] = useState<string[]>([]);
@@ -697,6 +710,13 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
   }, [focusRovingCard, gridLayout.columns, rovingItems]);
   const activeJobs = jobs.some((job) => job.status === "queued" || job.status === "running");
   const actionBusy = busy || activeJobs;
+  const hasTopo = topoUsed || results.some((result) => result.presentation.polygons?.some((polygon) => polygon.layer === "topo_coverage") ?? false);
+  const d17 = results.find((result) => result.tileCode === "D17");
+  const d17ReliefMin = d17?.metrics.find((metric) => metric.id === "relief_min_m")?.value;
+  const d17ReliefMax = d17?.metrics.find((metric) => metric.id === "relief_max_m")?.value;
+  const showTopoNudge = topoState.s !== "ready" && !hasTopo && topoState.s !== "preparing" && topoState.s !== "uploading" && d17ReliefMin !== null && d17ReliefMin !== undefined && d17ReliefMax !== null && d17ReliefMax !== undefined && d17ReliefMax - d17ReliefMin >= TOPO_NUDGE_RELIEF_M;
+  const closeTopoDialog = useCallback(() => setTopoDialogOpen(false), []);
+  useFocusTrap({ ref: topoDialogRef, active: topoDialogOpen, onClose: closeTopoDialog, restoreFocusRef: topoTriggerRef });
   const jobState = useMemo(() => jobProgress(jobs), [jobs]);
   const boardSnapshot = useMemo(() => serializeBoardState(board), [board]);
   const boardSnapshotJson = useMemo(() => JSON.stringify(boardSnapshot), [boardSnapshot]);
@@ -995,7 +1015,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
       <div
         className={styles.page}
         data-v2-page
-        inert={openView || presentationPlan ? true : undefined}
+        inert={openView || presentationPlan || topoDialogOpen ? true : undefined}
         onClickCapture={(event) => {
           const target = event.target;
           if (!(target instanceof Element)) return;
@@ -1045,6 +1065,20 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
           </span>
           <span className={styles.spacer} />
           {demo && <span className={styles.demoTag}>데모 데이터</span>}
+          <button
+            ref={topoTriggerRef}
+            type="button"
+            className={`${styles.pill} ${styles.topoHeaderButton}`}
+            onClick={() => {
+              if (hasTopo) setTopoDialogOpen(true);
+              else onTopoPick();
+            }}
+            disabled={actionBusy}
+            aria-label={hasTopo ? "추가 자료 · 수치지형도" : "수치지형도 추가"}
+            aria-haspopup={hasTopo ? "dialog" : undefined}
+          >
+            {hasTopo ? "추가 자료 · 수치지형도" : "수치지형도 추가"}
+          </button>
           <>
               <div className={styles.desktopTools}>
                 <span className={styles.segGroup}>
@@ -1223,6 +1257,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
                   onLayer={(layer) => dispatch({ type: "layer", id, layer })}
                   phase={jobState.byCode.get(view.code)?.phase ?? null}
                   waitingNote={jobState.byCode.get(view.code)?.note ?? null}
+                  topoNudge={view.code === "D17" && showTopoNudge ? { onClick: onTopoNudge, disabled: actionBusy } : undefined}
                   included={!!board.included[id]}
                   face={board.faces[id]}
                   canUp={oi > 0}
@@ -1237,6 +1272,8 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
                   cut={board.cuts[id] ?? null}
                   pinnedLabels={board.labels[id] ?? EMPTY_PINNED_LABELS}
                   showMapLabels={!!board.mapLabels[id]}
+                  terrainSection={board.terrainSection[id] ?? "A"}
+                  onTerrainSection={(section) => dispatch({ type: "terrainSection", id, section })}
                   cardFace={viewOf(board, id)}
                   highlighted={highlightedTileId === id}
                   onWindUploaded={onWindUploaded}
@@ -1318,11 +1355,40 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
           onWindUploaded={onWindUploaded}
           address={siteSummary.address}
           analysisDate={analysisDate}
+          terrainSection={board.terrainSection[openView.tileId] ?? "A"}
+          onTerrainSection={(section) => dispatch({ type: "terrainSection", id: openView.tileId, section })}
           onClose={() => {
             setOpenId(null);
             setDialogTab("overview");
           }}
         />
+      )}
+      {topoDialogOpen && hasTopo && (
+        <div className={styles.overlay}>
+          <div
+            ref={topoDialogRef}
+            className={`${styles.dialog} ${styles.topoDialog}`}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="v2-topo-dialog-title"
+            tabIndex={-1}
+          >
+            <div className={styles.topoDialogHead}>
+              <h2 id="v2-topo-dialog-title">추가 자료 · 수치지형도</h2>
+              <button type="button" className={styles.closeBtn} onClick={closeTopoDialog}>닫기</button>
+            </div>
+            <p className={styles.topoDialogFile}>{topoState.s === "ready" ? topoState.fileName : "수치지형도 추가 자료"}</p>
+            <p className={styles.topoDialogSummary}>
+              {topoState.s === "ready" ? topoState.coveragePct === null ? "대지를 정하면 분석 반경을 얼마나 덮는지 알려 드립니다." : `분석 반경의 ${topoState.coveragePct}%를 덮습니다.${topoState.coveragePct === 100 ? "" : " 나머지는 기존 자료로 채웁니다."}` : "이 분석에 수치지형도 추가 자료가 사용되었습니다."}<br />
+              원본 등고선·표고점과 필요한 도로·건물 자료를 우선 사용합니다.<br />
+              {(topoState.s !== "ready" || topoState.coveragePct !== 100) && "범위 밖은 기존 자료로 채웁니다."}
+            </p>
+            <div className={styles.topoDialogActions}>
+              <button type="button" className={styles.pill} onClick={() => { closeTopoDialog(); onTopoRemove(); }}>빼고 다시 분석</button>
+              <button type="button" className={`${styles.pill} ${styles.pillDark}`} onClick={() => { closeTopoDialog(); window.setTimeout(onTopoPick, 0); }}>다른 파일로</button>
+            </div>
+          </div>
+        </div>
       )}
       {reportPreviewOpen && (exportState.ppt.enabled || making) && (
         <ReportPreview
@@ -1393,6 +1459,7 @@ function refreshErrorForJob(job: JobState): RefreshError {
 }
 
 const ADDRESS_INPUT_ID = "v2-address-input";
+const TOPO_STORAGE_PREFIX = "v2-topo:";
 
 function readHydratedAddress(): string {
   if (typeof document === "undefined") return "";
@@ -1422,6 +1489,25 @@ function pickerParcelsFromScene(scene: Scene | null, site: SiteInput | null): Si
   }));
 }
 
+function isTopoErrorCode(value: string): value is TopoErrorCopyCode {
+  return Object.prototype.hasOwnProperty.call(TOPO_ERROR_COPY, value);
+}
+
+function topoStorageKey(analysisId: string): string {
+  return `${TOPO_STORAGE_PREFIX}${analysisId}`;
+}
+
+function storedTopoState(raw: string | null): TopoState | null {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as Partial<Extract<TopoState, { s: "ready" }>>;
+    if (value.s !== "ready" || typeof value.topoId !== "string" || typeof value.fileName !== "string" || (typeof value.coveragePct !== "number" && value.coveragePct !== null) || !value.summary || typeof value.summary !== "object") return null;
+    return value as Extract<TopoState, { s: "ready" }>;
+  } catch {
+    return null;
+  }
+}
+
 /** 주소 입력 → 분석 → 실제 결과 보드. 분석 전에는 예시 보드를 그대로 보여 준다. */
 export default function V2BoardPage() {
   // React hydration can start after a user has typed into the server-rendered input.
@@ -1438,6 +1524,14 @@ export default function V2BoardPage() {
   const [canceling, setCanceling] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [live, setLive] = useState<Live | null>(null);
+  const [topoState, setTopoState] = useState<TopoState>({ s: "idle" });
+  const topoStateRef = useRef<TopoState>({ s: "idle" });
+  const topoInputRef = useRef<HTMLInputElement>(null);
+  const topoAbortRef = useRef<AbortController | null>(null);
+  const topoRecheckAbortRef = useRef<AbortController | null>(null);
+  const topoAfterUploadAnalyzeRef = useRef(false);
+  const topoAddressDirtyRef = useRef(false);
+  const topoCenterRef = useRef<readonly [number, number] | null>(null);
   const activeJobs = live?.jobs.some((job) => job.status === "queued" || job.status === "running") ?? false;
   const [windRefresh, setWindRefresh] = useState(0);
   const [wantedId, setWantedId] = useState<string | null>(null);
@@ -1447,6 +1541,10 @@ export default function V2BoardPage() {
   const [staleProject, setStaleProject] = useState<V2Project | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<RefreshError | null>(null);
+
+  useEffect(() => {
+    topoStateRef.current = topoState;
+  }, [topoState]);
 
   async function load(res: Response, refreshScene = true, update = true, base: Live | null = live, preserveProjectId: string | null = null): Promise<Live | undefined> {
     const body = (await res.json().catch(() => ({}))) as Partial<Live> & RefreshApiPayload & { error?: string };
@@ -1479,6 +1577,8 @@ export default function V2BoardPage() {
       scene,
       refreshSummary: refreshSummaryFromPayload(body, prior),
     };
+    const center = next.results.find((result) => Array.isArray(result.conditions.center))?.conditions.center;
+    if (center) topoCenterRef.current = center;
     if (update) {
       setLive(next);
       history.replaceState(null, "", preserveProjectId ? `?project=${encodeURIComponent(preserveProjectId)}` : `?analysis=${body.analysisId}`);
@@ -1486,11 +1586,89 @@ export default function V2BoardPage() {
     return next;
   }
 
-  async function analyze(e?: { preventDefault(): void }, restoreProject: V2Project | null = null) {
+  async function resolveAddressCenter(value: string): Promise<readonly [number, number] | null> {
+    if (!value.trim()) return null;
+    try {
+      const response = await apiFetch(`/site/api/v2/site/resolve?address=${encodeURIComponent(value.trim())}`);
+      const body = await response.json().catch(() => ({})) as { lng?: unknown; lat?: unknown };
+      if (!response.ok || typeof body.lng !== "number" || typeof body.lat !== "number") return null;
+      return [body.lng, body.lat];
+    } catch {
+      return null;
+    }
+  }
+
+  async function handleTopoFile(file: File | null, autoAnalyze = false) {
+    if (!file || busy || activeJobs) return;
+    const addressAtStart = address.trim();
+    topoAfterUploadAnalyzeRef.current = autoAnalyze;
+    topoAbortRef.current?.abort();
+    const controller = new AbortController();
+    topoAbortRef.current = controller;
+    setProblem(null);
+    let current: TopoState = topoReducer(topoStateRef.current, { type: "pick", fileName: file.name });
+    setTopoState(current);
+    try {
+      let center = topoCenterRef.current;
+      if (!center) {
+        center = await resolveAddressCenter(addressAtStart);
+        if (center) topoCenterRef.current = center;
+      }
+      const prepared = await prepareTopoZip(file);
+      if (controller.signal.aborted) return;
+      current = topoReducer(current, { type: "progress", loaded: 0, total: prepared.blob.size });
+      setTopoState(current);
+      const uploaded = await uploadTopo(prepared.blob, (loaded, total) => {
+        setTopoState((state) => topoReducer(state, { type: "progress", loaded, total }));
+      }, controller.signal);
+      if (controller.signal.aborted) return;
+      current = topoReducer(current, {
+        type: "done",
+        topoId: uploaded.topoId,
+        fileName: file.name,
+        summary: uploaded.summary,
+        center: center ?? null,
+        radiusM,
+      });
+      const currentCenter = topoCenterRef.current;
+      if (current.s === "ready" && currentCenter && (current.coveragePct === null || topoAddressDirtyRef.current)) {
+        current = topoReducer(current, { type: "recheck", center: currentCenter, radiusM });
+        topoAddressDirtyRef.current = false;
+      }
+      setTopoState(current);
+      if (current.s === "error") {
+        const copy = TOPO_ERROR_COPY[current.code];
+        setProblem({ text: `${copy.title}. ${copy.body}`, login: false });
+        return;
+      }
+      if (autoAnalyze && current.s === "ready" && !topoAddressDirtyRef.current) await analyze(undefined, null, current.topoId);
+    } catch (error: unknown) {
+      if (controller.signal.aborted || error instanceof DOMException && error.name === "AbortError") {
+        setTopoState({ s: "idle" });
+        return;
+      }
+      const rawCode = error instanceof TopoClientError ? error.code : "topo_bad_zip";
+      const code: TopoErrorCopyCode = isTopoErrorCode(rawCode) ? rawCode : "topo_bad_zip";
+      setTopoState({ s: "error", code });
+      const copy = TOPO_ERROR_COPY[code];
+      setProblem({ text: `${copy.title}. ${copy.body}`, login: false });
+    } finally {
+      if (topoAbortRef.current === controller) topoAbortRef.current = null;
+      topoAfterUploadAnalyzeRef.current = false;
+    }
+  }
+
+  async function analyze(e?: { preventDefault(): void }, restoreProject: V2Project | null = null, topoIdOverride?: string | null) {
     e?.preventDefault();
     if (busy || activeJobs) return;
     if (!address.trim()) return setProblem({ text: "지번 주소로 입력해 주세요. 예: 서울 강동구 고덕동 123", login: false });
     if (isRoadAddress(address)) return setProblem({ text: ROAD_ADDRESS_UNSUPPORTED_MESSAGE, login: false });
+    const stateAtAnalyze = topoStateRef.current;
+    const requestedTopoId = topoIdOverride !== undefined
+      ? topoIdOverride ?? undefined
+      : stateAtAnalyze.s === "ready" && !topoAddressDirtyRef.current
+        ? stateAtAnalyze.topoId
+        : undefined;
     setBusy(true);
     setProblem(null);
     setRefreshing(false);
@@ -1503,7 +1681,19 @@ export default function V2BoardPage() {
     }
     try {
       const requestedSite = restoreProject?.site ?? siteInput;
-      const loaded = await load(await apiFetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address: address.trim(), radiusM, ...(requestedSite ? { site: requestedSite } : {}) }) }), true, true, null, restoreProject?.projectId ?? null);
+      const response = await apiFetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address: address.trim(), radiusM, ...(requestedSite ? { site: requestedSite } : {}), ...(requestedTopoId ? { topoId: requestedTopoId } : {}) }) });
+      if (requestedTopoId && (response.status === 404 || response.status === 422)) {
+        const code: TopoErrorCopyCode = response.status === 422 ? "topo_outside" : "topo_not_topo";
+        setTopoState({ s: "error", code });
+        const copy = TOPO_ERROR_COPY[code];
+        setProblem({ text: `${copy.title}. ${copy.body}`, login: false });
+        return;
+      }
+      const loaded = await load(response, true, true, null, restoreProject?.projectId ?? null);
+      if (requestedTopoId === undefined && stateAtAnalyze.s === "ready") {
+        topoAddressDirtyRef.current = false;
+        setTopoState({ s: "idle" });
+      }
       if (!loaded || !restoreProject) return;
       const rebasedBoard = rebaseSnapshotAnalysisId(restoreProject.board, restoreProject.analysisId, loaded.analysisId);
       setProjectBoard(rebasedBoard);
@@ -1599,6 +1789,12 @@ export default function V2BoardPage() {
   }
 
   async function openProject(projectId: string) {
+    topoAbortRef.current?.abort();
+    topoRecheckAbortRef.current?.abort();
+    topoAfterUploadAnalyzeRef.current = false;
+    topoAddressDirtyRef.current = false;
+    topoCenterRef.current = null;
+    setTopoState({ s: "idle" });
     setWantedProjectId(projectId);
     setWantedId(null);
     setLive(null);
@@ -1772,7 +1968,52 @@ export default function V2BoardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live?.analysisId, windRefresh]);
 
+  useEffect(() => {
+    if (!live?.analysisId || topoStateRef.current.s !== "idle") return;
+    try {
+      const restored = storedTopoState(window.localStorage.getItem(topoStorageKey(live.analysisId)));
+      if (restored) setTopoState(restored);
+    } catch {
+      // localStorage가 막힌 브라우저에서는 서버 결과와 현재 세션만 사용한다.
+    }
+  }, [live?.analysisId]);
+
+  useEffect(() => {
+    if (!live?.analysisId || topoState.s !== "ready") return;
+    try {
+      window.localStorage.setItem(topoStorageKey(live.analysisId), JSON.stringify(topoState));
+    } catch {
+      // 저장소가 막힌 브라우저에서는 현재 세션의 추가 자료만 유지한다.
+    }
+  }, [live?.analysisId, topoState]);
+
+  useEffect(() => {
+    if (topoState.s !== "ready" || !topoCenterRef.current) return;
+    setTopoState((state) => state.s === "ready" ? topoReducer(state, { type: "recheck", center: topoCenterRef.current!, radiusM }) : state);
+  }, [radiusM]);
+
   const pickerParcels = useMemo(() => pickerParcelsFromScene(live?.scene ?? null, siteInput), [live?.scene, siteInput]);
+
+  const handleTopoCenterChange = useCallback((center: readonly [number, number] | null) => {
+    topoCenterRef.current = center;
+    if (!center) return;
+    const state = topoStateRef.current;
+    if (state.s !== "ready" || (!topoAddressDirtyRef.current && state.coveragePct !== null)) return;
+    const next = topoReducer(state, { type: "recheck", center, radiusM });
+    topoAddressDirtyRef.current = false;
+    setTopoState(next);
+    if (next.s === "error") {
+      const copy = TOPO_ERROR_COPY[next.code];
+      setProblem({ text: `${copy.title}. ${copy.body}`, login: false });
+    }
+  }, [radiusM]);
+
+  useEffect(() => {
+    const center = topoCenterRef.current;
+    const coveragePct = topoState.s === "ready" ? topoState.coveragePct : null;
+    if (topoState.s !== "ready" || !center || (!topoAddressDirtyRef.current && coveragePct !== null)) return;
+    handleTopoCenterChange(center);
+  }, [handleTopoCenterChange, topoState.s, topoState.s === "ready" ? topoState.coveragePct : null]);
 
   function handleAddressChange(value: string) {
     addressDirtyRef.current = true;
@@ -1780,6 +2021,32 @@ export default function V2BoardPage() {
     setSiteInput(null);
     setSitePickerValid(false);
     if (problem && !problem.login) setProblem(null);
+    topoRecheckAbortRef.current?.abort();
+    const state = topoStateRef.current;
+    if (state.s === "preparing" || state.s === "uploading") {
+      topoAddressDirtyRef.current = true;
+      topoCenterRef.current = null;
+      return;
+    }
+    if (state.s !== "ready") {
+      topoAddressDirtyRef.current = false;
+      return;
+    }
+    topoAddressDirtyRef.current = true;
+    if (!value.trim()) {
+      setTopoState({ s: "idle" });
+      return;
+    }
+    const topoIdAtChange = state.topoId;
+    const controller = new AbortController();
+    topoRecheckAbortRef.current = controller;
+    void resolveAddressCenter(value).then((center) => {
+      if (controller.signal.aborted || topoRecheckAbortRef.current !== controller || !center) return;
+      topoCenterRef.current = center;
+      const current = topoStateRef.current;
+      if (current.s !== "ready" || current.topoId !== topoIdAtChange) return;
+      handleTopoCenterChange(center);
+    });
   }
 
   useEffect(() => {
@@ -1789,9 +2056,52 @@ export default function V2BoardPage() {
     }
   }, [live]);
 
+  function openTopoPicker(autoAnalyze = false) {
+    if (busy || activeJobs) return;
+    topoAfterUploadAnalyzeRef.current = autoAnalyze;
+    topoInputRef.current?.click();
+  }
+
+  function cancelTopoUpload() {
+    topoAfterUploadAnalyzeRef.current = false;
+    topoAbortRef.current?.abort();
+    topoAbortRef.current = null;
+    setTopoState({ s: "idle" });
+  }
+
+  function removeTopo() {
+    topoAfterUploadAnalyzeRef.current = false;
+    topoAbortRef.current?.abort();
+    topoAbortRef.current = null;
+    setTopoState({ s: "idle" });
+  }
+
+  function removeTopoAndAnalyze() {
+    removeTopo();
+    void analyze(undefined, null, null);
+  }
+
+  const topoProblemText = topoState.s === "error" ? `${TOPO_ERROR_COPY[topoState.code].title}. ${TOPO_ERROR_COPY[topoState.code].body}` : null;
+  const topoProblemVisible = !!problem && !problem.login && problem.text === topoProblemText;
+  const showGlobalProblem = !!problem && (!sitePickerOpen || !topoProblemVisible);
+
   const controls = (
     <div className={styles.analyzeWrap}>
       {!live && <p className={styles.demoContext}>예시: 고덕동 123 · 반경 1km — 주소를 넣으면 실제 분석</p>}
+      <input
+        ref={topoInputRef}
+        className={styles.srOnly}
+        type="file"
+        accept=".zip"
+        tabIndex={-1}
+        aria-hidden="true"
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0] ?? null;
+          const autoAnalyze = topoAfterUploadAnalyzeRef.current;
+          event.currentTarget.value = "";
+          void handleTopoFile(file, autoAnalyze);
+        }}
+      />
       <form className={styles.analyzeBar} onSubmit={analyze}>
         <label className={styles.srOnly} htmlFor={ADDRESS_INPUT_ID}>지번 주소</label>
         <AddressSuggest
@@ -1799,8 +2109,8 @@ export default function V2BoardPage() {
           inputClassName={styles.addrInput}
           value={address}
           onChange={handleAddressChange}
-          ariaInvalid={problem && !problem.login ? true : undefined}
-          ariaDescribedBy={problem && !problem.login ? "v2-address-error" : undefined}
+          ariaInvalid={showGlobalProblem && problem && !problem.login ? true : undefined}
+          ariaDescribedBy={showGlobalProblem && problem && !problem.login ? "v2-address-error" : undefined}
           disabled={busy || activeJobs}
         />
         <select className={styles.radiusSelect} value={radiusM} onChange={(e) => setRadiusM(Number(e.target.value))} aria-label="분석 반경" aria-describedby="v2-radius-help" disabled={busy || activeJobs}>
@@ -1827,6 +2137,18 @@ export default function V2BoardPage() {
         <button type="button" className={styles.pill} onClick={() => setSitePickerOpen((open) => !open)} disabled={busy || activeJobs} aria-expanded={sitePickerOpen} aria-controls="v2-site-picker">
           {sitePickerOpen ? "대지 지정 닫기" : "대지 지정"}
         </button>
+        <button
+          type="button"
+          className={`${styles.pill} ${styles.topoAddressButton}`}
+          onClick={() => {
+            if (topoState.s === "ready") setSitePickerOpen(true);
+            else openTopoPicker();
+          }}
+          disabled={busy || activeJobs}
+          aria-label="수치지형도 추가"
+        >
+          {topoState.s === "ready" ? "수치지형도 1개" : "수치지형도 추가"}
+        </button>
         <button type="submit" className={`${styles.pill} ${styles.pillDark}`} disabled={busy || activeJobs || (sitePickerOpen && !sitePickerValid)} aria-busy={busy || activeJobs}>
           {busy || activeJobs ? "분석 중…" : sitePickerOpen ? "이 대지로 분석" : "분석"}
         </button>
@@ -1841,13 +2163,16 @@ export default function V2BoardPage() {
             initialSite={siteInput}
             initialParcels={pickerParcels}
             disabled={busy || activeJobs}
-            serverError={problem && !problem.login ? problem.text : null}
+            serverError={problem && !problem.login && !topoProblemVisible ? problem.text : null}
+            extra={<TopoPanel state={topoState} disabled={busy || activeJobs} onPick={openTopoPicker} onCancel={cancelTopoUpload} onRemove={removeTopo} onDropFile={(file) => void handleTopoFile(file)} />}
+            topoCoverage={topoState.s === "ready" ? topoState.summary.coverageWgs84 : []}
             onSiteChange={(site) => setSiteInput(site)}
+            onCenterChange={handleTopoCenterChange}
             onValidityChange={setSitePickerValid}
           />
         </div>
       )}
-      {problem && (
+      {showGlobalProblem && problem && (
         <p id="v2-address-error" className={styles.problem} role="alert">
           {problem.text}
           {problem.login && (
@@ -1919,6 +2244,11 @@ export default function V2BoardPage() {
       requestedPreset={preset}
       initialPreset={preset}
       onPresetChange={setPreset}
+      topoState={topoState}
+      topoUsed={!!live?.results.some((result) => result.presentation.polygons?.some((polygon) => polygon.layer === "topo_coverage") ?? false)}
+      onTopoPick={() => openTopoPicker()}
+      onTopoNudge={() => openTopoPicker(true)}
+      onTopoRemove={removeTopoAndAnalyze}
       onProjectSaved={handleProjectSaved}
       onProjectDeleted={handleProjectDeleted}
       onOpenProject={(projectId) => void openProject(projectId)}

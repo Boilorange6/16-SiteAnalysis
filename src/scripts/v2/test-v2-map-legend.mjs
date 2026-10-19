@@ -61,6 +61,41 @@ assert.equal(legendItemsForModel(d16)[2].label, "12~25동/㎢");
 const fallback = legendItemsForModel({ ...base, features: [{ layer: "trade_q1", lng: 127.15, lat: 37.62 }] });
 assert.equal(fallback[0].label, "㎡당 하위 20%");
 
+const contourStyle = layerStyle("contour");
+const retainingStyle = layerStyle("retaining_wall");
+const cutFillStyle = layerStyle("cut_fill");
+const fenceStyle = layerStyle("fence");
+assert.equal(contourStyle.color, "#8a5a2e");
+assert.equal(retainingStyle.color, "#3d3f45");
+assert.equal(retainingStyle.strokeWidth, 3);
+assert.equal(retainingStyle.tickMarks, true);
+assert.equal(cutFillStyle.color, "#b25a1e");
+assert.equal(cutFillStyle.dash, "6 3");
+assert.equal(fenceStyle.color, "#2e6b3a");
+assert.equal(fenceStyle.dash, "1 3");
+assert.equal(fenceStyle.lineCap, "round");
+assert.notEqual(retainingStyle.strokeWidth, cutFillStyle.strokeWidth, "옹벽은 절성토와 다른 선 두께를 사용");
+assert.notEqual(cutFillStyle.dash, fenceStyle.dash, "절성토와 울타리는 다른 dash를 사용");
+
+const topoLegend = legendItemsForModel({
+  ...base,
+  lines: [
+    { layer: "contour", points: [[127.14, 37.62], [127.16, 37.62]] },
+    { layer: "retaining_wall", points: [[127.14, 37.621], [127.16, 37.621]] },
+    { layer: "cut_fill", points: [[127.14, 37.622], [127.16, 37.622]] },
+    { layer: "fence", points: [[127.14, 37.623], [127.16, 37.623]] },
+  ],
+});
+const topoLegendByLayer = new Map(topoLegend.map((item) => [item.layer, item]));
+assert.equal(topoLegendByLayer.get("retaining_wall")?.lineSwatch, true, "단차 선 범례는 공용 선 견본을 사용");
+assert.equal(topoLegendByLayer.get("contour")?.lineSwatch, true, "단차 자료가 있을 때 등고선 범례도 실제 선 견본을 사용");
+assert.equal(topoLegendByLayer.get("retaining_wall")?.casing, "#15171c", "옹벽 이중선 casing을 범례까지 전달");
+assert.equal(topoLegendByLayer.get("retaining_wall")?.tickMarks, true, "옹벽 tickMarks 메타데이터를 범례까지 전달");
+assert.equal(topoLegendByLayer.get("cut_fill")?.dash, "6 3");
+assert.equal(topoLegendByLayer.get("fence")?.lineCap, "round");
+const noTopoLegend = legendItemsForModel({ ...base, lines: [{ layer: "contour", points: [[127.14, 37.62], [127.16, 37.62]] }] });
+assert.equal(noTopoLegend[0]?.lineSwatch, undefined, "단차 자료가 없는 등고선 범례는 기존 표시를 보존");
+
 const rail = legendItemsForModel({
   ...base,
   lines: [

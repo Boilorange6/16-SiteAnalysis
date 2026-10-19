@@ -7,8 +7,46 @@ import { isSiteParcelLayer } from "./site-parcel";
 import { layerStyle, legendItemsForModel, type MapModel } from "./map-layers";
 import { tileClientModuleFor } from "../tile/client";
 import { canonicalRailLineLabel, railLineColor, railLineIsLightRail, railStationMatchKey } from "../tile/rail-presentation";
+import { terrainSectionLabelAnchor } from "./terrain-section";
 
 export type MapSceneBox = { x0: number; y0: number; x1: number; y1: number };
+
+type ScaleBarLayout = {
+  bar: ReturnType<typeof scaleBar>;
+  x0: number;
+  x1: number;
+  y: number;
+  unit: number;
+};
+
+/** 북쪽 표시의 실제 배경·화살표·N 문자를 함께 감싸는 회피 상자. */
+export function northArrowBox(width: number, height: number, rightInset = 0, north?: number | false, unitOverride?: number): MapSceneBox | null {
+  if (north === false) return null;
+  const u = unitOverride ?? Math.min(1.5, Math.max(1, height / 360));
+  const x = width - rightInset - 20 * u;
+  const y = north || 22 * u;
+  return { x0: Math.max(0, x - 13 * u), y0: Math.max(0, y - 13 * u), x1: Math.min(width, x + 13 * u), y1: Math.min(height, y + 13 * u) };
+}
+
+function scaleBarLayout(width: number, height: number, mpp: number, bottomInset = 0, rightInset = 0, scaleLeft = false, scaleX?: number, unitOverride?: number): ScaleBarLayout {
+  const unit = unitOverride ?? Math.min(1.5, Math.max(1, height / 360));
+  const bar = scaleBar(mpp, 88 * unit);
+  const y = height - bottomInset - 20 * unit;
+  const x1 = scaleX !== undefined ? scaleX + bar.px : scaleLeft ? Math.max(6 * unit, 12) + bar.px : width - 6 * unit - rightInset;
+  return { bar, x0: x1 - bar.px, x1, y, unit };
+}
+
+function scaleBarBoxFromLayout(width: number, height: number, layout: ScaleBarLayout): MapSceneBox {
+  const { x0, x1, y, unit } = layout;
+  const box = { x0: Math.max(0, x0 - 6 * unit), y0: Math.max(0, y - 14 * unit) };
+  // 작은 썸네일·큰 하단 여백에서는 막대가 화면 밖이라 상자가 뒤집히지 않게 빈 상자로 둔다.
+  return { ...box, x1: Math.max(box.x0, Math.min(width, x1 + 6 * unit)), y1: Math.max(box.y0, Math.min(height, y + 8 * unit)) };
+}
+
+/** 축척 막대의 실제 불투명 판·막대·문자 영역과 같은 회피 상자. */
+export function scaleBarBox(width: number, height: number, mpp: number, bottomInset = 0, rightInset = 0, scaleLeft = false, scaleX?: number, unitOverride?: number): MapSceneBox {
+  return scaleBarBoxFromLayout(width, height, scaleBarLayout(width, height, mpp, bottomInset, rightInset, scaleLeft, scaleX, unitOverride));
+}
 type ScreenPoint = readonly [number, number];
 
 export type MapLabelEntry = {
@@ -94,6 +132,7 @@ export function mapCalloutTextLayout(
   textLeft = 8,
   textRight = 4,
   padY = 3,
+  reserveShortLabelSpace = true,
 ): MapCalloutTextLayout {
   const details = entry.detailLines.slice(0, 3);
   const joined = [entry.title, ...details].join(" · ");
@@ -102,7 +141,12 @@ export function mapCalloutTextLayout(
     ? [{ kind: "joined", text: joined, title: entry.title, detail: details.join(" · ") }]
     : [{ kind: "title", text: entry.title }, ...details.map((detail) => ({ kind: "detail" as const, text: detail }))];
   const textWidth = Math.max(...lines.map((line) => mapTextWidth(line.text, fontSize)), 1);
-  const width = Math.min(maxWidth, textLeft + textRight + textWidth);
+  // Fixed-width CJK estimates can be a fraction narrower than the active SVG
+  // font (especially for three-glyph Korean labels). Reserve a small, bounded
+  // breathing room so the renderer does not turn a meaningful short label into
+  // an ellipsis at the exact measured width.
+  const textSafety = reserveShortLabelSpace && textWidth > 0 ? Math.max(2, fontSize * 0.25) : 0;
+  const width = Math.min(maxWidth, textLeft + textRight + textWidth + textSafety);
   const lineHeight = fontSize * 1.24;
   return { fontSize, lineHeight, width, height: lines.length * lineHeight + 2 * padY, textWidth: Math.min(textWidth, availableTextWidth), lines };
 }
@@ -259,6 +303,8 @@ export type MapSceneOptions = {
   fixed?: boolean;
   compact?: boolean;
   selectedFids?: readonly string[];
+  /** D17 단면 지도에서 선택한 단면을 PPT/native 경로에도 전달한다. */
+  terrainSection?: "A" | "B";
   highlightLabel?: string | null;
   /** 보고서 legendFocus 모드: 강조 항목의 원래 색·두께를 보존한다. */
   legendFocus?: string | null;
@@ -279,6 +325,8 @@ export type MapSceneOptions = {
   dragging?: boolean;
   /** 보고서가 미리 계산한 동일 프레임 뷰. 지정하면 view 재계산을 하지 않는다. */
   viewport?: Viewport;
+  /** 보고서 preview와 PPT가 같은 논리 단위로 callout·scale chrome을 배치할 때 쓴다. */
+  layoutUnit?: number;
 };
 
 export type MapScene = {
@@ -290,6 +338,7 @@ export type MapScene = {
   mpp: number;
   center: [number, number];
   radiusPx: number;
+  terrainSection: "A" | "B";
   tiles: ReturnType<typeof tilesFor>;
   features: MapSceneFeature[];
   lines: MapSceneLine[];
@@ -301,6 +350,7 @@ export type MapScene = {
   siteBounds: MapSceneBox;
   rings: number[];
   scale: { meters: number; px: number; label: string; x0: number; x1: number; y: number };
+  scaleBox: MapSceneBox;
   north: { x: number; y: number } | null;
   routePoints: Array<[number, number]>;
   labels: MapSceneLabel[];
@@ -835,6 +885,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     fixed = false,
     compact = false,
     selectedFids = [],
+    terrainSection = "A",
     highlightLabel = null,
     legendFocus: legendFocusOpt = null,
     emphasisKey = null,
@@ -851,11 +902,12 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     north: northOpt,
     dragging = false,
     viewport: viewportOpt,
+    layoutUnit,
   } = options;
   const layer = model.basemap ?? activeLayer;
   const sat = layer === "Satellite";
   const lineColor = sat ? "#fff" : "#16181d";
-  const u = Math.min(1.5, Math.max(1, H / 360));
+  const u = layoutUnit ?? Math.min(1.5, Math.max(1, H / 360));
   const vp = viewportOpt ?? applyView(framedViewport(model.center, model.radiusM, W, H, siteX, fill, siteY), model.center[1], options.view);
   const project = makeProjector(vp);
   const mpp = metersPerPixel(model.center[1], vp.zoom);
@@ -944,11 +996,16 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     : { x0: cx - 2.25 * siteR, y0: cy - 2.25 * siteR, x1: cx + 2.25 * siteR, y1: cy + 2.25 * siteR };
   const rings: number[] = [];
   if (showRadius) for (let meters = 500; meters < model.radiusM - 1; meters += 500) rings.push(meters / mpp);
-  const bar = scaleBar(mpp, 88 * u);
-  const barY = H - bottomInset - 20 * u;
-  const barX1 = scaleX !== undefined ? scaleX + bar.px : scaleLeft ? Math.max(6 * u, 12) + bar.px : W - 6 * u - rightInset;
-  const barX0 = barX1 - bar.px;
+  const scaleLayout = scaleBarLayout(W, H, mpp, bottomInset, rightInset, scaleLeft, scaleX, u);
+  const { bar, y: barY, x0: barX0, x1: barX1 } = scaleLayout;
+  const scaleBox = scaleBarBoxFromLayout(W, H, scaleLayout);
   const north = northOpt === false ? null : { x: W - rightInset - 20 * u, y: northOpt || 22 * u };
+  const northBox = north ? northArrowBox(W, H, rightInset, northOpt, u) : null;
+  const calloutAvoid = [
+    ...avoid,
+    ...(scale ? [scaleBox] : []),
+    ...(northBox ? [northBox] : []),
+  ];
   const routePoints = path.map(([lng, lat]) => project(lng, lat));
   const inFrame = (point: readonly [number, number]) => pointInFrame(point, W, H);
   const labelEntriesByKey = new Map(mapLabelEntries(model).map((entry) => [entry.key, entry]));
@@ -970,7 +1027,10 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
       return [{ ...base, autoText: automaticLabelText(entry.polygon.layer, "polygon", entry.polygon, highlighted), labelPriority: legacyLabelPriority("polygon", entry.polygon, highlighted) ?? 0, order: model.features.length + entry.index, p: anchor, radius: 0, small: false, explicit: !!automaticLabelText(entry.polygon.layer, "polygon", entry.polygon), highlighted, pick: { fid: entry.polygon.fid, lng, lat, kind: "polygon" as const, key: entry.key } }];
     }),
     ...linePaths.flatMap((entry) => {
-      const center = visibleAnchor(entry.points, entry.points[Math.floor(entry.points.length / 2)] ?? [cx, cy], W, H);
+      const sectionAnchor = entry.line.layer === "terrain_section_a" || entry.line.layer === "terrain_section_b"
+        ? terrainSectionLabelAnchor(entry.points, [cx, cy], radiusPx)
+        : null;
+      const center = sectionAnchor ?? visibleAnchor(entry.points, entry.points[Math.floor(entry.points.length / 2)] ?? [cx, cy], W, H);
       if (!center) return [];
       const [lng, lat] = centerOf(entry.line.points);
       const base = labelEntriesByKey.get(entry.key);
@@ -990,12 +1050,23 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   const calloutMetrics = { ...baseCalloutMetrics, cardW: baseCalloutMetrics.cardW * u, compactW: baseCalloutMetrics.compactW * u, minW: baseCalloutMetrics.minW * u, gap: baseCalloutMetrics.gap * u, stub: baseCalloutMetrics.stub * u, rMin: baseCalloutMetrics.rMin * u, rMax: baseCalloutMetrics.rMax * u, head: baseCalloutMetrics.head * u, row: baseCalloutMetrics.row * u, pad: baseCalloutMetrics.pad * u, compactH: calloutPadY * 2 + calloutLineHeight };
   const legendY = legendBox?.y0 ?? 0;
   const legendH = legendBox ? legendBox.y1 - legendBox.y0 : 0;
-  const calloutTop = calloutTopOpt ?? (legendBox && legendY <= H / 2 ? legendY + legendH + 6 * u : 4 * u);
+  const naturalCalloutTop = calloutTopOpt ?? (legendBox && legendY <= H / 2 ? legendY + legendH + 6 * u : 4 * u);
+  // 외부 제목 칩·컨트롤은 occupiedBoxes에만 남겨 두면 콜아웃 배치가 이미
+  // 그 위를 지난 뒤라서 의미가 없다. 좌우 카드 칸과 실제로 겹치는 상단
+  // 오버레이만 먼저 예약해 카드와 설명선의 시작점을 함께 아래로 내린다.
+  const provisionalFrame = calloutFrame({ W, H, m: calloutMetrics, edge: 4 * u, top: naturalCalloutTop, bottom: H, ...(calloutLeftBottom !== undefined ? { leftBottom: Math.max(naturalCalloutTop, calloutLeftBottom) } : {}), rightInset, perSide: 100, rows: 3, variant: "compact", maxFill: 0.8 });
+  const calloutColumns = [provisionalFrame.left, provisionalFrame.right];
+  const overlayCalloutTop = calloutAvoid
+    .filter((box) => box.y0 < naturalCalloutTop + provisionalFrame.cardH && box.y1 > naturalCalloutTop && calloutColumns.some((column) => box.x0 < column.x1 && column.x0 < box.x1))
+    .reduce((top, box) => Math.max(top, box.y1 + 6 * u), naturalCalloutTop);
+  const calloutTop = overlayCalloutTop;
   const naturalCalloutBottom = legendBox && legendY > H / 2 ? legendY - 6 * u : H - bottomInset - 4 * u;
   // 축척 판은 occupiedBoxes에만 기록하면 이미 배치된 콜아웃과 겹칠 수 있다.
   // 콜아웃 하단을 축척 판 위로 먼저 제한해 조판 셀에서도 카드가 축척을 가리지 않게 한다.
-  const calloutBottom = Math.min(naturalCalloutBottom, scale ? barY - 20 * u : H);
-  const calloutFrameModel = { ...calloutFrame({ W, H, m: calloutMetrics, edge: 4 * u, top: calloutTop, bottom: Math.max(calloutTop, calloutBottom), ...(calloutLeftBottom !== undefined ? { leftBottom: Math.max(calloutTop, calloutLeftBottom) } : {}), rightInset, perSide: 100, rows: 3, variant: "compact", maxFill: 0.8 }), centerX: W / 2 };
+  const calloutBottom = Math.min(naturalCalloutBottom, scale ? scaleBox.y0 - 6 * u : H);
+  const calloutFrameModel = calloutFrame({ W, H, m: calloutMetrics, edge: 4 * u, top: calloutTop, bottom: Math.max(calloutTop, calloutBottom), ...(calloutLeftBottom !== undefined ? { leftBottom: Math.max(calloutTop, calloutLeftBottom) } : {}), rightInset, perSide: 100, rows: 3, variant: "compact", maxFill: 0.8 });
+  const hasTerrainSupplement = (model.lines ?? []).some((line) => ["retaining_wall", "cut_fill", "fence"].includes(line.layer));
+  const protectTerrainLabel = (layerName: string) => hasTerrainSupplement && (layerName === "contour" || layerName === "retaining_wall" || layerName === "cut_fill" || layerName === "fence" || layerName === "terrain_section_a" || layerName === "terrain_section_b");
   const placementFor = (placed: Placed, entry: MapSceneLabel, text: MapCalloutTextLayout): MapSceneLabelPlacement => {
     const box: MapSceneBox = { x0: placed.x, y0: placed.y, x1: placed.x + placed.width, y1: placed.y + placed.height };
     const points = [entry.p, placed.knee, placed.edge];
@@ -1014,7 +1085,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   }
   const candidateLayouts = placementCandidates.map(({ entry, variant, rank }) => {
     const fontSize = variant === "auto" ? Math.max(9, entry.small ? 10.5 * u * 0.9 : 10.5 * u) : calloutLabelFs;
-    return { entry, variant, rank, text: mapCalloutTextLayout(entry, fontSize, calloutFrameModel.cardW, calloutTextLeft, calloutTextRight, calloutPadY) };
+    return { entry, variant, rank, text: mapCalloutTextLayout(entry, fontSize, calloutFrameModel.cardW, calloutTextLeft, calloutTextRight, calloutPadY, protectTerrainLabel(entry.layer)) };
   });
   const layout = layoutCallouts(calloutFrameModel, candidateLayouts.map(({ entry, rank, text }) => ({ id: entry.key, x: entry.p[0], y: entry.p[1], rank, width: text.width, height: text.height })));
   const placedByKey = new Map(layout.placed.map((placed) => [placed.id, placed]));
@@ -1028,8 +1099,8 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   }
   const occupiedBoxes: MapSceneBox[] = [
     ...(legendBox ? [legendBox] : []),
-    ...avoid,
-    ...(scale ? [{ x0: barX0 - 8 * u, y0: barY - 16 * u, x1: W, y1: H }] : []),
+    ...calloutAvoid,
+    ...(scale ? [scaleBox] : []),
     ...(showSiteMarker && !muted ? [siteBounds] : []),
     ...labelPlacements.flatMap((placement) => [placement.box, placement.leader]),
   ];
@@ -1044,6 +1115,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     mpp,
     center: [cx, cy],
     radiusPx,
+    terrainSection,
     tiles,
     features: drawn,
     lines: linePaths,
@@ -1055,6 +1127,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     siteBounds,
     rings,
     scale: { ...bar, x0: barX0, x1: barX1, y: barY },
+    scaleBox,
     north,
     routePoints,
     labels,

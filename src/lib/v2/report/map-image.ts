@@ -16,8 +16,8 @@ import { S01_MASS_LABEL } from "../tile/s01/cut";
 import type { RoseSeason } from "../tile-result";
 import type { Scene } from "../scene";
 import { renderMass3dPng } from "../ui/mass-3d-runtime";
-import { SLIDE, slideLayout, slidePanelRects, slideReserved, slideSiteX, slideLegend } from "../ui/overlay-layout";
-import { BASEMAP_STACK, slideViewport, tilesFor, tileUrl, type BasemapChoice, type Viewport } from "../ui/map-projection";
+import { SLIDE, slideCalloutAvoidance, slideLayout, slidePanelRects, slideReserved, slideSiteX, slideLegend, terrainSectionLayout } from "../ui/overlay-layout";
+import { BASEMAP_STACK, metersPerPixel, slideViewport, tilesFor, tileUrl, type BasemapChoice, type Viewport } from "../ui/map-projection";
 import { inflateRaster, paintRaster } from "../ui/raster-image";
 import { RASTER_STYLES } from "../ui/map-layers";
 import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
@@ -26,6 +26,7 @@ import { mapKeyOf, type PlannedSlide } from "./report-plan";
 import type { MapImages } from "./render-pptx";
 import { nativeMapStatus } from "./map-pptx";
 import type { PageStyle } from "../ui/board-state";
+import { northArrowBox, scaleBarBox } from "../ui/map-scene";
 
 // 슬라이드 비율(16:9)로 그린다: 지도가 슬라이드 전체이고 오버레이는 pptx 도형이 얹는다
 const VIEW_W = 960;
@@ -33,7 +34,7 @@ const VIEW_H = 540;
 const OUT_W = 1920;
 const OUT_H = 1080;
 const PX_PER_INCH = VIEW_W / SLIDE.w;
-type Extra = Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "scale" | "legend" | "bare" | "pinnedKeys" | "north" | "credit" | "label" | "rightInset" | "backgroundOnly"> & {
+type Extra = Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "siteY" | "calloutTop" | "calloutLeftBottom" | "scale" | "legend" | "bare" | "pinnedKeys" | "north" | "credit" | "label" | "rightInset" | "backgroundOnly" | "terrainSection"> & {
   size?: { width: number; height: number };
   bottomInset?: number;
   style?: PageStyle;
@@ -202,7 +203,7 @@ export async function rasterizeMap(
 ): Promise<string> {
   const width = extra.size?.width ?? VIEW_W;
   const height = extra.size?.height ?? VIEW_H;
-  const vp = extra.viewport ?? slideViewport(model, extra.style, { width, height, siteX: extra.siteX ?? 0.5, fill: extra.fill ?? 0.8 });
+  const vp = extra.viewport ?? slideViewport(model, extra.style, { width, height, siteX: extra.siteX ?? 0.5, siteY: extra.siteY ?? 0.5, fill: extra.fill ?? 0.8 });
   const activeLayer = effectiveLayer(model, layer);
   const urls = BASEMAP_STACK[activeLayer].flatMap((ly) => tilesFor(vp).map((t) => tileUrl(ly, t.z, t.x, t.y)));
   await Promise.all(
@@ -282,18 +283,51 @@ function extraFor(p: PlannedSlide, model: MapModel): Extra {
   const hasSummary = style.summary !== false && !(p.callout && p.callout.page > 0);
   const baseLegend = slideLegend(model, !p.muted).rect;
   const panels = slidePanelRects(style, hasSummary, baseLegend);
+  const terrainShown = p.view.code === "D17" && !!p.view.terrainSections && !!p.terrainSection;
+  const terrainLayout = terrainShown ? terrainSectionLayout(panels) : null;
   const pinned = { pinnedKeys: p.pinnedKeys ?? [] };
   const highlightLabel = legendLabelOf(model, style.legendFocus);
   const rightInset = hasSummary ? Math.max(0, VIEW_W - (panels.summary?.x ?? SLIDE.w) * PX_PER_INCH + SLIDE.edge * PX_PER_INCH * 0.5) : SLIDE.edge * PX_PER_INCH;
   // 설명표 장: 두 칸 사이에 반경 원을 넣는 프레임 (렌더러가 점·표를 같은 프레임으로 놓는다)
   if (p.callout && p.callout.page > 0) {
     const f = slideCalloutFrame(4);
-    return { siteX: f.siteX, fill: f.fill, avoid: [], scale: false, rightInset: 0, style, highlightLabel, legendFocus: highlightLabel, ...pinned };
+    const detailNorthY = (panels.title.y + panels.title.h) * PX_PER_INCH + SLIDE.edge * PX_PER_INCH * 0.5 + 13 * Math.min(1.5, Math.max(1, VIEW_H / 360));
+    const detailNorthAvoid = northArrowBox(VIEW_W, VIEW_H, 0, detailNorthY);
+    return { siteX: f.siteX, fill: f.fill, avoid: detailNorthAvoid ? [detailNorthAvoid] : [], scale: false, rightInset: 0, style, highlightLabel, legendFocus: highlightLabel, ...(terrainShown ? { terrainSection: p.terrainSection } : {}), ...pinned };
   }
+  const calloutOverview = p.callout?.page === 0;
+  const calloutEntries = calloutOverview
+    ? [
+        { text: p.callout!.model.legend.title },
+        ...p.callout!.model.legend.items.map((item) => ({ text: item.label, color: item.color, hollow: item.hollow === true })),
+        { text: p.callout!.model.legend.sizeLabel },
+      ]
+    : [];
+  const calloutAlignment = slideCalloutAvoidance(panels, calloutEntries);
+  const calloutTop = calloutAlignment ? calloutAlignment.calloutTop * PX_PER_INCH : undefined;
+  const northTop = (calloutTop ?? (panels.title.y + panels.title.h) * PX_PER_INCH + SLIDE.edge * PX_PER_INCH * 0.5) + 13 * Math.min(1.5, Math.max(1, VIEW_H / 360));
+  const northAvoid = northArrowBox(VIEW_W, VIEW_H, rightInset, northTop);
   const siteX = slideSiteX(style, hasSummary);
-  const avoid = slideReserved(PX_PER_INCH, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend: panels.legend });
-  if (p.callout) return { siteX, fill: SLIDE_OVERVIEW_FILL, rightInset, avoid, style, highlightLabel, legendFocus: highlightLabel, ...pinned };
-  return { muted: p.muted, siteX, rightInset, avoid, style, highlightLabel, legendFocus: highlightLabel, ...pinned };
+  const fill = terrainLayout?.mapFill ?? (calloutOverview ? SLIDE_OVERVIEW_FILL : 0.8);
+  const siteY = terrainLayout?.mapSiteY ?? 0.5;
+  const bottomInset = SLIDE.stripH * PX_PER_INCH + (calloutAlignment.calloutLegend ? (calloutAlignment.calloutLegend.h + 0.18) * PX_PER_INCH : 0);
+  const viewport = slideViewport(model, style, { width: VIEW_W, height: VIEW_H, siteX, siteY, fill });
+  const scaleAvoid = scaleBarBox(VIEW_W, VIEW_H, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset);
+  const avoid = [...slideReserved(PX_PER_INCH, {
+    info: hasSummary,
+    titleRect: panels.title,
+    infoRect: panels.summary,
+    legend: panels.legend,
+    calloutLegend: calloutAlignment?.calloutLegend,
+    terrainSection: terrainLayout?.rect,
+  }), scaleAvoid, ...(northAvoid ? [northAvoid] : [])];
+  const framePatch = terrainLayout?.mode === "bottom-band"
+    ? { fill: terrainLayout.mapFill, siteY: terrainLayout.mapSiteY, calloutLeftBottom: (calloutAlignment?.calloutLeftBottom ?? terrainLayout.calloutLeftBottom ?? 0) * PX_PER_INCH }
+    : {};
+  const terrainPatch = terrainShown ? { terrainSection: p.terrainSection } : {};
+  const calloutPatch = calloutTop !== undefined ? { calloutTop, ...(calloutAlignment?.calloutLeftBottom !== undefined ? { calloutLeftBottom: calloutAlignment.calloutLeftBottom * PX_PER_INCH } : {}) } : {};
+  if (p.callout) return { siteX, fill: SLIDE_OVERVIEW_FILL, siteY, rightInset, avoid, bottomInset, viewport, style, highlightLabel, legendFocus: highlightLabel, ...calloutPatch, ...framePatch, ...terrainPatch, ...pinned };
+  return { muted: p.muted, siteX, fill, siteY, rightInset, avoid, bottomInset, viewport, style, highlightLabel, legendFocus: highlightLabel, ...calloutPatch, ...framePatch, ...terrainPatch, ...pinned };
 }
 
 /** 계획의 모든 지도 자리에 대한 PNG. 실패한 장은 빠진다(렌더러가 자리표시를 넣는다). */

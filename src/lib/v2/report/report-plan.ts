@@ -2,7 +2,7 @@
  * 보드 → 보고서 슬라이드 계획. 순수 함수 (pptx 라이브러리 의존 없음).
  * 슬라이드 수는 board-state의 reportPages(board).pages(표지+타일+출처 장)와 항상 같다.
  */
-import { defaultCutForCode, extraPageKey, isCutSpec, type BoardState, type CutSpec, type ExtraReportPage, type PageKey, type PageStyle } from "../ui/board-state";
+import { defaultCutForCode, extraPageKey, isCutSpec, type BoardState, type CutSpec, type ExtraReportPage, type PageKey, type PageStyle, type TerrainSectionId } from "../ui/board-state";
 import { calloutReportPages, DEFAULT_CALLOUT_MODE, pageCount } from "../ui/callout-layout";
 import type { MapModel } from "../ui/map-layers";
 export { legendItemsOf, legendLabelOf } from "../ui/map-layers";
@@ -61,6 +61,8 @@ export type ReportSlide =
       callout?: { model: CalloutModel; page: number; pages: number; filterLine?: string | null };
       /** 보드에서 켜 둔 지도 요소 라벨만 보고서 이미지에 그린다. */
       pinnedKeys?: string[];
+      /** D17 수치지형도 선택 단면. view에 단면이 있을 때만 저장한다. */
+      terrainSection?: TerrainSectionId;
     }
   | {
       kind: "sheet";
@@ -336,6 +338,7 @@ export function buildReportPlan(input: {
           ...(cell.mass ? { mass: cell.mass } : {}),
           ...(cell.rose ? { rose: cell.rose, roseSeason: cell.roseSeason ?? "annual" } : {}),
           pinnedKeys: pinnedKeysFor(board, v.tileId),
+          ...(cell.view.terrainSections ? { terrainSection: board.terrainSection[v.tileId] ?? "A" } : {}),
         }, sourceFooterFor(v), { cut: "single" });
       }
       continue;
@@ -375,6 +378,7 @@ export function buildReportPlan(input: {
         map: mass || rose ? null : !result ? v.backdrop : v.hasFace && face === "back" ? null : (v.map ?? v.backdrop),
         muted: !result,
         pinnedKeys: pinnedKeysFor(board, v.tileId),
+        ...(v.terrainSections ? { terrainSection: board.terrainSection[v.tileId] ?? "A" } : {}),
         ...(mass ? { mass } : {}),
         ...(rose ? { rose, roseSeason: "annual" as const } : {}),
       }, sourceFooterFor(v));
@@ -457,6 +461,7 @@ export function buildReportPlan(input: {
         callout: { model: view.callout, page: 0, pages: pageCount(view.callout.complexes.length), filterLine: view.filterLine },
       } : {}),
       pinnedKeys: pinnedKeysFor(board, view.tileId),
+      ...(view.terrainSections ? { terrainSection: board.terrainSection[view.tileId] ?? "A" } : {}),
       ...(mass ? { mass } : {}),
       ...(rose ? { rose, roseSeason: "annual" as const } : {}),
     };

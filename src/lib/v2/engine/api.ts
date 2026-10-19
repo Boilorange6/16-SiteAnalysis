@@ -37,6 +37,7 @@ const bodySchema = z
     center: z.tuple([z.number().min(124).max(132), z.number().min(33).max(39)]).optional(),
     radiusM: z.number().default(DEFAULT_RADIUS_M),
     analysisDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(realDate, "분석일이 올바른 날짜가 아닙니다").optional(),
+    topoId: z.string().uuid().optional(),
     site: siteSchema.optional(),
   })
   .refine((b) => b.site !== undefined || b.address !== undefined || b.center !== undefined, { message: "주소 또는 좌표가 필요합니다(또는 대지 선택)" })
@@ -152,6 +153,8 @@ export function postAnalysis(appDb: BetterSqlite3.Database, dataDir: string, raw
     return { status: 500, body: { error: "분석 중 오류가 발생했습니다" } };
   }
   if (!outcome.ok) {
+    if (outcome.reason === "topo_not_found") return { status: 404, body: { error: "topo_not_found" } };
+    if (outcome.reason === "topo_outside") return { status: 422, body: { error: "topo_outside" } };
     const error = outcome.reason === "site_missing_pnu" && outcome.missingPnus?.length
       ? `다음 PNU 필지 도형을 찾지 못했습니다: ${outcome.missingPnus.join(", ")}`
       : SITE_FAILURE_MESSAGE[outcome.reason];

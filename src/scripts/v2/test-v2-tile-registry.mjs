@@ -46,7 +46,7 @@ const EXPECTED_CACHE_VERSIONS = {
   D13: "v2-p4-ext-1+w2b-r1",
   D15: "v2-p4-ext-1+w2b-r1+clip-r1",
   D16: "v2-p4-ext-1+height3-r1+w2b-r1+clip-r1",
-  D17: "v2-p4-ext-1+w2b-r1+clip-r1",
+  D17: "v2-p4-ext-1+w2b-r1+clip-r1+terrain-section-r1",
   D18: "v2-p4-ext-1+w2b-r1+clip-r1",
   D19: "v2-p4-ext-1+w3-merge-r1+w2b-r1+clip-r1",
   D22: "v2-p4-ext-1",

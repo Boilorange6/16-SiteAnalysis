@@ -22,6 +22,7 @@ import { s04 } from "../tile/s04/engine";
 import { makeTile } from "./tiles/common";
 import { catalogEntry } from "../ui/tile-catalog";
 import { listJobs, type JobInfo } from "./jobs-store";
+import { closeTopoHandle, hasTopoParameter, topoHandleFor, type TopoHandle } from "../topo/context";
 
 type Db = BetterSqlite3.Database;
 
@@ -255,6 +256,7 @@ export function runHeavyTiles(appDb: Db, dataDir: string, analysisId: string): v
   let ctx: EngineContext | null = null;
   let core: BetterSqlite3.Database | null = null;
   let parcels: BetterSqlite3.Database | null = null;
+  let topo: TopoHandle | null = null;
   let refreshScene = false;
   try {
     // 재현성: 현재 manifest가 아니라 분석 행에 기록된 보관본만 연다.
@@ -263,17 +265,20 @@ export function runHeavyTiles(appDb: Db, dataDir: string, analysisId: string): v
     // New runs persist the resolved geometry; legacy pnu-only runs still need
     // the parcel file so S02/D19/A12 can reconstruct the original site.
     parcels = manifest.files.parcels ? acquireDataFile(dataDir, manifest, "parcels") : null;
+    topo = topoHandleFor(appDb, run.parameters, run.userId);
+    if (hasTopoParameter(run.parameters) && !topo) throw new Error("topo data is no longer available");
     ctx = new EngineContext(
       dataDir,
       manifest,
       analysisId,
       { address: run.address, center: run.center, radiusM: run.radiusM, analysisDate: run.analysisDate, pnu: typeof run.parameters.pnu === "string" ? run.parameters.pnu : null, site: restoreSiteFromParameters(run.parameters) },
       { core, ...(parcels ? { parcels } : {}) },
-      { rasterReader: rasterReader(appDb, analysisId), reuseDataFiles: true, pooledKeys: parcels ? ["core", "parcels"] : ["core"] },
+      { rasterReader: rasterReader(appDb, analysisId), reuseDataFiles: true, pooledKeys: parcels ? ["core", "parcels"] : ["core"], topo },
     );
     const scene = loadScene(appDb, analysisId);
     refreshScene = scene === null || scene.manifestHash !== run.manifestHash;
   } catch (error) {
+    if (!ctx) closeTopoHandle(topo);
     if (parcels) releaseDataFile(parcels);
     if (core) releaseDataFile(core);
     failRemainingJobs(appDb, run, error);

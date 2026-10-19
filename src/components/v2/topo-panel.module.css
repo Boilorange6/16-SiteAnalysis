@@ -1,0 +1,266 @@
+.root {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #d9dce2;
+  color: #15171c;
+}
+
+.helper,
+.progressText,
+.coverageCopy,
+.error p {
+  margin: 0;
+  color: #676c76;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dropzone {
+  display: grid;
+  min-height: 104px;
+  place-content: center;
+  gap: 5px;
+  padding: 14px;
+  border: 1px dashed #676c76;
+  border-radius: 12px;
+  background: #f7f8f9;
+  color: #15171c;
+  text-align: center;
+  cursor: pointer;
+}
+
+.dropzone:hover {
+  border-color: #2350b8;
+  background: #f3f6ff;
+}
+
+.dropzone:focus-visible,
+.primaryButton:focus-visible,
+.secondaryButton:focus-visible,
+.sourceLink:focus-visible {
+  outline: 2px solid #2f6fdb;
+  outline-offset: 2px;
+}
+
+.dropzone[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.dropTitle {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.dropHint {
+  color: #676c76;
+  font-size: 11px;
+}
+
+.sourceLink {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  color: #2350b8;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.steps {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  color: #676c76;
+  font-size: 12px;
+  list-style: none;
+}
+
+.steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+}
+
+.steps li > span {
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  place-items: center;
+  border: 1px solid #d9dce2;
+  border-radius: 50%;
+  font-size: 11px;
+}
+
+.steps .stepActive {
+  color: #15171c;
+  font-weight: 700;
+}
+
+.steps .stepActive > span,
+.steps .stepDone > span {
+  border-color: #2350b8;
+  color: #2350b8;
+}
+
+.progress {
+  width: 100%;
+  height: 8px;
+  accent-color: #2350b8;
+}
+
+.progressText {
+  color: #15171c;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.fileRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fileName {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.readyTag,
+.chipTone {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.readyTag {
+  flex: none;
+  background: #eef5ef;
+  color: #285c38;
+}
+
+.coverageCopy {
+  color: #15171c;
+  font-weight: 700;
+}
+
+.chips {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chip {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.chipTonePrimary {
+  background: #eef0f3;
+  color: #2350b8;
+}
+
+.chipToneNew {
+  background: #eef0f3;
+  color: #15171c;
+}
+
+.chipToneSupport {
+  background: #eef0f3;
+  color: #676c76;
+}
+
+.chipText {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.primaryButton,
+.secondaryButton {
+  min-height: 44px;
+  padding: 8px 13px;
+  border: 1px solid #15171c;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.primaryButton {
+  background: #15171c;
+  color: #fff;
+}
+
+.secondaryButton {
+  border-color: #d9dce2;
+  background: #fff;
+  color: #15171c;
+}
+
+.primaryButton:hover,
+.secondaryButton:hover {
+  background: #eef0f3;
+  color: #15171c;
+}
+
+.primaryButton:disabled {
+  border-color: #626875;
+  background: #626875;
+  color: #fff;
+  cursor: not-allowed;
+}
+
+.secondaryButton:disabled {
+  border-color: #aeb3bc;
+  background: #f4f5f6;
+  color: #5f6570;
+  cursor: not-allowed;
+}
+
+.error {
+  background: #fff0ed;
+  border-color: #d9dce2;
+}
+
+.error strong {
+  color: #9d2e20;
+  font-size: 13px;
+}
+
+@media (max-width: 480px) {
+  .root {
+    margin-top: 14px;
+  }
+
+  .actions > button {
+    flex: 1 1 120px;
+  }
+}

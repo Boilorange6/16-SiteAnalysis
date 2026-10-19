@@ -18,6 +18,9 @@ import { RASTER_SPECS } from "./raster";
 import { WEATHER_SPECS } from "./weather";
 import { HOUSING_SPECS } from "./housing";
 import { detailDisplayValue } from "../../ui/detail-labels";
+import { hasTopoParameter, topoHandleFor } from "../../topo/context";
+import { terrainSections } from "../tiles/terrain-section";
+import type { TerrainSections } from "../tiles/terrain-section";
 
 export type DetailValue = string | number | null;
 
@@ -84,6 +87,8 @@ export interface DetailPayload {
   card: DetailCard;
   rows: DetailRow[];
   total: number;
+  /** D17 단면은 목록과 함께 전달해 상세 창에서도 같은 결과를 사용한다. */
+  terrainSections?: TerrainSections;
   exportFileName: string;
 }
 
@@ -148,6 +153,7 @@ function cacheKey(ctx: DetailContext, code: TileCode, controls: Record<string, s
     ctx.input.center,
     ctx.input.radiusM,
     ctx.input.analysisDate,
+    ctx.topo?.sha256 ?? null,
     controls,
   ]);
 }
@@ -173,6 +179,9 @@ function makePayload(ctx: DetailContext, code: TileCode, spec: DetailSpec, contr
   const csvColumns = [...spec.columns];
   const rows = spec.rows(ctx);
   const card = spec.summary(ctx);
+  const terrain = code === "D17" && ctx.topo && ctx.input.site.geometry?.type === "Polygon"
+    ? terrainSections(ctx, ctx.input.site.geometry)
+    : undefined;
   return {
     analysisId: ctx.analysisId,
     code,
@@ -183,6 +192,7 @@ function makePayload(ctx: DetailContext, code: TileCode, spec: DetailSpec, contr
     card,
     rows,
     total: rows.length,
+    ...(terrain ? { terrainSections: terrain } : {}),
     exportFileName: `${safeFilePart(ctx.input.address)}_${safeFilePart(catalogEntry(code).title)}_${Math.round(ctx.input.radiusM)}m.csv`,
   };
 }
@@ -286,6 +296,8 @@ function makeContext(appDb: BetterSqlite3.Database, dataDir: string, analysisId:
   const run = getAnalysisRun(appDb, analysisId);
   const manifest = runManifest(dataDir, run);
   if (!run || !manifest) return null;
+  const topo = topoHandleFor(appDb, run.parameters, run.userId);
+  if (hasTopoParameter(run.parameters) && !topo) return null;
   return {
     run,
     ctx: new EngineContext(dataDir, manifest, analysisId, {
@@ -295,7 +307,7 @@ function makeContext(appDb: BetterSqlite3.Database, dataDir: string, analysisId:
       analysisDate: run.analysisDate,
       pnu: typeof run.parameters.pnu === "string" ? run.parameters.pnu : null,
       site: restoreSiteFromParameters(run.parameters),
-    }, {}, { rasterReader: rasterReader(appDb, analysisId) }),
+    }, {}, { rasterReader: rasterReader(appDb, analysisId), topo }),
   };
 }
 

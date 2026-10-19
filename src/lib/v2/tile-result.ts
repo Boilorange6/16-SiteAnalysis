@@ -124,6 +124,20 @@ const MapPolygonSchema = z.object({
   sublabel: z.string().nullable().optional(),
   labelPriority: z.number().int().min(0).max(2).optional(),
 });
+
+const TerrainSectionSchema = z.object({
+  axis: z.enum(["EW", "NS"]),
+  from: z.tuple([z.number().finite(), z.number().finite()]),
+  to: z.tuple([z.number().finite(), z.number().finite()]),
+  samples: z.array(z.object({ d: z.number().finite().nonnegative(), z: z.number().finite().nullable() })),
+  siteSpan: z.tuple([z.number().finite().nonnegative(), z.number().finite().nonnegative()]),
+  crossings: z.array(z.object({
+    d: z.number().finite().nonnegative(),
+    kind: z.enum(["retaining", "cut_fill", "fence"]),
+    heightM: z.number().finite().nullable(),
+  })),
+});
+const TerrainSectionsSchema = z.object({ A: TerrainSectionSchema, B: TerrainSectionSchema });
 export const ROSE_SEASONS = ["annual", "spring", "summer", "autumn", "winter"] as const;
 export type RoseSeason = (typeof ROSE_SEASONS)[number];
 
@@ -207,6 +221,8 @@ export const TileResultSchema = z
       rose: RoseSchema.optional(),
       /** D22 계절·연간 바람장미. 옛 weather 파일에서는 연간 rose만 유지한다. */
       roses: RoseSetSchema.optional(),
+      /** D17 수치지형도 선택 단면. topo가 있는 분석에만 저장한다. */
+      terrainSections: TerrainSectionsSchema.optional(),
       /** 지도 위에 겹칠 압축 격자 결과. 바이너리는 tile_raster에 저장한다. */
       rasters: z.array(RasterRefSchema).max(96).optional(),
       /** D01처럼 타일 자체가 고정하는 항공영상 배경. */
@@ -272,6 +288,7 @@ export type MapFeature = z.infer<typeof MapFeatureSchema>;
 export type MapPolygon = z.infer<typeof MapPolygonSchema>;
 export type MapLine = z.infer<typeof MapLineSchema>;
 export type RasterRef = z.infer<typeof RasterRefSchema>;
+export type TerrainSections = z.infer<typeof TerrainSectionsSchema>;
 export type RasterKind = RasterRef["kind"];
 export type RasterDType = RasterRef["dtype"];
 export type BasemapChoice = NonNullable<TileResult["presentation"]["basemap"]>;

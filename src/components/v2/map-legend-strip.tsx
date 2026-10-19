@@ -24,20 +24,27 @@ export type MapLegendItem = {
   /** 지도에서 강조할 수 없는 설명용 래스터/메타 항목. */
   static?: boolean;
   swatch?: LegendSwatchKind;
+  legendSwatch?: "line" | "polygon";
   hollow?: boolean;
   /** 면 레이어의 실제 채움·테두리·빗금 표현. 지도와 같은 원천 스타일을 범례 견본에도 쓴다. */
   fill?: string;
   stroke?: string;
   fillOpacity?: number;
   strokeWidth?: number;
+  /** Geometry-faithful line style metadata from map-layers.ts. */
+  lineSwatch?: boolean;
+  dash?: string;
+  lineCap?: "butt" | "round" | "square";
+  tickMarks?: boolean;
+  casing?: string;
   hatch?: boolean;
   /** 화면에 표시하는 값 범례와 지도 요소 강조에 쓰는 공용 레이어명을 분리한다. */
   highlightLabel?: string;
 };
 
-function LegendSwatch({ item }: { item: MapLegendItem }) {
+export function LegendSwatch({ item }: { item: MapLegendItem }) {
   const swatchId = useId().replace(/:/g, "");
-  const kind = item.site ? "site" : (item.symbol ?? item.swatch ?? "point");
+  const kind = item.site ? "site" : (item.symbol ?? item.swatch ?? (item.lineSwatch ? "line" : item.legendSwatch ?? "point"));
   if (kind === "site") {
     return (
       <svg className={styles.mapLegendSwatchSvg} width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
@@ -93,7 +100,19 @@ function LegendSwatch({ item }: { item: MapLegendItem }) {
           fillOpacity={item.hatch ? 1 : item.fillOpacity ?? 1}
           stroke={stroke}
           strokeWidth={item.strokeWidth ?? 1}
+          strokeDasharray={item.dash}
         />
+      </svg>
+    );
+  }
+  if (kind === "line" && item.lineSwatch) {
+    const strokeWidth = Math.max(1, item.strokeWidth ?? 1.5);
+    const lineCap = item.lineCap ?? "butt";
+    return (
+      <svg className={styles.mapLegendSwatchSvg} data-kind={kind} width="20" height="12" viewBox="0 0 20 12" aria-hidden="true" focusable="false">
+        {item.casing && <line x1="1" y1="6" x2="19" y2="6" stroke={item.casing} strokeWidth={strokeWidth + 2.4} strokeDasharray={item.dash} strokeLinecap={lineCap} strokeLinejoin="round" />}
+        <line x1="1" y1="6" x2="19" y2="6" stroke={item.color} strokeWidth={strokeWidth} strokeDasharray={item.dash} strokeLinecap={lineCap} strokeLinejoin="round" />
+        {item.tickMarks && [4, 8, 12, 16].map((x) => <line key={x} x1={x} y1="3" x2={x} y2="9" stroke={item.color} strokeWidth="1" strokeLinecap="round" />)}
       </svg>
     );
   }

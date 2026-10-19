@@ -8,6 +8,7 @@ import { maxOf, minOf } from "@/lib/v2/extent";
 import { isSiteParcelLayer } from "@/lib/v2/ui/site-parcel";
 import { calloutFrame, layoutCallouts, PX, PX_NARROW, type Placed } from "@/lib/v2/ui/callout-layout";
 import { buildMapScene, mapCalloutTextLayout, mapElementKey, mapFeatureKey, mapLabelEntries, mapTextWidth, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, type MapCalloutTextLayout, type MapSceneLabel } from "@/lib/v2/ui/map-scene";
+import { terrainSectionMapStyle } from "@/lib/v2/ui/terrain-section";
 
 export { mapCalloutTextLayout, mapFeatureKey, mapLabelEntries, mapLabelText } from "@/lib/v2/ui/map-scene";
 
@@ -35,6 +36,8 @@ export type MapFigureProps = {
   backgroundOnly?: boolean | readonly string[];
   /** 직렬화용: width/height 속성을 붙인다. 아니면 부모를 채운다 */
   fixed?: boolean;
+  /** 보고서 미리보기와 PPT가 공유하는 논리 크기 단위. 일반 지도는 자동 단위를 쓴다. */
+  layoutUnit?: number;
   /** 카드처럼 작은 프레임에서 출구 번호를 최근접 출구 하나로 줄인다. */
   compact?: boolean;
   label?: string;
@@ -70,8 +73,14 @@ export type MapFigureProps = {
   scaleX?: number;
   /** 대지 중심의 세로 위치(0~1, 기본 0.5). 아래에서 올라오는 시트가 있으면 위로 옮긴다 */
   siteY?: number;
+  /** 콜아웃 칸의 위쪽(px). 보고서 미리보기·PPT가 공용 회피 레이아웃을 전달할 때 쓴다. */
+  calloutTop?: number;
+  /** 하단 밴드가 예약된 경우 왼쪽 콜아웃 열의 하단(px) */
+  calloutLeftBottom?: number;
   /** 상세 창에서 행/지도 선택을 같은 fid로 강조한다. */
   selectedFids?: readonly string[];
+  /** D17 단면 지도는 선택한 단면을 굵고 실선으로 강조한다. 기본은 A다. */
+  terrainSection?: "A" | "B";
   /** 범례 라벨 기준 화면 강조. 같은 라벨의 여러 레이어를 함께 강조한다. */
   highlightLabel?: string | null;
   /** 보고서 범례 강조: 선택 항목의 원래 geometry style을 보존한다. */
@@ -131,6 +140,24 @@ function a04PolygonDrawOrder(layer: string): number {
 const textW = mapTextWidth;
 type Box = { x0: number; y0: number; x1: number; y1: number };
 type ScreenPoint = readonly [number, number];
+
+function lineTickSegments(points: readonly ScreenPoint[], size: number): Array<[ScreenPoint, ScreenPoint]> {
+  const ticks: Array<[ScreenPoint, ScreenPoint]> = [];
+  for (let index = 1; index < points.length; index += 1) {
+    const a = points[index - 1]!;
+    const b = points[index]!;
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const length = Math.hypot(dx, dy);
+    if (length < 1) continue;
+    const mx = (a[0] + b[0]) / 2;
+    const my = (a[1] + b[1]) / 2;
+    const nx = -dy / length * size;
+    const ny = dx / length * size;
+    ticks.push([[mx - nx, my - ny], [mx + nx, my + ny]]);
+  }
+  return ticks;
+}
 
 type PreviewPickCandidate = {
   key: string;
@@ -298,7 +325,7 @@ function backgroundTransform(from: Viewport, to: Viewport, width: number, height
   return `matrix(${scale},0,0,${scale},${e},${f})`;
 }
 
-function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, backgroundOnly = false, fixed, compact = false, label, legend, legendY, north: northOpt, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = EMPTY_BOXES, siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, selectedFids = EMPTY_KEYS, highlightLabel = null, legendFocus = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = EMPTY_KEYS, showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeaturePin, onLegendHover, onLegendPin, path = EMPTY_PATH, onMapClick, view, viewport, dragging = false, previewInteraction = false, hiddenKeys = EMPTY_KEYS }: MapFigureProps) {
+function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, backgroundOnly = false, fixed, layoutUnit, compact = false, label, legend, legendY, north: northOpt, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = EMPTY_BOXES, siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, calloutTop: calloutTopOpt, calloutLeftBottom, selectedFids = EMPTY_KEYS, terrainSection = "A", highlightLabel = null, legendFocus = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = EMPTY_KEYS, showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeaturePin, onLegendHover, onLegendPin, path = EMPTY_PATH, onMapClick, view, viewport, dragging = false, previewInteraction = false, hiddenKeys = EMPTY_KEYS }: MapFigureProps) {
   if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
     const target = window as Window & { __V2_PREVIEW_METRICS__?: Record<string, number> };
     const metrics = target.__V2_PREVIEW_METRICS__ ?? (target.__V2_PREVIEW_METRICS__ = {});
@@ -323,7 +350,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
   }, []);
   const lastPointerType = useRef<string | null>(null);
   const lastLegendPointerType = useRef<string | null>(null);
-  const u = Math.min(1.5, Math.max(1, H / 360));
+  const u = layoutUnit ?? Math.min(1.5, Math.max(1, H / 360));
   const activeRaster = selectedRaster(rasterModel, rasterName);
   const internalLegendVisible = !bare && legend !== false;
 
@@ -348,15 +375,15 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     ...(model.linesTotal !== undefined && model.linesTotal > (model.lines?.length ?? 0) ? [`경로 표시 ${(model.lines?.length ?? 0).toLocaleString("en-US")} / 전체 ${model.linesTotal.toLocaleString("en-US")}`] : []),
   ];
   const notes = [...model.notes, ...cuts];
-  const legendRows: Array<Array<{ layer: string; label: string; color: string; x: number; w: number; site?: boolean; badge?: string; symbol?: "rail-axis" | "rail-exit" }>> = [[]];
+  const legendRows: Array<Array<{ layer: string; label: string; color: string; x: number; w: number; site?: boolean; badge?: string; symbol?: "rail-axis" | "rail-exit"; lineSwatch?: boolean; dash?: string; lineCap?: "butt" | "round" | "square"; tickMarks?: boolean; casing?: string; strokeWidth?: number }>> = [[]];
   let lx = 0;
   for (const item of present) {
-    const w = 12 * u + textW(item.label, fs) + 8 * u;
+    const w = (item.lineSwatch ? 20 : 12) * u + textW(item.label, fs) + 8 * u;
     if (lx + w > legendMaxW && legendRows.at(-1)!.length) {
       legendRows.push([]);
       lx = 0;
     }
-    legendRows.at(-1)!.push({ layer: item.layer, label: item.label, color: item.color, badge: item.badge, symbol: item.symbol, x: lx, w });
+    legendRows.at(-1)!.push({ layer: item.layer, label: item.label, color: item.color, badge: item.badge, symbol: item.symbol, lineSwatch: item.lineSwatch, dash: item.dash, lineCap: item.lineCap, tickMarks: item.tickMarks, casing: item.casing, strokeWidth: item.strokeWidth, x: lx, w });
     lx += w;
   }
   if (!bare && !muted) {
@@ -483,6 +510,8 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     siteY: mapSiteY,
     bottomInset,
     rightInset,
+    calloutTop: calloutTopOpt,
+    calloutLeftBottom,
     scaleLeft,
     scaleX,
     scale,
@@ -492,6 +521,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     fixed: !!fixed,
     compact,
     selectedFids,
+    terrainSection,
     highlightLabel,
     emphasisKey,
     hoverKey: previewInteraction ? null : hoverKey,
@@ -507,7 +537,8 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     view,
     viewport,
     legendFocus,
-  }), [activeLayer, avoid, bare, bottomInset, compact, emphasisKey, fill, fixed, H, hiddenKeys, highlightLabel, legendFocus, mapCenterY, mapFill, mapSiteX, mapSiteY, muted, model, northOpt, panelH, panelW, panelX, panelY, path, rightInset, scale, scaleLeft, scaleX, sceneDragging, sceneHoverKey, showAutomaticLabels, showLegend, showRadius, showSiteMarker, siteX, selectedFids, pinnedKeys, W, view, viewport]);
+    layoutUnit: u,
+  }), [activeLayer, avoid, bare, bottomInset, calloutLeftBottom, calloutTopOpt, compact, emphasisKey, fill, fixed, H, hiddenKeys, highlightLabel, layoutUnit, legendFocus, mapCenterY, mapFill, mapSiteX, mapSiteY, muted, model, northOpt, panelH, panelW, panelX, panelY, path, rightInset, scale, scaleLeft, scaleX, sceneDragging, sceneHoverKey, showAutomaticLabels, showLegend, showRadius, showSiteMarker, siteX, selectedFids, terrainSection, pinnedKeys, W, view, viewport]);
   const vp = scene.viewport;
   const proj = makeProjector(vp);
   const mpp = scene.mpp;
@@ -813,26 +844,21 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     // fallback used by the frame when there are no measured candidates.
     compactH: calloutPadY * 2 + calloutLineHeight,
   };
-  const calloutTop = showLegend && panelY <= H / 2 ? panelY + panelH + 6 * u : 4 * u;
+  const calloutTop = calloutTopOpt ?? (showLegend && panelY <= H / 2 ? panelY + panelH + 6 * u : 4 * u);
   const calloutBottom = showLegend && panelY > H / 2 ? panelY - 6 * u : H - bottomInset - 4 * u;
-  const calloutFrameModel = {
-    ...calloutFrame({
-      W,
-      H,
-      m: calloutMetrics,
-      edge: 4 * u,
-      top: calloutTop,
-      bottom: Math.max(calloutTop, calloutBottom),
-      rightInset,
-      perSide: 100,
-      rows: 3,
-      variant: "compact",
-      maxFill: 0.8,
-    }),
-    // A label belongs to the left/right side of the map, not to the shifted
-    // center left by a detail-panel inset.
-    centerX: W / 2,
-  };
+  const calloutFrameModel = calloutFrame({
+    W,
+    H,
+    m: calloutMetrics,
+    edge: 4 * u,
+    top: calloutTop,
+    bottom: Math.max(calloutTop, calloutBottom),
+    rightInset,
+    perSide: 100,
+    rows: 3,
+    variant: "compact",
+    maxFill: 0.8,
+  });
   type MapCalloutPlacement = { placed: Placed; box: Box; leader: Box; text: MapCalloutTextLayout };
   const calloutPlacement = (placed: Placed, point: ScreenLabel, text: MapCalloutTextLayout): MapCalloutPlacement => {
     const box: Box = { x0: placed.x, y0: placed.y, x1: placed.x + placed.width, y1: placed.y + placed.height };
@@ -1143,29 +1169,33 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
             const pick = pickProps({ fid: polygonFid, lng: polygonCenter[0], lat: polygonCenter[1], kind: "polygon" }, polygonKey, labelText(polygon.polygon.layer, "polygon", polygon.polygon));
             return (
               <g key={`poly${polygon.index}`}>
-                <path data-poly="true" data-map-layer={polygon.polygon.layer} d={polygonPath(polygon.rings)} fillRule="evenodd" fill={neutralBuilding ? buildingStyle.fill : estimated ? `url(#${hatchId(polygon.index)})` : st.fill ?? st.color} fillOpacity={neutralBuilding ? buildingStyle.fillOpacity : estimated ? 1 : st.fillOpacity ?? polygonOpacity} opacity={isElementDimmed(polygon.polygon.layer, polygonKey) ? 0.2 : undefined} stroke={strong || polygonSelected ? INK : neutralBuilding ? buildingStyle.stroke : st.stroke ?? st.color} strokeWidth={(strong ? 1.6 : polygonSelected ? 3 : neutralBuilding ? buildingStyle.strokeWidth ?? 0.8 : st.strokeWidth ?? 1) * u} {...pick} />
+                <path data-poly="true" data-map-layer={polygon.polygon.layer} d={polygonPath(polygon.rings)} fillRule="evenodd" fill={neutralBuilding ? buildingStyle.fill : estimated ? `url(#${hatchId(polygon.index)})` : st.fill ?? st.color} fillOpacity={neutralBuilding ? buildingStyle.fillOpacity : estimated ? 1 : st.fillOpacity ?? polygonOpacity} opacity={isElementDimmed(polygon.polygon.layer, polygonKey) ? 0.2 : undefined} stroke={strong || polygonSelected ? INK : neutralBuilding ? buildingStyle.stroke : st.stroke ?? st.color} strokeWidth={(strong ? 1.6 : polygonSelected ? 3 : neutralBuilding ? buildingStyle.strokeWidth ?? 0.8 : st.strokeWidth ?? 1) * u} strokeDasharray={st.dash} {...pick} />
                 {Object.keys(pick).length > 0 && <path data-map-hit="polygon" d={polygonPath(polygon.rings)} fill="transparent" stroke="transparent" pointerEvents="all" {...hitProps(pick)} />}
               </g>
             );
           })}
           {linePaths.filter((d) => backgroundOnlyActive ? shouldRasterizeLayer(d.l.layer) : (d.l.layer !== "rail_line" && d.l.layer !== "rail_station_axis")).map((d) => {
             const st = layerStyle(d.l.layer);
+            const sectionId = d.l.layer === "terrain_section_a" ? "A" : d.l.layer === "terrain_section_b" ? "B" : null;
+            const sectionStyle = sectionId ? terrainSectionMapStyle(sectionId, terrainSection) : null;
             const lineSelected = isSelected(d.l.fid);
             const center = centerOf(d.l.points);
             const lineKey = mapElementKey("line", d.l.layer, d.l.fid, d.index);
             const strong = isElementStrong(d.l.layer, lineKey);
             const baseWidth = d.l.strokeWidth ?? st.strokeWidth ?? 1.5;
-            const width = lineSelected ? Math.max(4, baseWidth) : (strong ? baseWidth * 1.35 : baseWidth) * (d.l.emphasis === "major" ? 1.2 : d.l.emphasis === "minor" ? 0.85 : 1);
+            const width = sectionStyle?.strokeWidth ?? (lineSelected ? Math.max(4, baseWidth) : (strong ? baseWidth * 1.35 : baseWidth) * (d.l.emphasis === "major" ? 1.2 : d.l.emphasis === "minor" ? 0.85 : 1));
             const points = d.points.map(([x, y]) => `${x},${y}`).join(" ");
             const stroke = d.l.color ?? st.color;
             const casing = strong || lineSelected ? INK : d.l.casing ?? st.casing;
             const casingWidth = d.l.casingWidth ?? width + 2.4;
-            const opacity = d.l.opacity ?? st.opacity;
+            const opacity = sectionStyle?.opacity ?? d.l.opacity ?? st.opacity;
+            const dash = sectionStyle ? sectionStyle.dash : st.dash;
             const pick = pickProps({ fid: d.l.fid, lng: center[0], lat: center[1], kind: "line" }, lineKey, labelText(d.l.layer, "line", d.l));
             return (
               <g key={`line${d.index}`} opacity={isElementDimmed(d.l.layer, lineKey) ? 0.2 : opacity}>
-                {casing && <polyline points={points} fill="none" stroke={casing} strokeWidth={casingWidth * u} strokeDasharray={st.dash} strokeLinejoin="round" pointerEvents="none" />}
-                <polyline data-line="true" points={points} fill="none" stroke={stroke} strokeWidth={width * u} strokeDasharray={st.dash} strokeLinejoin="round" markerEnd={st.arrow ? `url(#arrow-${uid}-${d.index})` : undefined} {...pick} />
+                {casing && <polyline points={points} fill="none" stroke={casing} strokeWidth={casingWidth * u} strokeDasharray={dash} strokeLinecap={st.lineCap ?? "butt"} strokeLinejoin="round" pointerEvents="none" />}
+                <polyline data-line="true" points={points} fill="none" stroke={stroke} strokeWidth={width * u} strokeDasharray={dash} strokeLinecap={st.lineCap ?? "butt"} strokeLinejoin="round" markerEnd={st.arrow ? `url(#arrow-${uid}-${d.index})` : undefined} {...pick} />
+                {st.tickMarks && lineTickSegments(d.points, 4 * u).map(([a, b], tickIndex) => <line key={`tick-${tickIndex}`} x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke={stroke} strokeWidth={Math.max(1, width * 0.55 * u)} strokeLinecap="round" pointerEvents="none" />)}
                 {Object.keys(pick).length > 0 && <polyline data-map-hit="line" points={points} fill="none" stroke="transparent" strokeWidth={Math.max(44 * u, casingWidth * u)} strokeLinejoin="round" pointerEvents="stroke" {...hitProps(pick)} />}
               </g>
             );
@@ -1309,6 +1339,12 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
                         </g>
                       ) : it.symbol === "rail-exit" ? (
                         <circle data-legend-symbol="rail-exit" cx={panelX + pad * 1.8 + it.x + 4 * u} cy={ly + pad * 0.7 + ri * rowH + rowH / 2} r={4.8 * u} fill="#FFD200" stroke="#172033" strokeWidth={0.8 * u} />
+                      ) : it.lineSwatch ? (
+                        <g data-legend-symbol="line" aria-hidden="true">
+                          {it.casing && <line x1={panelX + pad * 1.8 + it.x + 0.5 * u} y1={ly + pad * 0.7 + ri * rowH + rowH / 2} x2={panelX + pad * 1.8 + it.x + 19.5 * u} y2={ly + pad * 0.7 + ri * rowH + rowH / 2} stroke={it.casing} strokeWidth={(it.strokeWidth ?? 1.5) * u + 2.4 * u} strokeDasharray={it.dash} strokeLinecap={it.lineCap ?? "butt"} />}
+                          <line x1={panelX + pad * 1.8 + it.x + 0.5 * u} y1={ly + pad * 0.7 + ri * rowH + rowH / 2} x2={panelX + pad * 1.8 + it.x + 19.5 * u} y2={ly + pad * 0.7 + ri * rowH + rowH / 2} stroke={it.color} strokeWidth={(it.strokeWidth ?? 1.5) * u} strokeDasharray={it.dash} strokeLinecap={it.lineCap ?? "butt"} />
+                          {it.tickMarks && [4, 9, 14, 19].map((x) => <line key={x} x1={panelX + pad * 1.8 + it.x + x * u} y1={ly + pad * 0.7 + ri * rowH + rowH / 2 - 3 * u} x2={panelX + pad * 1.8 + it.x + x * u} y2={ly + pad * 0.7 + ri * rowH + rowH / 2 + 3 * u} stroke={it.color} strokeWidth={Math.max(1, (it.strokeWidth ?? 1.5) * 0.55 * u)} strokeLinecap="round" />)}
+                        </g>
                       ) : it.badge ? (
                         <>
                           <circle cx={panelX + pad * 1.8 + it.x + 4 * u} cy={ly + pad * 0.7 + ri * rowH + rowH / 2} r={5 * u} fill={it.color} fillOpacity={0.95} stroke="#fff" strokeWidth={0.8 * u} />
@@ -1317,7 +1353,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
                       ) : (
                         <circle cx={panelX + pad * 1.8 + it.x + 4 * u} cy={ly + pad * 0.7 + ri * rowH + rowH / 2} r={4 * u} fill={it.color} fillOpacity={0.85} />
                       )}
-                      <text x={panelX + pad * 1.8 + it.x + 11 * u} y={ly + pad * 0.7 + ri * rowH + rowH * 0.72} fontSize={fs} fontWeight={highlightLabel === legendLabel ? 700 : undefined} fill={highlightLabel !== null && !it.site && legendLabel !== highlightLabel ? "#7A7E87" : INK}>
+                      <text x={panelX + pad * 1.8 + it.x + (it.lineSwatch ? 27 : 11) * u} y={ly + pad * 0.7 + ri * rowH + rowH * 0.72} fontSize={fs} fontWeight={highlightLabel === legendLabel ? 700 : undefined} fill={highlightLabel !== null && !it.site && legendLabel !== highlightLabel ? "#7A7E87" : INK}>
                         {legendLabel}
                       </text>
                     </g>
@@ -1446,7 +1482,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
         {showNativeChrome && <g>
           {scale && (
             <>
-              <rect x={barX0 - 6 * u} y={barY - 14 * u} width={bar.px + 12 * u} height={22 * u} rx={5 * u} fill="#fff" fillOpacity={0.85} />
+              <rect x={scene.scaleBox.x0} y={scene.scaleBox.y0} width={scene.scaleBox.x1 - scene.scaleBox.x0} height={scene.scaleBox.y1 - scene.scaleBox.y0} rx={5 * u} fill="#fff" fillOpacity={0.85} />
               <path d={`M${barX0} ${barY - 4 * u}V${barY}H${barX1}V${barY - 4 * u}`} fill="none" stroke={INK} strokeWidth={1.6 * u} />
               <text x={barX0 + bar.px / 2} y={barY - 6 * u} fontSize={9.5 * u} fontWeight={700} textAnchor="middle" fill={INK}>
                 {bar.label}

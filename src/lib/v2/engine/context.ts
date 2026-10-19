@@ -12,6 +12,7 @@ import { manifestHash, openDataFile, type Manifest } from "../data/manifest";
 import type { RasterRef, TileConditions, TileResult } from "../tile-result";
 import { encodeRaster, MAX_TILE_RASTER_BYTES, type RasterData } from "../raster-store";
 import { siteSnapshotHash, type EngineSite } from "./site";
+import { bindTopoHandle, closeTopoHandle, filtersForTopo, type TopoHandle } from "../topo/context";
 
 export type Limitation = TileResult["limitations"][number];
 export type FileKey = "core" | "buildings" | "parcels" | "reference" | "market" | "terrain" | "weather";
@@ -45,6 +46,10 @@ export class EngineContext {
   readonly manifestHash: string;
   readonly conditions: TileConditions;
   readonly input: EngineInput;
+  readonly topo: TopoHandle | null;
+  /** buildingRows()가 수치지형도 건물 보강을 실제 적용했는지. source view가 tile 순서를 넘겨 전달한다. */
+  topoBuildingSupplementApplied = false;
+  readonly topoBuildingSupplementByRadius = new Map<number, boolean>();
   private readonly handles = new Map<FileKey, BetterSqlite3.Database>();
   private readonly refs = new Map<FileKey, SourceRef[]>();
   private readonly hitCache = new Map<string, FeatureHit[]>();
@@ -59,10 +64,11 @@ export class EngineContext {
     readonly analysisId: string,
     input: EngineInput,
     initialHandles: InitialDataHandles = {},
-    options: { rasterReader?: RasterReader; reuseDataFiles?: boolean; pooledKeys?: readonly FileKey[] } = {},
+    options: { rasterReader?: RasterReader; reuseDataFiles?: boolean; pooledKeys?: readonly FileKey[]; topo?: TopoHandle | null } = {},
   ) {
     this.rasterReader = options.rasterReader;
     this.reuseDataFiles = options.reuseDataFiles === true;
+    this.topo = options.topo ?? null;
     const pooledKeys = new Set(options.pooledKeys ?? []);
     const site = input.site ?? { pnus: input.pnu ? [input.pnu] : [], geometry: null, kind: "address" as const };
     this.input = { ...input, site, pnu: input.pnu ?? site.pnus[0] ?? null };
@@ -74,13 +80,14 @@ export class EngineContext {
       }
     }
     this.manifestHash = manifestHash(manifest);
+    if (this.topo) bindTopoHandle(this.topo, this.input.center, this.input.radiusM);
     this.conditions = {
       address: input.address,
       center: [input.center[0], input.center[1]],
       radiusM: input.radiusM,
       analysisDate: input.analysisDate,
       timezone: "Asia/Seoul",
-      filters: {},
+      filters: filtersForTopo(this.topo?.sha256 ?? null),
       simulation: null,
       parcelSnapshotHash: siteSnapshotHash(site),
     };
@@ -187,7 +194,20 @@ export class EngineContext {
 
   /** 파일에 적재된 원천 릴리스. 적재되지 않은 원천은 빠진다. */
   sources(key: FileKey, sourceIds: readonly string[]): SourceRef[] {
-    return this.allRefs(key).filter((r) => sourceIds.includes(r.sourceId));
+    const sources = this.allRefs(key).filter((r) => sourceIds.includes(r.sourceId));
+    const hasBuildingSource = sourceIds.some((sourceId) => sourceId === "building" || sourceId === "building_juso" || sourceId === "gis_bldg");
+    if (key !== "buildings" || !this.topo || !hasBuildingSource) return sources;
+    const topo = this.topo;
+    const appendTopo = () => {
+      if (!this.topoBuildingSupplementApplied || sources.some((source) => source.sourceId === topo.source.sourceId)) return;
+      sources.push(topo.source);
+    };
+    return new Proxy(sources, {
+      get: (target, property, receiver) => {
+        appendTopo();
+        return Reflect.get(target, property, receiver);
+      },
+    });
   }
 
   /** 반경이 걸치는 시도 코드(법정구역 기준) */
@@ -254,5 +274,6 @@ export class EngineContext {
     this.hitCache.clear();
     this.memoCache.clear();
     this.rasterItems.clear();
+    closeTopoHandle(this.topo);
   }
 }

@@ -1,14 +1,15 @@
 import PptxGenJS from "pptxgenjs";
 import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, legendItemsForModel, legendLabelOf, type MapModel } from "../ui/map-layers";
 import { isSiteParcelLayer } from "../ui/site-parcel";
-import { SLIDE, slideCalloutLegendLayout, slideLayout, slideLegend, slidePanelRects, slideReserved, slideSiteX } from "../ui/overlay-layout";
+import { SLIDE, slideCalloutAvoidance, slideLayout, slideLegend, slidePanelRects, slideReserved, slideSiteX, terrainSectionLayout } from "../ui/overlay-layout";
 import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
-import { buildMapScene, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, type MapScene, type MapSceneBox } from "../ui/map-scene";
+import { buildMapScene, northArrowBox, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, scaleBarBox, type MapScene, type MapSceneBox } from "../ui/map-scene";
 import { badgeTextColor } from "../ui/map-labels";
+import { terrainSectionMapStyle } from "../ui/terrain-section";
 import { FONT, INK, hex, textIn, type Slide } from "./pptx-kit";
 import type { PlannedSlide } from "./report-plan";
 import type { PageStyle } from "../ui/board-state";
-import { slideViewport } from "../ui/map-projection";
+import { metersPerPixel, slideViewport } from "../ui/map-projection";
 
 const VIEW_W = 960;
 const VIEW_H = 540;
@@ -42,11 +43,7 @@ export type NativeMapStatus = {
   rasterValues: string[];
 };
 
-const color = (value: string): string => {
-  let result = hex(value).replace(/[^0-9a-f]/gi, "");
-  if (result.length === 3) result = result.split("").map((part) => `${part}${part}`).join("");
-  return (result || "000000").slice(0, 6).toUpperCase();
-};
+const color = (value: string): string => hex(value);
 
 const transparency = (opacity: number): number => Math.max(0, Math.min(100, Math.round((1 - opacity) * 100)));
 const lineDash = (dash: string | undefined): "dash" | undefined => dash ? "dash" : undefined;
@@ -294,6 +291,8 @@ function addCustom(
   const nativePaths = options.closed ? clippedPaths : clippedPaths.map(capNativePath);
   const points = nativePaths.flatMap((path) => path);
   if (points.length < 2) return;
+  const hasFill = !!options.fill && options.fill !== "none";
+  const hasLine = !!options.line && options.line !== "none";
   const minX = Math.min(...points.map(([x]) => pxX(x)));
   const minY = Math.min(...points.map(([, y]) => pxY(y)));
   const maxX = Math.max(...points.map(([x]) => pxX(x)));
@@ -311,11 +310,11 @@ function addCustom(
     w: Math.max(0.005, maxX - minX),
     h: Math.max(0.005, maxY - minY),
     points: parts,
-    fill: { color: color(options.fill ?? "FFFFFF"), transparency: options.fill ? transparency(options.fillOpacity ?? 1) : 100 },
+    fill: { color: color(hasFill ? options.fill! : "FFFFFF"), transparency: hasFill ? transparency(options.fillOpacity ?? 1) : 100 },
     line: {
-      color: color(options.line ?? "000000"),
+      color: color(hasLine ? options.line! : "000000"),
       width: Math.max(0.1, pxPt(options.lineWidth ?? 1)),
-      transparency: options.line ? transparency(options.lineOpacity ?? 1) : 100,
+      transparency: hasLine ? transparency(options.lineOpacity ?? 1) : 100,
       dashType: lineDash(options.dash),
     },
     objectName: options.objectName,
@@ -335,6 +334,24 @@ function addSegment(slide: Slide, a: PixelPoint, b: PixelPoint, lineColor: strin
     flipV: pxX(end[0]) >= pxX(start[0]) !== pxY(end[1]) >= pxY(start[1]),
     objectName,
   });
+}
+
+function lineTickSegments(points: readonly PixelPoint[], size: number): Array<[PixelPoint, PixelPoint]> {
+  const ticks: Array<[PixelPoint, PixelPoint]> = [];
+  for (let index = 1; index < points.length; index += 1) {
+    const a = points[index - 1]!;
+    const b = points[index]!;
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const length = Math.hypot(dx, dy);
+    if (length < 1) continue;
+    const mx = (a[0] + b[0]) / 2;
+    const my = (a[1] + b[1]) / 2;
+    const nx = -dy / length * size;
+    const ny = dx / length * size;
+    ticks.push([[mx - nx, my - ny], [mx + nx, my + ny]]);
+  }
+  return ticks;
 }
 
 function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "tile" }; mode?: NativeMapMode; style?: PageStyle }): MapScene {
@@ -377,58 +394,63 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
   const hasSummary = style.summary !== false && !(plan.callout && plan.callout.page > 0);
   const baseLegend = slideLegend(model, !plan.muted).rect;
   const panels = slidePanelRects(style, hasSummary, baseLegend);
+  const terrainShown = plan.view.code === "D17" && !!plan.view.terrainSections && !!plan.terrainSection;
+  const terrainLayout = terrainShown ? terrainSectionLayout(panels) : null;
   const legend = panels.legend;
   const calloutOverview = !!plan.callout && plan.callout.page === 0;
   const calloutDetail = !!plan.callout && plan.callout.page > 0 ? slideCalloutFrame(4) : null;
   const layout = slideLayout();
-  const summaryX = panels.summary?.x ?? SLIDE.w;
-  const calloutLegend = calloutOverview
-    ? slideCalloutLegendLayout(
-      [
+  const calloutEntries = calloutOverview
+    ? [
         { text: plan.callout!.model.legend.title },
         ...plan.callout!.model.legend.items.map((item) => ({ text: item.label, color: item.color, hollow: item.hollow === true })),
         { text: plan.callout!.model.legend.sizeLabel },
-      ],
-      SLIDE.edge,
-      layout.legendBottom,
-      summaryX - 2 * SLIDE.edge,
-    )?.rect ?? null
-    : null;
-  const avoid = calloutDetail
-    ? []
-    : slideReserved(PX_PER_INCH, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend, calloutLegend });
-  // 지도 위 판(제목·정보·범례)을 피한다: 방위표·축척·오른쪽 말풍선은 정보 판 왼쪽, 말풍선은 제목 판 아래·범례 판 위.
+      ]
+    : [];
+  const calloutAlignment = calloutDetail ? null : slideCalloutAvoidance(panels, calloutEntries, layout);
+  const calloutLegend = calloutAlignment?.calloutLegend ?? null;
+  const summaryX = panels.summary?.x ?? SLIDE.w;
   const gap = SLIDE.edge * PX_PER_INCH * 0.5;
-  const lowerOverlayTop = Math.min(legend?.y ?? SLIDE.h, calloutLegend?.y ?? SLIDE.h);
   const siteX = calloutDetail?.siteX ?? slideSiteX(style, hasSummary);
-  const fill = calloutDetail?.fill ?? (calloutOverview ? SLIDE_OVERVIEW_FILL : undefined);
+  const fill = calloutDetail?.fill ?? terrainLayout?.mapFill ?? (calloutOverview ? SLIDE_OVERVIEW_FILL : undefined);
   const rightInset = calloutDetail ? 0 : hasSummary ? Math.max(0, VIEW_W - summaryX * PX_PER_INCH + gap) : SLIDE.edge * PX_PER_INCH;
   // 방위표는 지도 scene의 고정 y(22u)만 쓰면 크게 키운 제목 판과 겹친다.
   // 제목 판 아래에 13u 반지름과 안전 간격을 확보한 중심을 전달한다.
-  const northY = (panels.title.y + panels.title.h) * PX_PER_INCH + gap + 13 * Math.min(1.5, Math.max(1, VIEW_H / 360));
+  const calloutTopPx = calloutAlignment ? calloutAlignment.calloutTop * PX_PER_INCH : (panels.title.y + panels.title.h) * PX_PER_INCH + gap;
+  const northY = calloutTopPx + 13 * Math.min(1.5, Math.max(1, VIEW_H / 360));
+  const bottomInset = SLIDE.stripH * PX_PER_INCH + (calloutLegend ? (calloutLegend.h + 0.18) * PX_PER_INCH : 0);
+  const viewport = slideViewport(model, style, { width: VIEW_W, height: VIEW_H, siteX, siteY: terrainLayout?.mapSiteY ?? 0.5, fill: fill ?? 0.8 });
+  const scaleAvoid = calloutDetail ? null : scaleBarBox(VIEW_W, VIEW_H, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset);
+  const northAvoid = calloutDetail ? null : northArrowBox(VIEW_W, VIEW_H, rightInset, northY);
+  const avoid = calloutDetail
+    ? []
+    : [...slideReserved(PX_PER_INCH, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend, calloutLegend, terrainSection: terrainLayout?.rect }), ...(scaleAvoid ? [scaleAvoid] : []), ...(northAvoid ? [northAvoid] : [])];
   const focus = legendLabelOf(model, style.legendFocus);
   return buildMapScene({
     rightInset,
-    ...(calloutDetail ? {} : { calloutTop: (panels.title.y + panels.title.h) * PX_PER_INCH + gap }),
-    ...(lowerOverlayTop < SLIDE.h ? { calloutLeftBottom: lowerOverlayTop * PX_PER_INCH - gap } : {}),
+    ...(calloutDetail ? {} : { calloutTop: calloutTopPx }),
+    ...(calloutAlignment?.calloutLeftBottom !== undefined
+      ? { calloutLeftBottom: calloutAlignment.calloutLeftBottom * PX_PER_INCH }
+      : terrainLayout?.calloutLeftBottom !== undefined ? { calloutLeftBottom: terrainLayout.calloutLeftBottom * PX_PER_INCH } : {}),
     model,
     width: VIEW_W,
     height: VIEW_H,
     activeLayer: model.basemap ?? "white",
     fill,
     siteX,
-    bottomInset: SLIDE.stripH * PX_PER_INCH + (calloutLegend ? (calloutLegend.h + 0.18) * PX_PER_INCH : 0),
+    bottomInset,
     scale: !calloutDetail,
     muted: !!plan.muted,
     pinnedKeys: plan.pinnedKeys ?? [],
     hiddenKeys: style.hiddenKeys ?? [],
+    terrainSection: plan.terrainSection,
     highlightLabel: focus,
     legendFocus: focus,
     showAutomaticLabels: true,
     north: northY,
     avoid,
     bare: false,
-    viewport: slideViewport(model, style, { width: VIEW_W, height: VIEW_H, siteX, fill: fill ?? 0.8 }),
+    viewport,
   });
 }
 
@@ -477,13 +499,17 @@ function addPolygons(slide: Slide, code: string, scene: MapScene, model: MapMode
 
 function addLines(slide: Slide, code: string, scene: MapScene, model: MapModel): void {
   const buckets = new Map<string, Bucket>();
+  const ticks: Array<{ points: Array<[PixelPoint, PixelPoint]>; color: string; width: number; opacity: number; key: string }> = [];
   for (const entry of scene.lines) {
     if (isRasterizedLayer(entry.line.layer) || entry.line.layer === "rail_line" || entry.line.layer === "rail_station_axis") continue;
     if (entry.points.length < 2) continue;
     const style = layerStyle(entry.line.layer);
-    const baseWidth = entry.line.strokeWidth ?? style.strokeWidth ?? 1.5;
-    const width = baseWidth * (entry.line.emphasis === "major" ? 1.2 : entry.line.emphasis === "minor" ? 0.85 : 1);
-    const opacity = entry.line.opacity ?? style.opacity ?? 1;
+    const sectionId = entry.line.layer === "terrain_section_a" ? "A" : entry.line.layer === "terrain_section_b" ? "B" : null;
+    const sectionStyle = sectionId ? terrainSectionMapStyle(sectionId, scene.terrainSection) : null;
+    const baseWidth = sectionStyle?.strokeWidth ?? entry.line.strokeWidth ?? style.strokeWidth ?? 1.5;
+    const width = sectionStyle ? baseWidth : baseWidth * (entry.line.emphasis === "major" ? 1.2 : entry.line.emphasis === "minor" ? 0.85 : 1);
+    const opacity = sectionStyle?.opacity ?? entry.line.opacity ?? style.opacity ?? 1;
+    const dash = sectionStyle ? sectionStyle.dash : style.dash;
     const dimmed = scene.isElementDimmed(entry.line.layer, entry.key, entry.line.legendLabel);
     const stroke = entry.line.color ?? style.color;
     const casing = entry.line.casing ?? style.casing;
@@ -491,17 +517,19 @@ function addLines(slide: Slide, code: string, scene: MapScene, model: MapModel):
     const legendLabel = legendLabelFor(model, entry.line.layer, entry.line.legendLabel);
     const groupKey = `legend-${safeKey(legendLabel)}`;
     if (casing) {
-      const key = `${groupKey}-line-casing-${safeKey(`${casing}-${casingWidth}-${dimmed}-${style.dash ?? "solid"}`)}`;
-      const bucket = buckets.get(key) ?? { paths: [], line: casing, lineWidth: casingWidth, lineOpacity: opacity * (dimmed ? 0.2 : 1), dash: style.dash, key: groupKey, display: `범례 ${legendLabel}` };
+      const key = `${groupKey}-line-casing-${safeKey(`${casing}-${casingWidth}-${dimmed}-${dash ?? "solid"}`)}`;
+      const bucket = buckets.get(key) ?? { paths: [], line: casing, lineWidth: casingWidth, lineOpacity: opacity * (dimmed ? 0.2 : 1), dash, key: groupKey, display: `범례 ${legendLabel}` };
       bucket.paths.push(entry.points);
       buckets.set(key, bucket);
     }
-    const key = `${groupKey}-line-${safeKey(`${stroke}-${width}-${dimmed}-${style.dash ?? "solid"}`)}`;
-    const bucket = buckets.get(key) ?? { paths: [], line: stroke, lineWidth: width, lineOpacity: opacity * (dimmed ? 0.2 : 1), dash: style.dash, key: groupKey, display: `범례 ${legendLabel}` };
+    const key = `${groupKey}-line-${safeKey(`${stroke}-${width}-${dimmed}-${dash ?? "solid"}`)}`;
+    const bucket = buckets.get(key) ?? { paths: [], line: stroke, lineWidth: width, lineOpacity: opacity * (dimmed ? 0.2 : 1), dash, key: groupKey, display: `범례 ${legendLabel}` };
     bucket.paths.push(entry.points);
     buckets.set(key, bucket);
+    if (style.tickMarks) ticks.push({ points: lineTickSegments(entry.points, 4), color: stroke, width: Math.max(0.7, width * 0.55), opacity: opacity * (dimmed ? 0.2 : 1), key: `${groupKey}-tick-${entry.index}` });
   }
   addBuckets(slide, code, buckets, false);
+  for (const entry of ticks) for (const [index, [start, end]] of entry.points.entries()) addSegment(slide, start, end, entry.color, entry.width, tag(code, entry.key, "옹벽", `tick-${index}`), transparency(entry.opacity));
 }
 
 function addRadius(slide: Slide, code: string, scene: MapScene): void {
@@ -716,7 +744,7 @@ function addScale(slide: Slide, code: string, scene: MapScene): void {
   const x1 = x0 + bar.px;
   const y = Math.max(14 * u, Math.min(activeClipBottom - 8 * u, bar.y));
   if (maxBarX0 < 6 * u || activeClipBottom < 22 * u) return;
-  slide.addShape("roundRect", { x: pxX(x0 - 6 * u), y: pxY(y - 14 * u), w: pxW(bar.px + 12 * u), h: pxH(22 * u), rectRadius: 0.06, fill: { color: "FFFFFF", transparency: 15 }, line: { color: "FFFFFF", width: 0 }, objectName: tag(code, key, "축척", "bg") });
+  slide.addShape("roundRect", { x: pxX(scene.scaleBox.x0), y: pxY(scene.scaleBox.y0), w: pxW(scene.scaleBox.x1 - scene.scaleBox.x0), h: pxH(scene.scaleBox.y1 - scene.scaleBox.y0), rectRadius: 0.06, fill: { color: "FFFFFF", transparency: 15 }, line: { color: "FFFFFF", width: 0 }, objectName: tag(code, key, "축척", "bg") });
   addSegment(slide, [x0, y - 4 * u], [x0, y], INK, 1.6 * u, tag(code, key, "축척", "left"));
   addSegment(slide, [x0, y], [x1, y], INK, 1.6 * u, tag(code, key, "축척", "bar"));
   addSegment(slide, [x1, y], [x1, y - 4 * u], INK, 1.6 * u, tag(code, key, "축척", "right"));
@@ -799,5 +827,33 @@ export function editableMapAvoid(plan: PlannedSlide & { kind: "tile" }, model: M
   const style = plan.style ?? {};
   const hasSummary = style.summary !== false && !(plan.callout && plan.callout.page > 0);
   const panels = slidePanelRects(style, hasSummary, slideLegend(model, !plan.muted).rect);
-  return slideReserved(PX_PER_INCH, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend: panels.legend });
+  const terrainShown = plan.view.code === "D17" && !!plan.view.terrainSections && !!plan.terrainSection;
+  const terrainLayout = terrainShown ? terrainSectionLayout(panels) : null;
+  const calloutEntries = plan.callout?.page === 0
+    ? [
+        { text: plan.callout.model.legend.title },
+        ...plan.callout.model.legend.items.map((item) => ({ text: item.label, color: item.color, hollow: item.hollow === true })),
+        { text: plan.callout.model.legend.sizeLabel },
+      ]
+    : [];
+  const calloutAlignment = slideCalloutAvoidance(panels, calloutEntries);
+  const calloutLegend = calloutAlignment.calloutLegend;
+  const calloutDetail = plan.callout?.page ? slideCalloutFrame(4) : null;
+  const summaryX = panels.summary?.x ?? SLIDE.w;
+  const gap = SLIDE.edge * PX_PER_INCH * 0.5;
+  const siteX = calloutDetail?.siteX ?? slideSiteX(style, hasSummary);
+  const rightInset = calloutDetail ? 0 : hasSummary ? Math.max(0, VIEW_W - summaryX * PX_PER_INCH + gap) : SLIDE.edge * PX_PER_INCH;
+  const calloutTopPx = calloutDetail ? (panels.title.y + panels.title.h) * PX_PER_INCH + gap : calloutAlignment.calloutTop * PX_PER_INCH;
+  const northY = calloutTopPx + 13 * Math.min(1.5, Math.max(1, VIEW_H / 360));
+  const bottomInset = SLIDE.stripH * PX_PER_INCH + (calloutLegend ? (calloutLegend.h + 0.18) * PX_PER_INCH : 0);
+  const fill = calloutDetail?.fill ?? terrainLayout?.mapFill ?? (plan.callout?.page === 0 ? SLIDE_OVERVIEW_FILL : 0.8);
+  const viewport = slideViewport(model, style, { width: VIEW_W, height: VIEW_H, siteX, siteY: terrainLayout?.mapSiteY ?? 0.5, fill });
+  const reserved = slideReserved(PX_PER_INCH, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend: panels.legend, calloutLegend, terrainSection: terrainLayout?.rect });
+  if (calloutDetail) return reserved;
+  const northAvoid = northArrowBox(VIEW_W, VIEW_H, rightInset, northY);
+  return [
+    ...reserved,
+    scaleBarBox(VIEW_W, VIEW_H, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset),
+    ...(northAvoid ? [northAvoid] : []),
+  ];
 }

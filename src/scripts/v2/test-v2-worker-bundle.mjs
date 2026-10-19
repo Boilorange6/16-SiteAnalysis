@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 const { default: nextConfig } = await import("../../../next.config.ts");
 
 assert.equal(typeof nextConfig.webpack, "function", "Next webpack hook is required for server workers");
+assert.ok(Array.isArray(nextConfig.serverExternalPackages), "Next server external package list is required");
+// Keep shapefile external so Next server routes use its Node entry instead of bundling the browser fetch build.
+assert.ok(nextConfig.serverExternalPackages.includes("shapefile"), "shapefile must stay external to Next server bundles");
 
 const serverConfig = {
   output: {

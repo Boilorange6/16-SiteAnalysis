@@ -8,7 +8,7 @@ import { toLngLat, toUtmk } from "../../crs";
 import { areaInCircle, lineLengthInCircle, polygonArea } from "../tiles/geo";
 import { buildingRows, isCounted } from "../tiles/buildings-shared";
 import { hitPoint } from "../tiles/common";
-import { demGridFor, demSources } from "../tiles/terrain-shared";
+import { demGridFor, demSources, terrainCellM } from "../tiles/terrain-shared";
 import type { LocalGrid } from "../tiles/raster-grid";
 import { maxOf, minOf } from "../../extent";
 
@@ -194,7 +194,7 @@ function gridValue(grid: LocalGrid, col: number, row: number): number | null {
 }
 
 function gridRows(ctx: DetailContext, kind: "elevation" | "slope"): DetailRow[] {
-  const grid = demGridFor(ctx, 30);
+  const grid = demGridFor(ctx, terrainCellM(ctx));
   if (!grid) return [];
   const circleArea = Math.PI * ctx.input.radiusM ** 2;
   const output: DetailRow[] = [];

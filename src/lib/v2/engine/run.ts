@@ -5,7 +5,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import type BetterSqlite3 from "better-sqlite3";
-import type { LngLat } from "../crs";
+import { toUtmk, type LngLat } from "../crs";
 import { createAnalysisRun, enqueueAnalysisJobs, finishAnalysisRun, findCachedTileResult, getAnalysisRun, saveScene, saveTileResult, type AnalysisRunInput } from "../app-db";
 import { acquireDataFile, releaseDataFile } from "../data/file-pool";
 import { readManifest } from "../data/manifest";
@@ -21,6 +21,7 @@ import { restoreSiteFromParameters, resolveSiteGeometry, SITE_DEPENDENT_TILE_COD
 import { buildSummary } from "./summary";
 import { cacheEngineVersion, ENGINE_VERSION, makeTile } from "./tiles/common";
 import { DATE_INDEPENDENT_CODES, HEAVY_TILE_CODES, TILES } from "../tile/server";
+import { closeTopoHandle, filtersForTopo, topoHandleFor, topoSha256ForParameters, TOPO_AFFECTED_TILES, type TopoHandle } from "../topo/context";
 
 export { DATE_INDEPENDENT_CODES, HEAVY_TILE_CODES, TILES } from "../tile/server";
 
@@ -34,12 +35,13 @@ export interface RunInput {
   site?: { pnus?: readonly string[]; polygon?: readonly [number, number][] };
   radiusM: number;
   analysisDate?: string;
+  topoId?: string;
   userId?: string | number | null;
 }
 
 export type RunOutcome =
   | { ok: true; analysisId: string; summary: SiteSummary; results: TileResult[]; computed: string[]; reused: string[]; queued: string[]; timingsMs: { tiles: Record<string, number>; scene: number } }
-  | { ok: false; reason: SiteFailure; missingPnus?: string[] };
+  | { ok: false; reason: SiteFailure | "topo_not_found" | "topo_outside"; missingPnus?: string[] };
 
 /** TileResult 계약을 건드리지 않고 API/저장 JSON에 계산 소요를 함께 노출하는 T3 부가 필드. */
 export type TimedTileResult = TileResult & { elapsedMs: number };
@@ -59,7 +61,7 @@ export function conditionsForRun(run: Pick<AnalysisRunInput, "address" | "center
     radiusM: run.radiusM,
     analysisDate: run.analysisDate,
     timezone: "Asia/Seoul",
-    filters: {},
+    filters: filtersForTopo(topoSha256ForParameters(run.parameters)),
     simulation: null,
     parcelSnapshotHash: siteSnapshotHash(site),
   };
@@ -68,8 +70,12 @@ export function conditionsForRun(run: Pick<AnalysisRunInput, "address" | "center
 /** runAnalysis와 queued worker/API stale 판정이 공유하는 실제 cache key 계산. */
 export function cacheKeyForConditions(code: string, manifestHash: string, conditions: TileConditions, upstream: string | null = null, engineVersionBase: string = ENGINE_VERSION): string {
   const dateConditions = DATE_INDEPENDENT_CODES.has(code) ? { ...conditions, analysisDate: "date-independent" } : conditions;
-  const scopedConditions = SITE_DEPENDENT_TILE_CODES.has(code) ? dateConditions : { ...dateConditions, parcelSnapshotHash: null };
-  const key = tileCacheKey({ tileCode: code, manifestHash, engineVersion: cacheEngineVersion(code, engineVersionBase), conditions: scopedConditions });
+  const parcelScopedConditions = SITE_DEPENDENT_TILE_CODES.has(code) ? dateConditions : { ...dateConditions, parcelSnapshotHash: null };
+  const scopedConditions = TOPO_AFFECTED_TILES.includes(code as (typeof TOPO_AFFECTED_TILES)[number]) || !Object.prototype.hasOwnProperty.call(parcelScopedConditions.filters, "topo")
+    ? parcelScopedConditions
+    : { ...parcelScopedConditions, filters: Object.fromEntries(Object.entries(parcelScopedConditions.filters).filter(([key]) => key !== "topo")) };
+  const hasTopo = Object.prototype.hasOwnProperty.call(conditions.filters, "topo");
+  const key = tileCacheKey({ tileCode: code, manifestHash, engineVersion: cacheEngineVersion(code, engineVersionBase, hasTopo), conditions: scopedConditions });
   return upstream ? sha256Hex(`${key}:${upstream}`) : key;
 }
 
@@ -114,6 +120,10 @@ function attachRasters(tile: TileResult, items: Array<{ ref: NonNullable<TileRes
   return { ...tile, presentation: { ...tile.presentation, rasters: [...refs.values()] } };
 }
 
+function bboxIntersects(a: readonly [number, number, number, number], b: readonly [number, number, number, number]): boolean {
+  return a[0] <= b[2] && a[2] >= b[0] && a[1] <= b[3] && a[3] >= b[1];
+}
+
 export function withTileElapsed(tile: TileResult, elapsedMs: number): TimedTileResult {
   return Object.assign(tile, { elapsedMs: Math.max(0, Math.round(elapsedMs)) });
 }
@@ -155,6 +165,24 @@ export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, inpu
     return { ok: false, reason: site.reason, ...(site.missingPnus ? { missingPnus: site.missingPnus } : {}) };
   }
 
+  let topo: TopoHandle | null = null;
+  if (input.topoId) {
+    topo = topoHandleFor(appDb, { topo: { id: input.topoId } }, input.userId);
+    if (!topo) {
+      if (parcels) releaseDataFile(parcels);
+      releaseDataFile(core);
+      return { ok: false, reason: "topo_not_found" };
+    }
+    const [x, y] = toUtmk(site.center);
+    const radiusBbox: [number, number, number, number] = [x - input.radiusM, y - input.radiusM, x + input.radiusM, y + input.radiusM];
+    if (!bboxIntersects(radiusBbox, topo.summary.bboxUtmk)) {
+      closeTopoHandle(topo);
+      if (parcels) releaseDataFile(parcels);
+      releaseDataFile(core);
+      return { ok: false, reason: "topo_outside" };
+    }
+  }
+
   const analysisId = randomUUID();
   const analysisDate = input.analysisDate ?? todayKst();
   const ctx = new EngineContext(
@@ -163,7 +191,7 @@ export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, inpu
     analysisId,
     { address: site.label, center: site.center, radiusM: input.radiusM, analysisDate, pnu: site.pnu, site: site.site },
     { core, ...(parcels ? { parcels } : {}) },
-    { reuseDataFiles: true, pooledKeys: parcels ? ["core", "parcels"] : ["core"] },
+    { reuseDataFiles: true, pooledKeys: parcels ? ["core", "parcels"] : ["core"], topo },
   );
   try {
     createAnalysisRun(appDb, {
@@ -172,7 +200,16 @@ export function runAnalysis(appDb: BetterSqlite3.Database, dataDir: string, inpu
       // `site` is the resolved EPSG:5179 geometry used by the engine. Keep the
       // original WGS84/PNU input separately so projects can re-open the same
       // selection instead of trying to serialize projected geometry as input.
-      parameters: { pnu: site.pnu, legalCode: site.legalCode, jimok: site.jimok, jimokList: site.jimokList, site: site.site, siteInput: input.site ?? null, inputAddress: input.address?.trim() || null },
+      parameters: {
+        pnu: site.pnu,
+        legalCode: site.legalCode,
+        jimok: site.jimok,
+        jimokList: site.jimokList,
+        site: site.site,
+        siteInput: input.site ?? null,
+        inputAddress: input.address?.trim() || null,
+        ...(topo ? { topo: { id: input.topoId!, sha256: topo.sha256 } } : {}),
+      },
       userId: input.userId,
     });
     const results: TileResult[] = [];

@@ -11,6 +11,7 @@ import { s01DialogRegistration } from "./s01/Panel";
 import { d22StageRegistration } from "./d22/Stage";
 import { s03FaceExtraRegistration } from "./s03/FaceExtra";
 import { s03DialogRegistration } from "./s03/Panel";
+import { d17DialogRegistration } from "./d17/Panel";
 
 type StageRegistration = {
   codes: readonly string[];
@@ -30,7 +31,7 @@ type FaceExtraRegistration = {
 
 const STAGE_MODULES: readonly StageRegistration[] = [a05StageRegistration, s01StageRegistration, d22StageRegistration];
 const FACE_EXTRA_MODULES: readonly FaceExtraRegistration[] = [s01FaceExtraRegistration, s03FaceExtraRegistration];
-const DIALOG_MODULES: readonly DialogRegistration[] = [a05DialogRegistration, s01DialogRegistration, s03DialogRegistration];
+const DIALOG_MODULES: readonly DialogRegistration[] = [a05DialogRegistration, s01DialogRegistration, s03DialogRegistration, d17DialogRegistration];
 
 export function stageFor(code: string, view?: TileView): ComponentType<TileStageProps> | undefined {
   const entry = STAGE_MODULES.find((candidate) => candidate.codes.includes(code) && (!candidate.when || !view || candidate.when(view)));

@@ -3,6 +3,7 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TileView } from "@/lib/v2/ui/tile-view";
+import type { TerrainSectionId } from "@/lib/v2/ui/board-state";
 import { RASTER_STYLES } from "@/lib/v2/ui/map-layers";
 import { catalogEntry } from "@/lib/v2/ui/tile-catalog";
 import { framedViewport, maxZoomFor } from "@/lib/v2/ui/map-projection";
@@ -15,6 +16,7 @@ import UnitTypeSummary from "./unit-type-summary";
 import { useFocusTrap } from "./use-focus-trap";
 import { MapControls } from "./map-controls";
 import { useMapView } from "./use-map-view";
+import D17Panel from "@/lib/v2/tile/d17/Panel";
 
 type LoadState = "loading" | "ready" | "error";
 
@@ -23,6 +25,8 @@ export type DetailWindowProps = {
   layer: string;
   onLayer: (layer: string) => void;
   onClose: () => void;
+  terrainSection?: TerrainSectionId;
+  onTerrainSection?: (section: TerrainSectionId) => void;
 };
 
 const DETAIL_WINDOW_CSS = `
@@ -221,7 +225,7 @@ function LoadingCard({ code }: { code: string }) {
   );
 }
 
-export default function DetailWindow({ view, layer, onLayer, onClose }: DetailWindowProps) {
+export default function DetailWindow({ view, layer, onLayer, onClose, terrainSection, onTerrainSection }: DetailWindowProps) {
   const model = view.map ?? view.backdrop;
   const analysisId = view.map?.analysisId ?? (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("analysis") : null);
   const code = view.code;
@@ -423,6 +427,7 @@ export default function DetailWindow({ view, layer, onLayer, onClose }: DetailWi
 
   if (!mounted) return null;
   const activeLayer = model.basemap ?? "white";
+  const terrainView = view.terrainSections || !payload?.terrainSections ? view : { ...view, terrainSections: payload.terrainSections };
   const content = (
     <>
       <style>{DETAIL_WINDOW_CSS}</style>
@@ -453,6 +458,7 @@ export default function DetailWindow({ view, layer, onLayer, onClose }: DetailWi
                     onLegendHover={setLegendHover}
                     onLegendPin={(value) => setLegendPinned((current) => value === null ? null : current === value ? null : value)}
                     selectedFids={selectedFids}
+                    terrainSection={terrainSection}
                     path={path}
                     view={mapController.view}
                     dragging={mapController.dragging}
@@ -476,6 +482,7 @@ export default function DetailWindow({ view, layer, onLayer, onClose }: DetailWi
 
             <aside ref={panelRef} className="detail-panel" aria-label={`${view.title} 선택 정보와 목록`}>
               <LayerSelect view={view} value={layer} onChange={onLayer} />
+              <D17Panel view={terrainView} titleId={`detail-title-${view.tileId}`} terrainSection={terrainSection} onTerrainSection={onTerrainSection} />
               {loadState === "loading" && !payload && <LoadingCard code={code} />}
               {loadState === "error" && !payload && (
                 <div className="detail-state" role="alert"><div><strong>상세 자료를 불러오지 못했습니다</strong><span>{sanitizeDetailText(error ?? "잠시 후 다시 시도해 주세요.")}</span><br /><button type="button" onClick={() => void loadDetail(controls)}>다시 시도</button></div></div>

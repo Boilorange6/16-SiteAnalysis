@@ -1,0 +1,273 @@
+.panel {
+  display: grid;
+  min-width: 0;
+  gap: 14px;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid #d8dce3;
+  border-radius: 14px;
+  background: #fff;
+  color: #15171c;
+}
+
+.heading {
+  display: grid;
+  gap: 3px;
+}
+
+.heading h3 {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.25;
+}
+
+.heading p {
+  margin: 0;
+  color: #626b78;
+  font-size: 12px;
+}
+
+.choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.choice {
+  display: flex;
+  min-width: 0;
+  min-height: 44px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #d5dae2;
+  border-radius: 9px;
+  background: #fff;
+  color: #252a33;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.choice:has(input:checked) {
+  border-color: #2350b8;
+  background: #f0f5ff;
+  color: #173d91;
+}
+
+.choice input {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  accent-color: #2350b8;
+}
+
+.choice:focus-within {
+  outline: 2px solid #1d4ed8;
+  outline-offset: 2px;
+}
+
+.graphWrap {
+  min-width: 0;
+  margin: 0;
+}
+
+.graphLayout {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 6px;
+  min-width: 0;
+  align-items: start;
+}
+
+.graphYAxis {
+  display: flex;
+  height: clamp(180px, 22vw, 240px);
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 5px 0 26px;
+  color: #5b6472;
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.graphMain {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.graph {
+  display: block;
+  width: 100%;
+  height: clamp(180px, 22vw, 240px);
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #e0e3e8;
+  border-radius: 9px;
+  background: #fbfcfd;
+}
+
+.graph text {
+  fill: #5b6472;
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.graphXAxis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  min-width: 0;
+  margin: 6px 6.85% 0;
+  color: #5b6472;
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.graphXAxis span:nth-child(2) { text-align: center; }
+.graphXAxis span:nth-child(3) { text-align: right; }
+
+.profile {
+  fill: none;
+  stroke: #8a5a2e;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.siteSpan {
+  fill: #2350b8;
+  fill-opacity: .09;
+}
+
+.step {
+  vector-effect: non-scaling-stroke;
+}
+
+.stepHalo {
+  vector-effect: non-scaling-stroke;
+}
+
+.axis {
+  stroke: #b9c0ca;
+  stroke-width: 1;
+}
+
+.graphNote {
+  margin: 6px 0 0;
+  color: #626b78;
+  font-size: 11px;
+}
+
+.tableWrap {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #e0e3e8;
+  border-radius: 9px;
+}
+
+.table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.table th,
+.table td {
+  min-width: 0;
+  padding: 8px 7px;
+  overflow-wrap: anywhere;
+  text-align: left;
+  vertical-align: top;
+}
+
+.table th {
+  color: #596474;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.table td {
+  border-top: 1px solid #edf0f3;
+  color: #252a33;
+}
+
+.table th:nth-child(1),
+.table td:nth-child(1) { width: 34%; }
+
+.table th:nth-child(2),
+.table td:nth-child(2) { width: 32%; }
+
+.table th:nth-child(3),
+.table td:nth-child(3) { width: 34%; }
+
+.empty {
+  margin: 0;
+  padding: 8px;
+  color: #626b78;
+  font-size: 11px;
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.summaryCard {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #e0e3e8;
+  border-radius: 9px;
+  background: #fbfcfd;
+}
+
+.summaryCard dt {
+  margin-bottom: 4px;
+  color: #687382;
+  font-size: 10px;
+}
+
+.summaryCard dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #15171c;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.caveat {
+  margin: 0;
+  padding: 9px 10px;
+  border-left: 3px solid #8a5a2e;
+  background: #faf6f1;
+  color: #5f462f;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (max-width: 390px) {
+  .panel { gap: 12px; padding: 12px; }
+  .choices,
+  .summary { grid-template-columns: 1fr; }
+  .choice { font-size: 11px; }
+}

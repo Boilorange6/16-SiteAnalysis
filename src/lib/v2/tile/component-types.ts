@@ -1,5 +1,5 @@
 import type { A05Counts, A05Filter } from "../engine/a05-filter";
-import type { DemoPhase, CameraPreset, CutSpec } from "../ui/board-state";
+import type { DemoPhase, CameraPreset, CutSpec, TerrainSectionId } from "../ui/board-state";
 import type { MapFigureElementPick } from "../../../components/v2/map-figure";
 import type { RoseSeason } from "../tile-result";
 import type { TileView } from "../ui/tile-view";
@@ -28,6 +28,8 @@ export type TileStageProps = {
   mapResetKey?: string;
   /** A05/A06 카드의 자동 말풍선·지시선 표시. 상세는 생략하면 표시한다. */
   showMapLabels?: boolean;
+  /** D17 상세 지도에서 강조할 단면. 생략하면 A다. */
+  terrainSection?: TerrainSectionId;
 };
 
 export type TileFaceExtraProps = {
@@ -52,4 +54,6 @@ export type TileDialogPanelProps = {
   camera?: CameraPreset | null;
   onCamera?: (camera: CameraPreset) => void;
   onWindUploaded?: () => void;
+  terrainSection?: TerrainSectionId;
+  onTerrainSection?: (section: TerrainSectionId) => void;
 };

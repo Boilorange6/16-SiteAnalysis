@@ -12,7 +12,7 @@ export type TileCatalogEntry = {
   mapZoom?: { maxDelta?: number; maxAbsZoom?: number; card?: boolean };
 };
 
-const BUILDING_SOURCES = ["building", "building_juso", "gis_bldg"] as const;
+const BUILDING_SOURCES = ["building", "building_juso", "gis_bldg", "ngii_topo"] as const;
 const ZONING_SOURCES = ["zoning_urban", "zoning_management", "zoning_agri_forest", "zoning_nature", "zoning_other"] as const;
 const DISTRICT_SOURCES = ["district_area", "district_greenbelt", "district_land_development", "district_urban_development", "district_industrial"] as const;
 const FACILITY_SOURCES = [
@@ -45,21 +45,21 @@ export const TILE_CATALOG = {
   D03: { title: "건축물 용도", kind: "diagram", description: "건축물 용도를 건물 단위 구성으로 봅니다.", sources: BUILDING_SOURCES, color: "#B05A3C", mapZoom: { maxDelta: 3, maxAbsZoom: 19 } },
   D04: { title: "준공 연대", kind: "diagram", description: "사용승인 연대별 건물 분포를 봅니다.", sources: BUILDING_SOURCES, color: "#A0522D", mapZoom: { maxDelta: 3, maxAbsZoom: 19 } },
   D05: { title: "건축물 높이", kind: "diagram", description: "층수 기본 보기에서 35 m·12 m 기준과 확인·추정·미상을 레이어로 전환합니다.", calculation: "층수 분포를 기본으로 35 m 이상·12 m 이하 높이 모드를 별도 레이어로 계산하며 층수×3 m 추정은 [추정]으로 분리", sources: BUILDING_SOURCES, color: "#A5673F", mapZoom: { maxDelta: 3, maxAbsZoom: 19 } },
-  D10: { title: "수관·녹지", kind: "diagram", description: "항공사진 기반 수관과 OSM 녹지·수계를 함께 봅니다.", sources: ["vworld_wmts", "osm_landuse", "osm_water", "parcel_polygon"], color: "#3F7D4E", mapZoom: { maxDelta: 3, maxAbsZoom: 19 } },
+  D10: { title: "수관·녹지", kind: "diagram", description: "항공사진 기반 수관과 OSM 녹지·수계를 함께 봅니다.", sources: ["vworld_wmts", "osm_landuse", "osm_water", "parcel_polygon", "ngii_topo"], color: "#3F7D4E", mapZoom: { maxDelta: 3, maxAbsZoom: 19 } },
   D11: { title: "구역·지구", kind: "diagram", description: "용도지구·구역 경계를 계층별로 확인합니다.", sources: DISTRICT_SOURCES, color: "#537A8F", mapZoom: { maxDelta: 2 } },
   D12: { title: "도시계획시설", kind: "diagram", description: "도시계획시설의 선·면·점을 유형별로 확인합니다.", sources: FACILITY_SOURCES, color: "#4E7599", mapZoom: { maxDelta: 2 } },
-  D13: { title: "도로", kind: "diagram", description: "OSM 도로 중심선 길이와 위계를 확인합니다.", sources: ["osm_roads"], color: "#657B8D", mapZoom: { maxDelta: 2 } },
-  D15: { title: "가구", kind: "diagram", description: "OSM 자동차 도로로 묶은 가구 형태를 참고합니다.", sources: ["osm_roads"], color: "#8A6A4A", mapZoom: { maxDelta: Math.log2(3) } },
+  D13: { title: "도로", kind: "diagram", description: "OSM 도로 중심선 길이와 위계를 확인합니다.", sources: ["osm_roads", "ngii_topo"], color: "#657B8D", mapZoom: { maxDelta: 2 } },
+  D15: { title: "가구", kind: "diagram", description: "OSM 자동차 도로로 묶은 가구 형태를 참고합니다.", sources: ["osm_roads", "ngii_topo"], color: "#8A6A4A", mapZoom: { maxDelta: Math.log2(3) } },
   D16: { title: "건물 밀도", kind: "diagram", description: "건물 동수 기반 밀도 추정 분포를 봅니다.", sources: BUILDING_SOURCES, color: "#4F8A68", mapZoom: { maxDelta: 3, maxAbsZoom: 17 } },
-  D17: { title: "지형·등고선", kind: "diagram", description: "DEM 표면고와 중심 상대 고도·등고선을 봅니다.", sources: ["terrain_tiles"], color: "#6B778D", mapZoom: { maxDelta: 3, maxAbsZoom: 17 } },
-  D18: { title: "경사도", kind: "diagram", description: "DEM 30 m 격자 기반 경사도를 봅니다.", calculation: "DEM GLO-30 30 m 격자의 중앙 미분과 3×3 Horn 방식으로 경사도(°)를 계산", sources: ["terrain_tiles"], color: "#7C6CAB", mapZoom: { maxDelta: 3, maxAbsZoom: 17 } },
+  D17: { title: "지형·등고선", kind: "diagram", description: "DEM 표면고와 중심 상대 고도·등고선을 봅니다.", sources: ["terrain_tiles", "ngii_topo"], color: "#6B778D", mapZoom: { maxDelta: 3, maxAbsZoom: 17 } },
+  D18: { title: "경사도", kind: "diagram", description: "DEM 30 m 격자 기반 경사도를 봅니다.", calculation: "DEM GLO-30 30 m 격자의 중앙 미분과 3×3 Horn 방식으로 경사도(°)를 계산", sources: ["terrain_tiles", "ngii_topo"], color: "#7C6CAB", mapZoom: { maxDelta: 3, maxAbsZoom: 17 } },
   D19: { title: "지적", kind: "diagram", description: "연속지적 도형을 지목·필지 규모 색 모드와 함께 참조용으로 봅니다.", sources: ["parcel_polygon"], color: "#8A6A4A", mapZoom: { maxDelta: Math.log2(6), maxAbsZoom: 18 } },
   D22: { title: "바람장미", kind: "diagram", description: "최근접 ASOS 관측소의 연간·계절 풍향을 봅니다.", sources: ["asos"], color: "#2B9CBF", mapZoom: { maxDelta: 0, card: false } },
   D28: { title: "도보권", kind: "diagram", description: "OSM 보행망과 80 m/분 기준의 도달 면적을 봅니다.", calculation: "OSM 보행망 최단거리를 80 m/분으로 환산해 5·10·15분 도달 면을 계산(5 m 격자 marching squares·smoothing)", sources: ["osm_roads"], color: "#7A5BA6", mapZoom: { maxDelta: 2 } },
   D29: { title: "개방감(하늘열림)", kind: "diagram", description: "건물·지형 기준 하늘열림(SVF)을 봅니다.", calculation: "건물·DEM으로 2 m 지면 DSM을 만들고 32방위·최대 300 m 시선으로 하늘열림(SVF)을 계산", sources: [...BUILDING_SOURCES, "terrain_tiles"], color: "#4C8FB8", mapZoom: { maxDelta: 3, maxAbsZoom: 19 } },
   S01: { title: "3D 매스", kind: "simulation", description: "공개 도형과 확보·추정 높이로 주변 매스를 확인합니다.", calculation: "건물 도형에 원천 높이와 층수 추정 높이를 적용해 주변 매스를 구성", sources: BUILDING_SOURCES, color: "#3E6FB0", mapZoom: { maxDelta: 0, card: false } },
   S02: { title: "일조·그림자", kind: "simulation", description: "동지 법정 기준을 기본으로 대표 날짜의 건물·지형 그림자를 계절 레이어별로 비교하며, 헤드라인과 요약 문장도 동지 기준으로 맞춥니다.", calculation: "춘·하·추·동지와 분석일에 건물·지형 그림자를 10분 간격으로 계산(반경 밖 400 m 장애물 포함; 동지 기본)", sources: [...BUILDING_SOURCES, "parcel_polygon"], color: "#F08A24", mapZoom: {} },
-  S03: { title: "바람 흐름 탐색", kind: "simulation", description: "입력 풍향을 기준으로 바람 흐름을 설계 초기에 탐색합니다.", calculation: "ASOS 대표 풍향과 건물·지형 장애물을 4 m 격자로 구성해 보행층(6 m) 상대풍속을 LBM으로 계산", sources: ["asos", "browser_lbm", "fallback_d2q9"], color: "#2B9CBF", mapZoom: {} },
+  S03: { title: "바람 흐름 탐색", kind: "simulation", description: "입력 풍향을 기준으로 바람 흐름을 설계 초기에 탐색합니다.", calculation: "ASOS 대표 풍향과 건물·지형 장애물을 4 m 격자로 구성해 보행층(6 m) 상대풍속을 LBM으로 계산", sources: ["asos", "browser_lbm", "fallback_d2q9", "ngii_topo"], color: "#2B9CBF", mapZoom: {} },
   S04: { title: "열쾌적(UTCI)", kind: "simulation", description: "대표 기상과 매스 조건에서 장소 간 열쾌적을 비교합니다.", calculation: "계절별 10·14·18시 대표 기상과 보행층 상대풍속을 2 m 격자에 결합해 일사·그늘·수관·UTCI를 계산", sources: ["asos", ...BUILDING_SOURCES], color: "#D9534F", mapZoom: { maxDelta: 3, maxAbsZoom: 19 } },
 } as const satisfies Record<string, TileCatalogEntry>;
 
@@ -139,6 +139,7 @@ export const SOURCE_NAMES: Record<string, string> = {
   vworld_wmts: "VWorld 항공영상(WMTS)",
   browser_lbm: "브라우저 계산(WebGPU LBM)",
   terrain_tiles: "Copernicus DEM GLO-30 지표고",
+  ngii_topo: "국토지리정보원 연속수치지형도",
   asos: "기상청 ASOS 시간자료",
   zoning_urban: "용도지역(도시지역)",
   zoning_management: "용도지역(관리지역)",

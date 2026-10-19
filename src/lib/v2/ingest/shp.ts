@@ -37,6 +37,12 @@ const PRJ_PARAMS: ReadonlyArray<readonly [string, readonly number[]]> = [
   ["EPSG:5174", [6377397.155, 38, 127.0028902777778, 1, 200000, 500000]],
 ];
 
+const UNSUPPORTED_PRJ_PARAMS: ReadonlyArray<readonly [string, readonly number[]]> = [
+  ["EPSG:5185", [6378137, 38, 125, 1, 200000, 600000]],
+  ["EPSG:5187", [6378137, 38, 129, 1, 200000, 600000]],
+  ["EPSG:5188", [6378137, 38, 131, 1, 200000, 600000]],
+];
+
 function prjParams(text: string): number[] | null {
   const num = (re: RegExp) => {
     const m = re.exec(text);
@@ -50,6 +56,10 @@ function prjParams(text: string): number[] | null {
 export function crsFromPrj(prjText: string): string {
   const v = prjParams(prjText);
   if (v) {
+    for (const [crs, ref] of UNSUPPORTED_PRJ_PARAMS) {
+      const tol = [0.5, 1e-6, 1e-6, 1e-6, 0.5, 0.5];
+      if (ref.every((r, i) => Math.abs(r - v[i]) <= tol[i])) throw new Error(`unsupported .prj: ${crs}`);
+    }
     for (const [crs, ref] of PRJ_PARAMS) {
       // 반경은 0.5 m, 각도·축척은 1e-6, 동/북거리는 0.5 m
       const tol = [0.5, 1e-6, 1e-6, 1e-6, 0.5, 0.5];

@@ -26,6 +26,7 @@ const { a06 } = await import("../../lib/v2/tile/a06/engine.ts");
 const { calloutScene } = await import("../../lib/v2/ui/callout-scene.ts");
 const { labelBoxesOverlap } = await import("../../lib/v2/ui/map-labels.ts");
 const { default: MapFigure, mapFeatureKey, mapLabelEntries, mapLabelText, mapCalloutTextLayout } = await import("../../components/v2/map-figure.tsx");
+const { mapTextWidth } = await import("../../lib/v2/ui/map-scene.ts");
 
 const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${b}`);
 
@@ -360,6 +361,20 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   const shortLayout = mapCalloutTextLayout(shortEntry, 11, 100, 8, 4, 3);
   assert.equal(shortLayout.lines.length, 1, "짧은 라벨은 1줄");
   assert.equal(shortLayout.height, 11 * 1.24 + 3 * 2, "1줄 말풍선 높이는 줄높이와 최소 상하 패딩의 합");
+  const topoLabelLayout = mapCalloutTextLayout({ title: "절성토", detailLines: [] }, 11, 100, 8, 4, 3);
+  assert.equal(topoLabelLayout.lines[0].text, "절성토", "세 글자 한국어 단차 라벨은 원문을 유지");
+  assert.ok(topoLabelLayout.width - 8 - 4 > mapTextWidth("절성토", 11), "짧은 한국어 라벨 폭에 폰트 안전 여백을 예약");
+  const headerAvoidModel = {
+    ...model,
+    tileCode: undefined,
+    features: [{ layer: "bus_stop", lng: model.center[0] - 0.003, lat: model.center[1] + 0.003, name: "헤더 피하기", labelPriority: 1 }],
+    polygons: [],
+    lines: [],
+    total: 1,
+  };
+  const headerAvoidSvg = renderToStaticMarkup(createElement(MapFigure, { model: headerAvoidModel, width: 320, height: 200, basemap: "none", legend: false, scale: false, north: false, avoid: [{ x0: 0, y0: 0, x1: 120, y1: 48 }] }));
+  const headerAvoidBox = headerAvoidSvg.match(/<rect data-map-label-box="[^"]+" x="[^"]+" y="([^"]+)"/);
+  assert.ok(headerAvoidBox && Number(headerAvoidBox[1]) >= 54, "콜아웃이 상단 헤더 칩 아래에서 시작");
   const longName = "매우긴역이름으로말풍선폭을넘는상세한이름";
   const longModel = { ...collisionModel, features: [{ layer: "bus_stop", name: longName, lng: model.center[0], lat: model.center[1] }], total: 1 };
   const longSvg = renderToStaticMarkup(createElement(MapFigure, { model: longModel, width: 300, height: 180, basemap: "none", legend: false, scale: false, north: false, pinnedKeys: [mapLabelEntries(longModel)[0].key], onFeaturePin: () => {} }));

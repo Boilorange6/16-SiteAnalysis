@@ -45,6 +45,8 @@ export type TileView = {
   retryable: boolean;
   /** 지도 타일이면 지도 그림 입력, 아니면 null */
   map: MapModel | null;
+  /** D17 수치지형도 단면. topo가 없는 결과에는 없다. */
+  terrainSections?: TileResult["presentation"]["terrainSections"];
   /** 모드 전환 전에 보존하는 원본 지도. A08 기본 모드 필터가 다음 전환의 입력을 잠식하지 않게 한다. */
   layerSourceMap?: MapModel | null;
   /** 지물 없는 대지·반경 지도. 지도 타일이 아니거나 결과가 없을 때 전면 배경으로 쓴다 (빈 흰 카드 금지) */
@@ -443,6 +445,7 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
     hasFace: r.tileType === "diagram" || layerOptions.length > 0,
     retryable: r.status === "failed" || r.status === "cancelled",
     map,
+    ...(r.presentation.terrainSections ? { terrainSections: r.presentation.terrainSections } : {}),
     ...(r.tileCode === "A08" ? { layerSourceMap: map } : {}),
     backdrop: { center: r.conditions.center, radiusM: r.conditions.radiusM, features: [], total: 0, notes: [], siteParcel: analysisSiteParcel === undefined ? siteParcelFromResults([r]) : analysisSiteParcel ? [...analysisSiteParcel] : null },
     kindLabel: KIND_LABEL[cat.kind],

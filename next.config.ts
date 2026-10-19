@@ -37,7 +37,7 @@ const nextConfig: NextConfig = {
   // standalone 산출물이 .next/standalone/<상대경로>/ 로 중첩된다(2026-08-01 운영 장애).
   outputFileTracingRoot: __dirname,
   basePath: "/site",
-  serverExternalPackages: ["better-sqlite3", "rhino3dm"],
+  serverExternalPackages: ["better-sqlite3", "rhino3dm", "shapefile"],
   async headers() {
     return [
       {

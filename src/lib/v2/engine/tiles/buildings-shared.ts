@@ -16,6 +16,9 @@ const RETIREMENT_CELL_M = 64;
 const RETIREMENT_PARCEL_CELL_M = 256;
 /** 오래된 중심점 셀을 묶어 parcels R*Tree 왕복을 줄인다. 도형 판정은 뒤에서 다시 한다. */
 const RETIREMENT_PARCEL_QUERY_CELL_M = 128;
+/** 수치지형도 건물 후보를 기존 건물과 비교할 때의 bbox 격자 크기. 실제 교차는 후보에만 한다. */
+const TOPO_BUILDING_CELL_M = 64;
+const fallbackTopoBuildingSupplementByRadius = new WeakMap<object, Map<number, boolean>>();
 
 const FEATURE_COLUMNS = ["feature_id", "stable_id", "kind", "release_id", "geom_json", "name", "pnu", "legal_code", "properties_json"] as const;
 const FACT_COLUMNS = ["feature_id", "height_m", "height_method", "floors_above", "use_code", "approval_date", "gross_floor_area_m2", "footprint_area_m2"] as const;
@@ -37,6 +40,19 @@ export interface BuildingRow {
   approvalDateSource: "building_fact" | "ledger_title" | "core_ledger_pnu" | null;
   grossFloorM2: number | null;
   footprintM2: number | null;
+}
+
+type SupplementStateContext = EngineContext & { topoBuildingSupplementByRadius?: Map<number, boolean>; topoBuildingSupplementApplied?: boolean };
+
+function supplementState(ctx: EngineContext): Map<number, boolean> {
+  const state = ctx as SupplementStateContext;
+  if (state.topoBuildingSupplementByRadius) return state.topoBuildingSupplementByRadius;
+  let fallback = fallbackTopoBuildingSupplementByRadius.get(ctx);
+  if (!fallback) {
+    fallback = new Map<number, boolean>();
+    fallbackTopoBuildingSupplementByRadius.set(ctx, fallback);
+  }
+  return fallback;
 }
 
 export function isConfirmedHeightMethod(method: BuildingHeightMethod): boolean {
@@ -218,6 +234,122 @@ function bbox(geometry: ArealGeometry): [number, number, number, number] {
     Math.max(...points.map((point) => point[0]!)),
     Math.max(...points.map((point) => point[1]!)),
   ];
+}
+
+interface BboxIndex {
+  boxes: Array<[number, number, number, number]>;
+  rowIndexes: number[];
+  cells: Map<string, number[]>;
+}
+
+function visitCells(box: readonly [number, number, number, number], visit: (key: string) => void): void {
+  for (let ix = Math.floor(box[0] / TOPO_BUILDING_CELL_M); ix <= Math.floor(box[2] / TOPO_BUILDING_CELL_M); ix += 1) {
+    for (let iy = Math.floor(box[1] / TOPO_BUILDING_CELL_M); iy <= Math.floor(box[3] / TOPO_BUILDING_CELL_M); iy += 1) visit(`${ix}:${iy}`);
+  }
+}
+
+function boxesOverlap(a: readonly [number, number, number, number], b: readonly [number, number, number, number]): boolean {
+  return a[2] >= b[0] && a[0] <= b[2] && a[3] >= b[1] && a[1] <= b[3];
+}
+
+function buildingBboxIndex(rows: readonly BuildingRow[]): BboxIndex {
+  const index: BboxIndex = { boxes: [], rowIndexes: [], cells: new Map() };
+  for (const [rowIndex, row] of rows.entries()) {
+    if (!areal(row.hit.geometry)) continue;
+    const box = bbox(row.hit.geometry);
+    const boxIndex = index.boxes.length;
+    index.boxes.push(box);
+    index.rowIndexes.push(rowIndex);
+    visitCells(box, (key) => {
+      const values = index.cells.get(key);
+      if (values) values.push(boxIndex);
+      else index.cells.set(key, [boxIndex]);
+    });
+  }
+  return index;
+}
+
+function buildingCandidates(index: BboxIndex, box: readonly [number, number, number, number]): number[] {
+  const candidates = new Set<number>();
+  visitCells(box, (key) => {
+    for (const rowIndex of index.cells.get(key) ?? []) candidates.add(rowIndex);
+  });
+  return [...candidates].filter((rowIndex) => boxesOverlap(index.boxes[rowIndex]!, box));
+}
+
+function positiveTopoFloors(hit: FeatureHit): number | null {
+  const value = hit.properties.floorsAbove ?? hit.properties.nmly;
+  const floors = typeof value === "number" ? value : typeof value === "string" && value.trim() !== "" ? Number(value) : NaN;
+  return Number.isFinite(floors) && floors > 0 ? Math.round(floors) : null;
+}
+
+function topoBuildingRow(hit: FeatureHit, floors: number | null): BuildingRow {
+  const estimated = floors !== null && floors >= 2;
+  const effectiveFloors = estimated ? floors : 1;
+  return {
+    hit,
+    heightM: estimated ? effectiveFloors * FLOOR_HEIGHT_M : FLOOR_HEIGHT_M,
+    heightMethod: estimated ? "floors_estimate" : "assumed_one_floor",
+    floorsAbove: effectiveFloors,
+    rawHeightM: null,
+    rawFloorsAbove: floors,
+    rawHeightMethod: "unknown",
+    useCode: null,
+    approvalDate: null,
+    approvalDateSource: null,
+    grossFloorM2: null,
+    footprintM2: planarArea(hit.geometry),
+  };
+}
+
+/**
+ * GIS 건물과 수치지형도 건물을 bbox 격자로 먼저 좁힌 뒤 교차면적을
+ * 계산한다. topo hit 자체는 이미 topo SQLite R*Tree 반경 조회를 거친다.
+ */
+function supplementTopoBuildings(ctx: EngineContext, rows: BuildingRow[], radiusM: number): BuildingRow[] {
+  if (!ctx.topo) {
+    supplementState(ctx).set(radiusM, false);
+    return rows;
+  }
+  const topoHits = ctx.topo.hits(["topo_building"], radiusM).filter((hit): hit is FeatureHit & { geometry: ArealGeometry } => areal(hit.geometry));
+  if (topoHits.length === 0) {
+    supplementState(ctx).set(radiusM, false);
+    return rows;
+  }
+
+  const index = buildingBboxIndex(rows);
+  const supplemented = rows.slice();
+  let applied = false;
+  for (const topoHit of topoHits) {
+    const topoArea = planarArea(topoHit.geometry);
+    if (!(topoArea > 0)) continue;
+    const topoBox = bbox(topoHit.geometry);
+    const floors = positiveTopoFloors(topoHit);
+    let overlapsExisting = false;
+    for (const candidateIndex of buildingCandidates(index, topoBox)) {
+      const existing = supplemented[index.rowIndexes[candidateIndex]!];
+      if (!existing || !areal(existing.hit.geometry)) continue;
+      const existingArea = planarArea(existing.hit.geometry);
+      if (!(existingArea > 0)) continue;
+      const intersection = overlapArea(existing.hit.geometry, topoHit.geometry);
+      if (intersection / topoArea >= 0.2) overlapsExisting = true;
+      if (existing.floorsAbove === null && floors !== null && floors >= 2 && intersection / existingArea >= 0.5) {
+        supplemented[index.rowIndexes[candidateIndex]!] = {
+          ...existing,
+          heightM: floors * FLOOR_HEIGHT_M,
+          heightMethod: "floors_estimate",
+          floorsAbove: floors,
+        };
+        applied = true;
+      }
+    }
+    if (!overlapsExisting) {
+      supplemented.push(topoBuildingRow(topoHit, floors));
+      applied = true;
+    }
+  }
+  supplementState(ctx).set(radiusM, applied);
+  return supplemented;
 }
 
 export interface BuildingRetirementInfo {
@@ -523,12 +655,15 @@ function buildingRowsUncached(ctx: EngineContext, radiusM: number): { rows: Buil
   const currentParcelHitsForRadius = currentParcelHits(ctx, out, radiusM);
   const currentParcelEvidence = currentParcelCandidates(ctx, out, currentParcelHitsForRadius, radiusM);
   ledgerApprovalByPnu(ctx, currentParcelEvidence.parcels.filter((hit) => hit.pnu).map((hit) => hit.pnu!));
-  return filterRetiredRows(out, { currentParcels: currentParcelEvidence.parcels, currentParcelMatches: currentParcelEvidence.matches, approvalByPnu: ledgerApproval });
+  const filtered = filterRetiredRows(out, { currentParcels: currentParcelEvidence.parcels, currentParcelMatches: currentParcelEvidence.matches, approvalByPnu: ledgerApproval });
+  return { rows: supplementTopoBuildings(ctx, filtered.rows, radiusM), retirement: filtered.retirement };
 }
 
 /** 한 분석에서 같은 반경의 건물 행·fact 결합을 여러 타일이 공유한다. */
 export function buildingRows(ctx: EngineContext, radiusM = ctx.input.radiusM): BuildingRow[] | null {
-  return ctx.memo("buildings:selection:" + radiusM, () => buildingRowsUncached(ctx, radiusM))?.rows ?? null;
+  const selection = ctx.memo("buildings:selection:" + radiusM, () => buildingRowsUncached(ctx, radiusM));
+  (ctx as SupplementStateContext).topoBuildingSupplementApplied = supplementState(ctx).get(radiusM) ?? false;
+  return selection?.rows ?? null;
 }
 
 /** 철거 잔존 후보를 제외한 사실을 타일 limitations에 공통으로 남긴다. */

@@ -7,16 +7,18 @@ import PptxGenJS from "pptxgenjs";
 import { groupTaggedShapes } from "../../pptx-shape-group";
 import { fmtInt, pageRange } from "../ui/callout-layout";
 import { legendItemsOf, STRIP_COLORS } from "../ui/map-layers";
-import { SLIDE, slideLegend, slidePanelRects, slidePanelScale, type Rect } from "../ui/overlay-layout";
+import { SLIDE, slideLegend, slidePanelRects, slidePanelScale, terrainSectionLayout, type Rect } from "../ui/overlay-layout";
 import type { Badge, TileView } from "../ui/tile-view";
 import type { RoseModel } from "../ui/wind-rose";
 import { sheetCells, type SheetGrid } from "../ui/sheet";
+import { reportSummaryNotes } from "../ui/terrain-section";
 import { COVER_MAP_KEY, mapKeyOf, type PlannedSlide } from "./report-plan";
 import { E, FONT, INK, L, LINE, MUTED, coverLayout, fitBlock, fitFooterText, fitPt, hex, linesOf, plate, sourceLayout, textIn, titlePlateRect, type Border, type ReportItem, type Slide } from "./pptx-kit";
 import { tileReportModuleFor } from "../tile/report";
 import { addEditableMap, nativeMapFallbackNote, nativeMapStatus } from "./map-pptx";
 import { badgeTextColor } from "../ui/map-labels";
 import type { PageStyle } from "../ui/board-state";
+import { drawTerrainSectionPptx } from "./terrain-section-pptx";
 
 /** 지도 이미지(PNG/JPEG data URL) — 키는 report-plan의 mapKeyOf */
 export type MapImages = Record<string, string>;
@@ -30,6 +32,7 @@ const CHIP: Record<Badge["tone"], { fill: string; color: string }> = {
 };
 
 const panelTag = (key: string, display: string, part: string): string => `GRP|panel-${key}|${display}|${part}`;
+const legendDashType = (dash?: string): "solid" | "dash" | "sysDot" => dash === "1 3" ? "sysDot" : dash ? "dash" : "solid";
 
 function titleTextFit(code: string, title: string, kind: string, box: { w: number; h: number }, scale: number): { titlePt: number; metaPt: number } {
   let titlePt = fitBlock([title], box, 18 * scale, 7);
@@ -177,9 +180,9 @@ function headlineItems(s: Slide, h: NonNullable<TileView["headline"]>, box: Info
     {
       h: labelH + valueH + (sub ? subH : 0),
       draw: (y, target = s) => {
-        target.addText(h.label, { x: box.x, y, w: box.w, h: labelH, fontFace: FONT, fontSize: fitBlock([h.label], { w: box.w, h: labelH }, 11 * scale, 7), color: MUTED, margin: 0 });
-        target.addText(h.value, { x: box.x, y: y + labelH, w: box.w, h: valueH, valign: "middle", fontFace: FONT, fontSize: pt, bold: true, color: INK, margin: 0 });
-        if (sub) target.addText(sub, { x: box.x, y: y + labelH + valueH, w: box.w, h: subH, fontFace: FONT, fontSize: fitBlock([sub], { w: box.w, h: subH }, 10.5 * scale, 7), color: MUTED, margin: 0 });
+        target.addText(h.label, { x: box.x, y, w: box.w, h: labelH, fontFace: FONT, fontSize: fitBlock([h.label], { w: box.w, h: labelH }, 11 * scale, 7), color: MUTED, margin: 0, fit: "shrink" });
+        target.addText(h.value, { x: box.x, y: y + labelH, w: box.w, h: valueH, valign: "middle", fontFace: FONT, fontSize: pt, bold: true, color: INK, margin: 0, fit: "shrink" });
+        if (sub) target.addText(sub, { x: box.x, y: y + labelH + valueH, w: box.w, h: subH, fontFace: FONT, fontSize: fitBlock([sub], { w: box.w, h: subH }, 10.5 * scale, 7), color: MUTED, margin: 0, fit: "shrink" });
       },
     },
   ];
@@ -190,7 +193,7 @@ const textItem = (s: Slide, text: string, pt: number, color: string, bold = fals
   const size = fitBlock(text.split("\n"), { w: box.w, h: maxLines * (scaledPt / 72) * 1.45 }, scaledPt, 7);
   const rows = text.split("\n").reduce((sum, line) => sum + linesOf(line, size, box.w), 0);
   const h = rows * (size / 72) * 1.45 + 0.04;
-  return { h, draw: (y, target = s) => void target.addText(text, { x: box.x, y, w: box.w, h, valign: "top", fontFace: FONT, fontSize: size, bold, color, margin: 0 }) };
+  return { h, draw: (y, target = s) => void target.addText(text, { x: box.x, y, w: box.w, h, valign: "top", fontFace: FONT, fontSize: size, bold, color, margin: 0, fit: "shrink" }) };
 };
 
 function roseSummary(model: RoseModel): string {
@@ -208,9 +211,9 @@ function rowItems(s: Slide, rows: TileView["rows"], box: InfoBox, scale = 1): It
     h: 0.3 * scale,
     draw: (y, target = s) => {
       const rowH = 0.28 * scale;
-      target.addText(r.label, { x: box.x, y, w: box.w * 0.55, h: rowH, valign: "middle", fontFace: FONT, fontSize: fitBlock([r.label], { w: box.w * 0.55, h: rowH }, 11 * scale, 7), color: MUTED, margin: 0 });
+      target.addText(r.label, { x: box.x, y, w: box.w * 0.55, h: rowH, valign: "middle", fontFace: FONT, fontSize: fitBlock([r.label], { w: box.w * 0.55, h: rowH }, 11 * scale, 7), color: MUTED, margin: 0, fit: "shrink" });
       const v = [r.value, r.aux, r.tag].filter(Boolean).join(" · ");
-      target.addText(v, { x: box.x + box.w * 0.55, y, w: box.w * 0.45, h: rowH, align: "right", valign: "middle", fontFace: FONT, fontSize: fitBlock([v], { w: box.w * 0.45, h: rowH }, 11 * scale, 7), bold: true, color: INK, margin: 0 });
+      target.addText(v, { x: box.x + box.w * 0.55, y, w: box.w * 0.45, h: rowH, align: "right", valign: "middle", fontFace: FONT, fontSize: fitBlock([v], { w: box.w * 0.45, h: rowH }, 11 * scale, 7), bold: true, color: INK, margin: 0, fit: "shrink" });
       target.addShape("line", { x: box.x, y: y + 0.3 * scale, w: box.w, h: 0, line: { color: LINE, width: 0.75 } });
     },
   }));
@@ -253,11 +256,13 @@ function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = 
   const target = {
     addShape: (name: Parameters<Slide["addShape"]>[0], options: Parameters<Slide["addShape"]>[1]) => {
       const clipped = confine(options);
-      return clipped ? s.addShape(name, { ...clipped, objectName: group }) : undefined;
+      const objectName = clipped && (clipped as { objectName?: string }).objectName;
+      return clipped ? s.addShape(name, { ...clipped, objectName: objectName ?? group }) : undefined;
     },
     addText: (text: Parameters<Slide["addText"]>[0], options: Parameters<Slide["addText"]>[1]) => {
       const clipped = confine(options);
-      return clipped ? s.addText(text, { ...clipped, objectName: group }) : undefined;
+      const objectName = clipped && (clipped as { objectName?: string }).objectName;
+      return clipped ? s.addText(text, { ...clipped, objectName: objectName ?? group }) : undefined;
     },
   } as Slide;
   items.forEach((it, i) => {
@@ -279,6 +284,29 @@ function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = 
     } else if (it.badge) {
       target.addShape("ellipse", { x: r.x + 0.18 * iconScale, y: y + 0.03 * iconScale, w: 0.19 * iconScale, h: 0.19 * iconScale, fill: { color: hex(it.color), transparency: fade }, line: { color: "FFFFFF", width: 0.75, transparency: fade } });
       target.addText(it.badge, { x: r.x + 0.18 * iconScale, y: y + 0.03 * iconScale, w: 0.19 * iconScale, h: 0.19 * iconScale, align: "center", valign: "middle", fontFace: FONT, fontSize: Math.max(7, 7 * scale), bold: true, color: dimmed ? "8C919B" : hex(badgeTextColor(it.color)), margin: 0 });
+    } else if (it.lineSwatch) {
+      const x = r.x + 0.17 * iconScale;
+      const lineY = y + 0.145 * iconScale;
+      const lineW = 0.22 * iconScale;
+      const dashType = legendDashType(it.dash);
+      const lineWidth = Math.max(1.2, (it.strokeWidth ?? 1.5) * 0.9);
+      if (it.casing) target.addShape("line", { x, y: lineY, w: lineW, h: 0, line: { color: hex(it.casing), width: lineWidth + 1.8, transparency: fade, dashType }, objectName: `${group}|item-${i}|casing` });
+      target.addShape("line", { x, y: lineY, w: lineW, h: 0, line: { color: hex(it.color), width: lineWidth, transparency: fade, dashType }, objectName: `${group}|item-${i}|line` });
+      if (it.tickMarks) {
+        for (const offset of [0.05, 0.11, 0.17]) {
+          target.addShape("line", { x: x + offset * iconScale, y: y + 0.095 * iconScale, w: 0.001, h: 0.1 * iconScale, line: { color: hex(it.color), width: 0.7, transparency: fade }, objectName: `${group}|item-${i}|tick-${offset}` });
+        }
+      }
+    } else if (it.legendSwatch === "polygon") {
+      target.addShape("rect", {
+        x: r.x + 0.18 * iconScale,
+        y: y + 0.035 * iconScale,
+        w: 0.19 * iconScale,
+        h: 0.19 * iconScale,
+        fill: { color: hex(it.fill && it.fill !== "none" ? it.fill : it.color), transparency: it.fill === "none" ? 100 : Math.round((1 - (it.fillOpacity ?? 1)) * 100) },
+        line: { color: hex(it.stroke ?? it.color), width: 0.75, transparency: fade, dashType: legendDashType(it.dash) },
+        objectName: `${group}|item-${i}|polygon`,
+      });
     } else {
       target.addShape("ellipse", { x: r.x + 0.2 * iconScale, y: y + 0.06 * iconScale, w: 0.13 * iconScale, h: 0.13 * iconScale, fill: { color: hex(it.color), transparency: fade }, line: { color: "FFFFFF", width: 0.75, transparency: fade } });
     }
@@ -343,7 +371,9 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   const hasSummary = style.summary !== false && !(co && co.page > 0);
   const baseLegend = p.map ? slideLegend(p.map, !p.muted).rect : null;
   const panels = slidePanelRects(style, hasSummary, baseLegend);
-  const summaryRect = panels.summary;
+  const terrainShown = v.code === "D17" && !!v.terrainSections && !!p.terrainSection;
+  const terrainLayout = terrainShown ? terrainSectionLayout(panels) : null;
+  const summaryRect = terrainLayout?.summary ?? panels.summary;
   const summaryX = summaryRect?.x ?? SLIDE.w;
   const contentBox = summaryRect ? innerInfoBox(summaryRect, summaryScale) : { x: E, w: Math.max(0.2, SLIDE.w - 2 * E), h: 0.2 };
   const calloutReport = tileReportModuleFor(v.code)?.report;
@@ -363,8 +393,8 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   }
 
   const notes = [
-    ...v.caveats,
-    ...v.notes,
+    // D17 단면 칸만 메모를 줄인다. 다른 타일은 자료 주의 문구를 모두 싣는다.
+    ...(terrainShown ? reportSummaryNotes(v, true) : [...v.caveats, ...v.notes]),
     ...(p.mass ? ["DXF·GLB는 내보내기에서"] : []),
     ...(p.rose ? [roseSummary(p.rose), `바람장미 선택 계절 · ${ROSE_SEASON_LABEL[p.roseSeason ?? "annual"]}`] : []),
   ];
@@ -419,6 +449,11 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
       s.addShape("rect", { x: x0 + labW, y: y + rh * 0.2, w: Math.max(0.04, (trackW * c.value) / max), h: rh * 0.6, fill: { color: hex(STRIP_COLORS[i % STRIP_COLORS.length]) }, line: { color: hex(STRIP_COLORS[i % STRIP_COLORS.length]), width: 0 } });
       s.addText(`${c.value}${c.unit === "%" ? "%" : ` ${c.unit}`}`, { x: x0 + labW + trackW + 0.1, y, w: 0.8, h: rh, align: "right", valign: "middle", fontFace: FONT, fontSize: 14, bold: true, color: INK, margin: 0 });
     });
+  } else if (terrainShown && v.terrainSections && p.terrainSection && terrainLayout) {
+    const stepRow = v.rows.find((row) => row.label === "반경 안 단차 시설 수");
+    const facilityCount = stepRow ? Number.parseInt(stepRow.value.replace(/[^0-9-]/g, ""), 10) : null;
+    drawTerrainSectionPptx(s, v.terrainSections, p.terrainSection, terrainLayout.rect, Number.isFinite(facilityCount) ? facilityCount : null);
+    legendPlate(s, p, hasSummary);
   } else if (co) calloutReport?.render({ slide: s, planned: p, part: "overview" });
   else legendPlate(s, p, hasSummary);
 
