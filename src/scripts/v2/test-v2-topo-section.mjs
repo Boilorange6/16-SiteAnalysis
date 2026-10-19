@@ -9,7 +9,7 @@ const { toLngLat, toUtmk } = await import("../../lib/v2/crs.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { TopoDemReader } = await import("../../lib/v2/topo/dem.ts");
 const { terrainSections } = await import("../../lib/v2/engine/tiles/terrain-section.ts");
-const { terrainSectionPosition } = await import("../../lib/v2/ui/terrain-section.ts");
+const { terrainSectionLabelAnchor, terrainSectionMapStyle, terrainSectionMarkerGeometry, terrainSectionPosition } = await import("../../lib/v2/ui/terrain-section.ts");
 
 const RADIUS_M = 800;
 
@@ -186,6 +186,23 @@ try {
   const farWest = terrainSectionPosition(formatterA, 64);
   assert.equal(farWest, "서쪽 1.1 km", "A 단면은 좌표상 서쪽 끝을 판정하고 1,136m를 1.1 km로 표시");
   assert.equal(terrainSectionPosition(formatterB, 1_800), "북쪽 600m", "B 단면은 좌표상 북쪽 끝을 판정");
+
+  const sectionAnchor = terrainSectionLabelAnchor([[0, -120], [0, 120]], [0, 0], 100);
+  assert.ok(sectionAnchor, "section label anchor is calculated");
+  assert.ok(Math.hypot(sectionAnchor[0], sectionAnchor[1]) <= 100, "section label anchor stays within the radius");
+  assert.equal(sectionAnchor[1], -80, "section label anchor follows the from-end line direction");
+
+  const marker = terrainSectionMarkerGeometry(40, 100);
+  assert.equal(marker.y2 - marker.y1, 16, "section marker is a short glyph");
+  assert.ok(marker.y2 - marker.y1 < 184, "section marker is not full plot height");
+
+  const selectedMapStyle = terrainSectionMapStyle("B", "B");
+  const unselectedMapStyle = terrainSectionMapStyle("A", "B");
+  assert.notEqual(selectedMapStyle.strokeWidth, unselectedMapStyle.strokeWidth, "selected section is thicker");
+  assert.equal(selectedMapStyle.opacity, 1, "selected section is fully opaque");
+  assert.equal(unselectedMapStyle.opacity, 0.45, "unselected section remains visible but de-emphasized");
+  assert.equal(selectedMapStyle.dash, undefined, "selected section is solid");
+  assert.equal(unselectedMapStyle.dash, "7 5", "unselected section is dashed");
 
   const triangle = {
     type: "Polygon",

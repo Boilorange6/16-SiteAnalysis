@@ -8,6 +8,7 @@ import { maxOf, minOf } from "@/lib/v2/extent";
 import { isSiteParcelLayer } from "@/lib/v2/ui/site-parcel";
 import { calloutFrame, layoutCallouts, PX, PX_NARROW, type Placed } from "@/lib/v2/ui/callout-layout";
 import { buildMapScene, mapCalloutTextLayout, mapElementKey, mapFeatureKey, mapLabelEntries, mapTextWidth, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, type MapCalloutTextLayout, type MapSceneLabel } from "@/lib/v2/ui/map-scene";
+import { terrainSectionMapStyle } from "@/lib/v2/ui/terrain-section";
 
 export { mapCalloutTextLayout, mapFeatureKey, mapLabelEntries, mapLabelText } from "@/lib/v2/ui/map-scene";
 
@@ -72,6 +73,8 @@ export type MapFigureProps = {
   siteY?: number;
   /** 상세 창에서 행/지도 선택을 같은 fid로 강조한다. */
   selectedFids?: readonly string[];
+  /** D17 단면 지도는 선택한 단면을 굵고 실선으로 강조한다. 기본은 A다. */
+  terrainSection?: "A" | "B";
   /** 범례 라벨 기준 화면 강조. 같은 라벨의 여러 레이어를 함께 강조한다. */
   highlightLabel?: string | null;
   /** 보고서 범례 강조: 선택 항목의 원래 geometry style을 보존한다. */
@@ -316,7 +319,7 @@ function backgroundTransform(from: Viewport, to: Viewport, width: number, height
   return `matrix(${scale},0,0,${scale},${e},${f})`;
 }
 
-function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, backgroundOnly = false, fixed, compact = false, label, legend, legendY, north: northOpt, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = EMPTY_BOXES, siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, selectedFids = EMPTY_KEYS, highlightLabel = null, legendFocus = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = EMPTY_KEYS, showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeaturePin, onLegendHover, onLegendPin, path = EMPTY_PATH, onMapClick, view, viewport, dragging = false, previewInteraction = false, hiddenKeys = EMPTY_KEYS }: MapFigureProps) {
+function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, backgroundOnly = false, fixed, compact = false, label, legend, legendY, north: northOpt, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = EMPTY_BOXES, siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, selectedFids = EMPTY_KEYS, terrainSection = "A", highlightLabel = null, legendFocus = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = EMPTY_KEYS, showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeaturePin, onLegendHover, onLegendPin, path = EMPTY_PATH, onMapClick, view, viewport, dragging = false, previewInteraction = false, hiddenKeys = EMPTY_KEYS }: MapFigureProps) {
   if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
     const target = window as Window & { __V2_PREVIEW_METRICS__?: Record<string, number> };
     const metrics = target.__V2_PREVIEW_METRICS__ ?? (target.__V2_PREVIEW_METRICS__ = {});
@@ -1168,22 +1171,25 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
           })}
           {linePaths.filter((d) => backgroundOnlyActive ? shouldRasterizeLayer(d.l.layer) : (d.l.layer !== "rail_line" && d.l.layer !== "rail_station_axis")).map((d) => {
             const st = layerStyle(d.l.layer);
+            const sectionId = d.l.layer === "terrain_section_a" ? "A" : d.l.layer === "terrain_section_b" ? "B" : null;
+            const sectionStyle = sectionId ? terrainSectionMapStyle(sectionId, terrainSection) : null;
             const lineSelected = isSelected(d.l.fid);
             const center = centerOf(d.l.points);
             const lineKey = mapElementKey("line", d.l.layer, d.l.fid, d.index);
             const strong = isElementStrong(d.l.layer, lineKey);
             const baseWidth = d.l.strokeWidth ?? st.strokeWidth ?? 1.5;
-            const width = lineSelected ? Math.max(4, baseWidth) : (strong ? baseWidth * 1.35 : baseWidth) * (d.l.emphasis === "major" ? 1.2 : d.l.emphasis === "minor" ? 0.85 : 1);
+            const width = sectionStyle?.strokeWidth ?? (lineSelected ? Math.max(4, baseWidth) : (strong ? baseWidth * 1.35 : baseWidth) * (d.l.emphasis === "major" ? 1.2 : d.l.emphasis === "minor" ? 0.85 : 1));
             const points = d.points.map(([x, y]) => `${x},${y}`).join(" ");
             const stroke = d.l.color ?? st.color;
             const casing = strong || lineSelected ? INK : d.l.casing ?? st.casing;
             const casingWidth = d.l.casingWidth ?? width + 2.4;
-            const opacity = d.l.opacity ?? st.opacity;
+            const opacity = sectionStyle?.opacity ?? d.l.opacity ?? st.opacity;
+            const dash = sectionStyle ? sectionStyle.dash : st.dash;
             const pick = pickProps({ fid: d.l.fid, lng: center[0], lat: center[1], kind: "line" }, lineKey, labelText(d.l.layer, "line", d.l));
             return (
               <g key={`line${d.index}`} opacity={isElementDimmed(d.l.layer, lineKey) ? 0.2 : opacity}>
-                {casing && <polyline points={points} fill="none" stroke={casing} strokeWidth={casingWidth * u} strokeDasharray={st.dash} strokeLinecap={st.lineCap ?? "butt"} strokeLinejoin="round" pointerEvents="none" />}
-                <polyline data-line="true" points={points} fill="none" stroke={stroke} strokeWidth={width * u} strokeDasharray={st.dash} strokeLinecap={st.lineCap ?? "butt"} strokeLinejoin="round" markerEnd={st.arrow ? `url(#arrow-${uid}-${d.index})` : undefined} {...pick} />
+                {casing && <polyline points={points} fill="none" stroke={casing} strokeWidth={casingWidth * u} strokeDasharray={dash} strokeLinecap={st.lineCap ?? "butt"} strokeLinejoin="round" pointerEvents="none" />}
+                <polyline data-line="true" points={points} fill="none" stroke={stroke} strokeWidth={width * u} strokeDasharray={dash} strokeLinecap={st.lineCap ?? "butt"} strokeLinejoin="round" markerEnd={st.arrow ? `url(#arrow-${uid}-${d.index})` : undefined} {...pick} />
                 {st.tickMarks && lineTickSegments(d.points, 4 * u).map(([a, b], tickIndex) => <line key={`tick-${tickIndex}`} x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke={stroke} strokeWidth={Math.max(1, width * 0.55 * u)} strokeLinecap="round" pointerEvents="none" />)}
                 {Object.keys(pick).length > 0 && <polyline data-map-hit="line" points={points} fill="none" stroke="transparent" strokeWidth={Math.max(44 * u, casingWidth * u)} strokeLinejoin="round" pointerEvents="stroke" {...hitProps(pick)} />}
               </g>

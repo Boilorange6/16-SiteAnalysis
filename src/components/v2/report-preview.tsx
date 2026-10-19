@@ -6,7 +6,7 @@ import { metersPerPixel, slideViewport, zoomViewAt, type MapView } from "@/lib/v
 import { SLIDE, slideLegend, slidePanelRects, slideSiteX, type Rect } from "@/lib/v2/ui/overlay-layout";
 import { coverLayout, fitBlock, fitFooterText, sourceLayout, titlePlateRect } from "@/lib/v2/report/pptx-kit";
 import { layerStyle, legendItemsOf, legendLabelOf } from "@/lib/v2/ui/map-layers";
-import { terrainCrossingLayer, terrainElevationLabel, terrainSectionAxisLabel, terrainSectionPosition, terrainSectionTotal, sortTerrainCrossings, TERRAIN_CROSSING_LABELS, TERRAIN_SECTION_LABELS } from "@/lib/v2/ui/terrain-section";
+import { terrainCrossingLayer, terrainElevationLabel, terrainSectionAxisStops, terrainSectionElevationAt, terrainSectionMarkerGeometry, terrainSectionPosition, terrainSectionTotal, sortTerrainCrossings, TERRAIN_CROSSING_LABELS, TERRAIN_SECTION_LABELS } from "@/lib/v2/ui/terrain-section";
 import MapFigure from "./map-figure";
 import { useFocusTrap } from "./use-focus-trap";
 import { extraPageKey, type BoardAction, type BoardState, type PageKey, type PageStyle } from "@/lib/v2/ui/board-state";
@@ -262,6 +262,7 @@ type MapLayerProps = {
   onPatch: (patch: PreviewStylePatch) => void;
   onDirectPatch?: (patch: PreviewStylePatch) => void;
   hoverLegend?: string | null;
+  terrainSection?: "A" | "B";
   label: string;
 };
 
@@ -283,7 +284,7 @@ function recordPreviewTiming(name: string, elapsedMs: number): void {
   metrics[`${name}Samples`] = (metrics[`${name}Samples`] ?? 0) + 1;
 }
 
-function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, interactive, thumbnail = false, onPatch, onDirectPatch, hoverLegend, label }: MapLayerProps) {
+function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, interactive, thumbnail = false, onPatch, onDirectPatch, hoverLegend, terrainSection, label }: MapLayerProps) {
   const width = Math.max(1, Math.round(SLIDE.w * unit));
   const height = Math.max(1, Math.round(SLIDE.h * unit));
   const [dragging, setDragging] = useState(false);
@@ -468,6 +469,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
         legendFocus={focusedLabel}
         highlightLabel={activeLegendLabel}
         highlightPinnedLabel={focusedLabel}
+        terrainSection={terrainSection}
         showAutomaticLabels
         previewInteraction={interactive}
         hoverKey={interactive ? hoverKey : null}
@@ -664,6 +666,7 @@ function TerrainSectionPreview({ slide, unit, panels }: { slide: Extract<Planned
   }
   if (path.length > 0) paths.push(path.join(" "));
   const [siteStart, siteEnd] = section.siteSpan;
+  const axisStops = terrainSectionAxisStops(section);
   const siteValues = valid.filter((sample) => sample.d >= siteStart && sample.d <= siteEnd).map((sample) => sample.z);
   const range = siteValues.length > 1 ? Math.max(...siteValues) - Math.min(...siteValues) : null;
   const stepRow = slide.view.rows.find((row) => row.label === "반경 안 단차 시설 수");
@@ -687,24 +690,37 @@ function TerrainSectionPreview({ slide, unit, panels }: { slide: Extract<Planned
         <strong style={fontStyle(9.5, unit)}>{TERRAIN_SECTION_LABELS[slide.terrainSection]} · 지형 단면</strong>
         <span style={fontStyle(7.5, unit)}>대지 음영 · 단차 시설 표식</span>
       </div>
-      <svg className={styles.terrainPreviewGraph} viewBox="0 0 760 240" preserveAspectRatio="none" role="img" aria-label={`${TERRAIN_SECTION_LABELS[slide.terrainSection]} 표고 프로파일`}>
-        <title>{`${TERRAIN_SECTION_LABELS[slide.terrainSection]} 표고 프로파일`}</title>
-        <rect x={xFor(siteStart)} y="28" width={Math.max(0, xFor(siteEnd) - xFor(siteStart))} height="184" fill="#2350b8" fillOpacity=".09" />
-        <line x1="52" x2="708" y1="212" y2="212" stroke="#b9c0ca" strokeWidth="1" />
-        <text x="380" y="232" textAnchor="middle" fontSize="11">{terrainSectionAxisLabel(section)}</text>
-        <text x="44" y="20" textAnchor="end" fontSize="11">{terrainElevationLabel(maxZ)}</text>
-        <text x="44" y="216" textAnchor="end" fontSize="11">{terrainElevationLabel(minZ)}</text>
-        {crossings.map((crossing, index) => {
-          const style = layerStyle(terrainCrossingLayer(crossing.kind));
-          const x = xFor(crossing.d);
-          const tickYs = [46, 120, 194];
-          return <g key={`${crossing.d}-${crossing.kind}-${index}`}>
-            <line x1={x} x2={x} y1="28" y2="212" stroke={style.color} strokeWidth={(style.strokeWidth ?? 1.5) * 1.15} strokeDasharray={style.dash} strokeLinecap={style.lineCap ?? "butt"} />
-            {style.tickMarks && tickYs.map((y) => <line key={y} x1={x - 5} x2={x + 5} y1={y} y2={y} stroke={style.color} strokeWidth={Math.max(1.5, (style.strokeWidth ?? 1.5) * 0.75)} strokeLinecap="round" />)}
-          </g>;
-        })}
-        {paths.map((entry, index) => <path key={index} d={entry} fill="none" stroke="#8a5a2e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />)}
-      </svg>
+      <div className={styles.terrainPreviewGraphShell}>
+        <div className={styles.terrainPreviewYAxis} aria-hidden="true">
+          <span style={fontStyle(8.5, unit)}>{terrainElevationLabel(maxZ)}</span>
+          <span style={fontStyle(8.5, unit)}>{terrainElevationLabel(minZ)}</span>
+        </div>
+        <div className={styles.terrainPreviewGraphMain}>
+          <svg className={styles.terrainPreviewGraph} viewBox="0 0 760 240" preserveAspectRatio="none" role="img" aria-label={`${TERRAIN_SECTION_LABELS[slide.terrainSection]} 표고 프로파일`}>
+            <title>{`${TERRAIN_SECTION_LABELS[slide.terrainSection]} 표고 프로파일`}</title>
+            <rect x={xFor(siteStart)} y="28" width={Math.max(0, xFor(siteEnd) - xFor(siteStart))} height="184" fill="#2350b8" fillOpacity=".09" />
+            <line x1="52" x2="708" y1="212" y2="212" stroke="#b9c0ca" strokeWidth="1" />
+            {paths.map((entry, index) => <path key={index} d={entry} fill="none" stroke="#8a5a2e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />)}
+            {crossings.map((crossing, index) => {
+              const style = layerStyle(terrainCrossingLayer(crossing.kind));
+              const x = xFor(crossing.d);
+              const elevation = terrainSectionElevationAt(section, crossing.d);
+              const marker = elevation === null ? null : terrainSectionMarkerGeometry(x, yFor(elevation));
+              return <g key={`${crossing.d}-${crossing.kind}-${index}`}>
+                {marker && <>
+                  <line x1={marker.x} x2={marker.x} y1={marker.y1} y2={marker.y2} stroke="#fff" strokeWidth={Math.max(3, (style.strokeWidth ?? 1.5) + 2)} strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+                  <line x1={marker.x} x2={marker.x} y1={marker.y1} y2={marker.y2} stroke={style.color} strokeWidth={Math.max(1.5, style.strokeWidth ?? 1.5)} strokeDasharray={style.dash} strokeLinecap={style.lineCap ?? "butt"} vectorEffect="non-scaling-stroke" />
+                </>}
+              </g>;
+            })}
+          </svg>
+          <div className={styles.terrainPreviewXAxis} aria-hidden="true">
+            <span style={fontStyle(8.5, unit)}>{axisStops[0]}</span>
+            <span style={fontStyle(8.5, unit)}>{axisStops[1]}</span>
+            <span style={fontStyle(8.5, unit)}>{axisStops[2]}</span>
+          </div>
+        </div>
+      </div>
       <table className={styles.terrainPreviewTable} aria-label="단면 시설 표">
         <caption className={styles.srOnly}>단면 시설 표</caption>
         <tbody>{crossings.slice(0, 2).map((crossing, index) => <tr key={`${crossing.d}-${crossing.kind}-${index}`}><td>{TERRAIN_CROSSING_LABELS[crossing.kind]}</td><td>{terrainSectionPosition(section, crossing.d)}</td><td>{crossing.heightM === null ? "높이 미확인" : `${crossing.heightM.toFixed(1)}m`}</td></tr>)}</tbody>
@@ -860,7 +876,7 @@ function TileSurface({ slide, unit, basemap, panels, interactive, thumbnail = fa
   }, [model, onDirectPatch, slide.style.legendFocus]);
   return (
     <>
-      {model ? <MapLayer model={model} style={slide.style} unit={unit} basemap={basemap} panels={panels} siteX={slideSiteX(slide.style, panels.summary !== null)} pinnedKeys={slide.pinnedKeys} interactive={interactive} thumbnail={thumbnail} onPatch={onPatch} onDirectPatch={onDirectPatch} hoverLegend={hoverLegend} label={slide.view.title + " 지도"} /> : slide.mass ? <VisualPlaceholder title={slide.view.title} message="3D 매스 미리보기는 내보내기와 같은 페이지 위치로 표시됩니다." unit={unit} /> : slide.rose ? <VisualPlaceholder title={slide.view.title} message="바람장미 도판 미리보기" unit={unit} /> : chart ? <ChartPlaceholder view={slide.view} unit={unit} /> : <VisualPlaceholder title={slide.view.title} message={slide.body.kind === "state" ? slide.body.message : "표시할 지도 결과가 없습니다."} unit={unit} />}
+      {model ? <MapLayer model={model} style={slide.style} unit={unit} basemap={basemap} panels={panels} siteX={slideSiteX(slide.style, panels.summary !== null)} pinnedKeys={slide.pinnedKeys} interactive={interactive} thumbnail={thumbnail} onPatch={onPatch} onDirectPatch={onDirectPatch} hoverLegend={hoverLegend} terrainSection={slide.view.code === "D17" ? slide.terrainSection ?? "A" : undefined} label={slide.view.title + " 지도"} /> : slide.mass ? <VisualPlaceholder title={slide.view.title} message="3D 매스 미리보기는 내보내기와 같은 페이지 위치로 표시됩니다." unit={unit} /> : slide.rose ? <VisualPlaceholder title={slide.view.title} message="바람장미 도판 미리보기" unit={unit} /> : chart ? <ChartPlaceholder view={slide.view} unit={unit} /> : <VisualPlaceholder title={slide.view.title} message={slide.body.kind === "state" ? slide.body.message : "표시할 지도 결과가 없습니다."} unit={unit} />}
       {slide.view.code === "D17" && <TerrainSectionPreview slide={slide} unit={unit} panels={panels} />}
       {slide.body.kind === "state" && <div className={styles.slidePanel} style={{ left: unit * 4, top: unit * 2.7, width: unit * 5.1, height: unit * 1.15 }}><div className={styles.slideText + " " + styles.slideTextStrong} style={fontStyle(16, unit)}>{slide.body.message}</div></div>}
       <TitlePanel slide={slide} rect={panels.title} unit={unit} interaction={panelInteraction?.("title")} />

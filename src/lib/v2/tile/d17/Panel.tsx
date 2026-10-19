@@ -6,7 +6,7 @@ import type { TerrainSectionId } from "../../ui/board-state";
 import type { TileDialogPanelProps } from "../component-types";
 import type { TileView } from "../../ui/tile-view";
 import { layerStyle } from "../../ui/map-layers";
-import { terrainCrossingLayer, terrainElevationLabel, terrainSectionAxisLabel, terrainSectionPosition, terrainSectionTotal, sortTerrainCrossings, TERRAIN_CROSSING_LABELS, TERRAIN_SECTION_LABELS } from "../../ui/terrain-section";
+import { terrainCrossingLayer, terrainElevationLabel, terrainSectionAxisStops, terrainSectionElevationAt, terrainSectionMarkerGeometry, terrainSectionPosition, terrainSectionTotal, sortTerrainCrossings, TERRAIN_CROSSING_LABELS, TERRAIN_SECTION_LABELS } from "../../ui/terrain-section";
 import styles from "./Panel.module.css";
 
 const CAVEAT = "등고선·표고점 보간값(추정)입니다. 현장 실측을 대신하지 않습니다.";
@@ -89,29 +89,43 @@ function SectionChart({ section, id }: { section: Section; id: string }) {
   const total = terrainSectionTotal(section);
   const [siteStart, siteEnd] = section.siteSpan;
   const crossings = sortTerrainCrossings(section);
+  const axisStops = terrainSectionAxisStops(section);
   return (
     <figure className={styles.graphWrap} aria-labelledby={`${id}-title`} aria-describedby={`${id}-table-title`}>
-      <svg className={styles.graph} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-labelledby={`${id}-title`}>
-        <title id={`${id}-title`}>{SECTION_LABELS[section.axis === "EW" ? "A" : "B"]} 표고 프로파일</title>
-        <rect className={styles.siteSpan} x={xFor(siteStart)} y={padY} width={Math.max(0, xFor(siteEnd) - xFor(siteStart))} height={height - padY * 2} />
-        <line className={styles.axis} x1={padX} x2={width - padX} y1={height - padY} y2={height - padY} />
-        <text x={width / 2} y={height - 8} textAnchor="middle">{terrainSectionAxisLabel(section)}</text>
-        <text x={padX - 8} y={padY - 8} textAnchor="end">{terrainElevationLabel(maxZ)}</text>
-        <text x={padX - 8} y={height - padY + 4} textAnchor="end">{terrainElevationLabel(minZ)}</text>
-        {crossings.map((crossing, index) => {
-          const style = layerStyle(terrainCrossingLayer(crossing.kind));
-          const x = xFor(crossing.d);
-          const tickYs = [padY + 18, height / 2, height - padY - 18];
-          return (
-          <g key={`${crossing.d}-${crossing.kind}-${index}`}>
-            <line className={styles.step} x1={x} x2={x} y1={padY} y2={height - padY} stroke={style.color} strokeWidth={(style.strokeWidth ?? 1.5) * 1.15} strokeDasharray={style.dash} strokeLinecap={style.lineCap ?? "butt"} />
-            {style.tickMarks && tickYs.map((y) => <line key={y} className={styles.stepTick} x1={x - 5} x2={x + 5} y1={y} y2={y} stroke={style.color} strokeWidth={Math.max(1.5, (style.strokeWidth ?? 1.5) * 0.75)} strokeLinecap="round" />)}
-            <title>{`${CROSSING_LABELS[crossing.kind]} · ${terrainSectionPosition(section, crossing.d)} · ${crossing.heightM === null ? "높이 미확인" : `${formatNumber(crossing.heightM)}m`}`}</title>
-          </g>
-          );
-        })}
-        {paths.map((path, index) => <path key={index} className={styles.profile} d={path} />)}
-      </svg>
+      <div className={styles.graphLayout}>
+        <div className={styles.graphYAxis} aria-hidden="true">
+          <span>{terrainElevationLabel(maxZ)}</span>
+          <span>{terrainElevationLabel(minZ)}</span>
+        </div>
+        <div className={styles.graphMain}>
+          <svg className={styles.graph} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-labelledby={`${id}-title`}>
+            <title id={`${id}-title`}>{SECTION_LABELS[section.axis === "EW" ? "A" : "B"]} 표고 프로파일</title>
+            <rect className={styles.siteSpan} x={xFor(siteStart)} y={padY} width={Math.max(0, xFor(siteEnd) - xFor(siteStart))} height={height - padY * 2} />
+            <line className={styles.axis} x1={padX} x2={width - padX} y1={height - padY} y2={height - padY} />
+            {paths.map((path, index) => <path key={index} className={styles.profile} d={path} />)}
+            {crossings.map((crossing, index) => {
+              const style = layerStyle(terrainCrossingLayer(crossing.kind));
+              const x = xFor(crossing.d);
+              const elevation = terrainSectionElevationAt(section, crossing.d);
+              const marker = elevation === null ? null : terrainSectionMarkerGeometry(x, yFor(elevation));
+              return (
+                <g key={`${crossing.d}-${crossing.kind}-${index}`}>
+                  {marker && <>
+                    <line className={styles.stepHalo} x1={marker.x} x2={marker.x} y1={marker.y1} y2={marker.y2} stroke="#fff" strokeWidth={Math.max(3, (style.strokeWidth ?? 1.5) + 2)} strokeLinecap="round" />
+                    <line className={styles.step} x1={marker.x} x2={marker.x} y1={marker.y1} y2={marker.y2} stroke={style.color} strokeWidth={Math.max(1.5, style.strokeWidth ?? 1.5)} strokeDasharray={style.dash} strokeLinecap={style.lineCap ?? "butt"} />
+                  </>}
+                  <title>{`${CROSSING_LABELS[crossing.kind]} · ${terrainSectionPosition(section, crossing.d)} · ${crossing.heightM === null ? "높이 미확인" : `${formatNumber(crossing.heightM)}m`}`}</title>
+                </g>
+              );
+            })}
+          </svg>
+          <div className={styles.graphXAxis} aria-hidden="true">
+            <span>{axisStops[0]}</span>
+            <span>{axisStops[1]}</span>
+            <span>{axisStops[2]}</span>
+          </div>
+        </div>
+      </div>
       <p className={styles.graphNote}>파란 음영 = 대지 구간 · 갈색 선 = 표고 · 표식 = 단차 시설(범례와 같은 모양)</p>
       <span id={`${id}-table-title`} className={styles.srOnly}>단면 그래프의 단차 시설 표</span>
     </figure>

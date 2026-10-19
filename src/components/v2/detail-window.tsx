@@ -458,6 +458,7 @@ export default function DetailWindow({ view, layer, onLayer, onClose, terrainSec
                     onLegendHover={setLegendHover}
                     onLegendPin={(value) => setLegendPinned((current) => value === null ? null : current === value ? null : value)}
                     selectedFids={selectedFids}
+                    terrainSection={terrainSection}
                     path={path}
                     view={mapController.view}
                     dragging={mapController.dragging}

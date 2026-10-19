@@ -2,7 +2,7 @@ import type { TerrainSections } from "../tile-result";
 import { FONT, INK, LINE, MUTED, fitPt, plate, seg, type Slide } from "./pptx-kit";
 import type { Rect } from "../ui/overlay-layout";
 import { layerStyle } from "../ui/map-layers";
-import { terrainCrossingLayer, terrainElevationLabel, terrainSectionAxisLabel, terrainSectionPosition, terrainSectionTotal, sortTerrainCrossings, TERRAIN_CROSSING_LABELS, TERRAIN_SECTION_LABELS } from "../ui/terrain-section";
+import { terrainCrossingLayer, terrainElevationLabel, terrainSectionAxisLabel, terrainSectionElevationAt, terrainSectionMarkerGeometry, terrainSectionPosition, terrainSectionTotal, sortTerrainCrossings, TERRAIN_CROSSING_LABELS, TERRAIN_SECTION_LABELS } from "../ui/terrain-section";
 
 const SECTION_LABELS = TERRAIN_SECTION_LABELS;
 const CROSSING_LABELS = TERRAIN_CROSSING_LABELS;
@@ -56,17 +56,18 @@ function drawProfile(slide: Slide, section: TerrainSections["A"], rect: Rect, gr
     const before = section.samples[index - 1];
     const current = section.samples[index];
     if (before.z === null || current.z === null) continue;
-    seg(slide, [xFor(before.d), yFor(before.z)], [xFor(current.d), yFor(current.z)], "8A5A2E", 1.35, 0, `${group}|profile`);
+    seg(slide, [xFor(before.d), yFor(before.z)], [xFor(current.d), yFor(current.z)], "8A5A2E", 1.5, 0, `${group}|profile`);
   }
   for (const [index, crossing] of sortTerrainCrossings(section).entries()) {
     const style = layerStyle(terrainCrossingLayer(crossing.kind));
     const x = xFor(crossing.d);
+    const elevation = terrainSectionElevationAt(section, crossing.d);
+    const marker = elevation === null ? null : terrainSectionMarkerGeometry(x, yFor(elevation), 0.08);
     const color = style.color.replace(/^#/, "");
     const dashType = style.dash === "1 3" ? "sysDot" : style.dash ? "dash" : "solid";
-    if (style.casing) slide.addShape("line", { x, y: rect.y + pad.top, w: 0.001, h: height, line: { color: style.casing.replace(/^#/, ""), width: (style.strokeWidth ?? 1.5) + 2.4 }, objectName: `${group}|step-${index}-casing` });
-    slide.addShape("line", { x, y: rect.y + pad.top, w: 0.001, h: height, line: { color, width: style.strokeWidth ?? 1.5, dashType }, objectName: `${group}|step-${index}` });
-    if (style.tickMarks) for (const tickY of [0.18, 0.5, 0.82]) {
-      slide.addShape("line", { x: x - 0.06, y: rect.y + pad.top + height * tickY, w: 0.12, h: 0.001, line: { color, width: Math.max(0.65, (style.strokeWidth ?? 1.5) * 0.7) }, objectName: `${group}|step-${index}-tick` });
+    if (marker) {
+      slide.addShape("line", { x: marker.x, y: marker.y1, w: 0.001, h: marker.y2 - marker.y1, line: { color: "FFFFFF", width: (style.strokeWidth ?? 1.5) + 2 }, objectName: `${group}|step-${index}-halo` });
+      slide.addShape("line", { x: marker.x, y: marker.y1, w: 0.001, h: marker.y2 - marker.y1, line: { color, width: style.strokeWidth ?? 1.5, dashType }, objectName: `${group}|step-${index}` });
     }
   }
   slide.addText(terrainSectionAxisLabel(section), { x: rect.x + pad.left, y: rect.y + pad.top + height + 0.03, w: width, h: 0.18, align: "center", fontFace: FONT, fontSize: 8.5, color: MUTED, margin: 0, fit: "shrink", objectName: `${group}|axis-label` });

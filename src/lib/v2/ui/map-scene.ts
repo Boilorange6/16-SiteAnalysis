@@ -7,6 +7,7 @@ import { isSiteParcelLayer } from "./site-parcel";
 import { layerStyle, legendItemsForModel, type MapModel } from "./map-layers";
 import { tileClientModuleFor } from "../tile/client";
 import { canonicalRailLineLabel, railLineColor, railLineIsLightRail, railStationMatchKey } from "../tile/rail-presentation";
+import { terrainSectionLabelAnchor } from "./terrain-section";
 
 export type MapSceneBox = { x0: number; y0: number; x1: number; y1: number };
 type ScreenPoint = readonly [number, number];
@@ -976,7 +977,10 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
       return [{ ...base, autoText: automaticLabelText(entry.polygon.layer, "polygon", entry.polygon, highlighted), labelPriority: legacyLabelPriority("polygon", entry.polygon, highlighted) ?? 0, order: model.features.length + entry.index, p: anchor, radius: 0, small: false, explicit: !!automaticLabelText(entry.polygon.layer, "polygon", entry.polygon), highlighted, pick: { fid: entry.polygon.fid, lng, lat, kind: "polygon" as const, key: entry.key } }];
     }),
     ...linePaths.flatMap((entry) => {
-      const center = visibleAnchor(entry.points, entry.points[Math.floor(entry.points.length / 2)] ?? [cx, cy], W, H);
+      const sectionAnchor = entry.line.layer === "terrain_section_a" || entry.line.layer === "terrain_section_b"
+        ? terrainSectionLabelAnchor(entry.points, [cx, cy], radiusPx)
+        : null;
+      const center = sectionAnchor ?? visibleAnchor(entry.points, entry.points[Math.floor(entry.points.length / 2)] ?? [cx, cy], W, H);
       if (!center) return [];
       const [lng, lat] = centerOf(entry.line.points);
       const base = labelEntriesByKey.get(entry.key);
