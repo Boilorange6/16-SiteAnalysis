@@ -183,14 +183,14 @@ assert.equal(board.report.styles[extraPageKey(extraForDeletedTile.at(-1).id)].le
 // serialize → JSON → restore 왕복과 reportPages의 추가 페이지 장수.
 board = boardReducer(board, { type: "pageStyle", keys: ["t-A01"], patch: { summary: false, offsetM: [20, 30], legendScale: 1.3, hiddenKeys: ["station|1"] } });
 const snapshot = serializeBoardState(board);
-assert.equal(snapshot.version, 3, "report additive field도 기존 schema version 유지");
+assert.equal(snapshot.version, 4, "report additive field도 보드 schema version v4로 저장");
 assert.deepEqual(snapshot.report, board.report, "serialize에 report 포함");
 const restored = restoreBoardState(GODEOK_RESULTS, JSON.stringify(snapshot));
 assert.deepEqual(restored.report, board.report, "report 저장→JSON→복원 왕복");
 const withoutExtra = reportPages({ ...restored, report: { styles: {}, extra: [] } });
 assert.deepEqual(reportPages(restored), { ...withoutExtra, pages: withoutExtra.pages + restored.report.extra.length }, "reportPages에 extra 수 반영");
 
-// PageKey는 다음 report-plan 단계가 정하는 불투명 키이므로 ID rebasing에서 건드리지 않는다.
+// legacy report의 PageKey와 after도 타일 id rebasing 규칙을 함께 따른다.
 const opaqueKey = "analysis-OLD:front:part";
 const rewritten = rewriteSnapshotIds({
   ...snapshot,
@@ -199,8 +199,8 @@ const rewritten = rewriteSnapshotIds({
     extra: [{ id: "opaque-extra", after: opaqueKey, tileId: "analysis-OLD", face: "front" }],
   },
 }, (id) => id === "analysis-OLD" ? "analysis-NEW" : id);
-assert.ok(rewritten.report.styles[opaqueKey], "opaque PageKey style은 rebasing하지 않음");
-assert.equal(rewritten.report.extra[0].after, opaqueKey, "opaque after PageKey는 rebasing하지 않음");
+assert.ok(rewritten.report.styles["analysis-NEW:front:part"], "legacy PageKey style도 rebasing");
+assert.equal(rewritten.report.extra[0].after, "analysis-NEW:front:part", "legacy after PageKey도 rebasing");
 assert.equal(rewritten.report.extra[0].tileId, "analysis-NEW", "extra page의 tileId만 rebasing");
 
 // report가 없는 옛 저장본은 기본값으로 복원하고, malformed report는 전체 복원을 깨뜨리지 않고 항목별로 버린다.

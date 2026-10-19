@@ -13,6 +13,8 @@ import type { S02Cut, S02DateKey } from "../tile/s02/cut";
 import type { S03Cut } from "../tile/s03/cut";
 import type { S04Cut } from "../tile/s04/cut";
 import { sheetCapacity, type SheetGrid as UiSheetGrid } from "./sheet";
+import { EMPTY_REPORT_DOC, defaultFrame, type MapFrameState, type ReportDoc, type ReportPage, type TilePart } from "../report/report-doc";
+import type { TileReportSettings } from "../report/report-plan";
 
 export type TileSize = 1 | 2 | 4;
 export type GridColumns = 2 | 3 | 4 | 5 | 6;
@@ -116,7 +118,7 @@ export type CardFace = "summary" | "map";
 export type TerrainSectionId = "A" | "B";
 /** 대지 요약 카드의 view 키 */
 export const SUMMARY_ID = "site-summary";
-export const BOARD_STATE_VERSION = 3;
+export const BOARD_STATE_VERSION = 4;
 /** 타일 코드가 바뀌어도 저장 보드의 모든 참조를 한 번에 옮길 수 있는 자리. */
 export const TILE_CODE_RENAMES: Record<string, string> = {
   D06: "D05",
@@ -188,6 +190,8 @@ export type BoardState = {
   instances: Record<string, string>;
   /** 보고서 페이지별 표시 설정과 보드 타일에서 파생한 추가 페이지. */
   report: ReportState;
+  /** 보드와 독립된 보고서 모드의 페이지 문서. 옛 report는 불러오기용으로만 보존한다. */
+  reportDoc: ReportDoc;
   /** 빼 둔 타일(더할 수 있는 타일). index는 빼기 전 위치 */
   removed: { id: string; index: number }[];
   undoStack: UndoEntry[];
@@ -234,7 +238,8 @@ export type BoardAction =
   | { type: "addPage"; id: string; after: PageKey | null; tileId: string; face: ExtraReportPage["face"]; sheet?: ExtraReportPage["sheet"] }
   | { type: "setSheetCell"; id: string; index: number; tileId: string }
   | { type: "setSheetGrid"; id: string; grid: SheetGrid }
-  | { type: "removePage"; id: string };
+  | { type: "removePage"; id: string }
+  | { type: "reportDoc"; doc: ReportDoc };
 
 /** 카드의 현재 면 (편집 중에는 화면이 항상 요약면을 쓴다) */
 export const viewOf = (s: Pick<BoardState, "view" | "viewAll">, id: string): CardFace => s.view[id] ?? s.viewAll;
@@ -267,6 +272,7 @@ export function initBoard(results: TileResult[], preset: PresetId = DEFAULT_PRES
     terrainSection: {},
     instances: {},
     report: { styles: {}, extra: [] },
+    reportDoc: { ...EMPTY_REPORT_DOC, pages: [] },
     removed: [],
     undoStack: [],
   };
@@ -619,6 +625,8 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
   switch (a.type) {
     case "restore":
       return restoreBoardState(s.results, a.snapshot, a.fallbackPreset ?? s.preset);
+    case "reportDoc":
+      return a.doc === s.reportDoc ? s : { ...s, reportDoc: a.doc };
     case "preset": {
       const preset = isPresetId(a.preset) ? a.preset : DEFAULT_PRESET_ID;
       if (preset === s.preset) return s;
@@ -1045,6 +1053,8 @@ export type BoardStateSnapshot = {
   instances?: Record<string, string>;
   /** 페이지별 보고서 설정. 기존 저장본에는 없다. */
   report?: ReportState;
+  /** v4 보고서 모드 문서. v3 이하 저장본에는 없다. */
+  reportDoc?: ReportDoc;
   removed: { id: string; index: number }[];
 };
 
@@ -1078,6 +1088,7 @@ export function serializeBoardState(s: BoardState): BoardStateSnapshot {
     terrainSection: { ...s.terrainSection },
     instances: { ...s.instances },
     report: cloneReport(s.report),
+    reportDoc: cloneReportDoc(s.reportDoc),
     removed: s.removed.map((item) => ({ ...item })),
   };
 }
@@ -1094,6 +1105,155 @@ const isTileSize = (value: unknown): value is TileSize => value === 1 || value =
 const isGridColumns = (value: unknown): value is GridColumns => value === 2 || value === 3 || value === 4 || value === 5 || value === 6;
 const isSheetGrid = (value: unknown): value is SheetGrid => value === "2x2" || value === "3x2" || value === "3x1";
 const isTileKind = (value: unknown): value is TileResult["tileType"] => value === "analysis" || value === "diagram" || value === "simulation" || value === "stack";
+
+const isReportFormat = (value: unknown): value is ReportDoc["format"] => value === "wide" || value === "a3" || value === "a4";
+const isReportLayout = (value: unknown): value is ReportPage["layout"] => value === "map-full" || value === "map-summary" || value === "numbers-first" || value === "side-by-side";
+const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+const reportTileIdPattern = /^(?:[A-Za-z0-9._]+-)+[A-Za-z0-9_]+$/;
+const reportPageIdPattern = /^\S+$/;
+
+function isReportTileId(value: unknown, validTileIds: ReadonlySet<string>): value is string {
+  return typeof value === "string" && value.length > 0 && reportPageIdPattern.test(value) && (validTileIds.has(value) || reportTileIdPattern.test(value));
+}
+
+function reportPanels(value: unknown): PagePanels {
+  if (!isRecord(value)) return {};
+  const panels: PagePanels = {};
+  for (const key of ["title", "summary", "legend"] as const) {
+    const raw = value[key];
+    if (!isRecord(raw) || !isFiniteNumber(raw.x) || !isFiniteNumber(raw.y) || !isFiniteNumber(raw.w) || !isFiniteNumber(raw.h)) continue;
+    panels[key] = { x: raw.x, y: raw.y, w: raw.w, h: raw.h };
+  }
+  return panels;
+}
+
+function reportTextBoxes(value: unknown): ReportPage["textBoxes"] {
+  if (!Array.isArray(value)) return [];
+  const ids = new Set<string>();
+  return value.flatMap((item) => {
+    if (!isRecord(item) || typeof item.id !== "string" || item.id.length === 0 || !reportPageIdPattern.test(item.id) || ids.has(item.id)
+      || !isFiniteNumber(item.x) || !isFiniteNumber(item.y) || !isFiniteNumber(item.w) || !isFiniteNumber(item.h)
+      || typeof item.text !== "string" || !isFiniteNumber(item.pt)) return [];
+    ids.add(item.id);
+    return [{ id: item.id, x: item.x, y: item.y, w: item.w, h: item.h, text: item.text, pt: item.pt }];
+  });
+}
+
+function reportSettings(value: unknown): TileReportSettings {
+  const raw = isRecord(value) ? value : {};
+  const settings: TileReportSettings = {
+    face: isOutputFace(raw.face) ? raw.face : "front",
+    callout: isCalloutMode(raw.callout) ? raw.callout : DEFAULT_CALLOUT_MODE,
+  };
+  if (isCutSpec(raw.cut)) settings.cut = { ...raw.cut } as CutSpec;
+  if (isCameraPreset(raw.camera as CameraPreset)) settings.camera = { ...(raw.camera as CameraPreset) };
+  const filter = isRecord(raw.a05Filter) ? normalizeA05Filter(raw.a05Filter as A05Filter) : null;
+  if (filter) settings.a05Filter = copyA05Filter(filter);
+  if (typeof raw.layer === "string" && raw.layer.length > 0) settings.layer = raw.layer;
+  if (Array.isArray(raw.labels)) {
+    const seen = new Set<string>();
+    const labels = raw.labels.flatMap((item) => {
+      if (!isRecord(item) || typeof item.key !== "string" || item.key.length === 0 || typeof item.on !== "boolean" || seen.has(item.key)) return [];
+      seen.add(item.key);
+      return [{ key: item.key, on: item.on }];
+    });
+    if (labels.length > 0) settings.labels = labels;
+  }
+  if (isTerrainSection(raw.terrainSection)) settings.terrainSection = raw.terrainSection;
+  return settings;
+}
+
+function reportFrame(value: unknown): MapFrameState {
+  const frame = defaultFrame();
+  if (!isRecord(value)) return frame;
+  if (isFiniteNumber(value.zoomDelta)) frame.zoomDelta = value.zoomDelta;
+  if (Array.isArray(value.offsetM) && value.offsetM.length === 2 && isFiniteNumber(value.offsetM[0]) && isFiniteNumber(value.offsetM[1])) {
+    frame.offsetM = [value.offsetM[0], value.offsetM[1]];
+  }
+  if (value.scaleDenominator === null) frame.scaleDenominator = null;
+  else if (isFiniteNumber(value.scaleDenominator) && value.scaleDenominator > 0) frame.scaleDenominator = value.scaleDenominator;
+  if (typeof value.locked === "boolean") frame.locked = value.locked;
+  if (value.basemap === "base" || value.basemap === "road" || value.basemap === "air" || value.basemap === "none") frame.basemap = value.basemap;
+  if (Array.isArray(value.hiddenLayers)) frame.hiddenLayers = unique(stringsOf(value.hiddenLayers));
+  if (value.labelRule === "site-near" || value.labelRule === "all-visible" || value.labelRule === "off") frame.labelRule = value.labelRule;
+  if (Array.isArray(value.pinnedKeys)) frame.pinnedKeys = unique(stringsOf(value.pinnedKeys));
+  if (isRecord(value.legend)) {
+    frame.legend = {
+      ...frame.legend,
+      ...(Array.isArray(value.legend.order) ? { order: unique(stringsOf(value.legend.order)) } : {}),
+      ...(Array.isArray(value.legend.hidden) ? { hidden: unique(stringsOf(value.legend.hidden)) } : {}),
+      ...(typeof value.legend.visibleOnly === "boolean" ? { visibleOnly: value.legend.visibleOnly } : {}),
+      ...(value.legend.placement === "below" || value.legend.placement === "right" || value.legend.placement === "hidden" ? { placement: value.legend.placement } : {}),
+    };
+  }
+  if (isRecord(value.decorations)) {
+    frame.decorations = {
+      ...frame.decorations,
+      ...(typeof value.decorations.north === "boolean" ? { north: value.decorations.north } : {}),
+      ...(typeof value.decorations.scaleBar === "boolean" ? { scaleBar: value.decorations.scaleBar } : {}),
+      ...(typeof value.decorations.locator === "boolean" ? { locator: value.decorations.locator } : {}),
+    };
+  }
+  return frame;
+}
+
+function reportPart(value: unknown): TilePart | null {
+  if (!isRecord(value) || typeof value.type !== "string") return null;
+  if (value.type === "single" || value.type === "cutSingle") return { type: value.type };
+  if (value.type === "face" && (value.face === "front" || value.face === "back")) return { type: "face", face: value.face };
+  if (value.type === "callout" && Number.isInteger(value.page) && (value.page as number) >= 0) return { type: "callout", page: value.page as number };
+  if (value.type === "cutSheet" && Number.isInteger(value.index) && (value.index as number) >= 0) return { type: "cutSheet", index: value.index as number };
+  return null;
+}
+
+function restoreReportPage(value: unknown, validTileIds: ReadonlySet<string>): ReportPage | null {
+  if (!isRecord(value) || typeof value.id !== "string" || value.id.length === 0 || !reportPageIdPattern.test(value.id) || !isReportLayout(value.layout)) return null;
+  const base = {
+    id: value.id,
+    layout: value.layout,
+    panels: reportPanels(value.panels),
+    textBoxes: reportTextBoxes(value.textBoxes),
+    notes: typeof value.notes === "string" ? value.notes : "",
+    ...(typeof value.titleOverride === "string" ? { titleOverride: value.titleOverride } : {}),
+    ...(typeof value.summaryOverride === "string" ? { summaryOverride: value.summaryOverride } : {}),
+  };
+  if (value.kind === "cover" || value.kind === "sources" || value.kind === "blank") return { ...base, kind: value.kind };
+  if (value.kind === "tile") {
+    const part = reportPart(value.part);
+    if (!part || !isReportTileId(value.tileId, validTileIds)) return null;
+    return { ...base, kind: "tile", tileId: value.tileId, part, settings: reportSettings(value.settings), frame: reportFrame(value.frame) };
+  }
+  if (value.kind === "compare" && (value.grid === "2x2" || value.grid === "3x2" || value.grid === "3x1")) {
+    const cells = Array.isArray(value.cells)
+      ? value.cells.flatMap((item) => {
+          if (!isRecord(item) || !isReportTileId(item.tileId, validTileIds)) return [];
+          return [{ tileId: item.tileId, settings: reportSettings(item.settings), frame: reportFrame(item.frame) }];
+        })
+      : [];
+    return { ...base, kind: "compare", grid: value.grid, cells, sameExtent: typeof value.sameExtent === "boolean" ? value.sameExtent : false };
+  }
+  return null;
+}
+
+/** 보고서 문서를 안전하게 복원한다. 현재 결과에 없는 형식상 유효한 타일 id도 페이지를 남긴다. */
+export function restoreReportDoc(value: unknown, validTileIds: ReadonlySet<string>): ReportDoc {
+  const raw = typeof value === "string" ? rawSnapshot(value) : isRecord(value) ? value : null;
+  if (!raw || raw.v !== 1) return { ...EMPTY_REPORT_DOC, pages: [] };
+  const ids = new Set<string>();
+  const pages = Array.isArray(raw.pages)
+    ? raw.pages.flatMap((item) => {
+        const page = restoreReportPage(item, validTileIds);
+        if (!page || ids.has(page.id)) return [];
+        ids.add(page.id);
+        return [page];
+      })
+    : [];
+  return { v: 1, format: isReportFormat(raw.format) ? raw.format : "wide", pages };
+}
+
+function cloneReportDoc(doc: ReportDoc): ReportDoc {
+  return restoreReportDoc(doc, new Set());
+}
 
 function normalizePageStyle(value: unknown): PageStyle | null {
   if (!isRecord(value)) return null;
@@ -1189,6 +1349,27 @@ export function renameTileId(id: string): string {
 
 type IdMapper = (id: string) => string;
 
+function rewritePageKey(key: string | null, mapId: IdMapper): string | null {
+  if (key === null || key === "cover" || key.startsWith("sources:") || key.startsWith("extra:")) return key;
+  const separator = key.indexOf(":");
+  const tileId = separator < 0 ? key : key.slice(0, separator);
+  const mapped = mapId(tileId);
+  return separator < 0 ? mapped : `${mapped}${key.slice(separator)}`;
+}
+
+function rewriteReportDocIds(value: ReportDoc | undefined, mapId: IdMapper): ReportDoc | undefined {
+  if (!value) return undefined;
+  const doc = restoreReportDoc(value, new Set());
+  return {
+    ...doc,
+    pages: doc.pages.map((page) => page.kind === "tile"
+      ? { ...page, tileId: mapId(page.tileId) }
+      : page.kind === "compare"
+        ? { ...page, cells: page.cells.map((cell) => ({ ...cell, tileId: mapId(cell.tileId) })) }
+        : page),
+  };
+}
+
 function mapIdRecord<T>(value: unknown, mapId: IdMapper): Record<string, T> {
   const output: Record<string, T> = {};
   for (const [id, item] of Object.entries(recordOf(value))) {
@@ -1241,7 +1422,8 @@ export function rewriteSnapshotIds(snapshot: BoardStateSnapshot, mapId: IdMapper
   const report = normalizeReport(snapshot.report);
   const reportStyles: Record<PageKey, PageStyle> = {};
   for (const [key, style] of Object.entries(report.styles)) {
-    if (!(key in reportStyles)) reportStyles[key] = style;
+    const mappedKey = rewritePageKey(key, mapId)!;
+    if (!(mappedKey in reportStyles)) reportStyles[mappedKey] = style;
   }
   return {
     ...snapshot,
@@ -1263,11 +1445,12 @@ export function rewriteSnapshotIds(snapshot: BoardStateSnapshot, mapId: IdMapper
     mapLabels: mapIdRecord<boolean>(snapshot.mapLabels, mapId),
     terrainSection: mapIdRecord<TerrainSectionId>(snapshot.terrainSection, mapId),
     instances,
+    reportDoc: rewriteReportDocIds(snapshot.reportDoc, mapId),
     report: {
       styles: reportStyles,
       extra: report.extra.map((page) => page.sheet
-        ? { ...page, tileId: "", sheet: { grid: page.sheet.grid, tiles: page.sheet.tiles.map((tileId) => tileId ? mapId(tileId) : "") } }
-        : { ...page, tileId: mapId(page.tileId) }),
+        ? { ...page, after: rewritePageKey(page.after, mapId), tileId: "", sheet: { grid: page.sheet.grid, tiles: page.sheet.tiles.map((tileId) => tileId ? mapId(tileId) : "") } }
+        : { ...page, after: rewritePageKey(page.after, mapId), tileId: mapId(page.tileId) }),
     },
     removed: Array.isArray(snapshot.removed)
       ? (() => {
@@ -1327,9 +1510,13 @@ function migrateV2ToV3(snapshot: BoardStateSnapshot): BoardStateSnapshot {
     const legacy = legacyCutForSeason(id, value, snapshot.instances);
     if (legacy) cuts[id] = legacy;
   }
-  const migrated = { ...snapshot, cuts, version: BOARD_STATE_VERSION } as BoardStateSnapshot;
+  const migrated = { ...snapshot, cuts, version: 3 } as BoardStateSnapshot;
   delete migrated.roseSeasons;
   return migrated;
+}
+
+function migrateV3ToV4(snapshot: BoardStateSnapshot, resetReportDoc = true): BoardStateSnapshot {
+  return { ...snapshot, ...(resetReportDoc ? { reportDoc: { ...EMPTY_REPORT_DOC, pages: [] } } : {}), version: BOARD_STATE_VERSION };
 }
 
 /** 저장본 버전을 단계별로 현재 버전까지 올린다. 미래 버전은 호출자가 기본 보드로 처리한다. */
@@ -1342,12 +1529,14 @@ export function migrateSnapshot(raw: unknown): BoardStateSnapshot | null {
   if (version === 1) migrated = migrateV1ToV2(migrated);
   migrated = rewriteSnapshotIds(migrated, renameTileId);
   if (version <= 2) migrated = migrateV2ToV3(migrated);
+  if (version <= 3) migrated = migrateV3ToV4(migrated, version === 3);
   // 열 수는 컷 이관과 같은 v3에서 생겼다 — 컷만 가진 v3 저장본도 기본 4열로 읽는다. 프리셋이 없으면 '전체'.
   return {
     ...migrated,
     columns: isGridColumns(migrated.columns) ? migrated.columns : 4,
     preset: isPresetId(migrated.preset) ? migrated.preset : DEFAULT_PRESET_ID,
     report: normalizeReport(migrated.report),
+    reportDoc: restoreReportDoc(migrated.reportDoc, new Set()),
     version: BOARD_STATE_VERSION,
   };
 }
@@ -1391,6 +1580,7 @@ export function restoreBoardState(results: TileResult[], raw: unknown, fallbackP
   const validIds = new Set([...validTileIds, ...compositeIds]);
   const validReportTileIds = new Set([...validIds, ...results.map((result) => result.tileId)]);
   const report = restoreReport(saved.report, validReportTileIds);
+  const reportDoc = restoreReportDoc(saved.reportDoc, validReportTileIds);
   const savedOrder = unique(stringsOf(saved.order)).filter((id) => validIds.has(id));
   const order = savedOrder.length > 0 ? savedOrder : base.order;
 
@@ -1489,6 +1679,7 @@ export function restoreBoardState(results: TileResult[], raw: unknown, fallbackP
     terrainSection,
     instances: savedInstances,
     report,
+    reportDoc,
     removed,
     undoStack: [],
   };

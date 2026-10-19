@@ -313,7 +313,7 @@ assert.deepEqual(reportPages(s), { tiles: 9, pages: 12 }); // 포함·면 설정
   let b = initBoard(GODEOK_RESULTS);
   b = boardReducer(b, { type: "a05Filter", id: "t-A05", filter: { types: ["apt"], year: { min: 2010 } } });
   const snapshot = serializeBoardState(b);
-  assert.equal(snapshot.version, 3);
+  assert.equal(snapshot.version, 4);
   assert.equal(snapshot.columns, 4);
   assert.deepEqual(snapshot.a05Filter["t-A05"], { types: ["apt"], year: { min: 2010, max: null } });
   const restored = restoreBoardState(GODEOK_RESULTS, JSON.stringify(snapshot));
@@ -357,7 +357,7 @@ assert.deepEqual(reportPages(s), { tiles: 9, pages: 12 }); // 포함·면 설정
   };
   TILE_CODE_RENAMES.OLD = "NEW";
   const migrated = migrateSnapshot(old);
-  assert.equal(migrated.version, 3, "v1 snapshot is migrated to current version");
+  assert.equal(migrated.version, 4, "v1 snapshot is migrated to current version");
   assert.equal(migrated.columns, 4, "열 수가 없는 v1 snapshot은 4열로 이관");
   assert.deepEqual(migrated.order, [newId]);
   for (const field of ["included", "faces", "callout", "a05Filter", "view", "sizes", "tileKinds", "cameras", "labels", "layers", "mapLabels"]) {
@@ -368,8 +368,8 @@ assert.deepEqual(reportPages(s), { tiles: 9, pages: 12 }); // 포함·면 설정
   assert.deepEqual(migrated.stacks["stack:1"], [newId]);
   assert.deepEqual(migrated.sheets["sheet:1"].tiles, [newId]);
   assert.deepEqual(migrated.removed, [{ id: newId, index: 2 }]);
-  assert.equal(migrateSnapshot({ ...old, version: 4 }), null, "미래 버전은 무시");
-  assert.deepEqual(restoreBoardState(GODEOK_RESULTS, { ...old, version: 4 }).order, ids, "미래 버전은 기본 보드");
+  assert.equal(migrateSnapshot({ ...old, version: 5 }), null, "미래 버전은 무시");
+  assert.deepEqual(restoreBoardState(GODEOK_RESULTS, { ...old, version: 5 }).order, ids, "미래 버전은 기본 보드");
   delete TILE_CODE_RENAMES.OLD;
 }
 
@@ -433,7 +433,7 @@ assert.deepEqual(reportPages(s), { tiles: 9, pages: 12 }); // 포함·면 설정
     removed: oldIds.map((id, index) => ({ id, index })),
   };
   const migrated = migrateSnapshot(old45);
-  assert.equal(migrated.version, 3);
+  assert.equal(migrated.version, 4);
   assert.equal(migrated.order.length, TILE_CODES.length, "45개 순서가 33개 생존 타일로 중복 없이 축약");
   for (const oldCode of oldCodes) {
     assert.ok(!migrated.order.includes(`t-${oldCode}`) || !deletedCodes.includes(oldCode), `${oldCode} 삭제 코드 제거`);
