@@ -35,15 +35,19 @@ const d17 = structuredClone({
   status: "complete",
   presentation: {
     ...source.presentation,
+    features: [],
+    featuresTotal: 0,
     lines: [
-      { layer: "terrain_section_a", points: [[127.145, 37.555], [127.163, 37.555]], label: "단면 A–A′ (동서)" },
-      { layer: "terrain_section_b", points: [[127.1542, 37.546], [127.1542, 37.564]], label: "단면 B–B′ (남북)" },
+      { layer: "terrain_section_a", points: [[127.145, 37.555], [127.163, 37.555]], label: "A–A′" },
+      { layer: "terrain_section_b", points: [[127.1535, 37.545], [127.1535, 37.565]], label: "B–B′" },
       { layer: "contour", points: [[127.145, 37.552], [127.163, 37.552]], label: "표고 25m" },
+      { layer: "contour", points: [[127.145, 37.556], [127.150, 37.556]], label: "표고 75m" },
+      { layer: "contour", points: [[127.158, 37.550], [127.163, 37.550]], label: "표고 50m" },
       { layer: "cut_fill", points: [[127.146, 37.548], [127.160, 37.548]], label: "절성토" },
       { layer: "fence", points: [[127.146, 37.560], [127.160, 37.560]], label: "울타리" },
-      { layer: "retaining_wall", points: [[127.148, 37.562], [127.158, 37.562]], label: "옹벽" },
+      { layer: "retaining_wall", points: [[127.145, 37.562], [127.150, 37.562]], label: "옹벽" },
     ],
-    linesTotal: 6,
+    linesTotal: 8,
     polygons: [
       ...(source.presentation.polygons ?? []),
       { layer: "topo_coverage", rings: [[[127.145, 37.545], [127.163, 37.545], [127.163, 37.565], [127.145, 37.565], [127.145, 37.545]]] },
@@ -67,7 +71,10 @@ assert.equal(d17Slide.terrainSection, "B");
 
 // D17 단면은 preview와 PPT가 같은 summary 기반 rect를 쓰고, 지도·범례·콜아웃 열·반경 원을 침범하지 않는다.
 assert.ok(d17Slide.map, "D17 section layout needs a map");
-const previewPanels = slidePanelRects(d17Slide.style, true, slideLegend(d17Slide.map, true).rect);
+// 실제 slide26.xml의 범례 판(top 3.58in)을 보존한 8-callout fixture.
+const artifactLegendPanel = { x: 0.3 / SLIDE.w, y: 3.58 / SLIDE.h, w: 4.4 / SLIDE.w, h: 3.38 / SLIDE.h };
+const fixtureSlide = { ...d17Slide, style: { ...d17Slide.style, panels: { ...(d17Slide.style.panels ?? {}), legend: artifactLegendPanel } } };
+const previewPanels = slidePanelRects(fixtureSlide.style, true, slideLegend(fixtureSlide.map, true).rect);
 const d17Panels = previewPanels;
 const previewLayout = terrainSectionLayout(d17Panels);
 const pptxLayout = terrainSectionLayout(d17Panels);
@@ -106,31 +113,49 @@ const calloutTop = calloutAlignment.calloutTop * pxPerInch;
 const calloutLeftBottom = calloutAlignment.calloutLeftBottom === undefined ? undefined : calloutAlignment.calloutLeftBottom * pxPerInch;
 const northY = calloutTop + 13 * Math.min(1.5, Math.max(1, 540 / 360));
 const bottomInset = SLIDE.stripH * pxPerInch;
-const d17Viewport = slideViewport(d17Slide.map, d17Slide.style, { width: 960, height: 540, siteX: slideSiteX(d17Slide.style, true), siteY: previewLayout.mapSiteY ?? 0.5, fill: previewLayout.mapFill ?? 0.8 });
+const d17Viewport = slideViewport(fixtureSlide.map, fixtureSlide.style, { width: 960, height: 540, siteX: slideSiteX(fixtureSlide.style, true), siteY: previewLayout.mapSiteY ?? 0.5, fill: previewLayout.mapFill ?? 0.8 });
 const d17ScaleBox = scaleBarBox(960, 540, metersPerPixel(d17Viewport.center[1], d17Viewport.zoom), bottomInset, rightInset);
 const northBox = northArrowBox(960, 540, rightInset, northY);
 const sceneOptions = {
-  model: d17Slide.map,
+  model: fixtureSlide.map,
   width: 960,
   height: 540,
-  activeLayer: d17Slide.map.basemap ?? "white",
+  activeLayer: fixtureSlide.map.basemap ?? "white",
   fill: 0.8,
-  siteX: slideSiteX(d17Slide.style, true),
+  siteX: slideSiteX(fixtureSlide.style, true),
   rightInset,
   bottomInset,
   scale: true,
   showAutomaticLabels: true,
   calloutTop,
   ...(calloutLeftBottom === undefined ? {} : { calloutLeftBottom }),
-  terrainSection: d17Slide.terrainSection,
+  terrainSection: fixtureSlide.terrainSection,
   viewport: d17Viewport,
 };
 const chromeAvoid = [...mapAvoid, d17ScaleBox, ...(northBox ? [northBox] : [])];
 const previewScene = buildMapScene({ ...sceneOptions, north: false, avoid: chromeAvoid });
 const pptxScene = buildMapScene({ ...sceneOptions, north: northY, avoid: chromeAvoid });
+const previewUnit = 90.75;
+const previewWidth = Math.round(SLIDE.w * previewUnit);
+const previewHeight = Math.round(SLIDE.h * previewUnit);
+const previewLayoutUnit = 1.5 * (previewUnit / pxPerInch);
+const previewInset = rightInset / pxPerInch * previewUnit;
+const previewBottomInset = SLIDE.stripH * previewUnit;
+const previewViewport = slideViewport(fixtureSlide.map, fixtureSlide.style, { width: previewWidth, height: previewHeight, siteX: slideSiteX(fixtureSlide.style, true), siteY: previewLayout.mapSiteY ?? 0.5, fill: previewLayout.mapFill ?? 0.8 });
+const previewScaleBox = scaleBarBox(previewWidth, previewHeight, metersPerPixel(previewViewport.center[1], previewViewport.zoom), previewBottomInset, previewInset, false, undefined, previewLayoutUnit);
+const previewCalloutTop = calloutAlignment.calloutTop * previewUnit;
+const previewCalloutLeftBottom = calloutAlignment.calloutLeftBottom === undefined ? undefined : calloutAlignment.calloutLeftBottom * previewUnit;
+const previewNorthBox = northArrowBox(previewWidth, previewHeight, previewInset, previewCalloutTop + 13 * previewLayoutUnit, previewLayoutUnit);
+const previewRealScene = buildMapScene({ ...sceneOptions, width: previewWidth, height: previewHeight, rightInset: previewInset, bottomInset: previewBottomInset, calloutTop: previewCalloutTop, ...(previewCalloutLeftBottom === undefined ? {} : { calloutLeftBottom: previewCalloutLeftBottom }), north: false, viewport: previewViewport, layoutUnit: previewLayoutUnit, avoid: [...slideReserved(previewUnit, { info: true, titleRect: previewPanels.title, infoRect: previewPanels.summary, legend: previewPanels.legend, terrainSection: previewLayout.rect }), previewScaleBox, ...(previewNorthBox ? [previewNorthBox] : [])] });
 const placementColumns = (scene) => scene.labelPlacements.map(({ entry, placed }) => [entry.key, placed.side]).sort(([a], [b]) => a.localeCompare(b));
 assert.ok(previewScene.labelPlacements.length > 0, "D17 fixture has callouts to compare");
 assert.deepEqual(placementColumns(previewScene), placementColumns(pptxScene), "D17 preview/PPTX callout column assignment matches");
+assert.deepEqual(placementColumns(previewRealScene), placementColumns(pptxScene), "D17 browser preview/PPTX callout column assignment matches");
+const placementOf = (scene, key) => scene.labelPlacements.find((placement) => placement.entry.key === key);
+assert.equal(placementOf(previewRealScene, "line|terrain_section_b|1")?.placed.side, "R", "D17 browser preview keeps B–B′ in the right column");
+assert.equal(placementOf(pptxScene, "line|terrain_section_b|1")?.placed.side, "R", "D17 PPTX keeps B–B′ in the right column");
+assert.equal(placementOf(previewRealScene, "line|contour|4")?.placed.side, "R", "D17 browser preview keeps 표고 50m in the right column");
+assert.equal(placementOf(pptxScene, "line|contour|4")?.placed.side, "R", "D17 PPTX keeps 표고 50m in the right column");
 const assertChromeAvoidance = (name, scene, sceneNorthBox) => {
   assert.ok(scene.labelPlacements.length > 0, `${name} fixture has callouts`);
   for (const placement of scene.labelPlacements) {
@@ -140,7 +165,9 @@ const assertChromeAvoidance = (name, scene, sceneNorthBox) => {
 };
 assertChromeAvoidance("D17 preview", previewScene, northBox);
 assertChromeAvoidance("D17 PPTX", pptxScene, northBox);
+assertChromeAvoidance("D17 browser preview", previewRealScene, previewNorthBox);
 assert.deepEqual(previewScene.scaleBox, pptxScene.scaleBox, "D17 preview/PPTX scale bar geometry matches");
+assert.deepEqual(previewRealScene.scaleBox, previewScaleBox, "D17 browser preview uses the drawn scale bar geometry");
 const mapScene = previewScene;
 const mapCircle = { x0: mapScene.center[0] - mapScene.radiusPx, y0: mapScene.center[1] - mapScene.radiusPx, x1: mapScene.center[0] + mapScene.radiusPx, y1: mapScene.center[1] + mapScene.radiusPx };
 assert.equal(intersects(sectionBox, mapCircle), false, "section does not intersect the map circle bounds");
@@ -191,7 +218,20 @@ for (const code of ["A01", "A03"]) {
   assertChromeAvoidance(code, fixtureScene.scene, fixtureScene.north);
 }
 
-const bytes = await renderReportPptx([d17Slide]);
+const pptxWarnings = [];
+const originalWarn = console.warn;
+const originalError = console.error;
+let bytes;
+try {
+  console.warn = (...args) => { pptxWarnings.push(args.join(" ")); };
+  console.error = (...args) => { pptxWarnings.push(args.join(" ")); };
+  bytes = await renderReportPptx([fixtureSlide]);
+} finally {
+  console.warn = originalWarn;
+  console.error = originalError;
+}
+const colorFallbackWarnings = pptxWarnings.filter((message) => /not a valid scheme color|used instead/i.test(message));
+assert.deepEqual(colorFallbackWarnings, [], "PPTX export does not fall back from an invalid color");
 const outputDir = mkdtempSync(join(tmpdir(), "v2-t10-topo-section-pptx-"));
 const outputPath = join(outputDir, "d17-topo-section.pptx");
 writeFileSync(outputPath, bytes);
@@ -205,6 +245,16 @@ const xmlRect = (block) => {
   assert.ok(off && ext, "PPTX shape has geometry");
   return { x: Number(off[1]) / 914400, y: Number(off[2]) / 914400, w: Number(ext[1]) / 914400, h: Number(ext[2]) / 914400 };
 };
+const xmlPxRect = (block) => {
+  const rect = xmlRect(block);
+  return { x0: rect.x * 72, y0: rect.y * 72, x1: (rect.x + rect.w) * 72, y1: (rect.y + rect.h) * 72 };
+};
+const nativeScaleBox = shapeBlocks.find((block) => block.includes('name="GRP|map-D17-scale|축척|bg"'));
+const nativeBCallout = shapeBlocks.find((block) => block.includes('name="GRP|map-D17-label-line-terrain_section_b-1|라벨 · B–B′|box"'));
+assert.ok(nativeScaleBox, "PPTX contains the native D17 scale bar box");
+assert.ok(nativeBCallout, "PPTX contains the native D17 B–B′ callout box");
+assert.equal(intersects(xmlPxRect(nativeBCallout), xmlPxRect(nativeScaleBox)), false, "native D17 B–B′ callout avoids the drawn scale bar");
+assert.ok(xmlPxRect(nativeBCallout).x0 > 480, "native D17 B–B′ callout is in the right column");
 const terrainPlate = shapeBlocks.find((block) => block.includes('name="GRP|terrain-section|B|plate"'));
 assert.ok(terrainPlate, "PPTX terrain section plate exists");
 const pptxRect = xmlRect(terrainPlate);

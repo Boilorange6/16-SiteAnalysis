@@ -19,7 +19,12 @@ export const E = SLIDE.edge;
 export const IX = L.info.x + 0.25;
 export const IW = L.info.w - 0.5;
 
-export const hex = (color: string) => color.replace("#", "");
+export function hex(color: string): string {
+  const value = color.trim().replace(/^#/, "");
+  if (/^[0-9a-f]{3}$/i.test(value)) return [...value].map((ch) => ch + ch).join("").toUpperCase();
+  if (/^[0-9a-f]{6}$/i.test(value)) return value.toUpperCase();
+  throw new Error(`Invalid PPTX color: ${color}`);
+}
 const chW = (ch: string) => (ch.charCodeAt(0) > 0x2e80 ? 1 : 0.56);
 export const textIn = (value: string, pt: number) => ([...value].reduce((width, ch) => width + chW(ch), 0) * pt) / 72;
 export const linesOf = (value: string, pt: number, width: number) => Math.max(1, Math.ceil((textIn(value, pt) / width) * 1.1));

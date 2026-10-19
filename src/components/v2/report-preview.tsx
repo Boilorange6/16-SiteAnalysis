@@ -25,6 +25,7 @@ type PanelRatio = { x: number; y: number; w: number; h: number };
 type ResizeDirection = "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "nw";
 
 const PANEL_LABEL: Record<PanelKey, string> = { title: "제목", summary: "요약", legend: "범례" };
+const REPORT_PX_PER_INCH = 960 / SLIDE.w;
 const PANEL_MIN: Record<PanelKey, { w: number; h: number }> = {
   title: { w: 1.1, h: 0.46 },
   summary: { w: 1.8, h: 1.1 },
@@ -318,6 +319,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
     ? Math.max(0, width - panels.summary.x * unit + SLIDE.edge * unit * 0.5)
     : SLIDE.edge * unit;
   const bottomInset = unit * (SLIDE.stripH + (calloutLegend ? calloutLegend.h + 0.18 : 0));
+  const layoutUnit = 1.5 * (unit / REPORT_PX_PER_INCH);
   const baseViewport = useMemo(() => slideViewport(model, undefined, { width, height, siteX, siteY: mapSiteY, fill: mapFill }), [height, mapFill, mapSiteY, model, siteX, width]);
   const viewport = useMemo(() => slideViewport(model, style, { width, height, siteX, siteY: mapSiteY, fill: mapFill }), [height, mapFill, mapSiteY, model, siteX, style, width]);
   const focusedLabel = useMemo(() => legendLabelOf(model, style.legendFocus), [model, style.legendFocus]);
@@ -331,9 +333,9 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
       calloutLegend,
       terrainSection: terrainLayout?.rect,
     });
-    const scaleAvoid = scaleBarBox(width, height, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset);
+    const scaleAvoid = scaleBarBox(width, height, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset, false, undefined, layoutUnit);
     return [...reserved, ...(scale ? [scaleAvoid] : []), ...(northAvoid ? [northAvoid] : [])];
-  }, [bottomInset, calloutLegend, height, northAvoid, panels.legend, panels.summary, panels.title, rightInset, scale, terrainLayout?.rect, unit, viewport, width]);
+  }, [bottomInset, calloutLegend, height, layoutUnit, northAvoid, panels.legend, panels.summary, panels.title, rightInset, scale, terrainLayout?.rect, unit, viewport, width]);
   const onFeatureHover = useCallback((key: string | null) => {
     if (!interactive) return;
     setHoverKey((current) => current === key ? current : key);
@@ -477,6 +479,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
         width={width}
         height={height}
         fixed
+        layoutUnit={layoutUnit}
         basemap={thumbnail ? "none" : "tiles"}
         layer={basemap}
         legend={false}
@@ -924,12 +927,12 @@ function TileSurface({ slide, unit, basemap, panels, interactive, thumbnail = fa
   const calloutAlignment = model ? slideCalloutAvoidance(panels, calloutEntries) : null;
   const width = Math.max(1, Math.round(SLIDE.w * unit));
   const height = Math.max(1, Math.round(SLIDE.h * unit));
-  const northUnit = Math.min(1.5, Math.max(1, height / 360));
+  const northUnit = 1.5 * (unit / REPORT_PX_PER_INCH);
   const northRightInset = panels.summary
     ? Math.max(0, width - panels.summary.x * unit + SLIDE.edge * unit * 0.5)
     : SLIDE.edge * unit;
   const northCalloutTop = (calloutAlignment?.calloutTop ?? panels.title.y + panels.title.h + SLIDE.edge * 0.5) * unit;
-  const northAvoid = model ? northArrowBox(width, height, northRightInset, northCalloutTop + 13 * northUnit) : null;
+  const northAvoid = model ? northArrowBox(width, height, northRightInset, northCalloutTop + 13 * northUnit, northUnit) : null;
   const [hoverLegend, setHoverLegend] = useState<string | null>(null);
   const onLegendPin = useCallback((key: string) => {
     if (!model || !onDirectPatch) return;

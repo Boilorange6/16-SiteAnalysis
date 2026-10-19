@@ -510,15 +510,22 @@ export function stackTops(centers: number[], cardH: number | readonly number[], 
     const tops = centers.map((center, index) => center - heights[index]! / 2);
     for (let i = 1; i < n; i++) tops[i] = Math.max(tops[i]!, tops[i - 1]! + heights[i - 1]! + gap);
     const lastBottom = tops[n - 1]! + heights[n - 1]!;
-    if (lastBottom > bottom) {
-      const shift = lastBottom - bottom;
-      for (let i = 0; i < n; i++) tops[i] -= shift;
+    if (lastBottom <= bottom + 1e-9 && tops[0]! >= top - 1e-9) return tops;
+    // Crossing minimization may hand us a non-monotone point order. When the
+    // preferred gaps no longer fit, pack that order into the column instead
+    // of shifting it twice and leaving the last card outside the frame.
+    const available = Math.max(0, bottom - top);
+    const totalHeight = heights.reduce((sum, height) => sum + height, 0);
+    const packedGap = n > 1 ? Math.max(0, Math.min(gap, (available - totalHeight) / (n - 1))) : 0;
+    const packedHeight = totalHeight + packedGap * Math.max(0, n - 1);
+    const start = Math.min(Math.max(tops[0]!, top), Math.max(top, bottom - packedHeight));
+    const packed: number[] = [];
+    let cursor = start;
+    for (let i = 0; i < n; i++) {
+      packed.push(cursor);
+      cursor += heights[i]! + packedGap;
     }
-    if (tops[0]! < top) {
-      const shift = top - tops[0]!;
-      for (let i = 0; i < n; i++) tops[i] += shift;
-    }
-    return tops;
+    return packed;
   }
   const step = cardH + gap;
   type Block = { first: number; n: number; sum: number };

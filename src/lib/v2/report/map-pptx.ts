@@ -43,11 +43,7 @@ export type NativeMapStatus = {
   rasterValues: string[];
 };
 
-const color = (value: string): string => {
-  let result = hex(value).replace(/[^0-9a-f]/gi, "");
-  if (result.length === 3) result = result.split("").map((part) => `${part}${part}`).join("");
-  return (result || "000000").slice(0, 6).toUpperCase();
-};
+const color = (value: string): string => hex(value);
 
 const transparency = (opacity: number): number => Math.max(0, Math.min(100, Math.round((1 - opacity) * 100)));
 const lineDash = (dash: string | undefined): "dash" | undefined => dash ? "dash" : undefined;
@@ -295,6 +291,8 @@ function addCustom(
   const nativePaths = options.closed ? clippedPaths : clippedPaths.map(capNativePath);
   const points = nativePaths.flatMap((path) => path);
   if (points.length < 2) return;
+  const hasFill = !!options.fill && options.fill !== "none";
+  const hasLine = !!options.line && options.line !== "none";
   const minX = Math.min(...points.map(([x]) => pxX(x)));
   const minY = Math.min(...points.map(([, y]) => pxY(y)));
   const maxX = Math.max(...points.map(([x]) => pxX(x)));
@@ -312,11 +310,11 @@ function addCustom(
     w: Math.max(0.005, maxX - minX),
     h: Math.max(0.005, maxY - minY),
     points: parts,
-    fill: { color: color(options.fill ?? "FFFFFF"), transparency: options.fill ? transparency(options.fillOpacity ?? 1) : 100 },
+    fill: { color: color(hasFill ? options.fill! : "FFFFFF"), transparency: hasFill ? transparency(options.fillOpacity ?? 1) : 100 },
     line: {
-      color: color(options.line ?? "000000"),
+      color: color(hasLine ? options.line! : "000000"),
       width: Math.max(0.1, pxPt(options.lineWidth ?? 1)),
-      transparency: options.line ? transparency(options.lineOpacity ?? 1) : 100,
+      transparency: hasLine ? transparency(options.lineOpacity ?? 1) : 100,
       dashType: lineDash(options.dash),
     },
     objectName: options.objectName,
