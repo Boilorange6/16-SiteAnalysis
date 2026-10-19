@@ -23,7 +23,7 @@ type Box = NonNullable<MapFigureProps["avoid"]>;
 type InteractionOpts = Pick<MapFigureProps, "pinnedKeys" | "onFeatureClick" | "hoverKey" | "emphasisKey"> & {
   onFeaturePin?: (feature: MapFigureElementPick) => void;
 };
-type Opts = Pick<MapFigureProps, "legend" | "legendY" | "north" | "scale" | "credit" | "bottomInset" | "muted" | "rightInset" | "scaleLeft" | "fill" | "scaleX" | "siteY"> & InteractionOpts & {
+type Opts = Pick<MapFigureProps, "legend" | "legendY" | "north" | "scale" | "credit" | "bottomInset" | "muted" | "rightInset" | "scaleLeft" | "fill" | "scaleX" | "siteY" | "terrainSection"> & InteractionOpts & {
   showAutomaticLabels?: MapFigureProps["showAutomaticLabels"];
   avoid?: Box | ((w: number, h: number) => Box);
   siteX?: number | ((w: number) => number);

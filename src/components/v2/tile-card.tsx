@@ -275,7 +275,7 @@ export function StatusPlate({ view, phase, onRetry, waitingNote }: { view: TileV
 /** 전면 시각물: 타일 소유 stage 또는 지도(또는 흐린 대지 지도, 또는 D04 구성비 차트). */
 type StageProps = Omit<TileStageProps, "displayView" | "label">;
 
-export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, page, onPage, cut, roseSeason = "annual", pinnedKeys = [], hoverKey = null, emphasisKey = null, onFeaturePin, showMapLabels }: StageProps) {
+export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, page, onPage, cut, roseSeason = "annual", pinnedKeys = [], hoverKey = null, emphasisKey = null, onFeaturePin, showMapLabels, terrainSection }: StageProps) {
   const selectedCut = normalizedCut(view, cut);
   const displayView = selectedCut ? viewForCut(view, selectedCut) : view;
   if (chart) return <FaceChart view={view} />;
@@ -305,6 +305,7 @@ export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, p
       hoverKey={hoverKey}
       emphasisKey={emphasisKey}
       onFeaturePin={onFeaturePin}
+      terrainSection={terrainSection}
       mapInteractive={mapInteractive}
       mapWheel={mapWheel}
       mapTouchPan={mapTouchPan}

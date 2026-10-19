@@ -28,6 +28,8 @@ export type TileStageProps = {
   mapResetKey?: string;
   /** A05/A06 카드의 자동 말풍선·지시선 표시. 상세는 생략하면 표시한다. */
   showMapLabels?: boolean;
+  /** D17 상세 지도에서 강조할 단면. 생략하면 A다. */
+  terrainSection?: TerrainSectionId;
 };
 
 export type TileFaceExtraProps = {
