@@ -4,7 +4,7 @@ import * as React from "react";
 import { createContext, memo, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { metersPerPixel, slideViewport, zoomViewAt, type MapView } from "@/lib/v2/ui/map-projection";
-import { zoomForScale } from "@/lib/v2/ui/report-scale";
+import { mapFrameScaleOptions, mapFrameWidthMm, zoomForScale } from "@/lib/v2/ui/report-scale";
 import { layoutRects, slideCalloutAvoidance, slideGeometry, slideLayout, slideLegend, slidePanelRects, slideReserved, slideSize, slideSiteX, terrainSectionLayout, type Rect, type SlideFormat, type TerrainSectionLayout } from "@/lib/v2/ui/overlay-layout";
 import { coverLayout, fitBlock, fitFooterText, sourceLayout, titlePlateRect } from "@/lib/v2/report/pptx-kit";
 import { layerStyle, legendItemsOf, legendLabelOf } from "@/lib/v2/ui/map-layers";
@@ -12,7 +12,7 @@ import { reportSummaryNotes, terrainCrossingLayer, terrainElevationLabel, terrai
 import MapFigure from "../map-figure";
 import { northArrowBox, scaleBarBox } from "@/lib/v2/ui/map-scene";
 import type { PageStyle } from "@/lib/v2/ui/board-state";
-import type { PagePanels, MapFrameState, ReportLayout, TextBox } from "@/lib/v2/report/report-doc";
+import type { PagePanels, MapFrameState, TextBox } from "@/lib/v2/report/report-doc";
 import type { PlannedSlide } from "@/lib/v2/report/report-plan";
 import type { TileView } from "@/lib/v2/ui/tile-view";
 import { sheetCells, type SheetGrid } from "@/lib/v2/ui/sheet";
@@ -333,11 +333,6 @@ function modelWithHiddenLayers(model: NonNullable<ReturnType<typeof mapForSlide>
     polygons: model.polygons?.filter((polygon) => !hiddenLayer(polygon.layer, hidden)),
     lines: model.lines?.filter((line) => !hiddenLayer(line.layer, hidden)),
   };
-}
-
-function mapWidthMmFor(format: SlideFormat, layout: ReportLayout | undefined): number {
-  const base = format === "wide" ? 240 : format === "a3" ? 270 : 190;
-  return layout === "numbers-first" || layout === "side-by-side" ? base * 0.45 : base;
 }
 
 function recordPreviewMetric(name: string): void {
@@ -874,17 +869,50 @@ function BlankSurface({ unit }: { unit: number }) {
   return <div className={styles.blankSurface ?? styles.chartPlaceholder} style={{ padding: unit * 0.45 }}><span className={styles.slideText} style={fontStyle(12, unit)}>빈 페이지</span></div>;
 }
 
-function TextBoxSurface({ boxes, unit, selectedId, onSelect, onTextBox }: { boxes: readonly TextBox[]; unit: number; selectedId?: string; onSelect?: (selection: SurfaceSelection) => void; onTextBox?: (box: TextBox | { id: string; remove: true }) => void }) {
+type TextBoxSurfaceProps = {
+  boxes: readonly TextBox[];
+  unit: number;
+  selectedId?: string;
+  maxWidth: number;
+  maxHeight: number;
+  onSelect?: (selection: SurfaceSelection) => void;
+  onTextBox?: (box: TextBox | { id: string; remove: true }) => void;
+};
+
+function TextBoxSurface({ boxes, unit, selectedId, maxWidth, maxHeight, onSelect, onTextBox }: TextBoxSurfaceProps) {
   const styles = useSurfaceStyles();
   const [draft, setDraft] = useState<{ mode: "move" | "resize"; pointerId: number; startX: number; startY: number; box: TextBox } | null>(null);
   const [draftBox, setDraftBox] = useState<TextBox | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const boxRefs = useRef(new Map<string, HTMLDivElement>());
+
+  useEffect(() => {
+    if (!selectedId) {
+      setEditingId(null);
+      return;
+    }
+    setEditingId(selectedId);
+    const frame = window.requestAnimationFrame(() => {
+      const element = boxRefs.current.get(selectedId);
+      const text = element?.querySelector<HTMLElement>("[data-text-box-content]");
+      if (!element || !text) return;
+      element.focus();
+      const range = document.createRange();
+      range.selectNodeContents(text);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedId]);
+
   const updateDraft = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (!draft || draft.pointerId !== event.pointerId) return;
     const dx = (event.clientX - draft.startX) / Math.max(1, unit);
     const dy = (event.clientY - draft.startY) / Math.max(1, unit);
     const next = draft.mode === "move"
-      ? { ...draft.box, x: Math.max(0, draft.box.x + dx), y: Math.max(0, draft.box.y + dy) }
-      : { ...draft.box, w: Math.max(1, draft.box.w + dx), h: Math.max(0.45, draft.box.h + dy) };
+      ? { ...draft.box, x: Math.max(0, Math.min(Math.max(0, maxWidth - draft.box.w), draft.box.x + dx)), y: Math.max(0, Math.min(Math.max(0, maxHeight - draft.box.h), draft.box.y + dy)) }
+      : { ...draft.box, w: Math.max(1, Math.min(Math.max(1, maxWidth - draft.box.x), draft.box.w + dx)), h: Math.max(0.45, Math.min(Math.max(0.45, maxHeight - draft.box.y), draft.box.h + dy)) };
     setDraftBox(next);
     event.preventDefault();
   };
@@ -898,39 +926,55 @@ function TextBoxSurface({ boxes, unit, selectedId, onSelect, onTextBox }: { boxe
   const beginDraft = (mode: "move" | "resize", box: TextBox, event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    setEditingId(null);
     setDraft({ mode, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, box });
     setDraftBox(box);
     event.currentTarget.setPointerCapture(event.pointerId);
   };
   return <>{boxes.map((box) => {
     const selected = selectedId === box.id;
+    const editing = editingId === box.id;
     const visibleBox = draftBox?.id === box.id ? draftBox : box;
     return <div
       key={box.id}
       className={styles.textBox ?? styles.slidePanel}
       data-text-box={box.id}
+      ref={(element) => {
+        if (element) boxRefs.current.set(box.id, element);
+        else boxRefs.current.delete(box.id);
+      }}
       tabIndex={selected ? 0 : -1}
       style={{ position: "absolute", left: visibleBox.x * unit, top: visibleBox.y * unit, width: visibleBox.w * unit, height: visibleBox.h * unit, padding: 0.08 * unit, color: "#16181d", background: selected ? "rgba(255,255,255,.78)" : "transparent", fontSize: (visibleBox.pt / 72) * unit, lineHeight: 1.25, whiteSpace: "pre-wrap", overflow: "hidden", outline: selected ? `${Math.max(1, unit * 0.02)}px solid #164e9b` : undefined }}
-      onClick={() => onSelect?.({ kind: "textBox", id: box.id })}
-      contentEditable={selected}
+      onClick={(event) => {
+        if ((event.target as HTMLElement).closest("button")) return;
+        if (!selected) onSelect?.({ kind: "textBox", id: box.id });
+        else setEditingId(box.id);
+      }}
+      contentEditable={editing}
       suppressContentEditableWarning
       onBlur={(event) => {
-        const text = event.currentTarget.textContent ?? "";
+        if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+        const text = event.currentTarget.querySelector<HTMLElement>("[data-text-box-content]")?.textContent ?? "";
         if (text !== box.text) onTextBox?.({ ...box, text });
+        setEditingId(null);
       }}
       onKeyDown={(event) => {
-        if (event.key === "Delete" && selected) {
+        if (event.key === "Escape" && editing) {
+          event.preventDefault();
+          setEditingId(null);
+        }
+        if (event.key === "Delete" && selected && !editing) {
           event.preventDefault();
           onTextBox?.({ id: box.id, remove: true });
         }
-        if (selected && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+        if (selected && !editing && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
           event.preventDefault();
           const dx = event.key === "ArrowRight" ? 0.08 : event.key === "ArrowLeft" ? -0.08 : 0;
           const dy = event.key === "ArrowDown" ? 0.08 : event.key === "ArrowUp" ? -0.08 : 0;
-          onTextBox?.({ ...box, x: Math.max(0, box.x + dx), y: Math.max(0, box.y + dy) });
+          onTextBox?.({ ...box, x: Math.max(0, Math.min(Math.max(0, maxWidth - box.w), box.x + dx)), y: Math.max(0, Math.min(Math.max(0, maxHeight - box.h), box.y + dy)) });
         }
       }}
-    >{visibleBox.text}{selected && <><button type="button" className={styles.textBoxMoveHandle} aria-label="글상자 이동" onPointerDown={(event) => beginDraft("move", visibleBox, event)} onPointerMove={updateDraft} onPointerUp={endDraft} onPointerCancel={endDraft}>↕</button><button type="button" className={styles.textBoxResizeHandle} aria-label="글상자 크기 조절" onPointerDown={(event) => beginDraft("resize", visibleBox, event)} onPointerMove={updateDraft} onPointerUp={endDraft} onPointerCancel={endDraft}>↘</button></>}</div>;
+    ><span data-text-box-content>{visibleBox.text}</span>{selected && <><button type="button" className={styles.textBoxMoveHandle} aria-label="글상자 이동" onPointerDown={(event) => beginDraft("move", visibleBox, event)} onPointerMove={updateDraft} onPointerUp={endDraft} onPointerCancel={endDraft}>↕</button><button type="button" className={styles.textBoxResizeHandle} aria-label="글상자 크기 조절" onPointerDown={(event) => beginDraft("resize", visibleBox, event)} onPointerMove={updateDraft} onPointerUp={endDraft} onPointerCancel={endDraft}>↘</button></>}</div>;
   })}</>;
 }
 
@@ -1006,6 +1050,9 @@ function SourcesSurface({ slide, unit, basemap, thumbnail = false }: { slide: Ex
 
 function SheetSurface({ slide, unit, basemap, thumbnail = false, onCellActivate }: { slide: Extract<PlannedSlide, { kind: "sheet" }>; unit: number; basemap: BasemapChoice; thumbnail?: boolean; onCellActivate?: (index: number) => void }) {
   const format = (slide.format ?? "wide") as SlideFormat;
+  const layoutName = slide.page?.layout ?? "map-summary";
+  const mapWidthMm = mapFrameWidthMm(format, layoutName);
+  const scaleOptions = mapFrameScaleOptions(format, layoutName);
   const styles = useSurfaceStyles();
   const cellRects = sheetCells(slide.grid as SheetGrid);
   const geometry = slideGeometry(format);
@@ -1043,7 +1090,7 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, onCellActivate 
                       north={cell.reportFrame?.decorations.north ? 24 : false}
                       credit={false}
                       scale={cell.reportFrame?.decorations.scaleBar ?? false}
-                      viewport={slideViewport(model, cell.reportFrame ? { ...(cell.style ?? slide.style), zoomDelta: cell.reportFrame.scaleDenominator === null ? cell.reportFrame.zoomDelta : zoomForScale(cell.reportFrame.scaleDenominator, mapWidthMmFor(format, slide.page?.layout), model.radiusM), offsetM: cell.reportFrame.offsetM } : cell.style ?? slide.style, { width, height, siteX: 0.5, fill: 0.8 })}
+                      viewport={slideViewport(model, cell.reportFrame ? { ...(cell.style ?? slide.style), zoomDelta: cell.reportFrame.scaleDenominator === null ? cell.reportFrame.zoomDelta : zoomForScale(cell.reportFrame.scaleDenominator, mapWidthMm, model.radiusM, scaleOptions), offsetM: cell.reportFrame.offsetM } : cell.style ?? slide.style, { width, height, siteX: 0.5, fill: 0.8 })}
                       pinnedKeys={cell.reportFrame ? [...new Set([...(cell.pinnedKeys ?? []), ...cell.reportFrame.pinnedKeys])] : cell.pinnedKeys ?? cell.style?.pinnedKeys ?? slide.style.pinnedKeys ?? []}
                       hiddenKeys={cell.reportFrame?.legend.hidden}
                       legendFocus={legendLabelOf(model, cell.style?.legendFocus ?? slide.style.legendFocus)}
@@ -1079,10 +1126,11 @@ function TileSurface({ slide, unit, basemap, panels, interactive, thumbnail = fa
   const model = slide.map;
   const reportFrame = slide.page?.kind === "tile" ? slide.page.frame : undefined;
   const layoutName = slide.page?.layout;
-  const mapWidthMm = mapWidthMmFor(format, layoutName);
+  const mapWidthMm = mapFrameWidthMm(format, layoutName ?? "map-summary");
+  const scaleOptions = mapFrameScaleOptions(format, layoutName ?? "map-summary");
   const mapStyle: PageStyle = reportFrame && model ? {
     ...slide.style,
-    zoomDelta: reportFrame.scaleDenominator === null ? reportFrame.zoomDelta : zoomForScale(reportFrame.scaleDenominator, mapWidthMm, model.radiusM),
+    zoomDelta: reportFrame.scaleDenominator === null ? reportFrame.zoomDelta : zoomForScale(reportFrame.scaleDenominator, mapWidthMm, model.radiusM, scaleOptions),
     offsetM: [...reportFrame.offsetM] as [number, number],
     pinnedKeys: [...new Set([...(slide.style.pinnedKeys ?? []), ...reportFrame.pinnedKeys])],
     hiddenKeys: [...new Set([...(slide.style.hiddenKeys ?? []), ...reportFrame.legend.hidden])],
@@ -1347,7 +1395,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
     : null;
   return (
     <div ref={slotRef} className={styles.previewSlot} data-preview-slot="true">
-      <div className={styles.previewFrame} data-preview-frame="true" style={frameSize.width > 0 ? { width: frameSize.width, height: frameSize.height, ...(format === "wide" ? {} : { aspectRatio: String(size.w.toFixed(3)) + " / " + String(size.h.toFixed(3)) }) } : format === "wide" ? undefined : { aspectRatio: String(size.w.toFixed(3)) + " / " + String(size.h.toFixed(3)) }}>
+      <div className={styles.previewFrame} data-preview-frame="true" data-slide-format={format} style={frameSize.width > 0 ? { width: frameSize.width, height: frameSize.height, ...(format === "wide" ? {} : { aspectRatio: String(size.w.toFixed(3)) + " / " + String(size.h.toFixed(3)) }) } : format === "wide" ? undefined : { aspectRatio: String(size.w.toFixed(3)) + " / " + String(size.h.toFixed(3)) }}>
         <div
           className={styles.slideCanvas}
           data-slide-canvas="true"
@@ -1373,7 +1421,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
         {displaySlide.kind === "cover" && displaySlide.page?.kind === "blank" && <BlankSurface unit={unit} />}
         {displaySlide.kind === "sheet" && <SheetSurface slide={displaySlide} unit={unit} basemap={basemap} thumbnail={thumbnail} onCellActivate={onSheetCellActivate} />}
         {displaySlide.kind === "tile" && <TileSurface slide={displaySlide} unit={unit} basemap={basemap} panels={panels} interactive={!!(editable && (mapActive ?? editable) && !!displayModel)} thumbnail={thumbnail} onPatch={onMapPatch} onDirectPatch={onDirectPatch} panelInteraction={editable ? panelInteraction : undefined} staticSurface={staticSurface} onText={onText} />}
-        {displaySlide.page?.textBoxes && <TextBoxSurface boxes={displaySlide.page.textBoxes} unit={unit} selectedId={selection?.kind === "textBox" ? selection.id : undefined} onSelect={onSelect} onTextBox={onTextBox} />}
+        {displaySlide.page?.textBoxes && <TextBoxSurface boxes={displaySlide.page.textBoxes} unit={unit} selectedId={selection?.kind === "textBox" ? selection.id : undefined} maxWidth={size.w} maxHeight={size.h} onSelect={onSelect} onTextBox={onTextBox} />}
         {handles}
         </div>
       </div>

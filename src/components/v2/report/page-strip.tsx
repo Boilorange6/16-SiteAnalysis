@@ -1,6 +1,6 @@
 "use client";
 
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { ReportPage } from "@/lib/v2/report/report-doc";
 import type { PlannedSlide } from "@/lib/v2/report/report-plan";
 import { SlideSurface } from "./slide-surface";
@@ -34,6 +34,22 @@ function pageLabel(page: ReportPage, slide?: PlannedSlide): string {
 }
 
 export default function PageStrip({ items, selectedId, onSelect, onMove, onDropMove, onAddPage, onDuplicate, onDelete, classMap }: PageStripProps) {
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const menuButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+
+  useEffect(() => {
+    if (!openMenuId) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      const id = openMenuId;
+      setOpenMenuId(null);
+      window.requestAnimationFrame(() => menuButtonRefs.current.get(id)?.focus());
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [openMenuId]);
+
   return (
     <ol className={styles.pageStrip} aria-label="보고서 페이지 순서">
       {items.map((item, index) => {
@@ -67,7 +83,7 @@ export default function PageStrip({ items, selectedId, onSelect, onMove, onDropM
               aria-current={selected ? "page" : undefined}
               aria-selected={selected}
               aria-label={`${index + 1}쪽 ${pageLabel(item.page, slide)}`}
-              onClick={() => onSelect(item.page.id)}
+              onClick={() => { setOpenMenuId(null); onSelect(item.page.id); }}
               onKeyDown={onKeyDown}
             >
               <span className={styles.pageThumbCanvas}>
@@ -79,14 +95,28 @@ export default function PageStrip({ items, selectedId, onSelect, onMove, onDropM
                 {item.printedCount > 1 && <span className={styles.pageOverflow}>+{item.printedCount - 1}</span>}
               </span>
             </button>
-            {selected && (
-              <div className={styles.pageActions} aria-label={`${index + 1}쪽 작업`}>
-                <button type="button" className={styles.iconButton} onClick={() => onDuplicate(item.page.id)} aria-label="페이지 복제" title="복제">＋</button>
-                <button type="button" className={styles.iconButton} onClick={() => onMove(item.page.id, "ArrowLeft")} disabled={index === 0} aria-label="앞으로 보내기" title="앞으로">←</button>
-                <button type="button" className={styles.iconButton} onClick={() => onMove(item.page.id, "ArrowRight")} disabled={index === items.length - 1} aria-label="뒤로 보내기" title="뒤로">→</button>
-                <button type="button" className={styles.iconButton} onClick={() => onDelete(item.page.id)} aria-label="페이지 삭제" title="삭제">×</button>
-              </div>
-            )}
+            {selected && <div className={styles.pageMenuRoot}>
+              <button
+                type="button"
+                className={styles.pageThumbMenuButton}
+                ref={(element) => {
+                  if (element) menuButtonRefs.current.set(item.page.id, element);
+                  else menuButtonRefs.current.delete(item.page.id);
+                }}
+                aria-label={`${index + 1}쪽 메뉴`}
+                aria-haspopup="menu"
+                aria-expanded={openMenuId === item.page.id}
+                aria-controls={`page-menu-${item.page.id}`}
+                title="페이지 메뉴"
+                onClick={(event) => { event.stopPropagation(); setOpenMenuId((current) => current === item.page.id ? null : item.page.id); }}
+              >⋯</button>
+              {openMenuId === item.page.id && <div id={`page-menu-${item.page.id}`} className={styles.pageMenu} role="menu" aria-label={`${index + 1}쪽 작업`}>
+                <button type="button" role="menuitem" onClick={() => { setOpenMenuId(null); onDuplicate(item.page.id); window.requestAnimationFrame(() => menuButtonRefs.current.get(item.page.id)?.focus()); }}>복제</button>
+                <button type="button" role="menuitem" disabled={index === 0} onClick={() => { setOpenMenuId(null); onMove(item.page.id, "ArrowLeft"); window.requestAnimationFrame(() => menuButtonRefs.current.get(item.page.id)?.focus()); }}>앞으로</button>
+                <button type="button" role="menuitem" disabled={index === items.length - 1} onClick={() => { setOpenMenuId(null); onMove(item.page.id, "ArrowRight"); window.requestAnimationFrame(() => menuButtonRefs.current.get(item.page.id)?.focus()); }}>뒤로</button>
+                <button type="button" role="menuitem" onClick={() => { setOpenMenuId(null); onDelete(item.page.id); }}>삭제</button>
+              </div>}
+            </div>}
           </li>
         );
       })}

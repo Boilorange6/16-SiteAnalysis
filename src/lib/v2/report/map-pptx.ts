@@ -109,6 +109,7 @@ let activeSceneHeight = VIEW_H;
 let activeClipBottom = VIEW_H;
 let activeRasterLayers = new Set<string>();
 let activeMode: NativeMapMode = "tile";
+let activeExplicitFrame = false;
 
 const CELL_LEGEND_MAX_ITEMS = 4;
 const CELL_LEGEND_ROW_H = 28;
@@ -148,7 +149,9 @@ function fixedScaleViewport(model: MapModel, style: PageStyle, frame: MapFrameSt
     return slideViewport(model, style, dimensions);
   }
   const metersPerPixelAtZoom0 = metersPerPixel(model.center[1], 0);
-  const targetMpp = frame.scaleDenominator * 0.0254 / 96;
+  const targetMpp = activeExplicitFrame
+    ? (activeFrame.w * 25.4 * frame.scaleDenominator) / (1000 * dimensions.width)
+    : frame.scaleDenominator * 0.0254 / 96;
   const zoom = Math.log2(metersPerPixelAtZoom0 / targetMpp);
   return applyView({ ...base, zoom }, model.center[1], { zoomDelta: 0, offsetM: frame.offsetM });
 }
@@ -878,10 +881,12 @@ export function addEditableMap(slide: Slide, plan: (PlannedSlide & { kind: "tile
   const previousClipBottom = activeClipBottom;
   const previousRasterLayers = activeRasterLayers;
   const previousMode = activeMode;
+  const previousExplicitFrame = activeExplicitFrame;
   activeFormat = options.format ?? "wide";
   activeGeometry = slideGeometry(activeFormat);
   activePxPerInch = VIEW_W / activeGeometry.w;
   const explicitFrame = options.frame !== undefined;
+  activeExplicitFrame = explicitFrame;
   activeFrame = options.frame ?? (activeFormat === "wide" ? FULL_FRAME : fullFrame(activeFormat));
   activeSceneWidth = VIEW_W;
   activeSceneHeight = !explicitFrame && activeFormat === "wide" && options.mode !== "cell"
@@ -927,6 +932,7 @@ export function addEditableMap(slide: Slide, plan: (PlannedSlide & { kind: "tile
     activeClipBottom = previousClipBottom;
     activeRasterLayers = previousRasterLayers;
     activeMode = previousMode;
+    activeExplicitFrame = previousExplicitFrame;
   }
 }
 

@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
 import type { Dispatch } from "react";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
-import { defaultFrame, EMPTY_REPORT_DOC, newPageId, reportDocReducer, type MapFrameState, type PagePanels, type ReportDoc, type ReportDocAction, type ReportFontScale, type ReportFormat, type ReportLayout, type ReportPage, type TextBox } from "@/lib/v2/report/report-doc";
-import { scaleForFrame } from "@/lib/v2/ui/report-scale";
-import { importLegacyReport, hasLegacyReport, pagesForTile, planReportDoc, printedPageCount, recommendedPages } from "@/lib/v2/report/report-doc-plan";
+import { defaultFrame, EMPTY_REPORT_DOC, newPageId, reportDocReducer, type MapFrameState, type PagePanels, type ReportDoc, type ReportDocAction, type ReportFontScale, type ReportFormat, type ReportPage, type TextBox } from "@/lib/v2/report/report-doc";
+import { mapFrameScaleOptions, mapFrameWidthMm, scaleForFrame } from "@/lib/v2/ui/report-scale";
+import { importLegacyReport, hasLegacyReport, pagesForTile, planReportDoc, recommendedPages } from "@/lib/v2/report/report-doc-plan";
 import { tileReportSettingsFromBoard, type PlannedSlide } from "@/lib/v2/report/report-plan";
 import { insertIndexAfter, moveByKey } from "@/lib/v2/ui/report-mode-logic";
 import type { BoardAction, BoardState } from "@/lib/v2/ui/board-state";
@@ -62,11 +62,6 @@ function formatLabel(format: ReportFormat): string {
   return format === "wide" ? "와이드 16:9" : format === "a3" ? "A3 가로" : "A4 가로";
 }
 
-function mapWidthMm(format: ReportFormat, layout: ReportLayout): number {
-  const base = format === "wide" ? 240 : format === "a3" ? 270 : 190;
-  return layout === "numbers-first" || layout === "side-by-side" ? base * 0.45 : base;
-}
-
 function ThemeDrawer({ doc, onFormat, onFontScale, onClose }: { doc: ReportDoc; onFormat: (format: ReportFormat) => void; onFontScale: (scale: ReportFontScale) => void; onClose: () => void }) {
   return (
     <section className={styles.drawer} aria-label="테마 설정">
@@ -84,8 +79,8 @@ function ThemeDrawer({ doc, onFormat, onFontScale, onClose }: { doc: ReportDoc; 
       </label>
       <div className={styles.themeScaleField}>
         <span className={styles.fieldLabelText}>제목·본문 글자 크기</span>
-        <div className={styles.themeScaleOptions} role="group" aria-label="글자 크기 배율">
-          {([0.85, 1, 1.15] as const).map((scale) => <button key={scale} type="button" className={(doc.fontScale ?? 1) === scale ? styles.filterChipActive : styles.filterChip} aria-pressed={(doc.fontScale ?? 1) === scale} onClick={() => onFontScale(scale)}>{scale}×</button>)}
+        <div className={styles.themeScaleOptions} role="radiogroup" aria-label="글자 크기 배율">
+          {([0.85, 1, 1.15] as const).map((scale) => <button key={scale} type="button" className={styles.themeScaleOption} role="radio" aria-checked={(doc.fontScale ?? 1) === scale} onClick={() => onFontScale(scale)}>{scale}×</button>)}
         </div>
       </div>
       <div className={styles.themeSample}>
@@ -105,6 +100,12 @@ function TextBoxDrawer({ onAdd }: { onAdd: () => void }) {
       <button type="button" className={styles.primaryButton} onClick={onAdd}>＋ 글상자 추가</button>
     </section>
   );
+}
+
+function pageTitleForToast(page: ReportPage, views: ReadonlyMap<string, TileView>): string {
+  if (page.kind === "tile") return page.titleOverride ?? views.get(page.tileId)?.title ?? "분석 타일";
+  if (page.kind === "compare") return "여러 타일 비교";
+  return pageTypeLabel(page);
 }
 
 export default function ReportMode({ board, dispatch, views, summary, analysisDate, basemap, dirty, demo = false, busy = false, onPresentation }: ReportModeProps) {
@@ -130,7 +131,6 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
 
   const planContext = useMemo(() => ({ summary, analysisDate, views }), [analysisDate, summary, views]);
   const plan = useMemo(() => planReportDoc(history.present, views, planContext), [history.present, planContext, views]);
-  const printedCount = useMemo(() => printedPageCount(history.present, views, planContext), [history.present, planContext, views]);
   const stripItems = useMemo<PageStripItem[]>(() => history.present.pages.map((page) => {
     const matches = plan.filter((slide) => slide.page?.id === page.id);
     return { page, slide: matches[0], printedCount: matches.length || 1 };
@@ -160,22 +160,18 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   }, [commitDoc, history.present]);
 
   const undo = useCallback(() => {
-    setHistory((current) => {
-      const previous = current.past[current.past.length - 1];
-      if (!previous) return current;
-      dispatch({ type: "reportDoc", doc: previous });
-      return { past: current.past.slice(0, -1), present: previous, future: [current.present, ...current.future] };
-    });
-  }, [dispatch]);
+    const previous = history.past[history.past.length - 1];
+    if (!previous) return;
+    setHistory({ past: history.past.slice(0, -1), present: previous, future: [history.present, ...history.future] });
+    dispatch({ type: "reportDoc", doc: previous });
+  }, [dispatch, history]);
 
   const redo = useCallback(() => {
-    setHistory((current) => {
-      const next = current.future[0];
-      if (!next) return current;
-      dispatch({ type: "reportDoc", doc: next });
-      return { past: [...current.past, current.present], present: next, future: current.future.slice(1) };
-    });
-  }, [dispatch]);
+    const next = history.future[0];
+    if (!next) return;
+    setHistory({ past: [...history.past, history.present], present: next, future: history.future.slice(1) });
+    dispatch({ type: "reportDoc", doc: next });
+  }, [dispatch, history]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -216,8 +212,9 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     const view = views.get(tileId);
     if (!view) return;
     const pages = pagesForTile(history.present, tileId, view, tileReportSettingsFromBoard(board, tileId), planContext);
-    addPages(pages);
-  }, [addPages, board, history.present, planContext, views]);
+    const index = insertIndexAfter(history.present, selectedId);
+    addPages(pages, `${view.title} 페이지를 ${index + 1}쪽에 추가했습니다.`);
+  }, [addPages, board, history.present, planContext, selectedId, views]);
 
   const startRecommended = useCallback(() => {
     const empty = { ...EMPTY_REPORT_DOC, pages: [] };
@@ -250,9 +247,9 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const deletePage = useCallback((id: string) => {
     const index = history.present.pages.findIndex((page) => page.id === id);
     const page = history.present.pages[index];
-    apply({ type: "remove", id }, `${page ? pageTypeLabel(page) : "페이지"} 페이지를 지웠습니다. Ctrl+Z로 되돌릴 수 있습니다.`);
+    apply({ type: "remove", id }, `${page ? pageTitleForToast(page, views) : "페이지"} 페이지를 지웠습니다. Ctrl+Z로 되돌릴 수 있습니다.`);
     if (selectedId === id) setSelectedId(history.present.pages[Math.max(0, index - 1)]?.id ?? history.present.pages[index + 1]?.id ?? null);
-  }, [apply, history.present.pages, selectedId]);
+  }, [apply, history.present.pages, selectedId, views]);
 
   const duplicatePage = useCallback((id: string) => {
     apply({ type: "duplicate", id }, "페이지를 복제했습니다.");
@@ -322,7 +319,11 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     if (selectedId) apply({ type: "panels", id: selectedId, panels });
   }, [apply, selectedId]);
 
-  const handleSurfaceSelect = useCallback((next: SurfaceSelection) => setSelection(next), []);
+  const handleSurfaceSelect = useCallback((next: SurfaceSelection) => {
+    setSelection(next);
+    if (next?.kind === "map") setRail(null);
+    else if (selection?.kind === "map" && next === null) setRail("pages");
+  }, [selection]);
   const toggleRail = useCallback((next: RailKey) => setRail((current) => current === next ? null : next), []);
   const addTextBoxFromRail = useCallback(() => {
     const opening = rail !== "textbox";
@@ -356,8 +357,10 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
       : undefined;
   const mapView = mapTileId ? views.get(mapTileId) ?? null : null;
   const mapModel = mapView?.map ?? mapView?.backdrop ?? null;
-  const mapWidth = selectedPage ? mapWidthMm(history.present.format, selectedPage.layout) : 240;
-  const mapScale = mapFrame && mapModel ? scaleForFrame(mapFrame, mapWidth, mapModel.radiusM) : 1000;
+  const mapWidth = selectedPage ? mapFrameWidthMm(history.present.format, selectedPage.layout) : 240;
+  const mapScaleOptions = selectedPage ? mapFrameScaleOptions(history.present.format, selectedPage.layout) : undefined;
+  const mapScale = mapFrame && mapModel ? scaleForFrame(mapFrame, mapWidth, mapModel.radiusM, mapScaleOptions) : 1000;
+  const mapEditing = !!mapFrame && !!mapModel && !!selectedPage && (selectedPage.kind === "tile" || selectedPage.kind === "compare") && selection?.kind === "map";
   const legacyAvailable = hasLegacyReport(board);
 
   return (
@@ -372,7 +375,14 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
         <div className={styles.reportHeaderActions}>
           <button type="button" className={styles.iconButton} onClick={undo} disabled={history.past.length === 0} aria-label="되돌리기" title="되돌리기">↶</button>
           <button type="button" className={styles.iconButton} onClick={redo} disabled={history.future.length === 0} aria-label="다시 실행" title="다시 실행">↷</button>
-          <button type="button" className={styles.headerSelect} onClick={() => setRail("theme")} aria-label="보고서 판형">{formatLabel(history.present.format)}</button>
+          <label className={styles.headerFormat}>
+            <span className={styles.srOnly}>보고서 판형</span>
+            <select value={history.present.format} onChange={(event) => { const format = event.target.value as ReportFormat; apply({ type: "format", format }, `${formatLabel(format)} 판형으로 바꿨습니다.`); }} aria-label="보고서 판형">
+              <option value="wide">{formatLabel("wide")}</option>
+              <option value="a3">{formatLabel("a3")}</option>
+              <option value="a4">{formatLabel("a4")}</option>
+            </select>
+          </label>
         </div>
         <button type="button" className={styles.secondaryButton} onClick={onPresentation} disabled={demo || busy || history.present.pages.length === 0}>발표 미리보기</button>
         <button type="button" className={styles.primaryDarkButton} disabled title="내보내기 패널은 Task 9에서 연결됩니다.">내보내기</button>
@@ -385,18 +395,13 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
           <button type="button" className={`${styles.railButton} ${rail === "theme" ? styles.railButtonActive : ""}`} aria-pressed={rail === "theme"} onClick={() => toggleRail("theme")}><span aria-hidden="true">◌</span><span>테마</span></button>
         </nav>
         <aside className={styles.drawerColumn}>
-          {rail === "pages" && <DrawerPages open hasLegacy={legacyAvailable} onAdd={addPage} onRecommended={startRecommended} onLegacy={importLegacy} />}
-          {rail === "tiles" && <DrawerTiles open doc={history.present} views={views} mode={compareMode ? "compare" : "single"} compareGrid={compareGrid} compareSelected={compareSelected} onCompareGrid={setCompareGrid} onAdd={addTile} onToggleCompare={toggleCompareTile} onCreateCompare={addComparePage} onCancelCompare={() => { setCompareSelected([]); setCompareMode(false); }} />}
-          {rail === "textbox" && <TextBoxDrawer onAdd={addTextBox} />}
-          {rail === "theme" && <ThemeDrawer doc={history.present} onFormat={(format) => apply({ type: "format", format }, `${formatLabel(format)} 판형으로 바꿨습니다.`)} onFontScale={(fontScale) => apply({ type: "theme", fontScale }, `${fontScale}배 글자 크기를 적용했습니다.`)} onClose={() => setRail("pages")} />}
+          {mapEditing && selectedPage && mapFrame && <DrawerMap page={selectedPage} frame={mapFrame} view={mapView} cell={mapCell} mapWidthMm={mapWidth} scaleOptions={mapScaleOptions} sameExtent={selectedPage.kind === "compare" ? selectedPage.sameExtent : undefined} onSameExtent={selectedPage.kind === "compare" ? (value) => apply({ type: "sameExtent", id: selectedPage.id, value }) : undefined} onFrame={(patch: Partial<MapFrameState>) => applyFrame(mapCell, patch)} />}
+          {!mapEditing && rail === "pages" && <DrawerPages open hasLegacy={legacyAvailable} onAdd={addPage} onRecommended={startRecommended} onLegacy={importLegacy} />}
+          {!mapEditing && rail === "tiles" && <DrawerTiles open doc={history.present} views={views} mode={compareMode ? "compare" : "single"} compareGrid={compareGrid} compareSelected={compareSelected} onCompareGrid={setCompareGrid} onAdd={addTile} onToggleCompare={toggleCompareTile} onCreateCompare={addComparePage} onCancelCompare={() => { setCompareSelected([]); setCompareMode(false); }} />}
+          {!mapEditing && rail === "textbox" && <TextBoxDrawer onAdd={addTextBox} />}
+          {!mapEditing && rail === "theme" && <ThemeDrawer doc={history.present} onFormat={(format) => apply({ type: "format", format }, `${formatLabel(format)} 판형으로 바꿨습니다.`)} onFontScale={(fontScale) => apply({ type: "theme", fontScale }, `${fontScale}배 글자 크기를 적용했습니다.`)} onClose={() => setRail("pages")} />}
         </aside>
         <main className={styles.reportWorkspace}>
-          <div className={styles.workspaceTools}>
-            <div><span className={styles.workspaceKicker}>보고서 작업 공간</span><strong>{printedCount}쪽</strong></div>
-            <div className={styles.workspaceActions}>
-              {selectedPage && <span className={styles.selectedPageLabel}>{pageTypeLabel(selectedPage)}</span>}
-            </div>
-          </div>
           {history.present.pages.length === 0 ? (
             <div className={styles.emptyReport}>
               <div className={styles.emptyCanvas}><span className={styles.emptyCanvasMark}>＋</span><strong>페이지를 추가하세요</strong><span>보고서의 첫 장을 선택해 작업을 시작합니다.</span></div>
@@ -405,17 +410,16 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
           ) : selectedSlide ? (
             <div className={styles.stageAndSettings}>
               <div className={styles.stageColumn}>
-                {mapFrame && mapModel && <>
-                  <MapToolbar scale={mapScale} locked={mapFrame.locked} mapActive={selection?.kind === "map"} onZoom={(delta) => applyFrame(mapCell, { zoomDelta: mapFrame.zoomDelta + delta, scaleDenominator: null })} onFit={() => applyFrame(mapCell, { zoomDelta: 0, offsetM: [0, 0], scaleDenominator: null })} onToggleMove={() => setSelection((current) => current?.kind === "map" ? null : { kind: "map", ...(mapCell === undefined ? {} : { cell: mapCell }) })} onToggleLock={() => applyFrame(mapCell, { locked: !mapFrame.locked })} onOpen={() => setSelection({ kind: "map", ...(mapCell === undefined ? {} : { cell: mapCell }) })} />
-                  {selection?.kind === "map" && <p className={styles.mapHint}>지도를 끌어 옮기고 휠로 확대합니다 · Esc 또는 바깥을 누르면 끝납니다</p>}
-                </>}
                 <div className={styles.stageFrame} data-report-stage>
-                  <SlideSurface slide={selectedSlide} basemap={basemap} mode="edit" selection={selection} onSelect={handleSurfaceSelect} onFrame={applyFrame} onPanels={applyPanels} onTextBox={applyTextBox} onText={editPanelText} onSheetCellActivate={(index) => setSelection({ kind: "map", cell: index })} mapActive={selection?.kind === "map"} classMap={surfaceClassMap} />
+                  {mapFrame && mapModel && <>
+                    <MapToolbar scale={mapScale} locked={mapFrame.locked} mapActive={selection?.kind === "map"} onZoom={(delta) => applyFrame(mapCell, { zoomDelta: mapFrame.zoomDelta + delta, scaleDenominator: null })} onFit={() => applyFrame(mapCell, { zoomDelta: 0, offsetM: [0, 0], scaleDenominator: null })} onToggleMove={() => handleSurfaceSelect(selection?.kind === "map" ? null : { kind: "map", ...(mapCell === undefined ? {} : { cell: mapCell }) })} onToggleLock={() => applyFrame(mapCell, { locked: !mapFrame.locked })} onOpen={() => handleSurfaceSelect({ kind: "map", ...(mapCell === undefined ? {} : { cell: mapCell }) })} />
+                    {selection?.kind === "map" && <p className={styles.mapHint}>지도를 끌어 옮기고 휠로 확대합니다 · Esc 또는 바깥을 누르면 끝납니다</p>}
+                  </>}
+                  <SlideSurface slide={selectedSlide} basemap={basemap} mode="edit" selection={selection} onSelect={handleSurfaceSelect} onFrame={applyFrame} onPanels={applyPanels} onTextBox={applyTextBox} onText={editPanelText} onSheetCellActivate={(index) => handleSurfaceSelect({ kind: "map", cell: index })} mapActive={selection?.kind === "map"} classMap={surfaceClassMap} />
                 </div>
                 {selectedPage && <NotesField pageId={selectedPage.id} value={selectedPage.notes} onChange={(notes) => apply({ type: "notes", id: selectedPage.id, notes })} />}
               </div>
               <aside className={styles.editorSide}>
-                {mapFrame && selectedPage && (selectedPage.kind === "tile" || selectedPage.kind === "compare") && <DrawerMap page={selectedPage} frame={mapFrame} view={mapView} cell={mapCell} mapWidthMm={mapWidth} sameExtent={selectedPage.kind === "compare" ? selectedPage.sameExtent : undefined} onSameExtent={selectedPage.kind === "compare" ? (value) => apply({ type: "sameExtent", id: selectedPage.id, value }) : undefined} onFrame={(patch: Partial<MapFrameState>) => applyFrame(mapCell, patch)} />}
                 {selectedPage && <LayoutSwitcher value={selectedPage.layout} onChange={(layout) => apply({ type: "layout", id: selectedPage.id, layout })} />}
               </aside>
             </div>

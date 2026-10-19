@@ -26,7 +26,7 @@ import { mapKeyOf, type PlannedSlide } from "./report-plan";
 import type { MapImages } from "./render-pptx";
 import { nativeMapStatus } from "./map-pptx";
 import type { PageStyle } from "../ui/board-state";
-import { zoomForScale } from "../ui/report-scale";
+import { mapFrameScaleOptions, mapFrameWidthMm, zoomForScale, type ReportScaleOptions } from "../ui/report-scale";
 import type { MapFrameState } from "./report-doc";
 import { northArrowBox, scaleBarBox } from "../ui/map-scene";
 
@@ -59,10 +59,10 @@ function frameLayer(frame: MapFrameState): BasemapChoice {
   return "Base";
 }
 
-function reportFrameStyle(frame: MapFrameState, style: PageStyle, mapWidthMm: number, radiusM: number): PageStyle {
+function reportFrameStyle(frame: MapFrameState, style: PageStyle, mapWidthMm: number, radiusM: number, scaleOptions?: ReportScaleOptions): PageStyle {
   return {
     ...style,
-    zoomDelta: frame.scaleDenominator === null ? frame.zoomDelta : zoomForScale(frame.scaleDenominator, mapWidthMm, radiusM),
+    zoomDelta: frame.scaleDenominator === null ? frame.zoomDelta : zoomForScale(frame.scaleDenominator, mapWidthMm, radiusM, scaleOptions),
     offsetM: [...frame.offsetM] as [number, number],
     pinnedKeys: [...new Set([...(style.pinnedKeys ?? []), ...frame.pinnedKeys])],
     hiddenKeys: [...new Set([...(style.hiddenKeys ?? []), ...frame.hiddenLayers])],
@@ -71,8 +71,11 @@ function reportFrameStyle(frame: MapFrameState, style: PageStyle, mapWidthMm: nu
 
 function reportMapWidthMm(p: PlannedSlide): number {
   const format = p.format ?? "wide";
-  const base = format === "wide" ? 240 : format === "a3" ? 270 : 190;
-  return p.page?.layout === "numbers-first" || p.page?.layout === "side-by-side" ? base * 0.45 : base;
+  return mapFrameWidthMm(format, p.page?.layout ?? "map-summary");
+}
+
+function reportScaleOptions(p: PlannedSlide): ReportScaleOptions | undefined {
+  return mapFrameScaleOptions(p.format ?? "wide", p.page?.layout ?? "map-summary");
 }
 
 const blobToDataUrl = (b: Blob) =>
@@ -306,7 +309,7 @@ function extraFor(p: PlannedSlide, model: MapModel): Extra {
   }
   const baseStyle = p.style ?? {};
   const frame = p.page?.kind === "tile" ? p.page.frame : undefined;
-  const style = frame ? reportFrameStyle(frame, baseStyle, reportMapWidthMm(p), model.radiusM) : baseStyle;
+  const style = frame ? reportFrameStyle(frame, baseStyle, reportMapWidthMm(p), model.radiusM, reportScaleOptions(p)) : baseStyle;
   const hasSummary = style.summary !== false && !(p.callout && p.callout.page > 0);
   const baseLegend = slideLegend(model, !p.muted).rect;
   const panels = slidePanelRects(style, hasSummary, baseLegend);
@@ -378,7 +381,7 @@ export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice 
             if (!model || !rect) continue;
             const frame = cell.reportFrame;
             const renderModel = frame ? { ...model, basemap: undefined } : model;
-            const cellStyle = frame ? reportFrameStyle(frame, cell.style ?? p.style ?? {}, reportMapWidthMm(p), model.radiusM) : cell.style;
+            const cellStyle = frame ? reportFrameStyle(frame, cell.style ?? p.style ?? {}, reportMapWidthMm(p), model.radiusM, reportScaleOptions(p)) : cell.style;
             const status = nativeMapStatus(model);
             out[cell.mapKey] = await rasterizeMap(renderModel, cache, frame ? frameLayer(frame) : effectiveLayer(model, layer), {
               siteX: 0.5,

@@ -3464,8 +3464,9 @@
 .thumbMini {
   position: relative;
   display: block;
-  width: 54px;
-  height: 34px;
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
   overflow: hidden;
   pointer-events: none;
   background: #dfe3e8;
@@ -3492,6 +3493,13 @@
   border: 0;
   border-radius: 0;
   box-shadow: none;
+}
+
+.thumbMini .previewFrame[data-slide-format="a3"],
+.thumbMini .previewFrame[data-slide-format="a4"] {
+  width: auto !important;
+  height: 100% !important;
+  max-width: 100%;
 }
 
 .thumbMini .slideCanvas,
