@@ -1272,6 +1272,8 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
                   cut={board.cuts[id] ?? null}
                   pinnedLabels={board.labels[id] ?? EMPTY_PINNED_LABELS}
                   showMapLabels={!!board.mapLabels[id]}
+                  terrainSection={board.terrainSection[id] ?? "A"}
+                  onTerrainSection={(section) => dispatch({ type: "terrainSection", id, section })}
                   cardFace={viewOf(board, id)}
                   highlighted={highlightedTileId === id}
                   onWindUploaded={onWindUploaded}
@@ -1353,6 +1355,8 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
           onWindUploaded={onWindUploaded}
           address={siteSummary.address}
           analysisDate={analysisDate}
+          terrainSection={board.terrainSection[openView.tileId] ?? "A"}
+          onTerrainSection={(section) => dispatch({ type: "terrainSection", id: openView.tileId, section })}
           onClose={() => {
             setOpenId(null);
             setDialogTab("overview");

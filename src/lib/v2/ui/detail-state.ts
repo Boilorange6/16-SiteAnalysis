@@ -7,6 +7,7 @@
  */
 
 import { detailDisplayValue } from "./detail-labels";
+import type { TerrainSections } from "../engine/tiles/terrain-section";
 
 export { detailDisplayValue } from "./detail-labels";
 
@@ -56,6 +57,7 @@ export type DetailPayload = {
   rows: DetailRow[];
   total: number;
   rowCount?: number;
+  terrainSections?: TerrainSections;
   exportFileName: string;
 };
 export type DetailAt = {

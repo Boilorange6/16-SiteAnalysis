@@ -800,6 +800,97 @@
   text-align: right;
 }
 
+.terrainPreview {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(112px, 0.42fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: calc(var(--slide-unit) * 0.06) calc(var(--slide-unit) * 0.12);
+  overflow: hidden;
+  padding: calc(var(--slide-unit) * 0.12) calc(var(--slide-unit) * 0.16);
+  pointer-events: none;
+  border: 1px solid rgba(21, 23, 28, 0.18);
+  border-radius: calc(var(--slide-unit) * 0.12);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 calc(var(--slide-unit) * 0.04) calc(var(--slide-unit) * 0.14) rgba(21, 23, 28, 0.1);
+}
+
+.terrainPreviewHeader {
+  display: flex;
+  min-width: 0;
+  grid-column: 1 / -1;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: calc(var(--slide-unit) * 0.12);
+  color: #15171c;
+}
+
+.terrainPreviewHeader strong,
+.terrainPreviewHeader span,
+.terrainPreviewSummary,
+.terrainPreviewCaveat {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terrainPreviewHeader span,
+.terrainPreviewSummary,
+.terrainPreviewCaveat {
+  color: #5b606b;
+}
+
+.terrainPreviewGraph {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  overflow: visible;
+  border: 1px solid #e0e3e8;
+  border-radius: calc(var(--slide-unit) * 0.08);
+  background: #fbfcfd;
+}
+
+.terrainPreviewGraph text {
+  fill: #5b6472;
+  font-family: inherit;
+  font-size: 9px;
+}
+
+.terrainPreviewTable {
+  width: 100%;
+  min-width: 0;
+  align-self: stretch;
+  border-collapse: collapse;
+  color: #252a33;
+  font-size: calc(var(--slide-unit) * 0.095);
+  font-variant-numeric: tabular-nums;
+}
+
+.terrainPreviewTable td {
+  border-top: 1px solid #edf0f3;
+  overflow-wrap: anywhere;
+  padding: calc(var(--slide-unit) * 0.06) calc(var(--slide-unit) * 0.04);
+  vertical-align: top;
+}
+
+.terrainPreviewTable td:last-child {
+  color: #5b606b;
+  text-align: right;
+}
+
+.terrainPreviewSummary {
+  grid-column: 1 / 2;
+  font-variant-numeric: tabular-nums;
+}
+
+.terrainPreviewCaveat {
+  grid-column: 2 / -1;
+  color: #6b4b31;
+}
+
 .slideMeta {
   flex: 0 0 auto;
   color: #5b606b;

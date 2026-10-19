@@ -2,7 +2,7 @@
 
 import { createPortal } from "react-dom";
 import { memo, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import type { CardFace, CutSpec, DemoPhase, PinnedLabel, TileSize } from "@/lib/v2/ui/board-state";
+import type { CardFace, CutSpec, DemoPhase, PinnedLabel, TerrainSectionId, TileSize } from "@/lib/v2/ui/board-state";
 import { STRIP_COLORS } from "@/lib/v2/ui/map-layers";
 import { OV, badgesToShow, cardReserved, stripText } from "@/lib/v2/ui/overlay-layout";
 import { faceLabel, shortHeadlineLabel, type Badge, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
@@ -346,6 +346,8 @@ type TileCardBaseProps = {
   /** 화면 면 (요약면/지도면). 보고서 출력 면(face)과 무관 */
   cardFace: CardFace;
   onWindUploaded?: () => void;
+  terrainSection?: TerrainSectionId;
+  onTerrainSection?: (section: TerrainSectionId) => void;
   stackable?: boolean;
   stackSelected?: boolean;
   sheetable?: boolean;
@@ -991,7 +993,7 @@ function TileCard(p: TileCardProps) {
         data-resize-handle="right"
         title="오른쪽 크기 조정"
       />
-      {detailOpen && detailable && <DetailWindow view={view} layer={p.layer} onLayer={p.onLayer} onClose={() => setDetailOpen(false)} />}
+      {detailOpen && detailable && <DetailWindow view={view} layer={p.layer} onLayer={p.onLayer} onClose={() => setDetailOpen(false)} terrainSection={p.terrainSection} onTerrainSection={p.onTerrainSection} />}
     </article>
   );
 }

@@ -4,7 +4,7 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { CALLOUT_MODES, calloutReportPages, type CalloutMode } from "@/lib/v2/ui/callout-layout";
 import type { A05Counts, A05Filter } from "@/lib/v2/engine/a05-filter";
 import { detailSiteX, OV } from "@/lib/v2/ui/overlay-layout";
-import type { CameraPreset, CutSpec, PinnedLabel } from "@/lib/v2/ui/board-state";
+import type { CameraPreset, CutSpec, PinnedLabel, TerrainSectionId } from "@/lib/v2/ui/board-state";
 import { faceLabel, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
 import { BadgeList, CutSelect, FaceSelect, Headline, RowList, SourceStrip, Stage, StatusPlate, TitleChip } from "./tile-card";
 import { LayerSelect } from "./layer-select";
@@ -45,6 +45,8 @@ type Props = {
   initialTab?: "overview" | "sources";
   address?: string;
   analysisDate?: string;
+  terrainSection?: TerrainSectionId;
+  onTerrainSection?: (section: TerrainSectionId) => void;
 };
 
 const PANEL_W = 360;
@@ -109,7 +111,7 @@ function PinnedLabelPanel({ view, labels, onToggle, onUnpin, onSetAll, onFocusLa
 }
 
 /** 펼침: 화면 거의 전체가 지도. 오른쪽에 떠 있는 정보 판. Esc로 닫고, 닫으면 열기 전 초점으로 돌아간다. */
-export default function TileDialog({ view, layer, onLayer, included, face, onInclude, onFace, onRetry, cut, onCut, calloutMode, onCalloutMode, camera, onCamera, onWindUploaded, onClose, a05Filter, a05Counts, onA05Filter, pinnedLabels, onToggleLabel, onUnpinLabel, onSetAllLabels, initialTab = "overview", address, analysisDate }: Props) {
+export default function TileDialog({ view, layer, onLayer, included, face, onInclude, onFace, onRetry, cut, onCut, calloutMode, onCalloutMode, camera, onCamera, onWindUploaded, onClose, a05Filter, a05Counts, onA05Filter, pinnedLabels, onToggleLabel, onUnpinLabel, onSetAllLabels, initialTab = "overview", address, analysisDate, terrainSection, onTerrainSection }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [back, setBack] = useState(false);
   const [more, setMore] = useState(false); // 모바일 시트 확장
@@ -187,7 +189,7 @@ export default function TileDialog({ view, layer, onLayer, included, face, onInc
             <BadgeList badges={view.badges} />
             {!cutOwnsS02 && <LayerSelect view={view} value={layer} onChange={onLayer} />}
             <PinnedLabelPanel view={view} labels={pinnedLabels} onToggle={onToggleLabel} onUnpin={onUnpinLabel} onSetAll={onSetAllLabels} onFocusLabel={setFocusedLabelKey} />
-            {DialogPanel && <DialogPanel view={view} filter={a05Filter} counts={a05Counts} onChange={onA05Filter} titleId={`a05-${view.tileId}-reaggregate-title`} cut={selectedCut} onCut={onCut} camera={camera} onCamera={onCamera} onWindUploaded={onWindUploaded} />}
+            {DialogPanel && <DialogPanel view={view} filter={a05Filter} counts={a05Counts} onChange={onA05Filter} titleId={`a05-${view.tileId}-reaggregate-title`} cut={selectedCut} onCut={onCut} camera={camera} onCamera={onCamera} onWindUploaded={onWindUploaded} terrainSection={terrainSection} onTerrainSection={onTerrainSection} />}
             {onCut && CUT_CODES.has(view.code) && <CutSelect view={view} value={selectedCut} onChange={onCut} />}
             {view.headline && (
               <div className={styles.stat}>

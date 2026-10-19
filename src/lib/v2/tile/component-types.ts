@@ -1,5 +1,5 @@
 import type { A05Counts, A05Filter } from "../engine/a05-filter";
-import type { DemoPhase, CameraPreset, CutSpec } from "../ui/board-state";
+import type { DemoPhase, CameraPreset, CutSpec, TerrainSectionId } from "../ui/board-state";
 import type { MapFigureElementPick } from "../../../components/v2/map-figure";
 import type { RoseSeason } from "../tile-result";
 import type { TileView } from "../ui/tile-view";
@@ -52,4 +52,6 @@ export type TileDialogPanelProps = {
   camera?: CameraPreset | null;
   onCamera?: (camera: CameraPreset) => void;
   onWindUploaded?: () => void;
+  terrainSection?: TerrainSectionId;
+  onTerrainSection?: (section: TerrainSectionId) => void;
 };

@@ -9,6 +9,7 @@ import { est, lineCandidate, makeTile, obs, polygonCandidate, type LineCandidate
 import { clipLineToCircle, linePathLength, polygonArea } from "../../engine/tiles/geo";
 import { notProvided } from "../../engine/tiles/not-provided";
 import { maxOf, minOf } from "../../extent";
+import { terrainSections, type TerrainSections } from "../../engine/tiles/terrain-section";
 
 const RELIEF_BREAKS = [-20, -5, 5, 20];
 const RELIEF_LAYERS = ["relief_lt_m20", "relief_m20_m5", "relief_m5_5", "relief_5_20", "relief_ge20"];
@@ -45,8 +46,8 @@ function retainingName(hit: FeatureHit): string {
 
 function topoLines(ctx: EngineContext, hits: FeatureHit[]) {
   return hits.flatMap((hit) => clipLineToCircle(ctx.input.center, ctx.input.radiusM, hit.geometry).flatMap((path, partIndex) => {
-    const layer = hit.kind === "topo_retaining" ? "retaining_wall" : "cut_fill";
-    const name = hit.kind === "topo_retaining" ? retainingName(hit) : "절성토";
+    const layer = hit.kind === "topo_retaining" ? "retaining_wall" : hit.kind === "topo_fence" ? "fence" : "cut_fill";
+    const name = hit.kind === "topo_retaining" ? retainingName(hit) : hit.kind === "topo_fence" ? "울타리" : "절성토";
     const id = 1_000_000_000 + hit.featureId * 1_000 + partIndex;
     const line = lineCandidate(id, layer, path, linePathLength(path), null, {
       fid: `topo:${hit.stableId}:${partIndex}`,
@@ -56,6 +57,29 @@ function topoLines(ctx: EngineContext, hits: FeatureHit[]) {
     });
     return line ? [line] : [];
   }));
+}
+
+function sectionLines(sections: TerrainSections | null): LineCandidate[] {
+  if (!sections) return [];
+  return ([
+    [sections.A, "terrain_section_a", "단면 A–A′ (동서)", 1_000_000_010],
+    [sections.B, "terrain_section_b", "단면 B–B′ (남북)", 1_000_000_011],
+  ] as const).flatMap(([section, layer, name, id]) => {
+    const lengthM = Math.hypot(section.to[0] - section.from[0], section.to[1] - section.from[1]);
+    const line = lineCandidate(id, layer, [section.from, section.to], lengthM, null, {
+      fid: `terrain-section:${section.axis}`,
+      name,
+      sublabel: null,
+      labelPriority: 1,
+      legendLabel: name,
+    });
+    return line ? [line] : [];
+  });
+}
+
+function sectionsFor(ctx: EngineContext): TerrainSections | null {
+  const geometry = ctx.input.site.geometry;
+  return ctx.topo && geometry?.type === "Polygon" ? terrainSections(ctx, geometry) : null;
 }
 
 function topoCoverage(ctx: EngineContext) {
@@ -80,6 +104,7 @@ export function d17(ctx: EngineContext): TileResult {
   if (!reader || !grid) return notProvided(ctx, "D17", "지형 자료를 확인하지 못했습니다.");
 
   const absoluteValues = terrainValuesInCircle(grid, ctx.input.radiusM);
+  const sections = sectionsFor(ctx);
   if (absoluteValues.length === 0) {
     return makeTile(ctx, {
       code: "D17",
@@ -87,7 +112,8 @@ export function d17(ctx: EngineContext): TileResult {
       status: "no_data",
       metrics: [],
       sources: demSources(ctx),
-      layers: [...RELIEF_LAYERS, "dem_nodata", "contour", ...(ctx.topo ? ["topo_coverage", "retaining_wall", "cut_fill"] : [])],
+      layers: [...RELIEF_LAYERS, "dem_nodata", "contour", ...(ctx.topo ? ["topo_coverage", "retaining_wall", "cut_fill", "fence", ...(sections ? ["terrain_section_a", "terrain_section_b"] : [])] : [])],
+      terrainSections: sections ?? undefined,
       limitations: [DEM_LIMITATION, ...(ctx.topo ? [topoTerrainLimitation] : []), { kind: "not_provided", note: "분석 반경 안에서 유효한 DEM 표고를 확인하지 못했습니다." }],
     });
   }
@@ -118,7 +144,7 @@ export function d17(ctx: EngineContext): TileResult {
       labelPriority: 0,
     },
   }));
-  const stepHits = ctx.topo?.hits(["topo_retaining", "topo_cut_fill"]) ?? [];
+  const stepHits = ctx.topo?.hits(["topo_retaining", "topo_cut_fill", "topo_fence"]) ?? [];
   const coverage = topoCoverage(ctx);
   const polygons = [...reliefPolygons, ...(coverage ? [coverage] : [])];
   const lines: LineCandidate[] = [
@@ -138,6 +164,7 @@ export function d17(ctx: EngineContext): TileResult {
         };
       }),
     ...topoLines(ctx, stepHits),
+    ...sectionLines(sections),
   ];
   const nodataArea = bands.areaM2.at(-1) ?? 0;
   const centerStatus = readerCenter === null ? "estimated" : "observed";
@@ -161,7 +188,7 @@ export function d17(ctx: EngineContext): TileResult {
     )),
     est("share_nodata_pct", "DEM 결측 면적 구성비", percent(nodataArea, circleAreaM2), "%", "d17-relief-nodata@1:DEM 결측 밴드의 원 교차면적÷π·r²", Math.round(nodataArea), Math.round(circleAreaM2)),
     obs("contour_interval_m", "등고선 간격", CONTOUR_INTERVAL_M, "m", "d17-contour-interval@1:절대 표고 등고선 간격"),
-    ...(ctx.topo ? [obs("retaining_count", "반경 안 단차 시설 수", stepHits.length, "개", "d17-retaining-count@1:반경 안 수치지형도 옹벽·절성토 시설 수")] : []),
+    ...(ctx.topo ? [obs("retaining_count", "반경 안 단차 시설 수", stepHits.length, "개", "d17-step-count@1:반경 안 수치지형도 옹벽·절성토·울타리 시설 수")] : []),
   ];
 
   const limitations: TileResult["limitations"] = [
@@ -184,9 +211,10 @@ export function d17(ctx: EngineContext): TileResult {
       criteria: null,
     },
     sources: demSources(ctx),
-    layers: [...RELIEF_LAYERS, "dem_nodata", "contour", ...(ctx.topo ? ["topo_coverage", "retaining_wall", "cut_fill"] : [])],
+    layers: [...RELIEF_LAYERS, "dem_nodata", "contour", ...(ctx.topo ? ["topo_coverage", "retaining_wall", "cut_fill", "fence", ...(sections ? ["terrain_section_a", "terrain_section_b"] : [])] : [])],
     polygons,
     lines,
+    terrainSections: sections ?? undefined,
     limitations,
   });
 }

@@ -97,6 +97,7 @@ type TileSettingsSnapshot = {
   labels?: PinnedLabel[];
   mapLabels?: boolean;
   layer?: string;
+  terrainSection?: TerrainSectionId;
 };
 
 /** 되돌리기 한 단계. 모든 편집(순서·크기·제거·더하기)이 여기 쌓인다. */
@@ -112,6 +113,7 @@ export type UndoEntry =
 
 /** 보드 카드의 화면 면: 요약면(기본, 지도 없음) / 지도면(지도 몰입형). 보고서 출력 면(OutputFace)과 무관하다 */
 export type CardFace = "summary" | "map";
+export type TerrainSectionId = "A" | "B";
 /** 대지 요약 카드의 view 키 */
 export const SUMMARY_ID = "site-summary";
 export const BOARD_STATE_VERSION = 3;
@@ -180,6 +182,8 @@ export type BoardState = {
   layers: Record<string, string>;
   /** 카드 지도 자동 라벨 표시. 누락된 옛 저장본은 기본 숨김(false)이다. */
   mapLabels: Record<string, boolean>;
+  /** D17 수치지형도 단면 선택. 결과가 없거나 topo가 없으면 사용하지 않는다. */
+  terrainSection: Record<string, TerrainSectionId>;
   /** copy:N → 원본 결과 타일 id. 복제본은 결과 배열을 늘리지 않고 보드 설정만 가진다. */
   instances: Record<string, string>;
   /** 보고서 페이지별 표시 설정과 보드 타일에서 파생한 추가 페이지. */
@@ -224,6 +228,7 @@ export type BoardAction =
   | { type: "setAllLabels"; id: string; on: boolean }
   | { type: "mapLabels"; id: string; show: boolean }
   | { type: "layer"; id: string; layer: string }
+  | { type: "terrainSection"; id: string; section: TerrainSectionId }
   | { type: "pageStyle"; keys: PageKey[]; patch: Partial<PageStyle> }
   | { type: "pageStyleReset"; keys: PageKey[] }
   | { type: "addPage"; id: string; after: PageKey | null; tileId: string; face: ExtraReportPage["face"]; sheet?: ExtraReportPage["sheet"] }
@@ -259,6 +264,7 @@ export function initBoard(results: TileResult[], preset: PresetId = DEFAULT_PRES
     labels: {},
     layers: {},
     mapLabels: {},
+    terrainSection: {},
     instances: {},
     report: { styles: {}, extra: [] },
     removed: [],
@@ -350,6 +356,7 @@ function copyTileSettings(s: BoardState, id: string): TileSettingsSnapshot {
     labels: s.labels[id]?.map((label) => ({ ...label })),
     mapLabels: s.mapLabels[id],
     layer: s.layers[id],
+    terrainSection: s.terrainSection[id],
   };
 }
 
@@ -564,6 +571,7 @@ function restoreTileSettings(s: BoardState, id: string, settings: TileSettingsSn
     labels: withRecordValue(s.labels, id, settings.labels?.map((label) => ({ ...label }))),
     mapLabels: withRecordValue(s.mapLabels, id, settings.mapLabels),
     layers: withRecordValue(s.layers, id, settings.layer),
+    terrainSection: withRecordValue(s.terrainSection, id, settings.terrainSection),
   };
 }
 
@@ -585,6 +593,7 @@ function removeInstance(s: BoardState, id: string): BoardState {
     labels: withoutRecordValue(s.labels, id),
     mapLabels: withoutRecordValue(s.mapLabels, id),
     layers: withoutRecordValue(s.layers, id),
+    terrainSection: withoutRecordValue(s.terrainSection, id),
     report,
   };
 }
@@ -911,6 +920,9 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
       if (result && !layerOptionsForResult(result).some((option) => option.id === normalizedLayerId)) return s;
       return { ...s, layers: { ...s.layers, [a.id]: normalizedLayerId } };
     }
+    case "terrainSection":
+      if (a.section !== "A" && a.section !== "B") return s;
+      return { ...s, terrainSection: { ...s.terrainSection, [a.id]: a.section } };
     case "pageStyle": {
       if (!a.patch || typeof a.patch !== "object" || Array.isArray(a.patch) || !Array.isArray(a.keys)) return s;
       const keys = [...new Set(a.keys.filter((key): key is string => typeof key === "string" && key.length > 0))];
@@ -1027,6 +1039,8 @@ export type BoardStateSnapshot = {
   layers?: Record<string, string>;
   /** 카드 지도 자동 라벨 표시. 이전 저장본에는 없고 기본 false로 복원한다. */
   mapLabels?: Record<string, boolean>;
+  /** D17 수치지형도 단면 선택. 이전 저장본에는 없다. */
+  terrainSection?: Record<string, TerrainSectionId>;
   /** copy:N → 원본 결과 타일 id. 이전 저장본에는 없다. */
   instances?: Record<string, string>;
   /** 페이지별 보고서 설정. 기존 저장본에는 없다. */
@@ -1061,6 +1075,7 @@ export function serializeBoardState(s: BoardState): BoardStateSnapshot {
     labels: Object.fromEntries(Object.entries(s.labels).map(([id, labels]) => [id, labels.map((label) => ({ ...label }))])),
     layers: { ...s.layers },
     mapLabels: { ...s.mapLabels },
+    terrainSection: { ...s.terrainSection },
     instances: { ...s.instances },
     report: cloneReport(s.report),
     removed: s.removed.map((item) => ({ ...item })),
@@ -1074,6 +1089,7 @@ const unique = (values: readonly string[]) => [...new Set(values)];
 const isOutputFace = (value: unknown): value is OutputFace => value === "front" || value === "back" || value === "both";
 const isCalloutMode = (value: unknown): value is CalloutMode => value === "overview" || value === "top10" || value === "all";
 const isCardFace = (value: unknown): value is CardFace => value === "summary" || value === "map";
+const isTerrainSection = (value: unknown): value is TerrainSectionId => value === "A" || value === "B";
 const isTileSize = (value: unknown): value is TileSize => value === 1 || value === 2 || value === 4;
 const isGridColumns = (value: unknown): value is GridColumns => value === 2 || value === 3 || value === 4 || value === 5 || value === 6;
 const isSheetGrid = (value: unknown): value is SheetGrid => value === "2x2" || value === "3x2" || value === "3x1";
@@ -1245,6 +1261,7 @@ export function rewriteSnapshotIds(snapshot: BoardStateSnapshot, mapId: IdMapper
     labels: mapIdRecord<PinnedLabel[]>(snapshot.labels, mapId),
     layers,
     mapLabels: mapIdRecord<boolean>(snapshot.mapLabels, mapId),
+    terrainSection: mapIdRecord<TerrainSectionId>(snapshot.terrainSection, mapId),
     instances,
     report: {
       styles: reportStyles,
@@ -1426,6 +1443,11 @@ export function restoreBoardState(results: TileResult[], raw: unknown, fallbackP
   for (const [id, value] of Object.entries(recordOf(saved.mapLabels))) {
     if (validTileIds.has(id) && typeof value === "boolean") mapLabels[id] = value;
   }
+  const terrainSection: Record<string, TerrainSectionId> = {};
+  for (const [id, value] of Object.entries(recordOf(saved.terrainSection))) {
+    const result = base.results.find((candidate) => candidate.tileId === sourceTileIdFromInstances(savedInstances, id));
+    if (validTileIds.has(id) && result?.tileCode === "D17" && isTerrainSection(value)) terrainSection[id] = value;
+  }
   const layers: Record<string, string> = {};
   const resultById = new Map(base.results.map((result) => [result.tileId, result]));
   for (const [id, value] of Object.entries(recordOf(saved.layers))) {
@@ -1464,6 +1486,7 @@ export function restoreBoardState(results: TileResult[], raw: unknown, fallbackP
     labels,
     mapLabels,
     layers,
+    terrainSection,
     instances: savedInstances,
     report,
     removed,

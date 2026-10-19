@@ -638,6 +638,79 @@ function ChartPlaceholder({ view, unit }: { view: TileView; unit: number }) {
   );
 }
 
+const TERRAIN_SECTION_LABELS = { A: "단면 A–A′ (동서)", B: "단면 B–B′ (남북)" } as const;
+const TERRAIN_CROSSING_LABELS = { retaining: "옹벽", cut_fill: "절성토", fence: "울타리" } as const;
+const TERRAIN_CAVEAT = "등고선·표고점 보간값(추정)입니다. 현장 실측을 대신하지 않습니다.";
+
+function TerrainSectionPreview({ slide, unit, panels }: { slide: Extract<PlannedSlide, { kind: "tile" }>; unit: number; panels: { summary: Rect | null } }) {
+  const sections = slide.view.terrainSections;
+  if (!sections || !slide.terrainSection) return null;
+  const section = sections[slide.terrainSection];
+  const valid = section.samples.filter((sample): sample is { d: number; z: number } => sample.z !== null && Number.isFinite(sample.z));
+  const total = Math.max(1, Math.hypot(section.to[0] - section.from[0], section.to[1] - section.from[1]));
+  const minZ = valid.length > 0 ? Math.min(...valid.map((sample) => sample.z)) : 0;
+  const maxZ = valid.length > 0 ? Math.max(...valid.map((sample) => sample.z)) : 1;
+  const zRange = Math.max(1, maxZ - minZ);
+  const xFor = (d: number) => 22 + (d / total) * 476;
+  const yFor = (z: number) => 112 - ((z - minZ) / zRange) * 78;
+  const paths: string[] = [];
+  let path: string[] = [];
+  for (const sample of section.samples) {
+    if (sample.z === null) {
+      if (path.length > 0) paths.push(path.join(" "));
+      path = [];
+      continue;
+    }
+    path.push(`${path.length === 0 ? "M" : "L"}${xFor(sample.d).toFixed(2)},${yFor(sample.z).toFixed(2)}`);
+  }
+  if (path.length > 0) paths.push(path.join(" "));
+  const [siteStart, siteEnd] = section.siteSpan;
+  const siteValues = valid.filter((sample) => sample.d >= siteStart && sample.d <= siteEnd).map((sample) => sample.z);
+  const range = siteValues.length > 1 ? Math.max(...siteValues) - Math.min(...siteValues) : null;
+  const stepRow = slide.view.rows.find((row) => row.label === "반경 안 단차 시설 수");
+  const parsedFacilityCount = stepRow ? Number.parseInt(stepRow.value.replace(/[^0-9-]/g, ""), 10) : NaN;
+  const facilityCount = Number.isFinite(parsedFacilityCount) ? parsedFacilityCount : section.crossings.length;
+  const slopeSamples: number[] = [];
+  for (let index = 1; index < section.samples.length; index += 1) {
+    const before = section.samples[index - 1];
+    const current = section.samples[index];
+    if (before.z === null || current.z === null || before.d > siteEnd || current.d < siteStart) continue;
+    slopeSamples.push(Math.atan(Math.abs(current.z - before.z) / (current.d - before.d)) * 180 / Math.PI);
+  }
+  const slope = slopeSamples.length > 0 ? slopeSamples.reduce((sum, value) => sum + value, 0) / slopeSamples.length : null;
+  const format = (value: number | null, suffix: string) => value === null ? "미확인" : `${value.toFixed(1)}${suffix}`;
+  const position = (d: number) => {
+    const offset = d - total / 2;
+    return `${Math.abs(offset).toFixed(0)}m ${offset < 0 ? "전" : "후"}`;
+  };
+  const previewW = Math.max(4.2, Math.min(6.5, (panels.summary?.x ?? SLIDE.w) - 0.55));
+  const preview = { left: 0.32, top: 3.05, width: previewW, height: 2.22 };
+  return (
+    <section className={styles.terrainPreview} style={{ left: preview.left * unit, top: preview.top * unit, width: preview.width * unit, height: preview.height * unit }} aria-label={`${TERRAIN_SECTION_LABELS[slide.terrainSection]} 보고서 미리보기`}>
+      <div className={styles.terrainPreviewHeader}>
+        <strong style={fontStyle(9.5, unit)}>{TERRAIN_SECTION_LABELS[slide.terrainSection]} · 지형 단면</strong>
+        <span style={fontStyle(7.5, unit)}>대지 음영 · 단차 시설 점선</span>
+      </div>
+      <svg className={styles.terrainPreviewGraph} viewBox="0 0 520 132" role="img" aria-label={`${TERRAIN_SECTION_LABELS[slide.terrainSection]} 표고 프로파일`}>
+        <title>{`${TERRAIN_SECTION_LABELS[slide.terrainSection]} 표고 프로파일`}</title>
+        <rect x={xFor(siteStart)} y="16" width={Math.max(0, xFor(siteEnd) - xFor(siteStart))} height="96" fill="#2350b8" fillOpacity=".09" />
+        <line x1="22" x2="498" y1="112" y2="112" stroke="#b9c0ca" strokeWidth="1" />
+        <text x="22" y="128">0m</text><text x="498" y="128" textAnchor="end">{total.toFixed(0)}m</text>
+        <text x="18" y="13" textAnchor="end">{maxZ.toFixed(1)}m</text>
+        <text x="18" y="113" textAnchor="end">{minZ.toFixed(1)}m</text>
+        {section.crossings.map((crossing, index) => <line key={`${crossing.d}-${crossing.kind}-${index}`} x1={xFor(crossing.d)} x2={xFor(crossing.d)} y1="16" y2="112" stroke="#6b3d14" strokeWidth="1.2" strokeDasharray="3 2" />)}
+        {paths.map((entry, index) => <path key={index} d={entry} fill="none" stroke="#8a5a2e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />)}
+      </svg>
+      <table className={styles.terrainPreviewTable} aria-label="단면 시설 표">
+        <caption className={styles.srOnly}>단면 시설 표</caption>
+        <tbody>{section.crossings.slice(0, 2).map((crossing, index) => <tr key={`${crossing.d}-${crossing.kind}-${index}`}><td>{TERRAIN_CROSSING_LABELS[crossing.kind]}</td><td>{position(crossing.d)}</td><td>{crossing.heightM === null ? "높이 미확인" : `${crossing.heightM.toFixed(1)}m`}</td></tr>)}</tbody>
+      </table>
+      <div className={styles.terrainPreviewSummary} style={fontStyle(7.4, unit)}>{`대지 고저차 ${format(range, "m")} · 대지 평균 경사 ${format(slope, "°")} · 반경 내 단차 시설 수 ${facilityCount}개`}</div>
+      <div className={styles.terrainPreviewCaveat} style={fontStyle(6.5, unit)}>{TERRAIN_CAVEAT}</div>
+    </section>
+  );
+}
+
 function VisualPlaceholder({ title, message, unit }: { title: string; message: string; unit: number }) {
   return (
     <div className={styles.chartPlaceholder}>
@@ -784,6 +857,7 @@ function TileSurface({ slide, unit, basemap, panels, interactive, thumbnail = fa
   return (
     <>
       {model ? <MapLayer model={model} style={slide.style} unit={unit} basemap={basemap} panels={panels} siteX={slideSiteX(slide.style, panels.summary !== null)} pinnedKeys={slide.pinnedKeys} interactive={interactive} thumbnail={thumbnail} onPatch={onPatch} onDirectPatch={onDirectPatch} hoverLegend={hoverLegend} label={slide.view.title + " 지도"} /> : slide.mass ? <VisualPlaceholder title={slide.view.title} message="3D 매스 미리보기는 내보내기와 같은 페이지 위치로 표시됩니다." unit={unit} /> : slide.rose ? <VisualPlaceholder title={slide.view.title} message="바람장미 도판 미리보기" unit={unit} /> : chart ? <ChartPlaceholder view={slide.view} unit={unit} /> : <VisualPlaceholder title={slide.view.title} message={slide.body.kind === "state" ? slide.body.message : "표시할 지도 결과가 없습니다."} unit={unit} />}
+      {slide.view.code === "D17" && <TerrainSectionPreview slide={slide} unit={unit} panels={panels} />}
       {slide.body.kind === "state" && <div className={styles.slidePanel} style={{ left: unit * 4, top: unit * 2.7, width: unit * 5.1, height: unit * 1.15 }}><div className={styles.slideText + " " + styles.slideTextStrong} style={fontStyle(16, unit)}>{slide.body.message}</div></div>}
       <TitlePanel slide={slide} rect={panels.title} unit={unit} interaction={panelInteraction?.("title")} />
       {panels.summary && hasSummaryPanel(slide) && <SummaryPanel slide={slide} rect={panels.summary} unit={unit} interaction={panelInteraction?.("summary")} />}

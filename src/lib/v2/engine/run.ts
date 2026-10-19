@@ -74,7 +74,8 @@ export function cacheKeyForConditions(code: string, manifestHash: string, condit
   const scopedConditions = TOPO_AFFECTED_TILES.includes(code as (typeof TOPO_AFFECTED_TILES)[number]) || !Object.prototype.hasOwnProperty.call(parcelScopedConditions.filters, "topo")
     ? parcelScopedConditions
     : { ...parcelScopedConditions, filters: Object.fromEntries(Object.entries(parcelScopedConditions.filters).filter(([key]) => key !== "topo")) };
-  const key = tileCacheKey({ tileCode: code, manifestHash, engineVersion: cacheEngineVersion(code, engineVersionBase), conditions: scopedConditions });
+  const hasTopo = Object.prototype.hasOwnProperty.call(conditions.filters, "topo");
+  const key = tileCacheKey({ tileCode: code, manifestHash, engineVersion: cacheEngineVersion(code, engineVersionBase, hasTopo), conditions: scopedConditions });
   return upstream ? sha256Hex(`${key}:${upstream}`) : key;
 }
 

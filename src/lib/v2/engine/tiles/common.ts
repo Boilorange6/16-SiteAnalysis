@@ -41,7 +41,7 @@ const TILE_CACHE_REVISION: Readonly<Record<string, string>> = {
   D13: "w2b-r1",
   D15: "w2b-r1+clip-r1",
   D16: "height3-r1+w2b-r1+clip-r1",
-  D17: "w2b-r1+clip-r1",
+  D17: "w2b-r1+clip-r1+terrain-section-r1",
   D18: "w2b-r1+clip-r1",
   D19: "w3-merge-r1+w2b-r1+clip-r1",
   D28: "w2b-r1+clip-r1+composition-r1",
@@ -51,7 +51,16 @@ const TILE_CACHE_REVISION: Readonly<Record<string, string>> = {
   S03: "height3-r1+w2b-r1",
   S04: "s04-r2+height3-r1+w2b-r1+clip-r1",
 };
-export const cacheEngineVersion = (code: string, base: string = ENGINE_VERSION): string => (TILE_CACHE_REVISION[code] ? `${base}+${TILE_CACHE_REVISION[code]}` : base);
+// A topo-free analysis must retain its historical cache key byte-for-byte. D17
+// has a second representation only when the analysis carries topo data, so the
+// new revision is selected by cacheKeyForConditions rather than globally.
+const NO_TOPO_CACHE_REVISION: Readonly<Record<string, string>> = {
+  D17: "w2b-r1+clip-r1",
+};
+export const cacheEngineVersion = (code: string, base: string = ENGINE_VERSION, hasTopo = true): string => {
+  const revision = hasTopo ? TILE_CACHE_REVISION[code] : (NO_TOPO_CACHE_REVISION[code] ?? TILE_CACHE_REVISION[code]);
+  return revision ? `${base}+${revision}` : base;
+};
 
 type Metric = TileResult["metrics"][number];
 
@@ -278,6 +287,8 @@ export interface TileDraft {
   lines?: LineCandidate[];
   /** 타일이 값·범주까지 완성한 범례. 없으면 현재 레이어의 기본 범례를 만든다. */
   legend?: TileResult["presentation"]["legend"];
+  /** D17 수치지형도 단면. topo가 없는 결과에는 생략한다. */
+  terrainSections?: NonNullable<TileResult["presentation"]["terrainSections"]>;
 }
 
 function warnOverlappingFeatureGeometry(code: string, features: MapFeature[], polygons: MapPolygon[]): void {
@@ -315,6 +326,7 @@ export function makeTile(ctx: EngineContext, d: TileDraft): TileResult {
       ...(capped ? { features: capped.features, featuresTotal: capped.total } : {}),
       ...(cappedPoly && cappedPoly.total > 0 ? { polygons: cappedPoly.polygons, polygonsTotal: d.polygonTotal ?? cappedPoly.total } : {}),
       ...(cappedLine && cappedLine.total > 0 ? { lines: cappedLine.lines, linesTotal: cappedLine.total } : {}),
+      ...(d.terrainSections ? { terrainSections: d.terrainSections } : {}),
     },
     provenance: { manifestHash: ctx.manifestHash, sources: d.sources },
     limitations: d.limitations,

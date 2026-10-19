@@ -17,6 +17,7 @@ import { tileReportModuleFor } from "../tile/report";
 import { addEditableMap, nativeMapFallbackNote, nativeMapStatus } from "./map-pptx";
 import { badgeTextColor } from "../ui/map-labels";
 import type { PageStyle } from "../ui/board-state";
+import { drawTerrainSectionPptx } from "./terrain-section-pptx";
 
 /** 지도 이미지(PNG/JPEG data URL) — 키는 report-plan의 mapKeyOf */
 export type MapImages = Record<string, string>;
@@ -419,6 +420,15 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
       s.addShape("rect", { x: x0 + labW, y: y + rh * 0.2, w: Math.max(0.04, (trackW * c.value) / max), h: rh * 0.6, fill: { color: hex(STRIP_COLORS[i % STRIP_COLORS.length]) }, line: { color: hex(STRIP_COLORS[i % STRIP_COLORS.length]), width: 0 } });
       s.addText(`${c.value}${c.unit === "%" ? "%" : ` ${c.unit}`}`, { x: x0 + labW + trackW + 0.1, y, w: 0.8, h: rh, align: "right", valign: "middle", fontFace: FONT, fontSize: 14, bold: true, color: INK, margin: 0 });
     });
+  } else if (v.code === "D17" && v.terrainSections && p.terrainSection) {
+    const stepRow = v.rows.find((row) => row.label === "반경 안 단차 시설 수");
+    const facilityCount = stepRow ? Number.parseInt(stepRow.value.replace(/[^0-9-]/g, ""), 10) : null;
+    drawTerrainSectionPptx(s, v.terrainSections, p.terrainSection, {
+      x: E + 0.08,
+      y: Math.max(L.title.y + L.title.h + 0.18, L.strip.y - 2.45),
+      w: Math.max(3.8, summaryX - E - 0.16),
+      h: 2.15,
+    }, Number.isFinite(facilityCount) ? facilityCount : null);
   } else if (co) calloutReport?.render({ slide: s, planned: p, part: "overview" });
   else legendPlate(s, p, hasSummary);
 
