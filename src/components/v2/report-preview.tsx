@@ -3,13 +3,13 @@
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type Dispatch, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { metersPerPixel, slideViewport, zoomViewAt, type MapView } from "@/lib/v2/ui/map-projection";
-import { SLIDE, slideCalloutAvoidance, slideLegend, slidePanelRects, slideSiteX, terrainSectionLayout, type Rect, type TerrainSectionLayout } from "@/lib/v2/ui/overlay-layout";
+import { SLIDE, slideCalloutAvoidance, slideLegend, slidePanelRects, slideReserved, slideSiteX, terrainSectionLayout, type Rect, type TerrainSectionLayout } from "@/lib/v2/ui/overlay-layout";
 import { coverLayout, fitBlock, fitFooterText, sourceLayout, titlePlateRect } from "@/lib/v2/report/pptx-kit";
 import { layerStyle, legendItemsOf, legendLabelOf } from "@/lib/v2/ui/map-layers";
 import { reportSummaryNotes, terrainCrossingLayer, terrainElevationLabel, terrainSectionAxisStops, terrainSectionBands, terrainSectionElevationAt, terrainSectionMarkerGeometry, terrainSectionPosition, terrainSectionTotal, sortTerrainCrossings, TERRAIN_CROSSING_LABELS, TERRAIN_SECTION_LABELS, TERRAIN_SECTION_TABLE_MAX_ROWS } from "@/lib/v2/ui/terrain-section";
 import MapFigure from "./map-figure";
 import { LegendSwatch } from "./map-legend-strip";
-import { northArrowBox } from "@/lib/v2/ui/map-scene";
+import { northArrowBox, scaleBarBox } from "@/lib/v2/ui/map-scene";
 import { useFocusTrap } from "./use-focus-trap";
 import { extraPageKey, type BoardAction, type BoardState, type PageKey, type PageStyle } from "@/lib/v2/ui/board-state";
 import type { PlannedSlide } from "@/lib/v2/report/report-plan";
@@ -270,6 +270,7 @@ type MapLayerProps = {
   calloutTop?: number;
   calloutLeftBottom?: number;
   northAvoid?: { x0: number; y0: number; x1: number; y1: number } | null;
+  scale?: boolean;
   label: string;
 };
 
@@ -291,7 +292,7 @@ function recordPreviewTiming(name: string, elapsedMs: number): void {
   metrics[`${name}Samples`] = (metrics[`${name}Samples`] ?? 0) + 1;
 }
 
-function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, interactive, thumbnail = false, onPatch, onDirectPatch, hoverLegend, terrainSection, terrainLayout, calloutLegend, calloutTop, calloutLeftBottom, northAvoid, label }: MapLayerProps) {
+function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, interactive, thumbnail = false, onPatch, onDirectPatch, hoverLegend, terrainSection, terrainLayout, calloutLegend, calloutTop, calloutLeftBottom, northAvoid, scale = true, label }: MapLayerProps) {
   const width = Math.max(1, Math.round(SLIDE.w * unit));
   const height = Math.max(1, Math.round(SLIDE.h * unit));
   const [dragging, setDragging] = useState(false);
@@ -311,17 +312,28 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
   const patchRef = useRef(onPatch);
   styleRef.current = style;
   patchRef.current = onPatch;
-  const baseViewport = useMemo(() => slideViewport(model, undefined, { width, height, siteX, fill: 0.8 }), [height, model, siteX, width]);
-  const viewport = useMemo(() => slideViewport(model, style, { width, height, siteX, fill: 0.8 }), [height, model, siteX, style, width]);
+  const mapFill = terrainLayout?.mapFill ?? 0.8;
+  const mapSiteY = terrainLayout?.mapSiteY ?? 0.5;
+  const rightInset = panels.summary
+    ? Math.max(0, width - panels.summary.x * unit + SLIDE.edge * unit * 0.5)
+    : SLIDE.edge * unit;
+  const bottomInset = unit * (SLIDE.stripH + (calloutLegend ? calloutLegend.h + 0.18 : 0));
+  const baseViewport = useMemo(() => slideViewport(model, undefined, { width, height, siteX, siteY: mapSiteY, fill: mapFill }), [height, mapFill, mapSiteY, model, siteX, width]);
+  const viewport = useMemo(() => slideViewport(model, style, { width, height, siteX, siteY: mapSiteY, fill: mapFill }), [height, mapFill, mapSiteY, model, siteX, style, width]);
   const focusedLabel = useMemo(() => legendLabelOf(model, style.legendFocus), [model, style.legendFocus]);
   const activeLegendLabel = hoverLegend ?? focusedLabel;
-  const avoid = useMemo(() => [panels.title, panels.summary, panels.legend, terrainLayout?.rect, calloutLegend]
-    .filter((rect): rect is Rect => !!rect)
-    .map((rect) => ({ x0: rect.x * unit, y0: rect.y * unit, x1: (rect.x + rect.w) * unit, y1: (rect.y + rect.h) * unit }))
-    .concat(northAvoid ? [northAvoid] : []), [calloutLegend, northAvoid, panels.legend, panels.summary, panels.title, terrainLayout?.rect, unit]);
-  const rightInset = terrainLayout
-    ? Math.max(0, SLIDE.w - (panels.summary?.x ?? SLIDE.w) + SLIDE.edge * 0.5) * unit
-    : undefined;
+  const avoid = useMemo(() => {
+    const reserved = slideReserved(unit, {
+      info: panels.summary !== null,
+      titleRect: panels.title,
+      infoRect: panels.summary,
+      legend: panels.legend,
+      calloutLegend,
+      terrainSection: terrainLayout?.rect,
+    });
+    const scaleAvoid = scaleBarBox(width, height, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset);
+    return [...reserved, ...(scale ? [scaleAvoid] : []), ...(northAvoid ? [northAvoid] : [])];
+  }, [bottomInset, calloutLegend, height, northAvoid, panels.legend, panels.summary, panels.title, rightInset, scale, terrainLayout?.rect, unit, viewport, width]);
   const onFeatureHover = useCallback((key: string | null) => {
     if (!interactive) return;
     setHoverKey((current) => current === key ? current : key);
@@ -470,9 +482,6 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
         legend={false}
         north={false}
         credit={false}
-        scale
-        bottomInset={unit * SLIDE.stripH}
-        rightInset={rightInset}
         label={label}
         viewport={viewport}
         avoid={avoid}
@@ -482,8 +491,11 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
         highlightLabel={activeLegendLabel}
         highlightPinnedLabel={focusedLabel}
         terrainSection={terrainSection}
-        fill={terrainLayout?.mapFill}
-        siteY={terrainLayout?.mapSiteY}
+        fill={mapFill}
+        siteY={mapSiteY}
+        bottomInset={bottomInset}
+        rightInset={rightInset}
+        scale={scale}
         calloutTop={calloutTop}
         calloutLeftBottom={calloutLeftBottom ?? (terrainLayout?.calloutLeftBottom ? terrainLayout.calloutLeftBottom * unit : undefined)}
         showAutomaticLabels
@@ -909,7 +921,7 @@ function TileSurface({ slide, unit, basemap, panels, interactive, thumbnail = fa
         { text: slide.callout.model.legend.sizeLabel },
       ]
     : [];
-  const calloutAlignment = terrainShown || slide.callout?.page === 0 ? slideCalloutAvoidance(panels, calloutEntries) : null;
+  const calloutAlignment = model ? slideCalloutAvoidance(panels, calloutEntries) : null;
   const width = Math.max(1, Math.round(SLIDE.w * unit));
   const height = Math.max(1, Math.round(SLIDE.h * unit));
   const northUnit = Math.min(1.5, Math.max(1, height / 360));
@@ -929,7 +941,7 @@ function TileSurface({ slide, unit, basemap, panels, interactive, thumbnail = fa
   }, [model, onDirectPatch, slide.style.legendFocus]);
   return (
     <>
-      {model ? <MapLayer model={model} style={slide.style} unit={unit} basemap={basemap} panels={panels} siteX={slideSiteX(slide.style, panels.summary !== null)} pinnedKeys={slide.pinnedKeys} interactive={interactive} thumbnail={thumbnail} onPatch={onPatch} onDirectPatch={onDirectPatch} hoverLegend={hoverLegend} terrainSection={slide.view.code === "D17" ? slide.terrainSection ?? "A" : undefined} terrainLayout={terrainLayout} calloutLegend={calloutAlignment?.calloutLegend} calloutTop={calloutAlignment ? calloutAlignment.calloutTop * unit : undefined} calloutLeftBottom={calloutAlignment?.calloutLeftBottom ? calloutAlignment.calloutLeftBottom * unit : undefined} northAvoid={northAvoid} label={slide.view.title + " 지도"} /> : slide.mass ? <VisualPlaceholder title={slide.view.title} message="3D 매스 미리보기는 내보내기와 같은 페이지 위치로 표시됩니다." unit={unit} /> : slide.rose ? <VisualPlaceholder title={slide.view.title} message="바람장미 도판 미리보기" unit={unit} /> : chart ? <ChartPlaceholder view={slide.view} unit={unit} /> : <VisualPlaceholder title={slide.view.title} message={slide.body.kind === "state" ? slide.body.message : "표시할 지도 결과가 없습니다."} unit={unit} />}
+      {model ? <MapLayer model={model} style={slide.style} unit={unit} basemap={basemap} panels={panels} siteX={slideSiteX(slide.style, panels.summary !== null)} pinnedKeys={slide.pinnedKeys} interactive={interactive} thumbnail={thumbnail} onPatch={onPatch} onDirectPatch={onDirectPatch} hoverLegend={hoverLegend} terrainSection={slide.view.code === "D17" ? slide.terrainSection ?? "A" : undefined} terrainLayout={terrainLayout} calloutLegend={calloutAlignment?.calloutLegend} calloutTop={calloutAlignment ? calloutAlignment.calloutTop * unit : undefined} calloutLeftBottom={calloutAlignment?.calloutLeftBottom ? calloutAlignment.calloutLeftBottom * unit : undefined} northAvoid={northAvoid} scale={!(slide.callout && slide.callout.page > 0)} label={slide.view.title + " 지도"} /> : slide.mass ? <VisualPlaceholder title={slide.view.title} message="3D 매스 미리보기는 내보내기와 같은 페이지 위치로 표시됩니다." unit={unit} /> : slide.rose ? <VisualPlaceholder title={slide.view.title} message="바람장미 도판 미리보기" unit={unit} /> : chart ? <ChartPlaceholder view={slide.view} unit={unit} /> : <VisualPlaceholder title={slide.view.title} message={slide.body.kind === "state" ? slide.body.message : "표시할 지도 결과가 없습니다."} unit={unit} />}
       {terrainShown && <TerrainSectionPreview slide={slide} unit={unit} layout={terrainLayout} />}
       {slide.body.kind === "state" && <div className={styles.slidePanel} style={{ left: unit * 4, top: unit * 2.7, width: unit * 5.1, height: unit * 1.15 }}><div className={styles.slideText + " " + styles.slideTextStrong} style={fontStyle(16, unit)}>{slide.body.message}</div></div>}
       <TitlePanel slide={slide} rect={panels.title} unit={unit} interaction={panelInteraction?.("title")} />

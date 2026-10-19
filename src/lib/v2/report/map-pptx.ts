@@ -3,13 +3,13 @@ import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, legen
 import { isSiteParcelLayer } from "../ui/site-parcel";
 import { SLIDE, slideCalloutAvoidance, slideLayout, slideLegend, slidePanelRects, slideReserved, slideSiteX, terrainSectionLayout } from "../ui/overlay-layout";
 import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
-import { buildMapScene, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, type MapScene, type MapSceneBox } from "../ui/map-scene";
+import { buildMapScene, northArrowBox, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, scaleBarBox, type MapScene, type MapSceneBox } from "../ui/map-scene";
 import { badgeTextColor } from "../ui/map-labels";
 import { terrainSectionMapStyle } from "../ui/terrain-section";
 import { FONT, INK, hex, textIn, type Slide } from "./pptx-kit";
 import type { PlannedSlide } from "./report-plan";
 import type { PageStyle } from "../ui/board-state";
-import { slideViewport } from "../ui/map-projection";
+import { metersPerPixel, slideViewport } from "../ui/map-projection";
 
 const VIEW_W = 960;
 const VIEW_H = 540;
@@ -411,9 +411,6 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     : [];
   const calloutAlignment = calloutDetail ? null : slideCalloutAvoidance(panels, calloutEntries, layout);
   const calloutLegend = calloutAlignment?.calloutLegend ?? null;
-  const avoid = calloutDetail
-    ? []
-    : slideReserved(PX_PER_INCH, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend, calloutLegend, terrainSection: terrainLayout?.rect });
   const summaryX = panels.summary?.x ?? SLIDE.w;
   const gap = SLIDE.edge * PX_PER_INCH * 0.5;
   const siteX = calloutDetail?.siteX ?? slideSiteX(style, hasSummary);
@@ -423,6 +420,13 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
   // 제목 판 아래에 13u 반지름과 안전 간격을 확보한 중심을 전달한다.
   const calloutTopPx = calloutAlignment ? calloutAlignment.calloutTop * PX_PER_INCH : (panels.title.y + panels.title.h) * PX_PER_INCH + gap;
   const northY = calloutTopPx + 13 * Math.min(1.5, Math.max(1, VIEW_H / 360));
+  const bottomInset = SLIDE.stripH * PX_PER_INCH + (calloutLegend ? (calloutLegend.h + 0.18) * PX_PER_INCH : 0);
+  const viewport = slideViewport(model, style, { width: VIEW_W, height: VIEW_H, siteX, siteY: terrainLayout?.mapSiteY ?? 0.5, fill: fill ?? 0.8 });
+  const scaleAvoid = calloutDetail ? null : scaleBarBox(VIEW_W, VIEW_H, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset);
+  const northAvoid = calloutDetail ? null : northArrowBox(VIEW_W, VIEW_H, rightInset, northY);
+  const avoid = calloutDetail
+    ? []
+    : [...slideReserved(PX_PER_INCH, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend, calloutLegend, terrainSection: terrainLayout?.rect }), ...(scaleAvoid ? [scaleAvoid] : []), ...(northAvoid ? [northAvoid] : [])];
   const focus = legendLabelOf(model, style.legendFocus);
   return buildMapScene({
     rightInset,
@@ -436,7 +440,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     activeLayer: model.basemap ?? "white",
     fill,
     siteX,
-    bottomInset: SLIDE.stripH * PX_PER_INCH + (calloutLegend ? (calloutLegend.h + 0.18) * PX_PER_INCH : 0),
+    bottomInset,
     scale: !calloutDetail,
     muted: !!plan.muted,
     pinnedKeys: plan.pinnedKeys ?? [],
@@ -448,7 +452,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     north: northY,
     avoid,
     bare: false,
-    viewport: slideViewport(model, style, { width: VIEW_W, height: VIEW_H, siteX, siteY: terrainLayout?.mapSiteY ?? 0.5, fill: fill ?? 0.8 }),
+    viewport,
   });
 }
 
@@ -742,7 +746,7 @@ function addScale(slide: Slide, code: string, scene: MapScene): void {
   const x1 = x0 + bar.px;
   const y = Math.max(14 * u, Math.min(activeClipBottom - 8 * u, bar.y));
   if (maxBarX0 < 6 * u || activeClipBottom < 22 * u) return;
-  slide.addShape("roundRect", { x: pxX(x0 - 6 * u), y: pxY(y - 14 * u), w: pxW(bar.px + 12 * u), h: pxH(22 * u), rectRadius: 0.06, fill: { color: "FFFFFF", transparency: 15 }, line: { color: "FFFFFF", width: 0 }, objectName: tag(code, key, "축척", "bg") });
+  slide.addShape("roundRect", { x: pxX(scene.scaleBox.x0), y: pxY(scene.scaleBox.y0), w: pxW(scene.scaleBox.x1 - scene.scaleBox.x0), h: pxH(scene.scaleBox.y1 - scene.scaleBox.y0), rectRadius: 0.06, fill: { color: "FFFFFF", transparency: 15 }, line: { color: "FFFFFF", width: 0 }, objectName: tag(code, key, "축척", "bg") });
   addSegment(slide, [x0, y - 4 * u], [x0, y], INK, 1.6 * u, tag(code, key, "축척", "left"));
   addSegment(slide, [x0, y], [x1, y], INK, 1.6 * u, tag(code, key, "축척", "bar"));
   addSegment(slide, [x1, y], [x1, y - 4 * u], INK, 1.6 * u, tag(code, key, "축척", "right"));
@@ -834,6 +838,24 @@ export function editableMapAvoid(plan: PlannedSlide & { kind: "tile" }, model: M
         { text: plan.callout.model.legend.sizeLabel },
       ]
     : [];
-  const calloutLegend = slideCalloutAvoidance(panels, calloutEntries).calloutLegend;
-  return slideReserved(PX_PER_INCH, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend: panels.legend, calloutLegend, terrainSection: terrainLayout?.rect });
+  const calloutAlignment = slideCalloutAvoidance(panels, calloutEntries);
+  const calloutLegend = calloutAlignment.calloutLegend;
+  const calloutDetail = plan.callout?.page ? slideCalloutFrame(4) : null;
+  const summaryX = panels.summary?.x ?? SLIDE.w;
+  const gap = SLIDE.edge * PX_PER_INCH * 0.5;
+  const siteX = calloutDetail?.siteX ?? slideSiteX(style, hasSummary);
+  const rightInset = calloutDetail ? 0 : hasSummary ? Math.max(0, VIEW_W - summaryX * PX_PER_INCH + gap) : SLIDE.edge * PX_PER_INCH;
+  const calloutTopPx = calloutDetail ? (panels.title.y + panels.title.h) * PX_PER_INCH + gap : calloutAlignment.calloutTop * PX_PER_INCH;
+  const northY = calloutTopPx + 13 * Math.min(1.5, Math.max(1, VIEW_H / 360));
+  const bottomInset = SLIDE.stripH * PX_PER_INCH + (calloutLegend ? (calloutLegend.h + 0.18) * PX_PER_INCH : 0);
+  const fill = calloutDetail?.fill ?? terrainLayout?.mapFill ?? (plan.callout?.page === 0 ? SLIDE_OVERVIEW_FILL : 0.8);
+  const viewport = slideViewport(model, style, { width: VIEW_W, height: VIEW_H, siteX, siteY: terrainLayout?.mapSiteY ?? 0.5, fill });
+  const reserved = slideReserved(PX_PER_INCH, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend: panels.legend, calloutLegend, terrainSection: terrainLayout?.rect });
+  if (calloutDetail) return reserved;
+  const northAvoid = northArrowBox(VIEW_W, VIEW_H, rightInset, northY);
+  return [
+    ...reserved,
+    scaleBarBox(VIEW_W, VIEW_H, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset),
+    ...(northAvoid ? [northAvoid] : []),
+  ];
 }

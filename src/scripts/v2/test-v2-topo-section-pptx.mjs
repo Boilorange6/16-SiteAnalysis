@@ -12,8 +12,8 @@ const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
 const { SLIDE, slideCalloutAvoidance, slideLegend, slidePanelRects, slideReserved, slideSiteX, terrainSectionLayout } = await import("../../lib/v2/ui/overlay-layout.ts");
 const { terrainSectionBands, terrainSectionMapStyle } = await import("../../lib/v2/ui/terrain-section.ts");
 const { calloutFrame, PX } = await import("../../lib/v2/ui/callout-layout.ts");
-const { buildMapScene, northArrowBox } = await import("../../lib/v2/ui/map-scene.ts");
-const { slideViewport } = await import("../../lib/v2/ui/map-projection.ts");
+const { buildMapScene, mapLabelEntries, northArrowBox, scaleBarBox } = await import("../../lib/v2/ui/map-scene.ts");
+const { metersPerPixel, slideViewport } = await import("../../lib/v2/ui/map-projection.ts");
 
 const source = GODEOK_RESULTS[0];
 const section = (axis) => ({
@@ -105,6 +105,9 @@ const calloutAlignment = slideCalloutAvoidance(previewPanels, []);
 const calloutTop = calloutAlignment.calloutTop * pxPerInch;
 const calloutLeftBottom = calloutAlignment.calloutLeftBottom === undefined ? undefined : calloutAlignment.calloutLeftBottom * pxPerInch;
 const northY = calloutTop + 13 * Math.min(1.5, Math.max(1, 540 / 360));
+const bottomInset = SLIDE.stripH * pxPerInch;
+const d17Viewport = slideViewport(d17Slide.map, d17Slide.style, { width: 960, height: 540, siteX: slideSiteX(d17Slide.style, true), siteY: previewLayout.mapSiteY ?? 0.5, fill: previewLayout.mapFill ?? 0.8 });
+const d17ScaleBox = scaleBarBox(960, 540, metersPerPixel(d17Viewport.center[1], d17Viewport.zoom), bottomInset, rightInset);
 const northBox = northArrowBox(960, 540, rightInset, northY);
 const sceneOptions = {
   model: d17Slide.map,
@@ -114,29 +117,79 @@ const sceneOptions = {
   fill: 0.8,
   siteX: slideSiteX(d17Slide.style, true),
   rightInset,
-  bottomInset: SLIDE.stripH * pxPerInch,
+  bottomInset,
   scale: true,
   showAutomaticLabels: true,
   calloutTop,
   ...(calloutLeftBottom === undefined ? {} : { calloutLeftBottom }),
   terrainSection: d17Slide.terrainSection,
-  viewport: slideViewport(d17Slide.map, d17Slide.style, { width: 960, height: 540, siteX: slideSiteX(d17Slide.style, true), fill: 0.8 }),
+  viewport: d17Viewport,
 };
-const previewScene = buildMapScene({ ...sceneOptions, north: false, avoid: [...mapAvoid, ...(northBox ? [northBox] : [])] });
-const pptxScene = buildMapScene({ ...sceneOptions, north: northY, avoid: mapAvoid });
+const chromeAvoid = [...mapAvoid, d17ScaleBox, ...(northBox ? [northBox] : [])];
+const previewScene = buildMapScene({ ...sceneOptions, north: false, avoid: chromeAvoid });
+const pptxScene = buildMapScene({ ...sceneOptions, north: northY, avoid: chromeAvoid });
 const placementColumns = (scene) => scene.labelPlacements.map(({ entry, placed }) => [entry.key, placed.side]).sort(([a], [b]) => a.localeCompare(b));
 assert.ok(previewScene.labelPlacements.length > 0, "D17 fixture has callouts to compare");
 assert.deepEqual(placementColumns(previewScene), placementColumns(pptxScene), "D17 preview/PPTX callout column assignment matches");
-if (northBox) {
-  for (const scene of [previewScene, pptxScene]) {
-    for (const placement of scene.labelPlacements) assert.equal(intersects(placement.box, northBox), false, `${placement.entry.autoText ?? placement.entry.key} callout avoids north arrow`);
+const assertChromeAvoidance = (name, scene, sceneNorthBox) => {
+  assert.ok(scene.labelPlacements.length > 0, `${name} fixture has callouts`);
+  for (const placement of scene.labelPlacements) {
+    assert.equal(intersects(placement.box, scene.scaleBox), false, `${name} ${placement.entry.autoText ?? placement.entry.key} callout avoids scale bar`);
+    if (sceneNorthBox) assert.equal(intersects(placement.box, sceneNorthBox), false, `${name} ${placement.entry.autoText ?? placement.entry.key} callout avoids north arrow`);
   }
-}
+};
+assertChromeAvoidance("D17 preview", previewScene, northBox);
+assertChromeAvoidance("D17 PPTX", pptxScene, northBox);
+assert.deepEqual(previewScene.scaleBox, pptxScene.scaleBox, "D17 preview/PPTX scale bar geometry matches");
 const mapScene = previewScene;
 const mapCircle = { x0: mapScene.center[0] - mapScene.radiusPx, y0: mapScene.center[1] - mapScene.radiusPx, x1: mapScene.center[0] + mapScene.radiusPx, y1: mapScene.center[1] + mapScene.radiusPx };
 assert.equal(intersects(sectionBox, mapCircle), false, "section does not intersect the map circle bounds");
-const scaleBox = { x0: mapScene.scale.x0 - 8 * mapScene.unit, y0: mapScene.scale.y - 16 * mapScene.unit, x1: mapScene.scale.x1 + 8 * mapScene.unit, y1: mapScene.scale.y + 8 * mapScene.unit };
-assert.equal(intersects(sectionBox, scaleBox), false, "preview/PPT map scale bar avoids the section");
+assert.equal(intersects(sectionBox, mapScene.scaleBox), false, "preview/PPT map scale bar avoids the section");
+
+// A01/A03도 실제 미리보기와 같은 반올림·패널·뷰포트·축척/방위 회피 입력으로 검사한다.
+const previewSceneFor = (model, style = {}, pinnedKeys = []) => {
+  const panels = slidePanelRects(style, true, slideLegend(model, true).rect);
+  const width = Math.max(1, Math.round(SLIDE.w * pxPerInch));
+  const height = Math.max(1, Math.round(SLIDE.h * pxPerInch));
+  const callout = slideCalloutAvoidance(panels, []);
+  const unit = width / SLIDE.w;
+  const inset = panels.summary
+    ? Math.max(0, width - panels.summary.x * unit + SLIDE.edge * unit * 0.5)
+    : SLIDE.edge * unit;
+  const sceneBottomInset = unit * SLIDE.stripH;
+  const siteX = slideSiteX(style, true);
+  const viewport = slideViewport(model, style, { width, height, siteX, siteY: 0.5, fill: 0.8 });
+  const scale = scaleBarBox(width, height, metersPerPixel(viewport.center[1], viewport.zoom), sceneBottomInset, inset);
+  const top = callout.calloutTop * unit;
+  const north = northArrowBox(width, height, inset, top + 13 * Math.min(1.5, Math.max(1, height / 360)));
+  const reserved = slideReserved(unit, { info: true, titleRect: panels.title, infoRect: panels.summary, legend: panels.legend });
+  const scene = buildMapScene({
+    model,
+    width,
+    height,
+    activeLayer: model.basemap ?? "white",
+    siteX,
+    rightInset: inset,
+    bottomInset: sceneBottomInset,
+    scale: true,
+    showAutomaticLabels: true,
+    pinnedKeys,
+    calloutTop: top,
+    north: false,
+    avoid: [...reserved, scale, ...(north ? [north] : [])],
+    viewport,
+  });
+  return { scene, north };
+};
+for (const code of ["A01", "A03"]) {
+  const fixture = GODEOK_RESULTS.find((result) => result.tileCode === code);
+  assert.ok(fixture, `GODEOK fixture ${code} exists`);
+  const model = toTileView(fixture).map;
+  assert.ok(model, `GODEOK fixture ${code} has a map`);
+  const pinnedKeys = mapLabelEntries(model).slice(0, 4).map((entry) => entry.key);
+  const fixtureScene = previewSceneFor(model, {}, pinnedKeys);
+  assertChromeAvoidance(code, fixtureScene.scene, fixtureScene.north);
+}
 
 const bytes = await renderReportPptx([d17Slide]);
 const outputDir = mkdtempSync(join(tmpdir(), "v2-t10-topo-section-pptx-"));
