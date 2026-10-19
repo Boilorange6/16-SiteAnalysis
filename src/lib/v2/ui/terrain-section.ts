@@ -5,6 +5,7 @@ export const TERRAIN_SECTION_LABELS = { A: "단면 A–A′ (동서)", B: "단�
 export const TERRAIN_SECTION_MAP_LABELS = { A: "A–A′", B: "B–B′" } as const;
 export const TERRAIN_CROSSING_LABELS = { retaining: "옹벽", cut_fill: "절성토", fence: "울타리" } as const;
 export const TERRAIN_CROSSING_LAYERS = { retaining: "retaining_wall", cut_fill: "cut_fill", fence: "fence" } as const;
+export const TERRAIN_SECTION_TABLE_MAX_ROWS = 4;
 
 export type TerrainSection = NonNullable<TerrainSections>["A"];
 export type TerrainCrossingKind = keyof typeof TERRAIN_CROSSING_LABELS;

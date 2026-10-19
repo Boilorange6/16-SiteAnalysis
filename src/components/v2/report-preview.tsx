@@ -3,10 +3,10 @@
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type Dispatch, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { metersPerPixel, slideViewport, zoomViewAt, type MapView } from "@/lib/v2/ui/map-projection";
-import { SLIDE, slideLegend, slidePanelRects, slideSiteX, type Rect } from "@/lib/v2/ui/overlay-layout";
+import { SLIDE, slideLegend, slidePanelRects, slideSiteX, terrainSectionLayout, type Rect, type TerrainSectionLayout } from "@/lib/v2/ui/overlay-layout";
 import { coverLayout, fitBlock, fitFooterText, sourceLayout, titlePlateRect } from "@/lib/v2/report/pptx-kit";
 import { layerStyle, legendItemsOf, legendLabelOf } from "@/lib/v2/ui/map-layers";
-import { terrainCrossingLayer, terrainElevationLabel, terrainSectionAxisStops, terrainSectionElevationAt, terrainSectionMarkerGeometry, terrainSectionPosition, terrainSectionTotal, sortTerrainCrossings, TERRAIN_CROSSING_LABELS, TERRAIN_SECTION_LABELS } from "@/lib/v2/ui/terrain-section";
+import { terrainCrossingLayer, terrainElevationLabel, terrainSectionAxisStops, terrainSectionElevationAt, terrainSectionMarkerGeometry, terrainSectionPosition, terrainSectionTotal, sortTerrainCrossings, TERRAIN_CROSSING_LABELS, TERRAIN_SECTION_LABELS, TERRAIN_SECTION_TABLE_MAX_ROWS } from "@/lib/v2/ui/terrain-section";
 import MapFigure from "./map-figure";
 import { useFocusTrap } from "./use-focus-trap";
 import { extraPageKey, type BoardAction, type BoardState, type PageKey, type PageStyle } from "@/lib/v2/ui/board-state";
@@ -263,6 +263,7 @@ type MapLayerProps = {
   onDirectPatch?: (patch: PreviewStylePatch) => void;
   hoverLegend?: string | null;
   terrainSection?: "A" | "B";
+  terrainLayout?: TerrainSectionLayout | null;
   label: string;
 };
 
@@ -284,7 +285,7 @@ function recordPreviewTiming(name: string, elapsedMs: number): void {
   metrics[`${name}Samples`] = (metrics[`${name}Samples`] ?? 0) + 1;
 }
 
-function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, interactive, thumbnail = false, onPatch, onDirectPatch, hoverLegend, terrainSection, label }: MapLayerProps) {
+function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, interactive, thumbnail = false, onPatch, onDirectPatch, hoverLegend, terrainSection, terrainLayout, label }: MapLayerProps) {
   const width = Math.max(1, Math.round(SLIDE.w * unit));
   const height = Math.max(1, Math.round(SLIDE.h * unit));
   const [dragging, setDragging] = useState(false);
@@ -308,9 +309,9 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
   const viewport = useMemo(() => slideViewport(model, style, { width, height, siteX, fill: 0.8 }), [height, model, siteX, style, width]);
   const focusedLabel = useMemo(() => legendLabelOf(model, style.legendFocus), [model, style.legendFocus]);
   const activeLegendLabel = hoverLegend ?? focusedLabel;
-  const avoid = useMemo(() => [panels.title, panels.summary, panels.legend]
+  const avoid = useMemo(() => [panels.title, panels.summary, panels.legend, terrainLayout?.rect]
     .filter((rect): rect is Rect => !!rect)
-    .map((rect) => ({ x0: rect.x * unit, y0: rect.y * unit, x1: (rect.x + rect.w) * unit, y1: (rect.y + rect.h) * unit })), [panels.legend, panels.summary, panels.title, unit]);
+    .map((rect) => ({ x0: rect.x * unit, y0: rect.y * unit, x1: (rect.x + rect.w) * unit, y1: (rect.y + rect.h) * unit })), [panels.legend, panels.summary, panels.title, terrainLayout?.rect, unit]);
   const onFeatureHover = useCallback((key: string | null) => {
     if (!interactive) return;
     setHoverKey((current) => current === key ? current : key);
@@ -470,6 +471,9 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
         highlightLabel={activeLegendLabel}
         highlightPinnedLabel={focusedLabel}
         terrainSection={terrainSection}
+        fill={terrainLayout?.mapFill}
+        siteY={terrainLayout?.mapSiteY}
+        calloutLeftBottom={terrainLayout?.calloutLeftBottom ? terrainLayout.calloutLeftBottom * unit : undefined}
         showAutomaticLabels
         previewInteraction={interactive}
         hoverKey={interactive ? hoverKey : null}
@@ -643,9 +647,10 @@ function ChartPlaceholder({ view, unit }: { view: TileView; unit: number }) {
 
 const TERRAIN_CAVEAT = "등고선·표고점 보간값(추정)입니다. 현장 실측을 대신하지 않습니다.";
 
-function TerrainSectionPreview({ slide, unit, panels }: { slide: Extract<PlannedSlide, { kind: "tile" }>; unit: number; panels: { summary: Rect | null } }) {
+function TerrainSectionPreview({ slide, unit, layout }: { slide: Extract<PlannedSlide, { kind: "tile" }>; unit: number; layout: TerrainSectionLayout | null }) {
   const sections = slide.view.terrainSections;
   if (!sections || !slide.terrainSection) return null;
+  if (!layout) return null;
   const section = sections[slide.terrainSection];
   const valid = section.samples.filter((sample): sample is { d: number; z: number } => sample.z !== null && Number.isFinite(sample.z));
   const total = terrainSectionTotal(section);
@@ -682,10 +687,10 @@ function TerrainSectionPreview({ slide, unit, panels }: { slide: Extract<Planned
   const slope = slopeSamples.length > 0 ? slopeSamples.reduce((sum, value) => sum + value, 0) / slopeSamples.length : null;
   const format = (value: number | null, suffix: string) => value === null ? "미확인" : `${value.toFixed(1)}${suffix}`;
   const crossings = sortTerrainCrossings(section);
-  const previewW = Math.max(4.2, Math.min(6.5, (panels.summary?.x ?? SLIDE.w) - 0.55));
-  const preview = { left: 0.32, top: 3.05, width: previewW, height: 2.22 };
+  const visibleCrossings = crossings.slice(0, TERRAIN_SECTION_TABLE_MAX_ROWS);
+  const preview = layout.rect;
   return (
-    <section className={styles.terrainPreview} style={{ left: preview.left * unit, top: preview.top * unit, width: preview.width * unit, height: preview.height * unit }} aria-label={`${TERRAIN_SECTION_LABELS[slide.terrainSection]} 보고서 미리보기`}>
+    <section className={styles.terrainPreview} style={{ left: preview.x * unit, top: preview.y * unit, width: preview.w * unit, height: preview.h * unit }} aria-label={`${TERRAIN_SECTION_LABELS[slide.terrainSection]} 보고서 미리보기`}>
       <div className={styles.terrainPreviewHeader}>
         <strong style={fontStyle(9.5, unit)}>{TERRAIN_SECTION_LABELS[slide.terrainSection]} · 지형 단면</strong>
         <span style={fontStyle(7.5, unit)}>대지 음영 · 단차 시설 표식</span>
@@ -723,7 +728,10 @@ function TerrainSectionPreview({ slide, unit, panels }: { slide: Extract<Planned
       </div>
       <table className={styles.terrainPreviewTable} aria-label="단면 시설 표">
         <caption className={styles.srOnly}>단면 시설 표</caption>
-        <tbody>{crossings.slice(0, 2).map((crossing, index) => <tr key={`${crossing.d}-${crossing.kind}-${index}`}><td>{TERRAIN_CROSSING_LABELS[crossing.kind]}</td><td>{terrainSectionPosition(section, crossing.d)}</td><td>{crossing.heightM === null ? "높이 미확인" : `${crossing.heightM.toFixed(1)}m`}</td></tr>)}</tbody>
+        <tbody>
+          {visibleCrossings.map((crossing, index) => <tr key={`${crossing.d}-${crossing.kind}-${index}`}><td>{TERRAIN_CROSSING_LABELS[crossing.kind]}</td><td>{terrainSectionPosition(section, crossing.d)}</td><td>{crossing.heightM === null ? "높이 미확인" : `${crossing.heightM.toFixed(1)}m`}</td></tr>)}
+          {crossings.length > visibleCrossings.length && <tr><td colSpan={3}>{`외 ${crossings.length - visibleCrossings.length}건`}</td></tr>}
+        </tbody>
       </table>
       <div className={styles.terrainPreviewSummary} style={fontStyle(7.4, unit)}>{`대지 고저차 ${format(range, "m")} · 대지 평균 경사 ${format(slope, "°")} · 반경 내 단차 시설 수 ${facilityCount}개`}</div>
       <div className={styles.terrainPreviewCaveat} style={fontStyle(6.5, unit)}>{TERRAIN_CAVEAT}</div>
@@ -865,6 +873,8 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, onCellActivate 
 function TileSurface({ slide, unit, basemap, panels, interactive, thumbnail = false, onPatch, onDirectPatch, panelInteraction }: { slide: Extract<PlannedSlide, { kind: "tile" }>; unit: number; basemap: BasemapChoice; panels: { title: Rect; summary: Rect | null; legend: Rect | null }; interactive: boolean; thumbnail?: boolean; onPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void; panelInteraction?: (key: PanelKey) => PanelInteraction }) {
   const model = slide.map;
   const chart = !model && !slide.mass && !slide.rose && slide.body.face !== "single";
+  const terrainShown = slide.view.code === "D17" && !!slide.view.terrainSections && !!slide.terrainSection;
+  const terrainLayout = terrainShown ? terrainSectionLayout(panels) : null;
   const [hoverLegend, setHoverLegend] = useState<string | null>(null);
   const onLegendPin = useCallback((key: string) => {
     if (!model || !onDirectPatch) return;
@@ -876,11 +886,11 @@ function TileSurface({ slide, unit, basemap, panels, interactive, thumbnail = fa
   }, [model, onDirectPatch, slide.style.legendFocus]);
   return (
     <>
-      {model ? <MapLayer model={model} style={slide.style} unit={unit} basemap={basemap} panels={panels} siteX={slideSiteX(slide.style, panels.summary !== null)} pinnedKeys={slide.pinnedKeys} interactive={interactive} thumbnail={thumbnail} onPatch={onPatch} onDirectPatch={onDirectPatch} hoverLegend={hoverLegend} terrainSection={slide.view.code === "D17" ? slide.terrainSection ?? "A" : undefined} label={slide.view.title + " 지도"} /> : slide.mass ? <VisualPlaceholder title={slide.view.title} message="3D 매스 미리보기는 내보내기와 같은 페이지 위치로 표시됩니다." unit={unit} /> : slide.rose ? <VisualPlaceholder title={slide.view.title} message="바람장미 도판 미리보기" unit={unit} /> : chart ? <ChartPlaceholder view={slide.view} unit={unit} /> : <VisualPlaceholder title={slide.view.title} message={slide.body.kind === "state" ? slide.body.message : "표시할 지도 결과가 없습니다."} unit={unit} />}
-      {slide.view.code === "D17" && <TerrainSectionPreview slide={slide} unit={unit} panels={panels} />}
+      {model ? <MapLayer model={model} style={slide.style} unit={unit} basemap={basemap} panels={panels} siteX={slideSiteX(slide.style, panels.summary !== null)} pinnedKeys={slide.pinnedKeys} interactive={interactive} thumbnail={thumbnail} onPatch={onPatch} onDirectPatch={onDirectPatch} hoverLegend={hoverLegend} terrainSection={slide.view.code === "D17" ? slide.terrainSection ?? "A" : undefined} terrainLayout={terrainLayout} label={slide.view.title + " 지도"} /> : slide.mass ? <VisualPlaceholder title={slide.view.title} message="3D 매스 미리보기는 내보내기와 같은 페이지 위치로 표시됩니다." unit={unit} /> : slide.rose ? <VisualPlaceholder title={slide.view.title} message="바람장미 도판 미리보기" unit={unit} /> : chart ? <ChartPlaceholder view={slide.view} unit={unit} /> : <VisualPlaceholder title={slide.view.title} message={slide.body.kind === "state" ? slide.body.message : "표시할 지도 결과가 없습니다."} unit={unit} />}
+      {terrainShown && <TerrainSectionPreview slide={slide} unit={unit} layout={terrainLayout} />}
       {slide.body.kind === "state" && <div className={styles.slidePanel} style={{ left: unit * 4, top: unit * 2.7, width: unit * 5.1, height: unit * 1.15 }}><div className={styles.slideText + " " + styles.slideTextStrong} style={fontStyle(16, unit)}>{slide.body.message}</div></div>}
       <TitlePanel slide={slide} rect={panels.title} unit={unit} interaction={panelInteraction?.("title")} />
-      {panels.summary && hasSummaryPanel(slide) && <SummaryPanel slide={slide} rect={panels.summary} unit={unit} interaction={panelInteraction?.("summary")} />}
+      {panels.summary && hasSummaryPanel(slide) && <SummaryPanel slide={slide} rect={terrainLayout?.summary ?? panels.summary} unit={unit} interaction={panelInteraction?.("summary")} />}
       {panels.legend && <LegendPanel slide={slide} rect={panels.legend} unit={unit} hoverLabel={hoverLegend} onLegendHover={setHoverLegend} onLegendPin={thumbnail ? undefined : onLegendPin} interaction={panelInteraction?.("legend")} />}
       <SlideFooter slide={slide} unit={unit} />
     </>

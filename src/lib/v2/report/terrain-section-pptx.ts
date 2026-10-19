@@ -2,7 +2,7 @@ import type { TerrainSections } from "../tile-result";
 import { FONT, INK, LINE, MUTED, fitPt, plate, seg, type Slide } from "./pptx-kit";
 import type { Rect } from "../ui/overlay-layout";
 import { layerStyle } from "../ui/map-layers";
-import { terrainCrossingLayer, terrainElevationLabel, terrainSectionAxisLabel, terrainSectionElevationAt, terrainSectionMarkerGeometry, terrainSectionPosition, terrainSectionTotal, sortTerrainCrossings, TERRAIN_CROSSING_LABELS, TERRAIN_SECTION_LABELS } from "../ui/terrain-section";
+import { terrainCrossingLayer, terrainElevationLabel, terrainSectionAxisLabel, terrainSectionElevationAt, terrainSectionMarkerGeometry, terrainSectionPosition, terrainSectionTotal, sortTerrainCrossings, TERRAIN_CROSSING_LABELS, TERRAIN_SECTION_LABELS, TERRAIN_SECTION_TABLE_MAX_ROWS } from "../ui/terrain-section";
 
 const SECTION_LABELS = TERRAIN_SECTION_LABELS;
 const CROSSING_LABELS = TERRAIN_CROSSING_LABELS;
@@ -87,7 +87,7 @@ export function drawTerrainSectionPptx(slide: Slide, sections: TerrainSections, 
   const tableX = rect.x + rect.w * 0.65;
   const tableW = rect.x + rect.w - tableX - 0.14;
   slide.addText("종류 · 위치 · 높이", { x: tableX, y: rect.y + 0.43, w: tableW, h: 0.18, fontFace: FONT, fontSize: 7.5, bold: true, color: MUTED, margin: 0, objectName: `${group}|table-title` });
-  const rows = sortTerrainCrossings(section).slice(0, 5);
+  const rows = sortTerrainCrossings(section).slice(0, TERRAIN_SECTION_TABLE_MAX_ROWS);
   rows.forEach((crossing, index) => {
     const y = rect.y + 0.66 + index * 0.24;
     const text = `${CROSSING_LABELS[crossing.kind]} · ${terrainSectionPosition(section, crossing.d)} · ${crossing.heightM === null ? "높이 미확인" : `${crossing.heightM.toFixed(1)}m`}`;

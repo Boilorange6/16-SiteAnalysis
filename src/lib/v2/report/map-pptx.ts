@@ -1,7 +1,7 @@
 import PptxGenJS from "pptxgenjs";
 import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, legendItemsForModel, legendLabelOf, type MapModel } from "../ui/map-layers";
 import { isSiteParcelLayer } from "../ui/site-parcel";
-import { SLIDE, slideCalloutLegendLayout, slideLayout, slideLegend, slidePanelRects, slideReserved, slideSiteX } from "../ui/overlay-layout";
+import { SLIDE, slideCalloutLegendLayout, slideLayout, slideLegend, slidePanelRects, slideReserved, slideSiteX, terrainSectionLayout } from "../ui/overlay-layout";
 import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
 import { buildMapScene, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, type MapScene, type MapSceneBox } from "../ui/map-scene";
 import { badgeTextColor } from "../ui/map-labels";
@@ -395,7 +395,9 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
   const hasSummary = style.summary !== false && !(plan.callout && plan.callout.page > 0);
   const baseLegend = slideLegend(model, !plan.muted).rect;
   const panels = slidePanelRects(style, hasSummary, baseLegend);
-  const legend = panels.legend;
+  const terrainShown = plan.view.code === "D17" && !!plan.view.terrainSections && !!plan.terrainSection;
+  const terrainLayout = terrainShown ? terrainSectionLayout({ ...panels, legend: null }) : null;
+  const legend = terrainShown ? null : panels.legend;
   const calloutOverview = !!plan.callout && plan.callout.page === 0;
   const calloutDetail = !!plan.callout && plan.callout.page > 0 ? slideCalloutFrame(4) : null;
   const layout = slideLayout();
@@ -414,12 +416,12 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     : null;
   const avoid = calloutDetail
     ? []
-    : slideReserved(PX_PER_INCH, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend, calloutLegend });
+    : slideReserved(PX_PER_INCH, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend, calloutLegend, terrainSection: terrainLayout?.rect });
   // 지도 위 판(제목·정보·범례)을 피한다: 방위표·축척·오른쪽 말풍선은 정보 판 왼쪽, 말풍선은 제목 판 아래·범례 판 위.
   const gap = SLIDE.edge * PX_PER_INCH * 0.5;
   const lowerOverlayTop = Math.min(legend?.y ?? SLIDE.h, calloutLegend?.y ?? SLIDE.h);
   const siteX = calloutDetail?.siteX ?? slideSiteX(style, hasSummary);
-  const fill = calloutDetail?.fill ?? (calloutOverview ? SLIDE_OVERVIEW_FILL : undefined);
+  const fill = calloutDetail?.fill ?? terrainLayout?.mapFill ?? (calloutOverview ? SLIDE_OVERVIEW_FILL : undefined);
   const rightInset = calloutDetail ? 0 : hasSummary ? Math.max(0, VIEW_W - summaryX * PX_PER_INCH + gap) : SLIDE.edge * PX_PER_INCH;
   // 방위표는 지도 scene의 고정 y(22u)만 쓰면 크게 키운 제목 판과 겹친다.
   // 제목 판 아래에 13u 반지름과 안전 간격을 확보한 중심을 전달한다.
@@ -428,6 +430,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
   return buildMapScene({
     rightInset,
     ...(calloutDetail ? {} : { calloutTop: (panels.title.y + panels.title.h) * PX_PER_INCH + gap }),
+    ...(terrainLayout?.calloutLeftBottom !== undefined ? { calloutLeftBottom: terrainLayout.calloutLeftBottom * PX_PER_INCH } : {}),
     ...(lowerOverlayTop < SLIDE.h ? { calloutLeftBottom: lowerOverlayTop * PX_PER_INCH - gap } : {}),
     model,
     width: VIEW_W,
@@ -446,7 +449,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     north: northY,
     avoid,
     bare: false,
-    viewport: slideViewport(model, style, { width: VIEW_W, height: VIEW_H, siteX, fill: fill ?? 0.8 }),
+    viewport: slideViewport(model, style, { width: VIEW_W, height: VIEW_H, siteX, siteY: terrainLayout?.mapSiteY ?? 0.5, fill: fill ?? 0.8 }),
   });
 }
 
@@ -820,5 +823,7 @@ export function editableMapAvoid(plan: PlannedSlide & { kind: "tile" }, model: M
   const style = plan.style ?? {};
   const hasSummary = style.summary !== false && !(plan.callout && plan.callout.page > 0);
   const panels = slidePanelRects(style, hasSummary, slideLegend(model, !plan.muted).rect);
-  return slideReserved(PX_PER_INCH, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend: panels.legend });
+  const terrainShown = plan.view.code === "D17" && !!plan.view.terrainSections && !!plan.terrainSection;
+  const terrainLayout = terrainShown ? terrainSectionLayout({ ...panels, legend: null }) : null;
+  return slideReserved(PX_PER_INCH, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend: terrainShown ? null : panels.legend, terrainSection: terrainLayout?.rect });
 }

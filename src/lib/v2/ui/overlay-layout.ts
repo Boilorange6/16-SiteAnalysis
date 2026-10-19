@@ -60,6 +60,22 @@ export type SlidePanelRects = {
   legend: Rect | null;
 };
 
+export const TERRAIN_SECTION_HEIGHT = 2.45;
+export const TERRAIN_SECTION_MIN_WIDTH = 3.8;
+const TERRAIN_SECTION_INSET = 0.16;
+const TERRAIN_SECTION_GAP = 0.14;
+
+export type TerrainSectionLayout = {
+  rect: Rect;
+  /** 단면이 요약 열에 들어갈 때 위쪽 요약 판이 사용하는 rect. */
+  summary: Rect | null;
+  mode: "summary" | "bottom-band";
+  /** 하단 밴드 fallback에서 지도 원·콜아웃을 위로 줄이는 값. */
+  mapFill?: number;
+  mapSiteY?: number;
+  calloutLeftBottom?: number;
+};
+
 /** 슬라이드(16:9, inch) 오버레이 자리. */
 export const SLIDE = { w: 13.333, h: 7.5, edge: 0.3, stripH: 0.36, infoRatio: 0.32 } as const;
 
@@ -176,6 +192,46 @@ export function slidePanelRects(
   };
 }
 
+/** D17 단면 도판의 preview/PPT 공용 자리. 요약 열이 충분하면 그 안에, 아니면 하단 밴드에 둔다. */
+export function terrainSectionLayout(
+  panels: Pick<SlidePanelRects, "summary" | "legend">,
+  layout = slideLayout(),
+): TerrainSectionLayout | null {
+  const safeBottom = Math.min(
+    layout.strip.y - SLIDE.edge * 0.6,
+    panels.legend ? panels.legend.y - TERRAIN_SECTION_GAP : Number.POSITIVE_INFINITY,
+  );
+  const sectionH = TERRAIN_SECTION_HEIGHT;
+  const summary = panels.summary;
+  if (summary) {
+    const inset = Math.min(TERRAIN_SECTION_INSET, Math.max(0.1, summary.w * 0.04));
+    const sectionW = Math.max(0, summary.w - inset * 2);
+    const y = safeBottom - sectionH;
+    if (sectionW >= TERRAIN_SECTION_MIN_WIDTH && y >= summary.y + 1.5) {
+      const rect = { x: summary.x + inset, y, w: sectionW, h: sectionH };
+      return {
+        rect,
+        summary: { ...summary, h: Math.max(0, rect.y - summary.y - TERRAIN_SECTION_GAP) },
+        mode: "summary",
+      };
+    }
+  }
+
+  const bandW = Math.max(0.2, Math.min(6.7, (summary?.x ?? SLIDE.w) - SLIDE.edge - TERRAIN_SECTION_GAP));
+  const rect = { x: SLIDE.edge, y: safeBottom - sectionH, w: bandW, h: sectionH };
+  const mapSiteY = 0.32;
+  const mapCenterY = SLIDE.h * mapSiteY;
+  const radius = Math.max(0, rect.y - TERRAIN_SECTION_GAP - mapCenterY);
+  return {
+    rect,
+    summary,
+    mode: "bottom-band",
+    mapFill: Math.max(0.28, Math.min(0.52, (2 * radius) / SLIDE.h)),
+    mapSiteY,
+    calloutLeftBottom: rect.y - TERRAIN_SECTION_GAP,
+  };
+}
+
 /** 왼쪽 아래 범례 판: 항목 n개 + 문구 m줄. 출처 띠 바로 위에 붙는다 */
 export function slideLegendRect(items: number, notes: number, labelChars: number): Rect | null {
   if (items + notes === 0) return null;
@@ -247,6 +303,7 @@ export function slideReserved(
     legend?: Rect | null;
     legendBase?: Rect | null;
     calloutLegend?: Rect | null;
+    terrainSection?: Rect | null;
   } = {},
 ): Box[] {
   const l = slideLayout();
@@ -258,7 +315,14 @@ export function slideReserved(
   const title = opts.titleRect ?? derived?.title ?? l.title;
   const info = opts.infoRect ?? (derived ? derived.summary : l.info);
   const legend = opts.legend ?? derived?.legend ?? null;
-  return [b(title), ...(opts.info === false ? [] : info ? [b(info)] : []), ...(legend ? [b(legend)] : []), ...(opts.calloutLegend ? [b(opts.calloutLegend)] : []), b(l.strip)];
+  return [
+    b(title),
+    ...(opts.info === false ? [] : info ? [b(info)] : []),
+    ...(legend ? [b(legend)] : []),
+    ...(opts.calloutLegend ? [b(opts.calloutLegend)] : []),
+    ...(opts.terrainSection ? [b(opts.terrainSection)] : []),
+    b(l.strip),
+  ];
 }
 
 /** 가로 방향 지도 중심 위치: 슬라이드에서는 오른쪽 정보 판을 뺀 영역의 가운데 */

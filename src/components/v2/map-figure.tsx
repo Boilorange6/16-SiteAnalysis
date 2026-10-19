@@ -71,6 +71,8 @@ export type MapFigureProps = {
   scaleX?: number;
   /** 대지 중심의 세로 위치(0~1, 기본 0.5). 아래에서 올라오는 시트가 있으면 위로 옮긴다 */
   siteY?: number;
+  /** 하단 밴드가 예약된 경우 왼쪽 콜아웃 열의 하단(px) */
+  calloutLeftBottom?: number;
   /** 상세 창에서 행/지도 선택을 같은 fid로 강조한다. */
   selectedFids?: readonly string[];
   /** D17 단면 지도는 선택한 단면을 굵고 실선으로 강조한다. 기본은 A다. */
@@ -319,7 +321,7 @@ function backgroundTransform(from: Viewport, to: Viewport, width: number, height
   return `matrix(${scale},0,0,${scale},${e},${f})`;
 }
 
-function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, backgroundOnly = false, fixed, compact = false, label, legend, legendY, north: northOpt, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = EMPTY_BOXES, siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, selectedFids = EMPTY_KEYS, terrainSection = "A", highlightLabel = null, legendFocus = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = EMPTY_KEYS, showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeaturePin, onLegendHover, onLegendPin, path = EMPTY_PATH, onMapClick, view, viewport, dragging = false, previewInteraction = false, hiddenKeys = EMPTY_KEYS }: MapFigureProps) {
+function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, backgroundOnly = false, fixed, compact = false, label, legend, legendY, north: northOpt, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = EMPTY_BOXES, siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, calloutLeftBottom, selectedFids = EMPTY_KEYS, terrainSection = "A", highlightLabel = null, legendFocus = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = EMPTY_KEYS, showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeaturePin, onLegendHover, onLegendPin, path = EMPTY_PATH, onMapClick, view, viewport, dragging = false, previewInteraction = false, hiddenKeys = EMPTY_KEYS }: MapFigureProps) {
   if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
     const target = window as Window & { __V2_PREVIEW_METRICS__?: Record<string, number> };
     const metrics = target.__V2_PREVIEW_METRICS__ ?? (target.__V2_PREVIEW_METRICS__ = {});
@@ -504,6 +506,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     siteY: mapSiteY,
     bottomInset,
     rightInset,
+    calloutLeftBottom,
     scaleLeft,
     scaleX,
     scale,
@@ -528,7 +531,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     view,
     viewport,
     legendFocus,
-  }), [activeLayer, avoid, bare, bottomInset, compact, emphasisKey, fill, fixed, H, hiddenKeys, highlightLabel, legendFocus, mapCenterY, mapFill, mapSiteX, mapSiteY, muted, model, northOpt, panelH, panelW, panelX, panelY, path, rightInset, scale, scaleLeft, scaleX, sceneDragging, sceneHoverKey, showAutomaticLabels, showLegend, showRadius, showSiteMarker, siteX, selectedFids, pinnedKeys, W, view, viewport]);
+  }), [activeLayer, avoid, bare, bottomInset, calloutLeftBottom, compact, emphasisKey, fill, fixed, H, hiddenKeys, highlightLabel, legendFocus, mapCenterY, mapFill, mapSiteX, mapSiteY, muted, model, northOpt, panelH, panelW, panelX, panelY, path, rightInset, scale, scaleLeft, scaleX, sceneDragging, sceneHoverKey, showAutomaticLabels, showLegend, showRadius, showSiteMarker, siteX, selectedFids, pinnedKeys, W, view, viewport]);
   const vp = scene.viewport;
   const proj = makeProjector(vp);
   const mpp = scene.mpp;

@@ -7,7 +7,7 @@ import PptxGenJS from "pptxgenjs";
 import { groupTaggedShapes } from "../../pptx-shape-group";
 import { fmtInt, pageRange } from "../ui/callout-layout";
 import { legendItemsOf, STRIP_COLORS } from "../ui/map-layers";
-import { SLIDE, slideLegend, slidePanelRects, slidePanelScale, type Rect } from "../ui/overlay-layout";
+import { SLIDE, slideLegend, slidePanelRects, slidePanelScale, terrainSectionLayout, type Rect } from "../ui/overlay-layout";
 import type { Badge, TileView } from "../ui/tile-view";
 import type { RoseModel } from "../ui/wind-rose";
 import { sheetCells, type SheetGrid } from "../ui/sheet";
@@ -344,7 +344,9 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   const hasSummary = style.summary !== false && !(co && co.page > 0);
   const baseLegend = p.map ? slideLegend(p.map, !p.muted).rect : null;
   const panels = slidePanelRects(style, hasSummary, baseLegend);
-  const summaryRect = panels.summary;
+  const terrainShown = v.code === "D17" && !!v.terrainSections && !!p.terrainSection;
+  const terrainLayout = terrainShown ? terrainSectionLayout({ ...panels, legend: null }) : null;
+  const summaryRect = terrainLayout?.summary ?? panels.summary;
   const summaryX = summaryRect?.x ?? SLIDE.w;
   const contentBox = summaryRect ? innerInfoBox(summaryRect, summaryScale) : { x: E, w: Math.max(0.2, SLIDE.w - 2 * E), h: 0.2 };
   const calloutReport = tileReportModuleFor(v.code)?.report;
@@ -420,15 +422,10 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
       s.addShape("rect", { x: x0 + labW, y: y + rh * 0.2, w: Math.max(0.04, (trackW * c.value) / max), h: rh * 0.6, fill: { color: hex(STRIP_COLORS[i % STRIP_COLORS.length]) }, line: { color: hex(STRIP_COLORS[i % STRIP_COLORS.length]), width: 0 } });
       s.addText(`${c.value}${c.unit === "%" ? "%" : ` ${c.unit}`}`, { x: x0 + labW + trackW + 0.1, y, w: 0.8, h: rh, align: "right", valign: "middle", fontFace: FONT, fontSize: 14, bold: true, color: INK, margin: 0 });
     });
-  } else if (v.code === "D17" && v.terrainSections && p.terrainSection) {
+  } else if (terrainShown && v.terrainSections && p.terrainSection && terrainLayout) {
     const stepRow = v.rows.find((row) => row.label === "반경 안 단차 시설 수");
     const facilityCount = stepRow ? Number.parseInt(stepRow.value.replace(/[^0-9-]/g, ""), 10) : null;
-    drawTerrainSectionPptx(s, v.terrainSections, p.terrainSection, {
-      x: E + 0.08,
-      y: Math.max(L.title.y + L.title.h + 0.18, L.strip.y - 2.45),
-      w: Math.max(3.8, summaryX - E - 0.16),
-      h: 2.15,
-    }, Number.isFinite(facilityCount) ? facilityCount : null);
+    drawTerrainSectionPptx(s, v.terrainSections, p.terrainSection, terrainLayout.rect, Number.isFinite(facilityCount) ? facilityCount : null);
   } else if (co) calloutReport?.render({ slide: s, planned: p, part: "overview" });
   else legendPlate(s, p, hasSummary);
 

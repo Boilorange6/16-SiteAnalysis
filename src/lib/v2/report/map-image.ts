@@ -16,7 +16,7 @@ import { S01_MASS_LABEL } from "../tile/s01/cut";
 import type { RoseSeason } from "../tile-result";
 import type { Scene } from "../scene";
 import { renderMass3dPng } from "../ui/mass-3d-runtime";
-import { SLIDE, slideLayout, slidePanelRects, slideReserved, slideSiteX, slideLegend } from "../ui/overlay-layout";
+import { SLIDE, slideLayout, slidePanelRects, slideReserved, slideSiteX, slideLegend, terrainSectionLayout } from "../ui/overlay-layout";
 import { BASEMAP_STACK, slideViewport, tilesFor, tileUrl, type BasemapChoice, type Viewport } from "../ui/map-projection";
 import { inflateRaster, paintRaster } from "../ui/raster-image";
 import { RASTER_STYLES } from "../ui/map-layers";
@@ -33,7 +33,7 @@ const VIEW_H = 540;
 const OUT_W = 1920;
 const OUT_H = 1080;
 const PX_PER_INCH = VIEW_W / SLIDE.w;
-type Extra = Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "scale" | "legend" | "bare" | "pinnedKeys" | "north" | "credit" | "label" | "rightInset" | "backgroundOnly"> & {
+type Extra = Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "siteY" | "calloutLeftBottom" | "scale" | "legend" | "bare" | "pinnedKeys" | "north" | "credit" | "label" | "rightInset" | "backgroundOnly"> & {
   size?: { width: number; height: number };
   bottomInset?: number;
   style?: PageStyle;
@@ -282,6 +282,8 @@ function extraFor(p: PlannedSlide, model: MapModel): Extra {
   const hasSummary = style.summary !== false && !(p.callout && p.callout.page > 0);
   const baseLegend = slideLegend(model, !p.muted).rect;
   const panels = slidePanelRects(style, hasSummary, baseLegend);
+  const terrainShown = p.view.code === "D17" && !!p.view.terrainSections && !!p.terrainSection;
+  const terrainLayout = terrainShown ? terrainSectionLayout({ ...panels, legend: null }) : null;
   const pinned = { pinnedKeys: p.pinnedKeys ?? [] };
   const highlightLabel = legendLabelOf(model, style.legendFocus);
   const rightInset = hasSummary ? Math.max(0, VIEW_W - (panels.summary?.x ?? SLIDE.w) * PX_PER_INCH + SLIDE.edge * PX_PER_INCH * 0.5) : SLIDE.edge * PX_PER_INCH;
@@ -291,9 +293,18 @@ function extraFor(p: PlannedSlide, model: MapModel): Extra {
     return { siteX: f.siteX, fill: f.fill, avoid: [], scale: false, rightInset: 0, style, highlightLabel, legendFocus: highlightLabel, ...pinned };
   }
   const siteX = slideSiteX(style, hasSummary);
-  const avoid = slideReserved(PX_PER_INCH, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend: panels.legend });
-  if (p.callout) return { siteX, fill: SLIDE_OVERVIEW_FILL, rightInset, avoid, style, highlightLabel, legendFocus: highlightLabel, ...pinned };
-  return { muted: p.muted, siteX, rightInset, avoid, style, highlightLabel, legendFocus: highlightLabel, ...pinned };
+  const avoid = slideReserved(PX_PER_INCH, {
+    info: hasSummary,
+    titleRect: panels.title,
+    infoRect: panels.summary,
+    legend: terrainShown ? null : panels.legend,
+    terrainSection: terrainLayout?.rect,
+  });
+  const framePatch = terrainLayout?.mode === "bottom-band"
+    ? { fill: terrainLayout.mapFill, siteY: terrainLayout.mapSiteY, calloutLeftBottom: (terrainLayout.calloutLeftBottom ?? 0) * PX_PER_INCH }
+    : {};
+  if (p.callout) return { siteX, fill: SLIDE_OVERVIEW_FILL, rightInset, avoid, style, highlightLabel, legendFocus: highlightLabel, ...framePatch, ...pinned };
+  return { muted: p.muted, siteX, rightInset, avoid, style, highlightLabel, legendFocus: highlightLabel, ...framePatch, ...pinned };
 }
 
 /** 계획의 모든 지도 자리에 대한 PNG. 실패한 장은 빠진다(렌더러가 자리표시를 넣는다). */
