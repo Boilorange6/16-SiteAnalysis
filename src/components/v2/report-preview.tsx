@@ -963,11 +963,10 @@ function SlidePreview({ slide, basemap, editable, thumbnail = false, onSheetCell
   const displaySlide = Object.keys(draftStyle).length > 0 ? { ...slide, style: { ...slide.style, ...draftStyle } } : slide;
   const displayModel = mapForSlide(displaySlide);
   const hasSummary = hasSummaryPanel(displaySlide);
-  // PPT도 D17 단면이 있으면 범례 대신 단면을 그린다(render-pptx).
   const terrainSectionShown = displaySlide.kind === "tile" && displaySlide.view.code === "D17" && !!displaySlide.view.terrainSections && !!displaySlide.terrainSection;
   const baseLegend = displayModel && displaySlide.kind === "tile" ? slideLegend(displayModel, !displaySlide.muted).rect : null;
   const slideRects = slidePanelRects(displaySlide.style, hasSummary, baseLegend);
-  const panels = terrainSectionShown ? { ...slideRects, legend: null } : slideRects;
+  const panels = slideRects;
   const panelRects: Partial<Record<PanelKey, Rect>> = { title: panels.title, summary: panels.summary ?? undefined, legend: panels.legend ?? undefined };
   const existingPanels = ((displaySlide.style as PageStyle & { panels?: Partial<Record<PanelKey, PanelRatio>> }).panels ?? {});
 

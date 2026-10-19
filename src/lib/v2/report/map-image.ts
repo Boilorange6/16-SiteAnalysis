@@ -283,7 +283,7 @@ function extraFor(p: PlannedSlide, model: MapModel): Extra {
   const baseLegend = slideLegend(model, !p.muted).rect;
   const panels = slidePanelRects(style, hasSummary, baseLegend);
   const terrainShown = p.view.code === "D17" && !!p.view.terrainSections && !!p.terrainSection;
-  const terrainLayout = terrainShown ? terrainSectionLayout({ ...panels, legend: null }) : null;
+  const terrainLayout = terrainShown ? terrainSectionLayout(panels) : null;
   const pinned = { pinnedKeys: p.pinnedKeys ?? [] };
   const highlightLabel = legendLabelOf(model, style.legendFocus);
   const rightInset = hasSummary ? Math.max(0, VIEW_W - (panels.summary?.x ?? SLIDE.w) * PX_PER_INCH + SLIDE.edge * PX_PER_INCH * 0.5) : SLIDE.edge * PX_PER_INCH;
@@ -297,7 +297,7 @@ function extraFor(p: PlannedSlide, model: MapModel): Extra {
     info: hasSummary,
     titleRect: panels.title,
     infoRect: panels.summary,
-    legend: terrainShown ? null : panels.legend,
+    legend: panels.legend,
     terrainSection: terrainLayout?.rect,
   });
   const framePatch = terrainLayout?.mode === "bottom-band"

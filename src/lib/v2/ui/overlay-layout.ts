@@ -197,16 +197,13 @@ export function terrainSectionLayout(
   panels: Pick<SlidePanelRects, "summary" | "legend">,
   layout = slideLayout(),
 ): TerrainSectionLayout | null {
-  const safeBottom = Math.min(
-    layout.strip.y - SLIDE.edge * 0.6,
-    panels.legend ? panels.legend.y - TERRAIN_SECTION_GAP : Number.POSITIVE_INFINITY,
-  );
+  const pageBottom = layout.strip.y - SLIDE.edge * 0.6;
   const sectionH = TERRAIN_SECTION_HEIGHT;
   const summary = panels.summary;
   if (summary) {
     const inset = Math.min(TERRAIN_SECTION_INSET, Math.max(0.1, summary.w * 0.04));
     const sectionW = Math.max(0, summary.w - inset * 2);
-    const y = safeBottom - sectionH;
+    const y = pageBottom - sectionH;
     if (sectionW >= TERRAIN_SECTION_MIN_WIDTH && y >= summary.y + 1.5) {
       const rect = { x: summary.x + inset, y, w: sectionW, h: sectionH };
       return {
@@ -217,6 +214,7 @@ export function terrainSectionLayout(
     }
   }
 
+  const safeBottom = Math.min(pageBottom, panels.legend ? panels.legend.y - TERRAIN_SECTION_GAP : pageBottom);
   const bandW = Math.max(0.2, Math.min(6.7, (summary?.x ?? SLIDE.w) - SLIDE.edge - TERRAIN_SECTION_GAP));
   const rect = { x: SLIDE.edge, y: safeBottom - sectionH, w: bandW, h: sectionH };
   const mapSiteY = 0.32;

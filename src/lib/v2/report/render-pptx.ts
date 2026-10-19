@@ -346,7 +346,7 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   const baseLegend = p.map ? slideLegend(p.map, !p.muted).rect : null;
   const panels = slidePanelRects(style, hasSummary, baseLegend);
   const terrainShown = v.code === "D17" && !!v.terrainSections && !!p.terrainSection;
-  const terrainLayout = terrainShown ? terrainSectionLayout({ ...panels, legend: null }) : null;
+  const terrainLayout = terrainShown ? terrainSectionLayout(panels) : null;
   const summaryRect = terrainLayout?.summary ?? panels.summary;
   const summaryX = summaryRect?.x ?? SLIDE.w;
   const contentBox = summaryRect ? innerInfoBox(summaryRect, summaryScale) : { x: E, w: Math.max(0.2, SLIDE.w - 2 * E), h: 0.2 };
@@ -426,6 +426,7 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
     const stepRow = v.rows.find((row) => row.label === "반경 안 단차 시설 수");
     const facilityCount = stepRow ? Number.parseInt(stepRow.value.replace(/[^0-9-]/g, ""), 10) : null;
     drawTerrainSectionPptx(s, v.terrainSections, p.terrainSection, terrainLayout.rect, Number.isFinite(facilityCount) ? facilityCount : null);
+    legendPlate(s, p, hasSummary);
   } else if (co) calloutReport?.render({ slide: s, planned: p, part: "overview" });
   else legendPlate(s, p, hasSummary);
 

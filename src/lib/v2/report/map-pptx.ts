@@ -397,8 +397,8 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
   const baseLegend = slideLegend(model, !plan.muted).rect;
   const panels = slidePanelRects(style, hasSummary, baseLegend);
   const terrainShown = plan.view.code === "D17" && !!plan.view.terrainSections && !!plan.terrainSection;
-  const terrainLayout = terrainShown ? terrainSectionLayout({ ...panels, legend: null }) : null;
-  const legend = terrainShown ? null : panels.legend;
+  const terrainLayout = terrainShown ? terrainSectionLayout(panels) : null;
+  const legend = panels.legend;
   const calloutOverview = !!plan.callout && plan.callout.page === 0;
   const calloutDetail = !!plan.callout && plan.callout.page > 0 ? slideCalloutFrame(4) : null;
   const layout = slideLayout();
@@ -829,6 +829,6 @@ export function editableMapAvoid(plan: PlannedSlide & { kind: "tile" }, model: M
   const hasSummary = style.summary !== false && !(plan.callout && plan.callout.page > 0);
   const panels = slidePanelRects(style, hasSummary, slideLegend(model, !plan.muted).rect);
   const terrainShown = plan.view.code === "D17" && !!plan.view.terrainSections && !!plan.terrainSection;
-  const terrainLayout = terrainShown ? terrainSectionLayout({ ...panels, legend: null }) : null;
-  return slideReserved(PX_PER_INCH, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend: terrainShown ? null : panels.legend, terrainSection: terrainLayout?.rect });
+  const terrainLayout = terrainShown ? terrainSectionLayout(panels) : null;
+  return slideReserved(PX_PER_INCH, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend: panels.legend, terrainSection: terrainLayout?.rect });
 }

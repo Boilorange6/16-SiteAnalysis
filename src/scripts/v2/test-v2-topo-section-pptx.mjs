@@ -60,7 +60,7 @@ assert.equal(d17Slide.terrainSection, "B");
 // D17 단면은 preview와 PPT가 같은 summary 기반 rect를 쓰고, 지도·범례·콜아웃 열·반경 원을 침범하지 않는다.
 assert.ok(d17Slide.map, "D17 section layout needs a map");
 const previewPanels = slidePanelRects(d17Slide.style, true, slideLegend(d17Slide.map, true).rect);
-const d17Panels = { ...previewPanels, legend: null };
+const d17Panels = previewPanels;
 const previewLayout = terrainSectionLayout(d17Panels);
 const pptxLayout = terrainSectionLayout(d17Panels);
 assert.ok(previewLayout && pptxLayout);
@@ -74,14 +74,25 @@ const asBox = (rect) => ({ x0: rect.x * pxPerInch, y0: rect.y * pxPerInch, x1: (
 const intersects = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
 const sectionBox = asBox(previewLayout.rect);
 const legendRect = previewPanels.legend;
-if (legendRect) assert.equal(intersects(sectionBox, asBox(legendRect)), false, "section does not intersect the legend panel");
+assert.ok(legendRect, "D17 section layout keeps the legend panel");
+assert.ok(previewLayout.summary, "D17 section layout keeps the summary panel");
+const previewBoxes = [
+  ["legend", asBox(legendRect)],
+  ["section", sectionBox],
+  ["summary", asBox(previewLayout.summary)],
+];
+for (let i = 0; i < previewBoxes.length; i += 1) {
+  for (let j = i + 1; j < previewBoxes.length; j += 1) {
+    assert.equal(intersects(previewBoxes[i][1], previewBoxes[j][1]), false, `${previewBoxes[i][0]} and ${previewBoxes[j][0]} rects do not intersect`);
+  }
+}
 const summaryX = previewPanels.summary.x * pxPerInch;
 const rightInset = Math.max(0, 960 - summaryX + SLIDE.edge * pxPerInch * 0.5);
 const columns = calloutFrame({ W: 960, H: 540, m: PX, edge: 4, top: 4, bottom: 540, rightInset, perSide: 100, rows: 3, variant: "compact", maxFill: 0.8 });
 for (const column of [columns.left, columns.right]) {
   assert.equal(intersects(sectionBox, { x0: column.x0, y0: column.top, x1: column.x1, y1: column.bottom }), false, "section does not intersect a callout column");
 }
-const mapAvoid = slideReserved(pxPerInch, { info: true, titleRect: previewPanels.title, infoRect: previewPanels.summary, legend: null, terrainSection: previewLayout.rect });
+const mapAvoid = slideReserved(pxPerInch, { info: true, titleRect: previewPanels.title, infoRect: previewPanels.summary, legend: previewPanels.legend, terrainSection: previewLayout.rect });
 const mapScene = buildMapScene({
   model: d17Slide.map,
   width: 960,
@@ -120,6 +131,10 @@ const terrainPlate = shapeBlocks.find((block) => block.includes('name="GRP|terra
 assert.ok(terrainPlate, "PPTX terrain section plate exists");
 const pptxRect = xmlRect(terrainPlate);
 for (const key of ["x", "y", "w", "h"]) assert.ok(Math.abs(pptxRect[key] - pptxLayout.rect[key]) < 0.002, `PPTX ${key} matches preview geometry`);
+const legendPlate = shapeBlocks.find((block) => block.includes('name="GRP|panel-legend|범례|plate"'));
+assert.ok(legendPlate, "PPTX D17 section slide keeps the legend plate group");
+const pptxLegendRect = xmlRect(legendPlate);
+for (const key of ["x", "y", "w", "h"]) assert.ok(Math.abs(pptxLegendRect[key] - previewPanels.legend[key]) < 0.002, `PPTX ${key} matches preview legend geometry`);
 
 // native PPT 지도도 preview와 같은 B 선택 스타일을 쓴다. A는 얇은 점선·45%이고 B는 굵은 실선이다.
 const sectionGeometry = (label) => shapeBlocks.filter((block) => block.includes(`name="GRP|map-D17-legend-${label}`) && block.includes("|geometry"));
