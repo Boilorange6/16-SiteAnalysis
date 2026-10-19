@@ -35,7 +35,7 @@ const frame = {
   hiddenLayers: ["건물"],
   labelRule: "all-visible",
   legend: { order: [], hidden: ["건물"], visibleOnly: true, placement: "below" },
-  decorations: { north: true, scaleBar: true, locator: false },
+  decorations: { north: true, scaleBar: true, locator: true },
 };
 const page = {
   id: "p-D04-format",
@@ -69,6 +69,7 @@ for (const hiddenLabel of ["1970년대 이전", "1980년대", "1990년대", "200
   assert.doesNotMatch(a3.slide, new RegExp(`GRP\\|map-D04-[^\\"]*${hiddenLabel}`), "숨긴 건물 레이어가 지도·범례에 남지 않는다");
 }
 assert.match(a3.slide, /\|축척\|/, "A3 축척 장식");
+assert.match(a3.slide, /\|위치도\|/, "A3 위치도 장식");
 const mapOffset = a3.slide.match(/<p:cNvPr id="\d+" name="GRP\|map-D04-[^"]*"[\s\S]*?<a:off x="(\d+)"/);
 assert.ok(mapOffset && Number(mapOffset[1]) / 914400 > slideSize("a3").w * 0.5, "numbers-first 지도는 오른쪽 프레임에 배치된다");
 
