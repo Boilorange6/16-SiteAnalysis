@@ -393,7 +393,8 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   }
 
   const notes = [
-    ...reportSummaryNotes(v, terrainShown),
+    // D17 단면 칸만 메모를 줄인다. 다른 타일은 자료 주의 문구를 모두 싣는다.
+    ...(terrainShown ? reportSummaryNotes(v, true) : [...v.caveats, ...v.notes]),
     ...(p.mass ? ["DXF·GLB는 내보내기에서"] : []),
     ...(p.rose ? [roseSummary(p.rose), `바람장미 선택 계절 · ${ROSE_SEASON_LABEL[p.roseSeason ?? "annual"]}`] : []),
   ];
