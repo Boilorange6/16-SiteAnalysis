@@ -2,11 +2,12 @@
  * 보드 → 보고서 슬라이드 계획. 순수 함수 (pptx 라이브러리 의존 없음).
  * 슬라이드 수는 board-state의 reportPages(board).pages(표지+타일+출처 장)와 항상 같다.
  */
-import { defaultCutForCode, extraPageKey, isCutSpec, type BoardState, type CutSpec, type ExtraReportPage, type PageKey, type PageStyle, type TerrainSectionId } from "../ui/board-state";
-import { calloutReportPages, DEFAULT_CALLOUT_MODE, pageCount } from "../ui/callout-layout";
+import { defaultCutForCode, extraPageKey, isCutSpec, type BoardState, type CameraPreset, type CutSpec, type ExtraReportPage, type PageKey, type PageStyle, type PinnedLabel, type TerrainSectionId } from "../ui/board-state";
+import { calloutReportPages, DEFAULT_CALLOUT_MODE, pageCount, type CalloutMode } from "../ui/callout-layout";
 import type { MapModel } from "../ui/map-layers";
 export { legendItemsOf, legendLabelOf } from "../ui/map-layers";
-import { type CalloutModel, type SummaryView, type TileView } from "../ui/tile-view";
+import type { A05Filter } from "../engine/a05-filter";
+import { type CalloutModel, type OutputFace, type SummaryView, type TileView } from "../ui/tile-view";
 import type { MassModel } from "../ui/mass-projection";
 import { sheetView, type SheetGrid } from "../ui/sheet";
 import { FACE_TEXT } from "../ui/tile-view";
@@ -85,6 +86,18 @@ export type ReportSlide =
 
 export type PlannedSlide = ReportSlide & { no: number; total: number; footer: string; key: PageKey; style: PageStyle };
 type RawPlanSlide = ReportSlide & { footer: string; key: PageKey };
+
+export type TileReportSettings = {
+  face: OutputFace;
+  callout: CalloutMode;
+  cut?: CutSpec;
+  camera?: CameraPreset;
+  a05Filter?: A05Filter;
+  layer?: string;
+  labels?: PinnedLabel[];
+  /** D17 단면 선택. 보고서 모드 계획에 추가된 현재 보드 설정. */
+  terrainSection?: TerrainSectionId;
+};
 
 export type PageKeyContext = {
   /** 컷 조판/단일 장의 키 규칙을 선택한다. */
@@ -173,7 +186,35 @@ export const REPORT_SOURCE_ROWS_PER_SLIDE = 14;
 export const sourcePageCount = (sourceRows: number): number => Math.max(1, Math.ceil(Math.max(0, sourceRows) / REPORT_SOURCE_ROWS_PER_SLIDE));
 
 const hasResult = (v: TileView) => v.status === "complete" || v.status === "partial";
-const pinnedKeysFor = (board: BoardState, tileId: string): string[] => (board.labels[tileId] ?? []).filter((label) => label.on).map((label) => label.key);
+const copyA05Filter = (filter: A05Filter | undefined): A05Filter | undefined => {
+  if (!filter) return undefined;
+  return {
+    ...filter,
+    ...(filter.types ? { types: [...filter.types] } : {}),
+    ...Object.fromEntries((['year', 'households', 'floors', 'buildings', 'distance'] as const)
+      .filter((key) => filter[key])
+      .map((key) => [key, { ...filter[key] }])),
+  } as A05Filter;
+};
+
+export function tileReportSettingsFromBoard(board: BoardState, tileId: string): TileReportSettings {
+  const cut = board.cuts[tileId];
+  const camera = board.cameras[tileId];
+  const labels = board.labels[tileId];
+  const a05Filter = copyA05Filter(board.a05Filter[tileId]);
+  return {
+    face: board.faces[tileId] ?? "front",
+    callout: board.callout[tileId] ?? DEFAULT_CALLOUT_MODE,
+    ...(cut ? { cut: { ...cut } } : {}),
+    ...(camera ? { camera: { ...camera } } : {}),
+    ...(a05Filter ? { a05Filter } : {}),
+    ...(board.layers[tileId] ? { layer: board.layers[tileId] } : {}),
+    ...(labels ? { labels: labels.map((label) => ({ ...label })) } : {}),
+    ...(board.terrainSection[tileId] ? { terrainSection: board.terrainSection[tileId] } : {}),
+  };
+}
+
+const pinnedKeysFor = (settings: TileReportSettings): string[] => (settings.labels ?? []).filter((label) => label.on).map((label) => label.key);
 
 const RASTER_NAMES = (view: TileView): string[] => {
   const map = view.map as (NonNullable<TileView["map"]> & { rasterOptions?: { name: string }[] }) | null;
@@ -241,6 +282,107 @@ export function sourceRowCountForViews(views: Iterable<TileView>): number {
 
 export const sourcePageCountForViews = (views: Iterable<TileView>): number => sourcePageCount(sourceRowCountForViews(views));
 
+export type TileSlidesContext = {
+  summary: SummaryView;
+  complexCounts: Record<string, number>;
+  /** 조판 셀을 만들 때만 필요하다. 일반 타일 호출은 두 값만으로 충분하다. */
+  views?: ReadonlyMap<string, TileView>;
+  sourceLineFor?: (view: TileView) => string;
+  settingsFor?: (tileId: string) => TileReportSettings;
+};
+
+export function tileSlides(tileId: string, view: TileView, settings: TileReportSettings, ctx: TileSlidesContext): ReportSlide[] {
+  const sourceLineFor = ctx.sourceLineFor ?? ((candidate: TileView) => candidate.sourceLine);
+  const pinnedKeys = pinnedKeysFor(settings);
+  const selectedCut = isCutSpec(settings.cut) && settings.cut.tile === view.code
+    ? settings.cut
+    : defaultCutForCode(view.code);
+
+  if (view.code === "SHEET" && view.sheetTiles && view.sheetGrid) {
+    const cells = view.sheetTiles
+      .map((id) => ctx.views?.get(id))
+      .filter((cell): cell is TileView => !!cell)
+      .map((cell) => {
+        const cellSettings = ctx.settingsFor?.(cell.tileId);
+        return {
+          view: cell,
+          face: cellSettings?.face === "back" ? "back" as const : "front" as const,
+          mapKey: `${cell.tileId}:cell`,
+          sourceLine: sourceLineFor(cell),
+          pinnedKeys: cellSettings ? pinnedKeysFor(cellSettings) : [],
+        };
+      });
+    return [{ kind: "sheet", view, grid: view.sheetGrid, cells }];
+  }
+
+  if (selectedCut && CUT_CODES.has(view.code) && hasResult(view)) {
+    const cutPlan = cutPlanFor(view, selectedCut);
+    const slides: ReportSlide[] = cutPlan.sheets.map((sheetPlan) => ({
+      kind: "sheet",
+      view,
+      grid: sheetPlan.grid,
+      cells: sheetPlan.cells.map((cell) => cutCellWithMeta(cell, sourceLineFor(view), pinnedKeys)),
+    }));
+    if (cutPlan.single) {
+      const cell = cutPlan.single;
+      slides.push({
+        kind: "tile",
+        view: cell.view,
+        body: { kind: "result", face: "single" },
+        faceLabel: cell.view.hasFace ? "도판" : null,
+        map: cell.mass || cell.rose ? null : cell.view.map ?? cell.view.backdrop,
+        muted: false,
+        ...(cell.mass ? { mass: cell.mass } : {}),
+        ...(cell.rose ? { rose: cell.rose, roseSeason: cell.roseSeason ?? "annual" } : {}),
+        pinnedKeys,
+        ...(cell.view.terrainSections ? { terrainSection: settings.terrainSection ?? "A" } : {}),
+      });
+    }
+    return slides;
+  }
+
+  if (view.callout && hasResult(view)) {
+    const complexCount = ctx.complexCounts[view.tileId] ?? ctx.complexCounts[tileId] ?? view.callout.complexes.length;
+    const count = calloutReportPages(settings.callout, complexCount);
+    return Array.from({ length: count }, (_, page) => ({
+      kind: "tile" as const,
+      view,
+      body: { kind: "result", face: "single" as const },
+      faceLabel: null,
+      // A05/A06 설명선 장도 실제 타일의 backdrop을 사용하되 tileCode를
+      // 보강해 PPT native map 경로와 화면용 지도 판정을 공유한다.
+      map: { ...view.backdrop, tileCode: view.code },
+      muted: false,
+      callout: { model: view.callout!, page, pages: pageCount(view.callout!.complexes.length), filterLine: view.filterLine },
+    }));
+  }
+
+  const faces: ("single" | "front" | "back")[] = !view.hasFace
+    ? ["single"]
+    : settings.face === "both"
+      ? ["front", "back"]
+      : [settings.face === "back" ? "back" : "front"];
+  return faces.map((face) => {
+    const message = STATE_MESSAGE[view.status];
+    const result = hasResult(view);
+    const mass = result && view.mass ? { ...view.mass } : undefined;
+    const rose = result && face !== "back" ? view.rose ?? undefined : undefined;
+    return {
+      kind: "tile" as const,
+      view,
+      body: result ? { kind: "result" as const, face } : { kind: "state" as const, face, message: message ?? "결과 없음 — 보고서에는 결과 없이 표시합니다" },
+      faceLabel: view.code === "STACK" ? "스택" : view.hasFace ? FACE_TEXT[face === "front" ? "front" : "back"] : null,
+      // 모든 장은 지도(또는 주 시각물)가 전면: 지도 없는 결과는 지물 없는 대지 지도, 상태 장은 흐린 대지 지도
+      map: mass || rose ? null : !result ? view.backdrop : view.hasFace && face === "back" ? null : (view.map ?? view.backdrop),
+      muted: !result,
+      pinnedKeys,
+      ...(view.terrainSections ? { terrainSection: settings.terrainSection ?? "A" } : {}),
+      ...(mass ? { mass } : {}),
+      ...(rose ? { rose, roseSeason: "annual" as const } : {}),
+    };
+  });
+}
+
 export function buildReportPlan(input: {
   summary: SummaryView;
   views: Map<string, TileView>;
@@ -252,6 +394,7 @@ export function buildReportPlan(input: {
   const date = input.analysisDate ?? "미확인";
   const sourceMeta = input.sourceMeta ?? new Map<string, SourceMeta>();
   const tiles = board.order.filter((id) => board.included[id] && views.has(id)).map((id) => views.get(id)!);
+  const complexCountsForViews = complexCounts(views);
   const raw: RawPlanSlide[] = [];
   const pushRaw = (slide: ReportSlide, footer: string, context: PageKeyContext = {}) => {
     raw.push({ ...slide, footer, key: pageKeyOf(slide, context) } as RawPlanSlide);
@@ -294,94 +437,29 @@ export function buildReportPlan(input: {
   }, `${summary.asOfLine} · 출처와 기준일은 마지막 장 참조`);
 
   for (const v of tiles) {
-    if (v.code === "SHEET" && v.sheetTiles && v.sheetGrid) {
-      const cells = v.sheetTiles
-        .map((id) => views.get(id))
-        .filter((cell): cell is TileView => !!cell)
-        .map((cell) => ({
-          view: cell,
-          face: cell.hasFace && board.faces[cell.tileId] === "back" ? "back" as const : "front" as const,
-          mapKey: `${cell.tileId}:cell`,
-          sourceLine: sourceLineFor(cell),
-          pinnedKeys: pinnedKeysFor(board, cell.tileId),
-        }));
-      pushRaw({
-        kind: "sheet",
-        view: v,
-        grid: v.sheetGrid,
-        cells,
-      }, sourceFooterFor(v));
-      continue;
-    }
-    const selectedCut = isCutSpec(board.cuts[v.tileId]) && board.cuts[v.tileId].tile === v.code
-      ? board.cuts[v.tileId]
+    const settings = tileReportSettingsFromBoard(board, v.tileId);
+    const selectedCut = isCutSpec(settings.cut) && settings.cut.tile === v.code
+      ? settings.cut
       : defaultCutForCode(v.code);
-    if (selectedCut && CUT_CODES.has(v.code) && hasResult(v)) {
-      const cutPlan = cutPlanFor(v, selectedCut);
-      for (const [sheetIndex, sheetPlan] of cutPlan.sheets.entries()) {
-        pushRaw({
-          kind: "sheet",
-          view: v,
-          grid: sheetPlan.grid,
-          cells: sheetPlan.cells.map((cell) => cutCellWithMeta(cell, sourceLineFor(v), pinnedKeysFor(board, v.tileId))),
-        }, sourceFooterFor(v), { cut: "sheet", index: sheetIndex });
-      }
-      if (cutPlan.single) {
-        const cell = cutPlan.single;
-        pushRaw({
-          kind: "tile",
-          view: cell.view,
-          body: { kind: "result", face: "single" },
-          faceLabel: cell.view.hasFace ? "도판" : null,
-          map: cell.mass || cell.rose ? null : cell.view.map ?? cell.view.backdrop,
-          muted: false,
-          ...(cell.mass ? { mass: cell.mass } : {}),
-          ...(cell.rose ? { rose: cell.rose, roseSeason: cell.roseSeason ?? "annual" } : {}),
-          pinnedKeys: pinnedKeysFor(board, v.tileId),
-          ...(cell.view.terrainSections ? { terrainSection: board.terrainSection[v.tileId] ?? "A" } : {}),
-        }, sourceFooterFor(v), { cut: "single" });
-      }
-      continue;
-    }
-    if (v.callout && hasResult(v)) {
-      // 설명선 타일: 개요 1장 + 설명표 장 (설정: 개요만 / 상위 10 / 전체). 장수는 board-state.reportPages와 같은 함수
-      const cm = v.callout;
-      const count = calloutReportPages(board.callout[v.tileId] ?? DEFAULT_CALLOUT_MODE, cm.complexes.length);
-      const sourceFooter = sourceFooterFor(v);
-      for (let page = 0; page < count; page++) {
-        pushRaw({
-          kind: "tile",
-          view: v,
-          body: { kind: "result", face: "single" },
-          faceLabel: null,
-          // A05/A06 설명선 장도 실제 타일의 backdrop을 사용하되 tileCode를
-          // 보강해 PPT native map 경로와 화면용 지도 판정을 공유한다.
-          map: { ...v.backdrop, tileCode: v.code },
-          muted: false,
-          callout: { model: cm, page, pages: pageCount(cm.complexes.length), filterLine: v.filterLine },
-        }, v.filterLine ? `${v.filterLine} · ${sourceFooter}` : sourceFooter);
-      }
-      continue;
-    }
-    const faces: ("single" | "front" | "back")[] = !v.hasFace ? ["single"] : board.faces[v.tileId] === "both" ? ["front", "back"] : [board.faces[v.tileId] === "back" ? "back" : "front"];
-    for (const face of faces) {
-      const message = STATE_MESSAGE[v.status];
-      const result = hasResult(v);
-      const mass = result && v.mass ? { ...v.mass } : undefined;
-      const rose = result && face !== "back" ? v.rose ?? undefined : undefined;
-      pushRaw({
-        kind: "tile",
-        view: v,
-        body: hasResult(v) ? { kind: "result", face } : { kind: "state", face, message: message ?? "결과 없음 — 보고서에는 결과 없이 표시합니다" },
-        faceLabel: v.code === "STACK" ? "스택" : v.hasFace ? FACE_TEXT[face === "front" ? "front" : "back"] : null,
-        // 모든 장은 지도(또는 주 시각물)가 전면: 지도 없는 결과는 지물 없는 대지 지도, 상태 장은 흐린 대지 지도
-        map: mass || rose ? null : !result ? v.backdrop : v.hasFace && face === "back" ? null : (v.map ?? v.backdrop),
-        muted: !result,
-        pinnedKeys: pinnedKeysFor(board, v.tileId),
-        ...(v.terrainSections ? { terrainSection: board.terrainSection[v.tileId] ?? "A" } : {}),
-        ...(mass ? { mass } : {}),
-        ...(rose ? { rose, roseSeason: "annual" as const } : {}),
-      }, sourceFooterFor(v));
+    const isCutBranch = !!selectedCut && CUT_CODES.has(v.code) && hasResult(v);
+    let sheetIndex = 0;
+    const slides = tileSlides(v.tileId, v, settings, {
+      summary,
+      complexCounts: complexCountsForViews,
+      views,
+      sourceLineFor,
+      settingsFor: (id) => tileReportSettingsFromBoard(board, id),
+    });
+    for (const slide of slides) {
+      const context: PageKeyContext = isCutBranch
+        ? slide.kind === "sheet"
+          ? { cut: "sheet", index: sheetIndex++ }
+          : { cut: "single" }
+        : {};
+      const footer = slide.kind === "tile" && slide.callout?.filterLine
+        ? `${slide.callout.filterLine} · ${sourceFooterFor(v)}`
+        : sourceFooterFor(v);
+      pushRaw(slide, footer, context);
     }
   }
 
@@ -424,12 +502,13 @@ export function buildReportPlan(input: {
         cells: extra.sheet.tiles.map((tileId, index) => {
           const cell = tileId ? views.get(tileId) : undefined;
           if (!cell) return null;
+          const cellSettings = tileReportSettingsFromBoard(board, cell.tileId);
           return {
             view: cell,
-            face: cell.hasFace && board.faces[cell.tileId] === "back" ? "back" as const : "front" as const,
+            face: cell.hasFace && cellSettings.face === "back" ? "back" as const : "front" as const,
             mapKey: `${extraPageKey(extra.id)}:cell:${index}`,
             sourceLine: sourceLineFor(cell),
-            pinnedKeys: pinnedKeysFor(board, cell.tileId),
+            pinnedKeys: pinnedKeysFor(cellSettings),
           };
         }),
       };
@@ -437,6 +516,7 @@ export function buildReportPlan(input: {
     }
     const view = views.get(extra.tileId);
     if (!view) return [];
+    const settings = tileReportSettingsFromBoard(board, view.tileId);
     const face: "single" | "front" | "back" = view.hasFace ? extra.face : "single";
     const result = hasResult(view);
     const mass = result && face !== "back" && view.mass ? { ...view.mass } : undefined;
@@ -460,8 +540,8 @@ export function buildReportPlan(input: {
       ...(view.callout && face !== "back" ? {
         callout: { model: view.callout, page: 0, pages: pageCount(view.callout.complexes.length), filterLine: view.filterLine },
       } : {}),
-      pinnedKeys: pinnedKeysFor(board, view.tileId),
-      ...(view.terrainSections ? { terrainSection: board.terrainSection[view.tileId] ?? "A" } : {}),
+      pinnedKeys: pinnedKeysFor(settings),
+      ...(view.terrainSections ? { terrainSection: settings.terrainSection ?? "A" } : {}),
       ...(mass ? { mass } : {}),
       ...(rose ? { rose, roseSeason: "annual" as const } : {}),
     };
