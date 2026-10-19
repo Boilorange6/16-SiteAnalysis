@@ -1423,6 +1423,14 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
   const handles = editable && displaySlide.kind === "tile" && selectedPanel && panelRects[selectedPanel]
     ? <PanelTransformFrame panelKey={selectedPanel} rect={panelRects[selectedPanel]!} unit={unit} xGuides={snapGuides.x} yGuides={snapGuides.y} onResizeStart={onResizeStart} onResizeMove={onResizeMove} onResizeEnd={onResizeEnd} onRemove={() => { if (selectedPanel === "summary") { setSelectedPanel(null); onDirectPatch?.({ summary: false }); } }} />
     : null;
+  // 편집 중이 아닌 지도 층은 포인터를 받지 않으므로, 패널·글상자가 아닌 지도 영역 클릭을 좌표로 판단한다.
+  const onMapArea = (event: React.MouseEvent<HTMLElement>): boolean => {
+    const target = event.target as HTMLElement;
+    if (target.closest("[data-preview-map]")) return true;
+    if (!onSelect || target.closest("[data-panel-key], [data-panel-frame], [data-text-box]")) return false;
+    const rect = event.currentTarget.querySelector<HTMLElement>("[data-preview-map]")?.getBoundingClientRect();
+    return !!rect && event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
+  };
   return (
     <div ref={slotRef} className={styles.previewSlot} data-preview-slot="true">
       <div className={styles.previewFrame} data-preview-frame="true" data-slide-format={format} style={frameSize.width > 0 ? { width: frameSize.width, height: frameSize.height, ...(format === "wide" ? {} : { aspectRatio: String(size.w.toFixed(3)) + " / " + String(size.h.toFixed(3)) }) } : format === "wide" ? undefined : { aspectRatio: String(size.w.toFixed(3)) + " / " + String(size.h.toFixed(3)) }}>
@@ -1432,7 +1440,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
           style={canvasStyle(unit)}
           onPointerDownCapture={(event) => {
             const target = event.target as HTMLElement;
-            if (target.closest("[data-preview-map]")) {
+            if (onMapArea(event)) {
               onSelect?.({ kind: "map" });
               return;
             }
@@ -1446,7 +1454,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
             }
           }}
           onDoubleClick={(event) => {
-            if ((event.target as HTMLElement).closest("[data-preview-map]")) {
+            if (onMapArea(event)) {
               event.preventDefault();
               onSelect?.({ kind: "map" });
               onMapMoveActive?.(true);
