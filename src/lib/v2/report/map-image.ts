@@ -33,7 +33,7 @@ const VIEW_H = 540;
 const OUT_W = 1920;
 const OUT_H = 1080;
 const PX_PER_INCH = VIEW_W / SLIDE.w;
-type Extra = Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "siteY" | "calloutLeftBottom" | "scale" | "legend" | "bare" | "pinnedKeys" | "north" | "credit" | "label" | "rightInset" | "backgroundOnly"> & {
+type Extra = Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "siteY" | "calloutLeftBottom" | "scale" | "legend" | "bare" | "pinnedKeys" | "north" | "credit" | "label" | "rightInset" | "backgroundOnly" | "terrainSection"> & {
   size?: { width: number; height: number };
   bottomInset?: number;
   style?: PageStyle;
@@ -290,7 +290,7 @@ function extraFor(p: PlannedSlide, model: MapModel): Extra {
   // 설명표 장: 두 칸 사이에 반경 원을 넣는 프레임 (렌더러가 점·표를 같은 프레임으로 놓는다)
   if (p.callout && p.callout.page > 0) {
     const f = slideCalloutFrame(4);
-    return { siteX: f.siteX, fill: f.fill, avoid: [], scale: false, rightInset: 0, style, highlightLabel, legendFocus: highlightLabel, ...pinned };
+    return { siteX: f.siteX, fill: f.fill, avoid: [], scale: false, rightInset: 0, style, highlightLabel, legendFocus: highlightLabel, ...(terrainShown ? { terrainSection: p.terrainSection } : {}), ...pinned };
   }
   const siteX = slideSiteX(style, hasSummary);
   const avoid = slideReserved(PX_PER_INCH, {
@@ -303,8 +303,9 @@ function extraFor(p: PlannedSlide, model: MapModel): Extra {
   const framePatch = terrainLayout?.mode === "bottom-band"
     ? { fill: terrainLayout.mapFill, siteY: terrainLayout.mapSiteY, calloutLeftBottom: (terrainLayout.calloutLeftBottom ?? 0) * PX_PER_INCH }
     : {};
-  if (p.callout) return { siteX, fill: SLIDE_OVERVIEW_FILL, rightInset, avoid, style, highlightLabel, legendFocus: highlightLabel, ...framePatch, ...pinned };
-  return { muted: p.muted, siteX, rightInset, avoid, style, highlightLabel, legendFocus: highlightLabel, ...framePatch, ...pinned };
+  const terrainPatch = terrainShown ? { terrainSection: p.terrainSection } : {};
+  if (p.callout) return { siteX, fill: SLIDE_OVERVIEW_FILL, rightInset, avoid, style, highlightLabel, legendFocus: highlightLabel, ...framePatch, ...terrainPatch, ...pinned };
+  return { muted: p.muted, siteX, rightInset, avoid, style, highlightLabel, legendFocus: highlightLabel, ...framePatch, ...terrainPatch, ...pinned };
 }
 
 /** 계획의 모든 지도 자리에 대한 PNG. 실패한 장은 빠진다(렌더러가 자리표시를 넣는다). */

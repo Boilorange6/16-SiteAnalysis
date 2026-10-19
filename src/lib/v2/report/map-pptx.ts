@@ -5,6 +5,7 @@ import { SLIDE, slideCalloutLegendLayout, slideLayout, slideLegend, slidePanelRe
 import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
 import { buildMapScene, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, type MapScene, type MapSceneBox } from "../ui/map-scene";
 import { badgeTextColor } from "../ui/map-labels";
+import { terrainSectionMapStyle } from "../ui/terrain-section";
 import { FONT, INK, hex, textIn, type Slide } from "./pptx-kit";
 import type { PlannedSlide } from "./report-plan";
 import type { PageStyle } from "../ui/board-state";
@@ -443,6 +444,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     muted: !!plan.muted,
     pinnedKeys: plan.pinnedKeys ?? [],
     hiddenKeys: style.hiddenKeys ?? [],
+    terrainSection: plan.terrainSection,
     highlightLabel: focus,
     legendFocus: focus,
     showAutomaticLabels: true,
@@ -503,9 +505,12 @@ function addLines(slide: Slide, code: string, scene: MapScene, model: MapModel):
     if (isRasterizedLayer(entry.line.layer) || entry.line.layer === "rail_line" || entry.line.layer === "rail_station_axis") continue;
     if (entry.points.length < 2) continue;
     const style = layerStyle(entry.line.layer);
-    const baseWidth = entry.line.strokeWidth ?? style.strokeWidth ?? 1.5;
-    const width = baseWidth * (entry.line.emphasis === "major" ? 1.2 : entry.line.emphasis === "minor" ? 0.85 : 1);
-    const opacity = entry.line.opacity ?? style.opacity ?? 1;
+    const sectionId = entry.line.layer === "terrain_section_a" ? "A" : entry.line.layer === "terrain_section_b" ? "B" : null;
+    const sectionStyle = sectionId ? terrainSectionMapStyle(sectionId, scene.terrainSection) : null;
+    const baseWidth = sectionStyle?.strokeWidth ?? entry.line.strokeWidth ?? style.strokeWidth ?? 1.5;
+    const width = sectionStyle ? baseWidth : baseWidth * (entry.line.emphasis === "major" ? 1.2 : entry.line.emphasis === "minor" ? 0.85 : 1);
+    const opacity = sectionStyle?.opacity ?? entry.line.opacity ?? style.opacity ?? 1;
+    const dash = sectionStyle ? sectionStyle.dash : style.dash;
     const dimmed = scene.isElementDimmed(entry.line.layer, entry.key, entry.line.legendLabel);
     const stroke = entry.line.color ?? style.color;
     const casing = entry.line.casing ?? style.casing;
@@ -513,13 +518,13 @@ function addLines(slide: Slide, code: string, scene: MapScene, model: MapModel):
     const legendLabel = legendLabelFor(model, entry.line.layer, entry.line.legendLabel);
     const groupKey = `legend-${safeKey(legendLabel)}`;
     if (casing) {
-      const key = `${groupKey}-line-casing-${safeKey(`${casing}-${casingWidth}-${dimmed}-${style.dash ?? "solid"}`)}`;
-      const bucket = buckets.get(key) ?? { paths: [], line: casing, lineWidth: casingWidth, lineOpacity: opacity * (dimmed ? 0.2 : 1), dash: style.dash, key: groupKey, display: `범례 ${legendLabel}` };
+      const key = `${groupKey}-line-casing-${safeKey(`${casing}-${casingWidth}-${dimmed}-${dash ?? "solid"}`)}`;
+      const bucket = buckets.get(key) ?? { paths: [], line: casing, lineWidth: casingWidth, lineOpacity: opacity * (dimmed ? 0.2 : 1), dash, key: groupKey, display: `범례 ${legendLabel}` };
       bucket.paths.push(entry.points);
       buckets.set(key, bucket);
     }
-    const key = `${groupKey}-line-${safeKey(`${stroke}-${width}-${dimmed}-${style.dash ?? "solid"}`)}`;
-    const bucket = buckets.get(key) ?? { paths: [], line: stroke, lineWidth: width, lineOpacity: opacity * (dimmed ? 0.2 : 1), dash: style.dash, key: groupKey, display: `범례 ${legendLabel}` };
+    const key = `${groupKey}-line-${safeKey(`${stroke}-${width}-${dimmed}-${dash ?? "solid"}`)}`;
+    const bucket = buckets.get(key) ?? { paths: [], line: stroke, lineWidth: width, lineOpacity: opacity * (dimmed ? 0.2 : 1), dash, key: groupKey, display: `범례 ${legendLabel}` };
     bucket.paths.push(entry.points);
     buckets.set(key, bucket);
     if (style.tickMarks) ticks.push({ points: lineTickSegments(entry.points, 4), color: stroke, width: Math.max(0.7, width * 0.55), opacity: opacity * (dimmed ? 0.2 : 1), key: `${groupKey}-tick-${entry.index}` });

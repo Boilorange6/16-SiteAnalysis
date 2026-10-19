@@ -6,7 +6,7 @@ import { metersPerPixel, slideViewport, zoomViewAt, type MapView } from "@/lib/v
 import { SLIDE, slideLegend, slidePanelRects, slideSiteX, terrainSectionLayout, type Rect, type TerrainSectionLayout } from "@/lib/v2/ui/overlay-layout";
 import { coverLayout, fitBlock, fitFooterText, sourceLayout, titlePlateRect } from "@/lib/v2/report/pptx-kit";
 import { layerStyle, legendItemsOf, legendLabelOf } from "@/lib/v2/ui/map-layers";
-import { terrainCrossingLayer, terrainElevationLabel, terrainSectionAxisStops, terrainSectionElevationAt, terrainSectionMarkerGeometry, terrainSectionPosition, terrainSectionTotal, sortTerrainCrossings, TERRAIN_CROSSING_LABELS, TERRAIN_SECTION_LABELS, TERRAIN_SECTION_TABLE_MAX_ROWS } from "@/lib/v2/ui/terrain-section";
+import { reportSummaryNotes, terrainCrossingLayer, terrainElevationLabel, terrainSectionAxisStops, terrainSectionBands, terrainSectionElevationAt, terrainSectionMarkerGeometry, terrainSectionPosition, terrainSectionTotal, sortTerrainCrossings, TERRAIN_CROSSING_LABELS, TERRAIN_SECTION_LABELS, TERRAIN_SECTION_TABLE_MAX_ROWS } from "@/lib/v2/ui/terrain-section";
 import MapFigure from "./map-figure";
 import { useFocusTrap } from "./use-focus-trap";
 import { extraPageKey, type BoardAction, type BoardState, type PageKey, type PageStyle } from "@/lib/v2/ui/board-state";
@@ -312,6 +312,9 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
   const avoid = useMemo(() => [panels.title, panels.summary, panels.legend, terrainLayout?.rect]
     .filter((rect): rect is Rect => !!rect)
     .map((rect) => ({ x0: rect.x * unit, y0: rect.y * unit, x1: (rect.x + rect.w) * unit, y1: (rect.y + rect.h) * unit })), [panels.legend, panels.summary, panels.title, terrainLayout?.rect, unit]);
+  const rightInset = terrainLayout
+    ? Math.max(0, SLIDE.w - (panels.summary?.x ?? SLIDE.w) + SLIDE.edge * 0.5) * unit
+    : undefined;
   const onFeatureHover = useCallback((key: string | null) => {
     if (!interactive) return;
     setHoverKey((current) => current === key ? current : key);
@@ -462,6 +465,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
         credit={false}
         scale
         bottomInset={unit * SLIDE.stripH}
+        rightInset={rightInset}
         label={label}
         viewport={viewport}
         avoid={avoid}
@@ -539,7 +543,7 @@ function TitlePanel({ slide, rect, unit, interaction }: { slide: Extract<Planned
   return <ReportTitlePanel color={slide.view.color} code={slide.view.code} title={slide.view.title} kind={slide.view.kindLabel} rect={rect} unit={unit} interaction={interaction} />;
 }
 
-function SummaryPanel({ slide, rect, unit, interaction }: { slide: Extract<PlannedSlide, { kind: "tile" }>; rect: Rect; unit: number; interaction?: PanelInteraction }) {
+function SummaryPanel({ slide, rect, unit, terrainSectionShown = false, interaction }: { slide: Extract<PlannedSlide, { kind: "tile" }>; rect: Rect; unit: number; terrainSectionShown?: boolean; interaction?: PanelInteraction }) {
   const view = slide.view;
   const innerW = Math.max(0.2, rect.w - 0.44);
   const children: React.ReactNode[] = [];
@@ -574,7 +578,7 @@ function SummaryPanel({ slide, rect, unit, interaction }: { slide: Extract<Plann
       );
     });
   }
-  const notes = [...view.caveats, ...view.notes].slice(0, 4);
+  const notes = reportSummaryNotes(view, terrainSectionShown);
   notes.forEach((note, index) => {
     const pt = fitBlock([note], { w: innerW, h: 0.44 }, 9, 7);
     children.push(<div className={styles.summaryLineFull} key={"note-" + index}><div className={styles.slideText} style={fontStyle(pt, unit)}>{note}</div></div>);
@@ -689,8 +693,20 @@ function TerrainSectionPreview({ slide, unit, layout }: { slide: Extract<Planned
   const crossings = sortTerrainCrossings(section);
   const visibleCrossings = crossings.slice(0, TERRAIN_SECTION_TABLE_MAX_ROWS);
   const preview = layout.rect;
+  const bands = terrainSectionBands({ x: 0, y: 0, w: preview.w, h: preview.h });
+  const terrainGridStyle: CSSProperties = {
+    gridTemplateColumns: `${bands.plot.w * unit}px ${bands.table.w * unit}px`,
+    gridTemplateRows: `${bands.header.h * unit}px ${bands.table.h * unit}px ${bands.footer.h * unit}px`,
+    columnGap: `${bands.gapX * unit}px`,
+    rowGap: `${bands.gapY * unit}px`,
+    padding: `${bands.paddingTop * unit}px ${bands.paddingX * unit}px ${bands.paddingBottom * unit}px`,
+  };
+  const graphStyle: CSSProperties = {
+    gridTemplateRows: `${bands.plot.h * unit}px ${bands.axis.h * unit}px`,
+    rowGap: `${bands.gapY * unit}px`,
+  };
   return (
-    <section className={styles.terrainPreview} style={{ left: preview.x * unit, top: preview.y * unit, width: preview.w * unit, height: preview.h * unit }} aria-label={`${TERRAIN_SECTION_LABELS[slide.terrainSection]} 보고서 미리보기`}>
+    <section className={styles.terrainPreview} style={{ ...terrainGridStyle, left: preview.x * unit, top: preview.y * unit, width: preview.w * unit, height: preview.h * unit }} aria-label={`${TERRAIN_SECTION_LABELS[slide.terrainSection]} 보고서 미리보기`}>
       <div className={styles.terrainPreviewHeader}>
         <strong style={fontStyle(9.5, unit)}>{TERRAIN_SECTION_LABELS[slide.terrainSection]} · 지형 단면</strong>
         <span style={fontStyle(7.5, unit)}>대지 음영 · 단차 시설 표식</span>
@@ -700,7 +716,7 @@ function TerrainSectionPreview({ slide, unit, layout }: { slide: Extract<Planned
           <span style={fontStyle(8.5, unit)}>{terrainElevationLabel(maxZ)}</span>
           <span style={fontStyle(8.5, unit)}>{terrainElevationLabel(minZ)}</span>
         </div>
-        <div className={styles.terrainPreviewGraphMain}>
+        <div className={styles.terrainPreviewGraphMain} style={graphStyle}>
           <svg className={styles.terrainPreviewGraph} viewBox="0 0 760 240" preserveAspectRatio="none" role="img" aria-label={`${TERRAIN_SECTION_LABELS[slide.terrainSection]} 표고 프로파일`}>
             <title>{`${TERRAIN_SECTION_LABELS[slide.terrainSection]} 표고 프로파일`}</title>
             <rect x={xFor(siteStart)} y="28" width={Math.max(0, xFor(siteEnd) - xFor(siteStart))} height="184" fill="#2350b8" fillOpacity=".09" />
@@ -729,12 +745,12 @@ function TerrainSectionPreview({ slide, unit, layout }: { slide: Extract<Planned
       <table className={styles.terrainPreviewTable} aria-label="단면 시설 표">
         <caption className={styles.srOnly}>단면 시설 표</caption>
         <tbody>
-          {visibleCrossings.map((crossing, index) => <tr key={`${crossing.d}-${crossing.kind}-${index}`}><td>{TERRAIN_CROSSING_LABELS[crossing.kind]}</td><td>{terrainSectionPosition(section, crossing.d)}</td><td>{crossing.heightM === null ? "높이 미확인" : `${crossing.heightM.toFixed(1)}m`}</td></tr>)}
+          {visibleCrossings.map((crossing, index) => <tr key={`${crossing.d}-${crossing.kind}-${index}`}><td>{TERRAIN_CROSSING_LABELS[crossing.kind]}</td><td className={styles.terrainPosition}>{terrainSectionPosition(section, crossing.d)}</td><td>{crossing.heightM === null ? "높이 미확인" : `${crossing.heightM.toFixed(1)}m`}</td></tr>)}
           {crossings.length > visibleCrossings.length && <tr><td colSpan={3}>{`외 ${crossings.length - visibleCrossings.length}건`}</td></tr>}
+          <tr className={styles.terrainPreviewCaveat}><td colSpan={3} style={fontStyle(6.5, unit)}>{TERRAIN_CAVEAT}</td></tr>
         </tbody>
       </table>
       <div className={styles.terrainPreviewSummary} style={fontStyle(7.4, unit)}>{`대지 고저차 ${format(range, "m")} · 대지 평균 경사 ${format(slope, "°")} · 반경 내 단차 시설 수 ${facilityCount}개`}</div>
-      <div className={styles.terrainPreviewCaveat} style={fontStyle(6.5, unit)}>{TERRAIN_CAVEAT}</div>
     </section>
   );
 }
@@ -890,7 +906,7 @@ function TileSurface({ slide, unit, basemap, panels, interactive, thumbnail = fa
       {terrainShown && <TerrainSectionPreview slide={slide} unit={unit} layout={terrainLayout} />}
       {slide.body.kind === "state" && <div className={styles.slidePanel} style={{ left: unit * 4, top: unit * 2.7, width: unit * 5.1, height: unit * 1.15 }}><div className={styles.slideText + " " + styles.slideTextStrong} style={fontStyle(16, unit)}>{slide.body.message}</div></div>}
       <TitlePanel slide={slide} rect={panels.title} unit={unit} interaction={panelInteraction?.("title")} />
-      {panels.summary && hasSummaryPanel(slide) && <SummaryPanel slide={slide} rect={terrainLayout?.summary ?? panels.summary} unit={unit} interaction={panelInteraction?.("summary")} />}
+      {panels.summary && hasSummaryPanel(slide) && <SummaryPanel slide={slide} rect={terrainLayout?.summary ?? panels.summary} unit={unit} terrainSectionShown={terrainShown} interaction={panelInteraction?.("summary")} />}
       {panels.legend && <LegendPanel slide={slide} rect={panels.legend} unit={unit} hoverLabel={hoverLegend} onLegendHover={setHoverLegend} onLegendPin={thumbnail ? undefined : onLegendPin} interaction={panelInteraction?.("legend")} />}
       <SlideFooter slide={slide} unit={unit} />
     </>

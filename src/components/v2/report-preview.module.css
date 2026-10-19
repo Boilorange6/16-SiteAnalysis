@@ -837,8 +837,7 @@
 }
 
 .terrainPreviewHeader span,
-.terrainPreviewSummary,
-.terrainPreviewCaveat {
+.terrainPreviewSummary {
   color: #5b606b;
 }
 
@@ -906,34 +905,51 @@
   grid-column: 2;
   grid-row: 2;
   width: 100%;
-  min-width: 0;
+  min-width: calc(var(--slide-unit) * 1.45);
   align-self: stretch;
   border-collapse: collapse;
   color: #252a33;
   font-size: calc(var(--slide-unit) * 0.095);
   font-variant-numeric: tabular-nums;
+  table-layout: fixed;
 }
 
 .terrainPreviewTable td {
   border-top: 1px solid #edf0f3;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  overflow-wrap: normal;
   padding: calc(var(--slide-unit) * 0.06) calc(var(--slide-unit) * 0.04);
+  text-overflow: ellipsis;
   vertical-align: top;
+  white-space: nowrap;
 }
 
+.terrainPreviewTable td:first-child { width: 29%; }
+.terrainPreviewTable td:nth-child(2) { width: 40%; }
 .terrainPreviewTable td:last-child {
+  width: 31%;
   color: #5b606b;
   text-align: right;
 }
 
+.terrainPosition {
+  max-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .terrainPreviewSummary {
-  grid-column: 1 / 2;
+  grid-column: 1 / -1;
   font-variant-numeric: tabular-nums;
 }
 
-.terrainPreviewCaveat {
-  grid-column: 2 / -1;
+.terrainPreviewCaveat td {
   color: #6b4b31;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .slideMeta {

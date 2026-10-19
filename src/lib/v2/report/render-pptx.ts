@@ -11,6 +11,7 @@ import { SLIDE, slideLegend, slidePanelRects, slidePanelScale, terrainSectionLay
 import type { Badge, TileView } from "../ui/tile-view";
 import type { RoseModel } from "../ui/wind-rose";
 import { sheetCells, type SheetGrid } from "../ui/sheet";
+import { reportSummaryNotes } from "../ui/terrain-section";
 import { COVER_MAP_KEY, mapKeyOf, type PlannedSlide } from "./report-plan";
 import { E, FONT, INK, L, LINE, MUTED, coverLayout, fitBlock, fitFooterText, fitPt, hex, linesOf, plate, sourceLayout, textIn, titlePlateRect, type Border, type ReportItem, type Slide } from "./pptx-kit";
 import { tileReportModuleFor } from "../tile/report";
@@ -178,9 +179,9 @@ function headlineItems(s: Slide, h: NonNullable<TileView["headline"]>, box: Info
     {
       h: labelH + valueH + (sub ? subH : 0),
       draw: (y, target = s) => {
-        target.addText(h.label, { x: box.x, y, w: box.w, h: labelH, fontFace: FONT, fontSize: fitBlock([h.label], { w: box.w, h: labelH }, 11 * scale, 7), color: MUTED, margin: 0 });
-        target.addText(h.value, { x: box.x, y: y + labelH, w: box.w, h: valueH, valign: "middle", fontFace: FONT, fontSize: pt, bold: true, color: INK, margin: 0 });
-        if (sub) target.addText(sub, { x: box.x, y: y + labelH + valueH, w: box.w, h: subH, fontFace: FONT, fontSize: fitBlock([sub], { w: box.w, h: subH }, 10.5 * scale, 7), color: MUTED, margin: 0 });
+        target.addText(h.label, { x: box.x, y, w: box.w, h: labelH, fontFace: FONT, fontSize: fitBlock([h.label], { w: box.w, h: labelH }, 11 * scale, 7), color: MUTED, margin: 0, fit: "shrink" });
+        target.addText(h.value, { x: box.x, y: y + labelH, w: box.w, h: valueH, valign: "middle", fontFace: FONT, fontSize: pt, bold: true, color: INK, margin: 0, fit: "shrink" });
+        if (sub) target.addText(sub, { x: box.x, y: y + labelH + valueH, w: box.w, h: subH, fontFace: FONT, fontSize: fitBlock([sub], { w: box.w, h: subH }, 10.5 * scale, 7), color: MUTED, margin: 0, fit: "shrink" });
       },
     },
   ];
@@ -191,7 +192,7 @@ const textItem = (s: Slide, text: string, pt: number, color: string, bold = fals
   const size = fitBlock(text.split("\n"), { w: box.w, h: maxLines * (scaledPt / 72) * 1.45 }, scaledPt, 7);
   const rows = text.split("\n").reduce((sum, line) => sum + linesOf(line, size, box.w), 0);
   const h = rows * (size / 72) * 1.45 + 0.04;
-  return { h, draw: (y, target = s) => void target.addText(text, { x: box.x, y, w: box.w, h, valign: "top", fontFace: FONT, fontSize: size, bold, color, margin: 0 }) };
+  return { h, draw: (y, target = s) => void target.addText(text, { x: box.x, y, w: box.w, h, valign: "top", fontFace: FONT, fontSize: size, bold, color, margin: 0, fit: "shrink" }) };
 };
 
 function roseSummary(model: RoseModel): string {
@@ -209,9 +210,9 @@ function rowItems(s: Slide, rows: TileView["rows"], box: InfoBox, scale = 1): It
     h: 0.3 * scale,
     draw: (y, target = s) => {
       const rowH = 0.28 * scale;
-      target.addText(r.label, { x: box.x, y, w: box.w * 0.55, h: rowH, valign: "middle", fontFace: FONT, fontSize: fitBlock([r.label], { w: box.w * 0.55, h: rowH }, 11 * scale, 7), color: MUTED, margin: 0 });
+      target.addText(r.label, { x: box.x, y, w: box.w * 0.55, h: rowH, valign: "middle", fontFace: FONT, fontSize: fitBlock([r.label], { w: box.w * 0.55, h: rowH }, 11 * scale, 7), color: MUTED, margin: 0, fit: "shrink" });
       const v = [r.value, r.aux, r.tag].filter(Boolean).join(" · ");
-      target.addText(v, { x: box.x + box.w * 0.55, y, w: box.w * 0.45, h: rowH, align: "right", valign: "middle", fontFace: FONT, fontSize: fitBlock([v], { w: box.w * 0.45, h: rowH }, 11 * scale, 7), bold: true, color: INK, margin: 0 });
+      target.addText(v, { x: box.x + box.w * 0.55, y, w: box.w * 0.45, h: rowH, align: "right", valign: "middle", fontFace: FONT, fontSize: fitBlock([v], { w: box.w * 0.45, h: rowH }, 11 * scale, 7), bold: true, color: INK, margin: 0, fit: "shrink" });
       target.addShape("line", { x: box.x, y: y + 0.3 * scale, w: box.w, h: 0, line: { color: LINE, width: 0.75 } });
     },
   }));
@@ -366,8 +367,7 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   }
 
   const notes = [
-    ...v.caveats,
-    ...v.notes,
+    ...reportSummaryNotes(v, terrainShown),
     ...(p.mass ? ["DXF·GLB는 내보내기에서"] : []),
     ...(p.rose ? [roseSummary(p.rose), `바람장미 선택 계절 · ${ROSE_SEASON_LABEL[p.roseSeason ?? "annual"]}`] : []),
   ];

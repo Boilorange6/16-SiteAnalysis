@@ -18,6 +18,49 @@ export type TerrainSectionMapStyle = {
   dash?: string;
 };
 
+export type TerrainSectionRect = { x: number; y: number; w: number; h: number };
+
+export type TerrainSectionBands = {
+  header: TerrainSectionRect;
+  plot: TerrainSectionRect;
+  axis: TerrainSectionRect;
+  table: TerrainSectionRect;
+  footer: TerrainSectionRect;
+  paddingX: number;
+  paddingTop: number;
+  paddingBottom: number;
+  gapX: number;
+  gapY: number;
+};
+
+/** preview/PPT가 공유하는 단면 도판의 비겹침 band 계약. */
+export function terrainSectionBands(rect: TerrainSectionRect): TerrainSectionBands {
+  const paddingX = Math.min(0.16, Math.max(0.06, rect.w * 0.04));
+  const paddingTop = 0.1;
+  const paddingBottom = 0.12;
+  const gapX = Math.min(0.12, Math.max(0.04, rect.w * 0.03));
+  const gapY = 0.06;
+  const headerH = 0.24;
+  const axisH = 0.18;
+  const footerH = 0.18;
+  const innerW = Math.max(0.4, rect.w - paddingX * 2);
+  const tableW = Math.min(Math.max(0.2, innerW - gapX - 0.2), Math.max(1.45, innerW * 0.42));
+  const plotW = Math.max(0.2, innerW - gapX - tableW);
+  const header = { x: rect.x + paddingX, y: rect.y + paddingTop, w: innerW, h: headerH };
+  const bodyY = header.y + header.h + gapY;
+  const footer = { x: rect.x + paddingX, y: rect.y + rect.h - paddingBottom - footerH, w: innerW, h: footerH };
+  const axis = { x: header.x, y: footer.y - gapY - axisH, w: plotW, h: axisH };
+  const plot = { x: header.x, y: bodyY, w: plotW, h: Math.max(0.35, axis.y - bodyY - gapY) };
+  const table = { x: header.x + plotW + gapX, y: bodyY, w: tableW, h: Math.max(0.35, axis.y + axis.h - bodyY) };
+  return { header, plot, axis, table, footer, paddingX, paddingTop, paddingBottom, gapX, gapY };
+}
+
+/** 단면 도판이 요약 열을 차지할 때 낮은 우선순위 메모를 먼저 줄인다. */
+export function reportSummaryNotes(view: { caveats: readonly string[]; notes: readonly string[] }, compactTerrain = false): string[] {
+  const notes = [...view.caveats, ...view.notes];
+  return compactTerrain ? notes.slice(0, 1) : notes.slice(0, 4);
+}
+
 /** 화면·미리보기 SVG에서 단차 표식을 프로파일 주변의 짧은 glyph로 제한한다. */
 export function terrainSectionMarkerGeometry(x: number, y: number, halfHeight = TERRAIN_SECTION_MARKER_HALF_HEIGHT): { x: number; y1: number; y2: number } {
   const half = Number.isFinite(halfHeight) && halfHeight > 0 ? halfHeight : TERRAIN_SECTION_MARKER_HALF_HEIGHT;

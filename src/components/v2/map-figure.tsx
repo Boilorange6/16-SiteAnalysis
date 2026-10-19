@@ -516,6 +516,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     fixed: !!fixed,
     compact,
     selectedFids,
+    terrainSection,
     highlightLabel,
     emphasisKey,
     hoverKey: previewInteraction ? null : hoverKey,
@@ -531,7 +532,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     view,
     viewport,
     legendFocus,
-  }), [activeLayer, avoid, bare, bottomInset, calloutLeftBottom, compact, emphasisKey, fill, fixed, H, hiddenKeys, highlightLabel, legendFocus, mapCenterY, mapFill, mapSiteX, mapSiteY, muted, model, northOpt, panelH, panelW, panelX, panelY, path, rightInset, scale, scaleLeft, scaleX, sceneDragging, sceneHoverKey, showAutomaticLabels, showLegend, showRadius, showSiteMarker, siteX, selectedFids, pinnedKeys, W, view, viewport]);
+  }), [activeLayer, avoid, bare, bottomInset, calloutLeftBottom, compact, emphasisKey, fill, fixed, H, hiddenKeys, highlightLabel, legendFocus, mapCenterY, mapFill, mapSiteX, mapSiteY, muted, model, northOpt, panelH, panelW, panelX, panelY, path, rightInset, scale, scaleLeft, scaleX, sceneDragging, sceneHoverKey, showAutomaticLabels, showLegend, showRadius, showSiteMarker, siteX, selectedFids, terrainSection, pinnedKeys, W, view, viewport]);
   const vp = scene.viewport;
   const proj = makeProjector(vp);
   const mpp = scene.mpp;

@@ -10,6 +10,7 @@ const { toSummaryView, toTileView } = await import("../../lib/v2/ui/tile-view.ts
 const { buildReportPlan } = await import("../../lib/v2/report/report-plan.ts");
 const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
 const { SLIDE, slideLegend, slidePanelRects, slideReserved, slideSiteX, terrainSectionLayout } = await import("../../lib/v2/ui/overlay-layout.ts");
+const { terrainSectionBands, terrainSectionMapStyle } = await import("../../lib/v2/ui/terrain-section.ts");
 const { calloutFrame, PX } = await import("../../lib/v2/ui/callout-layout.ts");
 const { buildMapScene } = await import("../../lib/v2/ui/map-scene.ts");
 const { slideViewport } = await import("../../lib/v2/ui/map-projection.ts");
@@ -35,8 +36,8 @@ const d17 = structuredClone({
   presentation: {
     ...source.presentation,
     lines: [
-      { layer: "terrain_section_a", points: [[127.15, 37.6245], [127.16, 37.6245]], label: "단면 A–A′ (동서)" },
-      { layer: "terrain_section_b", points: [[127.155, 37.62], [127.155, 37.63]], label: "단면 B–B′ (남북)" },
+      { layer: "terrain_section_a", points: [[127.145, 37.555], [127.163, 37.555]], label: "단면 A–A′ (동서)" },
+      { layer: "terrain_section_b", points: [[127.1542, 37.546], [127.1542, 37.564]], label: "단면 B–B′ (남북)" },
     ],
     linesTotal: 2,
     terrainSections: { A: section("EW"), B: section("NS") },
@@ -93,10 +94,13 @@ const mapScene = buildMapScene({
   scale: true,
   showAutomaticLabels: true,
   avoid: mapAvoid,
+  terrainSection: d17Slide.terrainSection,
   viewport: slideViewport(d17Slide.map, d17Slide.style, { width: 960, height: 540, siteX: slideSiteX(d17Slide.style, true), fill: 0.8 }),
 });
 const mapCircle = { x0: mapScene.center[0] - mapScene.radiusPx, y0: mapScene.center[1] - mapScene.radiusPx, x1: mapScene.center[0] + mapScene.radiusPx, y1: mapScene.center[1] + mapScene.radiusPx };
 assert.equal(intersects(sectionBox, mapCircle), false, "section does not intersect the map circle bounds");
+const scaleBox = { x0: mapScene.scale.x0 - 8 * mapScene.unit, y0: mapScene.scale.y - 16 * mapScene.unit, x1: mapScene.scale.x1 + 8 * mapScene.unit, y1: mapScene.scale.y + 8 * mapScene.unit };
+assert.equal(intersects(sectionBox, scaleBox), false, "preview/PPT map scale bar avoids the section");
 
 const bytes = await renderReportPptx([d17Slide]);
 const outputDir = mkdtempSync(join(tmpdir(), "v2-t10-topo-section-pptx-"));
@@ -105,15 +109,61 @@ writeFileSync(outputPath, bytes);
 const zip = await JSZip.loadAsync(bytes);
 const xml = await zip.file("ppt/slides/slide1.xml")?.async("string");
 assert.ok(xml);
-const terrainPlate = [...xml.matchAll(/<p:(?:sp|cxnSp)>[\s\S]*?<\/p:(?:sp|cxnSp)>/g)]
-  .map((match) => match[0])
-  .find((block) => block.includes('name="GRP|terrain-section|B|plate"'));
+const shapeBlocks = [...xml.matchAll(/<p:(?:sp|cxnSp)>[\s\S]*?<\/p:(?:sp|cxnSp)>/g)].map((match) => match[0]);
+const xmlRect = (block) => {
+  const off = block.match(/<a:off x="(\d+)" y="(\d+)"\/>/);
+  const ext = block.match(/<a:ext cx="(\d+)" cy="(\d+)"\/>/);
+  assert.ok(off && ext, "PPTX shape has geometry");
+  return { x: Number(off[1]) / 914400, y: Number(off[2]) / 914400, w: Number(ext[1]) / 914400, h: Number(ext[2]) / 914400 };
+};
+const terrainPlate = shapeBlocks.find((block) => block.includes('name="GRP|terrain-section|B|plate"'));
 assert.ok(terrainPlate, "PPTX terrain section plate exists");
-const pptxOff = terrainPlate.match(/<a:off x="(\d+)" y="(\d+)"\/>/);
-const pptxExt = terrainPlate.match(/<a:ext cx="(\d+)" cy="(\d+)"\/>/);
-assert.ok(pptxOff && pptxExt, "PPTX terrain section plate has geometry");
-const pptxRect = { x: Number(pptxOff[1]) / 914400, y: Number(pptxOff[2]) / 914400, w: Number(pptxExt[1]) / 914400, h: Number(pptxExt[2]) / 914400 };
+const pptxRect = xmlRect(terrainPlate);
 for (const key of ["x", "y", "w", "h"]) assert.ok(Math.abs(pptxRect[key] - pptxLayout.rect[key]) < 0.002, `PPTX ${key} matches preview geometry`);
+
+// native PPT 지도도 preview와 같은 B 선택 스타일을 쓴다. A는 얇은 점선·45%이고 B는 굵은 실선이다.
+const sectionGeometry = (label) => shapeBlocks.filter((block) => block.includes(`name="GRP|map-D17-legend-${label}`) && block.includes("|geometry"));
+const aMapSection = sectionGeometry("단면 A–A′ (동서)");
+const bMapSection = sectionGeometry("단면 B–B′ (남북)");
+assert.equal(aMapSection.length, 1, "PPTX contains native A section line");
+assert.equal(bMapSection.length, 1, "PPTX contains native B section line");
+const aStyle = terrainSectionMapStyle("A", "B");
+const bStyle = terrainSectionMapStyle("B", "B");
+const pptWidthEmu = (width) => Math.round(width * 0.75 * 12700);
+const lineXml = (block) => block.match(/<a:ln(?:\s|>)[\s\S]*?<\/a:ln>/)?.[0] ?? "";
+assert.match(aMapSection[0], new RegExp(`<a:ln w="${pptWidthEmu(aStyle.strokeWidth)}"`));
+assert.match(lineXml(aMapSection[0]), /<a:prstDash val="dash"\/>/);
+assert.match(lineXml(aMapSection[0]), /<a:alpha val="45000"\/>/);
+assert.match(bMapSection[0], new RegExp(`<a:ln w="${pptWidthEmu(bStyle.strokeWidth)}"`));
+assert.match(lineXml(bMapSection[0]), /<a:prstDash val="solid"\/>/);
+assert.doesNotMatch(lineXml(bMapSection[0]), /<a:alpha val=/);
+
+// 요약 글상자는 모두 줄인 summary rect 안에 있고, 단면의 공용 band끼리는 간격을 갖는다.
+const summaryTextBlocks = shapeBlocks.filter((block) => block.includes('name="GRP|panel-summary|요약|plate"') && block.includes("<p:txBody>"));
+assert.ok(summaryTextBlocks.length > 0, "PPTX summary has text boxes");
+const summaryBox = pptxLayout.summary;
+assert.ok(summaryBox);
+for (const block of summaryTextBlocks) {
+  const box = xmlRect(block);
+  assert.ok(box.x >= summaryBox.x - 0.002 && box.y >= summaryBox.y - 0.002 && box.x + box.w <= summaryBox.x + summaryBox.w + 0.002 && box.y + box.h <= summaryBox.y + summaryBox.h + 0.002, "summary text box stays inside terrainLayout.summary");
+}
+const sectionBands = terrainSectionBands(pptxLayout.rect);
+const bandNames = ["header", "plot", "axis", "table", "footer"];
+for (let i = 0; i < bandNames.length; i += 1) {
+  for (let j = i + 1; j < bandNames.length; j += 1) {
+    assert.equal(intersects(sectionBands[bandNames[i]], sectionBands[bandNames[j]]), false, `${bandNames[i]} and ${bandNames[j]} bands do not intersect`);
+  }
+}
+const bandContains = (block, band, label) => {
+  const box = xmlRect(block);
+  assert.ok(box.x >= band.x - 0.002 && box.y >= band.y - 0.002 && box.x + box.w <= band.x + band.w + 0.002 && box.y + box.h <= band.y + band.h + 0.002, `${label} stays in its section band`);
+};
+const terrainShape = (part) => shapeBlocks.filter((block) => block.includes(`name="GRP|terrain-section|B|${part}`));
+for (const block of terrainShape("title")) bandContains(block, sectionBands.header, "section header");
+for (const block of terrainShape("axis-label")) bandContains(block, sectionBands.axis, "section axis");
+for (const block of terrainShape("summary")) bandContains(block, sectionBands.footer, "section footer");
+for (const block of [...terrainShape("table-"), ...terrainShape("caveat")]) bandContains(block, sectionBands.table, "section table");
+
 assert.match(xml, /단면 B–B′ \(남북\)/);
 assert.match(xml, /높이 미확인/);
 assert.match(xml, /대지 고저차/);

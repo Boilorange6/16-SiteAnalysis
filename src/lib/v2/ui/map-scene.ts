@@ -266,6 +266,8 @@ export type MapSceneOptions = {
   fixed?: boolean;
   compact?: boolean;
   selectedFids?: readonly string[];
+  /** D17 단면 지도에서 선택한 단면을 PPT/native 경로에도 전달한다. */
+  terrainSection?: "A" | "B";
   highlightLabel?: string | null;
   /** 보고서 legendFocus 모드: 강조 항목의 원래 색·두께를 보존한다. */
   legendFocus?: string | null;
@@ -297,6 +299,7 @@ export type MapScene = {
   mpp: number;
   center: [number, number];
   radiusPx: number;
+  terrainSection: "A" | "B";
   tiles: ReturnType<typeof tilesFor>;
   features: MapSceneFeature[];
   lines: MapSceneLine[];
@@ -842,6 +845,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     fixed = false,
     compact = false,
     selectedFids = [],
+    terrainSection = "A",
     highlightLabel = null,
     legendFocus: legendFocusOpt = null,
     emphasisKey = null,
@@ -1065,6 +1069,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     mpp,
     center: [cx, cy],
     radiusPx,
+    terrainSection,
     tiles,
     features: drawn,
     lines: linePaths,
