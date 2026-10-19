@@ -70,6 +70,21 @@ for (const hiddenLabel of ["1970년대 이전", "1980년대", "1990년대", "200
 }
 assert.match(a3.slide, /\|축척\|/, "A3 축척 장식");
 assert.match(a3.slide, /\|위치도\|/, "A3 위치도 장식");
+const groupBlocks = (xml) => [...xml.matchAll(/<p:grpSp>[\s\S]*?<\/p:grpSp>/g)].map((match) => match[0]);
+const groupGeometry = (xml, name) => {
+  const group = groupBlocks(xml).find((block) => block.match(/<p:cNvPr id="\d+" name="([^"]*)"/)?.[1] === name);
+  if (!group) return null;
+  const off = group.match(/<p:grpSpPr>[\s\S]*?<a:xfrm>[\s\S]*?<a:off x="(-?\d+)" y="(-?\d+)"\/>/);
+  const ext = group.match(/<p:grpSpPr>[\s\S]*?<a:xfrm>[\s\S]*?<a:ext cx="(\d+)" cy="(\d+)"\/>/);
+  if (!off || !ext) return null;
+  return { x: Number(off[1]), y: Number(off[2]), w: Number(ext[1]), h: Number(ext[2]) };
+};
+const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+const locatorGroup = groupGeometry(a3.slide, "위치도");
+const summaryGroup = groupGeometry(a3.slide, "요약");
+assert.ok(locatorGroup, "A3 위치도 그룹 bbox");
+assert.ok(summaryGroup, "A3 요약 plate 그룹 bbox");
+assert.equal(overlaps(locatorGroup, summaryGroup), false, "위치도 group does not intersect summary plate");
 const mapOffset = a3.slide.match(/<p:cNvPr id="\d+" name="GRP\|map-D04-[^"]*"[\s\S]*?<a:off x="(\d+)"/);
 assert.ok(mapOffset && Number(mapOffset[1]) / 914400 > slideSize("a3").w * 0.5, "numbers-first 지도는 오른쪽 프레임에 배치된다");
 

@@ -10,7 +10,7 @@ import { coverLayout, fitBlock, fitFooterText, sourceLayout, titlePlateRect } fr
 import { layerStyle, legendItemsOf, legendLabelOf } from "@/lib/v2/ui/map-layers";
 import { reportSummaryNotes, terrainCrossingLayer, terrainElevationLabel, terrainSectionAxisStops, terrainSectionBands, terrainSectionElevationAt, terrainSectionMarkerGeometry, terrainSectionPosition, terrainSectionTotal, sortTerrainCrossings, TERRAIN_CROSSING_LABELS, TERRAIN_SECTION_LABELS, TERRAIN_SECTION_TABLE_MAX_ROWS } from "@/lib/v2/ui/terrain-section";
 import MapFigure from "../map-figure";
-import { northArrowBox, scaleBarBox } from "@/lib/v2/ui/map-scene";
+import { locatorBox, northArrowBox, scaleBarBox } from "@/lib/v2/ui/map-scene";
 import type { PageStyle } from "@/lib/v2/ui/board-state";
 import type { PagePanels, MapFrameState, TextBox } from "@/lib/v2/report/report-doc";
 import type { PlannedSlide } from "@/lib/v2/report/report-plan";
@@ -390,6 +390,8 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
   const focusedLabel = useMemo(() => legendLabelOf(model, style.legendFocus), [model, style.legendFocus]);
   const activeLegendLabel = hoverLegend ?? focusedLabel;
   const avoid = useMemo(() => {
+    const frameOffsetX = frame?.x ? frame.x * unit : 0;
+    const frameOffsetY = frame?.y ? frame.y * unit : 0;
     const reserved = slideReserved(unit, {
       info: panels.summary !== null,
       titleRect: panels.title,
@@ -398,10 +400,11 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
       calloutLegend,
       terrainSection: terrainLayout?.rect,
       format,
-    });
+    }).map((box) => ({ x0: box.x0 - frameOffsetX, y0: box.y0 - frameOffsetY, x1: box.x1 - frameOffsetX, y1: box.y1 - frameOffsetY }));
     const scaleAvoid = scaleBarBox(width, height, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset, false, undefined, layoutUnit);
     return [...reserved, ...(showScale ? [scaleAvoid] : []), ...(showNorth && northAvoid ? [northAvoid] : [])];
-  }, [bottomInset, calloutLegend, format, height, layoutUnit, northAvoid, panels.legend, panels.summary, panels.title, rightInset, showNorth, showScale, terrainLayout?.rect, unit, viewport, width]);
+  }, [bottomInset, calloutLegend, format, frame?.x, frame?.y, height, layoutUnit, northAvoid, panels.legend, panels.summary, panels.title, rightInset, showNorth, showScale, terrainLayout?.rect, unit, viewport, width]);
+  const locator = reportFrame?.decorations.locator && model.radiusM > 0 ? locatorBox(width, height, unit, avoid) : null;
   const onFeatureHover = useCallback((key: string | null) => {
     if (!interactive) return;
     setHoverKey((current) => current === key ? current : key);
@@ -576,11 +579,21 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
       />
     </div>
   );
-  if (!interactive) return <div className={styles.slideMap} data-preview-map="true">{map}</div>;
+  const locatorElement = locator ? <LocatorInset model={model} basemap={basemap} box={locator} /> : null;
+  if (!interactive) return <div className={styles.slideMap} data-preview-map="true">{map}{locatorElement}</div>;
   const mapKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Home") {
       event.preventDefault();
       patchRef.current({ offsetM: [0, 0] });
+      return;
+    }
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+      const offset = styleRef.current.offsetM ?? [0, 0];
+      const step = Math.max(1, model.radiusM * 0.02);
+      const dx = event.key === "ArrowRight" ? step : event.key === "ArrowLeft" ? -step : 0;
+      const dy = event.key === "ArrowDown" ? -step : event.key === "ArrowUp" ? step : 0;
+      event.preventDefault();
+      patchRef.current({ offsetM: [offset[0] + dx, offset[1] + dy] });
     }
   };
   return (
@@ -600,6 +613,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
       onDragStart={(event) => event.preventDefault()}
     >
       {map}
+      {locatorElement}
     </div>
   );
 }
@@ -1081,6 +1095,13 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, onCellActivate 
               zoomDelta: cell.reportFrame.scaleDenominator === null ? cell.reportFrame.zoomDelta : zoomForScale(cell.reportFrame.scaleDenominator, model, cellScaleOptions!),
               offsetM: cell.reportFrame.offsetM,
             } : cell.style ?? slide.style;
+            const cellViewport = model ? slideViewport(model, cellStyle, { width, height, siteX: 0.5, fill: 0.8 }) : null;
+            const cellNorthBox = cell.reportFrame?.decorations.north ? northArrowBox(width, height, 0, 24) : null;
+            const cellScaleBox = cell.reportFrame?.decorations.scaleBar && cellViewport ? scaleBarBox(width, height, metersPerPixel(cellViewport.center[1], cellViewport.zoom)) : null;
+            const cellLocatorBox = locatorBox(width, height, unit, [
+              ...(cellNorthBox ? [cellNorthBox] : []),
+              ...(cellScaleBox ? [cellScaleBox] : []),
+            ]);
             return (
               <div className={styles.sheetCell} style={rectStyle(rect, unit)} key={cell.mapKey}>
                 {chart ? <ChartPlaceholder view={cell.view} unit={unit} /> : model ? (
@@ -1096,14 +1117,14 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, onCellActivate 
                       north={cell.reportFrame?.decorations.north ? 24 : false}
                       credit={false}
                       scale={cell.reportFrame?.decorations.scaleBar ?? false}
-                      viewport={slideViewport(model, cellStyle, { width, height, siteX: 0.5, fill: 0.8 })}
+                      viewport={cellViewport ?? undefined}
                       pinnedKeys={cell.reportFrame ? [...new Set([...(cell.pinnedKeys ?? []), ...cell.reportFrame.pinnedKeys])] : cell.pinnedKeys ?? cell.style?.pinnedKeys ?? slide.style.pinnedKeys ?? []}
                       hiddenKeys={cell.reportFrame?.legend.hidden}
                       legendFocus={legendLabelOf(model, cell.style?.legendFocus ?? slide.style.legendFocus)}
                       highlightLabel={legendLabelOf(model, cell.style?.legendFocus ?? slide.style.legendFocus)}
                       showAutomaticLabels
                     />
-                    {cell.reportFrame?.decorations.locator && <LocatorInset model={model} unit={unit} basemap={basemap} />}
+                    {cell.reportFrame?.decorations.locator && model.radiusM > 0 && <LocatorInset model={model} basemap={basemap} box={cellLocatorBox} />}
                   </div>
                 ) : <VisualPlaceholder title={cell.view.title} message="이 장은 지도 대신 도판으로 표시됩니다." unit={unit} />}
                 <span className={styles.sheetLabel} style={fontStyle(9, unit)}>{cell.view.code} · {cell.view.title}</span>
@@ -1118,12 +1139,12 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, onCellActivate 
   );
 }
 
-function LocatorInset({ model, unit, basemap }: { model: NonNullable<ReturnType<typeof mapForSlide>>; unit: number; basemap: BasemapChoice }) {
+function LocatorInset({ model, basemap, box }: { model: NonNullable<ReturnType<typeof mapForSlide>>; basemap: BasemapChoice; box: { x0: number; y0: number; x1: number; y1: number } }) {
   const styles = useSurfaceStyles();
-  const width = Math.max(80, Math.round(unit * 2.2));
-  const height = Math.max(52, Math.round(unit * 1.35));
+  const width = Math.max(1, Math.round(box.x1 - box.x0));
+  const height = Math.max(1, Math.round(box.y1 - box.y0));
   const locatorModel = { ...model, radiusM: Math.max(model.radiusM * 3, model.radiusM + 1), features: [], polygons: [], lines: [], total: 0 };
-  return <div className={styles.locatorInset ?? styles.surfaceRoot} data-map-locator="true" aria-label="위치도" style={{ width, height }}><MapFigure model={locatorModel} width={width} height={height} fixed basemap="none" layer={basemap} legend={false} north={false} scale={false} credit={false} showAutomaticLabels={false} viewport={slideViewport(locatorModel, undefined, { width, height, siteX: 0.5, siteY: 0.5, fill: 0.82 })} /></div>;
+  return <div className={styles.locatorInset ?? styles.surfaceRoot} data-map-locator="true" aria-label="위치도" style={{ left: box.x0, top: box.y0, width, height, pointerEvents: "none" }}><MapFigure model={locatorModel} width={width} height={height} fixed basemap="none" layer={basemap} legend={false} north={false} scale={false} credit={false} showAutomaticLabels={false} viewport={slideViewport(locatorModel, undefined, { width, height, siteX: 0.5, siteY: 0.5, fill: 0.82 })} /></div>;
 }
 
 function TileSurface({ slide, unit, basemap, panels, interactive, thumbnail = false, onPatch, onDirectPatch, panelInteraction, staticSurface = false, onText }: { slide: Extract<PlannedSlide, { kind: "tile" }>; unit: number; basemap: BasemapChoice; panels: { title: Rect; summary: Rect | null; legend: Rect | null }; interactive: boolean; thumbnail?: boolean; onPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void; panelInteraction?: (key: PanelKey) => PanelInteraction; staticSurface?: boolean; onText?: (kind: "title" | "summary") => void }) {
@@ -1180,8 +1201,7 @@ function TileSurface({ slide, unit, basemap, panels, interactive, thumbnail = fa
   return (
     <>
       {displayModel ? <div data-surface-map={mapFrame ? "true" : undefined} style={mapFrame ? { position: "absolute", left: String(Number((mapLayout!.x * 100).toFixed(2))) + "%", top: String(Number((mapLayout!.y * 100).toFixed(2))) + "%", width: String(Number((mapLayout!.w * 100).toFixed(2))) + "%", height: String(Number((mapLayout!.h * 100).toFixed(2))) + "%" } : undefined}><MapLayer model={displayModel} style={mapStyle} unit={unit} basemap={basemap} panels={panels} siteX={slideSiteX(mapStyle, panels.summary !== null, format)} pinnedKeys={mapStyle.pinnedKeys} interactive={interactive} thumbnail={thumbnail} onPatch={onPatch} onDirectPatch={onDirectPatch} hoverLegend={hoverLegend} terrainSection={slide.view.code === "D17" ? slide.terrainSection ?? "A" : undefined} terrainLayout={terrainLayout} calloutLegend={calloutAlignment?.calloutLegend} calloutTop={calloutAlignment ? calloutAlignment.calloutTop * unit : undefined} calloutLeftBottom={calloutAlignment?.calloutLeftBottom ? calloutAlignment.calloutLeftBottom * unit : undefined} northAvoid={northAvoid} scale={!(slide.callout && slide.callout.page > 0)} frame={mapFrame ?? undefined} format={format} label={slide.view.title + " 지도"} reportFrame={reportFrame} /></div> : slide.mass ? <VisualPlaceholder title={slide.view.title} message="3D 매스 미리보기는 내보내기와 같은 페이지 위치로 표시됩니다." unit={unit} /> : slide.rose ? <VisualPlaceholder title={slide.view.title} message="바람장미 도판 미리보기" unit={unit} /> : chart ? <ChartPlaceholder view={slide.view} unit={unit} /> : <VisualPlaceholder title={slide.view.title} message={slide.body.kind === "state" ? slide.body.message : "표시할 지도 결과가 없습니다."} unit={unit} />}
-      {model && reportFrame?.decorations.locator && model.radiusM > 0 && <LocatorInset model={model} unit={unit} basemap={basemap} />}
-      {terrainShown && <TerrainSectionPreview slide={slide} unit={unit} layout={terrainLayout} />}
+       {terrainShown && <TerrainSectionPreview slide={slide} unit={unit} layout={terrainLayout} />}
       {slide.body.kind === "state" && <div className={styles.slidePanel} style={{ left: unit * 4, top: unit * 2.7, width: unit * 5.1, height: unit * 1.15 }}><div className={styles.slideText + " " + styles.slideTextStrong} style={fontStyle(16, unit)}>{slide.body.message}</div></div>}
       <div onDoubleClick={() => onText?.("title")}><TitlePanel slide={slide} rect={panels.title} unit={unit} interaction={panelInteraction?.("title")} /></div>
       {panels.summary && hasSummaryPanel(slide) && <div onDoubleClick={() => onText?.("summary")}><SummaryPanel slide={slide} rect={terrainLayout?.summary ?? panels.summary} unit={unit} terrainSectionShown={terrainShown} interaction={panelInteraction?.("summary")} /></div>}
@@ -1230,7 +1250,7 @@ function PanelTransformFrame({ panelKey, rect, unit, xGuides, yGuides, onResizeS
   </>;
 }
 
-function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapActive, staticSurface = false, selection, onSelect, onTextBox, onText, thumbnail = false, onSheetCellActivate, onPatch, onMapPatch, onDirectPatch }: { slide: PlannedSlide; basemap: BasemapChoice; editable: boolean; format?: SlideFormat; mapActive?: boolean; staticSurface?: boolean; selection?: SurfaceSelection; onSelect?: (selection: SurfaceSelection) => void; onTextBox?: (box: TextBox | { id: string; remove: true }) => void; onText?: (kind: "title" | "summary") => void; thumbnail?: boolean; onSheetCellActivate?: (index: number) => void; onPatch: (patch: PreviewStylePatch) => void; onMapPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void }) {
+function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapActive, staticSurface = false, selection, onSelect, onMapMoveActive, onTextBox, onText, thumbnail = false, onSheetCellActivate, onPatch, onMapPatch, onDirectPatch }: { slide: PlannedSlide; basemap: BasemapChoice; editable: boolean; format?: SlideFormat; mapActive?: boolean; staticSurface?: boolean; selection?: SurfaceSelection; onSelect?: (selection: SurfaceSelection) => void; onMapMoveActive?: (active: boolean) => void; onTextBox?: (box: TextBox | { id: string; remove: true }) => void; onText?: (kind: "title" | "summary") => void; thumbnail?: boolean; onSheetCellActivate?: (index: number) => void; onPatch: (patch: PreviewStylePatch) => void; onMapPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void }) {
   const format = (requestedFormat ?? (slide.format as SlideFormat | undefined) ?? "wide");
   const styles = useSurfaceStyles();
   const slotRef = useRef<HTMLDivElement>(null);
@@ -1416,13 +1436,30 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
               onSelect?.({ kind: "map" });
               return;
             }
+            if (mapActive) {
+              onMapMoveActive?.(false);
+              return;
+            }
             if (!target.closest("[data-panel-key]") && !target.closest("[data-panel-frame]") && !target.closest("[data-text-box]")) {
               setSelectedPanel(null);
               onSelect?.(null);
             }
           }}
+          onDoubleClick={(event) => {
+            if ((event.target as HTMLElement).closest("[data-preview-map]")) {
+              event.preventDefault();
+              onSelect?.({ kind: "map" });
+              onMapMoveActive?.(true);
+            }
+          }}
           onDragStart={(event) => event.preventDefault()}
-          onKeyDown={(event) => { if (event.key === "Escape") { setSelectedPanel(null); onSelect?.(null); } }}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            setSelectedPanel(null);
+            if (mapActive) onMapMoveActive?.(false);
+            else onSelect?.(null);
+          }}
           data-transforming={panelDrag.current || panelResize.current ? "true" : "false"}
           data-map-selected={selection?.kind === "map" ? "true" : undefined}
         >
@@ -1490,7 +1527,7 @@ export type SlideSurfaceProps = {
   onTextBox?: (box: TextBox | { id: string; remove: true }) => void;
   onText?: (kind: "title" | "summary") => void;
   mapActive?: boolean;
-  onMapActive?: (active: boolean) => void;
+  onMapMoveActive?: (active: boolean) => void;
   onStylePatch?: (patch: PreviewStylePatch) => void;
   onMapStylePatch?: (patch: PreviewStylePatch) => void;
   onDirectStylePatch?: (patch: PreviewStylePatch) => void;
@@ -1509,7 +1546,7 @@ export function SlideSurface({
   onTextBox,
   onText,
   mapActive,
-  onMapActive,
+  onMapMoveActive,
   onStylePatch,
   onMapStylePatch,
   onDirectStylePatch,
@@ -1536,7 +1573,6 @@ export function SlideSurface({
     else onStylePatch?.(patch);
   };
   const cellActivate = (index: number) => onSheetCellActivate?.(index);
-  void onMapActive;
   return (
     <SurfaceStyleContext.Provider value={styles}>
       <div
@@ -1556,6 +1592,7 @@ export function SlideSurface({
               format={format}
               selection={selection}
               onSelect={onSelect}
+              onMapMoveActive={onMapMoveActive}
               onTextBox={onTextBox}
               onText={onText}
               onSheetCellActivate={mode === "edit" ? cellActivate : undefined}
@@ -1563,7 +1600,7 @@ export function SlideSurface({
               onMapPatch={mapPatch}
               onDirectPatch={directPatch}
             />}
-        {locked && active && <span className={styles.surfaceLockedMessage} data-map-locked="true">지도 위치 고정됨</span>}
+        {locked && (active || selection?.kind === "map") && <span className={styles.surfaceLockedMessage} data-map-locked="true">지도 위치 고정됨</span>}
       </div>
     </SurfaceStyleContext.Provider>
   );

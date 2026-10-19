@@ -9,7 +9,7 @@ import { SLIDE_OVERVIEW_FILL } from "@/lib/v2/ui/callout-layout";
 import { slideSiteX } from "@/lib/v2/ui/overlay-layout";
 import { importLegacyReport, hasLegacyReport, pagesForTile, planReportDoc, recommendedPages } from "@/lib/v2/report/report-doc-plan";
 import { tileReportSettingsFromBoard, type PlannedSlide } from "@/lib/v2/report/report-plan";
-import { insertIndexAfter, moveByKey } from "@/lib/v2/ui/report-mode-logic";
+import { insertIndexAfter, moveByKey, transitionMapInteraction } from "@/lib/v2/ui/report-mode-logic";
 import type { BoardAction, BoardState } from "@/lib/v2/ui/board-state";
 import type { SummaryView, TileView } from "@/lib/v2/ui/tile-view";
 import { SlideSurface, type SurfaceSelection } from "./slide-surface";
@@ -118,6 +118,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const [compareGrid, setCompareGrid] = useState<"2x2" | "3x2" | "3x1">("2x2");
   const [compareSelected, setCompareSelected] = useState<string[]>([]);
   const [selection, setSelection] = useState<SurfaceSelection>(null);
+  const [mapMoveActive, setMapMoveActive] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
@@ -129,6 +130,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     if (selectedId && history.present.pages.some((page) => page.id === selectedId)) return;
     setSelectedId(history.present.pages[0]?.id ?? null);
     setSelection(null);
+    setMapMoveActive(false);
   }, [history.present.pages, selectedId]);
 
   const planContext = useMemo(() => ({ summary, analysisDate, views }), [analysisDate, summary, views]);
@@ -177,13 +179,24 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        if (mapMoveActive) {
+          event.preventDefault();
+          setMapMoveActive(false);
+        } else if (selection?.kind === "map") {
+          event.preventDefault();
+          setSelection(null);
+          setRail("pages");
+        }
+        return;
+      }
       if (!(event.ctrlKey || event.metaKey)) return;
       if (event.key.toLowerCase() === "z" && !event.shiftKey) { event.preventDefault(); undo(); }
       if (event.key.toLowerCase() === "y" || (event.key.toLowerCase() === "z" && event.shiftKey)) { event.preventDefault(); redo(); }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [redo, undo]);
+  }, [mapMoveActive, redo, selection, undo]);
 
   const addPages = useCallback((pages: ReportPage[], message?: string) => {
     if (pages.length === 0) return;
@@ -191,6 +204,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     const first = pages[0]!;
     apply({ type: "add", pages, index }, message ?? `${pageTypeLabel(first)} 페이지를 ${index + 1}쪽에 추가했습니다.`);
     setSelectedId(pages[0].id);
+    setSelection(null);
+    setMapMoveActive(false);
   }, [apply, history.present, selectedId]);
 
   const addPage = useCallback((kind: PageAddKind) => {
@@ -224,6 +239,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     const next: ReportDoc = { ...history.present, pages };
     commitDoc(next, "추천 구성으로 시작했습니다.");
     setSelectedId(pages[0]?.id ?? null);
+    setSelection(null);
+    setMapMoveActive(false);
   }, [board, commitDoc, history.present, planContext, views]);
 
   const importLegacy = useCallback(() => {
@@ -231,6 +248,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     const pages = importLegacyReport(empty, board, views, planContext);
     commitDoc({ ...history.present, pages }, "이전 보고서 구성을 불러왔습니다.");
     setSelectedId(pages[0]?.id ?? null);
+    setSelection(null);
+    setMapMoveActive(false);
   }, [board, commitDoc, history.present, planContext, views]);
 
   const movePage = useCallback((id: string, key: "ArrowLeft" | "ArrowRight" | "Home" | "End") => {
@@ -250,7 +269,11 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     const index = history.present.pages.findIndex((page) => page.id === id);
     const page = history.present.pages[index];
     apply({ type: "remove", id }, `${page ? pageTitleForToast(page, views) : "페이지"} 페이지를 지웠습니다. Ctrl+Z로 되돌릴 수 있습니다.`);
-    if (selectedId === id) setSelectedId(history.present.pages[Math.max(0, index - 1)]?.id ?? history.present.pages[index + 1]?.id ?? null);
+    if (selectedId === id) {
+      setSelectedId(history.present.pages[Math.max(0, index - 1)]?.id ?? history.present.pages[index + 1]?.id ?? null);
+      setSelection(null);
+      setMapMoveActive(false);
+    }
   }, [apply, history.present.pages, selectedId, views]);
 
   const duplicatePage = useCallback((id: string) => {
@@ -322,13 +345,35 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   }, [apply, selectedId]);
 
   const handleSurfaceSelect = useCallback((next: SurfaceSelection) => {
+    const current = { selected: selection?.kind === "map", moveActive: mapMoveActive };
+    if (next?.kind === "map") {
+      const transitioned = transitionMapInteraction(current, "select");
+      setSelection(next);
+      setMapMoveActive(transitioned.moveActive);
+      setRail(null);
+      return;
+    }
+    if (next === null) {
+      const transitioned = transitionMapInteraction(current, "outside-slide");
+      setMapMoveActive(transitioned.moveActive);
+      if (!transitioned.selected) {
+        setSelection(null);
+        if (current.selected) setRail("pages");
+      }
+      return;
+    }
+    setMapMoveActive(false);
     setSelection(next);
-    if (next?.kind === "map") setRail(null);
-    else if (selection?.kind === "map" && next === null) setRail("pages");
-  }, [selection]);
-  const toggleRail = useCallback((next: RailKey) => setRail((current) => current === next ? null : next), []);
+  }, [mapMoveActive, selection]);
+  const toggleRail = useCallback((next: RailKey) => {
+    setSelection(null);
+    setMapMoveActive(false);
+    setRail(next);
+  }, []);
   const addTextBoxFromRail = useCallback(() => {
     const opening = rail !== "textbox";
+    setSelection(null);
+    setMapMoveActive(false);
     setRail(opening ? "textbox" : null);
     if (opening) addTextBox();
   }, [addTextBox, rail]);
@@ -366,9 +411,40 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const mapScale = mapFrame && mapModel && mapScaleOptions ? scaleForFrame(mapModel, mapFrame, mapScaleOptions) : 1000;
   const mapEditing = !!mapFrame && !!mapModel && !!selectedPage && (selectedPage.kind === "tile" || selectedPage.kind === "compare") && selection?.kind === "map";
   const legacyAvailable = hasLegacyReport(board);
+  const mapSelection = useCallback((cell = mapCell): SurfaceSelection => ({ kind: "map", ...(cell === undefined ? {} : { cell }) }), [mapCell]);
+  const enterMapMove = useCallback(() => {
+    setSelection((current) => current?.kind === "map" ? current : mapSelection());
+    setRail(null);
+    setMapMoveActive(true);
+  }, [mapSelection]);
+  const setMapMoveFromSurface = useCallback((active: boolean) => {
+    if (active) enterMapMove();
+    else setMapMoveActive(false);
+  }, [enterMapMove]);
+  const openMapSettings = useCallback(() => {
+    handleSurfaceSelect(mapSelection());
+    setMapMoveActive(false);
+  }, [handleSurfaceSelect, mapSelection]);
+  const toggleMapMove = useCallback(() => {
+    if (selection?.kind === "map") {
+      const transitioned = transitionMapInteraction({ selected: true, moveActive: mapMoveActive }, "toggle-move");
+      setMapMoveActive(transitioned.moveActive);
+      return;
+    }
+    enterMapMove();
+  }, [enterMapMove, mapMoveActive, selection]);
+  const toggleMapLock = useCallback(() => {
+    if (!mapFrame) return;
+    if (!mapFrame.locked) setMapMoveActive(false);
+    applyFrame(mapCell, { locked: !mapFrame.locked });
+  }, [applyFrame, mapCell, mapFrame]);
 
   return (
-    <section className={styles.reportRoot} data-report-root aria-label="보고서 모드">
+    <section className={styles.reportRoot} data-report-root aria-label="보고서 모드" onPointerDownCapture={(event) => {
+      if (!mapMoveActive || selection?.kind !== "map") return;
+      const target = event.target as HTMLElement;
+      if (!target.closest("[data-preview-map]") && !target.closest("[data-map-toolbar]")) setMapMoveActive(false);
+    }}>
       <header className={styles.reportHeader}>
         <div className={styles.reportHeading}>
           <p className={styles.eyebrow}>대지분석 보고서</p>
@@ -399,7 +475,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
           <button type="button" className={`${styles.railButton} ${rail === "theme" ? styles.railButtonActive : ""}`} aria-pressed={rail === "theme"} onClick={() => toggleRail("theme")}><span aria-hidden="true">◌</span><span>테마</span></button>
         </nav>
         <aside className={styles.drawerColumn}>
-          {mapEditing && selectedPage && mapFrame && mapScaleOptions && <DrawerMap page={selectedPage} frame={mapFrame} view={mapView} cell={mapCell} scaleOptions={mapScaleOptions} sameExtent={selectedPage.kind === "compare" ? selectedPage.sameExtent : undefined} onSameExtent={selectedPage.kind === "compare" ? (value) => apply({ type: "sameExtent", id: selectedPage.id, value }) : undefined} onFrame={(patch: Partial<MapFrameState>) => applyFrame(mapCell, patch)} />}
+          {mapEditing && selectedPage && mapFrame && mapScaleOptions && <DrawerMap page={selectedPage} frame={mapFrame} view={mapView} cell={mapCell} scaleOptions={mapScaleOptions} sameExtent={selectedPage.kind === "compare" ? selectedPage.sameExtent : undefined} onSameExtent={selectedPage.kind === "compare" ? (value) => apply({ type: "sameExtent", id: selectedPage.id, value }) : undefined} onFrame={(patch: Partial<MapFrameState>) => { if (patch.locked === true) setMapMoveActive(false); applyFrame(mapCell, patch); }} />}
           {!mapEditing && rail === "pages" && <DrawerPages open hasLegacy={legacyAvailable} onAdd={addPage} onRecommended={startRecommended} onLegacy={importLegacy} />}
           {!mapEditing && rail === "tiles" && <DrawerTiles open doc={history.present} views={views} mode={compareMode ? "compare" : "single"} compareGrid={compareGrid} compareSelected={compareSelected} onCompareGrid={setCompareGrid} onAdd={addTile} onToggleCompare={toggleCompareTile} onCreateCompare={addComparePage} onCancelCompare={() => { setCompareSelected([]); setCompareMode(false); }} />}
           {!mapEditing && rail === "textbox" && <TextBoxDrawer onAdd={addTextBox} />}
@@ -414,12 +490,15 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
           ) : selectedSlide ? (
             <div className={styles.stageAndSettings}>
               <div className={styles.stageColumn}>
-                <div className={styles.stageFrame} data-report-stage>
+                <div className={styles.stageFrame} data-report-stage onPointerDown={(event) => {
+                  if (event.target !== event.currentTarget) return;
+                  handleSurfaceSelect(null);
+                }}>
                   {mapFrame && mapModel && <>
-                    <MapToolbar scale={mapScale} locked={mapFrame.locked} mapActive={selection?.kind === "map" && !mapFrame.locked} onZoom={(delta) => applyFrame(mapCell, { zoomDelta: mapFrame.zoomDelta + delta, scaleDenominator: null })} onFit={() => applyFrame(mapCell, { zoomDelta: 0, offsetM: [0, 0], scaleDenominator: null })} onToggleMove={() => handleSurfaceSelect(selection?.kind === "map" ? null : { kind: "map", ...(mapCell === undefined ? {} : { cell: mapCell }) })} onToggleLock={() => applyFrame(mapCell, { locked: !mapFrame.locked })} onOpen={() => handleSurfaceSelect({ kind: "map", ...(mapCell === undefined ? {} : { cell: mapCell }) })} />
-                    {selection?.kind === "map" && !mapFrame.locked && <p className={styles.mapHint}>지도를 끌어 옮기고 휠로 확대합니다 · Esc 또는 바깥을 누르면 끝납니다</p>}
+                    <MapToolbar scale={mapScale} locked={mapFrame.locked} mapActive={mapMoveActive && selection?.kind === "map" && !mapFrame.locked} onZoom={(delta) => applyFrame(mapCell, { zoomDelta: mapFrame.zoomDelta + delta, scaleDenominator: null })} onFit={() => applyFrame(mapCell, { zoomDelta: 0, offsetM: [0, 0], scaleDenominator: null })} onToggleMove={toggleMapMove} onToggleLock={toggleMapLock} onOpen={openMapSettings} />
+                    {mapMoveActive && selection?.kind === "map" && !mapFrame.locked && <p className={styles.mapHint}>지도를 끌어 옮기고 휠로 확대합니다 · Esc 또는 바깥을 누르면 끝납니다</p>}
                   </>}
-                  <SlideSurface slide={selectedSlide} basemap={basemap} mode="edit" selection={selection} onSelect={handleSurfaceSelect} onFrame={applyFrame} onPanels={applyPanels} onTextBox={applyTextBox} onText={editPanelText} onSheetCellActivate={(index) => handleSurfaceSelect({ kind: "map", cell: index })} mapActive={selection?.kind === "map"} classMap={surfaceClassMap} />
+                  <SlideSurface slide={selectedSlide} basemap={basemap} mode="edit" selection={selection} onSelect={handleSurfaceSelect} onMapMoveActive={setMapMoveFromSurface} onFrame={applyFrame} onPanels={applyPanels} onTextBox={applyTextBox} onText={editPanelText} onSheetCellActivate={(index) => { handleSurfaceSelect({ kind: "map", cell: index }); setMapMoveActive(false); }} mapActive={mapMoveActive} classMap={surfaceClassMap} />
                 </div>
                 {selectedPage && <NotesField pageId={selectedPage.id} value={selectedPage.notes} onChange={(notes) => apply({ type: "notes", id: selectedPage.id, notes })} />}
               </div>
@@ -428,7 +507,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
               </aside>
             </div>
           ) : <div className={styles.emptyCanvas}>이 페이지는 아직 미리보기를 준비하고 있습니다.</div>}
-          <PageStrip items={stripItems} selectedId={selectedId} onSelect={(id) => { setSelectedId(id); setSelection(null); }} onMove={movePage} onDropMove={dropMovePage} onAddPage={() => { setRail("pages"); addPage("blank"); }} onDuplicate={duplicatePage} onDelete={deletePage} classMap={surfaceClassMap} />
+          <PageStrip items={stripItems} selectedId={selectedId} onSelect={(id) => { setSelectedId(id); setSelection(null); setMapMoveActive(false); }} onMove={movePage} onDropMove={dropMovePage} onAddPage={() => { setRail("pages"); setSelection(null); setMapMoveActive(false); addPage("blank"); }} onDuplicate={duplicatePage} onDelete={deletePage} classMap={surfaceClassMap} />
         </main>
       </div>
       {toast && <div className={styles.toast} role="status">{toast} <button type="button" onClick={undo}>되돌리기</button></div>}

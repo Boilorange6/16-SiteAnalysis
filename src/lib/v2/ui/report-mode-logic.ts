@@ -1,5 +1,42 @@
 import type { ReportDoc, ReportDocAction } from "../report/report-doc";
 
+export type MapInteractionState = {
+  selected: boolean;
+  moveActive: boolean;
+};
+
+export type MapInteractionEvent =
+  | "select"
+  | "enter-move"
+  | "toggle-move"
+  | "end-move"
+  | "escape"
+  | "outside-slide"
+  | "outside-page";
+
+export function transitionMapInteraction(
+  state: MapInteractionState,
+  event: MapInteractionEvent,
+): MapInteractionState {
+  switch (event) {
+    case "select":
+      return { selected: true, moveActive: state.moveActive };
+    case "enter-move":
+      return { selected: true, moveActive: true };
+    case "toggle-move":
+      return { selected: true, moveActive: !state.moveActive };
+    case "end-move":
+      return { selected: state.selected, moveActive: false };
+    case "escape":
+    case "outside-slide":
+      return state.moveActive
+        ? { selected: state.selected, moveActive: false }
+        : { selected: false, moveActive: false };
+    case "outside-page":
+      return { selected: false, moveActive: false };
+  }
+}
+
 export function insertIndexAfter(doc: ReportDoc, selectedId: string | null): number {
   if (!selectedId) return doc.pages.length;
   const index = doc.pages.findIndex((page) => page.id === selectedId);

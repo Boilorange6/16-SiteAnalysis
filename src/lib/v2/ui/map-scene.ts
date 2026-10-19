@@ -28,6 +28,39 @@ export function northArrowBox(width: number, height: number, rightInset = 0, nor
   return { x0: Math.max(0, x - 13 * u), y0: Math.max(0, y - 13 * u), x1: Math.min(width, x + 13 * u), y1: Math.min(height, y + 13 * u) };
 }
 
+function boxesOverlap(a: MapSceneBox, b: MapSceneBox): boolean {
+  return a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
+}
+
+/** 지도 프레임 안에서 제목·요약·범례·축척·방위표를 피하는 위치도 자리. */
+export function locatorBox(width: number, height: number, pxPerInch: number, reserved: readonly MapSceneBox[] = []): MapSceneBox {
+  const safeWidth = Math.max(1, width);
+  const safeHeight = Math.max(1, height);
+  const unit = Math.max(0.1, Number.isFinite(pxPerInch) ? pxPerInch : 1);
+  const gap = Math.max(2, unit * 0.16);
+  const candidates = (scale: number): MapSceneBox[] => {
+    const boxW = Math.max(1, Math.min(safeWidth * 0.24, unit * 2.2) * scale);
+    const boxH = Math.max(1, Math.min(safeHeight * 0.25, unit * 1.35) * scale);
+    const xs = [gap, (safeWidth - boxW) / 2, safeWidth - boxW - gap];
+    const ys = [gap, (safeHeight - boxH) / 2, safeHeight - boxH - gap];
+    const positions = [
+      [xs[2], ys[0]], [xs[0], ys[0]], [xs[2], ys[2]], [xs[0], ys[2]],
+      [xs[1], ys[0]], [xs[1], ys[2]], [xs[2], ys[1]], [xs[0], ys[1]], [xs[1], ys[1]],
+    ];
+    return positions.map(([x, y]) => ({
+      x0: Math.max(0, Math.min(safeWidth - boxW, x)),
+      y0: Math.max(0, Math.min(safeHeight - boxH, y)),
+      x1: Math.max(1, Math.min(safeWidth, x + boxW)),
+      y1: Math.max(1, Math.min(safeHeight, y + boxH)),
+    }));
+  };
+  for (const scale of [1, 0.88, 0.76, 0.64, 0.52]) {
+    const candidate = candidates(scale).find((box) => reserved.every((item) => !boxesOverlap(box, item)));
+    if (candidate) return candidate;
+  }
+  return candidates(0.44)[0]!;
+}
+
 function scaleBarLayout(width: number, height: number, mpp: number, bottomInset = 0, rightInset = 0, scaleLeft = false, scaleX?: number, unitOverride?: number, maxBarPx = 88): ScaleBarLayout {
   const unit = unitOverride ?? Math.min(1.5, Math.max(1, height / 360));
   const bar = scaleBar(mpp, maxBarPx * unit);

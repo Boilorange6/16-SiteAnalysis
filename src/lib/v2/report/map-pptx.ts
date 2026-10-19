@@ -3,7 +3,7 @@ import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, legen
 import { isSiteParcelLayer } from "../ui/site-parcel";
 import { SLIDE, slideCalloutAvoidance, slideGeometry, slideLayout, slideLegend, slidePanelRects, slideReserved, slideSiteX, terrainSectionLayout, type SlideFormat } from "../ui/overlay-layout";
 import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
-import { buildMapScene, mapLabelEntries, northArrowBox, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, scaleBarBox, type MapScene, type MapSceneBox } from "../ui/map-scene";
+import { buildMapScene, locatorBox, mapLabelEntries, northArrowBox, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, scaleBarBox, type MapScene, type MapSceneBox } from "../ui/map-scene";
 import { badgeTextColor } from "../ui/map-labels";
 import { terrainSectionMapStyle } from "../ui/terrain-section";
 import { FONT, INK, hex, textIn, type Slide } from "./pptx-kit";
@@ -485,9 +485,12 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
   const nativeScaleMaxPx = reportFrame?.scaleDenominator !== null && reportFrame?.scaleDenominator !== undefined ? 150 : undefined;
   const scaleAvoid = calloutDetail || !showScale ? null : scaleBarBox(VIEW_W, height, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset, false, undefined, undefined, nativeScaleMaxPx);
   const northAvoid = calloutDetail || !showNorth ? null : northArrowBox(VIEW_W, height, rightInset, northY);
+  const frameOriginX = activeFrame.x * activePxPerInch;
+  const frameOriginY = activeFrame.y * activePxPerInch;
+  const localize = (box: MapSceneBox): MapSceneBox => ({ x0: box.x0 - frameOriginX, y0: box.y0 - frameOriginY, x1: box.x1 - frameOriginX, y1: box.y1 - frameOriginY });
   const avoid = calloutDetail
     ? []
-     : [...slideReserved(activePxPerInch, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend, calloutLegend, terrainSection: terrainLayout?.rect, format }), ...(scaleAvoid ? [scaleAvoid] : []), ...(northAvoid ? [northAvoid] : [])];
+     : [...slideReserved(activePxPerInch, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend, calloutLegend, terrainSection: terrainLayout?.rect, format }).map(localize), ...(scaleAvoid ? [scaleAvoid] : []), ...(northAvoid ? [northAvoid] : [])];
   const focus = legendLabelOf(displayModel, style.legendFocus);
   const pinnedKeys = [...new Set([
     ...(plan.pinnedKeys ?? []),
@@ -820,12 +823,14 @@ function addScale(slide: Slide, code: string, scene: MapScene): void {
   slide.addText(bar.label, { x: pxX(x0), y: pxY(y - 11 * u), w: pxW(bar.px), h: pxH(8 * u), align: "center", valign: "middle", fontFace: FONT, fontSize: fontPt(9.5 * u, 6), bold: true, color: INK, margin: 0, objectName: tag(code, key, "축척", "label") });
 }
 
-function addLocator(slide: Slide, code: string, model: MapModel): void {
+function addLocator(slide: Slide, code: string, model: MapModel, scene: MapScene): void {
   if (!Number.isFinite(model.radiusM) || model.radiusM <= 0) return;
-  const width = Math.min(170, Math.max(90, activeSceneWidth * 0.25));
-  const height = Math.min(105, Math.max(60, activeSceneHeight * 0.22));
-  const x = Math.max(10, activeSceneWidth - width - 18);
-  const y = 18;
+  const localUnit = activeSceneWidth / Math.max(0.1, activeFrame.w);
+  const box = locatorBox(activeSceneWidth, activeSceneHeight, localUnit, scene.occupiedBoxes);
+  const width = Math.max(1, box.x1 - box.x0);
+  const height = Math.max(1, box.y1 - box.y0);
+  const x = box.x0;
+  const y = box.y0;
   const locatorModel = { ...model, radiusM: Math.max(model.radiusM * 3, model.radiusM + 1), features: [], polygons: [], lines: [], total: 0 };
   const viewport = slideViewport(locatorModel, undefined, { width, height, siteX: 0.5, siteY: 0.5, fill: 0.82 });
   const radiusPx = Math.min(width * 0.45, model.radiusM / Math.max(0.0001, metersPerPixel(model.center[1], viewport.zoom)));
@@ -916,7 +921,7 @@ export function addEditableMap(slide: Slide, plan: (PlannedSlide & { kind: "tile
     addLabels(slide, code, scene);
     addNorth(slide, code, scene);
     addScale(slide, code, scene);
-    if (options.reportFrame?.decorations.locator) addLocator(slide, code, model);
+    if (options.reportFrame?.decorations.locator) addLocator(slide, code, model, scene);
     if ((options.mode ?? "tile") === "cell") addCellLegend(slide, code, visibleModel, options.style);
     return status;
   } finally {
