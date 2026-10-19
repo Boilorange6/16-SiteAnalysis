@@ -10,6 +10,15 @@ import { canonicalRailLineLabel, railLineColor, railLineIsLightRail, railStation
 import { terrainSectionLabelAnchor } from "./terrain-section";
 
 export type MapSceneBox = { x0: number; y0: number; x1: number; y1: number };
+
+/** 북쪽 표시의 실제 배경·화살표·N 문자를 함께 감싸는 회피 상자. */
+export function northArrowBox(width: number, height: number, rightInset = 0, north?: number | false): MapSceneBox | null {
+  if (north === false) return null;
+  const u = Math.min(1.5, Math.max(1, height / 360));
+  const x = width - rightInset - 20 * u;
+  const y = north || 22 * u;
+  return { x0: Math.max(0, x - 13 * u), y0: Math.max(0, y - 13 * u), x1: Math.min(width, x + 13 * u), y1: Math.min(height, y + 13 * u) };
+}
 type ScreenPoint = readonly [number, number];
 
 export type MapLabelEntry = {
@@ -960,6 +969,8 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   const barX1 = scaleX !== undefined ? scaleX + bar.px : scaleLeft ? Math.max(6 * u, 12) + bar.px : W - 6 * u - rightInset;
   const barX0 = barX1 - bar.px;
   const north = northOpt === false ? null : { x: W - rightInset - 20 * u, y: northOpt || 22 * u };
+  const northBox = north ? northArrowBox(W, H, rightInset, northOpt) : null;
+  const calloutAvoid = northBox ? [...avoid, northBox] : avoid;
   const routePoints = path.map(([lng, lat]) => project(lng, lat));
   const inFrame = (point: readonly [number, number]) => pointInFrame(point, W, H);
   const labelEntriesByKey = new Map(mapLabelEntries(model).map((entry) => [entry.key, entry]));
@@ -1010,8 +1021,8 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   // 오버레이만 먼저 예약해 카드와 설명선의 시작점을 함께 아래로 내린다.
   const provisionalFrame = calloutFrame({ W, H, m: calloutMetrics, edge: 4 * u, top: naturalCalloutTop, bottom: H, ...(calloutLeftBottom !== undefined ? { leftBottom: Math.max(naturalCalloutTop, calloutLeftBottom) } : {}), rightInset, perSide: 100, rows: 3, variant: "compact", maxFill: 0.8 });
   const calloutColumns = [provisionalFrame.left, provisionalFrame.right];
-  const overlayCalloutTop = avoid
-    .filter((box) => box.y0 <= naturalCalloutTop + 4 * u && calloutColumns.some((column) => box.x0 < column.x1 && column.x0 < box.x1))
+  const overlayCalloutTop = calloutAvoid
+    .filter((box) => box.y0 < naturalCalloutTop + provisionalFrame.cardH && box.y1 > naturalCalloutTop && calloutColumns.some((column) => box.x0 < column.x1 && column.x0 < box.x1))
     .reduce((top, box) => Math.max(top, box.y1 + 6 * u), naturalCalloutTop);
   const calloutTop = overlayCalloutTop;
   const naturalCalloutBottom = legendBox && legendY > H / 2 ? legendY - 6 * u : H - bottomInset - 4 * u;
@@ -1053,7 +1064,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   }
   const occupiedBoxes: MapSceneBox[] = [
     ...(legendBox ? [legendBox] : []),
-    ...avoid,
+    ...calloutAvoid,
     ...(scale ? [{ x0: barX0 - 8 * u, y0: barY - 16 * u, x1: W, y1: H }] : []),
     ...(showSiteMarker && !muted ? [siteBounds] : []),
     ...labelPlacements.flatMap((placement) => [placement.box, placement.leader]),

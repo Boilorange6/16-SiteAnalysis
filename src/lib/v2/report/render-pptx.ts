@@ -32,6 +32,7 @@ const CHIP: Record<Badge["tone"], { fill: string; color: string }> = {
 };
 
 const panelTag = (key: string, display: string, part: string): string => `GRP|panel-${key}|${display}|${part}`;
+const legendDashType = (dash?: string): "solid" | "dash" | "sysDot" => dash === "1 3" ? "sysDot" : dash ? "dash" : "solid";
 
 function titleTextFit(code: string, title: string, kind: string, box: { w: number; h: number }, scale: number): { titlePt: number; metaPt: number } {
   let titlePt = fitBlock([title], box, 18 * scale, 7);
@@ -255,11 +256,13 @@ function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = 
   const target = {
     addShape: (name: Parameters<Slide["addShape"]>[0], options: Parameters<Slide["addShape"]>[1]) => {
       const clipped = confine(options);
-      return clipped ? s.addShape(name, { ...clipped, objectName: group }) : undefined;
+      const objectName = clipped && (clipped as { objectName?: string }).objectName;
+      return clipped ? s.addShape(name, { ...clipped, objectName: objectName ?? group }) : undefined;
     },
     addText: (text: Parameters<Slide["addText"]>[0], options: Parameters<Slide["addText"]>[1]) => {
       const clipped = confine(options);
-      return clipped ? s.addText(text, { ...clipped, objectName: group }) : undefined;
+      const objectName = clipped && (clipped as { objectName?: string }).objectName;
+      return clipped ? s.addText(text, { ...clipped, objectName: objectName ?? group }) : undefined;
     },
   } as Slide;
   items.forEach((it, i) => {
@@ -281,6 +284,29 @@ function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = 
     } else if (it.badge) {
       target.addShape("ellipse", { x: r.x + 0.18 * iconScale, y: y + 0.03 * iconScale, w: 0.19 * iconScale, h: 0.19 * iconScale, fill: { color: hex(it.color), transparency: fade }, line: { color: "FFFFFF", width: 0.75, transparency: fade } });
       target.addText(it.badge, { x: r.x + 0.18 * iconScale, y: y + 0.03 * iconScale, w: 0.19 * iconScale, h: 0.19 * iconScale, align: "center", valign: "middle", fontFace: FONT, fontSize: Math.max(7, 7 * scale), bold: true, color: dimmed ? "8C919B" : hex(badgeTextColor(it.color)), margin: 0 });
+    } else if (it.lineSwatch) {
+      const x = r.x + 0.17 * iconScale;
+      const lineY = y + 0.145 * iconScale;
+      const lineW = 0.22 * iconScale;
+      const dashType = legendDashType(it.dash);
+      const lineWidth = Math.max(1.2, (it.strokeWidth ?? 1.5) * 0.9);
+      if (it.casing) target.addShape("line", { x, y: lineY, w: lineW, h: 0, line: { color: hex(it.casing), width: lineWidth + 1.8, transparency: fade, dashType }, objectName: `${group}|item-${i}|casing` });
+      target.addShape("line", { x, y: lineY, w: lineW, h: 0, line: { color: hex(it.color), width: lineWidth, transparency: fade, dashType }, objectName: `${group}|item-${i}|line` });
+      if (it.tickMarks) {
+        for (const offset of [0.05, 0.11, 0.17]) {
+          target.addShape("line", { x: x + offset * iconScale, y: y + 0.095 * iconScale, w: 0.001, h: 0.1 * iconScale, line: { color: hex(it.color), width: 0.7, transparency: fade }, objectName: `${group}|item-${i}|tick-${offset}` });
+        }
+      }
+    } else if (it.legendSwatch === "polygon") {
+      target.addShape("rect", {
+        x: r.x + 0.18 * iconScale,
+        y: y + 0.035 * iconScale,
+        w: 0.19 * iconScale,
+        h: 0.19 * iconScale,
+        fill: { color: hex(it.fill && it.fill !== "none" ? it.fill : it.color), transparency: it.fill === "none" ? 100 : Math.round((1 - (it.fillOpacity ?? 1)) * 100) },
+        line: { color: hex(it.stroke ?? it.color), width: 0.75, transparency: fade, dashType: legendDashType(it.dash) },
+        objectName: `${group}|item-${i}|polygon`,
+      });
     } else {
       target.addShape("ellipse", { x: r.x + 0.2 * iconScale, y: y + 0.06 * iconScale, w: 0.13 * iconScale, h: 0.13 * iconScale, fill: { color: hex(it.color), transparency: fade }, line: { color: "FFFFFF", width: 0.75, transparency: fade } });
     }

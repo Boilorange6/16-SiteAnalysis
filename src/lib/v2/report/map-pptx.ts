@@ -1,7 +1,7 @@
 import PptxGenJS from "pptxgenjs";
 import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, legendItemsForModel, legendLabelOf, type MapModel } from "../ui/map-layers";
 import { isSiteParcelLayer } from "../ui/site-parcel";
-import { SLIDE, slideCalloutLegendLayout, slideLayout, slideLegend, slidePanelRects, slideReserved, slideSiteX, terrainSectionLayout } from "../ui/overlay-layout";
+import { SLIDE, slideCalloutAvoidance, slideLayout, slideLegend, slidePanelRects, slideReserved, slideSiteX, terrainSectionLayout } from "../ui/overlay-layout";
 import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
 import { buildMapScene, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, type MapScene, type MapSceneBox } from "../ui/map-scene";
 import { badgeTextColor } from "../ui/map-labels";
@@ -402,37 +402,34 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
   const calloutOverview = !!plan.callout && plan.callout.page === 0;
   const calloutDetail = !!plan.callout && plan.callout.page > 0 ? slideCalloutFrame(4) : null;
   const layout = slideLayout();
-  const summaryX = panels.summary?.x ?? SLIDE.w;
-  const calloutLegend = calloutOverview
-    ? slideCalloutLegendLayout(
-      [
+  const calloutEntries = calloutOverview
+    ? [
         { text: plan.callout!.model.legend.title },
         ...plan.callout!.model.legend.items.map((item) => ({ text: item.label, color: item.color, hollow: item.hollow === true })),
         { text: plan.callout!.model.legend.sizeLabel },
-      ],
-      SLIDE.edge,
-      layout.legendBottom,
-      summaryX - 2 * SLIDE.edge,
-    )?.rect ?? null
-    : null;
+      ]
+    : [];
+  const calloutAlignment = calloutDetail ? null : slideCalloutAvoidance(panels, calloutEntries, layout);
+  const calloutLegend = calloutAlignment?.calloutLegend ?? null;
   const avoid = calloutDetail
     ? []
     : slideReserved(PX_PER_INCH, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend, calloutLegend, terrainSection: terrainLayout?.rect });
-  // 지도 위 판(제목·정보·범례)을 피한다: 방위표·축척·오른쪽 말풍선은 정보 판 왼쪽, 말풍선은 제목 판 아래·범례 판 위.
+  const summaryX = panels.summary?.x ?? SLIDE.w;
   const gap = SLIDE.edge * PX_PER_INCH * 0.5;
-  const lowerOverlayTop = Math.min(legend?.y ?? SLIDE.h, calloutLegend?.y ?? SLIDE.h);
   const siteX = calloutDetail?.siteX ?? slideSiteX(style, hasSummary);
   const fill = calloutDetail?.fill ?? terrainLayout?.mapFill ?? (calloutOverview ? SLIDE_OVERVIEW_FILL : undefined);
   const rightInset = calloutDetail ? 0 : hasSummary ? Math.max(0, VIEW_W - summaryX * PX_PER_INCH + gap) : SLIDE.edge * PX_PER_INCH;
   // 방위표는 지도 scene의 고정 y(22u)만 쓰면 크게 키운 제목 판과 겹친다.
   // 제목 판 아래에 13u 반지름과 안전 간격을 확보한 중심을 전달한다.
-  const northY = (panels.title.y + panels.title.h) * PX_PER_INCH + gap + 13 * Math.min(1.5, Math.max(1, VIEW_H / 360));
+  const calloutTopPx = calloutAlignment ? calloutAlignment.calloutTop * PX_PER_INCH : (panels.title.y + panels.title.h) * PX_PER_INCH + gap;
+  const northY = calloutTopPx + 13 * Math.min(1.5, Math.max(1, VIEW_H / 360));
   const focus = legendLabelOf(model, style.legendFocus);
   return buildMapScene({
     rightInset,
-    ...(calloutDetail ? {} : { calloutTop: (panels.title.y + panels.title.h) * PX_PER_INCH + gap }),
-    ...(terrainLayout?.calloutLeftBottom !== undefined ? { calloutLeftBottom: terrainLayout.calloutLeftBottom * PX_PER_INCH } : {}),
-    ...(lowerOverlayTop < SLIDE.h ? { calloutLeftBottom: lowerOverlayTop * PX_PER_INCH - gap } : {}),
+    ...(calloutDetail ? {} : { calloutTop: calloutTopPx }),
+    ...(calloutAlignment?.calloutLeftBottom !== undefined
+      ? { calloutLeftBottom: calloutAlignment.calloutLeftBottom * PX_PER_INCH }
+      : terrainLayout?.calloutLeftBottom !== undefined ? { calloutLeftBottom: terrainLayout.calloutLeftBottom * PX_PER_INCH } : {}),
     model,
     width: VIEW_W,
     height: VIEW_H,
@@ -830,5 +827,13 @@ export function editableMapAvoid(plan: PlannedSlide & { kind: "tile" }, model: M
   const panels = slidePanelRects(style, hasSummary, slideLegend(model, !plan.muted).rect);
   const terrainShown = plan.view.code === "D17" && !!plan.view.terrainSections && !!plan.terrainSection;
   const terrainLayout = terrainShown ? terrainSectionLayout(panels) : null;
-  return slideReserved(PX_PER_INCH, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend: panels.legend, terrainSection: terrainLayout?.rect });
+  const calloutEntries = plan.callout?.page === 0
+    ? [
+        { text: plan.callout.model.legend.title },
+        ...plan.callout.model.legend.items.map((item) => ({ text: item.label, color: item.color, hollow: item.hollow === true })),
+        { text: plan.callout.model.legend.sizeLabel },
+      ]
+    : [];
+  const calloutLegend = slideCalloutAvoidance(panels, calloutEntries).calloutLegend;
+  return slideReserved(PX_PER_INCH, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend: panels.legend, calloutLegend, terrainSection: terrainLayout?.rect });
 }

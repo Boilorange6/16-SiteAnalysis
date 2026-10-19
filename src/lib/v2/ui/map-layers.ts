@@ -61,6 +61,8 @@ export type LayerStyle = {
   tickMarks?: boolean;
   /** Opt in to a geometry-faithful line swatch in the shared legend strip. */
   lineSwatch?: boolean;
+  /** Explicit non-point geometry for consumers that cannot infer it from a feature. */
+  legendSwatch?: "line" | "polygon";
   /** 선 아래에 까는 외곽선 색. 색약 환경에서 선을 분리한다. */
   casing?: string;
   /** 방향성이 있는 선에 화살표 끝을 붙인다. */
@@ -345,14 +347,14 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   relief_ge20: S("20m 이상", "#4F7D58"),
   dem_nodata: S("지형 결측", "#B9BDC6"),
   contour: { label: "등고선", color: "#8a5a2e", strokeWidth: 1 },
-  topo_coverage: { label: "수치지형도 범위 · 밖은 기존 자료", color: "#2350b8", fill: "none", stroke: "#2350b8", fillOpacity: 0, strokeWidth: 1.5, dash: "10 6" },
+  topo_coverage: { label: "수치지형도 범위 · 밖은 기존 자료", color: "#2350b8", fill: "none", stroke: "#2350b8", fillOpacity: 0, strokeWidth: 1.5, dash: "10 6", legendSwatch: "polygon" },
   // The casing is the second dark edge of the retaining-wall symbol; the map
   // renderer already draws it underneath the main stroke.
   retaining_wall: { label: "옹벽", color: "#3d3f45", strokeWidth: 3, casing: "#15171c", tickMarks: true, lineSwatch: true },
   cut_fill: { label: "절성토", color: "#b25a1e", strokeWidth: 1.5, dash: "6 3", lineSwatch: true },
   fence: { label: "울타리", color: "#2e6b3a", strokeWidth: 1.25, dash: "1 3", lineCap: "round", lineSwatch: true },
-  terrain_section_a: { label: "단면 A–A′ (동서)", color: "#2350b8", strokeWidth: 2.25 },
-  terrain_section_b: { label: "단면 B–B′ (남북)", color: "#2350b8", strokeWidth: 1.75, dash: "7 5" },
+  terrain_section_a: { label: "단면 A–A′ (동서)", color: "#2350b8", strokeWidth: 2.25, lineSwatch: true },
+  terrain_section_b: { label: "단면 B–B′ (남북)", color: "#2350b8", strokeWidth: 1.75, dash: "7 5", lineSwatch: true },
   slope_0_5: S("경사 0~5°", "#E6E2F4"),
   slope_5_10: S("경사 5~10°", "#C4B9E4"),
   slope_10_15: S("경사 10~15°", "#9D8BC8"),
@@ -464,6 +466,10 @@ export type MapLegendLayerItem = {
   colors?: string[];
   badge?: string;
   symbol?: "rail-axis" | "rail-exit";
+  legendSwatch?: "line" | "polygon";
+  fill?: string;
+  stroke?: string;
+  fillOpacity?: number;
   lineSwatch?: boolean;
   strokeWidth?: number;
   dash?: string;
@@ -473,7 +479,17 @@ export type MapLegendLayerItem = {
   highlight: boolean;
 };
 
-const lineLegendStyle = (style: LayerStyle): Pick<MapLegendLayerItem, "lineSwatch" | "strokeWidth" | "dash" | "lineCap" | "tickMarks" | "casing"> => {
+const lineLegendStyle = (style: LayerStyle): Pick<MapLegendLayerItem, "legendSwatch" | "fill" | "stroke" | "fillOpacity" | "lineSwatch" | "strokeWidth" | "dash" | "lineCap" | "tickMarks" | "casing"> => {
+  if (style.legendSwatch === "polygon") {
+    return {
+      legendSwatch: "polygon",
+      ...(style.fill === undefined ? {} : { fill: style.fill }),
+      ...(style.stroke === undefined ? {} : { stroke: style.stroke }),
+      ...(style.fillOpacity === undefined ? {} : { fillOpacity: style.fillOpacity }),
+      ...(style.strokeWidth === undefined ? {} : { strokeWidth: style.strokeWidth }),
+      ...(style.dash === undefined ? {} : { dash: style.dash }),
+    };
+  }
   if (!style.lineSwatch) return {};
   return {
     lineSwatch: true,
@@ -486,7 +502,7 @@ const lineLegendStyle = (style: LayerStyle): Pick<MapLegendLayerItem, "lineSwatc
 };
 
 const TOPO_STEP_LAYERS = new Set(["retaining_wall", "cut_fill", "fence"]);
-const lineLegendStyleForModel = (style: LayerStyle, layer: string, model: MapModel): Pick<MapLegendLayerItem, "lineSwatch" | "strokeWidth" | "dash" | "lineCap" | "tickMarks" | "casing"> => {
+const lineLegendStyleForModel = (style: LayerStyle, layer: string, model: MapModel): Pick<MapLegendLayerItem, "legendSwatch" | "fill" | "stroke" | "fillOpacity" | "lineSwatch" | "strokeWidth" | "dash" | "lineCap" | "tickMarks" | "casing"> => {
   const hasTopoSupplement = (model.lines ?? []).some((line) => TOPO_STEP_LAYERS.has(line.layer));
   if (layer === "contour" && hasTopoSupplement) return { lineSwatch: true, strokeWidth: style.strokeWidth ?? 1 };
   return lineLegendStyle(style);

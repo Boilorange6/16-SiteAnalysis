@@ -5,7 +5,7 @@
  *  왼쪽 위 = 제목 칩 · 오른쪽 위 = 보고서 칩/북쪽 · 왼쪽 아래 = 핵심 값 카드(+범례)
  *  오른쪽 아래 = 축척 · 맨 아래 = 출처 띠
  */
-import { legendItemsForModel, type MapModel } from "./map-layers";
+import { legendItemsForModel, type MapLegendLayerItem, type MapModel } from "./map-layers";
 import type { PagePanelKey, PageStyle } from "./board-state";
 
 export type Box = { x0: number; y0: number; x1: number; y1: number };
@@ -272,6 +272,33 @@ export function slideCalloutLegendLayout(
   return { rect: { x, y: bottom - height, w: width, h: height }, rows };
 }
 
+export type SlideCalloutAvoidance = {
+  calloutLegend: Rect | null;
+  calloutTop: number;
+  calloutLeftBottom?: number;
+};
+
+/** 개요 지도와 PPT/미리보기의 콜아웃이 공유하는 제목·범례 회피 자리. */
+export function slideCalloutAvoidance(
+  panels: SlidePanelRects,
+  entries: readonly SlideCalloutLegendEntry[] = [],
+  layout = slideLayout(),
+): SlideCalloutAvoidance {
+  const summaryX = panels.summary?.x ?? SLIDE.w;
+  const calloutLegend = entries.length > 0
+    ? slideCalloutLegendLayout(entries, SLIDE.edge, layout.legendBottom, Math.max(0, summaryX - 2 * SLIDE.edge))?.rect ?? null
+    : null;
+  const gap = SLIDE.edge * 0.5;
+  const lowerOverlayTop = Math.min(panels.legend?.y ?? SLIDE.h, calloutLegend?.y ?? SLIDE.h);
+  return {
+    calloutLegend,
+    calloutTop: panels.title.y + panels.title.h + gap,
+    ...(lowerOverlayTop < SLIDE.h ? { calloutLeftBottom: lowerOverlayTop - gap } : {}),
+  };
+}
+
+type SlideLegendItem = Omit<MapLegendLayerItem, "highlight"> & { site?: boolean };
+
 /** 지도 모델 → 범례 항목·문구·자리 (슬라이드 그리기와 지도 이미지의 라벨 회피가 같은 값을 쓴다) */
 export function slideLegend(
   model: MapModel,
@@ -279,7 +306,7 @@ export function slideLegend(
   style?: PanelStyle,
   hasSummary = true,
 ) {
-  const items: Array<{ layer: string; label: string; color: string; site?: boolean; badge?: string; symbol?: "rail-axis" | "rail-exit" }> = [
+  const items: SlideLegendItem[] = [
     ...legendItemsForModel(model).filter((item) => item.layer !== "parcel_site" && item.layer !== "pnu"),
     ...(includeSite ? [{ layer: "__site_marker", label: "대지", color: "#111", site: true as const }] : []),
   ];

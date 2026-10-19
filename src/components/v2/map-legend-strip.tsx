@@ -24,6 +24,7 @@ export type MapLegendItem = {
   /** 지도에서 강조할 수 없는 설명용 래스터/메타 항목. */
   static?: boolean;
   swatch?: LegendSwatchKind;
+  legendSwatch?: "line" | "polygon";
   hollow?: boolean;
   /** 면 레이어의 실제 채움·테두리·빗금 표현. 지도와 같은 원천 스타일을 범례 견본에도 쓴다. */
   fill?: string;
@@ -41,9 +42,9 @@ export type MapLegendItem = {
   highlightLabel?: string;
 };
 
-function LegendSwatch({ item }: { item: MapLegendItem }) {
+export function LegendSwatch({ item }: { item: MapLegendItem }) {
   const swatchId = useId().replace(/:/g, "");
-  const kind = item.site ? "site" : (item.symbol ?? item.swatch ?? "point");
+  const kind = item.site ? "site" : (item.symbol ?? item.swatch ?? (item.lineSwatch ? "line" : item.legendSwatch ?? "point"));
   if (kind === "site") {
     return (
       <svg className={styles.mapLegendSwatchSvg} width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
@@ -99,6 +100,7 @@ function LegendSwatch({ item }: { item: MapLegendItem }) {
           fillOpacity={item.hatch ? 1 : item.fillOpacity ?? 1}
           stroke={stroke}
           strokeWidth={item.strokeWidth ?? 1}
+          strokeDasharray={item.dash}
         />
       </svg>
     );

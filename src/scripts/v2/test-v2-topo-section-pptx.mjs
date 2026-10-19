@@ -9,10 +9,10 @@ const { initBoard, boardReducer } = await import("../../lib/v2/ui/board-state.ts
 const { toSummaryView, toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 const { buildReportPlan } = await import("../../lib/v2/report/report-plan.ts");
 const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
-const { SLIDE, slideLegend, slidePanelRects, slideReserved, slideSiteX, terrainSectionLayout } = await import("../../lib/v2/ui/overlay-layout.ts");
+const { SLIDE, slideCalloutAvoidance, slideLegend, slidePanelRects, slideReserved, slideSiteX, terrainSectionLayout } = await import("../../lib/v2/ui/overlay-layout.ts");
 const { terrainSectionBands, terrainSectionMapStyle } = await import("../../lib/v2/ui/terrain-section.ts");
 const { calloutFrame, PX } = await import("../../lib/v2/ui/callout-layout.ts");
-const { buildMapScene } = await import("../../lib/v2/ui/map-scene.ts");
+const { buildMapScene, northArrowBox } = await import("../../lib/v2/ui/map-scene.ts");
 const { slideViewport } = await import("../../lib/v2/ui/map-projection.ts");
 
 const source = GODEOK_RESULTS[0];
@@ -38,8 +38,16 @@ const d17 = structuredClone({
     lines: [
       { layer: "terrain_section_a", points: [[127.145, 37.555], [127.163, 37.555]], label: "단면 A–A′ (동서)" },
       { layer: "terrain_section_b", points: [[127.1542, 37.546], [127.1542, 37.564]], label: "단면 B–B′ (남북)" },
+      { layer: "contour", points: [[127.145, 37.552], [127.163, 37.552]], label: "표고 25m" },
+      { layer: "cut_fill", points: [[127.146, 37.548], [127.160, 37.548]], label: "절성토" },
+      { layer: "fence", points: [[127.146, 37.560], [127.160, 37.560]], label: "울타리" },
+      { layer: "retaining_wall", points: [[127.148, 37.562], [127.158, 37.562]], label: "옹벽" },
     ],
-    linesTotal: 2,
+    linesTotal: 6,
+    polygons: [
+      ...(source.presentation.polygons ?? []),
+      { layer: "topo_coverage", rings: [[[127.145, 37.545], [127.163, 37.545], [127.163, 37.565], [127.145, 37.565], [127.145, 37.545]]] },
+    ],
     terrainSections: { A: section("EW"), B: section("NS") },
   },
 });
@@ -93,7 +101,12 @@ for (const column of [columns.left, columns.right]) {
   assert.equal(intersects(sectionBox, { x0: column.x0, y0: column.top, x1: column.x1, y1: column.bottom }), false, "section does not intersect a callout column");
 }
 const mapAvoid = slideReserved(pxPerInch, { info: true, titleRect: previewPanels.title, infoRect: previewPanels.summary, legend: previewPanels.legend, terrainSection: previewLayout.rect });
-const mapScene = buildMapScene({
+const calloutAlignment = slideCalloutAvoidance(previewPanels, []);
+const calloutTop = calloutAlignment.calloutTop * pxPerInch;
+const calloutLeftBottom = calloutAlignment.calloutLeftBottom === undefined ? undefined : calloutAlignment.calloutLeftBottom * pxPerInch;
+const northY = calloutTop + 13 * Math.min(1.5, Math.max(1, 540 / 360));
+const northBox = northArrowBox(960, 540, rightInset, northY);
+const sceneOptions = {
   model: d17Slide.map,
   width: 960,
   height: 540,
@@ -104,10 +117,22 @@ const mapScene = buildMapScene({
   bottomInset: SLIDE.stripH * pxPerInch,
   scale: true,
   showAutomaticLabels: true,
-  avoid: mapAvoid,
+  calloutTop,
+  ...(calloutLeftBottom === undefined ? {} : { calloutLeftBottom }),
   terrainSection: d17Slide.terrainSection,
   viewport: slideViewport(d17Slide.map, d17Slide.style, { width: 960, height: 540, siteX: slideSiteX(d17Slide.style, true), fill: 0.8 }),
-});
+};
+const previewScene = buildMapScene({ ...sceneOptions, north: false, avoid: [...mapAvoid, ...(northBox ? [northBox] : [])] });
+const pptxScene = buildMapScene({ ...sceneOptions, north: northY, avoid: mapAvoid });
+const placementColumns = (scene) => scene.labelPlacements.map(({ entry, placed }) => [entry.key, placed.side]).sort(([a], [b]) => a.localeCompare(b));
+assert.ok(previewScene.labelPlacements.length > 0, "D17 fixture has callouts to compare");
+assert.deepEqual(placementColumns(previewScene), placementColumns(pptxScene), "D17 preview/PPTX callout column assignment matches");
+if (northBox) {
+  for (const scene of [previewScene, pptxScene]) {
+    for (const placement of scene.labelPlacements) assert.equal(intersects(placement.box, northBox), false, `${placement.entry.autoText ?? placement.entry.key} callout avoids north arrow`);
+  }
+}
+const mapScene = previewScene;
 const mapCircle = { x0: mapScene.center[0] - mapScene.radiusPx, y0: mapScene.center[1] - mapScene.radiusPx, x1: mapScene.center[0] + mapScene.radiusPx, y1: mapScene.center[1] + mapScene.radiusPx };
 assert.equal(intersects(sectionBox, mapCircle), false, "section does not intersect the map circle bounds");
 const scaleBox = { x0: mapScene.scale.x0 - 8 * mapScene.unit, y0: mapScene.scale.y - 16 * mapScene.unit, x1: mapScene.scale.x1 + 8 * mapScene.unit, y1: mapScene.scale.y + 8 * mapScene.unit };
@@ -135,6 +160,32 @@ const legendPlate = shapeBlocks.find((block) => block.includes('name="GRP|panel-
 assert.ok(legendPlate, "PPTX D17 section slide keeps the legend plate group");
 const pptxLegendRect = xmlRect(legendPlate);
 for (const key of ["x", "y", "w", "h"]) assert.ok(Math.abs(pptxLegendRect[key] - previewPanels.legend[key]) < 0.002, `PPTX ${key} matches preview legend geometry`);
+const lineXml = (block) => block.match(/<a:ln(?:\s|>)[\s\S]*?<\/a:ln>/)?.[0] ?? "";
+const legendItems = slideLegend(d17Slide.map, true).items;
+const legendItemIndex = (label) => {
+  const index = legendItems.findIndex((item) => item.label === label);
+  assert.ok(index >= 0, `D17 legend contains ${label}`);
+  return index;
+};
+const legendItemBlocks = (label) => {
+  const index = legendItemIndex(label);
+  return shapeBlocks.filter((block) => block.includes(`name="GRP|panel-legend|범례|plate|item-${index}|`));
+};
+const lineLegendItem = (label, dash) => {
+  const blocks = legendItemBlocks(label);
+  const line = blocks.find((block) => block.includes("|line\""));
+  assert.ok(line, `${label} uses a PPTX line swatch`);
+  assert.doesNotMatch(line, /prstGeom prst="ellipse"/, `${label} is not an ellipse swatch`);
+  if (dash === "solid") assert.match(lineXml(line), /<a:prstDash val="solid"\/>/);
+  else assert.match(lineXml(line), new RegExp(`<a:prstDash val="${dash}"\/>`));
+};
+lineLegendItem("단면 A–A′ (동서)", "solid");
+lineLegendItem("단면 B–B′ (남북)", "dash");
+lineLegendItem("등고선", "solid");
+lineLegendItem("절성토", "dash");
+lineLegendItem("울타리", "sysDot");
+const coverageBlocks = legendItemBlocks("수치지형도 범위 · 밖은 기존 자료");
+assert.ok(coverageBlocks.some((block) => block.includes("|polygon\"") && block.includes('<a:prstGeom prst="rect"')), "topo coverage uses a rectangle swatch");
 
 // native PPT 지도도 preview와 같은 B 선택 스타일을 쓴다. A는 얇은 점선·45%이고 B는 굵은 실선이다.
 const sectionGeometry = (label) => shapeBlocks.filter((block) => block.includes(`name="GRP|map-D17-legend-${label}`) && block.includes("|geometry"));
@@ -145,7 +196,6 @@ assert.equal(bMapSection.length, 1, "PPTX contains native B section line");
 const aStyle = terrainSectionMapStyle("A", "B");
 const bStyle = terrainSectionMapStyle("B", "B");
 const pptWidthEmu = (width) => Math.round(width * 0.75 * 12700);
-const lineXml = (block) => block.match(/<a:ln(?:\s|>)[\s\S]*?<\/a:ln>/)?.[0] ?? "";
 assert.match(aMapSection[0], new RegExp(`<a:ln w="${pptWidthEmu(aStyle.strokeWidth)}"`));
 assert.match(lineXml(aMapSection[0]), /<a:prstDash val="dash"\/>/);
 assert.match(lineXml(aMapSection[0]), /<a:alpha val="45000"\/>/);
@@ -178,11 +228,15 @@ for (const block of terrainShape("title")) bandContains(block, sectionBands.head
 for (const block of terrainShape("axis-label")) bandContains(block, sectionBands.axis, "section axis");
 for (const block of terrainShape("summary")) bandContains(block, sectionBands.footer, "section footer");
 for (const block of [...terrainShape("table-"), ...terrainShape("caveat")]) bandContains(block, sectionBands.table, "section table");
+const caveatBlocks = terrainShape("caveat");
+assert.equal(caveatBlocks.length, 1, "section caveat is present once");
+const caveatSizes = [...caveatBlocks[0].matchAll(/<a:rPr[^>]*\bsz="(\d+)"/g)].map((match) => Number(match[1]));
+assert.ok(caveatSizes.some((size) => size >= 700), "section caveat stays at or above 7pt");
 
 assert.match(xml, /단면 B–B′ \(남북\)/);
 assert.match(xml, /높이 미확인/);
 assert.match(xml, /대지 고저차/);
-assert.match(xml, /등고선·표고점 보간값/);
+assert.match(xml, /보간값\(추정\) · 현장 실측 아님/);
 assert.match(xml, /terrain-section/);
 assert.match(xml, /prstDash val="dash"/);
 

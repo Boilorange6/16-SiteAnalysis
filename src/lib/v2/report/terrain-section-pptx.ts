@@ -6,7 +6,7 @@ import { terrainCrossingLayer, terrainElevationLabel, terrainSectionAxisLabel, t
 
 const SECTION_LABELS = TERRAIN_SECTION_LABELS;
 const CROSSING_LABELS = TERRAIN_CROSSING_LABELS;
-const CAVEAT = "등고선·표고점 보간값(추정)입니다. 현장 실측을 대신하지 않습니다.";
+const CAVEAT = "보간값(추정) · 현장 실측 아님";
 
 function validSamples(section: TerrainSections["A"]): Array<{ d: number; z: number }> {
   return section.samples.filter((sample): sample is { d: number; z: number } => sample.z !== null && Number.isFinite(sample.z));
@@ -116,7 +116,7 @@ export function drawTerrainSectionPptx(slide: Slide, sections: TerrainSections, 
   rows.forEach((crossing, index) => addTableRow(CROSSING_LABELS[crossing.kind], terrainSectionPosition(section, crossing.d), crossing.heightM === null ? "높이 미확인" : `${crossing.heightM.toFixed(1)}m`, index));
   if (rows.length === 0) addTableRow("시설 없음", "—", "—", 0, MUTED);
   if (section.crossings.length > rows.length) addTableRow("", `외 ${section.crossings.length - rows.length}건`, "", rows.length, MUTED);
-  slide.addText(CAVEAT, { x: tableX, y: caveatY, w: tableW, h: caveatH, fontFace: FONT, fontSize: fitPt(CAVEAT, 5.7, tableW, 1, 4.5), color: "6B4B31", margin: 0, fit: "shrink", objectName: `${group}|caveat` });
+  slide.addText(CAVEAT, { x: tableX, y: caveatY, w: tableW, h: caveatH, fontFace: FONT, fontSize: fitPt(CAVEAT, 7, tableW, 1, 7), color: "6B4B31", margin: 0, fit: "shrink", objectName: `${group}|caveat` });
 
   const summary = `대지 고저차 ${fmt(rangeOf(section))} · 대지 평균 경사 ${fmt(slopeOf(section), "°")} · 반경 내 단차 시설 수 ${facilityCount ?? section.crossings.length}개`;
   slide.addText(summary, { x: bands.footer.x, y: bands.footer.y, w: bands.footer.w, h: bands.footer.h, fontFace: FONT, fontSize: fitPt(summary, 7.5, bands.footer.w, 1, 5.5), color: MUTED, margin: 0, fit: "shrink", objectName: `${group}|summary` });
