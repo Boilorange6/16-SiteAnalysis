@@ -71,7 +71,7 @@
     padding-inline: 12px;
     overflow: hidden;
     color: transparent;
-    font-size: 12px;
+    font-size: 0;
   }
   .reportHeaderActions .secondaryButton::after { content: "발표"; color: var(--report-ink); font-size: 13px; }
   .reportHeaderActions .headerFormat select { max-width: 132px; }

@@ -87,6 +87,8 @@ for (const [file, text] of [
   ["drawer-tiles.tsx", "비교할 타일을 2개 이상"], ["notes-field.tsx", "PPT 발표자 메모에 저장됩니다"],
   ["layout-switcher.tsx", "배치만 바꿉니다"],
 ]) assert.doesNotMatch(readFileSync(new URL(`../../components/v2/report/${file}`, import.meta.url), "utf8"), new RegExp(text), `${file}: ${text}`);
+assert.match(boardStyles, /@media \(min-width: 640px\) and \(max-width: 1359px\) \{\s*\.page\.reportPage > \.topbar > \.topoHeaderButton \{[^}]*font-size: 0;/, "1360 px 미만 보고서 머리 줄의 수치지형도 버튼은 아이콘만");
+assert.match(styles, /color: transparent;\s*font-size: 0;\s*\}\s*\.reportHeaderActions \.secondaryButton::after \{ content: "발표"/, "줄인 발표 버튼은 숨긴 원래 글자 폭을 차지하지 않는다");
 const tilesSource = readFileSync(new URL("../../components/v2/report/drawer-tiles.tsx", import.meta.url), "utf8");
 assert.doesNotMatch(tilesSource, /\? styles\.filterChipActive : styles\.filterChip/, "선택된 칸 구성 칩도 기본 칩 모양을 유지한다");
 assert.match(styles, /label\.tileRowButton \{ grid-template-columns: 18px minmax\(0, 1fr\);/, "비교 모드 행은 체크박스와 이름 두 칸");

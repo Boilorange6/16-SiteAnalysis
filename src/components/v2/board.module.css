@@ -4536,6 +4536,10 @@ button.badge:focus-visible {
   .page.reportPage > .topbar > .projectControls .saveSplit .pill {
     padding-inline: 8px;
   }
+}
+
+/* 데모 표시가 함께 뜨는 1280 px에서도 머리 줄이 넘치지 않도록 수치지형도 버튼은 1360 px 미만에서 아이콘만 둔다. */
+@media (min-width: 640px) and (max-width: 1359px) {
   .page.reportPage > .topbar > .topoHeaderButton {
     display: inline-grid;
     place-items: center;
