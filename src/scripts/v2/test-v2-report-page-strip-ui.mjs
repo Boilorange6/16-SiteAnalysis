@@ -103,6 +103,7 @@ assert.doesNotMatch(stageBlock, /<MapToolbar/, "지도 막대는 슬라이드 �
 assert.match(dockBlock, /<MapToolbar/, "지도 막대는 pageDock의 왼쪽 묶음에 그린다");
 assert.doesNotMatch(reportModeSource, /styles\.mapHint|mapToolbarReason|지도를 끌어 옮기고/, "이전 무대 안내 CSS/문구를 제거한다");
 assert.match(reportModeSource, /const drawerOpen = rail !== null;/, "지도 선택은 왼쪽 서랍을 열지 않는다");
+assert.doesNotMatch(reportModeSource, /setSelection\(null\);\s*(?:if \(current\.selected\) )?setRail\("pages"\);/, "지도 선택을 풀어도 왼쪽 서랍을 열지 않는다");
 assert.match(reportModeSource, /data-settings-open=\{settingsOpen \? "true" : "false"\}/, "설정 카드 상태는 settingsOpen에 연결한다");
 
 console.log("v2 report page strip UI: PASS");

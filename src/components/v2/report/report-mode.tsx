@@ -314,10 +314,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
           event.preventDefault();
           setMapMoveActive(transitioned.moveActive);
           setSettingsOpen(transitioned.settingsOpen);
-          if (!transitioned.selected) {
-            setSelection(null);
-            setRail("pages");
-          }
+          if (!transitioned.selected) setSelection(null);
         }
         return;
       }
@@ -521,10 +518,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
       const transitioned = transitionMapInteraction(current, "outside-slide");
       setMapMoveActive(transitioned.moveActive);
       setSettingsOpen(transitioned.settingsOpen);
-      if (!transitioned.selected) {
-        setSelection(null);
-        if (current.selected) setRail("pages");
-      }
+      if (!transitioned.selected) setSelection(null);
       return;
     }
     setMapMoveActive(false);
@@ -700,10 +694,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     event.stopPropagation();
     setMapMoveActive(transitioned.moveActive);
     setSettingsOpen(transitioned.settingsOpen);
-    if (!transitioned.selected) {
-      setSelection(null);
-      setRail("pages");
-    }
+    if (!transitioned.selected) setSelection(null);
   };
 
   return (
