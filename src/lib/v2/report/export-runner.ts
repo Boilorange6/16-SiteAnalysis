@@ -239,14 +239,20 @@ export async function pngBlobToJpeg(blob: Blob, quality = 0.92): Promise<ImagePd
 }
 
 /** export surface의 실제 범례 plate가 페이지 bounds를 벗어나는지 잰다. */
+export type RectEdges = { left: number; top: number; right: number; bottom: number };
+
+export function isRectOutsideBounds(rect: RectEdges, bounds: RectEdges, epsilon = 1): boolean {
+  const tolerance = Math.max(1, epsilon);
+  return rect.left < bounds.left - tolerance || rect.right > bounds.right + tolerance || rect.top < bounds.top - tolerance || rect.bottom > bounds.bottom + tolerance;
+}
+
 export function measureLegendOverflow(node: HTMLElement): boolean {
   const page = node.querySelector<HTMLElement>('[data-slide-canvas="true"]') ?? node;
   const pageRect = page.getBoundingClientRect();
   const legends = Array.from(node.querySelectorAll<HTMLElement>('[data-report-panel="legend"]'));
-  const epsilon = 1;
   return legends.some((legend) => {
     const rect = legend.getBoundingClientRect();
-    return rect.left < pageRect.left - epsilon || rect.right > pageRect.right + epsilon || rect.top < pageRect.top - epsilon || rect.bottom > pageRect.bottom + epsilon;
+    return isRectOutsideBounds(rect, pageRect);
   });
 }
 

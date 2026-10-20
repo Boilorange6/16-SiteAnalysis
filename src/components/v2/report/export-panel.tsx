@@ -1,7 +1,7 @@
 "use client";
 
 import { createRoot, type Root } from "react-dom/client";
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { downloadBytes } from "@/lib/v2/export/download";
 import { preflightReport, type PreflightIssue } from "@/lib/v2/report/preflight";
@@ -70,12 +70,12 @@ function renderExportSurfaceFactory(basemap: BasemapChoice, format: ReportFormat
     host.dataset.exportKey = slide.key;
     Object.assign(host.style, {
       position: "fixed",
-      left: "-100000px",
+      left: "0px",
       top: "0",
       width: `${width}px`,
       height: `${height}px`,
       pointerEvents: "none",
-      opacity: "1",
+      opacity: "0",
       overflow: "hidden",
     });
     document.body.appendChild(host);
@@ -83,6 +83,8 @@ function renderExportSurfaceFactory(basemap: BasemapChoice, format: ReportFormat
     roots.set(host, root);
     root.render(<SlideSurface slide={slide} basemap={basemap} mode="export" classMap={surfaceClassMap} />);
     await nextFrame();
+    const slot = host.querySelector<HTMLElement>('[data-preview-slot="true"]');
+    if (slot) Object.assign(slot.style, { position: "relative", inset: "0", width: "100%", height: "100%", aspectRatio: "auto" });
     await nextFrame();
     return host;
   };
@@ -100,6 +102,9 @@ export default function ExportPanel({ plan, format, basemap, currentPageId, sele
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
+  const runButtonRef = useRef<HTMLButtonElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const focusAfterRunRef = useRef(false);
   const rootsRef = useRef(new Map<HTMLElement, Root>());
   const renderSurface = useMemo(() => renderExportSurfaceFactory(basemap, format, rootsRef.current), [basemap, format]);
   const disposeSurface = useCallback((node: HTMLElement) => {
@@ -114,6 +119,15 @@ export default function ExportPanel({ plan, format, basemap, currentPageId, sele
   }), [disposeSurface, renderSurface]);
 
   useFocusTrap({ ref: dialogRef, onClose, restoreFocusRef });
+
+  useLayoutEffect(() => {
+    if (!focusAfterRunRef.current) {
+      focusAfterRunRef.current = true;
+      return;
+    }
+    const target = running ? cancelButtonRef.current : runButtonRef.current;
+    if (target && dialogRef.current?.contains(target)) target.focus({ preventScroll: true });
+  }, [dialogRef, running]);
 
   useEffect(() => {
     setFileName(defaultFileName);
@@ -278,8 +292,8 @@ export default function ExportPanel({ plan, format, basemap, currentPageId, sele
 
       {error && <p className={styles.exportPanelError} role="alert">{error}</p>}
       {status && !running && <p className={styles.exportPanelStatus} role="status">{status}</p>}
-      {running && <div className={styles.exportProgress} role="status" aria-live="polite"><span>{progress.done}/{progress.total}쪽 만드는 중…</span><button type="button" onClick={cancel}>취소</button></div>}
-      {!running && <button type="button" className={styles.exportRunButton} onClick={() => void handleRun()} disabled={preflightBusy || selectedPlan.length === 0}>{runLabel}</button>}
+      {running && <div className={styles.exportProgress} role="status" aria-live="polite" tabIndex={-1}><span>{progress.done}/{progress.total}쪽 만드는 중…</span><button ref={cancelButtonRef} type="button" onClick={cancel}>취소</button></div>}
+      {!running && <button ref={runButtonRef} type="button" className={styles.exportRunButton} onClick={() => void handleRun()} disabled={preflightBusy || selectedPlan.length === 0}>{runLabel}</button>}
     </div>
   );
 }

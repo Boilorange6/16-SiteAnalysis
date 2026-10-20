@@ -3,8 +3,28 @@ import assert from "node:assert/strict";
 
 const { writeImagePdf } = await import("../../lib/v2/report/pdf-writer.ts");
 const { preflightReport } = await import("../../lib/v2/report/preflight.ts");
-const { rasterizePages } = await import("../../lib/v2/report/raster-export.ts");
+const { captureOptionsForNode, rasterizePages } = await import("../../lib/v2/report/raster-export.ts");
+const { isRectOutsideBounds } = await import("../../lib/v2/report/export-runner.ts");
 const { defaultFrame } = await import("../../lib/v2/report/report-doc.ts");
+
+// ── 캡처 guard: 화면 밖 export host의 위치가 html-to-image clone에 전달되지 않아야 한다 ──
+{
+  const options = captureOptionsForNode({ offsetWidth: 1200, offsetHeight: 675 }, { pixelRatio: 1.5 });
+  assert.equal(options.width, 1200, "capture width is explicit");
+  assert.equal(options.height, 675, "capture height is explicit");
+  assert.equal(options.style.position, "relative", "clone position is inside the capture box");
+  assert.equal(options.style.left, "0px", "clone left offset is neutralized");
+  assert.equal(options.style.top, "0px", "clone top offset is neutralized");
+  assert.equal(options.style.opacity, "1", "clone is painted");
+}
+
+// ── 범례 비교: 페이지 안쪽은 통과하고 1px 초과만 넘침으로 판정한다 ──
+{
+  const page = { left: 100, top: 50, right: 500, bottom: 350 };
+  assert.equal(isRectOutsideBounds({ left: 101, top: 51, right: 499, bottom: 349 }, page), false, "페이지 안쪽 범례");
+  assert.equal(isRectOutsideBounds({ left: 100, top: 50, right: 501, bottom: 350 }, page), false, "1px 이내 tolerance");
+  assert.equal(isRectOutsideBounds({ left: 100, top: 50, right: 501.01, bottom: 350 }, page), true, "페이지 밖 범례");
+}
 
 const onePixelJpeg = Uint8Array.from(Buffer.from(
   "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAH/AP/EABQQAQAAAAAAAAAAAAAAAAAAADD/2gAIAQEAAQUCkf/EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQMBAT8Bqf/EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQIBAT8Bqf/EABQQAQAAAAAAAAAAAAAAAAAAADD/2gAIAQEABj8Ckf/Z",
