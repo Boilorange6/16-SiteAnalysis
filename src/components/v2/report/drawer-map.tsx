@@ -135,7 +135,7 @@ export default function DrawerMap({ page, frame, view, cell, scaleOptions, sameE
           title={frame.locked ? "지도 위치 고정 해제" : "지도 위치 고정"}
           onClick={() => onFrame({ locked: !frame.locked })}
         >
-          {frame.locked ? "잠김" : "고정"}
+          고정
         </button>
       </div>
 

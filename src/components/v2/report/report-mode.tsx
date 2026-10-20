@@ -756,7 +756,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
           >
             {history.present.pages.length === 0 ? (
               <div className={styles.emptyReport}>
-                <div className={styles.emptyCanvas}><span className={styles.emptyCanvasMark}>＋</span><strong>페이지를 추가하세요</strong><span>보고서의 첫 장을 선택해 작업을 시작합니다.</span></div>
+                <div className={styles.emptyCanvas}><span className={styles.emptyCanvasMark} aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 5v14M5 12h14" /></svg></span><strong>페이지를 추가하세요</strong><span>보고서의 첫 장을 선택해 작업을 시작합니다.</span></div>
                 <div className={styles.emptyActions}><button type="button" className={styles.primaryButton} onClick={() => addPage("blank")}>＋ 페이지 추가</button><button type="button" className={styles.secondaryButton} onClick={startRecommended}>추천 구성으로 시작</button>{legacyAvailable && <button type="button" className={styles.linkButton} onClick={importLegacy}>이전 보고서 구성 불러오기</button>}</div>
               </div>
             ) : selectedSlide ? (

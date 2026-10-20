@@ -17,7 +17,6 @@ export default function NotesField({ pageId, value, onChange, compact = false }:
     <label className={`${styles.notesField} ${compact ? styles.notesFieldCompact : ""}`}>
       <span className={styles.fieldLabelText}>발표 메모</span>
       <textarea value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="이 페이지에서 말할 내용을 적으세요." rows={4} />
-      {!compact && <span className={styles.helper}>발표 미리보기와 PPT 발표자 메모에 저장됩니다.</span>}
     </label>
   );
 }

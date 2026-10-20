@@ -61,6 +61,7 @@ assert.match(drawerMapSource, /scaleError\s*&&\s*<p[\s\S]*role=["']alert["']/, "
 assert.match(drawerMapSource, /setScaleError\("1:500부터 1:50,000까지 입력합니다"\)/, "축척 오류 문구는 요구한 값을 유지한다");
 assert.match(drawerMapSource, /aria-pressed=\{frame\.locked\}/, "지도 고정은 카드 머리의 aria-pressed 토글이다");
 assert.doesNotMatch(drawerMapSource, /checked=\{frame\.locked\}/, "지도 고정 체크박스는 카드 본문에 중복하지 않는다");
+assert.match(drawerMapSource, />\s*고정\s*<\/button>/, "지도 고정 토글 글자는 상태와 무관하게 고정이다");
 assert.doesNotMatch(drawerMapSource, /지도가 잠겨 있어 드래그|잠금 해제 후 이동 가능/, "잠금 설명 문장은 상태 토글과 중복하지 않는다");
 assert.doesNotMatch(drawerMapSource, /<fieldset\b|mapFieldset/, "지도 설정 묶음은 겹친 fieldset 테두리를 쓰지 않는다");
 assert.match(styles, /\.mapSummary\s*\{[\s\S]*min-height:\s*44px;/, "details summary는 44px 누름 영역이다");
@@ -73,5 +74,16 @@ assert.equal(initialReportRail(false), "pages", "페이지가 없는 보고서�
 assert.equal(isTypingTarget({ tagName: "TEXTAREA" }), true, "메모 textarea는 페이지 키보드 탐색 대상이 아니다");
 assert.equal(isTypingTarget({ tagName: "BUTTON" }), false, "버튼은 페이지 키보드 탐색 대상이다");
 assert.match(styles, /\.settingsCard \{ position: fixed;[^}]*padding: max\(8px, env\(safe-area-inset-top\)\) 12px/, "390 설정 시트는 서랍 시트와 같은 좌우 여백을 둔다");
+
+const css = styles;
+const sizes = [...css.matchAll(/font-size:\s*(\d+)px/g)].map((m) => Number(m[1]));
+assert.deepEqual([...new Set(sizes)].filter((s) => ![12, 13, 14, 16, 20].includes(s)), [], "편집기 글자 5단계");
+assert.doesNotMatch(css, /font-weight:\s*(800|900)/, "굵기 400/500/700");
+assert.match(css, /\.reportRoot\s*\{[^}]*word-break:\s*keep-all/s);
+for (const [file, text] of [
+  ["drawer-pages.tsx", "한 타일을 크게 배치합니다"], ["drawer-pages.tsx", "보고서 구성"],
+  ["drawer-tiles.tsx", "비교할 타일을 2개 이상"], ["notes-field.tsx", "PPT 발표자 메모에 저장됩니다"],
+  ["layout-switcher.tsx", "배치만 바꿉니다"],
+]) assert.doesNotMatch(readFileSync(new URL(`../../components/v2/report/${file}`, import.meta.url), "utf8"), new RegExp(text), `${file}: ${text}`);
 
 console.log("v2 report chrome style tests passed");

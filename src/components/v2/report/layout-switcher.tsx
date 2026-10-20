@@ -16,7 +16,6 @@ export default function LayoutSwitcher({ value, onChange, compact = false }: Lay
     <section className={`${styles.layoutSwitcher} ${compact ? styles.layoutSwitcherCompact : ""}`} aria-label="페이지 레이아웃">
       {!compact && <>
         <div className={styles.drawerHeader}><div><p className={styles.eyebrow}>페이지 배치</p><h2>레이아웃</h2></div></div>
-        <p className={styles.helper}>지도 위치와 확대는 그대로 두고 배치만 바꿉니다.</p>
       </>}
       <div className={styles.layoutOptions}>
         {OPTIONS.map((option) => <button key={option.value} type="button" className={value === option.value ? styles.layoutOptionActive : styles.layoutOption} aria-pressed={value === option.value} onClick={() => onChange(option.value)}><span className={styles.layoutIcon} aria-hidden="true">{option.icon}</span><span>{option.label}</span></button>)}
