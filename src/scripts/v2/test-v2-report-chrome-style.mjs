@@ -85,5 +85,8 @@ for (const [file, text] of [
   ["drawer-tiles.tsx", "비교할 타일을 2개 이상"], ["notes-field.tsx", "PPT 발표자 메모에 저장됩니다"],
   ["layout-switcher.tsx", "배치만 바꿉니다"],
 ]) assert.doesNotMatch(readFileSync(new URL(`../../components/v2/report/${file}`, import.meta.url), "utf8"), new RegExp(text), `${file}: ${text}`);
+const tilesSource = readFileSync(new URL("../../components/v2/report/drawer-tiles.tsx", import.meta.url), "utf8");
+assert.doesNotMatch(tilesSource, /\? styles\.filterChipActive : styles\.filterChip/, "선택된 칸 구성 칩도 기본 칩 모양을 유지한다");
+assert.match(styles, /label\.tileRowButton \{ grid-template-columns: 18px minmax\(0, 1fr\);/, "비교 모드 행은 체크박스와 이름 두 칸");
 
 console.log("v2 report chrome style tests passed");

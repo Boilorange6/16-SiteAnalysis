@@ -137,6 +137,7 @@
 .tileDot { width: 9px; height: 9px; border-radius: 50%; }
 .tileRowButton { display: grid; grid-template-columns: minmax(0, 1fr) auto 28px; align-items: center; gap: 5px; min-width: 0; min-height: 44px; padding: 4px 4px 4px 0; color: var(--report-ink); text-align: left; background: transparent; border: 0; cursor: pointer; }
 .tileRowButton:hover { color: #153f83; }
+label.tileRowButton { grid-template-columns: 18px minmax(0, 1fr); gap: 8px; }
 .tileRowButton input { width: 18px; height: 18px; accent-color: var(--report-accent); }
 .tileRowCopy { display: grid; gap: 3px; min-width: 0; }
 .tileRowCopy strong, .tileRowCopy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

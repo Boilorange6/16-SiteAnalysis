@@ -49,7 +49,7 @@ export default function DrawerTiles({ open, doc, views, mode, compareGrid, compa
       <div className={styles.chipRow} aria-label="타일 분류">
         {CATEGORIES.map((item) => <button key={item} type="button" className={`${styles.filterChip} ${category === item ? styles.filterChipActive : ""}`} aria-pressed={category === item} onClick={() => setCategory(item)}>{item}</button>)}
       </div>
-      {mode === "compare" && <div className={styles.compareGridChoices} aria-label="비교 칸 구성"><span className={styles.sectionLabel}>칸 구성</span>{([{ value: "2x2", label: "2×2 · 4칸" }, { value: "3x2", label: "3×2 · 6칸" }, { value: "3x1", label: "3×1 · 3칸" }] as const).map((option) => <button key={option.value} type="button" className={compareGrid === option.value ? styles.filterChipActive : styles.filterChip} aria-pressed={compareGrid === option.value} onClick={() => onCompareGrid(option.value)}>{option.label}</button>)}</div>}
+      {mode === "compare" && <div className={styles.compareGridChoices} aria-label="비교 칸 구성"><span className={styles.sectionLabel}>칸 구성</span>{([{ value: "2x2", label: "2×2 · 4칸" }, { value: "3x2", label: "3×2 · 6칸" }, { value: "3x1", label: "3×1 · 3칸" }] as const).map((option) => <button key={option.value} type="button" className={`${styles.filterChip} ${compareGrid === option.value ? styles.filterChipActive : ""}`} aria-pressed={compareGrid === option.value} onClick={() => onCompareGrid(option.value)}>{option.label}</button>)}</div>}
       <div className={styles.tileList}>
         {items.map((view) => {
           const used = pagesUsingTile(doc, view.tileId);
