@@ -4488,8 +4488,13 @@ button.badge:focus-visible {
 }
 
 @media (min-width: 640px) {
+  /* 무대는 화면 끝까지 쓰고, 머리 줄만 좌우 여백을 둔다. */
+  .page.reportPage {
+    padding-inline: 0;
+  }
   .page.reportPage > .topbar {
     gap: 8px;
+    padding-inline: 16px;
   }
   .page.reportPage > .topbar > .spacer {
     display: none;
