@@ -13,6 +13,7 @@ import {
   stripNavIndex,
   transitionMapInteraction,
 } from "../../lib/v2/ui/report-mode-logic.ts";
+import { dismissMapEditHint, readMapEditHintDismissed } from "../../lib/v2/ui/map-edit-hint.ts";
 
 const doc = {
   v: 1,
@@ -109,6 +110,17 @@ assert.deepEqual(transitionMapInteraction(movingMap, "outside-slide"), selectedM
 assert.deepEqual(transitionMapInteraction(selectedMap, "outside-slide"), idleMap, "비활성 슬라이드 바깥 클릭은 선택을 해제한다");
 assert.deepEqual(transitionMapInteraction(movingMap, "outside-page"), idleMap, "페이지 바깥 클릭은 항상 해제한다");
 assert.deepEqual(transitionMapInteraction(editingWithSettings, "outside-page"), idleMap);
+
+assert.equal(readMapEditHintDismissed({ getItem: () => "dismissed" }), true, "닫은 지도 편집 안내를 읽는다");
+assert.equal(readMapEditHintDismissed({ getItem: () => { throw new Error("blocked"); } }), false, "저장소 읽기 예외는 무시한다");
+assert.equal(readMapEditHintDismissed(null), false, "저장소가 없으면 지도 편집 안내를 다시 보인다");
+let dismissedKey = null;
+let dismissedValue = null;
+dismissMapEditHint({ setItem: (key, value) => { dismissedKey = key; dismissedValue = value; } });
+assert.equal(dismissedKey, "v2.report.mapEditHint", "지도 편집 안내 키를 고정한다");
+assert.equal(dismissedValue, "dismissed", "지도 편집 안내 닫힘 값을 고정한다");
+dismissMapEditHint({ setItem: () => { throw new Error("blocked"); } });
+dismissMapEditHint(null);
 
 const compareWithoutExtent = reportDocReducer(doc, { type: "sameExtent", id: "p3", value: false });
 assert.equal(compareWithoutExtent.pages[2].sameExtent, false, "compare sameExtent를 끌 수 있다");

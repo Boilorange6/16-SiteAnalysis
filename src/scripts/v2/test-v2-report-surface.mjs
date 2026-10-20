@@ -21,7 +21,7 @@ const base = buildReportPlan({
 }).find((slide) => slide.kind === "tile" && slide.view.code === "A01");
 assert.ok(base, "A01 표면 fixture가 필요하다");
 
-const a3 = { ...base, no: 1, total: 1, key: "t-A01", format: "a3", page: { ...base.page, layout: "numbers-first" } };
+const a3 = { ...base, no: 1, total: 1, key: "t-A01", format: "a3", page: { kind: "tile", ...base.page, layout: "numbers-first" } };
 const exportMarkup = renderToStaticMarkup(createElement(SlideSurface, { slide: a3, basemap: "none", mode: "export" }));
 assert.match(exportMarkup, /aspect-ratio:16\.535 \/ 11\.693/, "A3 표면 비율");
 assert.match(exportMarkup, /data-surface-mode="export"/, "export 표면 모드 식별자");
@@ -30,6 +30,15 @@ assert.match(exportSurfaceCss, /.surfaceRoot\[data-surface-mode="export"\]\s*\{[
 assert.match(exportSurfaceCss, /\.surfaceRoot\[data-surface-mode="export"\]\s*\[data-preview-frame="true"\]\s*\{[\s\S]*?box-sizing:\s*border-box[\s\S]*?width:\s*100%\s*!important[\s\S]*?height:\s*100%\s*!important[\s\S]*?border:\s*0[\s\S]*?border-radius:\s*0[\s\S]*?box-shadow:\s*none/s, "export frame은 host를 채우고 chrome이 없다");
 assert.match(exportSurfaceCss, /\.surfaceRoot\[data-surface-mode="export"\]\s*\*,[\s\S]*?transition:\s*none\s*!important;[\s\S]*?animation:\s*none\s*!important;/s, "export 표면의 transition·animation은 꺼진다");
 assert.match(exportSurfaceCss, /\.surfaceRoot\[data-surface-mode="export"\]\s*\[data-report-source-table="true"\]\s*th,[\s\S]*?line-height:\s*1\.05;/s, "export 출처 행은 표 상자 안에 맞는 밀도로 조판한다");
+
+const editMarkup = renderToStaticMarkup(createElement(SlideSurface, { slide: a3, basemap: "none", mode: "edit", mapActive: true }));
+assert.match(editMarkup, /data-map-editing="true"/, "지도 편집 중인 slide canvas 식별자");
+assert.match(exportSurfaceCss, /\[data-map-editing="true"\]\s+\[data-panel-key\][\s\S]*?opacity:\s*\.35[\s\S]*?pointer-events:\s*none/s, "지도 편집 중 제목·요약·범례 패널은 흐리고 누를 수 없다");
+assert.match(exportSurfaceCss, /\[data-map-editing="true"\]\s+\[data-preview-map\][\s\S]*?cursor:\s*grab/s, "지도 편집 중 커서는 grab이다");
+assert.match(exportSurfaceCss, /\[data-map-editing="true"\]\s+\[data-preview-map\]\[data-dragging="true"\][\s\S]*?cursor:\s*grabbing/s, "지도 끌기 중 커서는 grabbing이다");
+const selectedMapMarkup = renderToStaticMarkup(createElement(SlideSurface, { slide: a3, basemap: "none", mode: "edit", mapActive: false, onMapMoveActive: () => undefined }));
+assert.match(selectedMapMarkup, /data-preview-map="true"[^>]*tabindex="0"/, "선택만 된 지도도 Enter를 받을 수 있다");
+assert.match(selectedMapMarkup, /aria-label="[^"]+지도\. Enter 또는 두 번 눌러 편집합니다\."/, "선택만 된 지도에 편집 진입 안내를 제공한다");
 
 const thumbMarkup = renderToStaticMarkup(createElement(SlideSurface, { slide: a3, basemap: "none", mode: "thumb" }));
 assert.equal((thumbMarkup.match(/<button\b/g) ?? []).length, 0, "thumb 표면은 조작 버튼이 없다");
