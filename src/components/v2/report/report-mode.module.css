@@ -88,6 +88,10 @@
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
+@keyframes mapLockAttention {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(198, 106, 0, 0); }
+  40% { box-shadow: 0 0 0 3px rgba(198, 106, 0, .36); }
+}
 .toolPill { position: absolute; top: 50%; left: 16px; z-index: 30; display: grid; width: 56px; gap: 4px; padding: 6px; background: #fff; transform: translateY(-50%); }
 .railButton { display: grid; place-items: center; gap: 4px; min-width: 44px; min-height: 44px; padding: 5px 3px; color: #4d535e; background: transparent; border: 1px solid transparent; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 500; }
 .railButton span:first-child { display: grid; place-items: center; min-height: 20px; font-size: 20px; }
@@ -142,15 +146,18 @@
 
 .iconButton { display: inline-grid; place-items: center; min-width: 44px; min-height: 44px; padding: 5px; color: var(--report-ink); background: #fff; border: 1px solid var(--report-line); border-radius: 7px; cursor: pointer; font-size: 17px; }
 .iconButton:hover { background: #e9edf3; }
-.mapToolbar { position: absolute; bottom: 12px; left: 50%; z-index: 20; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; box-sizing: border-box; gap: 6px; max-width: calc(100% - 24px); padding: 6px; overflow: visible; transform: translateX(-50%); background: rgba(22,24,29,.96); border: 1px solid #596273; border-radius: 8px; box-shadow: 0 6px 18px rgba(21,23,28,.22); }
+.mapToolbar { position: relative; display: flex; flex: 0 1 auto; align-items: center; gap: 6px; box-sizing: border-box; min-width: 0; max-width: 100%; padding: 4px; overflow-x: auto; overflow-y: hidden; background: rgba(22,24,29,.96); border: 1px solid #596273; border-radius: 8px; box-shadow: 0 6px 18px rgba(21,23,28,.22); }
 .mapToolButton, .mapToolButtonWide { flex: 0 0 auto; min-height: 44px; padding: 8px 10px; color: #fff; background: #252b35; border: 1px solid #596273; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 800; }
 .mapToolButton { min-width: 44px; font-size: 18px; }
 .mapToolButtonWide { min-width: 44px; padding-right: 7px; padding-left: 7px; }
 .mapToolButton:hover, .mapToolButtonWide:hover { background: #3a4352; }
 .mapToolButtonActive { color: #102e60; background: #c5d9f7; border-color: #dce9ff; }
+.mapToolButton[data-attention="true"] { border-color: #c66a00; animation: mapLockAttention 600ms ease-out; }
 .mapScale { flex: 0 0 auto; min-width: 70px; padding: 0 2px; color: #fff; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.mapToolbarReason { flex: 0 1 120px; min-width: 0; padding: 0 5px; color: #f3c98b; font-size: 10px; font-weight: 700; line-height: 1.2; text-align: center; white-space: normal; }
-.mapHint { position: absolute; bottom: 74px; left: 50%; z-index: 20; max-width: calc(100% - 24px); margin: 0; padding: 5px 9px; overflow: hidden; color: var(--report-ink); background: rgba(255,255,255,.92); border: 1px solid #c6cad2; border-radius: 999px; font-size: 11px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; transform: translateX(-50%); }
+.mapDockLead { max-width: 100%; overflow-x: auto; }
+.mapEditHint { display: flex; flex: 0 0 auto; align-items: center; gap: 4px; min-height: 44px; padding: 3px 4px 3px 10px; color: var(--report-ink); background: #fff8e9; border: 1px solid #d99a3d; border-radius: 999px; font-size: 12px; font-weight: 500; line-height: 1.25; white-space: nowrap; }
+.mapEditHint button { display: grid; place-items: center; width: 44px; min-width: 44px; min-height: 44px; padding: 0; color: var(--report-ink); background: transparent; border: 0; border-radius: 50%; cursor: pointer; font: inherit; font-size: 20px; line-height: 1; }
+.mapEditHint button:hover { background: #f2dfb7; }
 .stageFit { position: absolute; inset: 16px var(--stage-right) var(--stage-bottom) var(--stage-left); container-type: size; display: grid; place-items: center; min-width: 0; min-height: 0; overflow: visible; }
 .stageSlide { width: min(100cqw, calc(100cqh * var(--stage-slide-width) / var(--stage-slide-height))); aspect-ratio: var(--stage-slide-width) / var(--stage-slide-height); min-width: 0; min-height: 0; }
 .stageFit[data-slide-format="wide"] .stageSlide { width: min(100cqw, calc(100cqh * 16 / 9)); aspect-ratio: 16 / 9; }
@@ -337,6 +344,7 @@
   .toolPill { transform: translateY(-50%); }
   .pageDock { transform: translateX(-50%); }
   .drawerCard[data-drawer-open="true"], .dockPopover, .reportStage[data-settings-open="true"] .settingsCard { animation: none; }
+  .mapToolButton[data-attention="true"] { animation: none; }
 }
 
 @media (max-width: 639px) {
@@ -446,33 +454,9 @@
     height: 100%;
     aspect-ratio: auto;
   }
-  .stageFit > .mapToolbar {
-    position: static;
-    order: 2;
-    justify-content: flex-start;
-    flex-wrap: nowrap;
-    flex: 0 0 auto;
-    width: 100%;
-    max-width: none;
-    margin-top: 8px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    transform: none;
-  }
-  .stageFit > .mapToolbar .mapToolbarReason {
-    flex: 0 0 auto;
-    white-space: nowrap;
-  }
-  .stageFit > .mapHint {
-    position: static;
-    order: 3;
-    width: 100%;
-    max-width: none;
-    margin: 8px 0 0;
-    text-align: center;
-    white-space: normal;
-    transform: none;
-  }
+  .mapDockLead { width: 100%; }
+  .mapDockLead .mapToolbar { flex: 0 0 auto; max-width: none; }
+  .mapEditHint { flex: 0 0 auto; }
   .notesField { width: 100%; font-size: 14px; }
   .notesField textarea { min-height: 56px; height: 56px; font-size: 14px; }
   .pageDock { position: static; order: 3; flex: 0 0 112px; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); width: 100%; min-height: 112px; height: 112px; margin: 0; padding: 8px; transform: none; }

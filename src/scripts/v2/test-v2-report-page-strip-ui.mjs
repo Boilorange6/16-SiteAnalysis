@@ -18,6 +18,7 @@ const { EMPTY_REPORT_DOC } = await import("../../lib/v2/report/report-doc.ts");
 const { planReportDoc, recommendedPages } = await import("../../lib/v2/report/report-doc-plan.ts");
 const { pageStripItems } = await import("../../lib/v2/report/report-page-strip.ts");
 const { default: PageStrip } = await import("../../components/v2/report/page-strip.tsx");
+const { default: MapToolbar } = await import("../../components/v2/report/map-toolbar.tsx");
 
 const summary = toSummaryView(GODEOK_SUMMARY, GODEOK_RESULTS);
 const board = initBoard(GODEOK_RESULTS);
@@ -66,5 +67,42 @@ const pageNavigationSource = reportModeSource.slice(reportModeSource.indexOf('if
 assert.match(pageNavigationSource, /event\.altKey \|\| event\.ctrlKey \|\| event\.metaKey \|\| event\.shiftKey/, "수정자가 있는 PageUp/PageDown은 가로채지 않는다");
 const reportModeCss = readFileSync(new URL("../../components/v2/report/report-mode.module.css", import.meta.url), "utf8");
 assert.match(reportModeCss, /\.pageDropIndicator[\s\S]*?width:\s*3px[\s\S]*?background:\s*#2f6fdb/, "드롭 위치 표시 막대");
+
+const toolbarProps = {
+  scale: 2500,
+  locked: false,
+  editing: false,
+  settingsOpen: false,
+  lockAttention: false,
+  onZoom: () => {},
+  onFit: () => {},
+  onToggleLock: () => {},
+  onToggleSettings: () => {},
+  onDone: () => {},
+};
+const toolbarMarkup = renderToStaticMarkup(createElement(MapToolbar, toolbarProps));
+const toolbarLabels = ["축척 줄이기", "축척 키우기", "대지 맞춤", "지도 위치 고정", "지도 설정"];
+let previousToolbarLabelIndex = -1;
+for (const label of toolbarLabels) {
+  const labelIndex = toolbarMarkup.indexOf(`aria-label="${label}"`);
+  assert.ok(labelIndex >= 0, `지도 막대에 ${label} 버튼`);
+  assert.ok(labelIndex > previousToolbarLabelIndex, `지도 막대 버튼 순서: ${label}`);
+  previousToolbarLabelIndex = labelIndex;
+}
+assert.doesNotMatch(toolbarMarkup, /지도 이동|이동 끝내기/, "지도 막대에는 이동 토글이 없다");
+
+const editingToolbarMarkup = renderToStaticMarkup(createElement(MapToolbar, { ...toolbarProps, editing: true }));
+assert.match(editingToolbarMarkup, /aria-label="지도 편집 끝내기 \(Esc\)"/, "편집 중에는 Esc 완료 버튼이 있다");
+assert.doesNotMatch(editingToolbarMarkup, /aria-label="대지 맞춤"|aria-label="지도 위치 고정"|aria-label="지도 설정"/, "편집 중에는 설정 조작을 숨긴다");
+const attentionToolbarMarkup = renderToStaticMarkup(createElement(MapToolbar, { ...toolbarProps, lockAttention: true }));
+assert.match(attentionToolbarMarkup, /data-attention="true"/, "잠긴 지도 편집 시도는 고정 버튼을 강조한다");
+
+const stageBlock = reportModeSource.slice(reportModeSource.indexOf("className={styles.stageFit}"), reportModeSource.indexOf('<nav className={`${styles.floatCard} ${styles.toolPill}`}'));
+const dockBlock = reportModeSource.slice(reportModeSource.indexOf('data-dock-lead="true"'), reportModeSource.lastIndexOf("<PageStrip"));
+assert.doesNotMatch(stageBlock, /<MapToolbar/, "지도 막대는 슬라이드 무대 위에 그리지 않는다");
+assert.match(dockBlock, /<MapToolbar/, "지도 막대는 pageDock의 왼쪽 묶음에 그린다");
+assert.doesNotMatch(reportModeSource, /styles\.mapHint|mapToolbarReason|지도를 끌어 옮기고/, "이전 무대 안내 CSS/문구를 제거한다");
+assert.match(reportModeSource, /const drawerOpen = rail !== null;/, "지도 선택은 왼쪽 서랍을 열지 않는다");
+assert.match(reportModeSource, /data-settings-open=\{settingsOpen \? "true" : "false"\}/, "설정 카드 상태는 settingsOpen에 연결한다");
 
 console.log("v2 report page strip UI: PASS");

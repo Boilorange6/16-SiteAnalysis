@@ -45,7 +45,7 @@ for (const className of ["toolPill", "drawerCard", "pageDock", "dockLead"]) {
 }
 assert.doesNotMatch(source, /styles\.(reportRail|drawerColumn|editorSide|reportWorkspace)\b/, "옛 3열 레이아웃 클래스가 JSX에 남지 않는다");
 assert.match(source, /data-drawer-open=/, "무대에 서랍 열림 상태가 있다");
-assert.match(source, /data-settings-open=["']false["']/, "이번 Task의 설정 카드 상태는 false다");
+assert.match(source, /data-settings-open=\{settingsOpen \? "true" : "false"\}/, "설정 카드 상태를 settingsOpen에 연결한다");
 assert.match(source, /aria-expanded=\{rail === "pages" && drawerOpen\}/, "도구 막대 버튼은 서랍 펼침 상태를 알린다");
 assert.match(source, /aria-haspopup=["']menu["']/, "레이아웃 메뉴 트리거가 menu임을 알린다");
 assert.match(source, /data-has-notes/, "메모가 있는 페이지의 점 표시 계약");
