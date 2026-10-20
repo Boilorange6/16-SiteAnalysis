@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
 import { createPortal } from "react-dom";
 import type { Dispatch } from "react";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { defaultFrame, EMPTY_REPORT_DOC, newPageId, reportDocReducer, type MapFrameState, type PagePanels, type ReportDoc, type ReportDocAction, type ReportFontScale, type ReportFormat, type ReportPage, type TextBox } from "@/lib/v2/report/report-doc";
 import { mapFrameScaleOptions, scaleForFrame } from "@/lib/v2/ui/report-scale";
 import { SLIDE_OVERVIEW_FILL } from "@/lib/v2/ui/callout-layout";
-import { slideSiteX } from "@/lib/v2/ui/overlay-layout";
+import { slideGeometry, slideSiteX } from "@/lib/v2/ui/overlay-layout";
 import { importLegacyReport, hasLegacyReport, pagesForTile, planReportDoc, recommendedPages } from "@/lib/v2/report/report-doc-plan";
 import { pageStripItems } from "@/lib/v2/report/report-page-strip";
 import { reportFileName, tileReportSettingsFromBoard, type PlannedSlide } from "@/lib/v2/report/report-plan";
@@ -129,8 +129,14 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const [exportOpen, setExportOpen] = useState(false);
   const [exportPageScope, setExportPageScope] = useState<ExportPageScope | null>(null);
   const [exportPageIds, setExportPageIds] = useState<Set<string>>(new Set());
+  const [layoutPopoverOpen, setLayoutPopoverOpen] = useState(false);
+  const [notesPopoverOpen, setNotesPopoverOpen] = useState(false);
   const exportTriggerRef = useRef<HTMLButtonElement>(null);
   const exportDialogRef = useRef<HTMLDivElement>(null);
+  const layoutTriggerRef = useRef<HTMLButtonElement>(null);
+  const notesTriggerRef = useRef<HTMLButtonElement>(null);
+  const layoutPopoverRef = useRef<HTMLDivElement>(null);
+  const notesPopoverRef = useRef<HTMLDivElement>(null);
   const [mobileViewport, setMobileViewport] = useState(false);
   const drawerRef = useRef<HTMLElement>(null);
   const drawerOpenerRef = useRef<HTMLElement | null>(null);
@@ -173,6 +179,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     setSelectedSlideKey(slideKey);
     setSelection(null);
     setMapMoveActive(false);
+    setLayoutPopoverOpen(false);
+    setNotesPopoverOpen(false);
   }, []);
   const navigateStrip = useCallback((index: number) => {
     const item = stripItems[index];
@@ -203,6 +211,41 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     setToast(message);
     window.setTimeout(() => setToast((current) => current === message ? null : current), 1800);
   }, []);
+
+  const closeLayoutPopover = useCallback((restoreFocus = false) => {
+    setLayoutPopoverOpen(false);
+    if (restoreFocus) window.requestAnimationFrame(() => layoutTriggerRef.current?.focus());
+  }, []);
+
+  const closeNotesPopover = useCallback((restoreFocus = false) => {
+    setNotesPopoverOpen(false);
+    if (restoreFocus) window.requestAnimationFrame(() => notesTriggerRef.current?.focus());
+  }, []);
+
+  const toggleLayoutPopover = useCallback(() => {
+    setRail(null);
+    setNotesPopoverOpen(false);
+    setLayoutPopoverOpen((current) => !current);
+  }, []);
+
+  const toggleNotesPopover = useCallback(() => {
+    setRail(null);
+    setLayoutPopoverOpen(false);
+    setNotesPopoverOpen((current) => !current);
+  }, []);
+
+  useEffect(() => {
+    if (!layoutPopoverOpen && !notesPopoverOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!(event.target instanceof Node)) return;
+      if (layoutPopoverRef.current?.contains(event.target) || layoutTriggerRef.current?.contains(event.target)) return;
+      if (notesPopoverRef.current?.contains(event.target) || notesTriggerRef.current?.contains(event.target)) return;
+      closeLayoutPopover();
+      closeNotesPopover();
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [closeLayoutPopover, closeNotesPopover, layoutPopoverOpen, notesPopoverOpen]);
 
   const commitDoc = useCallback((next: ReportDoc, message?: string) => {
     setHistory((current) => {
@@ -235,6 +278,12 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        if (layoutPopoverOpen || notesPopoverOpen) {
+          event.preventDefault();
+          if (layoutPopoverOpen) closeLayoutPopover(true);
+          if (notesPopoverOpen) closeNotesPopover(true);
+          return;
+        }
         if (mapMoveActive) {
           event.preventDefault();
           setMapMoveActive(false);
@@ -261,7 +310,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [mapMoveActive, navigateStrip, redo, selectedId, selectedSlideKey, selection, stripItems, undo]);
+  }, [closeLayoutPopover, closeNotesPopover, layoutPopoverOpen, mapMoveActive, navigateStrip, notesPopoverOpen, redo, selectedId, selectedSlideKey, selection, stripItems, undo]);
 
   const addPages = useCallback((pages: ReportPage[], message?: string) => {
     if (pages.length === 0) return;
@@ -428,6 +477,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
       if (!reportPageMapSelectable(page)) return;
       rememberDrawerOpener();
       const transitioned = transitionMapInteraction(current, "select");
+      setLayoutPopoverOpen(false);
+      setNotesPopoverOpen(false);
       setSelection(next);
       setMapMoveActive(transitioned.moveActive);
       setRail(null);
@@ -449,6 +500,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     rememberDrawerOpener(opener);
     setSelection(null);
     setMapMoveActive(false);
+    setLayoutPopoverOpen(false);
+    setNotesPopoverOpen(false);
     setRail((current) => current === next ? null : next);
   }, [rememberDrawerOpener]);
   const addTextBoxFromRail = useCallback((opener?: HTMLElement | null) => {
@@ -456,6 +509,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     const opening = rail !== "textbox";
     setSelection(null);
     setMapMoveActive(false);
+    setLayoutPopoverOpen(false);
+    setNotesPopoverOpen(false);
     setRail(opening ? "textbox" : null);
     if (opening) addTextBox();
   }, [addTextBox, rail, rememberDrawerOpener]);
@@ -494,6 +549,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   }) : null;
   const mapScale = mapFrame && mapModel && mapScaleOptions ? scaleForFrame(mapModel, mapFrame, mapScaleOptions) : 1000;
   const mapEditing = !!mapFrame && !!mapModel && !!editableMapPage && selection?.kind === "map";
+  const stageSize = slideGeometry(history.present.format);
   const legacyAvailable = hasLegacyReport(board);
   const mapSelection = useCallback((cell = mapCell): SurfaceSelection => ({ kind: "map", ...(cell === undefined ? {} : { cell }) }), [mapCell]);
   const enterMapMove = useCallback(() => {
@@ -529,6 +585,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     setRail(null);
     setSelection(null);
     setMapMoveActive(false);
+    setLayoutPopoverOpen(false);
+    setNotesPopoverOpen(false);
   }, []);
   const drawerOpen = rail !== null || mapEditing;
   const modalContentInert = exportOpen || (mobileViewport && drawerOpen);
@@ -603,57 +661,89 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
         onViewPage={viewExportPage}
       />}
       <div className={styles.reportBody} onDragOver={(event) => event.preventDefault()} onDrop={handleDrop}>
-        <nav className={styles.reportRail} aria-label="보고서 요소" inert={modalContentInert || undefined}>
-          <button type="button" className={`${styles.railButton} ${rail === "pages" ? styles.railButtonActive : ""}`} aria-pressed={rail === "pages"} onClick={(event) => toggleRail("pages", event.currentTarget)}><span aria-hidden="true">▤</span><span>페이지</span></button>
-          <button type="button" className={`${styles.railButton} ${rail === "tiles" ? styles.railButtonActive : ""}`} aria-pressed={rail === "tiles"} onClick={(event) => toggleRail("tiles", event.currentTarget)}><span aria-hidden="true">◈</span><span>분석 타일</span></button>
-          <button type="button" className={`${styles.railButton} ${rail === "textbox" ? styles.railButtonActive : ""}`} aria-pressed={rail === "textbox"} onClick={(event) => addTextBoxFromRail(event.currentTarget)}><span aria-hidden="true">T</span><span>글상자</span></button>
-          <button type="button" className={`${styles.railButton} ${rail === "theme" ? styles.railButtonActive : ""}`} aria-pressed={rail === "theme"} onClick={(event) => toggleRail("theme", event.currentTarget)}><span aria-hidden="true">◌</span><span>테마</span></button>
-          <button type="button" className={`${styles.railButton} ${styles.mobileOnlyRailButton} ${rail === "layout" ? styles.railButtonActive : ""}`} aria-pressed={rail === "layout"} onClick={(event) => toggleRail("layout", event.currentTarget)} disabled={!selectedPage}><span aria-hidden="true">▥</span><span>레이아웃</span></button>
-        </nav>
-        <aside
-          ref={drawerRef}
-          className={styles.drawerColumn}
-          data-mobile-sheet={mobileViewport && drawerOpen ? "open" : "closed"}
-          role={mobileViewport && drawerOpen ? "dialog" : undefined}
-          aria-modal={mobileViewport && drawerOpen ? true : undefined}
-          inert={exportOpen || undefined}
-          aria-label={mapEditing ? "지도 설정" : rail === "tiles" ? "분석 타일 추가" : rail === "textbox" ? "글상자 추가" : rail === "theme" ? "테마 설정" : rail === "layout" ? "페이지 레이아웃" : "페이지 추가"}
+        <main
+          className={styles.reportStage}
+          data-drawer-open={drawerOpen ? "true" : "false"}
+          data-settings-open="false"
         >
-          {mobileViewport && drawerOpen && <button type="button" className={styles.sheetClose} onClick={closeDrawer}>닫기</button>}
-          {mapEditing && editableMapPage && mapFrame && mapScaleOptions && <DrawerMap page={editableMapPage} frame={mapFrame} view={mapView} cell={mapCell} scaleOptions={mapScaleOptions} sameExtent={editableMapPage.kind === "compare" ? editableMapPage.sameExtent : undefined} onSameExtent={editableMapPage.kind === "compare" ? (value) => apply({ type: "sameExtent", id: editableMapPage.id, value }) : undefined} onFrame={(patch: Partial<MapFrameState>) => { if (patch.locked === true) setMapMoveActive(false); applyFrame(mapCell, patch); }} />}
-          {!mapEditing && rail === "pages" && <DrawerPages open hasLegacy={legacyAvailable} onAdd={addPage} onRecommended={startRecommended} onLegacy={importLegacy} />}
-          {!mapEditing && rail === "tiles" && <DrawerTiles open doc={history.present} views={views} mode={compareMode ? "compare" : "single"} compareGrid={compareGrid} compareSelected={compareSelected} onCompareGrid={setCompareGrid} onAdd={addTile} onToggleCompare={toggleCompareTile} onCreateCompare={addComparePage} onCancelCompare={() => { setCompareSelected([]); setCompareMode(false); }} />}
-          {!mapEditing && rail === "textbox" && <TextBoxDrawer onAdd={addTextBox} />}
-          {!mapEditing && rail === "theme" && <ThemeDrawer doc={history.present} onFormat={(format) => apply({ type: "format", format }, `${formatLabel(format)} 판형으로 바꿨습니다.`)} onFontScale={(fontScale) => apply({ type: "theme", fontScale }, `${fontScale}배 글자 크기를 적용했습니다.`)} onClose={() => mobileViewport ? closeDrawer() : setRail("pages")} />}
-          {!mapEditing && rail === "layout" && selectedPage && <div className={styles.drawer}><LayoutSwitcher value={selectedPage.layout} onChange={(layout) => apply({ type: "layout", id: selectedPage.id, layout })} /></div>}
-        </aside>
-        <main className={styles.reportWorkspace} inert={modalContentInert || undefined}>
-          {history.present.pages.length === 0 ? (
-            <div className={styles.emptyReport}>
-              <div className={styles.emptyCanvas}><span className={styles.emptyCanvasMark}>＋</span><strong>페이지를 추가하세요</strong><span>보고서의 첫 장을 선택해 작업을 시작합니다.</span></div>
-              <div className={styles.emptyActions}><button type="button" className={styles.primaryButton} onClick={() => addPage("blank")}>＋ 페이지 추가</button><button type="button" className={styles.secondaryButton} onClick={startRecommended}>추천 구성으로 시작</button>{legacyAvailable && <button type="button" className={styles.linkButton} onClick={importLegacy}>이전 보고서 구성 불러오기</button>}</div>
-            </div>
-          ) : selectedSlide ? (
-            <div className={styles.stageAndSettings}>
-              <div className={styles.stageColumn}>
-                <div className={styles.stageFrame} data-report-stage onPointerDown={(event) => {
-                  if (event.target !== event.currentTarget) return;
-                  handleSurfaceSelect(null);
-                }}>
-                  {mapFrame && mapModel && <>
-                    <MapToolbar scale={mapScale} locked={mapFrame.locked} mapActive={mapMoveActive && selection?.kind === "map" && !mapFrame.locked} onZoom={(delta) => applyFrame(mapCell, { zoomDelta: mapFrame.zoomDelta + delta, scaleDenominator: null })} onFit={() => applyFrame(mapCell, { zoomDelta: 0, offsetM: [0, 0], scaleDenominator: null })} onToggleMove={toggleMapMove} onToggleLock={toggleMapLock} onOpen={openMapSettings} />
-                    {mapMoveActive && selection?.kind === "map" && !mapFrame.locked && <p className={styles.mapHint}>지도를 끌어 옮기고 휠로 확대합니다 · Esc 또는 바깥을 누르면 끝납니다</p>}
-                  </>}
+          <div
+            className={styles.stageFit}
+            data-report-stage
+            data-slide-format={history.present.format}
+            style={{ "--stage-slide-width": stageSize.w, "--stage-slide-height": stageSize.h } as CSSProperties}
+            onPointerDown={(event) => {
+              if (event.target !== event.currentTarget) return;
+              handleSurfaceSelect(null);
+            }}
+            inert={modalContentInert || undefined}
+          >
+            {history.present.pages.length === 0 ? (
+              <div className={styles.emptyReport}>
+                <div className={styles.emptyCanvas}><span className={styles.emptyCanvasMark}>＋</span><strong>페이지를 추가하세요</strong><span>보고서의 첫 장을 선택해 작업을 시작합니다.</span></div>
+                <div className={styles.emptyActions}><button type="button" className={styles.primaryButton} onClick={() => addPage("blank")}>＋ 페이지 추가</button><button type="button" className={styles.secondaryButton} onClick={startRecommended}>추천 구성으로 시작</button>{legacyAvailable && <button type="button" className={styles.linkButton} onClick={importLegacy}>이전 보고서 구성 불러오기</button>}</div>
+              </div>
+            ) : selectedSlide ? (
+              <>
+                {mapFrame && mapModel && <>
+                  <MapToolbar scale={mapScale} locked={mapFrame.locked} mapActive={mapMoveActive && selection?.kind === "map" && !mapFrame.locked} onZoom={(delta) => applyFrame(mapCell, { zoomDelta: mapFrame.zoomDelta + delta, scaleDenominator: null })} onFit={() => applyFrame(mapCell, { zoomDelta: 0, offsetM: [0, 0], scaleDenominator: null })} onToggleMove={toggleMapMove} onToggleLock={toggleMapLock} onOpen={openMapSettings} />
+                  {mapMoveActive && selection?.kind === "map" && !mapFrame.locked && <p className={styles.mapHint}>지도를 끌어 옮기고 휠로 확대합니다 · Esc 또는 바깥을 누르면 끝납니다</p>}
+                </>}
+                <div className={styles.stageSlide}>
                   <SlideSurface slide={selectedSlide} basemap={basemap} mode="edit" selection={selection} onSelect={handleSurfaceSelect} onMapMoveActive={setMapMoveFromSurface} onFrame={applyFrame} onPanels={applyPanels} onTextBox={applyTextBox} onText={editPanelText} onSheetCellActivate={(index) => { handleSurfaceSelect({ kind: "map", cell: index }); setMapMoveActive(false); }} mapActive={mapMoveActive} classMap={surfaceClassMap} />
                 </div>
-                {selectedPage && <NotesField pageId={selectedPage.id} value={selectedPage.notes} onChange={(notes) => apply({ type: "notes", id: selectedPage.id, notes })} />}
+              </>
+            ) : <div className={styles.emptyCanvas}>이 페이지는 아직 미리보기를 준비하고 있습니다.</div>}
+          </div>
+
+          <nav className={`${styles.floatCard} ${styles.toolPill}`} aria-label="보고서 요소" inert={modalContentInert || undefined}>
+            <button type="button" className={`${styles.railButton} ${rail === "pages" ? styles.railButtonActive : ""}`} aria-pressed={rail === "pages"} aria-expanded={rail === "pages" && drawerOpen} aria-controls="report-drawer" onClick={(event) => toggleRail("pages", event.currentTarget)}><span aria-hidden="true">▤</span><span>페이지</span></button>
+            <button type="button" className={`${styles.railButton} ${rail === "tiles" ? styles.railButtonActive : ""}`} aria-pressed={rail === "tiles"} aria-expanded={rail === "tiles" && drawerOpen} aria-controls="report-drawer" onClick={(event) => toggleRail("tiles", event.currentTarget)}><span aria-hidden="true">◈</span><span>분석 타일</span></button>
+            <button type="button" className={`${styles.railButton} ${rail === "textbox" ? styles.railButtonActive : ""}`} aria-pressed={rail === "textbox"} aria-expanded={rail === "textbox" && drawerOpen} aria-controls="report-drawer" onClick={(event) => addTextBoxFromRail(event.currentTarget)}><span aria-hidden="true">T</span><span>글상자</span></button>
+            <button type="button" className={`${styles.railButton} ${rail === "theme" ? styles.railButtonActive : ""}`} aria-pressed={rail === "theme"} aria-expanded={rail === "theme" && drawerOpen} aria-controls="report-drawer" onClick={(event) => toggleRail("theme", event.currentTarget)}><span aria-hidden="true">◌</span><span>테마</span></button>
+          </nav>
+
+          <aside
+            ref={drawerRef}
+            id="report-drawer"
+            className={`${styles.floatCard} ${styles.drawerCard}`}
+            data-drawer-open={drawerOpen ? "true" : "false"}
+            data-mobile-sheet={mobileViewport && drawerOpen ? "open" : "closed"}
+            role={mobileViewport && drawerOpen ? "dialog" : undefined}
+            aria-modal={mobileViewport && drawerOpen ? true : undefined}
+            aria-hidden={drawerOpen ? undefined : true}
+            inert={exportOpen || !drawerOpen ? true : undefined}
+            aria-label={mapEditing ? "지도 설정" : rail === "tiles" ? "분석 타일 추가" : rail === "textbox" ? "글상자 추가" : rail === "theme" ? "테마 설정" : rail === "layout" ? "페이지 레이아웃" : "페이지 추가"}
+          >
+            {mobileViewport && drawerOpen && <button type="button" className={styles.sheetClose} onClick={closeDrawer}>닫기</button>}
+            {mapEditing && editableMapPage && mapFrame && mapScaleOptions && <DrawerMap page={editableMapPage} frame={mapFrame} view={mapView} cell={mapCell} scaleOptions={mapScaleOptions} sameExtent={editableMapPage.kind === "compare" ? editableMapPage.sameExtent : undefined} onSameExtent={editableMapPage.kind === "compare" ? (value) => apply({ type: "sameExtent", id: editableMapPage.id, value }) : undefined} onFrame={(patch: Partial<MapFrameState>) => { if (patch.locked === true) setMapMoveActive(false); applyFrame(mapCell, patch); }} />}
+            {!mapEditing && rail === "pages" && <DrawerPages open hasLegacy={legacyAvailable} onAdd={addPage} onRecommended={startRecommended} onLegacy={importLegacy} />}
+            {!mapEditing && rail === "tiles" && <DrawerTiles open doc={history.present} views={views} mode={compareMode ? "compare" : "single"} compareGrid={compareGrid} compareSelected={compareSelected} onCompareGrid={setCompareGrid} onAdd={addTile} onToggleCompare={toggleCompareTile} onCreateCompare={addComparePage} onCancelCompare={() => { setCompareSelected([]); setCompareMode(false); }} />}
+            {!mapEditing && rail === "textbox" && <TextBoxDrawer onAdd={addTextBox} />}
+            {!mapEditing && rail === "theme" && <ThemeDrawer doc={history.present} onFormat={(format) => apply({ type: "format", format }, `${formatLabel(format)} 판형으로 바꿨습니다.`)} onFontScale={(fontScale) => apply({ type: "theme", fontScale }, `${fontScale}배 글자 크기를 적용했습니다.`)} onClose={() => mobileViewport ? closeDrawer() : setRail("pages")} />}
+            {!mapEditing && rail === "layout" && selectedPage && <div className={styles.drawer}><LayoutSwitcher value={selectedPage.layout} onChange={(layout) => apply({ type: "layout", id: selectedPage.id, layout })} /></div>}
+          </aside>
+
+          <div className={`${styles.floatCard} ${styles.pageDock}`} inert={modalContentInert || undefined}>
+            <div className={styles.dockLead} data-dock-lead="true">
+              <div className={styles.dockPopoverRoot}>
+                <button ref={layoutTriggerRef} type="button" className={styles.dockButton} aria-haspopup="menu" aria-expanded={layoutPopoverOpen} aria-controls={layoutPopoverOpen ? "report-layout-menu" : undefined} aria-label="페이지 레이아웃 메뉴" onClick={toggleLayoutPopover} disabled={!selectedPage}>
+                  <span aria-hidden="true">▥</span><span>레이아웃</span>
+                </button>
+                {layoutPopoverOpen && selectedPage && <div ref={layoutPopoverRef} id="report-layout-menu" className={`${styles.floatCard} ${styles.dockPopover}`} role="menu" aria-label="페이지 레이아웃">
+                  <LayoutSwitcher compact value={selectedPage.layout} onChange={(layout) => apply({ type: "layout", id: selectedPage.id, layout })} />
+                </div>}
               </div>
-              <aside className={styles.editorSide}>
-                {selectedPage && <LayoutSwitcher value={selectedPage.layout} onChange={(layout) => apply({ type: "layout", id: selectedPage.id, layout })} />}
-              </aside>
+              <div className={styles.dockPopoverRoot}>
+                <button ref={notesTriggerRef} type="button" className={styles.dockButton} aria-haspopup="dialog" aria-expanded={notesPopoverOpen} aria-controls={notesPopoverOpen ? "report-notes-popover" : undefined} aria-label={selectedPage?.notes.trim() ? "발표 메모 있음" : "발표 메모"} data-has-notes={selectedPage?.notes.trim() ? "true" : "false"} onClick={toggleNotesPopover} disabled={!selectedPage}>
+                  <span aria-hidden="true">✎</span><span>메모</span>{selectedPage?.notes.trim() && <span className={styles.noteDot} aria-hidden="true" />}
+                </button>
+                {notesPopoverOpen && selectedPage && <div ref={notesPopoverRef} id="report-notes-popover" className={`${styles.floatCard} ${styles.dockPopover} ${styles.notesPopover}`} role="dialog" aria-label="발표 메모">
+                  <NotesField compact pageId={selectedPage.id} value={selectedPage.notes} onChange={(notes) => apply({ type: "notes", id: selectedPage.id, notes })} />
+                </div>}
+              </div>
             </div>
-          ) : <div className={styles.emptyCanvas}>이 페이지는 아직 미리보기를 준비하고 있습니다.</div>}
-          <PageStrip items={stripItems} selectedId={selectedId} selectedSlideKey={selectedSlideKey} onSelect={selectStripItem} onNavigate={navigateStrip} onReorder={reorderPage} onDropMove={dropMovePage} onAddPage={() => { setRail("pages"); setSelection(null); setMapMoveActive(false); addPage("blank"); }} onDuplicate={duplicatePage} onDelete={deletePage} classMap={surfaceClassMap} exportSelectionMode={exportPageScope === "selected"} exportPageIds={exportPageIds} onToggleExportPage={toggleExportPage} />
+            <PageStrip items={stripItems} selectedId={selectedId} selectedSlideKey={selectedSlideKey} onSelect={selectStripItem} onNavigate={navigateStrip} onReorder={reorderPage} onDropMove={dropMovePage} onAddPage={() => { setRail("pages"); setSelection(null); setMapMoveActive(false); addPage("blank"); }} onDuplicate={duplicatePage} onDelete={deletePage} classMap={surfaceClassMap} exportSelectionMode={exportPageScope === "selected"} exportPageIds={exportPageIds} onToggleExportPage={toggleExportPage} />
+          </div>
         </main>
       </div>
       {toast && <div className={styles.toast} role="status">{toast} <button type="button" onClick={undo}>되돌리기</button></div>}

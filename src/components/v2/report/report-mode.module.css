@@ -51,15 +51,23 @@
 .primaryDarkButton:hover { background: #2b2e35; }
 .reportRoot button:disabled, .reportHeaderActions button:disabled { cursor: not-allowed; opacity: .48; }
 
-.reportBody { display: grid; grid-template-columns: 76px minmax(260px, 312px) minmax(0, 1fr); min-width: 0; min-height: 0; overflow: hidden; }
-.reportRail { display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 16px 8px; background: #f7f8fa; border-right: 1px solid var(--report-line); }
-.railButton { display: grid; place-items: center; gap: 5px; min-width: 60px; min-height: 64px; padding: 8px 4px; color: #4d535e; background: transparent; border: 1px solid transparent; border-radius: 9px; cursor: pointer; font-size: 11px; font-weight: 800; }
+.reportBody { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+.reportStage { --stage-left: 88px; --stage-right: 24px; --stage-bottom: 100px; position: relative; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
+.reportStage[data-drawer-open="true"] { --stage-left: 418px; }
+.reportStage[data-settings-open="true"] { --stage-right: 328px; }
+.floatCard { box-sizing: border-box; border: 1px solid #e1e4e9; border-radius: 12px; box-shadow: 0 1px 2px rgba(21,23,28,.06), 0 8px 24px rgba(21,23,28,.10); }
+@keyframes floatCardIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.toolPill { position: absolute; top: 50%; left: 16px; z-index: 30; display: grid; width: 56px; gap: 4px; padding: 6px; background: #fff; transform: translateY(-50%); }
+.railButton { display: grid; place-items: center; gap: 4px; min-width: 44px; min-height: 44px; padding: 5px 3px; color: #4d535e; background: transparent; border: 1px solid transparent; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 500; }
 .railButton span:first-child { display: grid; place-items: center; min-height: 20px; font-size: 20px; }
 .railButton span:last-child { white-space: nowrap; }
 .railButton:hover { background: #e4e8ef; }
-.railButtonActive { color: #153f83; background: #e0eafa; border-color: #9db7e1; }
-.mobileOnlyRailButton { display: none; }
-.drawerColumn { min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; background: #fff; border-right: 1px solid var(--report-line); }
+.railButtonActive { color: #153f83; background: #e0eafa; border-color: #9db7e1; font-weight: 700; }
+.drawerCard { position: absolute; top: 16px; bottom: 16px; left: 88px; z-index: 25; box-sizing: border-box; width: 320px; min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; color: var(--report-ink); background: #fff; visibility: hidden; opacity: 0; pointer-events: none; }
+.drawerCard[data-drawer-open="true"] { visibility: visible; opacity: 1; pointer-events: auto; animation: floatCardIn 180ms cubic-bezier(.23,1,.32,1); }
 .drawer { display: grid; gap: 16px; align-content: start; box-sizing: border-box; width: 100%; min-width: 0; padding: 20px 16px 28px; overflow: hidden; }
 .drawerHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .drawerHeader h2 { margin: 0; font-size: 18px; }
@@ -104,17 +112,8 @@
 .compareGridChoices { display: grid; grid-template-columns: 1fr; gap: 6px; }
 .compareGridChoices .filterChip { justify-self: start; }
 
-.reportWorkspace { display: grid; grid-template-rows: minmax(0, 1fr) 128px; gap: 8px; min-width: 0; min-height: 0; padding: 12px 18px 12px; overflow: hidden; }
-.workspaceTools { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
-.workspaceTools > div:first-child { display: grid; gap: 2px; }
-.workspaceTools strong { font-size: 15px; }
-.workspaceActions { display: flex; align-items: center; gap: 7px; min-width: 0; }
-.selectedPageLabel { max-width: 180px; overflow: hidden; color: var(--report-muted); text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .iconButton { display: inline-grid; place-items: center; min-width: 44px; min-height: 44px; padding: 5px; color: var(--report-ink); background: #fff; border: 1px solid var(--report-line); border-radius: 7px; cursor: pointer; font-size: 17px; }
 .iconButton:hover { background: #e9edf3; }
-.stageAndSettings { display: grid; grid-template-columns: minmax(0, 1fr) 216px; gap: 12px; min-height: 0; }
-.stageColumn { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; }
-.editorSide { display: grid; align-content: start; gap: 12px; min-width: 0; min-height: 0; max-height: 100%; overflow: auto; }
 .mapToolbar { position: absolute; bottom: 12px; left: 50%; z-index: 20; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; box-sizing: border-box; gap: 6px; max-width: calc(100% - 24px); padding: 6px; overflow: visible; transform: translateX(-50%); background: rgba(22,24,29,.96); border: 1px solid #596273; border-radius: 8px; box-shadow: 0 6px 18px rgba(21,23,28,.22); }
 .mapToolButton, .mapToolButtonWide { flex: 0 0 auto; min-height: 44px; padding: 8px 10px; color: #fff; background: #252b35; border: 1px solid #596273; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 800; }
 .mapToolButton { min-width: 44px; font-size: 18px; }
@@ -124,9 +123,11 @@
 .mapScale { flex: 0 0 auto; min-width: 70px; padding: 0 2px; color: #fff; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .mapToolbarReason { flex: 0 1 120px; min-width: 0; padding: 0 5px; color: #f3c98b; font-size: 10px; font-weight: 700; line-height: 1.2; text-align: center; white-space: normal; }
 .mapHint { position: absolute; bottom: 74px; left: 50%; z-index: 20; max-width: calc(100% - 24px); margin: 0; padding: 5px 9px; overflow: hidden; color: var(--report-ink); background: rgba(255,255,255,.92); border: 1px solid #c6cad2; border-radius: 999px; font-size: 11px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; transform: translateX(-50%); }
-.stageFrame { position: relative; display: grid; place-items: center; flex: 1 1 auto; min-width: 0; min-height: 0; padding: 12px; background: #dfe2e8; border: 1px solid #c6cad2; border-radius: 10px; overflow: hidden; }
-.stageFrame > [data-slide-surface="true"] { width: min(100%, 1120px); height: 100%; min-height: 0; }
-.stageFrame [data-slide-canvas][data-map-selected="true"] [data-surface-map="true"] { outline: 3px solid var(--report-accent); outline-offset: -3px; }
+.stageFit { position: absolute; inset: 16px var(--stage-right) var(--stage-bottom) var(--stage-left); container-type: size; display: grid; place-items: center; min-width: 0; min-height: 0; padding: 12px; background: #dfe2e8; border: 1px solid #c6cad2; border-radius: 12px; overflow: hidden; }
+.stageSlide { width: min(100cqw, calc(100cqh * var(--stage-slide-width) / var(--stage-slide-height))); aspect-ratio: var(--stage-slide-width) / var(--stage-slide-height); min-width: 0; min-height: 0; }
+.stageFit[data-slide-format="wide"] .stageSlide { width: min(100cqw, calc(100cqh * 16 / 9)); aspect-ratio: 16 / 9; }
+.stageSlide > [data-slide-surface="true"] { width: 100%; height: 100%; min-width: 0; min-height: 0; }
+.stageFit [data-slide-canvas][data-map-selected="true"] [data-surface-map="true"] { outline: 3px solid var(--report-accent); outline-offset: -3px; }
 .quickSettings { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; padding: 8px 0; }
 .quickSettingLabel { margin-right: 3px; }
 .quickButton, .quickButtonActive { min-height: 38px; padding: 7px 10px; color: var(--report-muted); background: #fff; border: 1px solid var(--report-line); border-radius: 7px; cursor: pointer; font-size: 11px; font-weight: 800; }
@@ -136,14 +137,27 @@
 .emptyCanvas strong { color: var(--report-ink); font-size: 20px; }
 .emptyCanvasMark { display: grid; place-items: center; width: 54px; height: 54px; color: var(--report-accent); border: 1px solid #9db7e1; border-radius: 50%; font-size: 30px; }
 .emptyActions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
-.pageStrip { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 128px; height: 128px; margin: 0 -22px -16px; padding: 0 22px; overflow-x: auto; overflow-y: hidden; background: #fff; border-top: 1px solid var(--report-line); list-style: none; scrollbar-width: thin; }
-.pageStripItem { position: relative; flex: 0 0 136px; min-width: 136px; }
+.pageDock { position: absolute; right: var(--stage-right); bottom: 16px; left: var(--stage-left); z-index: 40; display: flex; align-items: center; gap: 8px; width: min(1050px, calc(100% - var(--stage-left) - var(--stage-right))); min-width: 0; min-height: 88px; height: 88px; margin-inline: auto; padding: 8px; background: #fff; }
+.dockLead { position: relative; display: flex; flex: 0 0 auto; align-items: center; gap: 4px; min-width: 0; }
+.dockPopoverRoot { position: relative; }
+.dockButton { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 44px; min-height: 44px; padding: 7px 8px; color: var(--report-ink); background: #fff; border: 1px solid transparent; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.dockButton:hover { background: #eef3fb; border-color: #c5d5ed; }
+.dockButton:disabled { cursor: not-allowed; opacity: .48; }
+.dockButton[data-has-notes="true"] { color: #153f83; font-weight: 700; }
+.noteDot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--report-accent); }
+.dockPopover { position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 60; width: min(296px, calc(100vw - 32px)); padding: 12px; background: #fff; animation: floatCardIn 180ms cubic-bezier(.23,1,.32,1); }
+.notesPopover { width: min(320px, calc(100vw - 32px)); }
+.settingsCard { position: absolute; top: 16px; right: 16px; bottom: 16px; z-index: 25; box-sizing: border-box; width: 296px; min-width: 0; overflow: auto; background: #fff; visibility: hidden; opacity: 0; pointer-events: none; }
+.reportStage[data-settings-open="true"] .settingsCard { visibility: visible; opacity: 1; pointer-events: auto; animation: floatCardIn 180ms cubic-bezier(.23,1,.32,1); }
+.pageDock .pageStrip { flex: 1 1 auto; min-height: 70px; height: 70px; margin: 0; padding: 0; overflow-x: auto; overflow-y: hidden; background: transparent; border: 0; }
+.pageStrip { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 128px; height: 128px; margin: 0; padding: 0 4px; overflow-x: auto; overflow-y: hidden; list-style: none; scrollbar-width: thin; }
+.pageStripItem { position: relative; flex: 0 0 100px; min-width: 100px; }
 .pageDropIndicator { position: absolute; top: -6px; bottom: -6px; z-index: 9; width: 3px; border-radius: 2px; background: #2f6fdb; pointer-events: none; }
 .pageDropIndicatorBefore { left: -6px; }
 .pageDropIndicatorAfter { right: -6px; }
 .pageStripItem[data-dragging="true"] { opacity: .35; }
 .pageStripItemContinuation::before { content: ""; position: absolute; top: 30px; left: -10px; width: 10px; height: 2px; background: #9db7e1; }
-.pageThumb { display: grid; grid-template-rows: 77px auto; gap: 5px; width: 100%; min-height: 100px; padding: 5px; color: var(--report-ink); text-align: left; background: #fff; border: 1px solid var(--report-line); border-radius: 7px; cursor: pointer; }
+.pageThumb { display: grid; grid-template-rows: 50px auto; box-sizing: border-box; gap: 5px; width: 100%; min-height: 68px; padding: 5px; color: var(--report-ink); text-align: left; background: #fff; border: 1px solid var(--report-line); border-radius: 7px; cursor: pointer; }
 .pageThumb:hover { border-color: #91a8cd; }
 .pageThumbSelected { border: 2px solid var(--report-accent); padding: 4px; box-shadow: 0 0 0 2px rgba(47,111,219,.14); }
 .pageThumbCanvas { display: block; min-width: 0; min-height: 0; overflow: hidden; background: #eef0f3; border-radius: 4px; }
@@ -162,7 +176,7 @@
 .pageMenu button { min-width: 44px; min-height: 44px; padding: 5px 8px; color: var(--report-ink); background: #fff; border: 0; border-radius: 5px; cursor: pointer; font: inherit; font-size: 11px; font-weight: 800; white-space: nowrap; }
 .pageMenu button:hover { background: #e9edf3; }
 .pageStripEmpty { display: grid; place-items: center; width: 100%; color: var(--report-muted); font-size: 12px; }
-.pageStripAdd { min-width: 136px; min-height: 77px; padding: 12px; color: var(--report-accent); background: #fff; border: 1px dashed #9db7e1; border-radius: 7px; cursor: pointer; font: inherit; font-size: 12px; font-weight: 800; }
+.pageStripAdd { min-width: 100px; min-height: 68px; padding: 12px; color: var(--report-accent); background: #fff; border: 1px dashed #9db7e1; border-radius: 7px; cursor: pointer; font: inherit; font-size: 12px; font-weight: 800; }
 
 .fieldLabel { display: grid; gap: 7px; }
 .fieldLabel select { min-height: 44px; padding: 8px 10px; color: var(--report-ink); background: #fff; border: 1px solid var(--report-line); border-radius: 7px; font: inherit; font-size: 13px; }
@@ -184,6 +198,12 @@
 .notesField textarea { grid-column: 1 / -1; width: 100%; height: 46px; min-height: 46px; padding: 8px 9px; resize: none; color: var(--report-ink); background: #f7f8fa; border: 1px solid var(--report-line); border-radius: 6px; font: inherit; font-size: 12px; line-height: 1.45; }
 .notesField:focus-within textarea { height: 88px; min-height: 88px; }
 .notesField .helper { display: none; }
+.layoutSwitcherCompact { gap: 8px; padding: 0; background: transparent; border: 0; border-radius: 0; }
+.layoutSwitcherCompact .layoutOptions { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.layoutSwitcherCompact .layoutOption, .layoutSwitcherCompact .layoutOptionActive { min-height: 60px; font-size: 12px; font-weight: 500; }
+.notesFieldCompact { display: grid; gap: 8px; padding: 0; background: transparent; border: 0; border-radius: 0; }
+.notesFieldCompact .fieldLabelText { font-size: 14px; font-weight: 700; }
+.notesFieldCompact textarea { grid-column: auto; height: 96px; min-height: 96px; font-size: 13px; }
 .mapFieldset { display: grid; box-sizing: border-box; gap: 9px; width: 100%; min-width: 0; margin: 0; padding: 11px; border: 1px solid var(--report-line); border-radius: 8px; }
 .mapFieldset legend { padding-inline: 4px; font-size: 12px; font-weight: 800; }
 .basemapGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
@@ -283,25 +303,12 @@
   .exportPurposeCardActive { padding: 9px; }
 }
 
-@media (max-width: 1120px) {
-  .reportBody { grid-template-columns: 68px minmax(228px, 280px) minmax(0, 1fr); }
-  .reportRail { padding-inline: 4px; }
-  .railButton { min-width: 58px; }
-  .reportWorkspace { padding-inline: 14px; }
-}
-
-@media (max-width: 860px) {
-  .reportRoot { height: auto; min-height: calc(100dvh - 56px); }
-  .reportBody { grid-template-columns: 64px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
-  .drawerColumn { position: fixed; top: 58px; bottom: 0; left: 64px; z-index: 20; width: min(312px, calc(100vw - 64px)); box-shadow: 12px 0 30px rgba(0,0,0,.12); }
-  .reportWorkspace { grid-column: 2; }
-  .stageAndSettings { grid-template-columns: minmax(0, 1fr); }
-  .reportWorkspace { grid-template-rows: minmax(0, 1fr) 128px; }
-  .editorSide { max-height: none; overflow: visible; }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .reportRoot *, .reportRoot *::before, .reportRoot *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+  .floatCard { transform: none; }
+  .toolPill { transform: translateY(-50%); }
+  .pageDock { transform: translateX(-50%); }
+  .drawerCard[data-drawer-open="true"], .dockPopover, .reportStage[data-settings-open="true"] .settingsCard { animation: none; }
 }
 
 @media (max-width: 639px) {
@@ -320,51 +327,33 @@
   .reportHeaderActions .headerFormat { flex: 1 1 140px; }
   .headerFormat select { width: 100%; max-width: none; font-size: 14px; }
 
-  .reportBody {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    overflow: visible;
-  }
-  .reportRail {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    flex: 0 0 auto;
-    gap: 4px;
-    padding: 6px 8px;
-    border-right: 0;
-    border-bottom: 1px solid var(--report-line);
-  }
-  .railButton {
-    width: 100%;
-    min-width: 0;
-    min-height: 44px;
-    padding: 4px 2px;
-    gap: 2px;
-    font-size: 12px;
-    line-height: 1.1;
-  }
+  .reportBody { height: calc(100dvh - 112px); min-height: 520px; overflow: hidden; }
+  .reportStage { --stage-left: 16px; --stage-right: 16px; --stage-bottom: 200px; }
+  .toolPill { top: auto; right: 16px; bottom: 136px; left: 16px; display: flex; width: auto; align-items: center; justify-content: space-between; transform: none; }
+  .toolPill .railButton { flex: 1 1 0; width: auto; min-width: 44px; }
+  .railButton { min-height: 44px; padding: 4px 2px; gap: 2px; font-size: 12px; line-height: 1.1; }
   .railButton span:first-child { min-height: 0; font-size: 16px; }
   .railButton span:last-child { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
-  .mobileOnlyRailButton { display: grid; }
 
-  .drawerColumn {
+  .drawerCard {
     position: fixed;
-    inset: 0;
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
     z-index: 120;
     display: none;
     width: 100%;
-    height: 100vh;
-    height: 100dvh;
-    max-height: none;
+    max-height: calc(100dvh - 16px);
     padding: max(8px, env(safe-area-inset-top)) 12px max(8px, env(safe-area-inset-bottom));
     overflow-x: hidden;
     overflow-y: auto;
-    border: 0;
+    border-radius: 12px 12px 0 0;
     box-shadow: 0 12px 36px rgba(21, 23, 28, .24);
   }
-  .drawerColumn[data-mobile-sheet="open"] { display: block; }
-  .drawerColumn[data-mobile-sheet="closed"] { display: none; }
+  .drawerCard[data-mobile-sheet="open"] { display: block; }
+  .drawerCard[data-mobile-sheet="closed"] { display: none; }
+  .settingsCard { position: fixed; top: auto; right: 0; bottom: 0; left: 0; z-index: 120; width: 100%; max-height: calc(100dvh - 16px); border-radius: 12px 12px 0 0; }
   .sheetClose {
     position: sticky;
     top: 0;
@@ -395,34 +384,16 @@
   .drawer .tileMetric,
   .drawer .tileUsed { font-size: 12px; }
 
-  .reportWorkspace {
-    display: flex;
-    flex-direction: column;
-    grid-column: auto;
-    gap: 12px;
-    min-height: 0;
-    padding: 12px 12px 16px;
-    overflow: visible;
-  }
-  .stageAndSettings {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    min-height: 0;
-  }
-  .stageColumn { flex: 0 0 auto; }
-  .stageFrame {
+  .stageFit {
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    flex: 0 0 auto;
-    width: 100%;
-    height: auto !important;
+    justify-content: flex-start;
     min-height: 0;
     padding: 8px;
     overflow: visible;
   }
-  .stageFrame > [data-slide-surface="true"] {
+  .stageSlide {
     order: 1;
     display: block;
     flex: 0 0 auto;
@@ -433,14 +404,14 @@
   /* report-surface.module.css also serves the legacy preview dialog. Its
      small-screen slot reserves dialog chrome, which must not shrink the
      report-mode slide before useContainFrameSize measures it. */
-  .stageFrame > [data-slide-surface="true"] [data-preview-slot="true"] {
+  .stageSlide > [data-slide-surface="true"] [data-preview-slot="true"] {
     position: absolute;
     inset: 0;
     width: 100%;
     height: 100%;
     aspect-ratio: auto;
   }
-  .stageFrame > .mapToolbar {
+  .stageFit > .mapToolbar {
     position: static;
     order: 2;
     justify-content: flex-start;
@@ -453,11 +424,11 @@
     overflow-y: hidden;
     transform: none;
   }
-  .stageFrame > .mapToolbar .mapToolbarReason {
+  .stageFit > .mapToolbar .mapToolbarReason {
     flex: 0 0 auto;
     white-space: nowrap;
   }
-  .stageFrame > .mapHint {
+  .stageFit > .mapHint {
     position: static;
     order: 3;
     width: 100%;
@@ -467,19 +438,26 @@
     white-space: normal;
     transform: none;
   }
-  .editorSide { display: none; }
   .notesField { width: 100%; font-size: 14px; }
   .notesField textarea { min-height: 56px; height: 56px; font-size: 14px; }
-  .pageStrip {
-    flex: 0 0 128px;
+  .pageDock { right: 16px; bottom: 16px; left: 16px; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); width: auto; min-height: 112px; height: 112px; margin: 0; padding: 8px; transform: none; }
+  .dockLead { width: 100%; }
+  .dockLead .dockPopoverRoot { flex: 1 1 0; }
+  .dockLead .dockButton { width: 100%; }
+  .pageDock .pageStrip {
+    flex: 0 0 76px;
     width: 100%;
-    min-height: 128px;
-    height: 128px;
+    min-height: 76px;
+    height: 76px;
     margin: 0;
     padding: 0;
     overflow-x: auto;
     overflow-y: hidden;
   }
+  .pageDock .pageThumb { grid-template-rows: 50px auto; min-height: 68px; }
+  .pageDock .pageThumbCanvas { min-height: 0; }
+  .dockPopover { bottom: calc(100% + 8px); max-width: calc(100vw - 32px); }
+  .layoutSwitcherCompact .layoutOptions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .emptyReport { min-height: 360px; }
 
   .exportPanel {
