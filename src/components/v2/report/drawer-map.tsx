@@ -25,9 +25,25 @@ const BASEMAPS: Array<{ value: MapFrameState["basemap"]; label: string }> = [
   { value: "none", label: "없음" },
 ];
 
+const LEGEND_PLACEMENTS: Array<{ value: MapFrameState["legend"]["placement"]; label: string }> = [
+  { value: "below", label: "지도 아래" },
+  { value: "right", label: "오른쪽" },
+  { value: "hidden", label: "숨김" },
+];
+
+const LABEL_RULES: Array<{ value: MapFrameState["labelRule"]; label: string }> = [
+  { value: "site-near", label: "대지 주변 지번만" },
+  { value: "all-visible", label: "보이는 지번 모두" },
+  { value: "off", label: "끄기" },
+];
+
 function hasMapData(view: TileView | null): boolean {
   const model = view?.map ?? view?.backdrop;
   return !!model && Number.isFinite(model.radiusM) && model.radiusM > 0 && Number.isFinite(model.center[0]) && Number.isFinite(model.center[1]);
+}
+
+function labelRuleSummary(rule: MapFrameState["labelRule"]): string {
+  return LABEL_RULES.find((item) => item.value === rule)?.label ?? "없음";
 }
 
 export default function DrawerMap({ page, frame, view, cell, scaleOptions, sameExtent = false, onSameExtent, onFrame }: DrawerMapProps) {
@@ -36,17 +52,32 @@ export default function DrawerMap({ page, frame, view, cell, scaleOptions, sameE
   const [scaleError, setScaleError] = useState<string | null>(null);
   const scale = useMemo(() => model ? scaleForFrame(model, frame, scaleOptions) : 1, [frame, model, scaleOptions]);
   const locatorAvailable = hasMapData(view);
+
   useEffect(() => setScaleText(String(scale)), [scale]);
+
   const layers = useMemo(() => {
     if (view?.layerOptions && view.layerOptions.length > 0) return view.layerOptions.map((item) => ({ id: item.id, label: item.label }));
     return model ? legendItemsForModel(model).map((item) => ({ id: item.layer, label: item.label })) : [];
   }, [model, view?.layerOptions]);
+
   const legendItems = useMemo(() => {
     if (!model) return [];
     const items = legendItemsForModel(model);
     const order = new Map(frame.legend.order.map((id, index) => [id, index]));
     return [...items].sort((a, b) => (order.get(a.layer) ?? Number.MAX_SAFE_INTEGER) - (order.get(b.layer) ?? Number.MAX_SAFE_INTEGER));
   }, [frame.legend.order, model]);
+
+  const visibleLayerCount = layers.filter((layer) => !frame.hiddenLayers.includes(layer.id)).length;
+  const layerSummary = layers.length > 0 ? `${visibleLayerCount}개 켬` : "없음";
+  const visibleLegendCount = legendItems.filter((item) => !frame.legend.hidden.includes(item.layer)).length;
+  const legendSummary = legendItems.length > 0 ? `${visibleLegendCount}개 켬` : "없음";
+  const decorationSummary = [
+    frame.decorations.north ? "방위표" : null,
+    frame.decorations.scaleBar ? "축척 막대" : null,
+    frame.decorations.locator ? "위치도" : null,
+  ].filter((item): item is string => item !== null).join(", ") || "없음";
+  const movementSummary = `동 ${Math.round(frame.offsetM[0])} m, 북 ${Math.round(frame.offsetM[1])} m`;
+
   const submitScale = () => {
     const next = parseScaleInput(scaleText);
     if (next === null) {
@@ -61,12 +92,15 @@ export default function DrawerMap({ page, frame, view, cell, scaleOptions, sameE
     if (!model) return;
     onFrame({ scaleDenominator: next, zoomDelta: zoomForScale(next, model, scaleOptions) });
   };
+
   const toggleHidden = (id: string) => {
     const hidden = frame.hiddenLayers.includes(id) ? frame.hiddenLayers.filter((layer) => layer !== id) : [...frame.hiddenLayers, id];
     onFrame({ hiddenLayers: hidden });
   };
+
   const toggleDecoration = (key: keyof MapFrameState["decorations"]) => onFrame({ decorations: { ...frame.decorations, [key]: !frame.decorations[key] } });
   const legend = (patch: Partial<MapFrameState["legend"]>) => onFrame({ legend: { ...frame.legend, ...patch, order: patch.order ?? frame.legend.order, hidden: patch.hidden ?? frame.legend.hidden } });
+
   const moveLegend = (layer: string, direction: -1 | 1) => {
     const order = legendItems.map((item) => item.layer);
     const index = order.indexOf(layer);
@@ -75,7 +109,9 @@ export default function DrawerMap({ page, frame, view, cell, scaleOptions, sameE
     [order[index], order[nextIndex]] = [order[nextIndex]!, order[index]!];
     legend({ order });
   };
+
   const toggleLegendHidden = (layer: string) => legend({ hidden: frame.legend.hidden.includes(layer) ? frame.legend.hidden.filter((id) => id !== layer) : [...frame.legend.hidden, layer] });
+
   const moveLegendTo = (source: string, target: string) => {
     if (source === target) return;
     const order = legendItems.map((item) => item.layer).filter((layer) => layer !== source);
@@ -83,16 +119,126 @@ export default function DrawerMap({ page, frame, view, cell, scaleOptions, sameE
     order.splice(index, 0, source);
     legend({ order });
   };
+
   return (
-    <section className={styles.drawer} aria-label="지도 설정">
-      <div className={styles.drawerHeader}><div><p className={styles.eyebrow}>선택한 지도</p><h2>지도 설정</h2></div><span className={styles.lockBadge}>{frame.locked ? "잠김" : "편집 가능"}</span></div>
-      {page.kind === "compare" && onSameExtent && <label className={styles.switchRow}><input type="checkbox" checked={sameExtent} onChange={(event) => onSameExtent(event.target.checked)} /><span>같은 위치·확대 적용</span></label>}
-      <fieldset className={styles.mapFieldset}><legend>배경지도</legend><div className={styles.basemapGrid}>{BASEMAPS.map((item) => <button key={item.value} type="button" className={frame.basemap === item.value ? styles.basemapActive : styles.basemapCell} aria-pressed={frame.basemap === item.value} onClick={() => onFrame({ basemap: item.value })}><span className={`${styles.basemapPreview} ${styles["basemap" + item.value]}`} aria-hidden="true" /><span>{item.label}</span></button>)}</div></fieldset>
-      <fieldset className={styles.mapFieldset}><legend>범위</legend><div className={styles.scaleRow}><button type="button" className={styles.iconButton} onClick={() => { if (!frame.locked) { setScaleError(null); onFrame({ zoomDelta: frame.zoomDelta - 0.25, scaleDenominator: null }); } }} disabled={frame.locked} aria-label="축척 줄이기">−</button><label className={styles.scaleInput}><span>1 :</span><input value={scaleText} onChange={(event) => { setScaleText(event.target.value); setScaleError(null); }} onBlur={submitScale} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); submitScale(); } }} inputMode="numeric" aria-label="축척 분모" disabled={frame.locked} /></label><button type="button" className={styles.iconButton} onClick={() => { if (!frame.locked) { setScaleError(null); onFrame({ zoomDelta: frame.zoomDelta + 0.25, scaleDenominator: null }); } }} disabled={frame.locked} aria-label="축척 키우기">＋</button></div>{scaleError && <p className={styles.scaleError} role="alert">{scaleError}</p>}<div className={styles.presetRow}>{SCALE_PRESETS.map((preset) => <button type="button" key={preset} className={styles.presetButton} onClick={() => { if (!frame.locked && model) { setScaleError(null); onFrame({ scaleDenominator: preset, zoomDelta: zoomForScale(preset, model, scaleOptions) }); } }} disabled={frame.locked}>1:{preset.toLocaleString("ko-KR")}</button>)}</div><div className={styles.numberGrid}><label><span>동쪽 이동(m)</span><input type="number" value={Math.round(frame.offsetM[0])} disabled={frame.locked} onChange={(event) => onFrame({ offsetM: [Number(event.target.value) || 0, frame.offsetM[1]] })} /></label><label><span>북쪽 이동(m)</span><input type="number" value={Math.round(frame.offsetM[1])} disabled={frame.locked} onChange={(event) => onFrame({ offsetM: [frame.offsetM[0], Number(event.target.value) || 0] })} /></label></div><div className={styles.inlineActions}><button type="button" className={styles.secondaryButton} disabled={frame.locked} onClick={() => onFrame({ zoomDelta: 0, offsetM: [0, 0], scaleDenominator: null })}>대지 맞춤</button><button type="button" className={styles.secondaryButton} disabled={frame.locked} onClick={() => onFrame({ zoomDelta: -1, offsetM: [0, 0], scaleDenominator: null })}>반경 전체</button></div><label className={styles.switchRow}><input type="checkbox" checked={frame.locked} onChange={(event) => onFrame({ locked: event.target.checked })} /><span>지도 위치 고정</span></label>{frame.locked && <p className={styles.helper}>지도가 잠겨 있어 드래그·축척·이동 입력은 무시됩니다. 판형과 레이아웃만 바꿀 수 있습니다.</p>}</fieldset>
-      <fieldset className={styles.mapFieldset}><legend>라벨</legend><div className={styles.radioList}>{(["site-near", "all-visible", "off"] as const).map((rule) => <label key={rule}><input type="radio" name={`label-rule-${page.id}-${cell ?? "page"}`} checked={frame.labelRule === rule} onChange={() => onFrame({ labelRule: rule })} /><span>{rule === "site-near" ? "대지 주변 지번만" : rule === "all-visible" ? "보이는 지번 모두" : "끄기"}</span></label>)}</div></fieldset>
-      <fieldset className={styles.mapFieldset}><legend>지도 레이어</legend><div className={styles.layerList}>{layers.map((layer) => <label key={layer.id}><input type="checkbox" checked={!frame.hiddenLayers.includes(layer.id)} onChange={() => toggleHidden(layer.id)} /><span>{layer.label}</span></label>)}{layers.length === 0 && <span className={styles.helper}>이 지도에는 선택할 레이어가 없습니다.</span>}</div></fieldset>
-      <fieldset className={styles.mapFieldset}><legend>범례</legend><div className={styles.legendEditList}>{legendItems.map((item, index) => <div className={styles.legendEditRow} key={`${item.layer}|${item.label}`} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/report-legend", item.layer); }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const source = event.dataTransfer.getData("text/report-legend"); if (source) moveLegendTo(source, item.layer); }}><span className={styles.legendDragHandle} aria-label={`${item.label} 순서 이동`} title="끌어서 순서 변경">⋮⋮</span><label><input type="checkbox" checked={!frame.legend.hidden.includes(item.layer)} onChange={() => toggleLegendHidden(item.layer)} /><span>{item.label}</span></label><span className={styles.legendMoveButtons}><button type="button" className={styles.tinyButton} disabled={index === 0} onClick={() => moveLegend(item.layer, -1)} aria-label={`${item.label} 위로`}>↑</button><button type="button" className={styles.tinyButton} disabled={index === legendItems.length - 1} onClick={() => moveLegend(item.layer, 1)} aria-label={`${item.label} 아래로`}>↓</button></span></div>)}</div><label className={styles.fieldLabel}><span>위치</span><select value={frame.legend.placement} onChange={(event) => legend({ placement: event.target.value as MapFrameState["legend"]["placement"] })}><option value="below">지도 아래</option><option value="right">오른쪽</option><option value="hidden">숨김</option></select></label><label className={styles.switchRow}><input type="checkbox" checked={frame.legend.visibleOnly} onChange={(event) => legend({ visibleOnly: event.target.checked })} /><span>보이는 것만</span></label></fieldset>
-      <fieldset className={styles.mapFieldset}><legend>장식</legend><div className={styles.layerList}><label><input type="checkbox" checked={frame.decorations.north} onChange={() => toggleDecoration("north")} /><span>방위표</span></label><label><input type="checkbox" checked={frame.decorations.scaleBar} onChange={() => toggleDecoration("scaleBar")} /><span>축척 막대</span></label><label><input type="checkbox" checked={frame.decorations.locator} disabled={!locatorAvailable} onChange={() => toggleDecoration("locator")} /><span>위치도 (넓은 범위에 대지 표시)</span></label></div>{!locatorAvailable && <p className={styles.disabledReason}>위치도는 대지 중심과 분석 반경 데이터가 필요해 현재 사용할 수 없습니다.</p>}</fieldset>
+    <section className={`${styles.drawer} ${styles.mapDrawer}`} aria-label="지도 설정">
+      <div className={`${styles.drawerHeader} ${styles.mapDrawerHeader}`}>
+        <div>
+          <p className={styles.eyebrow}>선택한 지도</p>
+          <h2>지도 설정</h2>
+        </div>
+        <button
+          type="button"
+          className={styles.lockToggle}
+          aria-pressed={frame.locked}
+          aria-label="지도 위치 고정"
+          title={frame.locked ? "지도 위치 고정 해제" : "지도 위치 고정"}
+          onClick={() => onFrame({ locked: !frame.locked })}
+        >
+          {frame.locked ? "잠김" : "고정"}
+        </button>
+      </div>
+
+      <div className={styles.mapSettingsGroups}>
+        <section className={styles.mapSection} aria-labelledby="map-scale-heading">
+          <h3 id="map-scale-heading" className={styles.mapSectionTitle}>축척</h3>
+          <div className={styles.scaleRow}>
+            <button type="button" className={styles.iconButton} onClick={() => { if (!frame.locked) { setScaleError(null); onFrame({ zoomDelta: frame.zoomDelta - 0.25, scaleDenominator: null }); } }} disabled={frame.locked} aria-label="축척 줄이기">−</button>
+            <label className={styles.scaleInput}>
+              <span>1 :</span>
+              <input value={scaleText} onChange={(event) => { setScaleText(event.target.value); setScaleError(null); }} onBlur={submitScale} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); submitScale(); } }} inputMode="numeric" aria-label="축척 분모" disabled={frame.locked} />
+            </label>
+            <button type="button" className={styles.iconButton} onClick={() => { if (!frame.locked) { setScaleError(null); onFrame({ zoomDelta: frame.zoomDelta + 0.25, scaleDenominator: null }); } }} disabled={frame.locked} aria-label="축척 키우기">＋</button>
+          </div>
+          {scaleError && <p className={styles.scaleError} role="alert">{scaleError}</p>}
+          <div className={styles.presetRow}>
+            {SCALE_PRESETS.map((preset) => <button type="button" key={preset} className={styles.presetButton} onClick={() => { if (!frame.locked && model) { setScaleError(null); onFrame({ scaleDenominator: preset, zoomDelta: zoomForScale(preset, model, scaleOptions) }); } }} disabled={frame.locked}>1:{preset.toLocaleString("ko-KR")}</button>)}
+          </div>
+        </section>
+
+        <section className={styles.mapSection} aria-labelledby="map-basemap-heading">
+          <h3 id="map-basemap-heading" className={styles.mapSectionTitle}>배경지도</h3>
+          <div className={styles.basemapGrid}>
+            {BASEMAPS.map((item) => <button key={item.value} type="button" className={frame.basemap === item.value ? styles.basemapActive : styles.basemapCell} aria-pressed={frame.basemap === item.value} onClick={() => onFrame({ basemap: item.value })}>
+              <span className={`${styles.basemapPreview} ${styles["basemap" + item.value]}`} aria-hidden="true" />
+              <span>{item.label}</span>
+            </button>)}
+          </div>
+        </section>
+
+        <section className={styles.mapSection} aria-labelledby="map-legend-placement-heading">
+          <h3 id="map-legend-placement-heading" className={styles.mapSectionTitle}>범례 위치</h3>
+          <div className={styles.legendPlacement} role="group" aria-label="범례 위치">
+            {LEGEND_PLACEMENTS.map((item) => <button key={item.value} type="button" className={frame.legend.placement === item.value ? styles.legendPlacementActive : styles.legendPlacementButton} aria-pressed={frame.legend.placement === item.value} onClick={() => legend({ placement: item.value })}>{item.label}</button>)}
+          </div>
+        </section>
+
+        <details className={styles.mapDetails}>
+          <summary className={styles.mapSummary}><span className={styles.mapSummaryText}>레이어 · {layerSummary}</span></summary>
+          <div className={styles.mapDetailsBody}>
+            <div className={styles.layerList}>
+              {layers.map((layer) => <label key={layer.id}><input type="checkbox" checked={!frame.hiddenLayers.includes(layer.id)} onChange={() => toggleHidden(layer.id)} /><span>{layer.label}</span></label>)}
+              {layers.length === 0 && <span className={styles.helper}>이 지도에는 선택할 레이어가 없습니다.</span>}
+            </div>
+          </div>
+        </details>
+
+        <details className={styles.mapDetails}>
+          <summary className={styles.mapSummary}><span className={styles.mapSummaryText}>지번 라벨 · {labelRuleSummary(frame.labelRule)}</span></summary>
+          <div className={styles.mapDetailsBody}>
+            <div className={styles.radioList}>
+              {LABEL_RULES.map((rule) => <label key={rule.value}><input type="radio" name={`label-rule-${page.id}-${cell ?? "page"}`} checked={frame.labelRule === rule.value} onChange={() => onFrame({ labelRule: rule.value })} /><span>{rule.label}</span></label>)}
+            </div>
+          </div>
+        </details>
+
+        <details className={styles.mapDetails}>
+          <summary className={styles.mapSummary}><span className={styles.mapSummaryText}>범례 항목 · {legendSummary}</span></summary>
+          <div className={styles.mapDetailsBody}>
+            <div className={styles.legendEditList}>
+              {legendItems.map((item, index) => <div className={styles.legendEditRow} key={`${item.layer}|${item.label}`} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/report-legend", item.layer); }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const source = event.dataTransfer.getData("text/report-legend"); if (source) moveLegendTo(source, item.layer); }}>
+                <span className={styles.legendDragHandle} aria-label={`${item.label} 순서 이동`} title="끌어서 순서 변경">⋮⋮</span>
+                <label><input type="checkbox" checked={!frame.legend.hidden.includes(item.layer)} onChange={() => toggleLegendHidden(item.layer)} /><span>{item.label}</span></label>
+                <span className={styles.legendMoveButtons}><button type="button" className={styles.tinyButton} disabled={index === 0} onClick={() => moveLegend(item.layer, -1)} aria-label={`${item.label} 위로`}>↑</button><button type="button" className={styles.tinyButton} disabled={index === legendItems.length - 1} onClick={() => moveLegend(item.layer, 1)} aria-label={`${item.label} 아래로`}>↓</button></span>
+              </div>)}
+            </div>
+            <label className={styles.switchRow}><input type="checkbox" checked={frame.legend.visibleOnly} onChange={(event) => legend({ visibleOnly: event.target.checked })} /><span>보이는 것만</span></label>
+          </div>
+        </details>
+
+        <details className={styles.mapDetails}>
+          <summary className={styles.mapSummary}><span className={styles.mapSummaryText}>장식 · {decorationSummary}</span></summary>
+          <div className={styles.mapDetailsBody}>
+            <div className={styles.layerList}>
+              <label><input type="checkbox" checked={frame.decorations.north} onChange={() => toggleDecoration("north")} /><span>방위표</span></label>
+              <label><input type="checkbox" checked={frame.decorations.scaleBar} onChange={() => toggleDecoration("scaleBar")} /><span>축척 막대</span></label>
+              <label><input type="checkbox" checked={frame.decorations.locator} disabled={!locatorAvailable} onChange={() => toggleDecoration("locator")} /><span>위치도 (넓은 범위에 대지 표시)</span></label>
+            </div>
+            {!locatorAvailable && <p className={styles.disabledReason}>위치도는 대지 중심과 분석 반경 데이터가 필요해 현재 사용할 수 없습니다.</p>}
+          </div>
+        </details>
+
+        <details className={styles.mapDetails}>
+          <summary className={styles.mapSummary}><span className={styles.mapSummaryText}>중심 이동 · {movementSummary}</span></summary>
+          <div className={styles.mapDetailsBody}>
+            <div className={styles.numberGrid}>
+              <label><span>동쪽 이동(m)</span><input type="number" value={Math.round(frame.offsetM[0])} disabled={frame.locked} onChange={(event) => onFrame({ offsetM: [Number(event.target.value) || 0, frame.offsetM[1]] })} /></label>
+              <label><span>북쪽 이동(m)</span><input type="number" value={Math.round(frame.offsetM[1])} disabled={frame.locked} onChange={(event) => onFrame({ offsetM: [frame.offsetM[0], Number(event.target.value) || 0] })} /></label>
+            </div>
+            <div className={styles.inlineActions}>
+              <button type="button" className={styles.secondaryButton} disabled={frame.locked} onClick={() => onFrame({ zoomDelta: 0, offsetM: [0, 0], scaleDenominator: null })}>대지 맞춤</button>
+              <button type="button" className={styles.secondaryButton} disabled={frame.locked} onClick={() => onFrame({ zoomDelta: -1, offsetM: [0, 0], scaleDenominator: null })}>반경 전체</button>
+            </div>
+          </div>
+        </details>
+
+        {page.kind === "compare" && onSameExtent && <details className={styles.mapDetails}>
+          <summary className={styles.mapSummary}><span className={styles.mapSummaryText}>같은 위치·확대 · {sameExtent ? "적용" : "해제"}</span></summary>
+          <div className={styles.mapDetailsBody}>
+            <label className={styles.switchRow}><input type="checkbox" checked={sameExtent} onChange={(event) => onSameExtent(event.target.checked)} /><span>같은 위치·확대 적용</span></label>
+          </div>
+        </details>}
+      </div>
     </section>
   );
 }

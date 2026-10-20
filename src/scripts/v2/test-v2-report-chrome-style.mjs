@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const source = readFileSync(new URL("../../components/v2/report/report-mode.tsx", import.meta.url), "utf8");
+const drawerMapSource = readFileSync(new URL("../../components/v2/report/drawer-map.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../../components/v2/report/report-mode.module.css", import.meta.url), "utf8");
 const boardStyles = readFileSync(new URL("../../components/v2/board.module.css", import.meta.url), "utf8");
 const logic = readFileSync(new URL("../../lib/v2/ui/report-mode-logic.ts", import.meta.url), "utf8");
@@ -53,6 +54,18 @@ assert.match(source, /<LayoutSwitcher[\s\S]*compact/, "페이지 줄 레이아�
 assert.match(source, /<NotesField[\s\S]*compact/, "페이지 줄 메모 popover는 compact다");
 assert.match(notes, /compact\?:\s*boolean/, "NotesField compact prop");
 assert.match(layout, /compact\?:\s*boolean/, "LayoutSwitcher compact prop");
+
+const detailsCount = drawerMapSource.match(/<details\b/g)?.length ?? 0;
+assert.ok(detailsCount >= 5, "지도 설정의 자주 쓰지 않는 묶음은 native details로 접는다");
+assert.match(drawerMapSource, /scaleError\s*&&\s*<p[\s\S]*role=["']alert["']/, "축척 범위 오류는 scaleError일 때만 보인다");
+assert.match(drawerMapSource, /setScaleError\("1:500부터 1:50,000까지 입력합니다"\)/, "축척 오류 문구는 요구한 값을 유지한다");
+assert.match(drawerMapSource, /aria-pressed=\{frame\.locked\}/, "지도 고정은 카드 머리의 aria-pressed 토글이다");
+assert.doesNotMatch(drawerMapSource, /checked=\{frame\.locked\}/, "지도 고정 체크박스는 카드 본문에 중복하지 않는다");
+assert.doesNotMatch(drawerMapSource, /지도가 잠겨 있어 드래그|잠금 해제 후 이동 가능/, "잠금 설명 문장은 상태 토글과 중복하지 않는다");
+assert.doesNotMatch(drawerMapSource, /<fieldset\b|mapFieldset/, "지도 설정 묶음은 겹친 fieldset 테두리를 쓰지 않는다");
+assert.match(styles, /\.mapSummary\s*\{[\s\S]*min-height:\s*44px;/, "details summary는 44px 누름 영역이다");
+assert.match(styles, /\.legendPlacement\s*\{[\s\S]*repeat\(3,\s*minmax\(0,\s*1fr\)\)/, "범례 위치는 3칸 분할 버튼이다");
+assert.match(styles, /\.settingsCard\s*\{[\s\S]*overflow-x:\s*hidden;[\s\S]*overflow-y:\s*auto;/, "설정 카드는 가로 넘침을 숨기고 세로만 스크롤한다");
 
 const { initialReportRail, isTypingTarget } = await import("../../lib/v2/ui/report-mode-logic.ts");
 assert.equal(initialReportRail(true), null, "페이지가 있는 보고서의 초기 rail은 닫혀 있다");
