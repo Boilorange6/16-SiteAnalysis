@@ -835,10 +835,10 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
               ) : (
                 <>
               <div className={styles.dockPopoverRoot}>
-                <button ref={layoutTriggerRef} type="button" className={styles.dockButton} aria-haspopup="menu" aria-expanded={layoutPopoverOpen} aria-controls={layoutPopoverOpen ? "report-layout-menu" : undefined} aria-label="페이지 레이아웃 메뉴" onClick={toggleLayoutPopover} disabled={!selectedPage}>
+                <button ref={layoutTriggerRef} type="button" className={styles.dockButton} aria-haspopup="dialog" aria-expanded={layoutPopoverOpen} aria-controls={layoutPopoverOpen ? "report-layout-menu" : undefined} aria-label="페이지 레이아웃 메뉴" onClick={toggleLayoutPopover} disabled={!selectedPage}>
                   <span aria-hidden="true">▥</span><span>레이아웃</span>
                 </button>
-                {layoutPopoverOpen && selectedPage && <div ref={layoutPopoverRef} id="report-layout-menu" className={`${styles.floatCard} ${styles.dockPopover}`} role="menu" aria-label="페이지 레이아웃">
+                {layoutPopoverOpen && selectedPage && <div ref={layoutPopoverRef} id="report-layout-menu" className={`${styles.floatCard} ${styles.dockPopover}`} role="dialog" aria-label="페이지 레이아웃">
                   <LayoutSwitcher compact value={selectedPage.layout} onChange={(layout) => apply({ type: "layout", id: selectedPage.id, layout })} />
                 </div>}
               </div>
