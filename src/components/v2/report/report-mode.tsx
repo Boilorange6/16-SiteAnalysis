@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { createPortal } from "react-dom";
 import type { Dispatch } from "react";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { defaultFrame, EMPTY_REPORT_DOC, newPageId, reportDocReducer, type MapFrameState, type PagePanels, type ReportDoc, type ReportDocAction, type ReportFontScale, type ReportFormat, type ReportPage, type TextBox } from "@/lib/v2/report/report-doc";
@@ -133,6 +134,12 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const [mobileViewport, setMobileViewport] = useState(false);
   const drawerRef = useRef<HTMLElement>(null);
   const drawerOpenerRef = useRef<HTMLElement | null>(null);
+  const [reportActionsTarget, setReportActionsTarget] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    setReportActionsTarget(document.getElementById("v2-report-actions"));
+  }, []);
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 639px)");
@@ -561,14 +568,10 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
       const target = event.target as HTMLElement;
       if (!target.closest("[data-preview-map]") && !target.closest("[data-map-toolbar]")) setMapMoveActive(false);
     }}>
-      <header className={styles.reportHeader} inert={modalContentInert || undefined}>
-        <div className={styles.reportHeading}>
-          <p className={styles.eyebrow}>대지분석 보고서</p>
-          <h1>{summary.address} 보고서</h1>
-        </div>
-        <span className={styles.saveState} data-dirty={dirty ? "true" : "false"}>{dirty ? "저장 안 됨" : "저장됨"}</span>
-        <div className={styles.reportHeaderSpacer} />
-        <div className={styles.reportHeaderActions}>
+      <h1 className={styles.srOnly}>{summary.address} 보고서</h1>
+      {reportActionsTarget && createPortal(
+        <div className={styles.reportHeaderActions} inert={modalContentInert || undefined}>
+          <span className={styles.saveState} data-dirty={dirty ? "true" : "false"}>{dirty ? "저장 안 됨" : "저장됨"}</span>
           <button type="button" className={styles.iconButton} onClick={undo} disabled={history.past.length === 0} aria-label="되돌리기" title="되돌리기">↶</button>
           <button type="button" className={styles.iconButton} onClick={redo} disabled={history.future.length === 0} aria-label="다시 실행" title="다시 실행">↷</button>
           <label className={styles.headerFormat}>
@@ -579,10 +582,11 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
               <option value="a4">{formatLabel("a4")}</option>
             </select>
           </label>
-        </div>
-        <button type="button" className={styles.secondaryButton} onClick={onPresentation} disabled={demo || busy || history.present.pages.length === 0}>발표 미리보기</button>
-        <button ref={exportTriggerRef} type="button" className={styles.primaryDarkButton} onClick={() => setExportOpen(true)} disabled={demo || busy || history.present.pages.length === 0} aria-haspopup="dialog" aria-expanded={exportOpen} aria-controls={exportOpen ? "report-export-panel" : undefined}>내보내기</button>
-      </header>
+          <button type="button" className={styles.secondaryButton} onClick={onPresentation} disabled={demo || busy || history.present.pages.length === 0}>발표 미리보기</button>
+          <button ref={exportTriggerRef} type="button" className={styles.primaryDarkButton} onClick={() => setExportOpen(true)} disabled={demo || busy || history.present.pages.length === 0} aria-haspopup="dialog" aria-expanded={exportOpen} aria-controls={exportOpen ? "report-export-panel" : undefined}>내보내기</button>
+        </div>,
+        reportActionsTarget,
+      )}
       {exportOpen && <ExportPanel
         plan={plan}
         format={history.present.format}

@@ -1029,9 +1029,10 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
           </span>
           <div className={styles.modeTabs} role="tablist" aria-label="작업 모드">
             <button type="button" className={styles.modeTab} role="tab" aria-selected={boardMode === "tile"} onClick={() => setBoardMode("tile")}>타일</button>
-            <button type="button" className={styles.modeTab} role="tab" aria-selected={boardMode === "report"} onClick={() => setBoardMode("report")}>보고서 · {reportDocPageCount}쪽</button>
+            <button type="button" className={styles.modeTab} role="tab" aria-selected={boardMode === "report"} aria-label={`보고서, ${reportDocPageCount}쪽`} onClick={() => setBoardMode("report")}>보고서<span className={styles.modeCount}>{reportDocPageCount}</span></button>
           </div>
           <span className={styles.spacer} />
+          {boardMode === "report" && <div id="v2-report-actions" className={styles.reportActionsSlot} />}
           {demo && <span className={styles.demoTag}>데모 데이터</span>}
           <button
             ref={topoTriggerRef}
