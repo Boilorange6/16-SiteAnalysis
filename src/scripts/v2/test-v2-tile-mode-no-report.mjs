@@ -93,6 +93,8 @@ assert.match(reportModeStyleSource, /\.reportRoot\s*\{[\s\S]*grid-template-rows:
 assert.doesNotMatch(reportModeStyleSource, /\.reportHeader\b|\.reportHeaderSpacer\b|\.reportHeading\b/, "죽은 보고서 머리 줄 CSS가 남아 있다");
 assert.match(boardStyleSource, /\.reportActionsSlot\s*\{[\s\S]*display:\s*flex;[\s\S]*align-items:\s*center;[\s\S]*gap:\s*6px;/, "topbar 보고서 동작 칸 스타일이 없다");
 assert.match(boardStyleSource, /\.modeCount\s*\{[\s\S]*margin-left:\s*6px;[\s\S]*color:\s*#676c76;[\s\S]*font-size:\s*12px;[\s\S]*font-weight:\s*500;/, "보고서 쪽수 배지 스타일이 없다");
+assert.match(reportModeStyleSource, /\.reportRoot,\s*\.reportHeaderActions\s*\{[^}]*--report-dark:/, "topbar로 portal된 보고서 동작도 색 토큰을 받는다");
+assert.match(reportModeStyleSource, /\.reportHeaderActions button:disabled/, "portal된 보고서 동작도 비활성 표시를 받는다");
 assert.match(reportModeStyleSource, /\.exportPanel\s*\{[\s\S]*top:\s*8px;/, "내보내기 패널이 옛 보고서 머리 줄 아래 위치를 사용한다");
 
 assert.deepEqual(
