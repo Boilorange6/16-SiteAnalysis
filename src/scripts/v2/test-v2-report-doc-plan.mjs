@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 const { GODEOK_RESULTS, GODEOK_SUMMARY } = await import("../../lib/v2/ui/fixtures/godeok.ts");
 const { initBoard } = await import("../../lib/v2/ui/board-state.ts");
 const { toSummaryView, toTileView } = await import("../../lib/v2/ui/tile-view.ts");
-const { buildReportPlan, tileReportSettingsFromBoard, tileSlides } = await import("../../lib/v2/report/report-plan.ts");
+const { buildReportPlan, REPORT_SOURCE_ROWS_PER_SLIDE, tileReportSettingsFromBoard, tileSlides } = await import("../../lib/v2/report/report-plan.ts");
 const { EMPTY_REPORT_DOC } = await import("../../lib/v2/report/report-doc.ts");
 const { importLegacyReport, pagesForTile, planReportDoc, printedPageCount, recommendedPages } = await import("../../lib/v2/report/report-doc-plan.ts");
 const { withLegacyStyle } = await import("./legacy-report-fixture.mjs");
@@ -40,7 +40,13 @@ manySources.set("t-A01", { ...sourceView, sourceRefs: [], sourceLine: Array.from
 const manySourcePages = recommendedPages(EMPTY_REPORT_DOC, manySources, board, context);
 assert.equal(printedPageCount({ v: 1, format: "wide", pages: manySourcePages }, manySources, context), manySourcePages.length - 1 + 3, "출처 30행은 3쪽으로 계산");
 const manyPlan = planReportDoc({ v: 1, format: "wide", pages: manySourcePages }, manySources, context);
-assert.equal(manyPlan.filter((slide) => slide.kind === "sources").length, 3, "출처 30행은 실제 슬라이드 3장");
+const manySourceSlides = manyPlan.filter((slide) => slide.kind === "sources");
+assert.equal(manySourceSlides.length, 3, "출처 30행은 실제 슬라이드 3장");
+const sourceRowCounts = manySourceSlides.map((slide) => slide.rows.length);
+assert.ok(sourceRowCounts.every((count) => count > 0 && count <= REPORT_SOURCE_ROWS_PER_SLIDE), "출처 행은 REPORT_SOURCE_ROWS_PER_SLIDE를 넘지 않는다");
+assert.ok(sourceRowCounts.slice(0, -1).every((count) => count === REPORT_SOURCE_ROWS_PER_SLIDE), "마지막 전 출처 장은 REPORT_SOURCE_ROWS_PER_SLIDE만큼 채운다");
+assert.equal(new Set(manySourceSlides.map((slide) => slide.key)).size, manySourceSlides.length, "확장된 출처 장의 key는 서로 다르다");
+assert.equal(new Set(manyPlan.map((slide) => slide.key)).size, manyPlan.length, "전체 계획의 key도 서로 다르다");
 
 const missingPages = pagesForTile(EMPTY_REPORT_DOC, "t-D17", toTileView({ ...GODEOK_RESULTS[0], tileId: "t-D17", tileCode: "D17" }), { face: "front", callout: "overview" }, tileContext);
 const missingDoc = { v: 1, format: "wide", pages: missingPages };

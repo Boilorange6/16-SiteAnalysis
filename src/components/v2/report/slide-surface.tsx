@@ -1051,7 +1051,7 @@ function SourcesSurface({ slide, unit, basemap, thumbnail = false }: { slide: Ex
       <div className={styles.sourceSlide}>
         <ReportTitlePanel color="#7A7E87" code="" title="자료 출처와 기준일" kind="" rect={layout.title} unit={unit} />
         <div className={styles.sourceTableWrap} style={rectStyle(layout.table, unit)}>
-          <table className={styles.sourceTable}>
+          <table className={styles.sourceTable} data-report-source-table="true">
             <colgroup><col style={{ width: "24%" }} /><col style={{ width: "14%" }} /><col style={{ width: "16%" }} /><col style={{ width: "25%" }} /><col style={{ width: "21%" }} /></colgroup>
             <thead><tr><th style={fontStyle(kind ? 9 : 11, unit)}>제공처·자료</th><th style={fontStyle(kind ? 9 : 11, unit)}>기준일</th><th style={fontStyle(kind ? 9 : 11, unit)}>이용조건</th><th style={fontStyle(kind ? 9 : 11, unit)}>원문 확인</th><th style={fontStyle(kind ? 9 : 11, unit)}>사용한 타일</th></tr></thead>
             <tbody>{slide.rows.map((row) => <tr key={row.source + "|" + row.asOf}><td className={styles.sourceCell} style={fontStyle(kind ? 9 : 11, unit)}><b>{row.provider || "제공처 미기록"}</b><br />{row.source}</td><td className={styles.sourceCell} style={fontStyle(kind ? 9 : 11, unit)}>{row.asOf}</td><td className={styles.sourceCell} style={fontStyle(kind ? 9 : 11, unit)}>{row.license || "미기록"}</td><td className={styles.sourceCell} style={fontStyle(kind ? 9 : 11, unit)}>{row.url ? <a href={row.url}>원문 확인</a> : "원문 링크 미기록"}</td><td className={styles.sourceCell} style={fontStyle(kind ? 9 : 11, unit)}>{row.tiles}</td></tr>)}</tbody>
@@ -1434,7 +1434,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
   };
   return (
     <div ref={slotRef} className={styles.previewSlot} data-preview-slot="true">
-      <div className={styles.previewFrame} data-preview-frame="true" data-slide-format={format} style={frameSize.width > 0 ? { width: frameSize.width, height: frameSize.height, ...(format === "wide" ? {} : { aspectRatio: String(size.w.toFixed(3)) + " / " + String(size.h.toFixed(3)) }) } : format === "wide" ? undefined : { aspectRatio: String(size.w.toFixed(3)) + " / " + String(size.h.toFixed(3)) }}>
+      <div className={styles.previewFrame} data-preview-frame="true" data-frame-ready={frameSize.width > 0 ? "true" : "false"} data-slide-format={format} style={frameSize.width > 0 ? { width: frameSize.width, height: frameSize.height, ...(format === "wide" ? {} : { aspectRatio: String(size.w.toFixed(3)) + " / " + String(size.h.toFixed(3)) }) } : format === "wide" ? undefined : { aspectRatio: String(size.w.toFixed(3)) + " / " + String(size.h.toFixed(3)) }}>
         <div
           className={styles.slideCanvas}
           data-slide-canvas="true"
@@ -1589,6 +1589,7 @@ export function SlideSurface({
       <div
         className={styles.surfaceRoot}
         data-slide-surface="true"
+        data-surface-mode={mode}
         data-surface-format={format}
         style={{ position: "relative", width: "100%", height: "100%", minWidth: 0, minHeight: 0, overflow: "hidden", aspectRatio: String(size.w.toFixed(3)) + " / " + String(size.h.toFixed(3)) }}
       >

@@ -83,8 +83,6 @@ function renderExportSurfaceFactory(basemap: BasemapChoice, format: ReportFormat
     roots.set(host, root);
     root.render(<SlideSurface slide={slide} basemap={basemap} mode="export" classMap={surfaceClassMap} />);
     await nextFrame();
-    const slot = host.querySelector<HTMLElement>('[data-preview-slot="true"]');
-    if (slot) Object.assign(slot.style, { position: "relative", inset: "0", width: "100%", height: "100%", aspectRatio: "auto" });
     await nextFrame();
     return host;
   };

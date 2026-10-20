@@ -75,3 +75,40 @@
 
 .textBoxMoveHandle { top: -22px; left: 50%; transform: translateX(-50%); }
 .textBoxResizeHandle { right: -22px; bottom: -22px; cursor: nwse-resize; }
+
+.surfaceRoot[data-surface-mode="export"] {
+  color: #15171c;
+}
+
+.surfaceRoot[data-surface-mode="export"] [data-preview-slot="true"] {
+  position: relative;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+}
+
+.surfaceRoot[data-surface-mode="export"] [data-preview-frame="true"] {
+  box-sizing: border-box;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.surfaceRoot[data-surface-mode="export"] *,
+.surfaceRoot[data-surface-mode="export"] *::before,
+.surfaceRoot[data-surface-mode="export"] *::after {
+  transition: none !important;
+  animation: none !important;
+}
+
+.surfaceRoot[data-surface-mode="export"] [data-report-source-table="true"] th,
+.surfaceRoot[data-surface-mode="export"] [data-report-source-table="true"] td {
+  padding: calc(var(--slide-unit) * 0.03);
+  line-height: 1.05;
+}

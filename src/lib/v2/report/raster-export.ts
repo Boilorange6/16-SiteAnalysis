@@ -139,7 +139,14 @@ async function waitForFrameLayout(node: HTMLElement, deadline: number): Promise<
   if (!frame || typeof frame.getBoundingClientRect !== "function") return;
   while (Date.now() < deadline) {
     const rect = frame.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) return;
+    const hostRect = typeof node.getBoundingClientRect === "function" ? node.getBoundingClientRect() : null;
+    const fillsHost = !hostRect || (
+      Math.abs(rect.left - hostRect.left) <= 1
+      && Math.abs(rect.top - hostRect.top) <= 1
+      && Math.abs(rect.width - hostRect.width) <= 1
+      && Math.abs(rect.height - hostRect.height) <= 1
+    );
+    if (frame.dataset.frameReady === "true" && rect.width > 0 && rect.height > 0 && fillsHost) return;
     await nextFrame();
   }
   throw new Error("내보낼 쪽의 크기를 계산하지 못했습니다");
