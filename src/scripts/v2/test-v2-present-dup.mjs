@@ -6,6 +6,7 @@ const { GODEOK_RESULTS, GODEOK_SUMMARY } = await import("../../lib/v2/ui/fixture
 const { boardReducer, initBoard, reportPages, restoreBoardState, serializeBoardState, sourceTileId, rewriteSnapshotIds } = await import("../../lib/v2/ui/board-state.ts");
 const { toSummaryView, toTileView, viewWithLayer } = await import("../../lib/v2/ui/tile-view.ts");
 const { buildReportPlan, complexCounts, mapKeysOf, sourcePageCountForViews } = await import("../../lib/v2/report/report-plan.ts");
+const { withLegacyTileState } = await import("./legacy-report-fixture.mjs");
 
 const sourceResult = GODEOK_RESULTS.find((result) => {
   const view = toTileView(result);
@@ -21,7 +22,7 @@ const alternateLayer = sourceView.layerOptions.find((option) => option.id !== so
 assert.ok(alternateLayer, `${sourceResult.tileCode}에 원본과 다른 레이어가 필요하다`);
 
 let board = initBoard([sourceResult]);
-board = boardReducer(board, { type: "face", id: sourceId, face: "both" });
+board = withLegacyTileState(board, sourceId, { face: "both" });
 board = boardReducer(board, { type: "toggleLabel", id: sourceId, key: "test|0" });
 board = boardReducer(board, { type: "duplicate", id: sourceId });
 const copyId = "copy:1";
@@ -58,7 +59,7 @@ assert.deepEqual(undoneDuplicate.instances, {});
 
 // 마지막 + 칸의 addCopy는 기존 타일 설정을 복제해 보드 끝에 붙이고, 기존 duplicate undo 경로를 사용한다.
 let appended = initBoard([sourceResult, otherResult]);
-appended = boardReducer(appended, { type: "face", id: sourceId, face: "both" });
+appended = withLegacyTileState(appended, sourceId, { face: "both" });
 appended = boardReducer(appended, { type: "toggleLabel", id: sourceId, key: "add-copy|0" });
 appended = boardReducer(appended, { type: "layer", id: sourceId, layer: alternateLayer.id });
 appended = boardReducer(appended, { type: "addCopy", sourceId });

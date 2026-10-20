@@ -1,5 +1,37 @@
 import type { ReportDoc, ReportDocAction } from "../report/report-doc";
 
+function orderedKeys(keys: readonly string[]): string[] {
+  const seen = new Set<string>();
+  return keys.filter((key) => key.length > 0 && !seen.has(key) && (seen.add(key), true));
+}
+
+/** 선택된 페이지 속성의 공통값을 반환한다. */
+export function mixedValue<T>(values: readonly T[], fallback: T): T | undefined {
+  if (values.length === 0 || values.every((value) => value === undefined)) return fallback;
+  const first = values[0];
+  return values.every((value) => Object.is(value, first)) ? first : undefined;
+}
+
+/** 자동 라벨과 고정 라벨을 같은 visible/hidden 상태 기계로 토글한다. */
+export function toggleLabelVisibility(
+  pinnedKeys: readonly string[],
+  hiddenKeys: readonly string[],
+  key: string,
+  currentlyVisible: boolean,
+): { pinnedKeys: string[]; hiddenKeys: string[] } {
+  const pinned = orderedKeys(pinnedKeys).filter((candidate) => candidate !== key);
+  const hidden = orderedKeys(hiddenKeys).filter((candidate) => candidate !== key);
+  if (key.length === 0) return { pinnedKeys: pinned, hiddenKeys: hidden };
+  return currentlyVisible
+    ? { pinnedKeys: pinned, hiddenKeys: [...hidden, key] }
+    : { pinnedKeys: [...pinned, key], hiddenKeys: hidden };
+}
+
+/** 범례 강조 상태를 순수하게 토글한다. */
+export function toggleLegendFocus(currentKey: string | null, key: string): string | null {
+  return currentKey === key ? null : key;
+}
+
 export type MapInteractionState = {
   selected: boolean;
   moveActive: boolean;

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");
 const { initBoard, boardReducer, reportPages, serializeBoardState, restoreBoardState, migrateSnapshot, TILE_CODE_RENAMES } = await import("../../lib/v2/ui/board-state.ts");
 const { TILE_CODES, TILE_PRESETS, PRESET_IDS, DEFAULT_PRESET_ID } = await import("../../lib/v2/ui/tile-catalog.ts");
+const { withLegacyTileState, withLegacyTileStates } = await import("./legacy-report-fixture.mjs");
 
 const ids = GODEOK_RESULTS.map((r) => r.tileId);
 let s = initBoard(GODEOK_RESULTS);
@@ -42,7 +43,7 @@ assert.equal(s.included["t-S03"], false); // failed
 // 프리셋 저장·복원과 옛 snapshot(preset 필드 없음)은 전체로 읽힌다.
 {
   let b = initBoard(GODEOK_RESULTS, "station-area");
-  b = boardReducer(b, { type: "face", id: "t-A01", face: "both" });
+  b = withLegacyTileState(b, "t-A01", { face: "both" });
   b = boardReducer(b, { type: "cuts", id: "t-S02", cuts: 3 });
   b = boardReducer(b, { type: "roseSeason", id: "t-A01", season: "summer" });
   b = boardReducer(b, { type: "pinLabel", id: "t-D04", key: "bldg_2000s|b-1" });
@@ -62,7 +63,7 @@ assert.equal(s.included["t-S03"], false); // failed
 // 프리셋 변경은 보드 포함·순서와 편집 트레이만 재설정하고 카드별 설정은 보존하며, 한 번에 되돌린다.
 {
   let before = initBoard(GODEOK_RESULTS, "station-area");
-  before = boardReducer(before, { type: "face", id: "t-A01", face: "both" });
+  before = withLegacyTileState(before, "t-A01", { face: "both" });
   before = boardReducer(before, { type: "cuts", id: "t-S02", cuts: 3 });
   before = boardReducer(before, { type: "roseSeason", id: "t-A01", season: "summer" });
   before = boardReducer(before, { type: "pinLabel", id: "t-D04", key: "bldg_2000s|b-1" });
@@ -95,7 +96,7 @@ assert.equal(s.included["t-S03"], false); // failed
 // 보드의 한 카드 포함 상태만 바뀌면 다른 카드에 전달되는 값과 참조는 그대로다.
 {
   const before = initBoard(GODEOK_RESULTS);
-  const after = boardReducer(before, { type: "include", id: "t-A01", value: false });
+  const after = withLegacyTileState(before, "t-A01", { included: false });
   const cardState = (state, id) => ({
     included: state.included[id],
     face: state.faces[id],
@@ -118,8 +119,7 @@ assert.equal(after.labels, before.labels);
 // 백그라운드 폴링 결과 교체는 편집 상태를 건드리지 않는다.
 {
   let edited = boardReducer(s, { type: "move", id: "t-A02", dir: 1 });
-  edited = boardReducer(edited, { type: "include", id: "t-A01", value: false });
-  edited = boardReducer(edited, { type: "face", id: "t-D04", face: "both" });
+  edited = withLegacyTileStates(edited, [["t-A01", { included: false }], ["t-D04", { face: "both" }]]);
   const refreshed = GODEOK_RESULTS.map((result) => ({ ...result, status: "running" }));
   const next = boardReducer(edited, { type: "replaceResults", results: refreshed });
   assert.deepEqual(next.results, refreshed);
@@ -153,9 +153,9 @@ assert.deepEqual(s.order.slice(0, 2), ["t-A01", "t-A02"]);
 
 // 보고서: 표지 1 + 포함 타일(10) + 출처 1 = 12, both는 2장
 assert.deepEqual(reportPages(s), { tiles: 10, pages: 12 });
-s = boardReducer(s, { type: "include", id: "t-A01", value: false });
+s = withLegacyTileState(s, "t-A01", { included: false });
 assert.deepEqual(reportPages(s), { tiles: 9, pages: 11 });
-s = boardReducer(s, { type: "face", id: "t-D04", face: "both" });
+s = withLegacyTileState(s, "t-D04", { face: "both" });
 assert.equal(s.faces["t-D04"], "both");
 assert.deepEqual(reportPages(s), { tiles: 9, pages: 12 });
 // 제거된 타일은 장수에서 빠진다
@@ -260,9 +260,10 @@ assert.deepEqual(reportPages(s), { tiles: 9, pages: 12 }); // 포함·면 설정
   assert.equal(viewOf(c, "t-A02"), "map");
   // 설명선 타일의 보고서 장수 설정
   assert.equal(b.callout["t-A05"], "top10");
-  assert.equal(boardReducer(b, { type: "callout", id: "t-A05", mode: "all" }).callout["t-A05"], "all");
+  const allCallouts = withLegacyTileState(b, "t-A05", { callout: "all" });
+  assert.equal(allCallouts.callout["t-A05"], "all");
   assert.equal(reportPages(b, { "t-A05": 25 }).pages, reportPages(b).pages + 1, "A05: 개요 + 상위 10 = 2장 (기본 1장 대신)");
-  assert.equal(reportPages(boardReducer(b, { type: "callout", id: "t-A05", mode: "all" }), { "t-A05": 25 }).pages, reportPages(b).pages + 3);
+  assert.equal(reportPages(allCallouts, { "t-A05": 25 }).pages, reportPages(b).pages + 3);
 }
 
 // 축소 카드 지도 라벨: 기본 숨김, 타일별 토글, 저장·복원·복제 및 옛 mapLegend 무시.

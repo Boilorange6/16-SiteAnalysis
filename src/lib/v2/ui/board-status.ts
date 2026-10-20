@@ -93,23 +93,17 @@ export type ExportOption = {
 };
 
 export type ExportAvailability = {
-  ppt: ExportOption;
   dxf: ExportOption;
   glb: ExportOption;
   dae: ExportOption;
   "3dm": ExportOption;
 };
 
-export function exportAvailability({ activeJobs, making, requesting = false, sceneReady }: { activeJobs: boolean; making: boolean; requesting?: boolean; sceneReady: boolean }): ExportAvailability {
+export function exportAvailability({ making, requesting = false, sceneReady }: { making: boolean; requesting?: boolean; sceneReady: boolean }): ExportAvailability {
   const blockedReason = making ? "다른 내보내기가 진행 중입니다." : (requesting ? "새 분석을 준비 중입니다." : null);
   const sceneReason = blockedReason ?? (sceneReady ? null : "장면이 아직 준비되지 않았습니다.");
   const sceneOption = (pendingNote: string | null = null): ExportOption => ({ enabled: sceneReady && !making && !requesting, reason: sceneReason, pendingNote });
   return {
-    ppt: {
-      enabled: !making && !requesting,
-      reason: blockedReason,
-      pendingNote: activeJobs ? "계산 중인 타일은 PPT에 '계산 중'으로 표시됩니다." : null,
-    },
     dxf: sceneOption(),
     glb: sceneOption(),
     dae: sceneOption(),

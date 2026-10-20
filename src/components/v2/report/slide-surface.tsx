@@ -16,7 +16,7 @@ import type { PagePanels, MapFrameState, TextBox } from "@/lib/v2/report/report-
 import type { PlannedSlide } from "@/lib/v2/report/report-plan";
 import type { TileView } from "@/lib/v2/ui/tile-view";
 import { sheetCells, type SheetGrid } from "@/lib/v2/ui/sheet";
-import { mixedValue, toggleLabelVisibility, toggleLegendFocus } from "@/lib/v2/ui/report-preview-logic";
+import { mixedValue, toggleLabelVisibility, toggleLegendFocus } from "@/lib/v2/ui/report-mode-logic";
 
 type SurfaceStyles = Record<string, string>;
 const FALLBACK_STYLES: SurfaceStyles = new Proxy<SurfaceStyles>({} as SurfaceStyles, { get: (_target, key) => String(key) });

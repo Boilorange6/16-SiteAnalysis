@@ -49,17 +49,15 @@ assert.equal(progress.byCode.get("S03")?.note, "대기 중 — 앞선 작업 1�
 assert.equal(progress.byCode.get("S02")?.note, "계산 중 · 경과 12분 5초 · 오래 걸리면 다시 시도");
 assert.equal(formatElapsedMs(null), "시간 미확인");
 
-// R4: 분석 작업이 남아 있어도 입력이 준비된 형식은 내보낼 수 있다.
-const pendingWithScene = exportAvailability({ activeJobs: true, making: false, sceneReady: true });
-assert.equal(pendingWithScene.ppt.enabled, true);
-assert.equal(pendingWithScene.ppt.pendingNote, "계산 중인 타일은 PPT에 '계산 중'으로 표시됩니다.");
+// R4: 타일 모드의 3D/CAD 형식은 장면이 준비되면 내보낼 수 있다.
+const pendingWithScene = exportAvailability({ making: false, sceneReady: true });
 for (const kind of ["dxf", "glb", "dae", "3dm"]) assert.equal(pendingWithScene[kind].enabled, true, `${kind}는 장면만 준비되면 활성`);
-const noScene = exportAvailability({ activeJobs: true, making: false, sceneReady: false });
+const noScene = exportAvailability({ making: false, sceneReady: false });
 for (const kind of ["dxf", "glb", "dae", "3dm"]) {
   assert.equal(noScene[kind].enabled, false, `${kind} 비활성`);
   assert.equal(noScene[kind].reason, "장면이 아직 준비되지 않았습니다.");
 }
-const making = exportAvailability({ activeJobs: true, making: true, sceneReady: true });
-for (const kind of ["ppt", "dxf", "glb", "dae", "3dm"]) assert.equal(making[kind].enabled, false, `${kind}는 다른 내보내기 중 비활성`);
+const making = exportAvailability({ making: true, sceneReady: true });
+for (const kind of ["dxf", "glb", "dae", "3dm"]) assert.equal(making[kind].enabled, false, `${kind}는 다른 내보내기 중 비활성`);
 
 console.log("✓ v2 export UI download contract");

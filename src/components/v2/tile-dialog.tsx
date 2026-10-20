@@ -1,12 +1,11 @@
 "use client";
 
 import { useContext, useEffect, useRef, useState } from "react";
-import { CALLOUT_MODES, calloutReportPages, type CalloutMode } from "@/lib/v2/ui/callout-layout";
 import type { A05Counts, A05Filter } from "@/lib/v2/engine/a05-filter";
 import { detailSiteX, OV } from "@/lib/v2/ui/overlay-layout";
 import type { CameraPreset, CutSpec, PinnedLabel, TerrainSectionId } from "@/lib/v2/ui/board-state";
-import { faceLabel, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
-import { BadgeList, CutSelect, FaceSelect, Headline, RowList, SourceStrip, Stage, StatusPlate, TitleChip } from "./tile-card";
+import type { TileView } from "@/lib/v2/ui/tile-view";
+import { BadgeList, CutSelect, Headline, RowList, SourceStrip, Stage, StatusPlate, TitleChip } from "./tile-card";
 import { LayerSelect } from "./layer-select";
 import { cutOwnsRaster, normalizedCut, viewForCut } from "@/lib/v2/ui/cut-selection";
 import { CUT_CODES } from "@/lib/v2/tile/client";
@@ -22,15 +21,9 @@ type Props = {
   view: TileView;
   layer: string;
   onLayer: (layer: string) => void;
-  included: boolean;
-  face: OutputFace;
-  onInclude: (v: boolean) => void;
-  onFace: (f: OutputFace) => void;
   onRetry?: () => void;
   cut?: CutSpec | null;
   onCut?: (cut: CutSpec) => void;
-  calloutMode: CalloutMode;
-  onCalloutMode: (m: CalloutMode) => void;
   camera?: CameraPreset | null;
   onCamera?: (camera: CameraPreset) => void;
   onWindUploaded?: () => void;
@@ -111,7 +104,7 @@ function PinnedLabelPanel({ view, labels, onToggle, onUnpin, onSetAll, onFocusLa
 }
 
 /** 펼침: 화면 거의 전체가 지도. 오른쪽에 떠 있는 정보 판. Esc로 닫고, 닫으면 열기 전 초점으로 돌아간다. */
-export default function TileDialog({ view, layer, onLayer, included, face, onInclude, onFace, onRetry, cut, onCut, calloutMode, onCalloutMode, camera, onCamera, onWindUploaded, onClose, a05Filter, a05Counts, onA05Filter, pinnedLabels, onToggleLabel, onUnpinLabel, onSetAllLabels, initialTab = "overview", address, analysisDate, terrainSection, onTerrainSection }: Props) {
+export default function TileDialog({ view, layer, onLayer, onRetry, cut, onCut, camera, onCamera, onWindUploaded, onClose, a05Filter, a05Counts, onA05Filter, pinnedLabels, onToggleLabel, onUnpinLabel, onSetAllLabels, initialTab = "overview", address, analysisDate, terrainSection, onTerrainSection }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [back, setBack] = useState(false);
   const [more, setMore] = useState(false); // 모바일 시트 확장
@@ -245,40 +238,24 @@ export default function TileDialog({ view, layer, onLayer, included, face, onInc
             </ul>
             )}
             <div className={styles.source}>출처 · {view.sourceLine}</div>
-            <div className={styles.dlgReport}>
-            <strong>보고서 {view.title}</strong>
-            {view.hasFace && <div className={styles.sub}>출력 면: {faceLabel(face)}</div>}
-            {view.hasFace && <FaceSelect view={view} value={face} onChange={onFace} />}
-            {view.callout && (
-              <div className={styles.seg} role="group" aria-label="보고서 설명표 페이지 수">
-                설명표 장
-                {CALLOUT_MODES.map((m) => (
-                  <button key={m.id} type="button" aria-pressed={calloutMode === m.id} onClick={() => onCalloutMode(m.id)}>
-                    {m.label}
-                  </button>
-                ))}
+            {((!state && (view.map || view.mass || view.rose)) || tileExportError) && (
+              <div className={styles.dlgTileActions}>
+                {!state && (view.map || view.mass || view.rose) && (
+                  <div className={styles.tileExportActions} aria-label={`${view.title} 타일 저장`}>
+                    <button type="button" onClick={() => saveTile("png")} disabled={tileExporting !== null} aria-busy={tileExporting === "png"}>
+                      {tileExporting === "png" ? "PNG 준비 중…" : "PNG 저장"}
+                    </button>
+                    <button type="button" onClick={() => saveTile("svg")} disabled={tileExporting !== null} aria-busy={tileExporting === "svg"}>
+                      {tileExporting === "svg" ? "SVG 준비 중…" : "SVG 저장"}
+                    </button>
+                    <button type="button" onClick={() => saveTile("plate")} disabled={tileExporting !== null} aria-busy={tileExporting === "plate"}>
+                      {tileExporting === "plate" ? "도판 준비 중…" : "도판만 PNG"}
+                    </button>
+                  </div>
+                )}
+                {tileExportError && <p className={styles.tileExportError} role="status">{tileExportError}</p>}
               </div>
             )}
-            {view.callout && <div className={styles.sub}>보고서 {calloutReportPages(calloutMode, view.callout.complexes.length)}장 (개요 포함)</div>}
-            <label className={styles.check}>
-              <input type="checkbox" checked={included} onChange={(e) => onInclude(e.target.checked)} aria-label={`${view.title} 보고서 포함`} />
-              포함
-            </label>
-            {!state && (view.map || view.mass || view.rose) && (
-              <div className={styles.tileExportActions} aria-label={`${view.title} 타일 저장`}>
-                <button type="button" onClick={() => saveTile("png")} disabled={tileExporting !== null} aria-busy={tileExporting === "png"}>
-                  {tileExporting === "png" ? "PNG 준비 중…" : "PNG 저장"}
-                </button>
-                <button type="button" onClick={() => saveTile("svg")} disabled={tileExporting !== null} aria-busy={tileExporting === "svg"}>
-                  {tileExporting === "svg" ? "SVG 준비 중…" : "SVG 저장"}
-                </button>
-                <button type="button" onClick={() => saveTile("plate")} disabled={tileExporting !== null} aria-busy={tileExporting === "plate"}>
-                  {tileExporting === "plate" ? "도판 준비 중…" : "도판만 PNG"}
-                </button>
-              </div>
-            )}
-            {tileExportError && <p className={styles.tileExportError} role="status">{tileExportError}</p>}
-            </div>
             <button type="button" className={styles.moreBtn} onClick={() => setMore((m) => !m)} aria-expanded={more}>
               {more ? "접기" : "더 보기"}
             </button>

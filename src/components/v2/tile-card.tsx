@@ -5,7 +5,7 @@ import { memo, useCallback, useEffect, useId, useLayoutEffect, useRef, useState,
 import type { CardFace, CutSpec, DemoPhase, PinnedLabel, TerrainSectionId, TileSize } from "@/lib/v2/ui/board-state";
 import { STRIP_COLORS } from "@/lib/v2/ui/map-layers";
 import { OV, badgesToShow, cardReserved, stripText } from "@/lib/v2/ui/overlay-layout";
-import { faceLabel, shortHeadlineLabel, type Badge, type OutputFace, type TileView } from "@/lib/v2/ui/tile-view";
+import { shortHeadlineLabel, type Badge, type TileView } from "@/lib/v2/ui/tile-view";
 import { cutCandidates, cutKey, cutOwnsRaster, normalizedCut, viewForCut } from "@/lib/v2/ui/cut-selection";
 import { faceExtraFor, stageFor } from "@/lib/v2/tile/components";
 import MapBox from "./map-box";
@@ -21,7 +21,6 @@ import { catalogEntry } from "@/lib/v2/ui/tile-catalog";
 import { floatingMenuPosition, type FloatingMenuPosition } from "@/lib/v2/ui/menu-position";
 
 const BADGE_CLASS = { status: styles.badgeStatus, limit: styles.badgeLimit, model: styles.badgeModel } as const;
-const FACES: OutputFace[] = ["front", "back", "both"];
 const TOPO_NUDGE_COPY = "대지 고저차가 커서 30 m 자료로는 부정확할 수 있습니다. 수치지형도를 넣으면 원본 등고선으로 다시 계산합니다.";
 
 function BadgeHint({ text, note, tone }: { text: string; note?: string; tone?: Badge["tone"] }) {
@@ -175,19 +174,6 @@ function FitRows({ rows }: { rows: TileView["rows"] }) {
   );
 }
 
-export function FaceSelect({ view, value, onChange }: { view: TileView; value: OutputFace; onChange: (f: OutputFace) => void }) {
-  return (
-    <div className={styles.seg} role="group" aria-label={`${view.title} 보고서 출력`}>
-      보고서 출력
-      {FACES.map((f) => (
-        <button key={f} type="button" aria-pressed={value === f} onClick={() => onChange(f)}>
-          {faceLabel(f)}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 /** 도판 뒤집은 면: 연한 타일색 바탕에 구성비 막대가 가득 (카드·펼침 공통) */
 export function FaceChart({ view }: { view: TileView }) {
   const chart = view.chart ?? [];
@@ -330,8 +316,6 @@ type TileCardBaseProps = {
   layer: string;
   onLayer: (layer: string) => void;
   phase: DemoPhase | null;
-  included: boolean;
-  face: OutputFace;
   canUp: boolean;
   canDown: boolean;
   size: TileSize;
@@ -344,7 +328,7 @@ type TileCardBaseProps = {
   /** 특정 카드에 직접 붙이는 추가 자료 안내 */
   topoNudge?: { onClick: () => void; disabled: boolean };
   cut: CutSpec | null;
-  /** 화면 면 (요약면/지도면). 보고서 출력 면(face)과 무관 */
+  /** 화면 면 (요약면/지도면). */
   cardFace: CardFace;
   onWindUploaded?: () => void;
   terrainSection?: TerrainSectionId;
@@ -367,8 +351,6 @@ export type TileCardAction =
   | { type: "resize"; size: TileSize }
   | { type: "open" }
   | { type: "sources" }
-  | { type: "include"; value: boolean }
-  | { type: "face"; face: OutputFace }
   | { type: "cut"; cut: CutSpec }
   | { type: "cardFace"; face: CardFace }
   | { type: "remove" }
@@ -393,8 +375,6 @@ type TileCardRenderProps = TileCardBaseProps & {
   onResize: (size: TileSize) => void;
   onOpen: () => void;
   onSources: () => void;
-  onInclude: (v: boolean) => void;
-  onFace: (f: OutputFace) => void;
   onCut: (cut: CutSpec) => void;
   onCardFace: (f: CardFace) => void;
   onRemove: () => void;
@@ -447,8 +427,8 @@ function DragHandle({ p }: { p: Pick<TileCardRenderProps, "view" | "canUp" | "ca
   );
 }
 
-/** ⋯ 더 보기: 상세 보기 · 지도에 보기(도판/구성비) · 보고서에 넣을 그림(도판/구성비/둘 다). Esc·바깥 누름·Tab으로 닫히고 닫힐 때 ⋯ 버튼으로 포커스가 돌아온다. */
-function MoreMenu({ view, active, back, onBack, face, onFace, onDetail, onDuplicate, pinnedCount, onSetAllLabels, compact, detailOnly, triggerClass, actions }: { view: TileView; active: boolean; back: boolean; onBack: (v: boolean) => void; face: OutputFace; onFace: (f: OutputFace) => void; onDetail?: () => void; onDuplicate?: () => void; pinnedCount: number; onSetAllLabels?: (on: boolean) => void; compact?: { included: boolean; onInclude: (v: boolean) => void; onOpen: () => void; showLabels: boolean; onShowLabels: (show: boolean) => void }; detailOnly?: boolean; triggerClass?: string; actions?: BoardMenuActions }) {
+/** ⋯ 더 보기: 상세 보기 · 지도에 보기(도판/구성비). Esc·바깥 누름·Tab으로 닫히고 닫힐 때 ⋯ 버튼으로 포커스가 돌아온다. */
+function MoreMenu({ view, active, back, onBack, onDetail, onDuplicate, pinnedCount, onSetAllLabels, compact, detailOnly, triggerClass, actions }: { view: TileView; active: boolean; back: boolean; onBack: (v: boolean) => void; onDetail?: () => void; onDuplicate?: () => void; pinnedCount: number; onSetAllLabels?: (on: boolean) => void; compact?: { onOpen: () => void; showLabels: boolean; onShowLabels: (show: boolean) => void }; detailOnly?: boolean; triggerClass?: string; actions?: BoardMenuActions }) {
   const [open, setOpen] = useState(false);
   const trigRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -549,9 +529,6 @@ function MoreMenu({ view, active, back, onBack, face, onFace, onDetail, onDuplic
               <button type="button" role="menuitemcheckbox" aria-checked={compact.showLabels} className={`${styles.mfMenuItem} ${styles.mfMenuLegend}`} onClick={() => compact.onShowLabels(!compact.showLabels)}>
                 라벨 보기<span>{compact.showLabels ? "표시" : "숨김"}</span>
               </button>
-              <button type="button" role="menuitemcheckbox" aria-checked={compact.included} className={`${styles.mfMenuItem} ${styles.mfMenuCompact}`} onClick={() => compact.onInclude(!compact.included)}>
-                보고서에 포함<span>{compact.included ? "포함" : "제외"}</span>
-              </button>
               <button type="button" role="menuitem" className={`${styles.mfMenuItem} ${styles.mfMenuCompact}`} onClick={() => { close(true); compact.onOpen(); }}>
                 펼치기
               </button>
@@ -625,10 +602,6 @@ function MoreMenu({ view, active, back, onBack, face, onFace, onDetail, onDuplic
                 {seg("도판", !back, () => onBack(false))}
                 {seg("구성비", back, () => onBack(true))}
               </div>
-              <div className={styles.mfMenuHead} id={`mf-out-${view.tileId}`}>보고서에 넣을 그림</div>
-              <div role="group" aria-labelledby={`mf-out-${view.tileId}`} className={styles.mfSeg}>
-                {FACES.map((f) => seg(f === "both" ? "둘 다" : faceLabel(f), face === f, () => onFace(f), f === "both"))}
-              </div>
             </>
           )}
         </div>,
@@ -687,10 +660,6 @@ function MapFace({ p, active, state, back, onBack, onFlip, onDetail, mapReady }:
           </span>
         )}
         {extra && <span className={`${styles.kindTag} ${styles.mfKeyLabel}`}>{extra}</span>}
-        <label className={`${styles.check} ${styles.mfCheck} ${styles.mfCollapse}`} title="보고서에 포함">
-          <input type="checkbox" checked={p.included} onChange={(e) => p.onInclude(e.target.checked)} aria-label={`${view.title} 보고서 포함`} />
-          <span className={styles.mfCheckText}>보고서</span>
-        </label>
         <button type="button" className={`${styles.mfBtn} ${styles.mfBtnDark} ${styles.mfCollapse}`} onClick={p.onOpen} aria-label={`${view.title} 펼치기`} title="펼치기">
           <Svg size={14}>
             <path d="M7 17L17 7" />
@@ -698,7 +667,7 @@ function MapFace({ p, active, state, back, onBack, onFlip, onDetail, mapReady }:
           </Svg>
         </button>
         {FaceExtra && <FaceExtra view={view} cut={cut} state={state} placement="header" onCut={p.onCut} onOpen={p.onOpen} />}
-        <MoreMenu view={view} active={active} back={back} onBack={onBack} face={p.face} onFace={p.onFace} onDetail={onDetail} onDuplicate={p.onDuplicate} pinnedCount={pinnedCount} onSetAllLabels={labelEntries.length > 0 ? p.onSetAllLabels : undefined} actions={p} compact={{ included: p.included, onInclude: p.onInclude, onOpen: p.onOpen, showLabels: p.showMapLabels, onShowLabels: p.onMapLabels }} />
+        <MoreMenu view={view} active={active} back={back} onBack={onBack} onDetail={onDetail} onDuplicate={p.onDuplicate} pinnedCount={pinnedCount} onSetAllLabels={labelEntries.length > 0 ? p.onSetAllLabels : undefined} actions={p} compact={{ onOpen: p.onOpen, showLabels: p.showMapLabels, onShowLabels: p.onMapLabels }} />
         <button type="button" className={styles.mfBtn} data-card-face-button="summary" onClick={onFlip} aria-pressed aria-label={`${view.title} 요약/지도 보기 전환`} title="요약 보기">
           <Svg size={15}>
             <path d="M3 12a9 9 0 1 0 3-6.7" />
@@ -759,10 +728,6 @@ function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardRende
         {view.sheetGrid && <span className={styles.kindTag}>{view.sheetGrid}</span>}
         {!waiting && (
           <>
-            <label className={`${styles.check} ${styles.sfCollapse}`}>
-              <input type="checkbox" checked={p.included} onChange={(e) => p.onInclude(e.target.checked)} aria-label={`${view.title} 보고서 포함`} />
-              <span className={styles.checkText}>보고서</span>
-            </label>
             <button type="button" className={`${styles.open} ${styles.sfCollapse}`} onClick={p.onOpen} aria-label={`${view.title} 펼치기`} title="펼치기">
               ↗
             </button>
@@ -771,7 +736,7 @@ function SummaryFace({ p, state, waiting, onFlip, onDetail }: { p: TileCardRende
                 상세
               </button>
             )}
-            <MoreMenu view={view} active back={false} onBack={() => {}} face={p.face} onFace={p.onFace} onDetail={onDetail} onDuplicate={p.onDuplicate} pinnedCount={0} detailOnly triggerClass={styles.sfMore} actions={p} compact={{ included: p.included, onInclude: p.onInclude, onOpen: p.onOpen, showLabels: p.showMapLabels, onShowLabels: p.onMapLabels }} />
+            <MoreMenu view={view} active back={false} onBack={() => {}} onDetail={onDetail} onDuplicate={p.onDuplicate} pinnedCount={0} detailOnly triggerClass={styles.sfMore} actions={p} compact={{ onOpen: p.onOpen, showLabels: p.showMapLabels, onShowLabels: p.onMapLabels }} />
             <button type="button" className={styles.mfBtn} data-card-face-button="map" onClick={onFlip} aria-pressed={false} aria-label={`${view.title} 요약/지도 보기 전환`} title="지도 보기">
               <Svg size={15}>
                 <path d="M3 12a9 9 0 1 0 3-6.7" />
@@ -869,8 +834,6 @@ function TileCard(p: TileCardProps) {
   const resize = useTileResize({ size: p.size, cellW: p.cellW, rowH: p.rowH, onCommit: onResize });
   const onOpen = useCallback(() => p.onAction(id, { type: "open" }), [id, p.onAction]);
   const onSources = useCallback(() => p.onAction(id, { type: "sources" }), [id, p.onAction]);
-  const onInclude = useCallback((value: boolean) => p.onAction(id, { type: "include", value }), [id, p.onAction]);
-  const onFace = useCallback((face: OutputFace) => p.onAction(id, { type: "face", face }), [id, p.onAction]);
   const onCut = useCallback((cut: CutSpec) => p.onAction(id, { type: "cut", cut }), [id, p.onAction]);
   const onRemove = useCallback(() => p.onAction(id, { type: "remove" }), [id, p.onAction]);
   const onDuplicate = useCallback(() => p.onAction(id, { type: "duplicate" }), [id, p.onAction]);
@@ -888,8 +851,6 @@ function TileCard(p: TileCardProps) {
     onResize,
     onOpen,
     onSources,
-    onInclude,
-    onFace,
     onCut,
     onCardFace,
     onRemove,

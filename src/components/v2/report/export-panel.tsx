@@ -13,7 +13,7 @@ import type { PlannedSlide } from "@/lib/v2/report/report-plan";
 import { SlideSurface } from "./slide-surface";
 import { useFocusTrap } from "../use-focus-trap";
 import styles from "./report-mode.module.css";
-import surfaceStyles from "../report-preview.module.css";
+import surfaceStyles from "../report-surface.module.css";
 import localSurfaceStyles from "./slide-surface.module.css";
 
 const surfaceClassMap = { ...surfaceStyles, ...localSurfaceStyles };

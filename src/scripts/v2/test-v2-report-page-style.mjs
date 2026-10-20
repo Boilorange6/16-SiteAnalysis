@@ -16,6 +16,7 @@ const {
   pageKeyOf,
   sourcePageCountForViews,
 } = await import("../../lib/v2/report/report-plan.ts");
+const { withLegacyReport, withLegacyStyle, withLegacyTileState } = await import("./legacy-report-fixture.mjs");
 const { buildMapScene } = await import("../../lib/v2/ui/map-scene.ts");
 const { layerStyle } = await import("../../lib/v2/ui/map-layers.ts");
 const { slideViewport } = await import("../../lib/v2/ui/map-projection.ts");
@@ -88,7 +89,7 @@ const basePlan = build(baseBoard);
   assert.equal(fitted.lines, 1, "긴 출처 텍스트의 줄 수 1");
 }
 
-const styledPlanFor = (key, patch) => build(boardReducer(baseBoard, { type: "pageStyle", keys: [key], patch }));
+const styledPlanFor = (key, patch) => build(withLegacyStyle(baseBoard, [key], patch));
 const styledTileFor = (key, patch) => {
   const plan = styledPlanFor(key, patch);
   const tile = plan.find((slide) => slide.key === key);
@@ -123,7 +124,10 @@ assert.equal(firstA01.key, `t-A01:${firstA01.view.hasFace ? firstA01.body.face :
 }
 
 const anchorKey = firstA01.key;
-const withExtra = (id, after, tileId = "t-A02") => boardReducer(baseBoard, { type: "addPage", id, after, tileId, face: "front" });
+const withExtra = (id, after, tileId = "t-A02") => withLegacyReport(baseBoard, {
+  ...baseBoard.report,
+  extra: [{ id, after, tileId, face: "front" }],
+});
 const extraIndex = (plan, id) => plan.findIndex((slide) => slide.key === `extra:${id}`);
 
 // after가 일반 타일 키·null·소멸한 키인 세 경우와 같은 after의 배열 순서.
@@ -146,7 +150,13 @@ const extraIndex = (plan, id) => plan.findIndex((slide) => slide.key === `extra:
   assert.ok(staleAt >= 0 && staleAt < sourceAt, "없어진 after 키의 extra는 출처 앞");
   assertPlanContract(stalePlan, stale, "소멸한 after 키 extra");
 
-  const sameAfter = boardReducer(withExtra("same-after-1", anchorKey), { type: "addPage", id: "same-after-2", after: anchorKey, tileId: "t-A02", face: "back" });
+  const sameAfter = withLegacyReport(withExtra("same-after-1", anchorKey), {
+    ...withExtra("same-after-1", anchorKey).report,
+    extra: [
+      { id: "same-after-1", after: anchorKey, tileId: "t-A02", face: "front" },
+      { id: "same-after-2", after: anchorKey, tileId: "t-A02", face: "back" },
+    ],
+  });
   const sameAfterPlan = build(sameAfter);
   const sameAfterKeys = sameAfterPlan.slice(extraIndex(sameAfterPlan, "same-after-1"), extraIndex(sameAfterPlan, "same-after-2") + 1).map((slide) => slide.key);
   assert.deepEqual(sameAfterKeys, ["extra:same-after-1", "extra:same-after-2"], "같은 after의 extra 배열 순서 보존");
@@ -156,7 +166,7 @@ const extraIndex = (plan, id) => plan.findIndex((slide) => slide.key === `extra:
 // included=false 타일이어도 사용자가 명시한 extra 페이지는 소비한다.
 {
   let board = withExtra("explicit-off", null, "t-A01");
-  board = boardReducer(board, { type: "include", id: "t-A01", value: false });
+  board = withLegacyTileState(board, "t-A01", { included: false });
   const plan = build(board);
   assert.ok(plan.some((slide) => slide.key === "extra:explicit-off"), "꺼진 타일의 명시 extra도 렌더 계획에 포함");
   assert.equal(plan.some((slide) => slide.kind === "tile" && slide.view.tileId === "t-A01" && slide.key !== "extra:explicit-off"), false, "꺼진 타일의 기본 장은 제외");
@@ -302,11 +312,7 @@ const extraIndex = (plan, id) => plan.findIndex((slide) => slide.key === `extra:
   const a01 = basePlan.find((slide) => slide.kind === "tile" && slide.view.tileId === "t-A01");
   const focus = legendItemsOf(a01.map)[0];
   const pinned = ["rail_line|fixture", "bus_stop|fixture"];
-  const board = boardReducer(baseBoard, {
-    type: "pageStyle",
-    keys: [a01.key],
-    patch: { pinnedKeys: pinned, legendFocus: focus.key, zoomDelta: 1, offsetM: [80, -20], summary: false, titleScale: 1.4, summaryScale: 1.4, legendScale: 1.4 },
-  });
+  const board = withLegacyStyle(baseBoard, [a01.key], { pinnedKeys: pinned, legendFocus: focus.key, zoomDelta: 1, offsetM: [80, -20], summary: false, titleScale: 1.4, summaryScale: 1.4, legendScale: 1.4 });
   const plan = build(board);
   const tile = plan.find((slide) => slide.kind === "tile" && slide.view.tileId === "t-A01");
   assert.deepEqual(tile.pinnedKeys, pinned, "페이지 style pinnedKeys override");

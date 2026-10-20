@@ -17,9 +17,10 @@ assert.match(tileCardSource, /floatingMenuPosition\(/, "⋯ 메뉴는 순수 vie
 assert.match(tileCardSource, /document\.addEventListener\("scroll", update, true\)/, "⋯ 메뉴는 스크롤 뒤 위치를 갱신");
 assert.match(tileCardSource, /window\.addEventListener\("resize", update\)/, "⋯ 메뉴는 리사이즈 뒤 위치를 갱신");
 assert.match(calloutSource, /scaleLeft=\{kind === "card"\}/, "A05/A06 카드 축척은 우측 하단 줌 버튼과 겹치지 않게 왼쪽 아래");
-for (const label of ["라벨 보기", "보고서에 포함", "펼치기", "복제", "상세 보기"]) {
+for (const label of ["라벨 보기", "펼치기", "복제", "상세 보기"]) {
   assert.match(tileCardSource, new RegExp(label), `⋯ 메뉴 항목 유지: ${label}`);
 }
+assert.doesNotMatch(tileCardSource, /보고서에 포함/, "타일 모드 ⋯ 메뉴에는 옛 보고서 포함 항목이 없다");
 assert.match(tileCardSource, /function DragHandle/, "카드 재정렬 핸들은 공용 컴포넌트");
 assert.equal((tileCardSource.match(/<DragHandle p=\{renderProps\} \/>/g) ?? []).length, 1, "요약·지도면은 카드 공용 핸들 하나를 사용");
 assert.match(tileCardSource, /<div className=\{styles\.mfMenuHead\}>배치<\/div>/, "⋯ 메뉴의 현재 섹션 제목은 배치");

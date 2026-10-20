@@ -2,11 +2,12 @@
 import assert from "node:assert/strict";
 
 const { GODEOK_RESULTS, GODEOK_SUMMARY } = await import("../../lib/v2/ui/fixtures/godeok.ts");
-const { initBoard, boardReducer } = await import("../../lib/v2/ui/board-state.ts");
+const { initBoard } = await import("../../lib/v2/ui/board-state.ts");
 const { toSummaryView, toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 const { buildReportPlan, tileReportSettingsFromBoard, tileSlides } = await import("../../lib/v2/report/report-plan.ts");
 const { EMPTY_REPORT_DOC } = await import("../../lib/v2/report/report-doc.ts");
 const { importLegacyReport, pagesForTile, planReportDoc, printedPageCount, recommendedPages } = await import("../../lib/v2/report/report-doc-plan.ts");
+const { withLegacyStyle } = await import("./legacy-report-fixture.mjs");
 
 const summary = toSummaryView(GODEOK_SUMMARY, GODEOK_RESULTS);
 const board = initBoard(GODEOK_RESULTS);
@@ -17,7 +18,7 @@ const tileContext = { ...context, views };
 const legacy = importLegacyReport(EMPTY_REPORT_DOC, board, views, context);
 const oldPlan = buildReportPlan({ summary, views, board, analysisDate: context.analysisDate });
 assert.deepEqual(legacy.map((page) => page.kind), oldPlan.map((slide) => slide.kind), "옛 구성의 페이지 종류·순서");
-const styledBoard = boardReducer(board, { type: "pageStyle", keys: [oldPlan.find((slide) => slide.kind === "tile")?.key], patch: { offsetM: [80, -20] } });
+const styledBoard = withLegacyStyle(board, [oldPlan.find((slide) => slide.kind === "tile")?.key], { offsetM: [80, -20] });
 const styledPages = importLegacyReport(EMPTY_REPORT_DOC, styledBoard, views, context);
 const styledTile = styledPages.find((page) => page.kind === "tile");
 assert.deepEqual(styledTile?.frame.offsetM, [80, -20], "옛 styles의 offsetM을 페이지 frame으로 이관");

@@ -11,6 +11,7 @@ const { HEAVY_TILES, DATE_INDEPENDENT, listJobs, recoverRunningJobs, runHeavyTil
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");
 const { boardReducer, initBoard } = await import("../../lib/v2/ui/board-state.ts");
+const { withLegacyTileStates } = await import("./legacy-report-fixture.mjs");
 
 const dataDir = mkdtempSync(join(tmpdir(), "v2-jobs-data-"));
 const appDbPath = join(mkdtempSync(join(tmpdir(), "v2-jobs-app-")), "app.sqlite");
@@ -158,8 +159,10 @@ try {
   // 폴링으로 새 결과를 받아도 보드 배치 상태(순서·포함·면)는 유지한다.
   const original = initBoard(GODEOK_RESULTS);
   let edited = boardReducer(original, { type: "move", id: GODEOK_RESULTS[1].tileId, dir: 1 });
-  edited = boardReducer(edited, { type: "include", id: GODEOK_RESULTS[2].tileId, value: false });
-  edited = boardReducer(edited, { type: "face", id: GODEOK_RESULTS[3].tileId, face: "both" });
+  edited = withLegacyTileStates(edited, [
+    [GODEOK_RESULTS[2].tileId, { included: false }],
+    [GODEOK_RESULTS[3].tileId, { face: "both" }],
+  ]);
   const refreshed = GODEOK_RESULTS.map((result) => ({ ...result, status: "running" }));
   const replaced = boardReducer(edited, { type: "replaceResults", results: refreshed });
   assert.deepEqual(replaced.order, edited.order);

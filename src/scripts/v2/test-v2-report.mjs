@@ -12,6 +12,7 @@ const { sheetView } = await import("../../lib/v2/ui/sheet.ts");
 const { buildReportPlan, reportFileName, sourcePageCountForViews } = await import("../../lib/v2/report/report-plan.ts");
 const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
 const { SOURCE_NAMES } = await import("../../lib/v2/ui/tile-catalog.ts");
+const { withLegacyTileState, withLegacyTileStates } = await import("./legacy-report-fixture.mjs");
 
 const { complexCounts } = await import("../../lib/v2/report/report-plan.ts");
 const counts = complexCounts(new Map(GODEOK_RESULTS.map((r) => [r.tileId, toTileView(r)])));
@@ -29,13 +30,12 @@ let board = initBoard(GODEOK_RESULTS);
 const allViews = new Map(GODEOK_RESULTS.map((r) => [r.tileId, toTileView(r)]));
 assert.equal(sourcePageCountForViews([...allViews.values()]), 1, "fixture source rows fit one source slide");
 const boards = [board];
-board = boardReducer(board, { type: "include", id: "t-A01", value: false });
-board = boardReducer(board, { type: "face", id: "t-D04", face: "both" });
+board = withLegacyTileStates(board, [["t-A01", { included: false }], ["t-D04", { face: "both" }]]);
 boards.push(board);
 board = boardReducer(boardReducer(board, { type: "move", id: "t-A09", dir: -1 }), { type: "remove", id: "t-A12" });
 boards.push(board);
-boards.push(boardReducer(boardReducer(initBoard(GODEOK_RESULTS), { type: "include", id: "t-S02", value: true }), { type: "include", id: "t-S03", value: true })); // 상태 슬라이드 포함
-boards.push(boardReducer(initBoard(GODEOK_RESULTS), { type: "face", id: "t-D04", face: "back" }));
+boards.push(withLegacyTileStates(initBoard(GODEOK_RESULTS), [["t-S02", { included: true }], ["t-S03", { included: true }]])); // 상태 슬라이드 포함
+boards.push(withLegacyTileState(initBoard(GODEOK_RESULTS), "t-D04", { face: "back" }));
 for (const b of boards) {
   const plan = build(GODEOK_RESULTS, b);
   assert.equal(plan.length, reportPages(b, counts).pages);
@@ -94,7 +94,7 @@ assert.equal(reportFileName("서울특별시 강동구 고덕동 123 외 2필지
 }
 
 // 실제 렌더: 상태 슬라이드(S02 미제공·S03 실패)와 D04 두 면을 포함한 덱
-const deckBoard = boardReducer(boardReducer(boardReducer(initBoard(GODEOK_RESULTS), { type: "include", id: "t-S02", value: true }), { type: "include", id: "t-S03", value: true }), { type: "face", id: "t-D04", face: "both" });
+const deckBoard = withLegacyTileStates(initBoard(GODEOK_RESULTS), [["t-S02", { included: true }], ["t-S03", { included: true }], ["t-D04", { face: "both" }]]);
 const plan = build(GODEOK_RESULTS, deckBoard);
 const bytes = await renderReportPptx(plan);
 // 기본은 임시 폴더. 추적되는 견본(docs/design/p1c0/report-sample.pptx)은 V2_REPORT_SAMPLE_PATH로 지정할 때만 갱신한다.
@@ -142,7 +142,7 @@ for (const [i, n] of names.entries()) {
 // S02 상태 슬라이드도 고정 문구를 가진다 / S03 복구 결과(정상 슬라이드)도 탐색용
 const s02 = plan.findIndex((p) => p.kind === "tile" && p.view.code === "S02");
 assert.ok(s02 > 0 && plan[s02].body.kind === "state");
-const rec = boardReducer(initBoard([RECOVERED.S03]), { type: "include", id: "t-S03", value: true });
+const rec = withLegacyTileState(initBoard([RECOVERED.S03]), "t-S03", { included: true });
 const recPlan = build([RECOVERED.S03], rec);
 const recText = text(await (await JSZip.loadAsync(await renderReportPptx(recPlan))).file("ppt/slides/slide2.xml").async("string"));
 assert.ok(recText.includes("탐색용") && recText.includes("검증된 CFD 결과로 사용할 수 없습니다"));
@@ -162,8 +162,8 @@ assert.ok(plan.filter((p) => p.kind === "tile" && p.body.kind === "state").every
 // ── 설명선 장: 개요 + 설명표, 편집 가능한 도형(단지별 그룹 callout-<id>), 확인필요, 모드별 장수, 빈 상태 ──
 {
   const a05 = (mode) => {
-    let b = boardReducer(initBoard(GODEOK_RESULTS), { type: "callout", id: "t-A05", mode });
-    for (const id of b.order) if (id !== "t-A05") b = boardReducer(b, { type: "include", id, value: false });
+    let b = withLegacyTileState(initBoard(GODEOK_RESULTS), "t-A05", { callout: mode });
+    b = withLegacyTileStates(b, b.order.filter((id) => id !== "t-A05").map((id) => [id, { included: false }]));
     const p = build(GODEOK_RESULTS, b);
     assert.equal(p.length, reportPages(b, counts).pages, mode);
     return { b, p };

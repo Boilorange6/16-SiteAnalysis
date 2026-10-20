@@ -23,7 +23,7 @@ import MapToolbar from "./map-toolbar";
 import NotesField from "./notes-field";
 import ExportPanel from "./export-panel";
 import styles from "./report-mode.module.css";
-import legacySurfaceStyles from "../report-preview.module.css";
+import legacySurfaceStyles from "../report-surface.module.css";
 import localSurfaceStyles from "./slide-surface.module.css";
 
 type ReportHistory = { past: ReportDoc[]; present: ReportDoc; future: ReportDoc[] };

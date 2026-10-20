@@ -193,18 +193,21 @@
     color: var(--ink);
   }
 }
-/* 1280 px 미만은 본문을 밀지 않고 더 보기 안에서 같은 컨트롤을 재사용한다. */
-@media (min-width: 1280px) {
+/* 1280 px 이하는 본문을 밀지 않고 더 보기 안에서 같은 컨트롤을 재사용한다. */
+@media (min-width: 1281px) {
   .boardRail {
     display: block;
   }
 }
-@media (max-width: 1279px) {
+@media (max-width: 1280px) {
+  .page {
+    padding-left: 24px;
+  }
   .mobileRail {
     display: block;
   }
 }
-@media (max-width: 1279px) {
+@media (max-width: 1280px) {
   .mobileRail .railContent {
     width: auto;
   }
@@ -296,6 +299,7 @@
   flex: 1 1 0;
 }
 .pill {
+  min-height: 44px;
   border: 0;
   border-radius: 999px;
   background: #fff;
@@ -339,10 +343,6 @@
   font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
-}
-.reportHint {
-  font-size: 12px;
-  color: var(--muted);
 }
 .progress {
   flex: 1 1 200px;
@@ -847,13 +847,6 @@
   font-size: 11px;
   line-height: 1.4;
 }
-.exportPendingNote {
-  margin: 4px 2px 0;
-  color: #454a55;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.4;
-}
 .exportError {
   color: #9a3b2f;
   font-size: 12px;
@@ -1188,13 +1181,7 @@
   }
 }
 
-@media (max-width: 1440px) {
-  .reportHint {
-    display: none;
-  }
-}
-
-@media (max-width: 1279px) and (min-width: 901px) {
+@media (max-width: 1280px) and (min-width: 901px) {
   .topbar {
     flex-wrap: nowrap;
   }
@@ -1280,7 +1267,7 @@
 }
 
 /* ── 몰입형 오버레이 문법: 카드·펼침·요약이 같은 자리·같은 판을 쓴다 ──
-   왼쪽 위 제목 칩 · 오른쪽 위 보고서 칩 · 왼쪽 아래 핵심 값 · 맨 아래 출처 띠 · 지도 전면(stage) */
+   왼쪽 위 제목 칩 · 오른쪽 위 보조 칩 · 왼쪽 아래 핵심 값 · 맨 아래 출처 띠 · 지도 전면(stage) */
 .stage {
   position: absolute;
   inset: 0;
@@ -1328,7 +1315,7 @@
 .ovTL {
   top: 12px;
   left: 12px;
-  right: 152px; /* 오른쪽 위 보고서 칩 자리 */
+  right: 152px; /* 오른쪽 위 보조 조작 자리 */
   max-width: none;
   container-type: inline-size;
 }
@@ -1388,22 +1375,6 @@
   background: #e3ecfb;
   border-radius: 999px;
   padding: 1px 7px;
-}
-.reportChip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 34px;
-  padding: 0 8px 0 12px;
-}
-.reportChip .open {
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  font-size: 14px;
-  line-height: 1;
 }
 .valueCard {
   display: flex;
@@ -2063,6 +2034,7 @@ button.badge:focus-visible {
 }
 .open {
   flex: none;
+  min-height: 44px;
   border: 0;
   border-radius: 999px;
   background: var(--black);
@@ -2175,8 +2147,8 @@ button.badge:focus-visible {
   padding: 3px 9px;
   font-size: 11px;
   font-weight: 700;
-  min-width: 24px;
-  min-height: 24px;
+  min-width: 44px;
+  min-height: 44px;
   line-height: 1.2;
   cursor: pointer;
 }
@@ -2646,7 +2618,7 @@ button.badge:focus-visible {
   font-size: 13.5px;
   font-weight: 700;
 }
-.dlgReport {
+.dlgTileActions {
   margin-top: auto;
   display: flex;
   flex-wrap: wrap;
@@ -3119,7 +3091,7 @@ button.badge:focus-visible {
 .sfTop .open {
   padding: 3px 9px;
 }
-/* 접는 순서(카드 안쪽 폭 기준): 종류 배지 → 표현 칩 → ‘보고서’ 글자(체크박스만) → 보고서·펼치기·상세를 ⋯ 메뉴로 */
+/* 좁은 카드에서는 보조 배지를 순서대로 접는다. */
 @container (max-width: 399px) {
   .sfTop .kindTag {
     display: none;
@@ -3465,7 +3437,7 @@ button.badge:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* 제목은 말줄임 금지: 키값 숨김 → 보고서 아이콘만 → 13px → 마지막에 두 줄 */
+/* 제목은 말줄임 금지: 키값을 숨기고 마지막에 두 줄로 접는다. */
 .mfCheckText {
   white-space: nowrap;
 }
@@ -3528,7 +3500,7 @@ button.badge:focus-visible {
   padding: 0 3px 0 6px;
   color: #3a3d44;
 }
-/* 지도 면 머리도 같은 순서로 접는다: 종류 배지 → ‘보고서’ 글자 → 보고서·펼치기를 ⋯ 메뉴로 → 버튼 폭 축소. 제목은 한 줄. */
+/* 지도 면 머리도 좁은 카드에서 보조 요소를 접고 제목은 한 줄로 둔다. */
 .mfTitle {
   white-space: nowrap;
 }
@@ -3544,7 +3516,7 @@ button.badge:focus-visible {
 }
 @container (max-width: 239px) {
   .mfHead .mfBtn {
-    width: 36px;
+    width: 44px;
   }
 }
 /* 아이콘 버튼: 눈에 보이는 원은 32px, 눌리는 자리는 44×44 */

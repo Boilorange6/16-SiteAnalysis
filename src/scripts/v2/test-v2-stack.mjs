@@ -6,6 +6,7 @@ const { toSummaryView, toTileView } = await import("../../lib/v2/ui/tile-view.ts
 const { stackView } = await import("../../lib/v2/ui/stack.ts");
 const { initBoard, boardReducer, reportPages } = await import("../../lib/v2/ui/board-state.ts");
 const { buildReportPlan, complexCounts } = await import("../../lib/v2/report/report-plan.ts");
+const { withLegacyTileStates } = await import("./legacy-report-fixture.mjs");
 const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
 
 const a01 = toTileView(GODEOK_RESULTS.find((result) => result.tileCode === "A01"));
@@ -47,8 +48,7 @@ assert.deepEqual(board.stacks, { "stack:1": ["t-A01", "t-D04"] }, "시뮬레이�
 const views = new Map(GODEOK_RESULTS.map((result) => [result.tileId, toTileView(result)]));
 views.set(stacked.tileId, stacked);
 let reportBoard = afterStack;
-reportBoard = boardReducer(reportBoard, { type: "include", id: "t-A01", value: false });
-reportBoard = boardReducer(reportBoard, { type: "include", id: "t-D04", value: false });
+reportBoard = withLegacyTileStates(reportBoard, [["t-A01", { included: false }], ["t-D04", { included: false }]]);
 const plan = buildReportPlan({ summary: toSummaryView(GODEOK_SUMMARY, GODEOK_RESULTS), views, board: reportBoard, analysisDate: "2026-09-30" });
 const stackSlides = plan.filter((page) => page.kind === "tile" && page.view.code === "STACK");
 assert.equal(stackSlides.length, 1);

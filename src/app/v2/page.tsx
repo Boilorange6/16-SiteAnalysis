@@ -5,25 +5,21 @@ import SummaryCard from "@/components/v2/summary-card";
 import TileCard, { type TileCardAction } from "@/components/v2/tile-card";
 import TileDialog from "@/components/v2/tile-dialog";
 import Presentation from "@/components/v2/presentation";
-import ReportPreview from "@/components/v2/report-preview";
 import ReportMode from "@/components/v2/report/report-mode";
 import { useTileDrag } from "@/components/v2/use-tile-drag";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "@/components/v2/map-box";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import styles from "@/components/v2/board.module.css";
-import { SUMMARY_ID, boardReducer, boardStorageKey, initBoard, nextCopyId, rebaseSnapshotAnalysisId, reportPages, selectBoardSnapshotForLoad, serializeBoardState, sourceTileId, viewOf, type CardFace, type CutSpec, type GridColumns, type PinnedLabel } from "@/lib/v2/ui/board-state";
-import { buildReportPlan, complexCounts, reportFileName, sourcePageCountForViews, type PlannedSlide } from "@/lib/v2/report/report-plan";
+import { SUMMARY_ID, boardReducer, boardStorageKey, initBoard, nextCopyId, rebaseSnapshotAnalysisId, selectBoardSnapshotForLoad, serializeBoardState, sourceTileId, viewOf, type CardFace, type CutSpec, type GridColumns, type PinnedLabel } from "@/lib/v2/ui/board-state";
+import type { PlannedSlide } from "@/lib/v2/report/report-plan";
 import { planReportDoc, printedPageCount } from "@/lib/v2/report/report-doc-plan";
 import { downloadBytes, exportFileName, EXPORT_MIME, DAE_MIME } from "@/lib/v2/export/download";
-import { DEFAULT_CALLOUT_MODE } from "@/lib/v2/ui/callout-layout";
 import { stackView } from "@/lib/v2/ui/stack";
 import { sheetView } from "@/lib/v2/ui/sheet";
 import { exportAvailability, formatElapsedMs, jobProgress } from "@/lib/v2/ui/board-status";
 import { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } from "@/lib/v2/ui/fixtures/godeok";
 import { toSummaryView, toTileView, viewWithLayer, type SiteSummary, type TileView } from "@/lib/v2/ui/tile-view";
 import { siteParcelFromResults } from "@/lib/v2/ui/site-parcel";
-import { sourceIdsForRefs, sourceMetaMap, type SourceApiBody } from "@/lib/v2/ui/source-api";
-import type { SourceMeta } from "@/lib/v2/ui/source-details";
 import { toLngLat } from "@/lib/v2/crs";
 import { jibunFromPnu, type SitePickerParcel } from "@/lib/v2/ui/site-picker";
 import type { TileResult } from "@/lib/v2/tile-result";
@@ -692,17 +688,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
   const sheetableIds = useMemo(() => board.order.filter((id) => views.has(id) && views.get(id)!.code !== "SHEET"), [board.order, views]);
   const summary = useMemo(() => toSummaryView(siteSummary, results), [siteSummary, results]);
   const analysisDate = results[0]?.conditions.analysisDate ?? "기준일 미확인";
-  const reportSummary = useMemo(() => {
-    const reportViews = board.order
-      .filter((id) => board.included[id])
-      .map((id) => views.get(id))
-      .filter((view): view is NonNullable<typeof view> => !!view);
-    return reportPages(board, complexCounts(views), sourcePageCountForViews(reportViews));
-  }, [board, views]);
-  const reportPlan = useMemo(() => buildReportPlan({ summary, views, board, analysisDate }), [analysisDate, board, summary, views]);
   const reportDocPageCount = useMemo(() => printedPageCount(board.reportDoc, views, { summary, analysisDate, views }), [analysisDate, board.reportDoc, summary, views]);
-  const { tiles } = reportSummary;
-  const planPageCount = reportPlan.length;
   const total = board.order.length;
   const notProvidedIds = shown.filter((id) => views.get(id)?.status === "not_provided");
   const visibleShown = shown.filter((id) => views.get(id)?.status !== "not_provided");
@@ -798,60 +784,12 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
   const [makingKind, setMakingKind] = useState<string | null>(null);
   const [exportProblem, setExportProblem] = useState<string | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
-  const [reportPreviewOpen, setReportPreviewOpen] = useState(false);
-  const exportState = exportAvailability({ activeJobs, making, requesting: busy, sceneReady: !!scene });
+  const exportState = exportAvailability({ making, requesting: busy, sceneReady: !!scene });
   const [presentationPlan, setPresentationPlan] = useState<PlannedSlide[] | null>(null);
-  // PPT와 발표가 같은 출처 메타데이터로 같은 계획(같은 장수)을 만든다.
-  const metadataPlan = async (): Promise<PlannedSlide[]> => {
-    const sourceIds = sourceIdsForRefs([...views.values()].flatMap((view) => view.sourceRefs));
-    let sourceMeta = new Map<string, SourceMeta>();
-    if (sourceIds.length > 0) {
-      const query = new URLSearchParams();
-      for (const id of sourceIds) query.append("ids", id);
-      const sourceResponse = await apiFetch(`/site/api/v2/sources?${query.toString()}`);
-      if (sourceResponse.ok) {
-        const body = (await sourceResponse.json()) as Partial<SourceApiBody>;
-        sourceMeta = sourceMetaMap(Array.isArray(body.sources) ? body.sources : []);
-      }
-    }
-    return buildReportPlan({ summary, views, board, analysisDate, sourceMeta });
-  };
-  const openPresentation = async () => {
-    if (demo || actionBusy || !exportState.ppt.enabled) return;
-    setExportOpen(false);
-    setPresentationPlan(await metadataPlan().catch(() => reportPlan));
-  };
 
   const openReportPresentation = () => {
     if (demo || actionBusy || board.reportDoc.pages.length === 0) return;
     setPresentationPlan(planReportDoc(board.reportDoc, views, { summary, analysisDate, views }));
-  };
-
-  const openReportPreview = () => {
-    if (demo || actionBusy || !exportState.ppt.enabled) return;
-    setExportOpen(false);
-    setReportPreviewOpen(true);
-  };
-
-  const makeReport = async () => {
-    setMaking(true);
-    setMakingKind("PPT");
-    setExportProblem(null);
-    try {
-      const exportPlan = boardMode === "report" && board.reportDoc.pages.length > 0
-        ? planReportDoc(board.reportDoc, views, { summary, analysisDate, views })
-        : await metadataPlan();
-      const { renderReportPptx } = await import("@/lib/v2/report/render-pptx");
-      // 지도 그림은 브라우저에서 SVG → PNG로 만든다. 못 만들면 자리표시로 계속한다.
-      const { buildMapImages } = await import("@/lib/v2/report/map-image");
-      const bytes = await renderReportPptx(exportPlan, await buildMapImages(exportPlan, basemap).catch(() => ({})));
-      downloadBytes(reportFileName(siteSummary.address, analysisDate), bytes, EXPORT_MIME.pptx);
-    } catch {
-      setExportProblem("PPT 내보내기에 실패했습니다. 잠시 뒤 다시 시도해 주세요.");
-    } finally {
-      setMaking(false);
-      setMakingKind(null);
-    }
   };
 
   const makeDxf = async (origin: "site" | "utmk" = "site") => {
@@ -922,7 +860,6 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
     const fixed = RECOVERED[code];
     if (!fixed) return;
     setOverrides((o) => ({ ...o, [id]: { ...fixed, tileId: id } }));
-    dispatch({ type: "include", id, value: true });
   }, [demo, onRerun]);
 
   const onTileAction = useCallback((id: string, action: TileCardAction) => {
@@ -943,12 +880,6 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
       case "sources":
         setDialogTab("sources");
         setOpenId(id);
-        break;
-      case "include":
-        dispatch({ type: "include", id, value: action.value });
-        break;
-      case "face":
-        dispatch({ type: "face", id, face: action.face });
         break;
       case "cut":
         dispatch({ type: "cut", id, cut: action.cut });
@@ -1138,31 +1069,24 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
                     ))}
                   </span>
                 </span>
-                <span className={styles.reportHint}>표지 1 + 타일 {tiles}</span>
                 {demo ? (
                   <button type="button" className={`${styles.pill} ${styles.pillDark}`} disabled title="실제 분석 후 사용">
-                    내보내기 ▾
+                    파일 ▾
                   </button>
                 ) : (
                   <details className={styles.exportDetails} open={exportOpen} onToggle={(event) => setExportOpen(event.currentTarget.open)}>
                     <summary
                       className={`${styles.pill} ${styles.pillDark}`}
-                      aria-label="내보내기 형식"
+                      aria-label="파일 형식"
                       aria-expanded={exportOpen}
                       aria-disabled={busy || making}
                       onClick={(e) => {
                         if (busy || making) e.preventDefault();
                       }}
                     >
-                      {making ? `${makingKind ?? "파일"} 만드는 중…` : "내보내기 ▾"}
+                      {making ? `${makingKind ?? "파일"} 만드는 중…` : "파일 ▾"}
                     </summary>
-                    <div className={styles.exportMenu} aria-label="내보내기 형식">
-                      <button type="button" className={styles.pill} onClick={openReportPreview} disabled={!exportState.ppt.enabled} title={exportState.ppt.reason ?? exportState.ppt.pendingNote ?? undefined}>
-                        PPT · {planPageCount}장
-                      </button>
-                      <button type="button" className={styles.pill} onClick={openPresentation} disabled={demo || !exportState.ppt.enabled || actionBusy} title={demo ? "실제 분석 후 사용" : exportState.ppt.reason ?? undefined}>
-                        발표 · {planPageCount}장
-                      </button>
+                    <div className={styles.exportMenu} aria-label="파일 형식">
                       <button type="button" className={styles.pill} onClick={() => void makeDxf("site")} disabled={!exportState.dxf.enabled} title={exportState.dxf.reason ?? "대지 중심 원점"} aria-label={`DXF · 대지 중심${exportState.dxf.reason ? ` — ${exportState.dxf.reason}` : ""}`}>
                         DXF · 대지 중심
                       </button>
@@ -1178,7 +1102,6 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
                       <button type="button" className={styles.pill} onClick={() => void make3dm()} disabled={!exportState["3dm"].enabled} title={exportState["3dm"].reason ?? "3DM 내보내기"} aria-label={`3DM${exportState["3dm"].reason ? ` — ${exportState["3dm"].reason}` : ""}`}>
                         3DM
                       </button>
-                      {exportState.ppt.pendingNote && <p className={styles.exportPendingNote}>{exportState.ppt.pendingNote}</p>}
                       <p className={styles.exportNote}>
                         DXF·GLB: 건물·필지·대지·반경. 래스터(항공사진·인구 격자·시뮬레이션 결과)는 대상 아님<br />
                         3DM: 건물(닫힌 솔리드)·필지·대지·반경·지형 메시
@@ -1224,19 +1147,12 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
                       onClearSelections={clearSelections}
                     />
                   </div>
-                  <span className={styles.reportHint}>표지 1 + 타일 {tiles}</span>
                   {demo ? (
                     <button type="button" className={`${styles.pill} ${styles.pillDark}`} disabled title="실제 분석 후 사용">
-                      내보내기 ▾
+                      파일 ▾
                     </button>
                   ) : (
                     <div className={styles.mobileExportActions}>
-                      <button type="button" className={styles.pill} onClick={openReportPreview} disabled={!exportState.ppt.enabled} title={exportState.ppt.reason ?? exportState.ppt.pendingNote ?? undefined}>
-                        PPT · {planPageCount}장
-                      </button>
-                      <button type="button" className={styles.pill} onClick={openPresentation} disabled={demo || !exportState.ppt.enabled || actionBusy} title={demo ? "실제 분석 후 사용" : exportState.ppt.reason ?? undefined}>
-                        발표 · {planPageCount}장
-                      </button>
                       <button type="button" className={styles.pill} onClick={() => void makeDxf("site")} disabled={!exportState.dxf.enabled} title={exportState.dxf.reason ?? "대지 중심 원점"} aria-label={`DXF · 대지 중심${exportState.dxf.reason ? ` — ${exportState.dxf.reason}` : ""}`}>
                         DXF · 대지 중심
                       </button>
@@ -1252,7 +1168,6 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
                       <button type="button" className={styles.pill} onClick={() => void make3dm()} disabled={!exportState["3dm"].enabled} title={exportState["3dm"].reason ?? "3DM 내보내기"} aria-label={`3DM${exportState["3dm"].reason ? ` — ${exportState["3dm"].reason}` : ""}`}>
                         3DM
                       </button>
-                      {exportState.ppt.pendingNote && <p className={styles.exportPendingNote}>{exportState.ppt.pendingNote}</p>}
                     </div>
                   )}
                 </div>
@@ -1298,8 +1213,6 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
                   phase={jobState.byCode.get(view.code)?.phase ?? null}
                   waitingNote={jobState.byCode.get(view.code)?.note ?? null}
                   topoNudge={view.code === "D17" && showTopoNudge ? { onClick: onTopoNudge, disabled: actionBusy } : undefined}
-                  included={!!board.included[id]}
-                  face={board.faces[id]}
                   canUp={oi > 0}
                   canDown={oi < total - 1}
                   size={size}
@@ -1371,15 +1284,9 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
             setNote(`${openView.title} 표현을 ${openView.layerOptions.find((option) => option.id === layer)?.label ?? layer}(으)로 변경`);
           }}
           initialTab={dialogTab}
-          included={!!board.included[openView.tileId]}
-          face={board.faces[openView.tileId]}
-          onInclude={(value) => dispatch({ type: "include", id: openView.tileId, value })}
-          onFace={(face) => dispatch({ type: "face", id: openView.tileId, face })}
           onRetry={() => retry(openView.tileId, openView.code)}
           cut={board.cuts[openView.tileId] ?? null}
           onCut={(cut) => dispatch({ type: "cut", id: openView.tileId, cut })}
-          calloutMode={board.callout[openView.tileId] ?? DEFAULT_CALLOUT_MODE}
-          onCalloutMode={(mode) => dispatch({ type: "callout", id: openView.tileId, mode })}
           a05Filter={board.a05Filter[openView.tileId] ?? null}
           a05Counts={openView.a05Counts ?? null}
           onA05Filter={(filter) => {
@@ -1429,21 +1336,6 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
             </div>
           </div>
         </div>
-      )}
-      {reportPreviewOpen && (exportState.ppt.enabled || making) && (
-        <ReportPreview
-          board={board}
-          dispatch={dispatch}
-          views={views}
-          plan={reportPlan}
-          basemap={basemap}
-          onClose={() => setReportPreviewOpen(false)}
-          onExport={makeReport}
-          exportEnabled={exportState.ppt.enabled}
-          exporting={making}
-          makingKind={makingKind}
-          exportProblem={exportProblem}
-        />
       )}
       {presentationPlan && <Presentation plan={presentationPlan} onClose={() => setPresentationPlan(null)} />}
     </main>
