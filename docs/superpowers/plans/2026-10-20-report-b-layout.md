@@ -249,7 +249,8 @@ assert.deepEqual(transitionMapInteraction(editingWithSettings, "outside-page"), 
 - Produces:
   - `MapToolbarProps = { scale: number; locked: boolean; editing: boolean; settingsOpen: boolean; lockAttention: boolean; onZoom(delta: number): void; onFit(): void; onToggleLock(): void; onToggleSettings(): void; onDone(): void }`
   - `onToggleMove`는 없앤다.
-- 렌더 조건: `selection?.kind === "map"`일 때만 그린다. 위치는 슬라이드 상자 아래 가장자리에서 위로 14 px, 가운데다.
+- 렌더 조건: `selection?.kind === "map"`일 때만 그린다. 위치는 슬라이드 위가 아니라 `.pageDock`의 왼쪽 묶음이다. 지도를 선택한 동안 레이아웃·메모 버튼 자리를 대신한다(사양 §3, 2026-10-20 Judge 결정). 안내 칩도 이 묶음 안에 둔다.
+- 테스트 추가: report-mode 소스에서 `<MapToolbar`는 `.pageDock` 묶음 안에서만 렌더되고, `data-report-stage` 요소 안에는 없다.
 
 - [ ] **Step 1: 실패하는 테스트를 쓴다**
   - `editing: false` markup: 버튼 aria-label이 `축척 줄이기`, `축척 키우기`, `대지 맞춤`, `지도 위치 고정`, `지도 설정` 순서로 있다. `이동`이나 `지도 이동` 라벨은 없다.
@@ -260,7 +261,7 @@ assert.deepEqual(transitionMapInteraction(editingWithSettings, "outside-page"), 
 - [ ] **Step 3: 구현한다**
   - **설정 카드:** `report-mode.tsx`에 `settingsOpen` state를 둔다. `mapEditing`(= 선택만으로 드로어에 설정 열기)을 `settingsOpen && 지도 선택`으로 바꾼다. 이때 `DrawerMap`은 `.settingsCard` 안에 그린다.
   - **고정 강조:** 고정 상태에서 편집 진입을 시도하면 `lockAttention`을 600 ms 동안 `true`로 둔다.
-  - **안내:** 지도를 처음 선택했고 `!readMapEditHintDismissed(safeLocalStorage())`이면 `두 번 눌러 지도 편집` 칩(`role="status"`, × 버튼 44 px)을 막대 위 12 px에 띄운다.
+  - **안내:** 지도를 처음 선택했고 `!readMapEditHintDismissed(safeLocalStorage())`이면 지도 묶음 안 막대 옆에 `두 번 눌러 지도 편집` 칩(`role="status"`, × 버튼 44 px)을 둔다.
     - 편집을 시작하거나 ×를 누르면 `dismissMapEditHint`를 호출한다.
     - `safeLocalStorage()`는 `try { return window.localStorage } catch { return null }`다.
 - [ ] **Step 4:** `npm run lint && npm run test:v2`를 실행한다. 기대: 전체 PASS
