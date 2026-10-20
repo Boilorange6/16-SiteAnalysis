@@ -11,7 +11,7 @@ import { importLegacyReport, hasLegacyReport, pagesForTile, planReportDoc, recom
 import { pageStripItems } from "@/lib/v2/report/report-page-strip";
 import { reportFileName, tileReportSettingsFromBoard, type PlannedSlide } from "@/lib/v2/report/report-plan";
 import type { ExportPageScope } from "@/lib/v2/report/export-runner";
-import { initialReportRail, insertIndexAfter, moveByKey, reportPageMapSelectable, transitionMapInteraction, type ReportRailKey } from "@/lib/v2/ui/report-mode-logic";
+import { initialReportRail, insertIndexAfter, isTypingTarget, moveByKey, reorderMessage, reportPageMapSelectable, stripNavIndex, transitionMapInteraction, type ReportRailKey } from "@/lib/v2/ui/report-mode-logic";
 import type { BoardAction, BoardState } from "@/lib/v2/ui/board-state";
 import type { SummaryView, TileView } from "@/lib/v2/ui/tile-view";
 import { useFocusTrap } from "../use-focus-trap";
@@ -161,6 +161,17 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const planContext = useMemo(() => ({ summary, analysisDate, views }), [analysisDate, summary, views]);
   const plan = useMemo(() => planReportDoc(history.present, views, planContext), [history.present, planContext, views]);
   const stripItems = useMemo<PageStripItem[]>(() => pageStripItems(history.present.pages, plan), [history.present.pages, plan]);
+  const selectStripItem = useCallback((id: string, slideKey: string) => {
+    setSelectedId(id);
+    setSelectedSlideKey(slideKey);
+    setSelection(null);
+    setMapMoveActive(false);
+  }, []);
+  const navigateStrip = useCallback((index: number) => {
+    const item = stripItems[index];
+    if (!item) return;
+    selectStripItem(item.page.id, item.slide.key);
+  }, [selectStripItem, stripItems]);
   const selectedSlide = useMemo<PlannedSlide | undefined>(() => {
     if (!selectedId) return undefined;
     return plan.find((slide) => slide.page?.id === selectedId && slide.key === selectedSlideKey)
@@ -227,13 +238,22 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
         }
         return;
       }
+      if (event.key === "PageUp" || event.key === "PageDown") {
+        if (isTypingTarget(event.target instanceof HTMLElement ? event.target : null) || mapMoveActive) return;
+        const current = stripItems.findIndex((item) => item.page.id === selectedId && (selectedSlideKey ? item.slide.key === selectedSlideKey : item.continuationIndex === 1));
+        const next = stripNavIndex(stripItems.length, current, event.key);
+        if (next === null) return;
+        event.preventDefault();
+        navigateStrip(next);
+        return;
+      }
       if (!(event.ctrlKey || event.metaKey)) return;
       if (event.key.toLowerCase() === "z" && !event.shiftKey) { event.preventDefault(); undo(); }
       if (event.key.toLowerCase() === "y" || (event.key.toLowerCase() === "z" && event.shiftKey)) { event.preventDefault(); redo(); }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [mapMoveActive, redo, selection, undo]);
+  }, [mapMoveActive, navigateStrip, redo, selectedId, selectedSlideKey, selection, stripItems, undo]);
 
   const addPages = useCallback((pages: ReportPage[], message?: string) => {
     if (pages.length === 0) return;
@@ -292,19 +312,19 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     setMapMoveActive(false);
   }, [board, commitDoc, history.present, planContext, views]);
 
-  const movePage = useCallback((id: string, key: "ArrowLeft" | "ArrowRight" | "Home" | "End") => {
-    const action = moveByKey(history.present, id, key);
-    if (action) apply(action);
-  }, [apply, history.present]);
-
-  const dropMovePage = useCallback((id: string, targetId: string) => {
-    const sourceIndex = history.present.pages.findIndex((page) => page.id === id);
-    const targetIndex = history.present.pages.findIndex((page) => page.id === targetId);
-    if (sourceIndex < 0 || targetIndex < 0) return;
-    const to = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
-    if (to === sourceIndex) return;
-    apply({ type: "move", id, to });
+  const dropMovePage = useCallback((id: string, to: number) => {
+    const from = history.present.pages.findIndex((page) => page.id === id);
+    if (from < 0 || to < 0 || to >= history.present.pages.length || to === from) return;
+    apply({ type: "move", id, to }, reorderMessage(from, to));
   }, [apply, history.present.pages]);
+
+  const reorderPage = useCallback((id: string, key: "ArrowLeft" | "ArrowRight") => {
+    const action = moveByKey(history.present, id, key);
+    if (!action) return;
+    const from = history.present.pages.findIndex((page) => page.id === id);
+    if (from < 0) return;
+    apply(action, reorderMessage(from, action.to));
+  }, [apply, history.present]);
 
   const deletePage = useCallback((id: string) => {
     const index = history.present.pages.findIndex((page) => page.id === id);
@@ -628,7 +648,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
               </aside>
             </div>
           ) : <div className={styles.emptyCanvas}>이 페이지는 아직 미리보기를 준비하고 있습니다.</div>}
-          <PageStrip items={stripItems} selectedId={selectedId} selectedSlideKey={selectedSlideKey} onSelect={(id, slideKey) => { setSelectedId(id); setSelectedSlideKey(slideKey); setSelection(null); setMapMoveActive(false); }} onMove={movePage} onDropMove={dropMovePage} onAddPage={() => { setRail("pages"); setSelection(null); setMapMoveActive(false); addPage("blank"); }} onDuplicate={duplicatePage} onDelete={deletePage} classMap={surfaceClassMap} exportSelectionMode={exportPageScope === "selected"} exportPageIds={exportPageIds} onToggleExportPage={toggleExportPage} />
+          <PageStrip items={stripItems} selectedId={selectedId} selectedSlideKey={selectedSlideKey} onSelect={selectStripItem} onNavigate={navigateStrip} onReorder={reorderPage} onDropMove={dropMovePage} onAddPage={() => { setRail("pages"); setSelection(null); setMapMoveActive(false); addPage("blank"); }} onDuplicate={duplicatePage} onDelete={deletePage} classMap={surfaceClassMap} exportSelectionMode={exportPageScope === "selected"} exportPageIds={exportPageIds} onToggleExportPage={toggleExportPage} />
         </main>
       </div>
       {toast && <div className={styles.toast} role="status">{toast} <button type="button" onClick={undo}>되돌리기</button></div>}

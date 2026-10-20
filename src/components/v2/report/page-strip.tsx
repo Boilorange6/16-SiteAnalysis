@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { pageStripItems, pageStripLabel, type ReportPageStripItem } from "@/lib/v2/report/report-page-strip";
+import { dropMoveIndex, stripKeyIntent, stripNavIndex } from "@/lib/v2/ui/report-mode-logic";
 import { SlideSurface } from "./slide-surface";
 import styles from "./report-mode.module.css";
 
@@ -12,8 +13,9 @@ type PageStripProps = {
   selectedId: string | null;
   selectedSlideKey: string | null;
   onSelect: (id: string, slideKey: string) => void;
-  onMove: (id: string, key: "ArrowLeft" | "ArrowRight" | "Home" | "End") => void;
-  onDropMove: (id: string, targetId: string) => void;
+  onNavigate: (index: number) => void;
+  onReorder: (id: string, key: "ArrowLeft" | "ArrowRight") => void;
+  onDropMove: (sourceId: string, to: number) => void;
   onAddPage: () => void;
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
@@ -25,10 +27,30 @@ type PageStripProps = {
 
 export { pageStripItems };
 
-export default function PageStrip({ items, selectedId, selectedSlideKey, onSelect, onMove, onDropMove, onAddPage, onDuplicate, onDelete, classMap, exportSelectionMode = false, exportPageIds = new Set(), onToggleExportPage }: PageStripProps) {
+type DropAt = { overId: string; side: "before" | "after" };
+
+function dropSide(element: HTMLElement, clientX: number): DropAt["side"] {
+  const rect = element.getBoundingClientRect();
+  return clientX < rect.left + rect.width / 2 ? "before" : "after";
+}
+
+export default function PageStrip({ items, selectedId, selectedSlideKey, onSelect, onNavigate, onReorder, onDropMove, onAddPage, onDuplicate, onDelete, classMap, exportSelectionMode = false, exportPageIds = new Set(), onToggleExportPage }: PageStripProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [dropAt, setDropAt] = useState<DropAt | null>(null);
+  const [draggingKey, setDraggingKey] = useState<string | null>(null);
   const menuButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+  const pageButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const lastPageIndex = items.reduce((last, item) => Math.max(last, item.pageIndex), -1);
+  const pageIds = Array.from(new Set(items.map((item) => item.page.id)));
+  const selectedIndex = items.findIndex((item) => item.page.id === selectedId && (selectedSlideKey ? item.slide.key === selectedSlideKey : item.continuationIndex === 1));
+
+  const onStripDragOver = (event: ReactDragEvent<HTMLOListElement>) => {
+    if (!Array.from(event.dataTransfer.types).includes("text/report-page")) return;
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (event.clientX < rect.left + 48) event.currentTarget.scrollBy({ left: -16 });
+    else if (event.clientX > rect.right - 48) event.currentTarget.scrollBy({ left: 16 });
+  };
 
   useEffect(() => {
     if (!openMenuId) return;
@@ -44,40 +66,76 @@ export default function PageStrip({ items, selectedId, selectedSlideKey, onSelec
   }, [openMenuId]);
 
   return (
-    <ol className={styles.pageStrip} aria-label="보고서 페이지 순서">
+    <ol className={styles.pageStrip} aria-label="보고서 페이지" onDragOver={onStripDragOver} onDragLeave={(event) => {
+      if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) setDropAt(null);
+    }}>
       {items.map((item) => {
         const selected = item.page.id === selectedId && (selectedSlideKey ? item.slide.key === selectedSlideKey : item.continuationIndex === 1);
         const slide = item.slide;
         const groupSelected = item.page.id === selectedId;
         const label = pageStripLabel(item);
         const onKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
-          if (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "Home" || event.key === "End") {
-            event.preventDefault();
-            onMove(item.page.id, event.key);
+          const intent = stripKeyIntent(event);
+          if (!intent) return;
+          event.preventDefault();
+          if (intent.kind === "reorder") {
+            onReorder(item.page.id, intent.key);
+            return;
           }
+          const nextIndex = stripNavIndex(items.length, selectedIndex, intent.key);
+          if (nextIndex === null) return;
+          const nextItem = items[nextIndex];
+          if (!nextItem) return;
+          onNavigate(nextIndex);
+          window.requestAnimationFrame(() => pageButtonRefs.current.get(nextItem.slide.key)?.focus());
         };
         return (
           <li
             className={`${styles.pageStripItem} ${item.continuationIndex > 1 ? styles.pageStripItemContinuation : ""}`}
             key={item.slide.key}
+            data-dragging={draggingKey === item.slide.key ? "true" : undefined}
             draggable
             onDragStart={(event) => {
               event.dataTransfer.effectAllowed = "move";
               event.dataTransfer.setData("text/report-page", item.page.id);
+              setDraggingKey(item.slide.key);
             }}
-            onDragOver={(event) => event.preventDefault()}
+            onDragEnd={() => {
+              setDraggingKey(null);
+              setDropAt(null);
+            }}
+            onDragOver={(event) => {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+              const sourceId = event.dataTransfer.getData("text/report-page");
+              if (sourceId) setDropAt({ overId: item.page.id, side: dropSide(event.currentTarget, event.clientX) });
+            }}
+            onDragLeave={(event) => {
+              if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) setDropAt(null);
+            }}
             onDrop={(event) => {
               event.preventDefault();
+              event.stopPropagation();
               const sourceId = event.dataTransfer.getData("text/report-page");
-              if (sourceId && sourceId !== item.page.id) onDropMove(sourceId, item.page.id);
+              const side = dropAt?.overId === item.page.id ? dropAt.side : dropSide(event.currentTarget, event.clientX);
+              const to = sourceId ? dropMoveIndex(pageIds, sourceId, item.page.id, side) : null;
+              if (sourceId && to !== null) onDropMove(sourceId, to);
+              setDraggingKey(null);
+              setDropAt(null);
             }}
           >
+            {dropAt?.overId === item.page.id && dropAt.side === "before" && <span className={`${styles.pageDropIndicator} ${styles.pageDropIndicatorBefore}`} aria-hidden="true" />}
             <button
               type="button"
               className={`${styles.pageThumb} ${selected ? styles.pageThumbSelected : ""}`}
               aria-current={selected ? "page" : undefined}
               aria-selected={selected}
+              tabIndex={selected ? 0 : -1}
               aria-label={`${item.outputIndex}쪽 ${label}`}
+              ref={(element) => {
+                if (element) pageButtonRefs.current.set(item.slide.key, element);
+                else pageButtonRefs.current.delete(item.slide.key);
+              }}
               onClick={() => { setOpenMenuId(null); onSelect(item.page.id, item.slide.key); }}
               onKeyDown={onKeyDown}
             >
@@ -89,6 +147,7 @@ export default function PageStrip({ items, selectedId, selectedSlideKey, onSelec
                 <span className={styles.pageLabel}>{label}</span>
               </span>
             </button>
+            {dropAt?.overId === item.page.id && dropAt.side === "after" && <span className={`${styles.pageDropIndicator} ${styles.pageDropIndicatorAfter}`} aria-hidden="true" />}
             {exportSelectionMode && <button
               type="button"
               role="checkbox"
@@ -114,8 +173,8 @@ export default function PageStrip({ items, selectedId, selectedSlideKey, onSelec
               >⋯</button>
               {openMenuId === item.page.id && <div id={`page-menu-${item.page.id}`} className={styles.pageMenu} role="menu" aria-label={`${item.outputIndex}쪽 작업`}>
                 <button type="button" role="menuitem" onClick={() => { setOpenMenuId(null); onDuplicate(item.page.id); window.requestAnimationFrame(() => menuButtonRefs.current.get(item.page.id)?.focus()); }}>복제</button>
-                <button type="button" role="menuitem" disabled={item.pageIndex === 0} onClick={() => { setOpenMenuId(null); onMove(item.page.id, "ArrowLeft"); window.requestAnimationFrame(() => menuButtonRefs.current.get(item.page.id)?.focus()); }}>앞으로</button>
-                <button type="button" role="menuitem" disabled={item.pageIndex === lastPageIndex} onClick={() => { setOpenMenuId(null); onMove(item.page.id, "ArrowRight"); window.requestAnimationFrame(() => menuButtonRefs.current.get(item.page.id)?.focus()); }}>뒤로</button>
+                <button type="button" role="menuitem" disabled={item.pageIndex === 0} onClick={() => { setOpenMenuId(null); onReorder(item.page.id, "ArrowLeft"); window.requestAnimationFrame(() => menuButtonRefs.current.get(item.page.id)?.focus()); }}>앞으로</button>
+                <button type="button" role="menuitem" disabled={item.pageIndex === lastPageIndex} onClick={() => { setOpenMenuId(null); onReorder(item.page.id, "ArrowRight"); window.requestAnimationFrame(() => menuButtonRefs.current.get(item.page.id)?.focus()); }}>뒤로</button>
                 <button type="button" role="menuitem" onClick={() => { setOpenMenuId(null); onDelete(item.page.id); }}>삭제</button>
               </div>}
             </div>}
