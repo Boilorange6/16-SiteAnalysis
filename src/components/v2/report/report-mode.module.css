@@ -442,7 +442,9 @@
   }
   .stageColumn { flex: 0 0 auto; }
   .stageFrame {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
     flex: 0 0 auto;
     width: 100%;
     height: auto !important;
@@ -451,10 +453,49 @@
     overflow: visible;
   }
   .stageFrame > [data-slide-surface="true"] {
+    order: 1;
     display: block;
+    flex: 0 0 auto;
     width: 100%;
     height: auto !important;
     max-width: 100%;
+  }
+  /* report-surface.module.css also serves the legacy preview dialog. Its
+     small-screen slot reserves dialog chrome, which must not shrink the
+     report-mode slide before useContainFrameSize measures it. */
+  .stageFrame > [data-slide-surface="true"] [data-preview-slot="true"] {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    aspect-ratio: auto;
+  }
+  .stageFrame > .mapToolbar {
+    position: static;
+    order: 2;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: none;
+    margin-top: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    transform: none;
+  }
+  .stageFrame > .mapToolbar .mapToolbarReason {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+  .stageFrame > .mapHint {
+    position: static;
+    order: 3;
+    width: 100%;
+    max-width: none;
+    margin: 8px 0 0;
+    text-align: center;
+    white-space: normal;
+    transform: none;
   }
   .editorSide { display: none; }
   .notesField { width: 100%; font-size: 14px; }

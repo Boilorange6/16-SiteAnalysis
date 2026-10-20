@@ -4444,7 +4444,8 @@ button.badge:focus-visible {
     max-width: 100%;
   }
   .reportPage > .topbar > .modeTabs .modeTab {
-    min-width: 0;
+    min-width: 44px;
+    min-height: 44px;
     padding-inline: 8px;
   }
   .reportPage > .topbar > .topTitle {
