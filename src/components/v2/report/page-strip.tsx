@@ -34,10 +34,15 @@ function dropSide(element: HTMLElement, clientX: number): DropAt["side"] {
   return clientX < rect.left + rect.width / 2 ? "before" : "after";
 }
 
+function isPageDrag(event: { dataTransfer: DataTransfer }): boolean {
+  return Array.from(event.dataTransfer.types).includes("text/report-page");
+}
+
 export default function PageStrip({ items, selectedId, selectedSlideKey, onSelect, onNavigate, onReorder, onDropMove, onAddPage, onDuplicate, onDelete, classMap, exportSelectionMode = false, exportPageIds = new Set(), onToggleExportPage }: PageStripProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [dropAt, setDropAt] = useState<DropAt | null>(null);
   const [draggingKey, setDraggingKey] = useState<string | null>(null);
+  const draggingPageId = useRef<string | null>(null);
   const menuButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const pageButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const lastPageIndex = items.reduce((last, item) => Math.max(last, item.pageIndex), -1);
@@ -45,7 +50,7 @@ export default function PageStrip({ items, selectedId, selectedSlideKey, onSelec
   const selectedIndex = items.findIndex((item) => item.page.id === selectedId && (selectedSlideKey ? item.slide.key === selectedSlideKey : item.continuationIndex === 1));
 
   const onStripDragOver = (event: ReactDragEvent<HTMLOListElement>) => {
-    if (!Array.from(event.dataTransfer.types).includes("text/report-page")) return;
+    if (!isPageDrag(event)) return;
     event.preventDefault();
     const rect = event.currentTarget.getBoundingClientRect();
     if (event.clientX < rect.left + 48) event.currentTarget.scrollBy({ left: -16 });
@@ -67,6 +72,7 @@ export default function PageStrip({ items, selectedId, selectedSlideKey, onSelec
 
   return (
     <ol className={styles.pageStrip} aria-label="보고서 페이지" onDragOver={onStripDragOver} onDragLeave={(event) => {
+      if (!isPageDrag(event)) return;
       if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) setDropAt(null);
     }}>
       {items.map((item) => {
@@ -80,6 +86,7 @@ export default function PageStrip({ items, selectedId, selectedSlideKey, onSelec
           event.preventDefault();
           if (intent.kind === "reorder") {
             onReorder(item.page.id, intent.key);
+            window.requestAnimationFrame(() => pageButtonRefs.current.get(item.slide.key)?.focus());
             return;
           }
           const nextIndex = stripNavIndex(items.length, selectedIndex, intent.key);
@@ -96,30 +103,40 @@ export default function PageStrip({ items, selectedId, selectedSlideKey, onSelec
             data-dragging={draggingKey === item.slide.key ? "true" : undefined}
             draggable
             onDragStart={(event) => {
+              draggingPageId.current = item.page.id;
               event.dataTransfer.effectAllowed = "move";
               event.dataTransfer.setData("text/report-page", item.page.id);
               setDraggingKey(item.slide.key);
             }}
             onDragEnd={() => {
+              draggingPageId.current = null;
               setDraggingKey(null);
               setDropAt(null);
             }}
             onDragOver={(event) => {
+              if (!isPageDrag(event)) return;
               event.preventDefault();
               event.dataTransfer.dropEffect = "move";
-              const sourceId = event.dataTransfer.getData("text/report-page");
-              if (sourceId) setDropAt({ overId: item.page.id, side: dropSide(event.currentTarget, event.clientX) });
+              const sourceId = draggingPageId.current;
+              if (!sourceId || sourceId === item.page.id) {
+                setDropAt(null);
+                return;
+              }
+              setDropAt({ overId: item.page.id, side: dropSide(event.currentTarget, event.clientX) });
             }}
             onDragLeave={(event) => {
+              if (!isPageDrag(event)) return;
               if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) setDropAt(null);
             }}
             onDrop={(event) => {
+              if (!isPageDrag(event)) return;
               event.preventDefault();
               event.stopPropagation();
-              const sourceId = event.dataTransfer.getData("text/report-page");
+              const sourceId = draggingPageId.current;
               const side = dropAt?.overId === item.page.id ? dropAt.side : dropSide(event.currentTarget, event.clientX);
               const to = sourceId ? dropMoveIndex(pageIds, sourceId, item.page.id, side) : null;
               if (sourceId && to !== null) onDropMove(sourceId, to);
+              draggingPageId.current = null;
               setDraggingKey(null);
               setDropAt(null);
             }}

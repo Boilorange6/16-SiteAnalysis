@@ -52,6 +52,18 @@ assert.match(markup, /<ol\b[^>]*aria-label="보고서 페이지"/, "페이지 �
 
 const pageStripSource = readFileSync(new URL("../../components/v2/report/page-strip.tsx", import.meta.url), "utf8");
 assert.doesNotMatch(pageStripSource, /onMove\(/, "페이지 줄은 onMove 계약을 사용하지 않는다");
+const itemDragOverSource = pageStripSource.match(/onDragOver=\{\(event\) => \{([\s\S]*?)\n\s*\}\}/)?.[1] ?? "";
+assert.match(pageStripSource, /Array\.from\(event\.dataTransfer\.types\)/, "페이지 끌기는 DataTransfer types로 판정한다");
+assert.match(itemDragOverSource, /isPageDrag\(event\)/, "항목 dragover는 페이지 끌기만 처리한다");
+assert.doesNotMatch(itemDragOverSource, /getData\(/, "항목 dragover는 보호 모드의 getData를 읽지 않는다");
+assert.match(itemDragOverSource, /draggingPageId\.current/, "항목 dragover는 dragstart에서 기억한 page id를 쓴다");
+assert.match(itemDragOverSource, /item\.page\.id/, "항목 dragover는 같은 page id 위의 표시를 막는다");
+assert.match(pageStripSource, /if \(!isPageDrag\(event\)\) return;\s*event\.preventDefault\(\);\s*event\.stopPropagation\(\);/, "페이지 드롭일 때만 전파를 막는다");
+const reorderKeySource = pageStripSource.match(/if \(intent\.kind === "reorder"\) \{([\s\S]*?)\n\s*\}/)?.[1] ?? "";
+assert.match(reorderKeySource, /requestAnimationFrame[\s\S]*pageButtonRefs\.current\.get\(item\.slide\.key\)\?\.focus/, "키보드 재배치 뒤 같은 썸네일에 포커스를 복구한다");
+const reportModeSource = readFileSync(new URL("../../components/v2/report/report-mode.tsx", import.meta.url), "utf8");
+const pageNavigationSource = reportModeSource.slice(reportModeSource.indexOf('if (event.key === "PageUp"'), reportModeSource.indexOf("if (!(event.ctrlKey"));
+assert.match(pageNavigationSource, /event\.altKey \|\| event\.ctrlKey \|\| event\.metaKey \|\| event\.shiftKey/, "수정자가 있는 PageUp/PageDown은 가로채지 않는다");
 const reportModeCss = readFileSync(new URL("../../components/v2/report/report-mode.module.css", import.meta.url), "utf8");
 assert.match(reportModeCss, /\.pageDropIndicator[\s\S]*?width:\s*3px[\s\S]*?background:\s*#2f6fdb/, "드롭 위치 표시 막대");
 

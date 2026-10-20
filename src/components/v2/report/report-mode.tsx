@@ -239,6 +239,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
         return;
       }
       if (event.key === "PageUp" || event.key === "PageDown") {
+        if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
         if (isTypingTarget(event.target instanceof HTMLElement ? event.target : null) || mapMoveActive) return;
         const current = stripItems.findIndex((item) => item.page.id === selectedId && (selectedSlideKey ? item.slide.key === selectedSlideKey : item.continuationIndex === 1));
         const next = stripNavIndex(stripItems.length, current, event.key);
