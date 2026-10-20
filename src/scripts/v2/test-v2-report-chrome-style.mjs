@@ -72,5 +72,6 @@ assert.equal(initialReportRail(true), null, "페이지가 있는 보고서의 �
 assert.equal(initialReportRail(false), "pages", "페이지가 없는 보고서는 페이지 서랍으로 시작한다");
 assert.equal(isTypingTarget({ tagName: "TEXTAREA" }), true, "메모 textarea는 페이지 키보드 탐색 대상이 아니다");
 assert.equal(isTypingTarget({ tagName: "BUTTON" }), false, "버튼은 페이지 키보드 탐색 대상이다");
+assert.match(styles, /\.settingsCard \{ position: fixed;[^}]*padding: max\(8px, env\(safe-area-inset-top\)\) 12px/, "390 설정 시트는 서랍 시트와 같은 좌우 여백을 둔다");
 
 console.log("v2 report chrome style tests passed");

@@ -407,7 +407,7 @@
   }
   .drawerCard[data-mobile-sheet="open"] { display: block; }
   .drawerCard[data-mobile-sheet="closed"] { display: none; }
-  .settingsCard { position: fixed; top: auto; right: 0; bottom: 0; left: 0; z-index: 120; width: 100%; max-height: calc(100dvh - 16px); border-radius: 12px 12px 0 0; }
+  .settingsCard { position: fixed; top: auto; right: 0; bottom: 0; left: 0; z-index: 120; width: 100%; max-height: calc(100dvh - 16px); padding: max(8px, env(safe-area-inset-top)) 12px max(8px, env(safe-area-inset-bottom)); border-radius: 12px 12px 0 0; }
   .sheetClose {
     position: sticky;
     top: 0;
