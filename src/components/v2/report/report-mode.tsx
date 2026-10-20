@@ -320,7 +320,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
       }
       if (event.key === "PageUp" || event.key === "PageDown") {
         if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-        if (isTypingTarget(event.target instanceof HTMLElement ? event.target : null) || mapMoveActive) return;
+        const keyTarget = document.activeElement instanceof HTMLElement ? document.activeElement : event.target instanceof HTMLElement ? event.target : null;
+        if (keyTarget?.closest("#report-drawer, [role=\"dialog\"], [role=\"menu\"]") || isTypingTarget(keyTarget) || mapMoveActive) return;
         const current = stripItems.findIndex((item) => item.page.id === selectedId && (selectedSlideKey ? item.slide.key === selectedSlideKey : item.continuationIndex === 1));
         const next = stripNavIndex(stripItems.length, current, event.key);
         if (next === null) return;

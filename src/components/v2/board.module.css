@@ -4558,3 +4558,9 @@ button.badge:focus-visible {
     display: none;
   }
 }
+
+@media (min-width: 640px) and (max-width: 1024px) {
+  .page.reportPage > .topbar > .demoTag {
+    display: none;
+  }
+}

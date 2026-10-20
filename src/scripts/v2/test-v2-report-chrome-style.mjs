@@ -48,7 +48,9 @@ assert.doesNotMatch(source, /styles\.(reportRail|drawerColumn|editorSide|reportW
 assert.match(source, /data-drawer-open=/, "무대에 서랍 열림 상태가 있다");
 assert.match(source, /data-settings-open=\{settingsOpen \? "true" : "false"\}/, "설정 카드 상태를 settingsOpen에 연결한다");
 assert.match(source, /aria-expanded=\{rail === "pages" && drawerOpen\}/, "도구 막대 버튼은 서랍 펼침 상태를 알린다");
-assert.match(source, /aria-haspopup=["']menu["']/, "레이아웃 메뉴 트리거가 menu임을 알린다");
+assert.match(source, /aria-haspopup=["']dialog["'][^>]*aria-expanded=\{layoutPopoverOpen\}/, "레이아웃 팝오버 트리거가 dialog임을 알린다");
+assert.match(source, /id="report-layout-menu"[\s\S]*role="dialog"/, "레이아웃 팝오버가 dialog 의미를 알린다");
+assert.match(source, /document\.activeElement[\s\S]*#report-drawer, \[role=\\"dialog\\"\]/, "페이지 키 탐색은 포커스된 서랍·대화상자를 건너뛴다");
 assert.match(source, /data-has-notes/, "메모가 있는 페이지의 점 표시 계약");
 assert.match(source, /<LayoutSwitcher[\s\S]*compact/, "페이지 줄 레이아웃 메뉴는 compact다");
 assert.match(source, /<NotesField[\s\S]*compact/, "페이지 줄 메모 popover는 compact다");
