@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 
 const source = readFileSync(new URL("../../components/v2/report/report-mode.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../../components/v2/report/report-mode.module.css", import.meta.url), "utf8");
+const boardStyles = readFileSync(new URL("../../components/v2/board.module.css", import.meta.url), "utf8");
 const logic = readFileSync(new URL("../../lib/v2/ui/report-mode-logic.ts", import.meta.url), "utf8");
 const notes = readFileSync(new URL("../../components/v2/report/notes-field.tsx", import.meta.url), "utf8");
 const layout = readFileSync(new URL("../../components/v2/report/layout-switcher.tsx", import.meta.url), "utf8");
@@ -26,7 +27,14 @@ assert.match(styles, /\.reportStage\s*\{[\s\S]*--stage-left:\s*88px[\s\S]*--stag
 assert.match(styles, /\.reportStage\[data-drawer-open="true"\]\s*\{[^}]*--stage-left:\s*418px;/, "서랍 열림 무대 여백");
 assert.match(styles, /\.reportStage\[data-settings-open="true"\]\s*\{[^}]*--stage-right:\s*328px;/, "설정 열림 무대 여백");
 assert.match(styles, /\.stageFit\s*\{[\s\S]*inset:\s*16px\s+var\(--stage-right\)\s+var\(--stage-bottom\)\s+var\(--stage-left\);/, "stageFit은 카드 여백 안쪽에 맞춘다");
-assert.match(styles, /@media\s*\(min-width:\s*640px\)\s*and\s*\(max-width:\s*1360px\)[\s\S]*\.saveState[\s\S]*font-size:\s*0;[\s\S]*\.secondaryButton[\s\S]*::after[\s\S]*content:\s*"발표";/, "좁은 desktop topbar는 저장 점과 발표 축약을 쓴다");
+assert.match(styles, /@media\s*\(min-width:\s*640px\)\s*and\s*\(max-width:\s*1024px\)[\s\S]*\.secondaryButton[\s\S]*::after[\s\S]*content:\s*"▶";[\s\S]*\.headerFormat select[\s\S]*max-width:\s*88px;/, "1024px report topbar는 발표 아이콘과 좁은 판형 select를 쓴다");
+assert.match(boardStyles, /@media\s*\(min-width:\s*640px\)\s*and\s*\(max-width:\s*1024px\)[\s\S]*\.reportPage > \.topbar[\s\S]*flex-wrap:\s*nowrap;/, "1024px report topbar는 한 줄을 유지한다");
+assert.match(boardStyles, /\.reportPage > \.topbar > \.topTitle\s*\{[^}]*display:\s*none;/, "좁은 report topbar는 주소 제목을 숨긴다");
+assert.match(boardStyles, /\.reportPage > \.topbar > \.topoHeaderButton\s*\{[^}]*width:\s*44px[^}]*min-width:\s*44px[^}]*padding:\s*0;/, "좁은 report topbar는 수치지형도 버튼을 44px 아이콘으로 줄인다");
+assert.match(boardStyles, /\.reportPage > \.topbar > \.topoHeaderButton::before\s*\{[^}]*content:\s*"\+";/, "좁은 report topbar 수치지형도 아이콘");
+assert.match(boardStyles, /@media\s*\(min-width:\s*640px\)\s*and\s*\(max-width:\s*900px\)/, "900px report topbar 보조 상태 미디어쿼리");
+assert.match(boardStyles, /\.page\.reportPage > \.topbar > \.pill\[href="\/site\/v2\/guide"\],/, "900px report topbar는 가이드 링크를 접는다");
+assert.match(boardStyles, /\.page\.reportPage > \.topbar > \.demoTag\s*\{[^}]*display:\s*none;/, "900px report topbar는 데모 상태를 숨긴다");
 assert.match(source, /useState<RailKey \| null>\(\(\) => initialReportRail\(board\.reportDoc\.pages\.length > 0\)\)/, "페이지가 있으면 rail을 닫고 빈 보고서에서만 연다");
 assert.match(logic, /export function initialReportRail\(hasPages: boolean\)/, "초기 rail 계약은 페이지 존재 여부를 받는다");
 assert.match(mobileRules, /\.toolPill\s*\{[\s\S]*position:\s*static;[\s\S]*order:\s*1;/, "모바일 도구 막대는 무대 위 가로줄이다");

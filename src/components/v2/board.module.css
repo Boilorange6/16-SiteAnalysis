@@ -4518,3 +4518,43 @@ button.badge:focus-visible {
     min-width: 80px;
   }
 }
+
+@media (min-width: 640px) and (max-width: 1024px) {
+  .page.reportPage > .topbar {
+    flex-wrap: nowrap;
+    height: 52px;
+    min-height: 52px;
+    gap: 8px;
+  }
+  .page.reportPage > .topbar > .topTitle {
+    display: none;
+  }
+  .page.reportPage > .topbar > .projectControls {
+    gap: 4px;
+  }
+  .page.reportPage > .topbar > .projectControls > .pill,
+  .page.reportPage > .topbar > .projectControls .saveSplit .pill {
+    padding-inline: 8px;
+  }
+  .page.reportPage > .topbar > .topoHeaderButton {
+    display: inline-grid;
+    place-items: center;
+    width: 44px;
+    min-width: 44px;
+    padding: 0;
+    overflow: hidden;
+    font-size: 0;
+  }
+  .page.reportPage > .topbar > .topoHeaderButton::before {
+    content: "+";
+    font-size: 20px;
+    line-height: 1;
+  }
+}
+
+@media (min-width: 640px) and (max-width: 900px) {
+  .page.reportPage > .topbar > .pill[href="/site/v2/guide"],
+  .page.reportPage > .topbar > .demoTag {
+    display: none;
+  }
+}
