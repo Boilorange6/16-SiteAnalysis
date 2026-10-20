@@ -7,6 +7,7 @@ const { toSummaryView, toTileView } = await import("../../lib/v2/ui/tile-view.ts
 const { buildReportPlan, REPORT_SOURCE_ROWS_PER_SLIDE, tileReportSettingsFromBoard, tileSlides } = await import("../../lib/v2/report/report-plan.ts");
 const { EMPTY_REPORT_DOC } = await import("../../lib/v2/report/report-doc.ts");
 const { importLegacyReport, pagesForTile, planReportDoc, printedPageCount, recommendedPages } = await import("../../lib/v2/report/report-doc-plan.ts");
+const { pageStripItems, pageStripLabel } = await import("../../lib/v2/report/report-page-strip.ts");
 const { withLegacyStyle } = await import("./legacy-report-fixture.mjs");
 
 const summary = toSummaryView(GODEOK_SUMMARY, GODEOK_RESULTS);
@@ -47,6 +48,21 @@ assert.ok(sourceRowCounts.every((count) => count > 0 && count <= REPORT_SOURCE_R
 assert.ok(sourceRowCounts.slice(0, -1).every((count) => count === REPORT_SOURCE_ROWS_PER_SLIDE), "마지막 전 출처 장은 REPORT_SOURCE_ROWS_PER_SLIDE만큼 채운다");
 assert.equal(new Set(manySourceSlides.map((slide) => slide.key)).size, manySourceSlides.length, "확장된 출처 장의 key는 서로 다르다");
 assert.equal(new Set(manyPlan.map((slide) => slide.key)).size, manyPlan.length, "전체 계획의 key도 서로 다르다");
+const manyStripItems = pageStripItems(manySourcePages, manyPlan);
+assert.equal(manyStripItems.length, manyPlan.length, "페이지 줄은 확장된 출력 계획의 모든 장을 표시한다");
+assert.deepEqual(
+  manyStripItems.filter((item) => item.page.kind === "sources").map((item) => pageStripLabel(item)),
+  ["출처·기준일 1/3", "출처·기준일 2/3", "출처·기준일 3/3"],
+  "출처 continuation label",
+);
+assert.ok(manyStripItems.every((item) => manySourcePages.some((page) => page.id === item.page.id)), "모든 strip 항목은 doc page에 매핑된다");
+
+const noExpansionDoc = { v: 1, format: "wide", pages: a05Pages };
+const noExpansionPlan = planReportDoc(noExpansionDoc, views, context);
+const noExpansionStripItems = pageStripItems(a05Pages, noExpansionPlan);
+assert.equal(noExpansionStripItems.length, a05Pages.length, "확장 없는 페이지 줄은 기존 장 수를 유지한다");
+assert.deepEqual(noExpansionStripItems.map((item) => item.page.id), a05Pages.map((page) => page.id), "확장 없는 페이지 순서·매핑 유지");
+assert.ok(noExpansionStripItems.every((item) => item.continuationCount === 1 && !pageStripLabel(item).includes("/")), "확장 없는 label은 continuation 표식을 붙이지 않는다");
 
 const missingPages = pagesForTile(EMPTY_REPORT_DOC, "t-D17", toTileView({ ...GODEOK_RESULTS[0], tileId: "t-D17", tileCode: "D17" }), { face: "front", callout: "overview" }, tileContext);
 const missingDoc = { v: 1, format: "wide", pages: missingPages };

@@ -147,6 +147,7 @@
 .emptyActions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .pageStrip { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 128px; height: 128px; margin: 0 -22px -16px; padding: 0 22px; overflow-x: auto; overflow-y: hidden; background: #fff; border-top: 1px solid var(--report-line); list-style: none; scrollbar-width: thin; }
 .pageStripItem { position: relative; flex: 0 0 136px; min-width: 136px; }
+.pageStripItemContinuation::before { content: ""; position: absolute; top: 30px; left: -10px; width: 10px; height: 2px; background: #9db7e1; }
 .pageThumb { display: grid; grid-template-rows: 77px auto; gap: 5px; width: 100%; min-height: 100px; padding: 5px; color: var(--report-ink); text-align: left; background: #fff; border: 1px solid var(--report-line); border-radius: 7px; cursor: pointer; }
 .pageThumb:hover { border-color: #91a8cd; }
 .pageThumbSelected { border: 2px solid var(--report-accent); padding: 4px; box-shadow: 0 0 0 2px rgba(47,111,219,.14); }

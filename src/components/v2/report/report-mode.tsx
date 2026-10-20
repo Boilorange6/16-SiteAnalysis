@@ -8,6 +8,7 @@ import { mapFrameScaleOptions, scaleForFrame } from "@/lib/v2/ui/report-scale";
 import { SLIDE_OVERVIEW_FILL } from "@/lib/v2/ui/callout-layout";
 import { slideSiteX } from "@/lib/v2/ui/overlay-layout";
 import { importLegacyReport, hasLegacyReport, pagesForTile, planReportDoc, recommendedPages } from "@/lib/v2/report/report-doc-plan";
+import { pageStripItems } from "@/lib/v2/report/report-page-strip";
 import { reportFileName, tileReportSettingsFromBoard, type PlannedSlide } from "@/lib/v2/report/report-plan";
 import type { ExportPageScope } from "@/lib/v2/report/export-runner";
 import { initialReportRail, insertIndexAfter, moveByKey, reportPageMapSelectable, transitionMapInteraction, type ReportRailKey } from "@/lib/v2/ui/report-mode-logic";
@@ -116,6 +117,7 @@ function pageTitleForToast(page: ReportPage, views: ReadonlyMap<string, TileView
 export default function ReportMode({ board, dispatch, views, summary, analysisDate, basemap, dirty, demo = false, busy = false, onPresentation }: ReportModeProps) {
   const [history, setHistory] = useState<ReportHistory>({ past: [], present: board.reportDoc, future: [] });
   const [selectedId, setSelectedId] = useState<string | null>(board.reportDoc.pages[0]?.id ?? null);
+  const [selectedSlideKey, setSelectedSlideKey] = useState<string | null>(null);
   const [rail, setRail] = useState<RailKey | null>("pages");
   const [compareMode, setCompareMode] = useState(false);
   const [compareGrid, setCompareGrid] = useState<"2x2" | "3x2" | "3x1">("2x2");
@@ -151,20 +153,33 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   useEffect(() => {
     if (selectedId && history.present.pages.some((page) => page.id === selectedId)) return;
     setSelectedId(history.present.pages[0]?.id ?? null);
+    setSelectedSlideKey(null);
     setSelection(null);
     setMapMoveActive(false);
   }, [history.present.pages, selectedId]);
 
   const planContext = useMemo(() => ({ summary, analysisDate, views }), [analysisDate, summary, views]);
   const plan = useMemo(() => planReportDoc(history.present, views, planContext), [history.present, planContext, views]);
-  const stripItems = useMemo<PageStripItem[]>(() => history.present.pages.map((page) => {
-    const matches = plan.filter((slide) => slide.page?.id === page.id);
-    return { page, slide: matches[0], printedCount: matches.length || 1 };
-  }), [history.present.pages, plan]);
+  const stripItems = useMemo<PageStripItem[]>(() => pageStripItems(history.present.pages, plan), [history.present.pages, plan]);
   const selectedSlide = useMemo<PlannedSlide | undefined>(() => {
     if (!selectedId) return undefined;
-    return plan.find((slide) => slide.page?.id === selectedId);
-  }, [plan, selectedId]);
+    return plan.find((slide) => slide.page?.id === selectedId && slide.key === selectedSlideKey)
+      ?? plan.find((slide) => slide.page?.id === selectedId);
+  }, [plan, selectedId, selectedSlideKey]);
+
+  useEffect(() => {
+    const current = selectedId && selectedSlideKey
+      ? plan.find((slide) => slide.page?.id === selectedId && slide.key === selectedSlideKey)
+      : undefined;
+    const fallback = current ?? plan.find((slide) => slide.page?.id === selectedId) ?? plan[0];
+    if (!fallback) {
+      setSelectedId(null);
+      setSelectedSlideKey(null);
+      return;
+    }
+    if (selectedId !== fallback.page?.id) setSelectedId(fallback.page?.id ?? null);
+    if (selectedSlideKey !== fallback.key) setSelectedSlideKey(fallback.key);
+  }, [plan, selectedId, selectedSlideKey]);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -226,6 +241,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     const first = pages[0]!;
     apply({ type: "add", pages, index }, message ?? `${pageTypeLabel(first)} 페이지를 ${index + 1}쪽에 추가했습니다.`);
     setSelectedId(pages[0].id);
+    setSelectedSlideKey(null);
     setSelection(null);
     setMapMoveActive(false);
   }, [apply, history.present, selectedId]);
@@ -261,6 +277,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     const next: ReportDoc = { ...history.present, pages };
     commitDoc(next, "추천 구성으로 시작했습니다.");
     setSelectedId(pages[0]?.id ?? null);
+    setSelectedSlideKey(null);
     setSelection(null);
     setMapMoveActive(false);
   }, [board, commitDoc, history.present, planContext, views]);
@@ -270,6 +287,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     const pages = importLegacyReport(empty, board, views, planContext);
     commitDoc({ ...history.present, pages }, "이전 보고서 구성을 불러왔습니다.");
     setSelectedId(pages[0]?.id ?? null);
+    setSelectedSlideKey(null);
     setSelection(null);
     setMapMoveActive(false);
   }, [board, commitDoc, history.present, planContext, views]);
@@ -279,9 +297,10 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     if (action) apply(action);
   }, [apply, history.present]);
 
-  const dropMovePage = useCallback((id: string, targetIndex: number) => {
+  const dropMovePage = useCallback((id: string, targetId: string) => {
     const sourceIndex = history.present.pages.findIndex((page) => page.id === id);
-    if (sourceIndex < 0) return;
+    const targetIndex = history.present.pages.findIndex((page) => page.id === targetId);
+    if (sourceIndex < 0 || targetIndex < 0) return;
     const to = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
     if (to === sourceIndex) return;
     apply({ type: "move", id, to });
@@ -293,6 +312,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     apply({ type: "remove", id }, `${page ? pageTitleForToast(page, views) : "페이지"} 페이지를 지웠습니다. Ctrl+Z로 되돌릴 수 있습니다.`);
     if (selectedId === id) {
       setSelectedId(history.present.pages[Math.max(0, index - 1)]?.id ?? history.present.pages[index + 1]?.id ?? null);
+      setSelectedSlideKey(null);
       setSelection(null);
       setMapMoveActive(false);
     }
@@ -509,9 +529,10 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   }, []);
   const viewExportPage = useCallback((id: string) => {
     setSelectedId(id);
+    setSelectedSlideKey(plan.find((slide) => slide.page?.id === id)?.key ?? null);
     setSelection(null);
     setMapMoveActive(false);
-  }, []);
+  }, [plan]);
 
   return (
     <section className={styles.reportRoot} data-report-root aria-label="보고서 모드" onPointerDownCapture={(event) => {
@@ -607,7 +628,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
               </aside>
             </div>
           ) : <div className={styles.emptyCanvas}>이 페이지는 아직 미리보기를 준비하고 있습니다.</div>}
-          <PageStrip items={stripItems} selectedId={selectedId} onSelect={(id) => { setSelectedId(id); setSelection(null); setMapMoveActive(false); }} onMove={movePage} onDropMove={dropMovePage} onAddPage={() => { setRail("pages"); setSelection(null); setMapMoveActive(false); addPage("blank"); }} onDuplicate={duplicatePage} onDelete={deletePage} classMap={surfaceClassMap} exportSelectionMode={exportPageScope === "selected"} exportPageIds={exportPageIds} onToggleExportPage={toggleExportPage} />
+          <PageStrip items={stripItems} selectedId={selectedId} selectedSlideKey={selectedSlideKey} onSelect={(id, slideKey) => { setSelectedId(id); setSelectedSlideKey(slideKey); setSelection(null); setMapMoveActive(false); }} onMove={movePage} onDropMove={dropMovePage} onAddPage={() => { setRail("pages"); setSelection(null); setMapMoveActive(false); addPage("blank"); }} onDuplicate={duplicatePage} onDelete={deletePage} classMap={surfaceClassMap} exportSelectionMode={exportPageScope === "selected"} exportPageIds={exportPageIds} onToggleExportPage={toggleExportPage} />
         </main>
       </div>
       {toast && <div className={styles.toast} role="status">{toast} <button type="button" onClick={undo}>되돌리기</button></div>}

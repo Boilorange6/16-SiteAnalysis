@@ -118,6 +118,8 @@ export type MapFigureProps = {
   dragging?: boolean;
   /** PPT 미리보기 전용: DOM 순서가 아닌 화면 거리 기반 hover/click을 사용한다. */
   previewInteraction?: boolean;
+  /** PDF/PNG SVG 캡처에서 고정폭 추정 오차로 짧은 지도 라벨을 줄이지 않는다. */
+  preserveShortCalloutLabels?: boolean;
   /** 자동·고정 라벨을 모두 숨긴 key. */
   hiddenKeys?: readonly string[];
 };
@@ -204,7 +206,15 @@ function polygonDistance(point: ScreenPoint, rings: readonly (readonly ScreenPoi
 
 export type SiteMarkerMode = "parcel" | "ring";
 
-function truncateMapLabelText(value: string, maxWidth: number, fontSize: number): string {
+/**
+ * Raster capture uses the same fixed metric as the editor, but the active SVG
+ * font can be a few pixels wider after capture. Keep short labels intact when
+ * they are only just outside that estimate; longer labels retain the normal
+ * ellipsis policy.
+ */
+export function renderMapCalloutLabelText(value: string, maxWidth: number, fontSize: number, preserveShortLabel = false): string {
+  const shortLabelTolerance = Math.max(3, fontSize * 0.75);
+  if (preserveShortLabel && [...value].length <= 12 && textW(value, fontSize) <= maxWidth + shortLabelTolerance) return value;
   if (textW(value, fontSize) <= maxWidth) return value;
   const ellipsis = "…";
   if (textW(ellipsis, fontSize) >= maxWidth) return ellipsis;
@@ -326,7 +336,7 @@ function backgroundTransform(from: Viewport, to: Viewport, width: number, height
   return `matrix(${scale},0,0,${scale},${e},${f})`;
 }
 
-function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, backgroundOnly = false, fixed, layoutUnit, compact = false, label, legend, legendY, north: northOpt, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = EMPTY_BOXES, siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, calloutTop: calloutTopOpt, calloutLeftBottom, selectedFids = EMPTY_KEYS, terrainSection = "A", highlightLabel = null, legendFocus = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = EMPTY_KEYS, showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeaturePin, onLegendHover, onLegendPin, path = EMPTY_PATH, onMapClick, view, viewport, dragging = false, previewInteraction = false, hiddenKeys = EMPTY_KEYS }: MapFigureProps) {
+function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, backgroundOnly = false, fixed, layoutUnit, compact = false, label, legend, legendY, north: northOpt, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = EMPTY_BOXES, siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, calloutTop: calloutTopOpt, calloutLeftBottom, selectedFids = EMPTY_KEYS, terrainSection = "A", highlightLabel = null, legendFocus = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = EMPTY_KEYS, showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeaturePin, onLegendHover, onLegendPin, path = EMPTY_PATH, onMapClick, view, viewport, dragging = false, previewInteraction = false, preserveShortCalloutLabels = false, hiddenKeys = EMPTY_KEYS }: MapFigureProps) {
   if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
     const target = window as Window & { __V2_PREVIEW_METRICS__?: Record<string, number> };
     const metrics = target.__V2_PREVIEW_METRICS__ ?? (target.__V2_PREVIEW_METRICS__ = {});
@@ -938,7 +948,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
         <circle cx={placement.box.x0 + 4 * u} cy={(placement.box.y0 + placement.box.y1) / 2} r={Math.max(1.8 * u, textFs * 0.2)} fill={INK} />
         <text x={textX} y={textY} fontSize={textFs} fill={INK} style={{ whiteSpace: "nowrap" }}>
           {placement.text.lines.map((line, index) => {
-            const rendered = truncateMapLabelText(line.text, textMaxWidth, textFs);
+            const rendered = renderMapCalloutLabelText(line.text, textMaxWidth, textFs, preserveShortCalloutLabels);
             if (line.kind === "joined" && rendered === line.text) {
               return <tspan key={`${d.key}-line-${index}`} x={textX} dy={index === 0 ? 0 : placement.text.lineHeight}>
                 <tspan fontWeight={700}>{line.title}</tspan><tspan fill="#5c5f66" fontWeight={500}>{` · ${line.detail}`}</tspan>
@@ -967,7 +977,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
         {candidate.kind === "polygon" && <path d={polygonPath(candidate.rings ?? [])} fill="none" stroke={candidate.color} strokeWidth={2.4 * u} strokeLinejoin="round" />}
         <g data-map-hover-tooltip="true">
           <rect x={tooltipX} y={tooltipY} width={tooltipW} height={tooltipH} rx={5 * u} fill="#111827" fillOpacity={0.94} stroke="#fff" strokeOpacity={0.75} strokeWidth={0.8 * u} />
-          <text x={tooltipX + 8 * u} y={tooltipY + tooltipH * 0.67} fontSize={tooltipFs} fill="#fff" fontWeight={600}>{truncateMapLabelText(tooltip, tooltipW - 16 * u, tooltipFs)}</text>
+          <text x={tooltipX + 8 * u} y={tooltipY + tooltipH * 0.67} fontSize={tooltipFs} fill="#fff" fontWeight={600}>{renderMapCalloutLabelText(tooltip, tooltipW - 16 * u, tooltipFs)}</text>
         </g>
       </g>
     );

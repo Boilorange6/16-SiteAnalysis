@@ -25,7 +25,7 @@ const { a05 } = await import("../../lib/v2/tile/a05/engine.ts");
 const { a06 } = await import("../../lib/v2/tile/a06/engine.ts");
 const { calloutScene } = await import("../../lib/v2/ui/callout-scene.ts");
 const { labelBoxesOverlap } = await import("../../lib/v2/ui/map-labels.ts");
-const { default: MapFigure, mapFeatureKey, mapLabelEntries, mapLabelText, mapCalloutTextLayout } = await import("../../components/v2/map-figure.tsx");
+const { default: MapFigure, mapFeatureKey, mapLabelEntries, mapLabelText, mapCalloutTextLayout, renderMapCalloutLabelText } = await import("../../components/v2/map-figure.tsx");
 const { mapTextWidth } = await import("../../lib/v2/ui/map-scene.ts");
 
 const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${b}`);
@@ -380,6 +380,12 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   const longSvg = renderToStaticMarkup(createElement(MapFigure, { model: longModel, width: 300, height: 180, basemap: "none", legend: false, scale: false, north: false, pinnedKeys: [mapLabelEntries(longModel)[0].key], onFeaturePin: () => {} }));
   assert.match(longSvg, /매우긴역이…/, "긴 라벨은 줄바꿈 대신 말줄임");
   assert.match(longSvg, new RegExp(`<title>${longName}</title>`), "말줄임 전 원문은 SVG title로 보존");
+
+  // PDF/PNG export는 활성 SVG 폰트가 고정폭 추정보다 몇 px 넓어도 짧은 라벨을 보존한다.
+  const rasterLabelWidth = mapTextWidth("표고 25m", 11) - 4;
+  assert.equal(renderMapCalloutLabelText("표고 25m", rasterLabelWidth, 11, true), "표고 25m", "래스터 캡처의 짧은 지시선 라벨은 측정 오차로 잘리지 않음");
+  assert.match(renderMapCalloutLabelText("표고 25m", rasterLabelWidth, 11), /…$/u, "편집기 기본 라벨의 기존 말줄임 정책 유지");
+  assert.match(renderMapCalloutLabelText(longName, 100, 11, true), /…$/u, "래스터에서도 긴 라벨은 안전한 말줄임 유지");
 
   // 철도역은 자동 말풍선 후보에서 빠지고, 고정·호버용 철도 텍스트만 남긴다.
   const railAutoExcluded = {
