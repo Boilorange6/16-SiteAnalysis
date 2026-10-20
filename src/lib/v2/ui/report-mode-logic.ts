@@ -2,9 +2,9 @@ import type { ReportDoc, ReportDocAction, ReportPage } from "../report/report-do
 
 export type ReportRailKey = "pages" | "tiles" | "textbox" | "theme" | "layout";
 
-/** 모바일에서는 페이지 서랍을 덮어 열지 않고, 데스크톱의 기본 페이지 서랍은 유지한다. */
-export function initialReportRail(isMobileViewport: boolean): Exclude<ReportRailKey, "layout"> | null {
-  return isMobileViewport ? null : "pages";
+/** 페이지가 있으면 무대를 먼저 보여 주고, 빈 보고서에서만 페이지 서랍을 연다. */
+export function initialReportRail(hasPages: boolean): Exclude<ReportRailKey, "layout"> | null {
+  return hasPages ? null : "pages";
 }
 
 /** 표지 지도는 ReportPage에 frame이 없는 파생 지도이므로 편집 선택 대상이 아니다. */

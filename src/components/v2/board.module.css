@@ -33,6 +33,8 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  padding-left: 0;
+  padding-right: 0;
   padding-bottom: 0;
   overflow: hidden;
 }
@@ -4438,13 +4440,13 @@ button.badge:focus-visible {
 
 @media (max-width: 639px) {
   .reportPage {
-    height: auto;
-    min-height: 100%;
-    padding: 0 0 32px;
-    overflow: visible;
+    height: 100%;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
   }
   .reportPage > [data-report-root] {
-    flex: none;
+    flex: 1 1 auto;
     min-height: 0;
   }
   .reportPage > .topbar {
@@ -4466,16 +4468,48 @@ button.badge:focus-visible {
     min-height: 44px;
     padding-inline: 8px;
   }
-  .reportPage > .topbar > .topTitle {
+  .reportPage > .topbar > .reportActionsSlot {
     order: 3;
+    flex: 0 0 100%;
+    min-width: 0;
+  }
+  .reportPage > .topbar > .topTitle {
+    order: 4;
     flex: 0 0 100%;
     min-width: 0;
     padding: 0;
     border-left: 0;
   }
-  .reportPage > .topbar > .projectControls { order: 4; min-width: 0; }
-  .reportPage > .topbar > .pill { order: 5; }
-  .reportPage > .topbar > .topoHeaderButton { order: 6; }
-  .reportPage > .topbar > .mobileTools { order: 7; }
+  .reportPage > .topbar > .projectControls { order: 5; min-width: 0; }
+  .reportPage > .topbar > .pill { order: 6; }
+  .reportPage > .topbar > .topoHeaderButton { order: 7; }
+  .reportPage > .topbar > .mobileTools { order: 8; }
   .reportPage > .topbar > .spacer { display: none; }
+}
+
+@media (min-width: 640px) {
+  .page.reportPage > .topbar {
+    gap: 8px;
+  }
+  .page.reportPage > .topbar > .spacer {
+    display: none;
+  }
+  .page.reportPage > .topbar > .reportActionsSlot {
+    flex: 0 0 auto;
+    min-width: 0;
+  }
+}
+
+@media (min-width: 1361px) {
+  .page.reportPage > .topbar > .topTitle {
+    flex: 1 1 160px;
+    min-width: 160px;
+  }
+}
+
+@media (min-width: 640px) and (max-width: 1360px) {
+  .page.reportPage > .topbar > .topTitle {
+    flex: 1 1 80px;
+    min-width: 80px;
+  }
 }

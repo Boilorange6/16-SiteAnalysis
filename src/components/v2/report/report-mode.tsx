@@ -119,7 +119,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const [history, setHistory] = useState<ReportHistory>({ past: [], present: board.reportDoc, future: [] });
   const [selectedId, setSelectedId] = useState<string | null>(board.reportDoc.pages[0]?.id ?? null);
   const [selectedSlideKey, setSelectedSlideKey] = useState<string | null>(null);
-  const [rail, setRail] = useState<RailKey | null>("pages");
+  const [rail, setRail] = useState<RailKey | null>(() => initialReportRail(board.reportDoc.pages.length > 0));
   const [compareMode, setCompareMode] = useState(false);
   const [compareGrid, setCompareGrid] = useState<"2x2" | "3x2" | "3x1">("2x2");
   const [compareSelected, setCompareSelected] = useState<string[]>([]);
@@ -151,7 +151,6 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     const media = window.matchMedia("(max-width: 639px)");
     const syncViewport = () => {
       setMobileViewport(media.matches);
-      setRail((current) => media.matches ? initialReportRail(true) : current ?? initialReportRail(false));
     };
     syncViewport();
     media.addEventListener?.("change", syncViewport);
@@ -353,6 +352,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     const pages = recommendedPages(empty, views, board, planContext);
     const next: ReportDoc = { ...history.present, pages };
     commitDoc(next, "추천 구성으로 시작했습니다.");
+    setRail(null);
     setSelectedId(pages[0]?.id ?? null);
     setSelectedSlideKey(null);
     setSelection(null);
@@ -640,7 +640,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
               <option value="a4">{formatLabel("a4")}</option>
             </select>
           </label>
-          <button type="button" className={styles.secondaryButton} onClick={onPresentation} disabled={demo || busy || history.present.pages.length === 0}>발표 미리보기</button>
+          <button type="button" className={styles.secondaryButton} onClick={onPresentation} disabled={demo || busy || history.present.pages.length === 0} aria-label="발표 미리보기">발표 미리보기</button>
           <button ref={exportTriggerRef} type="button" className={styles.primaryDarkButton} onClick={() => setExportOpen(true)} disabled={demo || busy || history.present.pages.length === 0} aria-haspopup="dialog" aria-expanded={exportOpen} aria-controls={exportOpen ? "report-export-panel" : undefined}>내보내기</button>
         </div>,
         reportActionsTarget,

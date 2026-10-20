@@ -51,8 +51,8 @@ const doc = {
 
 assert.equal(insertIndexAfter(doc, null), 3);
 assert.equal(insertIndexAfter(doc, "p2"), 2);
-assert.equal(initialReportRail(true), null, "모바일 보고서 모드는 서랍을 열지 않고 시작한다");
-assert.equal(initialReportRail(false), "pages", "데스크톱 보고서 모드는 페이지 서랍을 유지한다");
+assert.equal(initialReportRail(true), null, "페이지가 있는 보고서 모드는 서랍을 열지 않고 시작한다");
+assert.equal(initialReportRail(false), "pages", "페이지가 없는 보고서 모드는 페이지 서랍으로 시작한다");
 assert.equal(reportPageMapSelectable(doc.pages[0]), false, "표지 파생 지도는 보고서 지도 선택 대상이 아니다");
 assert.equal(reportPageMapSelectable(doc.pages[1]), true, "분석 타일 지도는 보고서 지도 선택 대상이다");
 assert.equal(reportPageMapSelectable(doc.pages[2]), true, "비교 페이지 지도는 보고서 지도 선택 대상이다");

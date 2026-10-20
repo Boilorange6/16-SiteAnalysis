@@ -51,7 +51,30 @@
 .primaryDarkButton:hover { background: #2b2e35; }
 .reportRoot button:disabled, .reportHeaderActions button:disabled { cursor: not-allowed; opacity: .48; }
 
-.reportBody { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+@media (min-width: 640px) and (max-width: 1360px) {
+  .reportHeaderActions .saveState {
+    box-sizing: border-box;
+    width: 12px;
+    min-width: 12px;
+    height: 12px;
+    padding: 0;
+    overflow: hidden;
+    border-radius: 50%;
+    background: var(--report-muted);
+    font-size: 0;
+  }
+  .reportHeaderActions .saveState[data-dirty="true"] { background: #8a4c00; }
+  .reportHeaderActions .secondaryButton {
+    min-width: 44px;
+    padding-inline: 12px;
+    overflow: hidden;
+    font-size: 0;
+  }
+  .reportHeaderActions .secondaryButton::after { content: "발표"; font-size: 13px; }
+  .reportHeaderActions .headerFormat select { max-width: 132px; }
+}
+
+.reportBody { position: relative; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
 .reportStage { --stage-left: 88px; --stage-right: 24px; --stage-bottom: 100px; position: relative; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
 .reportStage[data-drawer-open="true"] { --stage-left: 418px; }
 .reportStage[data-settings-open="true"] { --stage-right: 328px; }
@@ -123,7 +146,7 @@
 .mapScale { flex: 0 0 auto; min-width: 70px; padding: 0 2px; color: #fff; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .mapToolbarReason { flex: 0 1 120px; min-width: 0; padding: 0 5px; color: #f3c98b; font-size: 10px; font-weight: 700; line-height: 1.2; text-align: center; white-space: normal; }
 .mapHint { position: absolute; bottom: 74px; left: 50%; z-index: 20; max-width: calc(100% - 24px); margin: 0; padding: 5px 9px; overflow: hidden; color: var(--report-ink); background: rgba(255,255,255,.92); border: 1px solid #c6cad2; border-radius: 999px; font-size: 11px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; transform: translateX(-50%); }
-.stageFit { position: absolute; inset: 16px var(--stage-right) var(--stage-bottom) var(--stage-left); container-type: size; display: grid; place-items: center; min-width: 0; min-height: 0; padding: 12px; background: #dfe2e8; border: 1px solid #c6cad2; border-radius: 12px; overflow: hidden; }
+.stageFit { position: absolute; inset: 16px var(--stage-right) var(--stage-bottom) var(--stage-left); container-type: size; display: grid; place-items: center; min-width: 0; min-height: 0; overflow: visible; }
 .stageSlide { width: min(100cqw, calc(100cqh * var(--stage-slide-width) / var(--stage-slide-height))); aspect-ratio: var(--stage-slide-width) / var(--stage-slide-height); min-width: 0; min-height: 0; }
 .stageFit[data-slide-format="wide"] .stageSlide { width: min(100cqw, calc(100cqh * 16 / 9)); aspect-ratio: 16 / 9; }
 .stageSlide > [data-slide-surface="true"] { width: 100%; height: 100%; min-width: 0; min-height: 0; }
@@ -313,12 +336,13 @@
 
 @media (max-width: 639px) {
   .reportRoot {
-    display: block;
-    height: auto;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
     min-height: 0;
     max-width: 100%;
     overflow-x: hidden;
-    overflow-y: visible;
+    overflow-y: hidden;
     font-size: 14px;
   }
 
@@ -327,9 +351,9 @@
   .reportHeaderActions .headerFormat { flex: 1 1 140px; }
   .headerFormat select { width: 100%; max-width: none; font-size: 14px; }
 
-  .reportBody { height: calc(100dvh - 112px); min-height: 520px; overflow: hidden; }
-  .reportStage { --stage-left: 16px; --stage-right: 16px; --stage-bottom: 200px; }
-  .toolPill { top: auto; right: 16px; bottom: 136px; left: 16px; display: flex; width: auto; align-items: center; justify-content: space-between; transform: none; }
+  .reportBody { flex: 1 1 auto; height: auto; min-height: 0; overflow: hidden; }
+  .reportStage { --stage-left: 16px; --stage-right: 16px; --stage-bottom: 0; display: flex; flex-direction: column; gap: 8px; padding: 8px 16px; }
+  .toolPill { position: static; order: 1; display: flex; flex: 0 0 auto; width: 100%; align-items: center; justify-content: space-between; margin: 0; transform: none; }
   .toolPill .railButton { flex: 1 1 0; width: auto; min-width: 44px; }
   .railButton { min-height: 44px; padding: 4px 2px; gap: 2px; font-size: 12px; line-height: 1.1; }
   .railButton span:first-child { min-height: 0; font-size: 16px; }
@@ -385,18 +409,24 @@
   .drawer .tileUsed { font-size: 12px; }
 
   .stageFit {
+    position: relative;
+    inset: auto;
+    order: 2;
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    justify-content: flex-start;
+    justify-content: center;
+    flex: 1 1 auto;
+    width: auto;
+    height: auto;
     min-height: 0;
-    padding: 8px;
+    padding: 0;
     overflow: visible;
   }
   .stageSlide {
     order: 1;
     display: block;
-    flex: 0 0 auto;
+    flex: 0 1 auto;
     width: 100%;
     height: auto !important;
     max-width: 100%;
@@ -440,7 +470,7 @@
   }
   .notesField { width: 100%; font-size: 14px; }
   .notesField textarea { min-height: 56px; height: 56px; font-size: 14px; }
-  .pageDock { right: 16px; bottom: 16px; left: 16px; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); width: auto; min-height: 112px; height: 112px; margin: 0; padding: 8px; transform: none; }
+  .pageDock { position: static; order: 3; flex: 0 0 112px; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); width: 100%; min-height: 112px; height: 112px; margin: 0; padding: 8px; transform: none; }
   .dockLead { width: 100%; }
   .dockLead .dockPopoverRoot { flex: 1 1 0; }
   .dockLead .dockButton { width: 100%; }
