@@ -44,9 +44,66 @@ export function toggleLegendFocus(currentKey: string | null, key: string): strin
   return currentKey === key ? null : key;
 }
 
+export type StripKey = "ArrowLeft" | "ArrowRight" | "Home" | "End";
+
+export function stripKeyIntent(e: {
+  key: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+}): { kind: "navigate"; key: StripKey } | { kind: "reorder"; key: "ArrowLeft" | "ArrowRight" } | null {
+  if (e.altKey) return null;
+  const arrowKey = e.key === "ArrowLeft" || e.key === "ArrowRight" ? e.key : null;
+  const isStripKey = arrowKey !== null || e.key === "Home" || e.key === "End";
+  if (!isStripKey) return null;
+  if (e.ctrlKey || e.metaKey || e.shiftKey) {
+    return e.shiftKey && (e.ctrlKey || e.metaKey) && arrowKey !== null
+      ? { kind: "reorder", key: arrowKey }
+      : null;
+  }
+  return { kind: "navigate", key: e.key as StripKey };
+}
+
+export function stripNavIndex(count: number, current: number, key: StripKey | "PageUp" | "PageDown"): number | null {
+  if (count <= 0 || current < 0 || current >= count) return null;
+  const next = key === "Home"
+    ? 0
+    : key === "End"
+      ? count - 1
+      : key === "ArrowLeft" || key === "PageUp"
+        ? current - 1
+        : current + 1;
+  return next === current || next < 0 || next >= count ? null : next;
+}
+
+export function dropMoveIndex(
+  pageIds: readonly string[],
+  sourceId: string,
+  overId: string,
+  side: "before" | "after",
+): number | null {
+  const source = pageIds.indexOf(sourceId);
+  const over = pageIds.indexOf(overId);
+  if (source < 0 || over < 0 || source === over) return null;
+  const insertion = over + (side === "after" ? 1 : 0);
+  const next = source < insertion ? insertion - 1 : insertion;
+  return next === source ? null : next;
+}
+
+export function reorderMessage(from: number, to: number): string {
+  return `${from + 1}쪽을 ${to + 1}쪽 ${to > from ? "뒤로" : "앞으로"} 옮겼습니다`;
+}
+
+export function isTypingTarget(target: { tagName?: string; isContentEditable?: boolean } | null): boolean {
+  const tagName = target?.tagName?.toUpperCase();
+  return tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT" || target?.isContentEditable === true;
+}
+
 export type MapInteractionState = {
   selected: boolean;
   moveActive: boolean;
+  settingsOpen: boolean;
 };
 
 export type MapInteractionEvent =
@@ -55,29 +112,39 @@ export type MapInteractionEvent =
   | "toggle-move"
   | "end-move"
   | "escape"
+  | "open-settings"
+  | "close-settings"
   | "outside-slide"
   | "outside-page";
 
 export function transitionMapInteraction(
   state: MapInteractionState,
   event: MapInteractionEvent,
+  locked = false,
 ): MapInteractionState {
   switch (event) {
     case "select":
-      return { selected: true, moveActive: state.moveActive };
+      return { selected: true, moveActive: state.moveActive, settingsOpen: state.settingsOpen };
     case "enter-move":
-      return { selected: true, moveActive: true };
+      return locked ? state : { selected: true, moveActive: true, settingsOpen: state.settingsOpen };
     case "toggle-move":
-      return { selected: true, moveActive: !state.moveActive };
+      return locked ? state : { selected: true, moveActive: !state.moveActive, settingsOpen: state.settingsOpen };
     case "end-move":
-      return { selected: state.selected, moveActive: false };
+      return { selected: state.selected, moveActive: false, settingsOpen: state.settingsOpen };
     case "escape":
+      if (state.moveActive) return { selected: state.selected, moveActive: false, settingsOpen: state.settingsOpen };
+      if (state.settingsOpen) return { selected: state.selected, moveActive: false, settingsOpen: false };
+      return { selected: false, moveActive: false, settingsOpen: false };
+    case "open-settings":
+      return { selected: true, moveActive: false, settingsOpen: true };
+    case "close-settings":
+      return { selected: state.selected, moveActive: state.moveActive, settingsOpen: false };
     case "outside-slide":
       return state.moveActive
-        ? { selected: state.selected, moveActive: false }
-        : { selected: false, moveActive: false };
+        ? { selected: state.selected, moveActive: false, settingsOpen: state.settingsOpen }
+        : { selected: false, moveActive: false, settingsOpen: false };
     case "outside-page":
-      return { selected: false, moveActive: false };
+      return { selected: false, moveActive: false, settingsOpen: false };
   }
 }
 

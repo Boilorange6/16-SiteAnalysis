@@ -394,7 +394,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     if (document.activeElement instanceof HTMLElement) drawerOpenerRef.current = document.activeElement;
   }, []);
   const handleSurfaceSelect = useCallback((next: SurfaceSelection) => {
-    const current = { selected: selection?.kind === "map", moveActive: mapMoveActive };
+    const current = { selected: selection?.kind === "map", moveActive: mapMoveActive, settingsOpen: false };
     if (next?.kind === "map") {
       const page = history.present.pages.find((candidate) => candidate.id === selectedId);
       if (!reportPageMapSelectable(page)) return;
@@ -485,7 +485,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   }, [handleSurfaceSelect, mapSelection]);
   const toggleMapMove = useCallback(() => {
     if (selection?.kind === "map") {
-      const transitioned = transitionMapInteraction({ selected: true, moveActive: mapMoveActive }, "toggle-move");
+      const transitioned = transitionMapInteraction({ selected: true, moveActive: mapMoveActive, settingsOpen: false }, "toggle-move");
       setMapMoveActive(transitioned.moveActive);
       return;
     }
