@@ -10,9 +10,10 @@ import { slideSiteX } from "@/lib/v2/ui/overlay-layout";
 import { importLegacyReport, hasLegacyReport, pagesForTile, planReportDoc, recommendedPages } from "@/lib/v2/report/report-doc-plan";
 import { reportFileName, tileReportSettingsFromBoard, type PlannedSlide } from "@/lib/v2/report/report-plan";
 import type { ExportPageScope } from "@/lib/v2/report/export-runner";
-import { insertIndexAfter, moveByKey, transitionMapInteraction } from "@/lib/v2/ui/report-mode-logic";
+import { initialReportRail, insertIndexAfter, moveByKey, reportPageMapSelectable, transitionMapInteraction, type ReportRailKey } from "@/lib/v2/ui/report-mode-logic";
 import type { BoardAction, BoardState } from "@/lib/v2/ui/board-state";
 import type { SummaryView, TileView } from "@/lib/v2/ui/tile-view";
+import { useFocusTrap } from "../use-focus-trap";
 import { SlideSurface, type SurfaceSelection } from "./slide-surface";
 import DrawerPages, { type PageAddKind } from "./drawer-pages";
 import DrawerTiles from "./drawer-tiles";
@@ -27,7 +28,7 @@ import legacySurfaceStyles from "../report-surface.module.css";
 import localSurfaceStyles from "./slide-surface.module.css";
 
 type ReportHistory = { past: ReportDoc[]; present: ReportDoc; future: ReportDoc[] };
-type RailKey = "pages" | "tiles" | "textbox" | "theme";
+type RailKey = ReportRailKey;
 const surfaceClassMap = { ...legacySurfaceStyles, ...localSurfaceStyles };
 
 export type ReportModeProps = {
@@ -127,6 +128,20 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const [exportPageIds, setExportPageIds] = useState<Set<string>>(new Set());
   const exportTriggerRef = useRef<HTMLButtonElement>(null);
   const exportDialogRef = useRef<HTMLDivElement>(null);
+  const [mobileViewport, setMobileViewport] = useState(false);
+  const drawerRef = useRef<HTMLElement>(null);
+  const drawerOpenerRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 639px)");
+    const syncViewport = () => {
+      setMobileViewport(media.matches);
+      setRail((current) => media.matches ? initialReportRail(true) : current ?? initialReportRail(false));
+    };
+    syncViewport();
+    media.addEventListener?.("change", syncViewport);
+    return () => media.removeEventListener?.("change", syncViewport);
+  }, []);
 
   useEffect(() => {
     if (history.present === board.reportDoc) return;
@@ -351,9 +366,19 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     if (selectedId) apply({ type: "panels", id: selectedId, panels });
   }, [apply, selectedId]);
 
+  const rememberDrawerOpener = useCallback((opener?: HTMLElement | null) => {
+    if (opener) {
+      drawerOpenerRef.current = opener;
+      return;
+    }
+    if (document.activeElement instanceof HTMLElement) drawerOpenerRef.current = document.activeElement;
+  }, []);
   const handleSurfaceSelect = useCallback((next: SurfaceSelection) => {
     const current = { selected: selection?.kind === "map", moveActive: mapMoveActive };
     if (next?.kind === "map") {
+      const page = history.present.pages.find((candidate) => candidate.id === selectedId);
+      if (!reportPageMapSelectable(page)) return;
+      rememberDrawerOpener();
       const transitioned = transitionMapInteraction(current, "select");
       setSelection(next);
       setMapMoveActive(transitioned.moveActive);
@@ -371,19 +396,21 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     }
     setMapMoveActive(false);
     setSelection(next);
-  }, [mapMoveActive, selection]);
-  const toggleRail = useCallback((next: RailKey) => {
+  }, [history.present.pages, mapMoveActive, rememberDrawerOpener, selectedId, selection]);
+  const toggleRail = useCallback((next: RailKey, opener?: HTMLElement | null) => {
+    rememberDrawerOpener(opener);
     setSelection(null);
     setMapMoveActive(false);
-    setRail(next);
-  }, []);
-  const addTextBoxFromRail = useCallback(() => {
+    setRail((current) => current === next ? null : next);
+  }, [rememberDrawerOpener]);
+  const addTextBoxFromRail = useCallback((opener?: HTMLElement | null) => {
+    rememberDrawerOpener(opener);
     const opening = rail !== "textbox";
     setSelection(null);
     setMapMoveActive(false);
     setRail(opening ? "textbox" : null);
     if (opening) addTextBox();
-  }, [addTextBox, rail]);
+  }, [addTextBox, rail, rememberDrawerOpener]);
   const handleDrop = useCallback((event: DragEvent<HTMLElement>) => {
     const tileId = event.dataTransfer.getData("text/report-tile");
     if (!tileId) return;
@@ -398,6 +425,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   }, [compareGrid]);
 
   const selectedPage = selectedId ? history.present.pages.find((page) => page.id === selectedId) : undefined;
+  const selectedPageMapSelectable = reportPageMapSelectable(selectedPage);
+  const editableMapPage = selectedPage?.kind === "tile" || selectedPage?.kind === "compare" ? selectedPage : null;
   const mapCell = selectedPage?.kind === "compare" ? (selection?.kind === "map" && selection.cell !== undefined ? selection.cell : 0) : undefined;
   const mapFrame = selectedPage?.kind === "tile"
     ? selectedPage.frame
@@ -416,14 +445,16 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     fill: selectedSlide?.kind === "tile" && selectedSlide.callout?.page === 0 ? SLIDE_OVERVIEW_FILL : 0.8,
   }) : null;
   const mapScale = mapFrame && mapModel && mapScaleOptions ? scaleForFrame(mapModel, mapFrame, mapScaleOptions) : 1000;
-  const mapEditing = !!mapFrame && !!mapModel && !!selectedPage && (selectedPage.kind === "tile" || selectedPage.kind === "compare") && selection?.kind === "map";
+  const mapEditing = !!mapFrame && !!mapModel && !!editableMapPage && selection?.kind === "map";
   const legacyAvailable = hasLegacyReport(board);
   const mapSelection = useCallback((cell = mapCell): SurfaceSelection => ({ kind: "map", ...(cell === undefined ? {} : { cell }) }), [mapCell]);
   const enterMapMove = useCallback(() => {
+    if (!selectedPageMapSelectable) return;
+    rememberDrawerOpener();
     setSelection((current) => current?.kind === "map" ? current : mapSelection());
     setRail(null);
     setMapMoveActive(true);
-  }, [mapSelection]);
+  }, [mapSelection, rememberDrawerOpener, selectedPageMapSelectable]);
   const setMapMoveFromSurface = useCallback((active: boolean) => {
     if (active) enterMapMove();
     else setMapMoveActive(false);
@@ -445,6 +476,15 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     if (!mapFrame.locked) setMapMoveActive(false);
     applyFrame(mapCell, { locked: !mapFrame.locked });
   }, [applyFrame, mapCell, mapFrame]);
+
+  const closeDrawer = useCallback(() => {
+    setRail(null);
+    setSelection(null);
+    setMapMoveActive(false);
+  }, []);
+  const drawerOpen = rail !== null || mapEditing;
+  const modalContentInert = exportOpen || (mobileViewport && drawerOpen);
+  useFocusTrap({ ref: drawerRef, active: mobileViewport && drawerOpen, onClose: closeDrawer, restoreFocusRef: drawerOpenerRef });
 
   const closeExport = useCallback(() => {
     setExportOpen(false);
@@ -479,7 +519,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
       const target = event.target as HTMLElement;
       if (!target.closest("[data-preview-map]") && !target.closest("[data-map-toolbar]")) setMapMoveActive(false);
     }}>
-      <header className={styles.reportHeader}>
+      <header className={styles.reportHeader} inert={modalContentInert || undefined}>
         <div className={styles.reportHeading}>
           <p className={styles.eyebrow}>대지분석 보고서</p>
           <h1>{summary.address} 보고서</h1>
@@ -517,20 +557,31 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
         onViewPage={viewExportPage}
       />}
       <div className={styles.reportBody} onDragOver={(event) => event.preventDefault()} onDrop={handleDrop}>
-        <nav className={styles.reportRail} aria-label="보고서 요소">
-          <button type="button" className={`${styles.railButton} ${rail === "pages" ? styles.railButtonActive : ""}`} aria-pressed={rail === "pages"} onClick={() => toggleRail("pages")}><span aria-hidden="true">▤</span><span>페이지</span></button>
-          <button type="button" className={`${styles.railButton} ${rail === "tiles" ? styles.railButtonActive : ""}`} aria-pressed={rail === "tiles"} onClick={() => toggleRail("tiles")}><span aria-hidden="true">◈</span><span>분석 타일</span></button>
-          <button type="button" className={`${styles.railButton} ${rail === "textbox" ? styles.railButtonActive : ""}`} aria-pressed={rail === "textbox"} onClick={addTextBoxFromRail}><span aria-hidden="true">T</span><span>글상자</span></button>
-          <button type="button" className={`${styles.railButton} ${rail === "theme" ? styles.railButtonActive : ""}`} aria-pressed={rail === "theme"} onClick={() => toggleRail("theme")}><span aria-hidden="true">◌</span><span>테마</span></button>
+        <nav className={styles.reportRail} aria-label="보고서 요소" inert={modalContentInert || undefined}>
+          <button type="button" className={`${styles.railButton} ${rail === "pages" ? styles.railButtonActive : ""}`} aria-pressed={rail === "pages"} onClick={(event) => toggleRail("pages", event.currentTarget)}><span aria-hidden="true">▤</span><span>페이지</span></button>
+          <button type="button" className={`${styles.railButton} ${rail === "tiles" ? styles.railButtonActive : ""}`} aria-pressed={rail === "tiles"} onClick={(event) => toggleRail("tiles", event.currentTarget)}><span aria-hidden="true">◈</span><span>분석 타일</span></button>
+          <button type="button" className={`${styles.railButton} ${rail === "textbox" ? styles.railButtonActive : ""}`} aria-pressed={rail === "textbox"} onClick={(event) => addTextBoxFromRail(event.currentTarget)}><span aria-hidden="true">T</span><span>글상자</span></button>
+          <button type="button" className={`${styles.railButton} ${rail === "theme" ? styles.railButtonActive : ""}`} aria-pressed={rail === "theme"} onClick={(event) => toggleRail("theme", event.currentTarget)}><span aria-hidden="true">◌</span><span>테마</span></button>
+          <button type="button" className={`${styles.railButton} ${styles.mobileOnlyRailButton} ${rail === "layout" ? styles.railButtonActive : ""}`} aria-pressed={rail === "layout"} onClick={(event) => toggleRail("layout", event.currentTarget)} disabled={!selectedPage}><span aria-hidden="true">▥</span><span>레이아웃</span></button>
         </nav>
-        <aside className={styles.drawerColumn}>
-          {mapEditing && selectedPage && mapFrame && mapScaleOptions && <DrawerMap page={selectedPage} frame={mapFrame} view={mapView} cell={mapCell} scaleOptions={mapScaleOptions} sameExtent={selectedPage.kind === "compare" ? selectedPage.sameExtent : undefined} onSameExtent={selectedPage.kind === "compare" ? (value) => apply({ type: "sameExtent", id: selectedPage.id, value }) : undefined} onFrame={(patch: Partial<MapFrameState>) => { if (patch.locked === true) setMapMoveActive(false); applyFrame(mapCell, patch); }} />}
+        <aside
+          ref={drawerRef}
+          className={styles.drawerColumn}
+          data-mobile-sheet={mobileViewport && drawerOpen ? "open" : "closed"}
+          role={mobileViewport && drawerOpen ? "dialog" : undefined}
+          aria-modal={mobileViewport && drawerOpen ? true : undefined}
+          inert={exportOpen || undefined}
+          aria-label={mapEditing ? "지도 설정" : rail === "tiles" ? "분석 타일 추가" : rail === "textbox" ? "글상자 추가" : rail === "theme" ? "테마 설정" : rail === "layout" ? "페이지 레이아웃" : "페이지 추가"}
+        >
+          {mobileViewport && drawerOpen && <button type="button" className={styles.sheetClose} onClick={closeDrawer}>닫기</button>}
+          {mapEditing && editableMapPage && mapFrame && mapScaleOptions && <DrawerMap page={editableMapPage} frame={mapFrame} view={mapView} cell={mapCell} scaleOptions={mapScaleOptions} sameExtent={editableMapPage.kind === "compare" ? editableMapPage.sameExtent : undefined} onSameExtent={editableMapPage.kind === "compare" ? (value) => apply({ type: "sameExtent", id: editableMapPage.id, value }) : undefined} onFrame={(patch: Partial<MapFrameState>) => { if (patch.locked === true) setMapMoveActive(false); applyFrame(mapCell, patch); }} />}
           {!mapEditing && rail === "pages" && <DrawerPages open hasLegacy={legacyAvailable} onAdd={addPage} onRecommended={startRecommended} onLegacy={importLegacy} />}
           {!mapEditing && rail === "tiles" && <DrawerTiles open doc={history.present} views={views} mode={compareMode ? "compare" : "single"} compareGrid={compareGrid} compareSelected={compareSelected} onCompareGrid={setCompareGrid} onAdd={addTile} onToggleCompare={toggleCompareTile} onCreateCompare={addComparePage} onCancelCompare={() => { setCompareSelected([]); setCompareMode(false); }} />}
           {!mapEditing && rail === "textbox" && <TextBoxDrawer onAdd={addTextBox} />}
-          {!mapEditing && rail === "theme" && <ThemeDrawer doc={history.present} onFormat={(format) => apply({ type: "format", format }, `${formatLabel(format)} 판형으로 바꿨습니다.`)} onFontScale={(fontScale) => apply({ type: "theme", fontScale }, `${fontScale}배 글자 크기를 적용했습니다.`)} onClose={() => setRail("pages")} />}
+          {!mapEditing && rail === "theme" && <ThemeDrawer doc={history.present} onFormat={(format) => apply({ type: "format", format }, `${formatLabel(format)} 판형으로 바꿨습니다.`)} onFontScale={(fontScale) => apply({ type: "theme", fontScale }, `${fontScale}배 글자 크기를 적용했습니다.`)} onClose={() => mobileViewport ? closeDrawer() : setRail("pages")} />}
+          {!mapEditing && rail === "layout" && selectedPage && <div className={styles.drawer}><LayoutSwitcher value={selectedPage.layout} onChange={(layout) => apply({ type: "layout", id: selectedPage.id, layout })} /></div>}
         </aside>
-        <main className={styles.reportWorkspace}>
+        <main className={styles.reportWorkspace} inert={modalContentInert || undefined}>
           {history.present.pages.length === 0 ? (
             <div className={styles.emptyReport}>
               <div className={styles.emptyCanvas}><span className={styles.emptyCanvasMark}>＋</span><strong>페이지를 추가하세요</strong><span>보고서의 첫 장을 선택해 작업을 시작합니다.</span></div>

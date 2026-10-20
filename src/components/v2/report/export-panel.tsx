@@ -231,7 +231,7 @@ export default function ExportPanel({ plan, format, basemap, currentPageId, sele
   const cancel = () => controllerRef.current?.abort();
 
   return (
-    <div id="report-export-panel" ref={dialogRef} className={styles.exportPanel} role="dialog" aria-modal="false" aria-labelledby="report-export-title" tabIndex={-1}>
+    <div id="report-export-panel" ref={dialogRef} className={styles.exportPanel} role="dialog" aria-modal="true" aria-labelledby="report-export-title" tabIndex={-1}>
       <div className={styles.exportPanelHeader}>
         <div><p className={styles.eyebrow}>파일 만들기</p><h2 id="report-export-title">어디에 쓰실 건가요?</h2></div>
         <button type="button" className={styles.exportCloseButton} onClick={onClose} aria-label="내보내기 닫기">×</button>

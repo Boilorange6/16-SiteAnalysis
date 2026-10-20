@@ -67,6 +67,7 @@
 .railButton span:last-child { white-space: nowrap; }
 .railButton:hover { background: #e4e8ef; }
 .railButtonActive { color: #153f83; background: #e0eafa; border-color: #9db7e1; }
+.mobileOnlyRailButton { display: none; }
 .drawerColumn { min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; background: #fff; border-right: 1px solid var(--report-line); }
 .drawer { display: grid; gap: 16px; align-content: start; box-sizing: border-box; width: 100%; min-width: 0; padding: 20px 16px 28px; overflow: hidden; }
 .drawerHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
@@ -308,4 +309,184 @@
 
 @media (prefers-reduced-motion: reduce) {
   .reportRoot *, .reportRoot *::before, .reportRoot *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}
+
+@media (max-width: 639px) {
+  .reportRoot {
+    display: block;
+    height: auto;
+    min-height: 0;
+    max-width: 100%;
+    overflow-x: hidden;
+    overflow-y: visible;
+    font-size: 14px;
+  }
+
+  .reportHeader {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-height: 0;
+    padding: 10px 12px;
+  }
+  .reportHeading { flex: 1 1 100%; }
+  .reportHeading h1 {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-size: 16px;
+  }
+  .saveState { flex: 0 0 auto; font-size: 14px; }
+  .reportHeaderSpacer { display: none; }
+  .reportHeaderActions { flex: 1 1 100%; flex-wrap: wrap; }
+  .reportHeaderActions .headerFormat { flex: 1 1 140px; }
+  .headerFormat select { width: 100%; max-width: none; font-size: 14px; }
+  .reportHeader > .secondaryButton,
+  .reportHeader > .primaryDarkButton {
+    flex: 1 1 140px;
+    min-width: 0;
+    white-space: normal;
+    font-size: 14px;
+  }
+
+  .reportBody {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: visible;
+  }
+  .reportRail {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    flex: 0 0 auto;
+    gap: 4px;
+    padding: 6px 8px;
+    border-right: 0;
+    border-bottom: 1px solid var(--report-line);
+  }
+  .railButton {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    padding: 4px 2px;
+    gap: 2px;
+    font-size: 12px;
+    line-height: 1.1;
+  }
+  .railButton span:first-child { min-height: 0; font-size: 16px; }
+  .railButton span:last-child { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .mobileOnlyRailButton { display: grid; }
+
+  .drawerColumn {
+    position: fixed;
+    inset: 0;
+    z-index: 120;
+    display: none;
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    padding: max(8px, env(safe-area-inset-top)) 12px max(8px, env(safe-area-inset-bottom));
+    overflow-x: hidden;
+    overflow-y: auto;
+    border: 0;
+    box-shadow: 0 12px 36px rgba(21, 23, 28, .24);
+  }
+  .drawerColumn[data-mobile-sheet="open"] { display: block; }
+  .drawerColumn[data-mobile-sheet="closed"] { display: none; }
+  .sheetClose {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    width: 100%;
+    min-height: 44px;
+    margin: 0 0 8px;
+    padding: 8px 12px;
+    color: var(--report-ink);
+    background: #eef0f3;
+    border: 1px solid var(--report-line);
+    border-radius: 8px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 800;
+  }
+  .drawer { padding: 12px 0 28px; font-size: 14px; }
+  .drawer .helper,
+  .drawer .emptyHint,
+  .drawer .drawerAction,
+  .drawer .pageCardCopy span,
+  .drawer .searchBox input,
+  .drawer .tileRowCopy strong,
+  .drawer .tileRowCopy span { font-size: 14px; }
+  .drawer .tileMetric,
+  .drawer .tileUsed { font-size: 12px; }
+
+  .reportWorkspace {
+    display: flex;
+    flex-direction: column;
+    grid-column: auto;
+    gap: 12px;
+    min-height: 0;
+    padding: 12px 12px 16px;
+    overflow: visible;
+  }
+  .stageAndSettings {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+  }
+  .stageColumn { flex: 0 0 auto; }
+  .stageFrame {
+    display: block;
+    flex: 0 0 auto;
+    width: 100%;
+    height: auto !important;
+    min-height: 0;
+    padding: 8px;
+    overflow: visible;
+  }
+  .stageFrame > [data-slide-surface="true"] {
+    display: block;
+    width: 100%;
+    height: auto !important;
+    max-width: 100%;
+  }
+  .editorSide { display: none; }
+  .notesField { width: 100%; font-size: 14px; }
+  .notesField textarea { min-height: 56px; height: 56px; font-size: 14px; }
+  .pageStrip {
+    flex: 0 0 128px;
+    width: 100%;
+    min-height: 128px;
+    height: 128px;
+    margin: 0;
+    padding: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .emptyReport { min-height: 360px; }
+
+  .exportPanel {
+    position: fixed;
+    inset: 0;
+    top: 0;
+    right: auto;
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+    overflow-x: hidden;
+    overflow-y: auto;
+    border-radius: 0;
+  }
+  .exportPanelHeader h2 { font-size: 18px; }
+  .exportPurposeCard span { font-size: 12px; }
+  .exportFileField input { font-size: 14px; }
+  .exportRunButton { min-height: 52px; }
 }

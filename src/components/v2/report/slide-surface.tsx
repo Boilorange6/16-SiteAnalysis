@@ -16,7 +16,7 @@ import type { PagePanels, MapFrameState, TextBox } from "@/lib/v2/report/report-
 import type { PlannedSlide } from "@/lib/v2/report/report-plan";
 import type { TileView } from "@/lib/v2/ui/tile-view";
 import { sheetCells, type SheetGrid } from "@/lib/v2/ui/sheet";
-import { mixedValue, toggleLabelVisibility, toggleLegendFocus } from "@/lib/v2/ui/report-mode-logic";
+import { reportPageMapSelectable, mixedValue, toggleLabelVisibility, toggleLegendFocus } from "@/lib/v2/ui/report-mode-logic";
 
 type SurfaceStyles = Record<string, string>;
 const FALLBACK_STYLES: SurfaceStyles = new Proxy<SurfaceStyles>({} as SurfaceStyles, { get: (_target, key) => String(key) });
@@ -1262,6 +1262,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
   const panelDrag = useRef<{ pointerId: number; key: PanelKey; x: number; y: number; rect: Rect } | null>(null);
   const panelResize = useRef<{ pointerId: number; key: PanelKey; direction: ResizeDirection; x: number; y: number; rect: Rect } | null>(null);
   const displaySlide = Object.keys(draftStyle).length > 0 ? { ...slide, style: { ...slide.style, ...draftStyle } } : slide;
+  const mapSelectable = reportPageMapSelectable(displaySlide.page);
   const displayModel = mapForSlide(displaySlide);
   const hasSummary = hasSummaryPanel(displaySlide);
   const terrainSectionShown = displaySlide.kind === "tile" && displaySlide.view.code === "D17" && !!displaySlide.view.terrainSections && !!displaySlide.terrainSection;
@@ -1426,8 +1427,8 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
   // 편집 중이 아닌 지도 층은 포인터를 받지 않으므로, 패널·글상자가 아닌 지도 영역 클릭을 좌표로 판단한다.
   const onMapArea = (event: React.MouseEvent<HTMLElement>): boolean => {
     const target = event.target as HTMLElement;
-    if (target.closest("[data-preview-map]")) return true;
-    if (!onSelect || target.closest("[data-panel-key], [data-panel-frame], [data-text-box]")) return false;
+    if (target.closest("[data-preview-map]")) return mapSelectable;
+    if (!mapSelectable || !onSelect || target.closest("[data-panel-key], [data-panel-frame], [data-text-box]")) return false;
     const rect = event.currentTarget.querySelector<HTMLElement>("[data-preview-map]")?.getBoundingClientRect();
     return !!rect && event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
   };
@@ -1441,6 +1442,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
           onPointerDownCapture={(event) => {
             const target = event.target as HTMLElement;
             if (onMapArea(event)) {
+              target.closest<HTMLElement>("[data-preview-map]")?.focus({ preventScroll: true });
               onSelect?.({ kind: "map" });
               return;
             }
@@ -1456,6 +1458,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
           onDoubleClick={(event) => {
             if (onMapArea(event)) {
               event.preventDefault();
+              (event.target as HTMLElement).closest<HTMLElement>("[data-preview-map]")?.focus({ preventScroll: true });
               onSelect?.({ kind: "map" });
               onMapMoveActive?.(true);
             }
@@ -1471,7 +1474,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
           data-transforming={panelDrag.current || panelResize.current ? "true" : "false"}
           data-map-selected={selection?.kind === "map" ? "true" : undefined}
         >
-        {displaySlide.kind === "cover" && displaySlide.page?.kind !== "blank" && <CoverSurface slide={displaySlide} unit={unit} basemap={basemap} interactive={!!(editable && (mapActive ?? editable) && !!displayModel)} thumbnail={thumbnail} onPatch={onMapPatch} onDirectPatch={onDirectPatch} />}
+        {displaySlide.kind === "cover" && displaySlide.page?.kind !== "blank" && <CoverSurface slide={displaySlide} unit={unit} basemap={basemap} interactive={!!(mapSelectable && editable && (mapActive ?? editable) && !!displayModel)} thumbnail={thumbnail} onPatch={onMapPatch} onDirectPatch={onDirectPatch} />}
         {displaySlide.kind === "sources" && <SourcesSurface slide={displaySlide} unit={unit} basemap={basemap} thumbnail={thumbnail} />}
         {displaySlide.kind === "cover" && displaySlide.page?.kind === "blank" && <BlankSurface unit={unit} />}
         {displaySlide.kind === "sheet" && <SheetSurface slide={displaySlide} unit={unit} basemap={basemap} thumbnail={thumbnail} onCellActivate={onSheetCellActivate} />}

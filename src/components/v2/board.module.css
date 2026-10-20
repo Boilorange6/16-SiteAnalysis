@@ -4417,3 +4417,46 @@ button.badge:focus-visible {
     animation: none !important;
   }
 }
+
+@media (max-width: 639px) {
+  .reportPage {
+    height: auto;
+    min-height: 100%;
+    padding: 0 0 32px;
+    overflow: visible;
+  }
+  .reportPage > [data-report-root] {
+    flex: none;
+    min-height: 0;
+  }
+  .reportPage > .topbar {
+    align-items: center;
+    gap: 8px;
+    min-height: 0;
+    margin: 0;
+    padding: 8px 12px;
+  }
+  .reportPage > .topbar > .brand { order: 1; }
+  .reportPage > .topbar > .modeTabs {
+    order: 2;
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .reportPage > .topbar > .modeTabs .modeTab {
+    min-width: 0;
+    padding-inline: 8px;
+  }
+  .reportPage > .topbar > .topTitle {
+    order: 3;
+    flex: 0 0 100%;
+    min-width: 0;
+    padding: 0;
+    border-left: 0;
+  }
+  .reportPage > .topbar > .projectControls { order: 4; min-width: 0; }
+  .reportPage > .topbar > .pill { order: 5; }
+  .reportPage > .topbar > .topoHeaderButton { order: 6; }
+  .reportPage > .topbar > .mobileTools { order: 7; }
+  .reportPage > .topbar > .spacer { display: none; }
+}

@@ -1,4 +1,16 @@
-import type { ReportDoc, ReportDocAction } from "../report/report-doc";
+import type { ReportDoc, ReportDocAction, ReportPage } from "../report/report-doc";
+
+export type ReportRailKey = "pages" | "tiles" | "textbox" | "theme" | "layout";
+
+/** 모바일에서는 페이지 서랍을 덮어 열지 않고, 데스크톱의 기본 페이지 서랍은 유지한다. */
+export function initialReportRail(isMobileViewport: boolean): Exclude<ReportRailKey, "layout"> | null {
+  return isMobileViewport ? null : "pages";
+}
+
+/** 표지 지도는 ReportPage에 frame이 없는 파생 지도이므로 편집 선택 대상이 아니다. */
+export function reportPageMapSelectable(page: ReportPage | undefined): boolean {
+  return page?.kind === "tile" || page?.kind === "compare";
+}
 
 function orderedKeys(keys: readonly string[]): string[] {
   const seen = new Set<string>();
