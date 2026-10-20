@@ -8,17 +8,17 @@
   overflow: hidden;
 }
 
-.surfaceRoot[data-map-editing="true"] [data-panel-key] {
+.surfaceRoot [data-map-editing="true"] [data-panel-key] {
   opacity: .35;
   pointer-events: none;
 }
 
-.surfaceRoot[data-map-editing="true"] [data-preview-map] {
+.surfaceRoot [data-map-editing="true"] [data-preview-map] {
   cursor: grab;
 }
 
-.surfaceRoot[data-map-editing="true"] [data-preview-map][data-dragging="true"],
-.surfaceRoot[data-map-editing="true"] [data-preview-map][data-dragging="true"] svg {
+.surfaceRoot [data-map-editing="true"] [data-preview-map][data-dragging="true"],
+.surfaceRoot [data-map-editing="true"] [data-preview-map][data-dragging="true"] svg {
   cursor: grabbing;
 }
 

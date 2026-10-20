@@ -33,6 +33,7 @@ assert.match(exportSurfaceCss, /\.surfaceRoot\[data-surface-mode="export"\]\s*\[
 
 const editMarkup = renderToStaticMarkup(createElement(SlideSurface, { slide: a3, basemap: "none", mode: "edit", mapActive: true }));
 assert.match(editMarkup, /data-map-editing="true"/, "지도 편집 중인 slide canvas 식별자");
+assert.doesNotMatch(exportSurfaceCss, /\.surfaceRoot\[data-map-editing/, "data-map-editing은 surfaceRoot가 아니라 그 안의 slide canvas에 붙는다");
 assert.match(exportSurfaceCss, /\[data-map-editing="true"\]\s+\[data-panel-key\][\s\S]*?opacity:\s*\.35[\s\S]*?pointer-events:\s*none/s, "지도 편집 중 제목·요약·범례 패널은 흐리고 누를 수 없다");
 assert.match(exportSurfaceCss, /\[data-map-editing="true"\]\s+\[data-preview-map\][\s\S]*?cursor:\s*grab/s, "지도 편집 중 커서는 grab이다");
 assert.match(exportSurfaceCss, /\[data-map-editing="true"\]\s+\[data-preview-map\]\[data-dragging="true"\][\s\S]*?cursor:\s*grabbing/s, "지도 끌기 중 커서는 grabbing이다");
