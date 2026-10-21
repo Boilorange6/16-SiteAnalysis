@@ -82,6 +82,9 @@ export type ReportLayoutName = "map-full" | "map-summary" | "numbers-first" | "s
 /** 슬라이드 판형의 실제 PowerPoint inch 크기. wide 수치는 기존 골든과 같다. */
 export const SLIDE = { w: 13.333, h: 7.5, edge: 0.3, stripH: 0.36, infoRatio: 0.32 } as const;
 
+/** 슬라이드 범례 판의 CSS·PPT 공용 안쪽 여백과 행 높이(inch). */
+export const SLIDE_LEGEND = { padding: 0.22, row: 0.3, note: 0.22 } as const;
+
 const FORMAT_SIZES: Record<SlideFormat, { w: number; h: number }> = {
   wide: { w: SLIDE.w, h: SLIDE.h },
   a3: { w: 15120000 / 914400, h: 10692000 / 914400 },
@@ -261,9 +264,28 @@ export function terrainSectionLayout(
 export function slideLegendRect(items: number, notes: number, labelChars: number, format: SlideFormat = "wide"): Rect | null {
   if (items + notes === 0) return null;
   const l = slideLayout(format);
-  const h = 0.16 + items * 0.25 + notes * 0.22;
+  const h = SLIDE_LEGEND.padding * 2 + items * SLIDE_LEGEND.row + notes * SLIDE_LEGEND.note;
   const w = Math.min(4.4, Math.max(2.0, 0.75 + labelChars * 0.16));
   return { x: l.legendX, y: l.legendBottom - h, w, h };
+}
+
+/** 미리보기·PPT가 같은 범례 판 안에서 사용하는 각 행의 예약 자리. */
+export function slideLegendRowRects(rect: Rect | null, items: number, notes: number): { items: Rect[]; notes: Rect[] } {
+  if (!rect) return { items: [], notes: [] };
+  const x = rect.x + SLIDE_LEGEND.padding;
+  const w = Math.max(0, rect.w - SLIDE_LEGEND.padding * 2);
+  let y = rect.y + SLIDE_LEGEND.padding;
+  const itemRects = Array.from({ length: Math.max(0, items) }, () => {
+    const row = { x, y, w, h: SLIDE_LEGEND.row };
+    y += SLIDE_LEGEND.row;
+    return row;
+  });
+  const noteRects = Array.from({ length: Math.max(0, notes) }, () => {
+    const row = { x, y, w, h: SLIDE_LEGEND.note };
+    y += SLIDE_LEGEND.note;
+    return row;
+  });
+  return { items: itemRects, notes: noteRects };
 }
 
 export type SlideCalloutLegendEntry = { text: string; color?: string | null; hollow?: boolean };

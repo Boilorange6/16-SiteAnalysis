@@ -43,6 +43,12 @@ assert.ok(L.detailSiteX(1440) < 0.5);
 assert.equal(L.slideLegendRect(0, 0, 0), null);
 const lg = L.slideLegendRect(7, 1, 10);
 assert.ok(inSlide(lg) && lg.y + lg.h <= s.strip.y && lg.x === s.legendX);
+const legendRows = L.slideLegendRowRects(lg, 7, 1);
+const legendRowBoxes = [...legendRows.items, ...legendRows.notes].map((row) => ({ x0: row.x, y0: row.y, x1: row.x + row.w, y1: row.y + row.h }));
+for (let i = 0; i < legendRowBoxes.length; i += 1) {
+  for (let j = i + 1; j < legendRowBoxes.length; j += 1) assert.ok(!L.overlaps(legendRowBoxes[i], legendRowBoxes[j]), `범례 행 ${i}/${j}가 겹치지 않는다`);
+}
+assert.ok(legendRows.items.every((row) => row.h >= 0.25), "범례 항목은 축소되어 0이 되지 않는다");
 // 모든 지도 타일의 범례가 판 안에서 충돌 없이 슬라이드 안에 들어간다
 for (const r of GODEOK_RESULTS) {
   const v = toTileView(r);

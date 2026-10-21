@@ -730,7 +730,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
       "data-map-pick": "true",
       className: "map-figure-interactive",
       role: "button" as const,
-      tabIndex: 0,
+      tabIndex: -1,
       "aria-label": labelText,
       "aria-pressed": onFeaturePin ? pinned.has(key) : undefined,
       title: onFeaturePin ? (pinned.has(key) ? "눌러서 라벨 숨기기" : "눌러서 라벨 표시") : undefined,
@@ -765,6 +765,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     onFocus: undefined,
     onBlur: undefined,
     "aria-hidden": true,
+    pointerEvents: "all",
   });
   const routePoints = scene.routePoints;
   const [worldCenterX, worldCenterY] = worldPx(vp.center[0], vp.center[1], vp.zoom);
@@ -920,7 +921,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
       "data-map-pick": "true",
       className: "map-figure-interactive",
       role: "button" as const,
-      tabIndex: 0,
+      tabIndex: -1,
       "aria-label": `${d.text} · 현재 라벨 표시 · 눌러서 숨기기`,
       "aria-pressed": pinned.has(d.key),
       onClick: (event: ReactMouseEvent<SVGRectElement>) => { event.stopPropagation(); pinPick(); },
@@ -1032,7 +1033,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
                 <text data-rail-exit-number="true" x={(exit.box.x0 + exit.box.x1) / 2} y={exit.box.y0 + (exit.box.y1 - exit.box.y0) * 0.76} textAnchor="middle" fontSize={7} fontWeight={700} fill="#111827">{exit.number}</text>
               </>
             )}
-            {previewInteraction && source && <circle data-map-hit="rail-exit" cx={exit.point[0]} cy={exit.point[1]} r={22 * u} fill="transparent" stroke="transparent" pointerEvents="none" {...hitProps(exitPick)} />}
+            {previewInteraction && source && <circle data-map-hit="rail-exit" cx={exit.point[0]} cy={exit.point[1]} r={22 * u} fill="transparent" stroke="transparent" {...hitProps(exitPick)} />}
           </g>
         );
       })}
@@ -1181,7 +1182,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
             return (
               <g key={`poly${polygon.index}`}>
                 <path data-poly="true" data-map-layer={polygon.polygon.layer} d={polygonPath(polygon.rings)} fillRule="evenodd" fill={neutralBuilding ? buildingStyle.fill : estimated ? `url(#${hatchId(polygon.index)})` : st.fill ?? st.color} fillOpacity={neutralBuilding ? buildingStyle.fillOpacity : estimated ? 1 : st.fillOpacity ?? polygonOpacity} opacity={isElementDimmed(polygon.polygon.layer, polygonKey) ? 0.2 : undefined} stroke={strong || polygonSelected ? INK : neutralBuilding ? buildingStyle.stroke : st.stroke ?? st.color} strokeWidth={(strong ? 1.6 : polygonSelected ? 3 : neutralBuilding ? buildingStyle.strokeWidth ?? 0.8 : st.strokeWidth ?? 1) * u} strokeDasharray={st.dash} {...pick} />
-                {Object.keys(pick).length > 0 && <path data-map-hit="polygon" d={polygonPath(polygon.rings)} fill="transparent" stroke="transparent" pointerEvents="all" {...hitProps(pick)} />}
+                {Object.keys(pick).length > 0 && <path data-map-hit="polygon" d={polygonPath(polygon.rings)} fill="transparent" stroke="transparent" {...hitProps(pick)} />}
               </g>
             );
           })}
@@ -1207,7 +1208,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
                 {casing && <polyline points={points} fill="none" stroke={casing} strokeWidth={casingWidth * u} strokeDasharray={dash} strokeLinecap={st.lineCap ?? "butt"} strokeLinejoin="round" pointerEvents="none" />}
                 <polyline data-line="true" points={points} fill="none" stroke={stroke} strokeWidth={width * u} strokeDasharray={dash} strokeLinecap={st.lineCap ?? "butt"} strokeLinejoin="round" markerEnd={st.arrow ? `url(#arrow-${uid}-${d.index})` : undefined} {...pick} />
                 {st.tickMarks && lineTickSegments(d.points, 4 * u).map(([a, b], tickIndex) => <line key={`tick-${tickIndex}`} x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke={stroke} strokeWidth={Math.max(1, width * 0.55 * u)} strokeLinecap="round" pointerEvents="none" />)}
-                {Object.keys(pick).length > 0 && <polyline data-map-hit="line" points={points} fill="none" stroke="transparent" strokeWidth={Math.max(44 * u, casingWidth * u)} strokeLinejoin="round" pointerEvents="stroke" {...hitProps(pick)} />}
+                {Object.keys(pick).length > 0 && <polyline data-map-hit="line" points={points} fill="none" stroke="transparent" strokeWidth={Math.max(44 * u, casingWidth * u)} strokeLinejoin="round" {...hitProps(pick)} />}
               </g>
             );
           })}
@@ -1256,7 +1257,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
              return expandedHit ? (
                 <g key={`feature-hit-${i}-${d.f.fid ?? d.f.layer}`}>
                   {visiblePoint}
-                  <circle data-map-hit="point" cx={d.p[0]} cy={d.p[1]} r={22 * u} fill="transparent" stroke="transparent" pointerEvents="all" {...hitProps(pick)} />
+                  <circle data-map-hit="point" cx={d.p[0]} cy={d.p[1]} r={22 * u} fill="transparent" stroke="transparent" {...hitProps(pick)} />
                 </g>
              ) : visiblePoint;
          })}

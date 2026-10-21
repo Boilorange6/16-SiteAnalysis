@@ -138,6 +138,11 @@ assert.doesNotMatch(d04AutoOff, /data-map-label-variant="auto"/, "D04 초기 자
 const d04Pinned = renderToStaticMarkup(createElement(MapFigure, { model: d04Model, width: 420, height: 280, basemap: "none", legend: false, pinnedKeys: [d04Key], onFeaturePin: () => {} }));
 assert.match(d04Pinned, /data-map-label-variant="fixed"/, "D04 고정 라벨은 말풍선으로 표시");
 assert.doesNotMatch(d04Pinned, /data-map-label-variant="auto"/, "D04 고정 시에도 자동 라벨은 생성하지 않음");
+const d04Preview = renderToStaticMarkup(createElement(MapFigure, { model: d04Model, width: 420, height: 280, basemap: "none", legend: false, fixed: true, previewInteraction: true, onFeaturePin: () => {} }));
+assert.doesNotMatch(d04Preview, /data-map-feature="rail_station\|0"[^>]*tabindex="0"/, "미리보기 지도 점은 Tab 순서에서 제외");
+assert.match(d04Preview, /data-map-hit="point"[^>]*r="22"[^>]*pointer-events="all"/, "미리보기 지도 점은 최소 44px 지름의 투명 hit 영역을 유지");
+const d04Card = renderToStaticMarkup(createElement(MapFigure, { model: d04Model, width: 420, height: 280, basemap: "none", legend: false, onFeaturePin: () => {} }));
+assert.doesNotMatch(d04Card, /data-map-feature="rail_station\|0"[^>]*tabindex="0"/, "타일 카드 지도 점도 Tab 순서에서 제외");
 const d04Hover = renderToStaticMarkup(createElement(MapFigure, { model: d04Model, width: 420, height: 280, basemap: "none", legend: false, hoverKey: d04Key }));
 assert.match(d04Hover, /data-map-label-variant="hover"/, "D04 호버 라벨은 말풍선으로 표시");
 assert.match(d04Hover, /data-map-label-box="rail_station\|0"[^>]*fill="#fff"/, "호버 말풍선도 흰 상자 사용");
