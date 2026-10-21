@@ -34,6 +34,19 @@ type ReportHistory = { past: ReportDoc[]; present: ReportDoc; future: ReportDoc[
 type RailKey = ReportRailKey;
 const surfaceClassMap = { ...legacySurfaceStyles, ...localSurfaceStyles };
 
+type RailIconName = "pages" | "tiles" | "textbox" | "theme";
+
+function RailIcon({ name }: { name: RailIconName }) {
+  return (
+    <svg className={styles.railIcon} viewBox="0 0 20 20" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      {name === "pages" && <><rect x="4" y="3" width="10" height="13" rx="1" /><path d="M7 6h4M7 9h4M7 12h3" /><path d="M6 16h9a1 1 0 0 0 1-1V5" /></>}
+      {name === "tiles" && <><path d="m10 3 6 4-6 4-6-4 6-4Z" /><path d="m4 10 6 4 6-4M4 13l6 4 6-4" /></>}
+      {name === "textbox" && <><path d="M4 4h12M10 4v12" /><path d="M7 16h6" /></>}
+      {name === "theme" && <><circle cx="10" cy="10" r="5.5" /><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4" /></>}
+    </svg>
+  );
+}
+
 function safeLocalStorage(): Storage | null {
   if (typeof window === "undefined") return null;
   try {
@@ -786,10 +799,10 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
           </aside>}
 
           <nav className={`${styles.floatCard} ${styles.toolPill}`} aria-label="보고서 요소" inert={modalContentInert || undefined}>
-            <button type="button" className={`${styles.railButton} ${rail === "pages" ? styles.railButtonActive : ""}`} aria-pressed={rail === "pages"} aria-expanded={rail === "pages" && drawerOpen} aria-controls="report-drawer" onClick={(event) => toggleRail("pages", event.currentTarget)}><span aria-hidden="true">▤</span><span>페이지</span></button>
-            <button type="button" className={`${styles.railButton} ${rail === "tiles" ? styles.railButtonActive : ""}`} aria-pressed={rail === "tiles"} aria-expanded={rail === "tiles" && drawerOpen} aria-controls="report-drawer" onClick={(event) => toggleRail("tiles", event.currentTarget)}><span aria-hidden="true">◈</span><span>분석 타일</span></button>
-            <button type="button" className={`${styles.railButton} ${rail === "textbox" ? styles.railButtonActive : ""}`} aria-pressed={rail === "textbox"} aria-expanded={rail === "textbox" && drawerOpen} aria-controls="report-drawer" onClick={(event) => addTextBoxFromRail(event.currentTarget)}><span aria-hidden="true">T</span><span>글상자</span></button>
-            <button type="button" className={`${styles.railButton} ${rail === "theme" ? styles.railButtonActive : ""}`} aria-pressed={rail === "theme"} aria-expanded={rail === "theme" && drawerOpen} aria-controls="report-drawer" onClick={(event) => toggleRail("theme", event.currentTarget)}><span aria-hidden="true">◌</span><span>테마</span></button>
+            <button type="button" className={`${styles.railButton} ${rail === "pages" ? styles.railButtonActive : ""}`} aria-pressed={rail === "pages"} aria-expanded={rail === "pages" && drawerOpen} aria-controls="report-drawer" onClick={(event) => toggleRail("pages", event.currentTarget)}><span aria-hidden="true"><RailIcon name="pages" /></span><span>페이지</span></button>
+            <button type="button" className={`${styles.railButton} ${rail === "tiles" ? styles.railButtonActive : ""}`} aria-pressed={rail === "tiles"} aria-expanded={rail === "tiles" && drawerOpen} aria-controls="report-drawer" onClick={(event) => toggleRail("tiles", event.currentTarget)}><span aria-hidden="true"><RailIcon name="tiles" /></span><span>분석 타일</span></button>
+            <button type="button" className={`${styles.railButton} ${rail === "textbox" ? styles.railButtonActive : ""}`} aria-pressed={rail === "textbox"} aria-expanded={rail === "textbox" && drawerOpen} aria-controls="report-drawer" onClick={(event) => addTextBoxFromRail(event.currentTarget)}><span aria-hidden="true"><RailIcon name="textbox" /></span><span>글상자</span></button>
+            <button type="button" className={`${styles.railButton} ${rail === "theme" ? styles.railButtonActive : ""}`} aria-pressed={rail === "theme"} aria-expanded={rail === "theme" && drawerOpen} aria-controls="report-drawer" onClick={(event) => toggleRail("theme", event.currentTarget)}><span aria-hidden="true"><RailIcon name="theme" /></span><span>테마</span></button>
           </nav>
 
           <aside

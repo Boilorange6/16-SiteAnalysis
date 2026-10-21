@@ -550,7 +550,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
         model={model}
         width={width}
         height={height}
-        fixed
+        fixed={!thumbnail}
         layoutUnit={layoutUnit}
         basemap={thumbnail ? "none" : "tiles"}
         layer={displayBasemap}
@@ -668,15 +668,14 @@ function SlideFooter({ slide, unit }: { slide: PlannedSlide; unit: number }) {
   );
 }
 
-function ReportTitlePanel({ color, code, title, kind, rect, unit, interaction }: { color: string; code: string; title: string; kind: string; rect: Rect; unit: number; interaction?: PanelInteraction }) {
+function ReportTitlePanel({ color, title, kind, rect, unit, interaction }: { color: string; title: string; kind: string; rect: Rect; unit: number; interaction?: PanelInteraction }) {
   const styles = useSurfaceStyles();
   const titleBox = { w: Math.max(0.2, rect.w - 0.58), h: Math.max(0.16, rect.h - 0.08) };
   const titlePt = fitBlock([title], titleBox, 18, 7);
-  const metaPt = fitBlock([[code, kind].filter(Boolean).join("  ")], titleBox, 10, 7);
+  const metaPt = fitBlock([kind], titleBox, 10, 7);
   return (
     <div className={styles.slidePanel + " " + styles.titlePanel} style={rectStyle(rect, unit)} {...interaction}>
       <span className={styles.titleDot} style={{ background: color }} aria-hidden="true" />
-      {code && <span className={styles.slideMeta} style={fontStyle(metaPt, unit)}>{code}</span>}
       <h3 className={styles.slideTitle} style={fontStyle(titlePt, unit)}>{title}</h3>
       {kind && <span className={styles.slideKind} style={fontStyle(metaPt, unit)}>{kind}</span>}
     </div>
@@ -684,7 +683,7 @@ function ReportTitlePanel({ color, code, title, kind, rect, unit, interaction }:
 }
 
 function TitlePanel({ slide, rect, unit, interaction, onText }: { slide: Extract<PlannedSlide, { kind: "tile" }>; rect: Rect; unit: number; interaction?: PanelInteraction; onText?: () => void }) {
-  return <ReportTitlePanel color={slide.view.color} code={slide.view.code} title={slide.page?.titleOverride ?? slide.view.title} kind={slide.view.kindLabel} rect={rect} unit={unit} interaction={interaction} />;
+  return <ReportTitlePanel color={slide.view.color} title={slide.page?.titleOverride ?? slide.view.title} kind={slide.view.kindLabel} rect={rect} unit={unit} interaction={interaction} />;
 }
 
 function SummaryPanel({ slide, rect, unit, terrainSectionShown = false, interaction, onText }: { slide: Extract<PlannedSlide, { kind: "tile" }>; rect: Rect; unit: number; terrainSectionShown?: boolean; interaction?: PanelInteraction; onText?: () => void }) {
@@ -1088,7 +1087,7 @@ function SourcesSurface({ slide, unit, basemap, thumbnail = false }: { slide: Ex
     <>
       {map && <MapLayer model={map} style={slide.style} unit={unit} basemap={basemap} panels={mapPanels} siteX={0.5} interactive={false} thumbnail={thumbnail} onPatch={() => undefined} format={format} label="출처 장 배경 지도" />}
       <div className={styles.sourceSlide}>
-        <ReportTitlePanel color="#7A7E87" code="" title="자료 출처와 기준일" kind="" rect={layout.title} unit={unit} />
+        <ReportTitlePanel color="#7A7E87" title="자료 출처와 기준일" kind="" rect={layout.title} unit={unit} />
         <div className={styles.sourceTableWrap} style={rectStyle(layout.table, unit)}>
           <table className={styles.sourceTable} data-report-source-table="true">
             <colgroup><col style={{ width: "24%" }} /><col style={{ width: "14%" }} /><col style={{ width: "16%" }} /><col style={{ width: "25%" }} /><col style={{ width: "21%" }} /></colgroup>
@@ -1109,11 +1108,11 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, onCellActivate 
   const styles = useSurfaceStyles();
   const cellRects = sheetCells(slide.grid as SheetGrid);
   const geometry = slideGeometry(format);
-  const titleRect = titlePlateRect("SHEET", slide.view.title, slide.grid, geometry.w - 2 * geometry.edge, slide.style, false, format);
+  const titleRect = titlePlateRect(slide.view.title, slide.grid, geometry.w - 2 * geometry.edge, slide.style, false, format);
   return (
     <>
       <div className={styles.sheetSlide}>
-        <ReportTitlePanel color={slide.view.color} code="SHEET" title={slide.view.title} kind={slide.grid} rect={titleRect} unit={unit} />
+        <ReportTitlePanel color={slide.view.color} title={slide.view.title} kind={slide.grid} rect={titleRect} unit={unit} />
         <div className={styles.sheetGrid}>
           {cellRects.map((rect, index) => {
             const cell = slide.cells[index] ?? null;
@@ -1149,7 +1148,7 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, onCellActivate 
                       model={cell.reportFrame ? modelWithHiddenLayers(model, cell.reportFrame.hiddenLayers) : model}
                       width={width}
                       height={height}
-                      fixed
+                      fixed={!thumbnail}
                       basemap={thumbnail ? "none" : "tiles"}
                       layer={cell.reportFrame?.basemap === "air" ? "Satellite" : cell.reportFrame?.basemap === "none" ? "white" : cell.reportFrame?.basemap === "road" || cell.reportFrame?.basemap === "base" ? "Base" : basemap}
                       legend={false}
@@ -1166,8 +1165,8 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, onCellActivate 
                     {cell.reportFrame?.decorations.locator && model.radiusM > 0 && <LocatorInset model={model} basemap={basemap} box={cellLocatorBox} />}
                   </div>
                 ) : <VisualPlaceholder title={cell.view.title} message="이 장은 지도 대신 도판으로 표시됩니다." unit={unit} />}
-                <span className={styles.sheetLabel} style={fontStyle(9, unit)}>{cell.view.code} · {cell.view.title}</span>
-                {onCellActivate && !thumbnail && <button type="button" className={styles.sheetCellButton} data-sheet-cell-index={index} aria-label={`${cell.view.code} ${cell.view.title} 타일 선택`} onClick={() => onCellActivate(index)} />}
+                <span className={styles.sheetLabel} style={fontStyle(9, unit)}>{cell.view.title}</span>
+                {onCellActivate && !thumbnail && <button type="button" className={styles.sheetCellButton} data-sheet-cell-index={index} aria-label={`${cell.view.title} 타일 선택`} onClick={() => onCellActivate(index)} />}
               </div>
             );
           })}
@@ -1555,7 +1554,7 @@ const ThumbnailPreview = memo(function ThumbnailPreview({ slide, basemap }: { sl
     <span ref={hostRef} className={styles.thumbMini} data-preview-thumbnail="true" aria-hidden="true">
       {mounted
         ? <SlidePreview slide={slide} basemap={basemap} editable={false} thumbnail onPatch={noopPreviewPatch} onMapPatch={noopPreviewPatch} />
-        : <span className={styles.thumbMiniText}>{slide.kind === "cover" ? "표지" : slide.kind === "sources" ? "출처" : slide.kind === "sheet" ? "조판" : slide.view.code}</span>}
+        : <span className={styles.thumbMiniText}>{slide.kind === "cover" ? "표지" : slide.kind === "sources" ? "출처" : slide.kind === "sheet" ? "조판" : slide.view.title}</span>}
     </span>
   );
 });

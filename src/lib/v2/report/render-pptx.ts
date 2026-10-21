@@ -7,7 +7,7 @@ import PptxGenJS from "pptxgenjs";
 import { groupTaggedShapes } from "../../pptx-shape-group";
 import { fmtInt, pageRange } from "../ui/callout-layout";
 import { legendItemsOf, STRIP_COLORS } from "../ui/map-layers";
-import { SLIDE, layoutRects, slideGeometry, slideLayout, slideLegend, slidePanelRects, slidePanelScale, slideSize, terrainSectionLayout, type Rect, type SlideFormat, type SlideLegendOptions } from "../ui/overlay-layout";
+import { SLIDE, SLIDE_LEGEND, layoutRects, slideGeometry, slideLayout, slideLegend, slidePanelRects, slidePanelScale, slideSize, terrainSectionLayout, type Rect, type SlideFormat, type SlideLegendOptions } from "../ui/overlay-layout";
 import type { Badge, TileView } from "../ui/tile-view";
 import type { RoseModel } from "../ui/wind-rose";
 import { sheetCells, type SheetGrid } from "../ui/sheet";
@@ -36,12 +36,12 @@ const CHIP: Record<Badge["tone"], { fill: string; color: string }> = {
 const panelTag = (key: string, display: string, part: string): string => `GRP|panel-${key}|${display}|${part}`;
 const legendDashType = (dash?: string): "solid" | "dash" | "sysDot" => dash === "1 3" ? "sysDot" : dash ? "dash" : "solid";
 
-function titleTextFit(code: string, title: string, kind: string, box: { w: number; h: number }, scale: number): { titlePt: number; metaPt: number } {
+function titleTextFit(title: string, kind: string, box: { w: number; h: number }, scale: number): { titlePt: number; metaPt: number } {
   let titlePt = fitBlock([title], box, 18 * scale, 7);
-  let metaPt = fitBlock([`${code}  ${kind}`], box, 10 * scale, 7);
+  let metaPt = fitBlock([kind], box, 10 * scale, 7);
   const widthAt = (value: string, pt: number) => textIn(value, pt);
-  const textWidth = () => widthAt(`${code}  `, metaPt) + widthAt(title, titlePt) + widthAt(`  ${kind}`, metaPt);
-  // fitBlock은 각 run을 따로 측정하므로, 한 텍스트 상자 안의 세 run 합도
+  const textWidth = () => widthAt(title, titlePt) + widthAt(`  ${kind}`, metaPt);
+  // fitBlock은 각 run을 따로 측정하므로, 한 텍스트 상자 안의 두 run 합도
   // 확인해 좁은 사용자 패널에서 실제 run 폭이 밖으로 밀리지 않게 한다.
   while (textWidth() > box.w + 1e-9 && (titlePt > 7 || metaPt > 7)) {
     if (titlePt >= metaPt && titlePt > 7) titlePt = Math.max(7, titlePt - 0.5);
@@ -147,14 +147,14 @@ function pageNotes(s: Slide, p: PlannedSlide, extra: readonly string[] = []): vo
   if (notes.length > 0) s.addNotes(notes.join("\n"));
 }
 
-/** 왼쪽 위 제목 판: 타일 색 점 + 번호 + 타일명 + 종류 */
-function titlePlate(s: Slide, color: string, code: string, title: string, kind: string, maxW: number, style: PageStyle = {}, hasSummary = true, format: SlideFormat = "wide") {
+/** 왼쪽 위 제목 판: 타일 색 점 + 타일명 + 종류 */
+function titlePlate(s: Slide, color: string, title: string, kind: string, maxW: number, style: PageStyle = {}, hasSummary = true, format: SlideFormat = "wide") {
   const scale = slidePanelScale(style.titleScale);
-  const r = titlePlateRect(code, title, kind, maxW, style, hasSummary, format);
+  const r = titlePlateRect(title, kind, maxW, style, hasSummary, format);
   const textX = r.x + Math.min(0.48, Math.max(0.04, r.w * 0.35));
   const textRight = r.x + r.w - Math.min(0.1, Math.max(0.01, r.w * 0.08));
   const textBox = { w: Math.max(0.01, textRight - textX), h: Math.max(0.01, r.h - Math.min(0.08, r.h * 0.2)) };
-  const { titlePt, metaPt } = titleTextFit(code, title, kind, textBox, scale);
+  const { titlePt, metaPt } = titleTextFit(title, kind, textBox, scale);
   const group = panelTag("title", "제목", "plate");
   plate(s, r, 0.12, group);
   const dotSize = Math.min(0.18, Math.max(0.02, r.w * 0.16));
@@ -162,9 +162,8 @@ function titlePlate(s: Slide, color: string, code: string, title: string, kind: 
   s.addShape("ellipse", { x: dotX, y: r.y + Math.max(0, r.h / 2 - dotSize / 2), w: dotSize, h: dotSize, fill: { color: hex(color) }, line: { color: hex(color) }, objectName: panelTag("title", "제목", "mark") });
   s.addText(
     [
-      { text: `${code}  `, options: { fontSize: metaPt, color: MUTED, bold: true } },
       { text: title, options: { fontSize: titlePt, color: INK, bold: true } },
-      { text: `  ${kind}`, options: { fontSize: metaPt, color: MUTED, bold: true } },
+      ...(kind ? [{ text: `  ${kind}`, options: { fontSize: metaPt, color: MUTED, bold: true } }] : []),
     ],
     { x: textX, y: r.y, w: textBox.w, h: r.h, valign: "middle", fontFace: FONT, margin: 0, objectName: panelTag("title", "제목", "text") },
   );
@@ -307,11 +306,12 @@ function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = 
   const focus = style.legendFocus ? legendItemsOf(model).find((item) => item.key === style.legendFocus)?.label ?? style.legendFocus : null;
   const group = panelTag("legend", "범례", "plate");
   plate(s, r, 0.12, group);
-  const topPad = Math.min(0.1 * scale, Math.max(0, r.h));
-  const nominalRowH = 0.25 * scale;
-  const nominalNoteH = 0.22 * scale;
+  const topPad = Math.min(SLIDE_LEGEND.padding * scale, Math.max(0, r.h));
+  const bottomPad = Math.min(SLIDE_LEGEND.padding * scale, Math.max(0, r.h - topPad));
+  const nominalRowH = SLIDE_LEGEND.row * scale;
+  const nominalNoteH = SLIDE_LEGEND.note * scale;
   const wantedH = items.length * nominalRowH + notes.length * nominalNoteH;
-  const compression = wantedH > 0 ? Math.min(1, Math.max(0, (r.h - topPad - 0.04 * scale) / wantedH)) : 1;
+  const compression = wantedH > 0 ? Math.min(1, Math.max(0, (r.h - topPad - bottomPad) / wantedH)) : 1;
   const rowH = nominalRowH * compression;
   const noteH = nominalNoteH * compression;
   const iconScale = scale * compression;
@@ -469,7 +469,7 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
     if (mapStatus?.denseLayers.length || mapStatus?.rasterValues.length) fallbackNotes.push(nativeMapFallbackNote(p.map));
   } else if (p.map) fallbackNotes.push(nativeMapFallbackNote(p.map));
   const coTail = co ? (co.page === 0 ? `개요 · 전체 ${fmtInt(co.model.complexes.length)}${co.model.unit}` : pageRange(co.page, co.model.complexes.length, undefined, co.model.kind === "supply")) : null;
-  titlePlate(s, v.color, v.code, p.page?.titleOverride ?? v.title, [v.kindLabel, p.faceLabel, coTail].filter((t, i, a) => t && a.indexOf(t) === i).join(" · "), co && co.page > 0 ? g.w - 2 * g.edge : summaryX - 2 * g.edge, style, hasSummary, format);
+  titlePlate(s, v.color, p.page?.titleOverride ?? v.title, [v.kindLabel, p.faceLabel, coTail].filter((t, i, a) => t && a.indexOf(t) === i).join(" · "), co && co.page > 0 ? g.w - 2 * g.edge : summaryX - 2 * g.edge, style, hasSummary, format);
   if (co && co.page > 0) {
     calloutReport?.render({ slide: s, planned: p, part: "page" });
     pageTextBoxes(s, p, format);
@@ -557,7 +557,7 @@ function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: Map
   const g = slideGeometry(format);
   const s = pptx.addSlide();
   s.background = { color: "F2F2EF" };
-  titlePlate(s, p.view.color, "SHEET", p.view.title, p.grid, g.w - 2 * g.edge, p.style, false, format);
+  titlePlate(s, p.view.color, p.view.title, p.grid, g.w - 2 * g.edge, p.style, false, format);
   const cells = sheetCells(p.grid as SheetGrid);
   const cellNotes = new Set<string>();
   for (const [index, cell] of p.cells.entries()) {
@@ -595,8 +595,8 @@ function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: Map
       }
     }
     const cutNote = cell.view.notes[0] ?? null;
-    if (cutNote) cellNotes.add(`${cell.view.code} · ${cutNote}`);
-    const chipText = `${cell.view.code} · ${cell.view.title}`;
+    if (cutNote) cellNotes.add(cutNote);
+    const chipText = cell.view.title;
     s.addShape("roundRect", { x: r.x + 0.1, y: r.y + 0.1, w: Math.min(r.w - 0.2, 2.9), h: 0.3, rectRadius: 0.12, fill: { color: "FFFFFF", transparency: 10 }, line: { color: INK, transparency: 88, width: 0.5 } });
     s.addText(chipText, { x: r.x + 0.2, y: r.y + 0.1, w: Math.min(r.w - 0.4, 2.7), h: 0.3, valign: "middle", fontFace: FONT, fontSize: fitPt(chipText, 8.5, Math.min(r.w - 0.4, 2.7), 1, 8), bold: true, color: INK, margin: 0, fit: "shrink" });
   }
@@ -613,7 +613,7 @@ function sources(pptx: PptxGenJS, p: PlannedSlide & { kind: "sources" }, images:
   background(s, images[mapKeyOf(p) ?? COVER_MAP_KEY], undefined, format);
   // 지도를 흐리게: 흰 막
   s.addShape("rect", { x: 0, y: 0, w: size.w, h: size.h, fill: { color: "FFFFFF", transparency: 25 }, line: { color: "FFFFFF", width: 0, transparency: 100 } });
-  titlePlate(s, "#7A7E87", "", "자료 출처와 기준일", "", size.w - 2 * g.edge, p.style ?? {}, false, format);
+  titlePlate(s, "#7A7E87", "자료 출처와 기준일", "", size.w - 2 * g.edge, p.style ?? {}, false, format);
   // 원천이 많은 분석은 report-plan에서 여러 출처 장으로 나눈다. 한 장 안의 표는 승인 시안의 열 구조를 유지한다.
   const source = sourceLayout(p.rows.length, p.style ?? {}, format);
   const dense = source.dense;

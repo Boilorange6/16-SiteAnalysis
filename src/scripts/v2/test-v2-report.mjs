@@ -56,6 +56,7 @@ assert.deepEqual(p2.filter((p) => p.kind === "tile" && p.view.code === "D04").ma
 const src = p2.at(-1).rows;
 assert.ok(src.some((r) => r.source === SOURCE_NAMES.kapt && r.asOf === "기준일 미확인"));
 assert.ok(!src.some((r) => r.source === SOURCE_NAMES.land_price)); // A12 제외됨
+assert.ok(src.every((r) => !/\b[A-Z]\d{2}\b/.test(r.tiles)), "출처 장의 사용 타일은 내부 코드가 아니라 타일 이름이다");
 assert.equal(reportFileName("서울특별시 강동구 고덕동 123 외 2필지", "2026-09-30"), "사이트분석_서울특별시_강동구_고덕동_123_외_2필지_20260930.pptx");
 
 // W2a: 보드에서 켜 둔 라벨만 일반 타일 슬라이드·조판 셀로 전달하고, A05/A06 설명선에는 고정 라벨을 넣지 않는다.
@@ -138,6 +139,16 @@ for (const [i, n] of names.entries()) {
     assert.ok(t.includes("법적 일조 판정을 포함하지 않습니다"));
   }
   if (plan[i].kind === "tile" && plan[i].view.code === "S03") assert.ok(t.includes("탐색용") && t.includes("계산 실패"));
+}
+const a01Index = plan.findIndex((p) => p.kind === "tile" && p.view.code === "A01");
+if (a01Index >= 0) {
+  const a01Xml = await zip.file(names[a01Index]).async("string");
+  assert.doesNotMatch(text(a01Xml), /\bA01\b/, "PPT A01 제목에 내부 코드가 없다");
+  const legendTextRows = [...a01Xml.matchAll(/<p:sp>[\s\S]*?name="GRP\|panel-legend\|범례\|plate"[\s\S]*?<a:off x="\d+" y="(\d+)"\s*\/>[\s\S]*?<a:t>([^<]+)<\/a:t>[\s\S]*?<\/p:sp>/g)]
+    .map((match) => ({ y: Number(match[1]), text: match[2] }))
+    .filter((row) => row.text.trim());
+  assert.ok(legendTextRows.length >= 2, "PPT A01 범례에 두 개 이상의 텍스트 행이 있다");
+  for (let i = 1; i < legendTextRows.length; i += 1) assert.ok(legendTextRows[i].y - legendTextRows[i - 1].y >= Math.round(0.29 * 914400), "PPT 범례 행 좌표가 겹치지 않는다");
 }
 // S02 상태 슬라이드도 고정 문구를 가진다 / S03 복구 결과(정상 슬라이드)도 탐색용
 const s02 = plan.findIndex((p) => p.kind === "tile" && p.view.code === "S02");

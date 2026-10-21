@@ -44,7 +44,7 @@ export default function DrawerTiles({ open, doc, views, mode, compareGrid, compa
       <label className={styles.searchBox}>
         <span className={styles.srOnly}>타일 검색</span>
         <span aria-hidden="true">⌕</span>
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="타일 이름이나 코드 검색" />
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="타일 이름 검색" />
       </label>
       <div className={styles.chipRow} aria-label="타일 분류">
         {CATEGORIES.map((item) => <button key={item} type="button" className={`${styles.filterChip} ${category === item ? styles.filterChipActive : ""}`} aria-pressed={category === item} onClick={() => setCategory(item)}>{item}</button>)}
@@ -68,11 +68,11 @@ export default function DrawerTiles({ open, doc, views, mode, compareGrid, compa
               {mode === "compare" ? (
                 <label className={styles.tileRowButton} title={view.title}>
                   <input type="checkbox" checked={checked} aria-label={`${view.title} 비교에 포함`} disabled={!checked && compareSelected.length >= compareLimit} onChange={() => onToggleCompare(view.tileId)} />
-                  <span className={styles.tileRowCopy}><strong>{view.title}</strong><span>{view.code} · {view.kindLabel}</span></span>
+                  <span className={styles.tileRowCopy}><strong>{view.title}</strong><span>{view.kindLabel}</span></span>
                 </label>
               ) : (
                 <button type="button" className={styles.tileRowButton} title={view.title} aria-label={`${view.title} 추가`} onClick={() => onAdd(view.tileId)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onAdd(view.tileId); } }}>
-                  <span className={styles.tileRowCopy}><strong>{view.title}</strong><span>{view.code} · {view.kindLabel}</span></span>
+                  <span className={styles.tileRowCopy}><strong>{view.title}</strong><span>{view.kindLabel}</span></span>
                   <span className={styles.tileMetric}>{view.headline?.value ?? "결과 없음"}</span>
                   <span className={styles.tileAdd} aria-hidden="true">＋</span>
                 </button>

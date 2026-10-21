@@ -10,6 +10,11 @@ const { initBoard } = await import("../../lib/v2/ui/board-state.ts");
 const { SlideSurface } = await import("../../components/v2/report/slide-surface.tsx");
 
 const exportSurfaceCss = readFileSync(new URL("../../components/v2/report/slide-surface.module.css", import.meta.url), "utf8");
+const reportSurfaceCss = readFileSync(new URL("../../components/v2/report-surface.module.css", import.meta.url), "utf8");
+const slideSurfaceSource = readFileSync(new URL("../../components/v2/report/slide-surface.tsx", import.meta.url), "utf8");
+const reportModeSource = readFileSync(new URL("../../components/v2/report/report-mode.tsx", import.meta.url), "utf8");
+const reportModeCss = readFileSync(new URL("../../components/v2/report/report-mode.module.css", import.meta.url), "utf8");
+const drawerTilesSource = readFileSync(new URL("../../components/v2/report/drawer-tiles.tsx", import.meta.url), "utf8");
 
 const source = GODEOK_RESULTS.find((result) => result.tileCode === "A01");
 assert.ok(source, "A01 fixture가 필요하다");
@@ -30,6 +35,9 @@ assert.match(exportSurfaceCss, /.surfaceRoot\[data-surface-mode="export"\]\s*\{[
 assert.match(exportSurfaceCss, /\.surfaceRoot\[data-surface-mode="export"\]\s*\[data-preview-frame="true"\]\s*\{[\s\S]*?box-sizing:\s*border-box[\s\S]*?width:\s*100%\s*!important[\s\S]*?height:\s*100%\s*!important[\s\S]*?border:\s*0[\s\S]*?border-radius:\s*0[\s\S]*?box-shadow:\s*none/s, "export frame은 host를 채우고 chrome이 없다");
 assert.match(exportSurfaceCss, /\.surfaceRoot\[data-surface-mode="export"\]\s*\*,[\s\S]*?transition:\s*none\s*!important;[\s\S]*?animation:\s*none\s*!important;/s, "export 표면의 transition·animation은 꺼진다");
 assert.match(exportSurfaceCss, /\.surfaceRoot\[data-surface-mode="export"\]\s*\[data-report-source-table="true"\]\s*th,[\s\S]*?line-height:\s*1\.05;/s, "export 출처 행은 표 상자 안에 맞는 밀도로 조판한다");
+assert.doesNotMatch(exportMarkup, />A01<\//, "슬라이드 제목의 내부 타일 코드는 사용자에게 보이지 않는다");
+assert.match(reportSurfaceCss, /\.slidePanel\s*\{[\s\S]*?box-sizing:\s*border-box;/s, "범례 패널의 padding은 rect 안에 포함된다");
+assert.match(reportSurfaceCss, /\.legendRow[\s\S]*?min-height:\s*calc\(var\(--slide-unit\)\s*\*\s*0\.3\)/s, "범례 항목 행은 패널 안에서 고정 높이를 가진다");
 
 const editMarkup = renderToStaticMarkup(createElement(SlideSurface, { slide: a3, basemap: "none", mode: "edit", mapActive: true }));
 assert.match(editMarkup, /data-map-editing="true"/, "지도 편집 중인 slide canvas 식별자");
@@ -44,6 +52,15 @@ assert.match(selectedMapMarkup, /aria-label="[^"]+지도\. Enter 또는 두 번 
 const thumbMarkup = renderToStaticMarkup(createElement(SlideSurface, { slide: a3, basemap: "none", mode: "thumb" }));
 assert.equal((thumbMarkup.match(/<button\b/g) ?? []).length, 0, "thumb 표면은 조작 버튼이 없다");
 assert.match(exportMarkup, /data-surface-map[^>]*left:55%/, "numbers-first 지도 영역은 오른쪽에 있다");
+assert.match(slideSurfaceSource, /fixed=\{!thumbnail\}/, "축소판 지도는 축소판 전용 대지 크기를 사용한다");
+assert.doesNotMatch(slideSurfaceSource, /slide\.kind === "sheet" \? "조판" : slide\.view\.code/, "축소판 대체 문구에 내부 타일 코드를 쓰지 않는다");
+assert.doesNotMatch(slideSurfaceSource, /\{cell\.view\.code\} · \{cell\.view\.title\}/, "조판 셀 라벨에 내부 타일 코드를 쓰지 않는다");
+assert.doesNotMatch(slideSurfaceSource, /\$\{cell\.view\.code\} \$\{cell\.view\.title\} 타일 선택/, "조판 셀 접근성 이름에 내부 타일 코드를 쓰지 않는다");
+assert.doesNotMatch(drawerTilesSource, /타일 이름이나 코드 검색/, "타일 검색 안내문에 코드 문구를 노출하지 않는다");
+assert.match(drawerTilesSource, /placeholder="타일 이름 검색"/, "타일 검색 안내문은 이름 중심이다");
+assert.match(reportModeSource, /viewBox="0 0 20 20"/, "보고서 도구 막대는 20px 인라인 SVG 아이콘을 사용한다");
+assert.doesNotMatch(reportModeSource, />▤<|>◈<|>◌</, "보고서 도구 막대에 유니코드 기호를 쓰지 않는다");
+assert.match(reportModeCss, /\.searchBox input[\s\S]*?min-height:\s*44px[\s\S]*?height:\s*44px/s, "검색 입력이 44px 전체 높이를 채운다");
 
 const missing = {
   ...a3,
@@ -59,7 +76,7 @@ const sourceSlide = {
   ...a3,
   key: "sources:0",
   kind: "sources",
-  rows: [{ provider: "제공처", source: "자료", asOf: "2026", license: "미기록", url: "", tiles: "A01" }],
+  rows: [{ provider: "제공처", source: "자료", asOf: "2026", license: "미기록", url: "", tiles: "입지·대중교통" }],
   analysisDate: "2026-10-20",
   map: null,
   page: { ...a3.page, id: "p-sources", kind: "sources" },
