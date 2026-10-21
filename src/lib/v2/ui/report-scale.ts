@@ -9,6 +9,11 @@ const SCALE_MIN = 500;
 const SCALE_MAX = 50000;
 const DEFAULT_VIEW_WIDTH = 960;
 
+/** 축척 분모의 보기 표기. 입력 중에는 DrawerMap이 편집 문자열을 그대로 보여준다. */
+export function formatScaleDenominator(value: number): string {
+  return Math.max(0, Math.round(value)).toLocaleString("ko-KR");
+}
+
 export type ReportScaleViewport = {
   width: number;
   height: number;

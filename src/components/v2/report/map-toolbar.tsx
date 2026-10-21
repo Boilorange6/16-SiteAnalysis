@@ -1,6 +1,7 @@
 "use client";
 
 import styles from "./report-mode.module.css";
+import { formatScaleDenominator } from "@/lib/v2/ui/report-scale";
 
 type MapToolbarProps = {
   scale: number;
@@ -19,7 +20,7 @@ export default function MapToolbar({ scale, locked, editing, settingsOpen, lockA
   return (
     <div className={styles.mapToolbar} data-map-toolbar="true" data-editing={editing ? "true" : "false"} role="toolbar" aria-label="지도 편집 도구">
       <button type="button" className={styles.mapToolButton} onClick={() => onZoom(-0.25)} disabled={locked} aria-label="축척 줄이기" title="축척 줄이기">−</button>
-      <span className={styles.mapScale}>1:{scale.toLocaleString("ko-KR")}</span>
+      <span className={styles.mapScale}>1:{formatScaleDenominator(scale)}</span>
       <button type="button" className={styles.mapToolButton} onClick={() => onZoom(0.25)} disabled={locked} aria-label="축척 키우기" title="축척 키우기">＋</button>
       {editing ? (
         <button type="button" className={`${styles.mapToolButtonWide} ${styles.mapToolButtonActive}`} onClick={onDone} aria-label="지도 편집 끝내기 (Esc)" title="지도 편집 끝내기 (Esc)">완료</button>

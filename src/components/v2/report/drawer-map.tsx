@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { MapFrameState, ReportPage } from "@/lib/v2/report/report-doc";
-import { parseScaleInput, SCALE_PRESETS, scaleForFrame, zoomForScale, type ReportScaleOptions } from "@/lib/v2/ui/report-scale";
+import { formatScaleDenominator, parseScaleInput, SCALE_PRESETS, scaleForFrame, zoomForScale, type ReportScaleOptions } from "@/lib/v2/ui/report-scale";
 import { legendItemsForModel } from "@/lib/v2/ui/map-layers";
 import type { TileView } from "@/lib/v2/ui/tile-view";
 import styles from "./report-mode.module.css";
@@ -48,12 +48,15 @@ function labelRuleSummary(rule: MapFrameState["labelRule"]): string {
 
 export default function DrawerMap({ page, frame, view, cell, scaleOptions, sameExtent = false, onSameExtent, onFrame }: DrawerMapProps) {
   const model = view?.map ?? view?.backdrop ?? null;
-  const [scaleText, setScaleText] = useState(String(model ? scaleForFrame(model, frame, scaleOptions) : 1));
+  const [scaleText, setScaleText] = useState(formatScaleDenominator(model ? scaleForFrame(model, frame, scaleOptions) : 1));
+  const [scaleEditing, setScaleEditing] = useState(false);
   const [scaleError, setScaleError] = useState<string | null>(null);
   const scale = useMemo(() => model ? scaleForFrame(model, frame, scaleOptions) : 1, [frame, model, scaleOptions]);
   const locatorAvailable = hasMapData(view);
 
-  useEffect(() => setScaleText(String(scale)), [scale]);
+  useEffect(() => {
+    if (!scaleEditing) setScaleText(formatScaleDenominator(scale));
+  }, [scale, scaleEditing]);
 
   const layers = useMemo(() => {
     if (view?.layerOptions && view.layerOptions.length > 0) return view.layerOptions.map((item) => ({ id: item.id, label: item.label }));
@@ -78,19 +81,27 @@ export default function DrawerMap({ page, frame, view, cell, scaleOptions, sameE
   ].filter((item): item is string => item !== null).join(", ") || "없음";
   const movementSummary = `동 ${Math.round(frame.offsetM[0])} m, 북 ${Math.round(frame.offsetM[1])} m`;
 
-  const submitScale = () => {
+  const submitScale = (): boolean => {
     const next = parseScaleInput(scaleText);
     if (next === null) {
       setScaleError("1:500부터 1:50,000까지 입력합니다");
-      return;
+      return false;
     }
     if (frame.locked) {
-      setScaleText(String(scale));
-      return;
+      setScaleText(formatScaleDenominator(scale));
+      setScaleEditing(false);
+      return true;
     }
     setScaleError(null);
-    if (!model) return;
+    if (!model) {
+      setScaleText(formatScaleDenominator(scale));
+      setScaleEditing(false);
+      return true;
+    }
+    setScaleText(formatScaleDenominator(next));
+    setScaleEditing(false);
     onFrame({ scaleDenominator: next, zoomDelta: zoomForScale(next, model, scaleOptions) });
+    return true;
   };
 
   const toggleHidden = (id: string) => {
@@ -145,14 +156,14 @@ export default function DrawerMap({ page, frame, view, cell, scaleOptions, sameE
           <div className={styles.scaleRow}>
             <button type="button" className={styles.iconButton} onClick={() => { if (!frame.locked) { setScaleError(null); onFrame({ zoomDelta: frame.zoomDelta - 0.25, scaleDenominator: null }); } }} disabled={frame.locked} aria-label="축척 줄이기">−</button>
             <label className={styles.scaleInput}>
-              <span>1 :</span>
-              <input value={scaleText} onChange={(event) => { setScaleText(event.target.value); setScaleError(null); }} onBlur={submitScale} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); submitScale(); } }} inputMode="numeric" aria-label="축척 분모" disabled={frame.locked} />
+              <span>1:</span>
+              <input value={scaleEditing ? scaleText : formatScaleDenominator(scale)} onFocus={() => { if (!frame.locked) { setScaleEditing(true); setScaleText(String(scale)); } }} onChange={(event) => { setScaleText(event.target.value); setScaleError(null); }} onBlur={() => { submitScale(); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); if (submitScale()) event.currentTarget.blur(); } }} inputMode="numeric" aria-label="축척 분모" disabled={frame.locked} />
             </label>
             <button type="button" className={styles.iconButton} onClick={() => { if (!frame.locked) { setScaleError(null); onFrame({ zoomDelta: frame.zoomDelta + 0.25, scaleDenominator: null }); } }} disabled={frame.locked} aria-label="축척 키우기">＋</button>
           </div>
           {scaleError && <p className={styles.scaleError} role="alert">{scaleError}</p>}
           <div className={styles.presetRow}>
-            {SCALE_PRESETS.map((preset) => <button type="button" key={preset} className={styles.presetButton} onClick={() => { if (!frame.locked && model) { setScaleError(null); onFrame({ scaleDenominator: preset, zoomDelta: zoomForScale(preset, model, scaleOptions) }); } }} disabled={frame.locked}>1:{preset.toLocaleString("ko-KR")}</button>)}
+            {SCALE_PRESETS.map((preset) => <button type="button" key={preset} className={styles.presetButton} onClick={() => { if (!frame.locked && model) { setScaleError(null); setScaleEditing(false); setScaleText(formatScaleDenominator(preset)); onFrame({ scaleDenominator: preset, zoomDelta: zoomForScale(preset, model, scaleOptions) }); } }} disabled={frame.locked}>1:{formatScaleDenominator(preset)}</button>)}
           </div>
         </section>
 

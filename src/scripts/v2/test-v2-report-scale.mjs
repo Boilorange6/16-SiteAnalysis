@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import JSZip from "jszip";
 
 const { GODEOK_RESULTS, GODEOK_SUMMARY } = await import("../../lib/v2/ui/fixtures/godeok.ts");
@@ -17,7 +18,9 @@ const {
   scaleForViewport,
   visibleGroundWidthM,
   zoomForScale,
+  formatScaleDenominator,
 } = await import("../../lib/v2/ui/report-scale.ts");
+const drawerMapSource = readFileSync(new URL("../../components/v2/report/drawer-map.tsx", import.meta.url), "utf8");
 
 assert.deepEqual(SCALE_PRESETS, [1000, 2500, 5000, 10000]);
 assert.equal(parseScaleInput("1:2,500"), 2500);
@@ -26,6 +29,12 @@ assert.equal(parseScaleInput("1/2500"), 2500);
 assert.equal(parseScaleInput("499"), null);
 assert.equal(parseScaleInput("1:50,001"), null);
 assert.equal(parseScaleInput("1:abc"), null);
+assert.equal(formatScaleDenominator(13120), "13,120");
+assert.equal(formatScaleDenominator(1000), "1,000");
+assert.match(drawerMapSource, /formatScaleDenominator/);
+assert.match(drawerMapSource, /value=\{scaleEditing \? scaleText : formatScaleDenominator\(scale\)\}/);
+assert.match(drawerMapSource, /<span>1:<\/span>/);
+assert.doesNotMatch(drawerMapSource, /<span>1 :<\/span>/, "축척 표기에 콜론 앞 공백을 넣지 않는다");
 
 const source = GODEOK_RESULTS.find((result) => result.tileCode === "D04");
 assert.ok(source, "D04 fixture가 필요하다");
@@ -145,6 +154,8 @@ function scaleBarRatio(xml) {
 const pptxRatios = [];
 for (const [format, layout] of [["wide", "map-summary"], ["a3", "numbers-first"]]) {
   const xml = await firstSlideXml(await renderReportPptx([planFor(format, layout)]));
+  const visibleText = [...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((match) => match[1]).join(" ");
+  assert.doesNotMatch(visibleText, /\bD04\b/, "PPT 제목의 내부 타일 코드는 사용자에게 보이지 않는다");
   const result = scaleBarRatio(xml);
   const relativeError = Math.abs(result.ratio - 2500) / 2500;
   assert.ok(relativeError < 0.05, `${format}/${layout} PPTX 축척 막대: ratio=${result.ratio.toFixed(2)} label=${result.label} bar=${result.barLengthEmu}EMU`);
