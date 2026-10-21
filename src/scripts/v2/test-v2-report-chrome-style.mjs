@@ -28,7 +28,7 @@ assert.match(styles, /\.reportStage\s*\{[\s\S]*--stage-left:\s*88px[\s\S]*--stag
 assert.match(styles, /\.reportStage\[data-drawer-open="true"\]\s*\{[^}]*--stage-left:\s*418px;/, "서랍 열림 무대 여백");
 assert.match(styles, /\.reportStage\[data-settings-open="true"\]\s*\{[^}]*--stage-right:\s*328px;/, "설정 열림 무대 여백");
 assert.match(styles, /\.stageFit\s*\{[\s\S]*inset:\s*16px\s+var\(--stage-right\)\s+var\(--stage-bottom\)\s+var\(--stage-left\);/, "stageFit은 카드 여백 안쪽에 맞춘다");
-assert.match(styles, /@media\s*\(min-width:\s*640px\)\s*and\s*\(max-width:\s*1024px\)[\s\S]*\.secondaryButton[\s\S]*::after[\s\S]*content:\s*"▶";[\s\S]*\.headerFormat select[\s\S]*max-width:\s*88px;/, "1024px report topbar는 발표 아이콘과 좁은 판형 select를 쓴다");
+assert.match(styles, /@media\s*\(min-width:\s*640px\)\s*and\s*\(max-width:\s*1024px\)[\s\S]*\.secondaryButton[\s\S]*::after[\s\S]*content:\s*"▶";[\s\S]*\.headerFormat select[\s\S]*width:\s*120px;[\s\S]*max-width:\s*120px;/, "1024px report topbar는 발표 아이콘과 선택된 판형을 보여 줄 select를 쓴다");
 assert.match(boardStyles, /@media\s*\(min-width:\s*640px\)\s*and\s*\(max-width:\s*1024px\)[\s\S]*\.reportPage > \.topbar[\s\S]*flex-wrap:\s*nowrap;/, "1024px report topbar는 한 줄을 유지한다");
 assert.match(boardStyles, /\.reportPage > \.topbar > \.topTitle\s*\{[^}]*display:\s*none;/, "좁은 report topbar는 주소 제목을 숨긴다");
 assert.match(boardStyles, /\.reportPage > \.topbar > \.topoHeaderButton\s*\{[^}]*width:\s*44px[^}]*min-width:\s*44px[^}]*padding:\s*0;/, "좁은 report topbar는 수치지형도 버튼을 44px 아이콘으로 줄인다");
@@ -69,6 +69,15 @@ assert.doesNotMatch(drawerMapSource, /<fieldset\b|mapFieldset/, "지도 설정 �
 assert.match(styles, /\.mapSummary\s*\{[\s\S]*min-height:\s*44px;/, "details summary는 44px 누름 영역이다");
 assert.match(styles, /\.legendPlacement\s*\{[\s\S]*repeat\(3,\s*minmax\(0,\s*1fr\)\)/, "범례 위치는 3칸 분할 버튼이다");
 assert.match(styles, /\.settingsCard\s*\{[\s\S]*overflow-x:\s*hidden;[\s\S]*overflow-y:\s*auto;/, "설정 카드는 가로 넘침을 숨기고 세로만 스크롤한다");
+assert.match(styles, /\.mapToolbar\s+\.mapToolButtonActive\s*\{[^}]*color:\s*#102e60;[^}]*background:\s*#c5d9f7;/, "지도 설정 활성 버튼은 모든 폭에서 밝은 활성 배경과 대비되는 글자를 쓴다");
+assert.match(mobileRules, /\.reportStage\[data-settings-open="true"\]\s+\.stageFit\s*\{[\s\S]*justify-content:\s*flex-start;/, "390 설정 시트가 열리면 슬라이드를 시트 위쪽에 둔다");
+assert.match(mobileRules, /\.settingsCard\s*\{[\s\S]*max-height:\s*min\(60dvh,\s*calc\(100dvh - 16px\)\);[\s\S]*overflow-y:\s*auto;/, "390 설정 시트는 최대 60dvh이고 안쪽만 스크롤한다");
+assert.match(mobileRules, /\.settingsCard\s*\{[\s\S]*height:\s*min\(42dvh,\s*calc\(100dvh - 16px\)\);/, "390 설정 시트의 초기 높이는 슬라이드를 가리지 않는 범위다");
+assert.match(mobileRules, /\.pageDock\s*\{[\s\S]*grid-template-rows:\s*auto auto;[\s\S]*min-height:\s*0;[\s\S]*height:\s*auto;/, "390 페이지 줄은 지도 막대와 썸네일을 자동 행으로 쌓는다");
+assert.match(styles, /@media\s*\(min-width:\s*640px\)\s*and\s*\(max-width:\s*1024px\)[\s\S]*\.headerFormat select\s*\{[^}]*width:\s*120px;[^}]*max-width:\s*120px;/, "1024px 판형 select는 선택된 이름을 보여 줄 폭을 확보한다");
+assert.match(boardStyles, /\.demoTag\s*\{[\s\S]*font-size:\s*12px;/, "데모 데이터 표시는 편집기 12px 단계다");
+assert.match(styles, /\.compareGridChoices\s*\{[^}]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(84px,\s*1fr\)\);/, "비교 칸 구성 칩은 한 줄 우선으로 놓고 좁으면 줄바꿈한다");
+assert.match(styles, /\.compareGridChoices\s+\.sectionLabel\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;/, "비교 칸 구성 제목은 칩 그리드의 전체 열을 쓴다");
 
 const { initialReportRail, isTypingTarget } = await import("../../lib/v2/ui/report-mode-logic.ts");
 assert.equal(initialReportRail(true), null, "페이지가 있는 보고서의 초기 rail은 닫혀 있다");

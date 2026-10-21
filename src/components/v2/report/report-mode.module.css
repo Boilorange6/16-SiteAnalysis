@@ -79,7 +79,7 @@
 
 @media (min-width: 640px) and (max-width: 1024px) {
   .reportHeaderActions .secondaryButton::after { content: "▶"; color: var(--report-ink); font-size: 16px; }
-  .reportHeaderActions .headerFormat select { max-width: 88px; }
+  .reportHeaderActions .headerFormat select { width: 120px; max-width: 120px; }
 }
 
 .reportBody { position: relative; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
@@ -150,7 +150,8 @@ label.tileRowButton { grid-template-columns: 18px minmax(0, 1fr); gap: 8px; }
 .helper, .emptyHint { margin: 0; color: var(--report-muted); font-size: 12px; line-height: 1.5; }
 .compareActions { display: flex; gap: 8px; padding-top: 8px; border-top: 1px solid var(--report-line); }
 .compareActions button { flex: 1; }
-.compareGridChoices { display: grid; grid-template-columns: 1fr; gap: 6px; }
+.compareGridChoices { display: grid; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); gap: 6px; }
+.compareGridChoices .sectionLabel { grid-column: 1 / -1; }
 .compareGridChoices .filterChip { justify-self: start; }
 
 .iconButton { display: inline-grid; place-items: center; min-width: 44px; min-height: 44px; padding: 5px; color: var(--report-ink); background: #fff; border: 1px solid var(--report-line); border-radius: 7px; cursor: pointer; font-size: 16px; }
@@ -160,7 +161,8 @@ label.tileRowButton { grid-template-columns: 18px minmax(0, 1fr); gap: 8px; }
 .mapToolButton { min-width: 44px; font-size: 16px; }
 .mapToolButtonWide { min-width: 44px; padding-right: 7px; padding-left: 7px; }
 .mapToolButton:hover, .mapToolButtonWide:hover { background: #3a4352; }
-.mapToolButtonActive { color: #102e60; background: #c5d9f7; border-color: #dce9ff; }
+.mapToolbar .mapToolButtonActive { color: #102e60; background: #c5d9f7; border-color: #dce9ff; }
+.mapToolbar .mapToolButtonActive:hover { color: #102e60; background: #c5d9f7; border-color: #dce9ff; }
 .mapToolButton[data-attention="true"] { border-color: #c66a00; animation: mapLockAttention 600ms ease-out; }
 .mapScale { flex: 0 0 auto; min-width: 70px; padding: 0 2px; color: #fff; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .mapDockLead { max-width: 100%; overflow-x: auto; }
@@ -413,7 +415,8 @@ label.tileRowButton { grid-template-columns: 18px minmax(0, 1fr); gap: 8px; }
   }
   .drawerCard[data-mobile-sheet="open"] { display: block; }
   .drawerCard[data-mobile-sheet="closed"] { display: none; }
-  .settingsCard { position: fixed; top: auto; right: 0; bottom: 0; left: 0; z-index: 120; width: 100%; max-height: calc(100dvh - 16px); padding: max(8px, env(safe-area-inset-top)) 12px max(8px, env(safe-area-inset-bottom)); border-radius: 12px 12px 0 0; }
+  .reportStage[data-settings-open="true"] .stageFit { justify-content: flex-start; }
+  .settingsCard { position: fixed; top: auto; right: 0; bottom: 0; left: 0; z-index: 120; box-sizing: border-box; width: 100%; height: min(42dvh, calc(100dvh - 16px)); max-height: min(60dvh, calc(100dvh - 16px)); padding: max(8px, env(safe-area-inset-top)) 12px max(8px, env(safe-area-inset-bottom)); overflow-x: hidden; overflow-y: auto; border-radius: 12px 12px 0 0; }
   .sheetClose {
     position: sticky;
     top: 0;
@@ -482,7 +485,7 @@ label.tileRowButton { grid-template-columns: 18px minmax(0, 1fr); gap: 8px; }
   .mapEditHint { flex: 0 0 auto; }
   .notesField { width: 100%; font-size: 14px; }
   .notesField textarea { min-height: 56px; height: 56px; font-size: 14px; }
-  .pageDock { position: static; order: 3; flex: 0 0 112px; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); width: 100%; min-height: 112px; height: 112px; margin: 0; padding: 8px; transform: none; }
+  .pageDock { position: static; order: 3; flex: 0 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; width: 100%; min-height: 0; height: auto; margin: 0; padding: 8px; transform: none; }
   .dockLead { width: 100%; }
   .dockLead .dockPopoverRoot { flex: 1 1 0; }
   .dockLead .dockButton { width: 100%; }
