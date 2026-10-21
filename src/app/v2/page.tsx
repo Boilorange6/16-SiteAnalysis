@@ -38,6 +38,7 @@ import { topoReducer, type TopoState } from "@/lib/v2/ui/topo-state";
 import { prepareTopoZip, TOPO_ERROR_COPY, TopoClientError, uploadTopo, type TopoErrorCopyCode } from "@/lib/v2/ui/topo-upload";
 
 const UNDO_LABEL = { order: "옮김", size: "크기 바꿈", columns: "열 수 바꿈", remove: "삭제됨", removeCopy: "복제 삭제됨", duplicate: "복제됨", add: "추가됨", preset: "프리셋 적용" } as const;
+const UNDO_TOAST_MS = 5000;
 const GRID_COLUMN_OPTIONS: GridColumns[] = [2, 3, 4, 5, 6];
 const EMPTY_PINNED_LABELS: PinnedLabel[] = [];
 const TOPO_NUDGE_RELIEF_M = 10;
@@ -969,7 +970,19 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
     setNote(`${title} 타일이 보드 끝에 추가됨`);
   }, [board, views]);
 
-  const lastUndo = board.undoStack[board.undoStack.length - 1];
+  const undoDepth = board.undoStack.length;
+  const lastUndo = board.undoStack[undoDepth - 1];
+  // 토스트는 새 편집이 쌓인 순간에만 잠깐 띄운다. 되돌리면 바로 닫는다.
+  const [toastUndo, setToastUndo] = useState<typeof lastUndo>();
+  const undoDepthRef = useRef(undoDepth);
+  useEffect(() => {
+    const pushed = undoDepth > undoDepthRef.current;
+    undoDepthRef.current = undoDepth;
+    setToastUndo(pushed ? lastUndo : undefined);
+    if (!pushed) return;
+    const timer = window.setTimeout(() => setToastUndo(undefined), UNDO_TOAST_MS);
+    return () => window.clearTimeout(timer);
+  }, [lastUndo, undoDepth]);
   const openView = openId ? views.get(openId) : undefined;
 
   return (
@@ -1262,15 +1275,17 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
         {note}
       </div>
 
-      {lastUndo && (
+      {toastUndo && boardMode === "tile" && (
         <div className={styles.toast} role="status" style={{ bottom: 76 }}>
-          {lastUndo.kind === "columns"
-            ? `${UNDO_LABEL.columns} · ${lastUndo.columns}열`
-            : lastUndo.kind === "preset"
-              ? `${UNDO_LABEL.preset} · ${TILE_PRESETS[board.preset].label}`
-              : lastUndo.kind === "duplicate" && lastUndo.origin === "addCopy"
-                ? `${views.get(lastUndo.id)?.title ?? "타일"} 추가됨`
-              : `${UNDO_LABEL[lastUndo.kind]} · ${views.get(lastUndo.id)?.title}`}
+          <span className={styles.toastText}>
+            {toastUndo.kind === "columns"
+              ? `${UNDO_LABEL.columns} · ${toastUndo.columns}열`
+              : toastUndo.kind === "preset"
+                ? `${UNDO_LABEL.preset} · ${TILE_PRESETS[board.preset].label}`
+                : toastUndo.kind === "duplicate" && toastUndo.origin === "addCopy"
+                  ? `${views.get(toastUndo.id)?.title ?? "타일"} 추가됨`
+                : `${UNDO_LABEL[toastUndo.kind]} · ${views.get(toastUndo.id)?.title}`}
+          </span>
           <button type="button" onClick={() => dispatch({ type: "undo" })}>
             되돌리기
           </button>

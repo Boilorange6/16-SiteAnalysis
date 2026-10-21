@@ -246,7 +246,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
 
   const showToast = useCallback((message: string) => {
     setToast(message);
-    window.setTimeout(() => setToast((current) => current === message ? null : current), 1800);
+    window.setTimeout(() => setToast((current) => current === message ? null : current), 5000);
   }, []);
 
   const closeLayoutPopover = useCallback((restoreFocus = false) => {
@@ -871,7 +871,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
           </div>
         </main>
       </div>
-      {toast && <div className={styles.toast} role="status">{toast} <button type="button" onClick={undo}>되돌리기</button></div>}
+      {toast && <div className={styles.toast} role="status"><span className={styles.toastText}>{toast}</span><button type="button" onClick={() => { setToast(null); undo(); }}>되돌리기</button></div>}
     </section>
   );
 }

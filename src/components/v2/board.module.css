@@ -2827,27 +2827,42 @@ button.badge:focus-visible {
   left: 50%;
   bottom: 20px;
   transform: translateX(-50%);
-  background: var(--black);
+  background: #20242c;
   color: #fff;
-  border-radius: 999px;
-  padding: 8px 10px 8px 18px;
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+  padding: 0 4px 0 14px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   font-size: 13px;
   z-index: 60;
   max-width: calc(100vw - 32px);
+  animation: toastIn 160ms ease-out;
+}
+.toastText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .toast button {
+  min-height: 44px;
   border: 0;
-  border-radius: 999px;
-  background: #fff;
-  color: var(--ink);
-  padding: 5px 12px;
+  background: transparent;
+  color: #9cc3ff;
+  padding: 0 10px;
+  font: inherit;
   font-weight: 700;
-  font-size: 12px;
   white-space: nowrap;
   flex: none;
+  cursor: pointer;
+}
+@keyframes toastIn {
+  from { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast { animation: none; }
 }
 
 /* ── 주소 입력줄 ── */
