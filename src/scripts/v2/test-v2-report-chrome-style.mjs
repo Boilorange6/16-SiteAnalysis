@@ -101,5 +101,6 @@ assert.match(styles, /color: transparent;\s*font-size: 0;\s*\}\s*\.reportHeaderA
 const tilesSource = readFileSync(new URL("../../components/v2/report/drawer-tiles.tsx", import.meta.url), "utf8");
 assert.doesNotMatch(tilesSource, /\? styles\.filterChipActive : styles\.filterChip/, "선택된 칸 구성 칩도 기본 칩 모양을 유지한다");
 assert.match(styles, /label\.tileRowButton \{ grid-template-columns: 18px minmax\(0, 1fr\);/, "비교 모드 행은 체크박스와 이름 두 칸");
+assert.match(styles, /\.scaleInput \{ display: flex; align-items: center; flex: 1; gap: 0;/, "축척 입력도 1:13,120처럼 접두와 숫자를 붙여 보인다");
 
 console.log("v2 report chrome style tests passed");

@@ -32,8 +32,9 @@ assert.deepEqual(
     siteMarkerRadius(280),
     siteMarkerRadius(540),
     siteMarkerRadius(540, true),
+    siteMarkerRadius(48),
   ],
-  ["parcel", "parcel", "ring", "parcel", "parcel", 4, 7, 10],
+  ["parcel", "parcel", "ring", "parcel", "parcel", 4, 7, 10, 1.6],
   "대지 표식 판정과 컨텍스트별 반지름",
 );
 

@@ -240,9 +240,10 @@ export function siteMarkerMode(points?: readonly ScreenPoint[] | null): SiteMark
   return Math.min(x1 - x0, y1 - y0) >= SITE_MARKER_EDGE_PX ? "parcel" : "ring";
 }
 
-/** fixed SVG는 보고서/PPT, 높이가 작은 MapBox는 카드, 나머지는 상세 보기다. */
+/** fixed SVG는 보고서/PPT, 높이가 작은 MapBox는 카드, 아주 작은 높이는 페이지 축소판, 나머지는 상세 보기다. */
 export function siteMarkerRadius(height: number, fixed = false): number {
   if (fixed) return 10;
+  if (height < 120) return Math.max(1.5, Math.round(height / 3) / 10);
   return height < 360 ? 4 : 7;
 }
 
