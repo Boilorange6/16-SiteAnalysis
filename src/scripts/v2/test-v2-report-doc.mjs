@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 const {
   EMPTY_REPORT_DOC,
+  SITE_FIT_PATCH,
   defaultFrame,
   historyApply,
   historyRedo,
@@ -32,6 +33,9 @@ const docWithPages = {
 };
 
 assert.deepEqual(EMPTY_REPORT_DOC, { v: 1, format: "wide", pages: [] });
+assert.deepEqual(SITE_FIT_PATCH, { offsetM: [0, 0] }, "대지 맞춤 패치는 중심만 초기화한다");
+assert.equal("zoomDelta" in SITE_FIT_PATCH, false, "대지 맞춤 패치는 확대를 건드리지 않는다");
+assert.equal("scaleDenominator" in SITE_FIT_PATCH, false, "대지 맞춤 패치는 축척 입력을 건드리지 않는다");
 assert.deepEqual(defaultFrame(), {
   zoomDelta: 0,
   offsetM: [0, 0],
@@ -76,6 +80,11 @@ assert.deepEqual(withoutBox.pages[0].textBoxes, []);
 const locked = reportDocReducer(docWithPages, { type: "frame", id: "p1", patch: { locked: true } });
 const ignoredMove = reportDocReducer(locked, { type: "frame", id: "p1", patch: { offsetM: [5, 5], zoomDelta: 2 } });
 assert.deepEqual(ignoredMove.pages[0].frame, locked.pages[0].frame, "locked frame은 위치·확대를 무시한다");
+const zoomed = reportDocReducer(docWithPages, { type: "frame", id: "p1", patch: { offsetM: [12, -4], zoomDelta: 1.25, scaleDenominator: 2500 } });
+const fitted = reportDocReducer(zoomed, { type: "frame", id: "p1", patch: SITE_FIT_PATCH });
+assert.deepEqual(fitted.pages[0].frame.offsetM, [0, 0], "대지 맞춤은 중심만 되돌린다");
+assert.equal(fitted.pages[0].frame.zoomDelta, 1.25, "대지 맞춤은 현재 확대를 보존한다");
+assert.equal(fitted.pages[0].frame.scaleDenominator, 2500, "대지 맞춤은 고정 축척을 보존한다");
 const forcedFit = reportDocReducer(ignoredMove, {
   type: "frame",
   id: "p1",

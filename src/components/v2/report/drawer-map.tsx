@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { MapFrameState, ReportPage } from "@/lib/v2/report/report-doc";
+import { SITE_FIT_PATCH, type MapFrameState, type ReportPage } from "@/lib/v2/report/report-doc";
 import { formatScaleDenominator, parseScaleInput, SCALE_PRESETS, scaleForFrame, zoomForScale, type ReportScaleOptions } from "@/lib/v2/ui/report-scale";
 import { legendItemsForModel } from "@/lib/v2/ui/map-layers";
 import type { TileView } from "@/lib/v2/ui/tile-view";
@@ -237,7 +237,7 @@ export default function DrawerMap({ page, frame, view, cell, scaleOptions, sameE
               <label><span>북쪽 이동(m)</span><input type="number" value={Math.round(frame.offsetM[1])} disabled={frame.locked} onChange={(event) => onFrame({ offsetM: [frame.offsetM[0], Number(event.target.value) || 0] })} /></label>
             </div>
             <div className={styles.inlineActions}>
-              <button type="button" className={styles.secondaryButton} disabled={frame.locked} onClick={() => onFrame({ zoomDelta: 0, offsetM: [0, 0], scaleDenominator: null })}>대지 맞춤</button>
+              <button type="button" className={styles.secondaryButton} disabled={frame.locked} onClick={() => onFrame(SITE_FIT_PATCH)}>대지 맞춤</button>
               <button type="button" className={styles.secondaryButton} disabled={frame.locked} onClick={() => onFrame({ zoomDelta: -1, offsetM: [0, 0], scaleDenominator: null })}>반경 전체</button>
             </div>
           </div>

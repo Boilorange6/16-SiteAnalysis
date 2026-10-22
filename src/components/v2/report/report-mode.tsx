@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { createPortal } from "react-dom";
 import type { Dispatch } from "react";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
-import { defaultFrame, EMPTY_REPORT_DOC, newPageId, reportDocReducer, type MapFrameState, type PagePanels, type ReportDoc, type ReportDocAction, type ReportFontScale, type ReportFormat, type ReportPage, type TextBox } from "@/lib/v2/report/report-doc";
+import { defaultFrame, EMPTY_REPORT_DOC, newPageId, reportDocReducer, SITE_FIT_PATCH, type MapFrameState, type PagePanels, type ReportDoc, type ReportDocAction, type ReportFontScale, type ReportFormat, type ReportPage, type TextBox } from "@/lib/v2/report/report-doc";
 import { mapFrameScaleOptions, scaleForFrame } from "@/lib/v2/ui/report-scale";
 import { SLIDE_OVERVIEW_FILL } from "@/lib/v2/ui/callout-layout";
 import { slideGeometry, slideSiteX } from "@/lib/v2/ui/overlay-layout";
@@ -836,7 +836,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
                     settingsOpen={settingsOpen}
                     lockAttention={lockAttention}
                     onZoom={(delta) => applyFrame(mapCell, { zoomDelta: mapFrame.zoomDelta + delta, scaleDenominator: null })}
-                    onFit={() => applyFrame(mapCell, { zoomDelta: 0, offsetM: [0, 0], scaleDenominator: null })}
+                    onFit={() => applyFrame(mapCell, SITE_FIT_PATCH)}
                     onToggleLock={toggleMapLock}
                     onToggleSettings={openMapSettings}
                     onDone={endMapMove}

@@ -45,6 +45,8 @@ export type ReportPage = ReportPageBase & (
 );
 export type ReportDoc = { v: 1; format: ReportFormat; pages: ReportPage[]; fontScale?: ReportFontScale };
 
+export const SITE_FIT_PATCH: Pick<MapFrameState, "offsetM"> = { offsetM: [0, 0] };
+
 export type ReportDocAction =
   | { type: "add"; pages: ReportPage[]; index: number }
   | { type: "remove"; id: string }
