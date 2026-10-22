@@ -1058,7 +1058,8 @@
 .legendRow {
   position: relative;
   display: grid;
-  grid-template-columns: calc(var(--slide-unit) * var(--legend-icon-column)) minmax(0, 1fr) auto;
+  /* PPT와 같은 2열(아이콘·라벨). 강조 ✓는 열을 차지하지 않고 오른쪽에 겹쳐 그린다. */
+  grid-template-columns: calc(var(--slide-unit) * var(--legend-icon-column)) minmax(0, 1fr);
   align-items: center;
   gap: calc(var(--slide-unit) * var(--legend-gap));
   min-height: calc(var(--slide-unit) * var(--legend-row));
@@ -1121,8 +1122,11 @@
 
 .legendText {
   min-width: 0;
+  overflow: hidden;
   color: #15171c;
   line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .legendDimmed {
@@ -1132,6 +1136,13 @@
 
 .legendFocused {
   font-weight: 800;
+}
+
+.legendRow > .legendCheck {
+  position: absolute;
+  top: 50%;
+  right: calc(var(--slide-unit) * 0.02);
+  transform: translateY(-50%);
 }
 
 .legendCheck {
