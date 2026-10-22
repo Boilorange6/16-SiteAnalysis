@@ -71,6 +71,22 @@ const pointAt = (view, px, py) => {
   near(centered.offsetM[1], 240, 1e-6);
 }
 
+// ── 현재 축척을 유지하면서 대지를 기본 화면 좌표에 고정하는 줌 앵커 ──
+{
+  const anchoredBase = P.framedViewport(center, 1000, 800, 500, 0.2, 0.8, 0.6);
+  const sitePx = anchoredBase.width * 0.2;
+  const sitePy = anchoredBase.height * 0.6;
+  const before = P.makeProjector(anchoredBase)(center[0], center[1]);
+  const fitted = P.siteFitView(anchoredBase, sitePx, sitePy, 2);
+  const fittedViewport = P.applyView(anchoredBase, center[1], fitted);
+  const after = P.makeProjector(fittedViewport)(center[0], center[1]);
+  near(fitted.zoomDelta, 2);
+  near(after[0], before[0], 1);
+  near(after[1], before[1], 1);
+  near(after[0], sitePx, 1);
+  near(after[1], sitePy, 1);
+}
+
 // ── 절대 상한 식과 래스터 셀 12 px 상한 ──
 {
   near(P.maxZoomFor(base, { maxDelta: 3 }), Math.min(base.zoom + 3, 19));

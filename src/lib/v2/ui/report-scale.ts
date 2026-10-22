@@ -1,7 +1,7 @@
 import type { MapFrameState } from "../report/report-doc";
 import type { MapModel } from "./map-layers";
 import { layoutRects, slideSize, type SlideFormat } from "./overlay-layout";
-import { metersPerPixel, slideViewport, type Viewport } from "./map-projection";
+import { metersPerPixel, siteFitView, slideViewport, type Viewport } from "./map-projection";
 import type { ReportLayout } from "../report/report-doc";
 
 export const SCALE_PRESETS = [1000, 2500, 5000, 10000] as const;
@@ -98,6 +98,27 @@ export function zoomForScale(
   const targetMpp = targetScale * (options.frameWidthMm / 1000) / options.width;
   if (!Number.isFinite(targetMpp) || targetMpp <= 0) return 0;
   return Math.log2(metersPerPixel(base.center[1], base.zoom) / targetMpp);
+}
+
+export type SiteFitPatch = Pick<MapFrameState, "zoomDelta" | "offsetM">;
+
+/** 보고서 기본 프레임의 대지 앵커를 유지하는 현재 축척용 frame patch. */
+export function siteFitPatch(
+  map: Pick<MapModel, "center" | "radiusM">,
+  frame: Pick<MapFrameState, "zoomDelta" | "offsetM" | "scaleDenominator">,
+  options: ReportScaleOptions,
+): SiteFitPatch {
+  const zoomDelta = frame.scaleDenominator !== null && validDenominator(frame.scaleDenominator)
+    ? zoomForScale(frame.scaleDenominator, map, options)
+    : frame.zoomDelta;
+  const base = slideViewport(map, { zoomDelta: 0, offsetM: [0, 0] }, viewportArgs(options));
+  const view = siteFitView(
+    base,
+    base.width * (options.siteX ?? 0.5),
+    base.height * (options.siteY ?? 0.5),
+    zoomDelta,
+  );
+  return { zoomDelta: view.zoomDelta, offsetM: [view.offsetM[0], view.offsetM[1]] };
 }
 
 export function parseScaleInput(value: string): number | null {

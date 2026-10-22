@@ -121,6 +121,20 @@ export function zoomViewAt(base: Viewport, current: MapView, delta: number, px: 
   };
 }
 
+/** 기본 뷰포트의 한 화면 좌표에 대지를 고정한 채 목표 zoomDelta로 이동한다. */
+export function siteFitView(base: Viewport, sitePx: number, sitePy: number, zoomDelta: number): MapView {
+  // zoomViewAt의 경계가 목표값을 잘라 현재 축척을 바꾸지 않도록 목표를 양 끝에 포함한다.
+  return zoomViewAt(
+    base,
+    { zoomDelta: 0, offsetM: [0, 0] },
+    zoomDelta,
+    sitePx,
+    sitePy,
+    Math.max(0, zoomDelta),
+    Math.min(0, zoomDelta),
+  );
+}
+
 /** 줌 델타와 중심 이동을 허용 범위 안으로 줄인다. offsetM은 [동, 북]이다. */
 export function clampView(view: MapView, radiusM: number, maxZoom: number): MapView {
   const zoomLimit = Math.max(0, maxZoom);

@@ -4,10 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { createPortal } from "react-dom";
 import type { Dispatch } from "react";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
-import { defaultFrame, EMPTY_REPORT_DOC, newPageId, reportDocReducer, SITE_FIT_PATCH, type MapFrameState, type PagePanels, type ReportDoc, type ReportDocAction, type ReportFontScale, type ReportFormat, type ReportPage, type TextBox } from "@/lib/v2/report/report-doc";
-import { mapFrameScaleOptions, scaleForFrame } from "@/lib/v2/ui/report-scale";
+import { defaultFrame, EMPTY_REPORT_DOC, newPageId, reportDocReducer, type MapFrameState, type PagePanels, type ReportDoc, type ReportDocAction, type ReportFontScale, type ReportFormat, type ReportPage, type TextBox } from "@/lib/v2/report/report-doc";
+import { mapFrameScaleOptions, scaleForFrame, scaleOptionsForFrame, siteFitPatch } from "@/lib/v2/ui/report-scale";
 import { SLIDE_OVERVIEW_FILL } from "@/lib/v2/ui/callout-layout";
-import { slideGeometry, slideSiteX } from "@/lib/v2/ui/overlay-layout";
+import { layoutRects, slideGeometry, slideLayout, slideLegend, slidePanelRects, slideSiteX, slideSize, terrainSectionLayout } from "@/lib/v2/ui/overlay-layout";
 import { importLegacyReport, hasLegacyReport, pagesForTile, planReportDoc, recommendedPages } from "@/lib/v2/report/report-doc-plan";
 import { pageStripItems } from "@/lib/v2/report/report-page-strip";
 import { reportFileName, tileReportSettingsFromBoard, type PlannedSlide } from "@/lib/v2/report/report-plan";
@@ -15,6 +15,7 @@ import type { ExportPageScope } from "@/lib/v2/report/export-runner";
 import { initialReportRail, insertIndexAfter, isTypingTarget, moveByKey, reorderMessage, reportPageMapSelectable, stripNavIndex, transitionMapInteraction, type ReportRailKey } from "@/lib/v2/ui/report-mode-logic";
 import type { BoardAction, BoardState } from "@/lib/v2/ui/board-state";
 import type { SummaryView, TileView } from "@/lib/v2/ui/tile-view";
+import { sheetCells } from "@/lib/v2/ui/sheet";
 import { useFocusTrap } from "../use-focus-trap";
 import { SlideSurface, type SurfaceSelection } from "./slide-surface";
 import DrawerPages, { type PageAddKind } from "./drawer-pages";
@@ -574,10 +575,42 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
       : undefined;
   const mapView = mapTileId ? views.get(mapTileId) ?? null : null;
   const mapModel = mapView?.map ?? mapView?.backdrop ?? null;
-  const mapScaleOptions = selectedPage ? mapFrameScaleOptions(history.present.format, selectedPage.layout, {
-    siteX: slideSiteX(selectedSlide?.style, selectedPage.layout !== "side-by-side", history.present.format),
-    fill: selectedSlide?.kind === "tile" && selectedSlide.callout?.page === 0 ? SLIDE_OVERVIEW_FILL : 0.8,
-  }) : null;
+  const mapScaleOptions = selectedPage
+    ? selectedPage.kind === "compare"
+      ? (() => {
+          const rect = sheetCells(selectedPage.grid)[mapCell ?? 0];
+          return rect ? scaleOptionsForFrame(rect.w * 25.4, {
+            width: 960,
+            height: 960 * rect.h / rect.w,
+            siteX: 0.5,
+            siteY: 0.5,
+            fill: 0.8,
+          }) : null;
+        })()
+      : (() => {
+          const format = history.present.format;
+          const tile = selectedSlide?.kind === "tile" ? selectedSlide : null;
+          const hasSummary = !!tile && tile.style.summary !== false && !(tile.callout && tile.callout.page > 0);
+          const baseLegend = tile?.map ? slideLegend(tile.map, !tile.muted, undefined, hasSummary, format).rect : null;
+          const legacyPanels = slidePanelRects(tile?.style, hasSummary, baseLegend, format);
+          const customLayout = selectedPage.layout === "numbers-first" || selectedPage.layout === "side-by-side";
+          const size = slideSize(format);
+          const layout = customLayout ? layoutRects(selectedPage.layout, format) : null;
+          const toRect = (rect: { x: number; y: number; w: number; h: number } | null) => rect
+            ? { x: rect.x * size.w, y: rect.y * size.h, w: rect.w * size.w, h: rect.h * size.h }
+            : null;
+          const panels = layout
+            ? { title: toRect(layout.title)!, summary: toRect(layout.summary), legend: toRect(layout.legend) }
+            : legacyPanels;
+          const terrainShown = !!tile && tile.view.code === "D17" && !!tile.view.terrainSections && !!tile.terrainSection;
+          const terrainLayout = terrainShown ? terrainSectionLayout(panels, slideLayout(format), format) : null;
+          return mapFrameScaleOptions(format, selectedPage.layout, {
+            siteX: slideSiteX(tile?.style, panels.summary !== null, format),
+            siteY: terrainLayout?.mapSiteY ?? 0.5,
+            fill: terrainLayout?.mapFill ?? (tile?.callout?.page === 0 ? SLIDE_OVERVIEW_FILL : 0.8),
+          });
+        })()
+    : null;
   const mapScale = mapFrame && mapModel && mapScaleOptions ? scaleForFrame(mapModel, mapFrame, mapScaleOptions) : 1000;
   const mapEditing = !!mapFrame && !!mapModel && !!editableMapPage && selection?.kind === "map" && mapMoveActive;
   const stageSize = slideGeometry(history.present.format);
@@ -777,7 +810,9 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
             settingsOpen={settingsOpen}
             lockAttention={lockAttention}
             onZoom={(delta) => applyFrame(mapCell, { zoomDelta: mapFrame.zoomDelta + delta, scaleDenominator: null })}
-            onFit={() => applyFrame(mapCell, SITE_FIT_PATCH)}
+            onFit={() => {
+              if (mapFrame && mapModel && mapScaleOptions) applyFrame(mapCell, siteFitPatch(mapModel, mapFrame, mapScaleOptions));
+            }}
             onToggleLock={toggleMapLock}
             onEnterMapMove={enterMapMove}
             onOpenMapSettings={openMapSettings}

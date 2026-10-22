@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 
 const {
   EMPTY_REPORT_DOC,
-  SITE_FIT_PATCH,
   defaultFrame,
   historyApply,
   historyRedo,
@@ -11,6 +10,7 @@ const {
   newPageId,
   reportDocReducer,
 } = await import("../../lib/v2/report/report-doc.ts");
+const { siteFitPatch } = await import("../../lib/v2/ui/report-scale.ts");
 
 const settings = { face: "front", callout: "top10" };
 const page = (id, overrides = {}) => ({
@@ -33,9 +33,6 @@ const docWithPages = {
 };
 
 assert.deepEqual(EMPTY_REPORT_DOC, { v: 1, format: "wide", pages: [] });
-assert.deepEqual(SITE_FIT_PATCH, { offsetM: [0, 0] }, "대지 맞춤 패치는 중심만 초기화한다");
-assert.equal("zoomDelta" in SITE_FIT_PATCH, false, "대지 맞춤 패치는 확대를 건드리지 않는다");
-assert.equal("scaleDenominator" in SITE_FIT_PATCH, false, "대지 맞춤 패치는 축척 입력을 건드리지 않는다");
 assert.deepEqual(defaultFrame(), {
   zoomDelta: 0,
   offsetM: [0, 0],
@@ -81,9 +78,11 @@ const locked = reportDocReducer(docWithPages, { type: "frame", id: "p1", patch: 
 const ignoredMove = reportDocReducer(locked, { type: "frame", id: "p1", patch: { offsetM: [5, 5], zoomDelta: 2 } });
 assert.deepEqual(ignoredMove.pages[0].frame, locked.pages[0].frame, "locked frame은 위치·확대를 무시한다");
 const zoomed = reportDocReducer(docWithPages, { type: "frame", id: "p1", patch: { offsetM: [12, -4], zoomDelta: 1.25, scaleDenominator: 2500 } });
-const fitted = reportDocReducer(zoomed, { type: "frame", id: "p1", patch: SITE_FIT_PATCH });
-assert.deepEqual(fitted.pages[0].frame.offsetM, [0, 0], "대지 맞춤은 중심만 되돌린다");
-assert.equal(fitted.pages[0].frame.zoomDelta, 1.25, "대지 맞춤은 현재 확대를 보존한다");
+const fitPatch = siteFitPatch({ center: [127.1546, 37.5556], radiusM: 1000 }, zoomed.pages[0].frame, { width: 960, height: 540, siteX: 0.2, siteY: 0.5, fill: 0.8, frameWidthMm: 100 });
+assert.deepEqual(Object.keys(fitPatch).sort(), ["offsetM", "zoomDelta"], "대지 맞춤 패치는 위치·확대만 만든다");
+const fitted = reportDocReducer(zoomed, { type: "frame", id: "p1", patch: fitPatch });
+assert.notDeepEqual(fitted.pages[0].frame.offsetM, [0, 0], "비중앙 대지 앵커는 확대를 유지할 오프셋이 필요하다");
+assert.equal(fitted.pages[0].frame.zoomDelta, fitPatch.zoomDelta, "대지 맞춤은 실제 적용 확대를 보존한다");
 assert.equal(fitted.pages[0].frame.scaleDenominator, 2500, "대지 맞춤은 고정 축척을 보존한다");
 const forcedFit = reportDocReducer(ignoredMove, {
   type: "frame",

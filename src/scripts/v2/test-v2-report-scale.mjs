@@ -9,18 +9,21 @@ const { buildReportPlan } = await import("../../lib/v2/report/report-plan.ts");
 const { defaultFrame } = await import("../../lib/v2/report/report-doc.ts");
 const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
 const { layoutRects, slideGeometry, slideSiteX, slideSize } = await import("../../lib/v2/ui/overlay-layout.ts");
-const { metersPerPixel, slideViewport } = await import("../../lib/v2/ui/map-projection.ts");
+const { makeProjector, metersPerPixel, slideViewport } = await import("../../lib/v2/ui/map-projection.ts");
 const {
   SCALE_PRESETS,
   mapFrameScaleOptions,
   parseScaleInput,
   scaleForFrame,
+  siteFitPatch,
+  scaleOptionsForFrame,
   scaleForViewport,
   visibleGroundWidthM,
   zoomForScale,
   formatScaleDenominator,
 } = await import("../../lib/v2/ui/report-scale.ts");
 const drawerMapSource = readFileSync(new URL("../../components/v2/report/drawer-map.tsx", import.meta.url), "utf8");
+const reportModeSource = readFileSync(new URL("../../components/v2/report/report-mode.tsx", import.meta.url), "utf8");
 
 assert.deepEqual(SCALE_PRESETS, [1000, 2500, 5000, 10000]);
 assert.equal(parseScaleInput("1:2,500"), 2500);
@@ -32,6 +35,13 @@ assert.equal(parseScaleInput("1:abc"), null);
 assert.equal(formatScaleDenominator(13120), "13,120");
 assert.equal(formatScaleDenominator(1000), "1,000");
 assert.match(drawerMapSource, /formatScaleDenominator/);
+assert.match(drawerMapSource, /siteFitPatch/);
+assert.match(reportModeSource, /siteFitPatch/);
+assert.match(reportModeSource, /terrainSectionLayout/);
+assert.match(reportModeSource, /siteY: terrainLayout\?\.mapSiteY \?\? 0\.5/);
+assert.match(reportModeSource, /fill: terrainLayout\?\.mapFill/);
+assert.doesNotMatch(drawerMapSource, /SITE_FIT_PATCH/);
+assert.doesNotMatch(reportModeSource, /SITE_FIT_PATCH/);
 assert.match(drawerMapSource, /value=\{scaleEditing \? scaleText : formatScaleDenominator\(scale\)\}/);
 assert.match(drawerMapSource, /<span>1:<\/span>/);
 assert.doesNotMatch(drawerMapSource, /<span>1 :<\/span>/, "축척 표기에 콜론 앞 공백을 넣지 않는다");
@@ -89,6 +99,42 @@ const defaultViewport = slideViewport(map, { zoomDelta: 0, offsetM: [0, 0] }, de
 const measuredDefaultScale = scaleForViewport(defaultViewport, defaultOptions.frameWidthMm);
 const displayedDefaultScale = scaleForFrame(map, { ...defaultFrame(), scaleDenominator: null }, defaultOptions);
 assert.equal(displayedDefaultScale, measuredDefaultScale, `잠금 전 기본 축척 표시: displayed=${displayedDefaultScale} measured=${measuredDefaultScale}`);
+
+function assertSiteFitKeepsAnchor(options, zoomDelta) {
+  const frame = { ...defaultFrame(), zoomDelta, offsetM: [125, -240], scaleDenominator: null };
+  const patch = siteFitPatch(map, frame, options);
+  assert.deepEqual(Object.keys(patch).sort(), ["offsetM", "zoomDelta"], "대지 맞춤은 zoomDelta·offsetM만 패치한다");
+  assert.equal(patch.zoomDelta, zoomDelta, "대지 맞춤은 현재 확대를 보존한다");
+  const base = slideViewport(map, { zoomDelta: 0, offsetM: [0, 0] }, options);
+  const fitted = slideViewport(map, patch, options);
+  const before = makeProjector(base)(map.center[0], map.center[1]);
+  const after = makeProjector(fitted)(map.center[0], map.center[1]);
+  assert.ok(Math.hypot(after[0] - before[0], after[1] - before[1]) <= 1, `대지 화면 좌표가 기본 자리에서 1px 이내여야 함: ${before} -> ${after}`);
+  return patch;
+}
+
+const fitPatch = assertSiteFitKeepsAnchor(defaultOptions, 2);
+const zeroFit = siteFitPatch(map, { ...defaultFrame(), zoomDelta: 0, offsetM: [125, -240], scaleDenominator: null }, defaultOptions);
+assert.equal(zeroFit.zoomDelta, 0, "기본 축척의 대지 맞춤은 확대를 0으로 둔다");
+assert.deepEqual(zeroFit.offsetM, [0, 0], "기본 축척의 대지 맞춤은 오프셋을 0으로 둔다");
+const fixedFrame = { ...defaultFrame(), zoomDelta: -4, offsetM: [125, -240], scaleDenominator: 2500 };
+const fixedPatch = siteFitPatch(map, fixedFrame, defaultOptions);
+assert.equal(fixedPatch.zoomDelta, zoomForScale(2500, map, defaultOptions), "고정 축척의 실제 확대를 fit에 반영한다");
+assert.equal("scaleDenominator" in fixedPatch, false, "대지 맞춤은 고정 축척 입력을 건드리지 않는다");
+assert.notDeepEqual(fitPatch.offsetM, [0, 0], "비중앙 대지 앵커에서는 현재 확대에 맞는 오프셋이 필요하다");
+
+const compareRects = (await import("../../lib/v2/ui/sheet.ts")).sheetCells("2x2");
+for (const [index, rect] of compareRects.entries()) {
+  const cellOptions = scaleOptionsForFrame(rect.w * 25.4, {
+    width: 960,
+    height: 960 * rect.h / rect.w,
+    siteX: 0.5,
+    siteY: 0.5,
+    fill: 0.8,
+  });
+  assertSiteFitKeepsAnchor(cellOptions, 1.25);
+  assert.ok(cellOptions.frameWidthMm > 0, `비교 ${index + 1}번 칸 기본 프레임`);
+}
 
 function planFor(format, layout) {
   const base = buildReportPlan({
