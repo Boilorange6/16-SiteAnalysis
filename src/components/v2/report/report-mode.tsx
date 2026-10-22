@@ -11,7 +11,6 @@ import { slideGeometry, slideSiteX } from "@/lib/v2/ui/overlay-layout";
 import { importLegacyReport, hasLegacyReport, pagesForTile, planReportDoc, recommendedPages } from "@/lib/v2/report/report-doc-plan";
 import { pageStripItems } from "@/lib/v2/report/report-page-strip";
 import { reportFileName, tileReportSettingsFromBoard, type PlannedSlide } from "@/lib/v2/report/report-plan";
-import { dismissMapEditHint, readMapEditHintDismissed } from "@/lib/v2/ui/map-edit-hint";
 import type { ExportPageScope } from "@/lib/v2/report/export-runner";
 import { initialReportRail, insertIndexAfter, isTypingTarget, moveByKey, reorderMessage, reportPageMapSelectable, stripNavIndex, transitionMapInteraction, type ReportRailKey } from "@/lib/v2/ui/report-mode-logic";
 import type { BoardAction, BoardState } from "@/lib/v2/ui/board-state";
@@ -23,7 +22,7 @@ import DrawerTiles from "./drawer-tiles";
 import PageStrip, { type PageStripItem } from "./page-strip";
 import DrawerMap from "./drawer-map";
 import LayoutSwitcher from "./layout-switcher";
-import MapToolbar from "./map-toolbar";
+import MapScaleChip from "./map-scale-chip";
 import NotesField from "./notes-field";
 import ExportPanel from "./export-panel";
 import styles from "./report-mode.module.css";
@@ -45,15 +44,6 @@ function RailIcon({ name }: { name: RailIconName }) {
       {name === "theme" && <><circle cx="10" cy="10" r="5.5" /><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4" /></>}
     </svg>
   );
-}
-
-function safeLocalStorage(): Storage | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
 }
 
 export type ReportModeProps = {
@@ -150,7 +140,6 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const [mapMoveActive, setMapMoveActive] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [lockAttention, setLockAttention] = useState(false);
-  const [mapEditHintDismissed, setMapEditHintDismissed] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportPageScope, setExportPageScope] = useState<ExportPageScope | null>(null);
@@ -164,6 +153,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const layoutPopoverRef = useRef<HTMLDivElement>(null);
   const notesPopoverRef = useRef<HTMLDivElement>(null);
   const [mobileViewport, setMobileViewport] = useState(false);
+  const reportStageRef = useRef<HTMLElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
   const settingsRef = useRef<HTMLElement>(null);
   const drawerOpenerRef = useRef<HTMLElement | null>(null);
@@ -183,10 +173,6 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     syncViewport();
     media.addEventListener?.("change", syncViewport);
     return () => media.removeEventListener?.("change", syncViewport);
-  }, []);
-
-  useEffect(() => {
-    setMapEditHintDismissed(readMapEditHintDismissed(safeLocalStorage()));
   }, []);
 
   useEffect(() => () => {
@@ -605,10 +591,6 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
       lockAttentionTimerRef.current = null;
     }, 600);
   }, []);
-  const dismissMapEditHintOnce = useCallback(() => {
-    setMapEditHintDismissed(true);
-    dismissMapEditHint(safeLocalStorage());
-  }, []);
   const enterMapMove = useCallback(() => {
     if (!selectedPageMapSelectable) return;
     const current = { selected: selection?.kind === "map", moveActive: mapMoveActive, settingsOpen };
@@ -622,8 +604,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     setRail(null);
     setSettingsOpen(transitioned.settingsOpen);
     setMapMoveActive(transitioned.moveActive);
-    if (transitioned.moveActive) dismissMapEditHintOnce();
-  }, [dismissMapEditHintOnce, mapFrame?.locked, mapMoveActive, mapSelection, rememberDrawerOpener, selectedPageMapSelectable, selection, settingsOpen, signalLockAttention]);
+  }, [mapFrame?.locked, mapMoveActive, mapSelection, rememberDrawerOpener, selectedPageMapSelectable, selection, settingsOpen, signalLockAttention]);
   const setMapMoveFromSurface = useCallback((active: boolean) => {
     if (active) enterMapMove();
     else {
@@ -701,6 +682,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
 
   const handleMapEscapeCapture = (event: React.KeyboardEvent<HTMLElement>) => {
     if (event.key !== "Escape" || layoutPopoverOpen || notesPopoverOpen) return;
+    const target = event.target as HTMLElement;
+    if (target.closest("#report-map-scale-menu")) return;
     const current = { selected: selection?.kind === "map", moveActive: mapMoveActive, settingsOpen };
     if (!current.moveActive && !current.settingsOpen && !current.selected) return;
     const transitioned = transitionMapInteraction(current, "escape");
@@ -715,7 +698,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     <section className={styles.reportRoot} data-report-root aria-label="보고서 모드" onKeyDownCapture={handleMapEscapeCapture} onPointerDownCapture={(event) => {
       if (!mapMoveActive || selection?.kind !== "map") return;
       const target = event.target as HTMLElement;
-      if (!target.closest("[data-preview-map]") && !target.closest("[data-map-toolbar]")) setMapMoveActive(false);
+      if (!target.closest("[data-preview-map], [data-map-scale-chip], #report-map-scale-menu")) setMapMoveActive(false);
     }}>
       <h1 className={styles.srOnly}>{summary.address} 보고서</h1>
       {reportActionsTarget && createPortal(
@@ -753,6 +736,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
       />}
       <div className={styles.reportBody} onDragOver={(event) => event.preventDefault()} onDrop={handleDrop}>
         <main
+          ref={reportStageRef}
           className={styles.reportStage}
           data-drawer-open={drawerOpen ? "true" : "false"}
           data-settings-open={settingsOpen ? "true" : "false"}
@@ -781,6 +765,24 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
               </>
             ) : <div className={styles.emptyCanvas}>이 페이지는 아직 미리보기를 준비하고 있습니다.</div>}
           </div>
+
+          {selection?.kind === "map" && mapFrame && mapModel && mapScaleOptions && <MapScaleChip
+            stageRef={reportStageRef}
+            format={history.present.format}
+            frame={mapFrame}
+            mapModel={mapModel}
+            mapCell={mapCell}
+            scale={mapScale}
+            mapEditing={mapEditing}
+            settingsOpen={settingsOpen}
+            lockAttention={lockAttention}
+            onZoom={(delta) => applyFrame(mapCell, { zoomDelta: mapFrame.zoomDelta + delta, scaleDenominator: null })}
+            onFit={() => applyFrame(mapCell, SITE_FIT_PATCH)}
+            onToggleLock={toggleMapLock}
+            onEnterMapMove={enterMapMove}
+            onOpenMapSettings={openMapSettings}
+            onDone={endMapMove}
+          />}
 
           {selection?.kind === "map" && editableMapPage && mapFrame && mapScaleOptions && <aside
             ref={settingsRef}
@@ -826,28 +828,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
           </aside>
 
           <div className={`${styles.floatCard} ${styles.pageDock}`} inert={modalContentInert || undefined}>
-            <div className={`${styles.dockLead} ${selection?.kind === "map" ? styles.mapDockLead : ""}`} data-dock-lead="true">
-              {selection?.kind === "map" && mapFrame && mapModel ? (
-                <>
-                  <MapToolbar
-                    scale={mapScale}
-                    locked={mapFrame.locked}
-                    editing={mapEditing}
-                    settingsOpen={settingsOpen}
-                    lockAttention={lockAttention}
-                    onZoom={(delta) => applyFrame(mapCell, { zoomDelta: mapFrame.zoomDelta + delta, scaleDenominator: null })}
-                    onFit={() => applyFrame(mapCell, SITE_FIT_PATCH)}
-                    onToggleLock={toggleMapLock}
-                    onToggleSettings={openMapSettings}
-                    onDone={endMapMove}
-                  />
-                  {!mapEditHintDismissed && <div className={styles.mapEditHint} role="status">
-                    <span>두 번 눌러 지도 편집</span>
-                    <button type="button" onClick={dismissMapEditHintOnce} aria-label="지도 편집 안내 닫기" title="지도 편집 안내 닫기">×</button>
-                  </div>}
-                </>
-              ) : (
-                <>
+            <div className={styles.dockLead} data-dock-lead="true">
               <div className={styles.dockPopoverRoot}>
                 <button ref={layoutTriggerRef} type="button" className={styles.dockButton} aria-haspopup="dialog" aria-expanded={layoutPopoverOpen} aria-controls={layoutPopoverOpen ? "report-layout-menu" : undefined} aria-label="페이지 레이아웃 메뉴" onClick={toggleLayoutPopover} disabled={!selectedPage}>
                   <span aria-hidden="true">▥</span><span>레이아웃</span>
@@ -864,8 +845,6 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
                   <NotesField compact pageId={selectedPage.id} value={selectedPage.notes} onChange={(notes) => apply({ type: "notes", id: selectedPage.id, notes })} />
                 </div>}
               </div>
-                </>
-              )}
             </div>
             <PageStrip items={stripItems} selectedId={selectedId} selectedSlideKey={selectedSlideKey} onSelect={selectStripItem} onNavigate={navigateStrip} onReorder={reorderPage} onDropMove={dropMovePage} onAddPage={() => { setRail("pages"); setSelection(null); setMapMoveActive(false); setSettingsOpen(false); addPage("blank"); }} onDuplicate={duplicatePage} onDelete={deletePage} classMap={surfaceClassMap} exportSelectionMode={exportPageScope === "selected"} exportPageIds={exportPageIds} onToggleExportPage={toggleExportPage} />
           </div>

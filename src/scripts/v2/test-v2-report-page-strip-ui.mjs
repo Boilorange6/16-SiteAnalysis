@@ -14,11 +14,11 @@ require.extensions[".css"] = (module) => {
 const { GODEOK_RESULTS, GODEOK_SUMMARY } = await import("../../lib/v2/ui/fixtures/godeok.ts");
 const { initBoard } = await import("../../lib/v2/ui/board-state.ts");
 const { toSummaryView, toTileView } = await import("../../lib/v2/ui/tile-view.ts");
-const { EMPTY_REPORT_DOC } = await import("../../lib/v2/report/report-doc.ts");
+const { EMPTY_REPORT_DOC, defaultFrame } = await import("../../lib/v2/report/report-doc.ts");
 const { planReportDoc, recommendedPages } = await import("../../lib/v2/report/report-doc-plan.ts");
 const { pageStripItems } = await import("../../lib/v2/report/report-page-strip.ts");
 const { default: PageStrip } = await import("../../components/v2/report/page-strip.tsx");
-const { default: MapToolbar } = await import("../../components/v2/report/map-toolbar.tsx");
+const { default: MapScaleChip } = await import("../../components/v2/report/map-scale-chip.tsx");
 
 const summary = toSummaryView(GODEOK_SUMMARY, GODEOK_RESULTS);
 const board = initBoard(GODEOK_RESULTS);
@@ -68,39 +68,57 @@ assert.match(pageNavigationSource, /event\.altKey \|\| event\.ctrlKey \|\| event
 const reportModeCss = readFileSync(new URL("../../components/v2/report/report-mode.module.css", import.meta.url), "utf8");
 assert.match(reportModeCss, /\.pageDropIndicator[\s\S]*?width:\s*3px[\s\S]*?background:\s*#2f6fdb/, "드롭 위치 표시 막대");
 
-const toolbarProps = {
+const mapModel = views.values().next().value?.map ?? views.values().next().value?.backdrop;
+assert.ok(mapModel, "지도 칩 fixture는 지도 모델을 가져야 한다");
+const chipProps = {
+  stageRef: { current: null },
+  format: "wide",
+  frame: defaultFrame(),
+  mapModel,
   scale: 2500,
-  locked: false,
-  editing: false,
+  mapEditing: false,
   settingsOpen: false,
-  lockAttention: false,
+  lockAttention: true,
   onZoom: () => {},
   onFit: () => {},
   onToggleLock: () => {},
-  onToggleSettings: () => {},
+  onEnterMapMove: () => {},
+  onOpenMapSettings: () => {},
   onDone: () => {},
+  initialOpen: true,
 };
-const toolbarMarkup = renderToStaticMarkup(createElement(MapToolbar, toolbarProps));
-const toolbarLabels = ["축척 줄이기", "축척 키우기", "대지 맞춤", "지도 위치 고정", "지도 설정"];
-let previousToolbarLabelIndex = -1;
-for (const label of toolbarLabels) {
-  const labelIndex = toolbarMarkup.indexOf(`aria-label="${label}"`);
-  assert.ok(labelIndex >= 0, `지도 막대에 ${label} 버튼`);
-  assert.ok(labelIndex > previousToolbarLabelIndex, `지도 막대 버튼 순서: ${label}`);
-  previousToolbarLabelIndex = labelIndex;
+const chipMarkup = renderToStaticMarkup(createElement(MapScaleChip, chipProps));
+const chipLabels = ["축척 줄이기", "축척 키우기", "대지 맞춤", "지도 위치 고정", "지도 설정"];
+let previousChipLabelIndex = -1;
+for (const label of chipLabels) {
+  const labelIndex = chipMarkup.indexOf(`aria-label="${label}"`);
+  assert.ok(labelIndex >= 0, `축척 칩 팝오버에 ${label} 항목`);
+  assert.ok(labelIndex > previousChipLabelIndex, `축척 칩 항목 순서: ${label}`);
+  previousChipLabelIndex = labelIndex;
 }
-assert.doesNotMatch(toolbarMarkup, /지도 이동|이동 끝내기/, "지도 막대에는 이동 토글이 없다");
+assert.match(chipMarkup, /data-map-scale-chip="true"/, "축척 칩 마크업");
+assert.match(chipMarkup, /aria-haspopup="menu"/, "축척 칩은 메뉴를 연다");
+assert.match(chipMarkup, /role="menu"/, "축척 팝오버는 메뉴 의미를 가진다");
+assert.match(chipMarkup, /data-attention="true"/, "잠긴 지도 편집 시도는 축척 칩을 강조한다");
+const editingChipMarkup = renderToStaticMarkup(createElement(MapScaleChip, { ...chipProps, mapEditing: true, lockAttention: false }));
+assert.match(editingChipMarkup, /aria-label="지도 편집 끝내기 \(Esc\)"/, "편집 중에는 Esc 완료 버튼이 있다");
 
-const editingToolbarMarkup = renderToStaticMarkup(createElement(MapToolbar, { ...toolbarProps, editing: true }));
-assert.match(editingToolbarMarkup, /aria-label="지도 편집 끝내기 \(Esc\)"/, "편집 중에는 Esc 완료 버튼이 있다");
-assert.doesNotMatch(editingToolbarMarkup, /aria-label="대지 맞춤"|aria-label="지도 위치 고정"|aria-label="지도 설정"/, "편집 중에는 설정 조작을 숨긴다");
-const attentionToolbarMarkup = renderToStaticMarkup(createElement(MapToolbar, { ...toolbarProps, lockAttention: true }));
-assert.match(attentionToolbarMarkup, /data-attention="true"/, "잠긴 지도 편집 시도는 고정 버튼을 강조한다");
+const mapScaleChipSource = readFileSync(new URL("../../components/v2/report/map-scale-chip.tsx", import.meta.url), "utf8");
+const slideSurfaceSource = readFileSync(new URL("../../components/v2/report/slide-surface.tsx", import.meta.url), "utf8");
+assert.match(mapScaleChipSource, /ResizeObserver/, "축척 칩은 지도 프레임 크기를 관찰한다");
+assert.match(mapScaleChipSource, /data-slide-canvas.*data-map-selected/, "축척 칩은 선택된 슬라이드 캔버스를 찾는다");
+assert.match(mapScaleChipSource, /data-map-cell-index/, "축척 칩은 비교 칸 인덱스를 사용한다");
+assert.match(slideSurfaceSource, /className=\{styles\.sheetCellMap\} data-surface-map="true" data-map-cell-index=\{index\}/, "비교 지도 셀의 안정적인 DOM 계약");
+assert.match(reportModeSource, /data-map-scale-chip.*#report-map-scale-menu/, "지도 편집 중 축척 칩과 팝오버 입력은 지도 이동을 끝내지 않는다");
+assert.match(reportModeSource, /const target = event\.target as HTMLElement;\s*if \(target\.closest\("#report-map-scale-menu"\)\) return;/, "팝오버 Escape는 전역 지도 레이어보다 먼저 처리한다");
 
 const stageBlock = reportModeSource.slice(reportModeSource.indexOf("className={styles.stageFit}"), reportModeSource.indexOf('<nav className={`${styles.floatCard} ${styles.toolPill}`}'));
 const dockBlock = reportModeSource.slice(reportModeSource.indexOf('data-dock-lead="true"'), reportModeSource.lastIndexOf("<PageStrip"));
-assert.doesNotMatch(stageBlock, /<MapToolbar/, "지도 막대는 슬라이드 무대 위에 그리지 않는다");
-assert.match(dockBlock, /<MapToolbar/, "지도 막대는 pageDock의 왼쪽 묶음에 그린다");
+assert.match(stageBlock, /<MapScaleChip/, "지도 선택 시 축척 칩을 무대에 그린다");
+assert.doesNotMatch(reportModeSource, /MapToolbar|mapEditHint|mapDockLead|data-map-toolbar|v2\.report\.mapEditHint/, "이전 지도 막대·안내 코드를 제거한다");
+assert.match(dockBlock, /<LayoutSwitcher/, "pageDock는 지도 선택과 무관하게 레이아웃 버튼을 그린다");
+assert.match(dockBlock, /<NotesField/, "pageDock는 지도 선택과 무관하게 메모 버튼을 그린다");
+assert.doesNotMatch(dockBlock, /MapScaleChip|두 번 눌러 지도 편집/, "pageDock에는 지도 칩과 안내 알약이 없다");
 assert.doesNotMatch(reportModeSource, /styles\.mapHint|mapToolbarReason|지도를 끌어 옮기고/, "이전 무대 안내 CSS/문구를 제거한다");
 assert.match(reportModeSource, /const drawerOpen = rail !== null;/, "지도 선택은 왼쪽 서랍을 열지 않는다");
 assert.doesNotMatch(reportModeSource, /setSelection\(null\);\s*(?:if \(current\.selected\) )?setRail\("pages"\);/, "지도 선택을 풀어도 왼쪽 서랍을 열지 않는다");

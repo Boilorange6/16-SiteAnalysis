@@ -1143,7 +1143,7 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, onCellActivate 
             return (
               <div className={styles.sheetCell} style={rectStyle(rect, unit)} key={cell.mapKey}>
                 {chart ? <ChartPlaceholder view={cell.view} unit={unit} /> : model ? (
-                  <div className={styles.sheetCellMap}>
+                  <div className={styles.sheetCellMap} data-surface-map="true" data-map-cell-index={index}>
                     <MapFigure
                       model={cell.reportFrame ? modelWithHiddenLayers(model, cell.reportFrame.hiddenLayers) : model}
                       width={width}

@@ -69,7 +69,7 @@ assert.doesNotMatch(drawerMapSource, /<fieldset\b|mapFieldset/, "지도 설정 �
 assert.match(styles, /\.mapSummary\s*\{[\s\S]*min-height:\s*44px;/, "details summary는 44px 누름 영역이다");
 assert.match(styles, /\.legendPlacement\s*\{[\s\S]*repeat\(3,\s*minmax\(0,\s*1fr\)\)/, "범례 위치는 3칸 분할 버튼이다");
 assert.match(styles, /\.settingsCard\s*\{[\s\S]*overflow-x:\s*hidden;[\s\S]*overflow-y:\s*auto;/, "설정 카드는 가로 넘침을 숨기고 세로만 스크롤한다");
-assert.match(styles, /\.mapToolbar\s+\.mapToolButtonActive\s*\{[^}]*color:\s*#102e60;[^}]*background:\s*#c5d9f7;/, "지도 설정 활성 버튼은 모든 폭에서 밝은 활성 배경과 대비되는 글자를 쓴다");
+assert.match(styles, /\.mapScaleChip\[data-open="true"\]\s*\{[^}]*color:\s*#102e60;[^}]*border-color:\s*#2f6fdb;/, "축척 칩 열린 상태는 파란 테두리와 대비되는 글자를 쓴다");
 assert.match(mobileRules, /\.reportStage\[data-settings-open="true"\]\s+\.stageFit\s*\{[\s\S]*justify-content:\s*flex-start;/, "390 설정 시트가 열리면 슬라이드를 시트 위쪽에 둔다");
 assert.match(mobileRules, /\.settingsCard\s*\{[\s\S]*max-height:\s*min\(60dvh,\s*calc\(100dvh - 16px\)\);[\s\S]*overflow-y:\s*auto;/, "390 설정 시트는 최대 60dvh이고 안쪽만 스크롤한다");
 assert.match(mobileRules, /\.settingsCard\s*\{[\s\S]*height:\s*min\(42dvh,\s*calc\(100dvh - 16px\)\);/, "390 설정 시트의 초기 높이는 슬라이드를 가리지 않는 범위다");
