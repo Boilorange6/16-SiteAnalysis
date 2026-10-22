@@ -315,6 +315,7 @@ function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = 
   const rowH = nominalRowH * compression;
   const noteH = nominalNoteH * compression;
   const iconScale = scale * compression;
+  const iconDy = (SLIDE_LEGEND.row - 0.3) * iconScale / 2;
   const confine = <T extends object>(options: T | undefined): T | null => {
     if (!options) return null;
     const box = options as T & { x?: number; y?: number; w?: number; h?: number };
@@ -351,19 +352,19 @@ function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = 
     const labelW = Math.max(0.01, r.x + r.w - labelX - Math.min(0.1 * scale, Math.max(0, r.w * 0.08)));
     const labelPt = fitBlock([it.label], { w: labelW, h: Math.max(0.01, rowH) }, 10 * scale, 7);
     if (it.site) {
-      target.addShape("diamond", { x: r.x + 0.19 * iconScale, y: y + 0.04 * iconScale, w: 0.16 * iconScale, h: 0.16 * iconScale, fill: { color: "FFFFFF", transparency: fade }, line: { color: "111111", width: 0.8, transparency: fade } });
-      target.addShape("ellipse", { x: r.x + 0.25 * iconScale, y: y + 0.1 * iconScale, w: 0.04 * iconScale, h: 0.04 * iconScale, fill: { color: "111111", transparency: fade }, line: { color: "111111", width: 0, transparency: fade } });
+      target.addShape("diamond", { x: r.x + 0.19 * iconScale, y: y + iconDy + 0.04 * iconScale, w: 0.16 * iconScale, h: 0.16 * iconScale, fill: { color: "FFFFFF", transparency: fade }, line: { color: "111111", width: 0.8, transparency: fade } });
+      target.addShape("ellipse", { x: r.x + 0.25 * iconScale, y: y + iconDy + 0.1 * iconScale, w: 0.04 * iconScale, h: 0.04 * iconScale, fill: { color: "111111", transparency: fade }, line: { color: "111111", width: 0, transparency: fade } });
     } else if (it.symbol === "rail-axis") {
-      target.addShape("line", { x: r.x + 0.17 * iconScale, y: y + 0.145 * iconScale, w: 0.22 * iconScale, h: 0, line: { color: "172033", width: 5.2, transparency: fade, beginArrowType: "none", endArrowType: "none" } });
-      target.addShape("line", { x: r.x + 0.17 * iconScale, y: y + 0.145 * iconScale, w: 0.22 * iconScale, h: 0, line: { color: hex(it.color), width: 3.6, transparency: fade, beginArrowType: "none", endArrowType: "none" } });
+      target.addShape("line", { x: r.x + 0.17 * iconScale, y: y + iconDy + 0.145 * iconScale, w: 0.22 * iconScale, h: 0, line: { color: "172033", width: 5.2, transparency: fade, beginArrowType: "none", endArrowType: "none" } });
+      target.addShape("line", { x: r.x + 0.17 * iconScale, y: y + iconDy + 0.145 * iconScale, w: 0.22 * iconScale, h: 0, line: { color: hex(it.color), width: 3.6, transparency: fade, beginArrowType: "none", endArrowType: "none" } });
     } else if (it.symbol === "rail-exit") {
-      target.addShape("ellipse", { x: r.x + 0.18 * iconScale, y: y + 0.035 * iconScale, w: 0.19 * iconScale, h: 0.19 * iconScale, fill: { color: "FFD200", transparency: fade }, line: { color: "172033", width: 0.75, transparency: fade } });
+      target.addShape("ellipse", { x: r.x + 0.18 * iconScale, y: y + iconDy + 0.035 * iconScale, w: 0.19 * iconScale, h: 0.19 * iconScale, fill: { color: "FFD200", transparency: fade }, line: { color: "172033", width: 0.75, transparency: fade } });
     } else if (it.badge) {
-      target.addShape("ellipse", { x: r.x + 0.18 * iconScale, y: y + 0.03 * iconScale, w: 0.19 * iconScale, h: 0.19 * iconScale, fill: { color: hex(it.color), transparency: fade }, line: { color: "FFFFFF", width: 0.75, transparency: fade } });
-      target.addText(it.badge, { x: r.x + 0.18 * iconScale, y: y + 0.03 * iconScale, w: 0.19 * iconScale, h: 0.19 * iconScale, align: "center", valign: "middle", fontFace: FONT, fontSize: Math.max(7, 7 * scale), bold: true, color: dimmed ? "8C919B" : hex(badgeTextColor(it.color)), margin: 0 });
+      target.addShape("ellipse", { x: r.x + 0.18 * iconScale, y: y + iconDy + 0.03 * iconScale, w: 0.19 * iconScale, h: 0.19 * iconScale, fill: { color: hex(it.color), transparency: fade }, line: { color: "FFFFFF", width: 0.75, transparency: fade } });
+      target.addText(it.badge, { x: r.x + 0.18 * iconScale, y: y + iconDy + 0.03 * iconScale, w: 0.19 * iconScale, h: 0.19 * iconScale, align: "center", valign: "middle", fontFace: FONT, fontSize: Math.max(7, 7 * scale), bold: true, color: dimmed ? "8C919B" : hex(badgeTextColor(it.color)), margin: 0 });
     } else if (it.lineSwatch) {
       const x = r.x + 0.17 * iconScale;
-      const lineY = y + 0.145 * iconScale;
+      const lineY = y + iconDy + 0.145 * iconScale;
       const lineW = 0.22 * iconScale;
       const dashType = legendDashType(it.dash);
       const lineWidth = Math.max(1.2, (it.strokeWidth ?? 1.5) * 0.9);
@@ -371,13 +372,13 @@ function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = 
       target.addShape("line", { x, y: lineY, w: lineW, h: 0, line: { color: hex(it.color), width: lineWidth, transparency: fade, dashType }, objectName: `${group}|item-${i}|line` });
       if (it.tickMarks) {
         for (const offset of [0.05, 0.11, 0.17]) {
-          target.addShape("line", { x: x + offset * iconScale, y: y + 0.095 * iconScale, w: 0.001, h: 0.1 * iconScale, line: { color: hex(it.color), width: 0.7, transparency: fade }, objectName: `${group}|item-${i}|tick-${offset}` });
+          target.addShape("line", { x: x + offset * iconScale, y: y + iconDy + 0.095 * iconScale, w: 0.001, h: 0.1 * iconScale, line: { color: hex(it.color), width: 0.7, transparency: fade }, objectName: `${group}|item-${i}|tick-${offset}` });
         }
       }
     } else if (it.legendSwatch === "polygon") {
       target.addShape("rect", {
         x: r.x + 0.18 * iconScale,
-        y: y + 0.035 * iconScale,
+        y: y + iconDy + 0.035 * iconScale,
         w: 0.19 * iconScale,
         h: 0.19 * iconScale,
         fill: { color: hex(it.fill && it.fill !== "none" ? it.fill : it.color), transparency: it.fill === "none" ? 100 : Math.round((1 - (it.fillOpacity ?? 1)) * 100) },
@@ -385,7 +386,7 @@ function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = 
         objectName: `${group}|item-${i}|polygon`,
       });
     } else {
-      target.addShape("ellipse", { x: r.x + 0.2 * iconScale, y: y + 0.06 * iconScale, w: 0.13 * iconScale, h: 0.13 * iconScale, fill: { color: hex(it.color), transparency: fade }, line: { color: "FFFFFF", width: 0.75, transparency: fade } });
+      target.addShape("ellipse", { x: r.x + 0.2 * iconScale, y: y + iconDy + 0.06 * iconScale, w: 0.13 * iconScale, h: 0.13 * iconScale, fill: { color: hex(it.color), transparency: fade }, line: { color: "FFFFFF", width: 0.75, transparency: fade } });
     }
     target.addText(it.label, { x: labelX, y, w: labelW, h: Math.max(0.01, rowH), valign: "middle", fontFace: FONT, fontSize: labelPt, bold: focused, color: dimmed ? "8C919B" : INK, margin: 0 });
   });

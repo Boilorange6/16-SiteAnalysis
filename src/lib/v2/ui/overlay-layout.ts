@@ -83,7 +83,7 @@ export type ReportLayoutName = "map-full" | "map-summary" | "numbers-first" | "s
 export const SLIDE = { w: 13.333, h: 7.5, edge: 0.3, stripH: 0.36, infoRatio: 0.32 } as const;
 
 /** 슬라이드 범례 판의 CSS·PPT 공용 안쪽 여백과 행 높이(inch). */
-export const SLIDE_LEGEND = { padding: 0.22, row: 0.3, note: 0.22 } as const;
+export const SLIDE_LEGEND = { padding: 0.22, row: 0.24, note: 0.22 } as const;
 
 const FORMAT_SIZES: Record<SlideFormat, { w: number; h: number }> = {
   wide: { w: SLIDE.w, h: SLIDE.h },

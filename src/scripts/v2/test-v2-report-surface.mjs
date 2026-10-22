@@ -37,7 +37,9 @@ assert.match(exportSurfaceCss, /\.surfaceRoot\[data-surface-mode="export"\]\s*\*
 assert.match(exportSurfaceCss, /\.surfaceRoot\[data-surface-mode="export"\]\s*\[data-report-source-table="true"\]\s*th,[\s\S]*?line-height:\s*1\.05;/s, "export 출처 행은 표 상자 안에 맞는 밀도로 조판한다");
 assert.doesNotMatch(exportMarkup, />A01<\//, "슬라이드 제목의 내부 타일 코드는 사용자에게 보이지 않는다");
 assert.match(reportSurfaceCss, /\.slidePanel\s*\{[\s\S]*?box-sizing:\s*border-box;/s, "범례 패널의 padding은 rect 안에 포함된다");
-assert.match(reportSurfaceCss, /\.legendRow[\s\S]*?min-height:\s*calc\(var\(--slide-unit\)\s*\*\s*0\.3\)/s, "범례 항목 행은 패널 안에서 고정 높이를 가진다");
+assert.match(reportSurfaceCss, /\.legendRow[\s\S]*?min-height:\s*calc\(var\(--slide-unit\)\s*\*\s*var\(--legend-row\)\)/s, "범례 항목 행은 정본 CSS 변수 높이를 가진다");
+assert.match(slideSurfaceSource, /"--legend-row":\s*String\(SLIDE_LEGEND\.row\)/, "범례 행 CSS 변수는 SLIDE_LEGEND.row를 쓴다");
+assert.match(slideSurfaceSource, /fitBlock\(\[item\.label\][\s\S]*?h:\s*SLIDE_LEGEND\.row/s, "범례 라벨 fitBlock도 정본 행 높이를 쓴다");
 
 const editMarkup = renderToStaticMarkup(createElement(SlideSurface, { slide: a3, basemap: "none", mode: "edit", mapActive: true }));
 assert.match(editMarkup, /data-map-editing="true"/, "지도 편집 중인 slide canvas 식별자");

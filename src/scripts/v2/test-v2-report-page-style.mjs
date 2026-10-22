@@ -20,7 +20,7 @@ const { withLegacyReport, withLegacyStyle, withLegacyTileState } = await import(
 const { buildMapScene } = await import("../../lib/v2/ui/map-scene.ts");
 const { layerStyle } = await import("../../lib/v2/ui/map-layers.ts");
 const { slideViewport } = await import("../../lib/v2/ui/map-projection.ts");
-const { SLIDE, slideLegend, slidePanelRects, slideReserved, slideSiteX } = await import("../../lib/v2/ui/overlay-layout.ts");
+const { SLIDE, SLIDE_LEGEND, slideLegend, slideLegendRowRects, slidePanelRects, slideReserved, slideSiteX } = await import("../../lib/v2/ui/overlay-layout.ts");
 const { fitBlock, fitFooterText, linesOf } = await import("../../lib/v2/report/pptx-kit.ts");
 const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
 
@@ -112,6 +112,27 @@ assert.ok(basePlan.some((slide) => slide.kind === "sources" && /^sources:\d+$/.t
 const firstA01 = basePlan.find((slide) => slide.kind === "tile" && slide.view.tileId === "t-A01");
 assert.ok(firstA01, "A01 계획 장");
 assert.equal(firstA01.key, `t-A01:${firstA01.view.hasFace ? firstA01.body.face : "single"}`, "타일 face 키 규칙");
+
+// 미리보기와 PPT 범례가 같은 행 상수를 쓰고, PPT 아이콘이 새 행 범위 안에 있는지 확인한다.
+{
+  const a03 = basePlan.find((slide) => slide.kind === "tile" && slide.view.tileId === "t-A03");
+  assert.ok(a03?.map, "범례 행 계약용 A03 지도");
+  const legend = slideLegend(a03.map, !a03.muted);
+  assert.ok(legend.rect && legend.items.length > 0, "범례 행 계약용 범례");
+  const previewRows = slideLegendRowRects(legend.rect, legend.items.length, legend.notes.length);
+  const { xml } = await renderOneTile(a03);
+  const shapes = xmlShapes(xml);
+  const firstLabel = shapes.find((shape) => shape.name.includes("GRP|panel-legend|범례|plate") && textOf(shape) === legend.items[0].label);
+  assert.ok(firstLabel?.geometry, "PPT 범례 첫 라벨 행");
+  assert.ok(Math.abs(previewRows.items[0].h - SLIDE_LEGEND.row) < 0.0001 && Math.abs(firstLabel.geometry.h - SLIDE_LEGEND.row) < 0.0001, "미리보기 행 높이와 PPT 행 높이가 같은 상수");
+  const sameRect = (a, b) => ["x", "y", "w", "h"].every((key) => Math.abs(a[key] - b[key]) < 0.0001);
+  const iconShapes = shapes.filter((shape) => shape.name.includes("GRP|panel-legend|범례|plate") && shape.geometry && !shape.text && !sameRect(shape.geometry, legend.rect));
+  assert.ok(iconShapes.length > 0, "PPT 범례 아이콘 도형");
+  for (const shape of iconShapes) {
+    assert.ok(previewRows.items.some((row) => shape.geometry.y >= row.y - 0.0001 && shape.geometry.y + shape.geometry.h <= row.y + row.h + 0.0001), `PPT 범례 아이콘이 행 밖이다: ${shape.name}`);
+  }
+  console.log(`legend row contract: preview/PPT=${previewRows.items[0].h.toFixed(2)}in; icons=${iconShapes.length} within item rows`);
+}
 
 // 보드 순서를 바꾸어도 타일 자체의 키는 페이지 위치와 무관하다.
 {

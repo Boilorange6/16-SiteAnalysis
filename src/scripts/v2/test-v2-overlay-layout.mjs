@@ -48,7 +48,8 @@ const legendRowBoxes = [...legendRows.items, ...legendRows.notes].map((row) => (
 for (let i = 0; i < legendRowBoxes.length; i += 1) {
   for (let j = i + 1; j < legendRowBoxes.length; j += 1) assert.ok(!L.overlaps(legendRowBoxes[i], legendRowBoxes[j]), `범례 행 ${i}/${j}가 겹치지 않는다`);
 }
-assert.ok(legendRows.items.every((row) => row.h >= 0.25), "범례 항목은 축소되어 0이 되지 않는다");
+assert.equal(L.SLIDE_LEGEND.row, 0.24, "보고서 범례 행 높이 정본");
+assert.ok(legendRows.items.every((row) => row.h >= L.SLIDE_LEGEND.row), "범례 항목은 축소되어 0이 되지 않는다");
 // 모든 지도 타일의 범례가 판 안에서 충돌 없이 슬라이드 안에 들어간다
 for (const r of GODEOK_RESULTS) {
   const v = toTileView(r);

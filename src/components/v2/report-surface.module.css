@@ -1060,7 +1060,7 @@
   grid-template-columns: calc(var(--slide-unit) * 0.25) minmax(0, 1fr) auto;
   align-items: center;
   gap: calc(var(--slide-unit) * 0.12);
-  min-height: calc(var(--slide-unit) * 0.3);
+  min-height: calc(var(--slide-unit) * var(--legend-row));
   box-sizing: border-box;
   width: 100%;
   padding: 0 calc(var(--slide-unit) * 0.04);
