@@ -16,7 +16,7 @@ import type { PagePanels, MapFrameState, TextBox } from "@/lib/v2/report/report-
 import type { PlannedSlide } from "@/lib/v2/report/report-plan";
 import type { TileView } from "@/lib/v2/ui/tile-view";
 import { sheetCells, type SheetGrid } from "@/lib/v2/ui/sheet";
-import { reportPageMapSelectable, mixedValue, toggleLabelVisibility, toggleLegendFocus } from "@/lib/v2/ui/report-mode-logic";
+import { labelFramePatch, reportPageMapSelectable, mixedValue, toggleLabelVisibility, toggleLegendFocus } from "@/lib/v2/ui/report-mode-logic";
 
 type SurfaceStyles = Record<string, string>;
 const FALLBACK_STYLES: SurfaceStyles = new Proxy<SurfaceStyles>({} as SurfaceStyles, { get: (_target, key) => String(key) });
@@ -1620,6 +1620,8 @@ export function SlideSurface({
   };
   const directPatch = (patch: PreviewStylePatch) => {
     if (patch.panels && onPanels) onPanels(patch.panels as unknown as PagePanels);
+    const labelPatch = frame ? labelFramePatch(frame, patch) : null;
+    if (labelPatch) onFrame?.(undefined, labelPatch);
     if (onDirectStylePatch) onDirectStylePatch(patch);
     else onStylePatch?.(patch);
   };

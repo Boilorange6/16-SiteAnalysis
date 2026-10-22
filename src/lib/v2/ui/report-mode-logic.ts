@@ -1,4 +1,4 @@
-import type { ReportDoc, ReportDocAction, ReportPage } from "../report/report-doc";
+import type { MapFrameState, ReportDoc, ReportDocAction, ReportPage } from "../report/report-doc";
 
 export type ReportRailKey = "pages" | "tiles" | "textbox" | "theme" | "layout";
 
@@ -37,6 +37,18 @@ export function toggleLabelVisibility(
   return currentlyVisible
     ? { pinnedKeys: pinned, hiddenKeys: [...hidden, key] }
     : { pinnedKeys: [...pinned, key], hiddenKeys: hidden };
+}
+
+/** 지도 라벨 토글 patch를 페이지 frame patch로 옮긴다. 보고서 모드의 라벨 정본은 frame이다. */
+export function labelFramePatch(
+  frame: MapFrameState,
+  patch: { pinnedKeys?: readonly string[]; hiddenKeys?: readonly string[] },
+): Partial<MapFrameState> | null {
+  if (patch.pinnedKeys === undefined && patch.hiddenKeys === undefined) return null;
+  return {
+    ...(patch.pinnedKeys !== undefined ? { pinnedKeys: [...patch.pinnedKeys] } : {}),
+    ...(patch.hiddenKeys !== undefined ? { legend: { ...frame.legend, hidden: [...patch.hiddenKeys] } } : {}),
+  };
 }
 
 /** 범례 강조 상태를 순수하게 토글한다. */

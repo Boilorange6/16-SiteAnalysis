@@ -8,6 +8,7 @@ import {
   reportPageMapSelectable,
   dropMoveIndex,
   isTypingTarget,
+  labelFramePatch,
   reorderMessage,
   stripKeyIntent,
   stripNavIndex,
@@ -131,5 +132,14 @@ const bothCompareCells = reportDocReducer(firstCompareCell, { type: "frame", id:
 assert.deepEqual(bothCompareCells.pages[2].cells[0].frame, bothCompareCells.pages[2].cells[1].frame, "두 compare 셀에 같은 frame patch를 순서대로 적용한다");
 assert.deepEqual(bothCompareCells.pages[2].cells[0].frame.offsetM, [42, -17]);
 assert.equal(reportDocReducer(compareWithoutExtent, { type: "sameExtent", id: "p3", value: true }).pages[2].sameExtent, true, "compare sameExtent를 다시 켤 수 있다");
+
+// 지도 요소 클릭 라벨 토글은 페이지 frame(pinnedKeys·legend.hidden)에 저장돼야 한다.
+const labelFrame = { ...defaultFrame(), pinnedKeys: ["a"], legend: { ...defaultFrame().legend, hidden: ["b"], visibleOnly: false } };
+assert.deepEqual(labelFramePatch(labelFrame, { pinnedKeys: ["a", "c"], hiddenKeys: [] }), { pinnedKeys: ["a", "c"], legend: { ...labelFrame.legend, hidden: [] } }, "라벨 토글 patch를 frame patch로 옮기고 범례의 다른 설정은 보존한다");
+assert.deepEqual(labelFramePatch(labelFrame, { pinnedKeys: [] }), { pinnedKeys: [] }, "pinnedKeys만 바뀌면 legend는 건드리지 않는다");
+assert.equal(labelFramePatch(labelFrame, { zoomDelta: 1 }), null, "라벨과 무관한 patch는 frame patch를 만들지 않는다");
+const toggled = reportDocReducer(doc, { type: "frame", id: "p2", patch: labelFramePatch(doc.pages[1].frame, { pinnedKeys: ["bus|1"], hiddenKeys: ["bus|2"] }) });
+assert.deepEqual(toggled.pages[1].frame.pinnedKeys, ["bus|1"], "토글한 고정 라벨이 frame에 남는다");
+assert.deepEqual(toggled.pages[1].frame.legend.hidden, ["bus|2"], "토글한 숨김 라벨이 frame에 남는다");
 
 console.log("report mode state: PASS");
