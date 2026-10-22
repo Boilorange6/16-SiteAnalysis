@@ -15,6 +15,7 @@ const {
   mapFrameScaleOptions,
   parseScaleInput,
   scaleForFrame,
+  siteAnchoredZoomPatch,
   siteFitPatch,
   scaleOptionsForFrame,
   scaleForViewport,
@@ -35,7 +36,9 @@ assert.equal(parseScaleInput("1:abc"), null);
 assert.equal(formatScaleDenominator(13120), "13,120");
 assert.equal(formatScaleDenominator(1000), "1,000");
 assert.match(drawerMapSource, /formatScaleDenominator/);
+assert.match(drawerMapSource, /siteAnchoredZoomPatch/);
 assert.match(drawerMapSource, /siteFitPatch/);
+assert.match(reportModeSource, /siteAnchoredZoomPatch/);
 assert.match(reportModeSource, /siteFitPatch/);
 assert.match(reportModeSource, /terrainSectionLayout/);
 assert.match(reportModeSource, /siteY: terrainLayout\?\.mapSiteY \?\? 0\.5/);
@@ -122,6 +125,51 @@ const fixedPatch = siteFitPatch(map, fixedFrame, defaultOptions);
 assert.equal(fixedPatch.zoomDelta, zoomForScale(2500, map, defaultOptions), "고정 축척의 실제 확대를 fit에 반영한다");
 assert.equal("scaleDenominator" in fixedPatch, false, "대지 맞춤은 고정 축척 입력을 건드리지 않는다");
 assert.notDeepEqual(fitPatch.offsetM, [0, 0], "비중앙 대지 앵커에서는 현재 확대에 맞는 오프셋이 필요하다");
+
+function frameView(frame, options) {
+  return {
+    zoomDelta: frame.scaleDenominator === null ? frame.zoomDelta : zoomForScale(frame.scaleDenominator, map, options),
+    offsetM: frame.offsetM,
+  };
+}
+
+function siteScreenPoint(frame, options) {
+  const viewport = slideViewport(map, frameView(frame, options), options);
+  return makeProjector(viewport)(map.center[0], map.center[1]);
+}
+
+function assertAnchoredZoom(frame, options, nextZoomDelta, scaleDenominator) {
+  const before = siteScreenPoint(frame, options);
+  const patch = siteAnchoredZoomPatch(map, frame, options, nextZoomDelta, scaleDenominator);
+  const after = siteScreenPoint({ ...frame, ...patch }, options);
+  assert.equal(patch.zoomDelta, nextZoomDelta, "버튼이 요청한 zoomDelta를 그대로 적용한다");
+  assert.equal(patch.scaleDenominator, scaleDenominator, "축척 입력의 분모 상태를 보존한다");
+  assert.ok(Math.hypot(after[0] - before[0], after[1] - before[1]) <= 1, `대지 화면 좌표를 1px 이내로 고정한다: ${before} -> ${after}`);
+  return patch;
+}
+
+// ── 보고서 축척 조작은 현재 대지 화면 위치를 고정한다 ──
+{
+  const plusFrame = { ...defaultFrame(), scaleDenominator: null, zoomDelta: 0, offsetM: [0, 0] };
+  const base = siteScreenPoint(plusFrame, defaultOptions);
+  const expectedAnchor = [defaultOptions.width * (defaultOptions.siteX ?? 0.5), defaultOptions.height * (defaultOptions.siteY ?? 0.5)];
+  assert.ok(Math.hypot(base[0] - expectedAnchor[0], base[1] - expectedAnchor[1]) <= 1, `기본 대지 앵커 ${base} -> ${expectedAnchor}`);
+  assertAnchoredZoom(plusFrame, defaultOptions, 0.25, null);
+
+  const movedFrame = { ...defaultFrame(), scaleDenominator: null, zoomDelta: 0.5, offsetM: [125, -240] };
+  assertAnchoredZoom(movedFrame, defaultOptions, 0.75, null);
+  assertAnchoredZoom(movedFrame, defaultOptions, -0.25, null);
+
+  const fixedFrameForPreset = { ...defaultFrame(), scaleDenominator: 5000, zoomDelta: zoomForScale(5000, map, defaultOptions), offsetM: [125, -240] };
+  const presetZoom = zoomForScale(2500, map, defaultOptions);
+  assertAnchoredZoom(fixedFrameForPreset, defaultOptions, presetZoom, 2500);
+
+  const inputZoom = zoomForScale(7500, map, defaultOptions);
+  assertAnchoredZoom(fixedFrameForPreset, defaultOptions, inputZoom, 7500);
+
+  const staleFixedFrame = { ...fixedFrameForPreset, zoomDelta: -4 };
+  assertAnchoredZoom(staleFixedFrame, defaultOptions, zoomForScale(5000, map, defaultOptions) + 0.25, null);
+}
 
 const compareRects = (await import("../../lib/v2/ui/sheet.ts")).sheetCells("2x2");
 for (const [index, rect] of compareRects.entries()) {

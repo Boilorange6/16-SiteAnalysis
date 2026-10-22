@@ -1,7 +1,7 @@
 import type { MapFrameState } from "../report/report-doc";
 import type { MapModel } from "./map-layers";
 import { layoutRects, slideSize, type SlideFormat } from "./overlay-layout";
-import { metersPerPixel, siteFitView, slideViewport, type Viewport } from "./map-projection";
+import { makeProjector, metersPerPixel, siteFitView, slideViewport, zoomViewAt, type Viewport } from "./map-projection";
 import type { ReportLayout } from "../report/report-doc";
 
 export const SCALE_PRESETS = [1000, 2500, 5000, 10000] as const;
@@ -102,6 +102,8 @@ export function zoomForScale(
 
 export type SiteFitPatch = Pick<MapFrameState, "zoomDelta" | "offsetM">;
 
+export type SiteAnchoredZoomPatch = Pick<MapFrameState, "zoomDelta" | "offsetM" | "scaleDenominator">;
+
 /** 보고서 기본 프레임의 대지 앵커를 유지하는 현재 축척용 frame patch. */
 export function siteFitPatch(
   map: Pick<MapModel, "center" | "radiusM">,
@@ -119,6 +121,39 @@ export function siteFitPatch(
     zoomDelta,
   );
   return { zoomDelta: view.zoomDelta, offsetM: [view.offsetM[0], view.offsetM[1]] };
+}
+
+/** 현재 화면의 대지 위치를 고정한 채 보고서 축척 조작을 적용하는 frame patch. */
+export function siteAnchoredZoomPatch(
+  map: Pick<MapModel, "center" | "radiusM">,
+  frame: Pick<MapFrameState, "zoomDelta" | "offsetM" | "scaleDenominator">,
+  options: ReportScaleOptions,
+  nextZoomDelta: number,
+  scaleDenominator: number | null,
+): SiteAnchoredZoomPatch {
+  const currentZoomDelta = frame.scaleDenominator !== null && validDenominator(frame.scaleDenominator)
+    ? zoomForScale(frame.scaleDenominator, map, options)
+    : frame.zoomDelta;
+  const currentView = { zoomDelta: currentZoomDelta, offsetM: frame.offsetM };
+  const viewportArgsForFrame = viewportArgs(options);
+  const base = slideViewport(map, { zoomDelta: 0, offsetM: [0, 0] }, viewportArgsForFrame);
+  const currentViewport = slideViewport(map, currentView, viewportArgsForFrame);
+  const [sitePx, sitePy] = makeProjector(currentViewport)(map.center[0], map.center[1]);
+
+  // zoomViewAt clamps current.zoomDelta + delta. Include both ends so the
+  // report buttons keep accepting the same range as the old direct patch.
+  const minDelta = Math.min(currentZoomDelta, nextZoomDelta);
+  const maxDelta = Math.max(currentZoomDelta, nextZoomDelta);
+  const view = zoomViewAt(
+    base,
+    currentView,
+    nextZoomDelta - currentZoomDelta,
+    sitePx,
+    sitePy,
+    maxDelta,
+    minDelta,
+  );
+  return { zoomDelta: view.zoomDelta, offsetM: [view.offsetM[0], view.offsetM[1]], scaleDenominator };
 }
 
 export function parseScaleInput(value: string): number | null {

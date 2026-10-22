@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import type { Dispatch } from "react";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { defaultFrame, EMPTY_REPORT_DOC, newPageId, reportDocReducer, type MapFrameState, type PagePanels, type ReportDoc, type ReportDocAction, type ReportFontScale, type ReportFormat, type ReportPage, type TextBox } from "@/lib/v2/report/report-doc";
-import { mapFrameScaleOptions, scaleForFrame, scaleOptionsForFrame, siteFitPatch } from "@/lib/v2/ui/report-scale";
+import { mapFrameScaleOptions, scaleForFrame, scaleOptionsForFrame, siteAnchoredZoomPatch, siteFitPatch, zoomForScale } from "@/lib/v2/ui/report-scale";
 import { SLIDE_OVERVIEW_FILL } from "@/lib/v2/ui/callout-layout";
 import { layoutRects, slideGeometry, slideLayout, slideLegend, slidePanelRects, slideSiteX, slideSize, terrainSectionLayout } from "@/lib/v2/ui/overlay-layout";
 import { importLegacyReport, hasLegacyReport, pagesForTile, planReportDoc, recommendedPages } from "@/lib/v2/report/report-doc-plan";
@@ -809,7 +809,14 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
             mapEditing={mapEditing}
             settingsOpen={settingsOpen}
             lockAttention={lockAttention}
-            onZoom={(delta) => applyFrame(mapCell, { zoomDelta: mapFrame.zoomDelta + delta, scaleDenominator: null })}
+            onZoom={(delta) => {
+              if (mapFrame && mapModel && mapScaleOptions) {
+                const currentZoomDelta = mapFrame.scaleDenominator !== null && Number.isFinite(mapFrame.scaleDenominator) && mapFrame.scaleDenominator > 0
+                  ? zoomForScale(mapFrame.scaleDenominator, mapModel, mapScaleOptions)
+                  : mapFrame.zoomDelta;
+                applyFrame(mapCell, siteAnchoredZoomPatch(mapModel, mapFrame, mapScaleOptions, currentZoomDelta + delta, null));
+              }
+            }}
             onFit={() => {
               if (mapFrame && mapModel && mapScaleOptions) applyFrame(mapCell, siteFitPatch(mapModel, mapFrame, mapScaleOptions));
             }}
