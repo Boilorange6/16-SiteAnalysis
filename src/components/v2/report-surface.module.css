@@ -1052,18 +1052,19 @@
   grid-auto-rows: auto;
   gap: 0;
   overflow: visible;
+  padding: calc(var(--slide-unit) * var(--legend-pad));
 }
 
 .legendRow {
   position: relative;
   display: grid;
-  grid-template-columns: calc(var(--slide-unit) * 0.25) minmax(0, 1fr) auto;
+  grid-template-columns: calc(var(--slide-unit) * var(--legend-icon-column)) minmax(0, 1fr) auto;
   align-items: center;
-  gap: calc(var(--slide-unit) * 0.12);
+  gap: calc(var(--slide-unit) * var(--legend-gap));
   min-height: calc(var(--slide-unit) * var(--legend-row));
   box-sizing: border-box;
   width: 100%;
-  padding: 0 calc(var(--slide-unit) * 0.04);
+  padding: 0;
   color: inherit;
   background: transparent;
   border: 1px solid transparent;
@@ -1141,7 +1142,7 @@
 }
 
 .legendNote {
-  min-height: calc(var(--slide-unit) * 0.22);
+  min-height: calc(var(--slide-unit) * var(--legend-note));
   color: #5b606b;
   line-height: 1.2;
 }

@@ -44,12 +44,25 @@ assert.equal(L.slideLegendRect(0, 0, 0), null);
 const lg = L.slideLegendRect(7, 1, 10);
 assert.ok(inSlide(lg) && lg.y + lg.h <= s.strip.y && lg.x === s.legendX);
 const legendRows = L.slideLegendRowRects(lg, 7, 1);
+const legendGeometry = L.slideLegendGeometry(lg);
 const legendRowBoxes = [...legendRows.items, ...legendRows.notes].map((row) => ({ x0: row.x, y0: row.y, x1: row.x + row.w, y1: row.y + row.h }));
 for (let i = 0; i < legendRowBoxes.length; i += 1) {
   for (let j = i + 1; j < legendRowBoxes.length; j += 1) assert.ok(!L.overlaps(legendRowBoxes[i], legendRowBoxes[j]), `범례 행 ${i}/${j}가 겹치지 않는다`);
 }
+assert.equal(L.SLIDE_LEGEND.padding, 0.12, "보고서 범례 안쪽 여백 정본");
 assert.equal(L.SLIDE_LEGEND.row, 0.24, "보고서 범례 행 높이 정본");
 assert.ok(legendRows.items.every((row) => row.h >= L.SLIDE_LEGEND.row), "범례 항목은 축소되어 0이 되지 않는다");
+assert.equal(legendRows.items[0].x, lg.x + L.SLIDE_LEGEND.padding, "범례 항목 x가 안쪽 여백에서 시작한다");
+assert.equal(legendRows.notes[0].x, lg.x + L.SLIDE_LEGEND.padding, "범례 문구 x가 항목과 같은 안쪽 여백에서 시작한다");
+assert.equal(legendGeometry.labelX, lg.x + L.SLIDE_LEGEND.padding + L.SLIDE_LEGEND.iconColumn + L.SLIDE_LEGEND.gap, "범례 라벨 시작 x가 아이콘 열·간격 뒤다");
+const shortLegend = L.slideLegendRect(2, 0, 5);
+const shortLegendW = L.SLIDE_LEGEND.padding * 2 + L.SLIDE_LEGEND.iconColumn + L.SLIDE_LEGEND.gap + 5 * L.SLIDE_LEGEND.labelChar;
+assert.ok(shortLegend && shortLegend.w < 2.0, "2항목 짧은 라벨 범례 폭이 기존 2.0in 최소값보다 작다");
+assert.ok(shortLegend && Math.abs(shortLegend.w - shortLegendW) < 1e-9, "범례 폭이 padding·아이콘 열·간격·라벨 폭 공식이다");
+const firstMap = toTileView(GODEOK_RESULTS[0]).map;
+assert.ok(firstMap, "오른쪽 배치 회귀용 지도");
+const rightLegend = L.slideLegend(firstMap, true, undefined, true, "wide", { placement: "right" });
+assert.ok(rightLegend.rect && rightLegend.rect.x + rightLegend.rect.w <= L.SLIDE.w - L.SLIDE.edge + 1e-9, "오른쪽 배치 범례가 새 폭으로 정렬된다");
 // 모든 지도 타일의 범례가 판 안에서 충돌 없이 슬라이드 안에 들어간다
 for (const r of GODEOK_RESULTS) {
   const v = toTileView(r);

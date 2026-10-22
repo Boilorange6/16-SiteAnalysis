@@ -36,10 +36,16 @@ assert.match(exportSurfaceCss, /\.surfaceRoot\[data-surface-mode="export"\]\s*\[
 assert.match(exportSurfaceCss, /\.surfaceRoot\[data-surface-mode="export"\]\s*\*,[\s\S]*?transition:\s*none\s*!important;[\s\S]*?animation:\s*none\s*!important;/s, "export 표면의 transition·animation은 꺼진다");
 assert.match(exportSurfaceCss, /\.surfaceRoot\[data-surface-mode="export"\]\s*\[data-report-source-table="true"\]\s*th,[\s\S]*?line-height:\s*1\.05;/s, "export 출처 행은 표 상자 안에 맞는 밀도로 조판한다");
 assert.doesNotMatch(exportMarkup, />A01<\//, "슬라이드 제목의 내부 타일 코드는 사용자에게 보이지 않는다");
-assert.match(reportSurfaceCss, /\.slidePanel\s*\{[\s\S]*?box-sizing:\s*border-box;/s, "범례 패널의 padding은 rect 안에 포함된다");
+assert.match(reportSurfaceCss, /\.slidePanel\s*\{[\s\S]*?box-sizing:\s*border-box;[\s\S]*?padding:\s*calc\(var\(--slide-unit\)\s*\*\s*0\.22\)/s, "공용 slidePanel 여백은 유지된다");
+assert.match(reportSurfaceCss, /\.legendPanel\s*\{[\s\S]*?padding:\s*calc\(var\(--slide-unit\)\s*\*\s*var\(--legend-pad\)\)/s, "범례 패널만 정본 padding 변수를 쓴다");
+assert.match(reportSurfaceCss, /\.legendRow[\s\S]*?grid-template-columns:\s*calc\(var\(--slide-unit\)\s*\*\s*var\(--legend-icon-column\)\)/s, "범례 아이콘 열은 정본 CSS 변수다");
+assert.match(reportSurfaceCss, /\.legendRow[\s\S]*?gap:\s*calc\(var\(--slide-unit\)\s*\*\s*var\(--legend-gap\)\)/s, "범례 행 간격은 정본 CSS 변수다");
 assert.match(reportSurfaceCss, /\.legendRow[\s\S]*?min-height:\s*calc\(var\(--slide-unit\)\s*\*\s*var\(--legend-row\)\)/s, "범례 항목 행은 정본 CSS 변수 높이를 가진다");
-assert.match(slideSurfaceSource, /"--legend-row":\s*String\(SLIDE_LEGEND\.row\)/, "범례 행 CSS 변수는 SLIDE_LEGEND.row를 쓴다");
-assert.match(slideSurfaceSource, /fitBlock\(\[item\.label\][\s\S]*?h:\s*SLIDE_LEGEND\.row/s, "범례 라벨 fitBlock도 정본 행 높이를 쓴다");
+assert.match(reportSurfaceCss, /\.legendNote\s*\{[\s\S]*?min-height:\s*calc\(var\(--slide-unit\)\s*\*\s*var\(--legend-note\)\)/s, "범례 문구 행도 정본 CSS 변수 높이를 가진다");
+assert.match(slideSurfaceSource, /"--legend-pad":\s*String\(legendGeometry\.padding\)/, "범례 패널 padding 변수는 공용 geometry를 쓴다");
+assert.match(slideSurfaceSource, /"--legend-icon-column":\s*String\(legendGeometry\.iconColumn\)/, "범례 아이콘 열 변수는 공용 geometry를 쓴다");
+assert.match(slideSurfaceSource, /"--legend-gap":\s*String\(legendGeometry\.gap\)/, "범례 간격 변수는 공용 geometry를 쓴다");
+assert.match(slideSurfaceSource, /fitBlock\(\[item\.label\][\s\S]*?w:\s*Math\.max\(0\.2,\s*legendGeometry\.labelW\)/s, "미리보기 범례 라벨 폭은 공용 geometry를 쓴다");
 
 const editMarkup = renderToStaticMarkup(createElement(SlideSurface, { slide: a3, basemap: "none", mode: "edit", mapActive: true }));
 assert.match(editMarkup, /data-map-editing="true"/, "지도 편집 중인 slide canvas 식별자");

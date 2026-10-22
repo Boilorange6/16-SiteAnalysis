@@ -5,7 +5,7 @@ import { createContext, memo, useCallback, useContext, useEffect, useId, useMemo
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { metersPerPixel, slideViewport, zoomViewAt, type MapView } from "@/lib/v2/ui/map-projection";
 import { mapFrameScaleOptions, scaleOptionsForFrame, zoomForScale } from "@/lib/v2/ui/report-scale";
-import { SLIDE_LEGEND, layoutRects, slideCalloutAvoidance, slideGeometry, slideLayout, slideLegend, slidePanelRects, slideReserved, slideSize, slideSiteX, terrainSectionLayout, type Rect, type SlideFormat, type TerrainSectionLayout } from "@/lib/v2/ui/overlay-layout";
+import { SLIDE_LEGEND, layoutRects, slideCalloutAvoidance, slideGeometry, slideLayout, slideLegend, slideLegendGeometry, slidePanelRects, slidePanelScale, slideReserved, slideSize, slideSiteX, terrainSectionLayout, type Rect, type SlideFormat, type TerrainSectionLayout } from "@/lib/v2/ui/overlay-layout";
 import { coverLayout, fitBlock, fitFooterText, sourceLayout, titlePlateRect } from "@/lib/v2/report/pptx-kit";
 import { layerStyle, legendItemsOf, legendLabelOf } from "@/lib/v2/ui/map-layers";
 import { reportSummaryNotes, terrainCrossingLayer, terrainElevationLabel, terrainSectionAxisStops, terrainSectionBands, terrainSectionElevationAt, terrainSectionMarkerGeometry, terrainSectionPosition, terrainSectionTotal, sortTerrainCrossings, TERRAIN_CROSSING_LABELS, TERRAIN_SECTION_LABELS, TERRAIN_SECTION_TABLE_MAX_ROWS } from "@/lib/v2/ui/terrain-section";
@@ -740,14 +740,23 @@ function LegendPanel({ slide, rect, unit, format = (slide.format ?? "wide") as S
   const focus = legendLabelOf(slide.map, slide.style.legendFocus);
   const legendKeys = new Map(legendItemsOf(slide.map).map((entry) => [entry.label, entry.key]));
   const activeLabel = hoverLabel ?? focus;
-  const legendPanelStyle = { ...rectStyle(rect, unit), "--legend-row": String(SLIDE_LEGEND.row) } as CSSProperties;
+  const legendScale = slidePanelScale(slide.style.legendScale);
+  const legendGeometry = slideLegendGeometry(rect, legendScale);
+  const legendPanelStyle = {
+    ...rectStyle(rect, unit),
+    "--legend-pad": String(legendGeometry.padding),
+    "--legend-icon-column": String(legendGeometry.iconColumn),
+    "--legend-gap": String(legendGeometry.gap),
+    "--legend-row": String(SLIDE_LEGEND.row * legendScale),
+    "--legend-note": String(SLIDE_LEGEND.note * legendScale),
+  } as CSSProperties;
   return (
     <div className={styles.slidePanel + " " + styles.legendPanel} data-report-panel="legend" style={legendPanelStyle} {...interaction}>
       {legend.items.map((item, index) => {
         const focused = !item.site && focus !== null && item.label === focus;
         const hovered = !item.site && hoverLabel !== null && hoverLabel !== undefined && item.label === hoverLabel;
         const dimmed = activeLabel !== null && activeLabel !== undefined && !item.site && !focused && !hovered;
-        const pt = fitBlock([item.label], { w: Math.max(0.2, rect.w - 0.55), h: SLIDE_LEGEND.row }, 10, 7);
+        const pt = fitBlock([item.label], { w: Math.max(0.2, legendGeometry.labelW), h: SLIDE_LEGEND.row * legendScale }, 10, 7);
         const key = legendKeys.get(item.label) ?? item.label;
         const instruction = focused ? "강조 해제" : "눌러서 강조";
         const rowClass = styles.legendRow + (focused || hovered ? " " + styles.legendRowActive : "");
@@ -776,7 +785,7 @@ function LegendPanel({ slide, rect, unit, format = (slide.format ?? "wide") as S
         );
       })}
       {legend.notes.map((note, index) => {
-        const pt = fitBlock([note], { w: Math.max(0.2, rect.w - 0.3), h: 0.22 }, 8.5, 7);
+        const pt = fitBlock([note], { w: Math.max(0.2, legendGeometry.noteW), h: SLIDE_LEGEND.note * legendScale }, 8.5, 7);
         return <div className={styles.legendNote} style={fontStyle(pt, unit)} key={"note-" + index}>{note}</div>;
       })}
     </div>

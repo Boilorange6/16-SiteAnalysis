@@ -82,8 +82,17 @@ export type ReportLayoutName = "map-full" | "map-summary" | "numbers-first" | "s
 /** 슬라이드 판형의 실제 PowerPoint inch 크기. wide 수치는 기존 골든과 같다. */
 export const SLIDE = { w: 13.333, h: 7.5, edge: 0.3, stripH: 0.36, infoRatio: 0.32 } as const;
 
-/** 슬라이드 범례 판의 CSS·PPT 공용 안쪽 여백과 행 높이(inch). */
-export const SLIDE_LEGEND = { padding: 0.22, row: 0.24, note: 0.22 } as const;
+/** 슬라이드 범례 판의 CSS·PPT 공용 geometry(inch). */
+export const SLIDE_LEGEND = {
+  padding: 0.12,
+  row: 0.24,
+  note: 0.22,
+  iconColumn: 0.25,
+  gap: 0.12,
+  labelChar: 0.16,
+  minWidth: 1.2,
+  maxWidth: 4.4,
+} as const;
 
 const FORMAT_SIZES: Record<SlideFormat, { w: number; h: number }> = {
   wide: { w: SLIDE.w, h: SLIDE.h },
@@ -265,8 +274,40 @@ export function slideLegendRect(items: number, notes: number, labelChars: number
   if (items + notes === 0) return null;
   const l = slideLayout(format);
   const h = SLIDE_LEGEND.padding * 2 + items * SLIDE_LEGEND.row + notes * SLIDE_LEGEND.note;
-  const w = Math.min(4.4, Math.max(2.0, 0.75 + labelChars * 0.16));
+  const contentW = SLIDE_LEGEND.iconColumn + SLIDE_LEGEND.gap + Math.max(0, labelChars) * SLIDE_LEGEND.labelChar;
+  const w = Math.min(SLIDE_LEGEND.maxWidth, Math.max(SLIDE_LEGEND.minWidth, SLIDE_LEGEND.padding * 2 + contentW));
   return { x: l.legendX, y: l.legendBottom - h, w, h };
+}
+
+/** 미리보기·PPT가 같은 범례 판 안쪽의 아이콘 열·라벨·문구 자리를 쓴다. */
+export function slideLegendGeometry(rect: Rect, scale = 1): {
+  padding: number;
+  iconColumn: number;
+  gap: number;
+  contentX: number;
+  contentRight: number;
+  labelX: number;
+  labelW: number;
+  noteX: number;
+  noteW: number;
+} {
+  const padding = SLIDE_LEGEND.padding * scale;
+  const iconColumn = SLIDE_LEGEND.iconColumn * scale;
+  const gap = SLIDE_LEGEND.gap * scale;
+  const contentX = rect.x + padding;
+  const contentRight = Math.max(contentX, rect.x + rect.w - padding);
+  const labelX = contentX + iconColumn + gap;
+  return {
+    padding,
+    iconColumn,
+    gap,
+    contentX,
+    contentRight,
+    labelX,
+    labelW: Math.max(0, contentRight - labelX),
+    noteX: contentX,
+    noteW: Math.max(0, contentRight - contentX),
+  };
 }
 
 /** 미리보기·PPT가 같은 범례 판 안에서 사용하는 각 행의 예약 자리. */

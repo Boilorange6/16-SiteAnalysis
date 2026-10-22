@@ -7,7 +7,7 @@ import PptxGenJS from "pptxgenjs";
 import { groupTaggedShapes } from "../../pptx-shape-group";
 import { fmtInt, pageRange } from "../ui/callout-layout";
 import { legendItemsOf, STRIP_COLORS } from "../ui/map-layers";
-import { SLIDE, SLIDE_LEGEND, layoutRects, slideGeometry, slideLayout, slideLegend, slidePanelRects, slidePanelScale, slideSize, terrainSectionLayout, type Rect, type SlideFormat, type SlideLegendOptions } from "../ui/overlay-layout";
+import { SLIDE, SLIDE_LEGEND, layoutRects, slideGeometry, slideLayout, slideLegend, slideLegendGeometry, slidePanelRects, slidePanelScale, slideSize, terrainSectionLayout, type Rect, type SlideFormat, type SlideLegendOptions } from "../ui/overlay-layout";
 import type { Badge, TileView } from "../ui/tile-view";
 import type { RoseModel } from "../ui/wind-rose";
 import { sheetCells, type SheetGrid } from "../ui/sheet";
@@ -316,6 +316,8 @@ function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = 
   const noteH = nominalNoteH * compression;
   const iconScale = scale * compression;
   const iconDy = (SLIDE_LEGEND.row - 0.3) * iconScale / 2;
+  const legendGeometry = slideLegendGeometry(r, scale);
+  const iconXFor = (width: number) => legendGeometry.contentX + Math.max(0, (legendGeometry.iconColumn - width) / 2);
   const confine = <T extends object>(options: T | undefined): T | null => {
     if (!options) return null;
     const box = options as T & { x?: number; y?: number; w?: number; h?: number };
@@ -348,24 +350,25 @@ function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = 
     const focused = !it.site && focus !== null && it.label === focus;
     const dimmed = focus !== null && !it.site && !focused;
     const fade = dimmed ? 65 : 0;
-    const labelX = r.x + Math.min(0.45 * scale, Math.max(0, r.w * 0.35));
-    const labelW = Math.max(0.01, r.x + r.w - labelX - Math.min(0.1 * scale, Math.max(0, r.w * 0.08)));
+    const labelX = legendGeometry.labelX;
+    const labelW = Math.max(0.01, legendGeometry.labelW);
     const labelPt = fitBlock([it.label], { w: labelW, h: Math.max(0.01, rowH) }, 10 * scale, 7);
     if (it.site) {
-      target.addShape("diamond", { x: r.x + 0.19 * iconScale, y: y + iconDy + 0.04 * iconScale, w: 0.16 * iconScale, h: 0.16 * iconScale, fill: { color: "FFFFFF", transparency: fade }, line: { color: "111111", width: 0.8, transparency: fade } });
-      target.addShape("ellipse", { x: r.x + 0.25 * iconScale, y: y + iconDy + 0.1 * iconScale, w: 0.04 * iconScale, h: 0.04 * iconScale, fill: { color: "111111", transparency: fade }, line: { color: "111111", width: 0, transparency: fade } });
+      target.addShape("diamond", { x: iconXFor(0.16 * iconScale), y: y + iconDy + 0.04 * iconScale, w: 0.16 * iconScale, h: 0.16 * iconScale, fill: { color: "FFFFFF", transparency: fade }, line: { color: "111111", width: 0.8, transparency: fade } });
+      target.addShape("ellipse", { x: iconXFor(0.04 * iconScale), y: y + iconDy + 0.1 * iconScale, w: 0.04 * iconScale, h: 0.04 * iconScale, fill: { color: "111111", transparency: fade }, line: { color: "111111", width: 0, transparency: fade } });
     } else if (it.symbol === "rail-axis") {
-      target.addShape("line", { x: r.x + 0.17 * iconScale, y: y + iconDy + 0.145 * iconScale, w: 0.22 * iconScale, h: 0, line: { color: "172033", width: 5.2, transparency: fade, beginArrowType: "none", endArrowType: "none" } });
-      target.addShape("line", { x: r.x + 0.17 * iconScale, y: y + iconDy + 0.145 * iconScale, w: 0.22 * iconScale, h: 0, line: { color: hex(it.color), width: 3.6, transparency: fade, beginArrowType: "none", endArrowType: "none" } });
+      target.addShape("line", { x: iconXFor(0.22 * iconScale), y: y + iconDy + 0.145 * iconScale, w: 0.22 * iconScale, h: 0, line: { color: "172033", width: 5.2, transparency: fade, beginArrowType: "none", endArrowType: "none" } });
+      target.addShape("line", { x: iconXFor(0.22 * iconScale), y: y + iconDy + 0.145 * iconScale, w: 0.22 * iconScale, h: 0, line: { color: hex(it.color), width: 3.6, transparency: fade, beginArrowType: "none", endArrowType: "none" } });
     } else if (it.symbol === "rail-exit") {
-      target.addShape("ellipse", { x: r.x + 0.18 * iconScale, y: y + iconDy + 0.035 * iconScale, w: 0.19 * iconScale, h: 0.19 * iconScale, fill: { color: "FFD200", transparency: fade }, line: { color: "172033", width: 0.75, transparency: fade } });
+      target.addShape("ellipse", { x: iconXFor(0.19 * iconScale), y: y + iconDy + 0.035 * iconScale, w: 0.19 * iconScale, h: 0.19 * iconScale, fill: { color: "FFD200", transparency: fade }, line: { color: "172033", width: 0.75, transparency: fade } });
     } else if (it.badge) {
-      target.addShape("ellipse", { x: r.x + 0.18 * iconScale, y: y + iconDy + 0.03 * iconScale, w: 0.19 * iconScale, h: 0.19 * iconScale, fill: { color: hex(it.color), transparency: fade }, line: { color: "FFFFFF", width: 0.75, transparency: fade } });
-      target.addText(it.badge, { x: r.x + 0.18 * iconScale, y: y + iconDy + 0.03 * iconScale, w: 0.19 * iconScale, h: 0.19 * iconScale, align: "center", valign: "middle", fontFace: FONT, fontSize: Math.max(7, 7 * scale), bold: true, color: dimmed ? "8C919B" : hex(badgeTextColor(it.color)), margin: 0 });
+      const badgeX = iconXFor(0.19 * iconScale);
+      target.addShape("ellipse", { x: badgeX, y: y + iconDy + 0.03 * iconScale, w: 0.19 * iconScale, h: 0.19 * iconScale, fill: { color: hex(it.color), transparency: fade }, line: { color: "FFFFFF", width: 0.75, transparency: fade } });
+      target.addText(it.badge, { x: badgeX, y: y + iconDy + 0.03 * iconScale, w: 0.19 * iconScale, h: 0.19 * iconScale, align: "center", valign: "middle", fontFace: FONT, fontSize: Math.max(7, 7 * scale), bold: true, color: dimmed ? "8C919B" : hex(badgeTextColor(it.color)), margin: 0 });
     } else if (it.lineSwatch) {
-      const x = r.x + 0.17 * iconScale;
-      const lineY = y + iconDy + 0.145 * iconScale;
       const lineW = 0.22 * iconScale;
+      const x = iconXFor(lineW);
+      const lineY = y + iconDy + 0.145 * iconScale;
       const dashType = legendDashType(it.dash);
       const lineWidth = Math.max(1.2, (it.strokeWidth ?? 1.5) * 0.9);
       if (it.casing) target.addShape("line", { x, y: lineY, w: lineW, h: 0, line: { color: hex(it.casing), width: lineWidth + 1.8, transparency: fade, dashType }, objectName: `${group}|item-${i}|casing` });
@@ -376,23 +379,25 @@ function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = 
         }
       }
     } else if (it.legendSwatch === "polygon") {
+      const polygonSize = 0.19 * iconScale;
       target.addShape("rect", {
-        x: r.x + 0.18 * iconScale,
+        x: iconXFor(polygonSize),
         y: y + iconDy + 0.035 * iconScale,
-        w: 0.19 * iconScale,
-        h: 0.19 * iconScale,
+        w: polygonSize,
+        h: polygonSize,
         fill: { color: hex(it.fill && it.fill !== "none" ? it.fill : it.color), transparency: it.fill === "none" ? 100 : Math.round((1 - (it.fillOpacity ?? 1)) * 100) },
         line: { color: hex(it.stroke ?? it.color), width: 0.75, transparency: fade, dashType: legendDashType(it.dash) },
         objectName: `${group}|item-${i}|polygon`,
       });
     } else {
-      target.addShape("ellipse", { x: r.x + 0.2 * iconScale, y: y + iconDy + 0.06 * iconScale, w: 0.13 * iconScale, h: 0.13 * iconScale, fill: { color: hex(it.color), transparency: fade }, line: { color: "FFFFFF", width: 0.75, transparency: fade } });
+      const pointSize = 0.13 * iconScale;
+      target.addShape("ellipse", { x: iconXFor(pointSize), y: y + iconDy + 0.06 * iconScale, w: pointSize, h: pointSize, fill: { color: hex(it.color), transparency: fade }, line: { color: "FFFFFF", width: 0.75, transparency: fade } });
     }
     target.addText(it.label, { x: labelX, y, w: labelW, h: Math.max(0.01, rowH), valign: "middle", fontFace: FONT, fontSize: labelPt, bold: focused, color: dimmed ? "8C919B" : INK, margin: 0 });
   });
   notes.forEach((n, i) => {
-      const noteX = r.x + Math.min(0.2 * scale, Math.max(0, r.w * 0.12));
-      const noteW = Math.max(0.01, r.x + r.w - noteX - Math.min(0.1 * scale, Math.max(0, r.w * 0.04)));
+      const noteX = legendGeometry.noteX;
+      const noteW = Math.max(0.01, legendGeometry.noteW);
       target.addText(n, { x: noteX, y: r.y + topPad + items.length * rowH + i * noteH, w: noteW, h: Math.max(0.01, noteH), valign: "middle", fontFace: FONT, fontSize: fitBlock([n], { w: noteW, h: Math.max(0.01, noteH) }, 8.5 * scale, 7), color: MUTED, margin: 0, fit: "shrink" });
   });
 }

@@ -20,7 +20,7 @@ const { withLegacyReport, withLegacyStyle, withLegacyTileState } = await import(
 const { buildMapScene } = await import("../../lib/v2/ui/map-scene.ts");
 const { layerStyle } = await import("../../lib/v2/ui/map-layers.ts");
 const { slideViewport } = await import("../../lib/v2/ui/map-projection.ts");
-const { SLIDE, SLIDE_LEGEND, slideLegend, slideLegendRowRects, slidePanelRects, slideReserved, slideSiteX } = await import("../../lib/v2/ui/overlay-layout.ts");
+const { SLIDE, SLIDE_LEGEND, slideLegend, slideLegendGeometry, slideLegendRowRects, slidePanelRects, slideReserved, slideSiteX } = await import("../../lib/v2/ui/overlay-layout.ts");
 const { fitBlock, fitFooterText, linesOf } = await import("../../lib/v2/report/pptx-kit.ts");
 const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
 
@@ -113,25 +113,45 @@ const firstA01 = basePlan.find((slide) => slide.kind === "tile" && slide.view.ti
 assert.ok(firstA01, "A01 계획 장");
 assert.equal(firstA01.key, `t-A01:${firstA01.view.hasFace ? firstA01.body.face : "single"}`, "타일 face 키 규칙");
 
-// 미리보기와 PPT 범례가 같은 행 상수를 쓰고, PPT 아이콘이 새 행 범위 안에 있는지 확인한다.
+// 미리보기와 PPT 범례가 같은 geometry를 쓰고, PPT 아이콘·라벨이 새 안쪽 여백 안에 있는지 확인한다.
 {
   const a03 = basePlan.find((slide) => slide.kind === "tile" && slide.view.tileId === "t-A03");
   assert.ok(a03?.map, "범례 행 계약용 A03 지도");
   const legend = slideLegend(a03.map, !a03.muted);
   assert.ok(legend.rect && legend.items.length > 0, "범례 행 계약용 범례");
+  const legendGeometry = slideLegendGeometry(legend.rect);
   const previewRows = slideLegendRowRects(legend.rect, legend.items.length, legend.notes.length);
   const { xml } = await renderOneTile(a03);
   const shapes = xmlShapes(xml);
   const firstLabel = shapes.find((shape) => shape.name.includes("GRP|panel-legend|범례|plate") && textOf(shape) === legend.items[0].label);
   assert.ok(firstLabel?.geometry, "PPT 범례 첫 라벨 행");
   assert.ok(Math.abs(previewRows.items[0].h - SLIDE_LEGEND.row) < 0.0001 && Math.abs(firstLabel.geometry.h - SLIDE_LEGEND.row) < 0.0001, "미리보기 행 높이와 PPT 행 높이가 같은 상수");
+  assert.ok(Math.abs(previewRows.items[0].x - legendGeometry.contentX) < 0.0001, "미리보기 범례 행이 정본 padding에서 시작한다");
+  assert.ok(Math.abs(firstLabel.geometry.x - legendGeometry.labelX) < 0.0001, "PPT 범례 라벨 x가 미리보기 아이콘 열·간격 뒤에서 시작한다");
+  assert.ok(Math.abs(firstLabel.geometry.w - legendGeometry.labelW) < 0.0001, "PPT 범례 라벨 폭이 미리보기 공용 geometry와 같다");
+  assert.ok(firstLabel.geometry.x >= legendGeometry.contentX - 0.0001 && firstLabel.geometry.x + firstLabel.geometry.w <= legendGeometry.contentRight + 0.0001, "PPT 범례 라벨이 좌우 padding 안에 있다");
+  for (const item of legend.items) assert.equal(fitBlock([item.label], { w: legendGeometry.labelW, h: SLIDE_LEGEND.row }, 10, 7), 10, `기본 범례 글자 10pt 유지: ${item.label}`);
   const sameRect = (a, b) => ["x", "y", "w", "h"].every((key) => Math.abs(a[key] - b[key]) < 0.0001);
   const iconShapes = shapes.filter((shape) => shape.name.includes("GRP|panel-legend|범례|plate") && shape.geometry && !shape.text && !sameRect(shape.geometry, legend.rect));
   assert.ok(iconShapes.length > 0, "PPT 범례 아이콘 도형");
   for (const shape of iconShapes) {
     assert.ok(previewRows.items.some((row) => shape.geometry.y >= row.y - 0.0001 && shape.geometry.y + shape.geometry.h <= row.y + row.h + 0.0001), `PPT 범례 아이콘이 행 밖이다: ${shape.name}`);
+    assert.ok(shape.geometry.x >= legendGeometry.contentX - 0.0001 && shape.geometry.x + shape.geometry.w <= legendGeometry.contentRight + 0.0001, `PPT 범례 아이콘이 좌우 padding 밖이다: ${shape.name}`);
   }
-  console.log(`legend row contract: preview/PPT=${previewRows.items[0].h.toFixed(2)}in; icons=${iconShapes.length} within item rows`);
+  const a04 = basePlan.find((slide) => slide.kind === "tile" && slide.view.tileId === "t-A04");
+  assert.ok(a04?.map, "범례 문구 계약용 A04 지도");
+  const noteLegend = slideLegend(a04.map, !a04.muted);
+  assert.ok(noteLegend.rect && noteLegend.notes.length > 0, "범례 문구 계약용 범례");
+  const noteRows = slideLegendRowRects(noteLegend.rect, noteLegend.items.length, noteLegend.notes.length);
+  const noteXml = xmlShapes((await renderOneTile(a04)).xml).find((shape) => shape.name.includes("GRP|panel-legend|범례|plate") && textOf(shape) === noteLegend.notes[0]);
+  assert.ok(noteXml?.geometry, "PPT 범례 문구 행");
+  assert.ok(Math.abs(noteXml.geometry.x - noteRows.notes[0].x) < 0.0001, "PPT 범례 문구 x가 항목과 같은 padding에서 시작한다");
+  const a01 = basePlan.find((slide) => slide.kind === "tile" && slide.view.tileId === "t-A01");
+  assert.ok(a01?.map, "짧은 범례 폭 계약용 A01 지도");
+  const shortLegend = slideLegend(a01.map, !a01.muted);
+  assert.equal(shortLegend.items.length, 2, "A01 짧은 범례는 2항목이다");
+  assert.ok(shortLegend.rect && shortLegend.rect.w < 2.0, "2항목 짧은 범례 판 폭이 2.0in보다 작다");
+  console.log(`legend geometry contract: padding=${SLIDE_LEGEND.padding.toFixed(2)}in; 2-item=${shortLegend.rect.w.toFixed(2)}in; 7-item=${legend.rect.w.toFixed(2)}in; icons=${iconShapes.length}`);
 }
 
 // 보드 순서를 바꾸어도 타일 자체의 키는 페이지 위치와 무관하다.
