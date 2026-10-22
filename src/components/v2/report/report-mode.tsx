@@ -683,7 +683,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const handleMapEscapeCapture = (event: React.KeyboardEvent<HTMLElement>) => {
     if (event.key !== "Escape" || layoutPopoverOpen || notesPopoverOpen) return;
     const target = event.target as HTMLElement;
-    if (target.closest("#report-map-scale-menu")) return;
+    if (target.closest("#report-map-scale-menu") || (target.closest("[data-map-scale-chip]") && document.getElementById("report-map-scale-menu"))) return;
     const current = { selected: selection?.kind === "map", moveActive: mapMoveActive, settingsOpen };
     if (!current.moveActive && !current.settingsOpen && !current.selected) return;
     const transitioned = transitionMapInteraction(current, "escape");

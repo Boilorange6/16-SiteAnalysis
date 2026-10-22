@@ -65,6 +65,7 @@ export default function MapScaleChip({
   const [popoverMounted, setPopoverMounted] = useState(initialOpen);
   const [chipPosition, setChipPosition] = useState<ChipPosition | null>(null);
   const [popoverPosition, setPopoverPosition] = useState<PopoverPosition | null>(null);
+  const popoverPositioned = popoverPosition !== null;
   const chipLayerRef = useRef<HTMLDivElement>(null);
   const chipRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -108,7 +109,8 @@ export default function MapScaleChip({
     if (mapCell !== undefined) {
       return canvas.querySelector<HTMLElement>(`[data-surface-map="true"][data-map-cell-index="${mapCell}"]`);
     }
-    return canvas.querySelector<HTMLElement>('[data-surface-map="true"]');
+    // 지도가 슬라이드 전체를 덮는 레이아웃은 data-surface-map이 없으므로 슬라이드 자체가 지도 영역이다.
+    return canvas.querySelector<HTMLElement>('[data-surface-map="true"]') ?? canvas;
   }, [mapCell, stageRef]);
 
   const measureChip = useCallback(() => {
@@ -130,7 +132,8 @@ export default function MapScaleChip({
     const height = layerRect.height;
     const leftAtRight = clamp(mapRect.right - stageRect.left - width, 0, Math.max(0, stageRect.width - width));
     const topSpace = mapRect.top - stageRect.top;
-    const bottomSpace = stageRect.bottom - mapRect.bottom;
+    const dockTop = stage.querySelector<HTMLElement>("[data-dock-lead]")?.parentElement?.getBoundingClientRect().top ?? stageRect.bottom;
+    const bottomSpace = Math.min(stageRect.bottom, dockTop) - mapRect.bottom;
     const position: ChipPosition = topSpace >= height + STAGE_GAP
       ? { left: leftAtRight, top: mapRect.top - stageRect.top - height - STAGE_GAP, placement: "above" }
       : bottomSpace >= height + STAGE_GAP
@@ -189,10 +192,11 @@ export default function MapScaleChip({
   }, [findMapSurface, format, frame, mapModel, mapCell, mapEditing, measureChip, measurePopover, popoverOpen, stageRef]);
 
   useEffect(() => {
-    if (!popoverOpen || !popoverMounted) return;
+    // 위치를 잡기 전 팝오버는 visibility:hidden이라 focus()가 무시된다.
+    if (!popoverOpen || !popoverMounted || !popoverPositioned) return;
     const frameId = window.requestAnimationFrame(() => menuItemRefs.current.find((item) => !item?.disabled)?.focus());
     return () => window.cancelAnimationFrame(frameId);
-  }, [popoverMounted, popoverOpen]);
+  }, [popoverMounted, popoverOpen, popoverPositioned]);
 
   useEffect(() => {
     if (!popoverOpen || !popoverMounted) return;
@@ -306,6 +310,12 @@ export default function MapScaleChip({
           aria-label={`지도 축척 ${chipLabel}`}
           title="지도 축척 조작"
           onClick={togglePopover}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape" || !popoverOpen) return;
+            event.preventDefault();
+            event.stopPropagation();
+            closePopover(true);
+          }}
         >
           <span>{chipLabel}</span><span aria-hidden="true">▾</span>
         </button>

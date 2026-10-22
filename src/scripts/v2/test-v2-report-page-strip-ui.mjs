@@ -110,7 +110,9 @@ assert.match(mapScaleChipSource, /data-slide-canvas.*data-map-selected/, "축척
 assert.match(mapScaleChipSource, /data-map-cell-index/, "축척 칩은 비교 칸 인덱스를 사용한다");
 assert.match(slideSurfaceSource, /className=\{styles\.sheetCellMap\} data-surface-map="true" data-map-cell-index=\{index\}/, "비교 지도 셀의 안정적인 DOM 계약");
 assert.match(reportModeSource, /data-map-scale-chip.*#report-map-scale-menu/, "지도 편집 중 축척 칩과 팝오버 입력은 지도 이동을 끝내지 않는다");
-assert.match(reportModeSource, /const target = event\.target as HTMLElement;\s*if \(target\.closest\("#report-map-scale-menu"\)\) return;/, "팝오버 Escape는 전역 지도 레이어보다 먼저 처리한다");
+assert.match(reportModeSource, /const target = event\.target as HTMLElement;\s*if \(target\.closest\("#report-map-scale-menu"\) \|\| \(target\.closest\("\[data-map-scale-chip\]"\) && document\.getElementById\("report-map-scale-menu"\)\)\) return;/, "팝오버 Escape는 전역 지도 레이어보다 먼저 처리한다");
+assert.match(mapScaleChipSource, /!popoverPositioned\) return;/, "팝오버는 위치를 잡은 뒤 첫 항목에 포커스한다");
+assert.match(mapScaleChipSource, /\?\? canvas;/, "전체 화면 지도 레이아웃은 슬라이드 캔버스를 지도 영역으로 쓴다");
 
 const stageBlock = reportModeSource.slice(reportModeSource.indexOf("className={styles.stageFit}"), reportModeSource.indexOf('<nav className={`${styles.floatCard} ${styles.toolPill}`}'));
 const dockBlock = reportModeSource.slice(reportModeSource.indexOf('data-dock-lead="true"'), reportModeSource.lastIndexOf("<PageStrip"));
