@@ -185,12 +185,17 @@ export function mapCalloutTextLayout(
   textRight = 4,
   padY = 3,
   reserveShortLabelSpace = true,
-  wrap = false,
+  maxWrapLines = 0,
 ): MapCalloutTextLayout {
   const details = entry.detailLines.slice(0, 3);
   const joined = [entry.title, ...details].join(" · ");
   const availableTextWidth = Math.max(1, maxWidth - textLeft - textRight);
-  const wrapped = (kind: "title" | "detail", text: string): MapCalloutTextLine[] => (wrap ? wrapMapText(text, fontSize, availableTextWidth) : [text]).map((part) => ({ kind, text: part }));
+  // 넘치는 줄은 maxWrapLines까지 나누고, 남은 글은 마지막 줄에 붙여 그리는 쪽에서 말줄임한다.
+  const wrapped = (kind: "title" | "detail", text: string): MapCalloutTextLine[] => {
+    const parts = maxWrapLines > 0 ? wrapMapText(text, fontSize, availableTextWidth) : [text];
+    const kept = parts.length > maxWrapLines && maxWrapLines > 0 ? [...parts.slice(0, maxWrapLines - 1), parts.slice(maxWrapLines - 1).join(" ")] : parts;
+    return kept.map((part) => ({ kind, text: part }));
+  };
   const lines: MapCalloutTextLine[] = details.length > 0 && mapTextWidth(joined, fontSize) <= availableTextWidth
     ? [{ kind: "joined", text: joined, title: entry.title, detail: details.join(" · ") }]
     : [...wrapped("title", entry.title), ...details.flatMap((detail) => wrapped("detail", detail))];
@@ -1179,7 +1184,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     const fontSize = variant === "auto" ? Math.max(9 * labelScale, entry.small ? 10.5 * u * 0.9 * labelScale : 10.5 * u * labelScale) : calloutLabelFs;
     const custom = labelBoxes[entry.key];
     const maxWidth = custom ? Math.max(1, custom.w * W) : calloutFrameModel.cardW;
-    return { entry, variant, rank, custom, text: mapCalloutTextLayout(entry, fontSize, maxWidth, calloutTextLeft, calloutTextRight, calloutPadY, protectTerrainLabel(entry.layer), !!custom) };
+    return { entry, variant, rank, custom, text: mapCalloutTextLayout(entry, fontSize, maxWidth, calloutTextLeft, calloutTextRight, calloutPadY, protectTerrainLabel(entry.layer), custom ? Infinity : 2) };
   });
   const layout = layoutCallouts(calloutFrameModel, candidateLayouts.map(({ entry, rank, text }) => ({ id: entry.key, x: entry.p[0], y: entry.p[1], rank, width: text.width, height: text.height })));
   const placedByKey = new Map(layout.placed.map((placed) => [placed.id, placed]));
@@ -1189,6 +1194,12 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     if (!placed) continue;
     const placement = placementFor(placed, entry, text);
     placement.variant = variant;
+    if (!custom && placed.width < text.width - 0.5) {
+      // 배치가 칸을 글 폭보다 좁게 잡으면 그 폭으로 다시 나누고 높이를 늘린다(말줄임 대신 줄바꿈).
+      const fitted = mapCalloutTextLayout(entry, text.fontSize, placed.width, calloutTextLeft, calloutTextRight, calloutPadY, protectTerrainLabel(entry.layer), 2);
+      placement.text = fitted;
+      placement.box = { ...placement.box, y1: Math.min(H, placement.box.y0 + Math.max(placed.height, fitted.height)) };
+    }
     if (custom) {
       const autoBox = placement.box;
       const box: MapSceneBox = {

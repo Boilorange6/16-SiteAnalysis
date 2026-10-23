@@ -378,7 +378,7 @@ const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${
   const longName = "매우긴역이름으로말풍선폭을넘는상세한이름";
   const longModel = { ...collisionModel, features: [{ layer: "bus_stop", name: longName, lng: model.center[0], lat: model.center[1] }], total: 1 };
   const longSvg = renderToStaticMarkup(createElement(MapFigure, { model: longModel, width: 300, height: 180, basemap: "none", legend: false, scale: false, north: false, pinnedKeys: [mapLabelEntries(longModel)[0].key], onFeaturePin: () => {} }));
-  assert.match(longSvg, /매우긴역이…/, "긴 라벨은 줄바꿈 대신 말줄임");
+  assert.match(longSvg, />매우긴역이름<\/tspan><tspan[^>]*>으로말풍선…</, "긴 고정 라벨은 제목을 2줄까지 줄바꿈하고 넘치는 글만 말줄임");
   assert.match(longSvg, new RegExp(`<title>${longName}</title>`), "말줄임 전 원문은 SVG title로 보존");
 
   // PDF/PNG export는 활성 SVG 폰트가 고정폭 추정보다 몇 px 넓어도 짧은 라벨을 보존한다.

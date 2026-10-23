@@ -244,7 +244,8 @@ export type SiteMarkerMode = "parcel" | "ring";
 export function renderMapCalloutLabelText(value: string, maxWidth: number, fontSize: number, preserveShortLabel = false): string {
   const shortLabelTolerance = Math.max(3, fontSize * 0.75);
   if (preserveShortLabel && [...value].length <= 12 && textW(value, fontSize) <= maxWidth + shortLabelTolerance) return value;
-  if (textW(value, fontSize) <= maxWidth) return value;
+  // 장면 배치가 칸을 글 폭에 딱 맞춰 잡으므로 부동소수 오차로 말줄임되지 않게 1 px 여유를 둔다.
+  if (textW(value, fontSize) <= maxWidth + 1) return value;
   const ellipsis = "…";
   if (textW(ellipsis, fontSize) >= maxWidth) return ellipsis;
   let result = "";
