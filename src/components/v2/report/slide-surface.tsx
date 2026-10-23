@@ -77,6 +77,16 @@ export type SurfaceContextMenuHandler = (target: SurfaceContextMenuTarget, x: nu
 type PanelRatio = PagePanelRect;
 type ResizeDirection = "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "nw";
 
+function isResizeAnchorHit(direction: ResizeDirection, event: ReactPointerEvent<HTMLElement>): boolean {
+  const frame = event.currentTarget.closest<HTMLElement>("[data-panel-frame], [data-decoration-frame]")?.getBoundingClientRect();
+  if (!frame) return true;
+  const x = event.clientX - frame.left;
+  const y = event.clientY - frame.top;
+  const anchorX = direction.includes("e") ? frame.width : direction.includes("w") ? 0 : frame.width / 2;
+  const anchorY = direction.includes("s") ? frame.height : direction.includes("n") ? 0 : frame.height / 2;
+  return Math.hypot(x - anchorX, y - anchorY) <= 14;
+}
+
 const PANEL_LABEL: Record<PanelKey, string> = { title: "제목", summary: "요약", legend: "범례", source: "출처 줄" };
 const PANEL_MIN: Record<PanelKey, { w: number; h: number }> = {
   title: { w: 1.1, h: 0.46 },
@@ -497,7 +507,7 @@ function DecorationTransformFrame({ label, box, bounds, onDragStart, onDragMove,
   label: string;
   box: DecorationBox;
   bounds: { w: number; h: number };
-  onDragStart: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onDragStart: (event: ReactPointerEvent<HTMLElement>) => void;
   onDragMove: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onDragEnd: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onResizeStart: (direction: DecorationResizeDirection, event: ReactPointerEvent<HTMLButtonElement>) => void;
@@ -513,7 +523,7 @@ function DecorationTransformFrame({ label, box, bounds, onDragStart, onDragMove,
   const actionBar = placeActionBar({ x: box.x0, y: box.y0, w: box.x1 - box.x0, h: box.y1 - box.y0 }, bounds);
   return <div className={styles.decorationSelectionFrame ?? styles.panelSelectionFrame} data-decoration-frame={label} style={{ left: box.x0, top: box.y0, width: Math.max(1, box.x1 - box.x0), height: Math.max(1, box.y1 - box.y0) }} tabIndex={0} role="group" aria-label={`${label} 선택됨`} onPointerDown={(event) => { if ((event.target as HTMLElement).closest("button")) return; onDragStart(event); }} onPointerMove={onDragMove} onPointerUp={onDragEnd} onPointerCancel={onDragEnd} onKeyDown={onKeyDown} onContextMenu={(event) => { if ((event.target as HTMLElement).closest("button")) return; event.preventDefault(); event.stopPropagation(); onContextMenu?.(event); }}>
     <ElementActionBar elementLabel={label} left={actionBar.left - box.x0} top={actionBar.top - box.y0} actions={actions} onDelete={onDelete} />
-    {directions.map((direction) => <button key={direction} type="button" tabIndex={-1} className={styles.panelHandle + " " + styles["panelHandle" + direction.toUpperCase() as keyof typeof styles]} data-decoration-handle={direction} aria-label={`${label} ${direction} 모서리 크기 조절`} title={`${label} ${direction} 크기 조절`} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); onResizeStart(direction, event); }} onPointerMove={onResizeMove} onPointerUp={onResizeEnd} onPointerCancel={onResizeEnd}><span aria-hidden="true" /></button>)}
+    {directions.map((direction) => <button key={direction} type="button" tabIndex={-1} className={styles.panelHandle + " " + styles["panelHandle" + direction.toUpperCase() as keyof typeof styles]} data-decoration-handle={direction} aria-label={`${label} ${direction} 모서리 크기 조절`} title={`${label} ${direction} 크기 조절`} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); if (!isResizeAnchorHit(direction, event)) { onDragStart(event); return; } onResizeStart(direction, event); }} onPointerMove={onResizeMove} onPointerUp={onResizeEnd} onPointerCancel={onResizeEnd}><span aria-hidden="true" /></button>)}
   </div>;
 }
 
@@ -681,6 +691,8 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
   }, []);
   const startPointer = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (!interactive || event.button !== 0) return;
+    const target = event.target as HTMLElement;
+    if (target.closest("[data-map-pick], [data-map-label-selection], [data-map-label-handle], [data-map-selection-toolbar]")) return;
     event.preventDefault();
     const sourceOffset = styleRef.current.offsetM ?? [0, 0];
     drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, offset: [sourceOffset[0], sourceOffset[1]], dx: 0, dy: 0, moved: false };
@@ -890,13 +902,14 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
     panels[key] = panelRectFromMapBox(box, format, unit, frame, panelBasis);
     onDirectPatch({ panels });
   };
-  const startDecorationDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+  const startDecorationDrag = (event: ReactPointerEvent<HTMLElement>) => {
     if (!pickable || !onDirectPatch || !selectedDecorationKey) return;
     const box = decorationBoxes[selectedDecorationKey];
     if (!box || event.button !== 0) return;
     decorationTransform.current = { pointerId: event.pointerId, key: selectedDecorationKey, mode: "drag", x: event.clientX, y: event.clientY, box, ratio: Math.max(0.1, (box.x1 - box.x0) / Math.max(1, box.y1 - box.y0)) };
     setDecorationSnapGuides({ x: [], y: [] });
-    event.currentTarget.setPointerCapture(event.pointerId);
+    const captureTarget = event.currentTarget.closest<HTMLElement>("[data-decoration-frame]") ?? event.currentTarget;
+    captureTarget.setPointerCapture(event.pointerId);
     event.stopPropagation();
     event.preventDefault();
   };
@@ -2134,11 +2147,12 @@ type PanelTransformFrameProps = {
   onResizeMove: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onResizeEnd: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onDelete: () => void;
+  onDragStart: (event: ReactPointerEvent<HTMLElement>) => void;
   actions?: ElementAction[];
   directions?: ResizeDirection[];
 };
 
-function PanelTransformFrame({ panelKey, rect, unit, bounds, xGuides, yGuides, onResizeStart, onResizeMove, onResizeEnd, onDelete, actions = [], directions = ["nw", "n", "ne", "e", "se", "s", "sw", "w"] }: PanelTransformFrameProps) {
+function PanelTransformFrame({ panelKey, rect, unit, bounds, xGuides, yGuides, onDragStart, onResizeStart, onResizeMove, onResizeEnd, onDelete, actions = [], directions = ["nw", "n", "ne", "e", "se", "s", "sw", "w"] }: PanelTransformFrameProps) {
   const styles = useSurfaceStyles();
   const actionBar = actionBarOffsetForRect(rect, unit, bounds);
   return <>
@@ -2156,7 +2170,7 @@ function PanelTransformFrame({ panelKey, rect, unit, bounds, xGuides, yGuides, o
         data-panel-handle={direction}
         aria-label={`${panelLabelFor(panelKey)} ${direction} 모서리 크기 조절`}
         title={`${panelLabelFor(panelKey)} ${direction} 크기 조절`}
-        onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); onResizeStart(direction, event); }}
+        onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); if (!isResizeAnchorHit(direction, event)) { onDragStart(event); return; } onResizeStart(direction, event); }}
         onPointerMove={onResizeMove}
         onPointerUp={onResizeEnd}
         onPointerCancel={onResizeEnd}
@@ -2197,7 +2211,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
   const existingPanels = ((displaySlide.style as PageStyle & { panels?: PagePanels }).panels ?? {});
   const sourceRect = existingPanels.source
     ? toRect(existingPanels.source)!
-    : toRect(slideLayout(format).strip)!;
+    : slideLayout(format).strip;
   const panelRects: Partial<Record<PanelKey, Rect>> = { title: panels.title, summary: panels.summary ?? undefined, legend: panels.legend ?? undefined, source: sourceRect };
 
   useEffect(() => {
@@ -2301,12 +2315,15 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
     panelDrag.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
-  const onPanelMoveStart = (key: PanelKey, event: ReactPointerEvent<HTMLDivElement>) => {
+  const onPanelMoveStart = (key: PanelKey, event: ReactPointerEvent<HTMLElement>) => {
     if (!editable || !onDirectPatch || selectedPanel !== key || event.button !== 0) return;
     const rect = panelRects[key];
     if (!rect) return;
     panelDrag.current = { pointerId: event.pointerId, key, x: event.clientX, y: event.clientY, rect };
-    event.currentTarget.setPointerCapture(event.pointerId);
+    const captureTarget = event.currentTarget.matches("[data-panel-key]")
+      ? event.currentTarget
+      : event.currentTarget.closest<HTMLElement>("[data-slide-canvas]")?.querySelector<HTMLElement>(`[data-panel-key="${key}"]`) ?? event.currentTarget;
+    captureTarget.setPointerCapture(event.pointerId);
     setSnapGuides({ x: [], y: [] });
   };
   const startPanelLongPress = (key: PanelKey, event: ReactPointerEvent<HTMLDivElement>) => {
@@ -2391,7 +2408,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
     setSelectedPanel(null);
   };
   const handles = editable && displaySlide.kind === "tile" && selectedPanel && panelRects[selectedPanel]
-    ? <PanelTransformFrame panelKey={selectedPanel} rect={panelRects[selectedPanel]!} unit={unit} bounds={{ w: size.w * unit, h: size.h * unit }} xGuides={snapGuides.x} yGuides={snapGuides.y} onResizeStart={onResizeStart} onResizeMove={onResizeMove} onResizeEnd={onResizeEnd} onDelete={() => { onPanelDelete?.(selectedPanel); setSelectedPanel(null); }} actions={existingPanels[selectedPanel] ? [{ key: "reset", label: "위치 초기화", onClick: () => resetPanel(selectedPanel) }] : []} directions={selectedPanel === "source" ? ["e", "w"] : undefined} />
+    ? <PanelTransformFrame panelKey={selectedPanel} rect={panelRects[selectedPanel]!} unit={unit} bounds={{ w: size.w * unit, h: size.h * unit }} xGuides={snapGuides.x} yGuides={snapGuides.y} onDragStart={(event) => onPanelMoveStart(selectedPanel, event)} onResizeStart={onResizeStart} onResizeMove={onResizeMove} onResizeEnd={onResizeEnd} onDelete={() => { onPanelDelete?.(selectedPanel); setSelectedPanel(null); }} actions={existingPanels[selectedPanel] ? [{ key: "reset", label: "위치 초기화", onClick: () => resetPanel(selectedPanel) }] : []} directions={selectedPanel === "source" ? ["e", "w"] : undefined} />
     : null;
   const mapCellFromTarget = (target: HTMLElement): number | undefined => {
     const raw = target.closest<HTMLElement>("[data-map-cell-index]")?.dataset.mapCellIndex;
@@ -2402,7 +2419,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
   // 편집 중이 아닌 지도 층은 포인터를 받지 않으므로, 패널·글상자가 아닌 지도 영역 클릭을 좌표로 판단한다.
   const onMapArea = (event: React.MouseEvent<HTMLElement>): boolean => {
     const target = event.target as HTMLElement;
-    if (target.closest("[data-map-pick], [data-map-label-selection], [data-map-label-handle], [data-map-selection-toolbar], [data-element-action-bar], [data-report-decoration]")) return false;
+    if (target.closest("[data-map-pick], [data-map-label-selection], [data-map-label-handle], [data-map-selection-toolbar], [data-element-action-bar], [data-report-decoration], [data-decoration-frame]")) return false;
     if (target.closest("[data-preview-map]")) return mapSelectable;
     if (!mapSelectable || !onSelect || target.closest("[data-panel-key], [data-panel-frame], [data-text-box]")) return false;
     const rect = event.currentTarget.querySelector<HTMLElement>("[data-preview-map]")?.getBoundingClientRect();
@@ -2419,7 +2436,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
           style={canvasStyle(unit)}
           onPointerDownCapture={(event) => {
             const target = event.target as HTMLElement;
-            if (target.closest("[data-map-pick], [data-map-label-selection], [data-map-label-handle], [data-map-selection-toolbar], [data-element-action-bar], [data-report-decoration]")) return;
+            if (target.closest("[data-map-pick], [data-map-label-selection], [data-map-label-handle], [data-map-selection-toolbar], [data-element-action-bar], [data-report-decoration], [data-decoration-frame]")) return;
             const sheetCellTarget = target.closest<HTMLElement>("[data-sheet-cell-index]");
             if (displaySlide.kind === "sheet" && sheetCellTarget && !mapActive && onSheetCellActivate) {
               const index = Number(sheetCellTarget.dataset.sheetCellIndex);
@@ -2444,7 +2461,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
           onDoubleClick={(event) => {
             const target = event.target as HTMLElement;
             const mapTarget = target.closest<HTMLElement>("[data-preview-map]");
-            if (mapTarget && !target.closest("[data-map-selection-toolbar], [data-element-action-bar], [data-map-label-handle], [data-report-decoration]")) {
+            if (mapTarget && !target.closest("[data-map-selection-toolbar], [data-element-action-bar], [data-map-label-handle], [data-report-decoration], [data-decoration-frame]")) {
               if (mapActive) return;
               event.preventDefault();
               mapTarget.focus({ preventScroll: true });

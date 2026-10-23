@@ -273,12 +273,11 @@ function ElementContextMenu({ menuRef, doc, page, pageNumber, mapModel, state, s
   return <div ref={menuRef} className={styles.fontContextMenu} role="menu" aria-label={`${contextTargetLabel(state.target, mapModel)} 요소 메뉴`} style={{ left: position.x, top: position.y }}>
     <div className={styles.fontLegendHeading}>{contextTargetLabel(state.target, mapModel)}</div>
     {fontKey && <>
-      <FontSizeStepRow fontKey={fontKey} label="글자" value={effectiveFontSize(doc, page, fontKey)} pageOverride={scope === "page" && pageValues[fontKey] !== undefined} onChange={(key, delta) => onChange(scope, key, delta)} menu />
       <FontScopeSwitch scope={scope} pageNumber={pageNumber} pageDisabled={!page} onChange={onScope} />
+      <FontSizeStepRow fontKey={fontKey} label="글자" value={effectiveFontSize(doc, page, fontKey)} pageOverride={scope === "page" && pageValues[fontKey] !== undefined} onChange={(key, delta) => onChange(scope, key, delta)} menu />
       {pageValues[fontKey] !== undefined && <button type="button" className={styles.fontMenuItem} role="menuitem" onClick={() => onResetPageKey(fontKey)}>모든 페이지 값으로 되돌리기</button>}
     </>}
     {isTextBox && textBox && <TextBoxContextFontRow value={Math.max(7, Math.min(72, Math.round(textBox.pt)))} onChange={(delta) => onTextBoxChange?.(delta)} />}
-    {hasElementActions && <div className={styles.fontContextDivider} />}
     {hasLegendItems && <>
       <div className={styles.fontLegendHeading}>범례에 표시</div>
       <div className={styles.fontLegendItems}>

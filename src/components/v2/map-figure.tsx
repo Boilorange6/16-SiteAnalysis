@@ -838,7 +838,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
       },
       onMouseDown: (event: ReactMouseEvent<SVGElement>) => { event.stopPropagation(); },
       onKeyDown,
-      onPointerDown: (event: ReactPointerEvent<SVGElement>) => { lastPointerType.current = event.pointerType; },
+      onPointerDown: (event: ReactPointerEvent<SVGElement>) => { lastPointerType.current = event.pointerType; event.stopPropagation(); },
       onPointerEnter: previewInteraction ? undefined : (event: ReactPointerEvent<SVGElement>) => {
         lastPointerType.current = event.pointerType;
         if (event.pointerType !== "touch") hover(key, candidateByKey.get(key)?.legendLabel ?? null);
