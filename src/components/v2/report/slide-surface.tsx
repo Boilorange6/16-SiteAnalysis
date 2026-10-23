@@ -17,7 +17,7 @@ import type { PlannedSlide } from "@/lib/v2/report/report-plan";
 import type { TileView } from "@/lib/v2/ui/tile-view";
 import { sheetCells, type SheetGrid } from "@/lib/v2/ui/sheet";
 import { labelBoxFramePatch, labelFramePatch, mapLabelSwitchState, reportPageMapSelectable, mixedValue, resetLabelBoxFramePatch, toggleLabelVisibility, toggleLegendFocus } from "@/lib/v2/ui/report-mode-logic";
-import { placeActionBar, type ActionBarPixelBox } from "@/lib/v2/report/report-geometry";
+import { mapLayoutUnitForFrame, placeActionBar, type ActionBarPixelBox } from "@/lib/v2/report/report-geometry";
 
 type SurfaceStyles = Record<string, string>;
 const FALLBACK_STYLES: SurfaceStyles = new Proxy<SurfaceStyles>({} as SurfaceStyles, { get: (_target, key) => String(key) });
@@ -565,7 +565,9 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
     ? Math.max(0, width - panels.summary.x * unit + geometry.edge * unit * 0.5)
     : geometry.edge * unit;
   const bottomInset = unit * (geometry.stripH + (calloutLegend ? calloutLegend.h + 0.18 : 0));
-  const layoutUnit = 1.5 * (unit / (960 / geometry.w));
+  const layoutUnit = panelBasis === "frame" && frame
+    ? mapLayoutUnitForFrame(height)
+    : 1.5 * (unit / (960 / geometry.w));
   const showNorth = reportFrame?.decorations.north ?? false;
   const showScale = reportFrame?.decorations.scaleBar ?? scale;
   const savedNorthBox = panelRectInMap(style.panels?.north, format, unit, frame, panelBasis, width, height);

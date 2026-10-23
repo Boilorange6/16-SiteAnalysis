@@ -29,6 +29,7 @@ import type { PageStyle } from "../ui/board-state";
 import { mapFrameScaleOptions, scaleOptionsForFrame, zoomForScale, type ReportScaleOptions } from "../ui/report-scale";
 import { DEFAULT_REPORT_FONT_SIZES, type MapFrameState } from "./report-doc";
 import { northArrowBox, scaleBarBox } from "../ui/map-scene";
+import { mapLayoutUnitForFrame } from "./report-geometry";
 
 // 슬라이드 비율(16:9)로 그린다: 지도가 슬라이드 전체이고 오버레이는 pptx 도형이 얹는다
 const VIEW_W = 960;
@@ -36,7 +37,7 @@ const VIEW_H = 540;
 const OUT_W = 1920;
 const OUT_H = 1080;
 const PX_PER_INCH = VIEW_W / SLIDE.w;
-type Extra = Partial<Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "siteY" | "calloutTop" | "calloutLeftBottom" | "scale" | "legend" | "bare" | "pinnedKeys" | "hiddenKeys" | "deletedElementKeys" | "labelBoxes" | "showAutomaticLabels" | "north" | "credit" | "label" | "rightInset" | "backgroundOnly" | "terrainSection">> & {
+type Extra = Partial<Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "siteY" | "calloutTop" | "calloutLeftBottom" | "scale" | "legend" | "bare" | "pinnedKeys" | "hiddenKeys" | "deletedElementKeys" | "labelBoxes" | "showAutomaticLabels" | "north" | "credit" | "label" | "rightInset" | "backgroundOnly" | "terrainSection" | "layoutUnit">> & {
   size?: { width: number; height: number };
   bottomInset?: number;
   style?: PageStyle;
@@ -397,6 +398,7 @@ export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice 
               highlightLabel: legendLabelOf(model, cellStyle?.legendFocus),
               legendFocus: legendLabelOf(model, cellStyle?.legendFocus),
               size: { width: cellWidth, height: cellHeight },
+              layoutUnit: mapLayoutUnitForFrame(cellHeight),
               bottomInset: 0,
             }, rasterCache);
           }

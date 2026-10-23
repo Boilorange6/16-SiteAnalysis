@@ -6,6 +6,7 @@ const surfaceCss = readFileSync(new URL("../../components/v2/report/slide-surfac
 const mapFigure = readFileSync(new URL("../../components/v2/map-figure.tsx", import.meta.url), "utf8");
 const mapScene = readFileSync(new URL("../../lib/v2/ui/map-scene.ts", import.meta.url), "utf8");
 const mapPptx = readFileSync(new URL("../../lib/v2/report/map-pptx.ts", import.meta.url), "utf8");
+const mapImage = readFileSync(new URL("../../lib/v2/report/map-image.ts", import.meta.url), "utf8");
 
 assert.match(surface, /selectedPanel === "source" \? \["e", "w"\]/, "출처 줄은 좌우 2개 핸들을 사용한다");
 assert.match(surface, /const directions: DecorationResizeDirection\[\] = \["nw", "ne", "se", "sw"\]/, "방위표·축척·위치도는 네 모서리 핸들을 사용한다");
@@ -22,6 +23,9 @@ assert.match(mapScene, /scaleChromeScale,/, "공용 장면이 축척 막대 크�
 assert.match(mapPptx, /const u = scene\.northUnit/, "PPT 방위표가 미리보기와 같은 크기 단위를 쓴다");
 assert.match(mapPptx, /const chrome = scene\.scaleChromeScale/, "PPT 축척 막대가 미리보기와 같은 크롬 배율을 쓴다");
 assert.match(mapPptx, /bar\.px/, "축척 막대 길이는 지도 축척 계산값을 그대로 쓴다");
+assert.match(surface, /panelBasis === "frame" && frame/, "조판 칸은 frame 기준의 지도 장식 단위를 쓴다");
+assert.match(mapPptx, /mapLayoutUnitForFrame\(activeFrame\.h \* activePxPerInch\)/, "PPT 조판 칸도 같은 frame 높이 단위를 쓴다");
+assert.match(mapImage, /layoutUnit: mapLayoutUnitForFrame\(cellHeight\)/, "조판 칸 이미지도 같은 frame 높이 단위를 쓴다");
 
 const { buildMapScene } = await import("../../lib/v2/ui/map-scene.ts");
 const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");

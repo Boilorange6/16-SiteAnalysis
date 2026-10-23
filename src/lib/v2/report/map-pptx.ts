@@ -12,6 +12,7 @@ import type { PageStyle } from "../ui/board-state";
 import { metersPerPixel, slideViewport } from "../ui/map-projection";
 import { scaleOptionsForFrame, zoomForScale } from "../ui/report-scale";
 import { DEFAULT_REPORT_FONT_SIZES, type MapFrameState, type PagePanelRect, type ReportLayout } from "./report-doc";
+import { mapLayoutUnitForFrame } from "./report-geometry";
 
 const VIEW_W = 960;
 const VIEW_H = 540;
@@ -436,7 +437,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     const height = activeSceneHeight;
     const cellLegend = cellLegendLayout(displayModel);
     const style = options.style ?? {};
-    const cellUnit = Math.min(1.5, Math.max(1, height / 360));
+    const cellUnit = mapLayoutUnitForFrame(activeFrame.h * activePxPerInch);
     const savedNorthBox = savedPanelBox(style.panels?.north, "frame");
     const savedScaleBox = savedPanelBox(style.panels?.scaleBar, "frame");
     const cellViewport = slideViewport(displayModel, style, { width, height, siteX: 0.5, fill: 0.8 });
