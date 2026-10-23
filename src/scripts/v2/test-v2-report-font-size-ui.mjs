@@ -20,7 +20,7 @@ assert.match(fontPopover, /모든 페이지 값으로/, "F1은 현재 페이지 
 assert.match(contextMenu, /role=["']menu["']|role=\{["']menu["']\}/, "H1은 menu role을 쓴다");
 assert.match(contextMenu, /모든 페이지[\s\S]*이 페이지만|모든 페이지[\s\S]*쪽만/, "H1 메뉴는 범위 2칸을 메뉴 안에 둔다");
 assert.match(contextMenu, /모든 페이지 값으로 되돌리기/, "H1은 요소별 페이지 값을 되돌린다");
-assert.match(contextMenu, /위치·크기 처음대로/, "H1은 패널 위치·크기 리셋을 제공한다");
+assert.match(contextMenu, /위치·크기 초기화/, "H1은 패널 위치·크기 리셋을 제공한다");
 assert.match(reportMode, /onFontContextMenu|onContextMenu/, "보고서 모드는 요소 우클릭 콜백을 연결한다");
 assert.match(surface, /Shift\+F10|ContextMenu|contextmenu/i, "요소는 Shift+F10/ContextMenu를 지원한다");
 assert.match(surface, /500|long|press/i, "요소는 길게 누르기 계약을 가진다");
