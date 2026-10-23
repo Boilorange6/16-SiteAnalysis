@@ -2,12 +2,13 @@
 import assert from "node:assert/strict";
 
 const { GODEOK_RESULTS, GODEOK_SUMMARY } = await import("../../lib/v2/ui/fixtures/godeok.ts");
-const { initBoard } = await import("../../lib/v2/ui/board-state.ts");
+const { initBoard, restoreReportDoc } = await import("../../lib/v2/ui/board-state.ts");
 const { toSummaryView, toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 const { buildReportPlan, REPORT_SOURCE_ROWS_PER_SLIDE, tileReportSettingsFromBoard, tileSlides } = await import("../../lib/v2/report/report-plan.ts");
-const { EMPTY_REPORT_DOC, mergeReportFontSizes } = await import("../../lib/v2/report/report-doc.ts");
+const { EMPTY_REPORT_DOC, defaultFrame, mergeReportFontSizes, reportDocReducer } = await import("../../lib/v2/report/report-doc.ts");
 const { importLegacyReport, pagesForTile, planReportDoc, printedPageCount, recommendedPages } = await import("../../lib/v2/report/report-doc-plan.ts");
 const { pageStripItems, pageStripLabel } = await import("../../lib/v2/report/report-page-strip.ts");
+const { sheetView } = await import("../../lib/v2/ui/sheet.ts");
 const { withLegacyStyle } = await import("./legacy-report-fixture.mjs");
 
 const summary = toSummaryView(GODEOK_SUMMARY, GODEOK_RESULTS);
@@ -23,6 +24,43 @@ const styledBoard = withLegacyStyle(board, [oldPlan.find((slide) => slide.kind =
 const styledPages = importLegacyReport(EMPTY_REPORT_DOC, styledBoard, views, context);
 const styledTile = styledPages.find((page) => page.kind === "tile");
 assert.deepEqual(styledTile?.frame.offsetM, [80, -20], "옛 styles의 offsetM을 페이지 frame으로 이관");
+
+const restoredLegacyLayout = restoreReportDoc({
+  v: 1,
+  format: "wide",
+  pages: [{ id: "legacy-tile", kind: "tile", layout: "side-by-side", panels: {}, textBoxes: [], notes: "", tileId: "t-A01", part: { type: "single" }, settings: { face: "front", callout: "overview" }, frame: defaultFrame() }],
+}, new Set(["t-A01"]));
+assert.equal(restoredLegacyLayout.pages[0]?.layout, "map-summary", "저장된 단일 타일 side-by-side는 map-summary로 마이그레이션");
+
+const sheetSourceViews = [...views.values()].slice(0, 2);
+assert.equal(sheetSourceViews.length, 2, "조판 변환용 원본 타일");
+const sheetParent = sheetView("t-SHEET", sheetSourceViews, "2x2");
+const sheetPages = pagesForTile(EMPTY_REPORT_DOC, sheetParent.tileId, sheetParent, tileReportSettingsFromBoard(board, sheetSourceViews[0].tileId), { ...tileContext, settingsFor: (id) => tileReportSettingsFromBoard(board, id) });
+assert.equal(sheetPages.length, 1, "SHEET는 한 페이지로 변환");
+assert.equal(sheetPages[0]?.kind, "compare", "SHEET는 compare 문서 페이지로 저장");
+assert.equal(sheetPages[0]?.layout, "map-summary", "compare는 사용자 레이아웃 선택 없이 공통 형식을 쓴다");
+assert.equal(sheetPages[0]?.sameExtent, false, "새 compare는 sameExtent 기본 false");
+assert.equal(sheetPages[0]?.cells.length, 4, "SHEET의 격자 빈 칸 위치를 보존");
+assert.equal(sheetPages[0]?.cells[2], null, "SHEET의 빈 칸은 null로 남긴다");
+const framedSheetDoc = reportDocReducer({ ...EMPTY_REPORT_DOC, pages: sheetPages }, { type: "frame", id: sheetPages[0].id, cell: 0, patch: { zoomDelta: 2, offsetM: [12, -4] } });
+const framedSheetPlan = planReportDoc(framedSheetDoc, views, tileContext);
+assert.equal(framedSheetPlan[0]?.kind, "sheet", "compare 페이지는 미리보기/PPT 공통 sheet 계획을 만든다");
+assert.equal(framedSheetPlan[0]?.cells[0]?.reportFrame.zoomDelta, 2, "칸 frame은 계획에 전달된다");
+assert.deepEqual(framedSheetPlan[0]?.cells[0]?.reportFrame.offsetM, [12, -4], "칸 이동도 계획에 전달된다");
+
+const sheetResult = { ...board.results[0], tileId: "t-SHEET", tileCode: "SHEET" };
+const sheetBoard = {
+  ...board,
+  results: [...board.results, sheetResult],
+  order: [...board.order, "t-SHEET"],
+  included: { ...board.included, "t-SHEET": true },
+};
+const sheetViews = new Map(views);
+sheetViews.set("t-SHEET", sheetParent);
+const recommendedWithSheet = recommendedPages(EMPTY_REPORT_DOC, sheetViews, sheetBoard, context);
+assert.ok(recommendedWithSheet.some((page) => page.kind === "compare" && page.cells[0]?.tileId === sheetSourceViews[0].tileId), "추천 구성의 SHEET는 compare로 저장");
+const importedWithSheet = importLegacyReport(EMPTY_REPORT_DOC, sheetBoard, sheetViews, context);
+assert.ok(importedWithSheet.some((page) => page.kind === "compare" && page.cells[0]?.tileId === sheetSourceViews[0].tileId), "옛 구성 복원의 SHEET도 compare로 저장");
 
 assert.ok(styledTile, "font size precedence page");
 const fontDoc = {

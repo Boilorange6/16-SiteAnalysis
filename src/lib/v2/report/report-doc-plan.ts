@@ -19,7 +19,7 @@ import { catalogEntry, TILE_CODES } from "../ui/tile-catalog";
 import type { SourceDetailRow, SourceMeta } from "../ui/source-details";
 import { sourceDetailsFor, UNKNOWN_AS_OF } from "../ui/source-details";
 import type { SummaryView, TileView } from "../ui/tile-view";
-import { sheetView } from "../ui/sheet";
+import { sheetCapacity, sheetView } from "../ui/sheet";
 
 export type ReportDocPlanContext = {
   summary: SummaryView;
@@ -154,6 +154,48 @@ function pageForTileSlide(id: string, view: TileView, settings: TileReportSettin
   };
 }
 
+function cloneMapFrame(frame: MapFrameState | undefined): MapFrameState {
+  const source = frame ?? defaultFrame();
+  return {
+    ...source,
+    offsetM: [...source.offsetM] as [number, number],
+    hiddenLayers: [...source.hiddenLayers],
+    pinnedKeys: [...source.pinnedKeys],
+    hiddenLabelKeys: [...source.hiddenLabelKeys],
+    deletedElementKeys: [...source.deletedElementKeys],
+    labelBoxes: Object.fromEntries(Object.entries(source.labelBoxes).map(([key, box]) => [key, { ...box }])),
+    legend: { ...source.legend, order: [...source.legend.order], hidden: [...source.legend.hidden] },
+    decorations: { ...source.decorations },
+  };
+}
+
+function comparePageFromSheetSlide(
+  id: string,
+  slide: Extract<ReportSlide, { kind: "sheet" }>,
+  fallbackSettings: TileReportSettings,
+  settingsFor?: (tileId: string) => TileReportSettings,
+): Extract<ReportPage, { kind: "compare" }> {
+  return {
+    id,
+    layout: "map-summary",
+    panels: {},
+    textBoxes: [],
+    notes: "",
+    deletedElementKeys: [],
+    kind: "compare",
+    grid: slide.grid,
+    sameExtent: false,
+    cells: Array.from({ length: sheetCapacity(slide.grid) }, (_, index) => {
+      const cell = slide.cells[index];
+      return cell ? {
+        tileId: cell.view.tileId,
+        settings: cloneSettings(settingsFor?.(cell.view.tileId) ?? fallbackSettings),
+        frame: cloneMapFrame(cell.reportFrame),
+      } : null;
+    }),
+  };
+}
+
 function newSimplePage(doc: ReportDoc, kind: "cover" | "sources"): ReportPage {
   return { id: newPageId(doc), layout: "map-summary", panels: {}, textBoxes: [], notes: "", deletedElementKeys: [], kind };
 }
@@ -175,7 +217,9 @@ export function pagesForTile(
   let sheetIndex = 0;
   let working = doc;
   for (const slide of slides) {
-    const page = pageForTileSlide(newPageId(working), view, settings, slide, slide.kind === "sheet" ? sheetIndex++ : 0);
+    const page = slide.kind === "sheet"
+      ? comparePageFromSheetSlide(newPageId(working), slide, settings, ctx.settingsFor)
+      : pageForTileSlide(newPageId(working), view, settings, slide, sheetIndex++);
     pages.push(page);
     working = { ...working, pages: [...working.pages, page] };
   }
@@ -199,7 +243,11 @@ export function recommendedPages(
   pages.push(cover);
   working = { ...working, pages: [...working.pages, cover] };
   for (const view of ordered) {
-    const tilePages = pagesForTile(working, view.tileId, view, tileReportSettingsFromBoard(board, view.tileId), { ...ctx, views });
+    const tilePages = pagesForTile(working, view.tileId, view, tileReportSettingsFromBoard(board, view.tileId), {
+      ...ctx,
+      views,
+      settingsFor: (tileId) => tileReportSettingsFromBoard(board, tileId),
+    });
     pages.push(...tilePages);
     working = { ...working, pages: [...working.pages, ...tilePages] };
   }
@@ -230,7 +278,7 @@ function comparePageFromLegacy(id: string, extra: BoardState["report"]["extra"][
   if (!extra.sheet) return null;
   return {
     id,
-    layout: "side-by-side",
+    layout: "map-summary",
     panels: {},
     textBoxes: [],
     notes: "",
@@ -238,7 +286,12 @@ function comparePageFromLegacy(id: string, extra: BoardState["report"]["extra"][
     kind: "compare",
     grid: extra.sheet.grid,
     sameExtent: false,
-    cells: extra.sheet.tiles.filter(Boolean).map((tileId) => ({ tileId, settings: cloneSettings(tileReportSettingsFromBoard(board, tileId)), frame: defaultFrame() })),
+    cells: Array.from({ length: sheetCapacity(extra.sheet.grid) }, (_, index) => {
+      const tileId = extra.sheet!.tiles[index];
+      return tileId
+        ? { tileId, settings: cloneSettings(tileReportSettingsFromBoard(board, tileId)), frame: defaultFrame() }
+        : null;
+    }),
   };
 }
 
@@ -277,7 +330,15 @@ export function importLegacyReport(
     }
     const view = slide.view;
     const settings = tileReportSettingsFromBoard(board, view.tileId);
-    const page = pageForTileSlide(id, view, settings, slide, slide.kind === "sheet" ? sheetIndex++ : 0);
+    if (slide.kind === "sheet") {
+      const page = comparePageFromSheetSlide(id, slide, settings, (tileId) => tileReportSettingsFromBoard(board, tileId));
+      const style = board.report.styles[slide.key];
+      page.panels = style?.panels ? { ...style.panels } : {};
+      page.cells = page.cells.map((cell) => cell ? { ...cell, frame: frameFromLegacyStyle(style, cell.frame) } : null);
+      pages.push(page);
+      continue;
+    }
+    const page = pageForTileSlide(id, view, settings, slide, 0);
     const style = board.report.styles[slide.key];
     page.panels = style?.panels ? { ...style.panels } : {};
     page.frame = frameFromLegacyStyle(style, page.frame);

@@ -454,8 +454,10 @@ export function reportDocReducer(doc: ReportDoc, action: ReportDocAction): Repor
       const duplicate = { ...clonePage(doc.pages[index]), id: newPageId(doc) };
       return { ...doc, pages: [...doc.pages.slice(0, index + 1), duplicate, ...doc.pages.slice(index + 1)] };
     }
-    case "layout":
-      return updatePage(doc, action.id, (page) => ({ ...resetPanels(page), layout: action.layout }));
+    case "layout": {
+      const layout = action.layout === "side-by-side" ? "map-summary" : action.layout;
+      return updatePage(doc, action.id, (page) => ({ ...resetPanels(page), layout }));
+    }
     case "grid":
       return updatePage(doc, action.id, (page) => page.kind === "compare" && page.grid !== action.grid ? { ...clonePage(page), grid: action.grid } : page);
     case "frame":

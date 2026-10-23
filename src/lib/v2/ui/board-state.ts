@@ -1077,9 +1077,10 @@ function reportPageElements(value: unknown): PageElementKey[] {
 function restoreReportPage(value: unknown, validTileIds: ReadonlySet<string>): ReportPage | null {
   if (!isRecord(value) || typeof value.id !== "string" || value.id.length === 0 || !reportPageIdPattern.test(value.id) || !isReportLayout(value.layout)) return null;
   const fontSizes = clampReportFontSizes(value.fontSizes);
+  const layout = value.kind === "tile" && value.layout === "side-by-side" ? "map-summary" : value.layout;
   const base = {
     id: value.id,
-    layout: value.layout,
+    layout,
     panels: reportPanels(value.panels),
     textBoxes: reportTextBoxes(value.textBoxes),
     notes: typeof value.notes === "string" ? value.notes : "",
