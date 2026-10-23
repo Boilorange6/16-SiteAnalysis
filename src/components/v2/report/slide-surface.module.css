@@ -259,8 +259,8 @@
 .sheetCellEditMap { position: absolute; overflow: visible; border: 2px solid #2f6fdb; border-radius: 8px; box-shadow: 0 0 0 5px rgba(47, 111, 219, .12); }
 .sheetCellEditEmpty { position: absolute; inset: 3rem 0 0; display: grid; place-items: center; color: #676c76; font-size: 13px; }
 
-:global([data-sheet-cell-recent="true"]) { outline: 3px solid #2f6fdb; outline-offset: 3px; }
-:global([data-sheet-cell-index][data-map-cell-selected="true"]) { outline: 2px solid #2f6fdb; outline-offset: 2px; }
+.sheetCell[data-sheet-cell-recent="true"] { outline: 3px solid #2f6fdb; outline-offset: 3px; }
+.sheetCell[data-sheet-cell-index][data-map-cell-selected="true"] { outline: 2px solid #2f6fdb; outline-offset: 2px; }
 
 .mapSelectionToolbarButton,
 .mapSelectionSwitch {
