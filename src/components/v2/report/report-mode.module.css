@@ -386,7 +386,6 @@ label.tileRowButton { grid-template-columns: 18px minmax(0, 1fr); gap: 8px; }
   .reportRoot *, .reportRoot *::before, .reportRoot *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
   .floatCard { transform: none; }
   .toolPill { transform: translateY(-50%); }
-  .pageDock { transform: translateX(-50%); }
   .drawerCard[data-drawer-open="true"], .dockPopover, .reportStage[data-settings-open="true"] .settingsCard { animation: none; }
   .mapScaleChip[data-attention="true"], .mapScalePopover[data-state="open"], .mapScalePopover[data-state="closing"] { animation: none; }
 }
