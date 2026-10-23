@@ -1160,10 +1160,10 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
         {!selected && candidate.kind === "feature" && <circle cx={candidate.point[0]} cy={candidate.point[1]} r={Math.max(12 * u, (candidate.radius ?? 3) + 7 * u)} fill="none" stroke="#111827" strokeWidth={2.4 * u} />}
         {!selected && candidate.kind === "line" && <polyline points={(candidate.points ?? []).map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke="#111827" strokeWidth={(candidate.strokeWidth ?? 1.5) * u + 2.4 * u} strokeLinecap="round" strokeLinejoin="round" />}
         {!selected && candidate.kind === "polygon" && <path d={polygonPath(candidate.rings ?? [])} fill="none" stroke="#111827" strokeWidth={2.4 * u} strokeLinejoin="round" />}
-        <g data-map-hover-tooltip="true">
+        {!selected && !isLabelVisible(candidate.key) && <g data-map-hover-tooltip="true">
           <rect x={tooltipX} y={tooltipY} width={tooltipW} height={tooltipH} rx={5 * u} fill="#111827" fillOpacity={0.94} stroke="#fff" strokeOpacity={0.75} strokeWidth={0.8 * u} />
           <text x={tooltipX + 8 * u} y={tooltipY + tooltipH * 0.67} fontSize={tooltipFs} fill="#fff" fontWeight={600}>{renderMapCalloutLabelText(tooltip, tooltipW - 16 * u, tooltipFs)}</text>
-        </g>
+        </g>}
       </g>
     );
   })() : null;

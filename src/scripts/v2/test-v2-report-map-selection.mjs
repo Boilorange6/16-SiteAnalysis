@@ -12,7 +12,7 @@ import {
   restoreAllDeletedElementFramePatch,
 } from "../../lib/v2/ui/report-mode-logic.ts";
 import { restoreReportDoc } from "../../lib/v2/ui/board-state.ts";
-import { buildMapScene, mapFeatureKey } from "../../lib/v2/ui/map-scene.ts";
+import { buildMapScene, mapFeatureKey, mapTextWidth, wrapMapText } from "../../lib/v2/ui/map-scene.ts";
 import { slideLegend } from "../../lib/v2/ui/overlay-layout.ts";
 import { GODEOK_RESULTS } from "../../lib/v2/ui/fixtures/godeok.ts";
 import { toTileView } from "../../lib/v2/ui/tile-view.ts";
@@ -121,5 +121,14 @@ assert.ok(boxedPlacement, "저장된 라벨 상자가 장면에 있어야 한다
 assert.ok(Math.abs(boxedPlacement.box.x0 - 0.62 * 960) < 1e-6, "저장 라벨 상자 x가 지도 비율과 같다");
 assert.ok(Math.abs(boxedPlacement.box.y0 - 0.18 * 540) < 1e-6, "저장 라벨 상자 y가 지도 비율과 같다");
 assert.equal(boxedPlacement.autoBox !== undefined, true, "저장 라벨 상자는 자동 위치를 함께 보존한다");
+
+// 폭을 줄인 말풍선은 말줄임 대신 줄바꿈한다(미리보기·PPT가 같은 lines를 쓴다).
+assert.deepEqual(wrapMapText("고덕 그라시움 정류장", 10, 35), ["고덕", "그라시", "움", "정류장"]);
+assert.deepEqual(wrapMapText("버스정류장", 10, 1000), ["버스정류장"]);
+const narrowScene = buildMapScene({ ...sceneOptions, labelBoxes: { [featureKey]: { x: 0.1, y: 0.1, w: 0.06, h: 0.2 } } });
+const narrow = narrowScene.labelPlacements.find((placement) => placement.entry.key === featureKey);
+assert.ok(narrow && narrow.text.lines.length > 1, "좁은 말풍선 글이 여러 줄로 나뉜다");
+assert.ok(narrow.text.lines.every((line) => !line.text.includes("…")), "좁은 말풍선 글에 말줄임이 없다");
+assert.ok(narrow.text.lines.every((line) => mapTextWidth(line.text, narrow.text.fontSize) <= 0.06 * 960), "줄마다 말풍선 폭 안에 들어간다");
 
 console.log("report map selection contracts: PASS");

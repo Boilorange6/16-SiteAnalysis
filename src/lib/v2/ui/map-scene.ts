@@ -120,6 +120,24 @@ export const mapLabelText = formatMapLabelText;
 /** SVG와 PPT가 공유하는 고정폭 문자 측정. 브라우저 폰트 측정에 의존하지 않는다. */
 export const mapTextWidth = (s: string, fs: number) => [...s].reduce((w, ch) => w + (ch.charCodeAt(0) > 0x2e80 ? fs : fs * 0.58), 0);
 
+/** 사용자가 폭을 줄인 말풍선의 줄바꿈. 띄어쓰기에서 먼저 끊고, 한 단어가 넘치면 글자 단위로 끊는다. */
+export function wrapMapText(text: string, fs: number, width: number): string[] {
+  const out: string[] = [];
+  let line = "";
+  for (const word of text.split(" ")) {
+    const next = line ? `${line} ${word}` : word;
+    if (mapTextWidth(next, fs) <= width) { line = next; continue; }
+    if (line) out.push(line);
+    line = "";
+    for (const ch of word) {
+      if (line && mapTextWidth(line + ch, fs) > width) { out.push(line); line = ""; }
+      line += ch;
+    }
+  }
+  if (line || out.length === 0) out.push(line);
+  return out;
+}
+
 /** 화면 보드의 고정 라벨과 지도 장면이 같은 키·문구를 사용한다. */
 export function mapLabelEntries(model: MapModel): MapLabelEntry[] {
   const features = model.features.map((feature, index) => ({
@@ -167,13 +185,15 @@ export function mapCalloutTextLayout(
   textRight = 4,
   padY = 3,
   reserveShortLabelSpace = true,
+  wrap = false,
 ): MapCalloutTextLayout {
   const details = entry.detailLines.slice(0, 3);
   const joined = [entry.title, ...details].join(" · ");
   const availableTextWidth = Math.max(1, maxWidth - textLeft - textRight);
+  const wrapped = (kind: "title" | "detail", text: string): MapCalloutTextLine[] => (wrap ? wrapMapText(text, fontSize, availableTextWidth) : [text]).map((part) => ({ kind, text: part }));
   const lines: MapCalloutTextLine[] = details.length > 0 && mapTextWidth(joined, fontSize) <= availableTextWidth
     ? [{ kind: "joined", text: joined, title: entry.title, detail: details.join(" · ") }]
-    : [{ kind: "title", text: entry.title }, ...details.map((detail) => ({ kind: "detail" as const, text: detail }))];
+    : [...wrapped("title", entry.title), ...details.flatMap((detail) => wrapped("detail", detail))];
   const textWidth = Math.max(...lines.map((line) => mapTextWidth(line.text, fontSize)), 1);
   // Fixed-width CJK estimates can be a fraction narrower than the active SVG
   // font (especially for three-glyph Korean labels). Reserve a small, bounded
@@ -1159,7 +1179,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     const fontSize = variant === "auto" ? Math.max(9 * labelScale, entry.small ? 10.5 * u * 0.9 * labelScale : 10.5 * u * labelScale) : calloutLabelFs;
     const custom = labelBoxes[entry.key];
     const maxWidth = custom ? Math.max(1, custom.w * W) : calloutFrameModel.cardW;
-    return { entry, variant, rank, custom, text: mapCalloutTextLayout(entry, fontSize, maxWidth, calloutTextLeft, calloutTextRight, calloutPadY, protectTerrainLabel(entry.layer)) };
+    return { entry, variant, rank, custom, text: mapCalloutTextLayout(entry, fontSize, maxWidth, calloutTextLeft, calloutTextRight, calloutPadY, protectTerrainLabel(entry.layer), !!custom) };
   });
   const layout = layoutCallouts(calloutFrameModel, candidateLayouts.map(({ entry, rank, text }) => ({ id: entry.key, x: entry.p[0], y: entry.p[1], rank, width: text.width, height: text.height })));
   const placedByKey = new Map(layout.placed.map((placed) => [placed.id, placed]));
