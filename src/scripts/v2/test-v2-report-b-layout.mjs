@@ -157,7 +157,7 @@ for (const label of ["굵게", "기울임", "글자 색", "삭제", "완료"]) {
 assert.doesNotMatch(slideSurfaceSource, /textBoxMoveHandle|textBoxResizeHandle|↕|↘/, "옛 글상자 이동·크기 손잡이를 제거한다");
 assert.doesNotMatch(slideSurfaceStyles, /textBoxMoveHandle|textBoxResizeHandle|↕|↘/, "옛 글상자 손잡이 CSS를 제거한다");
 
-assert.ok(/--(?:report-)?(?:side|panel)-width\s*:\s*240px/.test(reportModeStyles) || /\.(?:drawerCard|sidePanel|panelCard|railPopover)[^{]*\{[^}]*width:\s*(?:240px|min\(240px)/.test(reportModeStyles), "모든 보고서 사이드창의 공통 폭은 240px이다");
+assert.ok(/--(?:report-)?(?:side|panel)-width\s*:\s*288px/.test(reportModeStyles) || /\.(?:drawerCard|sidePanel|panelCard|railPopover)[^{]*\{[^}]*width:\s*(?:288px|min\(288px)/.test(reportModeStyles), "모든 보고서 사이드창의 공통 폭은 288px이다");
 assert.match(panelSource, /(?:sidePanelOpacity|panelOpacity|sharedOpacity|windowOpacity|\[opacity,\s*setOpacity\])/, "모든 사이드창이 공유하는 투명도 상태가 있다");
 assert.match(panelSource, /type=["']range["']/, "사이드창 투명도는 range 입력이다");
 assert.match(panelSource, /min=\{?(?:40|SIDE_PANEL_OPACITY_MIN)\}?/, "창 투명도 최소값은 40이다");

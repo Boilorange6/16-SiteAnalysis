@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { slideViewport } from "@/lib/v2/ui/map-projection";
+import MapFigure from "../map-figure";
 import type { ReportDoc } from "@/lib/v2/report/report-doc";
 import { pagesUsingTile } from "@/lib/v2/ui/report-mode-logic";
 import type { TileView } from "@/lib/v2/ui/tile-view";
@@ -30,7 +32,11 @@ type DrawerTilesProps = {
 
 const CATEGORIES = ["전체", "분석", "도판", "시뮬레이션"] as const;
 
-function TileThumbnail({ tileId, getThumbnailSlide, classMap }: { tileId: string; getThumbnailSlide: (tileId: string) => PlannedSlide | undefined; classMap: Record<string, string> }) {
+const THUMB_W = 160;
+const THUMB_H = 120;
+
+/** 지도만 그린다(패널·범례·라벨·배경 타일 없음). 지도가 없는 타일만 슬라이드 축소판으로 대신한다. */
+const TileThumbnail = memo(function TileThumbnail({ view, getThumbnailSlide, classMap }: { view: TileView; getThumbnailSlide: (tileId: string) => PlannedSlide | undefined; classMap: Record<string, string> }) {
   const hostRef = useRef<HTMLSpanElement>(null);
   const [visible, setVisible] = useState(false);
   useEffect(() => {
@@ -41,17 +47,27 @@ function TileThumbnail({ tileId, getThumbnailSlide, classMap }: { tileId: string
       return;
     }
     const root = host.closest("[data-tile-scroll]");
+    // 한 번 보이면 계속 그려 둔다. 스크롤로 벗어날 때마다 지웠다 다시 그리지 않는다.
     const observer = new IntersectionObserver((entries) => {
-      setVisible(entries[0]?.isIntersecting === true);
+      if (entries[0]?.isIntersecting !== true) return;
+      setVisible(true);
+      observer.disconnect();
     }, { root: root instanceof Element ? root : null, rootMargin: "80px" });
     observer.observe(host);
     return () => observer.disconnect();
   }, []);
-  const slide = useMemo(() => visible ? getThumbnailSlide(tileId) : undefined, [getThumbnailSlide, tileId, visible]);
+  const [slide, setSlide] = useState<PlannedSlide | undefined>();
+  useEffect(() => {
+    if (visible && !view.map && !slide) setSlide(getThumbnailSlide(view.tileId));
+  }, [getThumbnailSlide, slide, view.map, view.tileId, visible]);
+  const map = view.map ?? (slide?.kind === "tile" ? slide.map : null);
+  const viewport = useMemo(() => map ? slideViewport(map, undefined, { width: THUMB_W, height: THUMB_H, siteX: 0.5, siteY: 0.5, fill: 0.92 }) : undefined, [map]);
   return <span ref={hostRef} className={styles.tilePreview} data-preview-thumbnail={visible ? "true" : "false"} aria-hidden="true">
-    {slide ? <SlideSurface slide={slide} basemap="white" mode="thumb" classMap={classMap} /> : <span className={styles.tilePreviewPlaceholder} />}
+    {visible && map && viewport
+      ? <MapFigure model={map} width={THUMB_W} height={THUMB_H} basemap="none" layer="white" legend={false} north={false} scale={false} credit={false} showAutomaticLabels={false} viewport={viewport} />
+      : slide ? <SlideSurface slide={slide} basemap="white" mode="thumb" classMap={classMap} /> : <span className={styles.tilePreviewPlaceholder} />}
   </span>;
-}
+});
 
 export default function DrawerTiles({ open, doc, views, mode, compareGrid, compareSelected, onCompareGrid, onAdd, onToggleCompare, onCreateCompare, onCancelCompare, onClose, opacity, onOpacityChange, getThumbnailSlide, classMap }: DrawerTilesProps) {
   const [query, setQuery] = useState("");
@@ -91,10 +107,12 @@ export default function DrawerTiles({ open, doc, views, mode, compareGrid, compa
               }}
             >
               <button type="button" className={styles.tileCardButton} title={view.title} aria-label={`${view.title} 추가`} onClick={() => mode === "single" ? onAdd(view.tileId) : onToggleCompare(view.tileId)} onKeyDown={(event) => { if ((event.key === "Enter" || event.key === " ") && mode === "single") { event.preventDefault(); onAdd(view.tileId); } }}>
-                <TileThumbnail tileId={view.tileId} getThumbnailSlide={getThumbnailSlide} classMap={classMap} />
-                <span className={styles.tileCardName}>{view.title}</span>
+                <TileThumbnail view={view} getThumbnailSlide={getThumbnailSlide} classMap={classMap} />
+                <span className={styles.tileCardMeta}>
+                  <span className={styles.tileCardName}>{view.title}</span>
+                  {used.length > 0 && <span className={styles.tileUsedBadge}>{used.map((page) => `${page}쪽`).join("·")}</span>}
+                </span>
               </button>
-              {used.length > 0 && <span className={styles.tileUsedBadge}>{used.map((page) => `${page}쪽`).join(" · ")}</span>}
               {mode === "compare" && <label className={styles.tileCompareToggle} title={`${view.title} 비교에 포함`}><input type="checkbox" checked={checked} aria-label={`${view.title} 비교에 포함`} disabled={!checked && compareSelected.length >= compareLimit} onChange={() => onToggleCompare(view.tileId)} /></label>}
             </div>
           );

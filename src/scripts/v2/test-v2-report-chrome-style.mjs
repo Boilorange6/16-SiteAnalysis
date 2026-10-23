@@ -41,14 +41,14 @@ assert.match(mobileRules, /\.drawerCard[^{]*\{[\s\S]*bottom:\s*0;/, "모바일 d
 assert.match(mobileRules, /\.settingsCard[^{]*\{[\s\S]*bottom:\s*0;/, "모바일 settingsCard는 아래 시트 자리다");
 assert.match(reducedMotionRules, /\.floatCard[^{]*\{[\s\S]*transform:\s*none;/, "감소된 동작에서는 카드 transform을 끈다");
 assert.match(styles, /180ms\s+cubic-bezier\(\.23,1,\.32,1\)/, "카드 나타남 속도와 easing");
-assert.match(styles, /\.reportStage\s*\{[\s\S]*--stage-left:\s*88px[\s\S]*--stage-right:\s*24px[\s\S]*--stage-bottom:\s*140px;/, "무대 기본 여백 변수");
+assert.match(styles, /\.reportStage\s*\{[\s\S]*--stage-left:\s*80px[\s\S]*--stage-right:\s*12px[\s\S]*--stage-bottom:\s*104px;/, "무대 기본 여백 변수");
 assert.doesNotMatch(styles, /--stage-left:\s*418px;/, "서랍을 열어도 무대 왼쪽 여백을 늘리지 않는다");
 assert.doesNotMatch(styles, /\.reportStage\[data-drawer-open="true"\][^{]*\{[^}]*--stage-left:/, "서랍 상태는 stage-left를 바꾸지 않는다");
 assert.match(styles, /@media\s*\(max-width:\s*1023px\)/, "1023px 이하 기존 지도 미디어쿼리를 보존한다");
 assert.match(anchoredCardRule, /position:\s*absolute;/, "데스크톱 연결 카드는 무대 위에 뜬다");
 assert.match(drawerCardRule, /bottom:\s*(?:var\(--stage-bottom\)|calc\([^;]*var\(--stage-bottom\)[^;]*\));/, "서랍 아래 끝은 페이지 띠 무대 여백을 따른다");
 assert.match(styles, /\.reportStage\[data-settings-open="true"\]\s*\{[^}]*--stage-right:\s*328px;/, "설정 열림 무대 여백");
-assert.match(styles, /\.stageFit\s*\{[\s\S]*inset:\s*16px\s+var\(--stage-right\)\s+var\(--stage-bottom\)\s+var\(--stage-left\);/, "stageFit은 카드 여백 안쪽에 맞춘다");
+assert.match(styles, /\.stageFit\s*\{[\s\S]*inset:\s*8px\s+var\(--stage-right\)\s+var\(--stage-bottom\)\s+var\(--stage-left\);/, "stageFit은 카드 여백 안쪽에 맞춘다");
 assert.match(styles, /@media\s*\(min-width:\s*640px\)\s*and\s*\(max-width:\s*1024px\)[\s\S]*\.secondaryButton[\s\S]*::after[\s\S]*content:\s*"▶";[\s\S]*\.headerFormat select[\s\S]*width:\s*120px;[\s\S]*max-width:\s*120px;/, "1024px report topbar는 발표 아이콘과 선택된 판형을 보여 줄 select를 쓴다");
 assert.match(boardStyles, /@media\s*\(min-width:\s*640px\)\s*and\s*\(max-width:\s*1024px\)[\s\S]*\.reportPage > \.topbar[\s\S]*flex-wrap:\s*nowrap;/, "1024px report topbar는 한 줄을 유지한다");
 assert.match(boardStyles, /\.reportPage > \.topbar > \.topTitle\s*\{[^}]*display:\s*none;/, "좁은 report topbar는 주소 제목을 숨긴다");
@@ -117,7 +117,7 @@ assert.match(drawerTiles, /mode === "single" \? onAdd\(/, "타일 단일 모드�
 assert.match(drawerTiles, /onToggleCompare|onCreateCompare/, "타일 비교 모드 의미를 보존한다");
 assert.match(drawerTiles, /SlideSurface[\s\S]*mode=["']thumb["']/, "타일 카드는 실제 SlideSurface thumb 미리보기를 쓴다");
 assert.match(drawerTiles, /IntersectionObserver/, "타일 미리보기는 보이는 카드만 실제 렌더한다");
-assert.match(styles, /\.tileCard\s*\{[^}]*aspect-ratio:\s*4\s*\/\s*3/, "타일 미리보기 카드는 4:3이다");
+assert.match(styles, /\.tilePreview\s*\{[^}]*aspect-ratio:\s*4\s*\/\s*3/, "타일 지도 미리보기 칸은 4:3이다");
 assert.doesNotMatch(source, /TextBoxDrawer/, "글상자는 별도 서랍 없이 공통 팝오버를 쓴다");
 assert.match(source, /const addTextBoxFromRail = useCallback\(\(opener\?[^)]*\) =>[\s\S]*toggleTextBoxPopover/, "글상자 버튼은 종류 팝오버를 연다");
 assert.match(toolPillBlock, /textBoxPopoverOpen|textBoxPlacement/, "글상자 도구는 팝오버·놓기 active 상태를 가진다");
@@ -131,7 +131,7 @@ assert.match(layoutActiveRule, /border:\s*2px solid #2f6fdb;/, "선택 레이아
 assert.match(layoutActiveRule, /background:\s*#(?:e0eafa|eaf2ff|edf4ff|eef3fb);/, "선택 레이아웃은 연한 파랑 바탕이다");
 assert.match(source, /SidePanelHeader title="발표 메모"[\s\S]*context=\{`\$\{selectedPageNumber/, "메모 팝오버 머리는 공통 제목·N쪽이다");
 assert.match(source, /저장됨/, "메모 팝오버는 저장 상태를 보인다");
-assert.match(styles, /\.railPopover, \.notesPopover, \.fontSizePopover, \.textBoxPopover \{[^}]*width:\s*240px;/, "메모 팝오버 폭은 240px이다");
+assert.match(styles, /\.railPopover, \.notesPopover, \.fontSizePopover, \.textBoxPopover \{[^}]*width:\s*288px;/, "메모 팝오버 폭은 288px이다");
 assert.match(styles, /\.notesFieldCompact textarea\s*\{[^}]*height:\s*150px/, "메모 textarea는 150px이다");
 assert.match(notes, /compact\?:\s*boolean/, "NotesField compact prop");
 assert.match(layout, /compact\?:\s*boolean/, "LayoutSwitcher compact prop");
