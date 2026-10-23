@@ -16,9 +16,10 @@ import { deleteElementFramePatch, initialReportRail, insertIndexAfter, isTypingT
 import type { BoardAction, BoardState } from "@/lib/v2/ui/board-state";
 import type { SummaryView, TileView } from "@/lib/v2/ui/tile-view";
 import { sheetCells } from "@/lib/v2/ui/sheet";
-import { legendItemsForModel, type MapLegendLayerItem } from "@/lib/v2/ui/map-layers";
+import { legendItemsForModel, type MapLegendLayerItem, type MapModel } from "@/lib/v2/ui/map-layers";
 import { useFocusTrap } from "../use-focus-trap";
-import { SlideSurface, type SurfaceSelection } from "./slide-surface";
+import { mapLabelEntries } from "../map-figure";
+import { SlideSurface, type FontTargetKey, type SurfaceContextMenuTarget, type SurfaceContextTarget, type SurfaceSelection } from "./slide-surface";
 import DrawerPages, { type PageAddKind } from "./drawer-pages";
 import DrawerTiles from "./drawer-tiles";
 import PageStrip, { type PageStripItem } from "./page-strip";
@@ -184,25 +185,100 @@ function FontSizePopover({ doc, page, pageNumber, scope, selectedKey, opacity, o
   </section>;
 }
 
-function FontContextMenu({ menuRef, doc, page, pageNumber, state, scope, onScope, onChange, onResetPageKey, onResetPanel, onLegendVisibilityChange, onShowAllLegend, onHideLegendPanel, onDelete, onClose, legendItems = [] }: { menuRef: RefObject<HTMLDivElement | null>; doc: ReportDoc; page?: ReportPage; pageNumber: number | null; state: { key: FontSizeKey; x: number; y: number; opener: HTMLElement }; scope: FontSizeScope; onScope: (scope: FontSizeScope) => void; onChange: (scope: FontSizeScope, key: FontSizeKey, delta: number) => void; onResetPageKey: (key: FontSizeKey) => void; onResetPanel: () => void; legendItems?: readonly LegendContextMenuItem[]; onLegendVisibilityChange?: (layer: string, visible: boolean) => void; onShowAllLegend?: () => void; onHideLegendPanel?: () => void; onDelete?: () => void; onClose: () => void }) {
+type ContextMenuAction = {
+  key: string;
+  label: string;
+  onClick: () => void;
+  switch?: boolean;
+  ariaPressed?: boolean;
+};
+
+function normalizeSurfaceContextTarget(target: SurfaceContextMenuTarget): SurfaceContextTarget {
+  if (typeof target !== "string") return target;
+  if (target === "source") return { kind: "element", key: "source" };
+  return target === "labels" ? { kind: "font", key: target } : { kind: "panel", key: target };
+}
+
+function fontKeyForContextTarget(target: SurfaceContextTarget): FontTargetKey | null {
+  if (target.kind === "panel") return target.key;
+  if (target.kind === "element") return target.key;
+  if (target.kind === "mapElement" || target.kind === "mapLabel") return "labels";
+  if (target.kind === "font") return target.key;
+  return null;
+}
+
+function contextTargetLabel(target: SurfaceContextTarget, mapModel?: MapModel | null): string {
+  if (target.kind === "panel") return FONT_SIZE_LABELS[target.key];
+  if (target.kind === "element") return "출처 줄";
+  if (target.kind === "textBox") return "글상자";
+  if (target.kind === "decoration") return ({ north: "방위표", scaleBar: "축척 막대", locator: "위치도" } as const)[target.key];
+  if (target.kind === "sheetCell") return `${target.cell + 1}번째 조판 칸`;
+  if (target.kind === "mapElement" || target.kind === "mapLabel") {
+    const entry = mapModel ? mapLabelEntries(mapModel).find((candidate) => candidate.key === target.key) : undefined;
+    return entry?.text ?? `지도 ${mapElementKindLabel(target.key)}`;
+  }
+  return FONT_SIZE_LABELS[target.key];
+}
+
+function TextBoxContextFontRow({ value, onChange }: { value: number; onChange: (delta: number) => void }) {
+  return <div className={styles.fontSizeRow} data-text-box-font-row="true">
+    <span className={styles.fontSizeName}>글자</span>
+    <div className={styles.fontSizeStepper}>
+      <button type="button" className={styles.fontSizeStep} onClick={() => onChange(-1)} disabled={value <= 7} aria-label="글상자 글자 작게">−</button>
+      <output className={styles.fontSizeValue}>{value}pt</output>
+      <button type="button" className={styles.fontSizeStep} onClick={() => onChange(1)} disabled={value >= 72} aria-label="글상자 글자 크게">+</button>
+    </div>
+  </div>;
+}
+
+function ElementContextMenu({ menuRef, doc, page, pageNumber, mapModel, state, scope, onScope, onChange, onTextBoxChange, onResetPageKey, onResetPosition, actions = [], legendItems = [], onLegendVisibilityChange, onShowAllLegend, onHideLegendPanel, onDelete }: {
+  menuRef: RefObject<HTMLDivElement | null>;
+  doc: ReportDoc;
+  page?: ReportPage;
+  pageNumber: number | null;
+  mapModel?: MapModel | null;
+  state: { target: SurfaceContextTarget; x: number; y: number; opener: HTMLElement };
+  scope: FontSizeScope;
+  onScope: (scope: FontSizeScope) => void;
+  onChange: (scope: FontSizeScope, key: FontSizeKey, delta: number) => void;
+  onTextBoxChange?: (delta: number) => void;
+  onResetPageKey: (key: FontSizeKey) => void;
+  onResetPosition?: () => void;
+  actions?: readonly ContextMenuAction[];
+  legendItems?: readonly LegendContextMenuItem[];
+  onLegendVisibilityChange?: (layer: string, visible: boolean) => void;
+  onShowAllLegend?: () => void;
+  onHideLegendPanel?: () => void;
+  onDelete?: () => void;
+}) {
   const [position, setPosition] = useState({ x: state.x, y: state.y });
+  const target = state.target;
+  const fontKey = fontKeyForContextTarget(target);
   const pageValues = pageFontSizes(page);
-  const row = fontSizeRow(state.key);
-  const panelChanged = state.key === "title" || state.key === "summary" || state.key === "legend"
-    ? !!(page && Object.prototype.hasOwnProperty.call(page.panels, state.key))
-    : false;
+  const isTextBox = target.kind === "textBox";
+  const textBox = target.kind === "textBox" ? page?.textBoxes.find((box) => box.id === target.id) : undefined;
   useLayoutEffect(() => {
     const menu = menuRef.current;
     if (!menu) return;
     const rect = menu.getBoundingClientRect();
     setPosition({ x: Math.max(8, Math.min(state.x, window.innerWidth - rect.width - 8)), y: Math.max(8, Math.min(state.y, window.innerHeight - rect.height - 8)) });
-  }, [state.x, state.y]);
+  }, [menuRef, state.x, state.y, state.target]);
   useEffect(() => {
     const first = menuRef.current?.querySelector<HTMLButtonElement>("button");
     first?.focus();
-  }, []);
-  return <div ref={menuRef} className={styles.fontContextMenu} role="menu" aria-label={`${fontSizeRow(state.key).label} 글자 크기`} style={{ left: position.x, top: position.y }}>
-    {state.key === "legend" && legendItems.length > 0 && <>
+  }, [menuRef]);
+  const hasLegendItems = state.target.kind === "panel" && state.target.key === "legend" && legendItems.length > 0;
+  const hasElementActions = hasLegendItems || actions.length > 0;
+  return <div ref={menuRef} className={styles.fontContextMenu} role="menu" aria-label={`${contextTargetLabel(state.target, mapModel)} 요소 메뉴`} style={{ left: position.x, top: position.y }}>
+    <div className={styles.fontLegendHeading}>{contextTargetLabel(state.target, mapModel)}</div>
+    {fontKey && <>
+      <FontSizeStepRow fontKey={fontKey} label="글자" value={effectiveFontSize(doc, page, fontKey)} pageOverride={scope === "page" && pageValues[fontKey] !== undefined} onChange={(key, delta) => onChange(scope, key, delta)} menu />
+      <FontScopeSwitch scope={scope} pageNumber={pageNumber} pageDisabled={!page} onChange={onScope} />
+      {pageValues[fontKey] !== undefined && <button type="button" className={styles.fontMenuItem} role="menuitem" onClick={() => onResetPageKey(fontKey)}>모든 페이지 값으로 되돌리기</button>}
+    </>}
+    {isTextBox && textBox && <TextBoxContextFontRow value={Math.max(7, Math.min(72, Math.round(textBox.pt)))} onChange={(delta) => onTextBoxChange?.(delta)} />}
+    {hasElementActions && <div className={styles.fontContextDivider} />}
+    {hasLegendItems && <>
       <div className={styles.fontLegendHeading}>범례에 표시</div>
       <div className={styles.fontLegendItems}>
         {legendItems.map((item) => <button key={item.layer} type="button" className={styles.fontLegendItem} role="menuitemcheckbox" aria-checked={item.visible} onClick={() => onLegendVisibilityChange?.(item.layer, !item.visible)}>
@@ -215,14 +291,11 @@ function FontContextMenu({ menuRef, doc, page, pageNumber, state, scope, onScope
         <button type="button" className={styles.fontMenuItem} role="menuitem" onClick={onShowAllLegend}>모두 표시</button>
         <button type="button" className={styles.fontMenuItem} role="menuitem" onClick={onHideLegendPanel}>범례 칸 숨기기</button>
       </div>
-      <div className={styles.fontContextDivider} />
     </>}
-    <FontSizeStepRow fontKey={state.key} label={row.label} value={effectiveFontSize(doc, page, state.key)} pageOverride={scope === "page" && pageValues[state.key] !== undefined} onChange={(key, delta) => onChange(scope, key, delta)} menu />
-    <FontScopeSwitch scope={scope} pageNumber={pageNumber} pageDisabled={!page} onChange={onScope} />
+    {actions.map((action) => <button key={action.key} type="button" className={styles.fontMenuItem} role={action.switch ? "menuitemcheckbox" : "menuitem"} aria-checked={action.switch ? action.ariaPressed : undefined} aria-pressed={!action.switch ? undefined : action.ariaPressed} onClick={action.onClick}>{action.label}{action.switch ? ` ${action.ariaPressed ? "✓" : "—"}` : ""}</button>)}
+    {onResetPosition && <button type="button" className={styles.fontMenuItem} role="menuitem" onClick={onResetPosition}>위치·크기 초기화</button>}
     <div className={styles.fontContextDivider} />
-    {pageValues[state.key] !== undefined && <button type="button" className={styles.fontMenuItem} role="menuitem" onClick={() => onResetPageKey(state.key)}>모든 페이지 값으로 되돌리기</button>}
-    {panelChanged && <button type="button" className={styles.fontMenuItem} role="menuitem" onClick={onResetPanel}>위치·크기 처음대로</button>}
-    {onDelete && <><div className={styles.fontContextDivider} /><button type="button" className={styles.fontMenuItemDanger ?? styles.fontMenuItem} role="menuitem" onClick={onDelete}>지우기</button></>}
+    {onDelete && <button type="button" className={styles.fontMenuItemDanger ?? styles.fontMenuItem} role="menuitem" onClick={onDelete}>지우기 Delete</button>}
   </div>;
 }
 
@@ -256,8 +329,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const [textBoxEditingId, setTextBoxEditingId] = useState<string | null>(null);
   const [fontScope, setFontScope] = useState<FontSizeScope>("document");
   const [fontContextScope, setFontContextScope] = useState<FontSizeScope>("document");
-  const [fontHighlight, setFontHighlight] = useState<FontSizeKey | null>(null);
-  const [fontContext, setFontContext] = useState<{ key: FontSizeKey; x: number; y: number; opener: HTMLElement } | null>(null);
+  const [fontHighlight, setFontHighlight] = useState<FontTargetKey | null>(null);
+  const [fontContext, setFontContext] = useState<{ target: SurfaceContextTarget; x: number; y: number; opener: HTMLElement } | null>(null);
   const fontContextOpenerRef = useRef<HTMLElement | null>(null);
   const exportTriggerRef = useRef<HTMLButtonElement>(null);
   const exportDialogRef = useRef<HTMLDivElement>(null);
@@ -995,24 +1068,26 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     if (!selectedId) return;
     apply({ type: "clearPageFontSizes", id: selectedId, key } as ReportDocAction, `${fontSizeRow(key).label}를 모든 페이지 값으로 되돌렸습니다.`);
   }, [apply, selectedId]);
-  const resetSelectedPanel = useCallback(() => {
-    if (!selectedId || !selectedPage || (fontContext?.key !== "title" && fontContext?.key !== "summary" && fontContext?.key !== "legend")) return;
-    const key = fontContext.key;
-    const panels = Object.fromEntries(Object.entries(selectedPage.panels).filter(([panelKey]) => panelKey !== key)) as PagePanels;
-    apply({ type: "panels", id: selectedId, panels });
-    closeFontContext(true);
-  }, [apply, closeFontContext, fontContext, selectedId, selectedPage]);
-  const openFontContext = useCallback((key: FontSizeKey, x: number, y: number, opener: HTMLElement) => {
-    setFontHighlight(key);
-    setFontContextScope(pageFontSizes(selectedPage)[key] !== undefined ? "page" : "document");
-    setFontContext({ key, x, y, opener });
+  const openFontContext = useCallback((rawTarget: SurfaceContextMenuTarget, x: number, y: number, opener: HTMLElement) => {
+    const target = normalizeSurfaceContextTarget(rawTarget);
+    const fontKey = fontKeyForContextTarget(target);
+    setFontHighlight(fontKey);
+    setFontContextScope(fontKey && pageFontSizes(selectedPage)[fontKey] !== undefined ? "page" : "document");
+    setFontContext({ target, x, y, opener });
     fontContextOpenerRef.current = opener;
     setActivePopover(null);
     setRail(null);
     setMapMoveActive(false);
     setSettingsOpen(false);
-    if (key === "title" || key === "summary" || key === "legend") setSelection({ kind: "panel", key });
-    if (key === "source") setSelection({ kind: "element", key: "source" });
+    if (target.kind === "panel") setSelection({ kind: "panel", key: target.key });
+    else if (target.kind === "element") setSelection({ kind: "element", key: target.key });
+    else if (target.kind === "mapElement") setSelection({ kind: "mapElement", key: target.key, ...(target.cell === undefined ? {} : { cell: target.cell }) });
+    else if (target.kind === "mapLabel") setSelection({ kind: "mapLabel", key: target.key, ...(target.cell === undefined ? {} : { cell: target.cell }) });
+    else if (target.kind === "decoration") setSelection({ kind: "decoration", key: target.key, ...(target.cell === undefined ? {} : { cell: target.cell }) });
+    else if (target.kind === "sheetCell") setSelection({ kind: "sheetCell", cell: target.cell });
+    else if (target.kind === "textBox") setSelection({ kind: "textBox", id: target.id });
+    else if (target.kind === "font" && target.key === "source") setSelection({ kind: "element", key: "source" });
+    else if (target.kind === "font" && (target.key === "title" || target.key === "summary" || target.key === "legend")) setSelection({ kind: "panel", key: target.key });
   }, [selectedPage]);
   const selectedPageMapSelectable = reportPageMapSelectable(selectedPage);
   const editableMapPage = selectedPage?.kind === "tile" || selectedPage?.kind === "compare" ? selectedPage : null;
@@ -1066,14 +1141,48 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     setMapMoveActive(false);
     setSettingsOpen(false);
   }, [applyFrame, mapCell, mapFrame, selectedPage]);
-  const deleteFontContextElement = useCallback(() => {
-    const key = fontContext?.key;
-    if (!key) return;
-    if (key === "title" || key === "summary" || key === "legend") deletePageElement(key);
-    else if (key === "source") deletePageElement("source");
-    else if (key === "labels" && (selection?.kind === "mapLabel" || selection?.kind === "mapElement")) hideMapLabel(selection.key);
+  const resetContextPosition = useCallback(() => {
+    const target = fontContext?.target;
+    if (!target || !selectedPage) return;
+    const targetCell = "cell" in target ? target.cell : undefined;
+    const frameCell = targetCell ?? mapCell;
+    const currentPanels = selectedPage.kind === "compare"
+      ? targetCell === undefined ? selectedPage.panels : selectedPage.cells[targetCell]?.panels ?? {}
+      : selectedPage.panels;
+    const panelKey = target.kind === "panel" ? target.key : target.kind === "element" ? target.key : target.kind === "decoration" ? target.key : null;
+    if (panelKey) {
+      const panels = Object.fromEntries(Object.entries(currentPanels).filter(([key]) => key !== panelKey)) as PagePanels;
+      if (selectedPage.kind === "compare" && targetCell !== undefined) applyCellPanels(targetCell, panels);
+      else applyPanels(panels);
+      closeFontContext(true);
+      return;
+    }
+    if (target.kind === "mapLabel") {
+      const frame = selectedPage.kind === "tile" ? selectedPage.frame : selectedPage.kind === "compare" ? selectedPage.cells[frameCell ?? 0]?.frame : undefined;
+      if (!frame || !Object.prototype.hasOwnProperty.call(frame.labelBoxes, target.key)) return;
+      const labelBoxes = { ...frame.labelBoxes };
+      delete labelBoxes[target.key];
+      applyFrame(frameCell, { labelBoxes }, "지도 라벨을 자동 위치로 되돌렸습니다.");
+      closeFontContext(true);
+    }
+  }, [applyCellPanels, applyFrame, applyPanels, closeFontContext, fontContext?.target, mapCell, selectedPage]);
+
+  const deleteContextElement = useCallback(() => {
+    const target = fontContext?.target;
+    if (!target) return;
+    const targetCell = "cell" in target ? target.cell : mapCell;
+    if (target.kind === "panel") deletePageElement(target.key);
+    else if (target.kind === "element") deletePageElement(target.key);
+    else if (target.kind === "mapElement") deleteMapElement(target.key);
+    else if (target.kind === "mapLabel") hideMapLabel(target.key);
+    else if (target.kind === "decoration") deleteDecoration(target.key, targetCell);
+    else if (target.kind === "sheetCell") deleteSheetCell(target.cell);
+    else if (target.kind === "textBox") applyTextBox({ id: target.id, remove: true });
+    else if (target.kind === "font" && target.key === "source") deletePageElement("source");
+    else if (target.kind === "font" && (target.key === "title" || target.key === "summary" || target.key === "legend")) deletePageElement(target.key);
+    else if (target.kind === "font" && (selection?.kind === "mapLabel" || selection?.kind === "mapElement")) hideMapLabel(selection.key);
     closeFontContext(true);
-  }, [closeFontContext, deletePageElement, fontContext?.key, hideMapLabel, selection]);
+  }, [applyTextBox, closeFontContext, deleteDecoration, deleteMapElement, deletePageElement, deleteSheetCell, fontContext?.target, hideMapLabel, mapCell, selection]);
   const layoutPageKind = selectedPage?.kind ?? "blank";
   const layoutHasMap = selectedSlide?.kind === "tile"
     ? !!selectedSlide.map
@@ -1133,6 +1242,57 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const hideLegendPanel = useCallback(() => {
     if (mapFrame) applyFrame(mapCell, { legend: { ...mapFrame.legend, placement: "hidden" } });
   }, [applyFrame, mapCell, mapFrame]);
+  const changeContextTextBox = useCallback((delta: number) => {
+    const target = fontContext?.target;
+    if (!target || target.kind !== "textBox" || !selectedPage) return;
+    const box = selectedPage.textBoxes.find((candidate) => candidate.id === target.id);
+    if (!box) return;
+    applyTextBox({ ...box, pt: Math.max(7, Math.min(72, Math.round(box.pt) + delta)) });
+  }, [applyTextBox, fontContext?.target, selectedPage]);
+  const contextPositionChanged = useMemo(() => {
+    const target = fontContext?.target;
+    if (!target || !selectedPage) return false;
+    const targetCell = "cell" in target ? target.cell : undefined;
+    if (target.kind === "panel" || target.kind === "element" || target.kind === "decoration") {
+      const key = target.kind === "element" ? target.key : target.key;
+      const panels = selectedPage.kind === "compare" && targetCell !== undefined ? selectedPage.cells[targetCell]?.panels : selectedPage.panels;
+      return !!panels && Object.prototype.hasOwnProperty.call(panels, key);
+    }
+    if (target.kind === "mapLabel") {
+      const frame = selectedPage.kind === "tile" ? selectedPage.frame : selectedPage.kind === "compare" ? selectedPage.cells[targetCell ?? mapCell ?? 0]?.frame : undefined;
+      return !!frame && Object.prototype.hasOwnProperty.call(frame.labelBoxes, target.key);
+    }
+    return false;
+  }, [fontContext?.target, mapCell, selectedPage]);
+  const contextActions = useMemo<ContextMenuAction[]>(() => {
+    const target = fontContext?.target;
+    if (!target || !selectedPage) return [];
+    const targetCell = "cell" in target ? target.cell : undefined;
+    const frameCell = targetCell ?? mapCell;
+    if (target.kind === "mapElement") {
+      const frame = selectedPage.kind === "tile" ? selectedPage.frame : selectedPage.kind === "compare" ? selectedPage.cells[frameCell ?? 0]?.frame : undefined;
+      const visible = frame ? !frame.hiddenLabelKeys.includes(target.key) : true;
+      return [{
+        key: "map-label",
+        label: "라벨",
+        switch: true,
+        ariaPressed: visible,
+        onClick: () => {
+          if (!frame) return;
+          const next = toggleLabelVisibility(frame.pinnedKeys, frame.hiddenLabelKeys, target.key, !visible);
+          const patch = labelFramePatch(frame, next);
+          if (patch) applyFrame(frameCell, patch, visible ? "라벨을 껐습니다." : "라벨을 켰습니다.");
+        },
+      }];
+    }
+    if (target.kind === "mapLabel" && contextPositionChanged) return [{ key: "auto-label", label: "자동 배치", onClick: resetContextPosition }];
+    if (target.kind === "textBox") return [{ key: "edit-text-box", label: "고치기", onClick: () => setTextBoxEditingId(target.id) }];
+    if (target.kind === "sheetCell") return [
+      { key: "edit-sheet-cell", label: "크게 편집", onClick: () => beginSheetCellEdit(target.cell) },
+      { key: "fit-sheet-cell", label: "범위 맞추기", onClick: () => fitSheetCell(target.cell) },
+    ];
+    return [];
+  }, [applyFrame, beginSheetCellEdit, contextPositionChanged, fitSheetCell, fontContext?.target, mapCell, resetContextPosition, selectedPage]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Delete" && event.key !== "Backspace") return;
@@ -1475,7 +1635,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
           </div>
         </main>
       </div>
-       {fontContext && <FontContextMenu menuRef={fontContextMenuRef} doc={history.present} page={selectedPage} pageNumber={selectedPageNumber} state={fontContext} scope={fontContextScope} onScope={setFontContextScope} onChange={changeFontSize} onResetPageKey={(key) => { resetPageFontSize(key); closeFontContext(true); }} onResetPanel={resetSelectedPanel} onDelete={deleteFontContextElement} legendItems={legendContextItems} onLegendVisibilityChange={setLegendItemVisibility} onShowAllLegend={showAllLegend} onHideLegendPanel={hideLegendPanel} onClose={() => closeFontContext(true)} />}
+       {fontContext && <ElementContextMenu menuRef={fontContextMenuRef} doc={history.present} page={selectedPage} pageNumber={selectedPageNumber} mapModel={mapModel} state={fontContext} scope={fontContextScope} onScope={setFontContextScope} onChange={changeFontSize} onTextBoxChange={changeContextTextBox} onResetPageKey={(key) => { resetPageFontSize(key); closeFontContext(true); }} onResetPosition={contextPositionChanged ? resetContextPosition : undefined} actions={contextActions} onDelete={deleteContextElement} legendItems={legendContextItems} onLegendVisibilityChange={setLegendItemVisibility} onShowAllLegend={showAllLegend} onHideLegendPanel={hideLegendPanel} />}
       {toast && <div className={styles.toast} role="status"><span className={styles.toastText}>{toast}</span><button type="button" onClick={() => { setToast(null); undo(); }}>되돌리기</button></div>}
     </section>
   );

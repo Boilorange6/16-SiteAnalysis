@@ -62,6 +62,17 @@ type PreviewStylePatch = Partial<PageStyle>;
 type PanelKey = "title" | "summary" | "legend" | "source";
 export type FontTargetKey = PanelKey | "labels";
 export type SurfaceDecorationKey = "north" | "scaleBar" | "locator";
+export type SurfaceContextTarget =
+  | { kind: "panel"; key: "title" | "summary" | "legend"; cell?: number }
+  | { kind: "element"; key: "source"; cell?: number }
+  | { kind: "textBox"; id: string }
+  | { kind: "decoration"; key: SurfaceDecorationKey; cell?: number }
+  | { kind: "mapElement"; key: string; cell?: number }
+  | { kind: "mapLabel"; key: string; cell?: number }
+  | { kind: "sheetCell"; cell: number }
+  | { kind: "font"; key: FontTargetKey; cell?: number };
+export type SurfaceContextMenuTarget = SurfaceContextTarget | FontTargetKey;
+export type SurfaceContextMenuHandler = (target: SurfaceContextMenuTarget, x: number, y: number, opener: HTMLElement) => void;
 type PanelRatio = PagePanelRect;
 type ResizeDirection = "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "nw";
 
@@ -373,7 +384,8 @@ type MapLayerProps = {
   reportFrame?: MapFrameState;
   preserveShortCalloutLabels?: boolean;
   fontHighlight?: FontTargetKey | null;
-  onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void;
+  onFontContextMenu?: SurfaceContextMenuHandler;
+  contextCell?: number;
 };
 
 const EMPTY_PAGE_KEYS: readonly string[] = [];
@@ -505,7 +517,7 @@ function ElementActionBar({
   );
 }
 
-function DecorationTransformFrame({ label, box, onDragStart, onDragMove, onDragEnd, onResizeStart, onResizeMove, onResizeEnd, onKeyDown, actions, onDelete }: {
+function DecorationTransformFrame({ label, box, onDragStart, onDragMove, onDragEnd, onResizeStart, onResizeMove, onResizeEnd, onKeyDown, actions, onDelete, onContextMenu }: {
   label: string;
   box: DecorationBox;
   onDragStart: (event: ReactPointerEvent<HTMLDivElement>) => void;
@@ -517,16 +529,17 @@ function DecorationTransformFrame({ label, box, onDragStart, onDragMove, onDragE
   onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => void;
   actions?: ElementAction[];
   onDelete?: () => void;
+  onContextMenu?: (event: React.MouseEvent<HTMLDivElement>) => void;
 }) {
   const styles = useSurfaceStyles();
   const directions: DecorationResizeDirection[] = ["nw", "ne", "se", "sw"];
-  return <div className={styles.decorationSelectionFrame ?? styles.panelSelectionFrame} data-decoration-frame={label} style={{ left: box.x0, top: box.y0, width: Math.max(1, box.x1 - box.x0), height: Math.max(1, box.y1 - box.y0) }} tabIndex={0} role="group" aria-label={`${label} 선택됨`} onPointerDown={(event) => { if ((event.target as HTMLElement).closest("button")) return; onDragStart(event); }} onPointerMove={onDragMove} onPointerUp={onDragEnd} onPointerCancel={onDragEnd} onKeyDown={onKeyDown}>
+  return <div className={styles.decorationSelectionFrame ?? styles.panelSelectionFrame} data-decoration-frame={label} style={{ left: box.x0, top: box.y0, width: Math.max(1, box.x1 - box.x0), height: Math.max(1, box.y1 - box.y0) }} tabIndex={0} role="group" aria-label={`${label} 선택됨`} onPointerDown={(event) => { if ((event.target as HTMLElement).closest("button")) return; onDragStart(event); }} onPointerMove={onDragMove} onPointerUp={onDragEnd} onPointerCancel={onDragEnd} onKeyDown={onKeyDown} onContextMenu={(event) => { if ((event.target as HTMLElement).closest("button")) return; event.preventDefault(); event.stopPropagation(); onContextMenu?.(event); }}>
     <ElementActionBar elementLabel={label} left={0} top={-48} actions={actions} onDelete={onDelete} />
     {directions.map((direction) => <button key={direction} type="button" tabIndex={-1} className={styles.panelHandle + " " + styles["panelHandle" + direction.toUpperCase() as keyof typeof styles]} data-decoration-handle={direction} aria-label={`${label} ${direction} 모서리 크기 조절`} title={`${label} ${direction} 크기 조절`} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); onResizeStart(direction, event); }} onPointerMove={onResizeMove} onPointerUp={onResizeEnd} onPointerCancel={onResizeEnd}><span aria-hidden="true" /></button>)}
   </div>;
 }
 
-function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, interactive, pickable = false, selectedElementKey = null, selectedElementLabelVisible, selectedLabelKey = null, onMapElementSelect, onMapLabelSelect, onLabelBoxChange, onLabelBoxReset, onDeleteElement, onHideLabel, selectedDecorationKey = null, onDecorationSelect, onDecorationDelete, onMapHoverLegend, mapEditEntry = false, onMapMoveActive, thumbnail = false, onPatch, onDirectPatch, hoverLegend, terrainSection, terrainLayout, calloutLegend, calloutTop, calloutLeftBottom, northAvoid, scale = true, label, format = "wide", frame, panelBasis = "page", reportFrame, preserveShortCalloutLabels = false, fontHighlight, onFontContextMenu }: MapLayerProps) {
+function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, interactive, pickable = false, selectedElementKey = null, selectedElementLabelVisible, selectedLabelKey = null, onMapElementSelect, onMapLabelSelect, onLabelBoxChange, onLabelBoxReset, onDeleteElement, onHideLabel, selectedDecorationKey = null, onDecorationSelect, onDecorationDelete, onMapHoverLegend, mapEditEntry = false, onMapMoveActive, thumbnail = false, onPatch, onDirectPatch, hoverLegend, terrainSection, terrainLayout, calloutLegend, calloutTop, calloutLeftBottom, northAvoid, scale = true, label, format = "wide", frame, panelBasis = "page", reportFrame, preserveShortCalloutLabels = false, fontHighlight, onFontContextMenu, contextCell }: MapLayerProps) {
   const styles = useSurfaceStyles();
   const geometry = slideGeometry(format);
   const frameWidth = frame?.w ?? geometry.w;
@@ -739,10 +752,10 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
     const y = event.clientY;
     const timer = window.setTimeout(() => {
       labelLongPressRef.current = null;
-      onFontContextMenu("labels", x, y, target);
+      onFontContextMenu({ kind: "font", key: "labels", ...(contextCell === undefined ? {} : { cell: contextCell }) }, x, y, target);
     }, 500);
     labelLongPressRef.current = { pointerId: event.pointerId, x, y, target, timer };
-  }, [clearLabelLongPress, onFontContextMenu]);
+  }, [clearLabelLongPress, contextCell, onFontContextMenu]);
   const moveLabelLongPress = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     const pending = labelLongPressRef.current;
     if (pending && (Math.hypot(event.clientX - pending.x, event.clientY - pending.y) > 8 || pending.pointerId !== event.pointerId)) clearLabelLongPress(event);
@@ -987,12 +1000,12 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
         if (!box) return null;
         const selected = selectedDecorationKey === key;
         const label = key === "north" ? "방위표" : key === "scaleBar" ? "축척 막대" : "위치도";
-        return <button key={key} type="button" className={styles.decorationHitTarget} data-report-decoration={key} data-decoration-selected={selected ? "true" : undefined} aria-label={`${label} 선택`} aria-pressed={selected} title={`${label} 선택`} style={{ left: box.x0, top: box.y0, width: Math.max(44, box.x1 - box.x0), height: Math.max(44, box.y1 - box.y0) }} onPointerDown={(event) => { event.stopPropagation(); }} onClick={(event) => { event.stopPropagation(); onDecorationSelect(key); }} />;
+        return <button key={key} type="button" className={styles.decorationHitTarget} data-report-decoration={key} data-decoration-selected={selected ? "true" : undefined} aria-label={`${label} 선택`} aria-pressed={selected} title={`${label} 선택`} style={{ left: box.x0, top: box.y0, width: Math.max(44, box.x1 - box.x0), height: Math.max(44, box.y1 - box.y0) }} onPointerDown={(event) => { event.stopPropagation(); }} onClick={(event) => { event.stopPropagation(); onDecorationSelect(key); }} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); onFontContextMenu?.({ kind: "decoration", key, ...(contextCell === undefined ? {} : { cell: contextCell }) }, event.clientX, event.clientY, event.currentTarget); }} />;
       })
     : null;
   const decorationLabel = selectedDecorationKey === "north" ? "방위표" : selectedDecorationKey === "scaleBar" ? "축척 막대" : "위치도";
   const decorationTransformFrame = pickable && selectedDecorationKey && selectedDecorationBox
-    ? <DecorationTransformFrame label={decorationLabel} box={selectedDecorationBox} onDragStart={startDecorationDrag} onDragMove={onDecorationMove} onDragEnd={onDecorationEnd} onResizeStart={startDecorationResize} onResizeMove={onDecorationResizeMove} onResizeEnd={onDecorationResizeEnd} onKeyDown={onDecorationKeyDown} actions={styleRef.current.panels?.[selectedDecorationKey] ? [{ key: "reset", label: "위치 초기화", onClick: () => resetDecoration(selectedDecorationKey) }] : []} onDelete={() => onDecorationDelete?.(selectedDecorationKey)} />
+    ? <DecorationTransformFrame label={decorationLabel} box={selectedDecorationBox} onDragStart={startDecorationDrag} onDragMove={onDecorationMove} onDragEnd={onDecorationEnd} onResizeStart={startDecorationResize} onResizeMove={onDecorationResizeMove} onResizeEnd={onDecorationResizeEnd} onKeyDown={onDecorationKeyDown} actions={styleRef.current.panels?.[selectedDecorationKey] ? [{ key: "reset", label: "위치 초기화", onClick: () => resetDecoration(selectedDecorationKey) }] : []} onDelete={() => onDecorationDelete?.(selectedDecorationKey)} onContextMenu={(event) => onFontContextMenu?.({ kind: "decoration", key: selectedDecorationKey, ...(contextCell === undefined ? {} : { cell: contextCell }) }, event.clientX, event.clientY, event.currentTarget)} />
     : null;
   const decorationGuideLayer = decorationTransformFrame && (decorationSnapGuides.x.length > 0 || decorationSnapGuides.y.length > 0)
     ? <div className={styles.decorationSnapGuides ?? styles.snapGuides} aria-hidden="true">
@@ -1012,11 +1025,27 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
         onDelete={selectedLabelKey ? () => onHideLabel?.(selectedLabelKey) : selectedElementKey ? () => onDeleteElement?.(selectedElementKey) : undefined}
       />
     : null;
+  const openMapContext = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!onFontContextMenu) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const target = event.target instanceof Element ? event.target : null;
+    const labelNode = target?.closest<HTMLElement>("[data-map-label-box], [data-map-label-hit], [data-map-label-key]");
+    const labelKey = labelNode?.getAttribute("data-map-label-box") ?? labelNode?.getAttribute("data-map-label-hit") ?? labelNode?.getAttribute("data-map-label-key");
+    const featureKey = target?.closest<HTMLElement>("[data-map-feature]")?.getAttribute("data-map-feature");
+    const cell = contextCell === undefined ? {} : { cell: contextCell };
+    const contextTarget: SurfaceContextTarget = labelKey
+      ? { kind: "mapLabel", key: labelKey, ...cell }
+      : featureKey
+        ? { kind: "mapElement", key: featureKey, ...cell }
+        : { kind: "font", key: "labels", ...cell };
+    onFontContextMenu(contextTarget, event.clientX, event.clientY, event.currentTarget);
+  };
   const mapEnterKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if ((event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey)) && onFontContextMenu) {
       event.preventDefault();
       const rect = event.currentTarget.getBoundingClientRect();
-      onFontContextMenu("labels", rect.left, rect.bottom + 8, event.currentTarget);
+      onFontContextMenu({ kind: "font", key: "labels", ...(contextCell === undefined ? {} : { cell: contextCell }) }, rect.left, rect.bottom + 8, event.currentTarget);
       return;
     }
     if (event.key !== "Enter" || !onMapMoveActive) return;
@@ -1024,7 +1053,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
     onMapMoveActive(true);
   };
   if (!interactive) return <>
-    <div ref={mapInteractionRef} className={styles.slideMap} data-preview-map="true" data-map-pickable={pickable ? "true" : undefined} data-font-highlight={fontHighlight === "labels" ? "true" : undefined} tabIndex={mapEditEntry ? 0 : undefined} aria-label={mapEditEntry ? `${label} 지도. Enter 또는 두 번 눌러 편집합니다.` : undefined} onKeyDown={mapEditEntry ? mapEnterKeyDown : undefined} onContextMenu={onFontContextMenu ? (event) => { event.preventDefault(); onFontContextMenu("labels", event.clientX, event.clientY, event.currentTarget); } : undefined}>{map}{locatorElement}{decorationTargets}</div>
+    <div ref={mapInteractionRef} className={styles.slideMap} data-preview-map="true" data-map-pickable={pickable ? "true" : undefined} data-font-highlight={fontHighlight === "labels" ? "true" : undefined} tabIndex={mapEditEntry ? 0 : undefined} aria-label={mapEditEntry ? `${label} 지도. Enter 또는 두 번 눌러 편집합니다.` : undefined} onKeyDown={mapEditEntry ? mapEnterKeyDown : undefined} onContextMenu={openMapContext}>{map}{locatorElement}{decorationTargets}</div>
     <div className={styles.elementActionLayer ?? styles.mapSelectionToolbar} data-element-action-layer="true">{selectionToolbar}{decorationGuideLayer}{decorationTransformFrame}</div>
   </>;
   const zoomMapAt = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -1048,7 +1077,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
     if ((event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey)) && onFontContextMenu) {
       event.preventDefault();
       const rect = event.currentTarget.getBoundingClientRect();
-      onFontContextMenu("labels", rect.left, rect.bottom + 8, event.currentTarget);
+      onFontContextMenu({ kind: "font", key: "labels", ...(contextCell === undefined ? {} : { cell: contextCell }) }, rect.left, rect.bottom + 8, event.currentTarget);
       return;
     }
     if (event.key === "Enter" && onMapMoveActive) {
@@ -1092,7 +1121,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
       onPointerUp={(event) => { clearLabelLongPress(event); endPointer(event); }}
       onPointerCancel={(event) => { clearLabelLongPress(event); endPointer(event); }}
       onKeyDown={mapKeyDown}
-      onContextMenu={onFontContextMenu ? (event) => { event.preventDefault(); onFontContextMenu("labels", event.clientX, event.clientY, event.currentTarget); } : undefined}
+      onContextMenu={openMapContext}
       onDoubleClick={zoomMapAt}
       onDragStart={(event) => event.preventDefault()}
     >
@@ -1104,7 +1133,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
   </>;
 }
 
-function SlideFooter({ slide, rect: rectProp, unit, fontHighlight, onFontContextMenu, interactive = false, hidden = false, selected = false, onSelect, onDelete, interaction }: { slide: PlannedSlide; rect?: Rect; unit: number; fontHighlight?: FontTargetKey | null; onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void; interactive?: boolean; hidden?: boolean; selected?: boolean; onSelect?: (selection: SurfaceSelection) => void; onDelete?: () => void; interaction?: PanelInteraction }) {
+function SlideFooter({ slide, rect: rectProp, unit, fontHighlight, onFontContextMenu, interactive = false, hidden = false, selected = false, onSelect, onDelete, interaction }: { slide: PlannedSlide; rect?: Rect; unit: number; fontHighlight?: FontTargetKey | null; onFontContextMenu?: SurfaceContextMenuHandler; interactive?: boolean; hidden?: boolean; selected?: boolean; onSelect?: (selection: SurfaceSelection) => void; onDelete?: () => void; interaction?: PanelInteraction }) {
   const styles = useSurfaceStyles();
   const format = (slide.format ?? "wide") as SlideFormat;
   const rect = rectProp ?? slideLayout(format).strip;
@@ -1118,7 +1147,7 @@ function SlideFooter({ slide, rect: rectProp, unit, fontHighlight, onFontContext
   const openContext = (event: React.MouseEvent<HTMLDivElement>) => {
     if (!onFontContextMenu) return;
     event.preventDefault();
-    onFontContextMenu("source", event.clientX, event.clientY, event.currentTarget);
+    onFontContextMenu({ kind: "element", key: "source" }, event.clientX, event.clientY, event.currentTarget);
   };
   const openLongPress = (event: ReactPointerEvent<HTMLDivElement>) => {
     clearLongPress();
@@ -1128,7 +1157,7 @@ function SlideFooter({ slide, rect: rectProp, unit, fontHighlight, onFontContext
     const y = event.clientY;
     const timer = window.setTimeout(() => {
       longPressRef.current = null;
-      onFontContextMenu("source", x, y, target);
+      onFontContextMenu({ kind: "element", key: "source" }, x, y, target);
     }, 500);
     longPressRef.current = { x, y, timer };
   };
@@ -1137,7 +1166,7 @@ function SlideFooter({ slide, rect: rectProp, unit, fontHighlight, onFontContext
       if (event.key !== "ContextMenu" && !(event.key === "F10" && event.shiftKey)) return;
       event.preventDefault();
       const rect = event.currentTarget.getBoundingClientRect();
-      onFontContextMenu("source", rect.left, rect.top, event.currentTarget);
+      onFontContextMenu({ kind: "element", key: "source" }, rect.left, rect.top, event.currentTarget);
     } : undefined} onPointerDown={interaction?.onPointerDown ?? openLongPress} onPointerMove={interaction?.onPointerMove ?? ((event) => {
       const pending = longPressRef.current;
       if (pending && Math.hypot(event.clientX - pending.x, event.clientY - pending.y) > 8) clearLongPress();
@@ -1428,6 +1457,7 @@ type TextBoxSurfaceProps = {
   onSelect?: (selection: SurfaceSelection) => void;
   onTextBox?: (box: TextBox | { id: string; remove: true }) => void;
   onEditingChange?: (id: string | null) => void;
+  onContextMenu?: SurfaceContextMenuHandler;
 };
 
 const TEXT_BOX_HANDLE_DIRECTIONS: readonly { direction: ResizeDirection; label: string }[] = [
@@ -1457,7 +1487,7 @@ function TextBoxAlignIcon({ center = false }: { center?: boolean }) {
   return <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 6h16" /><path d={center ? "M7 12h10" : "M4 12h10"} /><path d={center ? "M5 18h14" : "M4 18h14"} /></svg>;
 }
 
-function TextBoxSurface({ boxes, unit, selectedId, startEditingId, maxWidth, maxHeight, editable = false, onSelect, onTextBox, onEditingChange }: TextBoxSurfaceProps) {
+function TextBoxSurface({ boxes, unit, selectedId, startEditingId, maxWidth, maxHeight, editable = false, onSelect, onTextBox, onEditingChange, onContextMenu }: TextBoxSurfaceProps) {
   const styles = useSurfaceStyles();
   const [draft, setDraft] = useState<{ mode: "move" | "resize"; direction?: ResizeDirection; pointerId: number; startX: number; startY: number; box: TextBox } | null>(null);
   const [draftBox, setDraftBox] = useState<TextBox | null>(null);
@@ -1601,6 +1631,7 @@ function TextBoxSurface({ boxes, unit, selectedId, startEditingId, maxWidth, max
         if (!selected) onSelect?.({ kind: "textBox", id: box.id });
       }}
       onDoubleClick={() => { if (editable) beginEditing(box.id); }}
+      onContextMenu={(event) => { if (!editable || (event.target as HTMLElement).closest("button")) return; event.preventDefault(); event.stopPropagation(); onContextMenu?.({ kind: "textBox", id: box.id }, event.clientX, event.clientY, event.currentTarget); }}
       onBlur={(event) => {
         if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
         if (editing) commitText(box.id);
@@ -1675,7 +1706,7 @@ function TextBoxPlacementLayer({ placement, unit, maxWidth, maxHeight, onMove, o
   </div>;
 }
 
-function CoverSurface({ slide, unit, basemap, interactive, thumbnail = false, onPatch, onDirectPatch, fontHighlight, onFontContextMenu }: { slide: Extract<PlannedSlide, { kind: "cover" }>; unit: number; basemap: BasemapChoice; interactive: boolean; thumbnail?: boolean; onPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void; fontHighlight?: FontTargetKey | null; onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void }) {
+function CoverSurface({ slide, unit, basemap, interactive, thumbnail = false, onPatch, onDirectPatch, fontHighlight, onFontContextMenu }: { slide: Extract<PlannedSlide, { kind: "cover" }>; unit: number; basemap: BasemapChoice; interactive: boolean; thumbnail?: boolean; onPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void; fontHighlight?: FontTargetKey | null; onFontContextMenu?: SurfaceContextMenuHandler }) {
   const format = (slide.format ?? "wide") as SlideFormat;
   const styles = useSurfaceStyles();
   const map = slide.map;
@@ -1719,7 +1750,7 @@ function CoverSurface({ slide, unit, basemap, interactive, thumbnail = false, on
   );
 }
 
-function SourcesSurface({ slide, unit, basemap, thumbnail = false, fontHighlight, onFontContextMenu }: { slide: Extract<PlannedSlide, { kind: "sources" }>; unit: number; basemap: BasemapChoice; thumbnail?: boolean; fontHighlight?: FontTargetKey | null; onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void }) {
+function SourcesSurface({ slide, unit, basemap, thumbnail = false, fontHighlight, onFontContextMenu }: { slide: Extract<PlannedSlide, { kind: "sources" }>; unit: number; basemap: BasemapChoice; thumbnail?: boolean; fontHighlight?: FontTargetKey | null; onFontContextMenu?: SurfaceContextMenuHandler }) {
   const format = (slide.format ?? "wide") as SlideFormat;
   const styles = useSurfaceStyles();
   const layout = sourceLayout(slide.rows.length, slide.style, format);
@@ -1745,7 +1776,7 @@ function SourcesSurface({ slide, unit, basemap, thumbnail = false, fontHighlight
   );
 }
 
-function SheetCellEditSurface({ slide, cellIndex, unit, basemap, selection, mapActive = false, onSelect, onFrame, onCellPanels, onMapMoveActive, onMapElementDelete, onMapLabelHide, onDecorationDelete, onDone, onNavigate, fontHighlight, onFontContextMenu }: { slide: Extract<PlannedSlide, { kind: "sheet" }>; cellIndex: number; unit: number; basemap: BasemapChoice; selection?: SurfaceSelection; mapActive?: boolean; onSelect?: (selection: SurfaceSelection) => void; onFrame?: (cell: number | undefined, patch: Partial<MapFrameState>) => void; onCellPanels?: (cell: number, panels: PagePanels) => void; onMapMoveActive?: (active: boolean) => void; onMapElementDelete?: (key: string) => void; onMapLabelHide?: (key: string) => void; onDecorationDelete?: (key: SurfaceDecorationKey, cell?: number) => void; onDone?: () => void; onNavigate?: (direction: -1 | 1) => void; fontHighlight?: FontTargetKey | null; onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void }) {
+function SheetCellEditSurface({ slide, cellIndex, unit, basemap, selection, mapActive = false, onSelect, onFrame, onCellPanels, onMapMoveActive, onMapElementDelete, onMapLabelHide, onDecorationDelete, onDone, onNavigate, fontHighlight, onFontContextMenu }: { slide: Extract<PlannedSlide, { kind: "sheet" }>; cellIndex: number; unit: number; basemap: BasemapChoice; selection?: SurfaceSelection; mapActive?: boolean; onSelect?: (selection: SurfaceSelection) => void; onFrame?: (cell: number | undefined, patch: Partial<MapFrameState>) => void; onCellPanels?: (cell: number, panels: PagePanels) => void; onMapMoveActive?: (active: boolean) => void; onMapElementDelete?: (key: string) => void; onMapLabelHide?: (key: string) => void; onDecorationDelete?: (key: SurfaceDecorationKey, cell?: number) => void; onDone?: () => void; onNavigate?: (direction: -1 | 1) => void; fontHighlight?: FontTargetKey | null; onFontContextMenu?: SurfaceContextMenuHandler }) {
   const format = (slide.format ?? "wide") as SlideFormat;
   const styles = useSurfaceStyles();
   const geometry = slideGeometry(format);
@@ -1796,7 +1827,7 @@ function SheetCellEditSurface({ slide, cellIndex, unit, basemap, selection, mapA
   const labelSelection = selected && selection?.kind === "mapLabel" ? selection : null;
   const decorationSelection = selected && selection?.kind === "decoration" ? selection : null;
   return (
-    <div className={styles.sheetCellEditSurface} data-sheet-cell-editing="true">
+    <div className={styles.sheetCellEditSurface} data-sheet-cell-editing="true" onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); onFontContextMenu?.({ kind: "sheetCell", cell: cellIndex }, event.clientX, event.clientY, event.currentTarget); }}>
       <div className={styles.sheetCellEditHeader} role="toolbar" aria-label="조판 칸 크게 편집">
         <span className={styles.sheetCellEditLocation}>조판 {cellIndex + 1} / {slide.cells.length}</span>
         <strong>{cell?.view.title ?? "빈 칸"} 칸 편집 중</strong>
@@ -1838,6 +1869,7 @@ function SheetCellEditSurface({ slide, cellIndex, unit, basemap, selection, mapA
             format={format}
             frame={frame}
             panelBasis="frame"
+            contextCell={cellIndex}
             reportFrame={cell.reportFrame}
             fontHighlight={fontHighlight}
             onFontContextMenu={onFontContextMenu}
@@ -1848,7 +1880,7 @@ function SheetCellEditSurface({ slide, cellIndex, unit, basemap, selection, mapA
   );
 }
 
-function SheetSurface({ slide, unit, basemap, thumbnail = false, editable = false, selection, mapActive = false, cellEditing, recentCell, onCellActivate, onCellEdit, onCellFit, onCellDelete, onCellDone, onCellNavigate, onSelect, onFrame, onCellPanels, onMapMoveActive, onMapElementDelete, onMapLabelHide, onDecorationDelete, fontHighlight, onFontContextMenu }: { slide: Extract<PlannedSlide, { kind: "sheet" }>; unit: number; basemap: BasemapChoice; thumbnail?: boolean; editable?: boolean; selection?: SurfaceSelection; mapActive?: boolean; cellEditing?: number | null; recentCell?: number | null; onCellActivate?: (index: number) => void; onCellEdit?: (index: number) => void; onCellFit?: (index: number) => void; onCellDelete?: (index: number) => void; onCellDone?: () => void; onCellNavigate?: (direction: -1 | 1) => void; onSelect?: (selection: SurfaceSelection) => void; onFrame?: (cell: number | undefined, patch: Partial<MapFrameState>) => void; onCellPanels?: (cell: number, panels: PagePanels) => void; onMapMoveActive?: (active: boolean) => void; onMapElementDelete?: (key: string) => void; onMapLabelHide?: (key: string) => void; onDecorationDelete?: (key: SurfaceDecorationKey, cell?: number) => void; fontHighlight?: FontTargetKey | null; onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void }) {
+function SheetSurface({ slide, unit, basemap, thumbnail = false, editable = false, selection, mapActive = false, cellEditing, recentCell, onCellActivate, onCellEdit, onCellFit, onCellDelete, onCellDone, onCellNavigate, onSelect, onFrame, onCellPanels, onMapMoveActive, onMapElementDelete, onMapLabelHide, onDecorationDelete, fontHighlight, onFontContextMenu }: { slide: Extract<PlannedSlide, { kind: "sheet" }>; unit: number; basemap: BasemapChoice; thumbnail?: boolean; editable?: boolean; selection?: SurfaceSelection; mapActive?: boolean; cellEditing?: number | null; recentCell?: number | null; onCellActivate?: (index: number) => void; onCellEdit?: (index: number) => void; onCellFit?: (index: number) => void; onCellDelete?: (index: number) => void; onCellDone?: () => void; onCellNavigate?: (direction: -1 | 1) => void; onSelect?: (selection: SurfaceSelection) => void; onFrame?: (cell: number | undefined, patch: Partial<MapFrameState>) => void; onCellPanels?: (cell: number, panels: PagePanels) => void; onMapMoveActive?: (active: boolean) => void; onMapElementDelete?: (key: string) => void; onMapLabelHide?: (key: string) => void; onDecorationDelete?: (key: SurfaceDecorationKey, cell?: number) => void; fontHighlight?: FontTargetKey | null; onFontContextMenu?: SurfaceContextMenuHandler }) {
   if (cellEditing !== undefined && cellEditing !== null) return <SheetCellEditSurface slide={slide} cellIndex={cellEditing} unit={unit} basemap={basemap} selection={selection} mapActive={mapActive} onSelect={onSelect} onFrame={onFrame} onCellPanels={onCellPanels} onMapMoveActive={onMapMoveActive} onMapElementDelete={onMapElementDelete} onMapLabelHide={onMapLabelHide} onDecorationDelete={onDecorationDelete} onDone={onCellDone} onNavigate={onCellNavigate} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />;
   const format = (slide.format ?? "wide") as SlideFormat;
   const layoutName = slide.page?.layout ?? "map-summary";
@@ -1961,6 +1993,7 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, editable = fals
                 format={format}
                 frame={rect}
                 panelBasis="frame"
+                contextCell={index}
                 reportFrame={cell.reportFrame}
                 fontHighlight={fontHighlight}
                 onFontContextMenu={onFontContextMenu}
@@ -1979,6 +2012,7 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, editable = fals
                 format={format}
                 frame={rect}
                 panelBasis="frame"
+                contextCell={index}
                 reportFrame={cell.reportFrame}
                 scale={cell.reportFrame?.decorations.scaleBar ?? false}
                 label={cell.view.title + " 지도"}
@@ -1998,6 +2032,7 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, editable = fals
                 key={cell.mapKey}
                 onDoubleClick={(event) => { if (!editable || thumbnail) return; event.preventDefault(); event.stopPropagation(); onCellEdit?.(index); }}
                 onKeyDown={(event) => { if ((event.key === "Enter" || event.key === " ") && editable && !thumbnail) { event.preventDefault(); onCellEdit?.(index); } }}
+                onContextMenu={(event) => { if (!editable || thumbnail || !onFontContextMenu) return; event.preventDefault(); event.stopPropagation(); onFontContextMenu({ kind: "sheetCell", cell: index }, event.clientX, event.clientY, event.currentTarget); }}
               >
                 {chart ? <ChartPlaceholder view={cell.view} unit={unit} /> : model ? (
                   <div className={styles.sheetCellMap} data-surface-map="true" data-map-cell-index={index}>
@@ -2034,7 +2069,7 @@ function LocatorInset({ model, basemap, box }: { model: NonNullable<ReturnType<t
   return <div className={styles.locatorInset ?? styles.surfaceRoot} data-map-locator="true" aria-label="위치도" style={{ left: box.x0, top: box.y0, width, height, pointerEvents: "none" }}><MapFigure model={locatorModel} width={width} height={height} fixed basemap="none" layer={basemap} legend={false} north={false} scale={false} credit={false} showAutomaticLabels={false} viewport={slideViewport(locatorModel, undefined, { width, height, siteX: 0.5, siteY: 0.5, fill: 0.82 })} /></div>;
 }
 
-function TileSurface({ slide, unit, basemap, panels, interactive, pickable = false, selection, mapEditEntry = false, onMapMoveActive, thumbnail = false, onPatch, onDirectPatch, panelInteraction, staticSurface = false, onText, fontHighlight, onFontContextMenu, onMapElementSelect, onMapLabelSelect, onLabelBoxChange, onLabelBoxReset, onDeleteElement, onHideLabel, onPanelDelete, onDecorationSelect, onDecorationDelete }: { slide: Extract<PlannedSlide, { kind: "tile" }>; unit: number; basemap: BasemapChoice; panels: { title: Rect; summary: Rect | null; legend: Rect | null; source: Rect }; interactive: boolean; pickable?: boolean; selection?: SurfaceSelection; mapEditEntry?: boolean; onMapMoveActive?: (active: boolean) => void; thumbnail?: boolean; onPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void; panelInteraction?: (key: PanelKey) => PanelInteraction; staticSurface?: boolean; onText?: (kind: "title" | "summary") => void; fontHighlight?: FontTargetKey | null; onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void; onMapElementSelect?: (feature: MapFigureElementPick) => void; onMapLabelSelect?: (feature: MapFigureElementPick) => void; onLabelBoxChange?: (key: string, box: MapLabelBox) => void; onLabelBoxReset?: (key: string) => void; onDeleteElement?: (key: string) => void; onHideLabel?: (key: string) => void; onPanelDelete?: (key: PanelKey) => void; onDecorationSelect?: (key: SurfaceDecorationKey) => void; onDecorationDelete?: (key: SurfaceDecorationKey) => void }) {
+function TileSurface({ slide, unit, basemap, panels, interactive, pickable = false, selection, mapEditEntry = false, onMapMoveActive, thumbnail = false, onPatch, onDirectPatch, panelInteraction, staticSurface = false, onText, fontHighlight, onFontContextMenu, onMapElementSelect, onMapLabelSelect, onLabelBoxChange, onLabelBoxReset, onDeleteElement, onHideLabel, onPanelDelete, onDecorationSelect, onDecorationDelete }: { slide: Extract<PlannedSlide, { kind: "tile" }>; unit: number; basemap: BasemapChoice; panels: { title: Rect; summary: Rect | null; legend: Rect | null; source: Rect }; interactive: boolean; thumbnail?: boolean; pickable?: boolean; selection?: SurfaceSelection; mapEditEntry?: boolean; onMapMoveActive?: (active: boolean) => void; onPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void; panelInteraction?: (key: PanelKey) => PanelInteraction; staticSurface?: boolean; onText?: (kind: "title" | "summary") => void; fontHighlight?: FontTargetKey | null; onFontContextMenu?: SurfaceContextMenuHandler; onMapElementSelect?: (feature: MapFigureElementPick) => void; onMapLabelSelect?: (feature: MapFigureElementPick) => void; onLabelBoxChange?: (key: string, box: MapLabelBox) => void; onLabelBoxReset?: (key: string) => void; onDeleteElement?: (key: string) => void; onHideLabel?: (key: string) => void; onPanelDelete?: (key: PanelKey) => void; onDecorationSelect?: (key: SurfaceDecorationKey) => void; onDecorationDelete?: (key: SurfaceDecorationKey) => void }) {
   const format = (slide.format ?? "wide") as SlideFormat;
   const styles = useSurfaceStyles();
   const selectSurface = useContext(SurfaceSelectContext);
@@ -2093,7 +2128,7 @@ function TileSurface({ slide, unit, basemap, panels, interactive, pickable = fal
       {slide.body.kind === "state" && <div className={styles.slidePanel} style={{ left: unit * 4, top: unit * 2.7, width: unit * 5.1, height: unit * 1.15 }}><div className={styles.slideText + " " + styles.slideTextStrong} style={fontStyle(16, unit)}>{slide.body.message}</div></div>}
        {!slide.page?.deletedElementKeys?.includes("title") && <div onDoubleClick={() => onText?.("title")}><TitlePanel slide={slide} rect={panels.title} unit={unit} interaction={panelInteraction?.("title")} /></div>}
        {panels.summary && hasSummaryPanel(slide) && !slide.page?.deletedElementKeys?.includes("summary") && <div onDoubleClick={() => onText?.("summary")}><SummaryPanel slide={slide} rect={terrainLayout?.summary ?? panels.summary} unit={unit} terrainSectionShown={terrainShown} interaction={panelInteraction?.("summary")} /></div>}
-       {panels.legend && <LegendPanel slide={{ ...slide, map: model } as Extract<PlannedSlide, { kind: "tile" }>} rect={panels.legend} unit={unit} format={format} hoverLabel={hoverLegend} onLegendHover={setHoverLegend} onLegendPin={staticSurface || thumbnail ? undefined : onLegendPin} onLegendMenu={staticSurface || thumbnail || !onFontContextMenu ? undefined : (x, y, opener) => onFontContextMenu("legend", x, y, opener)} interaction={panelInteraction?.("legend")} legendOptions={reportFrame?.legend} />}
+       {panels.legend && <LegendPanel slide={{ ...slide, map: model } as Extract<PlannedSlide, { kind: "tile" }>} rect={panels.legend} unit={unit} format={format} hoverLabel={hoverLegend} onLegendHover={setHoverLegend} onLegendPin={staticSurface || thumbnail ? undefined : onLegendPin} onLegendMenu={staticSurface || thumbnail || !onFontContextMenu ? undefined : (x, y, opener) => onFontContextMenu({ kind: "panel", key: "legend" }, x, y, opener)} interaction={panelInteraction?.("legend")} legendOptions={reportFrame?.legend} />}
         <SlideFooter slide={slide} rect={panels.source} unit={unit} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} interactive={interactive && !thumbnail && !!onFontContextMenu} hidden={slide.page?.deletedElementKeys?.includes("source")} selected={selection?.kind === "element" && selection.key === "source"} onSelect={selectSurface} onDelete={() => onPanelDelete?.("source")} interaction={panelInteraction?.("source")} />
     </>
   );
@@ -2139,7 +2174,7 @@ function PanelTransformFrame({ panelKey, rect, unit, xGuides, yGuides, onResizeS
   </>;
 }
 
-function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapActive, staticSurface = false, selection, fontHighlight, onFontContextMenu, onSelect, onMapMoveActive, onMapElementSelect, onMapLabelSelect, onLabelBoxChange, onLabelBoxReset, onDeleteElement, onHideLabel, onPanelDelete, onDecorationSelect, onDecorationDelete, onFrame, onCellPanels, onTextBox, onText, textBoxEditingId, textBoxPlacement, onTextBoxPlacementMove, onTextBoxPlacementCommit, onTextBoxEditingChange, thumbnail = false, onSheetCellActivate, sheetCellEditing, sheetCellRecent, onSheetCellEdit, onSheetCellFit, onSheetCellDelete, onSheetCellDone, onSheetCellNavigate, onPatch, onMapPatch, onDirectPatch }: { slide: PlannedSlide; basemap: BasemapChoice; editable: boolean; format?: SlideFormat; staticSurface?: boolean; mapActive?: boolean; selection?: SurfaceSelection; fontHighlight?: FontTargetKey | null; onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void; onSelect?: (selection: SurfaceSelection) => void; onMapMoveActive?: (active: boolean) => void; onMapElementSelect?: (feature: MapFigureElementPick) => void; onMapLabelSelect?: (feature: MapFigureElementPick) => void; onLabelBoxChange?: (key: string, box: MapLabelBox) => void; onLabelBoxReset?: (key: string) => void; onDeleteElement?: (key: string) => void; onHideLabel?: (key: string) => void; onPanelDelete?: (key: PanelKey) => void; onDecorationSelect?: (key: SurfaceDecorationKey) => void; onDecorationDelete?: (key: SurfaceDecorationKey, cell?: number) => void; onFrame?: (cell: number | undefined, patch: Partial<MapFrameState>) => void; onCellPanels?: (cell: number, panels: PagePanels) => void; onTextBox?: (box: TextBox | { id: string; remove: true }) => void; onText?: (kind: "title" | "summary") => void; textBoxEditingId?: string | null; textBoxPlacement?: TextBoxPlacement | null; onTextBoxPlacementMove?: (x: number, y: number) => void; onTextBoxPlacementCommit?: (x: number, y: number) => void; onTextBoxEditingChange?: (id: string | null) => void; thumbnail?: boolean; onSheetCellActivate?: (index: number) => void; sheetCellEditing?: number | null; sheetCellRecent?: number | null; onSheetCellEdit?: (index: number) => void; onSheetCellFit?: (index: number) => void; onSheetCellDelete?: (index: number) => void; onSheetCellDone?: () => void; onSheetCellNavigate?: (direction: -1 | 1) => void; onPatch: (patch: PreviewStylePatch) => void; onMapPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void }) {
+function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapActive, staticSurface = false, selection, fontHighlight, onFontContextMenu, onSelect, onMapMoveActive, onMapElementSelect, onMapLabelSelect, onLabelBoxChange, onLabelBoxReset, onDeleteElement, onHideLabel, onPanelDelete, onDecorationSelect, onDecorationDelete, onFrame, onCellPanels, onTextBox, onText, textBoxEditingId, textBoxPlacement, onTextBoxPlacementMove, onTextBoxPlacementCommit, onTextBoxEditingChange, thumbnail = false, onSheetCellActivate, sheetCellEditing, sheetCellRecent, onSheetCellEdit, onSheetCellFit, onSheetCellDelete, onSheetCellDone, onSheetCellNavigate, onPatch, onMapPatch, onDirectPatch }: { slide: PlannedSlide; basemap: BasemapChoice; editable: boolean; format?: SlideFormat; staticSurface?: boolean; mapActive?: boolean; selection?: SurfaceSelection; fontHighlight?: FontTargetKey | null; onFontContextMenu?: SurfaceContextMenuHandler; onSelect?: (selection: SurfaceSelection) => void; onMapMoveActive?: (active: boolean) => void; onMapElementSelect?: (feature: MapFigureElementPick) => void; onMapLabelSelect?: (feature: MapFigureElementPick) => void; onLabelBoxChange?: (key: string, box: MapLabelBox) => void; onLabelBoxReset?: (key: string) => void; onDeleteElement?: (key: string) => void; onHideLabel?: (key: string) => void; onPanelDelete?: (key: PanelKey) => void; onDecorationSelect?: (key: SurfaceDecorationKey) => void; onDecorationDelete?: (key: SurfaceDecorationKey, cell?: number) => void; onFrame?: (cell: number | undefined, patch: Partial<MapFrameState>) => void; onCellPanels?: (cell: number, panels: PagePanels) => void; onTextBox?: (box: TextBox | { id: string; remove: true }) => void; onText?: (kind: "title" | "summary") => void; textBoxEditingId?: string | null; textBoxPlacement?: TextBoxPlacement | null; onTextBoxPlacementMove?: (x: number, y: number) => void; onTextBoxPlacementCommit?: (x: number, y: number) => void; onTextBoxEditingChange?: (id: string | null) => void; thumbnail?: boolean; onSheetCellActivate?: (index: number) => void; sheetCellEditing?: number | null; sheetCellRecent?: number | null; onSheetCellEdit?: (index: number) => void; onSheetCellFit?: (index: number) => void; onSheetCellDelete?: (index: number) => void; onSheetCellDone?: () => void; onSheetCellNavigate?: (direction: -1 | 1) => void; onPatch: (patch: PreviewStylePatch) => void; onMapPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void }) {
   const format = (requestedFormat ?? (slide.format as SlideFormat | undefined) ?? "wide");
   const styles = useSurfaceStyles();
   const slotRef = useRef<HTMLDivElement>(null);
@@ -2293,7 +2328,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
     const y = event.clientY;
     const timer = window.setTimeout(() => {
       panelLongPress.current = null;
-      onFontContextMenu(key, x, y, target);
+      onFontContextMenu(key === "source" ? { kind: "element", key } : { kind: "panel", key }, x, y, target);
     }, 500);
     panelLongPress.current = { pointerId: event.pointerId, key, x: event.clientX, y: event.clientY, target, timer };
   };
@@ -2301,7 +2336,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
     if (event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey)) {
       event.preventDefault();
       const rect = event.currentTarget.getBoundingClientRect();
-      onFontContextMenu?.(key, rect.left, rect.bottom + 8, event.currentTarget);
+      onFontContextMenu?.(key === "source" ? { kind: "element", key } : { kind: "panel", key }, rect.left, rect.bottom + 8, event.currentTarget);
       return;
     }
     if (event.key === "Enter" || event.key === " ") {
@@ -2355,7 +2390,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
     onContextMenu: (event) => {
       event.preventDefault();
       event.stopPropagation();
-      onFontContextMenu?.(key, event.clientX, event.clientY, event.currentTarget);
+      onFontContextMenu?.(key === "source" ? { kind: "element", key } : { kind: "panel", key }, event.clientX, event.clientY, event.currentTarget);
     },
   });
   const resetPanel = (key: PanelKey) => {
@@ -2443,7 +2478,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
          {displaySlide.kind === "cover" && displaySlide.page?.kind === "blank" && <BlankSurface unit={unit} />}
          {displaySlide.kind === "sheet" && <SheetSurface slide={displaySlide} unit={unit} basemap={basemap} thumbnail={thumbnail} editable={editable} selection={selection} mapActive={!!mapActive} cellEditing={sheetCellEditing} recentCell={sheetCellRecent} onCellActivate={onSheetCellActivate} onCellEdit={onSheetCellEdit} onCellFit={onSheetCellFit} onCellDelete={onSheetCellDelete} onCellDone={onSheetCellDone} onCellNavigate={onSheetCellNavigate} onSelect={onSelect} onFrame={onFrame} onCellPanels={onCellPanels} onMapMoveActive={onMapMoveActive} onMapElementDelete={onDeleteElement} onMapLabelHide={onHideLabel} onDecorationDelete={onDecorationDelete} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />}
          {displaySlide.kind === "tile" && <TileSurface slide={displaySlide} unit={unit} basemap={basemap} panels={{ ...panels, source: sourceRect }} interactive={!!(editable && (mapActive ?? editable) && !!displayModel)} pickable={mapPickable} selection={selection} mapEditEntry={editable && mapSelectable && !thumbnail} onMapMoveActive={onMapMoveActive} onMapElementSelect={(feature) => onSelect?.({ kind: "mapElement", key: feature.key, labelVisible: feature.labelVisible })} onMapLabelSelect={(feature) => onSelect?.({ kind: "mapLabel", key: feature.key })} onLabelBoxChange={onLabelBoxChange} onLabelBoxReset={onLabelBoxReset} onDeleteElement={onDeleteElement} onHideLabel={onHideLabel} onPanelDelete={onPanelDelete} onDecorationSelect={onDecorationSelect} onDecorationDelete={onDecorationDelete} thumbnail={thumbnail} onPatch={onMapPatch} onDirectPatch={onDirectPatch} panelInteraction={editable ? panelInteraction : undefined} staticSurface={staticSurface} onText={onText} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />}
-        {displaySlide.page?.textBoxes && <TextBoxSurface boxes={displaySlide.page.textBoxes} unit={unit} selectedId={selection?.kind === "textBox" ? selection.id : undefined} startEditingId={textBoxEditingId} maxWidth={size.w} maxHeight={size.h} editable={editable} onSelect={onSelect} onTextBox={onTextBox} onEditingChange={onTextBoxEditingChange} />}
+        {displaySlide.page?.textBoxes && <TextBoxSurface boxes={displaySlide.page.textBoxes} unit={unit} selectedId={selection?.kind === "textBox" ? selection.id : undefined} startEditingId={textBoxEditingId} maxWidth={size.w} maxHeight={size.h} editable={editable} onSelect={onSelect} onTextBox={onTextBox} onEditingChange={onTextBoxEditingChange} onContextMenu={onFontContextMenu} />}
         {editable && textBoxPlacement && onTextBoxPlacementMove && onTextBoxPlacementCommit && <TextBoxPlacementLayer placement={textBoxPlacement} unit={unit} maxWidth={size.w} maxHeight={size.h} onMove={onTextBoxPlacementMove} onCommit={onTextBoxPlacementCommit} />}
         {handles}
         </div>
@@ -2504,7 +2539,7 @@ export type SlideSurfaceProps = {
   mode: "edit" | "thumb" | "export";
   selection?: SurfaceSelection;
   fontHighlight?: FontTargetKey | null;
-  onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void;
+  onFontContextMenu?: SurfaceContextMenuHandler;
   onSelect?: (selection: SurfaceSelection) => void;
   onFrame?: (cell: number | undefined, patch: Partial<MapFrameState>) => void;
   onCellPanels?: (cell: number, panels: PagePanels) => void;
