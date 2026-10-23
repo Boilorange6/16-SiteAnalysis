@@ -207,6 +207,58 @@
 .decorationHitTarget[data-decoration-selected="true"] { border-color: #2f6fdb; box-shadow: 0 0 0 2px rgba(47,111,219,.2); }
 .decorationHitTarget:focus-visible { outline: 2px solid #2f6fdb; outline-offset: 2px; }
 
+.sheetSlide {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #f2f2ef;
+}
+
+.sheetGrid { position: absolute; inset: 0; }
+
+.sheetCell {
+  position: absolute;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #dfe2e7;
+  border-radius: 8px;
+}
+
+.sheetCellMap { position: absolute; inset: 0; overflow: hidden; }
+.sheetCellInteractive { cursor: crosshair; }
+.sheetCellEmpty { display: grid; place-items: center; color: #676c76; border-style: dashed; }
+
+.sheetCellButton {
+  position: absolute;
+  z-index: 17;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.sheetCellButton:focus-visible { outline: 2px solid #2f6fdb; outline-offset: -2px; }
+.sheetLabel {
+  position: absolute;
+  z-index: 16;
+  right: 8px;
+  bottom: 8px;
+  left: 8px;
+  overflow: hidden;
+  padding: 4px 7px;
+  color: #26364e;
+  background: rgba(255, 255, 255, .9);
+  border-radius: 5px;
+  font-weight: 700;
+  pointer-events: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sheetCellEditSurface {
   position: absolute;
   inset: 0;

@@ -22,6 +22,9 @@ assert.match(modeSource, /type: "copyExtent"/, "범위 맞추기는 copyExtent �
 assert.match(modeSource, /type: "removeCell"/, "칸 지우기는 removeCell action을 사용한다");
 assert.match(surfaceCss, /sheetCellEditHeader/, "큰 편집 머리 줄은 흰 카드다");
 assert.match(surfaceCss, /sheetCellEditDone/, "큰 편집 완료 버튼 스타일이 있다");
+assert.match(surfaceCss, /\.sheetSlide\s*\{[\s\S]*position:\s*absolute/, "조판 무대가 슬라이드 전체를 채운다");
+assert.match(surfaceCss, /\.sheetCell\s*\{[\s\S]*position:\s*absolute/, "조판 칸이 계산된 격자 위치를 사용한다");
+assert.match(surfaceCss, /\.sheetCellButton\s*\{[\s\S]*inset:\s*0/, "조판 칸 선택 히트 영역이 칸 전체다");
 
 const source = GODEOK_RESULTS.find((result) => result.tileCode === "A01");
 assert.ok(source, "A01 fixture");
