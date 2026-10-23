@@ -62,10 +62,10 @@ export function locatorBox(width: number, height: number, pxPerInch: number, res
   return candidates(0.44)[0]!;
 }
 
-function scaleBarLayout(width: number, height: number, mpp: number, bottomInset = 0, rightInset = 0, scaleLeft = false, scaleX?: number, unitOverride?: number, maxBarPx = 88): ScaleBarLayout {
+function scaleBarLayout(width: number, height: number, mpp: number, bottomInset = 0, rightInset = 0, scaleLeft = false, scaleX?: number, unitOverride?: number, maxBarPx = 88, scaleY?: number): ScaleBarLayout {
   const unit = unitOverride ?? Math.min(1.5, Math.max(1, height / 360));
   const bar = scaleBar(mpp, maxBarPx * unit);
-  const y = height - bottomInset - 20 * unit;
+  const y = scaleY ?? (height - bottomInset - 20 * unit);
   const x1 = scaleX !== undefined ? scaleX + bar.px : scaleLeft ? Math.max(6 * unit, 12) + bar.px : width - 6 * unit - rightInset;
   return { bar, x0: x1 - bar.px, x1, y, unit };
 }
@@ -385,6 +385,8 @@ export type MapSceneOptions = {
   calloutLeftBottom?: number;
   path?: Array<[number, number]>;
   north?: number | false;
+  /** 저장된 방위표 중심 x(px). 생략하면 오른쪽 기본 위치. */
+  northX?: number;
   dragging?: boolean;
   /** 보고서가 미리 계산한 동일 프레임 뷰. 지정하면 view 재계산을 하지 않는다. */
   viewport?: Viewport;
@@ -394,6 +396,9 @@ export type MapSceneOptions = {
   layoutUnit?: number;
   /** 명시적 보고서 축척에서 네이티브 막대의 기존 판형 라벨 여유를 유지한다. */
   scaleMaxPx?: number;
+  /** 저장된 축척 막대 중심 y(px)와 판 사각형. 막대 길이 자체는 mpp로 다시 계산한다. */
+  scaleY?: number;
+  scaleBoxOverride?: MapSceneBox;
 };
 
 export type MapScene = {
@@ -972,11 +977,14 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     calloutLeftBottom,
     path = [],
     north: northOpt,
+    northX,
     dragging = false,
     viewport: viewportOpt,
     layoutUnit,
     labelScale: labelScaleOpt = 1,
     scaleMaxPx = 88,
+    scaleY,
+    scaleBoxOverride,
   } = options;
   const layer = model.basemap ?? activeLayer;
   const sat = layer === "Satellite";
@@ -1074,10 +1082,10 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     : { x0: cx - 2.25 * siteR, y0: cy - 2.25 * siteR, x1: cx + 2.25 * siteR, y1: cy + 2.25 * siteR };
   const rings: number[] = [];
   if (showRadius) for (let meters = 500; meters < model.radiusM - 1; meters += 500) rings.push(meters / mpp);
-  const scaleLayout = scaleBarLayout(W, H, mpp, bottomInset, rightInset, scaleLeft, scaleX, u, scaleMaxPx);
+  const scaleLayout = scaleBarLayout(W, H, mpp, bottomInset, rightInset, scaleLeft, scaleX, u, scaleMaxPx, scaleY);
   const { bar, y: barY, x0: barX0, x1: barX1 } = scaleLayout;
-  const scaleBox = scaleBarBoxFromLayout(W, H, scaleLayout);
-  const north = northOpt === false ? null : { x: W - rightInset - 20 * u, y: northOpt || 22 * u };
+  const scaleBox = scaleBoxOverride ?? scaleBarBoxFromLayout(W, H, scaleLayout);
+  const north = northOpt === false ? null : { x: northX ?? (W - rightInset - 20 * u), y: northOpt || 22 * u };
   const northBox = north ? northArrowBox(W, H, rightInset, northOpt, u) : null;
   const calloutAvoid = [
     ...avoid,

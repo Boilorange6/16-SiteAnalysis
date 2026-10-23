@@ -224,6 +224,19 @@
 .decorationHitTarget[data-decoration-selected="true"] { border-color: #2f6fdb; box-shadow: 0 0 0 2px rgba(47,111,219,.2); }
 .decorationHitTarget:focus-visible { outline: 2px solid #2f6fdb; outline-offset: 2px; }
 
+.decorationSelectionFrame {
+  position: absolute;
+  z-index: 92;
+  overflow: visible;
+  pointer-events: auto;
+  border: 1.5px solid #15171c;
+  box-shadow: 0 0 0 1px #fff;
+  cursor: move;
+  touch-action: none;
+}
+.decorationSelectionFrame:focus-visible { outline: 2px solid #2f6fdb; outline-offset: 2px; }
+.decorationSnapGuides { position: absolute; inset: 0; z-index: 89; pointer-events: none; }
+
 .sheetSlide {
   position: absolute;
   inset: 0;

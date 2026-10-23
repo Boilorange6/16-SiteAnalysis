@@ -1,4 +1,6 @@
 import type { TileReportSettings } from "./report-plan";
+import { clonePagePanels as clonePanelRects, type PagePanels } from "./report-geometry";
+export type { PagePanelKey, PagePanelRect, PagePanels } from "./report-geometry";
 
 export type ReportFormat = "wide" | "a3" | "a4";
 export type ReportLayout = "map-full" | "map-summary" | "numbers-first" | "side-by-side";
@@ -96,7 +98,6 @@ export type MapFrameState = {
   decorations: { north: boolean; scaleBar: boolean; locator: boolean };
 };
 
-export type PagePanels = Partial<Record<"title" | "summary" | "legend", { x: number; y: number; w: number; h: number }>>;
 export const TEXT_BOX_COLORS = ["#15171c", "#4a5160", "#2f6fdb", "#5b4fd6", "#d9480f", "#c92a2a", "#2e9e4a", "#fff"] as const;
 export type TextBoxColor = typeof TEXT_BOX_COLORS[number];
 export type TextBoxKind = "title" | "body" | "note";
@@ -157,7 +158,7 @@ export type TilePart =
 export type ReportPage = ReportPageBase & (
   | { kind: "cover" }
   | { kind: "tile"; tileId: string; part: TilePart; settings: TileReportSettings; frame: MapFrameState }
-  | { kind: "compare"; grid: "2x2" | "3x2" | "3x1"; cells: ({ tileId: string; settings: TileReportSettings; frame: MapFrameState } | null)[]; sameExtent: boolean }
+  | { kind: "compare"; grid: "2x2" | "3x2" | "3x1"; cells: ({ tileId: string; settings: TileReportSettings; frame: MapFrameState; panels?: PagePanels } | null)[]; sameExtent: boolean }
   | { kind: "sources" }
   | { kind: "blank" }
 );
@@ -176,6 +177,7 @@ export type ReportDocAction =
   | { type: "sameExtent"; id: string; value: boolean }
   | { type: "pageElement"; id: string; key: PageElementKey; deleted: boolean }
   | { type: "panels"; id: string; panels: PagePanels }
+  | { type: "cellPanels"; id: string; cell: number; panels: PagePanels }
   | { type: "notes"; id: string; notes: string }
   | { type: "text"; id: string; title?: string; summary?: string }
   | { type: "textBox"; id: string; box: TextBox | { id: string; remove: true } }
@@ -207,7 +209,7 @@ export function defaultFrame(): MapFrameState {
 }
 
 function clonePanels(panels: PagePanels): PagePanels {
-  return Object.fromEntries(Object.entries(panels).map(([key, value]) => [key, value ? { ...value } : value])) as PagePanels;
+  return clonePanelRects(panels) ?? {};
 }
 
 function cloneFrame(frame: MapFrameState): MapFrameState {
@@ -272,7 +274,7 @@ function clonePage(page: ReportPage): ReportPage {
       kind: "compare",
       grid: page.grid,
       sameExtent: page.sameExtent,
-      cells: page.cells.map((cell) => cell ? { tileId: cell.tileId, settings: cloneSettings(cell.settings), frame: cloneFrame(cell.frame) } : null),
+      cells: page.cells.map((cell) => cell ? { tileId: cell.tileId, settings: cloneSettings(cell.settings), frame: cloneFrame(cell.frame), ...(cell.panels ? { panels: clonePanels(cell.panels) } : {}) } : null),
     };
   }
   return { ...base, kind: page.kind };
@@ -389,6 +391,19 @@ function updatePageElement(page: ReportPage, key: PageElementKey, deleted: boole
   return { ...clonePage(page), deletedElementKeys: next };
 }
 
+function updateCellPanels(page: ReportPage, cell: number, panels: PagePanels): ReportPage {
+  if (page.kind !== "compare" || !Number.isInteger(cell) || cell < 0 || cell >= page.cells.length || !page.cells[cell]) return page;
+  const next = clonePage(page) as Extract<ReportPage, { kind: "compare" }>;
+  const candidate = next.cells[cell];
+  if (!candidate) return page;
+  const cloned = clonePanelRects(panels);
+  next.cells[cell] = cloned ? { ...candidate, panels: cloned } : (() => {
+    const { panels: _panels, ...withoutPanels } = candidate;
+    return withoutPanels;
+  })();
+  return next;
+}
+
 export function pageElementDeleted(page: ReportPage | undefined, key: PageElementKey): boolean {
   return !!page?.deletedElementKeys?.includes(key);
 }
@@ -480,6 +495,8 @@ export function reportDocReducer(doc: ReportDoc, action: ReportDocAction): Repor
       return updatePage(doc, action.id, (page) => updatePageElement(page, action.key, action.deleted));
     case "panels":
       return updatePage(doc, action.id, (page) => ({ ...clonePage(page), panels: clonePanels(action.panels) }));
+    case "cellPanels":
+      return updatePage(doc, action.id, (page) => updateCellPanels(page, action.cell, action.panels));
     case "notes":
       return updatePage(doc, action.id, (page) => ({ ...clonePage(page), notes: action.notes }));
     case "text":

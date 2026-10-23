@@ -67,15 +67,21 @@ function background(s: Slide, image: string | undefined, tint?: string, format: 
 function strip(s: Slide, p: PlannedSlide, credit: boolean, format: SlideFormat = "wide") {
   const size = slideSize(format);
   const g = slideGeometry(format);
-  const r = format === "wide" ? L.strip : slideLayout(format).strip;
+  const defaultStrip = format === "wide" ? L.strip : slideLayout(format).strip;
+  const sourcePanel = p.style?.panels?.source;
+  const r = sourcePanel
+    ? { x: sourcePanel.x * size.w, y: sourcePanel.y * size.h, w: sourcePanel.w * size.w, h: sourcePanel.h * size.h }
+    : defaultStrip;
   // 출처 띠는 지도 래스터와 네이티브 도형을 모두 가리는 최상단의 불투명 안전영역이다.
   s.addShape("rect", { x: r.x, y: r.y, w: r.w, h: r.h, fill: { color: "FFFFFF", transparency: 0 }, line: { color: "FFFFFF", width: 0, transparency: 100 } });
   s.addShape("line", { x: r.x, y: r.y, w: r.w, h: 0, line: { color: INK, width: 0.5, transparency: 92 } });
-  const room = size.w - g.edge - 1.7;
+  const pageNumberWidth = Math.min(1.2, Math.max(0.55, r.w * 0.28));
+  const textX = r.x;
+  const room = Math.max(0.2, r.w - pageNumberWidth - 0.08);
   const showCredit = !pageElementDeleted(p.page, "source");
   const footer = fitFooterText(p.footer, showCredit, room, fontSizeForStyle(p.style ?? {}, "source"));
-  if (showCredit) s.addText(footer.text, { x: g.edge, y: r.y, w: room, h: r.h, valign: "middle", fontFace: FONT, fontSize: footer.fontSize, color: "454A55", margin: 0, fit: "shrink" });
-  s.addText(`${p.no} / ${p.total}`, { x: size.w - g.edge - 1.2, y: r.y, w: 1.2, h: r.h, align: "right", valign: "middle", fontFace: FONT, fontSize: 9, color: "454A55", margin: 0 });
+  if (showCredit) s.addText(footer.text, { x: textX, y: r.y, w: room, h: r.h, valign: "middle", fontFace: FONT, fontSize: footer.fontSize, color: "454A55", margin: 0, fit: "shrink" });
+  s.addText(`${p.no} / ${p.total}`, { x: r.x + r.w - pageNumberWidth, y: r.y, w: pageNumberWidth, h: r.h, align: "right", valign: "middle", fontFace: FONT, fontSize: 9, color: "454A55", margin: 0 });
 }
 
 function formatOf(p: PlannedSlide): SlideFormat {

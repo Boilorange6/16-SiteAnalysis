@@ -14,6 +14,8 @@ import type { S03Cut } from "../tile/s03/cut";
 import type { S04Cut } from "../tile/s04/cut";
 import { sheetCapacity, type SheetGrid as UiSheetGrid } from "./sheet";
 import { clampReportFontSizes, EMPTY_REPORT_DOC, defaultFrame, mergeReportFontSizes, normalizeMapLabelBox, PAGE_ELEMENT_KEYS, reportFontSizesFromLegacyScale, TEXT_BOX_COLORS, type MapFrameState, type ReportDoc, type ReportPage, type ReportFontSizes, type TextBoxAlign, type TextBoxKind, type TilePart, type PageElementKey } from "../report/report-doc";
+import { normalizePagePanels, clonePagePanels, type PagePanelKey, type PagePanelRect, type PagePanels } from "../report/report-geometry";
+export type { PagePanelKey, PagePanelRect, PagePanels } from "../report/report-geometry";
 import type { TileReportSettings } from "../report/report-plan";
 
 export type TileSize = 1 | 2 | 4;
@@ -36,9 +38,6 @@ export type LegacyCutSpec = CutSpec | CutCount;
 export type PinnedLabel = { key: string; on: boolean };
 
 export type PageKey = string;
-export type PagePanelKey = "title" | "summary" | "legend";
-export type PagePanelRect = { x: number; y: number; w: number; h: number };
-export type PagePanels = Partial<Record<PagePanelKey, PagePanelRect>>;
 export type PageStyle = {
   pinnedKeys?: string[];
   hiddenKeys?: string[];
@@ -82,7 +81,6 @@ const PAGE_STYLE_KEYS = [
   "fontSizes",
   "panels",
 ] as const;
-const PAGE_PANEL_KEYS = ["title", "summary", "legend"] as const satisfies readonly PagePanelKey[];
 
 export function extraPageKey(id: string): PageKey {
   return `extra:${id}`;
@@ -368,43 +366,6 @@ function withoutRecordValue<T>(record: Record<string, T>, id: string): Record<st
   const next = { ...record };
   delete next[id];
   return next;
-}
-
-const clampPagePanelUnit = (value: number): number => Math.max(0, Math.min(1, value));
-
-function normalizePagePanelRect(value: unknown): PagePanelRect | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const raw = value as Record<string, unknown>;
-  const values = [raw.x, raw.y, raw.w, raw.h];
-  if (!values.every((item) => typeof item === "number" && Number.isFinite(item))) return null;
-  return {
-    x: clampPagePanelUnit(raw.x as number),
-    y: clampPagePanelUnit(raw.y as number),
-    w: clampPagePanelUnit(raw.w as number),
-    h: clampPagePanelUnit(raw.h as number),
-  };
-}
-
-function normalizePagePanels(value: unknown): PagePanels | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const panels: PagePanels = {};
-  for (const key of PAGE_PANEL_KEYS) {
-    const raw = (value as Record<string, unknown>)[key];
-    if (raw === undefined) continue;
-    const normalized = normalizePagePanelRect(raw);
-    if (normalized) panels[key] = normalized;
-  }
-  return Object.keys(panels).length > 0 ? panels : null;
-}
-
-function clonePagePanels(panels: PagePanels | undefined): PagePanels | undefined {
-  if (!panels) return undefined;
-  const clone: PagePanels = {};
-  for (const key of PAGE_PANEL_KEYS) {
-    const rect = panels[key];
-    if (rect) clone[key] = { x: rect.x, y: rect.y, w: rect.w, h: rect.h };
-  }
-  return Object.keys(clone).length > 0 ? clone : undefined;
 }
 
 function clonePageStyle(style: PageStyle): PageStyle {
@@ -954,14 +915,7 @@ function isReportTileId(value: unknown, validTileIds: ReadonlySet<string>): valu
 }
 
 function reportPanels(value: unknown): PagePanels {
-  if (!isRecord(value)) return {};
-  const panels: PagePanels = {};
-  for (const key of ["title", "summary", "legend"] as const) {
-    const raw = value[key];
-    if (!isRecord(raw) || !isFiniteNumber(raw.x) || !isFiniteNumber(raw.y) || !isFiniteNumber(raw.w) || !isFiniteNumber(raw.h)) continue;
-    panels[key] = { x: raw.x, y: raw.y, w: raw.w, h: raw.h };
-  }
-  return panels;
+  return normalizePagePanels(value) ?? {};
 }
 
 function reportTextBoxes(value: unknown): ReportPage["textBoxes"] {
@@ -1106,7 +1060,8 @@ function restoreReportPage(value: unknown, validTileIds: ReadonlySet<string>, op
     const cells = Array.isArray(value.cells)
       ? value.cells.map((item) => {
           if (!isRecord(item) || !isReportTileId(item.tileId, validTileIds)) return null;
-          return { tileId: item.tileId, settings: reportSettings(item.settings), frame: reportFrame(item.frame) };
+          const panels = reportPanels(item.panels);
+          return { tileId: item.tileId, settings: reportSettings(item.settings), frame: reportFrame(item.frame), ...(Object.keys(panels).length > 0 ? { panels } : {}) };
         })
       : [];
     return { ...base, kind: "compare", grid: value.grid, cells, sameExtent: typeof value.sameExtent === "boolean" ? value.sameExtent : false };

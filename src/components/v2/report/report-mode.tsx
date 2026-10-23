@@ -814,6 +814,9 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const applyPanels = useCallback((panels: PagePanels) => {
     if (selectedId) apply({ type: "panels", id: selectedId, panels });
   }, [apply, selectedId]);
+  const applyCellPanels = useCallback((cell: number, panels: PagePanels) => {
+    if (selectedId) apply({ type: "cellPanels", id: selectedId, cell, panels });
+  }, [apply, selectedId]);
 
   const rememberDrawerOpener = useCallback((opener?: HTMLElement | null) => {
     if (opener) {
@@ -1381,7 +1384,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
             ) : selectedSlide ? (
               <>
                 <div className={styles.stageSlide}>
-                   <SlideSurface slide={selectedSlide} basemap={basemap} mode="edit" selection={selection} fontHighlight={fontHighlight} onFontContextMenu={openFontContext} onSelect={handleSurfaceSelect} onMapMoveActive={setMapMoveFromSurface} onFrame={applyFrame} onPanels={applyPanels} onTextBox={applyTextBox} onText={editPanelText} textBoxEditingId={textBoxEditingId} textBoxPlacement={textBoxPlacement} onTextBoxPlacementMove={moveTextBoxPlacement} onTextBoxPlacementCommit={commitTextBoxPlacement} onTextBoxEditingChange={setTextBoxEditingId} onMapElementDelete={deleteMapElement} onMapLabelHide={hideMapLabel} onPanelDelete={deletePageElement} onDecorationSelect={(key) => handleSurfaceSelect({ kind: "decoration", key })} onDecorationDelete={deleteDecoration} onDirectStylePatch={() => undefined} onSheetCellActivate={(index) => { handleSurfaceSelect({ kind: "sheetCell", cell: index }); setMapMoveActive(false); }} sheetCellEditing={activeSheetCellIndex} sheetCellRecent={recentSheetCellIndex} onSheetCellEdit={beginSheetCellEdit} onSheetCellFit={fitSheetCell} onSheetCellDelete={deleteSheetCell} onSheetCellDone={finishSheetCellEdit} onSheetCellNavigate={navigateSheetCell} mapActive={mapEditing} classMap={surfaceClassMap} />
+                   <SlideSurface slide={selectedSlide} basemap={basemap} mode="edit" selection={selection} fontHighlight={fontHighlight} onFontContextMenu={openFontContext} onSelect={handleSurfaceSelect} onMapMoveActive={setMapMoveFromSurface} onFrame={applyFrame} onPanels={applyPanels} onCellPanels={applyCellPanels} onTextBox={applyTextBox} onText={editPanelText} textBoxEditingId={textBoxEditingId} textBoxPlacement={textBoxPlacement} onTextBoxPlacementMove={moveTextBoxPlacement} onTextBoxPlacementCommit={commitTextBoxPlacement} onTextBoxEditingChange={setTextBoxEditingId} onMapElementDelete={deleteMapElement} onMapLabelHide={hideMapLabel} onPanelDelete={deletePageElement} onDecorationSelect={(key) => handleSurfaceSelect({ kind: "decoration", key })} onDecorationDelete={deleteDecoration} onDirectStylePatch={() => undefined} onSheetCellActivate={(index) => { handleSurfaceSelect({ kind: "sheetCell", cell: index }); setMapMoveActive(false); }} sheetCellEditing={activeSheetCellIndex} sheetCellRecent={recentSheetCellIndex} onSheetCellEdit={beginSheetCellEdit} onSheetCellFit={fitSheetCell} onSheetCellDelete={deleteSheetCell} onSheetCellDone={finishSheetCellEdit} onSheetCellNavigate={navigateSheetCell} mapActive={mapEditing} classMap={surfaceClassMap} />
                 </div>
               </>
             ) : <div className={styles.emptyCanvas}>이 페이지는 아직 미리보기를 준비하고 있습니다.</div>}

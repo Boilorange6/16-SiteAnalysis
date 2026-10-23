@@ -12,7 +12,7 @@ import { reportSummaryNotes, terrainCrossingLayer, terrainElevationLabel, terrai
 import MapFigure, { type MapFigureElementPick } from "../map-figure";
 import { locatorBox, northArrowBox, scaleBarBox } from "@/lib/v2/ui/map-scene";
 import type { PageStyle } from "@/lib/v2/ui/board-state";
-import { clampTextBox, DEFAULT_REPORT_FONT_SIZES, TEXT_BOX_COLORS, TEXT_BOX_DEFAULTS, textBoxDefaults, type MapFrameState, type MapLabelBox, type PagePanels, type TextBox, type TextBoxColor, type TextBoxKind } from "@/lib/v2/report/report-doc";
+import { clampTextBox, DEFAULT_REPORT_FONT_SIZES, TEXT_BOX_COLORS, TEXT_BOX_DEFAULTS, textBoxDefaults, type MapFrameState, type MapLabelBox, type PagePanelRect, type PagePanels, type TextBox, type TextBoxColor, type TextBoxKind } from "@/lib/v2/report/report-doc";
 import type { PlannedSlide } from "@/lib/v2/report/report-plan";
 import type { TileView } from "@/lib/v2/ui/tile-view";
 import { sheetCells, type SheetGrid } from "@/lib/v2/ui/sheet";
@@ -59,17 +59,18 @@ function LegendSwatch({ item }: { item: SurfaceLegendItem }) {
 }
 type PreviewStylePatch = Partial<PageStyle>;
 
-type PanelKey = "title" | "summary" | "legend";
-export type FontTargetKey = PanelKey | "labels" | "source";
+type PanelKey = "title" | "summary" | "legend" | "source";
+export type FontTargetKey = PanelKey | "labels";
 export type SurfaceDecorationKey = "north" | "scaleBar" | "locator";
-type PanelRatio = { x: number; y: number; w: number; h: number };
+type PanelRatio = PagePanelRect;
 type ResizeDirection = "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "nw";
 
-const PANEL_LABEL: Record<PanelKey, string> = { title: "제목", summary: "요약", legend: "범례" };
+const PANEL_LABEL: Record<PanelKey, string> = { title: "제목", summary: "요약", legend: "범례", source: "출처 줄" };
 const PANEL_MIN: Record<PanelKey, { w: number; h: number }> = {
   title: { w: 1.1, h: 0.46 },
   summary: { w: 1.8, h: 1.1 },
   legend: { w: 1.3, h: 0.52 },
+  source: { w: 3.2, h: 0.28 },
 };
 const SHEET_GRID_OPTIONS: readonly { grid: SheetGrid; label: string }[] = [
   { grid: "2x2", label: "2×2 · 4칸" },
@@ -209,13 +210,13 @@ function panelPatch(key: PanelKey, rect: Rect, existing: Partial<Record<PanelKey
   return { panels: { ...existing, [key]: ratioOfRect(rect, format) } } as unknown as PreviewStylePatch;
 }
 
-function safePanelBounds(format: SlideFormat = "wide"): { left: number; top: number; right: number; bottom: number } {
+function safePanelBounds(format: SlideFormat = "wide", key?: PanelKey): { left: number; top: number; right: number; bottom: number } {
   const geometry = slideGeometry(format);
   return {
     left: geometry.edge,
     top: geometry.edge,
     right: geometry.w - geometry.edge,
-    bottom: geometry.h - geometry.stripH - geometry.edge * 0.6,
+    bottom: key === "source" ? geometry.h - geometry.edge * 0.1 : geometry.h - geometry.stripH - geometry.edge * 0.6,
   };
 }
 
@@ -250,7 +251,7 @@ function actionBarPositionForRect(rect: Rect, unit: number, bounds: { w: number;
 }
 
 function clampPanelRect(key: PanelKey, rect: Rect, format: SlideFormat = "wide"): Rect {
-  const bounds = safePanelBounds(format);
+  const bounds = safePanelBounds(format, key);
   const min = PANEL_MIN[key];
   const w = clampNumber(rect.w, Math.min(min.w, bounds.right - bounds.left), bounds.right - bounds.left);
   const h = clampNumber(rect.h, Math.min(min.h, bounds.bottom - bounds.top), bounds.bottom - bounds.top);
@@ -263,7 +264,7 @@ function clampPanelRect(key: PanelKey, rect: Rect, format: SlideFormat = "wide")
 }
 
 function snapPanelRect(key: PanelKey, proposed: Rect, all: Partial<Record<PanelKey, Rect>>, format: SlideFormat = "wide"): { rect: Rect; xGuides: number[]; yGuides: number[] } {
-  const bounds = safePanelBounds(format);
+  const bounds = safePanelBounds(format, key);
   const snapThreshold = slideSize(format).w * 0.01;
   let rect = clampPanelRect(key, proposed, format);
   const xCandidates = [bounds.left, bounds.right];
@@ -367,6 +368,8 @@ type MapLayerProps = {
   label: string;
   format?: SlideFormat;
   frame?: Rect;
+  /** 타일은 페이지, 조판 셀은 해당 cell frame을 기준으로 장식 사각형을 읽는다. */
+  panelBasis?: "page" | "frame";
   reportFrame?: MapFrameState;
   preserveShortCalloutLabels?: boolean;
   fontHighlight?: FontTargetKey | null;
@@ -374,6 +377,78 @@ type MapLayerProps = {
 };
 
 const EMPTY_PAGE_KEYS: readonly string[] = [];
+
+function panelRectInMap(panel: PagePanelRect | undefined, format: SlideFormat, unit: number, frame: Rect | undefined, basis: "page" | "frame", width: number, height: number): { x0: number; y0: number; x1: number; y1: number } | null {
+  if (!panel) return null;
+  const page = slideSize(format);
+  const frameWidth = (frame?.w ?? page.w) * unit;
+  const frameHeight = (frame?.h ?? page.h) * unit;
+  const originX = basis === "page" ? (frame?.x ?? 0) * unit : 0;
+  const originY = basis === "page" ? (frame?.y ?? 0) * unit : 0;
+  const sourceWidth = basis === "page" ? page.w * unit : frameWidth;
+  const sourceHeight = basis === "page" ? page.h * unit : frameHeight;
+  const x0 = panel.x * sourceWidth - originX;
+  const y0 = panel.y * sourceHeight - originY;
+  const x1 = x0 + panel.w * sourceWidth;
+  const y1 = y0 + panel.h * sourceHeight;
+  const left = clampNumber(x0, 0, Math.max(0, width - 1));
+  const top = clampNumber(y0, 0, Math.max(0, height - 1));
+  return { x0: left, y0: top, x1: clampNumber(x1, left + 1, width), y1: clampNumber(y1, top + 1, height) };
+}
+
+function panelRectFromMapBox(box: { x0: number; y0: number; x1: number; y1: number }, format: SlideFormat, unit: number, frame: Rect | undefined, basis: "page" | "frame"): PagePanelRect {
+  const page = slideSize(format);
+  const sourceWidth = (basis === "page" ? page.w : (frame?.w ?? page.w)) * unit;
+  const sourceHeight = (basis === "page" ? page.h : (frame?.h ?? page.h)) * unit;
+  const originX = basis === "page" ? (frame?.x ?? 0) * unit : 0;
+  const originY = basis === "page" ? (frame?.y ?? 0) * unit : 0;
+  return {
+    x: clampNumber((box.x0 + originX) / sourceWidth, 0, 1),
+    y: clampNumber((box.y0 + originY) / sourceHeight, 0, 1),
+    w: clampNumber((box.x1 - box.x0) / sourceWidth, 0.01, 1),
+    h: clampNumber((box.y1 - box.y0) / sourceHeight, 0.01, 1),
+  };
+}
+
+type DecorationBox = { x0: number; y0: number; x1: number; y1: number };
+type DecorationResizeDirection = Extract<ResizeDirection, "nw" | "ne" | "se" | "sw">;
+type DecorationTransformState = { pointerId: number; key: SurfaceDecorationKey; mode: "drag" | "resize"; direction?: DecorationResizeDirection; x: number; y: number; box: DecorationBox; ratio: number };
+
+function clampDecorationBox(box: DecorationBox, width: number, height: number, minWidth = 32, minHeight = 24): DecorationBox {
+  const w = clampNumber(box.x1 - box.x0, Math.min(minWidth, width), width);
+  const h = clampNumber(box.y1 - box.y0, Math.min(minHeight, height), height);
+  return {
+    x0: clampNumber(box.x0, 0, Math.max(0, width - w)),
+    y0: clampNumber(box.y0, 0, Math.max(0, height - h)),
+    x1: clampNumber(box.x0, 0, Math.max(0, width - w)) + w,
+    y1: clampNumber(box.y0, 0, Math.max(0, height - h)) + h,
+  };
+}
+
+function snapDecorationBox(key: SurfaceDecorationKey, proposed: DecorationBox, all: Partial<Record<SurfaceDecorationKey, DecorationBox>>, width: number, height: number): { box: DecorationBox; xGuides: number[]; yGuides: number[] } {
+  let box = clampDecorationBox(proposed, width, height, key === "scaleBar" ? 44 : 36, key === "scaleBar" ? 24 : 32);
+  const threshold = Math.max(4, Math.max(width, height) * 0.01);
+  const xCandidates = [0, width];
+  const yCandidates = [0, height];
+  for (const [otherKey, other] of Object.entries(all)) {
+    if (otherKey === key || !other) continue;
+    xCandidates.push(other.x0, other.x1);
+    yCandidates.push(other.y0, other.y1);
+  }
+  const nearest = (edges: number[], candidates: number[]) => {
+    let best: { delta: number; target: number } | null = null;
+    for (const edge of edges) for (const target of candidates) {
+      const delta = target - edge;
+      if (Math.abs(delta) <= threshold && (!best || Math.abs(delta) < Math.abs(best.delta))) best = { delta, target };
+    }
+    return best;
+  };
+  const x = nearest([box.x0, box.x1], xCandidates);
+  const y = nearest([box.y0, box.y1], yCandidates);
+  if (x) box = clampDecorationBox({ ...box, x0: box.x0 + x.delta, x1: box.x1 + x.delta }, width, height);
+  if (y) box = clampDecorationBox({ ...box, y0: box.y0 + y.delta, y1: box.y1 + y.delta }, width, height);
+  return { box, xGuides: x ? [x.target] : [], yGuides: y ? [y.target] : [] };
+}
 
 function hiddenLayer(layer: string, hidden: readonly string[]): boolean {
   return hidden.includes(layer) || hidden.includes(layerStyle(layer).label);
@@ -430,7 +505,28 @@ function ElementActionBar({
   );
 }
 
-function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, interactive, pickable = false, selectedElementKey = null, selectedElementLabelVisible, selectedLabelKey = null, onMapElementSelect, onMapLabelSelect, onLabelBoxChange, onLabelBoxReset, onDeleteElement, onHideLabel, selectedDecorationKey = null, onDecorationSelect, onDecorationDelete, onMapHoverLegend, mapEditEntry = false, onMapMoveActive, thumbnail = false, onPatch, onDirectPatch, hoverLegend, terrainSection, terrainLayout, calloutLegend, calloutTop, calloutLeftBottom, northAvoid, scale = true, label, format = "wide", frame, reportFrame, preserveShortCalloutLabels = false, fontHighlight, onFontContextMenu }: MapLayerProps) {
+function DecorationTransformFrame({ label, box, onDragStart, onDragMove, onDragEnd, onResizeStart, onResizeMove, onResizeEnd, onKeyDown, actions, onDelete }: {
+  label: string;
+  box: DecorationBox;
+  onDragStart: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onDragMove: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onDragEnd: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onResizeStart: (direction: DecorationResizeDirection, event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onResizeMove: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onResizeEnd: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => void;
+  actions?: ElementAction[];
+  onDelete?: () => void;
+}) {
+  const styles = useSurfaceStyles();
+  const directions: DecorationResizeDirection[] = ["nw", "ne", "se", "sw"];
+  return <div className={styles.decorationSelectionFrame ?? styles.panelSelectionFrame} data-decoration-frame={label} style={{ left: box.x0, top: box.y0, width: Math.max(1, box.x1 - box.x0), height: Math.max(1, box.y1 - box.y0) }} tabIndex={0} role="group" aria-label={`${label} 선택됨`} onPointerDown={(event) => { if ((event.target as HTMLElement).closest("button")) return; onDragStart(event); }} onPointerMove={onDragMove} onPointerUp={onDragEnd} onPointerCancel={onDragEnd} onKeyDown={onKeyDown}>
+    <ElementActionBar elementLabel={label} left={0} top={-48} actions={actions} onDelete={onDelete} />
+    {directions.map((direction) => <button key={direction} type="button" tabIndex={-1} className={styles.panelHandle + " " + styles["panelHandle" + direction.toUpperCase() as keyof typeof styles]} data-decoration-handle={direction} aria-label={`${label} ${direction} 모서리 크기 조절`} title={`${label} ${direction} 크기 조절`} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); onResizeStart(direction, event); }} onPointerMove={onResizeMove} onPointerUp={onResizeEnd} onPointerCancel={onResizeEnd}><span aria-hidden="true" /></button>)}
+  </div>;
+}
+
+function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, interactive, pickable = false, selectedElementKey = null, selectedElementLabelVisible, selectedLabelKey = null, onMapElementSelect, onMapLabelSelect, onLabelBoxChange, onLabelBoxReset, onDeleteElement, onHideLabel, selectedDecorationKey = null, onDecorationSelect, onDecorationDelete, onMapHoverLegend, mapEditEntry = false, onMapMoveActive, thumbnail = false, onPatch, onDirectPatch, hoverLegend, terrainSection, terrainLayout, calloutLegend, calloutTop, calloutLeftBottom, northAvoid, scale = true, label, format = "wide", frame, panelBasis = "page", reportFrame, preserveShortCalloutLabels = false, fontHighlight, onFontContextMenu }: MapLayerProps) {
   const styles = useSurfaceStyles();
   const geometry = slideGeometry(format);
   const frameWidth = frame?.w ?? geometry.w;
@@ -442,6 +538,9 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
   const [labelVisibilityOverride, setLabelVisibilityOverride] = useState<boolean | null>(null);
   const mapInteractionRef = useRef<HTMLDivElement>(null);
   const [selectionToolbarAnchor, setSelectionToolbarAnchor] = useState<{ x: number; y: number } | null>(null);
+  const [decorationDraftBox, setDecorationDraftBox] = useState<DecorationBox | null>(null);
+  const [decorationSnapGuides, setDecorationSnapGuides] = useState<{ x: number[]; y: number[] }>({ x: [], y: [] });
+  const decorationTransform = useRef<DecorationTransformState | null>(null);
   const gestureLayerRef = useRef<HTMLDivElement>(null);
   const drag = useRef<{ id: number; x: number; y: number; offset: [number, number]; dx: number; dy: number; moved: boolean } | null>(null);
   const suppressFeatureClick = useRef(false);
@@ -464,6 +563,11 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
   useEffect(() => {
     setLabelVisibilityOverride(selectedElementLabelVisible ?? null);
   }, [selectedElementKey, selectedElementLabelVisible]);
+  useEffect(() => {
+    setDecorationDraftBox(null);
+    setDecorationSnapGuides({ x: [], y: [] });
+    decorationTransform.current = null;
+  }, [selectedDecorationKey]);
   const mapFill = terrainLayout?.mapFill ?? 0.8;
   const mapSiteY = terrainLayout?.mapSiteY ?? 0.5;
   const rightInset = panels.summary
@@ -473,6 +577,9 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
   const layoutUnit = 1.5 * (unit / (960 / geometry.w));
   const showNorth = reportFrame?.decorations.north ?? false;
   const showScale = reportFrame?.decorations.scaleBar ?? scale;
+  const savedNorthBox = panelRectInMap(style.panels?.north, format, unit, frame, panelBasis, width, height);
+  const savedScaleBox = panelRectInMap(style.panels?.scaleBar, format, unit, frame, panelBasis, width, height);
+  const savedLocatorBox = panelRectInMap(style.panels?.locator, format, unit, frame, panelBasis, width, height);
   const displayBasemap: BasemapChoice = reportFrame?.basemap === "air" ? "Satellite" : reportFrame?.basemap === "none" ? "white" : reportFrame?.basemap === "road" || reportFrame?.basemap === "base" ? "Base" : basemap;
   const baseViewport = useMemo(() => slideViewport(model, undefined, { width, height, siteX, siteY: mapSiteY, fill: mapFill }), [height, mapFill, mapSiteY, model, siteX, width]);
   const viewport = useMemo(() => slideViewport(model, style, { width, height, siteX, siteY: mapSiteY, fill: mapFill }), [height, mapFill, mapSiteY, model, siteX, style, width]);
@@ -491,12 +598,12 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
       format,
     }).map((box) => ({ x0: box.x0 - frameOffsetX, y0: box.y0 - frameOffsetY, x1: box.x1 - frameOffsetX, y1: box.y1 - frameOffsetY }));
     const scaleAvoid = scaleBarBox(width, height, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset, false, undefined, layoutUnit);
-    return [...reserved, ...(showScale ? [scaleAvoid] : []), ...(showNorth && northAvoid ? [northAvoid] : [])];
-  }, [bottomInset, calloutLegend, format, frame?.x, frame?.y, height, layoutUnit, northAvoid, panels.legend, panels.summary, panels.title, rightInset, showNorth, showScale, terrainLayout?.rect, unit, viewport, width]);
-  const locator = reportFrame?.decorations.locator && model.radiusM > 0 ? locatorBox(width, height, unit, avoid) : null;
-  const scaleBox = showScale ? scaleBarBox(width, height, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset, false, undefined, layoutUnit) : null;
+    return [...reserved, ...(showScale && !savedScaleBox ? [scaleAvoid] : []), ...(showNorth && !savedNorthBox && northAvoid ? [northAvoid] : [])];
+  }, [bottomInset, calloutLegend, format, frame?.x, frame?.y, height, layoutUnit, northAvoid, panels.legend, panels.summary, panels.title, rightInset, savedNorthBox, savedScaleBox, showNorth, showScale, terrainLayout?.rect, unit, viewport, width]);
+  const locator = reportFrame?.decorations.locator && model.radiusM > 0 ? (savedLocatorBox ?? locatorBox(width, height, unit, avoid)) : null;
+  const scaleBox = showScale ? (savedScaleBox ?? scaleBarBox(width, height, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset, false, undefined, layoutUnit)) : null;
   const decorationBoxes: Partial<Record<SurfaceDecorationKey, { x0: number; y0: number; x1: number; y1: number }>> = {
-    ...(showNorth && northAvoid ? { north: northAvoid } : {}),
+    ...(showNorth && (savedNorthBox ?? northAvoid) ? { north: savedNorthBox ?? northAvoid! } : {}),
     ...(scaleBox ? { scaleBar: scaleBox } : {}),
     ...(locator ? { locator } : {}),
   };
@@ -702,7 +809,8 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
         basemap={thumbnail ? "none" : "tiles"}
         layer={displayBasemap}
         legend={false}
-        north={showNorth ? (northAvoid ? northAvoid.y0 + 13 * layoutUnit : undefined) : false}
+        north={showNorth ? ((savedNorthBox ?? northAvoid) ? (savedNorthBox ?? northAvoid)!.y0 + 13 * layoutUnit : undefined) : false}
+        northX={showNorth && savedNorthBox ? (savedNorthBox.x0 + savedNorthBox.x1) / 2 : undefined}
         credit={false}
         label={label}
         viewport={viewport}
@@ -724,6 +832,9 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
         bottomInset={bottomInset}
         rightInset={rightInset}
         scale={showScale}
+        scaleX={savedScaleBox ? savedScaleBox.x0 + 6 * layoutUnit : undefined}
+        scaleY={savedScaleBox ? savedScaleBox.y1 - 8 * layoutUnit : undefined}
+        scaleBoxOverride={savedScaleBox ?? undefined}
         calloutTop={calloutTop}
         calloutLeftBottom={calloutLeftBottom ?? (terrainLayout?.calloutLeftBottom ? terrainLayout.calloutLeftBottom * unit : undefined)}
          showAutomaticLabels={reportFrame?.labelRule !== "off"}
@@ -763,8 +874,104 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
     setLabelVisibilityOverride(!currentVisible);
     onDirectPatch({ pinnedKeys: next.pinnedKeys, hiddenKeys: next.hiddenKeys });
   };
+  const commitDecorationBox = (key: SurfaceDecorationKey, box: DecorationBox) => {
+    if (!onDirectPatch) return;
+    const panels = Object.fromEntries(Object.entries(styleRef.current.panels ?? {}).filter(([panelKey]) => panelKey !== key)) as PagePanels;
+    panels[key] = panelRectFromMapBox(box, format, unit, frame, panelBasis);
+    onDirectPatch({ panels });
+  };
+  const startDecorationDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!pickable || !onDirectPatch || !selectedDecorationKey) return;
+    const box = decorationBoxes[selectedDecorationKey];
+    if (!box || event.button !== 0) return;
+    decorationTransform.current = { pointerId: event.pointerId, key: selectedDecorationKey, mode: "drag", x: event.clientX, y: event.clientY, box, ratio: Math.max(0.1, (box.x1 - box.x0) / Math.max(1, box.y1 - box.y0)) };
+    setDecorationSnapGuides({ x: [], y: [] });
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.stopPropagation();
+    event.preventDefault();
+  };
+  const resizeDecorationBox = (state: DecorationTransformState, dx: number, dy: number): DecorationBox => {
+    const start = state.box;
+    const startW = start.x1 - start.x0;
+    const startH = start.y1 - start.y0;
+    const direction = state.direction!;
+    const horizontal = direction.includes("e") ? startW + dx : direction.includes("w") ? startW - dx : startW;
+    const vertical = direction.includes("s") ? startH + dy : direction.includes("n") ? startH - dy : startH;
+    const targetW = Math.max(24, Math.abs(horizontal) >= Math.abs(vertical * state.ratio) ? horizontal : vertical * state.ratio);
+    const targetH = targetW / state.ratio;
+    const next = {
+      x0: direction.includes("w") ? start.x1 - targetW : start.x0,
+      y0: direction.includes("n") ? start.y1 - targetH : start.y0,
+      x1: direction.includes("e") ? start.x0 + targetW : start.x1,
+      y1: direction.includes("s") ? start.y0 + targetH : start.y1,
+    };
+    return clampDecorationBox(next, width, height, 32, 24);
+  };
+  const onDecorationMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const state = decorationTransform.current;
+    if (!state || state.pointerId !== event.pointerId) return;
+    const dx = event.clientX - state.x;
+    const dy = event.clientY - state.y;
+    const proposed = state.mode === "drag" ? { x0: state.box.x0 + dx, y0: state.box.y0 + dy, x1: state.box.x1 + dx, y1: state.box.y1 + dy } : resizeDecorationBox(state, dx, dy);
+    const next = snapDecorationBox(state.key, proposed, decorationBoxes, width, height);
+    setDecorationDraftBox(next.box);
+    setDecorationSnapGuides({ x: next.xGuides, y: next.yGuides });
+    event.preventDefault();
+  };
+  const onDecorationEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const state = decorationTransform.current;
+    if (!state || state.pointerId !== event.pointerId) return;
+    const dx = event.clientX - state.x;
+    const dy = event.clientY - state.y;
+    const proposed = state.mode === "drag" ? { x0: state.box.x0 + dx, y0: state.box.y0 + dy, x1: state.box.x1 + dx, y1: state.box.y1 + dy } : resizeDecorationBox(state, dx, dy);
+    const next = snapDecorationBox(state.key, proposed, decorationBoxes, width, height);
+    commitDecorationBox(state.key, next.box);
+    decorationTransform.current = null;
+    setDecorationDraftBox(null);
+    setDecorationSnapGuides({ x: [], y: [] });
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  };
+  const startDecorationResize = (direction: DecorationResizeDirection, event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!pickable || !onDirectPatch || !selectedDecorationKey) return;
+    const box = decorationBoxes[selectedDecorationKey];
+    if (!box) return;
+    decorationTransform.current = { pointerId: event.pointerId, key: selectedDecorationKey, mode: "resize", direction, x: event.clientX, y: event.clientY, box, ratio: Math.max(0.1, (box.x1 - box.x0) / Math.max(1, box.y1 - box.y0)) };
+    setDecorationSnapGuides({ x: [], y: [] });
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const onDecorationResizeMove = (event: ReactPointerEvent<HTMLButtonElement>) => onDecorationMove(event as unknown as ReactPointerEvent<HTMLDivElement>);
+  const onDecorationResizeEnd = (event: ReactPointerEvent<HTMLButtonElement>) => onDecorationEnd(event as unknown as ReactPointerEvent<HTMLDivElement>);
+  const onDecorationKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!selectedDecorationKey || !onDirectPatch) return;
+    const current = decorationBoxes[selectedDecorationKey];
+    if (!current || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+    const stepX = width * 0.01;
+    const stepY = height * 0.01;
+    let next: DecorationBox = current;
+    if (event.shiftKey) {
+      const ratio = Math.max(0.1, (current.x1 - current.x0) / Math.max(1, current.y1 - current.y0));
+      const delta = event.key === "ArrowRight" || event.key === "ArrowDown" ? Math.max(stepX, stepY) : -Math.max(stepX, stepY);
+      const nextW = Math.max(32, current.x1 - current.x0 + delta);
+      const nextH = nextW / ratio;
+      next = clampDecorationBox({ ...current, x1: current.x0 + nextW, y1: current.y0 + nextH }, width, height, 32, 24);
+    } else {
+      const dx = event.key === "ArrowRight" ? stepX : event.key === "ArrowLeft" ? -stepX : 0;
+      const dy = event.key === "ArrowDown" ? stepY : event.key === "ArrowUp" ? -stepY : 0;
+      next = clampDecorationBox({ x0: current.x0 + dx, y0: current.y0 + dy, x1: current.x1 + dx, y1: current.y1 + dy }, width, height, 32, 24);
+    }
+    const snapped = snapDecorationBox(selectedDecorationKey, next, decorationBoxes, width, height);
+    event.preventDefault();
+    event.stopPropagation();
+    setDecorationSnapGuides({ x: snapped.xGuides, y: snapped.yGuides });
+    commitDecorationBox(selectedDecorationKey, snapped.box);
+  };
+  const resetDecoration = (key: SurfaceDecorationKey) => {
+    if (!onDirectPatch || !styleRef.current.panels?.[key]) return;
+    const panels = Object.fromEntries(Object.entries(styleRef.current.panels).filter(([panelKey]) => panelKey !== key)) as PagePanels;
+    onDirectPatch({ panels });
+  };
   const decorationKeys = (Object.keys(decorationBoxes) as SurfaceDecorationKey[]);
-  const selectedDecorationBox = selectedDecorationKey ? decorationBoxes[selectedDecorationKey] : undefined;
+  const selectedDecorationBox = selectedDecorationKey ? (decorationDraftBox ?? decorationBoxes[selectedDecorationKey]) : undefined;
   const decorationTargets = pickable && onDecorationSelect
     ? decorationKeys.map((key) => {
         const box = decorationBoxes[key];
@@ -774,8 +981,15 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
         return <button key={key} type="button" className={styles.decorationHitTarget} data-report-decoration={key} data-decoration-selected={selected ? "true" : undefined} aria-label={`${label} 선택`} aria-pressed={selected} title={`${label} 선택`} style={{ left: box.x0, top: box.y0, width: Math.max(44, box.x1 - box.x0), height: Math.max(44, box.y1 - box.y0) }} onPointerDown={(event) => { event.stopPropagation(); }} onClick={(event) => { event.stopPropagation(); onDecorationSelect(key); }} />;
       })
     : null;
-  const decorationToolbar = pickable && selectedDecorationKey && selectedDecorationBox
-    ? <ElementActionBar elementLabel={selectedDecorationKey === "north" ? "방위표" : selectedDecorationKey === "scaleBar" ? "축척 막대" : "위치도"} left={Math.max(8, Math.min(width - 150, selectedDecorationBox.x0))} top={Math.max(4, selectedDecorationBox.y0 - 42)} onDelete={() => onDecorationDelete?.(selectedDecorationKey)} />
+  const decorationLabel = selectedDecorationKey === "north" ? "방위표" : selectedDecorationKey === "scaleBar" ? "축척 막대" : "위치도";
+  const decorationTransformFrame = pickable && selectedDecorationKey && selectedDecorationBox
+    ? <DecorationTransformFrame label={decorationLabel} box={selectedDecorationBox} onDragStart={startDecorationDrag} onDragMove={onDecorationMove} onDragEnd={onDecorationEnd} onResizeStart={startDecorationResize} onResizeMove={onDecorationResizeMove} onResizeEnd={onDecorationResizeEnd} onKeyDown={onDecorationKeyDown} actions={styleRef.current.panels?.[selectedDecorationKey] ? [{ key: "reset", label: "위치 초기화", onClick: () => resetDecoration(selectedDecorationKey) }] : []} onDelete={() => onDecorationDelete?.(selectedDecorationKey)} />
+    : null;
+  const decorationGuideLayer = decorationTransformFrame && (decorationSnapGuides.x.length > 0 || decorationSnapGuides.y.length > 0)
+    ? <div className={styles.decorationSnapGuides ?? styles.snapGuides} aria-hidden="true">
+        {decorationSnapGuides.x.map((x) => <span className={styles.snapGuideX} style={{ left: x }} key={`decoration-x-${x}`} />)}
+        {decorationSnapGuides.y.map((y) => <span className={styles.snapGuideY} style={{ top: y }} key={`decoration-y-${y}`} />)}
+      </div>
     : null;
   const selectionToolbar = pickable && selectedMapKey
     ? <ElementActionBar
@@ -802,7 +1016,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
   };
   if (!interactive) return <>
     <div ref={mapInteractionRef} className={styles.slideMap} data-preview-map="true" data-map-pickable={pickable ? "true" : undefined} data-font-highlight={fontHighlight === "labels" ? "true" : undefined} tabIndex={mapEditEntry ? 0 : undefined} aria-label={mapEditEntry ? `${label} 지도. Enter 또는 두 번 눌러 편집합니다.` : undefined} onKeyDown={mapEditEntry ? mapEnterKeyDown : undefined} onContextMenu={onFontContextMenu ? (event) => { event.preventDefault(); onFontContextMenu("labels", event.clientX, event.clientY, event.currentTarget); } : undefined}>{map}{locatorElement}{decorationTargets}</div>
-    <div className={styles.elementActionLayer ?? styles.mapSelectionToolbar} data-element-action-layer="true">{selectionToolbar}{decorationToolbar}</div>
+    <div className={styles.elementActionLayer ?? styles.mapSelectionToolbar} data-element-action-layer="true">{selectionToolbar}{decorationGuideLayer}{decorationTransformFrame}</div>
   </>;
   const zoomMapAt = (event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -877,13 +1091,14 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
       {locatorElement}
       {decorationTargets}
     </div>
-    <div className={styles.elementActionLayer ?? styles.mapSelectionToolbar} data-element-action-layer="true">{selectionToolbar}{decorationToolbar}</div>
+    <div className={styles.elementActionLayer ?? styles.mapSelectionToolbar} data-element-action-layer="true">{selectionToolbar}{decorationGuideLayer}{decorationTransformFrame}</div>
   </>;
 }
 
-function SlideFooter({ slide, unit, fontHighlight, onFontContextMenu, interactive = false, hidden = false, selected = false, onSelect, onDelete }: { slide: PlannedSlide; unit: number; fontHighlight?: FontTargetKey | null; onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void; interactive?: boolean; hidden?: boolean; selected?: boolean; onSelect?: (selection: SurfaceSelection) => void; onDelete?: () => void }) {
+function SlideFooter({ slide, rect: rectProp, unit, fontHighlight, onFontContextMenu, interactive = false, hidden = false, selected = false, onSelect, onDelete, interaction }: { slide: PlannedSlide; rect?: Rect; unit: number; fontHighlight?: FontTargetKey | null; onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void; interactive?: boolean; hidden?: boolean; selected?: boolean; onSelect?: (selection: SurfaceSelection) => void; onDelete?: () => void; interaction?: PanelInteraction }) {
   const styles = useSurfaceStyles();
   const format = (slide.format ?? "wide") as SlideFormat;
+  const rect = rectProp ?? slideLayout(format).strip;
   const footer = fitFooterText(slide.footer, slide.kind === "sheet" || !!slide.map, slideSize(format).w - slideGeometry(format).edge - 1.7, fontSizeForStyle(slide.style, "source"));
   const longPressRef = useRef<{ x: number; y: number; timer: number } | null>(null);
   const clearLongPress = () => {
@@ -909,18 +1124,18 @@ function SlideFooter({ slide, unit, fontHighlight, onFontContextMenu, interactiv
     longPressRef.current = { x, y, timer };
   };
   return (
-    <div className={styles.slideFooter} data-source-element="true" data-source-selected={selected ? "true" : undefined} data-font-highlight={fontHighlight === "source" ? "true" : undefined} tabIndex={interactive ? 0 : undefined} onClick={() => interactive && onSelect?.({ kind: "element", key: "source" })} onContextMenu={onFontContextMenu ? openContext : undefined} onKeyDown={interactive && onFontContextMenu ? (event) => {
+    <div className={styles.slideFooter} style={{ ...rectStyle(rect, unit), right: "auto", bottom: "auto" }} {...interaction} data-source-element="true" data-source-selected={selected ? "true" : undefined} data-font-highlight={fontHighlight === "source" ? "true" : undefined} tabIndex={interactive ? 0 : undefined} onClick={() => interactive && onSelect?.({ kind: "element", key: "source" })} onContextMenu={onFontContextMenu ? openContext : undefined} onKeyDown={interactive && onFontContextMenu ? (event) => {
       if (event.key !== "ContextMenu" && !(event.key === "F10" && event.shiftKey)) return;
       event.preventDefault();
       const rect = event.currentTarget.getBoundingClientRect();
       onFontContextMenu("source", rect.left, rect.top, event.currentTarget);
-    } : undefined} onPointerDown={openLongPress} onPointerMove={(event) => {
+    } : undefined} onPointerDown={interaction?.onPointerDown ?? openLongPress} onPointerMove={interaction?.onPointerMove ?? ((event) => {
       const pending = longPressRef.current;
       if (pending && Math.hypot(event.clientX - pending.x, event.clientY - pending.y) > 8) clearLongPress();
-    }} onPointerUp={clearLongPress} onPointerCancel={clearLongPress}>
+    })} onPointerUp={interaction?.onPointerUp ?? clearLongPress} onPointerCancel={interaction?.onPointerCancel ?? clearLongPress}>
       {!hidden && <span className={styles.slideFooterText} style={fontStyle(footer.fontSize, unit)}>{footer.text}</span>}
       <span className={styles.slideFooterPage}>{slide.no} / {slide.total}</span>
-      {selected && interactive && <ElementActionBar elementLabel="출처 줄" left={0} top={-48} onDelete={onDelete} />}
+      {selected && interactive && !interaction && <ElementActionBar elementLabel="출처 줄" left={0} top={-48} onDelete={onDelete} />}
     </div>
   );
 }
@@ -1521,7 +1736,7 @@ function SourcesSurface({ slide, unit, basemap, thumbnail = false, fontHighlight
   );
 }
 
-function SheetCellEditSurface({ slide, cellIndex, unit, basemap, selection, mapActive = false, onSelect, onFrame, onMapMoveActive, onMapElementDelete, onMapLabelHide, onDecorationDelete, onDone, onNavigate, fontHighlight, onFontContextMenu }: { slide: Extract<PlannedSlide, { kind: "sheet" }>; cellIndex: number; unit: number; basemap: BasemapChoice; selection?: SurfaceSelection; mapActive?: boolean; onSelect?: (selection: SurfaceSelection) => void; onFrame?: (cell: number | undefined, patch: Partial<MapFrameState>) => void; onMapMoveActive?: (active: boolean) => void; onMapElementDelete?: (key: string) => void; onMapLabelHide?: (key: string) => void; onDecorationDelete?: (key: SurfaceDecorationKey, cell?: number) => void; onDone?: () => void; onNavigate?: (direction: -1 | 1) => void; fontHighlight?: FontTargetKey | null; onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void }) {
+function SheetCellEditSurface({ slide, cellIndex, unit, basemap, selection, mapActive = false, onSelect, onFrame, onCellPanels, onMapMoveActive, onMapElementDelete, onMapLabelHide, onDecorationDelete, onDone, onNavigate, fontHighlight, onFontContextMenu }: { slide: Extract<PlannedSlide, { kind: "sheet" }>; cellIndex: number; unit: number; basemap: BasemapChoice; selection?: SurfaceSelection; mapActive?: boolean; onSelect?: (selection: SurfaceSelection) => void; onFrame?: (cell: number | undefined, patch: Partial<MapFrameState>) => void; onCellPanels?: (cell: number, panels: PagePanels) => void; onMapMoveActive?: (active: boolean) => void; onMapElementDelete?: (key: string) => void; onMapLabelHide?: (key: string) => void; onDecorationDelete?: (key: SurfaceDecorationKey, cell?: number) => void; onDone?: () => void; onNavigate?: (direction: -1 | 1) => void; fontHighlight?: FontTargetKey | null; onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void }) {
   const format = (slide.format ?? "wide") as SlideFormat;
   const styles = useSurfaceStyles();
   const geometry = slideGeometry(format);
@@ -1553,6 +1768,7 @@ function SheetCellEditSurface({ slide, cellIndex, unit, basemap, selection, mapA
   };
   const cellDirectPatch = (patch: PreviewStylePatch) => {
     if (!cell?.reportFrame) return;
+    if (patch.panels && onCellPanels) onCellPanels(cellIndex, patch.panels as PagePanels);
     const patchFrame = labelFramePatch(cell.reportFrame, patch);
     if (patchFrame) onFrame?.(cellIndex, patchFrame);
   };
@@ -1585,7 +1801,7 @@ function SheetCellEditSurface({ slide, cellIndex, unit, basemap, selection, mapA
         <div className={styles.sheetCellEditMap} data-preview-map="true" data-map-cell-index={cellIndex} style={rectStyle(frame, unit)}>
           <MapLayer
             model={cell.reportFrame ? modelWithHiddenLayers(map, cell.reportFrame.hiddenLayers) : map}
-            style={cellStyle}
+            style={{ ...cellStyle, ...(cell.panels ? { panels: cell.panels } : {}) }}
             unit={unit}
             basemap={basemap}
             panels={emptyPanels}
@@ -1612,6 +1828,7 @@ function SheetCellEditSurface({ slide, cellIndex, unit, basemap, selection, mapA
             label={cell.view.title + " 지도"}
             format={format}
             frame={frame}
+            panelBasis="frame"
             reportFrame={cell.reportFrame}
             fontHighlight={fontHighlight}
             onFontContextMenu={onFontContextMenu}
@@ -1622,8 +1839,8 @@ function SheetCellEditSurface({ slide, cellIndex, unit, basemap, selection, mapA
   );
 }
 
-function SheetSurface({ slide, unit, basemap, thumbnail = false, editable = false, selection, mapActive = false, cellEditing, recentCell, onCellActivate, onCellEdit, onCellFit, onCellDelete, onCellDone, onCellNavigate, onSelect, onFrame, onMapMoveActive, onMapElementDelete, onMapLabelHide, onDecorationDelete, fontHighlight, onFontContextMenu }: { slide: Extract<PlannedSlide, { kind: "sheet" }>; unit: number; basemap: BasemapChoice; thumbnail?: boolean; editable?: boolean; selection?: SurfaceSelection; mapActive?: boolean; cellEditing?: number | null; recentCell?: number | null; onCellActivate?: (index: number) => void; onCellEdit?: (index: number) => void; onCellFit?: (index: number) => void; onCellDelete?: (index: number) => void; onCellDone?: () => void; onCellNavigate?: (direction: -1 | 1) => void; onSelect?: (selection: SurfaceSelection) => void; onFrame?: (cell: number | undefined, patch: Partial<MapFrameState>) => void; onMapMoveActive?: (active: boolean) => void; onMapElementDelete?: (key: string) => void; onMapLabelHide?: (key: string) => void; onDecorationDelete?: (key: SurfaceDecorationKey, cell?: number) => void; fontHighlight?: FontTargetKey | null; onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void }) {
-  if (cellEditing !== undefined && cellEditing !== null) return <SheetCellEditSurface slide={slide} cellIndex={cellEditing} unit={unit} basemap={basemap} selection={selection} mapActive={mapActive} onSelect={onSelect} onFrame={onFrame} onMapMoveActive={onMapMoveActive} onMapElementDelete={onMapElementDelete} onMapLabelHide={onMapLabelHide} onDecorationDelete={onDecorationDelete} onDone={onCellDone} onNavigate={onCellNavigate} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />;
+function SheetSurface({ slide, unit, basemap, thumbnail = false, editable = false, selection, mapActive = false, cellEditing, recentCell, onCellActivate, onCellEdit, onCellFit, onCellDelete, onCellDone, onCellNavigate, onSelect, onFrame, onCellPanels, onMapMoveActive, onMapElementDelete, onMapLabelHide, onDecorationDelete, fontHighlight, onFontContextMenu }: { slide: Extract<PlannedSlide, { kind: "sheet" }>; unit: number; basemap: BasemapChoice; thumbnail?: boolean; editable?: boolean; selection?: SurfaceSelection; mapActive?: boolean; cellEditing?: number | null; recentCell?: number | null; onCellActivate?: (index: number) => void; onCellEdit?: (index: number) => void; onCellFit?: (index: number) => void; onCellDelete?: (index: number) => void; onCellDone?: () => void; onCellNavigate?: (direction: -1 | 1) => void; onSelect?: (selection: SurfaceSelection) => void; onFrame?: (cell: number | undefined, patch: Partial<MapFrameState>) => void; onCellPanels?: (cell: number, panels: PagePanels) => void; onMapMoveActive?: (active: boolean) => void; onMapElementDelete?: (key: string) => void; onMapLabelHide?: (key: string) => void; onDecorationDelete?: (key: SurfaceDecorationKey, cell?: number) => void; fontHighlight?: FontTargetKey | null; onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void }) {
+  if (cellEditing !== undefined && cellEditing !== null) return <SheetCellEditSurface slide={slide} cellIndex={cellEditing} unit={unit} basemap={basemap} selection={selection} mapActive={mapActive} onSelect={onSelect} onFrame={onFrame} onCellPanels={onCellPanels} onMapMoveActive={onMapMoveActive} onMapElementDelete={onMapElementDelete} onMapLabelHide={onMapLabelHide} onDecorationDelete={onDecorationDelete} onDone={onCellDone} onNavigate={onCellNavigate} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />;
   const format = (slide.format ?? "wide") as SlideFormat;
   const layoutName = slide.page?.layout ?? "map-summary";
   const styles = useSurfaceStyles();
@@ -1665,7 +1882,8 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, editable = fals
               ...(cell.style ?? slide.style),
               zoomDelta: cell.reportFrame.scaleDenominator === null ? cell.reportFrame.zoomDelta : zoomForScale(cell.reportFrame.scaleDenominator, model, cellScaleOptions!),
               offsetM: cell.reportFrame.offsetM,
-            } : cell.style ?? slide.style;
+              ...(cell.panels ? { panels: cell.panels } : {}),
+            } : { ...(cell.style ?? slide.style), ...(cell.panels ? { panels: cell.panels } : {}) };
             const cellViewport = model ? slideViewport(model, cellStyle, { width, height, siteX: 0.5, fill: 0.8 }) : null;
             const cellNorthBox = cell.reportFrame?.decorations.north ? northArrowBox(width, height, 0, 24) : null;
             const cellScaleBox = cell.reportFrame?.decorations.scaleBar && cellViewport ? scaleBarBox(width, height, metersPerPixel(cellViewport.center[1], cellViewport.zoom)) : null;
@@ -1688,6 +1906,7 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, editable = fals
             };
             const cellDirectPatch = (patch: PreviewStylePatch) => {
               if (!cell.reportFrame) return;
+              if (patch.panels && onCellPanels) onCellPanels(index, patch.panels as PagePanels);
               const labelPatch = labelFramePatch(cell.reportFrame, patch);
               if (labelPatch) onFrame?.(index, labelPatch);
             };
@@ -1732,31 +1951,30 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, editable = fals
                 label={cell.view.title + " 지도"}
                 format={format}
                 frame={rect}
+                panelBasis="frame"
                 reportFrame={cell.reportFrame}
                 fontHighlight={fontHighlight}
                 onFontContextMenu={onFontContextMenu}
               />
             ) : model ? (
-              <MapFigure
+              <MapLayer
                 model={cell.reportFrame ? modelWithHiddenLayers(model, cell.reportFrame.hiddenLayers) : model}
-                width={width}
-                height={height}
-                fixed={!thumbnail}
-                basemap={thumbnail ? "none" : "tiles"}
-                layer={cell.reportFrame?.basemap === "air" ? "Satellite" : cell.reportFrame?.basemap === "none" ? "white" : cell.reportFrame?.basemap === "road" || cell.reportFrame?.basemap === "base" ? "Base" : basemap}
-                legend={false}
-                north={cell.reportFrame?.decorations.north ? 24 : false}
-                credit={false}
+                basemap={basemap}
+                unit={unit}
+                style={cellStyle}
+                panels={emptyCellPanels}
+                siteX={0.5}
+                interactive={false}
+                thumbnail={thumbnail}
+                onPatch={() => undefined}
+                format={format}
+                frame={rect}
+                panelBasis="frame"
+                reportFrame={cell.reportFrame}
                 scale={cell.reportFrame?.decorations.scaleBar ?? false}
-                viewport={cellViewport ?? undefined}
+                label={cell.view.title + " 지도"}
                 pinnedKeys={cell.reportFrame ? [...new Set([...(cell.pinnedKeys ?? []), ...cell.reportFrame.pinnedKeys])] : cell.pinnedKeys ?? cell.style?.pinnedKeys ?? slide.style.pinnedKeys ?? []}
-                hiddenKeys={[...(cell.style?.hiddenKeys ?? slide.style.hiddenKeys ?? []), ...(cell.reportFrame?.hiddenLabelKeys ?? [])]}
-                deletedElementKeys={cell.reportFrame?.deletedElementKeys}
-                labelBoxes={cell.reportFrame?.labelBoxes}
-                labelScale={fontSizeForStyle(cellStyle, "labels") / DEFAULT_REPORT_FONT_SIZES.labels}
-                legendFocus={legendLabelOf(model, cell.style?.legendFocus ?? slide.style.legendFocus)}
-                highlightLabel={legendLabelOf(model, cell.style?.legendFocus ?? slide.style.legendFocus)}
-                showAutomaticLabels={cell.reportFrame?.labelRule !== "off"}
+                onDirectPatch={undefined}
               />
             ) : null;
             return (
@@ -1807,7 +2025,7 @@ function LocatorInset({ model, basemap, box }: { model: NonNullable<ReturnType<t
   return <div className={styles.locatorInset ?? styles.surfaceRoot} data-map-locator="true" aria-label="위치도" style={{ left: box.x0, top: box.y0, width, height, pointerEvents: "none" }}><MapFigure model={locatorModel} width={width} height={height} fixed basemap="none" layer={basemap} legend={false} north={false} scale={false} credit={false} showAutomaticLabels={false} viewport={slideViewport(locatorModel, undefined, { width, height, siteX: 0.5, siteY: 0.5, fill: 0.82 })} /></div>;
 }
 
-function TileSurface({ slide, unit, basemap, panels, interactive, pickable = false, selection, mapEditEntry = false, onMapMoveActive, thumbnail = false, onPatch, onDirectPatch, panelInteraction, staticSurface = false, onText, fontHighlight, onFontContextMenu, onMapElementSelect, onMapLabelSelect, onLabelBoxChange, onLabelBoxReset, onDeleteElement, onHideLabel, onPanelDelete, onDecorationSelect, onDecorationDelete }: { slide: Extract<PlannedSlide, { kind: "tile" }>; unit: number; basemap: BasemapChoice; panels: { title: Rect; summary: Rect | null; legend: Rect | null }; interactive: boolean; pickable?: boolean; selection?: SurfaceSelection; mapEditEntry?: boolean; onMapMoveActive?: (active: boolean) => void; thumbnail?: boolean; onPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void; panelInteraction?: (key: PanelKey) => PanelInteraction; staticSurface?: boolean; onText?: (kind: "title" | "summary") => void; fontHighlight?: FontTargetKey | null; onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void; onMapElementSelect?: (feature: MapFigureElementPick) => void; onMapLabelSelect?: (feature: MapFigureElementPick) => void; onLabelBoxChange?: (key: string, box: MapLabelBox) => void; onLabelBoxReset?: (key: string) => void; onDeleteElement?: (key: string) => void; onHideLabel?: (key: string) => void; onPanelDelete?: (key: PanelKey) => void; onDecorationSelect?: (key: SurfaceDecorationKey) => void; onDecorationDelete?: (key: SurfaceDecorationKey) => void }) {
+function TileSurface({ slide, unit, basemap, panels, interactive, pickable = false, selection, mapEditEntry = false, onMapMoveActive, thumbnail = false, onPatch, onDirectPatch, panelInteraction, staticSurface = false, onText, fontHighlight, onFontContextMenu, onMapElementSelect, onMapLabelSelect, onLabelBoxChange, onLabelBoxReset, onDeleteElement, onHideLabel, onPanelDelete, onDecorationSelect, onDecorationDelete }: { slide: Extract<PlannedSlide, { kind: "tile" }>; unit: number; basemap: BasemapChoice; panels: { title: Rect; summary: Rect | null; legend: Rect | null; source: Rect }; interactive: boolean; pickable?: boolean; selection?: SurfaceSelection; mapEditEntry?: boolean; onMapMoveActive?: (active: boolean) => void; thumbnail?: boolean; onPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void; panelInteraction?: (key: PanelKey) => PanelInteraction; staticSurface?: boolean; onText?: (kind: "title" | "summary") => void; fontHighlight?: FontTargetKey | null; onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void; onMapElementSelect?: (feature: MapFigureElementPick) => void; onMapLabelSelect?: (feature: MapFigureElementPick) => void; onLabelBoxChange?: (key: string, box: MapLabelBox) => void; onLabelBoxReset?: (key: string) => void; onDeleteElement?: (key: string) => void; onHideLabel?: (key: string) => void; onPanelDelete?: (key: PanelKey) => void; onDecorationSelect?: (key: SurfaceDecorationKey) => void; onDecorationDelete?: (key: SurfaceDecorationKey) => void }) {
   const format = (slide.format ?? "wide") as SlideFormat;
   const styles = useSurfaceStyles();
   const selectSurface = useContext(SurfaceSelectContext);
@@ -1867,7 +2085,7 @@ function TileSurface({ slide, unit, basemap, panels, interactive, pickable = fal
        {!slide.page?.deletedElementKeys?.includes("title") && <div onDoubleClick={() => onText?.("title")}><TitlePanel slide={slide} rect={panels.title} unit={unit} interaction={panelInteraction?.("title")} /></div>}
        {panels.summary && hasSummaryPanel(slide) && !slide.page?.deletedElementKeys?.includes("summary") && <div onDoubleClick={() => onText?.("summary")}><SummaryPanel slide={slide} rect={terrainLayout?.summary ?? panels.summary} unit={unit} terrainSectionShown={terrainShown} interaction={panelInteraction?.("summary")} /></div>}
        {panels.legend && <LegendPanel slide={{ ...slide, map: model } as Extract<PlannedSlide, { kind: "tile" }>} rect={panels.legend} unit={unit} format={format} hoverLabel={hoverLegend} onLegendHover={setHoverLegend} onLegendPin={staticSurface || thumbnail ? undefined : onLegendPin} onLegendMenu={staticSurface || thumbnail || !onFontContextMenu ? undefined : (x, y, opener) => onFontContextMenu("legend", x, y, opener)} interaction={panelInteraction?.("legend")} legendOptions={reportFrame?.legend} />}
-        <SlideFooter slide={slide} unit={unit} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} interactive={interactive && !thumbnail && !!onFontContextMenu} hidden={slide.page?.deletedElementKeys?.includes("source")} selected={selection?.kind === "element" && selection.key === "source"} onSelect={selectSurface} onDelete={() => onPanelDelete?.("source" as PanelKey)} />
+        <SlideFooter slide={slide} rect={panels.source} unit={unit} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} interactive={interactive && !thumbnail && !!onFontContextMenu} hidden={slide.page?.deletedElementKeys?.includes("source")} selected={selection?.kind === "element" && selection.key === "source"} onSelect={selectSurface} onDelete={() => onPanelDelete?.("source")} interaction={panelInteraction?.("source")} />
     </>
   );
 }
@@ -1883,11 +2101,11 @@ type PanelTransformFrameProps = {
   onResizeEnd: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onDelete: () => void;
   actions?: ElementAction[];
+  directions?: ResizeDirection[];
 };
 
-function PanelTransformFrame({ panelKey, rect, unit, xGuides, yGuides, onResizeStart, onResizeMove, onResizeEnd, onDelete, actions = [] }: PanelTransformFrameProps) {
+function PanelTransformFrame({ panelKey, rect, unit, xGuides, yGuides, onResizeStart, onResizeMove, onResizeEnd, onDelete, actions = [], directions = ["nw", "n", "ne", "e", "se", "s", "sw", "w"] }: PanelTransformFrameProps) {
   const styles = useSurfaceStyles();
-  const directions: ResizeDirection[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
   return <>
     <div className={styles.snapGuides} aria-hidden="true">
       {xGuides.map((x) => <span className={styles.snapGuideX} style={{ left: x * unit }} key={`x-${x}`} />)}
@@ -1912,7 +2130,7 @@ function PanelTransformFrame({ panelKey, rect, unit, xGuides, yGuides, onResizeS
   </>;
 }
 
-function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapActive, staticSurface = false, selection, fontHighlight, onFontContextMenu, onSelect, onMapMoveActive, onMapElementSelect, onMapLabelSelect, onLabelBoxChange, onLabelBoxReset, onDeleteElement, onHideLabel, onPanelDelete, onDecorationSelect, onDecorationDelete, onFrame, onTextBox, onText, textBoxEditingId, textBoxPlacement, onTextBoxPlacementMove, onTextBoxPlacementCommit, onTextBoxEditingChange, thumbnail = false, onSheetCellActivate, sheetCellEditing, sheetCellRecent, onSheetCellEdit, onSheetCellFit, onSheetCellDelete, onSheetCellDone, onSheetCellNavigate, onPatch, onMapPatch, onDirectPatch }: { slide: PlannedSlide; basemap: BasemapChoice; editable: boolean; format?: SlideFormat; staticSurface?: boolean; mapActive?: boolean; selection?: SurfaceSelection; fontHighlight?: FontTargetKey | null; onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void; onSelect?: (selection: SurfaceSelection) => void; onMapMoveActive?: (active: boolean) => void; onMapElementSelect?: (feature: MapFigureElementPick) => void; onMapLabelSelect?: (feature: MapFigureElementPick) => void; onLabelBoxChange?: (key: string, box: MapLabelBox) => void; onLabelBoxReset?: (key: string) => void; onDeleteElement?: (key: string) => void; onHideLabel?: (key: string) => void; onPanelDelete?: (key: PanelKey) => void; onDecorationSelect?: (key: SurfaceDecorationKey) => void; onDecorationDelete?: (key: SurfaceDecorationKey, cell?: number) => void; onFrame?: (cell: number | undefined, patch: Partial<MapFrameState>) => void; onTextBox?: (box: TextBox | { id: string; remove: true }) => void; onText?: (kind: "title" | "summary") => void; textBoxEditingId?: string | null; textBoxPlacement?: TextBoxPlacement | null; onTextBoxPlacementMove?: (x: number, y: number) => void; onTextBoxPlacementCommit?: (x: number, y: number) => void; onTextBoxEditingChange?: (id: string | null) => void; thumbnail?: boolean; onSheetCellActivate?: (index: number) => void; sheetCellEditing?: number | null; sheetCellRecent?: number | null; onSheetCellEdit?: (index: number) => void; onSheetCellFit?: (index: number) => void; onSheetCellDelete?: (index: number) => void; onSheetCellDone?: () => void; onSheetCellNavigate?: (direction: -1 | 1) => void; onPatch: (patch: PreviewStylePatch) => void; onMapPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void }) {
+function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapActive, staticSurface = false, selection, fontHighlight, onFontContextMenu, onSelect, onMapMoveActive, onMapElementSelect, onMapLabelSelect, onLabelBoxChange, onLabelBoxReset, onDeleteElement, onHideLabel, onPanelDelete, onDecorationSelect, onDecorationDelete, onFrame, onCellPanels, onTextBox, onText, textBoxEditingId, textBoxPlacement, onTextBoxPlacementMove, onTextBoxPlacementCommit, onTextBoxEditingChange, thumbnail = false, onSheetCellActivate, sheetCellEditing, sheetCellRecent, onSheetCellEdit, onSheetCellFit, onSheetCellDelete, onSheetCellDone, onSheetCellNavigate, onPatch, onMapPatch, onDirectPatch }: { slide: PlannedSlide; basemap: BasemapChoice; editable: boolean; format?: SlideFormat; staticSurface?: boolean; mapActive?: boolean; selection?: SurfaceSelection; fontHighlight?: FontTargetKey | null; onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void; onSelect?: (selection: SurfaceSelection) => void; onMapMoveActive?: (active: boolean) => void; onMapElementSelect?: (feature: MapFigureElementPick) => void; onMapLabelSelect?: (feature: MapFigureElementPick) => void; onLabelBoxChange?: (key: string, box: MapLabelBox) => void; onLabelBoxReset?: (key: string) => void; onDeleteElement?: (key: string) => void; onHideLabel?: (key: string) => void; onPanelDelete?: (key: PanelKey) => void; onDecorationSelect?: (key: SurfaceDecorationKey) => void; onDecorationDelete?: (key: SurfaceDecorationKey, cell?: number) => void; onFrame?: (cell: number | undefined, patch: Partial<MapFrameState>) => void; onCellPanels?: (cell: number, panels: PagePanels) => void; onTextBox?: (box: TextBox | { id: string; remove: true }) => void; onText?: (kind: "title" | "summary") => void; textBoxEditingId?: string | null; textBoxPlacement?: TextBoxPlacement | null; onTextBoxPlacementMove?: (x: number, y: number) => void; onTextBoxPlacementCommit?: (x: number, y: number) => void; onTextBoxEditingChange?: (id: string | null) => void; thumbnail?: boolean; onSheetCellActivate?: (index: number) => void; sheetCellEditing?: number | null; sheetCellRecent?: number | null; onSheetCellEdit?: (index: number) => void; onSheetCellFit?: (index: number) => void; onSheetCellDelete?: (index: number) => void; onSheetCellDone?: () => void; onSheetCellNavigate?: (direction: -1 | 1) => void; onPatch: (patch: PreviewStylePatch) => void; onMapPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void }) {
   const format = (requestedFormat ?? (slide.format as SlideFormat | undefined) ?? "wide");
   const styles = useSurfaceStyles();
   const slotRef = useRef<HTMLDivElement>(null);
@@ -1941,8 +2159,11 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
   const panels = layout
     ? { title: toRect(layout.title)!, summary: toRect(layout.summary), legend: reportLegend?.placement === "hidden" ? null : toRect(layout.legend) }
     : legacyPanels;
-  const panelRects: Partial<Record<PanelKey, Rect>> = { title: panels.title, summary: panels.summary ?? undefined, legend: panels.legend ?? undefined };
-  const existingPanels = ((displaySlide.style as PageStyle & { panels?: Partial<Record<PanelKey, PanelRatio>> }).panels ?? {});
+  const existingPanels = ((displaySlide.style as PageStyle & { panels?: PagePanels }).panels ?? {});
+  const sourceRect = existingPanels.source
+    ? toRect(existingPanels.source)!
+    : toRect(slideLayout(format).strip)!;
+  const panelRects: Partial<Record<PanelKey, Rect>> = { title: panels.title, summary: panels.summary ?? undefined, legend: panels.legend ?? undefined, source: sourceRect };
 
   useEffect(() => {
     setSelectedPanel(null);
@@ -1953,12 +2174,13 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
   }, [slide.key]);
   useEffect(() => {
     if (selection?.kind === "panel") setSelectedPanel(selection.key);
+    else if (selection?.kind === "element" && selection.key === "source") setSelectedPanel("source");
     else setSelectedPanel(null);
   }, [selection]);
   useEffect(() => {
     if (!hasSummary && selectedPanel === "summary") setSelectedPanel(null);
     if (!panelRects[selectedPanel ?? "title"] && selectedPanel !== null) setSelectedPanel(null);
-  }, [hasSummary, panels.summary, panels.legend, selectedPanel]);
+  }, [hasSummary, panels.summary, panels.legend, sourceRect, selectedPanel]);
   useEffect(() => () => {
     if (panelLongPress.current) window.clearTimeout(panelLongPress.current.timer);
   }, []);
@@ -2111,7 +2333,8 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
       event.stopPropagation();
       if (selectedPanel !== key) {
         setSelectedPanel(key);
-        onSelect?.({ kind: "panel", key });
+        if (key === "source") onSelect?.({ kind: "element", key: "source" });
+        else onSelect?.({ kind: "panel", key });
         return;
       }
       onPanelMoveStart(key, event);
@@ -2126,8 +2349,14 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
       onFontContextMenu?.(key, event.clientX, event.clientY, event.currentTarget);
     },
   });
+  const resetPanel = (key: PanelKey) => {
+    if (!onDirectPatch || !existingPanels[key]) return;
+    const panels = Object.fromEntries(Object.entries(existingPanels).filter(([panelKey]) => panelKey !== key)) as PagePanels;
+    onDirectPatch({ panels });
+    setSelectedPanel(null);
+  };
   const handles = editable && displaySlide.kind === "tile" && selectedPanel && panelRects[selectedPanel]
-    ? <PanelTransformFrame panelKey={selectedPanel} rect={panelRects[selectedPanel]!} unit={unit} xGuides={snapGuides.x} yGuides={snapGuides.y} onResizeStart={onResizeStart} onResizeMove={onResizeMove} onResizeEnd={onResizeEnd} onDelete={() => { onPanelDelete?.(selectedPanel); setSelectedPanel(null); }} />
+    ? <PanelTransformFrame panelKey={selectedPanel} rect={panelRects[selectedPanel]!} unit={unit} xGuides={snapGuides.x} yGuides={snapGuides.y} onResizeStart={onResizeStart} onResizeMove={onResizeMove} onResizeEnd={onResizeEnd} onDelete={() => { onPanelDelete?.(selectedPanel); setSelectedPanel(null); }} actions={existingPanels[selectedPanel] ? [{ key: "reset", label: "위치 초기화", onClick: () => resetPanel(selectedPanel) }] : []} directions={selectedPanel === "source" ? ["e", "w"] : undefined} />
     : null;
   const mapCellFromTarget = (target: HTMLElement): number | undefined => {
     const raw = target.closest<HTMLElement>("[data-map-cell-index]")?.dataset.mapCellIndex;
@@ -2203,8 +2432,8 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
          {displaySlide.kind === "cover" && displaySlide.page?.kind !== "blank" && <CoverSurface slide={displaySlide} unit={unit} basemap={basemap} interactive={!!(mapSelectable && editable && (mapActive ?? editable) && !!displayModel)} thumbnail={thumbnail} onPatch={onMapPatch} onDirectPatch={onDirectPatch} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />}
          {displaySlide.kind === "sources" && <SourcesSurface slide={displaySlide} unit={unit} basemap={basemap} thumbnail={thumbnail} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />}
          {displaySlide.kind === "cover" && displaySlide.page?.kind === "blank" && <BlankSurface unit={unit} />}
-         {displaySlide.kind === "sheet" && <SheetSurface slide={displaySlide} unit={unit} basemap={basemap} thumbnail={thumbnail} editable={editable} selection={selection} mapActive={!!mapActive} cellEditing={sheetCellEditing} recentCell={sheetCellRecent} onCellActivate={onSheetCellActivate} onCellEdit={onSheetCellEdit} onCellFit={onSheetCellFit} onCellDelete={onSheetCellDelete} onCellDone={onSheetCellDone} onCellNavigate={onSheetCellNavigate} onSelect={onSelect} onFrame={onFrame} onMapMoveActive={onMapMoveActive} onMapElementDelete={onDeleteElement} onMapLabelHide={onHideLabel} onDecorationDelete={onDecorationDelete} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />}
-         {displaySlide.kind === "tile" && <TileSurface slide={displaySlide} unit={unit} basemap={basemap} panels={panels} interactive={!!(editable && (mapActive ?? editable) && !!displayModel)} pickable={mapPickable} selection={selection} mapEditEntry={editable && mapSelectable && !thumbnail} onMapMoveActive={onMapMoveActive} onMapElementSelect={(feature) => onSelect?.({ kind: "mapElement", key: feature.key, labelVisible: feature.labelVisible })} onMapLabelSelect={(feature) => onSelect?.({ kind: "mapLabel", key: feature.key })} onLabelBoxChange={onLabelBoxChange} onLabelBoxReset={onLabelBoxReset} onDeleteElement={onDeleteElement} onHideLabel={onHideLabel} onPanelDelete={onPanelDelete} onDecorationSelect={onDecorationSelect} onDecorationDelete={onDecorationDelete} thumbnail={thumbnail} onPatch={onMapPatch} onDirectPatch={onDirectPatch} panelInteraction={editable ? panelInteraction : undefined} staticSurface={staticSurface} onText={onText} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />}
+         {displaySlide.kind === "sheet" && <SheetSurface slide={displaySlide} unit={unit} basemap={basemap} thumbnail={thumbnail} editable={editable} selection={selection} mapActive={!!mapActive} cellEditing={sheetCellEditing} recentCell={sheetCellRecent} onCellActivate={onSheetCellActivate} onCellEdit={onSheetCellEdit} onCellFit={onSheetCellFit} onCellDelete={onSheetCellDelete} onCellDone={onSheetCellDone} onCellNavigate={onSheetCellNavigate} onSelect={onSelect} onFrame={onFrame} onCellPanels={onCellPanels} onMapMoveActive={onMapMoveActive} onMapElementDelete={onDeleteElement} onMapLabelHide={onHideLabel} onDecorationDelete={onDecorationDelete} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />}
+         {displaySlide.kind === "tile" && <TileSurface slide={displaySlide} unit={unit} basemap={basemap} panels={{ ...panels, source: sourceRect }} interactive={!!(editable && (mapActive ?? editable) && !!displayModel)} pickable={mapPickable} selection={selection} mapEditEntry={editable && mapSelectable && !thumbnail} onMapMoveActive={onMapMoveActive} onMapElementSelect={(feature) => onSelect?.({ kind: "mapElement", key: feature.key, labelVisible: feature.labelVisible })} onMapLabelSelect={(feature) => onSelect?.({ kind: "mapLabel", key: feature.key })} onLabelBoxChange={onLabelBoxChange} onLabelBoxReset={onLabelBoxReset} onDeleteElement={onDeleteElement} onHideLabel={onHideLabel} onPanelDelete={onPanelDelete} onDecorationSelect={onDecorationSelect} onDecorationDelete={onDecorationDelete} thumbnail={thumbnail} onPatch={onMapPatch} onDirectPatch={onDirectPatch} panelInteraction={editable ? panelInteraction : undefined} staticSurface={staticSurface} onText={onText} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />}
         {displaySlide.page?.textBoxes && <TextBoxSurface boxes={displaySlide.page.textBoxes} unit={unit} selectedId={selection?.kind === "textBox" ? selection.id : undefined} startEditingId={textBoxEditingId} maxWidth={size.w} maxHeight={size.h} editable={editable} onSelect={onSelect} onTextBox={onTextBox} onEditingChange={onTextBoxEditingChange} />}
         {editable && textBoxPlacement && onTextBoxPlacementMove && onTextBoxPlacementCommit && <TextBoxPlacementLayer placement={textBoxPlacement} unit={unit} maxWidth={size.w} maxHeight={size.h} onMove={onTextBoxPlacementMove} onCommit={onTextBoxPlacementCommit} />}
         {handles}
@@ -2269,6 +2498,7 @@ export type SlideSurfaceProps = {
   onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void;
   onSelect?: (selection: SurfaceSelection) => void;
   onFrame?: (cell: number | undefined, patch: Partial<MapFrameState>) => void;
+  onCellPanels?: (cell: number, panels: PagePanels) => void;
   onPanels?: (panels: PagePanels) => void;
   onTextBox?: (box: TextBox | { id: string; remove: true }) => void;
   onText?: (kind: "title" | "summary") => void;
@@ -2307,6 +2537,7 @@ export function SlideSurface({
   onFontContextMenu,
   onSelect,
   onFrame,
+  onCellPanels,
   onPanels,
   onTextBox,
   onText,
@@ -2398,6 +2629,7 @@ export function SlideSurface({
               onDecorationSelect={onDecorationSelect}
               onDecorationDelete={onDecorationDelete}
               onFrame={onFrame}
+              onCellPanels={onCellPanels}
               onTextBox={onTextBox}
               onText={onText}
               textBoxEditingId={textBoxEditingId}

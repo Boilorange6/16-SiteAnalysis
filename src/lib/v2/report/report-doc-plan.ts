@@ -191,6 +191,7 @@ function comparePageFromSheetSlide(
         tileId: cell.view.tileId,
         settings: cloneSettings(settingsFor?.(cell.view.tileId) ?? fallbackSettings),
         frame: cloneMapFrame(cell.reportFrame),
+        ...(cell.panels ? { panels: { ...cell.panels } } : {}),
       } : null;
     }),
   };
@@ -555,8 +556,9 @@ export function planReportDoc(doc: ReportDoc, views: ReadonlyMap<string, TileVie
           mapKey: `${page.id}:cell:${index}`,
           sourceLine: sourceLineFor(view, sourceMeta),
           pinnedKeys: [...cell.frame.pinnedKeys],
-          style,
+          style: cell.panels ? { ...style, panels: { ...cell.panels } } : style,
           reportFrame: cell.frame,
+          ...(cell.panels ? { panels: { ...cell.panels } } : {}),
         };
       });
       const cellViews = cells.flatMap((cell) => cell ? [cell.view] : []);

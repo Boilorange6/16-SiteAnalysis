@@ -11,13 +11,24 @@ import type { PlannedSlide } from "./report-plan";
 import type { PageStyle } from "../ui/board-state";
 import { metersPerPixel, slideViewport } from "../ui/map-projection";
 import { scaleOptionsForFrame, zoomForScale } from "../ui/report-scale";
-import type { MapFrameState, ReportLayout } from "./report-doc";
+import type { MapFrameState, PagePanelRect, ReportLayout } from "./report-doc";
 
 const VIEW_W = 960;
 const VIEW_H = 540;
 const PX_PER_INCH = VIEW_W / SLIDE.w;
 const PX_TO_PT = 0.75;
 const MAX_LAYER_ELEMENTS = 1500;
+
+function savedPanelBox(panel: PagePanelRect | undefined, basis: "page" | "frame" = "page"): MapSceneBox | null {
+  if (!panel) return null;
+  const sourceWidth = (basis === "page" ? activeGeometry.w : activeFrame.w) * activePxPerInch;
+  const sourceHeight = (basis === "page" ? activeGeometry.h : activeFrame.h) * activePxPerInch;
+  const originX = basis === "page" ? activeFrame.x * activePxPerInch : 0;
+  const originY = basis === "page" ? activeFrame.y * activePxPerInch : 0;
+  const x0 = Math.max(0, Math.min(activeSceneWidth - 1, panel.x * sourceWidth - originX));
+  const y0 = Math.max(0, Math.min(activeSceneHeight - 1, panel.y * sourceHeight - originY));
+  return { x0, y0, x1: Math.max(x0 + 1, Math.min(activeSceneWidth, x0 + panel.w * sourceWidth)), y1: Math.max(y0 + 1, Math.min(activeSceneHeight, y0 + panel.h * sourceHeight)) };
+}
 
 export type NativeMapFrame = { x: number; y: number; w: number; h: number };
 export type NativeMapMode = "tile" | "cell";
@@ -411,6 +422,8 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     const height = activeSceneHeight;
     const cellLegend = cellLegendLayout(displayModel);
     const style = options.style ?? {};
+    const savedNorthBox = savedPanelBox(style.panels?.north, "frame");
+    const savedScaleBox = savedPanelBox(style.panels?.scaleBar, "frame");
     const focus = legendLabelOf(displayModel, style.legendFocus);
     // 조판 셀의 코드 chip은 map scene 위에 마지막으로 그려진다. 고정·자동
     // 라벨 카드가 chip 아래에서 시작하도록 셀 좌표의 상단 안전영역을 예약한다.
@@ -440,6 +453,8 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
       avoid: [],
       bare: false,
       viewport: slideViewport(displayModel, style, { width, height, siteX: 0.5, fill: 0.8 }),
+      ...(savedNorthBox ? { north: savedNorthBox.y0 + (savedNorthBox.y1 - savedNorthBox.y0) / 2, northX: (savedNorthBox.x0 + savedNorthBox.x1) / 2 } : {}),
+      ...(savedScaleBox ? { scaleX: savedScaleBox.x0 + 6 * cellUnit, scaleY: savedScaleBox.y1 - 8 * cellUnit, scaleBoxOverride: savedScaleBox } : {}),
     });
   }
   const plan = options.plan!;
@@ -486,15 +501,17 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
   const viewport = fixedScaleViewport(displayModel, frameStyle, reportFrame, { width: VIEW_W, height, siteX, siteY: terrainLayout?.mapSiteY ?? 0.5, fill: fill ?? 0.8 });
   const showScale = reportFrame?.decorations.scaleBar ?? true;
   const showNorth = reportFrame?.decorations.north ?? true;
+  const savedNorthBox = savedPanelBox(style.panels?.north);
+  const savedScaleBox = savedPanelBox(style.panels?.scaleBar);
   const nativeScaleMaxPx = reportFrame?.scaleDenominator !== null && reportFrame?.scaleDenominator !== undefined ? 150 : undefined;
-  const scaleAvoid = calloutDetail || !showScale ? null : scaleBarBox(VIEW_W, height, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset, false, undefined, undefined, nativeScaleMaxPx);
-  const northAvoid = calloutDetail || !showNorth ? null : northArrowBox(VIEW_W, height, rightInset, northY);
+  const scaleAvoid = calloutDetail || !showScale ? null : (savedScaleBox ?? scaleBarBox(VIEW_W, height, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset, false, undefined, undefined, nativeScaleMaxPx));
+  const northAvoid = calloutDetail || !showNorth ? null : (savedNorthBox ?? northArrowBox(VIEW_W, height, rightInset, northY));
   const frameOriginX = activeFrame.x * activePxPerInch;
   const frameOriginY = activeFrame.y * activePxPerInch;
   const localize = (box: MapSceneBox): MapSceneBox => ({ x0: box.x0 - frameOriginX, y0: box.y0 - frameOriginY, x1: box.x1 - frameOriginX, y1: box.y1 - frameOriginY });
   const avoid = calloutDetail
     ? []
-     : [...slideReserved(activePxPerInch, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend, calloutLegend, terrainSection: terrainLayout?.rect, format }).map(localize), ...(scaleAvoid ? [scaleAvoid] : []), ...(northAvoid ? [northAvoid] : [])];
+     : [...slideReserved(activePxPerInch, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend, calloutLegend, terrainSection: terrainLayout?.rect, format }).map(localize), ...(savedScaleBox ? [] : scaleAvoid ? [scaleAvoid] : []), ...(savedNorthBox ? [] : northAvoid ? [northAvoid] : [])];
   const focus = legendLabelOf(displayModel, style.legendFocus);
   const pinnedKeys = [...new Set([
     ...(plan.pinnedKeys ?? []),
@@ -525,7 +542,9 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     legendFocus: focus,
     showAutomaticLabels: reportFrame?.labelRule !== "off",
     labelScale: fontSizeForStyle(frameStyle, "labels") / 10,
-    north: showNorth ? northY : false,
+    north: showNorth ? (savedNorthBox ? (savedNorthBox.y0 + savedNorthBox.y1) / 2 : northY) : false,
+    ...(savedNorthBox ? { northX: (savedNorthBox.x0 + savedNorthBox.x1) / 2 } : {}),
+    ...(savedScaleBox ? { scaleX: savedScaleBox.x0 + 6 * Math.min(1.5, Math.max(1, height / 360)), scaleY: savedScaleBox.y1 - 8 * Math.min(1.5, Math.max(1, height / 360)), scaleBoxOverride: savedScaleBox } : {}),
     avoid,
     bare: false,
     viewport,
@@ -830,10 +849,10 @@ function addScale(slide: Slide, code: string, scene: MapScene): void {
   slide.addText(bar.label, { x: pxX(x0), y: pxY(y - 11 * u), w: pxW(bar.px), h: pxH(8 * u), align: "center", valign: "middle", fontFace: FONT, fontSize: fontPt(9.5 * u, 6), bold: true, color: INK, margin: 0, objectName: tag(code, key, "축척", "label") });
 }
 
-function addLocator(slide: Slide, code: string, model: MapModel, scene: MapScene): void {
+function addLocator(slide: Slide, code: string, model: MapModel, scene: MapScene, savedBox?: MapSceneBox | null): void {
   if (!Number.isFinite(model.radiusM) || model.radiusM <= 0) return;
   const localUnit = activeSceneWidth / Math.max(0.1, activeFrame.w);
-  const box = locatorBox(activeSceneWidth, activeSceneHeight, localUnit, scene.occupiedBoxes);
+  const box = savedBox ?? locatorBox(activeSceneWidth, activeSceneHeight, localUnit, scene.occupiedBoxes);
   const width = Math.max(1, box.x1 - box.x0);
   const height = Math.max(1, box.y1 - box.y0);
   const x = box.x0;
@@ -929,7 +948,7 @@ export function addEditableMap(slide: Slide, plan: (PlannedSlide & { kind: "tile
     addLabels(slide, code, scene);
     addNorth(slide, code, scene);
     addScale(slide, code, scene);
-    if (options.reportFrame?.decorations.locator) addLocator(slide, code, model, scene);
+    if (options.reportFrame?.decorations.locator) addLocator(slide, code, model, scene, savedPanelBox(options.style?.panels?.locator, (options.mode ?? "tile") === "cell" ? "frame" : "page"));
     if ((options.mode ?? "tile") === "cell") addCellLegend(slide, code, visibleModel, options.style);
     return status;
   } finally {

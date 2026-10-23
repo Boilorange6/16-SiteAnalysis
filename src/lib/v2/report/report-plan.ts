@@ -17,7 +17,8 @@ import { exportFileName } from "../export/download";
 import { sourceDetailsFor, UNKNOWN_AS_OF, type SourceDetailRow, type SourceMeta } from "../ui/source-details";
 import { CUT_CODES, tileClientModuleFor } from "../tile/client";
 import type { TileCutCell, TileCutPlan } from "../tile/types";
-import type { MapFrameState, ReportFormat, ReportPage } from "./report-doc";
+import type { MapFrameState, PagePanels, ReportFormat, ReportPage } from "./report-doc";
+import { pagePanelGeometryKey } from "./report-geometry";
 
 export type TileSlideBody =
   | { kind: "result"; face: "single" | "front" | "back" }
@@ -82,6 +83,8 @@ export type ReportSlide =
         style?: PageStyle;
         /** 보고서 모드에서 셀마다 저장한 지도 프레임. */
         reportFrame?: MapFrameState;
+        /** 조판 셀 안에서 페이지 비율로 저장한 장식·출처 사각형. */
+        panels?: PagePanels;
         mass?: MassModel;
         rose?: RoseModel;
         roseSeason?: RoseSeason;
@@ -161,12 +164,9 @@ const cellStyleAffectsMap = (style: PageStyle | undefined): boolean => !!style &
   || style.hiddenKeys !== undefined
   || style.legendFocus !== undefined
 );
-const panelGeometryCacheKey = (style: PageStyle | undefined): string => {
+export const panelGeometryCacheKey = (style: PageStyle | undefined): string => {
   if (!style?.panels) return "";
-  return `:panels:${["title", "summary", "legend"].map((key) => {
-    const panel = style.panels?.[key as "title" | "summary" | "legend"];
-    return panel ? `${key}=${panel.x},${panel.y},${panel.w},${panel.h}` : `${key}=-`;
-  }).join(";")}`;
+  return `:panels:${pagePanelGeometryKey(style.panels)}`;
 };
 const styledMapKey = (base: string, p: PlannedSlide): string => pageStyleAffectsMap(p.style)
   ? `${base}:style:${p.key}${panelGeometryCacheKey(p.style)}`
