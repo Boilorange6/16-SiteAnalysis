@@ -319,7 +319,7 @@ type MapLayerProps = {
   onHideLabel?: (key: string) => void;
   selectedDecorationKey?: SurfaceDecorationKey | null;
   onDecorationSelect?: (key: SurfaceDecorationKey) => void;
-  onDecorationDelete?: (key: SurfaceDecorationKey) => void;
+  onDecorationDelete?: (key: SurfaceDecorationKey, cell?: number) => void;
   onMapHoverLegend?: (label: string | null) => void;
   mapEditEntry?: boolean;
   onMapMoveActive?: (active: boolean) => void;
@@ -1489,7 +1489,108 @@ function SourcesSurface({ slide, unit, basemap, thumbnail = false, fontHighlight
   );
 }
 
-function SheetSurface({ slide, unit, basemap, thumbnail = false, editable = false, selection, mapActive = false, onCellActivate, onSelect, onFrame, onMapMoveActive, onMapElementDelete, onMapLabelHide, onDecorationSelect, onDecorationDelete, fontHighlight, onFontContextMenu }: { slide: Extract<PlannedSlide, { kind: "sheet" }>; unit: number; basemap: BasemapChoice; thumbnail?: boolean; editable?: boolean; selection?: SurfaceSelection; mapActive?: boolean; onCellActivate?: (index: number) => void; onSelect?: (selection: SurfaceSelection) => void; onFrame?: (cell: number | undefined, patch: Partial<MapFrameState>) => void; onMapMoveActive?: (active: boolean) => void; onMapElementDelete?: (key: string) => void; onMapLabelHide?: (key: string) => void; onDecorationSelect?: (key: SurfaceDecorationKey) => void; onDecorationDelete?: (key: SurfaceDecorationKey) => void; fontHighlight?: FontTargetKey | null; onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void }) {
+function SheetCellEditSurface({ slide, cellIndex, unit, basemap, selection, mapActive = false, onSelect, onFrame, onMapMoveActive, onMapElementDelete, onMapLabelHide, onDecorationDelete, onDone, onNavigate, fontHighlight, onFontContextMenu }: { slide: Extract<PlannedSlide, { kind: "sheet" }>; cellIndex: number; unit: number; basemap: BasemapChoice; selection?: SurfaceSelection; mapActive?: boolean; onSelect?: (selection: SurfaceSelection) => void; onFrame?: (cell: number | undefined, patch: Partial<MapFrameState>) => void; onMapMoveActive?: (active: boolean) => void; onMapElementDelete?: (key: string) => void; onMapLabelHide?: (key: string) => void; onDecorationDelete?: (key: SurfaceDecorationKey, cell?: number) => void; onDone?: () => void; onNavigate?: (direction: -1 | 1) => void; fontHighlight?: FontTargetKey | null; onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void }) {
+  const format = (slide.format ?? "wide") as SlideFormat;
+  const styles = useSurfaceStyles();
+  const geometry = slideGeometry(format);
+  const cell = slide.cells[cellIndex] ?? null;
+  const rect = sheetCells(slide.grid as SheetGrid)[cellIndex] ?? { x: 0.3, y: 1.1, w: geometry.w - 0.6, h: geometry.h - 1.5 };
+  const ratio = rect.w / Math.max(0.01, rect.h);
+  const frameTop = 0.92;
+  const frameBottom = geometry.h - 0.45;
+  const frameMaxW = geometry.w - geometry.edge * 2;
+  const frameMaxH = frameBottom - frameTop;
+  const frameW = Math.min(frameMaxW, frameMaxH * ratio);
+  const frameH = frameW / ratio;
+  const frame = { x: (geometry.w - frameW) / 2, y: frameTop + (frameMaxH - frameH) / 2, w: frameW, h: frameH };
+  const map = cell?.view.map ?? cell?.view.backdrop ?? null;
+  const width = Math.max(1, Math.round(frame.w * unit));
+  const height = Math.max(1, Math.round(frame.h * unit));
+  const cellScaleOptions = cell?.reportFrame && map ? scaleOptionsForFrame(frame.w * 25.4, { width, height, siteX: 0.5, fill: 0.8 }) : null;
+  const cellStyle = cell?.reportFrame && map ? {
+    ...(cell.style ?? slide.style),
+    zoomDelta: cell.reportFrame.scaleDenominator === null ? cell.reportFrame.zoomDelta : zoomForScale(cell.reportFrame.scaleDenominator, map, cellScaleOptions!),
+    offsetM: cell.reportFrame.offsetM,
+  } : cell?.style ?? slide.style;
+  const selected = (selection?.kind === "map" || selection?.kind === "mapElement" || selection?.kind === "mapLabel" || selection?.kind === "decoration")
+    ? selection.cell === cellIndex
+    : selection?.kind === "sheetCell" && selection.cell === cellIndex;
+  const cellMapPatch = (patch: PreviewStylePatch) => {
+    if (!cell?.reportFrame || (cell.reportFrame.locked && (patch.zoomDelta !== undefined || patch.offsetM !== undefined))) return;
+    onFrame?.(cellIndex, patch as Partial<MapFrameState>);
+  };
+  const cellDirectPatch = (patch: PreviewStylePatch) => {
+    if (!cell?.reportFrame) return;
+    const patchFrame = labelFramePatch(cell.reportFrame, patch);
+    if (patchFrame) onFrame?.(cellIndex, patchFrame);
+  };
+  const cellLabelBoxChange = (key: string, box: MapLabelBox) => {
+    if (!cell?.reportFrame) return;
+    const patchFrame = labelBoxFramePatch(cell.reportFrame, key, box);
+    if (patchFrame) onFrame?.(cellIndex, patchFrame);
+  };
+  const cellLabelBoxReset = (key: string) => {
+    if (!cell?.reportFrame) return;
+    const patchFrame = resetLabelBoxFramePatch(cell.reportFrame, key);
+    if (patchFrame) onFrame?.(cellIndex, patchFrame);
+  };
+  const emptyPanels = { title: { x: 0, y: 0, w: 0, h: 0 }, summary: null, legend: null };
+  const elementSelection = selected && selection?.kind === "mapElement" ? selection : null;
+  const labelSelection = selected && selection?.kind === "mapLabel" ? selection : null;
+  const decorationSelection = selected && selection?.kind === "decoration" ? selection : null;
+  return (
+    <div className={styles.sheetCellEditSurface} data-sheet-cell-editing="true">
+      <div className={styles.sheetCellEditHeader} role="toolbar" aria-label="조판 칸 크게 편집">
+        <span className={styles.sheetCellEditLocation}>조판 {cellIndex + 1}번째 칸</span>
+        <strong>{cell?.view.title ?? "빈 칸"}</strong>
+        <span className={styles.sheetCellEditSpacer} />
+        <button type="button" className={styles.sheetCellEditNav} onClick={() => onNavigate?.(-1)} aria-label="이전 조판 칸">◀</button>
+        <button type="button" className={styles.sheetCellEditNav} onClick={() => onNavigate?.(1)} aria-label="다음 조판 칸">▶</button>
+        <button type="button" className={styles.sheetCellEditDone} onClick={onDone}>완료</button>
+      </div>
+      {!cell ? <div className={styles.sheetCellEditEmpty}>이 칸에는 타일이 없습니다.</div> : map ? (
+        <div className={styles.sheetCellEditMap} data-preview-map="true" data-map-cell-index={cellIndex} style={rectStyle(frame, unit)}>
+          <MapLayer
+            model={cell.reportFrame ? modelWithHiddenLayers(map, cell.reportFrame.hiddenLayers) : map}
+            style={cellStyle}
+            unit={unit}
+            basemap={basemap}
+            panels={emptyPanels}
+            siteX={0.5}
+            pinnedKeys={cell.reportFrame ? [...new Set([...(cell.pinnedKeys ?? []), ...cell.reportFrame.pinnedKeys])] : cell.pinnedKeys ?? slide.style.pinnedKeys ?? []}
+            interactive={mapActive && !cell.reportFrame?.locked}
+            pickable
+            selectedElementKey={elementSelection?.key ?? null}
+            selectedElementLabelVisible={elementSelection?.labelVisible}
+            selectedLabelKey={labelSelection?.key ?? null}
+            selectedDecorationKey={decorationSelection?.key ?? null}
+            onMapElementSelect={(feature) => onSelect?.({ kind: "mapElement", key: feature.key, cell: cellIndex, labelVisible: feature.labelVisible })}
+            onMapLabelSelect={(feature) => onSelect?.({ kind: "mapLabel", key: feature.key, cell: cellIndex })}
+            onDecorationSelect={(key) => onSelect?.({ kind: "decoration", key, cell: cellIndex })}
+            onDecorationDelete={(key) => { onSelect?.({ kind: "decoration", key, cell: cellIndex }); onDecorationDelete?.(key, cellIndex); }}
+            onLabelBoxChange={cellLabelBoxChange}
+            onLabelBoxReset={cellLabelBoxReset}
+            onDeleteElement={onMapElementDelete}
+            onHideLabel={onMapLabelHide}
+            mapEditEntry
+            onMapMoveActive={onMapMoveActive}
+            onPatch={cellMapPatch}
+            onDirectPatch={cellDirectPatch}
+            label={cell.view.title + " 지도"}
+            format={format}
+            frame={frame}
+            reportFrame={cell.reportFrame}
+            fontHighlight={fontHighlight}
+            onFontContextMenu={onFontContextMenu}
+          />
+        </div>
+      ) : <div className={styles.sheetCellEditEmpty}>이 칸은 지도 대신 도판으로 표시됩니다.</div>}
+    </div>
+  );
+}
+
+function SheetSurface({ slide, unit, basemap, thumbnail = false, editable = false, selection, mapActive = false, cellEditing, recentCell, onCellActivate, onCellEdit, onCellFit, onCellDelete, onCellDone, onCellNavigate, onSelect, onFrame, onMapMoveActive, onMapElementDelete, onMapLabelHide, onDecorationDelete, fontHighlight, onFontContextMenu }: { slide: Extract<PlannedSlide, { kind: "sheet" }>; unit: number; basemap: BasemapChoice; thumbnail?: boolean; editable?: boolean; selection?: SurfaceSelection; mapActive?: boolean; cellEditing?: number | null; recentCell?: number | null; onCellActivate?: (index: number) => void; onCellEdit?: (index: number) => void; onCellFit?: (index: number) => void; onCellDelete?: (index: number) => void; onCellDone?: () => void; onCellNavigate?: (direction: -1 | 1) => void; onSelect?: (selection: SurfaceSelection) => void; onFrame?: (cell: number | undefined, patch: Partial<MapFrameState>) => void; onMapMoveActive?: (active: boolean) => void; onMapElementDelete?: (key: string) => void; onMapLabelHide?: (key: string) => void; onDecorationDelete?: (key: SurfaceDecorationKey, cell?: number) => void; fontHighlight?: FontTargetKey | null; onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void }) {
+  if (cellEditing !== undefined && cellEditing !== null) return <SheetCellEditSurface slide={slide} cellIndex={cellEditing} unit={unit} basemap={basemap} selection={selection} mapActive={mapActive} onSelect={onSelect} onFrame={onFrame} onMapMoveActive={onMapMoveActive} onMapElementDelete={onMapElementDelete} onMapLabelHide={onMapLabelHide} onDecorationDelete={onDecorationDelete} onDone={onCellDone} onNavigate={onCellNavigate} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />;
   const format = (slide.format ?? "wide") as SlideFormat;
   const layoutName = slide.page?.layout ?? "map-summary";
   const styles = useSurfaceStyles();
@@ -1530,12 +1631,13 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, editable = fals
             ]);
              const mapSelection = selection?.kind === "map" || selection?.kind === "mapElement" || selection?.kind === "mapLabel" || selection?.kind === "decoration";
              const selectionCell = mapSelection ? selection.cell : undefined;
-             const cellSelected = mapSelection && (selectionCell === index || (selectionCell === undefined && index === 0));
+             const cellSelection = selection?.kind === "sheetCell" && selection.cell === index;
+             const cellSelected = cellSelection || (mapSelection && (selectionCell === index || (selectionCell === undefined && index === 0)));
             const cellElementKey = cellSelected && selection?.kind === "mapElement" ? selection.key : null;
              const cellLabelKey = cellSelected && selection?.kind === "mapLabel" ? selection.key : null;
              const cellDecorationKey = cellSelected && selection?.kind === "decoration" ? selection.key : null;
             const cellMapActive = cellSelected && selection?.kind === "map" && mapActive && !cell.reportFrame?.locked;
-            const cellEditableMap = editable && !thumbnail && !!onSelect && !!onFrame && !!cell.reportFrame;
+            const cellEditableMap = editable && !thumbnail && !!onSelect && !!onFrame && !!cell.reportFrame && cellSelected && mapSelection;
             const cellMapPatch = (patch: PreviewStylePatch) => {
               if (!cell.reportFrame || (cell.reportFrame.locked && (patch.zoomDelta !== undefined || patch.offsetM !== undefined))) return;
               onFrame?.(index, patch as Partial<MapFrameState>);
@@ -1614,7 +1716,19 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, editable = fals
               />
             ) : null;
             return (
-              <div className={styles.sheetCell + (cellEditableMap ? " " + styles.sheetCellInteractive : "")} data-map-cell-selected={cellSelected ? "true" : undefined} style={rectStyle(rect, unit)} key={cell.mapKey}>
+              <div
+                className={styles.sheetCell + (cellEditableMap ? " " + styles.sheetCellInteractive : "")}
+                data-map-cell-selected={cellSelected ? "true" : undefined}
+                data-sheet-cell-recent={recentCell === index ? "true" : undefined}
+                data-sheet-cell-index={index}
+                title={editable && !thumbnail ? `${cell.view.title} · 눌러 선택, 두 번 눌러 크게 편집` : undefined}
+                tabIndex={editable && !thumbnail ? 0 : undefined}
+                style={rectStyle(rect, unit)}
+                key={cell.mapKey}
+                onDoubleClick={(event) => { if (!editable || thumbnail) return; event.preventDefault(); event.stopPropagation(); onCellEdit?.(index); }}
+                onKeyDown={(event) => { if ((event.key === "Enter" || event.key === " ") && editable && !thumbnail) { event.preventDefault(); onCellEdit?.(index); } }}
+              >
+                {cellSelection && editable && !thumbnail && <ElementActionBar elementLabel={`${index + 1}번째 칸`} left={4} top={-48} actions={[{ key: "edit", label: "크게 편집", onClick: () => onCellEdit?.(index) }, { key: "fit", label: "범위 맞추기", onClick: () => onCellFit?.(index) }]} onDelete={() => onCellDelete?.(index)} />}
                 {chart ? <ChartPlaceholder view={cell.view} unit={unit} /> : model ? (
                   <div className={styles.sheetCellMap} data-surface-map="true" data-map-cell-index={index}>
                     {cellMap}
@@ -1746,7 +1860,7 @@ function PanelTransformFrame({ panelKey, rect, unit, xGuides, yGuides, onResizeS
   </>;
 }
 
-function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapActive, staticSurface = false, selection, fontHighlight, onFontContextMenu, onSelect, onMapMoveActive, onMapElementSelect, onMapLabelSelect, onLabelBoxChange, onLabelBoxReset, onDeleteElement, onHideLabel, onPanelDelete, onDecorationSelect, onDecorationDelete, onFrame, onTextBox, onText, textBoxEditingId, textBoxPlacement, onTextBoxPlacementMove, onTextBoxPlacementCommit, onTextBoxEditingChange, thumbnail = false, onSheetCellActivate, onPatch, onMapPatch, onDirectPatch }: { slide: PlannedSlide; basemap: BasemapChoice; editable: boolean; format?: SlideFormat; mapActive?: boolean; staticSurface?: boolean; selection?: SurfaceSelection; fontHighlight?: FontTargetKey | null; onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void; onSelect?: (selection: SurfaceSelection) => void; onMapMoveActive?: (active: boolean) => void; onMapElementSelect?: (feature: MapFigureElementPick) => void; onMapLabelSelect?: (feature: MapFigureElementPick) => void; onLabelBoxChange?: (key: string, box: MapLabelBox) => void; onLabelBoxReset?: (key: string) => void; onDeleteElement?: (key: string) => void; onHideLabel?: (key: string) => void; onPanelDelete?: (key: PanelKey) => void; onDecorationSelect?: (key: SurfaceDecorationKey) => void; onDecorationDelete?: (key: SurfaceDecorationKey) => void; onFrame?: (cell: number | undefined, patch: Partial<MapFrameState>) => void; onTextBox?: (box: TextBox | { id: string; remove: true }) => void; onText?: (kind: "title" | "summary") => void; textBoxEditingId?: string | null; textBoxPlacement?: TextBoxPlacement | null; onTextBoxPlacementMove?: (x: number, y: number) => void; onTextBoxPlacementCommit?: (x: number, y: number) => void; onTextBoxEditingChange?: (id: string | null) => void; thumbnail?: boolean; onSheetCellActivate?: (index: number) => void; onPatch: (patch: PreviewStylePatch) => void; onMapPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void }) {
+function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapActive, staticSurface = false, selection, fontHighlight, onFontContextMenu, onSelect, onMapMoveActive, onMapElementSelect, onMapLabelSelect, onLabelBoxChange, onLabelBoxReset, onDeleteElement, onHideLabel, onPanelDelete, onDecorationSelect, onDecorationDelete, onFrame, onTextBox, onText, textBoxEditingId, textBoxPlacement, onTextBoxPlacementMove, onTextBoxPlacementCommit, onTextBoxEditingChange, thumbnail = false, onSheetCellActivate, sheetCellEditing, sheetCellRecent, onSheetCellEdit, onSheetCellFit, onSheetCellDelete, onSheetCellDone, onSheetCellNavigate, onPatch, onMapPatch, onDirectPatch }: { slide: PlannedSlide; basemap: BasemapChoice; editable: boolean; format?: SlideFormat; staticSurface?: boolean; mapActive?: boolean; selection?: SurfaceSelection; fontHighlight?: FontTargetKey | null; onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void; onSelect?: (selection: SurfaceSelection) => void; onMapMoveActive?: (active: boolean) => void; onMapElementSelect?: (feature: MapFigureElementPick) => void; onMapLabelSelect?: (feature: MapFigureElementPick) => void; onLabelBoxChange?: (key: string, box: MapLabelBox) => void; onLabelBoxReset?: (key: string) => void; onDeleteElement?: (key: string) => void; onHideLabel?: (key: string) => void; onPanelDelete?: (key: PanelKey) => void; onDecorationSelect?: (key: SurfaceDecorationKey) => void; onDecorationDelete?: (key: SurfaceDecorationKey, cell?: number) => void; onFrame?: (cell: number | undefined, patch: Partial<MapFrameState>) => void; onTextBox?: (box: TextBox | { id: string; remove: true }) => void; onText?: (kind: "title" | "summary") => void; textBoxEditingId?: string | null; textBoxPlacement?: TextBoxPlacement | null; onTextBoxPlacementMove?: (x: number, y: number) => void; onTextBoxPlacementCommit?: (x: number, y: number) => void; onTextBoxEditingChange?: (id: string | null) => void; thumbnail?: boolean; onSheetCellActivate?: (index: number) => void; sheetCellEditing?: number | null; sheetCellRecent?: number | null; onSheetCellEdit?: (index: number) => void; onSheetCellFit?: (index: number) => void; onSheetCellDelete?: (index: number) => void; onSheetCellDone?: () => void; onSheetCellNavigate?: (direction: -1 | 1) => void; onPatch: (patch: PreviewStylePatch) => void; onMapPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void }) {
   const format = (requestedFormat ?? (slide.format as SlideFormat | undefined) ?? "wide");
   const styles = useSurfaceStyles();
   const slotRef = useRef<HTMLDivElement>(null);
@@ -1990,6 +2104,12 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
           onPointerDownCapture={(event) => {
             const target = event.target as HTMLElement;
             if (target.closest("[data-map-pick], [data-map-label-selection], [data-map-label-handle], [data-map-selection-toolbar], [data-element-action-bar], [data-report-decoration]")) return;
+            const sheetCellTarget = target.closest<HTMLElement>("[data-sheet-cell-index]");
+            if (displaySlide.kind === "sheet" && sheetCellTarget && !mapActive && onSheetCellActivate) {
+              const index = Number(sheetCellTarget.dataset.sheetCellIndex);
+              if (Number.isInteger(index) && index >= 0) onSheetCellActivate(index);
+              return;
+            }
             if (onMapArea(event)) {
               target.closest<HTMLElement>("[data-preview-map]")?.focus({ preventScroll: true });
               const cell = mapCellFromTarget(target);
@@ -2031,7 +2151,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
          {displaySlide.kind === "cover" && displaySlide.page?.kind !== "blank" && <CoverSurface slide={displaySlide} unit={unit} basemap={basemap} interactive={!!(mapSelectable && editable && (mapActive ?? editable) && !!displayModel)} thumbnail={thumbnail} onPatch={onMapPatch} onDirectPatch={onDirectPatch} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />}
          {displaySlide.kind === "sources" && <SourcesSurface slide={displaySlide} unit={unit} basemap={basemap} thumbnail={thumbnail} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />}
          {displaySlide.kind === "cover" && displaySlide.page?.kind === "blank" && <BlankSurface unit={unit} />}
-         {displaySlide.kind === "sheet" && <SheetSurface slide={displaySlide} unit={unit} basemap={basemap} thumbnail={thumbnail} editable={editable} selection={selection} mapActive={!!mapActive} onCellActivate={onSheetCellActivate} onSelect={onSelect} onFrame={onFrame} onMapMoveActive={onMapMoveActive} onMapElementDelete={onDeleteElement} onMapLabelHide={onHideLabel} onDecorationSelect={(key) => onSelect?.({ kind: "decoration", key, cell: selection?.kind === "decoration" ? selection.cell : undefined })} onDecorationDelete={onDecorationDelete} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />}
+         {displaySlide.kind === "sheet" && <SheetSurface slide={displaySlide} unit={unit} basemap={basemap} thumbnail={thumbnail} editable={editable} selection={selection} mapActive={!!mapActive} cellEditing={sheetCellEditing} recentCell={sheetCellRecent} onCellActivate={onSheetCellActivate} onCellEdit={onSheetCellEdit} onCellFit={onSheetCellFit} onCellDelete={onSheetCellDelete} onCellDone={onSheetCellDone} onCellNavigate={onSheetCellNavigate} onSelect={onSelect} onFrame={onFrame} onMapMoveActive={onMapMoveActive} onMapElementDelete={onDeleteElement} onMapLabelHide={onHideLabel} onDecorationDelete={onDecorationDelete} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />}
          {displaySlide.kind === "tile" && <TileSurface slide={displaySlide} unit={unit} basemap={basemap} panels={panels} interactive={!!(editable && (mapActive ?? editable) && !!displayModel)} pickable={mapPickable} selection={selection} mapEditEntry={editable && mapSelectable && !thumbnail} onMapMoveActive={onMapMoveActive} onMapElementSelect={(feature) => onSelect?.({ kind: "mapElement", key: feature.key, labelVisible: feature.labelVisible })} onMapLabelSelect={(feature) => onSelect?.({ kind: "mapLabel", key: feature.key })} onLabelBoxChange={onLabelBoxChange} onLabelBoxReset={onLabelBoxReset} onDeleteElement={onDeleteElement} onHideLabel={onHideLabel} onPanelDelete={onPanelDelete} onDecorationSelect={onDecorationSelect} onDecorationDelete={onDecorationDelete} thumbnail={thumbnail} onPatch={onMapPatch} onDirectPatch={onDirectPatch} panelInteraction={editable ? panelInteraction : undefined} staticSurface={staticSurface} onText={onText} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />}
         {displaySlide.page?.textBoxes && <TextBoxSurface boxes={displaySlide.page.textBoxes} unit={unit} selectedId={selection?.kind === "textBox" ? selection.id : undefined} startEditingId={textBoxEditingId} maxWidth={size.w} maxHeight={size.h} editable={editable} onSelect={onSelect} onTextBox={onTextBox} onEditingChange={onTextBoxEditingChange} />}
         {editable && textBoxPlacement && onTextBoxPlacementMove && onTextBoxPlacementCommit && <TextBoxPlacementLayer placement={textBoxPlacement} unit={unit} maxWidth={size.w} maxHeight={size.h} onMove={onTextBoxPlacementMove} onCommit={onTextBoxPlacementCommit} />}
@@ -2111,6 +2231,13 @@ export type SlideSurfaceProps = {
   onMapStylePatch?: (patch: PreviewStylePatch) => void;
   onDirectStylePatch?: (patch: PreviewStylePatch) => void;
   onSheetCellActivate?: (index: number) => void;
+  sheetCellEditing?: number | null;
+  sheetCellRecent?: number | null;
+  onSheetCellEdit?: (index: number) => void;
+  onSheetCellFit?: (index: number) => void;
+  onSheetCellDelete?: (index: number) => void;
+  onSheetCellDone?: () => void;
+  onSheetCellNavigate?: (direction: -1 | 1) => void;
   onMapElementDelete?: (key: string) => void;
   onMapLabelHide?: (key: string) => void;
   onPanelDelete?: (key: PanelKey | "source") => void;
@@ -2147,6 +2274,13 @@ export function SlideSurface({
   onPanelDelete,
   onDecorationSelect,
   onDecorationDelete,
+  sheetCellEditing,
+  sheetCellRecent,
+  onSheetCellEdit,
+  onSheetCellFit,
+  onSheetCellDelete,
+  onSheetCellDone,
+  onSheetCellNavigate,
   classMap,
 }: SlideSurfaceProps) {
   const format = (slide.format ?? "wide") as SlideFormat;
@@ -2220,6 +2354,13 @@ export function SlideSurface({
               onTextBoxPlacementCommit={onTextBoxPlacementCommit}
               onTextBoxEditingChange={onTextBoxEditingChange}
               onSheetCellActivate={mode === "edit" ? cellActivate : undefined}
+              sheetCellEditing={mode === "edit" ? sheetCellEditing : null}
+              sheetCellRecent={mode === "edit" ? sheetCellRecent : null}
+              onSheetCellEdit={mode === "edit" ? onSheetCellEdit : undefined}
+              onSheetCellFit={mode === "edit" ? onSheetCellFit : undefined}
+              onSheetCellDelete={mode === "edit" ? onSheetCellDelete : undefined}
+              onSheetCellDone={mode === "edit" ? onSheetCellDone : undefined}
+              onSheetCellNavigate={mode === "edit" ? onSheetCellNavigate : undefined}
               onPatch={mapPatch}
               onMapPatch={mapPatch}
               onDirectPatch={directPatch}

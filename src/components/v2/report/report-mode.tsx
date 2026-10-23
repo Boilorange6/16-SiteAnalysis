@@ -34,6 +34,7 @@ import legacySurfaceStyles from "../report-surface.module.css";
 import localSurfaceStyles from "./slide-surface.module.css";
 
 type ReportHistory = { past: ReportDoc[]; present: ReportDoc; future: ReportDoc[] };
+type SheetCellEditing = { pageId: string; cell: number };
 type RailKey = ReportRailKey;
 const surfaceClassMap = { ...legacySurfaceStyles, ...localSurfaceStyles };
 
@@ -240,6 +241,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const [compareGrid, setCompareGrid] = useState<"2x2" | "3x2" | "3x1">("2x2");
   const [compareSelected, setCompareSelected] = useState<string[]>([]);
   const [selection, setSelection] = useState<SurfaceSelection>(null);
+  const [sheetCellEditing, setSheetCellEditing] = useState<SheetCellEditing | null>(null);
+  const [recentSheetCell, setRecentSheetCell] = useState<{ pageId: string; cell: number } | null>(null);
   const [mapMoveActive, setMapMoveActive] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [lockAttention, setLockAttention] = useState(false);
@@ -331,6 +334,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     setSelectedId(history.present.pages[0]?.id ?? null);
     setSelectedSlideKey(null);
     setSelection(null);
+    setSheetCellEditing(null);
+    setRecentSheetCell(null);
     setTextBoxPlacement(null);
     setTextBoxEditingId(null);
     setMapMoveActive(false);
@@ -344,6 +349,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     setSelectedId(id);
     setSelectedSlideKey(slideKey);
     setSelection(null);
+    setSheetCellEditing(null);
+    setRecentSheetCell(null);
     setTextBoxPlacement(null);
     setTextBoxEditingId(null);
     setMapMoveActive(false);
@@ -817,6 +824,20 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   }, []);
   const handleSurfaceSelect = useCallback((next: SurfaceSelection) => {
     const current = { selected: selection?.kind === "map", moveActive: mapMoveActive, settingsOpen };
+    if (next?.kind === "sheetCell") {
+      const page = history.present.pages.find((candidate) => candidate.id === selectedId);
+      if (page?.kind !== "compare" || !page.cells[next.cell]) return;
+      setFontHighlight(null);
+      closeFontContext(false);
+      setActivePopover(null);
+      setSelection(next);
+      setSheetCellEditing((editing) => editing?.pageId === page.id ? editing : null);
+      setMapMoveActive(false);
+      setSettingsOpen(false);
+      setTextBoxEditingId(null);
+      setRail(null);
+      return;
+    }
     if (next?.kind === "mapElement" || next?.kind === "mapLabel") {
       const page = history.present.pages.find((candidate) => candidate.id === selectedId);
       if (!reportPageMapSelectable(page)) return;
@@ -906,6 +927,49 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
 
   const selectedPage = selectedId ? history.present.pages.find((page) => page.id === selectedId) : undefined;
   const selectedPageNumber = selectedId ? history.present.pages.findIndex((page) => page.id === selectedId) + 1 : null;
+  const beginSheetCellEdit = useCallback((cell: number) => {
+    if (!selectedPage || selectedPage.kind !== "compare" || !selectedPage.cells[cell]) return;
+    closeFontContext(false);
+    setActivePopover(null);
+    setRail(null);
+    setSettingsOpen(false);
+    setMapMoveActive(false);
+    setSelection({ kind: "sheetCell", cell });
+    setSheetCellEditing({ pageId: selectedPage.id, cell });
+  }, [closeFontContext, selectedPage]);
+  const finishSheetCellEdit = useCallback(() => {
+    const current = sheetCellEditing;
+    setSheetCellEditing(null);
+    setMapMoveActive(false);
+    if (!current) return;
+    setSelection({ kind: "sheetCell", cell: current.cell });
+    setRecentSheetCell({ pageId: current.pageId, cell: current.cell });
+    window.setTimeout(() => setRecentSheetCell((value) => value?.pageId === current.pageId && value.cell === current.cell ? null : value), 900);
+  }, [sheetCellEditing]);
+  const navigateSheetCell = useCallback((direction: -1 | 1) => {
+    if (!sheetCellEditing || !selectedPage || selectedPage.kind !== "compare" || sheetCellEditing.pageId !== selectedPage.id) return;
+    const cells = selectedPage.cells.map((cell, index) => cell ? index : -1).filter((index): index is number => index >= 0);
+    const current = cells.indexOf(sheetCellEditing.cell);
+    const next = cells[current + direction];
+    if (next === undefined) return;
+    setSelection({ kind: "sheetCell", cell: next });
+    setSheetCellEditing({ pageId: selectedPage.id, cell: next });
+  }, [selectedPage, sheetCellEditing]);
+  const activeSheetCellIndex = sheetCellEditing && sheetCellEditing.pageId === selectedPage?.id ? sheetCellEditing.cell : null;
+  const recentSheetCellIndex = recentSheetCell && recentSheetCell.pageId === selectedPage?.id ? recentSheetCell.cell : null;
+  const fitSheetCell = useCallback((cell: number) => {
+    if (!selectedId || selectedPage?.kind !== "compare" || !selectedPage.cells[cell]) return;
+    apply({ type: "copyExtent", id: selectedId, cell }, "이 칸의 범위를 다른 칸에 맞췄습니다.");
+  }, [apply, selectedId, selectedPage]);
+  const deleteSheetCell = useCallback((cell: number) => {
+    if (!selectedId || selectedPage?.kind !== "compare" || !selectedPage.cells[cell]) return;
+    const title = views.get(selectedPage.cells[cell]!.tileId)?.title ?? "타일";
+    apply({ type: "removeCell", id: selectedId, cell }, `${title}을 조판에서 뺐습니다. Ctrl+Z로 되돌릴 수 있습니다.`);
+    setSheetCellEditing(null);
+    setSelection(null);
+    setMapMoveActive(false);
+    setSettingsOpen(false);
+  }, [apply, selectedId, selectedPage, views]);
   const changeFontSize = useCallback((scope: FontSizeScope, key: FontSizeKey, delta: number) => {
     if (!selectedId) return;
     const base = scope === "page"
@@ -950,7 +1014,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const selectedPageMapSelectable = reportPageMapSelectable(selectedPage);
   const editableMapPage = selectedPage?.kind === "tile" || selectedPage?.kind === "compare" ? selectedPage : null;
   const mapCell = selectedPage?.kind === "compare"
-    ? ((selection?.kind === "map" || selection?.kind === "mapElement" || selection?.kind === "mapLabel" || selection?.kind === "decoration") && selection.cell !== undefined ? selection.cell : 0)
+    ? ((selection?.kind === "map" || selection?.kind === "mapElement" || selection?.kind === "mapLabel" || selection?.kind === "decoration" || selection?.kind === "sheetCell") && selection.cell !== undefined ? selection.cell : 0)
     : undefined;
   const mapFrame = selectedPage?.kind === "tile"
     ? selectedPage.frame
@@ -989,14 +1053,16 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     setMapMoveActive(false);
     setSettingsOpen(false);
   }, [apply, applyFrame, mapCell, mapFrame, selectedId]);
-  const deleteDecoration = useCallback((key: "north" | "scaleBar" | "locator") => {
+  const deleteDecoration = useCallback((key: "north" | "scaleBar" | "locator", cell = mapCell) => {
     if (!mapFrame) return;
     const labels = { north: "방위표", scaleBar: "축척 막대", locator: "위치도" } as const;
-    applyFrame(mapCell, { decorations: { ...mapFrame.decorations, [key]: false } }, `${labels[key]}를 지웠습니다. Ctrl+Z로 되돌릴 수 있습니다.`);
+    const targetFrame = selectedPage?.kind === "compare" ? selectedPage.cells[cell ?? 0]?.frame : mapFrame;
+    if (!targetFrame) return;
+    applyFrame(cell, { decorations: { ...targetFrame.decorations, [key]: false } }, `${labels[key]}를 지웠습니다. Ctrl+Z로 되돌릴 수 있습니다.`);
     setSelection(null);
     setMapMoveActive(false);
     setSettingsOpen(false);
-  }, [applyFrame, mapCell, mapFrame]);
+  }, [applyFrame, mapCell, mapFrame, selectedPage]);
   const deleteFontContextElement = useCallback(() => {
     const key = fontContext?.key;
     if (!key) return;
@@ -1075,13 +1141,29 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
       if (selection.kind === "mapElement") deleteMapElement(selection.key);
       else if (selection.kind === "mapLabel") hideMapLabel(selection.key);
       else if (selection.kind === "decoration") deleteDecoration(selection.key);
+      else if (selection.kind === "sheetCell") deleteSheetCell(selection.cell);
       else if (selection.kind === "panel") deletePageElement(selection.key);
       else if (selection.kind === "element") deletePageElement(selection.key);
       else if (selection.kind === "textBox") applyTextBox({ id: selection.id, remove: true });
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [applyTextBox, deleteDecoration, deleteMapElement, deletePageElement, hideMapLabel, selection]);
+  }, [applyTextBox, deleteDecoration, deleteMapElement, deletePageElement, deleteSheetCell, hideMapLabel, selection]);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (isTypingTarget(target) || target?.closest('[role="menu"], [role="dialog"], input, textarea, select, [contenteditable="true"]')) return;
+      if (event.key === "Enter" && selection?.kind === "sheetCell" && !sheetCellEditing) {
+        event.preventDefault();
+        beginSheetCellEdit(selection.cell);
+      } else if (event.key === "Escape" && sheetCellEditing && !mapMoveActive && !settingsOpen && selection?.kind !== "map") {
+        event.preventDefault();
+        finishSheetCellEdit();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [beginSheetCellEdit, finishSheetCellEdit, mapMoveActive, selection, settingsOpen, sheetCellEditing]);
   const mapScaleOptions = selectedPage
     ? selectedPage.kind === "compare"
       ? (() => {
@@ -1299,7 +1381,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
             ) : selectedSlide ? (
               <>
                 <div className={styles.stageSlide}>
-                   <SlideSurface slide={selectedSlide} basemap={basemap} mode="edit" selection={selection} fontHighlight={fontHighlight} onFontContextMenu={openFontContext} onSelect={handleSurfaceSelect} onMapMoveActive={setMapMoveFromSurface} onFrame={applyFrame} onPanels={applyPanels} onTextBox={applyTextBox} onText={editPanelText} textBoxEditingId={textBoxEditingId} textBoxPlacement={textBoxPlacement} onTextBoxPlacementMove={moveTextBoxPlacement} onTextBoxPlacementCommit={commitTextBoxPlacement} onTextBoxEditingChange={setTextBoxEditingId} onMapElementDelete={deleteMapElement} onMapLabelHide={hideMapLabel} onPanelDelete={deletePageElement} onDecorationSelect={(key) => handleSurfaceSelect({ kind: "decoration", key })} onDecorationDelete={deleteDecoration} onDirectStylePatch={() => undefined} onSheetCellActivate={(index) => { handleSurfaceSelect({ kind: "sheetCell", cell: index }); setMapMoveActive(false); }} mapActive={mapEditing} classMap={surfaceClassMap} />
+                   <SlideSurface slide={selectedSlide} basemap={basemap} mode="edit" selection={selection} fontHighlight={fontHighlight} onFontContextMenu={openFontContext} onSelect={handleSurfaceSelect} onMapMoveActive={setMapMoveFromSurface} onFrame={applyFrame} onPanels={applyPanels} onTextBox={applyTextBox} onText={editPanelText} textBoxEditingId={textBoxEditingId} textBoxPlacement={textBoxPlacement} onTextBoxPlacementMove={moveTextBoxPlacement} onTextBoxPlacementCommit={commitTextBoxPlacement} onTextBoxEditingChange={setTextBoxEditingId} onMapElementDelete={deleteMapElement} onMapLabelHide={hideMapLabel} onPanelDelete={deletePageElement} onDecorationSelect={(key) => handleSurfaceSelect({ kind: "decoration", key })} onDecorationDelete={deleteDecoration} onDirectStylePatch={() => undefined} onSheetCellActivate={(index) => { handleSurfaceSelect({ kind: "sheetCell", cell: index }); setMapMoveActive(false); }} sheetCellEditing={activeSheetCellIndex} sheetCellRecent={recentSheetCellIndex} onSheetCellEdit={beginSheetCellEdit} onSheetCellFit={fitSheetCell} onSheetCellDelete={deleteSheetCell} onSheetCellDone={finishSheetCellEdit} onSheetCellNavigate={navigateSheetCell} mapActive={mapEditing} classMap={surfaceClassMap} />
                 </div>
               </>
             ) : <div className={styles.emptyCanvas}>이 페이지는 아직 미리보기를 준비하고 있습니다.</div>}

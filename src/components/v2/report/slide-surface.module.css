@@ -207,6 +207,61 @@
 .decorationHitTarget[data-decoration-selected="true"] { border-color: #2f6fdb; box-shadow: 0 0 0 2px rgba(47,111,219,.2); }
 .decorationHitTarget:focus-visible { outline: 2px solid #2f6fdb; outline-offset: 2px; }
 
+.sheetCellEditSurface {
+  position: absolute;
+  inset: 0;
+  z-index: 18;
+  background: #fff;
+}
+
+.sheetCellEditHeader {
+  position: absolute;
+  z-index: 22;
+  top: .18rem;
+  left: .3rem;
+  right: .3rem;
+  display: flex;
+  align-items: center;
+  gap: .32rem;
+  min-height: 2.25rem;
+  padding: .22rem .34rem .22rem .55rem;
+  color: #15171c;
+  background: #fff;
+  border: 1px solid #dfe2e7;
+  border-radius: 9px;
+  box-shadow: 0 2px 8px rgba(21, 23, 28, .08);
+  font-size: 12px;
+}
+
+.sheetCellEditLocation { color: #676c76; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.sheetCellEditHeader strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sheetCellEditSpacer { flex: 1; }
+.sheetCellEditNav,
+.sheetCellEditDone {
+  min-width: 40px;
+  min-height: 34px;
+  padding: 0 9px;
+  color: #26364e;
+  background: #f3f5f8;
+  border: 1px solid #dfe2e7;
+  border-radius: 7px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+.sheetCellEditNav:hover,
+.sheetCellEditNav:focus-visible { background: #e8edf5; }
+.sheetCellEditDone { color: #fff; background: #2f6fdb; border-color: #2f6fdb; }
+.sheetCellEditDone:hover,
+.sheetCellEditDone:focus-visible { background: #2563c9; }
+.sheetCellEditNav:focus-visible,
+.sheetCellEditDone:focus-visible { outline: 2px solid #2f6fdb; outline-offset: 2px; }
+.sheetCellEditMap { position: absolute; overflow: visible; border: 2px solid #2f6fdb; border-radius: 8px; box-shadow: 0 0 0 5px rgba(47, 111, 219, .12); }
+.sheetCellEditEmpty { position: absolute; inset: 3rem 0 0; display: grid; place-items: center; color: #676c76; font-size: 13px; }
+
+:global([data-sheet-cell-recent="true"]) { outline: 3px solid #2f6fdb; outline-offset: 3px; }
+:global([data-sheet-cell-index][data-map-cell-selected="true"]) { outline: 2px solid #2f6fdb; outline-offset: 2px; }
+
 .mapSelectionToolbarButton,
 .mapSelectionSwitch {
   min-width: 40px;

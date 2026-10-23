@@ -172,6 +172,7 @@ export type ReportDocAction =
   | { type: "grid"; id: string; grid: "2x2" | "3x2" | "3x1" }
   | { type: "frame"; id: string; cell?: number; patch: Partial<MapFrameState>; force?: boolean }
   | { type: "copyExtent"; id: string; cell: number }
+  | { type: "removeCell"; id: string; cell: number }
   | { type: "sameExtent"; id: string; value: boolean }
   | { type: "pageElement"; id: string; key: PageElementKey; deleted: boolean }
   | { type: "panels"; id: string; panels: PagePanels }
@@ -415,6 +416,13 @@ function copyExtent(page: ReportPage, cell: number): ReportPage {
   return next;
 }
 
+function removeCompareCell(page: ReportPage, cell: number): ReportPage {
+  if (page.kind !== "compare" || !Number.isInteger(cell) || cell < 0 || cell >= page.cells.length || !page.cells[cell]) return page;
+  const next = clonePage(page) as Extract<ReportPage, { kind: "compare" }>;
+  next.cells[cell] = null;
+  return next;
+}
+
 function resetPanels(page: ReportPage): ReportPage {
   const next = clonePage(page);
   next.panels = {};
@@ -464,6 +472,8 @@ export function reportDocReducer(doc: ReportDoc, action: ReportDocAction): Repor
       return updatePage(doc, action.id, (page) => updateFrame(page, action.cell, action.patch, action.force));
     case "copyExtent":
       return updatePage(doc, action.id, (page) => copyExtent(page, action.cell));
+    case "removeCell":
+      return updatePage(doc, action.id, (page) => removeCompareCell(page, action.cell));
     case "sameExtent":
       return updatePage(doc, action.id, (page) => page.kind === "compare" ? { ...page, sameExtent: action.value } : page);
     case "pageElement":

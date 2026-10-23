@@ -36,4 +36,13 @@ assert.equal(gridChanged.pages[0].grid, "3x2", "격자 변경은 compare grid만
 assert.equal(gridChanged.pages[0].cells[0].frame.zoomDelta, 1, "격자 변경은 첫 칸 frame을 보존한다");
 assert.equal(gridChanged.pages[0].cells[1].frame.offsetM[1], -2, "격자 변경은 다른 칸 frame도 보존한다");
 
+const fitted = reportDocReducer({ v: 1, format: "wide", pages: [comparePage] }, { type: "copyExtent", id: "p1", cell: 1 });
+assert.equal(fitted.pages[0].cells[0].frame.zoomDelta, -1, "범위 맞추기는 선택 칸의 축척을 모든 칸에 복사한다");
+assert.deepEqual(fitted.pages[0].cells[0].frame.offsetM, [-1, -2], "범위 맞추기는 선택 칸의 이동을 모든 칸에 복사한다");
+assert.deepEqual(fitted.pages[0].cells[1].frame.offsetM, [-1, -2], "범위 맞추기는 한 history action으로 선택 칸도 유지한다");
+
+const removedCell = reportDocReducer({ v: 1, format: "wide", pages: [comparePage] }, { type: "removeCell", id: "p1", cell: 0 });
+assert.equal(removedCell.pages[0].cells[0], null, "조판 칸 지우기는 빈 슬롯으로 되돌린다");
+assert.equal(removedCell.pages[0].cells[1].tileId, "t2", "조판 칸 지우기는 다른 칸 위치를 당기지 않는다");
+
 console.log("v2 report layout contract tests passed");
