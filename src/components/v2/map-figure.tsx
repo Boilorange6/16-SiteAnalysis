@@ -85,6 +85,8 @@ export type MapFigureProps = {
   scaleBoxOverride?: { x0: number; y0: number; x1: number; y1: number };
   /** 저장된 축척 막대의 굵기·글자 배율. */
   scaleChromeScale?: number;
+  /** 보고서 축척 글자 크기 배율(기본 9pt). */
+  scaleFontScale?: number;
   /** 대지 중심의 세로 위치(0~1, 기본 0.5). 아래에서 올라오는 시트가 있으면 위로 옮긴다 */
   siteY?: number;
   /** 콜아웃 칸의 위쪽(px). 보고서 미리보기·PPT가 공용 회피 레이아웃을 전달할 때 쓴다. */
@@ -377,7 +379,7 @@ function backgroundTransform(from: Viewport, to: Viewport, width: number, height
   return `matrix(${scale},0,0,${scale},${e},${f})`;
 }
 
-function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, backgroundOnly = false, fixed, layoutUnit, labelScale = 1, compact = false, label, legend, legendY, north: northOpt, northX, northScale, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = EMPTY_BOXES, siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, scaleY, scaleBoxOverride, scaleChromeScale, siteY = 0.5, calloutTop: calloutTopOpt, calloutLeftBottom, selectedFids = EMPTY_KEYS, terrainSection = "A", highlightLabel = null, legendFocus = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = EMPTY_KEYS, showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeatureSelect, onLabelSelect, onFeaturePin, onLegendHover, onLegendPin, path = EMPTY_PATH, onMapClick, view, viewport, dragging = false, previewInteraction = false, preserveShortCalloutLabels = false, hiddenKeys = EMPTY_KEYS, deletedElementKeys = EMPTY_KEYS, labelBoxes = EMPTY_LABEL_BOXES, onLabelBoxChange, onLabelBoxReset, selectedElementKey = null, selectedLabelKey = null }: MapFigureProps) {
+function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, backgroundOnly = false, fixed, layoutUnit, labelScale = 1, compact = false, label, legend, legendY, north: northOpt, northX, northScale, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = EMPTY_BOXES, siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, scaleY, scaleBoxOverride, scaleChromeScale, scaleFontScale, siteY = 0.5, calloutTop: calloutTopOpt, calloutLeftBottom, selectedFids = EMPTY_KEYS, terrainSection = "A", highlightLabel = null, legendFocus = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = EMPTY_KEYS, showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeatureSelect, onLabelSelect, onFeaturePin, onLegendHover, onLegendPin, path = EMPTY_PATH, onMapClick, view, viewport, dragging = false, previewInteraction = false, preserveShortCalloutLabels = false, hiddenKeys = EMPTY_KEYS, deletedElementKeys = EMPTY_KEYS, labelBoxes = EMPTY_LABEL_BOXES, onLabelBoxChange, onLabelBoxReset, selectedElementKey = null, selectedLabelKey = null }: MapFigureProps) {
   if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
     const target = window as Window & { __V2_PREVIEW_METRICS__?: Record<string, number> };
     const metrics = target.__V2_PREVIEW_METRICS__ ?? (target.__V2_PREVIEW_METRICS__ = {});
@@ -573,6 +575,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     scaleY,
     scaleBoxOverride,
     scaleChromeScale,
+    scaleFontScale,
     scale,
     showRadius,
     showSiteMarker,
@@ -602,7 +605,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     legendFocus,
     layoutUnit: u,
     labelScale: safeLabelScale,
-  }), [activeLayer, avoid, bare, bottomInset, calloutLeftBottom, calloutTopOpt, compact, deletedElementKeys, effectiveLabelBoxes, emphasisKey, fill, fixed, H, hiddenKeys, highlightLabel, layoutUnit, legendFocus, mapCenterY, mapFill, mapSiteX, mapSiteY, muted, model, northOpt, northScale, northX, panelH, panelW, panelX, panelY, path, rightInset, safeLabelScale, scale, scaleChromeScale, scaleLeft, scaleX, scaleY, scaleBoxOverride, sceneDragging, sceneHoverKey, showAutomaticLabels, showLegend, showRadius, showSiteMarker, siteX, selectedFids, terrainSection, pinnedKeys, W, view, viewport]);
+  }), [activeLayer, avoid, bare, bottomInset, calloutLeftBottom, calloutTopOpt, compact, deletedElementKeys, effectiveLabelBoxes, emphasisKey, fill, fixed, H, hiddenKeys, highlightLabel, layoutUnit, legendFocus, mapCenterY, mapFill, mapSiteX, mapSiteY, muted, model, northOpt, northScale, northX, panelH, panelW, panelX, panelY, path, rightInset, safeLabelScale, scale, scaleChromeScale, scaleFontScale, scaleLeft, scaleX, scaleY, scaleBoxOverride, sceneDragging, sceneHoverKey, showAutomaticLabels, showLegend, showRadius, showSiteMarker, siteX, selectedFids, terrainSection, pinnedKeys, W, view, viewport]);
   const vp = scene.viewport;
   const proj = makeProjector(vp);
   const mpp = scene.mpp;
@@ -610,6 +613,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
   const R = scene.radiusPx;
   const northUnit = scene.northUnit;
   const scaleUnit = scene.unit * scene.scaleChromeScale;
+  const scaleTextUnit = scene.unit * scene.scaleChromeScale * scene.scaleFontScale;
 
   const tiles = basemap === "tiles" ? scene.tiles : [];
   const stack = BASEMAP_STACK[activeLayer];
@@ -1706,7 +1710,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
             <>
               <rect x={scene.scaleBox.x0} y={scene.scaleBox.y0} width={scene.scaleBox.x1 - scene.scaleBox.x0} height={scene.scaleBox.y1 - scene.scaleBox.y0} rx={5 * scaleUnit} fill="#fff" fillOpacity={0.85} />
               <path d={`M${barX0} ${barY - 4 * scaleUnit}V${barY}H${barX1}V${barY - 4 * scaleUnit}`} fill="none" stroke={INK} strokeWidth={1.6 * scaleUnit} />
-              <text x={barX0 + bar.px / 2} y={barY - 6 * scaleUnit} fontSize={9.5 * scaleUnit} fontWeight={700} textAnchor="middle" fill={INK}>
+              <text x={barX0 + bar.px / 2} y={barY - 6 * scaleTextUnit} fontSize={9.5 * scaleTextUnit} fontWeight={700} textAnchor="middle" fill={INK}>
                 {bar.label}
               </text>
             </>

@@ -403,6 +403,8 @@ export type MapSceneOptions = {
   scaleBoxOverride?: MapSceneBox;
   /** 저장된 축척 막대 사각형에서 계산한 굵기·글자 배율. */
   scaleChromeScale?: number;
+  /** 보고서 축척 글자 pt를 기존 장면의 9pt 기준으로 환산한 배율. */
+  scaleFontScale?: number;
 };
 
 export type MapScene = {
@@ -430,6 +432,7 @@ export type MapScene = {
   north: { x: number; y: number } | null;
   northUnit: number;
   scaleChromeScale: number;
+  scaleFontScale: number;
   routePoints: Array<[number, number]>;
   labels: MapSceneLabel[];
   labelPlacements: MapSceneLabelPlacement[];
@@ -993,6 +996,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     scaleY,
     scaleBoxOverride,
     scaleChromeScale: scaleChromeScaleOpt = 1,
+    scaleFontScale: scaleFontScaleOpt = 1,
   } = options;
   const layer = model.basemap ?? activeLayer;
   const sat = layer === "Satellite";
@@ -1000,6 +1004,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   const u = layoutUnit ?? Math.min(1.5, Math.max(1, H / 360));
   const northScale = Number.isFinite(northScaleOpt) && northScaleOpt > 0 ? Math.min(3, Math.max(0.5, northScaleOpt)) : 1;
   const scaleChromeScale = Number.isFinite(scaleChromeScaleOpt) && scaleChromeScaleOpt > 0 ? Math.min(3, Math.max(0.5, scaleChromeScaleOpt)) : 1;
+  const scaleFontScale = Number.isFinite(scaleFontScaleOpt) && scaleFontScaleOpt > 0 ? Math.min(3, Math.max(0.5, scaleFontScaleOpt)) : 1;
   const northUnit = u * northScale;
   const labelScale = Number.isFinite(labelScaleOpt) && labelScaleOpt > 0 ? labelScaleOpt : 1;
   const vp = viewportOpt ?? applyView(framedViewport(model.center, model.radiusM, W, H, siteX, fill, siteY), model.center[1], options.view);
@@ -1270,6 +1275,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     north,
     northUnit,
     scaleChromeScale,
+    scaleFontScale,
     routePoints,
     labels,
     labelPlacements,

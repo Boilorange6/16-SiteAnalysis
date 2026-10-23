@@ -27,7 +27,7 @@ import type { MapImages } from "./render-pptx";
 import { nativeMapStatus } from "./map-pptx";
 import type { PageStyle } from "../ui/board-state";
 import { mapFrameScaleOptions, scaleOptionsForFrame, zoomForScale, type ReportScaleOptions } from "../ui/report-scale";
-import type { MapFrameState } from "./report-doc";
+import { DEFAULT_REPORT_FONT_SIZES, type MapFrameState } from "./report-doc";
 import { northArrowBox, scaleBarBox } from "../ui/map-scene";
 
 // 슬라이드 비율(16:9)로 그린다: 지도가 슬라이드 전체이고 오버레이는 pptx 도형이 얹는다
@@ -96,6 +96,7 @@ export function svgOf(model: MapModel, tiles: Map<string, string>, layer: Basema
   const host = document.createElement("div");
   const root = createRoot(host);
   const { size: _size, bottomInset, style, viewport, highlightLabel, legendFocus, ...figureExtra } = extra;
+  const scaleFontScale = style?.fontSizes?.scale !== undefined ? style.fontSizes.scale / DEFAULT_REPORT_FONT_SIZES.scale : undefined;
   try {
     const usable = tiles.size > 0;
     const activeLayer = effectiveLayer(model, layer);
@@ -122,6 +123,7 @@ export function svgOf(model: MapModel, tiles: Map<string, string>, layer: Basema
           viewport,
           bottomInset: bottomInset ?? slideLayout().strip.h * (width / SLIDE.w),
           ...figureExtra,
+          ...(scaleFontScale === undefined ? {} : { scaleFontScale }),
         }),
       ),
     );

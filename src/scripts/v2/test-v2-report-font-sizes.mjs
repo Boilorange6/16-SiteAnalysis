@@ -8,6 +8,7 @@ const {
   historyApply,
   historyUndo,
   mergeReportFontSizes,
+  REPORT_FONT_SIZE_LIMITS,
   reportDocReducer,
   reportFontSizesFromLegacyScale,
 } = await import("../../lib/v2/report/report-doc.ts");
@@ -45,21 +46,30 @@ const page = (id, overrides = {}) => ({
   ...overrides,
 });
 
-const keys = ["title", "summary", "legend", "labels", "source"];
+const keys = ["title", "summary", "legend", "labels", "source", "scale"];
 const previewSource = readFileSync(new URL("../../components/v2/report/slide-surface.tsx", import.meta.url), "utf8");
+const mapFigureSource = readFileSync(new URL("../../components/v2/map-figure.tsx", import.meta.url), "utf8");
+const mapPptxSource = readFileSync(new URL("../../lib/v2/report/map-pptx.ts", import.meta.url), "utf8");
 assert.match(previewSource, /fontSizeForStyle\(style, "title"\)/, "preview title reads the shared pt value");
 assert.match(previewSource, /fontSizeForStyle\(slide\.style, "summary"\)/, "preview summary reads the shared pt value");
 assert.match(previewSource, /fontSizeForStyle\(slide\.style, "legend"\)/, "preview legend reads the shared pt value");
 assert.match(previewSource, /fontSizeForStyle\(style, "labels"\)\s*\/\s*DEFAULT_REPORT_FONT_SIZES\.labels/, "preview map labels read the shared pt value");
+assert.match(previewSource, /fontSizeForStyle\(style, "scale"\)\s*\/\s*DEFAULT_REPORT_FONT_SIZES\.scale/, "preview scale text reads the shared pt value");
 assert.match(previewSource, /fitFooterText\(slide\.footer[\s\S]*fontSizeForStyle\(slide\.style, "source"\)/, "preview source footer starts from the shared pt value");
+assert.match(mapFigureSource, /scaleFontScale\?: number/, "map preview accepts the scale text size value");
+assert.match(mapFigureSource, /scene\.scaleFontScale/, "map preview renders scale text with the shared scale value");
+assert.match(mapPptxSource, /scaleFontScale: fontSizeForStyle\(style, "scale"\)\s*\/\s*DEFAULT_REPORT_FONT_SIZES\.scale/, "PPT map scene reads the page scale text value");
+assert.match(mapPptxSource, /scene\.scaleFontScale/, "PPT scale text renders with the shared scale value");
 
 assert.deepEqual(defaultReportFontSizes(), DEFAULT_REPORT_FONT_SIZES, "default helper exposes the pt defaults");
+assert.equal(DEFAULT_REPORT_FONT_SIZES.scale, 9, "축척 기본 글자 크기는 9pt다");
+assert.deepEqual(REPORT_FONT_SIZE_LIMITS.scale, { min: 7, max: 14 }, "축척 글자 크기 범위는 7–14pt다");
 assert.deepEqual(
   mergeReportFontSizes(
-    { title: 24, summary: 16, legend: 12, labels: 14, source: 11 },
-    { title: 29, labels: 17 },
+    { title: 24, summary: 16, legend: 12, labels: 14, source: 11, scale: 11 },
+    { title: 29, labels: 17, scale: 14 },
   ),
-  { title: 29, summary: 16, legend: 12, labels: 17, source: 11 },
+  { title: 29, summary: 16, legend: 12, labels: 17, source: 11, scale: 14 },
   "page overrides win over document values and defaults fill the rest",
 );
 
@@ -67,12 +77,12 @@ const raw = {
   v: 1,
   format: "wide",
   fontScale: 1.15,
-  fontSizes: { title: 31, source: 6, ignored: 99 },
-  pages: [page("p1", { fontSizes: { summary: 99, labels: 7, ignored: 42 } })],
+  fontSizes: { title: 31, source: 6, scale: 20, ignored: 99 },
+  pages: [page("p1", { fontSizes: { summary: 99, labels: 7, scale: 6, ignored: 42 } })],
 };
 const restored = restoreReportDoc(raw, new Set(["t-A01"]));
-assert.deepEqual(restored.fontSizes, { title: 31, summary: 15, legend: 12, labels: 12, source: 7 }, "legacy scale fills missing document values and clamps new values");
-assert.deepEqual(restored.pages[0].fontSizes, { summary: 24, labels: 8 }, "page font sizes survive restore and clamp at the page boundary");
+assert.deepEqual(restored.fontSizes, { title: 31, summary: 15, legend: 12, labels: 12, source: 7, scale: 14 }, "legacy scale fills missing document values and clamps new values");
+assert.deepEqual(restored.pages[0].fontSizes, { summary: 24, labels: 8, scale: 7 }, "page font sizes survive restore and clamp at the page boundary");
 assert.equal(Object.prototype.hasOwnProperty.call(restored, "fontScale"), false, "new restored shape does not write legacy fontScale");
 assert.deepEqual(restoreReportDoc(JSON.parse(JSON.stringify(restored)), new Set(["t-A01"])), restored, "storage serialization and restore preserve fontSizes");
 assert.deepEqual(
@@ -108,7 +118,7 @@ const afterFontStep = historyApply(beforeHistory, { type: "fontSizes", scope: "d
 assert.equal(afterFontStep.past.length, 1, "one font size action is one history step");
 assert.deepEqual(historyUndo(afterFontStep).present, doc, "font size action undoes as one step");
 
-const style = { titleScale: 22 / 18, summaryScale: 15 / 13, legendScale: 12 / 10, fontSizes: { title: 22, summary: 15, legend: 12, labels: 14, source: 11 } };
+const style = { titleScale: 22 / 18, summaryScale: 15 / 13, legendScale: 12 / 10, fontSizes: { title: 22, summary: 15, legend: 12, labels: 14, source: 11, scale: 11 } };
 assert.deepEqual(Object.fromEntries(keys.map((key) => [key, fontSizeForStyle(style, key)])), style.fontSizes, "PPT and preview share the same page pt values");
 assert.equal(fitFooterText("짧은 출처", false, 20, style.fontSizes.source).fontSize, style.fontSizes.source, "source footer starts at the shared source pt");
 
@@ -119,6 +129,11 @@ const basePlan = buildReportPlan({ summary, views, board, analysisDate: "2026-10
 const baseTile = basePlan.find((slide) => slide.kind === "tile" && slide.map);
 assert.ok(baseTile, "PPT parity tile fixture");
 const parityMap = { ...baseTile.map, features: baseTile.map.features.slice(0, 1), lines: [], polygons: [], total: 1, notes: [] };
+const { buildMapScene } = await import("../../lib/v2/ui/map-scene.ts");
+const defaultScaleScene = buildMapScene({ model: parityMap, width: 960, height: 540, activeLayer: "white", scale: true, north: false, avoid: [] });
+const largeScaleScene = buildMapScene({ model: parityMap, width: 960, height: 540, activeLayer: "white", scale: true, north: false, scaleFontScale: 14 / 9, avoid: [] });
+assert.equal(defaultScaleScene.scaleFontScale, 1, "축척 기본 글자 배율은 9pt 기준이다");
+assert.equal(largeScaleScene.scaleFontScale, 14 / 9, "축척 글자 14pt가 장면에 보존된다");
 const parityTile = { ...baseTile, map: parityMap, footer: "출처", style: { ...baseTile.style, ...style } };
 const tinyPng = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 const bytes = await renderReportPptx([parityTile], Object.fromEntries(mapKeysOf([parityTile]).map((key) => [key, tinyPng])));
@@ -134,9 +149,11 @@ const titleShape = shapes.find((shape) => shape.name.includes("panel-title") && 
 const summaryShape = shapes.find((shape) => shape.text.includes(baseTile.view.sentence));
 const legendShapes = shapes.filter((shape) => shape.name.includes("panel-legend") && shape.text.length > 0);
 const sourceShape = shapes.find((shape) => shape.text.includes("출처"));
+const scaleShape = shapes.find((shape) => shape.name.includes("|축척|label"));
 assert.ok(titleShape && runSizes(titleShape).includes(style.fontSizes.title * 100), "PPT title run uses the page title pt");
 assert.ok(summaryShape && runSizes(summaryShape).includes(style.fontSizes.summary * 100), "PPT summary run uses the page summary pt");
 assert.ok(legendShapes.some((shape) => runSizes(shape).includes(style.fontSizes.legend * 100)), "PPT legend run uses the page legend pt");
 assert.ok(sourceShape && runSizes(sourceShape).includes(style.fontSizes.source * 100), "PPT source run uses the page source pt");
+assert.ok(scaleShape && runSizes(scaleShape).length > 0, "PPT scale bar keeps an editable text run");
 
 console.log("v2 report font size tests passed");

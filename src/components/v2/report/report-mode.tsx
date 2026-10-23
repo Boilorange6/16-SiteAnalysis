@@ -110,7 +110,7 @@ type FontSizeAction =
   | { type: "fontSizes"; scope: FontSizeScope; id?: string; key: FontSizeKey; value: number }
   | { type: "clearPageFontSizes"; id: string; key?: FontSizeKey };
 
-const FONT_SIZE_LABELS: Record<FontSizeKey, string> = { title: "제목", summary: "요약", legend: "범례", labels: "지도 라벨", source: "출처" };
+const FONT_SIZE_LABELS: Record<FontSizeKey, string> = { title: "제목", summary: "요약", legend: "범례", labels: "지도 라벨", source: "출처", scale: "축척" };
 const FONT_SIZE_ROWS: readonly { key: FontSizeKey; label: string; min: number; max: number; defaultValue: number }[] = REPORT_FONT_SIZE_KEYS.map((key) => ({ key, label: FONT_SIZE_LABELS[key], min: REPORT_FONT_SIZE_LIMITS[key].min, max: REPORT_FONT_SIZE_LIMITS[key].max, defaultValue: DEFAULT_REPORT_FONT_SIZES[key] }));
 const DEFAULT_FONT_SIZES: FontSizeMap = DEFAULT_REPORT_FONT_SIZES;
 type LegendContextMenuItem = Pick<MapLegendLayerItem, "layer" | "label" | "color" | "lineSwatch"> & { visible: boolean };
@@ -196,13 +196,14 @@ type ContextMenuAction = {
 function normalizeSurfaceContextTarget(target: SurfaceContextMenuTarget): SurfaceContextTarget {
   if (typeof target !== "string") return target;
   if (target === "source") return { kind: "element", key: "source" };
-  return target === "labels" ? { kind: "font", key: target } : { kind: "panel", key: target };
+  return target === "labels" || target === "scale" ? { kind: "font", key: target } : { kind: "panel", key: target };
 }
 
 function fontKeyForContextTarget(target: SurfaceContextTarget): FontTargetKey | null {
   if (target.kind === "panel") return target.key;
   if (target.kind === "element") return target.key;
   if (target.kind === "mapElement" || target.kind === "mapLabel") return "labels";
+  if (target.kind === "decoration" && target.key === "scaleBar") return "scale";
   if (target.kind === "font") return target.key;
   return null;
 }

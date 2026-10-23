@@ -11,7 +11,7 @@ import type { PlannedSlide } from "./report-plan";
 import type { PageStyle } from "../ui/board-state";
 import { metersPerPixel, slideViewport } from "../ui/map-projection";
 import { scaleOptionsForFrame, zoomForScale } from "../ui/report-scale";
-import type { MapFrameState, PagePanelRect, ReportLayout } from "./report-doc";
+import { DEFAULT_REPORT_FONT_SIZES, type MapFrameState, type PagePanelRect, type ReportLayout } from "./report-doc";
 
 const VIEW_W = 960;
 const VIEW_H = 540;
@@ -468,6 +468,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
       // pinnedKeys로 고정한 사용자 라벨은 아래 후보에 계속 포함된다.
       showAutomaticLabels: false,
       labelScale: fontSizeForStyle(style, "labels") / 10,
+      scaleFontScale: fontSizeForStyle(style, "scale") / DEFAULT_REPORT_FONT_SIZES.scale,
       legendBox: cellLegend?.box ?? null,
       calloutTop: cellChipBottom + 8 * cellUnit,
       avoid: [],
@@ -568,6 +569,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     legendFocus: focus,
     showAutomaticLabels: reportFrame?.labelRule !== "off",
     labelScale: fontSizeForStyle(frameStyle, "labels") / 10,
+    scaleFontScale: fontSizeForStyle(frameStyle, "scale") / DEFAULT_REPORT_FONT_SIZES.scale,
     northScale,
     scaleChromeScale,
     north: showNorth ? (savedNorthBox ? (savedNorthBox.y0 + savedNorthBox.y1) / 2 : northY) : false,
@@ -865,6 +867,7 @@ function addScale(slide: Slide, code: string, scene: MapScene): void {
   const bar = scene.scale;
   const u = scene.unit;
   const chrome = scene.scaleChromeScale;
+  const textChrome = chrome * scene.scaleFontScale;
   const key = "scale";
   const maxBarX0 = activeSceneWidth - bar.px - 6 * u;
   const x0 = Math.max(6 * u, Math.min(maxBarX0, bar.x0));
@@ -875,7 +878,7 @@ function addScale(slide: Slide, code: string, scene: MapScene): void {
   addSegment(slide, [x0, y - 4 * chrome * u], [x0, y], INK, 1.6 * chrome * u, tag(code, key, "축척", "left"));
   addSegment(slide, [x0, y], [x1, y], INK, 1.6 * chrome * u, tag(code, key, "축척", "bar"));
   addSegment(slide, [x1, y], [x1, y - 4 * chrome * u], INK, 1.6 * chrome * u, tag(code, key, "축척", "right"));
-  slide.addText(bar.label, { x: pxX(x0), y: pxY(y - 11 * chrome * u), w: pxW(bar.px), h: pxH(8 * chrome * u), align: "center", valign: "middle", fontFace: FONT, fontSize: fontPt(9.5 * chrome * u, 6), bold: true, color: INK, margin: 0, objectName: tag(code, key, "축척", "label") });
+  slide.addText(bar.label, { x: pxX(x0), y: pxY(y - 11 * textChrome * u), w: pxW(bar.px), h: pxH(8 * textChrome * u), align: "center", valign: "middle", fontFace: FONT, fontSize: fontPt(9.5 * textChrome * u, 6), bold: true, color: INK, margin: 0, objectName: tag(code, key, "축척", "label") });
 }
 
 function addLocator(slide: Slide, code: string, model: MapModel, scene: MapScene, savedBox?: MapSceneBox | null): void {

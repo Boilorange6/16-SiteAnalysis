@@ -25,6 +25,8 @@ assert.ok(actionIndex < positionIndex, "요소별 항목은 위치 초기화보�
 assert.ok(positionIndex < dividerIndex && dividerIndex < deleteIndex, "위치 초기화 뒤 구분선과 삭제 순서를 지킨다");
 assert.match(mode, /mapLabelEntries\(mapModel\)/, "지도 요소 메뉴 이름은 지도 라벨 값에서 만든다");
 assert.match(mode, /onDelete=\{deleteContextElement\}/, "공통 메뉴의 삭제는 현재 대상 삭제 경로를 사용한다");
+assert.match(mode, /scale: "축척"/, "F1 글자 크기 창에 축척 행이 있다");
+assert.match(mode, /target\.kind === "decoration" && target\.key === "scaleBar"\) return "scale"/, "축척 막대 컨텍스트는 축척 글자 값을 사용한다");
 assert.doesNotMatch(surface, /onFontContextMenu\(\"|onFontContextMenu\?\.\(\"/, "표면의 공통 메뉴 입구는 문자열 대신 요소 대상을 전달한다");
 
 console.log("v2 report context menu contracts passed");

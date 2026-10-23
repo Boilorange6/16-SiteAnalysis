@@ -60,7 +60,7 @@ function LegendSwatch({ item }: { item: SurfaceLegendItem }) {
 type PreviewStylePatch = Partial<PageStyle>;
 
 type PanelKey = "title" | "summary" | "legend" | "source";
-export type FontTargetKey = PanelKey | "labels";
+export type FontTargetKey = PanelKey | "labels" | "scale";
 export type SurfaceDecorationKey = "north" | "scaleBar" | "locator";
 export type SurfaceContextTarget =
   | { kind: "panel"; key: "title" | "summary" | "legend"; cell?: number }
@@ -857,6 +857,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
         scaleY={savedScaleBox ? savedScaleBox.y1 - 8 * layoutUnit : undefined}
         scaleBoxOverride={savedScaleBox ?? undefined}
         scaleChromeScale={scaleChromeScale}
+        scaleFontScale={fontSizeForStyle(style, "scale") / DEFAULT_REPORT_FONT_SIZES.scale}
         calloutTop={calloutTop}
         calloutLeftBottom={calloutLeftBottom ?? (terrainLayout?.calloutLeftBottom ? terrainLayout.calloutLeftBottom * unit : undefined)}
          showAutomaticLabels={reportFrame?.labelRule !== "off"}
@@ -1000,7 +1001,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
         if (!box) return null;
         const selected = selectedDecorationKey === key;
         const label = key === "north" ? "방위표" : key === "scaleBar" ? "축척 막대" : "위치도";
-        return <button key={key} type="button" className={styles.decorationHitTarget} data-report-decoration={key} data-decoration-selected={selected ? "true" : undefined} aria-label={`${label} 선택`} aria-pressed={selected} title={`${label} 선택`} style={{ left: box.x0, top: box.y0, width: Math.max(44, box.x1 - box.x0), height: Math.max(44, box.y1 - box.y0) }} onPointerDown={(event) => { event.stopPropagation(); }} onClick={(event) => { event.stopPropagation(); onDecorationSelect(key); }} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); onFontContextMenu?.({ kind: "decoration", key, ...(contextCell === undefined ? {} : { cell: contextCell }) }, event.clientX, event.clientY, event.currentTarget); }} />;
+        return <button key={key} type="button" className={styles.decorationHitTarget} data-report-decoration={key} data-decoration-selected={selected ? "true" : undefined} data-font-highlight={fontHighlight === (key === "scaleBar" ? "scale" : key) ? "true" : undefined} aria-label={`${label} 선택`} aria-pressed={selected} title={`${label} 선택`} style={{ left: box.x0, top: box.y0, width: Math.max(44, box.x1 - box.x0), height: Math.max(44, box.y1 - box.y0) }} onPointerDown={(event) => { event.stopPropagation(); }} onClick={(event) => { event.stopPropagation(); onDecorationSelect(key); }} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); onFontContextMenu?.({ kind: "decoration", key, ...(contextCell === undefined ? {} : { cell: contextCell }) }, event.clientX, event.clientY, event.currentTarget); }} />;
       })
     : null;
   const decorationLabel = selectedDecorationKey === "north" ? "방위표" : selectedDecorationKey === "scaleBar" ? "축척 막대" : "위치도";

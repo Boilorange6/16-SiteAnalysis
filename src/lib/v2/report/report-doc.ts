@@ -5,7 +5,7 @@ export type { PagePanelKey, PagePanelRect, PagePanels } from "./report-geometry"
 export type ReportFormat = "wide" | "a3" | "a4";
 export type ReportLayout = "map-full" | "map-summary" | "numbers-first" | "side-by-side";
 export type ReportFontScale = 0.85 | 1 | 1.15;
-export type FontSizeKey = "title" | "summary" | "legend" | "labels" | "source";
+export type FontSizeKey = "title" | "summary" | "legend" | "labels" | "source" | "scale";
 export type ReportFontSizes = Record<FontSizeKey, number>;
 export type ReportFontSizeOverrides = Partial<ReportFontSizes>;
 export type PageElementKey = "title" | "summary" | "source";
@@ -17,6 +17,7 @@ export const DEFAULT_REPORT_FONT_SIZES: ReportFontSizes = {
   legend: 10,
   labels: 10,
   source: 9,
+  scale: 9,
 };
 
 export const REPORT_FONT_SIZE_LIMITS: Record<FontSizeKey, { min: number; max: number }> = {
@@ -25,9 +26,10 @@ export const REPORT_FONT_SIZE_LIMITS: Record<FontSizeKey, { min: number; max: nu
   legend: { min: 8, max: 16 },
   labels: { min: 8, max: 18 },
   source: { min: 7, max: 14 },
+  scale: { min: 7, max: 14 },
 };
 
-export const REPORT_FONT_SIZE_KEYS: readonly FontSizeKey[] = ["title", "summary", "legend", "labels", "source"];
+export const REPORT_FONT_SIZE_KEYS: readonly FontSizeKey[] = ["title", "summary", "legend", "labels", "source", "scale"];
 
 export function defaultReportFontSizes(): ReportFontSizes {
   return { ...DEFAULT_REPORT_FONT_SIZES };
