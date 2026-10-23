@@ -1074,7 +1074,12 @@ function reportPageElements(value: unknown): PageElementKey[] {
   return [...new Set(value.filter((key): key is PageElementKey => typeof key === "string" && (PAGE_ELEMENT_KEYS as readonly string[]).includes(key)))];
 }
 
-function restoreReportPage(value: unknown, validTileIds: ReadonlySet<string>): ReportPage | null {
+type RestoreReportDocOptions = {
+  /** 내부 복제·마이그레이션에서는 새 선택적 필드를 구 저장 문서에 덧붙이지 않는다. */
+  preserveMissingPageElementKeys?: boolean;
+};
+
+function restoreReportPage(value: unknown, validTileIds: ReadonlySet<string>, options: RestoreReportDocOptions = {}): ReportPage | null {
   if (!isRecord(value) || typeof value.id !== "string" || value.id.length === 0 || !reportPageIdPattern.test(value.id) || !isReportLayout(value.layout)) return null;
   const fontSizes = clampReportFontSizes(value.fontSizes);
   const layout = value.kind === "tile" && value.layout === "side-by-side" ? "map-summary" : value.layout;
@@ -1084,7 +1089,9 @@ function restoreReportPage(value: unknown, validTileIds: ReadonlySet<string>): R
     panels: reportPanels(value.panels),
     textBoxes: reportTextBoxes(value.textBoxes),
     notes: typeof value.notes === "string" ? value.notes : "",
-    deletedElementKeys: reportPageElements(value.deletedElementKeys),
+    ...(options.preserveMissingPageElementKeys && !Object.prototype.hasOwnProperty.call(value, "deletedElementKeys")
+      ? {}
+      : { deletedElementKeys: reportPageElements(value.deletedElementKeys) }),
     ...(typeof value.titleOverride === "string" ? { titleOverride: value.titleOverride } : {}),
     ...(typeof value.summaryOverride === "string" ? { summaryOverride: value.summaryOverride } : {}),
     ...(Object.keys(fontSizes).length > 0 ? { fontSizes } : {}),
@@ -1108,13 +1115,13 @@ function restoreReportPage(value: unknown, validTileIds: ReadonlySet<string>): R
 }
 
 /** 보고서 문서를 안전하게 복원한다. 현재 결과에 없는 형식상 유효한 타일 id도 페이지를 남긴다. */
-export function restoreReportDoc(value: unknown, validTileIds: ReadonlySet<string>): ReportDoc {
+export function restoreReportDoc(value: unknown, validTileIds: ReadonlySet<string>, options: RestoreReportDocOptions = {}): ReportDoc {
   const raw = typeof value === "string" ? rawSnapshot(value) : isRecord(value) ? value : null;
   if (!raw || raw.v !== 1) return { ...EMPTY_REPORT_DOC, pages: [] };
   const ids = new Set<string>();
   const pages = Array.isArray(raw.pages)
     ? raw.pages.flatMap((item) => {
-        const page = restoreReportPage(item, validTileIds);
+        const page = restoreReportPage(item, validTileIds, options);
         if (!page || ids.has(page.id)) return [];
         ids.add(page.id);
         return [page];
@@ -1131,7 +1138,7 @@ export function restoreReportDoc(value: unknown, validTileIds: ReadonlySet<strin
 }
 
 function cloneReportDoc(doc: ReportDoc): ReportDoc {
-  return restoreReportDoc(doc, new Set());
+  return restoreReportDoc(doc, new Set(), { preserveMissingPageElementKeys: true });
 }
 
 function normalizePageStyle(value: unknown): PageStyle | null {
@@ -1238,7 +1245,7 @@ function rewritePageKey(key: string | null, mapId: IdMapper): string | null {
 
 function rewriteReportDocIds(value: ReportDoc | undefined, mapId: IdMapper): ReportDoc | undefined {
   if (!value) return undefined;
-  const doc = restoreReportDoc(value, new Set());
+  const doc = restoreReportDoc(value, new Set(), { preserveMissingPageElementKeys: true });
   return {
     ...doc,
     pages: doc.pages.map((page) => page.kind === "tile"
@@ -1419,7 +1426,7 @@ export function migrateSnapshot(raw: unknown): BoardStateSnapshot | null {
     columns: isGridColumns(migrated.columns) ? migrated.columns : 4,
     preset: isPresetId(migrated.preset) ? migrated.preset : DEFAULT_PRESET_ID,
     report: normalizeReport(migrated.report),
-    reportDoc: restoreReportDoc(migrated.reportDoc, new Set()),
+    reportDoc: restoreReportDoc(migrated.reportDoc, new Set(), { preserveMissingPageElementKeys: true }),
     version: BOARD_STATE_VERSION,
   };
 }
@@ -1487,7 +1494,7 @@ export function restoreBoardState(results: TileResult[], raw: unknown, fallbackP
   const validIds = new Set([...validTileIds, ...compositeIds]);
   const validReportTileIds = new Set([...validIds, ...results.map((result) => result.tileId)]);
   const report = restoreReport(saved.report, validReportTileIds);
-  const reportDoc = restoreReportDoc(saved.reportDoc, validReportTileIds);
+  const reportDoc = restoreReportDoc(saved.reportDoc, validReportTileIds, { preserveMissingPageElementKeys: true });
   const savedOrder = unique(stringsOf(saved.order)).filter((id) => validIds.has(id));
   const order = savedOrder.length > 0 ? savedOrder : base.order;
 
