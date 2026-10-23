@@ -72,7 +72,7 @@ function strip(s: Slide, p: PlannedSlide, credit: boolean, format: SlideFormat =
   s.addShape("rect", { x: r.x, y: r.y, w: r.w, h: r.h, fill: { color: "FFFFFF", transparency: 0 }, line: { color: "FFFFFF", width: 0, transparency: 100 } });
   s.addShape("line", { x: r.x, y: r.y, w: r.w, h: 0, line: { color: INK, width: 0.5, transparency: 92 } });
   const room = size.w - g.edge - 1.7;
-  const showCredit = credit && !pageElementDeleted(p.page, "source");
+  const showCredit = !pageElementDeleted(p.page, "source");
   const footer = fitFooterText(p.footer, showCredit, room, fontSizeForStyle(p.style ?? {}, "source"));
   if (showCredit) s.addText(footer.text, { x: g.edge, y: r.y, w: room, h: r.h, valign: "middle", fontFace: FONT, fontSize: footer.fontSize, color: "454A55", margin: 0, fit: "shrink" });
   s.addText(`${p.no} / ${p.total}`, { x: size.w - g.edge - 1.2, y: r.y, w: 1.2, h: r.h, align: "right", valign: "middle", fontFace: FONT, fontSize: 9, color: "454A55", margin: 0 });
@@ -618,7 +618,7 @@ function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: Map
   }
   pageTextBoxes(s, p, format);
   pageNotes(s, p, [...cellNotes]);
-  strip(s, p, false, format);
+  strip(s, p, true, format);
 }
 
 function sources(pptx: PptxGenJS, p: PlannedSlide & { kind: "sources" }, images: MapImages) {
