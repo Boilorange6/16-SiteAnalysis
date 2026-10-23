@@ -3,7 +3,7 @@ import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, legen
 import { isSiteParcelLayer } from "../ui/site-parcel";
 import { SLIDE, slideCalloutAvoidance, slideGeometry, slideLayout, slideLegend, slidePanelRects, slideReserved, slideSiteX, terrainSectionLayout, type SlideFormat } from "../ui/overlay-layout";
 import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
-import { buildMapScene, locatorBox, mapLabelEntries, northArrowBox, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, scaleBarBox, type MapScene, type MapSceneBox } from "../ui/map-scene";
+import { buildMapScene, locatorBox, mapLabelEntries, northArrowBox, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, scaleBarBox, scaleChromeScaleForBox, type MapScene, type MapSceneBox } from "../ui/map-scene";
 import { badgeTextColor } from "../ui/map-labels";
 import { terrainSectionMapStyle } from "../ui/terrain-section";
 import { FONT, fontSizeForStyle, INK, hex, textIn, type Slide } from "./pptx-kit";
@@ -38,11 +38,6 @@ function boxScale(saved: MapSceneBox | null, automatic: MapSceneBox | null): num
   const automaticWidth = Math.max(1, automatic.x1 - automatic.x0);
   const automaticHeight = Math.max(1, automatic.y1 - automatic.y0);
   return Math.max(0.5, Math.min(3, (savedWidth / automaticWidth + savedHeight / automaticHeight) / 2));
-}
-
-function boxHeightScale(saved: MapSceneBox | null, automatic: MapSceneBox | null): number {
-  if (!saved || !automatic) return 1;
-  return Math.max(0.5, Math.min(3, (saved.y1 - saved.y0) / Math.max(1, automatic.y1 - automatic.y0)));
 }
 
 export type NativeMapFrame = { x: number; y: number; w: number; h: number };
@@ -445,7 +440,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     const defaultNorthBox = northArrowBox(width, height, 0, undefined, cellUnit);
     const defaultScaleBox = scaleBarBox(width, height, cellMpp, cellLegend ? cellLegend.h + 32 : 0, 0, false, undefined, cellUnit);
     const northScale = boxScale(savedNorthBox, defaultNorthBox);
-    const scaleChromeScale = boxHeightScale(savedScaleBox, defaultScaleBox);
+    const scaleChromeScale = scaleChromeScaleForBox(savedScaleBox, defaultScaleBox);
     const focus = legendLabelOf(displayModel, style.legendFocus);
     // 조판 셀의 코드 chip은 map scene 위에 마지막으로 그려진다. 고정·자동
     // 라벨 카드가 chip 아래에서 시작하도록 셀 좌표의 상단 안전영역을 예약한다.
@@ -533,7 +528,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
   const scaleAvoid = savedScaleBox ?? defaultScaleBox;
   const northAvoid = savedNorthBox ?? defaultNorthBox;
   const northScale = boxScale(savedNorthBox, defaultNorthBox);
-  const scaleChromeScale = boxHeightScale(savedScaleBox, defaultScaleBox);
+  const scaleChromeScale = scaleChromeScaleForBox(savedScaleBox, defaultScaleBox);
   const frameOriginX = activeFrame.x * activePxPerInch;
   const frameOriginY = activeFrame.y * activePxPerInch;
   const localize = (box: MapSceneBox): MapSceneBox => ({ x0: box.x0 - frameOriginX, y0: box.y0 - frameOriginY, x1: box.x1 - frameOriginX, y1: box.y1 - frameOriginY });

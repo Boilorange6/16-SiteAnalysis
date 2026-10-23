@@ -81,6 +81,12 @@ function scaleBarBoxFromLayout(width: number, height: number, layout: ScaleBarLa
 export function scaleBarBox(width: number, height: number, mpp: number, bottomInset = 0, rightInset = 0, scaleLeft = false, scaleX?: number, unitOverride?: number, maxBarPx = 88): MapSceneBox {
   return scaleBarBoxFromLayout(width, height, scaleBarLayout(width, height, mpp, bottomInset, rightInset, scaleLeft, scaleX, unitOverride, maxBarPx));
 }
+
+/** 저장된 축척 막대 프레임의 높이를 자동 배치 프레임과 비교해 크롬 배율로 바꾼다. */
+export function scaleChromeScaleForBox(saved: MapSceneBox | null | undefined, automatic: MapSceneBox | null | undefined): number {
+  if (!saved || !automatic) return 1;
+  return Math.max(0.5, Math.min(3, (saved.y1 - saved.y0) / Math.max(1, automatic.y1 - automatic.y0)));
+}
 type ScreenPoint = readonly [number, number];
 
 export type MapLabelEntry = {
@@ -1099,8 +1105,11 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   const rings: number[] = [];
   if (showRadius) for (let meters = 500; meters < model.radiusM - 1; meters += 500) rings.push(meters / mpp);
   const scaleLayout = scaleBarLayout(W, H, mpp, bottomInset, rightInset, scaleLeft, scaleX, u, scaleMaxPx, scaleY);
-  const { bar, y: barY, x0: barX0, x1: barX1 } = scaleLayout;
+  const { bar, y: barY } = scaleLayout;
   const scaleBox = scaleBoxOverride ?? scaleBarBoxFromLayout(W, H, scaleLayout);
+  const scaleBoxWidth = Math.max(0, scaleBox.x1 - scaleBox.x0);
+  const barX0 = scaleBoxOverride ? scaleBox.x0 + Math.max(0, scaleBoxWidth - bar.px) / 2 : scaleLayout.x0;
+  const barX1 = barX0 + bar.px;
   const north = northOpt === false ? null : { x: northX ?? (W - rightInset - 20 * u), y: northOpt || 22 * u };
   const northBox = north ? northArrowBox(W, H, rightInset, northOpt, northUnit) : null;
   const calloutAvoid = [

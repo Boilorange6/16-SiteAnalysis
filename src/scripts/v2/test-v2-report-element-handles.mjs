@@ -27,7 +27,7 @@ assert.match(surface, /panelBasis === "frame" && frame/, "조판 칸은 frame �
 assert.match(mapPptx, /mapLayoutUnitForFrame\(activeFrame\.h \* activePxPerInch\)/, "PPT 조판 칸도 같은 frame 높이 단위를 쓴다");
 assert.match(mapImage, /layoutUnit: mapLayoutUnitForFrame\(cellHeight\)/, "조판 칸 이미지도 같은 frame 높이 단위를 쓴다");
 
-const { buildMapScene } = await import("../../lib/v2/ui/map-scene.ts");
+const { buildMapScene, scaleChromeScaleForBox } = await import("../../lib/v2/ui/map-scene.ts");
 const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 const fixture = GODEOK_RESULTS.find((result) => result.tileCode === "A01");
@@ -43,12 +43,17 @@ const resized = buildMapScene({
   scale: true,
   north: 80,
   northScale: 1.8,
-  scaleChromeScale: 1.7,
+  scaleChromeScale: scaleChromeScaleForBox(
+    { x0: base.scaleBox.x0, y0: base.scaleBox.y0, x1: base.scaleBox.x1 + 40, y1: base.scaleBox.y1 + 14 },
+    base.scaleBox,
+  ),
   scaleBoxOverride: { x0: base.scaleBox.x0, y0: base.scaleBox.y0, x1: base.scaleBox.x1 + 40, y1: base.scaleBox.y1 + 14 },
   avoid: [],
 });
 assert.ok(resized.northUnit > base.northUnit, "방위표 크기 핸들이 실제 장면 크기를 키운다");
 assert.equal(resized.scale.px, base.scale.px, "축척 막대 길이는 크기 조절로 바뀌지 않는다");
-assert.equal(resized.scaleChromeScale, 1.7, "축척 막대 크롬 배율이 장면에 보존된다");
+assert.ok(resized.scaleChromeScale > 1, "축척 막대 프레임 높이가 크롬 배율을 키운다");
+assert.equal(resized.scaleChromeScale, scaleChromeScaleForBox(resized.scaleBox, base.scaleBox), "축척 막대 크롬 배율은 프레임 대비 자동 상자 높이로 계산한다");
+assert.equal(resized.scale.x0, resized.scaleBox.x0 + (resized.scaleBox.x1 - resized.scaleBox.x0 - resized.scale.px) / 2, "축척 막대 길이는 저장 프레임 안에서 가로 중앙 정렬한다");
 
 console.log("v2 report element handle contracts passed");
