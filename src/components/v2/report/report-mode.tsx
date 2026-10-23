@@ -1467,7 +1467,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
             {rail === "tiles" && <DrawerTiles open doc={history.present} views={views} mode={compareMode ? "compare" : "single"} compareGrid={compareGrid} compareSelected={compareSelected} onCompareGrid={setCompareGrid} onAdd={addTile} onToggleCompare={toggleCompareTile} onCreateCompare={addComparePage} onCancelCompare={() => { setCompareSelected([]); setCompareMode(false); }} onClose={() => closeDrawer(true)} opacity={sidePanelOpacity} onOpacityChange={changeSidePanelOpacity} getThumbnailSlide={getThumbnailSlide} classMap={surfaceClassMap} />}
           </aside>
 
-          <div className={`${styles.floatCard} ${styles.pageDock}`} inert={modalContentInert || undefined}>
+          <div className={`${styles.floatCard} ${styles.pageDock}`} data-sheet-cell-editing={activeSheetCellIndex !== null ? "true" : undefined} inert={modalContentInert || undefined}>
             <PageStrip items={stripItems} selectedId={selectedId} selectedSlideKey={selectedSlideKey} onSelect={selectStripItem} onNavigate={navigateStrip} onReorder={reorderPage} onDropMove={dropMovePage} onAddPage={() => { rememberDrawerOpener(); setActivePopover(null); setRail("pages"); setSelection(null); setMapMoveActive(false); setSettingsOpen(false); addPage("blank"); }} onDuplicate={duplicatePage} onDelete={deletePage} classMap={surfaceClassMap} exportSelectionMode={exportPageScope === "selected"} exportPageIds={exportPageIds} onToggleExportPage={toggleExportPage} />
           </div>
         </main>

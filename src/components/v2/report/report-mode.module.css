@@ -202,6 +202,7 @@
 .settingsCard { position: absolute; top: 16px; right: 16px; bottom: 16px; z-index: 25; box-sizing: border-box; width: 296px; min-width: 0; overflow-x: hidden; overflow-y: auto; background: #fff; visibility: hidden; opacity: 0; pointer-events: none; }
 .reportStage[data-settings-open="true"] .settingsCard { visibility: visible; opacity: 1; pointer-events: auto; animation: floatCardIn 180ms cubic-bezier(.23,1,.32,1); }
 .pageDock { position: absolute; right: var(--stage-right); bottom: 8px; left: var(--stage-left); z-index: 40; display: flex; align-items: center; width: min(1050px, calc(100% - var(--stage-left) - var(--stage-right))); min-width: 0; min-height: 88px; height: 88px; margin-inline: auto; padding: 6px; background: #fff; }
+.pageDock[data-sheet-cell-editing="true"] { opacity: .4; pointer-events: none; }
 .pageDock .pageStrip { flex: 1 1 auto; align-items: flex-start; min-width: 0; min-height: 76px; height: 76px; margin: 0; padding: 3px 3px 0; overflow-x: auto; overflow-y: hidden; background: transparent; border: 0; }
 .pageStrip { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 128px; height: 128px; margin: 0; padding: 0 4px; overflow-x: auto; overflow-y: hidden; list-style: none; scrollbar-width: thin; }
 .pageStripItem { position: relative; flex: 0 0 100px; min-width: 100px; }

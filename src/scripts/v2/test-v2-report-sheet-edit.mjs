@@ -65,7 +65,8 @@ const markup = renderToStaticMarkup(createElement(SlideSurface, {
   onFrame: () => undefined,
 }));
 assert.match(markup, /data-sheet-cell-editing="true"/, "큰 편집 표면 식별자");
-assert.match(markup, /조판 1번째 칸/, "큰 편집 위치 표시");
+assert.match(markup, /조판 1 \/ 4/, "큰 편집 위치 표시");
+assert.match(markup, /칸 비율 그대로 크게 · 이 칸에만 적용/, "큰 편집은 현재 칸에만 적용된다는 안내를 표시한다");
 assert.match(markup, />완료<\//, "큰 편집 완료 입구");
 assert.match(markup, /aria-label="이전 조판 칸"/, "이전 칸 입구");
 assert.match(markup, /aria-label="다음 조판 칸"/, "다음 칸 입구");
