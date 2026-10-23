@@ -13,7 +13,7 @@ import type { S02Cut, S02DateKey } from "../tile/s02/cut";
 import type { S03Cut } from "../tile/s03/cut";
 import type { S04Cut } from "../tile/s04/cut";
 import { sheetCapacity, type SheetGrid as UiSheetGrid } from "./sheet";
-import { EMPTY_REPORT_DOC, defaultFrame, type MapFrameState, type ReportDoc, type ReportPage, type TilePart } from "../report/report-doc";
+import { clampReportFontSizes, EMPTY_REPORT_DOC, defaultFrame, mergeReportFontSizes, reportFontSizesFromLegacyScale, type MapFrameState, type ReportDoc, type ReportPage, type ReportFontSizes, type TilePart } from "../report/report-doc";
 import type { TileReportSettings } from "../report/report-plan";
 
 export type TileSize = 1 | 2 | 4;
@@ -49,6 +49,7 @@ export type PageStyle = {
   titleScale?: number;
   summaryScale?: number;
   legendScale?: number;
+  fontSizes?: ReportFontSizes;
   /** 슬라이드 비율(0..1)로 저장하는 제목·요약·범례 도형 자리. */
   panels?: PagePanels;
 };
@@ -78,6 +79,7 @@ const PAGE_STYLE_KEYS = [
   "titleScale",
   "summaryScale",
   "legendScale",
+  "fontSizes",
   "panels",
 ] as const;
 const PAGE_PANEL_KEYS = ["title", "summary", "legend"] as const satisfies readonly PagePanelKey[];
@@ -407,6 +409,7 @@ function clonePagePanels(panels: PagePanels | undefined): PagePanels | undefined
 
 function clonePageStyle(style: PageStyle): PageStyle {
   const panels = clonePagePanels(style.panels);
+  const fontSizes = style.fontSizes ? mergeReportFontSizes(undefined, style.fontSizes) : undefined;
   return {
     ...(style.pinnedKeys ? { pinnedKeys: [...style.pinnedKeys] } : {}),
     ...(style.hiddenKeys ? { hiddenKeys: [...style.hiddenKeys] } : {}),
@@ -417,6 +420,7 @@ function clonePageStyle(style: PageStyle): PageStyle {
     ...(style.titleScale !== undefined ? { titleScale: style.titleScale } : {}),
     ...(style.summaryScale !== undefined ? { summaryScale: style.summaryScale } : {}),
     ...(style.legendScale !== undefined ? { legendScale: style.legendScale } : {}),
+    ...(fontSizes ? { fontSizes } : {}),
     ...(panels ? { panels } : {}),
   };
 }
@@ -463,6 +467,10 @@ function restoreReportUndo(report: ReportState, undo: ReportState | undefined): 
 }
 
 function pageStyleValue(field: typeof PAGE_STYLE_KEYS[number], value: unknown): PageStyle | null {
+  if (field === "fontSizes") {
+    const fontSizes = clampReportFontSizes(value);
+    return Object.keys(fontSizes).length > 0 ? { fontSizes: mergeReportFontSizes(undefined, fontSizes) } : null;
+  }
   if (field === "panels") {
     const panels = normalizePagePanels(value);
     return panels ? { panels } : null;
@@ -1037,6 +1045,7 @@ function reportPart(value: unknown): TilePart | null {
 
 function restoreReportPage(value: unknown, validTileIds: ReadonlySet<string>): ReportPage | null {
   if (!isRecord(value) || typeof value.id !== "string" || value.id.length === 0 || !reportPageIdPattern.test(value.id) || !isReportLayout(value.layout)) return null;
+  const fontSizes = clampReportFontSizes(value.fontSizes);
   const base = {
     id: value.id,
     layout: value.layout,
@@ -1045,6 +1054,7 @@ function restoreReportPage(value: unknown, validTileIds: ReadonlySet<string>): R
     notes: typeof value.notes === "string" ? value.notes : "",
     ...(typeof value.titleOverride === "string" ? { titleOverride: value.titleOverride } : {}),
     ...(typeof value.summaryOverride === "string" ? { summaryOverride: value.summaryOverride } : {}),
+    ...(Object.keys(fontSizes).length > 0 ? { fontSizes } : {}),
   };
   if (value.kind === "cover" || value.kind === "sources" || value.kind === "blank") return { ...base, kind: value.kind };
   if (value.kind === "tile") {
@@ -1077,7 +1087,14 @@ export function restoreReportDoc(value: unknown, validTileIds: ReadonlySet<strin
         return [page];
       })
     : [];
-  return { v: 1, format: isReportFormat(raw.format) ? raw.format : "wide", pages };
+  const legacyFontSizes = reportFontSizesFromLegacyScale(raw.fontScale);
+  const fontSizes = { ...(legacyFontSizes ?? {}), ...clampReportFontSizes(raw.fontSizes) };
+  return {
+    v: 1,
+    format: isReportFormat(raw.format) ? raw.format : "wide",
+    pages,
+    ...(Object.keys(fontSizes).length > 0 ? { fontSizes } : {}),
+  };
 }
 
 function cloneReportDoc(doc: ReportDoc): ReportDoc {

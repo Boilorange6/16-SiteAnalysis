@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
 import { createPortal } from "react-dom";
-import type { Dispatch } from "react";
+import type { Dispatch, RefObject } from "react";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
-import { defaultFrame, EMPTY_REPORT_DOC, newPageId, reportDocReducer, type MapFrameState, type PagePanels, type ReportDoc, type ReportDocAction, type ReportFontScale, type ReportFormat, type ReportPage, type TextBox } from "@/lib/v2/report/report-doc";
+import { defaultFrame, DEFAULT_REPORT_FONT_SIZES, EMPTY_REPORT_DOC, newPageId, REPORT_FONT_SIZE_KEYS, REPORT_FONT_SIZE_LIMITS, reportDocReducer, type FontSizeKey, type MapFrameState, type PagePanels, type ReportDoc, type ReportDocAction, type ReportFontSizeOverrides, type ReportFontSizes, type ReportFormat, type ReportPage, type TextBox } from "@/lib/v2/report/report-doc";
 import { mapFrameScaleOptions, scaleForFrame, scaleOptionsForFrame, siteAnchoredZoomPatch, siteFitPatch, zoomForScale } from "@/lib/v2/ui/report-scale";
 import { SLIDE_OVERVIEW_FILL } from "@/lib/v2/ui/callout-layout";
 import { layoutRects, slideGeometry, slideLayout, slideLegend, slidePanelRects, slideSiteX, slideSize, terrainSectionLayout } from "@/lib/v2/ui/overlay-layout";
@@ -34,7 +34,7 @@ type ReportHistory = { past: ReportDoc[]; present: ReportDoc; future: ReportDoc[
 type RailKey = ReportRailKey;
 const surfaceClassMap = { ...legacySurfaceStyles, ...localSurfaceStyles };
 
-type RailIconName = "pages" | "tiles" | "textbox" | "theme" | "layout" | "notes";
+type RailIconName = "pages" | "tiles" | "textbox" | "font" | "layout" | "notes";
 
 function RailIcon({ name }: { name: RailIconName }) {
   return (
@@ -42,7 +42,7 @@ function RailIcon({ name }: { name: RailIconName }) {
       {name === "pages" && <><rect x="4" y="3" width="10" height="13" rx="1" /><path d="M7 6h4M7 9h4M7 12h3" /><path d="M6 16h9a1 1 0 0 0 1-1V5" /></>}
       {name === "tiles" && <><path d="m10 3 6 4-6 4-6-4 6-4Z" /><path d="m4 10 6 4 6-4M4 13l6 4 6-4" /></>}
       {name === "textbox" && <><path d="M4 4h12M10 4v12" /><path d="M7 16h6" /></>}
-      {name === "theme" && <><circle cx="10" cy="10" r="5.5" /><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4" /></>}
+      {name === "font" && <><path d="m2.8 16.5 3.7-11h2l3.7 11M4.2 12h6.6" /><path d="m12.2 16.5 2.8-8.5h1.6l2.8 8.5M13.2 13h5.6" /></>}
       {name === "layout" && <><rect x="3" y="3" width="14" height="14" rx="1" /><path d="M3 8h14M11 8v9" /></>}
       {name === "notes" && <><path d="M5 3.5h7l3 3V16.5H5z" /><path d="M12 3.5v3h3M7.5 10h5M7.5 13h4" /></>}
     </svg>
@@ -85,26 +85,111 @@ function formatLabel(format: ReportFormat): string {
   return format === "wide" ? "와이드 16:9" : format === "a3" ? "A3 가로" : "A4 가로";
 }
 
-function ThemePopover({ doc, onFontScale, onClose }: { doc: ReportDoc; onFontScale: (scale: ReportFontScale) => void; onClose: () => void }) {
-  const scale = doc.fontScale ?? 1;
+export type FontSizeScope = "document" | "page";
+type FontSizeMap = ReportFontSizes;
+type FontSizePatch = ReportFontSizeOverrides;
+type FontSizeAction =
+  | { type: "fontSizes"; scope: FontSizeScope; id?: string; key: FontSizeKey; value: number }
+  | { type: "clearPageFontSizes"; id: string; key?: FontSizeKey };
+
+const FONT_SIZE_LABELS: Record<FontSizeKey, string> = { title: "제목", summary: "요약", legend: "범례", labels: "지도 라벨", source: "출처" };
+const FONT_SIZE_ROWS: readonly { key: FontSizeKey; label: string; min: number; max: number; defaultValue: number }[] = REPORT_FONT_SIZE_KEYS.map((key) => ({ key, label: FONT_SIZE_LABELS[key], min: REPORT_FONT_SIZE_LIMITS[key].min, max: REPORT_FONT_SIZE_LIMITS[key].max, defaultValue: DEFAULT_REPORT_FONT_SIZES[key] }));
+const DEFAULT_FONT_SIZES: FontSizeMap = DEFAULT_REPORT_FONT_SIZES;
+
+function fontSizesOf(value: unknown): FontSizePatch {
+  if (!value || typeof value !== "object") return {};
+  const record = value as Record<string, unknown>;
+  return Object.fromEntries(FONT_SIZE_ROWS.flatMap(({ key }) => typeof record[key] === "number" && Number.isFinite(record[key]) ? [[key, record[key]]] : [])) as FontSizePatch;
+}
+
+function documentFontSizes(doc: ReportDoc): FontSizePatch {
+  return fontSizesOf((doc as ReportDoc & { fontSizes?: unknown }).fontSizes);
+}
+
+function pageFontSizes(page: ReportPage | undefined): FontSizePatch {
+  return fontSizesOf((page as (ReportPage & { fontSizes?: unknown }) | undefined)?.fontSizes);
+}
+
+function fontSizeRow(key: FontSizeKey) {
+  return FONT_SIZE_ROWS.find((row) => row.key === key)!;
+}
+
+function clampFontSize(key: FontSizeKey, value: number): number {
+  const row = fontSizeRow(key);
+  return Math.max(row.min, Math.min(row.max, Math.round(value)));
+}
+
+function effectiveFontSize(doc: ReportDoc, page: ReportPage | undefined, key: FontSizeKey): number {
+  return clampFontSize(key, pageFontSizes(page)[key] ?? documentFontSizes(doc)[key] ?? DEFAULT_FONT_SIZES[key]);
+}
+
+function pageOverrideCount(page: ReportPage | undefined): number {
+  return FONT_SIZE_ROWS.filter(({ key }) => pageFontSizes(page)[key] !== undefined).length;
+}
+
+function FontSizeStepRow({ key, label, value, pageOverride, onChange, onSelect, selected, menu = false }: { key: FontSizeKey; label: string; value: number; pageOverride: boolean; onChange: (key: FontSizeKey, delta: number) => void; onSelect?: (key: FontSizeKey) => void; selected?: boolean; menu?: boolean }) {
+  const row = fontSizeRow(key);
+  const step = 1;
   return (
-    <section className={styles.popoverBody} aria-label="테마 설정">
-      <div className={styles.drawerHeader}>
-        <h2>테마</h2>
-        <button type="button" className={styles.iconButton} onClick={onClose} aria-label="테마 닫기">×</button>
+    <div className={`${styles.fontSizeRow} ${pageOverride ? styles.fontSizeRowPage : ""}`} data-font-size-key={key} data-menu-row={menu ? "true" : undefined}>
+      {onSelect ? <button type="button" className={`${styles.fontSizeName} ${selected ? styles.fontSizeNameSelected : ""}`} onClick={() => onSelect(key)} aria-pressed={selected}>{label}</button> : <span className={styles.fontSizeName}>{label}</span>}
+      <div className={styles.fontSizeStepper}>
+        <button type="button" className={styles.fontSizeStep} onClick={() => onChange(key, -step)} disabled={value <= row.min} aria-label={`${label} 글자 작게`}>−</button>
+        <output className={styles.fontSizeValue}>{value}pt</output>
+        <button type="button" className={styles.fontSizeStep} onClick={() => onChange(key, step)} disabled={value >= row.max} aria-label={`${label} 글자 크게`}>+</button>
       </div>
-      <div className={styles.themeScaleField}>
-        <span className={styles.fieldLabelText}>제목·본문 글자 크기</span>
-        <div className={styles.themeScaleOptions} role="radiogroup" aria-label="글자 크기 배율">
-          {([[0.85, "작게"], [1, "보통"], [1.15, "크게"]] as const).map(([value, label]) => <button key={value} type="button" className={styles.themeScaleOption} role="radio" aria-checked={scale === value} onClick={() => onFontScale(value)}>{label}</button>)}
-        </div>
-      </div>
-      <div className={styles.themeSample} style={{ "--theme-scale": scale } as CSSProperties}>
-        <span className={styles.themeTitle}>제목 크기</span>
-        <span className={styles.themeBody}>본문 미리보기</span>
-      </div>
-    </section>
+    </div>
   );
+}
+
+function FontScopeSwitch({ scope, pageNumber, pageDisabled, onChange }: { scope: FontSizeScope; pageNumber: number | null; pageDisabled: boolean; onChange: (scope: FontSizeScope) => void }) {
+  return <div className={styles.fontScopeSwitch} role="group" aria-label="글자 크기 적용 범위">
+    <button type="button" className={scope === "document" ? styles.fontScopeActive : styles.fontScopeButton} aria-pressed={scope === "document"} onClick={() => onChange("document")}>모든 페이지</button>
+    <button type="button" className={scope === "page" ? styles.fontScopeActive : styles.fontScopeButton} aria-pressed={scope === "page"} onClick={() => onChange("page")} disabled={pageDisabled}>{pageNumber ? `${pageNumber}쪽만` : "이 페이지만"}</button>
+  </div>;
+}
+
+function FontSizePopover({ doc, page, pageNumber, scope, selectedKey, onScope, onChange, onSelect, onResetPage, onClose }: { doc: ReportDoc; page?: ReportPage; pageNumber: number | null; scope: FontSizeScope; selectedKey: FontSizeKey | null; onScope: (scope: FontSizeScope) => void; onChange: (scope: FontSizeScope, key: FontSizeKey, delta: number) => void; onSelect: (key: FontSizeKey) => void; onResetPage: () => void; onClose: () => void }) {
+  const pageValues = pageFontSizes(page);
+  const count = pageOverrideCount(page);
+  return <section className={styles.popoverBody} aria-label="글자 크기">
+    <div className={styles.drawerHeader}>
+      <h2>글자 크기</h2>
+      <button type="button" className={styles.iconButton} onClick={onClose} aria-label="글자 크기 닫기">×</button>
+    </div>
+    <FontScopeSwitch scope={scope} pageNumber={pageNumber} pageDisabled={!page} onChange={onScope} />
+    <div className={styles.fontSizeRows}>
+      {FONT_SIZE_ROWS.map(({ key, label }) => <FontSizeStepRow key={key} label={label} value={effectiveFontSize(doc, page, key)} pageOverride={scope === "page" && pageValues[key] !== undefined} onChange={(changedKey, delta) => onChange(scope, changedKey, delta)} onSelect={onSelect} selected={selectedKey === key} />)}
+    </div>
+    {scope === "page" && count > 0 && <div className={styles.fontPageReset}><span>{pageNumber}쪽만 바뀐 값 {count}개</span><button type="button" className={styles.fontPageResetButton} onClick={onResetPage}>모든 페이지 값으로</button></div>}
+  </section>;
+}
+
+function FontContextMenu({ menuRef, doc, page, pageNumber, state, scope, onScope, onChange, onResetPageKey, onResetPanel, onClose }: { menuRef: RefObject<HTMLDivElement | null>; doc: ReportDoc; page?: ReportPage; pageNumber: number | null; state: { key: FontSizeKey; x: number; y: number; opener: HTMLElement }; scope: FontSizeScope; onScope: (scope: FontSizeScope) => void; onChange: (scope: FontSizeScope, key: FontSizeKey, delta: number) => void; onResetPageKey: (key: FontSizeKey) => void; onResetPanel: () => void; onClose: () => void }) {
+  const [position, setPosition] = useState({ x: state.x, y: state.y });
+  const pageValues = pageFontSizes(page);
+  const row = fontSizeRow(state.key);
+  const panelChanged = state.key === "title" || state.key === "summary" || state.key === "legend"
+    ? !!(page && Object.prototype.hasOwnProperty.call(page.panels, state.key))
+    : false;
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    if (!menu) return;
+    const rect = menu.getBoundingClientRect();
+    setPosition({ x: Math.max(8, Math.min(state.x, window.innerWidth - rect.width - 8)), y: Math.max(8, Math.min(state.y, window.innerHeight - rect.height - 8)) });
+  }, [state.x, state.y]);
+  useEffect(() => {
+    const first = menuRef.current?.querySelector<HTMLButtonElement>("button");
+    first?.focus();
+  }, []);
+  return <div ref={menuRef} className={styles.fontContextMenu} role="menu" aria-label={`${fontSizeRow(state.key).label} 글자 크기`} style={{ left: position.x, top: position.y }}>
+    <div className={styles.fontContextTitle}><span>글자 크기</span><strong>{row.label}</strong></div>
+    <FontSizeStepRow key={state.key} label={row.label} value={effectiveFontSize(doc, page, state.key)} pageOverride={scope === "page" && pageValues[state.key] !== undefined} onChange={(key, delta) => onChange(scope, key, delta)} menu />
+    <FontScopeSwitch scope={scope} pageNumber={pageNumber} pageDisabled={!page} onChange={onScope} />
+    <div className={styles.fontContextDivider} />
+    {pageValues[state.key] !== undefined && <button type="button" className={styles.fontMenuItem} role="menuitem" onClick={() => onResetPageKey(state.key)}>모든 페이지 값으로 되돌리기</button>}
+    {panelChanged && <button type="button" className={styles.fontMenuItem} role="menuitem" onClick={onResetPanel}>위치·크기 처음대로</button>}
+  </div>;
 }
 
 function pageTitleForToast(page: ReportPage, views: ReadonlyMap<string, TileView>): string {
@@ -129,15 +214,21 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const [exportOpen, setExportOpen] = useState(false);
   const [exportPageScope, setExportPageScope] = useState<ExportPageScope | null>(null);
   const [exportPageIds, setExportPageIds] = useState<Set<string>>(new Set());
-  const [activePopover, setActivePopover] = useState<"layout" | "notes" | "theme" | null>(null);
+  const [activePopover, setActivePopover] = useState<"layout" | "notes" | "font" | null>(null);
+  const [fontScope, setFontScope] = useState<FontSizeScope>("document");
+  const [fontContextScope, setFontContextScope] = useState<FontSizeScope>("document");
+  const [fontHighlight, setFontHighlight] = useState<FontSizeKey | null>(null);
+  const [fontContext, setFontContext] = useState<{ key: FontSizeKey; x: number; y: number; opener: HTMLElement } | null>(null);
+  const fontContextOpenerRef = useRef<HTMLElement | null>(null);
   const exportTriggerRef = useRef<HTMLButtonElement>(null);
   const exportDialogRef = useRef<HTMLDivElement>(null);
   const layoutTriggerRef = useRef<HTMLButtonElement>(null);
   const notesTriggerRef = useRef<HTMLButtonElement>(null);
-  const themeTriggerRef = useRef<HTMLButtonElement>(null);
+  const fontSizeTriggerRef = useRef<HTMLButtonElement>(null);
   const layoutPopoverRef = useRef<HTMLDivElement>(null);
   const notesPopoverRef = useRef<HTMLDivElement>(null);
-  const themePopoverRef = useRef<HTMLDivElement>(null);
+  const fontSizePopoverRef = useRef<HTMLDivElement>(null);
+  const fontContextMenuRef = useRef<HTMLDivElement>(null);
   const popoverOpenerRef = useRef<HTMLElement | null>(null);
   const [mobileViewport, setMobileViewport] = useState(false);
   const reportStageRef = useRef<HTMLElement>(null);
@@ -150,7 +241,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const drawerOpen = rail === "pages" || rail === "tiles";
   const layoutPopoverOpen = activePopover === "layout";
   const notesPopoverOpen = activePopover === "notes";
-  const themePopoverOpen = activePopover === "theme";
+  const fontSizePopoverOpen = activePopover === "font";
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -195,6 +286,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     setMapMoveActive(false);
     setSettingsOpen(false);
     setActivePopover(null);
+    setFontHighlight(null);
+    setFontContext(null);
   }, []);
   const navigateStrip = useCallback((index: number) => {
     const item = stripItems[index];
@@ -253,15 +346,24 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     setActivePopover("notes");
   }, [activePopover, closePopover]);
 
-  const toggleThemePopover = useCallback((opener?: HTMLElement | null) => {
-    if (activePopover === "theme") {
+  const toggleFontSizePopover = useCallback((opener?: HTMLElement | null) => {
+    if (activePopover === "font") {
       closePopover(true);
       return;
     }
-    popoverOpenerRef.current = opener ?? themeTriggerRef.current;
+    popoverOpenerRef.current = opener ?? fontSizeTriggerRef.current;
+    setFontContext(null);
+    setFontScope("document");
     setRail(null);
-    setActivePopover("theme");
+    setActivePopover("font");
   }, [activePopover, closePopover]);
+
+  const closeFontContext = useCallback((restoreFocus = true) => {
+    const opener = fontContextOpenerRef.current;
+    setFontContext(null);
+    if (restoreFocus) window.requestAnimationFrame(() => opener?.focus());
+    fontContextOpenerRef.current = null;
+  }, []);
 
   const closeDrawer = useCallback((restoreFocus = false) => {
     const opener = drawerOpenerRef.current;
@@ -298,24 +400,26 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   }, [drawerOpen]);
 
   useEffect(() => {
-    if (!drawerOpen && !activePopover) return;
+    if (!drawerOpen && !activePopover && !fontContext) return;
     const onPointerDown = (event: PointerEvent) => {
       if (!(event.target instanceof Node)) return;
+      if (fontContext && (fontContextMenuRef.current?.contains(event.target) || fontContext.opener.contains(event.target))) return;
       if (drawerOpen && (drawerRef.current?.contains(event.target) || drawerOpenerRef.current?.contains(event.target))) return;
       if (activePopover && (
         layoutPopoverRef.current?.contains(event.target)
         || notesPopoverRef.current?.contains(event.target)
-        || themePopoverRef.current?.contains(event.target)
+        || fontSizePopoverRef.current?.contains(event.target)
         || layoutTriggerRef.current?.contains(event.target)
         || notesTriggerRef.current?.contains(event.target)
-        || themeTriggerRef.current?.contains(event.target)
+        || fontSizeTriggerRef.current?.contains(event.target)
       )) return;
+      if (fontContext) closeFontContext(true);
       if (drawerOpen) closeDrawer(true);
       if (activePopover) closePopover(true);
     };
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [activePopover, closeDrawer, closePopover, drawerOpen]);
+  }, [activePopover, closeDrawer, closeFontContext, closePopover, drawerOpen, fontContext]);
 
   const commitDoc = useCallback((next: ReportDoc, message?: string) => {
     setHistory((current) => {
@@ -348,6 +452,11 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        if (fontContext) {
+          event.preventDefault();
+          closeFontContext(true);
+          return;
+        }
         if (activePopover) {
           event.preventDefault();
           closePopover(true);
@@ -385,7 +494,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activePopover, closeDrawer, closePopover, drawerOpen, mapMoveActive, navigateStrip, redo, selectedId, selectedSlideKey, selection, settingsOpen, stripItems, undo]);
+  }, [activePopover, closeDrawer, closeFontContext, closePopover, drawerOpen, fontContext, mapMoveActive, navigateStrip, redo, selectedId, selectedSlideKey, selection, settingsOpen, stripItems, undo]);
 
   const addPages = useCallback((pages: ReportPage[], message?: string) => {
     if (pages.length === 0) return;
@@ -557,6 +666,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
       if (!reportPageMapSelectable(page)) return;
       rememberDrawerOpener();
       const transitioned = transitionMapInteraction(current, "select");
+      setFontHighlight(null);
+      closeFontContext(false);
       setActivePopover(null);
       setSelection(next);
       setMapMoveActive(transitioned.moveActive);
@@ -566,15 +677,19 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     }
     if (next === null) {
       const transitioned = transitionMapInteraction(current, "outside-slide");
+      setFontHighlight(null);
+      closeFontContext(false);
       setMapMoveActive(transitioned.moveActive);
       setSettingsOpen(transitioned.settingsOpen);
       if (!transitioned.selected) setSelection(null);
       return;
     }
+    setFontHighlight(null);
+    closeFontContext(false);
     setMapMoveActive(false);
     setSettingsOpen(false);
     setSelection(next);
-  }, [history.present.pages, mapMoveActive, rememberDrawerOpener, selectedId, selection, settingsOpen]);
+  }, [closeFontContext, history.present.pages, mapMoveActive, rememberDrawerOpener, selectedId, selection, settingsOpen]);
   const toggleRail = useCallback((next: RailKey, opener?: HTMLElement | null) => {
     rememberDrawerOpener(opener);
     if (drawerOpen && rail === next) {
@@ -614,6 +729,43 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
 
   const selectedPage = selectedId ? history.present.pages.find((page) => page.id === selectedId) : undefined;
   const selectedPageNumber = selectedId ? history.present.pages.findIndex((page) => page.id === selectedId) + 1 : null;
+  const changeFontSize = useCallback((scope: FontSizeScope, key: FontSizeKey, delta: number) => {
+    if (!selectedId) return;
+    const base = scope === "page"
+      ? effectiveFontSize(history.present, selectedPage, key)
+      : clampFontSize(key, documentFontSizes(history.present)[key] ?? DEFAULT_FONT_SIZES[key]);
+    const value = clampFontSize(key, base + delta);
+    const action: FontSizeAction = scope === "page"
+      ? { type: "fontSizes", scope, id: selectedId, key, value }
+      : { type: "fontSizes", scope, key, value };
+    apply(action as ReportDocAction, `${fontSizeRow(key).label}를 ${value}pt로 바꿨습니다.`);
+  }, [apply, history.present, selectedId, selectedPage]);
+  const resetPageFontSizes = useCallback(() => {
+    if (!selectedId) return;
+    apply({ type: "clearPageFontSizes", id: selectedId } as ReportDocAction, "이 페이지 글자 크기를 모든 페이지 값으로 되돌렸습니다.");
+  }, [apply, selectedId]);
+  const resetPageFontSize = useCallback((key: FontSizeKey) => {
+    if (!selectedId) return;
+    apply({ type: "clearPageFontSizes", id: selectedId, key } as ReportDocAction, `${fontSizeRow(key).label}를 모든 페이지 값으로 되돌렸습니다.`);
+  }, [apply, selectedId]);
+  const resetSelectedPanel = useCallback(() => {
+    if (!selectedId || !selectedPage || (fontContext?.key !== "title" && fontContext?.key !== "summary" && fontContext?.key !== "legend")) return;
+    const key = fontContext.key;
+    const panels = Object.fromEntries(Object.entries(selectedPage.panels).filter(([panelKey]) => panelKey !== key)) as PagePanels;
+    apply({ type: "panels", id: selectedId, panels });
+    closeFontContext(true);
+  }, [apply, closeFontContext, fontContext, selectedId, selectedPage]);
+  const openFontContext = useCallback((key: FontSizeKey, x: number, y: number, opener: HTMLElement) => {
+    setFontHighlight(key);
+    setFontContextScope(pageFontSizes(selectedPage)[key] !== undefined ? "page" : "document");
+    setFontContext({ key, x, y, opener });
+    fontContextOpenerRef.current = opener;
+    setActivePopover(null);
+    setRail(null);
+    setMapMoveActive(false);
+    setSettingsOpen(false);
+    if (key === "title" || key === "summary" || key === "legend") setSelection({ kind: "panel", key });
+  }, [selectedPage]);
   const selectedPageMapSelectable = reportPageMapSelectable(selectedPage);
   const editableMapPage = selectedPage?.kind === "tile" || selectedPage?.kind === "compare" ? selectedPage : null;
   const mapCell = selectedPage?.kind === "compare" ? (selection?.kind === "map" && selection.cell !== undefined ? selection.cell : 0) : undefined;
@@ -838,7 +990,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
             ) : selectedSlide ? (
               <>
                 <div className={styles.stageSlide}>
-                  <SlideSurface slide={selectedSlide} basemap={basemap} mode="edit" selection={selection} onSelect={handleSurfaceSelect} onMapMoveActive={setMapMoveFromSurface} onFrame={applyFrame} onPanels={applyPanels} onTextBox={applyTextBox} onText={editPanelText} onSheetCellActivate={(index) => { handleSurfaceSelect({ kind: "map", cell: index }); setMapMoveActive(false); }} mapActive={mapEditing} classMap={surfaceClassMap} />
+                  <SlideSurface slide={selectedSlide} basemap={basemap} mode="edit" selection={selection} fontHighlight={fontHighlight} onFontContextMenu={openFontContext} onSelect={handleSurfaceSelect} onMapMoveActive={setMapMoveFromSurface} onFrame={applyFrame} onPanels={applyPanels} onTextBox={applyTextBox} onText={editPanelText} onSheetCellActivate={(index) => { handleSurfaceSelect({ kind: "map", cell: index }); setMapMoveActive(false); }} mapActive={mapEditing} classMap={surfaceClassMap} />
                 </div>
               </>
             ) : <div className={styles.emptyCanvas}>이 페이지는 아직 미리보기를 준비하고 있습니다.</div>}
@@ -893,8 +1045,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
             <button type="button" className={styles.railButton} aria-pressed={false} onClick={addTextBoxFromRail} disabled={!selectedPage}><span aria-hidden="true"><RailIcon name="textbox" /></span><span>글상자</span></button>
             <div className={styles.toolDivider} role="separator" aria-hidden="true" />
             <div className={styles.railPopoverRoot}>
-              <button ref={themeTriggerRef} type="button" className={`${styles.railButton} ${themePopoverOpen ? styles.railButtonActive : ""}`} aria-pressed={themePopoverOpen} aria-haspopup="dialog" aria-expanded={themePopoverOpen} aria-controls={themePopoverOpen ? "report-theme-popover" : undefined} aria-label="테마" onClick={(event) => toggleThemePopover(event.currentTarget)}><span aria-hidden="true"><RailIcon name="theme" /></span><span>테마</span></button>
-              {themePopoverOpen && <div ref={themePopoverRef} id="report-theme-popover" className={`${styles.floatCard} ${styles.anchoredCard} ${styles.railPopover}`} style={anchoredCardStyle} role="dialog" aria-label="테마 설정"><ThemePopover doc={history.present} onFontScale={(fontScale) => apply({ type: "theme", fontScale }, `${fontScale}배 글자 크기를 적용했습니다.`)} onClose={() => closePopover(true)} /></div>}
+              <button ref={fontSizeTriggerRef} type="button" className={`${styles.railButton} ${fontSizePopoverOpen ? styles.railButtonActive : ""}`} aria-pressed={fontSizePopoverOpen} aria-haspopup="dialog" aria-expanded={fontSizePopoverOpen} aria-controls={fontSizePopoverOpen ? "report-font-size-popover" : undefined} aria-label="글자 크기" onClick={(event) => toggleFontSizePopover(event.currentTarget)}><span aria-hidden="true"><RailIcon name="font" /></span><span>글자 크기</span></button>
+              {fontSizePopoverOpen && <div ref={fontSizePopoverRef} id="report-font-size-popover" className={`${styles.floatCard} ${styles.anchoredCard} ${styles.railPopover} ${styles.fontSizePopover}`} style={anchoredCardStyle} role="dialog" aria-label="글자 크기"><FontSizePopover doc={history.present} page={selectedPage} pageNumber={selectedPageNumber} scope={fontScope} selectedKey={fontHighlight} onScope={setFontScope} onChange={changeFontSize} onSelect={setFontHighlight} onResetPage={resetPageFontSizes} onClose={() => closePopover(true)} /></div>}
             </div>
             <div className={styles.railPopoverRoot}>
               <button ref={layoutTriggerRef} type="button" className={`${styles.railButton} ${layoutPopoverOpen ? styles.railButtonActive : ""}`} aria-haspopup="dialog" aria-pressed={layoutPopoverOpen} aria-expanded={layoutPopoverOpen} aria-controls={layoutPopoverOpen ? "report-layout-menu" : undefined} aria-label="페이지 레이아웃 메뉴" onClick={(event) => toggleLayoutPopover(event.currentTarget)} disabled={!selectedPage}><span aria-hidden="true"><RailIcon name="layout" /></span><span>레이아웃</span></button>
@@ -928,6 +1080,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
           </div>
         </main>
       </div>
+      {fontContext && <FontContextMenu menuRef={fontContextMenuRef} doc={history.present} page={selectedPage} pageNumber={selectedPageNumber} state={fontContext} scope={fontContextScope} onScope={setFontContextScope} onChange={changeFontSize} onResetPageKey={(key) => { resetPageFontSize(key); closeFontContext(true); }} onResetPanel={resetSelectedPanel} onClose={() => closeFontContext(true)} />}
       {toast && <div className={styles.toast} role="status"><span className={styles.toastText}>{toast}</span><button type="button" onClick={() => { setToast(null); undo(); }}>되돌리기</button></div>}
     </section>
   );

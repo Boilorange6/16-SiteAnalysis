@@ -5,7 +5,7 @@ const { GODEOK_RESULTS, GODEOK_SUMMARY } = await import("../../lib/v2/ui/fixture
 const { initBoard } = await import("../../lib/v2/ui/board-state.ts");
 const { toSummaryView, toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 const { buildReportPlan, REPORT_SOURCE_ROWS_PER_SLIDE, tileReportSettingsFromBoard, tileSlides } = await import("../../lib/v2/report/report-plan.ts");
-const { EMPTY_REPORT_DOC } = await import("../../lib/v2/report/report-doc.ts");
+const { EMPTY_REPORT_DOC, mergeReportFontSizes } = await import("../../lib/v2/report/report-doc.ts");
 const { importLegacyReport, pagesForTile, planReportDoc, printedPageCount, recommendedPages } = await import("../../lib/v2/report/report-doc-plan.ts");
 const { pageStripItems, pageStripLabel } = await import("../../lib/v2/report/report-page-strip.ts");
 const { withLegacyStyle } = await import("./legacy-report-fixture.mjs");
@@ -23,6 +23,17 @@ const styledBoard = withLegacyStyle(board, [oldPlan.find((slide) => slide.kind =
 const styledPages = importLegacyReport(EMPTY_REPORT_DOC, styledBoard, views, context);
 const styledTile = styledPages.find((page) => page.kind === "tile");
 assert.deepEqual(styledTile?.frame.offsetM, [80, -20], "옛 styles의 offsetM을 페이지 frame으로 이관");
+
+assert.ok(styledTile, "font size precedence page");
+const fontDoc = {
+  v: 1,
+  format: "wide",
+  fontSizes: { title: 24, summary: 16, legend: 12, labels: 14, source: 10 },
+  pages: styledPages.map((page) => page.id === styledTile.id ? { ...page, fontSizes: { title: 28, labels: 15 } } : page),
+};
+const fontPlan = planReportDoc(fontDoc, views, context);
+const fontTile = fontPlan.find((slide) => slide.page?.id === styledTile.id);
+assert.deepEqual(fontTile?.style.fontSizes, mergeReportFontSizes(fontDoc.fontSizes, { title: 28, labels: 15 }), "page fontSizes take precedence in the planned PageStyle");
 
 const a05View = views.get("t-A05");
 assert.ok(a05View, "A05 view");

@@ -13,7 +13,7 @@ import type { RoseModel } from "../ui/wind-rose";
 import { sheetCells, type SheetGrid } from "../ui/sheet";
 import { reportSummaryNotes } from "../ui/terrain-section";
 import { COVER_MAP_KEY, mapKeyOf, type PlannedSlide } from "./report-plan";
-import { E, FONT, INK, L, LINE, MUTED, coverLayout, fitBlock, fitFooterText, fitPt, hex, linesOf, plate, sourceLayout, textIn, titlePlateRect, type Border, type ReportItem, type Slide } from "./pptx-kit";
+import { E, FONT, INK, L, LINE, MUTED, coverLayout, fitBlock, fitFooterText, fitPt, fontSizeForStyle, hex, linesOf, plate, sourceLayout, textIn, titlePlateRect, type Border, type ReportItem, type Slide } from "./pptx-kit";
 import { tileReportModuleFor } from "../tile/report";
 import { addEditableMap, nativeMapFallbackNote, nativeMapStatus } from "./map-pptx";
 import { badgeTextColor } from "../ui/map-labels";
@@ -36,9 +36,11 @@ const CHIP: Record<Badge["tone"], { fill: string; color: string }> = {
 const panelTag = (key: string, display: string, part: string): string => `GRP|panel-${key}|${display}|${part}`;
 const legendDashType = (dash?: string): "solid" | "dash" | "sysDot" => dash === "1 3" ? "sysDot" : dash ? "dash" : "solid";
 
-function titleTextFit(title: string, kind: string, box: { w: number; h: number }, scale: number): { titlePt: number; metaPt: number } {
-  let titlePt = fitBlock([title], box, 18 * scale, 7);
-  let metaPt = fitBlock([kind], box, 10 * scale, 7);
+function titleTextFit(title: string, kind: string, box: { w: number; h: number }, style: PageStyle): { titlePt: number; metaPt: number } {
+  const titleMaxPt = fontSizeForStyle(style, "title");
+  const metaMaxPt = 10 * (titleMaxPt / 18);
+  let titlePt = fitBlock([title], box, titleMaxPt, 7);
+  let metaPt = fitBlock([kind], box, metaMaxPt, 7);
   const widthAt = (value: string, pt: number) => textIn(value, pt);
   const textWidth = () => widthAt(title, titlePt) + widthAt(`  ${kind}`, metaPt);
   // fitBlock은 각 run을 따로 측정하므로, 한 텍스트 상자 안의 두 run 합도
@@ -70,7 +72,7 @@ function strip(s: Slide, p: PlannedSlide, credit: boolean, format: SlideFormat =
   s.addShape("rect", { x: r.x, y: r.y, w: r.w, h: r.h, fill: { color: "FFFFFF", transparency: 0 }, line: { color: "FFFFFF", width: 0, transparency: 100 } });
   s.addShape("line", { x: r.x, y: r.y, w: r.w, h: 0, line: { color: INK, width: 0.5, transparency: 92 } });
   const room = size.w - g.edge - 1.7;
-  const footer = fitFooterText(p.footer, credit, room);
+  const footer = fitFooterText(p.footer, credit, room, fontSizeForStyle(p.style ?? {}, "source"));
   s.addText(footer.text, { x: g.edge, y: r.y, w: room, h: r.h, valign: "middle", fontFace: FONT, fontSize: footer.fontSize, color: "454A55", margin: 0, fit: "shrink" });
   s.addText(`${p.no} / ${p.total}`, { x: size.w - g.edge - 1.2, y: r.y, w: 1.2, h: r.h, align: "right", valign: "middle", fontFace: FONT, fontSize: 9, color: "454A55", margin: 0 });
 }
@@ -149,12 +151,11 @@ function pageNotes(s: Slide, p: PlannedSlide, extra: readonly string[] = []): vo
 
 /** 왼쪽 위 제목 판: 타일 색 점 + 타일명 + 종류 */
 function titlePlate(s: Slide, color: string, title: string, kind: string, maxW: number, style: PageStyle = {}, hasSummary = true, format: SlideFormat = "wide") {
-  const scale = slidePanelScale(style.titleScale);
   const r = titlePlateRect(title, kind, maxW, style, hasSummary, format);
   const textX = r.x + Math.min(0.48, Math.max(0.04, r.w * 0.35));
   const textRight = r.x + r.w - Math.min(0.1, Math.max(0.01, r.w * 0.08));
   const textBox = { w: Math.max(0.01, textRight - textX), h: Math.max(0.01, r.h - Math.min(0.08, r.h * 0.2)) };
-  const { titlePt, metaPt } = titleTextFit(title, kind, textBox, scale);
+  const { titlePt, metaPt } = titleTextFit(title, kind, textBox, style);
   const group = panelTag("title", "제목", "plate");
   plate(s, r, 0.12, group);
   const dotSize = Math.min(0.18, Math.max(0.02, r.w * 0.16));
@@ -303,6 +304,7 @@ function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = 
   const { items, notes, rect: r } = slideLegend(model, !p.muted, style, hasSummary, format, frameLegendOptions(frameOf(p)));
   if (!r) return;
   const scale = slidePanelScale(style.legendScale);
+  const legendPt = fontSizeForStyle(style, "legend");
   const focus = style.legendFocus ? legendItemsOf(model).find((item) => item.key === style.legendFocus)?.label ?? style.legendFocus : null;
   const group = panelTag("legend", "범례", "plate");
   plate(s, r, 0.12, group);
@@ -352,7 +354,7 @@ function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = 
     const fade = dimmed ? 65 : 0;
     const labelX = legendGeometry.labelX;
     const labelW = Math.max(0.01, legendGeometry.labelW);
-    const labelPt = fitBlock([it.label], { w: labelW, h: Math.max(0.01, rowH) }, 10 * scale, 7);
+    const labelPt = fitBlock([it.label], { w: labelW, h: Math.max(0.01, rowH) }, legendPt, 7);
     if (it.site) {
       target.addShape("diamond", { x: iconXFor(0.16 * iconScale), y: y + iconDy + 0.04 * iconScale, w: 0.16 * iconScale, h: 0.16 * iconScale, fill: { color: "FFFFFF", transparency: fade }, line: { color: "111111", width: 0.8, transparency: fade } });
       target.addShape("ellipse", { x: iconXFor(0.04 * iconScale), y: y + iconDy + 0.1 * iconScale, w: 0.04 * iconScale, h: 0.04 * iconScale, fill: { color: "111111", transparency: fade }, line: { color: "111111", width: 0, transparency: fade } });
@@ -364,7 +366,7 @@ function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = 
     } else if (it.badge) {
       const badgeX = iconXFor(0.19 * iconScale);
       target.addShape("ellipse", { x: badgeX, y: y + iconDy + 0.03 * iconScale, w: 0.19 * iconScale, h: 0.19 * iconScale, fill: { color: hex(it.color), transparency: fade }, line: { color: "FFFFFF", width: 0.75, transparency: fade } });
-      target.addText(it.badge, { x: badgeX, y: y + iconDy + 0.03 * iconScale, w: 0.19 * iconScale, h: 0.19 * iconScale, align: "center", valign: "middle", fontFace: FONT, fontSize: Math.max(7, 7 * scale), bold: true, color: dimmed ? "8C919B" : hex(badgeTextColor(it.color)), margin: 0 });
+      target.addText(it.badge, { x: badgeX, y: y + iconDy + 0.03 * iconScale, w: 0.19 * iconScale, h: 0.19 * iconScale, align: "center", valign: "middle", fontFace: FONT, fontSize: Math.max(7, 7 * (legendPt / 10)), bold: true, color: dimmed ? "8C919B" : hex(badgeTextColor(it.color)), margin: 0 });
     } else if (it.lineSwatch) {
       const lineW = 0.22 * iconScale;
       const x = iconXFor(lineW);
@@ -398,7 +400,7 @@ function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = 
   notes.forEach((n, i) => {
       const noteX = legendGeometry.noteX;
       const noteW = Math.max(0.01, legendGeometry.noteW);
-      target.addText(n, { x: noteX, y: r.y + topPad + items.length * rowH + i * noteH, w: noteW, h: Math.max(0.01, noteH), valign: "middle", fontFace: FONT, fontSize: fitBlock([n], { w: noteW, h: Math.max(0.01, noteH) }, 8.5 * scale, 7), color: MUTED, margin: 0, fit: "shrink" });
+      target.addText(n, { x: noteX, y: r.y + topPad + items.length * rowH + i * noteH, w: noteW, h: Math.max(0.01, noteH), valign: "middle", fontFace: FONT, fontSize: fitBlock([n], { w: noteW, h: Math.max(0.01, noteH) }, 8.5 * (legendPt / 10), 7), color: MUTED, margin: 0, fit: "shrink" });
   });
 }
 
@@ -410,7 +412,8 @@ function cover(pptx: PptxGenJS, p: PlannedSlide & { kind: "cover" }, images: Map
   const layout = coverLayout({ address: p.address, metricCount: p.metrics.length, lineCount: p.lines.length, incomplete: !!p.incomplete }, format);
   const { left, right, leftInner, address, metricCellW, metricsY, asOf, incompleteY, rightHeading, rowH, addressPt } = layout;
   plate(s, left, 0.16);
-  s.addText("사이트 분석 보고서", { x: leftInner.x, y: leftInner.y, w: leftInner.w, h: leftInner.h, fontFace: FONT, fontSize: 11, bold: true, color: MUTED, margin: 0 });
+  const coverTitleScale = fontSizeForStyle(p.style ?? {}, "title") / 18;
+  s.addText("사이트 분석 보고서", { x: leftInner.x, y: leftInner.y, w: leftInner.w, h: leftInner.h, fontFace: FONT, fontSize: 11 * coverTitleScale, bold: true, color: MUTED, margin: 0 });
   s.addText(p.address, { x: address.x, y: address.y, w: address.w, h: address.h, valign: "top", fontFace: FONT, fontSize: addressPt, bold: true, color: INK, margin: 0 });
   p.metrics.forEach((m, i) => {
     const x = leftInner.x + (i % 2) * (leftInner.w / 2);
@@ -450,7 +453,8 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   const s = pptx.addSlide();
   const style = pageStyleFor(p, format);
   const chart = !p.map && !p.mass && !p.rose; // 도판 구성비 면: 연한 타일색 바탕에 차트가 전면
-  const summaryScale = slidePanelScale(style.summaryScale);
+  const summaryPt = fontSizeForStyle(style, "summary");
+  const summaryScale = summaryPt / 13;
   const mix = (c: string, a: number) => {
     const n = parseInt(hex(c), 16);
     const ch = (sh: number) => Math.round(255 - (255 - ((n >> sh) & 255)) * a);
@@ -518,7 +522,7 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   }
   else if (v.headline) items.push(...headlineItems(s, v.headline, contentBox, summaryScale));
   const summaryText = p.page?.summaryOverride ?? v.sentence;
-  if (summaryText) items.push(textItem(s, summaryText, 12.5, INK, true, 5, contentBox, summaryScale));
+  if (summaryText) items.push(textItem(s, summaryText, summaryPt, INK, true, 5, contentBox, 1));
   if (v.filterLine) items.push(textItem(s, v.filterLine, 10, MUTED, true, 2, contentBox, summaryScale));
   // 도판(지도) 면에 구성비 수치를 반복하지 않는다
   const rows = p.body.face === "front" || p.body.face === "back" ? [] : v.rows.filter((r) => r.label !== v.headline?.label).slice(0, 5);
@@ -623,13 +627,14 @@ function sources(pptx: PptxGenJS, p: PlannedSlide & { kind: "sources" }, images:
   // 원천이 많은 분석은 report-plan에서 여러 출처 장으로 나눈다. 한 장 안의 표는 승인 시안의 열 구조를 유지한다.
   const source = sourceLayout(p.rows.length, p.style ?? {}, format);
   const dense = source.dense;
+  const sourcePt = fontSizeForStyle(p.style ?? {}, "source");
   const r = source.table;
   plate(s, r, 0.16);
   const cell = (t: string, opts: { bold?: boolean; fontSize?: number; color?: string } = {}) => ({
     text: t,
-    options: { fontFace: FONT, fontSize: opts.fontSize ?? (dense ? 9 : 11), bold: opts.bold ?? false, color: opts.color ?? INK, border: underline(opts.bold ? 1 : 0.75), margin: (dense ? [0, 0.03, 0, 0.03] : [0, 0.05, 0, 0.05]) as [number, number, number, number], fit: (dense ? "shrink" : "none") as "shrink" | "none" },
+    options: { fontFace: FONT, fontSize: opts.fontSize ?? sourcePt, bold: opts.bold ?? false, color: opts.color ?? INK, border: underline(opts.bold ? 1 : 0.75), margin: (dense ? [0, 0.03, 0, 0.03] : [0, 0.05, 0, 0.05]) as [number, number, number, number], fit: (dense ? "shrink" : "none") as "shrink" | "none" },
   });
-  const header = (t: string) => cell(t, { bold: true, fontSize: dense ? 9 : 11, color: MUTED });
+  const header = (t: string) => cell(t, { bold: true, fontSize: sourcePt, color: MUTED });
   const rows = [
     [header("제공처·자료"), header("기준일"), header("이용조건"), header("원문 확인"), header("사용한 타일")],
     ...p.rows.map((row) => [
@@ -642,7 +647,7 @@ function sources(pptx: PptxGenJS, p: PlannedSlide & { kind: "sources" }, images:
   ];
   const W = source.tableContent.w;
   s.addTable(rows, { x: source.tableContent.x, y: source.tableContent.y, w: W, colW: [W * 0.24, W * 0.14, W * 0.16, W * 0.25, W * 0.21], rowH: dense ? 0.28 : 0.32, margin: 0 });
-  s.addText(`분석 생성일 ${p.analysisDate} · 기준일은 원천 자료 날짜${p.rows.length > 12 ? ` · 원천 ${p.rows.length}건` : ""}`, { x: source.footer.x, y: source.footer.y, w: source.footer.w, h: source.footer.h, fontFace: FONT, fontSize: 9, color: MUTED, margin: 0, fit: "shrink" });
+  s.addText(`분석 생성일 ${p.analysisDate} · 기준일은 원천 자료 날짜${p.rows.length > 12 ? ` · 원천 ${p.rows.length}건` : ""}`, { x: source.footer.x, y: source.footer.y, w: source.footer.w, h: source.footer.h, fontFace: FONT, fontSize: sourcePt, color: MUTED, margin: 0, fit: "shrink" });
   pageTextBoxes(s, p, format);
   pageNotes(s, p);
   strip(s, p, !!p.map, format);

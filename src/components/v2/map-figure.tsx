@@ -39,6 +39,8 @@ export type MapFigureProps = {
   fixed?: boolean;
   /** 보고서 미리보기와 PPT가 공유하는 논리 크기 단위. 일반 지도는 자동 단위를 쓴다. */
   layoutUnit?: number;
+  /** 보고서 페이지의 지도 라벨 pt를 scene 기준으로 환산한 배율. */
+  labelScale?: number;
   /** 카드처럼 작은 프레임에서 출구 번호를 최근접 출구 하나로 줄인다. */
   compact?: boolean;
   label?: string;
@@ -337,12 +339,13 @@ function backgroundTransform(from: Viewport, to: Viewport, width: number, height
   return `matrix(${scale},0,0,${scale},${e},${f})`;
 }
 
-function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, backgroundOnly = false, fixed, layoutUnit, compact = false, label, legend, legendY, north: northOpt, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = EMPTY_BOXES, siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, calloutTop: calloutTopOpt, calloutLeftBottom, selectedFids = EMPTY_KEYS, terrainSection = "A", highlightLabel = null, legendFocus = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = EMPTY_KEYS, showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeaturePin, onLegendHover, onLegendPin, path = EMPTY_PATH, onMapClick, view, viewport, dragging = false, previewInteraction = false, preserveShortCalloutLabels = false, hiddenKeys = EMPTY_KEYS }: MapFigureProps) {
+function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, backgroundOnly = false, fixed, layoutUnit, labelScale = 1, compact = false, label, legend, legendY, north: northOpt, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = EMPTY_BOXES, siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, siteY = 0.5, calloutTop: calloutTopOpt, calloutLeftBottom, selectedFids = EMPTY_KEYS, terrainSection = "A", highlightLabel = null, legendFocus = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = EMPTY_KEYS, showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeaturePin, onLegendHover, onLegendPin, path = EMPTY_PATH, onMapClick, view, viewport, dragging = false, previewInteraction = false, preserveShortCalloutLabels = false, hiddenKeys = EMPTY_KEYS }: MapFigureProps) {
   if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
     const target = window as Window & { __V2_PREVIEW_METRICS__?: Record<string, number> };
     const metrics = target.__V2_PREVIEW_METRICS__ ?? (target.__V2_PREVIEW_METRICS__ = {});
     metrics.mapFigureRenders = (metrics.mapFigureRenders ?? 0) + 1;
   }
+  const safeLabelScale = Number.isFinite(labelScale) && labelScale > 0 ? labelScale : 1;
   const backgroundLayerSet = Array.isArray(backgroundOnly) ? new Set(backgroundOnly) : null;
   const backgroundOnlyActive = backgroundOnly === true || backgroundLayerSet !== null;
   const shouldRasterizeLayer = (layerName: string) => !backgroundOnlyActive || !!backgroundLayerSet?.has(layerName);
@@ -550,7 +553,8 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     viewport,
     legendFocus,
     layoutUnit: u,
-  }), [activeLayer, avoid, bare, bottomInset, calloutLeftBottom, calloutTopOpt, compact, emphasisKey, fill, fixed, H, hiddenKeys, highlightLabel, layoutUnit, legendFocus, mapCenterY, mapFill, mapSiteX, mapSiteY, muted, model, northOpt, panelH, panelW, panelX, panelY, path, rightInset, scale, scaleLeft, scaleX, sceneDragging, sceneHoverKey, showAutomaticLabels, showLegend, showRadius, showSiteMarker, siteX, selectedFids, terrainSection, pinnedKeys, W, view, viewport]);
+    labelScale: safeLabelScale,
+  }), [activeLayer, avoid, bare, bottomInset, calloutLeftBottom, calloutTopOpt, compact, emphasisKey, fill, fixed, H, hiddenKeys, highlightLabel, layoutUnit, legendFocus, mapCenterY, mapFill, mapSiteX, mapSiteY, muted, model, northOpt, panelH, panelW, panelX, panelY, path, rightInset, safeLabelScale, scale, scaleLeft, scaleX, sceneDragging, sceneHoverKey, showAutomaticLabels, showLegend, showRadius, showSiteMarker, siteX, selectedFids, terrainSection, pinnedKeys, W, view, viewport]);
   const vp = scene.viewport;
   const proj = makeProjector(vp);
   const mpp = scene.mpp;
@@ -835,10 +839,10 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
   type ScreenLabel = MapSceneLabel;
   const screenLabels: ScreenLabel[] = scene.labels;
   const labelByKey = new Map(screenLabels.map((entry) => [entry.key, entry]));
-  const calloutLabelFs = Math.max(11, fs);
-  const calloutTextLeft = 8 * u;
-  const calloutTextRight = 4 * u;
-  const calloutPadY = 3 * u;
+  const calloutLabelFs = Math.max(11 * safeLabelScale, fs * safeLabelScale);
+  const calloutTextLeft = 8 * u * safeLabelScale;
+  const calloutTextRight = 4 * u * safeLabelScale;
+  const calloutPadY = 3 * u * safeLabelScale;
   const calloutLineHeight = calloutLabelFs * 1.24;
   const baseCalloutMetrics = W <= 420 ? PX_NARROW : PX;
   const calloutMetrics = {
@@ -1031,7 +1035,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
             ) : (
               <>
                 <rect data-rail-exit-marker="true" x={exit.box.x0} y={exit.box.y0} width={exit.box.x1 - exit.box.x0} height={exit.box.y1 - exit.box.y0} rx={exit.pill ? (exit.box.y1 - exit.box.y0) / 2 : 2} fill={RAIL_EXIT_COLOR} stroke="#172033" strokeWidth={0.65} />
-                <text data-rail-exit-number="true" x={(exit.box.x0 + exit.box.x1) / 2} y={exit.box.y0 + (exit.box.y1 - exit.box.y0) * 0.76} textAnchor="middle" fontSize={7} fontWeight={700} fill="#111827">{exit.number}</text>
+                <text data-rail-exit-number="true" x={(exit.box.x0 + exit.box.x1) / 2} y={exit.box.y0 + (exit.box.y1 - exit.box.y0) * 0.76} textAnchor="middle" fontSize={exit.fontSize} fontWeight={700} fill="#111827">{exit.number}</text>
               </>
             )}
             {previewInteraction && source && <circle data-map-hit="rail-exit" cx={exit.point[0]} cy={exit.point[1]} r={22 * u} fill="transparent" stroke="transparent" {...hitProps(exitPick)} />}

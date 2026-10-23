@@ -1,5 +1,5 @@
 /** 독립 보고서 문서를 기존 PPT 슬라이드 계획으로 바꾸는 순수 어댑터. */
-import { defaultFrame, newPageId, type MapFrameState, type ReportDoc, type ReportPage, type ReportFormat, type TilePart } from "./report-doc";
+import { defaultFrame, DEFAULT_REPORT_FONT_SIZES, mergeReportFontSizes, newPageId, reportFontSizesFromLegacyScale, type MapFrameState, type ReportDoc, type ReportPage, type ReportFormat, type TilePart } from "./report-doc";
 import {
   buildReportPlan,
   complexCounts,
@@ -336,10 +336,21 @@ function missingView(tileId: string, summary: SummaryView): TileView {
   };
 }
 
-function pageStyleFor(page: ReportPage): PageStyle {
-  if (page.kind !== "tile") return page.panels ? { panels: { ...page.panels } } : {};
+function pageStyleFor(doc: ReportDoc, page: ReportPage): PageStyle {
+  const legacyFontSizes = reportFontSizesFromLegacyScale(doc.fontScale);
+  const documentFontSizes = { ...(legacyFontSizes ?? {}), ...(doc.fontSizes ?? {}) };
+  const fontSizes = mergeReportFontSizes(documentFontSizes, page.fontSizes);
+  const scaleFor = (key: keyof typeof DEFAULT_REPORT_FONT_SIZES) => Math.max(0.7, Math.min(1.5, fontSizes[key] / DEFAULT_REPORT_FONT_SIZES[key]));
+  const base: PageStyle = {
+    fontSizes,
+    titleScale: scaleFor("title"),
+    summaryScale: scaleFor("summary"),
+    legendScale: scaleFor("legend"),
+  };
+  if (page.kind !== "tile") return page.panels ? { ...base, panels: { ...page.panels } } : base;
   const frame = page.frame;
   return {
+    ...base,
     summary: page.layout !== "map-full",
     zoomDelta: frame.zoomDelta,
     offsetM: [...frame.offsetM] as [number, number],
@@ -438,7 +449,7 @@ export function planReportDoc(doc: ReportDoc, views: ReadonlyMap<string, TileVie
         incomplete: ctx.summary.incomplete ? `지역 자료 불완전 · ${ctx.summary.incompleteCount}개 타일` : null,
         lines: sourceViews.map((view) => ({ title: view.title, color: view.color, text: view.headline ? `${view.headline.label} ${view.headline.value}` : "결과 없음" })),
         map: ctx.summary.map,
-      }, page, page.id, `${ctx.summary.asOfLine} · 출처와 기준일은 마지막 장 참조`, pageStyleFor(page), doc.format));
+      }, page, page.id, `${ctx.summary.asOfLine} · 출처와 기준일은 마지막 장 참조`, pageStyleFor(doc, page), doc.format));
       continue;
     }
     if (page.kind === "sources") {
@@ -448,12 +459,12 @@ export function planReportDoc(doc: ReportDoc, views: ReadonlyMap<string, TileVie
           rows: sourceRows.slice(index * REPORT_SOURCE_ROWS_PER_SLIDE, (index + 1) * REPORT_SOURCE_ROWS_PER_SLIDE),
           analysisDate: date,
           map: ctx.summary.map,
-        }, page, `${page.id}:${index}`, `${ctx.summary.asOfLine} · 출처 ${sourceRows.length}건${sourcePages > 1 ? ` · 출처 ${index + 1}/${sourcePages}` : ""}`, pageStyleFor(page), doc.format));
+        }, page, `${page.id}:${index}`, `${ctx.summary.asOfLine} · 출처 ${sourceRows.length}건${sourcePages > 1 ? ` · 출처 ${index + 1}/${sourcePages}` : ""}`, pageStyleFor(doc, page), doc.format));
       }
       continue;
     }
     if (page.kind === "blank") {
-      raw.push(plannedWithMeta({ kind: "cover", address: "", metrics: [], asOfLine: "", incomplete: null, lines: [], map: null }, page, page.id, "빈 페이지", pageStyleFor(page), doc.format));
+      raw.push(plannedWithMeta({ kind: "cover", address: "", metrics: [], asOfLine: "", incomplete: null, lines: [], map: null }, page, page.id, "빈 페이지", pageStyleFor(doc, page), doc.format));
       continue;
     }
     if (page.kind === "tile") {
@@ -466,10 +477,11 @@ export function planReportDoc(doc: ReportDoc, views: ReadonlyMap<string, TileVie
       const footer = selected.kind === "tile" && selected.callout?.filterLine
         ? `${selected.callout.filterLine} · ${sourceFooterFor(footerView, sourceMeta)}`
         : sourceFooterFor(footerView, sourceMeta);
-      raw.push(plannedWithMeta(selected, page, page.id, footer, pageStyleFor(page), doc.format));
+      raw.push(plannedWithMeta(selected, page, page.id, footer, pageStyleFor(doc, page), doc.format));
       continue;
     }
     if (page.kind === "compare") {
+      const style = pageStyleFor(doc, page);
       const cells = page.cells.map((cell, index) => {
         const view = views.get(cell.tileId);
         if (!view) return null;
@@ -479,17 +491,15 @@ export function planReportDoc(doc: ReportDoc, views: ReadonlyMap<string, TileVie
           mapKey: `${page.id}:cell:${index}`,
           sourceLine: sourceLineFor(view, sourceMeta),
           pinnedKeys: [...cell.frame.pinnedKeys],
+          style,
           reportFrame: cell.frame,
         };
       });
       const cellViews = cells.flatMap((cell) => cell ? [cell.view] : []);
-      raw.push(plannedWithMeta({ kind: "sheet", view: sheetView(page.id, cellViews, page.grid), grid: page.grid, cells }, page, page.id, `${ctx.summary.asOfLine} · 비교`, pageStyleFor(page), doc.format));
+      raw.push(plannedWithMeta({ kind: "sheet", view: sheetView(page.id, cellViews, page.grid), grid: page.grid, cells }, page, page.id, `${ctx.summary.asOfLine} · 비교`, style, doc.format));
     }
   }
-  const numbered = raw.map((slide, index) => ({ ...slide, no: index + 1, total: raw.length }));
-  const fontScale = doc.fontScale;
-  if (fontScale === undefined || fontScale === 1) return numbered;
-  return numbered.map((slide) => ({ ...slide, style: { ...slide.style, titleScale: fontScale, summaryScale: fontScale, legendScale: fontScale } }));
+  return raw.map((slide, index) => ({ ...slide, no: index + 1, total: raw.length }));
 }
 
 export function printedPageCount(doc: ReportDoc, views: ReadonlyMap<string, TileView>, ctx: ReportDocPlanContext): number {

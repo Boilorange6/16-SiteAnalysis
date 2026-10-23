@@ -6,7 +6,7 @@ import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
 import { buildMapScene, locatorBox, mapLabelEntries, northArrowBox, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, scaleBarBox, type MapScene, type MapSceneBox } from "../ui/map-scene";
 import { badgeTextColor } from "../ui/map-labels";
 import { terrainSectionMapStyle } from "../ui/terrain-section";
-import { FONT, INK, hex, textIn, type Slide } from "./pptx-kit";
+import { FONT, fontSizeForStyle, INK, hex, textIn, type Slide } from "./pptx-kit";
 import type { PlannedSlide } from "./report-plan";
 import type { PageStyle } from "../ui/board-state";
 import { metersPerPixel, slideViewport } from "../ui/map-projection";
@@ -432,6 +432,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
       // 2x2 셀에서는 자동 콜아웃을 모두 쌓으면 카드가 지도를 압도한다.
       // pinnedKeys로 고정한 사용자 라벨은 아래 후보에 계속 포함된다.
       showAutomaticLabels: false,
+      labelScale: fontSizeForStyle(style, "labels") / 10,
       legendBox: cellLegend?.box ?? null,
       calloutTop: cellChipBottom + 8 * cellUnit,
       avoid: [],
@@ -518,6 +519,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     highlightLabel: focus,
     legendFocus: focus,
     showAutomaticLabels: reportFrame?.labelRule !== "off",
+    labelScale: fontSizeForStyle(frameStyle, "labels") / 10,
     north: showNorth ? northY : false,
     avoid,
     bare: false,
@@ -783,7 +785,7 @@ function addRailOverlay(slide: Slide, code: string, scene: MapScene): void {
     const safe = rectToFrame(exit.box.x0, exit.box.y0, width, height);
     if (!safe) continue;
     slide.addShape("roundRect", { x: pxX(safe.x), y: pxY(safe.y), w: pxW(safe.w), h: pxH(safe.h), rectRadius: exit.pill ? pxH(safe.h) / 2 : 0.03, fill: { color: color(RAIL_EXIT_COLOR), transparency: dimmed ? 80 : 0 }, line: { color: color("172033"), width: pxPt(0.65), transparency: dimmed ? 80 : 0 }, objectName: tag(code, key, display, "marker") });
-    slide.addText(exit.number, { x: pxX(safe.x), y: pxY(safe.y), w: pxW(safe.w), h: pxH(safe.h), align: "center", valign: "middle", fontFace: FONT, fontSize: Math.max(6, pxPt(7)), bold: true, color: dimmed ? "8C919B" : color("111827"), margin: 0, fit: "shrink", objectName: tag(code, key, display, "number") });
+    slide.addText(exit.number, { x: pxX(safe.x), y: pxY(safe.y), w: pxW(safe.w), h: pxH(safe.h), align: "center", valign: "middle", fontFace: FONT, fontSize: fontPt(exit.fontSize, 6), bold: true, color: dimmed ? "8C919B" : color("111827"), margin: 0, fit: "shrink", objectName: tag(code, key, display, "number") });
   }
   for (const station of scene.rail.stationLabels) {
     if (isRasterizedLayer("rail_station")) continue;
@@ -848,6 +850,7 @@ function addCellLegend(slide: Slide, code: string, model: MapModel, style: PageS
   const layout = cellLegendLayout(model);
   if (!layout) return;
   const { items, x, y, w, h } = layout;
+  const legendPt = fontSizeForStyle(style, "legend");
   const focus = legendLabelOf(model, style.legendFocus);
   const panelTag = (part: string) => tag(code, "legend-panel", "범례", part);
   slide.addShape("roundRect", { x: pxX(x), y: pxY(y), w: pxW(w), h: pxH(h), rectRadius: 0.08, fill: { color: "FFFFFF", transparency: 6 }, line: { color: "FFFFFF", width: 0 }, objectName: panelTag("panel") });
@@ -868,7 +871,7 @@ function addCellLegend(slide: Slide, code: string, model: MapModel, style: PageS
       slide.addShape("ellipse", { x: pxX(x + 12), y: pxY(iy + 9), w: pxW(12), h: pxH(12), fill: { color: color(item.color), transparency: fade }, line: { color: "FFFFFF", width: pxPt(0.75), transparency: fade }, objectName: panelTag(`item-${index}`) });
       if (item.badge) slide.addText(item.badge, { x: pxX(x + 12), y: pxY(iy + 9), w: pxW(12), h: pxH(12), align: "center", valign: "middle", fontFace: FONT, fontSize: fontPt(6, 5), bold: true, color: dimmed ? "8C919B" : color(badgeTextColor(item.color)), margin: 0, objectName: panelTag(`item-badge-${index}`) });
     }
-    slide.addText(item.label, { x: pxX(x + 36), y: pxY(iy), w: pxW(w - 46), h: pxH(CELL_LEGEND_ROW_H), valign: "middle", fontFace: FONT, fontSize: fontPt(9, 6), bold: focus === item.label, color: mutedColor, margin: 0, fit: "shrink", objectName: panelTag(`item-label-${index}`) });
+    slide.addText(item.label, { x: pxX(x + 36), y: pxY(iy), w: pxW(w - 46), h: pxH(CELL_LEGEND_ROW_H), valign: "middle", fontFace: FONT, fontSize: fontPt(legendPt, 6), bold: focus === item.label, color: mutedColor, margin: 0, fit: "shrink", objectName: panelTag(`item-label-${index}`) });
   });
 }
 

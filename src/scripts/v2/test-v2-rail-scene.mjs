@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 globalThis.React = React;
 
-const { buildMapScene, RAIL_EXIT_REFERENCE_MPP, railTextContrastRatio } = await import("../../lib/v2/ui/map-scene.ts");
+const { buildMapScene, mapFeatureKey, RAIL_EXIT_REFERENCE_MPP, railTextContrastRatio } = await import("../../lib/v2/ui/map-scene.ts");
 const { default: MapFigure } = await import("../../components/v2/map-figure.tsx");
 const { legendItems } = await import("../../lib/v2/ui/map-layers.ts");
 
@@ -151,11 +151,32 @@ assert.ok(Math.abs(horizontalInside.angle) <= 90, "inside axis labels must use n
 const horizontalAxis = detailScene.rail.axes.find((axis) => axis.label === "2호선");
 assert.ok(horizontalAxis, "horizontal axis fixture is present");
 assert.ok(railTextContrastRatio(horizontalInside.color, horizontalAxis.color) >= 4.5, "inside axis label contrast must be at least 4.5:1");
+const scaledScene = sceneFor({
+  labelScale: 1.5,
+  model: { ...fixture, radiusM: 300, features: fixture.features.map((entry) => entry.fid === "station-primary" ? { ...entry, sublabel: "5호선·2호선", badges: [{ text: "5", color: LINE_COLOR }, { text: "2", color: "#3CB44A" }] } : entry) },
+});
+assert.equal(scaledScene.rail.routeLabels.find((label) => label.text === "5호선")?.fontSize, 15, "route labels use the requested label scale");
+assert.equal(scaledScene.rail.axisLabels.find((label) => label.text === "2호선")?.fontSize, 13.5, "axis labels use the requested label scale");
+assert.equal(scaledScene.rail.stationLabels[0]?.fontSize, 19.5, "station labels use the requested label scale");
+assert.equal(scaledScene.rail.exits[0]?.fontSize, 10.5, "exit labels expose the requested label scale");
+assert.ok((scaledScene.rail.axisLabels.find((label) => label.text === "2호선")?.box.x1 ?? 0) > (horizontalInside.box.x1), "scaled label collision boxes grow with the font");
+const calloutModel = { ...fixture, radiusM: 300, features: [...fixture.features, feature("bus_stop", "bus-1", 150, -150, { name: "다온 버스정류장", label: "다온 버스정류장", labelPriority: 1 })] };
+const calloutKey = mapFeatureKey("bus_stop", "bus-1", fixture.features.length);
+const baseCallout = sceneFor({ model: calloutModel, pinnedKeys: [calloutKey], showAutomaticLabels: false });
+const scaledCallout = sceneFor({ model: calloutModel, pinnedKeys: [calloutKey], showAutomaticLabels: false, labelScale: 1.5 });
+const baseCalloutText = baseCallout.labelPlacements.find((placement) => placement.entry.key === calloutKey)?.text;
+const scaledCalloutText = scaledCallout.labelPlacements.find((placement) => placement.entry.key === calloutKey)?.text;
+assert.ok(baseCalloutText && scaledCalloutText, "callout label fixture is placed");
+assert.equal(scaledCalloutText.fontSize, baseCalloutText.fontSize * 1.5, "callout labels use the requested label scale");
+assert.ok(scaledCalloutText.width > baseCalloutText.width, "callout collision width grows with the font");
 const insideSvg = renderToStaticMarkup(createElement(MapFigure, { model: { ...fixture, radiusM: 300, features: fixture.features.map((entry) => entry.fid === "station-primary" ? { ...entry, sublabel: "5호선·2호선", badges: [{ text: "5", color: LINE_COLOR }, { text: "2", color: "#3CB44A" }] } : entry) }, width: 1000, height: 600, basemap: "none", legend: false, scale: false, showRadius: false, showSiteMarker: false, showAutomaticLabels: false }));
 const insideTag = insideSvg.match(/<text[^>]*data-rail-axis-label="2호선"[^>]*>/u)?.[0] ?? "";
 assert.match(insideTag, /data-rail-axis-label-placement="inside"/u, "SVG should expose the inside placement");
 assert.match(insideTag, /stroke="none"/u, "inside SVG labels must not have a white halo");
 assert.notEqual(insideTag.match(/fill="([^"]+)"/u)?.[1], insideTag.match(/stroke="([^"]+)"/u)?.[1], "inside SVG label fill and stroke must differ");
+const scaledSvg = renderToStaticMarkup(createElement(MapFigure, { model: { ...fixture, radiusM: 300, features: fixture.features.map((entry) => entry.fid === "station-primary" ? { ...entry, sublabel: "5호선·2호선", badges: [{ text: "5", color: LINE_COLOR }, { text: "2", color: "#3CB44A" }] } : entry) }, labelScale: 1.5, width: 1000, height: 600, basemap: "none", legend: false, scale: false, showRadius: false, showSiteMarker: false, showAutomaticLabels: false }));
+const scaledInsideTag = scaledSvg.match(/<text[^>]*data-rail-axis-label="2호선"[^>]*>/u)?.[0] ?? "";
+assert.match(scaledInsideTag, /font-size="13\.5"/u, "MapFigure passes labelScale through to SVG rail labels");
 const sceneLegend = legendItems({ ...fixture, radiusM: 300 });
 assert.equal(sceneLegend.find((item) => item.layer === "rail_station")?.symbol, "rail-axis", "history legend must use a bar symbol");
 assert.equal(sceneLegend.find((item) => item.layer === "rail_entrance")?.symbol, "rail-exit", "entrance legend must use an exit symbol");

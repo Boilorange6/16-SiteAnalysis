@@ -126,3 +126,10 @@
   padding: calc(var(--slide-unit) * 0.03);
   line-height: 1.05;
 }
+
+@media (min-width: 1024px) {
+  .surfaceRoot [data-font-highlight="true"] {
+    outline: 2px dashed #2f6fdb;
+    outline-offset: -2px;
+  }
+}

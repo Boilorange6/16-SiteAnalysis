@@ -300,6 +300,7 @@ export type MapSceneRailExit = {
   point: [number, number];
   axisPoint: [number, number];
   color: string;
+  fontSize: number;
   box: MapSceneBox;
   pill: boolean;
   demoted: boolean;
@@ -358,6 +359,8 @@ export type MapSceneOptions = {
   dragging?: boolean;
   /** 보고서가 미리 계산한 동일 프레임 뷰. 지정하면 view 재계산을 하지 않는다. */
   viewport?: Viewport;
+  /** 보고서 요소별 지도 라벨 pt를 기존 scene 기준으로 환산한 배율. */
+  labelScale?: number;
   /** 보고서 preview와 PPT가 같은 논리 단위로 callout·scale chrome을 배치할 때 쓴다. */
   layoutUnit?: number;
   /** 명시적 보고서 축척에서 네이티브 막대의 기존 판형 라벨 여유를 유지한다. */
@@ -639,11 +642,12 @@ function buildRailScene(args: {
   height: number;
   mpp: number;
   compact: boolean;
+  labelScale: number;
   hiddenKeys: ReadonlySet<string>;
   occupied: MapSceneBox[];
   inFrame: (point: readonly [number, number]) => boolean;
 }): MapSceneRail {
-  const { model, features, lines, width: W, height: H, mpp, compact, hiddenKeys, occupied, inFrame } = args;
+  const { model, features, lines, width: W, height: H, mpp, compact, labelScale, hiddenKeys, occupied, inFrame } = args;
   const stationMap = new Map<string, RailStationBuildRecord>();
   for (const feature of features.filter((entry) => entry.feature.layer === "rail_station" || entry.feature.layer === "rail_nearest")) {
     const rawName = feature.feature.name?.trim() || feature.feature.label?.trim() || feature.feature.fid || `station-${feature.index}`;
@@ -782,7 +786,7 @@ function buildRailScene(args: {
         const distance = axes.reduce((best, axis) => Math.min(best, railNearestPoint(center, axis.points)?.distance ?? Infinity), Infinity);
         return { route: fragment, a, b, center, distance, length: railPointDistance(a, b) };
       })).sort((a, b) => b.distance - a.distance || b.length - a.length);
-      const fontSize = 10;
+      const fontSize = 10 * labelScale;
       const textWidth = mapTextWidth(route.label, fontSize) + 4;
       const candidate = candidates.find((item) => {
         if (item.length < textWidth + 8 || !inFrame(item.center)) return false;
@@ -810,13 +814,15 @@ function buildRailScene(args: {
       const axis = [...stationAxes].sort((a, b) => (railNearestPoint(entry.p, a.points)?.distance ?? Infinity) - (railNearestPoint(entry.p, b.points)?.distance ?? Infinity))[0];
       const axisPoint = axis ? railNearestPoint(entry.p, axis.points)?.point ?? axis.center : stations.find((station) => station.key === stationKey)?.p ?? entry.p;
       const pill = number.includes("-") || number.length > 1;
-      const width = pill ? Math.max(RAIL_EXIT_MARKER_HEIGHT, mapTextWidth(number, RAIL_EXIT_FONT_SIZE) + 5) : RAIL_EXIT_MARKER_HEIGHT;
-      const fullBox = railTextBox(entry.p[0] - width / 2, entry.p[1] - RAIL_EXIT_MARKER_HEIGHT / 2, width, RAIL_EXIT_MARKER_HEIGHT);
+      const fontSize = RAIL_EXIT_FONT_SIZE * labelScale;
+      const markerHeight = RAIL_EXIT_MARKER_HEIGHT * labelScale;
+      const width = pill ? Math.max(markerHeight, mapTextWidth(number, fontSize) + 5 * labelScale) : markerHeight;
+      const fullBox = railTextBox(entry.p[0] - width / 2, entry.p[1] - markerHeight / 2, width, markerHeight);
       // 출구는 축 위에 놓이는 표식이므로 축 자체와의 겹침은 충돌로 세지 않는다.
       const occupiedForExit = [...occupied, ...routeLabels.map((label) => label.box), ...exits.map((exit) => exit.box)];
       const demoted = occupiedForExit.some((box) => railBoxOverlap(box, fullBox, 1));
       const box = demoted ? railTextBox(entry.p[0] - RAIL_EXIT_DOT_RADIUS, entry.p[1] - RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_RADIUS * 2, RAIL_EXIT_DOT_RADIUS * 2) : fullBox;
-      exits.push({ key: `rail-exit-${entry.key}`, featureKey: entry.key, stationKey, number, point: [...entry.p], axisPoint: [...axisPoint], color: axis?.color ?? RAIL_EXIT_COLOR, box, pill, demoted });
+      exits.push({ key: `rail-exit-${entry.key}`, featureKey: entry.key, stationKey, number, point: [...entry.p], axisPoint: [...axisPoint], color: axis?.color ?? RAIL_EXIT_COLOR, fontSize, box, pill, demoted });
     }
   }
   const axisLabels: MapSceneRailText[] = [];
@@ -826,7 +832,7 @@ function buildRailScene(args: {
       const first = axis.points[0]!;
       const last = axis.points.at(-1)!;
       const length = railPointDistance(first, last);
-      const fontSize = 9;
+      const fontSize = 9 * labelScale;
       const textWidth = mapTextWidth(axis.label, fontSize) + 2;
       const textHeight = fontSize * 1.35;
       const occupiedForLabel = [...occupied, ...routeLabels.map((label) => label.box), ...exits.map((exit) => exit.box), ...axisLabels.map((label) => label.box)];
@@ -865,7 +871,7 @@ function buildRailScene(args: {
   }
   const stationLabels: MapSceneRailStationLabel[] = [];
   if (!compact) {
-    const labelFontSize = mpp <= RAIL_EXIT_REFERENCE_MPP ? 13 : 14;
+    const labelFontSize = (mpp <= RAIL_EXIT_REFERENCE_MPP ? 13 : 14) * labelScale;
     for (const station of stations) {
       if (hiddenKeys.has(station.representative.key)) continue;
       const stationAxes = axes.filter((axis) => axis.stationKey === station.key);
@@ -875,7 +881,7 @@ function buildRailScene(args: {
       const yExtent = points.length > 0 ? [Math.min(...points.map(([, y]) => y)), Math.max(...points.map(([, y]) => y))] : [origin[1], origin[1]];
       const textWidth = mapTextWidth(station.name, labelFontSize) + 4;
       const textHeight = labelFontSize * 1.3;
-      const gap = Math.max(10, (mpp <= RAIL_EXIT_REFERENCE_MPP ? RAIL_AXIS_WIDTH_DETAIL : RAIL_AXIS_WIDTH_DEFAULT) / 2 + 6);
+      const gap = Math.max(10 * labelScale, (mpp <= RAIL_EXIT_REFERENCE_MPP ? RAIL_AXIS_WIDTH_DETAIL : RAIL_AXIS_WIDTH_DEFAULT) / 2 + 6 * labelScale);
       const candidates = [
         [xExtent[1] + gap, origin[1] - textHeight / 2],
         [xExtent[0] - gap - textWidth, origin[1] - textHeight / 2],
@@ -938,12 +944,14 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     dragging = false,
     viewport: viewportOpt,
     layoutUnit,
+    labelScale: labelScaleOpt = 1,
     scaleMaxPx = 88,
   } = options;
   const layer = model.basemap ?? activeLayer;
   const sat = layer === "Satellite";
   const lineColor = sat ? "#fff" : "#16181d";
   const u = layoutUnit ?? Math.min(1.5, Math.max(1, H / 360));
+  const labelScale = Number.isFinite(labelScaleOpt) && labelScaleOpt > 0 ? labelScaleOpt : 1;
   const vp = viewportOpt ?? applyView(framedViewport(model.center, model.radiusM, W, H, siteX, fill, siteY), model.center[1], options.view);
   const project = makeProjector(vp);
   const mpp = metersPerPixel(model.center[1], vp.zoom);
@@ -1076,11 +1084,11 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     }),
   ];
   const labelByKey = new Map(labels.map((entry) => [entry.key, entry]));
-  const labelCollisionGap = 3 * u;
-  const calloutLabelFs = Math.max(11, 10.5 * u);
-  const calloutTextLeft = 8 * u;
-  const calloutTextRight = 4 * u;
-  const calloutPadY = 3 * u;
+  const labelCollisionGap = 3 * u * labelScale;
+  const calloutLabelFs = Math.max(11 * labelScale, 10.5 * u * labelScale);
+  const calloutTextLeft = 8 * u * labelScale;
+  const calloutTextRight = 4 * u * labelScale;
+  const calloutPadY = 3 * u * labelScale;
   const calloutLineHeight = calloutLabelFs * 1.24;
   const baseCalloutMetrics = W <= 420 ? PX_NARROW : PX;
   const calloutMetrics = { ...baseCalloutMetrics, cardW: baseCalloutMetrics.cardW * u, compactW: baseCalloutMetrics.compactW * u, minW: baseCalloutMetrics.minW * u, gap: baseCalloutMetrics.gap * u, stub: baseCalloutMetrics.stub * u, rMin: baseCalloutMetrics.rMin * u, rMax: baseCalloutMetrics.rMax * u, head: baseCalloutMetrics.head * u, row: baseCalloutMetrics.row * u, pad: baseCalloutMetrics.pad * u, compactH: calloutPadY * 2 + calloutLineHeight };
@@ -1120,7 +1128,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     placementCandidates.push(...pinnedLabels.map((entry) => ({ entry, variant: "fixed" as const, rank: -2 })), ...(hoverLabel ? [{ entry: hoverLabel, variant: "hover" as const, rank: -1 }] : []), ...automatic.map((entry) => ({ entry, variant: "auto" as const, rank: 2 - (entry.labelPriority ?? 0) })));
   }
   const candidateLayouts = placementCandidates.map(({ entry, variant, rank }) => {
-    const fontSize = variant === "auto" ? Math.max(9, entry.small ? 10.5 * u * 0.9 : 10.5 * u) : calloutLabelFs;
+    const fontSize = variant === "auto" ? Math.max(9 * labelScale, entry.small ? 10.5 * u * 0.9 * labelScale : 10.5 * u * labelScale) : calloutLabelFs;
     return { entry, variant, rank, text: mapCalloutTextLayout(entry, fontSize, calloutFrameModel.cardW, calloutTextLeft, calloutTextRight, calloutPadY, protectTerrainLabel(entry.layer)) };
   });
   const layout = layoutCallouts(calloutFrameModel, candidateLayouts.map(({ entry, rank, text }) => ({ id: entry.key, x: entry.p[0], y: entry.p[1], rank, width: text.width, height: text.height })));
@@ -1140,7 +1148,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     ...(showSiteMarker && !muted ? [siteBounds] : []),
     ...labelPlacements.flatMap((placement) => [placement.box, placement.leader]),
   ];
-  const rail = buildRailScene({ model, features: drawn, lines: linePaths, width: W, height: H, mpp, compact, hiddenKeys: hidden, occupied: occupiedBoxes, inFrame });
+  const rail = buildRailScene({ model, features: drawn, lines: linePaths, width: W, height: H, mpp, compact, labelScale, hiddenKeys: hidden, occupied: occupiedBoxes, inFrame });
   occupiedBoxes.push(...rail.occupiedBoxes);
   return {
     width: W,

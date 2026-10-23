@@ -1,5 +1,6 @@
 import type PptxGenJS from "pptxgenjs";
 import { PPT_FONT_MAIN as FONT } from "../../ppt-design-config";
+import { DEFAULT_REPORT_FONT_SIZES, type FontSizeKey } from "./report-doc";
 import type { PageStyle } from "../ui/board-state";
 import { OV, SLIDE, slideLayout, slidePanelRects, slidePanelScale, slideSize, stripText, layoutRects, type Rect, type SlideFormat } from "../ui/overlay-layout";
 
@@ -19,6 +20,13 @@ export const L = slideLayout();
 export const E = SLIDE.edge;
 export const IX = L.info.x + 0.25;
 export const IW = L.info.w - 0.5;
+
+export function fontSizeForStyle(style: PageStyle = {}, key: FontSizeKey): number {
+  const explicit = style.fontSizes?.[key];
+  if (typeof explicit === "number" && Number.isFinite(explicit)) return explicit;
+  const legacyScale = key === "title" ? style.titleScale : key === "summary" ? style.summaryScale : key === "legend" ? style.legendScale : undefined;
+  return DEFAULT_REPORT_FONT_SIZES[key] * slidePanelScale(legacyScale);
+}
 
 export function hex(color: string): string {
   const value = color.trim().replace(/^#/, "");
@@ -114,8 +122,9 @@ export function titlePlateRect(title: string, kind: string, maxW: number, style:
   // panels.title이 있으면 사용자가 정한 도형 자리를 그대로 보존한다.
   // 좁은 사용자 박스를 텍스트 길이에 맞춰 다시 키우면 Preview/PPT 좌표가 달라진다.
   if (style.panels?.title) return base;
-  const scale = slidePanelScale(style.titleScale);
-  const w = Math.min(maxW, Math.max(base.w, 0.62 + textIn(title, 18 * scale) + textIn(`  ${kind}`, 10 * scale)));
+  const titlePt = fontSizeForStyle(style, "title");
+  const titleScale = titlePt / DEFAULT_REPORT_FONT_SIZES.title;
+  const w = Math.min(maxW, Math.max(base.w, 0.62 + textIn(title, titlePt) + textIn(`  ${kind}`, 10 * titleScale)));
   return { ...base, w };
 }
 
@@ -144,9 +153,10 @@ function oneLineAt(value: string, pt: number, width: number): boolean {
 }
 
 /** 출처 띠는 최소 7pt 한 줄을 우선하고, 그래도 길면 출처 장 참조로 요약한다. */
-export function fitFooterText(sourceLine: string, credit: boolean, width = SLIDE.w - E - 1.7): FooterFit {
+export function fitFooterText(sourceLine: string, credit: boolean, width = SLIDE.w - E - 1.7, startPt = 9): FooterFit {
   const full = stripText(sourceLine, credit);
-  for (let pt = 9; pt >= 7; pt -= 0.5) {
+  const ceiling = Math.max(7, Number.isFinite(startPt) ? startPt : 9);
+  for (let pt = ceiling; pt >= 7; pt -= 0.5) {
     if (oneLineAt(full, pt, width)) return { text: full, fontSize: pt, lines: 1 };
   }
   const parts = full.split(" · ");

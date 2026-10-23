@@ -27,7 +27,7 @@ const toolPillStart = source.indexOf("styles.toolPill");
 const pageDockStart = source.indexOf("styles.pageDock");
 const toolPillBlock = toolPillStart >= 0 && pageDockStart > toolPillStart ? source.slice(toolPillStart, pageDockStart) : "";
 const pageDockBlock = pageDockStart >= 0 ? source.slice(pageDockStart, source.indexOf("</main>", pageDockStart)) : "";
-const themePopoverSource = source.slice(source.indexOf("function ThemePopover"), source.indexOf("function pageTitleForToast"));
+const fontPopoverSource = source.slice(source.indexOf("const FONT_SIZE_LABELS"), source.indexOf("function pageTitleForToast"));
 
 assert.doesNotMatch(reportBodyRule, /grid-template-columns/, "reportBody는 3열 grid를 예약하지 않는다");
 assert.match(styles, /\.stageFit\s*\{[\s\S]*container-type:\s*size;/, "stageFit은 크기 컨테이너다");
@@ -74,7 +74,7 @@ assert.match(toolPillBlock, /role=["']separator["']|styles\.toolDivider/, "도�
 assert.match(toolPillBlock, /레이아웃/, "레이아웃은 도구 막대에 있다");
 assert.match(toolPillBlock, /메모/, "메모는 도구 막대에 있다");
 assert.match(toolPillBlock, /styles\.railButton/, "레이아웃·메모는 railButton 계약을 쓴다");
-for (const state of ["drawerOpen", "themePopoverOpen", "layoutPopoverOpen", "notesPopoverOpen"]) {
+for (const state of ["drawerOpen", "fontSizePopoverOpen", "layoutPopoverOpen", "notesPopoverOpen"]) {
   assert.match(toolPillBlock, new RegExp(`${state}[\\s\\S]*styles\\.railButtonActive`), `${state}는 열린 도구 active 상태를 쓴다`);
 }
 assert.match(source, /aria-expanded=\{rail === "pages" && drawerOpen\}/, "페이지 도구 버튼은 서랍 펼침 상태를 알린다");
@@ -88,7 +88,7 @@ assert.match(activeRailRule, /color:\s*#fff;[\s\S]*background:\s*#2f6fdb;/, "열
 assert.match(source, /--tail-y/, "열린 창은 공통 tail 위치 변수를 계산한다");
 assert.match(source, /styles\.(?:anchoredCard|popoverTail)/, "서랍·팝오버는 공통 연결 카드 계약을 쓴다");
 assert.match(styles, /(?:\.anchoredCard|\.popoverTail)[^{]*(?:::before|::after)?\s*\{[\s\S]*var\(--tail-y\)/, "연결 카드에는 트리거를 가리키는 tail 스타일이 있다");
-for (const id of ["report-drawer", "report-layout-menu", "report-notes-popover", "report-theme-popover"]) {
+for (const id of ["report-drawer", "report-font-size-popover", "report-layout-menu", "report-notes-popover"]) {
   const start = source.indexOf(`id="${id}"`);
   const end = source.indexOf(">", start);
   const block = start >= 0 ? source.slice(Math.max(0, start - 180), source.indexOf("</", end)) : "";
@@ -125,8 +125,8 @@ assert.doesNotMatch(source, /TextBoxDrawer/, "글상자는 별도 서랍 없이 
 assert.match(source, /const addTextBoxFromRail = useCallback\(\(\) =>[\s\S]*addTextBox\(\)/, "글상자 버튼은 누르자마자 추가 함수를 호출한다");
 assert.match(toolPillBlock, /aria-pressed=\{false\}[\s\S]*글상자/, "글상자 도구는 눌림 상태가 아니다");
 assert.match(slideSurfaceStyles, /\.textBox \[data-text-box-content\]:empty::before[\s\S]*글을 입력하세요/, "글상자 빈 상태 자리표시자 계약은 슬라이드 CSS에 남아 있다");
-assert.doesNotMatch(themePopoverSource, /<select/, "테마 팝오버에는 판형 select가 없다");
-assert.match(themePopoverSource, /작게[\s\S]*보통[\s\S]*크게/, "테마 글자 크기는 작게·보통·크게로 표시한다");
+assert.doesNotMatch(fontPopoverSource, /<select/, "글자 크기 팝오버에는 범위 select가 없다");
+assert.match(fontPopoverSource, /제목[\s\S]*요약[\s\S]*범례[\s\S]*지도 라벨[\s\S]*출처/, "글자 크기 팝오버는 5개 요소를 표시한다");
 assert.match(layout, /pageNumber[\s\S]*레이아웃[\s\S]*쪽/, "레이아웃 팝오버 머리는 레이아웃·N쪽이다");
 assert.match(layout, /<svg|viewBox=|<rect/, "레이아웃 선택지는 실제 미니어처 도형을 쓴다");
 assert.match(styles, /\.layoutOptions\s*\{[^}]*grid-template-columns:\s*repeat\(2,/, "레이아웃 선택지는 2×2 격자다");

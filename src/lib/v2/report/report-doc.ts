@@ -3,6 +3,65 @@ import type { TileReportSettings } from "./report-plan";
 export type ReportFormat = "wide" | "a3" | "a4";
 export type ReportLayout = "map-full" | "map-summary" | "numbers-first" | "side-by-side";
 export type ReportFontScale = 0.85 | 1 | 1.15;
+export type FontSizeKey = "title" | "summary" | "legend" | "labels" | "source";
+export type ReportFontSizes = Record<FontSizeKey, number>;
+export type ReportFontSizeOverrides = Partial<ReportFontSizes>;
+
+export const DEFAULT_REPORT_FONT_SIZES: ReportFontSizes = {
+  title: 18,
+  summary: 13,
+  legend: 10,
+  labels: 10,
+  source: 9,
+};
+
+export const REPORT_FONT_SIZE_LIMITS: Record<FontSizeKey, { min: number; max: number }> = {
+  title: { min: 12, max: 32 },
+  summary: { min: 10, max: 24 },
+  legend: { min: 8, max: 16 },
+  labels: { min: 8, max: 18 },
+  source: { min: 7, max: 14 },
+};
+
+export const REPORT_FONT_SIZE_KEYS: readonly FontSizeKey[] = ["title", "summary", "legend", "labels", "source"];
+
+export function defaultReportFontSizes(): ReportFontSizes {
+  return { ...DEFAULT_REPORT_FONT_SIZES };
+}
+
+export function clampReportFontSize(key: FontSizeKey, value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  const limits = REPORT_FONT_SIZE_LIMITS[key];
+  return Math.max(limits.min, Math.min(limits.max, Math.round(value)));
+}
+
+export function clampReportFontSizes(value: unknown): ReportFontSizeOverrides {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const output: ReportFontSizeOverrides = {};
+  for (const key of REPORT_FONT_SIZE_KEYS) {
+    const normalized = clampReportFontSize(key, source[key]);
+    if (normalized !== null) output[key] = normalized;
+  }
+  return output;
+}
+
+export function mergeReportFontSizes(documentFontSizes?: unknown, pageFontSizes?: unknown): ReportFontSizes {
+  const documentValues = clampReportFontSizes(documentFontSizes);
+  const pageValues = clampReportFontSizes(pageFontSizes);
+  const output = defaultReportFontSizes();
+  for (const key of REPORT_FONT_SIZE_KEYS) {
+    if (documentValues[key] !== undefined) output[key] = documentValues[key]!;
+    if (pageValues[key] !== undefined) output[key] = pageValues[key]!;
+  }
+  return output;
+}
+
+export function reportFontSizesFromLegacyScale(scale: unknown): ReportFontSizes | undefined {
+  if (scale !== 0.85 && scale !== 1 && scale !== 1.15) return undefined;
+  const output = defaultReportFontSizes();
+  for (const key of REPORT_FONT_SIZE_KEYS) output[key] = clampReportFontSize(key, DEFAULT_REPORT_FONT_SIZES[key] * scale)!;
+  return output;
+}
 
 export type LegendPlacement = "below" | "right" | "hidden";
 export type LabelRule = "site-near" | "all-visible" | "off";
@@ -29,6 +88,7 @@ export type ReportPageBase = {
   notes: string;
   titleOverride?: string;
   summaryOverride?: string;
+  fontSizes?: ReportFontSizeOverrides;
 };
 export type TilePart =
   | { type: "single" }
@@ -43,7 +103,7 @@ export type ReportPage = ReportPageBase & (
   | { kind: "sources" }
   | { kind: "blank" }
 );
-export type ReportDoc = { v: 1; format: ReportFormat; pages: ReportPage[]; fontScale?: ReportFontScale };
+export type ReportDoc = { v: 1; format: ReportFormat; pages: ReportPage[]; fontSizes?: ReportFontSizeOverrides; /** @deprecated legacy saves are migrated at restore. */ fontScale?: ReportFontScale };
 
 export type ReportDocAction =
   | { type: "add"; pages: ReportPage[]; index: number }
@@ -58,6 +118,8 @@ export type ReportDocAction =
   | { type: "text"; id: string; title?: string; summary?: string }
   | { type: "textBox"; id: string; box: TextBox | { id: string; remove: true } }
   | { type: "format"; format: ReportFormat }
+  | { type: "fontSizes"; scope: "document" | "page"; id?: string; key: FontSizeKey; value: number }
+  | { type: "clearPageFontSizes"; id: string; key?: FontSizeKey }
   | { type: "theme"; fontScale: ReportFontScale }
   | { type: "replaceAll"; pages: ReportPage[] };
 
@@ -118,6 +180,7 @@ function clonePart(part: TilePart): TilePart {
 }
 
 function cloneBase(page: ReportPage): ReportPageBase {
+  const fontSizes = clampReportFontSizes(page.fontSizes);
   return {
     id: page.id,
     layout: page.layout,
@@ -126,6 +189,7 @@ function cloneBase(page: ReportPage): ReportPageBase {
     notes: page.notes,
     ...(page.titleOverride !== undefined ? { titleOverride: page.titleOverride } : {}),
     ...(page.summaryOverride !== undefined ? { summaryOverride: page.summaryOverride } : {}),
+    ...(Object.keys(fontSizes).length > 0 ? { fontSizes } : {}),
   };
 }
 
@@ -164,6 +228,39 @@ function updatePage(doc: ReportDoc, id: string, update: (page: ReportPage) => Re
   const pages = [...doc.pages];
   pages[index] = nextPage;
   return { ...doc, pages };
+}
+
+function updateFontSizeOverrides(current: ReportFontSizeOverrides | undefined, key: FontSizeKey, value: unknown): ReportFontSizeOverrides {
+  const next = clampReportFontSizes(current);
+  const normalized = clampReportFontSize(key, value);
+  if (normalized !== null) next[key] = normalized;
+  return next;
+}
+
+function setDocumentFontSize(doc: ReportDoc, key: FontSizeKey, value: unknown): ReportDoc {
+  const next = updateFontSizeOverrides(doc.fontSizes, key, value);
+  if (doc.fontSizes?.[key] === next[key] && Object.keys(doc.fontSizes ?? {}).length === Object.keys(next).length) return doc;
+  return { ...doc, fontSizes: next };
+}
+
+function setPageFontSize(doc: ReportDoc, id: string | undefined, key: FontSizeKey, value: unknown): ReportDoc {
+  if (!id) return doc;
+  return updatePage(doc, id, (page) => {
+    const next = updateFontSizeOverrides(page.fontSizes, key, value);
+    if (page.fontSizes?.[key] === next[key] && Object.keys(page.fontSizes ?? {}).length === Object.keys(next).length) return page;
+    return { ...clonePage(page), fontSizes: next };
+  });
+}
+
+function clearPageFontSize(doc: ReportDoc, id: string, key: FontSizeKey | undefined): ReportDoc {
+  return updatePage(doc, id, (page) => {
+    const current = clampReportFontSizes(page.fontSizes);
+    if (key === undefined) return Object.keys(current).length > 0 ? { ...clonePage(page), fontSizes: undefined } : page;
+    if (current[key] === undefined) return page;
+    const next = { ...current };
+    delete next[key];
+    return { ...clonePage(page), ...(Object.keys(next).length > 0 ? { fontSizes: next } : { fontSizes: undefined }) };
+  });
 }
 
 function mergeFrame(frame: MapFrameState, patch: Partial<MapFrameState>): MapFrameState {
@@ -213,6 +310,13 @@ function resetPanels(page: ReportPage): ReportPage {
 }
 
 export function reportDocReducer(doc: ReportDoc, action: ReportDocAction): ReportDoc {
+  if (doc.fontScale !== undefined) {
+    const { fontScale: _legacyFontScale, ...legacyFreeDoc } = doc;
+    const legacyFontSizes = reportFontSizesFromLegacyScale(doc.fontScale);
+    doc = legacyFontSizes
+      ? { ...legacyFreeDoc, fontSizes: { ...legacyFontSizes, ...(doc.fontSizes ?? {}) } }
+      : legacyFreeDoc;
+  }
   switch (action.type) {
     case "add": {
       if (action.pages.length === 0) return doc;
@@ -267,8 +371,14 @@ export function reportDocReducer(doc: ReportDoc, action: ReportDocAction): Repor
       });
     case "format":
       return { ...doc, format: action.format, pages: doc.pages.map(resetPanels) };
+    case "fontSizes":
+      return action.scope === "document"
+        ? setDocumentFontSize(doc, action.key, action.value)
+        : setPageFontSize(doc, action.id, action.key, action.value);
+    case "clearPageFontSizes":
+      return clearPageFontSize(doc, action.id, action.key);
     case "theme":
-      return { ...doc, fontScale: action.fontScale };
+      return { ...doc, fontSizes: reportFontSizesFromLegacyScale(action.fontScale) };
     case "replaceAll":
       return { ...doc, pages: clonePages(action.pages) };
   }
