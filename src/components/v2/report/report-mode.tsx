@@ -147,7 +147,6 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const lockAttentionTimerRef = useRef<number | null>(null);
   const [reportActionsTarget, setReportActionsTarget] = useState<HTMLElement | null>(null);
   const [overlayTailY, setOverlayTailY] = useState<number | null>(null);
-  const [overlayPosition, setOverlayPosition] = useState<{ top: number; left: number } | null>(null);
   const drawerOpen = rail === "pages" || rail === "tiles";
   const layoutPopoverOpen = activePopover === "layout";
   const notesPopoverOpen = activePopover === "notes";
@@ -274,23 +273,19 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     if (restoreFocus) window.requestAnimationFrame(() => opener?.focus());
   }, []);
 
-  const anchoredCardStyle = overlayTailY === null && overlayPosition === null ? undefined : {
-    ...(overlayTailY === null ? {} : { "--tail-y": `${overlayTailY}px` }),
-    ...(overlayPosition === null ? {} : { "--popover-top": `${overlayPosition.top}px`, "--popover-left": `${overlayPosition.left}px` }),
-  } as CSSProperties;
+  // 팝오버는 버튼 세로 가운데에 붙어 꼬리가 50%에 오고, 무대 높이 서랍만 버튼 위치를 재서 꼬리를 옮긴다.
+  const anchoredCardStyle = overlayTailY === null ? undefined : { "--tail-y": `${overlayTailY}px` } as CSSProperties;
 
   useLayoutEffect(() => {
-    const anchor = drawerOpen ? drawerOpenerRef.current : activePopover ? popoverOpenerRef.current : null;
+    const anchor = drawerOpen ? drawerOpenerRef.current : null;
     const stage = reportStageRef.current;
     if (!anchor || !stage) {
       setOverlayTailY(null);
-      setOverlayPosition(null);
       return;
     }
     const update = () => {
       const anchorRect = anchor.getBoundingClientRect();
       const stageRect = stage.getBoundingClientRect();
-      setOverlayPosition({ top: stageRect.top + 16, left: stageRect.left + 88 });
       setOverlayTailY(anchorRect.top + anchorRect.height / 2 - stageRect.top - 16);
     };
     update();
@@ -300,7 +295,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
       window.removeEventListener("resize", update);
       window.removeEventListener("scroll", update, true);
     };
-  }, [activePopover, drawerOpen]);
+  }, [drawerOpen]);
 
   useEffect(() => {
     if (!drawerOpen && !activePopover) return;
