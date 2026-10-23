@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { createPortal } from "react-dom";
 import type { Dispatch, RefObject } from "react";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
-import { defaultFrame, DEFAULT_REPORT_FONT_SIZES, EMPTY_REPORT_DOC, newPageId, REPORT_FONT_SIZE_KEYS, REPORT_FONT_SIZE_LIMITS, reportDocReducer, type FontSizeKey, type MapFrameState, type PagePanels, type ReportDoc, type ReportDocAction, type ReportFontSizeOverrides, type ReportFontSizes, type ReportFormat, type ReportPage, type TextBox } from "@/lib/v2/report/report-doc";
+import { clampTextBox, defaultFrame, DEFAULT_REPORT_FONT_SIZES, EMPTY_REPORT_DOC, newPageId, REPORT_FONT_SIZE_KEYS, REPORT_FONT_SIZE_LIMITS, reportDocReducer, textBoxDefaults, TEXT_BOX_DEFAULTS, type FontSizeKey, type MapFrameState, type PagePanels, type ReportDoc, type ReportDocAction, type ReportFontSizeOverrides, type ReportFontSizes, type ReportFormat, type ReportPage, type TextBox, type TextBoxKind } from "@/lib/v2/report/report-doc";
 import { mapFrameScaleOptions, scaleForFrame, scaleOptionsForFrame, siteAnchoredZoomPatch, siteFitPatch, zoomForScale } from "@/lib/v2/ui/report-scale";
 import { SLIDE_OVERVIEW_FILL } from "@/lib/v2/ui/callout-layout";
 import { layoutRects, slideGeometry, slideLayout, slideLegend, slidePanelRects, slideSiteX, slideSize, terrainSectionLayout } from "@/lib/v2/ui/overlay-layout";
@@ -26,6 +26,8 @@ import LayoutSwitcher from "./layout-switcher";
 import MapScaleChip from "./map-scale-chip";
 import NotesField from "./notes-field";
 import ExportPanel from "./export-panel";
+import TextBoxPopover from "./text-box-popover";
+import SidePanelHeader from "./side-panel-header";
 import styles from "./report-mode.module.css";
 import legacySurfaceStyles from "../report-surface.module.css";
 import localSurfaceStyles from "./slide-surface.module.css";
@@ -47,6 +49,18 @@ function RailIcon({ name }: { name: RailIconName }) {
       {name === "notes" && <><path d="M5 3.5h7l3 3V16.5H5z" /><path d="M12 3.5v3h3M7.5 10h5M7.5 13h4" /></>}
     </svg>
   );
+}
+
+function RecommendedIcon() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3 2.2 5.3L20 9l-4.4 3.8L17 18.5 12 15.6 7 18.5l1.4-5.7L4 9l5.8-.7z" /></svg>;
+}
+
+function ImportReportIcon() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5" /><path d="M5 19h14" /></svg>;
+}
+
+function ResetIcon() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12a8 8 0 1 0 2.4-5.7" /><path d="M4 4v4.5h4.5" /></svg>;
 }
 
 export type ReportModeProps = {
@@ -149,19 +163,20 @@ function FontScopeSwitch({ scope, pageNumber, pageDisabled, onChange }: { scope:
   </div>;
 }
 
-function FontSizePopover({ doc, page, pageNumber, scope, selectedKey, onScope, onChange, onSelect, onResetPage, onClose }: { doc: ReportDoc; page?: ReportPage; pageNumber: number | null; scope: FontSizeScope; selectedKey: FontSizeKey | null; onScope: (scope: FontSizeScope) => void; onChange: (scope: FontSizeScope, key: FontSizeKey, delta: number) => void; onSelect: (key: FontSizeKey) => void; onResetPage: () => void; onClose: () => void }) {
+function FontSizePopover({ doc, page, pageNumber, scope, selectedKey, opacity, onOpacityChange, onScope, onChange, onSelect, onResetPage, onResetDefaults, onClose }: { doc: ReportDoc; page?: ReportPage; pageNumber: number | null; scope: FontSizeScope; selectedKey: FontSizeKey | null; opacity: number; onOpacityChange: (value: number) => void; onScope: (scope: FontSizeScope) => void; onChange: (scope: FontSizeScope, key: FontSizeKey, delta: number) => void; onSelect: (key: FontSizeKey) => void; onResetPage: () => void; onResetDefaults: () => void; onClose: () => void }) {
   const pageValues = pageFontSizes(page);
   const count = pageOverrideCount(page);
   return <section className={styles.popoverBody} aria-label="글자 크기">
-    <div className={styles.drawerHeader}>
-      <h2>글자 크기</h2>
-      <button type="button" className={styles.iconButton} onClick={onClose} aria-label="글자 크기 닫기">×</button>
-    </div>
+    <SidePanelHeader title="글자 크기" opacity={opacity} onOpacityChange={onOpacityChange} onClose={onClose} closeLabel="글자 크기 창 닫기" />
     <FontScopeSwitch scope={scope} pageNumber={pageNumber} pageDisabled={!page} onChange={onScope} />
-    <div className={styles.fontSizeRows}>
+    <div className={`${styles.fontSizeRows} ${styles.sidePanelContent}`}>
       {FONT_SIZE_ROWS.map(({ key, label }) => <FontSizeStepRow key={key} fontKey={key} label={label} value={effectiveFontSize(doc, page, key)} pageOverride={scope === "page" && pageValues[key] !== undefined} onChange={(changedKey, delta) => onChange(scope, changedKey, delta)} onSelect={onSelect} selected={selectedKey === key} />)}
     </div>
-    {scope === "page" && count > 0 && <div className={styles.fontPageReset}><span>{pageNumber}쪽만 바뀐 값 {count}개</span><button type="button" className={styles.fontPageResetButton} onClick={onResetPage}>모든 페이지 값으로</button></div>}
+    <div className={styles.fontPageReset}>
+      {scope === "page" && count > 0 && <span>{pageNumber}쪽만 바뀐 값 {count}개</span>}
+      {scope === "page" && count > 0 && <button type="button" className={styles.fontPageResetButton} onClick={onResetPage}>모든 페이지 값으로</button>}
+      <button type="button" className={styles.secondaryAction} onClick={onResetDefaults}><ResetIcon />기본 크기로</button>
+    </div>
   </section>;
 }
 
@@ -213,7 +228,10 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const [exportOpen, setExportOpen] = useState(false);
   const [exportPageScope, setExportPageScope] = useState<ExportPageScope | null>(null);
   const [exportPageIds, setExportPageIds] = useState<Set<string>>(new Set());
-  const [activePopover, setActivePopover] = useState<"layout" | "notes" | "font" | null>(null);
+  const [activePopover, setActivePopover] = useState<"layout" | "notes" | "font" | "textbox" | null>(null);
+  const [sidePanelOpacity, setSidePanelOpacity] = useState(100);
+  const [textBoxPlacement, setTextBoxPlacement] = useState<{ kind: TextBoxKind; x: number; y: number } | null>(null);
+  const [textBoxEditingId, setTextBoxEditingId] = useState<string | null>(null);
   const [fontScope, setFontScope] = useState<FontSizeScope>("document");
   const [fontContextScope, setFontContextScope] = useState<FontSizeScope>("document");
   const [fontHighlight, setFontHighlight] = useState<FontSizeKey | null>(null);
@@ -224,9 +242,11 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const layoutTriggerRef = useRef<HTMLButtonElement>(null);
   const notesTriggerRef = useRef<HTMLButtonElement>(null);
   const fontSizeTriggerRef = useRef<HTMLButtonElement>(null);
+  const textBoxTriggerRef = useRef<HTMLButtonElement>(null);
   const layoutPopoverRef = useRef<HTMLDivElement>(null);
   const notesPopoverRef = useRef<HTMLDivElement>(null);
   const fontSizePopoverRef = useRef<HTMLDivElement>(null);
+  const textBoxPopoverRef = useRef<HTMLDivElement>(null);
   const fontContextMenuRef = useRef<HTMLDivElement>(null);
   const popoverOpenerRef = useRef<HTMLElement | null>(null);
   const [mobileViewport, setMobileViewport] = useState(false);
@@ -241,10 +261,31 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const layoutPopoverOpen = activePopover === "layout";
   const notesPopoverOpen = activePopover === "notes";
   const fontSizePopoverOpen = activePopover === "font";
+  const textBoxPopoverOpen = activePopover === "textbox";
 
   useEffect(() => {
     if (typeof document === "undefined") return;
     setReportActionsTarget(document.getElementById("v2-report-actions"));
+  }, []);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem("v2.report.sidePanelOpacity");
+      const parsed = stored ? Number(stored) : 100;
+      if (Number.isFinite(parsed)) setSidePanelOpacity(Math.max(40, Math.min(100, Math.round(parsed / 5) * 5)));
+    } catch {
+      setSidePanelOpacity(100);
+    }
+  }, []);
+
+  const changeSidePanelOpacity = useCallback((value: number) => {
+    const next = Math.max(40, Math.min(100, Math.round(value / 5) * 5));
+    setSidePanelOpacity(next);
+    try {
+      window.localStorage.setItem("v2.report.sidePanelOpacity", String(next));
+    } catch {
+      // localStorage is optional; the in-memory value still applies for this session.
+    }
   }, []);
 
   useEffect(() => {
@@ -271,6 +312,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     setSelectedId(history.present.pages[0]?.id ?? null);
     setSelectedSlideKey(null);
     setSelection(null);
+    setTextBoxPlacement(null);
+    setTextBoxEditingId(null);
     setMapMoveActive(false);
     setSettingsOpen(false);
   }, [history.present.pages, selectedId]);
@@ -282,6 +325,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     setSelectedId(id);
     setSelectedSlideKey(slideKey);
     setSelection(null);
+    setTextBoxPlacement(null);
+    setTextBoxEditingId(null);
     setMapMoveActive(false);
     setSettingsOpen(false);
     setActivePopover(null);
@@ -298,6 +343,15 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     return plan.find((slide) => slide.page?.id === selectedId && slide.key === selectedSlideKey)
       ?? plan.find((slide) => slide.page?.id === selectedId);
   }, [plan, selectedId, selectedSlideKey]);
+
+  const sidePanelStyle = useMemo(() => ({ "--side-panel-alpha": sidePanelOpacity / 100, "--side-panel-content-alpha": sidePanelOpacity / 100 } as CSSProperties), [sidePanelOpacity]);
+  const getThumbnailSlide = useCallback((tileId: string): PlannedSlide | undefined => {
+    const view = views.get(tileId);
+    if (!view) return undefined;
+    const page = pagesForTile(history.present, tileId, view, tileReportSettingsFromBoard(board, tileId), planContext)[0];
+    if (!page) return undefined;
+    return planReportDoc({ ...history.present, pages: [page] }, views, planContext).find((slide) => slide.page?.id === page.id);
+  }, [board, history.present, planContext, views]);
 
   useEffect(() => {
     const current = selectedId && selectedSlideKey
@@ -332,6 +386,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     }
     popoverOpenerRef.current = opener ?? layoutTriggerRef.current;
     setRail(null);
+    setTextBoxPlacement(null);
+    setTextBoxEditingId(null);
     setActivePopover("layout");
   }, [activePopover, closePopover]);
 
@@ -342,6 +398,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     }
     popoverOpenerRef.current = opener ?? notesTriggerRef.current;
     setRail(null);
+    setTextBoxPlacement(null);
+    setTextBoxEditingId(null);
     setActivePopover("notes");
   }, [activePopover, closePopover]);
 
@@ -354,7 +412,22 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     setFontContext(null);
     setFontScope("document");
     setRail(null);
+    setTextBoxPlacement(null);
+    setTextBoxEditingId(null);
     setActivePopover("font");
+  }, [activePopover, closePopover]);
+
+  const toggleTextBoxPopover = useCallback((opener?: HTMLElement | null) => {
+    if (activePopover === "textbox") {
+      closePopover(true);
+      return;
+    }
+    popoverOpenerRef.current = opener ?? textBoxTriggerRef.current;
+    setTextBoxPlacement(null);
+    setRail(null);
+    setSelection(null);
+    setTextBoxEditingId(null);
+    setActivePopover("textbox");
   }, [activePopover, closePopover]);
 
   const closeFontContext = useCallback((restoreFocus = true) => {
@@ -370,6 +443,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     setSelection(null);
     setMapMoveActive(false);
     setSettingsOpen(false);
+    setTextBoxPlacement(null);
+    setTextBoxEditingId(null);
     setActivePopover(null);
     if (restoreFocus) window.requestAnimationFrame(() => opener?.focus());
   }, []);
@@ -408,9 +483,11 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
         layoutPopoverRef.current?.contains(event.target)
         || notesPopoverRef.current?.contains(event.target)
         || fontSizePopoverRef.current?.contains(event.target)
+        || textBoxPopoverRef.current?.contains(event.target)
         || layoutTriggerRef.current?.contains(event.target)
         || notesTriggerRef.current?.contains(event.target)
         || fontSizeTriggerRef.current?.contains(event.target)
+        || textBoxTriggerRef.current?.contains(event.target)
       )) return;
       if (fontContext) closeFontContext(true);
       if (drawerOpen) closeDrawer(true);
@@ -451,6 +528,11 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        if (textBoxPlacement) {
+          event.preventDefault();
+          setTextBoxPlacement(null);
+          return;
+        }
         if (fontContext) {
           event.preventDefault();
           closeFontContext(true);
@@ -493,7 +575,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activePopover, closeDrawer, closeFontContext, closePopover, drawerOpen, fontContext, mapMoveActive, navigateStrip, redo, selectedId, selectedSlideKey, selection, settingsOpen, stripItems, undo]);
+  }, [activePopover, closeDrawer, closeFontContext, closePopover, drawerOpen, fontContext, mapMoveActive, navigateStrip, redo, selectedId, selectedSlideKey, selection, settingsOpen, stripItems, textBoxPlacement, undo]);
 
   const addPages = useCallback((pages: ReportPage[], message?: string) => {
     if (pages.length === 0) return;
@@ -503,6 +585,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     setSelectedId(pages[0].id);
     setSelectedSlideKey(null);
     setSelection(null);
+    setTextBoxPlacement(null);
+    setTextBoxEditingId(null);
     setMapMoveActive(false);
     setSettingsOpen(false);
   }, [apply, history.present, selectedId]);
@@ -541,6 +625,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     setSelectedId(pages[0]?.id ?? null);
     setSelectedSlideKey(null);
     setSelection(null);
+    setTextBoxPlacement(null);
+    setTextBoxEditingId(null);
     setMapMoveActive(false);
     setSettingsOpen(false);
   }, [board, commitDoc, history.present, planContext, views]);
@@ -552,6 +638,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     setSelectedId(pages[0]?.id ?? null);
     setSelectedSlideKey(null);
     setSelection(null);
+    setTextBoxPlacement(null);
+    setTextBoxEditingId(null);
     setMapMoveActive(false);
     setSettingsOpen(false);
   }, [board, commitDoc, history.present, planContext, views]);
@@ -578,6 +666,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
       setSelectedId(history.present.pages[Math.max(0, index - 1)]?.id ?? history.present.pages[index + 1]?.id ?? null);
       setSelectedSlideKey(null);
       setSelection(null);
+      setTextBoxPlacement(null);
+      setTextBoxEditingId(null);
       setMapMoveActive(false);
       setSettingsOpen(false);
     }
@@ -607,18 +697,59 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     setRail("pages");
   }, [addPages, board, compareGrid, compareSelected, history.present]);
 
-  const addTextBox = useCallback(() => {
+  const placeTextBox = useCallback((kind: TextBoxKind, x: number, y: number) => {
     if (!selectedId) return;
     const page = history.present.pages.find((candidate) => candidate.id === selectedId);
     if (!page) return;
-    const box: TextBox = { id: `text-${Date.now().toString(36)}`, x: 4.4, y: 3.1, w: 4.4, h: 0.72, text: "", pt: 16 };
+    const size = slideSize(history.present.format);
+    const box = clampTextBox(textBoxDefaults(kind, `text-${Date.now().toString(36)}`, x, y), size.w, size.h);
     apply({ type: "textBox", id: selectedId, box }, "글상자를 추가했습니다.");
+    setTextBoxPlacement(null);
+    setActivePopover(null);
     setSelection({ kind: "textBox", id: box.id });
-  }, [apply, history.present.pages, selectedId]);
+    setTextBoxEditingId(box.id);
+  }, [apply, history.present.format, history.present.pages, selectedId]);
+
+  const chooseTextBoxKind = useCallback((kind: TextBoxKind, keyboard = false) => {
+    if (!selectedId) return;
+    const size = slideSize(history.present.format);
+    const defaults = TEXT_BOX_DEFAULTS[kind];
+    const x = Math.max(0, (size.w - defaults.w) / 2);
+    const y = Math.max(0, (size.h - defaults.h) / 2);
+    if (keyboard) {
+      placeTextBox(kind, x, y);
+      return;
+    }
+    setTextBoxPlacement({ kind, x, y });
+    setSelection(null);
+    setTextBoxEditingId(null);
+    setMapMoveActive(false);
+    setSettingsOpen(false);
+    setActivePopover(null);
+    setRail(null);
+  }, [history.present.format, placeTextBox, selectedId]);
+
+  const moveTextBoxPlacement = useCallback((x: number, y: number) => {
+    setTextBoxPlacement((current) => {
+      if (!current) return current;
+      const size = slideSize(history.present.format);
+      const next = clampTextBox(textBoxDefaults(current.kind, "preview", x, y), size.w, size.h);
+      return { kind: current.kind, x: next.x, y: next.y };
+    });
+  }, [history.present.format]);
+
+  const commitTextBoxPlacement = useCallback((x: number, y: number) => {
+    if (!textBoxPlacement) return;
+    placeTextBox(textBoxPlacement.kind, x, y);
+  }, [placeTextBox, textBoxPlacement]);
 
   const applyTextBox = useCallback((box: TextBox | { id: string; remove: true }) => {
     if (!selectedId) return;
     apply({ type: "textBox", id: selectedId, box });
+    if ("remove" in box) {
+      setSelection(null);
+      setTextBoxEditingId(null);
+    }
   }, [apply, selectedId]);
 
   const editPanelText = useCallback((kind: "title" | "summary") => {
@@ -671,6 +802,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
       setSelection(next);
       setMapMoveActive(transitioned.moveActive);
       setSettingsOpen(transitioned.settingsOpen);
+      setTextBoxEditingId(null);
       setRail(null);
       return;
     }
@@ -680,6 +812,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
       closeFontContext(false);
       setMapMoveActive(transitioned.moveActive);
       setSettingsOpen(transitioned.settingsOpen);
+      setTextBoxEditingId(null);
       if (!transitioned.selected) setSelection(null);
       return;
     }
@@ -687,6 +820,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     closeFontContext(false);
     setMapMoveActive(false);
     setSettingsOpen(false);
+    if (next.kind !== "textBox") setTextBoxEditingId(null);
     setSelection(next);
   }, [closeFontContext, history.present.pages, mapMoveActive, rememberDrawerOpener, selectedId, selection, settingsOpen]);
   const toggleRail = useCallback((next: RailKey, opener?: HTMLElement | null) => {
@@ -696,23 +830,28 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
       setSelection(null);
       setMapMoveActive(false);
       setSettingsOpen(false);
+      setTextBoxPlacement(null);
+      setTextBoxEditingId(null);
       window.requestAnimationFrame(() => drawerOpenerRef.current?.focus());
       return;
     }
     setSelection(null);
     setMapMoveActive(false);
     setSettingsOpen(false);
+    setTextBoxPlacement(null);
+    setTextBoxEditingId(null);
     setActivePopover(null);
     setRail(next);
   }, [drawerOpen, rail, rememberDrawerOpener]);
-  const addTextBoxFromRail = useCallback(() => {
-    setSelection(null);
-    setMapMoveActive(false);
-    setSettingsOpen(false);
-    setActivePopover(null);
-    setRail(null);
-    addTextBox();
-  }, [addTextBox]);
+  const addTextBoxFromRail = useCallback((opener?: HTMLElement | null) => {
+    if (textBoxPlacement) {
+      setTextBoxPlacement(null);
+      setTextBoxEditingId(null);
+      setActivePopover(null);
+      return;
+    }
+    toggleTextBoxPopover(opener);
+  }, [textBoxPlacement, toggleTextBoxPopover]);
   const handleDrop = useCallback((event: DragEvent<HTMLElement>) => {
     const tileId = event.dataTransfer.getData("text/report-tile");
     if (!tileId) return;
@@ -743,6 +882,9 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     if (!selectedId) return;
     apply({ type: "clearPageFontSizes", id: selectedId } as ReportDocAction, "이 페이지 글자 크기를 모든 페이지 값으로 되돌렸습니다.");
   }, [apply, selectedId]);
+  const resetFontDefaults = useCallback(() => {
+    apply({ type: "resetFontSizes" }, "모든 글자 크기를 기본값으로 되돌렸습니다.");
+  }, [apply]);
   const resetPageFontSize = useCallback((key: FontSizeKey) => {
     if (!selectedId) return;
     apply({ type: "clearPageFontSizes", id: selectedId, key } as ReportDocAction, `${fontSizeRow(key).label}를 모든 페이지 값으로 되돌렸습니다.`);
@@ -984,12 +1126,12 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
             {history.present.pages.length === 0 ? (
               <div className={styles.emptyReport}>
                 <div className={styles.emptyCanvas}><span className={styles.emptyCanvasMark} aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 5v14M5 12h14" /></svg></span><strong>페이지를 추가하세요</strong><span>보고서의 첫 장을 선택해 작업을 시작합니다.</span></div>
-                <div className={styles.emptyActions}><button type="button" className={styles.primaryButton} onClick={() => addPage("blank")}>＋ 페이지 추가</button><button type="button" className={styles.secondaryButton} onClick={startRecommended}>추천 구성으로 시작</button>{legacyAvailable && <button type="button" className={styles.linkButton} onClick={importLegacy}>이전 보고서 구성 불러오기</button>}</div>
+                <div className={styles.emptyActions}><button type="button" className={styles.primaryButton} onClick={() => addPage("blank")}>＋ 페이지 추가</button><button type="button" className={styles.secondaryAction} onClick={startRecommended}><RecommendedIcon />추천 구성으로 시작</button>{legacyAvailable && <button type="button" className={styles.secondaryAction} onClick={importLegacy}><ImportReportIcon />이전 보고서 구성 불러오기</button>}</div>
               </div>
             ) : selectedSlide ? (
               <>
                 <div className={styles.stageSlide}>
-                  <SlideSurface slide={selectedSlide} basemap={basemap} mode="edit" selection={selection} fontHighlight={fontHighlight} onFontContextMenu={openFontContext} onSelect={handleSurfaceSelect} onMapMoveActive={setMapMoveFromSurface} onFrame={applyFrame} onPanels={applyPanels} onTextBox={applyTextBox} onText={editPanelText} onSheetCellActivate={(index) => { handleSurfaceSelect({ kind: "map", cell: index }); setMapMoveActive(false); }} mapActive={mapEditing} classMap={surfaceClassMap} />
+                  <SlideSurface slide={selectedSlide} basemap={basemap} mode="edit" selection={selection} fontHighlight={fontHighlight} onFontContextMenu={openFontContext} onSelect={handleSurfaceSelect} onMapMoveActive={setMapMoveFromSurface} onFrame={applyFrame} onPanels={applyPanels} onTextBox={applyTextBox} onText={editPanelText} textBoxEditingId={textBoxEditingId} textBoxPlacement={textBoxPlacement} onTextBoxPlacementMove={moveTextBoxPlacement} onTextBoxPlacementCommit={commitTextBoxPlacement} onTextBoxEditingChange={setTextBoxEditingId} onSheetCellActivate={(index) => { handleSurfaceSelect({ kind: "map", cell: index }); setMapMoveActive(false); }} mapActive={mapEditing} classMap={surfaceClassMap} />
                 </div>
               </>
             ) : <div className={styles.emptyCanvas}>이 페이지는 아직 미리보기를 준비하고 있습니다.</div>}
@@ -1039,29 +1181,30 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
           </aside>}
 
           <nav className={`${styles.floatCard} ${styles.toolPill}`} aria-label="보고서 요소" inert={modalContentInert || undefined}>
-            <button type="button" className={`${styles.railButton} ${rail === "pages" && drawerOpen ? styles.railButtonActive : ""}`} aria-pressed={rail === "pages" && drawerOpen} aria-expanded={rail === "pages" && drawerOpen} aria-controls="report-drawer" onClick={(event) => toggleRail("pages", event.currentTarget)}><span aria-hidden="true"><RailIcon name="pages" /></span><span>페이지</span></button>
-            <button type="button" className={`${styles.railButton} ${rail === "tiles" && drawerOpen ? styles.railButtonActive : ""}`} aria-pressed={rail === "tiles" && drawerOpen} aria-expanded={rail === "tiles" && drawerOpen} aria-controls="report-drawer" onClick={(event) => toggleRail("tiles", event.currentTarget)}><span aria-hidden="true"><RailIcon name="tiles" /></span><span>분석 타일</span></button>
-            <button type="button" className={styles.railButton} aria-pressed={false} onClick={addTextBoxFromRail} disabled={!selectedPage}><span aria-hidden="true"><RailIcon name="textbox" /></span><span>글상자</span></button>
+            <button type="button" className={`${styles.railButton} ${rail === "pages" && drawerOpen ? styles.railButtonActive : ""}`} aria-label="페이지" aria-pressed={rail === "pages" && drawerOpen} aria-expanded={rail === "pages" && drawerOpen} aria-controls="report-drawer" onClick={(event) => toggleRail("pages", event.currentTarget)}><span aria-hidden="true"><RailIcon name="pages" /></span><span className={styles.railTooltip} role="tooltip">페이지</span></button>
+            <button type="button" className={`${styles.railButton} ${rail === "tiles" && drawerOpen ? styles.railButtonActive : ""}`} aria-label="분석 타일" aria-pressed={rail === "tiles" && drawerOpen} aria-expanded={rail === "tiles" && drawerOpen} aria-controls="report-drawer" onClick={(event) => toggleRail("tiles", event.currentTarget)}><span aria-hidden="true"><RailIcon name="tiles" /></span><span className={styles.railTooltip} role="tooltip">분석 타일</span></button>
+            <button ref={textBoxTriggerRef} type="button" className={`${styles.railButton} ${textBoxPopoverOpen || textBoxPlacement ? styles.railButtonActive : ""}`} aria-label="글상자" aria-pressed={textBoxPopoverOpen || !!textBoxPlacement} aria-haspopup="dialog" aria-expanded={textBoxPopoverOpen} aria-controls={textBoxPopoverOpen ? "report-textbox-popover" : undefined} onClick={(event) => addTextBoxFromRail(event.currentTarget)} disabled={!selectedPage}><span aria-hidden="true"><RailIcon name="textbox" /></span><span className={styles.railTooltip} role="tooltip">글상자</span></button>
             <div className={styles.toolDivider} role="separator" aria-hidden="true" />
             <div className={styles.railPopoverRoot}>
-              <button ref={fontSizeTriggerRef} type="button" className={`${styles.railButton} ${fontSizePopoverOpen ? styles.railButtonActive : ""}`} aria-pressed={fontSizePopoverOpen} aria-haspopup="dialog" aria-expanded={fontSizePopoverOpen} aria-controls={fontSizePopoverOpen ? "report-font-size-popover" : undefined} aria-label="글자 크기" onClick={(event) => toggleFontSizePopover(event.currentTarget)}><span aria-hidden="true"><RailIcon name="font" /></span><span>글자 크기</span></button>
-              {fontSizePopoverOpen && <div ref={fontSizePopoverRef} id="report-font-size-popover" className={`${styles.floatCard} ${styles.anchoredCard} ${styles.railPopover} ${styles.fontSizePopover}`} style={anchoredCardStyle} role="dialog" aria-label="글자 크기"><FontSizePopover doc={history.present} page={selectedPage} pageNumber={selectedPageNumber} scope={fontScope} selectedKey={fontHighlight} onScope={setFontScope} onChange={changeFontSize} onSelect={setFontHighlight} onResetPage={resetPageFontSizes} onClose={() => closePopover(true)} /></div>}
+              <button ref={fontSizeTriggerRef} type="button" className={`${styles.railButton} ${fontSizePopoverOpen ? styles.railButtonActive : ""}`} aria-pressed={fontSizePopoverOpen} aria-haspopup="dialog" aria-expanded={fontSizePopoverOpen} aria-controls={fontSizePopoverOpen ? "report-font-size-popover" : undefined} aria-label="글자 크기" onClick={(event) => toggleFontSizePopover(event.currentTarget)}><span aria-hidden="true"><RailIcon name="font" /></span><span className={styles.railTooltip} role="tooltip">글자 크기</span></button>
+              {fontSizePopoverOpen && <div ref={fontSizePopoverRef} id="report-font-size-popover" className={`${styles.floatCard} ${styles.sidePanelCard} ${styles.anchoredCard} ${styles.railPopover} ${styles.fontSizePopover}`} style={{ ...anchoredCardStyle, ...sidePanelStyle }} role="dialog" aria-label="글자 크기"><FontSizePopover doc={history.present} page={selectedPage} pageNumber={selectedPageNumber} scope={fontScope} selectedKey={fontHighlight} opacity={sidePanelOpacity} onOpacityChange={changeSidePanelOpacity} onScope={setFontScope} onChange={changeFontSize} onSelect={setFontHighlight} onResetPage={resetPageFontSizes} onResetDefaults={resetFontDefaults} onClose={() => closePopover(true)} /></div>}
             </div>
             <div className={styles.railPopoverRoot}>
-              <button ref={layoutTriggerRef} type="button" className={`${styles.railButton} ${layoutPopoverOpen ? styles.railButtonActive : ""}`} aria-haspopup="dialog" aria-pressed={layoutPopoverOpen} aria-expanded={layoutPopoverOpen} aria-controls={layoutPopoverOpen ? "report-layout-menu" : undefined} aria-label="페이지 레이아웃 메뉴" onClick={(event) => toggleLayoutPopover(event.currentTarget)} disabled={!selectedPage}><span aria-hidden="true"><RailIcon name="layout" /></span><span>레이아웃</span></button>
-              {layoutPopoverOpen && selectedPage && <div ref={layoutPopoverRef} id="report-layout-menu" className={`${styles.floatCard} ${styles.anchoredCard} ${styles.railPopover}`} style={anchoredCardStyle} role="dialog" aria-label="페이지 레이아웃"><LayoutSwitcher compact pageNumber={selectedPageNumber ?? 1} value={selectedPage.layout} onChange={(layout) => apply({ type: "layout", id: selectedPage.id, layout })} /></div>}
+              <button ref={layoutTriggerRef} type="button" className={`${styles.railButton} ${layoutPopoverOpen ? styles.railButtonActive : ""}`} aria-haspopup="dialog" aria-pressed={layoutPopoverOpen} aria-expanded={layoutPopoverOpen} aria-controls={layoutPopoverOpen ? "report-layout-menu" : undefined} aria-label="페이지 레이아웃 메뉴" onClick={(event) => toggleLayoutPopover(event.currentTarget)} disabled={!selectedPage}><span aria-hidden="true"><RailIcon name="layout" /></span><span className={styles.railTooltip} role="tooltip">레이아웃</span></button>
+              {layoutPopoverOpen && selectedPage && <div ref={layoutPopoverRef} id="report-layout-menu" className={`${styles.floatCard} ${styles.sidePanelCard} ${styles.anchoredCard} ${styles.railPopover}`} style={{ ...anchoredCardStyle, ...sidePanelStyle }} role="dialog" aria-label="페이지 레이아웃"><LayoutSwitcher compact pageNumber={selectedPageNumber ?? 1} value={selectedPage.layout} opacity={sidePanelOpacity} onOpacityChange={changeSidePanelOpacity} onChange={(layout) => apply({ type: "layout", id: selectedPage.id, layout })} onClose={() => closePopover(true)} /></div>}
             </div>
             <div className={styles.railPopoverRoot}>
-              <button ref={notesTriggerRef} type="button" className={`${styles.railButton} ${notesPopoverOpen ? styles.railButtonActive : ""}`} aria-haspopup="dialog" aria-pressed={notesPopoverOpen} aria-expanded={notesPopoverOpen} aria-controls={notesPopoverOpen ? "report-notes-popover" : undefined} aria-label={selectedPage?.notes.trim() ? "발표 메모 있음" : "발표 메모"} data-has-notes={selectedPage?.notes.trim() ? "true" : "false"} onClick={(event) => toggleNotesPopover(event.currentTarget)} disabled={!selectedPage}><span aria-hidden="true"><RailIcon name="notes" /></span><span>메모</span>{selectedPage?.notes.trim() && <span className={styles.noteDot} aria-hidden="true" />}</button>
-              {notesPopoverOpen && selectedPage && <div ref={notesPopoverRef} id="report-notes-popover" className={`${styles.floatCard} ${styles.anchoredCard} ${styles.railPopover} ${styles.notesPopover}`} style={anchoredCardStyle} role="dialog" aria-label="발표 메모"><div className={styles.popoverBody}><div className={styles.drawerHeader}><h2>발표 메모 · {selectedPageNumber ?? 1}쪽</h2><button type="button" className={styles.iconButton} onClick={() => closePopover(true)} aria-label="메모 닫기">×</button></div><NotesField compact pageId={selectedPage.id} value={selectedPage.notes} onChange={(notes) => apply({ type: "notes", id: selectedPage.id, notes })} /><div className={styles.notesMeta}><span>저장됨</span><span>Esc 닫기</span></div></div></div>}
+              <button ref={notesTriggerRef} type="button" className={`${styles.railButton} ${notesPopoverOpen ? styles.railButtonActive : ""}`} aria-haspopup="dialog" aria-pressed={notesPopoverOpen} aria-expanded={notesPopoverOpen} aria-controls={notesPopoverOpen ? "report-notes-popover" : undefined} aria-label={selectedPage?.notes.trim() ? "발표 메모 있음" : "발표 메모"} data-has-notes={selectedPage?.notes.trim() ? "true" : "false"} onClick={(event) => toggleNotesPopover(event.currentTarget)} disabled={!selectedPage}><span aria-hidden="true"><RailIcon name="notes" /></span><span className={styles.railTooltip} role="tooltip">메모</span>{selectedPage?.notes.trim() && <span className={styles.noteDot} aria-hidden="true" />}</button>
+              {notesPopoverOpen && selectedPage && <div ref={notesPopoverRef} id="report-notes-popover" className={`${styles.floatCard} ${styles.sidePanelCard} ${styles.anchoredCard} ${styles.railPopover} ${styles.notesPopover}`} style={{ ...anchoredCardStyle, ...sidePanelStyle }} role="dialog" aria-label="발표 메모"><div className={styles.popoverBody}><SidePanelHeader title="발표 메모" context={`${selectedPageNumber ?? 1}쪽`} opacity={sidePanelOpacity} onOpacityChange={changeSidePanelOpacity} onClose={() => closePopover(true)} closeLabel="메모 창 닫기" /><NotesField compact pageId={selectedPage.id} value={selectedPage.notes} onChange={(notes) => apply({ type: "notes", id: selectedPage.id, notes })} /><div className={styles.notesMeta}><span aria-hidden="true">✓</span><span>저장됨</span></div></div></div>}
             </div>
+            {textBoxPopoverOpen && <div ref={textBoxPopoverRef} id="report-textbox-popover" className={`${styles.floatCard} ${styles.sidePanelCard} ${styles.anchoredCard} ${styles.railPopover} ${styles.textBoxPopover}`} style={{ ...anchoredCardStyle, ...sidePanelStyle }} role="dialog" aria-label="글상자 종류"><TextBoxPopover opacity={sidePanelOpacity} onOpacityChange={changeSidePanelOpacity} onChoose={chooseTextBoxKind} onClose={() => closePopover(true)} /></div>}
           </nav>
 
           <aside
             ref={drawerRef}
             id="report-drawer"
-            className={`${styles.floatCard} ${styles.anchoredCard} ${styles.drawerCard}`}
-            style={anchoredCardStyle}
+            className={`${styles.floatCard} ${styles.sidePanelCard} ${styles.anchoredCard} ${styles.drawerCard}`}
+            style={{ ...anchoredCardStyle, ...sidePanelStyle }}
             data-drawer-open={drawerOpen ? "true" : "false"}
             data-mobile-sheet={mobileViewport && drawerOpen ? "open" : "closed"}
             role={drawerOpen ? "dialog" : undefined}
@@ -1070,8 +1213,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
             inert={exportOpen || !drawerOpen ? true : undefined}
             aria-label={rail === "tiles" ? "분석 타일 추가" : "페이지 추가"}
           >
-            {rail === "pages" && <DrawerPages open afterPage={selectedPageNumber} hasLegacy={legacyAvailable} onAdd={addPage} onRecommended={startRecommended} onLegacy={importLegacy} onClose={() => closeDrawer(true)} />}
-            {rail === "tiles" && <DrawerTiles open doc={history.present} views={views} mode={compareMode ? "compare" : "single"} compareGrid={compareGrid} compareSelected={compareSelected} onCompareGrid={setCompareGrid} onAdd={addTile} onToggleCompare={toggleCompareTile} onCreateCompare={addComparePage} onCancelCompare={() => { setCompareSelected([]); setCompareMode(false); }} onClose={() => closeDrawer(true)} />}
+            {rail === "pages" && <DrawerPages open afterPage={selectedPageNumber} hasLegacy={legacyAvailable} onAdd={addPage} onRecommended={startRecommended} onLegacy={importLegacy} onClose={() => closeDrawer(true)} opacity={sidePanelOpacity} onOpacityChange={changeSidePanelOpacity} />}
+            {rail === "tiles" && <DrawerTiles open doc={history.present} views={views} mode={compareMode ? "compare" : "single"} compareGrid={compareGrid} compareSelected={compareSelected} onCompareGrid={setCompareGrid} onAdd={addTile} onToggleCompare={toggleCompareTile} onCreateCompare={addComparePage} onCancelCompare={() => { setCompareSelected([]); setCompareMode(false); }} onClose={() => closeDrawer(true)} opacity={sidePanelOpacity} onOpacityChange={changeSidePanelOpacity} getThumbnailSlide={getThumbnailSlide} classMap={surfaceClassMap} />}
           </aside>
 
           <div className={`${styles.floatCard} ${styles.pageDock}`} inert={modalContentInert || undefined}>

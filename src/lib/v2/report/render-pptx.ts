@@ -19,7 +19,7 @@ import { addEditableMap, nativeMapFallbackNote, nativeMapStatus } from "./map-pp
 import { badgeTextColor } from "../ui/map-labels";
 import type { PageStyle } from "../ui/board-state";
 import { drawTerrainSectionPptx } from "./terrain-section-pptx";
-import type { MapFrameState, ReportLayout } from "./report-doc";
+import { TEXT_BOX_DEFAULTS, type MapFrameState, type ReportLayout } from "./report-doc";
 
 /** 지도 이미지(PNG/JPEG data URL) — 키는 report-plan의 mapKeyOf */
 export type MapImages = Record<string, string>;
@@ -129,6 +129,7 @@ function pageTextBoxes(s: Slide, p: PlannedSlide, format: SlideFormat): void {
   const size = slideSize(format);
   for (const box of p.page.textBoxes) {
     if (!box.text.trim()) continue;
+    const defaults = TEXT_BOX_DEFAULTS[box.kind ?? "body"];
     s.addText(box.text, {
       x: box.x * size.w,
       y: box.y * size.h,
@@ -136,7 +137,10 @@ function pageTextBoxes(s: Slide, p: PlannedSlide, format: SlideFormat): void {
       h: box.h * size.h,
       fontFace: FONT,
       fontSize: box.pt,
-      color: INK,
+      color: hex(box.color ?? defaults.color ?? INK),
+      bold: box.bold ?? defaults.bold ?? false,
+      italic: box.italic ?? defaults.italic ?? false,
+      align: box.align ?? defaults.align ?? "left",
       margin: 0,
       fit: "shrink",
       objectName: `GRP|textBox-${box.id}|글상자|text`,

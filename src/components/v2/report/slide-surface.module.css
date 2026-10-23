@@ -69,26 +69,70 @@
   pointer-events: none;
 }
 
-.textBoxMoveHandle,
-.textBoxResizeHandle {
+.textBoxToolbar {
   position: absolute;
-  z-index: 2;
-  display: grid;
+  top: -50px;
+  left: 0;
+  z-index: 20;
+  display: flex;
   place-items: center;
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0;
-  color: #153f83;
-  background: #e0eafa;
-  border: 1px solid #2f6fdb;
-  border-radius: 3px;
-  cursor: move;
-  font: inherit;
-  font-size: 11px;
+  gap: 2px;
+  min-height: 32px;
+  padding: 3px;
+  color: #15171c;
+  background: #fff;
+  border: 1px solid #e1e4e9;
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(21,23,28,.06), 0 6px 16px rgba(21,23,28,.12);
+  white-space: nowrap;
 }
 
-.textBoxMoveHandle { top: -22px; left: 50%; transform: translateX(-50%); }
-.textBoxResizeHandle { right: -22px; bottom: -22px; cursor: nwse-resize; }
+.textBoxMoveButton,
+.textBoxToolbarButton {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  color: #15171c;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.textBoxMoveButton { cursor: grab; color: #4a5160; }
+.textBoxToolbarButton:hover { background: #f3f5f8; }
+.textBoxToolbarButtonActive { color: #153f83; background: #e0eafa; }
+.textBoxToolbarSeparator { width: 1px; height: 18px; background: #e1e4e9; }
+.textBoxItalicButton { font-family: Georgia, serif; font-style: italic; }
+.textBoxDeleteButton { color: #c92a2a; }
+.textBoxDoneButton { width: auto; margin-left: 2px; padding: 0 12px; color: #fff; background: #2f6fdb; font-size: 13px; font-weight: 700; }
+.textBoxDoneButton:hover { background: #2563c9; }
+.textBoxFontValue { display: grid; place-items: center; min-width: 40px; color: #15171c; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.textBoxColorControl { position: relative; display: inline-flex; }
+.textBoxColorControl .textBoxToolbarButton { gap: 0; background: #eef0f3; line-height: 1; }
+.textBoxColorMark { display: block; width: 16px; height: 3px; margin-top: -5px; border-radius: 2px; }
+.textBoxColorMenu { position: absolute; top: -6px; left: calc(100% + 4px); z-index: 22; display: grid; grid-template-columns: repeat(4, 22px); gap: 8px; padding: 10px; background: #fff; border: 1px solid #e1e4e9; border-radius: 10px; box-shadow: 0 2px 4px rgba(21,23,28,.08), 0 12px 28px rgba(21,23,28,.16); }
+.textBoxColorSwatch { width: 22px; height: 22px; padding: 0; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 0 1px #d9dce2; cursor: pointer; }
+.textBoxColorSwatch[aria-selected="true"] { outline: 2px solid #2f6fdb; outline-offset: 1px; }
+.textBoxHandle { position: absolute; z-index: 18; padding: 0; background: #fff; border: 1.5px solid #2f6fdb; border-radius: 2px; cursor: pointer; }
+.textBoxHandleNW, .textBoxHandleNE, .textBoxHandleSE, .textBoxHandleSW { width: 10px; height: 10px; }
+.textBoxHandleN, .textBoxHandleS { width: 20px; height: 7px; left: 50%; transform: translateX(-50%); border-radius: 999px; }
+.textBoxHandleE, .textBoxHandleW { width: 7px; height: 20px; top: 50%; transform: translateY(-50%); border-radius: 999px; }
+.textBoxHandleNW { top: -6px; left: -6px; cursor: nwse-resize; }
+.textBoxHandleN { top: -5px; cursor: ns-resize; }
+.textBoxHandleNE { top: -6px; right: -6px; cursor: nesw-resize; }
+.textBoxHandleE { right: -5px; cursor: ew-resize; }
+.textBoxHandleSE { right: -6px; bottom: -6px; cursor: nwse-resize; }
+.textBoxHandleS { bottom: -5px; cursor: ns-resize; }
+.textBoxHandleSW { bottom: -6px; left: -6px; cursor: nesw-resize; }
+.textBoxHandleW { left: -5px; cursor: ew-resize; }
+.textBoxPlacementLayer { position: absolute; inset: 0; z-index: 28; cursor: crosshair; }
+.textBoxPlacementPreview { position: absolute; box-sizing: border-box; display: flex; align-items: flex-start; padding: .08em; color: #15171c; background: rgba(255,255,255,.62); border: 1.5px dashed #2f6fdb; border-radius: 3px; pointer-events: none; }
 
 .surfaceRoot[data-surface-mode="export"] {
   color: #15171c;
@@ -128,6 +172,10 @@
 }
 
 @media (min-width: 1024px) {
+  .surfaceRoot[data-surface-mode="edit"],
+  .surfaceRoot[data-surface-mode="edit"] [data-preview-slot="true"],
+  .surfaceRoot[data-surface-mode="edit"] [data-preview-frame="true"],
+  .surfaceRoot[data-surface-mode="edit"] [data-slide-canvas="true"] { overflow: visible !important; }
   .surfaceRoot [data-font-highlight="true"] {
     outline: 2px dashed #2f6fdb;
     outline-offset: -2px;

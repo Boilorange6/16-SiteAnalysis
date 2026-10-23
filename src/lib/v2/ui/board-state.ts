@@ -13,7 +13,7 @@ import type { S02Cut, S02DateKey } from "../tile/s02/cut";
 import type { S03Cut } from "../tile/s03/cut";
 import type { S04Cut } from "../tile/s04/cut";
 import { sheetCapacity, type SheetGrid as UiSheetGrid } from "./sheet";
-import { clampReportFontSizes, EMPTY_REPORT_DOC, defaultFrame, mergeReportFontSizes, reportFontSizesFromLegacyScale, type MapFrameState, type ReportDoc, type ReportPage, type ReportFontSizes, type TilePart } from "../report/report-doc";
+import { clampReportFontSizes, EMPTY_REPORT_DOC, defaultFrame, mergeReportFontSizes, reportFontSizesFromLegacyScale, TEXT_BOX_COLORS, type MapFrameState, type ReportDoc, type ReportPage, type ReportFontSizes, type TextBoxAlign, type TextBoxKind, type TilePart } from "../report/report-doc";
 import type { TileReportSettings } from "../report/report-plan";
 
 export type TileSize = 1 | 2 | 4;
@@ -972,7 +972,23 @@ function reportTextBoxes(value: unknown): ReportPage["textBoxes"] {
       || !isFiniteNumber(item.x) || !isFiniteNumber(item.y) || !isFiniteNumber(item.w) || !isFiniteNumber(item.h)
       || typeof item.text !== "string" || !isFiniteNumber(item.pt)) return [];
     ids.add(item.id);
-    return [{ id: item.id, x: item.x, y: item.y, w: item.w, h: item.h, text: item.text, pt: item.pt }];
+    const kind = item.kind === "title" || item.kind === "body" || item.kind === "note" ? item.kind as TextBoxKind : undefined;
+    const align = item.align === "left" || item.align === "center" ? item.align as TextBoxAlign : undefined;
+    const color = typeof item.color === "string" && (TEXT_BOX_COLORS as readonly string[]).includes(item.color) ? item.color as typeof TEXT_BOX_COLORS[number] : undefined;
+    return [{
+      id: item.id,
+      x: item.x,
+      y: item.y,
+      w: item.w,
+      h: item.h,
+      text: item.text,
+      pt: item.pt,
+      ...(kind ? { kind } : {}),
+      ...(typeof item.bold === "boolean" ? { bold: item.bold } : {}),
+      ...(typeof item.italic === "boolean" ? { italic: item.italic } : {}),
+      ...(color ? { color } : {}),
+      ...(align ? { align } : {}),
+    }];
   });
 }
 

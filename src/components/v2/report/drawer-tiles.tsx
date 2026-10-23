@@ -1,10 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReportDoc } from "@/lib/v2/report/report-doc";
 import { pagesUsingTile } from "@/lib/v2/ui/report-mode-logic";
 import type { TileView } from "@/lib/v2/ui/tile-view";
+import type { PlannedSlide } from "@/lib/v2/report/report-plan";
 import styles from "./report-mode.module.css";
+import { SlideSurface } from "./slide-surface";
+import SidePanelHeader from "./side-panel-header";
 
 type DrawerTilesProps = {
   open: boolean;
@@ -19,11 +22,38 @@ type DrawerTilesProps = {
   onCreateCompare: () => void;
   onCancelCompare: () => void;
   onClose: () => void;
+  opacity: number;
+  onOpacityChange: (value: number) => void;
+  getThumbnailSlide: (tileId: string) => PlannedSlide | undefined;
+  classMap: Record<string, string>;
 };
 
 const CATEGORIES = ["전체", "분석", "도판", "시뮬레이션"] as const;
 
-export default function DrawerTiles({ open, doc, views, mode, compareGrid, compareSelected, onCompareGrid, onAdd, onToggleCompare, onCreateCompare, onCancelCompare, onClose }: DrawerTilesProps) {
+function TileThumbnail({ tileId, getThumbnailSlide, classMap }: { tileId: string; getThumbnailSlide: (tileId: string) => PlannedSlide | undefined; classMap: Record<string, string> }) {
+  const hostRef = useRef<HTMLSpanElement>(null);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return;
+    }
+    const root = host.closest("[data-tile-scroll]");
+    const observer = new IntersectionObserver((entries) => {
+      setVisible(entries[0]?.isIntersecting === true);
+    }, { root: root instanceof Element ? root : null, rootMargin: "80px" });
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, []);
+  const slide = useMemo(() => visible ? getThumbnailSlide(tileId) : undefined, [getThumbnailSlide, tileId, visible]);
+  return <span ref={hostRef} className={styles.tilePreview} data-preview-thumbnail={visible ? "true" : "false"} aria-hidden="true">
+    {slide ? <SlideSurface slide={slide} basemap="white" mode="thumb" classMap={classMap} /> : <span className={styles.tilePreviewPlaceholder} />}
+  </span>;
+}
+
+export default function DrawerTiles({ open, doc, views, mode, compareGrid, compareSelected, onCompareGrid, onAdd, onToggleCompare, onCreateCompare, onCancelCompare, onClose, opacity, onOpacityChange, getThumbnailSlide, classMap }: DrawerTilesProps) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]>("전체");
   const items = useMemo(() => [...views.values()]
@@ -35,13 +65,8 @@ export default function DrawerTiles({ open, doc, views, mode, compareGrid, compa
   const canCreateCompare = compareSelected.length >= 2 && compareSelected.length <= compareLimit;
   if (!open) return null;
   return (
-    <section className={styles.drawer} aria-label="분석 타일 추가">
-      <div className={styles.drawerHeader}>
-        <div>
-          <h2>분석 타일</h2>
-        </div>
-        <div className={styles.drawerHeaderActions}>{mode === "compare" && <span className={styles.selectionPill}>{compareSelected.length}개 선택</span>}<button type="button" className={styles.iconButton} onClick={onClose} aria-label="서랍 닫기">×</button></div>
-      </div>
+    <section className={`${styles.drawer} ${styles.tileDrawer}`} aria-label="분석 타일 추가">
+      <SidePanelHeader title="분석 타일" context={mode === "compare" ? `${compareSelected.length}개` : `${items.length}`} opacity={opacity} onOpacityChange={onOpacityChange} onClose={onClose} closeLabel="분석 타일 창 닫기" />
       <label className={styles.searchBox}>
         <span className={styles.srOnly}>타일 검색</span>
         <span aria-hidden="true">⌕</span>
@@ -51,7 +76,7 @@ export default function DrawerTiles({ open, doc, views, mode, compareGrid, compa
         {CATEGORIES.map((item) => <button key={item} type="button" className={`${styles.filterChip} ${category === item ? styles.filterChipActive : ""}`} aria-pressed={category === item} onClick={() => setCategory(item)}>{item}</button>)}
       </div>
       {mode === "compare" && <div className={styles.compareGridChoices} aria-label="비교 칸 구성"><span className={styles.sectionLabel}>칸 구성</span>{([{ value: "2x2", label: "2×2 · 4칸" }, { value: "3x2", label: "3×2 · 6칸" }, { value: "3x1", label: "3×1 · 3칸" }] as const).map((option) => <button key={option.value} type="button" className={`${styles.filterChip} ${compareGrid === option.value ? styles.filterChipActive : ""}`} aria-pressed={compareGrid === option.value} onClick={() => onCompareGrid(option.value)}>{option.label}</button>)}</div>}
-      <div className={styles.tileList}>
+      <div className={`${styles.tileList} ${styles.sidePanelContent}`} data-tile-scroll>
         {items.map((view) => {
           const used = pagesUsingTile(doc, view.tileId);
           const checked = compareSelected.includes(view.tileId);
@@ -65,18 +90,12 @@ export default function DrawerTiles({ open, doc, views, mode, compareGrid, compa
                 event.dataTransfer.setData("text/report-tile", view.tileId);
               }}
             >
-              <div className={styles.tilePreview} style={{ background: `linear-gradient(rgba(255,255,255,.78), rgba(255,255,255,.78)), ${view.color}` }} aria-hidden="true"><span className={styles.tilePreviewDot} style={{ background: view.color }} /></div>
+              <button type="button" className={styles.tileCardButton} title={view.title} aria-label={`${view.title} 추가`} onClick={() => mode === "single" ? onAdd(view.tileId) : onToggleCompare(view.tileId)} onKeyDown={(event) => { if ((event.key === "Enter" || event.key === " ") && mode === "single") { event.preventDefault(); onAdd(view.tileId); } }}>
+                <TileThumbnail tileId={view.tileId} getThumbnailSlide={getThumbnailSlide} classMap={classMap} />
+                <span className={styles.tileCardName}>{view.title}</span>
+              </button>
               {used.length > 0 && <span className={styles.tileUsedBadge}>{used.map((page) => `${page}쪽`).join(" · ")}</span>}
-              {mode === "compare" ? (
-                <label className={styles.tileCardBody} title={view.title}>
-                  <input type="checkbox" checked={checked} aria-label={`${view.title} 비교에 포함`} disabled={!checked && compareSelected.length >= compareLimit} onChange={() => onToggleCompare(view.tileId)} />
-                  <span className={styles.tileRowCopy}><strong>{view.title}</strong><span>{view.kindLabel}</span></span>
-                </label>
-              ) : (
-                <button type="button" className={styles.tileCardBody} title={view.title} aria-label={`${view.title} 추가`} onClick={() => onAdd(view.tileId)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onAdd(view.tileId); } }}>
-                  <span className={styles.tileRowCopy}><strong>{view.title}</strong><span>{view.kindLabel}</span></span>
-                </button>
-              )}
+              {mode === "compare" && <label className={styles.tileCompareToggle} title={`${view.title} 비교에 포함`}><input type="checkbox" checked={checked} aria-label={`${view.title} 비교에 포함`} disabled={!checked && compareSelected.length >= compareLimit} onChange={() => onToggleCompare(view.tileId)} /></label>}
             </div>
           );
         })}

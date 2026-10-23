@@ -27,11 +27,11 @@
 .saveState { color: var(--report-muted); font-size: 12px; white-space: nowrap; }
 .saveState[data-dirty="true"] { color: #8a4c00; font-weight: 700; }
 
-.headerSelect, .headerFormat select, .secondaryButton, .primaryButton, .primaryDarkButton, .linkButton, .iconButton, .drawerAction, .drawerLinkAction, .quickButton, .quickButtonActive, .railButton, .pageCard, .tileCardBody, .filterChip, .compareActions button {
+.headerSelect, .headerFormat select, .secondaryButton, .primaryButton, .primaryDarkButton, .iconButton, .drawerAction, .quickButton, .quickButtonActive, .railButton, .pageCard, .tileCardButton, .filterChip, .compareActions button, .secondaryAction {
   font: inherit;
 }
 
-.headerSelect, .secondaryButton, .primaryButton, .primaryDarkButton, .linkButton {
+.headerSelect, .secondaryButton, .primaryButton, .primaryDarkButton {
   min-height: 44px;
   padding: 9px 14px;
   border: 1px solid #aeb4bf;
@@ -44,8 +44,7 @@
 .headerSelect, .secondaryButton { color: var(--report-ink); background: #fff; }
 .primaryButton { color: #fff; background: var(--report-accent); border-color: var(--report-accent); }
 .primaryDarkButton { color: #fff; background: var(--report-dark); border-color: var(--report-dark); }
-.linkButton { color: var(--report-accent); background: transparent; border-color: transparent; }
-.headerSelect:hover, .secondaryButton:hover, .linkButton:hover { background: #e8edf5; }
+.headerSelect:hover, .secondaryButton:hover { background: #e8edf5; }
 .headerFormat { display: grid; min-width: 0; }
 .headerFormat select { min-height: 44px; max-width: 158px; padding: 8px 28px 8px 10px; color: var(--report-ink); background: #fff; border: 1px solid #aeb4bf; border-radius: 8px; font-size: 12px; font-weight: 500; }
 .primaryButton:hover { background: #245ebd; }
@@ -95,6 +94,7 @@
 .railButton span:first-child { display: grid; place-items: center; min-height: 20px; font-size: 0; }
 .railIcon { display: block; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .railButton span:last-child { white-space: nowrap; }
+.railTooltip { display: none; }
 .railButton:hover { background: #e4e8ef; }
 .railButtonActive { color: #fff; background: #2f6fdb; border-color: #2f6fdb; font-weight: 700; }
 .railButtonActive:hover { background: #2563c9; }
@@ -117,10 +117,8 @@
 .drawerSection { display: grid; gap: 8px; padding-top: 8px; border-top: 1px solid var(--report-line); }
 .sectionLabel, .fieldLabel span, .workspaceKicker, .quickSettingLabel { color: var(--report-muted); font-size: 12px; font-weight: 700; }
 .sectionLabel { margin: 0; }
-.drawerAction, .drawerLinkAction { display: flex; align-items: center; justify-content: space-between; min-height: 44px; padding: 9px 10px; color: var(--report-ink); text-align: left; background: #f7f8fa; border: 1px solid var(--report-line); border-radius: 7px; cursor: pointer; font-size: 12px; font-weight: 500; }
+.drawerAction { display: flex; align-items: center; justify-content: space-between; min-height: 44px; padding: 9px 10px; color: var(--report-ink); text-align: left; background: #f7f8fa; border: 1px solid var(--report-line); border-radius: 7px; cursor: pointer; font-size: 12px; font-weight: 500; }
 .drawerAction:hover { background: #e9edf3; }
-.drawerLinkAction { justify-content: flex-start; padding: 0 4px; color: var(--report-accent); background: transparent; border: 0; border-radius: 0; }
-.drawerLinkAction:hover { text-decoration: underline; }
 .pageCardGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .pageCard { display: grid; grid-template-rows: auto auto; align-content: start; gap: 7px; width: 100%; min-width: 0; min-height: 126px; padding: 8px; color: var(--report-ink); text-align: left; background: #fff; border: 1px solid var(--report-line); border-radius: 8px; cursor: pointer; }
 .pageCard:hover { border-color: #91a8cd; background: #f5f8fd; }
@@ -139,17 +137,6 @@
 .tileCard { position: relative; display: grid; grid-template-rows: 72px auto; min-width: 0; overflow: hidden; color: var(--report-ink); background: #fff; border: 1px solid var(--report-line); border-radius: 8px; }
 .tileCardSelected { border-color: #2f6fdb; background: #f3f7fe; box-shadow: inset 0 0 0 1px #2f6fdb; }
 .tilePreview { position: relative; display: block; width: 100%; height: 72px; min-width: 0; min-height: 72px; overflow: hidden; background-size: cover; }
-.tilePreview::before, .tilePreview::after { content: ""; position: absolute; background: rgba(70, 84, 103, .28); }
-.tilePreview::before { top: 22px; right: 8px; left: 8px; height: 1px; transform: rotate(-8deg); }
-.tilePreview::after { top: 40px; right: 18px; left: 18px; height: 1px; transform: rotate(7deg); }
-.tilePreviewDot { position: absolute; top: 50%; left: 50%; z-index: 1; width: 16px; height: 16px; border: 3px solid rgba(255,255,255,.9); border-radius: 50%; box-shadow: 0 1px 3px rgba(21,23,28,.18); transform: translate(-50%, -50%); }
-.tileCardBody { display: block; min-width: 0; min-height: 50px; padding: 8px; color: var(--report-ink); text-align: left; background: transparent; border: 0; cursor: pointer; }
-.tileCardBody:hover { background: #f5f8fd; }
-.tileCardBody input { width: 18px; height: 18px; margin: 0 6px 0 0; accent-color: var(--report-accent); vertical-align: middle; }
-.tileRowCopy { display: grid; gap: 3px; min-width: 0; }
-.tileRowCopy strong, .tileRowCopy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tileRowCopy strong { display: block; font-size: 13px; }
-.tileRowCopy span { color: var(--report-muted); font-size: 12px; }
 .tileUsedBadge { position: absolute; top: 6px; left: 6px; z-index: 2; max-width: calc(100% - 12px); padding: 3px 6px; overflow: hidden; color: #fff; background: rgba(21,23,28,.82); border-radius: 999px; font-size: 12px; font-weight: 500; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
 .selectionPill { padding: 6px 8px; color: #153f83; background: #e0eafa; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
 .helper, .emptyHint { margin: 0; color: var(--report-muted); font-size: 12px; line-height: 1.5; }
@@ -251,8 +238,6 @@
 .notesMeta { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--report-muted); font-size: 12px; }
 .layoutSwitcher { display: grid; gap: 12px; padding: 16px; background: #fff; }
 .layoutSwitcher h2 { margin: 0; font-size: 16px; }
-.popoverHeader { display: flex; align-items: center; min-height: 24px; }
-.popoverHeader h2 { margin: 0; font-size: 16px; }
 .layoutOptions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .layoutOption, .layoutOptionActive { display: grid; gap: 6px; min-width: 0; min-height: 104px; padding: 8px; color: var(--report-muted); text-align: left; background: #fff; border: 1px solid var(--report-line); border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 500; }
 .layoutOptionActive { padding: 7px; color: #153f83; background: #eef3fb; border: 2px solid #2f6fdb; font-weight: 700; }
@@ -568,4 +553,79 @@
   .fontContextDivider { height: 1px; background: var(--report-line); }
   .fontMenuItem { min-height: 36px; padding: 6px 4px; color: var(--report-ink); text-align: left; background: transparent; border: 0; border-radius: 5px; cursor: pointer; font: inherit; font-size: 12px; font-weight: 600; }
   .fontMenuItem:hover { background: #f3f7fe; }
+}
+
+@media (min-width: 1024px) {
+  .toolPill { box-sizing: border-box; width: 56px; padding: 6px; gap: 4px; justify-items: center; }
+  .railButton { box-sizing: border-box; width: 44px; height: 44px; min-width: 44px; min-height: 44px; padding: 0; gap: 0; position: relative; }
+  .railButton > span:first-child { min-height: 0; }
+  .railTooltip { position: absolute; top: 50%; left: calc(100% + 10px); z-index: 80; display: block; width: max-content; max-width: 180px; padding: 6px 10px; color: #15171c; background: #fff; border: 1px solid #e1e4e9; border-radius: 8px; box-shadow: 0 1px 2px rgba(21,23,28,.06), 0 6px 16px rgba(21,23,28,.12); font-size: 12px; font-weight: 600; line-height: 1.2; opacity: 0; pointer-events: none; transform: translateY(-50%) translateX(-3px); visibility: hidden; white-space: nowrap; transition: opacity 120ms ease, transform 120ms ease, visibility 0s linear 400ms; }
+  .railTooltip::before { content: ""; position: absolute; top: 50%; left: -5px; width: 8px; height: 8px; background: #fff; border-left: 1px solid #e1e4e9; border-bottom: 1px solid #e1e4e9; transform: translateY(-50%) rotate(45deg); }
+  .railButton:hover:not(.railButtonActive) .railTooltip { opacity: 1; transform: translateY(-50%); visibility: visible; transition-delay: 400ms, 400ms, 400ms; }
+  .railButton:focus-visible .railTooltip { opacity: 1; transform: translateY(-50%); visibility: visible; transition-delay: 0s, 0s, 0s; }
+  .railButtonActive .railTooltip { display: none; }
+  .noteDot { position: absolute; top: 7px; right: 7px; width: 6px; height: 6px; }
+
+  .sidePanelCard { --side-panel-alpha: 1; --side-panel-content-alpha: 1; background: rgba(255,255,255,var(--side-panel-alpha)); }
+  .sidePanelCard.anchoredCard::before { background: rgba(255,255,255,var(--side-panel-alpha)); }
+  .drawerCard { width: 240px; }
+  .drawerCard > .drawer { padding: 12px; gap: 8px; }
+  .drawer { padding: 12px; gap: 8px; }
+  .tileDrawer { display: flex; flex-direction: column; }
+  .tileDrawer .tileList { flex: 1 1 auto; width: 100%; min-height: 0; }
+  .sidePanelHeader { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; padding: 0; color: #15171c; background: #fff; }
+  .sidePanelTitleGroup { display: flex; align-items: center; min-width: 0; gap: 6px; }
+  .sidePanelHeader h2 { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 700; line-height: 1.25; }
+  .selectionPill { padding: 4px 7px; font-size: 12px; }
+  .sidePanelClose { display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; padding: 0; color: #4a5160; background: transparent; border: 0; border-radius: 7px; cursor: pointer; }
+  .sidePanelClose:hover { background: #f3f5f8; color: #15171c; }
+  .opacityControl { display: flex; align-items: center; gap: 7px; min-height: 28px; color: #4a5160; background: #fff; font-size: 12px; }
+  .opacityIcon { flex: 0 0 16px; }
+  .opacityControl input { width: 100%; min-width: 0; accent-color: #2f6fdb; }
+  .opacityControl b { flex: 0 0 34px; color: #15171c; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .sidePanelContent { opacity: var(--side-panel-content-alpha, 1); }
+  .popoverBody, .layoutSwitcher { padding: 12px; gap: 8px; background: transparent; }
+  .popoverBody h2, .layoutSwitcher h2 { font-size: 14px; }
+  .railPopover, .notesPopover, .fontSizePopover, .textBoxPopover { width: 240px; }
+  .drawerFooter { position: sticky; bottom: -12px; z-index: 3; display: grid; gap: 6px; margin-top: auto; padding: 10px 0 0; background: #fff; border-top: 1px solid #d9dce2; }
+  .secondaryAction { display: flex; align-items: center; justify-content: center; box-sizing: border-box; gap: 7px; width: 100%; height: 36px; min-width: 0; min-height: 36px; padding: 0 12px; color: #15171c; background: #fff; border: 1px solid #d9dce2; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; line-height: 1.15; }
+  .secondaryAction svg { flex: 0 0 16px; }
+  .secondaryAction:hover { color: #15171c; background: #f3f5f8; border-color: #aeb4bf; }
+  .secondaryAction:active { background: #e8edf5; transform: scale(.98); }
+  .emptyActions .secondaryAction { height: 40px; min-height: 40px; width: auto; }
+
+  .pageCardGrid, .tileList, .layoutOptions { gap: 8px; }
+  .pageCard { position: relative; display: block; min-height: 0; aspect-ratio: 4 / 3; padding: 0; overflow: hidden; }
+  .pageCardIcon { position: absolute; inset: 0; width: 100%; height: 100%; aspect-ratio: auto; border-radius: 0; }
+  .pageCardCopy { position: absolute; right: 0; bottom: 0; left: 0; z-index: 1; display: block; box-sizing: border-box; padding: 4px 6px; overflow: hidden; color: #15171c; background: rgba(255,255,255,.92); font-size: 11px; font-weight: 600; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+  .tileCard { display: block; aspect-ratio: 4 / 3; min-height: 0; overflow: hidden; }
+  .tileCardButton { position: absolute; inset: 0; z-index: 1; display: block; width: 100%; height: 100%; padding: 0; color: inherit; text-align: left; background: transparent; border: 0; cursor: pointer; }
+  .tilePreview { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; aspect-ratio: auto; background: #eef0f3; }
+  .tilePreview > [data-slide-surface="true"] { width: 100%; height: 100%; }
+  .tilePreviewPlaceholder { display: block; width: 100%; height: 100%; background: linear-gradient(135deg, #eef0f3, #dfe5ee); }
+  .tileCardName { position: absolute; right: 0; bottom: 0; left: 0; z-index: 2; display: block; box-sizing: border-box; padding: 4px 6px; overflow: hidden; color: #15171c; background: rgba(255,255,255,.92); font-size: 11px; font-weight: 600; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+  .tileCardSelected { border: 2px solid #2f6fdb; box-shadow: 0 0 0 2px rgba(47,111,219,.16); }
+  .tileUsedBadge { top: 4px; left: 4px; max-width: calc(100% - 8px); padding: 3px 5px; font-size: 11px; }
+  .tileCompareToggle { position: absolute; top: 4px; right: 4px; z-index: 4; display: grid; place-items: center; width: 24px; height: 24px; background: rgba(255,255,255,.92); border-radius: 6px; }
+  .tileCompareToggle input { width: 16px; height: 16px; margin: 0; accent-color: #2f6fdb; }
+  .tileList { min-height: 0; overflow-y: auto; }
+  .searchBox, .chipRow, .compareGridChoices, .compareActions, .drawerFooter { opacity: 1; }
+
+  .layoutOption, .layoutOptionActive { position: relative; display: block; min-height: 0; aspect-ratio: 4 / 3; padding: 0; overflow: hidden; }
+  .layoutOptionActive { padding: 0; border-width: 2px; }
+  .layoutOptionThumb { position: absolute; inset: 0; display: block; }
+  .layoutOptionName { position: absolute; right: 0; bottom: 0; left: 0; z-index: 1; display: block; padding: 4px 6px; overflow: hidden; color: #15171c; background: rgba(255,255,255,.92); font-size: 11px; font-weight: 600; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+  .layoutOptionActive .layoutOptionName { color: #153f83; }
+  .layoutPreview { width: 100%; height: 100%; }
+  .notesPopover .notesField { opacity: var(--side-panel-content-alpha, 1); }
+  .notesPopover .notesMeta { justify-content: flex-start; color: #2e9e4a; }
+  .textBoxPopoverBody { display: grid; gap: 8px; box-sizing: border-box; padding: 12px; }
+  .textBoxChoices { display: grid; gap: 8px; }
+  .textBoxChoice { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 52px; padding: 8px 10px; color: #15171c; text-align: left; background: #fff; border: 1px solid #d9dce2; border-radius: 8px; cursor: pointer; }
+  .textBoxChoice:hover, .textBoxChoice:focus-visible { background: #f3f7fe; border-color: #2f6fdb; }
+  .textBoxChoice > span { display: block; color: #15171c; font-size: 14px; line-height: 1.2; }
+  .textBoxChoiceTitle { font-size: 20px !important; font-weight: 700; }
+  .textBoxChoiceBody { font-size: 14px !important; }
+  .textBoxChoiceNote { color: #4a5160 !important; font-size: 10px !important; }
+  .textBoxChoice small { display: block; color: #676c76; font-size: 12px; line-height: 1.2; }
 }

@@ -97,6 +97,9 @@ assert.equal(clearedOne.pages[0].fontSizes, undefined, "clearPageFontSizes remov
 const withTwoPageValues = reportDocReducer(doc, { type: "fontSizes", scope: "page", id: "p1", key: "labels", value: 15 });
 const clearedAll = reportDocReducer(withTwoPageValues, { type: "clearPageFontSizes", id: "p1" });
 assert.equal(clearedAll.pages[0].fontSizes, undefined, "clearPageFontSizes without key removes all page overrides");
+const resetDefaults = reportDocReducer(withTwoPageValues, { type: "resetFontSizes" });
+assert.equal(resetDefaults.fontSizes, undefined, "기본 크기로는 문서 글자 크기 override를 제거한다");
+assert.equal(resetDefaults.pages[0].fontSizes, undefined, "기본 크기로는 페이지 글자 크기 override도 제거한다");
 const duplicate = reportDocReducer(withTwoPageValues, { type: "duplicate", id: "p1" });
 assert.deepEqual(duplicate.pages[1].fontSizes, withTwoPageValues.pages[0].fontSizes, "duplicate preserves page fontSizes");
 

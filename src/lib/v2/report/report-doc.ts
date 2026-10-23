@@ -79,7 +79,45 @@ export type MapFrameState = {
 };
 
 export type PagePanels = Partial<Record<"title" | "summary" | "legend", { x: number; y: number; w: number; h: number }>>;
-export type TextBox = { id: string; x: number; y: number; w: number; h: number; text: string; pt: number };
+export const TEXT_BOX_COLORS = ["#15171c", "#4a5160", "#2f6fdb", "#5b4fd6", "#d9480f", "#c92a2a", "#2e9e4a", "#fff"] as const;
+export type TextBoxColor = typeof TEXT_BOX_COLORS[number];
+export type TextBoxKind = "title" | "body" | "note";
+export type TextBoxAlign = "left" | "center";
+export type TextBox = {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  text: string;
+  pt: number;
+  kind?: TextBoxKind;
+  bold?: boolean;
+  italic?: boolean;
+  color?: TextBoxColor;
+  align?: TextBoxAlign;
+};
+export const TEXT_BOX_DEFAULTS: Record<TextBoxKind, Omit<Pick<TextBox, "w" | "h" | "pt" | "bold" | "italic" | "color" | "align">, never>> = {
+  title: { w: 4.8, h: 0.86, pt: 20, bold: true, italic: false, color: "#15171c", align: "left" },
+  body: { w: 4.4, h: 0.72, pt: 14, bold: false, italic: false, color: "#15171c", align: "left" },
+  note: { w: 3.8, h: 0.55, pt: 10, bold: false, italic: false, color: "#4a5160", align: "left" },
+};
+export const TEXT_BOX_MIN_WIDTH = 1;
+export const TEXT_BOX_MIN_HEIGHT = 0.45;
+
+export function textBoxDefaults(kind: TextBoxKind, id: string, x: number, y: number): TextBox {
+  return { id, kind, x, y, text: "", ...TEXT_BOX_DEFAULTS[kind] };
+}
+
+export function clampTextBox(box: TextBox, maxWidth: number, maxHeight: number): TextBox {
+  const widthLimit = Math.max(TEXT_BOX_MIN_WIDTH, Number.isFinite(maxWidth) ? maxWidth : TEXT_BOX_MIN_WIDTH);
+  const heightLimit = Math.max(TEXT_BOX_MIN_HEIGHT, Number.isFinite(maxHeight) ? maxHeight : TEXT_BOX_MIN_HEIGHT);
+  const w = Math.max(TEXT_BOX_MIN_WIDTH, Math.min(widthLimit, Number.isFinite(box.w) ? box.w : TEXT_BOX_MIN_WIDTH));
+  const h = Math.max(TEXT_BOX_MIN_HEIGHT, Math.min(heightLimit, Number.isFinite(box.h) ? box.h : TEXT_BOX_MIN_HEIGHT));
+  const x = Math.max(0, Math.min(Math.max(0, widthLimit - w), Number.isFinite(box.x) ? box.x : 0));
+  const y = Math.max(0, Math.min(Math.max(0, heightLimit - h), Number.isFinite(box.y) ? box.y : 0));
+  return { ...box, x, y, w, h };
+}
 export type ReportPageBase = {
   id: string;
   layout: ReportLayout;
@@ -120,6 +158,7 @@ export type ReportDocAction =
   | { type: "format"; format: ReportFormat }
   | { type: "fontSizes"; scope: "document" | "page"; id?: string; key: FontSizeKey; value: number }
   | { type: "clearPageFontSizes"; id: string; key?: FontSizeKey }
+  | { type: "resetFontSizes" }
   | { type: "theme"; fontScale: ReportFontScale }
   | { type: "replaceAll"; pages: ReportPage[] };
 
@@ -377,6 +416,14 @@ export function reportDocReducer(doc: ReportDoc, action: ReportDocAction): Repor
         : setPageFontSize(doc, action.id, action.key, action.value);
     case "clearPageFontSizes":
       return clearPageFontSize(doc, action.id, action.key);
+    case "resetFontSizes": {
+      const pages = doc.pages.map((page) => page.fontSizes && Object.keys(page.fontSizes).length > 0
+        ? { ...clonePage(page), fontSizes: undefined }
+        : page);
+      const hasPageOverrides = pages.some((page, index) => page !== doc.pages[index]);
+      if (!doc.fontSizes && !hasPageOverrides) return doc;
+      return { ...doc, fontSizes: undefined, pages };
+    }
     case "theme":
       return { ...doc, fontSizes: reportFontSizesFromLegacyScale(action.fontScale) };
     case "replaceAll":

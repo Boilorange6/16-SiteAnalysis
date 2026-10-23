@@ -12,7 +12,7 @@ import { reportSummaryNotes, terrainCrossingLayer, terrainElevationLabel, terrai
 import MapFigure from "../map-figure";
 import { locatorBox, northArrowBox, scaleBarBox } from "@/lib/v2/ui/map-scene";
 import type { PageStyle } from "@/lib/v2/ui/board-state";
-import { DEFAULT_REPORT_FONT_SIZES, type PagePanels, type MapFrameState, type TextBox } from "@/lib/v2/report/report-doc";
+import { clampTextBox, DEFAULT_REPORT_FONT_SIZES, TEXT_BOX_COLORS, TEXT_BOX_DEFAULTS, textBoxDefaults, type PagePanels, type MapFrameState, type TextBox, type TextBoxColor, type TextBoxKind } from "@/lib/v2/report/report-doc";
 import type { PlannedSlide } from "@/lib/v2/report/report-plan";
 import type { TileView } from "@/lib/v2/ui/tile-view";
 import { sheetCells, type SheetGrid } from "@/lib/v2/ui/sheet";
@@ -1015,26 +1015,57 @@ type TextBoxSurfaceProps = {
   boxes: readonly TextBox[];
   unit: number;
   selectedId?: string;
+  startEditingId?: string | null;
   maxWidth: number;
   maxHeight: number;
+  editable?: boolean;
   onSelect?: (selection: SurfaceSelection) => void;
   onTextBox?: (box: TextBox | { id: string; remove: true }) => void;
+  onEditingChange?: (id: string | null) => void;
 };
 
-function TextBoxSurface({ boxes, unit, selectedId, maxWidth, maxHeight, onSelect, onTextBox }: TextBoxSurfaceProps) {
+const TEXT_BOX_HANDLE_DIRECTIONS: readonly { direction: ResizeDirection; label: string }[] = [
+  { direction: "nw", label: "왼쪽 위" },
+  { direction: "n", label: "위" },
+  { direction: "ne", label: "오른쪽 위" },
+  { direction: "e", label: "오른쪽" },
+  { direction: "se", label: "오른쪽 아래" },
+  { direction: "s", label: "아래" },
+  { direction: "sw", label: "왼쪽 아래" },
+  { direction: "w", label: "왼쪽" },
+];
+
+function TextBoxGripIcon() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="currentColor"><circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" /><circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" /><circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" /></svg>;
+}
+
+function TextBoxSizeIcon() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 19 8 6l5 13M5 14.5h6" /><path d="m14.5 19 3.5-8 3.5 8M15.6 16.5h4.8" /></svg>;
+}
+
+function TextBoxTrashIcon() {
+  return <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13M10 11v5.5M14 11v5.5" /></svg>;
+}
+
+function TextBoxAlignIcon({ center = false }: { center?: boolean }) {
+  return <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 6h16" /><path d={center ? "M7 12h10" : "M4 12h10"} /><path d={center ? "M5 18h14" : "M4 18h14"} /></svg>;
+}
+
+function TextBoxSurface({ boxes, unit, selectedId, startEditingId, maxWidth, maxHeight, editable = false, onSelect, onTextBox, onEditingChange }: TextBoxSurfaceProps) {
   const styles = useSurfaceStyles();
-  const [draft, setDraft] = useState<{ mode: "move" | "resize"; pointerId: number; startX: number; startY: number; box: TextBox } | null>(null);
+  const [draft, setDraft] = useState<{ mode: "move" | "resize"; direction?: ResizeDirection; pointerId: number; startX: number; startY: number; box: TextBox } | null>(null);
   const [draftBox, setDraftBox] = useState<TextBox | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [internalEditingId, setInternalEditingId] = useState<string | null>(null);
+  const [colorOpenId, setColorOpenId] = useState<string | null>(null);
   const boxRefs = useRef(new Map<string, HTMLDivElement>());
+  const editingId = startEditingId !== undefined ? startEditingId : internalEditingId;
 
   useEffect(() => {
-    if (!selectedId) {
-      setEditingId(null);
-      return;
+    if (!selectedId && editingId) {
+      setInternalEditingId(null);
+      onEditingChange?.(null);
     }
-    setEditingId(selectedId);
-  }, [selectedId]);
+  }, [editingId, onEditingChange, selectedId]);
 
   // 글 칸은 편집 상태로 그려진 뒤에야 포커스를 받을 수 있다.
   useEffect(() => {
@@ -1052,35 +1083,88 @@ function TextBoxSurface({ boxes, unit, selectedId, maxWidth, maxHeight, onSelect
     return () => window.cancelAnimationFrame(frame);
   }, [editingId]);
 
-  const updateDraft = (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const setEditing = (id: string | null) => {
+    setInternalEditingId(id);
+    setColorOpenId(null);
+    onEditingChange?.(id);
+  };
+
+  const commitText = (id: string | null) => {
+    if (!id) return;
+    const box = boxes.find((candidate) => candidate.id === id);
+    const text = boxRefs.current.get(id)?.querySelector<HTMLElement>("[data-text-box-content]")?.textContent ?? box?.text ?? "";
+    if (box && text !== box.text) onTextBox?.({ ...box, text });
+    setEditing(null);
+  };
+
+  useEffect(() => {
+    if (!editingId) return;
+    const onOutsidePointerDown = (event: PointerEvent) => {
+      if (!(event.target instanceof Node)) return;
+      if (boxRefs.current.get(editingId)?.contains(event.target)) return;
+      commitText(editingId);
+    };
+    document.addEventListener("pointerdown", onOutsidePointerDown, true);
+    return () => document.removeEventListener("pointerdown", onOutsidePointerDown, true);
+  }, [editingId, boxes]);
+
+  const beginEditing = (id: string) => {
+    if (!editable) return;
+    onSelect?.({ kind: "textBox", id });
+    setEditing(id);
+  };
+
+  const updateDraft = (event: ReactPointerEvent<HTMLElement>) => {
     if (!draft || draft.pointerId !== event.pointerId) return;
     const dx = (event.clientX - draft.startX) / Math.max(1, unit);
     const dy = (event.clientY - draft.startY) / Math.max(1, unit);
-    const next = draft.mode === "move"
-      ? { ...draft.box, x: Math.max(0, Math.min(Math.max(0, maxWidth - draft.box.w), draft.box.x + dx)), y: Math.max(0, Math.min(Math.max(0, maxHeight - draft.box.h), draft.box.y + dy)) }
-      : { ...draft.box, w: Math.max(1, Math.min(Math.max(1, maxWidth - draft.box.x), draft.box.w + dx)), h: Math.max(0.45, Math.min(Math.max(0.45, maxHeight - draft.box.y), draft.box.h + dy)) };
+    let next = draft.mode === "move"
+      ? { ...draft.box, x: draft.box.x + dx, y: draft.box.y + dy }
+      : { ...draft.box };
+    if (draft.mode === "resize" && draft.direction) {
+      const direction = draft.direction;
+      if (direction.includes("e")) next.w += dx;
+      if (direction.includes("w")) { next.x += dx; next.w -= dx; }
+      if (direction.includes("s")) next.h += dy;
+      if (direction.includes("n")) { next.y += dy; next.h -= dy; }
+    }
+    next = clampTextBox(next, maxWidth, maxHeight);
     setDraftBox(next);
     event.preventDefault();
   };
-  const endDraft = (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const endDraft = (event: ReactPointerEvent<HTMLElement>) => {
     if (!draft || draft.pointerId !== event.pointerId) return;
     onTextBox?.(draftBox ?? draft.box);
     setDraft(null);
     setDraftBox(null);
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    const root = event.currentTarget.closest<HTMLElement>("[data-text-box]");
+    if (root?.hasPointerCapture(event.pointerId)) root.releasePointerCapture(event.pointerId);
   };
-  const beginDraft = (mode: "move" | "resize", box: TextBox, event: ReactPointerEvent<HTMLButtonElement>) => {
+  const beginDraft = (mode: "move" | "resize", box: TextBox, event: ReactPointerEvent<HTMLElement>, direction?: ResizeDirection) => {
+    if (!editable || event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
-    setEditingId(null);
-    setDraft({ mode, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, box });
+    setEditing(null);
+    setDraft({ mode, direction, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, box });
     setDraftBox(box);
-    event.currentTarget.setPointerCapture(event.pointerId);
+    const root = event.currentTarget.closest<HTMLElement>("[data-text-box]");
+    root?.setPointerCapture(event.pointerId);
   };
+  const updateBox = (box: TextBox, patch: Partial<TextBox>) => {
+    const liveText = boxRefs.current.get(box.id)?.querySelector<HTMLElement>("[data-text-box-content]")?.textContent;
+    onTextBox?.({ ...box, ...(liveText !== undefined ? { text: liveText } : {}), ...patch });
+  };
+
   return <>{boxes.map((box) => {
     const selected = selectedId === box.id;
-    const editing = editingId === box.id;
+    const editing = editable && editingId === box.id;
     const visibleBox = draftBox?.id === box.id ? draftBox : box;
+    const kind = box.kind ?? "body";
+    const defaults = TEXT_BOX_DEFAULTS[kind];
+    const color = box.color ?? defaults.color;
+    const bold = box.bold ?? defaults.bold;
+    const italic = box.italic ?? defaults.italic;
+    const align = box.align ?? defaults.align;
     return <div
       key={box.id}
       className={styles.textBox ?? styles.slidePanel}
@@ -1090,36 +1174,104 @@ function TextBoxSurface({ boxes, unit, selectedId, maxWidth, maxHeight, onSelect
         else boxRefs.current.delete(box.id);
       }}
       tabIndex={selected ? 0 : -1}
-      style={{ position: "absolute", left: visibleBox.x * unit, top: visibleBox.y * unit, width: visibleBox.w * unit, height: visibleBox.h * unit, padding: 0.08 * unit, color: "#16181d", background: selected ? "rgba(255,255,255,.78)" : "transparent", fontSize: (visibleBox.pt / 72) * unit, lineHeight: 1.25, whiteSpace: "pre-wrap", overflow: "hidden", outline: selected ? `${Math.max(1, unit * 0.02)}px solid #164e9b` : undefined }}
-      onClick={(event) => {
-        if ((event.target as HTMLElement).closest("button")) return;
-        if (!selected) onSelect?.({ kind: "textBox", id: box.id });
-        else setEditingId(box.id);
+      style={{ position: "absolute", left: visibleBox.x * unit, top: visibleBox.y * unit, width: visibleBox.w * unit, height: visibleBox.h * unit, color, background: selected ? "rgba(255,255,255,.94)" : "transparent", fontSize: (visibleBox.pt / 72) * unit, fontWeight: bold ? 700 : 400, fontStyle: italic ? "italic" : "normal", textAlign: align, lineHeight: 1.25, whiteSpace: "pre-wrap", overflow: "visible", border: selected ? `${editing ? 2 : 1.5}px solid #2f6fdb` : "1px solid transparent", boxShadow: editing ? "0 0 0 4px rgba(47,111,219,.16)" : undefined, cursor: editing ? "text" : "move" }}
+      onPointerDown={(event) => {
+        if (!editable || (event.target as HTMLElement).closest("button")) return;
+        if (!selected) {
+          event.currentTarget.focus({ preventScroll: true });
+          setEditing(null);
+          onSelect?.({ kind: "textBox", id: box.id });
+          return;
+        }
+        if (editing) return;
+        beginDraft("move", visibleBox, event);
       }}
+      onPointerMove={updateDraft}
+      onPointerUp={endDraft}
+      onPointerCancel={endDraft}
+      onClick={(event) => {
+        if ((event.target as HTMLElement).closest("button") || !editable) return;
+        if (!selected) onSelect?.({ kind: "textBox", id: box.id });
+      }}
+      onDoubleClick={() => { if (editable) beginEditing(box.id); }}
       onBlur={(event) => {
         if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
-        const text = event.currentTarget.querySelector<HTMLElement>("[data-text-box-content]")?.textContent ?? "";
-        if (text !== box.text) onTextBox?.({ ...box, text });
-        setEditingId(null);
+        if (editing) commitText(box.id);
       }}
       onKeyDown={(event) => {
         if (event.key === "Escape" && editing) {
           event.preventDefault();
-          setEditingId(null);
+          event.stopPropagation();
+          commitText(box.id);
+          return;
         }
-        if (event.key === "Delete" && selected && !editing) {
+        if ((event.key === "Delete" || event.key === "Backspace") && selected && !editing) {
           event.preventDefault();
           onTextBox?.({ id: box.id, remove: true });
+          onSelect?.(null);
+          return;
+        }
+        if (event.key === "Enter" && selected && !editing) {
+          event.preventDefault();
+          beginEditing(box.id);
+          return;
         }
         if (selected && !editing && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
           event.preventDefault();
           const dx = event.key === "ArrowRight" ? 0.08 : event.key === "ArrowLeft" ? -0.08 : 0;
           const dy = event.key === "ArrowDown" ? 0.08 : event.key === "ArrowUp" ? -0.08 : 0;
-          onTextBox?.({ ...box, x: Math.max(0, Math.min(Math.max(0, maxWidth - box.w), box.x + dx)), y: Math.max(0, Math.min(Math.max(0, maxHeight - box.h), box.y + dy)) });
+          onTextBox?.(clampTextBox({ ...box, x: box.x + dx, y: box.y + dy }, maxWidth, maxHeight));
         }
       }}
-    >{/* 손잡이 버튼이 편집 영역 안에 있으면 입력 글자가 버튼으로 들어가므로 글 칸만 편집한다. */}<span data-text-box-content contentEditable={editing} suppressContentEditableWarning style={{ display: "block", minHeight: "100%", outline: "none" }}>{visibleBox.text}</span>{selected && <><button type="button" className={styles.textBoxMoveHandle} aria-label="글상자 이동" onPointerDown={(event) => beginDraft("move", visibleBox, event)} onPointerMove={updateDraft} onPointerUp={endDraft} onPointerCancel={endDraft}>↕</button><button type="button" className={styles.textBoxResizeHandle} aria-label="글상자 크기 조절" onPointerDown={(event) => beginDraft("resize", visibleBox, event)} onPointerMove={updateDraft} onPointerUp={endDraft} onPointerCancel={endDraft}>↘</button></>}</div>;
+    >
+      <div data-text-box-content contentEditable={editing} suppressContentEditableWarning style={{ position: "absolute", inset: 0, padding: 0.08 * unit, overflow: "hidden", outline: "none" }} onInput={() => undefined}>{visibleBox.text}</div>
+      {selected && editable && !editing && <div className={styles.textBoxToolbar} role="toolbar" aria-label="글상자">
+        <button type="button" className={styles.textBoxMoveButton} aria-label="글상자 이동" onPointerDown={(event) => beginDraft("move", visibleBox, event)}><TextBoxGripIcon /></button>
+        <span className={styles.textBoxToolbarSeparator} aria-hidden="true" />
+        <button type="button" className={styles.textBoxToolbarButton} aria-label="글자 크기 편집" onPointerDown={(event) => event.stopPropagation()} onClick={() => beginEditing(box.id)}><TextBoxSizeIcon /></button>
+        <button type="button" className={`${styles.textBoxToolbarButton} ${styles.textBoxDeleteButton}`} aria-label="글상자 삭제" onPointerDown={(event) => event.stopPropagation()} onClick={() => { onTextBox?.({ id: box.id, remove: true }); onSelect?.(null); }}><TextBoxTrashIcon /></button>
+      </div>}
+      {selected && editable && editing && <div className={styles.textBoxToolbar} role="toolbar" aria-label="글상자 서식">
+        <button type="button" className={styles.textBoxToolbarButton} aria-label="글자 작게" onPointerDown={(event) => event.stopPropagation()} onClick={() => updateBox(box, { pt: Math.max(7, (box.pt ?? 14) - 1) })}>−</button>
+        <output className={styles.textBoxFontValue}>{box.pt}pt</output>
+        <button type="button" className={styles.textBoxToolbarButton} aria-label="글자 크게" onPointerDown={(event) => event.stopPropagation()} onClick={() => updateBox(box, { pt: Math.min(72, (box.pt ?? 14) + 1) })}>+</button>
+        <span className={styles.textBoxToolbarSeparator} aria-hidden="true" />
+        <button type="button" className={`${styles.textBoxToolbarButton} ${bold ? styles.textBoxToolbarButtonActive : ""}`} aria-label="굵게" aria-pressed={bold} onPointerDown={(event) => event.stopPropagation()} onClick={() => updateBox(box, { bold: !bold })}>B</button>
+        <button type="button" className={`${styles.textBoxToolbarButton} ${styles.textBoxItalicButton} ${italic ? styles.textBoxToolbarButtonActive : ""}`} aria-label="기울임" aria-pressed={italic} onPointerDown={(event) => event.stopPropagation()} onClick={() => updateBox(box, { italic: !italic })}>I</button>
+        <span className={styles.textBoxColorControl}>
+          <button type="button" className={styles.textBoxToolbarButton} aria-label="글자 색" aria-expanded={colorOpenId === box.id} onPointerDown={(event) => event.stopPropagation()} onClick={() => setColorOpenId((current) => current === box.id ? null : box.id)}><span aria-hidden="true">가</span><i className={styles.textBoxColorMark} style={{ background: color }} /></button>
+          {colorOpenId === box.id && <span className={styles.textBoxColorMenu} role="listbox" aria-label="글자 색 견본">{TEXT_BOX_COLORS.map((swatch) => <button key={swatch} type="button" className={styles.textBoxColorSwatch} style={{ background: swatch }} aria-label={swatch} aria-selected={color === swatch} onPointerDown={(event) => event.stopPropagation()} onClick={() => { updateBox(box, { color: swatch as TextBoxColor }); setColorOpenId(null); }} />)}</span>}
+        </span>
+        <span className={styles.textBoxToolbarSeparator} aria-hidden="true" />
+        <button type="button" className={`${styles.textBoxToolbarButton} ${align === "left" ? styles.textBoxToolbarButtonActive : ""}`} aria-label="왼쪽 정렬" aria-pressed={align === "left"} onPointerDown={(event) => event.stopPropagation()} onClick={() => updateBox(box, { align: "left" })}><TextBoxAlignIcon /></button>
+        <button type="button" className={`${styles.textBoxToolbarButton} ${align === "center" ? styles.textBoxToolbarButtonActive : ""}`} aria-label="가운데 정렬" aria-pressed={align === "center"} onPointerDown={(event) => event.stopPropagation()} onClick={() => updateBox(box, { align: "center" })}><TextBoxAlignIcon center /></button>
+        <span className={styles.textBoxToolbarSeparator} aria-hidden="true" />
+        <button type="button" className={`${styles.textBoxToolbarButton} ${styles.textBoxDeleteButton}`} aria-label="글상자 삭제" onPointerDown={(event) => event.stopPropagation()} onClick={() => { onTextBox?.({ id: box.id, remove: true }); setEditing(null); onSelect?.(null); }}><TextBoxTrashIcon /></button>
+        <button type="button" className={`${styles.textBoxToolbarButton} ${styles.textBoxDoneButton}`} onPointerDown={(event) => event.stopPropagation()} onClick={() => commitText(box.id)}>완료</button>
+      </div>}
+      {selected && editable && !editing && TEXT_BOX_HANDLE_DIRECTIONS.map(({ direction, label }) => <button key={direction} type="button" className={`${styles.textBoxHandle} ${styles[`textBoxHandle${direction.toUpperCase()}`]}`} data-resize-handle={direction} aria-label={`${label} 글상자 크기 조절`} onPointerDown={(event) => beginDraft("resize", visibleBox, event, direction)} />)}
+    </div>;
   })}</>;
+}
+
+type TextBoxPlacement = { kind: TextBoxKind; x: number; y: number };
+
+function TextBoxPlacementLayer({ placement, unit, maxWidth, maxHeight, onMove, onCommit }: { placement: TextBoxPlacement; unit: number; maxWidth: number; maxHeight: number; onMove: (x: number, y: number) => void; onCommit: (x: number, y: number) => void }) {
+  const styles = useSurfaceStyles();
+  const layerRef = useRef<HTMLDivElement>(null);
+  const positionForEvent = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const rect = layerRef.current?.getBoundingClientRect();
+    if (!rect) return { x: placement.x, y: placement.y };
+    const defaults = TEXT_BOX_DEFAULTS[placement.kind];
+    const x = (event.clientX - rect.left) / Math.max(1, unit) - defaults.w / 2;
+    const y = (event.clientY - rect.top) / Math.max(1, unit) - defaults.h / 2;
+    const next = clampTextBox(textBoxDefaults(placement.kind, "preview", x, y), maxWidth, maxHeight);
+    return { x: next.x, y: next.y };
+  };
+  const preview = clampTextBox(textBoxDefaults(placement.kind, "preview", placement.x, placement.y), maxWidth, maxHeight);
+  return <div ref={layerRef} className={styles.textBoxPlacementLayer} data-text-box-placement="true" onPointerMove={(event) => { const next = positionForEvent(event); onMove(next.x, next.y); }} onPointerDown={(event) => { event.preventDefault(); const next = positionForEvent(event); onCommit(next.x, next.y); }}>
+    <div className={styles.textBoxPlacementPreview} style={{ left: preview.x * unit, top: preview.y * unit, width: preview.w * unit, height: preview.h * unit, fontSize: (preview.pt / 72) * unit, fontWeight: preview.bold ? 700 : 400, color: preview.color }}><span>{preview.kind === "title" ? "제목" : preview.kind === "note" ? "주석·출처" : "본문 글"}</span></div>
+  </div>;
 }
 
 function CoverSurface({ slide, unit, basemap, interactive, thumbnail = false, onPatch, onDirectPatch, fontHighlight, onFontContextMenu }: { slide: Extract<PlannedSlide, { kind: "cover" }>; unit: number; basemap: BasemapChoice; interactive: boolean; thumbnail?: boolean; onPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void; fontHighlight?: FontTargetKey | null; onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void }) {
@@ -1379,7 +1531,7 @@ function PanelTransformFrame({ panelKey, rect, unit, xGuides, yGuides, onResizeS
   </>;
 }
 
-function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapActive, staticSurface = false, selection, fontHighlight, onFontContextMenu, onSelect, onMapMoveActive, onTextBox, onText, thumbnail = false, onSheetCellActivate, onPatch, onMapPatch, onDirectPatch }: { slide: PlannedSlide; basemap: BasemapChoice; editable: boolean; format?: SlideFormat; mapActive?: boolean; staticSurface?: boolean; selection?: SurfaceSelection; fontHighlight?: FontTargetKey | null; onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void; onSelect?: (selection: SurfaceSelection) => void; onMapMoveActive?: (active: boolean) => void; onTextBox?: (box: TextBox | { id: string; remove: true }) => void; onText?: (kind: "title" | "summary") => void; thumbnail?: boolean; onSheetCellActivate?: (index: number) => void; onPatch: (patch: PreviewStylePatch) => void; onMapPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void }) {
+function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapActive, staticSurface = false, selection, fontHighlight, onFontContextMenu, onSelect, onMapMoveActive, onTextBox, onText, textBoxEditingId, textBoxPlacement, onTextBoxPlacementMove, onTextBoxPlacementCommit, onTextBoxEditingChange, thumbnail = false, onSheetCellActivate, onPatch, onMapPatch, onDirectPatch }: { slide: PlannedSlide; basemap: BasemapChoice; editable: boolean; format?: SlideFormat; mapActive?: boolean; staticSurface?: boolean; selection?: SurfaceSelection; fontHighlight?: FontTargetKey | null; onFontContextMenu?: (key: FontTargetKey, x: number, y: number, opener: HTMLElement) => void; onSelect?: (selection: SurfaceSelection) => void; onMapMoveActive?: (active: boolean) => void; onTextBox?: (box: TextBox | { id: string; remove: true }) => void; onText?: (kind: "title" | "summary") => void; textBoxEditingId?: string | null; textBoxPlacement?: TextBoxPlacement | null; onTextBoxPlacementMove?: (x: number, y: number) => void; onTextBoxPlacementCommit?: (x: number, y: number) => void; onTextBoxEditingChange?: (id: string | null) => void; thumbnail?: boolean; onSheetCellActivate?: (index: number) => void; onPatch: (patch: PreviewStylePatch) => void; onMapPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void }) {
   const format = (requestedFormat ?? (slide.format as SlideFormat | undefined) ?? "wide");
   const styles = useSurfaceStyles();
   const slotRef = useRef<HTMLDivElement>(null);
@@ -1418,7 +1570,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
   }, [slide.key]);
   useEffect(() => {
     if (selection?.kind === "panel") setSelectedPanel(selection.key);
-    else if (selection === null) setSelectedPanel(null);
+    else setSelectedPanel(null);
   }, [selection]);
   useEffect(() => {
     if (!hasSummary && selectedPanel === "summary") setSelectedPanel(null);
@@ -1651,7 +1803,8 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
          {displaySlide.kind === "cover" && displaySlide.page?.kind === "blank" && <BlankSurface unit={unit} />}
          {displaySlide.kind === "sheet" && <SheetSurface slide={displaySlide} unit={unit} basemap={basemap} thumbnail={thumbnail} onCellActivate={onSheetCellActivate} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />}
          {displaySlide.kind === "tile" && <TileSurface slide={displaySlide} unit={unit} basemap={basemap} panels={panels} interactive={!!(editable && (mapActive ?? editable) && !!displayModel)} mapEditEntry={editable && mapSelectable && !thumbnail} onMapMoveActive={onMapMoveActive} thumbnail={thumbnail} onPatch={onMapPatch} onDirectPatch={onDirectPatch} panelInteraction={editable ? panelInteraction : undefined} staticSurface={staticSurface} onText={onText} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />}
-        {displaySlide.page?.textBoxes && <TextBoxSurface boxes={displaySlide.page.textBoxes} unit={unit} selectedId={selection?.kind === "textBox" ? selection.id : undefined} maxWidth={size.w} maxHeight={size.h} onSelect={onSelect} onTextBox={onTextBox} />}
+        {displaySlide.page?.textBoxes && <TextBoxSurface boxes={displaySlide.page.textBoxes} unit={unit} selectedId={selection?.kind === "textBox" ? selection.id : undefined} startEditingId={textBoxEditingId} maxWidth={size.w} maxHeight={size.h} editable={editable} onSelect={onSelect} onTextBox={onTextBox} onEditingChange={onTextBoxEditingChange} />}
+        {editable && textBoxPlacement && onTextBoxPlacementMove && onTextBoxPlacementCommit && <TextBoxPlacementLayer placement={textBoxPlacement} unit={unit} maxWidth={size.w} maxHeight={size.h} onMove={onTextBoxPlacementMove} onCommit={onTextBoxPlacementCommit} />}
         {handles}
         </div>
       </div>
@@ -1711,6 +1864,11 @@ export type SlideSurfaceProps = {
   onPanels?: (panels: PagePanels) => void;
   onTextBox?: (box: TextBox | { id: string; remove: true }) => void;
   onText?: (kind: "title" | "summary") => void;
+  textBoxEditingId?: string | null;
+  textBoxPlacement?: TextBoxPlacement | null;
+  onTextBoxPlacementMove?: (x: number, y: number) => void;
+  onTextBoxPlacementCommit?: (x: number, y: number) => void;
+  onTextBoxEditingChange?: (id: string | null) => void;
   mapActive?: boolean;
   onMapMoveActive?: (active: boolean) => void;
   onStylePatch?: (patch: PreviewStylePatch) => void;
@@ -1732,6 +1890,11 @@ export function SlideSurface({
   onPanels,
   onTextBox,
   onText,
+  textBoxEditingId,
+  textBoxPlacement,
+  onTextBoxPlacementMove,
+  onTextBoxPlacementCommit,
+  onTextBoxEditingChange,
   mapActive,
   onMapMoveActive,
   onStylePatch,
@@ -1787,6 +1950,11 @@ export function SlideSurface({
               onMapMoveActive={onMapMoveActive}
               onTextBox={onTextBox}
               onText={onText}
+              textBoxEditingId={textBoxEditingId}
+              textBoxPlacement={textBoxPlacement}
+              onTextBoxPlacementMove={onTextBoxPlacementMove}
+              onTextBoxPlacementCommit={onTextBoxPlacementCommit}
+              onTextBoxEditingChange={onTextBoxEditingChange}
               onSheetCellActivate={mode === "edit" ? cellActivate : undefined}
               onPatch={mapPatch}
               onMapPatch={mapPatch}
