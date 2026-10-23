@@ -5,6 +5,52 @@ export type PagePanels = Partial<Record<PagePanelKey, PagePanelRect>>;
 
 export const PAGE_PANEL_KEYS: readonly PagePanelKey[] = ["title", "summary", "legend", "source", "north", "scaleBar", "locator"];
 
+export const ACTION_BAR_HEIGHT = 40;
+export const ACTION_BAR_GAP = 8;
+
+export type ActionBarPixelBox = { x: number; y: number; w: number; h: number };
+export type ActionBarPlacement = "above" | "below" | "inside-top";
+
+function actionBoxesOverlap(a: ActionBarPixelBox, b: ActionBarPixelBox): boolean {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+
+function clampActionBar(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+/** 선택 요소 기준으로 모든 보고서 공통 막대의 무대 내 위치를 계산한다. */
+export function placeActionBar(
+  anchor: ActionBarPixelBox,
+  bounds: { w: number; h: number },
+  avoid: readonly ActionBarPixelBox[] = [],
+  barWidth = 190,
+): { left: number; top: number; placement: ActionBarPlacement } {
+  const width = Math.max(1, barWidth);
+  const height = ACTION_BAR_HEIGHT;
+  const left = clampActionBar(anchor.x, 4, Math.max(4, bounds.w - width - 4));
+  const candidates: Array<{ top: number; placement: ActionBarPlacement }> = [
+    { top: anchor.y - ACTION_BAR_GAP - height, placement: "above" },
+    { top: anchor.y + anchor.h + ACTION_BAR_GAP, placement: "below" },
+  ];
+  const fits = (candidate: { top: number; placement: ActionBarPlacement }): boolean => {
+    const box = { x: left, y: candidate.top, w: width, h: height };
+    return box.y >= 4 && box.y + box.h <= bounds.h - 4 && avoid.every((item) => !actionBoxesOverlap(box, item));
+  };
+  const placed = candidates.find(fits);
+  if (placed) return { left, top: placed.top, placement: placed.placement };
+  return {
+    left,
+    top: clampActionBar(anchor.y + ACTION_BAR_GAP, 4, Math.max(4, bounds.h - height - 4)),
+    placement: "inside-top",
+  };
+}
+
+/** 셀 지도 장식·콜아웃이 실제 frame 높이에 비례하도록 공용 논리 단위를 계산한다. */
+export function mapLayoutUnitForFrame(frameHeightPx: number): number {
+  return Math.min(1.5, Math.max(1, frameHeightPx / 360));
+}
+
 const MIN_PANEL_SIZE = 0.01;
 
 function finite(value: unknown): value is number {
@@ -51,4 +97,3 @@ export function pagePanelGeometryKey(panels: PagePanels | undefined): string {
     return rect ? `${key}=${rect.x},${rect.y},${rect.w},${rect.h}` : `${key}=-`;
   }).join(";");
 }
-

@@ -17,6 +17,7 @@ import type { PlannedSlide } from "@/lib/v2/report/report-plan";
 import type { TileView } from "@/lib/v2/ui/tile-view";
 import { sheetCells, type SheetGrid } from "@/lib/v2/ui/sheet";
 import { labelBoxFramePatch, labelFramePatch, mapLabelSwitchState, reportPageMapSelectable, mixedValue, resetLabelBoxFramePatch, toggleLabelVisibility, toggleLegendFocus } from "@/lib/v2/ui/report-mode-logic";
+import { placeActionBar, type ActionBarPixelBox } from "@/lib/v2/report/report-geometry";
 
 type SurfaceStyles = Record<string, string>;
 const FALLBACK_STYLES: SurfaceStyles = new Proxy<SurfaceStyles>({} as SurfaceStyles, { get: (_target, key) => String(key) });
@@ -231,34 +232,9 @@ function safePanelBounds(format: SlideFormat = "wide", key?: PanelKey): { left: 
   };
 }
 
-type PixelBox = { x: number; y: number; w: number; h: number };
-
-const ACTION_BAR_HEIGHT = 40;
-const ACTION_BAR_GAP = 8;
-
-function boxesOverlap(a: PixelBox, b: PixelBox): boolean {
-  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-}
-
-/** 선택 대상 위에 놓을 공간이 없거나 다른 판과 겹치면 아래 후보를 쓴다. */
-function actionBarPosition(anchor: PixelBox, bounds: { w: number; h: number }, avoid: readonly PixelBox[] = [], barWidth = 190): { left: number; top: number } {
-  const left = clampNumber(anchor.x, 4, Math.max(4, bounds.w - barWidth - 4));
-  const candidates = [
-    { left, top: anchor.y - ACTION_BAR_GAP - ACTION_BAR_HEIGHT },
-    { left, top: anchor.y + anchor.h + ACTION_BAR_GAP },
-  ];
-  const fits = (candidate: { left: number; top: number }) => {
-    const box = { x: candidate.left, y: candidate.top, w: barWidth, h: ACTION_BAR_HEIGHT };
-    return box.y >= 4 && box.y + box.h <= bounds.h - 4 && avoid.every((item) => !boxesOverlap(box, item));
-  };
-  return candidates.find(fits) ?? {
-    left,
-    top: clampNumber(candidates[0]!.top, 4, Math.max(4, bounds.h - ACTION_BAR_HEIGHT - 4)),
-  };
-}
-
-function actionBarPositionForRect(rect: Rect, unit: number, bounds: { w: number; h: number }, avoid: readonly PixelBox[] = [], barWidth = 190): { left: number; top: number } {
-  return actionBarPosition({ x: rect.x * unit, y: rect.y * unit, w: rect.w * unit, h: rect.h * unit }, bounds, avoid, barWidth);
+function actionBarOffsetForRect(rect: Rect, unit: number, bounds: { w: number; h: number }, avoid: readonly ActionBarPixelBox[] = [], barWidth = 190): { left: number; top: number } {
+  const position = placeActionBar({ x: rect.x * unit, y: rect.y * unit, w: rect.w * unit, h: rect.h * unit }, bounds, avoid, barWidth);
+  return { left: position.left - rect.x * unit, top: position.top - rect.y * unit };
 }
 
 function clampPanelRect(key: PanelKey, rect: Rect, format: SlideFormat = "wide"): Rect {
@@ -517,9 +493,10 @@ function ElementActionBar({
   );
 }
 
-function DecorationTransformFrame({ label, box, onDragStart, onDragMove, onDragEnd, onResizeStart, onResizeMove, onResizeEnd, onKeyDown, actions, onDelete, onContextMenu }: {
+function DecorationTransformFrame({ label, box, bounds, onDragStart, onDragMove, onDragEnd, onResizeStart, onResizeMove, onResizeEnd, onKeyDown, actions, onDelete, onContextMenu }: {
   label: string;
   box: DecorationBox;
+  bounds: { w: number; h: number };
   onDragStart: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onDragMove: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onDragEnd: (event: ReactPointerEvent<HTMLDivElement>) => void;
@@ -533,8 +510,9 @@ function DecorationTransformFrame({ label, box, onDragStart, onDragMove, onDragE
 }) {
   const styles = useSurfaceStyles();
   const directions: DecorationResizeDirection[] = ["nw", "ne", "se", "sw"];
+  const actionBar = placeActionBar({ x: box.x0, y: box.y0, w: box.x1 - box.x0, h: box.y1 - box.y0 }, bounds);
   return <div className={styles.decorationSelectionFrame ?? styles.panelSelectionFrame} data-decoration-frame={label} style={{ left: box.x0, top: box.y0, width: Math.max(1, box.x1 - box.x0), height: Math.max(1, box.y1 - box.y0) }} tabIndex={0} role="group" aria-label={`${label} 선택됨`} onPointerDown={(event) => { if ((event.target as HTMLElement).closest("button")) return; onDragStart(event); }} onPointerMove={onDragMove} onPointerUp={onDragEnd} onPointerCancel={onDragEnd} onKeyDown={onKeyDown} onContextMenu={(event) => { if ((event.target as HTMLElement).closest("button")) return; event.preventDefault(); event.stopPropagation(); onContextMenu?.(event); }}>
-    <ElementActionBar elementLabel={label} left={0} top={-48} actions={actions} onDelete={onDelete} />
+    <ElementActionBar elementLabel={label} left={actionBar.left - box.x0} top={actionBar.top - box.y0} actions={actions} onDelete={onDelete} />
     {directions.map((direction) => <button key={direction} type="button" tabIndex={-1} className={styles.panelHandle + " " + styles["panelHandle" + direction.toUpperCase() as keyof typeof styles]} data-decoration-handle={direction} aria-label={`${label} ${direction} 모서리 크기 조절`} title={`${label} ${direction} 크기 조절`} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); onResizeStart(direction, event); }} onPointerMove={onResizeMove} onPointerUp={onResizeEnd} onPointerCancel={onResizeEnd}><span aria-hidden="true" /></button>)}
   </div>;
 }
@@ -653,10 +631,15 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
       const top = Math.min(...boxes.map((rect) => rect.top));
       const right = Math.max(...boxes.map((rect) => rect.right));
       const bottom = Math.max(...boxes.map((rect) => rect.bottom));
-      const x = Math.max(8, Math.min(Math.max(8, width - 190), (left + right) / 2 - hostRect.left - 86));
-      const above = top - hostRect.top >= 54;
-      const y = above ? top - hostRect.top - 48 : bottom - hostRect.top + 8;
-      setSelectionToolbarAnchor({ x, y: Math.max(4, Math.min(Math.max(4, height - 46), y)) });
+      const scaleX = width / hostRect.width;
+      const scaleY = height / hostRect.height;
+      const position = placeActionBar({
+        x: (left - hostRect.left) * scaleX,
+        y: (top - hostRect.top) * scaleY,
+        w: (right - left) * scaleX,
+        h: (bottom - top) * scaleY,
+      }, { w: width, h: height });
+      setSelectionToolbarAnchor({ x: position.left, y: position.top });
     };
     update();
     window.addEventListener("resize", update);
@@ -877,11 +860,13 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
   const selectedMapKey = selectedLabelKey ?? selectedElementKey;
   const labelHiddenKeys = [...new Set([...(style.hiddenKeys ?? EMPTY_PAGE_KEYS), ...(reportFrame?.hiddenLabelKeys ?? EMPTY_PAGE_KEYS)])];
   const selectedLabelBox = selectedLabelKey ? reportFrame?.labelBoxes[selectedLabelKey] : undefined;
-  const toolbarAnchorX = selectedLabelBox ? (selectedLabelBox.x + selectedLabelBox.w / 2) * width - 86 : width / 2 - 86;
-  const toolbarAnchorY = selectedLabelBox
-    ? (selectedLabelBox.y * height >= 54 ? selectedLabelBox.y * height - 48 : (selectedLabelBox.y + selectedLabelBox.h) * height + 8)
-    : 8;
-  const toolbarPosition = selectionToolbarAnchor ?? { x: toolbarAnchorX, y: toolbarAnchorY };
+  const toolbarAnchor: ActionBarPixelBox = selectedLabelBox
+    ? { x: selectedLabelBox.x * width, y: selectedLabelBox.y * height, w: selectedLabelBox.w * width, h: selectedLabelBox.h * height }
+    : { x: width / 2 - 1, y: 0, w: 2, h: 1 };
+  const toolbarPosition = selectionToolbarAnchor ?? (() => {
+    const position = placeActionBar(toolbarAnchor, { w: width, h: height });
+    return { x: position.left, y: position.top };
+  })();
   const toggleSelectedLabel = () => {
     if (!selectedMapKey || !onDirectPatch) return;
     const actualVisible = selectedElementKey === selectedMapKey
@@ -1006,7 +991,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
     : null;
   const decorationLabel = selectedDecorationKey === "north" ? "방위표" : selectedDecorationKey === "scaleBar" ? "축척 막대" : "위치도";
   const decorationTransformFrame = pickable && selectedDecorationKey && selectedDecorationBox
-    ? <DecorationTransformFrame label={decorationLabel} box={selectedDecorationBox} onDragStart={startDecorationDrag} onDragMove={onDecorationMove} onDragEnd={onDecorationEnd} onResizeStart={startDecorationResize} onResizeMove={onDecorationResizeMove} onResizeEnd={onDecorationResizeEnd} onKeyDown={onDecorationKeyDown} actions={styleRef.current.panels?.[selectedDecorationKey] ? [{ key: "reset", label: "위치 초기화", onClick: () => resetDecoration(selectedDecorationKey) }] : []} onDelete={() => onDecorationDelete?.(selectedDecorationKey)} onContextMenu={(event) => onFontContextMenu?.({ kind: "decoration", key: selectedDecorationKey, ...(contextCell === undefined ? {} : { cell: contextCell }) }, event.clientX, event.clientY, event.currentTarget)} />
+    ? <DecorationTransformFrame label={decorationLabel} box={selectedDecorationBox} bounds={{ w: width, h: height }} onDragStart={startDecorationDrag} onDragMove={onDecorationMove} onDragEnd={onDecorationEnd} onResizeStart={startDecorationResize} onResizeMove={onDecorationResizeMove} onResizeEnd={onDecorationResizeEnd} onKeyDown={onDecorationKeyDown} actions={styleRef.current.panels?.[selectedDecorationKey] ? [{ key: "reset", label: "위치 초기화", onClick: () => resetDecoration(selectedDecorationKey) }] : []} onDelete={() => onDecorationDelete?.(selectedDecorationKey)} onContextMenu={(event) => onFontContextMenu?.({ kind: "decoration", key: selectedDecorationKey, ...(contextCell === undefined ? {} : { cell: contextCell }) }, event.clientX, event.clientY, event.currentTarget)} />
     : null;
   const decorationGuideLayer = decorationTransformFrame && (decorationSnapGuides.x.length > 0 || decorationSnapGuides.y.length > 0)
     ? <div className={styles.decorationSnapGuides ?? styles.snapGuides} aria-hidden="true">
@@ -1138,6 +1123,7 @@ function SlideFooter({ slide, rect: rectProp, unit, fontHighlight, onFontContext
   const styles = useSurfaceStyles();
   const format = (slide.format ?? "wide") as SlideFormat;
   const rect = rectProp ?? slideLayout(format).strip;
+  const actionBar = actionBarOffsetForRect(rect, unit, { w: slideSize(format).w * unit, h: slideSize(format).h * unit });
   const footer = fitFooterText(slide.footer, slide.kind === "sheet" || !!slide.map, slideSize(format).w - slideGeometry(format).edge - 1.7, fontSizeForStyle(slide.style, "source"));
   const longPressRef = useRef<{ x: number; y: number; timer: number } | null>(null);
   const clearLongPress = () => {
@@ -1174,7 +1160,7 @@ function SlideFooter({ slide, rect: rectProp, unit, fontHighlight, onFontContext
     })} onPointerUp={interaction?.onPointerUp ?? clearLongPress} onPointerCancel={interaction?.onPointerCancel ?? clearLongPress}>
       {!hidden && <span className={styles.slideFooterText} style={fontStyle(footer.fontSize, unit)}>{footer.text}</span>}
       <span className={styles.slideFooterPage}>{slide.no} / {slide.total}</span>
-      {selected && interactive && !interaction && <ElementActionBar elementLabel="출처 줄" left={0} top={-48} onDelete={onDelete} />}
+      {selected && interactive && !interaction && <ElementActionBar elementLabel="출처 줄" left={actionBar.left} top={actionBar.top} onDelete={onDelete} />}
     </div>
   );
 }
@@ -1602,6 +1588,7 @@ function TextBoxSurface({ boxes, unit, selectedId, startEditingId, maxWidth, max
     const bold = box.bold ?? defaults.bold;
     const italic = box.italic ?? defaults.italic;
     const align = box.align ?? defaults.align;
+    const actionBar = actionBarOffsetForRect(visibleBox, unit, { w: maxWidth * unit, h: maxHeight * unit });
     const removeBox = () => { onTextBox?.({ id: box.id, remove: true }); setEditing(null); onSelect?.(null); };
     return <div
       key={box.id}
@@ -1664,7 +1651,7 @@ function TextBoxSurface({ boxes, unit, selectedId, startEditingId, maxWidth, max
       }}
     >
       <div data-text-box-content contentEditable={editing} suppressContentEditableWarning style={{ position: "absolute", inset: 0, padding: 0.08 * unit, overflow: "hidden", outline: "none" }} onInput={() => undefined}>{visibleBox.text}</div>
-      {selected && editable && !editing && <ElementActionBar elementLabel="글상자" left={0} top={-50} actions={[{ key: "edit", label: "고치기", onClick: () => beginEditing(box.id) }]} onDelete={removeBox} />}
+      {selected && editable && !editing && <ElementActionBar elementLabel="글상자" left={actionBar.left} top={actionBar.top} actions={[{ key: "edit", label: "고치기", onClick: () => beginEditing(box.id) }]} onDelete={removeBox} />}
       {selected && editable && editing && <div className={styles.textBoxToolbar} role="toolbar" aria-label="글상자 서식">
         <button type="button" className={styles.textBoxToolbarButton} aria-label="글자 작게" onPointerDown={(event) => event.stopPropagation()} onClick={() => updateBox(box, { pt: Math.max(7, (box.pt ?? 14) - 1) })}>−</button>
         <output className={styles.textBoxFontValue}>{box.pt}pt</output>
@@ -1680,8 +1667,8 @@ function TextBoxSurface({ boxes, unit, selectedId, startEditingId, maxWidth, max
         <button type="button" className={`${styles.textBoxToolbarButton} ${align === "left" ? styles.textBoxToolbarButtonActive : ""}`} aria-label="왼쪽 정렬" aria-pressed={align === "left"} onPointerDown={(event) => event.stopPropagation()} onClick={() => updateBox(box, { align: "left" })}><TextBoxAlignIcon /></button>
         <button type="button" className={`${styles.textBoxToolbarButton} ${align === "center" ? styles.textBoxToolbarButtonActive : ""}`} aria-label="가운데 정렬" aria-pressed={align === "center"} onPointerDown={(event) => event.stopPropagation()} onClick={() => updateBox(box, { align: "center" })}><TextBoxAlignIcon center /></button>
         <span className={styles.textBoxToolbarSeparator} aria-hidden="true" />
-        <ElementActionBar elementLabel="글상자" left={0} top={-50} actions={[{ key: "done", label: "완료", onClick: () => commitText(box.id) }]} onDelete={removeBox} />
       </div>}
+      {selected && editable && editing && <ElementActionBar elementLabel="글상자" left={actionBar.left} top={actionBar.top} actions={[{ key: "done", label: "완료", onClick: () => commitText(box.id) }]} onDelete={removeBox} />}
       {selected && editable && !editing && TEXT_BOX_HANDLE_DIRECTIONS.map(({ direction, label }) => <button key={direction} type="button" className={`${styles.textBoxHandle} ${styles[`textBoxHandle${direction.toUpperCase()}`]}`} data-resize-handle={direction} aria-label={`${label} 글상자 크기 조절`} onPointerDown={(event) => beginDraft("resize", visibleBox, event, direction)} />)}
     </div>;
   })}</>;
@@ -1892,9 +1879,8 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, editable = fals
   const selectedCellIndex = editable && !thumbnail && selection?.kind === "sheetCell" ? selection.cell : null;
   const selectedCellRect = selectedCellIndex !== null ? cellRects[selectedCellIndex] ?? null : null;
   const sheetActionPosition = selectedCellRect
-    ? actionBarPositionForRect(
-        selectedCellRect,
-        unit,
+    ? placeActionBar(
+        { x: selectedCellRect.x * unit, y: selectedCellRect.y * unit, w: selectedCellRect.w * unit, h: selectedCellRect.h * unit },
         { w: geometry.w * unit, h: geometry.h * unit },
         [{ x: titleRect.x * unit, y: titleRect.y * unit, w: titleRect.w * unit, h: titleRect.h * unit }],
         260,
@@ -2139,6 +2125,7 @@ type PanelTransformFrameProps = {
   panelKey: PanelKey;
   rect: Rect;
   unit: number;
+  bounds: { w: number; h: number };
   xGuides: number[];
   yGuides: number[];
   onResizeStart: (direction: ResizeDirection, event: ReactPointerEvent<HTMLButtonElement>) => void;
@@ -2149,15 +2136,16 @@ type PanelTransformFrameProps = {
   directions?: ResizeDirection[];
 };
 
-function PanelTransformFrame({ panelKey, rect, unit, xGuides, yGuides, onResizeStart, onResizeMove, onResizeEnd, onDelete, actions = [], directions = ["nw", "n", "ne", "e", "se", "s", "sw", "w"] }: PanelTransformFrameProps) {
+function PanelTransformFrame({ panelKey, rect, unit, bounds, xGuides, yGuides, onResizeStart, onResizeMove, onResizeEnd, onDelete, actions = [], directions = ["nw", "n", "ne", "e", "se", "s", "sw", "w"] }: PanelTransformFrameProps) {
   const styles = useSurfaceStyles();
+  const actionBar = actionBarOffsetForRect(rect, unit, bounds);
   return <>
     <div className={styles.snapGuides} aria-hidden="true">
       {xGuides.map((x) => <span className={styles.snapGuideX} style={{ left: x * unit }} key={`x-${x}`} />)}
       {yGuides.map((y) => <span className={styles.snapGuideY} style={{ top: y * unit }} key={`y-${y}`} />)}
     </div>
     <div className={styles.panelSelectionFrame} data-panel-frame={panelKey} style={rectStyle(rect, unit)} aria-label={`${panelLabelFor(panelKey)} 선택됨`}>
-      <ElementActionBar elementLabel={PANEL_LABEL[panelKey]} left={0} top={-48} actions={actions} onDelete={onDelete} />
+      <ElementActionBar elementLabel={PANEL_LABEL[panelKey]} left={actionBar.left} top={actionBar.top} actions={actions} onDelete={onDelete} />
       {directions.map((direction) => <button
         key={direction}
         type="button"
@@ -2401,7 +2389,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
     setSelectedPanel(null);
   };
   const handles = editable && displaySlide.kind === "tile" && selectedPanel && panelRects[selectedPanel]
-    ? <PanelTransformFrame panelKey={selectedPanel} rect={panelRects[selectedPanel]!} unit={unit} xGuides={snapGuides.x} yGuides={snapGuides.y} onResizeStart={onResizeStart} onResizeMove={onResizeMove} onResizeEnd={onResizeEnd} onDelete={() => { onPanelDelete?.(selectedPanel); setSelectedPanel(null); }} actions={existingPanels[selectedPanel] ? [{ key: "reset", label: "위치 초기화", onClick: () => resetPanel(selectedPanel) }] : []} directions={selectedPanel === "source" ? ["e", "w"] : undefined} />
+    ? <PanelTransformFrame panelKey={selectedPanel} rect={panelRects[selectedPanel]!} unit={unit} bounds={{ w: size.w * unit, h: size.h * unit }} xGuides={snapGuides.x} yGuides={snapGuides.y} onResizeStart={onResizeStart} onResizeMove={onResizeMove} onResizeEnd={onResizeEnd} onDelete={() => { onPanelDelete?.(selectedPanel); setSelectedPanel(null); }} actions={existingPanels[selectedPanel] ? [{ key: "reset", label: "위치 초기화", onClick: () => resetPanel(selectedPanel) }] : []} directions={selectedPanel === "source" ? ["e", "w"] : undefined} />
     : null;
   const mapCellFromTarget = (target: HTMLElement): number | undefined => {
     const raw = target.closest<HTMLElement>("[data-map-cell-index]")?.dataset.mapCellIndex;

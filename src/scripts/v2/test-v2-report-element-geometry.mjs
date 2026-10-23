@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { PAGE_PANEL_KEYS, clonePagePanels, normalizePagePanelRect, normalizePagePanels, pagePanelGeometryKey, pagePanelHasOverride } from "../../lib/v2/report/report-geometry.ts";
+import { PAGE_PANEL_KEYS, clonePagePanels, normalizePagePanelRect, normalizePagePanels, pagePanelGeometryKey, pagePanelHasOverride, placeActionBar } from "../../lib/v2/report/report-geometry.ts";
 import { defaultFrame, historyApply, historyUndo, reportDocReducer } from "../../lib/v2/report/report-doc.ts";
 
 assert.deepEqual(PAGE_PANEL_KEYS, ["title", "summary", "legend", "source", "north", "scaleBar", "locator"], "7종 페이지 요소 사각형 키를 고정한다");
@@ -17,6 +17,12 @@ assert.equal(pagePanelHasOverride(panels ?? undefined, "scaleBar"), true);
 assert.equal(pagePanelHasOverride(panels ?? undefined, "legend"), false);
 assert.match(pagePanelGeometryKey(panels ?? undefined), /source=.*north=.*scaleBar=.*locator=/, "캐시 키에 장식 사각형을 포함한다");
 assert.deepEqual(clonePagePanels(panels), panels, "복제 시 7종 사각형을 보존한다");
+
+const stage = { w: 960, h: 540 };
+assert.deepEqual(placeActionBar({ x: 320, y: 120, w: 120, h: 80 }, stage), { left: 320, top: 72, placement: "above" }, "공통 막대는 요소 위 8px에 둔다");
+assert.deepEqual(placeActionBar({ x: 320, y: 4, w: 120, h: 80 }, stage), { left: 320, top: 92, placement: "below" }, "위 공간이 없으면 공통 막대를 요소 아래 8px에 둔다");
+assert.deepEqual(placeActionBar({ x: 320, y: 0, w: 120, h: 520 }, stage), { left: 320, top: 8, placement: "inside-top" }, "아래 공간도 없으면 공통 막대를 요소 안쪽 위에 둔다");
+assert.deepEqual(placeActionBar({ x: -40, y: 120, w: 120, h: 80 }, stage), { left: 4, top: 72, placement: "above" }, "공통 막대는 좌우 무대 안으로 자른다");
 
 const page = { id: "p1", layout: "map-summary", panels: {}, textBoxes: [], notes: "", kind: "tile", tileId: "A01", part: { type: "single" }, settings: { face: "front", callout: "overview" }, frame: defaultFrame() };
 const doc = { v: 1, format: "wide", pages: [page] };
