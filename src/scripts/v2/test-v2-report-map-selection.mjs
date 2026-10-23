@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import { defaultFrame, normalizeMapLabelBox } from "../../lib/v2/report/report-doc.ts";
 import {
@@ -6,6 +7,7 @@ import {
   labelBoxFramePatch,
   labelFramePatch,
   mapElementKindLabel,
+  mapLabelSwitchState,
   resetLabelBoxFramePatch,
   restoreAllDeletedElementFramePatch,
 } from "../../lib/v2/ui/report-mode-logic.ts";
@@ -48,6 +50,12 @@ assert.deepEqual(
 assert.equal(mapElementKindLabel("polygon|park|1"), "영역");
 assert.equal(mapElementKindLabel("line|road|1"), "선");
 assert.equal(mapElementKindLabel("feature|station|1"), "지점");
+assert.equal(mapLabelSwitchState("feature|station|1", [], false), false, "toolbar label switch follows the rendered label state");
+assert.equal(mapLabelSwitchState("feature|station|1", [], true), true, "toolbar label switch can follow a rendered label");
+
+const mapFigureSource = readFileSync(new URL("../../components/v2/map-figure.tsx", import.meta.url), "utf8");
+assert.match(mapFigureSource, /const labelInteractive = canSelectLabel && \(fixedLabel \|\| !!onLabelSelect\)/, "all visible callout variants are selectable in the report surface");
+assert.doesNotMatch(mapFigureSource, /candidate\.text} · 라벨 \$\{/, "hover labels do not append label visibility state");
 
 const legacyFrame = defaultFrame();
 delete legacyFrame.hiddenLabelKeys;

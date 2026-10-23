@@ -16,7 +16,7 @@ import { clampTextBox, DEFAULT_REPORT_FONT_SIZES, TEXT_BOX_COLORS, TEXT_BOX_DEFA
 import type { PlannedSlide } from "@/lib/v2/report/report-plan";
 import type { TileView } from "@/lib/v2/ui/tile-view";
 import { sheetCells, type SheetGrid } from "@/lib/v2/ui/sheet";
-import { labelBoxFramePatch, labelFramePatch, reportPageMapSelectable, mixedValue, resetLabelBoxFramePatch, toggleLabelVisibility, toggleLegendFocus } from "@/lib/v2/ui/report-mode-logic";
+import { labelBoxFramePatch, labelFramePatch, mapLabelSwitchState, reportPageMapSelectable, mixedValue, resetLabelBoxFramePatch, toggleLabelVisibility, toggleLegendFocus } from "@/lib/v2/ui/report-mode-logic";
 
 type SurfaceStyles = Record<string, string>;
 const FALLBACK_STYLES: SurfaceStyles = new Proxy<SurfaceStyles>({} as SurfaceStyles, { get: (_target, key) => String(key) });
@@ -307,6 +307,7 @@ type MapLayerProps = {
   interactive: boolean;
   pickable?: boolean;
   selectedElementKey?: string | null;
+  selectedElementLabelVisible?: boolean;
   selectedLabelKey?: string | null;
   onMapElementSelect?: (feature: MapFigureElementPick) => void;
   onMapLabelSelect?: (feature: MapFigureElementPick) => void;
@@ -391,7 +392,7 @@ function MapSelectionToolbar({
   const styles = useSurfaceStyles();
   return (
     <div className={styles.mapSelectionToolbar} data-map-selection-toolbar={kind} style={{ left, top }} onPointerDown={(event) => event.stopPropagation()}>
-      {kind === "element" && <button type="button" className={styles.mapSelectionSwitch} aria-pressed={labelOn} onClick={onToggleLabel}>라벨</button>}
+      {kind === "element" && <button type="button" className={styles.mapSelectionSwitch} aria-label={`라벨 ${labelOn ? "켜짐" : "꺼짐"}`} aria-pressed={labelOn} onClick={onToggleLabel}><span>라벨</span><span className={styles.mapSelectionSwitchTrack} aria-hidden="true"><span className={styles.mapSelectionSwitchThumb} /></span></button>}
       {kind === "label" && <button type="button" className={styles.mapSelectionToolbarButton} onClick={onAutoPosition}>자동 위치</button>}
       {kind === "label" && <button type="button" className={styles.mapSelectionToolbarButton + " " + styles.mapSelectionDanger} onClick={onHideLabel}>라벨 끄기</button>}
       {kind === "element" && <button type="button" className={styles.mapSelectionToolbarButton + " " + styles.mapSelectionDanger} onClick={onDelete}>삭제</button>}
@@ -399,7 +400,7 @@ function MapSelectionToolbar({
   );
 }
 
-function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, interactive, pickable = false, selectedElementKey = null, selectedLabelKey = null, onMapElementSelect, onMapLabelSelect, onLabelBoxChange, onLabelBoxReset, onDeleteElement, onHideLabel, onMapHoverLegend, mapEditEntry = false, onMapMoveActive, thumbnail = false, onPatch, onDirectPatch, hoverLegend, terrainSection, terrainLayout, calloutLegend, calloutTop, calloutLeftBottom, northAvoid, scale = true, label, format = "wide", frame, reportFrame, preserveShortCalloutLabels = false, fontHighlight, onFontContextMenu }: MapLayerProps) {
+function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, interactive, pickable = false, selectedElementKey = null, selectedElementLabelVisible, selectedLabelKey = null, onMapElementSelect, onMapLabelSelect, onLabelBoxChange, onLabelBoxReset, onDeleteElement, onHideLabel, onMapHoverLegend, mapEditEntry = false, onMapMoveActive, thumbnail = false, onPatch, onDirectPatch, hoverLegend, terrainSection, terrainLayout, calloutLegend, calloutTop, calloutLeftBottom, northAvoid, scale = true, label, format = "wide", frame, reportFrame, preserveShortCalloutLabels = false, fontHighlight, onFontContextMenu }: MapLayerProps) {
   const styles = useSurfaceStyles();
   const geometry = slideGeometry(format);
   const frameWidth = frame?.w ?? geometry.w;
@@ -408,6 +409,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
   const height = Math.max(1, Math.round(frameHeight * unit));
   const [dragging, setDragging] = useState(false);
   const [hoverKey, setHoverKey] = useState<string | null>(null);
+  const [labelVisibilityOverride, setLabelVisibilityOverride] = useState<boolean | null>(null);
   const mapInteractionRef = useRef<HTMLDivElement>(null);
   const [selectionToolbarAnchor, setSelectionToolbarAnchor] = useState<{ x: number; y: number } | null>(null);
   const gestureLayerRef = useRef<HTMLDivElement>(null);
@@ -425,6 +427,13 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
   const patchRef = useRef(onPatch);
   styleRef.current = style;
   patchRef.current = onPatch;
+  const effectivePinnedKeys = useMemo(
+    () => [...new Set([...(pinnedKeys ?? EMPTY_PAGE_KEYS), ...(style.pinnedKeys ?? EMPTY_PAGE_KEYS), ...(reportFrame?.pinnedKeys ?? EMPTY_PAGE_KEYS)])],
+    [pinnedKeys, reportFrame?.pinnedKeys, style.pinnedKeys],
+  );
+  useEffect(() => {
+    setLabelVisibilityOverride(selectedElementLabelVisible ?? null);
+  }, [selectedElementKey, selectedElementLabelVisible]);
   const mapFill = terrainLayout?.mapFill ?? 0.8;
   const mapSiteY = terrainLayout?.mapSiteY ?? 0.5;
   const rightInset = panels.summary
@@ -495,7 +504,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
     const currentStyle = styleRef.current;
     const currentHidden = [...new Set([...(currentStyle.hiddenKeys ?? EMPTY_PAGE_KEYS), ...(reportFrame?.hiddenLabelKeys ?? EMPTY_PAGE_KEYS)])];
     const next = toggleLabelVisibility(
-      currentStyle.pinnedKeys ?? pinnedKeys ?? EMPTY_PAGE_KEYS,
+      effectivePinnedKeys,
       currentHidden,
       feature.key,
       feature.labelVisible ?? false,
@@ -503,7 +512,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
     labelToggleStartedRef.current = typeof performance === "undefined" ? null : performance.now();
     recordPreviewMetric("labelToggleDispatches");
     onDirectPatch({ pinnedKeys: next.pinnedKeys, hiddenKeys: next.hiddenKeys });
-  }, [onDirectPatch, pinnedKeys, reportFrame?.hiddenLabelKeys]);
+  }, [effectivePinnedKeys, onDirectPatch, reportFrame?.hiddenLabelKeys]);
   const setGestureTransform = useCallback(() => {
     const element = gestureLayerRef.current;
     if (!element) return;
@@ -662,7 +671,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
         label={label}
         viewport={viewport}
         avoid={avoid}
-        pinnedKeys={style.pinnedKeys ?? pinnedKeys ?? EMPTY_PAGE_KEYS}
+        pinnedKeys={effectivePinnedKeys}
         hiddenKeys={[...new Set([...(style.hiddenKeys ?? EMPTY_PAGE_KEYS), ...(reportFrame?.hiddenLabelKeys ?? EMPTY_PAGE_KEYS)])]}
         deletedElementKeys={reportFrame?.deletedElementKeys}
         labelBoxes={reportFrame?.labelBoxes}
@@ -705,12 +714,17 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
   const toolbarPosition = selectionToolbarAnchor ?? { x: toolbarAnchorX, y: toolbarAnchorY };
   const toggleSelectedLabel = () => {
     if (!selectedMapKey || !onDirectPatch) return;
+    const actualVisible = selectedElementKey === selectedMapKey
+      ? labelVisibilityOverride ?? selectedElementLabelVisible
+      : undefined;
+    const currentVisible = mapLabelSwitchState(selectedMapKey, labelHiddenKeys, actualVisible);
     const next = toggleLabelVisibility(
-      style.pinnedKeys ?? pinnedKeys ?? EMPTY_PAGE_KEYS,
+      effectivePinnedKeys,
       labelHiddenKeys,
       selectedMapKey,
-      !labelHiddenKeys.includes(selectedMapKey),
+      currentVisible,
     );
+    setLabelVisibilityOverride(!currentVisible);
     onDirectPatch({ pinnedKeys: next.pinnedKeys, hiddenKeys: next.hiddenKeys });
   };
   const selectionToolbar = pickable && selectedMapKey
@@ -718,7 +732,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
         kind={selectedLabelKey ? "label" : "element"}
         left={toolbarPosition.x}
         top={toolbarPosition.y}
-        labelOn={!labelHiddenKeys.includes(selectedMapKey)}
+        labelOn={mapLabelSwitchState(selectedMapKey, labelHiddenKeys, selectedElementKey === selectedMapKey ? labelVisibilityOverride ?? selectedElementLabelVisible : undefined)}
         onToggleLabel={toggleSelectedLabel}
         onDelete={selectedElementKey ? () => onDeleteElement?.(selectedElementKey) : undefined}
         onAutoPosition={selectedLabelKey ? () => onLabelBoxReset?.(selectedLabelKey) : undefined}
@@ -1534,8 +1548,9 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, editable = fals
                 interactive={cellMapActive}
                 pickable
                 selectedElementKey={cellElementKey}
+                selectedElementLabelVisible={cellSelected && selection?.kind === "mapElement" ? selection.labelVisible : undefined}
                 selectedLabelKey={cellLabelKey}
-                onMapElementSelect={(feature) => onSelect?.({ kind: "mapElement", key: feature.key, cell: index })}
+                onMapElementSelect={(feature) => onSelect?.({ kind: "mapElement", key: feature.key, cell: index, labelVisible: feature.labelVisible })}
                 onMapLabelSelect={(feature) => onSelect?.({ kind: "mapLabel", key: feature.key, cell: index })}
                 onLabelBoxChange={cellLabelBoxChange}
                 onLabelBoxReset={cellLabelBoxReset}
@@ -1657,7 +1672,7 @@ function TileSurface({ slide, unit, basemap, panels, interactive, pickable = fal
   }, [model, onDirectPatch, slide.style.legendFocus]);
   return (
     <>
-      {displayModel ? <div data-surface-map={mapFrame ? "true" : undefined} style={mapFrame ? { position: "absolute", left: String(Number((mapLayout!.x * 100).toFixed(2))) + "%", top: String(Number((mapLayout!.y * 100).toFixed(2))) + "%", width: String(Number((mapLayout!.w * 100).toFixed(2))) + "%", height: String(Number((mapLayout!.h * 100).toFixed(2))) + "%" } : undefined}><MapLayer model={displayModel} style={mapStyle} unit={unit} basemap={basemap} panels={panels} siteX={slideSiteX(mapStyle, panels.summary !== null, format)} pinnedKeys={mapStyle.pinnedKeys} interactive={interactive} pickable={pickable} selectedElementKey={selection?.kind === "mapElement" ? selection.key : null} selectedLabelKey={selection?.kind === "mapLabel" ? selection.key : null} onMapElementSelect={onMapElementSelect} onMapLabelSelect={onMapLabelSelect} onLabelBoxChange={onLabelBoxChange} onLabelBoxReset={onLabelBoxReset} onDeleteElement={onDeleteElement} onHideLabel={onHideLabel} mapEditEntry={mapEditEntry} onMapMoveActive={onMapMoveActive} thumbnail={thumbnail} onPatch={onPatch} onDirectPatch={onDirectPatch} hoverLegend={hoverLegend} onMapHoverLegend={setHoverLegend} terrainSection={slide.view.code === "D17" ? slide.terrainSection ?? "A" : undefined} terrainLayout={terrainLayout} calloutLegend={calloutAlignment?.calloutLegend} calloutTop={calloutAlignment ? calloutAlignment.calloutTop * unit : undefined} calloutLeftBottom={calloutAlignment?.calloutLeftBottom ? calloutAlignment.calloutLeftBottom * unit : undefined} northAvoid={northAvoid} scale={!(slide.callout && slide.callout.page > 0)} frame={mapFrame ?? undefined} format={format} label={slide.view.title + " 지도"} reportFrame={reportFrame} preserveShortCalloutLabels={staticSurface && !thumbnail} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} /></div> : slide.mass ? <VisualPlaceholder title={slide.view.title} message="3D 매스 미리보기는 내보내기와 같은 페이지 위치로 표시됩니다." unit={unit} /> : slide.rose ? <VisualPlaceholder title={slide.view.title} message="바람장미 도판 미리보기" unit={unit} /> : chart ? <ChartPlaceholder view={slide.view} unit={unit} /> : <VisualPlaceholder title={slide.view.title} message={slide.body.kind === "state" ? slide.body.message : "표시할 지도 결과가 없습니다."} unit={unit} />}
+      {displayModel ? <div data-surface-map={mapFrame ? "true" : undefined} style={mapFrame ? { position: "absolute", left: String(Number((mapLayout!.x * 100).toFixed(2))) + "%", top: String(Number((mapLayout!.y * 100).toFixed(2))) + "%", width: String(Number((mapLayout!.w * 100).toFixed(2))) + "%", height: String(Number((mapLayout!.h * 100).toFixed(2))) + "%" } : undefined}><MapLayer model={displayModel} style={mapStyle} unit={unit} basemap={basemap} panels={panels} siteX={slideSiteX(mapStyle, panels.summary !== null, format)} pinnedKeys={mapStyle.pinnedKeys} interactive={interactive} pickable={pickable} selectedElementKey={selection?.kind === "mapElement" ? selection.key : null} selectedElementLabelVisible={selection?.kind === "mapElement" ? selection.labelVisible : undefined} selectedLabelKey={selection?.kind === "mapLabel" ? selection.key : null} onMapElementSelect={onMapElementSelect} onMapLabelSelect={onMapLabelSelect} onLabelBoxChange={onLabelBoxChange} onLabelBoxReset={onLabelBoxReset} onDeleteElement={onDeleteElement} onHideLabel={onHideLabel} mapEditEntry={mapEditEntry} onMapMoveActive={onMapMoveActive} thumbnail={thumbnail} onPatch={onPatch} onDirectPatch={onDirectPatch} hoverLegend={hoverLegend} onMapHoverLegend={setHoverLegend} terrainSection={slide.view.code === "D17" ? slide.terrainSection ?? "A" : undefined} terrainLayout={terrainLayout} calloutLegend={calloutAlignment?.calloutLegend} calloutTop={calloutAlignment ? calloutAlignment.calloutTop * unit : undefined} calloutLeftBottom={calloutAlignment?.calloutLeftBottom ? calloutAlignment.calloutLeftBottom * unit : undefined} northAvoid={northAvoid} scale={!(slide.callout && slide.callout.page > 0)} frame={mapFrame ?? undefined} format={format} label={slide.view.title + " 지도"} reportFrame={reportFrame} preserveShortCalloutLabels={staticSurface && !thumbnail} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} /></div> : slide.mass ? <VisualPlaceholder title={slide.view.title} message="3D 매스 미리보기는 내보내기와 같은 페이지 위치로 표시됩니다." unit={unit} /> : slide.rose ? <VisualPlaceholder title={slide.view.title} message="바람장미 도판 미리보기" unit={unit} /> : chart ? <ChartPlaceholder view={slide.view} unit={unit} /> : <VisualPlaceholder title={slide.view.title} message={slide.body.kind === "state" ? slide.body.message : "표시할 지도 결과가 없습니다."} unit={unit} />}
        {terrainShown && <TerrainSectionPreview slide={slide} unit={unit} layout={terrainLayout} />}
       {slide.body.kind === "state" && <div className={styles.slidePanel} style={{ left: unit * 4, top: unit * 2.7, width: unit * 5.1, height: unit * 1.15 }}><div className={styles.slideText + " " + styles.slideTextStrong} style={fontStyle(16, unit)}>{slide.body.message}</div></div>}
       <div onDoubleClick={() => onText?.("title")}><TitlePanel slide={slide} rect={panels.title} unit={unit} interaction={panelInteraction?.("title")} /></div>
@@ -1992,7 +2007,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
          {displaySlide.kind === "sources" && <SourcesSurface slide={displaySlide} unit={unit} basemap={basemap} thumbnail={thumbnail} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />}
          {displaySlide.kind === "cover" && displaySlide.page?.kind === "blank" && <BlankSurface unit={unit} />}
          {displaySlide.kind === "sheet" && <SheetSurface slide={displaySlide} unit={unit} basemap={basemap} thumbnail={thumbnail} editable={editable} selection={selection} mapActive={!!mapActive} onCellActivate={onSheetCellActivate} onSelect={onSelect} onFrame={onFrame} onMapMoveActive={onMapMoveActive} onMapElementDelete={onDeleteElement} onMapLabelHide={onHideLabel} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />}
-         {displaySlide.kind === "tile" && <TileSurface slide={displaySlide} unit={unit} basemap={basemap} panels={panels} interactive={!!(editable && (mapActive ?? editable) && !!displayModel)} pickable={mapPickable} selection={selection} mapEditEntry={editable && mapSelectable && !thumbnail} onMapMoveActive={onMapMoveActive} onMapElementSelect={(feature) => onSelect?.({ kind: "mapElement", key: feature.key })} onMapLabelSelect={(feature) => onSelect?.({ kind: "mapLabel", key: feature.key })} onLabelBoxChange={onLabelBoxChange} onLabelBoxReset={onLabelBoxReset} onDeleteElement={onDeleteElement} onHideLabel={onHideLabel} thumbnail={thumbnail} onPatch={onMapPatch} onDirectPatch={onDirectPatch} panelInteraction={editable ? panelInteraction : undefined} staticSurface={staticSurface} onText={onText} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />}
+         {displaySlide.kind === "tile" && <TileSurface slide={displaySlide} unit={unit} basemap={basemap} panels={panels} interactive={!!(editable && (mapActive ?? editable) && !!displayModel)} pickable={mapPickable} selection={selection} mapEditEntry={editable && mapSelectable && !thumbnail} onMapMoveActive={onMapMoveActive} onMapElementSelect={(feature) => onSelect?.({ kind: "mapElement", key: feature.key, labelVisible: feature.labelVisible })} onMapLabelSelect={(feature) => onSelect?.({ kind: "mapLabel", key: feature.key })} onLabelBoxChange={onLabelBoxChange} onLabelBoxReset={onLabelBoxReset} onDeleteElement={onDeleteElement} onHideLabel={onHideLabel} thumbnail={thumbnail} onPatch={onMapPatch} onDirectPatch={onDirectPatch} panelInteraction={editable ? panelInteraction : undefined} staticSurface={staticSurface} onText={onText} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />}
         {displaySlide.page?.textBoxes && <TextBoxSurface boxes={displaySlide.page.textBoxes} unit={unit} selectedId={selection?.kind === "textBox" ? selection.id : undefined} startEditingId={textBoxEditingId} maxWidth={size.w} maxHeight={size.h} editable={editable} onSelect={onSelect} onTextBox={onTextBox} onEditingChange={onTextBoxEditingChange} />}
         {editable && textBoxPlacement && onTextBoxPlacementMove && onTextBoxPlacementCommit && <TextBoxPlacementLayer placement={textBoxPlacement} unit={unit} maxWidth={size.w} maxHeight={size.h} onMove={onTextBoxPlacementMove} onCommit={onTextBoxPlacementCommit} />}
         {handles}
@@ -2038,7 +2053,7 @@ const ThumbnailPreview = memo(function ThumbnailPreview({ slide, basemap }: { sl
 
 export type SurfaceSelection =
   | { kind: "map"; cell?: number }
-  | { kind: "mapElement"; key: string; cell?: number }
+  | { kind: "mapElement"; key: string; cell?: number; labelVisible?: boolean }
   | { kind: "mapLabel"; key: string; cell?: number }
   | { kind: "panel"; key: "title" | "summary" | "legend" }
   | { kind: "textBox"; id: string }

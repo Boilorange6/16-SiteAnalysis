@@ -39,6 +39,12 @@ export function toggleLabelVisibility(
     : { pinnedKeys: [...pinned, key], hiddenKeys: hidden };
 }
 
+/** 선택 막대의 라벨 상태는 숨김 목록보다 MapFigure가 실제로 그린 결과를 우선한다. */
+export function mapLabelSwitchState(key: string, hiddenKeys: readonly string[], actualVisible?: boolean): boolean {
+  if (typeof actualVisible === "boolean") return actualVisible;
+  return key.length > 0 && !hiddenKeys.includes(key);
+}
+
 /** 지도 라벨 토글 patch를 페이지 frame patch로 옮긴다. 보고서 모드의 라벨 정본은 frame이다. */
 export function labelFramePatch(
   frame: MapFrameState,

@@ -1070,8 +1070,8 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     const dimmed = false;
     const pinPick = () => onFeaturePin?.({ ...d.pick, labelVisible: isLabelVisible(d.key) });
     const selectLabel = () => onLabelSelect?.({ ...d.pick, key: d.key, labelVisible: isLabelVisible(d.key) });
-    const labelInteractive = fixedLabel;
     const canSelectLabel = !!(onLabelSelect || onFeaturePin);
+    const labelInteractive = canSelectLabel && (fixedLabel || !!onLabelSelect);
     const onKeyDown = (event: ReactKeyboardEvent<SVGRectElement>) => {
       if (event.key === "ArrowLeft" || event.key === "ArrowUp" || event.key === "ArrowRight" || event.key === "ArrowDown") {
         event.preventDefault();
@@ -1148,7 +1148,8 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
   };
   const previewHoverNode = previewHoverCandidate ? (() => {
     const candidate = previewHoverCandidate;
-    const tooltip = `${candidate.text} · 라벨 ${isLabelVisible(candidate.key) ? "켜짐" : "꺼짐"}`;
+    const tooltip = candidate.text;
+    const selected = selectedElementKey === candidate.key || selectedLabelKey === candidate.key;
     const tooltipFs = Math.max(9, 9 * u);
     const tooltipW = Math.min(300 * u, Math.max(72 * u, textW(tooltip, tooltipFs) + 16 * u));
     const tooltipH = 22 * u;
@@ -1156,9 +1157,9 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     const tooltipY = Math.max(4 * u, Math.min(H - tooltipH - 4 * u, candidate.point[1] - tooltipH - 10 * u));
     return (
       <g data-map-hover="true" pointerEvents="none">
-        {candidate.kind === "feature" && <circle cx={candidate.point[0]} cy={candidate.point[1]} r={Math.max(12 * u, (candidate.radius ?? 3) + 7 * u)} fill="none" stroke="#111827" strokeWidth={2.4 * u} />}
-        {candidate.kind === "line" && <polyline points={(candidate.points ?? []).map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke="#111827" strokeWidth={(candidate.strokeWidth ?? 1.5) * u + 2.4 * u} strokeLinecap="round" strokeLinejoin="round" />}
-        {candidate.kind === "polygon" && <path d={polygonPath(candidate.rings ?? [])} fill="none" stroke="#111827" strokeWidth={2.4 * u} strokeLinejoin="round" />}
+        {!selected && candidate.kind === "feature" && <circle cx={candidate.point[0]} cy={candidate.point[1]} r={Math.max(12 * u, (candidate.radius ?? 3) + 7 * u)} fill="none" stroke="#111827" strokeWidth={2.4 * u} />}
+        {!selected && candidate.kind === "line" && <polyline points={(candidate.points ?? []).map(([x, y]) => `${x},${y}`).join(" ")} fill="none" stroke="#111827" strokeWidth={(candidate.strokeWidth ?? 1.5) * u + 2.4 * u} strokeLinecap="round" strokeLinejoin="round" />}
+        {!selected && candidate.kind === "polygon" && <path d={polygonPath(candidate.rings ?? [])} fill="none" stroke="#111827" strokeWidth={2.4 * u} strokeLinejoin="round" />}
         <g data-map-hover-tooltip="true">
           <rect x={tooltipX} y={tooltipY} width={tooltipW} height={tooltipH} rx={5 * u} fill="#111827" fillOpacity={0.94} stroke="#fff" strokeOpacity={0.75} strokeWidth={0.8 * u} />
           <text x={tooltipX + 8 * u} y={tooltipY + tooltipH * 0.67} fontSize={tooltipFs} fill="#fff" fontWeight={600}>{renderMapCalloutLabelText(tooltip, tooltipW - 16 * u, tooltipFs)}</text>
@@ -1386,7 +1387,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
             const width = sectionStyle?.strokeWidth ?? (lineSelected ? Math.max(4, baseWidth) : (strong ? baseWidth * 1.35 : baseWidth) * (d.l.emphasis === "major" ? 1.2 : d.l.emphasis === "minor" ? 0.85 : 1));
             const points = d.points.map(([x, y]) => `${x},${y}`).join(" ");
             const stroke = d.l.color ?? st.color;
-            const casing = strong || lineSelected ? INK : d.l.casing ?? st.casing;
+            const casing = elementSelected ? "#1d5bd8" : strong || lineSelected ? INK : d.l.casing ?? st.casing;
             const casingWidth = d.l.casingWidth ?? width + 2.4;
             const opacity = sectionStyle?.opacity ?? d.l.opacity ?? st.opacity;
             const dash = sectionStyle ? sectionStyle.dash : st.dash;
