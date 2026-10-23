@@ -587,6 +587,9 @@
   .popoverBody, .layoutSwitcher { padding: 12px; gap: 8px; background: transparent; }
   .popoverBody h2, .layoutSwitcher h2 { font-size: 14px; }
   .railPopover, .notesPopover, .fontSizePopover, .textBoxPopover { width: 240px; }
+  /* 서랍 카드와 같은 x(도구 막대 오른쪽 +16)에 맞춘다. 글상자 창만 버튼 묶음이 아니라 막대 기준이다. */
+  .railPopover { left: calc(100% + 21px); }
+  .textBoxPopover { left: calc(100% + 17px); }
   .drawerFooter { position: sticky; bottom: -12px; z-index: 3; display: grid; gap: 6px; margin-top: auto; padding: 10px 0 0; background: #fff; border-top: 1px solid #d9dce2; }
   .secondaryAction { display: flex; align-items: center; justify-content: center; box-sizing: border-box; gap: 7px; width: 100%; height: 36px; min-width: 0; min-height: 36px; padding: 0 12px; color: #15171c; background: #fff; border: 1px solid #d9dce2; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; line-height: 1.15; }
   .secondaryAction svg { flex: 0 0 16px; }
@@ -608,7 +611,7 @@
   .tileUsedBadge { top: 4px; left: 4px; max-width: calc(100% - 8px); padding: 3px 5px; font-size: 11px; }
   .tileCompareToggle { position: absolute; top: 4px; right: 4px; z-index: 4; display: grid; place-items: center; width: 24px; height: 24px; background: rgba(255,255,255,.92); border-radius: 6px; }
   .tileCompareToggle input { width: 16px; height: 16px; margin: 0; accent-color: #2f6fdb; }
-  .tileList { min-height: 0; overflow-y: auto; }
+  .tileList { min-height: 0; overflow-y: auto; grid-auto-rows: max-content; align-content: start; }
   .searchBox, .chipRow, .compareGridChoices, .compareActions, .drawerFooter { opacity: 1; }
 
   .layoutOption, .layoutOptionActive { position: relative; display: block; min-height: 0; aspect-ratio: 4 / 3; padding: 0; overflow: hidden; }
