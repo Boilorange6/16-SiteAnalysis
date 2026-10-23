@@ -40,6 +40,8 @@ function isPageDrag(event: { dataTransfer: DataTransfer }): boolean {
 
 export default function PageStrip({ items, selectedId, selectedSlideKey, onSelect, onNavigate, onReorder, onDropMove, onAddPage, onDuplicate, onDelete, classMap, exportSelectionMode = false, exportPageIds = new Set(), onToggleExportPage }: PageStripProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  // 띠가 overflow로 잘라내므로 메뉴는 top layer(popover)에 띄우고 ⋯ 버튼 위쪽 viewport 좌표에 둔다.
+  const [menuAnchor, setMenuAnchor] = useState<{ right: number; bottom: number } | null>(null);
   const [dropAt, setDropAt] = useState<DropAt | null>(null);
   const [draggingKey, setDraggingKey] = useState<string | null>(null);
   const draggingPageId = useRef<string | null>(null);
@@ -71,7 +73,7 @@ export default function PageStrip({ items, selectedId, selectedSlideKey, onSelec
   }, [openMenuId]);
 
   return (
-    <ol className={styles.pageStrip} aria-label="보고서 페이지" onDragOver={onStripDragOver} onDragLeave={(event) => {
+    <ol className={styles.pageStrip} aria-label="보고서 페이지" onScroll={() => setOpenMenuId(null)} onDragOver={onStripDragOver} onDragLeave={(event) => {
       if (!isPageDrag(event)) return;
       if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) setDropAt(null);
     }}>
@@ -186,9 +188,14 @@ export default function PageStrip({ items, selectedId, selectedSlideKey, onSelec
                 aria-expanded={openMenuId === item.page.id}
                 aria-controls={`page-menu-${item.page.id}`}
                 title="페이지 메뉴"
-                onClick={(event) => { event.stopPropagation(); setOpenMenuId((current) => current === item.page.id ? null : item.page.id); }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  setMenuAnchor({ right: window.innerWidth - rect.right, bottom: window.innerHeight - rect.top + 4 });
+                  setOpenMenuId((current) => current === item.page.id ? null : item.page.id);
+                }}
               >⋯</button>
-              {openMenuId === item.page.id && <div id={`page-menu-${item.page.id}`} className={styles.pageMenu} role="menu" aria-label={`${item.outputIndex}쪽 작업`}>
+              {openMenuId === item.page.id && <div id={`page-menu-${item.page.id}`} className={styles.pageMenu} popover="manual" ref={(element) => { if (element?.isConnected && !element.matches(":popover-open")) element.showPopover(); }} style={menuAnchor ?? undefined} role="menu" aria-label={`${item.outputIndex}쪽 작업`}>
                 <button type="button" role="menuitem" onClick={() => { setOpenMenuId(null); onDuplicate(item.page.id); window.requestAnimationFrame(() => menuButtonRefs.current.get(item.page.id)?.focus()); }}>복제</button>
                 <button type="button" role="menuitem" disabled={item.pageIndex === 0} onClick={() => { setOpenMenuId(null); onReorder(item.page.id, "ArrowLeft"); window.requestAnimationFrame(() => menuButtonRefs.current.get(item.page.id)?.focus()); }}>앞으로</button>
                 <button type="button" role="menuitem" disabled={item.pageIndex === lastPageIndex} onClick={() => { setOpenMenuId(null); onReorder(item.page.id, "ArrowRight"); window.requestAnimationFrame(() => menuButtonRefs.current.get(item.page.id)?.focus()); }}>뒤로</button>

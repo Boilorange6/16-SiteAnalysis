@@ -24,7 +24,7 @@ assert.match(mobileRules, /\.drawerCard[^{]*\{[\s\S]*bottom:\s*0;/, "모바일 d
 assert.match(mobileRules, /\.settingsCard[^{]*\{[\s\S]*bottom:\s*0;/, "모바일 settingsCard는 아래 시트 자리다");
 assert.match(reducedMotionRules, /\.floatCard[^{]*\{[\s\S]*transform:\s*none;/, "감소된 동작에서는 카드 transform을 끈다");
 assert.match(styles, /180ms\s+cubic-bezier\(\.23,1,\.32,1\)/, "카드 나타남 속도와 easing");
-assert.match(styles, /\.reportStage\s*\{[\s\S]*--stage-left:\s*88px[\s\S]*--stage-right:\s*24px[\s\S]*--stage-bottom:\s*100px;/, "무대 기본 여백 변수");
+assert.match(styles, /\.reportStage\s*\{[\s\S]*--stage-left:\s*88px[\s\S]*--stage-right:\s*24px[\s\S]*--stage-bottom:\s*140px;/, "무대 기본 여백 변수");
 assert.match(styles, /\.reportStage\[data-drawer-open="true"\]\s*\{[^}]*--stage-left:\s*418px;/, "서랍 열림 무대 여백");
 assert.match(styles, /\.reportStage\[data-settings-open="true"\]\s*\{[^}]*--stage-right:\s*328px;/, "설정 열림 무대 여백");
 assert.match(styles, /\.stageFit\s*\{[\s\S]*inset:\s*16px\s+var\(--stage-right\)\s+var\(--stage-bottom\)\s+var\(--stage-left\);/, "stageFit은 카드 여백 안쪽에 맞춘다");
