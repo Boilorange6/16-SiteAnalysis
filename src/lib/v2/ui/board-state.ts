@@ -13,7 +13,7 @@ import type { S02Cut, S02DateKey } from "../tile/s02/cut";
 import type { S03Cut } from "../tile/s03/cut";
 import type { S04Cut } from "../tile/s04/cut";
 import { sheetCapacity, type SheetGrid as UiSheetGrid } from "./sheet";
-import { clampReportFontSizes, EMPTY_REPORT_DOC, defaultFrame, mergeReportFontSizes, reportFontSizesFromLegacyScale, TEXT_BOX_COLORS, type MapFrameState, type ReportDoc, type ReportPage, type ReportFontSizes, type TextBoxAlign, type TextBoxKind, type TilePart } from "../report/report-doc";
+import { clampReportFontSizes, EMPTY_REPORT_DOC, defaultFrame, mergeReportFontSizes, normalizeMapLabelBox, reportFontSizesFromLegacyScale, TEXT_BOX_COLORS, type MapFrameState, type ReportDoc, type ReportPage, type ReportFontSizes, type TextBoxAlign, type TextBoxKind, type TilePart } from "../report/report-doc";
 import type { TileReportSettings } from "../report/report-plan";
 
 export type TileSize = 1 | 2 | 4;
@@ -1030,11 +1030,21 @@ function reportFrame(value: unknown): MapFrameState {
   if (Array.isArray(value.hiddenLayers)) frame.hiddenLayers = unique(stringsOf(value.hiddenLayers));
   if (value.labelRule === "site-near" || value.labelRule === "all-visible" || value.labelRule === "off") frame.labelRule = value.labelRule;
   if (Array.isArray(value.pinnedKeys)) frame.pinnedKeys = unique(stringsOf(value.pinnedKeys));
+  const legacyHidden = isRecord(value.legend) && Array.isArray(value.legend.hidden) ? unique(stringsOf(value.legend.hidden)) : [];
+  if (Array.isArray(value.hiddenLabelKeys)) frame.hiddenLabelKeys = unique(stringsOf(value.hiddenLabelKeys));
+  else frame.hiddenLabelKeys = legacyHidden.filter((key) => key.includes("|"));
+  if (Array.isArray(value.deletedElementKeys)) frame.deletedElementKeys = unique(stringsOf(value.deletedElementKeys));
+  if (isRecord(value.labelBoxes)) {
+    frame.labelBoxes = Object.fromEntries(Object.entries(value.labelBoxes).flatMap(([key, rawBox]) => {
+      if (!isRecord(rawBox) || !isFiniteNumber(rawBox.x) || !isFiniteNumber(rawBox.y) || !isFiniteNumber(rawBox.w) || !isFiniteNumber(rawBox.h)) return [];
+      return [[key, normalizeMapLabelBox({ x: rawBox.x, y: rawBox.y, w: rawBox.w, h: rawBox.h })]];
+    }));
+  }
   if (isRecord(value.legend)) {
     frame.legend = {
       ...frame.legend,
       ...(Array.isArray(value.legend.order) ? { order: unique(stringsOf(value.legend.order)) } : {}),
-      ...(Array.isArray(value.legend.hidden) ? { hidden: unique(stringsOf(value.legend.hidden)) } : {}),
+      ...(Array.isArray(value.legend.hidden) ? { hidden: unique(stringsOf(value.legend.hidden).filter((key) => !key.includes("|"))) } : {}),
       ...(typeof value.legend.visibleOnly === "boolean" ? { visibleOnly: value.legend.visibleOnly } : {}),
       ...(value.legend.placement === "below" || value.legend.placement === "right" || value.legend.placement === "hidden" ? { placement: value.legend.placement } : {}),
     };

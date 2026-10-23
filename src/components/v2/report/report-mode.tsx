@@ -12,10 +12,11 @@ import { importLegacyReport, hasLegacyReport, pagesForTile, planReportDoc, recom
 import { pageStripItems } from "@/lib/v2/report/report-page-strip";
 import { reportFileName, tileReportSettingsFromBoard, type PlannedSlide } from "@/lib/v2/report/report-plan";
 import type { ExportPageScope } from "@/lib/v2/report/export-runner";
-import { initialReportRail, insertIndexAfter, isTypingTarget, moveByKey, reorderMessage, reportPageMapSelectable, stripNavIndex, transitionMapInteraction, type ReportRailKey } from "@/lib/v2/ui/report-mode-logic";
+import { deleteElementFramePatch, initialReportRail, insertIndexAfter, isTypingTarget, labelFramePatch, mapElementKindLabel, moveByKey, reorderMessage, reportPageMapSelectable, stripNavIndex, toggleLabelVisibility, transitionMapInteraction, type ReportRailKey } from "@/lib/v2/ui/report-mode-logic";
 import type { BoardAction, BoardState } from "@/lib/v2/ui/board-state";
 import type { SummaryView, TileView } from "@/lib/v2/ui/tile-view";
 import { sheetCells } from "@/lib/v2/ui/sheet";
+import { legendItemsForModel, type MapLegendLayerItem } from "@/lib/v2/ui/map-layers";
 import { useFocusTrap } from "../use-focus-trap";
 import { SlideSurface, type SurfaceSelection } from "./slide-surface";
 import DrawerPages, { type PageAddKind } from "./drawer-pages";
@@ -109,6 +110,7 @@ type FontSizeAction =
 const FONT_SIZE_LABELS: Record<FontSizeKey, string> = { title: "제목", summary: "요약", legend: "범례", labels: "지도 라벨", source: "출처" };
 const FONT_SIZE_ROWS: readonly { key: FontSizeKey; label: string; min: number; max: number; defaultValue: number }[] = REPORT_FONT_SIZE_KEYS.map((key) => ({ key, label: FONT_SIZE_LABELS[key], min: REPORT_FONT_SIZE_LIMITS[key].min, max: REPORT_FONT_SIZE_LIMITS[key].max, defaultValue: DEFAULT_REPORT_FONT_SIZES[key] }));
 const DEFAULT_FONT_SIZES: FontSizeMap = DEFAULT_REPORT_FONT_SIZES;
+type LegendContextMenuItem = Pick<MapLegendLayerItem, "layer" | "label" | "color" | "lineSwatch"> & { visible: boolean };
 
 function fontSizesOf(value: unknown): FontSizePatch {
   if (!value || typeof value !== "object") return {};
@@ -180,7 +182,7 @@ function FontSizePopover({ doc, page, pageNumber, scope, selectedKey, opacity, o
   </section>;
 }
 
-function FontContextMenu({ menuRef, doc, page, pageNumber, state, scope, onScope, onChange, onResetPageKey, onResetPanel, onClose }: { menuRef: RefObject<HTMLDivElement | null>; doc: ReportDoc; page?: ReportPage; pageNumber: number | null; state: { key: FontSizeKey; x: number; y: number; opener: HTMLElement }; scope: FontSizeScope; onScope: (scope: FontSizeScope) => void; onChange: (scope: FontSizeScope, key: FontSizeKey, delta: number) => void; onResetPageKey: (key: FontSizeKey) => void; onResetPanel: () => void; onClose: () => void }) {
+function FontContextMenu({ menuRef, doc, page, pageNumber, state, scope, onScope, onChange, onResetPageKey, onResetPanel, onLegendVisibilityChange, onShowAllLegend, onHideLegendPanel, onClose, legendItems = [] }: { menuRef: RefObject<HTMLDivElement | null>; doc: ReportDoc; page?: ReportPage; pageNumber: number | null; state: { key: FontSizeKey; x: number; y: number; opener: HTMLElement }; scope: FontSizeScope; onScope: (scope: FontSizeScope) => void; onChange: (scope: FontSizeScope, key: FontSizeKey, delta: number) => void; onResetPageKey: (key: FontSizeKey) => void; onResetPanel: () => void; legendItems?: readonly LegendContextMenuItem[]; onLegendVisibilityChange?: (layer: string, visible: boolean) => void; onShowAllLegend?: () => void; onHideLegendPanel?: () => void; onClose: () => void }) {
   const [position, setPosition] = useState({ x: state.x, y: state.y });
   const pageValues = pageFontSizes(page);
   const row = fontSizeRow(state.key);
@@ -198,6 +200,21 @@ function FontContextMenu({ menuRef, doc, page, pageNumber, state, scope, onScope
     first?.focus();
   }, []);
   return <div ref={menuRef} className={styles.fontContextMenu} role="menu" aria-label={`${fontSizeRow(state.key).label} 글자 크기`} style={{ left: position.x, top: position.y }}>
+    {state.key === "legend" && legendItems.length > 0 && <>
+      <div className={styles.fontLegendHeading}>범례에 표시</div>
+      <div className={styles.fontLegendItems}>
+        {legendItems.map((item) => <button key={item.layer} type="button" className={styles.fontLegendItem} role="menuitemcheckbox" aria-checked={item.visible} onClick={() => onLegendVisibilityChange?.(item.layer, !item.visible)}>
+          <span className={styles.fontLegendSwatch} style={item.lineSwatch ? { background: "transparent", borderColor: item.color } : { background: item.color }} aria-hidden="true" />
+          <span className={styles.fontLegendLabel}>{item.label}</span>
+          <span className={styles.fontLegendCheck} aria-hidden="true">{item.visible ? "✓" : ""}</span>
+        </button>)}
+      </div>
+      <div className={styles.fontLegendActions}>
+        <button type="button" className={styles.fontMenuItem} role="menuitem" onClick={onShowAllLegend}>모두 표시</button>
+        <button type="button" className={styles.fontMenuItem} role="menuitem" onClick={onHideLegendPanel}>범례 칸 숨기기</button>
+      </div>
+      <div className={styles.fontContextDivider} />
+    </>}
     <FontSizeStepRow fontKey={state.key} label={row.label} value={effectiveFontSize(doc, page, state.key)} pageOverride={scope === "page" && pageValues[state.key] !== undefined} onChange={(key, delta) => onChange(scope, key, delta)} menu />
     <FontScopeSwitch scope={scope} pageNumber={pageNumber} pageDisabled={!page} onChange={onScope} />
     <div className={styles.fontContextDivider} />
@@ -548,6 +565,13 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
           closeDrawer(true);
           return;
         }
+        if (selection?.kind === "mapElement" || selection?.kind === "mapLabel") {
+          event.preventDefault();
+          setSelection(null);
+          setMapMoveActive(false);
+          setSettingsOpen(false);
+          return;
+        }
         const current = { selected: selection?.kind === "map", moveActive: mapMoveActive, settingsOpen };
         const transitioned = transitionMapInteraction(current, "escape");
         if (current.moveActive || current.settingsOpen || current.selected) {
@@ -763,7 +787,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     apply({ type: "text", id: selectedId, ...(kind === "title" ? { title: next } : { summary: next }) });
   }, [apply, history.present.pages, selectedId, views]);
 
-  const applyFrame = useCallback((cell: number | undefined, patch: Partial<ReturnType<typeof defaultFrame>>) => {
+  const applyFrame = useCallback((cell: number | undefined, patch: Partial<ReturnType<typeof defaultFrame>>, message?: string) => {
     if (!selectedId) return;
     const page = history.present.pages.find((candidate) => candidate.id === selectedId);
     if (!page) return;
@@ -772,10 +796,10 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
       page.cells.forEach((_candidate, index) => {
         next = reportDocReducer(next, { type: "frame", id: selectedId, cell: index, patch });
       });
-      commitDoc(next);
+      commitDoc(next, message);
       return;
     }
-    apply({ type: "frame", id: selectedId, cell, patch });
+    apply({ type: "frame", id: selectedId, cell, patch }, message);
   }, [apply, commitDoc, history.present, selectedId]);
 
   const applyPanels = useCallback((panels: PagePanels) => {
@@ -791,6 +815,19 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   }, []);
   const handleSurfaceSelect = useCallback((next: SurfaceSelection) => {
     const current = { selected: selection?.kind === "map", moveActive: mapMoveActive, settingsOpen };
+    if (next?.kind === "mapElement" || next?.kind === "mapLabel") {
+      const page = history.present.pages.find((candidate) => candidate.id === selectedId);
+      if (!reportPageMapSelectable(page)) return;
+      setFontHighlight(null);
+      closeFontContext(false);
+      setActivePopover(null);
+      setSelection(next);
+      setMapMoveActive(false);
+      setSettingsOpen(false);
+      setTextBoxEditingId(null);
+      setRail(null);
+      return;
+    }
     if (next?.kind === "map") {
       const page = history.present.pages.find((candidate) => candidate.id === selectedId);
       if (!reportPageMapSelectable(page)) return;
@@ -909,12 +946,33 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   }, [selectedPage]);
   const selectedPageMapSelectable = reportPageMapSelectable(selectedPage);
   const editableMapPage = selectedPage?.kind === "tile" || selectedPage?.kind === "compare" ? selectedPage : null;
-  const mapCell = selectedPage?.kind === "compare" ? (selection?.kind === "map" && selection.cell !== undefined ? selection.cell : 0) : undefined;
+  const mapCell = selectedPage?.kind === "compare"
+    ? ((selection?.kind === "map" || selection?.kind === "mapElement" || selection?.kind === "mapLabel") && selection.cell !== undefined ? selection.cell : 0)
+    : undefined;
   const mapFrame = selectedPage?.kind === "tile"
     ? selectedPage.frame
     : selectedPage?.kind === "compare"
       ? selectedPage.cells[mapCell ?? 0]?.frame
       : undefined;
+  const deleteMapElement = useCallback((key: string) => {
+    if (!mapFrame) return;
+    const patch = deleteElementFramePatch(mapFrame, key);
+    if (!patch) return;
+    applyFrame(mapCell, patch, `이 쪽에서 ${mapElementKindLabel(key)} 1개를 지웠습니다`);
+    setSelection(null);
+    setMapMoveActive(false);
+    setSettingsOpen(false);
+  }, [applyFrame, mapCell, mapFrame]);
+  const hideMapLabel = useCallback((key: string) => {
+    if (!mapFrame) return;
+    const next = toggleLabelVisibility(mapFrame.pinnedKeys, mapFrame.hiddenLabelKeys, key, true);
+    const patch = labelFramePatch(mapFrame, next);
+    if (!patch) return;
+    applyFrame(mapCell, patch, "라벨을 껐습니다");
+    setSelection(null);
+    setMapMoveActive(false);
+    setSettingsOpen(false);
+  }, [applyFrame, mapCell, mapFrame]);
   const mapTileId = selectedPage?.kind === "tile"
     ? selectedPage.tileId
     : selectedPage?.kind === "compare"
@@ -922,6 +980,40 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
       : undefined;
   const mapView = mapTileId ? views.get(mapTileId) ?? null : null;
   const mapModel = mapView?.map ?? mapView?.backdrop ?? null;
+  const legendContextItems = useMemo<LegendContextMenuItem[]>(() => mapModel
+    ? legendItemsForModel(mapModel).map((item) => ({
+        layer: item.layer,
+        label: item.label,
+        color: item.color,
+        lineSwatch: item.lineSwatch,
+        visible: !(mapFrame?.legend.hidden ?? []).includes(item.layer),
+      }))
+    : [], [mapFrame?.legend.hidden, mapModel]);
+  const setLegendItemVisibility = useCallback((layer: string, visible: boolean) => {
+    if (!mapFrame) return;
+    const hidden = visible
+      ? mapFrame.legend.hidden.filter((candidate) => candidate !== layer)
+      : [...new Set([...mapFrame.legend.hidden, layer])];
+    applyFrame(mapCell, { legend: { ...mapFrame.legend, hidden } });
+  }, [applyFrame, mapCell, mapFrame]);
+  const showAllLegend = useCallback(() => {
+    if (mapFrame) applyFrame(mapCell, { legend: { ...mapFrame.legend, hidden: [] } });
+  }, [applyFrame, mapCell, mapFrame]);
+  const hideLegendPanel = useCallback(() => {
+    if (mapFrame) applyFrame(mapCell, { legend: { ...mapFrame.legend, placement: "hidden" } });
+  }, [applyFrame, mapCell, mapFrame]);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.key !== "Delete" && event.key !== "Backspace") || selection?.kind !== "mapElement") return;
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (isTypingTarget(target) || target?.closest('[role="menu"], [role="dialog"], input, textarea, select, [contenteditable="true"]')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      deleteMapElement(selection.key);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [deleteMapElement, selection]);
   const mapScaleOptions = selectedPage
     ? selectedPage.kind === "compare"
       ? (() => {
@@ -1055,6 +1147,14 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     if (event.key !== "Escape" || activePopover || drawerOpen) return;
     const target = event.target as HTMLElement;
     if (target.closest("#report-map-scale-menu") || (target.closest("[data-map-scale-chip]") && document.getElementById("report-map-scale-menu"))) return;
+    if (selection?.kind === "mapElement" || selection?.kind === "mapLabel") {
+      event.preventDefault();
+      event.stopPropagation();
+      setSelection(null);
+      setMapMoveActive(false);
+      setSettingsOpen(false);
+      return;
+    }
     const current = { selected: selection?.kind === "map", moveActive: mapMoveActive, settingsOpen };
     if (!current.moveActive && !current.settingsOpen && !current.selected) return;
     const transitioned = transitionMapInteraction(current, "escape");
@@ -1131,7 +1231,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
             ) : selectedSlide ? (
               <>
                 <div className={styles.stageSlide}>
-                  <SlideSurface slide={selectedSlide} basemap={basemap} mode="edit" selection={selection} fontHighlight={fontHighlight} onFontContextMenu={openFontContext} onSelect={handleSurfaceSelect} onMapMoveActive={setMapMoveFromSurface} onFrame={applyFrame} onPanels={applyPanels} onTextBox={applyTextBox} onText={editPanelText} textBoxEditingId={textBoxEditingId} textBoxPlacement={textBoxPlacement} onTextBoxPlacementMove={moveTextBoxPlacement} onTextBoxPlacementCommit={commitTextBoxPlacement} onTextBoxEditingChange={setTextBoxEditingId} onSheetCellActivate={(index) => { handleSurfaceSelect({ kind: "map", cell: index }); setMapMoveActive(false); }} mapActive={mapEditing} classMap={surfaceClassMap} />
+                  <SlideSurface slide={selectedSlide} basemap={basemap} mode="edit" selection={selection} fontHighlight={fontHighlight} onFontContextMenu={openFontContext} onSelect={handleSurfaceSelect} onMapMoveActive={setMapMoveFromSurface} onFrame={applyFrame} onPanels={applyPanels} onTextBox={applyTextBox} onText={editPanelText} textBoxEditingId={textBoxEditingId} textBoxPlacement={textBoxPlacement} onTextBoxPlacementMove={moveTextBoxPlacement} onTextBoxPlacementCommit={commitTextBoxPlacement} onTextBoxEditingChange={setTextBoxEditingId} onMapElementDelete={deleteMapElement} onMapLabelHide={hideMapLabel} onSheetCellActivate={(index) => { handleSurfaceSelect({ kind: "map", cell: index }); setMapMoveActive(false); }} mapActive={mapEditing} classMap={surfaceClassMap} />
                 </div>
               </>
             ) : <div className={styles.emptyCanvas}>이 페이지는 아직 미리보기를 준비하고 있습니다.</div>}
@@ -1222,7 +1322,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
           </div>
         </main>
       </div>
-      {fontContext && <FontContextMenu menuRef={fontContextMenuRef} doc={history.present} page={selectedPage} pageNumber={selectedPageNumber} state={fontContext} scope={fontContextScope} onScope={setFontContextScope} onChange={changeFontSize} onResetPageKey={(key) => { resetPageFontSize(key); closeFontContext(true); }} onResetPanel={resetSelectedPanel} onClose={() => closeFontContext(true)} />}
+      {fontContext && <FontContextMenu menuRef={fontContextMenuRef} doc={history.present} page={selectedPage} pageNumber={selectedPageNumber} state={fontContext} scope={fontContextScope} onScope={setFontContextScope} onChange={changeFontSize} onResetPageKey={(key) => { resetPageFontSize(key); closeFontContext(true); }} onResetPanel={resetSelectedPanel} legendItems={legendContextItems} onLegendVisibilityChange={setLegendItemVisibility} onShowAllLegend={showAllLegend} onHideLegendPanel={hideLegendPanel} onClose={() => closeFontContext(true)} />}
       {toast && <div className={styles.toast} role="status"><span className={styles.toastText}>{toast}</span><button type="button" onClick={() => { setToast(null); undo(); }}>되돌리기</button></div>}
     </section>
   );

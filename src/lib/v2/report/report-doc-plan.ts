@@ -221,7 +221,7 @@ function frameFromLegacyStyle(style: PageStyle | undefined, initial: MapFrameSta
     ...(style.zoomDelta !== undefined ? { zoomDelta: style.zoomDelta } : {}),
     ...(style.offsetM !== undefined ? { offsetM: [...style.offsetM] as [number, number] } : {}),
     ...(style.pinnedKeys !== undefined ? { pinnedKeys: [...style.pinnedKeys] } : {}),
-    legend: { ...initial.legend, ...(style.hiddenKeys !== undefined ? { hidden: [...style.hiddenKeys] } : {}) },
+    hiddenLabelKeys: style.hiddenKeys !== undefined ? [...style.hiddenKeys] : [...initial.hiddenLabelKeys],
   };
 }
 
@@ -355,7 +355,7 @@ function pageStyleFor(doc: ReportDoc, page: ReportPage): PageStyle {
     zoomDelta: frame.zoomDelta,
     offsetM: [...frame.offsetM] as [number, number],
     pinnedKeys: [...frame.pinnedKeys],
-    ...(frame.legend.hidden.length > 0 ? { hiddenKeys: [...frame.legend.hidden] } : {}),
+    ...(frame.hiddenLabelKeys.length > 0 ? { hiddenKeys: [...frame.hiddenLabelKeys] } : {}),
     ...(Object.keys(page.panels).length > 0 ? { panels: { ...page.panels } } : {}),
   };
 }

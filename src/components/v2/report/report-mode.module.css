@@ -265,6 +265,10 @@
 .mapDetails[open] > .mapSummary::before { content: "▾"; }
 .mapSummaryText { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mapDetailsBody { display: grid; gap: 12px; min-width: 0; padding: 4px 0 0 20px; }
+.deletedElementsRow { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 8px; color: var(--report-muted); border-top: 1px solid var(--report-line); font-size: 12px; }
+.deletedElementsRestore { min-height: 32px; padding: 0 9px; color: var(--report-accent); background: #fff; border: 1px solid #b8cbe9; border-radius: 6px; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.deletedElementsRestore:hover { background: #f3f7fd; }
+.deletedElementsRestore:focus-visible { outline: 2px solid #2f6fdb; outline-offset: 2px; }
 .basemapGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
 .basemapCell, .basemapActive { display: grid; gap: 4px; min-width: 0; min-height: 64px; padding: 5px; color: var(--report-muted); background: #fff; border: 1px solid var(--report-line); border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; }
 .basemapActive { color: #153f83; background: #e0eafa; border-color: #9db7e1; }
@@ -555,6 +559,16 @@
   .fontContextDivider { height: 1px; background: var(--report-line); }
   .fontMenuItem { min-height: 36px; padding: 6px 4px; color: var(--report-ink); text-align: left; background: transparent; border: 0; border-radius: 5px; cursor: pointer; font: inherit; font-size: 12px; font-weight: 600; }
   .fontMenuItem:hover { background: #f3f7fe; }
+  .fontLegendHeading { padding: 1px 4px 2px; color: var(--report-muted); font-size: 12px; font-weight: 700; }
+  .fontLegendItems { display: grid; gap: 1px; max-height: 184px; overflow-y: auto; }
+  .fontLegendItem { display: grid; grid-template-columns: 18px minmax(0, 1fr) 18px; align-items: center; gap: 7px; min-height: 34px; padding: 4px; color: var(--report-ink); text-align: left; background: transparent; border: 0; border-radius: 5px; cursor: pointer; font: inherit; font-size: 12px; font-weight: 500; }
+  .fontLegendItem:hover { background: #f3f7fe; }
+  .fontLegendItem:focus-visible { outline: 2px solid var(--report-accent); outline-offset: -1px; }
+  .fontLegendSwatch { width: 13px; height: 13px; box-sizing: border-box; border: 1px solid rgba(21,23,28,.28); border-radius: 50%; }
+  .fontLegendItem .fontLegendSwatch[style*="transparent"] { height: 4px; border-width: 2px; border-radius: 999px; }
+  .fontLegendLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fontLegendCheck { color: var(--report-accent); text-align: center; font-weight: 700; }
+  .fontLegendActions { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
 }
 
 @media (min-width: 1024px) {

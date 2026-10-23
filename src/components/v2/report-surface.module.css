@@ -623,6 +623,10 @@
   pointer-events: none;
 }
 
+.slideMap[data-map-pickable="true"] {
+  pointer-events: auto;
+}
+
 .slideFooter {
   position: absolute;
   right: 0;
@@ -1422,6 +1426,14 @@
 
 .sheetCell {
   position: absolute;
+}
+
+.sheetCellInteractive {
+  overflow: visible;
+}
+
+.sheetCellInteractive[data-map-cell-selected="true"] {
+  z-index: 3;
 }
 
 .sheetCellMap {

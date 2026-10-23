@@ -427,6 +427,8 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
       compact: true,
       pinnedKeys: style.pinnedKeys ?? [],
       hiddenKeys: style.hiddenKeys ?? [],
+      deletedElementKeys: reportFrame?.deletedElementKeys ?? [],
+      labelBoxes: reportFrame?.labelBoxes ?? {},
       highlightLabel: focus,
       legendFocus: focus,
       // 2x2 셀에서는 자동 콜아웃을 모두 쌓으면 카드가 지도를 압도한다.
@@ -448,6 +450,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
         zoomDelta: reportFrame.zoomDelta,
         offsetM: reportFrame.offsetM,
         pinnedKeys: [...new Set([...(style.pinnedKeys ?? []), ...reportFrame.pinnedKeys])],
+        hiddenKeys: [...new Set([...(style.hiddenKeys ?? []), ...reportFrame.hiddenLabelKeys])],
       }
     : style;
   const hasSummary = style.summary !== false && !(plan.callout && plan.callout.page > 0);
@@ -515,6 +518,8 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     muted: !!plan.muted,
     pinnedKeys,
     hiddenKeys: frameStyle.hiddenKeys ?? [],
+    deletedElementKeys: reportFrame?.deletedElementKeys ?? [],
+    labelBoxes: reportFrame?.labelBoxes ?? {},
     terrainSection: plan.terrainSection,
     highlightLabel: focus,
     legendFocus: focus,

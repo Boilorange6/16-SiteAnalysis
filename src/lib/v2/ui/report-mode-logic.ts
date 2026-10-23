@@ -1,4 +1,4 @@
-import type { MapFrameState, ReportDoc, ReportDocAction, ReportPage } from "../report/report-doc";
+import { normalizeMapLabelBox, type MapFrameState, type MapLabelBox, type ReportDoc, type ReportDocAction, type ReportPage } from "../report/report-doc";
 
 export type ReportRailKey = "pages" | "tiles";
 
@@ -47,8 +47,38 @@ export function labelFramePatch(
   if (patch.pinnedKeys === undefined && patch.hiddenKeys === undefined) return null;
   return {
     ...(patch.pinnedKeys !== undefined ? { pinnedKeys: [...patch.pinnedKeys] } : {}),
-    ...(patch.hiddenKeys !== undefined ? { legend: { ...frame.legend, hidden: [...patch.hiddenKeys] } } : {}),
+    ...(patch.hiddenKeys !== undefined ? { hiddenLabelKeys: [...patch.hiddenKeys] } : {}),
   };
+}
+
+/** 지도 요소 삭제는 원천 모델을 건드리지 않고 현재 페이지 frame에만 기록한다. */
+export function deleteElementFramePatch(frame: MapFrameState, key: string): Partial<MapFrameState> | null {
+  if (key.length === 0 || frame.deletedElementKeys.includes(key)) return null;
+  return { deletedElementKeys: [...frame.deletedElementKeys, key] };
+}
+
+export function restoreAllDeletedElementFramePatch(frame: MapFrameState): Partial<MapFrameState> | null {
+  if (frame.deletedElementKeys.length === 0) return null;
+  return { deletedElementKeys: [] };
+}
+
+/** 라벨 말풍선은 지도 프레임 비율로 저장해 미리보기와 PPT가 같은 상자를 쓴다. */
+export function labelBoxFramePatch(frame: MapFrameState, key: string, box: Partial<MapLabelBox>): Partial<MapFrameState> | null {
+  if (key.length === 0) return null;
+  return { labelBoxes: { ...frame.labelBoxes, [key]: normalizeMapLabelBox(box) } };
+}
+
+export function resetLabelBoxFramePatch(frame: MapFrameState, key: string): Partial<MapFrameState> | null {
+  if (!(key in frame.labelBoxes)) return null;
+  const labelBoxes = { ...frame.labelBoxes };
+  delete labelBoxes[key];
+  return { labelBoxes };
+}
+
+export function mapElementKindLabel(key: string): "영역" | "선" | "지점" {
+  if (key.startsWith("polygon|")) return "영역";
+  if (key.startsWith("line|")) return "선";
+  return "지점";
 }
 
 /** 범례 강조 상태를 순수하게 토글한다. */

@@ -36,7 +36,7 @@ const VIEW_H = 540;
 const OUT_W = 1920;
 const OUT_H = 1080;
 const PX_PER_INCH = VIEW_W / SLIDE.w;
-type Extra = Partial<Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "siteY" | "calloutTop" | "calloutLeftBottom" | "scale" | "legend" | "bare" | "pinnedKeys" | "hiddenKeys" | "showAutomaticLabels" | "north" | "credit" | "label" | "rightInset" | "backgroundOnly" | "terrainSection">> & {
+type Extra = Partial<Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "siteY" | "calloutTop" | "calloutLeftBottom" | "scale" | "legend" | "bare" | "pinnedKeys" | "hiddenKeys" | "deletedElementKeys" | "labelBoxes" | "showAutomaticLabels" | "north" | "credit" | "label" | "rightInset" | "backgroundOnly" | "terrainSection">> & {
   size?: { width: number; height: number };
   bottomInset?: number;
   style?: PageStyle;
@@ -65,7 +65,7 @@ function reportFrameStyle(frame: MapFrameState, style: PageStyle, model: MapMode
     zoomDelta: frame.scaleDenominator === null ? frame.zoomDelta : zoomForScale(frame.scaleDenominator, model, scaleOptions),
     offsetM: [...frame.offsetM] as [number, number],
     pinnedKeys: [...new Set([...(style.pinnedKeys ?? []), ...frame.pinnedKeys])],
-    hiddenKeys: [...new Set([...(style.hiddenKeys ?? []), ...frame.hiddenLayers])],
+    hiddenKeys: [...new Set([...(style.hiddenKeys ?? []), ...frame.hiddenLayers, ...frame.hiddenLabelKeys])],
   };
 }
 
@@ -325,7 +325,7 @@ function extraFor(p: PlannedSlide, model: MapModel): Extra {
   const siteY = terrainLayout?.mapSiteY ?? 0.5;
   const scaleOptions = frame ? mapFrameScaleOptions(p.format ?? "wide", p.page?.layout ?? "map-summary", { width: VIEW_W, height: VIEW_H, siteX, siteY, fill }) : null;
   const style = frame && scaleOptions ? reportFrameStyle(frame, baseStyle, model, scaleOptions) : baseStyle;
-  const frameOptions = frame ? { hiddenKeys: [...new Set([...(style.hiddenKeys ?? []), ...frame.legend.hidden])], showAutomaticLabels: frame.labelRule !== "off", north: frame.decorations.north ? 24 : (false as const), scale: frame.decorations.scaleBar } : {};
+  const frameOptions = frame ? { hiddenKeys: [...new Set([...(style.hiddenKeys ?? []), ...frame.hiddenLabelKeys])], deletedElementKeys: frame.deletedElementKeys, labelBoxes: frame.labelBoxes, showAutomaticLabels: frame.labelRule !== "off", north: frame.decorations.north ? 24 : (false as const), scale: frame.decorations.scaleBar } : {};
   const highlightLabel = legendLabelOf(model, style.legendFocus);
   // 설명표 장: 두 칸 사이에 반경 원을 넣는 프레임 (렌더러가 점·표를 같은 프레임으로 놓는다)
   if (calloutDetail) {
@@ -385,7 +385,9 @@ export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice 
               bare: false,
               pinnedKeys: cell.pinnedKeys,
               backgroundOnly: status.native ? status.rasterLayers : false,
-              hiddenKeys: frame?.legend.hidden,
+              hiddenKeys: [...new Set([...(cellStyle?.hiddenKeys ?? []), ...(frame?.hiddenLabelKeys ?? [])])],
+              deletedElementKeys: frame?.deletedElementKeys,
+              labelBoxes: frame?.labelBoxes,
               showAutomaticLabels: frame?.labelRule !== "off",
               north: frame ? (frame.decorations.north ? 24 : (false as const)) : undefined,
               scale: frame?.decorations.scaleBar,

@@ -42,6 +42,9 @@ assert.deepEqual(defaultFrame(), {
   hiddenLayers: [],
   labelRule: "site-near",
   pinnedKeys: [],
+  hiddenLabelKeys: [],
+  deletedElementKeys: [],
+  labelBoxes: {},
   legend: { order: [], hidden: [], visibleOnly: true, placement: "below" },
   decorations: { north: true, scaleBar: true, locator: false },
 });

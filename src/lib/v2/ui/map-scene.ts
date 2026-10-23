@@ -8,6 +8,7 @@ import { layerStyle, legendItemsForModel, type MapModel } from "./map-layers";
 import { tileClientModuleFor } from "../tile/client";
 import { canonicalRailLineLabel, railLineColor, railLineIsLightRail, railStationMatchKey } from "../tile/rail-presentation";
 import { terrainSectionLabelAnchor } from "./terrain-section";
+import type { MapLabelBox } from "../report/report-doc";
 
 export type MapSceneBox = { x0: number; y0: number; x1: number; y1: number };
 
@@ -223,6 +224,7 @@ export type MapSceneLabelPlacement = {
   entry: MapSceneLabel;
   placed: Placed;
   box: MapSceneBox;
+  autoBox?: MapSceneBox;
   leader: MapSceneBox;
   text: MapCalloutTextLayout;
   variant: "auto" | "fixed" | "hover";
@@ -346,6 +348,8 @@ export type MapSceneOptions = {
   hoverKey?: string | null;
   pinnedKeys?: readonly string[];
   hiddenKeys?: readonly string[];
+  deletedElementKeys?: readonly string[];
+  labelBoxes?: Readonly<Record<string, MapLabelBox>>;
   showAutomaticLabels?: boolean;
   bare?: boolean;
   view?: MapView;
@@ -933,6 +937,8 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     hoverKey = null,
     pinnedKeys = [],
     hiddenKeys = [],
+    deletedElementKeys = [],
+    labelBoxes = {},
     showAutomaticLabels = true,
     bare = false,
     legendBox = null,
@@ -961,6 +967,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   const selected = new Set(selectedFids);
   const pinned = new Set(pinnedKeys);
   const hidden = new Set(hiddenKeys);
+  const deleted = new Set(deletedElementKeys);
   const highlightActive = highlightLabel !== null;
   const legendFocusOnly = legendFocusOpt !== null;
   const emphasisActive = emphasisKey !== null;
@@ -979,14 +986,14 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     return feature.weight && wmax > 0 ? min + (max - min) * Math.sqrt(feature.weight / wmax) : min;
   };
   const features: MapSceneFeature[] = model.features.map((feature, index) => ({ feature, p: project(feature.lng, feature.lat), selected: isSelected(feature.fid), index, radius: radiusOf(feature), key: mapFeatureKey(feature.layer, feature.fid, index) }));
-  const drawn = [...features].sort((a, b) => {
+  const drawn = features.filter((entry) => !deleted.has(entry.key)).sort((a, b) => {
     const rank = (entry: MapSceneFeature) => (entry.feature.highlight || entry.selected ? 2 : entry.feature.layer === "store:other" ? 0 : 1);
     return rank(a) - rank(b) || (b.feature.weight ?? 0) - (a.feature.weight ?? 0);
   });
   const linePaths: MapSceneLine[] = (model.lines ?? []).map((line, index) => {
     const points = line.points.map(([lng, lat]) => project(lng, lat));
     return { line, points, center: centerOf(points), index, key: mapElementKey("line", line.layer, line.fid, index) };
-  });
+  }).filter((entry) => !deleted.has(entry.key));
   const polygons: MapScenePolygon[] = (model.polygons ?? []).map((polygon, index) => {
     const rings = polygon.rings.map((ring) => ring.map(([lng, lat]) => project(lng, lat)));
     const outer = rings[0] ?? [];
@@ -995,7 +1002,9 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     const center: [number, number] = xs.length > 0 ? [(minOf(xs) + maxOf(xs)) / 2, (minOf(ys) + maxOf(ys)) / 2] : [cx, cy];
     return { polygon, rings, center, area: polygonArea(outer), index, key: mapElementKey("polygon", polygon.layer, polygon.fid, index) };
   });
-  if (model.tileCode === "A04") polygons.sort((a, b) => a04PolygonDrawOrder(a.polygon.layer) - a04PolygonDrawOrder(b.polygon.layer) || a.index - b.index);
+  const visiblePolygons = polygons.filter((entry) => !deleted.has(entry.key));
+  if (model.tileCode === "A04") visiblePolygons.sort((a, b) => a04PolygonDrawOrder(a.polygon.layer) - a04PolygonDrawOrder(b.polygon.layer) || a.index - b.index);
+  const polygonCount = polygons.length;
   const siteParcelModels = model.siteParcel === undefined ? (model.polygons ?? []).filter((polygon) => isSiteParcelLayer(polygon.layer)) : (model.siteParcel ?? []);
   const siteParcels: MapScenePolygon[] = siteParcelModels.map((polygon, index) => {
     const rings = polygon.rings.map((ring) => ring.map(([lng, lat]) => project(lng, lat)));
@@ -1003,12 +1012,12 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     const xs = outer.map(([x]) => x);
     const ys = outer.map(([, y]) => y);
     const center: [number, number] = xs.length > 0 ? [(minOf(xs) + maxOf(xs)) / 2, (minOf(ys) + maxOf(ys)) / 2] : [cx, cy];
-    return { polygon, rings, center, area: polygonArea(outer), index: polygons.length + index, key: mapElementKey("polygon", polygon.layer, polygon.fid, polygons.length + index) };
-  });
+    return { polygon, rings, center, area: polygonArea(outer), index: polygonCount + index, key: mapElementKey("polygon", polygon.layer, polygon.fid, polygonCount + index) };
+  }).filter((entry) => !deleted.has(entry.key));
   const legendLabelByElementKey = new Map<string, string>();
   for (const entry of features) legendLabelByElementKey.set(entry.key, presentedLabelOf(entry.feature.layer));
   for (const entry of linePaths) legendLabelByElementKey.set(entry.key, presentedLabelOf(entry.line.layer, entry.line.legendLabel));
-  for (const entry of polygons) legendLabelByElementKey.set(entry.key, presentedLabelOf(entry.polygon.layer));
+  for (const entry of visiblePolygons) legendLabelByElementKey.set(entry.key, presentedLabelOf(entry.polygon.layer));
   const elementHighlighted = (layerName: string, key: string, explicitLabel?: string) => !highlightActive
     || explicitLabel === highlightLabel
     || legendLabelByElementKey.get(key) === highlightLabel
@@ -1061,7 +1070,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
       const highlighted = isLayerHighlighted(entry.feature.layer) && (!!entry.feature.highlight || entry.selected);
       return [{ ...base, autoText: automaticLabelText(entry.feature.layer, "feature", entry.feature, highlighted), labelPriority: legacyLabelPriority("feature", entry.feature, highlighted) ?? 0, order: entry.index, p: entry.p, radius: entry.radius, small: false, explicit: !!automaticLabelText(entry.feature.layer, "feature", entry.feature), highlighted, pick: { fid: entry.feature.fid, lng: entry.feature.lng, lat: entry.feature.lat, kind: "feature" as const, key: entry.key } }];
     }),
-    ...polygons.flatMap((entry) => {
+    ...visiblePolygons.flatMap((entry) => {
       const anchor = visibleAnchor(entry.rings.flat(), entry.center, W, H);
       if (!anchor) return [];
       const base = labelEntriesByKey.get(entry.key);
@@ -1117,9 +1126,28 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     const leader: MapSceneBox = { x0: Math.max(0, Math.min(...points.map(([x]) => x)) - 2 * u), y0: Math.max(0, Math.min(...points.map(([, y]) => y)) - 2 * u), x1: Math.min(W, Math.max(...points.map(([x]) => x)) + 2 * u), y1: Math.min(H, Math.max(...points.map(([, y]) => y)) + 2 * u) };
     return { entry, placed, box, leader, text, variant: "auto" };
   };
+  const nearestBoxEdge = (box: MapSceneBox, point: readonly [number, number]): [number, number] => {
+    const x = Math.max(box.x0, Math.min(box.x1, point[0]));
+    const y = Math.max(box.y0, Math.min(box.y1, point[1]));
+    if (point[0] >= box.x0 && point[0] <= box.x1 && point[1] >= box.y0 && point[1] <= box.y1) {
+      const distances = [
+        { distance: Math.abs(point[0] - box.x0), edge: [box.x0, y] as [number, number] },
+        { distance: Math.abs(box.x1 - point[0]), edge: [box.x1, y] as [number, number] },
+        { distance: Math.abs(point[1] - box.y0), edge: [x, box.y0] as [number, number] },
+        { distance: Math.abs(box.y1 - point[1]), edge: [x, box.y1] as [number, number] },
+      ];
+      return distances.sort((a, b) => a.distance - b.distance)[0].edge;
+    }
+    return [x, y];
+  };
+  const leaderFor = (entry: MapSceneLabel, placed: Placed): MapSceneBox => {
+    const points = [entry.p, placed.knee, placed.edge];
+    return { x0: Math.max(0, Math.min(...points.map(([x]) => x)) - 2 * u), y0: Math.max(0, Math.min(...points.map(([, y]) => y)) - 2 * u), x1: Math.min(W, Math.max(...points.map(([x]) => x)) + 2 * u), y1: Math.min(H, Math.max(...points.map(([, y]) => y)) + 2 * u) };
+  };
   const placementCandidates: Array<{ entry: MapSceneLabel; variant: "auto" | "fixed" | "hover"; rank: number }> = [];
   if (!bare) {
-    const pinnedLabels = pinnedKeys.map((key) => labelByKey.get(key)).filter((entry): entry is MapSceneLabel => !!entry && !hidden.has(entry.key));
+    const pinnedLabelKeys = [...new Set([...pinnedKeys, ...Object.keys(labelBoxes)])];
+    const pinnedLabels = pinnedLabelKeys.map((key) => labelByKey.get(key)).filter((entry): entry is MapSceneLabel => !!entry && !hidden.has(entry.key));
     const pinnedSet = new Set(pinnedLabels.map((entry) => entry.key));
     const hoverLabel = hoverKey && !pinned.has(hoverKey) && !hidden.has(hoverKey) ? labelByKey.get(hoverKey) : undefined;
     const automatic = showAutomaticLabels && (model.tileCode ? tileClientModuleFor(model.tileCode)?.autoLabels !== false : true)
@@ -1129,16 +1157,33 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   }
   const candidateLayouts = placementCandidates.map(({ entry, variant, rank }) => {
     const fontSize = variant === "auto" ? Math.max(9 * labelScale, entry.small ? 10.5 * u * 0.9 * labelScale : 10.5 * u * labelScale) : calloutLabelFs;
-    return { entry, variant, rank, text: mapCalloutTextLayout(entry, fontSize, calloutFrameModel.cardW, calloutTextLeft, calloutTextRight, calloutPadY, protectTerrainLabel(entry.layer)) };
+    const custom = labelBoxes[entry.key];
+    const maxWidth = custom ? Math.max(1, custom.w * W) : calloutFrameModel.cardW;
+    return { entry, variant, rank, custom, text: mapCalloutTextLayout(entry, fontSize, maxWidth, calloutTextLeft, calloutTextRight, calloutPadY, protectTerrainLabel(entry.layer)) };
   });
   const layout = layoutCallouts(calloutFrameModel, candidateLayouts.map(({ entry, rank, text }) => ({ id: entry.key, x: entry.p[0], y: entry.p[1], rank, width: text.width, height: text.height })));
   const placedByKey = new Map(layout.placed.map((placed) => [placed.id, placed]));
   const labelPlacements: MapSceneLabelPlacement[] = [];
-  for (const { entry, variant, text } of candidateLayouts) {
+  for (const { entry, variant, custom, text } of candidateLayouts) {
     const placed = placedByKey.get(entry.key);
     if (!placed) continue;
     const placement = placementFor(placed, entry, text);
     placement.variant = variant;
+    if (custom) {
+      const autoBox = placement.box;
+      const box: MapSceneBox = {
+        x0: Math.max(0, Math.min(W, custom.x * W)),
+        y0: Math.max(0, Math.min(H, custom.y * H)),
+        x1: Math.max(0, Math.min(W, (custom.x + custom.w) * W)),
+        y1: Math.max(0, Math.min(H, (custom.y + custom.h) * H)),
+      };
+      const edge = nearestBoxEdge(box, entry.p);
+      const customPlaced: Placed = { ...placed, x: box.x0, y: box.y0, width: box.x1 - box.x0, height: box.y1 - box.y0, dot: entry.p, knee: edge, edge };
+      placement.placed = customPlaced;
+      placement.box = box;
+      placement.autoBox = autoBox;
+      placement.leader = leaderFor(entry, customPlaced);
+    }
     labelPlacements.push(placement);
   }
   const occupiedBoxes: MapSceneBox[] = [
@@ -1163,7 +1208,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     tiles,
     features: drawn,
     lines: linePaths,
-    polygons,
+    polygons: visiblePolygons,
     siteParcels,
     siteMode,
     sitePath,

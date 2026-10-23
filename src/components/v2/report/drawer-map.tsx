@@ -194,6 +194,10 @@ export default function DrawerMap({ page, frame, view, cell, scaleOptions, sameE
               {layers.map((layer) => <label key={layer.id}><input type="checkbox" checked={!frame.hiddenLayers.includes(layer.id)} onChange={() => toggleHidden(layer.id)} /><span>{layer.label}</span></label>)}
               {layers.length === 0 && <span className={styles.helper}>이 지도에는 선택할 레이어가 없습니다.</span>}
             </div>
+            {frame.deletedElementKeys.length > 0 && <div className={styles.deletedElementsRow}>
+              <span>지운 요소 {frame.deletedElementKeys.length}개</span>
+              <button type="button" className={styles.deletedElementsRestore} onClick={() => onFrame({ deletedElementKeys: [] })}>모두 되살리기</button>
+            </div>}
           </div>
         </details>
 

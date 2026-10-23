@@ -16,7 +16,8 @@ const { TILE_CODES, TILE_CATALOG } = await import("../../lib/v2/ui/tile-catalog.
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
 const { isEditableMap, nativeMapStatus } = await import("../../lib/v2/report/map-pptx.ts");
-const { buildMapScene } = await import("../../lib/v2/ui/map-scene.ts");
+const { buildMapScene, mapFeatureKey } = await import("../../lib/v2/ui/map-scene.ts");
+const { defaultFrame } = await import("../../lib/v2/report/report-doc.ts");
 const { SLIDE, slideLegend, slideReserved, slideSiteX } = await import("../../lib/v2/ui/overlay-layout.ts");
 const { mapKeysOf } = await import("../../lib/v2/report/report-plan.ts");
 const { sheetCells } = await import("../../lib/v2/ui/sheet.ts");
@@ -351,6 +352,40 @@ const hiddenBytes = await renderReportPptx([hiddenBusPlan], images);
 const hiddenZip = await JSZip.loadAsync(hiddenBytes);
 const hiddenXml = await hiddenZip.file("ppt/slides/slide1.xml")?.async("string") ?? "";
 assert.doesNotMatch(hiddenXml, new RegExp(`GRP\\|map-A01-label-${hiddenBusKey}\\|`), "hiddenKeys 라벨이 PPT XML에 남아 있다");
+
+// §9-6 페이지 단위 삭제·라벨 상자: 화면 장면과 네이티브 PPT가 같은 frame을 소비한다.
+const selectionMap = {
+  ...representativeMap("D13"),
+  features: [
+    feature("road:간선", "selection-keep", -120, 110, { name: "남길 지점", label: "남길 지점", labelPriority: 2 }),
+    feature("bus_stop", "selection-delete", 260, -130, { name: "지울 지점", label: "지울 지점", labelPriority: 2 }),
+  ],
+  lines: [],
+  polygons: [],
+  total: 2,
+};
+const keepKey = mapFeatureKey(selectionMap.features[0].layer, selectionMap.features[0].fid, 0);
+const deleteKey = mapFeatureKey(selectionMap.features[1].layer, selectionMap.features[1].fid, 1);
+const selectionBox = { x: 0.62, y: 0.18, w: 0.2, h: 0.12 };
+const selectionFrame = { ...defaultFrame(), pinnedKeys: [keepKey], deletedElementKeys: [deleteKey], labelBoxes: { [keepKey]: selectionBox } };
+const selectionPage = { id: "p-selection", layout: "map-summary", panels: {}, textBoxes: [], notes: "", kind: "tile", tileId: "editable-selection", part: { type: "single" }, settings: {}, frame: selectionFrame };
+const selectionPlan = { ...plannedTile("D13", selectionMap, "selection"), page: selectionPage, no: 1, total: 1 };
+const selectionBaselinePlan = { ...selectionPlan, page: { ...selectionPage, frame: { ...selectionFrame, deletedElementKeys: [] } } };
+const selectionImages = { [mapKeysOf(selectionPlan)[0] ?? "editable-selection"]: BACKGROUND_PNG };
+const selectionBytes = await renderReportPptx([selectionPlan, selectionBaselinePlan], selectionImages);
+const selectionZip = await JSZip.loadAsync(selectionBytes);
+const selectionXml = await selectionZip.file("ppt/slides/slide1.xml")?.async("string") ?? "";
+const selectionBaselineXml = await selectionZip.file("ppt/slides/slide2.xml")?.async("string") ?? "";
+assert.ok(shapeCount(selectionXml) < shapeCount(selectionBaselineXml), "PPT 삭제 frame은 삭제 지물의 도형·라벨을 함께 줄인다");
+const selectionKeyPart = keepKey.replace(/[|\r\n]/g, "-").slice(0, 90);
+assert.match(selectionXml, new RegExp(`GRP\\|map-D13-label-${selectionKeyPart}\\|`), "PPT 저장 라벨 상자 그룹이 없다");
+assert.doesNotMatch(selectionXml, /지울 지점/u, "PPT 삭제 지점 라벨이 남아 있다");
+const selectionLabelBox = taggedShapeBlocks(selectionXml).find((block) => block.includes(`GRP|map-D13-label-${selectionKeyPart}|`) && block.includes("|box"));
+assert.ok(selectionLabelBox, "PPT 저장 라벨 상자 도형이 없다");
+const selectionLabelGeometry = geometryForBlock(selectionLabelBox);
+assert.ok(selectionLabelGeometry, "PPT 저장 라벨 상자 geometry가 없다");
+assert.ok(Math.abs(selectionLabelGeometry.x / EMU_PER_INCH - selectionBox.x * SLIDE.w) < 0.002, "PPT 라벨 상자 x가 지도 frame 비율과 같다");
+assert.ok(Math.abs(selectionLabelGeometry.y / EMU_PER_INCH - selectionBox.y * SLIDE.h) < 0.002, "PPT 라벨 상자 y가 지도 frame 비율과 같다");
 assert.match(a01Xml, /\|범례 2호선\|/, "A01 PPT에 네이티브 노선 범례 그룹이 없다");
 assert.match(a01Xml, /\|axis-label/, "A01 PPT에 네이티브 역사 막대 라벨이 없다");
 assert.match(a01Xml, /\|역명 · 고덕역\|/, "A01 PPT에 네이티브 역명이 없다");

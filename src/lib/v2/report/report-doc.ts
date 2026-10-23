@@ -65,6 +65,19 @@ export function reportFontSizesFromLegacyScale(scale: unknown): ReportFontSizes 
 
 export type LegendPlacement = "below" | "right" | "hidden";
 export type LabelRule = "site-near" | "all-visible" | "off";
+export type MapLabelBox = { x: number; y: number; w: number; h: number };
+export const MAP_LABEL_MIN_WIDTH = 0.06;
+export const MAP_LABEL_MIN_HEIGHT = 0.05;
+
+/** 지도 프레임 안의 정규화 라벨 상자. 옛 저장본과 UI 입력을 같은 규칙으로 맞춘다. */
+export function normalizeMapLabelBox(value: Partial<MapLabelBox> | undefined): MapLabelBox {
+  const width = Math.max(MAP_LABEL_MIN_WIDTH, Math.min(1, Number.isFinite(value?.w) ? value!.w! : MAP_LABEL_MIN_WIDTH));
+  const height = Math.max(MAP_LABEL_MIN_HEIGHT, Math.min(1, Number.isFinite(value?.h) ? value!.h! : MAP_LABEL_MIN_HEIGHT));
+  const x = Math.max(0, Math.min(1 - width, Number.isFinite(value?.x) ? value!.x! : 0));
+  const y = Math.max(0, Math.min(1 - height, Number.isFinite(value?.y) ? value!.y! : 0));
+  return { x, y, w: width, h: height };
+}
+
 export type MapFrameState = {
   zoomDelta: number;
   offsetM: [number, number];
@@ -74,6 +87,9 @@ export type MapFrameState = {
   hiddenLayers: string[];
   labelRule: LabelRule;
   pinnedKeys: string[];
+  hiddenLabelKeys: string[];
+  deletedElementKeys: string[];
+  labelBoxes: Record<string, MapLabelBox>;
   legend: { order: string[]; hidden: string[]; visibleOnly: boolean; placement: LegendPlacement };
   decorations: { north: boolean; scaleBar: boolean; locator: boolean };
 };
@@ -174,6 +190,9 @@ export function defaultFrame(): MapFrameState {
     hiddenLayers: [],
     labelRule: "site-near",
     pinnedKeys: [],
+    hiddenLabelKeys: [],
+    deletedElementKeys: [],
+    labelBoxes: {},
     legend: { order: [], hidden: [], visibleOnly: true, placement: "below" },
     decorations: { north: true, scaleBar: true, locator: false },
   };
@@ -189,6 +208,9 @@ function cloneFrame(frame: MapFrameState): MapFrameState {
     offsetM: [...frame.offsetM] as [number, number],
     hiddenLayers: [...frame.hiddenLayers],
     pinnedKeys: [...frame.pinnedKeys],
+    hiddenLabelKeys: [...(frame.hiddenLabelKeys ?? [])],
+    deletedElementKeys: [...(frame.deletedElementKeys ?? [])],
+    labelBoxes: Object.fromEntries(Object.entries(frame.labelBoxes ?? {}).map(([key, box]) => [key, { ...box }])),
     legend: { ...frame.legend, order: [...frame.legend.order], hidden: [...frame.legend.hidden] },
     decorations: { ...frame.decorations },
   };
@@ -313,6 +335,11 @@ function mergeFrame(frame: MapFrameState, patch: Partial<MapFrameState>): MapFra
     ...(patch.hiddenLayers !== undefined ? { hiddenLayers: [...patch.hiddenLayers] } : {}),
     ...(patch.labelRule !== undefined ? { labelRule: patch.labelRule } : {}),
     ...(patch.pinnedKeys !== undefined ? { pinnedKeys: [...patch.pinnedKeys] } : {}),
+    ...(patch.hiddenLabelKeys !== undefined ? { hiddenLabelKeys: [...patch.hiddenLabelKeys] } : {}),
+    ...(patch.deletedElementKeys !== undefined ? { deletedElementKeys: [...patch.deletedElementKeys] } : {}),
+    ...(patch.labelBoxes !== undefined
+      ? { labelBoxes: Object.fromEntries(Object.entries(patch.labelBoxes).map(([key, box]) => [key, normalizeMapLabelBox(box)])) }
+      : {}),
     ...(patch.legend !== undefined
       ? { legend: { ...patch.legend, order: [...patch.legend.order], hidden: [...patch.legend.hidden] } }
       : {}),
