@@ -23,7 +23,7 @@ import DrawerPages, { type PageAddKind } from "./drawer-pages";
 import DrawerTiles from "./drawer-tiles";
 import PageStrip, { type PageStripItem } from "./page-strip";
 import DrawerMap from "./drawer-map";
-import LayoutSwitcher from "./layout-switcher";
+import LayoutSwitcher, { type DeletedLayoutItem } from "./layout-switcher";
 import MapScaleChip from "./map-scale-chip";
 import NotesField from "./notes-field";
 import ExportPanel from "./export-panel";
@@ -1005,6 +1005,36 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     else if (key === "labels" && (selection?.kind === "mapLabel" || selection?.kind === "mapElement")) hideMapLabel(selection.key);
     closeFontContext(true);
   }, [closeFontContext, deletePageElement, fontContext?.key, hideMapLabel, selection]);
+  const layoutPageKind = selectedPage?.kind ?? "blank";
+  const layoutHasMap = selectedSlide?.kind === "tile"
+    ? !!selectedSlide.map
+    : selectedSlide?.kind === "sheet"
+      ? selectedSlide.cells.some((cell) => !!cell?.view.map)
+      : false;
+  const layoutHasSummary = selectedSlide?.kind === "tile"
+    ? selectedSlide.style.summary !== false && !(selectedSlide.callout && selectedSlide.callout.page > 0)
+    : false;
+  const deletedLayoutItems = useMemo<DeletedLayoutItem[]>(() => {
+    if (!selectedPage || !selectedId) return [];
+    const items: DeletedLayoutItem[] = [];
+    const pageLabels: Record<PageElementKey, string> = { title: "제목", summary: "요약", source: "출처 줄" };
+    for (const key of selectedPage.deletedElementKeys ?? []) {
+      items.push({ id: `page-${key}`, label: pageLabels[key], onRestore: () => { apply({ type: "pageElement", id: selectedId, key, deleted: false }, `${pageLabels[key]}을 되살렸습니다.`); } });
+    }
+    const frame = mapFrame;
+    if (!frame) return items;
+    if (frame.legend.placement === "hidden") items.push({ id: "legend", label: "범례", onRestore: () => applyFrame(mapCell, { legend: { ...frame.legend, placement: "below" } }, "범례 칸을 되살렸습니다.") });
+    const decorationLabels = { north: "방위표", scaleBar: "축척 막대", locator: "위치도" } as const;
+    for (const key of Object.keys(decorationLabels) as Array<keyof typeof decorationLabels>) {
+      if (frame.decorations[key] !== false) continue;
+      items.push({ id: `decoration-${key}`, label: decorationLabels[key], onRestore: () => applyFrame(mapCell, { decorations: { ...frame.decorations, [key]: true } }, `${decorationLabels[key]}를 되살렸습니다.`) });
+    }
+    for (const key of frame.deletedElementKeys) {
+      const label = `지도 ${mapElementKindLabel(key)}`;
+      items.push({ id: `map-${key}`, label, onRestore: () => applyFrame(mapCell, { deletedElementKeys: frame.deletedElementKeys.filter((candidate) => candidate !== key) }, `${label}를 되살렸습니다.`) });
+    }
+    return items;
+  }, [apply, applyFrame, mapCell, mapFrame, selectedId, selectedPage]);
   const mapTileId = selectedPage?.kind === "tile"
     ? selectedPage.tileId
     : selectedPage?.kind === "compare"
@@ -1329,7 +1359,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
             </div>
             <div className={styles.railPopoverRoot}>
               <button ref={layoutTriggerRef} type="button" className={`${styles.railButton} ${layoutPopoverOpen ? styles.railButtonActive : ""}`} aria-haspopup="dialog" aria-pressed={layoutPopoverOpen} aria-expanded={layoutPopoverOpen} aria-controls={layoutPopoverOpen ? "report-layout-menu" : undefined} aria-label="페이지 레이아웃 메뉴" onClick={(event) => toggleLayoutPopover(event.currentTarget)} disabled={!selectedPage}><span aria-hidden="true"><RailIcon name="layout" /></span><span className={styles.railTooltip} role="tooltip">레이아웃</span></button>
-              {layoutPopoverOpen && selectedPage && <div ref={layoutPopoverRef} id="report-layout-menu" className={`${styles.floatCard} ${styles.sidePanelCard} ${styles.anchoredCard} ${styles.railPopover}`} style={{ ...anchoredCardStyle, ...sidePanelStyle }} role="dialog" aria-label="페이지 레이아웃"><LayoutSwitcher compact pageNumber={selectedPageNumber ?? 1} value={selectedPage.layout} opacity={sidePanelOpacity} onOpacityChange={changeSidePanelOpacity} onChange={(layout) => apply({ type: "layout", id: selectedPage.id, layout })} onClose={() => closePopover(true)} /></div>}
+               {layoutPopoverOpen && selectedPage && <div ref={layoutPopoverRef} id="report-layout-menu" className={`${styles.floatCard} ${styles.sidePanelCard} ${styles.anchoredCard} ${styles.railPopover}`} style={{ ...anchoredCardStyle, ...sidePanelStyle }} role="dialog" aria-label="페이지 레이아웃"><LayoutSwitcher compact pageNumber={selectedPageNumber ?? 1} value={selectedPage.layout} pageKind={layoutPageKind} hasMap={layoutHasMap} hasSummary={layoutHasSummary} grid={selectedPage.kind === "compare" ? selectedPage.grid : undefined} deletedItems={deletedLayoutItems} opacity={sidePanelOpacity} onOpacityChange={changeSidePanelOpacity} onChange={(layout) => apply({ type: "layout", id: selectedPage.id, layout })} onGridChange={(grid) => apply({ type: "grid", id: selectedPage.id, grid })} onClose={() => closePopover(true)} /></div>}
             </div>
             <div className={styles.railPopoverRoot}>
               <button ref={notesTriggerRef} type="button" className={`${styles.railButton} ${notesPopoverOpen ? styles.railButtonActive : ""}`} aria-haspopup="dialog" aria-pressed={notesPopoverOpen} aria-expanded={notesPopoverOpen} aria-controls={notesPopoverOpen ? "report-notes-popover" : undefined} aria-label={selectedPage?.notes.trim() ? "발표 메모 있음" : "발표 메모"} data-has-notes={selectedPage?.notes.trim() ? "true" : "false"} onClick={(event) => toggleNotesPopover(event.currentTarget)} disabled={!selectedPage}><span aria-hidden="true"><RailIcon name="notes" /></span><span className={styles.railTooltip} role="tooltip">메모</span>{selectedPage?.notes.trim() && <span className={styles.noteDot} aria-hidden="true" />}</button>

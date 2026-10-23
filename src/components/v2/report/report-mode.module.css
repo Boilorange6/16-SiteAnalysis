@@ -241,8 +241,11 @@
 .layoutSwitcher { display: grid; gap: 12px; padding: 16px; background: #fff; }
 .layoutSwitcher h2 { margin: 0; font-size: 16px; }
 .layoutOptions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.layoutPageKind { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; color: var(--report-muted); background: #f7f8fa; border: 1px solid var(--report-line); border-radius: 7px; font-size: 12px; }
+.layoutPageKind strong { color: var(--report-ink); font-size: 13px; }
 .layoutOption, .layoutOptionActive { display: grid; gap: 6px; min-width: 0; min-height: 104px; padding: 8px; color: var(--report-muted); text-align: left; background: #fff; border: 1px solid var(--report-line); border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 500; }
 .layoutOptionActive { padding: 7px; color: #153f83; background: #eef3fb; border: 2px solid #2f6fdb; font-weight: 700; }
+.layoutOption:disabled { color: #a4a9b2; background: #f7f8fa; border-style: dashed; cursor: not-allowed; }
 .layoutPreview { display: block; width: 100%; height: auto; color: #49658e; }
 .notesField { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 4px 8px; padding: 8px 12px; background: #fff; border: 1px solid var(--report-line); border-radius: 8px; }
 .fieldLabelText { font-size: 13px; font-weight: 700; }
@@ -266,6 +269,8 @@
 .mapSummaryText { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mapDetailsBody { display: grid; gap: 12px; min-width: 0; padding: 4px 0 0 20px; }
 .deletedElementsRow { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 8px; color: var(--report-muted); border-top: 1px solid var(--report-line); font-size: 12px; }
+.deletedElementsLabel { flex: 0 0 auto; font-weight: 700; }
+.deletedElementsList { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; min-width: 0; }
 .deletedElementsRestore { min-height: 32px; padding: 0 9px; color: var(--report-accent); background: #fff; border: 1px solid #b8cbe9; border-radius: 6px; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; white-space: nowrap; }
 .deletedElementsRestore:hover { background: #f3f7fd; }
 .deletedElementsRestore:focus-visible { outline: 2px solid #2f6fdb; outline-offset: 2px; }

@@ -1,6 +1,0 @@
-feat(v2): 보고서 요소 공통 지우기 막대 연결
-
-공통 요소 막대와 페이지 요소 삭제 상태를 보고서 편집기, 미리보기, PPT 계획에 연결한다.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01PL4UbX46BtRp6j2rFpJyRT
