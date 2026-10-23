@@ -151,7 +151,7 @@ for (const [name, aliases] of [
 ]) {
   assert.match(slideSurfaceSource, aliases, `글상자 ${name} 크기 조절 손잡이`);
 }
-for (const label of ["굵게", "기울임", "글자 색", "삭제", "완료"]) {
+for (const label of ["굵게", "기울임", "글자 색", "지우기", "완료"]) {
   assert.match(slideSurfaceSource, new RegExp(label), `글상자 서식 막대: ${label}`);
 }
 assert.doesNotMatch(slideSurfaceSource, /textBoxMoveHandle|textBoxResizeHandle|↕|↘/, "옛 글상자 이동·크기 손잡이를 제거한다");
