@@ -33,6 +33,8 @@ assert.match(mode, /target\.kind === "decoration" && target\.key === "scaleBar"\
 assert.doesNotMatch(surface, /onFontContextMenu\(\"|onFontContextMenu\?\.\(\"/, "표면의 공통 메뉴 입구는 문자열 대신 요소 대상을 전달한다");
 assert.match(surface, /data-element-action-bar\], \[data-report-decoration\], \[data-decoration-frame\]/, "장식 선택 프레임은 상위 지도 진입 포인터 경로를 차단한다");
 assert.match(surface, /isResizeAnchorHit/, "작은 프레임의 핸들 겹침은 중앙 드래그로 라우팅한다");
+assert.match(surface, /onContextMenu\?: \(event: React\.MouseEvent<HTMLDivElement>\) => void/, "선택 프레임이 컨텍스트 메뉴 핸들러를 받는다");
+assert.match(surface, /data-panel-frame=\{panelKey\}[\s\S]*?onContextMenu=\{\(event\).*?onContextMenu\?\.\(event\)/s, "출처 선택 프레임이 우클릭을 공통 메뉴로 전달한다");
 assert.match(surface, /!isResizeAnchorHit\(direction, event\)/, "핸들 중앙 겹침은 리사이즈를 시작하지 않는다");
 assert.match(surface, /: slideLayout\(format\)\.strip;/, "기본 출처 줄은 절대 rect를 다시 배율 변환하지 않는다");
 assert.match(surface, /const target = event\.target as HTMLElement;\s+if \(target\.closest\("\[data-map-pick\]/, "지도 요소 hit에서는 지도 이동을 시작하지 않는다");

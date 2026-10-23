@@ -2148,11 +2148,12 @@ type PanelTransformFrameProps = {
   onResizeEnd: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onDelete: () => void;
   onDragStart: (event: ReactPointerEvent<HTMLElement>) => void;
+  onContextMenu?: (event: React.MouseEvent<HTMLDivElement>) => void;
   actions?: ElementAction[];
   directions?: ResizeDirection[];
 };
 
-function PanelTransformFrame({ panelKey, rect, unit, bounds, xGuides, yGuides, onDragStart, onResizeStart, onResizeMove, onResizeEnd, onDelete, actions = [], directions = ["nw", "n", "ne", "e", "se", "s", "sw", "w"] }: PanelTransformFrameProps) {
+function PanelTransformFrame({ panelKey, rect, unit, bounds, xGuides, yGuides, onDragStart, onResizeStart, onResizeMove, onResizeEnd, onDelete, onContextMenu, actions = [], directions = ["nw", "n", "ne", "e", "se", "s", "sw", "w"] }: PanelTransformFrameProps) {
   const styles = useSurfaceStyles();
   const actionBar = actionBarOffsetForRect(rect, unit, bounds);
   return <>
@@ -2160,7 +2161,7 @@ function PanelTransformFrame({ panelKey, rect, unit, bounds, xGuides, yGuides, o
       {xGuides.map((x) => <span className={styles.snapGuideX} style={{ left: x * unit }} key={`x-${x}`} />)}
       {yGuides.map((y) => <span className={styles.snapGuideY} style={{ top: y * unit }} key={`y-${y}`} />)}
     </div>
-    <div className={styles.panelSelectionFrame} data-panel-frame={panelKey} style={rectStyle(rect, unit)} aria-label={`${panelLabelFor(panelKey)} 선택됨`}>
+    <div className={styles.panelSelectionFrame} data-panel-frame={panelKey} style={rectStyle(rect, unit)} aria-label={`${panelLabelFor(panelKey)} 선택됨`} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); onContextMenu?.(event); }}>
       <ElementActionBar elementLabel={PANEL_LABEL[panelKey]} left={actionBar.left} top={actionBar.top} actions={actions} onDelete={onDelete} />
       {directions.map((direction) => <button
         key={direction}
@@ -2408,7 +2409,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
     setSelectedPanel(null);
   };
   const handles = editable && displaySlide.kind === "tile" && selectedPanel && panelRects[selectedPanel]
-    ? <PanelTransformFrame panelKey={selectedPanel} rect={panelRects[selectedPanel]!} unit={unit} bounds={{ w: size.w * unit, h: size.h * unit }} xGuides={snapGuides.x} yGuides={snapGuides.y} onDragStart={(event) => onPanelMoveStart(selectedPanel, event)} onResizeStart={onResizeStart} onResizeMove={onResizeMove} onResizeEnd={onResizeEnd} onDelete={() => { onPanelDelete?.(selectedPanel); setSelectedPanel(null); }} actions={existingPanels[selectedPanel] ? [{ key: "reset", label: "위치 초기화", onClick: () => resetPanel(selectedPanel) }] : []} directions={selectedPanel === "source" ? ["e", "w"] : undefined} />
+    ? <PanelTransformFrame panelKey={selectedPanel} rect={panelRects[selectedPanel]!} unit={unit} bounds={{ w: size.w * unit, h: size.h * unit }} xGuides={snapGuides.x} yGuides={snapGuides.y} onDragStart={(event) => onPanelMoveStart(selectedPanel, event)} onResizeStart={onResizeStart} onResizeMove={onResizeMove} onResizeEnd={onResizeEnd} onDelete={() => { onPanelDelete?.(selectedPanel); setSelectedPanel(null); }} onContextMenu={(event) => onFontContextMenu?.(selectedPanel === "source" ? { kind: "element", key: "source" } : { kind: "panel", key: selectedPanel }, event.clientX, event.clientY, event.currentTarget)} actions={existingPanels[selectedPanel] ? [{ key: "reset", label: "위치 초기화", onClick: () => resetPanel(selectedPanel) }] : []} directions={selectedPanel === "source" ? ["e", "w"] : undefined} />
     : null;
   const mapCellFromTarget = (target: HTMLElement): number | undefined => {
     const raw = target.closest<HTMLElement>("[data-map-cell-index]")?.dataset.mapCellIndex;
