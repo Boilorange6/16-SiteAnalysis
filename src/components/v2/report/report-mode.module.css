@@ -561,8 +561,6 @@
   .fontPageResetButton { justify-self: start; min-height: 32px; padding: 5px 0; color: var(--report-accent); background: transparent; border: 0; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; }
   .fontPageResetButton:hover, .fontMenuItem:hover { text-decoration: underline; }
   .fontContextMenu { position: fixed; z-index: 160; display: grid; gap: 8px; width: 236px; padding: 12px; color: var(--report-ink); background: #fff; border: 1px solid #e1e4e9; border-radius: 10px; box-shadow: 0 2px 4px rgba(21,23,28,.08), 0 16px 40px rgba(21,23,28,.18); }
-  .fontContextTitle { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; color: var(--report-muted); font-size: 12px; }
-  .fontContextTitle strong { color: var(--report-ink); font-size: 13px; }
   .fontContextMenu .fontSizeRow { min-height: 40px; padding-left: 0; }
   .fontContextMenu .fontSizeName { cursor: default; }
   .fontContextMenu .fontSizeStepper { grid-template-columns: 32px 54px 32px; gap: 3px; }

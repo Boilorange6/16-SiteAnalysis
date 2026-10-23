@@ -127,7 +127,7 @@ function pageOverrideCount(page: ReportPage | undefined): number {
   return FONT_SIZE_ROWS.filter(({ key }) => pageFontSizes(page)[key] !== undefined).length;
 }
 
-function FontSizeStepRow({ key, label, value, pageOverride, onChange, onSelect, selected, menu = false }: { key: FontSizeKey; label: string; value: number; pageOverride: boolean; onChange: (key: FontSizeKey, delta: number) => void; onSelect?: (key: FontSizeKey) => void; selected?: boolean; menu?: boolean }) {
+function FontSizeStepRow({ fontKey: key, label, value, pageOverride, onChange, onSelect, selected, menu = false }: { fontKey: FontSizeKey; label: string; value: number; pageOverride: boolean; onChange: (key: FontSizeKey, delta: number) => void; onSelect?: (key: FontSizeKey) => void; selected?: boolean; menu?: boolean }) {
   const row = fontSizeRow(key);
   const step = 1;
   return (
@@ -159,7 +159,7 @@ function FontSizePopover({ doc, page, pageNumber, scope, selectedKey, onScope, o
     </div>
     <FontScopeSwitch scope={scope} pageNumber={pageNumber} pageDisabled={!page} onChange={onScope} />
     <div className={styles.fontSizeRows}>
-      {FONT_SIZE_ROWS.map(({ key, label }) => <FontSizeStepRow key={key} label={label} value={effectiveFontSize(doc, page, key)} pageOverride={scope === "page" && pageValues[key] !== undefined} onChange={(changedKey, delta) => onChange(scope, changedKey, delta)} onSelect={onSelect} selected={selectedKey === key} />)}
+      {FONT_SIZE_ROWS.map(({ key, label }) => <FontSizeStepRow key={key} fontKey={key} label={label} value={effectiveFontSize(doc, page, key)} pageOverride={scope === "page" && pageValues[key] !== undefined} onChange={(changedKey, delta) => onChange(scope, changedKey, delta)} onSelect={onSelect} selected={selectedKey === key} />)}
     </div>
     {scope === "page" && count > 0 && <div className={styles.fontPageReset}><span>{pageNumber}쪽만 바뀐 값 {count}개</span><button type="button" className={styles.fontPageResetButton} onClick={onResetPage}>모든 페이지 값으로</button></div>}
   </section>;
@@ -183,8 +183,7 @@ function FontContextMenu({ menuRef, doc, page, pageNumber, state, scope, onScope
     first?.focus();
   }, []);
   return <div ref={menuRef} className={styles.fontContextMenu} role="menu" aria-label={`${fontSizeRow(state.key).label} 글자 크기`} style={{ left: position.x, top: position.y }}>
-    <div className={styles.fontContextTitle}><span>글자 크기</span><strong>{row.label}</strong></div>
-    <FontSizeStepRow key={state.key} label={row.label} value={effectiveFontSize(doc, page, state.key)} pageOverride={scope === "page" && pageValues[state.key] !== undefined} onChange={(key, delta) => onChange(scope, key, delta)} menu />
+    <FontSizeStepRow fontKey={state.key} label={row.label} value={effectiveFontSize(doc, page, state.key)} pageOverride={scope === "page" && pageValues[state.key] !== undefined} onChange={(key, delta) => onChange(scope, key, delta)} menu />
     <FontScopeSwitch scope={scope} pageNumber={pageNumber} pageDisabled={!page} onChange={onScope} />
     <div className={styles.fontContextDivider} />
     {pageValues[state.key] !== undefined && <button type="button" className={styles.fontMenuItem} role="menuitem" onClick={() => onResetPageKey(state.key)}>모든 페이지 값으로 되돌리기</button>}
