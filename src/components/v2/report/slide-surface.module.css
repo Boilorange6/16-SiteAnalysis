@@ -181,7 +181,7 @@
   pointer-events: none;
 }
 
-[data-element-action-layer="true"] [data-element-action-bar="true"] {
+.elementActionLayer[data-element-action-layer="true"] [data-element-action-bar="true"] {
   pointer-events: auto;
 }
 
