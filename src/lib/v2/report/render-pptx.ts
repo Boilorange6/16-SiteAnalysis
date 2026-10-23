@@ -19,7 +19,7 @@ import { addEditableMap, nativeMapFallbackNote, nativeMapStatus } from "./map-pp
 import { badgeTextColor } from "../ui/map-labels";
 import type { PageStyle } from "../ui/board-state";
 import { drawTerrainSectionPptx } from "./terrain-section-pptx";
-import { TEXT_BOX_DEFAULTS, type MapFrameState, type ReportLayout } from "./report-doc";
+import { pageElementDeleted, TEXT_BOX_DEFAULTS, type MapFrameState, type ReportLayout } from "./report-doc";
 
 /** 지도 이미지(PNG/JPEG data URL) — 키는 report-plan의 mapKeyOf */
 export type MapImages = Record<string, string>;
@@ -72,8 +72,9 @@ function strip(s: Slide, p: PlannedSlide, credit: boolean, format: SlideFormat =
   s.addShape("rect", { x: r.x, y: r.y, w: r.w, h: r.h, fill: { color: "FFFFFF", transparency: 0 }, line: { color: "FFFFFF", width: 0, transparency: 100 } });
   s.addShape("line", { x: r.x, y: r.y, w: r.w, h: 0, line: { color: INK, width: 0.5, transparency: 92 } });
   const room = size.w - g.edge - 1.7;
-  const footer = fitFooterText(p.footer, credit, room, fontSizeForStyle(p.style ?? {}, "source"));
-  s.addText(footer.text, { x: g.edge, y: r.y, w: room, h: r.h, valign: "middle", fontFace: FONT, fontSize: footer.fontSize, color: "454A55", margin: 0, fit: "shrink" });
+  const showCredit = credit && !pageElementDeleted(p.page, "source");
+  const footer = fitFooterText(p.footer, showCredit, room, fontSizeForStyle(p.style ?? {}, "source"));
+  if (showCredit) s.addText(footer.text, { x: g.edge, y: r.y, w: room, h: r.h, valign: "middle", fontFace: FONT, fontSize: footer.fontSize, color: "454A55", margin: 0, fit: "shrink" });
   s.addText(`${p.no} / ${p.total}`, { x: size.w - g.edge - 1.2, y: r.y, w: 1.2, h: r.h, align: "right", valign: "middle", fontFace: FONT, fontSize: 9, color: "454A55", margin: 0 });
 }
 
@@ -102,6 +103,7 @@ function pageStyleFor(p: PlannedSlide, format: SlideFormat): PageStyle {
     ...(p.style ?? {}),
     ...(Object.keys(panels).length > 0 ? { panels } : {}),
     ...(pageLayout === "side-by-side" ? { summary: false } : pageLayout === "numbers-first" ? { summary: true } : {}),
+    ...(pageElementDeleted(page, "summary") ? { summary: false } : {}),
   };
 }
 
@@ -465,7 +467,7 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
     return [16, 8, 0].map((sh) => ch(sh).toString(16).padStart(2, "0")).join("").toUpperCase();
   };
   const co = p.callout;
-  const hasSummary = style.summary !== false && !(co && co.page > 0);
+  const hasSummary = style.summary !== false && !pageElementDeleted(p.page, "summary") && !(co && co.page > 0);
   const baseLegend = p.map ? slideLegend(p.map, !p.muted, undefined, hasSummary, format, frameLegendOptions(frameOf(p))).rect : null;
   const panels = slidePanelRects(style, hasSummary, baseLegend, format);
   const terrainShown = v.code === "D17" && !!v.terrainSections && !!p.terrainSection;
@@ -483,7 +485,7 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
     if (mapStatus?.denseLayers.length || mapStatus?.rasterValues.length) fallbackNotes.push(nativeMapFallbackNote(p.map));
   } else if (p.map) fallbackNotes.push(nativeMapFallbackNote(p.map));
   const coTail = co ? (co.page === 0 ? `개요 · 전체 ${fmtInt(co.model.complexes.length)}${co.model.unit}` : pageRange(co.page, co.model.complexes.length, undefined, co.model.kind === "supply")) : null;
-  titlePlate(s, v.color, p.page?.titleOverride ?? v.title, [v.kindLabel, p.faceLabel, coTail].filter((t, i, a) => t && a.indexOf(t) === i).join(" · "), co && co.page > 0 ? g.w - 2 * g.edge : summaryX - 2 * g.edge, style, hasSummary, format);
+  if (!pageElementDeleted(p.page, "title")) titlePlate(s, v.color, p.page?.titleOverride ?? v.title, [v.kindLabel, p.faceLabel, coTail].filter((t, i, a) => t && a.indexOf(t) === i).join(" · "), co && co.page > 0 ? g.w - 2 * g.edge : summaryX - 2 * g.edge, style, hasSummary, format);
   if (co && co.page > 0) {
     calloutReport?.render({ slide: s, planned: p, part: "page" });
     pageTextBoxes(s, p, format);

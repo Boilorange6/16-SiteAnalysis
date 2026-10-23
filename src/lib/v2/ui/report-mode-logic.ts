@@ -206,7 +206,7 @@ export function pagesUsingTile(doc: ReportDoc, tileId: string): number[] {
   return doc.pages.reduce<number[]>((pages, page, index) => {
     const usesTile = page.kind === "tile"
       ? page.tileId === tileId
-      : page.kind === "compare" && page.cells.some((cell) => cell.tileId === tileId);
+      : page.kind === "compare" && page.cells.some((cell) => cell?.tileId === tileId);
     if (usesTile) pages.push(index + 1);
     return pages;
   }, []);

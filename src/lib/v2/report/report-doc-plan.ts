@@ -1,5 +1,5 @@
 /** 독립 보고서 문서를 기존 PPT 슬라이드 계획으로 바꾸는 순수 어댑터. */
-import { defaultFrame, DEFAULT_REPORT_FONT_SIZES, mergeReportFontSizes, newPageId, reportFontSizesFromLegacyScale, type MapFrameState, type ReportDoc, type ReportPage, type ReportFormat, type TilePart } from "./report-doc";
+import { defaultFrame, DEFAULT_REPORT_FONT_SIZES, mergeReportFontSizes, newPageId, pageElementDeleted, reportFontSizesFromLegacyScale, type MapFrameState, type ReportDoc, type ReportPage, type ReportFormat, type TilePart } from "./report-doc";
 import {
   buildReportPlan,
   complexCounts,
@@ -145,6 +145,7 @@ function pageForTileSlide(id: string, view: TileView, settings: TileReportSettin
     panels: {},
     textBoxes: [],
     notes: "",
+    deletedElementKeys: [],
     kind: "tile",
     tileId: view.tileId,
     part: partForSlide(view, settings, slide, sheetIndex),
@@ -154,7 +155,7 @@ function pageForTileSlide(id: string, view: TileView, settings: TileReportSettin
 }
 
 function newSimplePage(doc: ReportDoc, kind: "cover" | "sources"): ReportPage {
-  return { id: newPageId(doc), layout: "map-summary", panels: {}, textBoxes: [], notes: "", kind };
+  return { id: newPageId(doc), layout: "map-summary", panels: {}, textBoxes: [], notes: "", deletedElementKeys: [], kind };
 }
 
 function isTileResultView(view: TileView): boolean {
@@ -233,6 +234,7 @@ function comparePageFromLegacy(id: string, extra: BoardState["report"]["extra"][
     panels: {},
     textBoxes: [],
     notes: "",
+    deletedElementKeys: [],
     kind: "compare",
     grid: extra.sheet.grid,
     sameExtent: false,
@@ -263,7 +265,7 @@ export function importLegacyReport(
     const compare = extra ? comparePageFromLegacy(slide.key, extra, board) : null;
     if (compare) {
       const style = board.report.styles[slide.key];
-      pages.push({ ...compare, panels: style?.panels ? { ...style.panels } : {}, cells: compare.cells.map((cell) => ({ ...cell, frame: frameFromLegacyStyle(style, cell.frame) })) });
+      pages.push({ ...compare, panels: style?.panels ? { ...style.panels } : {}, cells: compare.cells.map((cell) => cell ? { ...cell, frame: frameFromLegacyStyle(style, cell.frame) } : null) });
       used.add(compare.id);
       continue;
     }
@@ -351,7 +353,7 @@ function pageStyleFor(doc: ReportDoc, page: ReportPage): PageStyle {
   const frame = page.frame;
   return {
     ...base,
-    summary: page.layout !== "map-full",
+    summary: page.layout !== "map-full" && !pageElementDeleted(page, "summary"),
     zoomDelta: frame.zoomDelta,
     offsetM: [...frame.offsetM] as [number, number],
     pinnedKeys: [...frame.pinnedKeys],
@@ -413,7 +415,7 @@ function referencedViews(doc: ReportDoc, views: ReadonlyMap<string, TileView>): 
   const ids = new Set<string>();
   for (const page of doc.pages) {
     if (page.kind === "tile") ids.add(page.tileId);
-    if (page.kind === "compare") for (const cell of page.cells) ids.add(cell.tileId);
+    if (page.kind === "compare") for (const cell of page.cells) if (cell) ids.add(cell.tileId);
   }
   return [...ids].flatMap((id) => {
     const view = views.get(id);
@@ -483,6 +485,7 @@ export function planReportDoc(doc: ReportDoc, views: ReadonlyMap<string, TileVie
     if (page.kind === "compare") {
       const style = pageStyleFor(doc, page);
       const cells = page.cells.map((cell, index) => {
+        if (!cell) return null;
         const view = views.get(cell.tileId);
         if (!view) return null;
         return {

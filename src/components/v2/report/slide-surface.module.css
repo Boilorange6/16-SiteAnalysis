@@ -151,6 +151,62 @@
   white-space: nowrap;
 }
 
+.elementActionBar {
+  position: absolute;
+  z-index: 26;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 40px;
+  padding: 3px;
+  color: #15171c;
+  background: #fff;
+  border: 1px solid #dfe2e7;
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(21,23,28,.06), 0 6px 16px rgba(21,23,28,.12);
+  white-space: nowrap;
+}
+
+.elementActionButton,
+.elementActionDanger {
+  min-width: 40px;
+  min-height: 32px;
+  padding: 0 10px;
+  color: #15171c;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.elementActionButton:hover,
+.elementActionButton:focus-visible { background: #f3f5f8; }
+.elementActionDanger { color: #c92a2a; background: #fdecec; }
+.elementActionDanger:hover,
+.elementActionDanger:focus-visible { background: #f8dede; }
+.elementActionSeparator { width: 1px; height: 20px; margin: 0 2px; background: #dfe2e7; }
+.elementActionButton:focus-visible,
+.elementActionDanger:focus-visible { outline: 2px solid #2f6fdb; outline-offset: 2px; }
+
+.decorationHitTarget {
+  position: absolute;
+  z-index: 24;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.decorationHitTarget:hover,
+.decorationHitTarget[data-decoration-selected="true"] { border-color: #2f6fdb; box-shadow: 0 0 0 2px rgba(47,111,219,.2); }
+.decorationHitTarget:focus-visible { outline: 2px solid #2f6fdb; outline-offset: 2px; }
+
 .mapSelectionToolbarButton,
 .mapSelectionSwitch {
   min-width: 40px;

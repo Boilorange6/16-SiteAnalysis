@@ -13,7 +13,7 @@ import type { S02Cut, S02DateKey } from "../tile/s02/cut";
 import type { S03Cut } from "../tile/s03/cut";
 import type { S04Cut } from "../tile/s04/cut";
 import { sheetCapacity, type SheetGrid as UiSheetGrid } from "./sheet";
-import { clampReportFontSizes, EMPTY_REPORT_DOC, defaultFrame, mergeReportFontSizes, normalizeMapLabelBox, reportFontSizesFromLegacyScale, TEXT_BOX_COLORS, type MapFrameState, type ReportDoc, type ReportPage, type ReportFontSizes, type TextBoxAlign, type TextBoxKind, type TilePart } from "../report/report-doc";
+import { clampReportFontSizes, EMPTY_REPORT_DOC, defaultFrame, mergeReportFontSizes, normalizeMapLabelBox, PAGE_ELEMENT_KEYS, reportFontSizesFromLegacyScale, TEXT_BOX_COLORS, type MapFrameState, type ReportDoc, type ReportPage, type ReportFontSizes, type TextBoxAlign, type TextBoxKind, type TilePart, type PageElementKey } from "../report/report-doc";
 import type { TileReportSettings } from "../report/report-plan";
 
 export type TileSize = 1 | 2 | 4;
@@ -1069,6 +1069,11 @@ function reportPart(value: unknown): TilePart | null {
   return null;
 }
 
+function reportPageElements(value: unknown): PageElementKey[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((key): key is PageElementKey => typeof key === "string" && (PAGE_ELEMENT_KEYS as readonly string[]).includes(key)))];
+}
+
 function restoreReportPage(value: unknown, validTileIds: ReadonlySet<string>): ReportPage | null {
   if (!isRecord(value) || typeof value.id !== "string" || value.id.length === 0 || !reportPageIdPattern.test(value.id) || !isReportLayout(value.layout)) return null;
   const fontSizes = clampReportFontSizes(value.fontSizes);
@@ -1078,6 +1083,7 @@ function restoreReportPage(value: unknown, validTileIds: ReadonlySet<string>): R
     panels: reportPanels(value.panels),
     textBoxes: reportTextBoxes(value.textBoxes),
     notes: typeof value.notes === "string" ? value.notes : "",
+    deletedElementKeys: reportPageElements(value.deletedElementKeys),
     ...(typeof value.titleOverride === "string" ? { titleOverride: value.titleOverride } : {}),
     ...(typeof value.summaryOverride === "string" ? { summaryOverride: value.summaryOverride } : {}),
     ...(Object.keys(fontSizes).length > 0 ? { fontSizes } : {}),
@@ -1090,9 +1096,9 @@ function restoreReportPage(value: unknown, validTileIds: ReadonlySet<string>): R
   }
   if (value.kind === "compare" && (value.grid === "2x2" || value.grid === "3x2" || value.grid === "3x1")) {
     const cells = Array.isArray(value.cells)
-      ? value.cells.flatMap((item) => {
-          if (!isRecord(item) || !isReportTileId(item.tileId, validTileIds)) return [];
-          return [{ tileId: item.tileId, settings: reportSettings(item.settings), frame: reportFrame(item.frame) }];
+      ? value.cells.map((item) => {
+          if (!isRecord(item) || !isReportTileId(item.tileId, validTileIds)) return null;
+          return { tileId: item.tileId, settings: reportSettings(item.settings), frame: reportFrame(item.frame) };
         })
       : [];
     return { ...base, kind: "compare", grid: value.grid, cells, sameExtent: typeof value.sameExtent === "boolean" ? value.sameExtent : false };
@@ -1237,7 +1243,7 @@ function rewriteReportDocIds(value: ReportDoc | undefined, mapId: IdMapper): Rep
     pages: doc.pages.map((page) => page.kind === "tile"
       ? { ...page, tileId: mapId(page.tileId) }
       : page.kind === "compare"
-        ? { ...page, cells: page.cells.map((cell) => ({ ...cell, tileId: mapId(cell.tileId) })) }
+        ? { ...page, cells: page.cells.map((cell) => cell ? { ...cell, tileId: mapId(cell.tileId) } : null) }
         : page),
   };
 }

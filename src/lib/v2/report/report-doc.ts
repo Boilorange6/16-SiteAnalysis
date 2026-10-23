@@ -6,6 +6,8 @@ export type ReportFontScale = 0.85 | 1 | 1.15;
 export type FontSizeKey = "title" | "summary" | "legend" | "labels" | "source";
 export type ReportFontSizes = Record<FontSizeKey, number>;
 export type ReportFontSizeOverrides = Partial<ReportFontSizes>;
+export type PageElementKey = "title" | "summary" | "source";
+export const PAGE_ELEMENT_KEYS: readonly PageElementKey[] = ["title", "summary", "source"];
 
 export const DEFAULT_REPORT_FONT_SIZES: ReportFontSizes = {
   title: 18,
@@ -140,6 +142,8 @@ export type ReportPageBase = {
   panels: PagePanels;
   textBoxes: TextBox[];
   notes: string;
+  /** 제목·요약·출처 줄처럼 지도 frame이 아닌 페이지 요소의 삭제 상태. 옛 저장본은 빈 목록이다. */
+  deletedElementKeys?: PageElementKey[];
   titleOverride?: string;
   summaryOverride?: string;
   fontSizes?: ReportFontSizeOverrides;
@@ -153,7 +157,7 @@ export type TilePart =
 export type ReportPage = ReportPageBase & (
   | { kind: "cover" }
   | { kind: "tile"; tileId: string; part: TilePart; settings: TileReportSettings; frame: MapFrameState }
-  | { kind: "compare"; grid: "2x2" | "3x2" | "3x1"; cells: { tileId: string; settings: TileReportSettings; frame: MapFrameState }[]; sameExtent: boolean }
+  | { kind: "compare"; grid: "2x2" | "3x2" | "3x1"; cells: ({ tileId: string; settings: TileReportSettings; frame: MapFrameState } | null)[]; sameExtent: boolean }
   | { kind: "sources" }
   | { kind: "blank" }
 );
@@ -165,8 +169,11 @@ export type ReportDocAction =
   | { type: "move"; id: string; to: number }
   | { type: "duplicate"; id: string }
   | { type: "layout"; id: string; layout: ReportLayout }
+  | { type: "grid"; id: string; grid: "2x2" | "3x2" | "3x1" }
   | { type: "frame"; id: string; cell?: number; patch: Partial<MapFrameState>; force?: boolean }
+  | { type: "copyExtent"; id: string; cell: number }
   | { type: "sameExtent"; id: string; value: boolean }
+  | { type: "pageElement"; id: string; key: PageElementKey; deleted: boolean }
   | { type: "panels"; id: string; panels: PagePanels }
   | { type: "notes"; id: string; notes: string }
   | { type: "text"; id: string; title?: string; summary?: string }
@@ -248,6 +255,7 @@ function cloneBase(page: ReportPage): ReportPageBase {
     panels: clonePanels(page.panels),
     textBoxes: page.textBoxes.map((box) => ({ ...box })),
     notes: page.notes,
+    deletedElementKeys: [...(page.deletedElementKeys ?? [])],
     ...(page.titleOverride !== undefined ? { titleOverride: page.titleOverride } : {}),
     ...(page.summaryOverride !== undefined ? { summaryOverride: page.summaryOverride } : {}),
     ...(Object.keys(fontSizes).length > 0 ? { fontSizes } : {}),
@@ -263,7 +271,7 @@ function clonePage(page: ReportPage): ReportPage {
       kind: "compare",
       grid: page.grid,
       sameExtent: page.sameExtent,
-      cells: page.cells.map((cell) => ({ tileId: cell.tileId, settings: cloneSettings(cell.settings), frame: cloneFrame(cell.frame) })),
+      cells: page.cells.map((cell) => cell ? { tileId: cell.tileId, settings: cloneSettings(cell.settings), frame: cloneFrame(cell.frame) } : null),
     };
   }
   return { ...base, kind: page.kind };
@@ -363,10 +371,48 @@ function updateFrame(page: ReportPage, cell: number | undefined, patch: Partial<
     return next;
   }
   if (next.kind === "compare" && cell !== undefined && Number.isInteger(cell) && cell >= 0 && cell < next.cells.length) {
-    next.cells[cell] = { ...next.cells[cell], frame: frameWithPatch(next.cells[cell].frame, patch, force) };
+    const candidate = next.cells[cell];
+    if (!candidate) return next;
+    next.cells[cell] = { ...candidate, frame: frameWithPatch(candidate.frame, patch, force) };
     return next;
   }
   return page;
+}
+
+function updatePageElement(page: ReportPage, key: PageElementKey, deleted: boolean): ReportPage {
+  const current = [...(page.deletedElementKeys ?? [])];
+  const next = deleted
+    ? [...new Set([...current, key])]
+    : current.filter((candidate) => candidate !== key);
+  if (next.length === current.length && next.every((candidate, index) => candidate === current[index])) return page;
+  return { ...clonePage(page), deletedElementKeys: next };
+}
+
+export function pageElementDeleted(page: ReportPage | undefined, key: PageElementKey): boolean {
+  return !!page?.deletedElementKeys?.includes(key);
+}
+
+export function restorePageElementPatch(page: Pick<ReportPageBase, "deletedElementKeys">, key: PageElementKey): Pick<ReportPageBase, "deletedElementKeys"> {
+  return { deletedElementKeys: (page.deletedElementKeys ?? []).filter((candidate) => candidate !== key) };
+}
+
+export function deletePageElementPatch(page: Pick<ReportPageBase, "deletedElementKeys">, key: PageElementKey): Pick<ReportPageBase, "deletedElementKeys"> {
+  return { deletedElementKeys: [...new Set([...(page.deletedElementKeys ?? []), key])] };
+}
+
+function copyExtent(page: ReportPage, cell: number): ReportPage {
+  if (page.kind !== "compare" || !page.cells[cell]) return page;
+  const source = page.cells[cell]!.frame;
+  const next = clonePage(page) as Extract<ReportPage, { kind: "compare" }>;
+  next.cells = next.cells.map((candidate) => candidate ? {
+    ...candidate,
+    frame: frameWithPatch(candidate.frame, {
+      zoomDelta: source.zoomDelta,
+      offsetM: source.offsetM,
+      scaleDenominator: source.scaleDenominator,
+    }, true),
+  } : null);
+  return next;
 }
 
 function resetPanels(page: ReportPage): ReportPage {
@@ -410,10 +456,16 @@ export function reportDocReducer(doc: ReportDoc, action: ReportDocAction): Repor
     }
     case "layout":
       return updatePage(doc, action.id, (page) => ({ ...resetPanels(page), layout: action.layout }));
+    case "grid":
+      return updatePage(doc, action.id, (page) => page.kind === "compare" && page.grid !== action.grid ? { ...clonePage(page), grid: action.grid } : page);
     case "frame":
       return updatePage(doc, action.id, (page) => updateFrame(page, action.cell, action.patch, action.force));
+    case "copyExtent":
+      return updatePage(doc, action.id, (page) => copyExtent(page, action.cell));
     case "sameExtent":
       return updatePage(doc, action.id, (page) => page.kind === "compare" ? { ...page, sameExtent: action.value } : page);
+    case "pageElement":
+      return updatePage(doc, action.id, (page) => updatePageElement(page, action.key, action.deleted));
     case "panels":
       return updatePage(doc, action.id, (page) => ({ ...clonePage(page), panels: clonePanels(action.panels) }));
     case "notes":

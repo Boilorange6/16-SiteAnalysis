@@ -26,7 +26,7 @@ function decorationsOf(slide: PlannedSlide): StyleDecorations {
   const page = slide.page;
   if (page?.kind === "tile") return page.frame.decorations;
   if (page?.kind === "compare") {
-    const decorations = page.cells.map((cell) => cell.frame.decorations);
+    const decorations = page.cells.flatMap((cell) => cell ? [cell.frame.decorations] : []);
     return {
       north: decorations.every((value) => value.north),
       scaleBar: decorations.every((value) => value.scaleBar),
