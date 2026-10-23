@@ -1,9 +1,9 @@
 import type { MapFrameState, ReportDoc, ReportDocAction, ReportPage } from "../report/report-doc";
 
-export type ReportRailKey = "pages" | "tiles" | "textbox" | "theme" | "layout";
+export type ReportRailKey = "pages" | "tiles";
 
 /** 페이지가 있으면 무대를 먼저 보여 주고, 빈 보고서에서만 페이지 서랍을 연다. */
-export function initialReportRail(hasPages: boolean): Exclude<ReportRailKey, "layout"> | null {
+export function initialReportRail(hasPages: boolean): ReportRailKey | null {
   return hasPages ? null : "pages";
 }
 

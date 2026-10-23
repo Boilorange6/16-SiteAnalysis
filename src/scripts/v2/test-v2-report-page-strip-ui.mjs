@@ -115,14 +115,20 @@ assert.match(mapScaleChipSource, /!popoverPositioned\) return;/, "팝오버는 �
 assert.match(mapScaleChipSource, /\?\? canvas;/, "전체 화면 지도 레이아웃은 슬라이드 캔버스를 지도 영역으로 쓴다");
 
 const stageBlock = reportModeSource.slice(reportModeSource.indexOf("className={styles.stageFit}"), reportModeSource.indexOf('<nav className={`${styles.floatCard} ${styles.toolPill}`}'));
-const dockBlock = reportModeSource.slice(reportModeSource.indexOf('data-dock-lead="true"'), reportModeSource.lastIndexOf("<PageStrip"));
+const toolPillBlock = reportModeSource.slice(reportModeSource.indexOf('className={`${styles.floatCard} ${styles.toolPill}`}'), reportModeSource.indexOf('className={`${styles.floatCard} ${styles.pageDock}`}'));
+const pageDockBlock = reportModeSource.slice(reportModeSource.indexOf('className={`${styles.floatCard} ${styles.pageDock}`}'), reportModeSource.indexOf("</main>"));
 assert.match(stageBlock, /<MapScaleChip/, "지도 선택 시 축척 칩을 무대에 그린다");
 assert.doesNotMatch(reportModeSource, /MapToolbar|mapEditHint|mapDockLead|data-map-toolbar|v2\.report\.mapEditHint/, "이전 지도 막대·안내 코드를 제거한다");
-assert.match(dockBlock, /<LayoutSwitcher/, "pageDock는 지도 선택과 무관하게 레이아웃 버튼을 그린다");
-assert.match(dockBlock, /<NotesField/, "pageDock는 지도 선택과 무관하게 메모 버튼을 그린다");
-assert.doesNotMatch(dockBlock, /MapScaleChip|두 번 눌러 지도 편집/, "pageDock에는 지도 칩과 안내 알약이 없다");
+assert.match(pageDockBlock, /<PageStrip/, "pageDock는 PageStrip을 렌더링한다");
+assert.doesNotMatch(pageDockBlock, /LayoutSwitcher|NotesField|dockLead|dockPopover|dockButton/, "pageDock는 썸네일 탐색만 담당한다");
+assert.doesNotMatch(reportModeSource, /data-dock-lead="true"|styles\.(dockLead|dockPopover|dockButton)\b/, "옛 dockLead·dockPopover·dockButton 계약을 제거한다");
+assert.match(toolPillBlock, /styles\.toolDivider|role=["']separator["']/, "레이아웃·메모 rail 앞에 구분선이 있다");
+assert.match(toolPillBlock, /레이아웃[\s\S]*메모|메모[\s\S]*레이아웃/, "레이아웃·메모가 도구 막대에 있다");
+assert.match(toolPillBlock, /aria-haspopup=["']dialog["'][^>]*aria-expanded=\{(?:layoutPopoverOpen|notesPopoverOpen)\}/, "레이아웃·메모 rail 버튼은 팝오버 상태를 알린다");
+assert.match(toolPillBlock, /data-has-notes/, "메모가 있는 페이지의 점 표시 계약은 도구 막대에 있다");
+assert.match(toolPillBlock, /disabled=\{!selectedPage\}/, "페이지가 없으면 레이아웃·메모 도구가 비활성화된다");
 assert.doesNotMatch(reportModeSource, /styles\.mapHint|mapToolbarReason|지도를 끌어 옮기고/, "이전 무대 안내 CSS/문구를 제거한다");
-assert.match(reportModeSource, /const drawerOpen = rail !== null;/, "지도 선택은 왼쪽 서랍을 열지 않는다");
+assert.match(reportModeSource, /const drawerOpen = rail === "pages" \|\| rail === "tiles";/, "지도 선택·글상자·테마는 페이지/타일 서랍과 분리된다");
 assert.doesNotMatch(reportModeSource, /setSelection\(null\);\s*(?:if \(current\.selected\) )?setRail\("pages"\);/, "지도 선택을 풀어도 왼쪽 서랍을 열지 않는다");
 assert.match(reportModeSource, /data-settings-open=\{settingsOpen \? "true" : "false"\}/, "설정 카드 상태는 settingsOpen에 연결한다");
 

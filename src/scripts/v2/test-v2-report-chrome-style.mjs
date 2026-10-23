@@ -8,24 +8,45 @@ const boardStyles = readFileSync(new URL("../../components/v2/board.module.css",
 const logic = readFileSync(new URL("../../lib/v2/ui/report-mode-logic.ts", import.meta.url), "utf8");
 const notes = readFileSync(new URL("../../components/v2/report/notes-field.tsx", import.meta.url), "utf8");
 const layout = readFileSync(new URL("../../components/v2/report/layout-switcher.tsx", import.meta.url), "utf8");
+const drawerPages = readFileSync(new URL("../../components/v2/report/drawer-pages.tsx", import.meta.url), "utf8");
+const drawerTiles = readFileSync(new URL("../../components/v2/report/drawer-tiles.tsx", import.meta.url), "utf8");
+const slideSurfaceStyles = readFileSync(new URL("../../components/v2/report/slide-surface.module.css", import.meta.url), "utf8");
 
 const reportBodyRule = styles.match(/\.reportBody\s*\{[^}]*\}/)?.[0] ?? "";
 const stageFitRule = styles.match(/\.stageFit\s*\{[^}]*\}/)?.[0] ?? "";
 const stageSlideRule = styles.match(/\.stageSlide\s*\{[^}]*\}/)?.[0] ?? "";
+const floatCardRule = styles.match(/\.floatCard\s*\{[^}]*\}/)?.[0] ?? "";
+const anchoredCardRule = styles.match(/\.anchoredCard\s*\{[^}]*\}/)?.[0] ?? "";
+const drawerCardRule = styles.match(/\.drawerCard\s*\{[^}]*\}/)?.[0] ?? "";
+const activeRailRule = styles.match(/\.railButtonActive\s*\{[^}]*\}/)?.[0] ?? "";
+const layoutActiveRule = styles.match(/\.layoutOptionActive\s*\{[^}]*\}/g)?.find((rule) => /border:\s*2px/.test(rule)) ?? "";
 const mobileRules = styles.match(/@media\s*\(max-width:\s*639px\)\s*\{([\s\S]*)/)?.[1] ?? "";
+const desktopStyles = styles.slice(0, styles.indexOf("@media (max-width: 639px)"));
 const reducedMotionRules = styles.match(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? "";
+const toolPillStart = source.indexOf("styles.toolPill");
+const pageDockStart = source.indexOf("styles.pageDock");
+const toolPillBlock = toolPillStart >= 0 && pageDockStart > toolPillStart ? source.slice(toolPillStart, pageDockStart) : "";
+const pageDockBlock = pageDockStart >= 0 ? source.slice(pageDockStart, source.indexOf("</main>", pageDockStart)) : "";
+const themePopoverSource = source.slice(source.indexOf("function ThemePopover"), source.indexOf("function pageTitleForToast"));
 
 assert.doesNotMatch(reportBodyRule, /grid-template-columns/, "reportBody는 3열 grid를 예약하지 않는다");
 assert.match(styles, /\.stageFit\s*\{[\s\S]*container-type:\s*size;/, "stageFit은 크기 컨테이너다");
 assert.doesNotMatch(stageFitRule, /background\s*:|border\s*:|padding\s*:/, "stageFit은 앱 배경 위에 카드 chrome을 깔지 않는다");
 assert.match(stageSlideRule, /width:\s*min\(100cqw,\s*calc\(100cqh\s*\*/, "stageSlide는 가로·세로 중 먼저 닿는 쪽에 contain한다");
 assert.match(styles, /\.floatCard\s*\{[\s\S]*border-radius:\s*12px;/, "떠 있는 카드는 공통 12px 모서리를 쓴다");
+assert.match(floatCardRule, /background:\s*#fff;/, "공통 떠 있는 카드는 흰 카드다");
+assert.match(floatCardRule, /border:\s*1px solid #e1e4e9;/, "공통 떠 있는 카드는 지정 테두리를 쓴다");
+assert.match(floatCardRule, /box-shadow:\s*[^;]+rgba\(/, "공통 떠 있는 카드는 강화된 그림자를 쓴다");
 assert.match(mobileRules, /\.drawerCard[^{]*\{[\s\S]*bottom:\s*0;/, "모바일 drawerCard는 아래 시트다");
 assert.match(mobileRules, /\.settingsCard[^{]*\{[\s\S]*bottom:\s*0;/, "모바일 settingsCard는 아래 시트 자리다");
 assert.match(reducedMotionRules, /\.floatCard[^{]*\{[\s\S]*transform:\s*none;/, "감소된 동작에서는 카드 transform을 끈다");
 assert.match(styles, /180ms\s+cubic-bezier\(\.23,1,\.32,1\)/, "카드 나타남 속도와 easing");
 assert.match(styles, /\.reportStage\s*\{[\s\S]*--stage-left:\s*88px[\s\S]*--stage-right:\s*24px[\s\S]*--stage-bottom:\s*140px;/, "무대 기본 여백 변수");
-assert.match(styles, /\.reportStage\[data-drawer-open="true"\]\s*\{[^}]*--stage-left:\s*418px;/, "서랍 열림 무대 여백");
+assert.doesNotMatch(styles, /--stage-left:\s*418px;/, "서랍을 열어도 무대 왼쪽 여백을 늘리지 않는다");
+assert.doesNotMatch(styles, /\.reportStage\[data-drawer-open="true"\][^{]*\{[^}]*--stage-left:/, "서랍 상태는 stage-left를 바꾸지 않는다");
+assert.match(styles, /@media\s*\(max-width:\s*1023px\)/, "1023px 이하 기존 지도 미디어쿼리를 보존한다");
+assert.match(anchoredCardRule, /position:\s*absolute;/, "데스크톱 연결 카드는 무대 위에 뜬다");
+assert.match(drawerCardRule, /bottom:\s*(?:var\(--stage-bottom\)|calc\([^;]*var\(--stage-bottom\)[^;]*\));/, "서랍 아래 끝은 페이지 띠 무대 여백을 따른다");
 assert.match(styles, /\.reportStage\[data-settings-open="true"\]\s*\{[^}]*--stage-right:\s*328px;/, "설정 열림 무대 여백");
 assert.match(styles, /\.stageFit\s*\{[\s\S]*inset:\s*16px\s+var\(--stage-right\)\s+var\(--stage-bottom\)\s+var\(--stage-left\);/, "stageFit은 카드 여백 안쪽에 맞춘다");
 assert.match(styles, /@media\s*\(min-width:\s*640px\)\s*and\s*\(max-width:\s*1024px\)[\s\S]*\.secondaryButton[\s\S]*::after[\s\S]*content:\s*"▶";[\s\S]*\.headerFormat select[\s\S]*width:\s*120px;[\s\S]*max-width:\s*120px;/, "1024px report topbar는 발표 아이콘과 선택된 판형을 보여 줄 select를 쓴다");
@@ -41,19 +62,80 @@ assert.match(logic, /export function initialReportRail\(hasPages: boolean\)/, "�
 assert.match(mobileRules, /\.toolPill\s*\{[\s\S]*position:\s*static;[\s\S]*order:\s*1;/, "모바일 도구 막대는 무대 위 가로줄이다");
 assert.match(mobileRules, /\.pageDock\s*\{[\s\S]*position:\s*static;[\s\S]*order:\s*3;/, "모바일 페이지 줄은 viewport 흐름 안에 있다");
 
-for (const className of ["toolPill", "drawerCard", "pageDock", "dockLead"]) {
+for (const className of ["toolPill", "drawerCard", "pageDock", "railButton"]) {
   assert.match(source, new RegExp(`styles\\.${className}\\b`), `${className} JSX 계약`);
 }
+assert.doesNotMatch(source, /styles\.(dockLead|dockPopover|dockButton)\b/, "페이지 독의 옛 레이아웃·팝오버 클래스가 제거된다");
+assert.doesNotMatch(desktopStyles, /\.(dockLead|dockPopover|dockButton)\b/, "활성 데스크톱 CSS에서 페이지 독의 옛 계약이 제거된다");
 assert.doesNotMatch(source, /styles\.(reportRail|drawerColumn|editorSide|reportWorkspace)\b/, "옛 3열 레이아웃 클래스가 JSX에 남지 않는다");
 assert.match(source, /data-drawer-open=/, "무대에 서랍 열림 상태가 있다");
 assert.match(source, /data-settings-open=\{settingsOpen \? "true" : "false"\}/, "설정 카드 상태를 settingsOpen에 연결한다");
-assert.match(source, /aria-expanded=\{rail === "pages" && drawerOpen\}/, "도구 막대 버튼은 서랍 펼침 상태를 알린다");
+assert.match(toolPillBlock, /role=["']separator["']|styles\.toolDivider/, "도구 막대에 페이지·요소와 설정 도구를 가르는 구분선이 있다");
+assert.match(toolPillBlock, /레이아웃/, "레이아웃은 도구 막대에 있다");
+assert.match(toolPillBlock, /메모/, "메모는 도구 막대에 있다");
+assert.match(toolPillBlock, /styles\.railButton/, "레이아웃·메모는 railButton 계약을 쓴다");
+for (const state of ["drawerOpen", "themePopoverOpen", "layoutPopoverOpen", "notesPopoverOpen"]) {
+  assert.match(toolPillBlock, new RegExp(`${state}[\\s\\S]*styles\\.railButtonActive`), `${state}는 열린 도구 active 상태를 쓴다`);
+}
+assert.match(source, /aria-expanded=\{rail === "pages" && drawerOpen\}/, "페이지 도구 버튼은 서랍 펼침 상태를 알린다");
 assert.match(source, /aria-haspopup=["']dialog["'][^>]*aria-expanded=\{layoutPopoverOpen\}/, "레이아웃 팝오버 트리거가 dialog임을 알린다");
 assert.match(source, /id="report-layout-menu"[\s\S]*role="dialog"/, "레이아웃 팝오버가 dialog 의미를 알린다");
 assert.match(source, /document\.activeElement[\s\S]*#report-drawer, \[role=\\"dialog\\"\]/, "페이지 키 탐색은 포커스된 서랍·대화상자를 건너뛴다");
 assert.match(source, /data-has-notes/, "메모가 있는 페이지의 점 표시 계약");
-assert.match(source, /<LayoutSwitcher[\s\S]*compact/, "페이지 줄 레이아웃 메뉴는 compact다");
-assert.match(source, /<NotesField[\s\S]*compact/, "페이지 줄 메모 popover는 compact다");
+assert.match(source, /data-has-notes=\{selectedPage\?\.notes\.trim\(\)/, "메모 점은 선택 페이지의 메모 유무를 반영한다");
+assert.match(source, /selectedPage\?\.notes\.trim\(\)\s*&&\s*<span className=\{styles\.noteDot\}/, "메모가 있을 때만 점을 표시한다");
+assert.match(activeRailRule, /color:\s*#fff;[\s\S]*background:\s*#2f6fdb;/, "열린 도구는 파란 배경과 흰 아이콘·글자를 쓴다");
+assert.match(source, /--tail-y/, "열린 창은 공통 tail 위치 변수를 계산한다");
+assert.match(source, /styles\.(?:anchoredCard|popoverTail)/, "서랍·팝오버는 공통 연결 카드 계약을 쓴다");
+assert.match(styles, /(?:\.anchoredCard|\.popoverTail)[^{]*(?:::before|::after)?\s*\{[\s\S]*var\(--tail-y\)/, "연결 카드에는 트리거를 가리키는 tail 스타일이 있다");
+for (const id of ["report-drawer", "report-layout-menu", "report-notes-popover", "report-theme-popover"]) {
+  const start = source.indexOf(`id="${id}"`);
+  const end = source.indexOf(">", start);
+  const block = start >= 0 ? source.slice(Math.max(0, start - 180), source.indexOf("</", end)) : "";
+  assert.match(block, /styles\.(?:anchoredCard|popoverTail)/, `${id}는 tail 연결 카드를 쓴다`);
+  assert.match(block, /style=\{|--tail-y|popoverTail/, `${id}는 공통 tail 위치를 받는다`);
+}
+assert.match(source, /document\.addEventListener\("pointerdown"/, "서랍·팝오버는 바깥 클릭으로 닫힌다");
+assert.match(source, /closeDrawer\(true\)/, "서랍 닫기는 opener 포커스를 복귀시킨다");
+assert.match(source, /requestAnimationFrame\(\(\) => opener\?\.focus\(\)\)/, "팝오버 닫기도 opener 포커스를 복귀시킨다");
+assert.match(styles, /\.iconButton\s*\{[^}]*min-width:\s*44px;[^}]*min-height:\s*44px;/, "닫기 아이콘 버튼은 44px 누름 영역이다");
+assert.match(drawerPages, /aria-label="서랍 닫기"/, "페이지 서랍은 44px 닫기 버튼을 이름 붙인다");
+assert.match(drawerPages, /×/, "페이지 서랍 닫기는 X 모양이다");
+assert.match(drawerPages, /페이지 추가/, "페이지 서랍 머리 제목");
+assert.match(drawerTiles, /aria-label="서랍 닫기"/, "타일 서랍은 44px 닫기 버튼을 이름 붙인다");
+assert.match(drawerTiles, /×/, "타일 서랍 닫기는 X 모양이다");
+assert.match(drawerPages, /afterPage[\s\S]*(?:쪽 뒤에|맨 뒤에)/, "페이지 서랍 머리는 추가 위치를 보여 준다");
+assert.match(drawerPages, /추천 구성으로 다시 시작/, "페이지 서랍의 추천 구성 링크 액션");
+assert.match(drawerPages, /hasLegacy\s*&&/, "legacy 불러오기는 있을 때만 보인다");
+assert.match(drawerTiles, /selectionPill|개 선택/, "타일 비교 서랍은 선택 개수를 머리에 보여 준다");
+assert.match(styles, /\.pageCardGrid\s*\{[^}]*grid-template-columns:\s*repeat\(2,/, "페이지 추가 카드는 2열이다");
+assert.match(drawerPages, /viewBox="0 0 160 90"/, "페이지 추가 카드 미리보기는 16:9 viewBox다");
+assert.match(styles, /\.pageCardBlank\s*\{[^}]*border:\s*1px dashed/, "빈 페이지 미리보기는 점선이다");
+assert.match(styles, /\.tileList\s*\{[^}]*grid-template-columns:\s*repeat\(2,/, "분석 타일은 2열 카드 목록이다");
+assert.match(styles, /\.filterChipActive\s*\{[^}]*color:\s*#fff;[^}]*background:\s*#15171c;/, "선택된 타일 필터는 검정 바탕·흰 글자다");
+assert.match(drawerTiles, /pagesUsingTile[\s\S]*쪽/, "사용 중 타일은 사용 중인 페이지 수를 표시한다");
+assert.match(drawerTiles, /draggable=\{mode === "single"\}/, "타일 단일 모드는 기존 끌기 의미를 보존한다");
+assert.match(drawerTiles, /onClick=\{\(\) => onAdd\(/, "타일 단일 모드는 클릭 추가 의미를 보존한다");
+assert.match(drawerTiles, /onToggleCompare|onCreateCompare/, "타일 비교 모드 의미를 보존한다");
+assert.match(drawerTiles, /styles\.(?:tilePreview|tileCardPreview)/, "타일 카드는 가벼운 색상 미리보기 슬롯을 가진다");
+assert.match(drawerTiles, /background:\s*view\.color/, "타일 미리보기는 실제 지도 렌더 대신 타일 색을 쓴다");
+assert.match(styles, /\.(?:tilePreview|tileCardPreview)\s*\{[^}]*height:\s*72px/, "타일 미리보기 높이는 72px이다");
+assert.doesNotMatch(drawerTiles, /MapFigure|MapBox|data-surface-map/, "타일 미리보기에는 실제 지도 렌더를 넣지 않는다");
+assert.doesNotMatch(source, /TextBoxDrawer/, "글상자는 별도 서랍 없이 즉시 추가한다");
+assert.match(source, /const addTextBoxFromRail = useCallback\(\(\) =>[\s\S]*addTextBox\(\)/, "글상자 버튼은 누르자마자 추가 함수를 호출한다");
+assert.match(toolPillBlock, /aria-pressed=\{false\}[\s\S]*글상자/, "글상자 도구는 눌림 상태가 아니다");
+assert.match(slideSurfaceStyles, /\.textBox \[data-text-box-content\]:empty::before[\s\S]*글을 입력하세요/, "글상자 빈 상태 자리표시자 계약은 슬라이드 CSS에 남아 있다");
+assert.doesNotMatch(themePopoverSource, /<select/, "테마 팝오버에는 판형 select가 없다");
+assert.match(themePopoverSource, /작게[\s\S]*보통[\s\S]*크게/, "테마 글자 크기는 작게·보통·크게로 표시한다");
+assert.match(layout, /pageNumber[\s\S]*레이아웃[\s\S]*쪽/, "레이아웃 팝오버 머리는 레이아웃·N쪽이다");
+assert.match(layout, /<svg|viewBox=|<rect/, "레이아웃 선택지는 실제 미니어처 도형을 쓴다");
+assert.match(styles, /\.layoutOptions\s*\{[^}]*grid-template-columns:\s*repeat\(2,/, "레이아웃 선택지는 2×2 격자다");
+assert.match(layoutActiveRule, /border:\s*2px solid #2f6fdb;/, "선택 레이아웃은 2px 파란 테두리다");
+assert.match(layoutActiveRule, /background:\s*#(?:e0eafa|eaf2ff|edf4ff|eef3fb);/, "선택 레이아웃은 연한 파랑 바탕이다");
+assert.match(source, /발표 메모 · \{selectedPageNumber/, "메모 팝오버 머리는 발표 메모·N쪽이다");
+assert.match(source, /저장됨[\s\S]*Esc 닫기/, "메모 팝오버는 저장 상태와 Esc 닫기 안내를 보인다");
+assert.match(styles, /\.notesPopover\s*\{[^}]*width:\s*(?:340px|min\(340px)/, "메모 팝오버 폭은 약 340px이다");
+assert.match(styles, /\.notesFieldCompact textarea\s*\{[^}]*height:\s*150px/, "메모 textarea는 150px이다");
 assert.match(notes, /compact\?:\s*boolean/, "NotesField compact prop");
 assert.match(layout, /compact\?:\s*boolean/, "LayoutSwitcher compact prop");
 
@@ -100,7 +182,7 @@ assert.match(boardStyles, /@media \(min-width: 640px\) and \(max-width: 1359px\)
 assert.match(styles, /color: transparent;\s*font-size: 0;\s*\}\s*\.reportHeaderActions \.secondaryButton::after \{ content: "발표"/, "줄인 발표 버튼은 숨긴 원래 글자 폭을 차지하지 않는다");
 const tilesSource = readFileSync(new URL("../../components/v2/report/drawer-tiles.tsx", import.meta.url), "utf8");
 assert.doesNotMatch(tilesSource, /\? styles\.filterChipActive : styles\.filterChip/, "선택된 칸 구성 칩도 기본 칩 모양을 유지한다");
-assert.match(styles, /label\.tileRowButton \{ grid-template-columns: 18px minmax\(0, 1fr\);/, "비교 모드 행은 체크박스와 이름 두 칸");
+assert.match(tilesSource, /<label className=\{styles\.tileCardBody\}[^>]*>[\s\S]*<input/, "비교 모드 카드는 체크박스와 이름을 함께 제공한다");
 assert.match(styles, /\.scaleInput \{ display: flex; align-items: center; flex: 1; gap: 0;/, "축척 입력도 1:13,120처럼 접두와 숫자를 붙여 보인다");
 
 console.log("v2 report chrome style tests passed");

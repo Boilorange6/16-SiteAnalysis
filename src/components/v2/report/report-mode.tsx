@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
 import { createPortal } from "react-dom";
 import type { Dispatch } from "react";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
@@ -34,7 +34,7 @@ type ReportHistory = { past: ReportDoc[]; present: ReportDoc; future: ReportDoc[
 type RailKey = ReportRailKey;
 const surfaceClassMap = { ...legacySurfaceStyles, ...localSurfaceStyles };
 
-type RailIconName = "pages" | "tiles" | "textbox" | "theme";
+type RailIconName = "pages" | "tiles" | "textbox" | "theme" | "layout" | "notes";
 
 function RailIcon({ name }: { name: RailIconName }) {
   return (
@@ -43,6 +43,8 @@ function RailIcon({ name }: { name: RailIconName }) {
       {name === "tiles" && <><path d="m10 3 6 4-6 4-6-4 6-4Z" /><path d="m4 10 6 4 6-4M4 13l6 4 6-4" /></>}
       {name === "textbox" && <><path d="M4 4h12M10 4v12" /><path d="M7 16h6" /></>}
       {name === "theme" && <><circle cx="10" cy="10" r="5.5" /><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4" /></>}
+      {name === "layout" && <><rect x="3" y="3" width="14" height="14" rx="1" /><path d="M3 8h14M11 8v9" /></>}
+      {name === "notes" && <><path d="M5 3.5h7l3 3V16.5H5z" /><path d="M12 3.5v3h3M7.5 10h5M7.5 13h4" /></>}
     </svg>
   );
 }
@@ -83,42 +85,24 @@ function formatLabel(format: ReportFormat): string {
   return format === "wide" ? "와이드 16:9" : format === "a3" ? "A3 가로" : "A4 가로";
 }
 
-function ThemeDrawer({ doc, onFormat, onFontScale, onClose }: { doc: ReportDoc; onFormat: (format: ReportFormat) => void; onFontScale: (scale: ReportFontScale) => void; onClose: () => void }) {
+function ThemePopover({ doc, onFontScale, onClose }: { doc: ReportDoc; onFontScale: (scale: ReportFontScale) => void; onClose: () => void }) {
+  const scale = doc.fontScale ?? 1;
   return (
-    <section className={styles.drawer} aria-label="테마 설정">
+    <section className={styles.popoverBody} aria-label="테마 설정">
       <div className={styles.drawerHeader}>
-        <div><p className={styles.eyebrow}>보고서 설정</p><h2>테마</h2></div>
+        <h2>테마</h2>
         <button type="button" className={styles.iconButton} onClick={onClose} aria-label="테마 닫기">×</button>
       </div>
-      <label className={styles.fieldLabel}>
-        <span>판형</span>
-        <select value={doc.format} onChange={(event) => onFormat(event.target.value as ReportFormat)}>
-          <option value="wide">{formatLabel("wide")}</option>
-          <option value="a3">{formatLabel("a3")}</option>
-          <option value="a4">{formatLabel("a4")}</option>
-        </select>
-      </label>
       <div className={styles.themeScaleField}>
         <span className={styles.fieldLabelText}>제목·본문 글자 크기</span>
         <div className={styles.themeScaleOptions} role="radiogroup" aria-label="글자 크기 배율">
-          {([0.85, 1, 1.15] as const).map((scale) => <button key={scale} type="button" className={styles.themeScaleOption} role="radio" aria-checked={(doc.fontScale ?? 1) === scale} onClick={() => onFontScale(scale)}>{scale}×</button>)}
+          {([[0.85, "작게"], [1, "보통"], [1.15, "크게"]] as const).map(([value, label]) => <button key={value} type="button" className={styles.themeScaleOption} role="radio" aria-checked={scale === value} onClick={() => onFontScale(value)}>{label}</button>)}
         </div>
       </div>
-      <div className={styles.themeSample}>
+      <div className={styles.themeSample} style={{ "--theme-scale": scale } as CSSProperties}>
         <span className={styles.themeTitle}>제목 크기</span>
-        <span className={styles.themeBody}>본문은 제목의 85% 비율로 맞춥니다.</span>
+        <span className={styles.themeBody}>본문 미리보기</span>
       </div>
-      <p className={styles.helper}>보고서의 모든 페이지가 같은 판형으로 바뀝니다. 지도 위치와 페이지 내용은 보존됩니다.</p>
-    </section>
-  );
-}
-
-function TextBoxDrawer({ onAdd }: { onAdd: () => void }) {
-  return (
-    <section className={styles.drawer} aria-label="글상자 추가">
-      <div className={styles.drawerHeader}><div><p className={styles.eyebrow}>요소 추가</p><h2>글상자</h2></div></div>
-      <p className={styles.helper}>페이지 가운데에 글상자를 추가한 뒤 바로 입력하세요. 선택한 글상자는 Delete로 지울 수 있습니다.</p>
-      <button type="button" className={styles.primaryButton} onClick={onAdd}>＋ 글상자 추가</button>
     </section>
   );
 }
@@ -145,14 +129,16 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const [exportOpen, setExportOpen] = useState(false);
   const [exportPageScope, setExportPageScope] = useState<ExportPageScope | null>(null);
   const [exportPageIds, setExportPageIds] = useState<Set<string>>(new Set());
-  const [layoutPopoverOpen, setLayoutPopoverOpen] = useState(false);
-  const [notesPopoverOpen, setNotesPopoverOpen] = useState(false);
+  const [activePopover, setActivePopover] = useState<"layout" | "notes" | "theme" | null>(null);
   const exportTriggerRef = useRef<HTMLButtonElement>(null);
   const exportDialogRef = useRef<HTMLDivElement>(null);
   const layoutTriggerRef = useRef<HTMLButtonElement>(null);
   const notesTriggerRef = useRef<HTMLButtonElement>(null);
+  const themeTriggerRef = useRef<HTMLButtonElement>(null);
   const layoutPopoverRef = useRef<HTMLDivElement>(null);
   const notesPopoverRef = useRef<HTMLDivElement>(null);
+  const themePopoverRef = useRef<HTMLDivElement>(null);
+  const popoverOpenerRef = useRef<HTMLElement | null>(null);
   const [mobileViewport, setMobileViewport] = useState(false);
   const reportStageRef = useRef<HTMLElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
@@ -160,6 +146,12 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const drawerOpenerRef = useRef<HTMLElement | null>(null);
   const lockAttentionTimerRef = useRef<number | null>(null);
   const [reportActionsTarget, setReportActionsTarget] = useState<HTMLElement | null>(null);
+  const [overlayTailY, setOverlayTailY] = useState<number | null>(null);
+  const [overlayPosition, setOverlayPosition] = useState<{ top: number; left: number } | null>(null);
+  const drawerOpen = rail === "pages" || rail === "tiles";
+  const layoutPopoverOpen = activePopover === "layout";
+  const notesPopoverOpen = activePopover === "notes";
+  const themePopoverOpen = activePopover === "theme";
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -203,8 +195,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     setSelection(null);
     setMapMoveActive(false);
     setSettingsOpen(false);
-    setLayoutPopoverOpen(false);
-    setNotesPopoverOpen(false);
+    setActivePopover(null);
   }, []);
   const navigateStrip = useCallback((index: number) => {
     const item = stripItems[index];
@@ -236,40 +227,100 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     window.setTimeout(() => setToast((current) => current === message ? null : current), 5000);
   }, []);
 
-  const closeLayoutPopover = useCallback((restoreFocus = false) => {
-    setLayoutPopoverOpen(false);
-    if (restoreFocus) window.requestAnimationFrame(() => layoutTriggerRef.current?.focus());
+  const closePopover = useCallback((restoreFocus = false) => {
+    const opener = popoverOpenerRef.current;
+    setActivePopover(null);
+    popoverOpenerRef.current = null;
+    if (restoreFocus) window.requestAnimationFrame(() => opener?.focus());
   }, []);
 
-  const closeNotesPopover = useCallback((restoreFocus = false) => {
-    setNotesPopoverOpen(false);
-    if (restoreFocus) window.requestAnimationFrame(() => notesTriggerRef.current?.focus());
-  }, []);
-
-  const toggleLayoutPopover = useCallback(() => {
+  const toggleLayoutPopover = useCallback((opener?: HTMLElement | null) => {
+    if (activePopover === "layout") {
+      closePopover(true);
+      return;
+    }
+    popoverOpenerRef.current = opener ?? layoutTriggerRef.current;
     setRail(null);
-    setNotesPopoverOpen(false);
-    setLayoutPopoverOpen((current) => !current);
+    setActivePopover("layout");
+  }, [activePopover, closePopover]);
+
+  const toggleNotesPopover = useCallback((opener?: HTMLElement | null) => {
+    if (activePopover === "notes") {
+      closePopover(true);
+      return;
+    }
+    popoverOpenerRef.current = opener ?? notesTriggerRef.current;
+    setRail(null);
+    setActivePopover("notes");
+  }, [activePopover, closePopover]);
+
+  const toggleThemePopover = useCallback((opener?: HTMLElement | null) => {
+    if (activePopover === "theme") {
+      closePopover(true);
+      return;
+    }
+    popoverOpenerRef.current = opener ?? themeTriggerRef.current;
+    setRail(null);
+    setActivePopover("theme");
+  }, [activePopover, closePopover]);
+
+  const closeDrawer = useCallback((restoreFocus = false) => {
+    const opener = drawerOpenerRef.current;
+    setRail(null);
+    setSelection(null);
+    setMapMoveActive(false);
+    setSettingsOpen(false);
+    setActivePopover(null);
+    if (restoreFocus) window.requestAnimationFrame(() => opener?.focus());
   }, []);
 
-  const toggleNotesPopover = useCallback(() => {
-    setRail(null);
-    setLayoutPopoverOpen(false);
-    setNotesPopoverOpen((current) => !current);
-  }, []);
+  const anchoredCardStyle = overlayTailY === null && overlayPosition === null ? undefined : {
+    ...(overlayTailY === null ? {} : { "--tail-y": `${overlayTailY}px` }),
+    ...(overlayPosition === null ? {} : { "--popover-top": `${overlayPosition.top}px`, "--popover-left": `${overlayPosition.left}px` }),
+  } as CSSProperties;
+
+  useLayoutEffect(() => {
+    const anchor = drawerOpen ? drawerOpenerRef.current : activePopover ? popoverOpenerRef.current : null;
+    const stage = reportStageRef.current;
+    if (!anchor || !stage) {
+      setOverlayTailY(null);
+      setOverlayPosition(null);
+      return;
+    }
+    const update = () => {
+      const anchorRect = anchor.getBoundingClientRect();
+      const stageRect = stage.getBoundingClientRect();
+      setOverlayPosition({ top: stageRect.top + 16, left: stageRect.left + 88 });
+      setOverlayTailY(anchorRect.top + anchorRect.height / 2 - stageRect.top - 16);
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [activePopover, drawerOpen]);
 
   useEffect(() => {
-    if (!layoutPopoverOpen && !notesPopoverOpen) return;
+    if (!drawerOpen && !activePopover) return;
     const onPointerDown = (event: PointerEvent) => {
       if (!(event.target instanceof Node)) return;
-      if (layoutPopoverRef.current?.contains(event.target) || layoutTriggerRef.current?.contains(event.target)) return;
-      if (notesPopoverRef.current?.contains(event.target) || notesTriggerRef.current?.contains(event.target)) return;
-      closeLayoutPopover();
-      closeNotesPopover();
+      if (drawerOpen && (drawerRef.current?.contains(event.target) || drawerOpenerRef.current?.contains(event.target))) return;
+      if (activePopover && (
+        layoutPopoverRef.current?.contains(event.target)
+        || notesPopoverRef.current?.contains(event.target)
+        || themePopoverRef.current?.contains(event.target)
+        || layoutTriggerRef.current?.contains(event.target)
+        || notesTriggerRef.current?.contains(event.target)
+        || themeTriggerRef.current?.contains(event.target)
+      )) return;
+      if (drawerOpen) closeDrawer(true);
+      if (activePopover) closePopover(true);
     };
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [closeLayoutPopover, closeNotesPopover, layoutPopoverOpen, notesPopoverOpen]);
+  }, [activePopover, closeDrawer, closePopover, drawerOpen]);
 
   const commitDoc = useCallback((next: ReportDoc, message?: string) => {
     setHistory((current) => {
@@ -302,10 +353,14 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        if (layoutPopoverOpen || notesPopoverOpen) {
+        if (activePopover) {
           event.preventDefault();
-          if (layoutPopoverOpen) closeLayoutPopover(true);
-          if (notesPopoverOpen) closeNotesPopover(true);
+          closePopover(true);
+          return;
+        }
+        if (drawerOpen) {
+          event.preventDefault();
+          closeDrawer(true);
           return;
         }
         const current = { selected: selection?.kind === "map", moveActive: mapMoveActive, settingsOpen };
@@ -335,7 +390,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [closeLayoutPopover, closeNotesPopover, layoutPopoverOpen, mapMoveActive, navigateStrip, notesPopoverOpen, redo, selectedId, selectedSlideKey, selection, settingsOpen, stripItems, undo]);
+  }, [activePopover, closeDrawer, closePopover, drawerOpen, mapMoveActive, navigateStrip, redo, selectedId, selectedSlideKey, selection, settingsOpen, stripItems, undo]);
 
   const addPages = useCallback((pages: ReportPage[], message?: string) => {
     if (pages.length === 0) return;
@@ -507,8 +562,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
       if (!reportPageMapSelectable(page)) return;
       rememberDrawerOpener();
       const transitioned = transitionMapInteraction(current, "select");
-      setLayoutPopoverOpen(false);
-      setNotesPopoverOpen(false);
+      setActivePopover(null);
       setSelection(next);
       setMapMoveActive(transitioned.moveActive);
       setSettingsOpen(transitioned.settingsOpen);
@@ -528,24 +582,28 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   }, [history.present.pages, mapMoveActive, rememberDrawerOpener, selectedId, selection, settingsOpen]);
   const toggleRail = useCallback((next: RailKey, opener?: HTMLElement | null) => {
     rememberDrawerOpener(opener);
+    if (drawerOpen && rail === next) {
+      setRail(null);
+      setSelection(null);
+      setMapMoveActive(false);
+      setSettingsOpen(false);
+      window.requestAnimationFrame(() => drawerOpenerRef.current?.focus());
+      return;
+    }
     setSelection(null);
     setMapMoveActive(false);
     setSettingsOpen(false);
-    setLayoutPopoverOpen(false);
-    setNotesPopoverOpen(false);
-    setRail((current) => current === next ? null : next);
-  }, [rememberDrawerOpener]);
-  const addTextBoxFromRail = useCallback((opener?: HTMLElement | null) => {
-    rememberDrawerOpener(opener);
-    const opening = rail !== "textbox";
+    setActivePopover(null);
+    setRail(next);
+  }, [drawerOpen, rail, rememberDrawerOpener]);
+  const addTextBoxFromRail = useCallback(() => {
     setSelection(null);
     setMapMoveActive(false);
     setSettingsOpen(false);
-    setLayoutPopoverOpen(false);
-    setNotesPopoverOpen(false);
-    setRail(opening ? "textbox" : null);
-    if (opening) addTextBox();
-  }, [addTextBox, rail, rememberDrawerOpener]);
+    setActivePopover(null);
+    setRail(null);
+    addTextBox();
+  }, [addTextBox]);
   const handleDrop = useCallback((event: DragEvent<HTMLElement>) => {
     const tileId = event.dataTransfer.getData("text/report-tile");
     if (!tileId) return;
@@ -560,6 +618,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   }, [compareGrid]);
 
   const selectedPage = selectedId ? history.present.pages.find((page) => page.id === selectedId) : undefined;
+  const selectedPageNumber = selectedId ? history.present.pages.findIndex((page) => page.id === selectedId) + 1 : null;
   const selectedPageMapSelectable = reportPageMapSelectable(selectedPage);
   const editableMapPage = selectedPage?.kind === "tile" || selectedPage?.kind === "compare" ? selectedPage : null;
   const mapCell = selectedPage?.kind === "compare" ? (selection?.kind === "map" && selection.cell !== undefined ? selection.cell : 0) : undefined;
@@ -671,15 +730,6 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     applyFrame(mapCell, { locked: !mapFrame.locked });
   }, [applyFrame, mapCell, mapFrame]);
 
-  const closeDrawer = useCallback(() => {
-    setRail(null);
-    setSelection(null);
-    setMapMoveActive(false);
-    setSettingsOpen(false);
-    setLayoutPopoverOpen(false);
-    setNotesPopoverOpen(false);
-  }, []);
-  const drawerOpen = rail !== null;
   const modalContentInert = exportOpen || (mobileViewport && (drawerOpen || settingsOpen));
   useFocusTrap({ ref: drawerRef, active: mobileViewport && drawerOpen, onClose: closeDrawer, restoreFocusRef: drawerOpenerRef });
   useFocusTrap({ ref: settingsRef, active: mobileViewport && settingsOpen, onClose: closeMapSettings, restoreFocusRef: drawerOpenerRef });
@@ -714,7 +764,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   }, [plan]);
 
   const handleMapEscapeCapture = (event: React.KeyboardEvent<HTMLElement>) => {
-    if (event.key !== "Escape" || layoutPopoverOpen || notesPopoverOpen) return;
+    if (event.key !== "Escape" || activePopover || drawerOpen) return;
     const target = event.target as HTMLElement;
     if (target.closest("#report-map-scale-menu") || (target.closest("[data-map-scale-chip]") && document.getElementById("report-map-scale-menu"))) return;
     const current = { selected: selection?.kind === "map", moveActive: mapMoveActive, settingsOpen };
@@ -843,52 +893,43 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
           </aside>}
 
           <nav className={`${styles.floatCard} ${styles.toolPill}`} aria-label="보고서 요소" inert={modalContentInert || undefined}>
-            <button type="button" className={`${styles.railButton} ${rail === "pages" ? styles.railButtonActive : ""}`} aria-pressed={rail === "pages"} aria-expanded={rail === "pages" && drawerOpen} aria-controls="report-drawer" onClick={(event) => toggleRail("pages", event.currentTarget)}><span aria-hidden="true"><RailIcon name="pages" /></span><span>페이지</span></button>
-            <button type="button" className={`${styles.railButton} ${rail === "tiles" ? styles.railButtonActive : ""}`} aria-pressed={rail === "tiles"} aria-expanded={rail === "tiles" && drawerOpen} aria-controls="report-drawer" onClick={(event) => toggleRail("tiles", event.currentTarget)}><span aria-hidden="true"><RailIcon name="tiles" /></span><span>분석 타일</span></button>
-            <button type="button" className={`${styles.railButton} ${rail === "textbox" ? styles.railButtonActive : ""}`} aria-pressed={rail === "textbox"} aria-expanded={rail === "textbox" && drawerOpen} aria-controls="report-drawer" onClick={(event) => addTextBoxFromRail(event.currentTarget)}><span aria-hidden="true"><RailIcon name="textbox" /></span><span>글상자</span></button>
-            <button type="button" className={`${styles.railButton} ${rail === "theme" ? styles.railButtonActive : ""}`} aria-pressed={rail === "theme"} aria-expanded={rail === "theme" && drawerOpen} aria-controls="report-drawer" onClick={(event) => toggleRail("theme", event.currentTarget)}><span aria-hidden="true"><RailIcon name="theme" /></span><span>테마</span></button>
+            <button type="button" className={`${styles.railButton} ${rail === "pages" && drawerOpen ? styles.railButtonActive : ""}`} aria-pressed={rail === "pages" && drawerOpen} aria-expanded={rail === "pages" && drawerOpen} aria-controls="report-drawer" onClick={(event) => toggleRail("pages", event.currentTarget)}><span aria-hidden="true"><RailIcon name="pages" /></span><span>페이지</span></button>
+            <button type="button" className={`${styles.railButton} ${rail === "tiles" && drawerOpen ? styles.railButtonActive : ""}`} aria-pressed={rail === "tiles" && drawerOpen} aria-expanded={rail === "tiles" && drawerOpen} aria-controls="report-drawer" onClick={(event) => toggleRail("tiles", event.currentTarget)}><span aria-hidden="true"><RailIcon name="tiles" /></span><span>분석 타일</span></button>
+            <button type="button" className={styles.railButton} aria-pressed={false} onClick={addTextBoxFromRail} disabled={!selectedPage}><span aria-hidden="true"><RailIcon name="textbox" /></span><span>글상자</span></button>
+            <div className={styles.toolDivider} role="separator" aria-hidden="true" />
+            <div className={styles.railPopoverRoot}>
+              <button ref={themeTriggerRef} type="button" className={`${styles.railButton} ${themePopoverOpen ? styles.railButtonActive : ""}`} aria-pressed={themePopoverOpen} aria-haspopup="dialog" aria-expanded={themePopoverOpen} aria-controls={themePopoverOpen ? "report-theme-popover" : undefined} aria-label="테마" onClick={(event) => toggleThemePopover(event.currentTarget)}><span aria-hidden="true"><RailIcon name="theme" /></span><span>테마</span></button>
+              {themePopoverOpen && <div ref={themePopoverRef} id="report-theme-popover" className={`${styles.floatCard} ${styles.anchoredCard} ${styles.railPopover}`} style={anchoredCardStyle} role="dialog" aria-label="테마 설정"><ThemePopover doc={history.present} onFontScale={(fontScale) => apply({ type: "theme", fontScale }, `${fontScale}배 글자 크기를 적용했습니다.`)} onClose={() => closePopover(true)} /></div>}
+            </div>
+            <div className={styles.railPopoverRoot}>
+              <button ref={layoutTriggerRef} type="button" className={`${styles.railButton} ${layoutPopoverOpen ? styles.railButtonActive : ""}`} aria-haspopup="dialog" aria-pressed={layoutPopoverOpen} aria-expanded={layoutPopoverOpen} aria-controls={layoutPopoverOpen ? "report-layout-menu" : undefined} aria-label="페이지 레이아웃 메뉴" onClick={(event) => toggleLayoutPopover(event.currentTarget)} disabled={!selectedPage}><span aria-hidden="true"><RailIcon name="layout" /></span><span>레이아웃</span></button>
+              {layoutPopoverOpen && selectedPage && <div ref={layoutPopoverRef} id="report-layout-menu" className={`${styles.floatCard} ${styles.anchoredCard} ${styles.railPopover}`} style={anchoredCardStyle} role="dialog" aria-label="페이지 레이아웃"><LayoutSwitcher compact pageNumber={selectedPageNumber ?? 1} value={selectedPage.layout} onChange={(layout) => apply({ type: "layout", id: selectedPage.id, layout })} /></div>}
+            </div>
+            <div className={styles.railPopoverRoot}>
+              <button ref={notesTriggerRef} type="button" className={`${styles.railButton} ${notesPopoverOpen ? styles.railButtonActive : ""}`} aria-haspopup="dialog" aria-pressed={notesPopoverOpen} aria-expanded={notesPopoverOpen} aria-controls={notesPopoverOpen ? "report-notes-popover" : undefined} aria-label={selectedPage?.notes.trim() ? "발표 메모 있음" : "발표 메모"} data-has-notes={selectedPage?.notes.trim() ? "true" : "false"} onClick={(event) => toggleNotesPopover(event.currentTarget)} disabled={!selectedPage}><span aria-hidden="true"><RailIcon name="notes" /></span><span>메모</span>{selectedPage?.notes.trim() && <span className={styles.noteDot} aria-hidden="true" />}</button>
+              {notesPopoverOpen && selectedPage && <div ref={notesPopoverRef} id="report-notes-popover" className={`${styles.floatCard} ${styles.anchoredCard} ${styles.railPopover} ${styles.notesPopover}`} style={anchoredCardStyle} role="dialog" aria-label="발표 메모"><div className={styles.popoverBody}><div className={styles.drawerHeader}><h2>발표 메모 · {selectedPageNumber ?? 1}쪽</h2><button type="button" className={styles.iconButton} onClick={() => closePopover(true)} aria-label="메모 닫기">×</button></div><NotesField compact pageId={selectedPage.id} value={selectedPage.notes} onChange={(notes) => apply({ type: "notes", id: selectedPage.id, notes })} /><div className={styles.notesMeta}><span>저장됨</span><span>Esc 닫기</span></div></div></div>}
+            </div>
           </nav>
 
           <aside
             ref={drawerRef}
             id="report-drawer"
-            className={`${styles.floatCard} ${styles.drawerCard}`}
+            className={`${styles.floatCard} ${styles.anchoredCard} ${styles.drawerCard}`}
+            style={anchoredCardStyle}
             data-drawer-open={drawerOpen ? "true" : "false"}
             data-mobile-sheet={mobileViewport && drawerOpen ? "open" : "closed"}
-            role={mobileViewport && drawerOpen ? "dialog" : undefined}
+            role={drawerOpen ? "dialog" : undefined}
             aria-modal={mobileViewport && drawerOpen ? true : undefined}
             aria-hidden={drawerOpen ? undefined : true}
             inert={exportOpen || !drawerOpen ? true : undefined}
-            aria-label={rail === "tiles" ? "분석 타일 추가" : rail === "textbox" ? "글상자 추가" : rail === "theme" ? "테마 설정" : rail === "layout" ? "페이지 레이아웃" : "페이지 추가"}
+            aria-label={rail === "tiles" ? "분석 타일 추가" : "페이지 추가"}
           >
-            {mobileViewport && drawerOpen && <button type="button" className={styles.sheetClose} onClick={closeDrawer}>닫기</button>}
-            {rail === "pages" && <DrawerPages open hasLegacy={legacyAvailable} onAdd={addPage} onRecommended={startRecommended} onLegacy={importLegacy} />}
-            {rail === "tiles" && <DrawerTiles open doc={history.present} views={views} mode={compareMode ? "compare" : "single"} compareGrid={compareGrid} compareSelected={compareSelected} onCompareGrid={setCompareGrid} onAdd={addTile} onToggleCompare={toggleCompareTile} onCreateCompare={addComparePage} onCancelCompare={() => { setCompareSelected([]); setCompareMode(false); }} />}
-            {rail === "textbox" && <TextBoxDrawer onAdd={addTextBox} />}
-            {rail === "theme" && <ThemeDrawer doc={history.present} onFormat={(format) => apply({ type: "format", format }, `${formatLabel(format)} 판형으로 바꿨습니다.`)} onFontScale={(fontScale) => apply({ type: "theme", fontScale }, `${fontScale}배 글자 크기를 적용했습니다.`)} onClose={() => mobileViewport ? closeDrawer() : setRail("pages")} />}
-            {rail === "layout" && selectedPage && <div className={styles.drawer}><LayoutSwitcher value={selectedPage.layout} onChange={(layout) => apply({ type: "layout", id: selectedPage.id, layout })} /></div>}
+            {rail === "pages" && <DrawerPages open afterPage={selectedPageNumber} hasLegacy={legacyAvailable} onAdd={addPage} onRecommended={startRecommended} onLegacy={importLegacy} onClose={() => closeDrawer(true)} />}
+            {rail === "tiles" && <DrawerTiles open doc={history.present} views={views} mode={compareMode ? "compare" : "single"} compareGrid={compareGrid} compareSelected={compareSelected} onCompareGrid={setCompareGrid} onAdd={addTile} onToggleCompare={toggleCompareTile} onCreateCompare={addComparePage} onCancelCompare={() => { setCompareSelected([]); setCompareMode(false); }} onClose={() => closeDrawer(true)} />}
           </aside>
 
           <div className={`${styles.floatCard} ${styles.pageDock}`} inert={modalContentInert || undefined}>
-            <div className={styles.dockLead} data-dock-lead="true">
-              <div className={styles.dockPopoverRoot}>
-                <button ref={layoutTriggerRef} type="button" className={styles.dockButton} aria-haspopup="dialog" aria-expanded={layoutPopoverOpen} aria-controls={layoutPopoverOpen ? "report-layout-menu" : undefined} aria-label="페이지 레이아웃 메뉴" onClick={toggleLayoutPopover} disabled={!selectedPage}>
-                  <span aria-hidden="true">▥</span><span>레이아웃</span>
-                </button>
-                {layoutPopoverOpen && selectedPage && <div ref={layoutPopoverRef} id="report-layout-menu" className={`${styles.floatCard} ${styles.dockPopover}`} role="dialog" aria-label="페이지 레이아웃">
-                  <LayoutSwitcher compact value={selectedPage.layout} onChange={(layout) => apply({ type: "layout", id: selectedPage.id, layout })} />
-                </div>}
-              </div>
-              <div className={styles.dockPopoverRoot}>
-                <button ref={notesTriggerRef} type="button" className={styles.dockButton} aria-haspopup="dialog" aria-expanded={notesPopoverOpen} aria-controls={notesPopoverOpen ? "report-notes-popover" : undefined} aria-label={selectedPage?.notes.trim() ? "발표 메모 있음" : "발표 메모"} data-has-notes={selectedPage?.notes.trim() ? "true" : "false"} onClick={toggleNotesPopover} disabled={!selectedPage}>
-                  <span aria-hidden="true">✎</span><span>메모</span>{selectedPage?.notes.trim() && <span className={styles.noteDot} aria-hidden="true" />}
-                </button>
-                {notesPopoverOpen && selectedPage && <div ref={notesPopoverRef} id="report-notes-popover" className={`${styles.floatCard} ${styles.dockPopover} ${styles.notesPopover}`} role="dialog" aria-label="발표 메모">
-                  <NotesField compact pageId={selectedPage.id} value={selectedPage.notes} onChange={(notes) => apply({ type: "notes", id: selectedPage.id, notes })} />
-                </div>}
-              </div>
-            </div>
-            <PageStrip items={stripItems} selectedId={selectedId} selectedSlideKey={selectedSlideKey} onSelect={selectStripItem} onNavigate={navigateStrip} onReorder={reorderPage} onDropMove={dropMovePage} onAddPage={() => { setRail("pages"); setSelection(null); setMapMoveActive(false); setSettingsOpen(false); addPage("blank"); }} onDuplicate={duplicatePage} onDelete={deletePage} classMap={surfaceClassMap} exportSelectionMode={exportPageScope === "selected"} exportPageIds={exportPageIds} onToggleExportPage={toggleExportPage} />
+            <PageStrip items={stripItems} selectedId={selectedId} selectedSlideKey={selectedSlideKey} onSelect={selectStripItem} onNavigate={navigateStrip} onReorder={reorderPage} onDropMove={dropMovePage} onAddPage={() => { rememberDrawerOpener(); setActivePopover(null); setRail("pages"); setSelection(null); setMapMoveActive(false); setSettingsOpen(false); addPage("blank"); }} onDuplicate={duplicatePage} onDelete={deletePage} classMap={surfaceClassMap} exportSelectionMode={exportPageScope === "selected"} exportPageIds={exportPageIds} onToggleExportPage={toggleExportPage} />
           </div>
         </main>
       </div>

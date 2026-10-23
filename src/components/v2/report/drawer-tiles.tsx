@@ -18,11 +18,12 @@ type DrawerTilesProps = {
   onToggleCompare: (tileId: string) => void;
   onCreateCompare: () => void;
   onCancelCompare: () => void;
+  onClose: () => void;
 };
 
 const CATEGORIES = ["전체", "분석", "도판", "시뮬레이션"] as const;
 
-export default function DrawerTiles({ open, doc, views, mode, compareGrid, compareSelected, onCompareGrid, onAdd, onToggleCompare, onCreateCompare, onCancelCompare }: DrawerTilesProps) {
+export default function DrawerTiles({ open, doc, views, mode, compareGrid, compareSelected, onCompareGrid, onAdd, onToggleCompare, onCreateCompare, onCancelCompare, onClose }: DrawerTilesProps) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]>("전체");
   const items = useMemo(() => [...views.values()]
@@ -39,7 +40,7 @@ export default function DrawerTiles({ open, doc, views, mode, compareGrid, compa
         <div>
           <h2>분석 타일</h2>
         </div>
-        {mode === "compare" && <span className={styles.selectionPill}>{compareSelected.length}개 선택</span>}
+        <div className={styles.drawerHeaderActions}>{mode === "compare" && <span className={styles.selectionPill}>{compareSelected.length}개 선택</span>}<button type="button" className={styles.iconButton} onClick={onClose} aria-label="서랍 닫기">×</button></div>
       </div>
       <label className={styles.searchBox}>
         <span className={styles.srOnly}>타일 검색</span>
@@ -56,7 +57,7 @@ export default function DrawerTiles({ open, doc, views, mode, compareGrid, compa
           const checked = compareSelected.includes(view.tileId);
           return (
             <div
-              className={`${styles.tileRow} ${checked ? styles.tileRowSelected : ""}`}
+              className={`${styles.tileCard} ${checked ? styles.tileCardSelected : ""}`}
               key={view.tileId}
               draggable={mode === "single"}
               onDragStart={(event) => {
@@ -64,20 +65,18 @@ export default function DrawerTiles({ open, doc, views, mode, compareGrid, compa
                 event.dataTransfer.setData("text/report-tile", view.tileId);
               }}
             >
-              <span className={styles.tileDot} style={{ background: view.color }} aria-hidden="true" />
+              <div className={styles.tilePreview} style={{ background: `linear-gradient(rgba(255,255,255,.78), rgba(255,255,255,.78)), ${view.color}` }} aria-hidden="true"><span className={styles.tilePreviewDot} style={{ background: view.color }} /></div>
+              {used.length > 0 && <span className={styles.tileUsedBadge}>{used.map((page) => `${page}쪽`).join(" · ")}</span>}
               {mode === "compare" ? (
-                <label className={styles.tileRowButton} title={view.title}>
+                <label className={styles.tileCardBody} title={view.title}>
                   <input type="checkbox" checked={checked} aria-label={`${view.title} 비교에 포함`} disabled={!checked && compareSelected.length >= compareLimit} onChange={() => onToggleCompare(view.tileId)} />
                   <span className={styles.tileRowCopy}><strong>{view.title}</strong><span>{view.kindLabel}</span></span>
                 </label>
               ) : (
-                <button type="button" className={styles.tileRowButton} title={view.title} aria-label={`${view.title} 추가`} onClick={() => onAdd(view.tileId)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onAdd(view.tileId); } }}>
+                <button type="button" className={styles.tileCardBody} title={view.title} aria-label={`${view.title} 추가`} onClick={() => onAdd(view.tileId)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onAdd(view.tileId); } }}>
                   <span className={styles.tileRowCopy}><strong>{view.title}</strong><span>{view.kindLabel}</span></span>
-                  <span className={styles.tileMetric}>{view.headline?.value ?? "결과 없음"}</span>
-                  <span className={styles.tileAdd} aria-hidden="true">＋</span>
                 </button>
               )}
-              {used.length > 0 && <span className={styles.tileUsed}>{used.join("·")}쪽에 있음</span>}
             </div>
           );
         })}
