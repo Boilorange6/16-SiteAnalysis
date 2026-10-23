@@ -53,6 +53,8 @@ export type MapFigureProps = {
   north?: number | false;
   /** 저장된 방위표 중심 x(px). */
   northX?: number;
+  /** 저장된 방위표 크기 배율. */
+  northScale?: number;
   /** 축척 막대 (기본 그림) */
   scale?: boolean;
   /** 대지 지정 화면처럼 큰 반경 원·바깥 dim을 숨긴다. */
@@ -81,6 +83,8 @@ export type MapFigureProps = {
   scaleY?: number;
   /** 저장된 축척 막대의 판 사각형. 막대 길이는 현재 축척 계산을 따른다. */
   scaleBoxOverride?: { x0: number; y0: number; x1: number; y1: number };
+  /** 저장된 축척 막대의 굵기·글자 배율. */
+  scaleChromeScale?: number;
   /** 대지 중심의 세로 위치(0~1, 기본 0.5). 아래에서 올라오는 시트가 있으면 위로 옮긴다 */
   siteY?: number;
   /** 콜아웃 칸의 위쪽(px). 보고서 미리보기·PPT가 공용 회피 레이아웃을 전달할 때 쓴다. */
@@ -373,7 +377,7 @@ function backgroundTransform(from: Viewport, to: Viewport, width: number, height
   return `matrix(${scale},0,0,${scale},${e},${f})`;
 }
 
-function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, backgroundOnly = false, fixed, layoutUnit, labelScale = 1, compact = false, label, legend, legendY, north: northOpt, northX, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = EMPTY_BOXES, siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, scaleY, scaleBoxOverride, siteY = 0.5, calloutTop: calloutTopOpt, calloutLeftBottom, selectedFids = EMPTY_KEYS, terrainSection = "A", highlightLabel = null, legendFocus = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = EMPTY_KEYS, showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeatureSelect, onLabelSelect, onFeaturePin, onLegendHover, onLegendPin, path = EMPTY_PATH, onMapClick, view, viewport, dragging = false, previewInteraction = false, preserveShortCalloutLabels = false, hiddenKeys = EMPTY_KEYS, deletedElementKeys = EMPTY_KEYS, labelBoxes = EMPTY_LABEL_BOXES, onLabelBoxChange, onLabelBoxReset, selectedElementKey = null, selectedLabelKey = null }: MapFigureProps) {
+function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, backgroundOnly = false, fixed, layoutUnit, labelScale = 1, compact = false, label, legend, legendY, north: northOpt, northX, northScale, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = EMPTY_BOXES, siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, scaleY, scaleBoxOverride, scaleChromeScale, siteY = 0.5, calloutTop: calloutTopOpt, calloutLeftBottom, selectedFids = EMPTY_KEYS, terrainSection = "A", highlightLabel = null, legendFocus = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = EMPTY_KEYS, showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeatureSelect, onLabelSelect, onFeaturePin, onLegendHover, onLegendPin, path = EMPTY_PATH, onMapClick, view, viewport, dragging = false, previewInteraction = false, preserveShortCalloutLabels = false, hiddenKeys = EMPTY_KEYS, deletedElementKeys = EMPTY_KEYS, labelBoxes = EMPTY_LABEL_BOXES, onLabelBoxChange, onLabelBoxReset, selectedElementKey = null, selectedLabelKey = null }: MapFigureProps) {
   if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
     const target = window as Window & { __V2_PREVIEW_METRICS__?: Record<string, number> };
     const metrics = target.__V2_PREVIEW_METRICS__ ?? (target.__V2_PREVIEW_METRICS__ = {});
@@ -568,6 +572,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     scaleX,
     scaleY,
     scaleBoxOverride,
+    scaleChromeScale,
     scale,
     showRadius,
     showSiteMarker,
@@ -590,18 +595,21 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     path,
     north: northOpt,
     northX,
+    northScale,
     dragging: sceneDragging,
     view,
     viewport,
     legendFocus,
     layoutUnit: u,
     labelScale: safeLabelScale,
-  }), [activeLayer, avoid, bare, bottomInset, calloutLeftBottom, calloutTopOpt, compact, deletedElementKeys, effectiveLabelBoxes, emphasisKey, fill, fixed, H, hiddenKeys, highlightLabel, layoutUnit, legendFocus, mapCenterY, mapFill, mapSiteX, mapSiteY, muted, model, northOpt, northX, panelH, panelW, panelX, panelY, path, rightInset, safeLabelScale, scale, scaleLeft, scaleX, scaleY, scaleBoxOverride, sceneDragging, sceneHoverKey, showAutomaticLabels, showLegend, showRadius, showSiteMarker, siteX, selectedFids, terrainSection, pinnedKeys, W, view, viewport]);
+  }), [activeLayer, avoid, bare, bottomInset, calloutLeftBottom, calloutTopOpt, compact, deletedElementKeys, effectiveLabelBoxes, emphasisKey, fill, fixed, H, hiddenKeys, highlightLabel, layoutUnit, legendFocus, mapCenterY, mapFill, mapSiteX, mapSiteY, muted, model, northOpt, northScale, northX, panelH, panelW, panelX, panelY, path, rightInset, safeLabelScale, scale, scaleChromeScale, scaleLeft, scaleX, scaleY, scaleBoxOverride, sceneDragging, sceneHoverKey, showAutomaticLabels, showLegend, showRadius, showSiteMarker, siteX, selectedFids, terrainSection, pinnedKeys, W, view, viewport]);
   const vp = scene.viewport;
   const proj = makeProjector(vp);
   const mpp = scene.mpp;
   const [cx, cy] = scene.center;
   const R = scene.radiusPx;
+  const northUnit = scene.northUnit;
+  const scaleUnit = scene.unit * scene.scaleChromeScale;
 
   const tiles = basemap === "tiles" ? scene.tiles : [];
   const stack = BASEMAP_STACK[activeLayer];
@@ -1684,9 +1692,9 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
         {/* 북쪽 */}
         {showNativeChrome && northOpt !== false && (
           <g>
-            <circle cx={north.x} cy={north.y} r={13 * u} fill="#fff" fillOpacity={0.9} />
-            <path d={`M${north.x} ${north.y - 9 * u}L${north.x + 4.5 * u} ${north.y + 3 * u}L${north.x} ${north.y + 0.5 * u}L${north.x - 4.5 * u} ${north.y + 3 * u}Z`} fill={INK} />
-            <text x={north.x} y={north.y + 11 * u} fontSize={7.5 * u} fontWeight={700} textAnchor="middle" fill={INK}>
+            <circle cx={north.x} cy={north.y} r={13 * northUnit} fill="#fff" fillOpacity={0.9} />
+            <path d={`M${north.x} ${north.y - 9 * northUnit}L${north.x + 4.5 * northUnit} ${north.y + 3 * northUnit}L${north.x} ${north.y + 0.5 * northUnit}L${north.x - 4.5 * northUnit} ${north.y + 3 * northUnit}Z`} fill={INK} />
+            <text x={north.x} y={north.y + 11 * northUnit} fontSize={7.5 * northUnit} fontWeight={700} textAnchor="middle" fill={INK}>
               N
             </text>
           </g>
@@ -1696,9 +1704,9 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
         {showNativeChrome && <g>
           {scale && (
             <>
-              <rect x={scene.scaleBox.x0} y={scene.scaleBox.y0} width={scene.scaleBox.x1 - scene.scaleBox.x0} height={scene.scaleBox.y1 - scene.scaleBox.y0} rx={5 * u} fill="#fff" fillOpacity={0.85} />
-              <path d={`M${barX0} ${barY - 4 * u}V${barY}H${barX1}V${barY - 4 * u}`} fill="none" stroke={INK} strokeWidth={1.6 * u} />
-              <text x={barX0 + bar.px / 2} y={barY - 6 * u} fontSize={9.5 * u} fontWeight={700} textAnchor="middle" fill={INK}>
+              <rect x={scene.scaleBox.x0} y={scene.scaleBox.y0} width={scene.scaleBox.x1 - scene.scaleBox.x0} height={scene.scaleBox.y1 - scene.scaleBox.y0} rx={5 * scaleUnit} fill="#fff" fillOpacity={0.85} />
+              <path d={`M${barX0} ${barY - 4 * scaleUnit}V${barY}H${barX1}V${barY - 4 * scaleUnit}`} fill="none" stroke={INK} strokeWidth={1.6 * scaleUnit} />
+              <text x={barX0 + bar.px / 2} y={barY - 6 * scaleUnit} fontSize={9.5 * scaleUnit} fontWeight={700} textAnchor="middle" fill={INK}>
                 {bar.label}
               </text>
             </>

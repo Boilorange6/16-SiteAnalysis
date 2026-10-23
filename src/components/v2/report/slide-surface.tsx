@@ -602,6 +602,13 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
   }, [bottomInset, calloutLegend, format, frame?.x, frame?.y, height, layoutUnit, northAvoid, panels.legend, panels.summary, panels.title, rightInset, savedNorthBox, savedScaleBox, showNorth, showScale, terrainLayout?.rect, unit, viewport, width]);
   const locator = reportFrame?.decorations.locator && model.radiusM > 0 ? (savedLocatorBox ?? locatorBox(width, height, unit, avoid)) : null;
   const scaleBox = showScale ? (savedScaleBox ?? scaleBarBox(width, height, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset, false, undefined, layoutUnit)) : null;
+  const defaultNorthWidth = Math.max(1, northAvoid ? northAvoid.x1 - northAvoid.x0 : 26 * layoutUnit);
+  const defaultNorthHeight = Math.max(1, northAvoid ? northAvoid.y1 - northAvoid.y0 : 26 * layoutUnit);
+  const northScale = savedNorthBox
+    ? clampNumber(((savedNorthBox.x1 - savedNorthBox.x0) / defaultNorthWidth + (savedNorthBox.y1 - savedNorthBox.y0) / defaultNorthHeight) / 2, 0.5, 3)
+    : 1;
+  const defaultScaleHeight = Math.max(1, scaleBox ? scaleBox.y1 - scaleBox.y0 : 22 * layoutUnit);
+  const scaleChromeScale = savedScaleBox ? clampNumber((savedScaleBox.y1 - savedScaleBox.y0) / defaultScaleHeight, 0.5, 3) : 1;
   const decorationBoxes: Partial<Record<SurfaceDecorationKey, { x0: number; y0: number; x1: number; y1: number }>> = {
     ...(showNorth && (savedNorthBox ?? northAvoid) ? { north: savedNorthBox ?? northAvoid! } : {}),
     ...(scaleBox ? { scaleBar: scaleBox } : {}),
@@ -809,8 +816,9 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
         basemap={thumbnail ? "none" : "tiles"}
         layer={displayBasemap}
         legend={false}
-        north={showNorth ? ((savedNorthBox ?? northAvoid) ? (savedNorthBox ?? northAvoid)!.y0 + 13 * layoutUnit : undefined) : false}
+        north={showNorth ? ((savedNorthBox ?? northAvoid) ? ((savedNorthBox ?? northAvoid)!.y0 + (savedNorthBox ?? northAvoid)!.y1) / 2 : undefined) : false}
         northX={showNorth && savedNorthBox ? (savedNorthBox.x0 + savedNorthBox.x1) / 2 : undefined}
+        northScale={northScale}
         credit={false}
         label={label}
         viewport={viewport}
@@ -835,6 +843,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
         scaleX={savedScaleBox ? savedScaleBox.x0 + 6 * layoutUnit : undefined}
         scaleY={savedScaleBox ? savedScaleBox.y1 - 8 * layoutUnit : undefined}
         scaleBoxOverride={savedScaleBox ?? undefined}
+        scaleChromeScale={scaleChromeScale}
         calloutTop={calloutTop}
         calloutLeftBottom={calloutLeftBottom ?? (terrainLayout?.calloutLeftBottom ? terrainLayout.calloutLeftBottom * unit : undefined)}
          showAutomaticLabels={reportFrame?.labelRule !== "off"}

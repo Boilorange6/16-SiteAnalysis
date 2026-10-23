@@ -30,6 +30,20 @@ function savedPanelBox(panel: PagePanelRect | undefined, basis: "page" | "frame"
   return { x0, y0, x1: Math.max(x0 + 1, Math.min(activeSceneWidth, x0 + panel.w * sourceWidth)), y1: Math.max(y0 + 1, Math.min(activeSceneHeight, y0 + panel.h * sourceHeight)) };
 }
 
+function boxScale(saved: MapSceneBox | null, automatic: MapSceneBox | null): number {
+  if (!saved || !automatic) return 1;
+  const savedWidth = Math.max(1, saved.x1 - saved.x0);
+  const savedHeight = Math.max(1, saved.y1 - saved.y0);
+  const automaticWidth = Math.max(1, automatic.x1 - automatic.x0);
+  const automaticHeight = Math.max(1, automatic.y1 - automatic.y0);
+  return Math.max(0.5, Math.min(3, (savedWidth / automaticWidth + savedHeight / automaticHeight) / 2));
+}
+
+function boxHeightScale(saved: MapSceneBox | null, automatic: MapSceneBox | null): number {
+  if (!saved || !automatic) return 1;
+  return Math.max(0.5, Math.min(3, (saved.y1 - saved.y0) / Math.max(1, automatic.y1 - automatic.y0)));
+}
+
 export type NativeMapFrame = { x: number; y: number; w: number; h: number };
 export type NativeMapMode = "tile" | "cell";
 export type NativeMapOptions = {
@@ -422,12 +436,18 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     const height = activeSceneHeight;
     const cellLegend = cellLegendLayout(displayModel);
     const style = options.style ?? {};
+    const cellUnit = Math.min(1.5, Math.max(1, height / 360));
     const savedNorthBox = savedPanelBox(style.panels?.north, "frame");
     const savedScaleBox = savedPanelBox(style.panels?.scaleBar, "frame");
+    const cellViewport = slideViewport(displayModel, style, { width, height, siteX: 0.5, fill: 0.8 });
+    const cellMpp = metersPerPixel(cellViewport.center[1], cellViewport.zoom);
+    const defaultNorthBox = northArrowBox(width, height, 0, undefined, cellUnit);
+    const defaultScaleBox = scaleBarBox(width, height, cellMpp, cellLegend ? cellLegend.h + 32 : 0, 0, false, undefined, cellUnit);
+    const northScale = boxScale(savedNorthBox, defaultNorthBox);
+    const scaleChromeScale = boxHeightScale(savedScaleBox, defaultScaleBox);
     const focus = legendLabelOf(displayModel, style.legendFocus);
     // 조판 셀의 코드 chip은 map scene 위에 마지막으로 그려진다. 고정·자동
     // 라벨 카드가 chip 아래에서 시작하도록 셀 좌표의 상단 안전영역을 예약한다.
-    const cellUnit = Math.min(1.5, Math.max(1, height / 360));
     const cellChipBottom = ((0.1 + 0.3) / activeFrame.h) * height;
     return buildMapScene({
       model: displayModel,
@@ -453,6 +473,8 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
       avoid: [],
       bare: false,
       viewport: slideViewport(displayModel, style, { width, height, siteX: 0.5, fill: 0.8 }),
+      northScale,
+      scaleChromeScale,
       ...(savedNorthBox ? { north: savedNorthBox.y0 + (savedNorthBox.y1 - savedNorthBox.y0) / 2, northX: (savedNorthBox.x0 + savedNorthBox.x1) / 2 } : {}),
       ...(savedScaleBox ? { scaleX: savedScaleBox.x0 + 6 * cellUnit, scaleY: savedScaleBox.y1 - 8 * cellUnit, scaleBoxOverride: savedScaleBox } : {}),
     });
@@ -504,8 +526,12 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
   const savedNorthBox = savedPanelBox(style.panels?.north);
   const savedScaleBox = savedPanelBox(style.panels?.scaleBar);
   const nativeScaleMaxPx = reportFrame?.scaleDenominator !== null && reportFrame?.scaleDenominator !== undefined ? 150 : undefined;
-  const scaleAvoid = calloutDetail || !showScale ? null : (savedScaleBox ?? scaleBarBox(VIEW_W, height, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset, false, undefined, undefined, nativeScaleMaxPx));
-  const northAvoid = calloutDetail || !showNorth ? null : (savedNorthBox ?? northArrowBox(VIEW_W, height, rightInset, northY));
+  const defaultScaleBox = calloutDetail || !showScale ? null : scaleBarBox(VIEW_W, height, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset, false, undefined, undefined, nativeScaleMaxPx);
+  const defaultNorthBox = calloutDetail || !showNorth ? null : northArrowBox(VIEW_W, height, rightInset, northY);
+  const scaleAvoid = savedScaleBox ?? defaultScaleBox;
+  const northAvoid = savedNorthBox ?? defaultNorthBox;
+  const northScale = boxScale(savedNorthBox, defaultNorthBox);
+  const scaleChromeScale = boxHeightScale(savedScaleBox, defaultScaleBox);
   const frameOriginX = activeFrame.x * activePxPerInch;
   const frameOriginY = activeFrame.y * activePxPerInch;
   const localize = (box: MapSceneBox): MapSceneBox => ({ x0: box.x0 - frameOriginX, y0: box.y0 - frameOriginY, x1: box.x1 - frameOriginX, y1: box.y1 - frameOriginY });
@@ -542,6 +568,8 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     legendFocus: focus,
     showAutomaticLabels: reportFrame?.labelRule !== "off",
     labelScale: fontSizeForStyle(frameStyle, "labels") / 10,
+    northScale,
+    scaleChromeScale,
     north: showNorth ? (savedNorthBox ? (savedNorthBox.y0 + savedNorthBox.y1) / 2 : northY) : false,
     ...(savedNorthBox ? { northX: (savedNorthBox.x0 + savedNorthBox.x1) / 2 } : {}),
     ...(savedScaleBox ? { scaleX: savedScaleBox.x0 + 6 * Math.min(1.5, Math.max(1, height / 360)), scaleY: savedScaleBox.y1 - 8 * Math.min(1.5, Math.max(1, height / 360)), scaleBoxOverride: savedScaleBox } : {}),
@@ -823,7 +851,7 @@ function addRailOverlay(slide: Slide, code: string, scene: MapScene): void {
 
 function addNorth(slide: Slide, code: string, scene: MapScene): void {
   if (!scene.north) return;
-  const u = scene.unit;
+  const u = scene.northUnit;
   const x = Math.max(13 * u, Math.min(activeSceneWidth - 13 * u, scene.north.x));
   const y = Math.max(13 * u, Math.min(activeClipBottom - 13 * u, scene.north.y));
   if (activeSceneWidth < 26 * u || activeClipBottom < 26 * u) return;
@@ -836,17 +864,18 @@ function addNorth(slide: Slide, code: string, scene: MapScene): void {
 function addScale(slide: Slide, code: string, scene: MapScene): void {
   const bar = scene.scale;
   const u = scene.unit;
+  const chrome = scene.scaleChromeScale;
   const key = "scale";
   const maxBarX0 = activeSceneWidth - bar.px - 6 * u;
   const x0 = Math.max(6 * u, Math.min(maxBarX0, bar.x0));
   const x1 = x0 + bar.px;
   const y = Math.max(14 * u, Math.min(activeClipBottom - 8 * u, bar.y));
   if (maxBarX0 < 6 * u || activeClipBottom < 22 * u) return;
-  slide.addShape("roundRect", { x: pxX(scene.scaleBox.x0), y: pxY(scene.scaleBox.y0), w: pxW(scene.scaleBox.x1 - scene.scaleBox.x0), h: pxH(scene.scaleBox.y1 - scene.scaleBox.y0), rectRadius: 0.06, fill: { color: "FFFFFF", transparency: 15 }, line: { color: "FFFFFF", width: 0 }, objectName: tag(code, key, "축척", "bg") });
-  addSegment(slide, [x0, y - 4 * u], [x0, y], INK, 1.6 * u, tag(code, key, "축척", "left"));
-  addSegment(slide, [x0, y], [x1, y], INK, 1.6 * u, tag(code, key, "축척", "bar"));
-  addSegment(slide, [x1, y], [x1, y - 4 * u], INK, 1.6 * u, tag(code, key, "축척", "right"));
-  slide.addText(bar.label, { x: pxX(x0), y: pxY(y - 11 * u), w: pxW(bar.px), h: pxH(8 * u), align: "center", valign: "middle", fontFace: FONT, fontSize: fontPt(9.5 * u, 6), bold: true, color: INK, margin: 0, objectName: tag(code, key, "축척", "label") });
+  slide.addShape("roundRect", { x: pxX(scene.scaleBox.x0), y: pxY(scene.scaleBox.y0), w: pxW(scene.scaleBox.x1 - scene.scaleBox.x0), h: pxH(scene.scaleBox.y1 - scene.scaleBox.y0), rectRadius: 0.06 * chrome, fill: { color: "FFFFFF", transparency: 15 }, line: { color: "FFFFFF", width: 0 }, objectName: tag(code, key, "축척", "bg") });
+  addSegment(slide, [x0, y - 4 * chrome * u], [x0, y], INK, 1.6 * chrome * u, tag(code, key, "축척", "left"));
+  addSegment(slide, [x0, y], [x1, y], INK, 1.6 * chrome * u, tag(code, key, "축척", "bar"));
+  addSegment(slide, [x1, y], [x1, y - 4 * chrome * u], INK, 1.6 * chrome * u, tag(code, key, "축척", "right"));
+  slide.addText(bar.label, { x: pxX(x0), y: pxY(y - 11 * chrome * u), w: pxW(bar.px), h: pxH(8 * chrome * u), align: "center", valign: "middle", fontFace: FONT, fontSize: fontPt(9.5 * chrome * u, 6), bold: true, color: INK, margin: 0, objectName: tag(code, key, "축척", "label") });
 }
 
 function addLocator(slide: Slide, code: string, model: MapModel, scene: MapScene, savedBox?: MapSceneBox | null): void {

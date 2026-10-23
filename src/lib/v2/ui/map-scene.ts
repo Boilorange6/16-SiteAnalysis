@@ -387,6 +387,8 @@ export type MapSceneOptions = {
   north?: number | false;
   /** 저장된 방위표 중심 x(px). 생략하면 오른쪽 기본 위치. */
   northX?: number;
+  /** 저장된 방위표 사각형에서 계산한 장식 크기 배율. */
+  northScale?: number;
   dragging?: boolean;
   /** 보고서가 미리 계산한 동일 프레임 뷰. 지정하면 view 재계산을 하지 않는다. */
   viewport?: Viewport;
@@ -399,6 +401,8 @@ export type MapSceneOptions = {
   /** 저장된 축척 막대 중심 y(px)와 판 사각형. 막대 길이 자체는 mpp로 다시 계산한다. */
   scaleY?: number;
   scaleBoxOverride?: MapSceneBox;
+  /** 저장된 축척 막대 사각형에서 계산한 굵기·글자 배율. */
+  scaleChromeScale?: number;
 };
 
 export type MapScene = {
@@ -424,6 +428,8 @@ export type MapScene = {
   scale: { meters: number; px: number; label: string; x0: number; x1: number; y: number };
   scaleBox: MapSceneBox;
   north: { x: number; y: number } | null;
+  northUnit: number;
+  scaleChromeScale: number;
   routePoints: Array<[number, number]>;
   labels: MapSceneLabel[];
   labelPlacements: MapSceneLabelPlacement[];
@@ -978,6 +984,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     path = [],
     north: northOpt,
     northX,
+    northScale: northScaleOpt = 1,
     dragging = false,
     viewport: viewportOpt,
     layoutUnit,
@@ -985,11 +992,15 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     scaleMaxPx = 88,
     scaleY,
     scaleBoxOverride,
+    scaleChromeScale: scaleChromeScaleOpt = 1,
   } = options;
   const layer = model.basemap ?? activeLayer;
   const sat = layer === "Satellite";
   const lineColor = sat ? "#fff" : "#16181d";
   const u = layoutUnit ?? Math.min(1.5, Math.max(1, H / 360));
+  const northScale = Number.isFinite(northScaleOpt) && northScaleOpt > 0 ? Math.min(3, Math.max(0.5, northScaleOpt)) : 1;
+  const scaleChromeScale = Number.isFinite(scaleChromeScaleOpt) && scaleChromeScaleOpt > 0 ? Math.min(3, Math.max(0.5, scaleChromeScaleOpt)) : 1;
+  const northUnit = u * northScale;
   const labelScale = Number.isFinite(labelScaleOpt) && labelScaleOpt > 0 ? labelScaleOpt : 1;
   const vp = viewportOpt ?? applyView(framedViewport(model.center, model.radiusM, W, H, siteX, fill, siteY), model.center[1], options.view);
   const project = makeProjector(vp);
@@ -1086,7 +1097,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   const { bar, y: barY, x0: barX0, x1: barX1 } = scaleLayout;
   const scaleBox = scaleBoxOverride ?? scaleBarBoxFromLayout(W, H, scaleLayout);
   const north = northOpt === false ? null : { x: northX ?? (W - rightInset - 20 * u), y: northOpt || 22 * u };
-  const northBox = north ? northArrowBox(W, H, rightInset, northOpt, u) : null;
+  const northBox = north ? northArrowBox(W, H, rightInset, northOpt, northUnit) : null;
   const calloutAvoid = [
     ...avoid,
     ...(scale ? [scaleBox] : []),
@@ -1257,6 +1268,8 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     scale: { ...bar, x0: barX0, x1: barX1, y: barY },
     scaleBox,
     north,
+    northUnit,
+    scaleChromeScale,
     routePoints,
     labels,
     labelPlacements,
