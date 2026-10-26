@@ -19,6 +19,7 @@ for (const code of TILE_CODES.filter((value) => value.startsWith("A") || value.s
 }
 
 assert.ok(TILE_CATALOG.S03.sources.includes("building"));
+assert.ok(TILE_CATALOG.S03.sources.includes("building_juso"));
 assert.ok(TILE_CATALOG.S03.sources.includes("terrain_tiles"));
 assert.ok(TILE_CATALOG.S02.sources.includes("terrain_tiles"));
 assert.ok(!TILE_CATALOG.D10.sources.includes("parcel_polygon"));

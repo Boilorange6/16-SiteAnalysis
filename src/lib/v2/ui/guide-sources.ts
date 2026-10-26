@@ -64,9 +64,8 @@ function catalogFallbackFor(sourceId: string): GuideSourceRelease | null {
 }
 
 /** 여러 data file에 중복 저장된 source_release를 releaseId 단위로 한 번만 반환한다. */
-export function readGuideSourceSnapshot(): GuideSourceSnapshot {
+export function readGuideSourceSnapshot(dataDir: string = v2DataDir()): GuideSourceSnapshot {
   try {
-    const dataDir = v2DataDir();
     const manifest = readManifest(dataDir);
     if (!manifest) return { manifestVersion: null, manifestCreatedAt: null, rows: [] };
 
