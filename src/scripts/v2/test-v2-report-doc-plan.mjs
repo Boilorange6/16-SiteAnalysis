@@ -5,7 +5,7 @@ const { GODEOK_RESULTS, GODEOK_SUMMARY } = await import("../../lib/v2/ui/fixture
 const { initBoard, restoreReportDoc } = await import("../../lib/v2/ui/board-state.ts");
 const { toSummaryView, toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 const { buildReportPlan, REPORT_SOURCE_ROWS_PER_SLIDE, tileReportSettingsFromBoard, tileSlides } = await import("../../lib/v2/report/report-plan.ts");
-const { EMPTY_REPORT_DOC, defaultFrame, mergeReportFontSizes, reportDocReducer } = await import("../../lib/v2/report/report-doc.ts");
+const { EMPTY_REPORT_DOC, defaultFrame, historyApply, historyUndo, mergeReportFontSizes, reportDocReducer } = await import("../../lib/v2/report/report-doc.ts");
 const { importLegacyReport, pagesForTile, planReportDoc, printedPageCount, recommendedPages } = await import("../../lib/v2/report/report-doc-plan.ts");
 const { pageStripItems, pageStripLabel } = await import("../../lib/v2/report/report-page-strip.ts");
 const { sheetView } = await import("../../lib/v2/ui/sheet.ts");
@@ -78,6 +78,34 @@ assert.ok(a05View, "A05 view");
 const a05Pages = pagesForTile(EMPTY_REPORT_DOC, "t-A05", a05View, { ...tileReportSettingsFromBoard(board, "t-A05"), callout: "top10" }, tileContext);
 assert.equal(a05Pages.length, tileSlides("t-A05", a05View, { ...tileReportSettingsFromBoard(board, "t-A05"), callout: "top10" }, { summary, complexCounts: { "t-A05": a05View.callout.complexes.length }, views }).length, "타일 펼치기 장수");
 assert.equal(a05Pages.length, 2, "A05 top10은 개요와 설명표");
+
+// 설명표 장수 변경은 연속 callout 구간만 새 계획으로 바꾸고 같은 page 번호의 편집을 보존한다.
+const editedTop10Pages = a05Pages.map((page, index) => page.kind === "tile" ? {
+  ...page,
+  panels: { title: { x: 0.1 + index * 0.01, y: 0.1, w: 0.3, h: 0.2 } },
+  notes: `기존 메모 ${index}`,
+  textBoxes: [{ id: `box-${index}`, x: 0.2, y: 0.2, w: 1, h: 0.5, text: `기존 글상자 ${index}`, pt: 12 }],
+  frame: { ...page.frame, offsetM: [index + 1, -(index + 2)] },
+  fontSizes: { labels: 14 },
+} : page);
+const editedTop10Doc = { ...EMPTY_REPORT_DOC, pages: editedTop10Pages };
+const a05AllSettings = { ...tileReportSettingsFromBoard(board, "t-A05"), callout: "all" };
+const a05AllPages = pagesForTile(editedTop10Doc, "t-A05", a05View, a05AllSettings, tileContext);
+const allHistory = historyApply({ past: [], present: editedTop10Doc, future: [] }, { type: "tileCallout", id: editedTop10Pages[1].id, pages: a05AllPages });
+const allCalloutPages = allHistory.present.pages.filter((page) => page.kind === "tile" && page.tileId === "t-A05" && page.part.type === "callout");
+assert.equal(allCalloutPages.length, 1 + Math.ceil(a05View.callout.complexes.length / 10), "top10(2장) → all은 1+ceil(n/10)장");
+assert.notEqual(allCalloutPages[0].id, editedTop10Pages[0].id, "교체된 장 id는 새로 만든다");
+assert.deepEqual(allCalloutPages[0].frame.offsetM, [1, -2], "같은 page 0의 frame 보존");
+assert.deepEqual(allCalloutPages[1].frame.offsetM, [2, -3], "같은 page 1의 frame 보존");
+assert.equal(allCalloutPages[0].notes, "기존 메모 0", "같은 page의 메모 보존");
+assert.equal(allCalloutPages[1].textBoxes[0].text, "기존 글상자 1", "같은 page의 글상자 보존");
+assert.equal(allCalloutPages[1].fontSizes.labels, 14, "같은 page의 글자 크기 보존");
+assert.equal(historyUndo(allHistory).present.pages[0].id, editedTop10Pages[0].id, "tileCallout은 history undo 대상");
+
+const a05OverviewPages = pagesForTile(allHistory.present, "t-A05", a05View, { ...a05AllSettings, callout: "overview" }, tileContext);
+const overviewDoc = reportDocReducer(allHistory.present, { type: "tileCallout", id: allCalloutPages.at(-1).id, pages: a05OverviewPages });
+assert.equal(overviewDoc.pages.filter((page) => page.kind === "tile" && page.tileId === "t-A05" && page.part.type === "callout").length, 1, "all → overview는 1장");
+assert.equal(overviewDoc.pages.find((page) => page.kind === "tile" && page.tileId === "t-A05" && page.part.type === "callout")?.part.page, 0, "overview 교체는 0번 장");
 
 const recommended = recommendedPages(EMPTY_REPORT_DOC, views, board, context);
 assert.equal(recommended[0]?.kind, "cover", "추천 구성 첫 장은 표지");

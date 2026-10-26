@@ -221,7 +221,9 @@
   cursor: pointer;
 }
 .decorationHitTarget:hover,
-.decorationHitTarget[data-decoration-selected="true"] { border-color: #2f6fdb; box-shadow: 0 0 0 2px rgba(47,111,219,.2); }
+.decorationHitTarget[data-decoration-selected="true"],
+.decorationHitTarget[data-callout-selected="true"],
+.decorationHitTarget[data-panel-selected="true"] { border-color: #2f6fdb; box-shadow: 0 0 0 2px rgba(47,111,219,.2); }
 .decorationHitTarget:focus-visible { outline: 2px solid #2f6fdb; outline-offset: 2px; }
 
 .decorationSelectionFrame {

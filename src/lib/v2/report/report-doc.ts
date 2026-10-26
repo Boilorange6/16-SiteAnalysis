@@ -188,6 +188,7 @@ export type ReportDocAction =
   | { type: "clearPageFontSizes"; id: string; key?: FontSizeKey }
   | { type: "resetFontSizes" }
   | { type: "theme"; fontScale: ReportFontScale }
+  | { type: "tileCallout"; id: string; pages: ReportPage[] }
   | { type: "replaceAll"; pages: ReportPage[] };
 
 export const EMPTY_REPORT_DOC: ReportDoc = { v: 1, format: "wide", pages: [] };
@@ -446,6 +447,56 @@ function resetPanels(page: ReportPage): ReportPage {
   return next;
 }
 
+function isCalloutPageFor(page: ReportPage | undefined, tileId: string): page is Extract<ReportPage, { kind: "tile" }> {
+  return page?.kind === "tile" && page.tileId === tileId && page.part.type === "callout";
+}
+
+function calloutPartOf(page: ReportPage | undefined): Extract<TilePart, { type: "callout" }> | null {
+  return page?.kind === "tile" && page.part.type === "callout" ? page.part : null;
+}
+
+function preserveCalloutPageEdits(next: ReportPage, previous: Extract<ReportPage, { kind: "tile" }>): ReportPage {
+  if (next.kind !== "tile") return next;
+  const clonedPrevious = clonePage(previous) as Extract<ReportPage, { kind: "tile" }>;
+  return {
+    ...next,
+    layout: clonedPrevious.layout,
+    panels: clonedPrevious.panels,
+    textBoxes: clonedPrevious.textBoxes,
+    notes: clonedPrevious.notes,
+    deletedElementKeys: clonedPrevious.deletedElementKeys,
+    ...(clonedPrevious.titleOverride !== undefined ? { titleOverride: clonedPrevious.titleOverride } : {}),
+    ...(clonedPrevious.summaryOverride !== undefined ? { summaryOverride: clonedPrevious.summaryOverride } : {}),
+    ...(clonedPrevious.fontSizes !== undefined ? { fontSizes: clonedPrevious.fontSizes } : {}),
+    frame: clonedPrevious.frame,
+  };
+}
+
+/** 설명선 장수 변경 시 같은 번호 장의 사용자 편집을 새 계획에 옮긴다. */
+export function replaceTileCalloutPages(doc: ReportDoc, anchorId: string, replacementPages: ReportPage[]): ReportDoc {
+  const anchorIndex = doc.pages.findIndex((page) => page.id === anchorId);
+  const anchor = doc.pages[anchorIndex];
+  if (!anchor || anchor.kind !== "tile" || anchor.part.type !== "callout") return doc;
+  const tileId = anchor.tileId;
+  if (replacementPages.length === 0 || replacementPages.some((page) => !isCalloutPageFor(page, tileId))) return doc;
+
+  let start = anchorIndex;
+  while (start > 0 && isCalloutPageFor(doc.pages[start - 1], tileId)) start -= 1;
+  let end = anchorIndex + 1;
+  while (end < doc.pages.length && isCalloutPageFor(doc.pages[end], tileId)) end += 1;
+  const previousByPage = new Map<number, Extract<ReportPage, { kind: "tile" }>>();
+  for (const page of doc.pages.slice(start, end)) {
+    const part = calloutPartOf(page);
+    if (part && isCalloutPageFor(page, tileId)) previousByPage.set(part.page, page);
+  }
+  const nextPages = replacementPages.map((page) => {
+    const part = calloutPartOf(page);
+    const previous = part ? previousByPage.get(part.page) : undefined;
+    return previous ? preserveCalloutPageEdits(clonePage(page), previous) : clonePage(page);
+  });
+  return { ...doc, pages: [...doc.pages.slice(0, start), ...nextPages, ...doc.pages.slice(end)] };
+}
+
 export function reportDocReducer(doc: ReportDoc, action: ReportDocAction): ReportDoc {
   if (doc.fontScale !== undefined) {
     const { fontScale: _legacyFontScale, ...legacyFreeDoc } = doc;
@@ -536,6 +587,8 @@ export function reportDocReducer(doc: ReportDoc, action: ReportDocAction): Repor
     }
     case "theme":
       return { ...doc, fontSizes: reportFontSizesFromLegacyScale(action.fontScale) };
+    case "tileCallout":
+      return replaceTileCalloutPages(doc, action.id, action.pages);
     case "replaceAll":
       return { ...doc, pages: clonePages(action.pages) };
   }

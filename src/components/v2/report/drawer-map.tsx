@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { type MapFrameState, type ReportPage } from "@/lib/v2/report/report-doc";
+import { CALLOUT_MODES, calloutReportPages, type CalloutMode } from "@/lib/v2/ui/callout-layout";
 import { formatScaleDenominator, parseScaleInput, SCALE_PRESETS, scaleForFrame, siteAnchoredZoomPatch, siteFitPatch, zoomForScale, type ReportScaleOptions } from "@/lib/v2/ui/report-scale";
 import { legendItemsForModel } from "@/lib/v2/ui/map-layers";
 import type { TileView } from "@/lib/v2/ui/tile-view";
@@ -16,6 +17,7 @@ type DrawerMapProps = {
   sameExtent?: boolean;
   onSameExtent?: (value: boolean) => void;
   onFrame: (patch: Partial<MapFrameState>) => void;
+  callout?: { mode: CalloutMode; onChange: (mode: CalloutMode) => void };
 };
 
 const BASEMAPS: Array<{ value: MapFrameState["basemap"]; label: string }> = [
@@ -46,7 +48,7 @@ function labelRuleSummary(rule: MapFrameState["labelRule"]): string {
   return LABEL_RULES.find((item) => item.value === rule)?.label ?? "없음";
 }
 
-export default function DrawerMap({ page, frame, view, cell, scaleOptions, sameExtent = false, onSameExtent, onFrame }: DrawerMapProps) {
+export default function DrawerMap({ page, frame, view, cell, scaleOptions, sameExtent = false, onSameExtent, onFrame, callout }: DrawerMapProps) {
   const model = view?.map ?? view?.backdrop ?? null;
   const [scaleText, setScaleText] = useState(formatScaleDenominator(model ? scaleForFrame(model, frame, scaleOptions) : 1));
   const [scaleEditing, setScaleEditing] = useState(false);
@@ -186,6 +188,14 @@ export default function DrawerMap({ page, frame, view, cell, scaleOptions, sameE
             {LEGEND_PLACEMENTS.map((item) => <button key={item.value} type="button" className={frame.legend.placement === item.value ? styles.legendPlacementActive : styles.legendPlacementButton} aria-pressed={frame.legend.placement === item.value} onClick={() => legend({ placement: item.value })}>{item.label}</button>)}
           </div>
         </section>
+
+        {callout && view?.callout && <section className={styles.mapSection} aria-labelledby="map-callout-pages-heading">
+          <h3 id="map-callout-pages-heading" className={styles.mapSectionTitle}>설명표 장</h3>
+          <div className={styles.legendPlacement} role="group" aria-label="보고서 설명표 페이지 수">
+            {CALLOUT_MODES.map((item) => <button key={item.id} type="button" className={callout.mode === item.id ? styles.legendPlacementActive : styles.legendPlacementButton} aria-pressed={callout.mode === item.id} onClick={() => callout.onChange(item.id)}>{item.label}</button>)}
+          </div>
+          <p className={styles.helper}>보고서 {calloutReportPages(callout.mode, view.callout.complexes.length)}장 (개요 포함)</p>
+        </section>}
 
         <details className={styles.mapDetails}>
           <summary className={styles.mapSummary}><span className={styles.mapSummaryText}>레이어 · {layerSummary}</span></summary>
